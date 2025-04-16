@@ -1,0 +1,339 @@
+<template>
+  <div class="app-container">
+    <AppSidebar />
+    <div class="main-content">
+      <AppHeader />
+      <TerminalToolbar 
+        v-if="isTerminalRoute" 
+        @toggle-sftp-panel="toggleSftpPanel" 
+        @toggle-monitoring-panel="toggleMonitoringPanel"
+        :has-background="terminalHasBackground"
+      />
+      <main class="content" :class="{ 'with-terminal-tools': isTerminalRoute }">
+        <slot></slot>
+      </main>
+    </div>
+
+    <!-- 系统监控面板 -->
+    <div v-if="showMonitoringPanel" class="monitoring-panel-container">
+      <MonitoringPanel @close="closeMonitoringPanel" />
+    </div>
+    
+    <!-- SFTP文件管理器侧边栏 -->
+    <SftpPanel
+      v-if="showSftpPanel"
+      :session-id="activeSessionId"
+      :width="sftpPanelWidth"
+      :is-closing="isSftpPanelClosing"
+      v-model:width="sftpPanelWidth"
+      @close="closeSftpPanel"
+      @resize="handleSftpPanelResize"
+    />
+  </div>
+</template>
+
+<script>
+import { defineComponent, computed, ref, onMounted, onUnmounted, watch } from 'vue'
+import { useRoute } from 'vue-router'
+import AppSidebar from '@/components/layout/AppSidebar.vue'
+import AppHeader from '@/components/layout/AppHeader.vue'
+import { ElMessageBox, ElMessage } from 'element-plus'
+import MonitoringPanel from '@/components/monitoring/MonitoringPanel.vue'
+import TerminalToolbar from '@/components/terminal/TerminalToolbar.vue'
+import SftpPanel from '@/components/sftp/SftpPanel.vue'
+// 导入SFTP服务
+import { sftpService } from '@/services/ssh'
+// 导入会话存储
+import { useSessionStore } from '@/store/session'
+
+export default defineComponent({
+  name: 'AppLayout',
+  components: {
+    AppSidebar,
+    AppHeader,
+    MonitoringPanel,
+    TerminalToolbar,
+    SftpPanel
+  },
+  setup() {
+    const route = useRoute()
+    const terminalTitle = ref('')
+    const showMonitoringPanel = ref(false)
+    const showSftpPanel = ref(false)
+    const sftpPanelWidth = ref(600)
+    const isSftpPanelClosing = ref(false)
+    const activeSessionId = ref(null)
+    const terminalHasBackground = ref(false)
+    
+    // 判断当前是否为终端路由
+    const isTerminalRoute = computed(() => {
+      return route.path.includes('/terminal');
+    })
+    
+    // 终端操作方法
+    const sendTerminalCommand = () => {
+      // 使用事件总线发送事件给终端组件
+      window.dispatchEvent(new CustomEvent('terminal:send-command'));
+    }
+    
+    const clearTerminal = () => {
+      window.dispatchEvent(new CustomEvent('terminal:clear'));
+    }
+    
+    const disconnectTerminal = () => {
+      window.dispatchEvent(new CustomEvent('terminal:disconnect'));
+    }
+    
+    // 监听终端标题变化
+    window.addEventListener('terminal:title-change', (event) => {
+      terminalTitle.value = event.detail;
+    });
+    
+    // 获取当前活动的会话ID
+    const getCurrentSessionId = () => {
+      // 在终端路由中获取当前活动的SSH会话
+      if (isTerminalRoute.value) {
+        const sessionStore = useSessionStore();
+        return sessionStore.getActiveSession();
+      }
+      return null;
+    };
+    
+    // 初始化
+    onMounted(() => {
+      // 加载保存的SFTP面板宽度
+      try {
+        const savedWidth = localStorage.getItem('sftpPanelWidth');
+        if (savedWidth) {
+          const width = parseInt(savedWidth, 10);
+          const maxWidth = window.innerWidth * 0.9;
+          if (!isNaN(width) && width >= 300 && width <= maxWidth) {
+            sftpPanelWidth.value = width;
+          } else if (!isNaN(width) && width > maxWidth) {
+            // 如果保存的宽度超过了当前最大值，则使用最大值
+            sftpPanelWidth.value = maxWidth;
+          }
+        }
+      } catch (error) {
+        console.error('加载SFTP面板宽度失败:', error);
+      }
+      
+      // 添加窗口大小变化监听器
+      window.addEventListener('resize', handleWindowResize);
+      
+      // 监听终端背景状态
+      window.addEventListener('terminal-bg-status', (event) => {
+        if (event.detail) {
+          terminalHasBackground.value = event.detail.enabled;
+          console.log('终端背景状态已更新:', event.detail.enabled);
+        }
+      });
+      
+      // 初始化时直接读取终端背景设置
+      try {
+        const savedBgSettings = localStorage.getItem('easyssh_terminal_bg');
+        if (savedBgSettings) {
+          const bgSettings = JSON.parse(savedBgSettings);
+          terminalHasBackground.value = bgSettings.enabled;
+          console.log('初始化时读取终端背景状态:', bgSettings.enabled);
+        }
+      } catch (error) {
+        console.error('初始化读取终端背景设置失败:', error);
+      }
+    });
+    
+    // 在组件卸载时移除监听器
+    onUnmounted(() => {
+      window.removeEventListener('resize', handleWindowResize);
+      
+      // 移除终端背景状态监听
+      window.removeEventListener('terminal-bg-status', () => {});
+    });
+    
+    // 处理窗口大小变化
+    const handleWindowResize = () => {
+      if (showSftpPanel.value) {
+        const maxWidth = window.innerWidth * 0.95;
+        // 如果当前宽度超过了新的最大值，则调整为最大值
+        if (sftpPanelWidth.value > maxWidth) {
+          sftpPanelWidth.value = maxWidth;
+          
+          // 保存更新后的宽度
+          saveSftpPanelWidth();
+        }
+      }
+    };
+    
+    // 保存SFTP面板宽度
+    const saveSftpPanelWidth = () => {
+      try {
+        localStorage.setItem('sftpPanelWidth', sftpPanelWidth.value.toString());
+      } catch (error) {
+        console.error('保存SFTP面板宽度失败:', error);
+      }
+    };
+    
+    // 处理SFTP面板尺寸调整
+    const handleSftpPanelResize = (width) => {
+      saveSftpPanelWidth();
+    };
+    
+    // 打开监控面板
+    const toggleMonitoringPanel = () => {
+      showMonitoringPanel.value = true;
+      console.log('打开监控面板');
+    }
+    
+    // 关闭监控面板
+    const closeMonitoringPanel = () => {
+      showMonitoringPanel.value = false;
+    }
+    
+    // 打开SFTP面板
+    const toggleSftpPanel = (event) => {
+      // 阻止事件冒泡，避免触发全局点击处理器
+      if (event) {
+        event.stopPropagation();
+      }
+      
+      // 获取当前活动的会话ID
+      const currentSessionId = getCurrentSessionId();
+      
+      if (!currentSessionId) {
+        ElMessage.error('没有活动的SSH会话，无法打开SFTP面板');
+        return;
+      }
+
+      // 检查面板是否已经打开，只有未打开时才执行打开操作
+      if (!showSftpPanel.value) {
+        // 直接显示SFTP面板
+        activeSessionId.value = currentSessionId;
+        showSftpPanel.value = true;
+      } else if (activeSessionId.value !== currentSessionId) {
+        // 如果SFTP面板已打开且活动会话ID不同，询问是否切换
+        const sessionStore = useSessionStore();
+        const session = sessionStore.getSession(currentSessionId);
+        
+        // 获取会话名称，确保显示有效的信息
+        let sessionName = '当前会话';
+        if (session) {
+          if (session.connection && (session.connection.name || (session.connection.username && session.connection.host))) {
+            sessionName = session.connection.name || `${session.connection.username}@${session.connection.host}`;
+          } else if (session.username && session.host) {
+            // 会话对象可能直接包含用户名和主机信息
+            sessionName = `${session.username}@${session.host}`;
+          } else if (session.title) {
+            // 至少显示会话标题
+            sessionName = session.title;
+          } else {
+            // 如果什么都没有，至少显示会话ID
+            sessionName = currentSessionId;
+          }
+        }
+        
+        ElMessageBox.confirm(
+          `是否要切换至(${sessionName})的SFTP文件管理器？`,
+          '切换SFTP会话',
+          {
+            confirmButtonText: '是',
+            cancelButtonText: '否',
+            type: 'warning'
+          }
+        ).then(() => {
+          // 用户确认切换
+          activeSessionId.value = currentSessionId;
+          // 触发SFTP面板刷新
+          window.dispatchEvent(new CustomEvent('sftp:session-changed', { detail: currentSessionId }));
+        }).catch(() => {
+          // 用户取消操作，保持当前SFTP会话
+        });
+      }
+    }
+    
+    // 关闭SFTP面板
+    const closeSftpPanel = () => {
+      isSftpPanelClosing.value = true;
+      
+      // 等待动画完成后再隐藏面板
+      setTimeout(() => {
+        showSftpPanel.value = false;
+        isSftpPanelClosing.value = false;
+        console.log('关闭SFTP面板');
+      }, 300); // 与动画持续时间一致
+    }
+    
+    // 监听路由变化，关闭SFTP面板
+    watch(
+      () => route.path,
+      (newPath, oldPath) => {
+        // 只有在实际路由变化时关闭SFTP面板
+        if (newPath !== oldPath && showSftpPanel.value) {
+          console.log('路由变化，关闭SFTP面板:', oldPath, '->', newPath);
+          closeSftpPanel();
+        }
+      }
+    );
+    
+    return {
+      isTerminalRoute,
+      terminalTitle,
+      showMonitoringPanel,
+      toggleMonitoringPanel,
+      closeMonitoringPanel,
+      showSftpPanel,
+      toggleSftpPanel,
+      closeSftpPanel,
+      sftpPanelWidth,
+      isSftpPanelClosing,
+      activeSessionId,
+      handleSftpPanelResize,
+      terminalHasBackground
+    }
+  }
+})
+</script>
+
+<style scoped>
+.app-container {
+  display: flex;
+  height: 100vh;
+  overflow: hidden;
+  background-color: #121212;
+}
+
+.main-content {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  overflow: hidden;
+}
+
+.content {
+  flex: 1;
+  overflow-y: auto;
+  background-color: #121212;
+  border-top: none;
+}
+
+.content.with-terminal-tools {
+  height: calc(100% - 36px);
+}
+
+/* 终端工具栏，确保其位于适当层级 */
+.terminal-toolbar {
+  position: relative;
+  z-index: 3;
+  background-color: transparent;
+}
+
+/* 系统监控面板容器 */
+.monitoring-panel-container {
+  position: fixed;
+  top: 40px;
+  right: 0;
+  bottom: 0;
+  z-index: 1000;
+  pointer-events: auto;
+  overflow: visible;
+}
+</style> 

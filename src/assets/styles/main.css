@@ -1,0 +1,34 @@
+/*
+ * main.css - 主样式文件
+ * 用于导入所有样式模块，优化加载策略
+ */
+
+/* 基础样式 */
+@import './base/base.css';
+@import './base/critical.css';
+
+/* 布局样式 */
+@import './layouts/layout.css';
+@import './layouts/critical-layout.css';
+@import './layouts/layout-main.css';
+
+/* 组件样式 */
+@import './components/header.css';
+@import './components/menu.css';
+@import './components/cards.css';
+@import './components/forms.css';
+@import './components/critical-components.css';
+@import './components/accessibility.css';
+
+/* 主题样式 */
+@import './themes/theme.css';
+
+/* 打印样式 - 仅在打印时使用 */
+@media print {
+  @import './print.css';
+}
+
+/* 覆盖Element Plus按钮中图标和文本之间的间距 */
+.el-button [class*=el-icon]+span {
+  margin-left: 5px;
+} 

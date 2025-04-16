@@ -1,0 +1,156 @@
+/*
+ * cards.css - 卡片组件样式
+ * 使用BEM命名规范
+ */
+
+/* 连接卡片组件 */
+.connection-card {
+  display: flex;
+  flex-direction: column;
+  background-color: #fff;
+  border-radius: var(--border-radius-lg);
+  box-shadow: var(--shadow-sm);
+  padding: var(--spacing-md);
+  transition: transform var(--transition-fast), box-shadow var(--transition-fast);
+  cursor: pointer;
+  height: 100%;
+}
+
+.connection-card:hover {
+  transform: translateY(-4px);
+  box-shadow: var(--shadow-md);
+}
+
+.connection-card__header {
+  display: flex;
+  align-items: center;
+  margin-bottom: var(--spacing-sm);
+}
+
+.connection-card__icon {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: var(--primary-light);
+  color: #fff;
+  border-radius: var(--border-radius-md);
+  margin-right: var(--spacing-sm);
+  font-size: var(--font-size-sm);
+}
+
+.connection-card__name {
+  font-weight: 600;
+  color: var(--gray-800);
+  font-size: var(--font-size-md);
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.connection-card__host {
+  font-size: var(--font-size-sm);
+  color: var(--gray-600);
+  margin-bottom: var(--spacing-sm);
+}
+
+.connection-card__time {
+  font-size: var(--font-size-xs);
+  color: var(--gray-500);
+  margin-bottom: var(--spacing-md);
+}
+
+.connection-card__footer {
+  margin-top: auto;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.connection-card__connect-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background-color: var(--primary-color);
+  color: #fff;
+  border-radius: var(--border-radius-md);
+  padding: var(--spacing-xs) var(--spacing-md);
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  border: none;
+  cursor: pointer;
+  transition: background-color var(--transition-fast);
+}
+
+.connection-card__connect-btn:hover {
+  background-color: var(--primary-dark);
+}
+
+/* 功能卡片组件 */
+.feature-card {
+  display: flex;
+  align-items: center;
+  background-color: #fff;
+  border-radius: var(--border-radius-lg);
+  padding: var(--spacing-md);
+  box-shadow: var(--shadow-sm);
+  margin-bottom: var(--spacing-md);
+  transition: all var(--transition-fast);
+}
+
+.feature-card:hover {
+  box-shadow: var(--shadow-md);
+}
+
+.feature-card__icon {
+  width: 48px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--border-radius-md);
+  margin-right: var(--spacing-md);
+  color: #fff;
+  font-size: var(--font-size-xl);
+}
+
+.feature-card--security .feature-card__icon {
+  background-color: var(--success-color);
+}
+
+.feature-card--performance .feature-card__icon {
+  background-color: var(--primary-color);
+}
+
+.feature-card--tools .feature-card__icon {
+  background-color: var(--warning-color);
+}
+
+.feature-card__content {
+  flex: 1;
+}
+
+.feature-card__title {
+  font-size: var(--font-size-md);
+  font-weight: 600;
+  color: var(--gray-800);
+  margin-bottom: var(--spacing-xs);
+}
+
+.feature-card__description {
+  font-size: var(--font-size-sm);
+  color: var(--gray-600);
+  line-height: 1.5;
+}
+
+/* 无连接提示 */
+.no-connections {
+  padding: var(--spacing-lg);
+  text-align: center;
+  color: var(--gray-500);
+  font-size: var(--font-size-md);
+  background-color: var(--gray-100);
+  border-radius: var(--border-radius-lg);
+  margin-bottom: var(--spacing-md);
+} 

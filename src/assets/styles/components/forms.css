@@ -1,0 +1,249 @@
+/*
+ * forms.css - 表单组件样式
+ * 使用BEM命名规范
+ */
+
+/* 表单组件 */
+.form {
+  width: 100%;
+}
+
+/* 表单组 */
+.form__group {
+  margin-bottom: var(--spacing-md);
+}
+
+/* 表单标签 */
+.form__label {
+  display: block;
+  margin-bottom: var(--spacing-xs);
+  font-weight: 500;
+  color: var(--gray-700);
+  font-size: var(--font-size-sm);
+}
+
+/* 表单控件 */
+.form__control {
+  width: 100%;
+  padding: var(--spacing-sm) var(--spacing-md);
+  font-size: var(--font-size-md);
+  color: var(--gray-800);
+  background-color: #fff;
+  border: 1px solid var(--gray-300);
+  border-radius: var(--border-radius-md);
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.form__control:focus {
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+  outline: none;
+}
+
+.form__control--error {
+  border-color: var(--danger-color);
+}
+
+.form__control--error:focus {
+  box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.1);
+}
+
+/* 文本框高度 */
+textarea.form__control {
+  min-height: 100px;
+  resize: vertical;
+}
+
+/* 表单错误信息 */
+.form__error {
+  display: block;
+  margin-top: var(--spacing-xs);
+  color: var(--danger-color);
+  font-size: var(--font-size-xs);
+}
+
+/* 单选和复选框容器 */
+.form__check-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+  margin-bottom: var(--spacing-md);
+}
+
+/* 单选和复选框标签 */
+.form__check-label {
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  font-size: var(--font-size-sm);
+  color: var(--gray-700);
+}
+
+/* 单选和复选框输入 */
+.form__check-input {
+  margin-right: var(--spacing-sm);
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+}
+
+/* 单选组 */
+.form__radio-group {
+  display: flex;
+  gap: var(--spacing-md);
+  margin-bottom: var(--spacing-md);
+}
+
+/* 表单帮助文本 */
+.form__help {
+  margin-top: var(--spacing-xs);
+  font-size: var(--font-size-xs);
+  color: var(--gray-500);
+}
+
+/* 表单按钮组 */
+.form__buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--spacing-sm);
+  margin-top: var(--spacing-lg);
+}
+
+/* 按钮 */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--spacing-sm) var(--spacing-md);
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  border-radius: var(--border-radius-md);
+  transition: all var(--transition-fast);
+  cursor: pointer;
+  border: none;
+}
+
+/* 主要按钮 */
+.btn--primary {
+  background-color: var(--primary-color);
+  color: #fff;
+}
+
+.btn--primary:hover {
+  background-color: var(--primary-dark);
+}
+
+/* 次要按钮 */
+.btn--secondary {
+  background-color: var(--gray-200);
+  color: var(--gray-700);
+}
+
+.btn--secondary:hover {
+  background-color: var(--gray-300);
+}
+
+/* 成功按钮 */
+.btn--success {
+  background-color: var(--success-color);
+  color: #fff;
+}
+
+.btn--success:hover {
+  background-color: #0ea271;
+}
+
+/* 危险按钮 */
+.btn--danger {
+  background-color: var(--danger-color);
+  color: #fff;
+}
+
+.btn--danger:hover {
+  background-color: #dc2626;
+}
+
+/* 警告按钮 */
+.btn--warning {
+  background-color: var(--warning-color);
+  color: #fff;
+}
+
+.btn--warning:hover {
+  background-color: #d97706;
+}
+
+/* 模态框 */
+.modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: rgba(0, 0, 0, 0.5);
+  z-index: var(--z-modal);
+  opacity: 0;
+  visibility: hidden;
+  transition: all var(--transition-normal);
+}
+
+.modal--active {
+  opacity: 1;
+  visibility: visible;
+}
+
+.modal__content {
+  width: 100%;
+  max-width: 500px;
+  background-color: #fff;
+  border-radius: var(--border-radius-lg);
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
+  transform: translateY(20px);
+  transition: transform var(--transition-normal);
+}
+
+.modal--active .modal__content {
+  transform: translateY(0);
+}
+
+.modal__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--spacing-md);
+  border-bottom: 1px solid var(--gray-200);
+}
+
+.modal__title {
+  font-size: var(--font-size-lg);
+  font-weight: 600;
+  color: var(--gray-800);
+}
+
+.modal__close {
+  font-size: var(--font-size-xl);
+  font-weight: 300;
+  color: var(--gray-500);
+  cursor: pointer;
+  transition: color var(--transition-fast);
+}
+
+.modal__close:hover {
+  color: var(--danger-color);
+}
+
+.modal__body {
+  padding: var(--spacing-md);
+}
+
+.modal__footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-md);
+  border-top: 1px solid var(--gray-200);
+} 
