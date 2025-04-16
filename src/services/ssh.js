@@ -107,34 +107,72 @@ class SSHService {
         await this.init()
       }
       
-      // 生成一个唯一的会话ID
-      const sessionId = this._generateSessionId()
-      
-      log.info(`创建SSH会话: ${sessionId}, 地址: ${connection.host}:${connection.port}`)
-      
-      // 先尝试IPv4连接
-      try {
-        log.info(`尝试使用IPv4连接: ${this.ipv4Url}`)
-        return await this._createSessionWithUrl(this.ipv4Url, sessionId, connection)
-      } catch (ipv4Error) {
-        log.warn(`IPv4连接失败: ${ipv4Error.message}，尝试IPv6连接`)
+      // 检查是否已有相同主机和用户的活跃连接
+      for (const [existingId, session] of this.sessions.entries()) {
+        const existingConn = session.connection
         
-        // 如果IPv4失败，尝试IPv6
-        try {
-          // 释放之前可能创建的资源
-          this.releaseResources(sessionId)
+        // 首先检查是否有完全匹配且处于"connected"状态的连接
+        if (existingConn && 
+            existingConn.host === connection.host && 
+            existingConn.port === connection.port && 
+            existingConn.username === connection.username &&
+            session.connectionState.status === 'connected') {
+          log.warn(`发现已存在相同主机和用户的活跃连接: ${existingId}，返回现有连接ID`)
+          return existingId
+        }
+        
+        // 其次检查是否有处于"connecting"或"authenticating"状态的相同连接
+        // 这些状态表示连接正在建立过程中，应该等待而不是创建新连接
+        if (existingConn && 
+            existingConn.host === connection.host && 
+            existingConn.port === connection.port && 
+            existingConn.username === connection.username &&
+            (session.connectionState.status === 'connecting' || 
+             session.connectionState.status === 'authenticating')) {
+          log.warn(`发现正在建立的相同主机和用户的连接: ${existingId}，等待连接完成`)
           
-          // 等待一段时间确保连接完全关闭
-          await new Promise(resolve => setTimeout(resolve, 500))
-          
-          log.info(`尝试使用IPv6连接: ${this.ipv6Url}`)
-          return await this._createSessionWithUrl(this.ipv6Url, sessionId, connection)
-        } catch (ipv6Error) {
-          log.error(`IPv6连接也失败: ${ipv6Error.message}`)
-          ElMessage.error(`SSH连接失败: 尝试IPv4和IPv6连接均失败`)
-          throw new Error(`SSH连接失败: IPv4(${ipv4Error.message}) 和 IPv6(${ipv6Error.message})`)
+          // 等待连接完成或超时
+          return new Promise((resolve, reject) => {
+            const maxWaitTime = 10000; // 最长等待10秒
+            const startTime = Date.now();
+            
+            const checkConnection = () => {
+              // 重新获取会话，确保使用最新状态
+              if (!this.sessions.has(existingId)) {
+                // 会话不存在了，可能已被清理，创建新会话
+                log.warn(`等待中的会话 ${existingId} 不存在了，将创建新会话`);
+                resolve(this._createNewSession(connection));
+                return;
+              }
+              
+              const currentSession = this.sessions.get(existingId);
+              const status = currentSession.connectionState.status;
+              
+              if (status === 'connected') {
+                // 连接成功，返回现有ID
+                log.info(`连接 ${existingId} 已成功建立，复用该连接`);
+                resolve(existingId);
+              } else if (status === 'closed' || status === 'error') {
+                // 连接失败，创建新连接
+                log.warn(`连接 ${existingId} 已失败(${status})，创建新连接`);
+                resolve(this._createNewSession(connection));
+              } else if (Date.now() - startTime > maxWaitTime) {
+                // 等待超时，创建新连接
+                log.warn(`等待连接 ${existingId} 超时，创建新连接`);
+                resolve(this._createNewSession(connection));
+              } else {
+                // 继续等待
+                setTimeout(checkConnection, 500);
+              }
+            };
+            
+            checkConnection();
+          });
         }
       }
+      
+      // 没有找到可复用的连接，创建新会话
+      return this._createNewSession(connection);
     } catch (error) {
       log.error('创建SSH会话失败:', error)
       ElMessage.error(`SSH连接失败: ${error.message || '未知错误'}`)
@@ -1128,6 +1166,37 @@ class SSHService {
     } catch (error) {
       console.error('打开SFTP会话失败:', error);
       return false;
+    }
+  }
+
+  // 添加新方法，封装创建新会话的逻辑
+  async _createNewSession(connection) {
+    // 生成一个唯一的会话ID
+    const sessionId = this._generateSessionId();
+    log.info(`创建新SSH会话: ${sessionId}, 地址: ${connection.host}:${connection.port}`);
+    
+    // 先尝试IPv4连接
+    try {
+      log.info(`尝试使用IPv4连接: ${this.ipv4Url}`);
+      return await this._createSessionWithUrl(this.ipv4Url, sessionId, connection);
+    } catch (ipv4Error) {
+      log.warn(`IPv4连接失败: ${ipv4Error.message}，尝试IPv6连接`);
+      
+      // 如果IPv4失败，尝试IPv6
+      try {
+        // 释放之前可能创建的资源
+        this.releaseResources(sessionId);
+        
+        // 等待一段时间确保连接完全关闭
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
+        log.info(`尝试使用IPv6连接: ${this.ipv6Url}`);
+        return await this._createSessionWithUrl(this.ipv6Url, sessionId, connection);
+      } catch (ipv6Error) {
+        log.error(`IPv6连接也失败: ${ipv6Error.message}`);
+        ElMessage.error(`SSH连接失败: 尝试IPv4和IPv6连接均失败`);
+        throw new Error(`SSH连接失败: IPv4(${ipv4Error.message}) 和 IPv6(${ipv6Error.message})`);
+      }
     }
   }
 }

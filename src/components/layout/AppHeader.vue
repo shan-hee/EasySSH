@@ -7,7 +7,8 @@
            class="tab-item" 
            :class="{ active: tabStore.activeTabIndex === index }"
            :data-tab-type="tab.type"
-           @click="handleTabClick(index)">
+           @click="handleTabClick(index)"
+           @mousedown="handleTabMouseDown($event, index)">
         <svg v-if="tab.type === 'newConnection'" class="ruyi-icon ruyi-icon-ot-connect-link" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16">
           <g fill="currentColor">
             <path d="M1.799.749a1 1 0 00-1 1v4a1 1 0 001 1h4a1 1 0 001-1v-4a1 1 0 00-1-1h-4Zm4 1h-4v4h4v-4Zm4.402 7.502a1 1 0 00-1 1v4a1 1 0 001 1h4a1 1 0 001-1v-4a1 1 0 00-1-1h-4Zm4 1h-4v4h4v-4Z" fill-rule="evenodd" clip-rule="evenodd"></path>
@@ -165,6 +166,18 @@ export default defineComponent({
       tabStore.switchTab(index)
     }
     
+    // 处理标签页鼠标按下事件
+    const handleTabMouseDown = (event, index) => {
+      // 检测是否是鼠标中键点击（button值为1表示鼠标中键）
+      if (event.button === 1) {
+        // 阻止默认行为和事件冒泡
+        event.preventDefault()
+        event.stopPropagation()
+        // 关闭对应的标签页
+        tabStore.closeTab(index)
+      }
+    }
+    
     return {
       userStore,
       tabStore,
@@ -173,7 +186,8 @@ export default defineComponent({
       closeLoginPanel,
       navigateToProfile,
       handleLogout,
-      handleTabClick
+      handleTabClick,
+      handleTabMouseDown
     }
   }
 })

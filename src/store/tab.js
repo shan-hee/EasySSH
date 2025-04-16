@@ -379,8 +379,34 @@ export const useTabStore = defineStore('tab', () => {
         
         // 如果没有其他标签使用此连接，则断开连接
         if (sameConnectionTabs.length === 0) {
+          console.log(`没有其他标签使用终端 ${closingTab.data.connectionId}，准备断开连接`)
+          
+          // 添加超时保护，确保连接断开
+          const disconnectTimeout = setTimeout(() => {
+            console.warn(`断开终端 ${closingTab.data.connectionId} 连接超时，尝试强制释放资源`)
+            
+            // 尝试直接调用SSH服务释放资源
+            import('../services/ssh').then(module => {
+              const sshService = module.default
+              // 查找可能的会话ID
+              if (terminalStore.sessions && terminalStore.sessions[closingTab.data.connectionId]) {
+                const sessionId = terminalStore.sessions[closingTab.data.connectionId]
+                sshService.releaseResources(sessionId)
+                  .catch(error => console.error(`强制释放SSH资源失败: ${error.message}`))
+              }
+            }).catch(error => {
+              console.error('导入SSH服务失败:', error)
+            })
+          }, 5000) // 5秒超时
+          
+          // 尝试正常断开连接
           terminalStore.disconnectTerminal(closingTab.data.connectionId)
+            .then(success => {
+              clearTimeout(disconnectTimeout) // 清除超时
+              console.log(`终端 ${closingTab.data.connectionId} 断开${success ? '成功' : '失败'}`)
+            })
             .catch(error => {
+              clearTimeout(disconnectTimeout) // 清除超时
               console.error('关闭终端连接失败:', error)
             })
         } else {
@@ -636,10 +662,48 @@ export const useTabStore = defineStore('tab', () => {
           // 如果没有标签页，导航到登录页
           if (state.tabs.length === 0) {
             nextTick(() => router.push('/'));
+          } else {
+            // 处理标签页的会话数据
+            nextTick(() => {
+              // 获取会话存储
+              try {
+                const sessionStore = useSessionStore();
+                
+                // 遍历所有恢复的标签页
+                state.tabs.forEach((tab, index) => {
+                  // 如果是终端类型的标签页，且有连接ID，注册会话信息触发重连
+                  if (tab.type === 'terminal' && tab.data && tab.data.connectionId) {
+                    // 注册会话信息，实际建立连接
+                    sessionStore.registerSession(tab.data.connectionId, {
+                      title: tab.title,
+                      type: 'terminal',
+                      // 添加一个标记，表示这是刷新后恢复的标签而非活动连接
+                      isRestoredTab: true
+                    });
+                  }
+                });
+                
+                // 设置当前活动标签
+                const activeTab = state.tabs[parsed.activeTabIndex || 0];
+                if (activeTab) {
+                  if (activeTab.type === 'terminal' && activeTab.data && activeTab.data.connectionId) {
+                    // 为终端标签设置会话ID，但不建立连接
+                    sessionStore.setActiveSession(activeTab.data.connectionId);
+                    // 导航到不带参数的终端路径
+                    router.push('/terminal');
+                  } else {
+                    // 对于非终端标签，正常导航
+                    router.push(activeTab.path);
+                  }
+                }
+              } catch (error) {
+                console.error('处理标签恢复失败:', error);
+              }
+            });
           }
+          
+          state.activeTabIndex = parsed.activeTabIndex || 0
         }
-        
-        state.activeTabIndex = parsed.activeTabIndex || 0
       } else {
         // 没有保存的状态，导航到登录页
         nextTick(() => router.push('/'));

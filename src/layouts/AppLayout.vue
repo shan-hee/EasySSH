@@ -9,6 +9,10 @@
         @toggle-monitoring-panel="toggleMonitoringPanel"
         :has-background="terminalHasBackground"
       />
+
+      <!-- 添加终端背景层，仅在终端界面显示 -->
+      <div v-if="isTerminalRoute && terminalHasBackground" class="terminal-background"></div>
+
       <main class="content" :class="{ 'with-terminal-tools': isTerminalRoute }">
         <slot></slot>
       </main>
@@ -335,5 +339,27 @@ export default defineComponent({
   z-index: 1000;
   pointer-events: auto;
   overflow: visible;
+}
+
+/* 终端背景样式 */
+.terminal-background {
+  position: absolute;
+  top: 40px; /* 留出顶部导航栏的空间 */
+  left: 40px; /* 留出侧边栏的空间 */
+  right: 0;
+  bottom: 0;
+  z-index: 1; /* 确保在内容下方 */
+  background-image: var(--terminal-bg-image, none);
+  background-size: var(--terminal-bg-size, cover);
+  background-position: center;
+  background-repeat: var(--terminal-bg-repeat, no-repeat);
+  opacity: var(--terminal-bg-opacity, 0.5);
+  pointer-events: none; /* 确保点击事件可以穿透背景 */
+}
+
+@media (max-width: 768px) {
+  .terminal-background {
+    left: 0; /* 在移动设备上占满整个宽度 */
+  }
 }
 </style> 

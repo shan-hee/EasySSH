@@ -5,9 +5,6 @@
       <RainbowLoader />
     </div>
 
-    <!-- 终端背景层 - 修改为绝对定位并设置更高层级使其覆盖工具栏 -->
-    <div class="terminal-background" :style="terminalBgStyle" v-if="terminalBg.enabled"></div>
-
     <!-- 多终端容器 - 每个终端都有自己的容器，通过z-index和opacity控制显示/隐藏 -->
     <div class="terminals-wrapper">
       <!-- 为每个终端创建独立容器 -->
@@ -82,6 +79,8 @@ export default {
     const status = ref('正在连接...')
     const isConnecting = ref(true) // 连接状态标志
     const isConnectingInProgress = ref(false) // 添加连接进行中标志，避免并发请求
+    // 添加终端背景状态变量
+    const terminalHasBackground = ref(false)
     
     // 终端背景设置
     const terminalBg = ref({
@@ -156,6 +155,9 @@ export default {
       }
     }
     
+    // 在setup函数里的顶部变量声明部分添加
+    const isInitializing = ref(false) // 防止重复初始化的标志
+    
     // 初始化特定ID的终端
     const initTerminal = async (termId, container) => {
       try {
@@ -164,6 +166,13 @@ export default {
           return false
         }
         
+        // 如果当前正在初始化该终端，则跳过
+        if (isInitializing.value) {
+          console.log(`终端 ${termId} 正在初始化中，跳过重复初始化`)
+          return false
+        }
+        
+        isInitializing.value = true
         console.log(`开始初始化终端: ${termId}`)
         isConnecting.value = true
         
@@ -233,6 +242,9 @@ export default {
       } catch (error) {
         console.error(`初始化终端 ${termId} 出错:`, error)
         return false
+      } finally {
+        // 无论成功或失败，最终都要重置初始化标志
+        isInitializing.value = false
       }
     }
 
@@ -348,13 +360,49 @@ export default {
           const parsedSettings = JSON.parse(savedBgSettings)
           terminalBg.value = { ...parsedSettings }
           
+          // 更新本地背景状态
+          terminalHasBackground.value = parsedSettings.enabled
+          
           // 发送背景图状态事件
           window.dispatchEvent(new CustomEvent('terminal-bg-status', { 
             detail: { enabled: terminalBg.value.enabled } 
           }))
+          
+          // 更新CSS变量以供AppLayout使用
+          updateCssVariables()
         }
       } catch (error) {
         console.error('加载终端背景设置失败:', error)
+      }
+    }
+    
+    // 更新CSS变量以供AppLayout使用
+    const updateCssVariables = () => {
+      if (terminalBg.value.enabled && terminalBg.value.url) {
+        document.documentElement.style.setProperty('--terminal-bg-image', `url(${terminalBg.value.url})`)
+        document.documentElement.style.setProperty('--terminal-bg-opacity', terminalBg.value.opacity.toString())
+        
+        // 设置背景尺寸
+        let backgroundSize = 'cover'
+        if (terminalBg.value.mode === 'contain') {
+          backgroundSize = 'contain'
+        } else if (terminalBg.value.mode === 'fill') {
+          backgroundSize = '100% 100%'
+        } else if (terminalBg.value.mode === 'none') {
+          backgroundSize = 'auto'
+        } else if (terminalBg.value.mode === 'repeat') {
+          backgroundSize = 'auto'
+        }
+        document.documentElement.style.setProperty('--terminal-bg-size', backgroundSize)
+        
+        // 设置背景重复
+        const backgroundRepeat = terminalBg.value.mode === 'repeat' ? 'repeat' : 'no-repeat'
+        document.documentElement.style.setProperty('--terminal-bg-repeat', backgroundRepeat)
+      } else {
+        document.documentElement.style.removeProperty('--terminal-bg-image')
+        document.documentElement.style.removeProperty('--terminal-bg-opacity')
+        document.documentElement.style.removeProperty('--terminal-bg-size')
+        document.documentElement.style.removeProperty('--terminal-bg-repeat')
       }
     }
     
@@ -366,10 +414,16 @@ export default {
         if (event.detail) {
           terminalBg.value = { ...event.detail }
           
+          // 更新本地背景状态
+          terminalHasBackground.value = event.detail.enabled
+          
           // 发送背景图状态变更事件
           window.dispatchEvent(new CustomEvent('terminal-bg-status', { 
             detail: { enabled: terminalBg.value.enabled } 
           }))
+          
+          // 更新CSS变量
+          updateCssVariables()
         }
       }
       
@@ -518,12 +572,12 @@ export default {
       })
     }
     
-    // 添加对路由变化的监听
+    // 修改watch函数，添加连接中状态检查
     watch(
       () => route.path,
       (newPath) => {
         // 当路径变为'/terminal'（无参数）时，从会话存储获取会话ID
-        if (newPath === '/terminal' && !isConnectingInProgress.value) {
+        if (newPath === '/terminal' && !isConnectingInProgress.value && !isInitializing.value) {
           const currentSessionId = sessionStore.getActiveSession()
           if (currentSessionId) {
             console.log(`检测到终端路径变更，使用会话存储ID: ${currentSessionId}`)
@@ -692,13 +746,102 @@ export default {
     // 添加防止重复切换的状态变量
     const isTerminalSwitching = ref(false)
     
+    // 处理终端重连事件
+    const handleTerminalReconnect = (event) => {
+      // 获取连接ID和标签索引
+      const { connectionId, tabIndex } = event.detail
+      
+      console.log(`接收到终端重连事件: ${connectionId}`)
+      
+      // 确保终端ID存在于列表中
+      if (!terminalIds.value.includes(connectionId)) {
+        terminalIds.value.push(connectionId)
+        console.log(`终端ID ${connectionId} 添加到列表`)
+      }
+      
+      // 更新活动会话
+      sessionStore.setActiveSession(connectionId)
+      
+      // 延迟执行初始化，确保DOM准备就绪
+      nextTick(() => {
+        // 获取或创建终端DOM引用
+        const container = terminalRefs.value[connectionId] || document.querySelector(`[data-terminal-id="${connectionId}"]`)
+        
+        if (container) {
+          console.log(`找到终端 ${connectionId} 的容器，准备初始化`)
+          initTerminal(connectionId, container)
+        } else {
+          console.log(`未找到终端 ${connectionId} 的容器，待下次DOM更新后再尝试`)
+          
+          // 如果DOM引用不存在，等待一段时间后再次检查
+          setTimeout(() => {
+            // 尝试获取最新的DOM引用
+            const el = document.querySelector(`.terminal-content[data-terminal-id="${connectionId}"]`)
+            if (el) {
+              console.log(`延迟后找到终端 ${connectionId} 的容器，准备初始化`)
+              terminalRefs.value[connectionId] = el
+              initTerminal(connectionId, el)
+            } else {
+              console.error(`无法找到终端 ${connectionId} 的容器元素`)
+            }
+          }, 500)
+        }
+      })
+    }
+    
+    // 在变量声明部分添加sftpPanelWidth
+    const sftpPanelWidth = ref(600) // 默认SFTP面板宽度
+    
     // 初始化
     onMounted(() => {
-      // 加载终端背景设置
-      loadTerminalBgSettings()
+      // 加载保存的SFTP面板宽度
+      try {
+        const savedWidth = localStorage.getItem('sftpPanelWidth')
+        if (savedWidth) {
+          const width = parseInt(savedWidth, 10)
+          const maxWidth = window.innerWidth * 0.9
+          if (!isNaN(width) && width >= 300 && width <= maxWidth) {
+            sftpPanelWidth.value = width
+          } else if (!isNaN(width) && width > maxWidth) {
+            // 如果保存的宽度超过了当前最大值，则使用最大值
+            sftpPanelWidth.value = maxWidth
+          }
+        }
+      } catch (error) {
+        console.error('加载SFTP面板宽度失败:', error)
+      }
       
-      // 监听终端背景设置变化
-      listenForBgChanges()
+      // 添加窗口大小变化监听器
+      window.addEventListener('resize', handleWindowResize);
+      
+      // 监听终端背景状态
+      window.addEventListener('terminal-bg-status', (event) => {
+        if (event.detail) {
+          console.log('终端背景状态已更新:', event.detail.enabled);
+        }
+      });
+      
+      // 初始化时直接读取终端背景设置
+      try {
+        const savedBgSettings = localStorage.getItem('easyssh_terminal_bg');
+        if (savedBgSettings) {
+          const bgSettings = JSON.parse(savedBgSettings);
+          terminalBg.value = { ...bgSettings };
+          terminalHasBackground.value = bgSettings.enabled;
+          console.log('初始化时读取终端背景状态:', bgSettings.enabled);
+          
+          // 初始化CSS变量
+          updateCssVariables();
+        }
+      } catch (error) {
+        console.error('初始化读取终端背景设置失败:', error);
+      }
+      
+      // 加载终端背景设置
+      loadTerminalBgSettings();
+      
+      // 初始化其他监听器
+      listenForBgChanges();
       
       // 设置工具栏监听器
       setupToolbarListeners()
@@ -711,6 +854,9 @@ export default {
       
       // 监听终端切换事件
       window.addEventListener('terminal:session-change', handleTerminalChange)
+      
+      // 监听终端重连事件
+      window.addEventListener('terminal:reconnect', handleTerminalReconnect)
       
       // 初始化时更新终端ID列表
       updateTerminalIds()
@@ -745,6 +891,7 @@ export default {
       window.removeEventListener('ssh:error', handleSSHError)
       window.removeEventListener('resize', handleWindowResize)
       window.removeEventListener('terminal:session-change', handleTerminalChange)
+      window.removeEventListener('terminal:reconnect', handleTerminalReconnect)
       
       // 正确移除终端背景设置变化监听
       if (bgChangeHandler) {
@@ -776,7 +923,9 @@ export default {
       isActiveTerminal,
       getTerminalStyle,
       setTerminalRef,
-      terminalInitialized
+      terminalInitialized,
+      terminalHasBackground,
+      sftpPanelWidth // 添加SFTP面板宽度
     }
   }
 }
@@ -880,16 +1029,5 @@ export default {
 :deep(.xterm-screen) {
   width: 100%;
   height: 100%;
-}
-
-/* 终端背景样式 - 修改为固定定位，层级设置为2 */
-.terminal-background {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  z-index: 2;
-  pointer-events: none;
 }
 </style> 
