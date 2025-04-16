@@ -8,9 +8,25 @@
     <!-- 终端背景层 - 修改为绝对定位并设置更高层级使其覆盖工具栏 -->
     <div class="terminal-background" :style="terminalBgStyle" v-if="terminalBg.enabled"></div>
 
-    <!-- 终端内容区，添加过渡效果 -->
-    <div class="terminal-content-wrapper" :class="{ 'terminal-ready': !isConnecting }">
-      <div ref="terminalElement" class="terminal-content"></div>
+    <!-- 多终端容器 - 每个终端都有自己的容器，通过z-index和opacity控制显示/隐藏 -->
+    <div class="terminals-wrapper">
+      <!-- 为每个终端创建独立容器 -->
+      <div 
+        v-for="termId in terminalIds" 
+        :key="termId"
+        class="terminal-content-wrapper"
+        :class="{
+          'terminal-active': isActiveTerminal(termId),
+          'terminal-ready': terminalInitialized[termId]
+        }"
+        :style="getTerminalStyle(termId)"
+      >
+        <div 
+          :ref="el => setTerminalRef(el, termId)" 
+          class="terminal-content"
+          :data-terminal-id="termId"
+        ></div>
+      </div>
     </div>
   </div>
 </template>
@@ -55,7 +71,13 @@ export default {
     const settingsStore = useSettingsStore()
     const sessionStore = useSessionStore() // 添加会话存储
     
-    const terminalElement = ref(null)
+    // 终端引用映射，key为连接ID，value为DOM元素
+    const terminalRefs = ref({})
+    // 终端初始化状态，key为连接ID，value为是否已初始化
+    const terminalInitialized = ref({})
+    // 当前所有打开的终端ID列表
+    const terminalIds = ref([])
+    
     const title = ref('终端')
     const status = ref('正在连接...')
     const isConnecting = ref(true) // 连接状态标志
@@ -96,7 +118,7 @@ export default {
     })
     
     // 计算当前连接ID，优先使用props中的ID，如果没有则使用路由参数或会话存储
-    const connectionId = computed(() => {
+    const activeConnectionId = computed(() => {
       // 优先使用props中的ID
       if (props.id) {
         return props.id
@@ -111,186 +133,107 @@ export default {
       return sessionStore.getActiveSession()
     })
     
-    // 添加对路由变化的监听
-    watch(
-      () => route.path,
-      (newPath) => {
-        // 当路径变为'/terminal'（无参数）时，从会话存储获取会话ID
-        if (newPath === '/terminal' && !isConnectingInProgress.value) {
-          const currentSessionId = sessionStore.getActiveSession()
-          if (currentSessionId) {
-            console.log(`检测到终端路径变更，使用会话存储ID: ${currentSessionId}`)
-            
-            // 在切换前检查终端是否已存在
-            if (terminalStore.hasTerminal(currentSessionId)) {
-              // 如果终端已存在，不显示加载动画
-              isConnecting.value = false
-            } else {
-              // 如果不存在，则显示加载动画
-              isConnecting.value = true
-            }
-            
-            // 确保在继续之前DOM元素准备好
-            nextTick().then(() => {
-              // 确保终端初始化
-              ensureTerminal().then(success => {
-                if (success) {
-                  // 终端初始化成功后，再延迟调整大小
-                  setTimeout(() => {
-                    resizeTerminal()
-                  }, 500)
-                }
-              }).catch(error => {
-                console.error('通过会话存储初始化终端失败:', error)
-                isConnecting.value = false
-                status.value = '连接失败'
-              })
-            })
-          }
-        }
-      },
-      { immediate: true } // 组件创建时立即执行一次
-    )
+    // 检查终端是否为当前活动终端
+    const isActiveTerminal = (termId) => {
+      return termId === activeConnectionId.value
+    }
     
-    // 保留对路由参数的监听，以兼容旧的使用方式
-    watch(
-      () => route.params.id,
-      (newId, oldId) => {
-        if (newId && newId !== oldId && !isConnectingInProgress.value) {
-          console.log(`路由参数ID变更: ${oldId} -> ${newId}，重新初始化终端...`)
-          
-          // 同时更新会话存储
-          if (newId) {
-            sessionStore.setActiveSession(newId)
-          }
-          
-          // 在切换前检查新终端是否已存在
-          if (terminalStore.hasTerminal(newId)) {
-            // 如果终端已存在，不显示加载动画
-            isConnecting.value = false
-          } else {
-            // 如果不存在，则显示加载动画
-            isConnecting.value = true
-          }
-          
-          // 确保在继续之前DOM元素准备好
-          nextTick().then(() => {
-            // 确保终端初始化
-            ensureTerminal().then(success => {
-              if (success) {
-                // 终端初始化成功后，再延迟调整大小
-                setTimeout(() => {
-                  resizeTerminal()
-                }, 500)
-              }
-            }).catch(error => {
-              console.error('通过路由参数初始化终端失败:', error)
-              isConnecting.value = false
-              status.value = '连接失败'
-            })
-          })
-        }
-      }
-    )
+    // 获取终端样式，控制显示/隐藏
+    const getTerminalStyle = (termId) => {
+      // 不再通过内联样式控制可见性，改为通过CSS类控制
+      // 返回空对象，让CSS类处理所有样式变化
+      return {}
+    }
     
-    // 监听计算属性connectionId的变化，确保在props或route参数变化时都能正确处理
-    watch(
-      connectionId,
-      (newConnectionId, oldConnectionId) => {
-        if (newConnectionId && newConnectionId !== oldConnectionId && !isConnectingInProgress.value) {
-          console.log(`连接ID变更: ${oldConnectionId} -> ${newConnectionId}，重新初始化终端...`)
-          
-          // 在切换前检查新终端是否已存在
-          if (terminalStore.hasTerminal(newConnectionId)) {
-            // 如果终端已存在，不显示加载动画
-            isConnecting.value = false
-          } else {
-            // 如果不存在，则显示加载动画
-            isConnecting.value = true
-          }
-          
-          // 确保在继续之前DOM元素准备好
-          nextTick().then(() => {
-            // 确保终端初始化
-            ensureTerminal().then(success => {
-              if (success) {
-                // 终端初始化成功后，再延迟调整大小
-                setTimeout(() => {
-                  resizeTerminal()
-                  // 确保终端获取焦点
-                  terminalStore.focusTerminal(newConnectionId)
-                }, 500)
-              }
-            }).catch(error => {
-              console.error('切换到新终端失败:', error)
-              isConnecting.value = false
-              status.value = '连接失败'
-            })
-          })
+    // 设置终端引用
+    const setTerminalRef = (el, termId) => {
+      if (el && !terminalRefs.value[termId]) {
+        terminalRefs.value[termId] = el
+        // 如果终端ID在列表中但尚未初始化，则初始化
+        if (!terminalInitialized.value[termId]) {
+          initTerminal(termId, el)
         }
-      }
-    )
-    
-    // 添加终端设置的响应式引用
-    const currentTerminalSettings = computed(() => {
-      return settingsStore.getTerminalSettings()
-    })
-
-    // 监听终端设置变化
-    watch(
-      currentTerminalSettings,
-      (newSettings, oldSettings) => {
-        // 仅当设置实际发生变化时才应用
-        if (JSON.stringify(newSettings) !== JSON.stringify(oldSettings)) {
-          console.log('终端设置已变更，正在应用到所有打开的终端...')
-          
-          // 使用终端存储的方法应用设置到所有打开的终端
-          const results = terminalStore.applySettingsToAllTerminals(newSettings)
-          
-          // 统计应用结果
-          const successCount = Object.values(results).filter(success => success).length
-          const totalCount = Object.keys(results).length
-          
-          if (totalCount > 0) {
-            console.log(`成功将设置应用到 ${successCount}/${totalCount} 个终端`)
-          } else {
-            console.log('没有找到可应用设置的终端')
-          }
-        }
-      },
-      { deep: true }
-    )
-
-    // 加载终端背景设置
-    const loadTerminalBgSettings = () => {
-      try {
-        const savedBgSettings = localStorage.getItem('easyssh_terminal_bg')
-        if (savedBgSettings) {
-          const parsedSettings = JSON.parse(savedBgSettings)
-          terminalBg.value = { ...parsedSettings }
-          
-          // 发送背景图状态事件
-          window.dispatchEvent(new CustomEvent('terminal-bg-status', { 
-            detail: { enabled: terminalBg.value.enabled } 
-          }))
-        }
-      } catch (error) {
-        console.error('加载终端背景设置失败:', error)
       }
     }
     
-    // 监听终端背景设置变化事件
-    const listenForBgChanges = () => {
-      window.addEventListener('terminal-bg-changed', (event) => {
-        if (event.detail) {
-          terminalBg.value = { ...event.detail }
-          
-          // 发送背景图状态变更事件
-          window.dispatchEvent(new CustomEvent('terminal-bg-status', { 
-            detail: { enabled: terminalBg.value.enabled } 
-          }))
+    // 初始化特定ID的终端
+    const initTerminal = async (termId, container) => {
+      try {
+        if (!termId || !container) {
+          console.error('初始化终端失败: 缺少ID或容器')
+          return false
         }
-      })
+        
+        console.log(`开始初始化终端: ${termId}`)
+        isConnecting.value = true
+        
+        // 获取连接信息以更新标签标题
+        let connection = null
+        if (userStore.isLoggedIn) {
+          connection = connectionStore.getConnectionById(termId)
+        } else {
+          connection = localConnectionsStore.getConnectionById(termId)
+        }
+        
+        if (!connection) {
+          console.error(`无法找到连接: ${termId}`)
+          return false
+        }
+        
+        // 更新标题
+        if (isActiveTerminal(termId)) {
+          title.value = `${connection.name || connection.host} - 终端`
+          
+          // 更新标签页标题
+          const tabTitle = `${connection.username}@${connection.host}`
+          tabStore.updateTabTitle('/terminal', tabTitle)
+        }
+        
+        // 检查终端是否已存在
+        if (terminalStore.hasTerminal(termId)) {
+          console.log(`终端 ${termId} 已存在，重新附加`)
+          await terminalStore.reattachTerminal(termId, container)
+          terminalInitialized.value[termId] = true
+          
+          if (isActiveTerminal(termId)) {
+            isConnecting.value = false
+          }
+          
+          return true
+        }
+        
+        // 初始化新终端
+        const success = await terminalStore.initTerminal(termId, container)
+        
+        if (success) {
+          console.log(`终端 ${termId} 初始化成功`)
+          terminalInitialized.value[termId] = true
+          
+          // 同时标记终端大小已调整
+          terminalSized.value[termId] = true
+          
+          // 应用终端设置
+          const termSettings = settingsStore.getTerminalSettings()
+          if (termSettings) {
+            applyTerminalSettings(termId, termSettings)
+          }
+          
+          // 如果是当前活动终端，隐藏加载动画
+          if (isActiveTerminal(termId)) {
+                setTimeout(() => {
+              isConnecting.value = false
+            }, 200)
+          }
+          
+          return true
+        } else {
+          console.error(`初始化终端 ${termId} 失败`)
+          return false
+        }
+      } catch (error) {
+        console.error(`初始化终端 ${termId} 出错:`, error)
+        return false
+      }
     }
 
     // 应用终端设置
@@ -397,166 +340,240 @@ export default {
       }
     }
     
-    // 确保终端存在并连接
-    const ensureTerminal = async () => {
+    // 加载终端背景设置
+    const loadTerminalBgSettings = () => {
       try {
-        // 如果已经在连接中，则跳过
-        if (isConnectingInProgress.value) {
-          console.log('连接已在进行中，跳过重复请求')
-          return false
-        }
-        
-        // 设置连接进行中标志
-        isConnectingInProgress.value = true
-        
-        // 获取当前的连接ID
-        const currentId = connectionId.value
-        
-        if (!currentId) {
-          isConnectingInProgress.value = false // 重置标志
-          ElMessage.error('未提供连接ID')
-          router.push('/connections')
-          return false
-        }
-        
-        // 获取连接信息用于更新标签标题
-        let connection = null
-        if (userStore.isLoggedIn) {
-          connection = connectionStore.getConnectionById(currentId)
-        } else {
-          connection = localConnectionsStore.getConnectionById(currentId)
-        }
-        
-        if (!connection) {
-          isConnectingInProgress.value = false // 重置标志
-          ElMessage.error('无法找到连接信息')
-          router.push('/connections')
-          return false
-        }
-        
-        // 更新标题
-        title.value = `${connection.name || connection.host} - 终端`
-        
-        // 更新标签页标题为 用户名@主机
-        const tabTitle = `${connection.username}@${connection.host}`
-        // 使用不带参数的路径更新标签标题，会话存储中已经有当前会话ID
-        tabStore.updateTabTitle('/terminal', tabTitle)
-        
-        // 检查终端是否已存在
-        const terminalExists = terminalStore.hasTerminal(currentId)
-        
-        // 如果终端已存在，则不需要重新创建连接
-        if (terminalExists) {
-          console.log(`终端 ${currentId} 已存在，无需重新创建`)
-          isConnecting.value = false
-          isConnectingInProgress.value = false // 重置标志
-          return true
-        }
-        
-        // 仅在终端不存在时显示加载动画
-        if (!terminalExists) {
-          isConnecting.value = true
-          status.value = '正在连接...'
-        }
-        
-        // 等待DOM更新完成
-        await nextTick()
-        
-        // 确保终端容器已准备好
-        if (!terminalElement.value) {
-          isConnectingInProgress.value = false // 重置标志
-          console.error('终端容器未准备好')
-          ElMessage.error('终端容器未准备好')
-          isConnecting.value = false
-          status.value = '连接失败'
-          return false
-        }
-        
-        // 检查DOM元素是否在文档中
-        if (!document.body.contains(terminalElement.value)) {
-          isConnectingInProgress.value = false // 重置标志
-          console.error('终端容器不在文档中')
-          ElMessage.error('终端容器不在文档中')
-          isConnecting.value = false
-          status.value = '连接失败'
-          return false
-        }
-        
-        // 初始化终端或重新连接已有终端
-        const success = await terminalStore.initTerminal(currentId, terminalElement.value)
-        
-        // 重置连接进行中标志
-        isConnectingInProgress.value = false
-        
-        if (success) {
-          // 更新状态
-          status.value = '已连接'
+        const savedBgSettings = localStorage.getItem('easyssh_terminal_bg')
+        if (savedBgSettings) {
+          const parsedSettings = JSON.parse(savedBgSettings)
+          terminalBg.value = { ...parsedSettings }
           
-          // 仅在新创建终端时添加延迟过渡效果
-          if (!terminalExists) {
-            setTimeout(() => {
-              isConnecting.value = false // 连接成功，隐藏加载动画
-            }, 200)
-          } else {
-            // 已存在的终端直接显示
-            isConnecting.value = false
-          }
-
-          // 应用新的终端设置
-          const termSettings = settingsStore.getTerminalSettings()
-          if (isConnecting.value && termSettings) {
-            await applyTerminalSettings(connectionId.value, termSettings)
-          }
-
-          return true
-        } else {
-          // 如果失败，更新状态
-          status.value = '连接失败'
-          isConnecting.value = false
-          return false
+          // 发送背景图状态事件
+          window.dispatchEvent(new CustomEvent('terminal-bg-status', { 
+            detail: { enabled: terminalBg.value.enabled } 
+          }))
         }
       } catch (error) {
-        // 重置连接进行中标志
-        isConnectingInProgress.value = false
+        console.error('加载终端背景设置失败:', error)
+      }
+    }
+    
+    // 监听终端背景设置变化事件（使用命名函数以便正确移除）
+    let bgChangeHandler = null
+    const listenForBgChanges = () => {
+      // 创建命名的处理函数
+      bgChangeHandler = (event) => {
+        if (event.detail) {
+          terminalBg.value = { ...event.detail }
+          
+          // 发送背景图状态变更事件
+          window.dispatchEvent(new CustomEvent('terminal-bg-status', { 
+            detail: { enabled: terminalBg.value.enabled } 
+          }))
+        }
+      }
+      
+      // 使用命名函数添加监听器
+      window.addEventListener('terminal-bg-changed', bgChangeHandler)
+    }
+    
+    // 监听打开的终端标签页，更新终端ID列表
+    const updateTerminalIds = () => {
+      // 获取所有终端类型的标签页
+      const terminalTabs = tabStore.tabs.filter(tab => 
+        tab.type === 'terminal' && 
+        tab.data && 
+        tab.data.connectionId
+      )
+      
+      // 提取所有终端ID
+      const ids = terminalTabs.map(tab => tab.data.connectionId)
+      
+      // 更新ID列表
+      terminalIds.value = [...new Set(ids)] // 使用Set去重
+      
+      console.log('更新终端ID列表:', terminalIds.value)
+    }
+    
+    // 添加防抖控制
+    const resizeDebounceTimers = ref({})
+    
+    // 添加终端尺寸已调整标志
+    const terminalSized = ref({})
+    
+    // 调整终端大小（添加防抖逻辑和尺寸状态跟踪）
+    const resizeTerminal = (termId = null) => {
+      // 防抖函数 - 避免短时间内多次调整同一终端
+      const debouncedResize = (id) => {
+        // 如果已有定时器，先清除
+        if (resizeDebounceTimers.value[id]) {
+          clearTimeout(resizeDebounceTimers.value[id])
+        }
         
-        console.error('确保终端连接失败:', error)
-        ElMessage.error(`确保终端连接失败: ${error.message || '未知错误'}`)
-        status.value = '连接失败'
-        isConnecting.value = false // 连接失败，隐藏加载动画
+        // 设置新的定时器
+        resizeDebounceTimers.value[id] = setTimeout(() => {
+          if (!terminalStore.hasTerminal(id)) return
+          
+          try {
+            console.log(`执行终端大小调整: ${id}`)
+            terminalStore.fitTerminal(id)
+            // 标记终端尺寸已调整
+            terminalSized.value[id] = true
+            // 清除定时器引用
+            delete resizeDebounceTimers.value[id]
+          } catch (error) {
+            console.error(`调整终端 ${id} 大小失败:`, error)
+          }
+        }, 50) // 短延迟防抖
+      }
+      
+      // 如果指定了ID，只调整该终端大小
+      if (termId) {
+        // 仅当终端未被调整过大小时才进行调整
+        if (!terminalSized.value[termId]) {
+          debouncedResize(termId)
+        } else {
+          console.log(`终端 ${termId} 已调整过大小，跳过调整`)
+        }
+        return
+      }
+      
+      // 否则调整所有终端大小，优先调整活动终端
+      const activeId = activeConnectionId.value
+      if (activeId && terminalStore.hasTerminal(activeId) && !terminalSized.value[activeId]) {
+        debouncedResize(activeId)
+      }
+      
+      // 然后调整其它未调整过大小的终端
+      terminalIds.value.forEach(id => {
+        if (id !== activeId && terminalStore.hasTerminal(id) && !terminalSized.value[id]) {
+          debouncedResize(id)
+        }
+      })
+    }
+    
+    // 为组件添加最后聚焦的终端ID跟踪
+    const lastFocusedTerminalId = ref(null)
+
+    // 修改聚焦逻辑，跟踪焦点状态
+    const focusTerminal = (termId) => {
+      if (!termId || !terminalStore.hasTerminal(termId)) return false
+      
+      try {
+        terminalStore.focusTerminal(termId)
+        lastFocusedTerminalId.value = termId
+        return true
+      } catch (error) {
+        console.error(`聚焦终端 ${termId} 失败:`, error)
         return false
       }
     }
     
-    // 清空终端
-    const clearTerminal = () => {
-      if (connectionId.value && terminalStore.hasTerminal(connectionId.value)) {
-        terminalStore.clearTerminal(connectionId.value)
-      }
+    // 修改切换终端函数，避免重复调整大小
+    const switchToTerminal = (termId) => {
+      // 如果正在切换中或ID无效，则跳过
+      if (!termId || isTerminalSwitching.value) return
+      
+      // 设置切换状态，防止重复触发
+      isTerminalSwitching.value = true
+      
+      console.log(`切换到终端: ${termId}`)
+      
+      // 立即隐藏加载动画
+      isConnecting.value = false
+      
+      // 取消所有正在进行的大小调整
+      Object.keys(resizeDebounceTimers.value).forEach(id => {
+        clearTimeout(resizeDebounceTimers.value[id])
+        delete resizeDebounceTimers.value[id]
+      })
+      
+      // 使用nextTick确保DOM更新
+      nextTick(() => {
+        if (terminalStore.hasTerminal(termId)) {
+          try {
+            // 仅当终端未调整过大小时才调整
+            if (!terminalSized.value[termId]) {
+              console.log(`终端 ${termId} 首次切换，调整大小`)
+              resizeTerminal(termId)
+            } else {
+              console.log(`终端 ${termId} 已调整过大小，仅聚焦`)
+            }
+            
+            // 聚焦终端
+            focusTerminal(termId)
+            
+            // 极短延迟后重置切换状态
+            setTimeout(() => {
+              isTerminalSwitching.value = false
+            }, 5)
+          } catch (error) {
+            console.error(`切换到终端 ${termId} 失败:`, error)
+            isTerminalSwitching.value = false
+          }
+        } else {
+          console.warn(`终端 ${termId} 不存在，无法切换`)
+          isTerminalSwitching.value = false
+        }
+      })
     }
     
-    // 调整终端大小
-    const resizeTerminal = () => {
-      if (connectionId.value) {
-        // 检查终端是否存在
-        if (!terminalStore.hasTerminal(connectionId.value)) {
-          console.warn(`尝试调整不存在的终端大小: ${connectionId.value}`)
-          return;
-        }
-        
-        // 检查DOM元素是否仍在文档中
-        if (!terminalElement.value || !document.body.contains(terminalElement.value)) {
-          console.warn('终端容器不在文档中，跳过调整大小');
-          return;
-        }
-        
-        // 添加短延迟，确保DOM已完全更新
-        setTimeout(() => {
-          try {
-            terminalStore.fitTerminal(connectionId.value)
-          } catch (error) {
-            console.error('调整终端大小失败:', error)
+    // 添加对路由变化的监听
+    watch(
+      () => route.path,
+      (newPath) => {
+        // 当路径变为'/terminal'（无参数）时，从会话存储获取会话ID
+        if (newPath === '/terminal' && !isConnectingInProgress.value) {
+          const currentSessionId = sessionStore.getActiveSession()
+          if (currentSessionId) {
+            console.log(`检测到终端路径变更，使用会话存储ID: ${currentSessionId}`)
+            updateTerminalIds()
           }
-        }, 100) // 延迟100ms，给DOM更新留出时间
+        }
+      },
+      { immediate: true }
+    )
+    
+    // 监听活动连接ID的变化
+    watch(
+      activeConnectionId,
+      (newId, oldId) => {
+        if (!newId || newId === oldId) return
+        
+        console.log(`活动连接ID变更: ${oldId} -> ${newId}`)
+        
+        // 更新终端ID列表
+        if (!terminalIds.value.includes(newId)) {
+          terminalIds.value.push(newId)
+        }
+        
+        // 切换到新的活动终端
+        switchToTerminal(newId)
+      }
+    )
+    
+    // 监听标签页状态变化，更新终端ID列表
+    watch(
+      () => tabStore.tabs,
+      () => {
+        updateTerminalIds()
+      },
+      { deep: true, immediate: true }
+    )
+    
+    // 监听终端切换事件
+    const handleTerminalChange = (event) => {
+      if (event.detail && event.detail.sessionId) {
+        const newId = event.detail.sessionId
+        console.log(`接收到终端切换事件: ${newId}`)
+        
+        // 确保该ID在终端列表中
+        if (!terminalIds.value.includes(newId)) {
+          terminalIds.value.push(newId)
+        }
+        
+        // 切换到新终端
+        switchToTerminal(newId)
       }
     }
     
@@ -574,7 +591,15 @@ export default {
       window.removeEventListener('terminal:disconnect', disconnectTerminal)
     }
     
-    // 发送命令到终端
+    // 清空当前活动终端
+    const clearTerminal = () => {
+      const id = activeConnectionId.value
+      if (id && terminalStore.hasTerminal(id)) {
+        terminalStore.clearTerminal(id)
+      }
+    }
+    
+    // 发送命令到当前活动终端
     const sendTerminalCommand = () => {
       try {
         ElMessageBox.prompt('请输入要执行的命令', '发送命令', {
@@ -583,8 +608,9 @@ export default {
           inputPattern: /.+/,
           inputErrorMessage: '命令不能为空'
         }).then(({ value }) => {
-          if (connectionId.value) {
-            terminalStore.sendCommand(connectionId.value, value)
+          const id = activeConnectionId.value
+          if (id) {
+            terminalStore.sendCommand(id, value)
           }
         }).catch(() => {
           // 用户取消输入，不做处理
@@ -596,8 +622,8 @@ export default {
     
     // 处理SSH错误
     const handleSSHError = (event) => {
-      if (event.detail && connectionId.value) {
-        const sessionId = terminalStore.sessions[connectionId.value]
+      if (event.detail && activeConnectionId.value) {
+        const sessionId = terminalStore.sessions[activeConnectionId.value]
         if (sessionId && event.detail.sessionId === sessionId) {
           ElMessage.error(`SSH错误: ${event.detail.message || '连接错误'}`)
           status.value = '连接错误'
@@ -605,7 +631,7 @@ export default {
       }
     }
     
-    // 断开终端连接
+    // 断开当前活动终端连接
     const disconnectTerminal = async () => {
       ElMessageBox.confirm('确定要断开此连接吗？', '断开连接', {
         confirmButtonText: '确定',
@@ -618,106 +644,139 @@ export default {
       })
     }
     
-    // 断开会话的函数
+    // 断开会话函数
     const disconnectSession = async () => {
-      if (connectionId.value) {
-        const success = await terminalStore.disconnectTerminal(connectionId.value)
+      const id = activeConnectionId.value
+      if (id) {
+        const success = await terminalStore.disconnectTerminal(id)
         if (success) {
-          console.log(`终端 ${connectionId.value} 已断开`)
+          console.log(`终端 ${id} 已断开`)
           
-          // 查找标签索引
+          // 从终端ID列表中移除
+          terminalIds.value = terminalIds.value.filter(termId => termId !== id)
+          // 移除终端初始化状态标记
+          delete terminalInitialized.value[id]
+          
+          // 找到对应标签页关闭
           const tabIndex = tabStore.tabs.findIndex(tab => 
             tab.type === 'terminal' && 
             tab.data && 
-            tab.data.connectionId === connectionId.value
+            tab.data.connectionId === id
           )
           
           if (tabIndex >= 0) {
-            // 直接使用索引关闭标签，避免路径问题
-            console.log(`按索引关闭标签: ${tabIndex}`)
             tabStore.closeTab(tabIndex)
-          } else {
-            // 如果找不到标签索引，回退到使用路径
-            console.log(`按路径关闭标签: /terminal/${connectionId.value}`)
-            tabStore.closeTab(`/terminal/${connectionId.value}`)
           }
         }
       }
     }
     
-    // 在组件挂载时初始化终端和监听器
-    onMounted(() => {
-      nextTick(() => {
-        // 初始化前检查终端是否已存在
-        if (connectionId.value && terminalStore.hasTerminal(connectionId.value)) {
-          // 如果终端已存在，直接设置为不加载状态
-          isConnecting.value = false
-          console.log(`终端 ${connectionId.value} 已存在，仅监听事件`)
-          
-          // 仍然设置监听器
-          setupToolbarListeners()
-          window.addEventListener('ssh:error', handleSSHError)
-          window.addEventListener('resize', resizeTerminal)
-        } else if (!isConnectingInProgress.value) {
-          // 先设置监听器，确保不会丢失事件
-          setupToolbarListeners() // 设置工具栏监听器
-          
-          // 监听SSH错误事件
-          window.addEventListener('ssh:error', handleSSHError)
-          // 监听窗口大小变化
-          window.addEventListener('resize', resizeTerminal)
-          
-          // 初始化终端
-          ensureTerminal().then(success => {
-            if (success) {
-              // 延迟一段时间，确保连接过渡完成后再调整尺寸
-              setTimeout(() => {
-                resizeTerminal()
-                isConnecting.value = false
-              }, 1000)
-            } else {
-              // 连接失败
-              isConnecting.value = false
-            }
-          }).catch(error => {
-            console.error('初始化终端失败:', error)
-            isConnecting.value = false
-            status.value = '连接失败'
-          })
-        }
-      })
+    // 创建全局的窗口大小变化处理函数，防止多个匿名函数导致无法正确移除
+    let windowResizeTimer = null
+    const handleWindowResize = () => {
+      // 使用定时器防抖
+      if (windowResizeTimer) {
+        clearTimeout(windowResizeTimer)
+      }
       
+      windowResizeTimer = setTimeout(() => {
+        console.log('窗口大小变化，重置所有终端尺寸状态')
+        // 清空已调整标记，让所有终端都能重新调整
+        terminalSized.value = {}
+        // 调整所有终端大小
+        resizeTerminal()
+        windowResizeTimer = null
+      }, 100) // 100ms防抖
+    }
+    
+    // 添加防止重复切换的状态变量
+    const isTerminalSwitching = ref(false)
+    
+    // 初始化
+    onMounted(() => {
       // 加载终端背景设置
       loadTerminalBgSettings()
       
       // 监听终端背景设置变化
       listenForBgChanges()
+      
+      // 设置工具栏监听器
+      setupToolbarListeners()
+      
+      // 监听SSH错误事件
+      window.addEventListener('ssh:error', handleSSHError)
+      
+      // 监听窗口大小变化 - 使用命名函数而非匿名函数，便于移除
+      window.addEventListener('resize', handleWindowResize)
+      
+      // 监听终端切换事件
+      window.addEventListener('terminal:session-change', handleTerminalChange)
+      
+      // 初始化时更新终端ID列表
+      updateTerminalIds()
+      
+      // 在组件挂载后延迟初始化活动终端
+      nextTick(() => {
+        // 获取活动连接ID
+        const id = activeConnectionId.value
+        if (id) {
+          // 确保该ID在终端列表中
+          if (!terminalIds.value.includes(id)) {
+            terminalIds.value.push(id)
+          }
+          
+          // 延迟初始化，确保DOM已更新
+          setTimeout(() => {
+            // 如果终端引用已存在但未初始化，则初始化终端
+            if (terminalRefs.value[id] && !terminalInitialized.value[id]) {
+              initTerminal(id, terminalRefs.value[id])
+            }
+          }, 100)
+        }
+      })
     })
     
     // 在组件卸载前移除监听器
     onBeforeUnmount(() => {
+      // 移除工具栏事件监听
       removeToolbarListeners()
+      
+      // 移除各种事件监听器
       window.removeEventListener('ssh:error', handleSSHError)
-      window.removeEventListener('resize', resizeTerminal)
+      window.removeEventListener('resize', handleWindowResize)
+      window.removeEventListener('terminal:session-change', handleTerminalChange)
       
-      // 移除窗口大小变化监听
-      window.removeEventListener('resize', resizeTerminal)
+      // 正确移除终端背景设置变化监听
+      if (bgChangeHandler) {
+        window.removeEventListener('terminal-bg-changed', bgChangeHandler)
+        bgChangeHandler = null
+      }
       
-      // 移除终端背景设置变化监听
-      window.removeEventListener('terminal-bg-changed', (event) => {})
+      // 清理所有防抖定时器
+      Object.keys(resizeDebounceTimers.value).forEach(id => {
+        clearTimeout(resizeDebounceTimers.value[id])
+      })
+      
+      // 清理窗口大小变化定时器
+      if (windowResizeTimer) {
+        clearTimeout(windowResizeTimer)
+      }
+      
+      // 清理终端尺寸状态
+      terminalSized.value = {}
     })
     
-    // 在组件卸载时，不再主动断开连接，让连接保持活跃
-    // 这允许在标签页之间切换而不丢失会话状态
-    
     return {
-      terminalElement,
+      terminalIds,
       title,
       status,
       isConnecting,
       terminalBg,
       terminalBgStyle,
-      resizeTerminal
+      isActiveTerminal,
+      getTerminalStyle,
+      setTerminalRef,
+      terminalInitialized
     }
   }
 }
@@ -730,17 +789,58 @@ export default {
   position: relative;
   background-color: #121212;
   overflow: hidden;
+  /* 添加3D渲染上下文，减少层间闪烁 */
+  transform-style: preserve-3d;
+  perspective: 1000px;
+  /* 对整体容器加渲染合成*/
+  will-change: contents;
+  contain: layout size paint;
+}
+
+.terminals-wrapper {
+  position: relative;
+  height: 100%;
+  width: 100%;
+  /* 预先创建堆叠上下文 */
+  isolation: isolate;
 }
 
 .terminal-content-wrapper {
-  height: 100%;
+  position: absolute;
+  top: 0;
+  left: 0;
   width: 100%;
-  opacity: 0;
-  transition: opacity 0.3s ease-in-out;
+  height: 100%;
+  /* 完全不透明，避免透明度变化导致闪烁 */
+  opacity: 1;
+  /* 去除clip-path和transition */
+  transform: translate3d(0, 0, 0);
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  /* 默认隐藏所有终端 */
+  visibility: hidden;
+  /* 内容渲染优化 */
+  contain: strict;
+  /* 降低失活终端的合成成本 */
+  content-visibility: auto;
+  /* 启用缓存，提高切换性能 */
+  contain-intrinsic-size: 100%;
 }
 
-.terminal-content-wrapper.terminal-ready {
-  opacity: 1;
+.terminal-content-wrapper.terminal-active {
+  z-index: 5;
+  /* 只显示活动终端 */
+  visibility: visible;
+  /* 使活动终端能接收输入 */
+  pointer-events: auto;
+  /* 优先级最高 */
+  content-visibility: visible;
+}
+
+.terminal-content-wrapper:not(.terminal-active) {
+  z-index: 1;
+  /* 非活动终端不接收输入 */
+  pointer-events: none;
 }
 
 .terminal-content {

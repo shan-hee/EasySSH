@@ -61,6 +61,20 @@ const initSettings = () => {
       if (uiSettings.language) {
         document.documentElement.setAttribute('lang', uiSettings.language)
       }
+    } else {
+      // 没有保存的设置时，应用深色主题作为默认值
+      document.documentElement.setAttribute('data-theme', 'dark')
+      document.documentElement.classList.add('dark-theme')
+      document.documentElement.classList.remove('light-theme')
+      
+      // 创建并保存默认的UI设置
+      const defaultSettings = {
+        theme: 'dark',
+        language: 'zh-CN',
+        autoRestoreTabs: true
+      }
+      localStorage.setItem(UI_SETTINGS_KEY, JSON.stringify(defaultSettings))
+      console.log('已应用默认深色主题')
     }
   } catch (error) {
     console.error('初始化主题和语言设置失败', error)

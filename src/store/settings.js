@@ -15,7 +15,7 @@ export const useSettingsStore = defineStore('settings', () => {
   const terminalSettings = reactive({
     fontSize: 16,
     fontFamily: 'monospace',
-    theme: 'vscode',
+    theme: 'dark',
     cursorStyle: 'block',
     cursorBlink: true,
   })
@@ -202,7 +202,7 @@ export const useSettingsStore = defineStore('settings', () => {
       Object.assign(terminalSettings, {
         fontSize: 16,
         fontFamily: 'monospace',
-        theme: 'vscode',
+        theme: 'dark',
         cursorStyle: 'block',
         cursorBlink: true,
       })
@@ -216,7 +216,7 @@ export const useSettingsStore = defineStore('settings', () => {
         keepAliveInterval: 60,
       })
       
-      // 重置界面设置
+      // 重置界面设置，使用深色主题
       Object.assign(uiSettings, {
         theme: 'dark',
         language: 'zh-CN',

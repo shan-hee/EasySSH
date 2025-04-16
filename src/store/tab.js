@@ -311,7 +311,33 @@ export const useTabStore = defineStore('tab', () => {
       if (tab.type === 'terminal' && tab.data && tab.data.connectionId) {
         // 使用会话存储保存当前连接ID
         const sessionStore = useSessionStore()
-        sessionStore.setActiveSession(tab.data.connectionId)
+        const previousSessionId = sessionStore.getActiveSession()
+        const newSessionId = tab.data.connectionId
+        
+        // 只有当新旧会话ID不同时才更新
+        if (previousSessionId !== newSessionId) {
+          console.log(`切换终端会话: ${previousSessionId} -> ${newSessionId}`)
+          sessionStore.setActiveSession(newSessionId)
+          
+          // 触发终端切换事件
+          window.dispatchEvent(new CustomEvent('terminal:session-change', {
+            detail: { sessionId: newSessionId }
+          }))
+          
+          // 导入终端Store以聚焦终端
+          import('./terminal').then(({ useTerminalStore }) => {
+            const terminalStore = useTerminalStore()
+            // 确保终端存在后再聚焦
+            if (terminalStore.hasTerminal(newSessionId)) {
+              // 添加延迟以确保先完成路由导航
+              setTimeout(() => {
+                terminalStore.focusTerminal(newSessionId)
+              }, 100)
+            }
+          }).catch(error => {
+            console.error('导入终端Store失败:', error)
+          })
+        }
         
         // 导航到不带参数的终端路径
         router.push('/terminal')
