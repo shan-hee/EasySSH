@@ -1,73 +1,37 @@
 # 依赖目录
-node_modules/
-*/node_modules/
+node_modules
+/.pnp
+.pnp.js
+
+# 测试覆盖率
+/coverage
+
+# 生产环境构建文件
+/build
+/dist
+
+# 杂项
+.DS_Store
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+.env
 
 # 日志文件
-logs
-*.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-pnpm-debug.log*
-lerna-debug.log*
+logs
+*.log
 
 # 编辑器目录和文件
-.vscode/*
-!.vscode/extensions.json
-.idea/
-*.suo
-*.ntvs*
-*.njsproj
-*.sln
-*.sw?
-
-# 构建输出
-dist
-dist-ssr
-build
-coverage
-*.local
-
-# 环境变量文件
-.env
-.env.*
-!.env.example
-
-# 系统文件
+.idea
+.vscode
+*.swp
+*.swo
 .DS_Store
-Thumbs.db
-
-# 测试覆盖率报告
-coverage/
-
-# 数据库文件
-*.sqlite
-*.db
-
-# 服务器端数据和配置
-server/data/*
-!server/data/.gitkeep
-server/logs/*
-!server/logs/.gitkeep
-
-# 缓存目录
-.cache/
-.temp/
-.vite/
-
-# 本地证书
-*.pem
-*.key
-*.crt
 
 # 临时文件
-*.tmp
-*.bak
-*.swp
-
-# 自动生成的文件
-auto-imports.d.ts
-components.d.ts
-
-# 其他
-.history/
+.tmp
+.temp
