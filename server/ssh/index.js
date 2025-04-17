@@ -8,6 +8,8 @@ const WebSocket = require('ws');
 const crypto = require('crypto');
 const path = require('path');
 const fs = require('fs');
+const { exec } = require('child_process');
+const os = require('os');
 
 // 存储活动的SSH连接
 const sessions = new Map();
@@ -68,6 +70,165 @@ function createSSHConnection(config) {
     
     conn.connect(sshConfig);
   });
+}
+
+/**
+ * 测量网络延迟
+ * @param {string} host 目标主机IP
+ * @param {WebSocket} ws WebSocket连接
+ * @param {string} sessionId 会话ID
+ */
+async function measureNetworkLatency(host, ws, sessionId) {
+  try {
+    // 根据操作系统使用不同的ping命令参数
+    const isWindows = os.platform() === 'win32';
+    const pingCmd = isWindows ? `ping -n 1 ${host}` : `ping -c 1 ${host}`;
+    
+    console.log(`执行ping命令: ${pingCmd}`);
+    
+    exec(pingCmd, (error, stdout, stderr) => {
+      if (error) {
+        console.error(`网络延迟测量错误: ${error.message}`);
+        // 发送错误消息
+        ws.send(JSON.stringify({
+          type: 'network_latency',
+          data: {
+            sessionId,
+            error: error.message,
+            latency: null
+          }
+        }));
+        return;
+      }
+      
+      console.log(`Ping命令输出: ${stdout}`);
+      
+      // 解析ping输出，提取延迟值
+      let latency = null;
+      
+      // 尝试多种匹配模式，适应不同的操作系统和语言设置
+      const patterns = [
+        // Windows中文格式: 平均 = 159ms
+        /平均\s*=\s*(\d+)ms/,
+        // Windows英文格式: Average = 159ms
+        /Average\s*=\s*(\d+)ms/,
+        // Linux/macOS格式: min/avg/max/mdev = 20.455/20.455/20.455/0.000 ms
+        /min\/avg\/max\/mdev\s*=\s*[\d.]+\/([\d.]+)\/[\d.]+\/[\d.]+\s+ms/,
+        // Linux/macOS另一种格式: time=20.455 ms
+        /time=([\d.]+)\s+ms/,
+        // 时间 = XX 毫秒格式
+        /时间[=＝为]\s*([\d.]+)\s*(?:毫秒|ms)/i,
+        // 任何带有ms或毫秒的数字
+        /([\d.]+)\s*(?:ms|毫秒)/i,
+        // 仅查找任何数字+ms组合
+        /([\d.]+)\s*ms/i
+      ];
+      
+      for (const pattern of patterns) {
+        const match = stdout.match(pattern);
+        if (match && match[1]) {
+          latency = parseFloat(match[1]);
+          console.log(`使用模式 ${pattern} 匹配到延迟: ${latency}ms`);
+          break;
+        }
+      }
+      
+      // 如果所有模式都没匹配到，尝试更宽松的匹配
+      if (latency === null) {
+        // 寻找任何看起来像延迟时间的数字
+        const timeMatch = stdout.match(/(\d+\.?\d*)\s*(?:ms|毫秒)/);
+        if (timeMatch && timeMatch[1]) {
+          latency = parseFloat(timeMatch[1]);
+          console.log(`使用宽松匹配找到延迟: ${latency}ms`);
+        }
+      }
+      
+      console.log(`网络延迟测量结果: ${host} - ${latency !== null ? latency + 'ms' : 'null'}`);
+      
+      // 发送延迟信息到前端
+      ws.send(JSON.stringify({
+        type: 'network_latency',
+        data: {
+          sessionId,
+          latency
+        }
+      }));
+    });
+  } catch (error) {
+    console.error(`网络延迟测量异常: ${error.message}`);
+  }
+}
+
+/**
+ * 设置定期测量网络延迟
+ * @param {string} host 目标主机IP
+ * @param {WebSocket} ws WebSocket连接
+ * @param {string} sessionId 会话ID
+ */
+function setupPeriodicLatencyCheck(host, ws, sessionId) {
+  if (!host || !ws || !sessionId || !sessions.has(sessionId)) {
+    console.error(`设置定期延迟测量失败: 参数无效 (${host}, ${sessionId})`);
+    return;
+  }
+  
+  const session = sessions.get(sessionId);
+  
+  // 清除之前可能存在的定时器
+  if (session.latencyCheckInterval) {
+    clearInterval(session.latencyCheckInterval);
+    session.latencyCheckInterval = null;
+  }
+  
+  console.log(`为会话 ${sessionId} 设置定期延迟测量`);
+  
+  // 设置新的定时器，每10秒执行一次
+  session.latencyCheckInterval = setInterval(() => {
+    // 如果WebSocket已关闭，停止测量
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
+      clearInterval(session.latencyCheckInterval);
+      session.latencyCheckInterval = null;
+      console.log(`会话 ${sessionId} WebSocket已关闭，停止定期延迟测量`);
+      return;
+    }
+    
+    // 检查会话是否还存在
+    if (!sessions.has(sessionId)) {
+      clearInterval(session.latencyCheckInterval);
+      console.log(`会话 ${sessionId} 已不存在，停止定期延迟测量`);
+      return;
+    }
+    
+    // 如果会话最近没有活动，减少测量频率
+    const now = new Date();
+    const lastActivity = session.lastActivity || now;
+    const inactiveTime = now - lastActivity;
+    const INACTIVE_THRESHOLD = 5 * 60 * 1000; // 5分钟
+    
+    if (inactiveTime > INACTIVE_THRESHOLD) {
+      // 如果超过5分钟没有活动，不执行测量
+      console.log(`会话 ${sessionId} 超过5分钟不活动，跳过本次延迟测量`);
+      return;
+    }
+    
+    // 执行网络延迟测量
+    console.log(`执行定期延迟测量: 会话 ${sessionId}`);
+    measureNetworkLatency(host, ws, sessionId);
+  }, 10000); // 10秒间隔
+}
+
+/**
+ * 清理定期延迟测量
+ * @param {string} sessionId 会话ID
+ */
+function clearPeriodicLatencyCheck(sessionId) {
+  if (!sessionId || !sessions.has(sessionId)) return;
+  
+  const session = sessions.get(sessionId);
+  if (session.latencyCheckInterval) {
+    clearInterval(session.latencyCheckInterval);
+    session.latencyCheckInterval = null;
+    console.log(`已清理会话 ${sessionId} 的定期延迟测量`);
+  }
 }
 
 /**
@@ -217,6 +378,15 @@ function initWebSocketServer(server) {
           }));
           
           console.log(`重新连接到会话: ${sessionId}`);
+          
+          // 执行延迟测量
+          if (session.connectionInfo && session.connectionInfo.host) {
+            measureNetworkLatency(session.connectionInfo.host, ws, sessionId);
+            
+            // 设置定期延迟测量
+            setupPeriodicLatencyCheck(session.connectionInfo.host, ws, sessionId);
+          }
+          
           return;
         }
         
@@ -252,12 +422,13 @@ function initWebSocketServer(server) {
             return;
           }
           
+          // 设置会话流
           session.stream = stream;
           
-          // 处理SSH数据
+          // 转发SSH数据到WebSocket
           stream.on('data', (data) => {
-            if (session.ws && session.ws.readyState === WebSocket.OPEN) {
-              session.ws.send(JSON.stringify({
+            if (ws.readyState === WebSocket.OPEN) {
+              ws.send(JSON.stringify({
                 type: 'data',
                 data: {
                   sessionId,
@@ -265,19 +436,22 @@ function initWebSocketServer(server) {
                 }
               }));
             }
-            
-            session.lastActivity = new Date();
           });
           
+          // 处理SSH错误
+          stream.on('error', (err) => {
+            console.error(`Shell错误: ${err.message}`);
+            sendError(ws, `Shell错误: ${err.message}`);
+          });
+          
+          // 处理SSH关闭
           stream.on('close', () => {
-            console.log(`SSH流关闭: ${sessionId}`);
+            console.log(`Shell会话已关闭: ${sessionId}`);
             
-            if (session.ws && session.ws.readyState === WebSocket.OPEN) {
-              session.ws.send(JSON.stringify({
-                type: 'closed',
-                data: { sessionId }
-              }));
-            }
+            ws.send(JSON.stringify({
+              type: 'closed',
+              data: { sessionId }
+            }));
             
             cleanupSession(sessionId);
           });
@@ -288,11 +462,17 @@ function initWebSocketServer(server) {
             data: { sessionId }
           }));
           
-          console.log(`会话已创建: ${sessionId}`);
+          console.log(`新SSH会话已创建: ${sessionId}`);
+          
+          // 执行网络延迟测量（在SSH连接成功后）
+          measureNetworkLatency(connectionInfo.host, ws, sessionId);
+          
+          // 设置定期延迟测量
+          setupPeriodicLatencyCheck(connectionInfo.host, ws, sessionId);
         });
       } catch (err) {
-        console.error('创建SSH连接失败:', err);
-        sendError(ws, `创建SSH连接失败: ${err.message}`);
+        console.error(`SSH连接失败: ${err.message}`);
+        sendError(ws, `SSH连接失败: ${err.message}`);
       }
     }
     
@@ -427,6 +607,13 @@ function cleanupSession(sessionId) {
   console.log(`清理会话: ${sessionId}`);
   
   try {
+    // 清除定期延迟测量
+    if (session.latencyCheckInterval) {
+      clearInterval(session.latencyCheckInterval);
+      session.latencyCheckInterval = null;
+      console.log(`清理会话 ${sessionId} 的定期延迟测量`);
+    }
+    
     if (session.stream) {
       session.stream.end();
       session.stream = null;
@@ -828,8 +1015,7 @@ async function handleSftpDownload(ws, data) {
             path: remotePath,
             size: fileSize,
             mimeType: mime,
-            content: `data:${mime};base64,${base64Content}`
-          }
+            content: `data:${mime};base64,${base64Content}`          }
         }));
         
         console.log(`文件下载成功: ${remotePath}, 大小: ${fileSize} 字节`);

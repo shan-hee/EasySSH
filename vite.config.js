@@ -157,7 +157,8 @@ export default defineConfig(({ command, mode }) => {
     css: {
       preprocessorOptions: {
         scss: {
-          additionalData: '@import "src/assets/styles/base/base.css";'
+          // 使用新版 Sass API, 使用相对路径导入
+          additionalData: `@import "./src/assets/styles/base/base.css";`
         }
       },
       devSourcemap: true

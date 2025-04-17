@@ -8,6 +8,7 @@
         @toggle-sftp-panel="toggleSftpPanel" 
         @toggle-monitoring-panel="toggleMonitoringPanel"
         :has-background="terminalHasBackground"
+        :active-session-id="activeSessionId"
       />
 
       <!-- 添加终端背景层，仅在终端界面显示 -->
@@ -93,18 +94,59 @@ export default defineComponent({
       terminalTitle.value = event.detail;
     });
     
+    // 监听会话变化
+    window.addEventListener('terminal:session-change', (event) => {
+      if (event.detail && event.detail.sessionId) {
+        activeSessionId.value = event.detail.sessionId;
+        console.log(`当前活动会话ID已更新: ${activeSessionId.value}`);
+      }
+    });
+    
+    // 监听SSH会话创建
+    window.addEventListener('ssh:session-created', (event) => {
+      // 更新最新的SSH会话ID
+      if (event.detail && event.detail.sessionId) {
+        // 可以保留这个SSH ID以便于工具栏显示网络延迟信息
+        console.log(`SSH会话已创建: ${event.detail.sessionId}`);
+      }
+    });
+    
     // 获取当前活动的会话ID
     const getCurrentSessionId = () => {
       // 在终端路由中获取当前活动的SSH会话
       if (isTerminalRoute.value) {
         const sessionStore = useSessionStore();
-        return sessionStore.getActiveSession();
+        const currentSessionId = sessionStore.getActiveSession();
+        
+        // 更新当前活动会话ID
+        if (currentSessionId !== activeSessionId.value) {
+          activeSessionId.value = currentSessionId;
+        }
+        
+        return currentSessionId;
       }
       return null;
     };
     
     // 初始化
     onMounted(() => {
+      // 获取并设置当前活动会话ID
+      const currentId = getCurrentSessionId();
+      if (currentId) {
+        activeSessionId.value = currentId;
+        console.log(`AppLayout初始化时设置activeSessionId: ${activeSessionId.value}`);
+        
+        // 如果当前有SSH会话，确保可以接收网络延迟更新
+        try {
+          // 查找使用中的网络连接
+          if (isTerminalRoute.value && activeSessionId.value) {
+            console.log(`当前活动终端ID: ${activeSessionId.value}，确保延迟更新可正常显示`);
+          }
+        } catch (error) {
+          console.error('初始化SSH会话状态失败:', error);
+        }
+      }
+      
       // 加载保存的SFTP面板宽度
       try {
         const savedWidth = localStorage.getItem('sftpPanelWidth');
@@ -150,8 +192,10 @@ export default defineComponent({
     onUnmounted(() => {
       window.removeEventListener('resize', handleWindowResize);
       
-      // 移除终端背景状态监听
+      // 移除会话相关监听器
+      window.removeEventListener('terminal:session-change', () => {});
       window.removeEventListener('terminal-bg-status', () => {});
+      window.removeEventListener('ssh:session-created', () => {});
     });
     
     // 处理窗口大小变化

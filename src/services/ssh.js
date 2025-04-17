@@ -614,6 +614,23 @@ class SSHService {
               }
               break
               
+            case 'network_latency':
+              // 处理网络延迟消息
+              log.info(`收到网络延迟信息: ${JSON.stringify(message.data)}`)
+              if (this.sessions.has(sessionId)) {
+                const session = this.sessions.get(sessionId)
+                // 保存延迟信息
+                session.networkLatency = message.data.latency
+                // 发送自定义事件，通知UI组件更新
+                window.dispatchEvent(new CustomEvent('network-latency-update', {
+                  detail: {
+                    sessionId,
+                    latency: message.data.latency
+                  }
+                }))
+              }
+              break
+              
             case 'data':
               // 处理服务器发送的数据
               if (this.sessions.has(sessionId)) {

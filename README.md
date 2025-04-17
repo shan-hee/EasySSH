@@ -1,7 +1,7 @@
 # EasySSH
 
 <div align="center">
-  <img src="public/logo.svg" alt="EasySSH Logo" width="50" />
+  <img src="src/assets/icons/logo.svg" alt="EasySSH Logo" width="50" />
   <h3>现代化Web终端 · 高效服务器管理 · 安全远程访问</h3>
   
   <p>
@@ -30,7 +30,7 @@
 - 体验账号: `demo@example.com` / 密码: `admin`
 
 <div align="center">
-  <img src="public/screenshot.png" alt="EasySSH界面预览" width="80%" />
+  <img src="src/assets/images/screenshot.png" alt="EasySSH界面预览" width="80%" />
 </div>
 
 ## 核心特性

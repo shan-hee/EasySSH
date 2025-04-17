@@ -1,28 +1,30 @@
 <template>
     <div class="sftp-file-list">
       <div class="sftp-file-list-header">
-        <div class="sftp-file-list-column name">文件名</div>
-        <div class="sftp-file-list-column size">大小</div>
-        <div class="sftp-file-list-column date">修改日期</div>
-        <div class="sftp-file-list-column type">类型</div>
-        <div class="sftp-file-list-column permissions">权限</div>
+        <div class="sftp-file-list-column">名称</div>
+        <div class="sftp-file-list-column">大小</div>
+        <div class="sftp-file-list-column">修改日期</div>
+        <div class="sftp-file-list-column">类型</div>
+        <div class="sftp-file-list-column">权限</div>
       </div>
       
       <div class="sftp-file-list-body">
-        <div v-if="loading" class="sftp-file-list-loading">
-          <div class="sftp-spinner"></div>
-          <span>加载中...</span>
-        </div>
+        <template v-if="loading">
+          <div class="sftp-file-list-loading">
+            <div class="loading-spinner"></div>
+            <p>加载中...</p>
+          </div>
+        </template>
         
-        <div v-else-if="error" class="sftp-file-list-error">
-          {{ error }}
-        </div>
+        <template v-else-if="error">
+          <div class="sftp-file-list-error">
+            <p>{{ error }}</p>
+          </div>
+        </template>
         
         <template v-else-if="files.length === 0">
           <div class="sftp-file-list-empty">
-            <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24">
-              <path fill="currentColor" d="M20,6H12L10,4H4A2,2 0 0,0 2,6V18A2,2 0 0,0 4,20H20A2,2 0 0,0 22,18V8A2,2 0 0,0 20,6M20,18H4V6H9.17L11.17,8H20V18M12,14.59L15.59,11L17,12.41L13.41,16L17,19.59L15.59,21L12,17.41L8.41,21L7,19.59L10.59,16L7,12.41L8.41,11L12,14.59Z" />
-            </svg>
+            <img src="@/assets/icons/icon-empty-folder.svg" width="48" height="48" alt="Empty folder" />
             <p>此文件夹为空</p>
           </div>
         </template>
@@ -37,12 +39,8 @@
           >
             <div class="sftp-file-list-column name">
               <div class="sftp-file-icon">
-                <svg v-if="file.type === 'directory'" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24">
-                  <path fill="#FFD54F" d="M10,4H4C2.89,4 2,4.89 2,6V18A2,2 0 0,0 4,20H20A2,2 0 0,0 22,18V8C22,6.89 21.1,6 20,6H12L10,4Z" />
-                </svg>
-                <svg v-else xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24">
-                  <path fill="#90CAF9" d="M13,9V3.5L18.5,9M6,2C4.89,2 4,2.89 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2H6Z" />
-                </svg>
+                <img v-if="file.type === 'directory'" src="@/assets/icons/icon-folder.svg" width="16" height="16" alt="Folder" />
+                <img v-else src="@/assets/icons/icon-file.svg" width="16" height="16" alt="File" />
               </div>
               <span>{{ file.name }}</span>
             </div>
@@ -221,7 +219,7 @@
     font-size: 14px;
   }
   
-  .sftp-spinner {
+  .loading-spinner {
     width: 24px;
     height: 24px;
     border: 3px solid rgba(255, 255, 255, 0.1);
