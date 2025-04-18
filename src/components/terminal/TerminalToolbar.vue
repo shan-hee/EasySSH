@@ -18,8 +18,10 @@
           </div>
         </transition>
         
-        <button class="icon-button" type="button" @click.stop="toggleMonitoringPanel($event)">
-          <img src="@/assets/icons/icon-monitoring.svg" class="ruyi-icon ruyi-icon-ot-monitoring" width="16" height="16" />
+        <button class="icon-button tooltip-container" type="button" @click.stop="toggleMonitoringPanel($event)" 
+          :class="{ 'icon-disabled': !monitoringServiceInstalled }" 
+          :data-tooltip="monitoringServiceInstalled ? '查看系统监控' : '未安装监控脚本，点击一键安装'">
+          <img src="@/assets/icons/icon-monitoring.svg" class="ruyi-icon ruyi-icon-ot-monitoring" width="16" height="16" :class="{ 'icon-gray': !monitoringServiceInstalled }" />
         </button>
       </div>
     </div>
@@ -62,7 +64,9 @@
 </template>
 
 <script>
-import { defineComponent, computed, ref, onMounted, onUnmounted, watch } from 'vue'
+import { defineComponent, computed, ref, onMounted, onUnmounted, watch, inject } from 'vue'
+import { useSessionStore } from '../../store/session'
+import axios from 'axios'
 
 export default defineComponent({
   name: 'TerminalToolbar',
@@ -84,6 +88,8 @@ export default defineComponent({
     const clientDelay = ref(0)
     const serverDelay = ref(0)
     const showNetworkIcon = ref(false)
+    const monitoringServiceInstalled = ref(false)
+    const sessionStore = useSessionStore()
     
     // 计算总RTT
     const totalRtt = computed(() => {
@@ -130,7 +136,8 @@ export default defineComponent({
         event.stopPropagation();
       }
       
-      emit('toggle-monitoring-panel');
+      // 触发监控面板打开事件，无论是否安装都传递状态信息
+      emit('toggle-monitoring-panel', { installed: monitoringServiceInstalled.value });
     }
     
     // 处理网络延迟更新事件
@@ -157,10 +164,57 @@ export default defineComponent({
       }
     };
     
+    // 检查监控服务状态
+    const checkMonitoringServiceStatus = async () => {
+      try {
+        // 获取当前活动会话
+        const sessionId = props.activeSessionId || sessionStore.getActiveSession();
+        if (!sessionId) return;
+        
+        // 获取会话信息
+        const session = sessionStore.getSession(sessionId);
+        if (!session || !session.connection) return;
+        
+        // 检查监控服务状态
+        const response = await axios.post('/api/monitor/check-status', {
+          host: session.connection.host
+        });
+        
+        // 更新监控服务安装状态
+        monitoringServiceInstalled.value = response.data.success && response.data.status === 'running';
+        
+        console.log(`监控服务状态检查: ${monitoringServiceInstalled.value ? '已安装' : '未安装'}`);
+      } catch (error) {
+        console.error('检查监控服务状态失败:', error);
+        monitoringServiceInstalled.value = false;
+      }
+    };
+    
+    // 监听会话变化
+    watch(() => props.activeSessionId, (newId) => {
+      if (newId) {
+        // 会话变化时重新检查监控服务状态
+        checkMonitoringServiceStatus();
+      }
+    });
+    
+    // 监听全局监控状态事件
+    const handleMonitoringStatusChange = (event) => {
+      if (event && event.detail) {
+        monitoringServiceInstalled.value = event.detail.installed;
+      }
+    };
+    
     // 初始化网络监控
     onMounted(() => {
       // 添加网络延迟更新事件监听器
       window.addEventListener('network-latency-update', handleNetworkLatencyUpdate);
+      // 添加监控状态变化事件监听
+      window.addEventListener('monitoring-status-change', handleMonitoringStatusChange);
+      
+      // 初始检查监控服务状态
+      checkMonitoringServiceStatus();
+      
       console.log(`TerminalToolbar已挂载，当前活动会话ID: ${props.activeSessionId}`);
     });
     
@@ -173,6 +227,7 @@ export default defineComponent({
     onUnmounted(() => {
       // 移除事件监听器
       window.removeEventListener('network-latency-update', handleNetworkLatencyUpdate);
+      window.removeEventListener('monitoring-status-change', handleMonitoringStatusChange);
     });
 
     return {
@@ -186,7 +241,8 @@ export default defineComponent({
       toggleNetworkPopup,
       toggleSftpPanel,
       toggleMonitoringPanel,
-      showNetworkIcon
+      showNetworkIcon,
+      monitoringServiceInstalled
     }
   }
 })
@@ -251,6 +307,16 @@ export default defineComponent({
 
 .icon-button:hover {
   background-color: rgba(255, 255, 255, 0.2);
+}
+
+/* 禁用状态的图标按钮 */
+.icon-button.icon-disabled {
+  cursor: help;
+}
+
+/* 灰色图标样式 */
+.icon-gray {
+  filter: grayscale(100%) opacity(0.5);
 }
 
 .network-monitor {
@@ -423,5 +489,44 @@ export default defineComponent({
   0% { opacity: 0.6; }
   50% { opacity: 1; }
   100% { opacity: 0.6; }
+}
+
+/* 添加自定义tooltip样式 */
+.tooltip-container {
+  position: relative;
+}
+
+.tooltip-container:hover::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  left: 50%;
+  top: 100%;
+  transform: translateX(-50%);
+  background-color: #333;
+  color: #e0e0e0;
+  padding: 8px 12px;
+  border-radius: 4px;
+  font-size: 13px;
+  white-space: nowrap;
+  margin-top: 10px;
+  z-index: 9000;
+  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.4);
+  display: block;
+  pointer-events: none;
+}
+
+.tooltip-container:hover::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 100%;
+  transform: translateX(-50%);
+  width: 0;
+  height: 0;
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  border-bottom: 5px solid #333;
+  z-index: 9100;
+  pointer-events: none;
 }
 </style> 
