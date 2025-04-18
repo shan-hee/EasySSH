@@ -15,13 +15,18 @@
       <div v-if="isTerminalRoute && terminalHasBackground" class="terminal-background"></div>
 
       <main class="content" :class="{ 'with-terminal-tools': isTerminalRoute }">
-        <slot></slot>
+        <router-view></router-view>
       </main>
     </div>
 
     <!-- 系统监控面板 -->
     <div v-if="showMonitoringPanel" class="monitoring-panel-container">
-      <MonitoringPanel @close="closeMonitoringPanel" />
+      <MonitoringPanel 
+        @close="closeMonitoringPanel" 
+        :serverId="monitorSessionId"
+        :serverInfo="monitorServerInfo"
+        :isInstalled="monitoringInstalled"
+      />
     </div>
     
     <!-- SFTP文件管理器侧边栏 -->
@@ -69,6 +74,9 @@ export default defineComponent({
     const isSftpPanelClosing = ref(false)
     const activeSessionId = ref(null)
     const terminalHasBackground = ref(false)
+    const monitorSessionId = ref(null)
+    const monitorServerInfo = ref(null)
+    const monitoringInstalled = ref(false)
     
     // 判断当前是否为终端路由
     const isTerminalRoute = computed(() => {
@@ -113,19 +121,37 @@ export default defineComponent({
     
     // 获取当前活动的会话ID
     const getCurrentSessionId = () => {
-      // 在终端路由中获取当前活动的SSH会话
-      if (isTerminalRoute.value) {
-        const sessionStore = useSessionStore();
-        const currentSessionId = sessionStore.getActiveSession();
-        
-        // 更新当前活动会话ID
-        if (currentSessionId !== activeSessionId.value) {
-          activeSessionId.value = currentSessionId;
+      try {
+        // 在终端路由中获取当前活动的SSH会话
+        if (isTerminalRoute.value) {
+          const sessionStore = useSessionStore();
+          // 直接尝试获取活动会话ID
+          const currentSessionId = sessionStore.getActiveSession();
+          
+          if (currentSessionId) {
+            // 更新当前活动会话ID
+            if (currentSessionId !== activeSessionId.value) {
+              activeSessionId.value = currentSessionId;
+            }
+            return currentSessionId;
+          } else if (activeSessionId.value) {
+            // 如果sessionStore没有返回活动会话，但我们已有缓存的会话ID，则使用它
+            return activeSessionId.value;
+          }
+          
+          // 尝试从props或route参数中获取
+          const routeId = route.params.id;
+          if (routeId) {
+            activeSessionId.value = routeId;
+            return routeId;
+          }
         }
-        
-        return currentSessionId;
+        return null;
+      } catch (error) {
+        console.error('获取当前会话ID失败:', error);
+        // 如果有已知会话ID则返回它，否则返回null
+        return activeSessionId.value || null;
       }
-      return null;
     };
     
     // 初始化
@@ -227,9 +253,79 @@ export default defineComponent({
     };
     
     // 打开监控面板
-    const toggleMonitoringPanel = () => {
-      showMonitoringPanel.value = true;
-      console.log('打开监控面板');
+    const toggleMonitoringPanel = (status) => {
+      try {
+        // 获取当前活动的会话ID和信息
+        let currentSessionId = getCurrentSessionId();
+        
+        // 如果无法获取会话ID但状态中携带了sessionId，则使用它
+        if (!currentSessionId && status && status.sessionId) {
+          currentSessionId = status.sessionId;
+          console.log(`使用从状态获取的会话ID: ${currentSessionId}`);
+        }
+        
+        if (!currentSessionId) {
+          ElMessage.error('没有活动的SSH会话，无法打开监控面板');
+          return;
+        }
+        
+        // 获取会话信息
+        const sessionStore = useSessionStore();
+        let session = sessionStore.getSession(currentSessionId);
+        
+        // 如果无法获取会话信息但有活动会话ID，尝试创建一个简单的会话对象
+        if (!session && currentSessionId) {
+          // 创建一个临时会话对象
+          session = {
+            id: currentSessionId,
+            connection: {
+              host: currentSessionId.split('@')[1] || currentSessionId,
+              username: currentSessionId.split('@')[0] || 'root'
+            }
+          };
+          console.log('创建临时会话对象:', session);
+        }
+        
+        if (!session || !session.connection) {
+          ElMessage.error('无法获取会话信息');
+          return;
+        }
+        
+        // 检查是否是一键安装请求
+        if (status && status.install === true) {
+          // 发送安装监控服务的命令到终端
+          const installCommand = `curl -sSL ${window.location.origin}/api/monitor/install-script | sudo bash`;
+          
+          // 使用自定义事件将命令发送到当前活动的终端
+          window.dispatchEvent(new CustomEvent('terminal:execute-command', { 
+            detail: {
+              command: installCommand,
+              sessionId: currentSessionId
+            }
+          }));
+          
+          // 显示提示消息
+          ElMessage.success('正在执行安装命令，请在终端中查看进度');
+          return;
+        }
+        
+        // 将会话信息传递给监控面板
+        monitorSessionId.value = currentSessionId;
+        monitorServerInfo.value = session.connection;
+        
+        // 根据状态决定是否预设安装状态
+        monitoringInstalled.value = status && status.installed === true;
+        
+        // 显示监控面板
+        showMonitoringPanel.value = true;
+        
+        console.log('打开监控面板', { 
+          sessionId: currentSessionId, 
+          installed: monitoringInstalled.value 
+        });
+      } catch (error) {
+        console.error('打开监控面板失败:', error);
+      }
     }
     
     // 关闭监控面板
@@ -335,7 +431,10 @@ export default defineComponent({
       isSftpPanelClosing,
       activeSessionId,
       handleSftpPanelResize,
-      terminalHasBackground
+      terminalHasBackground,
+      monitorSessionId,
+      monitorServerInfo,
+      monitoringInstalled
     }
   }
 })

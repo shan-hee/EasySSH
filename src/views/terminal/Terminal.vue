@@ -636,6 +636,7 @@ export default {
       window.addEventListener('terminal:send-command', sendTerminalCommand)
       window.addEventListener('terminal:clear', clearTerminal)
       window.addEventListener('terminal:disconnect', disconnectTerminal)
+      window.addEventListener('terminal:execute-command', executeTerminalCommand)
     }
     
     // 移除外部工具栏事件监听
@@ -643,6 +644,7 @@ export default {
       window.removeEventListener('terminal:send-command', sendTerminalCommand)
       window.removeEventListener('terminal:clear', clearTerminal)
       window.removeEventListener('terminal:disconnect', disconnectTerminal)
+      window.removeEventListener('terminal:execute-command', executeTerminalCommand)
     }
     
     // 清空当前活动终端
@@ -671,6 +673,25 @@ export default {
         })
       } catch (error) {
         console.error('发送命令失败:', error)
+      }
+    }
+    
+    // 执行指定命令到终端
+    const executeTerminalCommand = (event) => {
+      if (event.detail && event.detail.command) {
+        const id = event.detail.sessionId || activeConnectionId.value
+        if (id && terminalStore.hasTerminal(id)) {
+          // 先发送换行符确保在新行开始命令
+          terminalStore.sendCommand(id, "")
+          // 延迟一小段时间后再发送实际命令
+          setTimeout(() => {
+            terminalStore.sendCommand(id, event.detail.command)
+          }, 100)
+          
+          console.log(`执行命令到终端 ${id}: ${event.detail.command}`)
+        } else {
+          console.error('无法执行命令：终端不存在或无效')
+        }
       }
     }
     

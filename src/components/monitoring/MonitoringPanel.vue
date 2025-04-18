@@ -13,22 +13,59 @@
       </button>
     </div>
 
-    <div class="panel-content">
+    <div v-if="!isConnected && !installing" class="panel-not-installed">
+      <div class="install-info">
+        <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" class="info-icon">
+          <path fill="#409eff" d="M11,9H13V7H11M12,20C7.59,20 4,16.41 4,12C4,7.59 7.59,4 12,4C16.41,4 20,7.59 20,12C20,16.41 16.41,20 12,20M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2M11,17H13V11H11V17Z" />
+        </svg>
+        <h3>未检测到监控服务</h3>
+        <p>需要先在远程服务器上安装监控服务才能查看系统状态</p>
+        <div class="install-actions">
+          <div class="install-link-container">
+            <p>请在远程终端中执行以下命令安装监控服务：</p>
+            <pre class="install-command-link">curl -sSL {{ getInstallScriptUrl() }} | sudo bash</pre>
+            <button class="copy-button" @click="copyInstallCommand">复制命令</button>
+          </div>
+        </div>
+      </div>
+      <div v-if="installError" class="install-error">
+        <p>{{ installError }}</p>
+      </div>
+    </div>
+
+    <div v-if="installing" class="panel-installing">
+      <div class="installing-info">
+        <div class="loading-spinner"></div>
+        <h3>正在安装监控服务</h3>
+        <p>请稍候，安装过程可能需要几分钟...</p>
+        <pre class="install-command">{{ installCommand }}</pre>
+      </div>
+    </div>
+
+    <div v-if="isConnected" class="panel-content">
       <!-- 系统信息 -->
       <div class="section">
         <h3>系统信息</h3>
         <div class="info-list">
           <div class="info-item">
             <span class="info-label">主机名：</span>
-            <span class="info-value">{{ systemInfo.hostname }}</span>
+            <span class="info-value">{{ systemInfo.os?.hostname || '获取中...' }}</span>
           </div>
           <div class="info-item">
             <span class="info-label">系统：</span>
-            <span class="info-value">{{ systemInfo.platform }}</span>
+            <span class="info-value">{{ formatOsInfo }}</span>
+          </div>
+          <div class="info-item">
+            <span class="info-label">IP地址：</span>
+            <span class="info-value">{{ systemInfo.ip?.internal || '获取中...' }}</span>
+          </div>
+          <div class="info-item">
+            <span class="info-label">公网IP：</span>
+            <span class="info-value">{{ systemInfo.ip?.public || '获取中...' }}</span>
           </div>
           <div class="info-item">
             <span class="info-label">运行时间：</span>
-            <span class="info-value">{{ systemInfo.uptime }}</span>
+            <span class="info-value">{{ formatUptime }}</span>
           </div>
         </div>
       </div>
@@ -36,20 +73,19 @@
       <!-- CPU使用率 -->
       <div class="section">
         <h3>CPU使用率</h3>
+        <div class="info-item cpu-info">
+          <span class="info-label">处理器：</span>
+          <span class="info-value">{{ systemInfo.cpu?.model || '获取中...' }}</span>
+        </div>
+        <div class="info-item">
+          <span class="info-label">核心数：</span>
+          <span class="info-value">{{ systemInfo.cpu?.cores || '获取中...' }}</span>
+        </div>
         <div class="progress-container">
           <div class="progress-bar-container">
-            <div class="progress-bar" :style="{ width: `${cpuUsage}%` }" :class="getProgressBarClass(cpuUsage)"></div>
+            <div class="progress-bar" :style="{ width: `${systemInfo.cpu?.usage || 0}%` }" :class="getProgressBarClass(systemInfo.cpu?.usage || 0)"></div>
           </div>
-          <div class="progress-value">{{ cpuUsage }}%</div>
-        </div>
-        <div class="core-list">
-          <div v-for="(core, index) in cpuCores" :key="index" class="core-item">
-            <div class="core-label">核心 {{ index + 1 }}</div>
-            <div class="core-progress-container">
-              <div class="core-progress-bar" :style="{ width: `${core}%` }" :class="getProgressBarClass(core)"></div>
-            </div>
-            <div class="core-value">{{ core }}%</div>
-          </div>
+          <div class="progress-value">{{ systemInfo.cpu?.usage || 0 }}%</div>
         </div>
       </div>
 
@@ -58,22 +94,47 @@
         <h3>内存使用情况</h3>
         <div class="progress-container">
           <div class="progress-bar-container">
-            <div class="progress-bar" :style="{ width: `${memoryUsage.percentage}%` }" :class="getProgressBarClass(memoryUsage.percentage)"></div>
+            <div class="progress-bar" :style="{ width: `${systemInfo.memory?.usedPercentage || 0}%` }" :class="getProgressBarClass(systemInfo.memory?.usedPercentage || 0)"></div>
           </div>
-          <div class="progress-value">{{ memoryUsage.percentage }}%</div>
+          <div class="progress-value">{{ systemInfo.memory?.usedPercentage || 0 }}%</div>
         </div>
         <div class="memory-detail">
           <div class="memory-item">
             <span class="memory-label">已使用：</span>
-            <span class="memory-value">{{ memoryUsage.used }}</span>
+            <span class="memory-value">{{ systemInfo.memory?.used || 0 }} MB</span>
           </div>
           <div class="memory-item">
             <span class="memory-label">总内存：</span>
-            <span class="memory-value">{{ memoryUsage.total }}</span>
+            <span class="memory-value">{{ systemInfo.memory?.total || 0 }} MB</span>
           </div>
           <div class="memory-item">
             <span class="memory-label">可用：</span>
-            <span class="memory-value">{{ memoryUsage.free }}</span>
+            <span class="memory-value">{{ systemInfo.memory?.free || 0 }} MB</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 交换分区 -->
+      <div class="section">
+        <h3>交换分区</h3>
+        <div class="progress-container">
+          <div class="progress-bar-container">
+            <div class="progress-bar" :style="{ width: `${systemInfo.swap?.usedPercentage || 0}%` }" :class="getProgressBarClass(systemInfo.swap?.usedPercentage || 0)"></div>
+          </div>
+          <div class="progress-value">{{ systemInfo.swap?.usedPercentage || 0 }}%</div>
+        </div>
+        <div class="memory-detail">
+          <div class="memory-item">
+            <span class="memory-label">已使用：</span>
+            <span class="memory-value">{{ systemInfo.swap?.used || 0 }} MB</span>
+          </div>
+          <div class="memory-item">
+            <span class="memory-label">总大小：</span>
+            <span class="memory-value">{{ systemInfo.swap?.total || 0 }} MB</span>
+          </div>
+          <div class="memory-item">
+            <span class="memory-label">可用：</span>
+            <span class="memory-value">{{ systemInfo.swap?.free || 0 }} MB</span>
           </div>
         </div>
       </div>
@@ -81,18 +142,37 @@
       <!-- 磁盘使用情况 -->
       <div class="section">
         <h3>磁盘使用情况</h3>
-        <div v-for="(disk, index) in diskUsage" :key="index" class="disk-item">
+        <div class="disk-item">
           <div class="disk-header">
-            <span class="disk-name">{{ disk.name }}</span>
-            <span class="disk-value">{{ disk.percentage }}%</span>
+            <span class="disk-name">主分区</span>
+            <span class="disk-value">{{ systemInfo.disk?.usedPercentage || 0 }}%</span>
           </div>
           <div class="progress-bar-container">
-            <div class="progress-bar" :style="{ width: `${disk.percentage}%` }" :class="getProgressBarClass(disk.percentage)"></div>
+            <div class="progress-bar" :style="{ width: `${systemInfo.disk?.usedPercentage || 0}%` }" :class="getProgressBarClass(systemInfo.disk?.usedPercentage || 0)"></div>
           </div>
           <div class="disk-detail">
-            <span class="disk-detail-item">已用: {{ disk.used }}</span>
-            <span class="disk-detail-item">总容量: {{ disk.total }}</span>
-            <span class="disk-detail-item">可用: {{ disk.free }}</span>
+            <span class="disk-detail-item">已用: {{ systemInfo.disk?.used || 0 }} GB</span>
+            <span class="disk-detail-item">总容量: {{ systemInfo.disk?.total || 0 }} GB</span>
+            <span class="disk-detail-item">可用: {{ systemInfo.disk?.free || 0 }} GB</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 网络状态 -->
+      <div class="section">
+        <h3>网络状态</h3>
+        <div class="network-stats">
+          <div class="network-item">
+            <span class="network-label">连接数：</span>
+            <span class="network-value">{{ systemInfo.network?.totalConnections || 0 }}</span>
+          </div>
+          <div class="network-item">
+            <span class="network-label">输入流量：</span>
+            <span class="network-value">{{ systemInfo.network?.inputBytes || 0 }} bytes</span>
+          </div>
+          <div class="network-item">
+            <span class="network-label">输出流量：</span>
+            <span class="network-value">{{ systemInfo.network?.outputBytes || 0 }} bytes</span>
           </div>
         </div>
       </div>
@@ -101,191 +181,233 @@
 </template>
 
 <script>
-import { defineComponent, ref, onMounted, onUnmounted } from 'vue'
+import { defineComponent, ref, computed, onMounted, onUnmounted, watch } from 'vue';
+import { io } from 'socket.io-client';
+import axios from 'axios';
+import { ElMessage } from 'element-plus';
 
 export default defineComponent({
   name: 'MonitoringPanel',
+  props: {
+    serverId: {
+      type: [String, Number],
+      required: true
+    },
+    serverInfo: {
+      type: Object,
+      required: true
+    },
+    isInstalled: {
+      type: Boolean,
+      default: false
+    }
+  },
   emits: ['close'],
   setup(props, { emit }) {
+    // 连接状态
+    const isConnected = ref(false);
+    const socket = ref(null);
+    const isClosing = ref(false);
+    const installing = ref(false);
+    const installError = ref('');
+    const installCommand = ref('');
+    
     // 系统信息
     const systemInfo = ref({
-      hostname: 'Server001',
-      platform: 'Linux CentOS 7.9',
-      uptime: '10天 5小时 30分钟'
-    })
+      cpu: {},
+      memory: {},
+      swap: {},
+      disk: {},
+      network: {},
+      os: {},
+      ip: {}
+    });
 
-    // 添加关闭动画状态
-    const isClosing = ref(false)
+    // 获取安装脚本URL
+    const getInstallScriptUrl = () => {
+      return `/api/monitor/install-script`;
+    };
 
-    // 处理关闭面板
-    const closePanel = () => {
-      isClosing.value = true
+    // 复制安装命令
+    const copyInstallCommand = () => {
+      const command = `curl -sSL ${window.location.origin}/api/monitor/install-script | sudo bash`;
+      navigator.clipboard.writeText(command)
+        .then(() => {
+          ElMessage.success('安装命令已复制到剪贴板');
+        })
+        .catch(err => {
+          console.error('复制失败:', err);
+          ElMessage.error('复制失败，请手动复制命令');
+        });
+    };
+
+    // 格式化操作系统信息
+    const formatOsInfo = computed(() => {
+      if (!systemInfo.value.os) return '获取中...';
+      return `${systemInfo.value.os.type || ''} ${systemInfo.value.os.platform || ''} ${systemInfo.value.os.release || ''}`;
+    });
+
+    // 格式化运行时间
+    const formatUptime = computed(() => {
+      if (!systemInfo.value.os?.uptime) return '获取中...';
       
-      // 等待动画完成后再通知父组件关闭
-      setTimeout(() => {
-        emit('close')
-      }, 300) // 与动画持续时间一致
-    }
-
-    // CPU使用率
-    const cpuUsage = ref(0)
-    const cpuCores = ref([])
-
-    // 内存使用情况
-    const memoryUsage = ref({
-      percentage: 0,
-      total: '0 GB',
-      used: '0 GB',
-      free: '0 GB'
-    })
-
-    // 磁盘使用情况
-    const diskUsage = ref([])
-
-    // 更新数据定时器
-    let updateTimer = null
-
-    // 更新系统信息
-    const updateSystemInfo = () => {
-      // 在实际应用中，这里应该从后端API获取真实数据
-      // 这里使用模拟数据进行演示
+      const uptime = systemInfo.value.os.uptime;
+      const days = Math.floor(uptime / 86400);
+      const hours = Math.floor((uptime % 86400) / 3600);
+      const minutes = Math.floor((uptime % 3600) / 60);
       
-      // 更新系统运行时间
-      const uptimeHours = Math.floor(Math.random() * 24 * 30) // 0-720小时
-      const days = Math.floor(uptimeHours / 24)
-      const hours = uptimeHours % 24
-      const minutes = Math.floor(Math.random() * 60)
-      systemInfo.value.uptime = `${days}天 ${hours}小时 ${minutes}分钟`
-    }
-
-    // 更新CPU使用率
-    const updateCpuUsage = () => {
-      // 模拟CPU总体使用率
-      cpuUsage.value = Math.floor(Math.random() * 100)
-      
-      // 模拟CPU各核心使用率
-      const coreCount = 8 // 假设8个核心
-      const cores = []
-      for (let i = 0; i < coreCount; i++) {
-        cores.push(Math.floor(Math.random() * 100))
-      }
-      cpuCores.value = cores
-    }
-
-    // 更新内存使用情况
-    const updateMemoryUsage = () => {
-      const totalMemory = 16 // 假设16GB内存
-      const usedPercentage = Math.floor(Math.random() * 100)
-      const usedMemory = (totalMemory * usedPercentage / 100).toFixed(2)
-      const freeMemory = (totalMemory - usedMemory).toFixed(2)
-      
-      memoryUsage.value = {
-        percentage: usedPercentage,
-        total: `${totalMemory} GB`,
-        used: `${usedMemory} GB`,
-        free: `${freeMemory} GB`
-      }
-    }
-
-    // 更新磁盘使用情况
-    const updateDiskUsage = () => {
-      // 模拟多个磁盘数据
-      const disks = [
-        {
-          name: '/ (根目录)',
-          total: '500 GB',
-          used: '0 GB',
-          free: '0 GB',
-          percentage: 0
-        },
-        {
-          name: '/home',
-          total: '1000 GB',
-          used: '0 GB',
-          free: '0 GB',
-          percentage: 0
-        },
-        {
-          name: '/var',
-          total: '250 GB',
-          used: '0 GB',
-          free: '0 GB',
-          percentage: 0
-        }
-      ]
-      
-      // 为每个磁盘生成随机使用率
-      disks.forEach(disk => {
-        const percentage = Math.floor(Math.random() * 100)
-        const totalGB = parseInt(disk.total)
-        const usedGB = (totalGB * percentage / 100).toFixed(1)
-        const freeGB = (totalGB - usedGB).toFixed(1)
-        
-        disk.percentage = percentage
-        disk.used = `${usedGB} GB`
-        disk.free = `${freeGB} GB`
-      })
-      
-      diskUsage.value = disks
-    }
-
-    // 更新所有数据
-    const updateAllData = () => {
-      updateSystemInfo()
-      updateCpuUsage()
-      updateMemoryUsage()
-      updateDiskUsage()
-    }
+      return `${days}天 ${hours}小时 ${minutes}分钟`;
+    });
 
     // 获取进度条样式类
     const getProgressBarClass = (percentage) => {
-      if (percentage < 60) return 'progress-normal'
-      if (percentage < 80) return 'progress-warning'
-      return 'progress-danger'
-    }
+      if (percentage < 60) return 'progress-normal';
+      if (percentage < 80) return 'progress-warning';
+      return 'progress-danger';
+    };
 
-    // 格式化时间戳
-    const formatTimestamp = (timestamp) => {
-      if (!timestamp) return '未知'
+    // 处理关闭面板
+    const closePanel = () => {
+      isClosing.value = true;
       
-      const date = new Date(timestamp)
-      const hours = date.getHours().toString().padStart(2, '0')
-      const minutes = date.getMinutes().toString().padStart(2, '0')
-      const seconds = date.getSeconds().toString().padStart(2, '0')
-      
-      return `${hours}:${minutes}:${seconds}`
-    }
-
-    // 组件挂载时初始化数据并启动定时更新
-    onMounted(() => {
-      // 初始化数据
-      updateAllData()
-      
-      // 设置定时器，每2秒更新一次数据
-      updateTimer = setInterval(updateAllData, 2000)
-    })
-
-    // 组件卸载时清除定时器
-    onUnmounted(() => {
-      if (updateTimer) {
-        clearInterval(updateTimer)
-        updateTimer = null
+      // 断开Socket连接
+      if (socket.value) {
+        socket.value.disconnect();
       }
-    })
+      
+      // 等待动画完成后再通知父组件关闭
+      setTimeout(() => {
+        emit('close');
+      }, 300); // 与动画持续时间一致
+    };
+
+    // 连接到监控服务
+    const connectToMonitorService = () => {
+      // 检查当前连接状态
+      if (socket.value) {
+        socket.value.disconnect();
+      }
+
+      // 从服务器信息中获取主机地址
+      const host = props.serverInfo.host;
+      const port = 9528; // 默认监控服务端口
+
+      try {
+        // 创建Socket.IO连接
+        socket.value = io(`http://${host}:${port}`, {
+          transports: ['websocket', 'polling'],
+          reconnectionAttempts: 5,
+          timeout: 10000
+        });
+
+        // 连接事件处理
+        socket.value.on('connect', () => {
+          isConnected.value = true;
+          installing.value = false;
+          installError.value = '';
+          
+          // 触发状态变更事件
+          window.dispatchEvent(new CustomEvent('monitoring-status-change', { 
+            detail: { installed: true }
+          }));
+          
+          console.log('已连接到监控服务');
+        });
+
+        // 断开连接事件处理
+        socket.value.on('disconnect', () => {
+          isConnected.value = false;
+          console.log('与监控服务断开连接');
+        });
+
+        // 连接错误处理
+        socket.value.on('connect_error', (error) => {
+          console.error('连接监控服务失败:', error);
+          // 如果连接失败，可能是服务未启动
+          isConnected.value = false;
+        });
+
+        // 接收系统信息
+        socket.value.on('system-info', (data) => {
+          systemInfo.value = data;
+        });
+      } catch (error) {
+        console.error('创建Socket.IO连接时出错:', error);
+        isConnected.value = false;
+      }
+    };
+
+    // 检查监控服务状态
+    const checkMonitorStatus = async () => {
+      try {
+        const response = await axios.post('/api/monitor/check-status', {
+          host: props.serverInfo.host
+        });
+
+        if (response.data.success && response.data.status === 'running') {
+          // 服务已安装且正在运行，尝试连接
+          connectToMonitorService();
+          
+          // 触发状态变更事件
+          window.dispatchEvent(new CustomEvent('monitoring-status-change', { 
+            detail: { installed: true }
+          }));
+        } else {
+          // 服务未安装或未运行
+          isConnected.value = false;
+          
+          // 触发状态变更事件
+          window.dispatchEvent(new CustomEvent('monitoring-status-change', { 
+            detail: { installed: false }
+          }));
+        }
+      } catch (error) {
+        console.error('检查监控状态失败:', error);
+        isConnected.value = false;
+      }
+    };
+
+    // 组件挂载时初始化
+    onMounted(() => {
+      // 如果已知状态，则根据状态决定是否尝试连接
+      if (props.isInstalled) {
+        connectToMonitorService();
+      } else {
+        // 如果不确定状态，则检查监控服务状态
+        checkMonitorStatus();
+      }
+    });
+
+    // 监听服务器信息变化
+    watch(() => props.serverInfo, () => {
+      // 服务器信息变化时，重新检查监控状态
+      checkMonitorStatus();
+    }, { deep: true });
+
+    // 组件卸载时清理资源
+    onUnmounted(() => {
+      if (socket.value) {
+        socket.value.disconnect();
+        socket.value = null;
+      }
+    });
 
     return {
       systemInfo,
-      cpuUsage,
-      cpuCores,
-      memoryUsage,
-      diskUsage,
-      getProgressBarClass,
+      isConnected,
       isClosing,
+      installing,
+      installError,
+      installCommand,
+      formatOsInfo,
+      formatUptime,
+      getProgressBarClass,
       closePanel,
-      formatTimestamp
-    }
+      getInstallScriptUrl,
+      copyInstallCommand
+    };
   }
-})
+});
 </script>
 
 <style scoped>
@@ -562,5 +684,139 @@ export default defineComponent({
 
 .disk-detail-item {
   color: #aaa;
+}
+
+/* 新增样式 */
+.panel-not-installed, .panel-installing {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 0 20px;
+  text-align: center;
+}
+
+.install-info, .installing-info {
+  max-width: 360px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.info-icon {
+  margin-bottom: 16px;
+}
+
+.install-info h3, .installing-info h3 {
+  margin-bottom: 12px;
+  font-size: 16px;
+  font-weight: 500;
+}
+
+.install-info p, .installing-info p {
+  margin-bottom: 24px;
+  color: #aaa;
+  line-height: 1.5;
+}
+
+.install-actions {
+  margin-top: 8px;
+}
+
+.install-button {
+  display: none; /* 隐藏原有的按钮 */
+}
+
+.install-error {
+  margin-top: 20px;
+  color: #f56c6c;
+  max-width: 360px;
+}
+
+.loading-spinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid rgba(64, 158, 255, 0.3);
+  border-radius: 50%;
+  border-top-color: #409eff;
+  animation: spin 1s linear infinite;
+  margin-bottom: 16px;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.install-command {
+  background-color: #252525;
+  padding: 12px;
+  border-radius: 4px;
+  width: 100%;
+  overflow-x: auto;
+  font-family: monospace;
+  margin-top: 16px;
+  color: #eee;
+  text-align: left;
+}
+
+.cpu-info {
+  margin-bottom: 6px;
+}
+
+.network-stats {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.network-item {
+  display: flex;
+}
+
+.network-label {
+  width: 80px;
+  color: #aaa;
+  flex-shrink: 0;
+}
+
+.network-value {
+  flex: 1;
+}
+
+/* 新增和修改的样式 */
+.install-link-container {
+  width: 100%;
+  text-align: left;
+  margin-top: 20px;
+}
+
+.install-command-link {
+  background-color: #252525;
+  padding: 12px;
+  border-radius: 4px;
+  width: 100%;
+  overflow-x: auto;
+  font-family: monospace;
+  margin: 10px 0;
+  color: #eee;
+  text-align: left;
+  cursor: pointer;
+}
+
+.copy-button {
+  background-color: #409eff;
+  color: #fff;
+  border: none;
+  border-radius: 4px;
+  padding: 6px 12px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  margin-top: 8px;
+}
+
+.copy-button:hover {
+  background-color: #66b1ff;
 }
 </style> 

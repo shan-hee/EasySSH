@@ -18,11 +18,16 @@
           </div>
         </transition>
         
-        <button class="icon-button tooltip-container" type="button" @click.stop="toggleMonitoringPanel($event)" 
-          :class="{ 'icon-disabled': !monitoringServiceInstalled }" 
-          :data-tooltip="monitoringServiceInstalled ? '查看系统监控' : '未安装监控脚本，点击一键安装'">
-          <img src="@/assets/icons/icon-monitoring.svg" class="ruyi-icon ruyi-icon-ot-monitoring" width="16" height="16" :class="{ 'icon-gray': !monitoringServiceInstalled }" />
-        </button>
+        <div class="icon-button tooltip-container" 
+          @click.stop="monitoringServiceInstalled ? toggleMonitoringPanel($event) : null" 
+          :class="{ 'icon-disabled': !monitoringServiceInstalled }">
+          <img src="@/assets/icons/icon-monitoring.svg" class="ruyi-icon ruyi-icon-ot-monitoring" width="16" height="16" 
+               :class="{ 'icon-gray': !monitoringServiceInstalled, 'icon-white': monitoringServiceInstalled }" />
+          <div v-if="monitoringServiceInstalled" class="tooltip-content">查看系统监控</div>
+          <div v-else class="tooltip-content">
+            未安装监控脚本，点击<span class="install-link" @click.stop="installMonitoring">一键安装</span>
+          </div>
+        </div>
       </div>
     </div>
     
@@ -67,6 +72,7 @@
 import { defineComponent, computed, ref, onMounted, onUnmounted, watch, inject } from 'vue'
 import { useSessionStore } from '../../store/session'
 import axios from 'axios'
+import sshService from '../../services/ssh'
 
 export default defineComponent({
   name: 'TerminalToolbar',
@@ -90,6 +96,10 @@ export default defineComponent({
     const showNetworkIcon = ref(false)
     const monitoringServiceInstalled = ref(false)
     const sessionStore = useSessionStore()
+    const lastProcessedSessionId = ref(null)
+    
+    // 添加延迟数据缓存，key为终端ID，value为{latency, timestamp}
+    const latencyCache = ref({})
     
     // 计算总RTT
     const totalRtt = computed(() => {
@@ -140,27 +150,96 @@ export default defineComponent({
       emit('toggle-monitoring-panel', { installed: monitoringServiceInstalled.value });
     }
     
+    // 安装监控服务
+    const installMonitoring = (event) => {
+      if (event) {
+        event.stopPropagation();
+      }
+      
+      // 获取当前会话ID
+      const sessionId = props.activeSessionId || sessionStore.getActiveSession();
+      if (!sessionId) {
+        console.error('没有活动的会话，无法执行安装命令');
+        return;
+      }
+      
+      console.log('准备安装监控服务，会话ID:', sessionId);
+      
+      // 将安装事件和会话ID传递给父组件
+      emit('toggle-monitoring-panel', { 
+        installed: monitoringServiceInstalled.value,
+        install: true,
+        sessionId: sessionId
+      });
+    };
+    
     // 处理网络延迟更新事件
     const handleNetworkLatencyUpdate = (event) => {
-      // 简化处理逻辑，忽略会话ID匹配检查，直接处理任何会话的延迟数据
-      // 工具栏只会显示最后接收到的延迟值，无论是哪个会话
+      // 获取事件中的会话ID（SSH会话ID，格式如 ssh_xxx）
+      const sshSessionId = event.detail.sessionId;
       
+      if (!sshSessionId || !sshService || !sshService.sessions) {
+        console.warn('无效的会话ID或SSH服务实例不可用');
+        return;
+      }
+      
+      // 获取SSH会话对象
+      const session = sshService.sessions.get(sshSessionId);
+      if (!session || !session.terminalId) {
+        console.log(`SSH会话 ${sshSessionId} 不存在或未绑定终端ID，忽略延迟数据`);
+        return;
+      }
+      
+      // 获取会话绑定的终端ID
+      const terminalId = session.terminalId;
+      
+      // 获取当前活动的终端ID
+      const activeTerminalId = props.activeSessionId || sessionStore.getActiveSession();
+      
+      // 处理接收到的延迟数据
       const latency = event.detail.latency;
       
       if (latency !== null && latency !== undefined) {
-        serverDelay.value = latency;
-        rttValue.value = `${latency} ms`;
-        console.log(`网络延迟更新: ${latency}ms (会话ID: ${event.detail.sessionId})`);
+        // 缓存该终端的延迟数据
+        latencyCache.value[terminalId] = {
+          latency,
+          timestamp: Date.now(),
+          sshSessionId
+        };
         
-        // 收到了有效的延迟数据，显示网络图标
-        if (!showNetworkIcon.value) {
+        // 检查是否为当前活动终端
+        const isActiveTerminal = terminalId === activeTerminalId;
+        
+        if (isActiveTerminal) {
+          // 如果是当前活动终端，直接更新UI显示
+          serverDelay.value = latency;
+          rttValue.value = `${latency} ms`;
           showNetworkIcon.value = true;
+          
+          // 更新最后处理的会话ID
+          lastProcessedSessionId.value = terminalId;
+          
+          console.log(`网络延迟更新: ${latency}ms (SSH会话ID: ${sshSessionId}, 终端ID: ${terminalId})`);
+        } else {
+          // 如果不是当前活动终端，只缓存不更新UI
+          console.log(`缓存非活动终端延迟数据: ${latency}ms (终端ID: ${terminalId}, 当前活动终端: ${activeTerminalId})`);
         }
       } else {
-        // 如果延迟测量失败
-        serverDelay.value = 0;
-        rttValue.value = '--';
-        console.log(`网络延迟测量失败 (会话ID: ${event.detail.sessionId})`);
+        // 如果延迟测量失败，也缓存这个结果
+        latencyCache.value[terminalId] = {
+          latency: 0,
+          timestamp: Date.now(),
+          error: true,
+          sshSessionId
+        };
+        
+        // 检查是否为当前活动终端
+        if (terminalId === activeTerminalId) {
+          // 如果是当前活动终端，更新UI显示
+          serverDelay.value = 0;
+          rttValue.value = '--';
+          console.log(`网络延迟测量失败 (SSH会话ID: ${sshSessionId}, 终端ID: ${terminalId})`);
+        }
       }
     };
     
@@ -191,10 +270,31 @@ export default defineComponent({
     };
     
     // 监听会话变化
-    watch(() => props.activeSessionId, (newId) => {
+    watch(() => props.activeSessionId, (newId, oldId) => {
       if (newId) {
         // 会话变化时重新检查监控服务状态
         checkMonitoringServiceStatus();
+        
+        // 如果切换了终端，查找该终端的缓存延迟数据
+        if (newId !== lastProcessedSessionId.value) {
+          console.log(`终端切换: ${oldId} -> ${newId}`);
+          
+          // 查找缓存的延迟数据
+          const cachedData = latencyCache.value[newId];
+          if (cachedData && cachedData.latency > 0) {
+            // 显示缓存的延迟数据
+            serverDelay.value = cachedData.latency;
+            rttValue.value = `${cachedData.latency} ms`;
+            showNetworkIcon.value = true;
+            console.log(`显示终端 ${newId} 缓存的延迟数据: ${cachedData.latency}ms`);
+          } else {
+            // 如果没有缓存数据，重置显示
+            console.log(`终端 ${newId} 无缓存延迟数据，等待新数据`);
+            // 不重置显示，继续使用上一个终端的数据直到收到新数据
+          }
+          
+          lastProcessedSessionId.value = newId;
+        }
       }
     });
     
@@ -215,7 +315,34 @@ export default defineComponent({
       // 初始检查监控服务状态
       checkMonitoringServiceStatus();
       
-      console.log(`TerminalToolbar已挂载，当前活动会话ID: ${props.activeSessionId}`);
+      // 主动触发一次延迟测量
+      const currentId = props.activeSessionId || sessionStore.getActiveSession();
+      if (currentId && sshService) {
+        console.log('尝试为当前活动终端触发延迟测量:', currentId);
+        
+        // 这里查找当前活动终端对应的SSH会话，并触发测量
+        setTimeout(() => {
+          try {
+            for (const [sshId, session] of sshService.sessions.entries()) {
+              if (session.terminalId === currentId) {
+                // 找到了匹配的会话，触发延迟测量
+                console.log(`找到匹配的SSH会话: ${sshId}，终端ID: ${currentId}`);
+                
+                // 设置为当前活动会话ID，确保后续接收到的延迟数据能够正确显示
+                lastProcessedSessionId.value = currentId;
+                
+                // 注意：重要！同步更新SessionStore中的活动会话ID
+                sessionStore.setActiveSession(currentId);
+                break;
+              }
+            }
+          } catch (error) {
+            console.error('触发延迟测量失败:', error);
+          }
+        }, 1000);
+      }
+      
+      console.log(`TerminalToolbar已挂载，当前活动会话ID: ${props.activeSessionId || sessionStore.getActiveSession()}`);
     });
     
     // 监听会话ID变化
@@ -242,7 +369,8 @@ export default defineComponent({
       toggleSftpPanel,
       toggleMonitoringPanel,
       showNetworkIcon,
-      monitoringServiceInstalled
+      monitoringServiceInstalled,
+      installMonitoring
     }
   }
 })
@@ -311,12 +439,17 @@ export default defineComponent({
 
 /* 禁用状态的图标按钮 */
 .icon-button.icon-disabled {
-  cursor: help;
+  cursor: not-allowed !important;
 }
 
 /* 灰色图标样式 */
 .icon-gray {
   filter: grayscale(100%) opacity(0.5);
+}
+
+/* 白色图标样式 */
+.icon-white {
+  filter: brightness(1.1);
 }
 
 .network-monitor {
@@ -491,13 +624,29 @@ export default defineComponent({
   100% { opacity: 0.6; }
 }
 
-/* 添加自定义tooltip样式 */
+/* 自定义tooltip样式 */
 .tooltip-container {
   position: relative;
+  /* 添加与icon-button相同的样式确保外观一致 */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  background-color: transparent;
+  border-radius: 4px;
+  cursor: pointer;
+  color: #e0e0e0;
+  padding: 0;
+  transition: background-color 0.2s ease;
 }
 
-.tooltip-container:hover::after {
-  content: attr(data-tooltip);
+.tooltip-container:hover {
+  background-color: rgba(255, 255, 255, 0.2);
+}
+
+.tooltip-content {
+  display: none;
   position: absolute;
   left: 50%;
   top: 100%;
@@ -511,10 +660,26 @@ export default defineComponent({
   margin-top: 10px;
   z-index: 9000;
   box-shadow: 0 3px 12px rgba(0, 0, 0, 0.4);
-  display: block;
-  pointer-events: none;
+  pointer-events: all;
 }
 
+/* 显示tooltip，不仅当hover容器时，也在hover内容时 */
+.tooltip-container:hover .tooltip-content,
+.tooltip-content:hover {
+  display: block;
+}
+
+/* 添加padding确保鼠标到达tooltip时不会有空隙 */
+.tooltip-content::before {
+  content: "";
+  position: absolute;
+  top: -10px;
+  left: 0;
+  width: 100%;
+  height: 10px;
+}
+
+/* 添加箭头样式 */
 .tooltip-container:hover::before {
   content: "";
   position: absolute;
@@ -528,5 +693,22 @@ export default defineComponent({
   border-bottom: 5px solid #333;
   z-index: 9100;
   pointer-events: none;
+}
+
+/* 一键安装链接样式 */
+.install-link {
+  color: #409EFF;
+  cursor: pointer;
+  text-decoration: none;
+  font-weight: bold;
+}
+
+.install-link:hover {
+  opacity: 0.8;
+}
+
+/* 禁用状态的tooltip容器 */
+.tooltip-container.icon-disabled {
+  cursor: not-allowed !important;
 }
 </style> 

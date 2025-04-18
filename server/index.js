@@ -14,6 +14,7 @@ const { connectDatabase, getDatabaseStatus, closeDatabase } = require('./config/
 // 导入路由
 const userRoutes = require('./routes/userRoutes');
 const serverRoutes = require('./routes/serverRoutes');
+const monitorRoutes = require('./routes/monitorRoutes');
 
 // ANSI颜色代码
 const colors = {
@@ -59,6 +60,7 @@ app.use(express.static(path.join(__dirname, 'public')));
 // API路由
 app.use('/api/users', userRoutes);
 app.use('/api/servers', serverRoutes);
+app.use('/api/monitor', monitorRoutes);
 
 // 状态API
 app.get('/api/status', (req, res) => {

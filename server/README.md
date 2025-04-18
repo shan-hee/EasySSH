@@ -407,4 +407,76 @@ npm run dev
 
 # 生产模式运行
 npm start
-``` 
+```
+
+## 系统监控功能
+
+EasySSH提供了实时系统监控功能，可以监控远程服务器的CPU、内存、磁盘等资源使用情况。监控功能需要在远程服务器上安装监控服务。
+
+### 监控数据指标
+
+- **CPU信息**：使用率、核心数、型号
+- **内存信息**：使用情况、总量、可用量
+- **交换分区信息**：使用情况、总量、可用量
+- **磁盘信息**：使用情况、总量、可用量
+- **网络状态**：连接数、流量统计
+- **操作系统信息**：类型、平台、版本、运行时间等
+- **IP地址**：内网IP、公网IP
+
+### 工作原理
+
+1. 在远程服务器上安装监控服务
+2. 监控服务使用`node-os-utils`库收集系统信息
+3. 通过Socket.IO建立实时数据连接
+4. 每1.5秒向客户端推送一次最新的系统数据
+5. 每10分钟更新一次IP地址信息
+
+### 安装监控服务
+
+EasySSH提供了一键安装脚本，用户只需在终端中输入以下命令即可安装监控服务：
+
+```bash
+curl -sSL http://your-server:3000/api/monitor/install-script | sudo bash
+```
+
+安装完成后，监控服务会自动启动并在后台运行。
+
+### 技术细节
+
+- 监控服务运行在端口9528
+- 使用Socket.IO实现实时数据推送
+- 通过systemd服务管理，确保服务器重启后自动运行
+- 支持多种Linux发行版（Debian/Ubuntu, CentOS/RHEL等）
+
+## 监控服务管理
+
+EasySSH提供系统监控服务，可实时查看服务器的CPU、内存、磁盘、网络等系统资源使用情况。
+
+### 安装监控服务
+
+在服务器上执行以下命令安装监控服务：
+
+```bash
+sudo ./scripts/monitor-install.sh
+```
+
+安装完成后，监控服务将自动启动并在9528端口运行。
+
+### 管理监控服务
+
+可以使用以下命令管理监控服务：
+
+- 查看服务状态：`sudo systemctl status easyssh-monitor`
+- 启动服务：`sudo systemctl start easyssh-monitor`
+- 停止服务：`sudo systemctl stop easyssh-monitor`
+- 重启服务：`sudo systemctl restart easyssh-monitor`
+
+### 卸载监控服务
+
+如需卸载监控服务，在服务器上执行以下命令：
+
+```bash
+sudo ./scripts/monitor-uninstall.sh
+```
+
+卸载脚本会自动停止服务、删除服务文件及相关配置。 

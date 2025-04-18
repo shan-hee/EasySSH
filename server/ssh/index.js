@@ -84,11 +84,8 @@ async function measureNetworkLatency(host, ws, sessionId) {
     const isWindows = os.platform() === 'win32';
     const pingCmd = isWindows ? `ping -n 1 ${host}` : `ping -c 1 ${host}`;
     
-    console.log(`执行ping命令: ${pingCmd}`);
-    
     exec(pingCmd, (error, stdout, stderr) => {
       if (error) {
-        console.error(`网络延迟测量错误: ${error.message}`);
         // 发送错误消息
         ws.send(JSON.stringify({
           type: 'network_latency',
@@ -100,8 +97,6 @@ async function measureNetworkLatency(host, ws, sessionId) {
         }));
         return;
       }
-      
-      console.log(`Ping命令输出: ${stdout}`);
       
       // 解析ping输出，提取延迟值
       let latency = null;
@@ -128,7 +123,6 @@ async function measureNetworkLatency(host, ws, sessionId) {
         const match = stdout.match(pattern);
         if (match && match[1]) {
           latency = parseFloat(match[1]);
-          console.log(`使用模式 ${pattern} 匹配到延迟: ${latency}ms`);
           break;
         }
       }
@@ -139,11 +133,8 @@ async function measureNetworkLatency(host, ws, sessionId) {
         const timeMatch = stdout.match(/(\d+\.?\d*)\s*(?:ms|毫秒)/);
         if (timeMatch && timeMatch[1]) {
           latency = parseFloat(timeMatch[1]);
-          console.log(`使用宽松匹配找到延迟: ${latency}ms`);
         }
       }
-      
-      console.log(`网络延迟测量结果: ${host} - ${latency !== null ? latency + 'ms' : 'null'}`);
       
       // 发送延迟信息到前端
       ws.send(JSON.stringify({
@@ -155,7 +146,7 @@ async function measureNetworkLatency(host, ws, sessionId) {
       }));
     });
   } catch (error) {
-    console.error(`网络延迟测量异常: ${error.message}`);
+    // 处理异常，但不打印
   }
 }
 
@@ -167,7 +158,6 @@ async function measureNetworkLatency(host, ws, sessionId) {
  */
 function setupPeriodicLatencyCheck(host, ws, sessionId) {
   if (!host || !ws || !sessionId || !sessions.has(sessionId)) {
-    console.error(`设置定期延迟测量失败: 参数无效 (${host}, ${sessionId})`);
     return;
   }
   
@@ -179,22 +169,18 @@ function setupPeriodicLatencyCheck(host, ws, sessionId) {
     session.latencyCheckInterval = null;
   }
   
-  console.log(`为会话 ${sessionId} 设置定期延迟测量`);
-  
   // 设置新的定时器，每10秒执行一次
   session.latencyCheckInterval = setInterval(() => {
     // 如果WebSocket已关闭，停止测量
     if (!ws || ws.readyState !== WebSocket.OPEN) {
       clearInterval(session.latencyCheckInterval);
       session.latencyCheckInterval = null;
-      console.log(`会话 ${sessionId} WebSocket已关闭，停止定期延迟测量`);
       return;
     }
     
     // 检查会话是否还存在
     if (!sessions.has(sessionId)) {
       clearInterval(session.latencyCheckInterval);
-      console.log(`会话 ${sessionId} 已不存在，停止定期延迟测量`);
       return;
     }
     
@@ -206,12 +192,10 @@ function setupPeriodicLatencyCheck(host, ws, sessionId) {
     
     if (inactiveTime > INACTIVE_THRESHOLD) {
       // 如果超过5分钟没有活动，不执行测量
-      console.log(`会话 ${sessionId} 超过5分钟不活动，跳过本次延迟测量`);
       return;
     }
     
     // 执行网络延迟测量
-    console.log(`执行定期延迟测量: 会话 ${sessionId}`);
     measureNetworkLatency(host, ws, sessionId);
   }, 10000); // 10秒间隔
 }
@@ -227,7 +211,6 @@ function clearPeriodicLatencyCheck(sessionId) {
   if (session.latencyCheckInterval) {
     clearInterval(session.latencyCheckInterval);
     session.latencyCheckInterval = null;
-    console.log(`已清理会话 ${sessionId} 的定期延迟测量`);
   }
 }
 
