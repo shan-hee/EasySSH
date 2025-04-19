@@ -2082,6 +2082,11 @@ const sftpService = new SFTPService(sshService);
 SSHService.prototype.handleSftpMessages = function(message) {
   // 处理来自服务器的SFTP相关消息
   if (message && message.type && message.type.startsWith('sftp_')) {
+    // 特殊处理sftp_ready类型消息
+    if (message.type === 'sftp_ready') {
+      log.debug('SSH服务捕获到SFTP就绪消息');
+      return true; // 消息已处理
+    }
     sftpService.handleSftpMessage(message);
     return true; // 消息已处理
   }
