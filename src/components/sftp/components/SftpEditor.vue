@@ -77,7 +77,7 @@ export default defineComponent({
     const originalContent = ref(props.content)
     const isDirty = ref(false)
     const isSaving = ref(false)
-    const isFullscreen = ref(false)
+    const isFullscreen = ref(true)
     const fileName = ref(props.filePath.split('/').pop())
     const cursor = ref({ line: 1, ch: 0 })
     const isComponentMounted = ref(false)
@@ -257,37 +257,99 @@ export default defineComponent({
       if (!isDirty.value || isSaving.value) return
       
       isSaving.value = true
+      let loading = null
+      let saveTimeout = null
       
       try {
+        console.log('[SftpEditor] 开始保存:', props.filePath)
         const content = getEditorContent()
         
-        const loading = ElLoading.service({
+        loading = ElLoading.service({
           lock: true,
           text: '保存文件中...',
           background: 'rgba(0, 0, 0, 0.7)'
         })
         
-        // 上传文件
-        const tempFile = new File([content], fileName.value, { type: 'text/plain' })
-        await sftpService.uploadFile(
-          props.sessionId, 
-          tempFile, 
-          props.filePath, 
-          () => {} // 进度回调，简化处理
-        )
+        // 创建上传任务
+        const saveTask = new Promise(async (resolve, reject) => {
+          try {
+            // 超时保护 - 3秒
+            saveTimeout = setTimeout(() => {
+              console.log('[SftpEditor] 上传超时')
+              resolve({ timedOut: true })
+            }, 3000)
+            
+            // 上传文件
+            const tempFile = new File([content], fileName.value, { type: 'text/plain' })
+            
+            await sftpService.uploadFile(
+              props.sessionId, 
+              tempFile, 
+              props.filePath, 
+              (progress) => {
+                // 只在收到100%进度时处理
+                if (progress === 100) {
+                  console.log(`[SftpEditor] 上传完成(100%)`)
+                  
+                  // 清除超时
+                  if (saveTimeout) {
+                    clearTimeout(saveTimeout)
+                    saveTimeout = null
+                  }
+                  
+                  // 立即完成
+                  resolve({ complete: true })
+                }
+              }
+            )
+            
+            // 清除超时
+            if (saveTimeout) {
+              clearTimeout(saveTimeout)
+              saveTimeout = null
+            }
+            
+            resolve({ success: true })
+          } catch (error) {
+            if (saveTimeout) {
+              clearTimeout(saveTimeout)
+              saveTimeout = null
+            }
+            reject(error)
+          }
+        })
         
-        loading.close()
+        // 等待保存任务完成
+        const result = await saveTask
+        
+        // 关闭加载指示器
+        if (loading) {
+          loading.close()
+          loading = null
+        }
+        
         ElMessage.success('文件保存成功')
         
-        // 更新原始内容，重置脏标记
+        // 更新状态
         originalContent.value = content
         isDirty.value = false
         
         // 触发保存事件
         emit('save')
       } catch (error) {
+        console.error('[SftpEditor] 保存失败:', error.message)
+        
+        if (loading) {
+          loading.close()
+          loading = null
+        }
+        
+        if (saveTimeout) {
+          clearTimeout(saveTimeout)
+          saveTimeout = null
+        }
+        
         ElMessage.error(`保存文件失败: ${error.message}`)
-        console.error('保存文件失败:', error)
       } finally {
         isSaving.value = false
       }

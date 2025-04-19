@@ -67,6 +67,7 @@ function initWebSocketServer(server) {
             
           case 'sftp_upload':
             // 处理SFTP上传
+            console.log(`收到sftp_upload请求: 会话=${data.sessionId}, 操作ID=${data.operationId}, 路径=${data.path}`);
             sftp.handleSftpUpload(ws, data);
             break;
             

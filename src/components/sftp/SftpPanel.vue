@@ -54,14 +54,16 @@
         </div>
         
         <!-- SFTP文件列表将在这里显示 -->
-        <div v-if="isLoadingSftp" class="sftp-placeholder">
-          <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24">
-            <path fill="#555" d="M10,4H4C2.89,4 2,4.89 2,6V18A2,2 0 0,0 4,20H20A2,2 0 0,0 22,18V8C22,6.89 21.1,6 20,6H12L10,4Z" />
-          </svg>
+        <div v-if="isLoadingSftp && !isEditing" class="sftp-loading-files">
+          <div class="sftp-loading-spinner">
+            <svg class="circular" viewBox="25 25 50 50">
+              <circle class="path" cx="50" cy="50" r="20" fill="none"/>
+            </svg>
+          </div>
           <p>正在加载文件列表...</p>
         </div>
         
-        <div v-else class="sftp-file-explorer" 
+        <div v-else-if="!isEditing" class="sftp-file-explorer" 
           :class="{ 'sftp-drag-over': isDragOver }"
           @dragover.prevent="handleDragOver"
           @dragleave.prevent="handleDragLeave"
@@ -92,12 +94,7 @@
               <div class="sftp-file-actions">操作</div>
             </div>
             
-            <!-- 加载中提示 -->
-            <div v-if="isLoadingSftp && fileList.length === 0" class="sftp-loading-files">
-              <p>正在加载文件列表...</p>
-            </div>
-            
-            <div v-else-if="fileList.length === 0" class="sftp-empty-folder">
+            <div v-if="fileList.length === 0" class="sftp-empty-folder">
               <p>此文件夹为空</p>
             </div>
             
@@ -372,12 +369,9 @@ export default defineComponent({
     const loadDirectoryContents = async (path) => {
       resetError();
       
-      // 仅在路径变更时显示加载状态，减少UI闪烁
-      const pathChanged = currentPath.value !== path;
-      if (pathChanged) {
-        // 只在路径改变时显示加载指示器
-        fileList.value = [];
-      }
+      // 显示加载状态
+      isLoadingSftp.value = true;
+      fileList.value = []; // 清空文件列表，避免显示旧内容
       
       try {
         // 确保有会话ID
@@ -462,28 +456,54 @@ export default defineComponent({
     };
     
     // 处理文件项单击事件
-    const handleItemClick = (file) => {
-      if (file.isDirectory) {
-        // 如果是目录，进入该目录
-        if (file.name === '..') {
-          // 导航到父目录
-          const pathParts = currentPath.value.split('/').filter(part => part);
-          pathParts.pop();
-          const newPath = pathParts.length === 0 ? '/' : '/' + pathParts.join('/');
-          loadDirectoryContents(newPath);
+    const handleItemClick = async (file) => {
+      // 如果是文件，则打开查看器
+      if (!file.isDirectory) {
+        if (isTextFile(file.name)) {
+          // 如果是文本文件，打开编辑器
+          openEditor(file);
         } else {
-          // 导航到子目录
+          // 如果是二进制文件，提示下载
+          const confirmed = await ElMessageBox.confirm(
+            `${file.name} 可能是二进制文件，是否下载?`,
+            '文件查看',
+            {
+              confirmButtonText: '下载',
+              cancelButtonText: '取消',
+              type: 'info'
+            }
+          ).catch(() => false);
+          
+          if (confirmed) {
+            downloadFile(file);
+          }
+        }
+        return;
+      }
+      
+      // 如果是目录，则进入该目录
+      // 显示加载指示器
+      isLoadingSftp.value = true;
+      fileList.value = []; // 清空列表，避免显示旧文件
+      
+      try {
+        // 处理上级目录
+        if (file.name === '..') {
+          // 获取父目录路径
+          const parentPath = currentPath.value.split('/').slice(0, -1).join('/') || '/';
+          await loadDirectoryContents(parentPath);
+        } else {
+          // 构建新的路径
           const newPath = currentPath.value === '/' ? 
             currentPath.value + file.name : 
             currentPath.value + '/' + file.name;
-          loadDirectoryContents(newPath);
+          
+          await loadDirectoryContents(newPath);
         }
-      } else if (isTextFile(file.name)) {
-        // 如果是文本文件，直接打开编辑器
-        openEditor(file);
-      } else {
-        // 非文本文件，可以提示用户下载或打开方式
-        ElMessage.info(`${file.name} 不是可编辑的文本文件，请使用下载功能`);
+      } catch (error) {
+        console.error('打开目录失败:', error);
+        showError(`打开目录失败: ${error.message}`);
+        isLoadingSftp.value = false;
       }
     };
     
@@ -1779,122 +1799,55 @@ export default defineComponent({
 });
 </script>
 
-<style>
+<style lang="scss">
 @import './styles/sftp-panel.css';
 
 .sftp-loading-files {
-  padding: 30px 20px;
-  text-align: center;
-  color: #888;
-  font-style: italic;
   display: flex;
   flex-direction: column;
-  align-items: center;
   justify-content: center;
-  height: 100px;
-}
-
-.sftp-progress {
-  margin-bottom: 16px;
-  padding: 12px 16px;
-  background-color: #2a2a2a;
-  border-radius: 8px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
-  border: 1px solid #333;
-}
-
-.sftp-progress-header {
-  display: flex;
   align-items: center;
-  justify-content: space-between;
-  margin-bottom: 10px;
+  height: 200px;
+  color: #909399;
+  
+  .sftp-loading-spinner {
+    margin-bottom: 15px;
+    
+    .circular {
+      height: 40px;
+      width: 40px;
+      animation: loading-rotate 2s linear infinite;
+    }
+    
+    .path {
+      stroke-dasharray: 90, 150;
+      stroke-dashoffset: 0;
+      stroke-width: 2;
+      stroke: #409EFF;
+      stroke-linecap: round;
+      animation: loading-dash 1.5s ease-in-out infinite;
+    }
+  }
 }
 
-.sftp-progress-title {
-  display: flex;
-  align-items: center;
-  gap: 10px;
+@keyframes loading-rotate {
+  100% {
+    transform: rotate(360deg);
+  }
 }
 
-.sftp-progress-type {
-  font-weight: 500;
-  color: #e0e0e0;
-}
-
-.sftp-speed {
-  color: #67c23a;
-  font-weight: 500;
-  font-size: 13px;
-  background-color: rgba(103, 194, 58, 0.1);
-  padding: 2px 8px;
-  border-radius: 12px;
-}
-
-.sftp-percentage {
-  font-weight: bold;
-  font-size: 16px;
-  color: #fff;
-}
-
-.sftp-progress-bar-container {
-  height: 8px;
-  background-color: #3c3c3c;
-  border-radius: 4px;
-  overflow: hidden;
-  margin-bottom: 8px;
-}
-
-.sftp-progress-bar {
-  height: 100%;
-  border-radius: 4px;
-  transition: width 0.3s ease, background-color 0.5s ease;
-}
-
-.sftp-progress-info {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  font-size: 12px;
-  color: #aaa;
-  margin-top: 6px;
-}
-
-.sftp-progress-filename {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  max-width: 90%;
-}
-
-.sftp-cancel-button {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  padding: 3px 8px;
-  border-radius: 4px;
-  border: none;
-  background-color: rgba(244, 67, 54, 0.15);
-  color: #f44336;
-  font-size: 12px;
-  cursor: pointer;
-  transition: background-color 0.2s;
-}
-
-.sftp-cancel-button:hover {
-  background-color: rgba(244, 67, 54, 0.25);
-}
-
-.sftp-cancel-button:active {
-  background-color: rgba(244, 67, 54, 0.35);
-}
-
-.sftp-editor-wrapper {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  z-index: 10;
-  background-color: rgba(38, 50, 56, 0.98);
+@keyframes loading-dash {
+  0% {
+    stroke-dasharray: 1, 200;
+    stroke-dashoffset: 0;
+  }
+  50% {
+    stroke-dasharray: 90, 150;
+    stroke-dashoffset: -40px;
+  }
+  100% {
+    stroke-dasharray: 90, 150;
+    stroke-dashoffset: -120px;
+  }
 }
 </style> 

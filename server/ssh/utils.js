@@ -93,7 +93,17 @@ function sendSftpSuccess(ws, sessionId, operationId, additionalData = {}) {
     ...additionalData
   };
   
-  sendMessage(ws, MSG_TYPE.SUCCESS, data);
+  // 检查WebSocket状态
+  if (!ws || ws.readyState !== WS_STATE.OPEN) {
+    console.error(`发送SFTP成功消息失败: WebSocket未就绪`);
+    return;
+  }
+  
+  try {
+    sendMessage(ws, MSG_TYPE.SUCCESS, data);
+  } catch (error) {
+    console.error(`发送SFTP成功消息出错: ${error.message}`);
+  }
 }
 
 /**

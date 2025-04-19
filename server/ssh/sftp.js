@@ -182,6 +182,8 @@ async function handleSftpUpload(ws, data) {
     
     writeStream.on('finish', () => {
       console.log(logMessage('文件上传', remotePath, '完成', `${totalSize} 字节`));
+      
+      // 立即发送成功消息
       sendSftpSuccess(ws, sessionId, operationId, {
         message: '文件上传成功',
         totalSize
@@ -310,10 +312,9 @@ async function handleSftpDownload(ws, data) {
           // 获取文件名
           const filename = path.basename(remotePath);
           
-          // 发送文件内容
-          sendMessage(ws, MSG_TYPE.FILE, {
-            sessionId,
-            operationId,
+          // 发送文件内容 - 使用sftp_success类型而不是sftp_file类型
+          sendSftpSuccess(ws, sessionId, operationId, {
+            responseType: 'file_download',
             filename,
             path: remotePath,
             content: dataUri,

@@ -165,7 +165,7 @@ export default defineComponent({
 .sftp-path-nav {
   display: flex;
   align-items: center;
-  margin-bottom: 10px;
+  margin: 10px 0;
   gap: 8px;
   width: 100%;
 }

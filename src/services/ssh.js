@@ -1505,23 +1505,43 @@ class SFTPService {
         // 获取SSH会话
         const { sshSessionId, session } = this._getSSHSession(sessionId);
         
-        // 设置操作超时 (较长，因为上传可能需要更多时间)
+        // 设置操作超时
         const timeout = setTimeout(() => {
           this.fileOperations.delete(operationId);
           reject(new Error('文件上传超时'));
-        }, 10 * 60 * 1000); // 10分钟超时
+        }, 60 * 1000); // 1分钟超时
+        
+        // 标记是否自动完成
+        let autoCompletedFlag = false;
         
         // 保存操作回调
         this.fileOperations.set(operationId, {
           resolve: (data) => {
             clearTimeout(timeout);
-            resolve(data);
+            // 如果设置了自动完成标记，则已经resolve了
+            if (!autoCompletedFlag) {
+              resolve(data);
+            }
           },
           reject: (error) => {
             clearTimeout(timeout);
-            reject(error);
+            // 如果设置了自动完成标记，则已经resolve了
+            if (!autoCompletedFlag) {
+              reject(error);
+            }
           },
-          progress: progressCallback,
+          progress: (progress) => {
+            if (progressCallback && typeof progressCallback === 'function') {
+              progressCallback(progress);
+              
+              // 收到100%进度时，立即完成
+              if (progress === 100 && !autoCompletedFlag) {
+                autoCompletedFlag = true;
+                clearTimeout(timeout);
+                resolve({ success: true, message: '上传完成' });
+              }
+            }
+          },
           type: 'upload'
         });
         
@@ -1584,7 +1604,7 @@ class SFTPService {
         
         // 设置操作超时
         const timeout = setTimeout(() => {
-          this.fileOperations.delete(operationId);
+                    this.fileOperations.delete(operationId);
           reject(new Error('文件下载超时'));
         }, 10 * 60 * 1000); // 10分钟超时
         
@@ -1931,24 +1951,36 @@ class SFTPService {
     
     const { operationId } = message.data;
     
+    // 添加消息类型的日志
+    log.debug(`收到SFTP消息: 类型=${message.type}, 操作ID=${operationId}`);
+    console.log(`[SFTP服务] 收到消息: 类型=${message.type}, 操作ID=${operationId}, 详情=`, JSON.stringify(message.data).substring(0, 200));
+    
     // 查找对应的操作
     if (!this.fileOperations.has(operationId)) {
-      log.warn(`未找到SFTP操作: ${operationId}`);
+      log.warn(`未找到SFTP操作: ${operationId}, 消息类型: ${message.type}`);
+      console.warn(`[SFTP服务] 未找到操作: ${operationId}, 消息类型: ${message.type}`);
+      console.warn(`[SFTP服务] 当前操作列表:`, Array.from(this.fileOperations.keys()));
       return;
     }
     
     const operation = this.fileOperations.get(operationId);
+    log.debug(`找到对应操作: 类型=${operation.type}, 操作ID=${operationId}`);
+    console.log(`[SFTP服务] 找到操作: 类型=${operation.type}, 操作ID=${operationId}`);
     
     switch (message.type) {
       case 'sftp_progress':
         // 处理进度回调
         if (operation.progress && typeof operation.progress === 'function') {
+          log.debug(`进度更新: ${message.data.progress}%`);
           operation.progress(message.data.progress);
         }
         break;
         
       case 'sftp_success':
         // 处理成功回调
+        log.debug(`操作成功: 类型=${operation.type}, 操作ID=${operationId}`);
+        console.log(`[SFTP服务] 操作成功: 类型=${operation.type}, 操作ID=${operationId}`);
+        
         if (operation.resolve && typeof operation.resolve === 'function') {
           // 确保文件列表操作返回的是数组
           if (operation.type === 'list') {
@@ -1965,29 +1997,71 @@ class SFTPService {
             }
             
             operation.resolve(filesList);
+          } else if (operation.type === 'upload') {
+            log.debug(`文件上传成功: ${message.data.message || '无消息'}`);
+            
+            try {
+              // 检查操作是否已经自动完成
+              if (operation.autoCompleted) {
+                // 操作已经自动完成，不需要再处理
+                log.debug('文件上传操作已自动完成，跳过处理');
+              } else {
+                // 直接resolve成功消息
+                operation.resolve(message.data);
+              }
+            } catch (error) {
+              log.error(`调用resolve回调时出错: ${error.message}`);
+            }
+            
+            // 操作完成，从映射中删除
+            this.fileOperations.delete(operationId);
           } else {
-            operation.resolve(message.data);
+            log.debug(`其他操作成功: 类型=${operation.type}`);
+            try {
+              operation.resolve(message.data);
+            } catch (error) {
+              log.error(`调用resolve回调时出错: ${error.message}`);
+            }
           }
+          
+          // 从映射中删除操作
           this.fileOperations.delete(operationId);
+          log.debug(`操作已从映射中删除: ${operationId}`);
+          console.log(`[SFTP服务] 操作已从映射中删除: ${operationId}`);
+        } else {
+          log.warn(`操作没有resolve回调: 类型=${operation.type}, 操作ID=${operationId}`);
+          console.warn(`[SFTP服务] 操作没有resolve回调: 类型=${operation.type}, 操作ID=${operationId}`);
         }
         break;
         
       case 'sftp_error':
         // 处理错误回调
+        log.error(`SFTP操作错误: 类型=${operation.type}, 错误=${message.data.message || '未知SFTP错误'}`);
+        console.error(`[SFTP服务] 操作错误: 类型=${operation.type}, 错误=${message.data.message || '未知SFTP错误'}`);
+        
         if (operation.reject && typeof operation.reject === 'function') {
           // 对于列表操作，如果出错返回空数组
           if (operation.type === 'list') {
             log.warn(`列出目录失败: ${message.data.message || '未知SFTP错误'}，返回空数组`);
             operation.resolve([]);
           } else {
-            operation.reject(new Error(message.data.message || '未知SFTP错误'));
+            try {
+              operation.reject(new Error(message.data.message || '未知SFTP错误'));
+              console.log(`[SFTP服务] 成功调用reject回调`);
+            } catch (error) {
+              console.error(`[SFTP服务] 调用reject回调时出错:`, error);
+              log.error(`调用reject回调时出错: ${error.message}`);
+            }
           }
           this.fileOperations.delete(operationId);
+          log.debug(`操作已从映射中删除(错误): ${operationId}`);
+          console.log(`[SFTP服务] 操作已从映射中删除(错误): ${operationId}`);
         }
         break;
         
       default:
         log.warn(`未知的SFTP消息类型: ${message.type}`);
+        console.warn(`[SFTP服务] 未知的消息类型: ${message.type}`);
         break;
     }
   }
@@ -2104,14 +2178,28 @@ SSHService.prototype._setupSocketEvents = function(socket, sessionId, connection
     try {
       const message = JSON.parse(event.data);
       
-      // 如果是SFTP消息则交给SFTP处理器处理
+      // 记录所有SFTP相关消息，帮助调试
       if (message && message.type && message.type.startsWith('sftp_')) {
+        log.debug(`收到SFTP WebSocket消息: 类型=${message.type}, 会话ID=${sessionId}, 操作ID=${message.data?.operationId || 'N/A'}`);
+        
+        // 如果是sftp_success，添加额外的日志
+        if (message.type === 'sftp_success') {
+          console.log(`[SSH服务] 收到文件上传成功消息: 操作ID=${message.data?.operationId}, 会话ID=${sessionId}`);
+          log.info(`文件操作成功: 类型=${message.type}, 操作ID=${message.data?.operationId}, 消息=${message.data?.message || '无消息'}`);
+        }
+        
+        // 如果是SFTP消息则交给SFTP处理器处理
         if (this.handleSftpMessages(message)) {
+          console.log(`[SSH服务] SFTP消息已处理: 类型=${message.type}`);
           return; // 如果已被处理则跳过原有处理
+        } else {
+          console.warn(`[SSH服务] SFTP消息未被处理: 类型=${message.type}`);
         }
       }
     } catch (error) {
       // 解析失败，仍然尝试原有处理
+      console.error(`[SSH服务] 解析WebSocket消息失败:`, error);
+      log.error(`解析WebSocket消息失败: ${error.message}`);
     }
     
     // 调用原有的onmessage处理
