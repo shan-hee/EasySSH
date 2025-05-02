@@ -1,0 +1,206 @@
+/*
+ * layout.css - 布局样式
+ * 包含应用的主要布局结构
+ */
+
+/* 主容器 */
+.container {
+  width: 100%;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 var(--spacing-md);
+}
+
+/* 头部布局 */
+.header {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 45px;
+  background-color: var(--light-color);
+  box-shadow: var(--shadow-sm);
+  z-index: var(--z-fixed);
+  display: flex;
+  align-items: center;
+  padding: 0 var(--spacing-md);
+}
+
+.header__left {
+  display: flex;
+  align-items: center;
+  flex: 1;
+}
+
+.header__center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 2;
+}
+
+.header__right {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex: 1;
+  gap: var(--spacing-md);
+}
+
+/* 主体布局 */
+.main {
+  display: flex;
+  height: calc(100vh - 45px);
+  margin-top: 40px;
+  overflow: hidden;
+}
+
+/* 侧边栏 */
+.sidebar {
+  width: 250px;
+  height: 100%;
+  background-color: var(--gray-100);
+  border-right: 1px solid var(--gray-200);
+  transition: width var(--transition-normal);
+  overflow-y: auto;
+  overflow-x: hidden;
+  z-index: var(--z-sticky);
+}
+
+.sidebar--collapsed {
+  width: 70px;
+}
+
+/* 侧边栏可折叠按钮 */
+.sidebar__toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  background-color: var(--gray-200);
+  border-radius: 50%;
+  position: absolute;
+  top: 70px;
+  right: -12px;
+  z-index: var(--z-sticky);
+  cursor: pointer;
+  transition: transform var(--transition-normal);
+}
+
+.sidebar--collapsed .sidebar__toggle {
+  transform: rotate(180deg);
+}
+
+/* 内容区域 */
+.content {
+  flex: 1;
+  padding: var(--spacing-md);
+  overflow-y: auto;
+  background-color: var(--light-color);
+}
+
+/* 卡片 */
+.card {
+  background-color: #fff;
+  border-radius: var(--border-radius-lg);
+  box-shadow: var(--shadow-sm);
+  margin-bottom: var(--spacing-md);
+  overflow: hidden;
+}
+
+.card__header {
+  padding: var(--spacing-md);
+  border-bottom: 1px solid var(--gray-200);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.card__title {
+  font-size: var(--font-size-lg);
+  font-weight: 600;
+  color: var(--gray-800);
+}
+
+.card__body {
+  padding: var(--spacing-md);
+}
+
+.card__footer {
+  padding: var(--spacing-md);
+  border-top: 1px solid var(--gray-200);
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+/* 网格系统 */
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  margin: 0 calc(-1 * var(--spacing-sm));
+}
+
+.col {
+  padding: 0 var(--spacing-sm);
+  flex: 1;
+}
+
+/* 创建12列网格 */
+.col-1 { flex: 0 0 8.333333%; max-width: 8.333333%; }
+.col-2 { flex: 0 0 16.666667%; max-width: 16.666667%; }
+.col-3 { flex: 0 0 25%; max-width: 25%; }
+.col-4 { flex: 0 0 33.333333%; max-width: 33.333333%; }
+.col-5 { flex: 0 0 41.666667%; max-width: 41.666667%; }
+.col-6 { flex: 0 0 50%; max-width: 50%; }
+.col-7 { flex: 0 0 58.333333%; max-width: 58.333333%; }
+.col-8 { flex: 0 0 66.666667%; max-width: 66.666667%; }
+.col-9 { flex: 0 0 75%; max-width: 75%; }
+.col-10 { flex: 0 0 83.333333%; max-width: 83.333333%; }
+.col-11 { flex: 0 0 91.666667%; max-width: 91.666667%; }
+.col-12 { flex: 0 0 100%; max-width: 100%; }
+
+/* 响应式布局 */
+@media screen and (max-width: 1024px) {
+  .sidebar {
+    width: 200px;
+  }
+  
+  .col-md-1 { flex: 0 0 8.333333%; max-width: 8.333333%; }
+  .col-md-2 { flex: 0 0 16.666667%; max-width: 16.666667%; }
+  .col-md-3 { flex: 0 0 25%; max-width: 25%; }
+  .col-md-4 { flex: 0 0 33.333333%; max-width: 33.333333%; }
+  .col-md-5 { flex: 0 0 41.666667%; max-width: 41.666667%; }
+  .col-md-6 { flex: 0 0 50%; max-width: 50%; }
+  .col-md-12 { flex: 0 0 100%; max-width: 100%; }
+}
+
+@media screen and (max-width: 768px) {
+  .sidebar {
+    position: fixed;
+    left: 0;
+    top: 40px;
+    z-index: var(--z-fixed);
+    transform: translateX(-100%);
+  }
+  
+  .sidebar--open {
+    transform: translateX(0);
+  }
+  
+  .col-sm-1 { flex: 0 0 8.333333%; max-width: 8.333333%; }
+  .col-sm-2 { flex: 0 0 16.666667%; max-width: 16.666667%; }
+  .col-sm-3 { flex: 0 0 25%; max-width: 25%; }
+  .col-sm-4 { flex: 0 0 33.333333%; max-width: 33.333333%; }
+  .col-sm-6 { flex: 0 0 50%; max-width: 50%; }
+  .col-sm-12 { flex: 0 0 100%; max-width: 100%; }
+}
+
+@media screen and (max-width: 480px) {
+  .header {
+    padding: 0 var(--spacing-sm);
+  }
+  
+  .col-xs-12 { flex: 0 0 100%; max-width: 100%; }
+} 

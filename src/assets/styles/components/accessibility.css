@@ -1,0 +1,235 @@
+/**
+ * 无障碍样式组件
+ * 提供辅助功能相关的样式定义
+ */
+
+/* 屏幕阅读器专用 - 视觉隐藏，但保持无障碍可读 */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* 高对比度模式 */
+.high-contrast {
+  --color-bg-primary: #000;
+  --color-bg-secondary: #111;
+  --color-bg-tertiary: #222;
+  --color-bg-hover: #333;
+  --color-text-primary: #fff;
+  --color-text-secondary: #eee;
+  --color-border: #fff;
+  --color-link: #ffff00;
+  --color-link-visited: #d2d200;
+  --color-focus: #ffff00;
+  --color-error: #ff6666;
+  --color-success: #66ff66;
+  --color-warning: #ffff66;
+  --color-info: #66ffff;
+  --shadow-strength: 0;
+}
+
+/* 对比度级别样式 */
+[data-contrast="high"] {
+  --contrast-multiplier: 1.2;
+}
+
+[data-contrast="very-high"] {
+  --contrast-multiplier: 1.5;
+  --color-link: #ffff00;
+  --color-focus: #ffff00;
+  --color-error: #ff5555;
+  --color-success: #55ff55;
+  --color-warning: #ffff55;
+}
+
+/* 减少动效 */
+.reduce-motion {
+  --animation-speed-fast: 0.01s;
+  --animation-speed-normal: 0.01s;
+  --animation-speed-slow: 0.01s;
+  --transition-speed-fast: 0.01s;
+  --transition-speed-normal: 0.01s;
+  --transition-speed-slow: 0.01s;
+}
+
+/* 动效级别样式 */
+[data-motion="reduced"] {
+  --transition-multiplier: 0.5;
+  --animation-multiplier: 0.5;
+}
+
+[data-motion="none"] {
+  --transition-multiplier: 0;
+  --animation-multiplier: 0;
+}
+
+/* 禁用所有动画 */
+.reduce-motion * {
+  animation-duration: 0.01s !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01s !important;
+  scroll-behavior: auto !important;
+}
+
+/* 焦点样式 */
+[data-focus-mode="standard"] :focus {
+  outline: var(--focus-border-width, 2px) solid transparent;
+  outline-offset: 2px;
+}
+
+[data-focus-mode="enhanced"] :focus {
+  outline: var(--focus-border-width, 3px) solid transparent;
+  outline-offset: 3px;
+  box-shadow: none;
+}
+
+[data-focus-mode="high-visibility"] :focus {
+  outline: var(--focus-border-width, 4px) solid transparent;
+  outline-offset: 4px;
+  box-shadow: none;
+}
+
+/* 不同焦点模式下按钮轮廓 */
+[data-focus-mode="standard"] button:focus, 
+[data-focus-mode="standard"] a:focus {
+  outline: var(--focus-border-width, 2px) solid transparent;
+  outline-offset: 2px;
+}
+
+[data-focus-mode="enhanced"] button:focus,
+[data-focus-mode="enhanced"] a:focus {
+  outline: var(--focus-border-width, 3px) solid transparent;
+  outline-offset: 3px;
+  box-shadow: none;
+}
+
+[data-focus-mode="high-visibility"] button:focus,
+[data-focus-mode="high-visibility"] a:focus {
+  outline: var(--focus-border-width, 4px) solid transparent;
+  outline-offset: 4px;
+  box-shadow: none;
+}
+
+/* 禁用悬停效果 */
+.no-hover * {
+  pointer-events: none !important;
+}
+
+.no-hover a, 
+.no-hover button,
+.no-hover [role="button"],
+.no-hover input,
+.no-hover select,
+.no-hover textarea {
+  pointer-events: auto !important;
+}
+
+.no-hover a:hover,
+.no-hover button:hover,
+.no-hover [role="button"]:hover {
+  transform: none !important;
+  filter: none !important;
+  box-shadow: none !important;
+}
+
+/* 简化界面 */
+.simplified-ui {
+  --shadow-strength: 0.2;
+}
+
+.simplified-ui * {
+  border-radius: 4px;
+}
+
+.simplified-ui .card, 
+.simplified-ui .panel,
+.simplified-ui .dialog,
+.simplified-ui .modal {
+  box-shadow: none;
+  border: 1px solid var(--color-border);
+}
+
+.simplified-ui .tabs {
+  border-bottom: 1px solid var(--color-border);
+}
+
+.simplified-ui button {
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
+  box-shadow: none;
+}
+
+/* 屏幕阅读器友好 */
+.sr-friendly [aria-hidden="true"] {
+  display: none !important;
+}
+
+.sr-friendly button:not([aria-label]):not([title]) {
+  position: relative;
+}
+
+.sr-friendly button:not([aria-label]):not([title])::after {
+  content: "";
+  position: absolute;
+  bottom: -5px;
+  left: 0;
+  width: 100%;
+  height: 2px;
+  background-color: currentColor;
+  opacity: 0.5;
+}
+
+/* 表单标签位置 */
+[data-form-labels="top"] label {
+  display: block;
+  margin-bottom: 0.5rem;
+}
+
+[data-form-labels="left"] label {
+  display: inline-block;
+  min-width: 120px;
+  margin-right: 1rem;
+  text-align: right;
+}
+
+/* 字体大小基础设置 */
+html {
+  font-size: var(--root-font-size, 16px);
+}
+
+/* ARIA提示元素 */
+[role="tooltip"],
+[role="alert"],
+[role="status"],
+[role="progressbar"] {
+  border: 1px solid var(--color-border);
+  padding: 0.5rem;
+  background: var(--color-bg-secondary);
+  color: var(--color-text-primary);
+  border-radius: 4px;
+  max-width: 300px;
+  z-index: 1000;
+}
+
+/* 跳过导航链接 */
+.skip-link {
+  position: absolute;
+  top: -40px;
+  left: 0;
+  background: var(--color-bg-primary);
+  color: var(--color-text-primary);
+  padding: 8px;
+  z-index: 100;
+  transition: top 0.2s ease;
+}
+
+.skip-link:focus {
+  top: 0;
+} 

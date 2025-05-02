@@ -1,0 +1,16 @@
+{
+  "name": "Easyssh",
+  "short_name": "Easyssh",
+  "description": "高效SSH远程连接工具",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#141414",
+  "theme_color": "#383838",
+  "icons": [
+    {
+      "src": "favicon.ico",
+      "sizes": "64x64",
+      "type": "image/x-icon"
+    }
+  ]
+} 

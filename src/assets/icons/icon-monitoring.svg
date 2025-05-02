@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg id="ot-monitoring" class="ruyi-icon ruyi-icon-ot-monitoring" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16">
+  <g fill="none">
+    <g clip-path="url(#clip0_92_196)">
+      <path d="M12.8254 5.87962L12.1746 5.12036L9.02618 7.81904L6.50003 5.29288L3.14648 8.64644L3.85358 9.35354L6.50003 6.7071L8.97388 9.18094L12.8254 5.87962Z" fill="#ffffff" fill-opacity="0.9"></path>
+      <path d="M0.5 1.43049C0.5 1.02015 0.83265 0.6875 1.24299 0.6875H14.757C15.1674 0.6875 15.5 1.02015 15.5 1.43049V12.3405C15.5 12.7509 15.1673 13.0835 14.757 13.0835H8.5V14.5H13V15.5H3V14.5H7.5V13.0835H1.24299C0.83265 13.0835 0.5 12.7509 0.5 12.3405V1.43049ZM1.58353 12V1.77103H14.4165V12H1.58353Z" fill="#ffffff" fill-rule="evenodd" clip-rule="evenodd" fill-opacity="0.9"></path>
+    </g>
+    <defs>
+      <clipPath id="clip0_92_196">
+        <rect width="16" height="16" fill="white"></rect>
+      </clipPath>
+    </defs>
+  </g>
+</svg> 

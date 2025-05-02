@@ -1,0 +1,37 @@
+/*
+ * fonts.css - 字体定义文件
+ * 用于定义所有字体及其变体
+ */
+
+/* JetBrains Mono 字体 */
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+
+/* 其他字体可以在此处添加 */
+
+/* JetBrains Mono 字体定义 */
+@font-face {
+  font-family: 'JetBrains Mono';
+  src: url('../../fonts/JetBrainsMono/fonts/webfonts/JetBrainsMono-Regular.woff2') format('woff2'),
+       url('../../fonts/JetBrainsMono/fonts/ttf/JetBrainsMono-Regular.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'JetBrains Mono';
+  src: url('../../fonts/JetBrainsMono/fonts/webfonts/JetBrainsMono-Bold.woff2') format('woff2'),
+       url('../../fonts/JetBrainsMono/fonts/ttf/JetBrainsMono-Bold.ttf') format('truetype');
+  font-weight: bold;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'JetBrains Mono';
+  src: url('../../fonts/JetBrainsMono/fonts/webfonts/JetBrainsMono-Italic.woff2') format('woff2'),
+       url('../../fonts/JetBrainsMono/fonts/ttf/JetBrainsMono-Italic.ttf') format('truetype');
+  font-weight: normal;
+  font-style: italic;
+  font-display: swap;
+} 
