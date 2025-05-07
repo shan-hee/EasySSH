@@ -18,6 +18,15 @@
         }"
         :style="getTerminalStyle(termId)"
       >
+        <!-- 为每个终端添加独立的工具栏 -->
+        <div class="terminal-individual-toolbar">
+          <TerminalToolbar 
+            :has-background="terminalHasBackground"
+            :active-session-id="termId"
+            @toggle-sftp-panel="toggleSftpPanel"
+            @toggle-monitoring-panel="toggleMonitoringPanel"
+          />
+        </div>
         <div 
           :ref="el => setTerminalRef(el, termId)" 
           class="terminal-content"
@@ -41,6 +50,8 @@ import terminalService from '../../services/terminal'
 import sshService from '../../services/ssh'
 import RainbowLoader from '../../components/common/RainbowLoader.vue'
 import { useSettingsStore } from '../../store/settings'
+// 导入终端工具栏组件
+import TerminalToolbar from '../../components/terminal/TerminalToolbar.vue'
 
 // 导入会话存储
 import { useSessionStore } from '../../store/session'
@@ -48,7 +59,8 @@ import { useSessionStore } from '../../store/session'
 export default {
   name: 'Terminal',
   components: {
-    RainbowLoader
+    RainbowLoader,
+    TerminalToolbar // 注册工具栏组件
   },
   props: {
     id: {
@@ -616,6 +628,80 @@ export default {
       })
     }
     
+    // 监听活动连接ID的变化 - 移除自动切换
+    watch(
+      activeConnectionId,
+      (newId, oldId) => {
+        if (!newId || newId === oldId) return
+        
+        console.log(`活动连接ID变更: ${oldId} -> ${newId}`)
+        
+        // 更新终端ID列表
+        if (!terminalIds.value.includes(newId)) {
+          terminalIds.value.push(newId)
+        }
+        
+        // 移除自动切换，依赖默认聚焦行为
+        // switchToTerminal(newId) - 删除这行
+      }
+    )
+    
+    // 监听标签页状态变化，更新终端ID列表
+    watch(
+      () => tabStore.tabs,
+      () => {
+        updateTerminalIds()
+      },
+      { deep: true, immediate: true }
+    )
+    
+    // 监听会话切换，确保工具栏同步和终端切换
+    const handleSessionChange = (event) => {
+      if (!event || !event.detail || !event.detail.sessionId) return;
+      
+      const { sessionId, isTabSwitch } = event.detail;
+      console.log(`收到会话切换事件: ${sessionId}`);
+      
+      // 如果终端ID不在列表中，添加到列表
+      if (!terminalIds.value.includes(sessionId)) {
+        terminalIds.value.push(sessionId);
+      }
+      
+      // 检查是否是标签切换模式
+      if (!isTabSwitch) {
+        // 无论终端是否已存在，都将其状态设置为正在连接
+        // 这确保了彩虹动画能正常显示，即使是已有终端
+        terminalConnectingStates.value[sessionId] = true;
+        
+        // 告知工具栏重置状态 - 发送工具栏状态重置事件
+        window.dispatchEvent(new CustomEvent('terminal:toolbar-reset', {
+          detail: { sessionId }
+        }));
+        
+        // 如果终端已经存在，延迟一段时间后更新连接状态
+        // 这样可以确保彩虹动画能显示足够长的时间
+        if (terminalStore.hasTerminal(sessionId)) {
+          setTimeout(() => {
+            terminalConnectingStates.value[sessionId] = false;
+          }, 1000); // 延迟1秒，保证彩虹动画有足够显示时间
+        }
+      } else {
+        // 如果是标签切换，则不显示连接动画，但需要同步工具栏状态
+        terminalConnectingStates.value[sessionId] = false;
+        
+        // 发送工具栏同步事件，与terminal:toolbar-reset不同，这个事件不会触发彩虹动画
+        window.dispatchEvent(new CustomEvent('terminal:toolbar-sync', {
+          detail: { sessionId }
+        }));
+      }
+      
+      // 终端窗口大小调整可能在切换终端时触发
+      // 在处理终端切换事件时，需添加延迟以确保终端初始化完成
+      setTimeout(() => {
+        switchToTerminal(sessionId);
+      }, 100);
+    };
+    
     // 修改watch函数，添加连接中状态检查
     watch(
       () => route.path,
@@ -649,65 +735,6 @@ export default {
         // switchToTerminal(newId) - 删除这行
       }
     )
-    
-    // 监听标签页状态变化，更新终端ID列表
-    watch(
-      () => tabStore.tabs,
-      () => {
-        updateTerminalIds()
-      },
-      { deep: true, immediate: true }
-    )
-    
-    // 当响应终端切换事件时，也移除自动切换
-    const handleTerminalChange = (event) => {
-      if (!event || !event.detail || !event.detail.sessionId) return;
-      
-      const { sessionId } = event.detail;
-      console.log(`收到会话切换事件: ${sessionId}`);
-      
-      // 如果终端ID不在列表中，添加到列表
-      if (!terminalIds.value.includes(sessionId)) {
-        terminalIds.value.push(sessionId);
-      }
-      
-      // 检查是否是标签切换模式
-      const isTabSwitch = event.detail.isTabSwitch === true;
-      
-      // 仅在非标签切换模式下才显示连接动画
-      if (!isTabSwitch) {
-        // 无论终端是否已存在，都将其状态设置为正在连接
-        // 这确保了彩虹动画能正常显示，即使是已有终端
-        terminalConnectingStates.value[sessionId] = true;
-        
-        // 告知工具栏重置状态 - 发送工具栏状态重置事件
-        window.dispatchEvent(new CustomEvent('terminal:toolbar-reset', {
-          detail: { sessionId }
-        }));
-        
-        // 如果终端已经存在，延迟一段时间后更新连接状态
-        // 这样可以确保彩虹动画能显示足够长的时间
-        if (terminalStore.hasTerminal(sessionId)) {
-          setTimeout(() => {
-            terminalConnectingStates.value[sessionId] = false;
-          }, 1000); // 延迟1秒，保证彩虹动画有足够显示时间
-        }
-      } else {
-        // 如果是标签切换，则不显示连接动画，但可能需要重置工具栏状态
-        terminalConnectingStates.value[sessionId] = false;
-        
-        // 发送工具栏同步事件，与terminal:toolbar-reset不同，这个事件不会触发彩虹动画
-        window.dispatchEvent(new CustomEvent('terminal:toolbar-sync', {
-          detail: { sessionId }
-        }));
-      }
-      
-      // 终端窗口大小调整可能在切换终端时触发
-      // 在处理终端切换事件时，需添加延迟以确保终端初始化完成
-      setTimeout(() => {
-        switchToTerminal(sessionId);
-      }, 100);
-    };
     
     // 定义处理键盘快捷键事件的函数
     const handleKeyboardAction = (action) => {
@@ -875,6 +902,21 @@ export default {
     // 在变量声明部分添加sftpPanelWidth
     const sftpPanelWidth = ref(600) // 默认SFTP面板宽度
     
+    // 添加SFTP和监控面板相关方法
+    const toggleSftpPanel = () => {
+      // 通过事件将当前终端ID传递给父组件
+      window.dispatchEvent(new CustomEvent('request-toggle-sftp-panel', {
+        detail: { sessionId: activeConnectionId.value }
+      }));
+    }
+
+    const toggleMonitoringPanel = () => {
+      // 通过事件将当前终端ID传递给父组件
+      window.dispatchEvent(new CustomEvent('request-toggle-monitoring-panel', {
+        detail: { sessionId: activeConnectionId.value }
+      }));
+    }
+    
     // 初始化
     onMounted(() => {
       // 加载保存的SFTP面板宽度
@@ -936,7 +978,7 @@ export default {
       window.addEventListener('resize', handleWindowResize)
       
       // 监听终端切换事件
-      window.addEventListener('terminal:session-change', handleTerminalChange)
+      window.addEventListener('terminal:session-change', handleSessionChange)
       
       // 初始化时更新终端ID列表
       updateTerminalIds()
@@ -984,6 +1026,9 @@ export default {
         // 直到终端初始化完成
         terminalConnectingStates.value[sessionId] = true;
       }
+
+      // 只保留终端状态刷新事件监听器
+      window.addEventListener('terminal:refresh-status', handleTerminalRefreshStatus);
     })
     
     // 在组件卸载前移除监听器
@@ -994,7 +1039,7 @@ export default {
       // 移除各种事件监听器
       window.removeEventListener('ssh:error', handleSSHError)
       window.removeEventListener('resize', handleWindowResize)
-      window.removeEventListener('terminal:session-change', handleTerminalChange)
+      window.removeEventListener('terminal:session-change', handleSessionChange)
       
       // 正确移除终端背景设置变化监听
       if (bgChangeHandler) {
@@ -1014,7 +1059,37 @@ export default {
       
       // 清理终端尺寸状态
       terminalSized.value = {}
+
+      // 只保留终端状态刷新事件监听器移除
+      window.removeEventListener('terminal:refresh-status', handleTerminalRefreshStatus);
     })
+    
+    // 添加回handleTerminalRefreshStatus函数，但简化逻辑
+    const handleTerminalRefreshStatus = (event) => {
+      if (!event.detail || !event.detail.sessionId) return;
+      
+      const { sessionId, forceShow } = event.detail;
+      console.log(`收到终端状态刷新事件: ${sessionId}${forceShow ? ', 强制显示' : ''}`);
+      
+      // 主要处理强制显示标志
+      if (forceShow && sessionId === activeConnectionId.value) {
+        // 确保终端ID在列表中
+        if (!terminalIds.value.includes(sessionId)) {
+          terminalIds.value.push(sessionId);
+        }
+        
+        // 重置终端大小状态以便重新调整大小
+        terminalSized.value[sessionId] = false;
+        
+        // 强制重新调整终端大小并聚焦
+        nextTick(() => {
+          resizeTerminal(sessionId);
+          focusTerminal(sessionId);
+        });
+        
+        console.log(`强制显示终端: ${sessionId}`);
+      }
+    }
     
     return {
       terminalIds,
@@ -1028,9 +1103,11 @@ export default {
       setTerminalRef,
       terminalInitialized,
       terminalHasBackground,
-      sftpPanelWidth, // 添加SFTP面板宽度
+      sftpPanelWidth,
       updateTerminalIds,
-      shouldShowConnectingAnimation
+      shouldShowConnectingAnimation,
+      toggleSftpPanel,
+      toggleMonitoringPanel
     }
   }
 }
@@ -1079,6 +1156,9 @@ export default {
   content-visibility: auto;
   /* 启用缓存，提高切换性能 */
   contain-intrinsic-size: 100%;
+  /* 添加flex布局使工具栏和终端内容能垂直排列 */
+  display: flex;
+  flex-direction: column;
 }
 
 .terminal-content-wrapper.terminal-active {
@@ -1097,9 +1177,18 @@ export default {
   pointer-events: none;
 }
 
+.terminal-individual-toolbar {
+  flex-shrink: 0;
+  z-index: 10;
+  height: 40px; /* 确保工具栏高度固定为40px */
+}
+
 .terminal-content {
-  height: 100%;
+  flex: 1;
+  height: calc(100% - 40px); /* 减去工具栏的高度 */
   width: 100%;
+  position: relative; /* 添加相对定位以便终端能正确定位 */
+  box-sizing: border-box; /* 确保padding计入宽高 */
 }
 
 .connecting-overlay {
@@ -1125,6 +1214,7 @@ export default {
 :deep(.xterm) {
   height: 100%;
   width: 100%;
+  padding: 20px;
 }
 
 :deep(.xterm-viewport) {

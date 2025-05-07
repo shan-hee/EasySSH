@@ -7,7 +7,8 @@ import Dashboard from '../views/Dashboard.vue'
 const Home = () => import('../views/Home.vue')
 const ConnectionDetail = () => import('../views/connections/ConnectionDetail.vue')
 const NewConnection = () => import('../views/connections/NewConnection.vue')
-const Terminal = () => import('../views/terminal/Terminal.vue')
+// 创建一个空组件替代原Terminal组件
+const EmptyTerminal = { render: () => null }
 const Settings = () => import('../views/settings/Settings.vue')
 const NotFound = () => import('../views/errors/NotFound.vue')
 
@@ -68,7 +69,7 @@ const routes = [
   {
     path: '/terminal',
     name: 'TerminalMain',
-    component: Terminal,
+    component: EmptyTerminal, // 使用空组件，实际Terminal在AppLayout中渲染
     meta: {
       title: 'EasySSH',
       requiresAuth: false
@@ -77,11 +78,11 @@ const routes = [
   {
     path: '/terminal/:id',
     name: 'Terminal',
-    component: Terminal,
+    component: EmptyTerminal, // 使用空组件，实际Terminal在AppLayout中渲染
     props: true,
     meta: {
       title: 'EasySSH',
-      requiresAuth: false // 临时关闭认证要求
+      requiresAuth: false
     }
   },
   {

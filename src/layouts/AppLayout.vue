@@ -3,21 +3,21 @@
     <AppSidebar />
     <div class="main-content">
       <AppHeader />
-      <keep-alive>
-        <TerminalToolbar 
-          v-if="isTerminalRoute" 
-          @toggle-sftp-panel="toggleSftpPanel" 
-          @toggle-monitoring-panel="toggleMonitoringPanel"
-          :has-background="terminalHasBackground"
-          :active-session-id="activeSessionId"
-        />
-      </keep-alive>
 
       <!-- 添加终端背景层，仅在终端界面显示 -->
       <div v-if="isTerminalRoute && terminalHasBackground" class="terminal-background"></div>
 
-      <main class="content" :class="{ 'with-terminal-tools': isTerminalRoute }">
-        <router-view></router-view>
+      <main class="content">
+        <!-- 终端组件直接嵌入为常驻组件，使用v-show控制显示/隐藏 -->
+        <Terminal 
+          v-show="isTerminalRoute" 
+          :id="getCurrentTerminalId()"
+          key="global-terminal-component"
+          ref="terminalComponent"
+        />
+        
+        <!-- 非终端路由仍然使用router-view渲染 -->
+        <router-view v-if="!isTerminalRoute"></router-view>
       </main>
     </div>
 
@@ -48,14 +48,15 @@
 </template>
 
 <script>
-import { defineComponent, computed, ref, onMounted, onUnmounted, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { defineComponent, computed, ref, onMounted, onUnmounted, watch, nextTick } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import AppSidebar from '@/components/layout/AppSidebar.vue'
 import AppHeader from '@/components/layout/AppHeader.vue'
 import { ElMessageBox, ElMessage } from 'element-plus'
 import MonitoringPanel from '@/components/monitoring/MonitoringPanel.vue'
-import TerminalToolbar from '@/components/terminal/TerminalToolbar.vue'
 import SftpPanel from '@/components/sftp/SftpPanel.vue'
+// 导入Terminal组件
+import Terminal from '@/views/terminal/Terminal.vue'
 // 导入SFTP服务
 import { sftpService } from '@/services/ssh'
 // 导入会话存储
@@ -70,11 +71,12 @@ export default defineComponent({
     AppSidebar,
     AppHeader,
     MonitoringPanel,
-    TerminalToolbar,
-    SftpPanel
+    SftpPanel,
+    Terminal // 注册Terminal组件
   },
   setup() {
     const route = useRoute()
+    const router = useRouter()
     const terminalTitle = ref('')
     const showMonitoringPanel = ref(false)
     const showSftpPanel = ref(false)
@@ -89,11 +91,23 @@ export default defineComponent({
     const monitorSessionId = ref(null)
     const monitorServerInfo = ref(null)
     const monitoringInstalled = ref(false)
+    // 添加终端组件引用
+    const terminalComponent = ref(null)
     
     // 判断当前是否为终端路由
     const isTerminalRoute = computed(() => {
       return route.path === '/terminal' || route.path.startsWith('/terminal/')
     })
+    
+    // 获取当前终端ID，优先使用路由参数
+    const getCurrentTerminalId = () => {
+      if (route.params.id) {
+        return route.params.id
+      }
+      
+      const sessionStore = useSessionStore()
+      return sessionStore.getActiveSession()
+    }
     
     // 终端操作方法
     const sendTerminalCommand = () => {
@@ -165,6 +179,33 @@ export default defineComponent({
         return activeSessionId.value || null;
       }
     };
+    
+    // 监听路由变化，当切换到终端路由时触发刷新
+    watch(() => route.path, (newPath, oldPath) => {
+      if (newPath.startsWith('/terminal') && !oldPath.startsWith('/terminal')) {
+        // 切换到终端路由，触发终端刷新
+        nextTick(() => {
+          if (terminalComponent.value) {
+            console.log('路由切换到终端，触发终端显示和刷新', getCurrentSessionId());
+            
+            // 触发终端状态刷新事件
+            window.dispatchEvent(new CustomEvent('terminal:refresh-status', {
+              detail: { 
+                sessionId: getCurrentSessionId(),
+                forceShow: true // 添加强制显示标记
+              }
+            }));
+          }
+        });
+      }
+      
+      // 如果是从终端路由切换到不同的路径，不需要特殊处理
+      // v-show已经处理了终端的显示/隐藏
+      if (oldPath.startsWith('/terminal') && !newPath.startsWith('/terminal')) {
+        console.log('离开终端路由，隐藏终端');
+        // 移除原来的terminal:deactivate事件
+      }
+    });
     
     // 初始化
     onMounted(() => {
@@ -276,6 +317,25 @@ export default defineComponent({
           closeSftpPanel()
         })
       }
+
+      // 监听来自各个终端工具栏的SFTP面板切换请求
+      window.addEventListener('request-toggle-sftp-panel', (event) => {
+        if (event.detail && event.detail.sessionId) {
+          // 设置活动会话ID并切换SFTP面板
+          activeSessionId.value = event.detail.sessionId;
+          toggleSftpPanel();
+        }
+      });
+
+      // 监听来自各个终端工具栏的监控面板切换请求
+      window.addEventListener('request-toggle-monitoring-panel', (event) => {
+        if (event.detail && event.detail.sessionId) {
+          // 设置活动会话ID并切换监控面板
+          activeSessionId.value = event.detail.sessionId;
+          monitorSessionId.value = event.detail.sessionId;
+          toggleMonitoringPanel();
+        }
+      });
     });
     
     // 在组件卸载时移除监听器
@@ -297,6 +357,10 @@ export default defineComponent({
         appContainer.removeEventListener('close-monitoring-panel', () => {})
         appContainer.removeEventListener('close-sftp-panel', () => {})
       }
+
+      // 移除事件监听器
+      window.removeEventListener('request-toggle-sftp-panel', () => {});
+      window.removeEventListener('request-toggle-monitoring-panel', () => {});
     });
     
     // 处理窗口大小变化
@@ -608,7 +672,9 @@ export default defineComponent({
       terminalHasBackground,
       monitorSessionId,
       monitorServerInfo,
-      monitoringInstalled
+      monitoringInstalled,
+      getCurrentTerminalId,
+      terminalComponent
     }
   }
 })
@@ -634,17 +700,6 @@ export default defineComponent({
   overflow-y: auto;
   background-color: #121212;
   border-top: none;
-}
-
-.content.with-terminal-tools {
-  height: calc(100% - 36px);
-}
-
-/* 终端工具栏，确保其位于适当层级 */
-.terminal-toolbar {
-  position: relative;
-  z-index: 3;
-  background-color: transparent;
 }
 
 /* 系统监控面板容器 */

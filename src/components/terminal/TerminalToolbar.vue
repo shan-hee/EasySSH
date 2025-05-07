@@ -154,7 +154,6 @@ export default defineComponent({
           rttValue: '--',                // RTT值
           clientDelay: 0,                // 客户端延迟
           serverDelay: 0,                // 服务器延迟
-          lastNetworkUpdate: null,       // 最后网络更新时间
           tooltipVisible: false          // 提示可见状态
         }
       }
@@ -188,100 +187,6 @@ export default defineComponent({
     const isPanelVisible = computed(() => {
       return !!document.querySelector('.monitoring-panel-container');
     });
-    
-    // 添加延迟数据缓存，将被持久化到localStorage
-    const latencyCache = ref({})
-    
-    // 初始加载缓存的延迟数据
-    const loadCachedLatencyData = () => {
-      try {
-        const cachedData = localStorage.getItem('easyssh_latency_cache')
-        if (cachedData) {
-          // 只加载到缓存中，但不自动显示图标
-          latencyCache.value = JSON.parse(cachedData)
-          console.debug('已从本地存储加载延迟数据缓存')
-          
-          // 不在此处控制图标显示，让具体的会话切换逻辑来决定是否显示
-        }
-      } catch (e) {
-        console.warn('加载延迟数据缓存失败:', e)
-        // 确保错误时不显示图标
-        showNetworkIcon.value = false
-      }
-    }
-    
-    // 保存延迟数据到localStorage
-    const saveLatencyCache = () => {
-      try {
-        // 清理过期数据 (超过1小时的数据)
-        const now = Date.now()
-        const expireTime = 60 * 60 * 1000 // 1小时
-        for (const key in latencyCache.value) {
-          if (latencyCache.value[key].timestamp && 
-              now - latencyCache.value[key].timestamp > expireTime) {
-            delete latencyCache.value[key]
-          }
-        }
-        
-        localStorage.setItem('easyssh_latency_cache', JSON.stringify(latencyCache.value))
-      } catch (e) {
-        console.warn('保存延迟数据缓存失败:', e)
-      }
-    }
-    
-    // 持久化SSH连接状态
-    const loadConnectionStatus = () => {
-      try {
-        const status = localStorage.getItem('easyssh_connection_status')
-        if (status) {
-          const parsedStatus = JSON.parse(status)
-          if (parsedStatus && typeof parsedStatus === 'object') {
-            // 只更新当前会话ID的状态，如果它存在
-            if (props.activeSessionId && parsedStatus[props.activeSessionId]) {
-              isSshConnected.value = parsedStatus[props.activeSessionId].connected === true
-              console.debug(`从缓存恢复会话 ${props.activeSessionId} 连接状态: ${isSshConnected.value}`)
-            }
-          }
-        }
-      } catch (e) {
-        console.warn('加载连接状态缓存失败:', e)
-      }
-    }
-    
-    // 保存连接状态
-    const saveConnectionStatus = (sessionId, isConnected) => {
-      try {
-        let status = {}
-        try {
-          const cachedStatus = localStorage.getItem('easyssh_connection_status')
-          if (cachedStatus) {
-            status = JSON.parse(cachedStatus)
-          }
-        } catch (e) {
-          // 如果解析失败，使用空对象
-          status = {}
-        }
-        
-        // 更新指定会话的状态
-        status[sessionId] = {
-          connected: isConnected,
-          timestamp: Date.now()
-        }
-        
-        // 清理超过1小时的数据
-        const now = Date.now()
-        const expireTime = 60 * 60 * 1000 // 1小时
-        for (const key in status) {
-          if (status[key].timestamp && now - status[key].timestamp > expireTime) {
-            delete status[key]
-          }
-        }
-        
-        localStorage.setItem('easyssh_connection_status', JSON.stringify(status))
-      } catch (e) {
-        console.warn('保存连接状态失败:', e)
-      }
-    }
     
     // 计算总RTT
     const totalRtt = computed(() => {
@@ -496,14 +401,6 @@ export default defineComponent({
         return;
       }
       
-      // 以下缓存所有接收到的延迟数据
-      latencyCache.value[sessionId] = {
-        remoteLatency,
-        localLatency,
-        totalLatency,
-        timestamp: Date.now()
-      };
-      
       // 首先检查是不是SSH会话ID，尝试查找对应的终端ID
       let terminalId = null;
       if (sessionId.startsWith('ssh_') && sshService && sshService.sessions) {
@@ -511,22 +408,12 @@ export default defineComponent({
         if (session && session.terminalId) {
           terminalId = session.terminalId;
           
-          // 也缓存到终端ID下
-          latencyCache.value[terminalId] = {
-            remoteLatency,
-            localLatency,
-            totalLatency,
-            timestamp: Date.now(),
-            sourceSession: sessionId
-          };
-          
           // 更新该终端的工具栏状态
           const terminalState = getTerminalToolbarState(terminalId);
           if (terminalState) {
             terminalState.serverDelay = remoteLatency || 0;
             terminalState.clientDelay = localLatency || 0;
             terminalState.rttValue = totalLatency ? `${totalLatency} ms` : '--';
-            terminalState.lastNetworkUpdate = Date.now();
             terminalState.isSshConnected = true;
           }
         }
@@ -540,7 +427,6 @@ export default defineComponent({
           terminalState.serverDelay = remoteLatency || 0;
           terminalState.clientDelay = localLatency || 0;
           terminalState.rttValue = totalLatency ? `${totalLatency} ms` : '--';
-          terminalState.lastNetworkUpdate = Date.now();
           terminalState.isSshConnected = true;
         }
       }
@@ -560,11 +446,8 @@ export default defineComponent({
         isSshConnected.value = true;
       }
       
-      // 保存连接状态到本地存储
-      saveConnectionStatus(terminalId || sessionId, true);
-      
-      // 定期保存延迟缓存到localStorage
-      saveLatencyCache();
+      // 更新连接状态
+      updateConnectionStatus(terminalId || sessionId, true);
     };
 
     // 检查SSH连接状态
@@ -737,11 +620,8 @@ export default defineComponent({
           checkMonitoringServiceStatus();
         }
         
-        // 判断是否为新建连接 - 检查终端状态中是否存在上一次网络延迟更新时间
-        const isNewConnection = !terminalState || !terminalState.lastNetworkUpdate;
-        
-        // 在切换终端标签页(非新建连接)时，恢复显示该终端的网络延迟数据
-        if (!isNewConnection && terminalState && 
+        // 在切换终端标签页时，恢复显示该终端的网络延迟数据
+        if (terminalState && 
             typeof terminalState.serverDelay === 'number' &&
             typeof terminalState.clientDelay === 'number' &&
             (terminalState.serverDelay > 0 || terminalState.clientDelay > 0)) {
@@ -749,22 +629,15 @@ export default defineComponent({
           rttValue.value = terminalState.rttValue || '--';
           serverDelay.value = terminalState.serverDelay || 0;
           clientDelay.value = terminalState.clientDelay || 0;
-        } else if (!isNewConnection) {
-          // 如果不是新建连接且终端状态中没有延迟数据，尝试从缓存获取
-          const cachedLatency = latencyCache.value[newId];
-          if (cachedLatency && 
-              typeof cachedLatency.totalLatency === 'number' && 
-              cachedLatency.totalLatency > 0) {
-            showNetworkIcon.value = true;
-            rttValue.value = `${cachedLatency.totalLatency} ms`;
-            clientDelay.value = cachedLatency.localLatency || 0;
-            serverDelay.value = cachedLatency.remoteLatency || 0;
-          }
         }
-        // 对于新建连接，保持网络图标不显示，直到收到实际的网络延迟数据
         
         // 将会话ID记录为最后处理的ID
         lastProcessedSessionId.value = newId;
+        
+        // 应用终端状态隔离，确保每个终端状态独立
+        nextTick(() => {
+          applyInitialStatus();
+        });
       }
     }, { immediate: true });
     
@@ -783,6 +656,7 @@ export default defineComponent({
             // 如果是当前活动的终端，同时更新UI
             if (terminalId === props.activeSessionId) {
               monitoringServiceInstalled.value = event.detail.installed;
+              console.log(`更新当前活动终端[${terminalId}]的监控状态: ${event.detail.installed}`);
             }
           }
         } else if (event.detail.sessionId) {
@@ -806,19 +680,32 @@ export default defineComponent({
               // 如果是当前活动终端，更新UI
               if (terminalId === props.activeSessionId) {
                 monitoringServiceInstalled.value = event.detail.installed;
+                console.log(`通过会话ID[${sessionId}]更新终端[${terminalId}]的监控状态: ${event.detail.installed}`);
               }
             }
           }
-        } else {
-          // 无特定终端ID的全局状态更新（保留兼容性）
-          // 只更新当前活动终端
+        } else if (event.detail.hostAddress) {
+          // 通过主机地址匹配，所有连接到该主机的终端都应该更新
+          const hostAddress = event.detail.hostAddress;
+          
+          // 只更新当前活动终端，如果它连接到这个主机
           if (props.activeSessionId) {
-            const terminalState = getTerminalToolbarState(props.activeSessionId);
-            if (terminalState) {
-              terminalState.monitoringInstalled = event.detail.installed;
-              monitoringServiceInstalled.value = event.detail.installed;
+            const sshSessionId = terminalStore.sessions[props.activeSessionId];
+            if (sshSessionId && sshService && sshService.sessions) {
+              const session = sshService.sessions.get(sshSessionId);
+              if (session && session.connection && session.connection.host === hostAddress) {
+                // 更新终端状态
+                const terminalState = getTerminalToolbarState(props.activeSessionId);
+                if (terminalState) {
+                  terminalState.monitoringInstalled = event.detail.installed;
+                  monitoringServiceInstalled.value = event.detail.installed;
+                  console.log(`通过主机地址[${hostAddress}]匹配更新当前终端的监控状态: ${event.detail.installed}`);
+                }
+              }
             }
           }
+          
+          // 不再对所有终端进行全局状态更新
         }
       }
     };
@@ -933,7 +820,7 @@ export default defineComponent({
       }
       
       // 检查网络状态 - 先不显示网络图标，只有在有有效的延迟数据时才显示
-      if (terminalState && terminalState.lastNetworkUpdate && 
+      if (terminalState && 
           typeof terminalState.serverDelay === 'number' &&
           typeof terminalState.clientDelay === 'number' &&
           (terminalState.serverDelay > 0 || terminalState.clientDelay > 0)) {
@@ -975,7 +862,6 @@ export default defineComponent({
         terminalState.rttValue = '--';
         terminalState.clientDelay = 0;
         terminalState.serverDelay = 0;
-        terminalState.lastNetworkUpdate = null;
         
         // 保留连接中状态以便显示加载动画
         terminalState.isConnecting = true;
@@ -1013,7 +899,7 @@ export default defineComponent({
       
       if (sessionId) {
         // 保存会话连接状态
-        saveConnectionStatus(sessionId, true);
+        updateConnectionStatus(sessionId, true);
         
         // 更新对应终端的状态
         if (terminalId) {
@@ -1065,11 +951,8 @@ export default defineComponent({
           checkMonitoringServiceStatus();
         }
         
-        // 判断是否为新建连接 - 检查终端状态中是否存在上一次网络延迟更新时间
-        const isNewConnection = !terminalState || !terminalState.lastNetworkUpdate;
-        
-        // 同步网络信息 - 在切换标签页时(非新建连接)，保留该终端的网络延迟数据
-        if (!isNewConnection && terminalState && 
+        // 同步网络信息
+        if (terminalState && 
             typeof terminalState.serverDelay === 'number' && 
             typeof terminalState.clientDelay === 'number' &&
             (terminalState.serverDelay > 0 || terminalState.clientDelay > 0)) {
@@ -1077,62 +960,91 @@ export default defineComponent({
           rttValue.value = terminalState.rttValue || '--';
           serverDelay.value = terminalState.serverDelay || 0;
           clientDelay.value = terminalState.clientDelay || 0;
-        } else if (!isNewConnection) {
-          // 如果不是新建连接但终端状态中没有延迟数据，尝试从缓存获取
-          const cachedLatency = latencyCache.value[sessionId];
-          if (cachedLatency && 
-              typeof cachedLatency.totalLatency === 'number' && 
-              cachedLatency.totalLatency > 0) {
-            showNetworkIcon.value = true;
-            rttValue.value = `${cachedLatency.totalLatency} ms`;
-            clientDelay.value = cachedLatency.localLatency || 0;
-            serverDelay.value = cachedLatency.remoteLatency || 0;
-          } else {
-            // 如果没有有效的延迟数据，不显示网络图标
-            showNetworkIcon.value = false;
-            rttValue.value = '--';
-            clientDelay.value = 0;
-            serverDelay.value = 0;
-          }
         } else {
-          // 对于新建连接，保持网络图标不显示，直到收到实际网络延迟数据
+          // 没有有效的延迟数据，不显示网络图标
           showNetworkIcon.value = false;
           rttValue.value = '--';
           clientDelay.value = 0;
           serverDelay.value = 0;
         }
+        
+        // 确保状态完全隔离
+        nextTick(() => {
+          applyInitialStatus();
+        });
       }
     };
     
+    // 处理终端状态刷新事件
+    const handleTerminalRefreshStatus = (event) => {
+      if (!event.detail || !event.detail.sessionId) return;
+      
+      const { sessionId } = event.detail;
+      console.log(`收到终端状态刷新事件: ${sessionId}`);
+      
+      // 只有当当前活动会话是目标会话时才刷新UI状态
+      if (sessionId === props.activeSessionId) {
+        // 重新检查SSH连接状态
+        checkSshConnectionStatus();
+        
+        // 重新检查监控服务状态
+        checkMonitoringServiceStatus();
+        
+        // 获取终端特定状态
+        const terminalState = getTerminalToolbarState(sessionId);
+        
+        // 如果有网络延迟数据，恢复显示
+        if (terminalState && 
+            typeof terminalState.serverDelay === 'number' && 
+            typeof terminalState.clientDelay === 'number' &&
+            (terminalState.serverDelay > 0 || terminalState.clientDelay > 0)) {
+          showNetworkIcon.value = true;
+          rttValue.value = terminalState.rttValue || '--';
+          serverDelay.value = terminalState.serverDelay || 0;
+          clientDelay.value = terminalState.clientDelay || 0;
+        }
+        
+        console.log(`工具栏状态已刷新: 连接状态=${isSshConnected.value}, 网络图标=${showNetworkIcon.value}`);
+        
+        // 确保状态完全隔离
+        nextTick(() => {
+          applyInitialStatus();
+        });
+      }
+    };
+    
+    // 修改保存连接状态函数为更新状态函数
+    const updateConnectionStatus = (sessionId, isConnected) => {
+      // 仅在内存中更新状态
+      const terminalState = getTerminalToolbarState(sessionId);
+      if (terminalState) {
+        terminalState.isSshConnected = isConnected;
+        
+        // 如果是当前活动终端，更新UI
+        if (sessionId === props.activeSessionId) {
+          isSshConnected.value = isConnected;
+        }
+      }
+    }
+    
     // 初始化网络监控
     onMounted(() => {
-      // 加载缓存的延迟数据和连接状态
-      loadCachedLatencyData();
-      loadConnectionStatus();
+      // 添加全局事件监听器
+      window.addEventListener('network-latency-update', handleNetworkLatencyUpdate)
+      window.addEventListener('ssh-connected', handleSshConnected)
+      window.addEventListener('monitoring-status-change', handleMonitoringStatusChange)
+      window.addEventListener('terminal:toolbar-reset', handleToolbarReset)
+      window.addEventListener('terminal:toolbar-sync', handleToolbarSync)
+      // 添加终端状态刷新事件监听
+      window.addEventListener('terminal:refresh-status', handleTerminalRefreshStatus)
       
-      // 立即检查当前会话状态
-      checkCurrentSessionStatus();
+      // 立即检查SSH连接状态
+      checkSshConnectionStatus()
+      // 立即检查监控服务状态
+      checkMonitoringServiceStatus()
       
-      // 检查当前SSH连接状态
-      checkSshConnectionStatus();
-      
-      // 添加网络延迟更新事件监听器
-      window.addEventListener('network-latency-update', handleNetworkLatencyUpdate);
-      
-      // 添加工具栏状态重置事件监听器
-      window.addEventListener('terminal:toolbar-reset', handleToolbarReset);
-      
-      // 添加工具栏状态同步事件监听器
-      window.addEventListener('terminal:toolbar-sync', handleToolbarSync);
-      
-      // 添加SSH连接成功事件监听器
-      window.addEventListener('ssh-connected', handleSshConnected);
-      
-      // 添加监控状态变化事件监听
-      window.addEventListener('monitoring-status-change', handleMonitoringStatusChange);
-      
-      // 初始检查监控服务状态
-      checkMonitoringServiceStatus();
+      // 确保工具栏状态严格隔离，避免状态意外共享
+      applyInitialStatus()
       
       // SFTP按钮鼠标事件监听
       if (sftpButtonRef.value) {
@@ -1180,36 +1092,98 @@ export default defineComponent({
       // 处理窗口大小变化，更新提示框位置
       window.addEventListener('resize', handleResize);
       
-      // 定期保存延迟缓存到localStorage (每10分钟)
-      const saveInterval = setInterval(() => {
-        saveLatencyCache();
-      }, 10 * 60 * 1000);
+      // 获取当前终端特定的工具栏状态
+      const terminalState = getTerminalToolbarState(props.activeSessionId);
       
-      // 组件卸载时清除定时器
-      onUnmounted(() => {
-        clearInterval(saveInterval);
-      });
-    });
-    
-    // 清理资源
-    onUnmounted(() => {
-      // 保存最终状态到缓存
-      saveLatencyCache();
-      
-      // 移除所有事件监听器
-      window.removeEventListener('network-latency-update', handleNetworkLatencyUpdate);
-      window.removeEventListener('ssh-connected', handleSshConnected);
-      window.removeEventListener('monitoring-status-change', handleMonitoringStatusChange);
-      window.removeEventListener('terminal:toolbar-reset', handleToolbarReset);
-      window.removeEventListener('terminal:toolbar-sync', handleToolbarSync);
-      window.removeEventListener('resize', updateSftpTooltipPosition);
-      window.removeEventListener('resize', handleResize);
-      
-      // 清除会话变化的计时器
-      if (sessionChangeTimeout) {
-        clearTimeout(sessionChangeTimeout);
+      // 如果有缓存数据则同步显示
+      if (terminalState) {
+        // 同步SSH连接状态
+        if (terminalState.isSshConnected !== undefined) {
+          isSshConnected.value = terminalState.isSshConnected;
+        }
+        
+        // 同步监控服务状态
+        if (terminalState.monitoringInstalled !== undefined) {
+          monitoringServiceInstalled.value = terminalState.monitoringInstalled;
+        }
+        
+        // 同步网络数据
+        if (terminalState.rttValue && terminalState.rttValue !== '--') {
+          rttValue.value = terminalState.rttValue;
+          showNetworkIcon.value = true;
+        }
+        
+        if (terminalState.clientDelay > 0 || terminalState.serverDelay > 0) {
+          clientDelay.value = terminalState.clientDelay;
+          serverDelay.value = terminalState.serverDelay;
+          showNetworkIcon.value = true;
+        }
       }
-    });
+      
+      // 工具栏初始化完成后触发同步事件
+      window.dispatchEvent(new CustomEvent('terminal:toolbar-initialized', {
+        detail: { sessionId: props.activeSessionId }
+      }));
+    })
+    
+    // 确保组件卸载时清理事件监听器
+    onUnmounted(() => {
+      // 移除所有事件监听器
+      window.removeEventListener('network-latency-update', handleNetworkLatencyUpdate)
+      window.removeEventListener('ssh-connected', handleSshConnected)
+      window.removeEventListener('monitoring-status-change', handleMonitoringStatusChange)
+      window.removeEventListener('terminal:toolbar-reset', handleToolbarReset)
+      window.removeEventListener('terminal:toolbar-sync', handleToolbarSync)
+      window.removeEventListener('terminal:refresh-status', handleTerminalRefreshStatus)
+      window.removeEventListener('resize', updateSftpTooltipPosition)
+      window.removeEventListener('resize', handleResize)
+    })
+
+    // 添加工具栏状态隔离函数
+    const applyInitialStatus = () => {
+      try {
+        const currentId = props.activeSessionId
+        if (!currentId) return
+        
+        console.log(`正在确保终端[${currentId}]的状态独立`)
+        
+        // 获取当前终端的状态
+        const terminalState = getTerminalToolbarState(currentId)
+        if (!terminalState) return
+        
+        // 1. 检查该终端的SSH连接和主机信息
+        if (terminalStore && terminalStore.sessions) {
+          const sshSessionId = terminalStore.sessions[currentId]
+          if (sshSessionId && sshService && sshService.sessions) {
+            const session = sshService.sessions.get(sshSessionId)
+            if (session && session.connection) {
+              const host = session.connection.host
+              
+              // 2. 检查监控服务的状态
+              if (monitoringService) {
+                const monitored = monitoringService.isTerminalMonitored(currentId)
+                
+                // 3. 明确设置此终端的监控状态（不依赖全局状态）
+                terminalState.monitoringInstalled = monitored
+                monitoringServiceInstalled.value = monitored
+                
+                console.log(`已设置终端[${currentId}]的监控状态: ${monitored}, 连接到主机: ${host}`)
+                
+                // 4. 如果监控服务连接到其他主机，确保不影响当前终端
+                if (monitoringService.state && 
+                    monitoringService.state.connected && 
+                    monitoringService.state.targetHost !== host) {
+                  console.log(`监控服务连接到了不同的主机[${monitoringService.state.targetHost}]，` +
+                             `而当前终端连接到[${host}]，避免状态错误共享`)
+                }
+              }
+            }
+          }
+        }
+      } catch (error) {
+        console.error('终端状态隔离出错:', error)
+      }
+    }
 
     return {
       rttValue,
@@ -1256,6 +1230,8 @@ export default defineComponent({
   width: 100%;
   z-index: 3;
   background-color: transparent;
+  /* 固定高度以确保所有终端工具栏一致 */
+  height: 40px;
 }
 
 .terminal-tools {

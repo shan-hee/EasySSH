@@ -437,7 +437,7 @@ export default {
   flex: 1;
   background-color: #000;
   overflow: hidden;
-  padding: 5px;
+  padding: 20px;
 }
 
 .terminal {
