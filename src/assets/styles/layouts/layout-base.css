@@ -62,11 +62,12 @@
   overflow: hidden;
 }
 
-.content {
+.tcontent {
   flex: 1;
   overflow-y: auto;
   padding: 20px;
 }
+
 
 /* 侧边栏 */
 .sidebar {

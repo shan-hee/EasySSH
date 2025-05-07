@@ -303,7 +303,10 @@ export const useTabStore = defineStore('tab', () => {
           
           // 触发终端切换事件
           window.dispatchEvent(new CustomEvent('terminal:session-change', {
-            detail: { sessionId: newSessionId }
+            detail: { 
+              sessionId: newSessionId,
+              isTabSwitch: true  // 添加标记表明这是标签切换操作
+            }
           }))
           
           // 导入终端Store以聚焦终端
