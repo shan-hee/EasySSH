@@ -297,9 +297,9 @@ export default {
     const connectionSettings = reactive({
       autoReconnect: true,
       reconnectInterval: 3,
-      connectionTimeout: 15,
+      connectionTimeout: 10,
       keepAlive: true,
-      keepAliveInterval: 60,
+      keepAliveInterval: 30,
       initialized: false
     })
     
@@ -608,7 +608,7 @@ export default {
     }
     
     const decrementKeepAliveInterval = () => {
-      if (connectionSettings.keepAliveInterval > 15) {
+      if (connectionSettings.keepAliveInterval > 30) {
         connectionSettings.keepAliveInterval -= 1
         saveConnectionSettings()
       }

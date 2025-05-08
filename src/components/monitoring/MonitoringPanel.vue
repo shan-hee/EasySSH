@@ -137,6 +137,7 @@ import { defineComponent, ref, computed, onMounted, onUnmounted, watch, nextTick
 import axios from 'axios';
 import { ElMessage } from 'element-plus';
 import monitoringService from '../../services/monitoring';
+import monitoringFactory from '../../services/monitoringFactory';
 import * as echarts from 'echarts/core';
 import { LineChart, PieChart } from 'echarts/charts';
 import { 
@@ -180,6 +181,10 @@ export default defineComponent({
     isClosing: {
       type: Boolean,
       default: false
+    },
+    sessionId: {
+      type: String,
+      default: null
     }
   },
   emits: ['close', 'update:width', 'resize'],
@@ -200,8 +205,11 @@ export default defineComponent({
       timestamp: null // 服务器时间戳
     });
 
-    // 消息监听器ID
-    const messageListenerIds = ref([]);
+    // 订阅ID
+    const subscriptionId = ref(null);
+    
+    // 存储服务器ID
+    const serverId = ref(props.serverInfo?.host || null);
 
     // 图表引用
     const cpuChartRef = ref(null);
@@ -277,14 +285,35 @@ export default defineComponent({
       document.addEventListener('mouseup', handleMouseUp);
     };
     
-    // 添加数据点到历史记录
-    const addDataPoint = () => {
+    // 更新历史数据
+    const updateHistoryData = (updatedData) => {
+      // 如果提供了历史数据，直接使用
+      if (updatedData.history) {
+        timePoints.value = updatedData.history.timePoints || [];
+        cpuHistory.value = updatedData.history.cpuHistory || [];
+        memoryHistory.value = updatedData.history.memoryHistory || [];
+        
+        if (updatedData.history.networkHistory) {
+          networkHistory.value.input = updatedData.history.networkHistory.input || [];
+          networkHistory.value.output = updatedData.history.networkHistory.output || [];
+        }
+        
+        // 更新图表
+        updateCharts();
+        return;
+      }
+      
+      // 如果没有提供历史数据，则从当前数据添加一个点
+      const currentData = updatedData.data;
+      
+      if (!currentData) return;
+      
       // 使用服务器时间（如果有），否则使用当前时间
       let timeStr;
       
-      if (systemInfo.value.timestamp) {
+      if (currentData.timestamp) {
         // 如果有服务器时间戳则使用
-        const serverTime = new Date(systemInfo.value.timestamp);
+        const serverTime = new Date(currentData.timestamp);
         timeStr = serverTime.getHours().toString().padStart(2, '0') + ':' + 
                 serverTime.getMinutes().toString().padStart(2, '0') + ':' + 
                 serverTime.getSeconds().toString().padStart(2, '0');
@@ -303,20 +332,20 @@ export default defineComponent({
       }
       
       // 添加CPU数据
-      cpuHistory.value.push(systemInfo.value.cpu?.usage || 0);
+      cpuHistory.value.push(currentData.cpu?.usage || 0);
       if (cpuHistory.value.length > MAX_DATA_POINTS) {
         cpuHistory.value.shift();
       }
       
       // 添加内存数据
-      memoryHistory.value.push(systemInfo.value.memory?.usedPercentage || 0);
+      memoryHistory.value.push(currentData.memory?.usedPercentage || 0);
       if (memoryHistory.value.length > MAX_DATA_POINTS) {
         memoryHistory.value.shift();
       }
       
       // 添加网络数据
-      const inputBytes = systemInfo.value.network?.total_rx_speed || 0;
-      const outputBytes = systemInfo.value.network?.total_tx_speed || 0;
+      const inputBytes = currentData.network?.total_rx_speed || 0;
+      const outputBytes = currentData.network?.total_tx_speed || 0;
       
       networkHistory.value.input.push(parseFloat(inputBytes)); // KB
       networkHistory.value.output.push(parseFloat(outputBytes)); // KB
@@ -1174,38 +1203,61 @@ export default defineComponent({
       return 'progress-danger';
     };
 
+    // 处理监控数据更新
+    const handleMonitoringUpdate = (update) => {
+      console.log('[监控面板] 收到服务器数据更新:', update.isInitial ? '初始数据' : '数据更新');
+      
+      // 更新系统信息
+      if (update.data) {
+        systemInfo.value = update.data;
+      }
+      
+      // 更新历史数据和图表
+      updateHistoryData(update);
+    };
+
     // 处理关闭面板
     const closePanel = () => {
-      // 移除消息监听器
-      messageListenerIds.value.forEach(id => {
-        // 检查ID前缀来确定监听器类型
-        if (id.startsWith('system_stats')) {
-        monitoringService.removeMessageListener('system_stats', id);
-        } else if (id.startsWith('system-info')) {
-          monitoringService.removeMessageListener('system-info', id);
-        } else if (id.startsWith('*')) {
-          monitoringService.removeMessageListener('*', id);
-        } else {
-          // 尝试移除其他可能的监听器
-          monitoringService.removeMessageListener('system_stats', id);
-          monitoringService.removeMessageListener('system-info', id);
-          monitoringService.removeMessageListener('*', id);
-        }
-      });
-      
-      console.log('[监控面板] 组件卸载，已移除所有监听器');
-      messageListenerIds.value = [];
+      // 取消订阅
+      if (subscriptionId.value && serverId.value) {
+        console.log(`[监控面板] 取消订阅服务器 ${serverId.value} 的数据更新`);
+        monitoringService.unsubscribeFromServer(serverId.value, subscriptionId.value);
+        subscriptionId.value = null;
+      }
       
       // 通知父组件关闭
       emit('close');
     };
 
-    // 数据更新后刷新图表
-    const dataUpdateInterval = ref(null);
+    // 监听服务器数据清理事件
+    const handleServerDataCleared = (event) => {
+      if (event.detail && event.detail.serverId === serverId.value) {
+        console.log(`[监控面板] 检测到服务器 ${serverId.value} 的数据被清理，关闭面板`);
+        closePanel();
+      }
+    };
 
-    // 组件挂载时连接监控服务
+    // 组件挂载时初始化
     onMounted(async () => {
-      console.log('[监控面板] 组件已挂载，准备接收监控数据');
+      console.log('[监控面板] 组件已挂载，准备初始化监控图表');
+      
+      // 尝试获取服务器ID
+      if (props.serverInfo && props.serverInfo.host) {
+        serverId.value = props.serverInfo.host;
+      } else if (props.serverId) {
+        serverId.value = props.serverId;
+      }
+      
+      if (!serverId.value) {
+        console.error('[监控面板] 无法获取服务器ID，监控面板可能无法正常工作');
+        ElMessage.error('无法获取服务器ID，监控数据可能无法正常显示');
+        return;
+      }
+      
+      console.log(`[监控面板] 服务器ID: ${serverId.value}`);
+      
+      // 注册监听服务器数据清理事件
+      window.addEventListener('server-data-cleared', handleServerDataCleared);
       
       // 加载保存的宽度设置
       try {
@@ -1220,155 +1272,6 @@ export default defineComponent({
       } catch (error) {
         console.error('加载监控面板宽度失败:', error);
       }
-      
-      try {
-        // 首先检查监控服务是否已连接到相同的主机
-        const isAlreadyConnected = monitoringService.state.connected && 
-                                  monitoringService.state.targetHost === props.serverInfo.host;
-        
-        if (isAlreadyConnected) {
-          console.log(`[监控面板] 监控服务已连接到 ${props.serverInfo.host}，直接使用现有连接`);
-          // 已连接的情况下，立即请求刷新系统数据
-          monitoringService.requestSystemStats();
-        } else {
-          // 如果没有连接到相同的主机，才建立新连接
-          console.log(`[监控面板] 监控服务未连接到目标主机，建立新连接到 ${props.serverInfo.host}`);
-          await monitoringService.connectToHost(props.serverInfo);
-        }
-        
-        // 注册消息监听器以接收系统数据
-        const statsListenerId = monitoringService.addMessageListener('system_stats', (message) => {
-          if (message.payload && 
-              (!message.targetHost || message.targetHost === props.serverInfo.host)) {
-            // 将时间戳保存到systemInfo
-            if (message.timestamp) {
-              systemInfo.value.timestamp = message.timestamp;
-            } else if (message.payload.timestamp) {
-              systemInfo.value.timestamp = message.payload.timestamp;
-            } else {
-              // 如果没有时间戳，使用当前时间作为备用
-              systemInfo.value.timestamp = new Date().getTime();
-            }
-            
-            // 使用响应式方式更新数据
-            Object.keys(message.payload).forEach(key => {
-              if (systemInfo.value[key] !== undefined) {
-                systemInfo.value[key] = message.payload[key];
-              }
-            });
-            
-            // 添加数据点到历史记录
-            addDataPoint();
-          }
-        });
-        messageListenerIds.value.push(statsListenerId);
-        
-        // 添加system-info消息类型的监听器
-        const sysInfoListenerId = monitoringService.addMessageListener('system-info', (message) => {
-          if (message.payload || message.data) {
-            const data = message.payload || message.data;
-            
-            // 保存时间戳
-            if (message.timestamp) {
-              systemInfo.value.timestamp = message.timestamp;
-            } else if (data.timestamp) {
-              systemInfo.value.timestamp = data.timestamp;
-            } else {
-              // 如果没有时间戳，使用当前时间作为备用
-              systemInfo.value.timestamp = new Date().getTime();
-            }
-            
-            // 更新系统信息
-            if (data.type === 'system-info' && data.data) {
-              // 处理用户数据结构
-              const userData = data.data;
-              
-              // 将各个数据部分更新到systemInfo中
-              if (userData.cpu) {
-                systemInfo.value.cpu = {
-                  usage: userData.cpu.usage,
-                  cores: userData.cpu.cores,
-                  model: userData.cpu.model
-                };
-              }
-              
-              if (userData.memory) {
-                systemInfo.value.memory = {
-                  total: userData.memory.total,
-                  used: userData.memory.used,
-                  free: userData.memory.free,
-                  usedPercentage: userData.memory.usedPercentage
-                };
-              }
-              
-              if (userData.swap) {
-                systemInfo.value.swap = {
-                  total: userData.swap.total,
-                  used: userData.swap.used,
-                  free: userData.swap.free,
-                  usedPercentage: userData.swap.usedPercentage
-                };
-              }
-              
-              if (userData.disk) {
-                systemInfo.value.disk = {
-                  total: userData.disk.total,
-                  used: userData.disk.used,
-                  free: userData.disk.free,
-                  usedPercentage: userData.disk.usedPercentage
-                };
-              }
-              
-              if (userData.network) {
-                systemInfo.value.network = userData.network;
-              }
-              
-              if (userData.os) {
-                systemInfo.value.os = {
-                  type: userData.os.type,
-                  platform: userData.os.platform,
-                  arch: userData.os.arch,
-                  release: userData.os.release,
-                  uptime: userData.os.uptime,
-                  hostname: userData.os.hostname
-                };
-              }
-              
-              if (userData.ip) {
-                systemInfo.value.ip = {
-                  internal: userData.ip.internal,
-                  public: userData.ip.public
-                };
-              }
-              
-              if (userData.location) {
-                systemInfo.value.location = {
-                  country: userData.location.country,
-                  region: userData.location.region,
-                  city: userData.location.city,
-                  timezone: userData.location.timezone
-                };
-              }
-              
-              // 添加数据点到历史记录
-              addDataPoint();
-            } else {
-              // 使用响应式方式更新数据
-              Object.keys(data).forEach(key => {
-                if (systemInfo.value[key] !== undefined) {
-                  systemInfo.value[key] = data[key];
-                }
-              });
-              
-              // 添加数据点到历史记录
-              addDataPoint();
-            }
-          }
-        });
-        messageListenerIds.value.push(sysInfoListenerId);
-        
-        // 请求最新的系统数据
-        monitoringService.requestSystemStats();
         
         // 初始化图表
         nextTick(() => {
@@ -1385,15 +1288,28 @@ export default defineComponent({
             diskSwapChart.value && diskSwapChart.value.resize();
           });
         });
-      } catch (error) {
-        console.error('[监控面板] 连接失败:', error);
-        ElMessage.error('连接监控服务失败');
-      }
+      
+      // 订阅服务器数据更新
+      subscriptionId.value = monitoringService.subscribeToServer(serverId.value, handleMonitoringUpdate);
+      console.log(`[监控面板] 已订阅服务器 ${serverId.value} 的数据更新，订阅ID: ${subscriptionId.value}`);
+      
+      // 请求立即刷新数据
+      monitoringService.requestServerData(serverId.value);
       });
 
-    // 组件卸载时清理
+    // 组件卸载时清理资源
       onUnmounted(() => {
       console.log('[监控面板] 组件卸载，清理资源');
+      
+      // 移除事件监听器
+      window.removeEventListener('server-data-cleared', handleServerDataCleared);
+      
+      // 取消订阅
+      if (subscriptionId.value && serverId.value) {
+        console.log(`[监控面板] 取消订阅服务器 ${serverId.value} 的数据更新`);
+        monitoringService.unsubscribeFromServer(serverId.value, subscriptionId.value);
+        subscriptionId.value = null;
+      }
         
       // 销毁图表实例
       cpuChart.value && cpuChart.value.dispose();
@@ -1403,11 +1319,6 @@ export default defineComponent({
 
       // 移除事件监听器
       window.removeEventListener('resize', () => {});
-      
-      // 清除数据更新定时器
-      if (dataUpdateInterval.value) {
-        clearInterval(dataUpdateInterval.value);
-      }
     });
 
     return {

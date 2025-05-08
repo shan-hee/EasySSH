@@ -57,7 +57,7 @@ export const storageConfig = {
 export const featureDefaults = {
   ssh: {
     defaultPort: 22,
-    keepAliveInterval: 60, // 秒
+    keepAliveInterval: 30, // 秒
     connectionTimeout: 10, // 秒
     defaultEncoding: 'utf8'
   },

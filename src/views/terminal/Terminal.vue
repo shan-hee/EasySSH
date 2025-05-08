@@ -27,18 +27,20 @@
             @toggle-monitoring-panel="toggleMonitoringPanel"
           />
         </div>
-        <div 
-          :ref="el => setTerminalRef(el, termId)" 
-          class="terminal-content"
-          :data-terminal-id="termId"
-        ></div>
+        <div class="terminal-content-padding">
+          <div 
+            :ref="el => setTerminalRef(el, termId)" 
+            class="terminal-content"
+            :data-terminal-id="termId"
+          ></div>
+        </div>
       </div>
     </div>
   </div>
 </template>
 
 <script>
-import { ref, onMounted, onBeforeUnmount, nextTick, onUnmounted, watch, computed } from 'vue'
+import { ref, onMounted, onBeforeUnmount, nextTick, onUnmounted, watch, computed, onActivated, onDeactivated } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useConnectionStore } from '../../store/connection'
@@ -202,6 +204,13 @@ export default {
           return false
         }
         
+        // 检查是否已有此终端ID的SSH会话正在创建中
+        const isCreating = terminalStore.isSessionCreating(termId)
+        if (isCreating) {
+          console.log(`终端 ${termId} 的SSH会话正在创建中，跳过重复初始化`)
+          return false
+        }
+        
         // 设置当前终端的初始化状态和连接状态为true
         terminalInitializingStates.value[termId] = true
         terminalConnectingStates.value[termId] = true
@@ -256,10 +265,7 @@ export default {
           console.log(`终端 ${termId} 初始化成功`)
           terminalInitialized.value[termId] = true
           
-          // 手动触发终端工具栏状态初始化
-          // 此处添加延迟，确保SSH会话有足够时间建立
-          setTimeout(() => {
-            // 如果SSH连接已成功但未通知UI，手动触发
+          // 移除延迟，立即触发SSH连接事件
             if (terminalStore.isTerminalConnected(termId)) {
               // 获取SSH会话ID
               const sshSessionId = terminalStore.sessions[termId];
@@ -270,12 +276,12 @@ export default {
                     sessionId: sshSessionId,
                     terminalId: termId,
                     // 尝试获取主机信息
-                    host: connection ? connection.host : null
+                    host: connection ? connection.host : null,
+                    connection: connection
                   }
                 }));
               }
             }
-          }, 500);
         } else {
           console.error(`终端 ${termId} 初始化失败`)
         }
@@ -497,6 +503,34 @@ export default {
         // 提取所有终端ID
         const newIds = [...new Set(terminalTabs.map(tab => tab.data.connectionId))]
         
+        // 查找要删除的ID
+        const idsToRemove = terminalIds.value.filter(id => !newIds.includes(id));
+        
+        if (idsToRemove.length > 0) {
+          console.log(`发现${idsToRemove.length}个不在标签页中的终端ID，准备移除:`, idsToRemove);
+          
+          // 清理不在标签页中的终端ID及其相关状态
+          for (const idToRemove of idsToRemove) {
+            // 清理终端状态
+            delete terminalInitialized.value[idToRemove];
+            delete terminalInitializingStates.value[idToRemove];
+            delete terminalConnectingStates.value[idToRemove];
+            delete terminalSized.value[idToRemove];
+            
+            // 清理定时器
+            if (resizeDebounceTimers.value[idToRemove]) {
+              clearTimeout(resizeDebounceTimers.value[idToRemove]);
+              delete resizeDebounceTimers.value[idToRemove];
+            }
+            
+            // 清理引用
+            if (terminalRefs.value[idToRemove]) {
+              terminalRefs.value[idToRemove] = null;
+              delete terminalRefs.value[idToRemove];
+            }
+          }
+        }
+        
         // 比较新旧ID列表，只有当内容不同时才更新和记录日志
         const currentIds = terminalIds.value
         const hasChanged = newIds.length !== currentIds.length || 
@@ -649,8 +683,49 @@ export default {
     // 监听标签页状态变化，更新终端ID列表
     watch(
       () => tabStore.tabs,
-      () => {
-        updateTerminalIds()
+      (newTabs, oldTabs) => {
+        // 检测已关闭的终端标签
+        if (oldTabs && oldTabs.length > newTabs.length) {
+          // 查找已关闭的终端标签
+          const closedTabs = oldTabs.filter(oldTab => 
+            !newTabs.some(newTab => 
+              newTab.data && oldTab.data && newTab.data.connectionId === oldTab.data.connectionId
+            ) && 
+            oldTab.type === 'terminal' && 
+            oldTab.data && 
+            oldTab.data.connectionId
+          );
+          
+          // 处理已关闭的终端标签
+          if (closedTabs.length > 0) {
+            for (const closedTab of closedTabs) {
+              const closedId = closedTab.data.connectionId;
+              console.log(`检测到标签页关闭，移除终端ID: ${closedId}`);
+              
+              // 从终端ID列表中移除
+              terminalIds.value = terminalIds.value.filter(id => id !== closedId);
+              
+              // 清理与此终端相关的所有状态
+              delete terminalInitialized.value[closedId];
+              delete terminalInitializingStates.value[closedId];
+              delete terminalConnectingStates.value[closedId];
+              delete terminalSized.value[closedId];
+              
+              if (resizeDebounceTimers.value[closedId]) {
+                clearTimeout(resizeDebounceTimers.value[closedId]);
+                delete resizeDebounceTimers.value[closedId];
+              }
+              
+              // 清理引用
+              if (terminalRefs.value[closedId]) {
+                terminalRefs.value[closedId] = null;
+                delete terminalRefs.value[closedId];
+              }
+            }
+          }
+        }
+        
+        updateTerminalIds();
       },
       { deep: true, immediate: true }
     )
@@ -917,7 +992,28 @@ export default {
       }));
     }
     
-    // 初始化
+    // 添加组件激活/失活生命周期钩子
+    onActivated(() => {
+      console.log('终端视图已激活');
+      
+      // 触发终端状态刷新事件，同步工具栏状态
+      const currentId = activeConnectionId.value;
+      if (currentId) {
+        window.dispatchEvent(new CustomEvent('terminal:refresh-status', {
+          detail: { 
+            sessionId: currentId,
+            forceShow: true 
+          }
+        }));
+      }
+    });
+
+    onDeactivated(() => {
+      console.log('终端视图已失活');
+      // 可以在这里添加失活时的处理逻辑
+    });
+    
+    // 在onMounted中添加新会话事件监听
     onMounted(() => {
       // 加载保存的SFTP面板宽度
       try {
@@ -1027,11 +1123,14 @@ export default {
         terminalConnectingStates.value[sessionId] = true;
       }
 
+      // 监听新会话事件
+      window.addEventListener('terminal:new-session', handleNewSession);
+      
       // 只保留终端状态刷新事件监听器
       window.addEventListener('terminal:refresh-status', handleTerminalRefreshStatus);
     })
     
-    // 在组件卸载前移除监听器
+    // 在onBeforeUnmount中移除新会话事件监听
     onBeforeUnmount(() => {
       // 移除工具栏事件监听
       removeToolbarListeners()
@@ -1060,36 +1159,224 @@ export default {
       // 清理终端尺寸状态
       terminalSized.value = {}
 
+      // 移除新会话事件监听
+      window.removeEventListener('terminal:new-session', handleNewSession);
+
       // 只保留终端状态刷新事件监听器移除
       window.removeEventListener('terminal:refresh-status', handleTerminalRefreshStatus);
     })
+    
+    // 添加防抖控制
+    const refreshStatusDebounceTimer = ref(null)
     
     // 添加回handleTerminalRefreshStatus函数，但简化逻辑
     const handleTerminalRefreshStatus = (event) => {
       if (!event.detail || !event.detail.sessionId) return;
       
-      const { sessionId, forceShow } = event.detail;
-      console.log(`收到终端状态刷新事件: ${sessionId}${forceShow ? ', 强制显示' : ''}`);
+      // 添加防抖处理，避免短时间内处理多次相同会话ID的刷新事件
+      if (refreshStatusDebounceTimer.value) {
+        clearTimeout(refreshStatusDebounceTimer.value);
+      }
       
-      // 主要处理强制显示标志
-      if (forceShow && sessionId === activeConnectionId.value) {
-        // 确保终端ID在列表中
-        if (!terminalIds.value.includes(sessionId)) {
-          terminalIds.value.push(sessionId);
+      refreshStatusDebounceTimer.value = setTimeout(() => {
+        const { sessionId, forceShow, isNewCreation } = event.detail;
+        console.log(`收到终端状态刷新事件: ${sessionId}${forceShow ? ', 强制显示' : ''}${isNewCreation ? ', 新创建' : ''}`);
+        
+        // 如果是新创建的终端，首先清理旧状态
+        if (isNewCreation) {
+          // 检查是否已经有正在创建中的SSH会话或已存在的会话
+          const hasExistingSession = terminalStore.hasTerminalSession(sessionId);
+          const isCreating = terminalStore.isSessionCreating(sessionId);
+          
+          if (hasExistingSession || isCreating) {
+            console.log(`终端${sessionId}已有会话或正在创建中，跳过重复初始化`);
+            // 只处理强制显示，不清理状态
+            if (forceShow && sessionId === activeConnectionId.value) {
+              // 确保终端ID在列表中
+              if (!terminalIds.value.includes(sessionId)) {
+                terminalIds.value.push(sessionId);
+              }
+              
+              // 重置终端大小状态以便重新调整大小
+              terminalSized.value[sessionId] = false;
+              
+              // 强制重新调整终端大小并聚焦
+              nextTick(() => {
+                resizeTerminal(sessionId);
+                focusTerminal(sessionId);
+              });
+              
+              console.log(`强制显示终端: ${sessionId}`);
+            }
+            refreshStatusDebounceTimer.value = null;
+            return;
+          }
+          
+          // 从终端ID列表中移除重复的ID
+          terminalIds.value = terminalIds.value.filter(id => id !== sessionId);
+          
+          // 清理所有状态
+          delete terminalInitialized.value[sessionId];
+          delete terminalInitializingStates.value[sessionId];
+          delete terminalConnectingStates.value[sessionId];
+          delete terminalSized.value[sessionId];
+          
+          // 清理引用
+          if (terminalRefs.value[sessionId]) {
+            terminalRefs.value[sessionId] = null;
+            delete terminalRefs.value[sessionId];
+          }
+          
+          // 增加对终端存储的清理
+          if (terminalStore.hasTerminal(sessionId)) {
+            console.log(`检测到新创建的终端[${sessionId}]但存在旧连接，断开旧连接`);
+            terminalStore.disconnectTerminal(sessionId)
+              .catch(error => console.error(`清理旧终端连接失败: ${error.message}`));
+          }
+          
+          // 添加到终端ID列表，确保初始化
+          if (!terminalIds.value.includes(sessionId)) {
+            terminalIds.value.push(sessionId);
+            console.log(`为新创建的终端[${sessionId}]准备初始化`);
+          }
         }
         
-        // 重置终端大小状态以便重新调整大小
-        terminalSized.value[sessionId] = false;
+        // 主要处理强制显示标志
+        if (forceShow && sessionId === activeConnectionId.value) {
+          // 确保终端ID在列表中
+          if (!terminalIds.value.includes(sessionId)) {
+            terminalIds.value.push(sessionId);
+          }
+          
+          // 重置终端大小状态以便重新调整大小
+          terminalSized.value[sessionId] = false;
+          
+          // 强制重新调整终端大小并聚焦
+          nextTick(() => {
+            resizeTerminal(sessionId);
+            focusTerminal(sessionId);
+          });
+          
+          console.log(`强制显示终端: ${sessionId}`);
+        }
         
-        // 强制重新调整终端大小并聚焦
-        nextTick(() => {
-          resizeTerminal(sessionId);
-          focusTerminal(sessionId);
-        });
-        
-        console.log(`强制显示终端: ${sessionId}`);
-      }
+        refreshStatusDebounceTimer.value = null;
+      }, 10); // 短延迟防抖
     }
+    
+    // 添加处理新会话事件的函数
+    const handleNewSession = (event) => {
+      if (!event.detail || !event.detail.sessionId) return;
+      
+      const { sessionId, isNewCreation } = event.detail;
+      console.log(`收到新会话事件: ${sessionId}, 是否新创建: ${isNewCreation}`);
+      
+      if (isNewCreation) {
+        // 检查是否已经有正在创建中的SSH会话或已存在的会话
+        const hasExistingSession = terminalStore.hasTerminalSession(sessionId);
+        const isCreating = terminalStore.isSessionCreating(sessionId);
+        
+        if (hasExistingSession || isCreating) {
+          console.log(`终端${sessionId}已有会话或正在创建中，跳过重复初始化`);
+          return;
+        }
+        
+        // 确保清理旧的状态
+        // 从终端ID列表中移除重复的ID
+        terminalIds.value = terminalIds.value.filter(id => id !== sessionId);
+        
+        // 清理所有状态
+        delete terminalInitialized.value[sessionId];
+        delete terminalInitializingStates.value[sessionId];
+        delete terminalConnectingStates.value[sessionId];
+        delete terminalSized.value[sessionId];
+        
+        // 清理引用
+        if (terminalRefs.value[sessionId]) {
+          terminalRefs.value[sessionId] = null;
+          delete terminalRefs.value[sessionId];
+        }
+        
+        // 清理定时器
+        if (resizeDebounceTimers.value[sessionId]) {
+          clearTimeout(resizeDebounceTimers.value[sessionId]);
+          delete resizeDebounceTimers.value[sessionId];
+        }
+        
+        // 清理终端存储中的连接（如果有）
+        if (terminalStore.hasTerminal(sessionId)) {
+          console.log(`检测到新创建的终端[${sessionId}]但存在旧终端，断开旧连接`);
+          terminalStore.disconnectTerminal(sessionId)
+            .catch(error => console.error(`清理旧终端连接失败: ${error.message}`));
+        }
+        
+        // 添加到终端ID列表，确保初始化
+        terminalIds.value.push(sessionId);
+        console.log(`为新会话[${sessionId}]重置状态，准备初始化`);
+      }
+    };
+    
+    // 添加记录已处理的SSH会话连接事件
+    const processedSshSessions = ref(new Set())
+    
+    // 修改SSH连接成功处理函数，添加去重逻辑
+    const handleSshConnected = (event) => {
+      if (!event.detail) return;
+      
+      const sessionId = event.detail.sessionId;
+      let terminalId = event.detail.terminalId;
+      
+      // 检查是否已经处理过该会话的连接成功事件
+      if (processedSshSessions.value.has(sessionId)) {
+        console.log(`SSH会话 ${sessionId} 的连接成功事件已处理，跳过重复处理`);
+        return;
+      }
+      
+      // 添加到已处理集合
+      processedSshSessions.value.add(sessionId);
+      
+      // 尝试从SSH会话ID获取终端ID（以防上面的修改未生效或向后兼容）
+      if (!terminalId && sessionId && terminalStore && terminalStore.sessions) {
+        // 通过反向查找获取终端ID
+        for (const [tId, sId] of Object.entries(terminalStore.sessions)) {
+          if (sId === sessionId) {
+            terminalId = tId;
+            break;
+          }
+        }
+      }
+      
+      console.log(`收到SSH连接成功事件: 会话ID=${sessionId}, 终端ID=${terminalId || '未知'}`);
+      
+      if (sessionId) {
+        // 保存会话连接状态
+        updateConnectionStatus(sessionId, true);
+        
+        // 更新对应终端的状态
+        if (terminalId) {
+          // 如果没有该终端的状态，先创建
+          const terminalState = getTerminalToolbarState(terminalId);
+          if (terminalState) {
+            terminalState.isSshConnected = true;
+            
+            // 只有是当前活动终端时才更新UI
+            if (terminalId === props.activeSessionId) {
+              isSshConnected.value = true;
+            }
+          }
+        }
+        
+        // 额外检查：如果当前没有活动终端但会话ID与当前活动会话匹配，也更新UI
+        // 这是为了处理新建连接的情况
+        if (!terminalId && sessionId === sessionStore.getActiveSession()) {
+          isSshConnected.value = true;
+        }
+        
+        // 在SSH连接成功时，立即检查监控状态
+        // 去掉setTimeout，立即检查监控状态
+        checkMonitoringServiceStatus();
+      }
+    };
     
     return {
       terminalIds,
@@ -1183,12 +1470,20 @@ export default {
   height: 40px; /* 确保工具栏高度固定为40px */
 }
 
-.terminal-content {
+.terminal-content-padding {
   flex: 1;
+  padding: 20px; /* 添加20px的内边距 */
+  box-sizing: border-box;
   height: calc(100% - 40px); /* 减去工具栏的高度 */
   width: 100%;
+  position: relative;
+  overflow: hidden; /* 防止内容溢出 */
+}
+
+.terminal-content {
+  height: 100%;
+  width: 100%;
   position: relative; /* 添加相对定位以便终端能正确定位 */
-  box-sizing: border-box; /* 确保padding计入宽高 */
 }
 
 .connecting-overlay {
@@ -1214,7 +1509,6 @@ export default {
 :deep(.xterm) {
   height: 100%;
   width: 100%;
-  padding: 20px;
 }
 
 :deep(.xterm-viewport) {

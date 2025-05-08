@@ -266,7 +266,7 @@ class SSHService {
     
     // 从设置中获取保活间隔
     const connectionSettings = settings.getConnectionOptions();
-    const keepAliveIntervalSec = connectionSettings.keepAliveInterval || 60; // 默认60秒
+    const keepAliveIntervalSec = connectionSettings.keepAliveInterval || 30; // 默认30秒
     const keepAliveIntervalMs = keepAliveIntervalSec * 1000; // 转换为毫秒
     
     // 创建新的保活定时器
@@ -313,7 +313,7 @@ class SSHService {
           log.debug(`发送保活消息(ping): ${sessionId}, 测量延迟: ${shouldMeasureLatency}`);
           
           // 清理超时的ping请求（超过10秒未收到响应）
-          const expireTime = new Date(now.getTime() - 10000);
+          const expireTime = new Date(now.getTime() - 10000); // 超时时间为10秒
           for (const [id, request] of pingRequests.entries()) {
             if (request.timestamp < expireTime) {
               pingRequests.delete(id);
@@ -323,7 +323,7 @@ class SSHService {
           log.warn(`发送保活消息失败: ${sessionId}`, error);
         }
       }
-    }, keepAliveIntervalMs / 2); // 保活检查间隔为保活间隔的一半
+    }, keepAliveIntervalMs / 2); // 保活检查间隔为保活间隔的一半（15秒）
     
     // 保存定时器引用和ping请求映射
     this.keepAliveIntervals.set(sessionId, {
@@ -550,7 +550,7 @@ class SSHService {
               connectionState.message = '已连接'
               log.info(`SSH连接成功: ${sessionId}`)
               
-              // 触发SSH连接成功事件，通知监控服务
+              // 立即触发SSH连接成功事件，通知监控服务
               try {
                 const connHost = connection.host || (this.sessions.has(sessionId) ? this.sessions.get(sessionId).connection?.host : null)
                 if (connHost) {
@@ -572,11 +572,13 @@ class SSHService {
                     terminalId = connection.terminalId;
                   }
                   
+                  // 不使用延迟，立即触发事件
                   const sshConnectedEvent = new CustomEvent('ssh-connected', {
                     detail: { 
                       sessionId: sessionId,
                       host: connHost,
-                      terminalId: terminalId // 添加终端ID
+                      terminalId: terminalId, // 添加终端ID
+                      connection: connection  // 添加完整连接信息
                     }
                   })
                   window.dispatchEvent(sshConnectedEvent)

@@ -189,7 +189,6 @@
 /* 表单标签位置 */
 [data-form-labels="top"] label {
   display: block;
-  margin-bottom: 0.5rem;
 }
 
 [data-form-labels="left"] label {

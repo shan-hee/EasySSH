@@ -9,12 +9,14 @@
 
       <main class="content">
         <!-- 终端组件直接嵌入为常驻组件，使用v-show控制显示/隐藏 -->
-        <Terminal 
-          v-show="isTerminalRoute" 
-          :id="getCurrentTerminalId()"
-          key="global-terminal-component"
-          ref="terminalComponent"
-        />
+        <keep-alive>
+          <Terminal 
+            v-show="isTerminalRoute" 
+            :id="getCurrentTerminalId()"
+            key="global-terminal-component"
+            ref="terminalComponent"
+          />
+        </keep-alive>
         
         <!-- 非终端路由仍然使用router-view渲染 -->
         <router-view v-if="!isTerminalRoute"></router-view>
@@ -31,6 +33,7 @@
         :width="monitoringPanelWidth"
         v-model:width="monitoringPanelWidth"
         @resize="handleMonitoringPanelResize"
+        :session-id="monitorSessionId"
       />
     </div>
     
@@ -186,15 +189,21 @@ export default defineComponent({
         // 切换到终端路由，触发终端刷新
         nextTick(() => {
           if (terminalComponent.value) {
-            console.log('路由切换到终端，触发终端显示和刷新', getCurrentSessionId());
+            // 获取当前会话ID
+            const currentId = getCurrentSessionId();
             
-            // 触发终端状态刷新事件
-            window.dispatchEvent(new CustomEvent('terminal:refresh-status', {
-              detail: { 
-                sessionId: getCurrentSessionId(),
-                forceShow: true // 添加强制显示标记
-              }
-            }));
+            if (currentId) {
+              console.log('路由切换到终端，触发终端显示和刷新', currentId);
+              
+              // 只使用一个事件触发终端初始化，避免多次触发导致创建多个SSH会话
+              window.dispatchEvent(new CustomEvent('terminal:refresh-status', {
+                detail: { 
+                  sessionId: currentId,
+                  forceShow: true, // 添加强制显示标记
+                  isNewCreation: true // 添加新创建标记
+                }
+              }));
+            }
           }
         });
       }

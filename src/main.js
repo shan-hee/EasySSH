@@ -19,6 +19,8 @@ import monitoringService from './services/monitoring'
 // 导入服务初始化模块
 import { initializeServices } from '../scripts/services'
 import servicesManager from './services'
+// 导入日志服务
+import log from './services/log'
 
 // 初始化主题和语言设置
 const initSettings = () => {
@@ -69,15 +71,57 @@ const initSettings = () => {
         language: 'zh-CN'
       }
       localStorage.setItem(UI_SETTINGS_KEY, JSON.stringify(defaultSettings))
-      console.log('已应用默认深色主题')
+      log.info('已应用默认深色主题')
     }
   } catch (error) {
-    console.error('初始化主题和语言设置失败', error)
+    log.error('初始化主题和语言设置失败', error)
   }
 }
 
 // 立即初始化主题和语言
 initSettings()
+
+// 预加载关键字体（在DOM准备好后执行）
+const preloadFonts = () => {
+  
+  // 使用更可靠的导入方式
+  const loadFontHelper = () => {
+    import('./utils/fontLoader').then(module => {
+      const fontLoader = module.default
+      fontLoader.preloadFonts()
+        .then(success => {
+          if (success) {
+            // 设置全局加载完成标志
+            window.TERMINAL_FONTS_LOADED = true
+            // 发送字体加载完成事件
+            window.dispatchEvent(new CustomEvent('terminal:fonts-loaded'))
+          } else {
+            log.warn('终端字体预加载可能未完全成功')
+          }
+        })
+        .catch(err => {
+          log.warn('字体预加载过程中出错:', err)
+          // 即使出错也设置标志，避免阻塞终端创建
+          window.TERMINAL_FONTS_LOADED = true
+        })
+    }).catch(err => {
+      log.error('加载字体工具失败:', err)
+      // 即使导入失败也设置标志，避免阻塞
+      window.TERMINAL_FONTS_LOADED = true
+    })
+  }
+  
+  // 确保DOM已加载完成
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', loadFontHelper)
+  } else {
+    // DOM已加载，直接执行
+    loadFontHelper()
+  }
+}
+
+// 立即开始预加载字体
+preloadFonts()
 
 // 开发环境存储版本检查
 if (process.env.NODE_ENV === 'development') {
@@ -85,7 +129,7 @@ if (process.env.NODE_ENV === 'development') {
   const savedVersion = localStorage.getItem('app-version')
   
   if (savedVersion !== storageVersion) {
-    console.log('检测到存储版本变更，重置存储状态')
+    log.info('检测到存储版本变更，重置存储状态')
     localStorage.clear()
     sessionStorage.clear()
     localStorage.setItem('app-version', storageVersion)
@@ -97,7 +141,7 @@ if (process.env.NODE_ENV === 'development') {
     if (e.ctrlKey && e.shiftKey && e.key === 'Delete') {
       localStorage.clear()
       sessionStorage.clear()
-      console.log('已清除所有存储')
+      log.info('已清除所有存储')
       location.reload()
     }
   })
@@ -119,37 +163,37 @@ app.use(ElementPlus)
 // 扩展调试方法
 window.debugMonitoring = {
   connect: (host) => {
-    console.log(`[监控调试] 手动触发监控连接: ${host || '未指定主机'}`);
+    log.info(`[监控调试] 手动触发监控连接: ${host || '未指定主机'}`);
     if (!host) {
       // 尝试从当前SSH会话获取主机
       const sessions = JSON.parse(sessionStorage.getItem('ssh-sessions') || '[]');
       if (sessions.length > 0) {
         host = sessions[0].host;
-        console.log(`[监控调试] 使用当前会话主机: ${host}`);
+        log.info(`[监控调试] 使用当前会话主机: ${host}`);
       } else {
-        console.error('[监控调试] 未找到主机，请指定主机地址');
+        log.error('[监控调试] 未找到主机，请指定主机地址');
         return false;
       }
     }
     return monitoringService.connect(host);
   },
   status: () => {
-    console.log('[监控调试] 当前监控状态:');
+    log.info('[监控调试] 当前监控状态:');
     monitoringService.printStatus();
     return monitoringService.state;
   },
   
   // 添加显式创建监控面板的方法
   showPanel: (host) => {
-    console.log(`[监控调试] 显式创建监控面板: ${host || '未指定主机'}`);
+    log.info(`[监控调试] 显式创建监控面板: ${host || '未指定主机'}`);
     if (!host) {
       // 尝试从当前SSH会话获取主机
       const sessions = JSON.parse(sessionStorage.getItem('ssh-sessions') || '[]');
       if (sessions.length > 0) {
         host = sessions[0].host;
-        console.log(`[监控调试] 使用当前会话主机: ${host}`);
+        log.info(`[监控调试] 使用当前会话主机: ${host}`);
       } else {
-        console.error('[监控调试] 未找到主机，请指定主机地址');
+        log.error('[监控调试] 未找到主机，请指定主机地址');
         return false;
       }
     }
@@ -161,7 +205,7 @@ window.debugMonitoring = {
       }));
       return true;
     } catch (error) {
-      console.error('[监控调试] 显示监控面板失败:', error);
+      log.error('[监控调试] 显示监控面板失败:', error);
       return false;
     }
   }

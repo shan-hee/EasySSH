@@ -208,9 +208,9 @@ class TerminalService {
    * @param {string} id - 终端ID
    * @param {HTMLElement} container - 终端容器元素
    * @param {Object} options - 终端选项
-   * @returns {Object} - 终端实例
+   * @returns {Promise<Object>} - 终端实例
    */
-  createTerminal(id, container, options = {}) {
+  async createTerminal(id, container, options = {}) {
     if (!id || !container) {
       log.error('创建终端失败：缺少必需参数')
       return null

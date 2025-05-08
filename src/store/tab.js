@@ -410,23 +410,27 @@ export const useTabStore = defineStore('tab', () => {
               clearTimeout(disconnectTimeout) // 清除超时
               console.log(`终端 ${closingTab.data.connectionId} 断开${success ? '成功' : '失败'}`)
               
-              // 检查是否需要断开监控连接
-              import('../services/monitoring').then(module => {
-                const monitoringService = module.default
-                if (monitoringService.state.connected) {
-                  console.log('关闭页签，断开监控连接')
-                  monitoringService.disconnect()
-                }
-              }).catch(error => {
-                console.error('导入监控服务失败:', error)
-              })
+              // 主动触发终端销毁事件，确保监控工厂断开连接
+              window.dispatchEvent(new CustomEvent('terminal:destroyed', {
+                detail: { terminalId: closingTab.data.connectionId }
+              }));
             })
             .catch(error => {
               clearTimeout(disconnectTimeout) // 清除超时
               console.error('关闭终端连接失败:', error)
+              
+              // 即使终端断开失败，仍然触发终端销毁事件，确保监控工厂断开连接
+              window.dispatchEvent(new CustomEvent('terminal:destroyed', {
+                detail: { terminalId: closingTab.data.connectionId }
+              }));
             })
         } else {
           console.log(`保持终端 ${closingTab.data.connectionId} 连接，还有 ${sameConnectionTabs.length} 个标签使用它`)
+          
+          // 在保留终端连接的同时，确保触发状态刷新事件
+          window.dispatchEvent(new CustomEvent('terminal:refresh-status', {
+            detail: { terminalId: closingTab.data.connectionId }
+          }));
         }
       }).catch(error => {
         console.error('导入终端Store失败:', error)

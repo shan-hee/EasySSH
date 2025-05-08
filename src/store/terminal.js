@@ -25,7 +25,13 @@ export const useTerminalStore = defineStore('terminal', () => {
     fitAddons: {},
     
     // 终端背景图片状态
-    useBackgroundImage: false
+    useBackgroundImage: false,
+    
+    // 新增：跟踪正在创建中的会话
+    creatingSessionIds: [],
+    
+    // 在state中添加用于追踪监控连接状态的Map
+    monitorConnectingHosts: {}
   })
   
   /**
@@ -36,6 +42,11 @@ export const useTerminalStore = defineStore('terminal', () => {
    */
   const initTerminal = async (connectionId, container) => {
     try {
+      // 将终端ID添加到创建中列表
+      if (!state.creatingSessionIds.includes(connectionId)) {
+        state.creatingSessionIds.push(connectionId)
+      }
+      
       if (!connectionId) {
         log.error('未提供连接ID')
         ElMessage.error('未提供连接ID')
@@ -92,38 +103,57 @@ export const useTerminalStore = defineStore('terminal', () => {
       // 同时尝试连接监控服务
       if (window.monitoringAPI && connection.host) {
         try {
+          // 检查该主机是否已经在连接监控服务中
+          const isConnecting = state.monitorConnectingHosts[connection.host];
+          if (isConnecting) {
+            log.debug(`[终端] 监控服务已在连接到 ${connection.host}，跳过重复连接`);
+          } else {
           // 检查监控服务连接状态
-          const monitorStatus = window.monitoringAPI.getStatus()
-          const shouldConnect = !monitorStatus.connected || monitorStatus.targetHost !== connection.host
+            const monitorStatus = window.monitoringAPI.getStatus();
+            const shouldConnect = !monitorStatus.connected || monitorStatus.targetHost !== connection.host;
           
           if (shouldConnect) {
-            log.info(`[终端] 连接监控服务: ${connection.host}`)
+              // 标记为正在连接中
+              state.monitorConnectingHosts[connection.host] = true;
+              
+              log.info(`[终端] 连接监控服务: ${connection.host}`);
             // 异步连接，不阻塞终端创建
             window.monitoringAPI.connect(connection.host)
               .then(success => {
-                log.debug(`[终端] 监控服务连接${success ? '成功' : '失败'}`)
+                  log.debug(`[终端] 监控服务连接${success ? '成功' : '失败'}`);
+                  // 移除连接中标记
+                  delete state.monitorConnectingHosts[connection.host];
                 // 触发状态更新
-                window.monitoringAPI.updateTerminalMonitoringStatus?.(connectionId, success)
+                  window.monitoringAPI.updateTerminalMonitoringStatus?.(connectionId, success);
               })
-              .catch(err => log.warn('[终端] 监控服务连接错误:', err))
+                .catch(err => {
+                  log.warn('[终端] 监控服务连接错误:', err);
+                  // 确保在错误情况下也移除连接中标记
+                  delete state.monitorConnectingHosts[connection.host];
+                });
           } else {
-            log.debug(`[终端] 监控服务已连接到目标主机: ${connection.host}`)
-            window.monitoringAPI.updateTerminalMonitoringStatus?.(connectionId, true)
+              log.debug(`[终端] 监控服务已连接到目标主机: ${connection.host}`);
+              window.monitoringAPI.updateTerminalMonitoringStatus?.(connectionId, true);
+            }
           }
         } catch (err) {
-          log.warn('[终端] 监控服务处理出错:', err)
+          log.warn('[终端] 监控服务处理出错:', err);
+          // 确保清理连接状态
+          if (connection.host) {
+            delete state.monitorConnectingHosts[connection.host];
+          }
         }
       } else {
         // 明确设置该终端没有监控服务
         window.dispatchEvent(new CustomEvent('monitoring-status-change', { 
           detail: { installed: false, terminalId: connectionId, host: null }
-        }))
+        }));
       }
       
       // 获取终端设置
       let terminalOptions = {
         fontSize: 16,
-        fontFamily: 'monospace',
+        fontFamily: "'JetBrains Mono'",
         theme: {
           background: '#121212',
           foreground: '#f8f8f8',
@@ -226,6 +256,9 @@ export const useTerminalStore = defineStore('terminal', () => {
       ElMessage.error(`初始化终端失败: ${error.message || '未知错误'}`)
       state.connectionStatus[connectionId] = 'error'
       return false
+    } finally {
+      // 无论成功或失败，都从创建中列表移除
+      state.creatingSessionIds = state.creatingSessionIds.filter(i => i !== connectionId)
     }
   }
   
@@ -704,6 +737,11 @@ export const useTerminalStore = defineStore('terminal', () => {
       // 触发垃圾回收
       triggerGarbageCollection();
       
+      // 触发终端销毁事件，通知监控工厂和其他组件
+      window.dispatchEvent(new CustomEvent('terminal:destroyed', {
+        detail: { terminalId: connectionId }
+      }));
+      
       const disconnectTime = performance.now() - disconnectStartTime;
       log.info(`终端连接断开完成: ${connectionId}，耗时: ${disconnectTime.toFixed(2)}ms`);
       return true;
@@ -716,6 +754,11 @@ export const useTerminalStore = defineStore('terminal', () => {
         delete state.sessions[connectionId];
         delete state.connectionStatus[connectionId];
         delete state.fitAddons[connectionId];
+        
+        // 即使出错也尝试触发终端销毁事件
+        window.dispatchEvent(new CustomEvent('terminal:destroyed', {
+          detail: { terminalId: connectionId }
+        }));
       } catch (e) {
         // 忽略清理错误
       }
@@ -923,6 +966,16 @@ export const useTerminalStore = defineStore('terminal', () => {
     }, 200); // 延长超时时间，避免与其他操作竞争
   };
   
+  // 检查指定ID的终端是否有会话
+  const hasTerminalSession = (terminalId) => {
+    return !!state.sessions[terminalId]
+  }
+  
+  // 检查指定ID的终端会话是否正在创建中
+  const isSessionCreating = (terminalId) => {
+    return state.creatingSessionIds.includes(terminalId)
+  }
+  
   return {
     ...toRefs(state),
     initTerminal,
@@ -937,6 +990,8 @@ export const useTerminalStore = defineStore('terminal', () => {
     getTerminal,
     focusTerminal,
     applySettingsToAllTerminals,
-    toggleBackgroundImage
+    toggleBackgroundImage,
+    hasTerminalSession,
+    isSessionCreating
   }
 }) 

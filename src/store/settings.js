@@ -15,7 +15,7 @@ export const useSettingsStore = defineStore('settings', () => {
   // 终端设置
   const terminalSettings = reactive({
     fontSize: 16,
-    fontFamily: 'monospace',
+    fontFamily: "'JetBrains Mono'",
     theme: 'dark',
     cursorStyle: 'block',
     cursorBlink: true,
@@ -29,7 +29,7 @@ export const useSettingsStore = defineStore('settings', () => {
     reconnectInterval: 3,
     connectionTimeout: 15,
     keepAlive: true,
-    keepAliveInterval: 60,
+    keepAliveInterval: 30,
   })
   
   // 界面设置
@@ -188,7 +188,7 @@ export const useSettingsStore = defineStore('settings', () => {
       // 重置终端设置
       Object.assign(terminalSettings, {
         fontSize: 16,
-        fontFamily: 'monospace',
+        fontFamily: "'JetBrains Mono'",
         theme: 'dark',
         cursorStyle: 'block',
         cursorBlink: true,
@@ -202,7 +202,7 @@ export const useSettingsStore = defineStore('settings', () => {
         reconnectInterval: 3,
         connectionTimeout: 15,
         keepAlive: true,
-        keepAliveInterval: 60,
+        keepAliveInterval: 30,
       })
       
       // 重置界面设置，使用深色主题
