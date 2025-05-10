@@ -138,6 +138,7 @@ import axios from 'axios';
 import { ElMessage } from 'element-plus';
 import monitoringService from '../../services/monitoring';
 import monitoringFactory from '../../services/monitoringFactory';
+import log from '../../services/log';
 import * as echarts from 'echarts/core';
 import { LineChart, PieChart } from 'echarts/charts';
 import { 
@@ -266,7 +267,7 @@ export default defineComponent({
           try {
             localStorage.setItem('monitoringPanelWidth', newWidth.toString());
           } catch (error) {
-            console.error('保存监控面板宽度失败:', error);
+            log.error('保存监控面板宽度失败:', error);
           }
         }
       };
@@ -1205,7 +1206,7 @@ export default defineComponent({
 
     // 处理监控数据更新
     const handleMonitoringUpdate = (update) => {
-      console.log('[监控面板] 收到服务器数据更新:', update.isInitial ? '初始数据' : '数据更新');
+      log.debug('[监控面板] 收到服务器数据更新:', update.isInitial ? '初始数据' : '数据更新');
       
       // 更新系统信息
       if (update.data) {
@@ -1220,7 +1221,7 @@ export default defineComponent({
     const closePanel = () => {
       // 取消订阅
       if (subscriptionId.value && serverId.value) {
-        console.log(`[监控面板] 取消订阅服务器 ${serverId.value} 的数据更新`);
+        log.debug(`[监控面板] 取消订阅服务器 ${serverId.value} 的数据更新`);
         monitoringService.unsubscribeFromServer(serverId.value, subscriptionId.value);
         subscriptionId.value = null;
       }
@@ -1232,14 +1233,14 @@ export default defineComponent({
     // 监听服务器数据清理事件
     const handleServerDataCleared = (event) => {
       if (event.detail && event.detail.serverId === serverId.value) {
-        console.log(`[监控面板] 检测到服务器 ${serverId.value} 的数据被清理，关闭面板`);
+        log.debug(`[监控面板] 检测到服务器 ${serverId.value} 的数据被清理，关闭面板`);
         closePanel();
       }
     };
 
     // 组件挂载时初始化
     onMounted(async () => {
-      console.log('[监控面板] 组件已挂载，准备初始化监控图表');
+      log.debug('[监控面板] 组件已挂载，准备初始化监控图表');
       
       // 尝试获取服务器ID
       if (props.serverInfo && props.serverInfo.host) {
@@ -1249,12 +1250,12 @@ export default defineComponent({
       }
       
       if (!serverId.value) {
-        console.error('[监控面板] 无法获取服务器ID，监控面板可能无法正常工作');
+        log.error('[监控面板] 无法获取服务器ID，监控面板可能无法正常工作');
         ElMessage.error('无法获取服务器ID，监控数据可能无法正常显示');
         return;
       }
       
-      console.log(`[监控面板] 服务器ID: ${serverId.value}`);
+      log.debug(`[监控面板] 服务器ID: ${serverId.value}`);
       
       // 注册监听服务器数据清理事件
       window.addEventListener('server-data-cleared', handleServerDataCleared);
@@ -1270,7 +1271,7 @@ export default defineComponent({
           }
         }
       } catch (error) {
-        console.error('加载监控面板宽度失败:', error);
+        log.error('加载监控面板宽度失败:', error);
       }
         
         // 初始化图表
@@ -1291,7 +1292,7 @@ export default defineComponent({
       
       // 订阅服务器数据更新
       subscriptionId.value = monitoringService.subscribeToServer(serverId.value, handleMonitoringUpdate);
-      console.log(`[监控面板] 已订阅服务器 ${serverId.value} 的数据更新，订阅ID: ${subscriptionId.value}`);
+      log.debug(`[监控面板] 已订阅服务器 ${serverId.value} 的数据更新，订阅ID: ${subscriptionId.value}`);
       
       // 请求立即刷新数据
       monitoringService.requestServerData(serverId.value);
@@ -1299,14 +1300,14 @@ export default defineComponent({
 
     // 组件卸载时清理资源
       onUnmounted(() => {
-      console.log('[监控面板] 组件卸载，清理资源');
+      log.debug('[监控面板] 组件卸载，清理资源');
       
       // 移除事件监听器
       window.removeEventListener('server-data-cleared', handleServerDataCleared);
       
       // 取消订阅
       if (subscriptionId.value && serverId.value) {
-        console.log(`[监控面板] 取消订阅服务器 ${serverId.value} 的数据更新`);
+        log.debug(`[监控面板] 取消订阅服务器 ${serverId.value} 的数据更新`);
         monitoringService.unsubscribeFromServer(serverId.value, subscriptionId.value);
         subscriptionId.value = null;
       }

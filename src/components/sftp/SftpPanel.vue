@@ -125,6 +125,7 @@
 import { defineComponent, ref, onMounted, onUnmounted, computed, watch } from 'vue'
 import { ElMessageBox, ElMessage, ElLoading } from 'element-plus'
 import { sftpService } from '@/services/ssh'
+import log from '@/services/log'
 
 // 导入子组件
 import SftpFileItem from './components/SftpFileItem.vue'
@@ -224,7 +225,7 @@ export default defineComponent({
     // 监听sessionId的变化
     watch(() => props.sessionId, (newSessionId, oldSessionId) => {
       if (newSessionId !== oldSessionId && newSessionId) {
-        console.log(`sessionId prop变化: ${oldSessionId} -> ${newSessionId}`);
+        log.debug(`sessionId prop变化: ${oldSessionId} -> ${newSessionId}`);
         // 执行相同的文件列表刷新逻辑，但不进行完整的SFTP重新初始化
         isLoadingSftp.value = true;
         
@@ -239,9 +240,9 @@ export default defineComponent({
               const sftpSession = sftpService.activeSftpSessions.get(newSessionId);
               try {
                 await sftpService.listDirectory(newSessionId, initialPath);
-                console.log(`/root目录存在，使用它作为初始目录`);
+                log.debug(`/root目录存在，使用它作为初始目录`);
               } catch (error) {
-                console.log(`/root目录不存在，使用默认路径: ${sftpSession.currentPath}`);
+                log.debug(`/root目录不存在，使用默认路径: ${sftpSession.currentPath}`);
                 initialPath = sftpSession.currentPath || '/';
               }
             }
@@ -252,7 +253,7 @@ export default defineComponent({
           } catch (error) {
             isLoadingSftp.value = false;
             showError(`会话切换失败: ${error.message || '未知错误'}`);
-            console.error('会话切换失败:', error);
+            log.error('会话切换失败:', error);
           }
         })();
       }
@@ -279,7 +280,7 @@ export default defineComponent({
     // 监听会话变更事件
     const handleSessionChanged = (event) => {
       const newSessionId = event.detail;
-      console.log(`SFTP会话变更: ${newSessionId}`);
+      log.debug(`SFTP会话变更: ${newSessionId}`);
       
       // 显示加载状态
       isLoadingSftp.value = true;
@@ -289,11 +290,11 @@ export default defineComponent({
         // 延迟一会儿等SFTP连接准备好，避免并发问题
         setTimeout(async () => {
           try {
-            console.log(`开始创建SFTP会话: ${newSessionId}`);
+            log.debug(`开始创建SFTP会话: ${newSessionId}`);
             
             // 创建SFTP会话
             const sessionResult = await sftpService.createSftpSession(newSessionId);
-            console.log(`SFTP会话创建结果:`, sessionResult);
+            log.debug(`SFTP会话创建结果:`, sessionResult);
             
             // 尝试进入/root目录，如果不存在则使用当前路径
             let initialPath = '/root';
@@ -301,29 +302,29 @@ export default defineComponent({
               const sftpSession = sftpService.activeSftpSessions.get(newSessionId);
               try {
                 await sftpService.listDirectory(newSessionId, initialPath);
-                console.log(`/root目录存在，使用它作为初始目录`);
+                log.debug(`/root目录存在，使用它作为初始目录`);
               } catch (error) {
-                console.log(`/root目录不存在，使用默认路径: ${sftpSession.currentPath}`);
+                log.debug(`/root目录不存在，使用默认路径: ${sftpSession.currentPath}`);
                 initialPath = sftpSession.currentPath || '/';
               }
             }
             
             // 加载目录内容
-            console.log(`加载目录内容: ${initialPath}`);
+            log.debug(`加载目录内容: ${initialPath}`);
             await loadDirectoryContents(initialPath);
             
             isLoadingSftp.value = false;
-            console.log(`SFTP会话切换完成: ${newSessionId}`);
+            log.debug(`SFTP会话切换完成: ${newSessionId}`);
           } catch (error) {
             isLoadingSftp.value = false;
             showError(`加载SFTP文件列表失败: ${error.message || '未知错误'}`);
-            console.error('加载SFTP文件列表失败:', error);
+            log.error('加载SFTP文件列表失败:', error);
           }
         }, 300);
       } catch (error) {
         isLoadingSftp.value = false;
         showError(`切换SFTP会话失败: ${error.message || '未知错误'}`);
-        console.error('切换SFTP会话失败:', error);
+        log.error('切换SFTP会话失败:', error);
       }
     };
     
@@ -383,7 +384,7 @@ export default defineComponent({
           throw new Error('没有活动的SSH会话，无法使用SFTP');
         }
         
-        console.log(`加载目录内容: 会话ID=${props.sessionId}, 路径=${path}`);
+        log.debug(`加载目录内容: 会话ID=${props.sessionId}, 路径=${path}`);
         
         // 使用SFTP服务加载目录内容
         const rawFiles = await sftpService.listDirectory(props.sessionId, path);
@@ -439,7 +440,7 @@ export default defineComponent({
         currentPath.value = path;
         isLoadingSftp.value = false;
       } catch (error) {
-        console.error('加载目录内容失败:', error);
+        log.error('加载目录内容失败:', error);
         showError(`加载目录内容失败: ${error.message}`);
         // 如果出错，提供一个空列表
         fileList.value = [];
@@ -449,12 +450,12 @@ export default defineComponent({
     
     // 刷新当前目录
     const refreshCurrentDirectory = async () => {
-      console.log(`开始刷新目录: ${currentPath.value}`);
+      log.debug(`开始刷新目录: ${currentPath.value}`);
       try {
         await loadDirectoryContents(currentPath.value);
-        console.log(`目录刷新成功: ${currentPath.value}`);
+        log.debug(`目录刷新成功: ${currentPath.value}`);
       } catch (error) {
-        console.error(`目录刷新失败: ${error.message}`);
+        log.error(`目录刷新失败: ${error.message}`);
         // 出错时不抛出异常，以避免中断流程
       }
     };
@@ -505,7 +506,7 @@ export default defineComponent({
           await loadDirectoryContents(newPath);
         }
       } catch (error) {
-        console.error('打开目录失败:', error);
+        log.error('打开目录失败:', error);
         showError(`打开目录失败: ${error.message}`);
         isLoadingSftp.value = false;
       }
@@ -752,7 +753,7 @@ export default defineComponent({
           
           // 记录文件大小，用于进度计算
           const fileSize = file.size;
-          console.log(`上传文件: ${remotePath} (${formatFileSize(fileSize)})`);
+          log.debug(`上传文件: ${remotePath} (${formatFileSize(fileSize)})`);
           
           // 跟踪当前文件上传进度，防止重复计算
           let lastFileProgress = 0;
@@ -773,7 +774,7 @@ export default defineComponent({
               
               // 当单个文件上传完成时
               if (progress >= 100) {
-                console.log(`文件完成上传: ${remotePath}`);
+                log.debug(`文件完成上传: ${remotePath}`);
                 // 重置最后进度以避免重复计算
                 lastFileProgress = 100;
               }
@@ -789,13 +790,13 @@ export default defineComponent({
           uploadProgress.value = Math.min(100, Math.floor((uploadedSize / totalSize) * 100));
           
         } catch (error) {
-          console.error(`上传失败: ${file.name}`, error);
+          log.error(`上传失败: ${file.name}`, error);
           failedFiles.push({ name: file.name, error: error.message });
           // 继续上传下一个文件，不中断整个过程
         }
       }
       
-      console.log(`所有文件上传完成，准备显示结果和刷新目录...`);
+      log.debug(`所有文件上传完成，准备显示结果和刷新目录...`);
       
       // 添加一个强制执行标记
       let finishExecuted = false;
@@ -806,14 +807,14 @@ export default defineComponent({
         if (finishExecuted) return;
         finishExecuted = true;
         
-        console.log("执行文件上传完成操作");
+        log.debug("执行文件上传完成操作");
         
         // 全部上传完成，显示结果 - 使用实际成功上传的文件数量和大小
         if (failedFiles.length > 0) {
           // 有失败的文件
           const failMessage = `上传完成，成功${completedFiles}个文件(${formatFileSize(actualUploadedSize)})，失败${failedFiles.length}个文件`;
           ElMessage.warning(failMessage);
-          console.warn('上传失败的文件:', failedFiles);
+          log.warn('上传失败的文件:', failedFiles);
         } else {
           // 全部成功
           ElMessage.success(`成功上传${completedFiles}个文件，总大小${formatFileSize(actualUploadedSize)}`);
@@ -831,11 +832,11 @@ export default defineComponent({
         
         // 一次性刷新目录
         try {
-          console.log("开始刷新目录...");
+          log.debug("开始刷新目录...");
           await loadDirectoryContents(currentPath.value);
-          console.log("目录刷新完成");
+          log.debug("目录刷新完成");
         } catch (error) {
-          console.error("刷新目录失败:", error);
+          log.error("刷新目录失败:", error);
         }
       };
       
@@ -854,51 +855,41 @@ export default defineComponent({
     
     // 取消上传
     const cancelUpload = async () => {
-      try {
-        // 获取当前上传文件的远程路径
-        const remotePath = currentPath.value === '/' ? 
-          currentPath.value + currentUploadingFile.value : 
-          currentPath.value + '/' + currentUploadingFile.value;
-        
-        // 先取消上传操作（如果正在进行）
-        if (currentUploadId.value) {
-          try {
-            await sftpService.cancelFileOperation(props.sessionId, currentUploadId.value);
-            console.log('已取消上传操作:', currentUploadId.value);
-          } catch (error) {
-            console.warn('取消上传操作失败:', error);
-            // 继续执行删除文件操作
-          }
-        }
-        
-        // 然后删除远程文件
+      if (currentUploadId.value) {
         try {
-          await sftpService.delete(props.sessionId, remotePath, false); // false表示这是文件而非目录
-          console.log('已删除文件:', remotePath);
-          ElMessage.success(`已取消上传并删除文件: ${currentUploadingFile.value}`);
+          await sftpService.cancelUpload(props.sessionId, currentUploadId.value);
+          log.debug('已取消上传操作:', currentUploadId.value);
         } catch (error) {
-          console.warn('删除文件失败:', error);
-          ElMessage.info(`已取消上传，但删除文件失败: ${error.message}`);
+          log.warn('取消上传操作失败:', error);
         }
-        
-        // 重置上传状态
-        isUploading.value = false;
-        uploadProgress.value = 0;
-        transferSpeed.value = 0;
-        currentUploadingFile.value = '';
-        currentUploadId.value = null;
-        
-        // 清除计时器
-        if (transferInterval.value) {
-          clearInterval(transferInterval.value);
-          transferInterval.value = null;
+      }
+      
+      // 临时删除已部分上传的文件
+      if (isUploading.value && currentUploadingFile.value) {
+        const remotePath = `${currentPath.value === '/' ? '' : currentPath.value}/${currentUploadingFile.value}`;
+        try {
+          await sftpService.deleteFile(props.sessionId, remotePath);
+          log.debug('已删除文件:', remotePath);
+        } catch (error) {
+          // 忽略文件不存在的情况
+          log.warn('删除文件失败:', error);
         }
-        
-        // 刷新目录以反映变化
-        refreshCurrentDirectory();
+      }
+      
+      // 重置状态
+      isUploading.value = false;
+      uploadProgress.value = 0;
+      currentUploadingFile.value = '';
+      
+      // 手动取消事件处理
+      try {
+        if (currentUploadId.value) {
+          await sftpService.cancelUpload(props.sessionId, currentUploadId.value);
+        }
       } catch (error) {
-        console.error('取消上传失败:', error);
-        showError(`取消上传失败: ${error.message}`);
+        log.error('取消上传失败:', error);
+      } finally {
+        currentUploadId.value = null;
       }
     };
     
@@ -979,7 +970,7 @@ export default defineComponent({
               
               // 确保刷新当前目录
               refreshCurrentDirectory();
-              console.log('已刷新目录:', currentPath.value);
+              log.debug('已刷新目录:', currentPath.value);
             }, 1500);
           }
         };
@@ -1009,7 +1000,7 @@ export default defineComponent({
             }
             // 刷新当前目录
             refreshCurrentDirectory();
-            console.log('已刷新目录:', currentPath.value);
+            log.debug('已刷新目录:', currentPath.value);
           }, 1500);
         } else if (!isBatchUpload) {
           // 如果已经处理了100%进度，只显示成功消息
@@ -1017,7 +1008,7 @@ export default defineComponent({
         }
         
       } catch (error) {
-        console.error('上传文件失败:', error);
+        log.error('上传文件失败:', error);
         
         if (!isBatchUpload) {
           showError(`上传文件失败: ${error.message}`);
@@ -1081,7 +1072,7 @@ export default defineComponent({
         
         ElMessage.success(`文件 ${file.name} 下载成功`);
       } catch (error) {
-        console.error('下载文件失败:', error);
+        log.error('下载文件失败:', error);
         showError(`下载文件失败: ${error.message}`);
       } finally {
         // 延迟关闭下载状态
@@ -1150,7 +1141,7 @@ export default defineComponent({
               loadingDiv.parentNode.removeChild(loadingDiv);
             }
             
-            console.error('重命名失败:', error);
+            log.error('重命名失败:', error);
             showError(`重命名失败: ${error.message}`);
           }
         }
@@ -1203,7 +1194,7 @@ export default defineComponent({
           
           if (file.isDirectory) {
             // 使用快速删除方法代替递归删除
-            console.log(`使用快速删除方法删除文件夹: ${fullPath}`);
+            log.debug(`使用快速删除方法删除文件夹: ${fullPath}`);
             await sftpService.fastDeleteDirectory(props.sessionId, fullPath);
           } else {
             // 删除单个文件
@@ -1226,7 +1217,7 @@ export default defineComponent({
             loadingDiv.parentNode.removeChild(loadingDiv);
           }
           
-          console.error('删除失败:', error);
+          log.error('删除失败:', error);
           showError(`删除失败: ${error.message}`);
         }
       }).catch(() => {
@@ -1272,7 +1263,7 @@ export default defineComponent({
             await uploadMultipleFiles(files);
           }
         } catch (error) {
-          console.error('拖放上传处理失败:', error);
+          log.error('拖放上传处理失败:', error);
           ElMessage.error(`上传失败: ${error.message}`);
           
           // 确保重置上传状态
@@ -1351,7 +1342,7 @@ export default defineComponent({
       }
       await Promise.all(countPromises);
       
-      console.log(`总共需要上传 ${totalFiles} 个文件，总大小 ${formatFileSize(totalBytes)}`);
+      log.debug(`总共需要上传 ${totalFiles} 个文件，总大小 ${formatFileSize(totalBytes)}`);
       
       // 如果没有文件需要上传，结束处理
       if (totalFiles === 0) {
@@ -1447,7 +1438,7 @@ export default defineComponent({
         // 最后只刷新一次
         refreshCurrentDirectory();
       } catch (error) {
-        console.error('上传过程中发生错误:', error);
+        log.error('上传过程中发生错误:', error);
         ElMessage.error(`上传过程中发生错误: ${error.message}`);
         
         // 出错时也确保关闭进度条
@@ -1486,7 +1477,7 @@ export default defineComponent({
                 currentPath.value + file.name : 
                 currentPath.value + '/' + file.name);
             
-            console.log(`上传文件: ${remotePath} (${formatFileSize(file.size)})`);
+            log.debug(`上传文件: ${remotePath} (${formatFileSize(file.size)})`);
             
             // 跟踪上传的进度以避免重复计算
             let lastProgress = 0;
@@ -1524,7 +1515,7 @@ export default defineComponent({
             
             resolve();
           } catch (error) {
-            console.error(`处理文件失败: ${path}/${file.name}`, error);
+            log.error(`处理文件失败: ${path}/${file.name}`, error);
             ElMessage.error(`上传 ${file.name} 失败: ${error.message}`);
             
             // 调用进度回调，即使失败也计入进度
@@ -1535,7 +1526,7 @@ export default defineComponent({
             resolve(); // 即使失败也继续下一个
           }
         }, (error) => {
-          console.error(`读取文件失败: ${path}/${fileEntry.name}`, error);
+          log.error(`读取文件失败: ${path}/${fileEntry.name}`, error);
           ElMessage.error(`读取 ${fileEntry.name} 失败`);
           
           // 调用进度回调，即使失败也计入进度
@@ -1564,7 +1555,7 @@ export default defineComponent({
           currentPath.value + newPath : 
           currentPath.value + '/' + newPath;
           
-        console.log(`创建目录: ${remoteDirPath}`);
+        log.debug(`创建目录: ${remoteDirPath}`);
         
         try {
           // 创建远程目录
@@ -1603,11 +1594,11 @@ export default defineComponent({
                 }
                 resolve();
               } catch (error) {
-                console.error(`读取目录失败: ${newPath}`, error);
+                log.error(`读取目录失败: ${newPath}`, error);
                 resolve(); // 即使失败也继续
               }
             }, (error) => {
-              console.error(`目录读取错误: ${newPath}`, error);
+              log.error(`目录读取错误: ${newPath}`, error);
               resolve(); // 即使失败也继续
             });
           });
@@ -1617,7 +1608,7 @@ export default defineComponent({
         await readEntries();
         
       } catch (error) {
-        console.error(`处理目录失败: ${newPath}`, error);
+        log.error(`处理目录失败: ${newPath}`, error);
         ElMessage.error(`处理目录 ${directoryEntry.name} 失败: ${error.message}`);
       }
     };
@@ -1640,17 +1631,17 @@ export default defineComponent({
               // 当单个文件上传完成时
               if (progress >= 100) {
                 // 只记录文件完成上传，不刷新目录
-                console.log(`文件完成上传: ${remotePath}`);
+                log.debug(`文件完成上传: ${remotePath}`);
                 // 上传完成时解析Promise
                 resolve();
               }
             }
           ).catch(error => {
-            console.error(`上传文件失败: ${remotePath}`, error);
+            log.error(`上传文件失败: ${remotePath}`, error);
             reject(error);
           });
         } catch (error) {
-          console.error(`初始化上传失败: ${remotePath}`, error);
+          log.error(`初始化上传失败: ${remotePath}`, error);
           reject(error);
         }
       });
@@ -1681,16 +1672,16 @@ export default defineComponent({
     
     // 搜索文件
     const handleSearch = (query) => {
-      console.log('接收到搜索查询:', query);
+      log.debug('接收到搜索查询:', query);
       
       // 如果搜索查询为空，显示所有文件
       if (!query || query.trim() === '') {
-        console.log('搜索查询为空，刷新目录显示所有文件');
+        log.debug('搜索查询为空，刷新目录显示所有文件');
         refreshCurrentDirectory();
         return;
       }
       
-      console.log('执行搜索:', query);
+      log.debug('执行搜索:', query);
       
       // 获取原始文件列表的一个副本（如果需要刷新）
       const originalFileList = [...fileList.value]; 
@@ -1705,7 +1696,7 @@ export default defineComponent({
         return file.name.toLowerCase().includes(lowercaseQuery);
       });
       
-      console.log(`搜索结果: 找到 ${filteredFiles.length} 个匹配项`);
+      log.debug(`搜索结果: 找到 ${filteredFiles.length} 个匹配项`);
       
       // 更新文件列表
       fileList.value = filteredFiles;
@@ -1768,7 +1759,7 @@ export default defineComponent({
           loadingFileContentDiv.parentNode.removeChild(loadingFileContentDiv);
         }
         
-        console.error('加载文件内容失败:', error);
+        log.error('加载文件内容失败:', error);
         showError(`加载文件内容失败: ${error.message}`);
       }
     };
@@ -1801,7 +1792,7 @@ export default defineComponent({
           return;
         }
         
-        console.log(`初始化SFTP会话: ${props.sessionId}`);
+        log.debug(`初始化SFTP会话: ${props.sessionId}`);
         
         // 创建SFTP会话
         const result = await sftpService.createSftpSession(props.sessionId);
@@ -1813,9 +1804,9 @@ export default defineComponent({
           // 尝试加载/root目录，如果不存在则使用当前路径（通常是根目录）
           try {
             await sftpService.listDirectory(props.sessionId, initialPath);
-            console.log(`/root目录存在，使用它作为初始目录`);
+            log.debug(`/root目录存在，使用它作为初始目录`);
           } catch (error) {
-            console.log(`/root目录不存在，使用默认路径: ${sftpSession.currentPath}`);
+            log.debug(`/root目录不存在，使用默认路径: ${sftpSession.currentPath}`);
             initialPath = sftpSession.currentPath || '/';
           }
         }
@@ -1827,7 +1818,7 @@ export default defineComponent({
       } catch (error) {
         isLoadingSftp.value = false;
         showError(`初始化SFTP失败: ${error.message || '未知错误'}`);
-        console.error('初始化SFTP会话失败:', error);
+        log.error('初始化SFTP会话失败:', error);
       }
     };
     
@@ -1852,18 +1843,18 @@ export default defineComponent({
       // 关闭SFTP会话，清理资源
       try {
         if (props.sessionId) {
-          console.log(`组件卸载，关闭SFTP会话: ${props.sessionId}`);
+          log.debug(`组件卸载，关闭SFTP会话: ${props.sessionId}`);
           // 检查会话是否仍然存在
           if (sftpService.activeSftpSessions && sftpService.activeSftpSessions.has(props.sessionId)) {
             sftpService.closeSftpSession(props.sessionId).catch(error => {
-              console.error(`关闭SFTP会话失败: ${error.message || '未知错误'}`, error);
+              log.error(`关闭SFTP会话失败: ${error.message || '未知错误'}`, error);
             });
           } else {
-            console.log(`SFTP会话 ${props.sessionId} 已经关闭，跳过`);
+            log.debug(`SFTP会话 ${props.sessionId} 已经关闭，跳过`);
           }
         }
       } catch (error) {
-        console.error('清理SFTP资源时出错:', error);
+        log.error('清理SFTP资源时出错:', error);
       }
     });
     

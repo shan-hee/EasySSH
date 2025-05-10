@@ -86,28 +86,18 @@ const preloadFonts = () => {
   
   // 使用更可靠的导入方式
   const loadFontHelper = () => {
+    // 设置全局加载完成标志，不再等待加载完成检查
+    window.TERMINAL_FONTS_LOADED = true
+    
+    // 发送字体加载完成事件
+    window.dispatchEvent(new CustomEvent('terminal:fonts-loaded'))
+    
+    // 导入并执行预加载逻辑，但不依赖其结果
     import('./utils/fontLoader').then(module => {
       const fontLoader = module.default
       fontLoader.preloadFonts()
-        .then(success => {
-          if (success) {
-            // 设置全局加载完成标志
-            window.TERMINAL_FONTS_LOADED = true
-            // 发送字体加载完成事件
-            window.dispatchEvent(new CustomEvent('terminal:fonts-loaded'))
-          } else {
-            log.warn('终端字体预加载可能未完全成功')
-          }
-        })
-        .catch(err => {
-          log.warn('字体预加载过程中出错:', err)
-          // 即使出错也设置标志，避免阻塞终端创建
-          window.TERMINAL_FONTS_LOADED = true
-        })
     }).catch(err => {
       log.error('加载字体工具失败:', err)
-      // 即使导入失败也设置标志，避免阻塞
-      window.TERMINAL_FONTS_LOADED = true
     })
   }
   

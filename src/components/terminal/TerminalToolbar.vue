@@ -34,7 +34,7 @@
         </transition>
         
         <div class="icon-button tooltip-container" 
-          @click.stop="!isPanelVisible && toggleMonitoringPanel()" 
+          @click.stop="handleMonitoringClick()" 
           :class="{ 'icon-available': monitoringServiceInstalled, 'active': isPanelVisible }"
           ref="monitorButtonRef">
           <img src="@/assets/icons/icon-monitoring.svg" class="ruyi-icon ruyi-icon-ot-monitoring" width="16" height="16" 
@@ -108,6 +108,7 @@ import monitoringService from '../../services/monitoring'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useTerminalStore } from '../../store/terminal'
 import { LATENCY_EVENTS } from '../../services/constants'
+import log from '../../services/log'
 
 export default defineComponent({
   name: 'TerminalToolbar',
@@ -287,54 +288,43 @@ export default defineComponent({
     
     // 切换监控面板
     const toggleMonitoringPanel = () => {
-      // 优雅处理监控不可用的情况
-      if (!monitoringServiceInstalled.value) {
-        // 使用更友好的提示，不提示错误
-        ElMessage({
-          message: '监控服务未连接，您可以继续使用其他功能',
-          type: 'info',
-          duration: 3000
-        });
-        return;
+      // 只有当监控服务已安装时才能切换面板
+      if (monitoringServiceInstalled.value) {
+        // 通过事件将当前终端ID传递给父组件
+        emit('toggle-monitoring-panel');
+      } else {
+        // 尝试安装监控服务
+        installMonitoring();
+      }
       }
       
-      // 检查监控面板是否已显示 - 这部分可以移除因为已经在HTML中处理
-      if (isPanelVisible.value) {
-        return;
-      }
-      
-      // 获取当前终端会话信息
-      const currentTerminalId = props.activeSessionId;
-      if (currentTerminalId && terminalStore && terminalStore.sessions) {
-        const sshSessionId = terminalStore.sessions[currentTerminalId];
-        if (sshSessionId && sshService && sshService.sessions) {
-          const session = sshService.sessions.get(sshSessionId);
-          if (session && session.connection) {
-            // 找到有效的会话连接信息，直接使用
-            const connection = session.connection;
-            // 使用事件通信，传递连接信息避免创建临时会话
-            const event = new CustomEvent('toggle-monitoring-panel', {
-              detail: { 
-                sessionId: currentTerminalId,
-                connection: connection,
-                useExistingConnection: true
-              }
-            });
-            window.dispatchEvent(event);
-            console.log('使用现有的连接信息打开监控:', connection.host);
-            return;
+    // 安装监控服务
+    const installMonitoring = async () => {
+      try {
+        // 检查是否有SSH会话连接或终端
+        let connection = null;
+        const sessionId = props.activeSessionId;
+        
+        if (sessionId) {
+          // 尝试获取SSH会话
+          const session = terminalStore.getSession(sessionId);
+          if (session) {
+            // 使用获取到的连接信息
+            connection = session.connection;
           }
         }
-      }
-      
-      // 如果没有找到有效的会话连接信息，使用普通方式触发
-      console.log('未找到有效会话连接信息，使用默认方式打开监控');
-      const event = new CustomEvent('toggle-monitoring-panel', {
-        detail: { 
-          sessionId: props.activeSessionId 
+        
+        if (connection) {
+          log.info('使用现有的连接信息打开监控:', connection.host);
+          emit('toggle-monitoring-panel');
+        } else {
+          // 如果没有找到有效的连接，使用默认方式打开监控
+          log.info('未找到有效会话连接信息，使用默认方式打开监控');
+          emit('toggle-monitoring-panel');
         }
-      });
-      window.dispatchEvent(event);
+      } catch (error) {
+        ElMessage.error(`安装监控服务失败: ${error.message}`);
+      }
     }
     
     // 检查监控服务状态
@@ -483,94 +473,6 @@ export default defineComponent({
         terminalState.isSshConnected = false;
       }
     };
-
-    // 安装监控服务
-    const installMonitoring = () => {
-      try {
-        const terminalId = props.activeSessionId;
-        if (!terminalId) {
-          // 静默处理，不显示错误消息
-          console.debug('无法安装监控：未找到活动会话');
-          return;
-        }
-        
-        // 获取终端特定状态
-        const terminalState = getTerminalToolbarState(terminalId);
-        
-        // 检查是否已经在初始化中
-        if (terminalState && terminalState.isInitializing) {
-          console.debug('监控服务正在初始化中，请等待...');
-          return;
-        }
-        
-        // 检查SSH服务会话
-        if (!terminalStore || !terminalStore.sessions) {
-          console.debug('无法安装监控：终端存储不可用');
-          return;
-        }
-        
-        const sshSessionId = terminalStore.sessions[terminalId];
-        if (!sshSessionId) {
-          // 静默处理，不显示错误消息
-          console.debug('无法安装监控：未找到对应的SSH会话');
-          return;
-        }
-        
-        if (!sshService || !sshService.sessions) {
-          console.debug('无法安装监控：SSH服务不可用');
-          return;
-        }
-        
-        const session = sshService.sessions.get(sshSessionId);
-        if (!session) {
-          // 静默处理，不显示错误消息
-          console.debug('无法安装监控：SSH会话不存在');
-          return;
-        }
-        
-        // 获取主机信息
-        const host = session.connection.host;
-        ElMessageBox.confirm(
-          `是否要在远程主机 ${host} 上安装监控服务？`,
-          '安装监控服务',
-          {
-            confirmButtonText: '安装',
-            cancelButtonText: '取消',
-            type: 'info'
-          }
-        )
-        .then(() => {
-          // 设置当前终端的初始化状态
-          if (terminalState) {
-            terminalState.isInitializing = true;
-          }
-          
-          toggleMonitoringPanel();
-          
-          // 操作完成后重置状态
-          setTimeout(() => {
-            if (terminalState) {
-              terminalState.isInitializing = false;
-            }
-          }, 1000);
-        })
-        .catch(() => {
-          // 用户取消，无需处理
-          if (terminalState) {
-            terminalState.isInitializing = false;
-          }
-        });
-      } catch (error) {
-        // 出现任何错误都静默处理，只在控制台输出调试信息
-        console.debug('安装监控服务时出现错误，默认设为未连接');
-        
-        // 确保重置初始化状态
-        const terminalState = getTerminalToolbarState(props.activeSessionId);
-        if (terminalState) {
-          terminalState.isInitializing = false;
-        }
-      }
-    };
     
     // 监听会话变化，使用debounce避免过多执行
     let sessionChangeTimeout = null;
@@ -583,7 +485,7 @@ export default defineComponent({
       }
       
       // 立即记录日志
-      console.log(`终端切换: ${oldId} -> ${newId}`);
+      log.debug(`终端切换: ${oldId} -> ${newId}`);
       
       // 标签页切换时立即应用新终端的状态，不需要延迟
       if (newId) {
@@ -642,7 +544,7 @@ export default defineComponent({
       // 当监控服务状态变化时，重新应用当前终端的状态
       const currentId = props.activeSessionId;
       if (currentId) {
-        console.log('监控服务状态已变化，重新检查终端状态');
+        log.debug('监控服务状态已变化，重新检查终端状态');
         nextTick(() => {
           applyInitialStatus();
         });
@@ -654,7 +556,7 @@ export default defineComponent({
       if (event && event.detail) {
         // 如果这是监控连接失败消息，静默处理不进行任何状态变更
         if (event.detail.error || event.detail.status === 'error' || event.detail.status === 'disconnected') {
-          console.debug('监控连接失败，保持当前状态不变');
+          log.debug('监控连接失败，保持当前状态不变');
           return;
         }
         
@@ -670,7 +572,7 @@ export default defineComponent({
             // 如果是当前活动的终端，同时更新UI
             if (terminalId === props.activeSessionId) {
               monitoringServiceInstalled.value = event.detail.installed;
-              console.log(`更新当前活动终端[${terminalId}]的监控状态: ${event.detail.installed}`);
+              log.debug(`更新当前活动终端[${terminalId}]的监控状态: ${event.detail.installed}`);
             }
           }
         } else if (event.detail.sessionId) {
@@ -694,7 +596,7 @@ export default defineComponent({
               // 如果是当前活动终端，更新UI
               if (terminalId === props.activeSessionId) {
                 monitoringServiceInstalled.value = event.detail.installed;
-                console.log(`通过会话ID[${sessionId}]更新终端[${terminalId}]的监控状态: ${event.detail.installed}`);
+                log.debug(`通过会话ID[${sessionId}]更新终端[${terminalId}]的监控状态: ${event.detail.installed}`);
               }
             }
           }
@@ -713,7 +615,7 @@ export default defineComponent({
             if (terminalState) {
               terminalState.monitoringInstalled = event.detail.installed;
               monitoringServiceInstalled.value = event.detail.installed;
-                  console.log(`通过主机地址[${hostAddress}]匹配更新当前终端的监控状态: ${event.detail.installed}`);
+                  log.debug(`通过主机地址[${hostAddress}]匹配更新当前终端的监控状态: ${event.detail.installed}`);
                 }
               }
             }
@@ -724,7 +626,7 @@ export default defineComponent({
     
     // 添加监控连接成功事件处理
     const handleMonitoringConnected = (event) => {
-      console.log('收到监控连接成功事件:', event);
+      log.debug('收到监控连接成功事件:', event);
       if (!event || !event.detail) return;
       
       const { hostAddress } = event.detail;
@@ -741,7 +643,7 @@ export default defineComponent({
             if (terminalState) {
               terminalState.monitoringInstalled = true;
               monitoringServiceInstalled.value = true;
-              console.log(`监控连接成功，更新终端[${props.activeSessionId}]的监控状态为已连接`);
+              log.debug(`监控连接成功，更新终端[${props.activeSessionId}]的监控状态为已连接`);
             }
           }
         }
@@ -836,7 +738,7 @@ export default defineComponent({
         return;
       }
       
-      console.log(`立即检查当前会话状态: ${currentSessionId}`);
+      log.debug(`立即检查当前会话状态: ${currentSessionId}`);
       
       // 先检查是否已有缓存的状态
       const terminalState = getTerminalToolbarState(currentSessionId);
@@ -847,7 +749,7 @@ export default defineComponent({
           const sshSessionId = terminalStore.sessions[currentSessionId];
           if (sshSessionId && terminalStore.isTerminalConnected(currentSessionId)) {
             // 更新状态
-            console.log(`当前会话 ${currentSessionId} 已连接SSH`);
+            log.debug(`当前会话 ${currentSessionId} 已连接SSH`);
             terminalState.isSshConnected = true;
             isSshConnected.value = true;
           }
@@ -878,7 +780,7 @@ export default defineComponent({
       if (!event.detail || !event.detail.sessionId) return;
       
       const { sessionId } = event.detail;
-      console.log(`收到工具栏重置事件: sessionId=${sessionId}`);
+      log.debug(`收到工具栏重置事件: sessionId=${sessionId}`);
       
       // 只有当当前活动会话是目标会话时才重置UI状态
       if (sessionId === props.activeSessionId) {
@@ -927,7 +829,7 @@ export default defineComponent({
       
       // 检查是否已经处理过该SSH会话
       if (processedSshSessions.value.has(sessionId)) {
-        console.log(`SSH会话 ${sessionId} 的连接成功事件已处理，跳过重复处理`);
+        log.debug(`SSH会话 ${sessionId} 的连接成功事件已处理，跳过重复处理`);
         return;
       }
       
@@ -945,7 +847,7 @@ export default defineComponent({
         }
       }
       
-      console.log(`收到SSH连接成功事件: 会话ID=${sessionId}, 终端ID=${terminalId || '未知'}`);
+      log.debug(`收到SSH连接成功事件: 会话ID=${sessionId}, 终端ID=${terminalId || '未知'}`);
       
       if (sessionId) {
         // 保存会话连接状态
@@ -981,7 +883,7 @@ export default defineComponent({
       if (!event.detail || !event.detail.sessionId) return;
       
       const { sessionId } = event.detail;
-      console.log(`收到工具栏同步事件: sessionId=${sessionId}`);
+      log.debug(`收到工具栏同步事件: sessionId=${sessionId}`);
       
       // 只有当当前活动会话是目标会话时才同步UI状态
       if (sessionId === props.activeSessionId) {
@@ -1033,7 +935,7 @@ export default defineComponent({
       if (!event.detail || !event.detail.sessionId) return;
       
       const { sessionId } = event.detail;
-      console.log(`收到终端状态刷新事件: ${sessionId}`);
+      log.debug(`收到终端状态刷新事件: ${sessionId}`);
     
       // 只有当当前活动会话是目标会话时才刷新UI状态
       if (sessionId === props.activeSessionId) {
@@ -1078,7 +980,7 @@ export default defineComponent({
           showNetworkIcon.value = false;
         }
         
-        console.log(`工具栏状态已刷新: SSH连接=${isSshConnected.value}, 监控服务=${monitoringServiceInstalled.value}, 网络图标=${showNetworkIcon.value}`);
+        log.debug(`工具栏状态已刷新: SSH连接=${isSshConnected.value}, 监控服务=${monitoringServiceInstalled.value}, 网络图标=${showNetworkIcon.value}`);
       }
     };
     
@@ -1101,7 +1003,7 @@ export default defineComponent({
       if (!event.detail || !event.detail.sessionId) return;
       
       const { sessionId, isNewCreation } = event.detail;
-      console.log(`工具栏收到新会话事件: ${sessionId}, 是否新创建: ${isNewCreation}`);
+      log.debug(`工具栏收到新会话事件: ${sessionId}, 是否新创建: ${isNewCreation}`);
       
       if (isNewCreation && sessionId === props.activeSessionId) {
         // 清理当前工具栏状态
@@ -1126,8 +1028,25 @@ export default defineComponent({
             tooltipVisible: false
           };
           
-          console.log(`已重置工具栏[${sessionId}]状态`);
+          log.debug(`已重置工具栏[${sessionId}]状态`);
         }
+      }
+    };
+    
+    // 新增处理监控图标点击的函数
+    const handleMonitoringClick = () => {
+      // 只有当监控服务已安装且面板未显示时才执行操作
+      if (monitoringServiceInstalled.value && !isPanelVisible.value) {
+        emit('toggle-monitoring-panel');
+      } else {
+        // 如果监控未安装或面板已显示，只显示提示信息
+        if (!monitoringServiceInstalled.value) {
+          // 监控服务未安装时显示tooltip
+          updateMonitorTooltipPosition();
+          showMonitorTooltip.value = true;
+        }
+        // 面板已显示状态下不执行任何操作，只返回
+        return;
       }
     };
     
@@ -1258,7 +1177,7 @@ export default defineComponent({
         const currentId = props.activeSessionId
         if (!currentId) return
         
-        console.log(`正在确保终端[${currentId}]的状态独立`)
+        log.debug(`正在确保终端[${currentId}]的状态独立`)
         
         // 获取当前终端的状态
         const terminalState = getTerminalToolbarState(currentId)
@@ -1289,21 +1208,22 @@ export default defineComponent({
                 terminalState.monitoringInstalled = monitored;
                 monitoringServiceInstalled.value = monitored;
                 
-                console.log(`已设置终端[${currentId}]的监控状态: ${monitored}, 连接到主机: ${host}, 全局状态=${isGloballyConnected}, 终端特定状态=${isTerminalSpecificMonitored}`);
+                log.debug(`已设置终端[${currentId}]的监控状态: ${monitored}, 连接到主机: ${host}, 全局状态=${isGloballyConnected}, 终端特定状态=${isTerminalSpecificMonitored}`);
                 
                 // 4. 如果监控服务连接到其他主机，确保不影响当前终端
                 if (monitoringService.state && 
                     monitoringService.state.connected && 
                     monitoringService.state.targetHost !== host) {
-                  console.log(`监控服务连接到了不同的主机[${monitoringService.state.targetHost}]，` +
-                             `而当前终端连接到[${host}]，避免状态错误共享`)
+                  log.debug(`监控服务连接到了不同的主机[${monitoringService.state.targetHost}]，` +
+                             `与当前终端[${currentId}]的主机[${host}]不匹配，标记为未连接`);
+                  monitoringServiceInstalled.value = false;
                 }
               }
             }
           }
         }
       } catch (error) {
-        console.error('终端状态隔离出错:', error)
+        log.error('终端状态隔离出错:', error)
       }
     }
 
@@ -1340,7 +1260,8 @@ export default defineComponent({
       onMonitorTooltipMouseLeave,
       networkIconRef,
       updateNetworkPopupPosition,
-      networkPopupStyle
+      networkPopupStyle,
+      handleMonitoringClick
     }
   }
 })

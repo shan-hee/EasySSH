@@ -29,7 +29,6 @@ async function safeInitService(service, name) {
     }
     // 如果服务存在但没有init方法，认为它已经初始化完成
     else if (service) {
-      log.info(`${name}服务无需初始化，视为已就绪`);
       return true;
     }
     return false;

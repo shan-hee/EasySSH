@@ -135,7 +135,7 @@ export default defineComponent({
     window.addEventListener('terminal:session-change', (event) => {
       if (event.detail && event.detail.sessionId) {
         activeSessionId.value = event.detail.sessionId;
-        console.log(`当前活动会话ID已更新: ${activeSessionId.value}`);
+        log.debug(`当前活动会话ID已更新: ${activeSessionId.value}`);
       }
     });
     
@@ -144,7 +144,7 @@ export default defineComponent({
       // 更新最新的SSH会话ID
       if (event.detail && event.detail.sessionId) {
         // 可以保留这个SSH ID以便于工具栏显示网络延迟信息
-        console.log(`SSH会话已创建: ${event.detail.sessionId}`);
+        log.debug(`SSH会话已创建: ${event.detail.sessionId}`);
       }
     });
     
@@ -177,7 +177,7 @@ export default defineComponent({
         }
         return null;
       } catch (error) {
-        console.error('获取当前会话ID失败:', error);
+        log.error('获取当前会话ID失败:', error);
         // 如果有已知会话ID则返回它，否则返回null
         return activeSessionId.value || null;
       }
@@ -193,7 +193,7 @@ export default defineComponent({
             const currentId = getCurrentSessionId();
             
             if (currentId) {
-              console.log('路由切换到终端，触发终端显示和刷新', currentId);
+              log.debug('路由切换到终端，触发终端显示和刷新', currentId);
               
               // 只使用一个事件触发终端初始化，避免多次触发导致创建多个SSH会话
               window.dispatchEvent(new CustomEvent('terminal:refresh-status', {
@@ -211,7 +211,7 @@ export default defineComponent({
       // 如果是从终端路由切换到不同的路径，不需要特殊处理
       // v-show已经处理了终端的显示/隐藏
       if (oldPath.startsWith('/terminal') && !newPath.startsWith('/terminal')) {
-        console.log('离开终端路由，隐藏终端');
+        log.debug('离开终端路由，隐藏终端');
         // 移除原来的terminal:deactivate事件
       }
     });
@@ -222,16 +222,16 @@ export default defineComponent({
       const currentId = getCurrentSessionId();
       if (currentId) {
         activeSessionId.value = currentId;
-        console.log(`AppLayout初始化时设置activeSessionId: ${activeSessionId.value}`);
+        log.debug(`AppLayout初始化时设置activeSessionId: ${activeSessionId.value}`);
         
         // 如果当前有SSH会话，确保可以接收网络延迟更新
         try {
           // 查找使用中的网络连接
           if (isTerminalRoute.value && activeSessionId.value) {
-            console.log(`当前活动终端ID: ${activeSessionId.value}，确保延迟更新可正常显示`);
+            log.debug(`当前活动终端ID: ${activeSessionId.value}，确保延迟更新可正常显示`);
           }
         } catch (error) {
-          console.error('初始化SSH会话状态失败:', error);
+          log.error('初始化SSH会话状态失败:', error);
         }
       }
       
@@ -249,7 +249,7 @@ export default defineComponent({
           }
         }
       } catch (error) {
-        console.error('加载SFTP面板宽度失败:', error);
+        log.error('加载SFTP面板宽度失败:', error);
       }
       
       // 加载保存的监控面板宽度
@@ -266,7 +266,7 @@ export default defineComponent({
           }
         }
       } catch (error) {
-        console.error('加载监控面板宽度失败:', error);
+        log.error('加载监控面板宽度失败:', error);
       }
       
       // 添加窗口大小变化监听器
@@ -280,13 +280,13 @@ export default defineComponent({
           // 应该修改终端商店中的状态
           const terminalStore = useTerminalStore();
           terminalStore.toggleBackgroundImage(event.detail.enabled);
-          console.log('终端背景状态已更新:', event.detail.enabled);
+          log.debug('终端背景状态已更新:', event.detail.enabled);
         }
       });
       
       // 监听切换监控面板事件
       window.addEventListener('toggle-monitoring-panel', (event) => {
-        console.log('[监控面板] 收到切换监控面板事件:', event.detail);
+        log.debug('[监控面板] 收到切换监控面板事件:', event.detail);
         toggleMonitoringPanel(event.detail);
       });
       
@@ -303,7 +303,7 @@ export default defineComponent({
           log.debug('初始化时读取终端背景状态', { enabled: bgSettings.enabled });
         }
       } catch (error) {
-        console.error('初始化读取终端背景设置失败:', error);
+        log.error('初始化读取终端背景设置失败:', error);
       }
       
       // 监听显示监控面板事件
@@ -402,7 +402,7 @@ export default defineComponent({
       try {
         localStorage.setItem('sftpPanelWidth', sftpPanelWidth.value.toString());
       } catch (error) {
-        console.error('保存SFTP面板宽度失败:', error);
+        log.error('保存SFTP面板宽度失败:', error);
       }
     };
     
@@ -411,7 +411,7 @@ export default defineComponent({
       try {
         localStorage.setItem('monitoringPanelWidth', monitoringPanelWidth.value.toString());
       } catch (error) {
-        console.error('保存监控面板宽度失败:', error);
+        log.error('保存监控面板宽度失败:', error);
       }
     };
     
@@ -422,7 +422,7 @@ export default defineComponent({
       try {
         localStorage.setItem('sftpPanelWidth', newWidth.toString())
       } catch (e) {
-        console.error('保存SFTP面板宽度失败:', e)
+        log.error('保存SFTP面板宽度失败:', e)
       }
     };
     
@@ -433,7 +433,7 @@ export default defineComponent({
       try {
         localStorage.setItem('monitoringPanelWidth', newWidth.toString())
       } catch (e) {
-        console.error('保存监控面板宽度失败:', e)
+        log.error('保存监控面板宽度失败:', e)
       }
     };
     
@@ -441,14 +441,14 @@ export default defineComponent({
     const toggleMonitoringPanel = (status) => {
       // 如果监控面板已经显示，不要重复处理
       if (showMonitoringPanel.value) {
-        console.log('监控面板已经显示，不重复处理');
+        // 移除控制台日志输出，避免污染控制台
         return;
       }
       
       try {
         // 检查是否已传入连接信息（来自TerminalToolbar的优化处理）
         if (status && status.useExistingConnection && status.connection) {
-          console.log('使用传入的现有连接信息:', status.connection);
+          log.debug('使用传入的现有连接信息:', status.connection);
           
           const sessionInfo = {
             id: status.sessionId || 'session_' + Date.now(),
@@ -463,7 +463,7 @@ export default defineComponent({
           // 显示监控面板 - 只切换显示状态
           showMonitoringPanel.value = true;
           
-          console.log('打开监控面板（使用现有连接）', { 
+          log.debug('打开监控面板（使用现有连接）', { 
             sessionId: sessionInfo.id, 
             serverInfo: sessionInfo.connection
           });
@@ -476,7 +476,7 @@ export default defineComponent({
         // 如果无法获取会话ID但状态中携带了sessionId，则使用它
         if (!currentSessionId && status && status.sessionId) {
           currentSessionId = status.sessionId;
-          console.log(`使用从状态获取的会话ID: ${currentSessionId}`);
+          log.debug(`使用从状态获取的会话ID: ${currentSessionId}`);
         }
         
         // 尝试直接从会话存储中获取会话信息
@@ -489,7 +489,7 @@ export default defineComponent({
           sessionInfo = sessionStore.getSession(currentSessionId);
           if (sessionInfo && sessionInfo.connection) {
             sessionFound = true;
-            console.log('从SessionStore找到会话信息:', sessionInfo);
+            log.debug('从SessionStore找到会话信息:', sessionInfo);
           }
         }
         
@@ -508,10 +508,10 @@ export default defineComponent({
                 }
               };
               sessionFound = true;
-              console.log('从sessionStorage找到会话信息:', sessionInfo);
+              log.debug('从sessionStorage找到会话信息:', sessionInfo);
             }
           } catch (e) {
-            console.error('从sessionStorage解析会话信息失败:', e);
+            log.error('从sessionStorage解析会话信息失败:', e);
           }
         }
         
@@ -525,7 +525,7 @@ export default defineComponent({
               port: 22
             }
           };
-          console.log('创建临时会话信息:', sessionInfo);
+          log.debug('创建临时会话信息:', sessionInfo);
         }
         
         // 检查是否是一键安装请求
@@ -549,13 +549,13 @@ export default defineComponent({
         // 显示监控面板 - 只切换显示状态，不创建新连接
         showMonitoringPanel.value = true;
         
-        console.log('打开监控面板', { 
+        log.debug('打开监控面板', { 
           sessionId: sessionInfo.id, 
           serverInfo: sessionInfo.connection,
           installed: monitoringInstalled.value 
         });
       } catch (error) {
-        console.error('打开监控面板失败:', error);
+        log.error('打开监控面板失败:', error);
         ElMessage.error('无法打开监控面板: ' + (error.message || '未知错误'));
       }
     }
@@ -632,14 +632,14 @@ export default defineComponent({
       
       // 在关闭面板前确保关闭SFTP会话
       if (activeSessionId.value) {
-        console.log(`关闭SFTP面板，清理会话: ${activeSessionId.value}`);
+        log.debug(`关闭SFTP面板，清理会话: ${activeSessionId.value}`);
         // 检查会话是否仍然存在
         if (sftpService.activeSftpSessions && sftpService.activeSftpSessions.has(activeSessionId.value)) {
           sftpService.closeSftpSession(activeSessionId.value).catch(error => {
-            console.error(`关闭SFTP会话失败: ${error.message || '未知错误'}`, error);
+            log.error(`关闭SFTP会话失败: ${error.message || '未知错误'}`, error);
           });
         } else {
-          console.log(`SFTP会话 ${activeSessionId.value} 已经关闭，跳过`);
+          log.debug(`SFTP会话 ${activeSessionId.value} 已经关闭，跳过`);
         }
       }
       
@@ -647,7 +647,7 @@ export default defineComponent({
       setTimeout(() => {
         showSftpPanel.value = false;
         isSftpPanelClosing.value = false;
-        console.log('关闭SFTP面板');
+        log.debug('关闭SFTP面板');
       }, 300); // 与动画持续时间一致
     }
     
@@ -657,7 +657,7 @@ export default defineComponent({
       (newPath, oldPath) => {
         // 只有在实际路由变化时关闭SFTP面板
         if (newPath !== oldPath && showSftpPanel.value) {
-          console.log('路由变化，关闭SFTP面板:', oldPath, '->', newPath);
+          log.debug('路由变化，关闭SFTP面板:', oldPath, '->', newPath);
           closeSftpPanel();
         }
       }
