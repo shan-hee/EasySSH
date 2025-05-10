@@ -103,10 +103,11 @@
 import { defineComponent, computed, ref, onMounted, onUnmounted, watch, inject, nextTick } from 'vue'
 import { useSessionStore } from '../../store/session'
 import axios from 'axios'
-import sshService from '../../services/ssh'
+import sshService from '../../services/ssh/index'
 import monitoringService from '../../services/monitoring'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useTerminalStore } from '../../store/terminal'
+import { LATENCY_EVENTS } from '../../services/constants'
 
 export default defineComponent({
   name: 'TerminalToolbar',
@@ -398,60 +399,49 @@ export default defineComponent({
         return;
       }
       
-      const { sessionId, remoteLatency, localLatency, totalLatency } = event.detail;
+      const { sessionId, remoteLatency, localLatency, totalLatency, terminalId: eventTerminalId } = event.detail;
       
       if (!sessionId) {
         // 如果没有会话ID，无法处理
         return;
       }
       
-      // 首先检查是不是SSH会话ID，尝试查找对应的终端ID
-      let terminalId = null;
-      if (sessionId.startsWith('ssh_') && sshService && sshService.sessions) {
+      // 首先使用事件中直接提供的终端ID
+      let terminalId = eventTerminalId;
+      
+      // 如果事件中没有直接提供终端ID，尝试通过SSH服务查找
+      if (!terminalId && sessionId.startsWith('ssh_') && sshService) {
+        // 优先使用会话-终端映射
+        terminalId = sshService.sessionTerminalMap?.get(sessionId);
+        
+        // 如果映射中没有，尝试从会话对象中获取
+        if (!terminalId && sshService.sessions?.has(sessionId)) {
         const session = sshService.sessions.get(sessionId);
-        if (session && session.terminalId) {
           terminalId = session.terminalId;
-          
-          // 更新该终端的工具栏状态
-          const terminalState = getTerminalToolbarState(terminalId);
-          if (terminalState) {
-            terminalState.serverDelay = remoteLatency || 0;
-            terminalState.clientDelay = localLatency || 0;
-            terminalState.rttValue = totalLatency ? `${totalLatency} ms` : '--';
-            terminalState.isSshConnected = true;
-          }
         }
-      } else {
+      } else if (!terminalId) {
         // 如果不是SSH会话ID，可能直接就是终端ID
         terminalId = sessionId;
+      }
         
-        // 同样更新该终端的工具栏状态
+      // 如果找到了终端ID，更新其工具栏状态
+      if (terminalId) {
         const terminalState = getTerminalToolbarState(terminalId);
         if (terminalState) {
           terminalState.serverDelay = remoteLatency || 0;
           terminalState.clientDelay = localLatency || 0;
           terminalState.rttValue = totalLatency ? `${totalLatency} ms` : '--';
           terminalState.isSshConnected = true;
-        }
-      }
       
-      // 检查是否是当前活动终端，只有是当前活动终端才更新UI显示
-      if (terminalId === props.activeSessionId || sessionId === props.activeSessionId) {
-        // 确保有有效的延迟数据时才显示网络图标
-        if (typeof totalLatency === 'number' && totalLatency > 0) {
-          // 更新当前显示的延迟值
-          serverDelay.value = remoteLatency || 0;
-          clientDelay.value = localLatency || 0;
-          rttValue.value = totalLatency ? `${totalLatency} ms` : '--';
+          // 如果是当前活动终端，直接更新界面状态
+          if (terminalId === props.activeSessionId) {
+            serverDelay.value = terminalState.serverDelay;
+            clientDelay.value = terminalState.clientDelay;
+            rttValue.value = terminalState.rttValue;
           showNetworkIcon.value = true;
         }
-        
-        // SSH连接成功，可以使用SFTP功能
-        isSshConnected.value = true;
       }
-      
-      // 更新连接状态
-      updateConnectionStatus(terminalId || sessionId, true);
+      }
     };
 
     // 检查SSH连接状态
@@ -1143,8 +1133,8 @@ export default defineComponent({
     
     // 在onMounted中添加事件监听
     onMounted(() => {
-      // 添加全局事件监听器
-      window.addEventListener('network-latency-update', handleNetworkLatencyUpdate)
+      // 添加全局事件监听器，使用常量替代硬编码字符串
+      window.addEventListener(LATENCY_EVENTS.TOOLBAR, handleNetworkLatencyUpdate);
       window.addEventListener('ssh-connected', handleSshConnected)
       window.addEventListener('monitoring-status-change', handleMonitoringStatusChange)
       window.addEventListener('terminal:toolbar-reset', handleToolbarReset)
@@ -1247,8 +1237,8 @@ export default defineComponent({
     
     // 确保组件卸载时清理事件监听器
     onUnmounted(() => {
-      // 移除所有事件监听器
-      window.removeEventListener('network-latency-update', handleNetworkLatencyUpdate)
+      // 移除所有事件监听器，使用常量替代硬编码字符串
+      window.removeEventListener(LATENCY_EVENTS.TOOLBAR, handleNetworkLatencyUpdate);
       window.removeEventListener('ssh-connected', handleSshConnected)
       window.removeEventListener('monitoring-status-change', handleMonitoringStatusChange)
       window.removeEventListener('terminal:toolbar-reset', handleToolbarReset)

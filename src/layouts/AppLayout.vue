@@ -61,7 +61,7 @@ import SftpPanel from '@/components/sftp/SftpPanel.vue'
 // 导入Terminal组件
 import Terminal from '@/views/terminal/Terminal.vue'
 // 导入SFTP服务
-import { sftpService } from '@/services/ssh'
+import { sftpService } from '@/services/ssh/index'
 // 导入会话存储
 import { useSessionStore } from '@/store/session'
 import { useTerminalStore } from '@/store/terminal'

@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, reactive, toRefs } from 'vue'
 import { ElMessage } from 'element-plus'
-import sshService from '../services/ssh'
+import sshService from '../services/ssh/index'
 import log from '../services/log'
 import { useUserStore } from './user'
 import { useConnectionStore } from './connection'

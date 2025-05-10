@@ -49,7 +49,7 @@ import { useUserStore } from '../../store/user'
 import { useTabStore } from '../../store/tab'
 import { useTerminalStore } from '../../store/terminal'
 import terminalService from '../../services/terminal'
-import sshService from '../../services/ssh'
+import sshService from '../../services/ssh/index'
 import RainbowLoader from '../../components/common/RainbowLoader.vue'
 import { useSettingsStore } from '../../store/settings'
 // 导入终端工具栏组件

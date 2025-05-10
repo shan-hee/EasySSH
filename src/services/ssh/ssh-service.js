@@ -1,0 +1,1075 @@
+// import { WebSocket } from 'ws';
+import { ElMessage } from 'element-plus';
+import log from '../log';
+import settings from '../settings';
+import { wsServerConfig } from '../../config/app-config';
+import { WS_CONSTANTS, MESSAGE_TYPES, LATENCY_EVENTS, LATENCY_CONFIG, getDynamicConstants } from '../constants';
+
+/**
+ * SSH服务模块，负责管理SSH连接和终端会话
+ */
+class SSHService {
+  constructor() {
+    this.sessions = new Map(); // 存储所有活动的SSH会话
+    this.terminals = new Map(); // 存储所有终端实例
+    this.isReady = false;
+    this.isInitializing = false;
+    this.keepAliveIntervals = new Map();
+    this.terminalSessionMap = new Map(); // 终端ID到会话ID的映射
+    this.sessionTerminalMap = new Map(); // 会话ID到终端ID的映射（双向映射提高查询效率）
+    
+    // 从配置构建WebSocket URL
+    const { port, path } = wsServerConfig;
+    this.ipv4Url = `ws://127.0.0.1:${port}${path}`;
+    this.ipv6Url = `ws://[::1]:${port}${path}`;
+    this.baseUrl = this.ipv4Url;
+    
+    // 获取动态配置
+    const dynamicConstants = getDynamicConstants(settings);
+    
+    this.connectionTimeout = wsServerConfig.connectionTimeout || dynamicConstants.SSH_CONSTANTS.DEFAULT_TIMEOUT;
+    this.reconnectAttempts = wsServerConfig.reconnectAttempts || dynamicConstants.SSH_CONSTANTS.MAX_RECONNECT_ATTEMPTS;
+    this.reconnectDelay = wsServerConfig.reconnectDelay || 1000;
+    
+    // 初始化延迟监控状态
+    this.latencyData = new Map(); // 存储会话的网络延迟数据
+    this.dynamicConfig = dynamicConstants; // 存储动态配置
+    
+    log.info(`SSH服务初始化: IPv4=${this.ipv4Url}, IPv6=${this.ipv6Url}`);
+  }
+
+  /**
+   * 初始化SSH服务
+   */
+  async init() {
+    try {
+      if (this.isReady) {
+        log.info('SSH服务已初始化，跳过');
+        return true;
+      }
+      
+      log.info('正在初始化SSH服务...');
+      this.isInitializing = true;
+      
+      // 更新动态配置
+      this.dynamicConfig = getDynamicConstants(settings);
+      
+      log.info(`使用预设连接配置: 主URL=${this.baseUrl}`);
+      
+      this.isReady = true;
+      this.isInitializing = false;
+      return true;
+    } catch (error) {
+      this.isInitializing = false;
+      log.error('SSH服务初始化失败', error);
+      return false;
+    }
+  }
+  
+  /**
+   * 创建新的SSH会话
+   * @param {Object} connection - 连接信息
+   * @returns {Promise<string>} - 会话ID
+   */
+  async createSession(connection) {
+    try {
+      if (this.isInitializing) {
+        log.info('SSH服务正在初始化中，等待初始化完成...');
+        await new Promise(resolve => {
+          const checkReady = () => {
+            if (!this.isInitializing) {
+              resolve();
+            } else {
+              setTimeout(checkReady, 100);
+            }
+          };
+          checkReady();
+        });
+      }
+      
+      if (!this.isReady) {
+        await this.init();
+      }
+      
+      log.info(`多终端模式: 为连接创建新会话 (${connection.host}:${connection.port})`);
+      
+      const generatedSessionId = this._generateSessionId();
+      
+      // 如果提供了终端ID，建立双向映射关系
+      if (connection.terminalId) {
+        this.terminalSessionMap.set(connection.terminalId, generatedSessionId);
+        this.sessionTerminalMap.set(generatedSessionId, connection.terminalId);
+        log.info(`创建终端与SSH会话映射: 终端 ${connection.terminalId} -> 会话 ${generatedSessionId}`);
+      }
+      
+      return this._createNewSession(connection);
+    } catch (error) {
+      log.error('创建SSH会话失败:', error);
+      ElMessage.error(`SSH连接失败: ${error.message || '未知错误'}`);
+      throw error;
+    }
+  }
+
+  /**
+   * 创建新会话的核心逻辑
+   * @param {Object} connection - 连接配置
+   * @returns {Promise<string>} - 会话ID
+   */
+  async _createNewSession(connection) {
+    const sessionId = this._generateSessionId();
+    log.info(`创建新SSH会话: ${sessionId}, 地址: ${connection.host}:${connection.port}`);
+    
+    try {
+      log.info(`尝试使用IPv4连接: ${this.ipv4Url}`);
+      return await this._createSessionWithUrl(this.ipv4Url, sessionId, connection);
+    } catch (ipv4Error) {
+      log.warn(`IPv4连接失败: ${ipv4Error.message}，尝试IPv6连接`);
+      
+      try {
+        this.releaseResources(sessionId);
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
+        log.info(`尝试使用IPv6连接: ${this.ipv6Url}`);
+        return await this._createSessionWithUrl(this.ipv6Url, sessionId, connection);
+      } catch (ipv6Error) {
+        log.error(`IPv6连接也失败: ${ipv6Error.message}`);
+        ElMessage.error(`SSH连接失败: 尝试IPv4和IPv6连接均失败`);
+        throw new Error(`SSH连接失败: IPv4(${ipv4Error.message}) 和 IPv6(${ipv6Error.message})`);
+      }
+    }
+  }
+  
+  /**
+   * 使用特定URL创建会话
+   * @param {string} wsUrl - WebSocket URL
+   * @param {string} sessionId - 会话ID 
+   * @param {Object} connection - 连接信息
+   * @returns {Promise<string>} - 会话ID
+   */
+  async _createSessionWithUrl(wsUrl, sessionId, connection) {
+    try {
+      log.info(`准备建立SSH连接 (${connection.name || connection.host}:${connection.port})`);
+      
+      if (this.sessions.has(sessionId)) {
+        log.warn(`发现同ID会话已存在: ${sessionId}，尝试关闭`);
+        try {
+          await this.closeSession(sessionId);
+          await new Promise(resolve => setTimeout(resolve, 200));
+        } catch (error) {
+          log.warn(`关闭已存在会话失败: ${sessionId}`, error);
+        }
+      }
+      
+      const connectionState = {
+        status: 'connecting',
+        message: '正在连接...',
+        error: null,
+        startTime: new Date()
+      };
+      
+      log.info(`创建WebSocket连接: ${wsUrl}`);
+      const socket = new WebSocket(wsUrl);
+      
+      const session = {
+        id: sessionId,
+        connection: { ...connection },
+        connectionState,
+        socket,
+        retryCount: 0,
+        isReconnecting: false,
+        lastActivity: new Date(),
+        createdAt: new Date(),
+        terminal: null,
+        onData: null,
+        onClose: null,
+        onError: null
+      };
+      
+      this.sessions.set(sessionId, session);
+      
+      await this._setupSocketEvents(socket, sessionId, connection, connectionState);
+      
+      this._setupKeepAlive(sessionId);
+      
+      log.info(`SSH会话创建成功: ${sessionId}`);
+      
+      return sessionId;
+    } catch (error) {
+      log.error(`创建SSH会话失败: ${sessionId}, 错误: ${error.message}`);
+      
+      try {
+        if (this.sessions.has(sessionId)) {
+          const session = this.sessions.get(sessionId);
+          
+          if (session.socket) {
+            try {
+              session.socket.close();
+              session.socket.onopen = null;
+              session.socket.onclose = null;
+              session.socket.onerror = null;
+              session.socket.onmessage = null;
+            } catch (socketError) {
+              log.warn(`关闭WebSocket连接失败: ${sessionId}`, socketError);
+            }
+          }
+          
+          this._clearKeepAlive(sessionId);
+          this.sessions.delete(sessionId);
+        }
+        
+        this.releaseResources(sessionId);
+      } catch (cleanupError) {
+        log.error(`清理失败会话资源时出错: ${sessionId}`, cleanupError);
+      }
+      
+      throw error;
+    }
+  }
+  
+  /**
+   * 设置WebSocket事件处理
+   */
+  _setupSocketEvents(socket, sessionId, connection, connectionState) {
+    return new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        reject(new Error('连接超时'));
+      }, this.connectionTimeout);
+      
+      // 连接打开时
+      socket.onopen = () => {
+        log.info('WebSocket连接已建立');
+        connectionState.status = 'authenticating';
+        connectionState.message = '正在进行SSH认证...';
+        
+        // 准备SSH连接配置
+        const config = {
+          sessionId,
+          address: connection.host,
+          port: connection.port || 22,
+          username: connection.username,
+          authType: connection.authType || 'password'
+        };
+        
+        // 添加认证信息
+        if (config.authType === 'password') {
+          config.password = connection.password;
+        } else if (config.authType === 'key' || config.authType === 'privateKey') {
+          config.privateKey = connection.keyFile;
+          if (connection.passphrase) {
+            config.passphrase = connection.passphrase;
+          }
+        }
+        
+        // 发送连接请求
+        socket.send(JSON.stringify({
+          type: 'connect',
+          data: config
+        }));
+      };
+      
+      // 连接错误时
+      socket.onerror = (event) => {
+        clearTimeout(timeout);
+        connectionState.status = 'error';
+        connectionState.message = '连接错误';
+        log.error('WebSocket连接错误', event);
+        
+        if (this.sessions.has(sessionId)) {
+          const session = this.sessions.get(sessionId);
+          if (session.retryCount < this.reconnectAttempts) {
+            log.info(`连接错误，将尝试重连 (${session.retryCount + 1}/${this.reconnectAttempts})`);
+            session.isReconnecting = true;
+            session.retryCount++;
+            
+            setTimeout(() => {
+              this._reconnectSession(sessionId, connection)
+                .catch(error => {
+                  log.error(`重连失败: ${error.message}`);
+                });
+            }, this.reconnectDelay);
+          } else {
+            log.warn(`达到最大重连次数(${this.reconnectAttempts})，不再尝试重连`);
+          }
+        }
+        
+        reject(new Error('WebSocket连接错误'));
+      };
+      
+      // 连接关闭时
+      socket.onclose = (event) => {
+        const closeReason = this._getCloseReasonText(event.code, event.reason);
+        
+        if (connectionState.status !== 'connected') {
+          clearTimeout(timeout);
+          connectionState.status = 'closed';
+          connectionState.message = `连接已关闭: ${closeReason}`;
+          log.warn(`WebSocket连接关闭: ${event.code} ${closeReason}`);
+          reject(new Error(`连接已关闭: ${closeReason}`));
+        } else {
+          connectionState.status = 'closed';
+          connectionState.message = `连接已关闭: ${closeReason}`;
+          log.warn(`SSH会话 ${sessionId} 已关闭: ${event.code} ${closeReason}`);
+          
+          if (this.sessions.has(sessionId)) {
+            const session = this.sessions.get(sessionId);
+            
+            if (event.code !== 1000 && event.code !== 1001) {
+              if (!session.isReconnecting && session.retryCount < this.reconnectAttempts) {
+                log.info(`连接异常关闭(${event.code})，将尝试重连 (${session.retryCount + 1}/${this.reconnectAttempts})`);
+                session.isReconnecting = true;
+                session.retryCount++;
+                
+                setTimeout(() => {
+                  this._reconnectSession(sessionId, connection)
+                    .catch(error => {
+                      log.error(`重连失败: ${error.message}`);
+                      
+                      if (session.onClose) {
+                        session.onClose();
+                      }
+                    });
+                }, this.reconnectDelay);
+              } else if (session.retryCount >= this.reconnectAttempts) {
+                log.warn(`达到最大重连次数(${this.reconnectAttempts})，不再尝试重连`);
+                if (session.onClose) {
+                  session.onClose();
+                }
+              }
+            } else {
+              if (session.onClose) {
+                session.onClose();
+              }
+            }
+          }
+        }
+      };
+      
+      // 接收消息时
+      socket.onmessage = (event) => {
+        try {
+          let message;
+          try {
+            message = JSON.parse(event.data);
+          } catch (parseError) {
+            log.error(`解析WebSocket消息失败:`, parseError);
+            return;
+          }
+          
+          if (!message.type) {
+            log.warn('收到无类型WebSocket消息:', {
+              messageDetails: JSON.stringify(message, null, 2).substring(0, 300),
+              sessionId: sessionId
+            });
+            return;
+          }
+          
+          if (this.sessions.has(sessionId)) {
+            const session = this.sessions.get(sessionId);
+            session.lastActivity = new Date();
+          }
+          
+          switch (message.type) {
+            case MESSAGE_TYPES.CONNECTED:
+              clearTimeout(timeout);
+              connectionState.status = 'connected';
+              connectionState.message = '已连接';
+              log.info(`SSH连接成功: ${sessionId}`);
+              
+              try {
+                const connHost = connection.host || (this.sessions.has(sessionId) ? this.sessions.get(sessionId).connection?.host : null);
+                if (connHost) {
+                  // 优先从会话-终端映射中获取终端ID
+                  let terminalId = this.sessionTerminalMap.get(sessionId);
+                  
+                  // 如果没有映射关系，尝试从连接配置中获取
+                  if (!terminalId && connection.terminalId) {
+                    terminalId = connection.terminalId;
+                    // 建立双向映射关系
+                    this.sessionTerminalMap.set(sessionId, terminalId);
+                    this.terminalSessionMap.set(terminalId, sessionId);
+                  }
+                  
+                  // 更新会话对象，保存终端ID信息
+                  if (this.sessions.has(sessionId) && terminalId) {
+                    const session = this.sessions.get(sessionId);
+                    session.terminalId = terminalId;
+                  }
+                  
+                  const sshConnectedEvent = new CustomEvent('ssh-connected', {
+                    detail: { 
+                      sessionId: sessionId,
+                      host: connHost,
+                      terminalId: terminalId,
+                      connection: connection
+                    }
+                  });
+                  window.dispatchEvent(sshConnectedEvent);
+                  log.info(`已触发SSH连接成功事件，主机: ${connHost}, 终端ID: ${terminalId || '未知'}`);
+                }
+              } catch (err) {
+                log.error('触发SSH连接事件失败:', err);
+              }
+              
+              if (this.sessions.has(sessionId)) {
+                const session = this.sessions.get(sessionId);
+                session.retryCount = 0;
+                session.isReconnecting = false;
+              }
+              
+              resolve(sessionId);
+              break;
+              
+            case MESSAGE_TYPES.ERROR:
+              clearTimeout(timeout);
+              connectionState.status = 'error';
+              connectionState.message = message.data?.message || '未知错误';
+              log.error(`SSH连接错误: ${connectionState.message}`);
+              reject(new Error(connectionState.message));
+              break;
+              
+            case MESSAGE_TYPES.CLOSED:
+              connectionState.status = 'closed';
+              connectionState.message = '连接已关闭';
+              log.info(`SSH连接已关闭: ${sessionId}`);
+              
+              if (this.sessions.has(sessionId)) {
+                const session = this.sessions.get(sessionId);
+                if (session.onClose) {
+                  session.onClose();
+                }
+              }
+              break;
+              
+            case MESSAGE_TYPES.DATA:
+              if (this.sessions.has(sessionId)) {
+                const session = this.sessions.get(sessionId);
+                
+                if (!message.data || !message.data.data) {
+                  log.error('数据格式错误:', message);
+                  return;
+                }
+                
+                let data;
+                try {
+                  if (typeof window.TextDecoder !== 'undefined') {
+                    const base64 = message.data.data;
+                    const binary = window.atob(base64);
+                    const bytes = new Uint8Array(binary.length);
+                    for (let i = 0; i < binary.length; i++) {
+                      bytes[i] = binary.charCodeAt(i);
+                    }
+                    const decoder = new TextDecoder('utf-8', { fatal: false, ignoreBOM: true });
+                    data = decoder.decode(bytes);
+                  } else {
+                    const binary = atob(message.data.data);
+                    data = binary;
+                  }
+                } catch (e) {
+                  log.warn(`Base64解码失败, 使用原始数据:`, e);
+                  data = message.data.data;
+                }
+                
+                if (session.terminal) {
+                  session.terminal.write(data);
+                } else {
+                  if (!session.buffer) {
+                    session.buffer = '';
+                    session.bufferSize = 0;
+                  }
+                  
+                  session.buffer += data;
+                  session.bufferSize += data.length;
+                  
+                  const MAX_BUFFER_SIZE = 1024 * 1024 * 5;  // 5MB
+                  if (session.bufferSize > MAX_BUFFER_SIZE) {
+                    log.warn(`会话 ${sessionId} 缓冲区过大(${session.bufferSize}B)，截断旧数据`);
+                    const keepSize = 1024 * 1024;
+                    session.buffer = session.buffer.substring(session.buffer.length - keepSize);
+                    session.bufferSize = session.buffer.length;
+                  }
+                }
+                
+                session.lastActivity = new Date();
+              }
+              break;
+              
+            // 处理网络延迟消息
+            case MESSAGE_TYPES.NETWORK_LATENCY:
+              try {
+                // 触发网络延迟事件，让UI可以显示
+                const latencyDetail = {
+                  sessionId: message.data?.sessionId || sessionId,
+                  // 使用服务器返回的延迟数据
+                  remoteLatency: message.data?.remoteLatency || message.data?.latency || 0,
+                  localLatency: message.data?.localLatency || LATENCY_CONFIG.DEFAULT_LOCAL,
+                  totalLatency: message.data?.totalLatency || message.data?.latency || 0,
+                  timestamp: message.data?.timestamp || new Date().toISOString()
+                };
+                
+                log.debug(`收到网络延迟信息: ${JSON.stringify(latencyDetail)}`);
+                
+                // 保存延迟数据到内部状态
+                this.latencyData.set(sessionId, {
+                  ...latencyDetail,
+                  updatedAt: new Date()
+                });
+                
+                // 获取当前会话的终端ID（优先从映射中获取）
+                let terminalId = this.sessionTerminalMap.get(sessionId);
+                
+                if (!terminalId && this.sessions.has(sessionId)) {
+                  const currentSession = this.sessions.get(sessionId);
+                  terminalId = currentSession.terminalId || null;
+                }
+                
+                // 更新延迟事件数据，包含终端ID
+                const enrichedLatencyDetail = {
+                  ...latencyDetail,
+                  terminalId
+                };
+                
+                // 触发全局网络延迟事件
+                window.dispatchEvent(new CustomEvent(LATENCY_EVENTS.GLOBAL, {
+                  detail: enrichedLatencyDetail
+                }));
+                
+                // 为保持兼容性，同时触发工具栏使用的事件格式
+                window.dispatchEvent(new CustomEvent(LATENCY_EVENTS.TOOLBAR, {
+                  detail: enrichedLatencyDetail
+                }));
+                
+                // 如果有终端ID，触发终端特定的延迟事件
+                if (terminalId) {
+                  window.dispatchEvent(new CustomEvent(LATENCY_EVENTS.TERMINAL, {
+                    detail: enrichedLatencyDetail
+                  }));
+                }
+              } catch (e) {
+                log.warn('处理网络延迟消息失败:', e);
+                // 记录详细错误和消息数据，帮助调试
+                log.debug('延迟消息数据:', JSON.stringify(message.data || {}));
+                log.debug('错误详情:', e.message, e.stack);
+              }
+              break;
+              
+            // 增加SFTP相关消息类型的处理
+            case MESSAGE_TYPES.SFTP_SUCCESS:
+            case MESSAGE_TYPES.SFTP_PROGRESS:
+            case MESSAGE_TYPES.SFTP_ERROR:
+            case MESSAGE_TYPES.SFTP_READY:
+            case MESSAGE_TYPES.SFTP_FILE:
+            case MESSAGE_TYPES.SFTP_LIST:
+            case MESSAGE_TYPES.SFTP_CONFIRM:
+              // 由handleSftpMessages处理，此处仅标记为已识别类型
+              break;
+              
+            // 处理其他消息类型
+            default:
+              const ignoredTypes = [
+                MESSAGE_TYPES.PING, 
+                MESSAGE_TYPES.PONG, 
+                'keepalive', 'heartbeat', 'status', 'info', 'notification', 
+                'system', 'stats', 'heartbeat_ack', 'heartbeat_response',
+                'ack', 'response', 'server_status'
+              ];
+              
+              // 忽略所有SFTP相关消息类型，避免它们被标记为未知类型
+              if (!ignoredTypes.includes(message.type) && !message.type.startsWith('sftp_')) {
+                log.debug(`收到未知消息类型: ${message.type}`, { sessionId });
+              }
+          }
+          
+          // SFTP消息专门由SFTP服务处理
+          if (message.type && message.type.startsWith('sftp_')) {
+            if (this.handleSftpMessages) {
+              this.handleSftpMessages(message);
+            } else {
+              log.debug(`收到SFTP消息但未配置处理器: ${message.type}`, { sessionId });
+            }
+          }
+          
+        } catch (error) {
+          log.error('处理WebSocket消息失败', error);
+        }
+      };
+    });
+  }
+  
+  /**
+   * 设置会话保活机制
+   */
+  _setupKeepAlive(sessionId) {
+    this._clearKeepAlive(sessionId);
+    
+    const pingRequests = new Map();
+    
+    // 获取最新的动态配置
+    const dynamicConfig = getDynamicConstants(settings);
+    
+    // 从设置获取保活间隔
+    const connectionSettings = settings.getConnectionOptions();
+    const keepAliveIntervalSec = connectionSettings.keepAliveInterval || 
+                                 dynamicConfig.LATENCY_CONFIG.CHECK_INTERVAL;
+    const keepAliveIntervalMs = keepAliveIntervalSec * 1000;
+    
+    const interval = setInterval(() => {
+      if (!this.sessions.has(sessionId)) {
+        this._clearKeepAlive(sessionId);
+        return;
+      }
+      
+      const session = this.sessions.get(sessionId);
+      const now = new Date();
+      
+      if (session.socket && session.socket.readyState === WS_CONSTANTS.OPEN) {
+        try {
+          const timestamp = now.toISOString();
+          const requestId = Date.now().toString();
+          
+          pingRequests.set(requestId, {
+            timestamp: now,
+            sessionId
+          });
+          
+          session.socket.send(JSON.stringify({
+            type: MESSAGE_TYPES.PING,
+            data: { 
+              sessionId,
+              timestamp,
+              requestId,
+              measureLatency: true,
+              client: 'easyssh'
+            }
+          }));
+          
+          session.lastActivity = now;
+          
+          // 清理超时的ping请求
+          const expireTime = new Date(now.getTime() - 10000);
+          for (const [id, request] of pingRequests.entries()) {
+            if (request.timestamp < expireTime) {
+              pingRequests.delete(id);
+            }
+          }
+        } catch (error) {
+          log.warn(`发送保活消息失败: ${sessionId}`, error);
+        }
+      }
+    }, keepAliveIntervalMs / 2);
+    
+    this.keepAliveIntervals.set(sessionId, {
+      interval,
+      pingRequests
+    });
+  }
+  
+  /**
+   * 清除会话保活机制
+   */
+  _clearKeepAlive(sessionId) {
+    if (this.keepAliveIntervals.has(sessionId)) {
+      const keepAliveData = this.keepAliveIntervals.get(sessionId);
+      if (keepAliveData.interval) {
+        clearInterval(keepAliveData.interval);
+      }
+      this.keepAliveIntervals.delete(sessionId);
+    }
+  }
+  
+  /**
+   * 处理WebSocket关闭码和原因
+   */
+  _getCloseReasonText(code, reason) {
+    const closeCodeMap = {
+      1000: '正常关闭',
+      1001: '终端关闭',
+      1002: '协议错误',
+      1003: '数据类型错误',
+      1006: '异常关闭',
+      1007: '数据格式不一致',
+      1008: '违反政策',
+      1009: '数据太大',
+      1011: '内部错误',
+      1012: '服务重启',
+      1013: '临时错误'
+    };
+    
+    const codeText = closeCodeMap[code] || `未知错误(${code})`;
+    return reason ? `${codeText}：${reason}` : codeText;
+  }
+  
+  /**
+   * 尝试重新连接会话
+   */
+  async _reconnectSession(sessionId, connection) {
+    if (!this.sessions.has(sessionId)) {
+      throw new Error(`会话 ${sessionId} 不存在，无法重连`);
+    }
+    
+    const session = this.sessions.get(sessionId);
+    
+    if (session.socket) {
+      try {
+        session.socket.close();
+      } catch (error) {
+        // 忽略关闭错误
+      }
+    }
+    
+    log.info(`正在重新连接会话: ${sessionId}`);
+    
+    try {
+      log.info(`重连尝试使用IPv4连接: ${this.ipv4Url}`);
+      const socket = new WebSocket(this.ipv4Url);
+      
+      session.connectionState = {
+        status: 'reconnecting',
+        message: '正在重新连接(IPv4)...'
+      };
+      
+      await this._setupSocketEvents(socket, sessionId, connection, session.connectionState);
+      
+      session.socket = socket;
+      session.isReconnecting = false;
+      session.lastActivity = new Date();
+      
+      log.info(`会话 ${sessionId} 重连成功(IPv4)`);
+      
+      return;
+    } catch (ipv4Error) {
+      log.warn(`IPv4重连失败: ${ipv4Error.message}，尝试IPv6连接`);
+      
+      try {
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
+        log.info(`重连尝试使用IPv6连接: ${this.ipv6Url}`);
+        const socket = new WebSocket(this.ipv6Url);
+        
+        session.connectionState = {
+          status: 'reconnecting',
+          message: '正在重新连接(IPv6)...'
+        };
+        
+        await this._setupSocketEvents(socket, sessionId, connection, session.connectionState);
+        
+        session.socket = socket;
+        session.isReconnecting = false;
+        session.lastActivity = new Date();
+        
+        log.info(`会话 ${sessionId} 重连成功(IPv6)`);
+        
+        return;
+      } catch (ipv6Error) {
+        session.isReconnecting = false;
+        log.error(`IPv6重连也失败: ${ipv6Error.message}`);
+        throw new Error(`重连失败: IPv4(${ipv4Error.message}) 和 IPv6(${ipv6Error.message})`);
+      }
+    }
+  }
+  
+  /**
+   * 生成唯一的会话ID
+   */
+  _generateSessionId() {
+    return 'ssh_' + Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+  }
+  
+  /**
+   * 处理终端输入
+   */
+  _processTerminalInput(session, data) {
+    if (!session) {
+      log.error('无法处理终端输入: 会话对象为空');
+      return;
+    }
+
+    session.lastActivity = new Date();
+    
+    const sessionId = session.id;
+    
+    if (!session.socket) {
+      log.error(`无法发送数据: 会话 [${sessionId}] 的WebSocket为空`);
+      return;
+    }
+    
+    if (session.socket.readyState !== WS_CONSTANTS.OPEN) {
+      log.error(`无法发送数据: 会话 [${sessionId}] 的WebSocket未打开, 当前状态: ${session.socket.readyState}`);
+      return;
+    }
+    
+    let isConnected = false;
+    
+    if (session.connectionState) {
+      isConnected = session.connectionState.status === 'connected';
+    }
+    
+    if (!isConnected) {
+      log.warn(`无法发送数据: 会话 [${sessionId}] 未连接, 当前状态: ${session.connectionState ? session.connectionState.status : '未知'}`);
+      return;
+    }
+    
+    try {
+      session.socket.send(JSON.stringify({
+        type: 'data',
+        data: {
+          sessionId: sessionId,
+          data: data
+        }
+      }));
+    } catch (error) {
+      log.error(`发送数据到会话 [${sessionId}] 失败:`, error);
+    }
+  }
+  
+  /**
+   * 关闭会话
+   */
+  async closeSession(sessionId) {
+    if (!sessionId) {
+      log.error('关闭会话失败: 未提供会话ID');
+      return false;
+    }
+    
+    log.info(`准备关闭会话: ${sessionId}`);
+    
+    if (!this.sessions.has(sessionId)) {
+      log.warn(`会话 ${sessionId} 不存在，可能已关闭`);
+      return true;
+    }
+    
+    const session = this.sessions.get(sessionId);
+    let closeSuccess = false;
+    
+    try {
+      log.debug(`清除会话 ${sessionId} 的保活定时器`);
+      this._clearKeepAlive(sessionId);
+      
+      if (session.socket) {
+        if (session.socket.readyState === WS_CONSTANTS.OPEN) {
+          try {
+            log.debug(`向服务器发送断开请求: ${sessionId}`);
+            session.socket.send(JSON.stringify({
+              type: 'disconnect',
+              data: {
+                sessionId
+              }
+            }));
+          } catch (sendError) {
+            log.warn(`发送断开请求失败: ${sessionId}`, sendError);
+          }
+        }
+        
+        try {
+          if (session.socket.readyState !== WS_CONSTANTS.CLOSED) {
+            log.debug(`关闭WebSocket连接: ${sessionId}`);
+            session.socket.close();
+          }
+        } catch (closeError) {
+          log.warn(`关闭WebSocket连接失败: ${sessionId}`, closeError);
+        }
+      }
+      
+      if (typeof session.onClose === 'function') {
+        try {
+          log.debug(`执行会话关闭回调: ${sessionId}`);
+          session.onClose();
+        } catch (callbackError) {
+          log.warn(`执行会话关闭回调失败: ${sessionId}`, callbackError);
+        }
+      }
+      
+      if (session.destroy && typeof session.destroy === 'function') {
+        try {
+          log.debug(`销毁会话终端: ${sessionId}`);
+          session.destroy();
+        } catch (destroyError) {
+          log.warn(`销毁会话终端失败: ${sessionId}`, destroyError);
+        }
+      }
+      
+      closeSuccess = true;
+    } catch (error) {
+      log.error(`关闭SSH会话 ${sessionId} 失败`, error);
+      closeSuccess = false;
+    } finally {
+      log.debug(`彻底释放会话资源: ${sessionId}`);
+      this.releaseResources(sessionId);
+    }
+    
+    log.info(`SSH会话 ${sessionId} 已${closeSuccess ? '成功' : '尝试'}关闭`);
+    return closeSuccess;
+  }
+  
+  /**
+   * 获取所有会话
+   */
+  getAllSessions() {
+    return Array.from(this.sessions.values()).map(session => ({
+      id: session.id,
+      name: session.connection.name || `${session.connection.username}@${session.connection.host}`,
+      host: session.connection.host,
+      port: session.connection.port,
+      status: session.connectionState || {status: 'unknown', message: '未知状态'},
+      createdAt: session.createdAt,
+      lastActivity: session.lastActivity
+    }));
+  }
+
+  /**
+   * 发送自定义错误事件
+   */
+  _dispatchErrorEvent(sessionId, message) {
+    try {
+      window.dispatchEvent(new CustomEvent('ssh:error', {
+        detail: {
+          sessionId: sessionId,
+          message: message,
+          timestamp: new Date().toISOString()
+        }
+      }));
+    } catch (error) {
+      log.error('发送自定义事件失败:', error);
+    }
+  }
+
+  /**
+   * 彻底释放会话相关的所有资源
+   */
+  releaseResources(sessionId) {
+    try {
+      log.info(`开始释放会话 ${sessionId} 的资源`);
+      
+      if (this.terminals.has(sessionId)) {
+        log.info(`释放终端实例: ${sessionId}`);
+        try {
+          const terminal = this.terminals.get(sessionId);
+          if (terminal) {
+            if (terminal._events) {
+              for (const eventName in terminal._events) {
+                terminal.off(eventName);
+              }
+            }
+            
+            if (typeof terminal.dispose === 'function') {
+              terminal.dispose();
+            }
+          }
+        } catch (error) {
+          log.warn(`释放终端实例失败: ${sessionId}`, error);
+        } finally {
+          this.terminals.delete(sessionId);
+        }
+      }
+      
+      this._clearKeepAlive(sessionId);
+      
+      if (this.sessions.has(sessionId)) {
+        const session = this.sessions.get(sessionId);
+        if (session && session.socket) {
+          try {
+            if (session.socket.readyState !== WS_CONSTANTS.CLOSED) {
+              log.info(`关闭WebSocket连接: ${sessionId}`);
+              session.socket.close();
+            }
+          } catch (error) {
+            log.warn(`关闭WebSocket连接失败: ${sessionId}`, error);
+          }
+          
+          try {
+            session.socket.onopen = null;
+            session.socket.onclose = null;
+            session.socket.onerror = null;
+            session.socket.onmessage = null;
+          } catch (error) {
+            log.warn(`移除WebSocket事件监听器失败: ${sessionId}`, error);
+          }
+          
+          session.socket = null;
+        }
+        
+        this.sessions.delete(sessionId);
+      }
+      
+      // 清理终端-会话映射关系
+      const terminalId = this.sessionTerminalMap.get(sessionId);
+      if (terminalId) {
+        this.terminalSessionMap.delete(terminalId);
+        this.sessionTerminalMap.delete(sessionId);
+      }
+      
+      // 清理延迟数据
+      this.latencyData.delete(sessionId);
+      
+      log.info(`会话 ${sessionId} 的资源已释放`);
+      return true;
+    } catch (error) {
+      log.error(`释放会话 ${sessionId} 资源失败`, error);
+      return false;
+    }
+  }
+
+  /**
+   * 创建终端并绑定到会话
+   */
+  createTerminal(sessionId, container, options = {}) {
+    // 这个方法内容太长，需要移到单独文件中实现
+    // 此处仅保留方法签名，具体实现将在终端管理器模块中
+    console.log('终端创建功能已移至终端管理模块');
+    throw new Error('终端创建功能已移至终端管理模块');
+  }
+
+  /**
+   * 获取会话的网络延迟数据
+   * @param {string} sessionId - 会话ID
+   * @returns {Object|null} - 延迟数据或null
+   */
+  getNetworkLatency(sessionId) {
+    return this.latencyData.get(sessionId) || null;
+  }
+  
+  /**
+   * 获取终端的网络延迟数据
+   * @param {string} terminalId - 终端ID
+   * @returns {Object|null} - 延迟数据或null
+   */
+  getTerminalNetworkLatency(terminalId) {
+    const sessionId = this.terminalSessionMap.get(terminalId);
+    if (sessionId) {
+      return this.getNetworkLatency(sessionId);
+    }
+    return null;
+  }
+  
+  /**
+   * 设置终端与会话的映射关系
+   * @param {string} terminalId - 终端ID
+   * @param {string} sessionId - 会话ID
+   */
+  setTerminalSessionMapping(terminalId, sessionId) {
+    if (!terminalId || !sessionId) {
+      log.warn('设置终端会话映射失败: 终端ID或会话ID无效', { terminalId, sessionId });
+      return;
+    }
+    
+    this.terminalSessionMap.set(terminalId, sessionId);
+    this.sessionTerminalMap.set(sessionId, terminalId);
+    
+    // 同时更新会话对象
+    if (this.sessions.has(sessionId)) {
+      const session = this.sessions.get(sessionId);
+      session.terminalId = terminalId;
+      
+      log.info(`设置SSH会话 ${sessionId} 的终端ID: ${terminalId}`);
+      
+      // 如果终端ID与会话ID不一致，记录警告日志
+      if (terminalId !== sessionId) {
+        log.info(`警告: SSH会话ID(${sessionId})与终端ID(${terminalId})不一致，已正确关联`);
+      }
+    }
+  }
+}
+
+// 创建单例
+const sshService = new SSHService();
+
+export default sshService; 

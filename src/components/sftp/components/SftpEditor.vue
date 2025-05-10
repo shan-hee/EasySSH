@@ -42,7 +42,9 @@
 <script>
 import { defineComponent, ref, onMounted, watch, nextTick, onBeforeUnmount } from 'vue'
 import { ElMessageBox, ElMessage, ElLoading } from 'element-plus'
-import { sftpService } from '@/services/ssh'
+import { sftpService } from '@/services/ssh/index'
+import settings from '@/services/settings'
+import { useSettingsStore } from '@/store/settings'
 
 // CodeMirror 6 Imports
 import { EditorState, Compartment } from '@codemirror/state'
@@ -81,6 +83,45 @@ export default defineComponent({
     const fileName = ref(props.filePath.split('/').pop())
     const cursor = ref({ line: 1, ch: 0 })
     const isComponentMounted = ref(false)
+    const settingsStore = useSettingsStore();
+    
+    // 从设置中获取编辑器主题相关配置
+    const getThemeSettings = () => {
+      const termSettings = settingsStore.getTerminalSettings();
+      // 获取终端主题
+      const themeKey = termSettings.theme || 'dark';
+      // 从settings服务获取详细主题配置
+      const theme = settings.getTerminalTheme(themeKey);
+      
+      return {
+        background: theme.background || '#282c34',
+        foreground: theme.foreground || '#abb2bf',
+        cursor: theme.cursor || '#FFFFFF',
+        selection: theme.selectionBackground || '#264F78',
+        comment: theme.brightBlack || '#5c6370',
+        keyword: theme.magenta || '#c678dd',
+        string: theme.green || '#98c379',
+        function: theme.blue || '#61afef',
+        variable: theme.red || '#e06c75',
+        number: theme.yellow || '#d19a66',
+        operator: theme.cyan || '#56b6c2',
+        className: theme.brightYellow || '#e5c07b',
+        themeName: themeKey
+      };
+    };
+    
+    // 获取字体设置
+    const getFontSettings = () => {
+      const termSettings = settingsStore.getTerminalSettings();
+      return {
+        fontSize: termSettings.fontSize || 14,
+        fontFamily: termSettings.fontFamily || "'JetBrains Mono', 'Courier New', monospace"
+      };
+    };
+    
+    // 主题和字体设置
+    const themeSettings = ref(getThemeSettings());
+    const fontSettings = ref(getFontSettings());
     
     // 获取文件类型显示名称
     const getFileType = () => {
@@ -136,26 +177,109 @@ export default defineComponent({
     }
     
     // 自定义语法高亮样式
-    const customHighlightStyle = HighlightStyle.define([
-      { tag: tags.keyword, color: '#c678dd' },
-      { tag: tags.comment, color: '#5c6370', fontStyle: 'italic' },
-      { tag: tags.definition, color: '#61afef' },
-      { tag: tags.variableName, color: '#e06c75' },
-      { tag: tags.string, color: '#98c379' },
-      { tag: tags.number, color: '#d19a66' },
-      { tag: tags.operator, color: '#56b6c2' },
-      { tag: tags.punctuation, color: '#abb2bf' },
-      { tag: tags.propertyName, color: '#e06c75' },
-      { tag: tags.function(tags.variableName), color: '#61afef' },
-      { tag: tags.className, color: '#e5c07b' }
-    ])
+    const createHighlightStyle = () => {
+      const theme = themeSettings.value;
+      
+      return HighlightStyle.define([
+        { tag: tags.keyword, color: theme.keyword },
+        { tag: tags.comment, color: theme.comment, fontStyle: 'italic' },
+        { tag: tags.definition, color: theme.function },
+        { tag: tags.variableName, color: theme.variable },
+        { tag: tags.string, color: theme.string },
+        { tag: tags.number, color: theme.number },
+        { tag: tags.operator, color: theme.operator },
+        { tag: tags.punctuation, color: theme.foreground },
+        { tag: tags.propertyName, color: theme.variable },
+        { tag: tags.function(tags.variableName), color: theme.function },
+        { tag: tags.className, color: theme.className }
+      ]);
+    };
+    
+    // 动态创建高亮样式
+    const customHighlightStyle = createHighlightStyle();
     
     // 语言配置模块，可以动态更新
     const languageConf = new Compartment()
     
+    // 获取字体设置，确保与终端一致
+    const fontFamily = fontSettings.value.fontFamily || "'JetBrains Mono', 'Courier New', monospace";
+    const fontSize = 14;//不使用 fontSettings.value.fontSize
+    
+    // 定义中文搜索面板词组
+    const chinesePhrases = {
+      // @codemirror/search 模块的搜索面板词组
+      "Find": "查找",
+      "Replace": "替换",
+      "next": "下一个",
+      "previous": "上一个",
+      "all": "全部",
+      "match case": "区分大小写",
+      "regexp": "正则表达式",
+      "by word": "全词匹配",
+      "replace": "替换",
+      "replace all": "全部替换",
+      "close": "关闭",
+      "Go to line": "跳转到行",
+      "go": "确定",
+      
+      // 折叠面板相关
+      "Folded lines": "已折叠的行",
+      "unfold": "展开",
+      "Fold code": "折叠代码",
+      "Unfold code": "展开代码",
+      
+      // 自动完成面板
+      "No completions found": "未找到补全项",
+      "Suggestions": "建议",
+      
+      // 代码提示
+      "Hint": "提示",
+      "Info": "信息",
+      "Warning": "警告",
+      "Error": "错误",
+      
+      // 语法检查
+      "No diagnostics": "无诊断信息",
+      "diagnostics": "诊断信息",
+      
+      // 常用编辑操作
+      "Select all": "全选",
+      "Undo": "撤销",
+      "Redo": "重做",
+      "Cut": "剪切",
+      "Copy": "复制", 
+      "Paste": "粘贴",
+      
+      // 状态栏与工具提示
+      "more": "更多",
+      "to": "到",
+      "Toggle comment": "切换注释",
+      "Auto indent": "自动缩进",
+      "Line": "行",
+      "Column": "列"
+    };
+    
+    // 获取UI语言设置
+    const getLanguagePhrases = () => {
+      // 获取设置中的语言
+      const uiSettings = settingsStore.getUISettings();
+      const language = uiSettings.language || 'zh-CN';
+      
+      // 根据语言返回相应的词组
+      if (language.startsWith('zh')) {
+        return chinesePhrases;
+      }
+      
+      // 默认返回空对象，使用CodeMirror内置的英文
+      return {};
+    };
+    
     // 创建编辑器状态
     const createEditorState = (content) => {
       const languageSupport = getLanguageSupport()
+      
+      // 获取UI语言设置的词组
+      const phrases = getLanguagePhrases();
       
       return EditorState.create({
         doc: content,
@@ -168,9 +292,30 @@ export default defineComponent({
           foldGutter(),
           indentOnInput(),
           
-          // 主题
+          // 字体设置
+          EditorView.theme({
+            "&": {
+              fontSize: `${fontSize}px`,
+              fontFamily: fontFamily
+            },
+            ".cm-gutters": {
+              fontFamily: fontFamily
+            },
+            ".cm-content": {
+              fontFamily: fontFamily
+            },
+            ".cm-line": {
+              fontFamily: fontFamily
+            }
+          }),
+          
+          // 主题 - 使用动态生成的主题
           oneDark,
-          syntaxHighlighting(customHighlightStyle),
+          EditorView.theme({}, { dark: true }),
+          syntaxHighlighting(customHighlightStyle, { fallback: true }),
+          
+          // 国际化设置
+          EditorState.phrases.of(phrases),
           
           // 键盘映射
           keymap.of([
@@ -355,17 +500,115 @@ export default defineComponent({
       }
     }
     
+    // 强制应用编辑器样式
+    const applyEditorStyles = () => {
+      if (!editorContainer.value) return;
+      
+      const editorDom = editorContainer.value.querySelector('.cm-editor');
+      if (!editorDom) return;
+      
+      try {
+        // 获取当前主题设置
+        const theme = themeSettings.value;
+        const font = fontSettings.value;
+        
+        // 移除全局CSS变量设置，只应用到编辑器本身
+        // document.documentElement.style.setProperty('--font-family', font.fontFamily);
+        
+        // 设置基本颜色
+        // editorDom.style.backgroundColor = theme.background;
+        editorDom.style.color = theme.foreground;
+        editorDom.style.fontSize = '14px'//编辑器字体大小固定14px`${font.fontSize}px`;
+        editorDom.style.fontFamily = font.fontFamily;
+        
+        // 设置内容区域颜色
+        const contentDom = editorDom.querySelector('.cm-content');
+        if (contentDom) {
+          contentDom.style.color = theme.foreground;
+          contentDom.style.fontFamily = font.fontFamily;
+        }
+        
+        // 设置行号区域
+        const guttersDom = editorDom.querySelector('.cm-gutters');
+        if (guttersDom) {
+          guttersDom.style.fontFamily = font.fontFamily;
+        }
+        
+        // 设置每一行的颜色
+        const linesDom = editorDom.querySelectorAll('.cm-line');
+        linesDom.forEach(line => {
+          line.style.color = theme.foreground;
+          line.style.fontFamily = font.fontFamily;
+        });
+        
+        // 设置语法高亮元素的颜色
+        const syntaxHighlightMap = {
+          '.cm-keyword': theme.keyword,
+          '.cm-comment': theme.comment,
+          '.cm-def, .cm-definition': theme.function,
+          '.cm-variable': theme.variable,
+          '.cm-string': theme.string,
+          '.cm-number': theme.number,
+          '.cm-operator': theme.operator,
+          '.cm-punctuation': theme.foreground,
+          '.cm-property': theme.variable,
+          '.cm-function': theme.function,
+          '.cm-className': theme.className
+        };
+        
+        // 应用所有语法高亮颜色
+        Object.entries(syntaxHighlightMap).forEach(([selector, color]) => {
+          editorDom.querySelectorAll(selector).forEach(el => {
+            el.style.color = color;
+            // 为注释添加斜体样式
+            if (selector === '.cm-comment') {
+              el.style.fontStyle = 'italic';
+            }
+          });
+        });
+      } catch (e) {
+        console.warn('应用编辑器样式时出错:', e);
+      }
+    };
+    
+    // 强制重新应用主题和高亮
+    const reapplyThemeAndHighlight = () => {
+      if (editorView.value) {
+        // 应用语言配置
+        editorView.value.dispatch({
+          effects: [languageConf.reconfigure(getLanguageSupport())]
+        });
+        
+        // 直接应用DOM样式
+        applyEditorStyles();
+        
+        // 请求重新测量以刷新视图
+        setTimeout(() => {
+          if (editorView.value) {
+            editorView.value.requestMeasure();
+          }
+        }, 10);
+      }
+    };
+    
+    // 窗口大小变化处理
+    const handleWindowResize = () => {
+      reapplyThemeAndHighlight();
+    };
+    
     // 切换全屏显示
     const toggleFullscreen = () => {
-      isFullscreen.value = !isFullscreen.value
+      isFullscreen.value = !isFullscreen.value;
       
-      // 全屏切换后刷新编辑器布局
+      // 全屏切换后处理
       nextTick(() => {
         if (editorView.value) {
-          editorView.value.requestMeasure()
+          // 应用样式和重绘
+          applyEditorStyles();
+          reapplyThemeAndHighlight();
         }
-      })
-    }
+      });
+    };
     
     // 关闭编辑器
     const close = async () => {
@@ -411,6 +654,7 @@ export default defineComponent({
     // 生命周期钩子
     onMounted(() => {
       window.addEventListener('keydown', handleGlobalKeyDown)
+      window.addEventListener('resize', handleWindowResize)
       isComponentMounted.value = true
       nextTick(() => {
         initEditor()
@@ -419,6 +663,7 @@ export default defineComponent({
     
     onBeforeUnmount(() => {
       window.removeEventListener('keydown', handleGlobalKeyDown)
+      window.removeEventListener('resize', handleWindowResize)
       
       // 销毁编辑器
       if (editorView.value) {
@@ -445,6 +690,40 @@ export default defineComponent({
       }
     })
     
+    // 监听设置变化
+    watch(() => settingsStore.terminalSettings, () => {
+      // 更新主题和字体设置
+      themeSettings.value = getThemeSettings();
+      fontSettings.value = getFontSettings();
+      
+      // 重新应用样式
+      nextTick(() => {
+        applyEditorStyles();
+        reapplyThemeAndHighlight();
+      });
+    }, { deep: true });
+    
+    // 监听UI设置变化，特别是语言设置
+    watch(() => settingsStore.uiSettings, () => {
+      // 如果编辑器已初始化
+      if (editorView.value) {
+        // 获取最新的语言短语设置
+        const phrases = getLanguagePhrases();
+        
+        // 应用新的语言设置到编辑器
+        editorView.value.dispatch({
+          effects: EditorState.phrases.reconfigure(phrases)
+        });
+        
+        // 重新测量以确保UI更新
+        setTimeout(() => {
+          if (editorView.value) {
+            editorView.value.requestMeasure();
+          }
+        }, 10);
+      }
+    }, { deep: true });
+    
     return {
       editorContainer,
       fileName,
@@ -467,25 +746,52 @@ export default defineComponent({
   flex-direction: column;
   height: 100%;
   width: 100%;
-  background-color: #282c34;
-  color: #abb2bf;
+  background-color: var(--editor-bg, #282c34);
+  color: var(--editor-fg, #abb2bf);
   border-radius: 4px;
   overflow: hidden;
   position: relative;
   z-index: 10;
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.15);
   transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
-}
-
-.sftp-editor-container.fullscreen {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  z-index: 1000;
-  border-radius: 0;
-  box-shadow: none;
+  
+  &.fullscreen {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 1000;
+    border-radius: 0;
+    box-shadow: none;
+    background-color: var(--editor-bg, #282c34) !important;
+    color: var(--editor-fg, #abb2bf) !important;
+    
+    // 确保编辑器颜色在全屏模式下正确
+    .cm-editor {
+      background-color: var(--editor-bg, #282c34) !important;
+      
+      .cm-scroller { color: var(--editor-fg, #abb2bf) !important; }
+      .cm-content { color: var(--editor-fg, #abb2bf) !important; }
+      .cm-line { color: var(--editor-fg, #abb2bf) !important; }
+      
+      // 语法高亮颜色
+      .cm-keyword { color: var(--editor-keyword, #c678dd) !important; }
+      .cm-comment { 
+        color: var(--editor-comment, #5c6370) !important; 
+        font-style: italic !important;
+      }
+      .cm-def, .cm-definition { color: var(--editor-function, #61afef) !important; }
+      .cm-variable, .cm-variableName { color: var(--editor-variable, #e06c75) !important; }
+      .cm-string { color: var(--editor-string, #98c379) !important; }
+      .cm-number { color: var(--editor-number, #d19a66) !important; }
+      .cm-operator { color: var(--editor-operator, #56b6c2) !important; }
+      .cm-punctuation { color: var(--editor-fg, #abb2bf) !important; }
+      .cm-property { color: var(--editor-variable, #e06c75) !important; }
+      .cm-function { color: var(--editor-function, #61afef) !important; }
+      .cm-className { color: var(--editor-class, #e5c07b) !important; }
+    }
+  }
 }
 
 .sftp-editor-header {
@@ -530,10 +836,6 @@ export default defineComponent({
   cursor: pointer;
   font-size: 12px;
   transition: all 0.2s ease;
-}
-
-.sftp-editor-btn svg {
-  margin-right: 4px;
 }
 
 .sftp-editor-btn:hover {
@@ -597,6 +899,7 @@ export default defineComponent({
   background-color: #21252b;
   border-right: 1px solid #181a1f;
   color: #636d83;
+  font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
 }
 
 .cm-activeLineGutter {
@@ -631,5 +934,10 @@ export default defineComponent({
 
 .cm-scroller::-webkit-scrollbar-thumb:hover {
   background: #4b5363;
+}
+
+/* 添加滚动条交界处（角落）的样式 */
+.cm-scroller::-webkit-scrollbar-corner {
+  background: #21252b; /* 与编辑器背景色一致 */
 }
 </style> 
