@@ -24,16 +24,14 @@ class SSHService {
     this.ipv6Url = `ws://[::1]:${port}${path}`;
     this.baseUrl = this.ipv4Url;
     
-    // 获取动态配置
-    const dynamicConstants = getDynamicConstants(settings);
-    
-    this.connectionTimeout = wsServerConfig.connectionTimeout || dynamicConstants.SSH_CONSTANTS.DEFAULT_TIMEOUT;
-    this.reconnectAttempts = wsServerConfig.reconnectAttempts || dynamicConstants.SSH_CONSTANTS.MAX_RECONNECT_ATTEMPTS;
+    // 使用默认配置值，避免在构造函数中调用settings
+    this.connectionTimeout = wsServerConfig.connectionTimeout || 10000; // 10秒默认值
+    this.reconnectAttempts = wsServerConfig.reconnectAttempts || 3; // 默认3次重试
     this.reconnectDelay = wsServerConfig.reconnectDelay || 1000;
     
     // 初始化延迟监控状态
     this.latencyData = new Map(); // 存储会话的网络延迟数据
-    this.dynamicConfig = dynamicConstants; // 存储动态配置
+    this.dynamicConfig = null; // 在init方法中再获取动态配置
     
     log.info(`SSH服务初始化: IPv4=${this.ipv4Url}, IPv6=${this.ipv6Url}`);
   }
@@ -51,8 +49,17 @@ class SSHService {
       log.info('正在初始化SSH服务...');
       this.isInitializing = true;
       
-      // 更新动态配置
-      this.dynamicConfig = getDynamicConstants(settings);
+      // 更新动态配置 - 移到这里，确保settings服务已完全初始化
+      try {
+        this.dynamicConfig = getDynamicConstants(settings);
+        // 更新超时和重连配置
+        if (this.dynamicConfig && this.dynamicConfig.SSH_CONSTANTS) {
+          this.connectionTimeout = wsServerConfig.connectionTimeout || this.dynamicConfig.SSH_CONSTANTS.DEFAULT_TIMEOUT;
+          this.reconnectAttempts = wsServerConfig.reconnectAttempts || this.dynamicConfig.SSH_CONSTANTS.MAX_RECONNECT_ATTEMPTS;
+        }
+      } catch (configError) {
+        log.warn('获取动态配置失败，将使用默认值继续', configError);
+      }
       
       log.info(`使用预设连接配置: 主URL=${this.baseUrl}`);
       

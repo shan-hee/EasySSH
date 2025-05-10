@@ -8,6 +8,7 @@
         :placeholder="placeholder"
         :readonly="readonly"
         :disabled="disabled"
+        :autocomplete="getAutocompleteValue"
         @input="onInput"
         @focus="$emit('focus', $event)"
         @blur="$emit('blur', $event)"
@@ -22,7 +23,7 @@
 </template>
 
 <script>
-import { defineComponent } from 'vue'
+import { defineComponent, computed } from 'vue'
 
 export default defineComponent({
   name: 'BaseInput',
@@ -50,6 +51,10 @@ export default defineComponent({
     disabled: {
       type: Boolean,
       default: false
+    },
+    autocomplete: {
+      type: String,
+      default: ''
     }
   },
   emits: ['update:modelValue', 'focus', 'blur', 'click'],
@@ -58,8 +63,25 @@ export default defineComponent({
       emit('update:modelValue', event.target.value)
     }
 
+    // 自动计算autocomplete属性值
+    const getAutocompleteValue = computed(() => {
+      // 如果提供了显式的autocomplete属性，使用它
+      if (props.autocomplete) {
+        return props.autocomplete;
+      }
+      
+      // 根据输入类型自动设置适当的值
+      if (props.type === 'password') {
+        return 'current-password';
+      }
+      
+      // 默认值
+      return 'off';
+    });
+    
     return {
-      onInput
+      onInput,
+      getAutocompleteValue
     }
   }
 })

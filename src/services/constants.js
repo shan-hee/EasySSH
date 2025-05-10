@@ -103,11 +103,35 @@ export const getDynamicConstants = (settings) => {
       };
     }
 
-    // 获取连接设置
-    const connectionSettings = settings.getConnectionOptions() || {};
+    // 检查settings是否已初始化完成
+    if (!settings.isInitialized) {
+      return {
+        LATENCY_CONFIG,
+        TERMINAL_CONSTANTS,
+        SSH_CONSTANTS,
+        SFTP_CONSTANTS
+      };
+    }
+
+    // 安全获取连接设置
+    let connectionSettings = {};
+    try {
+      if (typeof settings.getConnectionOptions === 'function') {
+        connectionSettings = settings.getConnectionOptions() || {};
+      }
+    } catch (error) {
+      console.warn('获取连接设置失败，使用默认值', error);
+    }
     
-    // 获取终端设置
-    const terminalSettings = settings.getTerminalOptions() || {};
+    // 安全获取终端设置
+    let terminalSettings = {};
+    try {
+      if (typeof settings.getTerminalOptions === 'function') {
+        terminalSettings = settings.getTerminalOptions() || {};
+      }
+    } catch (error) {
+      console.warn('获取终端设置失败，使用默认值', error);
+    }
     
     // 动态延迟配置
     const dynamicLatencyConfig = {

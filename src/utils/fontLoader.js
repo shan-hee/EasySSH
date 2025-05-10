@@ -12,6 +12,10 @@ const fontState = {
   isChecking: false
 }
 
+// 定义字体加载超时设置
+const FONT_CHECK_TIMEOUT = 500; // 从1000毫秒降低到500毫秒
+const FONT_SAFETY_TIMEOUT = 1000; // 从2000毫秒降低到1000毫秒
+
 /**
  * 检查字体是否已加载完成
  * @param {string} fontFamily - 要检查的字体名称，默认为 JetBrains Mono
@@ -59,7 +63,7 @@ export const ensureFontLoaded = (fontFamily = 'JetBrains Mono') => {
                 log.warn(`字体可能未加载，但将继续: ${fontFamily}`)
                 _fontLoaded(true) // 尽管检查失败，但仍继续进行
               }
-            }, 500)
+            }, FONT_CHECK_TIMEOUT)
           }
         }).catch(err => {
           log.error(`字体加载检查出错: ${err.message}`)
@@ -70,7 +74,7 @@ export const ensureFontLoaded = (fontFamily = 'JetBrains Mono') => {
         log.warn('浏览器不支持字体加载API，使用超时机制')
         setTimeout(() => {
           _fontLoaded(true)
-        }, 1000) // 给字体留出1秒的加载时间
+        }, FONT_CHECK_TIMEOUT) // 缩短给字体留出的加载时间
       }
     } catch (error) {
       log.error(`字体加载检查异常: ${error.message}`)
@@ -150,7 +154,7 @@ export const preloadFonts = () => {
       } catch (e) {
         // 忽略错误
       }
-    }, 2000) // 2秒安全超时
+    }, FONT_SAFETY_TIMEOUT) // 缩短安全超时时间
     
     return ensureFontLoaded('JetBrains Mono')
       .then(success => {

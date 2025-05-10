@@ -2,41 +2,44 @@
   <div class="login-panel">
     <div class="login-panel-content">
       <h2>EasySSH 登录</h2>
-      <div class="form-group">
-        <input 
-          type="text" 
-          id="username" 
-          v-model="loginForm.username" 
-          placeholder="请输入用户名"
+      <form @submit.prevent="handleLogin">
+        <div class="form-group">
+          <input 
+            type="text" 
+            id="username" 
+            v-model="loginForm.username" 
+            placeholder="请输入用户名"
+            :disabled="loginLoading"
+            autocomplete="username"
+          />
+        </div>
+        <div class="form-group">
+          <input 
+            type="password" 
+            id="password" 
+            v-model="loginForm.password" 
+            placeholder="请输入密码"
+            :disabled="loginLoading"
+            autocomplete="current-password"
+          />
+        </div>
+        <div class="login-options">
+          <Checkbox 
+            v-model="rememberMe" 
+            label="记住我" 
+            :disabled="loginLoading" 
+          />
+          <a href="#" class="forgot-password" @click.prevent="forgotPassword">忘记密码？</a>
+        </div>
+        <button 
+          type="submit"
+          class="login-submit-btn" 
           :disabled="loginLoading"
-        />
-      </div>
-      <div class="form-group">
-        <input 
-          type="password" 
-          id="password" 
-          v-model="loginForm.password" 
-          placeholder="请输入密码"
-          :disabled="loginLoading"
-          @keyup.enter="handleLogin"
-        />
-      </div>
-      <div class="login-options">
-        <Checkbox 
-          v-model="rememberMe" 
-          label="记住我" 
-          :disabled="loginLoading" 
-        />
-        <a href="#" class="forgot-password" @click.prevent="forgotPassword">忘记密码？</a>
-      </div>
-      <button 
-        class="login-submit-btn" 
-        @click="handleLogin" 
-        :disabled="loginLoading"
-      >
-        <span v-if="!loginLoading">登录</span>
-        <span v-else class="loading-spinner"></span>
-      </button>
+        >
+          <span v-if="!loginLoading">登录</span>
+          <span v-else class="loading-spinner"></span>
+        </button>
+      </form>
       <div class="login-footer">
         <p>还没有账户？ 
           <a href="#" @click.prevent="goToRegister">立即注册</a>

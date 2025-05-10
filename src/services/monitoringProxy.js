@@ -435,11 +435,28 @@ class MonitoringServiceProxy {
       return true;
     }
     
+    // 设置初始化标志，避免重复初始化
     this.initialized = true;
+    
+    // 记录初始化日志
     log.info('监控服务初始化完成，已启用多终端隔离');
     
-    // 添加一个方法，可以在创建SSH会话的同时连接监控服务
-    this.connectToHostWithStatus = (host, terminalId) => {
+    // 添加一个方法，可以在创建SSH会话的同时连接监控服务 
+    this.connectToHostWithStatus = this._createConnectToHostWithStatusMethod();
+    
+    // 初始化全局API
+    this._initGlobalMonitoringAPI();
+    
+    return true;
+  }
+  
+  /**
+   * 创建连接到主机并更新状态的方法
+   * @private
+   * @returns {Function} 连接方法
+   */
+  _createConnectToHostWithStatusMethod() {
+    return (host, terminalId) => {
       if (!host) {
         return Promise.resolve(false);
       }
@@ -468,7 +485,13 @@ class MonitoringServiceProxy {
         return false;
       });
     };
-    
+  }
+  
+  /**
+   * 初始化全局监控API
+   * @private
+   */
+  _initGlobalMonitoringAPI() {
     // 全局API，使SSH会话创建和监控连接同步进行
     window.monitoringAPI = {
       connect: this.connectToHostWithStatus.bind(this),
@@ -480,8 +503,6 @@ class MonitoringServiceProxy {
         return this.state;
       }
     };
-    
-    return true;
   }
   
   /**
