@@ -46,7 +46,7 @@
         </p>
       </div>
       <div class="login-copyright">
-        © 2025 Theme By EasySSH
+        © 2025 Theme By <a href="https://github.com/shan-hee/EasySSH" target="_blank">EasySSH</a>
       </div>
     </div>
   </div>
@@ -308,5 +308,10 @@ export default defineComponent({
   font-size: 0.8rem;
   opacity: 0.5;
   font-family: "Microsoft YaHei", sans-serif !important;
+}
+
+.login-copyright a {
+  color: inherit;
+  text-decoration: none;
 }
 </style> 

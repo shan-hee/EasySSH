@@ -30,7 +30,7 @@
 - 体验账号: `demo@example.com` / 密码: `admin`
 
 <div align="center">
-  <img src="src/assets/images/screenshot.png" alt="EasySSH界面预览" width="80%" />
+  <img src="src/assets/images/Preview.png" alt="EasySSH界面预览" width="80%" />
 </div>
 
 ## 核心特性
