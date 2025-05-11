@@ -1192,7 +1192,7 @@ class MonitoringFactory {
     // 通知订阅者
     this._notifySubscribers(serverId, currentData);
     
-    log.debug(`[监控工厂] 更新了服务器 ${serverId} 的数据`);
+    // log.debug(`[监控工厂] 更新了服务器 ${serverId} 的数据`);
   }
   
   /**

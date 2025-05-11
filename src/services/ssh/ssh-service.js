@@ -516,7 +516,7 @@ class SSHService {
                   timestamp: message.data?.timestamp || new Date().toISOString()
                 };
                 
-                log.debug(`收到网络延迟信息: ${JSON.stringify(latencyDetail)}`);
+                // log.debug(`收到网络延迟信息: ${JSON.stringify(latencyDetail)}`);
                 
                 // 保存延迟数据到内部状态
                 this.latencyData.set(sessionId, {

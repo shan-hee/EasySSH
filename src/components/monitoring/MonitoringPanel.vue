@@ -3,7 +3,7 @@
   用于展示系统、CPU、内存和硬盘的使用情况
 -->
 <template>
-  <div class="monitoring-panel" :class="{ 'closing': isClosing, 'resizing': isResizing }" :style="{ width: width + 'px' }">
+  <div ref="monitoringPanelRef" class="monitoring-panel" :class="{ 'closing': isClosing, 'resizing': isResizing }" :style="{ width: width + 'px' }">
     <div class="panel-resizer" @mousedown="startResizing"></div>
     <div class="panel-header">
       <h2>系统监控</h2>
@@ -129,6 +129,7 @@
         </div>
       </div>
     </div>
+    <div class="chart-overlay" v-if="isResizing"></div>
   </div>
 </template>
 
@@ -148,6 +149,8 @@ import {
   LegendComponent 
 } from 'echarts/components';
 import { CanvasRenderer } from 'echarts/renderers';
+import { createResizeObserver, disconnectResizeObserver } from '../../utils/resizeObserver';
+import { initChartWithPassiveEvents, safeResizeChart, safeDisposeChart, safeSetOption } from '../../utils/echarts';
 
 // 注册ECharts组件
 echarts.use([
@@ -159,6 +162,17 @@ echarts.use([
   LegendComponent,
   CanvasRenderer
 ]);
+
+// 定义节流函数
+const throttle = (fn, delay) => {
+  let lastCall = 0;
+  return function(...args) {
+    const now = new Date().getTime();
+    if (now - lastCall < delay) return;
+    lastCall = now;
+    return fn.apply(this, args);
+  };
+};
 
 export default defineComponent({
   name: 'MonitoringPanel',
@@ -238,10 +252,34 @@ export default defineComponent({
     // 最大数据点数
     const MAX_DATA_POINTS = 20;
     
+    // ResizeObserver 实例引用
+    const chartResizeObservers = ref([]);
+    const panelResizeObserver = ref(null);
+    
+    // 面板容器引用
+    const monitoringPanelRef = ref(null);
+    
+    // 记录拖动前的面板宽度，用于拖动结束后计算是否需要更新图表
+    const preDragWidth = ref(props.width);
+    
+    // 使用节流函数包装更新宽度的emit
+    const throttledEmitWidth = throttle((newWidth) => {
+      emit('update:width', newWidth);
+      emit('resize', newWidth);
+    }, 16); // 约60fps的刷新率
+    
     // 开始调整面板宽度
     const startResizing = (event) => {
       // 设置正在调整状态
       isResizing.value = true;
+      
+      // 记录拖动开始时的面板宽度
+      preDragWidth.value = props.width;
+      
+      // 暂时设置图表为拖动状态
+      document.querySelectorAll('.chart').forEach(chart => {
+        chart.classList.add('dragging');
+      });
       
       // 记录初始鼠标位置和面板宽度
       const startX = event.clientX;
@@ -260,15 +298,8 @@ export default defineComponent({
         
         // 设置宽度范围在 300px 到 窗口宽度的90% 之间
         if (newWidth >= 300 && newWidth <= maxWidth) {
-          emit('update:width', newWidth);
-          emit('resize', newWidth);
-          
-          // 保存宽度到本地存储
-          try {
-            localStorage.setItem('monitoringPanelWidth', newWidth.toString());
-          } catch (error) {
-            log.error('保存监控面板宽度失败:', error);
-          }
+          // 使用节流函数来降低更新频率
+          throttledEmitWidth(newWidth);
         }
       };
       
@@ -277,8 +308,47 @@ export default defineComponent({
         document.removeEventListener('mousemove', handleMouseMove);
         document.removeEventListener('mouseup', handleMouseUp);
         
+        // 获取当前宽度
+        const currentWidth = props.width;
+        
+        // 保存宽度到本地存储
+        try {
+          localStorage.setItem('monitoringPanelWidth', currentWidth.toString());
+        } catch (error) {
+          log.error('保存监控面板宽度失败:', error);
+        }
+        
+        // 移除拖动状态类
+        document.querySelectorAll('.chart').forEach(chart => {
+          chart.classList.remove('dragging');
+        });
+        
         // 重置调整状态
         isResizing.value = false;
+        
+        // 判断宽度是否有实质变化（超过5px），如果有则更新图表
+        if (Math.abs(currentWidth - preDragWidth.value) > 5) {
+          // 添加过渡动画类
+          document.querySelectorAll('.chart').forEach(chart => {
+            chart.classList.add('chart-resize-transition');
+          });
+          
+          // 使用nextTick确保DOM更新后再调整图表
+          nextTick(() => {
+            // 延迟一点时间执行，给DOM足够时间更新
+            setTimeout(() => {
+              resizeAllCharts();
+              log.debug(`[监控面板] 拖动结束，面板宽度从 ${preDragWidth.value}px 变为 ${currentWidth}px，重新调整图表`);
+              
+              // 动画结束后移除过渡类
+              setTimeout(() => {
+                document.querySelectorAll('.chart').forEach(chart => {
+                  chart.classList.remove('chart-resize-transition');
+                });
+              }, 300);
+            }, 50);
+          });
+        }
       };
       
       // 添加事件监听器
@@ -362,52 +432,72 @@ export default defineComponent({
       updateCharts();
     };
     
-    // 自定义ECharts初始化函数，强制使用被动事件监听器
-    const initChartWithPassiveEvents = (dom, theme = null, opts = {}) => {
-      // 保存原始的addEventListener方法
-      const originalAddEventListener = EventTarget.prototype.addEventListener;
-      
-      // 覆盖addEventListener方法，强制添加passive标志
-      EventTarget.prototype.addEventListener = function(type, listener, options) {
-        // 对于鼠标滚轮和触摸事件，强制设置为passive
-        if (type === 'mousewheel' || type === 'wheel' || type === 'touchstart' || type === 'touchmove') {
-          let newOptions = options;
-          
-          if (typeof options === 'boolean') {
-            newOptions = {
-              capture: options,
-              passive: true
-            };
-          } else if (typeof options === 'object') {
-            newOptions = {
-              ...options,
-              passive: true
-            };
-          } else {
-            newOptions = {
-              passive: true
-            };
-          }
-          
-          return originalAddEventListener.call(this, type, listener, newOptions);
+    // 统一管理图表尺寸调整
+    const resizeAllCharts = () => {
+      safeResizeChart(cpuChart.value);
+      safeResizeChart(memoryChart.value);
+      safeResizeChart(networkChart.value);
+      safeResizeChart(diskSwapChart.value);
+      log.debug('[监控面板] 已重新调整所有图表大小');
+    };
+    
+    // 观察面板大小变化
+    const observePanelResizing = () => {
+      // 监听面板宽度变化，但只在非拖动状态下触发图表重绘
+      watch(() => props.width, (newWidth, oldWidth) => {
+        if (newWidth !== oldWidth && !isResizing.value) {
+          // 只在非拖动状态下更新图表
+          nextTick(() => {
+            resizeAllCharts();
+            log.debug(`[监控面板] 面板宽度变化: ${oldWidth}px -> ${newWidth}px, 已重新调整图表`);
+          });
         }
-        
-        // 对于其他事件类型，保持原样
-        return originalAddEventListener.call(this, type, listener, options);
-      };
+      });
       
-      try {
-        // 使用修改后的addEventListener初始化ECharts
-        const chart = echarts.init(dom, theme, {
-          renderer: 'canvas',
-          useDirtyRect: true,
-          ...opts
+      // 使用带防抖的ResizeObserver监听面板容器大小变化
+      if (monitoringPanelRef.value) {
+        panelResizeObserver.value = createResizeObserver(monitoringPanelRef.value, () => {
+          // 只在非拖动状态下更新图表
+          if (!isResizing.value) {
+            resizeAllCharts();
+            log.debug('[监控面板] 检测到面板容器大小变化，已自动重新调整图表');
+          }
+        }, { 
+          debounceTime: 200, // 200ms防抖延迟
+          immediate: false  // 不需要立即执行
         });
-        
-        return chart;
-      } finally {
-        // 恢复原始的addEventListener方法
-        EventTarget.prototype.addEventListener = originalAddEventListener;
+      }
+    };
+    
+    // 初始化图表时使用带防抖的ResizeObserver
+    const initChartWithResizeObserver = (chartRef, initFunction) => {
+      if (!chartRef.value) return;
+      
+      // 初始化图表
+      initFunction();
+      
+      // 创建带防抖的ResizeObserver监听元素大小变化
+      const observer = createResizeObserver(chartRef.value, () => {
+        // 只在非拖动状态下调整大小
+        if (!isResizing.value) {
+          if (chartRef === cpuChartRef && cpuChart.value) {
+            safeResizeChart(cpuChart.value);
+          } else if (chartRef === memoryChartRef && memoryChart.value) {
+            safeResizeChart(memoryChart.value);
+          } else if (chartRef === networkChartRef && networkChart.value) {
+            safeResizeChart(networkChart.value);
+          } else if (chartRef === diskSwapChartRef && diskSwapChart.value) {
+            safeResizeChart(diskSwapChart.value);
+          }
+          log.debug(`[监控面板] 图表容器大小变化，已自动调整图表大小`);
+        }
+      }, { 
+        debounceTime: 100, // 100ms防抖延迟
+        immediate: false   // 不需要立即执行
+      });
+      
+      if (observer) {
+        chartResizeObservers.value.push(observer);
       }
     };
     
@@ -415,7 +505,7 @@ export default defineComponent({
     const initCpuChart = () => {
       if (!cpuChartRef.value) return;
       
-      // 使用自定义函数替代直接调用echarts.init
+      // 使用工具函数替代直接调用echarts.init
       cpuChart.value = initChartWithPassiveEvents(cpuChartRef.value);
       
       const option = {
@@ -552,14 +642,14 @@ export default defineComponent({
         }]
       };
       
-      cpuChart.value.setOption(option);
+      safeSetOption(cpuChart.value, option);
     };
     
     // 修改初始化内存图表函数
     const initMemoryChart = () => {
       if (!memoryChartRef.value) return;
       
-      // 使用自定义函数替代直接调用echarts.init
+      // 使用工具函数替代直接调用echarts.init
       memoryChart.value = initChartWithPassiveEvents(memoryChartRef.value);
       
       const option = {
@@ -696,14 +786,14 @@ export default defineComponent({
         }]
       };
       
-      memoryChart.value.setOption(option);
+      safeSetOption(memoryChart.value, option);
     };
     
     // 修改初始化网络图表函数
     const initNetworkChart = () => {
       if (!networkChartRef.value) return;
       
-      // 使用自定义函数替代直接调用echarts.init
+      // 使用工具函数替代直接调用echarts.init
       networkChart.value = initChartWithPassiveEvents(networkChartRef.value);
       
       const option = {
@@ -883,14 +973,14 @@ export default defineComponent({
         ]
       };
       
-      networkChart.value.setOption(option);
+      safeSetOption(networkChart.value, option);
     };
     
-    // 初始化磁盘和交换分区圆环图
+    // 修改初始化磁盘和交换分区图表函数
     const initDiskSwapChart = () => {
       if (!diskSwapChartRef.value) return;
       
-      // 使用自定义函数替代直接调用echarts.init
+      // 使用工具函数替代直接调用echarts.init
       diskSwapChart.value = initChartWithPassiveEvents(diskSwapChartRef.value);
       
       const option = {
@@ -1043,38 +1133,40 @@ export default defineComponent({
         ]
       };
       
-      diskSwapChart.value.setOption(option);
+      safeSetOption(diskSwapChart.value, option);
     };
     
     // 更新所有图表
     const updateCharts = () => {
-      // 检查图表实例是否存在且未被销毁
-      if (cpuChart.value && !cpuChart.value.isDisposed()) {
-        cpuChart.value.setOption({
+      // 使用安全的方法设置图表选项
+      if (cpuChart.value) {
+        const cpuOption = {
           xAxis: {
             data: timePoints.value
           },
           series: [{
             data: cpuHistory.value
           }]
-        });
+        };
+        safeSetOption(cpuChart.value, cpuOption);
       }
       
-      // 检查图表实例是否存在且未被销毁
-      if (memoryChart.value && !memoryChart.value.isDisposed()) {
-        memoryChart.value.setOption({
+      // 使用安全的方法设置图表选项
+      if (memoryChart.value) {
+        const memoryOption = {
           xAxis: {
             data: timePoints.value
           },
           series: [{
             data: memoryHistory.value
           }]
-        });
+        };
+        safeSetOption(memoryChart.value, memoryOption);
       }
       
-      // 检查图表实例是否存在且未被销毁
-      if (networkChart.value && !networkChart.value.isDisposed()) {
-        networkChart.value.setOption({
+      // 使用安全的方法设置图表选项
+      if (networkChart.value) {
+        const networkOption = {
           xAxis: {
             data: timePoints.value
           },
@@ -1086,12 +1178,13 @@ export default defineComponent({
               data: networkHistory.value.output
             }
           ]
-        });
+        };
+        safeSetOption(networkChart.value, networkOption);
       }
       
-      // 更新磁盘和交换分区圆环图
-      if (diskSwapChart.value && !diskSwapChart.value.isDisposed()) {
-        diskSwapChart.value.setOption({
+      // 使用安全的方法设置图表选项
+      if (diskSwapChart.value) {
+        const diskSwapOption = {
           series: [
             {
               data: [
@@ -1140,7 +1233,8 @@ export default defineComponent({
               ]
             }
           ]
-        });
+        };
+        safeSetOption(diskSwapChart.value, diskSwapOption);
       }
     };
     
@@ -1276,18 +1370,17 @@ export default defineComponent({
         
         // 初始化图表
         nextTick(() => {
-          initCpuChart();
-          initMemoryChart();
-          initNetworkChart();
-          initDiskSwapChart();
+          // 使用增强的图表初始化方法
+          initChartWithResizeObserver(cpuChartRef, initCpuChart);
+          initChartWithResizeObserver(memoryChartRef, initMemoryChart);
+          initChartWithResizeObserver(networkChartRef, initNetworkChart);
+          initChartWithResizeObserver(diskSwapChartRef, initDiskSwapChart);
+          
+          // 监听面板大小变化
+          observePanelResizing();
           
           // 设置窗口大小变化时重新调整图表大小
-          window.addEventListener('resize', () => {
-            cpuChart.value && cpuChart.value.resize();
-            memoryChart.value && memoryChart.value.resize();
-            networkChart.value && networkChart.value.resize();
-            diskSwapChart.value && diskSwapChart.value.resize();
-          });
+          window.addEventListener('resize', resizeAllCharts);
         });
       
       // 订阅服务器数据更新
@@ -1298,8 +1391,8 @@ export default defineComponent({
       monitoringService.requestServerData(serverId.value);
       });
 
-    // 组件卸载时清理资源
-      onUnmounted(() => {
+    // 组件卸载时清理
+    onUnmounted(() => {
       log.debug('[监控面板] 组件卸载，清理资源');
       
       // 移除事件监听器
@@ -1312,14 +1405,25 @@ export default defineComponent({
         subscriptionId.value = null;
       }
         
-      // 销毁图表实例
-      cpuChart.value && cpuChart.value.dispose();
-      memoryChart.value && memoryChart.value.dispose();
-      networkChart.value && networkChart.value.dispose();
-      diskSwapChart.value && diskSwapChart.value.dispose();
+      // 清理所有ResizeObserver
+      chartResizeObservers.value.forEach(observer => {
+        disconnectResizeObserver(observer);
+      });
+      chartResizeObservers.value = [];
+      
+      if (panelResizeObserver.value) {
+        disconnectResizeObserver(panelResizeObserver.value);
+        panelResizeObserver.value = null;
+      }
+      
+      // 使用安全的方法销毁图表实例
+      safeDisposeChart(cpuChart.value);
+      safeDisposeChart(memoryChart.value);
+      safeDisposeChart(networkChart.value);
+      safeDisposeChart(diskSwapChart.value);
 
       // 移除事件监听器
-      window.removeEventListener('resize', () => {});
+      window.removeEventListener('resize', resizeAllCharts);
     });
 
     return {
@@ -1337,7 +1441,9 @@ export default defineComponent({
       startResizing,
       getCpuValueClass,
       getMemValueClass,
-      getDiskValueClass
+      getDiskValueClass,
+      resizeAllCharts,
+      monitoringPanelRef
     };
   }
 });
@@ -1718,5 +1824,38 @@ export default defineComponent({
 
 .card-header h3 {
   margin: 0;
+}
+
+/* 拖动时图表遮罩样式 */
+.chart-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(30, 30, 30, 0.5);
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.monitoring-panel.resizing .chart,
+.chart.dragging {
+  opacity: 0.5;
+  filter: blur(1px);
+}
+
+.chart-resize-transition {
+  transition: all 0.3s ease-out;
+}
+
+.chart {
+  transition: opacity 0.15s ease, filter 0.15s ease;
+}
+
+.monitoring-panel.resizing .chart-container {
+  position: relative;
 }
 </style> 

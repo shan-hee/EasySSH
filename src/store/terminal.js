@@ -148,11 +148,6 @@ export const useTerminalStore = defineStore('terminal', () => {
           terminalId: connectionId // 传递终端ID，确保正确的映射关系
         })
         
-        // 确保SSH会话ID与终端ID一一对应，避免会话复用导致的数据混淆
-        if (sessionId && sessionId !== connectionId) {
-          log.info(`警告: SSH会话ID(${sessionId})与终端ID(${connectionId})不一致，确保关联正确`)
-        }
-        
         // 同时尝试连接监控服务（原有逻辑但优化）
         if (window.monitoringAPI && connection.host) {
           _connectToMonitoringService(connection.host, connectionId)
@@ -294,7 +289,6 @@ export const useTerminalStore = defineStore('terminal', () => {
         // 异步连接，不阻塞终端创建
         window.monitoringAPI.connect(host)
           .then(success => {
-            log.debug(`[终端] 监控服务连接${success ? '成功' : '失败'}`)
             // 移除连接中标记
             delete state.monitorConnectingHosts[host]
             // 触发状态更新
