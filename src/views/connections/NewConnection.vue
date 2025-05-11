@@ -153,7 +153,10 @@
           <div class="form-item">
             <label>密码 (选填)</label>
             <div class="input-wrapper">
-              <input type="password" v-model="connectionForm.password" placeholder="请输入密码" autocomplete="current-password" />
+              <form>
+                <input type="text" v-model="connectionForm.username" autocomplete="username" style="display:none;" />
+                <input type="password" v-model="connectionForm.password" placeholder="请输入密码" autocomplete="current-password" />
+              </form>
             </div>
             <div class="remember-password">
               <Checkbox

@@ -8,6 +8,7 @@ import { useConnectionStore } from './connection'
 import { useLocalConnectionsStore } from './localConnections'
 import { FitAddon } from '@xterm/addon-fit'
 import { useSettingsStore } from './settings'
+import { computed } from 'vue'
 
 export const useTerminalStore = defineStore('terminal', () => {
   // 使用reactive管理状态
@@ -31,7 +32,13 @@ export const useTerminalStore = defineStore('terminal', () => {
     creatingSessionIds: [],
     
     // 在state中添加用于追踪监控连接状态的Map
-    monitorConnectingHosts: {}
+    monitorConnectingHosts: {},
+    
+    // 新增：终端状态映射，跟踪每个终端的详细状态
+    terminalStates: {},
+    
+    // 新增：终端初始化锁，防止并发初始化
+    terminalInitLocks: {}
   })
   
   /**
@@ -42,35 +49,66 @@ export const useTerminalStore = defineStore('terminal', () => {
    */
   const initTerminal = async (connectionId, container) => {
     try {
-      // 将终端ID添加到创建中列表
-      if (!state.creatingSessionIds.includes(connectionId)) {
-        state.creatingSessionIds.push(connectionId)
-      }
-      
+      // 参数验证
       if (!connectionId) {
         log.error('未提供连接ID')
-        ElMessage.error('未提供连接ID')
         return false
       }
       
       if (!container) {
         log.error('未提供终端容器元素')
-        ElMessage.error('未提供终端容器元素')
+        return false
+      }
+
+      // 获取当前终端状态或初始化
+      const currentState = state.terminalStates[connectionId] || 'not_initialized'
+      
+      // 检查终端是否已在初始化中，使用锁机制防止并发初始化
+      if (state.terminalInitLocks[connectionId]) {
+        log.debug(`终端 ${connectionId} 初始化已被锁定，等待完成`)
         return false
       }
       
-      // 如果已经存在此连接的终端，直接重新附加
-      if (state.terminals[connectionId] && state.sessions[connectionId]) {
-        log.info(`终端 ${connectionId} 已存在，直接重新附加`)
+      // 检查终端是否已初始化完成
+      if (currentState === 'initialized' && state.terminals[connectionId] && state.sessions[connectionId]) {
+        log.info(`终端 ${connectionId} 已完成初始化，直接重新附加`)
         // 将终端实例重新附加到新的容器
         const success = reattachTerminal(connectionId, container)
+        
+        // 触发一次状态更新事件
+        window.dispatchEvent(new CustomEvent('terminal-status-update', {
+          detail: { terminalId: connectionId, status: 'ready', isNew: false }
+        }))
+        
         return success
       }
       
-      // 设置连接状态为connecting
+      // 检查终端是否已在创建中但尚未完成
+      if (currentState === 'initializing' || state.creatingSessionIds.includes(connectionId)) {
+        log.debug(`终端 ${connectionId} 正在初始化中，跳过重复初始化请求`)
+        return false
+      }
+      
+      // 设置锁和状态，开始初始化流程
+      state.terminalInitLocks[connectionId] = true
+      state.terminalStates[connectionId] = 'initializing'
+      
+      // 添加到创建中列表（冗余但兼容现有代码）
+      if (!state.creatingSessionIds.includes(connectionId)) {
+        state.creatingSessionIds.push(connectionId)
+      }
+      
+      // 设置连接状态
       state.connectionStatus[connectionId] = 'connecting'
       
-      // 获取连接信息
+      // 发布状态变更事件，通知UI终端开始初始化
+      window.dispatchEvent(new CustomEvent('terminal-status-update', {
+        detail: { terminalId: connectionId, status: 'initializing', isNew: true }
+      }))
+      
+      log.debug(`开始统一初始化流程: 终端ID=${connectionId}`)
+      
+      // 获取连接信息（原有逻辑）
       const userStore = useUserStore()
       const connectionStore = useConnectionStore()
       const localConnectionsStore = useLocalConnectionsStore()
@@ -86,180 +124,268 @@ export const useTerminalStore = defineStore('terminal', () => {
       if (!connection) {
         log.error('无法找到连接信息')
         state.connectionStatus[connectionId] = 'error'
+        state.terminalStates[connectionId] = 'error'
+        state.terminalInitLocks[connectionId] = false
+        
+        // 从创建中列表移除
+        const index = state.creatingSessionIds.indexOf(connectionId)
+        if (index !== -1) {
+          state.creatingSessionIds.splice(index, 1)
+        }
+        
+        // 发布错误状态事件
+        window.dispatchEvent(new CustomEvent('terminal-status-update', {
+          detail: { terminalId: connectionId, status: 'error', error: '无法找到连接信息' }
+        }))
+        
         return false
       }
       
-      // 创建SSH会话
-      const sessionId = await sshService.createSession({
-        ...connection,
-        terminalId: connectionId // 传递终端ID，确保正确的映射关系
-      })
-      
-      // 确保SSH会话ID与终端ID一一对应，避免会话复用导致的数据混淆
-      if (sessionId && sessionId !== connectionId) {
-        log.info(`警告: SSH会话ID(${sessionId})与终端ID(${connectionId})不一致，确保关联正确`)
-      }
-      
-      // 同时尝试连接监控服务
-      if (window.monitoringAPI && connection.host) {
-        try {
-          // 检查该主机是否已经在连接监控服务中
-          const isConnecting = state.monitorConnectingHosts[connection.host];
-          if (isConnecting) {
-            log.debug(`[终端] 监控服务已在连接到 ${connection.host}，跳过重复连接`);
-          } else {
-          // 检查监控服务连接状态
-            const monitorStatus = window.monitoringAPI.getStatus();
-            const shouldConnect = !monitorStatus.connected || monitorStatus.targetHost !== connection.host;
-          
-          if (shouldConnect) {
-              // 标记为正在连接中
-              state.monitorConnectingHosts[connection.host] = true;
-              
-              log.info(`[终端] 连接监控服务: ${connection.host}`);
-            // 异步连接，不阻塞终端创建
-            window.monitoringAPI.connect(connection.host)
-              .then(success => {
-                  log.debug(`[终端] 监控服务连接${success ? '成功' : '失败'}`);
-                  // 移除连接中标记
-                  delete state.monitorConnectingHosts[connection.host];
-                // 触发状态更新
-                  window.monitoringAPI.updateTerminalMonitoringStatus?.(connectionId, success);
-              })
-                .catch(err => {
-                  log.warn('[终端] 监控服务连接错误:', err);
-                  // 确保在错误情况下也移除连接中标记
-                  delete state.monitorConnectingHosts[connection.host];
-                });
-          } else {
-              log.debug(`[终端] 监控服务已连接到目标主机: ${connection.host}`);
-              window.monitoringAPI.updateTerminalMonitoringStatus?.(connectionId, true);
-            }
-          }
-        } catch (err) {
-          log.warn('[终端] 监控服务处理出错:', err);
-          // 确保清理连接状态
-          if (connection.host) {
-            delete state.monitorConnectingHosts[connection.host];
-          }
-        }
-      } else {
-        // 明确设置该终端没有监控服务
-        window.dispatchEvent(new CustomEvent('monitoring-status-change', { 
-          detail: { installed: false, terminalId: connectionId, host: null }
-        }));
-      }
-      
-      // 获取终端设置
-      let terminalOptions = {
-        fontSize: 16,
-        fontFamily: "'JetBrains Mono'",
-        theme: {
-          background: '#121212',
-          foreground: '#f8f8f8',
-          black: '#000000',
-          red: '#ff5555',
-          green: '#50fa7b',
-          yellow: '#f1fa8c',
-          blue: '#bd93f9',
-          magenta: '#ff79c6',
-          cyan: '#8be9fd',
-          white: '#f8f8f2',
-          brightBlack: '#6272a4',
-          brightRed: '#ff6e6e',
-          brightGreen: '#69ff94',
-          brightYellow: '#ffffa5',
-          brightBlue: '#d6acff',
-          brightMagenta: '#ff92df',
-          brightCyan: '#a4ffff',
-          brightWhite: '#ffffff'
-        }
-      }
-      
-      // 获取设置中的终端选项
+      // 创建SSH会话（原有逻辑）
       try {
-        const settingsStore = useSettingsStore()
-        const settings = settingsStore.getTerminalSettings()
+        const sessionId = await sshService.createSession({
+          ...connection,
+          terminalId: connectionId // 传递终端ID，确保正确的映射关系
+        })
         
-        // 更新选项
-        if (settings) {
-          if (settings.fontSize) {
-            terminalOptions.fontSize = settings.fontSize
-          }
-          
-          if (settings.fontFamily) {
-            terminalOptions.fontFamily = settings.fontFamily
-          }
-          
-          if (settings.cursorStyle) {
-            terminalOptions.cursorStyle = settings.cursorStyle
-          }
-          
-          if (settings.cursorBlink !== undefined) {
-            terminalOptions.cursorBlink = settings.cursorBlink
-          }
-          
-          // 应用终端主题设置
-          if (settings.theme) {
-            // 从settingsService获取主题配置
-            const settingsService = await import('../services/settings').then(m => m.default)
-            const themeConfig = settingsService.getTerminalTheme(settings.theme)
-            terminalOptions.theme = themeConfig
-          }
-          
-          log.info('使用设置中的终端选项:', terminalOptions)
+        // 确保SSH会话ID与终端ID一一对应，避免会话复用导致的数据混淆
+        if (sessionId && sessionId !== connectionId) {
+          log.info(`警告: SSH会话ID(${sessionId})与终端ID(${connectionId})不一致，确保关联正确`)
         }
-      } catch (error) {
-        log.error('获取终端设置失败，使用默认选项:', error)
-      }
-      
-      // 创建终端
-      const terminal = await sshService.createTerminal(
-        sessionId,
-        container,
-        terminalOptions
-      )
-      
-      // 为终端元素添加标识
-      if (terminal && terminal.element) {
-        terminal.element.setAttribute('data-terminal-id', connectionId)
-      }
-      
-      // 获取SSHService中可能创建的FitAddon实例
-      // 因为没有直接访问FitAddon的方法，我们临时创建一个新的用于备份
-      const fitAddon = new FitAddon()
-      
-      // 存储终端和会话信息
-      state.terminals[connectionId] = terminal
-      state.sessions[connectionId] = sessionId
-      state.connectionStatus[connectionId] = 'connected'
-      state.fitAddons[connectionId] = fitAddon
-      
-      // 修复xterm-helpers元素显示问题
-      fixXtermHelpers()
-      
-      // 在SSH会话对象中保存终端ID，以便SFTP功能使用
-      try {
-        const session = sshService.sessions.get(sessionId)
-        if (session) {
-          // 添加终端ID到会话中，以便SFTP功能使用
-          session.terminalId = connectionId
-          log.info(`设置SSH会话 ${sessionId} 的终端ID: ${connectionId}`)
+        
+        // 同时尝试连接监控服务（原有逻辑但优化）
+        if (window.monitoringAPI && connection.host) {
+          _connectToMonitoringService(connection.host, connectionId)
+        } else {
+          // 明确设置该终端没有监控服务
+          window.dispatchEvent(new CustomEvent('monitoring-status-change', { 
+            detail: { installed: false, terminalId: connectionId, host: null }
+          }))
         }
+        
+        // 获取终端设置（保留原有逻辑）
+        let terminalOptions = await _getTerminalOptions()
+        
+        // 创建终端
+        const terminal = await sshService.createTerminal(
+          sessionId,
+          container,
+          terminalOptions
+        )
+        
+        // 为终端元素添加标识
+        if (terminal && terminal.element) {
+          terminal.element.setAttribute('data-terminal-id', connectionId)
+        }
+        
+        // 获取SSHService中可能创建的FitAddon实例
+        // 因为没有直接访问FitAddon的方法，我们临时创建一个新的用于备份
+        const fitAddon = new FitAddon()
+        
+        // 存储终端和会话信息
+        state.terminals[connectionId] = terminal
+        state.sessions[connectionId] = sessionId
+        state.connectionStatus[connectionId] = 'connected'
+        state.fitAddons[connectionId] = fitAddon
+        
+        // 更新终端状态为已初始化
+        state.terminalStates[connectionId] = 'initialized'
+        
+        // 修复xterm-helpers元素显示问题
+        fixXtermHelpers()
+        
+        // 在SSH会话对象中保存终端ID，以便SFTP功能使用
+        try {
+          const session = sshService.sessions.get(sessionId)
+          if (session) {
+            // 添加终端ID到会话中，以便SFTP功能使用
+            session.terminalId = connectionId
+            log.info(`设置SSH会话 ${sessionId} 的终端ID: ${connectionId}`)
+          }
+        } catch (error) {
+          log.warn(`设置终端ID映射失败:`, error)
+        }
+        
+        // 终端初始化完成，发布统一的终端就绪事件
+        log.info(`终端 ${connectionId} 初始化成功`)
+        window.dispatchEvent(new CustomEvent('terminal-status-update', {
+          detail: { 
+            terminalId: connectionId, 
+            status: 'ready',
+            isNew: true,
+            sessionId: sessionId
+          }
+        }))
+        
+        // 从创建中列表移除
+        const index = state.creatingSessionIds.indexOf(connectionId)
+        if (index !== -1) {
+          state.creatingSessionIds.splice(index, 1)
+        }
+        
+        // 解锁初始化
+        state.terminalInitLocks[connectionId] = false
+        
+        return true
       } catch (error) {
-        log.warn(`设置终端ID映射失败:`, error)
+        log.error(`终端 ${connectionId} 初始化失败:`, error)
+        state.connectionStatus[connectionId] = 'error'
+        state.terminalStates[connectionId] = 'error'
+        
+        // 从创建中列表移除
+        const index = state.creatingSessionIds.indexOf(connectionId)
+        if (index !== -1) {
+          state.creatingSessionIds.splice(index, 1)
+        }
+        
+        // 解锁初始化
+        state.terminalInitLocks[connectionId] = false
+        
+        // 发布错误状态事件
+        window.dispatchEvent(new CustomEvent('terminal-status-update', {
+          detail: { 
+            terminalId: connectionId, 
+            status: 'error',
+            error: error.message || '初始化失败'
+          }
+        }))
+        
+        return false
       }
-      
-      return true
     } catch (error) {
-      log.error('初始化终端失败:', error)
-      ElMessage.error(`初始化终端失败: ${error.message || '未知错误'}`)
-      state.connectionStatus[connectionId] = 'error'
+      log.error('终端初始化发生意外错误:', error)
+      
+      // 确保释放锁和更新状态
+      state.terminalStates[connectionId] = 'error'
+      state.terminalInitLocks[connectionId] = false
+      
+      // 从创建中列表移除
+      const index = state.creatingSessionIds.indexOf(connectionId)
+      if (index !== -1) {
+        state.creatingSessionIds.splice(index, 1)
+      }
+      
       return false
-    } finally {
-      // 无论成功或失败，都从创建中列表移除
-      state.creatingSessionIds = state.creatingSessionIds.filter(i => i !== connectionId)
     }
+  }
+  
+  /**
+   * 辅助函数: 连接到监控服务
+   * @private
+   */
+  const _connectToMonitoringService = (host, terminalId) => {
+    try {
+      // 检查该主机是否已经在连接监控服务中
+      const isConnecting = state.monitorConnectingHosts[host]
+      if (isConnecting) {
+        log.debug(`[终端] 监控服务已在连接到 ${host}，跳过重复连接`)
+        return
+      }
+      
+      // 检查监控服务连接状态
+      const monitorStatus = window.monitoringAPI.getStatus()
+      const shouldConnect = !monitorStatus.connected || monitorStatus.targetHost !== host
+      
+      if (shouldConnect) {
+        // 标记为正在连接中
+        state.monitorConnectingHosts[host] = true
+        
+        log.info(`[终端] 连接监控服务: ${host}`)
+        // 异步连接，不阻塞终端创建
+        window.monitoringAPI.connect(host)
+          .then(success => {
+            log.debug(`[终端] 监控服务连接${success ? '成功' : '失败'}`)
+            // 移除连接中标记
+            delete state.monitorConnectingHosts[host]
+            // 触发状态更新
+            window.monitoringAPI.updateTerminalMonitoringStatus?.(terminalId, success)
+          })
+          .catch(err => {
+            log.warn('[终端] 监控服务连接错误:', err)
+            // 确保在错误情况下也移除连接中标记
+            delete state.monitorConnectingHosts[host]
+          })
+      } else {
+        log.debug(`[终端] 监控服务已连接到目标主机: ${host}`)
+        window.monitoringAPI.updateTerminalMonitoringStatus?.(terminalId, true)
+      }
+    } catch (err) {
+      log.warn('[终端] 监控服务处理出错:', err)
+      // 确保清理连接状态
+      if (host) {
+        delete state.monitorConnectingHosts[host]
+      }
+    }
+  }
+  
+  /**
+   * 辅助函数: 获取终端选项
+   * @private
+   */
+  const _getTerminalOptions = async () => {
+    let terminalOptions = {
+      fontSize: 16,
+      fontFamily: "'JetBrains Mono'",
+      theme: {
+        background: '#121212',
+        foreground: '#f8f8f8',
+        black: '#000000',
+        red: '#ff5555',
+        green: '#50fa7b',
+        yellow: '#f1fa8c',
+        blue: '#bd93f9',
+        magenta: '#ff79c6',
+        cyan: '#8be9fd',
+        white: '#f8f8f2',
+        brightBlack: '#6272a4',
+        brightRed: '#ff6e6e',
+        brightGreen: '#69ff94',
+        brightYellow: '#ffffa5',
+        brightBlue: '#d6acff',
+        brightMagenta: '#ff92df',
+        brightCyan: '#a4ffff',
+        brightWhite: '#ffffff'
+      }
+    }
+    
+    // 获取设置中的终端选项
+    try {
+      const settingsStore = useSettingsStore()
+      const settings = settingsStore.getTerminalSettings()
+      
+      // 更新选项
+      if (settings) {
+        if (settings.fontSize) {
+          terminalOptions.fontSize = settings.fontSize
+        }
+        
+        if (settings.fontFamily) {
+          terminalOptions.fontFamily = settings.fontFamily
+        }
+        
+        if (settings.cursorStyle) {
+          terminalOptions.cursorStyle = settings.cursorStyle
+        }
+        
+        if (settings.cursorBlink !== undefined) {
+          terminalOptions.cursorBlink = settings.cursorBlink
+        }
+        
+        // 应用终端主题设置
+        if (settings.theme) {
+          // 从settingsService获取主题配置
+          const settingsService = await import('../services/settings').then(m => m.default)
+          const themeConfig = settingsService.getTerminalTheme(settings.theme)
+          terminalOptions.theme = themeConfig
+        }
+        
+        log.info('使用设置中的终端选项:', terminalOptions)
+      }
+    } catch (error) {
+      log.error('获取终端设置失败，使用默认选项:', error)
+    }
+    
+    return terminalOptions
   }
   
   /**
@@ -973,7 +1099,7 @@ export const useTerminalStore = defineStore('terminal', () => {
   
   // 检查指定ID的终端会话是否正在创建中
   const isSessionCreating = (terminalId) => {
-    return state.creatingSessionIds.includes(terminalId)
+    return state.creatingSessionIds.includes(terminalId) || !!state.terminalInitLocks[terminalId]
   }
   
   return {
@@ -987,11 +1113,13 @@ export const useTerminalStore = defineStore('terminal', () => {
     getTerminalStatus,
     isTerminalConnected,
     hasTerminal,
+    hasTerminalSession,
     getTerminal,
     focusTerminal,
     applySettingsToAllTerminals,
     toggleBackgroundImage,
-    hasTerminalSession,
-    isSessionCreating
+    triggerGarbageCollection,
+    isSessionCreating,
+    creatingSessionIds: computed(() => state.creatingSessionIds)
   }
 }) 

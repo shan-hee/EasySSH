@@ -106,82 +106,150 @@ class MonitoringInstance {
       const url = this._buildWebSocketUrl(remoteHost);
       log.debug(`[终端${this.terminalId}] 正在连接到监控WebSocket服务: ${url}`);
       
-      return new Promise((resolve, reject) => {
-        try {
-          this.ws = new WebSocket(url);
-          
-          this.ws.onopen = () => {
-            this.state.connected = true;
-            log.debug(`[终端${this.terminalId}] 监控WebSocket连接已建立，监控远程主机: ${this.state.targetHost || 'unknown'}`);
-            
-            // 分发监控连接成功事件，以便更新UI
-            window.dispatchEvent(new CustomEvent('monitoring-connected', {
-              detail: { 
-                hostAddress: this.state.targetHost,
-                connected: true,
-                terminalId: this.terminalId
-              }
-            }));
-            
-            // 设置保活
-            this._setupKeepAlive();
-            
-            // 如果有远程主机信息，发送一条标识消息
-            if (this.state.targetHost) {
-              this.sendMessage({
-                type: 'identify',
-                payload: {
-                  targetHost: this.state.targetHost,
-                  clientId: `web_${this.terminalId}_${Date.now()}`
-                }
-              });
-            }
-            
-            // 连接成功后立即请求系统数据
-            this.requestSystemStats();
-            
-            // 通知监控服务已连接
-            window.dispatchEvent(new CustomEvent('monitoring-status-change', { 
-              detail: { 
-                installed: true, 
-                host: remoteHost, 
-                terminalId: this.terminalId 
-              }
-            }));
-            
-            resolve(true);
-          };
-          
-          this.ws.onmessage = (event) => {
-            this._handleMessage(event);
-          };
-          
-          this.ws.onclose = (event) => {
-            this._handleClose(event);
-            log.debug(`[终端${this.terminalId}] 监控连接已关闭: 代码=${event.code}`);
-            if (this.state.connecting) {
-              reject(new Error('连接关闭'));
-            }
-          };
-          
-          this.ws.onerror = (error) => {
-            log.debug(`[终端${this.terminalId}] 监控WebSocket错误`);
-            this.state.error = '连接错误';
-            
-            if (this.state.connecting) {
-              this.state.connecting = false;
-              reject(error);
-            }
-          };
-        } catch (error) {
+      // 保存目标主机
+      this.state.targetHost = remoteHost;
+      
+      // 设置连接超时
+      const connectionTimeout = setTimeout(() => {
+        if (this.state.connecting && !this.state.connected) {
+          log.debug(`[终端${this.terminalId}] 监控服务连接超时`);
           this.state.connecting = false;
-          log.debug(`[终端${this.terminalId}] 创建监控WebSocket连接失败`);
-          reject(error);
+          this.state.error = '连接超时';
+          
+          // 发送全局错误事件，但不立即修改状态，避免后续可能的成功连接导致状态混乱
+          window.dispatchEvent(new CustomEvent('monitoring-connection-timeout', {
+            detail: {
+              terminalId: this.terminalId,
+              host: remoteHost,
+              error: '连接超时'
+            }
+          }));
         }
-      });
+      }, 10000);
+      
+      try {
+        this.ws = new WebSocket(url);
+        
+        this.ws.onopen = (event) => {
+          clearTimeout(connectionTimeout);
+          this.state.connecting = false;
+          this.state.connected = true;
+          this.state.error = null;
+          
+          log.debug(`[终端${this.terminalId}] 监控WebSocket连接已建立，监控远程主机: ${remoteHost}`);
+          
+          // 发送连接成功事件
+          window.dispatchEvent(new CustomEvent('monitoring-connected', {
+            detail: {
+              terminalId: this.terminalId,
+              hostAddress: remoteHost,
+              success: true
+            }
+          }));
+          
+          // 触发监控状态更新事件（可用）
+          window.dispatchEvent(new CustomEvent('monitoring-status-change', { 
+            detail: { 
+              installed: true, 
+              host: remoteHost,
+              terminalId: this.terminalId 
+            }
+          }));
+          
+          // 初始化保活机制
+          this._setupKeepAlive();
+          
+          // 请求初始数据
+          this.requestSystemStats();
+        };
+        
+        this.ws.onmessage = (event) => {
+          this._handleMessage(event);
+        };
+        
+        this.ws.onclose = (event) => {
+          clearTimeout(connectionTimeout);
+          // 避免重复处理，只在真正断开连接时更新状态
+          if (this.state.connected) {
+            this._handleClose(event);
+          } else if (this.state.connecting) {
+            this.state.connecting = false;
+            this.state.error = '连接关闭';
+            log.debug(`[终端${this.terminalId}] 监控连接建立失败: 连接被关闭`);
+          }
+        };
+        
+        this.ws.onerror = (error) => {
+          clearTimeout(connectionTimeout);
+          log.debug(`[终端${this.terminalId}] 监控WebSocket错误`);
+          
+          // 设置错误状态，但不立即更新连接状态，因为onclose事件会随后触发
+          this.state.error = '连接错误';
+          
+          // 如果仍在连接中，则标记连接失败
+          if (this.state.connecting) {
+            this.state.connecting = false;
+            log.debug(`[终端${this.terminalId}] 监控服务连接失败`);
+            
+            // 发送错误事件，但保留最终状态变更给onclose处理
+            window.dispatchEvent(new CustomEvent('monitoring-connection-error', {
+              detail: {
+                terminalId: this.terminalId,
+                host: remoteHost,
+                error: error
+              }
+            }));
+          }
+        };
+        
+        return new Promise((resolve) => {
+          // 连接结果处理
+          const handleResult = (event) => {
+            if (event.detail && event.detail.terminalId === this.terminalId) {
+              // 移除事件监听
+              window.removeEventListener('monitoring-connected', handleResult);
+              window.removeEventListener('monitoring-connection-error', handleError);
+              window.removeEventListener('monitoring-connection-timeout', handleError);
+              
+              resolve(true);
+            }
+          };
+          
+          // 错误处理
+          const handleError = (event) => {
+            if (event.detail && event.detail.terminalId === this.terminalId) {
+              // 移除事件监听
+              window.removeEventListener('monitoring-connected', handleResult);
+              window.removeEventListener('monitoring-connection-error', handleError);
+              window.removeEventListener('monitoring-connection-timeout', handleError);
+              
+              resolve(false);
+            }
+          };
+          
+          // 设置事件监听
+          window.addEventListener('monitoring-connected', handleResult, { once: true });
+          window.addEventListener('monitoring-connection-error', handleError, { once: true });
+          window.addEventListener('monitoring-connection-timeout', handleError, { once: true });
+          
+          // 如果已经连接成功或失败，立即解析promise
+          if (this.state.connected) {
+            resolve(true);
+          } else if (!this.state.connecting && this.state.error) {
+            resolve(false);
+          }
+        });
+      } catch (err) {
+        clearTimeout(connectionTimeout);
+        this.state.connecting = false;
+        this.state.error = err.message || '连接失败';
+        log.debug(`[终端${this.terminalId}] 创建监控WebSocket连接失败: ${err.message}`);
+        return false;
+      }
     } catch (error) {
       this.state.connecting = false;
-      log.debug(`[终端${this.terminalId}] 连接到监控WebSocket服务失败`);
+      this.state.error = error.message || '连接失败';
+      log.debug(`[终端${this.terminalId}] 连接到监控WebSocket服务失败: ${error.message}`);
       return false;
     }
   }
@@ -877,6 +945,24 @@ class MonitoringFactory {
       return false;
     }
     
+    // 获取当前实例
+    const instance = this.getInstance(terminalId);
+    if (!instance) {
+      return false;
+    }
+    
+    // 检查当前实例是否已连接到相同主机
+    if (instance.state.connected && instance.state.targetHost === host) {
+      log.debug(`终端 ${terminalId} 已连接到 ${host}，跳过重复连接`);
+      return true;
+    }
+    
+    // 检查当前实例是否正在连接到相同主机
+    if (instance.state.connecting && instance.state.targetHost === host) {
+      log.debug(`终端 ${terminalId} 正在连接到 ${host}，跳过重复连接`);
+      return true;
+    }
+    
     // 先检查是否有其他终端已连接到相同主机
     const existingConnection = this.findInstanceByHost(host);
     if (existingConnection) {
@@ -900,11 +986,6 @@ class MonitoringFactory {
       
       // 利用现有连接而不是创建新连接
       return true;
-    }
-    
-    const instance = this.getInstance(terminalId);
-    if (!instance) {
-      return false;
     }
     
     return await instance.connect(host);

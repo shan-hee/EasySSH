@@ -142,6 +142,9 @@ export default defineComponent({
     // 添加按终端ID隔离的状态对象
     const terminalToolbarStates = ref({})
     
+    // 在组件setup部分顶部，添加防抖控制变量
+    const statusCheckDebounceTimers = ref({})
+    
     // 获取或创建特定终端ID的工具栏状态
     const getTerminalToolbarState = (terminalId) => {
       if (!terminalId) return null
@@ -1050,26 +1053,126 @@ export default defineComponent({
       }
     };
     
+    // 添加防抖包装函数
+    const debouncedApplyStatus = (terminalId) => {
+      // 如果已有相同终端ID的定时器，先清除
+      if (statusCheckDebounceTimers.value[terminalId]) {
+        clearTimeout(statusCheckDebounceTimers.value[terminalId]);
+      }
+      
+      // 设置新的定时器
+      statusCheckDebounceTimers.value[terminalId] = setTimeout(() => {
+        // 执行状态隔离检查
+        applyInitialStatusInternal(terminalId);
+        // 清除定时器引用
+        delete statusCheckDebounceTimers.value[terminalId];
+      }, 100); // 100ms防抖延迟
+    };
+    
+    // 修改原有的applyInitialStatus函数为包装函数
+    const applyInitialStatus = () => {
+      const currentId = props.activeSessionId;
+      if (!currentId) return;
+      debouncedApplyStatus(currentId);
+    };
+    
+    // 内部实际执行的状态隔离函数
+    const applyInitialStatusInternal = (currentId) => {
+      try {
+        if (!currentId) return;
+        
+        log.debug(`正在确保终端[${currentId}]的状态独立`);
+        
+        // 获取当前终端的状态
+        const terminalState = getTerminalToolbarState(currentId);
+        if (!terminalState) return;
+        
+        // 1. 检查该终端的SSH连接和主机信息
+        if (terminalStore && terminalStore.sessions) {
+          const sshSessionId = terminalStore.sessions[currentId];
+          if (sshSessionId && sshService && sshService.sessions) {
+            const session = sshService.sessions.get(sshSessionId);
+            if (session && session.connection) {
+              const host = session.connection.host;
+              
+              // 2. 增强监控服务状态检查逻辑
+              if (monitoringService) {
+                // 首先检查monitoringService全局状态
+                const isGloballyConnected = monitoringService.state && 
+                                          monitoringService.state.connected && 
+                                          monitoringService.state.targetHost === host;
+                
+                // 然后检查特定终端的监控状态
+                const isTerminalSpecificMonitored = monitoringService.isTerminalMonitored(currentId);
+                
+                // 综合两种检查结果，只要有一个为true就认为监控已安装
+                const monitored = isGloballyConnected || isTerminalSpecificMonitored;
+                
+                // 3. 明确设置此终端的监控状态（不依赖单一来源）
+                terminalState.monitoringInstalled = monitored;
+                monitoringServiceInstalled.value = monitored;
+                
+                log.debug(`已设置终端[${currentId}]的监控状态: ${monitored}, 连接到主机: ${host}, 全局状态=${isGloballyConnected}, 终端特定状态=${isTerminalSpecificMonitored}`);
+                
+                // 4. 如果监控服务连接到其他主机，确保不影响当前终端
+                if (monitoringService.state && 
+                    monitoringService.state.connected && 
+                    monitoringService.state.targetHost !== host) {
+                  log.debug(`监控服务连接到了不同的主机[${monitoringService.state.targetHost}]，` +
+                             `与当前终端[${currentId}]的主机[${host}]不匹配，标记为未连接`);
+                  monitoringServiceInstalled.value = false;
+                }
+              }
+            }
+          }
+        }
+      } catch (error) {
+        log.error('终端状态隔离出错:', error);
+      }
+    };
+    
+    // 在组件卸载时清理所有防抖定时器
+    onUnmounted(() => {
+      // 移除所有事件监听器，使用常量替代硬编码字符串
+      window.removeEventListener(LATENCY_EVENTS.TOOLBAR, handleNetworkLatencyUpdate);
+      window.removeEventListener('ssh-connected', handleSshConnected);
+      window.removeEventListener('monitoring-status-change', handleMonitoringStatusChange);
+      window.removeEventListener('terminal:toolbar-reset', handleToolbarReset);
+      window.removeEventListener('terminal:toolbar-sync', handleToolbarSync);
+      window.removeEventListener('terminal:refresh-status', handleTerminalRefreshStatus);
+      window.removeEventListener('monitoring-connected', handleMonitoringConnected);
+      window.removeEventListener('resize', updateSftpTooltipPosition);
+      window.removeEventListener('resize', handleResize);
+      
+      // 移除新会话事件监听
+      window.removeEventListener('terminal:new-session', handleNewSession);
+      
+      // 清理所有防抖定时器
+      Object.keys(statusCheckDebounceTimers.value).forEach(id => {
+        clearTimeout(statusCheckDebounceTimers.value[id]);
+      });
+    });
+
     // 在onMounted中添加事件监听
     onMounted(() => {
       // 添加全局事件监听器，使用常量替代硬编码字符串
       window.addEventListener(LATENCY_EVENTS.TOOLBAR, handleNetworkLatencyUpdate);
-      window.addEventListener('ssh-connected', handleSshConnected)
-      window.addEventListener('monitoring-status-change', handleMonitoringStatusChange)
-      window.addEventListener('terminal:toolbar-reset', handleToolbarReset)
-      window.addEventListener('terminal:toolbar-sync', handleToolbarSync)
+      window.addEventListener('ssh-connected', handleSshConnected);
+      window.addEventListener('monitoring-status-change', handleMonitoringStatusChange);
+      window.addEventListener('terminal:toolbar-reset', handleToolbarReset);
+      window.addEventListener('terminal:toolbar-sync', handleToolbarSync);
       // 添加终端状态刷新事件监听
-      window.addEventListener('terminal:refresh-status', handleTerminalRefreshStatus)
+      window.addEventListener('terminal:refresh-status', handleTerminalRefreshStatus);
       // 添加监控连接成功事件监听
-      window.addEventListener('monitoring-connected', handleMonitoringConnected)
+      window.addEventListener('monitoring-connected', handleMonitoringConnected);
       
       // 立即检查SSH连接状态
-      checkSshConnectionStatus()
+      checkSshConnectionStatus();
       // 立即检查监控服务状态
-      checkMonitoringServiceStatus()
+      checkMonitoringServiceStatus();
       
       // 确保工具栏状态严格隔离，避免状态意外共享
-      applyInitialStatus()
+      applyInitialStatus();
       
       // SFTP按钮鼠标事件监听
       if (sftpButtonRef.value) {
@@ -1152,80 +1255,7 @@ export default defineComponent({
       
       // 添加新会话事件监听
       window.addEventListener('terminal:new-session', handleNewSession);
-    })
-    
-    // 确保组件卸载时清理事件监听器
-    onUnmounted(() => {
-      // 移除所有事件监听器，使用常量替代硬编码字符串
-      window.removeEventListener(LATENCY_EVENTS.TOOLBAR, handleNetworkLatencyUpdate);
-      window.removeEventListener('ssh-connected', handleSshConnected)
-      window.removeEventListener('monitoring-status-change', handleMonitoringStatusChange)
-      window.removeEventListener('terminal:toolbar-reset', handleToolbarReset)
-      window.removeEventListener('terminal:toolbar-sync', handleToolbarSync)
-      window.removeEventListener('terminal:refresh-status', handleTerminalRefreshStatus)
-      window.removeEventListener('monitoring-connected', handleMonitoringConnected)
-      window.removeEventListener('resize', updateSftpTooltipPosition)
-      window.removeEventListener('resize', handleResize)
-      
-      // 移除新会话事件监听
-      window.removeEventListener('terminal:new-session', handleNewSession);
-    })
-
-    // 添加工具栏状态隔离函数
-    const applyInitialStatus = () => {
-      try {
-        const currentId = props.activeSessionId
-        if (!currentId) return
-        
-        log.debug(`正在确保终端[${currentId}]的状态独立`)
-        
-        // 获取当前终端的状态
-        const terminalState = getTerminalToolbarState(currentId)
-        if (!terminalState) return
-        
-        // 1. 检查该终端的SSH连接和主机信息
-        if (terminalStore && terminalStore.sessions) {
-          const sshSessionId = terminalStore.sessions[currentId]
-          if (sshSessionId && sshService && sshService.sessions) {
-            const session = sshService.sessions.get(sshSessionId)
-            if (session && session.connection) {
-              const host = session.connection.host
-              
-              // 2. 增强监控服务状态检查逻辑
-              if (monitoringService) {
-                // 首先检查monitoringService全局状态
-                const isGloballyConnected = monitoringService.state && 
-                                          monitoringService.state.connected && 
-                                          monitoringService.state.targetHost === host;
-                
-                // 然后检查特定终端的监控状态
-                const isTerminalSpecificMonitored = monitoringService.isTerminalMonitored(currentId);
-                
-                // 综合两种检查结果，只要有一个为true就认为监控已安装
-                const monitored = isGloballyConnected || isTerminalSpecificMonitored;
-                
-                // 3. 明确设置此终端的监控状态（不依赖单一来源）
-                terminalState.monitoringInstalled = monitored;
-                monitoringServiceInstalled.value = monitored;
-                
-                log.debug(`已设置终端[${currentId}]的监控状态: ${monitored}, 连接到主机: ${host}, 全局状态=${isGloballyConnected}, 终端特定状态=${isTerminalSpecificMonitored}`);
-                
-                // 4. 如果监控服务连接到其他主机，确保不影响当前终端
-                if (monitoringService.state && 
-                    monitoringService.state.connected && 
-                    monitoringService.state.targetHost !== host) {
-                  log.debug(`监控服务连接到了不同的主机[${monitoringService.state.targetHost}]，` +
-                             `与当前终端[${currentId}]的主机[${host}]不匹配，标记为未连接`);
-                  monitoringServiceInstalled.value = false;
-                }
-              }
-            }
-          }
-        }
-      } catch (error) {
-        log.error('终端状态隔离出错:', error)
-      }
-    }
+    });
 
     return {
       rttValue,

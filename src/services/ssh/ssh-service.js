@@ -109,7 +109,8 @@ class SSHService {
         log.info(`创建终端与SSH会话映射: 终端 ${connection.terminalId} -> 会话 ${generatedSessionId}`);
       }
       
-      return this._createNewSession(connection);
+      // 传递生成的会话ID，避免重新生成不同的ID
+      return this._createNewSession(connection, generatedSessionId);
     } catch (error) {
       log.error('创建SSH会话失败:', error);
       ElMessage.error(`SSH连接失败: ${error.message || '未知错误'}`);
@@ -120,10 +121,12 @@ class SSHService {
   /**
    * 创建新会话的核心逻辑
    * @param {Object} connection - 连接配置
+   * @param {string} [providedSessionId] - 可选的会话ID，如果提供则使用这个ID
    * @returns {Promise<string>} - 会话ID
    */
-  async _createNewSession(connection) {
-    const sessionId = this._generateSessionId();
+  async _createNewSession(connection, providedSessionId) {
+    // 如果未提供会话ID，则生成一个新的
+    const sessionId = providedSessionId || this._generateSessionId();
     log.info(`创建新SSH会话: ${sessionId}, 地址: ${connection.host}:${connection.port}`);
     
     try {

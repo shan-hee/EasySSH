@@ -195,12 +195,23 @@ export default defineComponent({
             if (currentId) {
               log.debug('路由切换到终端，触发终端显示和刷新', currentId);
               
+              // 检查终端是否已经存在，如果存在则不设置isNewCreation
+              const terminalStore = useTerminalStore();
+              const isSessionCreating = terminalStore.isSessionCreating(currentId);
+              const hasExistingTerminal = terminalStore.hasTerminal(currentId);
+              const hasTerminalSession = terminalStore.hasTerminalSession(currentId);
+              
+              // 只有在会话不存在且未在创建中时才标记为新创建
+              const isNewCreation = !hasExistingTerminal && !hasTerminalSession && !isSessionCreating;
+              
+              log.debug(`终端状态检查: 终端存在=${hasExistingTerminal}, 会话存在=${hasTerminalSession}, 正在创建=${isSessionCreating}`);
+              
               // 只使用一个事件触发终端初始化，避免多次触发导致创建多个SSH会话
               window.dispatchEvent(new CustomEvent('terminal:refresh-status', {
                 detail: { 
                   sessionId: currentId,
                   forceShow: true, // 添加强制显示标记
-                  isNewCreation: true // 添加新创建标记
+                  isNewCreation: isNewCreation // 仅在确认需要新创建时设为true
                 }
               }));
             }

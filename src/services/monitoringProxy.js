@@ -152,27 +152,6 @@ class MonitoringServiceProxy {
       }
     });
     
-    // 监听SSH连接成功事件，自动连接监控
-    window.addEventListener('ssh-connected', (event) => {
-      if (event.detail && event.detail.connection && event.detail.connection.host) {
-        const host = event.detail.connection.host;
-        const terminalId = event.detail.terminalId || this._getActiveTerminalId();
-        
-        if (terminalId) {
-          log.debug(`[监控代理] SSH连接成功，尝试连接终端 ${terminalId} 到监控: ${host}`);
-          
-          // 连接到相同主机的监控服务
-          monitoringFactory.connect(terminalId, host).then(connected => {
-            if (connected) {
-              log.debug(`[监控代理] 成功连接终端 ${terminalId} 到监控服务: ${host}`);
-            }
-          }).catch(err => {
-            log.debug(`[监控代理] 连接终端 ${terminalId} 到监控服务失败: ${err.message || '未知错误'}`);
-          });
-        }
-      }
-    });
-    
     // 监听切换监控面板事件
     window.addEventListener('toggle-monitoring-panel', (event) => {
       log.info('[监控代理] 收到切换监控面板事件');
