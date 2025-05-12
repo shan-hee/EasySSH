@@ -23,7 +23,7 @@
           <slot></slot>
         </div>
         
-        <div class="modal-footer">
+        <div v-if="!hideFooter" class="modal-footer">
           <template v-if="buttons">
             <button 
               v-for="button in buttons" 
@@ -69,6 +69,10 @@ export default defineComponent({
     buttons: {
       type: Array,
       default: null
+    },
+    hideFooter: {
+      type: Boolean,
+      default: false
     }
   },
   emits: ['update:visible', 'close', 'confirm'],

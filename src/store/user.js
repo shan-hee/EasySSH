@@ -12,7 +12,9 @@ export const useUserStore = defineStore('user', () => {
     email: '',
     avatar: '',
     role: '',
-    lastLogin: null
+    lastLogin: null,
+    mfaEnabled: false,
+    mfaSecret: ''
   })
   const preferences = ref({
     theme: 'system',
@@ -41,45 +43,69 @@ export const useUserStore = defineStore('user', () => {
     preferences.value = { ...preferences.value, ...newPrefs }
   }
   
+  // 登录
   async function login(credentials) {
     try {
-      // 这里应该是实际的API调用
-      // const response = await api.login(credentials)
-      
-      // 模拟登录成功
-      const mockResponse = {
-        token: 'mock_jwt_token_' + Date.now(),
-        userInfo: {
+      // 模拟登录API调用
+      // 在实际应用中，这里会调用后端API进行认证
+      if (credentials.username === 'admin' && credentials.password === 'admin') {
+        // 检查用户是否启用了MFA
+        const userRecord = {
           id: '1',
           username: credentials.username,
-          email: `${credentials.username}@example.com`,
-          avatar: '/assets/default-avatar.png',
-          role: 'user',
-          lastLogin: new Date().toISOString()
+          email: 'admin@example.com',
+          role: 'admin',
+          lastLogin: new Date().toISOString(),
+          mfaEnabled: userInfo.value.mfaEnabled || false,
+          mfaSecret: userInfo.value.mfaSecret || ''
         }
+        
+        // 如果启用了MFA，需要额外验证
+        if (userRecord.mfaEnabled) {
+          // 先存储临时登录信息，不设置token
+          return { 
+            success: true, 
+            requireMfa: true,
+            user: userRecord
+          }
+        }
+        
+        // 未启用MFA，直接完成登录
+        setToken('mock-token-123456')
+        setUserInfo(userRecord)
+      
+        return { success: true }
+      } else {
+        throw new Error('用户名或密码错误')
       }
-      
-      // 保存登录信息
-      setToken(mockResponse.token)
-      setUserInfo(mockResponse.userInfo)
-      
-      // 登录成功的消息现在在App.vue中显示，这里不再重复显示
-      // ElMessage.success('登录成功')
-      
-      // 导航到之前尝试访问的页面或默认到控制台
-      const redirectPath = router.currentRoute.value.query.redirect || '/dashboard'
-      router.push(redirectPath)
-      
-      return true
     } catch (error) {
       console.error('登录失败:', error)
-      ElMessage.error('登录失败: ' + (error.message || '未知错误'))
-      return false
+      return { success: false, error: error.message }
     }
   }
   
+  // 验证MFA代码
+  async function verifyMfaCode(code, tempUserInfo) {
+    try {
+      // 这里应该调用API验证MFA代码
+      // 模拟验证成功，任何6位数字代码都可以通过
+      if (code && code.length === 6 && /^\d+$/.test(code)) {
+        // 验证成功，设置token和用户信息
+        setToken('mock-token-123456')
+        setUserInfo(tempUserInfo)
+        return { success: true }
+      } else {
+        return { success: false, error: '验证码不正确' }
+      }
+    } catch (error) {
+      console.error('MFA验证失败:', error)
+      return { success: false, error: error.message }
+    }
+  }
+  
+  // 登出
   function logout() {
-    // 清除用户数据
+    // 清空token和用户信息
     setToken('')
     setUserInfo({
       id: '',
@@ -87,11 +113,43 @@ export const useUserStore = defineStore('user', () => {
       email: '',
       avatar: '',
       role: '',
-      lastLogin: null
+      lastLogin: null,
+      mfaEnabled: false,
+      mfaSecret: ''
     })
     
-    // 返回到首页，由页面控制登录面板的显示
-    router.push('/')
+    // 可以在这里调用API通知后端用户已登出
+  }
+  
+  // 更新用户资料
+  async function updateProfile(userData) {
+    try {
+      // 这里应该调用API更新用户资料
+      // 模拟API调用
+      console.log('更新用户资料:', userData)
+      
+      // 如果包含密码信息，应该验证原密码
+      if (userData.oldPassword) {
+        // 这里应该进行密码验证的API调用
+        if (userData.oldPassword !== 'admin') {
+          throw new Error('原密码不正确')
+        }
+      }
+      
+      // 更新本地用户信息
+      setUserInfo({
+        ...userInfo.value,
+        username: userData.username,
+        // 更新多因素身份验证设置
+        mfaEnabled: userData.mfaEnabled,
+        mfaSecret: userData.mfaSecret || userInfo.value.mfaSecret
+      })
+      
+      return { success: true }
+    } catch (error) {
+      console.error('更新用户资料失败:', error)
+      throw error
+    }
   }
   
   return {
@@ -110,12 +168,8 @@ export const useUserStore = defineStore('user', () => {
     setUserInfo,
     updatePreferences,
     login,
-    logout
-  }
-}, {
-  persist: {
-    key: 'easyssh-user',
-    storage: localStorage,
-    paths: ['token', 'userInfo', 'preferences']
+    logout,
+    updateProfile,
+    verifyMfaCode
   }
 }) 

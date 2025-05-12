@@ -49,6 +49,12 @@
         © 2025 Theme By <a href="https://github.com/shan-hee/EasySSH" target="_blank">EasySSH</a>
       </div>
     </div>
+    <MfaVerifyModal
+      v-model:show="showMfaModal"
+      :user-info="tempUserInfo"
+      @success="handleMfaVerifySuccess"
+      @cancel="handleMfaVerifyCancel"
+    />
   </div>
 </template>
 
@@ -57,12 +63,14 @@ import { defineComponent, reactive, ref } from 'vue'
 import { useUserStore } from '@/store/user'
 import { ElMessage } from 'element-plus'
 import Checkbox from '@/components/common/Checkbox.vue'
+import MfaVerifyModal from '@/components/auth/MfaVerifyModal.vue'
 import { useRouter } from 'vue-router'
 
 export default defineComponent({
   name: 'LoginPanel',
   components: {
-    Checkbox
+    Checkbox,
+    MfaVerifyModal
   },
   emits: ['login-success'],
   setup(props, { emit }) {
@@ -70,6 +78,8 @@ export default defineComponent({
     const loginLoading = ref(false)
     const rememberMe = ref(false)
     const router = useRouter()
+    const showMfaModal = ref(false)
+    const tempUserInfo = ref(null)
     
     const loginForm = reactive({
       username: '',
@@ -92,31 +102,24 @@ export default defineComponent({
         loginLoading.value = true
         
         // 调用登录方法
-        const success = await userStore.login({
+        const result = await userStore.login({
           username: loginForm.username,
           password: loginForm.password,
           remember: rememberMe.value
         })
         
-        if (success) {
-          // 清空表单
-          loginForm.username = ''
-          loginForm.password = ''
-          rememberMe.value = false
+        if (result.success) {
+          // 检查是否需要MFA验证
+          if (result.requireMfa) {
+            // 保存临时用户信息
+            tempUserInfo.value = result.user
+            // 显示MFA验证弹窗
+            showMfaModal.value = true
+            return
+          }
           
-          // 发送登录成功事件
-          emit('login-success')
-          
-          // 显示登录成功消息
-          ElMessage({
-            message: '登录成功',
-            type: 'success',
-            offset: 3,
-            zIndex: 9999
-          })
-          
-          // 登录成功后导航到控制台
-          router.push('/')
+          // 不需要MFA，直接完成登录流程
+          completeLogin()
         }
       } catch (error) {
         console.error('登录失败:', error)
@@ -130,6 +133,54 @@ export default defineComponent({
       } finally {
         loginLoading.value = false
       }
+    }
+    
+    // MFA验证成功处理
+    const handleMfaVerifySuccess = async () => {
+      try {
+        loginLoading.value = true
+        
+        // 完成登录流程
+        completeLogin()
+      } catch (error) {
+        console.error('MFA验证后登录失败:', error)
+        ElMessage({
+          message: `登录失败: ${error.message || '未知错误'}`,
+          type: 'error',
+          offset: 3,
+          zIndex: 9999
+        })
+      } finally {
+        loginLoading.value = false
+      }
+    }
+    
+    // 完成登录流程
+    const completeLogin = () => {
+      // 清空表单
+      loginForm.username = ''
+      loginForm.password = ''
+      rememberMe.value = false
+      tempUserInfo.value = null
+      
+      // 发送登录成功事件
+      emit('login-success')
+      
+      // 显示登录成功消息
+      ElMessage({
+        message: '登录成功',
+        type: 'success',
+        offset: 3,
+        zIndex: 9999
+      })
+      
+      // 登录成功后导航到控制台
+      router.push('/')
+    }
+    
+    // MFA验证取消处理
+    const handleMfaVerifyCancel = () => {
+      tempUserInfo.value = null
     }
     
     const forgotPassword = () => {
@@ -158,7 +209,10 @@ export default defineComponent({
       rememberMe,
       handleLogin,
       forgotPassword,
-      goToRegister
+      goToRegister,
+      showMfaModal,
+      handleMfaVerifySuccess,
+      handleMfaVerifyCancel
     }
   }
 })
