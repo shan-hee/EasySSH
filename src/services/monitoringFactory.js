@@ -648,10 +648,13 @@ class MonitoringInstance {
       return;
     }
     
-    // 发送获取系统数据的请求
+    // 生成安全的主机ID（使用哈希）
+    const secureHostId = this._generateSecureHostId(this.state.targetHost);
+    
+    // 发送获取系统数据的请求 - 使用安全主机ID代替直接IP
     this.sendMessage({
       type: 'request_system_stats',
-      targetHost: this.state.targetHost,
+      hostId: secureHostId, // 安全的主机ID
       terminalId: this.terminalId,
       timestamp: Date.now()
     });
@@ -676,6 +679,29 @@ class MonitoringInstance {
         });
       }
     }
+  }
+  
+  /**
+   * 生成安全的主机ID
+   * @param {string} host - 主机地址
+   * @returns {string} - 安全的主机ID
+   */
+  _generateSecureHostId(host) {
+    if (!host) return 'unknown_host';
+    
+    // 简单哈希算法，增加前缀和随机因子
+    let hash = 0;
+    for (let i = 0; i < host.length; i++) {
+      const char = host.charCodeAt(i);
+      hash = ((hash << 5) - hash) + char;
+      hash = hash & hash; // 转换为32位整数
+    }
+    
+    // 使用时间戳作为盐，保持会话内一致性
+    const salt = Math.floor(Date.now() / (1000 * 60 * 60)); // 每小时更新一次
+    const hashCode = Math.abs((hash + salt) % 100000).toString().padStart(5, '0');
+    
+    return `h_${hashCode}_${this.terminalId.substring(0, 5)}`;
   }
 }
 

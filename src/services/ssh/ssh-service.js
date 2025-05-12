@@ -33,6 +33,16 @@ class SSHService {
     this.latencyData = new Map(); // 存储会话的网络延迟数据
     this.dynamicConfig = null; // 在init方法中再获取动态配置
     
+    // 清理相关配置
+    this.cleanupInterval = 60000 * 15; // 15分钟清理一次
+    this.connectionIdExpiration = 60000 * 30; // 30分钟过期时间
+    
+    // 启动定期清理
+    setInterval(() => this._cleanupPendingConnections(), this.cleanupInterval);
+    
+    // 暂存服务实例引用
+    this.instance = this;
+    
     log.info(`SSH服务初始化: IPv4=${this.ipv4Url}, IPv6=${this.ipv6Url}`);
   }
 
@@ -251,29 +261,26 @@ class SSHService {
         connectionState.status = 'authenticating';
         connectionState.message = '正在进行SSH认证...';
         
-        // 准备SSH连接配置
-        const config = {
-          sessionId,
-          address: connection.host,
-          port: connection.port || 22,
-          username: connection.username,
-          authType: connection.authType || 'password'
-        };
+        // 安全处理连接信息
+        // 1. 生成临时连接ID替代直接发送完整配置
+        const connectionId = this._generateSecureConnectionId(connection);
         
-        // 添加认证信息
-        if (config.authType === 'password') {
-          config.password = connection.password;
-        } else if (config.authType === 'key' || config.authType === 'privateKey') {
-          config.privateKey = connection.keyFile;
-          if (connection.passphrase) {
-            config.passphrase = connection.passphrase;
-          }
+        // 2. 在本地会话存储完整连接信息(不通过网络传输)
+        if(!this.pendingConnections) {
+          this.pendingConnections = new Map();
         }
+        this.pendingConnections.set(connectionId, {
+          connection,
+          createdAt: Date.now()
+        });
         
-        // 发送连接请求
+        // 3. 只发送最小化必要信息
         socket.send(JSON.stringify({
           type: 'connect',
-          data: config
+          data: {
+            sessionId,
+            connectionId // 只传递连接ID，不传递完整连接信息
+          }
         }));
       };
       
@@ -427,6 +434,53 @@ class SSHService {
               }
               
               resolve(sessionId);
+              break;
+              
+            // 处理安全连接ID注册响应
+            case 'connection_id_registered': 
+              if (message.data && message.data.connectionId && message.data.status === 'need_auth') {
+                log.info(`连接ID已注册，需要发送认证信息: ${message.data.connectionId}`);
+                
+                // 从pending连接中获取完整的连接信息
+                if (!this.pendingConnections || !this.pendingConnections.has(message.data.connectionId)) {
+                  log.error(`无法找到连接ID对应的信息: ${message.data.connectionId}`);
+                  reject(new Error('连接ID无效'));
+                  return;
+                }
+                
+                const pendingData = this.pendingConnections.get(message.data.connectionId);
+                const authConnection = pendingData.connection;
+                
+                // 发送认证信息
+                const authData = {
+                  connectionId: message.data.connectionId,
+                  sessionId: message.data.sessionId || sessionId,
+                  address: authConnection.host,
+                  port: authConnection.port || 22,
+                  username: authConnection.username,
+                  authType: authConnection.authType || 'password'
+                };
+                
+                // 添加认证凭据
+                if (authData.authType === 'password') {
+                  authData.password = authConnection.password;
+                } else if (authData.authType === 'key' || authData.authType === 'privateKey') {
+                  authData.privateKey = authConnection.keyFile;
+                  if (authConnection.passphrase) {
+                    authData.passphrase = authConnection.passphrase;
+                  }
+                }
+                
+                // 发送认证请求
+                socket.send(JSON.stringify({
+                  type: 'authenticate',
+                  data: authData
+                }));
+                
+                // 不要在这里resolve，等待CONNECTED消息
+              } else if (message.data && message.data.status === 'reconnected') {
+                log.info(`重新连接到已存在的连接ID: ${message.data.connectionId}`);
+              }
               break;
               
             case MESSAGE_TYPES.ERROR:
@@ -781,7 +835,39 @@ class SSHService {
    * 生成唯一的会话ID
    */
   _generateSessionId() {
-    return 'ssh_' + Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+    return `ssh_${Math.random().toString(36).substring(2, 15)}`;
+  }
+  
+  /**
+   * 生成安全的连接ID，避免在WebSocket中传输敏感信息
+   * @param {Object} connection 连接信息
+   * @returns {string} 安全的连接ID
+   */
+  _generateSecureConnectionId(connection) {
+    // 生成随机ID
+    const randomPart = Math.random().toString(36).substring(2, 10);
+    // 使用时间戳确保唯一性
+    const timestamp = Date.now().toString(36);
+    // 组合生成最终ID
+    return `conn_${timestamp}_${randomPart}`;
+  }
+  
+  /**
+   * 清理过期的待处理连接
+   * 定期清理超过30分钟未使用的连接信息
+   */
+  _cleanupPendingConnections() {
+    if (!this.pendingConnections) return;
+    
+    const now = Date.now();
+    const expirationTime = 30 * 60 * 1000; // 30分钟过期
+    
+    for (const [id, data] of this.pendingConnections.entries()) {
+      if (now - data.createdAt > expirationTime) {
+        this.pendingConnections.delete(id);
+        log.debug(`已清理过期连接ID: ${id}`);
+      }
+    }
   }
   
   /**

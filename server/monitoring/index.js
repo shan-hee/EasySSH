@@ -13,6 +13,10 @@ const hostToSessionMap = new Map();
 // 存储远程客户端连接，用于主动连接模式
 const remoteClients = new Map();
 
+// 添加主机ID映射存储
+const hostIdMap = new Map();  // 主机ID -> 实际主机地址
+const reverseHostIdMap = new Map();  // 实际主机地址 -> 主机ID
+
 /**
  * 初始化监控WebSocket服务器
  * @param {number} port WebSocket服务器监听的端口号
@@ -249,17 +253,17 @@ async function connectToRemoteClient(host, port = 9527) {
  * @param {Object} data 消息数据
  */
 function handleMonitoringMessage(ws, sessionId, data) {
-  const { type, payload } = data;
+  const { type } = data;
   
   switch (type) {
     case 'system_stats':
       // 处理系统统计信息
-      handleSystemStats(ws, sessionId, payload);
+      handleSystemStats(ws, sessionId, data.payload);
       break;
       
     case 'log_data':
       // 处理日志数据
-      handleLogData(ws, sessionId, payload);
+      handleLogData(ws, sessionId, data.payload);
       break;
       
     case 'ping':
@@ -275,7 +279,12 @@ function handleMonitoringMessage(ws, sessionId, data) {
 
     case 'identify':
       // 处理客户端标识消息
-      handleIdentify(ws, sessionId, payload);
+      handleIdentify(ws, sessionId, data.payload);
+      break;
+      
+    case 'request_system_stats':
+      // 处理请求系统状态消息 - 支持安全主机ID
+      handleRequestSystemStats(ws, sessionId, data);
       break;
       
     default:
@@ -325,9 +334,34 @@ function handleSystemStats(ws, sessionId, stats) {
   const session = monitoringSessions.get(sessionId);
   if (session) {
     session.systemStats = stats;
-    // 如果有目标主机信息，添加到消息中
+    
+    // 确保使用安全的主机ID
+    let actualHost = null;
+    let secureHostId = null;
+    
+    // 如果有目标主机信息，添加到消息中，但使用安全主机ID
     if (session.targetHost) {
-      stats.targetHost = session.targetHost;
+      actualHost = session.targetHost;
+      
+      // 检查是否已有映射关系
+      if (reverseHostIdMap.has(actualHost)) {
+        secureHostId = reverseHostIdMap.get(actualHost);
+      } else {
+        // 创建新的安全主机ID
+        secureHostId = `h_${Math.random().toString(36).substring(2, 7)}_${sessionId.substring(0, 5)}`;
+        reverseHostIdMap.set(actualHost, secureHostId);
+        hostIdMap.set(secureHostId, actualHost);
+      }
+      
+      // 替换实际主机地址为安全主机ID
+      stats.hostId = secureHostId;
+      
+      // 保留原字段，使用安全ID
+      if (stats.targetHost) {
+        // 如果客户端依赖原始字段，我们在服务器端进行混淆
+        stats._targetHost = stats.targetHost; // 保存原始值以备内部使用
+        stats.targetHost = secureHostId; // 对外展示使用安全ID
+      }
     }
     
     // 广播到所有连接的前端客户端
@@ -362,9 +396,32 @@ function handleLogData(ws, sessionId, logData) {
   // 获取会话
   const session = monitoringSessions.get(sessionId);
   
-  // 如果有目标主机信息，添加到消息中
+  // 如果有目标主机信息，添加到消息中，但使用安全主机ID
   if (session && session.targetHost) {
-    logData.targetHost = session.targetHost;
+    const actualHost = session.targetHost;
+    
+    // 检查是否已有映射关系
+    let secureHostId = null;
+    if (reverseHostIdMap.has(actualHost)) {
+      secureHostId = reverseHostIdMap.get(actualHost);
+    } else {
+      // 创建新的安全主机ID
+      secureHostId = `h_${Math.random().toString(36).substring(2, 7)}_${sessionId.substring(0, 5)}`;
+      reverseHostIdMap.set(actualHost, secureHostId);
+      hostIdMap.set(secureHostId, actualHost);
+    }
+    
+    // 替换实际主机地址为安全主机ID
+    logData.hostId = secureHostId;
+    
+    // 保留原字段，使用安全ID
+    if (logData.targetHost) {
+      // 如果客户端依赖原始字段，我们在服务器端进行混淆
+      logData._targetHost = logData.targetHost; // 保存原始值以备内部使用 
+      logData.targetHost = secureHostId; // 对外展示使用安全ID
+    } else {
+      logData.targetHost = secureHostId;
+    }
   }
   
   // 广播到所有连接的前端客户端
@@ -386,6 +443,96 @@ function handleLogData(ws, sessionId, logData) {
       messageId: logData.messageId
     }
   });
+}
+
+/**
+ * 处理请求系统状态的消息
+ * @param {WebSocket} ws WebSocket连接
+ * @param {string} sessionId 会话ID
+ * @param {Object} data 请求数据
+ */
+function handleRequestSystemStats(ws, sessionId, data) {
+  const session = monitoringSessions.get(sessionId);
+  if (!session) {
+    sendError(ws, '会话不存在', sessionId);
+    return;
+  }
+  
+  let targetHost = null;
+  
+  // 检查是否使用安全主机ID
+  if (data.hostId) {
+    // 从主机ID映射中获取实际主机地址
+    targetHost = hostIdMap.get(data.hostId);
+    
+    // 如果没有找到映射关系，但存在会话的目标主机，使用会话的目标主机
+    if (!targetHost && session.targetHost) {
+      targetHost = session.targetHost;
+      
+      // 创建映射关系，以便后续使用
+      if (!reverseHostIdMap.has(targetHost)) {
+        reverseHostIdMap.set(targetHost, data.hostId);
+        hostIdMap.set(data.hostId, targetHost);
+      }
+    }
+  } else if (data.targetHost) {
+    // 向后兼容：如果直接传递了目标主机地址
+    targetHost = data.targetHost;
+    
+    // 创建主机ID映射关系
+    if (!reverseHostIdMap.has(targetHost)) {
+      const hostId = `h_${Math.random().toString(36).substring(2, 7)}_${sessionId.substring(0, 5)}`;
+      reverseHostIdMap.set(targetHost, hostId);
+      hostIdMap.set(hostId, targetHost);
+    }
+  }
+  
+  if (!targetHost) {
+    sendError(ws, '无法确定目标主机', sessionId);
+    return;
+  }
+  
+  // 查找已连接的会话
+  let targetSessionId = hostToSessionMap.get(targetHost);
+  let targetSession = null;
+  
+  if (targetSessionId) {
+    targetSession = monitoringSessions.get(targetSessionId);
+  }
+  
+  if (targetSession && targetSession.ws) {
+    // 请求系统状态
+    sendMessage(targetSession.ws, {
+      type: 'get_system_stats',
+      data: {
+        timestamp: Date.now(),
+        requestId: data.timestamp || Date.now()
+      }
+    });
+    console.log(`向主机 ${targetHost} 请求系统状态`);
+  } else {
+    // 尝试连接到目标主机
+    connectToHost(targetHost).then(connected => {
+      if (connected) {
+        // 连接成功，再次尝试请求系统状态
+        const newSessionId = hostToSessionMap.get(targetHost);
+        const newSession = monitoringSessions.get(newSessionId);
+        
+        if (newSession && newSession.ws) {
+          sendMessage(newSession.ws, {
+            type: 'get_system_stats',
+            data: {
+              timestamp: Date.now(),
+              requestId: data.timestamp || Date.now()
+            }
+          });
+          console.log(`向新连接的主机 ${targetHost} 请求系统状态`);
+        }
+      } else {
+        sendError(ws, `无法连接到主机 ${targetHost}`, sessionId);
+      }
+    });
+  }
 }
 
 /**

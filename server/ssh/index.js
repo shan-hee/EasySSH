@@ -11,6 +11,22 @@ const ssh = require('./ssh');
 const sftp = require('./sftp');
 const utils = require('./utils');
 
+// 存储临时连接配置的映射
+const pendingConnections = new Map();
+
+// 清理过期的连接配置的定时任务
+setInterval(() => {
+  const now = Date.now();
+  const expirationTime = 30 * 60 * 1000; // 30分钟过期
+  
+  for (const [id, data] of pendingConnections.entries()) {
+    if (now - data.timestamp > expirationTime) {
+      pendingConnections.delete(id);
+      console.log(utils.logMessage('清理过期连接ID', id));
+    }
+  }
+}, 15 * 60 * 1000); // 每15分钟执行一次清理
+
 /**
  * 从HTTP请求中获取客户端真实IP地址
  * @param {Object} request HTTP请求对象
@@ -70,15 +86,88 @@ function initWebSocketServer(server) {
         const msg = JSON.parse(message);
         const { type, data } = msg;
         
-        // 如果是连接请求，添加客户端IP
-        if (type === 'connect' && data) {
-          data.clientIP = clientIP;
-        }
-        
         switch (type) {
           case 'connect':
             // 处理连接请求
+            if (data) {
+              // 添加客户端IP到连接数据
+              data.clientIP = clientIP;
+              
+              // 检查是否使用安全连接ID模式
+              if (data.connectionId) {
+                console.log(utils.logMessage('收到安全连接ID请求', data.connectionId));
+                
+                // 注册连接ID
+                if (!pendingConnections.has(data.connectionId)) {
+                  pendingConnections.set(data.connectionId, {
+                    timestamp: Date.now(),
+                    sessionId: data.sessionId
+                  });
+                  
+                  // 通知客户端连接ID已注册，请求认证信息
+                  utils.sendMessage(ws, 'connection_id_registered', {
+                    connectionId: data.connectionId,
+                    sessionId: data.sessionId,
+                    status: 'need_auth'
+                  });
+                } else {
+                  // 连接ID已存在，可能是重连
+                  const pendingData = pendingConnections.get(data.connectionId);
+                  pendingData.timestamp = Date.now(); // 更新时间戳
+                  
+                  utils.sendMessage(ws, 'connection_id_registered', {
+                    connectionId: data.connectionId,
+                    sessionId: data.sessionId || pendingData.sessionId,
+                    status: 'reconnected' 
+                  });
+                }
+              } else {
+                // 传统模式：直接包含所有连接信息
             sessionId = await ssh.handleConnect(ws, data);
+              }
+            }
+            break;
+            
+          case 'authenticate':
+            // 处理认证请求（安全模式）
+            if (data && data.connectionId) {
+              console.log(utils.logMessage('处理认证请求', data.connectionId));
+              
+              // 验证连接ID是否存在
+              if (pendingConnections.has(data.connectionId)) {
+                const pendingData = pendingConnections.get(data.connectionId);
+                
+                // 获取完整连接信息
+                const connectionConfig = {
+                  sessionId: pendingData.sessionId || data.sessionId,
+                  address: data.address,
+                  port: data.port || 22,
+                  username: data.username,
+                  authType: data.authType || 'password',
+                  clientIP: clientIP
+                };
+                
+                // 根据认证方式添加凭据
+                if (data.authType === 'password') {
+                  connectionConfig.password = data.password;
+                } else if (data.authType === 'privateKey' || data.authType === 'key') {
+                  connectionConfig.privateKey = data.privateKey;
+                  if (data.passphrase) {
+                    connectionConfig.passphrase = data.passphrase;
+                  }
+                }
+                
+                // 建立SSH连接
+                sessionId = await ssh.handleConnect(ws, connectionConfig);
+                
+                // 连接成功后删除临时连接ID
+                pendingConnections.delete(data.connectionId);
+              } else {
+                utils.sendError(ws, '无效的连接ID或已过期', data.sessionId);
+              }
+            } else {
+              utils.sendError(ws, '无效的认证请求', data.sessionId);
+            }
             break;
             
           case 'data':
