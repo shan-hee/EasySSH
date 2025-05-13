@@ -127,12 +127,10 @@ export default defineComponent({
     // 生成QR码（模拟API请求）
     const generateQrCode = () => {
       // 实际应用中，这里应该调用后端API获取QR码URL和密钥
-      setTimeout(() => {
-        // 模拟后端返回数据
-        qrCodeUrl.value = 'https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=otpauth://totp/EasySSH:admin@example.com?secret=JBSWY3DPEHPK3PXP&issuer=EasySSH'
-        secretKey.value = 'JBSWY3DPEHPK3PXP'
-        isLoading.value = false
-      }, 1500)
+      // 直接设置数据，不使用延时
+      qrCodeUrl.value = 'https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=otpauth://totp/EasySSH:admin@example.com?secret=JBSWY3DPEHPK3PXP&issuer=EasySSH'
+      secretKey.value = 'JBSWY3DPEHPK3PXP'
+      isLoading.value = false
     }
     
     // 进入验证步骤
@@ -163,8 +161,7 @@ export default defineComponent({
       isVerifying.value = true
       
       try {
-        // 模拟验证过程
-        await new Promise(resolve => setTimeout(resolve, 1500))
+        // 直接验证，不使用延时
         
         // 模拟验证成功
         emit('mfa-setup-complete', {

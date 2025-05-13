@@ -212,7 +212,8 @@ export default defineComponent({
       goToRegister,
       showMfaModal,
       handleMfaVerifySuccess,
-      handleMfaVerifyCancel
+      handleMfaVerifyCancel,
+      tempUserInfo
     }
   }
 })

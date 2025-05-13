@@ -3,18 +3,18 @@
     <div class="profile-header">
       <h1>更新个人资料</h1>
     </div>
-    <div class="profile-form">
+    <form class="profile-form" @submit.prevent="submitProfile">
       <div class="form-group">
         <label for="username">新用户名</label>
-        <input type="text" id="username" v-model="profileForm.username" class="form-input" />
+        <input type="text" id="username" v-model="profileForm.username" class="form-input" autocomplete="username" />
       </div>
       <div class="form-group">
         <label for="oldPassword">原始密码</label>
-        <input type="password" id="oldPassword" v-model="profileForm.oldPassword" class="form-input" />
+        <input type="password" id="oldPassword" v-model="profileForm.oldPassword" class="form-input" autocomplete="current-password" />
       </div>
       <div class="form-group">
         <label for="newPassword">新密码</label>
-        <input type="password" id="newPassword" v-model="profileForm.newPassword" class="form-input" />
+        <input type="password" id="newPassword" v-model="profileForm.newPassword" class="form-input" autocomplete="new-password" />
       </div>
       
       <!-- 修改多因素身份验证部分 -->
@@ -22,7 +22,7 @@
         <div class="mfa-header">
           <label>多因素身份验证</label>
           <div class="mfa-switch">
-            <button @click="handleMfaToggle">
+            <button type="button" @click="handleMfaToggle">
               {{ profileForm.mfaEnabled ? '禁用' : '启用' }}
             </button>
           </div>
@@ -31,14 +31,15 @@
       </div>
       
       <div class="form-actions">
-        <button class="btn-cancel" @click="closeProfile">关闭</button>
-        <button class="btn-submit" @click="submitProfile">确认</button>
+        <button type="button" class="btn-cancel" @click="closeProfile">关闭</button>
+        <button type="submit" class="btn-submit">确认</button>
       </div>
-    </div>
+    </form>
     
     <!-- MFA设置弹窗 -->
     <MfaSetupModal 
-      v-model:visible="showMfaSetupModal"
+      :visible="showMfaSetupModal"
+      @update:visible="showMfaSetupModal = $event"
       @mfa-setup-complete="handleMfaSetupComplete"
       @mfa-setup-cancelled="handleMfaSetupCancelled"
     />
