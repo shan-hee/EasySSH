@@ -52,6 +52,7 @@ import { useRouter } from 'vue-router'
 import { useUserStore } from '@/store/user'
 import { ElMessage } from 'element-plus'
 import MfaSetupModal from '@/components/auth/MfaSetupModal.vue'
+import mfaService from '@/services/mfa'
 
 export default defineComponent({
   name: 'UserProfile',
@@ -84,11 +85,34 @@ export default defineComponent({
     })
     
     // 处理MFA切换
-    const handleMfaToggle = () => {
+    const handleMfaToggle = async () => {
       if (profileForm.value.mfaEnabled) {
-        // 如果已启用，则直接禁用
+        try {
+          // 如果已启用，确认是否禁用
+          const confirmDisable = confirm('确定要禁用多因素身份验证吗？这将降低您账户的安全性。')
+          
+          if (confirmDisable) {
+            // 获取验证码（实际环境中可能需要额外输入验证码的流程）
+            const code = prompt('请输入您的验证器应用中的验证码进行确认：')
+            
+            if (code && code.length === 6) {
+              const result = await mfaService.disableMfa(code)
+              
+              if (result.success) {
+                // 禁用成功
         profileForm.value.mfaEnabled = false
         ElMessage.success('已禁用多因素身份验证')
+              } else {
+                ElMessage.error(result.message || '禁用MFA失败')
+              }
+            } else if (code) {
+              ElMessage.error('请输入6位数字验证码')
+            }
+          }
+        } catch (error) {
+          console.error('禁用MFA失败:', error)
+          ElMessage.error('禁用MFA时发生错误')
+        }
       } else {
         // 如果未启用，则打开设置弹窗
         showMfaSetupModal.value = true
@@ -96,10 +120,32 @@ export default defineComponent({
     }
     
     // 处理MFA设置完成
-    const handleMfaSetupComplete = (data) => {
+    const handleMfaSetupComplete = async (data) => {
+      try {
+        // MfaSetupModal中已经验证过验证码，这里不再进行验证
+        // 直接启用MFA
       profileForm.value.mfaEnabled = true
       profileForm.value.mfaSecret = data.secret
       ElMessage.success('已成功启用多因素身份验证')
+        
+        // 可选：在这里调用API更新用户信息
+        // 如果需要通过API更新，则可以这样做:
+        // const result = await userStore.updateProfile({
+        //   mfaEnabled: true,
+        //   mfaSecret: data.secret
+        // })
+        // 
+        // if (!result.success) {
+        //   ElMessage.error(result.message || '启用MFA失败')
+        //   profileForm.value.mfaEnabled = false
+        //   profileForm.value.mfaSecret = null
+        // }
+      } catch (error) {
+        console.error('启用MFA失败:', error)
+        ElMessage.error('启用MFA时发生错误')
+        profileForm.value.mfaEnabled = false
+        profileForm.value.mfaSecret = null
+      }
     }
     
     // 处理MFA设置取消

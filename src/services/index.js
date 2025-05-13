@@ -15,6 +15,7 @@ import storage from './storage'
 // import notification from './notification'
 import auth from './auth'
 import terminal from './terminal'
+import mfaService from './mfa'
 
 // 服务初始化状态
 const servicesStatus = {
@@ -30,7 +31,8 @@ const servicesStatus = {
   storage: false,
   // notification: false,
   auth: false,
-  terminal: false
+  terminal: false,
+  mfa: false
 }
 
 // 初始化所有服务的方法
@@ -129,6 +131,7 @@ export {
   // notification,
   auth,
   terminal,
+  mfaService,
   initServices,
   getServicesStatus
 }
@@ -148,6 +151,7 @@ export default {
   // notification,
   auth,
   terminal,
+  mfa: mfaService,
   initServices,
   getServicesStatus
 } 
