@@ -29,7 +29,7 @@
             label="记住我" 
             :disabled="loginLoading" 
           />
-          <a href="#" class="forgot-password" @click.prevent="forgotPassword">忘记密码？</a>
+          <a href="#" class="forgot-password" @click.prevent="forgotPassword">无法登录？</a>
         </div>
         <button 
           type="submit"
@@ -184,9 +184,9 @@ export default defineComponent({
     }
     
     const forgotPassword = () => {
-      // 提示用户功能暂未实现
+      // 提示用户联系管理员
       ElMessage({
-        message: '忘记密码功能暂未实现',
+        message: '如果无法登录，请联系系统管理员',
         type: 'info',
         offset: 3,
         zIndex: 9999

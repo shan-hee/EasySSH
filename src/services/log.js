@@ -251,48 +251,105 @@ class LogService {
   }
 
   /**
-   * 简化对象，移除循环引用和复杂对象
-   * @param {Object} obj 要简化的对象
-   * @param {Number} depth 当前深度
-   * @param {Number} maxDepth 最大深度
-   * @returns {Object} 简化后的对象
+   * 处理敏感信息，截断长字符串
+   * @param {string} value - 要处理的字符串
+   * @param {number} maxLength - 最大长度
+   * @returns {string} - 处理后的字符串
    * @private
    */
-  _simplifyObject(obj, depth = 0, maxDepth = 2) {
-    if (depth > maxDepth) return '[Object]'
-    
-    // 处理基本类型
-    if (obj === null) return null
-    if (typeof obj !== 'object') return obj
+  _truncateSensitive(value, maxLength = 20) {
+    if (typeof value === 'string' && value.length > maxLength) {
+      return value.substring(0, maxLength) + '...'
+    }
+    return value
+  }
+  
+  /**
+   * 处理对象中的敏感字段
+   * @param {Object} obj - 要处理的对象
+   * @returns {Object} - 处理后的对象
+   * @private
+   */
+  _sanitizeData(obj) {
+    if (!obj || typeof obj !== 'object') {
+      return obj
+    }
     
     // 处理数组
     if (Array.isArray(obj)) {
-      return obj.length > 10 
-        ? `[Array(${obj.length})]` 
-        : obj.map(item => this._simplifyObject(item, depth + 1, maxDepth))
+      return obj.map(item => this._sanitizeData(item))
     }
     
-    // 处理普通对象
-    try {
-      const newObj = {}
-      for (const key in obj) {
-        if (Object.prototype.hasOwnProperty.call(obj, key)) {
-          // 只保留简单的键值对
-          if (typeof obj[key] === 'function') {
-            newObj[key] = '[Function]'
-          } else if (typeof obj[key] === 'symbol') {
-            newObj[key] = '[Symbol]'
-          } else if (typeof obj[key] === 'object' && obj[key] !== null) {
-            newObj[key] = this._simplifyObject(obj[key], depth + 1, maxDepth)
+    // 处理对象
+    const result = {}
+    for (const key in obj) {
+      if (Object.prototype.hasOwnProperty.call(obj, key)) {
+        // 检查是否是敏感字段名
+        if (/token|password|secret|key|auth|jwt|authorization/i.test(key)) {
+          if (typeof obj[key] === 'string') {
+            result[key] = this._truncateSensitive(obj[key])
           } else {
-            newObj[key] = obj[key]
+            result[key] = obj[key]
           }
+        } else if (typeof obj[key] === 'object' && obj[key] !== null) {
+          // 递归处理嵌套对象
+          result[key] = this._sanitizeData(obj[key])
+        } else {
+          result[key] = obj[key]
         }
       }
-      return newObj
-    } catch (e) {
-      return '[Object]'
     }
+    return result
+  }
+
+  /**
+   * 简化对象，用于日志显示
+   * @param {Object} obj - 要简化的对象
+   * @param {number} depth - 当前深度
+   * @param {number} maxDepth - 最大递归深度
+   * @returns {Object} - 简化后的对象
+   * @private
+   */
+  _simplifyObject(obj, depth = 0, maxDepth = 2) {
+    // 首先处理敏感信息
+    const sanitized = this._sanitizeData(obj)
+    
+    if (depth >= maxDepth) {
+      return typeof sanitized === 'object' && sanitized !== null
+        ? '[Object]'
+        : sanitized
+    }
+    
+    if (!sanitized || typeof sanitized !== 'object') {
+      return sanitized
+    }
+    
+    if (Array.isArray(sanitized)) {
+      if (sanitized.length > 10) {
+        return `[Array(${sanitized.length})]`
+      }
+      return sanitized.map(item => this._simplifyObject(item, depth + 1, maxDepth))
+    }
+    
+    const result = {}
+    for (const key in sanitized) {
+      if (Object.prototype.hasOwnProperty.call(sanitized, key)) {
+        // 跳过函数、Symbol等不可序列化的值
+        const value = sanitized[key]
+        if (value === undefined || typeof value === 'function' || typeof value === 'symbol') {
+          continue
+        }
+        
+        // 处理嵌套对象
+        if (value && typeof value === 'object') {
+          result[key] = this._simplifyObject(value, depth + 1, maxDepth)
+        } else {
+          result[key] = value
+        }
+      }
+    }
+    
+    return result
   }
 
   /**

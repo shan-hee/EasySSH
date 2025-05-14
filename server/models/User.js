@@ -16,7 +16,9 @@ class User {
       displayName: '',
       avatar: '',
       bio: '',
-      location: ''
+      location: '',
+      mfaEnabled: false,
+      mfaSecret: ''
     };
     this.settings = data.settings ? (typeof data.settings === 'string' ? JSON.parse(data.settings) : data.settings) : {
       theme: 'light',

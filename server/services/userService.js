@@ -6,6 +6,7 @@
 const User = require('../models/User');
 const jwt = require('jsonwebtoken');
 const { getCache, connectDatabase } = require('../config/database');
+const logger = require('../utils/logger');
 
 // 获取缓存实例
 const cache = getCache();
@@ -22,12 +23,12 @@ class UserService {
       const cachedUser = cache.get(userKey);
       
       if (cachedUser) {
-        console.log('从缓存获取用户数据');
+        logger.debug('从缓存获取用户数据');
         return cachedUser;
       }
       
       // 从SQLite获取
-      console.log('从SQLite获取用户数据');
+      logger.debug('从SQLite获取用户数据');
       const user = await User.findById(userId);
       
       if (!user) {
@@ -42,7 +43,7 @@ class UserService {
       
       return safeUser;
     } catch (error) {
-      console.error('获取用户失败:', error);
+      logger.error('获取用户失败', error);
       throw error;
     }
   }
@@ -59,9 +60,11 @@ class UserService {
       }
       
       // 检查邮箱是否已存在
+      if (userData.email) {
       const existingEmail = await User.findOne({ email: userData.email });
       if (existingEmail) {
         return { success: false, message: '邮箱已被注册' };
+        }
       }
       
       // 创建新用户
@@ -70,7 +73,7 @@ class UserService {
       await user.save();
       
       // 生成JWT令牌
-      const token = this.generateToken(user.id);
+      const token = await this.generateToken(user.id);
       
       // 创建用户会话
       await this.createUserSession(user.id.toString(), token);
@@ -82,7 +85,7 @@ class UserService {
         token
       };
     } catch (error) {
-      console.error('用户注册失败:', error);
+      logger.error('用户注册失败', error);
       return { success: false, message: '注册失败: ' + error.message };
     }
   }
@@ -90,10 +93,11 @@ class UserService {
   /**
    * 用户登录
    */
-  async loginUser(email, password) {
+  async loginUser(username, password) {
     try {
-      // 查找用户
-      const user = await User.findOne({ email });
+      // 查找用户（仅支持用户名登录）
+      const user = await User.findOne({ username });
+      
       if (!user) {
         return { success: false, message: '用户不存在' };
       }
@@ -116,17 +120,49 @@ class UserService {
       // 生成JWT令牌
       const token = this.generateToken(user.id);
       
+      // 先验证会话缓存是否工作正常
+      const testKey = `test:${Date.now()}`;
+      const testValue = { test: true, timestamp: Date.now() };
+      cache.set(testKey, testValue, 60); // 60秒过期
+      const retrievedValue = cache.get(testKey);
+      
+      logger.info('缓存测试结果', {
+        key: testKey,
+        valueSet: testValue,
+        valueRetrieved: retrievedValue,
+        cacheWorking: !!retrievedValue,
+        matches: JSON.stringify(retrievedValue) === JSON.stringify(testValue)
+      });
+      
       // 创建用户会话
-      await this.createUserSession(user.id.toString(), token);
+      const sessionCreated = await this.createUserSession(user.id.toString(), token);
+      logger.info('用户会话创建结果', {
+        userId: user.id,
+        sessionCreated,
+        tokenLength: token.length
+      });
+      
+      // 检查会话是否能被检索到
+      const tokenKey = `token:${token}`;
+      const session = cache.get(tokenKey);
+      logger.info('会话检索测试', {
+        key: tokenKey.substring(0, 20) + '...',
+        sessionExists: !!session,
+        sessionValue: session
+      });
+      
+      // 检查用户是否设置了多因素认证
+      const needMfa = user.profile && user.profile.mfaEnabled && user.profile.mfaSecret;
       
       return {
         success: true,
         message: '登录成功',
         user: user.toSafeObject(),
-        token
+        token,
+        requireMfa: needMfa || false
       };
     } catch (error) {
-      console.error('用户登录失败:', error);
+      logger.error('用户登录失败', error);
       return { success: false, message: '登录失败: ' + error.message };
     }
   }
@@ -137,9 +173,19 @@ class UserService {
    */
   async createUserSession(userId, token) {
     try {
+      logger.info('创建用户会话', { userId, tokenLength: token.length });
+      
       // 存储令牌映射，用于验证
       const tokenKey = `token:${token}`;
-      cache.set(tokenKey, { userId, valid: true }, 24 * 60 * 60); // 24小时过期
+      const sessionData = { userId, valid: true };
+      const cacheTimeSeconds = 24 * 60 * 60; // 24小时过期
+      
+      cache.set(tokenKey, sessionData, cacheTimeSeconds);
+      logger.info('会话数据已缓存', { 
+        key: tokenKey.substring(0, 20) + '...',
+        expiresIn: `${cacheTimeSeconds}秒`,
+        data: sessionData
+      });
       
       // 将令牌添加到用户的活动会话列表
       const userSessionsKey = `user:sessions:${userId}`;
@@ -147,11 +193,26 @@ class UserService {
       userSessions.push(token);
       
       // 更新用户的会话列表
-      cache.set(userSessionsKey, userSessions, 30 * 24 * 60 * 60); // 30天过期
+      const userSessionsCacheTime = 30 * 24 * 60 * 60; // 30天过期
+      cache.set(userSessionsKey, userSessions, userSessionsCacheTime);
+      logger.info('用户会话列表已更新', { 
+        key: userSessionsKey, 
+        sessionsCount: userSessions.length,
+        expiresIn: `${userSessionsCacheTime}秒`
+      });
+      
+      // 验证会话是否正确保存
+      const savedSession = cache.get(tokenKey);
+      logger.info('验证缓存中的会话', {
+        exists: !!savedSession,
+        valid: savedSession ? savedSession.valid : false,
+        userId: savedSession ? savedSession.userId : null,
+        match: savedSession ? String(savedSession.userId) === String(userId) : false
+      });
       
       return true;
     } catch (error) {
-      console.error('创建用户会话失败:', error);
+      logger.error('创建用户会话失败', error);
       return false;
     }
   }
@@ -161,25 +222,54 @@ class UserService {
    */
   async verifyToken(token) {
     try {
+      logger.debug('开始验证令牌', { tokenLength: token.length });
+      
       // 首先检查令牌是否过期，并解码用户ID
-      const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key');
+      const secretKey = process.env.JWT_SECRET || 'your-secret-key';
+      logger.debug('使用密钥验证JWT', { 
+        secretKeyExists: !!secretKey,
+        secretKeyLength: secretKey.length,
+        usingDefault: secretKey === 'your-secret-key'
+      });
+      
+      const decoded = jwt.verify(token, secretKey);
+      logger.debug('JWT解码成功', { 
+        userId: decoded.userId,
+        iat: decoded.iat,
+        exp: decoded.exp,
+        currentTime: Math.floor(Date.now() / 1000)
+      });
       
       // 然后检查令牌是否在缓存中
       const tokenKey = `token:${token}`;
       const session = cache.get(tokenKey);
+      logger.debug('缓存中的会话状态', { 
+        sessionExists: !!session,
+        sessionValid: session ? session.valid : false,
+        sessionUserId: session ? session.userId : null,
+        decodedUserId: decoded.userId,
+        match: session ? String(session.userId) === String(decoded.userId) : false
+      });
       
-      if (!session || !session.valid || session.userId !== decoded.userId) {
+      if (!session || !session.valid || String(session.userId) !== String(decoded.userId)) {
+        logger.warn('令牌验证失败 - 缓存数据不匹配或无效');
         return { valid: false };
       }
       
       // 获取用户信息
       const user = await this.getUserById(decoded.userId);
+      logger.debug('已获取用户信息', { 
+        userExists: !!user,
+        userId: user ? user.id : null,
+        username: user ? user.username : null
+      });
       
       return {
         valid: true,
         user
       };
     } catch (error) {
+      logger.error('令牌验证错误', error);
       return { valid: false, error: error.message };
     }
   }
@@ -211,7 +301,7 @@ class UserService {
       
       return { success: true, message: '注销成功' };
     } catch (error) {
-      console.error('用户注销失败:', error);
+      logger.error('用户注销失败', error);
       return { success: false, message: '注销失败: ' + error.message };
     }
   }
@@ -280,7 +370,7 @@ class UserService {
         user: user.toSafeObject()
       };
     } catch (error) {
-      console.error('更新用户信息失败:', error);
+      logger.error('更新用户信息失败', error);
       return { success: false, message: '更新失败: ' + error.message };
     }
   }
@@ -297,7 +387,7 @@ class UserService {
       
       return safeUsers;
     } catch (error) {
-      console.error('获取用户列表失败:', error);
+      logger.error('获取用户列表失败', error);
       throw error;
     }
   }
@@ -336,7 +426,7 @@ class UserService {
       
       return { success: true, message: '用户删除成功' };
     } catch (error) {
-      console.error('删除用户失败:', error);
+      logger.error('删除用户失败', error);
       return { success: false, message: '删除失败: ' + error.message };
     }
   }
@@ -352,6 +442,45 @@ class UserService {
     };
     
     return jwt.sign(payload, process.env.JWT_SECRET || 'your-secret-key');
+  }
+
+  /**
+   * 更改用户密码
+   * @param {string} userId - 用户ID
+   * @param {string} currentPassword - 当前密码
+   * @param {string} newPassword - 新密码
+   * @returns {Promise<Object>} - 操作结果
+   */
+  async changePassword(userId, currentPassword, newPassword) {
+    try {
+      logger.debug('开始处理密码更改', { userId });
+      
+      // 获取用户
+      const user = await User.findById(userId);
+      if (!user) {
+        return { success: false, message: '用户不存在' };
+      }
+      
+      // 验证当前密码
+      const isMatch = await user.comparePassword(currentPassword);
+      if (!isMatch) {
+        logger.warn('密码更改失败 - 当前密码不匹配', { userId });
+        return { success: false, message: '当前密码不正确' };
+      }
+      
+      // 设置新密码
+      user.setPassword(newPassword);
+      await user.save();
+      
+      // 清除用户缓存
+      cache.del(`user:${userId}`);
+      
+      logger.info('密码更改成功', { userId });
+      return { success: true, message: '密码更改成功' };
+    } catch (error) {
+      logger.error('密码更改处理失败', error);
+      return { success: false, message: '密码更改失败: ' + error.message };
+    }
   }
 }
 

@@ -38,8 +38,32 @@ class ApiService {
         config => {
           // 添加认证token
           const token = localStorage.getItem('auth_token')
+          log.debug('请求拦截器 - localStorage中的token状态', {
+            exists: !!token,
+            length: token ? token.length : 0,
+            type: typeof token,
+            preview: token ? token.substring(0, 15) + '...' : 'null'
+          })
+          
           if (token) {
-            config.headers['Authorization'] = `Bearer ${token}`
+            // 验证token格式有效性
+            if (token.split('.').length !== 3) {
+              log.warn('无效的JWT格式', { token: token.substring(0, 15) + '...' })
+              // 清除无效token并触发认证失败事件
+              localStorage.removeItem('auth_token')
+              this._handleAuthError()
+            } else {
+              config.headers['Authorization'] = `Bearer ${token}`
+              // 添加日志，记录请求和认证信息
+              log.info(`发送请求: ${config.method.toUpperCase()} ${config.url}`, {
+                hasToken: true,
+                tokenLength: token.length,
+                tokenPrefix: token.substring(0, 10) + '...'
+              })
+            }
+          } else {
+            // 添加日志，记录没有token的请求
+            log.warn(`发送未认证请求: ${config.method.toUpperCase()} ${config.url}`)
           }
           return config
         },

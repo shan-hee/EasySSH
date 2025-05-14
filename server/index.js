@@ -11,11 +11,15 @@ const dotenv = require('dotenv');
 const { initWebSocketServer } = require('./ssh');
 const { initMonitoringWebSocketServer } = require('./monitoring');
 const { connectDatabase, getDatabaseStatus, closeDatabase } = require('./config/database');
+const setupAdmin = require('./scripts/setupAdmin');
 
 // 导入路由
 const userRoutes = require('./routes/userRoutes');
 const serverRoutes = require('./routes/serverRoutes');
 const monitorRoutes = require('./routes/monitorRoutes');
+
+// 导入日志工具
+const logger = require('./utils/logger');
 
 // ANSI颜色代码
 const colors = {
@@ -35,6 +39,14 @@ const colors = {
 // 加载环境变量
 dotenv.config({ path: path.resolve(__dirname, '../.env') });
 
+// 输出关键环境变量（隐藏实际值，仅显示是否存在）
+logger.info('环境变量加载状态', {
+  NODE_ENV: process.env.NODE_ENV || 'development',
+  SERVER_PORT: process.env.SERVER_PORT || '8000',
+  JWT_SECRET: process.env.JWT_SECRET ? '已设置' : '未设置(使用默认值)',
+  ENCRYPTION_KEY: process.env.ENCRYPTION_KEY ? '已设置' : '未设置(使用默认值)'
+});
+
 // 初始化数据库连接
 const initDatabase = () => {
   try {
@@ -49,7 +61,7 @@ const initDatabase = () => {
 
 // 创建Express应用
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.SERVER_PORT || 8000;
 
 // 配置中间件
 app.use(cors());
@@ -91,13 +103,16 @@ const monitoringPort = process.env.MONITORING_PORT || 9527;
 initMonitoringWebSocketServer(monitoringPort);
 
 // 更新服务器启动信息，添加监控WebSocket信息
-const startApp = () => {
+const startApp = async () => {
   // 初始化数据库
   const dbInitialized = initDatabase();
   if (!dbInitialized) {
     console.error('无法启动应用：数据库连接失败');
     process.exit(1);
   }
+  
+  // 初始化管理员账户
+  await setupAdmin();
   
   // 启动服务器
   const host = '::'; // 监听 IPv6，可兼容 IPv4
@@ -137,15 +152,18 @@ const startApp = () => {
 };
 
 // 启动应用
-startApp();
+startApp().catch(err => {
+  logger.error('应用启动失败', err);
+  process.exit(1);
+});
 
 // 处理进程退出
 process.on('SIGINT', () => {
-  console.log(`\n${colors.yellow}正在关闭服务器...${colors.reset}`);
+  logger.info('正在关闭服务器...');
   server.close(() => {
     // 关闭数据库连接
     closeDatabase();
-    console.log(`${colors.green}服务器已安全关闭${colors.reset}`);
+    logger.info('服务器已安全关闭');
     process.exit(0);
   });
-}); 
+});

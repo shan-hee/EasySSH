@@ -64,7 +64,7 @@ class AuthService {
       }
       
       // 请求当前用户信息
-      const response = await apiService.get('/auth/me', {}, { hideErrorMessage: true })
+      const response = await apiService.get('/users/me', {}, { hideErrorMessage: true })
       
       if (response && response.success) {
         this.isAuthenticated.value = true
@@ -93,11 +93,29 @@ class AuthService {
    * @private
    */
   handleAuthExpired() {
+    const oldToken = localStorage.getItem(this.tokenKey)
+    const oldUser = this.currentUser.value
+    
+    log.warn('认证已过期', {
+      hadToken: !!oldToken, 
+      tokenLength: oldToken ? oldToken.length : 0,
+      hadUser: !!oldUser,
+      username: oldUser ? oldUser.username : null
+    })
+    
+    // 清理认证状态
     this.isAuthenticated.value = false
     this.currentUser.value = null
     this.token = null
     localStorage.removeItem(this.tokenKey)
-    log.warn('认证已过期')
+    
+    // 如果当前不在登录页，则跳转到登录页
+    if (window.location.pathname !== '/login') {
+      // 允许登录后返回当前页面
+      const currentPath = window.location.pathname
+      const redirectParam = currentPath !== '/' ? `?redirect=${encodeURIComponent(currentPath)}` : ''
+      router.push(`/login${redirectParam}`)
+    }
   }
   
   /**
@@ -108,16 +126,33 @@ class AuthService {
    */
   async login(username, password) {
     try {
-      const response = await apiService.post('/auth/login', { username, password })
+      log.info(`尝试登录: ${username}`)
+      
+      const response = await apiService.post('/users/login', { username, password })
       
       if (response && response.success) {
         const { token, user } = response.data
+        
+        // 添加日志记录token信息
+        log.info('登录成功，获取到token', { 
+          tokenReceived: !!token,
+          tokenLength: token ? token.length : 0,
+          tokenPrefix: token ? (token.substring(0, 10) + '...') : 'none'
+        })
         
         // 保存令牌和用户信息
         this.token = token
         localStorage.setItem(this.tokenKey, token)
         this.currentUser.value = user
         this.isAuthenticated.value = true
+        
+        // 检查localStorage中是否成功保存token
+        const savedToken = localStorage.getItem(this.tokenKey)
+        log.info('Token保存状态', {
+          tokenSaved: !!savedToken,
+          savedLength: savedToken ? savedToken.length : 0,
+          matches: savedToken === token
+        })
         
         log.info('用户登录成功', { username: user.username })
         return { success: true, user }
@@ -148,7 +183,7 @@ class AuthService {
       // 如果需要通知服务器
       if (callApi && this.token) {
         try {
-          await apiService.post('/auth/logout', {}, { hideErrorMessage: true })
+          await apiService.post('/users/logout', {}, { hideErrorMessage: true })
         } catch (error) {
           log.warn('登出API请求失败', error)
           // 继续执行登出流程
@@ -176,7 +211,7 @@ class AuthService {
    */
   async register(userData) {
     try {
-      const response = await apiService.post('/auth/register', userData)
+      const response = await apiService.post('/users/register', userData)
       
       if (response && response.success) {
         log.info('用户注册成功')
@@ -199,35 +234,6 @@ class AuthService {
   }
   
   /**
-   * 重置密码
-   * @param {string} email - 用户邮箱
-   * @returns {Promise<Object>} 重置密码结果
-   */
-  async resetPassword(email) {
-    try {
-      const response = await apiService.post('/auth/reset-password', { email })
-      
-      if (response && response.success) {
-        log.info('密码重置请求已发送')
-        return { success: true, message: '密码重置链接已发送到您的邮箱' }
-      } else {
-        log.warn('密码重置请求失败', response)
-        return { success: false, message: response.message || '密码重置请求失败' }
-      }
-    } catch (error) {
-      log.error('密码重置API请求失败', error)
-      
-      // 返回友好的错误信息
-      let message = '密码重置失败，请稍后重试'
-      if (error.response) {
-        message = error.response.data.message || message
-      }
-      
-      return { success: false, message }
-    }
-  }
-  
-  /**
    * 更新用户信息
    * @param {Object} userData - 用户数据
    * @returns {Promise<Object>} 更新结果
@@ -238,7 +244,7 @@ class AuthService {
         return { success: false, message: '未登录' }
       }
       
-      const response = await apiService.put('/auth/profile', userData)
+      const response = await apiService.put('/users/me', userData)
       
       if (response && response.success) {
         // 更新本地用户信息
@@ -275,7 +281,7 @@ class AuthService {
         return { success: false, message: '未登录' }
       }
       
-      const response = await apiService.post('/auth/change-password', {
+      const response = await apiService.post('/users/change-password', {
         oldPassword,
         newPassword
       })
@@ -322,7 +328,7 @@ class AuthService {
    */
   async loadUserInfo() {
     try {
-      const userInfo = await apiService.get('/auth/me')
+      const userInfo = await apiService.get('/users/me')
       this.userStore.setUserInfo(userInfo)
       return userInfo
     } catch (error) {
@@ -332,7 +338,7 @@ class AuthService {
         try {
           await this.refreshToken()
           // 刷新成功后重新获取用户信息
-          return await apiService.get('/auth/me')
+          return await apiService.get('/users/me')
         } catch (refreshError) {
           // 如果刷新失败，则登出
           this.logout()
@@ -360,7 +366,7 @@ class AuthService {
     }
     
     // 创建新的刷新请求
-    this.refreshPromise = apiService.post('/auth/refresh', { refreshToken })
+    this.refreshPromise = apiService.post('/users/refresh', { refreshToken })
       .then(response => {
         // 保存新token
         this.setToken(response.accessToken)
@@ -385,27 +391,11 @@ class AuthService {
    */
   async updatePassword(passwordData) {
     try {
-      const response = await apiService.post('/auth/update-password', passwordData)
+      const response = await apiService.post('/users/password', passwordData)
       ElMessage.success('密码更新成功')
       return response
     } catch (error) {
       console.error('密码更新失败:', error)
-      throw error
-    }
-  }
-  
-  /**
-   * 请求密码重置
-   * @param {string} email - 用户邮箱
-   * @returns {Promise<Object>} - 请求结果
-   */
-  async forgotPassword(email) {
-    try {
-      const response = await apiService.post('/auth/forgot-password', { email })
-      ElMessage.success('密码重置链接已发送到您的邮箱')
-      return response
-    } catch (error) {
-      console.error('请求密码重置失败:', error)
       throw error
     }
   }

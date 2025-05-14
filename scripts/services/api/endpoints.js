@@ -32,11 +32,11 @@ export const connectionEndpoints = {
  */
 export const userEndpoints = {
   // 用户登录
-  login: '/auth/login',
+  login: '/users/login',
   // 用户登出
-  logout: '/auth/logout',
+  logout: '/users/logout',
   // 用户注册
-  register: '/auth/register',
+  register: '/users/register',
   // 获取当前用户信息
   current: '/users/me',
   // 更新用户信息
@@ -44,9 +44,9 @@ export const userEndpoints = {
   // 修改密码
   changePassword: '/users/password',
   // 找回密码
-  resetPassword: '/auth/reset-password',
+  resetPassword: '/users/reset-password',
   // 验证令牌
-  verifyToken: '/auth/verify'
+  verifyToken: '/users/verify'
 };
 
 /**

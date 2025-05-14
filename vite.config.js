@@ -1,4 +1,4 @@
-import { defineConfig } from 'vite';
+import { defineConfig, loadEnv } from 'vite';
 import vue from '@vitejs/plugin-vue';
 import { resolve } from 'path';
 import viteCompression from 'vite-plugin-compression';
@@ -74,6 +74,8 @@ const customLogger = () => {
 
 // https://vitejs.dev/config/
 export default defineConfig(({ command, mode }) => {
+  // 加载环境变量
+  const env = loadEnv(mode, process.cwd());
   const isDev = mode === 'development';
   
   return {
@@ -99,15 +101,16 @@ export default defineConfig(({ command, mode }) => {
     // 服务器配置
     server: {
       host: 'localhost',
-      port: 3000,
+      port: parseInt(env.VITE_PORT || '3000'), // 从环境变量读取前端端口
       open: true, // 自动打开浏览器
       cors: true, // 启用CORS
       proxy: {
         // 开发环境API代理配置
         '/api': {
-          target: 'http://localhost:8080',
+          target: env.VITE_API_TARGET || 'http://localhost:8000', // 从环境变量读取API目标地址
           changeOrigin: true,
-          rewrite: (path) => path.replace(/^\/api/, '')
+          // 不重写路径，保留/api前缀
+          // rewrite: (path) => path.replace(/^\/api/, '')
         }
       }
     },

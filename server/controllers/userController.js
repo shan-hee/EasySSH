@@ -8,20 +8,20 @@ const userService = require('../services/userService');
 // 用户注册
 exports.register = async (req, res) => {
   try {
-    const { username, email, password } = req.body;
+    const { username, password } = req.body;
     
     // 验证必要字段
-    if (!username || !email || !password) {
+    if (!username || !password) {
       return res.status(400).json({
         success: false,
-        message: '用户名、邮箱和密码不能为空'
+        message: '用户名和密码不能为空'
       });
     }
     
     // 调用用户服务完成注册
     const result = await userService.registerUser({
       username,
-      email,
+      email: req.body.email || null,
       password,
       profile: req.body.profile || {},
       settings: req.body.settings || {}
@@ -44,18 +44,18 @@ exports.register = async (req, res) => {
 // 用户登录
 exports.login = async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const { username, password } = req.body;
     
     // 验证必要字段
-    if (!email || !password) {
+    if (!username || !password) {
       return res.status(400).json({
         success: false,
-        message: '邮箱和密码不能为空'
+        message: '用户名和密码不能为空'
       });
     }
     
     // 调用用户服务完成登录
-    const result = await userService.loginUser(email, password);
+    const result = await userService.loginUser(username, password);
     
     if (!result.success) {
       return res.status(401).json(result);
@@ -112,11 +112,36 @@ exports.updateUser = async (req, res) => {
     const userId = req.user.id;
     const userData = req.body;
     
-    // 不允许更新敏感字段
+    // 处理密码更新
+    const passwordUpdate = {};
+    if (userData.oldPassword && userData.newPassword) {
+      passwordUpdate.oldPassword = userData.oldPassword;
+      passwordUpdate.newPassword = userData.newPassword;
+      
+      // 从普通更新数据中移除密码字段
+      delete userData.oldPassword;
+      delete userData.newPassword;
+    }
+    
+    // 不允许直接更新敏感字段
     delete userData.password;
     delete userData._id;
     delete userData.isAdmin;
     
+    // 先验证并更新密码（如果有）
+    if (passwordUpdate.oldPassword && passwordUpdate.newPassword) {
+      const passwordResult = await userService.changePassword(
+        userId,
+        passwordUpdate.oldPassword,
+        passwordUpdate.newPassword
+      );
+      
+      if (!passwordResult.success) {
+        return res.status(400).json(passwordResult);
+      }
+    }
+    
+    // 更新其他用户信息
     const result = await userService.updateUser(userId, userData);
     
     if (!result.success) {
@@ -137,10 +162,10 @@ exports.updateUser = async (req, res) => {
 exports.changePassword = async (req, res) => {
   try {
     const userId = req.user.id;
-    const { currentPassword, newPassword } = req.body;
+    const { oldPassword, newPassword } = req.body;
     
     // 验证必要字段
-    if (!currentPassword || !newPassword) {
+    if (!oldPassword || !newPassword) {
       return res.status(400).json({
         success: false,
         message: '当前密码和新密码不能为空'
@@ -149,7 +174,7 @@ exports.changePassword = async (req, res) => {
     
     const result = await userService.changePassword(
       userId,
-      currentPassword,
+      oldPassword,
       newPassword
     );
     

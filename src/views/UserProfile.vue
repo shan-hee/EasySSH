@@ -27,7 +27,7 @@
             </button>
           </div>
         </div>
-        <p class="mfa-description">在登录时需要通过额外的安全项。如果您无法通过此验证，则可选择通过电子邮件恢复账户。</p>
+        <p class="mfa-description">在登录时需要通过额外的安全步骤，如果您无法通过此验证，请联系管理员。</p>
       </div>
       
       <div class="form-actions">

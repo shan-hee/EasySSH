@@ -2,6 +2,8 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { ElMessage } from 'element-plus'
 import router from '../router'
+import apiService from '../services/api'
+import log from '../services/log'
 
 export const useUserStore = defineStore('user', () => {
   // 状态
@@ -33,6 +35,12 @@ export const useUserStore = defineStore('user', () => {
   // 操作方法
   function setToken(newToken) {
     token.value = newToken
+    // 将token保存到localStorage
+    if (newToken) {
+      localStorage.setItem('auth_token', newToken)
+    } else {
+      localStorage.removeItem('auth_token')
+    }
   }
   
   function setUserInfo(info) {
@@ -46,65 +54,106 @@ export const useUserStore = defineStore('user', () => {
   // 登录
   async function login(credentials) {
     try {
-      // 模拟登录API调用
-      // 在实际应用中，这里会调用后端API进行认证
-      if (credentials.username === 'admin' && credentials.password === 'admin') {
-        // 检查用户是否启用了MFA
-        const userRecord = {
-          id: '1',
-          username: credentials.username,
-          email: 'admin@example.com',
-          role: 'admin',
-          lastLogin: new Date().toISOString(),
-          mfaEnabled: userInfo.value.mfaEnabled || false,
-          mfaSecret: userInfo.value.mfaSecret || ''
-        }
+      // 初始化API服务
+      await apiService.init()
+      
+      log.info('开始登录流程', { username: credentials.username })
+      
+      // 调用后端登录API
+      const response = await apiService.post('/users/login', {
+        username: credentials.username,
+        password: credentials.password
+      })
+      
+      // 检查登录结果
+      if (response && response.success) {
+        log.info('登录成功，获取到响应', { 
+          token: response.token ? `${response.token.substring(0, 15)}...` : 'undefined',
+          hasToken: !!response.token,
+          tokenLength: response.token ? response.token.length : 0, 
+          user: response.user ? response.user.username : null
+        })
         
-        // 如果启用了MFA，需要额外验证
-        if (userRecord.mfaEnabled) {
-          // 先存储临时登录信息，不设置token
+        // 检查是否需要MFA验证
+        if (response.requireMfa) {
+          // 需要MFA验证，返回相关信息但不设置token
           return { 
             success: true, 
             requireMfa: true,
-            user: userRecord
+            user: response.user
           }
         }
         
-        // 未启用MFA，直接完成登录
-        setToken('mock-token-123456')
-        setUserInfo(userRecord)
+        // 不需要MFA或MFA已验证，设置token和用户信息
+        if (response.token) {
+          // 直接操作localStorage确保token被保存
+          localStorage.setItem('auth_token', response.token)
+          // 然后更新状态
+          token.value = response.token
+          
+          // 验证token是否正确保存
+          const savedToken = localStorage.getItem('auth_token')
+          log.info('Token保存状态', {
+            saved: !!savedToken,
+            length: savedToken ? savedToken.length : 0,
+            matches: savedToken === response.token,
+            preview: savedToken ? `${savedToken.substring(0, 15)}...` : 'null'
+          })
+        } else {
+          log.error('登录响应中没有token')
+        }
+        
+        setUserInfo(response.user)
       
         return { success: true }
       } else {
-        throw new Error('用户名或密码错误')
+        // 登录失败
+        const errorMsg = response?.message || '登录失败'
+        throw new Error(errorMsg)
       }
     } catch (error) {
-      console.error('登录失败:', error)
-      return { success: false, error: error.message }
+      log.error('登录失败', error)
+      return { 
+        success: false, 
+        error: error.response?.data?.message || error.message || '登录失败，请检查用户名和密码' 
+      }
     }
   }
   
   // 验证MFA代码
   async function verifyMfaCode(code, tempUserInfo) {
     try {
-      // 这里应该调用API验证MFA代码
-      // 模拟验证成功，任何6位数字代码都可以通过
-      if (code && code.length === 6 && /^\d+$/.test(code)) {
+      // 调用后端MFA验证API
+      const response = await apiService.post('/users/verify-mfa', {
+        username: tempUserInfo.username,
+        code: code
+      })
+      
+      if (response && response.success) {
         // 验证成功，设置token和用户信息
-        setToken('mock-token-123456')
-        setUserInfo(tempUserInfo)
+        setToken(response.token)
+        setUserInfo(response.user || tempUserInfo)
         return { success: true }
       } else {
-        return { success: false, error: '验证码不正确' }
+        return { success: false, error: response?.message || '验证码不正确' }
       }
     } catch (error) {
-      console.error('MFA验证失败:', error)
-      return { success: false, error: error.message }
+      log.error('MFA验证失败', error)
+      return { success: false, error: error.response?.data?.message || error.message || 'MFA验证失败' }
     }
   }
   
   // 登出
-  function logout() {
+  async function logout() {
+    try {
+      // 如果已登录，调用后端登出API
+      if (isLoggedIn.value) {
+        await apiService.post('/users/logout')
+      }
+    } catch (error) {
+      log.error('登出API调用失败', error)
+      // 即使API调用失败，也继续清除本地状态
+    } finally {
     // 清空token和用户信息
     setToken('')
     setUserInfo({
@@ -117,37 +166,24 @@ export const useUserStore = defineStore('user', () => {
       mfaEnabled: false,
       mfaSecret: ''
     })
-    
-    // 可以在这里调用API通知后端用户已登出
+    }
   }
   
   // 更新用户资料
   async function updateProfile(userData) {
     try {
-      // 这里应该调用API更新用户资料
-      // 模拟API调用
-      console.log('更新用户资料:', userData)
+      // 调用后端更新用户资料API
+      const response = await apiService.put('/users/me', userData)
       
-      // 如果包含密码信息，应该验证原密码
-      if (userData.oldPassword) {
-        // 这里应该进行密码验证的API调用
-        if (userData.oldPassword !== 'admin') {
-          throw new Error('原密码不正确')
-        }
-      }
-      
+      if (response && response.success) {
       // 更新本地用户信息
-      setUserInfo({
-        ...userInfo.value,
-        username: userData.username,
-        // 更新多因素身份验证设置
-        mfaEnabled: userData.mfaEnabled,
-        mfaSecret: userData.mfaSecret || userInfo.value.mfaSecret
-      })
-      
-      return { success: true }
+        setUserInfo(response.user)
+        return { success: true }
+      } else {
+        throw new Error(response?.message || '更新资料失败')
+      }
     } catch (error) {
-      console.error('更新用户资料失败:', error)
+      log.error('更新用户资料失败', error)
       throw error
     }
   }
