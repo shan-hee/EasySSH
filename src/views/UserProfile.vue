@@ -43,6 +43,14 @@
       @mfa-setup-complete="handleMfaSetupComplete"
       @mfa-setup-cancelled="handleMfaSetupCancelled"
     />
+    
+    <!-- MFA禁用弹窗 -->
+    <MfaDisableModal
+      :visible="showMfaDisableModal"
+      @update:visible="showMfaDisableModal = $event"
+      @mfa-disable-complete="handleMfaDisableComplete"
+      @mfa-disable-cancelled="handleMfaDisableCancelled"
+    />
   </div>
 </template>
 
@@ -52,17 +60,20 @@ import { useRouter } from 'vue-router'
 import { useUserStore } from '@/store/user'
 import { ElMessage } from 'element-plus'
 import MfaSetupModal from '@/components/auth/MfaSetupModal.vue'
+import MfaDisableModal from '@/components/auth/MfaDisableModal.vue'
 import mfaService from '@/services/mfa'
 
 export default defineComponent({
   name: 'UserProfile',
   components: {
-    MfaSetupModal
+    MfaSetupModal,
+    MfaDisableModal
   },
   setup() {
     const router = useRouter()
     const userStore = useUserStore()
     const showMfaSetupModal = ref(false)
+    const showMfaDisableModal = ref(false)
     
     // 个人资料表单
     const profileForm = ref({
@@ -87,32 +98,8 @@ export default defineComponent({
     // 处理MFA切换
     const handleMfaToggle = async () => {
       if (profileForm.value.mfaEnabled) {
-        try {
-          // 如果已启用，确认是否禁用
-          const confirmDisable = confirm('确定要禁用多因素身份验证吗？这将降低您账户的安全性。')
-          
-          if (confirmDisable) {
-            // 获取验证码（实际环境中可能需要额外输入验证码的流程）
-            const code = prompt('请输入您的验证器应用中的验证码进行确认：')
-            
-            if (code && code.length === 6) {
-              const result = await mfaService.disableMfa(code)
-              
-              if (result.success) {
-                // 禁用成功
-        profileForm.value.mfaEnabled = false
-        ElMessage.success('已禁用多因素身份验证')
-              } else {
-                ElMessage.error(result.message || '禁用MFA失败')
-              }
-            } else if (code) {
-              ElMessage.error('请输入6位数字验证码')
-            }
-          }
-        } catch (error) {
-          console.error('禁用MFA失败:', error)
-          ElMessage.error('禁用MFA时发生错误')
-        }
+        // 如果已启用，显示禁用MFA的弹窗
+        showMfaDisableModal.value = true
       } else {
         // 如果未启用，则打开设置弹窗
         showMfaSetupModal.value = true
@@ -124,9 +111,9 @@ export default defineComponent({
       try {
         // MfaSetupModal中已经验证过验证码，这里不再进行验证
         // 直接启用MFA
-      profileForm.value.mfaEnabled = true
-      profileForm.value.mfaSecret = data.secret
-      ElMessage.success('已成功启用多因素身份验证')
+        profileForm.value.mfaEnabled = true
+        profileForm.value.mfaSecret = data.secret
+        ElMessage.success('已成功启用多因素身份验证')
         
         // 可选：在这里调用API更新用户信息
         // 如果需要通过API更新，则可以这样做:
@@ -150,6 +137,17 @@ export default defineComponent({
     
     // 处理MFA设置取消
     const handleMfaSetupCancelled = () => {
+      // 不做任何操作，保持当前状态
+    }
+    
+    // 处理MFA禁用完成
+    const handleMfaDisableComplete = () => {
+      profileForm.value.mfaEnabled = false
+      profileForm.value.mfaSecret = null
+    }
+    
+    // 处理MFA禁用取消
+    const handleMfaDisableCancelled = () => {
       // 不做任何操作，保持当前状态
     }
     
@@ -211,9 +209,12 @@ export default defineComponent({
       submitProfile,
       closeProfile,
       showMfaSetupModal,
+      showMfaDisableModal,
       handleMfaToggle,
       handleMfaSetupComplete,
-      handleMfaSetupCancelled
+      handleMfaSetupCancelled,
+      handleMfaDisableComplete,
+      handleMfaDisableCancelled
     }
   }
 })
