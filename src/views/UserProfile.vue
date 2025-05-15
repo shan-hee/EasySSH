@@ -17,10 +17,10 @@
         <input type="password" id="newPassword" v-model="profileForm.newPassword" class="form-input" autocomplete="new-password" />
       </div>
       
-      <!-- 修改多因素身份验证部分 -->
+      <!-- 修改两步验证部分 -->
       <div class="form-group mfa-section">
         <div class="mfa-header">
-          <label>多因素身份验证</label>
+          <label>两步验证</label>
           <div class="mfa-switch">
             <button type="button" @click="handleMfaToggle">
               {{ profileForm.mfaEnabled ? '禁用' : '启用' }}
@@ -28,6 +28,19 @@
           </div>
         </div>
         <p class="mfa-description">在登录时需要通过额外的安全步骤，如果您无法通过此验证，请联系管理员。</p>
+      </div>
+      
+      <!-- 添加注销所有设备部分 -->
+      <div class="form-group mfa-section">
+        <div class="mfa-header">
+          <label>注销所有设备</label>
+          <div class="mfa-switch">
+            <button type="button" @click="handleLogoutAllDevices">
+              注销
+            </button>
+          </div>
+        </div>
+        <p class="mfa-description">立即终止您当前账号在所有设备上的登录状态，提高账号安全性。操作后您需要重新登录，其他设备的会话可能在 30 分钟内逐步失效。</p>
       </div>
       
       <div class="form-actions">
@@ -113,7 +126,7 @@ export default defineComponent({
         // 直接启用MFA
         profileForm.value.mfaEnabled = true
         profileForm.value.mfaSecret = data.secret
-        ElMessage.success('已成功启用多因素身份验证')
+        ElMessage.success('已成功启用两步验证')
         
         // 可选：在这里调用API更新用户信息
         // 如果需要通过API更新，则可以这样做:
@@ -204,6 +217,19 @@ export default defineComponent({
       router.push('/')
     }
     
+    // 处理注销所有设备
+    const handleLogoutAllDevices = async () => {
+      try {
+        await userStore.logoutAllDevices()
+        ElMessage.success('已成功注销所有设备')
+        // 注销成功后返回首页
+        router.push('/')
+      } catch (error) {
+        console.error('注销所有设备失败:', error)
+        ElMessage.error('注销所有设备时发生错误')
+      }
+    }
+    
     return {
       profileForm,
       submitProfile,
@@ -214,7 +240,8 @@ export default defineComponent({
       handleMfaSetupComplete,
       handleMfaSetupCancelled,
       handleMfaDisableComplete,
-      handleMfaDisableCancelled
+      handleMfaDisableCancelled,
+      handleLogoutAllDevices
     }
   }
 })
@@ -280,7 +307,7 @@ label {
   color: #666;
 }
 
-/* 修改多因素身份验证部分的样式 */
+/* 修改两步验证部分的样式 */
 .mfa-section {
   border-top: 1px solid #333;
   padding-top: 20px;

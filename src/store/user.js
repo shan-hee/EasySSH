@@ -5,6 +5,37 @@ import router from '../router'
 import apiService from '../services/api'
 import log from '../services/log'
 
+// 用于存储加密凭据的键名
+const CREDENTIALS_KEY = 'easyssh_credentials'
+
+// 简单加密函数，真实场景应使用更安全的加密方法
+function encryptCredentials(username, password) {
+  // 这里使用一个极简的编码方法，实际应用中应使用更安全的加密算法
+  return btoa(JSON.stringify({
+    u: username,
+    p: password,
+    t: Date.now()
+  }))
+}
+
+// 解密凭据函数
+function decryptCredentials() {
+  try {
+    const encrypted = localStorage.getItem(CREDENTIALS_KEY)
+    if (!encrypted) return null
+    
+    const decoded = JSON.parse(atob(encrypted))
+    return {
+      username: decoded.u,
+      password: decoded.p,
+      timestamp: decoded.t
+    }
+  } catch (error) {
+    log.error('解密凭据失败', error)
+    return null
+  }
+}
+
 export const useUserStore = defineStore('user', () => {
   // 状态
   const token = ref('')
@@ -51,13 +82,57 @@ export const useUserStore = defineStore('user', () => {
     preferences.value = { ...preferences.value, ...newPrefs }
   }
   
+  // 保存用户凭据（记住密码）
+  function saveUserCredentials(username, password) {
+    try {
+      const encrypted = encryptCredentials(username, password)
+      localStorage.setItem(CREDENTIALS_KEY, encrypted)
+      log.info('用户凭据已保存，下次登录将自动填充')
+    } catch (error) {
+      log.error('保存用户凭据失败', error)
+    }
+  }
+  
+  // 清除保存的用户凭据
+  function clearUserCredentials() {
+    localStorage.removeItem(CREDENTIALS_KEY)
+    log.info('用户凭据已清除')
+  }
+  
+  // 自动登录（使用保存的凭据）仅填充表单
+  async function autoLogin() {
+    try {
+      const credentials = decryptCredentials()
+      if (!credentials) {
+        log.warn('没有保存的凭据')
+        return { success: false, message: '没有保存的凭据' }
+      }
+      
+      log.info('找到保存的凭据，但根据安全策略需要用户手动登录')
+      
+      // 返回凭据但不自动登录
+      return { 
+        success: false, 
+        hasCredentials: true,
+        credentials: {
+          username: credentials.username,
+          // 不返回密码，只用于内部填充
+        },
+        message: '需要用户手动登录'
+      }
+    } catch (error) {
+      log.error('处理保存凭据过程发生异常', error)
+      return { success: false, error: error.message || '无法处理保存的凭据' }
+    }
+  }
+  
   // 登录
   async function login(credentials) {
     try {
       // 初始化API服务
       await apiService.init()
       
-      log.info('开始登录流程', { username: credentials.username })
+      log.info('开始登录流程', { username: credentials.username, remember: credentials.remember })
       
       // 调用后端登录API
       const response = await apiService.post('/users/login', {
@@ -73,6 +148,13 @@ export const useUserStore = defineStore('user', () => {
           tokenLength: response.token ? response.token.length : 0, 
           user: response.user ? response.user.username : null
         })
+        
+        // 处理记住密码功能
+        if (credentials.remember) {
+          saveUserCredentials(credentials.username, credentials.password)
+        } else {
+          clearUserCredentials()
+        }
         
         // 检查是否需要MFA验证
         if (response.requireMfa) {
@@ -105,7 +187,7 @@ export const useUserStore = defineStore('user', () => {
         
         setUserInfo(response.user)
       
-        return { success: true }
+        return { success: true, silent: credentials.silent }
       } else {
         // 登录失败
         const errorMsg = response?.message || '登录失败'
@@ -188,6 +270,27 @@ export const useUserStore = defineStore('user', () => {
     }
   }
   
+  // 注销所有设备
+  async function logoutAllDevices() {
+    try {
+      // 调用后端注销所有设备API
+      const response = await apiService.post('/users/logout-all-devices')
+      
+      if (response && response.success) {
+        // 清除所有保存的凭据
+        clearUserCredentials()
+        // 注销成功后，当前设备也需要登出
+        await logout()
+        return { success: true }
+      } else {
+        throw new Error(response?.message || '注销所有设备失败')
+      }
+    } catch (error) {
+      log.error('注销所有设备失败', error)
+      throw error
+    }
+  }
+  
   return {
     // 状态
     token,
@@ -206,6 +309,14 @@ export const useUserStore = defineStore('user', () => {
     login,
     logout,
     updateProfile,
-    verifyMfaCode
+    verifyMfaCode,
+    logoutAllDevices,
+    autoLogin
+  }
+}, {
+  persist: {
+    key: 'easyssh-user',
+    storage: localStorage,
+    paths: ['token', 'userInfo', 'preferences']
   }
 }) 

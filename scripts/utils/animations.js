@@ -144,6 +144,9 @@ export function addPulseEffect(element, options = {}) {
  * 设置页面内容加载动画
  */
 export function setupPageTransitions() {
+  // SPA应用中应当使用Vue Router，不应直接劫持链接点击
+  // 下面的代码被注释以避免与Vue路由冲突
+  /*
   // 监听所有内部链接点击
   document.querySelectorAll('a[href^="/"]').forEach(link => {
     link.addEventListener('click', (e) => {
@@ -168,6 +171,7 @@ export function setupPageTransitions() {
       }
     });
   });
+  */
   
   // 页面加载时的进入动画
   window.addEventListener('load', () => {

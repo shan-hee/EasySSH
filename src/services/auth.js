@@ -63,29 +63,91 @@ class AuthService {
         return false
       }
       
-      // 请求当前用户信息
-      const response = await apiService.get('/users/me', {}, { hideErrorMessage: true })
+      // 在请求前解析和验证 token
+      let isTokenValid = true
+      try {
+        // 简单检查token格式是否有效
+        const tokenParts = this.token.split('.')
+        if (tokenParts.length !== 3) {
+          log.warn('令牌格式无效')
+          isTokenValid = false
+        } else {
+          // 检查token是否过期
+          const payload = JSON.parse(atob(tokenParts[1]))
+          const expTime = payload.exp * 1000 // 转换为毫秒
+          if (expTime < Date.now()) {
+            log.warn('令牌已过期')
+            isTokenValid = false
+          }
+        }
+      } catch (error) {
+        log.error('解析令牌失败', error)
+        isTokenValid = false
+      }
       
-      if (response && response.success) {
-        this.isAuthenticated.value = true
-        this.currentUser.value = response.data.user
-        return true
-      } else {
-        // 令牌无效，清除本地数据
-        this.logout(false)
+      // 如果token格式无效或已过期，直接触发检查失败事件
+      if (!isTokenValid) {
+        this.clearAuthState()
+        window.dispatchEvent(new CustomEvent('auth:check-failed'))
+        return false
+      }
+      
+      // 令牌格式有效，请求当前用户信息
+      // 添加小延迟确保token已完全同步
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
+      try {
+        // 使用hideErrorMessage参数避免显示错误消息
+        const response = await apiService.get('/users/me', {}, { hideErrorMessage: true })
+        
+        // 添加日志记录响应详情，帮助排查问题
+        log.debug('获取用户信息响应', {
+          success: response?.success,
+          hasUserData: !!response?.user,
+          userId: response?.user?.id
+        })
+        
+        // 检查响应中是否包含有效的用户信息
+        if (response && response.success && response.user) {
+          this.isAuthenticated.value = true
+          this.currentUser.value = response.user
+          return true
+        } else {
+          // 响应成功但缺少用户数据
+          log.warn('用户数据格式不完整或无效')
+          this.clearAuthState()
+          window.dispatchEvent(new CustomEvent('auth:check-failed'))
+          return false
+        }
+      } catch (error) {
+        // 请求失败，可能是令牌无效或网络问题
+        log.error('验证认证状态失败', error)
+        
+        // 清理状态并触发轻量级认证检查失败事件
+        this.clearAuthState()
+        window.dispatchEvent(new CustomEvent('auth:check-failed'))
+        
         return false
       }
     } catch (error) {
-      // 请求失败，可能是令牌无效或网络问题
-      log.error('验证认证状态失败', error)
-      
-      // 如果是401错误，清除认证状态
-      if (error.response && error.response.status === 401) {
-        this.logout(false)
-      }
-      
+      // 未捕获的异常
+      log.error('验证认证状态过程中出现未处理异常', error)
+      this.clearAuthState()
       return false
     }
+  }
+  
+  /**
+   * 清除认证状态但不触发页面跳转
+   * @private
+   */
+  clearAuthState() {
+    this.isAuthenticated.value = false
+    this.currentUser.value = null
+    this.token = null
+    // 清除localStorage中的token
+    localStorage.removeItem(this.tokenKey)
+    log.info('已清除认证状态')
   }
   
   /**

@@ -204,6 +204,124 @@ window.debugMonitoring = {
 // 挂载应用并初始化服务
 app.mount('#app')
 
+// 导入用户状态管理，并初始化用户状态
+import { useUserStore } from './store/user'
+
+// 添加监听器，处理认证状态检查失败的事件（不重定向）
+window.addEventListener('auth:check-failed', async () => {
+  log.info('检测到认证状态检查失败，尝试静默自动登录')
+  try {
+    // 防止重复处理
+    if (window.isAutoLoginInProgress) {
+      log.info('自动登录已在进行中，跳过此次触发')
+      return
+    }
+    
+    window.isAutoLoginInProgress = true
+    
+    // 添加自动登录尝试计数，避免循环
+    window.autoLoginAttempts = (window.autoLoginAttempts || 0) + 1
+    if (window.autoLoginAttempts > 3) {
+      log.warn('自动登录尝试次数过多，暂停尝试')
+      window.isAutoLoginInProgress = false
+      return
+    }
+    
+    // 尝试自动登录但不显示任何界面反馈
+    setTimeout(async () => {
+      try {
+        const userStore = useUserStore()
+        const result = await userStore.autoLogin()
+        
+        if (result.success) {
+          log.info('静默自动登录成功')
+          // 登录成功后重置尝试计数
+          window.autoLoginAttempts = 0
+        } else {
+          log.warn('静默自动登录失败：没有可用凭据')
+        }
+        // 不管成功与否都不进行任何界面操作
+      } catch (error) {
+        log.error('静默自动登录失败', error)
+      } finally {
+        window.isAutoLoginInProgress = false
+      }
+    }, 100)
+  } catch (error) {
+    window.isAutoLoginInProgress = false
+    log.error('处理认证检查失败事件出错', error)
+  }
+})
+
+// 添加监听器，处理认证过期事件
+window.addEventListener('auth:expired', async () => {
+  log.info('检测到认证令牌过期，尝试自动登录')
+  try {
+    // 防止auth:expired事件在初始化完成前被处理
+    const userStore = useUserStore()
+    
+    // 避免重复触发，设置一个标记
+    if (window.isAutoLoginInProgress) {
+      log.info('自动登录已在进行中，跳过此次触发')
+      return
+    }
+    
+    window.isAutoLoginInProgress = true
+    
+    // 添加自动登录尝试计数，避免循环
+    window.autoLoginAttempts = (window.autoLoginAttempts || 0) + 1
+    if (window.autoLoginAttempts > 3) {
+      log.warn('自动登录尝试次数过多，重定向到登录页面')
+      window.isAutoLoginInProgress = false
+      // 重定向到登录页面
+      if (window.location.pathname !== '/login') {
+        const currentPath = window.location.pathname
+        const redirectParam = currentPath !== '/' ? `?redirect=${encodeURIComponent(currentPath)}` : ''
+        window.location.href = `/login${redirectParam}`
+      }
+      return
+    }
+    
+    // 延迟一小段时间执行，给页面一些时间处理完其他操作
+    setTimeout(async () => {
+      try {
+        const result = await userStore.autoLogin()
+        
+        if (!result.success) {
+          log.info('自动登录失败，重定向到登录页面')
+          // 如果自动登录失败，重定向到登录页
+          if (window.location.pathname !== '/login') {
+            const currentPath = window.location.pathname
+            const redirectParam = currentPath !== '/' ? `?redirect=${encodeURIComponent(currentPath)}` : ''
+            window.location.href = `/login${redirectParam}`
+          }
+        } else {
+          log.info('自动登录成功')
+          // 登录成功后重置尝试计数
+          window.autoLoginAttempts = 0
+          // 刷新当前页面以确保状态正确
+          window.location.reload()
+        }
+      } catch (error) {
+        log.error('自动登录处理出错', error)
+        // 出错时重定向到登录页
+        if (window.location.pathname !== '/login') {
+          window.location.href = '/login'
+        }
+      } finally {
+        window.isAutoLoginInProgress = false
+      }
+    }, 100)
+  } catch (error) {
+    log.error('处理认证过期事件出错', error)
+    window.isAutoLoginInProgress = false
+    // 出错时重定向到登录页
+    if (window.location.pathname !== '/login') {
+      window.location.href = '/login'
+    }
+  }
+})
+
 // 统一的服务初始化流程
 const initializeApp = async () => {
   try {
@@ -212,6 +330,19 @@ const initializeApp = async () => {
     
     // 使用日志服务记录而不是console.log
     servicesManager.log.info('开始初始化应用服务...')
+    
+    // 初始化用户状态
+    try {
+      const userStore = useUserStore()
+      // 检查localStorage中是否有token，并确保store中的token被正确设置
+      const savedToken = localStorage.getItem('auth_token')
+      if (savedToken && !userStore.token) {
+        log.info('从localStorage恢复用户登录状态')
+        userStore.setToken(savedToken)
+      }
+    } catch (error) {
+      log.error('初始化用户状态失败', error)
+    }
     
     // 初始化基础UI服务（键盘管理等）
     servicesManager.log.debug('准备初始化UI基础服务')

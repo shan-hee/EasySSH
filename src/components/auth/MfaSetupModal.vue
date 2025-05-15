@@ -1,7 +1,7 @@
 <template>
   <Modal 
     v-model:visible="isVisible" 
-    title="设置双因素身份验证" 
+    title="设置两步验证" 
     customClass="mfa-modal"
     :hide-footer="true"
     @close="handleClose"

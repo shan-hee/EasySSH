@@ -59,12 +59,35 @@
 </template>
 
 <script>
-import { defineComponent, reactive, ref } from 'vue'
+import { defineComponent, reactive, ref, onMounted } from 'vue'
 import { useUserStore } from '@/store/user'
 import { ElMessage } from 'element-plus'
 import Checkbox from '@/components/common/Checkbox.vue'
 import MfaVerifyModal from '@/components/auth/MfaVerifyModal.vue'
 import { useRouter } from 'vue-router'
+import log from '@/services/log'
+
+// 从localStorage获取保存的凭据函数
+function getSavedCredentials() {
+  try {
+    const encrypted = localStorage.getItem('easyssh_credentials')
+    if (!encrypted) return { username: '', password: '', hasCredentials: false }
+    
+    const decoded = JSON.parse(atob(encrypted))
+    return {
+      username: decoded.u,
+      password: decoded.p,
+      hasCredentials: true
+    }
+  } catch (error) {
+    log.error('解析保存的凭据失败:', error)
+    return {
+      username: '',
+      password: '',
+      hasCredentials: false
+    }
+  }
+}
 
 export default defineComponent({
   name: 'LoginPanel',
@@ -76,14 +99,25 @@ export default defineComponent({
   setup(props, { emit }) {
     const userStore = useUserStore()
     const loginLoading = ref(false)
-    const rememberMe = ref(false)
     const router = useRouter()
     const showMfaModal = ref(false)
     const tempUserInfo = ref(null)
     
+    // 在初始化阶段获取保存的凭据
+    const savedCreds = getSavedCredentials()
+    
+    // 初始化表单状态，如果有保存的凭据则直接使用
     const loginForm = reactive({
-      username: '',
-      password: ''
+      username: savedCreds.username,
+      password: savedCreds.password
+    })
+    
+    // 初始化记住我选项
+    const rememberMe = ref(savedCreds.hasCredentials)
+    
+    // 移除自动登录代码，用户需要手动点击登录
+    onMounted(() => {
+      log.info('登录页面初始化，需要用户手动点击登录按钮')
     })
     
     const handleLogin = async () => {
@@ -100,6 +134,9 @@ export default defineComponent({
       
       try {
         loginLoading.value = true
+        
+        // 记录是否使用记住我选项
+        log.info(`登录使用"记住我"选项: ${rememberMe.value}`)
         
         // 调用登录方法
         const result = await userStore.login({
@@ -119,7 +156,7 @@ export default defineComponent({
           }
           
           // 不需要MFA，直接完成登录流程
-          completeLogin()
+          completeLogin(result.silent)
         }
       } catch (error) {
         console.error('登录失败:', error)
@@ -156,23 +193,23 @@ export default defineComponent({
     }
     
     // 完成登录流程
-    const completeLogin = () => {
-      // 清空表单
-      loginForm.username = ''
+    const completeLogin = (silent = false) => {
+      // 清空表单(密码字段)
       loginForm.password = ''
-      rememberMe.value = false
       tempUserInfo.value = null
       
       // 发送登录成功事件
       emit('login-success')
       
-      // 显示登录成功消息
+      // 显示登录成功消息(如果不是静默模式)
+      if (!silent) {
       ElMessage({
         message: '登录成功',
         type: 'success',
         offset: 3,
         zIndex: 9999
       })
+      }
       
       // 登录成功后导航到控制台
       router.push('/')

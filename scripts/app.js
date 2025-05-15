@@ -94,12 +94,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // 监听页面加载完成事件
 window.addEventListener('load', () => {
-  // 页面完全加载后，预加载其他可能需要的资源
-  setTimeout(() => {
-    import('./utils/animations.js').then(module => {
-      module.setupPageTransitions();
-    });
-  }, 1000);
+  // 删除对动画模块的加载以避免与Vue路由冲突
+  // setTimeout(() => {
+  //   import('./utils/animations.js').then(module => {
+  //     module.setupPageTransitions();
+  //   });
+  // }, 1000);
   
   // 记录性能指标
   if (performance.getEntriesByType) {

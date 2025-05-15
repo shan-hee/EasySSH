@@ -1,7 +1,7 @@
 <template>
   <Modal 
     v-model:visible="isVisible" 
-    title="禁用多因素身份验证" 
+    title="禁用两步验证" 
     customClass="mfa-disable-modal"
     :hide-footer="true"
     @close="handleClose"
@@ -14,10 +14,10 @@
           </svg>
         </div>
         <div class="disable-title">
-          确定要禁用多因素身份验证吗？
+          确定要禁用两步验证吗？
         </div>
         <div class="disable-description">
-          禁用多因素身份验证将降低您账户的安全性。禁用后，您只需要使用用户名和密码即可登录系统。
+          禁用两步验证将降低您账户的安全性。禁用后，您只需要使用用户名和密码即可登录系统。
         </div>
         <div class="btn-container">
           <button class="btn btn-cancel" @click="handleClose">取消</button>
@@ -220,7 +220,7 @@ export default defineComponent({
         if (result.success) {
           // 禁用成功
           emit('mfa-disable-complete')
-          ElMessage.success('已成功禁用多因素身份验证')
+          ElMessage.success('已成功禁用两步验证')
           handleClose()
         } else {
           verifyError.value = result.message || '禁用失败，请检查验证码是否正确'

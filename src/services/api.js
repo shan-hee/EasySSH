@@ -45,6 +45,15 @@ class ApiService {
             preview: token ? token.substring(0, 15) + '...' : 'null'
           })
           
+          // 判断是否为不需要认证的请求路径
+          const noAuthRequiredPaths = [
+            '/users/login', 
+            '/users/register', 
+            '/users/refresh',
+            '/users/verify-mfa'
+          ]
+          const isAuthExemptPath = noAuthRequiredPaths.some(path => config.url.includes(path))
+          
           if (token) {
             // 验证token格式有效性
             if (token.split('.').length !== 3) {
@@ -62,8 +71,14 @@ class ApiService {
               })
             }
           } else {
-            // 添加日志，记录没有token的请求
+            // 添加日志，记录没有token的请求（根据路径决定日志级别）
+            if (isAuthExemptPath) {
+              // 对于登录等不需要认证的路径，使用info级别
+              log.info(`发送非认证请求: ${config.method.toUpperCase()} ${config.url}`)
+            } else {
+              // 对于需要认证但没有token的请求，使用warn级别
             log.warn(`发送未认证请求: ${config.method.toUpperCase()} ${config.url}`)
+            }
           }
           return config
         },
@@ -76,6 +91,14 @@ class ApiService {
       // 响应拦截器
       this.axios.interceptors.response.use(
         response => {
+          // 记录关键请求的响应情况
+          if (response.config.url.includes('/users/me')) {
+            log.debug('用户验证请求成功', {
+              status: response.status,
+              hasData: !!response.data,
+              success: response.data?.success
+            })
+          }
           return response
         },
         error => {
@@ -111,9 +134,37 @@ class ApiService {
           message = data.message || '请求参数错误'
           break
         case 401:
-          message = '认证失败，请重新登录'
-          // 可以在这里触发登录过期逻辑
+          message = '登录失败，用户名或密码错误'
+          // 401错误统一处理，仅在确实是认证问题时触发登录过期逻辑
+          // 排除登录、注册、刷新token等不需要触发认证过期的路径
+          const noAuthRequiredPaths = [
+            '/users/login', 
+            '/users/register', 
+            '/users/refresh'
+          ]
+          
+          const isAuthRequiredPath = error.config && 
+            !noAuthRequiredPaths.some(path => error.config.url.includes(path))
+          
+          // 为/users/me请求添加一次重试机制
+          if (error.config && error.config.url.includes('/users/me') && !error.config.__isRetry) {
+            log.info('尝试重新验证用户状态...')
+            error.config.__isRetry = true
+            return this.axios.request(error.config)
+          }
+          
+          // 如果是/users/me请求，这可能是页面刷新时的检查，使用轻量级事件
+          if (error.config && error.config.url.includes('/users/me')) {
+            log.warn('当前是/users/me请求的401错误，使用轻量级检查失败事件')
+            // 使用轻量级auth:check-failed事件，而非auth:expired
+            window.dispatchEvent(new CustomEvent('auth:check-failed'))
+          } else if (isAuthRequiredPath) {
+            // 其他需要认证的路径触发认证过期事件
+            log.warn(`认证错误(401): ${error.config.url}，触发认证过期事件`)
           this._handleAuthError()
+          } else {
+            log.debug(`忽略非认证路径的401错误: ${error.config.url}`)
+          }
           break
         case 403:
           message = '没有权限进行此操作'
@@ -162,12 +213,7 @@ class ApiService {
     const event = new CustomEvent('auth:expired')
     window.dispatchEvent(event)
     
-    // 可以选择重定向到登录页
-    if (window.location.pathname !== '/login') {
-      setTimeout(() => {
-        window.location.href = '/login?redirect=' + encodeURIComponent(window.location.pathname)
-      }, 1500)
-    }
+    // 不再自动重定向，让auth:expired事件处理程序处理重定向
   }
   
   /**
