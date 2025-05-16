@@ -1,9 +1,16 @@
-<template>
+设置两步验证<template>
   <div class="profile-container">
     <div class="profile-header">
       <h1>更新个人资料</h1>
     </div>
-    <form class="profile-form" @submit.prevent="submitProfile">
+    
+    <!-- 添加加载状态显示 -->
+    <div v-if="isLoading" class="profile-loading">
+      <div class="loading-spinner"></div>
+      <span>加载个人信息中...</span>
+    </div>
+    
+    <form v-else class="profile-form" @submit.prevent="submitProfile">
       <div class="form-group">
         <label for="username">新用户名</label>
         <input type="text" id="username" v-model="profileForm.username" class="form-input" autocomplete="username" />
@@ -20,7 +27,7 @@
       <!-- 修改两步验证部分 -->
       <div class="form-group mfa-section">
         <div class="mfa-header">
-          <label>两步验证</label>
+          <label>两步验证 <span v-if="profileForm.mfaEnabled" class="tag tag-success">已启用</span></label>
           <div class="mfa-switch">
             <button type="button" @click="handleMfaToggle">
               {{ profileForm.mfaEnabled ? '禁用' : '启用' }}
@@ -35,7 +42,7 @@
         <div class="mfa-header">
           <label>注销所有设备</label>
           <div class="mfa-switch">
-            <button type="button" @click="handleLogoutAllDevices">
+            <button type="button" @click="showLogoutAllDevicesModal = true">
               注销
             </button>
           </div>
@@ -64,29 +71,42 @@
       @mfa-disable-complete="handleMfaDisableComplete"
       @mfa-disable-cancelled="handleMfaDisableCancelled"
     />
+
+    <!-- 注销所有设备弹窗 -->
+    <LogoutAllDevicesModal 
+      :visible="showLogoutAllDevicesModal"
+      @update:visible="showLogoutAllDevicesModal = $event"
+      @logout-complete="handleLogoutComplete"
+      @logout-cancelled="handleLogoutCancelled"
+    />
   </div>
 </template>
 
 <script>
-import { defineComponent, ref, onMounted } from 'vue'
+import { defineComponent, ref, onMounted, onBeforeMount, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useUserStore } from '@/store/user'
 import { ElMessage } from 'element-plus'
 import MfaSetupModal from '@/components/auth/MfaSetupModal.vue'
 import MfaDisableModal from '@/components/auth/MfaDisableModal.vue'
+import LogoutAllDevicesModal from '@/components/auth/LogoutAllDevicesModal.vue'
 import mfaService from '@/services/mfa'
+import apiService from '@/services/api'
 
 export default defineComponent({
   name: 'UserProfile',
   components: {
     MfaSetupModal,
-    MfaDisableModal
+    MfaDisableModal,
+    LogoutAllDevicesModal
   },
   setup() {
     const router = useRouter()
     const userStore = useUserStore()
     const showMfaSetupModal = ref(false)
     const showMfaDisableModal = ref(false)
+    const showLogoutAllDevicesModal = ref(false)
+    const isLoading = ref(true)
     
     // 个人资料表单
     const profileForm = ref({
@@ -96,12 +116,75 @@ export default defineComponent({
       mfaEnabled: false
     })
     
-    // 加载当前用户信息
-    onMounted(() => {
+    // 计算属性：判断是否需要重新加载用户数据
+    const shouldRefreshUserData = computed(() => {
+      // 检查store中是否已有完整用户数据
+      return !userStore.userInfo?.username || 
+             userStore.userInfo.username === '' || 
+             typeof userStore.userInfo.profile?.mfaEnabled === 'undefined'
+    })
+    
+    // 从store中加载数据到表单
+    const loadFormFromStore = () => {
+      profileForm.value.username = userStore.username || ''
+      profileForm.value.mfaEnabled = userStore.userInfo.profile?.mfaEnabled || false
+    }
+    
+    // 从服务器获取最新用户数据
+    const fetchUserData = async () => {
+      try {
+        isLoading.value = true
+        const response = await apiService.get('/users/me')
+        
+        if (response && response.success) {
+          console.log('获取用户信息成功:', response.user)
+          // 更新store中的用户信息
+          userStore.setUserInfo(response.user)
+          
+          // 更新表单中的数据
+          profileForm.value.username = response.user.username || ''
+          profileForm.value.mfaEnabled = response.user.profile?.mfaEnabled || false
+        } else {
+          // 如果请求失败但本地有数据，使用本地数据
+          loadFormFromStore()
+          ElMessage.warning('无法获取最新数据，显示本地缓存数据')
+        }
+      } catch (error) {
+        console.error('获取用户信息失败:', error)
+        // 使用已有信息
+        loadFormFromStore()
+        ElMessage.warning('获取数据失败，显示本地缓存数据')
+      } finally {
+        isLoading.value = false
+      }
+    }
+    
+    // 页面挂载前预加载数据
+    onBeforeMount(() => {
+      if (!userStore.isLoggedIn) {
+        router.push('/')
+        return
+      }
+      
+      // 初始显示已有数据
+      if (!shouldRefreshUserData.value) {
+        loadFormFromStore()
+        isLoading.value = false
+      } else {
+        // 没有数据则保持loading状态，等待onMounted获取数据
+        isLoading.value = true
+      }
+    })
+    
+    // 组件挂载后根据情况决定是否刷新数据
+    onMounted(async () => {
       if (userStore.isLoggedIn) {
-        profileForm.value.username = userStore.username
-        // 如果用户有MFA设置，也应该加载
-        profileForm.value.mfaEnabled = userStore.userInfo.mfaEnabled || false
+        // 检查是否需要从服务器刷新数据
+        if (shouldRefreshUserData.value) {
+          await fetchUserData()
+        } else {
+          isLoading.value = false
+        }
       } else {
         // 未登录时跳转回主页
         router.push('/')
@@ -122,24 +205,14 @@ export default defineComponent({
     // 处理MFA设置完成
     const handleMfaSetupComplete = async (data) => {
       try {
-        // MfaSetupModal中已经验证过验证码，这里不再进行验证
-        // 直接启用MFA
+        // 启用MFA后立即刷新用户数据，确保最新状态被保存
+        await fetchUserData()
+        
+        // 更新本地表单状态
         profileForm.value.mfaEnabled = true
         profileForm.value.mfaSecret = data.secret
-        ElMessage.success('已成功启用两步验证')
         
-        // 可选：在这里调用API更新用户信息
-        // 如果需要通过API更新，则可以这样做:
-        // const result = await userStore.updateProfile({
-        //   mfaEnabled: true,
-        //   mfaSecret: data.secret
-        // })
-        // 
-        // if (!result.success) {
-        //   ElMessage.error(result.message || '启用MFA失败')
-        //   profileForm.value.mfaEnabled = false
-        //   profileForm.value.mfaSecret = null
-        // }
+        ElMessage.success('已成功启用两步验证')
       } catch (error) {
         console.error('启用MFA失败:', error)
         ElMessage.error('启用MFA时发生错误')
@@ -154,9 +227,18 @@ export default defineComponent({
     }
     
     // 处理MFA禁用完成
-    const handleMfaDisableComplete = () => {
-      profileForm.value.mfaEnabled = false
-      profileForm.value.mfaSecret = null
+    const handleMfaDisableComplete = async () => {
+      try {
+        // 禁用MFA后立即刷新用户数据，确保最新状态被保存
+        await fetchUserData()
+        
+        // 本地状态更新
+        profileForm.value.mfaEnabled = false
+        profileForm.value.mfaSecret = null
+      } catch (error) {
+        console.error('处理MFA禁用结果失败:', error)
+        ElMessage.error('处理禁用结果时发生错误')
+      }
     }
     
     // 处理MFA禁用取消
@@ -181,12 +263,14 @@ export default defineComponent({
         // 构建更新数据
         const updateData = {
           username: profileForm.value.username,
-          mfaEnabled: profileForm.value.mfaEnabled
+          profile: {
+            mfaEnabled: profileForm.value.mfaEnabled
+          }
         }
         
         // 如果有MFA密钥，需要更新
         if (profileForm.value.mfaSecret) {
-          updateData.mfaSecret = profileForm.value.mfaSecret
+          updateData.profile.mfaSecret = profileForm.value.mfaSecret
         }
         
         // 如果填写了新密码则添加密码信息
@@ -194,6 +278,9 @@ export default defineComponent({
           updateData.oldPassword = profileForm.value.oldPassword
           updateData.newPassword = profileForm.value.newPassword
         }
+        
+        // 显示加载状态
+        isLoading.value = true
         
         // 调用更新接口
         await userStore.updateProfile(updateData)
@@ -209,6 +296,7 @@ export default defineComponent({
       } catch (error) {
         console.error('更新个人资料失败:', error)
         ElMessage.error(error.message || '更新失败，请重试')
+        isLoading.value = false
       }
     }
     
@@ -230,18 +318,33 @@ export default defineComponent({
       }
     }
     
+    // 处理注销所有设备完成
+    const handleLogoutComplete = () => {
+      // 注销完成后的逻辑已在LogoutAllDevicesModal中处理
+      console.log('注销所有设备完成')
+    }
+    
+    // 处理取消注销所有设备
+    const handleLogoutCancelled = () => {
+      console.log('取消注销所有设备')
+    }
+    
     return {
       profileForm,
+      isLoading,
       submitProfile,
       closeProfile,
       showMfaSetupModal,
       showMfaDisableModal,
+      showLogoutAllDevicesModal,
       handleMfaToggle,
       handleMfaSetupComplete,
       handleMfaSetupCancelled,
       handleMfaDisableComplete,
       handleMfaDisableCancelled,
-      handleLogoutAllDevices
+      handleLogoutAllDevices,
+      handleLogoutComplete,
+      handleLogoutCancelled
     }
   }
 })
@@ -267,6 +370,30 @@ export default defineComponent({
   font-size: 20px;
   font-weight: bold;
   color: #f0f0f0;
+}
+
+/* 添加加载状态样式 */
+.profile-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 50px 20px;
+  text-align: center;
+}
+
+.loading-spinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid rgba(255, 255, 255, 0.1);
+  border-radius: 50%;
+  border-top-color: #0083d3;
+  animation: spin 1s ease-in-out infinite;
+  margin-bottom: 15px;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
 }
 
 .profile-form {
@@ -379,5 +506,22 @@ label {
 
 .btn-submit:hover {
   background-color: #0096f2;
+}
+
+/* 添加状态标签样式 */
+.tag {
+  display: inline-block;
+  padding: 2px 6px;
+  margin-left: 8px;
+  font-size: 12px;
+  border-radius: 4px;
+  font-weight: normal;
+  vertical-align: middle;
+}
+
+.tag-success {
+  background-color: rgba(35, 203, 167, 0.2);
+  color: #23cba7;
+  border: 1px solid rgba(35, 203, 167, 0.3);
 }
 </style> 

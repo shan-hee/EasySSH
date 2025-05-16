@@ -46,8 +46,10 @@ export const useUserStore = defineStore('user', () => {
     avatar: '',
     role: '',
     lastLogin: null,
+    profile: {
     mfaEnabled: false,
     mfaSecret: ''
+    }
   })
   const preferences = ref({
     theme: 'system',
@@ -75,7 +77,28 @@ export const useUserStore = defineStore('user', () => {
   }
   
   function setUserInfo(info) {
-    userInfo.value = { ...userInfo.value, ...info }
+    // 特别处理profile对象，确保深层嵌套的对象也能正确合并
+    if (info && info.profile) {
+      userInfo.value = { 
+        ...userInfo.value, 
+        ...info,
+        profile: {
+          ...(userInfo.value.profile || {}),
+          ...info.profile
+        }
+      }
+      console.log('用户信息已更新(含profile):', userInfo.value)
+    } else {
+      userInfo.value = { ...userInfo.value, ...info }
+      console.log('用户信息已更新:', userInfo.value)
+    }
+    
+    // 同时将用户信息保存到localStorage的currentUser中，方便其他服务直接访问
+    try {
+      localStorage.setItem('currentUser', JSON.stringify(userInfo.value))
+    } catch (error) {
+      log.error('保存currentUser到localStorage失败', error)
+    }
   }
   
   function updatePreferences(newPrefs) {
@@ -205,10 +228,13 @@ export const useUserStore = defineStore('user', () => {
   // 验证MFA代码
   async function verifyMfaCode(code, tempUserInfo) {
     try {
-      // 调用后端MFA验证API
-      const response = await apiService.post('/users/verify-mfa', {
+      // 调用后端MFA验证API，注意在MFA验证阶段可能没有正式token
+      // 需要使用临时凭证或会话ID
+      // 修改请求结构，确保包含足够信息让服务器验证用户身份
+      const response = await apiService.post('/users/login', {
         username: tempUserInfo.username,
-        code: code
+        mfaCode: code,
+        isMfaVerification: true
       })
       
       if (response && response.success) {
@@ -245,8 +271,10 @@ export const useUserStore = defineStore('user', () => {
       avatar: '',
       role: '',
       lastLogin: null,
+      profile: {
       mfaEnabled: false,
       mfaSecret: ''
+      }
     })
     }
   }
@@ -279,8 +307,23 @@ export const useUserStore = defineStore('user', () => {
       if (response && response.success) {
         // 清除所有保存的凭据
         clearUserCredentials()
-        // 注销成功后，当前设备也需要登出
-        await logout()
+        
+        // 直接清除本地状态，不再调用logout()方法
+        // 因为logout()方法会尝试调用后端API，可能导致401错误
+        setToken('')
+        setUserInfo({
+          id: '',
+          username: '',
+          email: '',
+          avatar: '',
+          role: '',
+          lastLogin: null,
+          profile: {
+            mfaEnabled: false,
+            mfaSecret: ''
+          }
+        })
+        
         return { success: true }
       } else {
         throw new Error(response?.message || '注销所有设备失败')

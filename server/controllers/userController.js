@@ -4,6 +4,7 @@
  */
 
 const userService = require('../services/userService');
+const jwt = require('jsonwebtoken');
 
 // 用户注册
 exports.register = async (req, res) => {
@@ -44,8 +45,67 @@ exports.register = async (req, res) => {
 // 用户登录
 exports.login = async (req, res) => {
   try {
-    const { username, password } = req.body;
+    const { username, password, mfaCode, isMfaVerification } = req.body;
     
+    // MFA验证流程
+    if (isMfaVerification) {
+      // 先尝试从请求中获取用户名，如果没有，则尝试从认证令牌中获取
+      let userToVerify = username;
+      
+      // 如果请求中没有提供用户名，但有认证令牌
+      if (!userToVerify && req.headers.authorization) {
+        try {
+          const authHeader = req.headers.authorization;
+          const token = authHeader.split(' ')[1]; // Bearer TOKEN
+          
+          if (token) {
+            // 验证并解码token，从中获取用户信息
+            const secretKey = process.env.JWT_SECRET || 'your-secret-key';
+            const decoded = jwt.verify(token, secretKey);
+            
+            // 从解码的token中获取用户ID
+            if (decoded && decoded.userId) {
+              // 获取用户信息
+              const user = await userService.getUserById(decoded.userId);
+              if (user && user.username) {
+                userToVerify = user.username;
+                console.log('从认证令牌获取到用户名：', userToVerify);
+              }
+            }
+          }
+        } catch (error) {
+          console.error('从令牌获取用户信息失败:', error);
+          // 继续处理，让下面的逻辑验证用户名
+        }
+      }
+      
+      if (!userToVerify || !mfaCode) {
+        return res.status(400).json({
+          success: false,
+          message: 'MFA验证需要用户名和验证码'
+        });
+      }
+      
+      // 调用用户服务完成MFA验证
+      const result = await userService.verifyMfa(userToVerify, mfaCode);
+      
+      if (!result.success) {
+        return res.status(401).json(result);
+      }
+      
+      // 检查是否是禁用MFA的操作
+      const operation = req.body.operation;
+      if (operation === 'disable') {
+        // 如果是禁用MFA的操作，添加禁用标识到返回结果中
+        result.operation = 'disable';
+        result.operationAllowed = true;
+      }
+      
+      res.json(result);
+      return;
+    }
+    
+    // 常规登录流程
     // 验证必要字段
     if (!username || !password) {
       return res.status(400).json({
@@ -185,6 +245,23 @@ exports.changePassword = async (req, res) => {
     res.json(result);
   } catch (error) {
     console.error('密码更改错误:', error);
+    res.status(500).json({
+      success: false,
+      message: '服务器错误，请稍后重试'
+    });
+  }
+};
+
+// 注销所有设备
+exports.logoutAllDevices = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    
+    const result = await userService.logoutAllDevices(userId);
+    
+    res.json(result);
+  } catch (error) {
+    console.error('注销所有设备错误:', error);
     res.status(500).json({
       success: false,
       message: '服务器错误，请稍后重试'

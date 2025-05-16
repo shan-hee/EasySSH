@@ -221,17 +221,22 @@ class MfaService {
         }
       }
       
-      // 在实际项目中，这里应该调用API来启用MFA
-      // 由于我们没有实际后端，这里直接返回成功响应
-      // const response = await apiService.post('/auth/mfa/enable', {
-      //   secret,
-      //   code
-      // })
+      // 调用更新用户资料API启用MFA
+      const response = await apiService.put('/users/me', {
+        profile: {
+          mfaEnabled: true,
+          mfaSecret: secret
+        }
+      })
+      
+      if (!response || !response.success) {
+        throw new Error(response?.message || '启用MFA失败')
+      }
       
       return {
         success: true,
         message: 'MFA已成功启用',
-        data: { success: true }
+        data: response
       }
     } catch (error) {
       log.error('启用MFA失败', error)
@@ -249,10 +254,55 @@ class MfaService {
    */
   async disableMfa(code) {
     try {
-      // 在实际项目中，这里应该调用API来禁用MFA
-      const response = await apiService.post('/auth/mfa/disable', {
-        code
+      // 先验证MFA代码
+      if (!code || code.length !== 6 || !/^\d{6}$/.test(code)) {
+        return {
+          success: false,
+          message: '请输入6位数字验证码'
+        }
+      }
+      
+      // 使用全局存储的auth_token，不再依赖currentUser
+      const token = localStorage.getItem('auth_token')
+      if (!token) {
+        log.error('禁用MFA失败：未找到有效的认证令牌')
+        return {
+          success: false,
+          message: '认证已过期，请重新登录后再试'
+        }
+      }
+      
+      // 先调用验证API确认身份
+      const verifyResponse = await apiService.post('/users/verify-mfa', {
+        mfaCode: code,
+        isMfaVerification: true,
+        operation: 'disable'
       })
+      
+      if (!verifyResponse || !verifyResponse.success) {
+        return {
+          success: false,
+          message: verifyResponse?.message || '验证码无效，请确认后重试'
+        }
+      }
+      
+      // 如果验证成功且返回了新token，更新本地token
+      if (verifyResponse.token) {
+        log.info('MFA验证成功，更新token')
+        localStorage.setItem('auth_token', verifyResponse.token)
+      }
+      
+      // 验证成功后，再调用更新用户资料API禁用MFA
+      const response = await apiService.put('/users/me', {
+        profile: {
+          mfaEnabled: false,
+          mfaSecret: ''
+        }
+      })
+      
+      if (!response || !response.success) {
+        throw new Error(response?.message || '禁用MFA失败')
+      }
       
       return {
         success: true,
@@ -276,15 +326,31 @@ class MfaService {
    */
   async verifyMfa(code, userId) {
     try {
-      // 在实际项目中，这里应该调用API来验证MFA
-      const response = await apiService.post('/auth/mfa/verify', {
-        code,
-        userId
+      // 使用全局存储的auth_token，不再依赖currentUser
+      const token = localStorage.getItem('auth_token')
+      if (!token) {
+        log.error('验证MFA失败：未找到有效的认证令牌')
+        return {
+          success: false,
+          message: '认证已过期，请重新登录后再试'
+        }
+      }
+      
+      // 调用验证MFA的API
+      const response = await apiService.post('/users/verify-mfa', {
+        mfaCode: code,
+        isMfaVerification: true
       })
       
+      // 如果验证成功且返回了新token，更新本地token
+      if (response.success && response.token) {
+        log.info('MFA验证成功，更新token')
+        localStorage.setItem('auth_token', response.token)
+      }
+      
       return {
-        success: true,
-        message: 'MFA验证成功',
+        success: response.success,
+        message: response.message || 'MFA验证成功',
         data: response
       }
     } catch (error) {

@@ -82,6 +82,9 @@ import { defineComponent, ref, computed, watch, nextTick } from 'vue'
 import Modal from '@/components/common/Modal.vue'
 import mfaService from '@/services/mfa'
 import { ElMessage } from 'element-plus'
+import log from '@/services/log'
+import apiService from '@/services/api'
+import { useUserStore } from '@/store/user'
 
 export default defineComponent({
   name: 'MfaDisableModal',
@@ -221,13 +224,45 @@ export default defineComponent({
           // 禁用成功
           emit('mfa-disable-complete')
           ElMessage.success('已成功禁用两步验证')
+          
+          // 尝试刷新用户信息
+          try {
+            const userResponse = await apiService.get('/users/me')
+            if (userResponse && userResponse.success && userResponse.user) {
+              // 导入并使用userStore来更新用户信息
+              const userStore = useUserStore()
+              userStore.setUserInfo(userResponse.user)
+              log.info('用户信息已刷新', { mfaEnabled: userResponse.user.profile?.mfaEnabled })
+            }
+          } catch (refreshError) {
+            log.warn('禁用MFA后刷新用户信息失败', refreshError)
+            // 不阻止流程继续
+          }
+          
           handleClose()
         } else {
           verifyError.value = result.message || '禁用失败，请检查验证码是否正确'
+          log.warn('禁用MFA失败', result)
         }
       } catch (error) {
         console.error('禁用MFA失败:', error)
-        verifyError.value = '禁用失败，请稍后重试'
+        log.error('禁用MFA异常', error)
+        
+        // 尝试从错误对象中提取更具体的错误消息
+        let errorMessage = '禁用失败，请稍后重试'
+        
+        if (error.response && error.response.data) {
+          errorMessage = error.response.data.message || errorMessage
+        } else if (error.message) {
+          errorMessage = error.message
+        }
+        
+        verifyError.value = errorMessage
+        
+        // 如果是401错误，可能是用户认证已过期，提示用户重新登录
+        if (error.response && error.response.status === 401) {
+          verifyError.value = '登录已过期，请重新登录后再试'
+        }
       } finally {
         isVerifying.value = false
       }

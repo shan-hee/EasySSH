@@ -321,13 +321,13 @@ export default defineComponent({
       if (isVerifying.value) return;
       isVerifying.value = true;
       try {
-        // 3. 校验TOTP
-        const isValid = mfaService.verifyTOTP(verificationCode.value, secretKey.value);
-        if (isValid) {
+        // 使用 mfaService.enableMfa 来启用 MFA
+        const result = await mfaService.enableMfa(secretKey.value, verificationCode.value);
+        if (result.success) {
           emit('mfa-setup-complete', { secret: secretKey.value });
           handleClose();
         } else {
-          verifyError.value = '验证码错误，请确保您输入了正确的验证码';
+          verifyError.value = result.message || '验证失败，请确保您输入了正确的验证码';
         }
       } catch (error) {
         console.error('MFA验证失败:', error);
