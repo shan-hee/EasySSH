@@ -45,10 +45,24 @@ const connectDatabase = () => {
         username TEXT UNIQUE NOT NULL,
         email TEXT UNIQUE,
         password TEXT NOT NULL,
-        profile TEXT,
-        settings TEXT,
+        
+        /* 从profile中提取的关键字段 */
+        displayName TEXT DEFAULT '',
+        avatar TEXT DEFAULT '',
+        mfaEnabled INTEGER DEFAULT 0,
+        mfaSecret TEXT DEFAULT '',
+        
+        /* 从settings中提取的关键字段 */
+        theme TEXT DEFAULT 'dark',
+        fontSize INTEGER DEFAULT 14,
+        
+        /* 其余不常用配置保留为JSON */
+        profileJson TEXT,
+        settingsJson TEXT,
+        
         isAdmin INTEGER DEFAULT 0,
         status TEXT DEFAULT 'active',
+        isDefaultPassword INTEGER DEFAULT 1,
         lastLogin TEXT,
         createdAt TEXT NOT NULL,
         updatedAt TEXT NOT NULL

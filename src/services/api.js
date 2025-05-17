@@ -134,13 +134,14 @@ class ApiService {
           message = data.message || '请求参数错误'
           break
         case 401:
-          message = '登录失败，用户名或密码错误'
+          message = data.message || '登录失败，用户名或密码错误'
           // 401错误统一处理，仅在确实是认证问题时触发登录过期逻辑
           // 排除登录、注册、刷新token等不需要触发认证过期的路径
           const noAuthRequiredPaths = [
             '/users/login', 
             '/users/register', 
-            '/users/refresh'
+            '/users/refresh',
+            '/users/verify-mfa'
           ]
           
           const isAuthRequiredPath = error.config && 
@@ -161,7 +162,7 @@ class ApiService {
           } else if (isAuthRequiredPath) {
             // 其他需要认证的路径触发认证过期事件
             log.warn(`认证错误(401): ${error.config.url}，触发认证过期事件`)
-          this._handleAuthError()
+            this._handleAuthError()
           } else {
             log.debug(`忽略非认证路径的401错误: ${error.config.url}`)
           }

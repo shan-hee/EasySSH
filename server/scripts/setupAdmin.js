@@ -19,15 +19,28 @@ async function setupAdmin() {
     if (users.length === 0) {
       console.log('未检测到用户，创建默认管理员账户...');
       
-      // 创建管理员用户
+      // 创建管理员用户 - 使用新的字段结构
       const adminUser = new User({
         username: 'admin',
         email: 'admin@example.com',
         isAdmin: true,
         status: 'active',
-        profile: {
-          displayName: '系统管理员',
-          mfaEnabled: false
+        isDefaultPassword: true,
+        
+        // 直接设置独立字段
+        displayName: '系统管理员',
+        mfaEnabled: false,
+        
+        // 其他配置数据
+        profileData: {
+          bio: '系统默认管理员账号',
+          location: '本地系统'
+        },
+        settingsData: {
+          sshConfig: {
+            defaultTimeout: 10000,
+            keepAliveInterval: 30000
+          }
         }
       });
       
@@ -38,11 +51,11 @@ async function setupAdmin() {
       await adminUser.save();
       
       console.log('默认管理员账户创建成功:');
-      console.log('  用户名: admin');
-      console.log('  密码: admin');
-      console.log('请登录后立即修改默认密码!');
+      console.log('- 用户名: admin');
+      console.log('- 密码: admin');
+      console.log('请及时修改默认密码！');
     } else {
-      console.log(`系统中已存在${users.length}个用户账户，跳过管理员创建`);
+      console.log(`已存在${users.length}个用户，跳过管理员创建`);
     }
   } catch (error) {
     console.error('创建管理员账户失败:', error);

@@ -5,6 +5,7 @@
 
 const userService = require('../services/userService');
 const jwt = require('jsonwebtoken');
+const User = require('../models/User');
 
 // 用户注册
 exports.register = async (req, res) => {
@@ -121,6 +122,11 @@ exports.login = async (req, res) => {
       return res.status(401).json(result);
     }
     
+    // 确保isDefaultPassword包含在响应中
+    if (result.isDefaultPassword === undefined) {
+      result.isDefaultPassword = false;
+    }
+    
     res.json(result);
   } catch (error) {
     console.error('登录处理错误:', error);
@@ -171,6 +177,33 @@ exports.updateUser = async (req, res) => {
   try {
     const userId = req.user.id;
     const userData = req.body;
+
+    // 检查是否为MFA相关变更
+    const isMfaChange = userData.profile && (
+      userData.profile.mfaEnabled !== undefined ||
+      userData.profile.mfaSecret !== undefined
+    );
+    if (isMfaChange) {
+      // 需要验证码
+      const mfaCode = userData.mfaCode;
+      if (!mfaCode || !/^\d{6}$/.test(mfaCode)) {
+        return res.status(400).json({ success: false, message: '请提供6位数字验证码' });
+      }
+      // 获取当前用户（必须包含mfaSecret）
+      const user = await User.findById(userId);
+      // 方案一：启用MFA时优先用请求体中的mfaSecret
+      let mfaSecretToVerify = (userData.profile && userData.profile.mfaSecret)
+        ? userData.profile.mfaSecret
+        : user.mfaSecret;
+      if (!mfaSecretToVerify) {
+        return res.status(400).json({ success: false, message: '未找到MFA密钥' });
+      }
+      // 校验TOTP
+      const isValid = userService._verifyTOTP(mfaCode, mfaSecretToVerify);
+      if (!isValid) {
+        return res.status(400).json({ success: false, message: '验证码无效或已过期' });
+      }
+    }
     
     // 处理密码更新
     const passwordUpdate = {};

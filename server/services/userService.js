@@ -7,6 +7,7 @@ const User = require('../models/User');
 const jwt = require('jsonwebtoken');
 const { getCache, connectDatabase } = require('../config/database');
 const logger = require('../utils/logger');
+const { authenticator } = require('otplib');
 
 // 获取缓存实例
 const cache = getCache();
@@ -152,14 +153,23 @@ class UserService {
       });
       
       // 检查用户是否设置了多因素认证
-      const needMfa = user.profile && user.profile.mfaEnabled && user.profile.mfaSecret;
+      const needMfa = user.mfaEnabled;
+      
+      // 检查是否使用默认密码
+      const isDefaultPassword = user.isDefaultPassword || false;
+      logger.info('用户登录信息', { 
+        userId: user.id,
+        username: user.username,
+        isDefaultPassword, 
+        needMfa
+      });
       
       return {
         success: true,
         message: '登录成功',
         user: user.toSafeObject(),
         token,
-        requireMfa: needMfa || false
+        isDefaultPassword
       };
     } catch (error) {
       logger.error('用户登录失败', error);
@@ -178,7 +188,7 @@ class UserService {
       // 存储令牌映射，用于验证
       const tokenKey = `token:${token}`;
       const sessionData = { userId, valid: true };
-      const cacheTimeSeconds = 24 * 60 * 60; // 24小时过期
+      const cacheTimeSeconds = 48 * 60 * 60; // 48小时过期
       
       cache.set(tokenKey, sessionData, cacheTimeSeconds);
       logger.info('会话数据已缓存', { 
@@ -339,20 +349,50 @@ class UserService {
         user.setPassword(userData.password);
       }
       
-      // 处理配置文件更新
+      // 处理提取为独立字段的属性
       if (userData.profile) {
-        user.profile = {
-          ...user.profile,
-          ...userData.profile
-        };
+        // 直接更新字段
+        if (userData.profile.displayName !== undefined) {
+          user.displayName = userData.profile.displayName;
+        }
+        if (userData.profile.avatar !== undefined) {
+          user.avatar = userData.profile.avatar;
+        }
+        if (userData.profile.mfaEnabled !== undefined) {
+          user.mfaEnabled = userData.profile.mfaEnabled;
+        }
+        if (userData.profile.mfaSecret !== undefined) {
+          user.mfaSecret = userData.profile.mfaSecret;
+        }
+        
+        // 其他profile数据保存到profileData
+        const newProfileData = { ...user.profileData };
+        Object.keys(userData.profile).forEach(key => {
+          if (!['displayName', 'avatar', 'mfaEnabled', 'mfaSecret'].includes(key)) {
+            newProfileData[key] = userData.profile[key];
+          }
+        });
+        user.profileData = newProfileData;
       }
       
-      // 处理设置更新
+      // 处理settings字段
       if (userData.settings) {
-        user.settings = {
-          ...user.settings,
-          ...userData.settings
-        };
+        // 直接更新字段
+        if (userData.settings.theme !== undefined) {
+          user.theme = userData.settings.theme;
+        }
+        if (userData.settings.fontSize !== undefined) {
+          user.fontSize = userData.settings.fontSize;
+        }
+        
+        // 其他settings数据保存到settingsData
+        const newSettingsData = { ...user.settingsData };
+        Object.keys(userData.settings).forEach(key => {
+          if (!['theme', 'fontSize'].includes(key)) {
+            newSettingsData[key] = userData.settings[key];
+          }
+        });
+        user.settingsData = newSettingsData;
       }
       
       // 更新其他字段
@@ -438,7 +478,7 @@ class UserService {
     const payload = {
       userId,
       iat: Date.now() / 1000,
-      exp: Date.now() / 1000 + 24 * 60 * 60 // 24小时有效期
+      exp: Date.now() / 1000 + 48 * 60 * 60 // 48小时有效期
     };
     
     return jwt.sign(payload, process.env.JWT_SECRET || 'your-secret-key');
@@ -470,6 +510,10 @@ class UserService {
       
       // 设置新密码
       user.setPassword(newPassword);
+      
+      // 如果密码被修改，将不再是默认密码
+      user.isDefaultPassword = false;
+      
       await user.save();
       
       // 清除用户缓存
@@ -514,54 +558,53 @@ class UserService {
   }
 
   /**
-   * 验证MFA二次认证
-   * @param {string} username 用户名
-   * @param {string} mfaCode MFA验证码
-   * @returns {Promise<Object>} 验证结果
+   * 验证MFA
    */
   async verifyMfa(username, mfaCode) {
     try {
+      logger.info('验证MFA', { username });
+      
       // 查找用户
       const user = await User.findOne({ username });
+      
       if (!user) {
+        logger.warn('MFA验证失败 - 用户不存在', { username });
         return { success: false, message: '用户不存在' };
       }
       
-      // 检查用户是否启用了MFA
-      if (!user.profile || !user.profile.mfaEnabled || !user.profile.mfaSecret) {
-        return { success: false, message: '该用户未启用两步验证' };
+      // 确认用户已启用MFA
+      if (!user.mfaEnabled || !user.mfaSecret) {
+        logger.warn('MFA验证失败 - 用户未启用MFA', { username });
+        return { success: false, message: '用户未启用多因素认证' };
       }
       
-      // 验证MFA码
-      const isValid = this._verifyTOTP(mfaCode, user.profile.mfaSecret);
+      // 验证TOTP码
+      const isValid = this._verifyTOTP(mfaCode, user.mfaSecret);
+      
       if (!isValid) {
-        return { success: false, message: '验证码不正确' };
+        logger.warn('MFA验证失败 - 验证码无效', { username });
+        return { success: false, message: '验证码无效' };
       }
       
-      // 生成新的认证令牌 
+      // 生成令牌和用户会话
       const token = this.generateToken(user.id);
-      
-      // 创建用户会话
       await this.createUserSession(user.id.toString(), token);
       
-      // 记录登录时间
-      user.lastLogin = new Date().toISOString();
-      await user.save();
+      // 检查是否使用默认密码
+      const isDefaultPassword = user.isDefaultPassword || false;
       
-      // 记录验证成功的日志
-      logger.info('MFA验证成功', { username });
+      logger.info('MFA验证成功', { userId: user.id, username });
       
       return {
         success: true,
         message: '验证成功',
         user: user.toSafeObject(),
         token,
-        // 提供用户ID作为引用
-        userId: user.id
+        isDefaultPassword
       };
     } catch (error) {
       logger.error('MFA验证失败', error);
-      return { success: false, message: 'MFA验证失败: ' + error.message };
+      return { success: false, message: '验证失败: ' + error.message };
     }
   }
   
@@ -574,50 +617,17 @@ class UserService {
    */
   _verifyTOTP(code, secret, window = 2) {
     try {
-      // 清理输入
       code = code.replace(/\s/g, '');
-      
-      // 验证输入格式
       if (!code || code.length !== 6 || !/^\d+$/.test(code)) {
         logger.warn('TOTP验证失败：验证码格式无效', { codeLength: code?.length });
         return false;
       }
-      
-      // 兼容模式：对验证码进行多种算法验证
-      
-      // 1. 使用简化算法验证
-      // 获取当前时间戳(秒)
-      const now = Math.floor(Date.now() / 1000);
-      // 计算当前时间窗口
-      const currentWindow = Math.floor(now / 30);
-      
-      // 在验证窗口内尝试验证
-      for (let i = -window; i <= window; i++) {
-        const calculatedCode = this._generateTOTP(secret, currentWindow + i);
-        if (calculatedCode === code) {
-          logger.info('TOTP验证成功（使用简化算法）');
-          return true;
-        }
-      }
-      
-      // 2. 测试用：先记录所有可能的验证码，便于调试
-      const testCodes = [];
-      for (let i = -window; i <= window; i++) {
-        testCodes.push(this._generateTOTP(secret, currentWindow + i));
-      }
-      logger.info('TOTP验证窗口中的所有可能验证码', { 
-        input: code,
-        possible: testCodes,
-        secret: secret.substring(0, 4) + '****'
-      });
-      
-      // 3. 测试模式：任何6位数字验证码都通过
-      // 适用于开发环境，减少验证障碍
-      if (process.env.NODE_ENV !== 'production') {
-        logger.warn('非生产环境：任何有效格式的验证码均被接受');
+      // 使用otplib标准算法校验
+      const isValid = authenticator.check(code, secret, { window });
+      if (isValid) {
+        logger.info('TOTP验证成功（otplib标准算法）');
         return true;
       }
-      
       logger.warn('TOTP验证失败：验证码不匹配');
       return false;
     } catch (error) {
@@ -627,33 +637,14 @@ class UserService {
   }
   
   /**
-   * 生成TOTP码
+   * 生成TOTP码（如需调试或生成二维码时用）
    * @private
    * @param {string} secret 密钥
-   * @param {number} counter 计数器值
    * @returns {string} 生成的6位验证码
    */
-  _generateTOTP(secret, counter) {
+  _generateTOTP(secret) {
     try {
-      // 在实际实现中应使用完整的TOTP算法
-      // 这里使用简化实现，实际生产环境应使用cryptographic库
-      
-      // 简化实现: 使用密钥和计数器生成一个"伪随机"6位数
-      const combinedValue = `${secret}${counter}`;
-      let hash = 0;
-      
-      // 简单的字符串hash函数
-      for (let i = 0; i < combinedValue.length; i++) {
-        const char = combinedValue.charCodeAt(i);
-        hash = ((hash << 5) - hash) + char;
-        hash = hash & hash; // 转换为32位整数
-      }
-      
-      // 取绝对值后取模，确保为6位
-      const sixDigitCode = Math.abs(hash) % 1000000;
-      
-      // 补齐前导0
-      return sixDigitCode.toString().padStart(6, '0');
+      return authenticator.generate(secret);
     } catch (error) {
       logger.error('生成TOTP码失败', error);
       return null;

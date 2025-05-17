@@ -12,24 +12,80 @@ class User {
     this.username = data.username;
     this.email = data.email;
     this.password = data.password;
-    this.profile = data.profile ? (typeof data.profile === 'string' ? JSON.parse(data.profile) : data.profile) : {
-      displayName: '',
-      avatar: '',
-      bio: '',
-      location: '',
-      mfaEnabled: false,
-      mfaSecret: ''
-    };
-    this.settings = data.settings ? (typeof data.settings === 'string' ? JSON.parse(data.settings) : data.settings) : {
-      theme: 'light',
-      fontSize: 14,
-      sshConfig: {
-        defaultTimeout: 10000,
-        keepAliveInterval: 30000
+    
+    // 从数据库提取的独立字段
+    this.displayName = data.displayName || '';
+    this.avatar = data.avatar || '';
+    this.mfaEnabled = data.mfaEnabled === 1 || false;  // 转换INTEGER到布尔值
+    this.mfaSecret = data.mfaSecret || '';
+    this.theme = data.theme || 'dark';
+    this.fontSize = data.fontSize || 14;
+    
+    // 解析其他配置JSON
+    let profileData = {};
+    let settingsData = {};
+    
+    // 解析profileJson
+    if (data.profileJson) {
+      try {
+        profileData = typeof data.profileJson === 'string' ? JSON.parse(data.profileJson) : data.profileJson;
+      } catch (e) {
+        console.error('解析profileJson失败:', e);
       }
-    };
+    }
+    
+    // 解析settingsJson
+    if (data.settingsJson) {
+      try {
+        settingsData = typeof data.settingsJson === 'string' ? JSON.parse(data.settingsJson) : data.settingsJson;
+      } catch (e) {
+        console.error('解析settingsJson失败:', e);
+      }
+    }
+    
+    // 兼容旧的profile和settings字段（用于迁移）
+    if (data.profile && !data.profileJson) {
+      try {
+        const parsedProfile = typeof data.profile === 'string' ? JSON.parse(data.profile) : data.profile;
+        this.displayName = parsedProfile.displayName || this.displayName;
+        this.avatar = parsedProfile.avatar || this.avatar;
+        this.mfaEnabled = parsedProfile.mfaEnabled || this.mfaEnabled;
+        this.mfaSecret = parsedProfile.mfaSecret || this.mfaSecret;
+        
+        // 其他profile属性复制到profileData
+        profileData = { ...parsedProfile };
+        delete profileData.displayName;
+        delete profileData.avatar;
+        delete profileData.mfaEnabled;
+        delete profileData.mfaSecret;
+      } catch (e) {
+        console.error('解析旧profile失败:', e);
+      }
+    }
+    
+    if (data.settings && !data.settingsJson) {
+      try {
+        const parsedSettings = typeof data.settings === 'string' ? JSON.parse(data.settings) : data.settings;
+        this.theme = parsedSettings.theme || this.theme;
+        this.fontSize = parsedSettings.fontSize || this.fontSize;
+        
+        // 其他settings属性复制到settingsData
+        settingsData = { ...parsedSettings };
+        delete settingsData.theme;
+        delete settingsData.fontSize;
+      } catch (e) {
+        console.error('解析旧settings失败:', e);
+      }
+    }
+    
+    // 存储剩余配置属性
+    this.profileData = profileData;
+    this.settingsData = settingsData;
+    
+    // 其他用户属性
     this.isAdmin = data.isAdmin || false;
     this.status = data.status || 'active';
+    this.isDefaultPassword = data.isDefaultPassword || false;
     this.lastLogin = data.lastLogin;
     this.createdAt = data.createdAt || new Date().toISOString();
     this.updatedAt = data.updatedAt || new Date().toISOString();
@@ -48,16 +104,18 @@ class User {
       this._passwordModified = false;
     }
     
-    // 准备JSON字段
-    const profileJson = JSON.stringify(this.profile || {});
-    const settingsJson = JSON.stringify(this.settings || {});
+    // 准备JSON字段 - 仅包含非独立字段的数据
+    const profileJson = JSON.stringify(this.profileData || {});
+    const settingsJson = JSON.stringify(this.settingsData || {});
     
     if (this.id) {
       // 更新现有用户
       const stmt = db.prepare(`
         UPDATE users SET
-          username = ?, email = ?, password = ?, profile = ?,
-          settings = ?, isAdmin = ?, status = ?, lastLogin = ?,
+          username = ?, email = ?, password = ?, 
+          displayName = ?, avatar = ?, mfaEnabled = ?, mfaSecret = ?,
+          theme = ?, fontSize = ?, profileJson = ?, settingsJson = ?,
+          isAdmin = ?, status = ?, isDefaultPassword = ?, lastLogin = ?,
           updatedAt = ?
         WHERE id = ?
       `);
@@ -66,10 +124,17 @@ class User {
         this.username,
         this.email,
         this.password,
+        this.displayName,
+        this.avatar,
+        this.mfaEnabled ? 1 : 0,
+        this.mfaSecret,
+        this.theme,
+        this.fontSize,
         profileJson,
         settingsJson,
         this.isAdmin ? 1 : 0,
         this.status,
+        this.isDefaultPassword ? 1 : 0,
         this.lastLogin,
         now,
         this.id
@@ -80,19 +145,29 @@ class User {
       
       const stmt = db.prepare(`
         INSERT INTO users (
-          username, email, password, profile, settings,
-          isAdmin, status, lastLogin, createdAt, updatedAt
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          username, email, password, 
+          displayName, avatar, mfaEnabled, mfaSecret,
+          theme, fontSize, profileJson, settingsJson,
+          isAdmin, status, isDefaultPassword, lastLogin, 
+          createdAt, updatedAt
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
       
       const info = stmt.run(
         this.username,
         this.email,
         this.password,
+        this.displayName,
+        this.avatar,
+        this.mfaEnabled ? 1 : 0,
+        this.mfaSecret,
+        this.theme,
+        this.fontSize,
         profileJson,
         settingsJson,
         this.isAdmin ? 1 : 0,
         this.status,
+        this.isDefaultPassword ? 1 : 0,
         this.lastLogin,
         now,
         now
@@ -115,12 +190,19 @@ class User {
     return await bcrypt.compare(candidatePassword, this.password);
   }
 
-  // 转换为安全对象（不包含密码）
+  // 获取安全用户对象（不包含密码）
   toSafeObject() {
-    const obj = { ...this };
-    delete obj.password;
-    delete obj._passwordModified;
-    return obj;
+    const userObj = { ...this };
+    // 移除敏感信息
+    delete userObj.password;
+    delete userObj._passwordModified;
+    delete userObj.mfaSecret; // 移除敏感的MFA密钥
+    
+    // 删除profileData和settingsData，不再创建重复的子对象
+    delete userObj.profileData;
+    delete userObj.settingsData;
+    
+    return userObj;
   }
 
   // 转换为普通对象

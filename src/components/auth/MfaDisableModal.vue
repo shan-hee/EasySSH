@@ -111,6 +111,9 @@ export default defineComponent({
     const verifyError = ref('')
     const isVerifying = ref(false)
     const codeInputs = ref([])
+    const MAX_RETRY_ATTEMPTS = 3
+    const retryCount = ref(0)
+    const userStore = useUserStore()
     
     // 监听数字输入变化，更新验证码
     watch(codeDigits, (newDigits) => {
@@ -203,66 +206,63 @@ export default defineComponent({
     
     // 禁用MFA
     const disableMfa = async () => {
-      // 验证码格式验证
-      if (verificationCode.value.length !== 6) {
-        verifyError.value = '请输入6位验证码'
-        return
-      }
-      
-      if (!/^\d{6}$/.test(verificationCode.value)) {
-        verifyError.value = '验证码只能包含数字'
-        return
-      }
-      
-      isVerifying.value = true
-      
-      try {
-        // 调用服务禁用MFA
-        const result = await mfaService.disableMfa(verificationCode.value)
-        
-        if (result.success) {
-          // 禁用成功
-          emit('mfa-disable-complete')
-          ElMessage.success('已成功禁用两步验证')
-          
-          // 尝试刷新用户信息
-          try {
-            const userResponse = await apiService.get('/users/me')
-            if (userResponse && userResponse.success && userResponse.user) {
-              // 导入并使用userStore来更新用户信息
-              const userStore = useUserStore()
-              userStore.setUserInfo(userResponse.user)
-              log.info('用户信息已刷新', { mfaEnabled: userResponse.user.profile?.mfaEnabled })
-            }
-          } catch (refreshError) {
-            log.warn('禁用MFA后刷新用户信息失败', refreshError)
-            // 不阻止流程继续
+      // 格式校验
+      if (verificationCode.value.length !== 6 || !/^\d{6}$/.test(verificationCode.value)) {
+        verifyError.value = '请输入6位数字验证码'
+        // 新增：失败时聚焦最后一个输入框
+        nextTick(() => {
+          if (codeInputs.value && codeInputs.value[5]) {
+            codeInputs.value[5].focus()
           }
-          
+        })
+        return
+      }
+      if (retryCount.value >= MAX_RETRY_ATTEMPTS) {
+        verifyError.value = '错误次数过多，请稍后再试或联系管理员'
+        // 新增：失败时聚焦最后一个输入框
+        nextTick(() => {
+          if (codeInputs.value && codeInputs.value[5]) {
+            codeInputs.value[5].focus()
+          }
+        })
+        return
+      }
+      isVerifying.value = true
+      try {
+        // 调用服务禁用MFA，传入当前用户的mfaSecret
+        const result = await mfaService.disableMfa(verificationCode.value, userStore.userInfo.mfaSecret)
+        if (result.success) {
+          if (result.user) {
+            log.info('用户信息已更新', { mfaEnabled: result.user.mfaEnabled })
+            emit('mfa-disable-complete', { user: result.user })
+          }
+          ElMessage.success('已成功禁用两步验证')
           handleClose()
         } else {
-          verifyError.value = result.message || '禁用失败，请检查验证码是否正确'
+          retryCount.value++
+          if (retryCount.value >= MAX_RETRY_ATTEMPTS) {
+            verifyError.value = '错误次数过多，请稍后再试或联系管理员'
+          } else {
+            verifyError.value = result.message || '验证码无效或已过期，请重试'
+          }
           log.warn('禁用MFA失败', result)
+          // 新增：失败时聚焦最后一个输入框
+          nextTick(() => {
+            if (codeInputs.value && codeInputs.value[5]) {
+              codeInputs.value[5].focus()
+            }
+          })
         }
       } catch (error) {
-        console.error('禁用MFA失败:', error)
+        retryCount.value++
+        verifyError.value = '禁用失败，请稍后重试'
         log.error('禁用MFA异常', error)
-        
-        // 尝试从错误对象中提取更具体的错误消息
-        let errorMessage = '禁用失败，请稍后重试'
-        
-        if (error.response && error.response.data) {
-          errorMessage = error.response.data.message || errorMessage
-        } else if (error.message) {
-          errorMessage = error.message
-        }
-        
-        verifyError.value = errorMessage
-        
-        // 如果是401错误，可能是用户认证已过期，提示用户重新登录
-        if (error.response && error.response.status === 401) {
-          verifyError.value = '登录已过期，请重新登录后再试'
-        }
+        // 新增：失败时聚焦最后一个输入框
+        nextTick(() => {
+          if (codeInputs.value && codeInputs.value[5]) {
+            codeInputs.value[5].focus()
+          }
+        })
       } finally {
         isVerifying.value = false
       }

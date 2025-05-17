@@ -150,13 +150,14 @@ export default defineComponent({
           if (result.requireMfa) {
             // 保存临时用户信息
             tempUserInfo.value = result.user
+            tempUserInfo.value.isDefaultPassword = result.isDefaultPassword
             // 显示MFA验证弹窗
             showMfaModal.value = true
             return
           }
           
           // 不需要MFA，直接完成登录流程
-          completeLogin(result.silent)
+          completeLogin(result.silent, result.isDefaultPassword)
         }
       } catch (error) {
         console.error('登录失败:', error)
@@ -177,8 +178,11 @@ export default defineComponent({
       try {
         loginLoading.value = true
         
+        // 获取是否使用默认密码的状态
+        const isDefaultPassword = tempUserInfo.value?.isDefaultPassword || false
+        
         // 完成登录流程
-        completeLogin()
+        completeLogin(false, isDefaultPassword)
       } catch (error) {
         console.error('MFA验证后登录失败:', error)
         ElMessage({
@@ -193,13 +197,28 @@ export default defineComponent({
     }
     
     // 完成登录流程
-    const completeLogin = (silent = false) => {
+    const completeLogin = (silent = false, isDefaultPassword = false) => {
       // 清空表单(密码字段)
       loginForm.password = ''
       tempUserInfo.value = null
       
       // 发送登录成功事件
       emit('login-success')
+      
+      // 如果使用默认密码，显示安全提示并导向修改密码页面
+      if (isDefaultPassword) {
+        ElMessage({
+          message: '您当前使用的是系统初始密码，存在严重安全风险。为了保障您的账户安全，请立即修改密码。',
+          type: 'warning',
+          offset: 3,
+          zIndex: 9999,
+          duration: 5000
+        })
+        
+        // 导航到用户资料页进行密码修改
+        router.push('/profile')
+        return
+      }
       
       // 显示登录成功消息(如果不是静默模式)
       if (!silent) {

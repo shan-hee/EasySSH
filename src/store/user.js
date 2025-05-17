@@ -46,10 +46,10 @@ export const useUserStore = defineStore('user', () => {
     avatar: '',
     role: '',
     lastLogin: null,
-    profile: {
     mfaEnabled: false,
-    mfaSecret: ''
-    }
+    displayName: '',
+    theme: 'system',
+    fontSize: 14
   })
   const preferences = ref({
     theme: 'system',
@@ -77,21 +77,8 @@ export const useUserStore = defineStore('user', () => {
   }
   
   function setUserInfo(info) {
-    // 特别处理profile对象，确保深层嵌套的对象也能正确合并
-    if (info && info.profile) {
-      userInfo.value = { 
-        ...userInfo.value, 
-        ...info,
-        profile: {
-          ...(userInfo.value.profile || {}),
-          ...info.profile
-        }
-      }
-      console.log('用户信息已更新(含profile):', userInfo.value)
-    } else {
       userInfo.value = { ...userInfo.value, ...info }
       console.log('用户信息已更新:', userInfo.value)
-    }
     
     // 同时将用户信息保存到localStorage的currentUser中，方便其他服务直接访问
     try {
@@ -169,7 +156,8 @@ export const useUserStore = defineStore('user', () => {
           token: response.token ? `${response.token.substring(0, 15)}...` : 'undefined',
           hasToken: !!response.token,
           tokenLength: response.token ? response.token.length : 0, 
-          user: response.user ? response.user.username : null
+          user: response.user ? response.user.username : null,
+          isDefaultPassword: response.isDefaultPassword || false
         })
         
         // 处理记住密码功能
@@ -180,12 +168,13 @@ export const useUserStore = defineStore('user', () => {
         }
         
         // 检查是否需要MFA验证
-        if (response.requireMfa) {
+        if (response.user && response.user.mfaEnabled) {
           // 需要MFA验证，返回相关信息但不设置token
           return { 
             success: true, 
             requireMfa: true,
-            user: response.user
+            user: response.user,
+            isDefaultPassword: response.isDefaultPassword || false
           }
         }
         
@@ -210,7 +199,11 @@ export const useUserStore = defineStore('user', () => {
         
         setUserInfo(response.user)
       
-        return { success: true, silent: credentials.silent }
+        return { 
+          success: true, 
+          silent: credentials.silent,
+          isDefaultPassword: response.isDefaultPassword || false
+        }
       } else {
         // 登录失败
         const errorMsg = response?.message || '登录失败'
@@ -271,10 +264,10 @@ export const useUserStore = defineStore('user', () => {
       avatar: '',
       role: '',
       lastLogin: null,
-      profile: {
       mfaEnabled: false,
-      mfaSecret: ''
-      }
+      displayName: '',
+      theme: 'system',
+      fontSize: 14
     })
     }
   }
@@ -318,10 +311,10 @@ export const useUserStore = defineStore('user', () => {
           avatar: '',
           role: '',
           lastLogin: null,
-          profile: {
             mfaEnabled: false,
-            mfaSecret: ''
-          }
+          displayName: '',
+          theme: 'system',
+          fontSize: 14
         })
         
         return { success: true }

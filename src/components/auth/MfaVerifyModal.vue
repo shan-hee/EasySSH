@@ -19,15 +19,26 @@
         请输入身份验证器应用中的 6 位验证码
       </div>
       <div class="verify-input-container">
+        <div class="code-inputs">
+          <template v-for="(digit, index) in 6" :key="index">
+            <div class="digit-container" :class="{ 'active': codeDigits[index] }">
         <input 
-          type="text" 
-          v-model="verificationCode" 
-          class="verify-input" 
-          maxlength="6" 
-          placeholder="输入6位验证码"
-          @input="handleCodeInput"
-          autofocus
-        />
+                type="tel"
+                maxlength="1"
+                inputmode="numeric"
+                pattern="[0-9]*"
+                class="code-input"
+                v-model="codeDigits[index]"
+                @keydown="handleKeyDown($event, index)"
+                @paste="handlePaste"
+                @keyup.enter="handleEnterKey"
+                ref="codeInputs"
+              />
+              <span class="digit-display">{{ codeDigits[index] }}</span>
+            </div>
+            <span class="code-separator" v-if="index < 5"></span>
+          </template>
+        </div>
       </div>
       <div class="verify-error" v-if="verifyError">
         {{ verifyError }}
@@ -47,7 +58,7 @@
 </template>
 
 <script>
-import { defineComponent, ref, watch, computed } from 'vue'
+import { defineComponent, ref, watch, computed, nextTick } from 'vue'
 import Modal from '@/components/common/Modal.vue'
 import { useUserStore } from '@/store/user'
 
@@ -69,60 +80,167 @@ export default defineComponent({
   emits: ['update:show', 'success', 'cancel'],
   setup(props, { emit }) {
     const userStore = useUserStore()
-    
-    // 使用计算属性处理双向绑定
     const isVisible = computed({
       get: () => props.show,
       set: (value) => emit('update:show', value)
     })
-    
+    const codeDigits = ref(['', '', '', '', '', ''])
     const verificationCode = ref('')
     const verifyError = ref('')
     const isVerifying = ref(false)
+    const codeInputs = ref([])
+    const MAX_RETRY_ATTEMPTS = 3
+    const retryCount = ref(0)
     
     // 监听弹窗显示状态
     watch(() => props.show, (newVal) => {
       if (newVal) {
-        // 弹窗打开时，重置状态
+        codeDigits.value = ['', '', '', '', '', '']
         verificationCode.value = ''
         verifyError.value = ''
         isVerifying.value = false
+        retryCount.value = 0
+        // 自动聚焦第一个输入框
+        nextTick(() => {
+          if (codeInputs.value && codeInputs.value[0]) {
+            codeInputs.value[0].focus()
+          }
+        })
       }
     })
-    
-    // 处理验证码输入
-    const handleCodeInput = (e) => {
-      // 只允许输入数字
-      verificationCode.value = e.target.value.replace(/[^0-9]/g, '')
-      
+
+    // 监听数字输入变化，更新验证码
+    watch(codeDigits, (newDigits) => {
+      verificationCode.value = newDigits.join('')
+      // 自动聚焦到下一个输入框
+      const emptyIndex = newDigits.findIndex(d => d === '')
+      const lastFilledIndex = emptyIndex > 0 ? emptyIndex - 1 : -1
+      if (lastFilledIndex >= 0 && lastFilledIndex < 5) {
+        nextTick(() => {
+          if (codeInputs.value && codeInputs.value[lastFilledIndex + 1]) {
+            codeInputs.value[lastFilledIndex + 1].focus()
+          }
+        })
+      }
+      // 自动提交
+      const isAllDigits = newDigits.length === 6 && newDigits.every(c => /^[0-9]$/.test(c))
+      if (isAllDigits && !isVerifying.value) {
+        verifyCode()
+      }
       // 清除之前的错误
       if (verifyError.value) {
         verifyError.value = ''
+      }
+    }, { deep: true })
+
+    // 处理键盘事件
+    const handleKeyDown = (e, index) => {
+      // 退格键处理
+      if (e.key === 'Backspace') {
+        if (!codeDigits.value[index] && index > 0) {
+          codeDigits.value[index-1] = ''
+          nextTick(() => {
+            if (codeInputs.value && codeInputs.value[index - 1]) {
+              codeInputs.value[index - 1].focus()
+            }
+          })
+        }
+      }
+      // 左右箭头导航
+      if (e.key === 'ArrowLeft' && index > 0) {
+        nextTick(() => {
+          codeInputs.value[index - 1].focus()
+        })
+      }
+      if (e.key === 'ArrowRight' && index < 5) {
+        nextTick(() => {
+          codeInputs.value[index + 1].focus()
+        })
+      }
+    }
+
+    // 处理回车键确认
+    const handleEnterKey = () => {
+      if (verificationCode.value.length === 6) {
+        verifyCode()
+      }
+    }
+
+    // 处理粘贴事件
+    const handlePaste = (e) => {
+      e.preventDefault()
+      const pasteData = e.clipboardData.getData('text')
+      const digits = pasteData.replace(/[^0-9]/g, '').substring(0, 6)
+      if (digits) {
+        for (let i = 0; i < 6; i++) {
+          codeDigits.value[i] = i < digits.length ? digits[i] : ''
+        }
+        // 聚焦最后一个有值的输入框的下一个，或者最后一个
+        const focusIndex = Math.min(digits.length, 5)
+        nextTick(() => {
+          if (codeInputs.value && codeInputs.value[focusIndex]) {
+            codeInputs.value[focusIndex].focus()
+          }
+        })
       }
     }
     
     // 验证代码
     const verifyCode = async () => {
-      if (verificationCode.value.length !== 6) {
-        verifyError.value = '请输入6位验证码'
+      if (verificationCode.value.length !== 6 || !/^\d{6}$/.test(verificationCode.value)) {
+        verifyError.value = '请输入6位数字验证码'
+        // 新增：失败时聚焦最后一个输入框
+        nextTick(() => {
+          if (codeInputs.value && codeInputs.value[5]) {
+            codeInputs.value[5].focus()
+          }
+        })
         return
       }
-      
+      if (retryCount.value >= MAX_RETRY_ATTEMPTS) {
+        verifyError.value = '错误次数过多，请稍后再试或联系管理员'
+        // 新增：失败时聚焦最后一个输入框
+        nextTick(() => {
+          if (codeInputs.value && codeInputs.value[5]) {
+            codeInputs.value[5].focus()
+          }
+        })
+        return
+      }
       isVerifying.value = true
-      
       try {
-        // 验证MFA代码
         const result = await userStore.verifyMfaCode(verificationCode.value, props.userInfo)
-        
         if (result.success) {
           emit('success')
           handleClose()
         } else {
-          verifyError.value = result.error || '验证码不正确，请重试'
+          retryCount.value++
+          if (retryCount.value >= MAX_RETRY_ATTEMPTS) {
+            verifyError.value = '错误次数过多，请稍后再试或联系管理员'
+            setTimeout(() => {
+              handleClose()
+            }, 2000)
+          } else {
+            const remainingAttempts = MAX_RETRY_ATTEMPTS - retryCount.value
+            verifyError.value = `验证码不正确，您还有${remainingAttempts}次尝试机会`
+            codeDigits.value = ['', '', '', '', '', '']
+            // 新增：失败时聚焦最后一个输入框
+            nextTick(() => {
+              if (codeInputs.value && codeInputs.value[5]) {
+                codeInputs.value[5].focus()
+              }
+            })
+          }
         }
       } catch (error) {
-        console.error('MFA验证失败:', error)
+        retryCount.value++
         verifyError.value = '验证失败，请重试'
+        // 新增：失败时聚焦最后一个输入框
+        nextTick(() => {
+          if (codeInputs.value && codeInputs.value[5]) {
+            codeInputs.value[5].focus()
+          }
+        })
       } finally {
         isVerifying.value = false
       }
@@ -136,10 +254,14 @@ export default defineComponent({
     
     return {
       isVisible,
+      codeDigits,
       verificationCode,
       verifyError,
       isVerifying,
-      handleCodeInput,
+      codeInputs,
+      handleKeyDown,
+      handlePaste,
+      handleEnterKey,
       verifyCode,
       handleClose
     }
@@ -149,7 +271,7 @@ export default defineComponent({
 
 <style scoped>
 .mfa-verify-container {
-  padding: 20px;
+  padding: 30px;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -160,51 +282,92 @@ export default defineComponent({
 }
 
 .verify-title {
-  font-size: 18px;
+  font-size: 20px;
   font-weight: bold;
   color: #fff;
-  margin-bottom: 10px;
+  margin-bottom: 15px;
   text-align: center;
 }
 
 .verify-subtitle {
   font-size: 14px;
-  color: #ccc;
-  margin-bottom: 20px;
+  color: #aaa;
   text-align: center;
+  margin-bottom: 30px;
+  line-height: 1.5;
+  max-width: 450px;
 }
 
 .verify-input-container {
   width: 100%;
-  margin-bottom: 20px;
+  max-width: 360px;
+  margin: 0 auto 20px auto;
 }
 
-.verify-input {
+.code-inputs {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+}
+
+.digit-container {
+  position: relative;
+  width: 40px;
+  height: 48px;
+}
+
+.code-input {
+  position: absolute;
+  top: 0;
+  left: 0;
   width: 100%;
-  height: 50px;
-  background-color: transparent;
-  border: 1px solid #666;
-  border-radius: 6px;
-  color: #fff;
-  padding: 0 15px;
-  box-sizing: border-box;
-  outline: none;
-  font-weight: normal;
+  height: 100%;
+  border: 1px solid #444;
+  border-radius: 4px;
+  background-color: #2a2a2a;
+  color: transparent;
   font-size: 20px;
   text-align: center;
-  letter-spacing: 5px;
+  outline: none;
+  z-index: 1;
+  caret-color: #0083d3;
 }
 
-.verify-input:focus {
+.digit-display {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  color: #fff;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.code-input:focus {
   border-color: #0083d3;
-  box-shadow: 0 0 0 1px rgba(0, 131, 211, 0.2);
+  box-shadow: 0 0 0 2px rgba(0, 131, 211, 0.2);
+}
+
+.digit-container.active .code-input {
+  border-color: #0083d3;
+}
+
+.code-separator {
+  display: flex;
+  align-items: center;
+  margin: 0 2px;
 }
 
 .verify-error {
-  color: #f56c6c;
-  font-size: 14px;
-  margin-bottom: 20px;
+  color: #f44336;
+  margin-top: 15px;
   text-align: center;
+  font-size: 14px;
 }
 
 .mfa-btn-container {
@@ -229,21 +392,14 @@ export default defineComponent({
   color: #fff;
 }
 
-.btn-verify:hover {
-  background-color: #0096f2;
-}
-
 .btn-cancel {
   background-color: #3f3f3f;
   color: #fff;
 }
 
-.btn-cancel:hover {
-  background-color: #4f4f4f;
-}
-
 .btn-verify:disabled {
-  background-color: #666;
+  background-color: #555;
   cursor: not-allowed;
+  opacity: 0.7;
 }
 </style> 

@@ -121,13 +121,13 @@ export default defineComponent({
       // 检查store中是否已有完整用户数据
       return !userStore.userInfo?.username || 
              userStore.userInfo.username === '' || 
-             typeof userStore.userInfo.profile?.mfaEnabled === 'undefined'
+             typeof userStore.userInfo.mfaEnabled === 'undefined'
     })
     
     // 从store中加载数据到表单
     const loadFormFromStore = () => {
       profileForm.value.username = userStore.username || ''
-      profileForm.value.mfaEnabled = userStore.userInfo.profile?.mfaEnabled || false
+      profileForm.value.mfaEnabled = userStore.userInfo.mfaEnabled || false
     }
     
     // 从服务器获取最新用户数据
@@ -143,7 +143,7 @@ export default defineComponent({
           
           // 更新表单中的数据
           profileForm.value.username = response.user.username || ''
-          profileForm.value.mfaEnabled = response.user.profile?.mfaEnabled || false
+          profileForm.value.mfaEnabled = response.user.mfaEnabled || false
         } else {
           // 如果请求失败但本地有数据，使用本地数据
           loadFormFromStore()
@@ -203,21 +203,11 @@ export default defineComponent({
     }
     
     // 处理MFA设置完成
-    const handleMfaSetupComplete = async (data) => {
-      try {
-        // 启用MFA后立即刷新用户数据，确保最新状态被保存
-        await fetchUserData()
-        
-        // 更新本地表单状态
+    const handleMfaSetupComplete = (data) => {
+      if (data && data.user) {
+        userStore.setUserInfo(data.user)
         profileForm.value.mfaEnabled = true
-        profileForm.value.mfaSecret = data.secret
-        
         ElMessage.success('已成功启用两步验证')
-      } catch (error) {
-        console.error('启用MFA失败:', error)
-        ElMessage.error('启用MFA时发生错误')
-        profileForm.value.mfaEnabled = false
-        profileForm.value.mfaSecret = null
       }
     }
     
@@ -227,17 +217,11 @@ export default defineComponent({
     }
     
     // 处理MFA禁用完成
-    const handleMfaDisableComplete = async () => {
-      try {
-        // 禁用MFA后立即刷新用户数据，确保最新状态被保存
-        await fetchUserData()
-        
-        // 本地状态更新
+    const handleMfaDisableComplete = (data) => {
+      if (data && data.user) {
+        userStore.setUserInfo(data.user)
         profileForm.value.mfaEnabled = false
-        profileForm.value.mfaSecret = null
-      } catch (error) {
-        console.error('处理MFA禁用结果失败:', error)
-        ElMessage.error('处理禁用结果时发生错误')
+        ElMessage.success('已成功禁用两步验证')
       }
     }
     
@@ -273,8 +257,11 @@ export default defineComponent({
           updateData.profile.mfaSecret = profileForm.value.mfaSecret
         }
         
+        // 检查是否修改了密码
+        const isChangingPassword = profileForm.value.newPassword && profileForm.value.oldPassword
+        
         // 如果填写了新密码则添加密码信息
-        if (profileForm.value.newPassword && profileForm.value.oldPassword) {
+        if (isChangingPassword) {
           updateData.oldPassword = profileForm.value.oldPassword
           updateData.newPassword = profileForm.value.newPassword
         }
@@ -285,6 +272,7 @@ export default defineComponent({
         // 调用更新接口
         await userStore.updateProfile(updateData)
         
+        // 成功消息
         ElMessage.success('个人资料更新成功')
         
         // 清空密码字段

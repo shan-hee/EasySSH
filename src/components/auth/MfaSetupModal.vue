@@ -311,11 +311,23 @@ export default defineComponent({
       // 1. 输入长度不足
       if (verificationCode.value.length !== 6) {
         verifyError.value = '请输入6位验证码';
+        // 新增：失败时聚焦最后一个输入框
+        nextTick(() => {
+          if (codeInputs.value[5]) {
+            codeInputs.value[5].focus();
+          }
+        });
         return;
       }
       // 2. 存在非数字字符
       if (!/^\d{6}$/.test(verificationCode.value)) {
         verifyError.value = '验证码只能包含数字，请重新输入';
+        // 新增：失败时聚焦最后一个输入框
+        nextTick(() => {
+          if (codeInputs.value[5]) {
+            codeInputs.value[5].focus();
+          }
+        });
         return;
       }
       if (isVerifying.value) return;
@@ -324,14 +336,31 @@ export default defineComponent({
         // 使用 mfaService.enableMfa 来启用 MFA
         const result = await mfaService.enableMfa(secretKey.value, verificationCode.value);
         if (result.success) {
-          emit('mfa-setup-complete', { secret: secretKey.value });
+          // 直接用返回的用户数据刷新本地状态
+          if (result.user) {
+            emit('mfa-setup-complete', { user: result.user, secret: secretKey.value });
+          } else if (result.data && result.data.user) {
+            emit('mfa-setup-complete', { user: result.data.user, secret: secretKey.value });
+          }
           handleClose();
         } else {
           verifyError.value = result.message || '验证失败，请确保您输入了正确的验证码';
+          // 新增：失败时聚焦最后一个输入框
+          nextTick(() => {
+            if (codeInputs.value[5]) {
+              codeInputs.value[5].focus();
+            }
+          });
         }
       } catch (error) {
         console.error('MFA验证失败:', error);
         verifyError.value = '验证失败，请重试';
+        // 新增：失败时聚焦最后一个输入框
+        nextTick(() => {
+          if (codeInputs.value[5]) {
+            codeInputs.value[5].focus();
+          }
+        });
       } finally {
         isVerifying.value = false;
       }

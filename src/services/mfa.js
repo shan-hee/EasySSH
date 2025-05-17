@@ -211,28 +211,24 @@ class MfaService {
    */
   async enableMfa(secret, code) {
     try {
-      // 首先在本地验证码是否有效
-      const isValid = this.verifyTOTP(code, secret)
-      
-      if (!isValid) {
+      // 只做格式校验
+      if (!code || code.length !== 6 || !/^\d{6}$/.test(code)) {
         return {
           success: false,
-          message: '验证码无效，请检查您的输入和密钥是否正确'
+          message: '请输入6位数字验证码'
         }
       }
-      
-      // 调用更新用户资料API启用MFA
+      // 直接提交API，由后端校验
       const response = await apiService.put('/users/me', {
         profile: {
           mfaEnabled: true,
           mfaSecret: secret
-        }
+        },
+        mfaCode: code // 新增：将验证码一并提交
       })
-      
       if (!response || !response.success) {
         throw new Error(response?.message || '启用MFA失败')
       }
-      
       return {
         success: true,
         message: 'MFA已成功启用',
@@ -254,14 +250,14 @@ class MfaService {
    */
   async disableMfa(code) {
     try {
-      // 先验证MFA代码
+      // 只做格式校验
       if (!code || code.length !== 6 || !/^\d{6}$/.test(code)) {
         return {
           success: false,
           message: '请输入6位数字验证码'
         }
       }
-      
+      // 直接提交API，由后端校验
       // 使用全局存储的auth_token，不再依赖currentUser
       const token = localStorage.getItem('auth_token')
       if (!token) {
@@ -271,43 +267,50 @@ class MfaService {
           message: '认证已过期，请重新登录后再试'
         }
       }
-      
       // 先调用验证API确认身份
-      const verifyResponse = await apiService.post('/users/verify-mfa', {
-        mfaCode: code,
-        isMfaVerification: true,
-        operation: 'disable'
-      })
-      
-      if (!verifyResponse || !verifyResponse.success) {
-        return {
-          success: false,
-          message: verifyResponse?.message || '验证码无效，请确认后重试'
+      try {
+        const verifyResponse = await apiService.post('/users/verify-mfa', {
+          mfaCode: code,
+          isMfaVerification: true,
+          operation: 'disable'
+        })
+        if (!verifyResponse || !verifyResponse.success) {
+          return {
+            success: false,
+            message: verifyResponse?.message || '验证码无效，请确认后重试'
+          }
         }
+        if (verifyResponse.token) {
+          log.info('MFA验证成功，更新token')
+          localStorage.setItem('auth_token', verifyResponse.token)
+        }
+      } catch (verifyError) {
+        if (verifyError.response && verifyError.response.status === 401) {
+          const errorMessage = verifyError.response.data?.message || '验证失败，该用户未启用两步验证'
+          log.warn('MFA验证失败', { status: 401, message: errorMessage })
+          return {
+            success: false,
+            message: errorMessage
+          }
+        }
+        throw verifyError
       }
-      
-      // 如果验证成功且返回了新token，更新本地token
-      if (verifyResponse.token) {
-        log.info('MFA验证成功，更新token')
-        localStorage.setItem('auth_token', verifyResponse.token)
-      }
-      
       // 验证成功后，再调用更新用户资料API禁用MFA
       const response = await apiService.put('/users/me', {
         profile: {
           mfaEnabled: false,
           mfaSecret: ''
-        }
+        },
+        mfaCode: code // 关键：带上验证码
       })
-      
       if (!response || !response.success) {
         throw new Error(response?.message || '禁用MFA失败')
       }
-      
       return {
         success: true,
         message: 'MFA已成功禁用',
-        data: response
+        data: response,
+        user: response.user  // 确保返回更新后的用户数据
       }
     } catch (error) {
       log.error('禁用MFA失败', error)
