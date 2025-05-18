@@ -25,7 +25,7 @@ export const wsServerConfig = {
   // 默认使用localhost而非IP地址，更加稳定
   primaryHost: 'localhost',
   fallbackHost: '127.0.0.1',
-  port: 3000,
+  port: 8000,
   path: '/ssh',
   connectionTimeout: 10000, // 毫秒
   reconnectAttempts: 3,

@@ -111,6 +111,16 @@ class AuthService {
         if (response && response.success && response.user) {
           this.isAuthenticated.value = true
           this.currentUser.value = response.user
+          
+          // 更新store中的用户信息
+          if (!this.userStore) {
+            this.userStore = useUserStore()
+          }
+          if (this.userStore) {
+            this.userStore.setUserInfo(response.user)
+            log.info('用户信息已更新', { username: response.user.username })
+          }
+          
           return true
         } else {
           // 响应成功但缺少用户数据
@@ -390,9 +400,38 @@ class AuthService {
    */
   async loadUserInfo() {
     try {
-      const userInfo = await apiService.get('/users/me')
-      this.userStore.setUserInfo(userInfo)
-      return userInfo
+      // 检查是否已认证
+      if (!this.token) {
+        log.warn('加载用户信息失败：未登录状态')
+        return { success: false, message: '未登录' }
+      }
+      
+      // 获取用户存储
+      if (!this.userStore) {
+        this.userStore = useUserStore()
+      }
+      
+      // 请求用户信息
+      const response = await apiService.get('/users/me', {}, { hideErrorMessage: true })
+      
+      if (response && response.success && response.user) {
+        // 更新本地用户信息
+        this.currentUser.value = response.user
+        // 更新store中的用户信息
+        if (this.userStore) {
+          this.userStore.setUserInfo(response.user)
+        }
+        
+        log.info('用户信息已加载', { 
+          userId: response.user.id,
+          username: response.user.username
+        })
+        
+        return { success: true, user: response.user }
+      } else {
+        log.warn('加载用户信息失败：响应异常', response)
+        return { success: false, message: response?.message || '获取用户信息失败' }
+      }
     } catch (error) {
       // 如果获取用户信息失败，可能是token无效
       if (error.response && error.response.status === 401) {
@@ -400,14 +439,24 @@ class AuthService {
         try {
           await this.refreshToken()
           // 刷新成功后重新获取用户信息
-          return await apiService.get('/users/me')
+          return await this.loadUserInfo()
         } catch (refreshError) {
           // 如果刷新失败，则登出
+          log.error('刷新token失败，无法获取用户信息', refreshError)
           this.logout()
-          throw refreshError
+          return { success: false, message: '登录已过期，请重新登录' }
         }
       }
-      throw error
+      
+      log.error('加载用户信息请求失败', error)
+      
+      // 返回友好的错误信息
+      let message = '获取用户信息失败，请稍后重试'
+      if (error.response) {
+        message = error.response.data?.message || message
+      }
+      
+      return { success: false, message }
     }
   }
   
@@ -542,6 +591,72 @@ class AuthService {
           console.error(`执行认证事件监听器出错:`, error)
         }
       })
+  }
+  
+  /**
+   * 刷新用户信息
+   * 当token有效时，从服务器获取最新的用户信息并更新本地存储
+   * @returns {Promise<Object>} 更新结果
+   */
+  async refreshUserInfo() {
+    try {
+      // 检查是否已认证
+      if (!this.token) {
+        log.warn('刷新用户信息失败：未登录状态')
+        return { success: false, message: '未登录' }
+      }
+      
+      // 获取用户存储
+      if (!this.userStore) {
+        this.userStore = useUserStore()
+      }
+      
+      // 请求最新用户信息
+      const response = await apiService.get('/users/me', {}, { hideErrorMessage: true })
+      
+      if (response && response.success && response.user) {
+        // 更新本地用户信息
+        this.currentUser.value = response.user
+        // 更新store中的用户信息
+        if (this.userStore) {
+          this.userStore.setUserInfo(response.user)
+        }
+        
+        log.info('用户信息已刷新', { 
+          userId: response.user.id,
+          username: response.user.username
+        })
+        
+        return { success: true, user: response.user }
+      } else {
+        log.warn('刷新用户信息失败：响应异常', response)
+        return { success: false, message: response?.message || '获取用户信息失败' }
+      }
+    } catch (error) {
+      log.error('刷新用户信息请求失败', error)
+      
+      // 如果是401错误，可能是token已失效
+      if (error.response && error.response.status === 401) {
+        // 尝试刷新token
+        try {
+          await this.refreshToken()
+          // 刷新成功后重新获取用户信息
+          return await this.refreshUserInfo()
+        } catch (refreshError) {
+          // 如果刷新失败，则可能需要重新登录
+          log.error('刷新token失败，无法获取最新用户信息', refreshError)
+          return { success: false, needRelogin: true, message: '登录已过期，请重新登录' }
+        }
+      }
+      
+      // 返回友好的错误信息
+      let message = '获取用户信息失败，请稍后重试'
+      if (error.response) {
+        message = error.response.data?.message || message
+      }
+      
+      return { success: false, message }
+    }
   }
 }
 

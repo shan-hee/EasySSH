@@ -123,7 +123,8 @@ class SSHService {
       return this._createNewSession(connection, generatedSessionId);
     } catch (error) {
       log.error('创建SSH会话失败:', error);
-      ElMessage.error(`SSH连接失败: ${error.message || '未知错误'}`);
+      // 移除错误提示，由_createNewSession在IPv4和IPv6都失败后统一提示
+      // ElMessage.error(`SSH连接失败: ${error.message || '未知错误'}`);
       throw error;
     }
   }
@@ -150,10 +151,37 @@ class SSHService {
         await new Promise(resolve => setTimeout(resolve, 500));
         
         log.info(`尝试使用IPv6连接: ${this.ipv6Url}`);
-        return await this._createSessionWithUrl(this.ipv6Url, sessionId, connection);
+        return await this._createSessionWithUrl(this.ipv6Url, sessionId, connection, true);
       } catch (ipv6Error) {
         log.error(`IPv6连接也失败: ${ipv6Error.message}`);
-        ElMessage.error(`SSH连接失败: 尝试IPv4和IPv6连接均失败`);
+        // 只在此处显示错误提示，即两种连接方式都失败后才显示
+        ElMessage.error(`SSH连接失败: ${ipv6Error.message || '连接错误'}`);
+        
+        // 获取terminalId以便通知终端组件
+        const terminalId = this.sessionTerminalMap.get(sessionId) || 
+                          (connection.terminalId ? connection.terminalId : null);
+        
+        // 触发全局事件，通知SSH连接失败
+        if (terminalId) {
+          window.dispatchEvent(new CustomEvent('ssh-connection-failed', {
+            detail: {
+              connectionId: terminalId,
+              sessionId: sessionId,
+              error: `SSH连接失败: 尝试IPv4和IPv6连接均失败`,
+              message: ipv6Error.message
+            }
+          }));
+          
+          // 触发会话创建失败事件
+          window.dispatchEvent(new CustomEvent('ssh-session-creation-failed', {
+            detail: {
+              sessionId: sessionId,
+              terminalId: terminalId,
+              error: `SSH连接失败: ${ipv6Error.message}`
+            }
+          }));
+        }
+        
         throw new Error(`SSH连接失败: IPv4(${ipv4Error.message}) 和 IPv6(${ipv6Error.message})`);
       }
     }
@@ -164,9 +192,10 @@ class SSHService {
    * @param {string} wsUrl - WebSocket URL
    * @param {string} sessionId - 会话ID 
    * @param {Object} connection - 连接信息
+   * @param {boolean} [isFallback=false] - 是否为IPv6备用连接
    * @returns {Promise<string>} - 会话ID
    */
-  async _createSessionWithUrl(wsUrl, sessionId, connection) {
+  async _createSessionWithUrl(wsUrl, sessionId, connection, isFallback = false) {
     try {
       log.info(`准备建立SSH连接 (${connection.name || connection.host}:${connection.port})`);
       
@@ -238,6 +267,34 @@ class SSHService {
         }
         
         this.releaseResources(sessionId);
+        
+        // 获取terminalId以便通知终端组件
+        const terminalId = this.sessionTerminalMap.get(sessionId) || 
+                          (connection.terminalId ? connection.terminalId : null);
+        
+        // 只在最终失败时（IPv6备用连接失败或直接失败）才触发全局事件
+        if (isFallback || !this.ipv6Url) {
+          // 触发全局事件，通知SSH连接失败
+          if (terminalId) {
+            window.dispatchEvent(new CustomEvent('ssh-connection-failed', {
+              detail: {
+                connectionId: terminalId,
+                sessionId: sessionId,
+                error: `SSH连接失败: ${error.message}`,
+                message: error.message
+              }
+            }));
+            
+            // 触发会话创建失败事件
+            window.dispatchEvent(new CustomEvent('ssh-session-creation-failed', {
+              detail: {
+                sessionId: sessionId,
+                terminalId: terminalId,
+                error: `SSH连接失败: ${error.message}`
+              }
+            }));
+          }
+        }
       } catch (cleanupError) {
         log.error(`清理失败会话资源时出错: ${sessionId}`, cleanupError);
       }
@@ -488,6 +545,10 @@ class SSHService {
               connectionState.status = 'error';
               connectionState.message = message.data?.message || '未知错误';
               log.error(`SSH连接错误: ${connectionState.message}`);
+              
+              // 不再单独弹出错误消息，由最终的IPv6失败时统一处理
+              // ElMessage.error(`SSH连接错误: ${connectionState.message}`);
+              
               reject(new Error(connectionState.message));
               break;
               

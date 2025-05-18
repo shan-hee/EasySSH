@@ -223,7 +223,6 @@ export default defineComponent({
           } else {
             const remainingAttempts = MAX_RETRY_ATTEMPTS - retryCount.value
             verifyError.value = `验证码不正确，您还有${remainingAttempts}次尝试机会`
-            codeDigits.value = ['', '', '', '', '', '']
             // 新增：失败时聚焦最后一个输入框
             nextTick(() => {
               if (codeInputs.value && codeInputs.value[5]) {

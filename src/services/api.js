@@ -143,28 +143,44 @@ class ApiService {
             '/users/refresh',
             '/users/verify-mfa'
           ]
-          
           const isAuthRequiredPath = error.config && 
             !noAuthRequiredPaths.some(path => error.config.url.includes(path))
-          
-          // 为/users/me请求添加一次重试机制
-          if (error.config && error.config.url.includes('/users/me') && !error.config.__isRetry) {
-            log.info('尝试重新验证用户状态...')
-            error.config.__isRetry = true
-            return this.axios.request(error.config)
-          }
-          
-          // 如果是/users/me请求，这可能是页面刷新时的检查，使用轻量级事件
-          if (error.config && error.config.url.includes('/users/me')) {
-            log.warn('当前是/users/me请求的401错误，使用轻量级检查失败事件')
-            // 使用轻量级auth:check-failed事件，而非auth:expired
+          if (isAuthRequiredPath) {
+            // 判断是否为远程注销情况
+            const isRemoteLogout = 
+              (data && data.error === 'remote-logout') ||
+              (data && data.message === 'remote-logout')
+            
+            if (isRemoteLogout) {
+              log.warn('检测到远程注销，清除所有本地凭据')
+              // 清除记住我凭据
+              try {
+                const userStore = require('@/store/user').useUserStore()
+                userStore.clearUserCredentials()
+              } catch (e) {
+                localStorage.removeItem('easyssh_credentials')
+              }
+              
+              // 清除token
+              localStorage.removeItem('auth_token')
+              
+              // 设置远程注销标志，确保main.js中的处理能正确识别
+              window._isRemoteLogout = true
+              
+              // 触发立即跳转到登录页事件
+              window.dispatchEvent(new CustomEvent('auth:remote-logout'))
+            }
+            
+            // 无论哪种401都清空token和用户信息
+            try {
+              const userStore = require('@/store/user').useUserStore()
+              userStore.setToken('')
+              userStore.setUserInfo({
+                id: '', username: '', email: '', avatar: '', role: '', lastLogin: null, mfaEnabled: false, displayName: '', theme: 'system', fontSize: 14
+              })
+            } catch (e) {}
+            
             window.dispatchEvent(new CustomEvent('auth:check-failed'))
-          } else if (isAuthRequiredPath) {
-            // 其他需要认证的路径触发认证过期事件
-            log.warn(`认证错误(401): ${error.config.url}，触发认证过期事件`)
-            this._handleAuthError()
-          } else {
-            log.debug(`忽略非认证路径的401错误: ${error.config.url}`)
           }
           break
         case 403:

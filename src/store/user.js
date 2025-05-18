@@ -78,7 +78,6 @@ export const useUserStore = defineStore('user', () => {
   
   function setUserInfo(info) {
       userInfo.value = { ...userInfo.value, ...info }
-      console.log('用户信息已更新:', userInfo.value)
     
     // 同时将用户信息保存到localStorage的currentUser中，方便其他服务直接访问
     try {
@@ -107,33 +106,6 @@ export const useUserStore = defineStore('user', () => {
   function clearUserCredentials() {
     localStorage.removeItem(CREDENTIALS_KEY)
     log.info('用户凭据已清除')
-  }
-  
-  // 自动登录（使用保存的凭据）仅填充表单
-  async function autoLogin() {
-    try {
-      const credentials = decryptCredentials()
-      if (!credentials) {
-        log.warn('没有保存的凭据')
-        return { success: false, message: '没有保存的凭据' }
-      }
-      
-      log.info('找到保存的凭据，但根据安全策略需要用户手动登录')
-      
-      // 返回凭据但不自动登录
-      return { 
-        success: false, 
-        hasCredentials: true,
-        credentials: {
-          username: credentials.username,
-          // 不返回密码，只用于内部填充
-        },
-        message: '需要用户手动登录'
-      }
-    } catch (error) {
-      log.error('处理保存凭据过程发生异常', error)
-      return { success: false, error: error.message || '无法处理保存的凭据' }
-    }
   }
   
   // 登录
@@ -347,7 +319,8 @@ export const useUserStore = defineStore('user', () => {
     updateProfile,
     verifyMfaCode,
     logoutAllDevices,
-    autoLogin
+    saveUserCredentials,
+    clearUserCredentials
   }
 }, {
   persist: {

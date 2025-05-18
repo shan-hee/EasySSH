@@ -188,7 +188,17 @@ class UserService {
       // 存储令牌映射，用于验证
       const tokenKey = `token:${token}`;
       const sessionData = { userId, valid: true };
-      const cacheTimeSeconds = 48 * 60 * 60; // 48小时过期
+      // 支持表达式（如60*60*48），否则直接转为数字
+      let cacheTimeSeconds = process.env.TOKEN_EXPIRES_IN;
+      if (typeof cacheTimeSeconds === 'string') {
+        try {
+          // eslint-disable-next-line no-eval
+          cacheTimeSeconds = eval(cacheTimeSeconds);
+        } catch (e) {
+          cacheTimeSeconds = parseInt(cacheTimeSeconds, 10);
+        }
+      }
+      if (!cacheTimeSeconds || isNaN(cacheTimeSeconds)) cacheTimeSeconds = 48 * 60 * 60; // 默认48小时
       
       cache.set(tokenKey, sessionData, cacheTimeSeconds);
       logger.info('会话数据已缓存', { 
@@ -258,10 +268,16 @@ class UserService {
         sessionValid: session ? session.valid : false,
         sessionUserId: session ? session.userId : null,
         decodedUserId: decoded.userId,
-        match: session ? String(session.userId) === String(decoded.userId) : false
+        match: session ? String(session.userId) === String(decoded.userId) : false,
+        remoteLogout: session ? session.remoteLogout : false
       });
       
       if (!session || !session.valid || String(session.userId) !== String(decoded.userId)) {
+        // 新增：如果是remote-logout，返回特定错误
+        if (session && session.remoteLogout) {
+          logger.warn('令牌验证失败 - 远程注销', { tokenKey });
+          return { valid: false, error: 'remote-logout' };
+        }
         logger.warn('令牌验证失败 - 缓存数据不匹配或无效');
         return { valid: false };
       }
@@ -475,12 +491,23 @@ class UserService {
    * 生成JWT令牌
    */
   generateToken(userId) {
+    // 支持表达式（如60*60*48），否则直接转为数字
+    let expiresIn = process.env.TOKEN_EXPIRES_IN;
+    if (typeof expiresIn === 'string') {
+      try {
+        // eslint-disable-next-line no-eval
+        expiresIn = eval(expiresIn);
+      } catch (e) {
+        expiresIn = parseInt(expiresIn, 10);
+      }
+    }
+    if (!expiresIn || isNaN(expiresIn)) expiresIn = 48 * 60 * 60; // 默认48小时
+    const now = Date.now() / 1000;
     const payload = {
       userId,
-      iat: Date.now() / 1000,
-      exp: Date.now() / 1000 + 48 * 60 * 60 // 48小时有效期
+      iat: now,
+      exp: now + expiresIn // 有效期
     };
-    
     return jwt.sign(payload, process.env.JWT_SECRET || 'your-secret-key');
   }
 
@@ -540,10 +567,10 @@ class UserService {
       const userSessionsKey = `user:sessions:${userId}`;
       const userSessions = cache.get(userSessionsKey) || [];
       
-      // 使所有令牌失效
+      // 使所有令牌失效，并标记remote-logout
       for (const token of userSessions) {
         const tokenKey = `token:${token}`;
-        cache.set(tokenKey, { userId, valid: false }, 60); // 设置短期过期
+        cache.set(tokenKey, { userId, valid: false, remoteLogout: true }, 60); // 设置短期过期
       }
       
       // 清除用户会话列表

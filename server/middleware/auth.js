@@ -106,3 +106,36 @@ exports.adminMiddleware = (req, res, next) => {
   logger.debug('验证管理员权限成功', { userId: req.user.id });
   next();
 }; 
+
+// 只校验token有效性，不做MFA等额外校验（用于GET /users/me）
+exports.tokenOnlyMiddleware = async (req, res, next) => {
+  try {
+    logger.debug('tokenOnlyMiddleware - 请求路径', req.path);
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ success: false, message: '未提供身份验证令牌' });
+    }
+    const token = authHeader.split(' ')[1];
+    if (!token || token.split('.').length !== 3) {
+      return res.status(401).json({ success: false, message: '无效的身份验证格式' });
+    }
+    // 只做JWT签名和过期校验
+    let decoded;
+    try {
+      decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key');
+    } catch (err) {
+      return res.status(401).json({ success: false, message: '身份验证失败' });
+    }
+    // 获取用户信息
+    const user = await userService.getUserById(decoded.userId);
+    if (!user) {
+      return res.status(401).json({ success: false, message: '用户不存在' });
+    }
+    req.user = user;
+    req.token = token;
+    next();
+  } catch (error) {
+    logger.error('tokenOnlyMiddleware错误', error);
+    res.status(401).json({ success: false, message: '身份验证失败' });
+  }
+}; 

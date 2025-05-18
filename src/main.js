@@ -207,118 +207,54 @@ app.mount('#app')
 // 导入用户状态管理，并初始化用户状态
 import { useUserStore } from './store/user'
 
-// 添加监听器，处理认证状态检查失败的事件（不重定向）
-window.addEventListener('auth:check-failed', async () => {
-  log.info('检测到认证状态检查失败，尝试静默自动登录')
-  try {
-    // 防止重复处理
-    if (window.isAutoLoginInProgress) {
-      log.info('自动登录已在进行中，跳过此次触发')
-      return
-    }
-    
-    window.isAutoLoginInProgress = true
-    
-    // 添加自动登录尝试计数，避免循环
-    window.autoLoginAttempts = (window.autoLoginAttempts || 0) + 1
-    if (window.autoLoginAttempts > 3) {
-      log.warn('自动登录尝试次数过多，暂停尝试')
-      window.isAutoLoginInProgress = false
-      return
-    }
-    
-    // 尝试自动登录但不显示任何界面反馈
-    setTimeout(async () => {
-      try {
-        const userStore = useUserStore()
-        const result = await userStore.autoLogin()
-        
-        if (result.success) {
-          log.info('静默自动登录成功')
-          // 登录成功后重置尝试计数
-          window.autoLoginAttempts = 0
-        } else {
-          log.warn('静默自动登录失败：没有可用凭据')
-        }
-        // 不管成功与否都不进行任何界面操作
-      } catch (error) {
-        log.error('静默自动登录失败', error)
-      } finally {
-        window.isAutoLoginInProgress = false
-      }
-    }, 100)
-  } catch (error) {
-    window.isAutoLoginInProgress = false
-    log.error('处理认证检查失败事件出错', error)
+// 应用初始化时强制同步token状态，由userStore或auth服务统一校验token有效性
+const userStore = useUserStore()
+const savedToken = localStorage.getItem('auth_token')
+if (savedToken) {
+  userStore.setToken(savedToken)
+  // 不再在main.js中主动fetch('/api/users/me')
+} else {
+  userStore.setToken('')
+  userStore.setUserInfo({
+    id: '', username: '', email: '', avatar: '', role: '', lastLogin: null, mfaEnabled: false, displayName: '', theme: 'system', fontSize: 14
+  })
+  if (window.location.pathname !== '/login') {
+    window.location.href = '/login'
+  }
+}
+
+// 防止重复认证跳转
+window._isAuthFailed = false
+window.addEventListener('auth:check-failed', () => {
+  if (window._isAuthFailed) return
+  window._isAuthFailed = true
+  log.info('检测到认证状态检查失败，跳转到登录页')
+  // 清理store等逻辑可放在api.js
+  if (window.location.pathname !== '/login') {
+    const currentPath = window.location.pathname
+    const redirectParam = currentPath !== '/' ? `?redirect=${encodeURIComponent(currentPath)}` : ''
+    window.location.href = `/login${redirectParam}`
   }
 })
 
-// 添加监听器，处理认证过期事件
-window.addEventListener('auth:expired', async () => {
-  log.info('检测到认证令牌过期，尝试自动登录')
-  try {
-    // 防止auth:expired事件在初始化完成前被处理
-    const userStore = useUserStore()
-    
-    // 避免重复触发，设置一个标记
-    if (window.isAutoLoginInProgress) {
-      log.info('自动登录已在进行中，跳过此次触发')
-      return
-    }
-    
-    window.isAutoLoginInProgress = true
-    
-    // 添加自动登录尝试计数，避免循环
-    window.autoLoginAttempts = (window.autoLoginAttempts || 0) + 1
-    if (window.autoLoginAttempts > 3) {
-      log.warn('自动登录尝试次数过多，重定向到登录页面')
-      window.isAutoLoginInProgress = false
-      // 重定向到登录页面
-      if (window.location.pathname !== '/login') {
-        const currentPath = window.location.pathname
-        const redirectParam = currentPath !== '/' ? `?redirect=${encodeURIComponent(currentPath)}` : ''
-        window.location.href = `/login${redirectParam}`
-      }
-      return
-    }
-    
-    // 延迟一小段时间执行，给页面一些时间处理完其他操作
-    setTimeout(async () => {
-      try {
-        const result = await userStore.autoLogin()
-        
-        if (!result.success) {
-          log.info('自动登录失败，重定向到登录页面')
-          // 如果自动登录失败，重定向到登录页
-          if (window.location.pathname !== '/login') {
-            const currentPath = window.location.pathname
-            const redirectParam = currentPath !== '/' ? `?redirect=${encodeURIComponent(currentPath)}` : ''
-            window.location.href = `/login${redirectParam}`
-          }
-        } else {
-          log.info('自动登录成功')
-          // 登录成功后重置尝试计数
-          window.autoLoginAttempts = 0
-          // 刷新当前页面以确保状态正确
-          window.location.reload()
-        }
-      } catch (error) {
-        log.error('自动登录处理出错', error)
-        // 出错时重定向到登录页
-        if (window.location.pathname !== '/login') {
-          window.location.href = '/login'
-        }
-      } finally {
-        window.isAutoLoginInProgress = false
-      }
-    }, 100)
-  } catch (error) {
-    log.error('处理认证过期事件出错', error)
-    window.isAutoLoginInProgress = false
-    // 出错时重定向到登录页
-    if (window.location.pathname !== '/login') {
-      window.location.href = '/login'
-    }
+// 处理远程注销事件，立即跳转到登录页
+window.addEventListener('auth:remote-logout', () => {
+  log.warn('检测到远程注销，立即跳转到登录页')
+  // 清除全局状态指示器
+  window._isAuthFailed = true
+  // 清除token，确保不再获取登录信息
+  localStorage.removeItem('auth_token')
+  // 不保留重定向路径，确保完全重新登录
+  window.location.href = '/login?remote-logout=true'
+})
+
+// 处理认证过期事件，直接跳转到登录页
+window.addEventListener('auth:expired', () => {
+  log.info('检测到认证令牌过期，跳转到登录页')
+  if (window.location.pathname !== '/login') {
+    const currentPath = window.location.pathname
+    const redirectParam = currentPath !== '/' ? `?redirect=${encodeURIComponent(currentPath)}` : ''
+    window.location.href = `/login${redirectParam}`
   }
 })
 

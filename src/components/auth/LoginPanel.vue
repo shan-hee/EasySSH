@@ -106,7 +106,7 @@ export default defineComponent({
     // 在初始化阶段获取保存的凭据
     const savedCreds = getSavedCredentials()
     
-    // 初始化表单状态，如果有保存的凭据则直接使用
+    // 初始化表单状态，如果有保存的凭据则直接使用（仅自动填充，不自动登录）
     const loginForm = reactive({
       username: savedCreds.username,
       password: savedCreds.password
@@ -115,9 +115,31 @@ export default defineComponent({
     // 初始化记住我选项
     const rememberMe = ref(savedCreds.hasCredentials)
     
-    // 移除自动登录代码，用户需要手动点击登录
+    // 移除自动登录代码，用户需要手动点击登录按钮
     onMounted(() => {
-      log.info('登录页面初始化，需要用户手动点击登录按钮')
+      if (!window._loginPanelMounted) {
+        log.info('登录页面初始化，需要用户手动点击登录按钮')
+        window._loginPanelMounted = true
+      }
+
+      // 检查URL中是否包含远程注销参数，只弹一次并移除参数
+      const urlParams = new URLSearchParams(window.location.search)
+      if (urlParams.has('remote-logout')) {
+        ElMessage({
+          message: '您的账号已在其他设备上被注销，请重新登录',
+          type: 'warning',
+          duration: 5000,
+          offset: 80,
+          zIndex: 9999
+        })
+        // 弹窗后移除URL参数
+        urlParams.delete('remote-logout')
+        const newUrl =
+          window.location.pathname +
+          (urlParams.toString() ? '?' + urlParams.toString() : '') +
+          window.location.hash
+        window.history.replaceState({}, '', newUrl)
+      }
     })
     
     const handleLogin = async () => {

@@ -295,26 +295,28 @@ export default defineComponent({
     
     // 处理注销所有设备
     const handleLogoutAllDevices = async () => {
+      isLoading.value = true
       try {
-        await userStore.logoutAllDevices()
-        ElMessage.success('已成功注销所有设备')
-        // 注销成功后返回首页
-        router.push('/')
+        const result = await userStore.logoutAllDevices()
+        if (result.success) {
+          ElMessage.success('已注销所有设备，请重新登录')
+          router.push('/login') // 直接跳转登录页
+        }
       } catch (error) {
-        console.error('注销所有设备失败:', error)
-        ElMessage.error('注销所有设备时发生错误')
+        ElMessage.error('注销所有设备失败，请重试')
+      } finally {
+        isLoading.value = false
       }
     }
     
     // 处理注销所有设备完成
     const handleLogoutComplete = () => {
       // 注销完成后的逻辑已在LogoutAllDevicesModal中处理
-      console.log('注销所有设备完成')
     }
     
     // 处理取消注销所有设备
     const handleLogoutCancelled = () => {
-      console.log('取消注销所有设备')
+      // 注销完成后的逻辑已在LogoutAllDevicesModal中处理
     }
     
     return {

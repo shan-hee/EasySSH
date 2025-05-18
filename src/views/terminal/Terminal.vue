@@ -203,6 +203,21 @@ export default {
         log.debug(`检测到终端路径变更，使用会话存储ID: ${termId}`)
         log.debug(`路由切换到终端，触发终端显示和刷新 ${termId}`)
         
+        // 添加清理旧连接状态的逻辑，确保SSH连接失败后可以重新连接
+        // 先检查连接状态，如果是错误状态，清理后再重新连接
+        if (terminalStore.getTerminalStatus(termId) === 'error') {
+          log.debug(`检测到终端 ${termId} 处于错误状态，清理状态后重新连接`)
+          // 清理连接状态
+          delete terminalInitialized.value[termId]
+          delete terminalInitializingStates.value[termId]
+          delete terminalConnectingStates.value[termId]
+          
+          // 从会话存储中清理
+          if (sessionStore.getSession(termId)) {
+            sessionStore.setActiveSession(null)
+          }
+        }
+        
         // 检查终端状态
         const hasTerminal = terminalStore.hasTerminal(termId)
         const hasSession = terminalStore.hasTerminalSession(termId)
@@ -805,6 +820,31 @@ export default {
         if (sessionId && event.detail.sessionId === sessionId) {
           ElMessage.error(`SSH错误: ${event.detail.message || '连接错误'}`)
           status.value = '连接错误'
+          
+          // 直接清理本地状态，避免断开时找不到会话ID的问题
+          delete terminalInitialized.value[activeConnectionId.value]
+          delete terminalInitializingStates.value[activeConnectionId.value]
+          delete terminalConnectingStates.value[activeConnectionId.value]
+          
+          // 从终端ID列表中移除
+          terminalIds.value = terminalIds.value.filter(id => id !== activeConnectionId.value)
+          
+          // 清理会话存储中的状态
+          if (sessionStore.getSession(activeConnectionId.value)) {
+            sessionStore.setActiveSession(null)
+          }
+          
+          // 仅在会话实际存在的情况下尝试断开连接
+          if (terminalStore.hasTerminalSession(activeConnectionId.value)) {
+            terminalStore.disconnectTerminal(activeConnectionId.value)
+              .finally(() => {
+                // 导航回连接配置界面
+                router.push('/connections/new')
+              })
+          } else {
+            // 如果会话不存在，直接返回连接配置界面
+            router.push('/connections/new')
+          }
         }
       }
     }
@@ -921,6 +961,8 @@ export default {
       
       // 设置终端事件监听
       const cleanupEvents = setupTerminalEvents()
+      // 设置SSH失败事件监听
+      const cleanupSSHFailureEvents = setupSSHFailureHandler()
       
       // 如果有活动连接ID，则更新终端ID列表
       if (activeConnectionId.value) {
@@ -969,6 +1011,7 @@ export default {
       onBeforeUnmount(() => {
         // 移除事件监听
         cleanupEvents()
+        cleanupSSHFailureEvents()
         window.removeEventListener('terminal-command', handleTerminalEvent)
         resizeObserver.disconnect()
         
@@ -1246,15 +1289,85 @@ export default {
           terminalInitializingStates.value[terminalId] = false
           terminalConnectingStates.value[terminalId] = false
           terminalInitialized.value[terminalId] = false
+          
+          // 直接清理本地状态
+          delete terminalRefs.value[terminalId]
+          
+          // 从终端ID列表中移除
+          terminalIds.value = terminalIds.value.filter(id => id !== terminalId)
+          
+          // 清理会话存储中的状态
+          if (sessionStore.getSession(terminalId)) {
+            sessionStore.setActiveSession(null)
+          }
+          
+          // 仅在会话实际存在的情况下尝试断开连接
+          if (terminalStore.hasTerminalSession(terminalId)) {
+            terminalStore.disconnectTerminal(terminalId)
+              .finally(() => {
+                // 导航回连接配置界面
+                router.push('/connections/new')
+              })
+          } else {
+            // 如果会话不存在，直接返回连接配置界面
+            router.push('/connections/new')
+          }
+        }
+      }
+      
+      // 添加SSH会话创建失败事件监听
+      const handleSessionCreationFailed = (event) => {
+        if (!event.detail) return
+        
+        const { sessionId, terminalId, error } = event.detail
+        log.debug(`收到SSH会话创建失败事件: 会话ID=${sessionId}, 终端ID=${terminalId || '未知'}, 错误=${error}`)
+        
+        // 如果有终端ID，清理相关状态
+        if (terminalId) {
+          // 清理终端状态
+          terminalInitializingStates.value[terminalId] = false
+          terminalConnectingStates.value[terminalId] = false
+          terminalInitialized.value[terminalId] = false
+          
+          // 清理引用
+          if (terminalRefs.value[terminalId]) {
+            terminalRefs.value[terminalId] = null
+            delete terminalRefs.value[terminalId]
+          }
+          
+          // 从终端ID列表中移除
+          terminalIds.value = terminalIds.value.filter(id => id !== terminalId)
+          
+          // 清理会话存储
+          if (sessionStore.getSession(terminalId)) {
+            sessionStore.setActiveSession(null)
+          }
+          
+          // 如果是当前活动连接，显示错误并导航回连接配置界面
+          if (terminalId === activeConnectionId.value) {
+            ElMessage.error(`SSH连接失败: ${error || '未知错误'}`)
+            
+            // 发送自定义事件，通知终端清理完成
+            window.dispatchEvent(new CustomEvent('ssh-cleanup-done', { 
+              detail: { connectionId: terminalId }
+            }))
+            
+            // 延迟导航，确保清理完成
+            setTimeout(() => {
+              router.push('/connections/new')
+            }, 100)
+          }
         }
       }
       
       // 添加事件监听
       window.addEventListener('terminal-status-update', handleTerminalStatusUpdate)
+      window.addEventListener('ssh-session-creation-failed', handleSessionCreationFailed)
       
       // 返回清理函数
       return () => {
         window.removeEventListener('terminal-status-update', handleTerminalStatusUpdate)
+        window.removeEventListener('ssh-session-creation-failed', handleSessionCreationFailed)
       }
     }
     
@@ -1298,6 +1411,56 @@ export default {
       },
       { immediate: true }
     )
+    
+    // 添加SSH连接失败处理事件
+    const setupSSHFailureHandler = () => {
+      const handleSSHConnectionFailed = (event) => {
+        if (!event.detail) return
+        
+        const { connectionId, error } = event.detail
+        log.debug(`收到全局SSH连接失败事件: ${connectionId}, 错误: ${error}`)
+        
+        if (!connectionId) return
+        
+        // 清理本地状态
+        if (terminalInitialized.value[connectionId]) {
+          delete terminalInitialized.value[connectionId]
+        }
+        if (terminalInitializingStates.value[connectionId]) {
+          delete terminalInitializingStates.value[connectionId]
+        }
+        if (terminalConnectingStates.value[connectionId]) {
+          delete terminalConnectingStates.value[connectionId]
+        }
+        if (terminalRefs.value[connectionId]) {
+          delete terminalRefs.value[connectionId]
+        }
+        
+        // 显示错误消息
+        ElMessage.error(`SSH连接失败: ${error || '未知错误'}`)
+        
+        // 从终端ID列表中移除
+        terminalIds.value = terminalIds.value.filter(id => id !== connectionId)
+        
+        // 清理会话存储
+        if (sessionStore.getSession(connectionId)) {
+          sessionStore.setActiveSession(null)
+        }
+        
+        // 导航回连接配置界面
+        if (connectionId === activeConnectionId.value) {
+          router.push('/connections/new')
+        }
+      }
+      
+      // 添加全局事件监听
+      window.addEventListener('ssh-connection-failed', handleSSHConnectionFailed)
+      
+      // 返回清理函数
+      return () => {
+        window.removeEventListener('ssh-connection-failed', handleSSHConnectionFailed)
+      }
+    }
     
     return {
       terminalIds,
