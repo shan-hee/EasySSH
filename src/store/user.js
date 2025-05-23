@@ -60,10 +60,25 @@ export const useUserStore = defineStore('user', () => {
     autoSave: true
   })
   
+  // 连接相关状态
+  const connections = ref([])
+  const favorites = ref([])
+  const history = ref([])
+  const pinnedConnections = ref({})
+  
   // 计算属性
   const isLoggedIn = computed(() => !!token.value)
   const isAdmin = computed(() => userInfo.value.role === 'admin')
   const username = computed(() => userInfo.value.username)
+  
+  // 连接相关计算属性
+  const favoriteConnections = computed(() => {
+    return connections.value.filter(conn => favorites.value.includes(conn.id))
+  })
+  
+  const historyConnections = computed(() => {
+    return history.value
+  })
   
   // 操作方法
   function setToken(newToken) {
@@ -106,6 +121,262 @@ export const useUserStore = defineStore('user', () => {
   function clearUserCredentials() {
     localStorage.removeItem(CREDENTIALS_KEY)
     log.info('用户凭据已清除')
+  }
+  
+  // 连接相关方法
+  
+  // 添加新连接
+  function addConnection(connection) {
+    try {
+      // 生成唯一ID
+      connection.id = Date.now().toString()
+      connections.value.push(connection)
+      
+      // 同步到服务器
+      if (isLoggedIn.value) {
+        // 异步保存到服务器，不阻塞UI
+        apiService.post('/connections', { connection })
+          .catch(error => {
+            // API可能未实现，不影响用户体验
+            log.warn('同步连接到服务器失败，仅保存在本地', error)
+          })
+      }
+      
+      return connection.id
+    } catch (error) {
+      log.error('添加连接失败', error)
+      ElMessage.error('添加连接失败')
+      return null
+    }
+  }
+  
+  // 更新连接
+  function updateConnection(id, updatedConnection) {
+    try {
+      const index = connections.value.findIndex(conn => conn.id === id)
+      if (index === -1) {
+        throw new Error(`未找到ID为${id}的连接`)
+      }
+      
+      // 更新连接信息
+      connections.value[index] = { ...connections.value[index], ...updatedConnection }
+      
+      // 同步到服务器
+      if (isLoggedIn.value) {
+        apiService.put(`/connections/${id}`, { connection: connections.value[index] })
+          .catch(error => {
+            // API可能未实现，不影响用户体验
+            log.warn('同步连接更新到服务器失败，仅保存在本地', error)
+          })
+      }
+      
+      return connections.value[index]
+    } catch (error) {
+      log.error('更新连接失败', error)
+      ElMessage.error('更新连接失败')
+      return null
+    }
+  }
+  
+  // 删除连接
+  function deleteConnection(id) {
+    try {
+      const index = connections.value.findIndex(conn => conn.id === id)
+      if (index === -1) {
+        throw new Error(`未找到ID为${id}的连接`)
+      }
+      
+      // 删除连接
+      connections.value.splice(index, 1)
+      
+      // 同时从收藏和置顶中移除
+      const favIndex = favorites.value.indexOf(id)
+      if (favIndex !== -1) {
+        favorites.value.splice(favIndex, 1)
+      }
+      
+      if (pinnedConnections.value[id]) {
+        delete pinnedConnections.value[id]
+      }
+      
+      // 同步到服务器
+      if (isLoggedIn.value) {
+        apiService.delete(`/connections/${id}`)
+          .catch(error => log.error('同步连接删除到服务器失败', error))
+      }
+      
+      return true
+    } catch (error) {
+      log.error('删除连接失败', error)
+      ElMessage.error('删除连接失败')
+      return false
+    }
+  }
+  
+  // 同步本地连接数据到服务器
+  async function syncConnectionsToServer() {
+    if (!isLoggedIn.value) return false
+    
+    try {
+      // 检查API是否可用
+      const apiCheckResponse = await apiService.get('/connections/check')
+      .catch(() => ({ success: false }));
+      
+      // 如果API未实现或不可用，使用空数据，不影响用户体验
+      if (!apiCheckResponse || !apiCheckResponse.success) {
+        log.warn('连接同步API未实现或不可用，将使用本地数据')
+        return false
+      }
+      
+      // 同步连接列表
+      await apiService.post('/connections/sync', {
+        connections: connections.value,
+        favorites: favorites.value,
+        history: history.value,
+        pinned: pinnedConnections.value
+      })
+      
+      log.info('连接数据已同步到服务器')
+      return true
+    } catch (error) {
+      // 不影响用户体验，只记录错误
+      log.warn('同步连接数据到服务器失败，将继续使用本地数据', error)
+      return false
+    }
+  }
+  
+  // 从服务器加载连接数据
+  async function loadConnectionsFromServer() {
+    if (!isLoggedIn.value) return false
+    
+    try {
+      // 检查API是否可用
+      const apiCheckResponse = await apiService.get('/connections/check')
+      .catch(() => ({ success: false }));
+      
+      // 如果API未实现或不可用，使用空数据，不影响用户体验
+      if (!apiCheckResponse || !apiCheckResponse.success) {
+        log.warn('连接同步API未实现或不可用，将使用本地数据')
+        return false
+      }
+      
+      // 获取用户连接列表
+      const connectionsResponse = await apiService.get('/connections')
+      if (connectionsResponse && connectionsResponse.success) {
+        connections.value = connectionsResponse.connections || []
+      }
+      
+      // 获取用户收藏的连接
+      const favoritesResponse = await apiService.get('/connections/favorites')
+      if (favoritesResponse && favoritesResponse.success) {
+        favorites.value = favoritesResponse.favorites || []
+      }
+      
+      // 获取用户的历史记录
+      const historyResponse = await apiService.get('/connections/history')
+      if (historyResponse && historyResponse.success) {
+        history.value = historyResponse.history || []
+      }
+      
+      // 获取用户的置顶信息
+      const pinnedResponse = await apiService.get('/connections/pinned')
+      if (pinnedResponse && pinnedResponse.success) {
+        pinnedConnections.value = pinnedResponse.pinned || {}
+      }
+      
+      log.info('连接数据已从服务器加载')
+      return true
+    } catch (error) {
+      // 不影响用户体验，只记录错误
+      log.warn('从服务器加载连接数据失败，将使用本地数据', error)
+      return false
+    }
+  }
+  
+  // 添加到历史记录
+  function addToHistory(connection) {
+    // 移除可能存在的重复记录
+    history.value = history.value.filter(h => h.id !== connection.id)
+    
+    // 添加到历史记录开头
+    history.value.unshift({
+      id: connection.id,
+      name: connection.name,
+      host: connection.host,
+      username: connection.username,
+      port: connection.port,
+      description: connection.description,
+      timestamp: Date.now()
+    })
+    
+    // 限制历史记录数量为20条
+    if (history.value.length > 20) {
+      history.value.pop()
+    }
+    
+    // 同步到服务器
+    if (isLoggedIn.value) {
+      // 确保连接已创建成功后再同步历史记录
+      apiService.post('/connections/history', { history: history.value })
+        .catch(error => {
+          log.error('同步历史记录到服务器失败', error)
+          // 添加重试机制
+          setTimeout(() => {
+            apiService.post('/connections/history', { history: history.value })
+              .catch(retryError => log.error('重试同步历史记录失败', retryError))
+          }, 1000)
+        })
+    }
+  }
+  
+  // 收藏连接
+  function toggleFavorite(id) {
+    const index = favorites.value.indexOf(id)
+    
+    if (index === -1) {
+      // 添加到收藏
+      favorites.value.push(id)
+    } else {
+      // 从收藏中移除
+      favorites.value.splice(index, 1)
+    }
+    
+    // 同步到服务器
+    if (isLoggedIn.value) {
+      apiService.post('/connections/favorites', { favorites: favorites.value })
+        .catch(error => log.error('同步收藏状态到服务器失败', error))
+    }
+    
+    return index === -1 // 返回当前是否为收藏状态
+  }
+  
+  // 置顶连接
+  function togglePin(id) {
+    if (pinnedConnections.value[id]) {
+      // 取消置顶
+      delete pinnedConnections.value[id]
+    } else {
+      // 添加置顶
+      pinnedConnections.value[id] = true
+    }
+    
+    // 同步到服务器
+    if (isLoggedIn.value) {
+      apiService.post('/connections/pinned', { pinned: pinnedConnections.value })
+        .catch(error => log.error('同步置顶状态到服务器失败', error))
+    }
+    
+    return !!pinnedConnections.value[id] // 返回当前是否为置顶状态
+  }
+  
+  // 检查是否收藏
+  function isFavorite(id) {
+    return favorites.value.includes(id)
+  }
+  
+  // 检查是否置顶
+  function isPinned(id) {
+    return !!pinnedConnections.value[id]
   }
   
   // 登录
@@ -170,6 +441,12 @@ export const useUserStore = defineStore('user', () => {
         }
         
         setUserInfo(response.user)
+      
+        // 登录成功后，尝试加载用户的连接配置
+        // 使用catch内部处理错误，不影响登录流程
+        loadConnectionsFromServer().catch(() => {
+          log.warn('加载用户连接配置失败，将使用本地数据')
+        })
       
         return { 
           success: true, 
@@ -241,6 +518,12 @@ export const useUserStore = defineStore('user', () => {
       theme: 'system',
       fontSize: 14
     })
+    
+    // 清空连接配置信息
+    connections.value = []
+    favorites.value = []
+    history.value = []
+    pinnedConnections.value = {}
     }
   }
   
@@ -304,11 +587,17 @@ export const useUserStore = defineStore('user', () => {
     token,
     userInfo,
     preferences,
+    connections,
+    favorites,
+    history,
+    pinnedConnections,
     
     // 计算属性
     isLoggedIn,
     isAdmin,
     username,
+    favoriteConnections,
+    historyConnections,
     
     // 方法
     setToken,
@@ -320,12 +609,24 @@ export const useUserStore = defineStore('user', () => {
     verifyMfaCode,
     logoutAllDevices,
     saveUserCredentials,
-    clearUserCredentials
+    clearUserCredentials,
+    
+    // 连接相关方法
+    addConnection,
+    updateConnection,
+    deleteConnection,
+    addToHistory,
+    toggleFavorite,
+    togglePin,
+    isFavorite,
+    isPinned,
+    syncConnectionsToServer,
+    loadConnectionsFromServer
   }
 }, {
   persist: {
     key: 'easyssh-user',
     storage: localStorage,
-    paths: ['token', 'userInfo', 'preferences']
+    paths: ['token', 'userInfo', 'preferences', 'connections', 'favorites', 'history', 'pinnedConnections']
   }
 }) 

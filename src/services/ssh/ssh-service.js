@@ -89,44 +89,44 @@ class SSHService {
    * @returns {Promise<string>} - 会话ID
    */
   async createSession(connection) {
-    try {
-      if (this.isInitializing) {
-        log.info('SSH服务正在初始化中，等待初始化完成...');
-        await new Promise(resolve => {
-          const checkReady = () => {
-            if (!this.isInitializing) {
-              resolve();
-            } else {
-              setTimeout(checkReady, 100);
-            }
-          };
-          checkReady();
+    return new Promise((resolve, reject) => {
+      // 检查WebSocket服务是否已初始化
+      if (!this.ipv4Url && !this.ipv6Url) {
+        return reject(new Error('SSH服务未初始化'));
+      }
+      
+      // 生成会话ID
+      const sessionId = connection.sessionId || this._generateSessionId();
+      
+      // 检查是否已经存在该会话
+      const checkReady = () => {
+        if (this.sessions.has(sessionId)) {
+          const session = this.sessions.get(sessionId);
+          
+          if (session.connectionState.status === 'connected') {
+            resolve(sessionId);
+            return true;
+          } else if (session.connectionState.status === 'error') {
+            reject(new Error(session.connectionState.error || 'SSH连接失败'));
+            return true;
+          }
+        }
+        return false;
+      };
+      
+      // 先检查一次是否已连接
+      if (checkReady()) return;
+      
+      // 创建新会话
+      this._createNewSession(connection, sessionId)
+        .then(newSessionId => {
+          // 返回可能新生成的会话ID
+          resolve(newSessionId);
+        })
+        .catch(error => {
+          reject(error);
         });
-      }
-      
-      if (!this.isReady) {
-        await this.init();
-      }
-      
-      log.info(`多终端模式: 为连接创建新会话 (${connection.host}:${connection.port})`);
-      
-      const generatedSessionId = this._generateSessionId();
-      
-      // 如果提供了终端ID，建立双向映射关系
-      if (connection.terminalId) {
-        this.terminalSessionMap.set(connection.terminalId, generatedSessionId);
-        this.sessionTerminalMap.set(generatedSessionId, connection.terminalId);
-        log.info(`创建终端与SSH会话映射: 终端 ${connection.terminalId} -> 会话 ${generatedSessionId}`);
-      }
-      
-      // 传递生成的会话ID，避免重新生成不同的ID
-      return this._createNewSession(connection, generatedSessionId);
-    } catch (error) {
-      log.error('创建SSH会话失败:', error);
-      // 移除错误提示，由_createNewSession在IPv4和IPv6都失败后统一提示
-      // ElMessage.error(`SSH连接失败: ${error.message || '未知错误'}`);
-      throw error;
-    }
+    });
   }
 
   /**
@@ -136,54 +136,102 @@ class SSHService {
    * @returns {Promise<string>} - 会话ID
    */
   async _createNewSession(connection, providedSessionId) {
-    // 如果未提供会话ID，则生成一个新的
-    const sessionId = providedSessionId || this._generateSessionId();
-    log.info(`创建新SSH会话: ${sessionId}, 地址: ${connection.host}:${connection.port}`);
-    
     try {
-      log.info(`尝试使用IPv4连接: ${this.ipv4Url}`);
-      return await this._createSessionWithUrl(this.ipv4Url, sessionId, connection);
-    } catch (ipv4Error) {
-      log.warn(`IPv4连接失败: ${ipv4Error.message}，尝试IPv6连接`);
+      const sessionId = providedSessionId || this._generateSessionId();
       
+      // 如果提供了终端ID，建立双向映射关系
+      if (connection.terminalId) {
+        this.terminalSessionMap.set(connection.terminalId, sessionId);
+        this.sessionTerminalMap.set(sessionId, connection.terminalId);
+        log.info(`创建终端与SSH会话映射: 终端 ${connection.terminalId} -> 会话 ${sessionId}`);
+      }
+      
+      // 先尝试IPv4连接
       try {
-        this.releaseResources(sessionId);
-        await new Promise(resolve => setTimeout(resolve, 500));
-        
-        log.info(`尝试使用IPv6连接: ${this.ipv6Url}`);
-        return await this._createSessionWithUrl(this.ipv6Url, sessionId, connection, true);
-      } catch (ipv6Error) {
-        log.error(`IPv6连接也失败: ${ipv6Error.message}`);
-        // 只在此处显示错误提示，即两种连接方式都失败后才显示
-        ElMessage.error(`SSH连接失败: ${ipv6Error.message || '连接错误'}`);
-        
-        // 获取terminalId以便通知终端组件
-        const terminalId = this.sessionTerminalMap.get(sessionId) || 
-                          (connection.terminalId ? connection.terminalId : null);
-        
-        // 触发全局事件，通知SSH连接失败
-        if (terminalId) {
-          window.dispatchEvent(new CustomEvent('ssh-connection-failed', {
-            detail: {
-              connectionId: terminalId,
-              sessionId: sessionId,
-              error: `SSH连接失败: 尝试IPv4和IPv6连接均失败`,
-              message: ipv6Error.message
-            }
-          }));
-          
-          // 触发会话创建失败事件
-          window.dispatchEvent(new CustomEvent('ssh-session-creation-failed', {
-            detail: {
-              sessionId: sessionId,
-              terminalId: terminalId,
-              error: `SSH连接失败: ${ipv6Error.message}`
-            }
-          }));
+        // 确保URL是最新的
+        if (!this.ipv4Url) {
+          this.ipv4Url = `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/api/ssh`;
         }
         
-        throw new Error(`SSH连接失败: IPv4(${ipv4Error.message}) 和 IPv6(${ipv6Error.message})`);
+        // 尝试IPv4连接
+        const resultSessionId = await this._createSessionWithUrl(this.ipv4Url, sessionId, connection);
+        return resultSessionId; // 返回可能新生成的会话ID
+      } catch (ipv4Error) {
+        log.error(`IPv4连接失败: ${ipv4Error.message}`);
+        
+        // 如果IPv6 URL可用，尝试IPv6连接
+        if (this.ipv6Url) {
+          try {
+            log.info('尝试使用IPv6连接');
+            const resultSessionId = await this._createSessionWithUrl(this.ipv6Url, sessionId, connection, true);
+            return resultSessionId; // 返回可能新生成的会话ID
+          } catch (ipv6Error) {
+            log.error(`IPv6连接也失败: ${ipv6Error.message}`);
+            // 只在此处显示错误提示，即两种连接方式都失败后才显示
+            ElMessage.error(`连接失败: ${ipv6Error.message || '服务器无响应'}`);
+            
+            // 获取terminalId以便通知终端组件
+            const terminalId = this.sessionTerminalMap.get(sessionId) || 
+                              (connection.terminalId ? connection.terminalId : null);
+            
+            // 触发全局事件，通知SSH连接失败
+            if (terminalId) {
+              window.dispatchEvent(new CustomEvent('ssh-connection-failed', {
+                detail: {
+                  connectionId: terminalId,
+                  sessionId: sessionId,
+                  error: `尝试IPv4和IPv6连接均失败`,
+                  message: ipv6Error.message
+                }
+              }));
+              
+              // 触发会话创建失败事件
+              window.dispatchEvent(new CustomEvent('ssh-session-creation-failed', {
+                detail: {
+                  sessionId: sessionId,
+                  terminalId: terminalId,
+                  error: ipv6Error.message
+                }
+              }));
+            }
+            
+            throw ipv6Error;
+          }
+        } else {
+          // 如果没有IPv6 URL可用，直接抛出IPv4错误
+          ElMessage.error(`连接失败: ${ipv4Error.message || '服务器无响应'}`);
+          
+          // 获取terminalId以便通知终端组件
+          const terminalId = this.sessionTerminalMap.get(sessionId) || 
+                            (connection.terminalId ? connection.terminalId : null);
+          
+          // 触发全局事件，通知SSH连接失败
+          if (terminalId) {
+            window.dispatchEvent(new CustomEvent('ssh-connection-failed', {
+              detail: {
+                connectionId: terminalId,
+                sessionId: sessionId,
+                error: `SSH连接失败`,
+                message: ipv4Error.message
+              }
+            }));
+            
+            // 触发会话创建失败事件
+            window.dispatchEvent(new CustomEvent('ssh-session-creation-failed', {
+              detail: {
+                sessionId: sessionId,
+                terminalId: terminalId,
+                error: ipv4Error.message
+              }
+            }));
+          }
+          
+          throw ipv4Error;
+        }
       }
+    } catch (error) {
+      log.error('创建SSH会话失败:', error);
+      throw error;
     }
   }
   
@@ -199,14 +247,13 @@ class SSHService {
     try {
       log.info(`准备建立SSH连接 (${connection.name || connection.host}:${connection.port})`);
       
+      // 如果会话ID已存在，强制生成新的会话ID，确保不复用
       if (this.sessions.has(sessionId)) {
-        log.warn(`发现同ID会话已存在: ${sessionId}，尝试关闭`);
-        try {
-          await this.closeSession(sessionId);
-          await new Promise(resolve => setTimeout(resolve, 200));
-        } catch (error) {
-          log.warn(`关闭已存在会话失败: ${sessionId}`, error);
-        }
+        log.warn(`发现同ID会话已存在: ${sessionId}，生成新的会话ID`);
+        // 生成新的会话ID
+        const newSessionId = this._generateSessionId();
+        log.info(`为相同连接生成新会话ID: ${newSessionId}`);
+        sessionId = newSessionId;
       }
       
       const connectionState = {
@@ -280,8 +327,8 @@ class SSHService {
               detail: {
                 connectionId: terminalId,
                 sessionId: sessionId,
-                error: `SSH连接失败: ${error.message}`,
-                message: error.message
+                error: this._translateErrorMessage(error.message),
+                message: this._translateErrorMessage(error.message)
               }
             }));
             
@@ -290,7 +337,7 @@ class SSHService {
               detail: {
                 sessionId: sessionId,
                 terminalId: terminalId,
-                error: `SSH连接失败: ${error.message}`
+                error: this._translateErrorMessage(error.message)
               }
             }));
           }
@@ -371,51 +418,38 @@ class SSHService {
       
       // 连接关闭时
       socket.onclose = (event) => {
-        const closeReason = this._getCloseReasonText(event.code, event.reason);
+        clearTimeout(timeout);
         
-        if (connectionState.status !== 'connected') {
-          clearTimeout(timeout);
+        const reason = this._getCloseReasonText(event.code, event.reason);
+        log.info(`WebSocket连接关闭: ${reason}`);
+        
+        // 如果是正常关闭且处于已连接状态，则不触发错误
+        if(event.code === 1000 && connectionState.status === 'connected') {
           connectionState.status = 'closed';
-          connectionState.message = `连接已关闭: ${closeReason}`;
-          log.warn(`WebSocket连接关闭: ${event.code} ${closeReason}`);
-          reject(new Error(`连接已关闭: ${closeReason}`));
-        } else {
-          connectionState.status = 'closed';
-          connectionState.message = `连接已关闭: ${closeReason}`;
-          log.warn(`SSH会话 ${sessionId} 已关闭: ${event.code} ${closeReason}`);
-          
-          if (this.sessions.has(sessionId)) {
-            const session = this.sessions.get(sessionId);
-            
-            if (event.code !== 1000 && event.code !== 1001) {
-              if (!session.isReconnecting && session.retryCount < this.reconnectAttempts) {
-                log.info(`连接异常关闭(${event.code})，将尝试重连 (${session.retryCount + 1}/${this.reconnectAttempts})`);
-                session.isReconnecting = true;
-                session.retryCount++;
-                
-                setTimeout(() => {
-                  this._reconnectSession(sessionId, connection)
-                    .catch(error => {
-                      log.error(`重连失败: ${error.message}`);
-                      
-                      if (session.onClose) {
-                        session.onClose();
-                      }
-                    });
-                }, this.reconnectDelay);
-              } else if (session.retryCount >= this.reconnectAttempts) {
-                log.warn(`达到最大重连次数(${this.reconnectAttempts})，不再尝试重连`);
-                if (session.onClose) {
-                  session.onClose();
-                }
-              }
-            } else {
-              if (session.onClose) {
-                session.onClose();
-              }
-            }
-          }
+          connectionState.message = '连接已关闭';
+          resolve(sessionId);
+          return;
         }
+        
+        // 处理认证失败
+        if(event.code === 4401) {
+          connectionState.status = 'error';
+          connectionState.message = '认证失败';
+          connectionState.error = '用户名或密码错误';
+          
+          reject(new Error('认证失败: 用户名或密码错误'));
+          return;
+        }
+        
+        // 处理其他错误
+        connectionState.status = 'error';
+        connectionState.message = `连接关闭: ${reason}`;
+        
+        if(!connectionState.error) {
+          connectionState.error = reason;
+        }
+        
+        reject(new Error(reason));
       };
       
       // 接收消息时
@@ -816,11 +850,21 @@ class SSHService {
       1009: '数据太大',
       1011: '内部错误',
       1012: '服务重启',
-      1013: '临时错误'
+      1013: '临时错误',
+      4401: '认证失败，请检查用户名和密码',
+      4403: '权限被拒绝',
+      4404: '服务不可用',
+      4408: '连接超时'
     };
     
     const codeText = closeCodeMap[code] || `未知错误(${code})`;
-    return reason ? `${codeText}：${reason}` : codeText;
+    
+    // 如果有原因字符串，检查是否需要翻译
+    if (reason) {
+      return `${codeText}：${this._translateErrorMessage(reason)}`;
+    }
+    
+    return codeText;
   }
   
   /**
@@ -1223,6 +1267,48 @@ class SSHService {
         log.info(`警告: SSH会话ID(${sessionId})与终端ID(${terminalId})不一致，已正确关联`);
       }
     }
+  }
+
+  /**
+   * 将英文错误消息翻译为中文
+   * @param {string} errorMessage - 英文错误消息
+   * @returns {string} - 翻译后的中文错误消息
+   */
+  _translateErrorMessage(errorMessage) {
+    if (!errorMessage) return '未知错误';
+    
+    // 如果错误消息包含"SSH连接失败:"，则删除这个前缀
+    let translatedMessage = errorMessage.replace(/SSH连接失败:\s*/g, '');
+    
+    // 常见错误消息的翻译映射
+    const errorTranslations = {
+      'All configured authentication methods failed': '所有认证方式均失败，请检查用户名和密码',
+      'Authentication failed': '认证失败，请检查用户名和密码',
+      'Connection refused': '连接被拒绝，请检查服务器地址和端口',
+      'Connection timed out': '连接超时，请检查网络和服务器状态',
+      'Host not found': '无法找到主机，请检查服务器地址',
+      'Network error': '网络错误，请检查网络连接',
+      'Permission denied': '权限被拒绝，请检查用户名和密码',
+      'Server unexpectedly closed connection': '服务器意外关闭连接',
+      'Unable to connect': '无法连接到服务器',
+      'Connection failed': '连接失败',
+      'Invalid username or password': '用户名或密码错误'
+    };
+    
+    // 寻找完全匹配的错误消息
+    if (errorTranslations[translatedMessage]) {
+      return errorTranslations[translatedMessage];
+    }
+    
+    // 寻找部分匹配的错误消息
+    for (const [engError, cnError] of Object.entries(errorTranslations)) {
+      if (translatedMessage.includes(engError)) {
+        return cnError;
+      }
+    }
+    
+    // 如果没有匹配项，返回原始消息
+    return translatedMessage;
   }
 }
 

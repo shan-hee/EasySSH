@@ -1,0 +1,769 @@
+/**
+ * 连接控制器
+ * 处理连接相关的API请求
+ */
+
+const logger = require('../utils/logger');
+const db = require('../config/database').getDb();
+const { validateConnection } = require('../utils/validators');
+
+/**
+ * 获取用户的所有连接
+ */
+const getUserConnections = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    
+    // 从数据库获取用户连接
+    const connections = db.prepare(
+      'SELECT * FROM connections WHERE user_id = ? ORDER BY updated_at DESC'
+    ).all(userId);
+    
+    // 处理连接数据，将存储的JSON字符串转为对象
+    const formattedConnections = connections.map(conn => {
+      try {
+        // 可能包含额外配置的JSON字段
+        if (conn.config) {
+          conn.config = JSON.parse(conn.config);
+        }
+        
+        return {
+          id: conn.id,
+          name: conn.name,
+          host: conn.host,
+          port: conn.port,
+          username: conn.username,
+          password: conn.remember_password ? conn.password : '',
+          rememberPassword: !!conn.remember_password,
+          privateKey: conn.privateKey || '',
+          passphrase: conn.passphrase || '',
+          authType: conn.auth_type || 'password',
+          description: conn.description || '',
+          group: conn.group_name || '默认分组',
+          config: conn.config || {},
+          createdAt: conn.created_at,
+          updatedAt: conn.updated_at
+        };
+      } catch (err) {
+        logger.error(`处理连接数据错误：${err.message}`, { connectionId: conn.id });
+        return null;
+      }
+    }).filter(conn => conn !== null);
+    
+    res.json({
+      success: true,
+      connections: formattedConnections
+    });
+  } catch (error) {
+    logger.error('获取用户连接失败', error);
+    res.status(500).json({
+      success: false,
+      message: '获取连接列表失败',
+      error: error.message
+    });
+  }
+};
+
+/**
+ * 添加新连接
+ */
+const addConnection = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const connection = req.body.connection;
+    
+    // 验证连接数据
+    if (!validateConnection(connection)) {
+      return res.status(400).json({
+        success: false,
+        message: '连接数据格式不正确'
+      });
+    }
+    
+    // 生成新的连接ID
+    const connectionId = Date.now().toString();
+    
+    // 准备要插入的数据
+    const now = new Date().toISOString();
+    
+    // 开始事务
+    db.prepare('BEGIN TRANSACTION').run();
+    
+    try {
+      // 插入新连接
+      db.prepare(
+        `INSERT INTO connections (
+          id, user_id, name, host, port, username, password, 
+          remember_password, privateKey, passphrase, auth_type, 
+          description, group_name, config, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      ).run(
+        connectionId,
+        userId,
+        connection.name || `${connection.username}@${connection.host}`,
+        connection.host,
+        connection.port || 22,
+        connection.username,
+        connection.rememberPassword ? connection.password : '',
+        connection.rememberPassword ? 1 : 0,
+        connection.privateKey || '',
+        connection.passphrase || '',
+        connection.authType || 'password',
+        connection.description || '',
+        connection.group || '默认分组',
+        JSON.stringify(connection.config || {}),
+        now,
+        now
+      );
+      
+      // 提交事务
+      db.prepare('COMMIT').run();
+      
+      res.json({
+        success: true,
+        connectionId,
+        message: '连接添加成功'
+      });
+    } catch (error) {
+      // 回滚事务
+      db.prepare('ROLLBACK').run();
+      throw error;
+    }
+  } catch (error) {
+    logger.error('添加连接失败', error);
+    res.status(500).json({
+      success: false,
+      message: '添加连接失败',
+      error: error.message
+    });
+  }
+};
+
+/**
+ * 更新连接
+ */
+const updateConnection = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const connectionId = req.params.id;
+    const connection = req.body.connection;
+    
+    // 验证连接数据
+    if (!validateConnection(connection)) {
+      return res.status(400).json({
+        success: false,
+        message: '连接数据格式不正确'
+      });
+    }
+    
+    // 检查连接是否存在并属于当前用户
+    const existingConnection = db.prepare(
+      'SELECT id FROM connections WHERE id = ? AND user_id = ?'
+    ).get(connectionId, userId);
+    
+    if (!existingConnection) {
+      return res.status(404).json({
+        success: false,
+        message: '未找到指定连接或无权限修改'
+      });
+    }
+    
+    // 更新连接
+    const now = new Date().toISOString();
+    
+    db.prepare(
+      `UPDATE connections SET
+        name = ?,
+        host = ?,
+        port = ?,
+        username = ?,
+        password = ?,
+        remember_password = ?,
+        privateKey = ?,
+        passphrase = ?,
+        auth_type = ?,
+        description = ?,
+        group_name = ?,
+        config = ?,
+        updated_at = ?
+      WHERE id = ? AND user_id = ?`
+    ).run(
+      connection.name || `${connection.username}@${connection.host}`,
+      connection.host,
+      connection.port || 22,
+      connection.username,
+      connection.rememberPassword ? connection.password : '',
+      connection.rememberPassword ? 1 : 0,
+      connection.privateKey || '',
+      connection.passphrase || '',
+      connection.authType || 'password',
+      connection.description || '',
+      connection.group || '默认分组',
+      JSON.stringify(connection.config || {}),
+      now,
+      connectionId,
+      userId
+    );
+    
+    res.json({
+      success: true,
+      message: '连接更新成功'
+    });
+  } catch (error) {
+    logger.error('更新连接失败', error);
+    res.status(500).json({
+      success: false,
+      message: '更新连接失败',
+      error: error.message
+    });
+  }
+};
+
+/**
+ * 删除连接
+ */
+const deleteConnection = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const connectionId = req.params.id;
+    
+    // 检查连接是否存在并属于当前用户
+    const existingConnection = db.prepare(
+      'SELECT id FROM connections WHERE id = ? AND user_id = ?'
+    ).get(connectionId, userId);
+    
+    if (!existingConnection) {
+      return res.status(404).json({
+        success: false,
+        message: '未找到指定连接或无权限删除'
+      });
+    }
+    
+    // 删除连接
+    db.prepare(
+      'DELETE FROM connections WHERE id = ? AND user_id = ?'
+    ).run(connectionId, userId);
+    
+    // 同时从收藏和历史记录中删除
+    db.prepare(
+      'DELETE FROM connection_favorites WHERE connection_id = ? AND user_id = ?'
+    ).run(connectionId, userId);
+    
+    db.prepare(
+      'DELETE FROM connection_history WHERE connection_id = ? AND user_id = ?'
+    ).run(connectionId, userId);
+    
+    db.prepare(
+      'DELETE FROM connection_pinned WHERE connection_id = ? AND user_id = ?'
+    ).run(connectionId, userId);
+    
+    res.json({
+      success: true,
+      message: '连接删除成功'
+    });
+  } catch (error) {
+    logger.error('删除连接失败', error);
+    res.status(500).json({
+      success: false,
+      message: '删除连接失败',
+      error: error.message
+    });
+  }
+};
+
+/**
+ * 获取收藏连接
+ */
+const getFavorites = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    
+    // 获取收藏连接ID列表
+    const favorites = db.prepare(
+      'SELECT connection_id FROM connection_favorites WHERE user_id = ?'
+    ).all(userId);
+    
+    const favoriteIds = favorites.map(fav => fav.connection_id);
+    
+    res.json({
+      success: true,
+      favorites: favoriteIds
+    });
+  } catch (error) {
+    logger.error('获取收藏连接失败', error);
+    res.status(500).json({
+      success: false,
+      message: '获取收藏连接失败',
+      error: error.message
+    });
+  }
+};
+
+/**
+ * 更新收藏连接
+ */
+const updateFavorites = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { favorites } = req.body;
+    
+    if (!Array.isArray(favorites)) {
+      return res.status(400).json({
+        success: false,
+        message: '收藏数据格式不正确，应为数组'
+      });
+    }
+    
+    // 开始事务
+    db.prepare('BEGIN TRANSACTION').run();
+    
+    try {
+      // 清除现有收藏
+      db.prepare(
+        'DELETE FROM connection_favorites WHERE user_id = ?'
+      ).run(userId);
+      
+      // 添加新收藏
+      const insertStmt = db.prepare(
+        'INSERT INTO connection_favorites (user_id, connection_id) VALUES (?, ?)'
+      );
+      
+      for (const connectionId of favorites) {
+        insertStmt.run(userId, connectionId);
+      }
+      
+      // 提交事务
+      db.prepare('COMMIT').run();
+      
+      res.json({
+        success: true,
+        message: '收藏连接已更新'
+      });
+    } catch (error) {
+      // 回滚事务
+      db.prepare('ROLLBACK').run();
+      throw error;
+    }
+  } catch (error) {
+    logger.error('更新收藏连接失败', error);
+    res.status(500).json({
+      success: false,
+      message: '更新收藏连接失败',
+      error: error.message
+    });
+  }
+};
+
+/**
+ * 获取历史记录
+ */
+const getHistory = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    
+    // 获取历史记录
+    const history = db.prepare(
+      `SELECT ch.connection_id, ch.timestamp, c.name, c.host, c.port, c.username, c.description
+       FROM connection_history ch
+       LEFT JOIN connections c ON ch.connection_id = c.id
+       WHERE ch.user_id = ?
+       ORDER BY ch.timestamp DESC
+       LIMIT 20`
+    ).all(userId);
+    
+    const formattedHistory = history.map(item => ({
+      id: item.connection_id,
+      name: item.name,
+      host: item.host,
+      port: item.port,
+      username: item.username,
+      description: item.description || '',
+      timestamp: item.timestamp
+    }));
+    
+    res.json({
+      success: true,
+      history: formattedHistory
+    });
+  } catch (error) {
+    logger.error('获取历史记录失败', error);
+    res.status(500).json({
+      success: false,
+      message: '获取历史记录失败',
+      error: error.message
+    });
+  }
+};
+
+/**
+ * 添加到历史记录
+ */
+const addToHistory = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const history = req.body.history;
+    
+    // 验证历史记录数据
+    if (!Array.isArray(history) || history.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: '连接数据不正确'
+      });
+    }
+    
+    // 获取第一个历史记录
+    const connection = history[0];
+    
+    if (!connection || !connection.id || !connection.host || !connection.username) {
+      return res.status(400).json({
+        success: false,
+        message: '连接数据不完整'
+      });
+    }
+    
+    // 开始事务
+    db.prepare('BEGIN TRANSACTION').run();
+    
+    try {
+      // 检查连接是否存在
+      const connectionExists = db.prepare(
+        'SELECT id FROM connections WHERE id = ? AND user_id = ?'
+      ).get(connection.id, userId);
+      
+      if (!connectionExists) {
+        throw new Error('连接不存在');
+      }
+      
+      // 删除可能存在的旧记录
+      db.prepare(
+        'DELETE FROM connection_history WHERE connection_id = ? AND user_id = ?'
+      ).run(connection.id, userId);
+      
+      // 添加新历史记录
+      const timestamp = connection.timestamp || Date.now();
+      
+      db.prepare(
+        'INSERT INTO connection_history (user_id, connection_id, timestamp) VALUES (?, ?, ?)'
+      ).run(userId, connection.id, timestamp);
+      
+      // 限制历史记录数量为20条
+      db.prepare(
+        `DELETE FROM connection_history 
+         WHERE user_id = ? AND connection_id IN (
+           SELECT connection_id FROM connection_history 
+           WHERE user_id = ? 
+           ORDER BY timestamp DESC 
+           LIMIT 20, 1000
+         )`
+      ).run(userId, userId);
+      
+      // 提交事务
+      db.prepare('COMMIT').run();
+      
+      res.json({
+        success: true,
+        message: '已添加到历史记录'
+      });
+    } catch (error) {
+      // 回滚事务
+      db.prepare('ROLLBACK').run();
+      throw error;
+    }
+  } catch (error) {
+    logger.error('添加历史记录失败', error);
+    res.status(500).json({
+      success: false,
+      message: '添加到历史记录失败',
+      error: error.message
+    });
+  }
+};
+
+/**
+ * 从历史记录中删除
+ */
+const removeFromHistory = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const connectionId = req.params.id;
+    
+    // 从历史记录中删除
+    db.prepare(
+      'DELETE FROM connection_history WHERE connection_id = ? AND user_id = ?'
+    ).run(connectionId, userId);
+    
+    res.json({
+      success: true,
+      message: '已从历史记录中删除'
+    });
+  } catch (error) {
+    logger.error('删除历史记录失败', error);
+    res.status(500).json({
+      success: false,
+      message: '从历史记录中删除失败',
+      error: error.message
+    });
+  }
+};
+
+/**
+ * 获取置顶连接
+ */
+const getPinned = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    
+    // 获取置顶连接
+    const pinned = db.prepare(
+      'SELECT connection_id FROM connection_pinned WHERE user_id = ?'
+    ).all(userId);
+    
+    // 转换为对象格式
+    const pinnedObj = {};
+    pinned.forEach(pin => {
+      pinnedObj[pin.connection_id] = true;
+    });
+    
+    res.json({
+      success: true,
+      pinned: pinnedObj
+    });
+  } catch (error) {
+    logger.error('获取置顶连接失败', error);
+    res.status(500).json({
+      success: false,
+      message: '获取置顶连接失败',
+      error: error.message
+    });
+  }
+};
+
+/**
+ * 更新置顶连接
+ */
+const updatePinned = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { pinned } = req.body;
+    
+    if (typeof pinned !== 'object') {
+      return res.status(400).json({
+        success: false,
+        message: '置顶数据格式不正确，应为对象'
+      });
+    }
+    
+    // 开始事务
+    db.prepare('BEGIN TRANSACTION').run();
+    
+    try {
+      // 清除现有置顶
+      db.prepare(
+        'DELETE FROM connection_pinned WHERE user_id = ?'
+      ).run(userId);
+      
+      // 添加新置顶
+      const insertStmt = db.prepare(
+        'INSERT INTO connection_pinned (user_id, connection_id) VALUES (?, ?)'
+      );
+      
+      for (const connectionId in pinned) {
+        if (pinned[connectionId]) {
+          insertStmt.run(userId, connectionId);
+        }
+      }
+      
+      // 提交事务
+      db.prepare('COMMIT').run();
+      
+      res.json({
+        success: true,
+        message: '置顶连接已更新'
+      });
+    } catch (error) {
+      // 回滚事务
+      db.prepare('ROLLBACK').run();
+      throw error;
+    }
+  } catch (error) {
+    logger.error('更新置顶连接失败', error);
+    res.status(500).json({
+      success: false,
+      message: '更新置顶连接失败',
+      error: error.message
+    });
+  }
+};
+
+/**
+ * 批量同步连接数据
+ */
+const syncConnections = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { connections, favorites, history, pinned } = req.body;
+    
+    // 验证数据格式
+    if (!Array.isArray(connections) || !Array.isArray(favorites) || 
+        !Array.isArray(history) || typeof pinned !== 'object') {
+      return res.status(400).json({
+        success: false,
+        message: '数据格式不正确'
+      });
+    }
+    
+    // 开始事务
+    db.prepare('BEGIN TRANSACTION').run();
+    
+    try {
+      // 同步连接
+      // 首先获取现有连接ID
+      const existingConnections = db.prepare(
+        'SELECT id FROM connections WHERE user_id = ?'
+      ).all(userId);
+      
+      const existingIds = new Set(existingConnections.map(conn => conn.id));
+      const now = new Date().toISOString();
+      
+      // 准备语句
+      const updateStmt = db.prepare(
+        `UPDATE connections SET
+          name = ?,
+          host = ?,
+          port = ?,
+          username = ?,
+          password = ?,
+          remember_password = ?,
+          private_key = ?,
+          passphrase = ?,
+          auth_type = ?,
+          description = ?,
+          group_name = ?,
+          config = ?,
+          updated_at = ?
+        WHERE id = ? AND user_id = ?`
+      );
+      
+      const insertStmt = db.prepare(
+        `INSERT INTO connections (
+          id, user_id, name, host, port, username, password, 
+          remember_password, private_key, passphrase, auth_type, 
+          description, group_name, config, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      );
+      
+      // 更新或新增连接
+      for (const connection of connections) {
+        if (existingIds.has(connection.id)) {
+          // 更新现有连接
+          updateStmt.run(
+            connection.name || `${connection.username}@${connection.host}`,
+            connection.host,
+            connection.port || 22,
+            connection.username,
+            connection.rememberPassword ? connection.password : '',
+            connection.rememberPassword ? 1 : 0,
+            connection.privateKey || '',
+            connection.passphrase || '',
+            connection.authType || 'password',
+            connection.description || '',
+            connection.group || '默认分组',
+            JSON.stringify(connection.config || {}),
+            now,
+            connection.id,
+            userId
+          );
+        } else {
+          // 添加新连接
+          insertStmt.run(
+            connection.id,
+            userId,
+            connection.name || `${connection.username}@${connection.host}`,
+            connection.host,
+            connection.port || 22,
+            connection.username,
+            connection.rememberPassword ? connection.password : '',
+            connection.rememberPassword ? 1 : 0,
+            connection.privateKey || '',
+            connection.passphrase || '',
+            connection.authType || 'password',
+            connection.description || '',
+            connection.group || '默认分组',
+            JSON.stringify(connection.config || {}),
+            now,
+            now
+          );
+        }
+      }
+      
+      // 同步收藏
+      db.prepare('DELETE FROM connection_favorites WHERE user_id = ?').run(userId);
+      
+      const insertFavoriteStmt = db.prepare(
+        'INSERT INTO connection_favorites (user_id, connection_id) VALUES (?, ?)'
+      );
+      
+      for (const connectionId of favorites) {
+        insertFavoriteStmt.run(userId, connectionId);
+      }
+      
+      // 同步历史记录
+      db.prepare('DELETE FROM connection_history WHERE user_id = ?').run(userId);
+      
+      const insertHistoryStmt = db.prepare(
+        'INSERT INTO connection_history (user_id, connection_id, timestamp) VALUES (?, ?, ?)'
+      );
+      
+      for (const historyItem of history) {
+        insertHistoryStmt.run(userId, historyItem.id, historyItem.timestamp);
+      }
+      
+      // 同步置顶
+      db.prepare('DELETE FROM connection_pinned WHERE user_id = ?').run(userId);
+      
+      const insertPinnedStmt = db.prepare(
+        'INSERT INTO connection_pinned (user_id, connection_id) VALUES (?, ?)'
+      );
+      
+      for (const connectionId in pinned) {
+        if (pinned[connectionId]) {
+          insertPinnedStmt.run(userId, connectionId);
+        }
+      }
+      
+      // 提交事务
+      db.prepare('COMMIT').run();
+      
+      res.json({
+        success: true,
+        message: '连接数据同步成功'
+      });
+    } catch (error) {
+      // 回滚事务
+      db.prepare('ROLLBACK').run();
+      throw error;
+    }
+  } catch (error) {
+    logger.error('同步连接数据失败', error);
+    res.status(500).json({
+      success: false,
+      message: '同步连接数据失败',
+      error: error.message
+    });
+  }
+};
+
+module.exports = {
+  getUserConnections,
+  addConnection,
+  updateConnection,
+  deleteConnection,
+  getFavorites,
+  updateFavorites,
+  getHistory,
+  addToHistory,
+  removeFromHistory,
+  getPinned,
+  updatePinned,
+  syncConnections
+}; 

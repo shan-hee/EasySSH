@@ -27,7 +27,7 @@ export const useSettingsStore = defineStore('settings', () => {
   const connectionSettings = reactive({
     autoReconnect: true,
     reconnectInterval: 3,
-    connectionTimeout: 15,
+    connectionTimeout: 10,
     keepAlive: true,
     keepAliveInterval: 30,
   })
@@ -200,7 +200,7 @@ export const useSettingsStore = defineStore('settings', () => {
       Object.assign(connectionSettings, {
         autoReconnect: true,
         reconnectInterval: 3,
-        connectionTimeout: 15,
+        connectionTimeout: 10,
         keepAlive: true,
         keepAliveInterval: 30,
       })

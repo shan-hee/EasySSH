@@ -200,6 +200,56 @@ export default {
           return false
         }
         
+        // 获取连接配置信息
+        let connectionConfig = null
+        
+        // 首先从会话存储中查找
+        const sessionData = sessionStore.getSession(termId)
+        if (sessionData) {
+          connectionConfig = sessionData
+          log.debug(`从会话存储获取连接配置: ${termId}`)
+        } else {
+          // 从用户存储或本地连接存储中查找
+          if (userStore.isLoggedIn) {
+            const connection = userStore.connections.find(c => c.id === termId)
+            if (connection) {
+              connectionConfig = connection
+              log.debug(`从用户存储获取连接配置: ${termId}`)
+              
+              // 注册到会话存储
+              sessionStore.registerSession(termId, {
+                ...connection,
+                title: connection.name || `${connection.username}@${connection.host}`
+              })
+            }
+          } else {
+            const connection = localConnectionsStore.getAllConnections.find(c => c.id === termId)
+            if (connection) {
+              connectionConfig = connection
+              log.debug(`从本地连接存储获取连接配置: ${termId}`)
+              
+              // 注册到会话存储
+              sessionStore.registerSession(termId, {
+                ...connection,
+                title: connection.name || `${connection.username}@${connection.host}`
+              })
+            }
+          }
+        }
+        
+        // 如果找不到连接配置，尝试从URL获取
+        if (!connectionConfig && route.params.id) {
+          log.debug(`尝试从URL参数获取连接ID: ${route.params.id}`)
+          // 这里可以添加从URL参数解析连接信息的逻辑
+        }
+        
+        // 如果仍然找不到连接配置，则失败
+        if (!connectionConfig) {
+          log.error(`无法找到连接配置信息: ${termId}`)
+          ElMessage.error('无法找到连接信息')
+          return false
+        }
+        
         log.debug(`检测到终端路径变更，使用会话存储ID: ${termId}`)
         log.debug(`路由切换到终端，触发终端显示和刷新 ${termId}`)
         
@@ -818,7 +868,7 @@ export default {
       if (event.detail && activeConnectionId.value) {
         const sessionId = terminalStore.sessions[activeConnectionId.value]
         if (sessionId && event.detail.sessionId === sessionId) {
-          ElMessage.error(`SSH错误: ${event.detail.message || '连接错误'}`)
+          ElMessage.error(`连接失败: ${event.detail.message || '服务器无响应'}`)
           status.value = '连接错误'
           
           // 直接清理本地状态，避免断开时找不到会话ID的问题
@@ -1345,7 +1395,41 @@ export default {
           
           // 如果是当前活动连接，显示错误并导航回连接配置界面
           if (terminalId === activeConnectionId.value) {
-            ElMessage.error(`SSH连接失败: ${error || '未知错误'}`)
+            // 提取简洁错误信息，避免重复
+            let errorMessage = error || '服务器无响应';
+            // 如果错误消息包含"SSH连接失败:"，则删除这个前缀
+            errorMessage = errorMessage.replace(/SSH连接失败:\s*/g, '');
+            
+            // 翻译常见的英文错误消息为中文
+            const errorTranslations = {
+              'All configured authentication methods failed': '所有认证方式均失败，请检查用户名和密码',
+              'Authentication failed': '认证失败，请检查用户名和密码',
+              'Connection refused': '连接被拒绝，请检查服务器地址和端口',
+              'Connection timed out': '连接超时，请检查网络和服务器状态',
+              'Host not found': '无法找到主机，请检查服务器地址',
+              'Network error': '网络错误，请检查网络连接',
+              'Permission denied': '权限被拒绝，请检查用户名和密码',
+              'Server unexpectedly closed connection': '服务器意外关闭连接',
+              'Unable to connect': '无法连接到服务器',
+              'Connection failed': '连接失败',
+              'Invalid username or password': '用户名或密码错误'
+            };
+            
+            // 寻找完全匹配的错误消息进行翻译
+            if (errorTranslations[errorMessage]) {
+              errorMessage = errorTranslations[errorMessage];
+            } else {
+              // 寻找部分匹配的错误消息
+              for (const [engError, cnError] of Object.entries(errorTranslations)) {
+                if (errorMessage.includes(engError)) {
+                  errorMessage = cnError;
+                  break;
+                }
+              }
+            }
+            
+            // 显示优化后的错误消息
+            ElMessage.error(`连接失败: ${errorMessage}`);
             
             // 发送自定义事件，通知终端清理完成
             window.dispatchEvent(new CustomEvent('ssh-cleanup-done', { 
@@ -1417,7 +1501,7 @@ export default {
       const handleSSHConnectionFailed = (event) => {
         if (!event.detail) return
         
-        const { connectionId, error } = event.detail
+        const { connectionId, error, message } = event.detail
         log.debug(`收到全局SSH连接失败事件: ${connectionId}, 错误: ${error}`)
         
         if (!connectionId) return
@@ -1436,8 +1520,41 @@ export default {
           delete terminalRefs.value[connectionId]
         }
         
-        // 显示错误消息
-        ElMessage.error(`SSH连接失败: ${error || '未知错误'}`)
+        // 提取简洁错误信息，避免重复的"SSH连接失败"前缀
+        let errorMessage = message || error || '服务器无响应';
+        // 如果错误消息包含"SSH连接失败:"，则删除这个前缀
+        errorMessage = errorMessage.replace(/SSH连接失败:\s*/g, '');
+        
+        // 翻译常见的英文错误消息为中文
+        const errorTranslations = {
+          'All configured authentication methods failed': '所有认证方式均失败，请检查用户名和密码',
+          'Authentication failed': '认证失败，请检查用户名和密码',
+          'Connection refused': '连接被拒绝，请检查服务器地址和端口',
+          'Connection timed out': '连接超时，请检查网络和服务器状态',
+          'Host not found': '无法找到主机，请检查服务器地址',
+          'Network error': '网络错误，请检查网络连接',
+          'Permission denied': '权限被拒绝，请检查用户名和密码',
+          'Server unexpectedly closed connection': '服务器意外关闭连接',
+          'Unable to connect': '无法连接到服务器',
+          'Connection failed': '连接失败',
+          'Invalid username or password': '用户名或密码错误'
+        };
+        
+        // 寻找完全匹配的错误消息进行翻译
+        if (errorTranslations[errorMessage]) {
+          errorMessage = errorTranslations[errorMessage];
+        } else {
+          // 寻找部分匹配的错误消息
+          for (const [engError, cnError] of Object.entries(errorTranslations)) {
+            if (errorMessage.includes(engError)) {
+              errorMessage = cnError;
+              break;
+            }
+          }
+        }
+        
+        // 显示优化后的错误消息
+        ElMessage.error(`连接失败: ${errorMessage}`);
         
         // 从终端ID列表中移除
         terminalIds.value = terminalIds.value.filter(id => id !== connectionId)

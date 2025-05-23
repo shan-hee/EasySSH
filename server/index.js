@@ -17,6 +17,7 @@ const setupAdmin = require('./scripts/setupAdmin');
 const userRoutes = require('./routes/userRoutes');
 const serverRoutes = require('./routes/serverRoutes');
 const monitorRoutes = require('./routes/monitorRoutes');
+const connectionRoutes = require('./routes/connectionRoutes');
 
 // 导入日志工具
 const logger = require('./utils/logger');
@@ -74,6 +75,7 @@ app.use(express.static(path.join(__dirname, 'public')));
 app.use('/api/users', userRoutes);
 app.use('/api/servers', serverRoutes);
 app.use('/api/monitor', monitorRoutes);
+app.use('/api/connections', connectionRoutes);
 
 // 状态API
 app.get('/api/status', (req, res) => {

@@ -9,6 +9,7 @@ import { useLocalConnectionsStore } from './localConnections'
 import { FitAddon } from '@xterm/addon-fit'
 import { useSettingsStore } from './settings'
 import { computed } from 'vue'
+import { useSessionStore } from './session'
 
 export const useTerminalStore = defineStore('terminal', () => {
   // 使用reactive管理状态
@@ -112,17 +113,75 @@ export const useTerminalStore = defineStore('terminal', () => {
       const userStore = useUserStore()
       const connectionStore = useConnectionStore()
       const localConnectionsStore = useLocalConnectionsStore()
+      const sessionStore = useSessionStore()
       
-      // 根据登录状态决定从哪个store获取连接
+      // 首先从会话存储中尝试获取连接信息
       let connection = null
-      if (userStore.isLoggedIn) {
-        connection = connectionStore.getConnectionById(connectionId)
+      const sessionData = sessionStore.getSession(connectionId)
+      
+      if (sessionData) {
+        log.info(`从会话存储获取连接配置: ${connectionId}`)
+        connection = sessionData
       } else {
-        connection = localConnectionsStore.getConnectionById(connectionId)
+        // 尝试使用原始连接ID查找连接信息
+        let originalConnectionId = null
+        
+        // 根据登录状态决定从哪个store获取连接
+        if (userStore.isLoggedIn) {
+          connection = connectionStore.getConnectionById(connectionId)
+          if (!connection) {
+            // 如果找不到，可能是使用了新生成的会话ID，尝试查找所有连接
+            for (const conn of userStore.connections) {
+              if (conn.host === sessionData?.host && 
+                  conn.username === sessionData?.username && 
+                  conn.port === sessionData?.port) {
+                originalConnectionId = conn.id
+                connection = conn
+                break
+              }
+            }
+          }
+          
+          if (connection) {
+            log.info(`从用户存储获取连接配置: ${originalConnectionId || connectionId}`)
+            // 注册到会话存储
+            sessionStore.registerSession(connectionId, {
+              ...connection,
+              id: connectionId,
+              originalConnectionId: originalConnectionId || connection.id,
+              title: connection.name || `${connection.username}@${connection.host}`
+            })
+          }
+        } else {
+          connection = localConnectionsStore.getConnectionById(connectionId)
+          if (!connection) {
+            // 如果找不到，可能是使用了新生成的会话ID，尝试查找所有连接
+            for (const conn of localConnectionsStore.getAllConnections) {
+              if (conn.host === sessionData?.host && 
+                  conn.username === sessionData?.username && 
+                  conn.port === sessionData?.port) {
+                originalConnectionId = conn.id
+                connection = conn
+                break
+              }
+            }
+          }
+          
+          if (connection) {
+            log.info(`从本地连接存储获取连接配置: ${originalConnectionId || connectionId}`)
+            // 注册到会话存储
+            sessionStore.registerSession(connectionId, {
+              ...connection,
+              id: connectionId,
+              originalConnectionId: originalConnectionId || connection.id,
+              title: connection.name || `${connection.username}@${connection.host}`
+            })
+          }
+        }
       }
       
       if (!connection) {
-        log.error('无法找到连接信息')
+        log.error(`无法找到连接信息: ${connectionId}`)
         state.connectionStatus[connectionId] = 'error'
         state.terminalStates[connectionId] = 'error'
         state.terminalInitLocks[connectionId] = false

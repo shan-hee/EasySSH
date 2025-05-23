@@ -75,65 +75,41 @@ export const useTabStore = defineStore('tab', () => {
 
   // 添加终端标签页
   const addTerminal = async (connectionId) => {
-    // 确保connectionId存在
-    if (!connectionId) {
-      console.error('添加终端标签页失败: 缺少connectionId')
-      return -1
-    }
-    
-    // 检查是否已存在相同的终端标签页
-    const existingTabIndex = state.tabs.findIndex(tab => 
-      tab.type === 'terminal' && 
-      tab.data && 
-      tab.data.connectionId === connectionId
-    )
-    
-    // 如果已存在，直接切换到该标签
-    if (existingTabIndex >= 0) {
-      state.activeTabIndex = existingTabIndex
-      
-      // 使用会话存储保存终端ID，避免在URL中显示
-      const sessionStore = useSessionStore()
-      sessionStore.setActiveSession(connectionId)
-      
-      // 导航到基本终端路径，不带参数
-      router.push('/terminal')
-      return existingTabIndex
-    }
-    
-    // 内部仍然记录完整路径，但不显示在URL中
-    const fullPath = `/terminal/${connectionId}`
-    // 实际导航到不带参数的路径
-    const navigationPath = '/terminal'
-    
-    // 连接信息存储
+    // 默认标题
+    let tabTitle = '终端'
     let connectionInfo = null
     
-    // 从store获取连接信息
     try {
-      // 根据导入的store实例获取
+      // 获取连接信息
       const userStore = useUserStore()
       const connectionStore = useConnectionStore()
       const localConnectionsStore = useLocalConnectionsStore()
+      const sessionStore = useSessionStore()
       
-      // 根据用户登录状态决定从哪个store获取连接
-      if (userStore.isLoggedIn) {
-        connectionInfo = connectionStore.getConnectionById(connectionId)
-      } else {
-        connectionInfo = localConnectionsStore.getConnectionById(connectionId)
+      // 首先尝试从会话存储中获取连接信息
+      connectionInfo = sessionStore.getSession(connectionId)
+      
+      // 如果会话存储中没有，再尝试从连接存储中获取
+      if (!connectionInfo) {
+        if (userStore.isLoggedIn) {
+          connectionInfo = connectionStore.getConnectionById(connectionId)
+        } else {
+          connectionInfo = localConnectionsStore.getConnectionById(connectionId)
+        }
+      }
+      
+      // 如果获取到连接信息，设置更详细的标题
+      if (connectionInfo) {
+        tabTitle = connectionInfo.name || `${connectionInfo.username}@${connectionInfo.host}`
       }
     } catch (error) {
       console.error('获取连接信息失败:', error)
     }
     
-    // 默认标题
-    let tabTitle = '新终端'
+    // 构建完整路径
+    const fullPath = `/terminal/${connectionId}`
     
-    // 如果获取到连接信息，设置更详细的标题
-    if (connectionInfo) {
-      tabTitle = `${connectionInfo.username}@${connectionInfo.host}`
-    }
-    
+    // 创建新标签
     const newTab = {
       title: tabTitle,
       type: 'terminal',
@@ -168,8 +144,9 @@ export const useTabStore = defineStore('tab', () => {
       // 确保状态更新后再导航
       await nextTick()
       
-      // 导航到不带参数的终端路径
-      router.push(navigationPath)
+      // 导航到完整的终端路径 - 修改为导航到包含ID的路径以解决终端不显示问题
+      // 这将直接导航到包含ID的路径，确保终端组件能够正确识别并初始化
+      router.push(`/terminal/${connectionId}`)
       
       return newIndex
     } catch (error) {
@@ -305,7 +282,8 @@ export const useTabStore = defineStore('tab', () => {
           window.dispatchEvent(new CustomEvent('terminal:session-change', {
             detail: { 
               sessionId: newSessionId,
-              isTabSwitch: true  // 添加标记表明这是标签切换操作
+              isTabSwitch: true,  // 添加标记表明这是标签切换操作
+              isNewSession: false  // 标记这不是新会话，避免重新创建
             }
           }))
           
@@ -324,8 +302,8 @@ export const useTabStore = defineStore('tab', () => {
           })
         }
         
-        // 导航到不带参数的终端路径
-        router.push('/terminal')
+        // 导航到终端路径，包含会话ID
+        router.push(`/terminal/${newSessionId}`)
       } else {
         // 对于其他类型的标签，正常导航
         router.push(tab.path)

@@ -443,11 +443,14 @@ export default {
         }
       }
       
+      // 生成新的会话ID，确保每次都是新会话
+      const sessionId = Date.now().toString();
+      
       // 添加到历史记录
       if (userStore.isLoggedIn) {
-        userStore.addToHistory(connectionForm.value)
+        userStore.addToHistory({...connectionForm.value, id: connectionId})
       } else {
-        localConnectionsStore.addToHistory(connectionForm.value)
+        localConnectionsStore.addToHistory({...connectionForm.value, id: connectionId})
       }
       
       // 关闭对话框
@@ -463,81 +466,115 @@ export default {
         tabStore.updateTab(currentTabIndex, {
           title: connectionForm.value.name || `${connectionForm.value.username}@${connectionForm.value.host}`,
           type: 'terminal',
-          path: `/terminal/${connectionId}`,
-          data: { connectionId }
+          path: `/terminal/${sessionId}`,
+          data: { connectionId: sessionId }
         })
         
-        // 在会话存储中注册会话
-        sessionStore.registerSession(connectionId, {
+        // 在会话存储中注册会话，使用新的会话ID，但保留连接ID的引用
+        sessionStore.registerSession(sessionId, {
           ...connectionForm.value,
+          id: sessionId,
+          originalConnectionId: connectionId, // 保存原始连接ID以便需要时可以引用
           title: connectionForm.value.name || `${connectionForm.value.username}@${connectionForm.value.host}`,
-          type: 'terminal'
         })
         
-        // 导航到终端页面，但不显示ID
-        router.push('/terminal')
+        // 导航到终端页面，使用新的会话ID
+        router.push(`/terminal/${sessionId}`)
       } else {
         // 如果当前标签不是新建连接标签，则创建新标签
-        tabStore.addTerminal(connectionId)
+        // 使用新的会话ID而不是连接ID
+        tabStore.addTerminal(sessionId)
+        
+        // 在会话存储中注册会话
+        sessionStore.registerSession(sessionId, {
+          ...connectionForm.value,
+          id: sessionId,
+          originalConnectionId: connectionId, // 保存原始连接ID以便需要时可以引用
+          title: connectionForm.value.name || `${connectionForm.value.username}@${connectionForm.value.host}`,
+        })
+        
+        // 导航到终端页面，使用新的会话ID
+        router.push(`/terminal/${sessionId}`)
       }
     }
     
     // 处理登录
-    const handleLogin = (connection) => {
-      // 检查是否记住密码
-      if (!connection.rememberPassword || !connection.password) {
-        // 如果没有记住密码，先弹出编辑框让用户输入密码
-        isEdit.value = true
-        
-        // 创建一个新的对象来存储编辑的连接信息
-        const editedConnection = { ...connection }
-        
-        // 确保保留认证方式
-        editedConnection.authType = connection.authType || 'password'
-        
-        // 如果是密码认证但没记住密码，清空密码字段让用户重新输入
-        if (editedConnection.authType === 'password') {
-          editedConnection.password = ''
+    const handleLogin = async (connection) => {
+      try {
+        // 检查是否记住密码
+        if (!connection.rememberPassword || !connection.password) {
+          // 如果没有记住密码，先弹出编辑框让用户输入密码
+          isEdit.value = true
+          
+          // 创建一个新的对象来存储编辑的连接信息
+          const editedConnection = { ...connection }
+          
+          // 确保保留认证方式
+          editedConnection.authType = connection.authType || 'password'
+          
+          // 如果是密码认证但没记住密码，清空密码字段让用户重新输入
+          if (editedConnection.authType === 'password') {
+            editedConnection.password = ''
+          }
+          
+          connectionForm.value = editedConnection
+          dialogVisible.value = true
+          return
+        }
+
+        // 生成新的会话ID，确保每次都是新会话
+        const sessionId = Date.now().toString();
+
+        // 添加到历史记录
+        if (userStore.isLoggedIn) {
+          await userStore.addToHistory(connection)
+        } else {
+          localConnectionsStore.addToHistory(connection)
         }
         
-        connectionForm.value = editedConnection
-        dialogVisible.value = true
-        return
-      }
-
-      // 添加到历史记录
-      if (userStore.isLoggedIn) {
-        userStore.addToHistory(connection)
-      } else {
-        localConnectionsStore.addToHistory(connection)
-      }
-      
-      // 获取当前标签页索引
-      const currentTabIndex = tabStore.activeTabIndex
-      const currentTab = tabStore.tabs[currentTabIndex]
-      
-      // 更新当前标签为终端标签
-      if (currentTab && (currentTab.type === 'newConnection' || currentTab.path.includes('/connections'))) {
-        // 更新标签的路径、类型和数据
-        tabStore.updateTab(currentTabIndex, {
-          title: connection.name || `${connection.username}@${connection.host}`,
-          type: 'terminal',
-          path: `/terminal/${connection.id}`,
-          data: { connectionId: connection.id }
-        })
+        // 获取当前标签页索引
+        const currentTabIndex = tabStore.activeTabIndex
+        const currentTab = tabStore.tabs[currentTabIndex]
         
-        // 在会话存储中注册会话
-        sessionStore.registerSession(connection.id, {
-          ...connection,
-          title: connection.name || `${connection.username}@${connection.host}`,
-          type: 'terminal'
-        })
-        
-        // 导航到终端页面，但不显示ID
-        router.push('/terminal')
-      } else {
-        // 如果当前标签不是新建连接标签，则创建新标签
-        tabStore.addTerminal(connection.id)
+        // 更新当前标签为终端标签
+        if (currentTab && (currentTab.type === 'newConnection' || currentTab.path.includes('/connections'))) {
+          // 更新标签的路径、类型和数据
+          tabStore.updateTab(currentTabIndex, {
+            title: connection.name || `${connection.username}@${connection.host}`,
+            type: 'terminal',
+            path: `/terminal/${sessionId}`,
+            data: { connectionId: sessionId }
+          })
+          
+          // 在会话存储中注册会话，使用新的会话ID，但保留连接ID的引用
+          sessionStore.registerSession(sessionId, {
+            ...connection,
+            id: sessionId,
+            originalConnectionId: connection.id, // 保存原始连接ID以便需要时可以引用
+            title: connection.name || `${connection.username}@${connection.host}`,
+          })
+          
+          // 重要：添加导航指令，使用新的会话ID
+          router.push(`/terminal/${sessionId}`)
+        } else {
+          // 创建新标签页，使用新的会话ID
+          tabStore.addTerminal(sessionId)
+          
+          // 在会话存储中注册会话
+          sessionStore.registerSession(sessionId, {
+            ...connection,
+            id: sessionId,
+            originalConnectionId: connection.id, // 保存原始连接ID以便需要时可以引用
+            title: connection.name || `${connection.username}@${connection.host}`,
+          })
+          
+          // 重要：添加导航指令，使用新的会话ID
+          router.push(`/terminal/${sessionId}`)
+        }
+      } catch (error) {
+        console.error('连接创建失败:', error)
+        ElMessage.error('连接创建失败，请重试')
+        // 可以在这里添加重试逻辑
       }
     }
     

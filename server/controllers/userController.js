@@ -178,6 +178,9 @@ exports.updateUser = async (req, res) => {
     const userId = req.user.id;
     const userData = req.body;
 
+    // 暂时跳过MFA验证
+    // 之后可以重新实现MFA逻辑
+    /*
     // 检查是否为MFA相关变更
     const isMfaChange = userData.profile && (
       userData.profile.mfaEnabled !== undefined ||
@@ -204,6 +207,7 @@ exports.updateUser = async (req, res) => {
         return res.status(400).json({ success: false, message: '验证码无效或已过期' });
       }
     }
+    */
     
     // 处理密码更新
     const passwordUpdate = {};

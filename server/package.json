@@ -23,6 +23,7 @@
     "speakeasy": "^2.0.0",
     "sqlite3": "^5.1.6",
     "ssh2": "^1.16.0",
+    "uuid": "^11.1.0",
     "ws": "^8.15.0"
   },
   "devDependencies": {

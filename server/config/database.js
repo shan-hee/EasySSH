@@ -94,6 +94,63 @@ const connectDatabase = () => {
       )
     `);
     
+    // 创建连接表
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS connections (
+        id TEXT PRIMARY KEY,
+        user_id INTEGER NOT NULL,
+        name TEXT NOT NULL,
+        host TEXT NOT NULL,
+        port INTEGER DEFAULT 22,
+        username TEXT NOT NULL,
+        password TEXT,
+        remember_password INTEGER DEFAULT 0,
+        privateKey TEXT,
+        passphrase TEXT,
+        auth_type TEXT DEFAULT 'password',
+        description TEXT,
+        group_name TEXT DEFAULT '默认分组',
+        config TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        FOREIGN KEY (user_id) REFERENCES users (id)
+      )
+    `);
+    
+    // 创建连接收藏表
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS connection_favorites (
+        user_id INTEGER NOT NULL,
+        connection_id TEXT NOT NULL,
+        PRIMARY KEY (user_id, connection_id),
+        FOREIGN KEY (user_id) REFERENCES users (id),
+        FOREIGN KEY (connection_id) REFERENCES connections (id) ON DELETE CASCADE
+      )
+    `);
+    
+    // 创建连接历史表
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS connection_history (
+        user_id INTEGER NOT NULL,
+        connection_id TEXT NOT NULL,
+        timestamp INTEGER NOT NULL,
+        PRIMARY KEY (user_id, connection_id),
+        FOREIGN KEY (user_id) REFERENCES users (id),
+        FOREIGN KEY (connection_id) REFERENCES connections (id) ON DELETE CASCADE
+      )
+    `);
+    
+    // 创建连接置顶表
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS connection_pinned (
+        user_id INTEGER NOT NULL,
+        connection_id TEXT NOT NULL,
+        PRIMARY KEY (user_id, connection_id),
+        FOREIGN KEY (user_id) REFERENCES users (id),
+        FOREIGN KEY (connection_id) REFERENCES connections (id) ON DELETE CASCADE
+      )
+    `);
+    
     return db;
   } catch (error) {
     console.error('SQLite数据库连接失败:', error);
@@ -110,6 +167,14 @@ const closeDatabase = () => {
   }
 };
 
+// 获取数据库实例
+const getDb = () => {
+  if (!db) {
+    connectDatabase();
+  }
+  return db;
+};
+
 // 获取缓存实例
 const getCache = () => cache;
 
@@ -123,5 +188,6 @@ module.exports = {
   connectDatabase,
   closeDatabase,
   getCache,
-  getDatabaseStatus
+  getDatabaseStatus,
+  getDb
 }; 
