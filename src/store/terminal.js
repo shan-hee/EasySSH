@@ -127,8 +127,8 @@ export const useTerminalStore = defineStore('terminal', () => {
         let originalConnectionId = null
         
         // 根据登录状态决定从哪个store获取连接
-        if (userStore.isLoggedIn) {
-          connection = connectionStore.getConnectionById(connectionId)
+      if (userStore.isLoggedIn) {
+        connection = connectionStore.getConnectionById(connectionId)
           if (!connection) {
             // 如果找不到，可能是使用了新生成的会话ID，尝试查找所有连接
             for (const conn of userStore.connections) {
@@ -152,8 +152,8 @@ export const useTerminalStore = defineStore('terminal', () => {
               title: connection.name || `${connection.username}@${connection.host}`
             })
           }
-        } else {
-          connection = localConnectionsStore.getConnectionById(connectionId)
+      } else {
+        connection = localConnectionsStore.getConnectionById(connectionId)
           if (!connection) {
             // 如果找不到，可能是使用了新生成的会话ID，尝试查找所有连接
             for (const conn of localConnectionsStore.getAllConnections) {

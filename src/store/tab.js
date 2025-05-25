@@ -91,10 +91,10 @@ export const useTabStore = defineStore('tab', () => {
       
       // 如果会话存储中没有，再尝试从连接存储中获取
       if (!connectionInfo) {
-        if (userStore.isLoggedIn) {
-          connectionInfo = connectionStore.getConnectionById(connectionId)
-        } else {
-          connectionInfo = localConnectionsStore.getConnectionById(connectionId)
+      if (userStore.isLoggedIn) {
+        connectionInfo = connectionStore.getConnectionById(connectionId)
+      } else {
+        connectionInfo = localConnectionsStore.getConnectionById(connectionId)
         }
       }
       

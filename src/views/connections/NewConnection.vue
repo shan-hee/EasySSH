@@ -501,62 +501,62 @@ export default {
     // 处理登录
     const handleLogin = async (connection) => {
       try {
-        // 检查是否记住密码
-        if (!connection.rememberPassword || !connection.password) {
-          // 如果没有记住密码，先弹出编辑框让用户输入密码
-          isEdit.value = true
-          
-          // 创建一个新的对象来存储编辑的连接信息
-          const editedConnection = { ...connection }
-          
-          // 确保保留认证方式
-          editedConnection.authType = connection.authType || 'password'
-          
-          // 如果是密码认证但没记住密码，清空密码字段让用户重新输入
-          if (editedConnection.authType === 'password') {
-            editedConnection.password = ''
-          }
-          
-          connectionForm.value = editedConnection
-          dialogVisible.value = true
-          return
+      // 检查是否记住密码
+      if (!connection.rememberPassword || !connection.password) {
+        // 如果没有记住密码，先弹出编辑框让用户输入密码
+        isEdit.value = true
+        
+        // 创建一个新的对象来存储编辑的连接信息
+        const editedConnection = { ...connection }
+        
+        // 确保保留认证方式
+        editedConnection.authType = connection.authType || 'password'
+        
+        // 如果是密码认证但没记住密码，清空密码字段让用户重新输入
+        if (editedConnection.authType === 'password') {
+          editedConnection.password = ''
         }
+        
+        connectionForm.value = editedConnection
+        dialogVisible.value = true
+        return
+      }
 
         // 生成新的会话ID，确保每次都是新会话
         const sessionId = Date.now().toString();
 
-        // 添加到历史记录
-        if (userStore.isLoggedIn) {
+      // 添加到历史记录
+      if (userStore.isLoggedIn) {
           await userStore.addToHistory(connection)
-        } else {
-          localConnectionsStore.addToHistory(connection)
-        }
-        
-        // 获取当前标签页索引
-        const currentTabIndex = tabStore.activeTabIndex
-        const currentTab = tabStore.tabs[currentTabIndex]
-        
-        // 更新当前标签为终端标签
-        if (currentTab && (currentTab.type === 'newConnection' || currentTab.path.includes('/connections'))) {
-          // 更新标签的路径、类型和数据
-          tabStore.updateTab(currentTabIndex, {
-            title: connection.name || `${connection.username}@${connection.host}`,
-            type: 'terminal',
+      } else {
+        localConnectionsStore.addToHistory(connection)
+      }
+      
+      // 获取当前标签页索引
+      const currentTabIndex = tabStore.activeTabIndex
+      const currentTab = tabStore.tabs[currentTabIndex]
+      
+      // 更新当前标签为终端标签
+      if (currentTab && (currentTab.type === 'newConnection' || currentTab.path.includes('/connections'))) {
+        // 更新标签的路径、类型和数据
+        tabStore.updateTab(currentTabIndex, {
+          title: connection.name || `${connection.username}@${connection.host}`,
+          type: 'terminal',
             path: `/terminal/${sessionId}`,
             data: { connectionId: sessionId }
-          })
-          
+        })
+        
           // 在会话存储中注册会话，使用新的会话ID，但保留连接ID的引用
           sessionStore.registerSession(sessionId, {
-            ...connection,
+          ...connection,
             id: sessionId,
             originalConnectionId: connection.id, // 保存原始连接ID以便需要时可以引用
-            title: connection.name || `${connection.username}@${connection.host}`,
-          })
-          
+          title: connection.name || `${connection.username}@${connection.host}`,
+        })
+        
           // 重要：添加导航指令，使用新的会话ID
           router.push(`/terminal/${sessionId}`)
-        } else {
+      } else {
           // 创建新标签页，使用新的会话ID
           tabStore.addTerminal(sessionId)
           

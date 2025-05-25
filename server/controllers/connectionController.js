@@ -90,40 +90,40 @@ const addConnection = async (req, res) => {
     db.prepare('BEGIN TRANSACTION').run();
     
     try {
-      // 插入新连接
-      db.prepare(
-        `INSERT INTO connections (
-          id, user_id, name, host, port, username, password, 
-          remember_password, privateKey, passphrase, auth_type, 
-          description, group_name, config, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-      ).run(
-        connectionId,
-        userId,
-        connection.name || `${connection.username}@${connection.host}`,
-        connection.host,
-        connection.port || 22,
-        connection.username,
-        connection.rememberPassword ? connection.password : '',
-        connection.rememberPassword ? 1 : 0,
-        connection.privateKey || '',
-        connection.passphrase || '',
-        connection.authType || 'password',
-        connection.description || '',
-        connection.group || '默认分组',
-        JSON.stringify(connection.config || {}),
-        now,
-        now
-      );
+    // 插入新连接
+    db.prepare(
+      `INSERT INTO connections (
+        id, user_id, name, host, port, username, password, 
+        remember_password, privateKey, passphrase, auth_type, 
+        description, group_name, config, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).run(
+      connectionId,
+      userId,
+      connection.name || `${connection.username}@${connection.host}`,
+      connection.host,
+      connection.port || 22,
+      connection.username,
+      connection.rememberPassword ? connection.password : '',
+      connection.rememberPassword ? 1 : 0,
+      connection.privateKey || '',
+      connection.passphrase || '',
+      connection.authType || 'password',
+      connection.description || '',
+      connection.group || '默认分组',
+      JSON.stringify(connection.config || {}),
+      now,
+      now
+    );
       
       // 提交事务
       db.prepare('COMMIT').run();
-      
-      res.json({
-        success: true,
-        connectionId,
-        message: '连接添加成功'
-      });
+    
+    res.json({
+      success: true,
+      connectionId,
+      message: '连接添加成功'
+    });
     } catch (error) {
       // 回滚事务
       db.prepare('ROLLBACK').run();
@@ -432,38 +432,38 @@ const addToHistory = async (req, res) => {
       
       if (!connectionExists) {
         throw new Error('连接不存在');
-      }
-      
-      // 删除可能存在的旧记录
-      db.prepare(
-        'DELETE FROM connection_history WHERE connection_id = ? AND user_id = ?'
-      ).run(connection.id, userId);
-      
-      // 添加新历史记录
-      const timestamp = connection.timestamp || Date.now();
-      
-      db.prepare(
-        'INSERT INTO connection_history (user_id, connection_id, timestamp) VALUES (?, ?, ?)'
-      ).run(userId, connection.id, timestamp);
-      
-      // 限制历史记录数量为20条
-      db.prepare(
-        `DELETE FROM connection_history 
-         WHERE user_id = ? AND connection_id IN (
-           SELECT connection_id FROM connection_history 
-           WHERE user_id = ? 
-           ORDER BY timestamp DESC 
-           LIMIT 20, 1000
-         )`
-      ).run(userId, userId);
+    }
+    
+    // 删除可能存在的旧记录
+    db.prepare(
+      'DELETE FROM connection_history WHERE connection_id = ? AND user_id = ?'
+    ).run(connection.id, userId);
+    
+    // 添加新历史记录
+    const timestamp = connection.timestamp || Date.now();
+    
+    db.prepare(
+      'INSERT INTO connection_history (user_id, connection_id, timestamp) VALUES (?, ?, ?)'
+    ).run(userId, connection.id, timestamp);
+    
+    // 限制历史记录数量为20条
+    db.prepare(
+      `DELETE FROM connection_history 
+       WHERE user_id = ? AND connection_id IN (
+         SELECT connection_id FROM connection_history 
+         WHERE user_id = ? 
+         ORDER BY timestamp DESC 
+         LIMIT 20, 1000
+       )`
+    ).run(userId, userId);
       
       // 提交事务
       db.prepare('COMMIT').run();
-      
-      res.json({
-        success: true,
-        message: '已添加到历史记录'
-      });
+    
+    res.json({
+      success: true,
+      message: '已添加到历史记录'
+    });
     } catch (error) {
       // 回滚事务
       db.prepare('ROLLBACK').run();

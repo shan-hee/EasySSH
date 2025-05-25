@@ -1673,18 +1673,19 @@ export default {
 
 .terminal-content-padding {
   flex: 1;
-  padding: 20px; /* 添加20px的内边距 */
+  /* 移除padding */
   box-sizing: border-box;
   height: calc(100% - 40px); /* 减去工具栏的高度 */
   width: 100%;
   position: relative;
-  overflow: hidden; /* 防止内容溢出 */
+  overflow: hidden;
 }
 
 .terminal-content {
-  height: 100%;
-  width: 100%;
-  position: relative; /* 添加相对定位以便终端能正确定位 */
+  height: calc(100% - 40px); /* 减去margin空间 */
+  width: calc(100% - 40px); /* 减去margin空间 */
+  position: relative;
+  margin: 20px; /* 使用margin替代padding */
 }
 
 .connecting-overlay {

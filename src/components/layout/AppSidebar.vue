@@ -113,7 +113,7 @@ export default defineComponent({
   overflow: visible;
   border-right: 1px solid #333;
   box-sizing: border-box;
-  z-index: 1000;
+  z-index: 10000;
 }
 
 .logo {
