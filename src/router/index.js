@@ -12,6 +12,7 @@ const EmptyTerminal = { render: () => null }
 const Settings = () => import('../views/settings/Settings.vue')
 const UserProfile = () => import('../views/UserProfile.vue')
 const NotFound = () => import('../views/errors/NotFound.vue')
+const ScriptLibrary = () => import('../views/scripts/ScriptLibrary.vue')
 
 // 定义路由
 const routes = [
@@ -84,6 +85,15 @@ const routes = [
     meta: {
       title: 'EasySSH',
       requiresAuth: false
+    }
+  },
+  {
+    path: '/scripts',
+    name: 'ScriptLibrary',
+    component: ScriptLibrary,
+    meta: {
+      title: 'EasySSH',
+      requiresAuth: true
     }
   },
   {
