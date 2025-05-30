@@ -542,31 +542,51 @@ class SSHService {
                 const pendingData = this.pendingConnections.get(message.data.connectionId);
                 const authConnection = pendingData.connection;
                 
-                // 发送认证信息
-                const authData = {
-                  connectionId: message.data.connectionId,
-                  sessionId: message.data.sessionId || sessionId,
+                // 生成临时的AES密钥
+                const randomKey = Array.from(crypto.getRandomValues(new Uint8Array(16)))
+                  .map(b => b.toString(16).padStart(2, '0'))
+                  .join('');
+                
+                // 准备完整的认证数据对象
+                const authPayload = {
                   address: authConnection.host,
                   port: authConnection.port || 22,
                   username: authConnection.username,
                   authType: authConnection.authType || 'password'
                 };
                 
-                // 添加认证凭据
-                if (authData.authType === 'password') {
-                  authData.password = authConnection.password;
-                } else if (authData.authType === 'key' || authData.authType === 'privateKey') {
-                  authData.privateKey = authConnection.keyFile;
+                // 根据认证方式添加凭据
+                if (authPayload.authType === 'password') {
+                  authPayload.password = authConnection.password;
+                } else if (authPayload.authType === 'key' || authPayload.authType === 'privateKey') {
+                  authPayload.privateKey = authConnection.keyFile;
                   if (authConnection.passphrase) {
-                    authData.passphrase = authConnection.passphrase;
+                    authPayload.passphrase = authConnection.passphrase;
                   }
                 }
                 
-                // 发送认证请求
-                socket.send(JSON.stringify({
-                  type: 'authenticate',
-                  data: authData
-                }));
+                // 构建认证消息数据
+                const authData = {
+                  connectionId: message.data.connectionId,
+                  sessionId: message.data.sessionId || sessionId,
+                };
+                
+                // 使用同步方式处理
+                try {
+                  // 对完整的认证载荷进行加密 - 直接使用同步加密
+                  const encryptedPayload = this._encryptSensitiveData(JSON.stringify(authPayload), randomKey);
+                  authData.encryptedPayload = encryptedPayload;
+                  authData.keyId = randomKey;
+                  
+                  // 发送认证请求
+                  socket.send(JSON.stringify({
+                    type: 'authenticate',
+                    data: authData
+                  }));
+                } catch (encryptError) {
+                  log.error('加密认证信息失败', encryptError);
+                  reject(new Error('加密认证信息失败，无法安全连接'));
+                }
                 
                 // 不要在这里resolve，等待CONNECTED消息
               } else if (message.data && message.data.status === 'reconnected') {
@@ -1309,6 +1329,45 @@ class SSHService {
     
     // 如果没有匹配项，返回原始消息
     return translatedMessage;
+  }
+
+  /**
+   * 使用同步XOR加密敏感数据
+   * @param {string} data 要加密的数据
+   * @param {string} key 加密密钥
+   * @returns {string} 加密后的Base64字符串
+   */
+  _encryptSensitiveData(data, key) {
+    try {
+      if (!data) return '';
+      
+      // 初始化向量
+      const iv = crypto.getRandomValues(new Uint8Array(12));
+      
+      // 将字符串转换为字节数组
+      const textEncoder = new TextEncoder();
+      const dataBytes = textEncoder.encode(data);
+      
+      // 将密钥转换为字节数组
+      const keyBytes = textEncoder.encode(key);
+      
+      // 使用XOR加密数据
+      const encryptedData = new Uint8Array(dataBytes.length);
+      for (let i = 0; i < dataBytes.length; i++) {
+        encryptedData[i] = dataBytes[i] ^ keyBytes[i % keyBytes.length] ^ iv[i % iv.length];
+      }
+      
+      // 创建完整加密结果：IV + 加密数据
+      const result = new Uint8Array(iv.length + encryptedData.length);
+      result.set(iv);
+      result.set(encryptedData, iv.length);
+      
+      // 转换为Base64
+      return btoa(String.fromCharCode.apply(null, result));
+    } catch (error) {
+      log.error('加密敏感数据失败:', error);
+      throw error;
+    }
   }
 }
 

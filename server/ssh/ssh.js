@@ -41,13 +41,13 @@ function createSSHConnection(config) {
     
     conn.on('ready', () => {
       clearTimeout(timeout);
-      console.log(logMessage('SSH连接', `${config.address}:${config.port}`));
+      console.log(logMessage('SSH连接成功', `${config.address}:${config.port}, 用户: ${config.username}`));
       resolve(conn);
     });
     
     conn.on('error', (err) => {
       clearTimeout(timeout);
-      console.error(logMessage('SSH连接', `${config.address}:${config.port}`, '错误', err.message));
+      console.error(logMessage('SSH连接错误', `${config.address}:${config.port}, 用户: ${config.username}`, '错误信息:', err.message));
       reject(err);
     });
     
@@ -57,6 +57,13 @@ function createSSHConnection(config) {
       username: config.username,
       readyTimeout: 10000,
     };
+    
+    // 记录安全的连接日志
+    console.log(logMessage('尝试SSH连接', 
+      `主机: ${sshConfig.host}:${sshConfig.port}, ` +
+      `用户: ${sshConfig.username}, ` +
+      `认证方式: ${config.authType || 'password'}`
+    ));
     
     // 根据认证方式设置配置
     if (config.authType === 'password') {

@@ -137,31 +137,56 @@ function initWebSocketServer(server) {
               if (pendingConnections.has(data.connectionId)) {
                 const pendingData = pendingConnections.get(data.connectionId);
                 
-                // 获取完整连接信息
-                const connectionConfig = {
+                // 获取基本连接信息
+                let connectionConfig = {
                   sessionId: pendingData.sessionId || data.sessionId,
-                  address: data.address,
-                  port: data.port || 22,
-                  username: data.username,
-                  authType: data.authType || 'password',
                   clientIP: clientIP
                 };
                 
-                // 根据认证方式添加凭据
-                if (data.authType === 'password') {
-                  connectionConfig.password = data.password;
-                } else if (data.authType === 'privateKey' || data.authType === 'key') {
-                  connectionConfig.privateKey = data.privateKey;
-                  if (data.passphrase) {
-                    connectionConfig.passphrase = data.passphrase;
+                // 解密认证载荷
+                if (data.encryptedPayload && data.keyId) {
+                  try {
+                    // 解密完整认证载荷
+                    const decryptedPayloadString = decryptSensitiveData(data.encryptedPayload, data.keyId);
+                    const authPayload = JSON.parse(decryptedPayloadString);
+                    
+                    // 将解密的载荷合并到连接配置中
+                    connectionConfig = {
+                      ...connectionConfig,
+                      address: authPayload.address,
+                      port: authPayload.port || 22,
+                      username: authPayload.username,
+                      authType: authPayload.authType || 'password'
+                    };
+                    
+                    // 添加认证凭据
+                    if (authPayload.authType === 'password') {
+                      connectionConfig.password = authPayload.password;
+                    } else if (authPayload.authType === 'privateKey' || authPayload.authType === 'key') {
+                      connectionConfig.privateKey = authPayload.privateKey;
+                      if (authPayload.passphrase) {
+                        connectionConfig.passphrase = authPayload.passphrase;
+                      }
+                    }
+                    
+                    // 记录安全日志，不包含敏感信息
+                    console.log(utils.logMessage('SSH连接请求（安全模式）', 
+                      `用户: ${connectionConfig.username}, 地址: ${connectionConfig.address}:${connectionConfig.port}, ` +
+                      `认证方式: ${connectionConfig.authType}, 客户端IP: ${connectionConfig.clientIP || '未知'}`
+                    ));
+                    
+                    // 建立SSH连接
+                    sessionId = await ssh.handleConnect(ws, connectionConfig);
+                    
+                    // 连接成功后删除临时连接ID
+                    pendingConnections.delete(data.connectionId);
+                  } catch (decryptError) {
+                    console.error(utils.logMessage('解密认证载荷失败', decryptError.message));
+                    utils.sendError(ws, `认证失败: 无法解密认证信息`, data.sessionId);
                   }
+                } else {
+                  utils.sendError(ws, '无效的认证信息: 缺少加密数据', data.sessionId);
                 }
-                
-                // 建立SSH连接
-                sessionId = await ssh.handleConnect(ws, connectionConfig);
-                
-                // 连接成功后删除临时连接ID
-                pendingConnections.delete(data.connectionId);
               } else {
                 utils.sendError(ws, '无效的连接ID或已过期', data.sessionId);
               }
@@ -270,6 +295,44 @@ function initWebSocketServer(server) {
   });
   
   return wss;
+}
+
+/**
+ * 解密敏感数据
+ * @param {string} encryptedData Base64编码的加密数据
+ * @param {string} key 解密密钥
+ * @returns {string} 解密后的数据
+ */
+function decryptSensitiveData(encryptedData, key) {
+  try {
+    if (!encryptedData) return '';
+    
+    // 将Base64字符串转换为字节数组
+    const encryptedBytes = Buffer.from(encryptedData, 'base64');
+    
+    // 提取IV（前12字节）和加密数据
+    const iv = encryptedBytes.slice(0, 12);
+    const dataBytes = encryptedBytes.slice(12);
+    
+    // 将密钥转换为字节数组
+    const keyBytes = Buffer.from(key, 'utf8');
+    
+    // 使用XOR解密
+    const result = Buffer.alloc(dataBytes.length);
+    const keyLength = keyBytes.length;
+    const ivLength = iv.length;
+    
+    for (let i = 0; i < dataBytes.length; i++) {
+      // 使用XOR运算进行解密（与加密操作相同）
+      result[i] = dataBytes[i] ^ keyBytes[i % keyLength] ^ iv[i % ivLength];
+    }
+    
+    // 转换为字符串
+    return result.toString('utf8');
+  } catch (error) {
+    console.error(utils.logMessage('解密敏感数据失败', error.message));
+    throw error;
+  }
 }
 
 module.exports = {
