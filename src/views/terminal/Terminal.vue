@@ -60,6 +60,9 @@ import log from '../../services/log'
 // 导入会话存储
 import { useSessionStore } from '../../store/session'
 
+// 在import部分添加字体加载器导入
+import { waitForFontsLoaded } from '../../utils/fontLoader'
+
 export default {
   name: 'Terminal',
   components: {
@@ -199,6 +202,9 @@ export default {
           log.error('初始化终端失败: 缺少ID或容器')
           return false
         }
+        
+        // 确保字体已经加载完成
+        await waitForFontsLoaded()
         
         // 获取连接配置信息
         let connectionConfig = null
@@ -1313,6 +1319,20 @@ export default {
             log.debug(`强制显示终端: ${terminalId}`)
           }
           
+          // 终端就绪后，尝试聚焦终端
+          nextTick(() => {
+            // 如果这是当前活动的终端，自动聚焦
+            if (isActiveTerminal(terminalId)) {
+              log.info(`终端 ${terminalId} 就绪，自动聚焦`)
+              focusTerminal(terminalId)
+              
+              // 确保终端大小正确
+              setTimeout(() => {
+                resizeTerminal(terminalId)
+              }, 100)
+            }
+          })
+          
           // 收到连接成功事件后，如果是当前激活的终端，更新标题等信息
           if (isActiveTerminal(terminalId) && sessionId) {
             // 获取连接信息
@@ -1614,6 +1634,9 @@ export default {
   /* 对整体容器加渲染合成*/
   will-change: contents;
   contain: layout size paint;
+  /* 添加容器定位 */
+  display: flex;
+  flex-direction: column;
 }
 
 .terminals-wrapper {
@@ -1622,6 +1645,10 @@ export default {
   width: 100%;
   /* 预先创建堆叠上下文 */
   isolation: isolate;
+  /* 添加flex布局 */
+  flex: 1;
+  display: flex;
+  flex-direction: column;
 }
 
 .terminal-content-wrapper {
@@ -1678,14 +1705,20 @@ export default {
   height: calc(100% - 40px); /* 减去工具栏的高度 */
   width: 100%;
   position: relative;
-  overflow: hidden;
+  /* 修改overflow为可见，让内部的xterm-viewport控制滚动 */
+  overflow: visible;
+  /* 添加内边距，但右侧不留空间 */
+  padding: 20px 0 20px 20px;
 }
 
 .terminal-content {
-  height: calc(100% - 40px); /* 减去margin空间 */
-  width: calc(100% - 40px); /* 减去margin空间 */
+  height: 100%;
+  width: 100%; /* 使用100%宽度 */
   position: relative;
-  margin: 20px; /* 使用margin替代padding */
+  margin: 0; /* 清除所有外边距 */
+  /* 增加滚动容器样式 */
+  overflow: hidden;
+  border-radius: 4px 0 0 4px; /* 只设置左侧圆角 */
 }
 
 .connecting-overlay {
@@ -1711,10 +1744,52 @@ export default {
 :deep(.xterm) {
   height: 100%;
   width: 100%;
+  position: relative; /* 添加相对定位 */
 }
 
 :deep(.xterm-viewport) {
-  overflow-y: auto;
+  overflow-y: auto !important;
+  overflow-x: hidden;
+  right: 0 !important; /* 确保滚动条紧靠右边 */
+  width: auto !important;
+  /* 增加滚动条样式 */
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.3) transparent;
+  position: absolute !important; /* 确保位置正确 */
+}
+
+/* 添加Webkit浏览器的滚动条样式 */
+:deep(.xterm-viewport::-webkit-scrollbar) {
+  width: 6px; /* 减小滚动条宽度 */
+  height: 0; /* 确保横向滚动条不显示 */
+}
+
+:deep(.xterm-viewport::-webkit-scrollbar-track) {
+  background: transparent;
+  margin: 0; /* 移除上下边距 */
+}
+
+:deep(.xterm-viewport::-webkit-scrollbar-thumb) {
+  background-color: rgba(255, 255, 255, 0.3);
+  border-radius: 0; /* 移除圆角，使滚动条更贴合边缘 */
+  border: none; /* 移除边框 */
+}
+
+:deep(.xterm-viewport::-webkit-scrollbar-thumb:hover) {
+  background-color: rgba(255, 255, 255, 0.5);
+}
+
+/* 移除滚动条上下箭头 */
+:deep(.xterm-viewport::-webkit-scrollbar-button) {
+  display: none;
+}
+
+/* 针对Firefox的滚动条样式 */
+@supports (scrollbar-width: thin) {
+  :deep(.xterm-viewport) {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.3) transparent;
+  }
 }
 
 :deep(.xterm-screen) {

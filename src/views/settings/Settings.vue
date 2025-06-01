@@ -261,6 +261,7 @@ import { useSettingsStore } from '../../store/settings'
 import { useTerminalStore } from '../../store/terminal'
 import { SettingsCard, KeyboardShortcutEditor } from '../../components/settings'
 import { localKeyboardManager } from '../../utils/keyboard'
+import log from '../../services/log'
 
 export default {
   name: 'Settings',
@@ -330,18 +331,18 @@ export default {
           Object.assign(terminalBgSettings, parsedBgSettings)
           // 标记为已初始化
           terminalBgSettings.initialized = true
-          console.log('组件创建时加载背景设置:', terminalBgSettings)
+          log.info('组件创建时加载背景设置:', terminalBgSettings)
           
           // 发送背景状态事件
           window.dispatchEvent(new CustomEvent('terminal-bg-status', { 
             detail: { enabled: terminalBgSettings.enabled } 
           }))
         } catch (e) {
-          console.error('解析终端背景设置失败:', e)
+          log.error('解析终端背景设置失败:', e)
         }
       }
     } catch (error) {
-      console.error('初始化读取背景设置失败:', error)
+      log.error('初始化读取背景设置失败:', error)
     }
     
     // 页面加载时立即检查本地存储中的连接设置
@@ -352,10 +353,10 @@ export default {
         Object.assign(connectionSettings, savedConnectionSettings)
         // 标记为已初始化
         connectionSettings.initialized = true
-        console.log('组件创建时加载连接设置:', connectionSettings)
+        log.info('组件创建时加载连接设置:', connectionSettings)
       }
     } catch (error) {
-      console.error('初始化读取连接设置失败:', error)
+      log.error('初始化读取连接设置失败:', error)
     }
     
     // 页面加载时立即检查本地存储中的界面设置
@@ -366,10 +367,10 @@ export default {
         Object.assign(uiSettings, savedUISettings)
         // 标记为已初始化
         uiSettings.initialized = true
-        console.log('组件创建时加载界面设置:', uiSettings)
+        log.info('组件创建时加载界面设置:', uiSettings)
       }
     } catch (error) {
-      console.error('初始化读取界面设置失败:', error)
+      log.error('初始化读取界面设置失败:', error)
     }
     
     // 页面加载时立即检查本地存储中的终端设置
@@ -380,10 +381,10 @@ export default {
         Object.assign(terminalSettings, savedTerminalSettings)
         // 标记为已初始化
         terminalSettings.initialized = true
-        console.log('组件创建时加载终端设置:', terminalSettings)
+        log.info('组件创建时加载终端设置:', terminalSettings)
       }
     } catch (error) {
-      console.error('初始化读取终端设置失败:', error)
+      log.error('初始化读取终端设置失败:', error)
     }
     
     // 背景预览样式计算属性
@@ -420,35 +421,35 @@ export default {
       loadSettings();
       
       // 调试键盘管理器加载
-      console.log('Settings组件挂载，尝试加载快捷键设置');
-      console.log('window.services存在:', !!window.services);
+      log.info('Settings组件挂载，尝试加载快捷键设置');
+      log.info('window.services存在:', !!window.services);
       if (window.services) {
-        console.log('可用服务:', Object.keys(window.services));
-        console.log('keyboardManager存在:', !!window.services.keyboardManager);
+        log.info('可用服务:', Object.keys(window.services));
+        log.info('keyboardManager存在:', !!window.services.keyboardManager);
       }
       
       // 尝试加载快捷键设置
       try {
         // 在window.services准备好后加载快捷键
         if (window.services?.keyboardManager) {
-          console.log('使用全局键盘管理器服务');
+          log.info('使用全局键盘管理器服务');
           loadShortcuts();
         } else {
-          console.log('尝试使用本地键盘管理器');
+          log.info('尝试使用本地键盘管理器');
           loadShortcuts(); // 使用本地键盘管理器
           
           // 仍然监听services就绪事件，以便在服务可用时再次加载
           window.addEventListener('services:ready', () => {
-            console.log('收到services就绪事件');
-            console.log('window.services存在:', !!window.services);
+            log.info('收到services就绪事件');
+            log.info('window.services存在:', !!window.services);
             if (window.services?.keyboardManager) {
-              console.log('services就绪后，使用全局键盘管理器服务');
+              log.info('services就绪后，使用全局键盘管理器服务');
               loadShortcuts();
             }
           }, { once: true });
         }
       } catch (error) {
-        console.error('加载快捷键设置失败:', error);
+        log.error('加载快捷键设置失败:', error);
       }
     });
     
@@ -459,7 +460,7 @@ export default {
         const savedTerminalSettings = settingsStore.getTerminalSettings()
         if (savedTerminalSettings && !terminalSettings.initialized) {
           Object.assign(terminalSettings, savedTerminalSettings)
-          console.log('loadSettings中更新终端设置:', terminalSettings)
+          log.info('loadSettings中更新终端设置:', terminalSettings)
         }
         
         // 加载终端背景图片设置
@@ -470,7 +471,7 @@ export default {
             // 检查状态是否与初始化时加载的不同
             if (terminalBgSettings.enabled !== parsedBgSettings.enabled) {
               Object.assign(terminalBgSettings, parsedBgSettings)
-              console.log('loadSettings中更新背景设置:', terminalBgSettings)
+              log.info('loadSettings中更新背景设置:', terminalBgSettings)
             }
             
             // 无论如何都发送背景状态事件，确保系统各部分状态一致
@@ -478,7 +479,7 @@ export default {
               detail: { enabled: terminalBgSettings.enabled } 
             }))
           } catch (e) {
-            console.error('解析终端背景设置失败:', e)
+            log.error('解析终端背景设置失败:', e)
           }
         }
         
@@ -486,17 +487,17 @@ export default {
         const savedConnectionSettings = settingsStore.getConnectionSettings()
         if (savedConnectionSettings && !connectionSettings.initialized) {
           Object.assign(connectionSettings, savedConnectionSettings)
-          console.log('loadSettings中更新连接设置:', connectionSettings)
+          log.info('loadSettings中更新连接设置:', connectionSettings)
         }
         
         // 加载界面设置
         const savedUISettings = settingsStore.getUISettings()
         if (savedUISettings && !uiSettings.initialized) {
           Object.assign(uiSettings, savedUISettings)
-          console.log('loadSettings中更新界面设置:', uiSettings)
+          log.info('loadSettings中更新界面设置:', uiSettings)
         }
       } catch (error) {
-        console.error('加载设置失败', error)
+        log.error('加载设置失败', error)
         ElMessage.error('加载设置失败')
       }
     }
@@ -519,10 +520,10 @@ export default {
           detail: { enabled: terminalBgSettings.enabled } 
         }))
         
-        console.log('终端背景设置已更新:', terminalBgSettings)
+        log.info('终端背景设置已更新:', terminalBgSettings)
         ElMessage.success('终端背景设置已更新')
       } catch (error) {
-        console.error('保存终端背景设置失败', error)
+        log.error('保存终端背景设置失败', error)
         ElMessage.error('保存终端背景设置失败')
       }
     }
@@ -552,7 +553,7 @@ export default {
           ElMessage.success('终端设置已保存')
         }
       } catch (error) {
-        console.error('保存终端设置失败', error)
+        log.error('保存终端设置失败', error)
         ElMessage.error('保存终端设置失败')
       }
     }
@@ -566,7 +567,7 @@ export default {
         settingsStore.saveConnectionSettings(connectionSettings)
         ElMessage.success('连接设置已保存')
       } catch (error) {
-        console.error('保存连接设置失败', error)
+        log.error('保存连接设置失败', error)
         ElMessage.error('保存连接设置失败')
       }
     }
@@ -631,7 +632,7 @@ export default {
           document.documentElement.setAttribute('data-theme', uiSettings.theme)
         }
       } catch (error) {
-        console.error('保存界面设置失败', error)
+        log.error('保存界面设置失败', error)
         ElMessage.error('保存界面设置失败')
       }
     }
@@ -693,7 +694,7 @@ export default {
           ElMessage.success(`快捷键 "${shortcut.description}" 已更新为 ${newValue}`);
         }
       } catch (error) {
-        console.error('更新快捷键失败', error);
+        log.error('更新快捷键失败', error);
         ElMessage.error(`更新快捷键失败：${error.message}`);
         
         // 恢复原快捷键值（从键盘管理器获取）
@@ -733,7 +734,7 @@ export default {
           
           ElMessage.success('所有快捷键已重置为默认值');
         } catch (error) {
-          console.error('重置快捷键失败', error);
+          log.error('重置快捷键失败', error);
           ElMessage.error(`重置快捷键失败：${error.message || '未知错误'}`);
         } finally {
           resettingShortcuts.value = false;

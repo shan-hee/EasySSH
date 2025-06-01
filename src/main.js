@@ -21,6 +21,8 @@ import { initializeServices } from '../scripts/services'
 import servicesManager from './services'
 // 导入日志服务
 import log from './services/log'
+// 导入字体加载器
+import fontLoader from './utils/fontLoader'
 
 // 初始化主题和语言设置
 const initSettings = () => {
@@ -81,33 +83,20 @@ const initSettings = () => {
 // 立即初始化主题和语言
 initSettings()
 
-// 预加载关键字体（在DOM准备好后执行）
+// 修改预加载字体函数
 const preloadFonts = () => {
+  log.info('启动字体预加载...')
   
-  // 使用更可靠的导入方式
-  const loadFontHelper = () => {
-    // 设置全局加载完成标志，不再等待加载完成检查
-    window.TERMINAL_FONTS_LOADED = true
-    
-    // 发送字体加载完成事件
-    window.dispatchEvent(new CustomEvent('terminal:fonts-loaded'))
-    
-    // 导入并执行预加载逻辑，但不依赖其结果
-    import('./utils/fontLoader').then(module => {
-      const fontLoader = module.default
-      fontLoader.preloadFonts()
-    }).catch(err => {
-      log.error('加载字体工具失败:', err)
-    })
-  }
-  
-  // 确保DOM已加载完成
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', loadFontHelper)
-  } else {
-    // DOM已加载，直接执行
-    loadFontHelper()
-  }
+  // 开始字体预加载，不等待结果
+  fontLoader.preloadFonts().then(success => {
+    if (success) {
+      log.info('字体预加载成功')
+    } else {
+      log.warn('字体预加载未完全成功，但应用将继续运行')
+    }
+  }).catch(err => {
+    log.error('字体预加载过程出错:', err)
+  })
 }
 
 // 立即开始预加载字体

@@ -5,6 +5,8 @@ import router from '../router'
 import { useUserStore } from './user'
 import { useConnectionStore } from './connection'
 import { useLocalConnectionsStore } from './localConnections'
+// 导入日志服务
+import log from '../services/log'
 
 // 导入会话存储
 import { useSessionStore } from './session'
@@ -64,7 +66,7 @@ export const useTabStore = defineStore('tab', () => {
       await nextTick()
       router.push('/connections/new')
     } catch (error) {
-      console.error('添加新连接标签页失败:', error)
+      log.error('添加新连接标签页失败:', error)
     } finally {
       // 重置状态标志
       setTimeout(() => {
@@ -103,7 +105,7 @@ export const useTabStore = defineStore('tab', () => {
         tabTitle = connectionInfo.name || `${connectionInfo.username}@${connectionInfo.host}`
       }
     } catch (error) {
-      console.error('获取连接信息失败:', error)
+      log.error('获取连接信息失败:', error)
     }
     
     // 构建完整路径
@@ -150,7 +152,7 @@ export const useTabStore = defineStore('tab', () => {
       
       return newIndex
     } catch (error) {
-      console.error('添加终端标签页失败:', error)
+      log.error('添加终端标签页失败:', error)
       return -1
     }
   }
@@ -190,7 +192,7 @@ export const useTabStore = defineStore('tab', () => {
           sessionStore.setActiveSession(connectionId);
         }
       } catch (error) {
-        console.error('获取连接信息失败:', error);
+        log.error('获取连接信息失败:', error);
       }
     }
     
@@ -223,7 +225,7 @@ export const useTabStore = defineStore('tab', () => {
       
       return newIndex;
     } catch (error) {
-      console.error('添加SFTP浏览器标签页失败:', error);
+      log.error('添加SFTP浏览器标签页失败:', error);
       return -1;
     }
   }
@@ -255,7 +257,7 @@ export const useTabStore = defineStore('tab', () => {
       await nextTick()
       router.push('/settings')
     } catch (error) {
-      console.error('添加设置标签页失败:', error)
+      log.error('添加设置标签页失败:', error)
     }
   }
   
@@ -275,7 +277,7 @@ export const useTabStore = defineStore('tab', () => {
         
         // 只有当新旧会话ID不同时才更新
         if (previousSessionId !== newSessionId) {
-          console.log(`切换终端会话: ${previousSessionId} -> ${newSessionId}`)
+          log.info(`切换终端会话: ${previousSessionId} -> ${newSessionId}`)
           sessionStore.setActiveSession(newSessionId)
           
           // 触发终端切换事件
@@ -298,7 +300,7 @@ export const useTabStore = defineStore('tab', () => {
               }, 100)
             }
           }).catch(error => {
-            console.error('导入终端Store失败:', error)
+            log.error('导入终端Store失败:', error)
           })
         }
         
@@ -319,7 +321,7 @@ export const useTabStore = defineStore('tab', () => {
     if (typeof indexOrPath === 'string') {
       index = state.tabs.findIndex(tab => tab.path === indexOrPath)
       if (index === -1) {
-        console.warn(`未找到路径为 ${indexOrPath} 的标签页`)
+        log.warn(`未找到路径为 ${indexOrPath} 的标签页`)
         return
       }
     }
@@ -334,7 +336,7 @@ export const useTabStore = defineStore('tab', () => {
       const monitoringPanelVisible = document.querySelector('.monitoring-panel-container')
       if (monitoringPanelVisible) {
         // 触发关闭监控面板事件
-        console.log('关闭标签页前先关闭监控面板')
+        log.info('关闭标签页前先关闭监控面板')
         appLayoutElement.dispatchEvent(new CustomEvent('close-monitoring-panel'))
       }
       
@@ -342,7 +344,7 @@ export const useTabStore = defineStore('tab', () => {
       const sftpPanelVisible = document.querySelector('.sftp-panel-container')
       if (sftpPanelVisible) {
         // 触发关闭SFTP面板事件
-        console.log('关闭标签页前先关闭SFTP面板')
+        log.info('关闭标签页前先关闭SFTP面板')
         appLayoutElement.dispatchEvent(new CustomEvent('close-sftp-panel'))
       }
     }
@@ -362,11 +364,11 @@ export const useTabStore = defineStore('tab', () => {
         
         // 如果没有其他标签使用此连接，则断开连接
         if (sameConnectionTabs.length === 0) {
-          console.log(`没有其他标签使用终端 ${closingTab.data.connectionId}，准备断开连接`)
+          log.info(`没有其他标签使用终端 ${closingTab.data.connectionId}，准备断开连接`)
           
           // 添加超时保护，确保连接断开
           const disconnectTimeout = setTimeout(() => {
-            console.warn(`断开终端 ${closingTab.data.connectionId} 连接超时，尝试强制释放资源`)
+            log.warn(`断开终端 ${closingTab.data.connectionId} 连接超时，尝试强制释放资源`)
             
             // 尝试直接调用SSH服务释放资源
             import('../services/ssh').then(module => {
@@ -375,10 +377,10 @@ export const useTabStore = defineStore('tab', () => {
               if (terminalStore.sessions && terminalStore.sessions[closingTab.data.connectionId]) {
                 const sessionId = terminalStore.sessions[closingTab.data.connectionId]
                 sshService.releaseResources(sessionId)
-                  .catch(error => console.error(`强制释放SSH资源失败: ${error.message}`))
+                  .catch(error => log.error(`强制释放SSH资源失败: ${error.message}`))
               }
             }).catch(error => {
-              console.error('导入SSH服务失败:', error)
+              log.error('导入SSH服务失败:', error)
             })
           }, 5000) // 5秒超时
           
@@ -386,7 +388,7 @@ export const useTabStore = defineStore('tab', () => {
           terminalStore.disconnectTerminal(closingTab.data.connectionId)
             .then(success => {
               clearTimeout(disconnectTimeout) // 清除超时
-              console.log(`终端 ${closingTab.data.connectionId} 断开${success ? '成功' : '失败'}`)
+              log.info(`终端 ${closingTab.data.connectionId} 断开${success ? '成功' : '失败'}`)
               
               // 主动触发终端销毁事件，确保监控工厂断开连接
               window.dispatchEvent(new CustomEvent('terminal:destroyed', {
@@ -395,7 +397,7 @@ export const useTabStore = defineStore('tab', () => {
             })
             .catch(error => {
               clearTimeout(disconnectTimeout) // 清除超时
-              console.error('关闭终端连接失败:', error)
+              log.error('关闭终端连接失败:', error)
               
               // 即使终端断开失败，仍然触发终端销毁事件，确保监控工厂断开连接
               window.dispatchEvent(new CustomEvent('terminal:destroyed', {
@@ -403,7 +405,7 @@ export const useTabStore = defineStore('tab', () => {
               }));
             })
         } else {
-          console.log(`保持终端 ${closingTab.data.connectionId} 连接，还有 ${sameConnectionTabs.length} 个标签使用它`)
+          log.info(`保持终端 ${closingTab.data.connectionId} 连接，还有 ${sameConnectionTabs.length} 个标签使用它`)
           
           // 在保留终端连接的同时，确保触发状态刷新事件
           window.dispatchEvent(new CustomEvent('terminal:refresh-status', {
@@ -411,7 +413,7 @@ export const useTabStore = defineStore('tab', () => {
           }));
         }
       }).catch(error => {
-        console.error('导入终端Store失败:', error)
+        log.error('导入终端Store失败:', error)
       })
     }
     
@@ -512,7 +514,7 @@ export const useTabStore = defineStore('tab', () => {
     })
     
     // TODO: 实际保存连接到存储
-    console.log('保存连接:', tab.data)
+    log.info('保存连接:', tab.data)
     
     // 关闭标签页
     closeTab(index)
@@ -528,12 +530,12 @@ export const useTabStore = defineStore('tab', () => {
         if (tab.type === 'terminal' && tab.data && tab.data.connectionId) {
           terminalStore.disconnectTerminal(tab.data.connectionId)
             .catch(error => {
-              console.error(`关闭终端连接 ${tab.data.connectionId} 失败:`, error)
+              log.error(`关闭终端连接 ${tab.data.connectionId} 失败:`, error)
             })
         }
       })
     }).catch(error => {
-      console.error('导入终端Store失败:', error)
+      log.error('导入终端Store失败:', error)
     })
     
     // 重置状态
@@ -546,7 +548,7 @@ export const useTabStore = defineStore('tab', () => {
   // 更新标签页标题
   const updateTabTitle = (path, newTitle) => {
     if (!path || !newTitle) {
-      console.warn('更新标签页标题失败：缺少路径或标题')
+      log.warn('更新标签页标题失败：缺少路径或标题')
       return
     }
     
@@ -590,7 +592,7 @@ export const useTabStore = defineStore('tab', () => {
         return
       }
       
-      console.warn(`未找到路径为 ${path} 的标签页或匹配项`)
+      log.warn(`未找到路径为 ${path} 的标签页或匹配项`)
       return
     }
     
@@ -601,7 +603,7 @@ export const useTabStore = defineStore('tab', () => {
   // 直接设置当前活动标签页的标题
   const setActiveTabTitle = (newTitle) => {
     if (state.activeTabIndex >= 0 && state.activeTabIndex < state.tabs.length) {
-      console.log('直接设置当前活动标签页标题:', newTitle);
+      log.info('直接设置当前活动标签页标题:', newTitle);
       state.tabs[state.activeTabIndex].title = newTitle;
       return true;
     }
@@ -617,7 +619,7 @@ export const useTabStore = defineStore('tab', () => {
   const updateTab = (index, tabData) => {
     // 检查索引是否有效
     if (index < 0 || index >= state.tabs.length) {
-      console.warn(`更新标签页失败：索引 ${index} 超出范围`)
+      log.warn(`更新标签页失败：索引 ${index} 超出范围`)
       return false
     }
     

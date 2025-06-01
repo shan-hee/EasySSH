@@ -10,6 +10,7 @@ import { FitAddon } from '@xterm/addon-fit'
 import { useSettingsStore } from './settings'
 import { computed } from 'vue'
 import { useSessionStore } from './session'
+import { waitForFontsLoaded } from '../utils/fontLoader'
 
 export const useTerminalStore = defineStore('terminal', () => {
   // 使用reactive管理状态
@@ -376,9 +377,14 @@ export const useTerminalStore = defineStore('terminal', () => {
    * @private
    */
   const _getTerminalOptions = async () => {
+    // 等待字体加载完成
+    await waitForFontsLoaded()
+    
     let terminalOptions = {
       fontSize: 16,
       fontFamily: "'JetBrains Mono'",
+      // 显式设置字符间距为0，避免渲染差异
+      letterSpacing: 0,
       theme: {
         background: '#121212',
         foreground: '#f8f8f8',
@@ -523,6 +529,14 @@ export const useTerminalStore = defineStore('terminal', () => {
         // 确保终端大小适应容器
         setTimeout(() => {
           fitTerminal(connectionId)
+          
+          // 在终端调整大小后尝试聚焦
+          try {
+            log.info(`尝试聚焦重新附加的终端: ${connectionId}`)
+            focusTerminal(connectionId)
+          } catch (e) {
+            log.warn(`聚焦终端失败: ${e.message}`)
+          }
         }, 50)
       }
       

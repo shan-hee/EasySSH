@@ -31,15 +31,26 @@ class TerminalManager {
     
     const session = this.sshService.sessions.get(sessionId);
     
+    // 从传入的选项中获取光标样式和闪烁设置，如果未提供则使用默认值
+    const cursorStyle = options.cursorStyle || 'block';
+    const cursorBlink = options.cursorBlink !== undefined ? options.cursorBlink : true;
+    
+    log.info(`创建终端，使用光标样式: ${cursorStyle}, 闪烁: ${cursorBlink}`);
+    
     // 创建终端实例
     const terminal = new Terminal({
       fontSize: options.fontSize || settings.terminalFontSize || 14,
       fontFamily: options.fontFamily || settings.terminalFontFamily || "'JetBrains Mono'",
       theme: options.theme,
-      cursorBlink: true,
-      scrollback: 3000,
+      cursorStyle: cursorStyle, // 确保使用传入的光标样式
+      cursorBlink: cursorBlink, // 确保使用传入的光标闪烁设置
+      scrollback: 5000, // 增加滚动历史行数，默认值通常是1000
       rightClickSelectsWord: true,
-      disableStdin: false
+      disableStdin: false,
+      letterSpacing: options.letterSpacing || 0, // 确保应用字符间距设置
+      fastScrollModifier: 'alt', // 按住alt键可以快速滚动
+      fastScrollSensitivity: 5, // 快速滚动的灵敏度
+      smoothScrollDuration: 50 // 平滑滚动持续时间，单位为毫秒
     });
     
     // 添加FitAddon以自动调整终端大小
@@ -57,6 +68,14 @@ class TerminalManager {
     // 渲染终端
     terminal.open(container);
     fitAddon.fit();
+    
+    // 尝试聚焦终端
+    try {
+      log.info(`尝试聚焦新创建的终端: ${sessionId}`);
+      terminal.focus();
+    } catch (e) {
+      log.warn(`聚焦终端失败: ${e.message}`);
+    }
     
     // 处理用户输入
     terminal.onData((data) => {

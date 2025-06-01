@@ -33,7 +33,7 @@ class SFTPService {
       for (const [id, session] of this.sshService.sessions.entries()) {
         if (session.terminalId && session.terminalId === sessionId) {
           sshSessionId = id;
-          console.log(`找到终端ID ${sessionId} 对应的SSH会话ID: ${sshSessionId}`);
+          log.info(`找到终端ID ${sessionId} 对应的SSH会话ID: ${sshSessionId}`);
           break;
         }
       }
@@ -42,17 +42,17 @@ class SFTPService {
       if (sshSessionId === sessionId) {
         if (this.sshService.sessions.size === 1) {
           sshSessionId = Array.from(this.sshService.sessions.keys())[0];
-          console.log(`未找到终端ID ${sessionId} 的映射，但只有一个SSH会话，使用: ${sshSessionId}`);
+          log.info(`未找到终端ID ${sessionId} 的映射，但只有一个SSH会话，使用: ${sshSessionId}`);
         } else {
-          console.error(`找不到终端ID ${sessionId} 对应的SSH会话ID`);
+          log.error(`找不到终端ID ${sessionId} 对应的SSH会话ID`);
         }
       }
     }
     
     // 检查SSH会话是否存在
     if (!this.sshService.sessions.has(sshSessionId)) {
-      console.error(`创建SFTP会话失败: SSH会话 ${sshSessionId} 不存在`);
-      console.log('可用的SSH会话:', Array.from(this.sshService.sessions.keys()));
+      log.error(`创建SFTP会话失败: SSH会话 ${sshSessionId} 不存在`);
+      log.info('可用的SSH会话:', Array.from(this.sshService.sessions.keys()));
       throw new Error(`创建SFTP会话失败: SSH会话 ${sshSessionId} 不存在`);
     }
     
@@ -456,7 +456,7 @@ class SFTPService {
         reader.readAsText(fileBlob);
       });
     } catch (error) {
-      console.error(`获取文件内容失败 ${remotePath}:`, error);
+      log.error(`获取文件内容失败 ${remotePath}:`, error);
       throw new Error(`获取文件内容失败: ${error.message || '未知错误'}`);
     }
   }
@@ -483,7 +483,7 @@ class SFTPService {
       
       return true;
     } catch (error) {
-      console.error(`保存文件内容失败 ${remotePath}:`, error);
+      log.error(`保存文件内容失败 ${remotePath}:`, error);
       throw new Error(`保存文件内容失败: ${error.message || '未知错误'}`);
     }
   }

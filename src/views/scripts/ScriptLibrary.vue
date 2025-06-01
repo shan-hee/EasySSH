@@ -12,14 +12,20 @@
 
     <div class="script-categories">
       <div 
-        v-for="category in categories" 
-        :key="category.id"
-        class="category-bubble"
-        :class="{ active: selectedCategory === category.id }"
-        @click="selectedCategory = category.id"
+        class="tag-bubble"
+        :class="{ active: selectedTags.length === 0 }"
+        @click="clearTags"
       >
-        <h3>{{ category.name }}</h3>
-        <span class="script-count">{{ category.count }} 个脚本</span>
+        <span>全部</span>
+      </div>
+      <div 
+        v-for="tag in availableTags" 
+        :key="tag"
+        class="tag-bubble"
+        :class="{ active: selectedTags.includes(tag) }"
+        @click="toggleTag(tag)"
+      >
+        <span>{{ tag }}</span>
       </div>
     </div>
 
@@ -53,7 +59,7 @@
         </div>
       </div>
 
-      <div class="scripts-list">
+      <div class="scripts-table-container">
         <div v-if="filteredScripts.length === 0" class="no-scripts">
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="48" height="48">
             <path fill="#666" d="M19,3H5C3.89,3 3,3.89 3,5V19A2,2 0 0,0 5,21H19A2,2 0 0,0 21,19V5C21,3.89 20.1,3 19,3M19,5V19H5V5H19Z" />
@@ -63,161 +69,240 @@
           <button class="btn-secondary" @click="createNewScript">创建第一个脚本</button>
         </div>
 
-        <div 
-          v-for="script in filteredScripts" 
-          :key="script.id"
-          class="script-card"
-        >
-          <div class="script-header">
-            <h3>{{ script.name }}</h3>
-            <div class="script-actions">
-              <button class="btn-icon" @click="toggleFavorite(script)">
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16">
-                  <path fill="currentColor" :d="script.isFavorite ? 'M12,17.27L18.18,21L16.54,13.97L22,9.24L14.81,8.62L12,2L9.19,8.62L2,9.24L7.45,13.97L5.82,21L12,17.27Z' : 'M12,15.39L8.24,17.66L9.23,13.38L5.91,10.5L10.29,10.13L12,6.09L13.71,10.13L18.09,10.5L14.77,13.38L15.76,17.66M22,9.24L14.81,8.63L12,2L9.19,8.63L2,9.24L7.45,13.97L5.82,21L12,17.27L18.18,21L16.54,13.97L22,9.24Z'" />
-                </svg>
-              </button>
-              <button class="btn-icon" @click="editScript(script)">
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16">
-                  <path fill="currentColor" d="M20.71,7.04C21.1,6.65 21.1,6 20.71,5.63L18.37,3.29C18,2.9 17.35,2.9 16.96,3.29L15.12,5.12L18.87,8.87M3,17.25V21H6.75L17.81,9.93L14.06,6.18L3,17.25Z" />
-                </svg>
-              </button>
-              <button class="btn-icon" @click="runScript(script)">
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16">
-                  <path fill="currentColor" d="M8,5.14V19.14L19,12.14L8,5.14Z" />
-                </svg>
-              </button>
-            </div>
-          </div>
-          <div class="script-info">
-            <p class="script-description">{{ script.description }}</p>
-            <div class="script-meta">
-              <span class="script-author">作者: {{ script.author }}</span>
-              <span class="script-updated">更新于: {{ formatDate(script.updatedAt) }}</span>
-            </div>
-            <div class="script-tags">
-              <span 
-                v-for="tag in script.tags" 
-                :key="tag"
-                class="tag"
-              >
-                {{ tag }}
-              </span>
-            </div>
-          </div>
-        </div>
+        <table v-else class="scripts-table">
+          <thead>
+            <tr>
+              <th class="script-name-column">名称</th>
+              <th class="script-desc-column">备注</th>
+              <th class="script-tags-column">标签</th>
+              <th class="script-command-column">指令内容</th>
+              <th class="script-actions-column">操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="script in filteredScripts" :key="script.id" class="script-row">
+              <td class="script-name">
+                <div class="name-with-favorite">
+                  <button class="btn-icon favorite-icon" @click="toggleFavorite(script)">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16">
+                      <path fill="currentColor" :d="script.isFavorite ? 'M12,17.27L18.18,21L16.54,13.97L22,9.24L14.81,8.62L12,2L9.19,8.62L2,9.24L7.45,13.97L5.82,21L12,17.27Z' : 'M12,15.39L8.24,17.66L9.23,13.38L5.91,10.5L10.29,10.13L12,6.09L13.71,10.13L18.09,10.5L14.77,13.38L15.76,17.66M22,9.24L14.81,8.63L12,2L9.19,8.63L2,9.24L7.45,13.97L5.82,21L12,17.27L18.18,21L16.54,13.97L22,9.24Z'" />
+                    </svg>
+                  </button>
+                  {{ script.name }}
+                </div>
+                <div class="script-meta">
+                  <span>作者: {{ script.author }}</span> | 
+                  <span>更新于: {{ formatDate(script.updatedAt) }}</span>
+                </div>
+              </td>
+              <td class="script-description">{{ script.description }}</td>
+              <td class="script-tags">
+                <div class="tag-list">
+                  <span 
+                    v-for="tag in script.tags" 
+                    :key="tag" 
+                    class="script-tag"
+                    @click="toggleTag(tag)"
+                  >
+                    {{ tag }}
+                  </span>
+                </div>
+              </td>
+              <td class="script-command">
+                <code>{{ script.command }}</code>
+              </td>
+              <td class="script-actions">
+                <el-button class="action-btn" circle size="small" link title="编辑" @click="editScript(script)">
+                  <el-icon><Edit /></el-icon>
+                </el-button>
+                <el-button class="action-btn" circle size="small" link title="运行" @click="runScript(script)">
+                  <el-icon><CaretRight /></el-icon>
+                </el-button>
+                <el-button class="action-btn" circle size="small" link title="删除" @click="deleteScript(script)">
+                  <el-icon><Delete /></el-icon>
+                </el-button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
       </div>
     </div>
+
+    <!-- 编辑脚本弹窗 -->
+    <el-dialog
+      v-model="dialogVisible"
+      :title="isEdit ? '编辑脚本' : '新建脚本'"
+      width="600px"
+      :close-on-click-modal="false"
+    >
+      <el-form :model="scriptForm" label-position="top">
+        <el-form-item label="脚本名称">
+          <el-input v-model="scriptForm.name" placeholder="请输入脚本名称" />
+        </el-form-item>
+        <el-form-item label="备注">
+          <el-input v-model="scriptForm.description" type="textarea" :rows="2" placeholder="请输入备注信息" />
+        </el-form-item>
+        <el-form-item label="指令内容">
+          <el-input v-model="scriptForm.command" type="textarea" :rows="4" placeholder="请输入指令内容" />
+        </el-form-item>
+        <el-form-item label="标签">
+          <el-select
+            v-model="scriptForm.tags"
+            multiple
+            filterable
+            allow-create
+            default-first-option
+            placeholder="请选择或输入标签"
+          >
+            <el-option
+              v-for="tag in availableTags"
+              :key="tag"
+              :label="tag"
+              :value="tag"
+            />
+          </el-select>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <span class="dialog-footer">
+          <el-button @click="dialogVisible = false">取消</el-button>
+          <el-button type="primary" @click="saveScript">保存</el-button>
+        </span>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script>
 import { defineComponent, ref, computed } from 'vue'
+import { Edit, Delete, CaretRight } from '@element-plus/icons-vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
 
 export default defineComponent({
   name: 'ScriptLibrary',
+  components: {
+    Edit,
+    Delete,
+    CaretRight
+  },
   setup() {
-    const selectedCategory = ref('all')
     const searchQuery = ref('')
     const showFilterOptions = ref(false)
     const filterMyScripts = ref(false)
     const filterRecentScripts = ref(false)
     const filterFavoriteScripts = ref(false)
+    const selectedTags = ref([])
 
     // 示例数据
-    const categories = ref([
-      { id: 'all', name: '全部', count: 12, icon: 'M3,6H21V8H3V6M3,11H21V13H3V11M3,16H21V18H3V16Z' },
-      { id: 'system', name: '系统管理', count: 5, icon: 'M15,5H17V3H15M15,21H17V19H15M11,5H13V3H11M11,21H13V19H11M7,5H9V3H7M7,21H9V19H7M3,5H5V3H3M3,21H5V19H3M8,17H16V15H8M8,13H16V11H8M8,9H16V7H8' },
-      { id: 'network', name: '网络工具', count: 3, icon: 'M17,22V20H20V17H22V20.5C22,20.89 21.84,21.24 21.54,21.54C21.24,21.84 20.89,22 20.5,22H17M7,22H3.5C3.11,22 2.76,21.84 2.46,21.54C2.16,21.24 2,20.89 2,20.5V17H4V20H7V22M17,2H20.5C20.89,2 21.24,2.16 21.54,2.46C21.84,2.76 22,3.11 22,3.5V7H20V4H17V2M7,2V4H4V7H2V3.5C2,3.11 2.16,2.76 2.46,2.46C2.76,2.16 3.11,2 3.5,2H7M13,17.25C13,17.38 12.97,17.5 12.91,17.59C12.85,17.68 12.76,17.75 12.65,17.79C12.55,17.83 12.44,17.83 12.34,17.8C12.24,17.77 12.15,17.7 12.09,17.61L7.62,11.42C7.5,11.26 7.5,11.04 7.62,10.88L12.09,4.7C12.15,4.61 12.24,4.54 12.34,4.5C12.44,4.47 12.55,4.47 12.65,4.52C12.76,4.56 12.85,4.63 12.91,4.72C12.97,4.81 13,4.93 13,5.06V17.25Z' },
-      { id: 'backup', name: '备份恢复', count: 2, icon: 'M12,3A9,9 0 0,0 3,12H0L4,16L8,12H5A7,7 0 0,1 12,5A7,7 0 0,1 19,12A7,7 0 0,1 12,19C10.5,19 9.09,18.5 7.94,17.7L6.5,19.14C8.04,20.3 9.94,21 12,21A9,9 0 0,0 21,12A9,9 0 0,0 12,3M14,12A2,2 0 0,0 12,10A2,2 0 0,0 10,12A2,2 0 0,0 12,14A2,2 0 0,0 14,12Z' },
-      { id: 'deploy', name: '部署工具', count: 2, icon: 'M3,3H11V7.34L16.66,1.69L22.31,7.34L16.66,13H21V21H13V13H16.66L11,7.34V13H3V3M3,5V11H9V5H3Z' }
-    ])
-
     const scripts = ref([
       {
         id: 1,
         name: '系统信息收集脚本',
         description: '收集服务器系统信息，包括CPU、内存、磁盘使用情况等。',
         author: '管理员',
-        category: 'system',
+        tags: ['系统', '监控', '信息收集'],
         updatedAt: new Date('2023-12-01'),
         isFavorite: true,
-        tags: ['系统', '监控', '信息收集']
+        command: 'free -h && df -h && cat /proc/cpuinfo | grep "model name" | head -1'
       },
       {
         id: 2,
         name: '网络连接检测',
         description: '检测服务器与指定目标的网络连接状态。',
         author: '网络管理员',
-        category: 'network',
+        tags: ['网络', '诊断', '连接测试'],
         updatedAt: new Date('2023-11-15'),
         isFavorite: false,
-        tags: ['网络', '诊断', '连接测试']
+        command: 'ping -c 4 google.com && traceroute baidu.com'
       },
       {
         id: 3,
         name: '数据库备份脚本',
         description: '自动备份MySQL/PostgreSQL数据库并上传到指定位置。',
         author: '数据库管理员',
-        category: 'backup',
+        tags: ['数据库', '备份', 'MySQL', 'PostgreSQL'],
         updatedAt: new Date('2023-10-28'),
         isFavorite: true,
-        tags: ['数据库', '备份', 'MySQL', 'PostgreSQL']
+        command: 'mysqldump -u root -p mydb > /backup/mydb_$(date +%Y%m%d).sql && gzip /backup/mydb_$(date +%Y%m%d).sql'
       }
     ])
 
+    // 获取所有可用的标签
+    const availableTags = computed(() => {
+      const tagSet = new Set()
+      scripts.value.forEach(script => {
+        script.tags.forEach(tag => tagSet.add(tag))
+      })
+      return Array.from(tagSet)
+    })
+
     // 根据筛选条件过滤脚本
     const filteredScripts = computed(() => {
-      let result = scripts.value;
+      let result = scripts.value
       
-      // 根据分类筛选
-      if (selectedCategory.value !== 'all') {
-        result = result.filter(script => script.category === selectedCategory.value);
+      // 根据标签筛选
+      if (selectedTags.value.length > 0) {
+        result = result.filter(script => 
+          selectedTags.value.every(tag => script.tags.includes(tag))
+        )
       }
       
       // 根据搜索词筛选
       if (searchQuery.value) {
-        const query = searchQuery.value.toLowerCase();
+        const query = searchQuery.value.toLowerCase()
         result = result.filter(script => 
           script.name.toLowerCase().includes(query) || 
           script.description.toLowerCase().includes(query) ||
           script.tags.some(tag => tag.toLowerCase().includes(query))
-        );
+        )
       }
       
       // 根据其他筛选条件
       if (filterMyScripts.value) {
-        // 假设当前用户是"管理员"
-        result = result.filter(script => script.author === '管理员');
+        result = result.filter(script => script.author === '管理员')
       }
       
       if (filterFavoriteScripts.value) {
-        result = result.filter(script => script.isFavorite);
+        result = result.filter(script => script.isFavorite)
       }
       
       if (filterRecentScripts.value) {
-        // 获取最近7天的脚本
-        const sevenDaysAgo = new Date();
-        sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-        result = result.filter(script => script.updatedAt >= sevenDaysAgo);
+        const sevenDaysAgo = new Date()
+        sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7)
+        result = result.filter(script => script.updatedAt >= sevenDaysAgo)
       }
       
-      return result;
-    });
+      return result
+    })
+
+    // 标签操作方法
+    const toggleTag = (tag) => {
+      const index = selectedTags.value.indexOf(tag)
+      if (index === -1) {
+        selectedTags.value.push(tag)
+      } else {
+        selectedTags.value.splice(index, 1)
+      }
+    }
+
+    const clearTags = () => {
+      selectedTags.value = []
+    }
 
     // 无脚本时显示的消息
     const noScriptsMessage = computed(() => {
       if (searchQuery.value) {
-        return '没有找到匹配的脚本';
-      } else if (selectedCategory.value !== 'all') {
-        return `${categories.value.find(c => c.id === selectedCategory.value)?.name || ''} 分类下暂无脚本`;
+        return '没有找到匹配的脚本'
+      } else if (selectedTags.value.length > 0) {
+        return `没有找到包含所选标签的脚本`
       } else if (filterMyScripts.value) {
-        return '您还没有创建任何脚本';
+        return '您还没有创建任何脚本'
       } else if (filterFavoriteScripts.value) {
-        return '您还没有收藏任何脚本';
+        return '您还没有收藏任何脚本'
       } else {
-        return '脚本库为空，创建第一个脚本吧';
+        return '脚本库为空，创建第一个脚本吧'
       }
-    });
+    })
 
     // 格式化日期
     const formatDate = (date) => {
@@ -228,17 +313,115 @@ export default defineComponent({
       });
     };
 
-    // 操作方法
+    // 编辑弹窗相关
+    const dialogVisible = ref(false)
+    const isEdit = ref(false)
+    const scriptForm = ref({
+      id: null,
+      name: '',
+      description: '',
+      command: '',
+      tags: [],
+      author: '管理员', // 这里可以从用户状态获取
+      updatedAt: null,
+      isFavorite: false
+    })
+
+    // 重置表单
+    const resetForm = () => {
+      scriptForm.value = {
+        id: null,
+        name: '',
+        description: '',
+        command: '',
+        tags: [],
+        author: '管理员',
+        updatedAt: null,
+        isFavorite: false
+      }
+    }
+
+    // 创建新脚本
     const createNewScript = () => {
-      console.log('创建新脚本');
-      // 实现创建脚本的逻辑
-    };
+      isEdit.value = false
+      resetForm()
+      dialogVisible.value = true
+    }
 
+    // 编辑脚本
     const editScript = (script) => {
-      console.log('编辑脚本', script.id);
-      // 实现编辑脚本的逻辑
-    };
+      isEdit.value = true
+      scriptForm.value = { ...script }
+      dialogVisible.value = true
+    }
 
+    // 保存脚本
+    const saveScript = () => {
+      if (!scriptForm.value.name) {
+        ElMessage.warning('请输入脚本名称')
+        return
+      }
+      if (!scriptForm.value.command) {
+        ElMessage.warning('请输入指令内容')
+        return
+      }
+
+      const now = new Date()
+      if (isEdit.value) {
+        // 更新现有脚本
+        const index = scripts.value.findIndex(s => s.id === scriptForm.value.id)
+        if (index !== -1) {
+          scripts.value[index] = {
+            ...scriptForm.value,
+            updatedAt: now
+          }
+          ElMessage.success('脚本更新成功')
+        }
+      } else {
+        // 创建新脚本
+        const newScript = {
+          ...scriptForm.value,
+          id: scripts.value.length + 1,
+          updatedAt: now
+        }
+        scripts.value.push(newScript)
+        ElMessage.success('脚本创建成功')
+      }
+      
+      dialogVisible.value = false
+      resetForm()
+    }
+
+    // 删除脚本
+    const deleteScript = (script) => {
+      ElMessageBox.confirm(
+        '确定要删除这个脚本吗？此操作不可恢复。',
+        '删除确认',
+        {
+          confirmButtonText: '确定',
+          cancelButtonText: '取消',
+          type: 'warning',
+          draggable: true,
+          closeOnClickModal: false
+        }
+      ).then(() => {
+        const index = scripts.value.findIndex(s => s.id === script.id)
+        if (index !== -1) {
+          scripts.value.splice(index, 1)
+          ElMessage({
+            type: 'success',
+            message: '脚本删除成功'
+          })
+        }
+      }).catch(() => {
+        ElMessage({
+          type: 'info',
+          message: '已取消删除'
+        })
+      })
+    }
+
+    // 操作方法
     const runScript = (script) => {
       console.log('运行脚本', script.id);
       // 实现运行脚本的逻辑
@@ -249,9 +432,9 @@ export default defineComponent({
     };
 
     return {
-      selectedCategory,
       searchQuery,
-      categories,
+      availableTags,
+      selectedTags,
       filteredScripts,
       showFilterOptions,
       filterMyScripts,
@@ -262,7 +445,14 @@ export default defineComponent({
       createNewScript,
       editScript,
       runScript,
-      toggleFavorite
+      deleteScript,
+      toggleFavorite,
+      toggleTag,
+      clearTags,
+      dialogVisible,
+      isEdit,
+      scriptForm,
+      saveScript
     }
   }
 })
@@ -315,41 +505,34 @@ export default defineComponent({
 
 .script-categories {
   display: flex;
-  gap: 16px;
+  gap: 8px;
   margin-bottom: 24px;
   overflow-x: auto;
   padding-bottom: 8px;
+  flex-wrap: wrap;
 }
 
-.category-bubble {
+.tag-bubble {
   background-color: #252525;
-  border-radius: 20px;
-  padding: 8px 16px;
+  border-radius: 16px;
+  padding: 6px 12px;
   cursor: pointer;
   display: flex;
-  flex-direction: column;
   align-items: center;
   border: 1px solid #333;
+  font-size: 13px;
+  color: #b0b0b0;
+  transition: all 0.2s ease;
 }
 
-.category-bubble.active {
+.tag-bubble:hover {
+  background-color: #2a2a2a;
+  border-color: #444;
+}
+
+.tag-bubble.active {
   background-color: #2c7be5;
   border-color: #2c7be5;
-}
-
-.category-bubble h3 {
-  margin: 0 0 4px 0;
-  font-size: 14px;
-  font-weight: 500;
-}
-
-.script-count {
-  font-size: 12px;
-  color: #888;
-}
-
-.active .script-count,
-.active .category-bubble h3 {
   color: white;
 }
 
@@ -430,39 +613,108 @@ export default defineComponent({
   cursor: pointer;
 }
 
-.scripts-list {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
+.scripts-table-container {
+  overflow-x: auto;
 }
 
-.script-card {
+.scripts-table {
+  width: 100%;
+  border-collapse: collapse;
+  color: #e0e0e0;
+}
+
+.scripts-table th {
+  text-align: left;
+  padding: 12px;
   background-color: #2a2a2a;
-  border-radius: 6px;
-  padding: 16px;
-  border: 1px solid #383838;
+  border-bottom: 2px solid #333;
+  font-weight: 500;
+  font-size: 14px;
 }
 
-.script-card:hover {
-  border-color: #444;
+.scripts-table td {
+  padding: 12px;
+  border-bottom: 1px solid #333;
+  vertical-align: middle;
 }
 
-.script-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 12px;
+.script-row:hover {
+  background-color: #2a2a2a;
 }
 
-.script-header h3 {
-  margin: 0;
-  font-size: 16px;
+.script-name-column {
+  width: 20%;
+}
+
+.script-desc-column {
+  width: 20%;
+}
+
+.script-tags-column {
+  width: 15%;
+}
+
+.script-command-column {
+  width: 35%;
+}
+
+.script-actions-column {
+  width: 10%;
+}
+
+.script-name {
   font-weight: 500;
 }
 
-.script-actions {
+.name-with-favorite {
   display: flex;
+  align-items: center;
   gap: 8px;
+  margin-bottom: 4px;
+}
+
+.favorite-icon {
+  color: gold;
+  padding: 0;
+}
+
+.script-meta {
+  font-size: 12px;
+  color: #888;
+}
+
+.script-description {
+  font-size: 14px;
+  color: #b0b0b0;
+}
+
+.script-command {
+  font-family: inherit;
+  font-size: 14px;
+  padding: 4px 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 0;
+}
+
+.script-command code {
+  color: #ffffff;
+  font-family: inherit;
+}
+
+.script-actions {
+  text-align: left;
+  white-space: nowrap;
+}
+
+.script-actions .btn-icon {
+  display: inline-block;
+  margin-left: 12px;
+}
+
+.script-actions .btn-icon:first-child {
+  margin-left: 0;
 }
 
 .btn-icon {
@@ -480,35 +732,6 @@ export default defineComponent({
 .btn-icon:hover {
   background-color: rgba(255, 255, 255, 0.1);
   color: #e0e0e0;
-}
-
-.script-description {
-  margin: 0 0 12px 0;
-  font-size: 14px;
-  color: #b0b0b0;
-  line-height: 1.5;
-}
-
-.script-meta {
-  display: flex;
-  justify-content: space-between;
-  margin-bottom: 12px;
-  font-size: 12px;
-  color: #888;
-}
-
-.script-tags {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.tag {
-  background-color: #333;
-  color: #a0a0a0;
-  font-size: 12px;
-  padding: 2px 8px;
-  border-radius: 12px;
 }
 
 .no-scripts {
@@ -558,5 +781,65 @@ export default defineComponent({
 ::-webkit-scrollbar-thumb {
   background: #444;
   border-radius: 4px;
+}
+
+.action-btn {
+  font-size: 16px;
+  color: #a0a0a0;
+}
+
+.action-btn:hover {
+  color: #409EFF;
+}
+
+.dialog-footer {
+  padding-top: 20px;
+  text-align: right;
+}
+
+:deep(.el-form-item__label) {
+  color: #e0e0e0;
+}
+
+:deep(.el-input__wrapper),
+:deep(.el-textarea__inner) {
+  background-color: #2a2a2a;
+  border-color: #444;
+  color: #e0e0e0;
+}
+
+:deep(.el-input__wrapper:hover),
+:deep(.el-textarea__inner:hover) {
+  border-color: #409EFF;
+}
+
+:deep(.el-select__tags) {
+  background-color: transparent;
+}
+
+.script-tags {
+  padding: 4px 0;
+}
+
+.tag-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.script-tag {
+  display: inline-block;
+  background-color: #333;
+  color: #b0b0b0;
+  border-radius: 12px;
+  padding: 2px 8px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.script-tag:hover {
+  background-color: #2c7be5;
+  color: white;
 }
 </style> 
