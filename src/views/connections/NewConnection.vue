@@ -21,7 +21,7 @@
         <div class="connection-section">
           <h2>历史连接配置</h2>
           <div class="connection-grid">
-            <div class="connection-card" v-for="connection in historyConnections" :key="connection.id" @click="handleLogin(connection)">
+            <div class="connection-card" v-for="connection in filteredHistoryConnections" :key="`${connection.id}-${connection.timestamp}`" @click="handleLogin(connection)">
               <div class="card-content">
                 <div class="connection-icon">
                   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="20" height="20">
@@ -40,7 +40,7 @@
         <div class="connection-section">
           <h2>我的连接配置</h2>
           <div class="connection-rows">
-            <div class="row-item" v-for="connection in connections" :key="connection.id" :data-pinned="isPinned(connection.id)" @click="handleLogin(connection)">
+            <div class="row-item" v-for="connection in filteredConnections" :key="connection.id" :data-pinned="isPinned(connection.id)" @click="handleLogin(connection)">
               <div class="row-item-left">
                 <div class="icon-cell">
                   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="20" height="20">
@@ -194,6 +194,7 @@ import Modal from '@/components/common/Modal.vue'
 import AddButton from '@/components/common/AddButton.vue'
 import SearchInput from '@/components/common/SearchInput.vue'
 import Checkbox from '@/components/common/Checkbox.vue'
+import log from '@/services/log'
 
 export default {
   name: 'NewConnection',
@@ -231,15 +232,58 @@ export default {
     const connections = computed(() => {
       return userStore.isLoggedIn ? userStore.connections : localConnectionsStore.getAllConnections
     })
-    
+
     // 获取收藏连接
     const favoriteConnections = computed(() => {
       return userStore.isLoggedIn ? userStore.favoriteConnections : localConnectionsStore.getFavoriteConnections
     })
-    
+
     // 获取历史记录
     const historyConnections = computed(() => {
       return userStore.isLoggedIn ? userStore.historyConnections : localConnectionsStore.getHistory
+    })
+
+    // 搜索相关
+    const searchQuery = ref('')
+
+    // 过滤后的连接列表
+    const filteredConnections = computed(() => {
+      if (!searchQuery.value || !searchQuery.value.trim()) {
+        return connections.value
+      }
+
+      const query = searchQuery.value.toLowerCase().trim()
+      return connections.value.filter(connection => {
+        const displayName = getDisplayName(connection).toLowerCase()
+        const host = connection.host.toLowerCase()
+        const username = connection.username.toLowerCase()
+        const description = (connection.description || '').toLowerCase()
+
+        return displayName.includes(query) ||
+               host.includes(query) ||
+               username.includes(query) ||
+               description.includes(query)
+      })
+    })
+
+    // 过滤后的历史连接列表
+    const filteredHistoryConnections = computed(() => {
+      if (!searchQuery.value || !searchQuery.value.trim()) {
+        return historyConnections.value
+      }
+
+      const query = searchQuery.value.toLowerCase().trim()
+      return historyConnections.value.filter(connection => {
+        const displayName = getDisplayName(connection).toLowerCase()
+        const host = connection.host.toLowerCase()
+        const username = connection.username.toLowerCase()
+        const description = (connection.description || '').toLowerCase()
+
+        return displayName.includes(query) ||
+               host.includes(query) ||
+               username.includes(query) ||
+               description.includes(query)
+      })
     })
     
     // 添加新连接
@@ -297,16 +341,19 @@ export default {
       return userStore.isLoggedIn ? userStore.isPinned(id) : localConnectionsStore.isPinned(id)
     }
     
-    // 搜索相关
-    const searchQuery = ref('')
+    // 搜索处理函数
     const handleSearch = (query) => {
-      console.log('搜索查询:', query)
-      // 这里可以实现搜索逻辑
+      // 只在搜索查询发生实际变化时记录日志
+      if (searchQuery.value !== query) {
+        log.debug('连接配置搜索', { query, previousQuery: searchQuery.value })
+        searchQuery.value = query
+      }
     }
     
     // 新建连接弹窗相关
     const dialogVisible = ref(false)
     const isEdit = ref(false)
+    const isFromHistory = ref(false) // 标识是否来自历史连接的编辑
     const connectionForm = ref({
       id: null,
       name: '',
@@ -324,10 +371,11 @@ export default {
     // 显示新建连接对话框
     const showNewConnectionDialog = () => {
       isEdit.value = false
+      isFromHistory.value = false
       resetConnectionForm()
       dialogVisible.value = true
     }
-    
+
     // 重置连接表单
     const resetConnectionForm = () => {
       connectionForm.value = {
@@ -343,6 +391,7 @@ export default {
         description: '',
         rememberPassword: false
       }
+      isFromHistory.value = false
       // 关闭对话框
       dialogVisible.value = false
     }
@@ -372,6 +421,21 @@ export default {
       return true
     }
     
+    // 检查连接是否已存在于我的连接配置中，返回连接对象或null
+    const findExistingConnection = (connection) => {
+      const myConnections = userStore.isLoggedIn ? userStore.connections : localConnectionsStore.getAllConnections
+      return myConnections.find(conn =>
+        conn.host === connection.host &&
+        conn.port === connection.port &&
+        conn.username === connection.username
+      ) || null
+    }
+
+    // 检查连接是否已存在于我的连接配置中
+    const isConnectionExists = (connection) => {
+      return findExistingConnection(connection) !== null
+    }
+
     // 保存连接
     const saveConnection = () => {
       if (!validateForm()) {
@@ -379,11 +443,47 @@ export default {
       }
 
       if (isEdit.value) {
-        // 更新已有连接
-        if (userStore.isLoggedIn) {
-          userStore.updateConnection(connectionForm.value.id, connectionForm.value)
+        // 检查是否是从历史连接编辑的，且在我的连接配置中不存在
+        if (isFromHistory.value) {
+          const existingConnection = findExistingConnection(connectionForm.value)
+
+          if (!existingConnection) {
+            // 如果连接不存在于我的连接配置中，则添加为新连接
+            if (userStore.isLoggedIn) {
+              const connectionId = userStore.addConnection(connectionForm.value)
+              // 检查是否是更新了现有连接
+              if (connectionId !== connectionForm.value.id) {
+                ElMessage.success('连接已存在，已更新连接信息')
+              } else {
+                ElMessage.success('连接已保存到我的连接配置')
+              }
+            } else {
+              const connectionId = localConnectionsStore.addConnection(connectionForm.value)
+              // 检查是否是更新了现有连接
+              if (connectionId !== connectionForm.value.id) {
+                ElMessage.success('连接已存在，已更新连接信息')
+              } else {
+                ElMessage.success('连接已保存到我的连接配置')
+              }
+            }
+          } else {
+            // 更新已有连接，使用现有连接的ID
+            const updatedConnection = { ...connectionForm.value, id: existingConnection.id }
+            if (userStore.isLoggedIn) {
+              userStore.updateConnection(existingConnection.id, updatedConnection)
+            } else {
+              localConnectionsStore.updateConnection(existingConnection.id, updatedConnection)
+            }
+            ElMessage.success('连接已更新')
+          }
         } else {
-          localConnectionsStore.updateConnection(connectionForm.value.id, connectionForm.value)
+          // 更新已有连接（来自我的连接配置的编辑）
+          if (userStore.isLoggedIn) {
+            userStore.updateConnection(connectionForm.value.id, connectionForm.value)
+          } else {
+            localConnectionsStore.updateConnection(connectionForm.value.id, connectionForm.value)
+          }
+          ElMessage.success('连接已更新')
         }
       } else {
         // 添加新连接到我的连接配置
@@ -392,9 +492,9 @@ export default {
         } else {
           localConnectionsStore.addConnection(connectionForm.value)
         }
+        ElMessage.success('连接已保存')
       }
-      
-      ElMessage.success(isEdit.value ? '连接已更新' : '连接已保存')
+
       dialogVisible.value = false
     }
     
@@ -424,15 +524,38 @@ export default {
       }
 
       let connectionId;
-      
+
       // 先保存连接
       if (isEdit.value) {
-        // 更新已有连接
-        connectionId = connectionForm.value.id;
-        if (userStore.isLoggedIn) {
-          userStore.updateConnection(connectionId, connectionForm.value)
+        // 检查是否是从历史连接编辑的，且在我的连接配置中不存在
+        if (isFromHistory.value) {
+          const existingConnection = findExistingConnection(connectionForm.value)
+
+          if (!existingConnection) {
+            // 如果连接不存在于我的连接配置中，则添加为新连接
+            if (userStore.isLoggedIn) {
+              connectionId = userStore.addConnection(connectionForm.value)
+            } else {
+              connectionId = localConnectionsStore.addConnection(connectionForm.value)
+            }
+          } else {
+            // 更新已有连接，使用现有连接的ID
+            connectionId = existingConnection.id;
+            const updatedConnection = { ...connectionForm.value, id: existingConnection.id }
+            if (userStore.isLoggedIn) {
+              userStore.updateConnection(connectionId, updatedConnection)
+            } else {
+              localConnectionsStore.updateConnection(connectionId, updatedConnection)
+            }
+          }
         } else {
-          localConnectionsStore.updateConnection(connectionId, connectionForm.value)
+          // 更新已有连接（来自我的连接配置的编辑）
+          connectionId = connectionForm.value.id;
+          if (userStore.isLoggedIn) {
+            userStore.updateConnection(connectionId, connectionForm.value)
+          } else {
+            localConnectionsStore.updateConnection(connectionId, connectionForm.value)
+          }
         }
       } else {
         // 添加新连接到我的连接配置
@@ -505,18 +628,19 @@ export default {
       if (!connection.rememberPassword || !connection.password) {
         // 如果没有记住密码，先弹出编辑框让用户输入密码
         isEdit.value = true
-        
+        isFromHistory.value = true // 标识这是来自历史连接的编辑
+
         // 创建一个新的对象来存储编辑的连接信息
         const editedConnection = { ...connection }
-        
+
         // 确保保留认证方式
         editedConnection.authType = connection.authType || 'password'
-        
+
         // 如果是密码认证但没记住密码，清空密码字段让用户重新输入
         if (editedConnection.authType === 'password') {
           editedConnection.password = ''
         }
-        
+
         connectionForm.value = editedConnection
         dialogVisible.value = true
         return
@@ -591,18 +715,19 @@ export default {
     // 处理编辑
     const handleEdit = (connection) => {
       isEdit.value = true
-      
+      isFromHistory.value = false // 来自我的连接配置的编辑，不是历史连接
+
       // 创建一个新的对象来存储编辑的连接信息
       const editedConnection = { ...connection }
-      
+
       // 确保保留认证方式
       editedConnection.authType = connection.authType || 'password'
-      
+
       // 如果是密码认证但没记住密码，则不填充密码字段
       if (editedConnection.authType === 'password' && !connection.rememberPassword) {
         editedConnection.password = ''
       }
-      
+
       connectionForm.value = editedConnection
       dialogVisible.value = true
     }
@@ -621,6 +746,8 @@ export default {
       connections,
       favoriteConnections,
       historyConnections,
+      filteredConnections,
+      filteredHistoryConnections,
       getDisplayName,
       addConnection,
       updateConnection,

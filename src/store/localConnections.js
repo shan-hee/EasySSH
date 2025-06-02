@@ -16,6 +16,20 @@ export const useLocalConnectionsStore = defineStore('localConnections', {
   actions: {
     // 添加新连接到我的连接配置
     addConnection(connection) {
+      // 检查是否已存在相同的连接（去重）
+      const existingConnection = this.connections.find(conn =>
+        conn.host === connection.host &&
+        conn.port === connection.port &&
+        conn.username === connection.username
+      )
+
+      if (existingConnection) {
+        // 如果连接已存在，更新现有连接信息
+        Object.assign(existingConnection, connection, { id: existingConnection.id })
+        console.log('连接已存在，已更新连接信息')
+        return existingConnection.id
+      }
+
       // 生成唯一ID
       connection.id = Date.now().toString()
       this.connections.push(connection)
@@ -71,9 +85,7 @@ export const useLocalConnectionsStore = defineStore('localConnections', {
 
     // 添加到历史记录
     addToHistory(connection) {
-      // 移除可能存在的重复记录
-      this.history = this.history.filter(h => h.id !== connection.id)
-      // 添加到历史记录开头
+      // 直接添加到历史记录开头，不去重
       this.history.unshift({
         id: connection.id,
         name: connection.name,

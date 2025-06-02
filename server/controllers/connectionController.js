@@ -451,26 +451,21 @@ const addToHistory = async (req, res) => {
         logger.info(`为历史记录自动创建连接: ${connection.id}, ${connection.host}`);
       }
     
-      // 删除可能存在的旧记录
-      db.prepare(
-        'DELETE FROM connection_history WHERE connection_id = ? AND user_id = ?'
-      ).run(connection.id, userId);
-    
-      // 添加新历史记录
+      // 直接添加新历史记录，不删除旧记录
       const timestamp = connection.timestamp || Date.now();
-    
+
       db.prepare(
         'INSERT INTO connection_history (user_id, connection_id, timestamp) VALUES (?, ?, ?)'
       ).run(userId, connection.id, timestamp);
     
       // 限制历史记录数量为20条
       db.prepare(
-        `DELETE FROM connection_history 
-         WHERE user_id = ? AND connection_id IN (
-           SELECT connection_id FROM connection_history 
-           WHERE user_id = ? 
-           ORDER BY timestamp DESC 
-           LIMIT 20, 1000
+        `DELETE FROM connection_history
+         WHERE user_id = ? AND id NOT IN (
+           SELECT id FROM connection_history
+           WHERE user_id = ?
+           ORDER BY timestamp DESC
+           LIMIT 20
          )`
       ).run(userId, userId);
       

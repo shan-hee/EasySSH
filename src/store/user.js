@@ -128,10 +128,24 @@ export const useUserStore = defineStore('user', () => {
   // 添加新连接
   function addConnection(connection) {
     try {
+      // 检查是否已存在相同的连接（去重）
+      const existingConnection = connections.value.find(conn =>
+        conn.host === connection.host &&
+        conn.port === connection.port &&
+        conn.username === connection.username
+      )
+
+      if (existingConnection) {
+        // 如果连接已存在，更新现有连接信息
+        Object.assign(existingConnection, connection, { id: existingConnection.id })
+        log.info('连接已存在，已更新连接信息')
+        return existingConnection.id
+      }
+
       // 生成唯一ID
       connection.id = Date.now().toString()
       connections.value.push(connection)
-      
+
       // 同步到服务器
       if (isLoggedIn.value) {
         // 异步保存到服务器，不阻塞UI
@@ -141,7 +155,7 @@ export const useUserStore = defineStore('user', () => {
             log.warn('同步连接到服务器失败，仅保存在本地', error)
           })
       }
-      
+
       return connection.id
     } catch (error) {
       log.error('添加连接失败', error)
@@ -295,10 +309,7 @@ export const useUserStore = defineStore('user', () => {
   
   // 添加到历史记录
   function addToHistory(connection) {
-    // 移除可能存在的重复记录
-    history.value = history.value.filter(h => h.id !== connection.id)
-    
-    // 添加到历史记录开头
+    // 直接添加到历史记录开头，不去重
     history.value.unshift({
       id: connection.id,
       name: connection.name,
@@ -308,12 +319,12 @@ export const useUserStore = defineStore('user', () => {
       description: connection.description,
       timestamp: Date.now()
     })
-    
+
     // 限制历史记录数量为20条
     if (history.value.length > 20) {
       history.value.pop()
     }
-    
+
     // 同步到服务器
     if (isLoggedIn.value) {
       // 确保连接已创建成功后再同步历史记录
