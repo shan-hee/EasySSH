@@ -1003,7 +1003,31 @@ export const useTerminalStore = defineStore('terminal', () => {
   const focusTerminal = (connectionId) => {
     if (state.terminals[connectionId]) {
       try {
-        state.terminals[connectionId].focus()
+        const terminal = state.terminals[connectionId]
+
+        // 在聚焦前确保光标样式正确
+        const settingsStore = useSettingsStore()
+        const settings = settingsStore.getTerminalSettings()
+
+        if (settings.cursorStyle && terminal.setOption) {
+          terminal.setOption('cursorStyle', settings.cursorStyle)
+        }
+        if (settings.cursorBlink !== undefined && terminal.setOption) {
+          terminal.setOption('cursorBlink', settings.cursorBlink)
+        }
+
+        // 聚焦终端
+        terminal.focus()
+
+        // 聚焦后再次确保光标样式正确
+        setTimeout(() => {
+          if (settings.cursorStyle && terminal.setOption) {
+            terminal.setOption('cursorStyle', settings.cursorStyle)
+          }
+          if (settings.cursorBlink !== undefined && terminal.setOption) {
+            terminal.setOption('cursorBlink', settings.cursorBlink)
+          }
+        }, 10)
       } catch (e) {
         log.error('聚焦终端失败:', e)
       }

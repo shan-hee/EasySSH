@@ -208,12 +208,35 @@ export default defineComponent({
               
               // 只使用一个事件触发终端初始化，避免多次触发导致创建多个SSH会话
               window.dispatchEvent(new CustomEvent('terminal:refresh-status', {
-                detail: { 
+                detail: {
                   sessionId: currentId,
                   forceShow: true, // 添加强制显示标记
                   isNewCreation: isNewCreation // 仅在确认需要新创建时设为true
                 }
               }));
+
+              // 添加延迟聚焦逻辑，确保终端已经初始化完成
+              setTimeout(() => {
+                // 导入终端Store并聚焦终端
+                import('../store/terminal').then(({ useTerminalStore }) => {
+                  const terminalStore = useTerminalStore()
+                  if (terminalStore.hasTerminal(currentId)) {
+                    log.debug(`从其他页面切换到终端，聚焦终端: ${currentId}`)
+                    terminalStore.focusTerminal(currentId)
+                  } else {
+                    log.debug(`终端 ${currentId} 尚未初始化，等待后再次尝试聚焦`)
+                    // 如果终端还没初始化，再等待一段时间
+                    setTimeout(() => {
+                      if (terminalStore.hasTerminal(currentId)) {
+                        log.debug(`延迟聚焦终端: ${currentId}`)
+                        terminalStore.focusTerminal(currentId)
+                      }
+                    }, 500)
+                  }
+                }).catch(error => {
+                  log.error('导入终端Store失败:', error)
+                })
+              }, 200)
             }
           }
         });

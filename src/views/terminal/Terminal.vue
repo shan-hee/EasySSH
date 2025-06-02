@@ -348,13 +348,23 @@ export default {
         if (settings.cursorStyle && terminal.options.cursorStyle !== settings.cursorStyle) {
           log.debug(`终端 ${termId}: 更新光标样式 ${terminal.options.cursorStyle} -> ${settings.cursorStyle}`)
           terminal.options.cursorStyle = settings.cursorStyle
+
+          // 立即应用光标样式到终端实例
+          if (terminal.setOption) {
+            terminal.setOption('cursorStyle', settings.cursorStyle)
+          }
           hasChanges = true
         }
-        
+
         // 应用光标闪烁
         if (settings.cursorBlink !== undefined && terminal.options.cursorBlink !== settings.cursorBlink) {
           log.debug(`终端 ${termId}: 更新光标闪烁 ${terminal.options.cursorBlink} -> ${settings.cursorBlink}`)
           terminal.options.cursorBlink = settings.cursorBlink
+
+          // 立即应用光标闪烁到终端实例
+          if (terminal.setOption) {
+            terminal.setOption('cursorBlink', settings.cursorBlink)
+          }
           hasChanges = true
         }
         
@@ -609,13 +619,51 @@ export default {
     // 为组件添加最后聚焦的终端ID跟踪
     const lastFocusedTerminalId = ref(null)
 
-    // 修改聚焦逻辑，跟踪焦点状态
+    // 强制应用光标样式的函数
+    const forceCursorStyle = (termId) => {
+      if (!termId || !terminalStore.hasTerminal(termId)) return
+
+      try {
+        const terminal = terminalStore.getTerminal(termId)
+        const settings = settingsStore.terminalSettings
+
+        if (terminal && settings) {
+          // 立即应用光标样式
+          if (settings.cursorStyle && terminal.setOption) {
+            terminal.setOption('cursorStyle', settings.cursorStyle)
+          }
+          if (settings.cursorBlink !== undefined && terminal.setOption) {
+            terminal.setOption('cursorBlink', settings.cursorBlink)
+          }
+
+          // 强制刷新终端显示
+          if (terminal.refresh) {
+            terminal.refresh(terminal.buffer.active.cursorY, terminal.buffer.active.cursorY)
+          }
+        }
+      } catch (error) {
+        log.warn(`强制应用光标样式失败: ${error.message}`)
+      }
+    }
+
+    // 修改聚焦逻辑，跟踪焦点状态并立即应用光标样式
     const focusTerminal = (termId) => {
       if (!termId || !terminalStore.hasTerminal(termId)) return false
-      
+
       try {
+        // 先强制应用光标样式
+        // 这样可以避免终端切换时光标样式从默认滑块样式转换到用户设置样式的闪烁问题
+        forceCursorStyle(termId)
+
+        // 然后聚焦终端
         terminalStore.focusTerminal(termId)
         lastFocusedTerminalId.value = termId
+
+        // 聚焦后立即再次强制应用光标样式
+        nextTick(() => {
+          forceCursorStyle(termId)
+        })
+
         return true
       } catch (error) {
         log.error(`聚焦终端 ${termId} 失败:`, error)
@@ -762,6 +810,10 @@ export default {
       // 在处理终端切换事件时，需添加延迟以确保终端初始化完成
       setTimeout(() => {
         switchToTerminal(sessionId);
+        // 切换后强制应用光标样式
+        if (terminalStore.hasTerminal(sessionId)) {
+          forceCursorStyle(sessionId);
+        }
       }, 100);
     };
     
@@ -988,7 +1040,7 @@ export default {
     }
     
     // 添加组件激活/失活生命周期钩子
-    onActivated(() => {
+    onMounted(() => {
       log.info('终端视图已激活');
       
       // 触发终端状态刷新事件，同步工具栏状态
@@ -1003,6 +1055,17 @@ export default {
       }
     });
 
+    onActivated(() => {
+      log.info('终端视图已激活');
+      // 当组件激活时，自动聚焦当前活动终端
+      if (activeConnectionId.value && terminalStore.hasTerminal(activeConnectionId.value)) {
+        setTimeout(() => {
+          log.debug(`组件激活后聚焦终端: ${activeConnectionId.value}`)
+          focusTerminal(activeConnectionId.value)
+        }, 100)
+      }
+    });
+
     onDeactivated(() => {
       log.info('终端视图已失活');
       // 可以在这里添加失活时的处理逻辑
@@ -1014,26 +1077,34 @@ export default {
       if (tabStore.tabs.some(tab => tab.path === '/terminal')) {
         tabStore.updateTabTitle('/terminal', '终端')
       }
-      
+
       // 设置终端事件监听
       const cleanupEvents = setupTerminalEvents()
       // 设置SSH失败事件监听
       const cleanupSSHFailureEvents = setupSSHFailureHandler()
-      
+
       // 如果有活动连接ID，则更新终端ID列表
       if (activeConnectionId.value) {
         if (!terminalIds.value.includes(activeConnectionId.value)) {
           terminalIds.value.push(activeConnectionId.value)
           log.debug(`更新终端ID列表: ${JSON.stringify(terminalIds.value)}`)
         }
-        
+
         // 记录终端切换
         log.debug(`终端切换: undefined -> ${activeConnectionId.value}`)
-        
+
         // 如果有DOM元素引用，尝试初始化终端
         if (terminalRefs.value[activeConnectionId.value]) {
           initTerminal(activeConnectionId.value, terminalRefs.value[activeConnectionId.value])
         }
+
+        // 延迟聚焦当前活动终端（组件挂载时）
+        setTimeout(() => {
+          if (terminalStore.hasTerminal(activeConnectionId.value)) {
+            log.debug(`组件挂载后聚焦终端: ${activeConnectionId.value}`)
+            focusTerminal(activeConnectionId.value)
+          }
+        }, 300)
       }
       
       // 监控窗口大小变化，重新适应终端大小
@@ -1324,11 +1395,18 @@ export default {
             // 如果这是当前活动的终端，自动聚焦
             if (isActiveTerminal(terminalId)) {
               log.info(`终端 ${terminalId} 就绪，自动聚焦`)
+
+              // 先强制应用光标样式
+              forceCursorStyle(terminalId)
+
+              // 然后聚焦终端
               focusTerminal(terminalId)
-              
+
               // 确保终端大小正确
               setTimeout(() => {
                 resizeTerminal(terminalId)
+                // 调整大小后再次确保光标样式正确
+                forceCursorStyle(terminalId)
               }, 100)
             }
           })
@@ -1707,20 +1785,16 @@ export default {
   position: relative;
   /* 修改overflow为可见，让内部的xterm-viewport控制滚动 */
   overflow: visible;
-  /* 添加内边距，但右侧不留空间 */
-  padding: 20px 0 20px 20px;
+  /* 移除padding，改为在内部内容添加padding */
+  padding: 0;
 }
 
 .terminal-content {
-  height: 100%;
-  width: 100%; /* 使用100%宽度 */
+  height: calc(100% - 40px); /* 减去margin空间 */
+  width: calc(100% - 40px); /* 减去margin空间 */
   position: relative;
-  margin: 0; /* 清除所有外边距 */
-  /* 增加滚动容器样式 */
-  overflow: hidden;
-  border-radius: 4px 0 0 4px; /* 只设置左侧圆角 */
+  margin: 20px 0 20px 20px; /* 使用margin替代padding */
 }
-
 .connecting-overlay {
   position: absolute;
   top: 0;
@@ -1743,19 +1817,18 @@ export default {
 /* 添加全局样式修复，确保xterm.js正常工作 */
 :deep(.xterm) {
   height: 100%;
-  width: 100%;
+  width: calc(100% + 20px);
   position: relative; /* 添加相对定位 */
 }
 
 :deep(.xterm-viewport) {
   overflow-y: auto !important;
   overflow-x: hidden;
-  right: 0 !important; /* 确保滚动条紧靠右边 */
-  width: auto !important;
-  /* 增加滚动条样式 */
-  scrollbar-width: thin;
-  scrollbar-color: rgba(255, 255, 255, 0.3) transparent;
-  position: absolute !important; /* 确保位置正确 */
+  position: absolute; /* 添加绝对定位 */
+  right: 0; /* 将滚动条固定在右侧 */
+  top: -20px !important; /* 抵消上方的margin */
+  bottom: -20px !important; /* 抵消下方的margin */
+  height: calc(100% + 40px); /* 增加高度以覆盖margin区域 */
 }
 
 /* 添加Webkit浏览器的滚动条样式 */
@@ -1764,14 +1837,9 @@ export default {
   height: 0; /* 确保横向滚动条不显示 */
 }
 
-:deep(.xterm-viewport::-webkit-scrollbar-track) {
-  background: transparent;
-  margin: 0; /* 移除上下边距 */
-}
-
 :deep(.xterm-viewport::-webkit-scrollbar-thumb) {
   background-color: rgba(255, 255, 255, 0.3);
-  border-radius: 0; /* 移除圆角，使滚动条更贴合边缘 */
+  border-radius: 10px; /* 设置滚动条圆角 */
   border: none; /* 移除边框 */
 }
 
@@ -1779,21 +1847,22 @@ export default {
   background-color: rgba(255, 255, 255, 0.5);
 }
 
-/* 移除滚动条上下箭头 */
-:deep(.xterm-viewport::-webkit-scrollbar-button) {
-  display: none;
-}
-
-/* 针对Firefox的滚动条样式 */
-@supports (scrollbar-width: thin) {
-  :deep(.xterm-viewport) {
-    scrollbar-width: thin;
-    scrollbar-color: rgba(255, 255, 255, 0.3) transparent;
-  }
-}
-
 :deep(.xterm-screen) {
   width: 100%;
   height: 100%;
+}
+
+/* 确保光标样式立即生效，避免闪烁 */
+:deep(.xterm-cursor-layer) {
+  transition: none !important;
+}
+
+:deep(.xterm-cursor) {
+  transition: none !important;
+}
+
+/* 强制应用光标样式 */
+:deep(.xterm.focus .xterm-cursor) {
+  transition: none !important;
 }
 </style> 
