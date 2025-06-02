@@ -310,10 +310,27 @@ export default defineComponent({
       window.addEventListener('terminal-bg-status', (event) => {
         if (event.detail) {
           // 不要直接修改计算属性
-          // terminalHasBackground.value = event.detail.enabled; 
+          // terminalHasBackground.value = event.detail.enabled;
           // 应该修改终端商店中的状态
           const terminalStore = useTerminalStore();
           terminalStore.toggleBackgroundImage(event.detail.enabled);
+
+          // 如果有完整的背景设置，更新CSS变量
+          if (event.detail.bgSettings) {
+            updateCssVariables(event.detail.bgSettings);
+          } else {
+            // 如果只有enabled状态，从localStorage读取完整设置
+            try {
+              const savedBgSettings = localStorage.getItem('easyssh_terminal_bg');
+              if (savedBgSettings) {
+                const bgSettings = JSON.parse(savedBgSettings);
+                updateCssVariables(bgSettings);
+              }
+            } catch (error) {
+              log.error('读取背景设置失败:', error);
+            }
+          }
+
           log.debug('终端背景状态已更新:', event.detail.enabled);
         }
       });
@@ -334,6 +351,10 @@ export default defineComponent({
           // 应该修改终端商店中的状态
           const terminalStore = useTerminalStore();
           terminalStore.toggleBackgroundImage(bgSettings.enabled);
+
+          // 立即更新CSS变量
+          updateCssVariables(bgSettings);
+
           log.debug('初始化时读取终端背景状态', { enabled: bgSettings.enabled });
         }
       } catch (error) {
@@ -380,7 +401,46 @@ export default defineComponent({
         }
       });
     });
-    
+
+    // 更新CSS变量以供AppLayout使用
+    const updateCssVariables = (bgSettings) => {
+      if (bgSettings.enabled && bgSettings.url) {
+        document.documentElement.style.setProperty('--terminal-bg-image', `url(${bgSettings.url})`)
+        document.documentElement.style.setProperty('--terminal-bg-opacity', bgSettings.opacity.toString())
+
+        // 设置背景尺寸
+        let backgroundSize = 'cover'
+        if (bgSettings.mode === 'contain') {
+          backgroundSize = 'contain'
+        } else if (bgSettings.mode === 'fill') {
+          backgroundSize = '100% 100%'
+        } else if (bgSettings.mode === 'none') {
+          backgroundSize = 'auto'
+        } else if (bgSettings.mode === 'repeat') {
+          backgroundSize = 'auto'
+        }
+        document.documentElement.style.setProperty('--terminal-bg-size', backgroundSize)
+
+        // 设置背景重复
+        const backgroundRepeat = bgSettings.mode === 'repeat' ? 'repeat' : 'no-repeat'
+        document.documentElement.style.setProperty('--terminal-bg-repeat', backgroundRepeat)
+
+        log.debug('AppLayout CSS变量已更新:', {
+          image: bgSettings.url,
+          opacity: bgSettings.opacity,
+          size: backgroundSize,
+          repeat: backgroundRepeat
+        })
+      } else {
+        document.documentElement.style.removeProperty('--terminal-bg-image')
+        document.documentElement.style.removeProperty('--terminal-bg-opacity')
+        document.documentElement.style.removeProperty('--terminal-bg-size')
+        document.documentElement.style.removeProperty('--terminal-bg-repeat')
+
+        log.debug('AppLayout CSS变量已清除')
+      }
+    }
+
     // 在组件卸载时移除监听器
     onUnmounted(() => {
       window.removeEventListener('resize', handleWindowResize);

@@ -320,7 +320,46 @@ export default {
       { description: '清空终端', key: 'Ctrl+L', action: 'terminal.clear' },
       { description: '打开设置', key: 'Ctrl+,', action: 'settings.open' }
     ])
-    
+
+    // 更新CSS变量以供AppLayout使用
+    const updateCssVariables = () => {
+      if (terminalBgSettings.enabled && terminalBgSettings.url) {
+        document.documentElement.style.setProperty('--terminal-bg-image', `url(${terminalBgSettings.url})`)
+        document.documentElement.style.setProperty('--terminal-bg-opacity', terminalBgSettings.opacity.toString())
+
+        // 设置背景尺寸
+        let backgroundSize = 'cover'
+        if (terminalBgSettings.mode === 'contain') {
+          backgroundSize = 'contain'
+        } else if (terminalBgSettings.mode === 'fill') {
+          backgroundSize = '100% 100%'
+        } else if (terminalBgSettings.mode === 'none') {
+          backgroundSize = 'auto'
+        } else if (terminalBgSettings.mode === 'repeat') {
+          backgroundSize = 'auto'
+        }
+        document.documentElement.style.setProperty('--terminal-bg-size', backgroundSize)
+
+        // 设置背景重复
+        const backgroundRepeat = terminalBgSettings.mode === 'repeat' ? 'repeat' : 'no-repeat'
+        document.documentElement.style.setProperty('--terminal-bg-repeat', backgroundRepeat)
+
+        log.info('CSS变量已更新:', {
+          image: terminalBgSettings.url,
+          opacity: terminalBgSettings.opacity,
+          size: backgroundSize,
+          repeat: backgroundRepeat
+        })
+      } else {
+        document.documentElement.style.removeProperty('--terminal-bg-image')
+        document.documentElement.style.removeProperty('--terminal-bg-opacity')
+        document.documentElement.style.removeProperty('--terminal-bg-size')
+        document.documentElement.style.removeProperty('--terminal-bg-repeat')
+
+        log.info('CSS变量已清除')
+      }
+    }
+
     // 页面加载时立即检查本地存储中的背景设置
     try {
       const savedBgSettings = localStorage.getItem('easyssh_terminal_bg')
@@ -332,10 +371,16 @@ export default {
           // 标记为已初始化
           terminalBgSettings.initialized = true
           log.info('组件创建时加载背景设置:', terminalBgSettings)
-          
+
+          // 立即更新CSS变量
+          updateCssVariables()
+
           // 发送背景状态事件
-          window.dispatchEvent(new CustomEvent('terminal-bg-status', { 
-            detail: { enabled: terminalBgSettings.enabled } 
+          window.dispatchEvent(new CustomEvent('terminal-bg-status', {
+            detail: {
+              enabled: terminalBgSettings.enabled,
+              bgSettings: terminalBgSettings
+            }
           }))
         } catch (e) {
           log.error('解析终端背景设置失败:', e)
@@ -507,19 +552,25 @@ export default {
       try {
         // 标记为已初始化
         terminalBgSettings.initialized = true
-        
+
         // 保存终端背景设置到本地存储
         localStorage.setItem('easyssh_terminal_bg', JSON.stringify(terminalBgSettings))
-        
+
+        // 立即更新CSS变量
+        updateCssVariables()
+
         // 创建自定义事件，通知终端组件更新背景
         const event = new CustomEvent('terminal-bg-changed', { detail: terminalBgSettings })
         window.dispatchEvent(event)
-        
+
         // 立即触发状态更新事件，确保控制面板和其他组件能够立即感知到状态变化
-        window.dispatchEvent(new CustomEvent('terminal-bg-status', { 
-          detail: { enabled: terminalBgSettings.enabled } 
+        window.dispatchEvent(new CustomEvent('terminal-bg-status', {
+          detail: {
+            enabled: terminalBgSettings.enabled,
+            bgSettings: terminalBgSettings
+          }
         }))
-        
+
         log.info('终端背景设置已更新:', terminalBgSettings)
         ElMessage.success('终端背景设置已更新')
       } catch (error) {
@@ -527,7 +578,7 @@ export default {
         ElMessage.error('保存终端背景设置失败')
       }
     }
-    
+
     // 保存终端设置
     const saveTerminalSettings = async () => {
       try {

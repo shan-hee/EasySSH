@@ -427,8 +427,11 @@ export default {
           terminalHasBackground.value = parsedSettings.enabled
           
           // 发送背景图状态事件
-          window.dispatchEvent(new CustomEvent('terminal-bg-status', { 
-            detail: { enabled: terminalBg.value.enabled } 
+          window.dispatchEvent(new CustomEvent('terminal-bg-status', {
+            detail: {
+              enabled: terminalBg.value.enabled,
+              bgSettings: terminalBg.value
+            }
           }))
           
           // 更新CSS变量以供AppLayout使用
@@ -481,8 +484,11 @@ export default {
           terminalHasBackground.value = event.detail.enabled
           
           // 发送背景图状态变更事件
-          window.dispatchEvent(new CustomEvent('terminal-bg-status', { 
-            detail: { enabled: terminalBg.value.enabled } 
+          window.dispatchEvent(new CustomEvent('terminal-bg-status', {
+            detail: {
+              enabled: terminalBg.value.enabled,
+              bgSettings: terminalBg.value
+            }
           }))
           
           // 更新CSS变量

@@ -19,25 +19,6 @@
         </div>
         
         <div class="connection-section">
-          <h2>历史连接配置</h2>
-          <div class="connection-grid">
-            <div class="connection-card" v-for="connection in filteredHistoryConnections" :key="`${connection.id}-${connection.timestamp}`" @click="handleLogin(connection)">
-              <div class="card-content">
-                <div class="connection-icon">
-                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="20" height="20">
-                    <path fill="#a0a0a0" d="M4,1H20A1,1 0 0,1 21,2V6A1,1 0 0,1 20,7H4A1,1 0 0,1 3,6V2A1,1 0 0,1 4,1M4,9H20A1,1 0 0,1 21,10V14A1,1 0 0,1 20,15H4A1,1 0 0,1 3,14V10A1,1 0 0,1 4,9M4,17H20A1,1 0 0,1 21,18V22A1,1 0 0,1 20,23H4A1,1 0 0,1 3,22V18A1,1 0 0,1 4,17M9,5H10V3H9V5M9,13H10V11H9V13M9,21H10V19H9V21M5,3.5A1.5,1.5 0 0,0 6.5,5A1.5,1.5 0 0,0 5,6.5A1.5,1.5 0 0,0 3.5,5A1.5,1.5 0 0,0 5,3.5M5,11.5A1.5,1.5 0 0,0 6.5,13A1.5,1.5 0 0,0 5,14.5A1.5,1.5 0 0,0 3.5,13A1.5,1.5 0 0,0 5,11.5M5,19.5A1.5,1.5 0 0,0 6.5,21A1.5,1.5 0 0,0 5,22.5A1.5,1.5 0 0,0 3.5,21A1.5,1.5 0 0,0 5,19.5Z"></path>
-                  </svg>
-                </div>
-                <div class="connection-details">
-                  <div class="connection-name">{{ getDisplayName(connection) }}</div>
-                  <div class="connection-address">{{ connection.host }}</div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-        
-        <div class="connection-section">
           <h2>我的连接配置</h2>
           <div class="connection-rows">
             <div class="row-item" v-for="connection in filteredConnections" :key="connection.id" :data-pinned="isPinned(connection.id)" @click="handleLogin(connection)">
@@ -78,6 +59,25 @@
                   <el-button class="action-btn" circle size="small" link title="删除" @click.stop="handleDelete(connection)">
                     <el-icon><Delete /></el-icon>
                   </el-button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="connection-section">
+          <h2>历史连接配置</h2>
+          <div class="connection-grid">
+            <div class="connection-card" v-for="connection in filteredHistoryConnections" :key="`${connection.id}-${connection.timestamp}`" @click="handleLogin(connection)">
+              <div class="card-content">
+                <div class="connection-icon">
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="20" height="20">
+                    <path fill="#a0a0a0" d="M4,1H20A1,1 0 0,1 21,2V6A1,1 0 0,1 20,7H4A1,1 0 0,1 3,6V2A1,1 0 0,1 4,1M4,9H20A1,1 0 0,1 21,10V14A1,1 0 0,1 20,15H4A1,1 0 0,1 3,14V10A1,1 0 0,1 4,9M4,17H20A1,1 0 0,1 21,18V22A1,1 0 0,1 20,23H4A1,1 0 0,1 3,22V18A1,1 0 0,1 4,17M9,5H10V3H9V5M9,13H10V11H9V13M9,21H10V19H9V21M5,3.5A1.5,1.5 0 0,0 6.5,5A1.5,1.5 0 0,0 5,6.5A1.5,1.5 0 0,0 3.5,5A1.5,1.5 0 0,0 5,3.5M5,11.5A1.5,1.5 0 0,0 6.5,13A1.5,1.5 0 0,0 5,14.5A1.5,1.5 0 0,0 3.5,13A1.5,1.5 0 0,0 5,11.5M5,19.5A1.5,1.5 0 0,0 6.5,21A1.5,1.5 0 0,0 5,22.5A1.5,1.5 0 0,0 3.5,21A1.5,1.5 0 0,0 5,19.5Z"></path>
+                  </svg>
+                </div>
+                <div class="connection-details">
+                  <div class="connection-name">{{ getDisplayName(connection) }}</div>
+                  <div class="connection-address">{{ connection.host }}</div>
                 </div>
               </div>
             </div>
