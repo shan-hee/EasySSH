@@ -99,6 +99,23 @@ export const useLocalConnectionsStore = defineStore('localConnections', {
       if (this.history.length > 20) {
         this.history.pop()
       }
+    },
+
+    // 从历史记录中删除指定连接
+    removeFromHistory(connectionId, timestamp) {
+      this.history = this.history.filter(h =>
+        !(h.id === connectionId && h.timestamp === timestamp)
+      )
+    },
+
+    // 重新排序历史连接
+    reorderHistoryConnections(newOrder) {
+      this.history = [...newOrder]
+    },
+
+    // 更新历史连接顺序（用于乐观更新）
+    updateHistoryOrder(newOrder) {
+      this.history = [...newOrder]
     }
   },
 

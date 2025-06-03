@@ -66,9 +66,40 @@
         </div>
 
         <div class="connection-section">
-          <h2>历史连接配置</h2>
-          <div class="connection-grid">
-            <div class="connection-card" v-for="connection in filteredHistoryConnections" :key="`${connection.id}-${connection.timestamp}`" @click="handleLogin(connection)">
+          <div class="section-header">
+            <h2>历史连接配置</h2>
+            <button
+              class="edit-btn"
+              @click="toggleEditMode"
+              :class="{ active: isEditMode }"
+              title="编辑"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16">
+                <path fill="currentColor" d="M20.71,7.04C21.1,6.65 21.1,6 20.71,5.63L18.37,3.29C18,2.9 17.35,2.9 16.96,3.29L15.12,5.12L18.87,8.87M3,17.25V21H6.75L17.81,9.93L14.06,6.18L3,17.25Z"/>
+              </svg>
+            </button>
+          </div>
+          <transition-group
+            name="drag"
+            class="connection-grid"
+            :class="{ 'edit-mode': isEditMode }"
+            tag="div"
+          >
+            <div
+              class="connection-card"
+              v-for="(connection, index) in filteredHistoryConnections"
+              :key="`${connection.id}-${connection.timestamp}`"
+              :class="{
+                'floating': isEditMode,
+                'swinging': isEditMode
+              }"
+              :draggable="isEditMode"
+              @click="!isEditMode && handleLogin(connection)"
+              @dragstart="handleDragStart(index)"
+              @dragover="handleDragOver($event)"
+              @dragenter="handleDragEnter($event, index)"
+              @dragend="handleDragEnd"
+            >
               <div class="card-content">
                 <div class="connection-icon">
                   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="20" height="20">
@@ -80,8 +111,19 @@
                   <div class="connection-address">{{ connection.host }}</div>
                 </div>
               </div>
+              <!-- 删除按钮 -->
+              <div
+                v-if="isEditMode"
+                class="delete-btn"
+                @click.stop="handleDeleteHistory(connection, index)"
+                title="删除"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="8" height="8">
+                  <path fill="currentColor" d="M19,6.41L17.59,5L12,10.59L6.41,5L5,6.41L10.59,12L5,17.59L6.41,19L12,13.41L17.59,19L19,17.59L13.41,12L19,6.41Z"/>
+                </svg>
+              </div>
             </div>
-          </div>
+          </transition-group>
         </div>
       </div>
     </div>
@@ -182,7 +224,7 @@
 </template>
 
 <script>
-import { ref, computed } from 'vue'
+import { ref, computed, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { useUserStore } from '@/store/user'
 import { useLocalConnectionsStore } from '@/store/localConnections'
@@ -246,6 +288,11 @@ export default {
     // 搜索相关
     const searchQuery = ref('')
 
+    // 编辑模式相关
+    const isEditMode = ref(false)
+    const dragIndex = ref('')
+    const enterIndex = ref('')
+
     // 过滤后的连接列表
     const filteredConnections = computed(() => {
       if (!searchQuery.value || !searchQuery.value.trim()) {
@@ -285,6 +332,25 @@ export default {
                description.includes(query)
       })
     })
+
+    // 防抖函数用于优化API请求
+    let reorderTimeout = null
+    const debouncedReorderHistory = (newOrder) => {
+      // 清除之前的定时器
+      if (reorderTimeout) {
+        clearTimeout(reorderTimeout)
+      }
+
+      // 设置新的定时器，延迟500ms后执行API请求
+      reorderTimeout = setTimeout(() => {
+        if (userStore.isLoggedIn) {
+          userStore.reorderHistoryConnections(newOrder)
+        } else {
+          localConnectionsStore.reorderHistoryConnections(newOrder)
+        }
+        log.debug('防抖后同步历史连接排序到服务器')
+      }, 500)
+    }
     
     // 添加新连接
     const addConnection = (connection) => {
@@ -347,6 +413,107 @@ export default {
       if (searchQuery.value !== query) {
         log.debug('连接配置搜索', { query, previousQuery: searchQuery.value })
         searchQuery.value = query
+      }
+    }
+
+    // 编辑模式相关方法
+    const toggleEditMode = () => {
+      isEditMode.value = !isEditMode.value
+      log.debug('切换编辑模式', { isEditMode: isEditMode.value })
+    }
+
+    // 新的拖拽相关方法 - 基于参考代码简化实现
+    const handleDragStart = (index) => {
+      dragIndex.value = index
+      log.debug('开始拖拽', { index })
+    }
+
+    const handleDragEnter = (e, index) => {
+      e.preventDefault()
+      if (dragIndex.value !== index && dragIndex.value !== '') {
+        // 获取当前的历史连接数组（注意：这里要获取原始数组，不是过滤后的）
+        const currentHistory = userStore.isLoggedIn ?
+          [...userStore.historyConnections] :
+          [...localConnectionsStore.getHistory]
+
+        // 如果当前有搜索过滤，需要映射回原始数组的索引
+        const filteredList = [...filteredHistoryConnections.value]
+        const dragItem = filteredList[dragIndex.value]
+        const targetItem = filteredList[index]
+
+        // 在原始数组中找到对应的索引
+        const originalDragIndex = currentHistory.findIndex(item =>
+          item.id === dragItem.id && item.timestamp === dragItem.timestamp
+        )
+        const originalTargetIndex = currentHistory.findIndex(item =>
+          item.id === targetItem.id && item.timestamp === targetItem.timestamp
+        )
+
+        if (originalDragIndex !== -1 && originalTargetIndex !== -1) {
+          // 在原始数组中进行移动
+          const moving = currentHistory[originalDragIndex]
+          currentHistory.splice(originalDragIndex, 1)
+          currentHistory.splice(originalTargetIndex, 0, moving)
+
+          // 立即更新本地状态以实现乐观更新
+          if (userStore.isLoggedIn) {
+            userStore.updateHistoryOrder(currentHistory)
+          } else {
+            localConnectionsStore.updateHistoryOrder(currentHistory)
+          }
+
+          // 使用nextTick确保Vue响应式系统正确处理数组变化
+          nextTick(() => {
+            // 使用防抖函数延迟API请求
+            debouncedReorderHistory(currentHistory)
+          })
+
+          // 更新拖拽索引到新位置
+          dragIndex.value = index
+          log.debug('拖拽移动', {
+            from: originalDragIndex,
+            to: originalTargetIndex,
+            filteredFrom: dragIndex.value,
+            filteredTo: index
+          })
+        }
+      }
+    }
+
+    const handleDragOver = (e) => {
+      e.preventDefault()
+    }
+
+    const handleDragEnd = () => {
+      // 清理状态
+      dragIndex.value = ''
+      enterIndex.value = ''
+      log.debug('拖拽结束')
+    }
+
+    // 删除历史连接
+    const handleDeleteHistory = async (connection, index) => {
+      try {
+        await ElMessageBox.confirm(
+          `确定要删除连接 "${getDisplayName(connection)}" 的历史记录吗？`,
+          '确认删除',
+          {
+            confirmButtonText: '确定',
+            cancelButtonText: '取消',
+            type: 'warning',
+          }
+        )
+
+        if (userStore.isLoggedIn) {
+          userStore.removeFromHistory(connection.id, connection.timestamp)
+        } else {
+          localConnectionsStore.removeFromHistory(connection.id, connection.timestamp)
+        }
+
+        ElMessage.success('历史记录已删除')
+        log.debug('删除历史连接', { connection: getDisplayName(connection), index })
+      } catch {
+        // 用户取消删除
       }
     }
     
@@ -431,10 +598,7 @@ export default {
       ) || null
     }
 
-    // 检查连接是否已存在于我的连接配置中
-    const isConnectionExists = (connection) => {
-      return findExistingConnection(connection) !== null
-    }
+
 
     // 保存连接
     const saveConnection = () => {
@@ -770,7 +934,17 @@ export default {
       handleLogin,
       handleTop,
       handleEdit,
-      handleDelete
+      handleDelete,
+      // 编辑模式相关
+      isEditMode,
+      dragIndex,
+      enterIndex,
+      toggleEditMode,
+      handleDragStart,
+      handleDragOver,
+      handleDragEnter,
+      handleDragEnd,
+      handleDeleteHistory
     }
   }
 }
@@ -839,30 +1013,16 @@ h2 {
   cursor: pointer;
   transition: background-color 0.2s;
   box-shadow: none !important;
-  transform: none !important;
   position: relative;
 }
 
-.connection-card::after {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  border-radius: 4px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
-  opacity: 0;
-  transition: opacity 0.3s;
-  pointer-events: none;
-}
-
-.connection-card:hover::after {
-  opacity: 1;
-}
-
+/* 保留悬浮时的背景色变化，移除浮动效果 */
 .connection-card:hover {
   background-color: #3a3a3a;
+  transform: none !important;
+  box-shadow: none !important;
+  border: none !important;
+  outline: none !important;
 }
 
 .card-content {
@@ -1393,5 +1553,199 @@ h2 {
 .action-btn .pinned {
   color: #409EFF;
   font-weight: bold;
+}
+
+/* 编辑模式相关样式 */
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 15px;
+}
+
+.edit-btn {
+  background: none;
+  border: none;
+  color: #a0a0a0;
+  cursor: pointer;
+  padding: 6px;
+  border-radius: 4px;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.edit-btn:hover {
+  color: #ffffff;
+  background-color: #3a3a3a;
+}
+
+.edit-btn.active {
+  color: #409eff;
+  background-color: #2a2a2a;
+}
+
+/* 删除按钮样式 */
+.delete-btn {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  width: 16px;
+  height: 16px;
+  background-color: transparent;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  z-index: 10;
+  border: 1.5px solid #a0a0a0;
+}
+
+.delete-btn:hover {
+  border-color: #ff4757;
+}
+
+.delete-btn svg {
+  color: #a0a0a0;
+  width: 8px;
+  height: 8px;
+}
+
+.delete-btn:hover svg {
+  color: #ff4757;
+}
+
+/* 新的拖拽样式 - 基于参考代码 */
+.connection-grid {
+  list-style: none;
+}
+
+/* Vue transition-group 拖拽移动动画 */
+.drag-move {
+  transition: transform 0.3s ease;
+}
+
+/* Vue transition-group 进入和离开动画 */
+.drag-enter-active, .drag-leave-active {
+  transition: all 0.3s ease;
+}
+
+.drag-enter-from, .drag-leave-to {
+  opacity: 0;
+  transform: translateY(10px);
+}
+
+.connection-card {
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.connection-card:hover {
+  background-color: #3a3a3a;
+}
+
+/* 编辑模式下的拖拽样式 */
+.connection-grid.edit-mode .connection-card {
+  cursor: move;
+  transition: transform 0.3s ease, box-shadow 0.2s ease, background-color 0.2s ease;
+}
+
+.connection-grid.edit-mode .connection-card:hover {
+  background-color: #3a3a3a;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+}
+
+/* 风铃摆动效果 - 连续流畅摆动，不在0度停留 */
+@keyframes windChimeSwing {
+  0% {
+    transform: rotate(0deg);
+  }
+  12.5% {
+    transform: rotate(0.3deg);
+  }
+  25% {
+    transform: rotate(0.3deg);
+  }
+  37.5% {
+    transform: rotate(0.3deg);
+  }
+  50% {
+    transform: rotate(0deg);
+  }
+  62.5% {
+    transform: rotate(-0.3deg);
+  }
+  75% {
+    transform: rotate(-0.5deg);
+  }
+  87.5% {
+    transform: rotate(-0.3deg);
+  }
+  100% {
+    transform: rotate(0deg);
+  }
+}
+
+/* 测试动画 - 更明显的效果 */
+@keyframes testSwing {
+  0% {
+    transform: rotate(0deg) scale(1);
+  }
+  25% {
+    transform: rotate(10deg) scale(1.05);
+  }
+  50% {
+    transform: rotate(0deg) scale(1);
+  }
+  75% {
+    transform: rotate(-10deg) scale(1.05);
+  }
+  100% {
+    transform: rotate(0deg) scale(1);
+  }
+}
+
+/* 为不同的卡片添加不同的延迟，创造更自然的摆动效果 */
+.connection-card.swinging {
+  animation: windChimeSwing 0.3s linear infinite !important;
+  transform-origin: top center !important;
+}
+
+.connection-card.swinging:nth-child(2n) {
+  animation-delay: 0.02s !important;
+  animation-duration: 0.35s !important;
+}
+
+.connection-card.swinging:nth-child(3n) {
+  animation-delay: 0.04s !important;
+  animation-duration: 0.25s !important;
+}
+
+.connection-card.swinging:nth-child(4n) {
+  animation-delay: 0.06s !important;
+  animation-duration: 0.4s !important;
+}
+
+.connection-card.swinging:nth-child(5n) {
+  animation-delay: 0.08s !important;
+  animation-duration: 0.2s !important;
+}
+
+.connection-card.swinging:nth-child(6n) {
+  animation-delay: 0.1s !important;
+  animation-duration: 0.45s !important;
+}
+
+/* 当卡片被拖拽时，暂停摆动动画 */
+.connection-card.swinging.being-dragged {
+  animation-play-state: paused;
+}
+
+.connection-card.swinging.dragging {
+  animation-play-state: paused;
 }
 </style> 

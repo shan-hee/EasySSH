@@ -339,6 +339,35 @@ export const useUserStore = defineStore('user', () => {
         })
     }
   }
+
+  // 从历史记录中删除指定连接
+  function removeFromHistory(connectionId, timestamp) {
+    history.value = history.value.filter(h =>
+      !(h.id === connectionId && h.timestamp === timestamp)
+    )
+
+    // 同步到服务器
+    if (isLoggedIn.value) {
+      apiService.post('/connections/history', { history: history.value })
+        .catch(error => log.error('同步历史记录删除到服务器失败', error))
+    }
+  }
+
+  // 重新排序历史连接
+  function reorderHistoryConnections(newOrder) {
+    history.value = [...newOrder]
+
+    // 同步到服务器
+    if (isLoggedIn.value) {
+      apiService.post('/connections/history', { history: history.value })
+        .catch(error => log.error('同步历史记录排序到服务器失败', error))
+    }
+  }
+
+  // 更新历史连接顺序（用于乐观更新）
+  function updateHistoryOrder(newOrder) {
+    history.value = [...newOrder]
+  }
   
   // 收藏连接
   function toggleFavorite(id) {
@@ -627,6 +656,9 @@ export const useUserStore = defineStore('user', () => {
     updateConnection,
     deleteConnection,
     addToHistory,
+    removeFromHistory,
+    reorderHistoryConnections,
+    updateHistoryOrder,
     toggleFavorite,
     togglePin,
     isFavorite,
