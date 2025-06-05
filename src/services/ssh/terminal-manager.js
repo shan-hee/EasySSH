@@ -5,6 +5,7 @@ import { ClipboardAddon } from '@xterm/addon-clipboard';
 import log from '../log';
 import settings from '../settings';
 import { WS_CONSTANTS } from '../constants';
+import terminalAutocompleteService from '../terminal-autocomplete';
 
 /**
  * 终端管理器
@@ -79,6 +80,10 @@ class TerminalManager {
     
     // 处理用户输入
     terminal.onData((data) => {
+      // 处理自动完成
+      terminalAutocompleteService.processInput(data, terminal);
+
+      // 处理SSH输入
       this.sshService._processTerminalInput(session, data);
     });
     

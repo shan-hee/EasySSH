@@ -91,7 +91,8 @@
               :key="`${connection.id}-${connection.timestamp}`"
               :class="{
                 'floating': isEditMode,
-                'swinging': isEditMode
+                'swinging': isEditMode,
+                'being-dragged': isEditMode && dragIndex === index
               }"
               :draggable="isEditMode"
               @click="!isEditMode && handleLogin(connection)"
@@ -422,61 +423,88 @@ export default {
       log.debug('切换编辑模式', { isEditMode: isEditMode.value })
     }
 
-    // 新的拖拽相关方法 - 基于参考代码简化实现
+    // 简化的拖拽相关方法 - 基于参考代码重新实现
     const handleDragStart = (index) => {
       dragIndex.value = index
       log.debug('开始拖拽', { index })
+
+      // 添加一个小延迟确保拖拽状态正确应用
+      nextTick(() => {
+        const draggedCard = document.querySelector('.connection-card.being-dragged')
+        if (draggedCard) {
+          draggedCard.style.transform = 'scale(1.02)'
+        }
+      })
     }
 
     const handleDragEnter = (e, index) => {
       e.preventDefault()
       if (dragIndex.value !== index && dragIndex.value !== '') {
-        // 获取当前的历史连接数组（注意：这里要获取原始数组，不是过滤后的）
-        const currentHistory = userStore.isLoggedIn ?
-          [...userStore.historyConnections] :
-          [...localConnectionsStore.getHistory]
+        // 直接操作过滤后的历史连接数组，参考示例代码的简洁实现
+        const currentList = [...filteredHistoryConnections.value]
 
-        // 如果当前有搜索过滤，需要映射回原始数组的索引
-        const filteredList = [...filteredHistoryConnections.value]
-        const dragItem = filteredList[dragIndex.value]
-        const targetItem = filteredList[index]
+        // 执行拖拽移动操作
+        const moving = currentList[dragIndex.value]
+        currentList.splice(dragIndex.value, 1)
+        currentList.splice(index, 0, moving)
 
-        // 在原始数组中找到对应的索引
-        const originalDragIndex = currentHistory.findIndex(item =>
-          item.id === dragItem.id && item.timestamp === dragItem.timestamp
-        )
-        const originalTargetIndex = currentHistory.findIndex(item =>
-          item.id === targetItem.id && item.timestamp === targetItem.timestamp
-        )
+        // 更新拖拽索引到新位置
+        dragIndex.value = index
 
-        if (originalDragIndex !== -1 && originalTargetIndex !== -1) {
-          // 在原始数组中进行移动
-          const moving = currentHistory[originalDragIndex]
-          currentHistory.splice(originalDragIndex, 1)
-          currentHistory.splice(originalTargetIndex, 0, moving)
-
-          // 立即更新本地状态以实现乐观更新
+        // 如果当前没有搜索过滤，直接更新原始数组
+        if (!searchQuery.value || !searchQuery.value.trim()) {
+          // 直接更新本地状态
           if (userStore.isLoggedIn) {
-            userStore.updateHistoryOrder(currentHistory)
+            userStore.updateHistoryOrder(currentList)
           } else {
-            localConnectionsStore.updateHistoryOrder(currentHistory)
+            localConnectionsStore.updateHistoryOrder(currentList)
           }
 
-          // 使用nextTick确保Vue响应式系统正确处理数组变化
+          // 使用防抖函数延迟API请求
           nextTick(() => {
-            // 使用防抖函数延迟API请求
-            debouncedReorderHistory(currentHistory)
+            debouncedReorderHistory(currentList)
+          })
+        } else {
+          // 如果有搜索过滤，需要重新构建完整的历史数组
+          const fullHistory = userStore.isLoggedIn ?
+            [...userStore.historyConnections] :
+            [...localConnectionsStore.getHistory]
+
+          // 创建一个新的完整历史数组，保持过滤项的新顺序，未过滤项保持原位置
+          const reorderedHistory = []
+          const filteredItems = new Set(currentList.map(item => `${item.id}-${item.timestamp}`))
+
+          // 先添加重新排序后的过滤项
+          currentList.forEach(item => {
+            reorderedHistory.push(item)
           })
 
-          // 更新拖拽索引到新位置
-          dragIndex.value = index
-          log.debug('拖拽移动', {
-            from: originalDragIndex,
-            to: originalTargetIndex,
-            filteredFrom: dragIndex.value,
-            filteredTo: index
+          // 再添加未被过滤的项，保持它们的相对位置
+          fullHistory.forEach(item => {
+            const itemKey = `${item.id}-${item.timestamp}`
+            if (!filteredItems.has(itemKey)) {
+              reorderedHistory.push(item)
+            }
+          })
+
+          // 更新本地状态
+          if (userStore.isLoggedIn) {
+            userStore.updateHistoryOrder(reorderedHistory)
+          } else {
+            localConnectionsStore.updateHistoryOrder(reorderedHistory)
+          }
+
+          // 使用防抖函数延迟API请求
+          nextTick(() => {
+            debouncedReorderHistory(reorderedHistory)
           })
         }
+
+        log.debug('拖拽移动', {
+          from: dragIndex.value,
+          to: index,
+          hasFilter: !!(searchQuery.value && searchQuery.value.trim())
+        })
       }
     }
 
@@ -486,9 +514,19 @@ export default {
 
     const handleDragEnd = () => {
       // 清理状态
+      const previousDragIndex = dragIndex.value
       dragIndex.value = ''
       enterIndex.value = ''
-      log.debug('拖拽结束')
+
+      // 确保所有卡片的样式都被重置
+      nextTick(() => {
+        const allCards = document.querySelectorAll('.connection-card')
+        allCards.forEach(card => {
+          card.style.transform = ''
+        })
+      })
+
+      log.debug('拖拽结束', { previousDragIndex })
     }
 
     // 删除历史连接
@@ -1618,12 +1656,12 @@ h2 {
   color: #ff4757;
 }
 
-/* 新的拖拽样式 - 基于参考代码 */
+/* 优化的拖拽样式 - 基于参考代码简化 */
 .connection-grid {
   list-style: none;
 }
 
-/* Vue transition-group 拖拽移动动画 */
+/* Vue transition-group 拖拽移动动画 - 参考示例代码 */
 .drag-move {
   transition: transform 0.3s ease;
 }
@@ -1641,6 +1679,7 @@ h2 {
 .connection-card {
   cursor: pointer;
   transition: all 0.2s ease;
+  position: relative;
 }
 
 .connection-card:hover {
@@ -1653,10 +1692,25 @@ h2 {
   transition: transform 0.3s ease, box-shadow 0.2s ease, background-color 0.2s ease;
 }
 
-.connection-grid.edit-mode .connection-card:hover {
+.connection-grid.edit-mode .connection-card:hover:not(.being-dragged) {
   background-color: #3a3a3a;
   transform: translateY(-2px);
   box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+}
+
+/* 正在被拖拽的卡片样式 */
+.connection-card.being-dragged {
+  opacity: 0.8;
+  transform: scale(1.02) !important;
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.4) !important;
+  z-index: 1000;
+  background-color: #4a4a4a !important;
+  transition: none !important;
+}
+
+/* 确保非拖拽状态下的卡片保持正常 */
+.connection-card:not(.being-dragged) {
+  transform: none;
 }
 
 /* 风铃摆动效果 - 连续流畅摆动，不在0度停留 */
@@ -1740,12 +1794,9 @@ h2 {
   animation-duration: 0.45s !important;
 }
 
-/* 当卡片被拖拽时，暂停摆动动画 */
+/* 当卡片被拖拽时，暂停摆动动画并应用拖拽样式 */
 .connection-card.swinging.being-dragged {
-  animation-play-state: paused;
-}
-
-.connection-card.swinging.dragging {
-  animation-play-state: paused;
+  animation: none !important;
+  transform: scale(1.02) !important;
 }
 </style> 

@@ -36,6 +36,16 @@
         </div>
       </div>
     </div>
+
+    <!-- 终端自动完成组件 -->
+    <TerminalAutocomplete
+      :visible="autocomplete.visible"
+      :suggestions="autocomplete.suggestions"
+      :position="autocomplete.position"
+      @select="handleAutocompleteSelect"
+      @close="handleAutocompleteClose"
+      ref="autocompleteRef"
+    />
   </div>
 </template>
 
@@ -54,6 +64,10 @@ import RainbowLoader from '../../components/common/RainbowLoader.vue'
 import { useSettingsStore } from '../../store/settings'
 // 导入终端工具栏组件
 import TerminalToolbar from '../../components/terminal/TerminalToolbar.vue'
+// 导入终端自动完成组件
+import TerminalAutocomplete from '../../components/terminal/TerminalAutocomplete.vue'
+// 导入终端自动完成服务
+import terminalAutocompleteService from '../../services/terminal-autocomplete'
 // 导入日志服务
 import log from '../../services/log'
 
@@ -67,7 +81,8 @@ export default {
   name: 'Terminal',
   components: {
     RainbowLoader,
-    TerminalToolbar // 注册工具栏组件
+    TerminalToolbar, // 注册工具栏组件
+    TerminalAutocomplete // 注册自动完成组件
   },
   props: {
     id: {
@@ -112,6 +127,16 @@ export default {
       opacity: 0.5,
       mode: 'cover'
     })
+
+    // 自动完成状态
+    const autocomplete = ref({
+      visible: false,
+      suggestions: [],
+      position: { x: 0, y: 0 }
+    })
+
+    // 自动完成组件引用
+    const autocompleteRef = ref(null)
     
     // 计算属性：是否应该显示彩虹加载动画
     const shouldShowConnectingAnimation = computed(() => {
@@ -1048,14 +1073,20 @@ export default {
     // 添加组件激活/失活生命周期钩子
     onMounted(() => {
       log.info('终端视图已激活');
-      
+
+      // 设置自动完成回调
+      setupAutocompleteCallbacks()
+
+      // 添加全局键盘事件监听
+      document.addEventListener('keydown', handleGlobalKeydown)
+
       // 触发终端状态刷新事件，同步工具栏状态
       const currentId = activeConnectionId.value;
       if (currentId) {
         window.dispatchEvent(new CustomEvent('terminal:refresh-status', {
-          detail: { 
+          detail: {
             sessionId: currentId,
-            forceShow: true 
+            forceShow: true
           }
         }));
       }
@@ -1146,8 +1177,12 @@ export default {
         cleanupEvents()
         cleanupSSHFailureEvents()
         window.removeEventListener('terminal-command', handleTerminalEvent)
+        document.removeEventListener('keydown', handleGlobalKeydown)
         resizeObserver.disconnect()
-        
+
+        // 清理自动完成服务
+        terminalAutocompleteService.destroy()
+
         // 保持会话不关闭，但停止特定组件的监听
         log.debug('终端组件卸载，保留会话')
       })
@@ -1600,6 +1635,46 @@ export default {
       { immediate: true }
     )
     
+    // 自动完成处理函数
+    const handleAutocompleteSelect = (suggestion) => {
+      try {
+        const activeId = activeConnectionId.value
+        if (!activeId) return
+
+        const terminal = terminalStore.getTerminal(activeId)
+        if (!terminal) return
+
+        terminalAutocompleteService.selectSuggestion(suggestion, terminal)
+        autocomplete.value.visible = false
+
+        log.debug('选择自动完成建议:', suggestion.text)
+      } catch (error) {
+        log.error('处理自动完成选择失败:', error)
+      }
+    }
+
+    const handleAutocompleteClose = () => {
+      autocomplete.value.visible = false
+    }
+
+    // 设置自动完成服务回调
+    const setupAutocompleteCallbacks = () => {
+      terminalAutocompleteService.setCallbacks({
+        onSuggestionsUpdate: (suggestions, position) => {
+          autocomplete.value.suggestions = suggestions
+          autocomplete.value.position = position
+          autocomplete.value.visible = suggestions.length > 0
+        }
+      })
+    }
+
+    // 键盘事件处理
+    const handleGlobalKeydown = (event) => {
+      if (autocompleteRef.value && autocomplete.value.visible) {
+        autocompleteRef.value.handleKeydown(event)
+      }
+    }
+
     // 添加SSH连接失败处理事件
     const setupSSHFailureHandler = () => {
       const handleSSHConnectionFailed = (event) => {
@@ -1699,7 +1774,12 @@ export default {
       updateTerminalIds,
       shouldShowConnectingAnimation,
       toggleSftpPanel,
-      toggleMonitoringPanel
+      toggleMonitoringPanel,
+      // 自动完成相关
+      autocomplete,
+      autocompleteRef,
+      handleAutocompleteSelect,
+      handleAutocompleteClose
     }
   }
 }
