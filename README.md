@@ -1,13 +1,9 @@
-<table>
-<tr>
-<td width="70%">
-
 # EasySSH
 
-<div align="left">
+<div align="center">
   <img src="src/assets/icons/logo.svg" alt="EasySSH Logo" width="50" />
   <h3>现代化Web终端 · 高效服务器管理 · 安全远程访问</h3>
-
+  
   <p>
     <a href="#在线演示">在线演示</a> •
     <a href="#核心特性">核心特性</a> •
@@ -16,37 +12,13 @@
     <a href="#部署指南">部署指南</a> •
     <a href="#未来规划">未来规划</a>
   </p>
-
+  
   <p>
     <img src="https://img.shields.io/badge/version-1.0.0-blue" alt="version" />
+    <img src="https://img.shields.io/badge/license-Apache%202.0-blue" alt="license" />
     <img src="https://img.shields.io/badge/node-%3E%3D16.0.0-brightgreen" alt="node" />
   </p>
 </div>
-
-</td>
-<td width="30%" align="right">
-
-### 📄 开源协议
-
-<a href="LICENSE">
-  <img src="https://img.shields.io/badge/License-Apache%202.0-D22128?style=for-the-badge&logo=apache&logoColor=white" alt="Apache License 2.0" />
-</a>
-
-<br/>
-
-<a href="LICENSE">
-  <img src="https://img.shields.io/github/license/shan-hee/easyssh?style=flat-square&color=green" alt="license" />
-</a>
-
-**Apache License 2.0**
-- ✅ 商业使用
-- ✅ 修改分发
-- ✅ 专利保护
-- ✅ 私人使用
-
-</td>
-</tr>
-</table>
 
 ## 产品介绍
 
