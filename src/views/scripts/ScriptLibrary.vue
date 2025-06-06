@@ -201,35 +201,65 @@
       :title="isEdit ? '编辑脚本' : '新建脚本'"
       width="600px"
       :close-on-click-modal="false"
+      class="script-dialog"
+      align-center
     >
-      <el-form :model="scriptForm" label-position="top">
-        <el-form-item label="脚本名称">
-          <el-input v-model="scriptForm.name" placeholder="请输入脚本名称" />
-        </el-form-item>
-        <el-form-item label="备注">
-          <el-input v-model="scriptForm.description" type="textarea" :rows="2" placeholder="请输入备注信息" />
-        </el-form-item>
-        <el-form-item label="指令内容">
-          <el-input v-model="scriptForm.command" type="textarea" :rows="4" placeholder="请输入指令内容" />
-        </el-form-item>
-        <el-form-item label="标签">
-          <el-select
-            v-model="scriptForm.tags"
-            multiple
-            filterable
-            allow-create
-            default-first-option
-            placeholder="请选择或输入标签"
-          >
-            <el-option
-              v-for="tag in availableTags"
-              :key="tag"
-              :label="tag"
-              :value="tag"
-            />
-          </el-select>
-        </el-form-item>
-      </el-form>
+      <!-- 添加标题分界线 -->
+      <div class="script-tab">
+        <div class="tab-item active">
+          脚本配置
+        </div>
+      </div>
+
+      <div class="script-form">
+        <div class="form-row form-row-two-columns">
+          <div class="form-item">
+            <label>脚本名称</label>
+            <div class="input-wrapper">
+              <input type="text" v-model="scriptForm.name" placeholder="请输入脚本名称" />
+            </div>
+          </div>
+          <div class="form-item">
+            <label>备注</label>
+            <div class="input-wrapper">
+              <input type="text" v-model="scriptForm.description" placeholder="请输入备注信息" />
+            </div>
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-item">
+            <label>指令内容</label>
+            <div class="input-wrapper">
+              <textarea v-model="scriptForm.command" rows="4" placeholder="请输入指令内容"></textarea>
+            </div>
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-item">
+            <label>标签</label>
+            <div class="input-wrapper">
+              <el-select
+                v-model="scriptForm.tags"
+                multiple
+                filterable
+                allow-create
+                default-first-option
+                placeholder="请选择或输入标签"
+                class="script-tags-select"
+              >
+                <el-option
+                  v-for="tag in availableTags"
+                  :key="tag"
+                  :label="tag"
+                  :value="tag"
+                />
+              </el-select>
+            </div>
+          </div>
+        </div>
+      </div>
       <template #footer>
         <span class="dialog-footer">
           <el-button @click="dialogVisible = false">取消</el-button>
@@ -1414,25 +1444,24 @@ export default defineComponent({
   text-align: right;
 }
 
-:deep(.el-form-item__label) {
-  color: #e0e0e0;
+/* 对话框按钮样式 */
+.dialog-footer :deep(.el-button) {
+  transition: all 0.3s ease;
 }
 
-:deep(.el-input__wrapper),
-:deep(.el-textarea__inner) {
-  background-color: #2a2a2a;
-  border-color: #444;
-  color: #e0e0e0;
+/* 取消按钮悬浮效果 - 只高亮不变色 */
+.dialog-footer :deep(.el-button:not(.el-button--primary):hover) {
+  background-color: rgba(255, 255, 255, 0.1);
+  border-color: #666;
+  color: inherit;
 }
 
-:deep(.el-input__wrapper:hover),
-:deep(.el-textarea__inner:hover) {
-  border-color: #409EFF;
+/* 保存按钮保持原有的悬浮效果 */
+.dialog-footer :deep(.el-button--primary:hover) {
+  background-color: #1a68d1;
 }
 
-:deep(.el-select__tags) {
-  background-color: transparent;
-}
+
 
 .script-tags {
   padding: 4px 0;
@@ -1629,5 +1658,168 @@ export default defineComponent({
 :deep(.el-select-dropdown .el-select-dropdown__item.is-selected) {
   background-color: #2c7be5;
   color: white;
+}
+
+/* 脚本表单样式 - 与连接表单保持一致 */
+.script-dialog :deep(.el-dialog__body) {
+  padding: 15px;
+  background-color: #121212;
+}
+
+/* 标题分界线样式 */
+.script-tab {
+  display: flex;
+  border-bottom: 1px solid #3a3a3a;
+  margin-bottom: 20px;
+  padding: 0 15px;
+}
+
+.script-tab .tab-item {
+  padding: 10px 15px;
+  color: #fff;
+  font-weight: bold;
+  cursor: pointer;
+  position: relative;
+  text-align: center;
+  padding-left: 0;
+  padding-right: 0;
+  display: inline-block;
+  width: auto;
+  font-size: 12px;
+}
+
+.script-tab .tab-item.active {
+  color: #fff;
+}
+
+.script-tab .tab-item.active::after {
+  content: '';
+  position: absolute;
+  bottom: -1px;
+  left: 0;
+  width: 100%;
+  height: 2px;
+  background-color: #fff;
+}
+
+.script-form {
+  width: 100%;
+}
+
+.script-form .form-row {
+  margin-bottom: 16px;
+  width: 100%;
+}
+
+.script-form .form-row-two-columns {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 15px;
+}
+
+.script-form .form-item {
+  width: 100%;
+  padding: 0 20px;
+}
+
+.script-form .form-item label {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 14px;
+  font-weight: normal;
+  color: #fff;
+}
+
+.script-form .input-wrapper {
+  width: 100%;
+}
+
+.script-form .form-item input,
+.script-form .form-item textarea {
+  width: 100%;
+  height: 36px;
+  background-color: transparent;
+  border: 1px solid #666;
+  border-radius: 6px;
+  color: #fff;
+  padding: 0 10px;
+  box-sizing: border-box;
+  outline: none;
+  font-weight: normal;
+  transition: border-color 0.3s;
+  font-family: inherit;
+}
+
+.script-form .form-item textarea {
+  height: auto;
+  padding: 10px 10px;
+  resize: vertical;
+  min-height: 80px;
+}
+
+.script-form .form-item input:focus,
+.script-form .form-item textarea:focus {
+  border-color: #0083d3;
+  box-shadow: 0 0 0 1px rgba(0, 131, 211, 0.2);
+}
+
+.script-form .form-item input::placeholder,
+.script-form .form-item textarea::placeholder {
+  color: #666;
+}
+
+/* 标签选择器样式调整 */
+.script-tags-select {
+  width: 100%;
+}
+
+.script-tags-select :deep(.el-select__wrapper) {
+  background-color: transparent;
+  border: 1px solid #666;
+  border-radius: 6px;
+  color: #fff;
+  min-height: 36px;
+  padding: 0 10px;
+  transition: border-color 0.3s;
+}
+
+.script-tags-select :deep(.el-select__wrapper:hover) {
+  border-color: #0083d3;
+}
+
+.script-tags-select :deep(.el-select__wrapper.is-focused) {
+  border-color: #0083d3;
+  box-shadow: 0 0 0 1px rgba(0, 131, 211, 0.2);
+}
+
+.script-tags-select :deep(.el-select__placeholder) {
+  color: #666;
+}
+
+.script-tags-select :deep(.el-tag) {
+  background-color: #333;
+  border-color: #444;
+  color: #e0e0e0;
+}
+
+.script-tags-select :deep(.el-tag .el-tag__close) {
+  color: #a0a0a0;
+}
+
+.script-tags-select :deep(.el-tag .el-tag__close:hover) {
+  color: #fff;
+}
+
+/* 脚本弹窗定位样式 - 参考新建连接界面的Modal定位 */
+.script-dialog :deep(.el-overlay) {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.script-dialog :deep(.el-dialog) {
+  margin: 0;
+  position: relative;
+  transform: none;
 }
 </style> 

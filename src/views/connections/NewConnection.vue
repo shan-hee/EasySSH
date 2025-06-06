@@ -1428,10 +1428,15 @@ h2 {
   font-size: 12px;
 }
 
-:deep(.connection-modal .tab-item.active::after) {
-  background-color: #fff;
-  width: 100%;
+/* 默认显示分界线，不需要active状态 */
+:deep(.connection-modal .tab-item::after) {
+  content: '';
+  position: absolute;
   bottom: -2px;
+  left: 0;
+  width: 100%;
+  height: 2px;
+  background-color: #fff;
 }
 
 :deep(.connection-modal .modal-footer) {
