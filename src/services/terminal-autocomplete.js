@@ -205,20 +205,8 @@ class TerminalAutocompleteService {
   handleAnsiSequence(data, terminal) {
     log.debug(`收到ANSI序列: "${data}", 字节: [${Array.from(data).map(c => c.charCodeAt(0)).join(', ')}]`)
 
-    // 如果建议框是激活状态，处理上下方向键
-    if (this.isActive && this.suggestions.length > 0) {
-      log.debug(`建议框激活，检查方向键: isActive=${this.isActive}, suggestions.length=${this.suggestions.length}`)
-
-      if (data === '\x1b[A' || data === '\u001b[A') { // 上箭头
-        log.debug('检测到上箭头，执行向上导航')
-        this.navigateUp(terminal)
-        return true // 阻止默认处理
-      } else if (data === '\x1b[B' || data === '\u001b[B') { // 下箭头
-        log.debug('检测到下箭头，执行向下导航')
-        this.navigateDown(terminal)
-        return true // 阻止默认处理
-      }
-    }
+    // 注意：上下方向键的处理现在主要由组件级别的键盘事件处理
+    // 这里只处理终端直接输入的ANSI序列，避免与组件级别的处理冲突
 
     // 处理其他光标移动等ANSI序列
     if (data.includes('C')) { // 右箭头

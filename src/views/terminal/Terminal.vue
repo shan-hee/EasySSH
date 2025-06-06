@@ -1077,8 +1077,8 @@ export default {
       // 设置自动完成回调
       setupAutocompleteCallbacks()
 
-      // 添加全局键盘事件监听
-      document.addEventListener('keydown', handleGlobalKeydown)
+      // 添加全局键盘事件监听，使用捕获阶段确保优先处理
+      document.addEventListener('keydown', handleGlobalKeydown, true)
 
       // 触发终端状态刷新事件，同步工具栏状态
       const currentId = activeConnectionId.value;
@@ -1177,7 +1177,7 @@ export default {
         cleanupEvents()
         cleanupSSHFailureEvents()
         window.removeEventListener('terminal-command', handleTerminalEvent)
-        document.removeEventListener('keydown', handleGlobalKeydown)
+        document.removeEventListener('keydown', handleGlobalKeydown, true)
         resizeObserver.disconnect()
 
         // 清理自动完成服务
@@ -1671,6 +1671,20 @@ export default {
     // 键盘事件处理
     const handleGlobalKeydown = (event) => {
       if (autocompleteRef.value && autocomplete.value.visible) {
+        // 检查是否是方向键
+        if (event.key === 'ArrowUp' || event.key === 'ArrowDown' ||
+            event.key === 'Tab' || event.key === 'Enter' || event.key === 'Escape') {
+          // 阻止事件传播和默认行为
+          event.preventDefault()
+          event.stopPropagation()
+          event.stopImmediatePropagation()
+
+          // 调用自动补全组件的键盘处理
+          autocompleteRef.value.handleKeydown(event)
+          return false
+        }
+
+        // 对于其他键，也调用处理函数但不阻止传播
         autocompleteRef.value.handleKeydown(event)
       }
     }

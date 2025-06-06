@@ -97,34 +97,46 @@ export default {
 
     // 键盘导航
     const handleKeydown = (event) => {
-      if (!props.visible || props.suggestions.length === 0) return
+      if (!props.visible || props.suggestions.length === 0) return false
+
+      let handled = false
 
       switch (event.key) {
         case 'ArrowUp':
           event.preventDefault()
-          selectedIndex.value = selectedIndex.value > 0 
-            ? selectedIndex.value - 1 
+          event.stopPropagation()
+          selectedIndex.value = selectedIndex.value > 0
+            ? selectedIndex.value - 1
             : props.suggestions.length - 1
+          handled = true
           break
-        
+
         case 'ArrowDown':
           event.preventDefault()
-          selectedIndex.value = selectedIndex.value < props.suggestions.length - 1 
-            ? selectedIndex.value + 1 
+          event.stopPropagation()
+          selectedIndex.value = selectedIndex.value < props.suggestions.length - 1
+            ? selectedIndex.value + 1
             : 0
+          handled = true
           break
-        
+
         case 'Tab':
         case 'Enter':
           event.preventDefault()
+          event.stopPropagation()
           selectSuggestion(selectedIndex.value)
+          handled = true
           break
-        
+
         case 'Escape':
           event.preventDefault()
+          event.stopPropagation()
           emit('close')
+          handled = true
           break
       }
+
+      return handled
     }
 
     return {
