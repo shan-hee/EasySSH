@@ -2,12 +2,36 @@
   <div class="script-library-container">
     <div class="page-header">
       <h1>脚本库</h1>
-      <button class="btn-primary" @click="createNewScript">
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16">
-          <path fill="currentColor" d="M19,13H13V19H11V13H5V11H11V5H13V11H19V13Z" />
-        </svg>
-        新建脚本
-      </button>
+      <div class="header-actions">
+        <button class="btn-secondary" @click="importScripts">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16">
+            <path fill="currentColor" d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20Z" />
+            <path fill="currentColor" d="M12,11L16,15H13V19H11V15H8L12,11Z" />
+          </svg>
+          导入脚本
+        </button>
+        <button class="btn-secondary" @click="exportScripts">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16">
+            <path fill="currentColor" d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20Z" />
+            <path fill="currentColor" d="M12,13L8,9H11V5H13V9H16L12,13Z" />
+          </svg>
+          导出脚本
+        </button>
+        <button class="btn-primary" @click="createNewScript">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16">
+            <path fill="currentColor" d="M19,13H13V19H11V13H5V11H11V5H13V11H19V13Z" />
+          </svg>
+          新建脚本
+        </button>
+      </div>
+      <!-- 隐藏的文件输入元素 -->
+      <input
+        ref="fileInput"
+        type="file"
+        accept=".json"
+        style="display: none"
+        @change="handleFileImport"
+      />
     </div>
 
     <div class="script-categories">
@@ -59,8 +83,8 @@
         </div>
       </div>
 
-      <div class="scripts-table-container">
-        <div v-if="filteredScripts.length === 0" class="no-scripts">
+      <div class="scripts-table-container" ref="tableContainer">
+        <div v-if="allFilteredScripts.length === 0" class="no-scripts">
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="48" height="48">
             <path fill="#666" d="M19,3H5C3.89,3 3,3.89 3,5V19A2,2 0 0,0 5,21H19A2,2 0 0,0 21,19V5C21,3.89 20.1,3 19,3M19,5V19H5V5H19Z" />
             <path fill="#666" d="M11,7H13V9H11V7M11,11H13V17H11V11Z" />
@@ -69,62 +93,105 @@
           <button class="btn-secondary" @click="createNewScript">创建第一个脚本</button>
         </div>
 
-        <table v-else class="scripts-table">
-          <thead>
-            <tr>
-              <th class="script-name-column">名称</th>
-              <th class="script-desc-column">备注</th>
-              <th class="script-tags-column">标签</th>
-              <th class="script-command-column">指令内容</th>
-              <th class="script-actions-column">操作</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="script in filteredScripts" :key="script.id" class="script-row">
-              <td class="script-name">
-                <div class="name-with-favorite">
-                  <button class="btn-icon favorite-icon" @click="toggleFavorite(script)">
-                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16">
-                      <path fill="currentColor" :d="script.isFavorite ? 'M12,17.27L18.18,21L16.54,13.97L22,9.24L14.81,8.62L12,2L9.19,8.62L2,9.24L7.45,13.97L5.82,21L12,17.27Z' : 'M12,15.39L8.24,17.66L9.23,13.38L5.91,10.5L10.29,10.13L12,6.09L13.71,10.13L18.09,10.5L14.77,13.38L15.76,17.66M22,9.24L14.81,8.63L12,2L9.19,8.63L2,9.24L7.45,13.97L5.82,21L12,17.27L18.18,21L16.54,13.97L22,9.24Z'" />
-                    </svg>
-                  </button>
-                  {{ script.name }}
-                </div>
-                <div class="script-meta">
-                  <span>作者: {{ script.author }}</span> | 
-                  <span>更新于: {{ formatDate(script.updatedAt) }}</span>
-                </div>
-              </td>
-              <td class="script-description">{{ script.description }}</td>
-              <td class="script-tags">
-                <div class="tag-list">
-                  <span 
-                    v-for="tag in script.tags" 
-                    :key="tag" 
-                    class="script-tag"
-                    @click="toggleTag(tag)"
-                  >
-                    {{ tag }}
-                  </span>
-                </div>
-              </td>
-              <td class="script-command">
-                <code>{{ script.command }}</code>
-              </td>
-              <td class="script-actions">
-                <el-button class="action-btn" circle size="small" link title="编辑" @click="editScript(script)">
-                  <el-icon><Edit /></el-icon>
-                </el-button>
-                <el-button class="action-btn" circle size="small" link title="运行" @click="runScript(script)">
-                  <el-icon><CaretRight /></el-icon>
-                </el-button>
-                <el-button class="action-btn" circle size="small" link title="删除" @click="deleteScript(script)">
-                  <el-icon><Delete /></el-icon>
-                </el-button>
-              </td>
-            </tr>
-          </tbody>
-        </table>
+        <div v-else class="table-with-pagination">
+          <table class="scripts-table">
+            <thead>
+              <tr>
+                <th class="script-name-column">名称</th>
+                <th class="script-desc-column">备注</th>
+                <th class="script-tags-column">标签</th>
+                <th class="script-command-column">指令内容</th>
+                <th class="script-actions-column">操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="script in filteredScripts" :key="script.id" class="script-row">
+                <td class="script-name">
+                  <div class="name-with-favorite">
+                    <button class="btn-icon favorite-icon" @click="toggleFavorite(script)">
+                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16">
+                        <path fill="currentColor" :d="script.isFavorite ? 'M12,17.27L18.18,21L16.54,13.97L22,9.24L14.81,8.62L12,2L9.19,8.62L2,9.24L7.45,13.97L5.82,21L12,17.27Z' : 'M12,15.39L8.24,17.66L9.23,13.38L5.91,10.5L10.29,10.13L12,6.09L13.71,10.13L18.09,10.5L14.77,13.38L15.76,17.66M22,9.24L14.81,8.63L12,2L9.19,8.63L2,9.24L7.45,13.97L5.82,21L12,17.27L18.18,21L16.54,13.97L22,9.24Z'" />
+                      </svg>
+                    </button>
+                    {{ script.name }}
+                  </div>
+                  <div class="script-meta">
+                    <span>作者: {{ script.author }}</span> |
+                    <span>更新于: {{ formatDate(script.updatedAt) }}</span>
+                  </div>
+                </td>
+                <td class="script-description">{{ script.description }}</td>
+                <td class="script-tags">
+                  <div class="tag-list">
+                    <span
+                      v-for="tag in script.tags"
+                      :key="tag"
+                      class="script-tag"
+                      @click="toggleTag(tag)"
+                    >
+                      {{ tag }}
+                    </span>
+                  </div>
+                </td>
+                <td class="script-command">
+                  <code>{{ script.command }}</code>
+                </td>
+                <td class="script-actions">
+                  <el-button class="action-btn" circle size="small" link title="编辑" @click="editScript(script)">
+                    <el-icon><Edit /></el-icon>
+                  </el-button>
+                  <el-button class="action-btn" circle size="small" link title="运行" @click="runScript(script)">
+                    <el-icon><CaretRight /></el-icon>
+                  </el-button>
+                  <el-button class="action-btn" circle size="small" link title="删除" @click="deleteScript(script)">
+                    <el-icon><Delete /></el-icon>
+                  </el-button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+
+          <!-- 分页组件 -->
+          <div class="pagination-container" v-if="shouldShowPagination">
+            <div class="custom-pagination">
+              <!-- 总数显示 -->
+              <span class="pagination-total">共 {{ allFilteredScripts.length }} 条</span>
+
+              <!-- 每页显示数量选择器 -->
+              <div class="page-size-selector">
+                <span class="page-size-label">每页</span>
+                <el-select
+                  v-model="pageSize"
+                  class="page-size-select"
+                  filterable
+                  allow-create
+                  default-first-option
+                  @change="handlePageSizeChange"
+                  placeholder="输入或选择"
+                >
+                  <el-option
+                    v-for="size in pageSizeOptions"
+                    :key="size"
+                    :label="`${size}`"
+                    :value="size"
+                  />
+                </el-select>
+                <span class="page-size-label">条</span>
+              </div>
+
+              <!-- 分页导航 -->
+              <el-pagination
+                v-model:current-page="currentPage"
+                :total="allFilteredScripts.length"
+                :page-size="pageSize"
+                layout="prev, pager, next, jumper"
+                background
+                @current-change="handlePageChange"
+                :hide-on-single-page="false"
+              />
+            </div>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -174,7 +241,7 @@
 </template>
 
 <script>
-import { defineComponent, ref, computed } from 'vue'
+import { defineComponent, ref, computed, watch, onMounted, nextTick } from 'vue'
 import { Edit, Delete, CaretRight } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 
@@ -192,6 +259,16 @@ export default defineComponent({
     const filterRecentScripts = ref(false)
     const filterFavoriteScripts = ref(false)
     const selectedTags = ref([])
+
+    // 分页相关
+    const currentPage = ref(1)
+    const pageSize = ref(10) // 默认每页10条，后续会根据容器高度动态调整
+    const tableContainer = ref(null)
+    const userHasChangedPageSize = ref(false) // 用户是否手动调整过页面大小
+    const pageSizeOptions = ref([5, 10, 15, 20, 30, 50, 100]) // 页面大小选项
+
+    // 导入导出相关
+    const fileInput = ref(null)
 
     // 示例数据
     const scripts = ref([
@@ -224,6 +301,146 @@ export default defineComponent({
         updatedAt: new Date('2023-10-28'),
         isFavorite: true,
         command: 'mysqldump -u root -p mydb > /backup/mydb_$(date +%Y%m%d).sql && gzip /backup/mydb_$(date +%Y%m%d).sql'
+      },
+      {
+        id: 4,
+        name: '查看系统负载',
+        description: '查看系统当前负载、运行进程和资源使用情况。',
+        author: '管理员',
+        tags: ['系统', '监控', '性能'],
+        updatedAt: new Date('2023-12-15'),
+        isFavorite: true,
+        command: 'uptime && top -bn1 | head -20'
+      },
+      {
+        id: 5,
+        name: '清理系统缓存',
+        description: '清理系统缓存和临时文件，释放磁盘空间。',
+        author: '管理员',
+        tags: ['系统', '清理', '维护'],
+        updatedAt: new Date('2023-12-14'),
+        isFavorite: false,
+        command: 'sudo sync && sudo echo 3 > /proc/sys/vm/drop_caches && sudo apt-get autoremove -y && sudo apt-get autoclean'
+      },
+      {
+        id: 6,
+        name: '查看端口占用',
+        description: '查看系统端口占用情况和对应的进程。',
+        author: '网络管理员',
+        tags: ['网络', '端口', '诊断'],
+        updatedAt: new Date('2023-12-13'),
+        isFavorite: true,
+        command: 'netstat -tulpn | grep LISTEN'
+      },
+      {
+        id: 7,
+        name: '文件权限批量修改',
+        description: '批量修改目录下文件和文件夹的权限。',
+        author: '管理员',
+        tags: ['文件', '权限', '批量操作'],
+        updatedAt: new Date('2023-12-12'),
+        isFavorite: false,
+        command: 'find /path/to/directory -type f -exec chmod 644 {} \\; && find /path/to/directory -type d -exec chmod 755 {} \\;'
+      },
+      {
+        id: 8,
+        name: '查找大文件',
+        description: '查找系统中占用空间较大的文件，用于磁盘空间分析。',
+        author: '管理员',
+        tags: ['文件', '磁盘', '分析'],
+        updatedAt: new Date('2023-12-11'),
+        isFavorite: true,
+        command: 'find / -type f -size +100M -exec ls -lh {} \\; 2>/dev/null | head -20'
+      },
+      {
+        id: 9,
+        name: '服务状态检查',
+        description: '检查常用服务的运行状态。',
+        author: '管理员',
+        tags: ['服务', '状态', '监控'],
+        updatedAt: new Date('2023-12-10'),
+        isFavorite: true,
+        command: 'systemctl status nginx apache2 mysql postgresql docker ssh --no-pager'
+      },
+      {
+        id: 10,
+        name: '日志文件监控',
+        description: '实时监控系统日志文件的变化。',
+        author: '管理员',
+        tags: ['日志', '监控', '实时'],
+        updatedAt: new Date('2023-12-09'),
+        isFavorite: false,
+        command: 'tail -f /var/log/syslog /var/log/auth.log'
+      },
+      {
+        id: 11,
+        name: '用户登录历史',
+        description: '查看用户登录历史和当前在线用户。',
+        author: '安全管理员',
+        tags: ['用户', '登录', '安全'],
+        updatedAt: new Date('2023-12-08'),
+        isFavorite: false,
+        command: 'last -10 && who && w'
+      },
+      {
+        id: 12,
+        name: 'Docker容器管理',
+        description: '查看Docker容器状态和资源使用情况。',
+        author: '容器管理员',
+        tags: ['Docker', '容器', '监控'],
+        updatedAt: new Date('2023-12-07'),
+        isFavorite: true,
+        command: 'docker ps -a && docker stats --no-stream'
+      },
+      {
+        id: 13,
+        name: 'Git仓库状态',
+        description: '查看Git仓库的状态、分支和最近提交。',
+        author: '开发者',
+        tags: ['Git', '版本控制', '开发'],
+        updatedAt: new Date('2023-12-06'),
+        isFavorite: true,
+        command: 'git status && git branch -a && git log --oneline -10'
+      },
+      {
+        id: 14,
+        name: '防火墙状态检查',
+        description: '检查防火墙状态和规则配置。',
+        author: '安全管理员',
+        tags: ['防火墙', '安全', '网络'],
+        updatedAt: new Date('2023-12-05'),
+        isFavorite: false,
+        command: 'sudo ufw status verbose && sudo iptables -L -n'
+      },
+      {
+        id: 15,
+        name: 'SSL证书检查',
+        description: '检查SSL证书的有效期和详细信息。',
+        author: '安全管理员',
+        tags: ['SSL', '证书', '安全'],
+        updatedAt: new Date('2023-12-04'),
+        isFavorite: false,
+        command: 'echo | openssl s_client -servername example.com -connect example.com:443 2>/dev/null | openssl x509 -noout -dates'
+      },
+      {
+        id: 16,
+        name: '系统更新检查',
+        description: '检查系统可用更新和安全补丁。',
+        author: '管理员',
+        tags: ['系统', '更新', '安全'],
+        updatedAt: new Date('2023-12-03'),
+        isFavorite: true,
+        command: 'sudo apt update && apt list --upgradable'
+      },
+      {
+        id: 17,
+        name: '进程资源监控',
+        description: '监控占用资源最多的进程。',
+        author: '管理员',
+        tags: ['进程', '资源', '监控'],
+        updatedAt: new Date('2023-12-02'),
+        isFavorite: true,
+        command: 'ps aux --sort=-%cpu | head -10 && echo "=== Memory Usage ===" && ps aux --sort=-%mem | head -10'
       }
     ])
 
@@ -236,43 +453,74 @@ export default defineComponent({
       return Array.from(tagSet)
     })
 
-    // 根据筛选条件过滤脚本
-    const filteredScripts = computed(() => {
+    // 根据筛选条件过滤脚本（不分页）
+    const allFilteredScripts = computed(() => {
       let result = scripts.value
-      
+
       // 根据标签筛选
       if (selectedTags.value.length > 0) {
-        result = result.filter(script => 
+        result = result.filter(script =>
           selectedTags.value.every(tag => script.tags.includes(tag))
         )
       }
-      
+
       // 根据搜索词筛选
       if (searchQuery.value) {
         const query = searchQuery.value.toLowerCase()
-        result = result.filter(script => 
-          script.name.toLowerCase().includes(query) || 
+        result = result.filter(script =>
+          script.name.toLowerCase().includes(query) ||
           script.description.toLowerCase().includes(query) ||
           script.tags.some(tag => tag.toLowerCase().includes(query))
         )
       }
-      
+
       // 根据其他筛选条件
       if (filterMyScripts.value) {
         result = result.filter(script => script.author === '管理员')
       }
-      
+
       if (filterFavoriteScripts.value) {
         result = result.filter(script => script.isFavorite)
       }
-      
+
       if (filterRecentScripts.value) {
         const sevenDaysAgo = new Date()
         sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7)
         result = result.filter(script => script.updatedAt >= sevenDaysAgo)
       }
-      
+
       return result
+    })
+
+    // 总页数
+    const totalPages = computed(() => {
+      return Math.ceil(allFilteredScripts.value.length / pageSize.value)
+    })
+
+    // 是否显示分页组件
+    const shouldShowPagination = computed(() => {
+      const dataCount = allFilteredScripts.value.length
+
+      // 如果没有数据，不显示分页
+      if (dataCount === 0) return false
+
+      // 如果用户手动调整过页面大小，始终显示分页组件（除非数据很少）
+      if (userHasChangedPageSize.value && dataCount > 3) return true
+
+      // 如果数据量大于默认的最小页面大小，显示分页组件
+      if (dataCount > 5) return true
+
+      // 如果有多页，显示分页组件
+      if (totalPages.value > 1) return true
+
+      return false
+    })
+
+    // 当前页显示的脚本（分页后）
+    const filteredScripts = computed(() => {
+      const start = (currentPage.value - 1) * pageSize.value
+      const end = start + pageSize.value
+      return allFilteredScripts.value.slice(start, end)
     })
 
     // 标签操作方法
@@ -287,7 +535,172 @@ export default defineComponent({
 
     const clearTags = () => {
       selectedTags.value = []
+      currentPage.value = 1 // 重置到第一页
     }
+
+    // 分页相关方法
+    const handlePageChange = (page) => {
+      currentPage.value = page
+
+      // 页面变化后，检查是否需要滚动
+      nextTick(() => {
+        checkScrollNeed()
+      })
+    }
+
+    const handlePageSizeChange = (size) => {
+      // 验证输入值
+      let validSize = parseInt(size)
+      let showMessage = false
+      let originalInput = size
+
+      // 确保是有效数字
+      if (isNaN(validSize) || validSize < 1) {
+        validSize = 10 // 默认值
+        if (originalInput !== '' && originalInput !== null && originalInput !== undefined) {
+          ElMessage.warning('请输入有效的数字，已重置为默认值10')
+          showMessage = true
+        }
+      }
+
+      // 限制最大值
+      if (validSize > 1000) {
+        validSize = 1000
+        ElMessage.warning('每页最多显示1000条数据，已调整为1000')
+        showMessage = true
+      }
+
+      // 限制最小值
+      if (validSize < 1) {
+        validSize = 1
+        ElMessage.warning('每页至少显示1条数据，已调整为1')
+        showMessage = true
+      }
+
+      // 如果输入的值被调整了，给出提示
+      if (!showMessage && parseInt(originalInput) !== validSize && originalInput !== validSize) {
+        ElMessage.info(`已调整为 ${validSize} 条每页`)
+      }
+
+      pageSize.value = validSize
+      currentPage.value = 1 // 重置到第一页
+      userHasChangedPageSize.value = true // 标记用户已手动调整
+
+      // 如果用户输入了新的值，添加到选项中
+      if (!pageSizeOptions.value.includes(validSize) && validSize <= 100) {
+        pageSizeOptions.value.push(validSize)
+        pageSizeOptions.value.sort((a, b) => a - b)
+      }
+
+      // 页面大小变化后，检查是否需要滚动
+      nextTick(() => {
+        checkScrollNeed()
+      })
+    }
+
+    // 检查是否需要滚动
+    const checkScrollNeed = () => {
+      if (!tableContainer.value) return
+
+      nextTick(() => {
+        const container = tableContainer.value
+        const tableWithPagination = container.querySelector('.table-with-pagination')
+
+        if (tableWithPagination) {
+          const containerHeight = container.clientHeight
+          const contentHeight = tableWithPagination.scrollHeight
+
+          // 添加一些容差，避免因为像素差异导致的问题
+          const tolerance = 5
+
+          // 如果内容高度超过容器高度，允许滚动
+          if (contentHeight > containerHeight + tolerance) {
+            container.style.overflowY = 'auto'
+            tableWithPagination.style.overflowY = 'visible'
+          } else {
+            // 否则隐藏滚动条
+            container.style.overflowY = 'hidden'
+            tableWithPagination.style.overflowY = 'hidden'
+          }
+        }
+      })
+    }
+
+    // 计算最佳页面大小
+    const calculateOptimalPageSize = () => {
+      if (!tableContainer.value || allFilteredScripts.value.length === 0) return
+
+      // 等待DOM更新完成后再计算
+      nextTick(() => {
+        const containerHeight = tableContainer.value.clientHeight
+
+        // 查找实际的表头高度
+        const tableHeader = tableContainer.value.querySelector('.scripts-table thead')
+        const headerHeight = tableHeader ? tableHeader.offsetHeight : 50
+
+        // 查找实际的分页组件高度（如果存在）
+        const paginationEl = tableContainer.value.querySelector('.pagination-container')
+        const paginationHeight = paginationEl ? paginationEl.offsetHeight : 65
+
+        // 查找实际的行高度
+        const firstRow = tableContainer.value.querySelector('.script-row')
+        const rowHeight = firstRow ? firstRow.offsetHeight : 65
+
+        // 计算可用高度，预留分页组件空间
+        const reservedPaginationHeight = shouldShowPagination.value ? paginationHeight : 0
+        const availableHeight = containerHeight - headerHeight - reservedPaginationHeight - 5
+        const optimalRows = Math.floor(availableHeight / rowHeight)
+
+        // 确保至少显示3行，最多15行
+        let newPageSize = Math.max(3, Math.min(15, optimalRows))
+
+        // 如果数据总量小于计算出的页面大小，则使用数据总量
+        if (allFilteredScripts.value.length < newPageSize) {
+          newPageSize = allFilteredScripts.value.length
+        }
+
+        // 只有当计算出的页面大小与当前不同时才更新
+        if (newPageSize !== pageSize.value && newPageSize > 0) {
+          pageSize.value = newPageSize
+          currentPage.value = 1 // 重置到第一页
+        }
+      })
+    }
+
+    // 监听筛选条件变化，重置到第一页
+    watch([searchQuery, selectedTags, filterMyScripts, filterRecentScripts, filterFavoriteScripts], () => {
+      currentPage.value = 1
+    })
+
+    // 监听过滤后的脚本数量变化，重新计算页面大小
+    watch(allFilteredScripts, () => {
+      nextTick(() => {
+        // 延迟计算，确保DOM已更新
+        setTimeout(() => {
+          calculateOptimalPageSize()
+          checkScrollNeed()
+        }, 50)
+      })
+    }, { immediate: true })
+
+    // 监听当前页显示的脚本变化，检查滚动需求
+    watch(filteredScripts, () => {
+      nextTick(() => {
+        setTimeout(() => {
+          checkScrollNeed()
+        }, 50)
+      })
+    })
+
+    // 监听分页显示状态变化，重新计算和检查滚动
+    watch(shouldShowPagination, () => {
+      nextTick(() => {
+        setTimeout(() => {
+          calculateOptimalPageSize()
+          checkScrollNeed()
+        }, 50)
+      })
+    })
 
     // 无脚本时显示的消息
     const noScriptsMessage = computed(() => {
@@ -379,9 +792,10 @@ export default defineComponent({
         }
       } else {
         // 创建新脚本
+        const maxId = Math.max(...scripts.value.map(s => s.id), 0)
         const newScript = {
           ...scriptForm.value,
-          id: scripts.value.length + 1,
+          id: maxId + 1,
           updatedAt: now
         }
         scripts.value.push(newScript)
@@ -431,11 +845,172 @@ export default defineComponent({
       script.isFavorite = !script.isFavorite;
     };
 
+    // 导入脚本功能
+    const importScripts = () => {
+      if (fileInput.value) {
+        fileInput.value.click()
+      }
+    }
+
+    // 处理文件导入
+    const handleFileImport = (event) => {
+      const file = event.target.files[0]
+      if (!file) return
+
+      if (!file.name.endsWith('.json')) {
+        ElMessage.error('请选择JSON格式的文件')
+        return
+      }
+
+      const reader = new FileReader()
+      reader.onload = (e) => {
+        try {
+          const importedData = JSON.parse(e.target.result)
+
+          // 验证导入数据格式
+          if (!Array.isArray(importedData)) {
+            ElMessage.error('文件格式错误：应该是脚本数组')
+            return
+          }
+
+          let importedCount = 0
+          let skippedCount = 0
+
+          importedData.forEach(scriptData => {
+            // 验证必要字段
+            if (!scriptData.name || !scriptData.command) {
+              skippedCount++
+              return
+            }
+
+            // 检查是否已存在同名脚本
+            const existingScript = scripts.value.find(s => s.name === scriptData.name)
+            if (existingScript) {
+              skippedCount++
+              return
+            }
+
+            // 创建新脚本
+            const maxId = Math.max(...scripts.value.map(s => s.id), 0)
+            const newScript = {
+              id: maxId + importedCount + 1,
+              name: scriptData.name,
+              description: scriptData.description || '',
+              command: scriptData.command,
+              tags: Array.isArray(scriptData.tags) ? scriptData.tags : [],
+              author: scriptData.author || '导入用户',
+              updatedAt: new Date(),
+              isFavorite: false
+            }
+
+            scripts.value.push(newScript)
+            importedCount++
+          })
+
+          if (importedCount > 0) {
+            ElMessage.success(`成功导入 ${importedCount} 个脚本${skippedCount > 0 ? `，跳过 ${skippedCount} 个重复或无效脚本` : ''}`)
+          } else {
+            ElMessage.warning('没有导入任何脚本，可能存在重复或格式错误')
+          }
+
+        } catch (error) {
+          ElMessage.error('文件解析失败，请检查文件格式')
+          console.error('Import error:', error)
+        }
+      }
+
+      reader.readAsText(file)
+      // 清空文件输入，允许重复选择同一文件
+      event.target.value = ''
+    }
+
+    // 导出脚本功能
+    const exportScripts = () => {
+      if (scripts.value.length === 0) {
+        ElMessage.warning('没有可导出的脚本')
+        return
+      }
+
+      try {
+        // 准备导出数据，移除不必要的字段
+        const exportData = scripts.value.map(script => ({
+          name: script.name,
+          description: script.description,
+          command: script.command,
+          tags: script.tags,
+          author: script.author,
+          updatedAt: script.updatedAt
+        }))
+
+        // 创建下载链接
+        const dataStr = JSON.stringify(exportData, null, 2)
+        const dataBlob = new Blob([dataStr], { type: 'application/json' })
+        const url = URL.createObjectURL(dataBlob)
+
+        // 创建下载链接并触发下载
+        const link = document.createElement('a')
+        link.href = url
+        link.download = `scripts_export_${new Date().toISOString().slice(0, 10)}.json`
+        document.body.appendChild(link)
+        link.click()
+        document.body.removeChild(link)
+
+        // 清理URL对象
+        URL.revokeObjectURL(url)
+
+        ElMessage.success(`成功导出 ${scripts.value.length} 个脚本`)
+      } catch (error) {
+        ElMessage.error('导出失败，请重试')
+        console.error('Export error:', error)
+      }
+    }
+
+    // 防抖函数
+    const debounce = (func, wait) => {
+      let timeout
+      return function executedFunction(...args) {
+        const later = () => {
+          clearTimeout(timeout)
+          func(...args)
+        }
+        clearTimeout(timeout)
+        timeout = setTimeout(later, wait)
+      }
+    }
+
+    // 防抖的计算函数
+    const debouncedCalculatePageSize = debounce(calculateOptimalPageSize, 300)
+
+    // 防抖的滚动检查函数
+    const debouncedCheckScroll = debounce(checkScrollNeed, 100)
+
+    // 生命周期钩子
+    onMounted(() => {
+      // 初始计算
+      nextTick(() => {
+        calculateOptimalPageSize()
+        checkScrollNeed()
+
+        // 延迟再次计算，确保所有元素都已渲染完成
+        setTimeout(() => {
+          calculateOptimalPageSize()
+          checkScrollNeed()
+        }, 100)
+
+        // 监听窗口大小变化，使用防抖
+        window.addEventListener('resize', () => {
+          debouncedCalculatePageSize()
+          debouncedCheckScroll()
+        })
+      })
+    })
+
     return {
       searchQuery,
       availableTags,
       selectedTags,
       filteredScripts,
+      allFilteredScripts,
       showFilterOptions,
       filterMyScripts,
       filterRecentScripts,
@@ -452,7 +1027,23 @@ export default defineComponent({
       dialogVisible,
       isEdit,
       scriptForm,
-      saveScript
+      saveScript,
+      // 分页相关
+      currentPage,
+      pageSize,
+      pageSizeOptions,
+      totalPages,
+      shouldShowPagination,
+      tableContainer,
+      handlePageChange,
+      handlePageSizeChange,
+      calculateOptimalPageSize,
+      checkScrollNeed,
+      // 导入导出相关
+      fileInput,
+      importScripts,
+      exportScripts,
+      handleFileImport
     }
   }
 })
@@ -467,6 +1058,7 @@ export default defineComponent({
   flex-direction: column;
   background-color: #1e1e1e;
   color: #e0e0e0;
+  min-height: 0;
 }
 
 .page-header {
@@ -481,6 +1073,12 @@ export default defineComponent({
   font-weight: 500;
   color: #e0e0e0;
   margin: 0;
+}
+
+.header-actions {
+  display: flex;
+  gap: 12px;
+  align-items: center;
 }
 
 .btn-primary {
@@ -507,9 +1105,11 @@ export default defineComponent({
   display: flex;
   gap: 8px;
   margin-bottom: 24px;
-  overflow-x: auto;
-  padding-bottom: 8px;
   flex-wrap: wrap;
+  min-height: auto;
+  max-height: none;
+  overflow: visible;
+  padding-bottom: 8px;
 }
 
 .tag-bubble {
@@ -523,6 +1123,8 @@ export default defineComponent({
   font-size: 13px;
   color: #b0b0b0;
   transition: all 0.2s ease;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .tag-bubble:hover {
@@ -542,6 +1144,9 @@ export default defineComponent({
   border-radius: 8px;
   padding: 16px;
   border: 1px solid #333;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 .search-bar {
@@ -614,13 +1219,18 @@ export default defineComponent({
 }
 
 .scripts-table-container {
-  overflow-x: auto;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden; /* 默认隐藏，通过JS动态控制 */
 }
 
 .scripts-table {
   width: 100%;
   border-collapse: collapse;
   color: #e0e0e0;
+  table-layout: fixed;
 }
 
 .scripts-table th {
@@ -755,6 +1365,8 @@ export default defineComponent({
 }
 
 .btn-secondary {
+  display: flex;
+  align-items: center;
   background-color: #3a3a3a;
   color: #e0e0e0;
   border: none;
@@ -762,6 +1374,11 @@ export default defineComponent({
   padding: 8px 16px;
   font-size: 14px;
   cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.btn-secondary svg {
+  margin-right: 8px;
 }
 
 .btn-secondary:hover {
@@ -839,6 +1456,177 @@ export default defineComponent({
 }
 
 .script-tag:hover {
+  background-color: #2c7be5;
+  color: white;
+}
+
+/* 分页相关样式 */
+.table-with-pagination {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden; /* 默认隐藏，通过JS动态控制 */
+}
+
+.scripts-table {
+  flex-shrink: 0;
+  overflow: visible;
+}
+
+.pagination-container {
+  margin-top: 8px;
+  display: flex;
+  justify-content: center;
+  padding: 12px 0;
+  border-top: 1px solid #333;
+  flex-shrink: 0;
+  background-color: #252525;
+}
+
+.custom-pagination {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.pagination-total {
+  color: #a0a0a0;
+  font-size: 14px;
+  white-space: nowrap;
+}
+
+.page-size-selector {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+}
+
+.page-size-label {
+  color: #a0a0a0;
+  font-size: 14px;
+}
+
+.page-size-select {
+  width: 120px;
+  min-width: 100px;
+}
+
+.page-size-select :deep(.el-select__wrapper) {
+  background-color: #333;
+  border-color: #444;
+  color: #e0e0e0;
+}
+
+.page-size-select :deep(.el-select__wrapper:hover) {
+  border-color: #2c7be5;
+}
+
+.page-size-select :deep(.el-select__wrapper.is-focused) {
+  border-color: #2c7be5;
+}
+
+.page-size-select :deep(.el-input__inner) {
+  color: #e0e0e0;
+  text-align: center;
+}
+
+.page-size-select :deep(.el-select__caret) {
+  color: #a0a0a0;
+}
+
+.page-size-select :deep(.el-select__caret:hover) {
+  color: #2c7be5;
+}
+
+/* Element Plus 分页组件深度样式 */
+:deep(.el-pagination) {
+  --el-pagination-bg-color: #252525;
+  --el-pagination-text-color: #e0e0e0;
+  --el-pagination-border-radius: 4px;
+  --el-pagination-button-color: #a0a0a0;
+  --el-pagination-button-bg-color: #333;
+  --el-pagination-button-disabled-color: #666;
+  --el-pagination-button-disabled-bg-color: #2a2a2a;
+  --el-pagination-hover-color: #2c7be5;
+}
+
+:deep(.el-pagination .el-pager li) {
+  background-color: #333;
+  color: #a0a0a0;
+  border: 1px solid #444;
+  margin: 0 2px;
+}
+
+:deep(.el-pagination .el-pager li:hover) {
+  color: #2c7be5;
+  border-color: #2c7be5;
+}
+
+:deep(.el-pagination .el-pager li.is-active) {
+  background-color: #2c7be5;
+  color: white;
+  border-color: #2c7be5;
+}
+
+:deep(.el-pagination .btn-prev),
+:deep(.el-pagination .btn-next) {
+  background-color: #333;
+  color: #a0a0a0;
+  border: 1px solid #444;
+}
+
+:deep(.el-pagination .btn-prev:hover),
+:deep(.el-pagination .btn-next:hover) {
+  color: #2c7be5;
+  border-color: #2c7be5;
+}
+
+:deep(.el-pagination .el-pagination__total) {
+  color: #a0a0a0;
+}
+
+:deep(.el-pagination .el-pagination__jump) {
+  color: #a0a0a0;
+}
+
+:deep(.el-select .el-select__wrapper) {
+  background-color: #333;
+  border-color: #444;
+}
+
+:deep(.el-select .el-select__wrapper:hover) {
+  border-color: #2c7be5;
+}
+
+:deep(.el-input__wrapper) {
+  background-color: #333;
+  border-color: #444;
+}
+
+:deep(.el-input__wrapper:hover) {
+  border-color: #2c7be5;
+}
+
+/* 页面大小选择器下拉选项样式 */
+:deep(.el-select-dropdown) {
+  background-color: #333;
+  border-color: #444;
+}
+
+:deep(.el-select-dropdown .el-select-dropdown__item) {
+  color: #e0e0e0;
+  background-color: #333;
+}
+
+:deep(.el-select-dropdown .el-select-dropdown__item:hover) {
+  background-color: #2c7be5;
+  color: white;
+}
+
+:deep(.el-select-dropdown .el-select-dropdown__item.is-selected) {
   background-color: #2c7be5;
   color: white;
 }

@@ -1,9 +1,11 @@
 <template>
-  <div 
+  <div
     v-if="visible && suggestions.length > 0"
     class="terminal-autocomplete"
+    :class="{ 'keyboard-navigation': isKeyboardNavigation }"
     :style="positionStyle"
     @mousedown.prevent
+    @mousemove="handleMouseMove"
   >
     <div class="autocomplete-header">
       <span class="autocomplete-title">命令建议</span>
@@ -16,7 +18,7 @@
         class="autocomplete-item"
         :class="{ 'autocomplete-item--active': index === selectedIndex }"
         @click="selectSuggestion(index)"
-        @mouseenter="selectedIndex = index"
+        @mouseenter="handleMouseEnter(index)"
       >
         <div class="autocomplete-item-main">
           <span class="autocomplete-command">{{ suggestion.text }}</span>
@@ -56,6 +58,7 @@ export default {
   setup(props, { emit }) {
     const selectedIndex = ref(0)
     const listRef = ref(null)
+    const isKeyboardNavigation = ref(false)
 
     // 计算位置样式
     const positionStyle = computed(() => ({
@@ -63,9 +66,10 @@ export default {
       top: `${props.position.y}px`
     }))
 
-    // 监听建议变化，重置选中索引
+    // 监听建议变化，重置选中索引和导航状态
     watch(() => props.suggestions, () => {
       selectedIndex.value = 0
+      isKeyboardNavigation.value = false
     })
 
     // 监听选中索引变化，滚动到可见区域
@@ -87,6 +91,20 @@ export default {
       }
     }
 
+    // 处理鼠标进入事件
+    const handleMouseEnter = (index) => {
+      // 只有在非键盘导航模式下才响应鼠标悬浮
+      if (!isKeyboardNavigation.value) {
+        selectedIndex.value = index
+      }
+    }
+
+    // 处理鼠标移动事件
+    const handleMouseMove = () => {
+      // 鼠标移动时重新启用鼠标导航
+      isKeyboardNavigation.value = false
+    }
+
     // 选择建议
     const selectSuggestion = (index) => {
       if (index >= 0 && index < props.suggestions.length) {
@@ -105,6 +123,7 @@ export default {
         case 'ArrowUp':
           event.preventDefault()
           event.stopPropagation()
+          isKeyboardNavigation.value = true
           selectedIndex.value = selectedIndex.value > 0
             ? selectedIndex.value - 1
             : props.suggestions.length - 1
@@ -114,6 +133,7 @@ export default {
         case 'ArrowDown':
           event.preventDefault()
           event.stopPropagation()
+          isKeyboardNavigation.value = true
           selectedIndex.value = selectedIndex.value < props.suggestions.length - 1
             ? selectedIndex.value + 1
             : 0
@@ -143,8 +163,11 @@ export default {
       selectedIndex,
       listRef,
       positionStyle,
+      isKeyboardNavigation,
       selectSuggestion,
-      handleKeydown
+      handleKeydown,
+      handleMouseEnter,
+      handleMouseMove
     }
   }
 }
@@ -201,7 +224,16 @@ export default {
   border-bottom: none;
 }
 
-.autocomplete-item:hover,
+/* 只有在非键盘导航模式下才应用hover效果 */
+.autocomplete-item:hover {
+  background: #264f78;
+}
+
+/* 键盘导航模式下禁用hover效果 */
+.keyboard-navigation .autocomplete-item:hover {
+  background: transparent;
+}
+
 .autocomplete-item--active {
   background: #264f78;
 }
