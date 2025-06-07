@@ -110,7 +110,7 @@
                   <div class="name-with-favorite">
                     <button class="btn-icon favorite-icon" @click="toggleFavorite(script)">
                       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16">
-                        <path fill="currentColor" :d="script.isFavorite ? 'M12,17.27L18.18,21L16.54,13.97L22,9.24L14.81,8.62L12,2L9.19,8.62L2,9.24L7.45,13.97L5.82,21L12,17.27Z' : 'M12,15.39L8.24,17.66L9.23,13.38L5.91,10.5L10.29,10.13L12,6.09L13.71,10.13L18.09,10.5L14.77,13.38L15.76,17.66M22,9.24L14.81,8.63L12,2L9.19,8.63L2,9.24L7.45,13.97L5.82,21L12,17.27L18.18,21L16.54,13.97L22,9.24Z'" />
+                        <path fill="currentColor" :d="scriptLibraryService.isFavorite(script.id) ? 'M12,17.27L18.18,21L16.54,13.97L22,9.24L14.81,8.62L12,2L9.19,8.62L2,9.24L7.45,13.97L5.82,21L12,17.27Z' : 'M12,15.39L8.24,17.66L9.23,13.38L5.91,10.5L10.29,10.13L12,6.09L13.71,10.13L18.09,10.5L14.77,13.38L15.76,17.66M22,9.24L14.81,8.63L12,2L9.19,8.63L2,9.24L7.45,13.97L5.82,21L12,17.27L18.18,21L16.54,13.97L22,9.24Z'" />
                       </svg>
                     </button>
                     {{ script.name }}
@@ -274,6 +274,7 @@
 import { defineComponent, ref, computed, watch, onMounted, nextTick } from 'vue'
 import { Edit, Delete, CaretRight } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import scriptLibraryService from '@/services/scriptLibrary.js'
 
 export default defineComponent({
   name: 'ScriptLibrary',
@@ -300,179 +301,8 @@ export default defineComponent({
     // 导入导出相关
     const fileInput = ref(null)
 
-    // 示例数据
-    const scripts = ref([
-      {
-        id: 1,
-        name: '系统信息收集脚本',
-        description: '收集服务器系统信息，包括CPU、内存、磁盘使用情况等。',
-        author: '管理员',
-        tags: ['系统', '监控', '信息收集'],
-        updatedAt: new Date('2023-12-01'),
-        isFavorite: true,
-        command: 'free -h && df -h && cat /proc/cpuinfo | grep "model name" | head -1'
-      },
-      {
-        id: 2,
-        name: '网络连接检测',
-        description: '检测服务器与指定目标的网络连接状态。',
-        author: '网络管理员',
-        tags: ['网络', '诊断', '连接测试'],
-        updatedAt: new Date('2023-11-15'),
-        isFavorite: false,
-        command: 'ping -c 4 google.com && traceroute baidu.com'
-      },
-      {
-        id: 3,
-        name: '数据库备份脚本',
-        description: '自动备份MySQL/PostgreSQL数据库并上传到指定位置。',
-        author: '数据库管理员',
-        tags: ['数据库', '备份', 'MySQL', 'PostgreSQL'],
-        updatedAt: new Date('2023-10-28'),
-        isFavorite: true,
-        command: 'mysqldump -u root -p mydb > /backup/mydb_$(date +%Y%m%d).sql && gzip /backup/mydb_$(date +%Y%m%d).sql'
-      },
-      {
-        id: 4,
-        name: '查看系统负载',
-        description: '查看系统当前负载、运行进程和资源使用情况。',
-        author: '管理员',
-        tags: ['系统', '监控', '性能'],
-        updatedAt: new Date('2023-12-15'),
-        isFavorite: true,
-        command: 'uptime && top -bn1 | head -20'
-      },
-      {
-        id: 5,
-        name: '清理系统缓存',
-        description: '清理系统缓存和临时文件，释放磁盘空间。',
-        author: '管理员',
-        tags: ['系统', '清理', '维护'],
-        updatedAt: new Date('2023-12-14'),
-        isFavorite: false,
-        command: 'sudo sync && sudo echo 3 > /proc/sys/vm/drop_caches && sudo apt-get autoremove -y && sudo apt-get autoclean'
-      },
-      {
-        id: 6,
-        name: '查看端口占用',
-        description: '查看系统端口占用情况和对应的进程。',
-        author: '网络管理员',
-        tags: ['网络', '端口', '诊断'],
-        updatedAt: new Date('2023-12-13'),
-        isFavorite: true,
-        command: 'netstat -tulpn | grep LISTEN'
-      },
-      {
-        id: 7,
-        name: '文件权限批量修改',
-        description: '批量修改目录下文件和文件夹的权限。',
-        author: '管理员',
-        tags: ['文件', '权限', '批量操作'],
-        updatedAt: new Date('2023-12-12'),
-        isFavorite: false,
-        command: 'find /path/to/directory -type f -exec chmod 644 {} \\; && find /path/to/directory -type d -exec chmod 755 {} \\;'
-      },
-      {
-        id: 8,
-        name: '查找大文件',
-        description: '查找系统中占用空间较大的文件，用于磁盘空间分析。',
-        author: '管理员',
-        tags: ['文件', '磁盘', '分析'],
-        updatedAt: new Date('2023-12-11'),
-        isFavorite: true,
-        command: 'find / -type f -size +100M -exec ls -lh {} \\; 2>/dev/null | head -20'
-      },
-      {
-        id: 9,
-        name: '服务状态检查',
-        description: '检查常用服务的运行状态。',
-        author: '管理员',
-        tags: ['服务', '状态', '监控'],
-        updatedAt: new Date('2023-12-10'),
-        isFavorite: true,
-        command: 'systemctl status nginx apache2 mysql postgresql docker ssh --no-pager'
-      },
-      {
-        id: 10,
-        name: '日志文件监控',
-        description: '实时监控系统日志文件的变化。',
-        author: '管理员',
-        tags: ['日志', '监控', '实时'],
-        updatedAt: new Date('2023-12-09'),
-        isFavorite: false,
-        command: 'tail -f /var/log/syslog /var/log/auth.log'
-      },
-      {
-        id: 11,
-        name: '用户登录历史',
-        description: '查看用户登录历史和当前在线用户。',
-        author: '安全管理员',
-        tags: ['用户', '登录', '安全'],
-        updatedAt: new Date('2023-12-08'),
-        isFavorite: false,
-        command: 'last -10 && who && w'
-      },
-      {
-        id: 12,
-        name: 'Docker容器管理',
-        description: '查看Docker容器状态和资源使用情况。',
-        author: '容器管理员',
-        tags: ['Docker', '容器', '监控'],
-        updatedAt: new Date('2023-12-07'),
-        isFavorite: true,
-        command: 'docker ps -a && docker stats --no-stream'
-      },
-      {
-        id: 13,
-        name: 'Git仓库状态',
-        description: '查看Git仓库的状态、分支和最近提交。',
-        author: '开发者',
-        tags: ['Git', '版本控制', '开发'],
-        updatedAt: new Date('2023-12-06'),
-        isFavorite: true,
-        command: 'git status && git branch -a && git log --oneline -10'
-      },
-      {
-        id: 14,
-        name: '防火墙状态检查',
-        description: '检查防火墙状态和规则配置。',
-        author: '安全管理员',
-        tags: ['防火墙', '安全', '网络'],
-        updatedAt: new Date('2023-12-05'),
-        isFavorite: false,
-        command: 'sudo ufw status verbose && sudo iptables -L -n'
-      },
-      {
-        id: 15,
-        name: 'SSL证书检查',
-        description: '检查SSL证书的有效期和详细信息。',
-        author: '安全管理员',
-        tags: ['SSL', '证书', '安全'],
-        updatedAt: new Date('2023-12-04'),
-        isFavorite: false,
-        command: 'echo | openssl s_client -servername example.com -connect example.com:443 2>/dev/null | openssl x509 -noout -dates'
-      },
-      {
-        id: 16,
-        name: '系统更新检查',
-        description: '检查系统可用更新和安全补丁。',
-        author: '管理员',
-        tags: ['系统', '更新', '安全'],
-        updatedAt: new Date('2023-12-03'),
-        isFavorite: true,
-        command: 'sudo apt update && apt list --upgradable'
-      },
-      {
-        id: 17,
-        name: '进程资源监控',
-        description: '监控占用资源最多的进程。',
-        author: '管理员',
-        tags: ['进程', '资源', '监控'],
-        updatedAt: new Date('2023-12-02'),
-        isFavorite: true,
-        command: 'ps aux --sort=-%cpu | head -10 && echo "=== Memory Usage ===" && ps aux --sort=-%mem | head -10'
-      }
-    ])
+    // 从脚本库服务获取数据
+    const scripts = computed(() => scriptLibraryService.getAllScripts())
 
     // 获取所有可用的标签
     const availableTags = computed(() => {
@@ -510,13 +340,17 @@ export default defineComponent({
       }
 
       if (filterFavoriteScripts.value) {
-        result = result.filter(script => script.isFavorite)
+        result = result.filter(script => scriptLibraryService.isFavorite(script.id))
       }
 
       if (filterRecentScripts.value) {
         const sevenDaysAgo = new Date()
         sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7)
-        result = result.filter(script => script.updatedAt >= sevenDaysAgo)
+        result = result.filter(script => {
+          if (!script.updatedAt) return false
+          const scriptDate = typeof script.updatedAt === 'string' ? new Date(script.updatedAt) : script.updatedAt
+          return scriptDate >= sevenDaysAgo
+        })
       }
 
       return result
@@ -749,7 +583,15 @@ export default defineComponent({
 
     // 格式化日期
     const formatDate = (date) => {
-      return date.toLocaleDateString('zh-CN', {
+      if (!date) return '-'
+
+      // 如果是字符串，转换为Date对象
+      const dateObj = typeof date === 'string' ? new Date(date) : date
+
+      // 检查是否是有效的日期
+      if (isNaN(dateObj.getTime())) return '-'
+
+      return dateObj.toLocaleDateString('zh-CN', {
         year: 'numeric',
         month: '2-digit',
         day: '2-digit'
@@ -766,8 +608,7 @@ export default defineComponent({
       command: '',
       tags: [],
       author: '管理员', // 这里可以从用户状态获取
-      updatedAt: null,
-      isFavorite: false
+      updatedAt: null
     })
 
     // 重置表单
@@ -779,8 +620,7 @@ export default defineComponent({
         command: '',
         tags: [],
         author: '管理员',
-        updatedAt: null,
-        isFavorite: false
+        updatedAt: null
       }
     }
 
@@ -872,7 +712,7 @@ export default defineComponent({
     };
 
     const toggleFavorite = (script) => {
-      script.isFavorite = !script.isFavorite;
+      scriptLibraryService.toggleFavorite(script.id);
     };
 
     // 导入脚本功能
@@ -929,8 +769,7 @@ export default defineComponent({
               command: scriptData.command,
               tags: Array.isArray(scriptData.tags) ? scriptData.tags : [],
               author: scriptData.author || '导入用户',
-              updatedAt: new Date(),
-              isFavorite: false
+              updatedAt: new Date()
             }
 
             scripts.value.push(newScript)
@@ -1073,7 +912,9 @@ export default defineComponent({
       fileInput,
       importScripts,
       exportScripts,
-      handleFileImport
+      handleFileImport,
+      // 脚本库服务
+      scriptLibraryService
     }
   }
 })

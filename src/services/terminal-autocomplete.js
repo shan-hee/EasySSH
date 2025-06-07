@@ -4,18 +4,19 @@
  */
 import scriptLibraryService from './scriptLibrary'
 import log from './log'
+import { useUserStore } from '@/store/user'
 
 class TerminalAutocompleteService {
   constructor() {
     // 当前输入缓冲区
     this.inputBuffer = ''
-    
+
     // 当前光标位置
     this.cursorPosition = 0
-    
+
     // 自动完成状态
     this.isActive = false
-    
+
     // 建议列表
     this.suggestions = []
 
@@ -24,22 +25,25 @@ class TerminalAutocompleteService {
 
     // 缓存的位置信息
     this.lastPosition = null
-    
+
     // 回调函数
     this.callbacks = {
       onSuggestionsUpdate: null,
       onPositionUpdate: null
     }
-    
+
     // 防抖定时器
     this.debounceTimer = null
-    
+
     // 配置
     this.config = {
       minInputLength: 1,
       debounceDelay: 50, // 减少防抖延迟
       maxSuggestions: 8
     }
+
+    // 用户存储引用
+    this.userStore = null
   }
 
   /**
@@ -48,6 +52,31 @@ class TerminalAutocompleteService {
    */
   setCallbacks(callbacks) {
     this.callbacks = { ...this.callbacks, ...callbacks }
+  }
+
+  /**
+   * 获取用户存储实例
+   * @returns {Object} 用户存储实例
+   */
+  getUserStore() {
+    if (!this.userStore) {
+      this.userStore = useUserStore()
+    }
+    return this.userStore
+  }
+
+  /**
+   * 检查用户是否已登录
+   * @returns {boolean} 是否已登录
+   */
+  isUserLoggedIn() {
+    try {
+      const userStore = this.getUserStore()
+      return userStore.isLoggedIn
+    } catch (error) {
+      log.warn('检查用户登录状态失败:', error)
+      return false
+    }
   }
 
   /**
@@ -334,6 +363,13 @@ class TerminalAutocompleteService {
    */
   updateSuggestions(input, terminal) {
     try {
+      // 首先检查用户是否已登录
+      if (!this.isUserLoggedIn()) {
+        log.debug('用户未登录，不显示自动补全建议')
+        this.hideSuggestions()
+        return
+      }
+
       // 严格检查输入长度和内容
       if (!input || input.trim().length < this.config.minInputLength) {
         this.hideSuggestions()

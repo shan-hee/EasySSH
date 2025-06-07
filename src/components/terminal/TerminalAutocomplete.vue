@@ -19,13 +19,16 @@
         :class="{ 'autocomplete-item--active': index === selectedIndex }"
         @click="selectSuggestion(index)"
         @mouseenter="handleMouseEnter(index)"
+        :title="getItemTooltip(suggestion)"
       >
-        <div class="autocomplete-item-main">
-          <span class="autocomplete-command">{{ suggestion.text }}</span>
-          <span class="autocomplete-description">{{ suggestion.description }}</span>
-        </div>
-        <div v-if="suggestion.fullCommand !== suggestion.text" class="autocomplete-full-command">
-          {{ suggestion.fullCommand }}
+        <div class="autocomplete-item-content">
+          <div class="autocomplete-item-main">
+            <span class="autocomplete-command" :title="suggestion.text">{{ suggestion.text }}</span>
+            <span class="autocomplete-description" :title="suggestion.description">{{ suggestion.description }}</span>
+          </div>
+          <div v-if="suggestion.fullCommand !== suggestion.text" class="autocomplete-full-command" :title="suggestion.fullCommand">
+            {{ suggestion.fullCommand }}
+          </div>
         </div>
       </div>
     </div>
@@ -60,11 +63,43 @@ export default {
     const listRef = ref(null)
     const isKeyboardNavigation = ref(false)
 
-    // 计算位置样式
-    const positionStyle = computed(() => ({
-      left: `${props.position.x}px`,
-      top: `${props.position.y}px`
-    }))
+    // 计算位置样式，包含智能位置调整
+    const positionStyle = computed(() => {
+      const { x, y } = props.position
+      const viewportWidth = window.innerWidth
+      const viewportHeight = window.innerHeight
+
+      // 预估自动补全框的尺寸
+      const estimatedWidth = Math.min(700, Math.max(350, viewportWidth * 0.4))
+      const estimatedHeight = Math.min(350, Math.max(200, props.suggestions.length * 50 + 100))
+
+      // 调整水平位置
+      let adjustedX = x
+      if (x + estimatedWidth > viewportWidth - 20) {
+        adjustedX = Math.max(20, viewportWidth - estimatedWidth - 20)
+      }
+
+      // 调整垂直位置
+      let adjustedY = y
+      if (y + estimatedHeight > viewportHeight - 20) {
+        // 如果下方空间不够，尝试显示在上方
+        const spaceAbove = y - 20
+        const spaceBelow = viewportHeight - y - 20
+
+        if (spaceAbove > spaceBelow && spaceAbove > 200) {
+          adjustedY = Math.max(20, y - estimatedHeight)
+        } else {
+          adjustedY = Math.max(20, viewportHeight - estimatedHeight - 20)
+        }
+      }
+
+      return {
+        left: `${adjustedX}px`,
+        top: `${adjustedY}px`,
+        maxWidth: `${Math.min(700, viewportWidth - adjustedX - 40)}px`,
+        maxHeight: `${Math.min(350, viewportHeight - adjustedY - 40)}px`
+      }
+    })
 
     // 监听建议变化，重置选中索引和导航状态
     watch(() => props.suggestions, () => {
@@ -111,6 +146,21 @@ export default {
         selectedIndex.value = index
         emit('select', props.suggestions[index])
       }
+    }
+
+    // 获取项目工具提示
+    const getItemTooltip = (suggestion) => {
+      const parts = []
+      if (suggestion.text) {
+        parts.push(`命令: ${suggestion.text}`)
+      }
+      if (suggestion.description) {
+        parts.push(`描述: ${suggestion.description}`)
+      }
+      if (suggestion.fullCommand && suggestion.fullCommand !== suggestion.text) {
+        parts.push(`完整命令: ${suggestion.fullCommand}`)
+      }
+      return parts.join('\n')
     }
 
     // 键盘导航
@@ -167,7 +217,8 @@ export default {
       selectSuggestion,
       handleKeydown,
       handleMouseEnter,
-      handleMouseMove
+      handleMouseMove,
+      getItemTooltip
     }
   }
 }
@@ -181,12 +232,14 @@ export default {
   border: 1px solid #404040;
   border-radius: 6px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-  min-width: 300px;
-  max-width: 500px;
-  max-height: 300px;
+  min-width: 350px;
+  max-width: 700px;
+  max-height: 350px;
   font-family: 'JetBrains Mono', 'Consolas', monospace;
   font-size: 12px;
   overflow: hidden;
+  /* 确保在屏幕边缘时自动调整位置 */
+  transform-origin: top left;
 }
 
 .autocomplete-header {
@@ -209,15 +262,16 @@ export default {
 }
 
 .autocomplete-list {
-  max-height: 200px;
+  max-height: 250px;
   overflow-y: auto;
 }
 
 .autocomplete-item {
-  padding: 8px 12px;
+  padding: 10px 14px;
   cursor: pointer;
   border-bottom: 1px solid #333333;
   transition: background-color 0.15s ease;
+  position: relative;
 }
 
 .autocomplete-item:last-child {
@@ -238,28 +292,49 @@ export default {
   background: #264f78;
 }
 
+.autocomplete-item-content {
+  width: 100%;
+  overflow: hidden;
+}
+
 .autocomplete-item-main {
   display: flex;
-  align-items: center;
-  gap: 8px;
+  align-items: flex-start;
+  gap: 12px;
+  min-height: 20px;
 }
 
 .autocomplete-command {
   color: #4fc1ff;
   font-weight: 500;
-  min-width: 80px;
+  flex-shrink: 0;
+  min-width: 120px;
+  max-width: 300px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  line-height: 1.4;
 }
 
 .autocomplete-description {
   color: #cccccc;
   flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  line-height: 1.4;
+  min-width: 0; /* 允许flex项目收缩到内容宽度以下 */
 }
 
 .autocomplete-full-command {
-  margin-top: 4px;
+  margin-top: 6px;
   color: #888888;
   font-size: 11px;
   font-style: italic;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  line-height: 1.3;
 }
 
 .autocomplete-footer {
@@ -289,5 +364,61 @@ export default {
 
 .autocomplete-list::-webkit-scrollbar-thumb:hover {
   background: #505050;
+}
+
+/* 响应式设计 - 小屏幕适配 */
+@media (max-width: 768px) {
+  .terminal-autocomplete {
+    min-width: 280px;
+    max-width: 90vw;
+    max-height: 40vh;
+  }
+
+  .autocomplete-command {
+    min-width: 80px;
+    max-width: 200px;
+  }
+
+  .autocomplete-item {
+    padding: 8px 10px;
+  }
+
+  .autocomplete-item-main {
+    gap: 8px;
+  }
+}
+
+/* 超大屏幕优化 */
+@media (min-width: 1200px) {
+  .terminal-autocomplete {
+    max-width: 800px;
+  }
+
+  .autocomplete-command {
+    max-width: 400px;
+  }
+}
+
+/* 高对比度模式支持 */
+@media (prefers-contrast: high) {
+  .terminal-autocomplete {
+    border-color: #ffffff;
+    box-shadow: 0 4px 12px rgba(255, 255, 255, 0.2);
+  }
+
+  .autocomplete-item--active {
+    background: #0078d4;
+  }
+
+  .autocomplete-command {
+    color: #ffffff;
+  }
+}
+
+/* 减少动画的用户偏好 */
+@media (prefers-reduced-motion: reduce) {
+  .autocomplete-item {
+    transition: none;
+  }
 }
 </style>

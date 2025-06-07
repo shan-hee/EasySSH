@@ -151,6 +151,73 @@ const connectDatabase = () => {
       )
     `);
 
+    // 创建脚本库表
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS scripts (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        description TEXT,
+        command TEXT NOT NULL,
+        author TEXT,
+        tags TEXT, -- JSON格式存储标签数组
+        keywords TEXT, -- JSON格式存储关键词数组
+        category TEXT DEFAULT '默认分类',
+        is_public INTEGER DEFAULT 1, -- 是否公开脚本
+        is_system INTEGER DEFAULT 0, -- 是否系统内置脚本
+        usage_count INTEGER DEFAULT 0, -- 使用次数
+        created_by INTEGER, -- 创建者用户ID
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        FOREIGN KEY (created_by) REFERENCES users (id)
+      )
+    `);
+
+    // 创建用户脚本收藏表
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS user_script_favorites (
+        user_id INTEGER NOT NULL,
+        script_id INTEGER NOT NULL,
+        created_at TEXT NOT NULL,
+        PRIMARY KEY (user_id, script_id),
+        FOREIGN KEY (user_id) REFERENCES users (id),
+        FOREIGN KEY (script_id) REFERENCES scripts (id) ON DELETE CASCADE
+      )
+    `);
+
+    // 创建用户自定义脚本表
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS user_scripts (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        name TEXT NOT NULL,
+        description TEXT,
+        command TEXT NOT NULL,
+        tags TEXT, -- JSON格式存储标签数组
+        keywords TEXT, -- JSON格式存储关键词数组
+        category TEXT DEFAULT '我的脚本',
+        usage_count INTEGER DEFAULT 0,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        FOREIGN KEY (user_id) REFERENCES users (id)
+      )
+    `);
+
+    // 创建脚本使用历史表
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS script_usage_history (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        script_id INTEGER,
+        user_script_id INTEGER,
+        script_name TEXT NOT NULL,
+        command TEXT NOT NULL,
+        used_at TEXT NOT NULL,
+        FOREIGN KEY (user_id) REFERENCES users (id),
+        FOREIGN KEY (script_id) REFERENCES scripts (id) ON DELETE SET NULL,
+        FOREIGN KEY (user_script_id) REFERENCES user_scripts (id) ON DELETE SET NULL
+      )
+    `);
+
     return db;
   } catch (error) {
     console.error('SQLite数据库连接失败:', error);

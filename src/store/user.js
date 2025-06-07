@@ -487,6 +487,16 @@ export const useUserStore = defineStore('user', () => {
         loadConnectionsFromServer().catch(() => {
           log.warn('加载用户连接配置失败，将使用本地数据')
         })
+
+        // 同步脚本库数据
+        try {
+          const { default: scriptLibraryService } = await import('../services/scriptLibrary.js')
+          scriptLibraryService.syncFromServer().catch(() => {
+            log.warn('同步脚本库数据失败，将使用本地数据')
+          })
+        } catch (error) {
+          log.warn('加载脚本库服务失败:', error)
+        }
       
         return { 
           success: true, 

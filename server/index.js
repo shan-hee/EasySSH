@@ -76,6 +76,7 @@ app.use('/api/users', userRoutes);
 app.use('/api/servers', serverRoutes);
 app.use('/api/monitor', monitorRoutes);
 app.use('/api/connections', connectionRoutes);
+app.use('/api/scripts', require('./routes/scripts'));
 
 // 状态API
 app.get('/api/status', (req, res) => {

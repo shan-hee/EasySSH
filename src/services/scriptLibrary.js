@@ -1,115 +1,239 @@
 /**
  * 脚本库服务
- * 管理脚本数据，提供搜索和过滤功能
+ * 管理脚本数据，提供搜索和过滤功能，支持数据同步
  */
 import { ref } from 'vue'
+import { useUserStore } from '@/store/user'
+import log from './log'
+import apiService from './api.js'
+import { getFromStorage, saveToStorage } from '../utils/storage.js'
+
+// 本地存储键
+const STORAGE_KEYS = {
+  SCRIPTS: 'scriptLibrary.scripts',
+  USER_SCRIPTS: 'scriptLibrary.userScripts',
+  FAVORITES: 'scriptLibrary.favorites',
+  LAST_SYNC: 'scriptLibrary.lastSync'
+}
 
 class ScriptLibraryService {
   constructor() {
+    // 用户存储引用
+    this.userStore = null
+
     // 脚本数据
-    this.scripts = ref([
-      {
-        id: 1,
-        name: '系统信息收集脚本',
-        description: '收集服务器系统信息，包括CPU、内存、磁盘使用情况等。',
-        author: '管理员',
-        tags: ['系统', '监控', '信息收集'],
-        updatedAt: new Date('2023-12-01'),
-        isFavorite: true,
-        command: 'free -h && df -h && cat /proc/cpuinfo | grep "model name" | head -1',
-        keywords: ['系统', '信息', '内存', '磁盘', 'cpu', 'free', 'df']
-      },
-      {
-        id: 2,
-        name: '网络连接检测',
-        description: '检测服务器与指定目标的网络连接状态。',
-        author: '网络管理员',
-        tags: ['网络', '诊断', '连接测试'],
-        updatedAt: new Date('2023-11-15'),
-        isFavorite: false,
-        command: 'ping -c 4 google.com && traceroute baidu.com',
-        keywords: ['网络', '连接', '检测', 'ping', 'traceroute']
-      },
-      {
-        id: 3,
-        name: '数据库备份脚本',
-        description: '自动备份MySQL/PostgreSQL数据库并上传到指定位置。',
-        author: '数据库管理员',
-        tags: ['数据库', '备份', 'MySQL', 'PostgreSQL'],
-        updatedAt: new Date('2023-10-28'),
-        isFavorite: true,
-        command: 'mysqldump -u root -p mydb > /backup/mydb_$(date +%Y%m%d).sql && gzip /backup/mydb_$(date +%Y%m%d).sql',
-        keywords: ['数据库', '备份', 'mysql', 'mysqldump', '压缩']
-      },
-      {
-        id: 4,
-        name: '进程监控',
-        description: '查看系统进程状态和资源使用情况。',
-        author: '系统管理员',
-        tags: ['进程', '监控', '系统'],
-        updatedAt: new Date('2023-12-05'),
-        isFavorite: false,
-        command: 'ps aux | head -20 && top -n 1',
-        keywords: ['进程', '监控', 'ps', 'top', '资源']
-      },
-      {
-        id: 5,
-        name: '日志查看',
-        description: '查看系统日志和应用日志。',
-        author: '运维工程师',
-        tags: ['日志', '查看', '系统'],
-        updatedAt: new Date('2023-12-03'),
-        isFavorite: true,
-        command: 'tail -f /var/log/syslog',
-        keywords: ['日志', '查看', 'tail', 'log', 'syslog']
-      },
-      {
-        id: 6,
-        name: '文件查找',
-        description: '在系统中查找指定文件。',
-        author: '系统管理员',
-        tags: ['文件', '查找', '搜索'],
-        updatedAt: new Date('2023-11-28'),
-        isFavorite: false,
-        command: 'find / -name "*.log" -type f 2>/dev/null | head -10',
-        keywords: ['文件', '查找', 'find', '搜索']
-      },
-      {
-        id: 7,
-        name: '服务状态检查',
-        description: '检查系统服务运行状态。',
-        author: '运维工程师',
-        tags: ['服务', '状态', '检查'],
-        updatedAt: new Date('2023-12-02'),
-        isFavorite: true,
-        command: 'systemctl status nginx && systemctl status mysql',
-        keywords: ['服务', '状态', 'systemctl', 'nginx', 'mysql']
-      },
-      {
-        id: 8,
-        name: '磁盘清理',
-        description: '清理系统临时文件和缓存。',
-        author: '系统管理员',
-        tags: ['磁盘', '清理', '维护'],
-        updatedAt: new Date('2023-11-30'),
-        isFavorite: false,
-        command: 'sudo apt-get clean && sudo rm -rf /tmp/* && sudo journalctl --vacuum-time=7d',
-        keywords: ['磁盘', '清理', 'clean', 'tmp', '缓存']
-      }
-    ])
-    
+    this.scripts = ref([])
+    this.userScripts = ref([])
+    this.favorites = ref([])
+    this.lastSync = ref(null)
+
+    // 加载本地数据
+    this.loadFromLocal()
+
     // 搜索历史
     this.searchHistory = ref([])
-    
+
+    // 搜索历史
+    this.searchHistory = ref([])
+
     // 常用命令
     this.frequentCommands = ref([])
   }
 
   /**
-   * 获取所有脚本
+   * 从本地存储加载数据
+   */
+  loadFromLocal() {
+    try {
+      // 加载脚本数据
+      const scripts = getFromStorage(STORAGE_KEYS.SCRIPTS, [])
+      if (scripts.length > 0) {
+        this.scripts.value = scripts
+      }
+
+      // 加载用户脚本
+      const userScripts = getFromStorage(STORAGE_KEYS.USER_SCRIPTS, [])
+      this.userScripts.value = userScripts
+
+      // 加载收藏
+      const favorites = getFromStorage(STORAGE_KEYS.FAVORITES, [])
+      this.favorites.value = favorites
+
+      // 加载同步时间
+      const lastSync = getFromStorage(STORAGE_KEYS.LAST_SYNC, null)
+      this.lastSync.value = lastSync
+
+      log.debug('从本地存储加载脚本库数据', {
+        scriptsCount: this.scripts.value.length,
+        userScriptsCount: this.userScripts.value.length,
+        favoritesCount: this.favorites.value.length,
+        lastSync: this.lastSync.value
+      })
+    } catch (error) {
+      log.error('加载本地脚本库数据失败:', error)
+    }
+  }
+
+  /**
+   * 保存数据到本地存储
+   */
+  saveToLocal() {
+    try {
+      saveToStorage(STORAGE_KEYS.SCRIPTS, this.scripts.value)
+      saveToStorage(STORAGE_KEYS.USER_SCRIPTS, this.userScripts.value)
+      saveToStorage(STORAGE_KEYS.FAVORITES, this.favorites.value)
+      saveToStorage(STORAGE_KEYS.LAST_SYNC, this.lastSync.value)
+
+      log.debug('脚本库数据已保存到本地存储')
+    } catch (error) {
+      log.error('保存脚本库数据到本地存储失败:', error)
+    }
+  }
+
+
+
+  /**
+   * 从服务器同步脚本库数据
+   */
+  async syncFromServer() {
+    try {
+      if (!this.isUserLoggedIn()) {
+        log.debug('用户未登录，跳过脚本库同步')
+        return false
+      }
+
+      log.info('开始同步脚本库数据...')
+
+      // 获取公开脚本
+      const publicScriptsResponse = await apiService.get('/scripts/all')
+      if (publicScriptsResponse && publicScriptsResponse.success) {
+        // 合并公开脚本和用户脚本
+        const allScripts = publicScriptsResponse.scripts || []
+
+        // 分离公开脚本和用户脚本
+        const publicScripts = allScripts.filter(script => script.source === 'public')
+        const userScripts = allScripts.filter(script => script.source === 'user')
+
+        // 更新本地数据
+        this.scripts.value = publicScripts.map(script => ({
+          ...script,
+          updatedAt: script.updatedAt || script.updated_at,
+          createdAt: script.createdAt || script.created_at,
+          isFavorite: this.favorites.value.includes(script.id)
+        }))
+
+        this.userScripts.value = userScripts.map(script => ({
+          ...script,
+          updatedAt: script.updatedAt || script.updated_at,
+          createdAt: script.createdAt || script.created_at
+        }))
+
+        // 更新同步时间
+        this.lastSync.value = new Date().toISOString()
+
+        // 保存到本地存储
+        this.saveToLocal()
+
+        log.info('脚本库数据同步成功', {
+          publicScripts: publicScripts.length,
+          userScripts: userScripts.length
+        })
+
+        return true
+      } else {
+        log.warn('获取脚本库数据失败，使用本地数据')
+        return false
+      }
+    } catch (error) {
+      log.error('同步脚本库数据失败:', error)
+      return false
+    }
+  }
+
+  /**
+   * 记录脚本使用
+   */
+  async recordScriptUsage(script) {
+    try {
+      if (!this.isUserLoggedIn()) {
+        return false
+      }
+
+      const usageData = {
+        scriptId: script.source === 'public' ? script.id : null,
+        userScriptId: script.source === 'user' ? script.id : null,
+        scriptName: script.name,
+        command: script.command
+      }
+
+      await apiService.post('/scripts/usage', usageData)
+      log.debug('脚本使用记录已保存', usageData)
+      return true
+    } catch (error) {
+      log.warn('记录脚本使用失败:', error)
+      return false
+    }
+  }
+
+  /**
+   * 获取用户存储实例
+   * @returns {Object} 用户存储实例
+   */
+  getUserStore() {
+    if (!this.userStore) {
+      this.userStore = useUserStore()
+    }
+    return this.userStore
+  }
+
+  /**
+   * 检查用户是否已登录
+   * @returns {boolean} 是否已登录
+   */
+  isUserLoggedIn() {
+    try {
+      const userStore = this.getUserStore()
+      return userStore.isLoggedIn
+    } catch (error) {
+      log.warn('检查用户登录状态失败:', error)
+      return false
+    }
+  }
+
+  /**
+   * 获取所有脚本（包括公开脚本和用户脚本）
    */
   getAllScripts() {
+    // 合并公开脚本和用户脚本
+    const allScripts = [
+      ...this.scripts.value.map(script => ({ ...script, source: 'public' })),
+      ...this.userScripts.value.map(script => ({ ...script, source: 'user' }))
+    ]
+
+    // 按使用次数和更新时间排序
+    return allScripts.sort((a, b) => {
+      if (a.usageCount !== b.usageCount) {
+        return (b.usageCount || 0) - (a.usageCount || 0)
+      }
+      // 安全的日期比较
+      const dateA = a.updatedAt ? new Date(a.updatedAt) : new Date(0)
+      const dateB = b.updatedAt ? new Date(b.updatedAt) : new Date(0)
+      return dateB - dateA
+    })
+  }
+
+  /**
+   * 获取公开脚本
+   */
+  getPublicScripts() {
     return this.scripts.value
+  }
+
+  /**
+   * 获取用户脚本
+   */
+  getUserScripts() {
+    return this.userScripts.value
   }
 
   /**
@@ -119,7 +243,7 @@ class ScriptLibraryService {
    */
   searchScripts(query, options = {}) {
     if (!query || query.trim() === '') {
-      return this.scripts.value
+      return this.getAllScripts()
     }
 
     const searchQuery = query.toLowerCase().trim()
@@ -132,7 +256,7 @@ class ScriptLibraryService {
       fuzzyMatch = true
     } = options
 
-    return this.scripts.value.filter(script => {
+    return this.getAllScripts().filter(script => {
       // 精确匹配
       if (matchName && script.name.toLowerCase().includes(searchQuery)) {
         return true
@@ -209,11 +333,17 @@ class ScriptLibraryService {
    * @param {number} limit - 返回结果数量限制
    */
   getSimpleCommandSuggestions(input, limit = 8) {
+    // 检查用户是否已登录
+    if (!this.isUserLoggedIn()) {
+      log.debug('用户未登录，不提供命令建议')
+      return []
+    }
+
     const suggestions = this.getCommandSuggestions(input, limit)
 
     return suggestions.map(script => ({
       id: script.id,
-      text: this.extractMainCommand(script.command),
+      text: script.command, // 返回完整命令而不是提取的主命令
       description: script.name,
       fullCommand: script.command,
       score: script.score
@@ -293,7 +423,8 @@ class ScriptLibraryService {
    */
   getFrequentCommands() {
     // 返回收藏的脚本作为常用命令
-    return this.scripts.value.filter(script => script.isFavorite)
+    const allScripts = this.getAllScripts()
+    return allScripts.filter(script => script.isFavorite || this.favorites.value.includes(script.id))
   }
 
   /**
@@ -327,9 +458,39 @@ class ScriptLibraryService {
   /**
    * 根据ID获取脚本
    * @param {number} id - 脚本ID
+   * @param {string} source - 脚本来源 ('public' 或 'user')
    */
-  getScriptById(id) {
+  getScriptById(id, source = 'public') {
+    if (source === 'user') {
+      return this.userScripts.value.find(script => script.id === id)
+    }
     return this.scripts.value.find(script => script.id === id)
+  }
+
+  /**
+   * 切换脚本收藏状态
+   * @param {number} scriptId - 脚本ID
+   */
+  toggleFavorite(scriptId) {
+    const index = this.favorites.value.indexOf(scriptId)
+    if (index > -1) {
+      this.favorites.value.splice(index, 1)
+    } else {
+      this.favorites.value.push(scriptId)
+    }
+
+    // 更新本地存储
+    this.saveToLocal()
+
+    return this.favorites.value.includes(scriptId)
+  }
+
+  /**
+   * 检查脚本是否被收藏
+   * @param {number} scriptId - 脚本ID
+   */
+  isFavorite(scriptId) {
+    return this.favorites.value.includes(scriptId)
   }
 
   /**

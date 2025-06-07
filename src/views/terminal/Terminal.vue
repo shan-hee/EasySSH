@@ -1668,6 +1668,29 @@ export default {
       })
     }
 
+    // 监听用户登录状态变化，处理自动补全
+    watch(
+      () => userStore.isLoggedIn,
+      (newLoginStatus, oldLoginStatus) => {
+        log.debug(`用户登录状态变化: ${oldLoginStatus} -> ${newLoginStatus}`)
+
+        // 如果用户登出，立即隐藏自动补全建议
+        if (oldLoginStatus && !newLoginStatus) {
+          log.debug('用户登出，隐藏自动补全建议')
+          autocomplete.value.visible = false
+          autocomplete.value.suggestions = []
+          // 重置自动补全服务状态
+          terminalAutocompleteService.reset()
+        }
+
+        // 如果用户登录，可以在这里做一些初始化工作
+        if (!oldLoginStatus && newLoginStatus) {
+          log.debug('用户登录，自动补全功能已启用')
+        }
+      },
+      { immediate: false } // 不需要立即执行，只监听变化
+    )
+
     // 键盘事件处理
     const handleGlobalKeydown = (event) => {
       if (autocompleteRef.value && autocomplete.value.visible) {
