@@ -5,6 +5,7 @@
 import scriptLibraryService from './scriptLibrary'
 import log from './log'
 import { useUserStore } from '@/store/user'
+import { cacheConfig } from '@/config/app-config'
 
 class TerminalAutocompleteService {
   constructor() {
@@ -35,11 +36,11 @@ class TerminalAutocompleteService {
     // 防抖定时器
     this.debounceTimer = null
 
-    // 配置
+    // 配置（从配置文件获取）
     this.config = {
-      minInputLength: 1,
-      debounceDelay: 50, // 减少防抖延迟
-      maxSuggestions: 8
+      minInputLength: cacheConfig.suggestions.minInputLength,
+      debounceDelay: cacheConfig.suggestions.debounceDelay,
+      maxSuggestions: cacheConfig.suggestions.maxSuggestions
     }
 
     // 用户存储引用
@@ -382,8 +383,8 @@ class TerminalAutocompleteService {
         return
       }
 
-      // 获取建议
-      const suggestions = scriptLibraryService.getSimpleCommandSuggestions(
+      // 获取建议 - 使用同步版本以保持现有行为
+      const suggestions = scriptLibraryService.getSimpleCommandSuggestionsSync(
         input.trim(),
         this.config.maxSuggestions
       )

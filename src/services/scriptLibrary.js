@@ -1,19 +1,39 @@
 /**
  * 脚本库服务
- * 管理脚本数据，提供搜索和过滤功能，支持数据同步
+ * 管理脚本数据，提供搜索和过滤功能，支持混合缓存策略
  */
 import { ref } from 'vue'
 import { useUserStore } from '@/store/user'
 import log from './log'
 import apiService from './api.js'
 import { getFromStorage, saveToStorage } from '../utils/storage.js'
+import { cacheConfig, environment } from '@/config/app-config'
 
 // 本地存储键
 const STORAGE_KEYS = {
   SCRIPTS: 'scriptLibrary.scripts',
   USER_SCRIPTS: 'scriptLibrary.userScripts',
   FAVORITES: 'scriptLibrary.favorites',
-  LAST_SYNC: 'scriptLibrary.lastSync'
+  LAST_SYNC: 'scriptLibrary.lastSync',
+  CACHE_METADATA: 'scriptLibrary.cacheMetadata',
+  SUGGESTIONS_CACHE: 'scriptLibrary.suggestionsCache'
+}
+
+// 获取缓存配置（支持环境变量覆盖）
+const getCacheConfig = () => {
+  const config = { ...cacheConfig }
+
+  // 开发环境可以通过环境变量覆盖配置
+  if (environment.isDevelopment) {
+    // 从localStorage读取开发配置覆盖
+    const devConfig = JSON.parse(localStorage.getItem('dev-cache-config') || '{}')
+    if (Object.keys(devConfig).length > 0) {
+      log.debug('使用开发环境缓存配置覆盖:', devConfig)
+      return { ...config, ...devConfig }
+    }
+  }
+
+  return config
 }
 
 class ScriptLibraryService {
@@ -21,23 +41,41 @@ class ScriptLibraryService {
     // 用户存储引用
     this.userStore = null
 
+    // 获取缓存配置
+    this.config = getCacheConfig()
+
     // 脚本数据
     this.scripts = ref([])
     this.userScripts = ref([])
     this.favorites = ref([])
     this.lastSync = ref(null)
 
-    // 加载本地数据
-    this.loadFromLocal()
+    // 混合缓存系统
+    this.memoryCache = new Map()           // L1: 内存缓存
+    this.suggestionsCache = new Map()      // 建议专用缓存
+    this.cacheMetadata = new Map()         // 缓存元数据
+    this.backgroundSyncTimer = null        // 后台同步定时器
+    this.pendingRequests = new Map()       // 防止重复请求
 
-    // 搜索历史
-    this.searchHistory = ref([])
+    // 加载本地数据和缓存
+    this.loadFromLocal()
+    this.loadCacheMetadata()
+    this.setupBackgroundSync()
 
     // 搜索历史
     this.searchHistory = ref([])
 
     // 常用命令
     this.frequentCommands = ref([])
+
+    // 开发环境调试
+    if (environment.isDevelopment && this.config.development.enableDebugLogs) {
+      log.debug('脚本库服务初始化', {
+        cacheConfig: this.config,
+        memoryMaxSize: this.config.memory.maxSize,
+        syncInterval: this.config.sync.backgroundInterval
+      })
+    }
   }
 
   /**
@@ -90,7 +128,170 @@ class ScriptLibraryService {
     }
   }
 
+  /**
+   * 加载缓存元数据
+   */
+  loadCacheMetadata() {
+    try {
+      const metadata = getFromStorage(STORAGE_KEYS.CACHE_METADATA, {})
+      const suggestionsCache = getFromStorage(STORAGE_KEYS.SUGGESTIONS_CACHE, {})
 
+      // 恢复缓存元数据
+      Object.entries(metadata).forEach(([key, value]) => {
+        this.cacheMetadata.set(key, value)
+      })
+
+      // 恢复建议缓存（只恢复未过期的）
+      Object.entries(suggestionsCache).forEach(([key, value]) => {
+        if (this.isCacheValid(value)) {
+          this.suggestionsCache.set(key, value)
+        }
+      })
+
+      log.debug('缓存元数据已加载', {
+        metadataCount: this.cacheMetadata.size,
+        suggestionsCacheCount: this.suggestionsCache.size
+      })
+    } catch (error) {
+      log.error('加载缓存元数据失败:', error)
+    }
+  }
+
+  /**
+   * 保存缓存元数据
+   */
+  saveCacheMetadata() {
+    try {
+      const metadata = Object.fromEntries(this.cacheMetadata)
+      const suggestionsCache = Object.fromEntries(this.suggestionsCache)
+
+      saveToStorage(STORAGE_KEYS.CACHE_METADATA, metadata)
+      saveToStorage(STORAGE_KEYS.SUGGESTIONS_CACHE, suggestionsCache)
+
+      log.debug('缓存元数据已保存')
+    } catch (error) {
+      log.error('保存缓存元数据失败:', error)
+    }
+  }
+
+  /**
+   * 设置后台同步
+   */
+  setupBackgroundSync() {
+    // 清除现有定时器
+    if (this.backgroundSyncTimer) {
+      clearInterval(this.backgroundSyncTimer)
+    }
+
+    // 设置后台同步定时器
+    this.backgroundSyncTimer = setInterval(() => {
+      if (this.isUserLoggedIn()) {
+        this.backgroundSync()
+      }
+    }, this.config.sync.backgroundInterval)
+
+    log.debug('后台同步已设置', {
+      interval: this.config.sync.backgroundInterval
+    })
+  }
+
+
+
+  /**
+   * 检查缓存是否有效
+   */
+  isCacheValid(cacheItem) {
+    if (!cacheItem || !cacheItem.timestamp) {
+      return false
+    }
+
+    const now = Date.now()
+    const age = now - cacheItem.timestamp
+
+    return age < this.config.memory.ttl
+  }
+
+  /**
+   * 检查缓存是否过期但仍可用（stale-while-revalidate）
+   */
+  isCacheStale(cacheItem) {
+    if (!cacheItem || !cacheItem.timestamp) {
+      return true
+    }
+
+    const now = Date.now()
+    const age = now - cacheItem.timestamp
+
+    return age > this.config.memory.ttl &&
+           age < this.config.memory.ttl + this.config.memory.staleWhileRevalidate
+  }
+
+  /**
+   * 后台同步
+   */
+  async backgroundSync() {
+    try {
+      log.debug('执行后台同步...')
+
+      // 检查是否需要同步
+      const lastSyncTime = this.lastSync.value ? new Date(this.lastSync.value).getTime() : 0
+      const now = Date.now()
+
+      if (now - lastSyncTime < this.config.sync.backgroundInterval) {
+        log.debug('距离上次同步时间太短，跳过后台同步')
+        return
+      }
+
+      // 执行同步
+      const success = await this.syncFromServer()
+      if (success) {
+        // 清理过期缓存
+        this.cleanupExpiredCache()
+        // 保存缓存元数据
+        this.saveCacheMetadata()
+      }
+    } catch (error) {
+      log.warn('后台同步失败:', error)
+    }
+  }
+
+  /**
+   * 清理过期缓存
+   */
+  cleanupExpiredCache() {
+    const now = Date.now()
+    let cleanedCount = 0
+
+    // 清理内存缓存
+    for (const [key, value] of this.memoryCache.entries()) {
+      if (!this.isCacheValid(value) && !this.isCacheStale(value)) {
+        this.memoryCache.delete(key)
+        cleanedCount++
+      }
+    }
+
+    // 清理建议缓存
+    for (const [key, value] of this.suggestionsCache.entries()) {
+      if (!this.isCacheValid(value) && !this.isCacheStale(value)) {
+        this.suggestionsCache.delete(key)
+        cleanedCount++
+      }
+    }
+
+    // 限制缓存大小
+    if (this.memoryCache.size > this.config.memory.maxSize) {
+      const entries = Array.from(this.memoryCache.entries())
+      entries.sort((a, b) => (a[1].timestamp || 0) - (b[1].timestamp || 0))
+
+      const toDelete = entries.slice(0, entries.length - this.config.memory.maxSize)
+      toDelete.forEach(([key]) => this.memoryCache.delete(key))
+      cleanedCount += toDelete.length
+    }
+
+    if (cleanedCount > 0) {
+      log.debug(`清理了 ${cleanedCount} 个过期缓存项`)
+    }
+  }
 
   /**
    * 从服务器同步脚本库数据
@@ -131,6 +332,9 @@ class ScriptLibraryService {
         // 更新同步时间
         this.lastSync.value = new Date().toISOString()
 
+        // 清理相关缓存
+        this.invalidateRelatedCache()
+
         // 保存到本地存储
         this.saveToLocal()
 
@@ -148,6 +352,17 @@ class ScriptLibraryService {
       log.error('同步脚本库数据失败:', error)
       return false
     }
+  }
+
+  /**
+   * 使相关缓存失效
+   */
+  invalidateRelatedCache() {
+    // 清空建议缓存，因为脚本数据已更新
+    this.suggestionsCache.clear()
+    this.memoryCache.clear()
+
+    log.debug('已清理相关缓存')
   }
 
   /**
@@ -328,26 +543,168 @@ class ScriptLibraryService {
   }
 
   /**
-   * 获取简化的命令建议（用于终端自动完成）
+   * 获取简化的命令建议（用于终端自动完成）- 混合缓存策略
    * @param {string} input - 用户输入
    * @param {number} limit - 返回结果数量限制
    */
-  getSimpleCommandSuggestions(input, limit = 8) {
+  async getSimpleCommandSuggestions(input, limit = 8) {
     // 检查用户是否已登录
     if (!this.isUserLoggedIn()) {
       log.debug('用户未登录，不提供命令建议')
       return []
     }
 
-    const suggestions = this.getCommandSuggestions(input, limit)
+    const cacheKey = `suggestions:${input}:${limit}`
 
-    return suggestions.map(script => ({
+    // L1: 检查内存缓存
+    const memoryCached = this.memoryCache.get(cacheKey)
+    if (memoryCached && this.isCacheValid(memoryCached)) {
+      log.debug('从内存缓存返回建议', { input, count: memoryCached.data.length })
+      return memoryCached.data
+    }
+
+    // L2: 检查建议缓存
+    const suggestionsCached = this.suggestionsCache.get(cacheKey)
+    if (suggestionsCached && this.isCacheValid(suggestionsCached)) {
+      // 更新到内存缓存
+      this.memoryCache.set(cacheKey, suggestionsCached)
+      log.debug('从建议缓存返回建议', { input, count: suggestionsCached.data.length })
+      return suggestionsCached.data
+    }
+
+    // L3: 使用过期但可用的缓存 + 后台更新
+    if (suggestionsCached && this.isCacheStale(suggestionsCached)) {
+      log.debug('使用过期缓存并触发后台更新', { input })
+
+      // 异步更新缓存
+      this.updateSuggestionsInBackground(input, limit, cacheKey)
+
+      // 返回过期但可用的数据
+      return suggestionsCached.data
+    }
+
+    // L4: 计算新的建议
+    return await this.computeAndCacheSuggestions(input, limit, cacheKey)
+  }
+
+  /**
+   * 同步版本的获取建议（向后兼容）
+   */
+  getSimpleCommandSuggestionsSync(input, limit = 8) {
+    // 检查用户是否已登录
+    if (!this.isUserLoggedIn()) {
+      log.debug('用户未登录，不提供命令建议')
+      return []
+    }
+
+    const cacheKey = `suggestions:${input}:${limit}`
+
+    // 只检查内存缓存和建议缓存
+    const memoryCached = this.memoryCache.get(cacheKey)
+    if (memoryCached && this.isCacheValid(memoryCached)) {
+      return memoryCached.data
+    }
+
+    const suggestionsCached = this.suggestionsCache.get(cacheKey)
+    if (suggestionsCached && (this.isCacheValid(suggestionsCached) || this.isCacheStale(suggestionsCached))) {
+      // 如果缓存过期，触发后台更新
+      if (this.isCacheStale(suggestionsCached)) {
+        this.updateSuggestionsInBackground(input, limit, cacheKey)
+      }
+      return suggestionsCached.data
+    }
+
+    // 计算新建议（同步）
+    const suggestions = this.getCommandSuggestions(input, limit)
+    const result = suggestions.map(script => ({
       id: script.id,
-      text: script.command, // 返回完整命令而不是提取的主命令
+      text: script.command,
       description: script.name,
       fullCommand: script.command,
       score: script.score
     }))
+
+    // 缓存结果
+    this.cacheResult(cacheKey, result)
+
+    return result
+  }
+
+  /**
+   * 后台更新建议
+   */
+  async updateSuggestionsInBackground(input, limit, cacheKey) {
+    try {
+      // 防止重复请求
+      if (this.pendingRequests.has(cacheKey)) {
+        return
+      }
+
+      this.pendingRequests.set(cacheKey, true)
+
+      log.debug('后台更新建议开始', { input, cacheKey })
+
+      // 计算新建议
+      const result = await this.computeAndCacheSuggestions(input, limit, cacheKey, false)
+
+      log.debug('后台更新建议完成', { input, count: result.length })
+
+    } catch (error) {
+      log.warn('后台更新建议失败:', error)
+    } finally {
+      this.pendingRequests.delete(cacheKey)
+    }
+  }
+
+  /**
+   * 计算并缓存建议
+   */
+  async computeAndCacheSuggestions(input, limit, cacheKey, logResult = true) {
+    const suggestions = this.getCommandSuggestions(input, limit)
+    const result = suggestions.map(script => ({
+      id: script.id,
+      text: script.command,
+      description: script.name,
+      fullCommand: script.command,
+      score: script.score
+    }))
+
+    // 缓存结果
+    this.cacheResult(cacheKey, result)
+
+    if (logResult) {
+      log.debug('计算新建议', { input, count: result.length })
+    }
+
+    return result
+  }
+
+  /**
+   * 缓存结果
+   */
+  cacheResult(cacheKey, data) {
+    const cacheItem = {
+      data,
+      timestamp: Date.now()
+    }
+
+    // 存储到内存缓存
+    this.memoryCache.set(cacheKey, cacheItem)
+
+    // 存储到建议缓存
+    this.suggestionsCache.set(cacheKey, cacheItem)
+
+    // 限制建议缓存大小
+    if (this.suggestionsCache.size > this.config.suggestions.maxSize) {
+      const entries = Array.from(this.suggestionsCache.entries())
+      entries.sort((a, b) => (a[1].timestamp || 0) - (b[1].timestamp || 0))
+
+      const toDelete = entries.slice(0, entries.length - this.config.suggestions.maxSize)
+      toDelete.forEach(([key]) => this.suggestionsCache.delete(key))
+    }
+
+    // 异步保存缓存元数据
+    setTimeout(() => this.saveCacheMetadata(), 100)
   }
 
   /**
@@ -453,6 +810,68 @@ class ScriptLibraryService {
    */
   getSearchHistory() {
     return this.searchHistory.value
+  }
+
+  /**
+   * 获取缓存统计信息
+   */
+  getCacheStats() {
+    return {
+      memoryCache: {
+        size: this.memoryCache.size,
+        maxSize: this.config.memory.maxSize
+      },
+      suggestionsCache: {
+        size: this.suggestionsCache.size,
+        maxSize: this.config.suggestions.maxSize
+      },
+      cacheMetadata: {
+        size: this.cacheMetadata.size
+      },
+      lastSync: this.lastSync.value,
+      pendingRequests: this.pendingRequests.size,
+      config: this.config
+    }
+  }
+
+  /**
+   * 手动清理缓存
+   */
+  clearCache() {
+    this.memoryCache.clear()
+    this.suggestionsCache.clear()
+    this.cacheMetadata.clear()
+    this.pendingRequests.clear()
+
+    // 清理本地存储中的缓存
+    try {
+      localStorage.removeItem(`easyssh-${STORAGE_KEYS.CACHE_METADATA}`)
+      localStorage.removeItem(`easyssh-${STORAGE_KEYS.SUGGESTIONS_CACHE}`)
+    } catch (error) {
+      log.warn('清理本地存储缓存失败:', error)
+    }
+
+    log.info('缓存已清理')
+  }
+
+  /**
+   * 销毁服务
+   */
+  destroy() {
+    // 清理定时器
+    if (this.backgroundSyncTimer) {
+      clearInterval(this.backgroundSyncTimer)
+      this.backgroundSyncTimer = null
+    }
+
+    // 保存缓存元数据
+    this.saveCacheMetadata()
+
+    // 清理内存
+    this.memoryCache.clear()
+    this.pendingRequests.clear()
+
+    log.debug('脚本库服务已销毁')
   }
 
   /**

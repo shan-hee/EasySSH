@@ -23,6 +23,8 @@ import servicesManager from './services'
 import log from './services/log'
 // 导入字体加载器
 import fontLoader from './utils/fontLoader'
+// 导入配置管理器
+import configManager from './utils/config-manager'
 
 // 初始化主题和语言设置
 const initSettings = () => {
@@ -278,6 +280,15 @@ const initializeApp = async () => {
       servicesManager.log.info('UI基础服务初始化成功')
     }
     
+    // 初始化配置管理器
+    servicesManager.log.debug('初始化配置管理器')
+    const cacheConfigStats = configManager.getStats()
+    servicesManager.log.debug('配置管理器已初始化', {
+      isDevelopment: cacheConfigStats.isDevelopment,
+      totalOverrides: cacheConfigStats.totalOverrides,
+      totalPresets: cacheConfigStats.totalPresets
+    })
+
     // 初始化应用核心服务
     servicesManager.log.debug('准备初始化核心应用服务')
     await servicesManager.initServices()
