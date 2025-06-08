@@ -105,7 +105,7 @@
               </tr>
             </thead>
             <tbody>
-              <tr v-for="script in filteredScripts" :key="script.id" class="script-row">
+              <tr v-for="script in filteredScripts" :key="`${script.source || 'public'}-${script.id}`" class="script-row">
                 <td class="script-name">
                   <div class="name-with-favorite">
                     <button class="btn-icon favorite-icon" @click="toggleFavorite(script)">
@@ -137,13 +137,32 @@
                   <code>{{ script.command }}</code>
                 </td>
                 <td class="script-actions">
-                  <el-button class="action-btn" circle size="small" link title="编辑" @click="editScript(script)">
+                  <!-- 只有用户脚本才显示编辑按钮 -->
+                  <el-button
+                    v-if="script.source === 'user'"
+                    class="action-btn"
+                    circle
+                    size="small"
+                    link
+                    title="编辑"
+                    @click="editScript(script)"
+                  >
                     <el-icon><Edit /></el-icon>
                   </el-button>
+                  <!-- 运行按钮对所有脚本都显示 -->
                   <el-button class="action-btn" circle size="small" link title="运行" @click="runScript(script)">
                     <el-icon><CaretRight /></el-icon>
                   </el-button>
-                  <el-button class="action-btn" circle size="small" link title="删除" @click="deleteScript(script)">
+                  <!-- 只有用户脚本才显示删除按钮 -->
+                  <el-button
+                    v-if="script.source === 'user'"
+                    class="action-btn"
+                    circle
+                    size="small"
+                    link
+                    title="删除"
+                    @click="deleteScript(script)"
+                  >
                     <el-icon><Delete /></el-icon>
                   </el-button>
                 </td>
@@ -267,6 +286,21 @@
         </span>
       </template>
     </el-dialog>
+
+    <!-- 服务器选择对话框 -->
+    <ServerSelectionDialog
+      v-model:visible="serverSelectionVisible"
+      :script="selectedScript"
+      @execute="handleScriptExecution"
+    />
+
+    <!-- 脚本执行结果对话框 -->
+    <ScriptExecutionDialog
+      v-model:visible="executionResultVisible"
+      :script="executingScript"
+      :execution-results="executionResults"
+      @retry="handleRetryExecution"
+    />
   </div>
 </template>
 
@@ -275,13 +309,19 @@ import { defineComponent, ref, computed, watch, onMounted, nextTick } from 'vue'
 import { Edit, Delete, CaretRight } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import scriptLibraryService from '@/services/scriptLibrary.js'
+import ServerSelectionDialog from '@/components/dialogs/ServerSelectionDialog.vue'
+import ScriptExecutionDialog from '@/components/dialogs/ScriptExecutionDialog.vue'
+import apiService from '@/services/api.js'
+import log from '@/services/log.js'
 
 export default defineComponent({
   name: 'ScriptLibrary',
   components: {
     Edit,
     Delete,
-    CaretRight
+    CaretRight,
+    ServerSelectionDialog,
+    ScriptExecutionDialog
   },
   setup() {
     const searchQuery = ref('')
@@ -336,7 +376,7 @@ export default defineComponent({
 
       // 根据其他筛选条件
       if (filterMyScripts.value) {
-        result = result.filter(script => script.author === '管理员')
+        result = result.filter(script => script.source === 'user')
       }
 
       if (filterFavoriteScripts.value) {
@@ -633,13 +673,19 @@ export default defineComponent({
 
     // 编辑脚本
     const editScript = (script) => {
+      // 只允许编辑用户脚本
+      if (script.source !== 'user') {
+        ElMessage.warning('只能编辑自己创建的脚本')
+        return
+      }
+
       isEdit.value = true
       scriptForm.value = { ...script }
       dialogVisible.value = true
     }
 
     // 保存脚本
-    const saveScript = () => {
+    const saveScript = async () => {
       if (!scriptForm.value.name) {
         ElMessage.warning('请输入脚本名称')
         return
@@ -649,31 +695,67 @@ export default defineComponent({
         return
       }
 
-      const now = new Date()
-      if (isEdit.value) {
-        // 更新现有脚本
-        const index = scripts.value.findIndex(s => s.id === scriptForm.value.id)
-        if (index !== -1) {
-          scripts.value[index] = {
-            ...scriptForm.value,
-            updatedAt: now
+      try {
+        if (isEdit.value) {
+          // 更新现有脚本
+          const response = await apiService.put(`/scripts/user/${scriptForm.value.id}`, {
+            name: scriptForm.value.name,
+            description: scriptForm.value.description,
+            command: scriptForm.value.command,
+            tags: scriptForm.value.tags,
+            category: '我的脚本'
+          })
+
+          if (response && response.success) {
+            // 更新本地数据
+            const allScripts = scriptLibraryService.getAllScripts()
+            const index = allScripts.findIndex(s => s.id === scriptForm.value.id && s.source === 'user')
+            if (index !== -1) {
+              // 更新脚本库服务中的数据
+              const userScripts = scriptLibraryService.getUserScripts()
+              const userIndex = userScripts.findIndex(s => s.id === scriptForm.value.id)
+              if (userIndex !== -1) {
+                userScripts[userIndex] = {
+                  ...response.script,
+                  source: 'user'
+                }
+                scriptLibraryService.saveToLocal()
+              }
+            }
+            ElMessage.success('脚本更新成功')
+          } else {
+            throw new Error(response?.message || '更新脚本失败')
           }
-          ElMessage.success('脚本更新成功')
+        } else {
+          // 创建新脚本
+          const response = await apiService.post('/scripts/user', {
+            name: scriptForm.value.name,
+            description: scriptForm.value.description,
+            command: scriptForm.value.command,
+            tags: scriptForm.value.tags,
+            category: '我的脚本'
+          })
+
+          if (response && response.success) {
+            // 添加到本地脚本库
+            const newScript = {
+              ...response.script,
+              source: 'user'
+            }
+            scriptLibraryService.userScripts.value.push(newScript)
+            scriptLibraryService.saveToLocal()
+            ElMessage.success('脚本创建成功')
+          } else {
+            throw new Error(response?.message || '创建脚本失败')
+          }
         }
-      } else {
-        // 创建新脚本
-        const maxId = Math.max(...scripts.value.map(s => s.id), 0)
-        const newScript = {
-          ...scriptForm.value,
-          id: maxId + 1,
-          updatedAt: now
-        }
-        scripts.value.push(newScript)
-        ElMessage.success('脚本创建成功')
+
+        dialogVisible.value = false
+        resetForm()
+      } catch (error) {
+        log.error('保存脚本失败:', error)
+        ElMessage.error('保存脚本失败: ' + error.message)
       }
-      
-      dialogVisible.value = false
-      resetForm()
     }
 
     // 删除脚本
@@ -688,14 +770,34 @@ export default defineComponent({
           draggable: true,
           closeOnClickModal: false
         }
-      ).then(() => {
-        const index = scripts.value.findIndex(s => s.id === script.id)
-        if (index !== -1) {
-          scripts.value.splice(index, 1)
-          ElMessage({
-            type: 'success',
-            message: '脚本删除成功'
-          })
+      ).then(async () => {
+        try {
+          // 如果是用户脚本，调用后端API删除
+          if (script.source === 'user') {
+            const response = await apiService.delete(`/scripts/user/${script.id}`)
+
+            if (response && response.success) {
+              // 从本地脚本库中删除
+              const userScripts = scriptLibraryService.getUserScripts()
+              const index = userScripts.findIndex(s => s.id === script.id)
+              if (index !== -1) {
+                userScripts.splice(index, 1)
+                scriptLibraryService.saveToLocal()
+              }
+              ElMessage({
+                type: 'success',
+                message: '脚本删除成功'
+              })
+            } else {
+              throw new Error(response?.message || '删除脚本失败')
+            }
+          } else {
+            // 公开脚本不能删除
+            ElMessage.warning('公开脚本不能删除')
+          }
+        } catch (error) {
+          log.error('删除脚本失败:', error)
+          ElMessage.error('删除脚本失败: ' + error.message)
         }
       }).catch(() => {
         ElMessage({
@@ -705,14 +807,139 @@ export default defineComponent({
       })
     }
 
+    // 服务器选择对话框状态
+    const serverSelectionVisible = ref(false)
+    const selectedScript = ref(null)
+
+    // 脚本执行结果对话框状态
+    const executionResultVisible = ref(false)
+    const executingScript = ref(null)
+    const executionResults = ref([])
+
     // 操作方法
     const runScript = (script) => {
-      console.log('运行脚本', script.id);
-      // 实现运行脚本的逻辑
+      selectedScript.value = script
+      serverSelectionVisible.value = true
     };
 
     const toggleFavorite = (script) => {
       scriptLibraryService.toggleFavorite(script.id);
+    };
+
+    // 处理脚本执行
+    const handleScriptExecution = async ({ script, servers }) => {
+      try {
+        log.info('开始执行脚本', {
+          scriptName: script.name,
+          command: script.command,
+          serverCount: servers.length
+        })
+
+        // 设置执行状态
+        executingScript.value = script
+        executionResults.value = servers.map(server => ({
+          server,
+          status: 'pending',
+          stdout: '',
+          stderr: '',
+          error: null,
+          executedAt: null,
+          duration: null
+        }))
+
+        // 显示执行结果对话框
+        executionResultVisible.value = true
+
+        // 显示执行开始消息
+        ElMessage.info(`开始在 ${servers.length} 台服务器上执行脚本: ${script.name}`)
+
+        // 并发执行脚本
+        const executionPromises = servers.map(async (server, index) => {
+          const startTime = Date.now()
+
+          // 更新状态为执行中
+          executionResults.value[index].status = 'running'
+          executionResults.value[index].executedAt = new Date().toISOString()
+
+          try {
+            const response = await apiService.post('/scripts/execute', {
+              scriptId: script.id,
+              scriptName: script.name,
+              command: script.command,
+              serverId: server.id,
+              serverName: server.name,
+              host: server.host,
+              port: server.port,
+              username: server.username
+            })
+
+            const duration = Date.now() - startTime
+
+            if (response && response.success) {
+              log.info(`脚本在服务器 ${server.name} 上执行成功`)
+
+              // 更新执行结果
+              executionResults.value[index] = {
+                ...executionResults.value[index],
+                status: 'success',
+                stdout: response.result?.stdout || '',
+                stderr: response.result?.stderr || '',
+                duration
+              }
+            } else {
+              throw new Error(response?.message || '执行失败')
+            }
+          } catch (error) {
+            log.error(`脚本在服务器 ${server.name} 上执行失败`, error)
+
+            const duration = Date.now() - startTime
+
+            // 更新执行结果
+            executionResults.value[index] = {
+              ...executionResults.value[index],
+              status: 'failed',
+              error: error.message,
+              duration
+            }
+          }
+        })
+
+        // 等待所有执行完成
+        await Promise.all(executionPromises)
+
+        // 统计执行结果
+        const successCount = executionResults.value.filter(r => r.status === 'success').length
+        const failureCount = executionResults.value.filter(r => r.status === 'failed').length
+
+        // 显示执行结果
+        if (failureCount === 0) {
+          ElMessage.success(`脚本执行完成！成功: ${successCount} 台服务器`)
+        } else if (successCount === 0) {
+          ElMessage.error(`脚本执行失败！失败: ${failureCount} 台服务器`)
+        } else {
+          ElMessage.warning(`脚本执行完成！成功: ${successCount} 台，失败: ${failureCount} 台`)
+        }
+
+        // 记录脚本使用
+        try {
+          await apiService.post('/scripts/usage', {
+            scriptId: script.id,
+            scriptName: script.name,
+            command: script.command
+          })
+        } catch (error) {
+          log.warn('记录脚本使用失败', error)
+        }
+
+      } catch (error) {
+        log.error('脚本执行过程中发生错误', error)
+        ElMessage.error('脚本执行失败: ' + error.message)
+      }
+    };
+
+    // 处理重试执行
+    const handleRetryExecution = ({ script, servers }) => {
+      handleScriptExecution({ script, servers })
     };
 
     // 导入脚本功能
@@ -914,7 +1141,16 @@ export default defineComponent({
       exportScripts,
       handleFileImport,
       // 脚本库服务
-      scriptLibraryService
+      scriptLibraryService,
+      // 服务器选择对话框
+      serverSelectionVisible,
+      selectedScript,
+      handleScriptExecution,
+      // 脚本执行结果对话框
+      executionResultVisible,
+      executingScript,
+      executionResults,
+      handleRetryExecution
     }
   }
 })

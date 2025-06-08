@@ -218,6 +218,29 @@ const connectDatabase = () => {
       )
     `);
 
+    // 创建脚本执行历史表
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS script_execution_history (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        script_id INTEGER,
+        script_name TEXT NOT NULL,
+        command TEXT NOT NULL,
+        server_id TEXT,
+        server_name TEXT NOT NULL,
+        host TEXT NOT NULL,
+        port INTEGER DEFAULT 22,
+        username TEXT NOT NULL,
+        stdout TEXT,
+        stderr TEXT,
+        exit_code INTEGER,
+        executed_at TEXT NOT NULL,
+        FOREIGN KEY (user_id) REFERENCES users (id),
+        FOREIGN KEY (script_id) REFERENCES scripts (id) ON DELETE SET NULL,
+        FOREIGN KEY (server_id) REFERENCES connections (id) ON DELETE SET NULL
+      )
+    `);
+
     return db;
   } catch (error) {
     console.error('SQLite数据库连接失败:', error);

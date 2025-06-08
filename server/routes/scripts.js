@@ -15,7 +15,8 @@ const {
   updateUserScript,
   deleteUserScript,
   getAllUserScripts,
-  recordScriptUsage
+  recordScriptUsage,
+  executeScript
 } = require('../controllers/scriptController');
 const { authMiddleware } = require('../middleware/auth');
 
@@ -39,5 +40,8 @@ router.get('/all', getAllUserScripts);
 
 // 记录脚本使用
 router.post('/usage', recordScriptUsage);
+
+// 执行脚本
+router.post('/execute', executeScript);
 
 module.exports = router;
