@@ -23,10 +23,17 @@
       >
         <div class="autocomplete-item-content">
           <div class="autocomplete-item-main">
-            <span class="autocomplete-command" :title="suggestion.text">{{ suggestion.text }}</span>
-            <span class="autocomplete-description" :title="suggestion.description">{{ suggestion.description }}</span>
+            <div class="autocomplete-item-left">
+              <span class="autocomplete-command" :title="suggestion.text">{{ suggestion.text }}</span>
+              <span class="autocomplete-description" :title="suggestion.description">{{ suggestion.description }}</span>
+            </div>
+            <div class="autocomplete-item-right">
+              <span class="autocomplete-type" :class="`autocomplete-type--${suggestion.type || 'script'}`">
+                {{ getTypeLabel(suggestion) }}
+              </span>
+            </div>
           </div>
-          <div v-if="suggestion.fullCommand !== suggestion.text" class="autocomplete-full-command" :title="suggestion.fullCommand">
+          <div v-if="suggestion.fullCommand && suggestion.fullCommand !== suggestion.text" class="autocomplete-full-command" :title="suggestion.fullCommand">
             {{ suggestion.fullCommand }}
           </div>
         </div>
@@ -148,17 +155,39 @@ export default {
       }
     }
 
+    // 获取类型标签
+    const getTypeLabel = (suggestion) => {
+      const typeLabels = {
+        script: '脚本',
+        word: '单词',
+        commands: '命令',
+        options: '选项',
+        development: '开发',
+        network: '网络',
+        system: '系统',
+        files: '文件',
+        extensions: '扩展名'
+      }
+
+      // 优先使用 category，然后是 type
+      const key = suggestion.category || suggestion.type || 'script'
+      return typeLabels[key] || '其他'
+    }
+
     // 获取项目工具提示
     const getItemTooltip = (suggestion) => {
       const parts = []
       if (suggestion.text) {
-        parts.push(`命令: ${suggestion.text}`)
+        parts.push(`${getTypeLabel(suggestion)}: ${suggestion.text}`)
       }
       if (suggestion.description) {
         parts.push(`描述: ${suggestion.description}`)
       }
       if (suggestion.fullCommand && suggestion.fullCommand !== suggestion.text) {
         parts.push(`完整命令: ${suggestion.fullCommand}`)
+      }
+      if (suggestion.category) {
+        parts.push(`类别: ${suggestion.category}`)
       }
       return parts.join('\n')
     }
@@ -218,6 +247,7 @@ export default {
       handleKeydown,
       handleMouseEnter,
       handleMouseMove,
+      getTypeLabel,
       getItemTooltip
     }
   }
@@ -300,8 +330,23 @@ export default {
 .autocomplete-item-main {
   display: flex;
   align-items: flex-start;
+  justify-content: space-between;
   gap: 12px;
   min-height: 20px;
+}
+
+.autocomplete-item-left {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  flex: 1;
+  min-width: 0; /* 允许内容收缩 */
+}
+
+.autocomplete-item-right {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
 }
 
 .autocomplete-command {
@@ -324,6 +369,73 @@ export default {
   white-space: nowrap;
   line-height: 1.4;
   min-width: 0; /* 允许flex项目收缩到内容宽度以下 */
+}
+
+.autocomplete-type {
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  background: #404040;
+  color: #cccccc;
+  border: 1px solid #555555;
+}
+
+/* 不同类型的颜色 */
+.autocomplete-type--script {
+  background: #0e4f1c;
+  color: #4ec9b0;
+  border-color: #4ec9b0;
+}
+
+.autocomplete-type--word {
+  background: #1e3a8a;
+  color: #60a5fa;
+  border-color: #60a5fa;
+}
+
+.autocomplete-type--commands {
+  background: #7c2d12;
+  color: #fb923c;
+  border-color: #fb923c;
+}
+
+.autocomplete-type--options {
+  background: #581c87;
+  color: #c084fc;
+  border-color: #c084fc;
+}
+
+.autocomplete-type--development {
+  background: #164e63;
+  color: #22d3ee;
+  border-color: #22d3ee;
+}
+
+.autocomplete-type--network {
+  background: #065f46;
+  color: #34d399;
+  border-color: #34d399;
+}
+
+.autocomplete-type--system {
+  background: #7c2d12;
+  color: #fbbf24;
+  border-color: #fbbf24;
+}
+
+.autocomplete-type--files {
+  background: #4c1d95;
+  color: #a78bfa;
+  border-color: #a78bfa;
+}
+
+.autocomplete-type--extensions {
+  background: #831843;
+  color: #f472b6;
+  border-color: #f472b6;
 }
 
 .autocomplete-full-command {

@@ -56,7 +56,21 @@ export const cacheConfig = {
     maxSize: parseInt(import.meta.env.VITE_CACHE_SUGGESTIONS_MAX_SIZE) || 50,
     minInputLength: 1,               // 最小输入长度
     maxSuggestions: 8,               // 最大建议数量
-    debounceDelay: 50                // 防抖延迟：50ms
+    debounceDelay: 50,               // 防抖延迟：50ms
+
+    // 智能混合补全配置
+    enableWordCompletion: true,      // 启用单词补全
+    enableScriptCompletion: true,    // 启用脚本补全
+    wordCompletionPriority: 0.7,     // 单词补全优先级权重
+    scriptCompletionPriority: 1.0,   // 脚本补全优先级权重
+    maxWordsPerType: 6,              // 每种类型最大建议数
+
+    // 上下文判断配置
+    contextDetection: {
+      commandPrefixes: ['sudo', 'ssh', 'scp', 'rsync', 'git', 'docker', 'kubectl'], // 命令前缀
+      scriptKeywords: ['sh', 'bash', 'python', 'node', 'npm', 'yarn'],              // 脚本关键词
+      systemCommands: ['ls', 'cd', 'pwd', 'cat', 'grep', 'find', 'ps', 'top']       // 系统命令
+    }
   },
 
   // 同步配置
