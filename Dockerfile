@@ -1,13 +1,21 @@
 # 多阶段构建 - 前端构建阶段
-FROM node:18-alpine AS frontend-builder
+FROM node:20-alpine AS frontend-builder
+
+# 安装构建依赖
+RUN apk add --no-cache \
+    python3 \
+    make \
+    g++ \
+    git \
+    && ln -sf python3 /usr/bin/python
 
 WORKDIR /app
 
 # 复制前端依赖文件
 COPY package*.json ./
 
-# 安装依赖
-RUN npm install --silent
+# 安装依赖（移除--silent以显示错误信息，使用--legacy-peer-deps解决依赖冲突）
+RUN npm install --prefer-offline --no-audit --legacy-peer-deps
 
 # 复制前端源代码
 COPY . .
@@ -16,15 +24,23 @@ COPY . .
 RUN npm run build
 
 # 后端构建阶段
-FROM node:18-alpine AS backend-builder
+FROM node:20-alpine AS backend-builder
+
+# 安装构建依赖
+RUN apk add --no-cache \
+    python3 \
+    make \
+    g++ \
+    git \
+    && ln -sf python3 /usr/bin/python
 
 WORKDIR /app
 
 # 复制后端依赖文件
 COPY server/package*.json ./
 
-# 安装生产依赖
-RUN npm ci --only=production --silent
+# 安装生产依赖（移除--silent，使用--omit=dev替代--only=production，使用--legacy-peer-deps解决依赖冲突）
+RUN npm install --omit=dev --prefer-offline --no-audit --legacy-peer-deps
 
 # 复制后端代码
 COPY server/ .
