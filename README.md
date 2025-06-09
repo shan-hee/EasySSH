@@ -92,10 +92,7 @@
 ### 🐳 Docker 快速启动（推荐）
 
 ```bash
-# 使用快速启动脚本
-curl -fsSL https://raw.githubusercontent.com/shanheee/easyssh/main/quick-start.sh | bash
-
-# 或者手动运行
+# Docker 快速启动
 docker run -d \
   --name easyssh \
   -p 80:80 \
@@ -192,24 +189,7 @@ npm run dev
 
 ## 部署指南
 
-### 🐳 Docker部署（推荐）
-
-#### 快速启动
-
-```bash
-# 使用快速启动脚本
-curl -fsSL https://raw.githubusercontent.com/shanheee/easyssh/main/quick-start.sh | bash
-
-# 或者手动运行
-docker run -d \
-  --name easyssh \
-  --restart unless-stopped \
-  -p 80:80 \
-  -p 8000:8000 \
-  shanheee/easyssh:latest
-```
-
-#### 使用Docker Compose
+### 🐳 使用Docker Compose
 
 ```bash
 # 克隆项目
@@ -226,7 +206,7 @@ docker-compose ps
 docker-compose logs -f
 ```
 
-#### 生产环境部署
+### 🐳 生产环境部署
 
 ```bash
 # 拉取最新镜像
@@ -241,20 +221,6 @@ docker run -d \
   -v $(pwd)/data:/app/server/data \
   -v $(pwd)/logs:/var/log/supervisor \
   shanheee/easyssh:latest
-```
-
-#### 本地构建和测试
-
-```bash
-# 构建镜像
-docker build -t easyssh:local .
-
-# 运行测试脚本
-chmod +x test-docker.sh
-./test-docker.sh
-
-# 健康检查
-curl http://localhost/health
 ```
 
 #### Docker部署配置
