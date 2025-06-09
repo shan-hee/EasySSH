@@ -7,7 +7,7 @@ import { WebLinksAddon } from '@xterm/addon-web-links'
 import { SearchAddon } from '@xterm/addon-search'
 import { WebglAddon } from '@xterm/addon-webgl'
 import { Unicode11Addon } from '@xterm/addon-unicode11'
-import { LigaturesAddon } from '@xterm/addon-ligatures'
+// LigaturesAddon 已移除 - 连字功能可选，避免导入问题
 import { ref, reactive } from 'vue'
 import { ElMessage } from 'element-plus'
 import settings from './settings'
@@ -322,14 +322,9 @@ class TerminalService {
         log.warn('Unicode11插件加载失败', e)
       }
       
-      // 添加LigaturesAddon (可选)
-      try {
-        const ligaturesAddon = new LigaturesAddon()
-        terminal.loadAddon(ligaturesAddon)
-        addons.ligatures = ligaturesAddon
-      } catch (e) {
-        log.warn('连字插件加载失败', e)
-      }
+      // LigaturesAddon 已移除 - 由于包导入问题，暂时移除连字功能
+      // 连字功能是可选的，不影响终端的核心功能
+      // 如果需要连字支持，可以考虑使用其他方案或等待包修复
       
       // 记录终端创建的性能指标
       const createStartTime = performance.now()
