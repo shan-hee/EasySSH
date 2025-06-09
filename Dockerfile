@@ -14,8 +14,8 @@ WORKDIR /app
 # 复制前端依赖文件
 COPY package*.json ./
 
-# 安装依赖（移除--silent以显示错误信息，使用npm ci提高性能）
-RUN npm ci --prefer-offline --no-audit
+# 安装依赖（移除--silent以显示错误信息）
+RUN npm install --prefer-offline --no-audit
 
 # 复制前端源代码
 COPY . .
@@ -40,7 +40,7 @@ WORKDIR /app
 COPY server/package*.json ./
 
 # 安装生产依赖（移除--silent，使用--omit=dev替代--only=production）
-RUN npm ci --omit=dev --prefer-offline --no-audit
+RUN npm install --omit=dev --prefer-offline --no-audit
 
 # 复制后端代码
 COPY server/ .
