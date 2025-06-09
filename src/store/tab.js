@@ -10,6 +10,10 @@ import log from '../services/log'
 
 // 导入会话存储
 import { useSessionStore } from './session'
+// 导入终端Store
+import { useTerminalStore } from './terminal'
+// 导入SSH服务
+import sshService from '../services/ssh'
 
 export const useTabStore = defineStore('tab', () => {
   // 使用reactive包装整个状态对象，增强响应式
@@ -289,8 +293,8 @@ export const useTabStore = defineStore('tab', () => {
             }
           }))
           
-          // 导入终端Store以聚焦终端
-          import('./terminal').then(({ useTerminalStore }) => {
+          // 聚焦终端
+          try {
             const terminalStore = useTerminalStore()
             // 确保终端存在后再聚焦
             if (terminalStore.hasTerminal(newSessionId)) {
@@ -299,9 +303,9 @@ export const useTabStore = defineStore('tab', () => {
                 terminalStore.focusTerminal(newSessionId)
               }, 100)
             }
-          }).catch(error => {
-            log.error('导入终端Store失败:', error)
-          })
+          } catch (error) {
+            log.error('获取终端Store失败:', error)
+          }
         }
         
         // 导航到终端路径，包含会话ID
@@ -351,37 +355,35 @@ export const useTabStore = defineStore('tab', () => {
     
     // 如果是终端标签，尝试关闭终端连接
     if (closingTab && closingTab.type === 'terminal' && closingTab.data && closingTab.data.connectionId) {
-      // 使用动态导入避免循环依赖
-      import('./terminal').then(({ useTerminalStore }) => {
+      try {
         const terminalStore = useTerminalStore()
         // 检查是否有其他标签使用同一个连接
-        const sameConnectionTabs = state.tabs.filter((tab, idx) => 
-          idx !== index && 
-          tab.type === 'terminal' && 
-          tab.data && 
+        const sameConnectionTabs = state.tabs.filter((tab, idx) =>
+          idx !== index &&
+          tab.type === 'terminal' &&
+          tab.data &&
           tab.data.connectionId === closingTab.data.connectionId
         )
-        
+
         // 如果没有其他标签使用此连接，则断开连接
         if (sameConnectionTabs.length === 0) {
           log.info(`没有其他标签使用终端 ${closingTab.data.connectionId}，准备断开连接`)
-          
+
           // 添加超时保护，确保连接断开
           const disconnectTimeout = setTimeout(() => {
             log.warn(`断开终端 ${closingTab.data.connectionId} 连接超时，尝试强制释放资源`)
-            
+
             // 尝试直接调用SSH服务释放资源
-            import('../services/ssh').then(module => {
-              const sshService = module.default
+            try {
               // 查找可能的会话ID
               if (terminalStore.sessions && terminalStore.sessions[closingTab.data.connectionId]) {
                 const sessionId = terminalStore.sessions[closingTab.data.connectionId]
                 sshService.releaseResources(sessionId)
                   .catch(error => log.error(`强制释放SSH资源失败: ${error.message}`))
               }
-            }).catch(error => {
-              log.error('导入SSH服务失败:', error)
-            })
+            } catch (error) {
+              log.error('调用SSH服务失败:', error)
+            }
           }, 5000) // 5秒超时
           
           // 尝试正常断开连接
@@ -406,15 +408,15 @@ export const useTabStore = defineStore('tab', () => {
             })
         } else {
           log.info(`保持终端 ${closingTab.data.connectionId} 连接，还有 ${sameConnectionTabs.length} 个标签使用它`)
-          
+
           // 在保留终端连接的同时，确保触发状态刷新事件
           window.dispatchEvent(new CustomEvent('terminal:refresh-status', {
             detail: { terminalId: closingTab.data.connectionId }
           }));
         }
-      }).catch(error => {
-        log.error('导入终端Store失败:', error)
-      })
+      } catch (error) {
+        log.error('获取终端Store失败:', error)
+      }
     }
     
     if (state.tabs.length === 1) {
@@ -523,7 +525,7 @@ export const useTabStore = defineStore('tab', () => {
   // 重置状态
   const resetState = () => {
     // 关闭所有终端连接
-    import('./terminal').then(({ useTerminalStore }) => {
+    try {
       const terminalStore = useTerminalStore()
       // 找出所有终端标签页并断开连接
       state.tabs.forEach(tab => {
@@ -534,9 +536,9 @@ export const useTabStore = defineStore('tab', () => {
             })
         }
       })
-    }).catch(error => {
-      log.error('导入终端Store失败:', error)
-    })
+    } catch (error) {
+      log.error('获取终端Store失败:', error)
+    }
     
     // 重置状态
     state.tabs = []

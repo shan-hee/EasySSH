@@ -4,6 +4,7 @@ import { ElMessage } from 'element-plus'
 import router from '../router'
 import apiService from '../services/api'
 import log from '../services/log'
+import scriptLibraryService from '../services/scriptLibrary'
 
 // 用于存储加密凭据的键名
 const CREDENTIALS_KEY = 'easyssh_credentials'
@@ -490,12 +491,11 @@ export const useUserStore = defineStore('user', () => {
 
         // 同步脚本库数据
         try {
-          const { default: scriptLibraryService } = await import('../services/scriptLibrary.js')
           scriptLibraryService.syncFromServer().catch(() => {
             log.warn('同步脚本库数据失败，将使用本地数据')
           })
         } catch (error) {
-          log.warn('加载脚本库服务失败:', error)
+          log.warn('调用脚本库服务失败:', error)
         }
       
         return { 

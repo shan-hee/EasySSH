@@ -6,6 +6,7 @@ import log from '../log';
 import settings from '../settings';
 import { WS_CONSTANTS } from '../constants';
 import terminalAutocompleteService from '../terminal-autocomplete';
+import settingsService from '../settings';
 
 /**
  * 终端管理器
@@ -107,16 +108,11 @@ class TerminalManager {
         const selectedText = terminal.getSelection();
         if (selectedText) {
           try {
-            import('../settings').then(settingsModule => {
-              const settingsService = settingsModule.default;
-              const terminalOptions = settingsService.getTerminalOptions();
-              
-              if (terminalOptions && terminalOptions.copyOnSelect) {
-                navigator.clipboard.writeText(selectedText);
-              }
-            }).catch(error => {
-              log.error('加载设置服务失败:', error);
-            });
+            const terminalOptions = settingsService.getTerminalOptions();
+
+            if (terminalOptions && terminalOptions.copyOnSelect) {
+              navigator.clipboard.writeText(selectedText);
+            }
           } catch (error) {
             log.error('复制到剪贴板失败:', error);
           }
@@ -127,12 +123,10 @@ class TerminalManager {
     // 添加右键粘贴功能
     const handleContextMenu = async (event) => {
       event.preventDefault();
-      
+
       try {
-        const settingsModule = await import('../settings');
-        const settingsService = settingsModule.default;
         const terminalOptions = settingsService.getTerminalOptions();
-        
+
         if (!terminalOptions || !terminalOptions.rightClickSelectsWord) {
           return;
         }

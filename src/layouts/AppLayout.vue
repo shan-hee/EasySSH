@@ -217,8 +217,8 @@ export default defineComponent({
 
               // 添加延迟聚焦逻辑，确保终端已经初始化完成
               setTimeout(() => {
-                // 导入终端Store并聚焦终端
-                import('../store/terminal').then(({ useTerminalStore }) => {
+                // 聚焦终端
+                try {
                   const terminalStore = useTerminalStore()
                   if (terminalStore.hasTerminal(currentId)) {
                     log.debug(`从其他页面切换到终端，聚焦终端: ${currentId}`)
@@ -233,9 +233,9 @@ export default defineComponent({
                       }
                     }, 500)
                   }
-                }).catch(error => {
-                  log.error('导入终端Store失败:', error)
-                })
+                } catch (error) {
+                  log.error('获取终端Store失败:', error)
+                }
               }, 200)
             }
           }

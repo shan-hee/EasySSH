@@ -14,6 +14,7 @@ import settings from './settings'
 import log from './log'
 import clipboard from './clipboard'
 import SettingsService from './settings'
+import monitoringService from './monitoring'
 
 class TerminalService {
   constructor() {
@@ -191,13 +192,13 @@ class TerminalService {
       }
       
       // 静默异步连接，不输出任何日志
-      import('./monitoring').then(module => {
-        const monitoringService = module.default
-        
+      try {
         // 尝试连接监控服务，完全静默
         monitoringService.connectToHostWithStatus(host)
           .catch(() => {/* 完全静默处理错误 */})
-      }).catch(() => {/* 完全静默处理导入错误 */})
+      } catch (error) {
+        // 完全静默处理错误
+      }
     } catch (error) {
       // 完全静默处理错误
     }

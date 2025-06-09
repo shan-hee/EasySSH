@@ -11,6 +11,7 @@ import { useSettingsStore } from './settings'
 import { computed } from 'vue'
 import { useSessionStore } from './session'
 import { waitForFontsLoaded } from '../utils/fontLoader'
+import settingsService from '../services/settings'
 
 export const useTerminalStore = defineStore('terminal', () => {
   // 使用reactive管理状态
@@ -433,7 +434,6 @@ export const useTerminalStore = defineStore('terminal', () => {
         // 应用终端主题设置
         if (settings.theme) {
           // 从settingsService获取主题配置
-          const settingsService = await import('../services/settings').then(m => m.default)
           const themeConfig = settingsService.getTerminalTheme(settings.theme)
           terminalOptions.theme = themeConfig
         }
@@ -1095,22 +1095,20 @@ export const useTerminalStore = defineStore('terminal', () => {
         // 应用终端主题
         if (settings.theme) {
           try {
-            // 异步导入以避免循环依赖
-            const settingsService = await import('../services/settings').then(m => m.default)
             const themeConfig = settingsService.getTerminalTheme(settings.theme)
-            
+
             // 检查主题是否有变化
             if (JSON.stringify(terminal.options.theme) !== JSON.stringify(themeConfig)) {
               log.info(`终端 ${termId}: 更新主题 ${terminal.options.theme?.background} -> ${themeConfig.background}`)
-              
+
               // 应用新主题
               terminal.options.theme = themeConfig
-              
+
               // 如果终端实例有setOption方法，直接应用主题
               if (terminal.terminal && typeof terminal.terminal.setOption === 'function') {
                 terminal.terminal.setOption('theme', themeConfig)
               }
-              
+
               hasChanges = true
             }
           } catch (error) {
