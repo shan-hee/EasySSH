@@ -20,6 +20,10 @@ RUN npm install --prefer-offline --no-audit --legacy-peer-deps
 # 复制前端源代码
 COPY . .
 
+# 清理并重新安装依赖以解决rollup musl问题
+RUN rm -rf node_modules package-lock.json && \
+    npm install --prefer-offline --no-audit --legacy-peer-deps
+
 # 构建前端
 RUN npm run build
 
