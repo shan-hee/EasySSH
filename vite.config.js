@@ -131,37 +131,115 @@ export default defineConfig(({ command, mode }) => {
       },
       rollupOptions: {
         output: {
-          // 分包策略，将依赖分离打包
-          manualChunks: {
-            vue: ['vue', 'vue-router', 'pinia'],
-            elementPlus: ['element-plus'],
-            terminal: ['@xterm/xterm', '@xterm/addon-fit', '@xterm/addon-web-links']
+          // 优化的分包策略，解决动态导入警告并改善性能
+          manualChunks: (id) => {
+            // 第三方库分包
+            if (id.includes('node_modules')) {
+              // Vue生态系统
+              if (id.includes('vue') || id.includes('pinia') || id.includes('@vue')) {
+                return 'vue-ecosystem';
+              }
+
+              // Element Plus UI库
+              if (id.includes('element-plus')) {
+                return 'element-plus';
+              }
+
+              // 终端相关库
+              if (id.includes('@xterm')) {
+                return 'xterm-addons';
+              }
+
+              // 图表库
+              if (id.includes('echarts')) {
+                return 'echarts';
+              }
+
+              // 工具库
+              if (id.includes('axios') || id.includes('lodash') || id.includes('dayjs')) {
+                return 'utils';
+              }
+
+              // 其他第三方库
+              return 'vendor';
+            }
+
+            // 应用代码分包
+            // 服务层
+            if (id.includes('/src/services/')) {
+              // 核心服务（经常被引用的）
+              if (id.includes('monitoring') || id.includes('settings') || id.includes('log')) {
+                return 'core-services';
+              }
+              // SSH相关服务
+              if (id.includes('ssh') || id.includes('terminal')) {
+                return 'ssh-services';
+              }
+              // 其他服务
+              return 'app-services';
+            }
+
+            // Store状态管理
+            if (id.includes('/src/store/')) {
+              return 'store';
+            }
+
+            // 组件分包
+            if (id.includes('/src/components/')) {
+              // 终端组件
+              if (id.includes('terminal') || id.includes('monitoring')) {
+                return 'terminal-components';
+              }
+              // SFTP组件
+              if (id.includes('sftp')) {
+                return 'sftp-components';
+              }
+              // 其他组件
+              return 'components';
+            }
+
+            // 视图页面
+            if (id.includes('/src/views/')) {
+              return 'views';
+            }
+
+            // 工具函数
+            if (id.includes('/src/utils/')) {
+              return 'utils-app';
+            }
           },
+
           // 自定义chunk文件名
           chunkFileNames: 'assets/js/[name]-[hash].js',
           entryFileNames: 'assets/js/[name]-[hash].js',
           assetFileNames: (assetInfo) => {
-            const extType = assetInfo.name.split('.').at(1);
-            if (/\.(png|jpe?g|gif|svg|webp|ico)$/.test(assetInfo.name)) {
+            // 使用 assetInfo.names 或 assetInfo.originalFileNames 替代已弃用的 name 属性
+            const fileName = assetInfo.names?.[0] || assetInfo.originalFileNames?.[0] || 'unknown';
+
+            if (/\.(png|jpe?g|gif|svg|webp|ico)$/.test(fileName)) {
               return 'assets/images/[name]-[hash][extname]';
             }
-            if (/\.(woff2?|eot|ttf|otf)$/.test(assetInfo.name)) {
+            if (/\.(woff2?|eot|ttf|otf)$/.test(fileName)) {
               return 'assets/fonts/[name]-[hash][extname]';
             }
-            if (/\.css$/.test(assetInfo.name)) {
+            if (/\.css$/.test(fileName)) {
               return 'assets/css/[name]-[hash][extname]';
             }
             return 'assets/[name]-[hash][extname]';
           }
         }
-      }
+      },
+
+      // 调整chunk大小警告阈值
+      chunkSizeWarningLimit: 1000, // 提高到1MB，因为现代网络环境下这是可接受的
     },
     // CSS配置
     css: {
       preprocessorOptions: {
         scss: {
-          // 使用新版 Sass API, 使用相对路径导入
-          additionalData: `@import "./src/assets/styles/base/base.css";`
+          // 使用新版 Sass API, 移除错误的CSS导入
+          // CSS文件应该通过main.js或组件直接导入
+          additionalData: ``
         }
       },
       devSourcemap: true
@@ -169,9 +247,9 @@ export default defineConfig(({ command, mode }) => {
     // 性能优化相关
     optimizeDeps: {
       include: [
-        'vue', 
-        'vue-router', 
-        'pinia', 
+        'vue',
+        'vue-router',
+        'pinia',
         'element-plus',
         '@xterm/xterm',
         '@xterm/addon-fit',
@@ -179,8 +257,28 @@ export default defineConfig(({ command, mode }) => {
         '@xterm/addon-search',
         '@xterm/addon-webgl',
         '@xterm/addon-unicode11',
-        '@xterm/addon-ligatures'
+        '@xterm/addon-ligatures',
+        'axios',
+        'echarts/core',
+        'echarts/charts',
+        'echarts/components'
+      ],
+      // 排除一些不需要预构建的模块
+      exclude: [
+        // 可以排除一些特定的模块以优化构建性能
       ]
+    },
+
+    // 实验性功能：启用构建缓存
+    experimental: {
+      buildAdvancedBaseOptions: true
+    },
+
+    // 定义全局常量，减少运行时检查
+    define: {
+      __VUE_OPTIONS_API__: true,
+      __VUE_PROD_DEVTOOLS__: false,
+      __VUE_PROD_HYDRATION_MISMATCH_DETAILS__: false
     }
   };
 });
