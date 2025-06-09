@@ -1,9 +1,9 @@
 # EasySSH
 
 <div align="center">
-  <img src="src/assets/icons/logo.svg" alt="EasySSH Logo" width="50" />
+  <img src="../../src/assets/icons/logo.svg" alt="EasySSH Logo" width="50" />
   <h3>现代化Web终端 · 高效服务器管理 · 安全远程访问</h3>
-
+  
   <p>
     <a href="#在线演示">在线演示</a> •
     <a href="#核心特性">核心特性</a> •
@@ -12,7 +12,7 @@
     <a href="#部署指南">部署指南</a> •
     <a href="#未来规划">未来规划</a>
   </p>
-
+  
   <p>
     <img src="https://img.shields.io/badge/version-1.0.0-blue" alt="version" />
     <img src="https://img.shields.io/badge/license-Apache%202.0-blue" alt="license" />
@@ -20,10 +20,9 @@
   </p>
 
   <p>
-    <strong>🌐 多语言支持 | Multi-language Support</strong><br/>
-    <a href="docs/zh/README.md">🇨🇳 中文</a> |
-    <a href="docs/en/README.md">🇺🇸 English</a> |
-    <a href="docs/README.md">📚 文档中心</a>
+    <strong>🌐 多语言支持</strong><br/>
+    <a href="../en/README.md">🇺🇸 English</a> | 
+    <a href="../README.md">📚 文档中心</a>
   </p>
 </div>
 
@@ -37,7 +36,7 @@
 - 体验账号: `demo@example.com` / 密码: `admin`
 
 <div align="center">
-  <img src="src/assets/images/Preview.png" alt="EasySSH界面预览" width="80%" />
+  <img src="../../src/assets/images/Preview.png" alt="EasySSH界面预览" width="80%" />
 </div>
 
 ## 核心特性
@@ -107,7 +106,7 @@ npm run dev
 
 ### 使用方法
 
-1. 访问 http://localhost:3000
+1. 访问 http://localhost:5173
 2. 注册账号或使用默认管理员账号登录
 3. 添加您的第一台服务器
 4. 点击连接按钮，开始远程管理！
@@ -241,7 +240,7 @@ EasySSH支持一键部署到主流云平台:
 
 ## 许可证
 
-本项目采用[Apache License 2.0](LICENSE)开源。
+本项目采用[Apache License 2.0](../../LICENSE)开源。
 
 ---
 
@@ -249,4 +248,4 @@ EasySSH支持一键部署到主流云平台:
   <strong>EasySSH</strong> - 让远程服务器管理变得简单高效
   <br/>
   由❤️打造
-</div> 
+</div>

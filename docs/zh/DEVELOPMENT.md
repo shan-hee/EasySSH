@@ -1,5 +1,14 @@
 # EasySSH 开发指南
 
+<div align="center">
+  <img src="../../src/assets/icons/logo.svg" alt="EasySSH Logo" width="50" />
+  <h2>🛠️ 开发指南</h2>
+  <p>
+    <a href="../en/DEVELOPMENT.md">🇺🇸 English</a> | 
+    <a href="../README.md">📚 文档中心</a>
+  </p>
+</div>
+
 ## 项目简介
 
 EasySSH 是一个现代化的 SSH 客户端，提供高效、安全、易用的远程服务器管理体验。项目采用前后端分离架构，前端基于 Vue.js，后端基于 Node.js 的 Express 框架，并使用 SQLite 和 node-cache 作为数据存储。
@@ -162,6 +171,7 @@ server {
 docker build -t easyssh .
 docker run -p 3000:3000 -v sqlite-data:/app/server/data easyssh
 ```
+
 ## 🚀 使用指南
 
 ### 常用命令
@@ -182,9 +192,6 @@ npm run lint                  # 代码检查
 npm run lint:fix              # 自动修复
 npm run format                # 代码格式化
 npm run format:check          # 格式检查
-
-# 测试相关
-# 测试框架已移除，如需要可重新安装
 
 # 依赖管理
 npm run deps:check            # 检查过时依赖
@@ -207,9 +214,6 @@ cd server
 npm run dev                   # 开发模式
 npm run dev:debug             # 调试模式
 npm run prod                  # 生产模式
-
-# 测试相关
-# 测试框架已移除，如需要可重新安装
 
 # 数据库管理
 npm run db:backup             # 备份数据库
@@ -254,9 +258,6 @@ npm run lint:fix              # 自动修复
 - `.prettierrc` - Prettier 配置
 - `server/.eslintrc.js` - 服务端 ESLint
 
-### 测试配置
-- `server/jest.config.js` - Jest 测试配置
-
 ## 🎯 最佳实践
 
 ### 开发流程
@@ -291,7 +292,6 @@ npm run lint:fix              # 自动修复
 4. 推送到远程分支 (`git push origin feature/amazing-feature`)
 5. 提交 Pull Request
 
-
 ## 开源协议
 
-本项目基于 MIT 许可证开源，详情请参阅 LICENSE 文件。 
+本项目基于 Apache License 2.0 许可证开源，详情请参阅 [LICENSE](../../LICENSE) 文件。
