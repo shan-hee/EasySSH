@@ -17,6 +17,8 @@
     <img src="https://img.shields.io/badge/version-1.0.0-blue" alt="version" />
     <img src="https://img.shields.io/badge/license-Apache%202.0-blue" alt="license" />
     <img src="https://img.shields.io/badge/node-%3E%3D16.0.0-brightgreen" alt="node" />
+    <img src="https://github.com/shanheee/easyssh/workflows/Build%20and%20Publish%20Docker%20Image/badge.svg" alt="Docker Build" />
+    <img src="https://img.shields.io/docker/pulls/shanheee/easyssh" alt="Docker Pulls" />
   </p>
 
   <p>
@@ -87,19 +89,38 @@
 
 ## 快速开始
 
-### 安装
+### 🐳 Docker 快速启动（推荐）
+
+```bash
+# 使用快速启动脚本
+curl -fsSL https://raw.githubusercontent.com/shanheee/easyssh/main/quick-start.sh | bash
+
+# 或者手动运行
+docker run -d \
+  --name easyssh \
+  -p 80:80 \
+  -p 8000:8000 \
+  shanheee/easyssh:latest
+```
+
+### 💻 本地开发安装
 
 ```bash
 # 克隆仓库
-git clone https://github.com/shan-hee/easyssh.git
+git clone https://github.com/shanheee/easyssh.git
 cd easyssh
 
 # 安装依赖
 npm install
 
 # 配置环境
-cp .env.example .env
-# 编辑.env文件设置必要参数
+# 开发环境
+cp .env.example .env.development
+# 编辑.env.development文件设置开发环境参数
+
+# 生产环境
+cp .env.example .env.production
+# 编辑.env.production文件设置生产环境参数
 
 # 启动开发服务器
 npm run dev
@@ -171,27 +192,98 @@ npm run dev
 
 ## 部署指南
 
+### 🐳 Docker部署（推荐）
+
+#### 快速启动
+
+```bash
+# 使用快速启动脚本
+curl -fsSL https://raw.githubusercontent.com/shanheee/easyssh/main/quick-start.sh | bash
+
+# 或者手动运行
+docker run -d \
+  --name easyssh \
+  --restart unless-stopped \
+  -p 80:80 \
+  -p 8000:8000 \
+  shanheee/easyssh:latest
+```
+
+#### 使用Docker Compose
+
+```bash
+# 克隆项目
+git clone https://github.com/shanheee/easyssh.git
+cd easyssh
+
+# 启动所有服务
+docker-compose up -d
+
+# 查看服务状态
+docker-compose ps
+
+# 查看日志
+docker-compose logs -f
+```
+
+#### 生产环境部署
+
+```bash
+# 拉取最新镜像
+docker pull shanheee/easyssh:latest
+
+# 启动生产容器（带数据持久化）
+docker run -d \
+  --name easyssh-prod \
+  --restart unless-stopped \
+  -p 80:80 \
+  -p 8000:8000 \
+  -v $(pwd)/data:/app/server/data \
+  -v $(pwd)/logs:/var/log/supervisor \
+  shanheee/easyssh:latest
+```
+
+#### 本地构建和测试
+
+```bash
+# 构建镜像
+docker build -t easyssh:local .
+
+# 运行测试脚本
+chmod +x test-docker.sh
+./test-docker.sh
+
+# 健康检查
+curl http://localhost/health
+```
+
+#### Docker部署配置
+
+**端口说明：**
+- `80`: Nginx前端服务端口
+- `8000`: Node.js后端API端口
+
+**环境变量：**
+- `NODE_ENV`: 运行环境（development/production）
+- `PORT`: 后端服务端口（默认8000）
+
+**数据持久化：**
+- `/app/server/data`: SQLite数据库存储目录
+- `/var/log/supervisor`: 应用日志目录
+
 ### 传统部署
 
 ```bash
 # 前端构建
 npm run build
-# 将dist目录部署到Web服务器
 
 # 后端部署
 cd server
 npm install --production
 pm2 start index.js --name easyssh-server
-```
 
-### Docker部署
-
-```bash
-# 构建并启动所有服务
-docker-compose up -d
-
-# 仅重启后端服务
-docker-compose restart api
+# 配置Nginx反向代理
+# 参考开发指南中的Nginx配置示例
 ```
 
 ### 云平台部署
