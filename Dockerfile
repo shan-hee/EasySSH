@@ -7,7 +7,7 @@ WORKDIR /app
 COPY package*.json ./
 
 # 安装依赖
-RUN npm ci --silent
+RUN npm install --silent
 
 # 复制前端源代码
 COPY . .
