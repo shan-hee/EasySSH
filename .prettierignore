@@ -1,0 +1,47 @@
+# 依赖目录
+node_modules
+server/node_modules
+
+# 构建输出
+dist
+build
+
+# 日志文件
+*.log
+logs
+
+# 数据库文件
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+*.db
+
+# 环境配置
+.env
+.env.local
+.env.*.local
+
+# 编辑器配置
+.vscode
+.idea
+
+# 临时文件
+.tmp
+.temp
+
+# 生成的文件
+dependency-report.json
+build-report.json
+stats.html
+bundle-analysis.html
+bundle-network.html
+bundle-stats.json
+
+# 包管理器文件
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# 其他
+.DS_Store
+Thumbs.db

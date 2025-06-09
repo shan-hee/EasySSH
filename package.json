@@ -7,11 +7,22 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "build:analyze": "vite build --config vite.config.analyze.js",
+    "build:report": "vite build && npx vite-bundle-analyzer dist",
+    "build:optimize": "node scripts/build-optimize.js",
     "preview": "vite preview",
     "lint": "eslint . --ext .js,.vue",
     "lint:fix": "eslint . --ext .js,.vue --fix",
-    "test": "vitest",
-    "test:coverage": "vitest run --coverage"
+    "format": "prettier --write \"src/**/*.{js,vue,ts,css,scss,json}\"",
+    "format:check": "prettier --check \"src/**/*.{js,vue,ts,css,scss,json}\"",
+    "deps:check": "npm outdated",
+    "deps:update": "npm update",
+    "deps:manage": "node scripts/deps-manager.js",
+    "deps:sync": "node scripts/deps-manager.js --update",
+    "clean": "rimraf dist node_modules/.vite",
+    "clean:all": "rimraf dist node_modules/.vite node_modules package-lock.json",
+    "reinstall": "npm run clean:all && npm install",
+    "size": "npm run build && bundlesize"
   },
   "engines": {
     "node": ">=16.0.0"
@@ -65,22 +76,38 @@
   "devDependencies": {
     "@vitejs/plugin-vue": "^5.2.1",
     "autoprefixer": "^10.4.20",
+    "bundlesize": "^0.18.2",
+    "cross-env": "^7.0.3",
     "eslint": "^8.57.1",
     "eslint-plugin-vue": "^9.30.0",
     "postcss": "^8.4.49",
     "prettier": "^3.4.2",
+    "rimraf": "^6.0.1",
+    "rollup-plugin-visualizer": "^5.14.0",
     "sass": "^1.86.3",
     "sass-embedded": "^1.86.3",
     "terser": "^5.41.0",
     "vite": "^6.3.5",
+    "vite-bundle-analyzer": "^0.11.1",
     "vite-plugin-compression": "^0.5.1",
-    "vite-plugin-svg-icons": "^0.1.0",
-    "vitest": "^3.2.2"
+    "vite-plugin-svg-icons": "^0.1.0"
   },
   "browserslist": [
     "> 1%",
     "last 2 versions",
     "not dead"
+  ],
+  "bundlesize": [
+    {
+      "path": "./dist/assets/js/*.js",
+      "maxSize": "500kb",
+      "compression": "gzip"
+    },
+    {
+      "path": "./dist/assets/css/*.css",
+      "maxSize": "100kb",
+      "compression": "gzip"
+    }
   ],
   "keywords": [
     "ssh",

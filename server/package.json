@@ -5,7 +5,16 @@
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
-    "dev": "nodemon index.js"
+    "dev": "nodemon index.js",
+    "dev:debug": "nodemon --inspect index.js",
+    "prod": "cross-env NODE_ENV=production node index.js",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "deps:check": "npm outdated",
+    "deps:update": "npm update",
+    "clean": "rimraf logs/*.log",
+    "db:backup": "node scripts/backup-db.js",
+    "db:restore": "node scripts/restore-db.js"
   },
   "dependencies": {
     "axios": "^1.8.0",
@@ -27,7 +36,10 @@
     "ws": "^8.15.0"
   },
   "devDependencies": {
-    "nodemon": "^3.0.1"
+    "cross-env": "^7.0.3",
+    "eslint": "^8.57.1",
+    "nodemon": "^3.0.1",
+    "rimraf": "^6.0.1"
   },
   "engines": {
     "node": ">=16.0.0"

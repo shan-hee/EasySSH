@@ -2,6 +2,7 @@ import { defineConfig, loadEnv } from 'vite';
 import vue from '@vitejs/plugin-vue';
 import { resolve } from 'path';
 import viteCompression from 'vite-plugin-compression';
+import { visualizer } from 'rollup-plugin-visualizer';
 
 // ANSI颜色代码
 const colors = {
@@ -77,6 +78,7 @@ export default defineConfig(({ command, mode }) => {
   // 加载环境变量
   const env = loadEnv(mode, process.cwd());
   const isDev = mode === 'development';
+  const isAnalyze = mode === 'analyze';
   
   return {
     plugins: [
@@ -88,8 +90,16 @@ export default defineConfig(({ command, mode }) => {
         algorithm: 'gzip',
         ext: '.gz'
       }),
+      // 构建分析插件
+      isAnalyze && visualizer({
+        filename: 'dist/stats.html',
+        open: true,
+        gzipSize: true,
+        brotliSize: true,
+        template: 'treemap' // 可选: sunburst, treemap, network
+      }),
       customLogger() // 添加自定义日志插件
-    ],
+    ].filter(Boolean),
     resolve: {
       alias: {
         '@': resolve(__dirname, 'src'), // src目录别名
@@ -123,10 +133,21 @@ export default defineConfig(({ command, mode }) => {
       cssCodeSplit: true,
       sourcemap: !isDev ? false : 'inline',
       minify: !isDev ? 'terser' : false,
+      // 启用构建缓存
+      reportCompressedSize: !isDev,
+      chunkSizeWarningLimit: 1000,
+      // 解决模块外部化警告
+      commonjsOptions: {
+        ignoreTryCatch: false
+      },
       terserOptions: {
         compress: {
           drop_console: !isDev, // 生产环境下移除console
-          drop_debugger: !isDev
+          drop_debugger: !isDev,
+          pure_funcs: !isDev ? ['console.log', 'console.info', 'console.debug'] : []
+        },
+        mangle: {
+          safari10: true
         }
       },
       rollupOptions: {
@@ -230,8 +251,7 @@ export default defineConfig(({ command, mode }) => {
         }
       },
 
-      // 调整chunk大小警告阈值
-      chunkSizeWarningLimit: 1000, // 提高到1MB，因为现代网络环境下这是可接受的
+      // chunk大小警告阈值已在上面设置
     },
     // CSS配置
     css: {
@@ -257,7 +277,6 @@ export default defineConfig(({ command, mode }) => {
         '@xterm/addon-search',
         '@xterm/addon-webgl',
         '@xterm/addon-unicode11',
-        '@xterm/addon-ligatures',
         'axios',
         'echarts/core',
         'echarts/charts',
@@ -265,7 +284,7 @@ export default defineConfig(({ command, mode }) => {
       ],
       // 排除一些不需要预构建的模块
       exclude: [
-        // 可以排除一些特定的模块以优化构建性能
+        '@xterm/addon-ligatures' // 排除有Node.js依赖的模块
       ]
     },
 
@@ -278,7 +297,9 @@ export default defineConfig(({ command, mode }) => {
     define: {
       __VUE_OPTIONS_API__: true,
       __VUE_PROD_DEVTOOLS__: false,
-      __VUE_PROD_HYDRATION_MISMATCH_DETAILS__: false
+      __VUE_PROD_HYDRATION_MISMATCH_DETAILS__: false,
+      // 定义Node.js环境变量
+      'process.env.NODE_ENV': JSON.stringify(isDev ? 'development' : 'production')
     }
   };
 });
