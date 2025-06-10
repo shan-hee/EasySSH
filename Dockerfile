@@ -1,5 +1,7 @@
-# 基础镜像 - 共享系统依赖
-FROM node:20 AS base
+# 多阶段构建 - 前端构建阶段
+FROM node:20 AS frontend-builder
+
+# 安装构建依赖
 RUN apt-get update && apt-get install -y \
     python3 \
     python3-pip \
@@ -7,71 +9,77 @@ RUN apt-get update && apt-get install -y \
     g++ \
     git \
     && ln -sf python3 /usr/bin/python \
-    && rm -rf /var/lib/apt/lists/* \
-    && npm config set registry https://registry.npmmirror.com
-
-# 前端构建阶段
-FROM base AS frontend-builder
-WORKDIR /app
-
-# 优化：先复制依赖文件，利用Docker缓存
-COPY package*.json ./
-RUN npm ci --only=production --prefer-offline --no-audit --legacy-peer-deps
-
-# 复制源代码并构建
-COPY src/ ./src/
-COPY public/ ./public/
-COPY index.html vite.config.js ./
-RUN NODE_ENV=production npm run build
-
-# 后端构建阶段
-FROM base AS backend-builder
-RUN apt-get update && apt-get install -y \
-    sqlite3 \
-    libsqlite3-dev \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-# 优化：先复制依赖文件，利用Docker缓存
+# 复制前端依赖文件
+COPY package*.json ./
+
+# 安装依赖（移除--silent以显示错误信息，使用--legacy-peer-deps解决依赖冲突）
+RUN npm install --prefer-offline --no-audit --legacy-peer-deps
+
+# 复制前端源代码
+COPY . .
+
+# 清理缓存和重新安装依赖
+RUN rm -rf node_modules/.vite dist && \
+    npm ci --prefer-offline --no-audit --legacy-peer-deps
+
+# 构建前端（使用更稳定的构建选项）
+RUN NODE_ENV=production npm run build
+
+# 后端构建阶段
+FROM node:20 AS backend-builder
+
+# 安装构建依赖和运行时依赖
+RUN apt-get update && apt-get install -y \
+    python3 \
+    python3-pip \
+    make \
+    g++ \
+    git \
+    sqlite3 \
+    libsqlite3-dev \
+    && ln -sf python3 /usr/bin/python \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# 复制后端依赖文件
 COPY server/package*.json ./
-RUN npm ci --omit=dev --prefer-offline --no-audit --legacy-peer-deps
+
+# 安装生产依赖并重新编译原生模块
+RUN npm install --omit=dev --prefer-offline --no-audit --legacy-peer-deps && \
+    npm rebuild better-sqlite3
 
 # 复制后端代码
 COPY server/ .
-RUN npm rebuild better-sqlite3
 
-# 最终生产镜像 - 使用更轻量的基础镜像
-FROM node:20-slim
+# 最终生产镜像
+FROM nginx
 
-# 安装运行时依赖
+# 安装 Node.js 和运行时依赖
 RUN apt-get update && apt-get install -y \
-    nginx \
+    nodejs \
+    npm \
     sqlite3 \
     curl \
-    && rm -rf /var/lib/apt/lists/* \
-    && apt-get clean
+    && rm -rf /var/lib/apt/lists/*
 
 # 创建应用目录
 WORKDIR /app
 
-# 复制后端应用（只复制必要文件）
-COPY --from=backend-builder /app/node_modules ./server/node_modules
-COPY --from=backend-builder /app/*.js ./server/
-COPY --from=backend-builder /app/package.json ./server/
-COPY server/config ./server/config
-COPY server/routes ./server/routes
-COPY server/middleware ./server/middleware
-COPY server/services ./server/services
-COPY server/utils ./server/utils
-COPY server/models ./server/models
-COPY server/controllers ./server/controllers
+# 复制后端应用
+COPY --from=backend-builder /app ./server
 
-# 复制前端构建产物
+# 复制前端构建产物到 nginx 目录
 COPY --from=frontend-builder /app/dist /usr/share/nginx/html
 
-# 复制配置文件
+# 复制 nginx 配置
 COPY nginx.conf /etc/nginx/nginx.conf
+
+# 复制启动脚本
 COPY start.sh /start.sh
 RUN chmod +x /start.sh
 
@@ -79,13 +87,8 @@ RUN chmod +x /start.sh
 EXPOSE 3000 8000
 
 # 设置环境变量
-ENV NODE_ENV=production \
-    PORT=8000 \
-    PATH=/app/server/node_modules/.bin:$PATH
-
-# 健康检查
-HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-    CMD curl -f http://localhost:3000/health || exit 1
+ENV NODE_ENV=production
+ENV PORT=8000
 
 # 启动命令
 CMD ["/start.sh"]
