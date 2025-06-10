@@ -17,10 +17,13 @@ docs/
 # Dependencies
 node_modules/
 server/node_modules/
+.npm/
+.pnpm-store/
 
 # Build artifacts
 dist/
 build/
+.vite/
 
 # Environment files
 .env
