@@ -30,12 +30,14 @@ RUN NODE_ENV=production npm run build
 # 后端构建阶段
 FROM node:20-alpine AS backend-builder
 
-# 安装构建依赖
+# 安装构建依赖和运行时依赖
 RUN apk add --no-cache \
     python3 \
     make \
     g++ \
     git \
+    sqlite \
+    sqlite-dev \
     && ln -sf python3 /usr/bin/python
 
 WORKDIR /app
@@ -43,8 +45,9 @@ WORKDIR /app
 # 复制后端依赖文件
 COPY server/package*.json ./
 
-# 安装生产依赖（移除--silent，使用--omit=dev替代--only=production，使用--legacy-peer-deps解决依赖冲突）
-RUN npm install --omit=dev --prefer-offline --no-audit --legacy-peer-deps
+# 安装生产依赖并重新编译原生模块
+RUN npm install --omit=dev --prefer-offline --no-audit --legacy-peer-deps && \
+    npm rebuild better-sqlite3
 
 # 复制后端代码
 COPY server/ .
@@ -52,8 +55,8 @@ COPY server/ .
 # 最终生产镜像
 FROM nginx:alpine
 
-# 安装 Node.js
-RUN apk add --no-cache nodejs npm
+# 安装 Node.js 和运行时依赖
+RUN apk add --no-cache nodejs npm sqlite
 
 # 创建应用目录
 WORKDIR /app
