@@ -59,12 +59,18 @@ COPY server/ .
 # 最终生产镜像
 FROM nginx
 
-# 安装 Node.js 和运行时依赖
+# 安装 Node.js 20 和运行时依赖
 RUN apt-get update && apt-get install -y \
-    nodejs \
-    npm \
-    sqlite3 \
     curl \
+    sqlite3 \
+    libsqlite3-dev \
+    python3 \
+    python3-pip \
+    make \
+    g++ \
+    && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+    && apt-get install -y nodejs \
+    && ln -sf python3 /usr/bin/python \
     && rm -rf /var/lib/apt/lists/*
 
 # 创建应用目录
@@ -72,6 +78,13 @@ WORKDIR /app
 
 # 复制后端应用
 COPY --from=backend-builder /app ./server
+
+# 进入服务器目录并重新编译原生模块
+WORKDIR /app/server
+RUN npm rebuild better-sqlite3
+
+# 返回应用根目录
+WORKDIR /app
 
 # 复制前端构建产物到 nginx 目录
 COPY --from=frontend-builder /app/dist /usr/share/nginx/html
