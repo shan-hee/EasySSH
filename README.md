@@ -99,7 +99,7 @@ docker run -d \
   -p 8000:8000 \
   shanheee/easyssh:latest
 ```
-> **访问方式**：部署完成后，直接通过服务器的 IP 地址访问 `http://<服务器IP>:80` 即可打开 EasySSH 界面。
+> **访问方式**：部署完成后，直接通过服务器的 IP 地址访问 `http://<服务器IP>:3000` 即可打开 EasySSH 界面。
 
 ### 💻 本地开发安装
 
