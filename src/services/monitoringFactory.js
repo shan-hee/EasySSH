@@ -59,21 +59,22 @@ class MonitoringInstance {
     this.serverPort = window.location.port || port;
   }
   
-  // 构建WebSocket URL（连接到项目服务器）
+  // 构建WebSocket URL（通过nginx代理连接）
   _buildWebSocketUrl(remoteHost) {
     // 使用协议
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    
+
     // 保存远程主机地址
     if (remoteHost) {
       this.state.targetHost = remoteHost;
     }
-    
-    // 直接连接到远程主机的监控服务
-    const remoteUrl = `${protocol}//${this.state.targetHost}:9527/monitor`;
-    log.info(`[终端${this.terminalId}] 构建WebSocket URL: ${remoteUrl}`);
-    
-    return remoteUrl;
+
+    // 通过nginx代理连接到监控服务
+    const host = window.location.host; // 使用当前页面的host（包含端口）
+    const proxyUrl = `${protocol}//${host}/monitor`;
+    log.info(`[终端${this.terminalId}] 构建WebSocket URL (通过代理): ${proxyUrl}, 目标主机: ${this.state.targetHost}`);
+
+    return proxyUrl;
   }
   
   /**

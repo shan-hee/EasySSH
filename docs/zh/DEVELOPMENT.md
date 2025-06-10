@@ -244,9 +244,8 @@ npm run lint:fix              # 自动修复
 ## 🔧 配置文件说明
 
 ### 环境配置
-- `.env.development` - 开发环境配置
-- `.env.production` - 生产环境配置
-- `.env.example` - 配置模板
+- `.env.example` - 环境变量配置模板
+- `.env` - 实际使用的环境变量文件（从模板复制并修改）
 
 ### 构建配置
 - `vite.config.js` - 主要构建配置

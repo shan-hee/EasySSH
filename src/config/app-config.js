@@ -22,10 +22,10 @@ export const environment = {
 
 // WebSocket服务器配置
 export const wsServerConfig = {
-  // 默认使用localhost而非IP地址，更加稳定
+  // 在Docker环境中通过nginx代理访问
   primaryHost: 'localhost',
   fallbackHost: '127.0.0.1',
-  port: 8000,
+  port: 3000, // 使用nginx的端口，通过代理访问后端
   path: '/ssh',
   connectionTimeout: 10000, // 毫秒
   reconnectAttempts: 3,

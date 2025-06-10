@@ -18,10 +18,12 @@ class SSHService {
     this.terminalSessionMap = new Map(); // 终端ID到会话ID的映射
     this.sessionTerminalMap = new Map(); // 会话ID到终端ID的映射（双向映射提高查询效率）
     
-    // 从配置构建WebSocket URL
-    const { port, path } = wsServerConfig;
-    this.ipv4Url = `ws://127.0.0.1:${port}${path}`;
-    this.ipv6Url = `ws://[::1]:${port}${path}`;
+    // 从配置构建WebSocket URL - 使用当前页面的host和协议
+    const { path } = wsServerConfig;
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const host = window.location.host; // 使用当前页面的host（包含端口）
+    this.ipv4Url = `${protocol}//${host}${path}`;
+    this.ipv6Url = this.ipv4Url; // 在容器环境中使用相同的URL
     this.baseUrl = this.ipv4Url;
     
     // 使用默认配置值，避免在构造函数中调用settings
@@ -147,88 +149,49 @@ class SSHService {
         log.info(`创建终端与SSH会话映射: 终端 ${connection.terminalId} -> 会话 ${sessionId}`);
       }
       
-      // 先尝试IPv4连接
+      // 尝试WebSocket连接
       try {
-        // 确保URL是最新的
-        if (!this.ipv4Url) {
-          this.ipv4Url = `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/api/ssh`;
-        }
-        
-        // 尝试IPv4连接
+        // 确保URL是最新的 - 使用当前页面的host通过nginx代理
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const host = window.location.host;
+        const { path } = wsServerConfig;
+        this.ipv4Url = `${protocol}//${host}${path}`;
+
+        log.info(`尝试连接到WebSocket服务: ${this.ipv4Url}`);
+
+        // 尝试连接
         const resultSessionId = await this._createSessionWithUrl(this.ipv4Url, sessionId, connection);
         return resultSessionId; // 返回可能新生成的会话ID
-    } catch (ipv4Error) {
-        log.error(`IPv4连接失败: ${ipv4Error.message}`);
-        
-        // 如果IPv6 URL可用，尝试IPv6连接
-        if (this.ipv6Url) {
-          try {
-            log.info('尝试使用IPv6连接');
-            const resultSessionId = await this._createSessionWithUrl(this.ipv6Url, sessionId, connection, true);
-            return resultSessionId; // 返回可能新生成的会话ID
-      } catch (ipv6Error) {
-        log.error(`IPv6连接也失败: ${ipv6Error.message}`);
-        // 只在此处显示错误提示，即两种连接方式都失败后才显示
-            ElMessage.error(`连接失败: ${ipv6Error.message || '服务器无响应'}`);
-        
+      } catch (connectionError) {
+        log.error(`WebSocket连接失败: ${connectionError.message}`);
+
         // 获取terminalId以便通知终端组件
-        const terminalId = this.sessionTerminalMap.get(sessionId) || 
+        const terminalId = this.sessionTerminalMap.get(sessionId) ||
                           (connection.terminalId ? connection.terminalId : null);
-        
+
         // 触发全局事件，通知SSH连接失败
         if (terminalId) {
           window.dispatchEvent(new CustomEvent('ssh-connection-failed', {
             detail: {
               connectionId: terminalId,
               sessionId: sessionId,
-                  error: `尝试IPv4和IPv6连接均失败`,
-              message: ipv6Error.message
+              error: `SSH连接失败`,
+              message: connectionError.message
             }
           }));
-          
+
           // 触发会话创建失败事件
           window.dispatchEvent(new CustomEvent('ssh-session-creation-failed', {
             detail: {
               sessionId: sessionId,
               terminalId: terminalId,
-                  error: ipv6Error.message
+              error: connectionError.message
             }
           }));
         }
-        
-            throw ipv6Error;
-          }
-        } else {
-          // 如果没有IPv6 URL可用，直接抛出IPv4错误
-          ElMessage.error(`连接失败: ${ipv4Error.message || '服务器无响应'}`);
-          
-          // 获取terminalId以便通知终端组件
-          const terminalId = this.sessionTerminalMap.get(sessionId) || 
-                            (connection.terminalId ? connection.terminalId : null);
-          
-          // 触发全局事件，通知SSH连接失败
-          if (terminalId) {
-            window.dispatchEvent(new CustomEvent('ssh-connection-failed', {
-              detail: {
-                connectionId: terminalId,
-                sessionId: sessionId,
-                error: `SSH连接失败`,
-                message: ipv4Error.message
-              }
-            }));
-            
-            // 触发会话创建失败事件
-            window.dispatchEvent(new CustomEvent('ssh-session-creation-failed', {
-              detail: {
-                sessionId: sessionId,
-                terminalId: terminalId,
-                error: ipv4Error.message
-              }
-            }));
-      }
-          
-          throw ipv4Error;
-        }
+
+        ElMessage.error(`连接失败: ${connectionError.message || '服务器无响应'}`);
+        throw connectionError;
       }
     } catch (error) {
       log.error('创建SSH会话失败:', error);

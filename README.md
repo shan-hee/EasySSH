@@ -112,13 +112,8 @@ cd easyssh
 npm install
 
 # 配置环境
-# 开发环境
-cp .env.example .env.development
-# 编辑.env.development文件设置开发环境参数
-
-# 生产环境
-cp .env.example .env.production
-# 编辑.env.production文件设置生产环境参数
+cp .env.example .env
+# 编辑.env文件设置环境参数
 
 # 启动开发服务器
 npm run dev

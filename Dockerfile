@@ -97,7 +97,7 @@ COPY start.sh /start.sh
 RUN chmod +x /start.sh
 
 # 暴露端口
-EXPOSE 3000 8000
+EXPOSE 3000 8000 9527
 
 # 设置环境变量
 ENV NODE_ENV=production
