@@ -74,7 +74,7 @@ const customLogger = () => {
 };
 
 // https://vitejs.dev/config/
-export default defineConfig(({ command, mode }) => {
+export default defineConfig(({ mode }) => {
   // 加载环境变量
   const env = loadEnv(mode, process.cwd());
   const isDev = mode === 'development';
@@ -126,7 +126,7 @@ export default defineConfig(({ command, mode }) => {
     },
     // 构建配置
     build: {
-      target: 'es2015',
+      target: 'es2020',
       outDir: 'dist',
       assetsDir: 'assets',
       assetsInlineLimit: 4096, // 4kb以下的资源内联为base64
@@ -152,13 +152,28 @@ export default defineConfig(({ command, mode }) => {
       },
       rollupOptions: {
         output: {
-          // 优化的分包策略，解决动态导入警告并改善性能
+          // 优化的分包策略，解决模块初始化顺序问题
           manualChunks: (id) => {
             // 第三方库分包
             if (id.includes('node_modules')) {
-              // Vue生态系统
-              if (id.includes('vue') || id.includes('pinia') || id.includes('@vue')) {
-                return 'vue-ecosystem';
+              // Vue 核心库单独分包，避免循环依赖
+              if (id.includes('vue/') && !id.includes('vue-router') && !id.includes('@vue')) {
+                return 'vue-core';
+              }
+
+              // Vue 路由单独分包
+              if (id.includes('vue-router')) {
+                return 'vue-router';
+              }
+
+              // Pinia 状态管理单独分包
+              if (id.includes('pinia')) {
+                return 'pinia';
+              }
+
+              // Vue 编译器和其他 Vue 生态
+              if (id.includes('@vue')) {
+                return 'vue-utils';
               }
 
               // Element Plus UI库
@@ -185,48 +200,10 @@ export default defineConfig(({ command, mode }) => {
               return 'vendor';
             }
 
-            // 应用代码分包
-            // 服务层
-            if (id.includes('/src/services/')) {
-              // 核心服务（经常被引用的）
-              if (id.includes('monitoring') || id.includes('settings') || id.includes('log')) {
-                return 'core-services';
-              }
-              // SSH相关服务
-              if (id.includes('ssh') || id.includes('terminal')) {
-                return 'ssh-services';
-              }
-              // 其他服务
-              return 'app-services';
-            }
-
-            // Store状态管理
-            if (id.includes('/src/store/')) {
-              return 'store';
-            }
-
-            // 组件分包
-            if (id.includes('/src/components/')) {
-              // 终端组件
-              if (id.includes('terminal') || id.includes('monitoring')) {
-                return 'terminal-components';
-              }
-              // SFTP组件
-              if (id.includes('sftp')) {
-                return 'sftp-components';
-              }
-              // 其他组件
-              return 'components';
-            }
-
-            // 视图页面
-            if (id.includes('/src/views/')) {
-              return 'views';
-            }
-
-            // 工具函数
-            if (id.includes('/src/utils/')) {
-              return 'utils-app';
+            // 应用代码分包 - 最简化策略，将所有应用代码打包到一个文件中
+            // 只保留最基础的分包，避免所有循环依赖问题
+            if (id.includes('/src/')) {
+              return 'app-bundle';
             }
           },
 
@@ -259,7 +236,9 @@ export default defineConfig(({ command, mode }) => {
         scss: {
           // 使用新版 Sass API, 移除错误的CSS导入
           // CSS文件应该通过main.js或组件直接导入
-          additionalData: ``
+          additionalData: ``,
+          // 抑制 Sass 弃用警告
+          silenceDeprecations: ['legacy-js-api']
         }
       },
       devSourcemap: true
@@ -270,7 +249,9 @@ export default defineConfig(({ command, mode }) => {
         'vue',
         'vue-router',
         'pinia',
+        'pinia-plugin-persistedstate',
         'element-plus',
+        'element-plus/es',
         '@xterm/xterm',
         '@xterm/addon-fit',
         '@xterm/addon-web-links',
@@ -285,13 +266,12 @@ export default defineConfig(({ command, mode }) => {
       // 排除一些不需要预构建的模块
       exclude: [
         '@xterm/addon-ligatures' // 排除有Node.js依赖的模块
-      ]
+      ],
+      // 强制预构建，确保依赖关系正确
+      force: true
     },
 
-    // 实验性功能：启用构建缓存
-    experimental: {
-      buildAdvancedBaseOptions: true
-    },
+
 
     // 定义全局常量，减少运行时检查
     define: {

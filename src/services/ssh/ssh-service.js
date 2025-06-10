@@ -1,7 +1,7 @@
 // import { WebSocket } from 'ws';
 import { ElMessage } from 'element-plus';
 import log from '../log';
-import settings from '../settings';
+import SettingsService from '../settings';
 import { wsServerConfig } from '../../config/app-config';
 import { WS_CONSTANTS, MESSAGE_TYPES, LATENCY_EVENTS, LATENCY_CONFIG, getDynamicConstants } from '../constants';
 
@@ -61,7 +61,8 @@ class SSHService {
       
       // 更新动态配置 - 移到这里，确保settings服务已完全初始化
       try {
-        this.dynamicConfig = getDynamicConstants(settings);
+        const settingsService = new SettingsService();
+        this.dynamicConfig = getDynamicConstants(settingsService);
         // 更新超时和重连配置
         if (this.dynamicConfig && this.dynamicConfig.SSH_CONSTANTS) {
           this.connectionTimeout = wsServerConfig.connectionTimeout || this.dynamicConfig.SSH_CONSTANTS.DEFAULT_TIMEOUT;
@@ -783,10 +784,11 @@ class SSHService {
     const pingRequests = new Map();
     
     // 获取最新的动态配置
-    const dynamicConfig = getDynamicConstants(settings);
-    
+    const settingsService = new SettingsService();
+    const dynamicConfig = getDynamicConstants(settingsService);
+
     // 从设置获取保活间隔
-    const connectionSettings = settings.getConnectionOptions();
+    const connectionSettings = settingsService.getConnectionOptions();
     const keepAliveIntervalSec = connectionSettings.keepAliveInterval || 
                                  dynamicConfig.LATENCY_CONFIG.CHECK_INTERVAL;
     const keepAliveIntervalMs = keepAliveIntervalSec * 1000;

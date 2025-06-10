@@ -303,6 +303,5 @@ class SettingsService {
   }
 }
 
-// 创建并导出实例
-const settingsService = new SettingsService()
-export default settingsService 
+// 导出类
+export default SettingsService

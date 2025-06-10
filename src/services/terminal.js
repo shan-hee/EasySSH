@@ -10,10 +10,9 @@ import { Unicode11Addon } from '@xterm/addon-unicode11'
 // LigaturesAddon 已移除 - 连字功能可选，避免导入问题
 import { ref, reactive } from 'vue'
 import { ElMessage } from 'element-plus'
-import settings from './settings'
+import SettingsService from './settings'
 import log from './log'
 import clipboard from './clipboard'
-import SettingsService from './settings'
 import monitoringService from './monitoring'
 
 class TerminalService {
@@ -155,7 +154,8 @@ class TerminalService {
       }
 
       // 从设置服务加载终端配置
-      const terminalSettings = settings.getTerminalOptions()
+      const settingsService = new SettingsService()
+      const terminalSettings = settingsService.getTerminalOptions()
       if (terminalSettings) {
         this.defaultOptions = {
           ...this.defaultOptions,

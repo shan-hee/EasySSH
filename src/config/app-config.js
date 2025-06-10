@@ -88,8 +88,8 @@ export const cacheConfig = {
 
   // 开发环境配置
   development: {
-    enableDebugLogs: environment.isDevelopment, // 基于环境自动判断
-    enablePerformanceMonitoring: environment.isDevelopment,
+    enableDebugLogs: true, // 开发环境默认启用
+    enablePerformanceMonitoring: true, // 开发环境默认启用
     cacheStatsInterval: 10000        // 缓存统计输出间隔：10秒
   }
 };

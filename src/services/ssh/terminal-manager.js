@@ -3,10 +3,9 @@ import { FitAddon } from '@xterm/addon-fit';
 import { WebLinksAddon } from '@xterm/addon-web-links';
 import { ClipboardAddon } from '@xterm/addon-clipboard';
 import log from '../log';
-import settings from '../settings';
+import settingsService from '../settings';
 import { WS_CONSTANTS } from '../constants';
 import terminalAutocompleteService from '../terminal-autocomplete';
-import settingsService from '../settings';
 
 /**
  * 终端管理器
@@ -40,9 +39,10 @@ class TerminalManager {
     log.info(`创建终端，使用光标样式: ${cursorStyle}, 闪烁: ${cursorBlink}`);
     
     // 创建终端实例
+    const terminalOptions = settingsService.getTerminalOptions()
     const terminal = new Terminal({
-      fontSize: options.fontSize || settings.terminalFontSize || 14,
-      fontFamily: options.fontFamily || settings.terminalFontFamily || "'JetBrains Mono'",
+      fontSize: options.fontSize || terminalOptions.fontSize || 14,
+      fontFamily: options.fontFamily || terminalOptions.fontFamily || "'JetBrains Mono'",
       theme: options.theme,
       cursorStyle: cursorStyle, // 确保使用传入的光标样式
       cursorBlink: cursorBlink, // 确保使用传入的光标闪烁设置

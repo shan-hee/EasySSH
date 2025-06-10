@@ -20,12 +20,12 @@ RUN npm install --prefer-offline --no-audit --legacy-peer-deps
 # 复制前端源代码
 COPY . .
 
-# 清理并重新安装依赖以解决rollup musl问题
-RUN rm -rf node_modules package-lock.json && \
-    npm install --prefer-offline --no-audit --legacy-peer-deps
+# 清理缓存和重新安装依赖
+RUN rm -rf node_modules/.vite dist && \
+    npm ci --prefer-offline --no-audit --legacy-peer-deps
 
-# 构建前端
-RUN npm run build
+# 构建前端（使用更稳定的构建选项）
+RUN NODE_ENV=production npm run build
 
 # 后端构建阶段
 FROM node:20-alpine AS backend-builder
