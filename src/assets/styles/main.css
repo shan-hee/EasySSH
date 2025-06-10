@@ -25,7 +25,34 @@
 
 /* 打印样式 - 仅在打印时使用 */
 @media print {
-  @import './print.css';
+  /* 基础打印样式 */
+  * {
+    background: white !important;
+    color: black !important;
+    box-shadow: none !important;
+    text-shadow: none !important;
+  }
+
+  body {
+    font-size: 12pt;
+    line-height: 1.5;
+  }
+
+  /* 隐藏不需要打印的元素 */
+  .no-print,
+  .sidebar,
+  .header-actions,
+  .el-button,
+  nav {
+    display: none !important;
+  }
+
+  /* 确保内容适合打印页面 */
+  .main-content {
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
 }
 
 /* 覆盖Element Plus按钮中图标和文本之间的间距 */
