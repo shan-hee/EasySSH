@@ -95,7 +95,7 @@
 # Docker 快速启动
 docker run -d \
   --name easyssh \
-  -p 80:80 \
+  -p 3000:3000 \
   -p 8000:8000 \
   shanheee/easyssh:latest
 ```
@@ -217,7 +217,7 @@ docker pull shanheee/easyssh:latest
 docker run -d \
   --name easyssh-prod \
   --restart unless-stopped \
-  -p 80:80 \
+  -p 3000:3000 \
   -p 8000:8000 \
   -v $(pwd)/data:/app/server/data \
   -v $(pwd)/logs:/var/log/supervisor \
@@ -227,7 +227,7 @@ docker run -d \
 #### Docker部署配置
 
 **端口说明：**
-- `80`: Nginx前端服务端口
+- `3000`: Nginx前端服务端口
 - `8000`: Node.js后端API端口
 
 **环境变量：**
