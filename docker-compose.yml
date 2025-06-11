@@ -5,35 +5,57 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      # 启用BuildKit以提高构建性能
+      args:
+        BUILDKIT_INLINE_CACHE: 1
+    image: easyssh:latest
     ports:
       - "3000:3000"
       - "8000:8000"
+      - "9527:9527"
     environment:
       - NODE_ENV=production
       - PORT=8000
     volumes:
+      # 持久化数据目录
+      - easyssh_data:/app/server/data
+      # 日志目录
+      - easyssh_logs:/app/server/logs
       # 可选：挂载配置文件
       - ./server/config:/app/server/config:ro
-      # 可选：挂载日志目录
-      - ./logs:/var/log/supervisor
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/health", "||", "exit", "1"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 40s
+      start_period: 60s
+    # 资源限制
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '1.0'
+        reservations:
+          memory: 256M
+          cpus: '0.5'
+    # 安全配置
+    security_opt:
+      - no-new-privileges:true
+    read_only: false
+    tmpfs:
+      - /tmp:noexec,nosuid,size=100m
 
-  # 可选：添加数据库服务（如果需要）
-  # database:
-  #   image: postgres:15-alpine
-  #   environment:
-  #     POSTGRES_DB: easyssh
-  #     POSTGRES_USER: easyssh
-  #     POSTGRES_PASSWORD: password
-  #   volumes:
-  #     - postgres_data:/var/lib/postgresql/data
-  #   restart: unless-stopped
+volumes:
+  easyssh_data:
+    driver: local
+  easyssh_logs:
+    driver: local
 
-# volumes:
-#   postgres_data:
+# 网络配置
+networks:
+  default:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16

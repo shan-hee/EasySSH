@@ -1,107 +1,116 @@
-# 多阶段构建 - 前端构建阶段
-FROM node:20 AS frontend-builder
+# ===== 优化的多阶段构建 =====
 
-# 安装构建依赖
-RUN apt-get update && apt-get install -y \
+# 构建参数
+ARG BUILD_DATE
+ARG GIT_SHA
+ARG GIT_REF
+ARG BUILDKIT_INLINE_CACHE=1
+
+# 阶段1: 前端构建
+FROM node:20-alpine AS frontend-builder
+
+# 安装构建依赖（Alpine版本更轻量）
+RUN apk add --no-cache \
     python3 \
-    python3-pip \
     make \
     g++ \
-    git \
-    && ln -sf python3 /usr/bin/python \
-    && rm -rf /var/lib/apt/lists/*
+    git
 
 WORKDIR /app
 
-# 复制前端依赖文件
+# 优化依赖安装 - 先复制package文件利用Docker缓存
 COPY package*.json ./
+RUN npm ci --only=production --no-audit --prefer-offline
 
-# 安装依赖（移除--silent以显示错误信息，使用--legacy-peer-deps解决依赖冲突）
-RUN npm install --prefer-offline --no-audit --legacy-peer-deps
-
-# 复制前端源代码
+# 复制源代码并构建
 COPY . .
-
-# 清理缓存和重新安装依赖
-RUN rm -rf node_modules/.vite dist && \
-    npm ci --prefer-offline --no-audit --legacy-peer-deps
-
-# 构建前端（使用更稳定的构建选项）
 RUN NODE_ENV=production npm run build
 
-# 后端构建阶段
-FROM node:20 AS backend-builder
+# 阶段2: 后端构建和依赖预编译
+FROM node:20-alpine AS backend-builder
 
-# 安装构建依赖和运行时依赖
-RUN apt-get update && apt-get install -y \
+# 安装构建依赖
+RUN apk add --no-cache \
     python3 \
-    python3-pip \
     make \
     g++ \
-    git \
-    sqlite3 \
-    libsqlite3-dev \
-    && ln -sf python3 /usr/bin/python \
-    && rm -rf /var/lib/apt/lists/*
+    sqlite \
+    sqlite-dev
 
 WORKDIR /app
 
 # 复制后端依赖文件
 COPY server/package*.json ./
 
-# 安装生产依赖并重新编译原生模块
-RUN npm install --omit=dev --prefer-offline --no-audit --legacy-peer-deps && \
+# 安装生产依赖并预编译原生模块
+RUN npm ci --only=production --no-audit --prefer-offline && \
     npm rebuild better-sqlite3
 
-# 复制后端代码
+# 复制后端源代码
 COPY server/ .
 
-# 最终生产镜像
-FROM nginx
+# 阶段3: Nginx静态文件服务
+FROM nginx:alpine AS nginx-server
 
-# 安装 Node.js 20 和运行时依赖
+# 复制前端构建产物
+COPY --from=frontend-builder /app/dist /usr/share/nginx/html
+
+# 复制nginx配置
+COPY nginx.conf /etc/nginx/nginx.conf
+
+# 阶段4: 最终运行时镜像（使用node:20-slim）
+FROM node:20-slim AS runtime
+
+# 只安装运行时必需的依赖
 RUN apt-get update && apt-get install -y \
-    curl \
     sqlite3 \
-    libsqlite3-dev \
-    python3 \
-    python3-pip \
-    make \
-    g++ \
-    && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
-    && apt-get install -y nodejs \
-    && ln -sf python3 /usr/bin/python \
-    && rm -rf /var/lib/apt/lists/*
+    libsqlite3-0 \
+    nginx \
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean
+
+# 创建非root用户
+RUN groupadd -r appuser && useradd -r -g appuser appuser
 
 # 创建应用目录
 WORKDIR /app
 
-# 复制后端应用
+# 复制预编译的后端应用（包含已编译的better-sqlite3）
 COPY --from=backend-builder /app ./server
-
-# 进入服务器目录并重新编译原生模块
-WORKDIR /app/server
-RUN npm rebuild better-sqlite3
-
-# 返回应用根目录
-WORKDIR /app
-
-# 复制前端构建产物到 nginx 目录
-COPY --from=frontend-builder /app/dist /usr/share/nginx/html
-
-# 复制 nginx 配置
-COPY nginx.conf /etc/nginx/nginx.conf
+COPY --from=nginx-server /usr/share/nginx/html ./public
+COPY --from=nginx-server /etc/nginx/nginx.conf /etc/nginx/nginx.conf
 
 # 复制启动脚本
 COPY start.sh /start.sh
 RUN chmod +x /start.sh
 
+# 设置权限
+RUN chown -R appuser:appuser /app && \
+    mkdir -p /var/log/nginx /var/cache/nginx && \
+    chown -R appuser:appuser /var/log/nginx /var/cache/nginx
+
 # 暴露端口
 EXPOSE 3000 8000 9527
 
-# 设置环境变量
-ENV NODE_ENV=production
-ENV PORT=8000
+# 设置环境变量和标签
+ENV NODE_ENV=production \
+    PORT=8000 \
+    USER=appuser
+
+# 添加构建信息标签
+LABEL maintainer="EasySSH Team" \
+      version="1.0.0" \
+      description="现代化的SSH客户端，提供高效、安全、易用的远程服务器管理体验" \
+      build-date="${BUILD_DATE}" \
+      git-sha="${GIT_SHA}" \
+      git-ref="${GIT_REF}"
+
+# 切换到非root用户
+USER appuser
+
+# 健康检查
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD wget --no-verbose --tries=1 --spider http://localhost:3000/health || exit 1
 
 # 启动命令
 CMD ["/start.sh"]
