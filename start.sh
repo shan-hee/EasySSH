@@ -14,8 +14,11 @@ cd /app/server
 node index.js &
 BACKEND_PID=$!
 
-# 启动 nginx（非root模式）
+# 启动 nginx
 echo "Starting nginx..."
+# 创建nginx运行时目录
+mkdir -p /tmp/nginx
+# 启动nginx（使用非特权端口配置）
 nginx -g "daemon off;" &
 NGINX_PID=$!
 

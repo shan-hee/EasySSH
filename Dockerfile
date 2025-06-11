@@ -20,11 +20,17 @@ WORKDIR /app
 
 # 优化依赖安装 - 先复制package文件利用Docker缓存
 COPY package*.json ./
-RUN npm ci --only=production --no-audit --prefer-offline
+
+# 清理npm缓存并安装依赖
+RUN npm cache clean --force && \
+    npm ci --no-audit --prefer-offline --legacy-peer-deps
 
 # 复制源代码并构建
 COPY . .
-RUN NODE_ENV=production npm run build
+
+# 清理构建缓存并构建
+RUN rm -rf node_modules/.vite dist && \
+    NODE_ENV=production npm run build
 
 # 阶段2: 后端构建和依赖预编译
 FROM node:20-alpine AS backend-builder
@@ -42,8 +48,9 @@ WORKDIR /app
 # 复制后端依赖文件
 COPY server/package*.json ./
 
-# 安装生产依赖并预编译原生模块
-RUN npm ci --only=production --no-audit --prefer-offline && \
+# 清理缓存并安装生产依赖
+RUN npm cache clean --force && \
+    npm ci --omit=dev --no-audit --prefer-offline --legacy-peer-deps && \
     npm rebuild better-sqlite3
 
 # 复制后端源代码
@@ -61,11 +68,15 @@ COPY nginx.conf /etc/nginx/nginx.conf
 # 阶段4: 最终运行时镜像（使用node:20-slim）
 FROM node:20-slim AS runtime
 
+# 设置非交互式安装，避免debconf警告
+ENV DEBIAN_FRONTEND=noninteractive
+
 # 只安装运行时必需的依赖
 RUN apt-get update && apt-get install -y \
     sqlite3 \
     libsqlite3-0 \
     nginx \
+    wget \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
 
