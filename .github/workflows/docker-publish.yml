@@ -56,72 +56,7 @@ jobs:
           type=ref,event=branch
           type=ref,event=pr
           type=semver,pattern={{version}}
-          type=semver,pattern={{major}}.{{minor}}
-          type=semver,pattern={{major}}
           type=raw,value=latest,enable={{is_default_branch}}
-          type=raw,value=optimized,enable={{is_default_branch}}
-
-    # 构建信息收集
-    - name: Collect build info
-      id: build-info
-      run: |
-        echo "build-date=$(date -u +'%Y-%m-%dT%H:%M:%SZ')" >> $GITHUB_OUTPUT
-        echo "git-sha=${GITHUB_SHA::8}" >> $GITHUB_OUTPUT
-        echo "git-ref=${GITHUB_REF_NAME}" >> $GITHUB_OUTPUT
-
-    # 快速测试构建（仅AMD64，用于验证）
-    - name: Test build (AMD64 only)
-      uses: docker/build-push-action@v5
-      with:
-        context: .
-        platforms: linux/amd64
-        push: false
-        tags: test:latest
-        cache-from: |
-          type=gha,scope=test
-          type=registry,ref=${{ env.REGISTRY }}/shanheee/${{ env.IMAGE_NAME }}:buildcache
-        cache-to: type=gha,mode=max,scope=test
-        load: true
-        build-args: |
-          BUILDKIT_INLINE_CACHE=1
-          BUILD_DATE=${{ steps.build-info.outputs.build-date }}
-          GIT_SHA=${{ steps.build-info.outputs.git-sha }}
-          GIT_REF=${{ steps.build-info.outputs.git-ref }}
-
-    # 容器健康检查
-    - name: Test container health
-      run: |
-        echo "🧪 启动测试容器..."
-        docker run -d --name test-container -p 3000:3000 -p 8000:8000 test:latest
-
-        echo "⏳ 等待服务启动..."
-        sleep 30
-
-        # 检查容器是否运行
-        if ! docker ps | grep test-container; then
-          echo "❌ 容器启动失败"
-          docker logs test-container
-          exit 1
-        fi
-
-        # 简单的健康检查
-        echo "🔍 执行健康检查..."
-        for i in {1..10}; do
-          if curl -f http://localhost:3000 > /dev/null 2>&1; then
-            echo "✅ 服务响应正常"
-            break
-          fi
-          if [ $i -eq 10 ]; then
-            echo "❌ 服务健康检查失败"
-            docker logs test-container
-            exit 1
-          fi
-          sleep 5
-        done
-
-        # 清理测试容器
-        docker stop test-container
-        docker rm test-container
 
     # 多平台构建和推送
     - name: Build and push Docker image
@@ -141,28 +76,6 @@ jobs:
           type=registry,ref=${{ env.REGISTRY }}/shanheee/${{ env.IMAGE_NAME }}:buildcache,mode=max
         build-args: |
           BUILDKIT_INLINE_CACHE=1
-          BUILD_DATE=${{ steps.build-info.outputs.build-date }}
-          GIT_SHA=${{ steps.build-info.outputs.git-sha }}
-          GIT_REF=${{ steps.build-info.outputs.git-ref }}
-
-    # 镜像大小分析
-    - name: Analyze image size
-      if: github.event_name != 'pull_request'
-      run: |
-        echo "📊 镜像大小分析:"
-        docker pull ${{ env.REGISTRY }}/shanheee/${{ env.IMAGE_NAME }}:latest
-        docker images ${{ env.REGISTRY }}/shanheee/${{ env.IMAGE_NAME }}:latest --format "table {{.Repository}}\t{{.Tag}}\t{{.Size}}\t{{.CreatedAt}}"
-
-        # 获取镜像大小（MB）
-        SIZE=$(docker images ${{ env.REGISTRY }}/shanheee/${{ env.IMAGE_NAME }}:latest --format "{{.Size}}" | sed 's/MB//')
-        echo "镜像大小: ${SIZE}MB"
-
-        # 如果镜像大小超过500MB，发出警告
-        if [ "${SIZE%.*}" -gt 500 ]; then
-          echo "⚠️ 警告: 镜像大小超过500MB，建议进一步优化"
-        else
-          echo "✅ 镜像大小在合理范围内"
-        fi
 
     - name: Generate artifact attestation
       if: github.event_name != 'pull_request'
@@ -179,5 +92,11 @@ jobs:
         echo "🎉 构建完成！"
         echo "📦 镜像标签: ${{ steps.meta.outputs.tags }}"
         echo "🔗 镜像摘要: ${{ steps.build.outputs.digest }}"
-        echo "📅 构建时间: ${{ steps.build-info.outputs.build-date }}"
-        echo "🔄 Git提交: ${{ steps.build-info.outputs.git-sha }}"
+
+        # 获取镜像大小
+        if [ "${{ github.event_name }}" != "pull_request" ] && [ "${{ steps.build.outcome }}" == "success" ]; then
+          echo "📊 获取镜像大小..."
+          docker pull ${{ env.REGISTRY }}/shanheee/${{ env.IMAGE_NAME }}:latest
+          SIZE=$(docker images ${{ env.REGISTRY }}/shanheee/${{ env.IMAGE_NAME }}:latest --format "{{.Size}}")
+          echo "📏 镜像大小: $SIZE"
+        fi
