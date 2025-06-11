@@ -31,27 +31,6 @@ jobs:
     - name: Checkout repository
       uses: actions/checkout@v4
 
-    - name: Set up Node.js
-      uses: actions/setup-node@v4
-      with:
-        node-version: '20'
-        cache: 'npm'
-
-    - name: Check and fix dependencies
-      run: |
-        echo "🔍 检查依赖冲突..."
-        node scripts/fix-dependencies.js
-
-        # 如果有修改，提交回仓库
-        if ! git diff --quiet package.json; then
-          echo "📝 发现依赖修复，更新package.json"
-          git config --local user.email "action@github.com"
-          git config --local user.name "GitHub Action"
-          git add package.json
-          git commit -m "fix: 自动修复依赖冲突 [skip ci]"
-          git push
-        fi
-
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v3
       with:
