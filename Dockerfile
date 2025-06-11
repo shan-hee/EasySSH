@@ -21,16 +21,14 @@ WORKDIR /app
 # 优化依赖安装 - 先复制package文件利用Docker缓存
 COPY package*.json ./
 
-# 清理npm缓存并安装依赖
-RUN npm cache clean --force && \
-    npm ci --no-audit --prefer-offline --legacy-peer-deps
+# 安装依赖（前端构建需要所有依赖）
+RUN npm install --legacy-peer-deps --no-audit
 
 # 复制源代码并构建
 COPY . .
 
-# 清理构建缓存并构建
-RUN rm -rf node_modules/.vite dist && \
-    NODE_ENV=production npm run build
+# 构建前端
+RUN NODE_ENV=production npm run build
 
 # 阶段2: 后端构建和依赖预编译
 FROM node:20-alpine AS backend-builder
@@ -48,9 +46,8 @@ WORKDIR /app
 # 复制后端依赖文件
 COPY server/package*.json ./
 
-# 清理缓存并安装生产依赖
-RUN npm cache clean --force && \
-    npm ci --omit=dev --no-audit --prefer-offline --legacy-peer-deps && \
+# 安装生产依赖并编译原生模块
+RUN npm install --omit=dev --legacy-peer-deps --no-audit && \
     npm rebuild better-sqlite3
 
 # 复制后端源代码
