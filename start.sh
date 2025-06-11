@@ -16,9 +16,9 @@ BACKEND_PID=$!
 
 # 启动 nginx
 echo "Starting nginx..."
-# 创建nginx运行时目录
-mkdir -p /tmp/nginx
-# 启动nginx（使用非特权端口配置）
+# 确保nginx目录存在且有正确权限
+mkdir -p /var/log/nginx /var/cache/nginx /var/lib/nginx /run/nginx
+# 启动nginx
 nginx -g "daemon off;" &
 NGINX_PID=$!
 

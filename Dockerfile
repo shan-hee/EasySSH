@@ -1,4 +1,4 @@
-# ===== 优化的多阶段构建 =====
+# ===== 修复版多阶段构建 =====
 
 # 构建参数
 ARG BUILD_DATE
@@ -6,47 +6,49 @@ ARG GIT_SHA
 ARG GIT_REF
 ARG BUILDKIT_INLINE_CACHE=1
 
-# 阶段1: 前端构建
-FROM node:20-alpine AS frontend-builder
+# 阶段1: 前端构建（使用bullseye完整环境）
+FROM node:20-bullseye AS frontend-builder
 
-# 安装构建依赖（Alpine版本更轻量）
-RUN apk add --no-cache \
+# 设置非交互式安装
+ENV DEBIAN_FRONTEND=noninteractive
+
+# 安装构建依赖（bullseye已包含大部分工具）
+RUN apt-get update && apt-get install -y \
     python3 \
     make \
     g++ \
-    git
+    git \
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-# 优化依赖安装 - 先复制package文件利用Docker缓存
+# 复制依赖文件并安装
 COPY package*.json ./
-
-# 安装依赖（前端构建需要所有依赖）
 RUN npm install --legacy-peer-deps --no-audit
 
 # 复制源代码并构建
 COPY . .
-
-# 构建前端
 RUN NODE_ENV=production npm run build
 
-# 阶段2: 后端构建和依赖预编译
-FROM node:20-alpine AS backend-builder
+# 阶段2: 后端构建（使用bullseye编译原生模块）
+FROM node:20-bullseye AS backend-builder
 
-# 安装构建依赖
-RUN apk add --no-cache \
+# 设置非交互式安装
+ENV DEBIAN_FRONTEND=noninteractive
+
+# 安装构建依赖（包含SQLite开发库）
+RUN apt-get update && apt-get install -y \
     python3 \
     make \
     g++ \
-    sqlite \
-    sqlite-dev
+    sqlite3 \
+    libsqlite3-dev \
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-# 复制后端依赖文件
+# 复制后端依赖文件并安装
 COPY server/package*.json ./
-
-# 安装生产依赖并编译原生模块
 RUN npm install --omit=dev --legacy-peer-deps --no-audit && \
     npm rebuild better-sqlite3
 
@@ -92,10 +94,10 @@ COPY --from=nginx-server /etc/nginx/nginx.conf /etc/nginx/nginx.conf
 COPY start.sh /start.sh
 RUN chmod +x /start.sh
 
-# 设置权限
+# 设置权限和nginx目录
 RUN chown -R appuser:appuser /app && \
-    mkdir -p /var/log/nginx /var/cache/nginx && \
-    chown -R appuser:appuser /var/log/nginx /var/cache/nginx
+    mkdir -p /var/log/nginx /var/cache/nginx /var/lib/nginx /run/nginx && \
+    chown -R appuser:appuser /var/log/nginx /var/cache/nginx /var/lib/nginx /run/nginx
 
 # 暴露端口
 EXPOSE 3000 8000 9527
