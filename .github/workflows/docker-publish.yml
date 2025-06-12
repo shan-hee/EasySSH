@@ -92,11 +92,3 @@ jobs:
         echo "🎉 构建完成！"
         echo "📦 镜像标签: ${{ steps.meta.outputs.tags }}"
         echo "🔗 镜像摘要: ${{ steps.build.outputs.digest }}"
-
-        # 获取镜像大小
-        if [ "${{ github.event_name }}" != "pull_request" ] && [ "${{ steps.build.outcome }}" == "success" ]; then
-          echo "📊 获取镜像大小..."
-          docker pull ${{ env.REGISTRY }}/shanheee/${{ env.IMAGE_NAME }}:latest
-          SIZE=$(docker images ${{ env.REGISTRY }}/shanheee/${{ env.IMAGE_NAME }}:latest --format "{{.Size}}")
-          echo "📏 镜像大小: $SIZE"
-        fi
