@@ -28,7 +28,7 @@ RUN npm install --legacy-peer-deps --no-audit
 
 # 复制源代码并构建
 COPY . .
-RUN NODE_ENV=production npm run build
+RUN NODE_ENV=development npm run build
 
 # 阶段2: 后端构建（使用bullseye编译原生模块）
 FROM node:20-bullseye AS backend-builder
