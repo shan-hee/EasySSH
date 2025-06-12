@@ -509,7 +509,6 @@ function handleRequestSystemStats(ws, sessionId, data) {
         requestId: data.timestamp || Date.now()
       }
     });
-    console.log(`向主机 ${targetHost} 请求系统状态`);
   } else {
     // 尝试连接到目标主机
     connectToHost(targetHost).then(connected => {
@@ -526,7 +525,6 @@ function handleRequestSystemStats(ws, sessionId, data) {
               requestId: data.timestamp || Date.now()
             }
           });
-          console.log(`向新连接的主机 ${targetHost} 请求系统状态`);
         }
       } else {
         sendError(ws, `无法连接到主机 ${targetHost}`, sessionId);
@@ -545,7 +543,7 @@ function sendMessage(ws, message) {
     try {
       ws.send(JSON.stringify(message));
     } catch (err) {
-      console.error(`发送消息失败: ${err.message}`);
+      // 静默处理发送失败
     }
   }
 }

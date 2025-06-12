@@ -57,7 +57,6 @@ async function request(url, options = {}) {
     const data = await response.json();
     return data;
   } catch (error) {
-    console.error('API请求错误:', error);
     throw error;
   }
 }

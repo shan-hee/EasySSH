@@ -94,9 +94,7 @@ function requestInterceptor(url, options) {
   
   // 添加请求ID
   headers['X-Request-ID'] = currentRequestId.toString();
-  
-  console.log(`[API] 请求开始 [${currentRequestId}]: ${options.method || 'GET'} ${url}`);
-  
+
   return {
     ...options,
     headers,
@@ -142,18 +140,15 @@ function errorInterceptor(error, options) {
   
   // 处理不同类型的错误
   if (error.name === 'AbortError') {
-    console.error(`[API] 请求超时 [${requestId}]`);
     throw new Error('请求超时，请稍后重试');
   }
-  
+
   // 网络错误
   if (error instanceof TypeError && error.message.includes('network')) {
-    console.error(`[API] 网络错误 [${requestId}]: ${error.message}`);
     throw new Error('网络连接失败，请检查您的网络连接');
   }
-  
+
   // 服务器错误
-  console.error(`[API] 请求失败 [${requestId}]:`, error);
   throw error;
 }
 
@@ -183,7 +178,6 @@ export async function request(url, options = {}, customConfig = {}) {
     const cachedResponse = getFromCache(cacheKey);
     
     if (cachedResponse) {
-      console.log(`[API] 从缓存返回 [${interceptedOptions.requestId}]: ${fullUrl}`);
       return cachedResponse;
     }
   }

@@ -39,7 +39,8 @@ class TerminalManager {
     log.info(`创建终端，使用光标样式: ${cursorStyle}, 闪烁: ${cursorBlink}`);
     
     // 创建终端实例
-    const terminalOptions = settingsService.getTerminalOptions()
+    const settingsServiceInstance = new settingsService()
+    const terminalOptions = settingsServiceInstance.getTerminalOptions()
     const terminal = new Terminal({
       fontSize: options.fontSize || terminalOptions.fontSize || 14,
       fontFamily: options.fontFamily || terminalOptions.fontFamily || "'JetBrains Mono'",
@@ -108,7 +109,8 @@ class TerminalManager {
         const selectedText = terminal.getSelection();
         if (selectedText) {
           try {
-            const terminalOptions = settingsService.getTerminalOptions();
+            const settingsServiceInstance = new settingsService()
+            const terminalOptions = settingsServiceInstance.getTerminalOptions();
 
             if (terminalOptions && terminalOptions.copyOnSelect) {
               navigator.clipboard.writeText(selectedText);
@@ -125,7 +127,8 @@ class TerminalManager {
       event.preventDefault();
 
       try {
-        const terminalOptions = settingsService.getTerminalOptions();
+        const settingsServiceInstance = new settingsService()
+        const terminalOptions = settingsServiceInstance.getTerminalOptions();
 
         if (!terminalOptions || !terminalOptions.rightClickSelectsWord) {
           return;

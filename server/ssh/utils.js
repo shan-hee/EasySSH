@@ -3,8 +3,6 @@
  * 用于提供SSH和SFTP共用的功能
  */
 
-const WebSocket = require('ws');
-
 /**
  * WebSocket状态常量
  */
@@ -56,11 +54,11 @@ function sendMessage(ws, type, data) {
  */
 function sendError(ws, message, sessionId = null, operationId = null, source = null) {
   const data = { message };
-  
+
   if (sessionId) data.sessionId = sessionId;
   if (operationId) data.operationId = operationId;
   if (source) data.source = source;
-  
+
   sendMessage(ws, MSG_TYPE.ERROR, data);
 }
 
@@ -92,13 +90,13 @@ function sendSftpSuccess(ws, sessionId, operationId, additionalData = {}) {
     operationId,
     ...additionalData
   };
-  
+
   // 检查WebSocket状态
   if (!ws || ws.readyState !== WS_STATE.OPEN) {
-    console.error(`发送SFTP成功消息失败: WebSocket未就绪`);
+    console.error('发送SFTP成功消息失败: WebSocket未就绪');
     return;
   }
-  
+
   try {
     sendMessage(ws, MSG_TYPE.SUCCESS, data);
   } catch (error) {
@@ -138,12 +136,12 @@ function validateSshSession(ws, sessionId, sessions, operationId = null) {
     sendError(ws, '会话ID不能为空', sessionId, operationId);
     return false;
   }
-  
+
   if (!sessions.has(sessionId)) {
     sendError(ws, '无效的会话ID', sessionId, operationId);
     return false;
   }
-  
+
   return true;
 }
 
@@ -160,12 +158,12 @@ function validateSftpSession(ws, sessionId, sftpSessions, operationId) {
     sendSftpError(ws, sessionId, operationId, '会话ID不能为空');
     return false;
   }
-  
+
   if (!sftpSessions.has(sessionId)) {
     sendSftpError(ws, sessionId, operationId, '无效的SFTP会话');
     return false;
   }
-  
+
   return true;
 }
 
@@ -182,14 +180,12 @@ async function safeExec(fn, ws, errorPrefix, sessionId, operationId, isSftp = tr
   try {
     return await fn();
   } catch (err) {
-    console.error(`${errorPrefix}: ${err.message}`);
-    
     if (isSftp) {
       sendSftpError(ws, sessionId, operationId, `${errorPrefix}: ${err.message}`);
     } else {
       sendError(ws, `${errorPrefix}: ${err.message}`, sessionId);
     }
-    
+
     return null;
   }
 }
@@ -213,7 +209,7 @@ function recordActivity(session) {
  * @returns {string} 格式化的日志消息
  */
 function logMessage(action, target, result = '成功', details = '') {
-  return `${action} ${target} ${result}${details ? ': ' + details : ''}`;
+  return `${action} ${target} ${result}${details ? `: ${details}` : ''}`;
 }
 
 // 导出所有函数和常量
@@ -230,4 +226,4 @@ module.exports = {
   safeExec,
   recordActivity,
   logMessage
-}; 
+};

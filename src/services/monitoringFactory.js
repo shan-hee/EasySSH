@@ -21,6 +21,7 @@ class MonitoringInstance {
       connecting: false,
       sessionId: null,
       error: null,
+      serviceVerified: false, // 标记监控服务是否已验证
       stats: {
         messagesReceived: 0,
         messagesSent: 0
@@ -136,31 +137,37 @@ class MonitoringInstance {
           this.state.connecting = false;
           this.state.connected = true;
           this.state.error = null;
-          
-          log.debug(`[终端${this.terminalId}] 监控WebSocket连接已建立，监控远程主机: ${remoteHost}`);
-          
-          // 发送连接成功事件
-          window.dispatchEvent(new CustomEvent('monitoring-connected', {
-            detail: {
-              terminalId: this.terminalId,
-              hostAddress: remoteHost,
-              success: true
+
+          log.debug(`[终端${this.terminalId}] 监控WebSocket连接已建立，正在验证监控服务: ${remoteHost}`);
+
+          // 设置服务验证超时
+          const verificationTimeout = setTimeout(() => {
+            if (!this.state.serviceVerified) {
+              log.debug(`[终端${this.terminalId}] 监控服务验证超时，可能未安装监控服务`);
+              this.state.serviceVerified = false;
+
+              // 触发监控状态更新事件（未安装）
+              window.dispatchEvent(new CustomEvent('monitoring-status-change', {
+                detail: {
+                  installed: false,
+                  host: remoteHost,
+                  terminalId: this.terminalId,
+                  reason: '服务验证超时'
+                }
+              }));
+
+              // 断开连接
+              this.disconnect();
             }
-          }));
-          
-          // 触发监控状态更新事件（可用）
-          window.dispatchEvent(new CustomEvent('monitoring-status-change', { 
-            detail: { 
-              installed: true, 
-              host: remoteHost,
-              terminalId: this.terminalId 
-            }
-          }));
-          
+          }, 5000); // 5秒验证超时
+
+          // 存储验证超时ID
+          this.verificationTimeout = verificationTimeout;
+
           // 初始化保活机制
           this._setupKeepAlive();
-          
-          // 请求初始数据
+
+          // 请求初始数据来验证服务
           this.requestSystemStats();
         };
         
@@ -292,10 +299,17 @@ class MonitoringInstance {
     
     this.state.connected = false;
     this.state.sessionId = null;
-    
+
     // 重置状态
     this.state.connecting = false;
+    this.state.serviceVerified = false; // 重置服务验证状态
     this.state.lastActivity = null;
+
+    // 清除验证超时
+    if (this.verificationTimeout) {
+      clearTimeout(this.verificationTimeout);
+      this.verificationTimeout = null;
+    }
     
     // 清除保持连接的定时任务
     this._clearKeepAlive();
@@ -419,16 +433,47 @@ class MonitoringInstance {
       
       // 如果是系统状态或系统信息消息，更新全局数据存储
       if (
-        messageType === 'system_stats' || 
-        messageType === 'system-stats' || 
-        messageType === 'system-info' || 
+        messageType === 'system_stats' ||
+        messageType === 'system-stats' ||
+        messageType === 'system-info' ||
         (message.payload && (message.payload.cpu || message.payload.memory))
       ) {
         this._updateMonitorData(message);
-        
+
         // 更新中央数据存储
         if (serverId) {
           monitoringFactory.updateServerData(serverId, message);
+        }
+
+        // 如果这是第一次收到有效的监控数据，确认服务已安装
+        if (!this.state.serviceVerified) {
+          this.state.serviceVerified = true;
+
+          // 清除验证超时
+          if (this.verificationTimeout) {
+            clearTimeout(this.verificationTimeout);
+            this.verificationTimeout = null;
+          }
+
+          log.debug(`[终端${this.terminalId}] 监控服务验证成功，服务已安装: ${this.state.targetHost}`);
+
+          // 发送连接成功事件
+          window.dispatchEvent(new CustomEvent('monitoring-connected', {
+            detail: {
+              terminalId: this.terminalId,
+              hostAddress: this.state.targetHost,
+              success: true
+            }
+          }));
+
+          // 触发监控状态更新事件（已安装）
+          window.dispatchEvent(new CustomEvent('monitoring-status-change', {
+            detail: {
+              installed: true,
+              host: this.state.targetHost,
+              terminalId: this.terminalId
+            }
+          }));
         }
       }
       

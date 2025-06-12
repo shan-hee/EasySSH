@@ -341,28 +341,48 @@ export const useTerminalStore = defineStore('terminal', () => {
       // 检查监控服务连接状态
       const monitorStatus = window.monitoringAPI.getStatus()
       const shouldConnect = !monitorStatus.connected || monitorStatus.targetHost !== host
-      
+
       if (shouldConnect) {
         // 标记为正在连接中
         state.monitorConnectingHosts[host] = true
-        
-        log.info(`[终端] 连接监控服务: ${host}`)
+
+        log.info(`[终端] 尝试连接监控服务: ${host}`)
         // 异步连接，不阻塞终端创建
         window.monitoringAPI.connect(host)
           .then(success => {
             // 移除连接中标记
             delete state.monitorConnectingHosts[host]
-            // 触发状态更新
+            // 只有在真正连接成功时才更新状态为true
             window.monitoringAPI.updateTerminalMonitoringStatus?.(terminalId, success)
+            if (success) {
+              log.info(`[终端] 监控服务连接成功: ${host}`)
+            } else {
+              log.info(`[终端] 监控服务连接失败或服务未安装: ${host}`)
+            }
           })
           .catch(err => {
             log.warn('[终端] 监控服务连接错误:', err)
-            // 确保在错误情况下也移除连接中标记
+            // 确保在错误情况下也移除连接中标记并设置状态为false
             delete state.monitorConnectingHosts[host]
+            window.monitoringAPI.updateTerminalMonitoringStatus?.(terminalId, false)
           })
       } else {
-        log.debug(`[终端] 监控服务已连接到目标主机: ${host}`)
-        window.monitoringAPI.updateTerminalMonitoringStatus?.(terminalId, true)
+        // 即使本地状态显示已连接，也需要验证远程服务是否真的可用
+        log.debug(`[终端] 验证监控服务状态: ${host}`)
+        // 重新验证连接，确保远程服务真的可用
+        window.monitoringAPI.connect(host)
+          .then(success => {
+            window.monitoringAPI.updateTerminalMonitoringStatus?.(terminalId, success)
+            if (success) {
+              log.debug(`[终端] 监控服务验证成功: ${host}`)
+            } else {
+              log.debug(`[终端] 监控服务验证失败: ${host}`)
+            }
+          })
+          .catch(err => {
+            log.warn('[终端] 监控服务验证错误:', err)
+            window.monitoringAPI.updateTerminalMonitoringStatus?.(terminalId, false)
+          })
       }
     } catch (err) {
       log.warn('[终端] 监控服务处理出错:', err)
@@ -433,8 +453,9 @@ export const useTerminalStore = defineStore('terminal', () => {
         
         // 应用终端主题设置
         if (settings.theme) {
-          // 从settingsService获取主题配置
-          const themeConfig = settingsService.getTerminalTheme(settings.theme)
+          // 创建settingsService实例并获取主题配置
+          const settingsServiceInstance = new settingsService()
+          const themeConfig = settingsServiceInstance.getTerminalTheme(settings.theme)
           terminalOptions.theme = themeConfig
         }
         
@@ -1095,7 +1116,8 @@ export const useTerminalStore = defineStore('terminal', () => {
         // 应用终端主题
         if (settings.theme) {
           try {
-            const themeConfig = settingsService.getTerminalTheme(settings.theme)
+            const settingsServiceInstance = new settingsService()
+            const themeConfig = settingsServiceInstance.getTerminalTheme(settings.theme)
 
             // 检查主题是否有变化
             if (JSON.stringify(terminal.options.theme) !== JSON.stringify(themeConfig)) {

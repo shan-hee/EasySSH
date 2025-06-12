@@ -58,11 +58,8 @@ exports.checkStatus = async (req, res) => {
       });
     }
     
-    console.log(`正在检查监控状态: ${host}:${port}`);
-    
     // 尝试直接连接到WebSocket
     try {
-      console.log(`尝试连接端口 ${port} 的WebSocket服务...`);
       // 引入监控服务
       const { connectToHost } = require('../monitoring');
       
@@ -70,7 +67,6 @@ exports.checkStatus = async (req, res) => {
       const connected = await connectToHost(host, port);
       
       if (connected) {
-        console.log(`WebSocket连接成功: ${host}:${port}`);
         return res.json({
           success: true,
           status: 'running',
@@ -81,7 +77,6 @@ exports.checkStatus = async (req, res) => {
           }
         });
       } else {
-        console.log(`WebSocket连接失败`);
         return res.json({
           success: false,
           status: 'not_running',
@@ -90,7 +85,6 @@ exports.checkStatus = async (req, res) => {
         });
       }
     } catch (error) {
-      console.log(`连接失败: ${error.code} - ${error.message}`);
       return res.json({
         success: false,
         status: 'not_running',
@@ -126,7 +120,6 @@ exports.connectToMonitor = async (req, res) => {
     // 引入监控服务
     const { connectToHost } = require('../monitoring');
     
-    console.log(`尝试主动连接到远程监控服务: ${host}:${port}`);
     const connected = await connectToHost(host, port);
     
     if (connected) {
@@ -147,7 +140,6 @@ exports.connectToMonitor = async (req, res) => {
       });
     }
   } catch (error) {
-    console.error('连接监控服务失败:', error);
     return res.status(500).json({
       success: false,
       message: '连接监控服务失败',
@@ -212,7 +204,6 @@ exports.getSessions = async (req, res) => {
       timestamp: Date.now()
     });
   } catch (error) {
-    console.error('获取监控会话失败:', error);
     return res.status(500).json({
       success: false,
       message: '获取监控会话失败',

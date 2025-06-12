@@ -63,21 +63,6 @@ class ApiService {
               this._handleAuthError()
             } else {
               config.headers['Authorization'] = `Bearer ${token}`
-              // 添加日志，记录请求和认证信息
-              log.info(`发送请求: ${config.method.toUpperCase()} ${config.url}`, {
-                hasToken: true,
-                tokenLength: token.length,
-                tokenPrefix: token.substring(0, 10) + '...'
-              })
-            }
-          } else {
-            // 添加日志，记录没有token的请求（根据路径决定日志级别）
-            if (isAuthExemptPath) {
-              // 对于登录等不需要认证的路径，使用info级别
-              log.info(`发送非认证请求: ${config.method.toUpperCase()} ${config.url}`)
-            } else {
-              // 对于需要认证但没有token的请求，使用warn级别
-            log.warn(`发送未认证请求: ${config.method.toUpperCase()} ${config.url}`)
             }
           }
           return config

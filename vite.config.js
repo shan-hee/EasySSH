@@ -121,6 +121,35 @@ export default defineConfig(({ mode }) => {
           changeOrigin: true,
           // 不重写路径，保留/api前缀
           // rewrite: (path) => path.replace(/^\/api/, '')
+        },
+        // WebSocket代理配置 - SSH连接
+        '/ssh': {
+          target: 'ws://localhost:8000', // 后端WebSocket服务地址
+          ws: true, // 启用WebSocket代理
+          changeOrigin: true,
+          secure: false,
+          timeout: 10000, // 10秒超时
+          configure: (proxy) => {
+            proxy.on('error', (err) => {
+              console.log('SSH WebSocket代理错误:', err.message);
+            });
+            proxy.on('proxyReq', (proxyReq, req) => {
+              console.log('SSH WebSocket代理请求:', req.url);
+            });
+          }
+        },
+        // WebSocket代理配置 - 监控服务
+        '/monitor': {
+          target: 'ws://localhost:9527', // 监控WebSocket服务地址
+          ws: true, // 启用WebSocket代理
+          changeOrigin: true,
+          secure: false,
+          timeout: 10000, // 10秒超时
+          configure: (proxy) => {
+            proxy.on('error', (err) => {
+              console.log('监控WebSocket代理错误:', err.message);
+            });
+          }
         }
       }
     },
