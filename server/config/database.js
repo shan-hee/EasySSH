@@ -128,15 +128,14 @@ const connectDatabase = () => {
       )
     `);
     
-    // 创建连接历史表
+    // 创建连接历史表（独立存储，不依赖connections表）
     db.exec(`
       CREATE TABLE IF NOT EXISTS connection_history (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         user_id INTEGER NOT NULL,
         connection_id TEXT NOT NULL,
         timestamp INTEGER NOT NULL,
-        FOREIGN KEY (user_id) REFERENCES users (id),
-        FOREIGN KEY (connection_id) REFERENCES connections (id) ON DELETE CASCADE
+        FOREIGN KEY (user_id) REFERENCES users (id)
       )
     `);
     

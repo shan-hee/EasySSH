@@ -126,6 +126,9 @@ export const useUserStore = defineStore('user', () => {
   
   // 连接相关方法
   
+  // 添加连接的请求状态跟踪
+  const addingConnections = new Set()
+
   // 添加新连接
   function addConnection(connection) {
     try {
@@ -145,15 +148,40 @@ export const useUserStore = defineStore('user', () => {
 
       // 生成唯一ID
       connection.id = Date.now().toString()
+
+      // 防重复提交检查
+      const connectionKey = `${connection.host}:${connection.port}:${connection.username}`
+      if (addingConnections.has(connectionKey)) {
+        log.warn('连接正在添加中，跳过重复请求', connectionKey)
+        return null
+      }
+
       connections.value.push(connection)
 
       // 同步到服务器
       if (isLoggedIn.value) {
+        // 标记正在添加
+        addingConnections.add(connectionKey)
+
         // 异步保存到服务器，不阻塞UI
         apiService.post('/connections', { connection })
+          .then(response => {
+            if (response && !response.success && response.existingConnectionId) {
+              // 服务器返回连接已存在，更新本地ID
+              const localConnection = connections.value.find(c => c.id === connection.id)
+              if (localConnection) {
+                localConnection.id = response.existingConnectionId
+              }
+              log.info('服务器检测到重复连接，已更新本地ID')
+            }
+          })
           .catch(error => {
             // API可能未实现，不影响用户体验
             log.warn('同步连接到服务器失败，仅保存在本地', error)
+          })
+          .finally(() => {
+            // 清除添加状态
+            addingConnections.delete(connectionKey)
           })
       }
 
