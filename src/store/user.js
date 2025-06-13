@@ -517,7 +517,7 @@ export const useUserStore = defineStore('user', () => {
           log.warn('加载用户连接配置失败，将使用本地数据')
         })
 
-        // 同步脚本库数据
+        // 同步脚本库数据（包括收藏状态）
         try {
           scriptLibraryService.syncFromServer().catch(() => {
             log.warn('同步脚本库数据失败，将使用本地数据')

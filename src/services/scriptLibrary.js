@@ -305,6 +305,9 @@ class ScriptLibraryService {
 
       log.info('开始同步脚本库数据...')
 
+      // 同步收藏状态
+      await this.syncFavoritesFromServer()
+
       // 获取公开脚本
       const publicScriptsResponse = await apiService.get('/scripts/all')
       if (publicScriptsResponse && publicScriptsResponse.success) {
@@ -350,6 +353,29 @@ class ScriptLibraryService {
       }
     } catch (error) {
       log.error('同步脚本库数据失败:', error)
+      return false
+    }
+  }
+
+  /**
+   * 从服务器同步收藏状态
+   */
+  async syncFavoritesFromServer() {
+    try {
+      if (!this.isUserLoggedIn()) {
+        return false
+      }
+
+      const response = await apiService.get('/scripts/favorites')
+      if (response && response.success) {
+        this.favorites.value = response.favorites || []
+        this.saveToLocal()
+        log.info('脚本收藏状态同步成功', { count: this.favorites.value.length })
+        return true
+      }
+      return false
+    } catch (error) {
+      log.warn('从服务器同步收藏状态失败:', error)
       return false
     }
   }
@@ -890,9 +916,11 @@ class ScriptLibraryService {
    * 切换脚本收藏状态
    * @param {number} scriptId - 脚本ID
    */
-  toggleFavorite(scriptId) {
+  async toggleFavorite(scriptId) {
     const index = this.favorites.value.indexOf(scriptId)
-    if (index > -1) {
+    const wasFavorite = index > -1
+
+    if (wasFavorite) {
       this.favorites.value.splice(index, 1)
     } else {
       this.favorites.value.push(scriptId)
@@ -900,6 +928,29 @@ class ScriptLibraryService {
 
     // 更新本地存储
     this.saveToLocal()
+
+    // 同步到服务器
+    try {
+      if (this.isUserLoggedIn()) {
+        await apiService.post('/scripts/favorites', {
+          favorites: this.favorites.value
+        })
+        log.debug('脚本收藏状态已同步到服务器', { scriptId, isFavorite: !wasFavorite })
+      }
+    } catch (error) {
+      log.warn('同步脚本收藏状态到服务器失败:', error)
+      // 如果同步失败，恢复本地状态
+      if (wasFavorite) {
+        this.favorites.value.push(scriptId)
+      } else {
+        const restoreIndex = this.favorites.value.indexOf(scriptId)
+        if (restoreIndex > -1) {
+          this.favorites.value.splice(restoreIndex, 1)
+        }
+      }
+      this.saveToLocal()
+      throw error
+    }
 
     return this.favorites.value.includes(scriptId)
   }

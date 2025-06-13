@@ -68,32 +68,7 @@ const connectDatabase = () => {
         updatedAt TEXT NOT NULL
       )
     `);
-    
-    // 创建服务器表
-    db.exec(`
-      CREATE TABLE IF NOT EXISTS servers (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        name TEXT NOT NULL,
-        host TEXT NOT NULL,
-        port INTEGER DEFAULT 22,
-        username TEXT NOT NULL,
-        password TEXT,
-        privateKey TEXT,
-        usePrivateKey INTEGER DEFAULT 0,
-        description TEXT,
-        tags TEXT,
-        timeout INTEGER DEFAULT 10000,
-        lastConnected TEXT,
-        connectionCount INTEGER DEFAULT 0,
-        owner INTEGER NOT NULL,
-        shared INTEGER DEFAULT 0,
-        sharedWith TEXT,
-        createdAt TEXT NOT NULL,
-        updatedAt TEXT NOT NULL,
-        FOREIGN KEY (owner) REFERENCES users (id)
-      )
-    `);
-    
+
     // 创建连接表
     db.exec(`
       CREATE TABLE IF NOT EXISTS connections (
@@ -225,7 +200,7 @@ const connectDatabase = () => {
         script_id INTEGER,
         script_name TEXT NOT NULL,
         command TEXT NOT NULL,
-        server_id TEXT,
+        connection_id TEXT,
         server_name TEXT NOT NULL,
         host TEXT NOT NULL,
         port INTEGER DEFAULT 22,
@@ -235,8 +210,7 @@ const connectDatabase = () => {
         exit_code INTEGER,
         executed_at TEXT NOT NULL,
         FOREIGN KEY (user_id) REFERENCES users (id),
-        FOREIGN KEY (script_id) REFERENCES scripts (id) ON DELETE SET NULL,
-        FOREIGN KEY (server_id) REFERENCES connections (id) ON DELETE SET NULL
+        FOREIGN KEY (script_id) REFERENCES scripts (id) ON DELETE SET NULL
       )
     `);
 

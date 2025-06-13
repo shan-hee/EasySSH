@@ -6,106 +6,49 @@
 const { connectDatabase } = require('../config/database');
 const Script = require('../models/Script');
 
-// 默认脚本数据
-const defaultScripts = [
+/**
+ * 获取服务器地址
+ */
+function getServerAddress() {
+  // 监控服务使用9527端口
+  const monitorPort = process.env.MONITOR_PORT || 9527;
+  const serverHost = process.env.SERVER_HOST || 'localhost';
+
+  // 如果是localhost，尝试获取实际IP
+  if (serverHost === 'localhost' || serverHost === '127.0.0.1') {
+    try {
+      const os = require('os');
+      const interfaces = os.networkInterfaces();
+
+      // 查找第一个非回环的IPv4地址
+      for (const name of Object.keys(interfaces)) {
+        for (const iface of interfaces[name]) {
+          if (iface.family === 'IPv4' && !iface.internal) {
+            return `${iface.address}:${monitorPort}`;
+          }
+        }
+      }
+    } catch (error) {
+      console.warn('获取网络接口失败，使用默认地址');
+    }
+  }
+
+  return `${serverHost}:${monitorPort}`;
+}
+
+// 默认脚本数据生成函数
+function getDefaultScripts() {
+  const serverAddress = getServerAddress();
+
+  return [
   {
-    name: '系统信息收集脚本',
+    name: '系统信息',
     description: '收集服务器系统信息，包括CPU、内存、磁盘使用情况等。',
     command: 'free -h && df -h && cat /proc/cpuinfo | grep "model name" | head -1',
     author: '系统管理员',
     tags: ['系统', '监控', '信息收集'],
     keywords: ['系统', '信息', '内存', '磁盘', 'cpu', 'free', 'df'],
     category: '系统监控',
-    isSystem: true
-  },
-  {
-    name: '网络连接检测',
-    description: '检测服务器与指定目标的网络连接状态。',
-    command: 'ping -c 4 google.com && traceroute baidu.com',
-    author: '网络管理员',
-    tags: ['网络', '诊断', '连接测试'],
-    keywords: ['网络', '连接', '检测', 'ping', 'traceroute'],
-    category: '网络诊断',
-    isSystem: true
-  },
-  {
-    name: '进程监控',
-    description: '查看系统进程状态和资源使用情况。',
-    command: 'ps aux | head -20 && top -bn1 | head -20',
-    author: '系统管理员',
-    tags: ['进程', '监控', '性能'],
-    keywords: ['进程', '监控', 'ps', 'top', '性能'],
-    category: '系统监控',
-    isSystem: true
-  },
-  {
-    name: '磁盘空间清理',
-    description: '清理系统临时文件和日志文件，释放磁盘空间。',
-    command: 'sudo apt-get clean && sudo journalctl --vacuum-time=7d && sudo find /tmp -type f -atime +7 -delete',
-    author: '系统管理员',
-    tags: ['清理', '磁盘', '维护'],
-    keywords: ['清理', '磁盘', '空间', 'clean', 'tmp'],
-    category: '系统维护',
-    isSystem: true
-  },
-  {
-    name: '服务状态检查',
-    description: '检查系统关键服务的运行状态。',
-    command: 'systemctl status nginx && systemctl status mysql && systemctl status ssh',
-    author: '系统管理员',
-    tags: ['服务', '状态', '检查'],
-    keywords: ['服务', '状态', 'systemctl', 'nginx', 'mysql', 'ssh'],
-    category: '服务管理',
-    isSystem: true
-  },
-  {
-    name: '日志查看',
-    description: '查看系统日志和应用日志的最新记录。',
-    command: 'tail -50 /var/log/syslog && journalctl -n 20',
-    author: '系统管理员',
-    tags: ['日志', '查看', '调试'],
-    keywords: ['日志', 'log', 'tail', 'journalctl', 'syslog'],
-    category: '日志管理',
-    isSystem: true
-  },
-  {
-    name: '用户登录信息',
-    description: '查看用户登录历史和当前在线用户。',
-    command: 'who && last | head -10 && w',
-    author: '系统管理员',
-    tags: ['用户', '登录', '安全'],
-    keywords: ['用户', '登录', 'who', 'last', 'w'],
-    category: '用户管理',
-    isSystem: true
-  },
-  {
-    name: '防火墙状态',
-    description: '检查防火墙状态和规则配置。',
-    command: 'sudo ufw status verbose && sudo iptables -L',
-    author: '安全管理员',
-    tags: ['防火墙', '安全', '网络'],
-    keywords: ['防火墙', '安全', 'ufw', 'iptables'],
-    category: '安全管理',
-    isSystem: true
-  },
-  {
-    name: '文件权限检查',
-    description: '检查重要文件和目录的权限设置。',
-    command: 'ls -la /etc/passwd /etc/shadow /etc/ssh/ && find /home -type f -perm 777',
-    author: '安全管理员',
-    tags: ['权限', '安全', '文件'],
-    keywords: ['权限', '安全', 'ls', 'find', 'chmod'],
-    category: '安全管理',
-    isSystem: true
-  },
-  {
-    name: '数据库备份',
-    description: '创建MySQL数据库的备份文件。',
-    command: 'mysqldump -u root -p --all-databases > backup_$(date +%Y%m%d_%H%M%S).sql',
-    author: '数据库管理员',
-    tags: ['备份', '数据库', 'MySQL'],
-    keywords: ['备份', '数据库', 'mysqldump', 'mysql'],
-    category: '数据库管理',
     isSystem: true
   },
   {
@@ -119,27 +62,51 @@ const defaultScripts = [
     isSystem: true
   },
   {
-    name: 'Git仓库状态',
-    description: '查看Git仓库的状态和最近提交记录。',
-    command: 'git status && git log --oneline -10 && git branch -a',
-    author: '开发管理员',
-    tags: ['Git', '版本控制', '开发'],
-    keywords: ['git', '版本控制', 'status', 'log', 'branch'],
-    category: '开发工具',
+    name: 'Docker全面清理（包括卷）',
+    description: '清理所有未使用的Docker镜像和卷。',
+    command: 'docker system prune -af --volumes',
+    author: '容器管理员',
+    tags: ['Docker', '镜像', '清理'],
+    keywords: ['docker', '镜像', 'prune'],
+    category: '容器管理',
+    isSystem: true
+  },
+  {
+    name: 'EasySSH监控服务安装',
+    description: `一键安装EasySSH监控服务，自动连接到服务器 ${serverAddress}，支持系统资源监控、网络监控等功能。`,
+    command: `echo "正在安装EasySSH监控服务，连接到服务器: ${serverAddress}" && curl -L https://raw.githubusercontent.com/shan-hee/EasySSH/main/server/scripts/easyssh-monitor-install.sh -o easyssh-monitor-install.sh && chmod +x easyssh-monitor-install.sh && sudo env EASYSSH_SERVER=${serverAddress} ./easyssh-monitor-install.sh`,
+    author: 'EasySSH团队',
+    tags: ['监控', '安装', 'EasySSH', '系统监控', '一键安装'],
+    keywords: ['easyssh', 'monitor', 'install', '监控', '安装'],
+    category: 'EasySSH监控',
+    isSystem: true
+  },
+  {
+    name: 'EasySSH监控服务卸载',
+    description: '一键卸载EasySSH监控服务及其所有相关文件，包括服务、配置文件、日志等。',
+    command: 'curl -L https://raw.githubusercontent.com/shan-hee/EasySSH/main/server/scripts/easyssh-monitor-uninstall.sh -o easyssh-monitor-uninstall.sh && chmod +x easyssh-monitor-uninstall.sh && sudo ./easyssh-monitor-uninstall.sh',
+    author: 'EasySSH团队',
+    tags: ['监控', '卸载', 'EasySSH', '清理'],
+    keywords: ['easyssh', 'monitor', 'uninstall', '监控', '卸载', '清理'],
+    category: 'EasySSH监控',
     isSystem: true
   }
-];
+  ];
+}
 
 async function initializeScripts() {
   try {
     // 连接数据库
     connectDatabase();
-    
+
     console.log('开始初始化脚本库数据...');
-    
+
+    // 获取脚本数据
+    const defaultScripts = getDefaultScripts();
+
     let createdCount = 0;
     let skippedCount = 0;
-    
+
     for (const scriptData of defaultScripts) {
       try {
         // 检查脚本是否已存在
@@ -196,4 +163,4 @@ if (require.main === module) {
     });
 }
 
-module.exports = { initializeScripts, defaultScripts };
+module.exports = { initializeScripts, getDefaultScripts };

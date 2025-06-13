@@ -538,6 +538,148 @@ const executeScript = async (req, res) => {
   }
 };
 
+/**
+ * 获取用户收藏的脚本
+ */
+const getUserFavorites = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const db = getDb();
+
+    // 获取用户收藏的脚本ID列表
+    const favorites = db.prepare(
+      'SELECT script_id FROM user_script_favorites WHERE user_id = ?'
+    ).all(userId);
+
+    const favoriteIds = favorites.map(fav => fav.script_id);
+
+    res.json({
+      success: true,
+      favorites: favoriteIds
+    });
+  } catch (error) {
+    log.error('获取用户收藏脚本失败:', error);
+    res.status(500).json({
+      success: false,
+      message: '获取收藏脚本失败',
+      error: error.message
+    });
+  }
+};
+
+/**
+ * 更新用户收藏的脚本
+ */
+const updateUserFavorites = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { favorites } = req.body;
+
+    if (!Array.isArray(favorites)) {
+      return res.status(400).json({
+        success: false,
+        message: '收藏数据格式不正确，应为数组'
+      });
+    }
+
+    const db = getDb();
+
+    // 开始事务
+    db.prepare('BEGIN TRANSACTION').run();
+
+    try {
+      // 清除现有收藏
+      db.prepare(
+        'DELETE FROM user_script_favorites WHERE user_id = ?'
+      ).run(userId);
+
+      // 添加新收藏
+      const insertStmt = db.prepare(
+        'INSERT INTO user_script_favorites (user_id, script_id, created_at) VALUES (?, ?, ?)'
+      );
+
+      const now = new Date().toISOString();
+      for (const scriptId of favorites) {
+        insertStmt.run(userId, scriptId, now);
+      }
+
+      // 提交事务
+      db.prepare('COMMIT').run();
+
+      res.json({
+        success: true,
+        message: '收藏脚本已更新'
+      });
+    } catch (error) {
+      // 回滚事务
+      db.prepare('ROLLBACK').run();
+      throw error;
+    }
+  } catch (error) {
+    log.error('更新用户收藏脚本失败:', error);
+    res.status(500).json({
+      success: false,
+      message: '更新收藏脚本失败',
+      error: error.message
+    });
+  }
+};
+
+/**
+ * 切换脚本收藏状态
+ */
+const toggleScriptFavorite = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const scriptId = parseInt(req.params.scriptId);
+
+    if (!scriptId) {
+      return res.status(400).json({
+        success: false,
+        message: '脚本ID不能为空'
+      });
+    }
+
+    const db = getDb();
+
+    // 检查是否已收藏
+    const existing = db.prepare(
+      'SELECT 1 FROM user_script_favorites WHERE user_id = ? AND script_id = ?'
+    ).get(userId, scriptId);
+
+    if (existing) {
+      // 取消收藏
+      db.prepare(
+        'DELETE FROM user_script_favorites WHERE user_id = ? AND script_id = ?'
+      ).run(userId, scriptId);
+
+      res.json({
+        success: true,
+        isFavorite: false,
+        message: '已取消收藏'
+      });
+    } else {
+      // 添加收藏
+      db.prepare(
+        'INSERT INTO user_script_favorites (user_id, script_id, created_at) VALUES (?, ?, ?)'
+      ).run(userId, scriptId, new Date().toISOString());
+
+      res.json({
+        success: true,
+        isFavorite: true,
+        message: '已添加到收藏'
+      });
+    }
+  } catch (error) {
+    log.error('切换脚本收藏状态失败:', error);
+    res.status(500).json({
+      success: false,
+      message: '操作失败',
+      error: error.message
+    });
+  }
+};
+
 module.exports = {
   getPublicScripts,
   getCategories,
@@ -549,5 +691,8 @@ module.exports = {
   deleteUserScript,
   getAllUserScripts,
   recordScriptUsage,
-  executeScript
+  executeScript,
+  getUserFavorites,
+  updateUserFavorites,
+  toggleScriptFavorite
 };

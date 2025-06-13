@@ -822,8 +822,12 @@ export default defineComponent({
       serverSelectionVisible.value = true
     };
 
-    const toggleFavorite = (script) => {
-      scriptLibraryService.toggleFavorite(script.id);
+    const toggleFavorite = async (script) => {
+      try {
+        await scriptLibraryService.toggleFavorite(script.id);
+      } catch (error) {
+        ElMessage.error('收藏操作失败: ' + error.message);
+      }
     };
 
     // 处理脚本执行
