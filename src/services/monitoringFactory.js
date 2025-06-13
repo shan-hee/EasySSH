@@ -167,8 +167,13 @@ class MonitoringInstance {
           // 初始化保活机制
           this._setupKeepAlive();
 
-          // 请求初始数据来验证服务
-          this.requestSystemStats();
+          // 先发送identify消息建立会话关系
+          this._sendIdentify(remoteHost);
+
+          // 延迟发送系统状态请求，确保identify消息先被处理
+          setTimeout(() => {
+            this.requestSystemStats();
+          }, 100);
         };
         
         this.ws.onmessage = (event) => {
@@ -477,9 +482,27 @@ class MonitoringInstance {
         }
       }
       
-      // 处理心跳回应
+      // 处理特殊消息类型
       if (message.type === 'pong') {
         // 心跳成功
+        return;
+      }
+
+      if (message.type === 'session_created') {
+        log.debug(`[终端${this.terminalId}] 监控会话已创建: ${message.data.sessionId}`);
+        this.state.sessionId = message.data.sessionId;
+        return;
+      }
+
+      if (message.type === 'identify_ack') {
+        log.debug(`[终端${this.terminalId}] 标识确认已收到，目标主机: ${message.data?.targetHost}`);
+        this.state.identified = true;
+        return;
+      }
+
+      if (message.type === 'error') {
+        log.error(`[终端${this.terminalId}] 监控服务错误: ${message.data?.message || '未知错误'}`);
+        this.state.error = message.data?.message || '监控服务错误';
         return;
       }
       
@@ -728,13 +751,37 @@ class MonitoringInstance {
   }
   
   /**
+   * 发送标识消息建立会话关系
+   * @param {string} targetHost - 目标主机地址
+   * @private
+   */
+  _sendIdentify(targetHost) {
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+      log.debug(`[终端${this.terminalId}] 无法发送标识消息: WebSocket未连接`);
+      return;
+    }
+
+    // 发送标识消息
+    this.sendMessage({
+      type: 'identify',
+      payload: {
+        targetHost: targetHost,
+        clientId: this.terminalId,
+        timestamp: Date.now()
+      }
+    });
+
+    log.debug(`[终端${this.terminalId}] 已发送标识消息，目标主机: ${targetHost}`);
+  }
+
+  /**
    * 生成安全的主机ID
    * @param {string} host - 主机地址
    * @returns {string} - 安全的主机ID
    */
   _generateSecureHostId(host) {
     if (!host) return 'unknown_host';
-    
+
     // 简单哈希算法，增加前缀和随机因子
     let hash = 0;
     for (let i = 0; i < host.length; i++) {
@@ -742,11 +789,11 @@ class MonitoringInstance {
       hash = ((hash << 5) - hash) + char;
       hash = hash & hash; // 转换为32位整数
     }
-    
+
     // 使用时间戳作为盐，保持会话内一致性
     const salt = Math.floor(Date.now() / (1000 * 60 * 60)); // 每小时更新一次
     const hashCode = Math.abs((hash + salt) % 100000).toString().padStart(5, '0');
-    
+
     return `h_${hashCode}_${this.terminalId.substring(0, 5)}`;
   }
 }

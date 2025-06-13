@@ -614,9 +614,13 @@ wss.on('connection', (ws, req) => {
     try {
       const message = JSON.parse(data);
       console.log('收到服务器消息:', message.type);
-      
+
       if (message.type === 'ping') {
         ws.send(JSON.stringify({ type: 'pong', timestamp: Date.now() }));
+      } else if (message.type === 'get_system_stats') {
+        // 处理系统状态请求，立即发送当前系统信息
+        console.log('收到系统状态请求，发送当前系统信息');
+        sendSystemInfo(ws);
       }
     } catch (err) {
       console.error('处理服务器消息时出错:', err);
