@@ -84,6 +84,50 @@ sudo ./easyssh-monitor-uninstall.sh
 ```
 
 
+### 查看监控日志
+
+监控服务安装后会作为系统服务运行，您可以通过以下命令查看监控服务的运行状态和日志：
+
+#### 查看服务状态
+```bash
+sudo systemctl status easyssh-monitor
+```
+
+#### 查看实时日志
+```bash
+sudo journalctl -u easyssh-monitor -f
+```
+
+#### 查看历史日志
+```bash
+# 查看最近100行日志
+sudo journalctl -u easyssh-monitor -n 100
+
+# 查看今天的日志
+sudo journalctl -u easyssh-monitor --since today
+
+# 查看最近1小时的日志
+sudo journalctl -u easyssh-monitor --since "1 hour ago"
+
+# 查看指定时间范围的日志
+sudo journalctl -u easyssh-monitor --since "2024-01-01 00:00:00" --until "2024-01-01 23:59:59"
+```
+
+#### 重启监控服务
+```bash
+sudo systemctl restart easyssh-monitor
+```
+
+#### 停止监控服务
+```bash
+sudo systemctl stop easyssh-monitor
+```
+
+#### 启动监控服务
+```bash
+sudo systemctl start easyssh-monitor
+```
+
 ### 环境变量说明
 
 | 变量名 | 说明 | 是否必填 | 示例值 |

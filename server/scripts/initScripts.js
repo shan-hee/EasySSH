@@ -73,8 +73,8 @@ function getDefaultScripts() {
   },
   {
     name: 'EasySSH监控服务安装',
-    description: `一键安装EasySSH监控服务，自动连接到服务器 ${serverAddress}，支持系统资源监控、网络监控等功能。`,
-    command: `echo "正在安装EasySSH监控服务，连接到服务器: ${serverAddress}" && curl -L https://raw.githubusercontent.com/shan-hee/EasySSH/main/server/scripts/easyssh-monitor-install.sh -o easyssh-monitor-install.sh && chmod +x easyssh-monitor-install.sh && sudo env EASYSSH_SERVER=${serverAddress} ./easyssh-monitor-install.sh`,
+    description: `一键安装EasySSH监控服务，支持系统资源监控、网络监控等功能。`,
+    command: `curl -L https://raw.githubusercontent.com/shan-hee/EasySSH/main/server/scripts/easyssh-monitor-install.sh -o easyssh-monitor-install.sh && chmod +x easyssh-monitor-install.sh && sudo env EASYSSH_SERVER=${serverAddress} ./easyssh-monitor-install.sh`,
     author: 'EasySSH团队',
     tags: ['监控', '安装', 'EasySSH', '系统监控', '一键安装'],
     keywords: ['easyssh', 'monitor', 'install', '监控', '安装'],
