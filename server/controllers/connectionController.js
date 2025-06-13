@@ -373,17 +373,16 @@ const updateFavorites = async (req, res) => {
 const getHistory = async (req, res) => {
   try {
     const userId = req.user.id;
-    
-    // 获取历史记录
+
+    // 直接从历史记录表获取所有信息，不依赖connections表
     const history = db.prepare(
-      `SELECT ch.connection_id, ch.timestamp, c.name, c.host, c.port, c.username, c.description
-       FROM connection_history ch
-       LEFT JOIN connections c ON ch.connection_id = c.id
-       WHERE ch.user_id = ?
-       ORDER BY ch.timestamp DESC
+      `SELECT connection_id, name, host, port, username, description, group_name, auth_type, timestamp
+       FROM connection_history
+       WHERE user_id = ?
+       ORDER BY timestamp DESC
        LIMIT 20`
     ).all(userId);
-    
+
     const formattedHistory = history.map(item => ({
       id: item.connection_id,
       name: item.name,
@@ -391,9 +390,11 @@ const getHistory = async (req, res) => {
       port: item.port,
       username: item.username,
       description: item.description || '',
+      group: item.group_name || '默认分组',
+      authType: item.auth_type || 'password',
       timestamp: item.timestamp
     }));
-    
+
     res.json({
       success: true,
       history: formattedHistory
@@ -415,7 +416,7 @@ const addToHistory = async (req, res) => {
   try {
     const userId = req.user.id;
     const history = req.body.history;
-    
+
     // 验证历史记录数据
     if (!Array.isArray(history) || history.length === 0) {
       return res.status(400).json({
@@ -423,27 +424,52 @@ const addToHistory = async (req, res) => {
         message: '连接数据不正确'
       });
     }
-    
+
     // 获取第一个历史记录
     const connection = history[0];
-    
+
     if (!connection || !connection.id || !connection.host || !connection.username) {
       return res.status(400).json({
         success: false,
         message: '连接数据不完整'
       });
     }
-    
+
     // 开始事务
     db.prepare('BEGIN TRANSACTION').run();
 
     try {
-      // 直接添加新历史记录，不验证连接是否存在
+      // 存储完整的连接信息到历史记录
       const timestamp = connection.timestamp || Date.now();
+      const name = connection.name || `${connection.username}@${connection.host}`;
+      const description = connection.description || '';
+      const groupName = connection.group || '默认分组';
+      const authType = connection.authType || 'password';
+      const port = connection.port || 22;
 
-      db.prepare(
-        'INSERT INTO connection_history (user_id, connection_id, timestamp) VALUES (?, ?, ?)'
-      ).run(userId, connection.id, timestamp);
+      // 检查是否已存在相同的历史记录
+      const existingHistory = db.prepare(
+        'SELECT id FROM connection_history WHERE user_id = ? AND connection_id = ?'
+      ).get(userId, connection.id);
+
+      if (existingHistory) {
+        // 更新现有历史记录的时间戳
+        db.prepare(
+          `UPDATE connection_history SET
+           name = ?, host = ?, port = ?, username = ?, description = ?,
+           group_name = ?, auth_type = ?, timestamp = ?
+           WHERE user_id = ? AND connection_id = ?`
+        ).run(name, connection.host, port, connection.username, description,
+               groupName, authType, timestamp, userId, connection.id);
+      } else {
+        // 添加新的历史记录
+        db.prepare(
+          `INSERT INTO connection_history
+           (user_id, connection_id, name, host, port, username, description, group_name, auth_type, timestamp)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        ).run(userId, connection.id, name, connection.host, port, connection.username,
+               description, groupName, authType, timestamp);
+      }
 
       // 限制历史记录数量为20条
       db.prepare(
@@ -708,13 +734,36 @@ const syncConnections = async (req, res) => {
       
       // 同步历史记录
       db.prepare('DELETE FROM connection_history WHERE user_id = ?').run(userId);
-      
+
       const insertHistoryStmt = db.prepare(
-        'INSERT INTO connection_history (user_id, connection_id, timestamp) VALUES (?, ?, ?)'
+        `INSERT INTO connection_history
+         (user_id, connection_id, name, host, port, username, description, group_name, auth_type, timestamp)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       );
-      
+
       for (const historyItem of history) {
-        insertHistoryStmt.run(userId, historyItem.id, historyItem.timestamp);
+        // 从connections数组中查找对应的连接信息
+        const connectionInfo = connections.find(conn => conn.id === historyItem.id);
+        if (connectionInfo) {
+          const name = connectionInfo.name || `${connectionInfo.username}@${connectionInfo.host}`;
+          const description = connectionInfo.description || '';
+          const groupName = connectionInfo.group || '默认分组';
+          const authType = connectionInfo.authType || 'password';
+          const port = connectionInfo.port || 22;
+
+          insertHistoryStmt.run(
+            userId,
+            historyItem.id,
+            name,
+            connectionInfo.host,
+            port,
+            connectionInfo.username,
+            description,
+            groupName,
+            authType,
+            historyItem.timestamp
+          );
+        }
       }
       
       // 同步置顶

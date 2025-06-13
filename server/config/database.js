@@ -109,6 +109,13 @@ const connectDatabase = () => {
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         user_id INTEGER NOT NULL,
         connection_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        host TEXT NOT NULL,
+        port INTEGER DEFAULT 22,
+        username TEXT NOT NULL,
+        description TEXT,
+        group_name TEXT DEFAULT '默认分组',
+        auth_type TEXT DEFAULT 'password',
         timestamp INTEGER NOT NULL,
         FOREIGN KEY (user_id) REFERENCES users (id)
       )
