@@ -209,15 +209,8 @@ export const useTerminalStore = defineStore('terminal', () => {
           terminalId: connectionId // 传递终端ID，确保正确的映射关系
         })
         
-        // 同时尝试连接监控服务（原有逻辑但优化）
-        if (window.monitoringAPI && connection.host) {
-          _connectToMonitoringService(connection.host, connectionId)
-        } else {
-          // 明确设置该终端没有监控服务
-          window.dispatchEvent(new CustomEvent('monitoring-status-change', { 
-            detail: { installed: false, terminalId: connectionId, host: null }
-          }))
-        }
+        // 监控服务连接由 monitoringFactory.js 统一处理，通过 ssh-connected 事件触发
+        // 这里不再重复调用，避免重复的API请求
         
         // 获取终端设置（保留原有逻辑）
         let terminalOptions = await _getTerminalOptions()
@@ -325,73 +318,7 @@ export const useTerminalStore = defineStore('terminal', () => {
     }
   }
   
-  /**
-   * 辅助函数: 连接到监控服务
-   * @private
-   */
-  const _connectToMonitoringService = (host, terminalId) => {
-    try {
-      // 检查该主机是否已经在连接监控服务中
-      const isConnecting = state.monitorConnectingHosts[host]
-      if (isConnecting) {
-        log.debug(`[终端] 监控服务已在连接到 ${host}，跳过重复连接`)
-        return
-      }
-      
-      // 检查监控服务连接状态
-      const monitorStatus = window.monitoringAPI.getStatus()
-      const shouldConnect = !monitorStatus.connected || monitorStatus.targetHost !== host
 
-      if (shouldConnect) {
-        // 标记为正在连接中
-        state.monitorConnectingHosts[host] = true
-
-        log.info(`[终端] 尝试连接监控服务: ${host}`)
-        // 异步连接，不阻塞终端创建
-        window.monitoringAPI.connect(host)
-          .then(success => {
-            // 移除连接中标记
-            delete state.monitorConnectingHosts[host]
-            // 只有在真正连接成功时才更新状态为true
-            window.monitoringAPI.updateTerminalMonitoringStatus?.(terminalId, success)
-            if (success) {
-              log.info(`[终端] 监控服务连接成功: ${host}`)
-            } else {
-              log.info(`[终端] 监控服务连接失败或服务未安装: ${host}`)
-            }
-          })
-          .catch(err => {
-            log.warn('[终端] 监控服务连接错误:', err)
-            // 确保在错误情况下也移除连接中标记并设置状态为false
-            delete state.monitorConnectingHosts[host]
-            window.monitoringAPI.updateTerminalMonitoringStatus?.(terminalId, false)
-          })
-      } else {
-        // 即使本地状态显示已连接，也需要验证远程服务是否真的可用
-        log.debug(`[终端] 验证监控服务状态: ${host}`)
-        // 重新验证连接，确保远程服务真的可用
-        window.monitoringAPI.connect(host)
-          .then(success => {
-            window.monitoringAPI.updateTerminalMonitoringStatus?.(terminalId, success)
-            if (success) {
-              log.debug(`[终端] 监控服务验证成功: ${host}`)
-            } else {
-              log.debug(`[终端] 监控服务验证失败: ${host}`)
-            }
-          })
-          .catch(err => {
-            log.warn('[终端] 监控服务验证错误:', err)
-            window.monitoringAPI.updateTerminalMonitoringStatus?.(terminalId, false)
-          })
-      }
-    } catch (err) {
-      log.warn('[终端] 监控服务处理出错:', err)
-      // 确保清理连接状态
-      if (host) {
-        delete state.monitorConnectingHosts[host]
-      }
-    }
-  }
   
   /**
    * 辅助函数: 获取终端选项

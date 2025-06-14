@@ -131,7 +131,7 @@ class MonitoringInstance {
       
       try {
         this.ws = new WebSocket(url);
-        
+
         this.ws.onopen = (event) => {
           clearTimeout(connectionTimeout);
           this.state.connecting = false;
@@ -182,28 +182,32 @@ class MonitoringInstance {
         
         this.ws.onclose = (event) => {
           clearTimeout(connectionTimeout);
+          log.debug(`[终端${this.terminalId}] WebSocket连接关闭: code=${event.code}, reason=${event.reason}, wasClean=${event.wasClean}`);
+
           // 避免重复处理，只在真正断开连接时更新状态
           if (this.state.connected) {
             this._handleClose(event);
           } else if (this.state.connecting) {
             this.state.connecting = false;
-            this.state.error = '连接关闭';
-            log.debug(`[终端${this.terminalId}] 监控连接建立失败: 连接被关闭`);
+            this.state.error = `连接关闭 (code: ${event.code})`;
+            log.debug(`[终端${this.terminalId}] 监控连接建立失败: 连接被关闭 (code: ${event.code}, reason: ${event.reason})`);
           }
         };
         
         this.ws.onerror = (error) => {
           clearTimeout(connectionTimeout);
-          log.debug(`[终端${this.terminalId}] 监控WebSocket错误`);
-          
+          log.debug(`[终端${this.terminalId}] 监控WebSocket错误:`, error);
+          log.debug(`[终端${this.terminalId}] WebSocket URL: ${url}`);
+          log.debug(`[终端${this.terminalId}] WebSocket readyState: ${this.ws ? this.ws.readyState : 'null'}`);
+
           // 设置错误状态，但不立即更新连接状态，因为onclose事件会随后触发
           this.state.error = '连接错误';
-          
+
           // 如果仍在连接中，则标记连接失败
           if (this.state.connecting) {
             this.state.connecting = false;
             log.debug(`[终端${this.terminalId}] 监控服务连接失败`);
-            
+
             // 发送错误事件，但保留最终状态变更给onclose处理
             window.dispatchEvent(new CustomEvent('monitoring-connection-error', {
               detail: {
@@ -825,26 +829,29 @@ class MonitoringFactory {
    * @private
    */
   _initEvents() {
-    // 监听SSH连接成功事件，自动开始数据收集
+    // 监听SSH连接成功事件，优化监控状态检查
     window.addEventListener('ssh-connected', (event) => {
       if (event.detail && event.detail.connection && event.detail.connection.host) {
         const host = event.detail.connection.host;
         const serverId = event.detail.connection.serverId || host;
         const terminalId = event.detail.terminalId;
-        
+
         if (terminalId) {
-          log.debug(`[监控工厂] 检测到SSH连接成功，开始为服务器 ${serverId} 收集数据`);
-          
-          // 连接到相同主机的监控服务
-          this.connect(terminalId, host).then(connected => {
-            if (connected) {
-              log.debug(`[监控工厂] 成功连接到监控服务 ${host}，开始数据收集`);
-              
-              // 立即请求系统数据
-              this.requestSystemStats(terminalId);
-            }
+          log.debug(`[监控工厂] 检测到SSH连接成功，检查服务器 ${serverId} 的监控状态`);
+
+          // 使用新的统一监控状态检查和连接服务
+          import('./monitoringStatusService.js').then(({ default: monitoringStatusService }) => {
+            monitoringStatusService.checkStatusAndConnect(host, terminalId).then(result => {
+              log.debug(`[监控工厂] 监控状态检查和连接完成: ${host} -> 已安装: ${result.installed}, 已连接: ${result.connected}`);
+
+              if (result.success && result.message) {
+                log.debug(`[监控工厂] ${result.message}`);
+              }
+            }).catch(err => {
+              log.warn(`[监控工厂] 监控状态检查和连接失败: ${err.message}`);
+            });
           }).catch(err => {
-            log.debug(`[监控工厂] 连接到监控服务失败: ${err.message || '未知错误'}`);
+            log.error(`[监控工厂] 导入监控状态服务失败: ${err.message}`);
           });
         }
       }

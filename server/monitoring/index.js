@@ -203,9 +203,17 @@ function handleSystemStats(ws, sessionId, stats) {
       ip: stats.ip
     };
 
-    // 建立主机映射，使用hostname作为标识
+    // 建立主机映射，同时使用hostname和IP作为标识
     const hostKey = stats.os.hostname;
     hostToSessionMap.set(hostKey, sessionId);
+
+    // 同时建立IP地址映射，方便前端通过IP查找
+    if (session.clientIp) {
+      hostToSessionMap.set(session.clientIp, sessionId);
+    }
+    if (stats.ip && stats.ip !== session.clientIp) {
+      hostToSessionMap.set(stats.ip, sessionId);
+    }
 
     console.log(`监控客户端已识别: ${hostKey} (${session.clientIp})`);
   }
@@ -286,6 +294,13 @@ function cleanupSession(sessionId) {
     if (session.hostInfo?.hostname) {
       hostToSessionMap.delete(session.hostInfo.hostname);
     }
+    // 清理IP地址映射
+    if (session.clientIp) {
+      hostToSessionMap.delete(session.clientIp);
+    }
+    if (session.hostInfo?.ip) {
+      hostToSessionMap.delete(session.hostInfo.ip);
+    }
 
     // 关闭WebSocket连接
     if (session.ws && session.ws.readyState === WebSocket.OPEN) {
@@ -318,13 +333,27 @@ function getAllSessions() {
 }
 
 /**
- * 根据主机名查找会话
- * @param {string} hostname 主机名
+ * 根据主机名或IP地址查找会话
+ * @param {string} hostname 主机名或IP地址
  * @returns {Object|null} 会话对象或null
  */
 function getSessionByHostname(hostname) {
-  const sessionId = hostToSessionMap.get(hostname);
-  return sessionId ? monitoringSessions.get(sessionId) : null;
+  // 首先尝试通过主机名查找
+  let sessionId = hostToSessionMap.get(hostname);
+  if (sessionId) {
+    return monitoringSessions.get(sessionId);
+  }
+
+  // 如果通过主机名找不到，尝试通过IP地址查找
+  for (const [currentSessionId, session] of monitoringSessions) {
+    if (session.clientIp === hostname ||
+        session.hostInfo?.ip === hostname ||
+        (session.hostInfo?.ip && session.hostInfo.ip.includes && session.hostInfo.ip.includes(hostname))) {
+      return session;
+    }
+  }
+
+  return null;
 }
 
 /**

@@ -1063,11 +1063,55 @@ export default {
       }));
     }
 
-    const toggleMonitoringPanel = () => {
-      // 通过事件将当前终端ID传递给父组件
-      window.dispatchEvent(new CustomEvent('request-toggle-monitoring-panel', {
-        detail: { sessionId: activeConnectionId.value }
-      }));
+    const toggleMonitoringPanel = async () => {
+      const sessionId = activeConnectionId.value;
+      if (!sessionId) {
+        log.warn('[终端] 无法切换监控面板：没有活动会话');
+        return;
+      }
+
+      try {
+        // 获取当前SSH连接信息
+        const sshSessionId = terminalStore.sessions[sessionId];
+        if (!sshSessionId || !sshService.sessions.has(sshSessionId)) {
+          log.warn('[终端] 无法切换监控面板：SSH会话不存在');
+          return;
+        }
+
+        const session = sshService.sessions.get(sshSessionId);
+        const host = session?.connection?.host;
+
+        if (!host) {
+          log.warn('[终端] 无法切换监控面板：无法获取主机地址');
+          return;
+        }
+
+        // 使用新的监控状态检查服务验证监控服务状态
+        const { default: monitoringStatusService } = await import('../../services/monitoringStatusService.js');
+        const statusResult = await monitoringStatusService.checkMonitoringStatus(host);
+
+        if (!statusResult.installed) {
+          log.warn(`[终端] 监控服务未安装或不可用: ${host}`);
+          // 可以在这里显示提示信息给用户
+          ElMessage.warning(`主机 ${host} 的监控服务未安装或不可用`);
+          return;
+        }
+
+        log.debug(`[终端] 监控服务可用，切换监控面板: ${host}`);
+
+        // 通过事件将当前终端ID传递给父组件
+        window.dispatchEvent(new CustomEvent('request-toggle-monitoring-panel', {
+          detail: {
+            sessionId: sessionId,
+            host: host,
+            verified: true // 标记已验证监控服务可用
+          }
+        }));
+
+      } catch (error) {
+        log.error(`[终端] 切换监控面板失败: ${error.message}`);
+        ElMessage.error(`切换监控面板失败: ${error.message}`);
+      }
     }
     
     // 添加组件激活/失活生命周期钩子

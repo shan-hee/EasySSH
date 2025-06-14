@@ -554,76 +554,87 @@ export default defineComponent({
       }
     }, { deep: true });
     
-    // 处理监控状态变化事件
+    // 处理监控状态变化事件 - 优化版
     const handleMonitoringStatusChange = (event) => {
-      if (event && event.detail) {
-        // 如果这是监控连接失败消息，静默处理不进行任何状态变更
-        if (event.detail.error || event.detail.status === 'error' || event.detail.status === 'disconnected') {
-          log.debug('监控连接失败，保持当前状态不变');
-          return;
+      if (!event || !event.detail) {
+        return;
+      }
+
+      const { installed, terminalId, hostname, status } = event.detail;
+
+      log.debug(`[终端工具栏] 收到监控状态变更事件: 主机=${hostname}, 已安装=${installed}, 终端=${terminalId}`);
+
+      if (terminalId) {
+        // 处理特定终端的状态更新
+        const terminalState = getTerminalToolbarState(terminalId);
+
+        if (terminalState) {
+          // 更新终端状态
+          terminalState.monitoringInstalled = installed;
+
+          // 如果是当前活动的终端，同时更新UI
+          if (terminalId === props.activeSessionId) {
+            monitoringServiceInstalled.value = installed;
+            log.debug(`[终端工具栏] 更新当前活动终端[${terminalId}]的监控状态: ${installed}`);
+
+            // 如果监控服务已安装，图标应该变为白色（可点击状态）
+            // 如果未安装，图标保持默认状态
+            if (installed) {
+              log.debug(`[终端工具栏] 监控服务已安装，图标变为白色可点击状态`);
+            } else {
+              log.debug(`[终端工具栏] 监控服务未安装，图标保持默认状态`);
+            }
+          }
         }
-        
-        if (event.detail.terminalId) {
-          // 处理特定终端的状态更新
-          const terminalId = event.detail.terminalId;
+      } else if (event.detail.sessionId) {
+        // 兼容通过SSH会话ID的方式
+        const sessionId = event.detail.sessionId;
+        let terminalId = null;
+
+        // 在terminalStore中查找关联的终端ID
+        for (const [tId, sId] of Object.entries(terminalStore.sessions)) {
+          if (sId === sessionId) {
+            terminalId = tId;
+            break;
+          }
+        }
+
+        if (terminalId) {
           const terminalState = getTerminalToolbarState(terminalId);
-          
           if (terminalState) {
-            // 只更新特定终端的状态
-            terminalState.monitoringInstalled = event.detail.installed;
-            
-            // 如果是当前活动的终端，同时更新UI
+            terminalState.monitoringInstalled = installed;
+
+            // 如果是当前活动终端，更新UI
             if (terminalId === props.activeSessionId) {
-              monitoringServiceInstalled.value = event.detail.installed;
-              log.debug(`更新当前活动终端[${terminalId}]的监控状态: ${event.detail.installed}`);
+              monitoringServiceInstalled.value = installed;
+              log.debug(`[终端工具栏] 通过会话ID[${sessionId}]更新终端[${terminalId}]的监控状态: ${installed}`);
             }
           }
-        } else if (event.detail.sessionId) {
-          // 尝试通过SSH会话ID找到对应的终端ID
-          const sessionId = event.detail.sessionId;
-          let terminalId = null;
-          
-          // 在terminalStore中查找关联的终端ID
-          for (const [tId, sId] of Object.entries(terminalStore.sessions)) {
-            if (sId === sessionId) {
-              terminalId = tId;
-              break;
-            }
-          }
-          
-          if (terminalId) {
-            const terminalState = getTerminalToolbarState(terminalId);
-            if (terminalState) {
-              terminalState.monitoringInstalled = event.detail.installed;
-              
-              // 如果是当前活动终端，更新UI
-              if (terminalId === props.activeSessionId) {
-                monitoringServiceInstalled.value = event.detail.installed;
-                log.debug(`通过会话ID[${sessionId}]更新终端[${terminalId}]的监控状态: ${event.detail.installed}`);
-              }
-            }
-          }
-        } else if (event.detail.hostAddress) {
-          // 通过主机地址匹配，所有连接到该主机的终端都应该更新
-          const hostAddress = event.detail.hostAddress;
-          
-          // 只更新当前活动终端，如果它连接到这个主机
-          if (props.activeSessionId) {
-            const sshSessionId = terminalStore.sessions[props.activeSessionId];
-            if (sshSessionId && sshService && sshService.sessions) {
-              const session = sshService.sessions.get(sshSessionId);
-              if (session && session.connection && session.connection.host === hostAddress) {
-                // 更新终端状态
-            const terminalState = getTerminalToolbarState(props.activeSessionId);
-            if (terminalState) {
-              terminalState.monitoringInstalled = event.detail.installed;
-              monitoringServiceInstalled.value = event.detail.installed;
-                  log.debug(`通过主机地址[${hostAddress}]匹配更新当前终端的监控状态: ${event.detail.installed}`);
-                }
+        }
+      } else if (event.detail.hostAddress || hostname) {
+        // 兼容通过主机地址匹配的方式
+        const hostAddress = event.detail.hostAddress || hostname;
+
+        // 只更新当前活动终端，如果它连接到这个主机
+        if (props.activeSessionId) {
+          const sshSessionId = terminalStore.sessions[props.activeSessionId];
+          if (sshSessionId && sshService && sshService.sessions) {
+            const session = sshService.sessions.get(sshSessionId);
+            if (session && session.connection && session.connection.host === hostAddress) {
+              // 更新终端状态
+              const terminalState = getTerminalToolbarState(props.activeSessionId);
+              if (terminalState) {
+                terminalState.monitoringInstalled = installed;
+                monitoringServiceInstalled.value = installed;
+                log.debug(`[终端工具栏] 通过主机地址[${hostAddress}]匹配更新当前终端的监控状态: ${installed}`);
               }
             }
           }
         }
+      } else {
+        // 全局状态更新（向后兼容）
+        monitoringServiceInstalled.value = installed;
+        log.debug(`[终端工具栏] 更新全局监控状态: ${installed}`);
       }
     };
     

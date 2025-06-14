@@ -430,39 +430,60 @@ class MonitoringServiceProxy {
   }
   
   /**
-   * 创建连接到主机并更新状态的方法
+   * 创建连接到主机并更新状态的方法 - 优化版
    * @private
    * @returns {Function} 连接方法
    */
   _createConnectToHostWithStatusMethod() {
-    return (host, terminalId) => {
+    return async (host, terminalId) => {
       if (!host) {
         return Promise.resolve(false);
       }
-      
+
       // 获取当前活动终端ID
       terminalId = terminalId || this._getActiveTerminalId();
       if (!terminalId) {
         return Promise.resolve(false);
       }
-      
-      // 委托给工厂实例处理
-      return monitoringFactory.connect(terminalId, host).then(connected => {
+
+      try {
+        // 首先使用新的监控状态检查服务快速检查
+        const { default: monitoringStatusService } = await import('./monitoringStatusService.js');
+        const statusResult = await monitoringStatusService.checkMonitoringStatus(host);
+
+        if (!statusResult.installed) {
+          log.debug(`[监控代理] 主机 ${host} 未安装监控服务，跳过WebSocket连接尝试`);
+
+          // 触发状态事件
+          window.dispatchEvent(new CustomEvent('monitoring-status-change', {
+            detail: { installed: false, hostname: host, terminalId }
+          }));
+
+          return false;
+        }
+
+        log.debug(`[监控代理] 主机 ${host} 已安装监控服务，开始WebSocket连接`);
+
+        // 只有在确认监控服务存在时才尝试WebSocket连接
+        const connected = await monitoringFactory.connect(terminalId, host);
+
         // 触发状态事件
-        window.dispatchEvent(new CustomEvent('monitoring-status-change', { 
-          detail: { installed: connected, host, terminalId }
+        window.dispatchEvent(new CustomEvent('monitoring-status-change', {
+          detail: { installed: connected, hostname: host, terminalId }
         }));
-        
+
         return connected;
-      })
-      .catch(() => {
-        // 静默处理错误
-        window.dispatchEvent(new CustomEvent('monitoring-status-change', { 
-          detail: { installed: false, host, terminalId }
+
+      } catch (error) {
+        log.warn(`[监控代理] 连接监控服务失败: ${error.message}`);
+
+        // 触发状态事件
+        window.dispatchEvent(new CustomEvent('monitoring-status-change', {
+          detail: { installed: false, hostname: host, terminalId }
         }));
-        
+
         return false;
-      });
+      }
     };
   }
   
