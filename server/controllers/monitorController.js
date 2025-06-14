@@ -1,12 +1,11 @@
 /**
- * 系统监控控制器
+ * 系统监控控制器 - 重构版
+ * 专门处理监控客户端主动连接模式的API
  */
 
 const path = require('path');
 const fs = require('fs');
-const { exec } = require('child_process');
-const axios = require('axios');
-const { getAllSessions } = require('../monitoring');
+const { getAllSessions, getSessionByHostname } = require('../monitoring');
 
 /**
  * 获取系统监控安装脚本
@@ -45,54 +44,56 @@ exports.getInstallScript = async (req, res) => {
 };
 
 /**
- * 检查系统监控服务状态
+ * 检查监控客户端连接状态 - 重构版
  */
 exports.checkStatus = async (req, res) => {
   try {
-    const { host, port = 9527 } = req.body;
-    
-    if (!host) {
-      return res.status(400).json({
-        success: false,
-        message: '缺少必要参数: host'
+    const { hostname } = req.query;
+
+    if (!hostname) {
+      // 返回所有活跃监控客户端的状态
+      const sessions = getAllSessions();
+      const activeClients = sessions.map(session => ({
+        hostname: session.hostInfo?.hostname || '未知',
+        clientIp: session.clientIp,
+        connectedAt: session.connectedAt,
+        lastActivity: session.lastActivity,
+        status: 'connected'
+      }));
+
+      return res.json({
+        success: true,
+        status: 'active',
+        message: `当前有 ${activeClients.length} 个活跃的监控客户端`,
+        clients: activeClients,
+        count: activeClients.length
       });
     }
-    
-    // 尝试直接连接到WebSocket
-    try {
-      // 引入监控服务
-      const { connectToHost } = require('../monitoring');
-      
-      // 尝试连接WebSocket
-      const connected = await connectToHost(host, port);
-      
-      if (connected) {
-        return res.json({
-          success: true,
-          status: 'running',
-          message: '监控服务正在运行',
-          connection: {
-            host,
-            port
-          }
-        });
-      } else {
-        return res.json({
-          success: false,
-          status: 'not_running',
-          message: '监控服务未运行或无法访问',
-          error: 'WebSocket连接失败'
-        });
-      }
-    } catch (error) {
+
+    // 检查特定主机的连接状态
+    const session = getSessionByHostname(hostname);
+
+    if (session) {
+      return res.json({
+        success: true,
+        status: 'connected',
+        message: `监控客户端 ${hostname} 已连接`,
+        client: {
+          hostname: session.hostInfo?.hostname,
+          clientIp: session.clientIp,
+          connectedAt: session.connectedAt,
+          lastActivity: session.lastActivity,
+          systemStats: session.systemStats
+        }
+      });
+    } else {
       return res.json({
         success: false,
-        status: 'not_running',
-        message: '监控服务未运行或无法访问',
-        error: error.message
+        status: 'disconnected',
+        message: `监控客户端 ${hostname} 未连接`
       });
     }
-    
+
   } catch (error) {
     console.error('检查监控状态失败:', error);
     return res.status(500).json({
@@ -103,50 +104,7 @@ exports.checkStatus = async (req, res) => {
   }
 };
 
-/**
- * 主动连接到远程主机的监控服务
- */
-exports.connectToMonitor = async (req, res) => {
-  try {
-    const { host, port = 9527 } = req.body;
-    
-    if (!host) {
-      return res.status(400).json({
-        success: false,
-        message: '缺少必要参数: host'
-      });
-    }
-    
-    // 引入监控服务
-    const { connectToHost } = require('../monitoring');
-    
-    const connected = await connectToHost(host, port);
-    
-    if (connected) {
-      return res.json({
-        success: true,
-        message: `已成功连接到 ${host} 的监控服务`,
-        connection: {
-          host,
-          port,
-          timestamp: Date.now()
-        }
-      });
-    } else {
-      return res.json({
-        success: false,
-        message: `无法连接到 ${host} 的监控服务`,
-        error: '连接失败'
-      });
-    }
-  } catch (error) {
-    return res.status(500).json({
-      success: false,
-      message: '连接监控服务失败',
-      error: error.message
-    });
-  }
-};
+
 
 /**
  * 下载监控服务安装脚本
@@ -187,20 +145,29 @@ exports.downloadInstallScript = async (req, res) => {
 };
 
 /**
- * 获取所有活跃的监控会话
+ * 获取所有活跃的监控会话 - 重构版
  */
 exports.getSessions = async (req, res) => {
   try {
-    // 引入监控服务
-    const { getAllSessions } = require('../monitoring');
-    
     // 获取所有会话
     const sessions = getAllSessions();
-    
+
+    // 格式化会话信息
+    const formattedSessions = sessions.map(session => ({
+      id: session.id,
+      hostname: session.hostInfo?.hostname || '未知',
+      clientIp: session.clientIp,
+      connectedAt: session.connectedAt,
+      lastActivity: session.lastActivity,
+      platform: session.hostInfo?.platform,
+      arch: session.hostInfo?.arch,
+      hasSystemStats: !!session.systemStats
+    }));
+
     return res.json({
       success: true,
-      sessions,
-      count: sessions.length,
+      sessions: formattedSessions,
+      count: formattedSessions.length,
       timestamp: Date.now()
     });
   } catch (error) {
@@ -210,4 +177,4 @@ exports.getSessions = async (req, res) => {
       error: error.message
     });
   }
-}; 
+};

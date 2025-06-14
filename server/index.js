@@ -99,12 +99,8 @@ const getStatusIcon = (status) => {
 // 创建HTTP服务器
 const server = http.createServer(app);
 
-// 初始化WebSocket服务
-const wss = initWebSocketServer(server);
-
-// 单独初始化监控WebSocket服务器
-const monitoringPort = process.env.MONITORING_PORT || 9527;
-initMonitoringWebSocketServer(monitoringPort);
+// 初始化WebSocket服务（包含SSH和监控）
+const { sshWss, monitorWss } = initWebSocketServer(server);
 
 // 更新服务器启动信息，添加监控WebSocket信息
 const startApp = async () => {
@@ -149,7 +145,7 @@ const startApp = async () => {
     
     console.log(`${colors.white}HTTP服务${colors.reset}    : ${colors.yellow}${protocol}://${displayHost}:${PORT}${colors.reset}`);
     console.log(`${colors.white}SSH WS${colors.reset}      : ${colors.yellow}${wsProtocol}://${displayHost}:${PORT}/ssh${colors.reset}`);
-    console.log(`${colors.white}监控 WS${colors.reset}     : ${colors.yellow}${wsProtocol}://${displayHost}:${monitoringPort}/monitor${colors.reset}`);
+    console.log(`${colors.white}监控 WS${colors.reset}     : ${colors.yellow}${wsProtocol}://${displayHost}:${PORT}/monitor${colors.reset}`);
     console.log(`${colors.white}启动时间${colors.reset}    : ${dateStr} ${timeStr}`);
     console.log(`${colors.white}运行环境${colors.reset}    : ${colors.green}${process.env.NODE_ENV || 'development'}${colors.reset}`);
     

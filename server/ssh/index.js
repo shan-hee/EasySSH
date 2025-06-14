@@ -11,6 +11,9 @@ const ssh = require('./ssh');
 const sftp = require('./sftp');
 const utils = require('./utils');
 
+// 导入监控处理模块
+const monitoring = require('../monitoring');
+
 // 存储临时连接配置的映射
 const pendingConnections = new Map();
 
@@ -51,29 +54,43 @@ function getClientIP(request) {
 }
 
 /**
- * 初始化WebSocket服务器
+ * 初始化WebSocket服务器 - 重构版
+ * 统一处理SSH和监控WebSocket连接
  * @param {Object} server HTTP服务器实例
  */
 function initWebSocketServer(server) {
-  // 创建不绑定到服务器的WebSocket服务器
-  const wss = new WebSocket.Server({ 
+  // 创建SSH WebSocket服务器
+  const sshWss = new WebSocket.Server({
     noServer: true
   });
-  
-  // 监听HTTP服务器的upgrade事件
+
+  // 创建监控WebSocket服务器
+  const monitorWss = new WebSocket.Server({
+    noServer: true
+  });
+
+  // 统一处理HTTP服务器的upgrade事件
   server.on('upgrade', (request, socket, head) => {
     const pathname = url.parse(request.url).pathname;
-    
-    // 只处理SSH路径的WebSocket请求
+
     if (pathname === '/ssh') {
-      wss.handleUpgrade(request, socket, head, (ws) => {
-        // 传递请求对象，以便访问客户端IP
-        wss.emit('connection', ws, request);
+      // 处理SSH WebSocket连接
+      sshWss.handleUpgrade(request, socket, head, (ws) => {
+        sshWss.emit('connection', ws, request);
       });
+    } else if (pathname === '/monitor') {
+      // 处理监控WebSocket连接
+      monitorWss.handleUpgrade(request, socket, head, (ws) => {
+        monitorWss.emit('connection', ws, request);
+      });
+    } else {
+      // 未知路径，关闭连接
+      socket.destroy();
     }
   });
-  
-  wss.on('connection', (ws, request) => {
+
+  // 处理SSH WebSocket连接
+  sshWss.on('connection', (ws, request) => {
     console.log(utils.logMessage('新的WebSocket连接', '已建立'));
     let sessionId = null;
     
@@ -293,8 +310,14 @@ function initWebSocketServer(server) {
       console.error(utils.logMessage('WebSocket', '', '错误', err.message));
     });
   });
-  
-  return wss;
+
+  // 处理监控WebSocket连接 - 直接委托给监控模块
+  monitorWss.on('connection', (ws, request) => {
+    // 委托给监控模块处理连接
+    monitoring.handleConnection(ws, request);
+  });
+
+  return { sshWss, monitorWss };
 }
 
 /**
