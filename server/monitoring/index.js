@@ -134,6 +134,16 @@ function handleMonitoringMessage(ws, sessionId, data) {
       handleSystemStats(ws, sessionId, data.payload);
       break;
 
+    case 'identify':
+      // 处理客户端标识消息
+      handleIdentify(ws, sessionId, data.payload);
+      break;
+
+    case 'request_system_stats':
+      // 处理系统状态请求
+      handleSystemStatsRequest(ws, sessionId, data);
+      break;
+
     case 'ping':
       // 处理心跳消息
       sendMessage(ws, {
@@ -175,6 +185,103 @@ function getClientIP(req) {
  */
 function generateSessionId() {
   return 'monitor_' + Date.now() + '_' + Math.random().toString(36).substring(2, 11);
+}
+
+/**
+ * 处理客户端标识消息
+ * @param {WebSocket} ws WebSocket连接
+ * @param {string} sessionId 会话ID
+ * @param {Object} payload 标识数据
+ */
+function handleIdentify(ws, sessionId, payload) {
+  if (!payload) {
+    console.warn(`收到空的标识数据: ${sessionId}`);
+    sendError(ws, '标识数据不能为空', sessionId);
+    return;
+  }
+
+  const session = monitoringSessions.get(sessionId);
+  if (!session) {
+    console.warn(`会话不存在: ${sessionId}`);
+    sendError(ws, '会话不存在', sessionId);
+    return;
+  }
+
+  // 更新会话信息
+  session.clientInfo = {
+    targetHost: payload.targetHost,
+    clientId: payload.clientId,
+    timestamp: payload.timestamp || Date.now()
+  };
+
+  console.log(`客户端标识已确认: ${sessionId}, 目标主机: ${payload.targetHost}, 客户端ID: ${payload.clientId}`);
+
+  // 发送标识确认
+  sendMessage(ws, {
+    type: 'identify_ack',
+    data: {
+      sessionId,
+      targetHost: payload.targetHost,
+      clientId: payload.clientId,
+      timestamp: Date.now()
+    }
+  });
+}
+
+/**
+ * 处理系统状态请求
+ * @param {WebSocket} ws WebSocket连接
+ * @param {string} sessionId 会话ID
+ * @param {Object} data 请求数据
+ */
+function handleSystemStatsRequest(ws, sessionId, data) {
+  const session = monitoringSessions.get(sessionId);
+  if (!session) {
+    console.warn(`会话不存在: ${sessionId}`);
+    sendError(ws, '会话不存在', sessionId);
+    return;
+  }
+
+  console.log(`收到系统状态请求: ${sessionId}, 主机ID: ${data.hostId}, 终端ID: ${data.terminalId}`);
+
+  // 查找目标主机的监控会话（通常是远程服务器的监控脚本连接）
+  let targetSession = null;
+
+  // 首先尝试通过主机信息匹配
+  for (const [otherId, otherSession] of monitoringSessions) {
+    if (otherId !== sessionId &&
+        otherSession.hostInfo &&
+        (otherSession.hostInfo.hostname || otherSession.clientIp)) {
+
+      // 如果有客户端信息，优先使用目标主机匹配
+      if (session.clientInfo && session.clientInfo.targetHost) {
+        const targetHost = session.clientInfo.targetHost;
+        if (otherSession.hostInfo.hostname === targetHost ||
+            otherSession.clientIp === targetHost ||
+            (otherSession.hostInfo.ip && otherSession.hostInfo.ip === targetHost)) {
+          targetSession = otherSession;
+          break;
+        }
+      }
+    }
+  }
+
+  if (targetSession) {
+    // 请求目标会话发送最新的系统状态
+    sendMessage(targetSession.ws, {
+      type: 'request_stats_update',
+      data: {
+        requesterId: sessionId,
+        timestamp: Date.now()
+      }
+    });
+
+    console.log(`已向目标会话请求系统状态更新: ${targetSession.id}`);
+  } else {
+    // 如果找不到目标会话，发送错误响应
+    console.log(`未找到目标主机的监控会话: ${session.clientInfo?.targetHost || '未知'}`);
+    sendError(ws, '目标主机监控服务未连接', sessionId);
+  }
 }
 
 /**

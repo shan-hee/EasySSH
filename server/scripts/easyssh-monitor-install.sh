@@ -239,10 +239,10 @@ class WebSocketClient {
     // 立即发送一次系统信息
     this.sendSystemInfo();
 
-    // 每1.5秒发送一次系统信息
+    // 每3秒发送一次系统信息
     this.dataTimer = setInterval(() => {
       this.sendSystemInfo();
-    }, 1500);
+    }, 3000);
   }
 
   async sendSystemInfo() {
