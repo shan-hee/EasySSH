@@ -12,8 +12,6 @@ fi
 
 SERVER_ADDR=${EASYSSH_SERVER}
 
-echo "监控客户端将主动连接到: $SERVER_ADDR"
-
 # 检查是否已安装 node (只需要node，不需要npm)
 if ! command -v node &> /dev/null; then
     echo "检测到未安装 Node.js，正在安装..."
@@ -39,9 +37,6 @@ fi
 # 创建监控程序目录
 MONITOR_DIR="/opt/easyssh-monitor"
 sudo mkdir -p $MONITOR_DIR
-
-# 解析服务器地址、协议和端口
-echo "正在解析服务器地址: $SERVER_ADDR"
 
 # 初始化变量
 SERVER_PROTOCOL=""
@@ -84,12 +79,6 @@ else
     fi
 fi
 
-echo "解析结果:"
-echo "  协议: $SERVER_PROTOCOL"
-echo "  主机: $SERVER_HOST"
-echo "  端口: $SERVER_PORT"
-echo "  WebSocket协议: $WS_PROTOCOL"
-
 # 创建配置文件
 cat > /tmp/config.json << EOL
 {
@@ -103,14 +92,10 @@ cat > /tmp/config.json << EOL
 }
 EOL
 
-# 验证生成的JSON文件
-echo "验证配置文件格式..."
-if node -e "JSON.parse(require('fs').readFileSync('/tmp/config.json', 'utf8')); console.log('✅ 配置文件格式正确');" 2>/dev/null; then
-    echo "配置文件内容:"
+if node -e "JSON.parse(require('fs').readFileSync('/tmp/config.json', 'utf8'));" 2>/dev/null; then
     cat /tmp/config.json
 else
     echo "❌ 配置文件格式错误，请检查服务器地址格式"
-    echo "生成的配置文件内容:"
     cat /tmp/config.json
     exit 1
 fi
