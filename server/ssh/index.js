@@ -79,9 +79,26 @@ function initWebSocketServer(server) {
         sshWss.emit('connection', ws, request);
       });
     } else if (pathname === '/monitor') {
-      // 处理监控WebSocket连接
+      // 处理监控WebSocket连接 - 使用新的监控模块逻辑
+      const url = new URL(request.url, `http://${request.headers.host}`);
+      const connectionType = url.searchParams.get('type') || 'monitoring_client';
+      const subscribeServer = url.searchParams.get('subscribe');
+
+      console.log(`收到监控WebSocket连接请求，URL: ${request.url}`);
+      console.log(`连接类型: ${connectionType}, 订阅服务器: ${subscribeServer}`);
+
       monitorWss.handleUpgrade(request, socket, head, (ws) => {
-        monitorWss.emit('connection', ws, request);
+        // 根据连接类型调用不同的处理函数
+        const sessionId = `monitor_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        const clientIp = getClientIP(request);
+
+        if (connectionType === 'frontend') {
+          // 前端连接处理
+          monitoring.handleFrontendConnection(ws, sessionId, clientIp, subscribeServer);
+        } else {
+          // 监控客户端连接处理
+          monitoring.handleMonitoringClientConnection(ws, sessionId, clientIp);
+        }
       });
     } else {
       // 未知路径，关闭连接
@@ -311,11 +328,8 @@ function initWebSocketServer(server) {
     });
   });
 
-  // 处理监控WebSocket连接 - 直接委托给监控模块
-  monitorWss.on('connection', (ws, request) => {
-    // 委托给监控模块处理连接
-    monitoring.handleConnection(ws, request);
-  });
+  // 注意：监控WebSocket连接现在直接在upgrade事件中处理，
+  // 不再需要单独的connection事件监听器
 
   return { sshWss, monitorWss };
 }

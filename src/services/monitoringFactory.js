@@ -70,10 +70,14 @@ class MonitoringInstance {
       this.state.targetHost = remoteHost;
     }
 
-    // 通过nginx代理连接到监控服务
+    // 通过nginx代理连接到监控服务，添加前端类型参数和订阅参数
     const host = window.location.host; // 使用当前页面的host（包含端口）
-    const proxyUrl = `${protocol}//${host}/monitor`;
-    log.info(`[终端${this.terminalId}] 构建WebSocket URL (通过代理): ${proxyUrl}, 目标主机: ${this.state.targetHost}`);
+    const params = new URLSearchParams({
+      type: 'frontend',
+      subscribe: remoteHost || 'unknown'
+    });
+    const proxyUrl = `${protocol}//${host}/monitor?${params.toString()}`;
+    log.info(`[终端${this.terminalId}] 构建前端WebSocket URL: ${proxyUrl}, 目标主机: ${this.state.targetHost}`);
 
     return proxyUrl;
   }
@@ -132,13 +136,13 @@ class MonitoringInstance {
       try {
         this.ws = new WebSocket(url);
 
-        this.ws.onopen = (event) => {
+        this.ws.onopen = () => {
           clearTimeout(connectionTimeout);
           this.state.connecting = false;
           this.state.connected = true;
           this.state.error = null;
 
-          log.debug(`[终端${this.terminalId}] 监控WebSocket连接已建立，正在验证监控服务: ${remoteHost}`);
+          log.debug(`[终端${this.terminalId}] 前端监控WebSocket连接已建立: ${remoteHost}`);
 
           // 设置服务验证超时
           const verificationTimeout = setTimeout(() => {
@@ -167,12 +171,10 @@ class MonitoringInstance {
           // 初始化保活机制
           this._setupKeepAlive();
 
-          // 先发送identify消息建立会话关系
-          this._sendIdentify(remoteHost);
-
-          // 延迟发送系统状态请求，确保identify消息先被处理
+          // 注意：由于URL参数已经包含订阅信息，后端会自动处理订阅
+          // 但我们仍然可以发送额外的订阅消息来确保订阅成功
           setTimeout(() => {
-            this.requestSystemStats();
+            this._sendSubscribeMessage(remoteHost);
           }, 100);
         };
         
@@ -280,7 +282,12 @@ class MonitoringInstance {
     }
     
     log.debug(`[终端${this.terminalId}] 正在断开监控WebSocket连接`);
-    
+
+    // 如果已连接且有目标主机，发送取消订阅消息
+    if (this.state.connected && this.state.targetHost && this.ws && this.ws.readyState === WebSocket.OPEN) {
+      this._sendUnsubscribeMessage(this.state.targetHost);
+    }
+
     // 清除保活定时器
     this._clearKeepAlive();
     
@@ -493,8 +500,19 @@ class MonitoringInstance {
       }
 
       if (message.type === 'session_created') {
-        log.debug(`[终端${this.terminalId}] 监控会话已创建: ${message.data.sessionId}`);
+        log.debug(`[终端${this.terminalId}] 前端监控会话已创建: ${message.data.sessionId}, 连接类型: ${message.data.connectionType || '未知'}`);
         this.state.sessionId = message.data.sessionId;
+        return;
+      }
+
+      if (message.type === 'subscribe_ack') {
+        log.debug(`[终端${this.terminalId}] 订阅确认已收到，服务器: ${message.data?.serverId}`);
+        this.state.subscribed = true;
+        return;
+      }
+
+      if (message.type === 'unsubscribe_ack') {
+        log.debug(`[终端${this.terminalId}] 取消订阅确认已收到，服务器: ${message.data?.serverId}`);
         return;
       }
 
@@ -776,6 +794,54 @@ class MonitoringInstance {
     });
 
     log.debug(`[终端${this.terminalId}] 已发送标识消息，目标主机: ${targetHost}`);
+  }
+
+  /**
+   * 发送订阅消息到监控WebSocket
+   * @param {string} serverId - 要订阅的服务器ID
+   * @private
+   */
+  _sendSubscribeMessage(serverId) {
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+      log.debug(`[终端${this.terminalId}] 无法发送订阅消息: WebSocket未连接`);
+      return;
+    }
+
+    const subscribeMessage = {
+      type: 'subscribe_server',
+      payload: {
+        serverId: serverId,
+        terminalId: this.terminalId,
+        timestamp: Date.now()
+      }
+    };
+
+    log.debug(`[终端${this.terminalId}] 发送订阅消息:`, subscribeMessage);
+    this.sendMessage(subscribeMessage);
+  }
+
+  /**
+   * 发送取消订阅消息到监控WebSocket
+   * @param {string} serverId - 要取消订阅的服务器ID
+   * @private
+   */
+  _sendUnsubscribeMessage(serverId) {
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+      log.debug(`[终端${this.terminalId}] 无法发送取消订阅消息: WebSocket未连接`);
+      return;
+    }
+
+    const unsubscribeMessage = {
+      type: 'unsubscribe_server',
+      payload: {
+        serverId: serverId,
+        terminalId: this.terminalId,
+        timestamp: Date.now()
+      }
+    };
+
+    log.debug(`[终端${this.terminalId}] 发送取消订阅消息:`, unsubscribeMessage);
+    this.sendMessage(unsubscribeMessage);
   }
 
   /**

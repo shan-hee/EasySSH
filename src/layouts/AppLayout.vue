@@ -397,7 +397,15 @@ export default defineComponent({
           // 设置活动会话ID并切换监控面板
           activeSessionId.value = event.detail.sessionId;
           monitorSessionId.value = event.detail.sessionId;
-          toggleMonitoringPanel();
+
+          // 如果事件中包含主机地址，使用它来构建状态对象
+          const status = {
+            host: event.detail.host,
+            installed: event.detail.verified || true,
+            sessionId: event.detail.sessionId
+          };
+
+          toggleMonitoringPanel(status);
         }
       });
     });
@@ -535,119 +543,78 @@ export default defineComponent({
     const toggleMonitoringPanel = (status) => {
       // 如果监控面板已经显示，不要重复处理
       if (showMonitoringPanel.value) {
-        // 移除控制台日志输出，避免污染控制台
         return;
       }
-      
+
       try {
-        // 检查是否已传入连接信息（来自TerminalToolbar的优化处理）
-        if (status && status.useExistingConnection && status.connection) {
-          log.debug('使用传入的现有连接信息:', status.connection);
-          
+        // 如果status包含完整信息，直接使用
+        if (status && status.host) {
           const sessionInfo = {
-            id: status.sessionId || 'session_' + Date.now(),
-            connection: status.connection
-          };
-          
-          // 将会话信息传递给监控面板
-          monitorSessionId.value = sessionInfo.id;
-          monitorServerInfo.value = sessionInfo.connection;
-          monitoringInstalled.value = status.installed === true;
-          
-          // 显示监控面板 - 只切换显示状态
-          showMonitoringPanel.value = true;
-          
-          log.debug('打开监控面板（使用现有连接）', { 
-            sessionId: sessionInfo.id, 
-            serverInfo: sessionInfo.connection
-          });
-          return;
-        }
-        
-        // 获取当前活动的会话ID
-        let currentSessionId = getCurrentSessionId();
-        
-        // 如果无法获取会话ID但状态中携带了sessionId，则使用它
-        if (!currentSessionId && status && status.sessionId) {
-          currentSessionId = status.sessionId;
-          log.debug(`使用从状态获取的会话ID: ${currentSessionId}`);
-        }
-        
-        // 尝试直接从会话存储中获取会话信息
-        let sessionFound = false;
-        let sessionInfo = null;
-        
-        // 从SessionStore中获取会话信息
-        if (currentSessionId) {
-          const sessionStore = useSessionStore();
-          sessionInfo = sessionStore.getSession(currentSessionId);
-          if (sessionInfo && sessionInfo.connection) {
-            sessionFound = true;
-            log.debug('从SessionStore找到会话信息:', sessionInfo);
-          }
-        }
-        
-        // 如果SessionStore中没有找到，尝试从sessionStorage中获取
-        if (!sessionFound) {
-          try {
-            const storedSessions = JSON.parse(sessionStorage.getItem('ssh-sessions') || '[]');
-            if (storedSessions.length > 0) {
-              // 使用第一个活动会话
-              sessionInfo = {
-                id: storedSessions[0].id || 'session_' + Date.now(),
-                connection: {
-                  host: storedSessions[0].host || '192.210.143.132',
-                  username: storedSessions[0].username || 'root',
-                  port: storedSessions[0].port || 22
-                }
-              };
-              sessionFound = true;
-              log.debug('从sessionStorage找到会话信息:', sessionInfo);
-            }
-          } catch (e) {
-            log.error('从sessionStorage解析会话信息失败:', e);
-          }
-        }
-        
-        // 如果依然没有找到会话信息，创建一个临时会话对象
-        if (!sessionFound) {
-          sessionInfo = {
-            id: 'temp_session_' + Date.now(),
+            id: status.sessionId || 'temp_session_' + Date.now(),
             connection: {
-              host: '192.210.143.132', // 使用默认主机地址
+              host: status.host,
               username: 'root',
               port: 22
             }
           };
-          log.debug('创建临时会话信息:', sessionInfo);
-        }
-        
-        // 检查是否是一键安装请求
-        if (status && status.install === true && sessionInfo) {
-          const installCommand = `curl -sSL ${window.location.origin}/api/monitor/install-script | sudo bash`;
-          window.dispatchEvent(new CustomEvent('terminal:execute-command', { 
-            detail: {
-              command: installCommand,
-              sessionId: sessionInfo.id
-            }
-          }));
-          ElMessage.success('正在执行安装命令，请在终端中查看进度');
+
+          // 检查是否是一键安装请求
+          if (status.install === true) {
+            const installCommand = `curl -sSL ${window.location.origin}/api/monitor/install-script | sudo bash`;
+            window.dispatchEvent(new CustomEvent('terminal:execute-command', {
+              detail: {
+                command: installCommand,
+                sessionId: sessionInfo.id
+              }
+            }));
+            ElMessage.success('正在执行安装命令，请在终端中查看进度');
+            return;
+          }
+
+          // 将会话信息传递给监控面板
+          monitorSessionId.value = sessionInfo.id;
+          monitorServerInfo.value = sessionInfo.connection;
+          monitoringInstalled.value = status.installed === true;
+
+          // 显示监控面板
+          showMonitoringPanel.value = true;
+
+          log.debug('打开监控面板', {
+            sessionId: sessionInfo.id,
+            serverInfo: sessionInfo.connection,
+            installed: monitoringInstalled.value
+          });
           return;
         }
-        
+
+        // 兜底逻辑：如果没有status或status不完整，尝试获取当前会话信息
+        const currentSessionId = getCurrentSessionId();
+        if (!currentSessionId) {
+          ElMessage.error('无法获取当前会话信息，请确保SSH连接正常');
+          return;
+        }
+
+        const sessionStore = useSessionStore();
+        const sessionInfo = sessionStore.getSession(currentSessionId);
+
+        if (!sessionInfo || !sessionInfo.connection) {
+          ElMessage.error('无法获取会话连接信息');
+          return;
+        }
+
         // 将会话信息传递给监控面板
         monitorSessionId.value = sessionInfo.id;
         monitorServerInfo.value = sessionInfo.connection;
-        monitoringInstalled.value = status && status.installed === true;
-        
-        // 显示监控面板 - 只切换显示状态，不创建新连接
+        monitoringInstalled.value = false; // 默认未安装，需要检查
+
+        // 显示监控面板
         showMonitoringPanel.value = true;
-        
-        log.debug('打开监控面板', { 
-          sessionId: sessionInfo.id, 
-          serverInfo: sessionInfo.connection,
-          installed: monitoringInstalled.value 
+
+        log.debug('打开监控面板（兜底逻辑）', {
+          sessionId: sessionInfo.id,
+          serverInfo: sessionInfo.connection
         });
+
       } catch (error) {
         log.error('打开监控面板失败:', error);
         ElMessage.error('无法打开监控面板: ' + (error.message || '未知错误'));
