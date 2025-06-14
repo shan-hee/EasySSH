@@ -93,10 +93,9 @@ cat > /tmp/config.json << EOL
 EOL
 
 if node -e "JSON.parse(require('fs').readFileSync('/tmp/config.json', 'utf8'));" 2>/dev/null; then
-    cat /tmp/config.json
+    echo "✅ 配置文件生成成功"
 else
     echo "❌ 配置文件格式错误，请检查服务器地址格式"
-    cat /tmp/config.json
     exit 1
 fi
 
@@ -116,17 +115,14 @@ let config;
 try {
   const configData = fs.readFileSync('./config.json');
   config = JSON.parse(configData);
-  console.log('配置加载成功:', config);
 
   // 验证服务器配置
   if (!config.serverHost || !config.serverPort || !config.wsProtocol) {
-    console.error('错误: 服务器配置不完整');
-    console.error('需要的配置项: serverHost, serverPort, wsProtocol');
-    console.error('当前配置:', config);
+    console.error('错误: 服务器配置不完整，需要的配置项: serverHost, serverPort, wsProtocol');
     process.exit(1);
   }
 } catch (err) {
-  console.error('配置文件读取失败:', err);
+  console.error('配置文件读取失败:', err.message);
   process.exit(1);
 }
 
@@ -162,14 +158,17 @@ class WebSocketClient {
           const message = JSON.parse(data);
           this.handleMessage(message);
         } catch (err) {
-          console.error('处理服务器消息失败:', err);
+          console.error('处理服务器消息失败:', err.message);
         }
       });
 
       this.ws.on('close', () => {
-        console.log('与EasySSH服务器的连接已断开');
+        if (this.connected) {
+          console.log('与EasySSH服务器的连接已断开');
+        }
         this.connected = false;
         this.stopHeartbeat();
+        this.stopDataTransmission();
         this.scheduleReconnect();
       });
 
@@ -193,7 +192,10 @@ class WebSocketClient {
         this.sendSystemInfo();
         break;
       default:
-        console.log('收到服务器消息:', message.type);
+        // 只记录未知消息类型
+        if (message.type !== 'pong') {
+          console.log('收到未知消息类型:', message.type);
+        }
     }
   }
 
@@ -207,9 +209,7 @@ class WebSocketClient {
 
   startHeartbeat() {
     this.heartbeatTimer = setInterval(() => {
-      if (!this.send({ type: 'ping', timestamp: Date.now() })) {
-        console.log('心跳发送失败，连接可能已断开');
-      }
+      this.send({ type: 'ping', timestamp: Date.now() });
     }, this.heartbeatInterval);
   }
 
@@ -217,6 +217,13 @@ class WebSocketClient {
     if (this.heartbeatTimer) {
       clearInterval(this.heartbeatTimer);
       this.heartbeatTimer = null;
+    }
+  }
+
+  stopDataTransmission() {
+    if (this.dataTimer) {
+      clearInterval(this.dataTimer);
+      this.dataTimer = null;
     }
   }
 
@@ -229,13 +236,19 @@ class WebSocketClient {
     this.reconnectAttempts++;
     const delay = Math.min(this.reconnectInterval * Math.pow(2, this.reconnectAttempts - 1), 60000);
 
-    console.log(`${delay/1000}秒后尝试第${this.reconnectAttempts}次重连...`);
+    // 只在前几次重连时输出日志，避免日志过多
+    if (this.reconnectAttempts <= 3) {
+      console.log(`${delay/1000}秒后尝试第${this.reconnectAttempts}次重连...`);
+    }
     setTimeout(() => {
       this.connect();
     }, delay);
   }
 
   startDataTransmission() {
+    // 确保清理之前的定时器
+    this.stopDataTransmission();
+
     // 立即发送一次系统信息
     this.sendSystemInfo();
 
@@ -255,7 +268,7 @@ class WebSocketClient {
         payload: systemInfo
       });
     } catch (err) {
-      console.error('获取系统信息失败:', err);
+      console.error('获取系统信息失败:', err.message);
     }
   }
 }
@@ -540,11 +553,9 @@ if (config.serverPort === "443" || config.serverPort === 443) {
   wsUrl = `${config.wsProtocol}://${config.serverHost}:${config.serverPort}/monitor`;
 }
 
-console.log('WebSocket连接地址:', wsUrl);
-const client = new WebSocketClient(wsUrl);
-
-// 启动监控客户端
 console.log('启动EasySSH监控客户端...');
+console.log('连接地址:', wsUrl);
+const client = new WebSocketClient(wsUrl);
 client.connect();
 
 // 优雅关闭处理

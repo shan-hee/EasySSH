@@ -587,20 +587,43 @@ function handleSystemStatsRequest(ws, sessionId, data) {
       // 如果有主机信息，尝试匹配
       if (data.hostId) {
         const targetHost = data.hostId;
+
+        // 直接匹配：hostname, clientIp, 内网IP
         if (otherSession.hostInfo.hostname === targetHost ||
             otherSession.clientIp === targetHost ||
             (otherSession.hostInfo.ip && otherSession.hostInfo.ip === targetHost)) {
           targetSession = otherSession;
+          console.log(`找到直接匹配的会话: ${otherId}, 匹配字段: ${targetHost}`);
           break;
+        }
+
+        // 如果是哈希ID，尝试通过订阅关系查找
+        if (targetHost.startsWith('h_')) {
+          // 检查当前前端会话订阅的服务器
+          const frontendSession = frontendSessions.get(sessionId);
+          if (frontendSession && frontendSession.subscribedServers) {
+            for (const subscribedServerId of frontendSession.subscribedServers) {
+              // 检查订阅的服务器ID是否与监控客户端匹配
+              if (otherSession.hostInfo.hostname === subscribedServerId ||
+                  otherSession.clientIp === subscribedServerId ||
+                  (otherSession.hostInfo.ip && otherSession.hostInfo.ip === subscribedServerId)) {
+                targetSession = otherSession;
+                console.log(`通过订阅关系找到匹配的会话: ${otherId}, 订阅服务器: ${subscribedServerId}`);
+                break;
+              }
+            }
+          }
         }
       }
     }
+
+    if (targetSession) break;
   }
 
   if (targetSession) {
     // 请求目标会话发送最新的系统状态
     sendMessage(targetSession.ws, {
-      type: 'request_stats_update',
+      type: 'get_system_stats',
       data: {
         requesterId: sessionId,
         timestamp: Date.now()
@@ -611,6 +634,19 @@ function handleSystemStatsRequest(ws, sessionId, data) {
   } else {
     // 如果找不到目标会话，发送错误响应
     console.log(`未找到目标主机的监控会话: ${data.hostId || '未知'}`);
+
+    // 添加调试信息
+    console.log(`当前活跃的监控客户端会话数量: ${monitoringClientSessions.size}`);
+    monitoringClientSessions.forEach((session, id) => {
+      console.log(`会话 ${id}: hostname=${session.hostInfo?.hostname}, clientIp=${session.clientIp}, ip=${session.hostInfo?.ip}`);
+    });
+
+    // 检查前端会话的订阅信息
+    const frontendSession = frontendSessions.get(sessionId);
+    if (frontendSession) {
+      console.log(`前端会话 ${sessionId} 订阅的服务器:`, Array.from(frontendSession.subscribedServers));
+    }
+
     sendError(ws, '目标主机监控服务未连接', sessionId);
   }
 }
