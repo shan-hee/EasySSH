@@ -40,25 +40,80 @@ fi
 MONITOR_DIR="/opt/easyssh-monitor"
 sudo mkdir -p $MONITOR_DIR
 
-# 解析服务器地址和端口
-if [[ "$SERVER_ADDR" == *":"* ]]; then
-    SERVER_HOST=$(echo "$SERVER_ADDR" | cut -d':' -f1)
-    SERVER_PORT=$(echo "$SERVER_ADDR" | cut -d':' -f2)
+# 解析服务器地址、协议和端口
+echo "正在解析服务器地址: $SERVER_ADDR"
+
+# 初始化变量
+SERVER_PROTOCOL=""
+SERVER_HOST=""
+SERVER_PORT=""
+WS_PROTOCOL=""
+
+# 检查是否包含协议
+if [[ "$SERVER_ADDR" == http://* ]]; then
+    SERVER_PROTOCOL="http"
+    WS_PROTOCOL="ws"
+    # 移除 http:// 前缀
+    ADDR_WITHOUT_PROTOCOL="${SERVER_ADDR#http://}"
+elif [[ "$SERVER_ADDR" == https://* ]]; then
+    SERVER_PROTOCOL="https"
+    WS_PROTOCOL="wss"
+    # 移除 https:// 前缀
+    ADDR_WITHOUT_PROTOCOL="${SERVER_ADDR#https://}"
 else
-    SERVER_HOST="$SERVER_ADDR"
-    SERVER_PORT="3000"  # EasySSH默认端口
+    # 没有协议，默认为http
+    SERVER_PROTOCOL="http"
+    WS_PROTOCOL="ws"
+    ADDR_WITHOUT_PROTOCOL="$SERVER_ADDR"
 fi
+
+# 解析主机名和端口
+if [[ "$ADDR_WITHOUT_PROTOCOL" == *":"* ]]; then
+    # 包含端口
+    SERVER_HOST=$(echo "$ADDR_WITHOUT_PROTOCOL" | cut -d':' -f1)
+    SERVER_PORT=$(echo "$ADDR_WITHOUT_PROTOCOL" | cut -d':' -f2)
+    # 移除可能的路径部分
+    SERVER_PORT=$(echo "$SERVER_PORT" | cut -d'/' -f1)
+else
+    # 不包含端口，使用默认端口
+    SERVER_HOST=$(echo "$ADDR_WITHOUT_PROTOCOL" | cut -d'/' -f1)
+    if [[ "$SERVER_PROTOCOL" == "https" ]]; then
+        SERVER_PORT="443"
+    else
+        SERVER_PORT="3000"  # EasySSH默认端口
+    fi
+fi
+
+echo "解析结果:"
+echo "  协议: $SERVER_PROTOCOL"
+echo "  主机: $SERVER_HOST"
+echo "  端口: $SERVER_PORT"
+echo "  WebSocket协议: $WS_PROTOCOL"
 
 # 创建配置文件
 cat > /tmp/config.json << EOL
 {
+  "serverProtocol": "${SERVER_PROTOCOL}",
   "serverHost": "${SERVER_HOST}",
   "serverPort": ${SERVER_PORT},
+  "wsProtocol": "${WS_PROTOCOL}",
   "reconnectInterval": 5000,
   "maxReconnectAttempts": -1,
   "heartbeatInterval": 30000
 }
 EOL
+
+# 验证生成的JSON文件
+echo "验证配置文件格式..."
+if node -e "JSON.parse(require('fs').readFileSync('/tmp/config.json', 'utf8')); console.log('✅ 配置文件格式正确');" 2>/dev/null; then
+    echo "配置文件内容:"
+    cat /tmp/config.json
+else
+    echo "❌ 配置文件格式错误，请检查服务器地址格式"
+    echo "生成的配置文件内容:"
+    cat /tmp/config.json
+    exit 1
+fi
 
 # 复制配置文件到监控目录
 sudo cp /tmp/config.json $MONITOR_DIR/
@@ -79,8 +134,10 @@ try {
   console.log('配置加载成功:', config);
 
   // 验证服务器配置
-  if (!config.serverHost || !config.serverPort) {
+  if (!config.serverHost || !config.serverPort || !config.wsProtocol) {
     console.error('错误: 服务器配置不完整');
+    console.error('需要的配置项: serverHost, serverPort, wsProtocol');
+    console.error('当前配置:', config);
     process.exit(1);
   }
 } catch (err) {
@@ -486,7 +543,19 @@ async function getLocationInfo() {
 }
 
 // 创建WebSocket客户端并连接
-const wsUrl = `ws://${config.serverHost}:${config.serverPort}/monitor`;
+let wsUrl;
+if (config.serverPort === "443" || config.serverPort === 443) {
+  // HTTPS默认端口，不显示端口号
+  wsUrl = `${config.wsProtocol}://${config.serverHost}/monitor`;
+} else if (config.serverPort === "80" || config.serverPort === 80) {
+  // HTTP默认端口，不显示端口号
+  wsUrl = `${config.wsProtocol}://${config.serverHost}/monitor`;
+} else {
+  // 非默认端口，显示端口号
+  wsUrl = `${config.wsProtocol}://${config.serverHost}:${config.serverPort}/monitor`;
+}
+
+console.log('WebSocket连接地址:', wsUrl);
 const client = new WebSocketClient(wsUrl);
 
 // 启动监控客户端
