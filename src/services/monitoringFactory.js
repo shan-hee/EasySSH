@@ -697,7 +697,6 @@ class MonitoringInstance {
       if (this.state.connected) {
         // 发送ping消息
         this.sendPing();
-        log.debug(`[终端${this.terminalId}] 监控保活: 已发送ping请求`);
       }
     }, this.keepAliveTimeout);
   }
