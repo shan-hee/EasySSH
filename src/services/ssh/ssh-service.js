@@ -147,7 +147,7 @@ class SSHService {
       if (connection.terminalId) {
         this.terminalSessionMap.set(connection.terminalId, sessionId);
         this.sessionTerminalMap.set(sessionId, connection.terminalId);
-        log.info(`创建终端与SSH会话映射: 终端 ${connection.terminalId} -> 会话 ${sessionId}`);
+        log.debug(`[SSH] 建立终端会话映射: ${connection.terminalId} -> ${sessionId}`);
       }
       
       // 尝试WebSocket连接

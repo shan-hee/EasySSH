@@ -903,6 +903,13 @@ class MonitoringFactory {
         const terminalId = event.detail.terminalId;
 
         if (terminalId) {
+          // 检查用户登录状态，如果未登录则跳过监控状态检查
+          const token = localStorage.getItem('auth_token');
+          if (!token) {
+            log.debug(`[监控工厂] 用户未登录，跳过监控状态检查: ${serverId}`);
+            return;
+          }
+
           log.debug(`[监控工厂] 检测到SSH连接成功，检查服务器 ${serverId} 的监控状态`);
 
           // 使用新的统一监控状态检查和连接服务
@@ -914,7 +921,7 @@ class MonitoringFactory {
                 log.debug(`[监控工厂] ${result.message}`);
               }
             }).catch(err => {
-              log.warn(`[监控工厂] 监控状态检查和连接失败: ${err.message}`);
+              log.debug(`[监控工厂] 检查失败: ${err.message}`);
             });
           }).catch(err => {
             log.error(`[监控工厂] 导入监控状态服务失败: ${err.message}`);

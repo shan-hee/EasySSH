@@ -281,30 +281,29 @@ export default {
           return false
         }
         
-        log.debug(`检测到终端路径变更，使用会话存储ID: ${termId}`)
-        log.debug(`路由切换到终端，触发终端显示和刷新 ${termId}`)
-        
+        log.debug(`[Terminal] 检测到路径变更，会话ID: ${termId}`)
+
         // 添加清理旧连接状态的逻辑，确保SSH连接失败后可以重新连接
         // 先检查连接状态，如果是错误状态，清理后再重新连接
         if (terminalStore.getTerminalStatus(termId) === 'error') {
-          log.debug(`检测到终端 ${termId} 处于错误状态，清理状态后重新连接`)
+          log.debug(`[Terminal] 检测到错误状态，清理后重连: ${termId}`)
           // 清理连接状态
           delete terminalInitialized.value[termId]
           delete terminalInitializingStates.value[termId]
           delete terminalConnectingStates.value[termId]
-          
+
           // 从会话存储中清理
           if (sessionStore.getSession(termId)) {
             sessionStore.setActiveSession(null)
           }
         }
-        
+
         // 检查终端状态
         const hasTerminal = terminalStore.hasTerminal(termId)
         const hasSession = terminalStore.hasTerminalSession(termId)
         const isCreating = terminalStore.isSessionCreating(termId)
-        
-        log.debug(`终端状态检查: 终端存在=${hasTerminal}, 会话存在=${hasSession}, 正在创建=${isCreating}`)
+
+        log.debug(`[Terminal] 状态检查: 终端=${hasTerminal}, 会话=${hasSession}, 创建中=${isCreating}`)
         
         // 如果终端或会话不存在，且不在创建中，才尝试初始化
         if ((!hasTerminal || !hasSession) && !isCreating) {
@@ -1654,12 +1653,12 @@ export default {
         const routeId = newId || sessionStore.getActiveSession()
         
         if (routeId && routeId !== currentId) {
-          log.debug(`收到会话切换事件: ${routeId}`)
-          
+          log.debug(`[Terminal] 会话切换: ${currentId} -> ${routeId}`)
+
           // 如果终端ID不在列表中，则添加
           if (!terminalIds.value.includes(routeId)) {
             terminalIds.value.push(routeId)
-            log.debug(`更新终端ID列表: ${JSON.stringify(terminalIds.value)}`)
+            log.debug(`[Terminal] 终端列表更新: ${terminalIds.value.length}个终端`)
           }
           
           // 通知会话存储更新活动会话

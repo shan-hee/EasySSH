@@ -43,15 +43,22 @@
         
         <!-- 使用teleport将监控工具提示内容传送到body中 -->
         <teleport to="body">
-          <!-- 已安装监控服务提示 -->
-          <div v-if="monitoringServiceInstalled && !isPanelVisible && showMonitorTooltip" 
+          <!-- 未登录状态提示 -->
+          <div v-if="!isLoggedIn && showMonitorTooltip"
+               class="sftp-tooltip" :style="monitorTooltipStyle"
+               @mouseenter="onMonitorTooltipMouseEnter" @mouseleave="onMonitorTooltipMouseLeave">
+            登录后启用
+          </div>
+
+          <!-- 已登录且已安装监控服务提示 -->
+          <div v-else-if="isLoggedIn && monitoringServiceInstalled && !isPanelVisible && showMonitorTooltip"
                class="sftp-tooltip" :style="monitorTooltipStyle"
                @mouseenter="onMonitorTooltipMouseEnter" @mouseleave="onMonitorTooltipMouseLeave">
             查看系统监控
           </div>
-          
-          <!-- 未安装监控服务提示 -->
-          <div v-if="!monitoringServiceInstalled && showMonitorTooltip" 
+
+          <!-- 已登录但未安装监控服务提示 -->
+          <div v-else-if="isLoggedIn && !monitoringServiceInstalled && showMonitorTooltip"
                class="sftp-tooltip" :style="monitorTooltipStyle"
                @mouseenter="onMonitorTooltipMouseEnter" @mouseleave="onMonitorTooltipMouseLeave">
             未连接到监控服务，点击<span class="install-link" @click.stop="installMonitoring">一键安装</span>
@@ -102,6 +109,7 @@
 <script>
 import { defineComponent, computed, ref, onMounted, onUnmounted, watch, inject, nextTick } from 'vue'
 import { useSessionStore } from '../../store/session'
+import { useUserStore } from '../../store/user'
 import axios from 'axios'
 import sshService from '../../services/ssh/index'
 import monitoringService from '../../services/monitoring'
@@ -133,11 +141,15 @@ export default defineComponent({
     const monitoringServiceInstalled = ref(false)
     const sessionStore = useSessionStore()
     const terminalStore = useTerminalStore()
+    const userStore = useUserStore()
     const lastProcessedSessionId = ref(null)
     const isSshConnected = ref(false)
     const showSftpTooltip = ref(false)
     const sftpButtonRef = ref(null)
     const networkIconRef = ref(null)
+
+    // 用户登录状态
+    const isLoggedIn = computed(() => userStore.isLoggedIn)
     
     // 添加按终端ID隔离的状态对象
     const terminalToolbarStates = ref({})
@@ -332,6 +344,12 @@ export default defineComponent({
     
     // 检查监控服务状态
     const checkMonitoringServiceStatus = () => {
+      // 如果用户未登录，直接跳过状态检查
+      if (!isLoggedIn.value) {
+        monitoringServiceInstalled.value = false;
+        return;
+      }
+
       // 静默处理，避免出现任何错误或异常
       try {
         // 获取当前终端ID
@@ -340,14 +358,14 @@ export default defineComponent({
           // 不改变当前状态，保持默认灰色图标
           return;
         }
-        
+
         // 获取当前终端的状态
         const terminalState = getTerminalToolbarState(currentTerminalId);
         if (!terminalState) {
           // 不改变当前状态，保持默认灰色图标
           return;
         }
-        
+
         // 优先使用缓存状态，减少对全局监控服务的依赖
         if (terminalState.monitoringInstalled !== undefined) {
           monitoringServiceInstalled.value = terminalState.monitoringInstalled;
@@ -1049,6 +1067,13 @@ export default defineComponent({
     
     // 新增处理监控图标点击的函数
     const handleMonitoringClick = () => {
+      // 如果用户未登录，显示登录提示
+      if (!isLoggedIn.value) {
+        updateMonitorTooltipPosition();
+        showMonitorTooltip.value = true;
+        return;
+      }
+
       // 只有当监控服务已安装且面板未显示时才执行操作
       if (monitoringServiceInstalled.value && !isPanelVisible.value) {
         emit('toggle-monitoring-panel');
@@ -1092,7 +1117,7 @@ export default defineComponent({
       try {
         if (!currentId) return;
         
-        log.debug(`正在确保终端[${currentId}]的状态独立`);
+        log.debug(`[工具栏] 确保终端状态独立: ${currentId}`);
         
         // 获取当前终端的状态
         const terminalState = getTerminalToolbarState(currentId);
@@ -1302,7 +1327,9 @@ export default defineComponent({
       networkIconRef,
       updateNetworkPopupPosition,
       networkPopupStyle,
-      handleMonitoringClick
+      handleMonitoringClick,
+      // 用户状态
+      isLoggedIn
     }
   }
 })

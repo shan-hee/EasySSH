@@ -109,20 +109,21 @@ export const useTerminalStore = defineStore('terminal', () => {
         detail: { terminalId: connectionId, status: 'initializing', isNew: true }
       }))
       
-      log.debug(`开始统一初始化流程: 终端ID=${connectionId}`)
-      
+      const startTime = performance.now()
+      log.info(`[Terminal] 开始初始化终端: ${connectionId}`)
+
       // 获取连接信息（原有逻辑）
       const userStore = useUserStore()
       const connectionStore = useConnectionStore()
       const localConnectionsStore = useLocalConnectionsStore()
       const sessionStore = useSessionStore()
-      
+
       // 首先从会话存储中尝试获取连接信息
       let connection = null
       const sessionData = sessionStore.getSession(connectionId)
-      
+
       if (sessionData) {
-        log.info(`从会话存储获取连接配置: ${connectionId}`)
+        log.debug(`[Terminal] 从会话存储获取连接配置: ${connectionId}`)
         connection = sessionData
       } else {
         // 尝试使用原始连接ID查找连接信息
@@ -256,10 +257,12 @@ export const useTerminalStore = defineStore('terminal', () => {
         }
         
         // 终端初始化完成，发布统一的终端就绪事件
-        log.info(`终端 ${connectionId} 初始化成功`)
+        const endTime = performance.now()
+        const duration = Math.round(endTime - startTime)
+        log.info(`[Terminal] 终端 ${connectionId} 初始化成功 (耗时: ${duration}ms)`)
         window.dispatchEvent(new CustomEvent('terminal-status-update', {
-          detail: { 
-            terminalId: connectionId, 
+          detail: {
+            terminalId: connectionId,
             status: 'ready',
             isNew: true,
             sessionId: sessionId

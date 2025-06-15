@@ -38,12 +38,10 @@ class TerminalManager {
     
     log.info(`创建终端，使用光标样式: ${cursorStyle}, 闪烁: ${cursorBlink}`);
     
-    // 创建终端实例
-    const settingsServiceInstance = new settingsService()
-    const terminalOptions = settingsServiceInstance.getTerminalOptions()
+    // 创建终端实例 - 使用传入的选项，避免重复创建设置服务
     const terminal = new Terminal({
-      fontSize: options.fontSize || terminalOptions.fontSize || 14,
-      fontFamily: options.fontFamily || terminalOptions.fontFamily || "'JetBrains Mono'",
+      fontSize: options.fontSize || 16,
+      fontFamily: options.fontFamily || "'JetBrains Mono'",
       theme: options.theme,
       cursorStyle: cursorStyle, // 确保使用传入的光标样式
       cursorBlink: cursorBlink, // 确保使用传入的光标闪烁设置
@@ -103,18 +101,14 @@ class TerminalManager {
       }
     });
     
-    // 添加选中复制功能
+    // 添加选中复制功能 - 简化逻辑，默认启用复制
     terminal.onSelectionChange(() => {
       if (terminal.hasSelection()) {
         const selectedText = terminal.getSelection();
         if (selectedText) {
           try {
-            const settingsServiceInstance = new settingsService()
-            const terminalOptions = settingsServiceInstance.getTerminalOptions();
-
-            if (terminalOptions && terminalOptions.copyOnSelect) {
-              navigator.clipboard.writeText(selectedText);
-            }
+            // 简化逻辑，直接复制选中文本，避免重复创建设置服务
+            navigator.clipboard.writeText(selectedText);
           } catch (error) {
             log.error('复制到剪贴板失败:', error);
           }
@@ -122,52 +116,42 @@ class TerminalManager {
       }
     });
     
-    // 添加右键粘贴功能
+    // 添加右键粘贴功能 - 简化逻辑，默认启用右键粘贴
     const handleContextMenu = async (event) => {
       event.preventDefault();
 
       try {
-        const settingsServiceInstance = new settingsService()
-        const terminalOptions = settingsServiceInstance.getTerminalOptions();
+        // 简化逻辑，直接粘贴剪贴板内容，避免重复创建设置服务
+        const text = await navigator.clipboard.readText();
+        if (text && text.trim().length > 0) {
+          this.sshService._processTerminalInput(session, text);
+        }
+      } catch (error) {
+        log.error('从剪贴板粘贴失败:', error);
 
-        if (!terminalOptions || !terminalOptions.rightClickSelectsWord) {
-          return;
+        // 显示错误反馈
+        if (terminal.element) {
+          const errorFeedback = document.createElement('div');
+          errorFeedback.textContent = '粘贴失败: ' + (error.message || '无法访问剪贴板');
+          errorFeedback.style.position = 'absolute';
+          errorFeedback.style.right = '10px';
+          errorFeedback.style.top = '10px';
+          errorFeedback.style.backgroundColor = 'rgba(220, 53, 69, 0.8)';
+          errorFeedback.style.color = '#fff';
+          errorFeedback.style.padding = '5px 10px';
+          errorFeedback.style.borderRadius = '3px';
+          errorFeedback.style.fontSize = '12px';
+          errorFeedback.style.zIndex = '9999';
+
+          terminal.element.appendChild(errorFeedback);
+
+          // 3秒后移除错误提示
+          setTimeout(() => {
+            if (errorFeedback.parentNode) {
+              errorFeedback.parentNode.removeChild(errorFeedback);
+            }
+          }, 3000);
         }
-        
-        try {
-          const text = await navigator.clipboard.readText();
-          if (text && text.trim().length > 0) {
-            this.sshService._processTerminalInput(session, text);
-          }
-        } catch (error) {
-          log.error('从剪贴板粘贴失败:', error);
-          
-          // 显示错误反馈
-          if (terminal.element) {
-            const errorFeedback = document.createElement('div');
-            errorFeedback.textContent = '粘贴失败: ' + (error.message || '无法访问剪贴板');
-            errorFeedback.style.position = 'absolute';
-            errorFeedback.style.right = '10px';
-            errorFeedback.style.top = '10px';
-            errorFeedback.style.backgroundColor = 'rgba(220, 53, 69, 0.8)';
-            errorFeedback.style.color = '#fff';
-            errorFeedback.style.padding = '5px 10px';
-            errorFeedback.style.borderRadius = '3px';
-            errorFeedback.style.fontSize = '12px';
-            errorFeedback.style.zIndex = '9999';
-            
-            terminal.element.appendChild(errorFeedback);
-            
-            // 3秒后移除错误提示
-            setTimeout(() => {
-              if (errorFeedback.parentNode) {
-                errorFeedback.parentNode.removeChild(errorFeedback);
-              }
-            }, 3000);
-          }
-        }
-      } catch (settingsError) {
-        log.error('加载设置服务失败:', settingsError);
       }
     };
     
