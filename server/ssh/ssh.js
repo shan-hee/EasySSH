@@ -8,6 +8,7 @@ const WebSocket = require('ws');
 const crypto = require('crypto');
 const os = require('os');
 const { exec } = require('child_process');
+const logger = require('../utils/logger');
 
 // 导入工具模块
 const utils = require('./utils');
@@ -41,13 +42,22 @@ function createSSHConnection(config) {
     
     conn.on('ready', () => {
       clearTimeout(timeout);
-      console.log(logMessage('SSH连接成功', `${config.address}:${config.port}, 用户: ${config.username}`));
+      logger.info('SSH连接成功', {
+        address: config.address,
+        port: config.port,
+        username: config.username
+      });
       resolve(conn);
     });
     
     conn.on('error', (err) => {
       clearTimeout(timeout);
-      console.error(logMessage('SSH连接错误', `${config.address}:${config.port}, 用户: ${config.username}`, '错误信息:', err.message));
+      logger.error('SSH连接错误', {
+        address: config.address,
+        port: config.port,
+        username: config.username,
+        error: err.message
+      });
       reject(err);
     });
     
@@ -59,11 +69,12 @@ function createSSHConnection(config) {
     };
     
     // 记录安全的连接日志
-    console.log(logMessage('尝试SSH连接', 
-      `主机: ${sshConfig.host}:${sshConfig.port}, ` +
-      `用户: ${sshConfig.username}, ` +
-      `认证方式: ${config.authType || 'password'}`
-    ));
+    logger.info('尝试SSH连接', {
+      host: sshConfig.host,
+      port: sshConfig.port,
+      username: sshConfig.username,
+      authType: config.authType || 'password'
+    });
     
     // 根据认证方式设置配置
     if (config.authType === 'password') {
@@ -101,7 +112,7 @@ async function measureNetworkLatency(host, ws, sessionId) {
     
     // 如果无法获取客户端IP，使用备用方法或记录错误
     if (!clientIP) {
-      console.warn(logMessage('测量延迟', sessionId, '警告', '无法获取客户端IP地址，使用默认替代'));
+      logger.warn('测量延迟时无法获取客户端IP地址', { sessionId });
       // 我们不使用127.0.0.1，因为那没有意义
       // 如果无法获取真实IP，我们将只测量远程服务器延迟
     }
@@ -201,7 +212,7 @@ async function measureNetworkLatency(host, ws, sessionId) {
     });
   } catch (error) {
     // 处理异常，但不打印
-    console.error('测量网络延迟出错:', error.message);
+    logger.error('测量网络延迟出错', { error: error.message });
   }
 }
 
@@ -315,7 +326,7 @@ function cleanupSession(sessionId) {
     return;
   }
   
-  console.log(logMessage('清理SSH会话', sessionId));
+  logger.info('清理SSH会话', { sessionId });
   
   const session = sessions.get(sessionId);
   
@@ -334,7 +345,7 @@ function cleanupSession(sessionId) {
       session.stream.end();
       session.stream = null;
     } catch (err) {
-      console.error(logMessage('关闭SSH流', sessionId, '错误', err.message));
+      logger.error('关闭SSH流错误', { sessionId, error: err.message });
     }
   }
   
@@ -344,14 +355,14 @@ function cleanupSession(sessionId) {
       session.conn.end();
       session.conn = null;
     } catch (err) {
-      console.error(logMessage('关闭SSH连接', sessionId, '错误', err.message));
+      logger.error('关闭SSH连接错误', { sessionId, error: err.message });
     }
   }
   
   // 从会话映射中移除
   sessions.delete(sessionId);
   
-  console.log(logMessage('SSH会话已清理', sessionId));
+  logger.info('SSH会话已清理', { sessionId });
 }
 
 /**
@@ -374,7 +385,7 @@ async function handleConnect(ws, data) {
       // 通知客户端连接成功
       sendMessage(ws, MSG_TYPE.CONNECTED, { sessionId });
       
-      console.log(logMessage('重新连接到会话', sessionId));
+      logger.info('重新连接到SSH会话', { sessionId });
       
       // 执行延迟测量
       if (session.connectionInfo && session.connectionInfo.host) {
@@ -435,13 +446,13 @@ async function handleConnect(ws, data) {
       
       // 处理SSH错误
       stream.on('error', (err) => {
-        console.error(logMessage('Shell', sessionId, '错误', err.message));
+        logger.error('SSH Shell错误', { sessionId, error: err.message });
         sendError(ws, `Shell错误: ${err.message}`, sessionId);
       });
       
       // 处理SSH关闭
       stream.on('close', () => {
-        console.log(logMessage('Shell会话已关闭', sessionId));
+        logger.info('SSH Shell会话已关闭', { sessionId });
         
         sendMessage(ws, MSG_TYPE.CLOSED, { sessionId });
         
@@ -451,7 +462,7 @@ async function handleConnect(ws, data) {
       // 通知客户端连接成功
       sendMessage(ws, MSG_TYPE.CONNECTED, { sessionId });
       
-      console.log(logMessage('新SSH会话已创建', sessionId));
+      logger.info('新SSH会话已创建', { sessionId });
       
       // 执行网络延迟测量（在SSH连接成功后）
       measureNetworkLatency(connectionInfo.host, ws, sessionId);
@@ -583,7 +594,7 @@ async function handleSshExec(ws, data) {
     // 执行命令
     session.conn.exec(command, (err, stream) => {
       if (err) {
-        console.error(logMessage('执行命令', command, '失败', err.message));
+        logger.error('SSH执行命令失败', { command, error: err.message });
         utils.sendSftpError(ws, sessionId, operationId, `执行命令失败: ${err.message}`);
         return;
       }
@@ -600,7 +611,7 @@ async function handleSshExec(ws, data) {
       });
       
       stream.on('close', (code) => {
-        console.log(logMessage('命令执行', command, '完成', `退出码: ${code}`));
+        logger.info('SSH命令执行完成', { command, exitCode: code });
         
         // 发送执行结果
         utils.sendSftpSuccess(ws, sessionId, operationId, {

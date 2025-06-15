@@ -5,19 +5,20 @@
 
 const path = require('path');
 const fs = require('fs');
+const logger = require('../utils/logger');
 
 // 导入工具模块
 const utils = require('./utils');
-const { 
-  MSG_TYPE, 
-  sendMessage, 
-  sendError, 
-  sendSftpError, 
-  sendSftpSuccess, 
-  sendSftpProgress, 
-  validateSftpSession, 
-  safeExec, 
-  logMessage 
+const {
+  MSG_TYPE,
+  sendMessage,
+  sendError,
+  sendSftpError,
+  sendSftpSuccess,
+  sendSftpProgress,
+  validateSftpSession,
+  safeExec,
+  logMessage
 } = utils;
 
 // 存储活动的SFTP会话
@@ -46,14 +47,14 @@ async function handleSftpInit(ws, data, sshSessions) {
         sessionId,
         path: sftpSessions.get(sessionId).currentPath
       });
-      console.log(logMessage('重用现有SFTP会话', sessionId));
+      logger.debug('重用现有SFTP会话', { sessionId });
       return;
     }
     
     // 创建新的SFTP会话
     session.conn.sftp((err, sftp) => {
       if (err) {
-        console.error(logMessage('创建SFTP会话', sessionId, '失败', err.message));
+        logger.error('创建SFTP会话失败', { sessionId, error: err.message });
         sendError(ws, `创建SFTP会话失败: ${err.message}`, sessionId, null, 'sftp');
         return;
       }
@@ -61,7 +62,7 @@ async function handleSftpInit(ws, data, sshSessions) {
       // 获取当前目录
       sftp.realpath('.', (err, homePath) => {
         if (err) {
-          console.error(logMessage('获取SFTP当前目录', sessionId, '失败', err.message));
+          logger.error('获取SFTP当前目录失败', { sessionId, error: err.message });
           homePath = '/'; // 默认为根目录
         }
         
@@ -77,7 +78,7 @@ async function handleSftpInit(ws, data, sshSessions) {
           path: homePath
         });
         
-        console.log(logMessage('SFTP会话已创建', sessionId, '成功', `初始路径: ${homePath}`));
+        logger.info('SFTP会话已创建', { sessionId, initialPath: homePath });
       });
     });
   }, ws, 'SFTP初始化错误', sessionId, null, false);
@@ -103,7 +104,7 @@ async function handleSftpList(ws, data) {
     // 读取目录内容
     sftp.readdir(path, (err, list) => {
       if (err) {
-        console.error(logMessage('读取目录', path, '失败', err.message));
+        logger.error('SFTP读取目录失败', { path, error: err.message });
         sendSftpError(ws, sessionId, operationId, `读取目录失败: ${err.message}`);
         return;
       }
@@ -140,7 +141,7 @@ async function handleSftpList(ws, data) {
         files: fileList
       });
       
-      console.log(logMessage('已列出目录', path, '成功', `包含 ${fileList.length} 个文件`));
+      logger.debug('SFTP已列出目录', { path, fileCount: fileList.length });
     });
   }, ws, '列出目录错误', sessionId, operationId);
 }
@@ -176,12 +177,12 @@ async function handleSftpUpload(ws, data) {
     
     // 设置事件处理器
     writeStream.on('error', (err) => {
-      console.error(logMessage('文件上传', remotePath, '错误', err.message));
+      logger.error('SFTP文件上传错误', { remotePath, error: err.message });
       sendSftpError(ws, sessionId, operationId, `文件上传错误: ${err.message}`);
     });
     
     writeStream.on('finish', () => {
-      console.log(logMessage('文件上传', remotePath, '完成', `${totalSize} 字节`));
+      logger.info('SFTP文件上传完成', { remotePath, totalSize });
       
       // 立即发送成功消息
       sendSftpSuccess(ws, sessionId, operationId, {
@@ -252,7 +253,7 @@ async function handleSftpDownload(ws, data) {
     // 获取文件信息
     sftp.stat(remotePath, (err, stats) => {
       if (err) {
-        console.error(logMessage('获取文件信息', remotePath, '失败', err.message));
+        logger.error('SFTP获取文件信息失败', { remotePath, error: err.message });
         sendSftpError(ws, sessionId, operationId, `获取文件信息失败: ${err.message}`);
         return;
       }
@@ -284,7 +285,7 @@ async function handleSftpDownload(ws, data) {
       
       // 设置事件处理器
       readStream.on('error', (err) => {
-        console.error(logMessage('文件下载', remotePath, '错误', err.message));
+        logger.error('SFTP文件下载错误', { remotePath, error: err.message });
         sendSftpError(ws, sessionId, operationId, `文件下载错误: ${err.message}`);
       });
       
@@ -321,9 +322,9 @@ async function handleSftpDownload(ws, data) {
             size: fileSize
           });
           
-          console.log(logMessage('文件下载', remotePath, '完成', `${fileSize} 字节`));
+          logger.info('SFTP文件下载完成', { remotePath, fileSize });
         } catch (err) {
-          console.error(logMessage('处理下载文件数据', remotePath, '错误', err.message));
+          logger.error('SFTP处理下载文件数据错误', { remotePath, error: err.message });
           sendSftpError(ws, sessionId, operationId, `处理文件数据错误: ${err.message}`);
         }
       });
@@ -350,7 +351,7 @@ async function handleSftpMkdir(ws, data) {
     // 创建目录
     sftp.mkdir(dirPath, (err) => {
       if (err) {
-        console.error(logMessage('创建目录', dirPath, '失败', err.message));
+        logger.error('SFTP创建目录失败', { dirPath, error: err.message });
         
         // 检查是否是因为目录已存在
         if (err.code === 4) {
@@ -361,7 +362,7 @@ async function handleSftpMkdir(ws, data) {
         return;
       }
       
-      console.log(logMessage('目录创建', dirPath, '成功'));
+      logger.info('SFTP目录创建成功', { dirPath });
       sendSftpSuccess(ws, sessionId, operationId, {
         message: '目录创建成功'
       });
@@ -399,7 +400,7 @@ async function handleSftpDelete(ws, data) {
       // 先检查目录是否为空
       sftp.readdir(targetPath, (err, list) => {
         if (err) {
-          console.error(logMessage('读取目录', targetPath, '失败', err.message));
+          logger.error('SFTP读取目录失败', { targetPath, error: err.message });
           sendSftpError(ws, sessionId, operationId, `读取目录失败: ${err.message}`);
           return;
         }
@@ -413,12 +414,12 @@ async function handleSftpDelete(ws, data) {
         // 删除目录
         sftp.rmdir(targetPath, (err) => {
           if (err) {
-            console.error(logMessage('删除目录', targetPath, '失败', err.message));
+            logger.error('SFTP删除目录失败', { targetPath, error: err.message });
             sendSftpError(ws, sessionId, operationId, `删除目录失败: ${err.message}`);
             return;
           }
           
-          console.log(logMessage('目录删除', targetPath, '成功'));
+          logger.info('SFTP目录删除成功', { targetPath });
           sendSftpSuccess(ws, sessionId, operationId, {
             message: '目录删除成功'
           });
@@ -437,12 +438,12 @@ async function handleSftpDelete(ws, data) {
       // 删除文件
       sftp.unlink(targetPath, (err) => {
         if (err) {
-          console.error(logMessage('删除文件', targetPath, '失败', err.message));
+          logger.error('SFTP删除文件失败', { targetPath, error: err.message });
           sendSftpError(ws, sessionId, operationId, `删除文件失败: ${err.message}`);
           return;
         }
         
-        console.log(logMessage('文件删除', targetPath, '成功'));
+        logger.info('SFTP文件删除成功', { targetPath });
         sendSftpSuccess(ws, sessionId, operationId, {
           message: '文件删除成功'
         });
@@ -479,12 +480,12 @@ async function handleSftpRename(ws, data) {
     // 重命名文件或目录
     sftp.rename(oldPath, newPath, (err) => {
       if (err) {
-        console.error(logMessage('重命名', `${oldPath} -> ${newPath}`, '失败', err.message));
+        logger.error('SFTP重命名失败', { oldPath, newPath, error: err.message });
         sendSftpError(ws, sessionId, operationId, `重命名失败: ${err.message}`);
         return;
       }
       
-      console.log(logMessage('重命名', `${oldPath} -> ${newPath}`, '成功'));
+      logger.info('SFTP重命名成功', { oldPath, newPath });
       sendSftpSuccess(ws, sessionId, operationId, {
         message: '重命名成功'
       });
@@ -521,14 +522,14 @@ async function handleSftpClose(ws, data) {
       try {
         sftpSession.sftp.end();
       } catch (err) {
-        console.error(logMessage('关闭SFTP', sessionId, '错误', err.message));
+        logger.error('关闭SFTP错误', { sessionId, error: err.message });
       }
     }
     
     // 从映射中移除
     sftpSessions.delete(sessionId);
     
-    console.log(logMessage('SFTP会话已关闭', sessionId));
+    logger.info('SFTP会话已关闭', { sessionId });
     sendSftpSuccess(ws, sessionId, operationId, {
       message: 'SFTP会话已关闭'
     });

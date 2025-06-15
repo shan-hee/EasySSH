@@ -5,6 +5,7 @@
 
 const WebSocket = require('ws');
 const url = require('url');
+const logger = require('../utils/logger');
 
 // 导入SSH、SFTP和工具模块
 const ssh = require('./ssh');
@@ -25,7 +26,7 @@ setInterval(() => {
   for (const [id, data] of pendingConnections.entries()) {
     if (now - data.timestamp > expirationTime) {
       pendingConnections.delete(id);
-      console.log(utils.logMessage('清理过期连接ID', id));
+      logger.debug('清理过期连接ID', { connectionId: id });
     }
   }
 }, 15 * 60 * 1000); // 每15分钟执行一次清理
@@ -84,8 +85,11 @@ function initWebSocketServer(server) {
       const connectionType = url.searchParams.get('type') || 'monitoring_client';
       const subscribeServer = url.searchParams.get('subscribe');
 
-      console.log(`收到监控WebSocket连接请求，URL: ${request.url}`);
-      console.log(`连接类型: ${connectionType}, 订阅服务器: ${subscribeServer}`);
+      logger.debug('收到监控WebSocket连接请求', {
+        url: request.url,
+        connectionType,
+        subscribeServer
+      });
 
       monitorWss.handleUpgrade(request, socket, head, (ws) => {
         // 根据连接类型调用不同的处理函数
@@ -108,12 +112,12 @@ function initWebSocketServer(server) {
 
   // 处理SSH WebSocket连接
   sshWss.on('connection', (ws, request) => {
-    console.log(utils.logMessage('新的WebSocket连接', '已建立'));
+    logger.info('新的SSH WebSocket连接已建立');
     let sessionId = null;
-    
+
     // 获取客户端IP地址
     const clientIP = getClientIP(request);
-    console.log(utils.logMessage('客户端IP', clientIP || '未知'));
+    logger.debug('SSH客户端连接信息', { clientIP: clientIP || '未知' });
     
     ws.on('message', async (message) => {
       try {
@@ -129,7 +133,7 @@ function initWebSocketServer(server) {
               
               // 检查是否使用安全连接ID模式
               if (data.connectionId) {
-                console.log(utils.logMessage('收到安全连接ID请求', data.connectionId));
+                logger.debug('收到安全连接ID请求', { connectionId: data.connectionId });
                 
                 // 注册连接ID
                 if (!pendingConnections.has(data.connectionId)) {
@@ -165,7 +169,7 @@ function initWebSocketServer(server) {
           case 'authenticate':
             // 处理认证请求（安全模式）
             if (data && data.connectionId) {
-              console.log(utils.logMessage('处理认证请求', data.connectionId));
+              logger.debug('处理认证请求', { connectionId: data.connectionId });
               
               // 验证连接ID是否存在
               if (pendingConnections.has(data.connectionId)) {
@@ -204,10 +208,13 @@ function initWebSocketServer(server) {
                     }
                     
                     // 记录安全日志，不包含敏感信息
-                    console.log(utils.logMessage('SSH连接请求（安全模式）', 
-                      `用户: ${connectionConfig.username}, 地址: ${connectionConfig.address}:${connectionConfig.port}, ` +
-                      `认证方式: ${connectionConfig.authType}, 客户端IP: ${connectionConfig.clientIP || '未知'}`
-                    ));
+                    logger.info('SSH连接请求（安全模式）', {
+                      username: connectionConfig.username,
+                      address: connectionConfig.address,
+                      port: connectionConfig.port,
+                      authType: connectionConfig.authType,
+                      clientIP: connectionConfig.clientIP || '未知'
+                    });
                     
                     // 建立SSH连接
                     sessionId = await ssh.handleConnect(ws, connectionConfig);
@@ -215,7 +222,7 @@ function initWebSocketServer(server) {
                     // 连接成功后删除临时连接ID
                     pendingConnections.delete(data.connectionId);
                   } catch (decryptError) {
-                    console.error(utils.logMessage('解密认证载荷失败', decryptError.message));
+                    logger.error('解密认证载荷失败', { error: decryptError.message });
                     utils.sendError(ws, `认证失败: 无法解密认证信息`, data.sessionId);
                   }
                 } else {
@@ -261,7 +268,11 @@ function initWebSocketServer(server) {
             
           case 'sftp_upload':
             // 处理SFTP上传
-            console.log(`收到sftp_upload请求: 会话=${data.sessionId}, 操作ID=${data.operationId}, 路径=${data.path}`);
+            logger.debug('收到SFTP上传请求', {
+              sessionId: data.sessionId,
+              operationId: data.operationId,
+              path: data.path
+            });
             sftp.handleSftpUpload(ws, data);
             break;
             
@@ -299,13 +310,13 @@ function initWebSocketServer(server) {
             utils.sendError(ws, '未知的消息类型', sessionId);
         }
       } catch (err) {
-        console.error(utils.logMessage('处理消息', 'WebSocket', '错误', err.message));
+        logger.error('处理SSH WebSocket消息错误', { error: err.message });
         utils.sendError(ws, `处理消息错误: ${err.message}`, sessionId);
       }
     });
     
     ws.on('close', () => {
-      console.log(utils.logMessage('WebSocket连接', '已关闭'));
+      logger.info('SSH WebSocket连接已关闭');
       
       // 清理资源
       if (sessionId && ssh.sessions.has(sessionId)) {
@@ -324,7 +335,7 @@ function initWebSocketServer(server) {
     });
     
     ws.on('error', (err) => {
-      console.error(utils.logMessage('WebSocket', '', '错误', err.message));
+      logger.error('SSH WebSocket错误', { error: err.message });
     });
   });
 
@@ -367,7 +378,7 @@ function decryptSensitiveData(encryptedData, key) {
     // 转换为字符串
     return result.toString('utf8');
   } catch (error) {
-    console.error(utils.logMessage('解密敏感数据失败', error.message));
+    logger.error('解密敏感数据失败', { error: error.message });
     throw error;
   }
 }

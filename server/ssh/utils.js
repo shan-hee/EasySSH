@@ -3,6 +3,8 @@
  * 用于提供SSH和SFTP共用的功能
  */
 
+const logger = require('../utils/logger');
+
 /**
  * WebSocket状态常量
  */
@@ -93,14 +95,14 @@ function sendSftpSuccess(ws, sessionId, operationId, additionalData = {}) {
 
   // 检查WebSocket状态
   if (!ws || ws.readyState !== WS_STATE.OPEN) {
-    console.error('发送SFTP成功消息失败: WebSocket未就绪');
+    logger.error('发送SFTP成功消息失败: WebSocket未就绪');
     return;
   }
 
   try {
     sendMessage(ws, MSG_TYPE.SUCCESS, data);
   } catch (error) {
-    console.error(`发送SFTP成功消息出错: ${error.message}`);
+    logger.error('发送SFTP成功消息出错', { error: error.message });
   }
 }
 
