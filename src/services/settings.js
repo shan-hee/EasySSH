@@ -28,7 +28,7 @@ class SettingsService {
         throw new Error('无法初始化设置存储')
       }
       
-      log.info('设置服务初始化完成')
+      log.debug('设置服务初始化完成')
       this.isInitialized = true
       return Promise.resolve(true)
     } catch (error) {

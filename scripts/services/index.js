@@ -24,7 +24,7 @@ async function safeInitService(service, name) {
     // 检查服务对象是否存在且有init方法
     if (service && typeof service.init === 'function') {
       await service.init();
-      log.info(`${name}服务初始化成功`);
+      log.debug(`${name}服务初始化成功`);
       return true;
     }
     // 如果服务存在但没有init方法，认为它已经初始化完成
@@ -40,8 +40,8 @@ async function safeInitService(service, name) {
 
 // 初始化所有服务
 async function initializeServices() {
-  log.info('开始初始化UI服务...');
-  
+  log.debug('开始初始化UI服务...');
+
   try {
     // 发布services就绪前事件
     window.dispatchEvent(new CustomEvent('services:before-ready'));
@@ -67,8 +67,8 @@ async function initializeServices() {
     window.dispatchEvent(new CustomEvent('services:ready', {
       detail: { status: { ...servicesState } }
     }));
-    
-    log.info('UI服务初始化完成');
+
+    log.debug('UI服务初始化完成');
     return Object.values(servicesState).every(status => status === true);
   } catch (error) {
     log.error('UI服务初始化过程中发生错误', error);

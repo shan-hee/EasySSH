@@ -164,7 +164,7 @@ class TerminalService {
       }
 
       this.isInitialized = true
-      log.info('终端服务初始化完成')
+      log.debug('终端服务初始化完成')
       return Promise.resolve(true)
     } catch (error) {
       log.error('终端服务初始化失败', error)
@@ -439,7 +439,7 @@ class TerminalService {
       // 存储终端实例
       this.terminals.set(id, terminalInstance)
       
-      log.info(`创建终端 ${id} 成功`)
+      log.debug(`创建终端 ${id} 成功`)
       return terminalInstance
     } catch (error) {
       log.error(`创建终端 ${id} 失败`, error)
@@ -659,8 +659,8 @@ class TerminalService {
       return
     }
     
-    log.info(`销毁终端 ${id}`)
-    
+    log.debug(`销毁终端 ${id}`)
+
     try {
       // 清理性能监视器
       if (term.performanceMonitor) {
@@ -687,14 +687,14 @@ class TerminalService {
       // 安全地销毁终端实例
       if (term.terminal) {
         try {
-          log.info(`开始安全销毁终端 ${id} 实例`);
-          
+          log.debug(`开始安全销毁终端 ${id} 实例`);
+
           // 创建安全的内部销毁函数
           const safeDestroyTerminalAndAddons = () => {
             // 1. 首先确保清理 addons 对象中的所有引用
             if (term.addons) {
-              log.info(`销毁终端 ${id} 的 ${Object.keys(term.addons).length} 个插件`);
-              
+              log.debug(`销毁终端 ${id} 的 ${Object.keys(term.addons).length} 个插件`);
+
               // 创建插件列表副本
               const addonEntries = Object.entries(term.addons).filter(([_, addon]) => !!addon);
               
@@ -715,14 +715,14 @@ class TerminalService {
                       } catch (e) {
                         // 特别处理"addon has not been loaded"错误
                         if (e.message && e.message.includes("addon that has not been loaded")) {
-                          log.info(`忽略插件 ${name} 未加载错误`);
+                          log.debug(`忽略插件 ${name} 未加载错误`);
                         } else {
                           log.warn(`终端 ${id} 销毁插件 ${name} 时出错: ${e.message}`);
                         }
                       }
                     };
                     addon.dispose();
-                    log.info(`终端 ${id} 的插件 ${name} 已销毁`);
+                    log.debug(`终端 ${id} 的插件 ${name} 已销毁`);
                   }
                 } catch (e) {
                   log.warn(`终端 ${id} 安全包装插件 ${name} 时出错: ${e.message}`);
@@ -761,7 +761,7 @@ class TerminalService {
                             } catch (e) {
                               // 特别处理"addon has not been loaded"错误
                               if (e.message && e.message.includes("addon that has not been loaded")) {
-                                log.info(`忽略核心插件未加载错误`);
+                                log.debug(`忽略核心插件未加载错误`);
                               } else {
                                 log.warn(`安全忽略插件销毁错误: ${e.message}`);
                               }
@@ -774,16 +774,16 @@ class TerminalService {
                       }
                     }
                   } else {
-                    log.info(`终端 ${id} 的核心插件管理器没有有效的_addons数组`);
+                    log.debug(`终端 ${id} 的核心插件管理器没有有效的_addons数组`);
                   }
                 } else {
-                  log.info(`终端 ${id} 没有_addonManager属性`);
+                  log.debug(`终端 ${id} 没有_addonManager属性`);
                 }
                 
                 // 清理可能的事件监听器
                 try {
                   if (term.terminal._core._events) {
-                    log.info(`清理终端 ${id} 的事件监听器`);
+                    log.debug(`清理终端 ${id} 的事件监听器`);
                     for (const eventName in term.terminal._core._events) {
                       term.terminal._core._events[eventName] = null;
                     }
@@ -791,8 +791,8 @@ class TerminalService {
                 } catch (eventsError) {
                   log.warn(`清理终端 ${id} 事件监听器失败: ${eventsError.message}`);
                 }
-                
-                log.info(`终端 ${id} 的核心插件管理器已清理`);
+
+                log.debug(`终端 ${id} 的核心插件管理器已清理`);
               }
             } catch (coreManagerError) {
               log.warn(`终端 ${id} 清理核心插件管理器失败: ${coreManagerError.message}`);
@@ -809,14 +809,14 @@ class TerminalService {
                   } catch (e) {
                     // 特别处理"addon has not been loaded"错误
                     if (e.message && e.message.includes("addon that has not been loaded")) {
-                      log.info(`忽略终端实例销毁时的插件未加载错误`);
+                      log.debug(`忽略终端实例销毁时的插件未加载错误`);
                     } else {
                       log.warn(`安全忽略终端实例销毁错误: ${e.message}`);
                     }
                   }
                 };
                 term.terminal.dispose();
-                log.info(`终端 ${id} 实例已销毁`);
+                log.debug(`终端 ${id} 实例已销毁`);
               } else {
                 log.warn(`终端 ${id} 实例缺少dispose方法`);
               }
@@ -854,8 +854,8 @@ class TerminalService {
       if (this.activeTerminalId.value === id) {
         this.activeTerminalId.value = null
       }
-      
-      log.info(`销毁终端 ${id} 成功`)
+
+      log.debug(`销毁终端 ${id} 成功`)
     } catch (error) {
       log.error(`销毁终端 ${id} 失败`, error)
     }

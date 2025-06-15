@@ -29,7 +29,7 @@ class StorageService {
         localStorage.removeItem(testKey);
         
         this.initialized = true;
-        log.info('存储服务初始化完成');
+        log.debug('存储服务初始化完成');
         resolve(true);
       } catch (e) {
         log.error('存储服务初始化失败', e);

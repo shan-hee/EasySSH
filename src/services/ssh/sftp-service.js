@@ -11,7 +11,7 @@ class SFTPService {
     this.activeSftpSessions = new Map(); // 存储活动的SFTP会话
     this.fileOperations = new Map(); // 存储文件操作任务
     this.operationId = 0; // 操作ID计数器
-    log.info('SFTP服务初始化完成');
+    log.debug('SFTP服务初始化完成');
   }
   
   /**

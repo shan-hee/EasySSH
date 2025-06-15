@@ -101,12 +101,15 @@ class ScriptLibraryService {
       const lastSync = getFromStorage(STORAGE_KEYS.LAST_SYNC, null)
       this.lastSync.value = lastSync
 
-      log.debug('从本地存储加载脚本库数据', {
-        scriptsCount: this.scripts.value.length,
-        userScriptsCount: this.userScripts.value.length,
-        favoritesCount: this.favorites.value.length,
-        lastSync: this.lastSync.value
-      })
+      // 只在开发环境或有实际数据时记录详细信息
+      if (environment.isDevelopment || this.scripts.value.length > 0 || this.userScripts.value.length > 0) {
+        log.debug('从本地存储加载脚本库数据', {
+          scriptsCount: this.scripts.value.length,
+          userScriptsCount: this.userScripts.value.length,
+          favoritesCount: this.favorites.value.length,
+          lastSync: this.lastSync.value
+        })
+      }
     } catch (error) {
       log.error('加载本地脚本库数据失败:', error)
     }
@@ -148,10 +151,13 @@ class ScriptLibraryService {
         }
       })
 
-      log.debug('缓存元数据已加载', {
-        metadataCount: this.cacheMetadata.size,
-        suggestionsCacheCount: this.suggestionsCache.size
-      })
+      // 只在有缓存数据时记录
+      if (this.cacheMetadata.size > 0 || this.suggestionsCache.size > 0) {
+        log.debug('缓存元数据已加载', {
+          metadataCount: this.cacheMetadata.size,
+          suggestionsCacheCount: this.suggestionsCache.size
+        })
+      }
     } catch (error) {
       log.error('加载缓存元数据失败:', error)
     }
@@ -190,9 +196,12 @@ class ScriptLibraryService {
       }
     }, this.config.sync.backgroundInterval)
 
-    log.debug('后台同步已设置', {
-      interval: this.config.sync.backgroundInterval
-    })
+    // 只在开发环境记录后台同步设置
+    if (environment.isDevelopment) {
+      log.debug('后台同步已设置', {
+        interval: this.config.sync.backgroundInterval
+      })
+    }
   }
 
 

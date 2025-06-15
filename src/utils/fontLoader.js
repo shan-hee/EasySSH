@@ -27,8 +27,8 @@ export const preloadFonts = () => {
   // 创建字体加载Promise
   fontState.loadingPromise = (async () => {
     try {
-      log.info('开始预加载终端字体...')
-      
+      log.debug('开始预加载终端字体...')
+
       // 创建一个包含预加载字体的隐藏元素
       const preloadDiv = document.createElement('div')
       preloadDiv.style.fontFamily = '"JetBrains Mono", monospace'

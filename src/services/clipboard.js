@@ -161,8 +161,8 @@ class ClipboardManager {
       return Promise.resolve(true);
     }
     
-    log.info('初始化剪贴板服务...');
-    
+    log.debug('初始化剪贴板服务...');
+
     try {
       // 确保在浏览器环境中运行
       if (typeof navigator === 'undefined') {
@@ -196,7 +196,7 @@ class ClipboardManager {
       }
       
       this.initialized = true;
-      log.info('剪贴板服务初始化完成');
+      log.debug('剪贴板服务初始化完成');
       return Promise.resolve(true);
     } catch (error) {
       log.error('剪贴板服务初始化失败', error);

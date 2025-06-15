@@ -45,7 +45,7 @@ class SSHService {
     // 暂存服务实例引用
     this.instance = this;
     
-    log.info(`SSH服务初始化: IPv4=${this.ipv4Url}, IPv6=${this.ipv6Url}`);
+    log.debug(`SSH服务初始化: IPv4=${this.ipv4Url}, IPv6=${this.ipv6Url}`);
   }
 
   /**
@@ -54,11 +54,11 @@ class SSHService {
   async init() {
     try {
       if (this.isReady) {
-        log.info('SSH服务已初始化，跳过');
+        log.debug('SSH服务已初始化，跳过');
         return true;
       }
-      
-      log.info('正在初始化SSH服务...');
+
+      log.debug('正在初始化SSH服务...');
       this.isInitializing = true;
       
       // 更新动态配置 - 移到这里，确保settings服务已完全初始化
@@ -74,7 +74,7 @@ class SSHService {
         log.warn('获取动态配置失败，将使用默认值继续', configError);
       }
       
-      log.info(`使用预设连接配置: 主URL=${this.baseUrl}`);
+      log.debug(`使用预设连接配置: 主URL=${this.baseUrl}`);
       
       this.isReady = true;
       this.isInitializing = false;

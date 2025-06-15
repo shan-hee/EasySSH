@@ -15,7 +15,7 @@ class TerminalManager {
   constructor(sshService) {
     this.sshService = sshService;
     this.terminals = new Map(); // 存储终端实例
-    log.info('终端管理器初始化完成');
+    log.debug('终端管理器初始化完成');
   }
   
   /**

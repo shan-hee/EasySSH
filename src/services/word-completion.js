@@ -79,7 +79,7 @@ class WordCompletionService {
     // 配置
     this.config = cacheConfig.suggestions
 
-    log.info('单词补全服务初始化完成')
+    log.debug('单词补全服务初始化完成')
   }
 
   /**

@@ -87,12 +87,12 @@ initSettings()
 
 // 修改预加载字体函数
 const preloadFonts = () => {
-  log.info('启动字体预加载...')
-  
+  log.debug('启动字体预加载...')
+
   // 开始字体预加载，不等待结果
   fontLoader.preloadFonts().then(success => {
     if (success) {
-      log.info('字体预加载成功')
+      log.debug('字体预加载成功')
     } else {
       log.warn('字体预加载未完全成功，但应用将继续运行')
     }
@@ -272,25 +272,22 @@ const initializeApp = async () => {
     }
     
     // 初始化基础UI服务（键盘管理等）
-    servicesManager.log.debug('准备初始化UI基础服务')
     const serviceResult = await initializeServices()
     if (!serviceResult) {
       servicesManager.log.warn('部分UI服务初始化失败')
-    } else {
-      servicesManager.log.info('UI基础服务初始化成功')
     }
-    
+
     // 初始化配置管理器
-    servicesManager.log.debug('初始化配置管理器')
     const cacheConfigStats = configManager.getStats()
-    servicesManager.log.debug('配置管理器已初始化', {
-      isDevelopment: cacheConfigStats.isDevelopment,
-      totalOverrides: cacheConfigStats.totalOverrides,
-      totalPresets: cacheConfigStats.totalPresets
-    })
+    if (cacheConfigStats.isDevelopment) {
+      servicesManager.log.debug('配置管理器已初始化', {
+        isDevelopment: cacheConfigStats.isDevelopment,
+        totalOverrides: cacheConfigStats.totalOverrides,
+        totalPresets: cacheConfigStats.totalPresets
+      })
+    }
 
     // 初始化应用核心服务
-    servicesManager.log.debug('准备初始化核心应用服务')
     await servicesManager.initServices()
     
     // 最后初始化监控服务（依赖之前的服务），但首先检查是否已初始化

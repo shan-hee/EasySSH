@@ -48,46 +48,41 @@ async function initServices() {
     servicesStatus.log = true
     
     // 初始化基础服务 - 并行初始化不相互依赖的服务
-    log.debug('开始初始化基础服务')
     const baseServicesPromises = [
-      (async () => { 
-        await storage.init(); 
-        servicesStatus.storage = true; 
+      (async () => {
+        await storage.init();
+        servicesStatus.storage = true;
       })(),
-      (async () => { 
-        await settings.init(); 
-        servicesStatus.settings = true; 
+      (async () => {
+        await settings.init();
+        servicesStatus.settings = true;
       })()
     ]
-    
+
     await Promise.all(baseServicesPromises)
-    
+
     // 初始化用户体验相关服务 - 并行
-    log.debug('开始初始化用户体验相关服务')
     const uxServicesPromises = [
-      (async () => { 
-        await clipboardService.init(); 
-        servicesStatus.clipboard = true; 
+      (async () => {
+        await clipboardService.init();
+        servicesStatus.clipboard = true;
       })()
     ]
-    
+
     await Promise.all(uxServicesPromises)
-    
+
     // 初始化终端服务
-    log.debug('开始初始化终端服务')
     await terminal.init()
     servicesStatus.terminal = true
-    
+
     // 初始化API和认证服务 - 顺序执行，因为auth依赖api
-    log.debug('开始初始化API和认证服务')
     await apiService.init()
     servicesStatus.api = true
-    
+
     await auth.init()
     servicesStatus.auth = true
-    
+
     // 最后初始化SSH服务，因为它依赖前面的服务
-    log.debug('开始初始化SSH服务')
     await sshService.init()
     servicesStatus.ssh = true
     servicesStatus.sftp = true

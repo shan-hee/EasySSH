@@ -10,7 +10,7 @@ class SSHSessionManager {
     this.sshToTerminal = new Map(); // SSH会话ID -> 终端ID
     // 从本地存储恢复映射关系
     this.loadMappings();
-    log.info('SSH会话管理器初始化完成');
+    log.debug('SSH会话管理器初始化完成');
   }
   
   /**
