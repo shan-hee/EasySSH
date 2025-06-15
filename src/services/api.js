@@ -11,6 +11,7 @@ class ApiService {
     this.axios = null
     this.baseURL = import.meta.env.VITE_API_BASE_URL || '/api'
     this.timeout = 30000 // 30秒超时
+    this._lastTokenExists = null // 用于跟踪token状态变化
   }
 
   /**
@@ -38,12 +39,17 @@ class ApiService {
         config => {
           // 添加认证token
           const token = localStorage.getItem('auth_token')
-          log.debug('请求拦截器 - localStorage中的token状态', {
-            exists: !!token,
-            length: token ? token.length : 0,
-            type: typeof token,
-            preview: token ? token.substring(0, 15) + '...' : 'null'
-          })
+
+          // 减少重复的token状态日志，只在token状态变化时记录
+          const currentTokenExists = !!token
+          if (this._lastTokenExists !== currentTokenExists) {
+            log.debug('请求拦截器 - token状态变化', {
+              exists: currentTokenExists,
+              length: token ? token.length : 0,
+              preview: token ? token.substring(0, 15) + '...' : 'null'
+            })
+            this._lastTokenExists = currentTokenExists
+          }
           
           // 判断是否为不需要认证的请求路径
           const noAuthRequiredPaths = [

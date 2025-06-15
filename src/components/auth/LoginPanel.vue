@@ -157,8 +157,11 @@ export default defineComponent({
       try {
         loginLoading.value = true
         
-        // 记录是否使用记住我选项
-        log.info(`登录使用"记住我"选项: ${rememberMe.value}`)
+        // 记录登录选项（合并到登录流程日志中）
+        log.info(`开始登录流程`, {
+          username: loginForm.username,
+          remember: rememberMe.value
+        })
         
         // 调用登录方法
         const result = await userStore.login({

@@ -117,15 +117,18 @@ class ScriptLibraryService {
 
   /**
    * 保存数据到本地存储
+   * @param {boolean} silent - 是否静默保存（不记录日志）
    */
-  saveToLocal() {
+  saveToLocal(silent = false) {
     try {
       saveToStorage(STORAGE_KEYS.SCRIPTS, this.scripts.value)
       saveToStorage(STORAGE_KEYS.USER_SCRIPTS, this.userScripts.value)
       saveToStorage(STORAGE_KEYS.FAVORITES, this.favorites.value)
       saveToStorage(STORAGE_KEYS.LAST_SYNC, this.lastSync.value)
 
-      log.debug('脚本库数据已保存到本地存储')
+      if (!silent) {
+        log.debug('脚本库数据已保存到本地存储')
+      }
     } catch (error) {
       log.error('保存脚本库数据到本地存储失败:', error)
     }
@@ -378,7 +381,8 @@ class ScriptLibraryService {
       const response = await apiService.get('/scripts/favorites')
       if (response && response.success) {
         this.favorites.value = response.favorites || []
-        this.saveToLocal()
+        // 合并保存操作，避免重复的"脚本库数据已保存到本地存储"日志
+        this.saveToLocal(true) // 传入silent参数
         log.info('脚本收藏状态同步成功', { count: this.favorites.value.length })
         return true
       }
@@ -393,11 +397,18 @@ class ScriptLibraryService {
    * 使相关缓存失效
    */
   invalidateRelatedCache() {
+    // 检查是否有缓存需要清理
+    const hasSuggestionsCache = this.suggestionsCache.size > 0
+    const hasMemoryCache = this.memoryCache.size > 0
+
     // 清空建议缓存，因为脚本数据已更新
     this.suggestionsCache.clear()
     this.memoryCache.clear()
 
-    log.debug('已清理相关缓存')
+    // 只在有实际缓存被清理时记录
+    if (hasSuggestionsCache || hasMemoryCache) {
+      log.debug('已清理相关缓存')
+    }
   }
 
   /**

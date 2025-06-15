@@ -112,7 +112,7 @@ export const useUserStore = defineStore('user', () => {
     try {
       const encrypted = encryptCredentials(username, password)
       localStorage.setItem(CREDENTIALS_KEY, encrypted)
-      log.info('用户凭据已保存，下次登录将自动填充')
+      // 日志记录移到调用处，避免重复
     } catch (error) {
       log.error('保存用户凭据失败', error)
     }
@@ -454,7 +454,7 @@ export const useUserStore = defineStore('user', () => {
       // 初始化API服务
       await apiService.init()
       
-      log.info('开始登录流程', { username: credentials.username, remember: credentials.remember })
+      // 登录流程日志已在LoginPanel中记录，避免重复
       
       // 调用后端登录API
       const response = await apiService.post('/users/login', {
@@ -464,10 +464,10 @@ export const useUserStore = defineStore('user', () => {
       
       // 检查登录结果
       if (response && response.success) {
-        log.info('登录成功，获取到响应', { 
+        log.info('登录成功，获取到响应', {
           token: response.token ? `${response.token.substring(0, 15)}...` : 'undefined',
           hasToken: !!response.token,
-          tokenLength: response.token ? response.token.length : 0, 
+          tokenLength: response.token ? response.token.length : 0,
           user: response.user ? response.user.username : null,
           isDefaultPassword: response.isDefaultPassword || false
         })
@@ -475,6 +475,7 @@ export const useUserStore = defineStore('user', () => {
         // 处理记住密码功能
         if (credentials.remember) {
           saveUserCredentials(credentials.username, credentials.password)
+          log.info('用户凭据已保存，下次登录将自动填充')
         } else {
           clearUserCredentials()
         }
@@ -497,14 +498,14 @@ export const useUserStore = defineStore('user', () => {
           // 然后更新状态
           token.value = response.token
           
-          // 验证token是否正确保存
+          // 验证token是否正确保存（合并到登录成功日志中，避免重复）
           const savedToken = localStorage.getItem('auth_token')
-          log.info('Token保存状态', {
-            saved: !!savedToken,
-            length: savedToken ? savedToken.length : 0,
-            matches: savedToken === response.token,
-            preview: savedToken ? `${savedToken.substring(0, 15)}...` : 'null'
-          })
+          if (!savedToken || savedToken !== response.token) {
+            log.error('Token保存失败', {
+              saved: !!savedToken,
+              matches: savedToken === response.token
+            })
+          }
         } else {
           log.error('登录响应中没有token')
         }
