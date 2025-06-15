@@ -290,13 +290,8 @@ const initializeApp = async () => {
     // 初始化应用核心服务
     await servicesManager.initServices()
     
-    // 最后初始化监控服务（依赖之前的服务），但首先检查是否已初始化
-    if (!monitoringService.initialized) {
-      servicesManager.log.debug('准备初始化监控服务')
-      monitoringService.init()
-    } else {
-      servicesManager.log.debug('监控服务已初始化，跳过')
-    }
+    // 监控服务在导入时已自动初始化，无需重复初始化
+    servicesManager.log.debug('监控服务已在导入时初始化完成')
     
     servicesManager.log.info('应用服务初始化流程完成')
     

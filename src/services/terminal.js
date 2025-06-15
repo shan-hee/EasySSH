@@ -147,15 +147,15 @@ class TerminalService {
    * 初始化终端服务
    * @returns {Promise<boolean>} - 是否初始化成功
    */
-  init() {
+  async init() {
     try {
       if (this.isInitialized) {
         return Promise.resolve(true)
       }
 
       // 从设置服务加载终端配置
-      const settingsService = new SettingsService()
-      const terminalSettings = settingsService.getTerminalOptions()
+      const { settings } = await import('./index.js');
+      const terminalSettings = settings.getTerminalOptions()
       if (terminalSettings) {
         this.defaultOptions = {
           ...this.defaultOptions,

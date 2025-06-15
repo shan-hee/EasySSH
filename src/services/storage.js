@@ -21,13 +21,13 @@ class StorageService {
         log.debug('存储服务已初始化');
         return resolve(true);
       }
-      
+
       try {
         // 对localStorage进行测试以确保可用
         const testKey = '__storage_test__';
         localStorage.setItem(testKey, testKey);
         localStorage.removeItem(testKey);
-        
+
         this.initialized = true;
         log.debug('存储服务初始化完成');
         resolve(true);

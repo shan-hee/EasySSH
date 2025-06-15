@@ -97,7 +97,7 @@ export const preloadFonts = () => {
       } catch (e) {
         log.error(`触发字体加载事件出错: ${e.message}`)
       }
-      
+
       // 短暂延迟后移除预加载元素
       setTimeout(() => {
         try {
@@ -111,7 +111,7 @@ export const preloadFonts = () => {
           // 忽略错误
         }
       }, 500)
-      
+
       log.info('终端字体预加载完成')
       return true
     } catch (error) {

@@ -63,8 +63,9 @@ class SSHService {
       
       // 更新动态配置 - 移到这里，确保settings服务已完全初始化
       try {
-        const settingsService = new SettingsService();
-        this.dynamicConfig = getDynamicConstants(settingsService);
+        // 使用全局设置服务实例而不是创建新实例
+        const { settings } = await import('../index.js');
+        this.dynamicConfig = getDynamicConstants(settings);
         // 更新超时和重连配置
         if (this.dynamicConfig && this.dynamicConfig.SSH_CONSTANTS) {
           this.connectionTimeout = wsServerConfig.connectionTimeout || this.dynamicConfig.SSH_CONSTANTS.DEFAULT_TIMEOUT;
@@ -743,10 +744,10 @@ class SSHService {
    */
   _setupKeepAlive(sessionId) {
     this._clearKeepAlive(sessionId);
-    
+
     const pingRequests = new Map();
-    
-    // 获取最新的动态配置
+
+    // 获取最新的动态配置 - 使用同步方式避免async/await
     const settingsService = new SettingsService();
     const dynamicConfig = getDynamicConstants(settingsService);
 

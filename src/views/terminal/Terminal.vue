@@ -1116,7 +1116,7 @@ export default {
     
     // 添加组件激活/失活生命周期钩子
     onMounted(() => {
-      log.info('终端视图已激活');
+      log.info('终端视图已挂载');
 
       // 设置自动完成回调
       setupAutocompleteCallbacks()
@@ -1137,7 +1137,7 @@ export default {
     });
 
     onActivated(() => {
-      log.info('终端视图已激活');
+      log.debug('终端视图已激活');
       // 当组件激活时，自动聚焦当前活动终端
       if (activeConnectionId.value && terminalStore.hasTerminal(activeConnectionId.value)) {
         setTimeout(() => {
@@ -1148,7 +1148,7 @@ export default {
     });
 
     onDeactivated(() => {
-      log.info('终端视图已失活');
+      log.debug('终端视图已失活');
       // 可以在这里添加失活时的处理逻辑
     });
     
