@@ -116,15 +116,16 @@ class TerminalManager {
       }
     });
     
-    // 添加右键粘贴功能 - 简化逻辑，默认启用右键粘贴
+    // 添加右键粘贴功能 - 使用xterm.js原生paste方法，确保多行内容统一执行
     const handleContextMenu = async (event) => {
       event.preventDefault();
 
       try {
-        // 简化逻辑，直接粘贴剪贴板内容，避免重复创建设置服务
+        // 使用xterm.js原生paste方法，确保粘贴内容原样处理
         const text = await navigator.clipboard.readText();
         if (text && text.trim().length > 0) {
-          this.sshService._processTerminalInput(session, text);
+          // 使用terminal.paste()而不是自定义处理，确保多行命令统一执行
+          terminal.paste(text);
         }
       } catch (error) {
         log.error('从剪贴板粘贴失败:', error);
@@ -157,10 +158,11 @@ class TerminalManager {
     
     container.addEventListener('contextmenu', handleContextMenu);
     
-    // 添加终端粘贴事件监听
+    // 添加终端粘贴事件监听 - 使用xterm.js原生paste方法
     const handleTerminalPaste = (event) => {
       if (event.detail && event.detail.text) {
-        this.sshService._processTerminalInput(session, event.detail.text);
+        // 使用terminal.paste()确保粘贴内容按照终端标准处理
+        terminal.paste(event.detail.text);
       }
     };
     container.addEventListener('terminal-paste', handleTerminalPaste);
