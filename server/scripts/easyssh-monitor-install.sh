@@ -191,6 +191,11 @@ class WebSocketClient {
       case 'get_system_stats':
         this.sendSystemInfo();
         break;
+      case 'stats_received':
+        // 处理后端发送的数据接收确认消息
+        // 这表明后端已成功接收并处理了我们发送的系统统计信息
+        // 可以在这里添加统计信息或调试日志
+        break;
       default:
         // 只记录未知消息类型
         if (message.type !== 'pong') {
