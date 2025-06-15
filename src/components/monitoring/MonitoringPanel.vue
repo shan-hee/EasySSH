@@ -34,7 +34,7 @@
             </div>
           <div class="info-item">
             <span class="info-label">IP地址：</span>
-            <span class="info-value">{{ systemInfo.ip?.internal || '获取中...' }}</span>
+            <span class="info-value">{{ displayIpAddress }}</span>
           </div>
           <div class="info-item">
             <span class="info-label">运行时间：</span>
@@ -1262,13 +1262,29 @@ export default defineComponent({
     // 格式化运行时间
     const formatUptime = computed(() => {
       if (!systemInfo.value.os?.uptime) return '获取中...';
-      
+
       const uptime = systemInfo.value.os.uptime;
       const days = Math.floor(uptime / 86400);
       const hours = Math.floor((uptime % 86400) / 3600);
       const minutes = Math.floor((uptime % 3600) / 60);
-      
+
       return `${days}天 ${hours}小时 ${minutes}分钟`;
+    });
+
+    // 智能IP地址显示：优先显示公网IP，如果获取失败则显示内网IP
+    const displayIpAddress = computed(() => {
+      if (!systemInfo.value.ip) return '获取中...';
+
+      const publicIp = systemInfo.value.ip.public;
+      const internalIp = systemInfo.value.ip.internal;
+
+      // 优先显示公网IP，如果公网IP为空或获取失败则显示内网IP
+      if (publicIp && publicIp !== '获取失败' && publicIp.trim() !== '') {
+        return publicIp;
+      }
+
+      // 回退到内网IP
+      return internalIp || '获取中...';
     });
     
     // 获取CPU数值样式类
@@ -1309,9 +1325,16 @@ export default defineComponent({
         log.debug('[监控面板] 收到服务器初始数据');
       }
 
-      // 更新系统信息
+      // 更新系统信息 - 确保Vue响应式更新
       if (update.data) {
-        systemInfo.value = update.data;
+        // 添加时间戳来强制更新检测
+        const newData = {
+          ...update.data,
+          _updateTime: Date.now()
+        };
+
+        // 强制触发Vue响应式更新
+        systemInfo.value = newData;
       }
 
       // 更新历史数据和图表
@@ -1438,6 +1461,7 @@ export default defineComponent({
       isResizing,
       formatOsInfo,
       formatUptime,
+      displayIpAddress,
       getProgressBarClass,
       formatBytes,
       cpuChartRef,
