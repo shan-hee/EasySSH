@@ -658,12 +658,11 @@ export default defineComponent({
     
     // 添加监控连接成功事件处理
     const handleMonitoringConnected = (event) => {
-      log.debug('收到监控连接成功事件:', event);
       if (!event || !event.detail) return;
-      
+
       const { hostAddress } = event.detail;
       if (!hostAddress) return;
-      
+
       // 检查当前活动终端是否连接到该主机
       if (props.activeSessionId) {
         const sshSessionId = terminalStore.sessions[props.activeSessionId];
@@ -675,7 +674,8 @@ export default defineComponent({
             if (terminalState) {
               terminalState.monitoringInstalled = true;
               monitoringServiceInstalled.value = true;
-              log.debug(`监控连接成功，更新终端[${props.activeSessionId}]的监控状态为已连接`);
+              // 只在状态实际变更时记录日志
+              log.info(`监控连接成功: ${hostAddress}`);
             }
           }
         }

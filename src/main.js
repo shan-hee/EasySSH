@@ -289,10 +289,7 @@ const initializeApp = async () => {
 
     // 初始化应用核心服务
     await servicesManager.initServices()
-    
-    // 监控服务在导入时已自动初始化，无需重复初始化
-    servicesManager.log.debug('监控服务已在导入时初始化完成')
-    
+
     servicesManager.log.info('应用服务初始化流程完成')
     
     // 触发应用初始化完成事件

@@ -237,11 +237,11 @@ class MonitoringStatusService {
         const connected = await monitoringFactory.connect(terminalId, hostname);
 
         if (connected) {
-          log.debug(`[监控状态] WebSocket连接成功: ${hostname}`);
+          log.info(`[监控状态] WebSocket连接成功: ${hostname}`);
           // 立即请求系统数据
           monitoringFactory.requestSystemStats(terminalId);
         } else {
-          log.debug(`[监控状态] WebSocket连接失败，但服务已安装: ${hostname}`);
+          log.warn(`[监控状态] WebSocket连接失败，但服务已安装: ${hostname}`);
         }
 
         return {

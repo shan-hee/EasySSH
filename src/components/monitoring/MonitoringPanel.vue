@@ -332,14 +332,15 @@ export default defineComponent({
           document.querySelectorAll('.chart').forEach(chart => {
             chart.classList.add('chart-resize-transition');
           });
-          
+
           // 使用nextTick确保DOM更新后再调整图表
           nextTick(() => {
             // 延迟一点时间执行，给DOM足够时间更新
             setTimeout(() => {
               resizeAllCharts();
-              log.debug(`[监控面板] 拖动结束，面板宽度从 ${preDragWidth.value}px 变为 ${currentWidth}px，重新调整图表`);
-              
+              // 只记录重要的拖动调整日志
+              log.info(`[监控面板] 面板宽度调整: ${preDragWidth.value}px → ${currentWidth}px`);
+
               // 动画结束后移除过渡类
               setTimeout(() => {
                 document.querySelectorAll('.chart').forEach(chart => {
@@ -438,7 +439,7 @@ export default defineComponent({
       safeResizeChart(memoryChart.value);
       safeResizeChart(networkChart.value);
       safeResizeChart(diskSwapChart.value);
-      log.debug('[监控面板] 已重新调整所有图表大小');
+      // 移除频繁的图表调整日志
     };
     
     // 观察面板大小变化
@@ -449,7 +450,10 @@ export default defineComponent({
           // 只在非拖动状态下更新图表
           nextTick(() => {
             resizeAllCharts();
-            log.debug(`[监控面板] 面板宽度变化: ${oldWidth}px -> ${newWidth}px, 已重新调整图表`);
+            // 只记录重要的宽度变化（超过50px）
+            if (Math.abs(newWidth - oldWidth) > 50) {
+              log.debug(`[监控面板] 面板宽度变化: ${oldWidth}px -> ${newWidth}px`);
+            }
           });
         }
       });
@@ -460,10 +464,10 @@ export default defineComponent({
           // 只在非拖动状态下更新图表
           if (!isResizing.value) {
             resizeAllCharts();
-            log.debug('[监控面板] 检测到面板容器大小变化，已自动重新调整图表');
+            // 移除频繁的面板大小变化日志
           }
-        }, { 
-          debounceTime: 200, // 200ms防抖延迟
+        }, {
+          debounceTime: 300, // 增加防抖延迟到300ms，减少频繁触发
           immediate: false  // 不需要立即执行
         });
       }
@@ -489,10 +493,10 @@ export default defineComponent({
           } else if (chartRef === diskSwapChartRef && diskSwapChart.value) {
             safeResizeChart(diskSwapChart.value);
           }
-          log.debug(`[监控面板] 图表容器大小变化，已自动调整图表大小`);
+          // 移除频繁的图表调整日志，减少控制台噪音
         }
-      }, { 
-        debounceTime: 100, // 100ms防抖延迟
+      }, {
+        debounceTime: 200, // 增加防抖延迟到200ms，减少频繁触发
         immediate: false   // 不需要立即执行
       });
       
@@ -1300,13 +1304,16 @@ export default defineComponent({
 
     // 处理监控数据更新
     const handleMonitoringUpdate = (update) => {
-      log.debug('[监控面板] 收到服务器数据更新:', update.isInitial ? '初始数据' : '数据更新');
-      
+      // 只在初始数据时记录日志，减少频繁的数据更新日志
+      if (update.isInitial) {
+        log.debug('[监控面板] 收到服务器初始数据');
+      }
+
       // 更新系统信息
       if (update.data) {
         systemInfo.value = update.data;
       }
-      
+
       // 更新历史数据和图表
       updateHistoryData(update);
     };
@@ -1385,7 +1392,7 @@ export default defineComponent({
       
       // 订阅服务器数据更新
       subscriptionId.value = monitoringService.subscribeToServer(serverId.value, handleMonitoringUpdate);
-      log.debug(`[监控面板] 已订阅服务器 ${serverId.value} 的数据更新，订阅ID: ${subscriptionId.value}`);
+      log.info(`[监控面板] 已订阅服务器 ${serverId.value} 的数据更新`);
       
       // 请求立即刷新数据
       monitoringService.requestServerData(serverId.value);

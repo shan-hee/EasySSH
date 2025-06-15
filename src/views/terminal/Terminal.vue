@@ -1117,51 +1117,35 @@ export default {
     onMounted(() => {
       log.info('终端视图已挂载');
 
+      // 初始化标签页标题前先检查是否存在该路径的标签页
+      if (tabStore.tabs.some(tab => tab.path === '/terminal')) {
+        tabStore.updateTabTitle('/terminal', '终端')
+      }
+
       // 设置自动完成回调
       setupAutocompleteCallbacks()
 
       // 添加全局键盘事件监听，使用捕获阶段确保优先处理
       document.addEventListener('keydown', handleGlobalKeydown, true)
 
-      // 触发终端状态刷新事件，同步工具栏状态
-      const currentId = activeConnectionId.value;
-      if (currentId) {
-        window.dispatchEvent(new CustomEvent('terminal:refresh-status', {
-          detail: {
-            sessionId: currentId,
-            forceShow: true
-          }
-        }));
-      }
-    });
-
-    onActivated(() => {
-      log.debug('终端视图已激活');
-      // 当组件激活时，自动聚焦当前活动终端
-      if (activeConnectionId.value && terminalStore.hasTerminal(activeConnectionId.value)) {
-        setTimeout(() => {
-          log.debug(`组件激活后聚焦终端: ${activeConnectionId.value}`)
-          focusTerminal(activeConnectionId.value)
-        }, 100)
-      }
-    });
-
-    onDeactivated(() => {
-      log.debug('终端视图已失活');
-      // 可以在这里添加失活时的处理逻辑
-    });
-    
-    // 在onMounted中添加标签页存在性检查
-    onMounted(() => {
-      // 初始化标签页标题前先检查是否存在该路径的标签页
-      if (tabStore.tabs.some(tab => tab.path === '/terminal')) {
-        tabStore.updateTabTitle('/terminal', '终端')
-      }
+      // 初始化ResizeObserver - 在DOM挂载后安全地初始化
+      nextTick(() => {
+        const terminalContainer = document.querySelector('.terminal-container')
+        if (terminalContainer) {
+          resizeObserver = new ResizeObserver(() => {
+            if (activeConnectionId.value && terminalStore.hasTerminal(activeConnectionId.value)) {
+              // 仅在终端实际存在时调整大小
+              terminalStore.fitTerminal(activeConnectionId.value)
+            }
+          })
+          resizeObserver.observe(terminalContainer)
+        }
+      })
 
       // 设置终端事件监听
-      const cleanupEvents = setupTerminalEvents()
+      cleanupEvents = setupTerminalEvents()
       // 设置SSH失败事件监听
-      const cleanupSSHFailureEvents = setupSSHFailureHandler()
+      cleanupSSHFailureEvents = setupSSHFailureHandler()
 
       // 如果有活动连接ID，则更新终端ID列表
       if (activeConnectionId.value) {
@@ -1185,50 +1169,76 @@ export default {
             focusTerminal(activeConnectionId.value)
           }
         }, 300)
+
+        // 触发终端状态刷新事件，同步工具栏状态
+        window.dispatchEvent(new CustomEvent('terminal:refresh-status', {
+          detail: {
+            sessionId: activeConnectionId.value,
+            forceShow: true
+          }
+        }));
       }
-      
-      // 监控窗口大小变化，重新适应终端大小
-      const resizeObserver = new ResizeObserver(() => {
-        if (activeConnectionId.value && terminalStore.hasTerminal(activeConnectionId.value)) {
-          // 仅在终端实际存在时调整大小
-          terminalStore.fitTerminal(activeConnectionId.value)
-        }
-      })
-      
-      resizeObserver.observe(document.querySelector('.terminal-container'))
-      
-      // 处理终端管理事件
-      const handleTerminalEvent = (event) => {
-        const { command, data } = event.detail
-        
-        if (command === 'resize-all') {
-          terminalIds.value.forEach(id => {
-            terminalStore.fitTerminal(id)
-          })
-        } else if (command === 'clear-active') {
-          terminalStore.clearTerminal(activeConnectionId.value)
-        } else if (command === 'focus') {
-          terminalStore.focusTerminal(activeConnectionId.value)
-        }
+    });
+
+    onActivated(() => {
+      log.debug('终端视图已激活');
+      // 当组件激活时，自动聚焦当前活动终端
+      if (activeConnectionId.value && terminalStore.hasTerminal(activeConnectionId.value)) {
+        setTimeout(() => {
+          log.debug(`组件激活后聚焦终端: ${activeConnectionId.value}`)
+          focusTerminal(activeConnectionId.value)
+        }, 100)
       }
-      
-      window.addEventListener('terminal-command', handleTerminalEvent)
-      
-      // 在组件卸载时清理
-      onBeforeUnmount(() => {
-        // 移除事件监听
-        cleanupEvents()
-        cleanupSSHFailureEvents()
-        window.removeEventListener('terminal-command', handleTerminalEvent)
-        document.removeEventListener('keydown', handleGlobalKeydown, true)
+    });
+
+    onDeactivated(() => {
+      log.debug('终端视图已失活');
+      // 可以在这里添加失活时的处理逻辑
+    });
+
+    // 声明ResizeObserver变量
+    let resizeObserver = null;
+
+    // 声明清理函数变量
+    let cleanupEvents = null;
+    let cleanupSSHFailureEvents = null;
+
+    // 处理终端管理事件
+    const handleTerminalEvent = (event) => {
+      const { command } = event.detail
+
+      if (command === 'resize-all') {
+        terminalIds.value.forEach(id => {
+          terminalStore.fitTerminal(id)
+        })
+      } else if (command === 'clear-active') {
+        terminalStore.clearTerminal(activeConnectionId.value)
+      } else if (command === 'focus') {
+        terminalStore.focusTerminal(activeConnectionId.value)
+      }
+    }
+
+    window.addEventListener('terminal-command', handleTerminalEvent)
+
+    // 在组件卸载时清理
+    onBeforeUnmount(() => {
+      // 移除事件监听
+      if (cleanupEvents) cleanupEvents()
+      if (cleanupSSHFailureEvents) cleanupSSHFailureEvents()
+      window.removeEventListener('terminal-command', handleTerminalEvent)
+      document.removeEventListener('keydown', handleGlobalKeydown, true)
+
+      // 安全地断开ResizeObserver
+      if (resizeObserver) {
         resizeObserver.disconnect()
+        resizeObserver = null
+      }
 
-        // 清理自动完成服务
-        terminalAutocompleteService.destroy()
+      // 清理自动完成服务
+      terminalAutocompleteService.destroy()
 
-        // 保持会话不关闭，但停止特定组件的监听
-        log.debug('终端组件卸载，保留会话')
-      })
+      // 保持会话不关闭，但停止特定组件的监听
+      log.debug('终端组件卸载，保留会话')
     })
     
     // 添加防抖控制

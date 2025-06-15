@@ -45,7 +45,7 @@ async function initializeServices() {
   try {
     // 发布services就绪前事件
     window.dispatchEvent(new CustomEvent('services:before-ready'));
-    
+
     // 并行初始化所有UI服务
     const initPromises = [
       (async () => {
@@ -57,12 +57,14 @@ async function initializeServices() {
         servicesState.accessibility = result;
       })()
     ];
-    
+
     await Promise.all(initPromises);
-    
+
     // 注册到全局对象
     window.services = services;
-    
+
+    log.debug('UI服务初始化完成');
+
     // 发布services就绪事件，包含初始化状态
     window.dispatchEvent(new CustomEvent('services:ready', {
       detail: { status: { ...servicesState } }

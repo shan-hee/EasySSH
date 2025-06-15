@@ -984,7 +984,7 @@ class MonitoringServiceProxy {
       }
       this.subscriptionMap.get(serverId).add(subscriptionId);
       
-      log.debug(`[监控代理] 已订阅服务器 ${serverId} 的数据更新，订阅ID: ${subscriptionId}`);
+      // 移除重复的订阅日志，由上层组件统一记录
     }
     
     return subscriptionId;

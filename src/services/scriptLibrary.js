@@ -101,8 +101,8 @@ class ScriptLibraryService {
       const lastSync = getFromStorage(STORAGE_KEYS.LAST_SYNC, null)
       this.lastSync.value = lastSync
 
-      // 只在开发环境或有实际数据时记录详细信息
-      if (environment.isDevelopment || this.scripts.value.length > 0 || this.userScripts.value.length > 0) {
+      // 只在有实际数据时记录信息
+      if (this.scripts.value.length > 0 || this.userScripts.value.length > 0) {
         log.debug('从本地存储加载脚本库数据', {
           scriptsCount: this.scripts.value.length,
           userScriptsCount: this.userScripts.value.length,
@@ -199,8 +199,8 @@ class ScriptLibraryService {
       }
     }, this.config.sync.backgroundInterval)
 
-    // 只在开发环境记录后台同步设置
-    if (environment.isDevelopment) {
+    // 只在开发环境且启用调试日志时记录后台同步设置
+    if (environment.isDevelopment && this.config.development.enableDebugLogs) {
       log.debug('后台同步已设置', {
         interval: this.config.sync.backgroundInterval
       })

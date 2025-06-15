@@ -52,10 +52,12 @@ async function initServices() {
       (async () => {
         await storage.init();
         servicesStatus.storage = true;
+        log.debug('存储服务初始化完成');
       })(),
       (async () => {
         await settings.init();
         servicesStatus.settings = true;
+        log.debug('设置服务初始化完成');
       })()
     ]
 
@@ -66,6 +68,7 @@ async function initServices() {
       (async () => {
         await clipboardService.init();
         servicesStatus.clipboard = true;
+        log.debug('剪贴板服务初始化完成');
       })()
     ]
 

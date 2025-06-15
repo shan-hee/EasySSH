@@ -915,13 +915,16 @@ class MonitoringFactory {
           // 使用新的统一监控状态检查和连接服务
           import('./monitoringStatusService.js').then(({ default: monitoringStatusService }) => {
             monitoringStatusService.checkStatusAndConnect(host, terminalId).then(result => {
-              log.debug(`[监控工厂] 监控状态检查和连接完成: ${host} -> 已安装: ${result.installed}, 已连接: ${result.connected}`);
-
-              if (result.success && result.message) {
-                log.debug(`[监控工厂] ${result.message}`);
+              // 只记录重要的状态变更，避免重复日志
+              if (result.installed && result.connected) {
+                log.info(`[监控工厂] 连接成功: ${host}`);
+              } else if (result.installed && !result.connected) {
+                log.warn(`[监控工厂] 服务已安装但连接失败: ${host}`);
+              } else {
+                log.debug(`[监控工厂] 服务未安装: ${host}`);
               }
             }).catch(err => {
-              log.debug(`[监控工厂] 检查失败: ${err.message}`);
+              log.warn(`[监控工厂] 检查失败: ${host} -> ${err.message}`);
             });
           }).catch(err => {
             log.error(`[监控工厂] 导入监控状态服务失败: ${err.message}`);
@@ -1620,7 +1623,7 @@ class MonitoringFactory {
     // 添加订阅
     this.subscriptions.get(serverId).set(subscriptionId, callback);
     
-    log.debug(`[监控工厂] 添加了服务器 ${serverId} 的订阅: ${subscriptionId}`);
+    // 移除重复的订阅日志，由上层组件统一记录
     
     // 如果已有数据，立即通知订阅者
     const currentData = this.serverStatsMap.get(serverId);

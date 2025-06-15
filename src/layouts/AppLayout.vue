@@ -579,11 +579,7 @@ export default defineComponent({
           // 显示监控面板
           showMonitoringPanel.value = true;
 
-          log.debug('打开监控面板', {
-            sessionId: sessionInfo.id,
-            serverInfo: sessionInfo.connection,
-            installed: monitoringInstalled.value
-          });
+          log.info(`打开监控面板: ${sessionInfo.connection.host}`);
           return;
         }
 
@@ -610,10 +606,7 @@ export default defineComponent({
         // 显示监控面板
         showMonitoringPanel.value = true;
 
-        log.debug('打开监控面板（兜底逻辑）', {
-          sessionId: sessionInfo.id,
-          serverInfo: sessionInfo.connection
-        });
+        log.info(`打开监控面板: ${sessionInfo.connection.host}`);
 
       } catch (error) {
         log.error('打开监控面板失败:', error);
