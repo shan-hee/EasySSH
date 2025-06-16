@@ -81,9 +81,12 @@ app.use('/api/scripts', require('./routes/scripts'));
 
 // 状态API
 app.get('/api/status', (req, res) => {
+  // 动态读取后端版本号
+  const packageJson = require('./package.json');
+
   res.json({
     status: 'running',
-    version: '1.0.0',
+    version: packageJson.version,
     databases: getDatabaseStatus(),
     timestamp: new Date().toISOString()
   });

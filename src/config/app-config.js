@@ -6,7 +6,7 @@
 // 应用基本信息
 export const appInfo = {
   name: 'Easyssh',
-  version: '1.0.0',
+  version: import.meta.env.VITE_APP_VERSION || '1.0.0',
   description: '轻量级、安全、高效的SSH连接管理工具',
   author: 'Easyssh',
   homepage: 'https://www.easyssh.io'

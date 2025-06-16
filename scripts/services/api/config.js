@@ -17,7 +17,7 @@ export const apiConfig = {
   headers: {
     'Content-Type': 'application/json',
     'Accept': 'application/json',
-    'X-Client-Version': '1.0.0'
+    'X-Client-Version': import.meta.env.VITE_APP_VERSION || '1.0.0'
   },
   
   // 重试配置

@@ -43,7 +43,7 @@ function createVueApp() {
       data() {
         return {
           appName: 'Easyssh',
-          appVersion: '1.0.0',
+          appVersion: import.meta.env.VITE_APP_VERSION || '1.0.0',
           isLoading: false,
           errorMessage: null
         };
