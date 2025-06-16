@@ -69,7 +69,14 @@
     
     <!-- 网络状态弹窗 -->
     <teleport to="body">
-      <div v-if="showNetworkPopup" class="network-popup" :style="networkPopupStyle">
+      <div
+        v-if="showNetworkPopup"
+        class="network-popup"
+        :style="networkPopupStyle"
+        v-click-outside="handleClickOutside"
+        @keydown.esc="handleEscapeKey"
+        tabindex="-1"
+      >
         <div class="network-popup-header">
           <span>网络延迟: {{ totalRtt }} ms</span>
         </div>
@@ -79,22 +86,22 @@
               <div class="network-node-dot"></div>
               <div class="network-node-label">本地</div>
             </div>
-            
+
             <div class="network-path">
               <div class="network-path-line"></div>
               <div class="network-path-value" :class="getDelayClass(clientDelay)">~ {{ clientDelay }} ms</div>
             </div>
-            
+
             <div class="network-node">
               <div class="network-node-dot"></div>
               <div class="network-node-label">EasySSH</div>
             </div>
-            
+
             <div class="network-path">
               <div class="network-path-line"></div>
               <div class="network-path-value" :class="getDelayClass(serverDelay)">~ {{ serverDelay }} ms</div>
             </div>
-            
+
             <div class="network-node">
               <div class="network-node-dot"></div>
               <div class="network-node-label">服务器</div>
@@ -227,19 +234,58 @@ export default defineComponent({
       return 'danger';
     }
     
+    // 统一的关闭网络弹窗函数
+    const closeNetworkPopup = () => {
+      if (showNetworkPopup.value) {
+        showNetworkPopup.value = false;
+        // 关闭弹窗后，确保终端保持焦点
+        focusActiveTerminal();
+        // log.debug('网络弹窗已关闭，终端焦点已恢复');
+      }
+    }
+
     // 切换网络弹窗显示状态
     const toggleNetworkPopup = (event) => {
       // 阻止事件冒泡，避免触发全局点击处理器
       if (event) {
         event.stopPropagation();
       }
-      
-      // 如果弹窗已显示，则关闭它；如果未显示，则打开它
-      showNetworkPopup.value = !showNetworkPopup.value;
-      
-      // 更新弹窗位置
+
       if (showNetworkPopup.value) {
+        // 弹窗已打开，关闭它
+        closeNetworkPopup();
+      } else {
+        // 弹窗未打开，打开它
+        showNetworkPopup.value = true;
         updateNetworkPopupPosition();
+        focusActiveTerminal();
+        // log.debug('网络弹窗已打开，终端焦点已设置');
+      }
+    }
+
+    // 处理点击外部关闭弹窗
+    const handleClickOutside = () => {
+      closeNetworkPopup();
+    }
+
+    // 处理ESC键关闭弹窗
+    const handleEscapeKey = () => {
+      closeNetworkPopup();
+    }
+
+    // 聚焦当前活动终端
+    const focusActiveTerminal = () => {
+      const activeTerminalId = props.activeSessionId;
+      if (activeTerminalId && terminalStore.hasTerminal(activeTerminalId)) {
+        try {
+          // 使用nextTick确保DOM更新完成后再聚焦
+          nextTick(() => {
+            terminalStore.focusTerminal(activeTerminalId);
+            // log.debug(`网络弹窗操作后聚焦终端: ${activeTerminalId}`);
+          });
+        } catch (error) {
+          log.warn(`聚焦终端失败: ${error.message}`);
+        }
       }
     }
     
@@ -321,11 +367,14 @@ export default defineComponent({
         const sessionId = props.activeSessionId;
         
         if (sessionId) {
-          // 尝试获取SSH会话
-          const session = terminalStore.getSession(sessionId);
-          if (session) {
-            // 使用获取到的连接信息
-            connection = session.connection;
+          // 尝试通过terminalStore获取SSH会话ID，然后从sshService获取会话
+          const sshSessionId = terminalStore.sessions[sessionId];
+          if (sshSessionId && sshService && sshService.sessions) {
+            const session = sshService.sessions.get(sshSessionId);
+            if (session) {
+              // 使用获取到的连接信息
+              connection = session.connection;
+            }
           }
         }
         
@@ -1313,6 +1362,9 @@ export default defineComponent({
       rttStatusClass,
       getDelayClass,
       toggleNetworkPopup,
+      closeNetworkPopup,
+      handleClickOutside,
+      handleEscapeKey,
       toggleSftpPanel,
       toggleMonitoringPanel,
       showNetworkIcon,

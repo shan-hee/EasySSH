@@ -25,6 +25,8 @@ import log from './services/log'
 import fontLoader from './utils/fontLoader'
 // 导入配置管理器
 import configManager from './utils/config-manager'
+// 导入自定义指令
+import directives from './directives'
 
 // 初始化主题和语言设置
 const initSettings = () => {
@@ -140,6 +142,11 @@ const app = createApp(App)
 app.use(router)
 app.use(pinia)
 app.use(ElementPlus)
+
+// 注册自定义指令
+Object.keys(directives).forEach(key => {
+  app.directive(key, directives[key])
+})
 
 // 扩展调试方法
 window.debugMonitoring = {
