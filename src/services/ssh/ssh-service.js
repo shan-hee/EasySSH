@@ -640,20 +640,17 @@ class SSHService {
             // 处理网络延迟消息
             case MESSAGE_TYPES.NETWORK_LATENCY:
               try {
-                // 触发网络延迟事件，让UI可以显示
+                // 解析延迟数据（简化格式）
                 const latencyDetail = {
                   sessionId: message.data?.sessionId || sessionId,
-                  // 使用新的分段延迟字段
-                  remoteLatency: message.data?.serverLatency || message.data?.remoteLatency || 0,
-                  localLatency: message.data?.clientLatency || message.data?.localLatency || 0,
-                  totalLatency: message.data?.totalLatency || 0,
-                  // 保持向后兼容
-                  clientLatency: message.data?.clientLatency || message.data?.localLatency || 0,
-                  serverLatency: message.data?.serverLatency || message.data?.remoteLatency || 0,
+                  clientLatency: Math.round(message.data?.clientLatency || 0),    // 前端到EasySSH延迟（整数毫秒）
+                  serverLatency: Math.round(message.data?.serverLatency || 0),   // EasySSH到服务器延迟（整数毫秒）
+                  totalLatency: Math.round(message.data?.totalLatency ||
+                    (message.data?.clientLatency || 0) + (message.data?.serverLatency || 0)), // 总延迟（整数毫秒）
                   timestamp: message.data?.timestamp || new Date().toISOString()
                 };
 
-                log.debug(`收到网络延迟信息: 客户端${Math.round(latencyDetail.clientLatency)}ms, 服务器${Math.round(latencyDetail.serverLatency)}ms, 总计${Math.round(latencyDetail.totalLatency)}ms`);
+                log.debug(`收到网络延迟信息: 客户端${latencyDetail.clientLatency}ms, 服务器${latencyDetail.serverLatency}ms, 总计${latencyDetail.totalLatency}ms`);
 
                 // 保存延迟数据到内部状态
                 this.latencyData.set(sessionId, {

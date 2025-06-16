@@ -252,17 +252,13 @@ function initWebSocketServer(server) {
             break;
             
           case 'ping':
-            // 处理保活消息（异步）
-            ssh.handlePing(ws, data).catch(err => {
-              logger.error('处理ping消息错误', { error: err.message });
-            });
+            // 处理保活消息
+            ssh.handlePing(ws, data);
             break;
 
           case 'latency_update':
-            // 处理延迟更新消息（异步）
-            ssh.handleLatencyUpdate(ws, data).catch(err => {
-              logger.error('处理延迟更新消息错误', { error: err.message });
-            });
+            // 处理延迟更新消息
+            ssh.handleLatencyUpdate(ws, data);
             break;
 
           case 'sftp_init':
