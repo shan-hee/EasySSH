@@ -208,14 +208,21 @@ docker-compose logs -f
 # 拉取最新镜像
 docker pull shanheee/easyssh:latest
 
+# 创建数据目录并设置权限
+mkdir -p ./easyssh_data ./easyssh_logs
+
+# 安全权限设置（推荐）
+sudo chown 1000:1000 ./easyssh_data ./easyssh_logs
+chmod 755 ./easyssh_data ./easyssh_logs
+
 # 启动生产容器（带数据持久化）
 docker run -d \
   --name easyssh-prod \
   --restart unless-stopped \
   -p 3000:3000 \
   -p 8000:8000 \
-  -v easyssh_data:/app/server/data \
-  -v easyssh_logs:/app/server/logs \
+  -v $(pwd)/easyssh_data:/app/server/data \
+  -v $(pwd)/easyssh_logs:/app/server/logs \
   shanheee/easyssh:latest
 ```
 
@@ -230,8 +237,10 @@ docker run -d \
 - `PORT`: 后端服务端口（默认8000）
 
 **数据持久化：**
-- `/app/server/data`: SQLite数据库存储目录
-- `/var/log/supervisor`: 应用日志目录
+- `./easyssh_data`: SQLite数据库存储目录（主机目录）
+- `./easyssh_logs`: 应用日志存储目录（主机目录）
+
+> **💡 数据持久化说明**：使用主机目录挂载确保数据安全，容器删除重建时数据不会丢失。数据目录会自动创建在当前工作目录下。
 
 ### 传统部署
 
@@ -246,7 +255,6 @@ pm2 start index.js --name easyssh-server
 
 # 配置Nginx反向代理
 # 参考开发指南中的Nginx配置示例
-```
 
 ### 云平台部署
 
