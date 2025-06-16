@@ -214,8 +214,8 @@ docker run -d \
   --restart unless-stopped \
   -p 3000:3000 \
   -p 8000:8000 \
-  -v $(pwd)/data:/app/server/data \
-  -v $(pwd)/logs:/var/log/supervisor \
+  -v easyssh_data:/app/server/data \
+  -v easyssh_logs:/app/server/logs \
   shanheee/easyssh:latest
 ```
 

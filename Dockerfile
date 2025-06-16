@@ -100,7 +100,7 @@ RUN chown -R appuser:appuser /app && \
     chown -R appuser:appuser /var/log/nginx /var/cache/nginx /var/lib/nginx /run/nginx
 
 # 暴露端口
-EXPOSE 3000 8000 9527
+EXPOSE 3000 8000
 
 # 设置环境变量和标签
 ENV NODE_ENV=production \

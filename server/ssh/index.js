@@ -255,7 +255,12 @@ function initWebSocketServer(server) {
             // 处理保活消息
             ssh.handlePing(ws, data);
             break;
-            
+
+          case 'latency_update':
+            // 处理延迟更新消息
+            ssh.handleLatencyUpdate(ws, data);
+            break;
+
           case 'sftp_init':
             // 处理SFTP初始化
             sftp.handleSftpInit(ws, data, ssh.sessions);

@@ -409,22 +409,30 @@ export default defineComponent({
       if (!event || !event.detail) {
         return;
       }
-      
-      const { sessionId, remoteLatency, localLatency, totalLatency, terminalId: eventTerminalId } = event.detail;
-      
+
+      const {
+        sessionId,
+        remoteLatency,
+        localLatency,
+        totalLatency,
+        clientLatency,
+        serverLatency,
+        terminalId: eventTerminalId
+      } = event.detail;
+
       if (!sessionId) {
         // 如果没有会话ID，无法处理
         return;
       }
-      
+
       // 首先使用事件中直接提供的终端ID
       let terminalId = eventTerminalId;
-      
+
       // 如果事件中没有直接提供终端ID，尝试通过SSH服务查找
       if (!terminalId && sessionId.startsWith('ssh_') && sshService) {
         // 优先使用会话-终端映射
         terminalId = sshService.sessionTerminalMap?.get(sessionId);
-        
+
         // 如果映射中没有，尝试从会话对象中获取
         if (!terminalId && sshService.sessions?.has(sessionId)) {
         const session = sshService.sessions.get(sessionId);
@@ -434,22 +442,25 @@ export default defineComponent({
         // 如果不是SSH会话ID，可能直接就是终端ID
         terminalId = sessionId;
       }
-        
+
       // 如果找到了终端ID，更新其工具栏状态
       if (terminalId) {
         const terminalState = getTerminalToolbarState(terminalId);
         if (terminalState) {
-          terminalState.serverDelay = remoteLatency || 0;
-          terminalState.clientDelay = localLatency || 0;
-          terminalState.rttValue = totalLatency ? `${totalLatency} ms` : '--';
+          // 优先使用新的分段延迟字段，并四舍五入到整数
+          terminalState.clientDelay = Math.round(clientLatency || localLatency || 0);
+          terminalState.serverDelay = Math.round(serverLatency || remoteLatency || 0);
+          terminalState.rttValue = totalLatency ? `${Math.round(totalLatency)} ms` : '--';
           terminalState.isSshConnected = true;
-      
+
           // 如果是当前活动终端，直接更新界面状态
           if (terminalId === props.activeSessionId) {
-            serverDelay.value = terminalState.serverDelay;
             clientDelay.value = terminalState.clientDelay;
+            serverDelay.value = terminalState.serverDelay;
             rttValue.value = terminalState.rttValue;
-          showNetworkIcon.value = true;
+            showNetworkIcon.value = true;
+
+            log.debug(`延迟显示更新: 客户端${clientDelay.value}ms, 服务器${serverDelay.value}ms, 总计${Math.round(totalLatency)}ms`);
         }
       }
       }

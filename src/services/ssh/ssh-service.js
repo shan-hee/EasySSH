@@ -643,15 +643,18 @@ class SSHService {
                 // 触发网络延迟事件，让UI可以显示
                 const latencyDetail = {
                   sessionId: message.data?.sessionId || sessionId,
-                  // 使用服务器返回的延迟数据
-                  remoteLatency: message.data?.remoteLatency || message.data?.latency || 0,
-                  localLatency: message.data?.localLatency || LATENCY_CONFIG.DEFAULT_LOCAL,
-                  totalLatency: message.data?.totalLatency || message.data?.latency || 0,
+                  // 使用新的分段延迟字段
+                  remoteLatency: message.data?.serverLatency || message.data?.remoteLatency || 0,
+                  localLatency: message.data?.clientLatency || message.data?.localLatency || 0,
+                  totalLatency: message.data?.totalLatency || 0,
+                  // 保持向后兼容
+                  clientLatency: message.data?.clientLatency || message.data?.localLatency || 0,
+                  serverLatency: message.data?.serverLatency || message.data?.remoteLatency || 0,
                   timestamp: message.data?.timestamp || new Date().toISOString()
                 };
-                
-                // log.debug(`收到网络延迟信息: ${JSON.stringify(latencyDetail)}`);
-                
+
+                log.debug(`收到网络延迟信息: 客户端${Math.round(latencyDetail.clientLatency)}ms, 服务器${Math.round(latencyDetail.serverLatency)}ms, 总计${Math.round(latencyDetail.totalLatency)}ms`);
+
                 // 保存延迟数据到内部状态
                 this.latencyData.set(sessionId, {
                   ...latencyDetail,
@@ -696,6 +699,54 @@ class SSHService {
               }
               break;
               
+            // 处理保活响应
+            case MESSAGE_TYPES.PONG:
+              try {
+                // 更新会话活动时间
+                if (this.sessions.has(sessionId)) {
+                  const session = this.sessions.get(sessionId);
+                  session.lastActivity = new Date();
+
+                  // 计算WebSocket延迟
+                  const pongData = message.data;
+                  if (pongData && pongData.requestId) {
+                    const clientReceiveTime = performance.now();
+
+                    // 从保活间隔数据中获取对应的ping请求
+                    const keepAliveData = this.keepAliveIntervals.get(sessionId);
+                    if (keepAliveData && keepAliveData.pingRequests) {
+                      const pingRequest = keepAliveData.pingRequests.get(pongData.requestId);
+                      if (pingRequest && pingRequest.clientSendTime) {
+                        const webSocketLatency = clientReceiveTime - pingRequest.clientSendTime;
+
+                        // 只有当延迟值合理时才处理（0-5000ms）
+                        if (webSocketLatency > 0 && webSocketLatency < 5000) {
+                          log.debug(`WebSocket延迟: ${Math.round(webSocketLatency)}ms`);
+
+                          // 清理已处理的ping请求
+                          keepAliveData.pingRequests.delete(pongData.requestId);
+
+                          // 将WebSocket延迟发送给后端，让后端合并SSH延迟后返回
+                          if (session.socket && session.socket.readyState === WS_CONSTANTS.OPEN) {
+                            session.socket.send(JSON.stringify({
+                              type: 'latency_update',
+                              data: {
+                                sessionId,
+                                webSocketLatency,
+                                timestamp: new Date().toISOString()
+                              }
+                            }));
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              } catch (e) {
+                log.warn('处理PONG消息失败:', e);
+              }
+              break;
+
             // 增加SFTP相关消息类型的处理
             case MESSAGE_TYPES.SFTP_SUCCESS:
             case MESSAGE_TYPES.SFTP_PROGRESS:
@@ -706,15 +757,14 @@ class SSHService {
             case MESSAGE_TYPES.SFTP_CONFIRM:
               // 由handleSftpMessages处理，此处仅标记为已识别类型
               break;
-              
+
             // 处理其他消息类型
             default:
               const ignoredTypes = [
-                MESSAGE_TYPES.PING, 
-                MESSAGE_TYPES.PONG, 
-                'keepalive', 'heartbeat', 'status', 'info', 'notification', 
+                MESSAGE_TYPES.PING,
+                'keepalive', 'heartbeat', 'status', 'info', 'notification',
                 'system', 'stats', 'heartbeat_ack', 'heartbeat_response',
-                'ack', 'response', 'server_status'
+                'ack', 'response', 'server_status', 'latency_update'
               ];
               
               // 忽略所有SFTP相关消息类型，避免它们被标记为未知类型
@@ -753,42 +803,45 @@ class SSHService {
 
     // 从设置获取保活间隔
     const connectionSettings = settingsService.getConnectionOptions();
-    const keepAliveIntervalSec = connectionSettings.keepAliveInterval || 
+    const keepAliveIntervalSec = connectionSettings.keepAliveInterval ||
                                  dynamicConfig.LATENCY_CONFIG.CHECK_INTERVAL;
     const keepAliveIntervalMs = keepAliveIntervalSec * 1000;
-    
+
     const interval = setInterval(() => {
       if (!this.sessions.has(sessionId)) {
         this._clearKeepAlive(sessionId);
         return;
       }
-      
+
       const session = this.sessions.get(sessionId);
       const now = new Date();
-      
+
       if (session.socket && session.socket.readyState === WS_CONSTANTS.OPEN) {
         try {
           const timestamp = now.toISOString();
           const requestId = Date.now().toString();
-          
+          const clientSendTime = performance.now(); // 高精度时间戳
+
           pingRequests.set(requestId, {
             timestamp: now,
+            clientSendTime, // 保存客户端发送时间
             sessionId
           });
-          
+
           session.socket.send(JSON.stringify({
             type: MESSAGE_TYPES.PING,
-            data: { 
+            data: {
               sessionId,
               timestamp,
+              clientSendTime, // 发送高精度时间戳
               requestId,
               measureLatency: true,
               client: 'easyssh'
             }
           }));
-          
+
           session.lastActivity = now;
-          
+
           // 清理超时的ping请求
           const expireTime = new Date(now.getTime() - 10000);
           for (const [id, request] of pingRequests.entries()) {

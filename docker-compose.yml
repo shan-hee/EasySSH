@@ -12,7 +12,6 @@ services:
     ports:
       - "3000:3000"
       - "8000:8000"
-      - "9527:9527"
     environment:
       - NODE_ENV=production
       - PORT=8000

@@ -91,7 +91,71 @@ function createSSHConnection(config) {
 }
 
 /**
- * 测量网络延迟
+ * 测量SSH连接延迟
+ * @param {Object} session SSH会话对象
+ * @param {WebSocket} ws WebSocket连接
+ * @param {string} sessionId 会话ID
+ */
+async function measureSSHLatency(session, ws, sessionId) {
+  try {
+    if (!session.conn || !session.connectionInfo) {
+      return;
+    }
+
+    const startTime = process.hrtime.bigint();
+
+    // 使用SSH连接发送一个轻量级命令来测量延迟
+    // 使用 'echo' 命令，这是最轻量级的测试命令
+    session.conn.exec('echo ping', (err, stream) => {
+      if (err) {
+        logger.debug('SSH延迟测量失败', { sessionId, error: err.message });
+        return;
+      }
+
+      let responseReceived = false;
+
+      // 监听命令输出
+      stream.on('data', (data) => {
+        if (!responseReceived && data.toString().trim() === 'ping') {
+          responseReceived = true;
+          const endTime = process.hrtime.bigint();
+          const sshLatency = Number(endTime - startTime) / 1000000; // 转换为毫秒
+
+          // 保存SSH延迟到会话中
+          session.lastSSHLatency = sshLatency;
+          session.lastSSHLatencyTime = new Date();
+
+          logger.debug('SSH延迟测量完成', {
+            sessionId,
+            latency: `${Math.round(sshLatency)}ms`
+          });
+        }
+      });
+
+      // 设置超时，避免命令卡住
+      const timeout = setTimeout(() => {
+        if (!responseReceived) {
+          stream.end();
+          logger.debug('SSH延迟测量超时', { sessionId });
+        }
+      }, 5000);
+
+      stream.on('close', () => {
+        clearTimeout(timeout);
+      });
+
+      stream.on('error', (err) => {
+        clearTimeout(timeout);
+        logger.debug('SSH延迟测量流错误', { sessionId, error: err.message });
+      });
+    });
+  } catch (error) {
+    logger.debug('SSH延迟测量异常', { sessionId, error: error.message });
+  }
+}
+
+/**
+ * 测量网络延迟（保留原有函数作为备用）
  * @param {string} host 目标主机IP
  * @param {WebSocket} ws WebSocket连接
  * @param {string} sessionId 会话ID
@@ -101,7 +165,7 @@ async function measureNetworkLatency(host, ws, sessionId) {
     // 根据操作系统使用不同的ping命令参数
     const isWindows = os.platform() === 'win32';
     const pingCmd = isWindows ? `ping -n 1 ${host}` : `ping -c 1 ${host}`;
-    
+
     // 获取用户的真实IP地址
     // 如果无法直接从WebSocket获取，尝试从会话中获取（在连接建立时保存）
     let clientIP = null;
@@ -109,7 +173,7 @@ async function measureNetworkLatency(host, ws, sessionId) {
       const session = sessions.get(sessionId);
       clientIP = session.clientIP; // 假设在创建会话时已保存用户IP
     }
-    
+
     // 如果无法获取客户端IP，使用备用方法或记录错误
     if (!clientIP) {
       logger.warn('测量延迟时无法获取客户端IP地址', { sessionId });
@@ -220,27 +284,59 @@ async function measureNetworkLatency(host, ws, sessionId) {
  * 发送网络延迟结果到客户端
  * @param {WebSocket} ws WebSocket连接
  * @param {string} sessionId 会话ID
- * @param {number} remoteLatency 远程延迟
- * @param {number} localLatency 本地延迟
+ * @param {number} webSocketLatency WebSocket延迟（前端到EasySSH）
+ * @param {number} sshLatency SSH延迟（EasySSH到服务器）
  */
-function sendNetworkLatencyResult(ws, sessionId, remoteLatency, localLatency) {
+function sendNetworkLatencyResult(ws, sessionId, webSocketLatency, sshLatency) {
   // 计算总延迟
-  const totalLatency = (remoteLatency || 0) + (localLatency || 0);
-  
-  // 发送延迟信息到前端，包含两段延迟
+  const totalLatency = (webSocketLatency || 0) + (sshLatency || 0);
+
+  // 发送延迟信息到前端，使用新的分段延迟格式
   sendMessage(ws, MSG_TYPE.NETWORK_LATENCY, {
     sessionId,
-    remoteLatency,
-    localLatency,
-    totalLatency,
-    latency: remoteLatency // 保持向后兼容
+    // 新的分段延迟字段
+    clientLatency: webSocketLatency || 0,    // 前端到EasySSH的延迟
+    serverLatency: sshLatency || 0,          // EasySSH到服务器的延迟
+    totalLatency,                            // 总延迟
+    // 保持向后兼容的字段
+    remoteLatency: sshLatency || 0,
+    localLatency: webSocketLatency || 0,
+    latency: sshLatency || 0,
+    timestamp: new Date().toISOString()
   });
-  
+
   // 记录测量时间
   if (sessions.has(sessionId)) {
     const session = sessions.get(sessionId);
     session.lastLatencyCheck = new Date();
   }
+}
+
+/**
+ * 发送基于保活机制的延迟数据
+ * @param {WebSocket} ws WebSocket连接
+ * @param {string} sessionId 会话ID
+ * @param {number} webSocketLatency WebSocket往返延迟
+ */
+function sendKeepAliveLatencyResult(ws, sessionId, webSocketLatency) {
+  if (!sessions.has(sessionId)) {
+    return;
+  }
+
+  const session = sessions.get(sessionId);
+
+  // 获取最近的SSH延迟测量结果
+  let sshLatency = 0;
+  if (session.lastSSHLatency && session.lastSSHLatencyTime) {
+    // 如果SSH延迟测量时间在5分钟内，则使用该值
+    const timeDiff = new Date() - session.lastSSHLatencyTime;
+    if (timeDiff < 5 * 60 * 1000) { // 5分钟
+      sshLatency = session.lastSSHLatency;
+    }
+  }
+
+  // 发送合并的延迟数据
+  sendNetworkLatencyResult(ws, sessionId, webSocketLatency, sshLatency);
 }
 
 /**
@@ -548,28 +644,68 @@ function handleDisconnect(ws, data) {
  */
 function handlePing(ws, data) {
   const { sessionId, timestamp, requestId } = data;
-  
+
   if (!sessionId || !sessions.has(sessionId)) {
     return;
   }
-  
+
   // 更新最后活动时间
   const session = sessions.get(sessionId);
   recordActivity(session);
-  
-  // 发送pong响应
-  sendMessage(ws, MSG_TYPE.PONG, { 
+
+  // 记录服务器接收PING的高精度时间戳
+  const serverReceiveTime = process.hrtime.bigint();
+  const serverReceiveTimeMs = Number(serverReceiveTime) / 1000000; // 转换为毫秒
+
+  // 发送pong响应，包含时间戳信息用于延迟计算
+  sendMessage(ws, MSG_TYPE.PONG, {
     sessionId,
     timestamp: new Date().toISOString(),
     originTimestamp: timestamp, // 返回客户端发送的时间戳，用于计算往返延迟
+    serverReceiveTime: serverReceiveTimeMs, // 服务器接收时间（高精度）
+    serverSendTime: Number(process.hrtime.bigint()) / 1000000, // 服务器发送时间（高精度）
     requestId // 返回请求ID以便客户端匹配
   });
-  
-  // 始终执行延迟测量，不再检查measureLatency标志
-  if (session.connectionInfo && session.connectionInfo.host) {
-    // 执行延迟测量
-    measureNetworkLatency(session.connectionInfo.host, ws, sessionId);
+
+  // 测量SSH连接延迟（如果存在SSH连接）
+  if (session.connectionInfo && session.connectionInfo.host && session.conn) {
+    measureSSHLatency(session, ws, sessionId);
   }
+}
+
+/**
+ * 处理延迟更新消息
+ * @param {WebSocket} ws WebSocket连接
+ * @param {Object} data 延迟数据
+ */
+function handleLatencyUpdate(ws, data) {
+  const { sessionId, webSocketLatency } = data;
+
+  if (!sessionId || !sessions.has(sessionId)) {
+    return;
+  }
+
+  const session = sessions.get(sessionId);
+
+  // 获取最近的SSH延迟测量结果
+  let sshLatency = 0;
+  if (session.lastSSHLatency && session.lastSSHLatencyTime) {
+    // 如果SSH延迟测量时间在5分钟内，则使用该值
+    const timeDiff = new Date() - session.lastSSHLatencyTime;
+    if (timeDiff < 5 * 60 * 1000) { // 5分钟
+      sshLatency = session.lastSSHLatency;
+    }
+  }
+
+  // 发送合并的延迟数据
+  sendNetworkLatencyResult(ws, sessionId, webSocketLatency, sshLatency);
+
+  logger.debug('延迟数据已更新', {
+    sessionId,
+    webSocketLatency: `${Math.round(webSocketLatency)}ms`,
+    sshLatency: `${Math.round(sshLatency)}ms`,
+    totalLatency: `${Math.round(webSocketLatency + sshLatency)}ms`
+  });
 }
 
 /**
@@ -579,18 +715,18 @@ function handlePing(ws, data) {
  */
 async function handleSshExec(ws, data) {
   const { sessionId, command, operationId } = data;
-  
+
   if (!validateSshSession(ws, sessionId, sessions)) {
     return;
   }
-  
+
   await safeExec(async () => {
     const session = sessions.get(sessionId);
-    
+
     if (!session.conn) {
       throw new Error('SSH连接不可用');
     }
-    
+
     // 执行命令
     session.conn.exec(command, (err, stream) => {
       if (err) {
@@ -598,21 +734,21 @@ async function handleSshExec(ws, data) {
         utils.sendSftpError(ws, sessionId, operationId, `执行命令失败: ${err.message}`);
         return;
       }
-      
+
       let stdout = '';
       let stderr = '';
-      
+
       stream.on('data', (data) => {
         stdout += data.toString();
       });
-      
+
       stream.stderr.on('data', (data) => {
         stderr += data.toString();
       });
-      
+
       stream.on('close', (code) => {
         logger.info('SSH命令执行完成', { command, exitCode: code });
-        
+
         // 发送执行结果
         utils.sendSftpSuccess(ws, sessionId, operationId, {
           stdout,
@@ -639,5 +775,6 @@ module.exports = {
   handleResize,
   handleDisconnect,
   handlePing,
+  handleLatencyUpdate,
   handleSshExec
-}; 
+};
