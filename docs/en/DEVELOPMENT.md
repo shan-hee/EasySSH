@@ -227,9 +227,9 @@ npm run lint:fix              # Auto fix
 ## 📊 Performance Monitoring
 
 ### Build Analysis
-- Run `npm run build:analyze` to view detailed package analysis
-- Check `dist/stats.html` for package size distribution
-- Review `dist/build-report.json` for build information
+- Run `npm run build:report` to view package analysis
+- Check generated analysis reports for package size distribution
+- Review build information for performance optimization
 
 ### Bundle Size Monitoring
 - Run `npm run size` to check bundle size
@@ -249,9 +249,7 @@ npm run lint:fix              # Auto fix
 - `.env.example` - Configuration template
 
 ### Build Configuration
-- `vite.config.js` - Main build configuration
-- `vite.config.analyze.js` - Analysis-specific configuration
-- `performance.config.js` - Performance configuration
+- `vite.config.js` - Main build configuration (includes performance optimization and analysis features)
 
 ### Code Quality
 - `.eslintrc.js` - ESLint rules
