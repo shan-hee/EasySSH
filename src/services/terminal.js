@@ -129,7 +129,7 @@ class TerminalService {
       disableStdin: false,
       drawBoldTextInBrightColors: true,
       copyOnSelect: false,
-      rightClickSelectsWord: true,
+      rightClickSelectsWord: false,
       fastScrollModifier: 'alt',
       fastScrollSensitivity: 5,
       screenReaderMode: false,

@@ -3,6 +3,7 @@ import vue from '@vitejs/plugin-vue';
 import { resolve } from 'path';
 import viteCompression from 'vite-plugin-compression';
 import { visualizer } from 'rollup-plugin-visualizer';
+import { readFileSync } from 'fs';
 
 // ANSI颜色代码
 const colors = {
@@ -79,6 +80,10 @@ export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd());
   const isDev = mode === 'development';
   const isAnalyze = mode === 'analyze';
+
+  // 读取package.json获取版本号
+  const packageJson = JSON.parse(readFileSync(resolve(__dirname, 'package.json'), 'utf-8'));
+  const appVersion = packageJson.version;
   
   return {
     plugins: [
@@ -311,7 +316,9 @@ export default defineConfig(({ mode }) => {
       __VUE_PROD_DEVTOOLS__: false,
       __VUE_PROD_HYDRATION_MISMATCH_DETAILS__: false,
       // 定义Node.js环境变量
-      'process.env.NODE_ENV': JSON.stringify(isDev ? 'development' : 'production')
+      'process.env.NODE_ENV': JSON.stringify(isDev ? 'development' : 'production'),
+      // 注入应用版本号
+      'import.meta.env.VITE_APP_VERSION': JSON.stringify(appVersion)
     }
   };
 });

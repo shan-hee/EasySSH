@@ -47,7 +47,7 @@
         <div class="card-content">
           <div class="status-item">
             <div class="status-label">版本</div>
-            <div class="status-value">1.0.0</div>
+            <div class="status-value">{{ appVersion }}</div>
           </div>
           <div class="status-item">
             <div class="status-label">最后更新</div>
@@ -116,11 +116,15 @@
 </template>
 
 <script>
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 
 export default {
   name: 'Dashboard',
   setup() {
+    // 获取应用版本号
+    const appVersion = computed(() => {
+      return import.meta.env.VITE_APP_VERSION || '1.0.0'
+    })
     const recentConnections = ref([
       {
         name: '开发服务器',
@@ -163,6 +167,7 @@ export default {
     ])
 
     return {
+      appVersion,
       recentConnections,
       activityLog
     }

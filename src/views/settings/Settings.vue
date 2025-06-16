@@ -123,10 +123,12 @@
           </el-form-item>
           
           <el-form-item label="右键粘贴" class="flex-form-item">
-            <el-switch 
-              v-model="terminalSettings.rightClickSelectsWord"
-              @change="saveTerminalSettings"
-            />
+            <el-tooltip content="需要域名支持https" placement="top">
+              <el-switch
+                v-model="terminalSettings.rightClickSelectsWord"
+                @change="saveTerminalSettings"
+              />
+            </el-tooltip>
           </el-form-item>
 
           <el-form-item label="光标闪烁" class="flex-form-item">
@@ -281,7 +283,7 @@ export default {
       cursorStyle: 'block',
       cursorBlink: true,
       copyOnSelect: false,
-      rightClickSelectsWord: true,
+      rightClickSelectsWord: false,
       initialized: false
     })
     

@@ -20,7 +20,7 @@ export const useSettingsStore = defineStore('settings', () => {
     cursorStyle: 'block',
     cursorBlink: true,
     copyOnSelect: false,
-    rightClickSelectsWord: true,
+    rightClickSelectsWord: false,
   })
   
   // 连接设置
@@ -193,7 +193,7 @@ export const useSettingsStore = defineStore('settings', () => {
         cursorStyle: 'block',
         cursorBlink: true,
         copyOnSelect: false,
-        rightClickSelectsWord: true,
+        rightClickSelectsWord: false,
       })
       
       // 重置连接设置

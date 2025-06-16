@@ -188,7 +188,7 @@ class SettingsService {
       disableStdin: false,
       drawBoldTextInBrightColors: true,
       copyOnSelect: settings.copyOnSelect !== undefined ? settings.copyOnSelect : false,
-      rightClickSelectsWord: settings.rightClickSelectsWord !== undefined ? settings.rightClickSelectsWord : true
+      rightClickSelectsWord: settings.rightClickSelectsWord !== undefined ? settings.rightClickSelectsWord : false
     }
   }
   

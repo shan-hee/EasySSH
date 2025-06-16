@@ -311,6 +311,21 @@ button {
   color: #fff !important;
 }
 
+/* Tooltip 样式覆盖 */
+.el-tooltip__popper,
+.el-popper.is-dark {
+  background-color: #333 !important;
+  color: #e0e0e0 !important;
+  border: none !important;
+  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.4) !important;
+}
+
+.el-tooltip__popper .el-popper__arrow::before,
+.el-popper.is-dark .el-popper__arrow::before {
+  background-color: #333 !important;
+  border-color: #333 !important;
+}
+
 /* 浅色主题特定组件样式适配 */
 :root[data-theme="light"] .el-message {
   background-color: #fff !important;
