@@ -6,12 +6,16 @@ on:
       - main
       - master
       - develop
+    paths:
+      - 'package.json'
     tags:
       - 'v*'
   pull_request:
     branches:
       - main
       - master
+    paths:
+      - 'package.json'
   workflow_dispatch:
 
 env:
