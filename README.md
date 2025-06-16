@@ -255,7 +255,9 @@ pm2 start index.js --name easyssh-server
 
 # 配置Nginx反向代理
 # 参考开发指南中的Nginx配置示例
+```
 
+### 云平台部署
 ### 云平台部署
 
 EasySSH支持一键部署到主流云平台:
@@ -304,8 +306,6 @@ EasySSH支持一键部署到主流云平台:
 ## 许可证
 
 本项目采用[Apache License 2.0](LICENSE)开源。
-
----
 
 <div align="center">
   <strong>EasySSH</strong> - 让远程服务器管理变得简单高效
