@@ -256,10 +256,7 @@ function initWebSocketServer(server) {
             ssh.handlePing(ws, data);
             break;
 
-          case 'latency_update':
-            // 处理延迟更新消息
-            ssh.handleLatencyUpdate(ws, data);
-            break;
+          // latency_update 消息已废弃，现在延迟测量直接在ping中处理
 
           case 'sftp_init':
             // 处理SFTP初始化

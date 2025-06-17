@@ -447,6 +447,12 @@ class SSHService {
               connectionState.status = 'connected';
               connectionState.message = '已连接';
               log.info(`SSH连接成功: ${sessionId}`);
+
+              // SSH连接成功后稍微延迟触发保活ping来获取延迟信息
+              // 使用setTimeout确保保活机制完全设置好
+              setTimeout(() => {
+                this._triggerImmediatePing(sessionId);
+              }, 100);
               
               try {
                 const connHost = connection.host || (this.sessions.has(sessionId) ? this.sessions.get(sessionId).connection?.host : null);
@@ -716,6 +722,15 @@ class SSHService {
                       if (pingRequest && pingRequest.clientSendTime) {
                         const webSocketLatency = clientReceiveTime - pingRequest.clientSendTime;
 
+                        // 清理已处理的ping请求
+                        keepAliveData.pingRequests.delete(pongData.requestId);
+
+                        // 如果这是延迟测量ping的响应，不需要再发送延迟更新
+                        if (pingRequest.isLatencyMeasurement) {
+                          log.debug(`延迟测量ping响应: ${Math.round(webSocketLatency)}ms`);
+                          return; // 直接返回，不执行后续的延迟更新逻辑
+                        }
+
                         // 只有当延迟值合理时才处理（0-5000ms）
                         if (webSocketLatency > 0 && webSocketLatency < 5000) {
                           log.debug(`WebSocket延迟: ${Math.round(webSocketLatency)}ms`);
@@ -723,19 +738,43 @@ class SSHService {
                           // 清理已处理的ping请求
                           keepAliveData.pingRequests.delete(pongData.requestId);
 
-                          // 将WebSocket延迟发送给后端，让后端合并SSH延迟后返回
+                          // 发送包含WebSocket延迟的ping消息，让后端直接处理延迟测量
                           if (session.socket && session.socket.readyState === WS_CONSTANTS.OPEN) {
+                            const now = new Date();
+                            const timestamp = now.toISOString();
+                            const requestId = `latency_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
+                            const clientSendTime = performance.now();
+
+                            // 将延迟测量请求记录到保活数据中
+                            keepAliveData.pingRequests.set(requestId, {
+                              timestamp: now,
+                              clientSendTime,
+                              sessionId,
+                              isLatencyMeasurement: true
+                            });
+
+                            // 发送包含WebSocket延迟的ping消息
                             session.socket.send(JSON.stringify({
-                              type: 'latency_update',
+                              type: MESSAGE_TYPES.PING,
                               data: {
                                 sessionId,
-                                webSocketLatency,
-                                timestamp: new Date().toISOString()
+                                timestamp,
+                                clientSendTime,
+                                requestId,
+                                webSocketLatency, // 直接在ping中包含WebSocket延迟
+                                measureLatency: true,
+                                client: 'easyssh'
                               }
                             }));
                           }
+                        } else {
+                          log.warn(`WebSocket延迟值异常: ${webSocketLatency}ms, 跳过处理`);
                         }
+                      } else {
+                        log.warn(`未找到ping请求记录: requestId=${pongData.requestId}, sessionId=${sessionId}`);
                       }
+                    } else {
+                      log.warn(`未找到保活数据: sessionId=${sessionId}`);
                     }
                   }
                 }
@@ -868,6 +907,60 @@ class SSHService {
         clearInterval(keepAliveData.interval);
       }
       this.keepAliveIntervals.delete(sessionId);
+    }
+  }
+
+  /**
+   * 立即触发一次保活ping（用于SSH连接成功后获取延迟信息）
+   */
+  _triggerImmediatePing(sessionId) {
+    if (!this.sessions.has(sessionId)) {
+      return;
+    }
+
+    const session = this.sessions.get(sessionId);
+    const now = new Date();
+
+    if (session.socket && session.socket.readyState === WS_CONSTANTS.OPEN) {
+      try {
+        const timestamp = now.toISOString();
+        const requestId = `immediate_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
+        const clientSendTime = performance.now();
+
+        // 获取或创建保活数据
+        let keepAliveData = this.keepAliveIntervals.get(sessionId);
+        if (!keepAliveData) {
+          // 如果保活机制还没设置，先设置它
+          this._setupKeepAlive(sessionId);
+          keepAliveData = this.keepAliveIntervals.get(sessionId);
+        }
+
+        if (keepAliveData && keepAliveData.pingRequests) {
+          keepAliveData.pingRequests.set(requestId, {
+            timestamp: now,
+            clientSendTime,
+            sessionId
+          });
+
+          session.socket.send(JSON.stringify({
+            type: MESSAGE_TYPES.PING,
+            data: {
+              sessionId,
+              timestamp,
+              clientSendTime,
+              requestId,
+              measureLatency: true,
+              client: 'easyssh',
+              immediate: true // 标记为立即ping
+            }
+          }));
+
+          session.lastActivity = now;
+          log.debug(`SSH连接成功后立即发送ping: ${sessionId}`);
+        }
+      } catch (error) {
+        log.warn(`立即发送保活消息失败: ${sessionId}`, error);
+      }
     }
   }
   
