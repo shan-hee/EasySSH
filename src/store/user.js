@@ -590,6 +590,9 @@ export const useUserStore = defineStore('user', () => {
     } catch (error) {
       log.error('登出过程中出现错误', error)
     } finally {
+      // 发出退出登录清空页签的全局事件
+      window.dispatchEvent(new CustomEvent('auth:logout-clear-tabs'))
+
       // 执行完整的本地状态清理
       await performCompleteCleanup()
     }
@@ -600,6 +603,9 @@ export const useUserStore = defineStore('user', () => {
     log.info('开始执行完整的状态清理')
 
     try {
+      // 0. 发出清空页签的全局事件（在清理其他状态之前）
+      window.dispatchEvent(new CustomEvent('auth:logout-clear-tabs'))
+
       // 1. 清空token和用户信息
       setToken('')
       setUserInfo({

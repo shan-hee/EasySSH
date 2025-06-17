@@ -74,7 +74,7 @@
 </template>
 
 <script>
-import { defineComponent, ref, computed, watch, onMounted } from 'vue'
+import { defineComponent, ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useUserStore } from '@/store/user'
 import { useTabStore } from '@/store/tab'
@@ -103,12 +103,18 @@ export default defineComponent({
         headerElement.addEventListener('close-login-panel', () => {
           isLoginPanelVisible.value = false;
         });
-        
+
         // 监听显示登录面板事件
         headerElement.addEventListener('show-login-panel', () => {
           isLoginPanelVisible.value = true;
         });
       }
+
+      // 监听登录成功清空页签事件
+      window.addEventListener('auth:login-success-clear-tabs', handleLoginSuccessClearTabs);
+
+      // 监听退出登录清空页签事件
+      window.addEventListener('auth:logout-clear-tabs', handleLogoutClearTabs);
     });
     
     // 添加对标签状态的监听
@@ -128,6 +134,29 @@ export default defineComponent({
     
     const closeLoginPanel = () => {
       isLoginPanelVisible.value = false
+    }
+
+    // 处理登录成功清空页签事件
+    const handleLoginSuccessClearTabs = () => {
+      log.info('登录成功，开始清空所有页签')
+
+      // 调用tabStore的resetState方法清空所有页签
+      tabStore.resetState()
+
+      // 关闭登录面板
+      closeLoginPanel()
+
+      log.info('登录成功后页签清空完成')
+    }
+
+    // 处理退出登录清空页签事件
+    const handleLogoutClearTabs = () => {
+      log.info('退出登录，开始清空所有页签')
+
+      // 调用tabStore的resetState方法清空所有页签
+      tabStore.resetState()
+
+      log.info('退出登录后页签清空完成')
     }
     
     // 用户导航
@@ -179,6 +208,12 @@ export default defineComponent({
       }
     }
     
+    // 组件卸载时清理事件监听器
+    onUnmounted(() => {
+      window.removeEventListener('auth:login-success-clear-tabs', handleLoginSuccessClearTabs);
+      window.removeEventListener('auth:logout-clear-tabs', handleLogoutClearTabs);
+    })
+
     return {
       userStore,
       tabStore,
@@ -188,7 +223,9 @@ export default defineComponent({
       navigateToProfile,
       handleLogout,
       handleTabClick,
-      handleTabMouseDown
+      handleTabMouseDown,
+      handleLoginSuccessClearTabs,
+      handleLogoutClearTabs
     }
   }
 })

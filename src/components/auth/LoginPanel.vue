@@ -288,10 +288,13 @@ export default defineComponent({
       // 清空表单(密码字段)
       loginForm.password = ''
       tempUserInfo.value = null
-      
-      // 发送登录成功事件
+
+      // 发送登录成功事件，同时发出清空页签的事件
       emit('login-success')
-      
+
+      // 发出清空页签的全局事件
+      window.dispatchEvent(new CustomEvent('auth:login-success-clear-tabs'))
+
       // 如果使用默认密码，显示安全提示并导向修改密码页面
       if (isDefaultPassword) {
         ElMessage({
@@ -301,12 +304,12 @@ export default defineComponent({
           zIndex: 9999,
           duration: 5000
         })
-        
+
         // 导航到用户资料页进行密码修改
         router.push('/profile')
         return
       }
-      
+
       // 显示登录成功消息(如果不是静默模式)
       if (!silent) {
       ElMessage({
@@ -316,7 +319,7 @@ export default defineComponent({
         zIndex: 9999
       })
       }
-      
+
       // 登录成功后导航到控制台
       router.push('/')
     }
