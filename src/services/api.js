@@ -197,16 +197,16 @@ class ApiService {
   }
   
   /**
-   * 处理认证错误 - 增强版
+   * 处理认证错误 - 增强版（保留记住的凭据）
    * @private
    */
   _handleAuthError() {
-    log.warn('处理认证错误，开始清理所有认证相关状态')
+    log.warn('处理认证错误，开始清理认证相关状态（保留记住的凭据）')
 
-    // 1. 清除所有localStorage中的认证相关数据
+    // 1. 清除localStorage中的认证相关数据（但保留记住的凭据）
     localStorage.removeItem('auth_token')
     localStorage.removeItem('currentUser')
-    localStorage.removeItem('easyssh_credentials') // 清除记住我凭据
+    // 注意：不再清除 easyssh_credentials，保留记住的密码
 
     // 2. 清除Pinia持久化存储
     try {
@@ -237,7 +237,7 @@ class ApiService {
     // 4. 触发认证失败事件，确保完全退出系统
     window.dispatchEvent(new CustomEvent('auth:complete-logout'))
 
-    log.info('认证错误处理完成，已清理所有相关状态')
+    log.info('认证错误处理完成，已清理相关状态（保留记住的凭据）')
   }
   
   /**

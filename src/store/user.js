@@ -598,9 +598,9 @@ export const useUserStore = defineStore('user', () => {
     }
   }
 
-  // 执行完整的状态清理
+  // 执行完整的状态清理（保留记住的凭据）
   async function performCompleteCleanup() {
-    log.info('开始执行完整的状态清理')
+    log.info('开始执行完整的状态清理（保留记住的凭据）')
 
     try {
       // 0. 发出清空页签的全局事件（在清理其他状态之前）
@@ -635,8 +635,8 @@ export const useUserStore = defineStore('user', () => {
         fontSize: currentFontSize
       }
 
-      // 4. 清除记住我凭据
-      clearUserCredentials()
+      // 4. 注意：不再清除记住我凭据，保留用户的登录便利性
+      // clearUserCredentials() // 已移除
 
       // 5. 清除localStorage中的其他相关数据
       try {
@@ -647,7 +647,7 @@ export const useUserStore = defineStore('user', () => {
         log.error('清除localStorage数据失败', error)
       }
 
-      log.info('完整状态清理完成')
+      log.info('完整状态清理完成（保留记住的凭据）')
     } catch (error) {
       log.error('执行完整状态清理时出现错误', error)
     }

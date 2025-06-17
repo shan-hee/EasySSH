@@ -248,16 +248,16 @@ window.addEventListener('auth:complete-logout', async () => {
     const userStore = useUserStore()
     await userStore.performCompleteCleanup()
 
-    // 2. 清理所有可能的缓存和状态
+    // 2. 清理所有可能的缓存和状态（但保留记住的凭据）
     try {
       // 清理sessionStorage
       sessionStorage.clear()
 
-      // 清理特定的localStorage项目
+      // 清理特定的localStorage项目（但保留记住的凭据）
       const keysToRemove = [
         'auth_token',
         'currentUser',
-        'easyssh_credentials',
+        // 注意：不再清除 easyssh_credentials，保留记住的密码
         'easyssh-user'
       ]
       keysToRemove.forEach(key => {
@@ -292,6 +292,9 @@ window.addEventListener('auth:remote-logout', () => {
   window._isAuthFailed = true
   // 清除token，确保不再获取登录信息
   localStorage.removeItem('auth_token')
+  // 远程注销时清理记住的凭据（这是唯一清理凭据的场景）
+  localStorage.removeItem('easyssh_credentials')
+  log.info('远程注销：已清理记住的凭据')
   // 不保留重定向路径，确保完全重新登录
   window.location.href = '/login?remote-logout=true'
 })

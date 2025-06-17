@@ -156,21 +156,21 @@ class AuthService {
   }
   
   /**
-   * 清除认证状态但不触发页面跳转 - 增强版
+   * 清除认证状态但不触发页面跳转 - 增强版（保留记住的凭据）
    * @private
    */
   clearAuthState() {
-    log.info('开始清除认证状态')
+    log.info('开始清除认证状态（保留记住的凭据）')
 
     this.isAuthenticated.value = false
     this.currentUser.value = null
     this.token = null
 
-    // 清除localStorage中的认证相关数据
+    // 清除localStorage中的认证相关数据（但保留记住的凭据）
     try {
       localStorage.removeItem(this.tokenKey)
       localStorage.removeItem('currentUser')
-      localStorage.removeItem('easyssh_credentials')
+      // 注意：不再清除 easyssh_credentials，保留记住的密码
     } catch (error) {
       log.error('清除localStorage认证数据失败', error)
     }
@@ -192,7 +192,7 @@ class AuthService {
       log.error('清除用户Store状态失败', error)
     }
 
-    log.info('认证状态清除完成')
+    log.info('认证状态清除完成（保留记住的凭据）')
   }
   
   /**
