@@ -132,11 +132,19 @@ class AuthService {
       } catch (error) {
         // 请求失败，可能是令牌无效或网络问题
         log.error('验证认证状态失败', error)
-        
-        // 清理状态并触发轻量级认证检查失败事件
-        this.clearAuthState()
-        window.dispatchEvent(new CustomEvent('auth:check-failed'))
-        
+
+        // 检查是否为401认证失败
+        if (error.response && error.response.status === 401) {
+          log.warn('检测到401认证失败，触发完全登出流程')
+          // 清理状态并触发完全登出事件
+          this.clearAuthState()
+          window.dispatchEvent(new CustomEvent('auth:complete-logout'))
+        } else {
+          // 其他错误，触发轻量级认证检查失败事件
+          this.clearAuthState()
+          window.dispatchEvent(new CustomEvent('auth:check-failed'))
+        }
+
         return false
       }
     } catch (error) {
@@ -148,16 +156,43 @@ class AuthService {
   }
   
   /**
-   * 清除认证状态但不触发页面跳转
+   * 清除认证状态但不触发页面跳转 - 增强版
    * @private
    */
   clearAuthState() {
+    log.info('开始清除认证状态')
+
     this.isAuthenticated.value = false
     this.currentUser.value = null
     this.token = null
-    // 清除localStorage中的token
-    localStorage.removeItem(this.tokenKey)
-    log.info('已清除认证状态')
+
+    // 清除localStorage中的认证相关数据
+    try {
+      localStorage.removeItem(this.tokenKey)
+      localStorage.removeItem('currentUser')
+      localStorage.removeItem('easyssh_credentials')
+    } catch (error) {
+      log.error('清除localStorage认证数据失败', error)
+    }
+
+    // 清除用户Store状态
+    try {
+      if (!this.userStore) {
+        this.userStore = useUserStore()
+      }
+      if (this.userStore) {
+        this.userStore.setToken('')
+        this.userStore.setUserInfo({
+          id: '', username: '', email: '', avatar: '', role: '',
+          lastLogin: null, mfaEnabled: false, displayName: '',
+          theme: 'system', fontSize: 14
+        })
+      }
+    } catch (error) {
+      log.error('清除用户Store状态失败', error)
+    }
+
+    log.info('认证状态清除完成')
   }
   
   /**

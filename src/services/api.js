@@ -125,53 +125,40 @@ class ApiService {
           message = data.message || '请求参数错误'
           break
         case 401:
-          message = data.message || '登录失败，用户名或密码错误'
+          message = data.message || '身份验证失败'
           // 401错误统一处理，仅在确实是认证问题时触发登录过期逻辑
           // 排除登录、注册、刷新token等不需要触发认证过期的路径
           const noAuthRequiredPaths = [
-            '/users/login', 
-            '/users/register', 
+            '/users/login',
+            '/users/register',
             '/users/refresh',
             '/users/verify-mfa'
           ]
-          const isAuthRequiredPath = error.config && 
+          const isAuthRequiredPath = error.config &&
             !noAuthRequiredPaths.some(path => error.config.url.includes(path))
+
           if (isAuthRequiredPath) {
+            log.warn('检测到401认证失败，开始处理身份验证失败流程', {
+              url: error.config.url,
+              isRemoteLogout: (data && (data.error === 'remote-logout' || data.message === 'remote-logout'))
+            })
+
             // 判断是否为远程注销情况
-            const isRemoteLogout = 
+            const isRemoteLogout =
               (data && data.error === 'remote-logout') ||
               (data && data.message === 'remote-logout')
-            
+
             if (isRemoteLogout) {
-              log.warn('检测到远程注销，清除所有本地凭据')
-              // 清除记住我凭据
-              try {
-                const userStore = require('@/store/user').useUserStore()
-                userStore.clearUserCredentials()
-              } catch (e) {
-                localStorage.removeItem('easyssh_credentials')
-              }
-              
-              // 清除token
-              localStorage.removeItem('auth_token')
-              
-              // 设置远程注销标志，确保main.js中的处理能正确识别
+              log.warn('检测到远程注销，执行完整清理流程')
+              // 设置远程注销标志
               window._isRemoteLogout = true
-              
-              // 触发立即跳转到登录页事件
+              // 触发远程注销事件
               window.dispatchEvent(new CustomEvent('auth:remote-logout'))
+            } else {
+              log.warn('检测到普通认证失败，执行标准清理流程')
+              // 普通认证失败，触发完整登出处理
+              this._handleAuthError()
             }
-            
-            // 无论哪种401都清空token和用户信息
-            try {
-              const userStore = require('@/store/user').useUserStore()
-              userStore.setToken('')
-              userStore.setUserInfo({
-                id: '', username: '', email: '', avatar: '', role: '', lastLogin: null, mfaEnabled: false, displayName: '', theme: 'system', fontSize: 14
-              })
-            } catch (e) {}
-            
-            window.dispatchEvent(new CustomEvent('auth:check-failed'))
           }
           break
         case 403:
@@ -210,18 +197,47 @@ class ApiService {
   }
   
   /**
-   * 处理认证错误
+   * 处理认证错误 - 增强版
    * @private
    */
   _handleAuthError() {
-    // 清除认证token
+    log.warn('处理认证错误，开始清理所有认证相关状态')
+
+    // 1. 清除所有localStorage中的认证相关数据
     localStorage.removeItem('auth_token')
-    
-    // 这里可以触发登录过期的全局事件
-    const event = new CustomEvent('auth:expired')
-    window.dispatchEvent(event)
-    
-    // 不再自动重定向，让auth:expired事件处理程序处理重定向
+    localStorage.removeItem('currentUser')
+    localStorage.removeItem('easyssh_credentials') // 清除记住我凭据
+
+    // 2. 清除Pinia持久化存储
+    try {
+      localStorage.removeItem('easyssh-user')
+    } catch (error) {
+      log.error('清除Pinia持久化存储失败', error)
+    }
+
+    // 3. 清除用户Store状态
+    try {
+      const { useUserStore } = require('@/store/user')
+      const userStore = useUserStore()
+      userStore.setToken('')
+      userStore.setUserInfo({
+        id: '', username: '', email: '', avatar: '', role: '',
+        lastLogin: null, mfaEnabled: false, displayName: '',
+        theme: 'system', fontSize: 14
+      })
+      // 清空连接配置信息
+      userStore.connections = []
+      userStore.favorites = []
+      userStore.history = []
+      userStore.pinnedConnections = {}
+    } catch (error) {
+      log.error('清除用户Store状态失败', error)
+    }
+
+    // 4. 触发认证失败事件，确保完全退出系统
+    window.dispatchEvent(new CustomEvent('auth:complete-logout'))
+
+    log.info('认证错误处理完成，已清理所有相关状态')
   }
   
   /**

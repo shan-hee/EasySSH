@@ -572,37 +572,78 @@ export const useUserStore = defineStore('user', () => {
     }
   }
   
-  // 登出
-  async function logout() {
+  // 登出 - 增强版，确保完全清理所有状态
+  async function logout(skipApiCall = false) {
+    log.info('开始执行登出流程', { skipApiCall })
+
     try {
-      // 如果已登录，调用后端登出API
-      if (isLoggedIn.value) {
-        await apiService.post('/users/logout')
+      // 如果已登录且不跳过API调用，调用后端登出API
+      if (isLoggedIn.value && !skipApiCall) {
+        try {
+          await apiService.post('/users/logout')
+          log.info('后端登出API调用成功')
+        } catch (apiError) {
+          log.error('登出API调用失败，继续执行本地清理', apiError)
+          // 即使API调用失败，也继续清除本地状态
+        }
       }
     } catch (error) {
-      log.error('登出API调用失败', error)
-      // 即使API调用失败，也继续清除本地状态
+      log.error('登出过程中出现错误', error)
     } finally {
-    // 清空token和用户信息
-    setToken('')
-    setUserInfo({
-      id: '',
-      username: '',
-      email: '',
-      avatar: '',
-      role: '',
-      lastLogin: null,
-      mfaEnabled: false,
-      displayName: '',
-      theme: 'system',
-      fontSize: 14
-    })
-    
-    // 清空连接配置信息
-    connections.value = []
-    favorites.value = []
-    history.value = []
-    pinnedConnections.value = {}
+      // 执行完整的本地状态清理
+      await performCompleteCleanup()
+    }
+  }
+
+  // 执行完整的状态清理
+  async function performCompleteCleanup() {
+    log.info('开始执行完整的状态清理')
+
+    try {
+      // 1. 清空token和用户信息
+      setToken('')
+      setUserInfo({
+        id: '',
+        username: '',
+        email: '',
+        avatar: '',
+        role: '',
+        lastLogin: null,
+        mfaEnabled: false,
+        displayName: '',
+        theme: 'system',
+        fontSize: 14
+      })
+
+      // 2. 清空连接配置信息
+      connections.value = []
+      favorites.value = []
+      history.value = []
+      pinnedConnections.value = {}
+
+      // 3. 清空偏好设置（保留主题和字体大小）
+      const currentTheme = preferences.value.theme || 'system'
+      const currentFontSize = preferences.value.fontSize || 14
+      preferences.value = {
+        theme: currentTheme,
+        fontSize: currentFontSize
+      }
+
+      // 4. 清除记住我凭据
+      clearUserCredentials()
+
+      // 5. 清除localStorage中的其他相关数据
+      try {
+        localStorage.removeItem('currentUser')
+        localStorage.removeItem('auth_token')
+        // 不清除Pinia持久化存储，让Pinia自动处理
+      } catch (error) {
+        log.error('清除localStorage数据失败', error)
+      }
+
+      log.info('完整状态清理完成')
+    } catch (error) {
+      log.error('执行完整状态清理时出现错误', error)
     }
   }
   
@@ -684,6 +725,7 @@ export const useUserStore = defineStore('user', () => {
     updatePreferences,
     login,
     logout,
+    performCompleteCleanup,
     updateProfile,
     verifyMfaCode,
     logoutAllDevices,

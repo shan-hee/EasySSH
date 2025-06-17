@@ -235,6 +235,56 @@ window.addEventListener('auth:check-failed', () => {
   }
 })
 
+// 处理完全登出事件，确保彻底退出系统
+window.addEventListener('auth:complete-logout', async () => {
+  if (window._isAuthFailed) return
+  window._isAuthFailed = true
+
+  log.warn('检测到完全登出事件，开始执行彻底退出流程')
+
+  try {
+    // 1. 清理用户Store状态
+    const { useUserStore } = await import('./store/user')
+    const userStore = useUserStore()
+    await userStore.performCompleteCleanup()
+
+    // 2. 清理所有可能的缓存和状态
+    try {
+      // 清理sessionStorage
+      sessionStorage.clear()
+
+      // 清理特定的localStorage项目
+      const keysToRemove = [
+        'auth_token',
+        'currentUser',
+        'easyssh_credentials',
+        'easyssh-user'
+      ]
+      keysToRemove.forEach(key => {
+        try {
+          localStorage.removeItem(key)
+        } catch (e) {
+          log.error(`清理localStorage项目失败: ${key}`, e)
+        }
+      })
+    } catch (error) {
+      log.error('清理缓存数据失败', error)
+    }
+
+    // 3. 强制刷新页面并跳转到登录页，确保完全重置应用状态
+    log.info('执行强制页面刷新，确保完全退出系统')
+    // 设置一个标志表示这是完全登出，供登录页面检测
+    sessionStorage.setItem('auth_complete_logout', 'true')
+    window.location.href = '/login'
+
+  } catch (error) {
+    log.error('执行完全登出流程时出现错误', error)
+    // 即使出错也要跳转到登录页
+    sessionStorage.setItem('auth_logout_error', 'true')
+    window.location.href = '/login'
+  }
+})
+
 // 处理远程注销事件，立即跳转到登录页
 window.addEventListener('auth:remote-logout', () => {
   log.warn('检测到远程注销，立即跳转到登录页')

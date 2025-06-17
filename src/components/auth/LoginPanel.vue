@@ -122,8 +122,15 @@ export default defineComponent({
         window._loginPanelMounted = true
       }
 
-      // 检查URL中是否包含远程注销参数，只弹一次并移除参数
+      // 检查各种登出场景并显示相应提示
+      checkLogoutScenarios()
+    })
+
+    // 检查登出场景并显示相应提示
+    const checkLogoutScenarios = () => {
+      // 检查URL中是否包含远程注销参数
       const urlParams = new URLSearchParams(window.location.search)
+
       if (urlParams.has('remote-logout')) {
         ElMessage({
           message: '您的账号已在其他设备上被注销，请重新登录',
@@ -132,15 +139,70 @@ export default defineComponent({
           offset: 80,
           zIndex: 9999
         })
-        // 弹窗后移除URL参数
-        urlParams.delete('remote-logout')
+        // 清理URL参数
+        cleanUrlParams(['remote-logout'])
+      }
+
+      // 检查sessionStorage中的完全登出标志
+      if (sessionStorage.getItem('auth_complete_logout')) {
+        ElMessage({
+          message: '登录已过期，请重新登录',
+          type: 'info',
+          duration: 4000,
+          offset: 80,
+          zIndex: 9999
+        })
+        // 清理标志
+        sessionStorage.removeItem('auth_complete_logout')
+      }
+
+      // 检查登出错误标志
+      if (sessionStorage.getItem('auth_logout_error')) {
+        ElMessage({
+          message: '登录状态异常，请重新登录',
+          type: 'warning',
+          duration: 4000,
+          offset: 80,
+          zIndex: 9999
+        })
+        // 清理标志
+        sessionStorage.removeItem('auth_logout_error')
+      }
+
+      // 检查强制登出参数（向后兼容）
+      if (urlParams.has('force-logout')) {
+        ElMessage({
+          message: '登录已过期，请重新登录',
+          type: 'info',
+          duration: 4000,
+          offset: 80,
+          zIndex: 9999
+        })
+        // 清理URL参数
+        cleanUrlParams(['force-logout'])
+      }
+    }
+
+    // 清理URL参数的通用函数
+    const cleanUrlParams = (paramsToRemove) => {
+      const urlParams = new URLSearchParams(window.location.search)
+      let hasChanges = false
+
+      paramsToRemove.forEach(param => {
+        if (urlParams.has(param)) {
+          urlParams.delete(param)
+          hasChanges = true
+        }
+      })
+
+      if (hasChanges) {
         const newUrl =
           window.location.pathname +
           (urlParams.toString() ? '?' + urlParams.toString() : '') +
           window.location.hash
         window.history.replaceState({}, '', newUrl)
       }
-    })
+    }
     
     const handleLogin = async () => {
       // 简单表单验证
