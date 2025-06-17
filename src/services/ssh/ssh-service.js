@@ -727,13 +727,13 @@ class SSHService {
 
                         // 如果这是延迟测量ping的响应，不需要再发送延迟更新
                         if (pingRequest.isLatencyMeasurement) {
-                          log.debug(`延迟测量ping响应: ${Math.round(webSocketLatency)}ms`);
+                          // log.debug(`延迟测量ping响应: ${Math.round(webSocketLatency)}ms`);
                           return; // 直接返回，不执行后续的延迟更新逻辑
                         }
 
                         // 只有当延迟值合理时才处理（0-5000ms）
                         if (webSocketLatency > 0 && webSocketLatency < 5000) {
-                          log.debug(`WebSocket延迟: ${Math.round(webSocketLatency)}ms`);
+                          // log.debug(`WebSocket延迟: ${Math.round(webSocketLatency)}ms`);
 
                           // 清理已处理的ping请求
                           keepAliveData.pingRequests.delete(pongData.requestId);
