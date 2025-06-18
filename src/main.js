@@ -205,12 +205,29 @@ app.mount('#app')
 // 导入用户状态管理，并初始化用户状态
 import { useUserStore } from './store/user'
 
-// 应用初始化时强制同步token状态，由userStore或auth服务统一校验token有效性
+// 应用初始化时强制同步token状态，并主动验证和刷新数据
 const userStore = useUserStore()
 const savedToken = localStorage.getItem('auth_token')
 if (savedToken) {
   userStore.setToken(savedToken)
-  // 不再在main.js中主动fetch('/api/users/me')
+
+  // 页面刷新后主动验证token并刷新数据
+  import('./services/auth.js').then(({ default: authService }) => {
+    authService.init().then(() => {
+      // 验证认证状态并刷新用户数据
+      authService.checkAuthStatus().then(isValid => {
+        if (isValid) {
+          log.info('页面刷新后认证验证成功，开始刷新数据')
+          // 强制刷新用户相关数据
+          refreshUserData().catch(error => {
+            log.warn('刷新用户数据失败', error)
+          })
+        }
+      }).catch(error => {
+        log.error('认证状态检查失败', error)
+      })
+    })
+  })
 } else {
   userStore.setToken('')
   userStore.setUserInfo({
@@ -218,6 +235,36 @@ if (savedToken) {
   })
   if (window.location.pathname !== '/login') {
     window.location.href = '/login'
+  }
+}
+
+// 刷新用户数据的统一方法
+async function refreshUserData() {
+  try {
+    const userStore = useUserStore()
+
+    // 1. 刷新用户基本信息
+    const authModule = await import('./services/auth.js')
+    const authService = authModule.default
+    await authService.refreshUserInfo()
+
+    // 2. 强制刷新连接数据（绕过缓存）
+    if (userStore.isLoggedIn) {
+      await userStore.loadConnectionsFromServer(true) // 传入forceRefresh参数
+    }
+
+    // 3. 刷新脚本库数据
+    try {
+      const scriptLibraryModule = await import('./services/scriptLibrary.js')
+      const scriptLibraryService = scriptLibraryModule.default
+      await scriptLibraryService.syncFromServer()
+    } catch (error) {
+      log.warn('刷新脚本库数据失败', error)
+    }
+
+    log.info('用户数据刷新完成')
+  } catch (error) {
+    log.error('刷新用户数据过程中出现错误', error)
   }
 }
 
@@ -360,4 +407,45 @@ const initializeApp = async () => {
 }
 
 // 启动初始化流程
-initializeApp() 
+initializeApp()
+
+// 页面可见性API监听 - 页面重新激活时刷新数据
+let lastVisibilityChange = Date.now()
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) {
+    const now = Date.now()
+    // 如果页面隐藏超过5分钟，则刷新数据
+    if (now - lastVisibilityChange > 5 * 60 * 1000) {
+      const userStore = useUserStore()
+      if (userStore.isLoggedIn) {
+        log.info('页面重新激活，开始刷新数据')
+        refreshUserData().catch(error => {
+          log.warn('页面激活后刷新数据失败', error)
+        })
+      }
+    }
+    lastVisibilityChange = now
+  } else {
+    lastVisibilityChange = Date.now()
+  }
+})
+
+// 窗口焦点事件监听 - 窗口重新获得焦点时检查数据
+let lastFocusTime = Date.now()
+window.addEventListener('focus', () => {
+  const now = Date.now()
+  // 如果失去焦点超过10分钟，则刷新数据
+  if (now - lastFocusTime > 10 * 60 * 1000) {
+    const userStore = useUserStore()
+    if (userStore.isLoggedIn) {
+      log.info('窗口重新获得焦点，开始刷新数据')
+      refreshUserData().catch(error => {
+        log.warn('窗口焦点后刷新数据失败', error)
+      })
+    }
+  }
+})
+
+window.addEventListener('blur', () => {
+  lastFocusTime = Date.now()
+})

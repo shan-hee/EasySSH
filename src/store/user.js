@@ -289,45 +289,75 @@ export const useUserStore = defineStore('user', () => {
   }
   
   // 从服务器加载连接数据
-  async function loadConnectionsFromServer() {
+  async function loadConnectionsFromServer(forceRefresh = false) {
     if (!isLoggedIn.value) return false
-    
+
     try {
+      // 如果不是强制刷新，检查数据是否需要更新
+      if (!forceRefresh) {
+        const lastUpdateTime = localStorage.getItem('connections_last_update')
+        if (lastUpdateTime) {
+          const timeDiff = Date.now() - parseInt(lastUpdateTime)
+          // 如果数据更新时间少于2分钟，跳过刷新
+          if (timeDiff < 2 * 60 * 1000) {
+            log.debug('连接数据较新，跳过刷新')
+            return true
+          }
+        }
+      }
+
       // 检查API是否可用
       const apiCheckResponse = await apiService.get('/connections/check')
       .catch(() => ({ success: false }));
-      
+
       // 如果API未实现或不可用，使用空数据，不影响用户体验
       if (!apiCheckResponse || !apiCheckResponse.success) {
         log.warn('连接同步API未实现或不可用，将使用本地数据')
         return false
       }
-      
+
+      const requestOptions = forceRefresh ? {
+        headers: { 'Cache-Control': 'no-cache' },
+        timestamp: Date.now() // 添加时间戳防止缓存
+      } : {}
+
       // 获取用户连接列表
-      const connectionsResponse = await apiService.get('/connections')
+      const connectionsResponse = await apiService.get('/connections', {}, requestOptions)
       if (connectionsResponse && connectionsResponse.success) {
         connections.value = connectionsResponse.connections || []
+        log.debug('连接列表已更新', { count: connections.value.length })
       }
-      
+
       // 获取用户收藏的连接
-      const favoritesResponse = await apiService.get('/connections/favorites')
+      const favoritesResponse = await apiService.get('/connections/favorites', {}, requestOptions)
       if (favoritesResponse && favoritesResponse.success) {
         favorites.value = favoritesResponse.favorites || []
+        log.debug('收藏列表已更新', { count: favorites.value.length })
       }
-      
+
       // 获取用户的历史记录
-      const historyResponse = await apiService.get('/connections/history')
+      const historyResponse = await apiService.get('/connections/history', {}, requestOptions)
       if (historyResponse && historyResponse.success) {
         history.value = historyResponse.history || []
+        log.debug('历史记录已更新', { count: history.value.length })
       }
-      
+
       // 获取用户的置顶信息
-      const pinnedResponse = await apiService.get('/connections/pinned')
+      const pinnedResponse = await apiService.get('/connections/pinned', {}, requestOptions)
       if (pinnedResponse && pinnedResponse.success) {
         pinnedConnections.value = pinnedResponse.pinned || {}
+        log.debug('置顶信息已更新')
       }
-      
-      log.info('连接数据已从服务器加载')
+
+      // 更新数据刷新时间戳
+      localStorage.setItem('connections_last_update', Date.now().toString())
+
+      log.info('连接数据已从服务器加载', {
+        forceRefresh,
+        connectionsCount: connections.value.length,
+        favoritesCount: favorites.value.length,
+        historyCount: history.value.length
+      })
       return true
     } catch (error) {
       // 不影响用户体验，只记录错误

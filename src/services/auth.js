@@ -111,7 +111,7 @@ class AuthService {
         if (response && response.success && response.user) {
           this.isAuthenticated.value = true
           this.currentUser.value = response.user
-          
+
           // 更新store中的用户信息
           if (!this.userStore) {
             this.userStore = useUserStore()
@@ -119,8 +119,13 @@ class AuthService {
           if (this.userStore) {
             this.userStore.setUserInfo(response.user)
             log.info('用户信息已更新', { username: response.user.username })
+
+            // 认证成功后，触发数据刷新（异步执行，不阻塞认证流程）
+            this.triggerDataRefresh().catch(error => {
+              log.warn('认证成功后数据刷新失败', error)
+            })
           }
-          
+
           return true
         } else {
           // 响应成功但缺少用户数据
@@ -628,6 +633,38 @@ class AuthService {
       })
   }
   
+  /**
+   * 触发数据刷新
+   * 在认证成功后自动刷新用户相关数据
+   * @private
+   */
+  async triggerDataRefresh() {
+    try {
+      if (!this.isAuthenticated.value || !this.userStore) {
+        return
+      }
+
+      log.debug('开始触发认证后数据刷新')
+
+      // 1. 刷新连接数据（强制刷新）
+      await this.userStore.loadConnectionsFromServer(true)
+
+      // 2. 刷新脚本库数据
+      try {
+        // 动态导入脚本库服务
+        const scriptLibraryModule = await import('./scriptLibrary.js')
+        const scriptLibraryService = scriptLibraryModule.default
+        await scriptLibraryService.syncFromServer()
+      } catch (error) {
+        log.warn('刷新脚本库数据失败', error)
+      }
+
+      log.info('认证后数据刷新完成')
+    } catch (error) {
+      log.error('触发数据刷新失败', error)
+    }
+  }
+
   /**
    * 刷新用户信息
    * 当token有效时，从服务器获取最新的用户信息并更新本地存储
