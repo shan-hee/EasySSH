@@ -220,10 +220,16 @@ export default {
           break
 
         case 'Tab':
-        case 'Enter':
           event.preventDefault()
           event.stopPropagation()
           selectSuggestion(selectedIndex.value)
+          handled = true
+          break
+
+        case 'Enter':
+          event.preventDefault()
+          event.stopPropagation()
+          emit('close')
           handled = true
           break
 

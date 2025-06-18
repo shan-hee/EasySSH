@@ -1747,9 +1747,9 @@ export default {
     // 键盘事件处理
     const handleGlobalKeydown = (event) => {
       if (autocompleteRef.value && autocomplete.value.visible) {
-        // 检查是否是方向键
+        // 检查是否是需要特殊处理的键
         if (event.key === 'ArrowUp' || event.key === 'ArrowDown' ||
-            event.key === 'Tab' || event.key === 'Enter' || event.key === 'Escape') {
+            event.key === 'Tab' || event.key === 'Escape') {
           // 阻止事件传播和默认行为
           event.preventDefault()
           event.stopPropagation()
@@ -1758,6 +1758,12 @@ export default {
           // 调用自动补全组件的键盘处理
           autocompleteRef.value.handleKeydown(event)
           return false
+        }
+
+        // 对于Enter键，只调用处理函数但不阻止传播，让终端正常处理
+        if (event.key === 'Enter') {
+          autocompleteRef.value.handleKeydown(event)
+          return
         }
 
         // 对于其他键，也调用处理函数但不阻止传播
