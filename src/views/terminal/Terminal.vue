@@ -2000,7 +2000,7 @@ export default {
 
 .terminal-content {
   height: calc(100% - 40px); /* 减去margin空间 */
-  width: calc(100% - 40px); /* 减去margin空间 */
+  width: calc(100% - 20px); /* 减去margin空间 */
   position: relative;
   margin: 20px 0 20px 20px; /* 使用margin替代padding */
   /* 确保容器有明确的尺寸 */
