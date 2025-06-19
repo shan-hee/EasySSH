@@ -5,13 +5,20 @@ echo "Starting EasySSH services..."
 
 # 检查权限和创建必要目录
 echo "Preparing environment..."
+
+# 确保目录存在并设置正确权限
 mkdir -p /app/server/logs /app/server/data
-touch /app/server/logs/app.log
+chown -R appuser:appuser /app/server/logs /app/server/data
+chmod 755 /app/server/logs /app/server/data
+
+# 尝试创建日志文件
+touch /app/server/logs/app.log 2>/dev/null || echo "Warning: Cannot create log file, will use stdout"
+chown appuser:appuser /app/server/logs/app.log 2>/dev/null || true
 
 # 启动后端服务
 echo "Starting backend service..."
 cd /app/server
-node index.js &
+su appuser -c "node index.js" &
 BACKEND_PID=$!
 
 # 启动 nginx

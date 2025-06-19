@@ -221,7 +221,7 @@ docker-compose logs -f
 
 ```bash
 # 前端构建
-npm run build
+npm run build 
 
 # 后端部署
 cd server

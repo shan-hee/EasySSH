@@ -18,9 +18,26 @@ docs/
 node_modules/
 server/node_modules/
 
-# Build artifacts
-dist/
+# Build artifacts (注意：dist/ 在优化构建中需要保留)
+# dist/
 build/
+.vite/
+.cache/
+.parcel-cache/
+
+# 大文件和不必要的文件
+*.log
+*.tmp
+*.temp
+.git/
+.github/
+docs/
+scripts/build-docker.sh
+scripts/dev-build.sh
+docker-bake.hcl
+.dockerignore
+Dockerfile*
+docker-compose*
 
 # Environment files
 .env
