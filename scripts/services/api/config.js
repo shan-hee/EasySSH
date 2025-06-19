@@ -47,18 +47,22 @@ export const apiConfig = {
  */
 export function getEnvironmentConfig() {
   // 检测环境
-  const isDevelopment = window.location.hostname === 'localhost' || 
+  const isDevelopment = import.meta.env.DEV ||
+                       window.location.hostname === 'localhost' ||
                        window.location.hostname === '127.0.0.1';
-  
+
   if (isDevelopment) {
     return {
-      baseUrl: 'http://localhost:3000/api',
+      baseUrl: 'http://localhost:8000/api', // 开发环境直接访问后端
       timeout: 5000
     };
   }
-  
-  // 可以添加其他环境的配置
-  return {};
+
+  // 生产环境使用相对路径，通过Nginx代理
+  return {
+    baseUrl: '/api',
+    timeout: 30000
+  };
 }
 
 /**

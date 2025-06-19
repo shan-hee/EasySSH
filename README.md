@@ -95,8 +95,10 @@
 # Docker 快速启动
 docker run -d \
   --name easyssh \
+  --restart unless-stopped \
   -p 8520:8520 \
-  -p 8000:8000 \
+  -v easyssh-data:/app/server/data \
+  -v easyssh-logs:/app/server/logs \
   shanheee/easyssh:latest
 ```
 > **访问方式**：部署完成后，直接通过服务器的 IP 地址访问 `http://<服务器IP>:8520` 即可打开 EasySSH 界面。
@@ -131,17 +133,17 @@ npm run dev
 ### 系统架构
 
 ```
-┌─────────────┐       ┌─────────────────────┐
-│   客户端     │◄─────►│  SSH WebSocket代理  │
-│ (Vue.js SPA)│       │     (Node.js)       │
-└─────────────┘       └─────────┬───────────┘
-                                │
-                     ┌──────────┴──────────┐
-                     │                     │
-               ┌─────▼─────┐       ┌───────▼─────┐       ┌──────────────┐
-               │  SQLite   │       │ node-cache  │◄──────►│ SSH 服务器   │
-               │(持久化层) │       │(缓存层)    │       │(远程主机)    │
-               └───────────┘       └─────────────┘       └──────────────┘
+┌─────────────┐    :8520    ┌─────────────┐    :8000    ┌─────────────────────┐
+│   客户端     │◄──────────►│    Nginx    │◄──────────►│  SSH WebSocket代理  │
+│ (Vue.js SPA)│             │  (反向代理)  │             │     (Node.js)       │
+└─────────────┘             └─────────────┘             └─────────┬───────────┘
+                                                                  │
+                                                       ┌──────────┴──────────┐
+                                                       │                     │
+                                                 ┌─────▼─────┐       ┌───────▼─────┐       ┌──────────────┐
+                                                 │  SQLite   │       │ node-cache  │◄──────►│ SSH 服务器   │
+                                                 │(持久化层) │       │(缓存层)    │       │(远程主机)    │
+                                                 └───────────┘       └─────────────┘       └──────────────┘
 ```
 
 ### 技术栈
@@ -202,24 +204,8 @@ docker-compose ps
 docker-compose logs -f
 ```
 
-### 🐳 生产环境部署
-
-```bash
-docker run -d \
-  --name easyssh-prod \
-  --restart unless-stopped \
-  -p 8520:8520 \
-  -p 8000:8000 \
-  -v easyssh-data:/app/server/data \
-  -v easyssh-logs:/app/server/logs \
-  shanheee/easyssh:latest
-```
 
 #### Docker部署配置
-
-**端口说明：**
-- `8520`: Nginx前端服务端口
-- `8000`: Node.js后端API端口
 
 **环境变量：**
 - `NODE_ENV`: 运行环境（development/production）
@@ -229,7 +215,7 @@ docker run -d \
 - `./easyssh_data`: SQLite数据库存储目录
 - `./easyssh_logs`: 应用日志存储目录
 
-> **💡 数据持久化说明**：使用主机目录挂载确保数据安全，容器删除重建时数据不会丢失。数据目录会自动创建在当前工作目录下。
+> **💡 数据持久化说明**：使用Docker部署时，请将数据目录挂载到主机目录，以确保数据安全，容器删除重建时数据不会丢失。数据目录会自动创建在当前工作目录下。
 
 ### 传统部署
 

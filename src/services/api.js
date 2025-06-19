@@ -9,7 +9,10 @@ class ApiService {
   constructor() {
     this.isInitialized = false
     this.axios = null
-    this.baseURL = import.meta.env.VITE_API_BASE_URL || '/api'
+    // 动态配置API基础URL：开发环境直接访问后端，生产环境通过Nginx代理
+    this.baseURL = import.meta.env.DEV
+      ? (import.meta.env.VITE_API_TARGET || 'http://localhost:8000') + '/api'
+      : (import.meta.env.VITE_API_BASE_URL || '/api')
     this.timeout = 30000 // 30秒超时
     this._lastTokenExists = null // 用于跟踪token状态变化
   }

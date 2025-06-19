@@ -14,18 +14,21 @@ export const appInfo = {
 
 // 环境配置
 export const environment = {
-  isDevelopment: true,
-  apiBaseUrl: '/api',
-  analyticsEnabled: false,
-  debugLogging: true
+  // 动态检测环境
+  isDevelopment: import.meta.env.DEV || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1',
+  // 生产环境使用相对路径（通过Nginx代理），开发环境使用绝对路径
+  apiBaseUrl: import.meta.env.DEV ? 'http://localhost:8000/api' : '/api',
+  analyticsEnabled: !import.meta.env.DEV,
+  debugLogging: import.meta.env.DEV
 };
 
 // WebSocket服务器配置
 export const wsServerConfig = {
-  // 在Docker环境中通过nginx代理访问
-  primaryHost: 'localhost',
+  // 动态配置WebSocket连接地址
+  primaryHost: window.location.hostname,
   fallbackHost: '127.0.0.1',
-  port: 8520, // 使用nginx的端口，通过代理访问后端
+  // 生产环境使用Nginx端口（8520），开发环境直接连接后端（8000）
+  port: import.meta.env.DEV ? 8000 : window.location.port || 8520,
   path: '/ssh',
   connectionTimeout: 10000, // 毫秒
   reconnectAttempts: 3,
