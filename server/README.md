@@ -386,7 +386,7 @@ WebSocket服务器处理SSH终端连接请求：
 ```
 # 基本配置
 NODE_ENV=development
-PORT=3000
+PORT=8520
 
 # 安全配置
 JWT_SECRET=your_jwt_secret_key
@@ -436,7 +436,7 @@ EasySSH提供了实时系统监控功能，可以监控远程服务器的CPU、�
 EasySSH提供了一键安装脚本，用户只需在终端中输入以下命令即可安装监控服务：
 
 ```bash
-curl -sSL http://your-server:3000/api/monitor/install-script | sudo bash
+curl -sSL http://your-server:8520/api/monitor/install-script | sudo bash
 ```
 
 安装完成后，监控服务会自动启动并在后台运行。

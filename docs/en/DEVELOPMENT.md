@@ -41,7 +41,7 @@ cp .env.example .env
 
 2. Edit the `.env` file and configure the following important parameters:
 
-- `PORT`: Server port, default is 3000
+- `PORT`: Server port, default is 8520
 - `JWT_SECRET`: JWT token secret key for user authentication
 - `ENCRYPTION_KEY`: Sensitive data encryption key
 - `SQLITE_PATH`: SQLite database path, default is './server/data/easyssh.sqlite'
@@ -155,7 +155,7 @@ server {
     server_name yourdomain.com;
 
     location / {
-        proxy_pass http://localhost:3000;
+        proxy_pass http://localhost:8520;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection 'upgrade';
@@ -169,7 +169,7 @@ server {
 
 ```bash
 docker build -t easyssh .
-docker run -p 3000:3000 -v sqlite-data:/app/server/data easyssh
+docker run -p 8520:8520 -v sqlite-data:/app/server/data easyssh
 ```
 
 ## 🚀 Usage Guide

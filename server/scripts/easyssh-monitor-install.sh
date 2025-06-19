@@ -75,7 +75,7 @@ else
     if [[ "$SERVER_PROTOCOL" == "https" ]]; then
         SERVER_PORT="443"
     else
-        SERVER_PORT="3000"  # EasySSH默认端口
+        SERVER_PORT="8520"  # EasySSH前端服务默认端口
     fi
 fi
 

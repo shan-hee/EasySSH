@@ -25,7 +25,7 @@ export const wsServerConfig = {
   // 在Docker环境中通过nginx代理访问
   primaryHost: 'localhost',
   fallbackHost: '127.0.0.1',
-  port: 3000, // 使用nginx的端口，通过代理访问后端
+  port: 8520, // 使用nginx的端口，通过代理访问后端
   path: '/ssh',
   connectionTimeout: 10000, // 毫秒
   reconnectAttempts: 3,

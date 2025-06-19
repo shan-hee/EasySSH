@@ -116,7 +116,7 @@ export default defineConfig(({ mode }) => {
     // 服务器配置
     server: {
       host: 'localhost',
-      port: parseInt(env.VITE_PORT || '3000'), // 从环境变量读取前端端口
+      port: parseInt(env.VITE_PORT || '8520'), // 从环境变量读取前端端口
       open: true, // 自动打开浏览器
       cors: true, // 启用CORS
       proxy: {

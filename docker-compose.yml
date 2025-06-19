@@ -10,7 +10,7 @@ services:
         BUILDKIT_INLINE_CACHE: 1
     image: easyssh:latest
     ports:
-      - "3000:3000"
+      - "8520:8520"
       - "8000:8000"
     environment:
       - NODE_ENV=production
@@ -24,7 +24,7 @@ services:
       - ./server/config:/app/server/config:ro
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/health", "||", "exit", "1"]
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8520/health", "||", "exit", "1"]
       interval: 30s
       timeout: 10s
       retries: 3

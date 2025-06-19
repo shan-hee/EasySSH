@@ -135,7 +135,7 @@ sudo systemctl start easyssh-monitor
 
 | 变量名 | 说明 | 是否必填 | 默认值 | 示例值 |
 |-------|------|---------|--------|-------|
-| EASYSSH_SERVER | EasySSH服务器地址（可带可不带端口） | **必填** | 无 | `example.com:3000` 或 `192.168.1.1` |
+| EASYSSH_SERVER | EasySSH服务器地址（可带可不带端口） | **必填** | 无 | `example.com:8520` 或 `192.168.1.1` |
 
 ### 配置文件说明
 
@@ -144,7 +144,7 @@ sudo systemctl start easyssh-monitor
 ```json
 {
   "serverHost": "your-easyssh-server.com",
-  "serverPort": 3000,
+  "serverPort": 8520,
   "reconnectInterval": 5000,
   "maxReconnectAttempts": -1,
   "heartbeatInterval": 30000
@@ -154,7 +154,7 @@ sudo systemctl start easyssh-monitor
 | 配置项 | 说明 | 默认值 |
 |-------|------|--------|
 | serverHost | EasySSH服务器主机地址 | 从环境变量解析 |
-| serverPort | EasySSH服务器端口 | 3000 |
+| serverPort | EasySSH服务器端口 | 8520 |
 | reconnectInterval | 重连间隔（毫秒） | 5000 |
 | maxReconnectAttempts | 最大重连次数（-1为无限） | -1 |
 | heartbeatInterval | 心跳间隔（毫秒） | 30000 |

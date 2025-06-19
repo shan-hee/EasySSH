@@ -102,7 +102,7 @@ RUN chown -R appuser:appuser /app && \
     chown -R appuser:appuser /var/log/nginx /var/cache/nginx /var/lib/nginx /run/nginx
 
 # 暴露端口
-EXPOSE 3000 8000
+EXPOSE 8520 8000
 
 # 设置环境变量和标签
 ENV NODE_ENV=production \
@@ -122,7 +122,7 @@ USER appuser
 
 # 健康检查
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
-    CMD wget --no-verbose --tries=1 --spider http://localhost:3000/health || exit 1
+    CMD wget --no-verbose --tries=1 --spider http://localhost:8520/health || exit 1
 
 # 启动命令
 CMD ["/start.sh"]
