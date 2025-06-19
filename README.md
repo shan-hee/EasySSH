@@ -17,7 +17,7 @@
     <img src="https://img.shields.io/github/package-json/v/shan-hee/EasySSH" alt="version" />
     <img src="https://img.shields.io/badge/license-Apache%202.0-blue" alt="license" />
     <img src="https://img.shields.io/badge/node-%3E%3D16.0.0-brightgreen" alt="node" />
-    <img src="https://github.com/shan-hee/EasySSH/actions/workflows/docker-publish.yml/badge.svg" alt="Docker Build" />
+    <img src="https://github.com/shan-hee/EasySSH/actions/workflows/docker-build.yml/badge.svg" alt="Docker Build" />
     <img src="https://img.shields.io/docker/pulls/shanheee/easyssh" alt="Docker Pulls" />
   </p>
 
@@ -217,15 +217,9 @@ docker-compose logs -f
 
 > **💡 数据持久化说明**：使用Docker部署时，请将数据目录挂载到主机目录，以确保数据安全，容器删除重建时数据不会丢失。数据目录会自动创建在当前工作目录下。
 
-### 传统部署
-
+**使用最新版本：**
 ```bash
-# 前端构建
-npm run build 
-
-# 后端部署
-cd server
-npm install --production
+docker pull shanheee/easyssh:latest
 pm2 start index.js --name easyssh-server
 
 # 配置Nginx反向代理
