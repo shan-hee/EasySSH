@@ -1622,15 +1622,23 @@ export default {
             
             // 显示优化后的错误消息
             ElMessage.error(`连接失败: ${errorMessage}`);
-            
+
+            // 调用页签回滚逻辑
+            if (tabStore.connectionFailed) {
+              tabStore.connectionFailed(terminalId, errorMessage)
+            }
+
             // 发送自定义事件，通知终端清理完成
-            window.dispatchEvent(new CustomEvent('ssh-cleanup-done', { 
+            window.dispatchEvent(new CustomEvent('ssh-cleanup-done', {
               detail: { connectionId: terminalId }
             }))
-            
-            // 延迟导航，确保清理完成
+
+            // 延迟导航，确保清理完成（如果页签回滚没有处理导航）
             setTimeout(() => {
-              router.push('/connections/new')
+              // 检查当前路由，如果还在终端页面则导航回连接配置
+              if (router.currentRoute.value.path.includes('/terminal/')) {
+                router.push('/connections/new')
+              }
             }, 100)
           }
         }
@@ -1838,18 +1846,29 @@ export default {
         
         // 显示优化后的错误消息
         ElMessage.error(`连接失败: ${errorMessage}`);
-        
+
         // 从终端ID列表中移除
         terminalIds.value = terminalIds.value.filter(id => id !== connectionId)
-        
+
         // 清理会话存储
         if (sessionStore.getSession(connectionId)) {
           sessionStore.setActiveSession(null)
         }
-        
-        // 导航回连接配置界面
+
+        // 调用页签回滚逻辑
+        if (tabStore.connectionFailed) {
+          tabStore.connectionFailed(connectionId, errorMessage)
+        }
+
+        // 导航回连接配置界面（如果页签回滚没有处理导航）
         if (connectionId === activeConnectionId.value) {
-          router.push('/connections/new')
+          // 延迟导航，让页签回滚逻辑先执行
+          setTimeout(() => {
+            // 检查当前路由，如果还在终端页面则导航回连接配置
+            if (router.currentRoute.value.path.includes('/terminal/')) {
+              router.push('/connections/new')
+            }
+          }, 100)
         }
       }
       

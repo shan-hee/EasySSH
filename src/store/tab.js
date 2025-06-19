@@ -624,14 +624,133 @@ export const useTabStore = defineStore('tab', () => {
       log.warn(`更新标签页失败：索引 ${index} 超出范围`)
       return false
     }
-    
+
     // 更新标签页数据
     state.tabs[index] = {
       ...state.tabs[index],  // 保留原始数据
       ...tabData             // 覆盖更新的数据
     }
-    
+
     return true
+  }
+
+  // 根据ID更新标签页标题
+  const updateTabTitleById = (tabId, newTitle) => {
+    if (!tabId || !newTitle) {
+      log.warn('更新标签页标题失败：缺少标签ID或标题')
+      return false
+    }
+
+    // 寻找匹配的标签页
+    const tabIndex = state.tabs.findIndex(tab =>
+      (tab.data && tab.data.connectionId === tabId) ||
+      tab.id === tabId ||
+      tab.path.includes(tabId)
+    )
+
+    if (tabIndex !== -1) {
+      state.tabs[tabIndex].title = newTitle
+      log.info(`更新标签页标题: ${tabId} -> ${newTitle}`)
+      return true
+    }
+
+    log.warn(`未找到ID为 ${tabId} 的标签页`)
+    return false
+  }
+
+  // 连接成功处理
+  const connectionSuccess = (tabId, connectionInfo) => {
+    if (!tabId) return false
+
+    const tabIndex = state.tabs.findIndex(tab =>
+      (tab.data && tab.data.connectionId === tabId) ||
+      tab.id === tabId
+    )
+
+    if (tabIndex !== -1) {
+      // 更新标签页标题和状态
+      if (connectionInfo && connectionInfo.title) {
+        state.tabs[tabIndex].title = connectionInfo.title
+      }
+
+      // 更新标签页状态为已连接
+      if (state.tabs[tabIndex].data) {
+        state.tabs[tabIndex].data.connectionState = 'connected'
+      }
+
+      log.info(`连接成功，更新标签页: ${tabId}`)
+      return true
+    }
+
+    return false
+  }
+
+  // 连接失败处理
+  const connectionFailed = (tabId, error) => {
+    if (!tabId) return false
+
+    const tabIndex = state.tabs.findIndex(tab =>
+      (tab.data && tab.data.connectionId === tabId) ||
+      tab.id === tabId
+    )
+
+    if (tabIndex !== -1) {
+      const tab = state.tabs[tabIndex]
+
+      // 如果是终端标签，回滚到连接配置页面
+      if (tab.type === 'terminal') {
+        log.info(`连接失败，回滚标签页: ${tabId}`)
+
+        // 更新标签页为连接配置类型
+        state.tabs[tabIndex] = {
+          ...tab,
+          title: '连接配置',
+          type: 'newConnection',
+          path: '/connections/new',
+          data: {
+            ...tab.data,
+            connectionState: 'failed',
+            error: error
+          }
+        }
+
+        // 导航回连接配置页面
+        router.push('/connections/new')
+        return true
+      }
+    }
+
+    log.warn(`未找到ID为 ${tabId} 的标签页进行失败处理`)
+    return false
+  }
+
+  // 根据连接ID查找标签页
+  const findTabByConnectionId = (connectionId) => {
+    return state.tabs.find(tab =>
+      tab.data && tab.data.connectionId === connectionId
+    )
+  }
+
+  // 清理连接相关的标签页状态
+  const cleanupConnectionTab = (connectionId) => {
+    const tabIndex = state.tabs.findIndex(tab =>
+      tab.data && tab.data.connectionId === connectionId
+    )
+
+    if (tabIndex !== -1) {
+      const tab = state.tabs[tabIndex]
+
+      // 清理连接状态
+      if (tab.data) {
+        delete tab.data.connectionState
+        delete tab.data.error
+      }
+
+      log.info(`清理连接标签页状态: ${connectionId}`)
+      return true
+    }
+
+    return false
   }
 
   return {
@@ -646,7 +765,12 @@ export const useTabStore = defineStore('tab', () => {
     resetState,
     updateTabTitle,
     setActiveTabTitle,
-    updateTab
+    updateTab,
+    updateTabTitleById,
+    connectionSuccess,
+    connectionFailed,
+    findTabByConnectionId,
+    cleanupConnectionTab
   }
 }, {
   // 临时禁用自动持久化，改用手动控制
