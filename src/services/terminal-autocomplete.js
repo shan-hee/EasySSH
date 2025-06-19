@@ -255,10 +255,22 @@ class TerminalAutocompleteService {
    * @param {Object} terminal - 终端实例
    */
   handleEnter(terminal) {
-    // Enter键不再触发自动补全选择，只清理状态
-    // 清空输入缓冲区并隐藏建议框
-    this.inputBuffer = ''
-    this.hideSuggestions()
+    // 检查是否有选中的建议
+    if (this.isActive && this.selectedIndex >= 0 && this.selectedIndex < this.suggestions.length) {
+      // 有选中项时，应用补全
+      const selectedSuggestion = this.getSelectedSuggestion()
+      if (selectedSuggestion) {
+        this.selectSuggestion(selectedSuggestion, terminal)
+        return true // 阻止默认回车处理
+      }
+    }
+
+    // 无选中项时，只清空状态，不阻止默认回车行为
+    if (this.isActive) {
+      // 如果补全框是激活的，清空输入缓冲区并隐藏建议框
+      this.inputBuffer = ''
+      this.hideSuggestions()
+    }
 
     // 返回false，让终端正常处理回车键
     return false
@@ -470,7 +482,7 @@ class TerminalAutocompleteService {
 
       // 更新建议列表
       this.suggestions = suggestions
-      this.selectedIndex = -1  // 重置选中索引
+      this.selectedIndex = -1  // 默认不选中任何项
       this.isActive = true
 
       // 计算显示位置并缓存

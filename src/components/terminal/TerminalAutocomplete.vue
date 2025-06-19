@@ -66,7 +66,7 @@ export default {
   },
   emits: ['select', 'close'],
   setup(props, { emit }) {
-    const selectedIndex = ref(0)
+    const selectedIndex = ref(-1)  // 初始化为-1，表示默认不选中
     const listRef = ref(null)
     const isKeyboardNavigation = ref(false)
 
@@ -110,7 +110,7 @@ export default {
 
     // 监听建议变化，重置选中索引和导航状态
     watch(() => props.suggestions, () => {
-      selectedIndex.value = 0
+      selectedIndex.value = -1  // 默认不选中任何项
       isKeyboardNavigation.value = false
     })
 
@@ -203,9 +203,15 @@ export default {
           event.preventDefault()
           event.stopPropagation()
           isKeyboardNavigation.value = true
-          selectedIndex.value = selectedIndex.value > 0
-            ? selectedIndex.value - 1
-            : props.suggestions.length - 1
+          if (selectedIndex.value === -1) {
+            // 如果当前没有选中项，选中最后一项
+            selectedIndex.value = props.suggestions.length - 1
+          } else if (selectedIndex.value > 0) {
+            selectedIndex.value = selectedIndex.value - 1
+          } else {
+            // 循环到最后一项
+            selectedIndex.value = props.suggestions.length - 1
+          }
           handled = true
           break
 
@@ -213,9 +219,15 @@ export default {
           event.preventDefault()
           event.stopPropagation()
           isKeyboardNavigation.value = true
-          selectedIndex.value = selectedIndex.value < props.suggestions.length - 1
-            ? selectedIndex.value + 1
-            : 0
+          if (selectedIndex.value === -1) {
+            // 如果当前没有选中项，选中第一项
+            selectedIndex.value = 0
+          } else if (selectedIndex.value < props.suggestions.length - 1) {
+            selectedIndex.value = selectedIndex.value + 1
+          } else {
+            // 循环到第一项
+            selectedIndex.value = 0
+          }
           handled = true
           break
 
@@ -227,10 +239,17 @@ export default {
           break
 
         case 'Enter':
-          event.preventDefault()
-          event.stopPropagation()
-          emit('close')
-          handled = true
+          if (selectedIndex.value >= 0 && selectedIndex.value < props.suggestions.length) {
+            // 有选中项时，阻止默认行为并应用补全
+            event.preventDefault()
+            event.stopPropagation()
+            selectSuggestion(selectedIndex.value)
+            handled = true
+          } else {
+            // 无选中项时，关闭补全框但不阻止默认行为，让终端正常处理回车
+            emit('close')
+            handled = false  // 不阻止默认行为
+          }
           break
 
         case 'Escape':

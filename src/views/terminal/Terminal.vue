@@ -1760,9 +1760,17 @@ export default {
           return false
         }
 
-        // 对于Enter键，只调用处理函数但不阻止传播，让终端正常处理
+        // 对于Enter键，调用处理函数，根据返回值决定是否阻止传播
         if (event.key === 'Enter') {
-          autocompleteRef.value.handleKeydown(event)
+          const handled = autocompleteRef.value.handleKeydown(event)
+          if (handled) {
+            // 如果自动补全处理了回车键（有选中项），阻止事件传播
+            event.preventDefault()
+            event.stopPropagation()
+            event.stopImmediatePropagation()
+            return false
+          }
+          // 如果没有选中项，让终端正常处理回车键
           return
         }
 
