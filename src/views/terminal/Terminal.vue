@@ -2003,6 +2003,9 @@ export default {
   width: calc(100% - 40px); /* 减去margin空间 */
   position: relative;
   margin: 20px 0 20px 20px; /* 使用margin替代padding */
+  /* 确保容器有明确的尺寸 */
+  box-sizing: border-box;
+  overflow: hidden;
 }
 .connecting-overlay {
   position: absolute;
@@ -2025,9 +2028,10 @@ export default {
 
 /* 添加全局样式修复，确保xterm.js正常工作 */
 :deep(.xterm) {
-  height: 100%;
-  width: calc(100% + 20px);
+  height: 100% !important;
+  width: 100% !important; /* 修改为100%，不要超出容器 */
   position: relative; /* 添加相对定位 */
+  box-sizing: border-box;
 }
 
 :deep(.xterm-viewport) {

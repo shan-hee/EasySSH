@@ -3,9 +3,12 @@ import { FitAddon } from '@xterm/addon-fit';
 import { WebLinksAddon } from '@xterm/addon-web-links';
 import { ClipboardAddon } from '@xterm/addon-clipboard';
 import log from '../log';
-import settingsService from '../settings';
 import { WS_CONSTANTS } from '../constants';
 import terminalAutocompleteService from '../terminal-autocomplete';
+
+// 常量定义
+const RESIZE_DEBOUNCE_DELAY = 100; // 大小调整防抖延迟(ms)
+const ERROR_FEEDBACK_DURATION = 3000; // 错误提示显示时间(ms)
 
 /**
  * 终端管理器
@@ -15,6 +18,8 @@ class TerminalManager {
   constructor(sshService) {
     this.sshService = sshService;
     this.terminals = new Map(); // 存储终端实例
+    this.resizeTimeouts = new Map(); // 存储大小调整防抖定时器
+    this.resizeObservers = new Map(); // 存储大小监听器
     log.debug('终端管理器初始化完成');
   }
   
@@ -68,12 +73,17 @@ class TerminalManager {
     
     // 渲染终端
     terminal.open(container);
-    fitAddon.fit();
+
+    // 等待字体加载完成后初始化终端大小
+    this._initializeTerminalSize(terminal, fitAddon, sessionId);
     
     // 尝试聚焦终端
     try {
       log.info(`尝试聚焦新创建的终端: ${sessionId}`);
       terminal.focus();
+
+      // 聚焦后的调整主要由 ResizeObserver 处理，这里不需要额外调整
+      log.debug(`终端聚焦完成: ${sessionId}`);
     } catch (e) {
       log.warn(`聚焦终端失败: ${e.message}`);
     }
@@ -132,26 +142,7 @@ class TerminalManager {
 
         // 显示错误反馈
         if (terminal.element) {
-          const errorFeedback = document.createElement('div');
-          errorFeedback.textContent = '粘贴失败: ' + (error.message || '无法访问剪贴板');
-          errorFeedback.style.position = 'absolute';
-          errorFeedback.style.right = '10px';
-          errorFeedback.style.top = '10px';
-          errorFeedback.style.backgroundColor = 'rgba(220, 53, 69, 0.8)';
-          errorFeedback.style.color = '#fff';
-          errorFeedback.style.padding = '5px 10px';
-          errorFeedback.style.borderRadius = '3px';
-          errorFeedback.style.fontSize = '12px';
-          errorFeedback.style.zIndex = '9999';
-
-          terminal.element.appendChild(errorFeedback);
-
-          // 3秒后移除错误提示
-          setTimeout(() => {
-            if (errorFeedback.parentNode) {
-              errorFeedback.parentNode.removeChild(errorFeedback);
-            }
-          }, 3000);
+          this._showErrorFeedback(terminal.element, '粘贴失败: ' + (error.message || '无法访问剪贴板'));
         }
       }
     };
@@ -167,16 +158,8 @@ class TerminalManager {
     };
     container.addEventListener('terminal-paste', handleTerminalPaste);
     
-    // 自动调整终端大小
-    const resizeObserver = new ResizeObserver(() => {
-      try {
-        fitAddon.fit();
-      } catch (e) {
-        log.error('调整终端大小失败', e);
-      }
-    });
-    
-    resizeObserver.observe(container);
+    // 设置容器大小监听
+    this._setupResizeObserver(terminal, fitAddon, sessionId, container);
     
     // 将终端与会话绑定
     session.terminal = terminal;
@@ -186,22 +169,148 @@ class TerminalManager {
     if (session.buffer) {
       terminal.write(session.buffer);
       session.buffer = '';
+      log.debug(`缓冲数据已写入终端: ${sessionId}`);
     }
     
     // 添加销毁处理
     const destroy = () => {
       container.removeEventListener('contextmenu', handleContextMenu);
       container.removeEventListener('terminal-paste', handleTerminalPaste);
-      resizeObserver.disconnect();
+
+      // 清理大小监听
+      if (this.resizeObservers.has(sessionId)) {
+        this.resizeObservers.get(sessionId).disconnect();
+        this.resizeObservers.delete(sessionId);
+      }
+      if (this.resizeTimeouts.has(sessionId)) {
+        clearTimeout(this.resizeTimeouts.get(sessionId));
+        this.resizeTimeouts.delete(sessionId);
+      }
+
       terminal.dispose();
       this.terminals.delete(sessionId);
     };
     
     session.destroy = destroy;
-    
+
+
+
     return terminal;
   }
-  
+
+  /**
+   * 初始化终端大小 - 等待字体加载完成
+   * @param {Terminal} terminal - xterm.js终端实例
+   * @param {FitAddon} fitAddon - 大小适配插件
+   * @param {string} sessionId - 会话ID
+   */
+  async _initializeTerminalSize(terminal, fitAddon, sessionId) {
+    try {
+      // 等待字体加载完成
+      if (document.fonts && document.fonts.ready) {
+        await document.fonts.ready;
+        log.debug(`字体加载完成: ${sessionId}`);
+      }
+
+      // 初始化终端大小
+      fitAddon.fit();
+      log.debug(`终端初始化完成: ${sessionId}, 大小: ${terminal.cols}x${terminal.rows}`);
+    } catch (e) {
+      log.error('初始化终端大小失败', e);
+      // 备用方案
+      try {
+        fitAddon.fit();
+      } catch (e2) {
+        log.error('备用终端大小调整也失败', e2);
+      }
+    }
+  }
+
+  /**
+   * 设置容器大小监听
+   * @param {Terminal} terminal - xterm.js终端实例
+   * @param {FitAddon} fitAddon - 大小适配插件
+   * @param {string} sessionId - 会话ID
+   * @param {HTMLElement} container - 容器元素
+   */
+  _setupResizeObserver(terminal, fitAddon, sessionId, container) {
+    const resizeObserver = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        if (entry.target === container) {
+          // 防抖处理
+          clearTimeout(this.resizeTimeouts.get(sessionId));
+          this.resizeTimeouts.set(sessionId, setTimeout(() => {
+            this._handleTerminalResize(terminal, fitAddon, sessionId);
+          }, RESIZE_DEBOUNCE_DELAY));
+        }
+      }
+    });
+
+    resizeObserver.observe(container);
+    this.resizeObservers.set(sessionId, resizeObserver);
+  }
+
+  /**
+   * 处理终端大小调整
+   * @param {Terminal} terminal - xterm.js终端实例
+   * @param {FitAddon} fitAddon - 大小适配插件
+   * @param {string} sessionId - 会话ID
+   */
+  _handleTerminalResize(terminal, fitAddon, sessionId) {
+    try {
+      const beforeCols = terminal.cols;
+      const beforeRows = terminal.rows;
+
+      // 调整终端大小
+      fitAddon.fit();
+
+      // 刷新显示并滚动到底部
+      terminal.refresh(0, terminal.rows - 1);
+      terminal.scrollToBottom();
+
+      const afterCols = terminal.cols;
+      const afterRows = terminal.rows;
+
+      if (beforeCols !== afterCols || beforeRows !== afterRows) {
+        log.info(`终端大小调整: ${sessionId}, ${beforeCols}x${beforeRows} -> ${afterCols}x${afterRows}`);
+      }
+    } catch (e) {
+      log.error('调整终端大小失败', e);
+    }
+  }
+
+  /**
+   * 显示错误反馈
+   * @param {HTMLElement} container - 容器元素
+   * @param {string} message - 错误消息
+   */
+  _showErrorFeedback(container, message) {
+    const errorFeedback = document.createElement('div');
+    errorFeedback.textContent = message;
+
+    // 设置样式
+    Object.assign(errorFeedback.style, {
+      position: 'absolute',
+      right: '10px',
+      top: '10px',
+      backgroundColor: 'rgba(220, 53, 69, 0.8)',
+      color: '#fff',
+      padding: '5px 10px',
+      borderRadius: '3px',
+      fontSize: '12px',
+      zIndex: '9999'
+    });
+
+    container.appendChild(errorFeedback);
+
+    // 自动移除
+    setTimeout(() => {
+      if (errorFeedback.parentNode) {
+        errorFeedback.parentNode.removeChild(errorFeedback);
+      }
+    }, ERROR_FEEDBACK_DURATION);
+  }
+
   /**
    * 销毁终端
    * @param {string} sessionId - 会话ID
