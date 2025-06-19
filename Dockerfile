@@ -76,8 +76,10 @@ RUN apt-get update && apt-get install -y \
     libsqlite3-0 \
     nginx \
     wget \
+    iputils-ping \
     && rm -rf /var/lib/apt/lists/* \
-    && apt-get clean
+    && apt-get clean \
+    && chmod u+s /bin/ping
 
 # 创建非root用户
 RUN groupadd -r appuser && useradd -r -g appuser appuser

@@ -7,6 +7,7 @@ const ssh2 = require('ssh2');
 const WebSocket = require('ws');
 const crypto = require('crypto');
 const os = require('os');
+const net = require('net');
 const { exec } = require('child_process');
 const logger = require('../utils/logger');
 
@@ -94,6 +95,142 @@ function createSSHConnection(config) {
 
 
 
+
+
+/**
+ * 智能选择延迟测量方法
+ * @param {string} host 目标主机IP
+ * @param {number} port 目标端口
+ * @returns {Promise<{method: string, latency: number}>}
+ */
+async function smartLatencyMeasurement(host, port = 22) {
+  // 优先级策略：
+  // 1. 尝试系统ping（如果可用且有权限）
+  // 2. 降级到TCP连接测试
+  // 3. 记录使用的方法以便监控和优化
+
+  try {
+    // 首先检查ping命令是否可用
+    const pingAvailable = await checkPingAvailability();
+
+    if (pingAvailable) {
+      logger.debug('使用系统ping测量延迟', { host, method: 'icmp_ping' });
+      return await measureWithSystemPing(host);
+    } else {
+      logger.debug('ping不可用，使用TCP连接测量延迟', { host, port, method: 'tcp_connect' });
+      return await measureWithTCP(host, port);
+    }
+  } catch (error) {
+    logger.warn('延迟测量失败，使用TCP备选方案', { host, port, error: error.message });
+    return await measureWithTCP(host, port);
+  }
+}
+
+/**
+ * 检查ping命令可用性
+ * @returns {Promise<boolean>}
+ */
+function checkPingAvailability() {
+  return new Promise((resolve) => {
+    const isWindows = os.platform() === 'win32';
+    const testCmd = isWindows ? 'ping -n 1 127.0.0.1' : 'ping -c 1 127.0.0.1';
+
+    exec(testCmd, { timeout: 2000 }, (error) => {
+      resolve(!error);
+    });
+  });
+}
+
+/**
+ * 使用系统ping测量延迟
+ * @param {string} host 目标主机IP
+ * @returns {Promise<{method: string, latency: number}>}
+ */
+function measureWithSystemPing(host) {
+  return new Promise((resolve) => {
+    const isWindows = os.platform() === 'win32';
+    const pingCmd = isWindows ? `ping -n 1 ${host}` : `ping -c 1 ${host}`;
+
+    exec(pingCmd, { timeout: 5000 }, (error, stdout, stderr) => {
+      if (error) {
+        logger.debug('系统ping失败', { host, error: error.message });
+        resolve({ method: 'ping_failed', latency: 0 });
+        return;
+      }
+
+      // 解析ping输出
+      const latency = parsePingOutput(stdout);
+      resolve({ method: 'icmp_ping', latency });
+    });
+  });
+}
+
+/**
+ * 使用TCP连接测量延迟
+ * @param {string} host 目标主机IP
+ * @param {number} port 目标端口
+ * @returns {Promise<{method: string, latency: number}>}
+ */
+function measureWithTCP(host, port = 22) {
+  return new Promise((resolve) => {
+    const startTime = Date.now();
+    const socket = new net.Socket();
+
+    socket.setTimeout(3000);
+
+    socket.on('connect', () => {
+      const latency = Date.now() - startTime;
+      socket.destroy();
+      resolve({ method: 'tcp_connect', latency });
+    });
+
+    socket.on('timeout', () => {
+      socket.destroy();
+      resolve({ method: 'tcp_timeout', latency: 0 });
+    });
+
+    socket.on('error', () => {
+      socket.destroy();
+      resolve({ method: 'tcp_error', latency: 0 });
+    });
+
+    try {
+      socket.connect(port, host);
+    } catch (error) {
+      resolve({ method: 'tcp_connect_error', latency: 0 });
+    }
+  });
+}
+
+/**
+ * 解析ping命令输出
+ * @param {string} stdout ping命令输出
+ * @returns {number} 延迟时间（毫秒）
+ */
+function parsePingOutput(stdout) {
+  const patterns = [
+    // Windows中文格式: 平均 = 159ms
+    /平均\s*=\s*(\d+)ms/,
+    // Windows英文格式: Average = 159ms
+    /Average\s*=\s*(\d+)ms/,
+    // Linux/macOS格式: min/avg/max/mdev = 20.455/20.455/20.455/0.000 ms
+    /min\/avg\/max\/mdev\s*=\s*[\d.]+\/([\d.]+)\/[\d.]+\/[\d.]+\s+ms/,
+    // Linux/macOS另一种格式: time=20.455 ms
+    /time=([\d.]+)\s+ms/,
+    // 通用格式
+    /([\d.]+)\s*(?:ms|毫秒)/i
+  ];
+
+  for (const pattern of patterns) {
+    const match = stdout.match(pattern);
+    if (match && match[1]) {
+      return Math.round(parseFloat(match[1]));
+    }
+  }
+
+  return 0;
+}
+
 /**
  * 在保活机制中内联测量服务器延迟
  * @param {string} host 目标主机IP
@@ -101,66 +238,43 @@ function createSSHConnection(config) {
  * @param {string} sessionId 会话ID
  * @param {number} webSocketLatency WebSocket延迟（前端到EasySSH）
  */
-function measureServerLatencyInline(host, ws, sessionId, webSocketLatency) {
+async function measureServerLatencyInline(host, ws, sessionId, webSocketLatency) {
   try {
-    // 根据操作系统使用不同的ping命令参数
-    const isWindows = os.platform() === 'win32';
-    const pingCmd = isWindows ? `ping -n 1 ${host}` : `ping -c 1 ${host}`;
+    logger.debug('开始智能延迟测量', { host, sessionId });
 
-    // 测量到目标服务器的延迟
-    exec(pingCmd, (error, stdout) => {
-      let serverLatency = 0;
+    // 使用智能延迟测量
+    const result = await smartLatencyMeasurement(host, 22);
+    const serverLatency = result.latency;
+    const method = result.method;
 
-      if (!error) {
-        // 尝试多种匹配模式，适应不同的操作系统和语言设置
-        const patterns = [
-          // Windows中文格式: 平均 = 159ms
-          /平均\s*=\s*(\d+)ms/,
-          // Windows英文格式: Average = 159ms
-          /Average\s*=\s*(\d+)ms/,
-          // Linux/macOS格式: min/avg/max/mdev = 20.455/20.455/20.455/0.000 ms
-          /min\/avg\/max\/mdev\s*=\s*[\d.]+\/([\d.]+)\/[\d.]+\/[\d.]+\s+ms/,
-          // Linux/macOS另一种格式: time=20.455 ms
-          /time=([\d.]+)\s+ms/,
-          // 时间 = XX 毫秒格式
-          /时间[=＝为]\s*([\d.]+)\s*(?:毫秒|ms)/i,
-          // 任何带有ms或毫秒的数字
-          /([\d.]+)\s*(?:ms|毫秒)/i,
-          // 仅查找任何数字+ms组合
-          /([\d.]+)\s*ms/i
-        ];
-
-        for (const pattern of patterns) {
-          const match = stdout.match(pattern);
-          if (match && match[1]) {
-            serverLatency = parseFloat(match[1]);
-            break;
-          }
-        }
-
-        // 如果所有模式都没匹配到，尝试更宽松的匹配
-        if (serverLatency === 0) {
-          // 寻找任何看起来像延迟时间的数字
-          const timeMatch = stdout.match(/(\d+\.?\d*)\s*(?:ms|毫秒)/);
-          if (timeMatch && timeMatch[1]) {
-            serverLatency = parseFloat(timeMatch[1]);
-          }
-        }
-      }
-
-      // 保存ping延迟到会话中
-      if (sessions.has(sessionId)) {
-        const session = sessions.get(sessionId);
-        session.lastPingLatency = serverLatency;
-        session.lastPingLatencyTime = new Date();
-      }
-
-      // 发送合并的延迟数据
-      sendCombinedLatencyResult(ws, sessionId, webSocketLatency, serverLatency);
+    logger.debug('延迟测量完成', {
+      host,
+      sessionId,
+      serverLatency,
+      method,
+      webSocketLatency,
+      totalLatency: (webSocketLatency || 0) + serverLatency
     });
+
+    // 保存延迟数据到会话中
+    if (sessions.has(sessionId)) {
+      const session = sessions.get(sessionId);
+      session.lastPingLatency = serverLatency;
+      session.lastPingLatencyTime = new Date();
+      session.lastPingMethod = method;
+      session.lastPingError = serverLatency === 0 ? `测量失败: ${method}` : null;
+    }
+
+    // 发送合并的延迟数据
+    sendCombinedLatencyResult(ws, sessionId, webSocketLatency, serverLatency);
   } catch (error) {
-    logger.error('内联测量网络延迟出错', { error: error.message });
-    // 如果ping失败，仍然发送WebSocket延迟数据
+    logger.error('智能延迟测量出错', {
+      error: error.message,
+      stack: error.stack,
+      host,
+      sessionId
+    });
+    // 如果测量失败，仍然发送WebSocket延迟数据
     sendCombinedLatencyResult(ws, sessionId, webSocketLatency, 0);
   }
 }
