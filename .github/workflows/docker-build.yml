@@ -13,6 +13,11 @@ on:
         description: '自定义版本标签 (可选，如: v1.2.3)'
         required: false
         type: string
+      update_latest:
+        description: '是否更新 latest 标签'
+        required: false
+        default: false
+        type: boolean
       platforms:
         description: '构建平台'
         required: false
@@ -72,7 +77,7 @@ jobs:
           type=ref,event=branch
           type=semver,pattern={{version}}
           type=semver,pattern={{major}}.{{minor}}
-          type=raw,value=latest,enable={{is_default_branch}}
+          type=raw,value=latest,enable=${{ (is_default_branch && github.event_name != 'workflow_dispatch') || (github.event_name == 'workflow_dispatch' && github.event.inputs.update_latest == 'true') }}
           type=raw,value=${{ steps.version.outputs.version }}
 
     - name: Build frontend
@@ -105,7 +110,11 @@ jobs:
         if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
           echo "👤 Manual trigger by: ${{ github.actor }}"
           echo "🏗️ Platforms: ${{ github.event.inputs.platforms || 'linux/amd64,linux/arm64' }}"
+          echo "🏷️ Update latest: ${{ github.event.inputs.update_latest || 'false' }}"
         fi
         echo "�📦 Version: ${{ steps.version.outputs.version }}"
         echo "🏷️ Tags: ${{ steps.meta.outputs.tags }}"
-        echo "🔗 Image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest"
+        if [[ "${{ steps.meta.outputs.tags }}" == *"latest"* ]]; then
+          echo "🔗 Latest Image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest"
+        fi
+        echo "🔗 Version Image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.version }}"
