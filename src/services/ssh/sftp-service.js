@@ -452,7 +452,7 @@ class SFTPService {
       return new Promise((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = (e) => resolve(e.target.result);
-        reader.onerror = (e) => reject(new Error('读取文件内容失败'));
+        reader.onerror = () => reject(new Error('读取文件内容失败'));
         reader.readAsText(fileBlob);
       });
     } catch (error) {
@@ -470,24 +470,360 @@ class SFTPService {
    */
   async saveFileContent(sessionId, remotePath, content) {
     await this._ensureSftpSession(sessionId);
-    
+
     try {
       // 创建一个临时Blob对象
       const blob = new Blob([content], { type: 'text/plain' });
-      
+
       // 创建临时File对象
       const file = new File([blob], remotePath.split('/').pop(), { type: 'text/plain' });
-      
+
       // 使用uploadFile方法上传文件
       await this.uploadFile(sessionId, file, remotePath, () => {});
-      
+
       return true;
     } catch (error) {
       log.error(`保存文件内容失败 ${remotePath}:`, error);
       throw new Error(`保存文件内容失败: ${error.message || '未知错误'}`);
     }
   }
-  
+
+  /**
+   * 创建目录
+   * @param {string} sessionId - SFTP会话ID
+   * @param {string} remotePath - 远程目录路径
+   * @returns {Promise<Object>} - 创建结果
+   */
+  async createDirectory(sessionId, remotePath) {
+    await this._ensureSftpSession(sessionId);
+
+    return new Promise((resolve, reject) => {
+      const operationId = this._nextOperationId();
+
+      try {
+        // 获取SSH会话
+        const { sshSessionId, session } = this._getSSHSession(sessionId);
+
+        // 设置操作超时
+        const timeout = setTimeout(() => {
+          this.fileOperations.delete(operationId);
+          reject(new Error('创建目录超时'));
+        }, 30000);
+
+        // 保存操作回调
+        this.fileOperations.set(operationId, {
+          resolve: (data) => {
+            clearTimeout(timeout);
+            resolve(data);
+          },
+          reject: (error) => {
+            clearTimeout(timeout);
+            reject(error);
+          },
+          type: 'mkdir'
+        });
+
+        // 发送创建目录请求
+        if (session.socket && session.socket.readyState === WS_CONSTANTS.OPEN) {
+          session.socket.send(JSON.stringify({
+            type: 'sftp_mkdir',
+            data: {
+              sessionId: sshSessionId,
+              path: remotePath,
+              operationId
+            }
+          }));
+        } else {
+          clearTimeout(timeout);
+          this.fileOperations.delete(operationId);
+          reject(new Error('WebSocket连接未就绪'));
+        }
+      } catch (error) {
+        this.fileOperations.delete(operationId);
+        reject(error);
+      }
+    });
+  }
+
+  /**
+   * 删除文件
+   * @param {string} sessionId - SFTP会话ID
+   * @param {string} remotePath - 远程文件路径
+   * @returns {Promise<Object>} - 删除结果
+   */
+  async deleteFile(sessionId, remotePath) {
+    await this._ensureSftpSession(sessionId);
+
+    return new Promise((resolve, reject) => {
+      const operationId = this._nextOperationId();
+
+      try {
+        // 获取SSH会话
+        const { sshSessionId, session } = this._getSSHSession(sessionId);
+
+        // 设置操作超时
+        const timeout = setTimeout(() => {
+          this.fileOperations.delete(operationId);
+          reject(new Error('删除文件超时'));
+        }, 30000);
+
+        // 保存操作回调
+        this.fileOperations.set(operationId, {
+          resolve: (data) => {
+            clearTimeout(timeout);
+            resolve(data);
+          },
+          reject: (error) => {
+            clearTimeout(timeout);
+            reject(error);
+          },
+          type: 'delete'
+        });
+
+        // 发送删除文件请求
+        if (session.socket && session.socket.readyState === WS_CONSTANTS.OPEN) {
+          session.socket.send(JSON.stringify({
+            type: 'sftp_delete',
+            data: {
+              sessionId: sshSessionId,
+              path: remotePath,
+              isDirectory: false,
+              operationId
+            }
+          }));
+        } else {
+          clearTimeout(timeout);
+          this.fileOperations.delete(operationId);
+          reject(new Error('WebSocket连接未就绪'));
+        }
+      } catch (error) {
+        this.fileOperations.delete(operationId);
+        reject(error);
+      }
+    });
+  }
+
+  /**
+   * 通用删除方法（支持文件和目录）
+   * @param {string} sessionId - SFTP会话ID
+   * @param {string} remotePath - 远程路径
+   * @param {boolean} isDirectory - 是否为目录
+   * @returns {Promise<Object>} - 删除结果
+   */
+  async delete(sessionId, remotePath, isDirectory = false) {
+    await this._ensureSftpSession(sessionId);
+
+    return new Promise((resolve, reject) => {
+      const operationId = this._nextOperationId();
+
+      try {
+        // 获取SSH会话
+        const { sshSessionId, session } = this._getSSHSession(sessionId);
+
+        // 设置操作超时
+        const timeout = setTimeout(() => {
+          this.fileOperations.delete(operationId);
+          reject(new Error('删除操作超时'));
+        }, 60000); // 目录删除可能需要更长时间
+
+        // 保存操作回调
+        this.fileOperations.set(operationId, {
+          resolve: (data) => {
+            clearTimeout(timeout);
+            resolve(data);
+          },
+          reject: (error) => {
+            clearTimeout(timeout);
+            reject(error);
+          },
+          type: 'delete'
+        });
+
+        // 发送删除请求
+        if (session.socket && session.socket.readyState === WS_CONSTANTS.OPEN) {
+          session.socket.send(JSON.stringify({
+            type: 'sftp_delete',
+            data: {
+              sessionId: sshSessionId,
+              path: remotePath,
+              isDirectory: isDirectory,
+              operationId
+            }
+          }));
+        } else {
+          clearTimeout(timeout);
+          this.fileOperations.delete(operationId);
+          reject(new Error('WebSocket连接未就绪'));
+        }
+      } catch (error) {
+        this.fileOperations.delete(operationId);
+        reject(error);
+      }
+    });
+  }
+
+  /**
+   * 快速删除目录
+   * @param {string} sessionId - SFTP会话ID
+   * @param {string} remotePath - 远程目录路径
+   * @returns {Promise<Object>} - 删除结果
+   */
+  async fastDeleteDirectory(sessionId, remotePath) {
+    await this._ensureSftpSession(sessionId);
+
+    return new Promise((resolve, reject) => {
+      const operationId = this._nextOperationId();
+
+      try {
+        // 获取SSH会话
+        const { sshSessionId, session } = this._getSSHSession(sessionId);
+
+        // 设置操作超时
+        const timeout = setTimeout(() => {
+          this.fileOperations.delete(operationId);
+          reject(new Error('快速删除目录超时'));
+        }, 120000); // 快速删除可能需要更长时间
+
+        // 保存操作回调
+        this.fileOperations.set(operationId, {
+          resolve: (data) => {
+            clearTimeout(timeout);
+            resolve(data);
+          },
+          reject: (error) => {
+            clearTimeout(timeout);
+            reject(error);
+          },
+          type: 'fastDelete'
+        });
+
+        // 发送快速删除目录请求
+        if (session.socket && session.socket.readyState === WS_CONSTANTS.OPEN) {
+          session.socket.send(JSON.stringify({
+            type: 'sftp_fast_delete',
+            data: {
+              sessionId: sshSessionId,
+              path: remotePath,
+              operationId
+            }
+          }));
+        } else {
+          clearTimeout(timeout);
+          this.fileOperations.delete(operationId);
+          reject(new Error('WebSocket连接未就绪'));
+        }
+      } catch (error) {
+        this.fileOperations.delete(operationId);
+        reject(error);
+      }
+    });
+  }
+
+  /**
+   * 重命名文件或目录
+   * @param {string} sessionId - SFTP会话ID
+   * @param {string} oldPath - 原路径
+   * @param {string} newPath - 新路径
+   * @returns {Promise<Object>} - 重命名结果
+   */
+  async rename(sessionId, oldPath, newPath) {
+    await this._ensureSftpSession(sessionId);
+
+    return new Promise((resolve, reject) => {
+      const operationId = this._nextOperationId();
+
+      try {
+        // 获取SSH会话
+        const { sshSessionId, session } = this._getSSHSession(sessionId);
+
+        // 设置操作超时
+        const timeout = setTimeout(() => {
+          this.fileOperations.delete(operationId);
+          reject(new Error('重命名操作超时'));
+        }, 30000);
+
+        // 保存操作回调
+        this.fileOperations.set(operationId, {
+          resolve: (data) => {
+            clearTimeout(timeout);
+            resolve(data);
+          },
+          reject: (error) => {
+            clearTimeout(timeout);
+            reject(error);
+          },
+          type: 'rename'
+        });
+
+        // 发送重命名请求
+        if (session.socket && session.socket.readyState === WS_CONSTANTS.OPEN) {
+          session.socket.send(JSON.stringify({
+            type: 'sftp_rename',
+            data: {
+              sessionId: sshSessionId,
+              oldPath: oldPath,
+              newPath: newPath,
+              operationId
+            }
+          }));
+        } else {
+          clearTimeout(timeout);
+          this.fileOperations.delete(operationId);
+          reject(new Error('WebSocket连接未就绪'));
+        }
+      } catch (error) {
+        this.fileOperations.delete(operationId);
+        reject(error);
+      }
+    });
+  }
+
+  /**
+   * 取消上传操作
+   * @param {string} sessionId - SFTP会话ID
+   * @param {number} operationId - 操作ID
+   * @returns {Promise<Object>} - 取消结果
+   */
+  async cancelUpload(sessionId, operationId) {
+    await this._ensureSftpSession(sessionId);
+
+    return new Promise((resolve, reject) => {
+      try {
+        // 获取SSH会话
+        const { sshSessionId, session } = this._getSSHSession(sessionId);
+
+        // 设置操作超时
+        const timeout = setTimeout(() => {
+          reject(new Error('取消上传操作超时'));
+        }, 10000);
+
+        // 发送取消上传请求
+        if (session.socket && session.socket.readyState === WS_CONSTANTS.OPEN) {
+          session.socket.send(JSON.stringify({
+            type: 'sftp_cancel',
+            data: {
+              sessionId: sshSessionId,
+              operationId: operationId
+            }
+          }));
+
+          // 清理本地操作记录
+          if (this.fileOperations.has(operationId)) {
+            this.fileOperations.delete(operationId);
+          }
+
+          clearTimeout(timeout);
+          resolve({ success: true, message: '上传已取消' });
+        } else {
+          clearTimeout(timeout);
+          reject(new Error('WebSocket连接未就绪'));
+        }
+      } catch (error) {
+        reject(error);
+      }
+    });
+  }
+
   /**
    * 确保SFTP会话已创建
    * @private
@@ -544,20 +880,32 @@ class SFTPService {
     }
     
     // 特殊处理SFTP会话关闭确认消息
-    if (message.type === 'sftp_success' && message.data && message.data.message && 
+    if (message.type === 'sftp_success' && message.data && message.data.message &&
         message.data.message.includes('SFTP会话已关闭') && !message.data.operationId) {
       return; // 无需产生警告，静默处理
     }
-    
+
     if (!message.data.operationId) {
       log.warn('收到无效的SFTP消息:', message);
       return;
     }
-    
+
     const { operationId } = message.data;
-    
+
     // 查找对应的操作
     if (!this.fileOperations.has(operationId)) {
+      // 特殊处理一些可能的服务器端自动操作
+      if (typeof operationId === 'string' && operationId.includes('_refresh')) {
+        log.debug(`收到服务器端刷新操作响应: ${operationId}, 消息类型: ${message.type}`);
+        return; // 静默处理刷新操作
+      }
+
+      // 特殊处理可能已完成的操作
+      if (message.type === 'sftp_success') {
+        log.debug(`收到已完成操作的响应: ${operationId}, 消息类型: ${message.type}`);
+        return; // 静默处理已完成的操作
+      }
+
       log.warn(`未找到SFTP操作: ${operationId}, 消息类型: ${message.type}`);
       return;
     }

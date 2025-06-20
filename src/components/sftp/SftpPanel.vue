@@ -1193,11 +1193,12 @@ export default defineComponent({
           }
           
           if (file.isDirectory) {
-            // 使用快速删除方法代替递归删除
-            log.debug(`使用快速删除方法删除文件夹: ${fullPath}`);
-            await sftpService.fastDeleteDirectory(props.sessionId, fullPath);
+            // 使用通用删除方法删除文件夹
+            log.debug(`删除文件夹: ${fullPath}`);
+            await sftpService.delete(props.sessionId, fullPath, true);
           } else {
             // 删除单个文件
+            log.debug(`删除文件: ${fullPath}`);
             await sftpService.delete(props.sessionId, fullPath, false);
           }
           

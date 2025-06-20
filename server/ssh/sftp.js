@@ -397,42 +397,77 @@ async function handleSftpDelete(ws, data) {
     
     // 根据类型删除文件或目录
     if (isDirectory) {
-      // 先检查目录是否为空
-      sftp.readdir(targetPath, (err, list) => {
-        if (err) {
-          logger.error('SFTP读取目录失败', { targetPath, error: err.message });
-          sendSftpError(ws, sessionId, operationId, `读取目录失败: ${err.message}`);
-          return;
-        }
-        
-        // 如果目录不为空，返回错误
-        if (list.length > 0) {
-          sendSftpError(ws, sessionId, operationId, '不能删除非空目录');
-          return;
-        }
-        
-        // 删除目录
-        sftp.rmdir(targetPath, (err) => {
+      // 递归删除目录及其内容
+      const deleteDirectoryRecursive = (dirPath, callback) => {
+        sftp.readdir(dirPath, (err, list) => {
           if (err) {
-            logger.error('SFTP删除目录失败', { targetPath, error: err.message });
-            sendSftpError(ws, sessionId, operationId, `删除目录失败: ${err.message}`);
+            logger.error('SFTP读取目录失败', { dirPath, error: err.message });
+            callback(err);
             return;
           }
-          
-          logger.info('SFTP目录删除成功', { targetPath });
-          sendSftpSuccess(ws, sessionId, operationId, {
-            message: '目录删除成功'
-          });
-          
-          // 刷新当前目录
-          if (path.dirname(targetPath) === sftpSession.currentPath) {
-            handleSftpList(ws, {
-              sessionId,
-              path: sftpSession.currentPath,
-              operationId: `${operationId}_refresh`
-            });
+
+          // 如果目录为空，直接删除
+          if (list.length === 0) {
+            sftp.rmdir(dirPath, callback);
+            return;
           }
+
+          // 删除目录中的所有文件和子目录
+          let completed = 0;
+          let hasError = false;
+
+          const checkComplete = (err) => {
+            if (hasError) return;
+
+            if (err) {
+              hasError = true;
+              callback(err);
+              return;
+            }
+
+            completed++;
+            if (completed === list.length) {
+              // 所有子项都删除完成，删除目录本身
+              sftp.rmdir(dirPath, callback);
+            }
+          };
+
+          // 遍历目录中的每个项目
+          list.forEach(item => {
+            const itemPath = path.posix.join(dirPath, item.filename);
+
+            if (item.attrs.isDirectory()) {
+              // 递归删除子目录
+              deleteDirectoryRecursive(itemPath, checkComplete);
+            } else {
+              // 删除文件
+              sftp.unlink(itemPath, checkComplete);
+            }
+          });
         });
+      };
+
+      // 开始递归删除
+      deleteDirectoryRecursive(targetPath, (err) => {
+        if (err) {
+          logger.error('SFTP删除目录失败', { targetPath, error: err.message });
+          sendSftpError(ws, sessionId, operationId, `删除目录失败: ${err.message}`);
+          return;
+        }
+
+        logger.info('SFTP目录删除成功', { targetPath });
+        sendSftpSuccess(ws, sessionId, operationId, {
+          message: '目录删除成功'
+        });
+
+        // 刷新当前目录
+        if (path.dirname(targetPath) === sftpSession.currentPath) {
+          handleSftpList(ws, {
+            sessionId,
+            path: sftpSession.currentPath,
+            operationId: `${operationId}_refresh`
+          });
+        }
       });
     } else {
       // 删除文件
