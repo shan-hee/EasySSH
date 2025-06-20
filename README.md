@@ -227,7 +227,6 @@ pm2 start index.js --name easyssh-server
 ```
 
 ### 云平台部署
-### 云平台部署
 
 EasySSH支持一键部署到主流云平台:
 
