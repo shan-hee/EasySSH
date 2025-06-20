@@ -114,10 +114,10 @@ async function smartLatencyMeasurement(host, port = 22) {
     const pingAvailable = await checkPingAvailability();
 
     if (pingAvailable) {
-      logger.debug('使用系统ping测量延迟', { host, method: 'icmp_ping' });
+      //logger.debug('使用系统ping测量延迟', { host, method: 'icmp_ping' });
       return await measureWithSystemPing(host);
     } else {
-      logger.debug('ping不可用，使用TCP连接测量延迟', { host, port, method: 'tcp_connect' });
+      //logger.debug('ping不可用，使用TCP连接测量延迟', { host, port, method: 'tcp_connect' });
       return await measureWithTCP(host, port);
     }
   } catch (error) {
@@ -240,21 +240,21 @@ function parsePingOutput(stdout) {
  */
 async function measureServerLatencyInline(host, ws, sessionId, webSocketLatency) {
   try {
-    logger.debug('开始智能延迟测量', { host, sessionId });
+    //logger.debug('开始智能延迟测量', { host, sessionId });
 
     // 使用智能延迟测量
     const result = await smartLatencyMeasurement(host, 22);
     const serverLatency = result.latency;
     const method = result.method;
 
-    logger.debug('延迟测量完成', {
-      host,
-      sessionId,
-      serverLatency,
-      method,
-      webSocketLatency,
-      totalLatency: (webSocketLatency || 0) + serverLatency
-    });
+    // logger.debug('延迟测量完成', {
+    //   host,
+    //   sessionId,
+    //   serverLatency,
+    //   method,
+    //   webSocketLatency,
+    //   totalLatency: (webSocketLatency || 0) + serverLatency
+    // });
 
     // 保存延迟数据到会话中
     if (sessions.has(sessionId)) {
