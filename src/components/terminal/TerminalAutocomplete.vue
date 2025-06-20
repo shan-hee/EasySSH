@@ -68,6 +68,7 @@ export default {
   setup(props, { emit }) {
     const selectedIndex = ref(-1)  // 初始化为-1，表示默认不选中
     const listRef = ref(null)
+    // 混合导航模式：isKeyboardNavigation 用于区分当前导航方式，但不阻止其他导航方式
     const isKeyboardNavigation = ref(false)
 
     // 计算位置样式，包含智能位置调整
@@ -135,10 +136,9 @@ export default {
 
     // 处理鼠标进入事件
     const handleMouseEnter = (index) => {
-      // 只有在非键盘导航模式下才响应鼠标悬浮
-      if (!isKeyboardNavigation.value) {
-        selectedIndex.value = index
-      }
+      // 混合导航模式：始终响应鼠标悬浮，但标记为鼠标导航
+      selectedIndex.value = index
+      isKeyboardNavigation.value = false
     }
 
     // 处理鼠标移动事件
@@ -333,16 +333,9 @@ export default {
   border-bottom: none;
 }
 
-/* 只有在非键盘导航模式下才应用hover效果 */
-.autocomplete-item:hover {
-  background: #264f78;
-}
-
-/* 键盘导航模式下禁用hover效果 */
-.keyboard-navigation .autocomplete-item:hover {
-  background: transparent;
-}
-
+/* 混合导航模式：统一的hover和选中效果 */
+.autocomplete-item:hover,
+.keyboard-navigation .autocomplete-item:hover,
 .autocomplete-item--active {
   background: #264f78;
 }
