@@ -7,6 +7,8 @@ import wordCompletionService from './word-completion'
 import log from './log'
 import { useUserStore } from '@/store/user'
 import { cacheConfig } from '@/config/app-config'
+import LRUCache from '@/utils/lru-cache'
+import { SmartDebounce } from '@/utils/smart-debounce'
 
 class TerminalAutocompleteService {
   constructor() {
@@ -34,8 +36,46 @@ class TerminalAutocompleteService {
       onPositionUpdate: null
     }
 
-    // 防抖定时器
-    this.debounceTimer = null
+    // 智能防抖系统
+    this.smartDebounce = new SmartDebounce({
+      defaultDelay: cacheConfig.suggestions.debounceDelay,
+      minDelay: 0,
+      maxDelay: 500,
+      enableAdaptive: true,
+      enablePriority: true
+    })
+
+    // 创建防抖函数
+    this.debouncedUpdate = this.smartDebounce.create(
+      this.updateSuggestions.bind(this),
+      {
+        key: 'updateSuggestions',
+        adaptive: true,
+        priority: 1
+      }
+    )
+
+    // 高优先级防抖函数（用于删除操作）
+    this.debouncedUpdateHighPriority = this.smartDebounce.create(
+      this.updateSuggestions.bind(this),
+      {
+        key: 'updateSuggestionsHighPriority',
+        delay: 20,
+        priority: 2,
+        adaptive: false
+      }
+    )
+
+    // 立即更新函数（用于首字符）
+    this.immediateUpdate = this.smartDebounce.create(
+      this.updateSuggestions.bind(this),
+      {
+        key: 'immediateUpdate',
+        delay: 0,
+        priority: 3,
+        immediate: true
+      }
+    )
 
     // 配置（从配置文件获取）
     this.config = {
@@ -52,6 +92,29 @@ class TerminalAutocompleteService {
 
     // 用户存储引用
     this.userStore = null
+
+    // 智能缓存系统
+    this.suggestionCache = new LRUCache({
+      maxSize: cacheConfig.suggestions.maxSize,
+      defaultTTL: cacheConfig.memory.ttl,
+      staleWhileRevalidate: cacheConfig.memory.staleWhileRevalidate,
+      enableStats: true,
+      onEvict: (key, value, reason) => {
+        log.debug(`缓存项被移除: ${key}, 原因: ${reason}`)
+      }
+    })
+
+    // 预测性缓存
+    this.predictiveCache = new Map()
+    this.inputPatterns = new Map() // 用户输入模式记录
+
+    // 性能监控
+    this.performanceStats = {
+      cacheHits: 0,
+      cacheMisses: 0,
+      avgResponseTime: 0,
+      totalRequests: 0
+    }
   }
 
   /**
@@ -125,10 +188,10 @@ class TerminalAutocompleteService {
       if (currentWord && currentWord.length >= this.config.minInputLength) {
         // 对于第一个字符，立即显示建议，无延迟
         if (currentWord.length === 1) {
-          this.updateSuggestions(currentWord, terminal)
+          this.immediateUpdate(currentWord, terminal)
         } else {
-          // 其他情况使用防抖
-          this.debouncedUpdateSuggestions(currentWord, terminal)
+          // 其他情况使用智能防抖
+          this.debouncedUpdate(currentWord, terminal)
         }
       } else {
         // 当前单词为空或太短，隐藏建议
@@ -178,7 +241,7 @@ class TerminalAutocompleteService {
         if (currentWord && currentWord.length >= this.config.minInputLength) {
           if (needsUpdate || !this.isActive) {
             log.debug(`删除后更新建议: 当前单词="${currentWord}", 需要更新=${needsUpdate}, 激活状态=${this.isActive}`)
-            this.debouncedUpdateSuggestions(currentWord, terminal, 20)
+            this.debouncedUpdateHighPriority(currentWord, terminal)
           }
         }
         break
@@ -429,22 +492,7 @@ class TerminalAutocompleteService {
     }
   }
 
-  /**
-   * 防抖更新建议
-   * @param {string} input - 当前输入
-   * @param {Object} terminal - 终端实例
-   * @param {number} delay - 自定义延迟时间
-   */
-  debouncedUpdateSuggestions(input, terminal, delay = null) {
-    if (this.debounceTimer) {
-      clearTimeout(this.debounceTimer)
-    }
 
-    const actualDelay = delay !== null ? delay : this.config.debounceDelay
-    this.debounceTimer = setTimeout(() => {
-      this.updateSuggestions(input, terminal)
-    }, actualDelay)
-  }
 
   /**
    * 更新建议列表 - 智能混合补全
@@ -501,14 +549,30 @@ class TerminalAutocompleteService {
   }
 
   /**
-   * 获取智能混合建议
+   * 获取智能混合建议 - 带缓存优化
    * @param {string} input - 用户输入
    * @param {Object} terminal - 终端实例
    * @returns {Array} 混合建议列表
    */
   getCombinedSuggestions(input, terminal) {
-    const allSuggestions = []
+    const startTime = performance.now()
+
+    // 生成缓存键
     const context = this.getInputContext(input, terminal)
+    const cacheKey = this.generateCacheKey(input, context)
+
+    // 检查缓存
+    const cached = this.suggestionCache.get(cacheKey)
+    if (cached && !cached.isStale) {
+      this.performanceStats.cacheHits++
+      log.debug(`缓存命中: ${cacheKey}, 年龄: ${cached.age}ms`)
+      this.recordInputPattern(input)
+      return cached.value
+    }
+
+    // 缓存未命中，计算建议
+    this.performanceStats.cacheMisses++
+    const allSuggestions = []
 
     // 获取脚本库建议
     if (this.config.enableScriptCompletion) {
@@ -557,10 +621,22 @@ class TerminalAutocompleteService {
 
     // 合并、去重和排序
     const mergedSuggestions = this.mergeSuggestions(allSuggestions, input, context)
+    const finalSuggestions = mergedSuggestions.slice(0, this.config.maxSuggestions)
 
-    log.debug(`智能混合补全: 输入="${input}", 总建议=${mergedSuggestions.length}`)
+    // 缓存结果
+    this.suggestionCache.set(cacheKey, finalSuggestions)
 
-    return mergedSuggestions.slice(0, this.config.maxSuggestions)
+    // 记录输入模式和性能统计
+    this.recordInputPattern(input)
+    const responseTime = performance.now() - startTime
+    this.updatePerformanceStats(startTime)
+
+    // 触发预测性缓存
+    this.triggerPredictiveCache(input, context)
+
+    log.debug(`智能混合补全: 输入="${input}", 总建议=${finalSuggestions.length}, 耗时: ${responseTime.toFixed(2)}ms`)
+
+    return finalSuggestions
   }
 
   /**
@@ -635,59 +711,48 @@ class TerminalAutocompleteService {
   }
 
   /**
-   * 合并和优化建议
+   * 合并和优化建议 - 高性能版本
    * @param {Array} suggestions - 所有建议
    * @param {string} input - 用户输入
    * @param {Object} context - 上下文
    * @returns {Array} 优化后的建议列表
    */
   mergeSuggestions(suggestions, input, context) {
-    // 去重（基于text字段）
-    const uniqueSuggestions = []
-    const seenTexts = new Set()
+    if (!suggestions.length) return []
+
+    // 使用Map进行高效去重和合并
+    const suggestionMap = new Map()
+    const inputLower = input.toLowerCase()
+
+    // 预计算类型优先级
+    const typePriority = { script: 3, commands: 2, word: 1 }
 
     for (const suggestion of suggestions) {
-      if (!seenTexts.has(suggestion.text)) {
-        seenTexts.add(suggestion.text)
-        uniqueSuggestions.push(suggestion)
+      const text = suggestion.text
+      const existing = suggestionMap.get(text)
+
+      if (!existing) {
+        // 预计算匹配信息
+        const matchInfo = this.calculateMatchInfo(suggestion, inputLower)
+        suggestionMap.set(text, { ...suggestion, ...matchInfo })
       } else {
-        // 如果文本重复，保留类型优先级更高的
-        const existingIndex = uniqueSuggestions.findIndex(s => s.text === suggestion.text)
-        if (existingIndex >= 0) {
-          const existing = uniqueSuggestions[existingIndex]
-          // 脚本类型优先于单词类型
-          if (suggestion.type === 'script' && existing.type === 'word') {
-            uniqueSuggestions[existingIndex] = suggestion
-          } else if (existing.type === suggestion.type && suggestion.score > existing.score) {
-            uniqueSuggestions[existingIndex] = suggestion
-          }
+        // 保留优先级更高的建议
+        const currentPriority = typePriority[suggestion.type] || 0
+        const existingPriority = typePriority[existing.type] || 0
+
+        if (currentPriority > existingPriority ||
+           (currentPriority === existingPriority && suggestion.score > existing.score)) {
+          const matchInfo = this.calculateMatchInfo(suggestion, inputLower)
+          suggestionMap.set(text, { ...suggestion, ...matchInfo })
         }
       }
     }
 
-    // 计算匹配类型和最终分数
-    const scoredSuggestions = uniqueSuggestions.map(suggestion => {
-      const matchType = this.getMatchType(suggestion, input)
-      const finalScore = this.calculateFinalScore(suggestion, input, context, matchType)
+    // 转换为数组
+    const uniqueSuggestions = Array.from(suggestionMap.values())
 
-      return {
-        ...suggestion,
-        matchType,
-        finalScore
-      }
-    })
-
-    // 按照新的排序逻辑排序：完全匹配脚本 > 单词补全 > 包含匹配脚本
-    const sortedSuggestions = scoredSuggestions.sort((a, b) => {
-      // 首先按匹配类型排序
-      const typeOrder = this.getTypeOrder(a.matchType, a.type) - this.getTypeOrder(b.matchType, b.type)
-      if (typeOrder !== 0) {
-        return typeOrder
-      }
-
-      // 同类型内按分数排序
-      return b.finalScore - a.finalScore
-    })
+    // 使用优化的排序算法
+    const sortedSuggestions = this.optimizedSort(uniqueSuggestions, input, context)
 
     // 添加调试日志
     if (sortedSuggestions.length > 0) {
@@ -701,6 +766,98 @@ class TerminalAutocompleteService {
     }
 
     return sortedSuggestions
+  }
+
+  /**
+   * 计算匹配信息 - 优化版
+   * @param {Object} suggestion - 建议项
+   * @param {string} inputLower - 小写的用户输入
+   * @returns {Object} 匹配信息
+   */
+  calculateMatchInfo(suggestion, inputLower) {
+    const textLower = suggestion.text.toLowerCase()
+
+    // 计算匹配类型
+    let matchType = 'contains'
+    if (textLower === inputLower) {
+      matchType = 'exact'
+    } else if (textLower.startsWith(inputLower)) {
+      matchType = 'prefix'
+    }
+
+    // 计算匹配分数
+    let matchScore = suggestion.score || 0
+
+    // 根据匹配类型调整分数
+    switch (matchType) {
+      case 'exact':
+        matchScore *= 2.0
+        break
+      case 'prefix':
+        matchScore *= 1.5
+        break
+      case 'contains':
+        matchScore *= 1.0
+        break
+    }
+
+    // 根据类型调整分数
+    const typeMultiplier = { script: 1.2, commands: 1.1, word: 1.0 }
+    matchScore *= (typeMultiplier[suggestion.type] || 1.0)
+
+    return {
+      matchType,
+      finalScore: matchScore,
+      sortKey: this.getSortKey(matchType, suggestion.type, matchScore)
+    }
+  }
+
+  /**
+   * 获取排序键
+   * @param {string} matchType - 匹配类型
+   * @param {string} suggestionType - 建议类型
+   * @param {number} score - 分数
+   * @returns {number} 排序键
+   */
+  getSortKey(matchType, suggestionType, score) {
+    // 使用位运算优化排序键计算
+    let key = 0
+
+    // 匹配类型权重 (高16位)
+    const matchWeight = { exact: 3, prefix: 2, contains: 1 }
+    key |= (matchWeight[matchType] || 0) << 16
+
+    // 建议类型权重 (中8位)
+    const typeWeight = { script: 3, commands: 2, word: 1 }
+    key |= (typeWeight[suggestionType] || 0) << 8
+
+    // 分数权重 (低8位，限制在0-255)
+    key |= Math.min(255, Math.max(0, Math.floor(score)))
+
+    return key
+  }
+
+  /**
+   * 优化的排序算法
+   * @param {Array} suggestions - 建议列表
+   * @param {string} input - 用户输入
+   * @param {Object} context - 上下文
+   * @returns {Array} 排序后的建议
+   */
+  optimizedSort(suggestions, input, context) {
+    // 使用预计算的排序键进行快速排序
+    return suggestions.sort((a, b) => {
+      // 首先按排序键排序（降序）
+      const keyDiff = b.sortKey - a.sortKey
+      if (keyDiff !== 0) return keyDiff
+
+      // 如果排序键相同，按最终分数排序
+      const scoreDiff = b.finalScore - a.finalScore
+      if (scoreDiff !== 0) return scoreDiff
+
+      // 最后按字母顺序排序
+      return a.text.localeCompare(b.text)
+    })
   }
 
   /**
@@ -924,11 +1081,8 @@ class TerminalAutocompleteService {
     this.selectedIndex = -1  // 重置选中索引
     this.lastPosition = null // 清除位置缓存
 
-    // 清除防抖定时器
-    if (this.debounceTimer) {
-      clearTimeout(this.debounceTimer)
-      this.debounceTimer = null
-    }
+    // 取消所有防抖任务
+    this.smartDebounce.cancelAll()
 
     if (this.callbacks.onSuggestionsUpdate) {
       this.callbacks.onSuggestionsUpdate([], { x: 0, y: 0 }, -1)
@@ -979,12 +1133,6 @@ class TerminalAutocompleteService {
 
       // 立即隐藏建议并重置状态
       this.hideSuggestions()
-
-      // 清除防抖定时器，防止后续输入立即触发补全
-      if (this.debounceTimer) {
-        clearTimeout(this.debounceTimer)
-        this.debounceTimer = null
-      }
 
       log.debug(`补全完成，输入缓冲区: "${this.inputBuffer}"`)
 
@@ -1094,15 +1242,174 @@ class TerminalAutocompleteService {
   }
 
   /**
+   * 生成缓存键
+   * @param {string} input - 用户输入
+   * @param {Object} context - 上下文信息
+   * @returns {string} 缓存键
+   */
+  generateCacheKey(input, context) {
+    const contextKey = JSON.stringify({
+      isCommandStart: context.isCommandStart,
+      isParameter: context.isParameter,
+      hasSpaces: context.hasSpaces,
+      wordPosition: context.wordPosition
+    })
+    return `suggestions:${input}:${contextKey}`
+  }
+
+  /**
+   * 记录用户输入模式
+   * @param {string} input - 用户输入
+   */
+  recordInputPattern(input) {
+    if (input.length < 2) return
+
+    const pattern = input.substring(0, Math.min(input.length, 3))
+    const count = this.inputPatterns.get(pattern) || 0
+    this.inputPatterns.set(pattern, count + 1)
+
+    // 限制模式记录数量
+    if (this.inputPatterns.size > 100) {
+      const entries = Array.from(this.inputPatterns.entries())
+      entries.sort((a, b) => a[1] - b[1]) // 按使用频率排序
+      const toDelete = entries.slice(0, 20) // 删除最少使用的20个
+      toDelete.forEach(([key]) => this.inputPatterns.delete(key))
+    }
+  }
+
+  /**
+   * 更新性能统计
+   * @param {number} startTime - 开始时间
+   */
+  updatePerformanceStats(startTime) {
+    const responseTime = performance.now() - startTime
+    this.performanceStats.totalRequests++
+
+    // 计算平均响应时间
+    this.performanceStats.avgResponseTime =
+      (this.performanceStats.avgResponseTime * (this.performanceStats.totalRequests - 1) + responseTime) /
+      this.performanceStats.totalRequests
+  }
+
+  /**
+   * 触发预测性缓存
+   * @param {string} input - 当前输入
+   * @param {Object} context - 上下文
+   */
+  triggerPredictiveCache(input, context) {
+    // 基于输入模式预测可能的下一个字符
+    const predictions = this.getPredictedInputs(input)
+
+    // 异步预加载预测的建议
+    setTimeout(() => {
+      predictions.forEach(predictedInput => {
+        const predictedCacheKey = this.generateCacheKey(predictedInput, context)
+        if (!this.suggestionCache.has(predictedCacheKey)) {
+          // 在后台计算预测的建议
+          this.computePredictiveSuggestions(predictedInput, context)
+        }
+      })
+    }, 100) // 延迟100ms执行，避免阻塞主线程
+  }
+
+  /**
+   * 获取预测的输入
+   * @param {string} input - 当前输入
+   * @returns {Array} 预测的输入列表
+   */
+  getPredictedInputs(input) {
+    const predictions = []
+
+    // 基于常见字符预测
+    const commonChars = ['a', 'e', 'i', 'o', 'u', 's', 't', 'n', 'r', 'l']
+    commonChars.forEach(char => {
+      predictions.push(input + char)
+    })
+
+    // 基于历史模式预测
+    for (const [pattern, count] of this.inputPatterns) {
+      if (pattern.startsWith(input) && pattern.length > input.length) {
+        predictions.push(pattern)
+      }
+    }
+
+    return predictions.slice(0, 5) // 限制预测数量
+  }
+
+  /**
+   * 计算预测性建议
+   * @param {string} input - 预测的输入
+   * @param {Object} context - 上下文
+   */
+  async computePredictiveSuggestions(input, context) {
+    try {
+      // 简化的建议计算，只获取最相关的建议
+      const suggestions = []
+
+      if (this.config.enableScriptCompletion) {
+        const scriptSuggestions = scriptLibraryService.getSimpleCommandSuggestionsSync(
+          input,
+          Math.min(3, this.config.maxWordsPerType)
+        )
+        suggestions.push(...scriptSuggestions.map(s => ({ ...s, type: 'script' })))
+      }
+
+      if (suggestions.length > 0) {
+        const cacheKey = this.generateCacheKey(input, context)
+        this.suggestionCache.set(cacheKey, suggestions.slice(0, 3))
+        log.debug(`预测性缓存: ${input} -> ${suggestions.length} 个建议`)
+      }
+    } catch (error) {
+      log.warn('预测性缓存计算失败:', error)
+    }
+  }
+
+  /**
+   * 获取缓存统计信息
+   * @returns {Object} 缓存统计
+   */
+  getCacheStats() {
+    return {
+      cache: this.suggestionCache.getStats(),
+      performance: { ...this.performanceStats },
+      patterns: this.inputPatterns.size,
+      debounce: this.smartDebounce.getStats()
+    }
+  }
+
+  /**
+   * 清理缓存
+   */
+  clearCache() {
+    this.suggestionCache.clear()
+    this.predictiveCache.clear()
+    this.inputPatterns.clear()
+    this.performanceStats = {
+      cacheHits: 0,
+      cacheMisses: 0,
+      avgResponseTime: 0,
+      totalRequests: 0
+    }
+    log.debug('缓存已清理')
+  }
+
+  /**
    * 销毁服务
    */
   destroy() {
-    if (this.debounceTimer) {
-      clearTimeout(this.debounceTimer)
+    // 销毁智能防抖
+    if (this.smartDebounce) {
+      this.smartDebounce.destroy()
     }
-    
+
+    // 销毁缓存
+    if (this.suggestionCache) {
+      this.suggestionCache.destroy()
+    }
+
     this.hideSuggestions()
     this.callbacks = {}
+    this.clearCache()
   }
 }
 

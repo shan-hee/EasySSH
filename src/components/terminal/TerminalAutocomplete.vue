@@ -14,12 +14,13 @@
     <div class="autocomplete-list" ref="listRef">
       <div
         v-for="(suggestion, index) in suggestions"
+        v-memo="[suggestion.id, suggestion.text, suggestion.description, index === selectedIndex]"
         :key="suggestion.id"
         class="autocomplete-item"
         :class="{ 'autocomplete-item--active': index === selectedIndex }"
         @click="selectSuggestion(index)"
         @mouseenter="handleMouseEnter(index)"
-        :title="getItemTooltip(suggestion)"
+        :title="suggestionTooltips[index]"
       >
         <div class="autocomplete-item-content">
           <div class="autocomplete-item-main">
@@ -28,8 +29,8 @@
               <span class="autocomplete-description" :title="suggestion.description">{{ suggestion.description }}</span>
             </div>
             <div class="autocomplete-item-right">
-              <span class="autocomplete-type" :class="`autocomplete-type--${suggestion.type || 'script'}`">
-                {{ getTypeLabel(suggestion) }}
+              <span class="autocomplete-type" :class="typeClasses[index]">
+                {{ typeLabels[index] }}
               </span>
             </div>
           </div>
@@ -46,7 +47,7 @@
 </template>
 
 <script>
-import { ref, computed, watch, nextTick } from 'vue'
+import { ref, computed, watch, nextTick, onUnmounted } from 'vue'
 
 export default {
   name: 'TerminalAutocomplete',
@@ -71,11 +72,22 @@ export default {
     // 混合导航模式：isKeyboardNavigation 用于区分当前导航方式，但不阻止其他导航方式
     const isKeyboardNavigation = ref(false)
 
-    // 计算位置样式，包含智能位置调整
+    // 缓存视口尺寸
+    const viewportSize = ref({ width: window.innerWidth, height: window.innerHeight })
+
+    // 监听窗口大小变化（使用节流）
+    let resizeTimer = null
+    const handleResize = () => {
+      if (resizeTimer) clearTimeout(resizeTimer)
+      resizeTimer = setTimeout(() => {
+        viewportSize.value = { width: window.innerWidth, height: window.innerHeight }
+      }, 100)
+    }
+
+    // 计算位置样式，包含智能位置调整（优化版）
     const positionStyle = computed(() => {
       const { x, y } = props.position
-      const viewportWidth = window.innerWidth
-      const viewportHeight = window.innerHeight
+      const { width: viewportWidth, height: viewportHeight } = viewportSize.value
 
       // 预估自动补全框的尺寸
       const estimatedWidth = Math.min(700, Math.max(350, viewportWidth * 0.4))
@@ -109,6 +121,56 @@ export default {
       }
     })
 
+    // 缓存类型标签映射
+    const typeLabelMap = {
+      script: '脚本',
+      word: '单词',
+      commands: '命令',
+      options: '选项',
+      development: '开发',
+      network: '网络',
+      system: '系统',
+      files: '文件',
+      extensions: '扩展名'
+    }
+
+    // 计算属性：预计算类型标签
+    const typeLabels = computed(() => {
+      return props.suggestions.map(suggestion => {
+        const key = suggestion.category || suggestion.type || 'script'
+        return typeLabelMap[key] || '其他'
+      })
+    })
+
+    // 计算属性：预计算类型CSS类
+    const typeClasses = computed(() => {
+      return props.suggestions.map(suggestion => {
+        const type = suggestion.type || 'script'
+        return `autocomplete-type autocomplete-type--${type}`
+      })
+    })
+
+    // 计算属性：预计算工具提示
+    const suggestionTooltips = computed(() => {
+      return props.suggestions.map(suggestion => {
+        const parts = []
+        if (suggestion.text) {
+          const typeLabel = typeLabelMap[suggestion.category || suggestion.type || 'script'] || '其他'
+          parts.push(`${typeLabel}: ${suggestion.text}`)
+        }
+        if (suggestion.description) {
+          parts.push(`描述: ${suggestion.description}`)
+        }
+        if (suggestion.fullCommand && suggestion.fullCommand !== suggestion.text) {
+          parts.push(`完整命令: ${suggestion.fullCommand}`)
+        }
+        if (suggestion.category) {
+          parts.push(`类别: ${suggestion.category}`)
+        }
+        return parts.join('\n')
+      })
+    })
+
     // 监听建议变化，重置选中索引和导航状态
     watch(() => props.suggestions, () => {
       selectedIndex.value = -1  // 默认不选中任何项
@@ -121,15 +183,16 @@ export default {
       scrollToSelected()
     })
 
-    // 滚动到选中项
+    // 滚动到选中项（优化版）
     const scrollToSelected = () => {
-      if (!listRef.value) return
-      
+      if (!listRef.value || selectedIndex.value < 0) return
+
       const selectedElement = listRef.value.children[selectedIndex.value]
       if (selectedElement) {
+        // 使用更高效的滚动方式
         selectedElement.scrollIntoView({
           block: 'nearest',
-          behavior: 'smooth'
+          behavior: 'auto' // 改为auto以提升性能
         })
       }
     }
@@ -155,42 +218,16 @@ export default {
       }
     }
 
-    // 获取类型标签
-    const getTypeLabel = (suggestion) => {
-      const typeLabels = {
-        script: '脚本',
-        word: '单词',
-        commands: '命令',
-        options: '选项',
-        development: '开发',
-        network: '网络',
-        system: '系统',
-        files: '文件',
-        extensions: '扩展名'
-      }
+    // 添加窗口大小变化监听
+    window.addEventListener('resize', handleResize)
 
-      // 优先使用 category，然后是 type
-      const key = suggestion.category || suggestion.type || 'script'
-      return typeLabels[key] || '其他'
+    // 组件卸载时清理
+    const cleanup = () => {
+      window.removeEventListener('resize', handleResize)
+      if (resizeTimer) clearTimeout(resizeTimer)
     }
 
-    // 获取项目工具提示
-    const getItemTooltip = (suggestion) => {
-      const parts = []
-      if (suggestion.text) {
-        parts.push(`${getTypeLabel(suggestion)}: ${suggestion.text}`)
-      }
-      if (suggestion.description) {
-        parts.push(`描述: ${suggestion.description}`)
-      }
-      if (suggestion.fullCommand && suggestion.fullCommand !== suggestion.text) {
-        parts.push(`完整命令: ${suggestion.fullCommand}`)
-      }
-      if (suggestion.category) {
-        parts.push(`类别: ${suggestion.category}`)
-      }
-      return parts.join('\n')
-    }
+    onUnmounted(cleanup)
 
     // 键盘导航
     const handleKeydown = (event) => {
@@ -272,8 +309,10 @@ export default {
       handleKeydown,
       handleMouseEnter,
       handleMouseMove,
-      getTypeLabel,
-      getItemTooltip
+      typeLabels,
+      typeClasses,
+      suggestionTooltips,
+      cleanup
     }
   }
 }
