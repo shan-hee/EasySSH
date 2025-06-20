@@ -19,6 +19,7 @@ class AuthService {
     this.userStore = null
     this.refreshPromise = null
     this.listeners = []
+    this._isRefreshing = false // 防止重复刷新的标记
   }
   
   /**
@@ -635,7 +636,7 @@ class AuthService {
   
   /**
    * 触发数据刷新
-   * 在认证成功后自动刷新用户相关数据
+   * 在认证成功后延迟刷新脚本库数据（采用按需加载策略）
    * @private
    */
   async triggerDataRefresh() {
@@ -644,24 +645,51 @@ class AuthService {
         return
       }
 
-      log.debug('开始触发认证后数据刷新')
-
-      // 1. 刷新连接数据（强制刷新）
-      await this.userStore.loadConnectionsFromServer(true)
-
-      // 2. 刷新脚本库数据
-      try {
-        // 动态导入脚本库服务
-        const scriptLibraryModule = await import('./scriptLibrary.js')
-        const scriptLibraryService = scriptLibraryModule.default
-        await scriptLibraryService.syncFromServer()
-      } catch (error) {
-        log.warn('刷新脚本库数据失败', error)
+      // 检查是否已经在进行数据刷新
+      if (this._isRefreshing) {
+        log.debug('数据刷新已在进行中，跳过重复触发')
+        return
       }
 
-      log.info('认证后数据刷新完成')
+      log.debug('开始触发认证后数据刷新（按需加载模式）')
+
+      // 检查是否需要启动脚本库同步（避免重复同步）
+      const lastSyncTime = localStorage.getItem('last_script_sync')
+      const now = Date.now()
+      const timeSinceLastSync = lastSyncTime ? now - parseInt(lastSyncTime) : Infinity
+
+      // 如果距离上次同步不到1分钟，跳过同步
+      if (timeSinceLastSync < 60000) {
+        log.debug('距离上次脚本库同步时间太短，跳过本次同步')
+        return
+      }
+
+      // 标记正在刷新
+      this._isRefreshing = true
+
+      // 延迟启动脚本库数据的后台同步，不阻塞认证流程
+      setTimeout(async () => {
+        try {
+          // 更新同步时间
+          localStorage.setItem('last_script_sync', now.toString())
+
+          // 动态导入脚本库服务
+          const scriptLibraryModule = await import('./scriptLibrary.js')
+          const scriptLibraryService = scriptLibraryModule.default
+          await scriptLibraryService.syncFromServer()
+          log.debug('脚本库数据后台同步完成')
+        } catch (error) {
+          log.warn('后台同步脚本库数据失败', error)
+        } finally {
+          // 重置刷新标记
+          this._isRefreshing = false
+        }
+      }, 3000) // 延迟3秒，确保认证流程完全完成
+
+      log.info('认证后数据刷新策略已启动（按需加载模式）')
     } catch (error) {
       log.error('触发数据刷新失败', error)
+      this._isRefreshing = false
     }
   }
 
@@ -687,17 +715,28 @@ class AuthService {
       const response = await apiService.get('/users/me', {}, { hideErrorMessage: true })
       
       if (response && response.success && response.user) {
+        // 检查用户信息是否真的有变化
+        const currentUser = this.currentUser.value
+        const hasChanged = !currentUser ||
+          currentUser.id !== response.user.id ||
+          currentUser.username !== response.user.username ||
+          currentUser.email !== response.user.email
+
         // 更新本地用户信息
         this.currentUser.value = response.user
         // 更新store中的用户信息
         if (this.userStore) {
           this.userStore.setUserInfo(response.user)
         }
-        
-        log.info('用户信息已刷新', { 
-          userId: response.user.id,
-          username: response.user.username
-        })
+
+        if (hasChanged) {
+          log.info('用户信息已刷新', {
+            userId: response.user.id,
+            username: response.user.username
+          })
+        } else {
+          log.debug('用户信息无变化，跳过刷新日志')
+        }
         
         return { success: true, user: response.user }
       } else {

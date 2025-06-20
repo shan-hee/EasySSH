@@ -211,23 +211,9 @@ const savedToken = localStorage.getItem('auth_token')
 if (savedToken) {
   userStore.setToken(savedToken)
 
-  // 页面刷新后主动验证token并刷新数据
-  import('./services/auth.js').then(({ default: authService }) => {
-    authService.init().then(() => {
-      // 验证认证状态并刷新用户数据
-      authService.checkAuthStatus().then(isValid => {
-        if (isValid) {
-          log.info('页面刷新后认证验证成功，开始刷新数据')
-          // 强制刷新用户相关数据
-          refreshUserData().catch(error => {
-            log.warn('刷新用户数据失败', error)
-          })
-        }
-      }).catch(error => {
-        log.error('认证状态检查失败', error)
-      })
-    })
-  })
+  // 页面刷新后的认证验证将由服务初始化流程统一处理
+  // 这里不再重复调用，避免多次认证验证
+  log.debug('页面刷新检测到已保存的token，等待服务初始化完成后统一验证')
 } else {
   userStore.setToken('')
   userStore.setUserInfo({
@@ -238,33 +224,153 @@ if (savedToken) {
   }
 }
 
-// 刷新用户数据的统一方法
+// 刷新用户数据的统一方法（智能缓存优先策略）
 async function refreshUserData() {
   try {
     const userStore = useUserStore()
 
-    // 1. 刷新用户基本信息
+    // 1. 刷新用户基本信息（优先级最高）
     const authModule = await import('./services/auth.js')
     const authService = authModule.default
     await authService.refreshUserInfo()
 
-    // 2. 强制刷新连接数据（绕过缓存）
     if (userStore.isLoggedIn) {
-      await userStore.loadConnectionsFromServer(true) // 传入forceRefresh参数
+      // 2. 智能数据刷新策略
+      await smartDataRefresh(userStore)
     }
 
-    // 3. 刷新脚本库数据
-    try {
-      const scriptLibraryModule = await import('./services/scriptLibrary.js')
-      const scriptLibraryService = scriptLibraryModule.default
-      await scriptLibraryService.syncFromServer()
-    } catch (error) {
-      log.warn('刷新脚本库数据失败', error)
-    }
-
-    log.info('用户数据刷新完成')
+    log.info('用户数据刷新完成（智能缓存优先策略）')
   } catch (error) {
     log.error('刷新用户数据过程中出现错误', error)
+  }
+}
+
+// 智能数据刷新策略
+async function smartDataRefresh(userStore) {
+  try {
+    // 检查网络状态
+    const isOnline = navigator.onLine
+    if (!isOnline) {
+      log.info('网络离线，跳过数据刷新，使用本地缓存')
+      return
+    }
+
+    // 获取上次刷新时间
+    const lastRefreshTime = localStorage.getItem('last_data_refresh')
+    const now = Date.now()
+    const timeSinceLastRefresh = lastRefreshTime ? now - parseInt(lastRefreshTime) : Infinity
+
+    // 如果距离上次刷新不到30秒，跳过刷新
+    if (timeSinceLastRefresh < 30000) {
+      log.debug('距离上次刷新时间太短，跳过数据刷新')
+      return
+    }
+
+    // 更新刷新时间
+    localStorage.setItem('last_data_refresh', now.toString())
+
+    // 启动数据刷新任务
+    const refreshTasks = []
+
+    // 1. 脚本库数据刷新（需要同步缓存，优先级高）
+    refreshTasks.push(
+      refreshScriptLibrary().catch(error => {
+        log.warn('脚本库数据同步失败', error)
+      })
+    )
+
+    // 2. 其他数据刷新（按需请求+内存缓存，仅在已加载时刷新）
+    // 连接数据 - 如果已缓存则刷新
+    if (userStore.connectionsLoaded) {
+      refreshTasks.push(
+        refreshConnectionsData(userStore).catch(error => {
+          log.warn('连接数据刷新失败', error)
+        })
+      )
+    }
+
+    // 历史记录 - 如果已缓存则刷新
+    if (userStore.historyLoaded) {
+      refreshTasks.push(
+        refreshHistoryData(userStore).catch(error => {
+          log.warn('历史记录刷新失败', error)
+        })
+      )
+    }
+
+    // 收藏数据 - 如果已缓存则刷新
+    if (userStore.favoritesLoaded) {
+      refreshTasks.push(
+        refreshFavoritesData(userStore).catch(error => {
+          log.warn('收藏数据刷新失败', error)
+        })
+      )
+    }
+
+    // 等待所有刷新任务完成（但不阻塞主流程）
+    Promise.allSettled(refreshTasks).then(results => {
+      const successCount = results.filter(r => r.status === 'fulfilled').length
+      const failureCount = results.filter(r => r.status === 'rejected').length
+      log.debug('数据刷新任务完成', {
+        total: results.length,
+        success: successCount,
+        failure: failureCount
+      })
+    })
+
+    log.info('智能数据刷新任务已启动')
+  } catch (error) {
+    log.error('智能数据刷新失败', error)
+  }
+}
+
+// 刷新脚本库数据（同步缓存策略）
+// 脚本库是共享资源，需要同步到本地存储并支持增量更新
+async function refreshScriptLibrary() {
+  try {
+    const scriptLibraryModule = await import('./services/scriptLibrary.js')
+    const scriptLibraryService = scriptLibraryModule.default
+    await scriptLibraryService.smartSync()
+    log.debug('脚本库数据智能同步完成')
+  } catch (error) {
+    log.warn('脚本库数据同步失败', error)
+    throw error
+  }
+}
+
+// 刷新连接数据（按需请求+内存缓存策略）
+// 连接数据是用户个人数据，按需请求并缓存在内存中
+async function refreshConnectionsData(userStore) {
+  try {
+    await userStore.forceRefreshConnections()
+    log.debug('连接数据按需刷新完成')
+  } catch (error) {
+    log.warn('连接数据刷新失败', error)
+    throw error
+  }
+}
+
+// 刷新历史记录数据（按需请求+内存缓存策略）
+// 历史记录是动态数据，按需请求并缓存在内存中
+async function refreshHistoryData(userStore) {
+  try {
+    await userStore.forceRefreshHistory()
+    log.debug('历史记录数据按需刷新完成')
+  } catch (error) {
+    log.warn('历史记录数据刷新失败', error)
+    throw error
+  }
+}
+
+// 刷新收藏数据（按需请求+内存缓存策略）
+// 收藏数据是用户偏好数据，按需请求并缓存在内存中
+async function refreshFavoritesData(userStore) {
+  try {
+    await userStore.forceRefreshFavorites()
+    log.debug('收藏数据按需刷新完成')
+  } catch (error) {
+    log.warn('收藏数据刷新失败', error)
+    throw error
   }
 }
 
@@ -401,6 +507,27 @@ const initializeApp = async () => {
     
     // 触发应用初始化完成事件
     window.dispatchEvent(new CustomEvent('app:initialized'))
+
+    // 应用初始化完成后，检查是否需要进行页面刷新后的数据刷新
+    const userStore = useUserStore()
+    if (userStore.isLoggedIn) {
+      log.info('应用初始化完成，用户已登录，检查是否需要刷新数据')
+
+      // 检查距离上次刷新的时间
+      const lastRefreshTime = localStorage.getItem('last_data_refresh')
+      const now = Date.now()
+      const timeSinceLastRefresh = lastRefreshTime ? now - parseInt(lastRefreshTime) : Infinity
+
+      // 如果距离上次刷新超过5分钟，或者是首次加载，进行数据刷新
+      if (timeSinceLastRefresh > 5 * 60 * 1000) {
+        log.info('距离上次刷新时间较长，启动页面刷新后的数据刷新')
+        refreshUserData().catch(error => {
+          log.warn('页面刷新后数据刷新失败', error)
+        })
+      } else {
+        log.debug('距离上次刷新时间较短，跳过页面刷新后的数据刷新')
+      }
+    }
   } catch (error) {
     servicesManager.log.error('应用服务初始化失败', error)
   }
@@ -409,43 +536,94 @@ const initializeApp = async () => {
 // 启动初始化流程
 initializeApp()
 
-// 页面可见性API监听 - 页面重新激活时刷新数据
+// 智能页面状态管理
 let lastVisibilityChange = Date.now()
+let lastFocusTime = Date.now()
+let isRefreshing = false
+
+// 智能刷新触发器
+async function triggerSmartRefresh(reason) {
+  if (isRefreshing) {
+    log.debug(`跳过${reason}刷新，已有刷新任务在进行中`)
+    return
+  }
+
+  const userStore = useUserStore()
+  if (!userStore.isLoggedIn) {
+    return
+  }
+
+  try {
+    isRefreshing = true
+    log.info(`${reason}，开始智能刷新数据`)
+    await refreshUserData()
+  } catch (error) {
+    log.warn(`${reason}后刷新数据失败`, error)
+  } finally {
+    isRefreshing = false
+  }
+}
+
+// 页面可见性API监听 - 页面重新激活时智能刷新数据
 document.addEventListener('visibilitychange', () => {
   if (!document.hidden) {
     const now = Date.now()
-    // 如果页面隐藏超过5分钟，则刷新数据
-    if (now - lastVisibilityChange > 5 * 60 * 1000) {
-      const userStore = useUserStore()
-      if (userStore.isLoggedIn) {
-        log.info('页面重新激活，开始刷新数据')
-        refreshUserData().catch(error => {
-          log.warn('页面激活后刷新数据失败', error)
-        })
-      }
+    const hiddenDuration = now - lastVisibilityChange
+
+    // 根据隐藏时间决定是否刷新
+    if (hiddenDuration > 5 * 60 * 1000) { // 5分钟
+      triggerSmartRefresh('页面重新激活')
+    } else if (hiddenDuration > 2 * 60 * 1000) { // 2分钟
+      // 只刷新脚本库数据
+      setTimeout(async () => {
+        try {
+          await refreshScriptLibrary()
+          log.debug('页面激活后脚本库数据刷新完成')
+        } catch (error) {
+          log.warn('页面激活后脚本库数据刷新失败', error)
+        }
+      }, 1000)
     }
+
     lastVisibilityChange = now
   } else {
     lastVisibilityChange = Date.now()
   }
 })
 
-// 窗口焦点事件监听 - 窗口重新获得焦点时检查数据
-let lastFocusTime = Date.now()
+// 窗口焦点事件监听 - 窗口重新获得焦点时智能检查数据
 window.addEventListener('focus', () => {
   const now = Date.now()
-  // 如果失去焦点超过10分钟，则刷新数据
-  if (now - lastFocusTime > 10 * 60 * 1000) {
-    const userStore = useUserStore()
-    if (userStore.isLoggedIn) {
-      log.info('窗口重新获得焦点，开始刷新数据')
-      refreshUserData().catch(error => {
-        log.warn('窗口焦点后刷新数据失败', error)
-      })
-    }
+  const blurDuration = now - lastFocusTime
+
+  // 如果失去焦点超过10分钟，则全面刷新数据
+  if (blurDuration > 10 * 60 * 1000) {
+    triggerSmartRefresh('窗口重新获得焦点')
+  } else if (blurDuration > 5 * 60 * 1000) {
+    // 只刷新关键数据
+    setTimeout(async () => {
+      try {
+        await refreshScriptLibrary()
+        log.debug('窗口焦点后关键数据刷新完成')
+      } catch (error) {
+        log.warn('窗口焦点后关键数据刷新失败', error)
+      }
+    }, 500)
   }
 })
 
 window.addEventListener('blur', () => {
   lastFocusTime = Date.now()
+})
+
+// 网络状态变化监听
+window.addEventListener('online', () => {
+  log.info('网络连接恢复，开始刷新数据')
+  setTimeout(() => {
+    triggerSmartRefresh('网络连接恢复')
+  }, 2000) // 延迟2秒确保网络稳定
+})
+
+window.addEventListener('offline', () => {
+  log.info('网络连接断开，将使用本地缓存')
 })

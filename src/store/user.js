@@ -541,21 +541,18 @@ export const useUserStore = defineStore('user', () => {
         }
         
         setUserInfo(response.user)
-      
-        // 登录成功后，尝试加载用户的连接配置
-        // 使用catch内部处理错误，不影响登录流程
-        loadConnectionsFromServer().catch(() => {
-          log.warn('加载用户连接配置失败，将使用本地数据')
-        })
 
-        // 同步脚本库数据（包括收藏状态）
-        try {
-          scriptLibraryService.syncFromServer().catch(() => {
-            log.warn('同步脚本库数据失败，将使用本地数据')
-          })
-        } catch (error) {
-          log.warn('调用脚本库服务失败:', error)
-        }
+        // 登录成功后，延迟启动脚本库数据的异步同步（不阻塞登录流程）
+        // 使用 setTimeout 确保登录响应优先完成
+        setTimeout(() => {
+          try {
+            scriptLibraryService.syncFromServer().catch(() => {
+              log.warn('后台同步脚本库数据失败，将使用本地数据')
+            })
+          } catch (error) {
+            log.warn('启动脚本库后台同步失败:', error)
+          }
+        }, 2000) // 延迟2秒启动，确保登录流程完全完成
       
         return { 
           success: true, 
@@ -665,10 +662,13 @@ export const useUserStore = defineStore('user', () => {
         fontSize: currentFontSize
       }
 
-      // 4. 注意：不再清除记住我凭据，保留用户的登录便利性
+      // 4. 重置连接数据加载状态
+      resetConnectionsLoadState()
+
+      // 5. 注意：不再清除记住我凭据，保留用户的登录便利性
       // clearUserCredentials() // 已移除
 
-      // 5. 清除localStorage中的其他相关数据
+      // 6. 清除localStorage中的其他相关数据
       try {
         localStorage.removeItem('currentUser')
         localStorage.removeItem('auth_token')
@@ -738,6 +738,278 @@ export const useUserStore = defineStore('user', () => {
     }
   }
   
+  // 按需加载连接数据的状态管理
+  const connectionsLoading = ref(false)
+  const connectionsLoaded = ref(false)
+
+  // 按需加载连接数据（仅加载连接配置，带重试机制）
+  async function loadConnectionsOnDemand() {
+    if (!isLoggedIn.value) {
+      log.debug('用户未登录，跳过连接数据加载')
+      return false
+    }
+
+    if (connectionsLoaded.value || connectionsLoading.value) {
+      log.debug('连接数据已加载或正在加载中，跳过重复请求')
+      return true
+    }
+
+    try {
+      connectionsLoading.value = true
+      log.info('开始按需加载连接配置...')
+
+      const result = await retryWithBackoff(
+        async () => {
+          const success = await loadConnectionsOnly()
+          if (!success) {
+            throw new Error('连接配置加载失败')
+          }
+          return success
+        },
+        connectionsRetryCount,
+        connectionsError
+      )
+
+      connectionsLoaded.value = true
+      log.info('连接配置按需加载成功')
+      return result
+
+    } catch (error) {
+      log.error('按需加载连接配置失败（所有重试都失败）:', error)
+      return false
+    } finally {
+      connectionsLoading.value = false
+    }
+  }
+
+  // 按需请求连接配置（不依赖本地存储同步）
+  async function loadConnectionsOnly() {
+    if (!isLoggedIn.value) return false
+
+    try {
+      log.debug('开始按需请求连接配置...')
+
+      // 直接请求连接数据，不检查API可用性
+      const connectionsResponse = await apiService.get('/connections')
+      if (connectionsResponse && connectionsResponse.success) {
+        connections.value = connectionsResponse.connections || []
+        log.debug('连接配置按需加载成功', { count: connections.value.length })
+        return true
+      } else {
+        log.warn('连接配置API响应无效')
+        return false
+      }
+    } catch (error) {
+      log.warn('按需请求连接配置失败:', error)
+      return false
+    }
+  }
+
+  // 历史记录和收藏数据的状态管理
+  const historyLoading = ref(false)
+  const historyLoaded = ref(false)
+  const historyError = ref(null)
+  const historyRetryCount = ref(0)
+
+  const favoritesLoading = ref(false)
+  const favoritesLoaded = ref(false)
+  const favoritesError = ref(null)
+  const favoritesRetryCount = ref(0)
+
+  // 连接数据错误状态
+  const connectionsError = ref(null)
+  const connectionsRetryCount = ref(0)
+
+  // 通用重试配置
+  const MAX_RETRY_COUNT = 3
+  const RETRY_DELAY = 1000 // 1秒
+
+  // 通用重试函数
+  async function retryWithBackoff(fn, retryCountRef, errorRef, maxRetries = MAX_RETRY_COUNT) {
+    let lastError = null
+
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        retryCountRef.value = attempt
+        const result = await fn()
+
+        // 成功时清除错误状态
+        errorRef.value = null
+        retryCountRef.value = 0
+
+        return result
+      } catch (error) {
+        lastError = error
+        log.warn(`尝试 ${attempt + 1}/${maxRetries + 1} 失败:`, error)
+
+        // 如果不是最后一次尝试，等待后重试
+        if (attempt < maxRetries) {
+          const delay = RETRY_DELAY * Math.pow(2, attempt) // 指数退避
+          await new Promise(resolve => setTimeout(resolve, delay))
+        }
+      }
+    }
+
+    // 所有重试都失败，设置错误状态
+    errorRef.value = lastError
+    log.error('所有重试都失败:', lastError)
+    throw lastError
+  }
+
+  // 清除错误状态
+  function clearError(type) {
+    switch (type) {
+      case 'connections':
+        connectionsError.value = null
+        connectionsRetryCount.value = 0
+        break
+      case 'history':
+        historyError.value = null
+        historyRetryCount.value = 0
+        break
+      case 'favorites':
+        favoritesError.value = null
+        favoritesRetryCount.value = 0
+        break
+    }
+  }
+
+  // 强制刷新历史记录
+  async function forceRefreshHistory() {
+    if (!isLoggedIn.value) return false
+
+    // 重置状态以强制刷新
+    historyLoaded.value = false
+    historyError.value = null
+    historyRetryCount.value = 0
+
+    return await loadHistoryOnDemand()
+  }
+
+  // 强制刷新收藏数据
+  async function forceRefreshFavorites() {
+    if (!isLoggedIn.value) return false
+
+    // 重置状态以强制刷新
+    favoritesLoaded.value = false
+    favoritesError.value = null
+    favoritesRetryCount.value = 0
+
+    return await loadFavoritesOnDemand()
+  }
+
+  // 强制刷新连接数据
+  async function forceRefreshConnections() {
+    if (!isLoggedIn.value) return false
+
+    // 重置状态以强制刷新
+    connectionsLoaded.value = false
+    connectionsError.value = null
+    connectionsRetryCount.value = 0
+
+    return await loadConnectionsOnDemand()
+  }
+
+  // 按需请求历史记录（简化版，内存缓存）
+  async function loadHistoryOnDemand() {
+    if (!isLoggedIn.value) {
+      log.debug('用户未登录，跳过历史记录加载')
+      return false
+    }
+
+    if (historyLoaded.value || historyLoading.value) {
+      log.debug('历史记录已缓存或正在加载中，跳过重复请求')
+      return true
+    }
+
+    try {
+      historyLoading.value = true
+      log.debug('开始按需请求历史记录...')
+
+      const result = await retryWithBackoff(
+        async () => {
+          const historyResponse = await apiService.get('/connections/history')
+          if (historyResponse && historyResponse.success) {
+            return historyResponse.history || []
+          }
+          throw new Error('历史记录API响应无效')
+        },
+        historyRetryCount,
+        historyError
+      )
+
+      history.value = result
+      historyLoaded.value = true
+      log.debug('历史记录按需请求成功', { count: result.length })
+      return true
+
+    } catch (error) {
+      log.error('按需请求历史记录失败:', error)
+      return false
+    } finally {
+      historyLoading.value = false
+    }
+  }
+
+  // 按需请求收藏数据（简化版，内存缓存）
+  async function loadFavoritesOnDemand() {
+    if (!isLoggedIn.value) {
+      log.debug('用户未登录，跳过收藏数据加载')
+      return false
+    }
+
+    if (favoritesLoaded.value || favoritesLoading.value) {
+      log.debug('收藏数据已缓存或正在加载中，跳过重复请求')
+      return true
+    }
+
+    try {
+      favoritesLoading.value = true
+      log.debug('开始按需请求收藏数据...')
+
+      const result = await retryWithBackoff(
+        async () => {
+          const favoritesResponse = await apiService.get('/connections/favorites')
+          if (favoritesResponse && favoritesResponse.success) {
+            return favoritesResponse.favorites || []
+          }
+          throw new Error('收藏数据API响应无效')
+        },
+        favoritesRetryCount,
+        favoritesError
+      )
+
+      favorites.value = result
+      favoritesLoaded.value = true
+      log.debug('收藏数据按需请求成功', { count: result.length })
+      return true
+
+    } catch (error) {
+      log.error('按需请求收藏数据失败:', error)
+      return false
+    } finally {
+      favoritesLoading.value = false
+    }
+  }
+
+  // 重置连接数据加载状态（用于登出时清理）
+  function resetConnectionsLoadState() {
+    connectionsLoaded.value = false
+    connectionsLoading.value = false
+    connectionsError.value = null
+    connectionsRetryCount.value = 0
+
+    historyLoaded.value = false
+    historyLoading.value = false
+    historyError.value = null
+    historyRetryCount.value = 0
+
+    favoritesLoaded.value = false
+    favoritesLoading.value = false
+    favoritesError.value = null
+    favoritesRetryCount.value = 0
+  }
+
   return {
     // 状态
     token,
@@ -747,14 +1019,28 @@ export const useUserStore = defineStore('user', () => {
     favorites,
     history,
     pinnedConnections,
-    
+
+    // 按需加载状态
+    connectionsLoading,
+    connectionsLoaded,
+    connectionsError,
+    connectionsRetryCount,
+    historyLoading,
+    historyLoaded,
+    historyError,
+    historyRetryCount,
+    favoritesLoading,
+    favoritesLoaded,
+    favoritesError,
+    favoritesRetryCount,
+
     // 计算属性
     isLoggedIn,
     isAdmin,
     username,
     favoriteConnections,
     historyConnections,
-    
+
     // 方法
     setToken,
     setUserInfo,
@@ -767,7 +1053,7 @@ export const useUserStore = defineStore('user', () => {
     logoutAllDevices,
     saveUserCredentials,
     clearUserCredentials,
-    
+
     // 连接相关方法
     addConnection,
     updateConnection,
@@ -781,7 +1067,17 @@ export const useUserStore = defineStore('user', () => {
     isFavorite,
     isPinned,
     syncConnectionsToServer,
-    loadConnectionsFromServer
+    loadConnectionsFromServer,
+    loadConnectionsOnDemand,
+    loadConnectionsOnly,
+    loadHistoryOnDemand,
+    loadFavoritesOnDemand,
+    resetConnectionsLoadState,
+    clearError,
+    retryWithBackoff,
+    forceRefreshHistory,
+    forceRefreshFavorites,
+    forceRefreshConnections
   }
 }, {
   persist: {

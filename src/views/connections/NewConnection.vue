@@ -21,7 +21,24 @@
         <div class="connection-section">
           <h2>我的连接配置</h2>
           <div class="connection-rows">
-            <div class="row-item" v-for="connection in filteredConnections" :key="connection.id" :data-pinned="isPinned(connection.id)" @click="handleLogin(connection)">
+            <!-- 加载状态指示器 -->
+            <div v-if="connectionsLoading && !connectionsLoaded" class="loading-indicator">
+              <div class="loading-spinner"></div>
+              <span>正在加载连接数据...</span>
+              <span v-if="connectionsRetryCount > 0" class="retry-info">
+                (重试 {{ connectionsRetryCount }}/3)
+              </span>
+            </div>
+            <!-- 错误状态指示器 -->
+            <div v-else-if="connectionsError && !connectionsLoaded" class="error-indicator">
+              <div class="error-icon">⚠️</div>
+              <div class="error-content">
+                <span class="error-message">连接数据加载失败</span>
+                <button class="retry-btn" @click="retryLoadConnections">重试</button>
+              </div>
+            </div>
+            <!-- 连接列表 -->
+            <div v-else class="row-item" v-for="connection in filteredConnections" :key="connection.id" :data-pinned="isPinned(connection.id)" @click="handleLogin(connection)">
               <div class="row-item-left">
                 <div class="icon-cell">
                   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="20" height="20">
@@ -79,7 +96,25 @@
               </svg>
             </button>
           </div>
+          <!-- 历史记录加载状态指示器 -->
+          <div v-if="historyLoading && !historyLoaded" class="loading-indicator">
+            <div class="loading-spinner"></div>
+            <span>正在加载历史记录...</span>
+            <span v-if="historyRetryCount > 0" class="retry-info">
+              (重试 {{ historyRetryCount }}/3)
+            </span>
+          </div>
+          <!-- 历史记录错误状态指示器 -->
+          <div v-else-if="historyError && !historyLoaded" class="error-indicator">
+            <div class="error-icon">⚠️</div>
+            <div class="error-content">
+              <span class="error-message">历史记录加载失败</span>
+              <button class="retry-btn" @click="retryLoadHistory">重试</button>
+            </div>
+          </div>
+          <!-- 历史记录列表 -->
           <transition-group
+            v-else
             name="drag"
             class="connection-grid"
             :class="{ 'edit-mode': isEditMode }"
@@ -225,7 +260,7 @@
 </template>
 
 <script>
-import { ref, computed, nextTick } from 'vue'
+import { ref, computed, nextTick, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useUserStore } from '@/store/user'
 import { useLocalConnectionsStore } from '@/store/localConnections'
@@ -276,14 +311,40 @@ export default {
       return userStore.isLoggedIn ? userStore.connections : localConnectionsStore.getAllConnections
     })
 
-    // 获取收藏连接
+    // 获取收藏连接（智能按需加载）
     const favoriteConnections = computed(() => {
-      return userStore.isLoggedIn ? userStore.favoriteConnections : localConnectionsStore.getFavoriteConnections
+      const connections = userStore.isLoggedIn ? userStore.favoriteConnections : localConnectionsStore.getFavoriteConnections
+
+      // 如果用户已登录且收藏数据为空且尚未加载，触发按需加载
+      if (userStore.isLoggedIn && connections.length === 0 && !userStore.favoritesLoaded && !userStore.favoritesLoading) {
+        log.debug('检测到需要收藏数据，触发按需加载')
+        // 异步触发加载，不阻塞当前计算
+        setTimeout(() => {
+          userStore.loadFavoritesOnDemand().catch(error => {
+            log.warn('按需加载收藏数据失败:', error)
+          })
+        }, 100)
+      }
+
+      return connections
     })
 
-    // 获取历史记录
+    // 获取历史记录（智能按需加载）
     const historyConnections = computed(() => {
-      return userStore.isLoggedIn ? userStore.historyConnections : localConnectionsStore.getHistory
+      const connections = userStore.isLoggedIn ? userStore.historyConnections : localConnectionsStore.getHistory
+
+      // 如果用户已登录且历史记录为空且尚未加载，触发按需加载
+      if (userStore.isLoggedIn && connections.length === 0 && !userStore.historyLoaded && !userStore.historyLoading) {
+        log.debug('检测到需要历史记录，触发按需加载')
+        // 异步触发加载，不阻塞当前计算
+        setTimeout(() => {
+          userStore.loadHistoryOnDemand().catch(error => {
+            log.warn('按需加载历史记录失败:', error)
+          })
+        }, 100)
+      }
+
+      return connections
     })
 
     // 搜索相关
@@ -962,7 +1023,52 @@ export default {
       }
       ElMessage.success('删除成功')
     }
-    
+
+    // 重试加载连接数据
+    const retryLoadConnections = async () => {
+      try {
+        userStore.clearError('connections')
+        await userStore.loadConnectionsOnDemand()
+        log.debug('连接数据重试加载成功')
+      } catch (error) {
+        log.warn('连接数据重试加载失败', error)
+      }
+    }
+
+    // 重试加载历史记录
+    const retryLoadHistory = async () => {
+      try {
+        userStore.clearError('history')
+        await userStore.loadHistoryOnDemand()
+        log.debug('历史记录重试加载成功')
+      } catch (error) {
+        log.warn('历史记录重试加载失败', error)
+      }
+    }
+
+    // 重试加载收藏数据
+    const retryLoadFavorites = async () => {
+      try {
+        userStore.clearError('favorites')
+        await userStore.loadFavoritesOnDemand()
+        log.debug('收藏数据重试加载成功')
+      } catch (error) {
+        log.warn('收藏数据重试加载失败', error)
+      }
+    }
+
+    // 组件挂载时按需加载连接数据
+    onMounted(async () => {
+      if (userStore.isLoggedIn) {
+        try {
+          await userStore.loadConnectionsOnDemand()
+          log.debug('连接管理页面：连接数据按需加载完成')
+        } catch (error) {
+          log.warn('连接管理页面：按需加载连接数据失败', error)
+        }
+      }
+    })
+
     return {
       connections,
       favoriteConnections,
@@ -1001,7 +1107,24 @@ export default {
       handleDragOver,
       handleDragEnter,
       handleDragEnd,
-      handleDeleteHistory
+      handleDeleteHistory,
+      // 按需加载状态
+      connectionsLoading: computed(() => userStore.connectionsLoading),
+      connectionsLoaded: computed(() => userStore.connectionsLoaded),
+      connectionsError: computed(() => userStore.connectionsError),
+      connectionsRetryCount: computed(() => userStore.connectionsRetryCount),
+      historyLoading: computed(() => userStore.historyLoading),
+      historyLoaded: computed(() => userStore.historyLoaded),
+      historyError: computed(() => userStore.historyError),
+      historyRetryCount: computed(() => userStore.historyRetryCount),
+      favoritesLoading: computed(() => userStore.favoritesLoading),
+      favoritesLoaded: computed(() => userStore.favoritesLoaded),
+      favoritesError: computed(() => userStore.favoritesError),
+      favoritesRetryCount: computed(() => userStore.favoritesRetryCount),
+      // 重试方法
+      retryLoadConnections,
+      retryLoadHistory,
+      retryLoadFavorites
     }
   }
 }
@@ -1822,5 +1945,77 @@ h2 {
 .connection-card.swinging.being-dragged {
   animation: none !important;
   transform: scale(1.02) !important;
+}
+
+/* 加载指示器样式 */
+.loading-indicator {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 20px;
+  color: #a0a0a0;
+  font-size: 14px;
+  gap: 12px;
+}
+
+.loading-spinner {
+  width: 20px;
+  height: 20px;
+  border: 2px solid #333;
+  border-top: 2px solid #409eff;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+/* 错误指示器样式 */
+.error-indicator {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 20px;
+  color: #ff6b6b;
+  font-size: 14px;
+  gap: 12px;
+}
+
+.error-icon {
+  font-size: 20px;
+}
+
+.error-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.error-message {
+  color: #ff6b6b;
+}
+
+.retry-btn {
+  padding: 6px 12px;
+  background-color: #409eff;
+  border: none;
+  border-radius: 4px;
+  color: white;
+  cursor: pointer;
+  font-size: 12px;
+  transition: background-color 0.2s;
+}
+
+.retry-btn:hover {
+  background-color: #66b1ff;
+}
+
+.retry-info {
+  color: #a0a0a0;
+  font-size: 12px;
+  margin-left: 8px;
 }
 </style> 

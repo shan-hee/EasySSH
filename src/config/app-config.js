@@ -79,8 +79,11 @@ export const cacheConfig = {
   // 同步配置
   sync: {
     backgroundInterval: parseInt(import.meta.env.VITE_CACHE_SYNC_INTERVAL) || 5 * 60 * 1000,
+    minInterval: parseInt(import.meta.env.VITE_CACHE_SYNC_MIN_INTERVAL) || 30 * 1000, // 最小同步间隔：30秒
     retryAttempts: 3,                // 重试次数
-    retryDelay: 1000                 // 重试延迟：1秒
+    retryDelay: 1000,                // 重试延迟：1秒
+    enableIncremental: true,         // 启用增量同步
+    fullSyncInterval: 60 * 60 * 1000 // 强制全量同步间隔：1小时
   },
 
   // 存储配置

@@ -15,6 +15,7 @@ const {
   updateUserScript,
   deleteUserScript,
   getAllUserScripts,
+  getScriptsIncremental,
   recordScriptUsage,
   executeScript,
   getUserFavorites,
@@ -40,6 +41,9 @@ router.delete('/user/:id', deleteUserScript);
 
 // 获取用户所有脚本（包括公开脚本和用户脚本）
 router.get('/all', getAllUserScripts);
+
+// 获取脚本增量更新
+router.get('/incremental', getScriptsIncremental);
 
 // 记录脚本使用
 router.post('/usage', recordScriptUsage);

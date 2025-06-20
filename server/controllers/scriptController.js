@@ -348,13 +348,13 @@ const getAllUserScripts = async (req, res) => {
     const userId = req.user.id;
     const { page = 1, limit = 100, search } = req.query;
     const offset = (page - 1) * limit;
-    
+
     const scripts = await UserScript.getAllUserScripts(userId, {
       limit: parseInt(limit),
       offset: parseInt(offset),
       search
     });
-    
+
     res.json({
       success: true,
       scripts,
@@ -369,6 +369,107 @@ const getAllUserScripts = async (req, res) => {
     res.status(500).json({
       success: false,
       message: '获取脚本失败'
+    });
+  }
+};
+
+/**
+ * 获取脚本增量更新
+ */
+const getScriptsIncremental = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { since } = req.query;
+
+    if (!since) {
+      return res.status(400).json({
+        success: false,
+        message: '缺少since参数'
+      });
+    }
+
+    const sinceDate = new Date(since);
+    if (isNaN(sinceDate.getTime())) {
+      return res.status(400).json({
+        success: false,
+        message: 'since参数格式无效'
+      });
+    }
+
+    const db = getDb();
+
+    // 获取更新的公开脚本
+    const updatedPublicScriptsStmt = db.prepare(`
+      SELECT *, 'public' as source FROM scripts
+      WHERE is_public = 1 AND updated_at > ?
+      ORDER BY updated_at DESC
+    `);
+    const updatedPublicScripts = updatedPublicScriptsStmt.all(since);
+
+    // 获取更新的用户脚本
+    const updatedUserScriptsStmt = db.prepare(`
+      SELECT *, 'user' as source FROM user_scripts
+      WHERE user_id = ? AND updated_at > ?
+      ORDER BY updated_at DESC
+    `);
+    const updatedUserScripts = updatedUserScriptsStmt.all(userId, since);
+
+    // 合并所有更新的脚本
+    const updates = [
+      ...updatedPublicScripts.map(script => ({
+        id: script.id,
+        name: script.name,
+        description: script.description,
+        command: script.command,
+        author: script.author,
+        tags: script.tags ? JSON.parse(script.tags) : [],
+        keywords: script.keywords ? JSON.parse(script.keywords) : [],
+        category: script.category,
+        source: script.source,
+        usageCount: script.usage_count || 0,
+        createdAt: script.created_at,
+        updatedAt: script.updated_at
+      })),
+      ...updatedUserScripts.map(script => ({
+        id: script.id,
+        name: script.name,
+        description: script.description,
+        command: script.command,
+        tags: script.tags ? JSON.parse(script.tags) : [],
+        keywords: script.keywords ? JSON.parse(script.keywords) : [],
+        category: script.category,
+        source: script.source,
+        createdAt: script.created_at,
+        updatedAt: script.updated_at
+      }))
+    ];
+
+    // 获取用户收藏状态（如果有更新）
+    // 注意：user_script_favorites表没有updated_at字段，所以我们检查created_at
+    const favoritesStmt = db.prepare(`
+      SELECT script_id FROM user_script_favorites
+      WHERE user_id = ? AND created_at > ?
+    `);
+    const updatedFavorites = favoritesStmt.all(userId, since);
+
+    // 获取所有当前收藏
+    const allFavoritesStmt = db.prepare(`
+      SELECT script_id FROM user_script_favorites WHERE user_id = ?
+    `);
+    const allFavorites = allFavoritesStmt.all(userId).map(row => row.script_id);
+
+    res.json({
+      success: true,
+      updates,
+      deletes: [], // 暂时不处理删除，因为公开脚本通常不会删除
+      favorites: updatedFavorites.length > 0 ? allFavorites : undefined
+    });
+
+  } catch (error) {
+    log.error('获取脚本增量更新失败:', error);
+    res.status(500).json({
+      success: false,
+      message: '获取增量更新失败'
     });
   }
 };
@@ -690,6 +791,7 @@ module.exports = {
   updateUserScript,
   deleteUserScript,
   getAllUserScripts,
+  getScriptsIncremental,
   recordScriptUsage,
   executeScript,
   getUserFavorites,

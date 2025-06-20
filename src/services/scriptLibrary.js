@@ -246,24 +246,65 @@ class ScriptLibraryService {
       log.debug('执行后台同步...')
 
       // 检查是否需要同步
-      const lastSyncTime = this.lastSync.value ? new Date(this.lastSync.value).getTime() : 0
-      const now = Date.now()
-
-      if (now - lastSyncTime < this.config.sync.backgroundInterval) {
+      if (this.shouldSkipSync()) {
         log.debug('距离上次同步时间太短，跳过后台同步')
         return
       }
 
-      // 执行同步
-      const success = await this.syncFromServer()
+      // 执行智能同步（优先增量同步）
+      const success = await this.syncFromServer(false)
       if (success) {
         // 清理过期缓存
         this.cleanupExpiredCache()
         // 保存缓存元数据
         this.saveCacheMetadata()
+        log.debug('后台同步完成')
       }
     } catch (error) {
       log.warn('后台同步失败:', error)
+    }
+  }
+
+  /**
+   * 智能同步策略
+   * 根据网络状况和数据变化情况选择最优同步方式
+   */
+  async smartSync() {
+    try {
+      if (!this.isUserLoggedIn()) {
+        log.debug('用户未登录，跳过智能同步')
+        return false
+      }
+
+      // 检查网络状况
+      const isOnline = navigator.onLine
+      if (!isOnline) {
+        log.debug('网络离线，跳过同步')
+        return false
+      }
+
+      // 根据上次同步时间决定同步策略
+      const lastSyncTime = this.lastSync.value ? new Date(this.lastSync.value).getTime() : 0
+      const now = Date.now()
+      const timeSinceLastSync = now - lastSyncTime
+
+      // 使用配置中的全量同步间隔
+      const fullSyncInterval = this.config.sync.fullSyncInterval || (60 * 60 * 1000)
+      const forceFullSync = timeSinceLastSync > fullSyncInterval
+
+      log.debug('智能同步策略', {
+        timeSinceLastSync: Math.round(timeSinceLastSync / 1000),
+        forceFullSync,
+        enableIncremental: this.config.sync.enableIncremental
+      })
+
+      // 如果禁用增量同步，总是使用全量同步
+      const useFullSync = forceFullSync || !this.config.sync.enableIncremental
+
+      return await this.syncFromServer(useFullSync)
+    } catch (error) {
+      log.error('智能同步失败:', error)
+      return false
     }
   }
 
@@ -307,16 +348,117 @@ class ScriptLibraryService {
 
   /**
    * 从服务器同步脚本库数据
+   * @param {boolean} forceFullSync - 是否强制全量同步
    */
-  async syncFromServer() {
+  async syncFromServer(forceFullSync = false) {
     try {
       if (!this.isUserLoggedIn()) {
         log.debug('用户未登录，跳过脚本库同步')
         return false
       }
 
-      log.info('开始同步脚本库数据...')
+      // 检查是否需要同步
+      if (!forceFullSync && this.shouldSkipSync()) {
+        log.debug('距离上次同步时间太短，跳过本次同步')
+        return true
+      }
 
+      log.info('开始同步脚本库数据...', { forceFullSync })
+
+      // 优先使用增量同步
+      if (!forceFullSync && this.lastSync.value) {
+        const incrementalSuccess = await this.incrementalSyncFromServer()
+        if (incrementalSuccess) {
+          return true
+        }
+        log.info('增量同步失败，回退到全量同步')
+      }
+
+      // 全量同步
+      return await this.fullSyncFromServer()
+    } catch (error) {
+      log.error('同步脚本库数据失败:', error)
+      return false
+    }
+  }
+
+  /**
+   * 检查是否应该跳过同步
+   */
+  shouldSkipSync() {
+    if (!this.lastSync.value) {
+      return false
+    }
+
+    const lastSyncTime = new Date(this.lastSync.value).getTime()
+    const now = Date.now()
+    const minSyncInterval = this.config.sync.minInterval || 30000 // 30秒最小间隔
+
+    return (now - lastSyncTime) < minSyncInterval
+  }
+
+  /**
+   * 增量同步脚本库数据
+   */
+  async incrementalSyncFromServer() {
+    try {
+      const lastSyncTime = this.lastSync.value
+
+      // 获取增量更新
+      const incrementalResponse = await apiService.get('/scripts/incremental', {
+        since: lastSyncTime
+      })
+
+      if (incrementalResponse && incrementalResponse.success) {
+        const { updates, deletes, favorites } = incrementalResponse
+
+        // 处理更新和新增的脚本
+        if (updates && updates.length > 0) {
+          this.applyScriptUpdates(updates)
+          log.debug('应用脚本增量更新', { count: updates.length })
+        }
+
+        // 处理删除的脚本
+        if (deletes && deletes.length > 0) {
+          this.applyScriptDeletes(deletes)
+          log.debug('应用脚本删除', { count: deletes.length })
+        }
+
+        // 更新收藏状态
+        if (favorites) {
+          this.favorites.value = favorites
+          log.debug('更新收藏状态', { count: favorites.length })
+        }
+
+        // 更新同步时间
+        this.lastSync.value = new Date().toISOString()
+
+        // 保存到本地存储
+        this.saveToLocal()
+
+        log.info('脚本库增量同步成功')
+        return true
+      }
+
+      return false
+    } catch (error) {
+      // 如果是404错误，说明后端不支持增量同步，禁用该功能
+      if (error.response && error.response.status === 404) {
+        log.debug('后端不支持增量同步API，禁用增量同步功能')
+        this.config.sync.enableIncremental = false
+        return false
+      }
+
+      log.warn('增量同步失败:', error)
+      return false
+    }
+  }
+
+  /**
+   * 全量同步脚本库数据
+   */
+  async fullSyncFromServer() {
+    try {
       // 同步收藏状态
       await this.syncFavoritesFromServer()
 
@@ -353,7 +495,7 @@ class ScriptLibraryService {
         // 保存到本地存储
         this.saveToLocal()
 
-        log.info('脚本库数据同步成功', {
+        log.info('脚本库数据全量同步成功', {
           publicScripts: publicScripts.length,
           userScripts: userScripts.length
         })
@@ -364,9 +506,52 @@ class ScriptLibraryService {
         return false
       }
     } catch (error) {
-      log.error('同步脚本库数据失败:', error)
+      log.error('全量同步脚本库数据失败:', error)
       return false
     }
+  }
+
+  /**
+   * 应用脚本更新
+   */
+  applyScriptUpdates(updates) {
+    updates.forEach(update => {
+      const script = {
+        ...update,
+        updatedAt: update.updatedAt || update.updated_at,
+        createdAt: update.createdAt || update.created_at,
+        isFavorite: this.favorites.value.includes(update.id)
+      }
+
+      if (update.source === 'public') {
+        const index = this.scripts.value.findIndex(s => s.id === update.id)
+        if (index >= 0) {
+          this.scripts.value[index] = script
+        } else {
+          this.scripts.value.push(script)
+        }
+      } else if (update.source === 'user') {
+        const index = this.userScripts.value.findIndex(s => s.id === update.id)
+        if (index >= 0) {
+          this.userScripts.value[index] = script
+        } else {
+          this.userScripts.value.push(script)
+        }
+      }
+    })
+  }
+
+  /**
+   * 应用脚本删除
+   */
+  applyScriptDeletes(deletes) {
+    deletes.forEach(deleteInfo => {
+      if (deleteInfo.source === 'public') {
+        this.scripts.value = this.scripts.value.filter(s => s.id !== deleteInfo.id)
+      } else if (deleteInfo.source === 'user') {
+        this.userScripts.value = this.userScripts.value.filter(s => s.id !== deleteInfo.id)
+      }
+    })
   }
 
   /**
@@ -463,6 +648,7 @@ class ScriptLibraryService {
 
   /**
    * 获取所有脚本（包括公开脚本和用户脚本）
+   * 增强的本地缓存优先策略
    */
   getAllScripts() {
     // 合并公开脚本和用户脚本
@@ -470,6 +656,17 @@ class ScriptLibraryService {
       ...this.scripts.value.map(script => ({ ...script, source: 'public' })),
       ...this.userScripts.value.map(script => ({ ...script, source: 'user' }))
     ]
+
+    // 如果没有数据且用户已登录，触发后台同步
+    if (allScripts.length === 0 && this.isUserLoggedIn() && !this.lastSync.value) {
+      log.debug('检测到无脚本数据，触发后台同步')
+      // 异步触发同步，不阻塞当前调用
+      setTimeout(() => {
+        this.smartSync().catch(error => {
+          log.warn('后台智能同步失败:', error)
+        })
+      }, 100)
+    }
 
     // 按使用次数和更新时间排序
     return allScripts.sort((a, b) => {
