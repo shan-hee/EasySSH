@@ -5,56 +5,30 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-      # 启用BuildKit以提高构建性能
       args:
         BUILDKIT_INLINE_CACHE: 1
     image: easyssh:latest
+    container_name: easyssh
     ports:
       - "8520:8520"
-      - "8000:8000"
     environment:
       - NODE_ENV=production
-      - PORT=8000
+      - SERVER_ADDRESS=${SERVER_ADDRESS:-}  # 服务器地址，不配置则自动获取公网IP
+      - JWT_SECRET=${JWT_SECRET:-your-jwt-secret-key-please-change-in-production}
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY:-your-encryption-key-please-change-in-production}
     volumes:
-      # 持久化数据目录
       - easyssh_data:/app/server/data
-      # 日志目录
       - easyssh_logs:/app/server/logs
-      # 可选：挂载配置文件
-      - ./server/config:/app/server/config:ro
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8520/health", "||", "exit", "1"]
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8520/health"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 60s
-    # 资源限制
-    deploy:
-      resources:
-        limits:
-          memory: 512M
-          cpus: '1.0'
-        reservations:
-          memory: 256M
-          cpus: '0.5'
-    # 安全配置
-    security_opt:
-      - no-new-privileges:true
-    read_only: false
-    tmpfs:
-      - /tmp:noexec,nosuid,size=100m
 
 volumes:
   easyssh_data:
     driver: local
   easyssh_logs:
     driver: local
-
-# 网络配置
-networks:
-  default:
-    driver: bridge
-    ipam:
-      config:
-        - subnet: 172.20.0.0/16

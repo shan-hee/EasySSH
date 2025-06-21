@@ -7,38 +7,124 @@ const { connectDatabase } = require('../config/database');
 const Script = require('../models/Script');
 
 /**
+ * 获取公网IP地址
+ */
+async function getPublicIP() {
+  const http = require('http');
+  const https = require('https');
+
+  return new Promise((resolve) => {
+    // 尝试多个公网IP获取服务
+    const services = [
+      'http://api.ipify.org',
+      'http://icanhazip.com',
+      'http://ipinfo.io/ip'
+    ];
+
+    let completed = false;
+
+    services.forEach(url => {
+      if (completed) return;
+
+      const client = url.startsWith('https') ? https : http;
+      const req = client.get(url, (res) => {
+        if (completed) return;
+
+        let data = '';
+        res.on('data', (chunk) => {
+          data += chunk;
+        });
+
+        res.on('end', () => {
+          if (completed) return;
+          completed = true;
+          const ip = data.trim();
+          // 验证IP格式
+          if (/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(ip)) {
+            resolve(ip);
+          } else {
+            resolve(null);
+          }
+        });
+      });
+
+      req.on('error', () => {
+        // 忽略错误，尝试下一个服务
+      });
+
+      req.setTimeout(3000, () => {
+        req.destroy();
+      });
+    });
+
+    // 3秒后如果还没有结果，返回null
+    setTimeout(() => {
+      if (!completed) {
+        completed = true;
+        resolve(null);
+      }
+    }, 3000);
+  });
+}
+
+/**
  * 获取服务器地址
  */
-function getServerAddress() {
-  // 监控服务使用9527端口
-  const monitorPort = process.env.MONITOR_PORT || 9527;
-  const serverHost = process.env.SERVER_HOST || 'localhost';
+async function getServerAddress() {
+  // 监控服务端口配置，默认8520
+  const monitorPort = process.env.VITE_PORT || 8520;
 
-  // 如果是localhost，尝试获取实际IP
-  if (serverHost === 'localhost' || serverHost === '127.0.0.1') {
-    try {
-      const os = require('os');
-      const interfaces = os.networkInterfaces();
-
-      // 查找第一个非回环的IPv4地址
-      for (const name of Object.keys(interfaces)) {
-        for (const iface of interfaces[name]) {
-          if (iface.family === 'IPv4' && !iface.internal) {
-            return `${iface.address}:${monitorPort}`;
-          }
-        }
-      }
-    } catch (error) {
-      console.warn('获取网络接口失败，使用默认地址');
+  // 首先检查.env中是否配置了SERVER_ADDRESS
+  const configuredAddress = process.env.SERVER_ADDRESS;
+  if (configuredAddress && configuredAddress.trim()) {
+    console.log('使用配置的服务器地址:', configuredAddress);
+    // 如果配置的地址已包含端口，直接使用；否则添加端口
+    if (configuredAddress.includes(':')) {
+      return configuredAddress;
+    } else {
+      return `${configuredAddress}:${monitorPort}`;
     }
   }
 
-  return `${serverHost}:${monitorPort}`;
+  // 如果没有配置，尝试获取公网IP
+  console.log('未配置服务器地址，正在获取公网IP...');
+  try {
+    const publicIP = await getPublicIP();
+    if (publicIP) {
+      console.log('获取到公网IP+端口:', publicIP+  `:${monitorPort}`);
+      return `${publicIP}:${monitorPort}`;
+    }
+  } catch (error) {
+    console.warn('获取公网IP失败:', error.message);
+  }
+
+  // 如果获取公网IP失败，尝试获取内网IP
+  console.log('获取公网IP失败，尝试获取内网IP...');
+  try {
+    const os = require('os');
+    const interfaces = os.networkInterfaces();
+
+    // 查找第一个非回环的IPv4地址
+    for (const name of Object.keys(interfaces)) {
+      for (const iface of interfaces[name]) {
+        if (iface.family === 'IPv4' && !iface.internal) {
+          console.log('使用内网IP:', iface.address);
+          return `${iface.address}:${monitorPort}`;
+        }
+      }
+    }
+  } catch (error) {
+    console.warn('获取网络接口失败:', error.message);
+  }
+
+  // 最后的备选方案
+  console.warn('无法获取IP地址，使用默认地址');
+  return `localhost:${monitorPort}`;
 }
 
 // 默认脚本数据生成函数
-function getDefaultScripts() {
-  const serverAddress = getServerAddress();
+async function getDefaultScripts() {
+  const serverAddress = await getServerAddress();
 
   return [
   {
@@ -102,7 +188,7 @@ async function initializeScripts() {
     console.log('开始初始化脚本库数据...');
 
     // 获取脚本数据
-    const defaultScripts = getDefaultScripts();
+    const defaultScripts = await getDefaultScripts();
 
     let createdCount = 0;
     let skippedCount = 0;
