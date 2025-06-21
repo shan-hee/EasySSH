@@ -788,31 +788,36 @@ export default {
 
       let connectionId;
 
-      // 先保存连接
+      // 生成新的会话ID，确保每次都是新会话
+      const sessionId = Date.now().toString();
+
+      // 先保存连接 - 关键修复：始终使用用户当前输入的数据，而不是已有数据
       if (isEdit.value) {
-        // 检查是否是从历史连接编辑的，且在我的连接配置中不存在
+        // 检查是否是从历史连接编辑的
         if (isFromHistory.value) {
+          // 从历史连接编辑：检查是否已存在相同配置的连接
           const existingConnection = findExistingConnection(connectionForm.value)
 
           if (!existingConnection) {
             // 如果连接不存在于我的连接配置中，则添加为新连接
+            // 使用用户当前输入的表单数据
             if (userStore.isLoggedIn) {
               connectionId = userStore.addConnection(connectionForm.value)
             } else {
               connectionId = localConnectionsStore.addConnection(connectionForm.value)
             }
           } else {
-            // 更新已有连接，使用现有连接的ID
+            // 如果连接已存在，更新该连接的信息为用户当前输入的数据
+            // 这确保了用户的修改会被保存，而不是使用旧数据
             connectionId = existingConnection.id;
-            const updatedConnection = { ...connectionForm.value, id: existingConnection.id }
             if (userStore.isLoggedIn) {
-              userStore.updateConnection(connectionId, updatedConnection)
+              userStore.updateConnection(connectionId, connectionForm.value)
             } else {
-              localConnectionsStore.updateConnection(connectionId, updatedConnection)
+              localConnectionsStore.updateConnection(connectionId, connectionForm.value)
             }
           }
         } else {
-          // 更新已有连接（来自我的连接配置的编辑）
+          // 来自我的连接配置的编辑：直接更新
           connectionId = connectionForm.value.id;
           if (userStore.isLoggedIn) {
             userStore.updateConnection(connectionId, connectionForm.value)
@@ -828,57 +833,56 @@ export default {
           connectionId = localConnectionsStore.addConnection(connectionForm.value)
         }
       }
-      
-      // 生成新的会话ID，确保每次都是新会话
-      const sessionId = Date.now().toString();
-      
-      // 添加到历史记录
-      if (userStore.isLoggedIn) {
-        userStore.addToHistory({...connectionForm.value, id: connectionId})
-      } else {
-        localConnectionsStore.addToHistory({...connectionForm.value, id: connectionId})
+
+      // 准备用于连接的数据 - 始终使用用户当前输入的表单数据
+      const connectionDataForSession = {
+        ...connectionForm.value,
+        id: sessionId, // 会话使用独立的ID
+        originalConnectionId: connectionId, // 保存原始连接ID以便需要时可以引用
+        title: connectionForm.value.name || `${connectionForm.value.username}@${connectionForm.value.host}`,
       }
-      
+
+      // 添加到历史记录 - 使用用户输入的数据，但保留连接ID
+      const historyData = {
+        ...connectionForm.value,
+        id: connectionId // 历史记录使用连接配置的ID
+      }
+
+      if (userStore.isLoggedIn) {
+        userStore.addToHistory(historyData)
+      } else {
+        localConnectionsStore.addToHistory(historyData)
+      }
+
       // 关闭对话框
       dialogVisible.value = false
-      
+
       // 获取当前标签页索引
       const currentTabIndex = tabStore.activeTabIndex
       const currentTab = tabStore.tabs[currentTabIndex]
-      
+
       // 更新当前标签为终端标签
       if (currentTab && (currentTab.type === 'newConnection' || currentTab.path.includes('/connections'))) {
         // 更新标签的路径、类型和数据
         tabStore.updateTab(currentTabIndex, {
-          title: connectionForm.value.name || `${connectionForm.value.username}@${connectionForm.value.host}`,
+          title: connectionDataForSession.title,
           type: 'terminal',
           path: `/terminal/${sessionId}`,
           data: { connectionId: sessionId }
         })
-        
-        // 在会话存储中注册会话，使用新的会话ID，但保留连接ID的引用
-        sessionStore.registerSession(sessionId, {
-          ...connectionForm.value,
-          id: sessionId,
-          originalConnectionId: connectionId, // 保存原始连接ID以便需要时可以引用
-          title: connectionForm.value.name || `${connectionForm.value.username}@${connectionForm.value.host}`,
-        })
-        
+
+        // 在会话存储中注册会话，使用用户输入的连接数据
+        sessionStore.registerSession(sessionId, connectionDataForSession)
+
         // 导航到终端页面，使用新的会话ID
         router.push(`/terminal/${sessionId}`)
       } else {
         // 如果当前标签不是新建连接标签，则创建新标签
-        // 使用新的会话ID而不是连接ID
         tabStore.addTerminal(sessionId)
-        
-        // 在会话存储中注册会话
-        sessionStore.registerSession(sessionId, {
-          ...connectionForm.value,
-          id: sessionId,
-          originalConnectionId: connectionId, // 保存原始连接ID以便需要时可以引用
-          title: connectionForm.value.name || `${connectionForm.value.username}@${connectionForm.value.host}`,
-        })
-        
+
+        // 在会话存储中注册会话，使用用户输入的连接数据
+        sessionStore.registerSession(sessionId, connectionDataForSession)
+
         // 导航到终端页面，使用新的会话ID
         router.push(`/terminal/${sessionId}`)
       }
