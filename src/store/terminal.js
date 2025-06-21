@@ -578,13 +578,92 @@ export const useTerminalStore = defineStore('terminal', () => {
   
   /**
    * 发送命令到终端
-   * @param {string} connectionId - 连接ID
+   * @param {string} connectionId - 连接ID（可能是终端ID或SSH会话ID）
    * @param {string} command - 要执行的命令
+   * @param {Object} options - 选项
+   * @param {boolean} options.clearLine - 是否清除当前行，默认true
+   * @param {boolean} options.execute - 是否自动执行命令，默认true
+   * @param {boolean} options.sendCtrlC - 是否发送Ctrl+C来清除当前输入，默认true
    */
-  const sendCommand = (connectionId, command) => {
+  const sendCommand = (connectionId, command, options = {}) => {
     const terminal = state.terminals[connectionId]
-    if (terminal) {
-      terminal.write(`${command}\r`)
+    if (!terminal) {
+      log.warn(`终端不存在: ${connectionId}`)
+      return false
+    }
+
+    // 获取SSH会话ID - 首先尝试从sessions映射中获取
+    let sessionId = state.sessions[connectionId]
+    let session = null
+
+    if (sessionId) {
+      // 如果找到了映射的会话ID，使用它
+      session = sshService.sessions.get(sessionId)
+      log.debug(`通过终端ID ${connectionId} 找到SSH会话ID: ${sessionId}`)
+    } else {
+      // 如果没有找到映射，可能connectionId本身就是会话ID
+      session = sshService.sessions.get(connectionId)
+      if (session) {
+        sessionId = connectionId
+        log.debug(`直接使用连接ID作为SSH会话ID: ${connectionId}`)
+      }
+    }
+
+    if (!session) {
+      log.warn(`SSH会话不存在: 终端ID=${connectionId}, 会话ID=${sessionId}`)
+      return false
+    }
+
+    const { clearLine = true, execute = true, sendCtrlC = true } = options
+
+    // 如果命令为空，只发送换行符
+    if (!command || command.trim() === '') {
+      // 直接通过SSH服务发送回车符
+      sshService._processTerminalInput(session, '\r')
+      return true
+    }
+
+    log.info(`发送命令到终端 ${connectionId} (会话: ${sessionId}): ${command.substring(0, 100)}${command.length > 100 ? '...' : ''}`)
+
+    try {
+      // 如果需要清除当前行
+      if (clearLine && sendCtrlC) {
+        // 发送 Ctrl+C 来取消当前可能的输入
+        sshService._processTerminalInput(session, '\x03')
+
+        // 等待终端处理 Ctrl+C，然后发送命令
+        setTimeout(() => {
+          try {
+            // 发送命令字符串
+            sshService._processTerminalInput(session, command)
+
+            // 如果需要自动执行，发送回车
+            if (execute) {
+              setTimeout(() => {
+                sshService._processTerminalInput(session, '\r')
+                log.info(`命令已执行完成`)
+              }, 100)
+            }
+          } catch (error) {
+            log.error(`发送命令失败: ${error.message}`)
+          }
+        }, 300) // 等待 Ctrl+C 被处理
+      } else {
+        // 直接发送命令
+        sshService._processTerminalInput(session, command)
+
+        // 如果需要自动执行，发送回车
+        if (execute) {
+          setTimeout(() => {
+            sshService._processTerminalInput(session, '\r')
+            log.info(`命令已执行完成`)
+          }, 100)
+        }
+      }
+      return true
+    } catch (error) {
+      log.error(`发送命令到终端失败: ${error.message}`)
+      return false
     }
   }
   
@@ -597,6 +676,16 @@ export const useTerminalStore = defineStore('terminal', () => {
     if (terminal) {
       terminal.clear()
     }
+  }
+
+  /**
+   * 测试发送简单命令
+   * @param {string} connectionId - 连接ID
+   * @param {string} testCommand - 测试命令，默认为 'echo "test"'
+   */
+  const sendTestCommand = (connectionId, testCommand = 'echo "test"') => {
+    log.info(`发送测试命令: ${testCommand}`)
+    return sendCommand(connectionId, testCommand, { clearLine: true, execute: true })
   }
   
   /**

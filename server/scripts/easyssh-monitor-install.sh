@@ -670,7 +670,7 @@ if sudo systemctl is-active --quiet easyssh-monitor; then
     echo ""
     echo "📝 查看日志: sudo journalctl -u easyssh-monitor -f"
     echo "🔧 重启服务: sudo systemctl restart easyssh-monitor"
-    echo "❌ 卸载服务: sudo ./easyssh-monitor-uninstall.sh"
+    echo "❌ 卸载服务: curl -L https://raw.githubusercontent.com/shan-hee/EasySSH/main/server/scripts/easyssh-monitor-uninstall.sh -o easyssh-monitor-uninstall.sh && chmod +x easyssh-monitor-uninstall.sh && sudo ./easyssh-monitor-uninstall.sh"
 else
     echo "❌ 服务启动失败，请检查日志: sudo journalctl -u easyssh-monitor -n 20"
     exit 1

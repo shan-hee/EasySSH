@@ -1130,6 +1130,44 @@ class ScriptLibraryService {
   }
 
   /**
+   * 根据名称获取脚本
+   * @param {string} name - 脚本名称
+   * @param {string} source - 脚本来源 ('public', 'user', 或 'all')
+   */
+  getScriptByName(name, source = 'all') {
+    if (!name) return null
+
+    const searchName = name.toLowerCase().trim()
+
+    if (source === 'user') {
+      return this.userScripts.value.find(script =>
+        script.name.toLowerCase() === searchName
+      )
+    } else if (source === 'public') {
+      return this.scripts.value.find(script =>
+        script.name.toLowerCase() === searchName
+      )
+    } else {
+      // 搜索所有脚本，优先返回公开脚本
+      const publicScript = this.scripts.value.find(script =>
+        script.name.toLowerCase() === searchName
+      )
+      if (publicScript) {
+        return { ...publicScript, source: 'public' }
+      }
+
+      const userScript = this.userScripts.value.find(script =>
+        script.name.toLowerCase() === searchName
+      )
+      if (userScript) {
+        return { ...userScript, source: 'user' }
+      }
+
+      return null
+    }
+  }
+
+  /**
    * 切换脚本收藏状态
    * @param {number} scriptId - 脚本ID
    */
