@@ -81,9 +81,9 @@ function initWebSocketServer(server) {
       });
     } else if (pathname === '/monitor') {
       // 处理监控WebSocket连接 - 使用新的监控模块逻辑
-      const url = new URL(request.url, `http://${request.headers.host}`);
-      const connectionType = url.searchParams.get('type') || 'monitoring_client';
-      const subscribeServer = url.searchParams.get('subscribe');
+      const requestUrl = new URL(request.url, `http://${request.headers.host}`);
+      const connectionType = requestUrl.searchParams.get('type') || 'monitoring_client';
+      const subscribeServer = requestUrl.searchParams.get('subscribe');
 
       logger.debug('收到监控WebSocket连接请求', {
         url: request.url,
