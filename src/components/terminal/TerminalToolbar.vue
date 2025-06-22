@@ -463,12 +463,13 @@ export default defineComponent({
 
           const host = session.connection.host;
 
-          // 检查监控服务状态
-          if (monitoringService && typeof monitoringService.connectToHostWithStatus === 'function') {
-            const connected = await monitoringService.connectToHostWithStatus(terminalId);
+          // 使用重构后的监控状态检查服务
+          try {
+            const { default: monitoringStatusService } = await import('../../services/monitoringStatusService.js');
+            const statusResult = await monitoringStatusService.checkStatusOnly(host);
 
-            if (connected) {
-              // 监控服务安装成功
+            if (statusResult.available) {
+              // 监控数据可用
               ElMessage.success('监控服务安装成功！');
               log.info(`监控服务安装成功: ${host}`);
 
@@ -485,6 +486,8 @@ export default defineComponent({
 
               return; // 安装成功，停止检查
             }
+          } catch (error) {
+            log.warn(`检查监控状态失败: ${error.message}`);
           }
 
           // 如果还没有达到最大检查次数，继续检查
@@ -756,9 +759,9 @@ export default defineComponent({
         return;
       }
 
-      const { installed, terminalId, hostname, status } = event.detail;
+      const { installed, terminalId, hostname, status, message } = event.detail;
 
-      log.debug(`[终端工具栏] 收到监控状态变更事件: 主机=${hostname}, 已安装=${installed}, 终端=${terminalId}`);
+      log.debug(`[终端工具栏] 收到监控状态变更事件: 主机=${hostname}, 已安装=${installed}, 终端=${terminalId}, 状态=${status}`);
 
       if (terminalId) {
         // 处理特定终端的状态更新
@@ -767,18 +770,20 @@ export default defineComponent({
         if (terminalState) {
           // 更新终端状态
           terminalState.monitoringInstalled = installed;
+          // 保存状态详情，用于提供更好的用户反馈
+          terminalState.monitoringStatus = status;
+          terminalState.monitoringMessage = message;
 
           // 如果是当前活动的终端，同时更新UI
           if (terminalId === props.activeSessionId) {
             monitoringServiceInstalled.value = installed;
             log.debug(`[终端工具栏] 更新当前活动终端[${terminalId}]的监控状态: ${installed}`);
 
-            // 如果监控服务已安装，图标应该变为白色（可点击状态）
-            // 如果未安装，图标保持默认状态
+            // 提供更详细的状态反馈
             if (installed) {
-              log.debug(`[终端工具栏] 监控服务已安装，图标变为白色可点击状态`);
+              log.info(`[终端工具栏] 监控服务已安装: ${message || '监控数据可用'}`);
             } else {
-              log.debug(`[终端工具栏] 监控服务未安装，图标保持默认状态`);
+              log.info(`[终端工具栏] 监控服务未安装: ${message || '监控数据不可用'}`);
             }
           }
         }
@@ -834,31 +839,9 @@ export default defineComponent({
       }
     };
     
-    // 添加监控连接成功事件处理
-    const handleMonitoringConnected = (event) => {
-      if (!event || !event.detail) return;
-
-      const { hostAddress } = event.detail;
-      if (!hostAddress) return;
-
-      // 检查当前活动终端是否连接到该主机
-      if (props.activeSessionId) {
-        const sshSessionId = terminalStore.sessions[props.activeSessionId];
-        if (sshSessionId && sshService && sshService.sessions) {
-          const session = sshService.sessions.get(sshSessionId);
-          if (session && session.connection && session.connection.host === hostAddress) {
-            // 更新终端状态
-            const terminalState = getTerminalToolbarState(props.activeSessionId);
-            if (terminalState) {
-              terminalState.monitoringInstalled = true;
-              monitoringServiceInstalled.value = true;
-              // 只在状态实际变更时记录日志
-              log.info(`监控连接成功: ${hostAddress}`);
-            }
-          }
-        }
-      }
-    };
+    // 移除监控连接成功事件处理
+    // WebSocket连接成功不等于监控服务已安装
+    // 监控状态应该完全基于 monitoring-status-change 事件
     
     // 添加一个变量跟踪鼠标是否在tooltip上
     const tooltipHover = ref(false)
@@ -1354,7 +1337,7 @@ export default defineComponent({
       window.removeEventListener('terminal:toolbar-reset', handleToolbarReset);
       window.removeEventListener('terminal:toolbar-sync', handleToolbarSync);
       window.removeEventListener('terminal:refresh-status', handleTerminalRefreshStatus);
-      window.removeEventListener('monitoring-connected', handleMonitoringConnected);
+      // 移除监控连接成功事件监听器（已废弃）
       window.removeEventListener('resize', updateSftpTooltipPosition);
       window.removeEventListener('resize', handleResize);
       
@@ -1377,8 +1360,8 @@ export default defineComponent({
       window.addEventListener('terminal:toolbar-sync', handleToolbarSync);
       // 添加终端状态刷新事件监听
       window.addEventListener('terminal:refresh-status', handleTerminalRefreshStatus);
-      // 添加监控连接成功事件监听
-      window.addEventListener('monitoring-connected', handleMonitoringConnected);
+      // 移除监控连接成功事件监听（已废弃）
+      // WebSocket连接成功不等于监控服务已安装
       
       // 立即检查SSH连接状态
       checkSshConnectionStatus();

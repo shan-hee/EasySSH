@@ -17,8 +17,7 @@ router.use(authMiddleware);
 // 获取监控安装脚本
 router.get('/install-script', monitorController.getInstallScript);
 
-// 检查监控客户端连接状态
-router.get('/status', monitorController.checkStatus);
+
 
 // 获取所有监控会话
 router.get('/sessions', monitorController.getSessions);

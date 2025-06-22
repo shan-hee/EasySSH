@@ -21,7 +21,6 @@ class MonitoringInstance {
       connecting: false,
       sessionId: null,
       error: null,
-      serviceVerified: false, // 标记监控服务是否已验证
       stats: {
         messagesReceived: 0,
         messagesSent: 0
@@ -30,6 +29,7 @@ class MonitoringInstance {
       targetHost: null, // 存储远程服务器地址
       serverHost: null,  // 项目服务器地址
       systemInfo: null, // 存储最新的系统信息
+      subscribed: false, // 是否已订阅目标服务器
       monitorData: {
         cpu: { usage: 0, cores: 0, model: '' },
         memory: { total: 0, used: 0, free: 0, usedPercentage: 0 },
@@ -60,7 +60,7 @@ class MonitoringInstance {
     this.serverPort = window.location.port || port;
   }
   
-  // 构建WebSocket URL（通过nginx代理连接）
+  // 构建WebSocket URL（重构版 - 专用前端监控通道）
   _buildWebSocketUrl(remoteHost) {
     // 使用协议
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -70,14 +70,13 @@ class MonitoringInstance {
       this.state.targetHost = remoteHost;
     }
 
-    // 通过nginx代理连接到监控服务，添加前端类型参数和订阅参数
+    // 连接到专用前端监控WebSocket，移除type参数（后端已简化）
     const host = window.location.host; // 使用当前页面的host（包含端口）
     const params = new URLSearchParams({
-      type: 'frontend',
       subscribe: remoteHost || 'unknown'
     });
     const proxyUrl = `${protocol}//${host}/monitor?${params.toString()}`;
-    log.info(`[终端${this.terminalId}] 构建前端WebSocket URL: ${proxyUrl}, 目标主机: ${this.state.targetHost}`);
+    log.debug(`[终端${this.terminalId}] 监控WebSocket URL: ${proxyUrl}`);
 
     return proxyUrl;
   }
@@ -110,7 +109,7 @@ class MonitoringInstance {
       
       // 构建WebSocket URL
       const url = this._buildWebSocketUrl(remoteHost);
-      log.debug(`[终端${this.terminalId}] 正在连接到监控WebSocket服务: ${url}`);
+      // 连接到监控WebSocket服务
       
       // 保存目标主机
       this.state.targetHost = remoteHost;
@@ -142,40 +141,24 @@ class MonitoringInstance {
           this.state.connected = true;
           this.state.error = null;
 
-          log.debug(`[终端${this.terminalId}] 前端监控WebSocket连接已建立: ${remoteHost}`);
-
-          // 设置服务验证超时
-          const verificationTimeout = setTimeout(() => {
-            if (!this.state.serviceVerified) {
-              log.debug(`[终端${this.terminalId}] 监控服务验证超时，可能未安装监控服务`);
-              this.state.serviceVerified = false;
-
-              // 触发监控状态更新事件（未安装）
-              window.dispatchEvent(new CustomEvent('monitoring-status-change', {
-                detail: {
-                  installed: false,
-                  host: remoteHost,
-                  terminalId: this.terminalId,
-                  reason: '服务验证超时'
-                }
-              }));
-
-              // 断开连接
-              this.disconnect();
-            }
-          }, 5000); // 5秒验证超时
-
-          // 存储验证超时ID
-          this.verificationTimeout = verificationTimeout;
+          log.info(`[终端${this.terminalId}] 监控连接已建立: ${remoteHost}`);
 
           // 初始化保活机制
           this._setupKeepAlive();
 
-          // 注意：由于URL参数已经包含订阅信息，后端会自动处理订阅
-          // 但我们仍然可以发送额外的订阅消息来确保订阅成功
+          // 发送订阅消息（URL参数已包含订阅信息，这里作为确认）
           setTimeout(() => {
             this._sendSubscribeMessage(remoteHost);
           }, 100);
+
+          // 触发连接成功事件（用于内部状态管理）
+          window.dispatchEvent(new CustomEvent('monitoring-connected', {
+            detail: {
+              terminalId: this.terminalId,
+              hostAddress: remoteHost,
+              success: true
+            }
+          }));
         };
         
         this.ws.onmessage = (event) => {
@@ -318,26 +301,22 @@ class MonitoringInstance {
 
     // 重置状态
     this.state.connecting = false;
-    this.state.serviceVerified = false; // 重置服务验证状态
     this.state.lastActivity = null;
-
-    // 清除验证超时
-    if (this.verificationTimeout) {
-      clearTimeout(this.verificationTimeout);
-      this.verificationTimeout = null;
-    }
     
     // 清除保持连接的定时任务
     this._clearKeepAlive();
     
     // 只有在之前是连接状态时才触发状态变更事件
     if (wasConnected) {
-      // 通知监控服务已断开
-      window.dispatchEvent(new CustomEvent('monitoring-status-change', { 
-        detail: { 
-          installed: false, 
-          host: targetHost, 
-          terminalId: this.terminalId 
+      // 通知监控WebSocket已断开（主动断开）
+      window.dispatchEvent(new CustomEvent('monitoring-status-change', {
+        detail: {
+          installed: false,
+          available: false,
+          host: targetHost,
+          terminalId: this.terminalId,
+          status: 'manually_disconnected',
+          message: '监控连接已主动断开'
         }
       }));
     }
@@ -461,36 +440,8 @@ class MonitoringInstance {
           monitoringFactory.updateServerData(serverId, message);
         }
 
-        // 如果这是第一次收到有效的监控数据，确认服务已安装
-        if (!this.state.serviceVerified) {
-          this.state.serviceVerified = true;
-
-          // 清除验证超时
-          if (this.verificationTimeout) {
-            clearTimeout(this.verificationTimeout);
-            this.verificationTimeout = null;
-          }
-
-          log.debug(`[终端${this.terminalId}] 监控服务验证成功，服务已安装: ${this.state.targetHost}`);
-
-          // 发送连接成功事件
-          window.dispatchEvent(new CustomEvent('monitoring-connected', {
-            detail: {
-              terminalId: this.terminalId,
-              hostAddress: this.state.targetHost,
-              success: true
-            }
-          }));
-
-          // 触发监控状态更新事件（已安装）
-          window.dispatchEvent(new CustomEvent('monitoring-status-change', {
-            detail: {
-              installed: true,
-              host: this.state.targetHost,
-              terminalId: this.terminalId
-            }
-          }));
-        }
+        // 注意：不在这里触发状态变更事件
+        // 状态变更只在收到特定的状态消息时触发
       }
       
       // 处理特殊消息类型
@@ -500,19 +451,19 @@ class MonitoringInstance {
       }
 
       if (message.type === 'session_created') {
-        log.debug(`[终端${this.terminalId}] 前端监控会话已创建: ${message.data.sessionId}, 连接类型: ${message.data.connectionType || '未知'}`);
+        // 前端监控会话已创建
         this.state.sessionId = message.data.sessionId;
         return;
       }
 
       if (message.type === 'subscribe_ack') {
-        log.debug(`[终端${this.terminalId}] 订阅确认已收到，服务器: ${message.data?.serverId}`);
+        // 订阅确认已收到
         this.state.subscribed = true;
         return;
       }
 
       if (message.type === 'unsubscribe_ack') {
-        log.debug(`[终端${this.terminalId}] 取消订阅确认已收到，服务器: ${message.data?.serverId}`);
+        // 取消订阅确认已收到
         return;
       }
 
@@ -525,6 +476,49 @@ class MonitoringInstance {
       if (message.type === 'error') {
         log.error(`[终端${this.terminalId}] 监控服务错误: ${message.data?.message || '未知错误'}`);
         this.state.error = message.data?.message || '监控服务错误';
+        return;
+      }
+
+      // 移除监控连接成功状态处理
+      // 后端不再发送 monitoring_connected 消息
+      // 监控状态完全基于 monitoring_status 消息
+
+      // 处理监控断开状态
+      if (message.type === 'monitoring_disconnected') {
+        log.warn(`[终端${this.terminalId}] 监控连接断开: ${this.state.targetHost}`);
+
+        // 触发监控状态更新事件（连接断开）
+        window.dispatchEvent(new CustomEvent('monitoring-status-change', {
+          detail: {
+            installed: false,
+            available: false,
+            host: this.state.targetHost,
+            terminalId: this.terminalId,
+            status: 'disconnected',
+            message: message.data?.message || '监控连接断开'
+          }
+        }));
+        return;
+      }
+
+      // 处理监控状态信息
+      if (message.type === 'monitoring_status') {
+        const statusData = message.data;
+        const isInstalled = statusData.status === 'installed';
+
+        log.debug(`[终端${this.terminalId}] 收到监控状态: ${statusData.status}, 主机: ${statusData.hostId}`);
+
+        // 触发监控状态更新事件（状态检查结果）
+        window.dispatchEvent(new CustomEvent('monitoring-status-change', {
+          detail: {
+            installed: isInstalled,
+            available: statusData.available,
+            host: statusData.hostId,
+            terminalId: this.terminalId,
+            status: statusData.status,
+            message: statusData.message
+          }
+        }));
         return;
       }
       
@@ -626,13 +620,16 @@ class MonitoringInstance {
     
     log.debug(`[终端${this.terminalId}] 监控WebSocket连接关闭: ${event.code}`);
     
-    // 触发监控状态更新事件（不可用）
+    // 触发监控连接断开事件（WebSocket层面的断开）
     if (wasConnected) {
-      window.dispatchEvent(new CustomEvent('monitoring-status-change', { 
-        detail: { 
-          installed: false, 
+      window.dispatchEvent(new CustomEvent('monitoring-status-change', {
+        detail: {
+          installed: false,
+          available: false,
           host: this.state.targetHost,
-          terminalId: this.terminalId 
+          terminalId: this.terminalId,
+          status: 'websocket_disconnected',
+          message: 'WebSocket连接断开'
         }
       }));
     }
@@ -771,29 +768,7 @@ class MonitoringInstance {
     }
   }
   
-  /**
-   * 发送标识消息建立会话关系
-   * @param {string} targetHost - 目标主机地址
-   * @private
-   */
-  _sendIdentify(targetHost) {
-    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
-      log.debug(`[终端${this.terminalId}] 无法发送标识消息: WebSocket未连接`);
-      return;
-    }
-
-    // 发送标识消息
-    this.sendMessage({
-      type: 'identify',
-      payload: {
-        targetHost: targetHost,
-        clientId: this.terminalId,
-        timestamp: Date.now()
-      }
-    });
-
-    log.debug(`[终端${this.terminalId}] 已发送标识消息，目标主机: ${targetHost}`);
-  }
+  // 移除不再使用的 _sendIdentify 方法
 
   /**
    * 发送订阅消息到监控WebSocket
@@ -911,19 +886,19 @@ class MonitoringFactory {
 
           log.debug(`[监控工厂] 检测到SSH连接成功，检查服务器 ${serverId} 的监控状态`);
 
-          // 使用新的统一监控状态检查和连接服务
+          // 使用重构后的监控初始化服务
           import('./monitoringStatusService.js').then(({ default: monitoringStatusService }) => {
-            monitoringStatusService.checkStatusAndConnect(host, terminalId).then(result => {
+            monitoringStatusService.initializeMonitoring(host, terminalId).then(result => {
               // 只记录重要的状态变更，避免重复日志
-              if (result.installed && result.connected) {
-                log.info(`[监控工厂] 连接成功: ${host}`);
-              } else if (result.installed && !result.connected) {
-                log.warn(`[监控工厂] 服务已安装但连接失败: ${host}`);
+              if (result.success && result.websocketConnected) {
+                log.info(`[监控工厂] 初始化成功: ${host}`);
+              } else if (result.success && !result.websocketConnected) {
+                log.debug(`[监控工厂] 初始状态可用但WebSocket连接失败: ${host}`);
               } else {
-                log.debug(`[监控工厂] 服务未安装: ${host}`);
+                log.debug(`[监控工厂] 监控初始化失败: ${host}`);
               }
             }).catch(err => {
-              log.warn(`[监控工厂] 检查失败: ${host} -> ${err.message}`);
+              log.warn(`[监控工厂] 初始化失败: ${host} -> ${err.message}`);
             });
           }).catch(err => {
             log.error(`[监控工厂] 导入监控状态服务失败: ${err.message}`);
@@ -969,22 +944,7 @@ class MonitoringFactory {
       }
     });
     
-    // 监控状态刷新事件
-    window.addEventListener('terminal:refresh-status', (event) => {
-      if (event.detail && event.detail.terminalId) {
-        const instance = this.getInstance(event.detail.terminalId);
-        if (instance && instance.state.connected) {
-          // 更新UI状态
-          window.dispatchEvent(new CustomEvent('monitoring-status-change', { 
-            detail: { 
-              installed: true, 
-              host: instance.state.targetHost, 
-              terminalId: event.detail.terminalId 
-            }
-          }));
-        }
-      }
-    });
+    // 监控状态完全基于 WebSocket 验证
   }
   
   /**
@@ -1007,7 +967,7 @@ class MonitoringFactory {
     const instance = new MonitoringInstance(terminalId);
     this.instances.set(terminalId, instance);
     
-    log.debug(`为终端 ${terminalId} 创建了新的监控实例`);
+    // 创建监控实例（减少日志输出）
     return instance;
   }
   
@@ -1174,15 +1134,10 @@ class MonitoringFactory {
         // 这里可以添加代码来创建从新终端到现有终端的事件转发
         log.debug(`创建从终端 ${terminalId} 到终端 ${existingConnection.terminalId} 的事件映射`);
         
-        // 触发状态变更事件，让UI更新
-        window.dispatchEvent(new CustomEvent('monitoring-status-change', { 
-          detail: { 
-            installed: true, 
-            host: host,
-            terminalId: terminalId,
-            sourceTerminalId: existingConnection.terminalId
-          }
-        }));
+        // 不再自动触发状态变更事件
+        // 监控状态应该通过WebSocket验证，而不是基于连接共享
+        // 让新终端通过正常的状态检查流程获取真实状态
+        log.debug(`终端 ${terminalId} 将通过WebSocket验证获取监控状态`);
       }
       
       // 利用现有连接而不是创建新连接
@@ -1617,7 +1572,7 @@ class MonitoringFactory {
     }
     
     // 生成唯一订阅ID
-    const subscriptionId = `sub_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const subscriptionId = `sub_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
     
     // 添加订阅
     this.subscriptions.get(serverId).set(subscriptionId, callback);

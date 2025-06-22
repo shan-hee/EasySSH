@@ -137,6 +137,7 @@ class WebSocketClient {
     this.reconnectInterval = config.reconnectInterval || 5000;
     this.heartbeatInterval = config.heartbeatInterval || 30000;
     this.heartbeatTimer = null;
+    this.hostIdLogged = false; // 用于控制主机标识符日志只输出一次
   }
 
   connect() {
@@ -276,9 +277,25 @@ class WebSocketClient {
 
     try {
       const systemInfo = await getSystemInfo();
+
+      // 生成唯一的主机标识符 (hostname@ip)
+      const hostname = systemInfo.os.hostname;
+      const ipAddress = systemInfo.ip.internal;
+      const hostId = `${hostname}@${ipAddress}`;
+
+      // 首次连接时输出主机标识符信息
+      if (!this.hostIdLogged) {
+        console.log(`主机标识符: ${hostId} (hostname: ${hostname}, ip: ${ipAddress})`);
+        this.hostIdLogged = true;
+      }
+
       this.send({
         type: 'system_stats',
-        payload: systemInfo
+        hostId: hostId,  // 添加唯一主机标识符
+        payload: {
+          ...systemInfo,
+          hostId: hostId  // 在payload中也包含hostId
+        }
       });
     } catch (err) {
       console.error('获取系统信息失败:', err.message);
@@ -432,6 +449,16 @@ async function getDiskInfo() {
 // 网络状态缓存
 let lastNetworkStats = { rx_bytes: 0, tx_bytes: 0, timestamp: Date.now() };
 
+// IP地址缓存
+let ipCache = {
+  internal: null,
+  public: null,
+  lastInternalUpdate: 0,
+  lastPublicUpdate: 0,
+  publicUpdateInterval: 10 * 60 * 1000, // 公网IP每10分钟更新一次
+  internalUpdateInterval: 30 * 1000     // 内网IP每30秒更新一次
+};
+
 // 获取网络信息
 async function getNetworkInfo() {
   return new Promise((resolve) => {
@@ -496,46 +523,109 @@ function getOsInfo() {
   };
 }
 
-// 获取IP地址信息
+// 获取IP地址信息（带缓存机制）
 async function getIpInfo() {
+  const now = Date.now();
+
+  // 检查是否需要更新内网IP
+  const needUpdateInternal = !ipCache.internal ||
+    (now - ipCache.lastInternalUpdate) > ipCache.internalUpdateInterval;
+
+  // 检查是否需要更新公网IP
+  const needUpdatePublic = !ipCache.public ||
+    (now - ipCache.lastPublicUpdate) > ipCache.publicUpdateInterval;
+
+  // 如果都不需要更新，直接返回缓存
+  if (!needUpdateInternal && !needUpdatePublic) {
+    return {
+      internal: ipCache.internal,
+      public: ipCache.public
+    };
+  }
+
   return new Promise((resolve) => {
-    exec('hostname -I', (error, stdout) => {
-      if (error) {
-        resolve({ internal: '获取失败', public: '获取失败' });
-        return;
-      }
+    // 获取内网IP（如果需要更新）
+    if (needUpdateInternal) {
+      exec('ip route get 8.8.8.8 | grep -oP "src \\K\\S+" 2>/dev/null || hostname -I | awk \'{print $1}\'', (error, stdout) => {
+        let internal = ipCache.internal || '获取失败';
 
-      const ips = stdout.trim().split(' ');
-      const internal = ips[0] || '获取失败';
-
-      // 获取公网IP
-      const req = http.get('http://api.ipify.org', (resp) => {
-        let data = '';
-        resp.on('data', (chunk) => {
-          data += chunk;
-        });
-        resp.on('end', () => {
-          resolve({
-            internal,
-            public: data || '获取失败'
+        if (!error && stdout.trim()) {
+          internal = stdout.trim().split(' ')[0];
+        } else {
+          // 备用方法
+          exec('ifconfig | grep -Eo "inet (addr:)?([0-9]*\\.){3}[0-9]*" | grep -Eo "([0-9]*\\.){3}[0-9]*" | grep -v "127.0.0.1" | head -1', (err, stdout2) => {
+            if (!err && stdout2.trim()) {
+              internal = stdout2.trim();
+            }
           });
-        });
-      });
+        }
 
-      req.on('error', () => {
-        resolve({
-          internal,
-          public: '获取失败'
-        });
-      });
+        // 更新内网IP缓存
+        if (ipCache.internal !== internal) {
+          console.log(`内网IP更新: ${ipCache.internal} -> ${internal}`);
+        }
+        ipCache.internal = internal;
+        ipCache.lastInternalUpdate = now;
 
-      req.setTimeout(5000, () => {
-        req.destroy();
-        resolve({
-          internal,
-          public: '获取失败'
-        });
+        // 处理公网IP
+        handlePublicIp(resolve, needUpdatePublic);
       });
+    } else {
+      // 不需要更新内网IP，直接处理公网IP
+      handlePublicIp(resolve, needUpdatePublic);
+    }
+  });
+}
+
+// 处理公网IP获取
+function handlePublicIp(resolve, needUpdate) {
+  if (!needUpdate) {
+    // 不需要更新公网IP，直接返回
+    resolve({
+      internal: ipCache.internal,
+      public: ipCache.public
+    });
+    return;
+  }
+
+  // 需要更新公网IP
+  const req = http.get('http://api.ipify.org', (resp) => {
+    let data = '';
+    resp.on('data', (chunk) => {
+      data += chunk;
+    });
+    resp.on('end', () => {
+      // 更新公网IP缓存
+      const newPublicIp = data || ipCache.public || '获取失败';
+      if (ipCache.public !== newPublicIp) {
+        console.log(`公网IP更新: ${ipCache.public} -> ${newPublicIp}`);
+      }
+      ipCache.public = newPublicIp;
+      ipCache.lastPublicUpdate = Date.now();
+
+      resolve({
+        internal: ipCache.internal,
+        public: ipCache.public
+      });
+    });
+  });
+
+  req.on('error', () => {
+    // 获取失败，使用缓存值或默认值
+    ipCache.public = ipCache.public || '获取失败';
+    resolve({
+      internal: ipCache.internal,
+      public: ipCache.public
+    });
+  });
+
+  req.setTimeout(3000, () => {
+    req.destroy();
+    // 超时，使用缓存值或默认值
+    ipCache.public = ipCache.public || '获取失败';
+    resolve({
+      internal: ipCache.internal,
+      public: ipCache.public
     });
   });
 }

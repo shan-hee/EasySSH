@@ -447,39 +447,45 @@ class MonitoringServiceProxy {
       }
 
       try {
-        // 首先使用新的监控状态检查服务快速检查
+        // 使用重构后的监控初始化服务 - HTTP状态检查不再阻断WebSocket连接
         const { default: monitoringStatusService } = await import('./monitoringStatusService.js');
-        const statusResult = await monitoringStatusService.checkMonitoringStatus(host);
+        const result = await monitoringStatusService.initializeMonitoring(host, terminalId);
 
-        if (!statusResult.installed) {
-          log.debug(`[监控代理] 主机 ${host} 未安装监控服务，跳过WebSocket连接尝试`);
+        if (result.success) {
+          log.debug(`[监控代理] 监控初始化成功: ${host}, WebSocket连接: ${result.websocketConnected}`);
+
+          // 不再基于初始状态触发事件
+          // 监控状态将完全通过WebSocket验证和更新
+          // 避免在WebSocket连接成功时就误导性地设置 installed=true
+
+          return result.websocketConnected;
+        } else {
+          log.debug(`[监控代理] 监控初始化失败: ${host}`);
 
           // 触发状态事件
           window.dispatchEvent(new CustomEvent('monitoring-status-change', {
-            detail: { installed: false, hostname: host, terminalId }
+            detail: {
+              installed: false,
+              available: false,
+              hostname: host,
+              terminalId
+            }
           }));
 
           return false;
         }
 
-        log.debug(`[监控代理] 主机 ${host} 已安装监控服务，开始WebSocket连接`);
-
-        // 只有在确认监控服务存在时才尝试WebSocket连接
-        const connected = await monitoringFactory.connect(terminalId, host);
-
-        // 触发状态事件
-        window.dispatchEvent(new CustomEvent('monitoring-status-change', {
-          detail: { installed: connected, hostname: host, terminalId }
-        }));
-
-        return connected;
-
       } catch (error) {
-        log.warn(`[监控代理] 连接监控服务失败: ${error.message}`);
+        log.warn(`[监控代理] 监控初始化失败: ${error.message}`);
 
         // 触发状态事件
         window.dispatchEvent(new CustomEvent('monitoring-status-change', {
-          detail: { installed: false, hostname: host, terminalId }
+          detail: {
+            installed: false,
+            available: false,
+            hostname: host,
+            terminalId
+          }
         }));
 
         return false;

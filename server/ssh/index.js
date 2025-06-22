@@ -80,29 +80,22 @@ function initWebSocketServer(server) {
         sshWss.emit('connection', ws, request);
       });
     } else if (pathname === '/monitor') {
-      // 处理监控WebSocket连接 - 使用新的监控模块逻辑
+      // 处理前端监控WebSocket连接 - 重构为专用前端监控通道
       const requestUrl = new URL(request.url, `http://${request.headers.host}`);
-      const connectionType = requestUrl.searchParams.get('type') || 'monitoring_client';
       const subscribeServer = requestUrl.searchParams.get('subscribe');
 
-      logger.debug('收到监控WebSocket连接请求', {
+      logger.debug('收到前端监控WebSocket连接请求', {
         url: request.url,
-        connectionType,
         subscribeServer
       });
 
       monitorWss.handleUpgrade(request, socket, head, (ws) => {
-        // 根据连接类型调用不同的处理函数
+        // 生成会话ID并处理前端监控连接
         const sessionId = `monitor_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
         const clientIp = getClientIP(request);
 
-        if (connectionType === 'frontend') {
-          // 前端连接处理
-          monitoring.handleFrontendConnection(ws, sessionId, clientIp, subscribeServer);
-        } else {
-          // 监控客户端连接处理
-          monitoring.handleMonitoringClientConnection(ws, sessionId, clientIp);
-        }
+        // 直接处理为前端监控连接
+        monitoring.handleFrontendConnection(ws, sessionId, clientIp, subscribeServer);
       });
     } else {
       // 未知路径，关闭连接

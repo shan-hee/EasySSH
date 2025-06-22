@@ -1085,25 +1085,24 @@ export default {
           return;
         }
 
-        // 使用新的监控状态检查服务验证监控服务状态
+        // 使用重构后的监控状态检查服务 - 仅检查初始状态
         const { default: monitoringStatusService } = await import('../../services/monitoringStatusService.js');
-        const statusResult = await monitoringStatusService.checkMonitoringStatus(host);
+        const statusResult = await monitoringStatusService.checkStatusOnly(host);
 
-        if (!statusResult.installed) {
-          log.warn(`[终端] 监控服务未安装或不可用: ${host}`);
-          // 可以在这里显示提示信息给用户
-          ElMessage.warning(`主机 ${host} 的监控服务未安装或不可用`);
-          return;
+        // 不再阻断面板切换，即使监控数据不可用也允许切换
+        if (!statusResult.available) {
+          log.debug(`[终端] 监控数据暂不可用，但仍允许切换面板: ${host}`);
+          ElMessage.info(`主机 ${host} 的监控数据暂不可用，面板将显示空状态`);
+        } else {
+          log.debug(`[终端] 监控数据可用，切换监控面板: ${host}`);
         }
 
-        log.debug(`[终端] 监控服务可用，切换监控面板: ${host}`);
-
-        // 通过事件将当前终端ID传递给父组件
+        // 通过事件将当前终端ID传递给父组件（不再需要验证标记）
         window.dispatchEvent(new CustomEvent('request-toggle-monitoring-panel', {
           detail: {
             sessionId: sessionId,
             host: host,
-            verified: true // 标记已验证监控服务可用
+            dataAvailable: statusResult.available
           }
         }));
 

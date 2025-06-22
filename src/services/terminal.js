@@ -191,11 +191,13 @@ class TerminalService {
         }
       }
       
-      // 静默异步连接，不输出任何日志
+      // 使用重构后的监控初始化服务，静默异步连接
       try {
-        // 尝试连接监控服务，完全静默
-        monitoringService.connectToHostWithStatus(host)
-          .catch(() => {/* 完全静默处理错误 */})
+        // 动态导入监控状态服务并初始化
+        import('./monitoringStatusService.js').then(({ default: monitoringStatusService }) => {
+          monitoringStatusService.initializeMonitoring(host, sshSessionId)
+            .catch(() => {/* 完全静默处理错误 */});
+        }).catch(() => {/* 完全静默处理错误 */});
       } catch (error) {
         // 完全静默处理错误
       }
