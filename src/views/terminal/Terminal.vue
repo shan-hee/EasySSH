@@ -1089,14 +1089,6 @@ export default {
         const { default: monitoringStatusService } = await import('../../services/monitoringStatusService.js');
         const statusResult = await monitoringStatusService.checkStatusOnly(host);
 
-        // 不再阻断面板切换，即使监控数据不可用也允许切换
-        if (!statusResult.available) {
-          log.debug(`[终端] 监控数据暂不可用，但仍允许切换面板: ${host}`);
-          ElMessage.info(`主机 ${host} 的监控数据暂不可用，面板将显示空状态`);
-        } else {
-          log.debug(`[终端] 监控数据可用，切换监控面板: ${host}`);
-        }
-
         // 通过事件将当前终端ID传递给父组件（不再需要验证标记）
         window.dispatchEvent(new CustomEvent('request-toggle-monitoring-panel', {
           detail: {

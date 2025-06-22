@@ -279,12 +279,22 @@ class WebSocketClient {
       const systemInfo = await getSystemInfo();
 
       // 生成唯一的主机标识符 (hostname@ip)
+      // 优先使用公网IP，如果获取失败则使用内网IP
       const hostname = systemInfo.os.hostname;
-      const ipAddress = systemInfo.ip.internal;
+      const publicIp = systemInfo.ip.public;
+      const internalIp = systemInfo.ip.internal;
+
+      // 优先使用公网IP，如果公网IP无效则使用内网IP
+      let ipAddress = internalIp; // 默认使用内网IP
+      if (publicIp && publicIp !== '获取失败' && publicIp !== 'null' && publicIp.trim() !== '') {
+        ipAddress = publicIp;
+      }
+
       const hostId = `${hostname}@${ipAddress}`;
 
       // 首次连接时输出主机标识符信息
       if (!this.hostIdLogged) {
+        //console.log(`IP选择: 公网IP=${publicIp}, 内网IP=${internalIp}, 使用=${ipAddress}`);
         console.log(`主机标识符: ${hostId} (hostname: ${hostname}, ip: ${ipAddress})`);
         this.hostIdLogged = true;
       }
@@ -647,13 +657,13 @@ async function getLocationInfo() {
 let wsUrl;
 if (config.serverPort === "443" || config.serverPort === 443) {
   // HTTPS默认端口，不显示端口号
-  wsUrl = `${config.wsProtocol}://${config.serverHost}/monitor`;
+  wsUrl = `${config.wsProtocol}://${config.serverHost}/monitor-client`;
 } else if (config.serverPort === "80" || config.serverPort === 80) {
   // HTTP默认端口，不显示端口号
-  wsUrl = `${config.wsProtocol}://${config.serverHost}/monitor`;
+  wsUrl = `${config.wsProtocol}://${config.serverHost}/monitor-client`;
 } else {
   // 非默认端口，显示端口号
-  wsUrl = `${config.wsProtocol}://${config.serverHost}:${config.serverPort}/monitor`;
+  wsUrl = `${config.wsProtocol}://${config.serverHost}:${config.serverPort}/monitor-client`;
 }
 
 console.log('启动EasySSH监控客户端...');

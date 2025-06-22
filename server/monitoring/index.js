@@ -45,36 +45,19 @@ function initMonitoringWebSocketServer(server) {
     }
   });
 
-  // 监听连接事件
+  // 监听连接事件 - 现在只处理前端连接，监控客户端连接通过专用路径处理
   wss.on('connection', (ws, req) => {
-    logger.debug('收到监控WebSocket连接请求', { url: req.url });
+    logger.debug('收到前端监控WebSocket连接请求', { url: req.url });
 
     const url = new URL(req.url, `http://${req.headers.host}`);
     const subscribeServer = url.searchParams.get('subscribe');
-    const userAgent = req.headers['user-agent'] || '';
 
     // 生成唯一的会话ID
     const sessionId = generateSessionId();
     const clientIp = getClientIP(req);
 
-    // 区分监控客户端和前端连接
-    // 监控客户端通常没有subscribe参数，且User-Agent包含Node.js
-    const isMonitoringClient = !subscribeServer && userAgent.includes('Node.js');
-
-    logger.debug('连接类型判断', {
-      subscribeServer,
-      userAgent,
-      isMonitoringClient,
-      clientIp
-    });
-
-    if (isMonitoringClient) {
-      logger.info('监控客户端WebSocket连接已建立', { clientIp, userAgent });
-      handleMonitoringClientConnection(ws, sessionId, clientIp);
-    } else {
-      logger.info('前端监控WebSocket连接已建立', { subscribeServer, clientIp, userAgent });
-      handleFrontendConnection(ws, sessionId, clientIp, subscribeServer);
-    }
+    logger.info('前端监控WebSocket连接已建立', { subscribeServer, clientIp });
+    handleFrontendConnection(ws, sessionId, clientIp, subscribeServer);
   });
 
   // 定期清理长时间不活跃的连接（每5分钟）
@@ -1025,5 +1008,7 @@ module.exports = {
   handleFrontendConnection,
   subscribeToServer,
   unsubscribeFromServer,
-  cleanupFrontendSession
+  cleanupFrontendSession,
+  // 监控客户端相关函数
+  handleMonitoringClientConnection
 };
