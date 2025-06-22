@@ -319,8 +319,13 @@ class MonitoringInstance {
           message: '监控连接已主动断开'
         }
       }));
+
+      // 通知工厂处理主连接断开
+      if (targetHost) {
+        monitoringFactory._handleMasterConnectionLost(targetHost, this.terminalId);
+      }
     }
-    
+
     // 重置目标主机
     this.state.targetHost = null;
   }
@@ -440,6 +445,11 @@ class MonitoringInstance {
           monitoringFactory.updateServerData(serverId, message);
         }
 
+        // 广播监控数据到同主机的其他终端
+        if (serverId) {
+          monitoringFactory._broadcastMonitoringDataToHost(serverId, message, this.terminalId);
+        }
+
         // 注意：不在这里触发状态变更事件
         // 状态变更只在收到特定的状态消息时触发
       }
@@ -485,19 +495,26 @@ class MonitoringInstance {
 
       // 处理监控断开状态
       if (message.type === 'monitoring_disconnected') {
-        log.warn(`[终端${this.terminalId}] 监控连接断开: ${this.state.targetHost}`);
+        const targetHost = this.state.targetHost;
+        log.warn(`[终端${this.terminalId}] 监控连接断开: ${targetHost}`);
 
         // 触发监控状态更新事件（连接断开）
         window.dispatchEvent(new CustomEvent('monitoring-status-change', {
           detail: {
             installed: false,
             available: false,
-            host: this.state.targetHost,
+            host: targetHost,
             terminalId: this.terminalId,
             status: 'disconnected',
             message: message.data?.message || '监控连接断开'
           }
         }));
+
+        // 通知工厂处理主连接断开
+        if (targetHost) {
+          monitoringFactory._handleMasterConnectionLost(targetHost, this.terminalId);
+        }
+
         return;
       }
 
@@ -519,6 +536,17 @@ class MonitoringInstance {
             message: statusData.message
           }
         }));
+
+        // 广播状态到同主机的其他终端
+        if (statusData.hostId) {
+          monitoringFactory._broadcastMonitoringStatusToHost(statusData.hostId, {
+            installed: isInstalled,
+            available: statusData.available,
+            status: statusData.status,
+            message: statusData.message
+          });
+        }
+
         return;
       }
       
@@ -616,27 +644,33 @@ class MonitoringInstance {
    */
   _handleClose(event) {
     const wasConnected = this.state.connected;
+    const targetHost = this.state.targetHost;
     this.state.connected = false;
-    
+
     log.debug(`[终端${this.terminalId}] 监控WebSocket连接关闭: ${event.code}`);
-    
+
     // 触发监控连接断开事件（WebSocket层面的断开）
     if (wasConnected) {
       window.dispatchEvent(new CustomEvent('monitoring-status-change', {
         detail: {
           installed: false,
           available: false,
-          host: this.state.targetHost,
+          host: targetHost,
           terminalId: this.terminalId,
           status: 'websocket_disconnected',
           message: 'WebSocket连接断开'
         }
       }));
+
+      // 通知工厂处理主连接断开（非主动断开的情况）
+      if (targetHost) {
+        monitoringFactory._handleMasterConnectionLost(targetHost, this.terminalId);
+      }
     }
-    
+
     // 清除保活定时器
     this._clearKeepAlive();
-    
+
     // 如果之前是连接状态，尝试重连
     if (wasConnected) {
       log.debug(`[终端${this.terminalId}] 监控连接已断开，准备重连`);
@@ -850,16 +884,25 @@ class MonitoringFactory {
   constructor() {
     // 实例映射 - 存储每个终端ID对应的监控实例
     this.instances = new Map();
-    
+
+    // 主机级别的监控连接映射 - 存储每个主机的主监控实例
+    this.hostConnections = new Map();
+
+    // 终端到主机的映射 - 存储每个终端连接的主机
+    this.terminalToHost = new Map();
+
+    // 主机到终端列表的映射 - 存储每个主机对应的所有终端
+    this.hostToTerminals = new Map();
+
     // 服务器数据存储 - 按服务器ID存储最新系统数据
     this.serverStatsMap = new Map();
-    
+
     // 订阅映射 - 存储每个服务器ID的订阅回调
     this.subscriptions = new Map();
-    
+
     // 数据历史记录 - 按服务器ID存储历史数据点
     this.dataHistory = new Map();
-    
+
     // 初始化事件监听
     this._initEvents();
   }
@@ -993,55 +1036,54 @@ class MonitoringFactory {
     if (!terminalId || !this.instances.has(terminalId)) {
       return false;
     }
-    
+
     // 先获取实例信息，以便后续清理相关数据
     const instance = this.instances.get(terminalId);
     if (!instance) {
       return false;
     }
-    
+
     // 获取实例关联的服务器ID
     const serverId = instance.state.targetHost;
-    
+
     // 断开连接
     instance.disconnect();
-    
+
+    // 从主机映射中移除终端
+    this._removeTerminalFromHost(terminalId);
+
     // 移除实例
     this.instances.delete(terminalId);
     log.debug(`已移除终端 ${terminalId} 的监控实例`);
-    
+
     // 如果这是关联到特定服务器的唯一终端，清理服务器数据
     if (serverId) {
       // 检查是否还有其他终端连接到同一服务器
-      let hasOtherConnection = false;
-      this.instances.forEach((otherInstance) => {
-        if (otherInstance.state.targetHost === serverId && otherInstance.state.connected) {
-          hasOtherConnection = true;
-        }
-      });
-      
+      const remainingTerminals = this.hostToTerminals.get(serverId);
+      const hasOtherConnection = remainingTerminals && remainingTerminals.size > 0;
+
       // 如果没有其他连接，清理该服务器的所有数据
       if (!hasOtherConnection) {
         log.debug(`终端 ${terminalId} 是连接到服务器 ${serverId} 的最后一个终端，清理服务器数据`);
-        
+
         // 清理服务器相关的订阅
         if (this.subscriptions.has(serverId)) {
           log.debug(`清理服务器 ${serverId} 的 ${this.subscriptions.get(serverId).size} 个订阅`);
           this.subscriptions.delete(serverId);
         }
-        
+
         // 清理服务器的历史数据
         if (this.dataHistory.has(serverId)) {
           this.dataHistory.delete(serverId);
           log.debug(`已清理服务器 ${serverId} 的历史数据`);
         }
-        
+
         // 清理服务器的实时数据
         if (this.serverStatsMap.has(serverId)) {
           this.serverStatsMap.delete(serverId);
           log.debug(`已清理服务器 ${serverId} 的实时数据`);
         }
-        
+
         // 通知所有组件该服务器数据已被清理
         window.dispatchEvent(new CustomEvent('server-data-cleared', {
           detail: {
@@ -1054,7 +1096,7 @@ class MonitoringFactory {
         log.debug(`终端 ${terminalId} 被销毁，但服务器 ${serverId} 仍有其他终端连接，保留服务器数据`);
       }
     }
-    
+
     return true;
   }
   
@@ -1105,46 +1147,49 @@ class MonitoringFactory {
     if (!terminalId || !host) {
       return false;
     }
-    
-    // 获取当前实例
+
+    // 检查是否已有到该主机的连接
+    if (this.hostConnections.has(host)) {
+      const masterInstance = this.hostConnections.get(host);
+      log.debug(`终端 ${terminalId} 复用到 ${host} 的现有连接，主连接终端: ${masterInstance.terminalId}`);
+
+      // 将当前终端添加到主机的终端列表
+      this._addTerminalToHost(terminalId, host);
+
+      // 如果主连接已连接，立即同步状态到新终端
+      if (masterInstance.state.connected) {
+        this._syncMonitoringStatusToTerminal(terminalId, host, masterInstance);
+      }
+
+      return true;
+    }
+
+    // 获取或创建监控实例
     const instance = this.getInstance(terminalId);
     if (!instance) {
       return false;
     }
-    
-    // 检查当前实例是否已连接到相同主机
-    if (instance.state.connected && instance.state.targetHost === host) {
-      log.debug(`终端 ${terminalId} 已连接到 ${host}，跳过重复连接`);
-      return true;
+
+    // 将此实例设为该主机的主连接
+    this.hostConnections.set(host, instance);
+    this._addTerminalToHost(terminalId, host);
+
+    log.debug(`终端 ${terminalId} 成为到 ${host} 的主监控连接`);
+
+    // 建立实际的WebSocket连接
+    const connected = await instance.connect(host);
+
+    if (connected) {
+      // 连接成功后，同步状态到所有连接该主机的终端
+      this._broadcastMonitoringStatusToHost(host, {
+        installed: true,
+        available: true,
+        status: 'connected',
+        message: '监控连接已建立'
+      });
     }
-    
-    // 检查当前实例是否正在连接到相同主机
-    if (instance.state.connecting && instance.state.targetHost === host) {
-      log.debug(`终端 ${terminalId} 正在连接到 ${host}，跳过重复连接`);
-      return true;
-    }
-    
-    // 先检查是否有其他终端已连接到相同主机
-    const existingConnection = this.findInstanceByHost(host);
-    if (existingConnection) {
-      log.debug(`终端 ${terminalId} 请求连接到 ${host}，但已有终端 ${existingConnection.terminalId} 已连接，共享该连接`);
-      
-      // 如果调用者不是连接的拥有者，创建事件映射
-      if (existingConnection.terminalId !== terminalId) {
-        // 这里可以添加代码来创建从新终端到现有终端的事件转发
-        log.debug(`创建从终端 ${terminalId} 到终端 ${existingConnection.terminalId} 的事件映射`);
-        
-        // 不再自动触发状态变更事件
-        // 监控状态应该通过WebSocket验证，而不是基于连接共享
-        // 让新终端通过正常的状态检查流程获取真实状态
-        log.debug(`终端 ${terminalId} 将通过WebSocket验证获取监控状态`);
-      }
-      
-      // 利用现有连接而不是创建新连接
-      return true;
-    }
-    
-    return await instance.connect(host);
+
+    return connected;
   }
   
   /**
@@ -1155,12 +1200,32 @@ class MonitoringFactory {
     if (!terminalId) {
       return false;
     }
-    
+
     const instance = this.getInstance(terminalId);
     if (!instance) {
       return false;
     }
-    
+
+    const host = this.terminalToHost.get(terminalId);
+
+    // 如果这是主连接，需要特殊处理
+    if (host && this.hostConnections.get(host) === instance) {
+      // 检查是否有其他终端连接到同一主机
+      const terminals = this.hostToTerminals.get(host);
+      if (terminals && terminals.size > 1) {
+        // 选择另一个终端作为新的主连接
+        const otherTerminals = Array.from(terminals).filter(id => id !== terminalId);
+        if (otherTerminals.length > 0) {
+          const newMasterTerminalId = otherTerminals[0];
+          const newMasterInstance = this.getInstance(newMasterTerminalId);
+          if (newMasterInstance) {
+            this.hostConnections.set(host, newMasterInstance);
+            log.debug(`终端 ${newMasterTerminalId} 成为主机 ${host} 的新主连接`);
+          }
+        }
+      }
+    }
+
     instance.disconnect();
     return true;
   }
@@ -1618,8 +1683,329 @@ class MonitoringFactory {
     }
     
     log.debug(`[监控工厂] ${result ? '成功' : '未能'}取消服务器 ${serverId} 的订阅: ${subscriptionId}`);
-    
+
     return result;
+  }
+
+  /**
+   * 将终端添加到主机的终端列表
+   * @param {string} terminalId 终端ID
+   * @param {string} host 主机地址
+   * @private
+   */
+  _addTerminalToHost(terminalId, host) {
+    // 更新终端到主机的映射
+    this.terminalToHost.set(terminalId, host);
+
+    // 更新主机到终端列表的映射
+    if (!this.hostToTerminals.has(host)) {
+      this.hostToTerminals.set(host, new Set());
+    }
+    this.hostToTerminals.get(host).add(terminalId);
+
+    log.debug(`终端 ${terminalId} 已添加到主机 ${host} 的终端列表`);
+  }
+
+  /**
+   * 从主机的终端列表中移除终端
+   * @param {string} terminalId 终端ID
+   * @private
+   */
+  _removeTerminalFromHost(terminalId) {
+    const host = this.terminalToHost.get(terminalId);
+    if (!host) return;
+
+    // 从主机的终端列表中移除
+    if (this.hostToTerminals.has(host)) {
+      this.hostToTerminals.get(host).delete(terminalId);
+
+      // 如果主机没有终端了，清理主机连接
+      if (this.hostToTerminals.get(host).size === 0) {
+        this.hostToTerminals.delete(host);
+        this.hostConnections.delete(host);
+        log.debug(`主机 ${host} 的所有终端已断开，清理主机连接`);
+      }
+    }
+
+    // 清理终端到主机的映射
+    this.terminalToHost.delete(terminalId);
+
+    log.debug(`终端 ${terminalId} 已从主机 ${host} 的终端列表中移除`);
+  }
+
+  /**
+   * 同步监控状态到指定终端
+   * @param {string} terminalId 终端ID
+   * @param {string} host 主机地址
+   * @param {MonitoringInstance} masterInstance 主监控实例
+   * @private
+   */
+  _syncMonitoringStatusToTerminal(terminalId, host, masterInstance) {
+    // 触发监控状态变更事件，通知指定终端
+    window.dispatchEvent(new CustomEvent('monitoring-status-change', {
+      detail: {
+        installed: true,
+        available: true,
+        host: host,
+        terminalId: terminalId,
+        status: 'shared_connection',
+        message: '共享现有监控连接'
+      }
+    }));
+
+    // 如果有监控数据，也同步数据
+    const monitorData = masterInstance.getMonitorData();
+    if (monitorData && (monitorData.cpu?.usage !== undefined || monitorData.memory?.total)) {
+      // 触发系统数据事件
+      window.dispatchEvent(new CustomEvent('monitoring-data-received', {
+        detail: {
+          terminalId: terminalId,
+          host: host,
+          data: monitorData,
+          source: 'shared_connection'
+        }
+      }));
+    }
+
+    log.debug(`已同步监控状态到终端 ${terminalId}`);
+  }
+
+  /**
+   * 向主机的所有终端广播监控状态
+   * @param {string} host 主机地址
+   * @param {Object} statusData 状态数据
+   * @private
+   */
+  _broadcastMonitoringStatusToHost(host, statusData) {
+    const terminals = this.hostToTerminals.get(host);
+    if (!terminals || terminals.size === 0) return;
+
+    terminals.forEach(terminalId => {
+      window.dispatchEvent(new CustomEvent('monitoring-status-change', {
+        detail: {
+          ...statusData,
+          host: host,
+          terminalId: terminalId
+        }
+      }));
+    });
+
+    log.debug(`已向主机 ${host} 的 ${terminals.size} 个终端广播监控状态`);
+  }
+
+  /**
+   * 向主机的所有终端广播监控数据
+   * @param {string} host 主机地址
+   * @param {Object} monitoringData 监控数据
+   * @param {string} sourceTerminalId 源终端ID（排除此终端，避免重复）
+   * @private
+   */
+  _broadcastMonitoringDataToHost(host, monitoringData, sourceTerminalId) {
+    const terminals = this.hostToTerminals.get(host);
+    if (!terminals || terminals.size <= 1) return; // 只有一个终端时无需广播
+
+    let broadcastCount = 0;
+    terminals.forEach(terminalId => {
+      // 跳过源终端，避免重复
+      if (terminalId === sourceTerminalId) return;
+
+      // 触发监控数据接收事件
+      window.dispatchEvent(new CustomEvent('monitoring-data-received', {
+        detail: {
+          terminalId: terminalId,
+          host: host,
+          data: monitoringData,
+          source: 'shared_connection',
+          timestamp: Date.now()
+        }
+      }));
+
+      broadcastCount++;
+    });
+
+    if (broadcastCount > 0) {
+      log.debug(`已向主机 ${host} 的 ${broadcastCount} 个终端广播监控数据`);
+    }
+  }
+
+  /**
+   * 处理主连接丢失，自动选择新的主连接
+   * @param {string} host 主机地址
+   * @param {string} lostTerminalId 丢失连接的终端ID
+   * @private
+   */
+  _handleMasterConnectionLost(host, lostTerminalId) {
+    const masterInstance = this.hostConnections.get(host);
+
+    // 只有当丢失的是主连接时才处理
+    if (!masterInstance || masterInstance.terminalId !== lostTerminalId) {
+      return;
+    }
+
+    log.debug(`主机 ${host} 的主连接 ${lostTerminalId} 已断开，寻找新的主连接`);
+
+    // 获取该主机的所有终端
+    const terminals = this.hostToTerminals.get(host);
+    if (!terminals || terminals.size <= 1) {
+      // 没有其他终端，清理主机连接
+      this.hostConnections.delete(host);
+      log.debug(`主机 ${host} 没有其他终端，已清理主机连接`);
+      return;
+    }
+
+    // 寻找一个可用的终端作为新的主连接
+    let newMasterTerminalId = null;
+    let newMasterInstance = null;
+
+    for (const terminalId of terminals) {
+      if (terminalId === lostTerminalId) continue; // 跳过已断开的终端
+
+      const instance = this.getInstance(terminalId);
+      if (instance) {
+        newMasterTerminalId = terminalId;
+        newMasterInstance = instance;
+        break;
+      }
+    }
+
+    if (newMasterInstance) {
+      // 设置新的主连接
+      this.hostConnections.set(host, newMasterInstance);
+      log.debug(`终端 ${newMasterTerminalId} 成为主机 ${host} 的新主连接`);
+
+      // 让新主连接建立实际的WebSocket连接
+      this._establishNewMasterConnection(host, newMasterInstance);
+    } else {
+      // 没有找到可用的终端，清理主机连接
+      this.hostConnections.delete(host);
+      log.debug(`主机 ${host} 没有可用的终端，已清理主机连接`);
+    }
+  }
+
+  /**
+   * 为新主连接建立实际的WebSocket连接
+   * @param {string} host 主机地址
+   * @param {MonitoringInstance} newMasterInstance 新主连接实例
+   * @private
+   */
+  async _establishNewMasterConnection(host, newMasterInstance) {
+    try {
+      log.debug(`为新主连接 ${newMasterInstance.terminalId} 建立到 ${host} 的WebSocket连接`);
+
+      // 如果新主连接还没有连接，建立连接
+      if (!newMasterInstance.state.connected) {
+        const connected = await newMasterInstance.connect(host);
+
+        if (connected) {
+          log.debug(`新主连接 ${newMasterInstance.terminalId} 成功连接到 ${host}`);
+
+          // 广播连接恢复状态到所有相关终端
+          this._broadcastMonitoringStatusToHost(host, {
+            installed: true,
+            available: true,
+            status: 'master_connection_restored',
+            message: '主连接已恢复'
+          });
+
+          // 同步历史数据到所有相关终端
+          this._syncHistoryDataToHost(host, newMasterInstance);
+        } else {
+          log.error(`新主连接 ${newMasterInstance.terminalId} 连接到 ${host} 失败`);
+
+          // 连接失败，广播断开状态
+          this._broadcastMonitoringStatusToHost(host, {
+            installed: false,
+            available: false,
+            status: 'master_connection_failed',
+            message: '主连接恢复失败'
+          });
+        }
+      } else {
+        log.debug(`新主连接 ${newMasterInstance.terminalId} 已经连接到 ${host}`);
+
+        // 已经连接，直接广播状态
+        this._broadcastMonitoringStatusToHost(host, {
+          installed: true,
+          available: true,
+          status: 'master_connection_switched',
+          message: '主连接已切换'
+        });
+
+        // 同步历史数据到所有相关终端
+        this._syncHistoryDataToHost(host, newMasterInstance);
+      }
+    } catch (error) {
+      log.error(`建立新主连接时出错:`, error);
+
+      // 广播错误状态
+      this._broadcastMonitoringStatusToHost(host, {
+        installed: false,
+        available: false,
+        status: 'master_connection_error',
+        message: '主连接建立失败'
+      });
+    }
+  }
+
+  /**
+   * 同步历史数据到主机的所有终端
+   * @param {string} host 主机地址
+   * @param {MonitoringInstance} masterInstance 主连接实例
+   * @private
+   */
+  _syncHistoryDataToHost(host, masterInstance) {
+    const terminals = this.hostToTerminals.get(host);
+    if (!terminals || terminals.size <= 1) return;
+
+    // 获取主连接的当前监控数据
+    const currentData = masterInstance.getMonitorData();
+    if (!currentData || (!currentData.cpu?.usage && !currentData.memory?.total)) {
+      log.debug(`主机 ${host} 暂无监控数据可同步`);
+      return;
+    }
+
+    let syncCount = 0;
+    terminals.forEach(terminalId => {
+      // 跳过主连接终端
+      if (terminalId === masterInstance.terminalId) return;
+
+      // 同步当前监控数据
+      window.dispatchEvent(new CustomEvent('monitoring-data-received', {
+        detail: {
+          terminalId: terminalId,
+          host: host,
+          data: currentData,
+          source: 'master_connection_sync',
+          timestamp: Date.now()
+        }
+      }));
+
+      syncCount++;
+    });
+
+    if (syncCount > 0) {
+      log.debug(`已向主机 ${host} 的 ${syncCount} 个终端同步历史监控数据`);
+    }
+
+    // 如果有服务器级别的历史数据，也同步过去
+    const serverData = this.serverStatsMap.get(host);
+    if (serverData) {
+      terminals.forEach(terminalId => {
+        if (terminalId === masterInstance.terminalId) return;
+
+        window.dispatchEvent(new CustomEvent('monitoring-data-received', {
+          detail: {
+            terminalId: terminalId,
+            host: host,
+            data: serverData,
+            source: 'server_cache_sync',
+            timestamp: Date.now()
+          }
+        }));
+      });
+
+      log.debug(`已向主机 ${host} 的终端同步服务器缓存数据`);
+    }
   }
 }
 

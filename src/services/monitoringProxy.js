@@ -76,7 +76,30 @@ class MonitoringServiceProxy {
         }
       }
     });
-    
+
+    // 监听共享连接的监控数据
+    window.addEventListener('monitoring-data-received', (event) => {
+      if (event.detail && event.detail.terminalId) {
+        const { terminalId, host, data, source } = event.detail;
+
+        log.debug(`[监控代理] 收到共享监控数据: 终端=${terminalId}, 主机=${host}, 来源=${source}`);
+
+        // 如果是当前活动终端，触发数据更新
+        if (terminalId === this._getActiveTerminalId()) {
+          // 触发全局监控数据更新事件
+          window.dispatchEvent(new CustomEvent('monitoring-data-update', {
+            detail: {
+              terminalId: terminalId,
+              host: host,
+              data: data,
+              source: source,
+              timestamp: Date.now()
+            }
+          }));
+        }
+      }
+    });
+
     // 监听终端切换事件，同步状态
     window.addEventListener('terminal:activated', (event) => {
       if (event.detail && event.detail.terminalId) {

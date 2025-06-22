@@ -765,7 +765,7 @@ function handleMonitoringDataFromClient(_ws, sessionId, data) {
   // 使用客户端提供的标识符作为缓存key
   monitoringDataCache.set(hostId, cacheData);
 
-  logger.info('监控数据已更新', {
+  logger.debug('监控数据已更新', {
     hostId,
     sessionId,
     source: 'monitoring_client'
@@ -813,7 +813,7 @@ function handleMonitoringDataFromClient(_ws, sessionId, data) {
   }
 
   if (broadcastCount > 0) {
-    logger.info('监控数据已广播', {
+    logger.debug('监控数据已广播', {
       hostId,
       broadcastCount,
       sessionId
