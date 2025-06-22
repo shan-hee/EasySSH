@@ -128,24 +128,12 @@ if (process.env.NODE_ENV === 'development') {
       location.reload()
     }
 
-    // Ctrl+Shift+S 显示自动补全缓存统计
-    if (e.ctrlKey && e.shiftKey && e.key === 'S') {
-      import('./services/terminal-autocomplete.js').then(module => {
-        const stats = module.default.getCacheStats()
-        console.group('🔧 自动补全缓存统计')
-        console.log('缓存命中率:', stats.cache.hitRate)
-        console.log('平均响应时间:', stats.performance.avgResponseTime.toFixed(2) + 'ms')
-        console.log('输入模式数量:', stats.patterns)
-        console.log('详细统计:', stats)
-        console.groupEnd()
-      })
-    }
+
   })
 
   // 开发环境提示
-  console.log('🔧 开发模式已启用')
+  console.log('🔧 开发模式已启用（自动补全已优化）')
   console.log('📋 开发快捷键请参考: docs/开发指南.md')
-  console.log('⌨️  Ctrl+Shift+S: 查看自动补全缓存统计')
   console.log('⌨️  Ctrl+Shift+Delete: 清除所有存储')
 }
 
@@ -510,12 +498,12 @@ const initializeApp = async () => {
     }
 
     // 初始化配置管理器
-    const cacheConfigStats = configManager.getStats()
-    if (cacheConfigStats.isDevelopment) {
+    const configStats = configManager.getStats()
+    if (configStats.isDevelopment) {
       servicesManager.log.debug('配置管理器已初始化', {
-        isDevelopment: cacheConfigStats.isDevelopment,
-        totalOverrides: cacheConfigStats.totalOverrides,
-        totalPresets: cacheConfigStats.totalPresets
+        isDevelopment: configStats.isDevelopment,
+        totalOverrides: configStats.totalOverrides,
+        totalPresets: configStats.totalPresets
       })
     }
 

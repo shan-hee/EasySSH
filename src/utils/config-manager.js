@@ -2,13 +2,13 @@
  * 配置管理工具
  * 提供运行时配置管理和开发环境配置覆盖功能
  */
-import { cacheConfig, environment } from '@/config/app-config'
+import { autocompleteConfig, environment } from '@/config/app-config'
 import log from '@/services/log'
 
 class ConfigManager {
   constructor() {
-    this.defaultConfig = { ...cacheConfig }
-    this.runtimeConfig = { ...cacheConfig }
+    this.defaultConfig = { ...autocompleteConfig }
+    this.runtimeConfig = { ...autocompleteConfig }
     this.overrides = {}
     
     // 开发环境下加载本地配置覆盖
@@ -301,7 +301,7 @@ if (environment.isDevelopment && typeof window !== 'undefined') {
   window.configManager = configManager
   
   // 提供便捷的调试方法
-  window.cacheConfig = {
+  window.autocompleteConfig = {
     get: (path, defaultValue) => configManager.get(path, defaultValue),
     set: (path, value, persist = true) => configManager.set(path, value, persist),
     reset: (path) => configManager.reset(path),
@@ -316,7 +316,7 @@ if (environment.isDevelopment && typeof window !== 'undefined') {
     stats: () => configManager.getStats()
   }
   
-  log.debug('配置管理器已暴露到全局 window.configManager 和 window.cacheConfig')
+  log.debug('配置管理器已暴露到全局 window.configManager 和 window.autocompleteConfig')
 }
 
 export default configManager

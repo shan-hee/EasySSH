@@ -4,7 +4,7 @@
  */
 
 import log from './log'
-import { cacheConfig } from '../config/app-config'
+import { autocompleteConfig } from '../config/app-config'
 
 class WordCompletionService {
   constructor() {
@@ -72,14 +72,8 @@ class WordCompletionService {
 
 }
 
-    // 缓存
-    this.cache = new Map()
-    this.cacheTimeout = 5 * 60 * 1000 // 5分钟缓存
-
     // 配置
-    this.config = cacheConfig.suggestions
-
-    log.debug('单词补全服务初始化完成')
+    this.config = autocompleteConfig
   }
 
   /**
@@ -94,24 +88,8 @@ class WordCompletionService {
       return []
     }
 
-    const cacheKey = `word:${input}:${limit}:${JSON.stringify(context)}`
-    
-    // 检查缓存
-    const cached = this.cache.get(cacheKey)
-    if (cached && Date.now() - cached.timestamp < this.cacheTimeout) {
-      return cached.data
-    }
-
     try {
-      const suggestions = this.computeWordSuggestions(input.trim(), limit, context)
-      
-      // 缓存结果
-      this.cache.set(cacheKey, {
-        data: suggestions,
-        timestamp: Date.now()
-      })
-
-      return suggestions
+      return this.computeWordSuggestions(input.trim(), limit, context)
     } catch (error) {
       log.error('获取单词补全建议失败:', error)
       return []
@@ -311,13 +289,7 @@ class WordCompletionService {
     return /\bdocker\b|\bkubectl\b/.test(commandLine.toLowerCase())
   }
 
-  /**
-   * 清理缓存
-   */
-  clearCache() {
-    this.cache.clear()
-    log.debug('单词补全缓存已清理')
-  }
+
 
   /**
    * 添加自定义单词
@@ -329,7 +301,6 @@ class WordCompletionService {
       this.wordLibrary[category] = []
     }
     this.wordLibrary[category].push(...words)
-    this.clearCache() // 清理缓存以使新单词生效
     log.info(`已添加 ${words.length} 个自定义单词到类别 ${category}`)
   }
 }

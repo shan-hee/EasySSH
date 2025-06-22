@@ -44,59 +44,24 @@ export const uiConfig = {
   defaultMenuCollapsed: false
 };
 
-// 缓存配置（支持环境变量覆盖）
-export const cacheConfig = {
-  // 内存缓存配置
-  memory: {
-    maxSize: parseInt(import.meta.env.VITE_CACHE_MEMORY_MAX_SIZE) || 100,
-    ttl: parseInt(import.meta.env.VITE_CACHE_MEMORY_TTL) || 30 * 60 * 1000,
-    staleWhileRevalidate: 10 * 60 * 1000, // 过期但可用时间：10分钟
-    cleanupInterval: 5 * 60 * 1000   // 清理间隔：5分钟
-  },
+// 自动补全配置
+export const autocompleteConfig = {
+  minInputLength: 1,               // 最小输入长度
+  maxSuggestions: 8,               // 最大建议数量
+  debounceDelay: 50,               // 防抖延迟：50ms
 
-  // 建议缓存配置
-  suggestions: {
-    maxSize: parseInt(import.meta.env.VITE_CACHE_SUGGESTIONS_MAX_SIZE) || 50,
-    minInputLength: 1,               // 最小输入长度
-    maxSuggestions: 8,               // 最大建议数量
-    debounceDelay: 50,               // 防抖延迟：50ms
+  // 智能混合补全配置
+  enableWordCompletion: true,      // 启用单词补全
+  enableScriptCompletion: true,    // 启用脚本补全
+  wordCompletionPriority: 0.7,     // 单词补全优先级权重
+  scriptCompletionPriority: 1.0,   // 脚本补全优先级权重
+  maxWordsPerType: 6,              // 每种类型最大建议数
 
-    // 智能混合补全配置
-    enableWordCompletion: true,      // 启用单词补全
-    enableScriptCompletion: true,    // 启用脚本补全
-    wordCompletionPriority: 0.7,     // 单词补全优先级权重
-    scriptCompletionPriority: 1.0,   // 脚本补全优先级权重
-    maxWordsPerType: 6,              // 每种类型最大建议数
-
-    // 上下文判断配置
-    contextDetection: {
-      commandPrefixes: ['sudo', 'ssh', 'scp', 'rsync', 'git', 'docker', 'kubectl'], // 命令前缀
-      scriptKeywords: ['sh', 'bash', 'python', 'node', 'npm', 'yarn'],              // 脚本关键词
-      systemCommands: ['ls', 'cd', 'pwd', 'cat', 'grep', 'find', 'ps', 'top']       // 系统命令
-    }
-  },
-
-  // 同步配置
-  sync: {
-    backgroundInterval: parseInt(import.meta.env.VITE_CACHE_SYNC_INTERVAL) || 5 * 60 * 1000,
-    minInterval: parseInt(import.meta.env.VITE_CACHE_SYNC_MIN_INTERVAL) || 30 * 1000, // 最小同步间隔：30秒
-    retryAttempts: 3,                // 重试次数
-    retryDelay: 1000,                // 重试延迟：1秒
-    enableIncremental: true,         // 启用增量同步
-    fullSyncInterval: 60 * 60 * 1000 // 强制全量同步间隔：1小时
-  },
-
-  // 存储配置
-  storage: {
-    prefix: 'easyssh-cache',         // 本地存储前缀
-    enabled: true                    // 是否启用持久化存储
-  },
-
-  // 开发环境配置
-  development: {
-    enableDebugLogs: true, // 开发环境默认启用
-    enablePerformanceMonitoring: true, // 开发环境默认启用
-    cacheStatsInterval: 10000        // 缓存统计输出间隔：10秒
+  // 上下文判断配置
+  contextDetection: {
+    commandPrefixes: ['sudo', 'ssh', 'scp', 'rsync', 'git', 'docker', 'kubectl'], // 命令前缀
+    scriptKeywords: ['sh', 'bash', 'python', 'node', 'npm', 'yarn'],              // 脚本关键词
+    systemCommands: ['ls', 'cd', 'pwd', 'cat', 'grep', 'find', 'ps', 'top']       // 系统命令
   }
 };
 

@@ -6,8 +6,7 @@ import scriptLibraryService from './scriptLibrary'
 import wordCompletionService from './word-completion'
 import log from './log'
 import { useUserStore } from '@/store/user'
-import { cacheConfig } from '@/config/app-config'
-import LRUCache from '@/utils/lru-cache'
+import { autocompleteConfig } from '@/config/app-config'
 import { SmartDebounce } from '@/utils/smart-debounce'
 
 class TerminalAutocompleteService {
@@ -30,6 +29,9 @@ class TerminalAutocompleteService {
     // 缓存的位置信息
     this.lastPosition = null
 
+    // 补全完成后是否需要重置输入缓冲区的标志
+    this._shouldResetOnNextInput = false
+
     // 回调函数
     this.callbacks = {
       onSuggestionsUpdate: null,
@@ -38,7 +40,7 @@ class TerminalAutocompleteService {
 
     // 智能防抖系统
     this.smartDebounce = new SmartDebounce({
-      defaultDelay: cacheConfig.suggestions.debounceDelay,
+      defaultDelay: autocompleteConfig.debounceDelay,
       minDelay: 0,
       maxDelay: 500,
       enableAdaptive: true,
@@ -79,42 +81,19 @@ class TerminalAutocompleteService {
 
     // 配置（从配置文件获取）
     this.config = {
-      minInputLength: cacheConfig.suggestions.minInputLength,
-      debounceDelay: cacheConfig.suggestions.debounceDelay,
-      maxSuggestions: cacheConfig.suggestions.maxSuggestions,
-      enableWordCompletion: cacheConfig.suggestions.enableWordCompletion,
-      enableScriptCompletion: cacheConfig.suggestions.enableScriptCompletion,
-      wordCompletionPriority: cacheConfig.suggestions.wordCompletionPriority,
-      scriptCompletionPriority: cacheConfig.suggestions.scriptCompletionPriority,
-      maxWordsPerType: cacheConfig.suggestions.maxWordsPerType,
-      contextDetection: cacheConfig.suggestions.contextDetection
+      minInputLength: autocompleteConfig.minInputLength,
+      debounceDelay: autocompleteConfig.debounceDelay,
+      maxSuggestions: autocompleteConfig.maxSuggestions,
+      enableWordCompletion: autocompleteConfig.enableWordCompletion,
+      enableScriptCompletion: autocompleteConfig.enableScriptCompletion,
+      wordCompletionPriority: autocompleteConfig.wordCompletionPriority,
+      scriptCompletionPriority: autocompleteConfig.scriptCompletionPriority,
+      maxWordsPerType: autocompleteConfig.maxWordsPerType,
+      contextDetection: autocompleteConfig.contextDetection
     }
 
     // 用户存储引用
     this.userStore = null
-
-    // 智能缓存系统
-    this.suggestionCache = new LRUCache({
-      maxSize: cacheConfig.suggestions.maxSize,
-      defaultTTL: cacheConfig.memory.ttl,
-      staleWhileRevalidate: cacheConfig.memory.staleWhileRevalidate,
-      enableStats: true,
-      onEvict: (key, value, reason) => {
-        log.debug(`缓存项被移除: ${key}, 原因: ${reason}`)
-      }
-    })
-
-    // 预测性缓存
-    this.predictiveCache = new Map()
-    this.inputPatterns = new Map() // 用户输入模式记录
-
-    // 性能监控
-    this.performanceStats = {
-      cacheHits: 0,
-      cacheMisses: 0,
-      avgResponseTime: 0,
-      totalRequests: 0
-    }
   }
 
   /**
@@ -178,11 +157,8 @@ class TerminalAutocompleteService {
       // 更新输入缓冲区
       this.updateInputBuffer(data)
 
-      log.debug(`自动完成输入处理: "${this.inputBuffer}", 长度: ${this.inputBuffer.length}`)
-
       // 获取当前正在输入的单词
       const currentWord = this.getCurrentWord()
-      log.debug(`当前单词: "${currentWord}"`)
 
       // 检查是否应该显示建议
       if (currentWord && currentWord.length >= this.config.minInputLength) {
@@ -228,7 +204,6 @@ class TerminalAutocompleteService {
    */
   handleControlCharacter(data, terminal) {
     const charCode = data.charCodeAt(0)
-    log.debug(`处理控制字符: "${data}", charCode=${charCode}, isActive=${this.isActive}`)
 
     switch (charCode) {
       case 8:   // Backspace
@@ -240,7 +215,6 @@ class TerminalAutocompleteService {
         // 如果需要更新建议（删除前补全框是激活的）或者补全框未激活但满足条件
         if (currentWord && currentWord.length >= this.config.minInputLength) {
           if (needsUpdate || !this.isActive) {
-            log.debug(`删除后更新建议: 当前单词="${currentWord}", 需要更新=${needsUpdate}, 激活状态=${this.isActive}`)
             this.debouncedUpdateHighPriority(currentWord, terminal)
           }
         }
@@ -292,7 +266,6 @@ class TerminalAutocompleteService {
   handleBackspace() {
     if (this.inputBuffer.length > 0) {
       this.inputBuffer = this.inputBuffer.slice(0, -1)
-      log.debug(`退格后缓冲区: "${this.inputBuffer}", 长度: ${this.inputBuffer.length}`)
     }
 
     // 获取当前单词
@@ -300,14 +273,12 @@ class TerminalAutocompleteService {
 
     // 如果当前单词为空或太短，隐藏建议
     if (!currentWord || currentWord.length < this.config.minInputLength) {
-      log.debug('当前单词为空或太短，隐藏建议')
       this.hideSuggestions()
       return
     }
 
     // 如果补全框当前是激活状态，需要重新计算建议
     if (this.isActive) {
-      log.debug(`删除后重新计算建议，当前单词: "${currentWord}"`)
       // 重新计算建议，确保建议与当前输入匹配
       return true // 返回true表示需要在外部重新计算建议
     }
@@ -328,10 +299,13 @@ class TerminalAutocompleteService {
       }
     }
 
-    // 无选中项时，只清空状态，不阻止默认回车行为
+    // 重要修复：无论补全框是否激活，回车键都应该清空输入缓冲区
+    // 因为回车意味着命令已经执行，需要重新开始跟踪新的输入
+    this.inputBuffer = ''
+    this._shouldResetOnNextInput = false
+
+    // 如果补全框是激活的，隐藏建议框
     if (this.isActive) {
-      // 如果补全框是激活的，清空输入缓冲区并隐藏建议框
-      this.inputBuffer = ''
       this.hideSuggestions()
     }
 
@@ -345,9 +319,7 @@ class TerminalAutocompleteService {
    * @param {Object} terminal - 终端实例
    * @returns {boolean} 是否已处理该输入（true表示阻止默认处理）
    */
-  handleAnsiSequence(data, terminal) {
-    log.debug(`收到ANSI序列: "${data}", 字节: [${Array.from(data).map(c => c.charCodeAt(0)).join(', ')}]`)
-
+  handleAnsiSequence(data, _terminal) {
     // 注意：上下方向键的处理现在主要由组件级别的键盘事件处理
     // 这里只处理终端直接输入的ANSI序列，避免与组件级别的处理冲突
 
@@ -365,19 +337,14 @@ class TerminalAutocompleteService {
    * 向上导航建议列表
    */
   navigateUp(terminal) {
-    log.debug(`向上导航开始: suggestions.length=${this.suggestions.length}, selectedIndex=${this.selectedIndex}`)
-
     if (!this.isActive || this.suggestions.length === 0) {
-      log.warn('建议框未激活或建议列表为空，无法导航')
       return
     }
 
-    const oldIndex = this.selectedIndex
     this.selectedIndex = this.selectedIndex <= 0
       ? this.suggestions.length - 1  // 循环到最后一项
       : this.selectedIndex - 1
 
-    log.debug(`向上导航完成: ${oldIndex} -> ${this.selectedIndex}`)
     this.updateSuggestionsDisplay(terminal)
   }
 
@@ -385,19 +352,14 @@ class TerminalAutocompleteService {
    * 向下导航建议列表
    */
   navigateDown(terminal) {
-    log.debug(`向下导航开始: suggestions.length=${this.suggestions.length}, selectedIndex=${this.selectedIndex}`)
-
     if (!this.isActive || this.suggestions.length === 0) {
-      log.warn('建议框未激活或建议列表为空，无法导航')
       return
     }
 
-    const oldIndex = this.selectedIndex
     this.selectedIndex = this.selectedIndex >= this.suggestions.length - 1
       ? 0  // 循环到第一项
       : this.selectedIndex + 1
 
-    log.debug(`向下导航完成: ${oldIndex} -> ${this.selectedIndex}`)
     this.updateSuggestionsDisplay(terminal)
   }
 
@@ -406,11 +368,8 @@ class TerminalAutocompleteService {
    */
   updateSuggestionsDisplay(terminal = null) {
     try {
-      log.debug(`更新建议显示: suggestions.length=${this.suggestions.length}, selectedIndex=${this.selectedIndex}`)
-
       // 确保建议框仍然是激活状态
       if (!this.isActive || this.suggestions.length === 0) {
-        log.warn('建议框未激活或建议列表为空，跳过显示更新')
         return
       }
 
@@ -418,7 +377,6 @@ class TerminalAutocompleteService {
         // 使用缓存的位置或重新计算
         const position = terminal ? this.calculatePosition(terminal) : this.lastPosition || { x: 0, y: 0 }
         this.callbacks.onSuggestionsUpdate(this.suggestions, position, this.selectedIndex)
-        log.debug('建议显示更新完成')
       } else {
         log.warn('onSuggestionsUpdate回调未设置')
       }
@@ -434,8 +392,15 @@ class TerminalAutocompleteService {
   updateInputBuffer(data) {
     // 只处理可打印字符
     if (data.length === 1 && data.charCodeAt(0) >= 32) {
-      this.inputBuffer += data
-      log.debug(`输入缓冲区: "${this.inputBuffer}", 长度: ${this.inputBuffer.length}`)
+      // 检查是否需要重置输入缓冲区（补全完成后的第一次输入）
+      if (this._shouldResetOnNextInput) {
+        // 重置缓冲区，从新字符开始重新跟踪
+        this.inputBuffer = data
+        this._shouldResetOnNextInput = false
+      } else {
+        // 正常追加字符
+        this.inputBuffer += data
+      }
     }
   }
 
@@ -482,8 +447,6 @@ class TerminalAutocompleteService {
       // 提取当前单词
       const currentWord = input.substring(wordStart).trim()
 
-      log.debug(`提取当前单词: 输入="${input}", 单词开始位置=${wordStart}, 当前单词="${currentWord}"`)
-
       return currentWord
 
     } catch (error) {
@@ -503,7 +466,6 @@ class TerminalAutocompleteService {
     try {
       // 首先检查用户是否已登录
       if (!this.isUserLoggedIn()) {
-        log.debug('用户未登录，不显示自动补全建议')
         this.hideSuggestions()
         return
       }
@@ -549,29 +511,14 @@ class TerminalAutocompleteService {
   }
 
   /**
-   * 获取智能混合建议 - 带缓存优化
+   * 获取智能混合建议
    * @param {string} input - 用户输入
    * @param {Object} terminal - 终端实例
    * @returns {Array} 混合建议列表
    */
   getCombinedSuggestions(input, terminal) {
-    const startTime = performance.now()
-
-    // 生成缓存键
+    // 获取输入上下文
     const context = this.getInputContext(input, terminal)
-    const cacheKey = this.generateCacheKey(input, context)
-
-    // 检查缓存
-    const cached = this.suggestionCache.get(cacheKey)
-    if (cached && !cached.isStale) {
-      this.performanceStats.cacheHits++
-      log.debug(`缓存命中: ${cacheKey}, 年龄: ${cached.age}ms`)
-      this.recordInputPattern(input)
-      return cached.value
-    }
-
-    // 缓存未命中，计算建议
-    this.performanceStats.cacheMisses++
     const allSuggestions = []
 
     // 获取脚本库建议
@@ -591,7 +538,6 @@ class TerminalAutocompleteService {
         }))
 
         allSuggestions.push(...typedScriptSuggestions)
-        log.debug(`获取到 ${scriptSuggestions.length} 个脚本建议`)
       } catch (error) {
         log.warn('获取脚本建议失败:', error)
       }
@@ -613,7 +559,6 @@ class TerminalAutocompleteService {
         }))
 
         allSuggestions.push(...typedWordSuggestions)
-        log.debug(`获取到 ${wordSuggestions.length} 个单词建议`)
       } catch (error) {
         log.warn('获取单词建议失败:', error)
       }
@@ -622,19 +567,6 @@ class TerminalAutocompleteService {
     // 合并、去重和排序
     const mergedSuggestions = this.mergeSuggestions(allSuggestions, input, context)
     const finalSuggestions = mergedSuggestions.slice(0, this.config.maxSuggestions)
-
-    // 缓存结果
-    this.suggestionCache.set(cacheKey, finalSuggestions)
-
-    // 记录输入模式和性能统计
-    this.recordInputPattern(input)
-    const responseTime = performance.now() - startTime
-    this.updatePerformanceStats(startTime)
-
-    // 触发预测性缓存
-    this.triggerPredictiveCache(input, context)
-
-    log.debug(`智能混合补全: 输入="${input}", 总建议=${finalSuggestions.length}, 耗时: ${responseTime.toFixed(2)}ms`)
 
     return finalSuggestions
   }
@@ -700,8 +632,6 @@ class TerminalAutocompleteService {
       // 找到当前单词的位置
       const position = words.length > 0 ? words.length - 1 : 0
 
-      log.debug(`单词位置分析: 命令行="${commandLine}", 单词数组=[${words.join(', ')}], 当前单词="${currentWord}", 位置=${position}`)
-
       return position
 
     } catch (error) {
@@ -753,17 +683,6 @@ class TerminalAutocompleteService {
 
     // 使用优化的排序算法
     const sortedSuggestions = this.optimizedSort(uniqueSuggestions, input, context)
-
-    // 添加调试日志
-    if (sortedSuggestions.length > 0) {
-      log.debug('排序后的建议列表:', sortedSuggestions.map(s => ({
-        text: s.text,
-        type: s.type,
-        matchType: s.matchType,
-        finalScore: s.finalScore,
-        originalScore: s.score
-      })))
-    }
 
     return sortedSuggestions
   }
@@ -844,7 +763,7 @@ class TerminalAutocompleteService {
    * @param {Object} context - 上下文
    * @returns {Array} 排序后的建议
    */
-  optimizedSort(suggestions, input, context) {
+  optimizedSort(suggestions, _input, _context) {
     // 使用预计算的排序键进行快速排序
     return suggestions.sort((a, b) => {
       // 首先按排序键排序（降序）
@@ -907,7 +826,7 @@ class TerminalAutocompleteService {
    * @param {string} suggestionType - 建议类型
    * @returns {number} 排序优先级（数字越小优先级越高）
    */
-  getTypeOrder(matchType, suggestionType) {
+  getTypeOrder(matchType, _suggestionType) {
     // 排序优先级：完全匹配脚本 > 单词补全 > 包含匹配脚本
     const orderMap = {
       'script_exact': 1,      // 脚本完全匹配 - 最高优先级
@@ -998,7 +917,7 @@ class TerminalAutocompleteService {
    * @param {Object} context - 上下文
    * @returns {number} 权重值
    */
-  getContextWeight(suggestion, input, context) {
+  getContextWeight(suggestion, _input, context) {
     let weight = 1.0
 
     // 命令开始位置，优先命令类型
@@ -1087,8 +1006,6 @@ class TerminalAutocompleteService {
     if (this.callbacks.onSuggestionsUpdate) {
       this.callbacks.onSuggestionsUpdate([], { x: 0, y: 0 }, -1)
     }
-
-    log.debug('补全建议已隐藏')
   }
 
   /**
@@ -1097,8 +1014,8 @@ class TerminalAutocompleteService {
   reset() {
     this.inputBuffer = ''
     this.selectedIndex = -1
+    this._shouldResetOnNextInput = false
     this.hideSuggestions()
-    log.debug('自动完成状态已重置')
   }
 
   /**
@@ -1120,8 +1037,6 @@ class TerminalAutocompleteService {
     try {
       if (!suggestion || !terminal) return
 
-      log.debug(`选择建议: "${suggestion.text}", 类型: ${suggestion.type}`)
-
       // 根据建议类型决定行为
       if (suggestion.type === 'script') {
         // 脚本类型：覆盖整个输入行
@@ -1133,8 +1048,6 @@ class TerminalAutocompleteService {
 
       // 立即隐藏建议并重置状态
       this.hideSuggestions()
-
-      log.debug(`补全完成，输入缓冲区: "${this.inputBuffer}"`)
 
     } catch (error) {
       log.error('选择自动完成建议失败:', error)
@@ -1163,8 +1076,6 @@ class TerminalAutocompleteService {
 
       // 更新输入缓冲区为脚本命令
       this.inputBuffer = suggestion.text
-
-      log.debug(`脚本覆盖完成: "${suggestion.text}"`)
 
     } catch (error) {
       log.error('处理脚本选择失败:', error)
@@ -1200,13 +1111,15 @@ class TerminalAutocompleteService {
         const afterWord = currentInput.substring(wordStart + wordLength)
         this.inputBuffer = beforeWord + suggestion.text + afterWord
 
-        log.debug(`单词补全完成: "${currentWord}" -> "${suggestion.text}"`)
-
       } else {
         // 如果没有当前单词，直接输入建议
         terminal._core.coreService.triggerDataEvent(suggestion.text)
         this.inputBuffer = suggestion.text
       }
+
+      // 重要：补全完成后，重置输入缓冲区为当前终端显示的内容
+      // 这样可以确保后续输入能够正确追加，而不是基于旧的缓冲区状态
+      this.resetInputBufferAfterCompletion()
 
     } catch (error) {
       log.error('处理单词补全失败:', error)
@@ -1242,156 +1155,23 @@ class TerminalAutocompleteService {
   }
 
   /**
-   * 生成缓存键
-   * @param {string} input - 用户输入
-   * @param {Object} context - 上下文信息
-   * @returns {string} 缓存键
+   * 补全完成后重置输入缓冲区
+   * 这个方法确保输入缓冲区与终端实际显示的内容同步
    */
-  generateCacheKey(input, context) {
-    const contextKey = JSON.stringify({
-      isCommandStart: context.isCommandStart,
-      isParameter: context.isParameter,
-      hasSpaces: context.hasSpaces,
-      wordPosition: context.wordPosition
-    })
-    return `suggestions:${input}:${contextKey}`
-  }
-
-  /**
-   * 记录用户输入模式
-   * @param {string} input - 用户输入
-   */
-  recordInputPattern(input) {
-    if (input.length < 2) return
-
-    const pattern = input.substring(0, Math.min(input.length, 3))
-    const count = this.inputPatterns.get(pattern) || 0
-    this.inputPatterns.set(pattern, count + 1)
-
-    // 限制模式记录数量
-    if (this.inputPatterns.size > 100) {
-      const entries = Array.from(this.inputPatterns.entries())
-      entries.sort((a, b) => a[1] - b[1]) // 按使用频率排序
-      const toDelete = entries.slice(0, 20) // 删除最少使用的20个
-      toDelete.forEach(([key]) => this.inputPatterns.delete(key))
-    }
-  }
-
-  /**
-   * 更新性能统计
-   * @param {number} startTime - 开始时间
-   */
-  updatePerformanceStats(startTime) {
-    const responseTime = performance.now() - startTime
-    this.performanceStats.totalRequests++
-
-    // 计算平均响应时间
-    this.performanceStats.avgResponseTime =
-      (this.performanceStats.avgResponseTime * (this.performanceStats.totalRequests - 1) + responseTime) /
-      this.performanceStats.totalRequests
-  }
-
-  /**
-   * 触发预测性缓存
-   * @param {string} input - 当前输入
-   * @param {Object} context - 上下文
-   */
-  triggerPredictiveCache(input, context) {
-    // 基于输入模式预测可能的下一个字符
-    const predictions = this.getPredictedInputs(input)
-
-    // 异步预加载预测的建议
-    setTimeout(() => {
-      predictions.forEach(predictedInput => {
-        const predictedCacheKey = this.generateCacheKey(predictedInput, context)
-        if (!this.suggestionCache.has(predictedCacheKey)) {
-          // 在后台计算预测的建议
-          this.computePredictiveSuggestions(predictedInput, context)
-        }
-      })
-    }, 100) // 延迟100ms执行，避免阻塞主线程
-  }
-
-  /**
-   * 获取预测的输入
-   * @param {string} input - 当前输入
-   * @returns {Array} 预测的输入列表
-   */
-  getPredictedInputs(input) {
-    const predictions = []
-
-    // 基于常见字符预测
-    const commonChars = ['a', 'e', 'i', 'o', 'u', 's', 't', 'n', 'r', 'l']
-    commonChars.forEach(char => {
-      predictions.push(input + char)
-    })
-
-    // 基于历史模式预测
-    for (const [pattern, count] of this.inputPatterns) {
-      if (pattern.startsWith(input) && pattern.length > input.length) {
-        predictions.push(pattern)
-      }
-    }
-
-    return predictions.slice(0, 5) // 限制预测数量
-  }
-
-  /**
-   * 计算预测性建议
-   * @param {string} input - 预测的输入
-   * @param {Object} context - 上下文
-   */
-  async computePredictiveSuggestions(input, context) {
+  resetInputBufferAfterCompletion() {
     try {
-      // 简化的建议计算，只获取最相关的建议
-      const suggestions = []
+      // 关键修复：在补全完成后，我们需要标记一个状态
+      // 表示下一次输入应该重新开始跟踪，而不是追加到当前缓冲区
+      this._shouldResetOnNextInput = true
 
-      if (this.config.enableScriptCompletion) {
-        const scriptSuggestions = scriptLibraryService.getSimpleCommandSuggestionsSync(
-          input,
-          Math.min(3, this.config.maxWordsPerType)
-        )
-        suggestions.push(...scriptSuggestions.map(s => ({ ...s, type: 'script' })))
-      }
-
-      if (suggestions.length > 0) {
-        const cacheKey = this.generateCacheKey(input, context)
-        this.suggestionCache.set(cacheKey, suggestions.slice(0, 3))
-        log.debug(`预测性缓存: ${input} -> ${suggestions.length} 个建议`)
-      }
     } catch (error) {
-      log.warn('预测性缓存计算失败:', error)
+      log.error('重置输入缓冲区失败:', error)
     }
   }
 
-  /**
-   * 获取缓存统计信息
-   * @returns {Object} 缓存统计
-   */
-  getCacheStats() {
-    return {
-      cache: this.suggestionCache.getStats(),
-      performance: { ...this.performanceStats },
-      patterns: this.inputPatterns.size,
-      debounce: this.smartDebounce.getStats()
-    }
-  }
 
-  /**
-   * 清理缓存
-   */
-  clearCache() {
-    this.suggestionCache.clear()
-    this.predictiveCache.clear()
-    this.inputPatterns.clear()
-    this.performanceStats = {
-      cacheHits: 0,
-      cacheMisses: 0,
-      avgResponseTime: 0,
-      totalRequests: 0
-    }
-    log.debug('缓存已清理')
-  }
+
+
 
   /**
    * 销毁服务
@@ -1402,14 +1182,8 @@ class TerminalAutocompleteService {
       this.smartDebounce.destroy()
     }
 
-    // 销毁缓存
-    if (this.suggestionCache) {
-      this.suggestionCache.destroy()
-    }
-
     this.hideSuggestions()
     this.callbacks = {}
-    this.clearCache()
   }
 }
 
