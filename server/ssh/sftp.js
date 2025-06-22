@@ -161,15 +161,32 @@ async function handleSftpUpload(ws, data) {
   await safeExec(async () => {
     const sftpSession = sftpSessions.get(sessionId);
     const sftp = sftpSession.sftp;
-    
+
     // 解析Base64内容
     const matches = content.match(/^data:(.+);base64,(.+)$/);
     if (!matches) {
       throw new Error('无效的文件内容格式');
     }
-    
+
     const buffer = Buffer.from(matches[2], 'base64');
     const totalSize = buffer.length;
+
+    // 检查文件大小限制
+    const maxUploadSize = parseInt(process.env.MAX_UPLOAD_SIZE) || 104857600; // 默认100MB
+
+    // 调试日志：记录环境变量和解析结果
+    logger.debug('文件大小限制检查', {
+      envValue: process.env.MAX_UPLOAD_SIZE,
+      parsedValue: maxUploadSize,
+      totalSize: totalSize,
+      fileSizeMB: (totalSize / (1024 * 1024)).toFixed(2)
+    });
+
+    if (totalSize > maxUploadSize) {
+      const fileSizeMB = (totalSize / (1024 * 1024)).toFixed(2);
+      const maxSizeMB = (maxUploadSize / (1024 * 1024)).toFixed(0);
+      throw new Error(`文件大小 ${fileSizeMB}MB 超过最大限制 ${maxSizeMB}MB`);
+    }
     let uploaded = 0;
     
     // 创建可写流

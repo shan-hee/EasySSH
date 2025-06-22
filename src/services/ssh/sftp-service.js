@@ -289,7 +289,8 @@ class SFTPService {
         
         // 标记是否自动完成
         let autoCompletedFlag = false;
-        
+        let progressCompleted = false; // 防止重复触发100%进度
+
         // 保存操作回调
         this.fileOperations.set(operationId, {
           resolve: (data) => {
@@ -306,10 +307,11 @@ class SFTPService {
           },
           progress: (progress) => {
             if (progressCallback && typeof progressCallback === 'function') {
-              progressCallback(progress);
-              
-              // 收到100%进度时，立即完成
-              if (progress === 100 && !autoCompletedFlag) {
+              progressCallback(progress, operationId);
+
+              // 收到100%进度时，立即完成，但只处理一次
+              if (progress === 100 && !autoCompletedFlag && !progressCompleted) {
+                progressCompleted = true;
                 autoCompletedFlag = true;
                 clearTimeout(timeout);
                 resolve({ success: true, message: '上传完成' });
@@ -323,25 +325,34 @@ class SFTPService {
         const reader = new FileReader();
         reader.onload = (event) => {
           const fileContent = event.target.result;
-          
-          // 发送上传请求
-          if (session.socket && session.socket.readyState === WS_CONSTANTS.OPEN) {
-            session.socket.send(JSON.stringify({
-              type: 'sftp_upload',
-              data: {
-                sessionId: sshSessionId,
-                filename: file.name,
-                path: remotePath,
-                size: file.size,
-                content: fileContent,
-                operationId
+
+          // 使用 setTimeout 避免阻塞UI线程
+          setTimeout(() => {
+            try {
+              // 发送上传请求
+              if (session.socket && session.socket.readyState === WS_CONSTANTS.OPEN) {
+                session.socket.send(JSON.stringify({
+                  type: 'sftp_upload',
+                  data: {
+                    sessionId: sshSessionId,
+                    filename: file.name,
+                    path: remotePath,
+                    size: file.size,
+                    content: fileContent,
+                    operationId
+                  }
+                }));
+              } else {
+                clearTimeout(timeout);
+                this.fileOperations.delete(operationId);
+                reject(new Error('WebSocket连接未就绪'));
               }
-            }));
-          } else {
-            clearTimeout(timeout);
-            this.fileOperations.delete(operationId);
-            reject(new Error('WebSocket连接未就绪'));
-          }
+            } catch (error) {
+              clearTimeout(timeout);
+              this.fileOperations.delete(operationId);
+              reject(new Error(`发送上传请求失败: ${error.message}`));
+            }
+          }, 10); // 10ms延迟，让UI有时间更新
         };
         
         reader.onerror = (error) => {
@@ -812,6 +823,14 @@ class SFTPService {
             this.fileOperations.delete(operationId);
           }
 
+          // 清理已取消操作的计数器
+          if (this.cancelledOperationCounts) {
+            const countKey = `cancelled_${operationId}`;
+            if (this.cancelledOperationCounts.has(countKey)) {
+              this.cancelledOperationCounts.delete(countKey);
+            }
+          }
+
           clearTimeout(timeout);
           resolve({ success: true, message: '上传已取消' });
         } else {
@@ -878,7 +897,7 @@ class SFTPService {
       log.warn('收到无效的SFTP消息:', message);
       return;
     }
-    
+
     // 特殊处理SFTP会话关闭确认消息
     if (message.type === 'sftp_success' && message.data && message.data.message &&
         message.data.message.includes('SFTP会话已关闭') && !message.data.operationId) {
@@ -892,6 +911,11 @@ class SFTPService {
 
     const { operationId } = message.data;
 
+    // 用于跟踪已取消操作的进度消息计数，避免日志刷屏
+    if (!this.cancelledOperationCounts) {
+      this.cancelledOperationCounts = new Map();
+    }
+
     // 查找对应的操作
     if (!this.fileOperations.has(operationId)) {
       // 特殊处理一些可能的服务器端自动操作
@@ -904,6 +928,21 @@ class SFTPService {
       if (message.type === 'sftp_success') {
         log.debug(`收到已完成操作的响应: ${operationId}, 消息类型: ${message.type}`);
         return; // 静默处理已完成的操作
+      }
+
+      // 特殊处理已取消操作的进度消息
+      if (message.type === 'sftp_progress') {
+        // 获取或初始化计数器
+        const countKey = `cancelled_${operationId}`;
+        const count = this.cancelledOperationCounts.get(countKey) || 0;
+        this.cancelledOperationCounts.set(countKey, count + 1);
+
+        // 只在第一次记录日志，后续完全静默
+        if (count === 0) {
+          log.debug(`已取消操作 ${operationId}，忽略后续进度消息`);
+        }
+
+        return; // 静默处理已取消操作的进度消息
       }
 
       log.warn(`未找到SFTP操作: ${operationId}, 消息类型: ${message.type}`);

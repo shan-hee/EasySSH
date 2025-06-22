@@ -138,26 +138,62 @@ export class LoadingService extends EventEmitter {
     if (!this.loadingTasks.has(id)) {
       return false;
     }
-    
+
     const task = this.loadingTasks.get(id);
-    
+
     // 清除定时器
     if (task.delayTimer) {
       clearTimeout(task.delayTimer);
     }
-    
+
     if (task.timeoutTimer) {
       clearTimeout(task.timeoutTimer);
     }
-    
+
     // 更新加载状态
     if (task.visible) {
       this._updateLoadingState(id, false);
     }
-    
+
     // 从任务记录中移除
     this.loadingTasks.delete(id);
-    
+
+    return true;
+  }
+
+  /**
+   * 更新加载消息
+   * @param {string} id 加载ID
+   * @param {string} message 新的加载消息
+   * @returns {boolean} 是否成功更新
+   */
+  updateMessage(id, message) {
+    if (!this.loadingTasks.has(id)) {
+      return false;
+    }
+
+    const task = this.loadingTasks.get(id);
+    task.message = message;
+
+    // 如果任务可见，触发更新事件
+    if (task.visible) {
+      if (!task.area) {
+        // 全局加载状态更新
+        this.emit('loading:global', true, message);
+      } else {
+        // 区域加载状态更新
+        this.emit('loading:area', task.area, true, message);
+      }
+
+      if (task.group) {
+        // 分组加载状态更新
+        this.emit('loading:group', task.group, true, message);
+      }
+
+      // 触发单个加载状态变化事件
+      this.emit('loading:change', id, true, task);
+    }
+
     return true;
   }
   

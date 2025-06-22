@@ -16,29 +16,20 @@
           <el-alert :title="errorMessage" type="error" :closable="false" show-icon />
         </div>
         
-        <!-- 上传/下载进度 -->
-        <div v-if="isUploading || isDownloading" class="sftp-progress">
+        <!-- 下载进度 (上传进度现在使用全局指示器) -->
+        <div v-if="isDownloading" class="sftp-progress">
           <div class="sftp-progress-header">
             <div class="sftp-progress-title">
-              <span class="sftp-progress-type">{{ isUploading ? '上传中' : '下载中' }}</span>
+              <span class="sftp-progress-type">下载中</span>
               <span v-if="transferSpeed > 0" class="sftp-speed">{{ formatTransferSpeed(transferSpeed) }}</span>
             </div>
-            <span class="sftp-percentage">{{ Math.floor(isUploading ? uploadProgress : downloadProgress) }}%</span>
+            <span class="sftp-percentage">{{ Math.floor(downloadProgress) }}%</span>
           </div>
           <div class="sftp-progress-bar-container">
-            <div class="sftp-progress-bar" 
-                :style="{ width: (isUploading ? uploadProgress : downloadProgress) + '%',
-                          backgroundColor: getProgressColor(isUploading ? uploadProgress : downloadProgress) }">
+            <div class="sftp-progress-bar"
+                :style="{ width: downloadProgress + '%',
+                          backgroundColor: getProgressColor(downloadProgress) }">
             </div>
-          </div>
-          <div class="sftp-progress-info">
-            <div v-if="isUploading" class="sftp-progress-filename">{{ currentUploadingFile }}</div>
-            <button v-if="isUploading && uploadProgress < 100" class="sftp-cancel-button" @click="cancelUpload">
-              <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24">
-                <path fill="currentColor" d="M19,6.41L17.59,5L12,10.59L6.41,5L5,6.41L10.59,12L5,17.59L6.41,19L12,13.41L17.59,19L19,17.59L13.41,12L19,6.41Z" />
-              </svg>
-              取消
-            </button>
           </div>
         </div>
         
@@ -122,10 +113,11 @@
 </template>
 
 <script>
-import { defineComponent, ref, onMounted, onUnmounted, computed, watch } from 'vue'
-import { ElMessageBox, ElMessage, ElLoading } from 'element-plus'
+import { defineComponent, ref, onMounted, onUnmounted, watch } from 'vue'
+import { ElMessageBox, ElMessage } from 'element-plus'
 import { sftpService } from '@/services/ssh'
 import log from '@/services/log'
+import { SFTP_CONSTANTS } from '@/services/constants'
 
 // 导入子组件
 import SftpFileItem from './components/SftpFileItem.vue'
@@ -188,7 +180,10 @@ export default defineComponent({
     const currentUploadingFile = ref('');
     // 添加当前上传操作ID
     const currentUploadId = ref(null);
-    
+
+    // 上传通知引用，需要在组件级别定义以便取消函数访问
+    let currentUploadNotification = null;
+
     // 添加编辑器相关状态
     const isEditing = ref(false);
     const editingFilePath = ref('');
@@ -524,10 +519,10 @@ export default defineComponent({
       }).then(async ({ value }) => {
         if (value) {
           try {
-            const fullPath = currentPath.value === '/' ? 
-              currentPath.value + value : 
+            const fullPath = currentPath.value === '/' ?
+              currentPath.value + value :
               currentPath.value + '/' + value;
-            
+
             // 创建与文件列表加载一致的加载状态
             const loadingDiv = document.createElement('div');
             loadingDiv.className = 'sftp-loading-files';
@@ -539,23 +534,23 @@ export default defineComponent({
               </div>
               <p>创建文件夹中...</p>
             `;
-            
+
             // 将加载状态添加到文件列表区域
             const fileListContent = document.querySelector('.sftp-file-list-content');
             if (fileListContent) {
               fileListContent.appendChild(loadingDiv);
             }
-            
+
             // 调用SFTP服务创建文件夹
             await sftpService.createDirectory(props.sessionId, fullPath);
-            
+
             // 移除加载状态
             if (fileListContent && loadingDiv.parentNode === fileListContent) {
               fileListContent.removeChild(loadingDiv);
             }
-            
+
             ElMessage.success(`文件夹 ${value} 创建成功`);
-            
+
             // 刷新目录以显示新文件夹
             refreshCurrentDirectory();
           } catch (error) {
@@ -564,7 +559,7 @@ export default defineComponent({
             if (loadingDiv && loadingDiv.parentNode) {
               loadingDiv.parentNode.removeChild(loadingDiv);
             }
-            
+
             console.error('创建文件夹失败:', error);
             showError(`创建文件夹失败: ${error.message}`);
           }
@@ -627,16 +622,66 @@ export default defineComponent({
       fileInput.click();
     };
 
+    // 验证文件大小
+    const validateFileSize = (file) => {
+      const maxSize = SFTP_CONSTANTS.MAX_UPLOAD_SIZE;
+      if (file.size > maxSize) {
+        const fileSizeMB = (file.size / (1024 * 1024)).toFixed(2);
+        const maxSizeMB = (maxSize / (1024 * 1024)).toFixed(0);
+        ElMessage.error(`文件 "${file.name}" 大小为 ${fileSizeMB}MB，超过最大限制 ${maxSizeMB}MB`);
+        return false;
+      }
+      return true;
+    };
+
     // 上传多个文件或整个文件夹
     const uploadMultipleFiles = async (files) => {
       if (!files || files.length === 0) return;
-      
+
+      // 验证所有文件大小
+      const invalidFiles = [];
+      const validFiles = [];
+
+      for (const file of files) {
+        if (validateFileSize(file)) {
+          validFiles.push(file);
+        } else {
+          invalidFiles.push(file);
+        }
+      }
+
+      // 如果有无效文件，显示错误信息
+      if (invalidFiles.length > 0) {
+        if (validFiles.length === 0) {
+          // 所有文件都无效，直接返回
+          return;
+        } else {
+          // 部分文件无效，询问是否继续上传有效文件
+          try {
+            await ElMessageBox.confirm(
+              `${invalidFiles.length} 个文件超过大小限制将被跳过，是否继续上传其余 ${validFiles.length} 个文件？`,
+              '文件大小限制',
+              {
+                confirmButtonText: '继续上传',
+                cancelButtonText: '取消',
+                type: 'warning'
+              }
+            );
+          } catch (e) {
+            return; // 用户取消了上传
+          }
+        }
+      }
+
+      // 使用有效文件继续上传流程
+      const filesToUpload = validFiles;
+
       // 对于大于10个文件的上传，先确认
-      if (files.length > 10) {
+      if (filesToUpload.length > 10) {
         try {
           await ElMessageBox.confirm(
-            `您选择了${files.length}个文件，确定要全部上传吗？`, 
-            '批量上传确认', 
+            `您选择了${filesToUpload.length}个文件，确定要全部上传吗？`,
+            '批量上传确认',
             {
               confirmButtonText: '全部上传',
               cancelButtonText: '取消',
@@ -647,8 +692,37 @@ export default defineComponent({
           return; // 用户取消了上传
         }
       }
-      
-      // 重置上传状态
+
+      // 显示上传开始的消息通知
+      let uploadCancelled = false; // 标记是否被用户取消
+
+      // 创建带取消功能的通知
+      const createUploadNotification = (message) => {
+        const notification = ElMessage.info({
+          message: message,
+          duration: 0, // 不自动关闭
+          showClose: true,
+          onClose: () => {
+            // 用户点击关闭按钮时触发取消上传
+            if (!uploadCancelled && isUploading.value) {
+              uploadCancelled = true;
+              // 直接调用取消上传，不需要额外的日志，因为cancelUpload函数内部已经有了
+              cancelUpload();
+            }
+          }
+        });
+        return notification;
+      };
+
+      if (filesToUpload.length === 1) {
+        currentUploadNotification = createUploadNotification(`正在上传文件: ${filesToUpload[0].name}`);
+      } else if (filesToUpload.length <= 5) {
+        currentUploadNotification = createUploadNotification(`正在上传 ${filesToUpload.length} 个文件...`);
+      } else {
+        currentUploadNotification = createUploadNotification(`正在批量上传 ${filesToUpload.length} 个文件...`);
+      }
+
+      // 重置上传状态（保留原有逻辑以防其他地方依赖）
       isUploading.value = true;
       uploadProgress.value = 0;
       transferSpeed.value = 0;
@@ -657,18 +731,18 @@ export default defineComponent({
       
       // 收集所有需要创建的目录路径，使用Set去重
       const dirsToCreate = new Set();
-      const totalSize = Array.from(files).reduce((total, file) => total + file.size, 0);
+      const totalSize = Array.from(filesToUpload).reduce((total, file) => total + file.size, 0);
       let uploadedSize = 0;
       let completedFiles = 0;
-      
+
       // 存储上传失败的文件
       const failedFiles = [];
-      
+
       // 更新全局进度条信息
       currentUploadingFile.value = `批量上传中`;
-      
+
       // 预处理：收集所有需要创建的目录
-      for (const file of files) {
+      for (const file of filesToUpload) {
         let relativePath = file.webkitRelativePath || file.name;
         
         if (relativePath.includes('/')) {
@@ -726,14 +800,25 @@ export default defineComponent({
       let actualUploadedSize = 0;
       
       // 开始上传文件
-      for (let i = 0; i < files.length; i++) {
+      for (let i = 0; i < filesToUpload.length; i++) {
         // 如果上传被取消，则停止
-        if (!isUploading.value) break;
-        
-        const file = files[i];
-        
+        if (!isUploading.value || uploadCancelled) {
+          log.info('上传被取消，停止处理剩余文件');
+          break;
+        }
+
+        const file = filesToUpload[i];
+
         // 更新当前上传文件名和进度信息（移除百分比显示）
         currentUploadingFile.value = file.name;
+
+        // 动态更新消息通知
+        if (filesToUpload.length > 1 && currentUploadNotification && !uploadCancelled) {
+          // 关闭之前的通知
+          currentUploadNotification.close();
+          // 显示新的进度通知，也支持取消
+          currentUploadNotification = createUploadNotification(`正在上传文件 (${i + 1}/${filesToUpload.length}): ${file.name}`);
+        }
         
         try {
           // 获取文件的相对路径部分
@@ -757,7 +842,8 @@ export default defineComponent({
           
           // 跟踪当前文件上传进度，防止重复计算
           let lastFileProgress = 0;
-          
+          let fileCompleted = false; // 防止重复记录完成日志
+
           // 上传单个文件
           await sftpService.uploadFile(
             props.sessionId,
@@ -768,12 +854,13 @@ export default defineComponent({
               if (operationId && !currentUploadId.value) {
                 currentUploadId.value = operationId;
               }
-              
+
               // 更新整体进度 - 每次进度回调都实时更新
               updateBatchProgress(progress, fileSize);
-              
-              // 当单个文件上传完成时
-              if (progress >= 100) {
+
+              // 当单个文件上传完成时，只记录一次
+              if (progress >= 100 && !fileCompleted) {
+                fileCompleted = true;
                 log.debug(`文件完成上传: ${remotePath}`);
                 // 重置最后进度以避免重复计算
                 lastFileProgress = 100;
@@ -806,37 +893,50 @@ export default defineComponent({
         // 如果已经执行过，直接返回
         if (finishExecuted) return;
         finishExecuted = true;
-        
+
         log.debug("执行文件上传完成操作");
-        
-        // 全部上传完成，显示结果 - 使用实际成功上传的文件数量和大小
-        if (failedFiles.length > 0) {
-          // 有失败的文件
-          const failMessage = `上传完成，成功${completedFiles}个文件(${formatFileSize(actualUploadedSize)})，失败${failedFiles.length}个文件`;
-          ElMessage.warning(failMessage);
-          log.warn('上传失败的文件:', failedFiles);
-        } else {
-          // 全部成功
-          ElMessage.success(`成功上传${completedFiles}个文件，总大小${formatFileSize(actualUploadedSize)}`);
+
+        // 关闭上传通知
+        if (currentUploadNotification) {
+          currentUploadNotification.close();
         }
-        
+
+        // 检查是否被用户取消
+        if (uploadCancelled) {
+          // 用户取消时不显示额外消息，因为cancelUpload函数已经显示了"上传已取消"
+          log.info('用户取消上传，部分文件已上传');
+        } else {
+          // 全部上传完成，显示结果 - 使用实际成功上传的文件数量和大小
+          if (failedFiles.length > 0) {
+            // 有失败的文件
+            const failMessage = `上传完成，成功${completedFiles}个文件(${formatFileSize(actualUploadedSize)})，失败${failedFiles.length}个文件`;
+            ElMessage.warning(failMessage);
+            log.warn('上传失败的文件:', failedFiles);
+          } else {
+            // 全部成功
+            ElMessage.success(`成功上传${completedFiles}个文件，总大小${formatFileSize(actualUploadedSize)}`);
+          }
+        }
+
         // 重置上传状态
         isUploading.value = false;
         uploadProgress.value = 100; // 确保进度条显示完成
-        
+
         // 清除计时器
         if (transferInterval.value) {
           clearInterval(transferInterval.value);
           transferInterval.value = null;
         }
-        
-        // 一次性刷新目录
-        try {
-          log.debug("开始刷新目录...");
-          await loadDirectoryContents(currentPath.value);
-          log.debug("目录刷新完成");
-        } catch (error) {
-          log.error("刷新目录失败:", error);
+
+        // 一次性刷新目录（仅在未被取消时刷新，因为取消时cancelUpload已经刷新了）
+        if (!uploadCancelled) {
+          try {
+            log.debug("开始刷新目录...");
+            await loadDirectoryContents(currentPath.value);
+            log.debug("目录刷新完成");
+          } catch (error) {
+            log.error("刷新目录失败:", error);
+          }
         }
       };
       
@@ -855,6 +955,11 @@ export default defineComponent({
     
     // 取消上传
     const cancelUpload = async () => {
+      log.info('用户取消了文件上传');
+
+      // 立即显示取消确认消息
+      ElMessage.info('上传已取消');
+
       if (currentUploadId.value) {
         try {
           await sftpService.cancelUpload(props.sessionId, currentUploadId.value);
@@ -863,7 +968,12 @@ export default defineComponent({
           log.warn('取消上传操作失败:', error);
         }
       }
-      
+
+      // 关闭上传通知
+      if (currentUploadNotification) {
+        currentUploadNotification.close();
+      }
+
       // 临时删除已部分上传的文件
       if (isUploading.value && currentUploadingFile.value) {
         const remotePath = `${currentPath.value === '/' ? '' : currentPath.value}/${currentUploadingFile.value}`;
@@ -875,12 +985,12 @@ export default defineComponent({
           log.warn('删除文件失败:', error);
         }
       }
-      
+
       // 重置状态
       isUploading.value = false;
       uploadProgress.value = 0;
       currentUploadingFile.value = '';
-      
+
       // 手动取消事件处理
       try {
         if (currentUploadId.value) {
@@ -890,6 +1000,15 @@ export default defineComponent({
         log.error('取消上传失败:', error);
       } finally {
         currentUploadId.value = null;
+      }
+
+      // 立即刷新目录
+      try {
+        log.debug("开始刷新目录...");
+        await loadDirectoryContents(currentPath.value);
+        log.debug("目录刷新完成");
+      } catch (error) {
+        log.error("刷新目录失败:", error);
       }
     };
     
@@ -1030,32 +1149,39 @@ export default defineComponent({
     // 下载文件
     const downloadFile = async (file) => {
       resetError();
-      
+
+      // 立即显示下载确认消息
+      ElMessage.info(`正在下载文件 ${file.name}...`);
+
       try {
         // 重置传输状态
         isDownloading.value = true;
         downloadProgress.value = 0;
         transferSpeed.value = 0;
-        
+
         // 构建远程路径
-        const remotePath = currentPath.value === '/' ? 
-          currentPath.value + file.name : 
+        const remotePath = currentPath.value === '/' ?
+          currentPath.value + file.name :
           currentPath.value + '/' + file.name;
-        
+
         // 定义进度回调函数
         const progressCallback = (progress) => {
           downloadProgress.value = progress;
-          // 根据进度更新传输速度
-          updateTransferSpeed(file.size, progress, downloadProgress.value);
+          // 简单的传输速度计算
+          const now = Date.now();
+          const timeDelta = (now - transferStartTime.value) / 1000;
+          if (timeDelta > 0) {
+            transferSpeed.value = (file.size * progress / 100) / timeDelta;
+          }
         };
-        
+
         // 调用SFTP服务下载文件
         const blob = await sftpService.downloadFile(
           props.sessionId,
           remotePath,
           progressCallback
         );
-        
+
         // 创建下载链接
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
@@ -1063,13 +1189,13 @@ export default defineComponent({
         a.download = file.name;
         document.body.appendChild(a);
         a.click();
-        
+
         // 清理
         setTimeout(() => {
           URL.revokeObjectURL(url);
           document.body.removeChild(a);
         }, 100);
-        
+
         ElMessage.success(`文件 ${file.name} 下载成功`);
       } catch (error) {
         log.error('下载文件失败:', error);
@@ -1096,14 +1222,14 @@ export default defineComponent({
         if (value && value !== file.name) {
           try {
             // 构建原路径和新路径
-            const oldPath = currentPath.value === '/' ? 
-              currentPath.value + file.name : 
+            const oldPath = currentPath.value === '/' ?
+              currentPath.value + file.name :
               currentPath.value + '/' + file.name;
-            
-            const newPath = currentPath.value === '/' ? 
-              currentPath.value + value : 
+
+            const newPath = currentPath.value === '/' ?
+              currentPath.value + value :
               currentPath.value + '/' + value;
-            
+
             // 创建与文件列表加载一致的加载状态
             const loadingDiv = document.createElement('div');
             loadingDiv.className = 'sftp-loading-files';
@@ -1115,23 +1241,23 @@ export default defineComponent({
               </div>
               <p>重命名中...</p>
             `;
-            
+
             // 将加载状态添加到文件列表区域
             const fileListContent = document.querySelector('.sftp-file-list-content');
             if (fileListContent) {
               fileListContent.appendChild(loadingDiv);
             }
-            
+
             // 调用SFTP服务重命名文件
             await sftpService.rename(props.sessionId, oldPath, newPath);
-            
+
             // 移除加载状态
             if (fileListContent && loadingDiv.parentNode === fileListContent) {
               fileListContent.removeChild(loadingDiv);
             }
-            
+
             ElMessage.success(`重命名成功: ${file.name} -> ${value}`);
-            
+
             // 刷新目录以显示新名称
             refreshCurrentDirectory();
           } catch (error) {
@@ -1140,7 +1266,7 @@ export default defineComponent({
             if (loadingDiv && loadingDiv.parentNode) {
               loadingDiv.parentNode.removeChild(loadingDiv);
             }
-            
+
             log.error('重命名失败:', error);
             showError(`重命名失败: ${error.message}`);
           }
@@ -1170,10 +1296,10 @@ export default defineComponent({
       ).then(async () => {
         try {
           // 构建完整路径
-          const fullPath = currentPath.value === '/' ? 
-            currentPath.value + file.name : 
+          const fullPath = currentPath.value === '/' ?
+            currentPath.value + file.name :
             currentPath.value + '/' + file.name;
-          
+
           // 创建与文件列表加载一致的加载状态
           const loadingDiv = document.createElement('div');
           loadingDiv.className = 'sftp-loading-files';
@@ -1185,13 +1311,13 @@ export default defineComponent({
             </div>
             <p>${file.isDirectory ? '删除文件夹中...' : '删除文件中...'}</p>
           `;
-          
+
           // 将加载状态添加到文件列表区域
           const fileListContent = document.querySelector('.sftp-file-list-content');
           if (fileListContent) {
             fileListContent.appendChild(loadingDiv);
           }
-          
+
           if (file.isDirectory) {
             // 使用通用删除方法删除文件夹
             log.debug(`删除文件夹: ${fullPath}`);
@@ -1201,14 +1327,14 @@ export default defineComponent({
             log.debug(`删除文件: ${fullPath}`);
             await sftpService.delete(props.sessionId, fullPath, false);
           }
-          
+
           // 移除加载状态
           if (fileListContent && loadingDiv.parentNode === fileListContent) {
             fileListContent.removeChild(loadingDiv);
           }
-          
+
           ElMessage.success(`${file.isDirectory ? '文件夹' : '文件'} ${file.name} 已删除`);
-          
+
           // 刷新目录以移除已删除文件
           refreshCurrentDirectory();
         } catch (error) {
@@ -1217,7 +1343,7 @@ export default defineComponent({
           if (loadingDiv && loadingDiv.parentNode) {
             loadingDiv.parentNode.removeChild(loadingDiv);
           }
-          
+
           log.error('删除失败:', error);
           showError(`删除失败: ${error.message}`);
         }
@@ -1617,7 +1743,9 @@ export default defineComponent({
     // 特殊的目录批量上传文件函数，不改变全局上传状态
     const uploadFileToDirectoryBatch = async (file, remotePath, progressCallback) => {
       return new Promise((resolve, reject) => {
-        try {        
+        let fileCompleted = false; // 防止重复记录和解析
+
+        try {
           // 调用SFTP服务上传文件
           sftpService.uploadFile(
             props.sessionId,
@@ -1628,9 +1756,10 @@ export default defineComponent({
               if (typeof progressCallback === 'function') {
                 progressCallback(progress, operationId);
               }
-              
-              // 当单个文件上传完成时
-              if (progress >= 100) {
+
+              // 当单个文件上传完成时，只处理一次
+              if (progress >= 100 && !fileCompleted) {
+                fileCompleted = true;
                 // 只记录文件完成上传，不刷新目录
                 log.debug(`文件完成上传: ${remotePath}`);
                 // 上传完成时解析Promise
@@ -1638,12 +1767,16 @@ export default defineComponent({
               }
             }
           ).catch(error => {
-            log.error(`上传文件失败: ${remotePath}`, error);
-            reject(error);
+            if (!fileCompleted) {
+              log.error(`上传文件失败: ${remotePath}`, error);
+              reject(error);
+            }
           });
         } catch (error) {
-          log.error(`初始化上传失败: ${remotePath}`, error);
-          reject(error);
+          if (!fileCompleted) {
+            log.error(`初始化上传失败: ${remotePath}`, error);
+            reject(error);
+          }
         }
       });
     };

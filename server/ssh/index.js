@@ -60,14 +60,28 @@ function getClientIP(request) {
  * @param {Object} server HTTP服务器实例
  */
 function initWebSocketServer(server) {
+  // 获取WebSocket最大消息大小配置
+  const maxMessageSize = parseInt(process.env.WS_MAX_MESSAGE_SIZE) || 157286400; // 默认150MB
+  const logger = require('../utils/logger');
+
+  // 记录WebSocket配置
+  logger.info('WebSocket服务器配置', {
+    maxMessageSize: `${(maxMessageSize / (1024 * 1024)).toFixed(0)}MB`,
+    maxMessageSizeBytes: maxMessageSize
+  });
+
   // 创建SSH WebSocket服务器
   const sshWss = new WebSocket.Server({
-    noServer: true
+    noServer: true,
+    maxPayload: maxMessageSize, // 设置最大消息大小
+    perMessageDeflate: false // 禁用压缩以提高大文件传输性能
   });
 
   // 创建监控WebSocket服务器
   const monitorWss = new WebSocket.Server({
-    noServer: true
+    noServer: true,
+    maxPayload: 1024 * 1024, // 监控消息较小，1MB足够
+    perMessageDeflate: true // 监控数据可以压缩
   });
 
   // 统一处理HTTP服务器的upgrade事件

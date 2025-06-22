@@ -800,12 +800,16 @@ class SSHService {
                 MESSAGE_TYPES.PING,
                 'keepalive', 'heartbeat', 'status', 'info', 'notification',
                 'system', 'stats', 'heartbeat_ack', 'heartbeat_response',
-                'ack', 'response', 'server_status', 'latency_update'
+                'ack', 'response', 'server_status', 'latency_update',
+                'cancel_response', 'cleanup', 'file_cleanup', 'operation_cleanup'
               ];
-              
+
               // 忽略所有SFTP相关消息类型，避免它们被标记为未知类型
               if (!ignoredTypes.includes(message.type) && !message.type.startsWith('sftp_')) {
-                log.debug(`收到未知消息类型: ${message.type}`, { sessionId });
+                // 进一步减少未知消息类型的日志，只在开发模式下显示
+                if (import.meta.env.DEV) {
+                  log.debug(`收到未知消息类型: ${message.type}`, { sessionId });
+                }
               }
           }
           
