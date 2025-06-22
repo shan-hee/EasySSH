@@ -130,11 +130,6 @@ if (process.env.NODE_ENV === 'development') {
 
 
   })
-
-  // 开发环境提示
-  console.log('🔧 开发模式已启用（自动补全已优化）')
-  console.log('📋 开发快捷键请参考: docs/开发指南.md')
-  console.log('⌨️  Ctrl+Shift+Delete: 清除所有存储')
 }
 
 // 创建 Pinia 实例

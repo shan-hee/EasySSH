@@ -16,7 +16,7 @@
   <p>
     <img src="https://img.shields.io/github/package-json/v/shan-hee/EasySSH" alt="version" />
     <img src="https://img.shields.io/badge/license-Apache%202.0-blue" alt="license" />
-    <img src="https://img.shields.io/badge/node-%3E%3D16.0.0-brightgreen" alt="node" />
+    <img src="https://img.shields.io/badge/node-%3E%3D20.0.0-brightgreen" alt="node" />
     <img src="https://github.com/shan-hee/EasySSH/actions/workflows/docker-build.yml/badge.svg" alt="Docker Build" />
     <img src="https://img.shields.io/docker/pulls/shanheee/easyssh" alt="Docker Pulls" />
   </p>

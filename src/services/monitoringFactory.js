@@ -1180,13 +1180,9 @@ class MonitoringFactory {
     const connected = await instance.connect(host);
 
     if (connected) {
-      // 连接成功后，同步状态到所有连接该主机的终端
-      this._broadcastMonitoringStatusToHost(host, {
-        installed: true,
-        available: true,
-        status: 'connected',
-        message: '监控连接已建立'
-      });
+      // 连接成功后，不再立即广播 installed=true
+      // 监控状态将通过服务器的 monitoring_status 消息确定
+      log.debug(`监控连接已建立，等待服务器确认监控状态: ${host}`);
     }
 
     return connected;
@@ -1741,17 +1737,9 @@ class MonitoringFactory {
    * @private
    */
   _syncMonitoringStatusToTerminal(terminalId, host, masterInstance) {
-    // 触发监控状态变更事件，通知指定终端
-    window.dispatchEvent(new CustomEvent('monitoring-status-change', {
-      detail: {
-        installed: true,
-        available: true,
-        host: host,
-        terminalId: terminalId,
-        status: 'shared_connection',
-        message: '共享现有监控连接'
-      }
-    }));
+    // 不再在共享连接时立即设置 installed=true
+    // 监控状态应该基于服务器的实际状态，而不是连接状态
+    log.debug(`终端 ${terminalId} 共享到 ${host} 的连接，等待服务器确认监控状态`);
 
     // 如果有监控数据，也同步数据
     const monitorData = masterInstance.getMonitorData();
@@ -1899,13 +1887,9 @@ class MonitoringFactory {
         if (connected) {
           log.debug(`新主连接 ${newMasterInstance.terminalId} 成功连接到 ${host}`);
 
-          // 广播连接恢复状态到所有相关终端
-          this._broadcastMonitoringStatusToHost(host, {
-            installed: true,
-            available: true,
-            status: 'master_connection_restored',
-            message: '主连接已恢复'
-          });
+          // 不再在连接成功时立即广播 installed=true
+          // 监控状态将通过服务器的 monitoring_status 消息确定
+          log.debug(`主连接已恢复，等待服务器确认监控状态: ${host}`);
 
           // 同步历史数据到所有相关终端
           this._syncHistoryDataToHost(host, newMasterInstance);
@@ -1923,13 +1907,9 @@ class MonitoringFactory {
       } else {
         log.debug(`新主连接 ${newMasterInstance.terminalId} 已经连接到 ${host}`);
 
-        // 已经连接，直接广播状态
-        this._broadcastMonitoringStatusToHost(host, {
-          installed: true,
-          available: true,
-          status: 'master_connection_switched',
-          message: '主连接已切换'
-        });
+        // 不再在连接切换时立即广播 installed=true
+        // 监控状态将通过服务器的 monitoring_status 消息确定
+        log.debug(`主连接已切换，等待服务器确认监控状态: ${host}`);
 
         // 同步历史数据到所有相关终端
         this._syncHistoryDataToHost(host, newMasterInstance);
