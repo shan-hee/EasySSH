@@ -102,7 +102,6 @@ class ApiService {
       )
       
       this.isInitialized = true
-      log.debug('API服务初始化完成')
       return Promise.resolve(true)
     } catch (error) {
       log.error('API服务初始化失败', error)

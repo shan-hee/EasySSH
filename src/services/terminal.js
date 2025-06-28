@@ -164,7 +164,6 @@ class TerminalService {
       }
 
       this.isInitialized = true
-      log.debug('终端服务初始化完成')
       return Promise.resolve(true)
     } catch (error) {
       log.error('终端服务初始化失败', error)

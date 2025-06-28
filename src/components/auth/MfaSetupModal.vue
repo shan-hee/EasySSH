@@ -376,12 +376,18 @@ export default defineComponent({
       }
     }
     
-    // 复制密钥到剪贴板
-    const copySecretKey = () => {
+    // 复制密钥到剪贴板 - 使用统一的剪贴板服务
+    const copySecretKey = async () => {
       try {
-        navigator.clipboard.writeText(secretKey.value).then(() => {
+        // 使用统一的剪贴板服务
+        const { copyToClipboard } = await import('@/services/utils.js')
+        const success = await copyToClipboard(secretKey.value, false)
+
+        if (success) {
           ElMessage.success('密钥已复制到剪贴板')
-        })
+        } else {
+          ElMessage.error('复制失败，请手动复制')
+        }
       } catch (error) {
         ElMessage.error('复制失败，请手动复制')
         console.error('复制失败:', error)

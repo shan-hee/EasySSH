@@ -52,43 +52,46 @@ async function initServices() {
       (async () => {
         await storage.init();
         servicesStatus.storage = true;
-        log.debug('存储服务初始化完成');
       })(),
       (async () => {
         await settings.init();
         servicesStatus.settings = true;
-        log.debug('设置服务初始化完成');
       })()
     ]
 
     await Promise.all(baseServicesPromises)
+    log.debug('基础服务初始化完成 (存储、设置)')
 
     // 初始化用户体验相关服务 - 并行
     const uxServicesPromises = [
       (async () => {
         await clipboardService.init();
         servicesStatus.clipboard = true;
-        log.debug('剪贴板服务初始化完成');
       })()
     ]
 
     await Promise.all(uxServicesPromises)
+    log.debug('用户体验服务初始化完成 (剪贴板)')
 
     // 初始化终端服务
     await terminal.init()
     servicesStatus.terminal = true
+    log.debug('终端服务初始化完成')
 
     // 初始化API和认证服务 - 顺序执行，因为auth依赖api
     await apiService.init()
     servicesStatus.api = true
+    log.debug('API服务初始化完成')
 
     await auth.init()
     servicesStatus.auth = true
+    log.debug('认证服务初始化完成')
 
     // 最后初始化SSH服务，因为它依赖前面的服务
     await sshService.init()
     servicesStatus.ssh = true
     servicesStatus.sftp = true
+    log.debug('SSH和SFTP服务初始化完成')
     
     // 触发服务初始化完成事件
     window.dispatchEvent(new CustomEvent('services:ready', {

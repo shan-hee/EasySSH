@@ -20,15 +20,16 @@ class SettingsService {
       if (this.isInitialized) {
         return Promise.resolve(true)
       }
-      
+
       this.store = useSettingsStore()
-      
+
       // 确保store已经加载
       if (!this.store) {
         throw new Error('无法初始化设置存储')
       }
-      
-      log.debug('设置服务初始化完成')
+
+      // 设置服务主要是连接到已经初始化的store，不需要额外的初始化日志
+      // store的初始化已经在store创建时完成
       this.isInitialized = true
       return Promise.resolve(true)
     } catch (error) {

@@ -44,7 +44,6 @@ class AuthService {
       window.addEventListener('auth:expired', this.handleAuthExpired.bind(this))
       
       this.isInitialized = true
-      log.debug('认证服务初始化完成')
       return true
     } catch (error) {
       log.error('认证服务初始化失败', error)

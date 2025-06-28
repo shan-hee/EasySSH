@@ -63,8 +63,6 @@ async function initializeServices() {
     // 注册到全局对象
     window.services = services;
 
-    log.debug('UI服务初始化完成');
-
     // 发布services就绪事件，包含初始化状态
     window.dispatchEvent(new CustomEvent('services:ready', {
       detail: { status: { ...servicesState } }

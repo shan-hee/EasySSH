@@ -18,7 +18,6 @@ class StorageService {
   init() {
     return new Promise((resolve) => {
       if (this.initialized) {
-        log.debug('存储服务已初始化');
         return resolve(true);
       }
 
@@ -29,7 +28,7 @@ class StorageService {
         localStorage.removeItem(testKey);
 
         this.initialized = true;
-        log.debug('存储服务初始化完成');
+        // 存储服务初始化成功，但不输出日志，因为这是基础服务
         resolve(true);
       } catch (e) {
         log.error('存储服务初始化失败', e);

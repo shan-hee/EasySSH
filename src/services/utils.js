@@ -179,48 +179,28 @@ export function formatFileSize(bytes, decimals = 2) {
 }
 
 /**
- * 复制文本到剪贴板
+ * 复制文本到剪贴板 - 使用统一的剪贴板服务
  * @param {string} text - 要复制的文本
  * @param {boolean} showMessage - 是否显示提示消息
  */
-export function copyToClipboard(text, showMessage = true) {
+export async function copyToClipboard(text, showMessage = true) {
   try {
-    if (navigator.clipboard) {
-      navigator.clipboard.writeText(text)
-        .then(() => {
-          if (showMessage) ElMessage.success('复制成功')
-        })
-        .catch(err => {
-          console.error('复制失败:', err)
-          fallbackCopy(text)
-        })
-    } else {
-      fallbackCopy(text)
+    // 动态导入剪贴板服务，避免循环依赖
+    const { default: clipboardService } = await import('./clipboard.js')
+
+    const success = await clipboardService.copyToClipboard(text)
+
+    if (success && showMessage) {
+      ElMessage.success('复制成功')
+    } else if (!success && showMessage) {
+      ElMessage.error('复制失败')
     }
+
+    return success
   } catch (error) {
     console.error('复制文本失败:', error)
     if (showMessage) ElMessage.error('复制失败')
-  }
-  
-  function fallbackCopy(text) {
-    const textArea = document.createElement('textarea')
-    textArea.value = text
-    textArea.style.position = 'fixed'
-    textArea.style.left = '-999999px'
-    textArea.style.top = '-999999px'
-    document.body.appendChild(textArea)
-    textArea.focus()
-    textArea.select()
-    
-    try {
-      document.execCommand('copy')
-      if (showMessage) ElMessage.success('复制成功')
-    } catch (err) {
-      console.error('复制失败:', err)
-      if (showMessage) ElMessage.error('复制失败')
-    }
-    
-    document.body.removeChild(textArea)
+    return false
   }
 }
 

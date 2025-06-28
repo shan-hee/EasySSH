@@ -25,19 +25,25 @@ const clickOutside = {
   }
 }
 
-// v-copy：点击复制内容
+// v-copy：点击复制内容 - 使用统一的剪贴板服务
 const copy = {
   beforeMount: (el, binding) => {
     el._copyHandler = async () => {
       try {
-        const value = typeof binding.value === 'function' 
-          ? binding.value() 
+        const value = typeof binding.value === 'function'
+          ? binding.value()
           : binding.value
-        
-        await navigator.clipboard.writeText(value)
-        
-        // 触发自定义事件
-        el.dispatchEvent(new CustomEvent('copy-success'))
+
+        // 使用统一的剪贴板服务
+        const { default: clipboardService } = await import('../services/clipboard.js')
+        const success = await clipboardService.copyToClipboard(value)
+
+        if (success) {
+          // 触发自定义事件
+          el.dispatchEvent(new CustomEvent('copy-success'))
+        } else {
+          throw new Error('复制失败')
+        }
       } catch (err) {
         // 触发自定义事件
         el.dispatchEvent(new CustomEvent('copy-error', { detail: err }))

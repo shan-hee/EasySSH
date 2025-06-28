@@ -157,11 +157,8 @@ class ClipboardManager {
   async init() {
     // 避免重复初始化
     if (this.initialized) {
-      log.debug('剪贴板服务已初始化');
       return Promise.resolve(true);
     }
-    
-    log.debug('初始化剪贴板服务...');
 
     try {
       // 确保在浏览器环境中运行
@@ -170,14 +167,14 @@ class ClipboardManager {
         this.initialized = true;
         return Promise.resolve(true);
       }
-      
+
       // 检查是否支持 Clipboard API
       this.useClipboardAPI = !!navigator.clipboard;
-      
+
       if (!this.useClipboardAPI) {
         log.warn('浏览器不支持Clipboard API，使用备用方式');
       }
-      
+
       // 监听粘贴事件 - 只在document存在的情况下添加
       if (typeof document !== 'undefined') {
         try {
@@ -194,16 +191,15 @@ class ClipboardManager {
           log.warn('添加粘贴事件监听失败，将使用降级方法');
         }
       }
-      
+
       this.initialized = true;
-      log.debug('剪贴板服务初始化完成');
       return Promise.resolve(true);
     } catch (error) {
       log.error('剪贴板服务初始化失败', error);
-      
+
       // 即使失败也将服务标记为已初始化，以避免重复尝试
       this.initialized = true;
-      
+
       // 降级支持，仍然返回成功
       return Promise.resolve(true);
     }
@@ -426,11 +422,14 @@ class EnhancedClipboardManager extends ClipboardManager {
    * 初始化
    */
   async init() {
-    if (this.initialized) return true;
-    
+    if (this.initialized) {
+      return true;
+    }
+
+    // 调用父类初始化
     await super.init();
     this.loadHistory();
-    
+
     return true;
   }
 
@@ -661,16 +660,16 @@ class EnhancedClipboardManager extends ClipboardManager {
   }
 }
 
-// 创建实例
-const clipboardManager = new ClipboardManager();
-
-// 创建增强版实例
-export const enhancedClipboardManager = new EnhancedClipboardManager();
+// 创建单一实例 - 使用增强版本作为默认实例
+const clipboardManager = new EnhancedClipboardManager();
 
 // 添加到window全局对象（用于调试）
 if (typeof window !== 'undefined') {
   window.clipboardManager = clipboardManager;
 }
 
-// 默认导出基础版本
+// 导出增强版实例作为默认导出
 export default clipboardManager;
+
+// 为了向后兼容，也导出为enhancedClipboardManager
+export const enhancedClipboardManager = clipboardManager;
