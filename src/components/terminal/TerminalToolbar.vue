@@ -33,13 +33,19 @@
           </div>
         </transition>
         
-        <div class="icon-button tooltip-container" 
-          @click.stop="handleMonitoringClick()" 
+        <div class="icon-button tooltip-container"
+          @click.stop="handleMonitoringClick()"
           :class="{ 'icon-available': monitoringServiceInstalled, 'active': isPanelVisible }"
           ref="monitorButtonRef">
-          <img src="@/assets/icons/icon-monitoring.svg" class="ruyi-icon ruyi-icon-ot-monitoring" width="16" height="16" 
+          <img src="@/assets/icons/icon-monitoring.svg" class="ruyi-icon ruyi-icon-ot-monitoring" width="16" height="16"
                :class="{ 'icon-gray': !monitoringServiceInstalled, 'icon-white': monitoringServiceInstalled }" />
         </div>
+
+        <!-- 监控指标显示 -->
+        <ToolbarMonitoring
+          v-if="terminalId"
+          :terminal-id="terminalId"
+        />
         
         <!-- 使用teleport将监控工具提示内容传送到body中 -->
         <teleport to="body">
@@ -125,9 +131,13 @@ import { useTerminalStore } from '../../store/terminal'
 import { LATENCY_EVENTS } from '../../services/constants'
 import log from '../../services/log'
 import scriptLibraryService from '../../services/scriptLibrary'
+import ToolbarMonitoring from '../monitoring/ToolbarMonitoring.vue'
 
 export default defineComponent({
   name: 'TerminalToolbar',
+  components: {
+    ToolbarMonitoring
+  },
   emits: ['toggle-sftp-panel', 'toggle-monitoring-panel'],
   props: {
     hasBackground: {
@@ -189,6 +199,11 @@ export default defineComponent({
     // 获取当前活动终端的工具栏状态
     const activeTerminalState = computed(() => {
       return getTerminalToolbarState(props.activeSessionId) || {}
+    })
+
+    // 获取当前终端ID（用于监控组件）
+    const terminalId = computed(() => {
+      return props.activeSessionId
     })
     
     const sftpTooltipStyle = ref({
@@ -1225,7 +1240,7 @@ export default defineComponent({
       }
     };
     
-    // 新增处理监控图标点击的函数
+    // 处理监控图标点击的函数 - 现在只显示状态信息
     const handleMonitoringClick = () => {
       // 如果用户未登录，显示登录提示
       if (!isLoggedIn.value) {
@@ -1234,18 +1249,13 @@ export default defineComponent({
         return;
       }
 
-      // 只有当监控服务已安装且面板未显示时才执行操作
-      if (monitoringServiceInstalled.value && !isPanelVisible.value) {
-        emit('toggle-monitoring-panel');
+      // 显示监控状态信息
+      if (monitoringServiceInstalled.value) {
+        ElMessage.success('监控服务已连接，实时数据显示在工具栏中');
       } else {
-        // 如果监控未安装或面板已显示，只显示提示信息
-        if (!monitoringServiceInstalled.value) {
-          // 监控服务未安装时显示tooltip
-          updateMonitorTooltipPosition();
-          showMonitorTooltip.value = true;
-        }
-        // 面板已显示状态下不执行任何操作，只返回
-        return;
+        // 监控服务未安装时显示tooltip
+        updateMonitorTooltipPosition();
+        showMonitorTooltip.value = true;
       }
     };
     
@@ -1492,7 +1502,9 @@ export default defineComponent({
       networkPopupStyle,
       handleMonitoringClick,
       // 用户状态
-      isLoggedIn
+      isLoggedIn,
+      // 终端ID（用于监控组件）
+      terminalId
     }
   }
 })

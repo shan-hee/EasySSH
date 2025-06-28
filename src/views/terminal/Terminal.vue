@@ -1089,15 +1089,8 @@ export default {
         const { default: monitoringService } = await import('../../services/monitoring.js');
         const status = monitoringService.getStatus(sessionId);
 
-        // 通过事件将终端ID传递给父组件（监控服务使用终端ID）
-        window.dispatchEvent(new CustomEvent('request-toggle-monitoring-panel', {
-          detail: {
-            terminalId: sessionId,    // 监控面板需要终端ID
-            sshSessionId: sshSessionId, // SSH会话ID作为备用
-            host: host,
-            dataAvailable: status && status.connected
-          }
-        }));
+        // 监控功能已集成到工具栏，不再需要切换面板
+        log.info('[终端] 监控功能已集成到工具栏，实时显示监控数据');
 
       } catch (error) {
         log.error(`[终端] 切换监控面板失败: ${error.message}`);

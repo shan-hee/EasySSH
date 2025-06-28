@@ -23,19 +23,7 @@
       </main>
     </div>
 
-    <!-- 系统监控面板 -->
-    <div v-if="showMonitoringPanel" class="monitoring-panel-container">
-      <MonitoringPanel 
-        @close="closeMonitoringPanel" 
-        :serverId="monitorSessionId"
-        :serverInfo="monitorServerInfo"
-        :isInstalled="monitoringInstalled"
-        :width="monitoringPanelWidth"
-        v-model:width="monitoringPanelWidth"
-        @resize="handleMonitoringPanelResize"
-        :session-id="monitorSessionId"
-      />
-    </div>
+
     
     <!-- SFTP文件管理器侧边栏 -->
     <SftpPanel
@@ -56,7 +44,7 @@ import { useRoute, useRouter } from 'vue-router'
 import AppSidebar from '@/components/layout/AppSidebar.vue'
 import AppHeader from '@/components/layout/AppHeader.vue'
 import { ElMessageBox, ElMessage } from 'element-plus'
-import MonitoringPanel from '@/components/monitoring/MonitoringPanel.vue'
+
 import SftpPanel from '@/components/sftp/SftpPanel.vue'
 // 导入Terminal组件
 import Terminal from '@/views/terminal/Terminal.vue'
@@ -73,7 +61,6 @@ export default defineComponent({
   components: {
     AppSidebar,
     AppHeader,
-    MonitoringPanel,
     SftpPanel,
     Terminal // 注册Terminal组件
   },
@@ -81,19 +68,17 @@ export default defineComponent({
     const route = useRoute()
     const router = useRouter()
     const terminalTitle = ref('')
-    const showMonitoringPanel = ref(false)
+
     const showSftpPanel = ref(false)
     const sftpPanelWidth = ref(450)
-    const monitoringPanelWidth = ref(450)
+
     const isSftpPanelClosing = ref(false)
     const activeSessionId = ref(null)
     const terminalHasBackground = computed(() => {
       const terminalStore = useTerminalStore()
       return terminalStore.useBackgroundImage
     })
-    const monitorSessionId = ref(null)
-    const monitorServerInfo = ref(null)
-    const monitoringInstalled = ref(false)
+
     // 添加终端组件引用
     const terminalComponent = ref(null)
     
@@ -286,22 +271,7 @@ export default defineComponent({
         log.error('加载SFTP面板宽度失败:', error);
       }
       
-      // 加载保存的监控面板宽度
-      try {
-        const savedWidth = localStorage.getItem('monitoringPanelWidth');
-        if (savedWidth) {
-          const width = parseInt(savedWidth, 10);
-          const maxWidth = window.innerWidth * 0.9;
-          if (!isNaN(width) && width >= 300 && width <= maxWidth) {
-            monitoringPanelWidth.value = width;
-          } else if (!isNaN(width) && width > maxWidth) {
-            // 如果保存的宽度超过了当前最大值，则使用最大值
-            monitoringPanelWidth.value = maxWidth;
-          }
-        }
-      } catch (error) {
-        log.error('加载监控面板宽度失败:', error);
-      }
+
       
       // 添加窗口大小变化监听器
       window.addEventListener('resize', handleWindowResize);
@@ -335,11 +305,7 @@ export default defineComponent({
         }
       });
       
-      // 监听切换监控面板事件
-      window.addEventListener('toggle-monitoring-panel', (event) => {
-        log.debug('[监控面板] 收到切换监控面板事件:', event.detail);
-        toggleMonitoringPanel(event.detail);
-      });
+
       
       // 初始化时直接读取终端背景设置
       try {
@@ -361,21 +327,12 @@ export default defineComponent({
         log.error('初始化读取终端背景设置失败:', error);
       }
       
-      // 监听显示监控面板事件
-      window.addEventListener('show-monitoring-panel', (event) => {
-        if (event.detail) {
-          toggleMonitoringPanel(event.detail)
-        } else {
-          toggleMonitoringPanel()
-        }
-      })
+
       
       // 监听关闭监控面板和SFTP面板的事件
       const appContainer = document.querySelector('.app-container')
       if (appContainer) {
-        appContainer.addEventListener('close-monitoring-panel', () => {
-          closeMonitoringPanel()
-        })
+
         
         appContainer.addEventListener('close-sftp-panel', () => {
           closeSftpPanel()
@@ -391,23 +348,7 @@ export default defineComponent({
         }
       });
 
-      // 监听来自各个终端工具栏的监控面板切换请求
-      window.addEventListener('request-toggle-monitoring-panel', (event) => {
-        if (event.detail && event.detail.terminalId) {
-          // 设置活动终端ID并切换监控面板
-          activeSessionId.value = event.detail.terminalId;
-          monitorSessionId.value = event.detail.terminalId;
 
-          // 如果事件中包含主机地址，使用它来构建状态对象
-          const status = {
-            host: event.detail.host,
-            installed: event.detail.verified || true,
-            sessionId: event.detail.terminalId  // 这里实际上是terminalId
-          };
-
-          toggleMonitoringPanel(status);
-        }
-      });
     });
 
     // 更新CSS变量以供AppLayout使用
@@ -487,16 +428,7 @@ export default defineComponent({
         }
       }
       
-      if (showMonitoringPanel.value) {
-        const maxWidth = window.innerWidth * 0.95;
-        // 如果当前宽度超过了新的最大值，则调整为最大值
-        if (monitoringPanelWidth.value > maxWidth) {
-          monitoringPanelWidth.value = maxWidth;
-          
-          // 保存更新后的宽度
-          saveMonitoringPanelWidth();
-        }
-      }
+
     };
     
     // 保存SFTP面板宽度
@@ -508,14 +440,7 @@ export default defineComponent({
       }
     };
     
-    // 保存监控面板宽度
-    const saveMonitoringPanelWidth = () => {
-      try {
-        localStorage.setItem('monitoringPanelWidth', monitoringPanelWidth.value.toString());
-      } catch (error) {
-        log.error('保存监控面板宽度失败:', error);
-      }
-    };
+
     
     // 处理SFTP面板尺寸调整
     const handleSftpPanelResize = (newWidth) => {
@@ -528,96 +453,9 @@ export default defineComponent({
       }
     };
     
-    // 处理监控面板尺寸调整
-    const handleMonitoringPanelResize = (newWidth) => {
-      monitoringPanelWidth.value = newWidth
-      // 保存到本地存储
-      try {
-        localStorage.setItem('monitoringPanelWidth', newWidth.toString())
-      } catch (e) {
-        log.error('保存监控面板宽度失败:', e)
-      }
-    };
+
     
-    // 打开监控面板
-    const toggleMonitoringPanel = (status) => {
-      // 如果监控面板已经显示，不要重复处理
-      if (showMonitoringPanel.value) {
-        return;
-      }
 
-      try {
-        // 如果status包含完整信息，直接使用
-        if (status && status.host) {
-          const sessionInfo = {
-            id: status.sessionId || 'temp_session_' + Date.now(),
-            connection: {
-              host: status.host,
-              username: 'root',
-              port: 22
-            }
-          };
-
-          // 检查是否是一键安装请求
-          if (status.install === true) {
-            const installCommand = `curl -sSL ${window.location.origin}/api/monitor/install-script | sudo bash`;
-            window.dispatchEvent(new CustomEvent('terminal:execute-command', {
-              detail: {
-                command: installCommand,
-                sessionId: sessionInfo.id
-              }
-            }));
-            ElMessage.success('正在执行安装命令，请在终端中查看进度');
-            return;
-          }
-
-          // 将会话信息传递给监控面板
-          monitorSessionId.value = sessionInfo.id;
-          monitorServerInfo.value = sessionInfo.connection;
-          monitoringInstalled.value = status.installed === true;
-
-          // 显示监控面板
-          showMonitoringPanel.value = true;
-
-          log.info(`打开监控面板: ${sessionInfo.connection.host}`);
-          return;
-        }
-
-        // 兜底逻辑：如果没有status或status不完整，尝试获取当前会话信息
-        const currentSessionId = getCurrentSessionId();
-        if (!currentSessionId) {
-          ElMessage.error('无法获取当前会话信息，请确保SSH连接正常');
-          return;
-        }
-
-        const sessionStore = useSessionStore();
-        const sessionInfo = sessionStore.getSession(currentSessionId);
-
-        if (!sessionInfo || !sessionInfo.connection) {
-          ElMessage.error('无法获取会话连接信息');
-          return;
-        }
-
-        // 将会话信息传递给监控面板
-        monitorSessionId.value = sessionInfo.id;
-        monitorServerInfo.value = sessionInfo.connection;
-        monitoringInstalled.value = false; // 默认未安装，需要检查
-
-        // 显示监控面板
-        showMonitoringPanel.value = true;
-
-        log.info(`打开监控面板: ${sessionInfo.connection.host}`);
-
-      } catch (error) {
-        log.error('打开监控面板失败:', error);
-        ElMessage.error('无法打开监控面板: ' + (error.message || '未知错误'));
-      }
-    }
-    
-    // 关闭监控面板
-    const closeMonitoringPanel = () => {
-      showMonitoringPanel.value = false;
-    }
     
     // 打开SFTP面板
     const toggleSftpPanel = (event) => {
@@ -720,22 +558,18 @@ export default defineComponent({
     return {
       isTerminalRoute,
       terminalTitle,
-      showMonitoringPanel,
-      toggleMonitoringPanel,
-      closeMonitoringPanel,
+
       showSftpPanel,
       toggleSftpPanel,
       closeSftpPanel,
       sftpPanelWidth,
-      monitoringPanelWidth,
+
       isSftpPanelClosing,
       activeSessionId,
       handleSftpPanelResize,
-      handleMonitoringPanelResize,
+
       terminalHasBackground,
-      monitorSessionId,
-      monitorServerInfo,
-      monitoringInstalled,
+
       getCurrentTerminalId,
       terminalComponent
     }
