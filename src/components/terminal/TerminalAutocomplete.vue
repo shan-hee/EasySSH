@@ -2,10 +2,8 @@
   <div
     v-if="visible && suggestions.length > 0"
     class="terminal-autocomplete"
-    :class="{ 'keyboard-navigation': isKeyboardNavigation }"
     :style="positionStyle"
     @mousedown.prevent
-    @mousemove="handleMouseMove"
   >
     <div class="autocomplete-header">
       <span class="autocomplete-title">命令建议</span>
@@ -19,7 +17,6 @@
         class="autocomplete-item"
         :class="{ 'autocomplete-item--active': index === selectedIndex }"
         @click="selectSuggestion(index)"
-        @mouseenter="handleMouseEnter(index)"
         :title="suggestionTooltips[index]"
       >
         <div class="autocomplete-item-content">
@@ -69,8 +66,7 @@ export default {
   setup(props, { emit }) {
     const selectedIndex = ref(-1)  // 初始化为-1，表示默认不选中
     const listRef = ref(null)
-    // 混合导航模式：isKeyboardNavigation 用于区分当前导航方式，但不阻止其他导航方式
-    const isKeyboardNavigation = ref(false)
+    // 键盘导航为主模式：只通过键盘控制选中状态
 
     // 缓存视口尺寸
     const viewportSize = ref({ width: window.innerWidth, height: window.innerHeight })
@@ -171,10 +167,9 @@ export default {
       })
     })
 
-    // 监听建议变化，重置选中索引和导航状态
+    // 监听建议变化，重置选中索引
     watch(() => props.suggestions, () => {
       selectedIndex.value = -1  // 默认不选中任何项
-      isKeyboardNavigation.value = false
     })
 
     // 监听选中索引变化，滚动到可见区域
@@ -197,18 +192,7 @@ export default {
       }
     }
 
-    // 处理鼠标进入事件
-    const handleMouseEnter = (index) => {
-      // 混合导航模式：始终响应鼠标悬浮，但标记为鼠标导航
-      selectedIndex.value = index
-      isKeyboardNavigation.value = false
-    }
-
-    // 处理鼠标移动事件
-    const handleMouseMove = () => {
-      // 鼠标移动时重新启用鼠标导航
-      isKeyboardNavigation.value = false
-    }
+    // 注释：移除鼠标悬浮选中功能，改为键盘导航为主
 
     // 选择建议
     const selectSuggestion = (index) => {
@@ -239,7 +223,6 @@ export default {
         case 'ArrowUp':
           event.preventDefault()
           event.stopPropagation()
-          isKeyboardNavigation.value = true
           if (selectedIndex.value === -1) {
             // 如果当前没有选中项，选中最后一项
             selectedIndex.value = props.suggestions.length - 1
@@ -255,7 +238,6 @@ export default {
         case 'ArrowDown':
           event.preventDefault()
           event.stopPropagation()
-          isKeyboardNavigation.value = true
           if (selectedIndex.value === -1) {
             // 如果当前没有选中项，选中第一项
             selectedIndex.value = 0
@@ -304,11 +286,8 @@ export default {
       selectedIndex,
       listRef,
       positionStyle,
-      isKeyboardNavigation,
       selectSuggestion,
       handleKeydown,
-      handleMouseEnter,
-      handleMouseMove,
       typeLabels,
       typeClasses,
       suggestionTooltips,
@@ -372,11 +351,14 @@ export default {
   border-bottom: none;
 }
 
-/* 混合导航模式：统一的hover和选中效果 */
-.autocomplete-item:hover,
-.keyboard-navigation .autocomplete-item:hover,
+/* 键盘导航为主：只有选中状态有背景色，鼠标悬浮无效果 */
 .autocomplete-item--active {
   background: #264f78;
+}
+
+/* 鼠标悬浮时只显示轻微的视觉反馈，但不改变选中状态 */
+.autocomplete-item:hover {
+  background: rgba(255, 255, 255, 0.05);
 }
 
 .autocomplete-item-content {
