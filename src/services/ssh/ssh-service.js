@@ -1,7 +1,7 @@
 // import { WebSocket } from 'ws';
 import { ElMessage } from 'element-plus';
 import log from '../log';
-import SettingsService from '../settings';
+import settingsService from '../settings';
 import { wsServerConfig } from '../../config/app-config';
 import { WS_CONSTANTS, MESSAGE_TYPES, LATENCY_EVENTS, LATENCY_CONFIG, getDynamicConstants } from '../constants';
 
@@ -838,11 +838,10 @@ class SSHService {
     const pingRequests = new Map();
 
     // 获取最新的动态配置 - 使用同步方式避免async/await
-    const settingsService = new SettingsService();
     const dynamicConfig = getDynamicConstants(settingsService);
 
     // 从设置获取保活间隔
-    const connectionSettings = settingsService.getConnectionOptions();
+    const connectionSettings = settingsService.getConnectionSettings();
     const keepAliveIntervalSec = connectionSettings.keepAliveInterval ||
                                  dynamicConfig.LATENCY_CONFIG.CHECK_INTERVAL;
     const keepAliveIntervalMs = keepAliveIntervalSec * 1000;
@@ -1481,6 +1480,19 @@ class SSHService {
       log.error('加密敏感数据失败:', error);
       throw error;
     }
+  }
+
+  /**
+   * 根据会话ID获取终端ID
+   * @param {string} sessionId - 会话ID
+   * @returns {string|null} 终端ID或null
+   */
+  getTerminalIdBySession(sessionId) {
+    if (!sessionId) {
+      return null;
+    }
+
+    return this.sessionTerminalMap.get(sessionId) || null;
   }
 }
 

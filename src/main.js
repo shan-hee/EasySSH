@@ -151,6 +151,39 @@ Object.keys(directives).forEach(key => {
 })
 
 // 扩展调试方法
+window.debugSettings = {
+  // 检查设置状态
+  status: () => {
+    import('./services/settings.js').then(({ default: settingsService }) => {
+      console.log('=== 设置服务状态 ===')
+      console.log('初始化状态:', settingsService.isInitialized)
+      console.log('当前设置:', settingsService.settings)
+      console.log('终端选项:', settingsService.getTerminalOptions())
+      console.log('=== 存储状态 ===')
+      console.log('新设置存储:', localStorage.getItem('easyssh:user_settings'))
+      console.log('旧UI设置:', localStorage.getItem('easyssh_ui_settings'))
+      console.log('旧终端设置:', localStorage.getItem('easyssh_terminal_settings'))
+    })
+  },
+
+  // 手动迁移设置
+  migrate: () => {
+    import('./services/settings.js').then(({ default: settingsService }) => {
+      const migrated = settingsService._migrateFromLegacySettings()
+      console.log('迁移结果:', migrated)
+    })
+  },
+
+  // 重置设置
+  reset: () => {
+    localStorage.removeItem('easyssh:user_settings')
+    localStorage.removeItem('easyssh_ui_settings')
+    localStorage.removeItem('easyssh_terminal_settings')
+    localStorage.removeItem('easyssh_connection_settings')
+    console.log('设置已重置，请刷新页面')
+  }
+}
+
 window.debugMonitoring = {
   connect: (host) => {
     log.info(`[监控调试] 手动触发监控连接: ${host || '未指定主机'}`);
@@ -464,12 +497,70 @@ window.addEventListener('auth:expired', () => {
   }
 })
 
+// 添加SSH连接开始时同时触发监控连接的全局事件监听器
+window.addEventListener('ssh-connecting', async (event) => {
+  const { host, terminalId } = event.detail
+
+  if (host && terminalId) {
+    try {
+      // 动态导入监控服务
+      const { default: monitoringService } = await import('./services/monitoring.js')
+
+      // 立即开始监控连接，与SSH连接并行
+      try {
+        log.info(`[并行监控] 开始为终端 ${terminalId} 连接到 ${host} 的监控服务`)
+        const connected = await monitoringService.connect(terminalId, host)
+        if (connected) {
+          log.info(`[并行监控] 已为终端 ${terminalId} 连接到 ${host} 的监控服务`)
+        } else {
+          log.debug(`[并行监控] 终端 ${terminalId} 连接到 ${host} 的监控服务失败`)
+        }
+      } catch (error) {
+        log.debug(`[并行监控] 监控连接过程出错:`, error)
+      }
+    } catch (error) {
+      log.debug(`[并行监控] 导入监控服务失败:`, error)
+    }
+  }
+})
+
+// 保留SSH连接成功的监听器作为备用（以防ssh-connecting事件未触发）
+window.addEventListener('ssh-connected', async (event) => {
+  const { sessionId, host, terminalId } = event.detail
+
+  if (sessionId && host && terminalId) {
+    // 检查监控是否已经连接，如果没有则作为备用连接
+    try {
+      const { default: monitoringService } = await import('./services/monitoring.js')
+      const instance = monitoringService.getInstance(terminalId)
+
+      if (!instance || !instance.state.connected) {
+        log.debug(`[备用监控] SSH连接成功，检查监控连接状态`)
+        setTimeout(async () => {
+          try {
+            const connected = await monitoringService.connect(terminalId, host)
+            if (connected) {
+              log.info(`[备用监控] 已为终端 ${terminalId} 连接到 ${host} 的监控服务`)
+            }
+          } catch (error) {
+            log.debug(`[备用监控] 监控连接过程出错:`, error)
+          }
+        }, 500) // 较短延迟
+      } else {
+        log.debug(`[备用监控] 监控已连接，跳过备用连接`)
+      }
+    } catch (error) {
+      log.debug(`[备用监控] 检查监控状态失败:`, error)
+    }
+  }
+})
+
 // 统一的服务初始化流程
 const initializeApp = async () => {
   try {
     // 首先初始化日志服务
     await servicesManager.log.init()
-    
+
     // 使用日志服务记录而不是console.log
     servicesManager.log.info('开始初始化应用服务...')
     

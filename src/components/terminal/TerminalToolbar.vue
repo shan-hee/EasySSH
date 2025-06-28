@@ -463,12 +463,11 @@ export default defineComponent({
 
           const host = session.connection.host;
 
-          // 使用重构后的监控状态检查服务
+          // 使用重构后的监控服务检查状态
           try {
-            const { default: monitoringStatusService } = await import('../../services/monitoringStatusService.js');
-            const statusResult = await monitoringStatusService.checkStatusOnly(host);
+            const status = monitoringService.getStatus(terminalId);
 
-            if (statusResult.available) {
+            if (status && status.connected) {
               // 监控数据可用
               ElMessage.success('监控服务安装成功！');
               log.info(`监控服务安装成功: ${host}`);

@@ -203,6 +203,15 @@ export const useTerminalStore = defineStore('terminal', () => {
         return false
       }
       
+      // 触发SSH连接开始事件，用于并行启动监控连接
+      window.dispatchEvent(new CustomEvent('ssh-connecting', {
+        detail: {
+          terminalId: connectionId,
+          host: connection.host,
+          connection: connection
+        }
+      }))
+
       // 创建SSH会话（原有逻辑）
       try {
         const sessionId = await sshService.createSession({
@@ -210,7 +219,7 @@ export const useTerminalStore = defineStore('terminal', () => {
           terminalId: connectionId // 传递终端ID，确保正确的映射关系
         })
         
-        // 监控服务连接由 monitoringFactory.js 统一处理，通过 ssh-connected 事件触发
+        // 监控服务连接由统一的监控服务处理，通过 ssh-connected 事件触发
         // 这里不再重复调用，避免重复的API请求
         
         // 获取终端设置（保留原有逻辑）
@@ -360,36 +369,41 @@ export const useTerminalStore = defineStore('terminal', () => {
     
     // 获取设置中的终端选项
     try {
-      const settingsStore = useSettingsStore()
-      const settings = settingsStore.getTerminalSettings()
-      
+      // 确保设置服务已初始化
+      if (!settingsService.isInitialized) {
+        log.warn('设置服务未初始化，尝试初始化...')
+        await settingsService.init()
+      }
+
+      // 直接使用统一的设置服务
+      const settings = settingsService.getTerminalSettings()
+
       // 更新选项
       if (settings) {
         if (settings.fontSize) {
           terminalOptions.fontSize = settings.fontSize
         }
-        
+
         if (settings.fontFamily) {
           terminalOptions.fontFamily = settings.fontFamily
         }
-        
+
         if (settings.cursorStyle) {
           terminalOptions.cursorStyle = settings.cursorStyle
         }
-        
+
         if (settings.cursorBlink !== undefined) {
           terminalOptions.cursorBlink = settings.cursorBlink
         }
-        
-        // 应用终端主题设置
-        if (settings.theme) {
-          // 创建settingsService实例并获取主题配置
-          const settingsServiceInstance = new settingsService()
-          const themeConfig = settingsServiceInstance.getTerminalTheme(settings.theme)
-          terminalOptions.theme = themeConfig
-        }
-        
+
         log.info('使用设置中的终端选项:', terminalOptions)
+      }
+
+      // 获取完整的终端选项（包含主题）
+      const fullTerminalOptions = settingsService.getTerminalOptions()
+      if (fullTerminalOptions) {
+        // 合并完整选项，优先使用设置服务的完整配置
+        terminalOptions = { ...terminalOptions, ...fullTerminalOptions }
       }
     } catch (error) {
       log.error('获取终端设置失败，使用默认选项:', error)

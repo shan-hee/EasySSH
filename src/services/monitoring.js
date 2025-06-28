@@ -1,16 +1,640 @@
 /**
- * 监控WebSocket客户端服务
- * 用于连接到服务器的监控WebSocket
- * 
- * 注意：此文件现在是代理模式的入口点
- * 实际实现已迁移到monitoringFactory和monitoringProxy
+ * 统一监控服务
+ * 简化的监控WebSocket客户端服务，整合了原有的代理和工厂模式
  */
 
-// 导入代理实现
-import monitoringServiceProxy from './monitoringProxy';
+import log from './log';
 
-// 初始化代理服务
-monitoringServiceProxy.init();
+/**
+ * 监控实例类
+ */
+class MonitoringInstance {
+  constructor(terminalId) {
+    this.terminalId = terminalId;
+    this.websocket = null;
+    this.state = {
+      connected: false,
+      connecting: false,
+      targetHost: null,
+      error: null,
+      stats: {
+        messagesReceived: 0,
+        messagesSent: 0
+      },
+      lastActivity: null,
+      monitorData: {
+        cpu: { usage: 0, cores: 0, model: '' },
+        memory: { total: 0, used: 0, free: 0, usedPercentage: 0 },
+        swap: { total: 0, used: 0, free: 0, usedPercentage: 0 },
+        disk: { total: 0, used: 0, free: 0, usedPercentage: 0 },
+        network: {},
+        os: {}
+      }
+    };
+    this.reconnectAttempts = 0;
+    this.maxReconnectAttempts = 3;
+    this.reconnectDelay = 2000;
+  }
 
-// 重新导出代理服务，保持向后兼容性
-export default monitoringServiceProxy; 
+  /**
+   * 连接到远程主机
+   * @param {string} host - 主机地址
+   * @returns {Promise<boolean>} 连接结果
+   */
+  async connect(host) {
+    if (this.state.connecting || this.state.connected) {
+      return this.state.connected;
+    }
+
+    this.state.connecting = true;
+    this.state.targetHost = host;
+    this.state.error = null;
+
+    try {
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const wsHost = window.location.host;
+      const wsUrl = `${protocol}//${wsHost}/monitor?subscribe=${encodeURIComponent(host)}`;
+
+      log.debug(`[监控] 尝试连接到: ${wsUrl}`);
+      this.websocket = new WebSocket(wsUrl);
+
+      this.websocket.onopen = () => {
+        this.state.connected = true;
+        this.state.connecting = false;
+        this.reconnectAttempts = 0;
+        log.info(`[监控] 连接成功: ${host}`);
+
+        // 触发连接成功事件
+        this._emitEvent('monitoring-connected', {
+          terminalId: this.terminalId,
+          host: host
+        });
+      };
+
+      this.websocket.onmessage = (event) => {
+        this._handleMessage(event.data);
+      };
+
+      this.websocket.onclose = () => {
+        this.state.connected = false;
+        this.state.connecting = false;
+        log.debug(`[监控] 连接关闭: ${host}`);
+
+        // 触发断开连接事件
+        this._emitEvent('monitoring-disconnected', {
+          terminalId: this.terminalId,
+          host: host
+        });
+
+        // 尝试重连
+        this._attemptReconnect();
+      };
+
+      this.websocket.onerror = (error) => {
+        this.state.error = error;
+        this.state.connecting = false;
+        log.error(`[监控] 连接错误: ${host}`, error);
+      };
+
+      // 等待连接建立
+      return new Promise((resolve) => {
+        const checkConnection = () => {
+          if (this.state.connected) {
+            resolve(true);
+          } else if (!this.state.connecting) {
+            resolve(false);
+          } else {
+            setTimeout(checkConnection, 100);
+          }
+        };
+        checkConnection();
+      });
+
+    } catch (error) {
+      this.state.connecting = false;
+      this.state.error = error;
+      log.error(`[监控] 连接失败: ${host}`, error);
+      return false;
+    }
+  }
+
+  /**
+   * 断开连接
+   */
+  disconnect() {
+    if (this.websocket) {
+      this.websocket.close();
+      this.websocket = null;
+    }
+    this.state.connected = false;
+    this.state.connecting = false;
+    this.reconnectAttempts = 0;
+  }
+
+  /**
+   * 请求系统统计信息
+   */
+  requestSystemStats() {
+    if (this.state.connected && this.websocket) {
+      this.websocket.send(JSON.stringify({
+        type: 'request_stats'
+      }));
+      this.state.stats.messagesSent++;
+    }
+  }
+
+  /**
+   * 处理WebSocket消息
+   * @param {string} data - 消息数据
+   * @private
+   */
+  _handleMessage(data) {
+    try {
+      const message = JSON.parse(data);
+      this.state.stats.messagesReceived++;
+      this.state.lastActivity = Date.now();
+
+      switch (message.type) {
+        case 'monitoring_data':
+          this._handleMonitoringData(message.data);
+          break;
+        case 'system_stats':
+          // 处理系统统计数据
+          this._handleMonitoringData(message.payload);
+          break;
+        case 'monitoring_status':
+          this._handleMonitoringStatus(message);
+          break;
+        case 'session_created':
+          log.debug(`[监控] 会话已创建: ${message.data?.sessionId}`);
+          break;
+        case 'subscribe_ack':
+          log.debug(`[监控] 订阅确认: ${message.data?.serverId}`);
+          break;
+        case 'error':
+          const errorMsg = message.message || message.data?.message || message.error || '未知错误';
+          log.error(`[监控] 服务器错误: ${errorMsg}`, message);
+          break;
+        default:
+          log.debug(`[监控] 未知消息类型: ${message.type}`, message);
+      }
+    } catch (error) {
+      log.error('[监控] 消息解析失败', error);
+    }
+  }
+
+  /**
+   * 处理监控数据
+   * @param {Object} data - 监控数据
+   * @private
+   */
+  _handleMonitoringData(data) {
+    if (data) {
+      this.state.monitorData = { ...this.state.monitorData, ...data };
+
+      // 触发数据更新事件
+      this._emitEvent('monitoring-data-received', {
+        terminalId: this.terminalId,
+        host: this.state.targetHost,
+        data: data,
+        source: 'websocket'
+      });
+    }
+  }
+
+  /**
+   * 处理监控状态
+   * @param {Object} message - 状态消息
+   * @private
+   */
+  _handleMonitoringStatus(message) {
+    const data = message.data || {};
+    const { status, available, hostId } = data;
+
+    // 判断是否已安装
+    const installed = status === 'installed';
+
+    log.debug(`[监控] 状态更新: 主机=${hostId}, 已安装=${installed}, 可用=${available}`);
+
+    // 触发状态变更事件
+    const eventDetail = {
+      terminalId: this.terminalId,
+      hostname: this.state.targetHost,
+      hostId: hostId,
+      installed: installed,
+      available: available,
+      source: 'websocket'
+    };
+
+    log.debug(`[监控] 触发状态变更事件:`, eventDetail);
+    this._emitEvent('monitoring-status-change', eventDetail);
+  }
+
+  /**
+   * 尝试重连
+   * @private
+   */
+  _attemptReconnect() {
+    if (this.reconnectAttempts < this.maxReconnectAttempts && this.state.targetHost) {
+      this.reconnectAttempts++;
+      setTimeout(() => {
+        log.debug(`[监控] 尝试重连 (${this.reconnectAttempts}/${this.maxReconnectAttempts}): ${this.state.targetHost}`);
+        this.connect(this.state.targetHost);
+      }, this.reconnectDelay * this.reconnectAttempts);
+    }
+  }
+
+  /**
+   * 触发事件
+   * @param {string} eventName - 事件名称
+   * @param {Object} detail - 事件详情
+   * @private
+   */
+  _emitEvent(eventName, detail) {
+    window.dispatchEvent(new CustomEvent(eventName, { detail }));
+  }
+}
+
+/**
+ * 统一监控服务类
+ * 简化的监控服务，整合了原有的代理和工厂模式
+ */
+class MonitoringService {
+  constructor() {
+    // 实例映射 - 存储每个终端ID对应的监控实例
+    this.instances = new Map();
+
+    // 主机级别的监控连接映射 - 存储每个主机的主监控实例
+    this.hostConnections = new Map();
+
+    // 终端到主机的映射
+    this.terminalToHost = new Map();
+
+    // 主机到终端列表的映射
+    this.hostToTerminals = new Map();
+
+    // 全局状态（向后兼容）
+    this.state = {
+      connected: false,
+      connecting: false,
+      sessionId: null,
+      error: null,
+      stats: {
+        messagesReceived: 0,
+        messagesSent: 0
+      },
+      lastActivity: null,
+      targetHost: null,
+      serverHost: null,
+      systemInfo: null,
+      monitorData: {
+        cpu: { usage: 0, cores: 0, model: '' },
+        memory: { total: 0, used: 0, free: 0, usedPercentage: 0 },
+        swap: { total: 0, used: 0, free: 0, usedPercentage: 0 },
+        disk: { total: 0, used: 0, free: 0, usedPercentage: 0 },
+        network: {},
+        os: {}
+      }
+    };
+
+    this.initialized = false;
+  }
+
+  /**
+   * 初始化监控服务
+   */
+  init() {
+    if (this.initialized) {
+      return;
+    }
+
+    // 监听全局事件
+    this._initEvents();
+
+    // 初始化全局API
+    this._initGlobalAPI();
+
+    this.initialized = true;
+    log.debug('[监控] 服务初始化完成');
+  }
+
+  /**
+   * 初始化事件监听
+   * @private
+   */
+  _initEvents() {
+    // 监听监控数据接收事件，同步到全局状态
+    window.addEventListener('monitoring-data-received', (event) => {
+      const { terminalId, data } = event.detail;
+
+      // 如果是当前活动终端，更新全局状态
+      if (terminalId === this._getActiveTerminalId()) {
+        this.state.monitorData = { ...this.state.monitorData, ...data };
+        this.state.lastActivity = Date.now();
+
+        // 更新统计信息
+        this.state.stats.messagesReceived++;
+      }
+    });
+
+    // 监听连接状态变化
+    window.addEventListener('monitoring-connected', (event) => {
+      const { terminalId, host } = event.detail;
+
+      if (terminalId === this._getActiveTerminalId()) {
+        this.state.connected = true;
+        this.state.connecting = false;
+        this.state.targetHost = host;
+        this.state.error = null;
+      }
+    });
+
+    window.addEventListener('monitoring-disconnected', (event) => {
+      const { terminalId } = event.detail;
+
+      if (terminalId === this._getActiveTerminalId()) {
+        this.state.connected = false;
+        this.state.connecting = false;
+      }
+    });
+
+    // 监听终端切换事件
+    window.addEventListener('terminal:activated', (event) => {
+      if (event.detail && event.detail.terminalId) {
+        this._syncActiveTerminalStatus(event.detail.terminalId);
+      }
+    });
+  }
+
+  /**
+   * 获取或创建监控实例
+   * @param {string} terminalId - 终端ID
+   * @returns {MonitoringInstance} 监控实例
+   */
+  getInstance(terminalId) {
+    if (!terminalId) {
+      return null;
+    }
+
+    if (!this.instances.has(terminalId)) {
+      const instance = new MonitoringInstance(terminalId);
+      this.instances.set(terminalId, instance);
+    }
+
+    return this.instances.get(terminalId);
+  }
+
+  /**
+   * 连接到远程主机
+   * @param {string} terminalId - 终端ID
+   * @param {string} host - 主机地址
+   * @returns {Promise<boolean>} 连接结果
+   */
+  async connect(terminalId, host) {
+    if (!terminalId || !host) {
+      return false;
+    }
+
+    // 检查是否已有到该主机的连接
+    if (this.hostConnections.has(host)) {
+      const masterInstance = this.hostConnections.get(host);
+      log.debug(`终端 ${terminalId} 复用到 ${host} 的现有连接`);
+
+      // 将当前终端添加到主机的终端列表
+      this._addTerminalToHost(terminalId, host);
+
+      // 如果主连接已连接，立即同步状态到新终端
+      if (masterInstance.state.connected) {
+        this._syncMonitoringStatusToTerminal(terminalId, host, masterInstance);
+      }
+
+      return true;
+    }
+
+    // 获取或创建监控实例
+    const instance = this.getInstance(terminalId);
+    if (!instance) {
+      return false;
+    }
+
+    // 将此实例设为该主机的主连接
+    this.hostConnections.set(host, instance);
+    this._addTerminalToHost(terminalId, host);
+
+    log.debug(`终端 ${terminalId} 成为到 ${host} 的主监控连接`);
+
+    // 建立实际的WebSocket连接
+    const connected = await instance.connect(host);
+
+    if (connected) {
+      log.debug(`监控连接已建立: ${host}`);
+    }
+
+    return connected;
+  }
+
+  /**
+   * 断开指定终端的监控连接
+   * @param {string} terminalId - 终端ID
+   */
+  disconnect(terminalId) {
+    if (!terminalId) {
+      return false;
+    }
+
+    const instance = this.getInstance(terminalId);
+    if (!instance) {
+      return false;
+    }
+
+    const host = instance.state.targetHost;
+
+    // 断开连接
+    instance.disconnect();
+
+    // 从映射中移除
+    this._removeTerminalFromHost(terminalId);
+
+    // 如果这是主连接，需要选择新的主连接或清除主机连接
+    if (host && this.hostConnections.get(host) === instance) {
+      this.hostConnections.delete(host);
+
+      // 查找该主机的其他终端，选择新的主连接
+      const terminals = this.hostToTerminals.get(host);
+      if (terminals && terminals.length > 0) {
+        const newMasterTerminal = terminals[0];
+        const newMasterInstance = this.getInstance(newMasterTerminal);
+        if (newMasterInstance && newMasterInstance.state.connected) {
+          this.hostConnections.set(host, newMasterInstance);
+          log.debug(`选择新的主监控连接: 终端 ${newMasterTerminal} -> ${host}`);
+        }
+      }
+    }
+
+    return true;
+  }
+
+  /**
+   * 断开所有连接
+   */
+  disconnectAll() {
+    for (const instance of this.instances.values()) {
+      instance.disconnect();
+    }
+
+    this.instances.clear();
+    this.hostConnections.clear();
+    this.terminalToHost.clear();
+    this.hostToTerminals.clear();
+
+    log.debug('[监控] 已断开所有连接');
+  }
+
+  /**
+   * 请求系统统计信息
+   * @param {string} terminalId - 终端ID
+   * @returns {boolean} 是否成功发送请求
+   */
+  requestSystemStats(terminalId) {
+    const instance = this.getInstance(terminalId);
+    if (instance && instance.state.connected) {
+      instance.requestSystemStats();
+      return true;
+    }
+    return false;
+  }
+
+  /**
+   * 获取监控状态
+   * @param {string} terminalId - 终端ID
+   * @returns {Object} 监控状态
+   */
+  getStatus(terminalId) {
+    const instance = this.getInstance(terminalId);
+    if (instance) {
+      return instance.state;
+    }
+    return this.state; // 返回全局状态作为后备
+  }
+
+  /**
+   * 添加终端到主机映射
+   * @param {string} terminalId - 终端ID
+   * @param {string} host - 主机地址
+   * @private
+   */
+  _addTerminalToHost(terminalId, host) {
+    this.terminalToHost.set(terminalId, host);
+
+    if (!this.hostToTerminals.has(host)) {
+      this.hostToTerminals.set(host, []);
+    }
+
+    const terminals = this.hostToTerminals.get(host);
+    if (!terminals.includes(terminalId)) {
+      terminals.push(terminalId);
+    }
+  }
+
+  /**
+   * 从主机映射中移除终端
+   * @param {string} terminalId - 终端ID
+   * @private
+   */
+  _removeTerminalFromHost(terminalId) {
+    const host = this.terminalToHost.get(terminalId);
+    if (host) {
+      this.terminalToHost.delete(terminalId);
+
+      const terminals = this.hostToTerminals.get(host);
+      if (terminals) {
+        const index = terminals.indexOf(terminalId);
+        if (index > -1) {
+          terminals.splice(index, 1);
+        }
+
+        if (terminals.length === 0) {
+          this.hostToTerminals.delete(host);
+        }
+      }
+    }
+  }
+
+  /**
+   * 获取当前活动终端ID
+   * @returns {string|null} 终端ID
+   * @private
+   */
+  _getActiveTerminalId() {
+    // 尝试从全局状态获取
+    if (window.terminalManager && window.terminalManager.getActiveTerminalId) {
+      return window.terminalManager.getActiveTerminalId();
+    }
+
+    // 后备方案：从DOM获取
+    const activeTab = document.querySelector('.terminal-tab.active');
+    if (activeTab) {
+      return activeTab.dataset.terminalId;
+    }
+
+    return null;
+  }
+
+  /**
+   * 同步活动终端状态
+   * @param {string} terminalId - 终端ID
+   * @private
+   */
+  _syncActiveTerminalStatus(terminalId) {
+    const instance = this.getInstance(terminalId);
+    if (instance) {
+      this.state.connected = instance.state.connected;
+      this.state.connecting = instance.state.connecting;
+      this.state.targetHost = instance.state.targetHost;
+      this.state.error = instance.state.error;
+      this.state.monitorData = { ...instance.state.monitorData };
+      this.state.lastActivity = instance.state.lastActivity;
+    }
+  }
+
+  /**
+   * 同步监控状态到终端
+   * @param {string} terminalId - 终端ID
+   * @param {string} host - 主机地址
+   * @param {MonitoringInstance} masterInstance - 主实例
+   * @private
+   */
+  _syncMonitoringStatusToTerminal(terminalId, host, masterInstance) {
+    // 触发数据同步事件
+    window.dispatchEvent(new CustomEvent('monitoring-data-received', {
+      detail: {
+        terminalId: terminalId,
+        host: host,
+        data: masterInstance.state.monitorData,
+        source: 'sync'
+      }
+    }));
+  }
+
+  /**
+   * 初始化全局API
+   * @private
+   */
+  _initGlobalAPI() {
+    window.monitoringAPI = {
+      connect: this.connect.bind(this),
+      disconnect: this.disconnect.bind(this),
+      getStatus: this.getStatus.bind(this),
+      requestSystemStats: this.requestSystemStats.bind(this)
+    };
+  }
+}
+
+// 创建服务实例
+const monitoringService = new MonitoringService();
+
+// 自动初始化
+monitoringService.init();
+
+// 导出服务实例
+export default monitoringService;

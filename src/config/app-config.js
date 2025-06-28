@@ -1,6 +1,6 @@
 /**
- * 应用配置文件
- * 包含应用的全局配置参数
+ * 统一应用配置文件
+ * 整合了原有的多个配置文件，提供统一的配置管理
  */
 
 // 应用基本信息
@@ -77,20 +77,73 @@ export const storageConfig = {
   useLocalStorage: true
 };
 
-// 功能默认配置
-export const featureDefaults = {
-  ssh: {
+// 统一的用户设置默认值（整合了多个配置文件的设置）
+export const userSettingsDefaults = {
+  // 界面设置
+  ui: {
+    theme: 'system', // light, dark, system
+    language: 'zh-CN',
+    sidebarCollapsed: false,
+    tabsEnabled: true,
+    fontSize: 14,
+    animations: true,
+    denseLayout: false,
+    menuWidth: 220,
+    showStatusBar: true,
+    showTabIcons: true
+  },
+
+  // 终端设置
+  terminal: {
+    fontFamily: 'Menlo, Monaco, "Courier New", monospace',
+    fontSize: 14,
+    lineHeight: 1.5,
+    cursorStyle: 'block', // block, bar, underline
+    cursorBlink: true,
+    scrollback: 1000,
+    bellSound: true,
+    copyOnSelect: false,
+    rightClickSelectsWord: false
+  },
+
+  // 连接设置
+  connection: {
     defaultPort: 22,
     keepAliveInterval: 30, // 秒
     connectionTimeout: 10, // 秒
-    defaultEncoding: 'utf8'
+    defaultEncoding: 'utf8',
+    autoReconnect: true,
+    reconnectDelay: 3000, // ms
+    displayLoginBanner: true,
+    saveHistory: true,
+    maxHistoryItems: 100,
+    saveCredentials: false
   },
-  terminal: {
-    fontSize: 14,
-    fontFamily: 'Menlo, Monaco, "Courier New", monospace',
-    lineHeight: 1.5,
-    cursorBlink: true
+
+  // 编辑器设置
+  editor: {
+    theme: 'vs',
+    tabSize: 2,
+    insertSpaces: true,
+    autoIndent: true,
+    wordWrap: 'off',
+    lineNumbers: true,
+    highlightActiveLine: true
+  },
+
+  // 高级设置
+  advanced: {
+    experimentalFeatures: false,
+    debugMode: false,
+    analytics: true,
+    autoUpdate: true
   }
+};
+
+// 功能默认配置（保持向后兼容）
+export const featureDefaults = {
+  ssh: userSettingsDefaults.connection,
+  terminal: userSettingsDefaults.terminal
 };
 
 export default {
@@ -99,5 +152,7 @@ export default {
   ui: uiConfig,
   storage: storageConfig,
   features: featureDefaults,
-  wsServer: wsServerConfig
-}; 
+  userDefaults: userSettingsDefaults,
+  wsServer: wsServerConfig,
+  autocomplete: autocompleteConfig
+};

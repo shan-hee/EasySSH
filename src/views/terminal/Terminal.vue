@@ -1085,16 +1085,17 @@ export default {
           return;
         }
 
-        // 使用重构后的监控状态检查服务 - 仅检查初始状态
-        const { default: monitoringStatusService } = await import('../../services/monitoringStatusService.js');
-        const statusResult = await monitoringStatusService.checkStatusOnly(host);
+        // 使用重构后的监控服务检查状态
+        const { default: monitoringService } = await import('../../services/monitoring.js');
+        const status = monitoringService.getStatus(sessionId);
 
-        // 通过事件将当前终端ID传递给父组件（不再需要验证标记）
+        // 通过事件将终端ID传递给父组件（监控服务使用终端ID）
         window.dispatchEvent(new CustomEvent('request-toggle-monitoring-panel', {
           detail: {
-            sessionId: sessionId,
+            terminalId: sessionId,    // 监控面板需要终端ID
+            sshSessionId: sshSessionId, // SSH会话ID作为备用
             host: host,
-            dataAvailable: statusResult.available
+            dataAvailable: status && status.connected
           }
         }));
 

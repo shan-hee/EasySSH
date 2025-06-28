@@ -1,38 +1,35 @@
 /**
- * 存储服务模块，负责应用数据的本地存储与检索
+ * 存储服务模块 - 统一存储工具的服务封装
+ * 提供应用级别的存储服务，基于统一的存储工具实现
  */
 import log from './log';
+import storageUtils from '../utils/storage.js';
 
 class StorageService {
   constructor() {
     this.prefix = 'easyssh:'
-    this.isReady = false
-    this.memoryCache = new Map() // 内存缓存
     this.initialized = false;
+    // 创建带前缀的存储实例
+    this.prefixedStorage = storageUtils.createPrefixedStorage(this.prefix);
   }
-  
+
   /**
    * 初始化存储服务
    * @returns {Promise<boolean>}
    */
   init() {
-    return new Promise((resolve) => {
-      if (this.initialized) {
-        return resolve(true);
-      }
+    if (this.initialized) {
+      return Promise.resolve(true);
+    }
 
-      try {
-        // 对localStorage进行测试以确保可用
-        const testKey = '__storage_test__';
-        localStorage.setItem(testKey, testKey);
-        localStorage.removeItem(testKey);
-
+    return storageUtils.init().then(success => {
+      if (success) {
         this.initialized = true;
         // 存储服务初始化成功，但不输出日志，因为这是基础服务
-        resolve(true);
-      } catch (e) {
-        log.error('存储服务初始化失败', e);
-        resolve(false);
+        return true;
+      } else {
+        log.error('存储服务初始化失败');
+        return false;
       }
     });
   }
@@ -45,33 +42,16 @@ class StorageService {
    * @param {number} options.expiry - 过期时间(毫秒)
    */
   setItem(key, value, options = {}) {
-    const prefixedKey = this._getPrefixedKey(key)
-    
     try {
-      let storageValue = value
-      
-      // 如果值不是字符串，进行序列化
-      if (typeof value !== 'string') {
-        storageValue = JSON.stringify({
-          data: value,
-          meta: {
-            type: typeof value,
-            expiry: options.expiry ? Date.now() + options.expiry : null,
-            createdAt: Date.now()
-          }
-        })
+      const storageOptions = {};
+      if (options.expiry) {
+        storageOptions.expiration = options.expiry;
       }
-      
-      // 存储到localStorage
-      localStorage.setItem(prefixedKey, storageValue)
-      
-      // 同时更新内存缓存
-      this.memoryCache.set(prefixedKey, value)
+
+      return this.prefixedStorage.set(key, value, storageOptions);
     } catch (error) {
-      console.error(`存储数据失败[${prefixedKey}]:`, error)
-      
-      // 降级到内存存储
-      this.memoryCache.set(prefixedKey, value)
+      log.error('存储数据失败', { key, error });
+      return false;
     }
   }
   
@@ -82,48 +62,11 @@ class StorageService {
    * @returns {any} - 存储的值或默认值
    */
   getItem(key, defaultValue = null) {
-    const prefixedKey = this._getPrefixedKey(key)
-    
     try {
-      // 先尝试从localStorage获取
-      const value = localStorage.getItem(prefixedKey)
-      
-      if (value === null) {
-        return defaultValue
-      }
-      
-      try {
-        // 尝试解析为JSON
-        const parsed = JSON.parse(value)
-        
-        // 检查是否是我们存储的格式
-        if (parsed && parsed.meta) {
-          // 检查是否已过期
-          if (parsed.meta.expiry && parsed.meta.expiry < Date.now()) {
-            // 已过期，删除并返回默认值
-            this.removeItem(key)
-            return defaultValue
-          }
-          
-          // 返回实际数据
-          return parsed.data
-        }
-        
-        // 如果不是我们存储的格式，直接返回解析后的值
-        return parsed
-      } catch (e) {
-        // 如果无法解析为JSON，说明是普通字符串
-        return value
-      }
+      return this.prefixedStorage.get(key, defaultValue);
     } catch (error) {
-      console.error(`获取数据失败[${prefixedKey}]:`, error)
-      
-      // 尝试从内存缓存获取
-      if (this.memoryCache.has(prefixedKey)) {
-        return this.memoryCache.get(prefixedKey)
-      }
-      
-      return defaultValue
+      log.error('获取数据失败', { key, error });
+      return defaultValue;
     }
   }
   
@@ -132,17 +75,12 @@ class StorageService {
    * @param {string} key - 键名
    */
   removeItem(key) {
-    const prefixedKey = this._getPrefixedKey(key)
-    
     try {
-      // 从localStorage移除
-      localStorage.removeItem(prefixedKey)
+      return this.prefixedStorage.remove(key);
     } catch (error) {
-      console.error(`移除数据失败[${prefixedKey}]:`, error)
+      log.error('移除数据失败', { key, error });
+      return false;
     }
-    
-    // 从内存缓存移除
-    this.memoryCache.delete(prefixedKey)
   }
   
   /**
@@ -152,31 +90,13 @@ class StorageService {
   clear(clearAll = false) {
     try {
       if (clearAll) {
-        // 清除所有localStorage数据
-        localStorage.clear()
-        this.memoryCache.clear()
+        return storageUtils.clearStorage();
       } else {
-        // 只清除本应用的数据
-        const keysToRemove = []
-        
-        // 找出所有以前缀开头的键
-        for (let i = 0; i < localStorage.length; i++) {
-          const key = localStorage.key(i)
-          if (key && key.startsWith(this.prefix)) {
-            keysToRemove.push(key)
-          }
-        }
-        
-        // 移除找到的键
-        keysToRemove.forEach(key => {
-          localStorage.removeItem(key)
-        })
-        
-        // 清空内存缓存
-        this.memoryCache.clear()
+        return this.prefixedStorage.clear();
       }
     } catch (error) {
-      console.error('清空存储失败:', error)
+      log.error('清空存储失败', { clearAll, error });
+      return false;
     }
   }
   
@@ -185,88 +105,12 @@ class StorageService {
    * @returns {Array<string>} - 键名数组
    */
   keys() {
-    const keys = []
-    
     try {
-      for (let i = 0; i < localStorage.length; i++) {
-        const key = localStorage.key(i)
-        if (key && key.startsWith(this.prefix)) {
-          // 移除前缀并添加到结果
-          keys.push(key.substring(this.prefix.length))
-        }
-      }
+      return this.prefixedStorage.keys();
     } catch (error) {
-      console.error('获取存储键失败:', error)
+      log.error('获取存储键失败', { error });
+      return [];
     }
-    
-    return keys
-  }
-  
-  /**
-   * 获取指定键的过期时间
-   * @param {string} key - 键名
-   * @returns {number|null} - 过期时间戳或null(如果不存在或无过期时间)
-   */
-  getExpiry(key) {
-    const prefixedKey = this._getPrefixedKey(key)
-    
-    try {
-      const value = localStorage.getItem(prefixedKey)
-      
-      if (!value) {
-        return null
-      }
-      
-      try {
-        const parsed = JSON.parse(value)
-        if (parsed && parsed.meta && parsed.meta.expiry) {
-          return parsed.meta.expiry
-        }
-      } catch (e) {
-        // 如果无法解析，则没有过期时间
-      }
-    } catch (error) {
-      console.error(`获取过期时间失败[${prefixedKey}]:`, error)
-    }
-    
-    return null
-  }
-  
-  /**
-   * 更新数据项的过期时间
-   * @param {string} key - 键名
-   * @param {number} expiry - 新的过期时间(毫秒)
-   * @returns {boolean} - 是否成功更新
-   */
-  updateExpiry(key, expiry) {
-    const prefixedKey = this._getPrefixedKey(key)
-    
-    try {
-      const value = localStorage.getItem(prefixedKey)
-      
-      if (!value) {
-        return false
-      }
-      
-      try {
-        const parsed = JSON.parse(value)
-        if (parsed && parsed.meta) {
-          // 更新过期时间
-          parsed.meta.expiry = expiry ? Date.now() + expiry : null
-          
-          // 保存回localStorage
-          localStorage.setItem(prefixedKey, JSON.stringify(parsed))
-          return true
-        }
-      } catch (e) {
-        // 如果无法解析，则不能更新过期时间
-        return false
-      }
-    } catch (error) {
-      console.error(`更新过期时间失败[${prefixedKey}]:`, error)
-    }
-    
-    return false
   }
   
   /**
@@ -275,46 +119,38 @@ class StorageService {
    * @returns {boolean} - 是否存在
    */
   hasItem(key) {
-    const prefixedKey = this._getPrefixedKey(key)
-    
     try {
-      const value = localStorage.getItem(prefixedKey)
-      
-      if (value !== null) {
-        // 检查是否已过期
-        try {
-          const parsed = JSON.parse(value)
-          if (parsed && parsed.meta && parsed.meta.expiry) {
-            if (parsed.meta.expiry < Date.now()) {
-              // 已过期，删除并返回false
-              this.removeItem(key)
-              return false
-            }
-          }
-        } catch (e) {
-          // 如果无法解析为JSON，说明是普通字符串
-        }
-        
-        return true
-      }
+      return this.prefixedStorage.has(key);
     } catch (error) {
-      console.error(`检查键存在失败[${prefixedKey}]:`, error)
-      
-      // 检查内存缓存
-      return this.memoryCache.has(prefixedKey)
+      log.error('检查键存在失败', { key, error });
+      return false;
     }
-    
-    return false
   }
-  
+
   /**
-   * 获取前缀化的键名
-   * @param {string} key - 原始键名
-   * @returns {string} - 前缀化的键名
-   * @private
+   * 获取存储信息
+   * @returns {Object} - 存储使用情况
    */
-  _getPrefixedKey(key) {
-    return `${this.prefix}${key}`
+  getStorageInfo() {
+    try {
+      return storageUtils.getStorageInfo();
+    } catch (error) {
+      log.error('获取存储信息失败', { error });
+      return null;
+    }
+  }
+
+  /**
+   * 清理过期项
+   * @returns {number} - 清理的项目数量
+   */
+  cleanupExpiredItems() {
+    try {
+      return storageUtils.cleanupExpiredItems();
+    } catch (error) {
+      log.error('清理过期项失败', { error });
+      return 0;
+    }
   }
 }
 

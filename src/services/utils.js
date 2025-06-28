@@ -204,14 +204,7 @@ export async function copyToClipboard(text, showMessage = true) {
   }
 }
 
-/**
- * 休眠函数
- * @param {number} ms - 休眠时间(毫秒)
- * @returns {Promise} - Promise对象
- */
-export function sleep(ms) {
-  return new Promise(resolve => setTimeout(resolve, ms))
-}
+// sleep函数已移除，请使用delay函数
 
 /**
  * 检查对象是否为空
@@ -414,65 +407,7 @@ export function isValidJSON(str) {
   }
 }
 
-/**
- * 对字符串加密
- * @param {string} text - 明文
- * @param {string} key - 加密密钥
- * @returns {string} - 密文
- */
-export function encrypt(text, key) {
-  if (!CryptoJS) {
-    console.error('CryptoJS库未加载')
-    return text
-  }
-  
-  try {
-    return CryptoJS.AES.encrypt(text, key).toString()
-  } catch (error) {
-    console.error('加密失败:', error)
-    return text
-  }
-}
-
-/**
- * 解密字符串
- * @param {string} cipherText - 密文
- * @param {string} key - 解密密钥
- * @returns {string} - 明文
- */
-export function decrypt(cipherText, key) {
-  if (!CryptoJS) {
-    console.error('CryptoJS库未加载')
-    return cipherText
-  }
-  
-  try {
-    const bytes = CryptoJS.AES.decrypt(cipherText, key)
-    return bytes.toString(CryptoJS.enc.Utf8)
-  } catch (error) {
-    console.error('解密失败:', error)
-    return cipherText
-  }
-}
-
-/**
- * 生成MD5哈希
- * @param {string} text - 要哈希的文本
- * @returns {string} - MD5哈希值
- */
-export function generateMD5(text) {
-  if (!CryptoJS) {
-    console.error('CryptoJS库未加载')
-    return text
-  }
-  
-  try {
-    return CryptoJS.MD5(text).toString()
-  } catch (error) {
-    console.error('MD5生成失败:', error)
-    return text
-  }
-}
+// 加密相关函数已移除，请使用专门的加密服务
 
 /**
  * 格式化时间间隔为人类可读格式
@@ -536,29 +471,7 @@ export function formatRelativeTime(date) {
   }
 }
 
-/**
- * 验证电子邮件地址
- * @param {string} email - 电子邮件地址
- * @returns {boolean} - 是否有效
- */
-export function validateEmail(email) {
-  const regex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/
-  return regex.test(email)
-}
-
-/**
- * 验证URL
- * @param {string} url - URL地址
- * @returns {boolean} - 是否有效
- */
-export function validateUrl(url) {
-  try {
-    new URL(url)
-    return true
-  } catch (e) {
-    return false
-  }
-}
+// 验证函数已移除，请使用专门的验证服务
 
 /**
  * 检测设备类型
@@ -626,35 +539,38 @@ export function getBrowserInfo() {
   return { name: browserName, version: browserVersion }
 }
 
-// 导出所有工具函数
+// 导出核心工具函数（已清理未使用的函数）
 export default {
+  // 时间相关
   formatDate,
   delay,
+  formatDuration,
+  formatRelativeTime,
+
+  // 函数工具
   debounce,
   throttle,
+
+  // 对象操作
   deepClone,
-  generateId,
-  formatFileSize,
-  copyToClipboard,
-  sleep,
   isEmpty,
-  getQueryParams,
-  objectToQueryString,
   getType,
   isType,
   getObjectValue,
   setObjectValue,
   flattenObject,
   unflattenObject,
+
+  // 字符串和ID
+  generateId,
+  formatFileSize,
+
+  // 浏览器相关
+  copyToClipboard,
   downloadFile,
+  getQueryParams,
+  objectToQueryString,
   isValidJSON,
-  encrypt,
-  decrypt,
-  generateMD5,
-  formatDuration,
-  formatRelativeTime,
-  validateEmail,
-  validateUrl,
   getDeviceType,
   getBrowserInfo
-} 
+}

@@ -4,7 +4,7 @@
  */
 
 import api from '../services/api/index.js';
-import { getFromStorage, saveToStorage, removeFromStorage } from '../utils/storage.js';
+import { getFromStorage, saveToStorage, removeFromStorage } from '../../src/utils/storage.js';
 
 // 本地存储键
 const STORAGE_KEYS = {

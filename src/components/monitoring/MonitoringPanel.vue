@@ -138,7 +138,6 @@ import { defineComponent, ref, computed, onMounted, onUnmounted, watch, nextTick
 import axios from 'axios';
 import { ElMessage } from 'element-plus';
 import monitoringService from '../../services/monitoring';
-import monitoringFactory from '../../services/monitoringFactory';
 import log from '../../services/log';
 import * as echarts from 'echarts/core';
 import { LineChart, PieChart } from 'echarts/charts';
@@ -1319,17 +1318,21 @@ export default defineComponent({
     };
 
     // 处理监控数据更新
-    const handleMonitoringUpdate = (update) => {
-      // 只在初始数据时记录日志，减少频繁的数据更新日志
-      if (update.isInitial) {
-        log.debug('[监控面板] 收到服务器初始数据');
+    const handleMonitoringUpdate = (event) => {
+      const { detail } = event;
+
+      // 检查是否是当前会话的数据
+      if (detail.terminalId !== props.sessionId) {
+        return;
       }
 
+      log.debug('[监控面板] 收到监控数据更新');
+
       // 更新系统信息 - 确保Vue响应式更新
-      if (update.data) {
+      if (detail.data) {
         // 添加时间戳来强制更新检测
         const newData = {
-          ...update.data,
+          ...detail.data,
           _updateTime: Date.now()
         };
 
@@ -1338,18 +1341,34 @@ export default defineComponent({
       }
 
       // 更新历史数据和图表
-      updateHistoryData(update);
+      updateHistoryData({ data: detail.data });
+    };
+
+    // 处理监控连接状态
+    const handleMonitoringConnected = (event) => {
+      const { detail } = event;
+      if (detail.terminalId === props.sessionId) {
+        isConnected.value = true;
+        log.info('[监控面板] 监控服务已连接');
+      }
+    };
+
+    const handleMonitoringDisconnected = (event) => {
+      const { detail } = event;
+      if (detail.terminalId === props.sessionId) {
+        isConnected.value = false;
+        log.warn('[监控面板] 监控服务已断开');
+      }
     };
 
     // 处理关闭面板
     const closePanel = () => {
-      // 取消订阅
-      if (subscriptionId.value && serverId.value) {
-        log.debug(`[监控面板] 取消订阅服务器 ${serverId.value} 的数据更新`);
-        monitoringService.unsubscribeFromServer(serverId.value, subscriptionId.value);
-        subscriptionId.value = null;
+      // 断开监控连接
+      if (props.sessionId) {
+        log.debug(`[监控面板] 断开终端 ${props.sessionId} 的监控连接`);
+        monitoringService.disconnect(props.sessionId);
       }
-      
+
       // 通知父组件关闭
       emit('close');
     };
@@ -1413,12 +1432,31 @@ export default defineComponent({
           window.addEventListener('resize', resizeAllCharts);
         });
       
-      // 订阅服务器数据更新
-      subscriptionId.value = monitoringService.subscribeToServer(serverId.value, handleMonitoringUpdate);
-      log.info(`[监控面板] 已订阅服务器 ${serverId.value} 的数据更新`);
-      
-      // 请求立即刷新数据
-      monitoringService.requestServerData(serverId.value);
+      // 连接到监控服务
+      // 监控面板现在直接接收terminalId
+      const terminalId = props.sessionId; // sessionId实际上是terminalId
+
+      log.debug(`[监控面板] 使用终端ID: ${terminalId} 连接到服务器: ${serverId.value}`);
+
+      const connected = await monitoringService.connect(terminalId, serverId.value);
+      if (connected) {
+        log.info(`[监控面板] 已连接到服务器 ${serverId.value} 的监控服务`);
+
+        // 请求系统统计信息
+        const requested = monitoringService.requestSystemStats(terminalId);
+        if (requested) {
+          log.debug(`[监控面板] 已请求系统统计信息`);
+        } else {
+          log.warn(`[监控面板] 请求系统统计信息失败`);
+        }
+      } else {
+        log.warn(`[监控面板] 连接到服务器 ${serverId.value} 失败`);
+      }
+
+      // 添加监控数据事件监听器
+      window.addEventListener('monitoring-data-received', handleMonitoringUpdate);
+      window.addEventListener('monitoring-connected', handleMonitoringConnected);
+      window.addEventListener('monitoring-disconnected', handleMonitoringDisconnected);
       });
 
     // 组件卸载时清理
@@ -1427,12 +1465,14 @@ export default defineComponent({
       
       // 移除事件监听器
       window.removeEventListener('server-data-cleared', handleServerDataCleared);
-      
-      // 取消订阅
-      if (subscriptionId.value && serverId.value) {
-        log.debug(`[监控面板] 取消订阅服务器 ${serverId.value} 的数据更新`);
-        monitoringService.unsubscribeFromServer(serverId.value, subscriptionId.value);
-        subscriptionId.value = null;
+      window.removeEventListener('monitoring-data-received', handleMonitoringUpdate);
+      window.removeEventListener('monitoring-connected', handleMonitoringConnected);
+      window.removeEventListener('monitoring-disconnected', handleMonitoringDisconnected);
+
+      // 断开监控连接
+      if (props.sessionId) {
+        log.debug(`[监控面板] 断开终端 ${props.sessionId} 的监控连接`);
+        monitoringService.disconnect(props.sessionId);
       }
         
       // 清理所有ResizeObserver

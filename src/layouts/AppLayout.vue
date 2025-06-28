@@ -393,16 +393,16 @@ export default defineComponent({
 
       // 监听来自各个终端工具栏的监控面板切换请求
       window.addEventListener('request-toggle-monitoring-panel', (event) => {
-        if (event.detail && event.detail.sessionId) {
-          // 设置活动会话ID并切换监控面板
-          activeSessionId.value = event.detail.sessionId;
-          monitorSessionId.value = event.detail.sessionId;
+        if (event.detail && event.detail.terminalId) {
+          // 设置活动终端ID并切换监控面板
+          activeSessionId.value = event.detail.terminalId;
+          monitorSessionId.value = event.detail.terminalId;
 
           // 如果事件中包含主机地址，使用它来构建状态对象
           const status = {
             host: event.detail.host,
             installed: event.detail.verified || true,
-            sessionId: event.detail.sessionId
+            sessionId: event.detail.terminalId  // 这里实际上是terminalId
           };
 
           toggleMonitoringPanel(status);

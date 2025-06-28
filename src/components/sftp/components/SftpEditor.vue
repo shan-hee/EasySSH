@@ -43,7 +43,7 @@
 import { defineComponent, ref, onMounted, watch, nextTick, onBeforeUnmount } from 'vue'
 import { ElMessageBox, ElMessage, ElLoading } from 'element-plus'
 import { sftpService } from '@/services/ssh/index'
-import SettingsService from '@/services/settings'
+import settingsService from '@/services/settings'
 import { useSettingsStore } from '@/store/settings'
 
 // CodeMirror 6 Imports
@@ -90,9 +90,7 @@ export default defineComponent({
       const termSettings = settingsStore.getTerminalSettings();
       // 获取终端主题
       const themeKey = termSettings.theme || 'dark';
-      // 创建设置服务实例并获取详细主题配置
-      const settingsService = new SettingsService();
-      settingsService.init();
+      // 使用设置服务实例并获取详细主题配置
       const theme = settingsService.getTerminalTheme(themeKey);
       
       return {

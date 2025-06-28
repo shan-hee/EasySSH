@@ -4,7 +4,8 @@
  */
 
 import { EventEmitter } from '../../utils/events.js';
-import Settings from '../../models/Settings.js';
+// Settings类已移除，使用统一的设置服务
+import settingsService from '../../../src/services/settings.js';
 import accessibilityService from './accessibility.js';
 
 // 修饰键常量
@@ -71,7 +72,7 @@ export class KeyboardManager extends EventEmitter {
     this.keySequenceTimer = null;
     
     // 设置
-    this.settings = Settings.getInstance();
+    this.settings = settingsService;
     
     // 默认快捷键定义
     this.defaultShortcuts = {};
@@ -106,7 +107,7 @@ export class KeyboardManager extends EventEmitter {
     });
     
     // 监听设置变更
-    this.settings.on('change:keyboard.shortcuts', this._loadFromSettings.bind(this));
+    this.settings.addChangeListener(this._loadFromSettings.bind(this));
   }
   
   /**
@@ -114,8 +115,8 @@ export class KeyboardManager extends EventEmitter {
    * @private
    */
   _loadFromSettings() {
-    this.customShortcuts = this.settings.get('keyboard.shortcuts', {});
-    
+    this.customShortcuts = this.settings.get('advanced.keyboard.shortcuts', {});
+
     // 重新注册所有快捷键
     this._applyShortcuts();
   }
@@ -517,7 +518,7 @@ export class KeyboardManager extends EventEmitter {
     this.customShortcuts[action] = keyCombo;
     
     // 保存到设置
-    this.settings.set('keyboard.shortcuts', this.customShortcuts);
+    this.settings.set('advanced.keyboard.shortcuts', this.customShortcuts);
     
     // 重新应用快捷键
     this._applyShortcuts();
@@ -536,7 +537,7 @@ export class KeyboardManager extends EventEmitter {
     delete this.customShortcuts[action];
     
     // 保存到设置
-    this.settings.set('keyboard.shortcuts', this.customShortcuts);
+    this.settings.set('advanced.keyboard.shortcuts', this.customShortcuts);
     
     // 重新应用快捷键
     this._applyShortcuts();
@@ -549,7 +550,7 @@ export class KeyboardManager extends EventEmitter {
     this.customShortcuts = {};
     
     // 保存到设置
-    this.settings.set('keyboard.shortcuts', this.customShortcuts);
+    this.settings.set('advanced.keyboard.shortcuts', this.customShortcuts);
     
     // 重新应用快捷键
     this._applyShortcuts();

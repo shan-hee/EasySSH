@@ -2,7 +2,7 @@
  * 服务模块索引，统一导出所有服务实例
  */
 import apiService from './api'
-import SettingsService from './settings'
+import settingsService from './settings'
 import log from './log'
 // 移除不存在的模块导入
 // import themeService from './theme'
@@ -17,8 +17,8 @@ import mfaService from './mfa'
 import sshService, { sftpService } from './ssh'
 import terminal from './terminal'
 
-// 创建设置服务实例
-const settings = new SettingsService()
+// 使用设置服务实例
+const settings = settingsService
 
 // 服务初始化状态
 const servicesStatus = {

@@ -58,7 +58,7 @@ export const LATENCY_EVENTS = {
  */
 export const LATENCY_CONFIG = {
   DEFAULT_LOCAL: 1,  // 默认本地延迟值
-  CHECK_INTERVAL: 30, // 秒，可被settings.getConnectionOptions().keepAliveInterval覆盖
+  CHECK_INTERVAL: 30, // 秒，可被settings.getConnectionSettings().keepAliveInterval覆盖
   UPDATE_THROTTLE: 1000 // 毫秒，更新UI的节流时间
 };
 
@@ -78,7 +78,7 @@ export const TERMINAL_CONSTANTS = {
  */
 export const SSH_CONSTANTS = {
   DEFAULT_PORT: 22,
-  DEFAULT_TIMEOUT: 10000, // 可被settings.getConnectionOptions().connectionTimeout*1000覆盖
+  DEFAULT_TIMEOUT: 10000, // 可被settings.getConnectionSettings().connectionTimeout*1000覆盖
   MAX_RECONNECT_ATTEMPTS: 3 // 可被settings中的配置覆盖
 };
 
@@ -116,8 +116,8 @@ export const getDynamicConstants = (settings) => {
     // 安全获取连接设置
     let connectionSettings = {};
     try {
-      if (typeof settings.getConnectionOptions === 'function') {
-        connectionSettings = settings.getConnectionOptions() || {};
+      if (typeof settings.getConnectionSettings === 'function') {
+        connectionSettings = settings.getConnectionSettings() || {};
       }
     } catch (error) {
       console.warn('获取连接设置失败，使用默认值', error);

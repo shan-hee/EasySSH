@@ -3,7 +3,8 @@ import { ElMessage } from 'element-plus'
 import log from './log'
 
 /**
- * API服务模块
+ * 统一API服务模块
+ * 整合了原有的多个API实现，提供统一的HTTP客户端
  */
 class ApiService {
   constructor() {
@@ -15,6 +16,10 @@ class ApiService {
       : (import.meta.env.VITE_API_BASE_URL || '/api')
     this.timeout = 30000 // 30秒超时
     this._lastTokenExists = null // 用于跟踪token状态变化
+
+    // 请求缓存（用于GET请求）
+    this.requestCache = new Map()
+    this.cacheTimeout = 5 * 60 * 1000 // 5分钟缓存
   }
 
   /**
@@ -243,19 +248,43 @@ class ApiService {
   }
   
   /**
-   * 发送GET请求
+   * 发送GET请求（支持缓存）
    * @param {string} url - 请求地址
    * @param {Object} params - 请求参数
    * @param {Object} config - 请求配置
+   * @param {boolean} config.useCache - 是否使用缓存
    * @returns {Promise<Object>} - 响应数据
    */
   async get(url, params = {}, config = {}) {
     if (!this.isInitialized) {
       await this.init()
     }
-    
+
+    // 生成缓存键
+    const cacheKey = `GET:${url}:${JSON.stringify(params)}`
+
+    // 检查缓存
+    if (config.useCache !== false && this.requestCache.has(cacheKey)) {
+      const cached = this.requestCache.get(cacheKey)
+      if (Date.now() - cached.timestamp < this.cacheTimeout) {
+        log.debug('使用缓存响应', { url, params })
+        return cached.data
+      } else {
+        this.requestCache.delete(cacheKey)
+      }
+    }
+
     try {
       const response = await this.axios.get(url, { params, ...config })
+
+      // 缓存GET请求响应
+      if (config.useCache !== false) {
+        this.requestCache.set(cacheKey, {
+          data: response.data,
+          timestamp: Date.now()
+        })
+      }
+
       return response.data
     } catch (error) {
       throw error
@@ -293,7 +322,10 @@ class ApiService {
     if (!this.isInitialized) {
       await this.init()
     }
-    
+
+    // 清除相关缓存
+    this.clearRelatedCache(url)
+
     try {
       const response = await this.axios.put(url, data, config)
       return response.data
@@ -301,7 +333,7 @@ class ApiService {
       throw error
     }
   }
-  
+
   /**
    * 发送DELETE请求
    * @param {string} url - 请求地址
@@ -312,13 +344,38 @@ class ApiService {
     if (!this.isInitialized) {
       await this.init()
     }
-    
+
+    // 清除相关缓存
+    this.clearRelatedCache(url)
+
     try {
       const response = await this.axios.delete(url, config)
       return response.data
     } catch (error) {
       throw error
     }
+  }
+
+  /**
+   * 清除相关缓存
+   * @param {string} url - URL路径
+   */
+  clearRelatedCache(url) {
+    const keysToDelete = []
+    for (const key of this.requestCache.keys()) {
+      if (key.includes(url)) {
+        keysToDelete.push(key)
+      }
+    }
+    keysToDelete.forEach(key => this.requestCache.delete(key))
+  }
+
+  /**
+   * 清除所有缓存
+   */
+  clearCache() {
+    this.requestCache.clear()
+    log.debug('API缓存已清除')
   }
   
   /**

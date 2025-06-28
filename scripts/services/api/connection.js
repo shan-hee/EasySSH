@@ -5,7 +5,7 @@
 
 import { get, post, put, del } from './client.js';
 import { connectionEndpoints } from './endpoints.js';
-import { getFromStorage, saveToStorage } from '../../utils/storage.js';
+import { getFromStorage, saveToStorage } from '../../../src/utils/storage.js';
 
 // 本地缓存键
 const CACHE_KEYS = {

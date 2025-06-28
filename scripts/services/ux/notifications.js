@@ -4,7 +4,8 @@
  */
 
 import { EventEmitter } from '../../utils/events.js';
-import Settings from '../../models/Settings.js';
+// Settings类已移除，使用统一的设置服务
+import settingsService from '../../../src/services/settings.js';
 
 // 通知类型
 export const NotificationType = {
@@ -160,11 +161,11 @@ export class NotificationService extends EventEmitter {
     this.defaultOptions = { ...DEFAULT_OPTIONS, ...options };
     
     // 加载设置
-    this.settings = Settings.getInstance();
+    this.settings = settingsService;
     this._loadSettingsConfig();
-    
+
     // 监听设置变化
-    this.settings.on('change:ui.notifications', this._loadSettingsConfig.bind(this));
+    this.settings.addChangeListener(this._loadSettingsConfig.bind(this));
   }
   
   /**
@@ -172,13 +173,13 @@ export class NotificationService extends EventEmitter {
    * @private
    */
   _loadSettingsConfig() {
-    const notificationsConfig = this.settings.get('ui.notifications', {});
-    
+    const notificationsConfig = this.settings.get('advanced.notifications', {});
+
     // 合并设置到默认选项
     if (notificationsConfig) {
-      this.defaultOptions = { 
-        ...this.defaultOptions, 
-        ...notificationsConfig 
+      this.defaultOptions = {
+        ...this.defaultOptions,
+        ...notificationsConfig
       };
     }
   }

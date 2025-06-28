@@ -106,38 +106,4 @@ export function joinPath(basePath, filename) {
   return normalizedPath + normalizedFilename;
 }
 
-/**
- * 安全保存数据到本地存储
- * @param {string} key - 存储键名
- * @param {any} data - 要存储的数据
- * @returns {boolean} - 是否保存成功
- */
-export function saveToLocalStorage(key, data) {
-  try {
-    const serialized = JSON.stringify(data);
-    localStorage.setItem(key, serialized);
-    return true;
-  } catch (error) {
-    console.error(`保存数据到本地存储失败: ${key}`, error);
-    return false;
-  }
-}
-
-/**
- * 从本地存储安全获取数据
- * @param {string} key - 存储键名
- * @param {any} defaultValue - 默认值
- * @returns {any} - 获取的数据
- */
-export function getFromLocalStorage(key, defaultValue = null) {
-  try {
-    const serialized = localStorage.getItem(key);
-    if (serialized === null) {
-      return defaultValue;
-    }
-    return JSON.parse(serialized);
-  } catch (error) {
-    console.error(`从本地存储获取数据失败: ${key}`, error);
-    return defaultValue;
-  }
-} 
+// 本地存储函数已移除，请使用统一的存储服务

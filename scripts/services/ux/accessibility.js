@@ -4,7 +4,8 @@
  */
 
 import { EventEmitter } from '../../utils/events.js';
-import Settings from '../../models/Settings.js';
+// Settings类已移除，使用统一的设置服务
+import settingsService from '../../../src/services/settings.js';
 
 // 对比度级别
 export const ContrastLevel = {
@@ -99,13 +100,13 @@ export class AccessibilityService extends EventEmitter {
     this.config = { ...DEFAULT_CONFIG };
     
     // 设置服务
-    this.settings = Settings.getInstance();
-    
+    this.settings = settingsService;
+
     // 从设置加载配置
     this._loadFromSettings();
-    
+
     // 监听设置变化
-    this.settings.on('change:ui.accessibility', this._loadFromSettings.bind(this));
+    this.settings.addChangeListener(this._loadFromSettings.bind(this));
     
     // 系统偏好检测
     this._detectSystemPreferences();
@@ -122,7 +123,7 @@ export class AccessibilityService extends EventEmitter {
    * @private
    */
   _loadFromSettings() {
-    const accessibilitySettings = this.settings.get('ui.accessibility', {});
+    const accessibilitySettings = this.settings.get('advanced.accessibility', {});
     
     // 合并设置到当前配置
     const newConfig = { ...this.config, ...accessibilitySettings };
@@ -266,7 +267,7 @@ export class AccessibilityService extends EventEmitter {
    * @private
    */
   _saveConfig() {
-    this.settings.set('ui.accessibility', { ...this.config });
+    this.settings.set('advanced.accessibility', { ...this.config });
   }
   
   /**

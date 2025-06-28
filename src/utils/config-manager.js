@@ -1,6 +1,7 @@
 /**
- * 配置管理工具
- * 提供运行时配置管理和开发环境配置覆盖功能
+ * 运行时配置管理工具
+ * 专门用于开发环境的配置覆盖和调试功能
+ * 用户设置请使用 SettingsService
  */
 import { autocompleteConfig, environment } from '@/config/app-config'
 import log from '@/services/log'
@@ -10,8 +11,8 @@ class ConfigManager {
     this.defaultConfig = { ...autocompleteConfig }
     this.runtimeConfig = { ...autocompleteConfig }
     this.overrides = {}
-    
-    // 开发环境下加载本地配置覆盖
+
+    // 仅在开发环境下启用配置覆盖功能
     if (environment.isDevelopment) {
       this.loadDevOverrides()
     }

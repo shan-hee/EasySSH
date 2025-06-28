@@ -1,70 +1,397 @@
 /**
- * 设置服务模块
+ * 统一设置服务模块
+ * 整合了原有的多个设置管理，提供统一的设置接口
  */
-import { ref, reactive } from 'vue'
-import { useSettingsStore } from '../store/settings'
+import { reactive, watch } from 'vue'
+import { userSettingsDefaults } from '../config/app-config.js'
+import storageUtils from '../utils/storage.js'
 import log from './log'
+
+const SETTINGS_STORAGE_KEY = 'user_settings'
 
 class SettingsService {
   constructor() {
-    this.store = null
     this.isInitialized = false
+
+    // 响应式设置对象
+    this.settings = reactive({ ...userSettingsDefaults })
+
+    // 创建专用的存储实例
+    this.storage = storageUtils.createPrefixedStorage('easyssh:')
+
+    // 设置变更监听器
+    this.changeListeners = new Set()
   }
 
   /**
    * 初始化设置服务
    * @returns {Promise<boolean>} 是否初始化成功
    */
-  init() {
+  async init() {
+    if (this.isInitialized) {
+      return true
+    }
+
     try {
-      if (this.isInitialized) {
-        return Promise.resolve(true)
-      }
+      // 从存储加载设置
+      await this.loadSettings()
 
-      this.store = useSettingsStore()
+      // 设置监听器，自动保存变更
+      this._setupAutoSave()
 
-      // 确保store已经加载
-      if (!this.store) {
-        throw new Error('无法初始化设置存储')
-      }
+      // 应用初始主题
+      this.applyTheme(this.settings.ui.theme)
 
-      // 设置服务主要是连接到已经初始化的store，不需要额外的初始化日志
-      // store的初始化已经在store创建时完成
       this.isInitialized = true
-      return Promise.resolve(true)
+      log.debug('设置服务初始化完成')
+      return true
     } catch (error) {
       log.error('设置服务初始化失败', error)
-      return Promise.resolve(false)
+      return false
     }
   }
-  
+
+  /**
+   * 从存储加载设置
+   * @private
+   */
+  async loadSettings() {
+    try {
+      let storedSettings = this.storage.get(SETTINGS_STORAGE_KEY, {})
+
+      // 如果新的设置存储为空，尝试从旧的设置中迁移
+      if (Object.keys(storedSettings).length === 0) {
+        storedSettings = this._migrateFromLegacySettings()
+      }
+
+      log.debug('从存储加载的设置数据:', storedSettings)
+      log.debug('当前默认设置:', this.settings)
+
+      // 深度合并设置，保留默认值
+      this._mergeSettings(this.settings, storedSettings)
+
+      log.debug('合并后的设置:', this.settings)
+      log.debug('设置已从存储加载')
+    } catch (error) {
+      log.warn('加载设置失败，使用默认设置', error)
+    }
+  }
+
+  /**
+   * 保存设置到存储
+   * @private
+   */
+  async saveSettings() {
+    try {
+      this.storage.set(SETTINGS_STORAGE_KEY, this.settings)
+      log.debug('设置已保存到存储')
+    } catch (error) {
+      log.error('保存设置失败', error)
+    }
+  }
+
+  /**
+   * 深度合并设置对象
+   * @param {Object} target - 目标对象
+   * @param {Object} source - 源对象
+   * @private
+   */
+  _mergeSettings(target, source) {
+    for (const key in source) {
+      if (source.hasOwnProperty(key)) {
+        if (target[key] && typeof target[key] === 'object' && typeof source[key] === 'object') {
+          this._mergeSettings(target[key], source[key])
+        } else {
+          target[key] = source[key]
+        }
+      }
+    }
+  }
+
+  /**
+   * 设置自动保存监听器
+   * @private
+   */
+  _setupAutoSave() {
+    // 使用Vue的watch监听设置变更
+    watch(
+      () => this.settings,
+      () => {
+        this.saveSettings()
+        this._notifyListeners()
+      },
+      { deep: true }
+    )
+  }
+
+  /**
+   * 通知变更监听器
+   * @private
+   */
+  _notifyListeners() {
+    this.changeListeners.forEach(listener => {
+      try {
+        listener(this.settings)
+      } catch (error) {
+        log.error('设置变更监听器执行失败', error)
+      }
+    })
+  }
+
+  /**
+   * 获取设置值
+   * @param {string} path - 设置路径，如 'ui.theme'
+   * @param {any} defaultValue - 默认值
+   * @returns {any} 设置值
+   */
+  get(path, defaultValue = undefined) {
+    const keys = path.split('.')
+    let value = this.settings
+
+    for (const key of keys) {
+      if (value && typeof value === 'object' && key in value) {
+        value = value[key]
+      } else {
+        return defaultValue
+      }
+    }
+
+    return value
+  }
+
+  /**
+   * 设置值
+   * @param {string} path - 设置路径
+   * @param {any} value - 设置值
+   */
+  set(path, value) {
+    const keys = path.split('.')
+    let target = this.settings
+
+    // 导航到目标对象
+    for (let i = 0; i < keys.length - 1; i++) {
+      const key = keys[i]
+      if (!target[key] || typeof target[key] !== 'object') {
+        target[key] = {}
+      }
+      target = target[key]
+    }
+
+    // 设置值
+    const lastKey = keys[keys.length - 1]
+    target[lastKey] = value
+
+    log.debug(`设置已更新: ${path} = ${JSON.stringify(value)}`)
+  }
+
+  /**
+   * 重置设置到默认值
+   * @param {string} path - 设置路径，不提供则重置所有
+   */
+  reset(path = null) {
+    if (path) {
+      // 重置指定路径
+      const keys = path.split('.')
+      let defaultValue = userSettingsDefaults
+
+      // 获取默认值
+      for (const key of keys) {
+        if (defaultValue && typeof defaultValue === 'object' && key in defaultValue) {
+          defaultValue = defaultValue[key]
+        } else {
+          defaultValue = undefined
+          break
+        }
+      }
+
+      // 设置默认值
+      if (defaultValue !== undefined) {
+        this.set(path, defaultValue)
+      }
+    } else {
+      // 重置所有设置
+      Object.assign(this.settings, userSettingsDefaults)
+    }
+
+    log.debug(`设置已重置: ${path || '全部'}`)
+  }
+
+  /**
+   * 添加设置变更监听器
+   * @param {Function} listener - 监听器函数
+   */
+  addChangeListener(listener) {
+    this.changeListeners.add(listener)
+  }
+
+  /**
+   * 移除设置变更监听器
+   * @param {Function} listener - 监听器函数
+   */
+  removeChangeListener(listener) {
+    this.changeListeners.delete(listener)
+  }
+
+  /**
+   * 获取终端设置
+   * @returns {Object} 终端设置
+   */
+  getTerminalSettings() {
+    return { ...this.settings.terminal }
+  }
+
+  /**
+   * 获取连接设置
+   * @returns {Object} 连接设置
+   */
+  getConnectionSettings() {
+    return { ...this.settings.connection }
+  }
+
+  /**
+   * 获取UI设置
+   * @returns {Object} UI设置
+   */
+  getUISettings() {
+    return { ...this.settings.ui }
+  }
+
+  /**
+   * 获取编辑器设置
+   * @returns {Object} 编辑器设置
+   */
+  getEditorSettings() {
+    return { ...this.settings.editor }
+  }
+
+  /**
+   * 获取高级设置
+   * @returns {Object} 高级设置
+   */
+  getAdvancedSettings() {
+    return { ...this.settings.advanced }
+  }
+
+  /**
+   * 获取终端选项（用于xterm.js）
+   * @returns {Object} 终端选项
+   */
+  getTerminalOptions() {
+    // 如果未初始化，先尝试初始化
+    if (!this.isInitialized) {
+      log.warn('设置服务未初始化，使用默认终端选项')
+      return this._getDefaultTerminalOptions()
+    }
+
+    const terminalSettings = this.settings.terminal
+    const theme = this._getTerminalTheme(this.settings.ui.theme)
+
+    log.debug('获取终端选项 - 终端设置:', terminalSettings)
+    log.debug('获取终端选项 - 当前主题:', this.settings.ui.theme)
+    log.debug('获取终端选项 - 主题配置:', theme)
+
+    return {
+      fontSize: terminalSettings.fontSize,
+      fontFamily: terminalSettings.fontFamily,
+      lineHeight: terminalSettings.lineHeight,
+      theme: theme,
+      cursorBlink: terminalSettings.cursorBlink,
+      cursorStyle: terminalSettings.cursorStyle,
+      scrollback: terminalSettings.scrollback,
+      allowTransparency: true,
+      rendererType: 'canvas',
+      convertEol: true,
+      disableStdin: false,
+      drawBoldTextInBrightColors: true,
+      copyOnSelect: terminalSettings.copyOnSelect,
+      rightClickSelectsWord: terminalSettings.rightClickSelectsWord
+    }
+  }
+
+  /**
+   * 更新终端设置
+   * @param {Object} updates - 要更新的设置
+   */
+  updateTerminalSettings(updates) {
+    Object.assign(this.settings.terminal, updates)
+  }
+
+  /**
+   * 更新连接设置
+   * @param {Object} updates - 要更新的设置
+   */
+  updateConnectionSettings(updates) {
+    Object.assign(this.settings.connection, updates)
+  }
+
+  /**
+   * 更新UI设置
+   * @param {Object} updates - 要更新的设置
+   */
+  updateUISettings(updates) {
+    Object.assign(this.settings.ui, updates)
+
+    // 如果主题发生变化，立即应用
+    if (updates.theme) {
+      this.applyTheme(updates.theme)
+    }
+  }
+
+  /**
+   * 应用主题
+   * @param {string} theme - 主题名称 (light, dark, system)
+   */
+  applyTheme(theme = this.settings.ui.theme) {
+    let actualTheme = theme
+
+    // 处理系统主题
+    if (theme === 'system') {
+      actualTheme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+    }
+
+    // 设置主题
+    document.documentElement.setAttribute('data-theme', actualTheme)
+    document.documentElement.className = document.documentElement.className
+      .replace(/\b(light|dark)-theme\b/g, '')
+    document.documentElement.classList.add(`${actualTheme}-theme`)
+
+    // 设置语言
+    const language = this.settings.ui.language
+    if (language) {
+      document.documentElement.setAttribute('lang', language)
+    }
+
+    log.debug('主题已应用', { theme, actualTheme, language })
+  }
+
   /**
    * 获取终端主题配置
-   * @param {string} themeName - 主题名称
-   * @returns {Object} - 主题配置
+   * @param {string} uiTheme - UI主题
+   * @returns {Object} 终端主题配置
+   * @private
    */
-  getTerminalTheme(themeName = 'vscode') {
+  _getTerminalTheme(uiTheme = 'light') {
     const themes = {
-      vscode: {
-        foreground: '#CCCCCC',
-        background: '#1E1E1E',
-        cursor: '#FFFFFF',
-        selectionBackground: '#264F78',
+      light: {
+        foreground: '#000000',
+        background: '#FFFFFF',
+        cursor: '#000000',
+        selectionBackground: '#ACCEF7',
         black: '#000000',
-        red: '#CD3131',
-        green: '#0DBC79',
-        yellow: '#E5E510',
-        blue: '#2472C8',
-        magenta: '#BC3FBC',
-        cyan: '#11A8CD',
-        white: '#E5E5E5',
-        brightBlack: '#666666',
-        brightRed: '#F14C4C',
-        brightGreen: '#23D18B',
-        brightYellow: '#F5F543',
-        brightBlue: '#3B8EEA',
-        brightMagenta: '#D670D6',
-        brightCyan: '#29B8DB',
+        red: '#C91B00',
+        green: '#00C200',
+        yellow: '#C7C400',
+        blue: '#0225C7',
+        magenta: '#CA30C7',
+        cyan: '#00C5C7',
+        white: '#C7C7C7',
+        brightBlack: '#686868',
+        brightRed: '#FF6E67',
+        brightGreen: '#5FF967',
+        brightYellow: '#FEFB67',
+        brightBlue: '#6871FF',
+        brightMagenta: '#FF77FF',
+        brightCyan: '#5FFDFF',
         brightWhite: '#FFFFFF'
       },
       dark: {
@@ -88,221 +415,139 @@ class SettingsService {
         brightMagenta: '#AE81FF',
         brightCyan: '#A1EFE4',
         brightWhite: '#F9F8F5'
-      },
-      light: {
-        foreground: '#000000',
-        background: '#FFFFFF',
-        cursor: '#000000',
-        selectionBackground: '#ACCEF7',
-        black: '#000000',
-        red: '#C91B00',
-        green: '#00C200',
-        yellow: '#C7C400',
-        blue: '#0225C7',
-        magenta: '#CA30C7',
-        cyan: '#00C5C7',
-        white: '#C7C7C7',
-        brightBlack: '#686868',
-        brightRed: '#FF6E67',
-        brightGreen: '#5FF967',
-        brightYellow: '#FEFB67',
-        brightBlue: '#6871FF',
-        brightMagenta: '#FF77FF',
-        brightCyan: '#5FFDFF',
-        brightWhite: '#FFFFFF'
-      },
-      dracula: {
-        foreground: '#F8F8F2',
-        background: '#282A36',
-        cursor: '#F8F8F2',
-        selectionBackground: '#44475A',
-        black: '#21222C',
-        red: '#FF5555',
-        green: '#50FA7B',
-        yellow: '#F1FA8C',
-        blue: '#BD93F9',
-        magenta: '#FF79C6',
-        cyan: '#8BE9FD',
-        white: '#F8F8F2',
-        brightBlack: '#6272A4',
-        brightRed: '#FF6E6E',
-        brightGreen: '#69FF94',
-        brightYellow: '#FFFFA5',
-        brightBlue: '#D6ACFF',
-        brightMagenta: '#FF92DF',
-        brightCyan: '#A4FFFF',
-        brightWhite: '#FFFFFF'
-      },
-      material: {
-        foreground: '#EEFFFF',
-        background: '#263238',
-        cursor: '#FFCC00',
-        selectionBackground: '#FFFFFF40',
-        black: '#000000',
-        red: '#FF5370',
-        green: '#C3E88D',
-        yellow: '#FFCB6B',
-        blue: '#82AAFF',
-        magenta: '#C792EA',
-        cyan: '#89DDFF',
-        white: '#FFFFFF',
-        brightBlack: '#546E7A',
-        brightRed: '#FF5370',
-        brightGreen: '#C3E88D',
-        brightYellow: '#FFCB6B',
-        brightBlue: '#82AAFF',
-        brightMagenta: '#C792EA',
-        brightCyan: '#89DDFF',
-        brightWhite: '#FFFFFF'
       }
     }
-    
-    return themes[themeName] || themes.vscode
-  }
-  
-  /**
-   * 获取终端默认选项
-   * @returns {Object} - 终端选项
-   */
-  getTerminalOptions() {
-    if (!this.store) {
-      this.init()
+
+    // 处理系统主题
+    let actualTheme = uiTheme
+    if (uiTheme === 'system') {
+      actualTheme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
     }
-    
-    // 从store获取当前的终端设置
-    const settings = this.store.getTerminalSettings()
-    
-    // 获取主题
-    const theme = this.getTerminalTheme(settings.theme)
-    
-    // 返回终端选项
+
+    return themes[actualTheme] || themes.light
+  }
+
+  /**
+   * 导出设置
+   * @returns {Object} 设置数据
+   */
+  exportSettings() {
     return {
-      fontSize: settings.fontSize || 16,
-      fontFamily: settings.fontFamily || "'JetBrains Mono'",
-      theme: theme,
-      cursorBlink: settings.cursorBlink !== undefined ? settings.cursorBlink : true,
-      cursorStyle: settings.cursorStyle || 'block',
-      scrollback: 1000,
+      settings: { ...this.settings },
+      timestamp: Date.now(),
+      version: '1.0.0'
+    }
+  }
+
+  /**
+   * 导入设置
+   * @param {Object} data - 设置数据
+   */
+  importSettings(data) {
+    if (data.settings) {
+      this._mergeSettings(this.settings, data.settings)
+      this.applyTheme()
+      log.info('设置导入成功')
+    }
+  }
+
+  /**
+   * 从旧的设置存储中迁移数据
+   * @private
+   * @returns {Object} 迁移的设置数据
+   */
+  _migrateFromLegacySettings() {
+    try {
+      // 尝试从旧的UI设置中迁移
+      const legacyUISettings = localStorage.getItem('easyssh_ui_settings')
+      const legacyTerminalSettings = localStorage.getItem('easyssh_terminal_settings')
+      const legacyConnectionSettings = localStorage.getItem('easyssh_connection_settings')
+
+      const migratedSettings = {}
+
+      if (legacyUISettings) {
+        const uiSettings = JSON.parse(legacyUISettings)
+        migratedSettings.ui = {
+          theme: uiSettings.theme || 'dark',
+          language: uiSettings.language || 'zh-CN'
+        }
+        log.info('已迁移UI设置:', migratedSettings.ui)
+      }
+
+      if (legacyTerminalSettings) {
+        const terminalSettings = JSON.parse(legacyTerminalSettings)
+        migratedSettings.terminal = terminalSettings
+        log.info('已迁移终端设置:', migratedSettings.terminal)
+      }
+
+      if (legacyConnectionSettings) {
+        const connectionSettings = JSON.parse(legacyConnectionSettings)
+        migratedSettings.connection = connectionSettings
+        log.info('已迁移连接设置:', migratedSettings.connection)
+      }
+
+      // 如果有迁移的数据，保存到新的存储中
+      if (Object.keys(migratedSettings).length > 0) {
+        this.storage.set(SETTINGS_STORAGE_KEY, migratedSettings)
+        log.info('设置迁移完成，已保存到新的存储格式')
+      }
+
+      return migratedSettings
+    } catch (error) {
+      log.warn('设置迁移失败:', error)
+      return {}
+    }
+  }
+
+  /**
+   * 获取默认终端选项（当设置服务未初始化时使用）
+   * @private
+   * @returns {Object} 默认终端选项
+   */
+  _getDefaultTerminalOptions() {
+    return {
+      fontSize: 16,
+      fontFamily: "'JetBrains Mono', 'Courier New', monospace",
+      lineHeight: 1.2,
+      theme: {
+        background: '#1e1e1e',
+        foreground: '#d4d4d4',
+        cursor: '#d4d4d4',
+        cursorAccent: '#1e1e1e',
+        selection: '#264f78',
+        black: '#000000',
+        red: '#cd3131',
+        green: '#0dbc79',
+        yellow: '#e5e510',
+        blue: '#2472c8',
+        magenta: '#bc3fbc',
+        cyan: '#11a8cd',
+        white: '#e5e5e5',
+        brightBlack: '#666666',
+        brightRed: '#f14c4c',
+        brightGreen: '#23d18b',
+        brightYellow: '#f5f543',
+        brightBlue: '#3b8eea',
+        brightMagenta: '#d670d6',
+        brightCyan: '#29b8db',
+        brightWhite: '#e5e5e5'
+      },
+      cursorBlink: true,
+      cursorStyle: 'block',
+      scrollback: 3000,
       allowTransparency: true,
       rendererType: 'canvas',
       convertEol: true,
       disableStdin: false,
       drawBoldTextInBrightColors: true,
-      copyOnSelect: settings.copyOnSelect !== undefined ? settings.copyOnSelect : false,
-      rightClickSelectsWord: settings.rightClickSelectsWord !== undefined ? settings.rightClickSelectsWord : false
+      copyOnSelect: false,
+      rightClickSelectsWord: false
     }
-  }
-  
-  /**
-   * 获取连接设置
-   * @returns {Object} - 连接设置
-   */
-  getConnectionOptions() {
-    if (!this.store) {
-      this.init()
-    }
-    
-    return this.store.getConnectionSettings()
-  }
-  
-  /**
-   * 获取UI设置
-   * @returns {Object} - UI设置
-   */
-  getUIOptions() {
-    if (!this.store) {
-      this.init()
-    }
-    
-    return this.store.getUISettings()
-  }
-  
-  /**
-   * 保存终端设置
-   * @param {Object} settings - 要保存的终端设置
-   * @returns {boolean} - 是否保存成功
-   */
-  saveTerminalSettings(settings) {
-    if (!this.store) {
-      this.init()
-    }
-    
-    return this.store.saveTerminalSettings(settings)
-  }
-  
-  /**
-   * 保存连接设置
-   * @param {Object} settings - 要保存的连接设置
-   * @returns {boolean} - 是否保存成功
-   */
-  saveConnectionSettings(settings) {
-    if (!this.store) {
-      this.init()
-    }
-    
-    return this.store.saveConnectionSettings(settings)
-  }
-  
-  /**
-   * 保存UI设置
-   * @param {Object} settings - 要保存的UI设置
-   * @returns {boolean} - 是否保存成功
-   */
-  saveUISettings(settings) {
-    if (!this.store) {
-      this.init()
-    }
-    
-    return this.store.saveUISettings(settings)
-  }
-  
-  /**
-   * 重置所有设置
-   * @returns {boolean} - 是否重置成功
-   */
-  resetAllSettings() {
-    if (!this.store) {
-      this.init()
-    }
-    
-    return this.store.resetAllSettings()
-  }
-  
-  /**
-   * 应用当前主题
-   */
-  applyTheme() {
-    if (!this.store) {
-      this.init()
-    }
-    
-    this.store.applyTheme()
-  }
-
-  /**
-   * 应用UI主题和语言
-   * @param {string} theme - 主题名称
-   * @param {string} language - 语言代码
-   */
-  applyThemeAndLanguage(theme, language) {
-    // 设置主题
-    document.documentElement.setAttribute('data-theme', theme)
-    if (theme === 'dark') {
-      document.documentElement.classList.add('dark-theme')
-      document.documentElement.classList.remove('light-theme')
-    } else if (theme === 'light') {
-      document.documentElement.classList.add('light-theme')
-      document.documentElement.classList.remove('dark-theme')
-    }
-    
-    // 设置语言
-    if (language) {
-      document.documentElement.setAttribute('lang', language)
-    }
-    
-    log.debug('主题已应用', { theme, language })
   }
 }
 
-// 导出类
-export default SettingsService
+// 创建服务实例
+const settingsService = new SettingsService()
+
+// 导出服务实例
+export default settingsService

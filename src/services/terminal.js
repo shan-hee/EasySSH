@@ -10,7 +10,7 @@ import { Unicode11Addon } from '@xterm/addon-unicode11'
 // LigaturesAddon 已移除 - 连字功能可选，避免导入问题
 import { ref, reactive } from 'vue'
 import { ElMessage } from 'element-plus'
-import SettingsService from './settings'
+import settingsService from './settings'
 import log from './log'
 import clipboard from './clipboard'
 import monitoringService from './monitoring'
@@ -154,13 +154,16 @@ class TerminalService {
       }
 
       // 从设置服务加载终端配置
-      const { settings } = await import('./index.js');
-      const terminalSettings = settings.getTerminalOptions()
-      if (terminalSettings) {
-        this.defaultOptions = {
-          ...this.defaultOptions,
-          ...terminalSettings
+      try {
+        const terminalSettings = settingsService.getTerminalOptions()
+        if (terminalSettings) {
+          this.defaultOptions = {
+            ...this.defaultOptions,
+            ...terminalSettings
+          }
         }
+      } catch (error) {
+        log.warn('获取终端设置失败，使用默认选项', error)
       }
 
       this.isInitialized = true
@@ -190,11 +193,11 @@ class TerminalService {
         }
       }
       
-      // 使用重构后的监控初始化服务，静默异步连接
+      // 使用重构后的监控服务，静默异步连接
       try {
-        // 动态导入监控状态服务并初始化
-        import('./monitoringStatusService.js').then(({ default: monitoringStatusService }) => {
-          monitoringStatusService.initializeMonitoring(host, sshSessionId)
+        // 动态导入监控服务并初始化
+        import('./monitoring.js').then(({ default: monitoringService }) => {
+          monitoringService.connect(sshSessionId, host)
             .catch(() => {/* 完全静默处理错误 */});
         }).catch(() => {/* 完全静默处理错误 */});
       } catch (error) {
@@ -471,7 +474,6 @@ class TerminalService {
       const selection = terminal.getSelection()
       
       // 获取当前的终端设置
-      const settingsService = new SettingsService()
       const terminalOptions = settingsService.getTerminalOptions()
       
       if (selection && terminalOptions.copyOnSelect) {
@@ -516,7 +518,6 @@ class TerminalService {
     if (element) {
       element.addEventListener('contextmenu', (event) => {
         // 获取当前的终端设置
-        const settingsService = new SettingsService()
         const terminalOptions = settingsService.getTerminalOptions()
         
         if (terminalOptions.rightClickSelectsWord) {

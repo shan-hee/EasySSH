@@ -3,9 +3,10 @@
  * 处理连接历史和命令历史
  */
 
-import { getFromStorage, saveToStorage } from '../utils/storage.js';
+import { getFromStorage, saveToStorage } from '../../src/utils/storage.js';
 import { EventEmitter } from '../utils/events.js';
-import Settings from './Settings.js';
+// Settings类已移除，使用统一的设置服务
+import settingsService from '../../src/services/settings.js';
 
 // 本地存储键
 const STORAGE_KEYS = {
@@ -212,7 +213,7 @@ export class History extends EventEmitter {
     this.config = { ...DEFAULT_CONFIG, ...config };
     
     // 设置管理器
-    this.settings = Settings.getInstance();
+    this.settings = settingsService;
     
     // 加载历史记录
     this._connections = this._loadConnections();
@@ -231,11 +232,11 @@ export class History extends EventEmitter {
    */
   _loadConfigFromSettings() {
     // 命令历史设置
-    const commandHistoryEnabled = this.settings.get('features.commandHistory', true);
+    const commandHistoryEnabled = this.settings.get('connection.saveHistory', true);
     if (this.config.enableCommandHistory !== commandHistoryEnabled) {
       this.config.enableCommandHistory = commandHistoryEnabled;
     }
-    
+
     // 连接历史设置
     const saveHistory = this.settings.get('connection.saveHistory', true);
     if (this.config.enableConnectionHistory !== saveHistory) {
