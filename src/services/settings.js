@@ -311,9 +311,36 @@ class SettingsService {
   /**
    * 更新终端设置
    * @param {Object} updates - 要更新的设置
+   * @param {boolean} applyToTerminals - 是否立即应用到所有终端
    */
-  updateTerminalSettings(updates) {
+  updateTerminalSettings(updates, applyToTerminals = false) {
     Object.assign(this.settings.terminal, updates)
+    log.debug('终端设置已更新:', updates)
+    log.debug('更新后的完整终端设置:', this.settings.terminal)
+
+    // 如果需要立即应用到终端，触发应用逻辑
+    if (applyToTerminals) {
+      this._applyTerminalSettingsToAllTerminals()
+    }
+  }
+
+  /**
+   * 将当前终端设置应用到所有打开的终端
+   * @private
+   */
+  async _applyTerminalSettingsToAllTerminals() {
+    try {
+      // 动态导入终端store以避免循环依赖
+      const { useTerminalStore } = await import('../store/terminal')
+      const terminalStore = useTerminalStore()
+
+      if (terminalStore && terminalStore.applySettingsToAllTerminals) {
+        const results = await terminalStore.applySettingsToAllTerminals(this.settings.terminal)
+        log.debug('设置已应用到所有终端:', results)
+      }
+    } catch (error) {
+      log.error('应用终端设置到所有终端失败:', error)
+    }
   }
 
   /**

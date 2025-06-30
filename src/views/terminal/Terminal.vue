@@ -61,7 +61,7 @@ import { useTerminalStore } from '../../store/terminal'
 import terminalService from '../../services/terminal'
 import sshService from '../../services/ssh/index'
 import RainbowLoader from '../../components/common/RainbowLoader.vue'
-import { useSettingsStore } from '../../store/settings'
+import settingsService from '../../services/settings'
 // 导入终端工具栏组件
 import TerminalToolbar from '../../components/terminal/TerminalToolbar.vue'
 // 导入终端自动完成组件
@@ -99,7 +99,7 @@ export default {
     const userStore = useUserStore()
     const tabStore = useTabStore()
     const terminalStore = useTerminalStore()
-    const settingsStore = useSettingsStore()
+
     const sessionStore = useSessionStore() // 添加会话存储
     
     // 终端引用映射，key为连接ID，value为DOM元素
@@ -351,7 +351,7 @@ export default {
         }
         
         const terminal = terminalInstance
-        const settings = settingsStore.terminalSettings
+        const settings = settingsService.getTerminalSettings()
         let hasChanges = false
         
         // 应用字体大小
@@ -655,7 +655,7 @@ export default {
 
       try {
         const terminal = terminalStore.getTerminal(termId)
-        const settings = settingsStore.terminalSettings
+        const settings = settingsService.getTerminalSettings()
 
         if (terminal && settings) {
           // 立即应用光标样式

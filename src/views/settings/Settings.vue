@@ -261,6 +261,7 @@ import { ref, reactive, onMounted, computed } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useSettingsStore } from '../../store/settings'
 import { useTerminalStore } from '../../store/terminal'
+import settingsService from '../../services/settings'
 import { SettingsCard, KeyboardShortcutEditor } from '../../components/settings'
 import { localKeyboardManager } from '../../utils/keyboard'
 import log from '../../services/log'
@@ -275,7 +276,7 @@ export default {
     const settingsStore = useSettingsStore()
     const terminalStore = useTerminalStore()
     
-    // 终端设置
+    // 终端设置 - 初始化为空，将在组件挂载时从统一设置服务加载
     const terminalSettings = reactive({
       fontSize: 16,
       fontFamily: "'JetBrains Mono'",
@@ -286,6 +287,24 @@ export default {
       rightClickSelectsWord: false,
       initialized: false
     })
+
+    // 立即同步加载用户设置，避免显示默认值的闪烁
+    const initializeTerminalSettings = () => {
+      try {
+        if (settingsService.isInitialized) {
+          const userSettings = settingsService.getTerminalSettings()
+          if (userSettings) {
+            Object.assign(terminalSettings, userSettings)
+            terminalSettings.initialized = true
+          }
+        }
+      } catch (error) {
+        console.warn('同步加载终端设置失败:', error)
+      }
+    }
+
+    // 立即执行初始化
+    initializeTerminalSettings()
     
     // 终端背景图片设置
     const terminalBgSettings = reactive({
@@ -420,18 +439,25 @@ export default {
       log.error('初始化读取界面设置失败:', error)
     }
     
-    // 页面加载时立即检查本地存储中的终端设置
-    try {
-      const savedTerminalSettings = settingsStore.getTerminalSettings()
-      if (savedTerminalSettings) {
-        // 更新终端设置
-        Object.assign(terminalSettings, savedTerminalSettings)
-        // 标记为已初始化
-        terminalSettings.initialized = true
-        log.info('组件创建时加载终端设置:', terminalSettings)
+    // 初始化设置服务和加载设置
+    const initializeSettings = async () => {
+      try {
+        // 确保设置服务已初始化
+        if (!settingsService.isInitialized) {
+          await settingsService.init()
+        }
+
+        const savedTerminalSettings = settingsService.getTerminalSettings()
+        if (savedTerminalSettings) {
+          // 更新终端设置
+          Object.assign(terminalSettings, savedTerminalSettings)
+          // 标记为已初始化
+          terminalSettings.initialized = true
+          log.info('组件创建时从统一设置服务加载终端设置:', terminalSettings)
+        }
+      } catch (error) {
+        log.error('初始化读取终端设置失败:', error)
       }
-    } catch (error) {
-      log.error('初始化读取终端设置失败:', error)
     }
     
     // 背景预览样式计算属性
@@ -463,9 +489,12 @@ export default {
     })
     
     // 加载设置
-    onMounted(() => {
+    onMounted(async () => {
+      // 初始化设置服务和加载设置
+      await initializeSettings();
+
       // 初始化常规设置
-      loadSettings();
+      await loadSettings();
       
       // 调试键盘管理器加载
       log.info('Settings组件挂载，尝试加载快捷键设置');
@@ -501,13 +530,18 @@ export default {
     });
     
     // 从存储加载设置
-    const loadSettings = () => {
+    const loadSettings = async () => {
       try {
+        // 确保设置服务已初始化
+        if (!settingsService.isInitialized) {
+          await settingsService.init()
+        }
+
         // 加载终端设置
-        const savedTerminalSettings = settingsStore.getTerminalSettings()
+        const savedTerminalSettings = settingsService.getTerminalSettings()
         if (savedTerminalSettings && !terminalSettings.initialized) {
           Object.assign(terminalSettings, savedTerminalSettings)
-          log.info('loadSettings中更新终端设置:', terminalSettings)
+          log.info('loadSettings中从统一设置服务更新终端设置:', terminalSettings)
         }
         
         // 加载终端背景图片设置
@@ -586,11 +620,21 @@ export default {
       try {
         // 标记为已初始化
         terminalSettings.initialized = true
-        
-        // 首先保存设置到存储
+
+        // 确保设置服务已初始化
+        if (!settingsService.isInitialized) {
+          await settingsService.init()
+        }
+
+        // 保存设置到统一设置服务，并立即应用到所有终端
+        settingsService.updateTerminalSettings(terminalSettings, true)
+
+        // 同时保存到旧的store以保持兼容性（临时）
         settingsStore.saveTerminalSettings(terminalSettings)
-        
-        // 然后应用设置到所有打开的终端
+
+        log.info('终端设置已保存到统一设置服务并应用到所有终端:', terminalSettings)
+
+        // 获取应用结果（从设置服务的内部应用中获取）
         const results = await terminalStore.applySettingsToAllTerminals(terminalSettings)
         const totalTerminals = Object.keys(results).length
         

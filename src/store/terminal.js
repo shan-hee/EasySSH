@@ -7,7 +7,7 @@ import { useUserStore } from './user'
 import { useConnectionStore } from './connection'
 import { useLocalConnectionsStore } from './localConnections'
 import { FitAddon } from '@xterm/addon-fit'
-import { useSettingsStore } from './settings'
+
 import { computed } from 'vue'
 import { useSessionStore } from './session'
 import { waitForFontsLoaded } from '../utils/fontLoader'
@@ -1060,8 +1060,7 @@ export const useTerminalStore = defineStore('terminal', () => {
         const terminal = state.terminals[connectionId]
 
         // 在聚焦前确保光标样式正确
-        const settingsStore = useSettingsStore()
-        const settings = settingsStore.getTerminalSettings()
+        const settings = settingsService.getTerminalSettings()
 
         if (settings.cursorStyle && terminal.setOption) {
           terminal.setOption('cursorStyle', settings.cursorStyle)

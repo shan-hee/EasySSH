@@ -44,7 +44,7 @@ import { defineComponent, ref, onMounted, watch, nextTick, onBeforeUnmount } fro
 import { ElMessageBox, ElMessage, ElLoading } from 'element-plus'
 import { sftpService } from '@/services/ssh/index'
 import settingsService from '@/services/settings'
-import { useSettingsStore } from '@/store/settings'
+
 
 // CodeMirror 6 Imports
 import { EditorState, Compartment } from '@codemirror/state'
@@ -83,16 +83,21 @@ export default defineComponent({
     const fileName = ref(props.filePath.split('/').pop())
     const cursor = ref({ line: 1, ch: 0 })
     const isComponentMounted = ref(false)
-    const settingsStore = useSettingsStore();
+
     
     // 从设置中获取编辑器主题相关配置
     const getThemeSettings = () => {
-      const termSettings = settingsStore.getTerminalSettings();
-      // 获取终端主题
-      const themeKey = termSettings.theme || 'dark';
-      // 使用设置服务实例并获取详细主题配置
-      const theme = settingsService.getTerminalTheme(themeKey);
-      
+      const terminalOptions = settingsService.getTerminalOptions();
+      // 从终端选项中获取主题配置
+      const theme = terminalOptions.theme || {
+        background: '#1e1e1e',
+        foreground: '#d4d4d4'
+      };
+
+      // 获取UI主题名称
+      const uiSettings = settingsService.getUISettings();
+      const themeName = uiSettings.theme || 'dark';
+
       return {
         background: theme.background || '#282c34',
         foreground: theme.foreground || '#abb2bf',
@@ -106,13 +111,13 @@ export default defineComponent({
         number: theme.yellow || '#d19a66',
         operator: theme.cyan || '#56b6c2',
         className: theme.brightYellow || '#e5c07b',
-        themeName: themeKey
+        themeName: themeName
       };
     };
     
     // 获取字体设置
     const getFontSettings = () => {
-      const termSettings = settingsStore.getTerminalSettings();
+      const termSettings = settingsService.getTerminalSettings();
       return {
         fontSize: termSettings.fontSize || 14,
         fontFamily: termSettings.fontFamily || "'JetBrains Mono', 'Courier New', monospace"
@@ -262,7 +267,7 @@ export default defineComponent({
     // 获取UI语言设置
     const getLanguagePhrases = () => {
       // 获取设置中的语言
-      const uiSettings = settingsStore.getUISettings();
+      const uiSettings = settingsService.getUISettings();
       const language = uiSettings.language || 'zh-CN';
       
       // 根据语言返回相应的词组
@@ -690,31 +695,28 @@ export default defineComponent({
       }
     })
     
-    // 监听设置变化
-    watch(() => settingsStore.terminalSettings, () => {
+    // 监听设置变化 - 使用统一设置服务的监听器
+    settingsService.addChangeListener((settings) => {
       // 更新主题和字体设置
       themeSettings.value = getThemeSettings();
       fontSettings.value = getFontSettings();
-      
+
       // 重新应用样式
       nextTick(() => {
         applyEditorStyles();
         reapplyThemeAndHighlight();
       });
-    }, { deep: true });
-    
-    // 监听UI设置变化，特别是语言设置
-    watch(() => settingsStore.uiSettings, () => {
-      // 如果编辑器已初始化
+
+      // 处理语言设置变化
       if (editorView.value) {
         // 获取最新的语言短语设置
         const phrases = getLanguagePhrases();
-        
+
         // 应用新的语言设置到编辑器
         editorView.value.dispatch({
           effects: EditorState.phrases.reconfigure(phrases)
         });
-        
+
         // 重新测量以确保UI更新
         setTimeout(() => {
           if (editorView.value) {
@@ -722,7 +724,7 @@ export default defineComponent({
           }
         }, 10);
       }
-    }, { deep: true });
+    });
     
     return {
       editorContainer,
