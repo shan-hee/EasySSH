@@ -1,8 +1,11 @@
 <template>
   <div class="terminal-container">
-    <!-- 彩虹加载动画，在连接建立之前显示 -->
+    <!-- 火箭加载动画，在连接建立之前显示 -->
     <div v-show="shouldShowConnectingAnimation" class="connecting-overlay" :class="{'fade-out': !shouldShowConnectingAnimation}">
-      <RainbowLoader />
+      <RocketLoader
+        :phase="rocketAnimationPhase"
+        @animation-complete="handleAnimationComplete"
+      />
     </div>
 
     <!-- 多终端容器 - 每个终端都有自己的容器，通过z-index和opacity控制显示/隐藏 -->
@@ -60,7 +63,7 @@ import { useTabStore } from '../../store/tab'
 import { useTerminalStore } from '../../store/terminal'
 import terminalService from '../../services/terminal'
 import sshService from '../../services/ssh/index'
-import RainbowLoader from '../../components/common/RainbowLoader.vue'
+import RocketLoader from '../../components/common/RocketLoader.vue'
 import settingsService from '../../services/settings'
 // 导入终端工具栏组件
 import TerminalToolbar from '../../components/terminal/TerminalToolbar.vue'
@@ -80,7 +83,7 @@ import { waitForFontsLoaded } from '../../utils/fontLoader'
 export default {
   name: 'Terminal',
   components: {
-    RainbowLoader,
+    RocketLoader,
     TerminalToolbar, // 注册工具栏组件
     TerminalAutocomplete // 注册自动完成组件
   },
@@ -116,9 +119,21 @@ export default {
     const isConnectingInProgress = ref(false) // 添加连接进行中标志，避免并发请求
     // 添加终端背景状态变量
     const terminalHasBackground = ref(false)
-    
+
     // 替换全局初始化标志为每个终端的初始化状态映射
     const terminalInitializingStates = ref({})
+
+    // 火箭动画阶段状态
+    const rocketAnimationPhase = ref('connecting')
+
+    // 处理动画完成事件
+    const handleAnimationComplete = () => {
+      // 动画完成后，确保加载覆盖层隐藏
+      // 重置火箭动画状态，为下次连接做准备
+      setTimeout(() => {
+        rocketAnimationPhase.value = 'connecting';
+      }, 200); // 缩短延迟时间，与新的动画时间保持一致
+    }
     
     // 终端背景设置
     const terminalBg = ref({
@@ -138,21 +153,53 @@ export default {
     // 自动完成组件引用
     const autocompleteRef = ref(null)
     
-    // 计算属性：是否应该显示彩虹加载动画
+    // 计算属性：是否应该显示火箭加载动画
     const shouldShowConnectingAnimation = computed(() => {
       const activeId = activeConnectionId.value;
-      if (!activeId) return true; // 如果没有活动连接ID，则显示加载动画
-      
+      if (!activeId) {
+        if (rocketAnimationPhase.value !== 'connecting') {
+          rocketAnimationPhase.value = 'connecting';
+        }
+        return true; // 如果没有活动连接ID，则显示加载动画
+      }
+
       // 检查活动终端是否正在连接中
-      if (terminalConnectingStates.value[activeId]) return true;
-      
+      if (terminalConnectingStates.value[activeId]) {
+        if (rocketAnimationPhase.value !== 'connecting') {
+          rocketAnimationPhase.value = 'connecting';
+        }
+        return true;
+      }
+
       // 检查活动终端是否在初始化中
-      if (terminalInitializingStates.value[activeId]) return true;
-      
+      if (terminalInitializingStates.value[activeId]) {
+        if (rocketAnimationPhase.value !== 'connecting') {
+          rocketAnimationPhase.value = 'connecting';
+        }
+        return true;
+      }
+
       // 检查活动终端是否已初始化
-      if (!terminalInitialized.value[activeId]) return true;
-      
-      return false;
+      if (!terminalInitialized.value[activeId]) {
+        if (rocketAnimationPhase.value !== 'connecting') {
+          rocketAnimationPhase.value = 'connecting';
+        }
+        return true;
+      }
+
+      // 如果终端已经初始化，开始完成阶段动画
+      if (terminalInitialized.value[activeId] && rocketAnimationPhase.value === 'connecting') {
+        rocketAnimationPhase.value = 'connected';
+        // 立即开始完成动画
+        setTimeout(() => {
+          if (rocketAnimationPhase.value === 'connected') {
+            rocketAnimationPhase.value = 'completing';
+          }
+        }, 100); // 很短的延迟，只是为了确保状态更新
+        return true;
+      }
+
+      return rocketAnimationPhase.value === 'connected' || rocketAnimationPhase.value === 'completing';
     })
     
     // 计算终端背景样式
@@ -810,27 +857,30 @@ export default {
       
       // 检查是否是标签切换模式
       if (!isTabSwitch) {
+        // 重置火箭动画状态为连接中
+        rocketAnimationPhase.value = 'connecting';
+
         // 无论终端是否已存在，都将其状态设置为正在连接
-        // 这确保了彩虹动画能正常显示，即使是已有终端
+        // 这确保了火箭动画能正常显示，即使是已有终端
         terminalConnectingStates.value[sessionId] = true;
-        
+
         // 告知工具栏重置状态 - 发送工具栏状态重置事件
         window.dispatchEvent(new CustomEvent('terminal:toolbar-reset', {
           detail: { sessionId }
         }));
-        
+
         // 如果终端已经存在，延迟一段时间后更新连接状态
-        // 这样可以确保彩虹动画能显示足够长的时间
+        // 这样可以确保火箭动画能显示足够长的时间
         if (terminalStore.hasTerminal(sessionId)) {
           setTimeout(() => {
             terminalConnectingStates.value[sessionId] = false;
-          }, 1000); // 延迟1秒，保证彩虹动画有足够显示时间
+          }, 1000); // 延迟1秒，保证火箭动画有足够显示时间
         }
       } else {
         // 如果是标签切换，则不显示连接动画，但需要同步工具栏状态
         terminalConnectingStates.value[sessionId] = false;
-        
-        // 发送工具栏同步事件，与terminal:toolbar-reset不同，这个事件不会触发彩虹动画
+
+        // 发送工具栏同步事件，与terminal:toolbar-reset不同，这个事件不会触发火箭动画
         window.dispatchEvent(new CustomEvent('terminal:toolbar-sync', {
           detail: { sessionId }
         }));
@@ -1885,6 +1935,9 @@ export default {
       shouldShowConnectingAnimation,
       toggleSftpPanel,
       toggleMonitoringPanel,
+      // 火箭动画相关
+      rocketAnimationPhase,
+      handleAnimationComplete,
       // 自动完成相关
       autocomplete,
       autocompleteRef,
