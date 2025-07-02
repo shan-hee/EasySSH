@@ -1,18 +1,10 @@
 <template>
   <div class="terminal-container">
-    <!-- 火箭加载动画，在连接建立之前显示 -->
-    <div v-show="shouldShowConnectingAnimation" class="connecting-overlay" :class="{'fade-out': !shouldShowConnectingAnimation}">
-      <RocketLoader
-        :phase="rocketAnimationPhase"
-        @animation-complete="handleAnimationComplete"
-      />
-    </div>
-
     <!-- 多终端容器 - 每个终端都有自己的容器，通过z-index和opacity控制显示/隐藏 -->
     <div class="terminals-wrapper">
       <!-- 为每个终端创建独立容器 -->
-      <div 
-        v-for="termId in terminalIds" 
+      <div
+        v-for="termId in terminalIds"
         :key="termId"
         class="terminal-content-wrapper"
         :class="{
@@ -21,9 +13,21 @@
         }"
         :style="getTerminalStyle(termId)"
       >
+        <!-- 为每个终端添加独立的加载动画 -->
+        <div
+          v-show="shouldShowTerminalConnectingAnimation(termId)"
+          class="connecting-overlay"
+          :class="{'fade-out': !shouldShowTerminalConnectingAnimation(termId)}"
+        >
+          <RocketLoader
+            :phase="getTerminalRocketPhase(termId)"
+            @animation-complete="() => handleTerminalAnimationComplete(termId)"
+          />
+        </div>
+
         <!-- 为每个终端添加独立的工具栏 -->
         <div class="terminal-individual-toolbar">
-          <TerminalToolbar 
+          <TerminalToolbar
             :has-background="terminalHasBackground"
             :active-session-id="termId"
             @toggle-sftp-panel="toggleSftpPanel"
@@ -31,8 +35,8 @@
           />
         </div>
         <div class="terminal-content-padding">
-          <div 
-            :ref="el => setTerminalRef(el, termId)" 
+          <div
+            :ref="el => setTerminalRef(el, termId)"
             class="terminal-content"
             :data-terminal-id="termId"
           ></div>
@@ -53,7 +57,7 @@
 </template>
 
 <script>
-import { ref, onMounted, onBeforeUnmount, nextTick, onUnmounted, watch, computed, onActivated, onDeactivated } from 'vue'
+import { ref, onMounted, onBeforeUnmount, nextTick, watch, computed, onActivated, onDeactivated } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useConnectionStore } from '../../store/connection'
@@ -61,7 +65,7 @@ import { useLocalConnectionsStore } from '../../store/localConnections'
 import { useUserStore } from '../../store/user'
 import { useTabStore } from '../../store/tab'
 import { useTerminalStore } from '../../store/terminal'
-import terminalService from '../../services/terminal'
+
 import sshService from '../../services/ssh/index'
 import RocketLoader from '../../components/common/RocketLoader.vue'
 import settingsService from '../../services/settings'
@@ -123,16 +127,70 @@ export default {
     // 替换全局初始化标志为每个终端的初始化状态映射
     const terminalInitializingStates = ref({})
 
-    // 火箭动画阶段状态
-    const rocketAnimationPhase = ref('connecting')
+    // 每个终端的火箭动画阶段状态
+    const terminalRocketPhases = ref({})
 
-    // 处理动画完成事件
-    const handleAnimationComplete = () => {
+    // 获取指定终端的火箭动画阶段
+    const getTerminalRocketPhase = (termId) => {
+      return terminalRocketPhases.value[termId] || 'connecting'
+    }
+
+    // 设置指定终端的火箭动画阶段
+    const setTerminalRocketPhase = (termId, phase) => {
+      terminalRocketPhases.value[termId] = phase
+    }
+
+    // 处理指定终端的动画完成事件
+    const handleTerminalAnimationComplete = (termId) => {
       // 动画完成后，确保加载覆盖层隐藏
       // 重置火箭动画状态，为下次连接做准备
       setTimeout(() => {
-        rocketAnimationPhase.value = 'connecting';
+        setTerminalRocketPhase(termId, 'connecting');
       }, 200); // 缩短延迟时间，与新的动画时间保持一致
+    }
+
+    // 检查指定终端是否应该显示连接动画
+    const shouldShowTerminalConnectingAnimation = (termId) => {
+      if (!termId) return false;
+
+      // 检查终端是否正在连接中
+      if (terminalConnectingStates.value[termId]) {
+        if (getTerminalRocketPhase(termId) !== 'connecting') {
+          setTerminalRocketPhase(termId, 'connecting');
+        }
+        return true;
+      }
+
+      // 检查终端是否在初始化中
+      if (terminalInitializingStates.value[termId]) {
+        if (getTerminalRocketPhase(termId) !== 'connecting') {
+          setTerminalRocketPhase(termId, 'connecting');
+        }
+        return true;
+      }
+
+      // 检查终端是否已初始化
+      if (!terminalInitialized.value[termId]) {
+        if (getTerminalRocketPhase(termId) !== 'connecting') {
+          setTerminalRocketPhase(termId, 'connecting');
+        }
+        return true;
+      }
+
+      // 如果终端已经初始化，开始完成阶段动画
+      if (terminalInitialized.value[termId] && getTerminalRocketPhase(termId) === 'connecting') {
+        setTerminalRocketPhase(termId, 'connected');
+        // 立即开始完成动画
+        setTimeout(() => {
+          if (getTerminalRocketPhase(termId) === 'connected') {
+            setTerminalRocketPhase(termId, 'completing');
+          }
+        }, 100); // 很短的延迟，只是为了确保状态更新
+        return true;
+      }
+
+      const currentPhase = getTerminalRocketPhase(termId);
+      return currentPhase === 'connected' || currentPhase === 'completing';
     }
     
     // 终端背景设置
@@ -387,7 +445,7 @@ export default {
         // 获取终端实例
         const terminalInstance = terminalStore.getTerminal(termId)
         
-        if (!terminalStore.hasSession(termId)) {
+        if (!terminalStore.hasTerminalSession(termId)) {
           log.warn(`跳过应用设置：终端 ${termId} 不存在`)
           return false
         }
@@ -857,8 +915,8 @@ export default {
       
       // 检查是否是标签切换模式
       if (!isTabSwitch) {
-        // 重置火箭动画状态为连接中
-        rocketAnimationPhase.value = 'connecting';
+        // 重置该终端的火箭动画状态为连接中
+        setTerminalRocketPhase(sessionId, 'connecting');
 
         // 无论终端是否已存在，都将其状态设置为正在连接
         // 这确保了火箭动画能正常显示，即使是已有终端
@@ -1182,6 +1240,11 @@ export default {
       // 设置SSH失败事件监听
       cleanupSSHFailureEvents = setupSSHFailureHandler()
 
+      // 添加会话切换事件监听
+      window.addEventListener('terminal:session-change', handleSessionChange)
+      // 添加终端状态刷新事件监听
+      window.addEventListener('terminal:refresh-status', handleTerminalRefreshStatus)
+
       // 如果有活动连接ID，则更新终端ID列表
       if (activeConnectionId.value) {
         if (!terminalIds.value.includes(activeConnectionId.value)) {
@@ -1261,6 +1324,8 @@ export default {
       if (cleanupEvents) cleanupEvents()
       if (cleanupSSHFailureEvents) cleanupSSHFailureEvents()
       window.removeEventListener('terminal-command', handleTerminalEvent)
+      window.removeEventListener('terminal:session-change', handleSessionChange)
+      window.removeEventListener('terminal:refresh-status', handleTerminalRefreshStatus)
       document.removeEventListener('keydown', handleGlobalKeydown, true)
 
       // 安全地断开ResizeObserver
@@ -1935,9 +2000,10 @@ export default {
       shouldShowConnectingAnimation,
       toggleSftpPanel,
       toggleMonitoringPanel,
-      // 火箭动画相关
-      rocketAnimationPhase,
-      handleAnimationComplete,
+      // 每个终端独立的火箭动画相关
+      shouldShowTerminalConnectingAnimation,
+      getTerminalRocketPhase,
+      handleTerminalAnimationComplete,
       // 自动完成相关
       autocomplete,
       autocompleteRef,
