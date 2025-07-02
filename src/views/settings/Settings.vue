@@ -630,7 +630,7 @@ export default {
         settingsService.updateTerminalSettings(terminalSettings, true)
 
         // 同时保存到旧的store以保持兼容性（临时）
-        settingsStore.saveTerminalSettings(terminalSettings)
+        await settingsStore.saveTerminalSettings(terminalSettings)
 
         log.info('终端设置已保存到统一设置服务并应用到所有终端:', terminalSettings)
 
@@ -713,12 +713,12 @@ export default {
     }
     
     // 保存界面设置
-    const saveUISettings = () => {
+    const saveUISettings = async () => {
       try {
         // 标记为已初始化
         uiSettings.initialized = true
-        
-        settingsStore.saveUISettings(uiSettings)
+
+        await settingsStore.saveUISettings(uiSettings)
         ElMessage.success('界面设置已保存')
         
         // 应用主题变更

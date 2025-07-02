@@ -2,11 +2,46 @@ import { defineStore } from 'pinia'
 import { ref, reactive } from 'vue'
 import { ElMessage } from 'element-plus'
 import log from '../services/log'
+import apiService from '../services/api'
 
 // 设置存储的键名
 const TERMINAL_SETTINGS_KEY = 'easyssh_terminal_settings'
 const CONNECTION_SETTINGS_KEY = 'easyssh_connection_settings'
 const UI_SETTINGS_KEY = 'easyssh_ui_settings'
+
+// 同步设置到服务器
+const syncSettingsToServer = async (settingType, settingData) => {
+  try {
+    // 检查用户是否已登录
+    const token = localStorage.getItem('auth_token')
+    if (!token) {
+      log.debug('用户未登录，跳过设置同步')
+      return false
+    }
+
+    // 构建要同步的设置数据
+    const settingsToSync = {
+      settings: {
+        [settingType]: settingData
+      }
+    }
+
+    // 调用用户更新API同步设置
+    const response = await apiService.put('/users/me', settingsToSync)
+
+    if (response && response.success) {
+      log.debug(`${settingType}设置已同步到服务器`)
+      return true
+    } else {
+      log.warn(`同步${settingType}设置到服务器失败:`, response?.message)
+      return false
+    }
+  } catch (error) {
+    // 不影响用户体验，只记录错误
+    log.warn(`同步${settingType}设置到服务器失败，将继续使用本地数据:`, error)
+    return false
+  }
+}
 
 /**
  * 设置状态管理
@@ -109,14 +144,17 @@ export const useSettingsStore = defineStore('settings', () => {
   }
   
   // 保存终端设置
-  const saveTerminalSettings = (settings) => {
+  const saveTerminalSettings = async (settings) => {
     try {
       // 更新当前状态
       Object.assign(terminalSettings, settings)
-      
+
       // 保存到本地存储
       localStorage.setItem(TERMINAL_SETTINGS_KEY, JSON.stringify(terminalSettings))
-      
+
+      // 同步到服务器（如果用户已登录）
+      await syncSettingsToServer('terminal', terminalSettings)
+
       return true
     } catch (error) {
       log.error('保存终端设置失败', error)
@@ -130,14 +168,17 @@ export const useSettingsStore = defineStore('settings', () => {
   }
   
   // 保存连接设置
-  const saveConnectionSettings = (settings) => {
+  const saveConnectionSettings = async (settings) => {
     try {
       // 更新当前状态
       Object.assign(connectionSettings, settings)
-      
+
       // 保存到本地存储
       localStorage.setItem(CONNECTION_SETTINGS_KEY, JSON.stringify(connectionSettings))
-      
+
+      // 同步到服务器（如果用户已登录）
+      await syncSettingsToServer('connection', connectionSettings)
+
       return true
     } catch (error) {
       log.error('保存连接设置失败', error)
@@ -151,17 +192,20 @@ export const useSettingsStore = defineStore('settings', () => {
   }
   
   // 保存UI设置
-  const saveUISettings = (settings) => {
+  const saveUISettings = async (settings) => {
     try {
       // 更新当前状态
       Object.assign(uiSettings, settings)
-      
+
       // 保存到本地存储
       localStorage.setItem(UI_SETTINGS_KEY, JSON.stringify(uiSettings))
-      
+
       // 应用主题和语言
       applyTheme()
-      
+
+      // 同步到服务器（如果用户已登录）
+      await syncSettingsToServer('ui', uiSettings)
+
       // 语言变更可能需要刷新页面以完全应用
       if (settings.language && settings.language !== getUISettings().language) {
         log.info('检测到语言变更，需要刷新页面以完全应用')
@@ -169,7 +213,7 @@ export const useSettingsStore = defineStore('settings', () => {
           window.location.reload()
         }, 500)
       }
-      
+
       return true
     } catch (error) {
       log.error('保存UI设置失败', error)

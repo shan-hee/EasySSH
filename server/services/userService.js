@@ -393,22 +393,40 @@ class UserService {
       
       // 处理settings字段
       if (userData.settings) {
-        // 直接更新字段
-        if (userData.settings.theme !== undefined) {
-          user.theme = userData.settings.theme;
-        }
-        if (userData.settings.fontSize !== undefined) {
-          user.fontSize = userData.settings.fontSize;
-        }
-        
-        // 其他settings数据保存到settingsData
-        const newSettingsData = { ...user.settingsData };
-        Object.keys(userData.settings).forEach(key => {
-          if (!['theme', 'fontSize'].includes(key)) {
-            newSettingsData[key] = userData.settings[key];
+        // 获取现有的设置数据
+        const currentSettingsData = user.settingsData || {};
+
+        // 处理UI设置中的主题和字体大小
+        if (userData.settings.ui) {
+          if (userData.settings.ui.theme !== undefined) {
+            user.theme = userData.settings.ui.theme;
           }
+          if (userData.settings.ui.fontSize !== undefined) {
+            user.fontSize = userData.settings.ui.fontSize;
+          }
+        }
+
+        // 处理终端设置中的字体大小
+        if (userData.settings.terminal && userData.settings.terminal.fontSize !== undefined) {
+          user.fontSize = userData.settings.terminal.fontSize;
+        }
+
+        // 合并所有设置数据到settingsData
+        const newSettingsData = { ...currentSettingsData };
+        Object.keys(userData.settings).forEach(settingType => {
+          newSettingsData[settingType] = {
+            ...newSettingsData[settingType],
+            ...userData.settings[settingType]
+          };
         });
+
         user.settingsData = newSettingsData;
+
+        console.log('用户设置已更新:', {
+          theme: user.theme,
+          fontSize: user.fontSize,
+          settingsData: user.settingsData
+        });
       }
       
       // 更新其他字段
