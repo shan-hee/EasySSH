@@ -2123,7 +2123,7 @@ export default {
   justify-content: center;
   align-items: center;
   background-color: transparent;
-  z-index: 10;
+  /* z-index: 10; */
   transition: opacity 0.3s ease-in-out;
 }
 
@@ -2143,11 +2143,11 @@ export default {
 :deep(.xterm-viewport) {
   overflow-y: auto !important;
   overflow-x: hidden;
-  position: absolute; /* 添加绝对定位 */
-  right: 0; /* 将滚动条固定在右侧 */
-  top: -20px !important; /* 抵消上方的margin */
-  bottom: -20px !important; /* 抵消下方的margin */
-  height: calc(100% + 40px); /* 增加高度以覆盖margin区域 */
+  /* position: absolute; 
+  right: 0; 
+  top: -20px !important; 
+  bottom: -20px !important; 
+  height: calc(100% + 40px);  */
 }
 
 /* 添加Webkit浏览器的滚动条样式 */
