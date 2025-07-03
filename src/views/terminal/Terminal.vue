@@ -2152,7 +2152,7 @@ export default {
 
 /* 添加Webkit浏览器的滚动条样式 */
 :deep(.xterm-viewport::-webkit-scrollbar) {
-  width: 6px; /* 减小滚动条宽度 */
+  width: 5px; /* 减小滚动条宽度 */
   height: 0; /* 确保横向滚动条不显示 */
 }
 

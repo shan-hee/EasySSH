@@ -67,8 +67,8 @@ export const LATENCY_CONFIG = {
  * 注意：部分值可能会被settings中的配置覆盖
  */
 export const TERMINAL_CONSTANTS = {
-  DEFAULT_FONT_SIZE: 14, // 可被settings.getTerminalOptions().fontSize覆盖
-  DEFAULT_FONT_FAMILY: "'JetBrains Mono', 'Courier New', monospace", // 可被settings.getTerminalOptions().fontFamily覆盖
+  DEFAULT_FONT_SIZE: 16, // 可被settings.getTerminalOptions().fontSize覆盖
+  DEFAULT_FONT_FAMILY: "'JetBrains Mono'", // 可被settings.getTerminalOptions().fontFamily覆盖
   DEFAULT_SCROLLBACK: 3000
 };
 

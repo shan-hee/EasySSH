@@ -118,7 +118,7 @@ class TerminalService {
     // 默认终端选项
     this.defaultOptions = {
       fontSize: 16,
-      fontFamily: 'Menlo, Monaco, Consolas, monospace',
+      fontFamily: "'JetBrains Mono'",
       theme: this.themes.vscode,
       cursorBlink: true,
       cursorStyle: 'block',

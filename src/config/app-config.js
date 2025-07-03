@@ -95,8 +95,8 @@ export const userSettingsDefaults = {
 
   // 终端设置
   terminal: {
-    fontFamily: 'Menlo, Monaco, "Courier New", monospace',
-    fontSize: 14,
+    fontFamily: "'JetBrains Mono'",
+    fontSize: 16,
     lineHeight: 1.5,
     cursorStyle: 'block', // block, bar, underline
     cursorBlink: true,

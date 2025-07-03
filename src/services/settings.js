@@ -534,7 +534,7 @@ class SettingsService {
   _getDefaultTerminalOptions() {
     return {
       fontSize: 16,
-      fontFamily: "'JetBrains Mono', 'Courier New', monospace",
+      fontFamily: "'JetBrains Mono'",
       lineHeight: 1.2,
       theme: {
         background: '#1e1e1e',
