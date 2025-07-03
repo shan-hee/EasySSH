@@ -392,6 +392,15 @@ class SettingsService {
   }
 
   /**
+   * 获取终端主题配置（公共方法）
+   * @param {string} themeName - 主题名称
+   * @returns {Object} 终端主题配置
+   */
+  getTerminalTheme(themeName = 'dark') {
+    return this._getTerminalTheme(themeName)
+  }
+
+  /**
    * 获取终端主题配置
    * @param {string} uiTheme - UI主题
    * @returns {Object} 终端主题配置

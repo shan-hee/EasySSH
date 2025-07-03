@@ -1148,8 +1148,7 @@ export const useTerminalStore = defineStore('terminal', () => {
         // 应用终端主题
         if (settings.theme) {
           try {
-            const settingsServiceInstance = new settingsService()
-            const themeConfig = settingsServiceInstance.getTerminalTheme(settings.theme)
+            const themeConfig = settingsService.getTerminalTheme(settings.theme)
 
             // 检查主题是否有变化
             if (JSON.stringify(terminal.options.theme) !== JSON.stringify(themeConfig)) {
