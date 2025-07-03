@@ -9,8 +9,8 @@ export const useLocalConnectionsStore = defineStore('localConnections', {
   }),
 
   persist: {
-    key: 'easyssh-local-connections',
-    storage: localStorage,
+    key: 'local_connections',
+    storageType: 'persistent'
   },
 
   actions: {

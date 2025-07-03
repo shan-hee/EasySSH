@@ -286,7 +286,6 @@ export default defineConfig(({ mode }) => {
         'vue',
         'vue-router',
         'pinia',
-        'pinia-plugin-persistedstate',
         'element-plus',
         'element-plus/es',
         '@xterm/xterm',

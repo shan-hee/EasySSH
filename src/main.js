@@ -5,8 +5,7 @@ import App from './App.vue'
 // 导入路由配置
 import router from './router'
 // 导入状态管理
-import { createPinia } from 'pinia'
-import piniaPluginPersistedstate from 'pinia-plugin-persistedstate'
+import pinia from './store'
 // 导入Element Plus样式
 import 'element-plus/dist/index.css'
 import ElementPlus from 'element-plus'
@@ -25,6 +24,8 @@ import log from './services/log'
 import fontLoader from './utils/fontLoader'
 // 导入配置管理器
 import configManager from './utils/config-manager'
+// 导入统一存储服务
+import storageService from './services/storage'
 // 导入自定义指令
 import directives from './directives'
 
@@ -109,20 +110,20 @@ preloadFonts()
 // 开发环境存储版本检查
 if (process.env.NODE_ENV === 'development') {
   const storageVersion = 'v1.0'
-  const savedVersion = localStorage.getItem('app-version')
+  const savedVersion = storageService.getItem('app-version')
 
   if (savedVersion !== storageVersion) {
     log.info('检测到存储版本变更，重置存储状态')
-    localStorage.clear()
+    storageService.clear(true) // 清除所有存储
     sessionStorage.clear()
-    localStorage.setItem('app-version', storageVersion)
+    storageService.setItem('app-version', storageVersion)
   }
 
   // 添加快捷键清除存储
   window.addEventListener('keydown', (e) => {
     // Ctrl+Shift+Delete 清除所有持久化存储
     if (e.ctrlKey && e.shiftKey && e.key === 'Delete') {
-      localStorage.clear()
+      storageService.clear(true) // 清除所有存储
       sessionStorage.clear()
       log.info('已清除所有存储')
       location.reload()
@@ -132,10 +133,7 @@ if (process.env.NODE_ENV === 'development') {
   })
 }
 
-// 创建 Pinia 实例
-const pinia = createPinia()
-// 添加持久化插件
-pinia.use(piniaPluginPersistedstate)
+// Pinia实例已在store/index.js中配置好统一存储插件
 
 // 创建Vue应用实例
 const app = createApp(App)
@@ -242,7 +240,7 @@ import { useUserStore } from './store/user'
 
 // 应用初始化时强制同步token状态，并主动验证和刷新数据
 const userStore = useUserStore()
-const savedToken = localStorage.getItem('auth_token')
+const savedToken = storageService.getItem('auth_token')
 if (savedToken) {
   userStore.setToken(savedToken)
 
@@ -441,18 +439,18 @@ window.addEventListener('auth:complete-logout', async () => {
       // 清理sessionStorage
       sessionStorage.clear()
 
-      // 清理特定的localStorage项目（但保留记住的凭据）
+      // 清理特定的存储项目（但保留记住的凭据）
       const keysToRemove = [
         'auth_token',
         'currentUser',
         // 注意：不再清除 easyssh_credentials，保留记住的密码
-        'easyssh-user'
+        'user'
       ]
       keysToRemove.forEach(key => {
         try {
-          localStorage.removeItem(key)
+          storageService.removeItem(key)
         } catch (e) {
-          log.error(`清理localStorage项目失败: ${key}`, e)
+          log.error(`清理存储项目失败: ${key}`, e)
         }
       })
     } catch (error) {
@@ -479,9 +477,9 @@ window.addEventListener('auth:remote-logout', () => {
   // 清除全局状态指示器
   window._isAuthFailed = true
   // 清除token，确保不再获取登录信息
-  localStorage.removeItem('auth_token')
+  storageService.removeItem('auth_token')
   // 远程注销时清理记住的凭据（这是唯一清理凭据的场景）
-  localStorage.removeItem('easyssh_credentials')
+  storageService.removeItem('easyssh_credentials')
   log.info('远程注销：已清理记住的凭据')
   // 不保留重定向路径，确保完全重新登录
   window.location.href = '/login?remote-logout=true'

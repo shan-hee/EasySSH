@@ -5,6 +5,7 @@ import router from '../router'
 import apiService from '../services/api'
 import log from '../services/log'
 import scriptLibraryService from '../services/scriptLibrary'
+import storageService from '../services/storage'
 
 // 用于存储加密凭据的键名
 const CREDENTIALS_KEY = 'easyssh_credentials'
@@ -22,9 +23,9 @@ function encryptCredentials(username, password) {
 // 解密凭据函数
 function decryptCredentials() {
   try {
-    const encrypted = localStorage.getItem(CREDENTIALS_KEY)
+    const encrypted = storageService.getItem(CREDENTIALS_KEY)
     if (!encrypted) return null
-    
+
     const decoded = JSON.parse(atob(encrypted))
     return {
       username: decoded.u,
@@ -84,22 +85,22 @@ export const useUserStore = defineStore('user', () => {
   // 操作方法
   function setToken(newToken) {
     token.value = newToken
-    // 将token保存到localStorage
+    // 将token保存到统一存储
     if (newToken) {
-      localStorage.setItem('auth_token', newToken)
+      storageService.setItem('auth_token', newToken)
     } else {
-      localStorage.removeItem('auth_token')
+      storageService.removeItem('auth_token')
     }
   }
   
   function setUserInfo(info) {
       userInfo.value = { ...userInfo.value, ...info }
-    
-    // 同时将用户信息保存到localStorage的currentUser中，方便其他服务直接访问
+
+    // 同时将用户信息保存到统一存储的currentUser中，方便其他服务直接访问
     try {
-      localStorage.setItem('currentUser', JSON.stringify(userInfo.value))
+      storageService.setItem('currentUser', JSON.stringify(userInfo.value))
     } catch (error) {
-      log.error('保存currentUser到localStorage失败', error)
+      log.error('保存currentUser到统一存储失败', error)
     }
   }
   
@@ -111,16 +112,16 @@ export const useUserStore = defineStore('user', () => {
   function saveUserCredentials(username, password) {
     try {
       const encrypted = encryptCredentials(username, password)
-      localStorage.setItem(CREDENTIALS_KEY, encrypted)
+      storageService.setItem(CREDENTIALS_KEY, encrypted)
       // 日志记录移到调用处，避免重复
     } catch (error) {
       log.error('保存用户凭据失败', error)
     }
   }
-  
+
   // 清除保存的用户凭据
   function clearUserCredentials() {
-    localStorage.removeItem(CREDENTIALS_KEY)
+    storageService.removeItem(CREDENTIALS_KEY)
     log.info('用户凭据已清除')
   }
   
@@ -1081,8 +1082,8 @@ export const useUserStore = defineStore('user', () => {
   }
 }, {
   persist: {
-    key: 'easyssh-user',
-    storage: localStorage,
+    key: 'user',
+    storageType: 'persistent',
     paths: ['token', 'userInfo', 'preferences', 'connections', 'favorites', 'history', 'pinnedConnections']
   }
-}) 
+})

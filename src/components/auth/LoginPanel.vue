@@ -66,13 +66,14 @@ import Checkbox from '@/components/common/Checkbox.vue'
 import MfaVerifyModal from '@/components/auth/MfaVerifyModal.vue'
 import { useRouter } from 'vue-router'
 import log from '@/services/log'
+import storageService from '@/services/storage'
 
-// 从localStorage获取保存的凭据函数
+// 从统一存储获取保存的凭据函数
 function getSavedCredentials() {
   try {
-    const encrypted = localStorage.getItem('easyssh_credentials')
+    const encrypted = storageService.getItem('easyssh_credentials')
     if (!encrypted) return { username: '', password: '', hasCredentials: false }
-    
+
     const decoded = JSON.parse(atob(encrypted))
     return {
       username: decoded.u,

@@ -5,6 +5,7 @@
  */
 import { autocompleteConfig, environment } from '@/config/app-config'
 import log from '@/services/log'
+import storageService from '@/services/storage'
 
 class ConfigManager {
   constructor() {
@@ -120,7 +121,7 @@ class ConfigManager {
       this.overrides = {}
       
       if (environment.isDevelopment) {
-        localStorage.removeItem('dev-cache-config')
+        storageService.removeItem('dev-cache-config')
       }
     }
     
@@ -140,14 +141,14 @@ class ConfigManager {
    */
   loadDevOverrides() {
     try {
-      const stored = localStorage.getItem('dev-cache-config')
+      const stored = storageService.getItem('dev-cache-config')
       if (stored) {
         const overrides = JSON.parse(stored)
-        
+
         Object.entries(overrides).forEach(([path, override]) => {
           this.set(path, override.value, false)
         })
-        
+
         log.debug('已加载开发环境配置覆盖', overrides)
       }
     } catch (error) {
@@ -160,7 +161,7 @@ class ConfigManager {
    */
   saveDevOverrides() {
     try {
-      localStorage.setItem('dev-cache-config', JSON.stringify(this.overrides))
+      storageService.setItem('dev-cache-config', JSON.stringify(this.overrides))
       log.debug('已保存开发环境配置覆盖')
     } catch (error) {
       log.warn('保存开发环境配置覆盖失败:', error)
@@ -180,7 +181,7 @@ class ConfigManager {
     }
     
     if (environment.isDevelopment) {
-      localStorage.setItem('cache-config-presets', JSON.stringify(presets))
+      storageService.setItem('cache-config-presets', JSON.stringify(presets))
     }
     
     log.debug(`配置预设已创建: ${name}`)
@@ -218,7 +219,7 @@ class ConfigManager {
    */
   getPresets() {
     try {
-      const stored = localStorage.getItem('cache-config-presets')
+      const stored = storageService.getItem('cache-config-presets')
       return stored ? JSON.parse(stored) : {}
     } catch (error) {
       log.warn('获取配置预设失败:', error)
@@ -235,7 +236,7 @@ class ConfigManager {
     delete presets[name]
     
     if (environment.isDevelopment) {
-      localStorage.setItem('cache-config-presets', JSON.stringify(presets))
+      storageService.setItem('cache-config-presets', JSON.stringify(presets))
     }
     
     log.debug(`配置预设已删除: ${name}`)
@@ -269,7 +270,7 @@ class ConfigManager {
       }
       
       if (configData.presets && environment.isDevelopment) {
-        localStorage.setItem('cache-config-presets', JSON.stringify(configData.presets))
+        storageService.setItem('cache-config-presets', JSON.stringify(configData.presets))
       }
       
       this.saveDevOverrides()

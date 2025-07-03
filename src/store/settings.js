@@ -3,6 +3,7 @@ import { ref, reactive } from 'vue'
 import { ElMessage } from 'element-plus'
 import log from '../services/log'
 import apiService from '../services/api'
+import storageService from '../services/storage'
 
 // 设置存储的键名
 const TERMINAL_SETTINGS_KEY = 'easyssh_terminal_settings'
@@ -78,23 +79,23 @@ export const useSettingsStore = defineStore('settings', () => {
   const initSettings = () => {
     try {
       // 加载终端设置
-      const savedTerminalSettings = localStorage.getItem(TERMINAL_SETTINGS_KEY)
+      const savedTerminalSettings = storageService.getItem(TERMINAL_SETTINGS_KEY)
       if (savedTerminalSettings) {
         Object.assign(terminalSettings, JSON.parse(savedTerminalSettings))
       }
-      
+
       // 加载连接设置
-      const savedConnectionSettings = localStorage.getItem(CONNECTION_SETTINGS_KEY)
+      const savedConnectionSettings = storageService.getItem(CONNECTION_SETTINGS_KEY)
       if (savedConnectionSettings) {
         Object.assign(connectionSettings, JSON.parse(savedConnectionSettings))
       }
-      
+
       // 加载界面设置
-      const savedUISettings = localStorage.getItem(UI_SETTINGS_KEY)
+      const savedUISettings = storageService.getItem(UI_SETTINGS_KEY)
       if (savedUISettings) {
         Object.assign(uiSettings, JSON.parse(savedUISettings))
       }
-      
+
       // 应用主题设置
       applyTheme()
     } catch (error) {
@@ -149,8 +150,8 @@ export const useSettingsStore = defineStore('settings', () => {
       // 更新当前状态
       Object.assign(terminalSettings, settings)
 
-      // 保存到本地存储
-      localStorage.setItem(TERMINAL_SETTINGS_KEY, JSON.stringify(terminalSettings))
+      // 保存到统一存储
+      storageService.setItem(TERMINAL_SETTINGS_KEY, JSON.stringify(terminalSettings))
 
       // 同步到服务器（如果用户已登录）
       await syncSettingsToServer('terminal', terminalSettings)
@@ -173,8 +174,8 @@ export const useSettingsStore = defineStore('settings', () => {
       // 更新当前状态
       Object.assign(connectionSettings, settings)
 
-      // 保存到本地存储
-      localStorage.setItem(CONNECTION_SETTINGS_KEY, JSON.stringify(connectionSettings))
+      // 保存到统一存储
+      storageService.setItem(CONNECTION_SETTINGS_KEY, JSON.stringify(connectionSettings))
 
       // 同步到服务器（如果用户已登录）
       await syncSettingsToServer('connection', connectionSettings)
@@ -197,8 +198,8 @@ export const useSettingsStore = defineStore('settings', () => {
       // 更新当前状态
       Object.assign(uiSettings, settings)
 
-      // 保存到本地存储
-      localStorage.setItem(UI_SETTINGS_KEY, JSON.stringify(uiSettings))
+      // 保存到统一存储
+      storageService.setItem(UI_SETTINGS_KEY, JSON.stringify(uiSettings))
 
       // 应用主题和语言
       applyTheme()
@@ -257,9 +258,9 @@ export const useSettingsStore = defineStore('settings', () => {
       })
       
       // 保存所有重置的设置
-      localStorage.setItem(TERMINAL_SETTINGS_KEY, JSON.stringify(terminalSettings))
-      localStorage.setItem(CONNECTION_SETTINGS_KEY, JSON.stringify(connectionSettings))
-      localStorage.setItem(UI_SETTINGS_KEY, JSON.stringify(uiSettings))
+      storageService.setItem(TERMINAL_SETTINGS_KEY, JSON.stringify(terminalSettings))
+      storageService.setItem(CONNECTION_SETTINGS_KEY, JSON.stringify(connectionSettings))
+      storageService.setItem(UI_SETTINGS_KEY, JSON.stringify(uiSettings))
       
       // 应用主题
       applyTheme()
@@ -288,5 +289,9 @@ export const useSettingsStore = defineStore('settings', () => {
     applyTheme
   }
 }, {
-  persist: true
-}) 
+  persist: {
+    key: 'settings',
+    storageType: 'persistent',
+    paths: ['terminalSettings', 'connectionSettings', 'uiSettings']
+  }
+})
