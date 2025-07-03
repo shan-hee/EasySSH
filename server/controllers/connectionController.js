@@ -6,6 +6,7 @@
 const logger = require('../utils/logger');
 const db = require('../config/database').getDb();
 const { validateConnection } = require('../utils/validators');
+const { processConnectionSensitiveData, decryptPassword, decryptPrivateKey } = require('../utils/encryption');
 
 /**
  * 获取用户的所有连接
@@ -19,30 +20,42 @@ const getUserConnections = async (req, res) => {
       'SELECT * FROM connections WHERE user_id = ? ORDER BY updated_at DESC'
     ).all(userId);
     
-    // 处理连接数据，将存储的JSON字符串转为对象
+    // 处理连接数据，将存储的JSON字符串转为对象，并解密敏感信息
     const formattedConnections = connections.map(conn => {
       try {
         // 可能包含额外配置的JSON字段
         if (conn.config) {
           conn.config = JSON.parse(conn.config);
         }
-        
+
+        // 解密敏感数据（仅在需要时）
+        const decryptedConn = { ...conn };
+        if (decryptedConn.password && decryptedConn.remember_password) {
+          decryptedConn.password = decryptPassword(decryptedConn.password);
+        }
+        if (decryptedConn.privateKey) {
+          decryptedConn.privateKey = decryptPrivateKey(decryptedConn.privateKey);
+        }
+        if (decryptedConn.passphrase) {
+          decryptedConn.passphrase = decryptPassword(decryptedConn.passphrase);
+        }
+
         return {
-          id: conn.id,
-          name: conn.name,
-          host: conn.host,
-          port: conn.port,
-          username: conn.username,
-          password: conn.remember_password ? conn.password : '',
-          rememberPassword: !!conn.remember_password,
-          privateKey: conn.privateKey || '',
-          passphrase: conn.passphrase || '',
-          authType: conn.auth_type || 'password',
-          description: conn.description || '',
-          group: conn.group_name || '默认分组',
-          config: conn.config || {},
-          createdAt: conn.created_at,
-          updatedAt: conn.updated_at
+          id: decryptedConn.id,
+          name: decryptedConn.name,
+          host: decryptedConn.host,
+          port: decryptedConn.port,
+          username: decryptedConn.username,
+          password: decryptedConn.remember_password ? decryptedConn.password : '',
+          rememberPassword: !!decryptedConn.remember_password,
+          privateKey: decryptedConn.privateKey || '',
+          passphrase: decryptedConn.passphrase || '',
+          authType: decryptedConn.auth_type || 'password',
+          description: decryptedConn.description || '',
+          group: decryptedConn.group_name || '默认分组',
+          config: decryptedConn.config || {},
+          createdAt: decryptedConn.created_at,
+          updatedAt: decryptedConn.updated_at
         };
       } catch (err) {
         logger.error(`处理连接数据错误：${err.message}`, { connectionId: conn.id });
@@ -103,6 +116,9 @@ const addConnection = async (req, res) => {
     db.prepare('BEGIN TRANSACTION').run();
 
     try {
+    // 加密敏感数据
+    const encryptedConnection = processConnectionSensitiveData(connection, true);
+
     // 插入新连接
     db.prepare(
       `INSERT INTO connections (
@@ -113,18 +129,18 @@ const addConnection = async (req, res) => {
     ).run(
       connectionId,
       userId,
-      connection.name || `${connection.username}@${connection.host}`,
-      connection.host,
-      connection.port || 22,
-      connection.username,
-      connection.rememberPassword ? connection.password : '',
-      connection.rememberPassword ? 1 : 0,
-      connection.privateKey || '',
-      connection.passphrase || '',
-      connection.authType || 'password',
-      connection.description || '',
-      connection.group || '默认分组',
-      JSON.stringify(connection.config || {}),
+      encryptedConnection.name || `${encryptedConnection.username}@${encryptedConnection.host}`,
+      encryptedConnection.host,
+      encryptedConnection.port || 22,
+      encryptedConnection.username,
+      encryptedConnection.rememberPassword ? encryptedConnection.password : '',
+      encryptedConnection.rememberPassword ? 1 : 0,
+      encryptedConnection.privateKey || '',
+      encryptedConnection.passphrase || '',
+      encryptedConnection.authType || 'password',
+      encryptedConnection.description || '',
+      encryptedConnection.group || '默认分组',
+      JSON.stringify(encryptedConnection.config || {}),
       now,
       now
     );
@@ -183,7 +199,10 @@ const updateConnection = async (req, res) => {
     
     // 更新连接
     const now = new Date().toISOString();
-    
+
+    // 加密敏感数据
+    const encryptedConnection = processConnectionSensitiveData(connection, true);
+
     db.prepare(
       `UPDATE connections SET
         name = ?,
@@ -201,17 +220,17 @@ const updateConnection = async (req, res) => {
         updated_at = ?
       WHERE id = ? AND user_id = ?`
     ).run(
-      connection.name || `${connection.username}@${connection.host}`,
-      connection.host,
-      connection.port || 22,
-      connection.username,
-      connection.rememberPassword ? connection.password : '',
-      connection.rememberPassword ? 1 : 0,
-      connection.privateKey || '',
-      connection.passphrase || '',
-      connection.authType || 'password',
-      connection.description || '',
-      connection.group || '默认分组',
+      encryptedConnection.name || `${encryptedConnection.username}@${encryptedConnection.host}`,
+      encryptedConnection.host,
+      encryptedConnection.port || 22,
+      encryptedConnection.username,
+      encryptedConnection.rememberPassword ? encryptedConnection.password : '',
+      encryptedConnection.rememberPassword ? 1 : 0,
+      encryptedConnection.privateKey || '',
+      encryptedConnection.passphrase || '',
+      encryptedConnection.authType || 'password',
+      encryptedConnection.description || '',
+      encryptedConnection.group || '默认分组',
       JSON.stringify(connection.config || {}),
       now,
       connectionId,
@@ -679,21 +698,24 @@ const syncConnections = async (req, res) => {
       
       // 更新或新增连接
       for (const connection of connections) {
+        // 加密敏感数据
+        const encryptedConnection = processConnectionSensitiveData(connection, true);
+
         if (existingIds.has(connection.id)) {
           // 更新现有连接
           updateStmt.run(
-            connection.name || `${connection.username}@${connection.host}`,
-            connection.host,
-            connection.port || 22,
-            connection.username,
-            connection.rememberPassword ? connection.password : '',
-            connection.rememberPassword ? 1 : 0,
-            connection.privateKey || '',
-            connection.passphrase || '',
-            connection.authType || 'password',
-            connection.description || '',
-            connection.group || '默认分组',
-            JSON.stringify(connection.config || {}),
+            encryptedConnection.name || `${encryptedConnection.username}@${encryptedConnection.host}`,
+            encryptedConnection.host,
+            encryptedConnection.port || 22,
+            encryptedConnection.username,
+            encryptedConnection.rememberPassword ? encryptedConnection.password : '',
+            encryptedConnection.rememberPassword ? 1 : 0,
+            encryptedConnection.privateKey || '',
+            encryptedConnection.passphrase || '',
+            encryptedConnection.authType || 'password',
+            encryptedConnection.description || '',
+            encryptedConnection.group || '默认分组',
+            JSON.stringify(encryptedConnection.config || {}),
             now,
             connection.id,
             userId
@@ -703,18 +725,18 @@ const syncConnections = async (req, res) => {
           insertStmt.run(
             connection.id,
             userId,
-            connection.name || `${connection.username}@${connection.host}`,
-            connection.host,
-            connection.port || 22,
-            connection.username,
-            connection.rememberPassword ? connection.password : '',
-            connection.rememberPassword ? 1 : 0,
-            connection.privateKey || '',
-            connection.passphrase || '',
-            connection.authType || 'password',
-            connection.description || '',
-            connection.group || '默认分组',
-            JSON.stringify(connection.config || {}),
+            encryptedConnection.name || `${encryptedConnection.username}@${encryptedConnection.host}`,
+            encryptedConnection.host,
+            encryptedConnection.port || 22,
+            encryptedConnection.username,
+            encryptedConnection.rememberPassword ? encryptedConnection.password : '',
+            encryptedConnection.rememberPassword ? 1 : 0,
+            encryptedConnection.privateKey || '',
+            encryptedConnection.passphrase || '',
+            encryptedConnection.authType || 'password',
+            encryptedConnection.description || '',
+            encryptedConnection.group || '默认分组',
+            JSON.stringify(encryptedConnection.config || {}),
             now,
             now
           );

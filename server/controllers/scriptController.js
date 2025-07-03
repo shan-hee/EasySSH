@@ -8,6 +8,7 @@ const UserScript = require('../models/UserScript');
 const { getDb } = require('../config/database');
 const log = require('../utils/logger');
 const { Client } = require('ssh2');
+const { decryptPassword, decryptPrivateKey } = require('../utils/encryption');
 
 /**
  * 执行SSH命令
@@ -578,13 +579,17 @@ const executeScript = async (req, res) => {
       });
     }
 
+    // 解密敏感数据
+    const decryptedPassword = connection.password ? decryptPassword(connection.password) : '';
+    const decryptedPrivateKey = connection.privateKey ? decryptPrivateKey(connection.privateKey) : '';
+
     // 执行SSH命令
     const executionResult = await executeSSHCommand({
       host,
       port: port || 22,
       username,
-      password: connection.password,
-      privateKey: connection.privateKey,
+      password: decryptedPassword,
+      privateKey: decryptedPrivateKey,
       authType: connection.auth_type,
       command
     });
