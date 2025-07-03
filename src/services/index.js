@@ -93,11 +93,28 @@ async function initServices() {
     servicesStatus.sftp = true
     log.debug('SSH和SFTP服务初始化完成')
     
+    // 将服务实例挂载到全局对象，供终端等组件动态访问
+    if (typeof window !== 'undefined') {
+      window.services = {
+        api: apiService,
+        settings,
+        log,
+        ssh: sshService,
+        sftp: sftpService,
+        clipboard: clipboardService,
+        storage,
+        auth,
+        terminal,
+        mfa: mfaService
+      }
+      log.debug('服务实例已挂载到全局对象')
+    }
+
     // 触发服务初始化完成事件
     window.dispatchEvent(new CustomEvent('services:ready', {
       detail: { status: { ...servicesStatus } }
     }))
-    
+
     log.info('所有服务初始化完成')
     return true
   } catch (error) {

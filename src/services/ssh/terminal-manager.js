@@ -51,7 +51,8 @@ class TerminalManager {
       cursorStyle: cursorStyle, // 确保使用传入的光标样式
       cursorBlink: cursorBlink, // 确保使用传入的光标闪烁设置
       scrollback: 5000, // 增加滚动历史行数，默认值通常是1000
-      rightClickSelectsWord: true,
+      rightClickSelectsWord: options.rightClickSelectsWord || false, // 使用设置中的值
+      copyOnSelect: options.copyOnSelect || false, // 使用设置中的值
       disableStdin: false,
       letterSpacing: options.letterSpacing || 0, // 确保应用字符间距设置
       fastScrollModifier: 'alt', // 按住alt键可以快速滚动
@@ -111,13 +112,33 @@ class TerminalManager {
       }
     });
     
-    // 添加选中复制功能 - 简化逻辑，默认启用复制
+    // 添加选中复制功能 - 动态检查设置
     terminal.onSelectionChange(() => {
+      // 动态获取当前设置，而不是使用创建时的固定值
+      let currentSettings;
+      try {
+        // 尝试从全局设置服务获取最新设置
+        if (window.services && window.services.settings) {
+          currentSettings = window.services.settings.getTerminalSettings();
+        } else {
+          // 回退到传入的选项
+          currentSettings = options;
+        }
+      } catch (error) {
+        // 如果获取设置失败，使用传入的选项
+        currentSettings = options;
+      }
+
+      // 检查是否启用了选中复制功能
+      if (!currentSettings.copyOnSelect) {
+        return;
+      }
+
       if (terminal.hasSelection()) {
         const selectedText = terminal.getSelection();
         if (selectedText) {
           try {
-            // 简化逻辑，直接复制选中文本，避免重复创建设置服务
+            // 复制选中文本到剪贴板
             navigator.clipboard.writeText(selectedText);
           } catch (error) {
             log.error('复制到剪贴板失败:', error);
@@ -126,8 +147,29 @@ class TerminalManager {
       }
     });
     
-    // 添加右键粘贴功能 - 使用xterm.js原生paste方法，确保多行内容统一执行
+    // 添加右键粘贴功能 - 动态检查设置
     const handleContextMenu = async (event) => {
+      // 动态获取当前设置，而不是使用创建时的固定值
+      let currentSettings;
+      try {
+        // 尝试从全局设置服务获取最新设置
+        if (window.services && window.services.settings) {
+          currentSettings = window.services.settings.getTerminalSettings();
+        } else {
+          // 回退到传入的选项
+          currentSettings = options;
+        }
+      } catch (error) {
+        // 如果获取设置失败，使用传入的选项
+        currentSettings = options;
+      }
+
+      // 检查是否启用了右键粘贴功能
+      if (!currentSettings.rightClickSelectsWord) {
+        // 如果未启用右键粘贴，允许默认的右键菜单
+        return;
+      }
+
       event.preventDefault();
 
       try {
@@ -146,7 +188,7 @@ class TerminalManager {
         }
       }
     };
-    
+
     container.addEventListener('contextmenu', handleContextMenu);
     
     // 添加终端粘贴事件监听 - 使用xterm.js原生paste方法

@@ -632,6 +632,11 @@ export default {
         // 同时保存到旧的store以保持兼容性（临时）
         await settingsStore.saveTerminalSettings(terminalSettings)
 
+        // 发送全局事件，通知所有终端设置已更新（用于动态更新复制粘贴功能）
+        window.dispatchEvent(new CustomEvent('terminal-settings-updated', {
+          detail: { settings: terminalSettings }
+        }))
+
         log.info('终端设置已保存到统一设置服务并应用到所有终端:', terminalSettings)
 
         // 检查当前是否有打开的终端来显示相应的消息
