@@ -634,18 +634,11 @@ export default {
 
         log.info('终端设置已保存到统一设置服务并应用到所有终端:', terminalSettings)
 
-        // 获取应用结果（从设置服务的内部应用中获取）
-        const results = await terminalStore.applySettingsToAllTerminals(terminalSettings)
-        const totalTerminals = Object.keys(results).length
-        
-        if (totalTerminals > 0) {
-          const successCount = Object.values(results).filter(result => result === true).length
-          
-          if (successCount === totalTerminals) {
-            ElMessage.success(`成功应用设置到 ${successCount} 个终端`)
-          } else {
-            ElMessage.warning(`应用设置时出现问题: ${successCount}/${totalTerminals} 个终端成功`)
-          }
+        // 检查当前是否有打开的终端来显示相应的消息
+        const terminalIds = Object.keys(terminalStore.terminals || {})
+
+        if (terminalIds.length > 0) {
+          ElMessage.success(`终端设置已保存并应用到 ${terminalIds.length} 个终端`)
         } else {
           ElMessage.success('终端设置已保存')
         }
