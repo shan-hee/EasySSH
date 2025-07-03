@@ -57,12 +57,7 @@ class SettingsService {
    */
   async loadSettings() {
     try {
-      let storedSettings = this.storage.get(SETTINGS_STORAGE_KEY, {})
-
-      // 如果新的设置存储为空，尝试从旧的设置中迁移
-      if (Object.keys(storedSettings).length === 0) {
-        storedSettings = this._migrateFromLegacySettings()
-      }
+      const storedSettings = this.storage.get(SETTINGS_STORAGE_KEY, {})
 
       log.debug('从存储加载的设置数据:', storedSettings)
       log.debug('当前默认设置:', this.settings)
@@ -487,53 +482,7 @@ class SettingsService {
     }
   }
 
-  /**
-   * 从旧的设置存储中迁移数据
-   * @private
-   * @returns {Object} 迁移的设置数据
-   */
-  _migrateFromLegacySettings() {
-    try {
-      // 尝试从旧的UI设置中迁移
-      const legacyUISettings = localStorage.getItem('easyssh_ui_settings')
-      const legacyTerminalSettings = localStorage.getItem('easyssh_terminal_settings')
-      const legacyConnectionSettings = localStorage.getItem('easyssh_connection_settings')
 
-      const migratedSettings = {}
-
-      if (legacyUISettings) {
-        const uiSettings = JSON.parse(legacyUISettings)
-        migratedSettings.ui = {
-          theme: uiSettings.theme || 'dark',
-          language: uiSettings.language || 'zh-CN'
-        }
-        log.info('已迁移UI设置:', migratedSettings.ui)
-      }
-
-      if (legacyTerminalSettings) {
-        const terminalSettings = JSON.parse(legacyTerminalSettings)
-        migratedSettings.terminal = terminalSettings
-        log.info('已迁移终端设置:', migratedSettings.terminal)
-      }
-
-      if (legacyConnectionSettings) {
-        const connectionSettings = JSON.parse(legacyConnectionSettings)
-        migratedSettings.connection = connectionSettings
-        log.info('已迁移连接设置:', migratedSettings.connection)
-      }
-
-      // 如果有迁移的数据，保存到新的存储中
-      if (Object.keys(migratedSettings).length > 0) {
-        this.storage.set(SETTINGS_STORAGE_KEY, migratedSettings)
-        log.info('设置迁移完成，已保存到新的存储格式')
-      }
-
-      return migratedSettings
-    } catch (error) {
-      log.warn('设置迁移失败:', error)
-      return {}
-    }
-  }
 
   /**
    * 获取默认终端选项（当设置服务未初始化时使用）

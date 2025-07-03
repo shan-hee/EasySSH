@@ -189,12 +189,7 @@ export const STORAGE_CONFIGS = {
     paths: ['token', 'userInfo', 'preferences', 'connections', 'favorites', 'history', 'pinnedConnections']
   },
   
-  // 设置数据 - 持久存储
-  SETTINGS: {
-    storageType: 'persistent',
-    key: 'settings',
-    paths: ['terminalSettings', 'connectionSettings', 'uiSettings']
-  },
+
   
   // 本地连接 - 持久存储
   LOCAL_CONNECTIONS: {

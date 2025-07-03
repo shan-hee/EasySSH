@@ -29,64 +29,7 @@ import storageService from './services/storage'
 // 导入自定义指令
 import directives from './directives'
 
-// 初始化主题和语言设置
-const initSettings = () => {
-  try {
-    const UI_SETTINGS_KEY = 'easyssh_ui_settings'
-    const savedUISettings = localStorage.getItem(UI_SETTINGS_KEY)
-    
-    if (savedUISettings) {
-      const uiSettings = JSON.parse(savedUISettings)
-      
-      // 应用主题
-      if (uiSettings.theme) {
-        if (uiSettings.theme === 'system') {
-          const isDarkMode = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches
-          document.documentElement.setAttribute('data-theme', isDarkMode ? 'dark' : 'light')
-          if (isDarkMode) {
-            document.documentElement.classList.add('dark-theme')
-            document.documentElement.classList.remove('light-theme')
-          } else {
-            document.documentElement.classList.add('light-theme')
-            document.documentElement.classList.remove('dark-theme')
-          }
-        } else {
-          document.documentElement.setAttribute('data-theme', uiSettings.theme)
-          if (uiSettings.theme === 'dark') {
-            document.documentElement.classList.add('dark-theme')
-            document.documentElement.classList.remove('light-theme')
-          } else {
-            document.documentElement.classList.add('light-theme')
-            document.documentElement.classList.remove('dark-theme')
-          }
-        }
-      }
-      
-      // 应用语言
-      if (uiSettings.language) {
-        document.documentElement.setAttribute('lang', uiSettings.language)
-      }
-    } else {
-      // 没有保存的设置时，应用深色主题作为默认值
-      document.documentElement.setAttribute('data-theme', 'dark')
-      document.documentElement.classList.add('dark-theme')
-      document.documentElement.classList.remove('light-theme')
-      
-      // 创建并保存默认的UI设置
-      const defaultSettings = {
-        theme: 'dark',
-        language: 'zh-CN'
-      }
-      localStorage.setItem(UI_SETTINGS_KEY, JSON.stringify(defaultSettings))
-      log.info('已应用默认深色主题')
-    }
-  } catch (error) {
-    log.error('初始化主题和语言设置失败', error)
-  }
-}
-
-// 立即初始化主题和语言
-initSettings()
+// 主题初始化现在由settingsService统一处理
 
 // 修改预加载字体函数
 const preloadFonts = () => {
@@ -158,26 +101,15 @@ window.debugSettings = {
       console.log('当前设置:', settingsService.settings)
       console.log('终端选项:', settingsService.getTerminalOptions())
       console.log('=== 存储状态 ===')
-      console.log('新设置存储:', localStorage.getItem('easyssh:user_settings'))
-      console.log('旧UI设置:', localStorage.getItem('easyssh_ui_settings'))
-      console.log('旧终端设置:', localStorage.getItem('easyssh_terminal_settings'))
+      console.log('设置存储:', localStorage.getItem('easyssh:user_settings'))
     })
   },
 
-  // 手动迁移设置
-  migrate: () => {
-    import('./services/settings.js').then(({ default: settingsService }) => {
-      const migrated = settingsService._migrateFromLegacySettings()
-      console.log('迁移结果:', migrated)
-    })
-  },
+
 
   // 重置设置
   reset: () => {
     localStorage.removeItem('easyssh:user_settings')
-    localStorage.removeItem('easyssh_ui_settings')
-    localStorage.removeItem('easyssh_terminal_settings')
-    localStorage.removeItem('easyssh_connection_settings')
     console.log('设置已重置，请刷新页面')
   }
 }

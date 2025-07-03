@@ -259,7 +259,6 @@
 <script>
 import { ref, reactive, onMounted, computed } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { useSettingsStore } from '../../store/settings'
 import { useTerminalStore } from '../../store/terminal'
 import settingsService from '../../services/settings'
 import { SettingsCard, KeyboardShortcutEditor } from '../../components/settings'
@@ -273,7 +272,6 @@ export default {
     KeyboardShortcutEditor
   },
   setup() {
-    const settingsStore = useSettingsStore()
     const terminalStore = useTerminalStore()
     
     // 终端设置 - 初始化为空，将在组件挂载时从统一设置服务加载
@@ -413,13 +411,15 @@ export default {
     
     // 页面加载时立即检查本地存储中的连接设置
     try {
-      const savedConnectionSettings = settingsStore.getConnectionSettings()
-      if (savedConnectionSettings) {
-        // 更新连接设置
-        Object.assign(connectionSettings, savedConnectionSettings)
-        // 标记为已初始化
-        connectionSettings.initialized = true
-        log.info('组件创建时加载连接设置:', connectionSettings)
+      if (settingsService.isInitialized) {
+        const savedConnectionSettings = settingsService.getConnectionSettings()
+        if (savedConnectionSettings) {
+          // 更新连接设置
+          Object.assign(connectionSettings, savedConnectionSettings)
+          // 标记为已初始化
+          connectionSettings.initialized = true
+          log.info('组件创建时加载连接设置:', connectionSettings)
+        }
       }
     } catch (error) {
       log.error('初始化读取连接设置失败:', error)
@@ -427,13 +427,15 @@ export default {
     
     // 页面加载时立即检查本地存储中的界面设置
     try {
-      const savedUISettings = settingsStore.getUISettings()
-      if (savedUISettings) {
-        // 更新界面设置
-        Object.assign(uiSettings, savedUISettings)
-        // 标记为已初始化
-        uiSettings.initialized = true
-        log.info('组件创建时加载界面设置:', uiSettings)
+      if (settingsService.isInitialized) {
+        const savedUISettings = settingsService.getUISettings()
+        if (savedUISettings) {
+          // 更新界面设置
+          Object.assign(uiSettings, savedUISettings)
+          // 标记为已初始化
+          uiSettings.initialized = true
+          log.info('组件创建时加载界面设置:', uiSettings)
+        }
       }
     } catch (error) {
       log.error('初始化读取界面设置失败:', error)
@@ -565,14 +567,14 @@ export default {
         }
         
         // 加载连接设置
-        const savedConnectionSettings = settingsStore.getConnectionSettings()
+        const savedConnectionSettings = settingsService.getConnectionSettings()
         if (savedConnectionSettings && !connectionSettings.initialized) {
           Object.assign(connectionSettings, savedConnectionSettings)
           log.info('loadSettings中更新连接设置:', connectionSettings)
         }
-        
+
         // 加载界面设置
-        const savedUISettings = settingsStore.getUISettings()
+        const savedUISettings = settingsService.getUISettings()
         if (savedUISettings && !uiSettings.initialized) {
           Object.assign(uiSettings, savedUISettings)
           log.info('loadSettings中更新界面设置:', uiSettings)
@@ -629,9 +631,6 @@ export default {
         // 保存设置到统一设置服务，并立即应用到所有终端
         settingsService.updateTerminalSettings(terminalSettings, true)
 
-        // 同时保存到旧的store以保持兼容性（临时）
-        await settingsStore.saveTerminalSettings(terminalSettings)
-
         // 发送全局事件，通知所有终端设置已更新（用于动态更新复制粘贴功能）
         window.dispatchEvent(new CustomEvent('terminal-settings-updated', {
           detail: { settings: terminalSettings }
@@ -654,12 +653,18 @@ export default {
     }
     
     // 保存连接设置
-    const saveConnectionSettings = () => {
+    const saveConnectionSettings = async () => {
       try {
         // 标记为已初始化
         connectionSettings.initialized = true
-        
-        settingsStore.saveConnectionSettings(connectionSettings)
+
+        // 确保设置服务已初始化
+        if (!settingsService.isInitialized) {
+          await settingsService.init()
+        }
+
+        // 保存到统一设置服务
+        settingsService.updateConnectionSettings(connectionSettings)
         ElMessage.success('连接设置已保存')
       } catch (error) {
         log.error('保存连接设置失败', error)
@@ -716,9 +721,15 @@ export default {
         // 标记为已初始化
         uiSettings.initialized = true
 
-        await settingsStore.saveUISettings(uiSettings)
+        // 确保设置服务已初始化
+        if (!settingsService.isInitialized) {
+          await settingsService.init()
+        }
+
+        // 保存到统一设置服务
+        settingsService.updateUISettings(uiSettings)
         ElMessage.success('界面设置已保存')
-        
+
         // 应用主题变更
         if (uiSettings.theme === 'system') {
           const isDarkMode = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches
