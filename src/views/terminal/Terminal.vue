@@ -386,18 +386,12 @@ export default {
           return false
         }
         
-        log.debug(`[Terminal] 检测到路径变更，会话ID: ${termId}`)
-
-        // 添加清理旧连接状态的逻辑，确保SSH连接失败后可以重新连接
-        // 先检查连接状态，如果是错误状态，清理后再重新连接
+        // 清理错误状态的连接
         if (terminalStore.getTerminalStatus(termId) === 'error') {
-          log.debug(`[Terminal] 检测到错误状态，清理后重连: ${termId}`)
-          // 清理连接状态
           delete terminalInitialized.value[termId]
           delete terminalInitializingStates.value[termId]
           delete terminalConnectingStates.value[termId]
 
-          // 从会话存储中清理
           if (sessionStore.getSession(termId)) {
             sessionStore.setActiveSession(null)
           }
@@ -407,8 +401,6 @@ export default {
         const hasTerminal = terminalStore.hasTerminal(termId)
         const hasSession = terminalStore.hasTerminalSession(termId)
         const isCreating = terminalStore.isSessionCreating(termId)
-
-        log.debug(`[Terminal] 状态检查: 终端=${hasTerminal}, 会话=${hasSession}, 创建中=${isCreating}`)
         
         // 如果终端或会话不存在，且不在创建中，才尝试初始化
         if ((!hasTerminal || !hasSession) && !isCreating) {
@@ -420,14 +412,11 @@ export default {
           terminalInitialized.value[termId] = true
           terminalConnectingStates.value[termId] = false
           terminalInitializingStates.value[termId] = false
-          
-          log.debug(`终端${termId}已有会话或正在创建中，跳过重复初始化`)
           return true
         } else if (isCreating) {
           // 正在创建中，标记状态
           terminalInitializingStates.value[termId] = true
           terminalConnectingStates.value[termId] = true
-          log.debug(`终端${termId}正在初始化中，等待完成`)
           return false
         }
         
@@ -806,49 +795,26 @@ export default {
       }
     }
     
-    // 修改切换终端函数，避免重复调整大小
+    // 切换终端函数
     const switchToTerminal = async (termId) => {
-      try {
-        log.debug(`切换到终端: ${termId}`)
-      
-      if (!termId) return
-      
-      // 检查终端是否存在，如果不存在则等待初始化完成
-      if (!terminalStore.hasTerminal(termId)) {
-          log.debug(`终端 ${termId} 不存在，等待初始化完成`)
-        return
-      }
-      
+      if (!termId || !terminalStore.hasTerminal(termId)) return
+
       // 取消所有正在进行的大小调整
       Object.keys(resizeDebounceTimers.value).forEach(id => {
         clearTimeout(resizeDebounceTimers.value[id])
         delete resizeDebounceTimers.value[id]
       })
-      
+
       // 使用nextTick确保DOM更新
       nextTick(() => {
         if (terminalStore.hasTerminal(termId)) {
-          try {
-            // 仅当终端未调整过大小时才调整
-            if (!terminalSized.value[termId]) {
-                log.debug(`终端 ${termId} 首次切换，调整大小`)
-              resizeTerminal(termId)
-            } else {
-                log.debug(`终端 ${termId} 已调整过大小，仅聚焦`)
-            }
-            
-            // 聚焦终端
-            focusTerminal(termId)
-          } catch (error) {
-              log.error(`切换到终端 ${termId} 失败:`, error)
+          // 仅当终端未调整过大小时才调整
+          if (!terminalSized.value[termId]) {
+            resizeTerminal(termId)
           }
-        } else {
-            log.warn(`终端 ${termId} 不存在，无法切换`)
+          focusTerminal(termId)
         }
       })
-      } catch (error) {
-        log.error(`切换到终端 ${termId} 失败:`, error)
-      }
     }
     
     // 监听标签页状态变化，更新终端ID列表
@@ -903,11 +869,10 @@ export default {
     
     // 监听会话切换，确保工具栏同步和终端切换
     const handleSessionChange = (event) => {
-      if (!event || !event.detail || !event.detail.sessionId) return;
-      
+      if (!event?.detail?.sessionId) return;
+
       const { sessionId, isTabSwitch } = event.detail;
-      log.debug(`收到会话切换事件: ${sessionId}`);
-      
+
       // 如果终端ID不在列表中，添加到列表
       if (!terminalIds.value.includes(sessionId)) {
         terminalIds.value.push(sessionId);
@@ -927,28 +892,25 @@ export default {
           detail: { sessionId }
         }));
 
-        // 如果终端已经存在，延迟一段时间后更新连接状态
-        // 这样可以确保火箭动画能显示足够长的时间
+        // 如果终端已经存在，延迟更新连接状态
         if (terminalStore.hasTerminal(sessionId)) {
           setTimeout(() => {
             terminalConnectingStates.value[sessionId] = false;
-          }, 1000); // 延迟1秒，保证火箭动画有足够显示时间
+          }, 1000);
         }
       } else {
-        // 如果是标签切换，则不显示连接动画，但需要同步工具栏状态
+        // 标签切换，不显示连接动画
         terminalConnectingStates.value[sessionId] = false;
 
-        // 发送工具栏同步事件，与terminal:toolbar-reset不同，这个事件不会触发火箭动画
+        // 发送工具栏同步事件
         window.dispatchEvent(new CustomEvent('terminal:toolbar-sync', {
           detail: { sessionId }
         }));
       }
-      
-      // 终端窗口大小调整可能在切换终端时触发
-      // 在处理终端切换事件时，需添加延迟以确保终端初始化完成
+
+      // 延迟切换以确保终端初始化完成
       setTimeout(() => {
         switchToTerminal(sessionId);
-        // 切换后强制应用光标样式
         if (terminalStore.hasTerminal(sessionId)) {
           forceCursorStyle(sessionId);
         }
@@ -1206,11 +1168,9 @@ export default {
       }
     }
     
-    // 添加组件激活/失活生命周期钩子
+    // 组件挂载
     onMounted(() => {
-      log.info('终端视图已挂载');
-
-      // 初始化标签页标题前先检查是否存在该路径的标签页
+      // 初始化标签页标题
       if (tabStore.tabs.some(tab => tab.path === '/terminal')) {
         tabStore.updateTabTitle('/terminal', '终端')
       }
@@ -1218,7 +1178,7 @@ export default {
       // 设置自动完成回调
       setupAutocompleteCallbacks()
 
-      // 添加全局键盘事件监听，使用捕获阶段确保优先处理
+      // 添加全局键盘事件监听
       document.addEventListener('keydown', handleGlobalKeydown, true)
 
       // 初始化ResizeObserver - 在DOM挂载后安全地初始化

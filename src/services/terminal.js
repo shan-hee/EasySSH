@@ -8,12 +8,11 @@ import { SearchAddon } from '@xterm/addon-search'
 import { WebglAddon } from '@xterm/addon-webgl'
 import { Unicode11Addon } from '@xterm/addon-unicode11'
 // LigaturesAddon 已移除 - 连字功能可选，避免导入问题
-import { ref, reactive } from 'vue'
+import { ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import settingsService from './settings'
 import log from './log'
 import clipboard from './clipboard'
-import monitoringService from './monitoring'
 
 class TerminalService {
   constructor() {
@@ -180,32 +179,18 @@ class TerminalService {
    * @param {String} host 主机地址
    */
   initTerminal(sshSessionId, host) {
-    // 输出调试信息，改为debug级别
-    console.debug(`[终端] 检查监控服务连接状态`)
-    
-    try {
-      // 先检查监控服务是否已连接到目标主机
-      if (window.monitoringAPI) {
-        const status = window.monitoringAPI.getStatus()
-        if (status.connected && status.targetHost === host) {
-          console.debug(`[终端] 监控服务已连接到目标主机: ${host}`)
-          return
-        }
+    // 检查监控服务是否已连接到目标主机
+    if (window.monitoringAPI) {
+      const status = window.monitoringAPI.getStatus()
+      if (status.connected && status.targetHost === host) {
+        return
       }
-      
-      // 使用重构后的监控服务，静默异步连接
-      try {
-        // 动态导入监控服务并初始化
-        import('./monitoring.js').then(({ default: monitoringService }) => {
-          monitoringService.connect(sshSessionId, host)
-            .catch(() => {/* 完全静默处理错误 */});
-        }).catch(() => {/* 完全静默处理错误 */});
-      } catch (error) {
-        // 完全静默处理错误
-      }
-    } catch (error) {
-      // 完全静默处理错误
     }
+
+    // 异步连接监控服务
+    import('./monitoring.js').then(({ default: monitoringService }) => {
+      monitoringService.connect(sshSessionId, host).catch(() => {});
+    }).catch(() => {});
   }
   
   /**
@@ -364,30 +349,24 @@ class TerminalService {
       // 设置终端事件
       this._setupTerminalEvents(terminal, id)
       
-      // 性能监控 - 定期检查终端性能
+      // 性能监控 - 定期检查终端性能（降低频率到2分钟）
       const performanceMonitor = setInterval(() => {
         if (!this.terminals.has(id)) {
           clearInterval(performanceMonitor)
           return
         }
-        
-        // 获取终端性能数据
+
+        // 检查终端尺寸是否过大
         try {
-          if (terminal._core && terminal._core._renderService) {
-            const renderer = terminal._core._renderService
-            const dims = terminal._core._renderService.dimensions
-            
-            // 检查渲染器状态
-            if (dims && dims.css && dims.css.canvas && 
-                dims.css.canvas.width > 2000 || dims.css.canvas.height > 2000) {
-              // 终端尺寸过大，可能导致性能问题
-              log.warn(`终端 ${id} 尺寸过大 (${dims.css.canvas.width}x${dims.css.canvas.height})，可能影响性能`)
-            }
+          const dims = terminal._core?._renderService?.dimensions
+          if (dims?.css?.canvas &&
+              (dims.css.canvas.width > 2000 || dims.css.canvas.height > 2000)) {
+            log.warn(`终端 ${id} 尺寸过大，可能影响性能`)
           }
         } catch (e) {
-          // 忽略任何错误
+          // 静默忽略错误
         }
-      }, 30000) // 每30秒检查一次
+      }, 120000) // 每2分钟检查一次
       
       // 创建终端实例对象
       const terminalInstance = {
@@ -419,31 +398,30 @@ class TerminalService {
         const writeStart = performance.now()
         const result = originalWrite(data)
         const writeTime = performance.now() - writeStart
-        
+
         // 更新性能统计
         terminalInstance.performanceStats.writeCount++
         terminalInstance.performanceStats.totalWriteTime += writeTime
         terminalInstance.performanceStats.lastWriteTime = writeTime
-        
+
         if (writeTime > terminalInstance.performanceStats.maxWriteTime) {
           terminalInstance.performanceStats.maxWriteTime = writeTime
         }
-        
-        // 检测缓慢更新
-        if (writeTime > 50 && data.length > 1000) {
+
+        // 检测严重的性能问题（提高阈值，减少日志）
+        if (writeTime > 100 && data.length > 5000) {
           terminalInstance.performanceStats.largeUpdates++
-          if (terminalInstance.performanceStats.largeUpdates % 10 === 1) { // 每10次只记录一次，避免日志过多
-            log.debug(`终端 ${id} 大型更新性能: ${writeTime.toFixed(2)}ms，数据大小=${data.length}字符`)
+          if (terminalInstance.performanceStats.largeUpdates % 20 === 1) {
+            log.warn(`终端 ${id} 性能警告: ${writeTime.toFixed(2)}ms`)
           }
         }
-        
+
         return result
       }
       
       // 存储终端实例
       this.terminals.set(id, terminalInstance)
-      
-      log.debug(`创建终端 ${id} 成功`)
+
       return terminalInstance
     } catch (error) {
       log.error(`创建终端 ${id} 失败`, error)
@@ -744,7 +722,6 @@ class TerminalService {
                     
                     // 覆盖注册方法，防止dispose后再注册
                     if (typeof term.terminal._core._addonManager.registerAddon === 'function') {
-                      const originalRegister = term.terminal._core._addonManager.registerAddon;
                       term.terminal._core._addonManager.registerAddon = function(addon) {
                         log.warn(`忽略终端销毁过程中的插件注册尝试`);
                         return addon;

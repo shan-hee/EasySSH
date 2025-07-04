@@ -55,7 +55,6 @@ class MonitoringInstance {
       const wsHost = window.location.host;
       const wsUrl = `${protocol}//${wsHost}/monitor?subscribe=${encodeURIComponent(host)}`;
 
-      log.debug(`[监控] 尝试连接到: ${wsUrl}`);
       this.websocket = new WebSocket(wsUrl);
 
       this.websocket.onopen = () => {
@@ -78,7 +77,6 @@ class MonitoringInstance {
       this.websocket.onclose = () => {
         this.state.connected = false;
         this.state.connecting = false;
-        log.debug(`[监控] 连接关闭: ${host}`);
 
         // 触发断开连接事件
         this._emitEvent('monitoring-disconnected', {
@@ -152,31 +150,35 @@ class MonitoringInstance {
     try {
       const message = JSON.parse(data);
       this.state.stats.messagesReceived++;
-      this.state.lastActivity = Date.now();
 
       switch (message.type) {
         case 'monitoring_data':
           this._handleMonitoringData(message.data);
+          // 收到监控数据时更新活动时间
+          this.state.lastActivity = Date.now();
           break;
         case 'system_stats':
           // 处理系统统计数据
           this._handleMonitoringData(message.payload);
+          // 收到系统统计数据时更新活动时间
+          this.state.lastActivity = Date.now();
           break;
         case 'monitoring_status':
           this._handleMonitoringStatus(message);
           break;
         case 'session_created':
-          log.debug(`[监控] 会话已创建: ${message.data?.sessionId}`);
+          // 会话创建确认，无需额外处理
           break;
         case 'subscribe_ack':
-          log.debug(`[监控] 订阅确认: ${message.data?.serverId}`);
+          // 订阅确认，无需额外处理
           break;
         case 'error':
           const errorMsg = message.message || message.data?.message || message.error || '未知错误';
-          log.error(`[监控] 服务器错误: ${errorMsg}`, message);
+          log.error(`[监控] 服务器错误: ${errorMsg}`);
           break;
         default:
-          log.debug(`[监控] 未知消息类型: ${message.type}`, message);
+          // 未知消息类型，静默忽略
+          break;
       }
     } catch (error) {
       log.error('[监控] 消息解析失败', error);
@@ -189,7 +191,7 @@ class MonitoringInstance {
    * @private
    */
   _handleMonitoringData(data) {
-    if (data) {
+    if (data && this._isValidMonitoringData(data)) {
       this.state.monitorData = { ...this.state.monitorData, ...data };
 
       // 触发数据更新事件
@@ -200,6 +202,44 @@ class MonitoringInstance {
         source: 'websocket'
       });
     }
+  }
+
+  /**
+   * 验证监控数据是否有效
+   * @param {Object} data - 监控数据
+   * @returns {boolean} 是否有效
+   * @private
+   */
+  _isValidMonitoringData(data) {
+    if (!data || typeof data !== 'object') {
+      return false;
+    }
+
+    // 检查是否有任何有意义的监控数据
+    const hasCpuData = data.cpu && (
+      typeof data.cpu.usage === 'number' ||
+      typeof data.cpu.cores === 'number' ||
+      data.cpu.model
+    );
+
+    const hasMemoryData = data.memory && (
+      typeof data.memory.total === 'number' && data.memory.total > 0 ||
+      typeof data.memory.used === 'number' ||
+      typeof data.memory.usedPercentage === 'number'
+    );
+
+    const hasDiskData = data.disk && (
+      typeof data.disk.total === 'number' && data.disk.total > 0 ||
+      typeof data.disk.used === 'number' ||
+      typeof data.disk.usedPercentage === 'number'
+    );
+
+    const hasNetworkData = data.network && Object.keys(data.network).length > 0;
+
+    const hasOsData = data.os && Object.keys(data.os).length > 0;
+
+    // 至少要有一种类型的有效数据
+    return hasCpuData || hasMemoryData || hasDiskData || hasNetworkData || hasOsData;
   }
 
   /**
@@ -214,20 +254,15 @@ class MonitoringInstance {
     // 判断是否已安装
     const installed = status === 'installed';
 
-    log.debug(`[监控] 状态更新: 主机=${hostId}, 已安装=${installed}, 可用=${available}`);
-
     // 触发状态变更事件
-    const eventDetail = {
+    this._emitEvent('monitoring-status-change', {
       terminalId: this.terminalId,
       hostname: this.state.targetHost,
       hostId: hostId,
       installed: installed,
       available: available,
       source: 'websocket'
-    };
-
-    log.debug(`[监控] 触发状态变更事件:`, eventDetail);
-    this._emitEvent('monitoring-status-change', eventDetail);
+    });
   }
 
   /**
@@ -315,7 +350,6 @@ class MonitoringService {
     this._initGlobalAPI();
 
     this.initialized = true;
-    log.debug('[监控] 服务初始化完成');
   }
 
   /**
@@ -398,7 +432,6 @@ class MonitoringService {
     // 检查是否已有到该主机的连接
     if (this.hostConnections.has(host)) {
       const masterInstance = this.hostConnections.get(host);
-      log.debug(`终端 ${terminalId} 复用到 ${host} 的现有连接`);
 
       // 将当前终端添加到主机的终端列表
       this._addTerminalToHost(terminalId, host);
@@ -421,16 +454,8 @@ class MonitoringService {
     this.hostConnections.set(host, instance);
     this._addTerminalToHost(terminalId, host);
 
-    log.debug(`终端 ${terminalId} 成为到 ${host} 的主监控连接`);
-
     // 建立实际的WebSocket连接
-    const connected = await instance.connect(host);
-
-    if (connected) {
-      log.debug(`监控连接已建立: ${host}`);
-    }
-
-    return connected;
+    return await instance.connect(host);
   }
 
   /**
@@ -486,8 +511,6 @@ class MonitoringService {
     this.hostConnections.clear();
     this.terminalToHost.clear();
     this.hostToTerminals.clear();
-
-    log.debug('[监控] 已断开所有连接');
   }
 
   /**
@@ -515,6 +538,101 @@ class MonitoringService {
       return instance.state;
     }
     return this.state; // 返回全局状态作为后备
+  }
+
+  /**
+   * 检查指定终端是否正在被监控
+   * @param {string} terminalId - 终端ID
+   * @returns {boolean} 是否正在被监控
+   */
+  isTerminalMonitored(terminalId) {
+    if (!terminalId) {
+      return false;
+    }
+
+    // 检查是否有对应的监控实例
+    const instance = this.getInstance(terminalId);
+    if (!instance) {
+      return false;
+    }
+
+    // 检查实例是否已连接
+    if (!instance.state.connected) {
+      return false;
+    }
+
+    // 检查终端是否在主机映射中（表示已建立监控关系）
+    if (!this.terminalToHost.has(terminalId)) {
+      return false;
+    }
+
+    // 获取终端对应的主机
+    const host = this.terminalToHost.get(terminalId);
+
+    // 检查该主机是否有活跃的监控连接
+    if (!this.hostConnections.has(host)) {
+      return false;
+    }
+
+    const hostInstance = this.hostConnections.get(host);
+
+    // 检查主机的监控实例是否已连接
+    if (!hostInstance || !hostInstance.state.connected) {
+      return false;
+    }
+
+    // 关键检查：验证是否收到过实际的监控数据
+    // 仅仅WebSocket连接成功不代表远程主机安装了监控代理
+    return this._hasValidMonitoringData(hostInstance);
+  }
+
+  /**
+   * 检查监控实例是否有有效的监控数据
+   * @param {MonitoringInstance} instance - 监控实例
+   * @returns {boolean} 是否有有效数据
+   * @private
+   */
+  _hasValidMonitoringData(instance) {
+    if (!instance || !instance.state) {
+      return false;
+    }
+
+    // 检查是否有最近的活动时间
+    if (!instance.state.lastActivity) {
+      return false;
+    }
+
+    // 检查活动时间是否在合理范围内（5分钟内）
+    const now = Date.now();
+    const timeDiff = now - instance.state.lastActivity;
+    if (timeDiff > 5 * 60 * 1000) { // 5分钟
+      return false;
+    }
+
+    // 检查是否收到过有效的监控数据
+    const data = instance.state.monitorData;
+    if (!data) {
+      return false;
+    }
+
+    // 验证关键监控数据是否非默认值
+    // CPU使用率应该是有意义的数值
+    if (data.cpu && typeof data.cpu.usage === 'number' && data.cpu.usage >= 0) {
+      return true;
+    }
+
+    // 内存数据应该有实际值
+    if (data.memory && data.memory.total > 0) {
+      return true;
+    }
+
+    // 磁盘数据应该有实际值
+    if (data.disk && data.disk.total > 0) {
+      return true;
+    }
+
+    // 如果收到过消息但数据都是默认值，可能是连接成功但没有监控代理
+    return false;
   }
 
   /**

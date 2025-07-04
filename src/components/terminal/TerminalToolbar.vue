@@ -120,13 +120,12 @@
 </template>
 
 <script>
-import { defineComponent, computed, ref, onMounted, onUnmounted, watch, inject, nextTick } from 'vue'
+import { defineComponent, computed, ref, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { useSessionStore } from '../../store/session'
 import { useUserStore } from '../../store/user'
-import axios from 'axios'
 import sshService from '../../services/ssh/index'
 import monitoringService from '../../services/monitoring'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage } from 'element-plus'
 import { useTerminalStore } from '../../store/terminal'
 import { LATENCY_EVENTS } from '../../services/constants'
 import log from '../../services/log'
@@ -196,10 +195,10 @@ export default defineComponent({
       return terminalToolbarStates.value[terminalId]
     }
     
-    // 获取当前活动终端的工具栏状态
-    const activeTerminalState = computed(() => {
-      return getTerminalToolbarState(props.activeSessionId) || {}
-    })
+    // 获取当前活动终端的工具栏状态（备用）
+    // const activeTerminalState = computed(() => {
+    //   return getTerminalToolbarState(props.activeSessionId) || {}
+    // })
 
     // 获取当前终端ID（用于监控组件）
     const terminalId = computed(() => {
@@ -534,56 +533,46 @@ export default defineComponent({
         return;
       }
 
-      // 静默处理，避免出现任何错误或异常
-      try {
-        // 获取当前终端ID
-        const currentTerminalId = props.activeSessionId;
-        if (!currentTerminalId) {
-          // 不改变当前状态，保持默认灰色图标
-          return;
-        }
+      const currentTerminalId = props.activeSessionId;
+      if (!currentTerminalId) return;
 
-        // 获取当前终端的状态
-        const terminalState = getTerminalToolbarState(currentTerminalId);
-        if (!terminalState) {
-          // 不改变当前状态，保持默认灰色图标
-          return;
-        }
+      const terminalState = getTerminalToolbarState(currentTerminalId);
+      if (!terminalState) return;
 
-        // 优先使用缓存状态，减少对全局监控服务的依赖
-        if (terminalState.monitoringInstalled !== undefined) {
-          monitoringServiceInstalled.value = terminalState.monitoringInstalled;
-          return;
-        }
-        
-        // 如果终端有关联的SSH会话，检查它是否监控了相应的主机
-        if (terminalStore && terminalStore.sessions) {
-          const sshSessionId = terminalStore.sessions[currentTerminalId];
-          if (sshSessionId && sshService && sshService.sessions) {
-            const session = sshService.sessions.get(sshSessionId);
-            if (session && session.connection) {
-              const host = session.connection.host;
-              
-              // 优先使用monitoringService.isTerminalMonitored方法判断
-              if (monitoringService && typeof monitoringService.isTerminalMonitored === 'function') {
+      // 优先使用缓存状态
+      if (terminalState.monitoringInstalled !== undefined) {
+        monitoringServiceInstalled.value = terminalState.monitoringInstalled;
+        return;
+      }
+
+      // 检查终端关联的SSH会话
+      if (terminalStore?.sessions) {
+        const sshSessionId = terminalStore.sessions[currentTerminalId];
+        if (sshSessionId && sshService?.sessions) {
+          const session = sshService.sessions.get(sshSessionId);
+          if (session?.connection) {
+            const host = session.connection.host;
+
+            // 使用监控服务检查状态
+            if (monitoringService?.isTerminalMonitored) {
+              try {
                 terminalState.monitoringInstalled = monitoringService.isTerminalMonitored(currentTerminalId);
-              monitoringServiceInstalled.value = terminalState.monitoringInstalled;
-              return;
-            }
-          
-              // 备选方案：检查主机匹配
-              if (monitoringService && monitoringService.state) {
-                terminalState.monitoringInstalled = 
-                  monitoringService.state.connected && 
-                  monitoringService.state.targetHost === host;
                 monitoringServiceInstalled.value = terminalState.monitoringInstalled;
+                return;
+              } catch (error) {
+                // 使用备选方案
               }
+            }
+
+            // 备选方案：检查主机匹配
+            if (monitoringService?.state) {
+              terminalState.monitoringInstalled =
+                monitoringService.state.connected &&
+                monitoringService.state.targetHost === host;
+              monitoringServiceInstalled.value = terminalState.monitoringInstalled;
             }
           }
         }
-      } catch (error) {
-        console.debug('检查监控服务状态失败:', error);
-        // 不改变当前状态，保持默认灰色图标
       }
     };
     
@@ -1309,7 +1298,15 @@ export default defineComponent({
                                           monitoringService.state.targetHost === host;
                 
                 // 然后检查特定终端的监控状态
-                const isTerminalSpecificMonitored = monitoringService.isTerminalMonitored(currentId);
+                let isTerminalSpecificMonitored = false;
+                if (typeof monitoringService.isTerminalMonitored === 'function') {
+                  try {
+                    isTerminalSpecificMonitored = monitoringService.isTerminalMonitored(currentId);
+                  } catch (error) {
+                    log.debug('调用 isTerminalMonitored 方法失败:', error);
+                    isTerminalSpecificMonitored = false;
+                  }
+                }
                 
                 // 综合两种检查结果，只要有一个为true就认为监控已安装
                 const monitored = isGloballyConnected || isTerminalSpecificMonitored;
