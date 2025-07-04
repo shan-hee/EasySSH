@@ -9,6 +9,18 @@ import log from './log'
 
 const SETTINGS_STORAGE_KEY = 'user_settings'
 
+// 终端主题常量
+export const TERMINAL_THEMES = {
+  LIGHT: 'light',
+  DARK: 'dark',
+  VSCODE: 'vscode',
+  DRACULA: 'dracula',
+  MATERIAL: 'material',
+  SYSTEM: 'system'
+}
+
+export const VALID_THEMES = Object.values(TERMINAL_THEMES)
+
 class SettingsService {
   constructor() {
     this.isInitialized = false
@@ -21,6 +33,9 @@ class SettingsService {
 
     // 设置变更监听器
     this.changeListeners = new Set()
+
+    // 添加主题缓存，避免重复计算
+    this._themeCache = new Map()
   }
 
   /**
@@ -279,10 +294,10 @@ class SettingsService {
     }
 
     const terminalSettings = this.settings.terminal
-    const theme = this._getTerminalTheme(this.settings.ui.theme)
+    const theme = this._getTerminalTheme(terminalSettings.theme || TERMINAL_THEMES.DARK)
 
     log.debug('获取终端选项 - 终端设置:', terminalSettings)
-    log.debug('获取终端选项 - 当前主题:', this.settings.ui.theme)
+    log.debug('获取终端选项 - 当前主题:', terminalSettings.theme)
     log.debug('获取终端选项 - 主题配置:', theme)
 
     return {
@@ -387,21 +402,39 @@ class SettingsService {
   }
 
   /**
+   * 验证主题名称是否有效
+   * @param {string} themeName - 主题名称
+   * @returns {boolean} 是否有效
+   */
+  isValidTheme(themeName) {
+    return VALID_THEMES.includes(themeName)
+  }
+
+  /**
    * 获取终端主题配置（公共方法）
    * @param {string} themeName - 主题名称
    * @returns {Object} 终端主题配置
    */
-  getTerminalTheme(themeName = 'dark') {
+  getTerminalTheme(themeName = TERMINAL_THEMES.DARK) {
+    // 验证主题名称
+    if (!this.isValidTheme(themeName)) {
+      log.warn(`无效的主题名称: ${themeName}，使用默认主题 '${TERMINAL_THEMES.DARK}'`)
+      themeName = TERMINAL_THEMES.DARK
+    }
     return this._getTerminalTheme(themeName)
   }
 
   /**
    * 获取终端主题配置
-   * @param {string} uiTheme - UI主题
+   * @param {string} themeName - 主题名称 (light, dark, vscode, dracula, material, system)
    * @returns {Object} 终端主题配置
    * @private
    */
-  _getTerminalTheme(uiTheme = 'light') {
+  _getTerminalTheme(themeName = TERMINAL_THEMES.DARK) {
+    // 检查缓存
+    if (this._themeCache.has(themeName)) {
+      return this._themeCache.get(themeName)
+    }
     const themes = {
       light: {
         foreground: '#000000',
@@ -446,16 +479,89 @@ class SettingsService {
         brightMagenta: '#AE81FF',
         brightCyan: '#A1EFE4',
         brightWhite: '#F9F8F5'
+      },
+      vscode: {
+        foreground: '#CCCCCC',
+        background: '#1E1E1E',
+        cursor: '#FFFFFF',
+        selectionBackground: '#264F78',
+        black: '#000000',
+        red: '#CD3131',
+        green: '#0DBC79',
+        yellow: '#E5E510',
+        blue: '#2472C8',
+        magenta: '#BC3FBC',
+        cyan: '#11A8CD',
+        white: '#E5E5E5',
+        brightBlack: '#666666',
+        brightRed: '#F14C4C',
+        brightGreen: '#23D18B',
+        brightYellow: '#F5F543',
+        brightBlue: '#3B8EEA',
+        brightMagenta: '#D670D6',
+        brightCyan: '#29B8DB',
+        brightWhite: '#FFFFFF'
+      },
+      dracula: {
+        foreground: '#F8F8F2',
+        background: '#282A36',
+        cursor: '#F8F8F2',
+        selectionBackground: '#44475A',
+        black: '#21222C',
+        red: '#FF5555',
+        green: '#50FA7B',
+        yellow: '#F1FA8C',
+        blue: '#BD93F9',
+        magenta: '#FF79C6',
+        cyan: '#8BE9FD',
+        white: '#F8F8F2',
+        brightBlack: '#6272A4',
+        brightRed: '#FF6E6E',
+        brightGreen: '#69FF94',
+        brightYellow: '#FFFFA5',
+        brightBlue: '#D6ACFF',
+        brightMagenta: '#FF92DF',
+        brightCyan: '#A4FFFF',
+        brightWhite: '#FFFFFF'
+      },
+      material: {
+        foreground: '#EEFFFF',
+        background: '#263238',
+        cursor: '#FFCC02',
+        selectionBackground: '#546E7A',
+        black: '#000000',
+        red: '#F07178',
+        green: '#C3E88D',
+        yellow: '#FFCB6B',
+        blue: '#82AAFF',
+        magenta: '#C792EA',
+        cyan: '#89DDFF',
+        white: '#FFFFFF',
+        brightBlack: '#546E7A',
+        brightRed: '#FF5370',
+        brightGreen: '#C3E88D',
+        brightYellow: '#FFD54F',
+        brightBlue: '#729FCF',
+        brightMagenta: '#AD7FA8',
+        brightCyan: '#34E2E2',
+        brightWhite: '#FFFFFF'
       }
     }
 
     // 处理系统主题
-    let actualTheme = uiTheme
-    if (uiTheme === 'system') {
-      actualTheme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+    let actualTheme = themeName
+    if (themeName === TERMINAL_THEMES.SYSTEM) {
+      actualTheme = window.matchMedia('(prefers-color-scheme: dark)').matches ? TERMINAL_THEMES.DARK : TERMINAL_THEMES.LIGHT
     }
 
-    return themes[actualTheme] || themes.light
+    const themeConfig = themes[actualTheme] || themes[TERMINAL_THEMES.DARK]
+
+    // 缓存主题配置（系统主题不缓存，因为可能会变化）
+    if (themeName !== TERMINAL_THEMES.SYSTEM) {
+      this._themeCache.set(themeName, themeConfig)
+    }
+
+    return themeConfig
   }
 
   /**
@@ -494,28 +600,7 @@ class SettingsService {
       fontSize: 16,
       fontFamily: "'JetBrains Mono'",
       lineHeight: 1.2,
-      theme: {
-        foreground: '#F8F8F2',
-        background: '#121212',
-        cursor: '#F8F8F0',
-        selectionBackground: '#49483E',
-        black: '#272822',
-        red: '#F92672',
-        green: '#A6E22E',
-        yellow: '#F4BF75',
-        blue: '#66D9EF',
-        magenta: '#AE81FF',
-        cyan: '#A1EFE4',
-        white: '#F8F8F2',
-        brightBlack: '#75715E',
-        brightRed: '#F92672',
-        brightGreen: '#A6E22E',
-        brightYellow: '#F4BF75',
-        brightBlue: '#66D9EF',
-        brightMagenta: '#AE81FF',
-        brightCyan: '#A1EFE4',
-        brightWhite: '#F9F8F5'
-      },
+      theme: this._getTerminalTheme(TERMINAL_THEMES.DARK),
       cursorBlink: true,
       cursorStyle: 'block',
       scrollback: 3000,

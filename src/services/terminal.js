@@ -111,6 +111,28 @@ class TerminalService {
         brightMagenta: '#FF92DF',
         brightCyan: '#A4FFFF',
         brightWhite: '#FFFFFF'
+      },
+      material: {
+        foreground: '#EEFFFF',
+        background: '#263238',
+        cursor: '#FFCC02',
+        selectionBackground: '#546E7A',
+        black: '#000000',
+        red: '#F07178',
+        green: '#C3E88D',
+        yellow: '#FFCB6B',
+        blue: '#82AAFF',
+        magenta: '#C792EA',
+        cyan: '#89DDFF',
+        white: '#FFFFFF',
+        brightBlack: '#546E7A',
+        brightRed: '#FF5370',
+        brightGreen: '#C3E88D',
+        brightYellow: '#FFD54F',
+        brightBlue: '#729FCF',
+        brightMagenta: '#AD7FA8',
+        brightCyan: '#34E2E2',
+        brightWhite: '#FFFFFF'
       }
     }
     

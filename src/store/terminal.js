@@ -340,31 +340,14 @@ export const useTerminalStore = defineStore('terminal', () => {
     // 等待字体加载完成
     await waitForFontsLoaded()
     
+    // 获取基础终端选项，主题将从设置服务获取
     let terminalOptions = {
       fontSize: 16,
       fontFamily: "'JetBrains Mono'",
       // 显式设置字符间距为0，避免渲染差异
       letterSpacing: 0,
-      theme: {
-        background: '#121212',
-        foreground: '#f8f8f8',
-        black: '#000000',
-        red: '#ff5555',
-        green: '#50fa7b',
-        yellow: '#f1fa8c',
-        blue: '#bd93f9',
-        magenta: '#ff79c6',
-        cyan: '#8be9fd',
-        white: '#f8f8f2',
-        brightBlack: '#6272a4',
-        brightRed: '#ff6e6e',
-        brightGreen: '#69ff94',
-        brightYellow: '#ffffa5',
-        brightBlue: '#d6acff',
-        brightMagenta: '#ff92df',
-        brightCyan: '#a4ffff',
-        brightWhite: '#ffffff'
-      }
+      // 使用设置服务的默认主题
+      theme: settingsService.getTerminalTheme()
     }
     
     // 获取设置中的终端选项
@@ -1150,9 +1133,12 @@ export const useTerminalStore = defineStore('terminal', () => {
           try {
             const themeConfig = settingsService.getTerminalTheme(settings.theme)
 
-            // 检查主题是否有变化
-            if (JSON.stringify(terminal.options.theme) !== JSON.stringify(themeConfig)) {
-              log.info(`终端 ${termId}: 更新主题 ${terminal.options.theme?.background} -> ${themeConfig.background}`)
+            // 优化主题比较：只比较背景色来判断主题是否变化
+            const currentBg = terminal.options.theme?.background
+            const newBg = themeConfig.background
+
+            if (currentBg !== newBg) {
+              log.info(`终端 ${termId}: 更新主题 ${currentBg} -> ${newBg}`)
 
               // 应用新主题
               terminal.options.theme = themeConfig

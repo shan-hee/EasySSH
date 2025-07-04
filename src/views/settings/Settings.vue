@@ -7,8 +7,8 @@
         <!-- 三个下拉框放在一行 -->
         <div class="form-row-flex">
           <el-form-item label="终端主题" class="flex-form-item">
-            <el-select 
-              v-model="terminalSettings.theme" 
+            <el-select
+              v-model="terminalSettings.theme"
               placeholder="选择主题"
               @change="saveTerminalSettings"
               class="full-width"
@@ -50,7 +50,7 @@
             </el-select>
           </el-form-item>
         </div>
-        
+
         <!-- 终端背景图片设置 -->
         <div class="terminal-bg-settings">
           <div class="theme-section-title">终端背景</div>
@@ -651,7 +651,7 @@ export default {
         ElMessage.error('保存终端设置失败')
       }
     }
-    
+
     // 保存连接设置
     const saveConnectionSettings = async () => {
       try {

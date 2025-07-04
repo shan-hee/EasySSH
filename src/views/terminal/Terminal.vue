@@ -492,24 +492,29 @@ export default {
         try {
           if (settings.theme && settings.theme !== 'default') {
             log.debug(`终端 ${termId}: 更新主题 ${settings.theme}`)
-            
-            // 将主题名称转换为标准格式
-            const themeName = settings.theme.toLowerCase()
-            const themeClass = `xterm-theme-${themeName}`
-            
-            // 移除所有主题类
-            const themeClasses = Array.from(terminal.element.classList)
-              .filter(className => className.startsWith('xterm-theme-'))
-            
-            themeClasses.forEach(className => {
-              terminal.element.classList.remove(className)
-            })
-            
-            // 添加新主题类
-            terminal.element.classList.add(themeClass)
+
+            // 验证主题名称
+            if (settingsService.isValidTheme(settings.theme)) {
+              // 将主题名称转换为标准格式
+              const themeName = settings.theme.toLowerCase()
+              const themeClass = `xterm-theme-${themeName}`
+
+              // 移除所有主题类
+              const themeClasses = Array.from(terminal.element.classList)
+                .filter(className => className.startsWith('xterm-theme-'))
+
+              themeClasses.forEach(className => {
+                terminal.element.classList.remove(className)
+              })
+
+              // 添加新主题类
+              terminal.element.classList.add(themeClass)
               hasChanges = true
+            } else {
+              log.warn(`无效的主题名称: ${settings.theme}`)
             }
-          } catch (error) {
+          }
+        } catch (error) {
           log.error(`应用终端 ${termId} 主题失败:`, error)
         }
         
