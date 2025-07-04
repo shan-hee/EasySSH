@@ -278,7 +278,7 @@ export default {
     const terminalSettings = reactive({
       fontSize: 16,
       fontFamily: "'JetBrains Mono'",
-      theme: 'vscode',
+      theme: 'dark',
       cursorStyle: 'block',
       cursorBlink: true,
       copyOnSelect: false,

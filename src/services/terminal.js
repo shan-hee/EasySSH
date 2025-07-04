@@ -118,7 +118,7 @@ class TerminalService {
     this.defaultOptions = {
       fontSize: 16,
       fontFamily: "'JetBrains Mono'",
-      theme: this.themes.vscode,
+      theme: this.themes.dark,
       cursorBlink: true,
       cursorStyle: 'block',
       scrollback: 1000,

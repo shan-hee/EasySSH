@@ -98,6 +98,7 @@ export const userSettingsDefaults = {
     fontFamily: "'JetBrains Mono'",
     fontSize: 16,
     lineHeight: 1.5,
+    theme: 'dark', // 默认使用深色主题
     cursorStyle: 'block', // block, bar, underline
     cursorBlink: true,
     scrollback: 1000,
