@@ -454,37 +454,6 @@ window.addEventListener('ssh-connecting', async (event) => {
   }
 })
 
-// 保留SSH连接成功的监听器作为备用（以防ssh-connecting事件未触发）
-window.addEventListener('ssh-connected', async (event) => {
-  const { sessionId, host, terminalId } = event.detail
-
-  if (sessionId && host && terminalId) {
-    // 检查监控是否已经连接，如果没有则作为备用连接
-    try {
-      const { default: monitoringService } = await import('./services/monitoring.js')
-      const instance = monitoringService.getInstance(terminalId)
-
-      if (!instance || !instance.state.connected) {
-        log.debug(`[备用监控] SSH连接成功，检查监控连接状态`)
-        setTimeout(async () => {
-          try {
-            const connected = await monitoringService.connect(terminalId, host)
-            if (connected) {
-              log.info(`[备用监控] 已为终端 ${terminalId} 连接到 ${host} 的监控服务`)
-            }
-          } catch (error) {
-            log.debug(`[备用监控] 监控连接过程出错:`, error)
-          }
-        }, 500) // 较短延迟
-      } else {
-        log.debug(`[备用监控] 监控已连接，跳过备用连接`)
-      }
-    } catch (error) {
-      log.debug(`[备用监控] 检查监控状态失败:`, error)
-    }
-  }
-})
-
 // 统一的服务初始化流程
 const initializeApp = async () => {
   try {
