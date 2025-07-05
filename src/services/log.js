@@ -5,7 +5,7 @@
 class LogService {
   constructor() {
     this.isInitialized = false
-    this.logLevel = 'info' // 默认日志级别
+    this.logLevel = 'warn' // 默认日志级别
     this.enableConsole = true
     this.logs = []
     this.maxLogs = 1000
