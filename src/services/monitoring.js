@@ -61,7 +61,8 @@ class MonitoringInstance {
         this.state.connected = true;
         this.state.connecting = false;
         this.reconnectAttempts = 0;
-        log.info(`[监控] 连接成功: ${host}`);
+        // 优化：移除此处的日志，由main.js统一记录终端特定的连接成功日志
+        // log.info(`[监控] 连接成功: ${host}`);
 
         // 触发连接成功事件
         this._emitEvent('monitoring-connected', {

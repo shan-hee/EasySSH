@@ -22,8 +22,9 @@ class SSHSessionManager {
     this.terminalToSSH.set(terminalId, sshSessionId);
     this.sshToTerminal.set(sshSessionId, terminalId);
     this.saveMappings();
-    
-    log.info(`已建立会话映射: 终端 ${terminalId} <=> SSH ${sshSessionId}`);
+
+    // 优化：降低日志级别，避免与SSH连接成功日志重复
+    log.debug(`[SSH] 建立终端会话映射: ${terminalId} -> ${sshSessionId}`);
   }
   
   /**

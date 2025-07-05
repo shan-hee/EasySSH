@@ -633,7 +633,8 @@ export default defineComponent({
             rttValue.value = terminalState.rttValue;
             showNetworkIcon.value = true;
 
-            log.debug(`延迟显示更新: 客户端${clientDelay.value}ms, 服务器${serverDelay.value}ms, 总计${Math.round(totalLatency)}ms`);
+            // 优化：移除此处的延迟显示更新日志，避免与SSH服务中的延迟信息日志重复
+            // log.debug(`延迟显示更新: 客户端${clientDelay.value}ms, 服务器${serverDelay.value}ms, 总计${Math.round(totalLatency)}ms`);
         }
       }
       }
@@ -683,14 +684,16 @@ export default defineComponent({
     let sessionChangeTimeout = null;
     watch(() => props.activeSessionId, (newId, oldId) => {
       if (newId === oldId) return; // 避免重复处理相同值
-      
+
       // 清除之前的超时计时器
       if (sessionChangeTimeout) {
         clearTimeout(sessionChangeTimeout);
       }
-      
-      // 立即记录日志
-      log.debug(`终端切换: ${oldId} -> ${newId}`);
+
+      // 优化：只在有意义的切换时记录日志（避免undefined -> undefined等无效切换）
+      if (oldId && newId && oldId !== newId) {
+        log.debug(`终端切换: ${oldId} -> ${newId}`);
+      }
       
       // 标签页切换时立即应用新终端的状态，不需要延迟
       if (newId) {

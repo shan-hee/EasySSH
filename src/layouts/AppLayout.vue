@@ -189,7 +189,10 @@ export default defineComponent({
               // 只有在会话不存在且未在创建中时才标记为新创建
               const isNewCreation = !hasExistingTerminal && !hasTerminalSession && !isSessionCreating;
 
-              log.debug(`[AppLayout] 终端状态: 存在=${hasExistingTerminal}, 会话=${hasTerminalSession}, 创建中=${isSessionCreating}`);
+              // 优化：只在新创建终端时记录详细状态，减少重复日志
+              if (isNewCreation) {
+                log.debug(`[AppLayout] 终端状态: 新建终端 ${currentId}`);
+              }
               
               // 直接处理终端初始化，避免重复的事件触发
               try {

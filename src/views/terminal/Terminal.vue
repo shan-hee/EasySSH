@@ -1428,8 +1428,11 @@ export default {
       // 监听终端状态变化事件
       const handleTerminalStatusUpdate = (event) => {
         const { terminalId, status, isNew, sessionId } = event.detail
-        
-        log.debug(`收到终端状态刷新事件: ${terminalId}, ${status}, 新创建=${isNew || false}`)
+
+        // 优化：只在关键状态变化时记录日志，减少噪音
+        if (status === 'ready' || status === 'error') {
+          log.debug(`收到终端状态刷新事件: ${terminalId}, ${status}, 新创建=${isNew || false}`)
+        }
         
         // 根据状态更新UI
         if (status === 'initializing') {

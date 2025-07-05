@@ -227,7 +227,7 @@ class SSHService {
       // 合并SSH连接日志 - 一次性输出关键信息
       log.info(`建立SSH连接: ${connection.username}@${connection.host}:${connection.port} via ${wsUrl}`);
       const socket = new WebSocket(wsUrl);
-      
+
       const session = {
         id: sessionId,
         connection: { ...connection },
@@ -242,14 +242,15 @@ class SSHService {
         onClose: null,
         onError: null
       };
-      
+
       this.sessions.set(sessionId, session);
-      
+
       await this._setupSocketEvents(socket, sessionId, connection, connectionState);
-      
+
       this._setupKeepAlive(sessionId);
-      
-      log.info(`SSH会话创建成功: ${sessionId}`);
+
+      // 优化：合并会话创建成功和映射建立的日志，减少重复输出
+      // log.info(`SSH会话创建成功: ${sessionId}`) - 移至连接成功回调中统一输出
       
       return sessionId;
     } catch (error) {

@@ -379,7 +379,8 @@ export const useTerminalStore = defineStore('terminal', () => {
           terminalOptions.cursorBlink = settings.cursorBlink
         }
 
-        log.info('使用设置中的终端选项:', terminalOptions)
+        // 优化：只记录关键配置信息，避免大量主题颜色配置的冗余输出
+        log.info(`终端配置: 字体${terminalOptions.fontFamily} ${terminalOptions.fontSize}px, 光标${terminalOptions.cursorStyle}${terminalOptions.cursorBlink ? '(闪烁)' : ''}`)
       }
 
       // 获取完整的终端选项（包含主题）

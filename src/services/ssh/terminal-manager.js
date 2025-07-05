@@ -41,7 +41,8 @@ class TerminalManager {
     const cursorStyle = options.cursorStyle || 'block';
     const cursorBlink = options.cursorBlink !== undefined ? options.cursorBlink : true;
     
-    log.info(`创建终端，使用光标样式: ${cursorStyle}, 闪烁: ${cursorBlink}`);
+    // 优化：将光标样式信息合并到终端初始化完成日志中，减少分散的日志输出
+    // log.info(`创建终端，使用光标样式: ${cursorStyle}, 闪烁: ${cursorBlink}`);
     
     // 创建终端实例 - 使用传入的选项，避免重复创建设置服务
     const terminal = new Terminal({
@@ -80,10 +81,8 @@ class TerminalManager {
     
     // 尝试聚焦终端
     try {
-      log.info(`尝试聚焦新创建的终端: ${sessionId}`);
+      // 优化：简化聚焦日志，只在失败时记录
       terminal.focus();
-
-      // 聚焦后的调整主要由 ResizeObserver 处理，这里不需要额外调整
       log.debug(`终端聚焦完成: ${sessionId}`);
     } catch (e) {
       log.warn(`聚焦终端失败: ${e.message}`);
@@ -251,12 +250,14 @@ class TerminalManager {
       // 等待字体加载完成
       if (document.fonts && document.fonts.ready) {
         await document.fonts.ready;
-        log.debug(`字体加载完成: ${sessionId}`);
       }
 
       // 初始化终端大小
       fitAddon.fit();
-      log.debug(`终端初始化完成: ${sessionId}, 大小: ${terminal.cols}x${terminal.rows}`);
+      // 优化：合并字体加载和初始化完成的日志，包含光标样式信息
+      const cursorStyle = terminal.options.cursorStyle || 'block';
+      const cursorBlink = terminal.options.cursorBlink !== undefined ? terminal.options.cursorBlink : true;
+      log.debug(`终端初始化完成: ${sessionId}, 大小: ${terminal.cols}x${terminal.rows}, 光标: ${cursorStyle}${cursorBlink ? '(闪烁)' : ''}`);
     } catch (e) {
       log.error('初始化终端大小失败', e);
       // 备用方案
