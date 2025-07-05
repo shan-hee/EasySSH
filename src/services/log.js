@@ -1,90 +1,170 @@
 /**
  * 日志服务模块
+ * 提供统一的日志记录、过滤、格式化和存储功能
  */
 class LogService {
   constructor() {
     this.isInitialized = false
-    // this.logLevel = 'info'  // debug, info, warn, error
+    this.logLevel = 'info' // 默认日志级别
     this.enableConsole = true
     this.logs = []
     this.maxLogs = 1000
-    this.logLevels = {
+    this.logLevels = Object.freeze({
       debug: 0,
       info: 1,
       warn: 2,
       error: 3,
-    }
-    
+    })
+
     // 忽略特定的错误消息列表
-    this.ignoredErrors = [
-      '未知的消息类型', 
+    this.ignoredErrors = new Set([
+      '未知的消息类型',
       'WebSocket连接错误',
       '收到无类型WebSocket消息',
       '解析WebSocket消息失败'
-    ]
-    
+    ])
+
     // 错误消息计数器，用于限制重复错误日志
-    this.errorCounts = {}
-    
+    this.errorCounts = new Map()
+
     // 上次显示的错误日志消息
     this.lastErrorMessage = ''
     this.lastErrorTimestamp = 0
     this.errorThrottleTime = 5000 // 5秒内相同错误只显示一次
+
+    // 性能优化：使用循环缓冲区
+    this.logIndex = 0
+
+    // 配置常量
+    this.CONFIG_KEYS = Object.freeze({
+      LOG_LEVEL: 'easyssh_log_level',
+      ENABLE_CONSOLE: 'easyssh_enable_console'
+    })
   }
 
   /**
    * 初始化日志服务
    * @returns {Promise<boolean>} 是否初始化成功
    */
-  init() {
+  async init() {
     try {
       if (this.isInitialized) {
-        return Promise.resolve(true)
+        return true
       }
-      
-      // 从本地存储或环境变量获取日志级别
-      const savedLogLevel = localStorage.getItem('easyssh_log_level')
-      // if (savedLogLevel && this.logLevels[savedLogLevel] !== undefined) {
-      //   this.logLevel = savedLogLevel
-      // } else if (import.meta.env.VITE_LOG_LEVEL) {
-      //   this.logLevel = import.meta.env.VITE_LOG_LEVEL
-      // }
-        this.logLevel = import.meta.env.VITE_LOG_LEVEL  
-            
-      // 确认是否启用控制台日志
-      const enableConsole = localStorage.getItem('easyssh_enable_console')
-      if (enableConsole !== null) {
-        this.enableConsole = enableConsole === 'true'
-      }
-      
+
+      // 优化配置加载逻辑
+      this._loadConfiguration()
+
+      // 初始化日志存储
+      this._initializeLogStorage()
+
       this.isInitialized = true
-      this.info('日志服务初始化完成', { level: this.logLevel, console: this.enableConsole })
-      return Promise.resolve(true)
+      this.info('日志服务初始化完成', {
+        level: this.logLevel,
+        console: this.enableConsole,
+        maxLogs: this.maxLogs
+      })
+      return true
     } catch (error) {
       console.error('日志服务初始化失败', error)
-      return Promise.resolve(false)
+      return false
+    }
+  }
+
+  /**
+   * 加载配置
+   * @private
+   */
+  _loadConfiguration() {
+    // 优先级：localStorage > 环境变量 > 默认值
+    const savedLogLevel = this._getStorageItem(this.CONFIG_KEYS.LOG_LEVEL)
+    if (savedLogLevel && this._isValidLogLevel(savedLogLevel)) {
+      this.logLevel = savedLogLevel
+    } else if (import.meta.env.VITE_LOG_LEVEL && this._isValidLogLevel(import.meta.env.VITE_LOG_LEVEL)) {
+      this.logLevel = import.meta.env.VITE_LOG_LEVEL
+    }
+
+    // 控制台日志配置
+    const enableConsole = this._getStorageItem(this.CONFIG_KEYS.ENABLE_CONSOLE)
+    if (enableConsole !== null) {
+      this.enableConsole = enableConsole === 'true'
+    }
+  }
+
+  /**
+   * 初始化日志存储
+   * @private
+   */
+  _initializeLogStorage() {
+    // 预分配数组空间以提高性能
+    this.logs = new Array(this.maxLogs)
+    this.logIndex = 0
+  }
+
+  /**
+   * 验证日志级别是否有效
+   * @param {string} level - 日志级别
+   * @returns {boolean}
+   * @private
+   */
+  _isValidLogLevel(level) {
+    return typeof level === 'string' && this.logLevels.hasOwnProperty(level)
+  }
+
+  /**
+   * 安全获取localStorage项
+   * @param {string} key - 存储键
+   * @returns {string|null}
+   * @private
+   */
+  _getStorageItem(key) {
+    try {
+      return localStorage.getItem(key)
+    } catch (error) {
+      this.warn('无法访问localStorage', { key, error: error.message })
+      return null
     }
   }
   
   /**
    * 设置日志级别
    * @param {string} level - 日志级别
+   * @throws {Error} 当日志级别无效时抛出错误
    */
   setLogLevel(level) {
-    if (this.logLevels[level] !== undefined) {
-      this.logLevel = level
-      localStorage.setItem('easyssh_log_level', level)
-      this.info(`日志级别已设置为: ${level}`)
+    if (!this._isValidLogLevel(level)) {
+      throw new Error(`无效的日志级别: ${level}. 有效级别: ${Object.keys(this.logLevels).join(', ')}`)
+    }
+
+    const oldLevel = this.logLevel
+    this.logLevel = level
+
+    try {
+      localStorage.setItem(this.CONFIG_KEYS.LOG_LEVEL, level)
+      this.info(`日志级别已从 ${oldLevel} 更改为: ${level}`)
+    } catch (error) {
+      this.warn('无法保存日志级别到localStorage', { level, error: error.message })
     }
   }
-  
+
   /**
    * 启用/禁用控制台日志
    * @param {boolean} enable - 是否启用
    */
   setEnableConsole(enable) {
+    if (typeof enable !== 'boolean') {
+      throw new Error('enable参数必须是布尔值')
+    }
+
+    const oldValue = this.enableConsole
     this.enableConsole = enable
-    localStorage.setItem('easyssh_enable_console', enable.toString())
+
+    try {
+      localStorage.setItem(this.CONFIG_KEYS.ENABLE_CONSOLE, enable.toString())
+      this.info(`控制台日志已${enable ? '启用' : '禁用'}`, { oldValue, newValue: enable })
+    } catch (error) {
+      this.warn('无法保存控制台设置到localStorage', { enable, error: error.message })
+    }
   }
   
   /**
@@ -120,58 +200,125 @@ class LogService {
    * @param {any} data - 相关数据
    */
   error(message, data) {
+    if (typeof message !== 'string') {
+      message = String(message)
+    }
+
     // 检查是否应忽略此错误
-    const shouldIgnore = this.ignoredErrors.some(pattern => 
+    const shouldIgnore = Array.from(this.ignoredErrors).some(pattern =>
       message.includes(pattern)
     )
-    
+
     if (shouldIgnore) {
       // 将严重级别降为debug
       this.debug(`[已忽略ERROR] ${message}`, data)
       return
     }
-    
+
     // 限制重复错误记录频率
     const now = Date.now()
     const isSameError = message === this.lastErrorMessage
     const isWithinThrottleTime = (now - this.lastErrorTimestamp) < this.errorThrottleTime
-    
+
     if (isSameError && isWithinThrottleTime) {
       // 增加计数但不记录日志
-      this.errorCounts[message] = (this.errorCounts[message] || 0) + 1
+      const currentCount = this.errorCounts.get(message) || 0
+      this.errorCounts.set(message, currentCount + 1)
       return
     }
-    
+
     // 记录此错误并重置状态
     this.lastErrorMessage = message
     this.lastErrorTimestamp = now
-    
+
     // 如果是重复错误，添加计数信息
-    if (this.errorCounts[message]) {
-      const count = this.errorCounts[message]
-      this._log('error', `${message} (重复${count}次)`, data)
-      this.errorCounts[message] = 0
+    const repeatCount = this.errorCounts.get(message)
+    if (repeatCount && repeatCount > 0) {
+      this._log('error', `${message} (重复${repeatCount}次)`, data)
+      this.errorCounts.set(message, 0)
     } else {
-    this._log('error', message, data)
+      this._log('error', message, data)
     }
   }
   
   /**
    * 获取所有日志
+   * @param {Object} options - 获取选项
+   * @param {string} [options.level] - 过滤日志级别
+   * @param {number} [options.limit] - 限制返回数量
+   * @param {Date} [options.since] - 获取指定时间之后的日志
    * @returns {Array} - 日志数组
    */
-  getLogs() {
-    return [...this.logs]
+  getLogs(options = {}) {
+    const { level, limit, since } = options
+
+    // 获取有效日志（过滤掉undefined项）
+    let validLogs = this.logs.filter(log => log !== undefined)
+
+    // 按级别过滤
+    if (level && this._isValidLogLevel(level)) {
+      const minLevel = this.logLevels[level]
+      validLogs = validLogs.filter(log => this.logLevels[log.level] >= minLevel)
+    }
+
+    // 按时间过滤
+    if (since instanceof Date) {
+      validLogs = validLogs.filter(log => new Date(log.timestamp) >= since)
+    }
+
+    // 限制数量
+    if (typeof limit === 'number' && limit > 0) {
+      validLogs = validLogs.slice(-limit)
+    }
+
+    return validLogs.map(log => ({ ...log })) // 返回深拷贝
   }
-  
+
   /**
    * 清空日志
+   * @param {boolean} [clearConsole=true] - 是否同时清空控制台
    */
-  clearLogs() {
-    this.logs = []
-    if (this.enableConsole) {
+  clearLogs(clearConsole = true) {
+    this.logs.fill(undefined)
+    this.logIndex = 0
+    this.errorCounts.clear()
+    this.lastErrorMessage = ''
+    this.lastErrorTimestamp = 0
+
+    if (clearConsole && this.enableConsole) {
       console.clear()
     }
+
+    this.info('日志已清空')
+  }
+
+  /**
+   * 获取日志统计信息
+   * @returns {Object} - 统计信息
+   */
+  getLogStats() {
+    const validLogs = this.logs.filter(log => log !== undefined)
+    const stats = {
+      total: validLogs.length,
+      byLevel: {},
+      errorCounts: Object.fromEntries(this.errorCounts),
+      oldestLog: null,
+      newestLog: null
+    }
+
+    // 按级别统计
+    Object.keys(this.logLevels).forEach(level => {
+      stats.byLevel[level] = validLogs.filter(log => log.level === level).length
+    })
+
+    // 时间范围
+    if (validLogs.length > 0) {
+      const timestamps = validLogs.map(log => new Date(log.timestamp))
+      stats.oldestLog = new Date(Math.min(...timestamps))
+      stats.newestLog = new Date(Math.max(...timestamps))
+    }
+
+    return stats
   }
   
   /**
@@ -186,68 +333,74 @@ class LogService {
     if (!this.isInitialized) {
       this.init()
     }
-    
+
     // 检查日志级别
     if (this.logLevels[level] < this.logLevels[this.logLevel]) {
       return
     }
-    
+
     const timestamp = new Date().toISOString()
     const logEntry = {
       timestamp,
       level,
-      message,
-      data
+      message: String(message),
+      data: data !== undefined ? this._sanitizeData(data) : undefined,
+      id: this._generateLogId()
     }
-    
-    // 添加到日志数组
-    this.logs.push(logEntry)
-    
-    // 限制日志数量
-    if (this.logs.length > this.maxLogs) {
-      this.logs.shift()
-    }
-    
+
+    // 使用循环缓冲区提高性能
+    this.logs[this.logIndex] = logEntry
+    this.logIndex = (this.logIndex + 1) % this.maxLogs
+
     // 输出到控制台
     if (this.enableConsole) {
-      // 格式化数据，如果是对象则格式化为更友好的字符串
-      let formattedData = ''
-      if (data !== undefined) {
+      this._outputToConsole(level, timestamp, message, data)
+    }
+  }
+
+  /**
+   * 输出日志到控制台
+   * @param {string} level - 日志级别
+   * @param {string} timestamp - 时间戳
+   * @param {string} message - 消息
+   * @param {any} data - 数据
+   * @private
+   */
+  _outputToConsole(level, timestamp, message, data) {
+    // 格式化数据
+    let formattedData = ''
+    if (data !== undefined) {
+      try {
         if (typeof data === 'object' && data !== null) {
-          try {
-            // 尝试将对象转换为字符串
-            const simpleObj = this._simplifyObject(data)
-            if (Object.keys(simpleObj).length > 0) {
-              formattedData = JSON.stringify(simpleObj)
-            }
-          } catch (err) {
-            formattedData = String(data)
+          const simpleObj = this._simplifyObject(data)
+          if (Object.keys(simpleObj).length > 0) {
+            formattedData = JSON.stringify(simpleObj, null, 2)
           }
         } else {
           formattedData = String(data)
         }
-      }
-      
-      // 确保格式化后的消息简洁明了
-      const logMessage = formattedData 
-        ? `${message} ${formattedData}`
-        : message
-        
-      switch (level) {
-        case 'debug':
-          console.debug(`[${timestamp}] [DEBUG] ${logMessage}`)
-          break
-        case 'info':
-          console.info(`[${timestamp}] [INFO] ${logMessage}`)
-          break
-        case 'warn':
-          console.warn(`[${timestamp}] [WARN] ${logMessage}`)
-          break
-        case 'error':
-          console.error(`[${timestamp}] [ERROR] ${logMessage}`)
-          break
+      } catch (err) {
+        formattedData = '[无法序列化的数据]'
       }
     }
+
+    // 构建日志消息
+    const logMessage = formattedData
+      ? `${message}\n${formattedData}`
+      : message
+
+    // 使用对应的控制台方法
+    const consoleMethod = console[level] || console.log
+    consoleMethod(`[${timestamp}] [${level.toUpperCase()}] ${logMessage}`)
+  }
+
+  /**
+   * 生成唯一的日志ID
+   * @returns {string}
+   * @private
+   */
+  _generateLogId() {
+    return `${Date.now()}-${Math.random().toString(36).substring(2, 11)}`
   }
 
   /**
@@ -358,11 +511,64 @@ class LogService {
    * @param {boolean} ignore - 是否忽略
    */
   setIgnoreError(errorPattern, ignore) {
-    if (ignore && !this.ignoredErrors.includes(errorPattern)) {
-      this.ignoredErrors.push(errorPattern)
-    } else if (!ignore) {
-      this.ignoredErrors = this.ignoredErrors.filter(pattern => pattern !== errorPattern)
+    if (typeof errorPattern !== 'string') {
+      throw new Error('错误模式必须是字符串')
     }
+
+    if (typeof ignore !== 'boolean') {
+      throw new Error('ignore参数必须是布尔值')
+    }
+
+    if (ignore) {
+      this.ignoredErrors.add(errorPattern)
+      this.info(`已添加忽略错误模式: ${errorPattern}`)
+    } else {
+      const deleted = this.ignoredErrors.delete(errorPattern)
+      if (deleted) {
+        this.info(`已移除忽略错误模式: ${errorPattern}`)
+      }
+    }
+  }
+
+  /**
+   * 获取当前忽略的错误模式列表
+   * @returns {Array<string>}
+   */
+  getIgnoredErrors() {
+    return Array.from(this.ignoredErrors)
+  }
+
+  /**
+   * 导出日志为JSON格式
+   * @param {Object} options - 导出选项
+   * @returns {string} JSON字符串
+   */
+  exportLogs(options = {}) {
+    const logs = this.getLogs(options)
+    const exportData = {
+      exportTime: new Date().toISOString(),
+      logCount: logs.length,
+      stats: this.getLogStats(),
+      logs
+    }
+    return JSON.stringify(exportData, null, 2)
+  }
+
+  /**
+   * 批量记录日志
+   * @param {Array} logEntries - 日志条目数组
+   */
+  batchLog(logEntries) {
+    if (!Array.isArray(logEntries)) {
+      throw new Error('logEntries必须是数组')
+    }
+
+    logEntries.forEach(entry => {
+      const { level, message, data } = entry
+      if (this._isValidLogLevel(level)) {
+        this._log(level, message, data)
+      }
+    })
   }
 }
 
