@@ -389,7 +389,7 @@ export default {
           Object.assign(terminalBgSettings, parsedBgSettings)
           // 标记为已初始化
           terminalBgSettings.initialized = true
-          log.info('组件创建时加载背景设置:', terminalBgSettings)
+          log.debug('组件创建时加载背景设置:', { enabled: parsedBgSettings.enabled, opacity: parsedBgSettings.opacity }) // 简化日志输出
 
           // 立即更新CSS变量
           updateCssVariables()
@@ -418,13 +418,13 @@ export default {
           Object.assign(connectionSettings, savedConnectionSettings)
           // 标记为已初始化
           connectionSettings.initialized = true
-          log.info('组件创建时加载连接设置:', connectionSettings)
+          log.debug('组件创建时加载连接设置:', connectionSettings) // 降低日志级别
         }
       }
     } catch (error) {
       log.error('初始化读取连接设置失败:', error)
     }
-    
+
     // 页面加载时立即检查本地存储中的界面设置
     try {
       if (settingsService.isInitialized) {
@@ -434,7 +434,7 @@ export default {
           Object.assign(uiSettings, savedUISettings)
           // 标记为已初始化
           uiSettings.initialized = true
-          log.info('组件创建时加载界面设置:', uiSettings)
+          log.debug('组件创建时加载界面设置:', uiSettings) // 降低日志级别
         }
       }
     } catch (error) {
@@ -455,7 +455,7 @@ export default {
           Object.assign(terminalSettings, savedTerminalSettings)
           // 标记为已初始化
           terminalSettings.initialized = true
-          log.info('组件创建时从统一设置服务加载终端设置:', terminalSettings)
+          log.debug('组件创建时从统一设置服务加载终端设置:', savedTerminalSettings) // 降低日志级别，只记录设置内容
         }
       } catch (error) {
         log.error('初始化读取终端设置失败:', error)
@@ -498,30 +498,27 @@ export default {
       // 初始化常规设置
       await loadSettings();
       
-      // 调试键盘管理器加载
-      log.info('Settings组件挂载，尝试加载快捷键设置');
-      log.info('window.services存在:', !!window.services);
-      if (window.services) {
-        log.info('可用服务:', Object.keys(window.services));
-        log.info('keyboardManager存在:', !!window.services.keyboardManager);
-      }
+      // 调试键盘管理器加载 - 简化日志输出
+      log.debug('Settings组件挂载，检查键盘管理器服务', {
+        servicesExists: !!window.services,
+        keyboardManagerExists: !!window.services?.keyboardManager,
+        availableServices: window.services ? Object.keys(window.services) : []
+      });
       
       // 尝试加载快捷键设置
       try {
         // 在window.services准备好后加载快捷键
         if (window.services?.keyboardManager) {
-          log.info('使用全局键盘管理器服务');
+          log.debug('使用全局键盘管理器服务');
           loadShortcuts();
         } else {
-          log.info('尝试使用本地键盘管理器');
+          log.debug('使用本地键盘管理器');
           loadShortcuts(); // 使用本地键盘管理器
-          
+
           // 仍然监听services就绪事件，以便在服务可用时再次加载
           window.addEventListener('services:ready', () => {
-            log.info('收到services就绪事件');
-            log.info('window.services存在:', !!window.services);
+            log.debug('收到services就绪事件，切换到全局键盘管理器');
             if (window.services?.keyboardManager) {
-              log.info('services就绪后，使用全局键盘管理器服务');
               loadShortcuts();
             }
           }, { once: true });
@@ -539,11 +536,12 @@ export default {
           await settingsService.init()
         }
 
-        // 加载终端设置
+        // 加载终端设置 - 避免重复日志
         const savedTerminalSettings = settingsService.getTerminalSettings()
         if (savedTerminalSettings && !terminalSettings.initialized) {
           Object.assign(terminalSettings, savedTerminalSettings)
-          log.info('loadSettings中从统一设置服务更新终端设置:', terminalSettings)
+          terminalSettings.initialized = true
+          log.debug('loadSettings中更新终端设置') // 简化日志，避免重复输出大对象
         }
         
         // 加载终端背景图片设置
@@ -554,7 +552,7 @@ export default {
             // 检查状态是否与初始化时加载的不同
             if (terminalBgSettings.enabled !== parsedBgSettings.enabled) {
               Object.assign(terminalBgSettings, parsedBgSettings)
-              log.info('loadSettings中更新背景设置:', terminalBgSettings)
+              log.debug('loadSettings中更新背景设置状态变化') // 简化日志
             }
             
             // 无论如何都发送背景状态事件，确保系统各部分状态一致
@@ -566,18 +564,20 @@ export default {
           }
         }
         
-        // 加载连接设置
+        // 加载连接设置 - 避免重复日志
         const savedConnectionSettings = settingsService.getConnectionSettings()
         if (savedConnectionSettings && !connectionSettings.initialized) {
           Object.assign(connectionSettings, savedConnectionSettings)
-          log.info('loadSettings中更新连接设置:', connectionSettings)
+          connectionSettings.initialized = true
+          log.debug('loadSettings中更新连接设置') // 简化日志
         }
 
-        // 加载界面设置
+        // 加载界面设置 - 避免重复日志
         const savedUISettings = settingsService.getUISettings()
         if (savedUISettings && !uiSettings.initialized) {
           Object.assign(uiSettings, savedUISettings)
-          log.info('loadSettings中更新界面设置:', uiSettings)
+          uiSettings.initialized = true
+          log.debug('loadSettings中更新界面设置') // 简化日志
         }
       } catch (error) {
         log.error('加载设置失败', error)
