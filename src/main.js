@@ -438,15 +438,14 @@ window.addEventListener('ssh-connecting', async (event) => {
 
       // 立即开始监控连接，与SSH连接并行
       try {
-        log.info(`[并行监控] 开始为终端 ${terminalId} 连接到 ${host} 的监控服务`)
         const connected = await monitoringService.connect(terminalId, host)
         if (connected) {
-          log.info(`[并行监控] 已为终端 ${terminalId} 连接到 ${host} 的监控服务`)
+          log.info(`[监控] 终端 ${terminalId} 连接到 ${host} 成功`)
         } else {
-          log.debug(`[并行监控] 终端 ${terminalId} 连接到 ${host} 的监控服务失败`)
+          log.debug(`[监控] 终端 ${terminalId} 连接到 ${host} 失败`)
         }
       } catch (error) {
-        log.debug(`[并行监控] 监控连接过程出错:`, error)
+        log.debug(`[监控] 终端 ${terminalId} 连接到 ${host} 出错:`, error)
       }
     } catch (error) {
       log.debug(`[并行监控] 导入监控服务失败:`, error)

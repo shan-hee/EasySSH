@@ -254,12 +254,12 @@ export const useTerminalStore = defineStore('terminal', () => {
         fixXtermHelpers()
         
         // 在SSH会话对象中保存终端ID，以便SFTP功能使用
+        // 注意：映射关系已在 ssh-service.js 中建立，这里只是确保会话对象中也有引用
         try {
           const session = sshService.sessions.get(sessionId)
-          if (session) {
-            // 添加终端ID到会话中，以便SFTP功能使用
+          if (session && !session.terminalId) {
             session.terminalId = connectionId
-            log.info(`设置SSH会话 ${sessionId} 的终端ID: ${connectionId}`)
+            log.debug(`补充设置SSH会话 ${sessionId} 的终端ID: ${connectionId}`)
           }
         } catch (error) {
           log.warn(`设置终端ID映射失败:`, error)
@@ -518,47 +518,49 @@ export const useTerminalStore = defineStore('terminal', () => {
     }
     
     try {
-      log.info(`正在调整终端大小: ${connectionId}`)
-      
+      let resizeSuccess = false
+      let finalSize = null
+
       // 统一处理终端对象
       if (terminal.terminal) {
         // 标准终端对象结构
-        
+
         // 检查和使用FitAddon
         if (terminal.addons && terminal.addons.fit) {
-          log.info('使用终端对象的FitAddon调整大小')
           try {
             terminal.addons.fit.fit()
+            resizeSuccess = true
+            finalSize = `${terminal.terminal.cols}x${terminal.terminal.rows}`
           } catch (e) {
             log.warn('使用addons.fit调整大小失败:', e)
           }
         } else {
           // 尝试其他FitAddon获取和创建方式
-          log.info('尝试创建或使用备份FitAddon')
-          
           // 使用备份或创建新的FitAddon的代码保持不变...
         }
-        
+
         // 触发终端的resize事件
-        if (terminal.terminal._core) {
+        if (terminal.terminal._core && resizeSuccess) {
           const event = {
-            cols: terminal.terminal.cols, 
+            cols: terminal.terminal.cols,
             rows: terminal.terminal.rows
           }
-          log.info(`调整后的终端大小: ${event.cols}x${event.rows}`)
-          
           // 内部大小调整代码保持不变...
         }
       } else if (typeof terminal.fit === 'function') {
         // 直接支持fit方法的终端对象
-        log.info('使用终端自带fit方法调整大小')
-        terminal.fit()
+        try {
+          terminal.fit()
+          resizeSuccess = true
+        } catch (e) {
+          log.warn('使用终端自带fit方法失败:', e)
+        }
       } else {
         // 通用处理：尝试使用备份的FitAddon
-        log.info('使用备份FitAddon尝试调整大小')
         if (state.fitAddons[connectionId]) {
           try {
             state.fitAddons[connectionId].fit()
+            resizeSuccess = true
           } catch (e) {
             log.warn('使用备份FitAddon失败:', e)
           }
@@ -566,8 +568,11 @@ export const useTerminalStore = defineStore('terminal', () => {
           log.warn('无法调整终端大小：缺少合适的FitAddon')
         }
       }
-      
-      log.info(`终端大小调整完成: ${connectionId}`)
+
+      // 合并日志输出 - 只在成功时输出一条日志
+      if (resizeSuccess) {
+        log.info(`终端大小调整完成: ${connectionId}${finalSize ? ` (${finalSize})` : ''}`)
+      }
     } catch (error) {
       log.error('调整终端大小失败:', error)
     }

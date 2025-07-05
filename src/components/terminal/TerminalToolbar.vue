@@ -1126,59 +1126,8 @@ export default defineComponent({
       }
     };
     
-    // 处理终端状态刷新事件
-    const handleTerminalRefreshStatus = (event) => {
-      if (!event.detail || !event.detail.sessionId) return;
-      
-      const { sessionId } = event.detail;
-      log.debug(`收到终端状态刷新事件: ${sessionId}`);
-    
-      // 只有当当前活动会话是目标会话时才刷新UI状态
-      if (sessionId === props.activeSessionId) {
-        // 使用更可靠的方法重新检查所有状态
-        
-        // 1. 获取终端特定状态缓存
-        const terminalState = getTerminalToolbarState(sessionId);
-        
-        // 2. 优先使用缓存的状态值
-        if (terminalState) {
-          // 恢复SSH连接状态
-          if (terminalState.isSshConnected !== undefined) {
-            isSshConnected.value = terminalState.isSshConnected;
-        } else {
-            // 如果没有缓存状态，重新检查
-      checkSshConnectionStatus();
-          }
-      
-          // 恢复监控服务状态 - 增强版本
-          // 增强监控状态检查，直接使用applyInitialStatus函数
-          // 这样确保在刷新状态时使用相同的增强逻辑
-          applyInitialStatus();
-          
-          // 恢复网络延迟数据显示
-          if (terminalState.rttValue && 
-              typeof terminalState.serverDelay === 'number' && 
-              typeof terminalState.clientDelay === 'number' &&
-              (terminalState.serverDelay > 0 || terminalState.clientDelay > 0)) {
-            showNetworkIcon.value = true;
-            rttValue.value = terminalState.rttValue;
-            serverDelay.value = terminalState.serverDelay;
-            clientDelay.value = terminalState.clientDelay;
-          } else {
-            // 没有有效的延迟数据时，不显示网络图标
-          showNetworkIcon.value = false;
-          }
-        } else {
-          // 如果没有终端状态缓存，重新检查所有状态
-          checkSshConnectionStatus();
-          // 使用增强版本检查监控状态
-          applyInitialStatus();
-          showNetworkIcon.value = false;
-        }
-        
-        log.debug(`工具栏状态已刷新: SSH连接=${isSshConnected.value}, 监控服务=${monitoringServiceInstalled.value}, 网络图标=${showNetworkIcon.value}`);
-      }
-    };
+    // 移除重复的事件处理函数 - 工具栏状态由其他机制统一管理
+    // const handleTerminalRefreshStatus = (event) => { ... }
     
     // 修改保存连接状态函数为更新状态函数
     const updateConnectionStatus = (sessionId, isConnected) => {
@@ -1276,7 +1225,8 @@ export default defineComponent({
       try {
         if (!currentId) return;
         
-        log.debug(`[工具栏] 确保终端状态独立: ${currentId}`);
+        // 降低日志频率 - 只在状态实际发生变化时输出
+        // log.debug(`[工具栏] 确保终端状态独立: ${currentId}`);
         
         // 获取当前终端的状态
         const terminalState = getTerminalToolbarState(currentId);
@@ -1342,7 +1292,7 @@ export default defineComponent({
       window.removeEventListener('monitoring-status-change', handleMonitoringStatusChange);
       window.removeEventListener('terminal:toolbar-reset', handleToolbarReset);
       window.removeEventListener('terminal:toolbar-sync', handleToolbarSync);
-      window.removeEventListener('terminal:refresh-status', handleTerminalRefreshStatus);
+      // window.removeEventListener('terminal:refresh-status', handleTerminalRefreshStatus);
       // 移除监控连接成功事件监听器（已废弃）
       window.removeEventListener('resize', updateSftpTooltipPosition);
       window.removeEventListener('resize', handleResize);
@@ -1364,8 +1314,8 @@ export default defineComponent({
       window.addEventListener('monitoring-status-change', handleMonitoringStatusChange);
       window.addEventListener('terminal:toolbar-reset', handleToolbarReset);
       window.addEventListener('terminal:toolbar-sync', handleToolbarSync);
-      // 添加终端状态刷新事件监听
-      window.addEventListener('terminal:refresh-status', handleTerminalRefreshStatus);
+      // 移除重复的事件监听器 - 工具栏状态由 terminal-status-update 事件统一管理
+      // window.addEventListener('terminal:refresh-status', handleTerminalRefreshStatus);
       // 移除监控连接成功事件监听（已废弃）
       // WebSocket连接成功不等于监控服务已安装
       

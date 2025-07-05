@@ -158,9 +158,7 @@ class SSHService {
         const { path } = wsServerConfig;
         this.ipv4Url = `${protocol}//${host}${path}`;
 
-        log.info(`尝试连接到WebSocket服务: ${this.ipv4Url}`);
-
-        // 尝试连接
+        // 尝试连接 - 合并日志输出
         const resultSessionId = await this._createSessionWithUrl(this.ipv4Url, sessionId, connection);
         return resultSessionId; // 返回可能新生成的会话ID
       } catch (connectionError) {
@@ -210,8 +208,6 @@ class SSHService {
    */
   async _createSessionWithUrl(wsUrl, sessionId, connection, isFallback = false) {
     try {
-      log.info(`准备建立SSH连接 (${connection.name || connection.host}:${connection.port})`);
-      
       // 如果会话ID已存在，强制生成新的会话ID，确保不复用
       if (this.sessions.has(sessionId)) {
         log.warn(`发现同ID会话已存在: ${sessionId}，生成新的会话ID`);
@@ -220,15 +216,16 @@ class SSHService {
         log.info(`为相同连接生成新会话ID: ${newSessionId}`);
         sessionId = newSessionId;
       }
-      
+
       const connectionState = {
         status: 'connecting',
         message: '正在连接...',
         error: null,
         startTime: new Date()
       };
-      
-      log.info(`创建WebSocket连接: ${wsUrl}`);
+
+      // 合并SSH连接日志 - 一次性输出关键信息
+      log.info(`建立SSH连接: ${connection.username}@${connection.host}:${connection.port} via ${wsUrl}`);
       const socket = new WebSocket(wsUrl);
       
       const session = {

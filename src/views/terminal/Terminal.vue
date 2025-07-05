@@ -708,7 +708,7 @@ export default {
           if (!terminalStore.hasTerminal(id)) return
           
           try {
-            log.debug(`执行终端大小调整: ${id}`)
+            // 移除重复的调整日志 - 由 terminalStore.fitTerminal 统一输出
             terminalStore.fitTerminal(id)
             // 标记终端尺寸已调整
             terminalSized.value[id] = true
@@ -1207,8 +1207,8 @@ export default {
 
       // 添加会话切换事件监听
       window.addEventListener('terminal:session-change', handleSessionChange)
-      // 添加终端状态刷新事件监听
-      window.addEventListener('terminal:refresh-status', handleTerminalRefreshStatus)
+      // 移除重复的事件监听器 - 只保留 terminal-status-update 事件系统
+      // window.addEventListener('terminal:refresh-status', handleTerminalRefreshStatus)
 
       // 如果有活动连接ID，则更新终端ID列表
       if (activeConnectionId.value) {
@@ -1290,7 +1290,7 @@ export default {
       if (cleanupSSHFailureEvents) cleanupSSHFailureEvents()
       window.removeEventListener('terminal-command', handleTerminalEvent)
       window.removeEventListener('terminal:session-change', handleSessionChange)
-      window.removeEventListener('terminal:refresh-status', handleTerminalRefreshStatus)
+      // window.removeEventListener('terminal:refresh-status', handleTerminalRefreshStatus)
       document.removeEventListener('keydown', handleGlobalKeydown, true)
 
       // 安全地断开ResizeObserver
@@ -1306,103 +1306,8 @@ export default {
       log.debug('终端组件卸载，保留会话')
     })
     
-    // 添加防抖控制
-    const refreshStatusDebounceTimer = ref(null)
-    
-    // 添加回handleTerminalRefreshStatus函数，但简化逻辑
-    const handleTerminalRefreshStatus = (event) => {
-      if (!event.detail || !event.detail.sessionId) return;
-      
-      // 添加防抖处理，避免短时间内处理多次相同会话ID的刷新事件
-      if (refreshStatusDebounceTimer.value) {
-        clearTimeout(refreshStatusDebounceTimer.value);
-      }
-      
-      refreshStatusDebounceTimer.value = setTimeout(() => {
-        const { sessionId, forceShow, isNewCreation } = event.detail;
-        log.debug(`收到终端状态刷新事件: ${sessionId}${forceShow ? ', 强制显示' : ''}${isNewCreation ? ', 新创建' : ''}`);
-        
-        // 如果是新创建的终端，首先清理旧状态
-        if (isNewCreation) {
-          // 检查是否已经有正在创建中的SSH会话或已存在的会话
-          const hasExistingSession = terminalStore.hasTerminalSession(sessionId);
-          const isCreating = terminalStore.isSessionCreating(sessionId);
-          
-          if (hasExistingSession || isCreating) {
-            log.debug(`终端${sessionId}已有会话或正在创建中，跳过重复初始化`);
-            // 只处理强制显示，不清理状态
-            if (forceShow && sessionId === activeConnectionId.value) {
-              // 确保终端ID在列表中
-              if (!terminalIds.value.includes(sessionId)) {
-                terminalIds.value.push(sessionId);
-              }
-              
-              // 重置终端大小状态以便重新调整大小
-              terminalSized.value[sessionId] = false;
-              
-              // 强制重新调整终端大小并聚焦
-              nextTick(() => {
-                resizeTerminal(sessionId);
-                focusTerminal(sessionId);
-              });
-              
-              log.debug(`强制显示终端: ${sessionId}`);
-            }
-            refreshStatusDebounceTimer.value = null;
-            return;
-          }
-          
-          // 从终端ID列表中移除重复的ID
-          terminalIds.value = terminalIds.value.filter(id => id !== sessionId);
-          
-          // 清理所有状态
-          delete terminalInitialized.value[sessionId];
-          delete terminalInitializingStates.value[sessionId];
-          delete terminalConnectingStates.value[sessionId];
-          delete terminalSized.value[sessionId];
-          
-          // 清理引用
-          if (terminalRefs.value[sessionId]) {
-            terminalRefs.value[sessionId] = null;
-            delete terminalRefs.value[sessionId];
-          }
-          
-          // 增加对终端存储的清理
-          if (terminalStore.hasTerminal(sessionId)) {
-            log.debug(`检测到新创建的终端[${sessionId}]但存在旧连接，断开旧连接`);
-            terminalStore.disconnectTerminal(sessionId)
-              .catch(error => log.error(`清理旧终端连接失败: ${error.message}`));
-          }
-          
-          // 添加到终端ID列表，确保初始化
-          if (!terminalIds.value.includes(sessionId)) {
-            terminalIds.value.push(sessionId);
-            log.debug(`为新创建的终端[${sessionId}]准备初始化`);
-          }
-        }
-        
-        // 主要处理强制显示标志
-        if (forceShow && sessionId === activeConnectionId.value) {
-          // 确保终端ID在列表中
-          if (!terminalIds.value.includes(sessionId)) {
-            terminalIds.value.push(sessionId);
-          }
-          
-          // 重置终端大小状态以便重新调整大小
-          terminalSized.value[sessionId] = false;
-          
-          // 强制重新调整终端大小并聚焦
-          nextTick(() => {
-            resizeTerminal(sessionId);
-            focusTerminal(sessionId);
-          });
-          
-          log.debug(`强制显示终端: ${sessionId}`);
-        }
-        
-        refreshStatusDebounceTimer.value = null;
-      }, 200); // 增加防抖延迟到200毫秒，避免短时间内多次处理
-    }
+    // 移除重复的事件处理函数 - 统一使用 terminal-status-update 事件系统
+    // 原 handleTerminalRefreshStatus 函数已删除，避免与 terminal-status-update 事件重复处理
     
     // 添加处理新会话事件的函数
     const handleNewSession = (event) => {
@@ -1543,7 +1448,8 @@ export default {
           terminalConnectingStates.value[terminalId] = false
           
           // 确保终端显示独立状态
-          log.debug(`正在确保终端[${terminalId}]的状态独立`)
+          // 降低日志频率 - 状态独立确保是常规操作
+          // log.debug(`正在确保终端[${terminalId}]的状态独立`)
           
           if (isNew) {
             log.debug(`强制显示终端: ${terminalId}`)
@@ -1553,7 +1459,8 @@ export default {
           nextTick(() => {
             // 如果这是当前活动的终端，自动聚焦
             if (isActiveTerminal(terminalId)) {
-              log.info(`终端 ${terminalId} 就绪，自动聚焦`)
+              // 降低日志级别 - 聚焦是常规操作
+              log.debug(`终端 ${terminalId} 就绪，自动聚焦`)
 
               // 先强制应用光标样式
               forceCursorStyle(terminalId)

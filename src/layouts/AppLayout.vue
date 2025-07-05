@@ -191,37 +191,31 @@ export default defineComponent({
 
               log.debug(`[AppLayout] 终端状态: 存在=${hasExistingTerminal}, 会话=${hasTerminalSession}, 创建中=${isSessionCreating}`);
               
-              // 只使用一个事件触发终端初始化，避免多次触发导致创建多个SSH会话
-              window.dispatchEvent(new CustomEvent('terminal:refresh-status', {
-                detail: {
-                  sessionId: currentId,
-                  forceShow: true, // 添加强制显示标记
-                  isNewCreation: isNewCreation // 仅在确认需要新创建时设为true
-                }
-              }));
+              // 直接处理终端初始化，避免重复的事件触发
+              try {
+                const terminalStore = useTerminalStore()
 
-              // 添加延迟聚焦逻辑，确保终端已经初始化完成
-              setTimeout(() => {
-                // 聚焦终端
-                try {
-                  const terminalStore = useTerminalStore()
+                if (isNewCreation) {
+                  // 新创建的终端，需要初始化
+                  log.debug(`[AppLayout] 准备初始化新终端: ${currentId}`)
+
+                  // 等待DOM更新后再初始化
+                  nextTick(async () => {
+                    const container = document.querySelector(`#terminal-container-${currentId}`)
+                    if (container) {
+                      await terminalStore.initializeTerminal(currentId, container)
+                    }
+                  })
+                } else {
+                  // 已存在的终端，只需聚焦
                   if (terminalStore.hasTerminal(currentId)) {
-                    log.debug(`从其他页面切换到终端，聚焦终端: ${currentId}`)
+                    log.debug(`[AppLayout] 聚焦已存在的终端: ${currentId}`)
                     terminalStore.focusTerminal(currentId)
-                  } else {
-                    log.debug(`终端 ${currentId} 尚未初始化，等待后再次尝试聚焦`)
-                    // 如果终端还没初始化，再等待一段时间
-                    setTimeout(() => {
-                      if (terminalStore.hasTerminal(currentId)) {
-                        log.debug(`延迟聚焦终端: ${currentId}`)
-                        terminalStore.focusTerminal(currentId)
-                      }
-                    }, 500)
                   }
-                } catch (error) {
-                  log.error('获取终端Store失败:', error)
                 }
-              }, 200)
+              } catch (error) {
+                log.error('[AppLayout] 处理终端初始化失败:', error)
+              }
             }
           }
         });
