@@ -227,7 +227,7 @@ async function smartDataRefresh(userStore) {
 
     // 如果距离上次刷新不到30秒，跳过刷新
     if (timeSinceLastRefresh < 30000) {
-      log.debug('距离上次刷新时间太短，跳过数据刷新')
+      // 优化：降低跳过刷新的日志级别，减少重复输出
       return
     }
 

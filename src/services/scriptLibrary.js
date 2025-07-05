@@ -138,18 +138,16 @@ class ScriptLibraryService {
    */
   async backgroundSync() {
     try {
-      log.debug('执行后台同步...')
-
       // 检查是否需要同步
       if (this.shouldSkipSync()) {
-        log.debug('距离上次同步时间太短，跳过后台同步')
+        // 优化：后台同步跳过时不记录日志，减少噪音
         return
       }
 
       // 执行同步
       const success = await this.syncFromServer(false)
       if (success) {
-        log.debug('后台同步完成')
+        log.debug('脚本库后台同步完成')
       }
     } catch (error) {
       log.warn('后台同步失败:', error)
@@ -209,7 +207,7 @@ class ScriptLibraryService {
 
       // 检查是否需要同步
       if (!forceFullSync && this.shouldSkipSync()) {
-        log.debug('距离上次同步时间太短，跳过本次同步')
+        // 优化：降低跳过同步的日志级别，减少噪音
         return true
       }
 

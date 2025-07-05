@@ -74,14 +74,17 @@ class SettingsService {
     try {
       const storedSettings = this.storage.get(SETTINGS_STORAGE_KEY, {})
 
-      log.debug('从存储加载的设置数据:', storedSettings)
-      log.debug('当前默认设置:', this.settings)
+      // 优化：只记录设置加载的摘要信息，避免大对象重复输出
+      const settingsKeys = Object.keys(storedSettings)
+      log.debug('设置已从存储加载', {
+        storedKeys: settingsKeys,
+        hasTerminalSettings: !!storedSettings.terminal,
+        hasUISettings: !!storedSettings.ui,
+        hasConnectionSettings: !!storedSettings.connection
+      })
 
       // 深度合并设置，保留默认值
       this._mergeSettings(this.settings, storedSettings)
-
-      log.debug('合并后的设置:', this.settings)
-      log.debug('设置已从存储加载')
     } catch (error) {
       log.warn('加载设置失败，使用默认设置', error)
     }
@@ -296,9 +299,20 @@ class SettingsService {
     const terminalSettings = this.settings.terminal
     const theme = this._getTerminalTheme(terminalSettings.theme || TERMINAL_THEMES.DARK)
 
-    log.debug('获取终端选项 - 终端设置:', terminalSettings)
-    log.debug('获取终端选项 - 当前主题:', terminalSettings.theme)
-    log.debug('获取终端选项 - 主题配置:', theme)
+    // 优化：只在首次获取或主题变化时记录详细日志
+    const currentTheme = terminalSettings.theme
+    if (!this._lastLoggedTheme || this._lastLoggedTheme !== currentTheme) {
+      log.debug('获取终端选项', {
+        fontSize: terminalSettings.fontSize,
+        fontFamily: terminalSettings.fontFamily,
+        theme: currentTheme,
+        themeColors: {
+          foreground: theme.foreground,
+          background: theme.background
+        }
+      })
+      this._lastLoggedTheme = currentTheme
+    }
 
     return {
       fontSize: terminalSettings.fontSize,

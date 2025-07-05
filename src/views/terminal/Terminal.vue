@@ -1800,7 +1800,10 @@ export default {
     watch(
       () => userStore.isLoggedIn,
       (newLoginStatus, oldLoginStatus) => {
-        log.debug(`用户登录状态变化: ${oldLoginStatus} -> ${newLoginStatus}`)
+        // 优化：只在有意义的状态变化时记录日志，避免初始化期间的噪音
+        if (oldLoginStatus !== undefined && oldLoginStatus !== newLoginStatus) {
+          log.debug(`用户登录状态变化: ${oldLoginStatus} -> ${newLoginStatus}`)
+        }
 
         // 如果用户登出，立即隐藏自动补全建议
         if (oldLoginStatus && !newLoginStatus) {
