@@ -16,22 +16,7 @@
           <el-alert :title="errorMessage" type="error" :closable="false" show-icon />
         </div>
         
-        <!-- 下载进度 (上传进度现在使用全局指示器) -->
-        <div v-if="isDownloading" class="sftp-progress">
-          <div class="sftp-progress-header">
-            <div class="sftp-progress-title">
-              <span class="sftp-progress-type">下载中</span>
-              <span v-if="transferSpeed > 0" class="sftp-speed">{{ formatTransferSpeed(transferSpeed) }}</span>
-            </div>
-            <span class="sftp-percentage">{{ Math.floor(downloadProgress) }}%</span>
-          </div>
-          <div class="sftp-progress-bar-container">
-            <div class="sftp-progress-bar"
-                :style="{ width: downloadProgress + '%',
-                          backgroundColor: getProgressColor(downloadProgress) }">
-            </div>
-          </div>
-        </div>
+        <!-- 下载进度已移至全局通知区域 -->
         
         <!-- 编辑器 -->
         <div v-if="isEditing" class="sftp-editor-wrapper">
@@ -676,6 +661,15 @@ export default defineComponent({
       // 使用有效文件继续上传流程
       const filesToUpload = validFiles;
 
+      // 检查是否包含文件夹（通过检查文件的webkitRelativePath属性）
+      const hasDirectories = Array.from(filesToUpload).some(file => file.webkitRelativePath && file.webkitRelativePath.includes('/'));
+
+      if (hasDirectories) {
+        // 如果包含文件夹，使用文件夹上传处理（文件夹上传有自己的进度通知）
+        await uploadFileToDirectoryBatch(filesToUpload);
+        return;
+      }
+
       // 对于大于10个文件的上传，先确认
       if (filesToUpload.length > 10) {
         try {
@@ -696,12 +690,30 @@ export default defineComponent({
       // 显示上传开始的消息通知
       let uploadCancelled = false; // 标记是否被用户取消
 
+      // 创建上传进度条HTML
+      const createUploadProgressHTML = (progress, currentFile, fileIndex, totalFiles, speedText) => {
+        const progressText = totalFiles > 1 ?
+          `上传进度: ${Math.floor(progress)}%${speedText ? ` (${speedText})` : ''}(${fileIndex}/${totalFiles}): ${currentFile}` :
+          `上传进度: ${Math.floor(progress)}%${speedText ? ` (${speedText})` : ''}: ${currentFile}`;
+
+        return `
+          <div style="margin-bottom: 8px;">
+            ${progressText}
+          </div>
+          <div style="width: 100%; height: 6px; background-color: #f0f0f0; border-radius: 3px; overflow: hidden;">
+            <div style="width: ${progress}%; height: 100%; background-color: #67c23a; transition: width 0.3s ease;"></div>
+          </div>
+        `;
+      };
+
       // 创建带取消功能的通知
-      const createUploadNotification = (message) => {
+      const createUploadNotification = (message, isProgressNotification = false) => {
         const notification = ElMessage.info({
           message: message,
           duration: 0, // 不自动关闭
           showClose: true,
+          dangerouslyUseHTMLString: isProgressNotification,
+          customClass: isProgressNotification ? 'upload-progress-notification' : '',
           onClose: () => {
             // 用户点击关闭按钮时触发取消上传
             if (!uploadCancelled && isUploading.value) {
@@ -714,13 +726,9 @@ export default defineComponent({
         return notification;
       };
 
-      if (filesToUpload.length === 1) {
-        currentUploadNotification = createUploadNotification(`正在上传文件: ${filesToUpload[0].name}`);
-      } else if (filesToUpload.length <= 5) {
-        currentUploadNotification = createUploadNotification(`正在上传 ${filesToUpload.length} 个文件...`);
-      } else {
-        currentUploadNotification = createUploadNotification(`正在批量上传 ${filesToUpload.length} 个文件...`);
-      }
+      // 创建初始进度通知
+      const initialProgress = createUploadProgressHTML(0, filesToUpload[0].name, 1, filesToUpload.length, '');
+      currentUploadNotification = createUploadNotification(initialProgress, true);
 
       // 重置上传状态（保留原有逻辑以防其他地方依赖）
       isUploading.value = true;
@@ -780,19 +788,30 @@ export default defineComponent({
       }
       
       // 设置进度更新函数
-      const updateBatchProgress = (fileProgress, fileSize) => {
+      const updateBatchProgress = (fileProgress, fileSize, currentFileName, fileIndex) => {
         // 计算当前文件的已上传大小
         const fileUploaded = fileSize * (fileProgress / 100);
-        
+
         // 更新总进度 - 防止超过100%
         const totalProgress = Math.min(100, Math.floor(((uploadedSize + fileUploaded) / totalSize) * 100));
         uploadProgress.value = totalProgress;
-        
+
         // 更新传输速度
         const now = Date.now();
         const timeDelta = (now - transferStartTime.value) / 1000;
+        let speedText = '';
         if (timeDelta > 0) {
           transferSpeed.value = (uploadedSize + fileUploaded) / timeDelta;
+          speedText = formatTransferSpeed(transferSpeed.value);
+        }
+
+        // 更新进度通知
+        if (currentUploadNotification && !uploadCancelled) {
+          const progressHTML = createUploadProgressHTML(totalProgress, currentFileName, fileIndex, filesToUpload.length, speedText);
+          const notificationEl = document.querySelector('.upload-progress-notification .el-message__content');
+          if (notificationEl) {
+            notificationEl.innerHTML = progressHTML;
+          }
         }
       };
       
@@ -809,16 +828,8 @@ export default defineComponent({
 
         const file = filesToUpload[i];
 
-        // 更新当前上传文件名和进度信息（移除百分比显示）
+        // 更新当前上传文件名和进度信息
         currentUploadingFile.value = file.name;
-
-        // 动态更新消息通知
-        if (filesToUpload.length > 1 && currentUploadNotification && !uploadCancelled) {
-          // 关闭之前的通知
-          currentUploadNotification.close();
-          // 显示新的进度通知，也支持取消
-          currentUploadNotification = createUploadNotification(`正在上传文件 (${i + 1}/${filesToUpload.length}): ${file.name}`);
-        }
         
         try {
           // 获取文件的相对路径部分
@@ -856,7 +867,7 @@ export default defineComponent({
               }
 
               // 更新整体进度 - 每次进度回调都实时更新
-              updateBatchProgress(progress, fileSize);
+              updateBatchProgress(progress, fileSize, file.name, i + 1);
 
               // 当单个文件上传完成时，只记录一次
               if (progress >= 100 && !fileCompleted) {
@@ -1146,8 +1157,18 @@ export default defineComponent({
       }
     };
     
-    // 下载文件
+    // 下载文件或文件夹
     const downloadFile = async (file) => {
+      // 根据文件类型选择不同的下载方法
+      if (file.isDirectory) {
+        await downloadFolder(file);
+      } else {
+        await downloadSingleFile(file);
+      }
+    };
+
+    // 下载单个文件
+    const downloadSingleFile = async (file) => {
       resetError();
 
       // 立即显示下载确认消息
@@ -1158,20 +1179,57 @@ export default defineComponent({
         isDownloading.value = true;
         downloadProgress.value = 0;
         transferSpeed.value = 0;
+        transferStartTime.value = Date.now();
 
         // 构建远程路径
         const remotePath = currentPath.value === '/' ?
           currentPath.value + file.name :
           currentPath.value + '/' + file.name;
 
+        // 创建下载进度通知
+        let progressNotification = null;
+
+        // 创建进度条HTML
+        const createProgressHTML = (progress, speedText) => {
+          return `
+            <div style="margin-bottom: 8px;">
+              下载进度: ${Math.floor(progress)}%${speedText ? ` (${speedText})` : ''}
+            </div>
+            <div style="width: 100%; height: 6px; background-color: #f0f0f0; border-radius: 3px; overflow: hidden;">
+              <div style="width: ${progress}%; height: 100%; background-color: #409eff; transition: width 0.3s ease;"></div>
+            </div>
+          `;
+        };
+
         // 定义进度回调函数
         const progressCallback = (progress) => {
           downloadProgress.value = progress;
-          // 简单的传输速度计算
+
+          // 计算传输速度
           const now = Date.now();
           const timeDelta = (now - transferStartTime.value) / 1000;
+          let speedText = '';
           if (timeDelta > 0) {
             transferSpeed.value = (file.size * progress / 100) / timeDelta;
+            speedText = formatTransferSpeed(transferSpeed.value);
+          }
+
+          // 更新或创建进度通知
+          if (!progressNotification) {
+            progressNotification = ElMessage({
+              message: createProgressHTML(progress, speedText),
+              type: 'info',
+              duration: 0, // 不自动关闭
+              showClose: false,
+              dangerouslyUseHTMLString: true,
+              customClass: 'download-progress-notification'
+            });
+          } else {
+            // 直接更新现有通知的内容
+            const notificationEl = document.querySelector('.download-progress-notification .el-message__content');
+            if (notificationEl) {
+              notificationEl.innerHTML = createProgressHTML(progress, speedText);
+            }
           }
         };
 
@@ -1181,6 +1239,11 @@ export default defineComponent({
           remotePath,
           progressCallback
         );
+
+        // 关闭进度通知
+        if (progressNotification) {
+          progressNotification.close();
+        }
 
         // 创建下载链接
         const url = URL.createObjectURL(blob);
@@ -1196,10 +1259,42 @@ export default defineComponent({
           document.body.removeChild(a);
         }, 100);
 
-        ElMessage.success(`文件 ${file.name} 下载成功`);
+        log.info(`文件下载完成: ${file.name}, 大小: ${blob.size} 字节`);
+
+        ElMessage.success({
+          message: `文件 ${file.name} 下载成功`,
+          type: 'success',
+          duration: 3000
+        });
       } catch (error) {
         log.error('下载文件失败:', error);
-        showError(`下载文件失败: ${error.message}`);
+
+        // 关闭进度通知
+        if (progressNotification) {
+          progressNotification.close();
+        }
+
+        // 根据错误类型提供更友好的错误信息
+        let errorMessage = '下载文件失败';
+        if (error.message.includes('超时')) {
+          errorMessage = `下载文件超时，请检查网络连接`;
+        } else if (error.message.includes('权限')) {
+          errorMessage = `没有权限访问文件 "${file.name}"`;
+        } else if (error.message.includes('不存在')) {
+          errorMessage = `文件 "${file.name}" 不存在或已被删除`;
+        } else if (error.message.includes('太大')) {
+          errorMessage = `文件 "${file.name}" 太大，无法下载`;
+        } else {
+          errorMessage = `下载文件失败: ${error.message}`;
+        }
+
+        showError(errorMessage);
+
+        // 显示错误通知
+        ElMessage.error({
+          message: errorMessage,
+          duration: 5000
+        });
       } finally {
         // 延迟关闭下载状态
         setTimeout(() => {
@@ -1207,7 +1302,215 @@ export default defineComponent({
         }, 500);
       }
     };
-    
+
+    // 下载文件夹
+    const downloadFolder = async (folder) => {
+      resetError();
+
+      // 显示确认对话框
+      try {
+        await ElMessageBox.confirm(
+          `确定要下载文件夹 "${folder.name}" 吗？\n\n文件夹将被压缩为ZIP文件，可能需要一些时间。`,
+          '下载文件夹',
+          {
+            confirmButtonText: '开始下载',
+            cancelButtonText: '取消',
+            type: 'info',
+            distinguishCancelAndClose: true
+          }
+        );
+      } catch (action) {
+        // 用户取消下载
+        if (action === 'cancel' || action === 'close') {
+          return;
+        }
+      }
+
+      // 立即显示下载确认消息
+      ElMessage.info(`正在压缩并下载文件夹 ${folder.name}...`);
+
+      try {
+        // 重置传输状态
+        isDownloading.value = true;
+        downloadProgress.value = 0;
+        transferSpeed.value = 0;
+        transferStartTime.value = Date.now();
+
+        // 构建远程路径
+        const remotePath = currentPath.value === '/' ?
+          currentPath.value + folder.name :
+          currentPath.value + '/' + folder.name;
+
+        // 创建文件夹下载进度通知
+        let progressNotification = null;
+
+        // 创建进度条HTML
+        const createProgressHTML = (progress, speedText) => {
+          return `
+            <div style="margin-bottom: 8px;">
+              压缩进度: ${Math.floor(progress)}%${speedText ? ` (${speedText})` : ''}
+            </div>
+            <div style="width: 100%; height: 6px; background-color: #f0f0f0; border-radius: 3px; overflow: hidden;">
+              <div style="width: ${progress}%; height: 100%; background-color: #409eff; transition: width 0.3s ease;"></div>
+            </div>
+          `;
+        };
+
+        // 定义进度回调函数
+        const progressCallback = (progress) => {
+          downloadProgress.value = progress;
+
+          // 计算传输速度
+          const now = Date.now();
+          const timeDelta = (now - transferStartTime.value) / 1000;
+          let speedText = '';
+          if (timeDelta > 0) {
+            // 对于文件夹，我们无法准确计算传输速度，显示一个估算值
+            transferSpeed.value = (progress * 1024 * 1024) / timeDelta; // 假设1MB/s基准
+            speedText = formatTransferSpeed(transferSpeed.value);
+          }
+
+          // 更新或创建进度通知
+          if (!progressNotification) {
+            progressNotification = ElMessage({
+              message: createProgressHTML(progress, speedText),
+              type: 'info',
+              duration: 0, // 不自动关闭
+              showClose: false,
+              dangerouslyUseHTMLString: true,
+              customClass: 'download-progress-notification'
+            });
+          } else {
+            // 直接更新现有通知的内容
+            const notificationEl = document.querySelector('.download-progress-notification .el-message__content');
+            if (notificationEl) {
+              notificationEl.innerHTML = createProgressHTML(progress, speedText);
+            }
+          }
+        };
+
+        // 调用SFTP服务下载文件夹
+        const result = await sftpService.downloadFolder(
+          props.sessionId,
+          remotePath,
+          progressCallback
+        );
+
+        // 关闭进度通知
+        if (progressNotification) {
+          progressNotification.close();
+        }
+
+        // 创建下载链接
+        const url = URL.createObjectURL(result.blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${folder.name}.zip`;
+        document.body.appendChild(a);
+        a.click();
+
+        // 清理
+        setTimeout(() => {
+          URL.revokeObjectURL(url);
+          document.body.removeChild(a);
+        }, 100);
+
+        log.info(`文件夹下载完成: ${folder.name}, 大小: ${result.blob.size} 字节`);
+
+        // 显示下载完成消息，包含详细信息
+        const successMessage = `文件夹 ${folder.name} 下载成功`;
+        ElMessage.success({
+          message: successMessage,
+          type: 'success',
+          duration: 3000
+        });
+
+        // 调试信息
+        console.log('下载结果:', result);
+
+        // 如果有跳过的文件，显示详细报告
+        if (result && (result.skippedFiles?.length > 0 || result.errorFiles?.length > 0)) {
+          console.log('显示下载报告:', {
+            skippedCount: result.skippedFiles?.length,
+            errorCount: result.errorFiles?.length
+          });
+          showDownloadReport(folder.name, result);
+        } else {
+          console.log('没有跳过的文件，不显示报告');
+        }
+      } catch (error) {
+        log.error('下载文件夹失败:', error);
+
+        // 关闭进度通知
+        if (progressNotification) {
+          progressNotification.close();
+        }
+
+        // 根据错误类型提供更友好的错误信息
+        let errorMessage = '下载文件夹失败';
+        if (error.message.includes('超时')) {
+          errorMessage = `下载文件夹超时，请检查网络连接或尝试下载较小的文件夹`;
+        } else if (error.message.includes('权限')) {
+          errorMessage = `没有权限访问文件夹 "${folder.name}"`;
+        } else if (error.message.includes('不存在')) {
+          errorMessage = `文件夹 "${folder.name}" 不存在或已被删除`;
+        } else if (error.message.includes('ZIP')) {
+          errorMessage = `压缩文件夹时出错: ${error.message}`;
+        } else {
+          errorMessage = `下载文件夹失败: ${error.message}`;
+        }
+
+        showError(errorMessage);
+
+        // 显示错误通知
+        ElMessage.error({
+          message: errorMessage,
+          duration: 5000
+        });
+      } finally {
+        // 延迟关闭下载状态
+        setTimeout(() => {
+          isDownloading.value = false;
+        }, 500);
+      }
+    };
+
+    // 显示下载报告
+    const showDownloadReport = (folderName, result) => {
+      const { summary, skippedFiles, errorFiles } = result;
+
+      let reportContent = `<div style="text-align: left;">`;
+      reportContent += `<h4>文件夹 "${folderName}" 下载报告</h4>`;
+      reportContent += `<p><strong>总计:</strong> ${summary.totalFiles} 个文件</p>`;
+      reportContent += `<p><strong>已包含:</strong> ${summary.includedFiles} 个文件</p>`;
+
+      if (summary.skippedCount > 0) {
+        reportContent += `<p><strong>已跳过:</strong> ${summary.skippedCount} 个文件</p>`;
+        reportContent += `<details><summary>查看跳过的文件</summary><ul>`;
+        skippedFiles.forEach(file => {
+          reportContent += `<li><code>${file.path}</code><br><small>原因: ${file.reason}</small></li>`;
+        });
+        reportContent += `</ul></details>`;
+      }
+
+      if (summary.errorCount > 0) {
+        reportContent += `<p><strong>错误:</strong> ${summary.errorCount} 个文件</p>`;
+        reportContent += `<details><summary>查看错误文件</summary><ul>`;
+        errorFiles.forEach(file => {
+          reportContent += `<li><code>${file.path}</code><br><small>错误: ${file.reason}</small></li>`;
+        });
+        reportContent += `</ul></details>`;
+      }
+
+      reportContent += `</div>`;
+
+      ElMessageBox.alert(reportContent, '下载报告', {
+        dangerouslyUseHTMLString: true,
+        confirmButtonText: '确定',
+        type: 'info'
+      });
+    };
+
     // 重命名文件
     const renameFile = (file) => {
       resetError();
@@ -1436,6 +1739,7 @@ export default defineComponent({
       let processedFiles = 0;
       let totalBytes = 0;
       let uploadedBytes = 0;
+      let currentFileBytes = 0; // 当前文件已上传字节数
       
       // 提前计算文件总数和总大小
       const countFiles = async (entry) => {
@@ -1483,6 +1787,36 @@ export default defineComponent({
       uploadProgress.value = 0;
       transferSpeed.value = 0;
       transferStartTime.value = Date.now();
+
+      // 创建文件夹上传进度条HTML
+      const createFolderUploadProgressHTML = (progress, currentFile, processedFiles, totalFiles, speedText) => {
+        const progressText = `上传进度: ${Math.floor(progress)}%${speedText ? ` (${speedText})` : ''}(${processedFiles}/${totalFiles}): ${currentFile}`;
+
+        return `
+          <div style="margin-bottom: 8px;">
+            ${progressText}
+          </div>
+          <div style="width: 100%; height: 6px; background-color: #f0f0f0; border-radius: 3px; overflow: hidden;">
+            <div style="width: ${progress}%; height: 100%; background-color: #67c23a; transition: width 0.3s ease;"></div>
+          </div>
+        `;
+      };
+
+      // 创建文件夹上传进度通知
+      const folderUploadNotification = ElMessage({
+        message: createFolderUploadProgressHTML(0, '准备上传...', 0, totalFiles, ''),
+        type: 'info',
+        duration: 0, // 不自动关闭
+        showClose: true,
+        dangerouslyUseHTMLString: true,
+        customClass: 'upload-progress-notification',
+        onClose: () => {
+          // 用户点击关闭按钮时触发取消上传
+          if (isUploading.value) {
+            cancelUpload();
+          }
+        }
+      });
       
       // 开始定期更新速度
       let lastUpdateTime = Date.now();
@@ -1499,14 +1833,15 @@ export default defineComponent({
         const now = Date.now();
         const timeDelta = (now - lastUpdateTime) / 1000;
         if (timeDelta > 0) {
-          const bytesDelta = uploadedBytes - lastUploadedBytes;
+          const currentTotalBytes = actualUploadedBytes + currentFileBytes;
+          const bytesDelta = currentTotalBytes - lastUploadedBytes;
           if (bytesDelta > 0) {
             const currentSpeed = bytesDelta / timeDelta;
-            transferSpeed.value = transferSpeed.value === 0 ? 
+            transferSpeed.value = transferSpeed.value === 0 ?
               currentSpeed : (transferSpeed.value * 0.7 + currentSpeed * 0.3);
           }
           lastUpdateTime = now;
-          lastUploadedBytes = uploadedBytes;
+          lastUploadedBytes = currentTotalBytes;
         }
       }, 300); // 更高的更新频率
       
@@ -1516,43 +1851,85 @@ export default defineComponent({
       // 用于跟踪实际上传成功的文件
       let actualUploadedFiles = 0;
       let actualUploadedBytes = 0;
+      let currentFileIndex = 0; // 当前正在处理的文件索引
       
       try {
         // 处理每一个条目
         for (const entry of entries) {
           if (entry.isFile) {
+            currentFileIndex++; // 增加当前文件索引
             // 处理文件
             const result = await processFileEntry(entry, '', (file, bytesUploaded, isPartial) => {
               if (!isPartial) {
+                // 文件完成时
                 processedFiles++;
                 actualUploadedFiles++;
-                actualUploadedBytes += bytesUploaded;
+                actualUploadedBytes += file.size; // 使用完整文件大小
+                currentFileBytes = 0; // 重置当前文件字节
+              } else {
+                // 部分进度时，更新当前文件的已上传字节
+                currentFileBytes = bytesUploaded;
               }
-              uploadedBytes += bytesUploaded;
+
+              // 计算总进度：已完成文件的字节 + 当前文件的部分字节
+              const totalUploadedBytes = actualUploadedBytes + currentFileBytes;
+              const progress = Math.min(100, Math.floor((totalUploadedBytes / totalBytes) * 100));
+
               currentUploadingFile.value = file.name;
-              uploadProgress.value = Math.floor((uploadedBytes / totalBytes) * 100);
+              uploadProgress.value = progress;
+
+              // 更新文件夹上传进度通知
+              const speedText = formatTransferSpeed(transferSpeed.value);
+              const progressHTML = createFolderUploadProgressHTML(progress, file.name, currentFileIndex, totalFiles, speedText);
+              const notificationEl = document.querySelector('.upload-progress-notification .el-message__content');
+              if (notificationEl) {
+                notificationEl.innerHTML = progressHTML;
+              }
             });
           } else if (entry.isDirectory) {
             // 处理目录
             await processDirectoryEntry(entry, '', (file, bytesUploaded, isPartial) => {
               if (!isPartial) {
+                // 文件完成时
                 processedFiles++;
                 actualUploadedFiles++;
-                actualUploadedBytes += bytesUploaded;
+                actualUploadedBytes += file.size; // 使用完整文件大小
+                currentFileIndex++; // 目录中的文件也要增加索引
+                currentFileBytes = 0; // 重置当前文件字节
+              } else {
+                // 部分进度时，更新当前文件的已上传字节
+                currentFileBytes = bytesUploaded;
               }
-              uploadedBytes += bytesUploaded;
+
+              // 计算总进度：已完成文件的字节 + 当前文件的部分字节
+              const totalUploadedBytes = actualUploadedBytes + currentFileBytes;
+              const progress = Math.min(100, Math.floor((totalUploadedBytes / totalBytes) * 100));
+
               currentUploadingFile.value = file.name;
-              uploadProgress.value = Math.floor((uploadedBytes / totalBytes) * 100);
+              uploadProgress.value = progress;
+
+              // 更新文件夹上传进度通知
+              const speedText = formatTransferSpeed(transferSpeed.value);
+              const progressHTML = createFolderUploadProgressHTML(progress, file.name, currentFileIndex, totalFiles, speedText);
+              const notificationEl = document.querySelector('.upload-progress-notification .el-message__content');
+              if (notificationEl) {
+                notificationEl.innerHTML = progressHTML;
+              }
             });
           }
         }
         
         // 确保进度条显示100%
         uploadProgress.value = 100;
-        
+
+        // 关闭文件夹上传进度通知
+        if (folderUploadNotification) {
+          folderUploadNotification.close();
+        }
+
         // 显示完成消息 - 使用实际上传成功的文件数量和大小
         ElMessage.success(`成功上传了${actualUploadedFiles}个文件，总大小${formatFileSize(actualUploadedBytes)}`);
-        
+
         // 重置状态并刷新
         isUploading.value = false;
         
@@ -1566,8 +1943,14 @@ export default defineComponent({
         refreshCurrentDirectory();
       } catch (error) {
         log.error('上传过程中发生错误:', error);
+
+        // 关闭文件夹上传进度通知
+        if (folderUploadNotification) {
+          folderUploadNotification.close();
+        }
+
         ElMessage.error(`上传过程中发生错误: ${error.message}`);
-        
+
         // 出错时也确保关闭进度条
         isUploading.value = false;
         
@@ -2023,6 +2406,9 @@ export default defineComponent({
       uploadFile,
       uploadFolder,
       downloadFile,
+      downloadSingleFile,
+      downloadFolder,
+      showDownloadReport,
       renameFile,
       deleteFile,
       handleDragOver,

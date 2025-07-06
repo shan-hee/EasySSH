@@ -304,7 +304,17 @@ function initWebSocketServer(server) {
             // 处理SFTP下载
             sftp.handleSftpDownload(ws, data);
             break;
-            
+
+          case 'sftp_download_folder':
+            // 处理SFTP文件夹下载
+            logger.debug('收到SFTP文件夹下载请求', {
+              sessionId: data.sessionId,
+              operationId: data.operationId,
+              path: data.path
+            });
+            sftp.handleSftpDownloadFolder(ws, data);
+            break;
+
           case 'sftp_mkdir':
             // 处理SFTP创建目录
             sftp.handleSftpMkdir(ws, data);

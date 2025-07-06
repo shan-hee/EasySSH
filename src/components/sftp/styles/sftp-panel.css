@@ -199,22 +199,27 @@
   margin-top: 10px;
 }
 
-/* 错误和进度条样式 */
+/* 错误样式 */
 .sftp-error-message {
   margin-bottom: 16px;
 }
 
-.sftp-progress {
-  margin-bottom: 16px;
-  padding: 10px;
-  background-color: #222;
-  border-radius: 4px;
+/* 下载进度通知样式 */
+.download-progress-notification {
+  min-width: 300px;
 }
 
-.sftp-progress-title {
-  margin-bottom: 8px;
-  font-size: 13px;
-  color: #e0e0e0;
+.download-progress-notification .el-message__content {
+  line-height: 1.4;
+}
+
+/* 上传进度通知样式 */
+.upload-progress-notification {
+  min-width: 350px;
+}
+
+.upload-progress-notification .el-message__content {
+  line-height: 1.4;
 }
 
 /* 拖拽上传样式 */

@@ -324,7 +324,12 @@ class SFTPService {
         // 读取文件内容
         const reader = new FileReader();
         reader.onload = (event) => {
-          const fileContent = event.target.result;
+          let fileContent = event.target.result;
+
+          // 处理空文件的情况
+          if (!fileContent || file.size === 0) {
+            fileContent = 'data:application/octet-stream;base64,';
+          }
 
           // 使用 setTimeout 避免阻塞UI线程
           setTimeout(() => {
@@ -362,7 +367,37 @@ class SFTPService {
         };
         
         // 开始读取文件
-        reader.readAsDataURL(file);
+        if (file.size === 0) {
+          // 对于空文件，直接生成空的data URL
+          setTimeout(() => {
+            try {
+              // 发送上传请求
+              if (session.socket && session.socket.readyState === WS_CONSTANTS.OPEN) {
+                session.socket.send(JSON.stringify({
+                  type: 'sftp_upload',
+                  data: {
+                    sessionId: sshSessionId,
+                    filename: file.name,
+                    path: remotePath,
+                    size: file.size,
+                    content: 'data:application/octet-stream;base64,',
+                    operationId
+                  }
+                }));
+              } else {
+                clearTimeout(timeout);
+                this.fileOperations.delete(operationId);
+                reject(new Error('WebSocket连接未就绪'));
+              }
+            } catch (error) {
+              clearTimeout(timeout);
+              this.fileOperations.delete(operationId);
+              reject(new Error(`发送上传请求失败: ${error.message}`));
+            }
+          }, 10);
+        } else {
+          reader.readAsDataURL(file);
+        }
       } catch (error) {
         this.fileOperations.delete(operationId);
         reject(error);
@@ -471,7 +506,100 @@ class SFTPService {
       throw new Error(`获取文件内容失败: ${error.message || '未知错误'}`);
     }
   }
-  
+
+  /**
+   * 下载文件夹（流式ZIP）
+   * @param {string} sessionId - SFTP会话ID
+   * @param {string} remotePath - 远程文件夹路径
+   * @param {function} progressCallback - 进度回调函数
+   * @returns {Promise<Blob>} - ZIP文件Blob对象
+   */
+  async downloadFolder(sessionId, remotePath, progressCallback) {
+    await this._ensureSftpSession(sessionId);
+
+    return new Promise((resolve, reject) => {
+      const operationId = this._nextOperationId();
+
+      try {
+        // 获取SSH会话
+        const { sshSessionId, session } = this._getSSHSession(sessionId);
+
+        // 设置超时 - 文件夹下载可能需要更长时间
+        const timeout = setTimeout(() => {
+          this.fileOperations.delete(operationId);
+          reject(new Error('文件夹下载超时'));
+        }, 300000); // 5分钟超时
+
+        // 保存操作回调
+        this.fileOperations.set(operationId, {
+          resolve: (data) => {
+            clearTimeout(timeout);
+
+            // 优化的Base64解码处理
+            try {
+              const base64Data = data.content.split(',')[1];
+              const mimeType = 'application/zip';
+
+              // 使用更高效的方式处理Base64数据
+              const binaryString = atob(base64Data);
+              const bytes = new Uint8Array(binaryString.length);
+
+              for (let i = 0; i < binaryString.length; i++) {
+                bytes[i] = binaryString.charCodeAt(i);
+              }
+
+              const blob = new Blob([bytes], { type: mimeType });
+
+              log.info(`文件夹下载完成: ${data.filename}, 大小: ${blob.size} 字节`);
+              log.debug('下载数据详情:', {
+                summary: data.summary,
+                skippedCount: data.skippedFiles?.length || 0,
+                errorCount: data.errorFiles?.length || 0
+              });
+
+              // 返回包含blob和详细信息的对象
+              resolve({
+                blob: blob,
+                filename: data.filename,
+                summary: data.summary,
+                skippedFiles: data.skippedFiles || [],
+                errorFiles: data.errorFiles || []
+              });
+            } catch (error) {
+              log.error('处理ZIP数据失败:', error);
+              reject(new Error(`处理ZIP数据失败: ${error.message}`));
+            }
+          },
+          reject: (error) => {
+            clearTimeout(timeout);
+            reject(error);
+          },
+          progress: progressCallback,
+          type: 'folder_download'
+        });
+
+        // 发送文件夹下载请求
+        if (session.socket && session.socket.readyState === WS_CONSTANTS.OPEN) {
+          session.socket.send(JSON.stringify({
+            type: 'sftp_download_folder',
+            data: {
+              sessionId: sshSessionId,
+              path: remotePath,
+              operationId
+            }
+          }));
+        } else {
+          clearTimeout(timeout);
+          this.fileOperations.delete(operationId);
+          reject(new Error('WebSocket连接未就绪'));
+        }
+      } catch (error) {
+        this.fileOperations.delete(operationId);
+        reject(error);
+      }
+    });
+  }
+
   /**
    * 保存文件内容
    * @param {string} sessionId - SFTP会话ID
@@ -958,7 +1086,9 @@ class SFTPService {
           operation.progress(message.data.progress);
         }
         break;
-        
+
+
+
       case 'sftp_success':
         // 处理成功回调
         if (operation.resolve && typeof operation.resolve === 'function') {

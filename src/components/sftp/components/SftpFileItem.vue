@@ -16,7 +16,7 @@
     <div class="sftp-file-size">{{ formatFileSize(file.size, file.isDirectory) }}</div>
     <div class="sftp-file-date">{{ formatDate(file.modifiedTime) }}</div>
     <div class="sftp-file-actions">
-      <button class="sftp-action-button" @click.stop="$emit('download', file)" v-if="!file.isDirectory">
+      <button class="sftp-action-button" @click.stop="$emit('download', file)">
         <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24">
           <path fill="currentColor" d="M5,20H19V18H5M19,9H15V3H9V9H5L12,16L19,9Z" />
         </svg>

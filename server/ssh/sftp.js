@@ -5,6 +5,7 @@
 
 const path = require('path');
 const fs = require('fs');
+const archiver = require('archiver');
 const logger = require('../utils/logger');
 
 // 导入工具模块
@@ -163,12 +164,14 @@ async function handleSftpUpload(ws, data) {
     const sftp = sftpSession.sftp;
 
     // 解析Base64内容
-    const matches = content.match(/^data:(.+);base64,(.+)$/);
+    const matches = content.match(/^data:(.+);base64,(.*)$/);
     if (!matches) {
       throw new Error('无效的文件内容格式');
     }
 
-    const buffer = Buffer.from(matches[2], 'base64');
+    // 处理空文件的情况（base64部分可能为空）
+    const base64Content = matches[2] || '';
+    const buffer = Buffer.from(base64Content, 'base64');
     const totalSize = buffer.length;
 
     // 检查文件大小限制
@@ -208,44 +211,52 @@ async function handleSftpUpload(ws, data) {
       });
     });
     
+    // 处理空文件的特殊情况
+    if (totalSize === 0) {
+      // 对于空文件，直接发送100%进度并结束流
+      sendSftpProgress(ws, sessionId, operationId, 100, 0, 0);
+      writeStream.end();
+      return;
+    }
+
     // 分块上传文件
     const chunkSize = 64 * 1024; // 64KB每块
     let offset = 0;
-    
+
     // 发送数据块函数
     const sendChunk = () => {
       const chunk = buffer.slice(offset, Math.min(offset + chunkSize, totalSize));
-      
+
       if (chunk.length > 0) {
         // 写入数据块
         const canContinue = writeStream.write(chunk);
-        
+
         // 更新上传进度
         offset += chunk.length;
         uploaded += chunk.length;
-        
+
         // 报告进度
         const progress = Math.round((uploaded / totalSize) * 100);
         sendSftpProgress(ws, sessionId, operationId, progress, uploaded, totalSize);
-        
+
         // 如果可以继续，直接发送下一块
         // 否则等待drain事件
         if (canContinue && offset < totalSize) {
           process.nextTick(sendChunk);
-        } 
+        }
       } else {
         // 所有数据已发送，结束流
         writeStream.end();
       }
     };
-    
+
     // 当缓冲区清空时继续发送
     writeStream.on('drain', () => {
       if (offset < totalSize) {
         sendChunk();
       }
     });
-    
+
     // 开始发送第一块
     sendChunk();
   }, ws, '文件上传错误', sessionId, operationId);
@@ -622,6 +633,410 @@ function getMimeType(filepath) {
   return mimeTypes[ext] || 'application/octet-stream';
 }
 
+/**
+ * SFTP处理函数 - 下载文件夹（流式ZIP）
+ * @param {WebSocket} ws WebSocket连接
+ * @param {Object} data 请求数据
+ */
+async function handleSftpDownloadFolder(ws, data) {
+  const { sessionId, path: remotePath, operationId } = data;
+
+  if (!validateSftpSession(ws, sessionId, sftpSessions, operationId)) {
+    return;
+  }
+
+  await safeExec(async () => {
+    const sftpSession = sftpSessions.get(sessionId);
+    const sftp = sftpSession.sftp;
+
+    // 验证路径是否为目录
+    sftp.stat(remotePath, (err, stats) => {
+      if (err) {
+        logger.error('SFTP获取文件夹信息失败', { remotePath, error: err.message });
+        sendSftpError(ws, sessionId, operationId, `获取文件夹信息失败: ${err.message}`);
+        return;
+      }
+
+      if (!stats.isDirectory()) {
+        sendSftpError(ws, sessionId, operationId, '指定路径不是文件夹');
+        return;
+      }
+
+      // 开始流式ZIP压缩
+      startFolderZipStream(ws, sessionId, operationId, sftp, remotePath);
+    });
+  }, ws, '文件夹下载错误', sessionId, operationId);
+}
+
+/**
+ * 开始文件夹的流式ZIP压缩
+ * @param {WebSocket} ws WebSocket连接
+ * @param {string} sessionId 会话ID
+ * @param {string} operationId 操作ID
+ * @param {Object} sftp SFTP连接对象
+ * @param {string} remotePath 远程文件夹路径
+ */
+function startFolderZipStream(ws, sessionId, operationId, sftp, remotePath) {
+  // 创建ZIP压缩器
+  const archive = archiver('zip', {
+    zlib: { level: 6 }, // 压缩级别：0-9，6是平衡点
+    forceLocalTime: true, // 使用本地时间
+    store: false // 不存储未压缩的文件
+  });
+
+  // 用于收集ZIP数据块
+  const zipChunks = [];
+  let totalFiles = 0;
+  let processedFiles = 0;
+  let totalSize = 0;
+  let processedSize = 0;
+
+  // 收集跳过的文件信息
+  const skippedFiles = [];
+  const errorFiles = [];
+
+  // 监听ZIP数据事件 - 收集数据但不发送进度
+  archive.on('data', (chunk) => {
+    zipChunks.push(chunk);
+    // 不在这里发送进度，避免频繁的进度消息
+  });
+
+  // 监听ZIP完成事件
+  archive.on('end', () => {
+    try {
+      // 合并所有ZIP数据块
+      const zipBuffer = Buffer.concat(zipChunks);
+
+      // 获取文件夹名称作为ZIP文件名
+      const folderName = path.basename(remotePath) || 'folder';
+      const zipFilename = `${folderName}.zip`;
+
+      // 发送最终进度（100%）
+      sendSftpProgress(ws, sessionId, operationId, 100, totalSize, totalSize);
+
+      // 优化：使用更高效的Base64编码
+      const base64 = zipBuffer.toString('base64');
+      const dataUri = `data:application/zip;base64,${base64}`;
+
+      // 立即发送完成消息，包含跳过文件的详细信息
+      sendSftpSuccess(ws, sessionId, operationId, {
+        responseType: 'folder_download',
+        filename: zipFilename,
+        path: remotePath,
+        content: dataUri,
+        size: zipBuffer.length,
+        fileCount: totalFiles,
+        skippedFiles: skippedFiles,
+        errorFiles: errorFiles,
+        summary: {
+          totalFiles: totalFiles,
+          includedFiles: totalFiles - skippedFiles.length - errorFiles.length,
+          skippedCount: skippedFiles.length,
+          errorCount: errorFiles.length
+        }
+      });
+
+      logger.info('SFTP文件夹下载完成', {
+        remotePath,
+        zipSize: zipBuffer.length,
+        fileCount: totalFiles
+      });
+    } catch (err) {
+      logger.error('SFTP处理ZIP数据错误', { remotePath, error: err.message });
+      sendSftpError(ws, sessionId, operationId, `处理ZIP数据错误: ${err.message}`);
+    }
+  });
+
+  // 监听ZIP错误事件
+  archive.on('error', (err) => {
+    logger.error('SFTP ZIP压缩错误', { remotePath, error: err.message });
+    sendSftpError(ws, sessionId, operationId, `ZIP压缩错误: ${err.message}`);
+  });
+
+  // 开始递归添加文件到ZIP
+  addFolderToZip(archive, sftp, remotePath, '', skippedFiles, errorFiles, (fileCount, size) => {
+    totalFiles = fileCount;
+    totalSize = size;
+
+    // 检查文件夹大小限制（默认500MB）
+    const maxFolderSize = parseInt(process.env.MAX_FOLDER_SIZE) || 524288000; // 500MB
+    if (totalSize > maxFolderSize) {
+      logger.warn('SFTP文件夹过大', { remotePath, totalSize, maxFolderSize });
+      sendSftpError(ws, sessionId, operationId,
+        `文件夹太大 (${(totalSize / (1024 * 1024)).toFixed(2)} MB)，超过限制 (${(maxFolderSize / (1024 * 1024)).toFixed(2)} MB)`);
+      return;
+    }
+
+    logger.info('SFTP开始压缩文件夹', { remotePath, fileCount, totalSize });
+
+    // 完成添加文件，开始压缩
+    archive.finalize();
+  }, (error, size) => {
+    if (error) {
+      // 记录警告但不中断整个过程
+      logger.warn('SFTP跳过有问题的文件', { remotePath, error: error.message });
+    }
+
+    // 无论是否有错误，都继续处理
+    processedFiles++;
+    processedSize += size || 0;
+
+    // 只在特定间隔发送进度更新，避免过于频繁
+    const progress = totalFiles > 0 ? Math.round((processedFiles / totalFiles) * 100) : 0;
+    if (processedFiles % 5 === 0 || processedFiles === totalFiles) {
+      sendSftpProgress(ws, sessionId, operationId, progress, processedSize, totalSize);
+    }
+  });
+}
+
+/**
+ * 递归添加文件夹内容到ZIP
+ * @param {Object} archive ZIP压缩器
+ * @param {Object} sftp SFTP连接对象
+ * @param {string} remotePath 远程路径
+ * @param {string} zipPath ZIP内路径
+ * @param {Array} skippedFiles 跳过文件列表
+ * @param {Array} errorFiles 错误文件列表
+ * @param {Function} onComplete 完成回调 (fileCount, totalSize)
+ * @param {Function} onProgress 进度回调 (error, size)
+ */
+function addFolderToZip(archive, sftp, remotePath, zipPath, skippedFiles, errorFiles, onComplete, onProgress) {
+  let fileCount = 0;
+  let totalSize = 0;
+  let pendingOperations = 0;
+  let completed = false;
+
+  function checkCompletion() {
+    if (pendingOperations === 0 && !completed) {
+      completed = true;
+      onComplete(fileCount, totalSize);
+    }
+  }
+
+  function processDirectory(dirPath, zipDirPath) {
+    pendingOperations++;
+
+    sftp.readdir(dirPath, (err, list) => {
+      if (err) {
+        pendingOperations--;
+        // 记录警告但不中断整个过程
+        logger.warn('SFTP跳过无法读取的目录', { dirPath, error: err.message });
+        checkCompletion();
+        return;
+      }
+
+      if (list.length === 0) {
+        // 空目录，直接添加目录条目
+        archive.append('', { name: zipDirPath + '/' });
+        pendingOperations--;
+        checkCompletion();
+        return;
+      }
+
+      list.forEach(item => {
+        try {
+          // 跳过隐藏文件和特殊目录
+          if (item.filename.startsWith('.') &&
+              item.filename !== '.' &&
+              item.filename !== '..') {
+            return;
+          }
+
+          // 跳过上级目录引用
+          if (item.filename === '..' || item.filename === '.') {
+            return;
+          }
+
+          // 先定义路径变量
+          const itemRemotePath = path.posix.join(dirPath, item.filename);
+          const itemZipPath = zipDirPath ?
+            path.posix.join(zipDirPath, item.filename) :
+            item.filename;
+
+          // 跳过一些可能有问题的文件/目录
+          const skipPatterns = [
+            'node_modules',
+            '.git',
+            '.vscode',
+            '.idea',
+            'dist',
+            'build',
+            'coverage',
+            '.nyc_output',
+            '*.tmp',
+            '*.temp'
+          ];
+
+          const shouldSkip = skipPatterns.some(pattern => {
+            if (pattern.includes('*')) {
+              const regex = new RegExp(pattern.replace('*', '.*'));
+              return regex.test(item.filename);
+            }
+            return item.filename === pattern;
+          });
+
+          if (shouldSkip) {
+            skippedFiles.push({
+              path: itemRemotePath,
+              reason: '系统文件/目录',
+              type: 'auto_skip'
+            });
+            logger.info('SFTP跳过文件/目录', { filename: item.filename, path: itemRemotePath, reason: '匹配跳过模式' });
+            return;
+          }
+
+          // 检查文件属性是否有效
+          if (!item.attrs) {
+            skippedFiles.push({
+              path: itemRemotePath,
+              reason: '无效文件属性',
+              type: 'error'
+            });
+            logger.warn('SFTP跳过无效属性的项目', { filename: item.filename });
+            return;
+          }
+
+          if (item.attrs.isDirectory()) {
+            // 递归处理子目录
+            processDirectory(itemRemotePath, itemZipPath);
+          } else if (item.attrs.isFile()) {
+            // 只处理普通文件
+            pendingOperations++;
+            fileCount++;
+            totalSize += item.attrs.size || 0;
+
+            addFileToZip(archive, sftp, itemRemotePath, itemZipPath, item.attrs.size, skippedFiles, (error, size) => {
+              pendingOperations--;
+              if (error) {
+                // 记录错误文件
+                errorFiles.push({
+                  path: itemRemotePath,
+                  reason: error.message,
+                  type: 'read_error',
+                  size: item.attrs.size
+                });
+                logger.warn('SFTP跳过无法处理的文件', {
+                  filename: item.filename,
+                  error: error.message
+                });
+              }
+              onProgress(error, size);
+              checkCompletion();
+            });
+          } else {
+            // 跳过符号链接、设备文件等特殊文件
+            skippedFiles.push({
+              path: itemRemotePath,
+              reason: '特殊文件类型（符号链接/设备文件等）',
+              type: 'special_file'
+            });
+            logger.debug('SFTP跳过特殊文件', {
+              filename: item.filename,
+              type: 'special_file'
+            });
+          }
+        } catch (itemError) {
+          logger.warn('SFTP处理项目时出错', {
+            filename: item.filename,
+            error: itemError.message
+          });
+        }
+      });
+
+      pendingOperations--;
+      checkCompletion();
+    });
+  }
+
+  // 开始处理根目录
+  processDirectory(remotePath, zipPath);
+}
+
+/**
+ * 添加单个文件到ZIP
+ * @param {Object} archive ZIP压缩器
+ * @param {Object} sftp SFTP连接对象
+ * @param {string} remotePath 远程文件路径
+ * @param {string} zipPath ZIP内路径
+ * @param {number} fileSize 文件大小
+ * @param {Function} callback 完成回调 (error, size)
+ */
+function addFileToZip(archive, sftp, remotePath, zipPath, fileSize, skippedFiles, callback) {
+  try {
+    // 跳过过大的文件（默认100MB）
+    const maxFileSize = parseInt(process.env.MAX_FILE_SIZE) || 104857600; // 100MB
+    if (fileSize > maxFileSize) {
+      if (skippedFiles) {
+        skippedFiles.push({
+          path: remotePath,
+          reason: `文件过大 (${(fileSize / (1024 * 1024)).toFixed(2)} MB > ${(maxFileSize / (1024 * 1024)).toFixed(2)} MB)`,
+          type: 'large_file',
+          size: fileSize
+        });
+      }
+      logger.warn('SFTP跳过过大文件', {
+        remotePath,
+        fileSize,
+        maxFileSize
+      });
+      callback(null, 0); // 跳过但不报错
+      return;
+    }
+
+    // 创建文件读取流
+    const readStream = sftp.createReadStream(remotePath);
+    let hasEnded = false;
+    let hasErrored = false;
+
+    // 设置超时
+    const timeout = setTimeout(() => {
+      if (!hasEnded && !hasErrored) {
+        hasErrored = true;
+        logger.warn('SFTP文件读取超时', { remotePath });
+        readStream.destroy();
+        callback(null, 0); // 超时时跳过文件
+      }
+    }, 30000); // 30秒超时
+
+    readStream.on('error', (err) => {
+      if (!hasErrored) {
+        hasErrored = true;
+        clearTimeout(timeout);
+        logger.warn('SFTP跳过无法读取的文件', {
+          remotePath,
+          error: err.message
+        });
+        callback(null, 0); // 出错时跳过文件，不中断整个过程
+      }
+    });
+
+    readStream.on('end', () => {
+      if (!hasEnded && !hasErrored) {
+        hasEnded = true;
+        clearTimeout(timeout);
+        callback(null, fileSize);
+      }
+    });
+
+    readStream.on('close', () => {
+      if (!hasEnded && !hasErrored) {
+        hasEnded = true;
+        clearTimeout(timeout);
+        callback(null, fileSize);
+      }
+    });
+
+    // 将文件流添加到ZIP
+    archive.append(readStream, { name: zipPath });
+  } catch (error) {
+    logger.warn('SFTP添加文件到ZIP时出错', {
+      remotePath,
+      error: error.message
+    });
+    callback(null, 0); // 出错时跳过文件
+  }
+}
+
 // 导出函数和对象
 module.exports = {
   sftpSessions,
@@ -630,9 +1045,10 @@ module.exports = {
   handleSftpList,
   handleSftpUpload,
   handleSftpDownload,
+  handleSftpDownloadFolder,
   handleSftpMkdir,
   handleSftpDelete,
   handleSftpRename,
   handleSftpClose,
   getMimeType
-}; 
+};
