@@ -45,10 +45,11 @@
           />
           
           <!-- 工具栏 -->
-          <SftpToolbar 
-            @upload="uploadFile" 
+          <SftpToolbar
+            @upload="uploadFile"
             @upload-folder="uploadFolder"
-            @new-folder="createNewFolder"
+            @new-folder="startCreateFolder"
+            @new-file="startCreateFile"
             @search="handleSearch"
           />
           
@@ -79,14 +80,25 @@
               
               <!-- 文件列表 -->
               <div v-else class="sftp-file-items">
-                <SftpFileItem 
-                  v-for="(file, index) in fileList" 
-                  :key="index" 
-                  :file="file" 
+                <!-- 内联编辑器（新建文件夹或文件时显示） -->
+                <SftpInlineEditor
+                  v-if="isCreating"
+                  ref="inlineEditor"
+                  :type="creatingType"
+                  @create="handleCreate"
+                  @cancel="cancelCreate"
+                />
+
+                <SftpFileItem
+                  v-for="(file, index) in fileList"
+                  :key="index"
+                  :file="file"
+                  :sessionId="sessionId"
+                  :currentPath="currentPath"
                   @item-click="handleItemClick"
                   @download="downloadFile"
-                  @rename="renameFile"
                   @delete="deleteFile"
+                  @refresh="refreshCurrentDirectory"
                 />
               </div>
             </div>
@@ -98,7 +110,7 @@
 </template>
 
 <script>
-import { defineComponent, ref, onMounted, onUnmounted, watch } from 'vue'
+import { defineComponent, ref, nextTick, onMounted, onUnmounted, watch } from 'vue'
 import { ElMessageBox, ElMessage } from 'element-plus'
 import { sftpService } from '@/services/ssh'
 import log from '@/services/log'
@@ -106,6 +118,7 @@ import { SFTP_CONSTANTS } from '@/services/constants'
 
 // 导入子组件
 import SftpFileItem from './components/SftpFileItem.vue'
+import SftpInlineEditor from './components/SftpInlineEditor.vue'
 import SftpToolbar from './components/SftpToolbar.vue'
 import SftpPathNavigator from './components/SftpPathNavigator.vue'
 import SftpEditor from './components/SftpEditor.vue'
@@ -117,6 +130,7 @@ export default defineComponent({
   name: 'SftpPanel',
   components: {
     SftpFileItem,
+    SftpInlineEditor,
     SftpToolbar,
     SftpPathNavigator,
     SftpEditor
@@ -144,6 +158,11 @@ export default defineComponent({
     const isLoadingSftp = ref(true)
     const currentPath = ref('/')
     const fileList = ref([])
+
+    // 内联创建状态
+    const isCreating = ref(false)
+    const creatingType = ref('folder') // 'folder' 或 'file'
+    const inlineEditor = ref(null)
     const showHiddenFiles = ref(false)
     // 添加上传进度状态
     const uploadProgress = ref(0)
@@ -372,45 +391,31 @@ export default defineComponent({
         // 确保返回值是数组
         const files = Array.isArray(rawFiles) ? rawFiles : [];
         
-        // 确保数据格式正确
-        const processedFiles = files.map(file => ({
+        // 确保数据格式正确并移除返回上层目录的选项
+        let processedFiles = files.map(file => ({
           ...file,
           // 确保size是数字类型
           size: typeof file.size === 'string' ? parseInt(file.size, 10) : file.size,
           // 确保日期是Date对象
-          modifiedTime: file.modifiedTime instanceof Date ? 
-            file.modifiedTime : 
+          modifiedTime: file.modifiedTime instanceof Date ?
+            file.modifiedTime :
             (file.modifiedTime ? new Date(file.modifiedTime) : new Date())
-        }));
+        })).filter(file => file.name !== '..');  // 移除返回上层目录的选项，因为已有路径导航栏
         
-        // 确保始终有一个返回上层目录的选项，除非在根目录
-        if (path !== '/' && !processedFiles.some(file => file.name === '..')) {
-          processedFiles.unshift({
-            name: '..',
-            isDirectory: true,
-            size: 0,
-            modifiedTime: new Date()
-          });
-        }
-        
-        // 如果不显示隐藏文件，过滤掉以点开头的文件（保留".."）
+        // 如果不显示隐藏文件，过滤掉以点开头的文件
         let filteredFiles = processedFiles;
         if (!showHiddenFiles.value) {
-          filteredFiles = processedFiles.filter(file => 
-            file.name === '..' || !file.name.startsWith('.')
+          filteredFiles = processedFiles.filter(file =>
+            !file.name.startsWith('.')
           );
         }
-        
+
         // 对文件列表进行排序：文件夹在前，文件在后，然后按名称排序
         filteredFiles.sort((a, b) => {
-          // 如果是返回上层目录的特殊项(..)，始终排在最前面
-          if (a.name === '..') return -1;
-          if (b.name === '..') return 1;
-          
           // 文件夹排在文件前面
           if (a.isDirectory && !b.isDirectory) return -1;
           if (!a.isDirectory && b.isDirectory) return 1;
-          
+
           // 同类型按名称字母顺序排序
           return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
         });
@@ -472,18 +477,17 @@ export default defineComponent({
       // 不立即清空文件列表，保持UI稳定
       
       try {
-        // 处理上级目录
-        if (file.name === '..') {
-          // 获取父目录路径
-          const parentPath = currentPath.value.split('/').slice(0, -1).join('/') || '/';
-          await loadDirectoryContents(parentPath);
-        } else {
-          // 构建新的路径
-          const newPath = currentPath.value === '/' ? 
-            currentPath.value + file.name : 
-            currentPath.value + '/' + file.name;
-          
+        // 构建新的路径
+        const newPath = currentPath.value === '/' ?
+          currentPath.value + file.name :
+          currentPath.value + '/' + file.name;
+
+        if (file.isDirectory) {
+          // 进入子目录
           await loadDirectoryContents(newPath);
+        } else {
+          // 处理文件点击（可以在这里添加文件预览或下载逻辑）
+          log.debug('点击文件:', file.name);
         }
       } catch (error) {
         log.error('打开目录失败:', error);
@@ -492,66 +496,69 @@ export default defineComponent({
       }
     };
     
-    // 创建新文件夹
-    const createNewFolder = () => {
+    // 开始创建文件夹（内联模式）
+    const startCreateFolder = async () => {
       resetError();
-      
-      ElMessageBox.prompt('请输入文件夹名称', '新建文件夹', {
-        confirmButtonText: '确定',
-        cancelButtonText: '取消',
-        inputPattern: /^[^\\/:\*\?"<>\|]+$/,
-        inputErrorMessage: '文件夹名称不能包含非法字符'
-      }).then(async ({ value }) => {
-        if (value) {
-          try {
-            const fullPath = currentPath.value === '/' ?
-              currentPath.value + value :
-              currentPath.value + '/' + value;
+      isCreating.value = true;
+      creatingType.value = 'folder';
 
-            // 创建与文件列表加载一致的加载状态
-            const loadingDiv = document.createElement('div');
-            loadingDiv.className = 'sftp-loading-files';
-            loadingDiv.innerHTML = `
-              <div class="sftp-loading-spinner">
-                <svg class="circular" viewBox="25 25 50 50">
-                  <circle class="path" cx="50" cy="50" r="20" fill="none"/>
-                </svg>
-              </div>
-              <p>创建文件夹中...</p>
-            `;
+      // 等待DOM更新后聚焦输入框
+      await nextTick();
+      if (inlineEditor.value) {
+        inlineEditor.value.focusInput();
+      }
+    };
 
-            // 将加载状态添加到文件列表区域
-            const fileListContent = document.querySelector('.sftp-file-list-content');
-            if (fileListContent) {
-              fileListContent.appendChild(loadingDiv);
-            }
+    // 开始创建文件（内联模式）
+    const startCreateFile = async () => {
+      resetError();
+      isCreating.value = true;
+      creatingType.value = 'file';
 
-            // 调用SFTP服务创建文件夹
-            await sftpService.createDirectory(props.sessionId, fullPath);
+      // 等待DOM更新后聚焦输入框
+      await nextTick();
+      if (inlineEditor.value) {
+        inlineEditor.value.focusInput();
+      }
+    };
 
-            // 移除加载状态
-            if (fileListContent && loadingDiv.parentNode === fileListContent) {
-              fileListContent.removeChild(loadingDiv);
-            }
+    // 处理创建操作
+    const handleCreate = async ({ name, type }) => {
+      try {
+        const fullPath = currentPath.value === '/' ?
+          currentPath.value + name :
+          currentPath.value + '/' + name;
 
-            ElMessage.success(`文件夹 ${value} 创建成功`);
-
-            // 刷新目录以显示新文件夹
-            refreshCurrentDirectory();
-          } catch (error) {
-            // 移除加载状态
-            const loadingDiv = document.querySelector('.sftp-file-list-content .sftp-loading-files');
-            if (loadingDiv && loadingDiv.parentNode) {
-              loadingDiv.parentNode.removeChild(loadingDiv);
-            }
-
-            console.error('创建文件夹失败:', error);
-            showError(`创建文件夹失败: ${error.message}`);
-          }
+        if (type === 'folder') {
+          // 创建文件夹
+          await sftpService.createDirectory(props.sessionId, fullPath);
+          ElMessage.success(`文件夹 ${name} 创建成功`);
+        } else {
+          // 创建文件
+          await sftpService.createFile(props.sessionId, fullPath);
+          ElMessage.success(`文件 ${name} 创建成功`);
         }
-      }).catch(() => {
-        // 用户取消
-      });
+
+        // 取消创建状态
+        cancelCreate();
+
+        // 刷新目录以显示新项目
+        refreshCurrentDirectory();
+      } catch (error) {
+        console.error(`创建${type === 'folder' ? '文件夹' : '文件'}失败:`, error);
+        showError(`创建${type === 'folder' ? '文件夹' : '文件'}失败: ${error.message}`);
+
+        // 重置创建状态
+        if (inlineEditor.value) {
+          inlineEditor.value.resetCreating();
+        }
+      }
+    };
+
+    // 取消创建
+    const cancelCreate = () => {
+      isCreating.value = false;
+      creatingType.value = 'folder';
     };
     
     // 上传文件
@@ -1511,73 +1518,7 @@ export default defineComponent({
       });
     };
 
-    // 重命名文件
-    const renameFile = (file) => {
-      resetError();
-      
-      ElMessageBox.prompt('请输入新名称', '重命名', {
-        confirmButtonText: '确定',
-        cancelButtonText: '取消',
-        inputValue: file.name,
-        inputPattern: /^[^\\/:\*\?"<>\|]+$/,
-        inputErrorMessage: '名称不能包含非法字符'
-      }).then(async ({ value }) => {
-        if (value && value !== file.name) {
-          try {
-            // 构建原路径和新路径
-            const oldPath = currentPath.value === '/' ?
-              currentPath.value + file.name :
-              currentPath.value + '/' + file.name;
 
-            const newPath = currentPath.value === '/' ?
-              currentPath.value + value :
-              currentPath.value + '/' + value;
-
-            // 创建与文件列表加载一致的加载状态
-            const loadingDiv = document.createElement('div');
-            loadingDiv.className = 'sftp-loading-files';
-            loadingDiv.innerHTML = `
-              <div class="sftp-loading-spinner">
-                <svg class="circular" viewBox="25 25 50 50">
-                  <circle class="path" cx="50" cy="50" r="20" fill="none"/>
-                </svg>
-              </div>
-              <p>重命名中...</p>
-            `;
-
-            // 将加载状态添加到文件列表区域
-            const fileListContent = document.querySelector('.sftp-file-list-content');
-            if (fileListContent) {
-              fileListContent.appendChild(loadingDiv);
-            }
-
-            // 调用SFTP服务重命名文件
-            await sftpService.rename(props.sessionId, oldPath, newPath);
-
-            // 移除加载状态
-            if (fileListContent && loadingDiv.parentNode === fileListContent) {
-              fileListContent.removeChild(loadingDiv);
-            }
-
-            ElMessage.success(`重命名成功: ${file.name} -> ${value}`);
-
-            // 刷新目录以显示新名称
-            refreshCurrentDirectory();
-          } catch (error) {
-            // 移除加载状态
-            const loadingDiv = document.querySelector('.sftp-file-list-content .sftp-loading-files');
-            if (loadingDiv && loadingDiv.parentNode) {
-              loadingDiv.parentNode.removeChild(loadingDiv);
-            }
-
-            log.error('重命名失败:', error);
-            showError(`重命名失败: ${error.message}`);
-          }
-        }
-      }).catch(() => {
-        // 用户取消
-      });
-    };
     
     // 删除文件
     const deleteFile = (file) => {
@@ -2206,9 +2147,6 @@ export default defineComponent({
       // 搜索当前目录中匹配的文件
       const lowercaseQuery = query.toLowerCase();
       const filteredFiles = originalFileList.filter(file => {
-        // 始终保留上级目录选项
-        if (file.name === '..') return true;
-        
         // 文件名匹配查询
         return file.name.toLowerCase().includes(lowercaseQuery);
       });
@@ -2395,6 +2333,9 @@ export default defineComponent({
       isEditing,
       editingFilePath,
       editingFileContent,
+      isCreating,
+      creatingType,
+      inlineEditor,
       
       // 方法
       close,
@@ -2402,14 +2343,16 @@ export default defineComponent({
       loadDirectoryContents,
       refreshCurrentDirectory,
       handleItemClick,
-      createNewFolder,
+      startCreateFolder,
+      startCreateFile,
+      handleCreate,
+      cancelCreate,
       uploadFile,
       uploadFolder,
       downloadFile,
       downloadSingleFile,
       downloadFolder,
       showDownloadReport,
-      renameFile,
       deleteFile,
       handleDragOver,
       handleDragLeave,

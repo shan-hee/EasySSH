@@ -1,8 +1,11 @@
 <template>
-  <div 
+  <div
     class="sftp-file-item"
-    :class="{ 'sftp-file-directory': file.isDirectory }"
-    @click="$emit('item-click', file)"
+    :class="{
+      'sftp-file-directory': file.isDirectory,
+      'sftp-file-editing': isEditing
+    }"
+    @click="handleItemClick"
   >
     <div class="sftp-file-name">
       <svg v-if="file.isDirectory" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24">
@@ -11,7 +14,61 @@
       <svg v-else xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24">
         <path fill="#80cbc4" d="M13,9V3.5L18.5,9M6,2C4.89,2 4,2.89 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2H6Z" />
       </svg>
-      <span>{{ file.name }}</span>
+
+      <!-- 编辑模式：显示输入框和操作按钮 -->
+      <div v-if="isEditing" class="sftp-edit-container">
+        <input
+          ref="editInput"
+          v-model="editingName"
+          class="sftp-file-name-input"
+          :class="{ 'sftp-input-error': hasValidationError }"
+          :disabled="isRenaming"
+          @keydown.enter="confirmRename"
+          @keydown.esc="cancelRename"
+          @input="validateInput"
+          @click.stop
+        />
+
+        <!-- 确认和取消按钮 -->
+        <div class="sftp-edit-actions">
+          <!-- 确认按钮 -->
+          <button
+            class="sftp-edit-action-btn sftp-confirm-btn"
+            :disabled="isRenaming || hasValidationError || !editingName.trim()"
+            @click.stop="confirmRename"
+            title="确认重命名"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24">
+              <path fill="currentColor" d="M9,20.42L2.79,14.21L5.62,11.38L9,14.77L18.88,4.88L21.71,7.71L9,20.42Z" />
+            </svg>
+          </button>
+
+          <!-- 取消按钮 -->
+          <button
+            class="sftp-edit-action-btn sftp-cancel-btn"
+            :disabled="isRenaming"
+            @click.stop="cancelRename"
+            title="取消重命名"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24">
+              <path fill="currentColor" d="M19,6.41L17.59,5L12,10.59L6.41,5L5,6.41L10.59,12L5,17.59L6.41,19L12,13.41L17.59,19L19,17.59L13.41,12L19,6.41Z" />
+            </svg>
+          </button>
+
+          <!-- 加载状态 -->
+          <div v-if="isRenaming" class="sftp-rename-loading">
+            <svg class="sftp-rename-spinner" viewBox="0 0 16 16">
+              <circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-dasharray="18.85" stroke-dashoffset="18.85">
+                <animate attributeName="stroke-dasharray" dur="1.5s" values="0 18.85;9.425 9.425;0 18.85" repeatCount="indefinite"/>
+                <animate attributeName="stroke-dashoffset" dur="1.5s" values="0;-9.425;-18.85" repeatCount="indefinite"/>
+              </circle>
+            </svg>
+          </div>
+        </div>
+      </div>
+
+      <!-- 显示模式：显示文件名 -->
+      <span v-else>{{ file.name }}</span>
     </div>
     <div class="sftp-file-size">{{ formatFileSize(file.size, file.isDirectory) }}</div>
     <div class="sftp-file-date">{{ formatDate(file.modifiedTime) }}</div>
@@ -21,7 +78,7 @@
           <path fill="currentColor" d="M5,20H19V18H5M19,9H15V3H9V9H5L12,16L19,9Z" />
         </svg>
       </button>
-      <button class="sftp-action-button" @click.stop="$emit('rename', file)">
+      <button class="sftp-action-button" @click.stop="startRename">
         <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24">
           <path fill="currentColor" d="M20.71,7.04C21.1,6.65 21.1,6 20.71,5.63L18.37,3.29C18,2.9 17.35,2.9 16.96,3.29L15.12,5.12L18.87,8.87M3,17.25V21H6.75L17.81,9.93L14.06,6.18L3,17.25Z" />
         </svg>
@@ -36,8 +93,10 @@
 </template>
 
 <script>
-import { defineComponent } from 'vue'
+import { defineComponent, ref, nextTick } from 'vue'
 import { useFileUtils } from '../composables/useFileUtils'
+import { ElMessage } from 'element-plus'
+import sftpService from '@/services/ssh/sftp-service'
 
 export default defineComponent({
   name: 'SftpFileItem',
@@ -45,42 +104,210 @@ export default defineComponent({
     file: {
       type: Object,
       required: true
+    },
+    sessionId: {
+      type: String,
+      required: true
+    },
+    currentPath: {
+      type: String,
+      required: true
     }
   },
-  emits: ['item-click', 'download', 'rename', 'delete'],
-  setup() {
+  emits: ['item-click', 'download', 'delete', 'refresh'],
+  setup(props, { emit }) {
     // 从composable获取格式化方法
     const { formatFileSize, formatDate } = useFileUtils();
+
+    // 编辑状态管理
+    const isEditing = ref(false);
+    const editingName = ref('');
+    const editInput = ref(null);
+    const isRenaming = ref(false);
+    const hasValidationError = ref(false);
+    const validationErrorMessage = ref('');
     
+    // 文件名验证正则表达式和规则
+    const fileNamePattern = /^[^\\/:\*\?"<>\|]+$/;
+    const maxFileNameLength = 255;
+
+    // 验证文件名
+    const validateFileName = (name) => {
+      if (!name || name.trim() === '') {
+        return { valid: false, message: '文件名不能为空' };
+      }
+
+      const trimmedName = name.trim();
+
+      if (trimmedName.length > maxFileNameLength) {
+        return { valid: false, message: `文件名长度不能超过${maxFileNameLength}个字符` };
+      }
+
+      if (!fileNamePattern.test(trimmedName)) {
+        return { valid: false, message: '文件名不能包含以下字符: \\ / : * ? " < > |' };
+      }
+
+      // 检查是否为保留名称（Windows系统）
+      const reservedNames = ['CON', 'PRN', 'AUX', 'NUL', 'COM1', 'COM2', 'COM3', 'COM4', 'COM5', 'COM6', 'COM7', 'COM8', 'COM9', 'LPT1', 'LPT2', 'LPT3', 'LPT4', 'LPT5', 'LPT6', 'LPT7', 'LPT8', 'LPT9'];
+      if (reservedNames.includes(trimmedName.toUpperCase())) {
+        return { valid: false, message: '不能使用系统保留名称' };
+      }
+
+      // 检查是否以点开头或结尾（某些系统不支持）
+      if (trimmedName.startsWith('.') && trimmedName.length === 1) {
+        return { valid: false, message: '文件名不能只是一个点' };
+      }
+
+      if (trimmedName === '..') {
+        return { valid: false, message: '文件名不能是两个点' };
+      }
+
+      return { valid: true, message: '' };
+    };
+
+    // 实时输入验证
+    const validateInput = () => {
+      const validation = validateFileName(editingName.value);
+      hasValidationError.value = !validation.valid;
+      validationErrorMessage.value = validation.message;
+    };
+
+    // 处理文件项点击
+    const handleItemClick = () => {
+      if (!isEditing.value) {
+        emit('item-click', props.file);
+      }
+    };
+
+    // 开始重命名
+    const startRename = async () => {
+      if (isRenaming.value) return;
+
+      isEditing.value = true;
+      editingName.value = props.file.name;
+
+      // 重置验证状态
+      hasValidationError.value = false;
+      validationErrorMessage.value = '';
+
+      // 等待DOM更新后聚焦输入框
+      await nextTick();
+      if (editInput.value) {
+        editInput.value.focus();
+        editInput.value.select();
+      }
+    };
+
+    // 取消重命名
+    const cancelRename = () => {
+      isEditing.value = false;
+      editingName.value = '';
+      hasValidationError.value = false;
+      validationErrorMessage.value = '';
+    };
+
+    // 确认重命名
+    const confirmRename = async () => {
+      const newName = editingName.value.trim();
+
+      // 使用新的验证逻辑
+      const validation = validateFileName(newName);
+      if (!validation.valid) {
+        ElMessage.error(validation.message);
+        hasValidationError.value = true;
+        validationErrorMessage.value = validation.message;
+        return;
+      }
+
+      // 如果名称没有变化，直接取消编辑
+      if (newName === props.file.name) {
+        cancelRename();
+        return;
+      }
+
+      await performRename(newName);
+    };
+
+    // 处理输入框失焦（不再自动保存，用户需要点击确认按钮）
+    const handleInputBlur = () => {
+      // 移除自动保存逻辑，用户需要明确点击确认或取消按钮
+    };
+
+    // 执行重命名操作
+    const performRename = async (newName) => {
+      if (isRenaming.value) return;
+
+      isRenaming.value = true;
+
+      try {
+        // 构建原路径和新路径
+        const oldPath = props.currentPath === '/' ?
+          props.currentPath + props.file.name :
+          props.currentPath + '/' + props.file.name;
+
+        const newPath = props.currentPath === '/' ?
+          props.currentPath + newName :
+          props.currentPath + '/' + newName;
+
+        // 调用SFTP服务重命名文件
+        await sftpService.rename(props.sessionId, oldPath, newPath);
+
+        ElMessage.success(`重命名成功: ${props.file.name} -> ${newName}`);
+
+        // 取消编辑状态
+        cancelRename();
+
+        // 通知父组件刷新
+        emit('refresh');
+      } catch (error) {
+        console.error('重命名失败:', error);
+        ElMessage.error(`重命名失败: ${error.message}`);
+      } finally {
+        isRenaming.value = false;
+      }
+    };
+
     // 判断是否是文本文件
     const isTextFile = (filename) => {
       if (!filename) return false;
-      
+
       const textExtensions = [
         // 编程语言
         'js', 'jsx', 'ts', 'tsx', 'html', 'htm', 'css', 'scss', 'sass', 'less',
         'py', 'rb', 'php', 'java', 'c', 'cpp', 'h', 'hpp', 'cs', 'go', 'rs',
         'swift', 'kt', 'dart', 'sh', 'bash', 'ps1', 'bat', 'cmd',
-        
+
         // 数据格式
         'json', 'xml', 'yaml', 'yml', 'toml', 'ini', 'conf', 'properties',
-        
+
         // 文本文档
         'txt', 'md', 'markdown', 'rst', 'tex', 'log',
-        
+
         // 配置文件
         'env', 'gitignore', 'dockerignore', 'dockerfile', 'editorconfig',
         'gitattributes', 'npmrc', 'prettierrc', 'eslintrc'
       ];
-      
+
       const ext = filename.split('.').pop().toLowerCase();
       return textExtensions.includes(ext);
     };
-    
+
     return {
       formatFileSize,
       formatDate,
-      isTextFile
+      isTextFile,
+      isEditing,
+      editingName,
+      editInput,
+      isRenaming,
+      hasValidationError,
+      validationErrorMessage,
+      handleItemClick,
+      startRename,
+      cancelRename,
+      confirmRename,
+      handleInputBlur,
+      validateInput
     }
   }
 })
@@ -118,6 +345,11 @@ export default defineComponent({
   background-color: transparent;
   transition: background-color 0.15s ease;
   z-index: 1;
+}
+
+/* 编辑状态下禁用伪元素 */
+.sftp-file-item.sftp-file-directory.sftp-file-editing:after {
+  display: none;
 }
 
 .sftp-file-item.sftp-file-directory:hover:after {
@@ -162,6 +394,127 @@ export default defineComponent({
   color: #42a5f5;
 }
 
+/* 编辑容器样式 */
+.sftp-edit-container {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 8px;
+  flex: 1;
+}
+
+.sftp-file-name-input {
+  background: #2a2a2a;
+  border: 1px solid #42a5f5;
+  border-radius: 4px;
+  color: #e0e0e0;
+  font-size: 13px;
+  font-family: inherit;
+  font-weight: inherit;
+  padding: 3px 8px;
+  margin: 0;
+  outline: none;
+  flex: 1;
+  min-width: 120px;
+  max-width: 200px;
+  transition: all 0.2s ease;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+.sftp-file-name-input:focus {
+  border-color: #64b5f6;
+  box-shadow: 0 0 0 2px rgba(66, 165, 245, 0.2);
+}
+
+.sftp-file-name-input.sftp-input-error {
+  border-color: #f56c6c;
+  background-color: rgba(245, 108, 108, 0.1);
+}
+
+.sftp-file-name-input.sftp-input-error:focus {
+  border-color: #f56c6c;
+  box-shadow: 0 0 0 2px rgba(245, 108, 108, 0.2);
+}
+
+.sftp-file-name-input:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* 编辑操作按钮容器 */
+.sftp-edit-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  position: relative;
+  z-index: 5;
+}
+
+/* 编辑操作按钮 */
+.sftp-edit-action-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+  padding: 0;
+  background: transparent;
+  position: relative;
+  z-index: 10;
+}
+
+.sftp-edit-action-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* 确认按钮 */
+.sftp-confirm-btn {
+  color: #67c23a;
+  background: rgba(103, 194, 58, 0.2);
+  border: 1px solid rgba(103, 194, 58, 0.3);
+}
+
+.sftp-confirm-btn:hover:not(:disabled) {
+  background: rgba(103, 194, 58, 0.3);
+}
+
+.sftp-confirm-btn:active:not(:disabled) {
+  background: rgba(103, 194, 58, 0.4);
+}
+
+/* 取消按钮 */
+.sftp-cancel-btn {
+  color: #f56c6c;
+  background: rgba(245, 108, 108, 0.2);
+  border: 1px solid rgba(245, 108, 108, 0.3);
+}
+
+.sftp-cancel-btn:hover:not(:disabled) {
+  background: rgba(245, 108, 108, 0.3);
+}
+
+.sftp-cancel-btn:active:not(:disabled) {
+  background: rgba(245, 108, 108, 0.4);
+}
+
+/* 重命名加载状态 */
+.sftp-rename-loading {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 4px;
+}
+
+.sftp-rename-spinner {
+  width: 14px;
+  height: 14px;
+  color: #42a5f5;
+}
+
 .sftp-file-item > div.sftp-file-actions {
   justify-content: flex-end;
   display: flex;
@@ -199,17 +552,73 @@ export default defineComponent({
   color: #fff;
 }
 
-/* 确保按钮在小屏幕上也可见 */
+/* 响应式设计 */
 @media (max-width: 600px) {
   .sftp-file-item {
     grid-template-columns: minmax(150px, 2fr) minmax(60px, 1fr) minmax(100px, 1fr) minmax(90px, 1fr);
   }
-  
+
   .sftp-action-button {
     width: 24px;
     height: 24px;
     margin: 0;
     padding: 0;
   }
+
+  .sftp-file-name-input {
+    font-size: 12px;
+    padding: 2px 6px;
+    max-width: 100px;
+    min-width: 80px;
+  }
+
+  .sftp-edit-action-btn {
+    width: 20px;
+    height: 20px;
+  }
+
+  .sftp-rename-spinner {
+    width: 12px;
+    height: 12px;
+  }
 }
+
+/* 超小屏幕适配 */
+@media (max-width: 480px) {
+  .sftp-file-item {
+    grid-template-columns: minmax(120px, 2fr) minmax(50px, 1fr) minmax(80px, 1fr) minmax(80px, 1fr);
+    font-size: 12px;
+  }
+
+  .sftp-file-name-input {
+    font-size: 11px;
+    padding: 1px 4px;
+    max-width: 80px;
+    min-width: 60px;
+  }
+
+  .sftp-action-button {
+    width: 20px;
+    height: 20px;
+  }
+
+  .sftp-edit-action-btn {
+    width: 18px;
+    height: 18px;
+  }
+
+  .sftp-rename-spinner {
+    width: 10px;
+    height: 10px;
+  }
+}
+
+/* 高分辨率屏幕优化 */
+@media (min-width: 1200px) {
+  .sftp-file-name-input {
+    max-width: 300px;
+  }
+}
+
+
 </style> 

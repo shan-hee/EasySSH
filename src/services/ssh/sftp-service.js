@@ -628,6 +628,33 @@ class SFTPService {
   }
 
   /**
+   * 创建空文件
+   * @param {string} sessionId - SFTP会话ID
+   * @param {string} remotePath - 远程文件路径
+   * @returns {Promise<Object>} - 创建结果
+   */
+  async createFile(sessionId, remotePath) {
+    await this._ensureSftpSession(sessionId);
+
+    try {
+      // 创建一个空的Blob对象
+      const emptyBlob = new Blob([''], { type: 'text/plain' });
+
+      // 创建临时File对象
+      const fileName = remotePath.split('/').pop();
+      const emptyFile = new File([emptyBlob], fileName, { type: 'text/plain' });
+
+      // 使用uploadFile方法上传空文件
+      await this.uploadFile(sessionId, emptyFile, remotePath, () => {});
+
+      return { success: true, message: '文件创建成功' };
+    } catch (error) {
+      log.error(`创建文件失败 ${remotePath}:`, error);
+      throw new Error(`创建文件失败: ${error.message || '未知错误'}`);
+    }
+  }
+
+  /**
    * 创建目录
    * @param {string} sessionId - SFTP会话ID
    * @param {string} remotePath - 远程目录路径
