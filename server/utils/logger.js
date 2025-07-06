@@ -9,10 +9,11 @@ const path = require('path');
 // 日志配置
 const LOG_CONFIG = {
   maxFileSize: parseInt(process.env.LOG_MAX_FILE_SIZE) || 10 * 1024 * 1024, // 10MB
-  maxBackupFiles: parseInt(process.env.LOG_MAX_BACKUP_FILES) || 5,           // 保留3个备份
+  maxBackupFiles: parseInt(process.env.LOG_MAX_BACKUP_FILES) || 5,           // 保留5个备份
   maxLogAge: parseInt(process.env.LOG_MAX_AGE_DAYS) || 7,                    // 保留7天
   logDirectory: process.env.LOG_DIRECTORY || path.join(__dirname, '../logs'),
   enableConsoleLog: process.env.LOG_ENABLE_CONSOLE !== 'false',             // 默认启用控制台
+  enableFileLog: process.env.LOG_ENABLE_FILE === 'true',                    // 默认禁用文件日志
   logFileName: 'app.log'
 };
 
@@ -27,8 +28,10 @@ function ensureLogDirectory() {
   }
 }
 
-// 初始化日志目录
-ensureLogDirectory();
+// 只有启用文件日志时才初始化日志目录
+if (LOG_CONFIG.enableFileLog) {
+  ensureLogDirectory();
+}
 
 // ANSI颜色代码
 const colors = {
@@ -139,7 +142,15 @@ function cleanupOldLogs() {
  * @param {string} logMessage - 格式化后的日志消息
  */
 function writeToFile(logMessage) {
+  // 如果未启用文件日志，直接返回
+  if (!LOG_CONFIG.enableFileLog) {
+    return;
+  }
+
   try {
+    // 确保日志目录存在（延迟创建）
+    ensureLogDirectory();
+
     const logFilePath = path.join(LOG_CONFIG.logDirectory, LOG_CONFIG.logFileName);
 
     // 检查并轮转日志
@@ -324,15 +335,18 @@ function getLogConfig() {
   return { ...LOG_CONFIG };
 }
 
-// 定期清理过期日志（每24小时执行一次）
-setInterval(() => {
-  cleanupOldLogs();
-}, 24 * 60 * 60 * 1000);
+// 只有启用文件日志时才执行定期清理和启动清理
+if (LOG_CONFIG.enableFileLog) {
+  // 定期清理过期日志（每24小时执行一次）
+  setInterval(() => {
+    cleanupOldLogs();
+  }, 24 * 60 * 60 * 1000);
 
-// 启动时清理一次过期日志
-setTimeout(() => {
-  cleanupOldLogs();
-}, 5000); // 延迟5秒执行，避免启动时阻塞
+  // 启动时清理一次过期日志
+  setTimeout(() => {
+    cleanupOldLogs();
+  }, 5000); // 延迟5秒执行，避免启动时阻塞
+}
 
 module.exports = {
   debug,
