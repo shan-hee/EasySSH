@@ -221,38 +221,7 @@
       </el-form>
     </SettingsCard>
 
-    <SettingsCard title="界面设置">
-      <el-form :model="uiSettings">
-        <div class="form-row-flex">
-          <el-form-item label="界面主题" class="flex-form-item">
-            <el-select
-              v-model="uiSettings.theme"
-              placeholder="选择界面主题"
-              @change="saveUISettings"
-              class="full-width"
-            >
-              <el-option label="深色主题" value="dark" />
-              <el-option label="浅色主题" value="light" />
-              <el-option label="跟随系统" value="system" />
-            </el-select>
-          </el-form-item>
-          
-          <el-form-item label="系统语言" class="flex-form-item">
-            <el-select 
-              v-model="uiSettings.language" 
-              placeholder="选择语言"
-              @change="saveUISettings"
-              class="full-width"
-            >
-              <el-option label="简体中文" value="zh-CN" />
-              <el-option label="English (待开发)" value="en-US" disabled />
-            </el-select>
-          </el-form-item>
-          
-          <div class="flex-form-item"></div>
-        </div>
-      </el-form>
-    </SettingsCard>
+    <!-- 界面设置已移除，主题切换移至侧边栏 -->
   </div>
 </template>
 
@@ -323,12 +292,7 @@ export default {
       initialized: false
     })
     
-    // 界面设置
-    const uiSettings = reactive({
-      theme: 'dark',
-      language: 'zh-CN',
-      initialized: false
-    })
+    // 界面设置已移除，主题切换移至侧边栏
     
     // 终端快捷键
     const terminalShortcuts = reactive([
@@ -425,21 +389,7 @@ export default {
       log.error('初始化读取连接设置失败:', error)
     }
 
-    // 页面加载时立即检查本地存储中的界面设置
-    try {
-      if (settingsService.isInitialized) {
-        const savedUISettings = settingsService.getUISettings()
-        if (savedUISettings) {
-          // 更新界面设置
-          Object.assign(uiSettings, savedUISettings)
-          // 标记为已初始化
-          uiSettings.initialized = true
-          log.debug('组件创建时加载界面设置:', uiSettings) // 降低日志级别
-        }
-      }
-    } catch (error) {
-      log.error('初始化读取界面设置失败:', error)
-    }
+    // 界面设置加载已移除
     
     // 初始化设置服务和加载设置
     const initializeSettings = async () => {
@@ -572,13 +522,7 @@ export default {
           log.debug('loadSettings中更新连接设置') // 简化日志
         }
 
-        // 加载界面设置 - 避免重复日志
-        const savedUISettings = settingsService.getUISettings()
-        if (savedUISettings && !uiSettings.initialized) {
-          Object.assign(uiSettings, savedUISettings)
-          uiSettings.initialized = true
-          log.debug('loadSettings中更新界面设置') // 简化日志
-        }
+        // 界面设置加载已移除
       } catch (error) {
         log.error('加载设置失败', error)
         ElMessage.error('加载设置失败')
@@ -715,28 +659,7 @@ export default {
       }
     }
     
-    // 保存界面设置
-    const saveUISettings = async () => {
-      try {
-        // 标记为已初始化
-        uiSettings.initialized = true
-
-        // 确保设置服务已初始化
-        if (!settingsService.isInitialized) {
-          await settingsService.init()
-        }
-
-        // 保存到统一设置服务
-        settingsService.updateUISettings(uiSettings)
-        ElMessage.success('界面设置已保存')
-
-        // 应用主题变更 - 使用设置服务的统一主题应用方法
-        settingsService.applyTheme(uiSettings.theme)
-      } catch (error) {
-        log.error('保存界面设置失败', error)
-        ElMessage.error('保存界面设置失败')
-      }
-    }
+    // 界面设置保存函数已移除
     
     // 更新快捷键设置
     const updateShortcut = (shortcut, newValue) => {
@@ -863,13 +786,11 @@ export default {
       terminalSettings,
       terminalBgSettings,
       connectionSettings,
-      uiSettings,
       terminalShortcuts,
       bgPreviewStyle,
       saveTerminalSettings,
       updateTerminalBg,
       saveConnectionSettings,
-      saveUISettings,
       incrementReconnectInterval,
       decrementReconnectInterval,
       incrementConnectionTimeout,

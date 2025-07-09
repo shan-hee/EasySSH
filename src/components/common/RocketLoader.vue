@@ -98,7 +98,7 @@ export default {
   left: 0;
   width: 100%;
   height: 100%;
-  background-color: #000000; /* 黑色背景 */
+  background-color: var(--color-bg-page); /* 使用主题背景色 */
   overflow: hidden;
   display: flex;
   justify-content: center;
@@ -120,7 +120,7 @@ h1 {
   left: 50%;
   top: 58%;
   margin-left: -20px;
-  color: #ffffff; /* 白色文字 */
+  color: var(--color-text-primary); /* 使用主题文字颜色 */
 }
 
 .rocket-body {
@@ -183,7 +183,7 @@ h1 {
 .rocket-body > span {
   height: 5px;
   width: 35px;
-  background: #ffffff; /* 白色火箭 */
+  background: var(--color-text-primary); /* 使用主题文字颜色作为火箭颜色 */
   position: absolute;
   top: -19px;
   left: 60px;
@@ -195,7 +195,7 @@ h1 {
   width: 0;
   height: 0;
   border-top: 6px solid transparent;
-  border-right: 100px solid #ffffff; /* 白色火箭 */
+  border-right: 100px solid var(--color-text-primary); /* 使用主题文字颜色 */
   border-bottom: 6px solid transparent;
 }
 
@@ -204,7 +204,7 @@ h1 {
   height: 22px;
   width: 22px;
   border-radius: 50%;
-  background: #ffffff; /* 白色火箭 */
+  background: var(--color-text-primary); /* 使用主题文字颜色 */
   position: absolute;
   right: -110px;
   top: -16px;
@@ -216,7 +216,7 @@ h1 {
   width: 0;
   height: 0;
   border-top: 0 solid transparent;
-  border-right: 55px solid #ffffff; /* 白色火箭 */
+  border-right: 55px solid var(--color-text-primary); /* 使用主题文字颜色 */
   border-bottom: 16px solid transparent;
   top: -16px;
   right: -98px;
@@ -226,7 +226,7 @@ h1 {
   position: absolute;
   height: 12px;
   width: 20px;
-  background: #ffffff; /* 白色火箭 */
+  background: var(--color-text-primary); /* 使用主题文字颜色 */
   border-radius: 20px 20px 0 0;
   transform: rotate(-40deg);
   right: -125px;
@@ -237,7 +237,7 @@ h1 {
   content: "";
   height: 12px;
   width: 12px;
-  background: #ffffff; /* 白色火箭 */
+  background: var(--color-text-primary); /* 使用主题文字颜色 */
   right: 4px;
   top: 7px;
   position: absolute;
@@ -249,7 +249,7 @@ h1 {
 .rocket-body > span > span {
   width: 30px;
   height: 1px;
-  background: #ffffff; /* 白色尾焰 */
+  background: var(--color-text-primary); /* 使用主题文字颜色 */
   position: absolute;
 }
 
@@ -318,7 +318,7 @@ h1 {
   position: absolute;
   height: 2px;
   width: 20%;
-  background: #ffffff; /* 白色流线 */
+  background: var(--color-text-primary); /* 使用主题文字颜色 */
 }
 
 .longfazers span:nth-child(1) {

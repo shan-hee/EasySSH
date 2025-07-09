@@ -83,10 +83,10 @@ export default {
 .custom-search-input {
   width: 100%;
   height: 36px;
-  background-color: transparent;
-  border: 1px solid #666;
+  background-color: var(--color-bg-muted);
+  border: 1px solid var(--color-border-default);
   border-radius: 6px;
-  color: #fff;
+  color: var(--color-text-primary);
   font-size: 13px;
   padding: 0 40px 0 12px;
   outline: none;
@@ -94,12 +94,12 @@ export default {
 }
 
 .custom-search-input:focus {
-  border-color: #0083d3;
-  box-shadow: 0 0 0 1px rgba(0, 131, 211, 0.2);
+  outline: none;
+  border-color: var(--color-primary);
 }
 
 .custom-search-input::placeholder {
-  color: #999;
+  color: var(--color-text-placeholder);
 }
 
 .search-icon {

@@ -121,20 +121,24 @@
 
 .menu__tooltip {
   position: absolute;
-  left: 100%;
+  left: calc(100% + var(--tooltip-offset));
   top: 50%;
   transform: translateY(-50%);
-  background-color: var(--color-text-primary);
-  color: var(--color-bg-container);
-  padding: 6px 12px;
-  border-radius: 4px;
-  font-size: 12px;
+  background-color: var(--tooltip-bg);
+  color: var(--tooltip-color);
+  padding: var(--tooltip-padding-vertical) var(--tooltip-padding-horizontal);
+  border-radius: var(--tooltip-border-radius);
+  font-family: var(--tooltip-font-family);
+  font-size: var(--tooltip-font-size);
+  font-weight: var(--tooltip-font-weight);
+  line-height: var(--tooltip-line-height);
   white-space: nowrap;
-  box-shadow: var(--shadow-lg);
+  max-width: var(--tooltip-max-width);
+  box-shadow: var(--tooltip-shadow);
   opacity: 0;
   pointer-events: none;
-  transition: all 0.3s ease;
-  z-index: 1000;
+  transition: var(--tooltip-transition);
+  z-index: var(--z-tooltip);
 }
 
 .sidebar--collapsed .menu__item:hover .menu__tooltip {

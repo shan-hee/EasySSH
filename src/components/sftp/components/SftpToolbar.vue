@@ -111,10 +111,10 @@ export default defineComponent({
   gap: 6px;
   padding: 0 10px;
   height: 32px;
-  background-color: #2c2c2c;
+  background-color: var(--color-bg-container);
   border: none;
   border-radius: 4px;
-  color: #e0e0e0;
+  color: var(--color-text-primary);
   font-size: 12px;
   cursor: pointer;
   flex-grow: 0;
@@ -122,7 +122,7 @@ export default defineComponent({
 }
 
 .sftp-toolbar-button:hover {
-  background-color: #3c3c3c;
+  background-color: var(--color-bg-hover);
 }
 
 .sftp-search-box {
@@ -135,10 +135,10 @@ export default defineComponent({
 .sftp-search-input {
   width: 100%;
   height: 32px;
-  background-color: #2c2c2c;
+  background-color: var(--color-bg-container);
   border: none;
   border-radius: 4px;
-  color: #e0e0e0;
+  color: var(--color-text-primary);
   font-size: 12px;
   padding: 0 32px 0 36px;
   outline: none;
@@ -146,8 +146,8 @@ export default defineComponent({
 }
 
 .sftp-search-input:focus {
-  background-color: #3a3a3a;
-  box-shadow: 0 0 0 2px rgba(64, 158, 255, 0.4);
+  background-color: var(--color-bg-hover);
+  box-shadow: 0 0 0 2px var(--color-primary-lighter);
 }
 
 .sftp-search-icon {
@@ -155,7 +155,7 @@ export default defineComponent({
   left: 10px;
   top: 50%;
   transform: translateY(-50%);
-  color: #aaa;
+  color: var(--color-text-secondary);
 }
 
 .sftp-search-clear {
@@ -165,7 +165,7 @@ export default defineComponent({
   transform: translateY(-50%);
   background: transparent;
   border: none;
-  color: #aaa;
+  color: var(--color-text-secondary);
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -177,21 +177,116 @@ export default defineComponent({
 }
 
 .sftp-search-clear:hover {
-  background-color: rgba(255, 255, 255, 0.1);
+  background-color: var(--color-bg-hover);
 }
 
 @media (max-width: 450px) {
   .sftp-file-action-button-label {
     display: none;
   }
-  
+
   .sftp-toolbar-button {
     padding: 0 8px;
     justify-content: center;
   }
-  
+
   .sftp-search-box {
     max-width: 160px;
   }
 }
-</style> 
+
+/* 深色主题特定样式 */
+:root[data-theme="dark"] .sftp-toolbar-button,
+.dark-theme .sftp-toolbar-button,
+html[data-theme="dark"] .sftp-toolbar-button {
+  background-color: #2c2c2c !important;
+  color: #e0e0e0 !important;
+}
+
+:root[data-theme="dark"] .sftp-toolbar-button:hover,
+.dark-theme .sftp-toolbar-button:hover,
+html[data-theme="dark"] .sftp-toolbar-button:hover {
+  background-color: #3c3c3c !important;
+}
+
+:root[data-theme="dark"] .sftp-search-input,
+.dark-theme .sftp-search-input,
+html[data-theme="dark"] .sftp-search-input {
+  background-color: #2c2c2c !important;
+  color: #e0e0e0 !important;
+}
+
+:root[data-theme="dark"] .sftp-search-input:focus,
+.dark-theme .sftp-search-input:focus,
+html[data-theme="dark"] .sftp-search-input:focus {
+  background-color: #3a3a3a !important;
+  box-shadow: 0 0 0 2px rgba(64, 158, 255, 0.4) !important;
+}
+
+:root[data-theme="dark"] .sftp-search-icon,
+.dark-theme .sftp-search-icon,
+html[data-theme="dark"] .sftp-search-icon {
+  color: #aaa !important;
+}
+
+:root[data-theme="dark"] .sftp-search-clear,
+.dark-theme .sftp-search-clear,
+html[data-theme="dark"] .sftp-search-clear {
+  color: #aaa !important;
+}
+
+:root[data-theme="dark"] .sftp-search-clear:hover,
+.dark-theme .sftp-search-clear:hover,
+html[data-theme="dark"] .sftp-search-clear:hover {
+  background-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+/* 浅色主题特定样式 */
+:root[data-theme="light"] .sftp-toolbar-button,
+.light-theme .sftp-toolbar-button,
+html[data-theme="light"] .sftp-toolbar-button {
+  background-color: #ffffff !important;
+  color: #303133 !important;
+  border: 1px solid #dcdfe6 !important;
+}
+
+:root[data-theme="light"] .sftp-toolbar-button:hover,
+.light-theme .sftp-toolbar-button:hover,
+html[data-theme="light"] .sftp-toolbar-button:hover {
+  background-color: #f5f7fa !important;
+}
+
+:root[data-theme="light"] .sftp-search-input,
+.light-theme .sftp-search-input,
+html[data-theme="light"] .sftp-search-input {
+  background-color: #ffffff !important;
+  color: #303133 !important;
+  border: 1px solid #dcdfe6 !important;
+}
+
+:root[data-theme="light"] .sftp-search-input:focus,
+.light-theme .sftp-search-input:focus,
+html[data-theme="light"] .sftp-search-input:focus {
+  background-color: #ffffff !important;
+  border-color: #409eff !important;
+  box-shadow: 0 0 0 2px rgba(64, 158, 255, 0.2) !important;
+}
+
+:root[data-theme="light"] .sftp-search-icon,
+.light-theme .sftp-search-icon,
+html[data-theme="light"] .sftp-search-icon {
+  color: #909399 !important;
+}
+
+:root[data-theme="light"] .sftp-search-clear,
+.light-theme .sftp-search-clear,
+html[data-theme="light"] .sftp-search-clear {
+  color: #909399 !important;
+}
+
+:root[data-theme="light"] .sftp-search-clear:hover,
+.light-theme .sftp-search-clear:hover,
+html[data-theme="light"] .sftp-search-clear:hover {
+  background-color: #f5f7fa !important;
+}
+</style>

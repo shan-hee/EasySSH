@@ -301,10 +301,10 @@ export default {
 .terminal-autocomplete {
   position: fixed;
   z-index: 9999;
-  background: #1e1e1e;
-  border: 1px solid #404040;
+  background: var(--color-bg-container);
+  border: 1px solid var(--color-border-default);
   border-radius: 6px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  box-shadow: var(--shadow-lg);
   min-width: 350px;
   max-width: 700px;
   max-height: 350px;
@@ -320,17 +320,17 @@ export default {
   justify-content: space-between;
   align-items: center;
   padding: 8px 12px;
-  background: #2d2d2d;
-  border-bottom: 1px solid #404040;
+  background: var(--color-bg-muted);
+  border-bottom: 1px solid var(--color-border-default);
 }
 
 .autocomplete-title {
-  color: #cccccc;
+  color: var(--color-text-primary);
   font-weight: 500;
 }
 
 .autocomplete-count {
-  color: #888888;
+  color: var(--color-text-secondary);
   font-size: 11px;
 }
 
@@ -342,7 +342,7 @@ export default {
 .autocomplete-item {
   padding: 10px 14px;
   cursor: pointer;
-  border-bottom: 1px solid #333333;
+  border-bottom: 1px solid var(--color-border-light);
   transition: background-color 0.15s ease;
   position: relative;
 }
@@ -353,12 +353,12 @@ export default {
 
 /* 键盘导航为主：只有选中状态有背景色，鼠标悬浮无效果 */
 .autocomplete-item--active {
-  background: #264f78;
+  background: var(--color-primary-lightest);
 }
 
 /* 鼠标悬浮时只显示轻微的视觉反馈，但不改变选中状态 */
 .autocomplete-item:hover {
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--color-bg-muted);
 }
 
 .autocomplete-item-content {
@@ -389,7 +389,7 @@ export default {
 }
 
 .autocomplete-command {
-  color: #4fc1ff;
+  color: var(--color-primary);
   font-weight: 500;
   flex-shrink: 0;
   min-width: 120px;
@@ -401,7 +401,7 @@ export default {
 }
 
 .autocomplete-description {
-  color: #cccccc;
+  color: var(--color-text-regular);
   flex: 1;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -417,9 +417,9 @@ export default {
   font-weight: 500;
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  background: #404040;
-  color: #cccccc;
-  border: 1px solid #555555;
+  background: var(--color-bg-muted);
+  color: var(--color-text-secondary);
+  border: 1px solid var(--color-border-default);
 }
 
 /* 不同类型的颜色 */
@@ -490,31 +490,31 @@ export default {
 
 .autocomplete-footer {
   padding: 6px 12px;
-  background: #2d2d2d;
-  border-top: 1px solid #404040;
+  background: var(--color-bg-container);
+  border-top: 1px solid var(--color-border-default);
 }
 
 .autocomplete-hint {
-  color: #888888;
+  color: var(--color-text-secondary);
   font-size: 10px;
 }
 
-/* 滚动条样式 */
+/* 滚动条样式 - 默认浅色主题 */
 .autocomplete-list::-webkit-scrollbar {
   width: 6px;
 }
 
 .autocomplete-list::-webkit-scrollbar-track {
-  background: #1e1e1e;
+  background: var(--color-bg-container);
 }
 
 .autocomplete-list::-webkit-scrollbar-thumb {
-  background: #404040;
+  background: var(--color-border-default);
   border-radius: 3px;
 }
 
 .autocomplete-list::-webkit-scrollbar-thumb:hover {
-  background: #505050;
+  background: var(--color-border-dark);
 }
 
 /* 响应式设计 - 小屏幕适配 */
@@ -571,5 +571,127 @@ export default {
   .autocomplete-item {
     transition: none;
   }
+}
+
+/* 深色主题特定样式 */
+:root[data-theme="dark"] .terminal-autocomplete,
+.dark-theme .terminal-autocomplete {
+  background: #1e1e1e;
+  border-color: #404040;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+:root[data-theme="dark"] .autocomplete-header,
+.dark-theme .autocomplete-header {
+  background: #2d2d2d;
+  border-bottom-color: #404040;
+}
+
+:root[data-theme="dark"] .autocomplete-title,
+.dark-theme .autocomplete-title {
+  color: #cccccc;
+}
+
+:root[data-theme="dark"] .autocomplete-count,
+.dark-theme .autocomplete-count {
+  color: #888888;
+}
+
+:root[data-theme="dark"] .autocomplete-item,
+.dark-theme .autocomplete-item {
+  border-bottom-color: #333333;
+}
+
+:root[data-theme="dark"] .autocomplete-item--active,
+.dark-theme .autocomplete-item--active {
+  background: #264f78;
+}
+
+:root[data-theme="dark"] .autocomplete-item:hover,
+.dark-theme .autocomplete-item:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+:root[data-theme="dark"] .autocomplete-command,
+.dark-theme .autocomplete-command {
+  color: #4fc1ff;
+}
+
+:root[data-theme="dark"] .autocomplete-description,
+.dark-theme .autocomplete-description {
+  color: #cccccc;
+}
+
+:root[data-theme="dark"] .autocomplete-type,
+.dark-theme .autocomplete-type {
+  background: #404040;
+  color: #cccccc;
+  border-color: #555555;
+}
+
+/* 深色主题footer样式 */
+:root[data-theme="dark"] .autocomplete-footer,
+.dark-theme .autocomplete-footer,
+html[data-theme="dark"] .autocomplete-footer {
+  background: #2d2d2d !important;
+  border-top-color: #404040 !important;
+}
+
+:root[data-theme="dark"] .autocomplete-hint,
+.dark-theme .autocomplete-hint,
+html[data-theme="dark"] .autocomplete-hint {
+  color: #888888 !important;
+}
+
+/* 深色主题滚动条样式 */
+:root[data-theme="dark"] .autocomplete-list::-webkit-scrollbar-track,
+.dark-theme .autocomplete-list::-webkit-scrollbar-track,
+html[data-theme="dark"] .autocomplete-list::-webkit-scrollbar-track {
+  background: #1e1e1e !important;
+}
+
+:root[data-theme="dark"] .autocomplete-list::-webkit-scrollbar-thumb,
+.dark-theme .autocomplete-list::-webkit-scrollbar-thumb,
+html[data-theme="dark"] .autocomplete-list::-webkit-scrollbar-thumb {
+  background: #404040 !important;
+}
+
+:root[data-theme="dark"] .autocomplete-list::-webkit-scrollbar-thumb:hover,
+.dark-theme .autocomplete-list::-webkit-scrollbar-thumb:hover,
+html[data-theme="dark"] .autocomplete-list::-webkit-scrollbar-thumb:hover {
+  background: #505050 !important;
+}
+
+/* 浅色主题footer样式 */
+:root[data-theme="light"] .autocomplete-footer,
+.light-theme .autocomplete-footer,
+html[data-theme="light"] .autocomplete-footer {
+  background: #ffffff !important;
+  border-top-color: #dcdfe6 !important;
+}
+
+:root[data-theme="light"] .autocomplete-hint,
+.light-theme .autocomplete-hint,
+html[data-theme="light"] .autocomplete-hint {
+  color: #909399 !important;
+}
+
+/* 浅色主题滚动条样式 */
+:root[data-theme="light"] .autocomplete-list::-webkit-scrollbar-track,
+.light-theme .autocomplete-list::-webkit-scrollbar-track,
+html[data-theme="light"] .autocomplete-list::-webkit-scrollbar-track {
+  background: #ffffff !important;
+}
+
+:root[data-theme="light"] .autocomplete-list::-webkit-scrollbar-thumb,
+.light-theme .autocomplete-list::-webkit-scrollbar-thumb,
+html[data-theme="light"] .autocomplete-list::-webkit-scrollbar-thumb {
+  background: #dcdfe6 !important;
+}
+
+:root[data-theme="light"] .autocomplete-list::-webkit-scrollbar-thumb:hover,
+.light-theme .autocomplete-list::-webkit-scrollbar-thumb:hover,
+html[data-theme="light"] .autocomplete-list::-webkit-scrollbar-thumb:hover {
+  background: #d4d7de !important;
 }
 </style>

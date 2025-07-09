@@ -226,19 +226,26 @@ export default defineComponent({
   color: var(--color-text-primary) !important;
 }
 
-/* Tooltip 样式覆盖 */
+/* Tooltip 样式覆盖 - 使用统一的主题变量 */
 .el-tooltip__popper,
 .el-popper.is-dark {
-  background-color: var(--color-text-primary) !important;
-  color: var(--color-bg-container) !important;
+  background-color: var(--tooltip-bg) !important;
+  color: var(--tooltip-color) !important;
   border: none !important;
-  box-shadow: var(--shadow-lg) !important;
+  box-shadow: var(--tooltip-shadow) !important;
+  font-family: var(--tooltip-font-family) !important;
+  font-size: var(--tooltip-font-size) !important;
+  font-weight: var(--tooltip-font-weight) !important;
+  line-height: var(--tooltip-line-height) !important;
+  border-radius: var(--tooltip-border-radius) !important;
+  padding: var(--tooltip-padding-vertical) var(--tooltip-padding-horizontal) !important;
+  max-width: var(--tooltip-max-width) !important;
 }
 
 .el-tooltip__popper .el-popper__arrow::before,
 .el-popper.is-dark .el-popper__arrow::before {
-  background-color: var(--color-text-primary) !important;
-  border-color: var(--color-text-primary) !important;
+  background-color: var(--tooltip-arrow-color) !important;
+  border-color: var(--tooltip-arrow-color) !important;
 }
 
 /* 浅色主题特定组件样式适配 */

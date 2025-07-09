@@ -208,13 +208,18 @@ html {
 [role="alert"],
 [role="status"],
 [role="progressbar"] {
-  border: 1px solid var(--color-border-default);
-  padding: 0.5rem;
-  background: var(--color-bg-container);
-  color: var(--color-text-primary);
-  border-radius: 4px;
-  max-width: 300px;
-  z-index: 1000;
+  border: 1px solid var(--tooltip-border);
+  padding: var(--tooltip-padding-vertical) var(--tooltip-padding-horizontal);
+  background: var(--tooltip-bg);
+  color: var(--tooltip-color);
+  border-radius: var(--tooltip-border-radius);
+  font-family: var(--tooltip-font-family);
+  font-size: var(--tooltip-font-size);
+  font-weight: var(--tooltip-font-weight);
+  line-height: var(--tooltip-line-height);
+  max-width: var(--tooltip-max-width);
+  box-shadow: var(--tooltip-shadow);
+  z-index: var(--z-tooltip);
 }
 
 /* 跳过导航链接 */

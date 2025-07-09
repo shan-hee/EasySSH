@@ -50,7 +50,29 @@
   --z-modal-backdrop: 1040;
   --z-modal: 1050;
   --z-popover: 1060;
-  --z-tooltip: 1070;
+  --z-tooltip: 10000; /* 提高tooltip层级，确保显示在所有元素之上 */
+
+  /* ===== Tooltip 样式系统 ===== */
+  /* Tooltip 字体 */
+  --tooltip-font-family: var(--font-family-base);
+  --tooltip-font-size: 0.8125rem; /* 13px - 与原来保持一致 */
+  --tooltip-font-weight: normal;
+  --tooltip-line-height: 1.4;
+
+  /* Tooltip 尺寸 */
+  --tooltip-padding-vertical: 0.5rem; /* 8px - 与原来保持一致 */
+  --tooltip-padding-horizontal: 0.75rem; /* 12px - 与原来保持一致 */
+  --tooltip-border-radius: var(--radius-md);
+  --tooltip-max-width: 300px;
+  --tooltip-min-height: 28px;
+
+  /* Tooltip 间距 */
+  --tooltip-offset: 10px;
+  --tooltip-arrow-size: 5px;
+
+  /* Tooltip 动画 */
+  --tooltip-transition: all var(--transition-fast);
+  --tooltip-delay: 0.5s;
 }
 
 /* ===== 浅色主题（默认） ===== */
@@ -94,6 +116,7 @@
   --color-bg-overlay: #ffffff;
   --color-bg-muted: #f0f2f5;
   --color-bg-subtle: #fafbfc;
+  --color-bg-hover: #f5f7fa;
 
   /* 边框色系 */
   --color-border-default: #dcdfe6;
@@ -107,6 +130,13 @@
   --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.12);
   --shadow-lg: 0 8px 16px rgba(0, 0, 0, 0.16);
   --shadow-xl: 0 12px 24px rgba(0, 0, 0, 0.20);
+
+  /* Tooltip 颜色系统 - 浅色主题 */
+  --tooltip-bg: var(--color-bg-container);
+  --tooltip-color: var(--color-text-primary);
+  --tooltip-border: none;
+  --tooltip-shadow: var(--shadow-lg);
+  --tooltip-arrow-color: var(--color-bg-container);
 
   /* 交互状态 */
   --color-hover-bg: rgba(170, 170, 170, 0.1);
@@ -200,6 +230,7 @@
   --color-bg-overlay: #ffffff;
   --color-bg-muted: #f0f2f5;
   --color-bg-subtle: #fafbfc;
+  --color-bg-hover: #f5f7fa;
 
   /* 边框色系 */
   --color-border-default: #dcdfe6;
@@ -213,6 +244,13 @@
   --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.12);
   --shadow-lg: 0 8px 16px rgba(0, 0, 0, 0.16);
   --shadow-xl: 0 12px 24px rgba(0, 0, 0, 0.20);
+
+  /* Tooltip 颜色系统 - 浅色主题 */
+  --tooltip-bg: var(--color-bg-container);
+  --tooltip-color: var(--color-text-primary);
+  --tooltip-border: none;
+  --tooltip-shadow: var(--shadow-lg);
+  --tooltip-arrow-color: var(--color-bg-container);
 
   /* 交互状态 */
   --color-hover-bg: rgba(170, 170, 170, 0.08);
@@ -322,12 +360,13 @@
   --color-bg-overlay: #1e1e1e;
   --color-bg-muted: #2c2c2c;
   --color-bg-subtle: #0a0a0a;
+  --color-bg-hover: #333333;
 
   /* 边框色系 - 深色主题 */
-  --color-border-default: #434343;
-  --color-border-light: #555555;
-  --color-border-lighter: #666666;
-  --color-border-dark: #2e2e2e;
+  --color-border-default: #333333;
+  --color-border-light: #333333;
+  --color-border-lighter: #333333;
+  --color-border-dark: #333333;
 
   /* 阴影系统 - 深色主题 */
   --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.3);
@@ -335,6 +374,13 @@
   --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.3);
   --shadow-lg: 0 8px 16px rgba(0, 0, 0, 0.4);
   --shadow-xl: 0 12px 24px rgba(0, 0, 0, 0.5);
+
+  /* Tooltip 颜色系统 - 深色主题 */
+  --tooltip-bg: var(--color-text-primary);
+  --tooltip-color: var(--color-bg-container);
+  --tooltip-border: var(--color-border-default);
+  --tooltip-shadow: var(--shadow-lg);
+  --tooltip-arrow-color: var(--color-text-primary);
 
   /* 交互状态 - 深色主题 */
   --color-hover-bg: rgba(170, 170, 170, 0.15);
@@ -346,7 +392,7 @@
   /* 组件级变量 - 深色主题 */
   /* 侧边栏 */
   --sidebar-bg: #1e1e1e;
-  --sidebar-border: #333333;
+  --sidebar-border: var(--color-border-default);
   --sidebar-logo-bg: #1e1e1e;
   --sidebar-nav-color: #a0a0a0;
   --sidebar-nav-hover-bg: rgba(255, 255, 255, 0.1);
@@ -357,7 +403,7 @@
 
   /* 顶部栏 */
   --header-bg: #242424;
-  --header-border: #333333;
+  --header-border: var(--color-border-default);
   --header-color: #a0a0a0;
   --header-tab-bg: #1a1a1a;
   --header-tab-hover-bg: #1e1e1e;

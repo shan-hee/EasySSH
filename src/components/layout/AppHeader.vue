@@ -52,13 +52,13 @@
         <div class="user-dropdown">
           <div class="user-dropdown-item" @click="navigateToProfile">
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="18" height="18">
-              <path fill="#a0a0a0" d="M12,4A4,4 0 0,1 16,8A4,4 0 0,1 12,12A4,4 0 0,1 8,8A4,4 0 0,1 12,4M12,14C16.42,14 20,15.79 20,18V20H4V18C4,15.79 7.58,14 12,14Z" />
+              <path fill="currentColor" d="M12,4A4,4 0 0,1 16,8A4,4 0 0,1 12,12A4,4 0 0,1 8,8A4,4 0 0,1 12,4M12,14C16.42,14 20,15.79 20,18V20H4V18C4,15.79 7.58,14 12,14Z" />
             </svg>
             <span>个人资料</span>
           </div>
           <div class="user-dropdown-item" @click="handleLogout">
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="18" height="18">
-              <path fill="#a0a0a0" d="M16,17V14H9V10H16V7L21,12L16,17M14,2A2,2 0 0,1 16,4V6H14V4H5V20H14V18H16V20A2,2 0 0,1 14,22H5A2,2 0 0,1 3,20V4A2,2 0 0,1 5,2H14Z" />
+              <path fill="currentColor" d="M16,17V14H9V10H16V7L21,12L16,17M14,2A2,2 0 0,1 16,4V6H14V4H5V20H14V18H16V20A2,2 0 0,1 14,22H5A2,2 0 0,1 3,20V4A2,2 0 0,1 5,2H14Z" />
             </svg>
             <span>登出</span>
           </div>
@@ -414,8 +414,9 @@ export default defineComponent({
   position: absolute;
   top: 45px;
   right: 0;
-  background-color: #242424;
-  box-shadow: 0 0 10px rgba(0, 0, 0, 0.3);
+  background-color: var(--color-bg-container);
+  box-shadow: var(--shadow-lg);
+  border: 1px solid var(--color-border-default);
   border-radius: 4px;
   width: 150px;
   z-index: 1000;
@@ -435,17 +436,17 @@ export default defineComponent({
   align-items: center;
   padding: 10px 15px;
   cursor: pointer;
-  transition: background-color 0.2s ease;
-  color: #a0a0a0;
+  transition: background-color 0.2s ease, color 0.2s ease;
+  color: var(--color-text-primary);
 }
 
 .user-dropdown-item:hover {
-  background-color: #333;
-  color: #ffffff;
+  background-color: var(--color-bg-hover);
+  color: var(--color-text-primary);
 }
 
 .user-dropdown-item:hover svg path {
-  fill: #ffffff;
+  fill: currentColor;
 }
 
 .user-dropdown-item svg {
@@ -456,7 +457,7 @@ export default defineComponent({
   font-size: 14px;
 }
 
-/* 登录面板 */
+/* 登录面板容器 */
 .login-panel-container {
   position: absolute;
   top: 45px;
@@ -467,33 +468,67 @@ export default defineComponent({
   justify-content: center;
   align-items: center;
   z-index: 1000;
-  background: radial-gradient(circle at center, 
-    #161616 0%, 
-    #161616 3%, 
-    #151515 7%, 
-    #151515 10%, 
-    #141414 14%, 
-    #141414 18%, 
-    #131313 22%, 
-    #131313 26%, 
-    #121212 30%, 
-    #121212 34%, 
-    #111111 38%, 
-    #111111 42%, 
-    #101010 46%, 
-    #101010 50%, 
-    #0f0f0f 54%, 
-    #0f0f0f 58%, 
-    #0e0e0e 62%, 
-    #0e0e0e 66%, 
-    #0d0d0d 70%, 
-    #0d0d0d 74%, 
-    #0c0c0c 78%, 
-    #0c0c0c 82%, 
-    #0b0b0b 86%, 
-    #0b0b0b 90%, 
+  background: radial-gradient(circle at center,
+    #161616 0%,
+    #161616 3%,
+    #151515 7%,
+    #151515 10%,
+    #141414 14%,
+    #141414 18%,
+    #131313 22%,
+    #131313 26%,
+    #121212 30%,
+    #121212 34%,
+    #111111 38%,
+    #111111 42%,
+    #101010 46%,
+    #101010 50%,
+    #0f0f0f 54%,
+    #0f0f0f 58%,
+    #0e0e0e 62%,
+    #0e0e0e 66%,
+    #0d0d0d 70%,
+    #0d0d0d 74%,
+    #0c0c0c 78%,
+    #0c0c0c 82%,
+    #0b0b0b 86%,
+    #0b0b0b 90%,
     #0a0a0a 94%,
     #0a0a0a 100%
   );
 }
-</style> 
+
+/* 浅色主题的登录面板容器背景 */
+:root[data-theme="light"] .login-panel-container,
+.light-theme .login-panel-container,
+html[data-theme="light"] .login-panel-container {
+  background: radial-gradient(circle at center,
+    #f8f9fa 0%,
+    #f8f9fa 3%,
+    #f5f7fa 7%,
+    #f5f7fa 10%,
+    #f2f4f7 14%,
+    #f2f4f7 18%,
+    #eff1f4 22%,
+    #eff1f4 26%,
+    #eceff2 30%,
+    #eceff2 34%,
+    #e9ecef 38%,
+    #e9ecef 42%,
+    #e6e9ed 46%,
+    #e6e9ed 50%,
+    #e3e7ea 54%,
+    #e3e7ea 58%,
+    #e0e4e8 62%,
+    #e0e4e8 66%,
+    #dde1e5 70%,
+    #dde1e5 74%,
+    #dadfe3 78%,
+    #dadfe3 82%,
+    #d7dce0 86%,
+    #d7dce0 90%,
+    #d4d9de 94%,
+    #d4d9de 100%
+  );
+}
+</style>

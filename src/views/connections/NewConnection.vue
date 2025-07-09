@@ -1602,12 +1602,13 @@ h2 {
 
 :deep(.connection-modal .btn-confirm) {
   border-radius: 6px;
-  background-color: var(--color-primary);
+  background-color: var(--color-bg-muted);
+  border: 1px solid var(--color-border-default);
   width: 80px;
   height: 36px;
   font-weight: bold;
   font-size: 14px;
-  color: var(--color-text-white);
+  color: var(--color-text-primary);
 }
 
 :deep(.connection-modal .btn-cancel) {
@@ -1627,7 +1628,7 @@ h2 {
   height: 36px;
   font-weight: bold;
   font-size: 14px;
-  color: var(--color-text-white);
+  color: var(--color-bg-container);
 }
 
 .key-file-wrapper {

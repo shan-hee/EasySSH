@@ -464,9 +464,17 @@ class SettingsService {
       document.documentElement.classList.remove('theme-switching')
     }, 300)
 
+    // 清除终端主题缓存，确保下次获取时使用新的CSS变量值
+    this._themeCache.clear()
+
     // 触发主题变化事件，供其他组件监听
     window.dispatchEvent(new CustomEvent('theme-changed', {
       detail: { theme, actualTheme, previousTheme: currentTheme }
+    }))
+
+    // 触发终端主题更新事件，让终端跟随界面主题
+    window.dispatchEvent(new CustomEvent('terminal-theme-update', {
+      detail: { uiTheme: actualTheme }
     }))
 
     log.debug('主题已应用', { theme, actualTheme, previousTheme: currentTheme, language })
@@ -509,7 +517,7 @@ class SettingsService {
     const themes = {
       light: {
         foreground: '#000000',
-        background: '#FFFFFF',
+        background: '#F5F5F5', // 使用与--color-bg-page相近的颜色作为默认值
         cursor: '#000000',
         selectionBackground: '#ACCEF7',
         black: '#000000',
@@ -627,12 +635,23 @@ class SettingsService {
 
     const themeConfig = themes[actualTheme] || themes[TERMINAL_THEMES.DARK]
 
-    // 缓存主题配置（系统主题不缓存，因为可能会变化）
-    if (themeName !== TERMINAL_THEMES.SYSTEM) {
-      this._themeCache.set(themeName, themeConfig)
+    // 动态解析CSS变量，使终端主题与界面主题保持一致
+    const resolvedTheme = { ...themeConfig }
+
+    // 获取当前界面主题的CSS变量值
+    const computedStyle = getComputedStyle(document.documentElement)
+    const bgColor = computedStyle.getPropertyValue('--color-bg-page').trim()
+    const textColor = computedStyle.getPropertyValue('--color-text-primary').trim()
+
+    // 如果CSS变量有值，则使用界面主题的颜色
+    if (bgColor && textColor) {
+      resolvedTheme.background = bgColor
+      resolvedTheme.foreground = textColor
+      resolvedTheme.cursor = textColor
     }
 
-    return themeConfig
+    // 不缓存，确保每次都能获取到最新的CSS变量值
+    return resolvedTheme
   }
 
   /**

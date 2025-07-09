@@ -39,57 +39,91 @@
     <!-- 导航菜单 -->
     <nav class="nav-menu">
       <!-- 登录后才显示的图标 -->
-      <div v-if="userStore.isLoggedIn" 
-           class="nav-item" 
-           @click="handleNavigation('/')" 
-           :class="{ active: currentRoute === '/' }" 
+      <div v-if="userStore.isLoggedIn"
+           class="nav-item"
+           @click="handleNavigation('/')"
+           :class="{ active: currentRoute === '/' }"
            data-tooltip="控制台">
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="20" height="20">
           <path fill="currentColor" d="M19 3H5C3.9 3 3 3.9 3 5V19C3 20.1 3.9 21 5 21H19C20.1 21 21 20.1 21 19V5C21 3.9 20.1 3 19 3M9 17H7V10H9V17M13 17H11V7H13V17M17 17H15V13H17V17Z" />
         </svg>
       </div>
-      
+
       <!-- 脚本库图标 - 只在登录后显示 -->
       <div v-if="userStore.isLoggedIn"
-           class="nav-item" 
-           @click="handleNavigation('/scripts')" 
-           :class="{ active: currentRoute === '/scripts' }" 
+           class="nav-item"
+           @click="handleNavigation('/scripts')"
+           :class="{ active: currentRoute === '/scripts' }"
            data-tooltip="脚本库">
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="20" height="20">
           <path fill="currentColor" d="M13,9H18.5L13,3.5V9M6,2H14L20,8V20A2,2 0 0,1 18,22H6C4.89,22 4,21.1 4,20V4C4,2.89 4.89,2 6,2M6.12,15.5L9.86,19.24L11.28,17.83L8.95,15.5L11.28,13.17L9.86,11.76L6.12,15.5M17.28,15.5L13.54,11.76L12.12,13.17L14.45,15.5L12.12,17.83L13.54,19.24L17.28,15.5Z" />
         </svg>
       </div>
-      
+
       <!-- 默认显示的设置图标 -->
-      <div class="nav-item" 
-           @click="handleNavigation('/settings')" 
-           :class="{ active: currentRoute === '/settings' }" 
+      <div class="nav-item"
+           @click="handleNavigation('/settings')"
+           :class="{ active: currentRoute === '/settings' }"
            data-tooltip="设置">
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="20" height="20">
           <path fill="currentColor" d="M12,15.5A3.5,3.5 0 0,1 8.5,12A3.5,3.5 0 0,1 12,8.5A3.5,3.5 0 0,1 15.5,12A3.5,3.5 0 0,1 12,15.5M19.43,12.97C19.47,12.65 19.5,12.33 19.5,12C19.5,11.67 19.47,11.34 19.43,11L21.54,9.37C21.73,9.22 21.78,8.95 21.66,8.73L19.66,5.27C19.54,5.05 19.27,4.96 19.05,5.05L16.56,6.05C16.04,5.66 15.5,5.32 14.87,5.07L14.5,2.42C14.46,2.18 14.25,2 14,2H10C9.75,2 9.54,2.18 9.5,2.42L9.13,5.07C8.5,5.32 7.96,5.66 7.44,6.05L4.95,5.05C4.73,4.96 4.46,5.05 4.34,5.27L2.34,8.73C2.21,8.95 2.27,9.22 2.46,9.37L4.57,11C4.53,11.34 4.5,11.67 4.5,12C4.5,12.33 4.53,12.65 4.57,12.97L2.46,14.63C2.27,14.78 2.21,15.05 2.34,15.27L4.34,18.73C4.46,18.95 4.73,19.03 4.95,18.95L7.44,17.94C7.96,18.34 8.5,18.68 9.13,18.93L9.5,21.58C9.54,21.82 9.75,22 10,22H14C14.25,22 14.46,21.82 14.5,21.58L14.87,18.93C15.5,18.67 16.04,18.34 16.56,17.94L19.05,18.95C19.27,19.03 19.54,18.95 19.66,18.73L21.66,15.27C21.78,15.05 21.73,14.78 21.54,14.63L19.43,12.97Z" />
         </svg>
       </div>
     </nav>
+
+    <!-- 主题切换按钮 - 放在底部 -->
+    <div class="theme-toggle">
+      <div class="nav-item theme-toggle-btn"
+           @click="toggleTheme"
+           :data-tooltip="currentTheme === 'dark' ? '切换到浅色主题' : '切换到深色主题'">
+        <!-- 太阳图标 (浅色主题) -->
+        <svg v-if="currentTheme === 'dark'" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="20" height="20">
+          <path fill="currentColor" d="M12,8A4,4 0 0,0 8,12A4,4 0 0,0 12,16A4,4 0 0,0 16,12A4,4 0 0,0 12,8M12,18A6,6 0 0,1 6,12A6,6 0 0,1 12,6A6,6 0 0,1 18,12A6,6 0 0,1 12,18M20,8.69V4H15.31L12,0.69L8.69,4H4V8.69L0.69,12L4,15.31V20H8.69L12,23.31L15.31,20H20V15.31L23.31,12L20,8.69Z" />
+        </svg>
+        <!-- 月亮图标 (深色主题) -->
+        <svg v-else xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="20" height="20">
+          <path fill="currentColor" d="M17.75,4.09L15.22,6.03L16.13,9.09L13.5,7.28L10.87,9.09L11.78,6.03L9.25,4.09L12.44,4L13.5,1L14.56,4L17.75,4.09M21.25,11L19.61,12.25L20.2,14.23L18.5,13.06L16.8,14.23L17.39,12.25L15.75,11L17.81,10.95L18.5,9L19.19,10.95L21.25,11M18.97,15.95C19.8,15.87 20.69,17.05 20.16,17.8C19.84,18.25 19.5,18.67 19.08,19.07C15.17,23 8.84,23 4.94,19.07C1.03,15.17 1.03,8.83 4.94,4.93C5.34,4.53 5.76,4.17 6.21,3.85C6.96,3.32 8.14,4.21 8.06,5.04C7.79,7.9 8.75,10.87 10.95,13.06C13.14,15.26 16.1,16.22 18.97,15.95M17.33,17.97C14.5,17.81 11.7,16.64 9.53,14.5C7.36,12.31 6.2,9.5 6.04,6.68C3.23,9.82 3.34,14.4 6.35,17.41C9.37,20.43 14,20.54 17.33,17.97Z" />
+        </svg>
+      </div>
+    </div>
   </aside>
 </template>
 
 <script>
-import { defineComponent, computed } from 'vue'
+import { defineComponent, computed, ref, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { useTabStore } from '@/store/tab'
 import { useUserStore } from '@/store/user'
+import settingsService from '@/services/settings'
 
 export default defineComponent({
   name: 'AppSidebar',
   setup() {
     const router = useRouter()
     const route = useRoute()
-    const tabStore = useTabStore()
     const userStore = useUserStore()
-    
+
     // 当前路由路径
     const currentRoute = computed(() => route.path)
-    
+
+    // 当前主题
+    const currentTheme = ref('dark')
+
+    // 初始化主题
+    onMounted(async () => {
+      await settingsService.init()
+      const theme = settingsService.settings.ui.theme
+      if (theme === 'system') {
+        currentTheme.value = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+      } else {
+        currentTheme.value = theme
+      }
+
+      // 监听主题变化事件
+      window.addEventListener('theme-changed', (event) => {
+        currentTheme.value = event.detail.actualTheme
+      })
+    })
+
     // 关闭登录面板事件
     const closeLoginPanel = () => {
       const appHeader = document.querySelector('.app-header');
@@ -98,17 +132,26 @@ export default defineComponent({
         appHeader.dispatchEvent(event);
       }
     }
-    
+
     // 导航处理函数
     const handleNavigation = (route) => {
       closeLoginPanel(); // 在导航前先关闭登录面板
-      
+
       router.push(route)
     }
-    
+
+    // 主题切换函数
+    const toggleTheme = () => {
+      const newTheme = currentTheme.value === 'dark' ? 'light' : 'dark'
+      settingsService.updateUISettings({ theme: newTheme })
+      settingsService.applyTheme(newTheme)
+    }
+
     return {
       currentRoute,
+      currentTheme,
       handleNavigation,
+      toggleTheme,
       userStore
     }
   }
@@ -243,34 +286,56 @@ export default defineComponent({
 .nav-item:hover::after {
   content: attr(data-tooltip);
   position: absolute;
-  left: 100%;
+  left: calc(100% + var(--tooltip-offset));
   top: 50%;
   transform: translateY(-50%);
-  background-color: var(--sidebar-tooltip-bg);
-  color: var(--sidebar-tooltip-color);
-  padding: 8px 12px;
-  border-radius: 4px;
-  font-size: 13px;
+  background-color: var(--tooltip-bg);
+  color: var(--tooltip-color);
+  padding: var(--tooltip-padding-vertical) var(--tooltip-padding-horizontal);
+  border-radius: var(--tooltip-border-radius);
+  font-family: var(--tooltip-font-family);
+  font-size: var(--tooltip-font-size);
+  font-weight: var(--tooltip-font-weight);
+  line-height: var(--tooltip-line-height);
   white-space: nowrap;
-  margin-left: 10px;
-  z-index: 2000;
-  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.4);
+  max-width: var(--tooltip-max-width);
+  z-index: var(--z-tooltip);
+  box-shadow: var(--tooltip-shadow);
   display: block;
   pointer-events: none;
+  transition: var(--tooltip-transition);
 }
 
 .nav-item:hover::before {
   content: "";
   position: absolute;
-  right: -10px;
+  right: calc(-1 * var(--tooltip-offset));
   top: 50%;
   transform: translateY(-50%);
   width: 0;
   height: 0;
-  border-top: 5px solid transparent;
-  border-bottom: 5px solid transparent;
-  border-right: 5px solid var(--sidebar-tooltip-bg);
-  z-index: 2100;
+  border-top: var(--tooltip-arrow-size) solid transparent;
+  border-bottom: var(--tooltip-arrow-size) solid transparent;
+  border-right: var(--tooltip-arrow-size) solid var(--tooltip-arrow-color);
+  z-index: calc(var(--z-tooltip) + 1);
   pointer-events: none;
 }
-</style> 
+
+/* 主题切换按钮样式 */
+.theme-toggle {
+  position: absolute;
+  bottom: 20px;
+  left: 0;
+  right: 0;
+  display: flex;
+  justify-content: center;
+}
+
+.theme-toggle-btn {
+  position: relative;
+}
+
+.theme-toggle-btn:hover {
+  background-color: var(--sidebar-nav-hover-bg);
+}
+</style>

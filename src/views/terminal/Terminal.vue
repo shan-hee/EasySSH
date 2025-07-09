@@ -944,6 +944,30 @@ export default {
         clearTerminal()
       }
     }
+
+    // 处理终端主题更新事件
+    const handleTerminalThemeUpdate = (event) => {
+      log.debug('收到终端主题更新事件:', event.detail)
+
+      // 更新所有活动终端的主题
+      terminalIds.value.forEach(terminalId => {
+        if (terminalStore.hasTerminal(terminalId)) {
+          try {
+            // 获取最新的终端选项（包含更新后的主题）
+            const newOptions = settingsService.getTerminalOptions()
+
+            // 应用新主题到终端
+            terminalStore.updateTerminalSettings(terminalId, {
+              theme: newOptions.theme
+            })
+
+            log.debug(`终端 ${terminalId} 主题已更新`)
+          } catch (error) {
+            log.error(`更新终端 ${terminalId} 主题失败:`, error)
+          }
+        }
+      })
+    }
     
     // 监听外部工具栏事件
     const setupToolbarListeners = () => {
@@ -1210,6 +1234,9 @@ export default {
       // 移除重复的事件监听器 - 只保留 terminal-status-update 事件系统
       // window.addEventListener('terminal:refresh-status', handleTerminalRefreshStatus)
 
+      // 添加终端主题更新监听器
+      window.addEventListener('terminal-theme-update', handleTerminalThemeUpdate)
+
       // 如果有活动连接ID，则更新终端ID列表
       if (activeConnectionId.value) {
         if (!terminalIds.value.includes(activeConnectionId.value)) {
@@ -1290,6 +1317,7 @@ export default {
       if (cleanupSSHFailureEvents) cleanupSSHFailureEvents()
       window.removeEventListener('terminal-command', handleTerminalEvent)
       window.removeEventListener('terminal:session-change', handleSessionChange)
+      window.removeEventListener('terminal-theme-update', handleTerminalThemeUpdate)
       // window.removeEventListener('terminal:refresh-status', handleTerminalRefreshStatus)
       document.removeEventListener('keydown', handleGlobalKeydown, true)
 
@@ -1897,7 +1925,7 @@ export default {
   height: 100%;
   width: 100%;
   position: relative;
-  background-color: #121212;
+  background-color: var(--color-bg-page);
   overflow: hidden;
   /* 添加3D渲染上下文，减少层间闪烁 */
   transform-style: preserve-3d;

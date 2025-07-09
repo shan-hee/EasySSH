@@ -6,7 +6,7 @@
         <h3>SFTP 文件管理器</h3>
         <button class="close-button" @click="close">
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="18" height="18">
-            <path fill="#ffffff" d="M19,6.41L17.59,5L12,10.59L6.41,5L5,6.41L10.59,12L5,17.59L6.41,19L12,13.41L17.59,19L19,17.59L13.41,12L19,6.41Z"></path>
+            <path fill="currentColor" d="M19,6.41L17.59,5L12,10.59L6.41,5L5,6.41L10.59,12L5,17.59L6.41,19L12,13.41L17.59,19L19,17.59L13.41,12L19,6.41Z"></path>
           </svg>
         </button>
       </div>
@@ -2421,8 +2421,8 @@ export default defineComponent({
   align-items: center;
   height: 100%;
   min-height: 150px;
-  color: #909399;
-  background-color: transparent;
+  color: var(--color-text-secondary);
+  background-color: rgba(255, 255, 255, 0.9);
   padding: 20px 0;
   position: absolute;
   top: 0;
@@ -2430,8 +2430,8 @@ export default defineComponent({
   right: 0;
   bottom: 0;
   z-index: 2;
-  background-color: rgba(30, 30, 30, 0.7);
   border-radius: 4px;
+  backdrop-filter: blur(4px);
   
   .sftp-loading-spinner {
     margin-bottom: 15px;
@@ -2487,4 +2487,22 @@ export default defineComponent({
     stroke-dashoffset: -120px;
   }
 }
-</style> 
+
+/* 深色主题加载样式 */
+:root[data-theme="dark"] .sftp-loading-files,
+.dark-theme .sftp-loading-files,
+html[data-theme="dark"] .sftp-loading-files {
+  background-color: rgba(30, 30, 30, 0.9) !important;
+  color: #909399 !important;
+  backdrop-filter: blur(4px) !important;
+}
+
+/* 浅色主题加载样式 */
+:root[data-theme="light"] .sftp-loading-files,
+.light-theme .sftp-loading-files,
+html[data-theme="light"] .sftp-loading-files {
+  background-color: rgba(255, 255, 255, 0.9) !important;
+  color: #909399 !important;
+  backdrop-filter: blur(4px) !important;
+}
+</style>

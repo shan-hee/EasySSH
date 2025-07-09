@@ -207,11 +207,14 @@ export default defineComponent({
 }
 
 .btn-confirm {
-  background-color: var(--color-primary);
+  background-color: var(--color-bg-muted);
+  border: 1px solid var(--color-border-default);
+  color: var(--color-text-primary);
 }
 
 .btn-primary {
   background-color: var(--color-primary);
+  color: var(--color-bg-container);
 }
 
 /* 动画相关样式 */

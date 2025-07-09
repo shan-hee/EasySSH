@@ -174,7 +174,7 @@ export default defineComponent({
   flex: 1;
   display: flex;
   align-items: center;
-  background-color: #2c2c2c;
+  background-color: var(--color-bg-container);
   border-radius: 4px;
   padding: 0 8px;
   min-width: 0; /* 允许容器缩小到比内容小 */
@@ -186,12 +186,12 @@ export default defineComponent({
 }
 
 .sftp-path-input:hover {
-  background-color: #333;
+  background-color: var(--color-bg-hover);
 }
 
 .sftp-path-input:focus {
-  background-color: #333;
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.1);
+  background-color: var(--color-bg-hover);
+  box-shadow: 0 0 0 1px var(--color-border-light);
 }
 
 .sftp-path-home-button {
@@ -203,14 +203,14 @@ export default defineComponent({
   padding: 0;
   margin: 0;
   cursor: pointer;
-  color: #aaa;
+  color: var(--color-text-secondary);
   transition: color 0.2s;
   flex-shrink: 0;
   z-index: 1; /* 确保按钮可点击 */
 }
 
 .sftp-path-home-button:hover {
-  color: #fff;
+  color: var(--color-text-primary);
 }
 
 .sftp-path-icon {
@@ -242,14 +242,14 @@ export default defineComponent({
 }
 
 .sftp-path-separator {
-  color: #666;
+  color: var(--color-text-tertiary);
   margin: 0 2px;
 }
 
 .sftp-path-part-button {
   background: transparent;
   border: none;
-  color: #e0e0e0;
+  color: var(--color-text-primary);
   font-size: 12px;
   cursor: pointer;
   padding: 2px 4px;
@@ -259,14 +259,14 @@ export default defineComponent({
 }
 
 .sftp-path-part-button:hover {
-  background-color: rgba(255, 255, 255, 0.1);
+  background-color: var(--color-bg-hover);
 }
 
 .sftp-path-field {
   flex: 1;
   background: transparent;
   border: none;
-  color: #fff;
+  color: var(--color-text-primary);
   font-size: 12px;
   height: 100%;
   outline: none;
@@ -278,19 +278,19 @@ export default defineComponent({
   display: flex;
   align-items: center;
   justify-content: center;
-  background-color: #2c2c2c;
+  background-color: var(--color-bg-container);
   border: none;
   border-radius: 4px;
   width: 32px;
   height: 32px;
-  color: #e0e0e0;
+  color: var(--color-text-primary);
   cursor: pointer;
   transition: background-color 0.2s;
   flex-shrink: 0;
 }
 
 .sftp-nav-button:hover {
-  background-color: #3c3c3c;
+  background-color: var(--color-bg-hover);
 }
 
 @media (max-width: 450px) {
@@ -298,4 +298,145 @@ export default defineComponent({
     padding: 0 4px;
   }
 }
-</style> 
+
+/* 深色主题特定样式 */
+:root[data-theme="dark"] .sftp-path-input,
+.dark-theme .sftp-path-input,
+html[data-theme="dark"] .sftp-path-input {
+  background-color: #2c2c2c !important;
+}
+
+:root[data-theme="dark"] .sftp-path-input:hover,
+.dark-theme .sftp-path-input:hover,
+html[data-theme="dark"] .sftp-path-input:hover {
+  background-color: #333 !important;
+}
+
+:root[data-theme="dark"] .sftp-path-input:focus,
+.dark-theme .sftp-path-input:focus,
+html[data-theme="dark"] .sftp-path-input:focus {
+  background-color: #333 !important;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.1) !important;
+}
+
+:root[data-theme="dark"] .sftp-path-home-button,
+.dark-theme .sftp-path-home-button,
+html[data-theme="dark"] .sftp-path-home-button {
+  color: #aaa !important;
+}
+
+:root[data-theme="dark"] .sftp-path-home-button:hover,
+.dark-theme .sftp-path-home-button:hover,
+html[data-theme="dark"] .sftp-path-home-button:hover {
+  color: #fff !important;
+}
+
+:root[data-theme="dark"] .sftp-path-separator,
+.dark-theme .sftp-path-separator,
+html[data-theme="dark"] .sftp-path-separator {
+  color: #666 !important;
+}
+
+:root[data-theme="dark"] .sftp-path-part-button,
+.dark-theme .sftp-path-part-button,
+html[data-theme="dark"] .sftp-path-part-button {
+  color: #e0e0e0 !important;
+}
+
+:root[data-theme="dark"] .sftp-path-part-button:hover,
+.dark-theme .sftp-path-part-button:hover,
+html[data-theme="dark"] .sftp-path-part-button:hover {
+  background-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+:root[data-theme="dark"] .sftp-path-field,
+.dark-theme .sftp-path-field,
+html[data-theme="dark"] .sftp-path-field {
+  color: #fff !important;
+}
+
+:root[data-theme="dark"] .sftp-nav-button,
+.dark-theme .sftp-nav-button,
+html[data-theme="dark"] .sftp-nav-button {
+  background-color: #2c2c2c !important;
+  color: #e0e0e0 !important;
+}
+
+:root[data-theme="dark"] .sftp-nav-button:hover,
+.dark-theme .sftp-nav-button:hover,
+html[data-theme="dark"] .sftp-nav-button:hover {
+  background-color: #3c3c3c !important;
+}
+
+/* 浅色主题特定样式 */
+:root[data-theme="light"] .sftp-path-input,
+.light-theme .sftp-path-input,
+html[data-theme="light"] .sftp-path-input {
+  background-color: #ffffff !important;
+  border: 1px solid #dcdfe6 !important;
+}
+
+:root[data-theme="light"] .sftp-path-input:hover,
+.light-theme .sftp-path-input:hover,
+html[data-theme="light"] .sftp-path-input:hover {
+  background-color: #f5f7fa !important;
+}
+
+:root[data-theme="light"] .sftp-path-input:focus,
+.light-theme .sftp-path-input:focus,
+html[data-theme="light"] .sftp-path-input:focus {
+  background-color: #ffffff !important;
+  border-color: #409eff !important;
+  box-shadow: 0 0 0 1px rgba(64, 158, 255, 0.2) !important;
+}
+
+:root[data-theme="light"] .sftp-path-home-button,
+.light-theme .sftp-path-home-button,
+html[data-theme="light"] .sftp-path-home-button {
+  color: #909399 !important;
+}
+
+:root[data-theme="light"] .sftp-path-home-button:hover,
+.light-theme .sftp-path-home-button:hover,
+html[data-theme="light"] .sftp-path-home-button:hover {
+  color: #303133 !important;
+}
+
+:root[data-theme="light"] .sftp-path-separator,
+.light-theme .sftp-path-separator,
+html[data-theme="light"] .sftp-path-separator {
+  color: #c0c4cc !important;
+}
+
+:root[data-theme="light"] .sftp-path-part-button,
+.light-theme .sftp-path-part-button,
+html[data-theme="light"] .sftp-path-part-button {
+  color: #303133 !important;
+}
+
+:root[data-theme="light"] .sftp-path-part-button:hover,
+.light-theme .sftp-path-part-button:hover,
+html[data-theme="light"] .sftp-path-part-button:hover {
+  background-color: #f5f7fa !important;
+}
+
+:root[data-theme="light"] .sftp-path-field,
+.light-theme .sftp-path-field,
+html[data-theme="light"] .sftp-path-field {
+  color: #303133 !important;
+}
+
+:root[data-theme="light"] .sftp-nav-button,
+.light-theme .sftp-nav-button,
+html[data-theme="light"] .sftp-nav-button {
+  background-color: #ffffff !important;
+  color: #303133 !important;
+  border: 1px solid #dcdfe6 !important;
+}
+
+:root[data-theme="light"] .sftp-nav-button:hover,
+.light-theme .sftp-nav-button:hover,
+html[data-theme="light"] .sftp-nav-button:hover {
+  background-color: #f5f7fa !important;
+}
+</style>

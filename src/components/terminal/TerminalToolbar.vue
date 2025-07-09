@@ -2,9 +2,9 @@
   <div class="terminal-toolbar-container">
     <div class="terminal-tools" :class="{ 'transparent-bg': hasBackground }">
       <div class="terminal-tools__left">
-        <div class="icon-button tooltip-container" @click="handleSftpClick" 
+        <div class="icon-button" @click="handleSftpClick"
                :class="{ 'icon-available': isSshConnected }" ref="sftpButtonRef">
-          <img src="@/assets/icons/icon-file-manager.svg" class="ruyi-icon ruyi-icon-ot-file-manager" width="16" height="16" 
+          <img src="@/assets/icons/icon-file-manager.svg" class="ruyi-icon ruyi-icon-ot-file-manager" width="16" height="16"
                :class="{ 'icon-gray': !isSshConnected, 'icon-white': isSshConnected }" />
         </div>
         
@@ -33,7 +33,7 @@
           </div>
         </transition>
         
-        <div class="icon-button tooltip-container"
+        <div class="icon-button"
           @click.stop="handleMonitoringClick()"
           :class="{ 'icon-available': monitoringServiceInstalled, 'active': isPanelVisible }"
           ref="monitorButtonRef">
@@ -344,19 +344,27 @@ export default defineComponent({
     // 计算并更新SFTP tooltip的位置
     const updateSftpTooltipPosition = () => {
       if (!sftpButtonRef.value) return
-      
+
       const rect = sftpButtonRef.value.getBoundingClientRect()
+      // 获取CSS变量值
+      const tooltipOffset = getComputedStyle(document.documentElement).getPropertyValue('--tooltip-offset').trim() || '10px'
+
       sftpTooltipStyle.value = {
         position: 'fixed',
         zIndex: 10000,
-        backgroundColor: 'var(--color-text-primary)',
-        color: 'var(--color-bg-container)',
-        padding: '8px 12px',
-        borderRadius: '4px',
-        fontSize: '13px',
+        backgroundColor: 'var(--tooltip-bg)',
+        color: 'var(--tooltip-color)',
+        padding: 'var(--tooltip-padding-vertical) var(--tooltip-padding-horizontal)',
+        borderRadius: 'var(--tooltip-border-radius)',
+        fontFamily: 'var(--tooltip-font-family)',
+        fontSize: 'var(--tooltip-font-size)',
+        fontWeight: 'var(--tooltip-font-weight)',
+        lineHeight: 'var(--tooltip-line-height)',
         whiteSpace: 'nowrap',
-        boxShadow: '0 3px 12px rgba(0, 0, 0, 0.4)',
-        top: `${rect.bottom + 10}px`,
+        maxWidth: 'var(--tooltip-max-width)',
+        boxShadow: 'var(--tooltip-shadow)',
+        transition: 'var(--tooltip-transition)',
+        top: `${rect.bottom + parseInt(tooltipOffset)}px`,
         left: `${rect.left + rect.width / 2}px`,
         transform: 'translateX(-50%)'
       }
@@ -888,19 +896,27 @@ export default defineComponent({
     // 计算并更新tooltip的位置
     const updateMonitorTooltipPosition = () => {
       if (!monitorButtonRef.value) return
-      
+
       const rect = monitorButtonRef.value.getBoundingClientRect()
+      // 获取CSS变量值
+      const tooltipOffset = getComputedStyle(document.documentElement).getPropertyValue('--tooltip-offset').trim() || '10px'
+
       monitorTooltipStyle.value = {
         position: 'fixed',
         zIndex: 10000,
-        backgroundColor: 'var(--color-text-primary)',
-        color: 'var(--color-bg-container)',
-        padding: '8px 12px',
-        borderRadius: '4px',
-        fontSize: '13px',
+        backgroundColor: 'var(--tooltip-bg)',
+        color: 'var(--tooltip-color)',
+        padding: 'var(--tooltip-padding-vertical) var(--tooltip-padding-horizontal)',
+        borderRadius: 'var(--tooltip-border-radius)',
+        fontFamily: 'var(--tooltip-font-family)',
+        fontSize: 'var(--tooltip-font-size)',
+        fontWeight: 'var(--tooltip-font-weight)',
+        lineHeight: 'var(--tooltip-line-height)',
         whiteSpace: 'nowrap',
-        boxShadow: '0 3px 12px rgba(0, 0, 0, 0.4)',
-        top: `${rect.bottom + 10}px`,
+        maxWidth: 'var(--tooltip-max-width)',
+        boxShadow: 'var(--tooltip-shadow)',
+        transition: 'var(--tooltip-transition)',
+        top: `${rect.bottom + parseInt(tooltipOffset)}px`,
         left: `${rect.left + rect.width / 2}px`,
         transform: 'translateX(-50%)'
       }
@@ -1716,76 +1732,7 @@ export default defineComponent({
   100% { opacity: 0.6; }
 }
 
-/* 自定义tooltip样式 */
-.tooltip-container {
-  position: relative;
-  /* 添加与icon-button相同的样式确保外观一致 */
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  background-color: transparent;
-  border-radius: 4px;
-  cursor: pointer;
-  color: var(--color-text-primary);
-  padding: 0;
-  transition: background-color 0.2s ease;
-}
-
-.tooltip-container:hover {
-  background-color: rgba(255, 255, 255, 0.2);
-}
-
-.tooltip-content {
-  display: none;
-  position: absolute;
-  left: 50%;
-  top: 100%;
-  transform: translateX(-50%);
-  background-color: var(--color-text-primary);
-  color: var(--color-bg-container);
-  padding: 8px 12px;
-  border-radius: 4px;
-  font-size: 13px;
-  white-space: nowrap;
-  margin-top: 10px;
-  z-index: 9000;
-  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.4);
-  pointer-events: all;
-}
-
-/* 显示tooltip，不仅当hover容器时，也在hover内容时 */
-.tooltip-container:hover .tooltip-content,
-.tooltip-content:hover {
-  display: block;
-}
-
-/* 添加padding确保鼠标到达tooltip时不会有空隙 */
-.tooltip-content::before {
-  content: "";
-  position: absolute;
-  top: -10px;
-  left: 0;
-  width: 100%;
-  height: 10px;
-}
-
-/* 添加箭头样式 */
-.tooltip-container:hover::before {
-  content: "";
-  position: absolute;
-  left: 50%;
-  top: 100%;
-  transform: translateX(-50%);
-  width: 0;
-  height: 0;
-  border-left: 5px solid transparent;
-  border-right: 5px solid transparent;
-  border-bottom: 5px solid #333;
-  z-index: 9100;
-  pointer-events: none;
-}
+/* 移除旧的tooltip系统，统一使用.sftp-tooltip */
 
 /* 一键安装链接样式 */
 .install-link {
@@ -1799,10 +1746,7 @@ export default defineComponent({
   opacity: 0.8;
 }
 
-/* 禁用状态的tooltip容器 */
-.tooltip-container.icon-disabled {
-  cursor: not-allowed !important;
-}
+/* 移除旧的tooltip容器样式 */
 
 .icon-disabled {
   opacity: 0.5;
@@ -1817,17 +1761,23 @@ export default defineComponent({
   cursor: not-allowed;
 }
 
-/* SFTP tooltip样式 */
+/* 统一的 tooltip 样式 */
 .sftp-tooltip {
   position: fixed;
-  z-index: 10000;
-  background-color: var(--color-text-primary);
-  color: var(--color-bg-container);
-  padding: 8px 12px;
-  border-radius: 4px;
-  font-size: 13px;
+  z-index: var(--z-tooltip);
+  background-color: var(--tooltip-bg);
+  color: var(--tooltip-color);
+  padding: var(--tooltip-padding-vertical) var(--tooltip-padding-horizontal);
+  border-radius: var(--tooltip-border-radius);
+  font-family: var(--tooltip-font-family);
+  font-size: var(--tooltip-font-size);
+  font-weight: var(--tooltip-font-weight);
+  line-height: var(--tooltip-line-height);
   white-space: nowrap;
-  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.4);
+  max-width: var(--tooltip-max-width);
+  box-shadow: var(--tooltip-shadow);
+  transition: var(--tooltip-transition);
+  pointer-events: auto;
 }
 
 .sftp-tooltip:after {
@@ -1836,8 +1786,8 @@ export default defineComponent({
   bottom: 100%;
   left: 50%;
   transform: translateX(-50%);
-  border-width: 5px;
+  border-width: var(--tooltip-arrow-size);
   border-style: solid;
-  border-color: transparent transparent var(--color-text-primary) transparent;
+  border-color: transparent transparent var(--tooltip-arrow-color) transparent;
 }
 </style> 

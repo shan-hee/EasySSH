@@ -344,21 +344,20 @@ export default defineComponent({
 .profile-container {
   max-width: 500px;
   margin: 50px auto;
-  /* 移除背景色 */
   border-radius: 8px;
   overflow: hidden;
 }
 
 .profile-header {
   padding: var(--spacing-md);
-  border-bottom: 1px solid #333;
+  border-bottom: 1px solid var(--color-border-default);
 }
 
 .profile-header h1 {
   margin: 0;
   font-size: 20px;
   font-weight: bold;
-  color: #f0f0f0;
+  color: var(--color-text-primary);
 }
 
 /* 添加加载状态样式 */
@@ -369,14 +368,15 @@ export default defineComponent({
   justify-content: center;
   padding: 50px 20px;
   text-align: center;
+  color: var(--color-text-primary);
 }
 
 .loading-spinner {
   width: 40px;
   height: 40px;
-  border: 3px solid rgba(255, 255, 255, 0.1);
+  border: 3px solid var(--color-border-light);
   border-radius: 50%;
-  border-top-color: #0083d3;
+  border-top-color: var(--color-primary);
   animation: spin 1s ease-in-out infinite;
   margin-bottom: 15px;
 }
@@ -398,7 +398,7 @@ label {
   margin-bottom: 8px;
   font-size: 14px;
   font-weight: normal;
-  color: #fff;
+  color: var(--color-text-primary);
 }
 
 .form-input {
@@ -452,12 +452,12 @@ label {
 }
 
 .mfa-switch button:hover {
-  border-color: #999;
+  border-color: var(--color-border-dark);
 }
 
 .mfa-description {
   font-size: 12px;
-  color: #999;
+  color: var(--color-text-secondary);
   margin-top: 5px;
   line-height: 1.5;
 }
@@ -471,30 +471,32 @@ label {
 
 .btn-cancel {
   padding: 8px 16px;
-  background-color: #3f3f3f;
-  color: #fff;
-  border: none;
+  background-color: var(--color-bg-muted);
+  color: var(--color-text-primary);
+  border: 1px solid var(--color-border-default);
   border-radius: var(--radius-md);
   cursor: pointer;
   font-weight: bold;
+  transition: all 0.2s ease;
 }
 
 .btn-submit {
   padding: 8px 16px;
-  background-color: #0083d3;
-  color: #ffffff;
+  background-color: var(--color-primary);
+  color: var(--color-bg-container);
   border: none;
   border-radius: var(--radius-md);
   cursor: pointer;
   font-weight: bold;
+  transition: all 0.2s ease;
 }
 
 .btn-cancel:hover {
-  background-color: #444;
+  background-color: var(--color-bg-hover);
 }
 
 .btn-submit:hover {
-  background-color: #0096f2;
+  background-color: var(--color-primary-hover);
 }
 
 /* 添加状态标签样式 */

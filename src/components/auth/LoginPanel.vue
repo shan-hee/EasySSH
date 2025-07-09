@@ -370,21 +370,18 @@ export default defineComponent({
 .login-panel {
   width: 360px;
   max-width: 100%;
-  background: var(--login-panel-bg);
+  background: transparent;
   overflow: hidden;
-  border-radius: 8px;
-  backdrop-filter: blur(10px);
 }
 
 .login-panel-content {
-  padding: 20px;
+  padding: 0;
   width: 360px;
-  box-sizing: border-box;
 }
 
 .login-panel-content h2 {
   margin: 0 0 30px 0;
-  color: var(--login-panel-title-color);
+  color: #ffffff;
   font-size: 1.6rem;
   font-weight: 500;
   text-align: center;
@@ -399,26 +396,24 @@ export default defineComponent({
 .form-group input {
   width: 100%;
   padding: 12px 15px;
-  background-color: var(--login-panel-input-bg);
-  border: 1px solid var(--login-panel-input-border);
+  background-color: rgba(40, 40, 40, 0.4);
+  border: none;
   border-radius: 4px;
-  color: var(--login-panel-input-color);
+  color: #ffffff;
   font-size: 1rem;
   transition: all 0.2s ease;
   font-family: "Microsoft YaHei", sans-serif !important;
-  box-sizing: border-box;
 }
 
 .form-group input::placeholder {
-  color: var(--login-panel-input-placeholder);
+  color: #888888;
   font-family: "Microsoft YaHei", sans-serif !important;
 }
 
 .form-group input:focus {
-  background-color: var(--login-panel-input-focus-bg);
-  border-color: var(--login-panel-input-focus-border);
+  background-color: rgba(50, 50, 50, 0.6);
   outline: none;
-  box-shadow: 0 0 0 2px var(--login-panel-input-focus-border);
+  box-shadow: 0 0 0 1px rgba(100, 100, 100, 0.3);
 }
 
 .login-options {
@@ -430,7 +425,7 @@ export default defineComponent({
 }
 
 .forgot-password {
-  color: var(--login-panel-link-color);
+  color: #aaaaaa;
   font-size: 0.9rem;
   text-decoration: none;
   transition: color 0.2s;
@@ -438,17 +433,17 @@ export default defineComponent({
 }
 
 .forgot-password:hover {
-  color: var(--login-panel-link-hover-color);
+  color: #eeeeee;
 }
 
 .login-submit-btn {
   width: 100%;
   padding: 12px;
   margin-top: 10px;
-  background-color: var(--login-panel-btn-bg);
+  background-color: rgba(60, 60, 60, 0.6);
   border: none;
   border-radius: 4px;
-  color: var(--login-panel-btn-color);
+  color: #ffffff;
   font-size: 1rem;
   font-weight: 500;
   cursor: pointer;
@@ -458,7 +453,7 @@ export default defineComponent({
 }
 
 .login-submit-btn:hover {
-  background-color: var(--login-panel-btn-hover-bg);
+  background-color: rgba(80, 80, 80, 0.8);
 }
 
 .login-submit-btn:disabled {
@@ -485,27 +480,23 @@ export default defineComponent({
 .login-footer {
   margin-top: 25px;
   padding-top: 15px;
-  border-top: 1px solid var(--login-panel-footer-border);
+  border-top: 1px solid rgba(100, 100, 100, 0.15);
   text-align: center;
 }
 
 .login-footer p {
   margin: 0;
-  color: var(--login-panel-footer-color);
+  color: #999999;
   font-size: 0.9rem;
   font-family: "Microsoft YaHei", sans-serif !important;
 }
 
 .login-footer a {
-  color: var(--login-panel-link-color);
+  color: #aaaaaa;
   text-decoration: none;
   transition: color 0.2s;
   font-weight: 500;
   font-family: "Microsoft YaHei", sans-serif !important;
-}
-
-.login-footer a:hover {
-  color: var(--login-panel-link-hover-color);
 }
 
 .login-footer a:hover {
@@ -525,4 +516,89 @@ export default defineComponent({
   color: inherit;
   text-decoration: none;
 }
-</style> 
+
+/* 浅色主题适配 */
+:root[data-theme="light"] .login-panel-content h2,
+.light-theme .login-panel-content h2,
+html[data-theme="light"] .login-panel-content h2 {
+  color: #303133;
+}
+
+:root[data-theme="light"] .form-group input,
+.light-theme .form-group input,
+html[data-theme="light"] .form-group input {
+  background-color: rgba(245, 247, 250, 0.8);
+  border: 1px solid #dcdfe6;
+  color: #606266;
+}
+
+:root[data-theme="light"] .form-group input::placeholder,
+.light-theme .form-group input::placeholder,
+html[data-theme="light"] .form-group input::placeholder {
+  color: #c0c4cc;
+}
+
+:root[data-theme="light"] .form-group input:focus,
+.light-theme .form-group input:focus,
+html[data-theme="light"] .form-group input:focus {
+  background-color: rgba(236, 245, 255, 0.8);
+  border-color: #aaaaaa;
+  box-shadow: 0 0 0 2px rgba(170, 170, 170, 0.2);
+}
+
+:root[data-theme="light"] .forgot-password,
+.light-theme .forgot-password,
+html[data-theme="light"] .forgot-password {
+  color: #909399;
+}
+
+:root[data-theme="light"] .forgot-password:hover,
+.light-theme .forgot-password:hover,
+html[data-theme="light"] .forgot-password:hover {
+  color: #aaaaaa;
+}
+
+:root[data-theme="light"] .login-submit-btn,
+.light-theme .login-submit-btn,
+html[data-theme="light"] .login-submit-btn {
+  background-color: #aaaaaa;
+  color: #ffffff;
+}
+
+:root[data-theme="light"] .login-submit-btn:hover,
+.light-theme .login-submit-btn:hover,
+html[data-theme="light"] .login-submit-btn:hover {
+  background-color: #bbbbbb;
+}
+
+:root[data-theme="light"] .loading-spinner,
+.light-theme .loading-spinner,
+html[data-theme="light"] .loading-spinner {
+  border: 2px solid rgba(170, 170, 170, 0.3);
+  border-top-color: #ffffff;
+}
+
+:root[data-theme="light"] .login-footer,
+.light-theme .login-footer,
+html[data-theme="light"] .login-footer {
+  border-top: 1px solid #e4e7ed;
+}
+
+:root[data-theme="light"] .login-footer p,
+.light-theme .login-footer p,
+html[data-theme="light"] .login-footer p {
+  color: #c0c4cc;
+}
+
+:root[data-theme="light"] .login-footer a,
+.light-theme .login-footer a,
+html[data-theme="light"] .login-footer a {
+  color: #909399;
+}
+
+:root[data-theme="light"] .login-footer a:hover,
+.light-theme .login-footer a:hover,
+html[data-theme="light"] .login-footer a:hover {
+  color: #aaaaaa;
+}
+</style>
