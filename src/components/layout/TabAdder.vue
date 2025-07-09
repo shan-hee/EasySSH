@@ -3,7 +3,7 @@
     <div class="tab-adder-dropdown-trigger" @click="addConnectionTab">
       <div class="tab-adder-icon">
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="20" height="20">
-          <path fill="#a0a0a0" d="M19,13H13V19H11V13H5V11H11V5H13V11H19V13Z" />
+          <path fill="currentColor" d="M19,13H13V19H11V13H5V11H11V5H13V11H19V13Z" />
         </svg>
       </div>
     </div>
@@ -89,10 +89,14 @@ export default defineComponent({
 }
 
 .tab-adder-dropdown-trigger:hover {
-  background-color: #444;
+  background-color: var(--color-hover-bg);
 }
 
-.tab-adder-dropdown-trigger:hover .tab-adder-icon svg path {
-  fill: #ffffff;
+.tab-adder-icon svg {
+  color: var(--color-text-secondary);
+}
+
+.tab-adder-dropdown-trigger:hover .tab-adder-icon svg {
+  color: var(--color-primary);
 }
 </style> 

@@ -149,7 +149,7 @@
                 size="small"
                 @click="resetAllShortcuts"
                 :disabled="resettingShortcuts"
-                style="background-color: #444; border-color: #444; color: var(--color-text-primary);"
+                style="background-color: var(--settings-reset-btn-bg); border-color: var(--settings-reset-btn-border); color: var(--settings-reset-btn-color);"
               >
                 重置为默认值
               </el-button>
@@ -466,7 +466,7 @@ export default {
     const bgPreviewStyle = computed(() => {
       if (!terminalBgSettings.enabled || !terminalBgSettings.url) {
         return {
-          backgroundColor: '#1E1E1E'
+          backgroundColor: 'var(--settings-bg-preview)'
         }
       }
       
@@ -890,15 +890,18 @@ export default {
   max-width: 800px;
   margin: 20px auto;
   padding: 0 20px;
+  background-color: var(--color-bg-page);
+  min-height: calc(100vh - 45px);
+  color: var(--color-text-primary);
 }
 
 /* 统一表单元素样式 */
 :deep(.el-form) {
-  --el-text-color-regular: #fff;
+  --el-text-color-regular: var(--settings-form-label-color);
 }
 
 :deep(.el-form-item__label) {
-  color: #fff;
+  color: var(--settings-form-label-color);
   font-weight: normal;
   font-size: 12px;
   width: 90px !important;
@@ -922,20 +925,20 @@ export default {
 :deep(.el-input-number__wrapper),
 :deep(.el-select__wrapper) {
   background-color: transparent;
-  box-shadow: 0 0 0 1px #666 inset;
+  box-shadow: 0 0 0 1px var(--settings-input-border) inset;
   border-radius: 6px;
 }
 
 :deep(.el-input__wrapper:hover),
 :deep(.el-input-number__wrapper:hover),
 :deep(.el-select__wrapper:hover) {
-  box-shadow: 0 0 0 1px #888 inset;
+  box-shadow: 0 0 0 1px var(--settings-input-border-hover) inset;
 }
 
 :deep(.el-input__wrapper.is-focus),
 :deep(.el-input-number__wrapper.is-focus),
 :deep(.el-select__wrapper.is-focus) {
-  box-shadow: 0 0 0 1px #0083d3 inset;
+  box-shadow: 0 0 0 1px var(--settings-input-border-focus) inset;
 }
 
 /* 终端背景设置样式 */
@@ -943,7 +946,8 @@ export default {
   margin: 10px 0 20px;
   padding: 15px;
   border-radius: 8px;
-  background-color: rgba(0, 0, 0, 0.2);
+  background-color: var(--color-bg-muted);
+  border: 1px solid var(--color-border-light);
 }
 
 .terminal-bg-preview {
@@ -953,7 +957,7 @@ export default {
   border-radius: 6px;
   position: relative;
   overflow: hidden;
-  background-color: #1E1E1E;
+  background-color: var(--settings-bg-preview);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -980,7 +984,7 @@ export default {
 
 .number-display {
   font-size: 14px;
-  color: var(--font-color, #fff);
+  color: var(--settings-number-display-color);
   min-width: 20px;
   text-align: center;
 }
@@ -988,7 +992,7 @@ export default {
 .control-btn {
   background-color: transparent;
   border: none;
-  color: var(--font-color, #fff);
+  color: var(--settings-control-btn-color);
   font-size: 14px;
   cursor: pointer;
   width: 20px;
@@ -1000,7 +1004,7 @@ export default {
 }
 
 .control-btn:hover {
-  background-color: var(--hover-bg, rgba(255, 255, 255, 0.1));
+  background-color: var(--settings-control-btn-hover-bg);
 }
 
 .control-btn:active {
@@ -1027,7 +1031,7 @@ export default {
 :deep(.el-input-number__increase) {
   background-color: transparent;
   border: none;
-  color: var(--font-color, #fff);
+  color: var(--settings-control-btn-color);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1044,43 +1048,24 @@ export default {
 }
 
 :deep(.el-switch__core) {
-  border: 1px solid var(--switch-border-color, #666);
-  background-color: var(--switch-bg-color, transparent);
+  border: 1px solid var(--switch-border-color);
+  background-color: var(--switch-bg-color);
 }
 
 :deep(.el-switch.is-checked .el-switch__core) {
-  border-color: var(--switch-active-border-color, #0083d3);
-  background-color: var(--switch-active-bg-color, #0083d3);
+  border-color: var(--switch-active-border-color);
+  background-color: var(--switch-active-bg-color);
 }
 
 :deep(.el-slider__runway) {
-  background-color: var(--slider-runway-color, #333);
+  background-color: var(--slider-runway-color);
 }
 
 :deep(.el-slider__bar) {
-  background-color: var(--slider-bar-color, #0083d3);
+  background-color: var(--slider-bar-color);
 }
 
-/* 浅色主题适配 */
-:root[data-theme="light"] .color-label {
-  color: rgba(0, 0, 0, 0.6);
-}
-
-:root[data-theme="light"] .number-display {
-  color: #333;
-}
-
-:root[data-theme="light"] .control-btn {
-  color: #333;
-}
-
-:root[data-theme="light"] .control-btn:hover {
-  background-color: rgba(0, 0, 0, 0.05);
-}
-
-:root[data-theme="light"] .control-btn:active {
-  background-color: rgba(0, 0, 0, 0.1);
-}
+/* 浅色主题适配 - 现在通过CSS变量自动处理 */
 
 /* 横向表单布局 */
 .form-row-flex {
@@ -1113,14 +1098,15 @@ export default {
 .terminal-shortcuts-settings {
   padding: 15px;
   border-radius: 8px;
-  background-color: rgba(0, 0, 0, 0.2);
+  background-color: var(--color-bg-muted);
+  border: 1px solid var(--color-border-light);
 }
 
 .theme-section-title {
   margin-bottom: 15px;
   font-size: 16px;
   font-weight: 500;
-  color: var(--font-color, #e0e0e0);
+  color: var(--settings-section-title-color);
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -1143,14 +1129,15 @@ export default {
   justify-content: space-between;
   align-items: center;
   padding: 8px 12px;
-  background-color: var(--card-bg-color, rgba(30, 30, 30, 0.5));
+  background-color: var(--color-bg-container);
+  border: 1px solid var(--color-border-lighter);
   border-radius: 4px;
   margin-bottom: 5px;
 }
 
 .shortcut-description {
   font-size: 14px;
-  color: var(--font-color, #e0e0e0);
+  color: var(--settings-shortcut-desc-color);
   margin-right: 10px;
   flex: 1;
 }
@@ -1158,19 +1145,11 @@ export default {
 .shortcut-key {
   font-family: monospace;
   font-size: 13px;
-  background-color: var(--keyboard-bg, rgba(50, 50, 50, 0.8));
+  background-color: var(--settings-shortcut-key-bg);
   padding: 3px 8px;
   border-radius: 4px;
-  color: var(--keyboard-color, #ffffff);
+  color: var(--settings-shortcut-key-color);
 }
 
-/* 浅色主题适配 */
-:root[data-theme="light"] .shortcut-description {
-  color: #333;
-}
-
-:root[data-theme="light"] .shortcut-key {
-  background-color: rgba(200, 200, 200, 0.8);
-  color: #333;
-}
+/* 浅色主题适配 - 现在通过CSS变量自动处理 */
 </style> 

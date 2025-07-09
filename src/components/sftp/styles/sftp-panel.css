@@ -3,7 +3,8 @@
   top: 45px;
   right: 0;
   bottom: 0;
-  background-color: #1e1e1e;
+  background-color: var(--color-bg-page);
+  border-left: 1px solid var(--color-border-default);
   box-shadow: -2px 0 5px rgba(0, 0, 0, 0.3);
   z-index: 900;
   overflow: hidden;

@@ -49,7 +49,7 @@ export default defineComponent({
 
 .form-item-checkbox span {
   font-size: 12px;
-  color: #fff;
+  color: var(--color-text-primary);
   font-weight: normal;
 }
 
@@ -57,7 +57,7 @@ export default defineComponent({
   position: relative;
   width: 16px;
   height: 16px;
-  border: 1px solid #666;
+  border: 1px solid var(--color-border-default);
   border-radius: 2px;
   background-color: transparent;
   transition: all 0.3s;
@@ -102,7 +102,7 @@ export default defineComponent({
 .checkbox-wrapper.checked .checkbox-check {
   width: 9px;
   height: 5px;
-  border-color: #fff;
+  border-color: var(--color-primary);
   transform: translate(-50%, -70%) rotate(-45deg) scale(1);
   opacity: 1;
 }

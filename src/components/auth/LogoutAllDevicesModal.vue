@@ -8,8 +8,8 @@
   >
     <div class="logout-devices-container">
       <div class="warning-icon">
-        <svg viewBox="0 0 24 24" width="50" height="50">
-          <path fill="#ff9800" d="M1,21h22L12,2L1,21z M13,18h-2v-2h2V18z M13,14h-2V8h2V14z" />
+        <svg viewBox="0 0 24 24" width="50" height="50" class="warning-icon-svg">
+          <path fill="currentColor" d="M1,21h22L12,2L1,21z M13,18h-2v-2h2V18z M13,14h-2V8h2V14z" />
         </svg>
       </div>
       <div class="logout-title">
@@ -100,11 +100,15 @@ export default defineComponent({
   display: flex;
   flex-direction: column;
   align-items: center;
-  color: #fff;
+  color: var(--color-text-primary);
 }
 
 .warning-icon {
   margin-bottom: 15px;
+}
+
+.warning-icon-svg {
+  color: var(--color-warning);
 }
 
 .logout-title {
@@ -116,7 +120,7 @@ export default defineComponent({
 
 .logout-description {
   font-size: 14px;
-  color: #aaa;
+  color: var(--color-text-secondary);
   text-align: center;
   margin-bottom: 25px;
   line-height: 1.5;
@@ -140,21 +144,22 @@ export default defineComponent({
 }
 
 .btn-cancel {
-  background-color: #3f3f3f;
-  color: #fff;
+  background-color: var(--color-bg-muted);
+  border: 1px solid var(--color-border-default);
+  color: var(--color-text-primary);
 }
 
 .btn-danger {
-  background-color: #f44336;
-  color: #fff;
+  background-color: var(--color-error);
+  color: var(--color-bg-container);
 }
 
 .btn-danger:hover {
-  background-color: #d32f2f;
+  background-color: var(--color-error-light);
 }
 
 .btn-cancel:hover {
-  background-color: #505050;
+  background-color: var(--color-hover-bg);
 }
 
 .btn:disabled {

@@ -370,18 +370,21 @@ export default defineComponent({
 .login-panel {
   width: 360px;
   max-width: 100%;
-  background: transparent;
+  background: var(--login-panel-bg);
   overflow: hidden;
+  border-radius: 8px;
+  backdrop-filter: blur(10px);
 }
 
 .login-panel-content {
-  padding: 0;
+  padding: 20px;
   width: 360px;
+  box-sizing: border-box;
 }
 
 .login-panel-content h2 {
   margin: 0 0 30px 0;
-  color: #ffffff;
+  color: var(--login-panel-title-color);
   font-size: 1.6rem;
   font-weight: 500;
   text-align: center;
@@ -396,24 +399,26 @@ export default defineComponent({
 .form-group input {
   width: 100%;
   padding: 12px 15px;
-  background-color: rgba(40, 40, 40, 0.4);
-  border: none;
+  background-color: var(--login-panel-input-bg);
+  border: 1px solid var(--login-panel-input-border);
   border-radius: 4px;
-  color: #ffffff;
+  color: var(--login-panel-input-color);
   font-size: 1rem;
   transition: all 0.2s ease;
   font-family: "Microsoft YaHei", sans-serif !important;
+  box-sizing: border-box;
 }
 
 .form-group input::placeholder {
-  color: #888888;
+  color: var(--login-panel-input-placeholder);
   font-family: "Microsoft YaHei", sans-serif !important;
 }
 
 .form-group input:focus {
-  background-color: rgba(50, 50, 50, 0.6);
+  background-color: var(--login-panel-input-focus-bg);
+  border-color: var(--login-panel-input-focus-border);
   outline: none;
-  box-shadow: 0 0 0 1px rgba(100, 100, 100, 0.3);
+  box-shadow: 0 0 0 2px var(--login-panel-input-focus-border);
 }
 
 .login-options {
@@ -425,7 +430,7 @@ export default defineComponent({
 }
 
 .forgot-password {
-  color: #aaaaaa;
+  color: var(--login-panel-link-color);
   font-size: 0.9rem;
   text-decoration: none;
   transition: color 0.2s;
@@ -433,17 +438,17 @@ export default defineComponent({
 }
 
 .forgot-password:hover {
-  color: #eeeeee;
+  color: var(--login-panel-link-hover-color);
 }
 
 .login-submit-btn {
   width: 100%;
   padding: 12px;
   margin-top: 10px;
-  background-color: rgba(60, 60, 60, 0.6);
+  background-color: var(--login-panel-btn-bg);
   border: none;
   border-radius: 4px;
-  color: #ffffff;
+  color: var(--login-panel-btn-color);
   font-size: 1rem;
   font-weight: 500;
   cursor: pointer;
@@ -453,7 +458,7 @@ export default defineComponent({
 }
 
 .login-submit-btn:hover {
-  background-color: rgba(80, 80, 80, 0.8);
+  background-color: var(--login-panel-btn-hover-bg);
 }
 
 .login-submit-btn:disabled {
@@ -480,23 +485,27 @@ export default defineComponent({
 .login-footer {
   margin-top: 25px;
   padding-top: 15px;
-  border-top: 1px solid rgba(100, 100, 100, 0.15);
+  border-top: 1px solid var(--login-panel-footer-border);
   text-align: center;
 }
 
 .login-footer p {
   margin: 0;
-  color: #999999;
+  color: var(--login-panel-footer-color);
   font-size: 0.9rem;
   font-family: "Microsoft YaHei", sans-serif !important;
 }
 
 .login-footer a {
-  color: #aaaaaa;
+  color: var(--login-panel-link-color);
   text-decoration: none;
   transition: color 0.2s;
   font-weight: 500;
   font-family: "Microsoft YaHei", sans-serif !important;
+}
+
+.login-footer a:hover {
+  color: var(--login-panel-link-hover-color);
 }
 
 .login-footer a:hover {

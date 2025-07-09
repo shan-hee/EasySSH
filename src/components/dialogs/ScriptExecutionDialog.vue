@@ -540,7 +540,7 @@ export default defineComponent({
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  color: #888;
+  color: var(--color-text-secondary);
 }
 
 .no-selection .el-icon {
@@ -553,25 +553,25 @@ export default defineComponent({
   justify-content: flex-end;
   gap: 12px;
   padding: 16px;
-  border-top: 1px solid #444;
-  background-color: #333;
+  border-top: 1px solid var(--color-border-default);
+  background-color: var(--color-bg-muted);
 }
 
 /* Element Plus 组件样式覆盖 */
 .script-execution-dialog :deep(.el-button) {
-  background-color: #444;
-  border-color: #666;
-  color: #e0e0e0;
+  background-color: var(--color-bg-muted);
+  border-color: var(--color-border-default);
+  color: var(--color-text-primary);
 }
 
 .script-execution-dialog :deep(.el-button:hover) {
-  background-color: #555;
-  border-color: #777;
+  background-color: var(--color-hover-bg);
+  border-color: var(--color-border-dark);
 }
 
 .script-execution-dialog :deep(.el-button--primary) {
-  background-color: #409eff;
-  border-color: #409eff;
+  background-color: var(--color-primary);
+  border-color: var(--color-primary);
 }
 
 .script-execution-dialog :deep(.el-button--primary:hover) {

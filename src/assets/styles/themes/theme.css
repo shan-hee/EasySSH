@@ -56,12 +56,12 @@
 /* ===== 浅色主题（默认） ===== */
 :root {
   /* 品牌色系 */
-  --color-primary: #0083d3;
-  --color-primary-hover: #3399dd;
-  --color-primary-active: #0066a6;
-  --color-primary-light: #66b1e8;
-  --color-primary-lighter: #99ccf2;
-  --color-primary-lightest: #f0f7ff;
+  --color-primary: #aaaaaa;
+  --color-primary-hover: #bbbbbb;
+  --color-primary-active: #999999;
+  --color-primary-light: #bbbbbb;
+  --color-primary-lighter: #cccccc;
+  --color-primary-lightest: #f5f5f5;
 
   /* 功能色系 */
   --color-success: #52c41a;
@@ -109,23 +109,65 @@
   --shadow-xl: 0 12px 24px rgba(0, 0, 0, 0.20);
 
   /* 交互状态 */
-  --color-hover-bg: rgba(0, 131, 211, 0.1);
-  --color-active-bg: rgba(0, 131, 211, 0.15);
-  --color-selected-bg: rgba(0, 131, 211, 0.1);
+  --color-hover-bg: rgba(170, 170, 170, 0.1);
+  --color-active-bg: rgba(170, 170, 170, 0.15);
+  --color-selected-bg: rgba(170, 170, 170, 0.1);
   --color-disabled-bg: rgba(0, 0, 0, 0.04);
-  --color-focus-ring: rgba(0, 131, 211, 0.2);
+  --color-focus-ring: rgba(170, 170, 170, 0.2);
+
+  /* 组件级变量 - 浅色主题 */
+  /* 侧边栏 */
+  --sidebar-bg: #ffffff;
+  --sidebar-border: #e4e7ed;
+  --sidebar-logo-bg: #ffffff;
+  --sidebar-nav-color: #606266;
+  --sidebar-nav-hover-bg: rgba(170, 170, 170, 0.1);
+  --sidebar-nav-hover-color: #aaaaaa;
+  --sidebar-nav-active-color: #aaaaaa;
+  --sidebar-tooltip-bg: #303133;
+  --sidebar-tooltip-color: #ffffff;
+
+  /* 顶部栏 */
+  --header-bg: #ffffff;
+  --header-border: #e4e7ed;
+  --header-color: #606266;
+  --header-tab-bg: #ffffff;
+  --header-tab-hover-bg: #ecf5ff;
+  --header-tab-active-bg: #f5f7fa;
+  --header-tab-color: #606266;
+  --header-tab-active-color: #303133;
+  --header-scrollbar-thumb: #c0c4cc;
+  --header-btn-hover-bg: rgba(170, 170, 170, 0.1);
+  --header-btn-hover-color: #aaaaaa;
+
+  /* 登录面板 */
+  --login-panel-bg: rgba(255, 255, 255, 0.95);
+  --login-panel-title-color: #303133;
+  --login-panel-input-bg: rgba(245, 247, 250, 0.8);
+  --login-panel-input-border: #dcdfe6;
+  --login-panel-input-color: #606266;
+  --login-panel-input-placeholder: #c0c4cc;
+  --login-panel-input-focus-bg: rgba(236, 245, 255, 0.8);
+  --login-panel-input-focus-border: #aaaaaa;
+  --login-panel-btn-bg: #aaaaaa;
+  --login-panel-btn-hover-bg: #bbbbbb;
+  --login-panel-btn-color: #ffffff;
+  --login-panel-link-color: #909399;
+  --login-panel-link-hover-color: #aaaaaa;
+  --login-panel-footer-color: #c0c4cc;
+  --login-panel-footer-border: #e4e7ed;
 }
 
 /* ===== 浅色主题（明确定义） ===== */
 :root[data-theme="light"],
 .light-theme {
   /* 品牌色系 */
-  --color-primary: #0083d3;
-  --color-primary-hover: #3399dd;
-  --color-primary-active: #0066a6;
-  --color-primary-light: #66b1e8;
-  --color-primary-lighter: #99ccf2;
-  --color-primary-lightest: #f0f7ff;
+  --color-primary: #aaaaaa;
+  --color-primary-hover: #bbbbbb;
+  --color-primary-active: #999999;
+  --color-primary-light: #bbbbbb;
+  --color-primary-lighter: #cccccc;
+  --color-primary-lightest: #f5f5f5;
 
   /* 功能色系 */
   --color-success: #52c41a;
@@ -173,21 +215,80 @@
   --shadow-xl: 0 12px 24px rgba(0, 0, 0, 0.20);
 
   /* 交互状态 */
-  --color-hover-bg: rgba(0, 131, 211, 0.08);
-  --color-active-bg: rgba(0, 131, 211, 0.15);
-  --color-selected-bg: rgba(0, 131, 211, 0.1);
-  --color-focus-ring: rgba(0, 131, 211, 0.2);
+  --color-hover-bg: rgba(170, 170, 170, 0.08);
+  --color-active-bg: rgba(170, 170, 170, 0.15);
+  --color-selected-bg: rgba(170, 170, 170, 0.1);
+  --color-focus-ring: rgba(170, 170, 170, 0.2);
+
+  /* 组件级变量 - 浅色主题 */
+  /* 侧边栏 */
+  --sidebar-bg: #ffffff;
+  --sidebar-border: #e4e7ed;
+  --sidebar-logo-bg: #ffffff;
+  --sidebar-nav-color: #606266;
+  --sidebar-nav-hover-bg: rgba(170, 170, 170, 0.1);
+  --sidebar-nav-hover-color: #aaaaaa;
+  --sidebar-nav-active-color: #aaaaaa;
+  --sidebar-tooltip-bg: #303133;
+  --sidebar-tooltip-color: #ffffff;
+
+  /* 顶部栏 */
+  --header-bg: #ffffff;
+  --header-border: #e4e7ed;
+  --header-color: #606266;
+  --header-tab-bg: #ffffff;
+  --header-tab-hover-bg: #ecf5ff;
+  --header-tab-active-bg: #f5f7fa;
+  --header-tab-color: #606266;
+  --header-tab-active-color: #303133;
+  --header-scrollbar-thumb: #c0c4cc;
+  --header-btn-hover-bg: rgba(170, 170, 170, 0.1);
+  --header-btn-hover-color: #aaaaaa;
+
+  /* 登录面板 */
+  --login-panel-bg: rgba(255, 255, 255, 0.95);
+  --login-panel-title-color: #303133;
+  --login-panel-input-bg: rgba(245, 247, 250, 0.8);
+  --login-panel-input-border: #dcdfe6;
+  --login-panel-input-color: #606266;
+  --login-panel-input-placeholder: #c0c4cc;
+  --login-panel-input-focus-bg: rgba(236, 245, 255, 0.8);
+  --login-panel-input-focus-border: #aaaaaa;
+  --login-panel-btn-bg: #aaaaaa;
+  --login-panel-btn-hover-bg: #bbbbbb;
+  --login-panel-btn-color: #ffffff;
+  --login-panel-link-color: #909399;
+  --login-panel-link-hover-color: #aaaaaa;
+  --login-panel-footer-color: #c0c4cc;
+  --login-panel-footer-border: #e4e7ed;
+
+  /* 设置页面 */
+  --settings-form-label-color: #606266;
+  --settings-input-border: #dcdfe6;
+  --settings-input-border-hover: #c0c4cc;
+  --settings-input-border-focus: #aaaaaa;
+  --settings-bg-preview: #f5f7fa;
+  --settings-number-display-color: #606266;
+  --settings-control-btn-color: #606266;
+  --settings-control-btn-hover-bg: rgba(0, 0, 0, 0.05);
+  --settings-section-title-color: #303133;
+  --settings-shortcut-desc-color: #606266;
+  --settings-shortcut-key-bg: rgba(200, 200, 200, 0.8);
+  --settings-shortcut-key-color: #303133;
+  --settings-reset-btn-bg: #f5f7fa;
+  --settings-reset-btn-border: #dcdfe6;
+  --settings-reset-btn-color: #606266;
 }
 
 /* ===== 深色主题 ===== */
 :root[data-theme="dark"],
 .dark-theme {
   /* 品牌色系 - 深色主题调整 */
-  --color-primary: #177ddc;
-  --color-primary-hover: #3c9ae8;
-  --color-primary-active: #0958a8;
-  --color-primary-light: #3c9ae8;
-  --color-primary-lighter: #5fb3f0;
+  --color-primary: #aaaaaa;
+  --color-primary-hover: #bbbbbb;
+  --color-primary-active: #999999;
+  --color-primary-light: #bbbbbb;
+  --color-primary-lighter: #cccccc;
   --color-primary-lightest: #2c2c2c;
 
   /* 功能色系 - 深色主题调整 */
@@ -203,7 +304,7 @@
   --color-error-light: #e84749;
   --color-error-bg: #2a1215;
 
-  --color-info: #177ddc;
+  --color-info: #aaaaaa;
   --color-info-light: #3c9ae8;
   --color-info-bg: #111b26;
 
@@ -236,11 +337,70 @@
   --shadow-xl: 0 12px 24px rgba(0, 0, 0, 0.5);
 
   /* 交互状态 - 深色主题 */
-  --color-hover-bg: rgba(23, 125, 220, 0.15);
-  --color-active-bg: rgba(23, 125, 220, 0.25);
-  --color-selected-bg: rgba(23, 125, 220, 0.2);
+  --color-hover-bg: rgba(170, 170, 170, 0.15);
+  --color-active-bg: rgba(170, 170, 170, 0.25);
+  --color-selected-bg: rgba(170, 170, 170, 0.2);
   --color-disabled-bg: rgba(255, 255, 255, 0.08);
-  --color-focus-ring: rgba(23, 125, 220, 0.3);
+  --color-focus-ring: rgba(170, 170, 170, 0.3);
+
+  /* 组件级变量 - 深色主题 */
+  /* 侧边栏 */
+  --sidebar-bg: #1e1e1e;
+  --sidebar-border: #333333;
+  --sidebar-logo-bg: #1e1e1e;
+  --sidebar-nav-color: #a0a0a0;
+  --sidebar-nav-hover-bg: rgba(255, 255, 255, 0.1);
+  --sidebar-nav-hover-color: #ffffff;
+  --sidebar-nav-active-color: #d0d0d0;
+  --sidebar-tooltip-bg: #333333;
+  --sidebar-tooltip-color: #e0e0e0;
+
+  /* 顶部栏 */
+  --header-bg: #242424;
+  --header-border: #333333;
+  --header-color: #a0a0a0;
+  --header-tab-bg: #1a1a1a;
+  --header-tab-hover-bg: #1e1e1e;
+  --header-tab-active-bg: #121212;
+  --header-tab-color: #a0a0a0;
+  --header-tab-active-color: #e0e0e0;
+  --header-scrollbar-thumb: #333333;
+  --header-btn-hover-bg: #333333;
+  --header-btn-hover-color: #ffffff;
+
+  /* 登录面板 */
+  --login-panel-bg: rgba(40, 40, 40, 0.95);
+  --login-panel-title-color: #ffffff;
+  --login-panel-input-bg: rgba(40, 40, 40, 0.4);
+  --login-panel-input-border: transparent;
+  --login-panel-input-color: #ffffff;
+  --login-panel-input-placeholder: #888888;
+  --login-panel-input-focus-bg: rgba(50, 50, 50, 0.6);
+  --login-panel-input-focus-border: rgba(100, 100, 100, 0.3);
+  --login-panel-btn-bg: rgba(60, 60, 60, 0.6);
+  --login-panel-btn-hover-bg: rgba(80, 80, 80, 0.8);
+  --login-panel-btn-color: #ffffff;
+  --login-panel-link-color: #aaaaaa;
+  --login-panel-link-hover-color: #eeeeee;
+  --login-panel-footer-color: #999999;
+  --login-panel-footer-border: rgba(100, 100, 100, 0.15);
+
+  /* 设置页面 */
+  --settings-form-label-color: #ffffff;
+  --settings-input-border: #666666;
+  --settings-input-border-hover: #888888;
+  --settings-input-border-focus: #aaaaaa;
+  --settings-bg-preview: #1e1e1e;
+  --settings-number-display-color: #ffffff;
+  --settings-control-btn-color: #ffffff;
+  --settings-control-btn-hover-bg: rgba(255, 255, 255, 0.1);
+  --settings-section-title-color: #e0e0e0;
+  --settings-shortcut-desc-color: #e0e0e0;
+  --settings-shortcut-key-bg: rgba(50, 50, 50, 0.8);
+  --settings-shortcut-key-color: #ffffff;
+  --settings-reset-btn-bg: #444444;
+  --settings-reset-btn-border: #444444;
+  --settings-reset-btn-color: #ffffff;
 }
 
 /* ===== Element Plus 组件主题变量 ===== */

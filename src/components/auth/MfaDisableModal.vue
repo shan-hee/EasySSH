@@ -10,7 +10,7 @@
       <template v-if="currentStep === 'confirm'">
         <div class="warning-icon">
           <svg viewBox="0 0 24 24" width="50" height="50">
-            <path fill="#ff9800" d="M1,21h22L12,2L1,21z M13,18h-2v-2h2V18z M13,14h-2V8h2V14z" />
+            <path fill="currentColor" d="M1,21h22L12,2L1,21z M13,18h-2v-2h2V18z M13,14h-2V8h2V14z" />
           </svg>
         </div>
         <div class="disable-title">
@@ -28,7 +28,7 @@
       <template v-else-if="currentStep === 'verify'">
         <div class="verify-icon">
           <svg viewBox="0 0 24 24" width="50" height="50">
-            <path fill="#0083d3" d="M12,1L3,5v6c0,5.55 3.84,10.74 9,12 5.16,-1.26 9,-6.45 9,-12V5L12,1zM11,7h2v2h-2V7zM11,11h2v6h-2V11z" />
+            <path fill="currentColor" d="M12,1L3,5v6c0,5.55 3.84,10.74 9,12 5.16,-1.26 9,-6.45 9,-12V5L12,1zM11,7h2v2h-2V7zM11,11h2v6h-2V11z" />
           </svg>
         </div>
         <div class="verify-title">
@@ -305,17 +305,25 @@ export default defineComponent({
   margin-bottom: 20px;
 }
 
+.warning-icon svg {
+  color: var(--color-warning);
+}
+
+.verify-icon svg {
+  color: var(--color-info);
+}
+
 .disable-title, .verify-title {
   font-size: 20px;
   font-weight: bold;
-  color: #fff;
+  color: var(--color-text-primary);
   margin-bottom: 15px;
   text-align: center;
 }
 
 .disable-description, .verify-subtitle {
   font-size: 14px;
-  color: #aaa;
+  color: var(--color-text-secondary);
   text-align: center;
   margin-bottom: 30px;
   line-height: 1.5;
@@ -342,18 +350,20 @@ export default defineComponent({
 }
 
 .btn-cancel {
-  background-color: #3f3f3f;
-  color: #fff;
+  background-color: var(--color-bg-muted);
+  border: 1px solid var(--color-border-default);
+  color: var(--color-text-primary);
 }
 
 .btn-danger, .btn-disable {
-  background-color: #d32f2f;
-  color: #fff;
+  background-color: var(--color-error);
+  color: var(--color-bg-container);
 }
 
 .btn-back {
-  background-color: #3f3f3f;
-  color: #fff;
+  background-color: var(--color-bg-muted);
+  border: 1px solid var(--color-border-default);
+  color: var(--color-text-primary);
 }
 
 .btn:hover {

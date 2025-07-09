@@ -24,7 +24,7 @@
         <span class="tab-title">{{ tab.title }}</span>
         <button class="tab-close" @click.stop="tabStore.closeTab(index)">
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="18" height="18">
-            <path fill="#ffffff" d="M19,6.41L17.59,5L12,10.59L6.41,5L5,6.41L10.59,12L5,17.59L6.41,19L12,13.41L17.59,19L19,17.59L13.41,12L19,6.41Z" />
+            <path fill="currentColor" d="M19,6.41L17.59,5L12,10.59L6.41,5L5,6.41L10.59,12L5,17.59L6.41,19L12,13.41L17.59,19L19,17.59L13.41,12L19,6.41Z" />
           </svg>
         </button>
       </div>
@@ -44,7 +44,7 @@
       <div v-else class="user-menu-container">
         <button class="btn-icon user-btn">
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24">
-            <path fill="#a0a0a0" d="M12,4A4,4 0 0,1 16,8A4,4 0 0,1 12,12A4,4 0 0,1 8,8A4,4 0 0,1 12,4M12,14C16.42,14 20,15.79 20,18V20H4V18C4,15.79 7.58,14 12,14Z" />
+            <path fill="currentColor" d="M12,4A4,4 0 0,1 16,8A4,4 0 0,1 12,12A4,4 0 0,1 8,8A4,4 0 0,1 12,4M12,14C16.42,14 20,15.79 20,18V20H4V18C4,15.79 7.58,14 12,14Z" />
           </svg>
         </button>
         
@@ -238,8 +238,8 @@ export default defineComponent({
   align-items: stretch;
   height: 45px;
   padding: 0;
-  background-color: #242424;
-  color: #a0a0a0;
+  background-color: var(--header-bg);
+  color: var(--header-color);
   position: relative;
 }
 
@@ -259,7 +259,7 @@ export default defineComponent({
 }
 
 .tab-container::-webkit-scrollbar-thumb {
-  background-color: #333333;
+  background-color: var(--header-scrollbar-thumb);
 }
 
 .tab-item {
@@ -269,8 +269,8 @@ export default defineComponent({
   height: 100%;
   min-width: 80px;
   max-width: 240px;
-  background-color: #1a1a1a;
-  color: #a0a0a0;
+  background-color: var(--header-tab-bg);
+  color: var(--header-tab-color);
   cursor: pointer;
   position: relative;
 }
@@ -282,12 +282,12 @@ export default defineComponent({
 }
 
 .tab-item:hover {
-  background-color: #1e1e1e;
+  background-color: var(--header-tab-hover-bg);
 }
 
 .tab-item.active {
-  background-color: #121212;
-  color: #e0e0e0;
+  background-color: var(--header-tab-active-bg);
+  color: var(--header-tab-active-color);
 }
 
 .tab-title {
@@ -325,19 +325,20 @@ export default defineComponent({
   top: 50%;
   transform: translateY(-50%);
   z-index: 2;
+  color: var(--color-text-secondary);
 }
 
 .tab-item:hover .tab-close {
   opacity: 0.9;
   visibility: visible;
-  background-color: #121212;
-  box-shadow: 0 0 0 3px #121212;
+  background-color: var(--header-tab-active-bg);
+  box-shadow: 0 0 0 3px var(--header-tab-active-bg);
 }
 
 .tab-close:hover {
-  background-color: #121212;
+  background-color: var(--header-tab-active-bg);
   opacity: 1;
-  box-shadow: 0 0 0 4px #121212;
+  box-shadow: 0 0 0 4px var(--header-tab-active-bg);
 }
 
 /* 头部操作区域 */
@@ -345,7 +346,7 @@ export default defineComponent({
   display: flex;
   gap: 10px;
   margin-right: 8px;
-  background-color: #242424;
+  background-color: var(--header-bg);
   align-items: center;
   height: 100%;
 }
@@ -353,7 +354,7 @@ export default defineComponent({
 .btn-icon {
   background: none;
   border: none;
-  color: #a0a0a0;
+  color: var(--header-color);
   font-size: 18px;
   cursor: pointer;
   width: 40px;
@@ -375,17 +376,17 @@ export default defineComponent({
 }
 
 .btn-icon:hover {
-  background-color: #333;
+  background-color: var(--header-btn-hover-bg);
 }
 
 .btn-icon:hover svg path {
-  fill: #ffffff;
+  fill: var(--header-btn-hover-color);
 }
 
 /* 登录按钮 */
 .login-btn {
-  background-color: #333;
-  color: #a0a0a0;
+  background-color: var(--header-btn-hover-bg);
+  color: var(--header-color);
   padding: 0 12px;
   border-radius: 4px;
   font-size: 14px;
@@ -394,8 +395,8 @@ export default defineComponent({
 }
 
 .login-btn:hover {
-  background-color: #444;
-  color: #ffffff;
+  background-color: var(--header-btn-hover-bg);
+  color: var(--header-btn-hover-color);
 }
 
 /* 用户菜单 */
@@ -406,6 +407,7 @@ export default defineComponent({
 .user-btn {
   border-radius: 50%;
   overflow: hidden;
+  color: var(--color-text-secondary);
 }
 
 .user-dropdown {

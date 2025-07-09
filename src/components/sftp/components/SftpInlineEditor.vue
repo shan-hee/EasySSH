@@ -4,11 +4,11 @@
     :class="{ 'sftp-file-directory': type === 'folder' }"
   >
     <div class="sftp-file-name">
-      <svg v-if="type === 'folder'" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24">
-        <path fill="#e8b339" d="M20,6H12L10,4H4C2.89,4 2,4.89 2,6V18A2,2 0 0,0 4,20H20A2,2 0 0,0 22,18V8C22,6.89 21.1,6 20,6M20,18H4V8H20V18M13,11H16V14H13V17H11V14H8V11H11V8H13V11Z" />
+      <svg v-if="type === 'folder'" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" class="folder-icon">
+        <path fill="currentColor" d="M20,6H12L10,4H4C2.89,4 2,4.89 2,6V18A2,2 0 0,0 4,20H20A2,2 0 0,0 22,18V8C22,6.89 21.1,6 20,6M20,18H4V8H20V18M13,11H16V14H13V17H11V14H8V11H11V8H13V11Z" />
       </svg>
-      <svg v-else xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24">
-        <path fill="#80cbc4" d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20Z" />
+      <svg v-else xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" class="file-icon">
+        <path fill="currentColor" d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20Z" />
       </svg>
       
       <!-- 编辑容器 -->
@@ -204,6 +204,13 @@ export default defineComponent({
 </script>
 
 <style scoped>
+.folder-icon {
+  color: var(--color-warning);
+}
+
+.file-icon {
+  color: var(--color-info);
+}
 /* 继承SftpFileItem的样式 */
 .sftp-inline-editor {
   display: grid;

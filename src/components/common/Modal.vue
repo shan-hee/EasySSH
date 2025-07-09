@@ -119,7 +119,8 @@ export default defineComponent({
 
 .modal-container {
   width: 550px;
-  background-color: #1e1e1e;
+  background-color: var(--color-bg-page);
+  border: 1px solid var(--color-border-default);
   border-radius: 8px;
   overflow: hidden;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
@@ -130,28 +131,29 @@ export default defineComponent({
   display: flex;
   justify-content: space-between;
   align-items: center;
-  background-color: #1e1e1e;
-  border-bottom: 1px solid #333;
+  background-color: var(--color-bg-muted);
+  border-bottom: 1px solid var(--color-border-lighter);
 }
 
 .modal-header span {
-  color: #fff;
+  color: var(--color-text-primary);
   font-weight: bold;
 }
 
 .close-btn {
   cursor: pointer;
   font-size: 20px;
+  color: var(--color-text-regular);
 }
 
 .modal-tab {
   display: flex;
-  border-bottom: 1px solid #3a3a3a;
+  border-bottom: 1px solid var(--color-border-lighter);
 }
 
 .tab-item {
   padding: 10px 15px;
-  color: #fff;
+  color: var(--color-text-primary);
   font-weight: bold;
   cursor: pointer;
   position: relative;
@@ -159,7 +161,7 @@ export default defineComponent({
 }
 
 .tab-item.active {
-  color: #409eff;
+  color: var(--color-primary);
 }
 
 .tab-item.active::after {
@@ -169,12 +171,12 @@ export default defineComponent({
   left: 0;
   width: 100%;
   height: 2px;
-  background-color: #409eff;
+  background-color: var(--color-primary);
 }
 
 .modal-body {
   margin-top: 20px;
-  background-color: #1e1e1e;
+  background-color: var(--color-bg-page);
 }
 
 .modal-footer {
@@ -182,15 +184,15 @@ export default defineComponent({
   justify-content: flex-end;
   gap: 10px;
   padding: 15px;
-  border-top: 1px solid #333;
-  background-color: #1e1e1e;
+  border-top: 1px solid var(--color-border-lighter);
+  background-color: var(--color-bg-muted);
 }
 
 .modal-btn {
   padding: 8px 20px;
   border: none;
   border-radius: 4px;
-  color: #fff;
+  color: var(--color-text-white);
   cursor: pointer;
   font-weight: bold;
   min-width: 80px;
@@ -199,15 +201,17 @@ export default defineComponent({
 }
 
 .btn-cancel {
-  background-color: #3f3f3f;
+  background-color: var(--color-bg-muted);
+  border: 1px solid var(--color-border-default);
+  color: var(--color-text-primary);
 }
 
 .btn-confirm {
-  background-color: #3f3f3f;
+  background-color: var(--color-primary);
 }
 
 .btn-primary {
-  background-color: #0083d3;
+  background-color: var(--color-primary);
 }
 
 /* 动画相关样式 */
@@ -257,10 +261,10 @@ export default defineComponent({
 :deep(select) {
   width: 100%;
   height: 36px;
-  background-color: transparent;
-  border: 1px solid #666;
+  background-color: var(--color-bg-container);
+  border: 1px solid var(--color-border-default);
   border-radius: 6px;
-  color: #fff;
+  color: var(--color-text-primary);
   padding: 0 20px;
   box-sizing: border-box;
   outline: none;
@@ -271,13 +275,13 @@ export default defineComponent({
 :deep(input:focus),
 :deep(textarea:focus),
 :deep(select:focus) {
-  border-color: #0083d3;
+  border-color: var(--color-primary);
   box-shadow: none;
 }
 
 :deep(input::placeholder),
 :deep(textarea::placeholder) {
-  color: #666;
+  color: var(--color-text-placeholder);
 }
 
 :deep(textarea) {
@@ -289,7 +293,7 @@ export default defineComponent({
 :deep(label) {
   display: block;
   margin-bottom: 8px;
-  color: #fff;
+  color: var(--color-text-primary);
   font-size: 14px;
   font-weight: normal;
 }

@@ -20,9 +20,9 @@ export default defineComponent({
 
 <style scoped>
 .add-button {
-  background-color: #2c2c2c !important;
-  border: 1px solid #333 !important;
-  color: var(--color-text-primary) !important;
+  background-color: var(--color-primary) !important;
+  border: 1px solid var(--color-primary) !important;
+  color: var(--color-bg-container) !important;
   transition: background-color 0.2s ease;
   font-weight: bold;
   display: flex;
@@ -32,9 +32,9 @@ export default defineComponent({
 }
 
 .add-button:hover {
-  background-color: #3a3a3a !important;
-  border-color: #333 !important;
-  color: var(--color-text-primary) !important;
+  background-color: var(--color-primary-hover) !important;
+  border-color: var(--color-primary-hover) !important;
+  color: var(--color-bg-container) !important;
   transform: none !important;
   box-shadow: none !important;
 }
@@ -42,11 +42,11 @@ export default defineComponent({
 /* 确保Element Plus按钮内的文字加粗且颜色正确 */
 :deep(span) {
   font-weight: bold;
-  color: var(--color-text-primary) !important;
+  color: var(--color-bg-container) !important;
 }
 
 /* 确保图标颜色也正确 */
 :deep(.el-icon) {
-  color: var(--color-text-primary) !important;
+  color: var(--color-bg-container) !important;
 }
 </style>

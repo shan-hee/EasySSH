@@ -312,9 +312,9 @@ export default defineComponent({
       networkPopupStyle.value = {
         position: 'fixed',
         zIndex: 10000,
-        backgroundColor: '#242424',
+        backgroundColor: 'var(--color-bg-container)',
         borderRadius: '4px',
-        boxShadow: '0 2px 12px rgba(0, 0, 0, 0.3)',
+        boxShadow: 'var(--shadow-lg)',
         overflow: 'hidden',
         width: '280px',
         top: `${rect.bottom + 5}px`,
@@ -349,8 +349,8 @@ export default defineComponent({
       sftpTooltipStyle.value = {
         position: 'fixed',
         zIndex: 10000,
-        backgroundColor: '#333',
-        color: '#e0e0e0',
+        backgroundColor: 'var(--color-text-primary)',
+        color: 'var(--color-bg-container)',
         padding: '8px 12px',
         borderRadius: '4px',
         fontSize: '13px',
@@ -893,8 +893,8 @@ export default defineComponent({
       monitorTooltipStyle.value = {
         position: 'fixed',
         zIndex: 10000,
-        backgroundColor: '#333',
-        color: '#e0e0e0',
+        backgroundColor: 'var(--color-text-primary)',
+        color: 'var(--color-bg-container)',
         padding: '8px 12px',
         borderRadius: '4px',
         fontSize: '13px',
@@ -1476,7 +1476,7 @@ export default defineComponent({
   justify-content: space-between;
   padding: 0 16px;
   height: 40px;
-  background-color: #1F1F1F; /* 默认不透明背景 */
+  background-color: var(--color-bg-elevated); /* 默认不透明背景 */
   position: relative;
 }
 
@@ -1514,7 +1514,7 @@ export default defineComponent({
   border: none;
   border-radius: 4px;
   cursor: pointer;
-  color: #e0e0e0;
+  color: var(--color-text-primary);
   padding: 0;
   transition: background-color 0.2s ease;
 }
@@ -1556,7 +1556,7 @@ export default defineComponent({
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #e0e0e0;;
+  color: var(--color-text-primary);
 }
 
 .network-stats {
@@ -1572,20 +1572,20 @@ export default defineComponent({
 }
 
 .network-path-value.success {
-  color: #67c23a;
+  color: var(--color-success);
 }
 
 .network-path-value.warning {
-  color: #e6a23c;
+  color: var(--color-warning);
 }
 
 .network-path-value.danger {
-  color: #f56c6c;
+  color: var(--color-error);
 }
 
 .network-stats-label {
   font-size: 10px;
-  color: #909399;
+  color: var(--color-text-secondary);
   text-transform: uppercase;
   line-height: 1;
   margin-top: 2px;
@@ -1593,9 +1593,9 @@ export default defineComponent({
 
 /* 网络监控弹窗 */
 .network-popup {
-  background-color: #242424;
+  background-color: var(--color-bg-container);
   border-radius: 4px;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.3);
+  box-shadow: var(--shadow-lg);
   z-index: 10000;
   overflow: hidden;
 }
@@ -1608,16 +1608,16 @@ export default defineComponent({
   transform: translateX(-50%);
   border-width: 5px;
   border-style: solid;
-  border-color: transparent transparent #1e1e1e transparent;
+  border-color: transparent transparent var(--color-bg-muted) transparent;
 }
 
 .network-popup-header {
   padding: 10px 12px;
   font-size: 14px;
   font-weight: 500;
-  color: #e0e0e0;
-  background-color: #1e1e1e;
-  border-bottom: 1px solid #333;
+  color: var(--color-text-primary);
+  background-color: var(--color-bg-muted);
+  border-bottom: 1px solid var(--color-border-default);
   text-align: center;
 }
 
@@ -1642,13 +1642,13 @@ export default defineComponent({
   width: 10px;
   height: 10px;
   border-radius: 50%;
-  background-color: #909399;
+  background-color: var(--color-text-secondary);
   margin-bottom: 6px;
 }
 
 .network-node-label {
   font-size: 12px;
-  color: #909399;
+  color: var(--color-text-secondary);
   white-space: nowrap;
 }
 
@@ -1664,7 +1664,7 @@ export default defineComponent({
 .network-path-line {
   width: 100%;
   height: 1px;
-  background-color: #555;
+  background-color: var(--color-border-default);
   position: relative;
   top: -10px;
 }
@@ -1673,20 +1673,20 @@ export default defineComponent({
   font-size: 12px;
   position: relative;
   top: -6px;
-  background-color: #242424;
+  background-color: var(--color-bg-container);
   padding: 0 5px;
 }
 
 .network-stats-value.success {
-  color: #67c23a;
+  color: var(--color-success);
 }
 
 .network-stats-value.warning {
-  color: #e6a23c;
+  color: var(--color-warning);
 }
 
 .network-stats-value.danger {
-  color: #f56c6c;
+  color: var(--color-error);
 }
 
 /* 淡入淡出动画 */
@@ -1701,12 +1701,12 @@ export default defineComponent({
 }
 
 .network-stats-value.measuring {
-  color: #409eff;
+  color: var(--color-info);
   animation: pulse 1.5s infinite;
 }
 
 .network-path-value.measuring {
-  color: #409eff;
+  color: var(--color-info);
   animation: pulse 1.5s infinite;
 }
 
@@ -1728,7 +1728,7 @@ export default defineComponent({
   background-color: transparent;
   border-radius: 4px;
   cursor: pointer;
-  color: #e0e0e0;
+  color: var(--color-text-primary);
   padding: 0;
   transition: background-color 0.2s ease;
 }
@@ -1743,8 +1743,8 @@ export default defineComponent({
   left: 50%;
   top: 100%;
   transform: translateX(-50%);
-  background-color: #333;
-  color: #e0e0e0;
+  background-color: var(--color-text-primary);
+  color: var(--color-bg-container);
   padding: 8px 12px;
   border-radius: 4px;
   font-size: 13px;
@@ -1789,7 +1789,7 @@ export default defineComponent({
 
 /* 一键安装链接样式 */
 .install-link {
-  color: #409EFF;
+  color: var(--color-info);
   cursor: pointer;
   text-decoration: none;
   font-weight: bold;
@@ -1821,8 +1821,8 @@ export default defineComponent({
 .sftp-tooltip {
   position: fixed;
   z-index: 10000;
-  background-color: #333;
-  color: #e0e0e0;
+  background-color: var(--color-text-primary);
+  color: var(--color-bg-container);
   padding: 8px 12px;
   border-radius: 4px;
   font-size: 13px;
@@ -1838,6 +1838,6 @@ export default defineComponent({
   transform: translateX(-50%);
   border-width: 5px;
   border-style: solid;
-  border-color: transparent transparent #333 transparent;
+  border-color: transparent transparent var(--color-text-primary) transparent;
 }
 </style> 

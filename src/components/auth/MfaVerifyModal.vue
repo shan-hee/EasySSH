@@ -8,8 +8,8 @@
   >
     <div class="mfa-verify-container">
       <div class="verify-icon">
-        <svg viewBox="0 0 24 24" width="50" height="50">
-          <path fill="#0083d3" d="M12,1L3,5v6c0,5.55 3.84,10.74 9,12 5.16,-1.26 9,-6.45 9,-12V5L12,1zM11,7h2v2h-2V7zM11,11h2v6h-2V11z" />
+        <svg viewBox="0 0 24 24" width="50" height="50" class="security-icon">
+          <path fill="currentColor" d="M12,1L3,5v6c0,5.55 3.84,10.74 9,12 5.16,-1.26 9,-6.45 9,-12V5L12,1zM11,7h2v2h-2V7zM11,11h2v6h-2V11z" />
         </svg>
       </div>
       <div class="verify-title">
@@ -278,6 +278,10 @@ export default defineComponent({
 
 .verify-icon {
   margin-bottom: 20px;
+}
+
+.security-icon {
+  color: var(--color-info);
 }
 
 .verify-title {

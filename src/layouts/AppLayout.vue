@@ -579,7 +579,7 @@ export default defineComponent({
   display: flex;
   height: 100vh;
   overflow: hidden;
-  background-color: #121212;
+  background-color: var(--color-bg-page);
 }
 
 .main-content {
@@ -592,7 +592,7 @@ export default defineComponent({
 .content {
   flex: 1;
   overflow-y: auto;
-  background-color: #121212;
+  background-color: var(--color-bg-page);
   border-top: none;
 }
 

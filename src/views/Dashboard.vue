@@ -343,7 +343,7 @@ export default {
 }
 
 .dashboard-title {
-  color: #A0A0A0;
+  color: var(--color-text-primary);
   margin: 0;
 }
 
@@ -364,7 +364,7 @@ export default {
   box-shadow: var(--shadow-md);
   margin-bottom: var(--spacing-lg);
   overflow: hidden;
-  border: 1px solid #333;
+  border: 1px solid var(--color-border-default);
 }
 
 .card-header {
@@ -372,7 +372,7 @@ export default {
   justify-content: space-between;
   align-items: center;
   padding: var(--spacing-md);
-  border-bottom: 1px solid #333;
+  border-bottom: 1px solid var(--color-border-default);
   font-weight: bold;
   background-color: var(--color-bg-muted);
 }
@@ -407,13 +407,13 @@ export default {
 .btn-text {
   border: none;
   background: none;
-  color: #1890ff;
+  color: var(--color-primary);
   cursor: pointer;
   padding: 0;
 }
 
 .btn-text:hover {
-  color: #40a9ff;
+  color: var(--color-primary-hover);
   text-decoration: underline;
 }
 
@@ -425,9 +425,9 @@ export default {
 }
 
 .tag-success {
-  background-color: #162312;
-  border: 1px solid #274916;
-  color: #52c41a;
+  background-color: var(--color-success-bg);
+  border: 1px solid var(--color-success);
+  color: var(--color-success);
 }
 
 .connection-table {
@@ -435,16 +435,16 @@ export default {
   border-collapse: collapse;
 }
 
-.connection-table th, 
+.connection-table th,
 .connection-table td {
   text-align: left;
   padding: 12px 8px;
-  border-bottom: 1px solid #333;
+  border-bottom: 1px solid var(--color-border-default);
 }
 
 .connection-table th {
   font-weight: 500;
-  color: #a0a0a0;
+  color: var(--color-text-secondary);
 }
 
 .activity-log {
@@ -465,7 +465,7 @@ export default {
   top: 0;
   bottom: 0;
   width: 2px;
-  background-color: #444;
+  background-color: var(--color-border-default);
 }
 
 .timeline-item {
@@ -480,7 +480,7 @@ export default {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background-color: #1890ff;
+  background-color: var(--color-primary);
 }
 
 .timeline-content {
@@ -493,7 +493,7 @@ export default {
 
 .timeline-time {
   font-size: 12px;
-  color: #a0a0a0;
+  color: var(--color-text-secondary);
 }
 
 .btn {
@@ -505,29 +505,33 @@ export default {
 }
 
 .btn-default {
-  background-color: #333;
-  color: #e0e0e0;
-  border: 1px solid #444;
+  background-color: var(--color-bg-muted);
+  color: var(--color-text-primary);
+  border: 1px solid var(--color-border-default);
 }
 
 .btn-default:hover:not(:disabled) {
-  color: #1890ff;
-  border-color: #1890ff;
-  background-color: #111;
+  color: var(--color-primary);
+  border-color: var(--color-primary);
+  background-color: var(--color-hover-bg);
 }
 
 .btn-default:disabled {
-  background-color: #222;
-  color: #666;
-  border-color: #333;
+  background-color: var(--color-bg-subtle);
+  color: var(--color-text-placeholder);
+  border-color: var(--color-border-default);
   cursor: not-allowed;
   opacity: 0.6;
 }
 
 .btn-primary {
-  background-color: #1890ff;
-  color: white;
+  background-color: var(--color-primary);
+  color: var(--color-bg-container);
   border: none;
+}
+
+.btn-primary:hover {
+  background-color: var(--color-primary-hover);
 }
 
 

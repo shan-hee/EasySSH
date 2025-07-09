@@ -263,7 +263,7 @@ export default defineComponent({
 
 :root[data-theme="light"] .el-select-dropdown__item.selected,
 :root[data-theme="light"] .el-select-dropdown__item.is-selected {
-  color: #0083d3 !important;
+  color: #aaaaaa !important;
   font-weight: bold !important;
   background-color: transparent !important;
 }
@@ -271,7 +271,7 @@ export default defineComponent({
 :root[data-theme="light"] .el-input__inner,
 :root[data-theme="light"] .el-textarea__inner {
   color: #606266 !important;
-  caret-color: #0083d3 !important;
+  caret-color: #aaaaaa !important;
   background-color: #fff !important;
 }
 

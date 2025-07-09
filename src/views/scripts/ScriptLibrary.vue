@@ -86,8 +86,8 @@
       <div class="scripts-table-container" ref="tableContainer">
         <div v-if="allFilteredScripts.length === 0" class="no-scripts">
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="48" height="48">
-            <path fill="#666" d="M19,3H5C3.89,3 3,3.89 3,5V19A2,2 0 0,0 5,21H19A2,2 0 0,0 21,19V5C21,3.89 20.1,3 19,3M19,5V19H5V5H19Z" />
-            <path fill="#666" d="M11,7H13V9H11V7M11,11H13V17H11V11Z" />
+            <path fill="var(--color-text-placeholder)" d="M19,3H5C3.89,3 3,3.89 3,5V19A2,2 0 0,0 5,21H19A2,2 0 0,0 21,19V5C21,3.89 20.1,3 19,3M19,5V19H5V5H19Z" />
+            <path fill="var(--color-text-placeholder)" d="M11,7H13V9H11V7M11,11H13V17H11V11Z" />
           </svg>
           <p>{{ noScriptsMessage }}</p>
           <button class="btn-secondary" @click="createNewScript">创建第一个脚本</button>
@@ -1167,8 +1167,8 @@ export default defineComponent({
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  background-color: #1e1e1e;
-  color: #e0e0e0;
+  background-color: var(--color-bg-page);
+  color: var(--color-text-primary);
   min-height: 0;
 }
 
@@ -1182,7 +1182,7 @@ export default defineComponent({
 .page-header h1 {
   font-size: 24px;
   font-weight: 500;
-  color: #e0e0e0;
+  color: var(--color-text-primary);
   margin: 0;
 }
 
@@ -1195,8 +1195,8 @@ export default defineComponent({
 .btn-primary {
   display: flex;
   align-items: center;
-  background-color: #2c7be5;
-  color: white;
+  background-color: var(--color-primary);
+  color: var(--color-bg-container);
   border: none;
   border-radius: 4px;
   padding: 8px 16px;
@@ -1209,7 +1209,7 @@ export default defineComponent({
 }
 
 .btn-primary:hover {
-  background-color: #1a68d1;
+  background-color: var(--color-primary-hover);
 }
 
 .script-categories {
@@ -1224,37 +1224,37 @@ export default defineComponent({
 }
 
 .tag-bubble {
-  background-color: #252525;
+  background-color: var(--color-bg-container);
   border-radius: 16px;
   padding: 6px 12px;
   cursor: pointer;
   display: flex;
   align-items: center;
-  border: 1px solid #333;
+  border: 1px solid var(--color-border-default);
   font-size: 13px;
-  color: #b0b0b0;
+  color: var(--color-text-secondary);
   transition: all 0.2s ease;
   white-space: nowrap;
   flex-shrink: 0;
 }
 
 .tag-bubble:hover {
-  background-color: #2a2a2a;
-  border-color: #444;
+  background-color: var(--color-hover-bg);
+  border-color: var(--color-border-light);
 }
 
 .tag-bubble.active {
-  background-color: #2c7be5;
-  border-color: #2c7be5;
-  color: white;
+  background-color: var(--color-primary);
+  border-color: var(--color-primary);
+  color: var(--color-bg-container);
 }
 
 .scripts-panel {
   flex: 1;
-  background-color: #252525;
+  background-color: var(--color-bg-container);
   border-radius: 8px;
   padding: 16px;
-  border: 1px solid #333;
+  border: 1px solid var(--color-border-default);
   min-height: 0;
   display: flex;
   flex-direction: column;
@@ -1268,49 +1268,49 @@ export default defineComponent({
 
 .search-input {
   flex: 1;
-  background-color: #333;
-  border: 1px solid #444;
+  background-color: var(--color-bg-muted);
+  border: 1px solid var(--color-border-default);
   border-radius: 4px;
   padding: 8px 12px;
-  color: #e0e0e0;
+  color: var(--color-text-primary);
   font-size: 14px;
 }
 
 .search-input:focus {
   outline: none;
-  border-color: #2c7be5;
+  border-color: var(--color-primary);
 }
 
 .btn-filter {
-  background-color: #333;
-  border: 1px solid #444;
+  background-color: var(--color-bg-muted);
+  border: 1px solid var(--color-border-default);
   border-radius: 4px;
   margin-left: 8px;
   padding: 0 12px;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #a0a0a0;
+  color: var(--color-text-secondary);
   cursor: pointer;
 }
 
 .btn-filter:hover {
-  background-color: #3a3a3a;
-  color: #e0e0e0;
+  background-color: var(--color-hover-bg);
+  color: var(--color-text-primary);
 }
 
 .filter-dropdown {
   position: absolute;
   top: 100%;
   right: 0;
-  background-color: #333;
-  border: 1px solid #444;
+  background-color: var(--color-bg-container);
+  border: 1px solid var(--color-border-default);
   border-radius: 4px;
   padding: 8px;
   z-index: 100;
   margin-top: 4px;
   min-width: 180px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  box-shadow: var(--shadow-md);
 }
 
 .filter-option {
@@ -1340,27 +1340,27 @@ export default defineComponent({
 .scripts-table {
   width: 100%;
   border-collapse: collapse;
-  color: #e0e0e0;
+  color: var(--color-text-primary);
   table-layout: fixed;
 }
 
 .scripts-table th {
   text-align: left;
   padding: 12px;
-  background-color: #2a2a2a;
-  border-bottom: 2px solid #333;
+  background-color: var(--color-bg-muted);
+  border-bottom: 2px solid var(--color-border-default);
   font-weight: 500;
   font-size: 14px;
 }
 
 .scripts-table td {
   padding: 12px;
-  border-bottom: 1px solid #333;
+  border-bottom: 1px solid var(--color-border-default);
   vertical-align: middle;
 }
 
 .script-row:hover {
-  background-color: #2a2a2a;
+  background-color: var(--color-hover-bg);
 }
 
 .script-name-column {
@@ -1401,12 +1401,12 @@ export default defineComponent({
 
 .script-meta {
   font-size: 12px;
-  color: #888;
+  color: var(--color-text-secondary);
 }
 
 .script-description {
   font-size: 14px;
-  color: #b0b0b0;
+  color: var(--color-text-secondary);
 }
 
 .script-command {
@@ -1420,7 +1420,7 @@ export default defineComponent({
 }
 
 .script-command code {
-  color: #ffffff;
+  color: var(--color-text-primary);
   font-family: inherit;
 }
 
@@ -1441,7 +1441,7 @@ export default defineComponent({
 .btn-icon {
   background: none;
   border: none;
-  color: #a0a0a0;
+  color: var(--color-text-secondary);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1451,8 +1451,8 @@ export default defineComponent({
 }
 
 .btn-icon:hover {
-  background-color: rgba(255, 255, 255, 0.1);
-  color: #e0e0e0;
+  background-color: var(--color-hover-bg);
+  color: var(--color-text-primary);
 }
 
 .no-scripts {
@@ -1471,15 +1471,15 @@ export default defineComponent({
 
 .no-scripts p {
   margin: 0 0 20px 0;
-  color: #888;
+  color: var(--color-text-secondary);
   font-size: 16px;
 }
 
 .btn-secondary {
   display: flex;
   align-items: center;
-  background-color: #3a3a3a;
-  color: #e0e0e0;
+  background-color: var(--color-bg-muted);
+  color: var(--color-text-primary);
   border: none;
   border-radius: 4px;
   padding: 8px 16px;
@@ -1493,7 +1493,7 @@ export default defineComponent({
 }
 
 .btn-secondary:hover {
-  background-color: #444;
+  background-color: var(--color-hover-bg);
 }
 
 /* 滚动条样式 */
@@ -1503,21 +1503,21 @@ export default defineComponent({
 }
 
 ::-webkit-scrollbar-track {
-  background: #222;
+  background: var(--color-bg-subtle);
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #444;
+  background: var(--color-border-default);
   border-radius: 4px;
 }
 
 .action-btn {
   font-size: 16px;
-  color: #a0a0a0;
+  color: var(--color-text-secondary);
 }
 
 .action-btn:hover {
-  color: #409EFF;
+  color: var(--color-primary);
 }
 
 .dialog-footer {
@@ -1532,14 +1532,14 @@ export default defineComponent({
 
 /* 取消按钮悬浮效果 - 只高亮不变色 */
 .dialog-footer :deep(.el-button:not(.el-button--primary):hover) {
-  background-color: rgba(255, 255, 255, 0.1);
-  border-color: #666;
+  background-color: var(--color-hover-bg);
+  border-color: var(--color-border-default);
   color: inherit;
 }
 
 /* 保存按钮保持原有的悬浮效果 */
 .dialog-footer :deep(.el-button--primary:hover) {
-  background-color: #1a68d1;
+  background-color: var(--color-primary-hover);
 }
 
 
@@ -1556,8 +1556,8 @@ export default defineComponent({
 
 .script-tag {
   display: inline-block;
-  background-color: #333;
-  color: #b0b0b0;
+  background-color: var(--color-bg-muted);
+  color: var(--color-text-secondary);
   border-radius: 12px;
   padding: 2px 8px;
   font-size: 12px;
@@ -1566,8 +1566,8 @@ export default defineComponent({
 }
 
 .script-tag:hover {
-  background-color: #2c7be5;
-  color: white;
+  background-color: var(--color-primary);
+  color: var(--color-bg-container);
 }
 
 /* 分页相关样式 */
@@ -1588,9 +1588,9 @@ export default defineComponent({
   display: flex;
   justify-content: center;
   padding: 12px 0;
-  border-top: 1px solid #333;
+  border-top: 1px solid var(--color-border-default);
   flex-shrink: 0;
-  background-color: #252525;
+  background-color: var(--color-bg-container);
 }
 
 .custom-pagination {
@@ -1602,7 +1602,7 @@ export default defineComponent({
 }
 
 .pagination-total {
-  color: #a0a0a0;
+  color: var(--color-text-secondary);
   font-size: 14px;
   white-space: nowrap;
 }
@@ -1615,7 +1615,7 @@ export default defineComponent({
 }
 
 .page-size-label {
-  color: #a0a0a0;
+  color: var(--color-text-secondary);
   font-size: 14px;
 }
 
@@ -1625,139 +1625,139 @@ export default defineComponent({
 }
 
 .page-size-select :deep(.el-select__wrapper) {
-  background-color: #333;
-  border-color: #444;
-  color: #e0e0e0;
+  background-color: var(--color-bg-muted);
+  border-color: var(--color-border-default);
+  color: var(--color-text-primary);
 }
 
 .page-size-select :deep(.el-select__wrapper:hover) {
-  border-color: #2c7be5;
+  border-color: var(--color-primary);
 }
 
 .page-size-select :deep(.el-select__wrapper.is-focused) {
-  border-color: #2c7be5;
+  border-color: var(--color-primary);
 }
 
 .page-size-select :deep(.el-input__inner) {
-  color: #e0e0e0;
+  color: var(--color-text-primary);
   text-align: center;
 }
 
 .page-size-select :deep(.el-select__caret) {
-  color: #a0a0a0;
+  color: var(--color-text-secondary);
 }
 
 .page-size-select :deep(.el-select__caret:hover) {
-  color: #2c7be5;
+  color: var(--color-primary);
 }
 
 /* Element Plus 分页组件深度样式 */
 :deep(.el-pagination) {
-  --el-pagination-bg-color: #252525;
-  --el-pagination-text-color: #e0e0e0;
+  --el-pagination-bg-color: var(--color-bg-container);
+  --el-pagination-text-color: var(--color-text-primary);
   --el-pagination-border-radius: 4px;
-  --el-pagination-button-color: #a0a0a0;
-  --el-pagination-button-bg-color: #333;
-  --el-pagination-button-disabled-color: #666;
-  --el-pagination-button-disabled-bg-color: #2a2a2a;
-  --el-pagination-hover-color: #2c7be5;
+  --el-pagination-button-color: var(--color-text-secondary);
+  --el-pagination-button-bg-color: var(--color-bg-muted);
+  --el-pagination-button-disabled-color: var(--color-text-placeholder);
+  --el-pagination-button-disabled-bg-color: var(--color-bg-subtle);
+  --el-pagination-hover-color: var(--color-primary);
 }
 
 :deep(.el-pagination .el-pager li) {
-  background-color: #333;
-  color: #a0a0a0;
-  border: 1px solid #444;
+  background-color: var(--color-bg-muted);
+  color: var(--color-text-secondary);
+  border: 1px solid var(--color-border-default);
   margin: 0 2px;
 }
 
 :deep(.el-pagination .el-pager li:hover) {
-  color: #2c7be5;
-  border-color: #2c7be5;
+  color: var(--color-primary);
+  border-color: var(--color-primary);
 }
 
 :deep(.el-pagination .el-pager li.is-active) {
-  background-color: #2c7be5;
-  color: white;
-  border-color: #2c7be5;
+  background-color: var(--color-primary);
+  color: var(--color-bg-container);
+  border-color: var(--color-primary);
 }
 
 :deep(.el-pagination .btn-prev),
 :deep(.el-pagination .btn-next) {
-  background-color: #333;
-  color: #a0a0a0;
-  border: 1px solid #444;
+  background-color: var(--color-bg-muted);
+  color: var(--color-text-secondary);
+  border: 1px solid var(--color-border-default);
 }
 
 :deep(.el-pagination .btn-prev:hover),
 :deep(.el-pagination .btn-next:hover) {
-  color: #2c7be5;
-  border-color: #2c7be5;
+  color: var(--color-primary);
+  border-color: var(--color-primary);
 }
 
 :deep(.el-pagination .el-pagination__total) {
-  color: #a0a0a0;
+  color: var(--color-text-secondary);
 }
 
 :deep(.el-pagination .el-pagination__jump) {
-  color: #a0a0a0;
+  color: var(--color-text-secondary);
 }
 
 :deep(.el-select .el-select__wrapper) {
-  background-color: #333;
-  border-color: #444;
+  background-color: var(--color-bg-muted);
+  border-color: var(--color-border-default);
 }
 
 :deep(.el-select .el-select__wrapper:hover) {
-  border-color: #2c7be5;
+  border-color: var(--color-primary);
 }
 
 :deep(.el-input__wrapper) {
-  background-color: #333;
-  border-color: #444;
+  background-color: var(--color-bg-muted);
+  border-color: var(--color-border-default);
 }
 
 :deep(.el-input__wrapper:hover) {
-  border-color: #2c7be5;
+  border-color: var(--color-primary);
 }
 
 /* 页面大小选择器下拉选项样式 */
 :deep(.el-select-dropdown) {
-  background-color: #333;
-  border-color: #444;
+  background-color: var(--color-bg-container);
+  border-color: var(--color-border-default);
 }
 
 :deep(.el-select-dropdown .el-select-dropdown__item) {
-  color: #e0e0e0;
-  background-color: #333;
+  color: var(--color-text-primary);
+  background-color: var(--color-bg-container);
 }
 
 :deep(.el-select-dropdown .el-select-dropdown__item:hover) {
-  background-color: #2c7be5;
-  color: white;
+  background-color: var(--color-hover-bg);
+  color: var(--color-primary);
 }
 
 :deep(.el-select-dropdown .el-select-dropdown__item.is-selected) {
-  background-color: #2c7be5;
-  color: white;
+  background-color: var(--color-primary);
+  color: var(--color-bg-container);
 }
 
 /* 脚本表单样式 - 与连接表单保持一致 */
 .script-dialog :deep(.el-dialog__body) {
   padding: 15px;
-  background-color: #121212;
+  background-color: var(--color-bg-container);
 }
 
 /* 标题分界线样式 */
 .script-tab {
   display: flex;
-  border-bottom: 1px solid #3a3a3a;
+  border-bottom: 1px solid var(--color-border-default);
   margin-bottom: 20px;
   padding: 0 15px;
 }
 
 .script-tab .tab-item {
   padding: 10px 15px;
-  color: #fff;
+  color: var(--color-text-primary);
   font-weight: bold;
   cursor: pointer;
   position: relative;
@@ -1770,7 +1770,7 @@ export default defineComponent({
 }
 
 .script-tab .tab-item.active {
-  color: #fff;
+  color: var(--color-text-primary);
 }
 
 .script-tab .tab-item.active::after {
@@ -1780,7 +1780,7 @@ export default defineComponent({
   left: 0;
   width: 100%;
   height: 2px;
-  background-color: #fff;
+  background-color: var(--color-primary);
 }
 
 .script-form {
@@ -1808,7 +1808,7 @@ export default defineComponent({
   margin-bottom: 8px;
   font-size: 14px;
   font-weight: normal;
-  color: #fff;
+  color: var(--color-text-primary);
 }
 
 .script-form .input-wrapper {
@@ -1820,9 +1820,9 @@ export default defineComponent({
   width: 100%;
   height: 36px;
   background-color: transparent;
-  border: 1px solid #666;
+  border: 1px solid var(--color-border-default);
   border-radius: 6px;
-  color: #fff;
+  color: var(--color-text-primary);
   padding: 0 10px;
   box-sizing: border-box;
   outline: none;
@@ -1840,13 +1840,13 @@ export default defineComponent({
 
 .script-form .form-item input:focus,
 .script-form .form-item textarea:focus {
-  border-color: #0083d3;
-  box-shadow: 0 0 0 1px rgba(0, 131, 211, 0.2);
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 1px var(--color-focus-ring);
 }
 
 .script-form .form-item input::placeholder,
 .script-form .form-item textarea::placeholder {
-  color: #666;
+  color: var(--color-text-placeholder);
 }
 
 /* 标签选择器样式调整 */
@@ -1856,39 +1856,39 @@ export default defineComponent({
 
 .script-tags-select :deep(.el-select__wrapper) {
   background-color: transparent;
-  border: 1px solid #666;
+  border: 1px solid var(--color-border-default);
   border-radius: 6px;
-  color: #fff;
+  color: var(--color-text-primary);
   min-height: 36px;
   padding: 0 10px;
   transition: border-color 0.3s;
 }
 
 .script-tags-select :deep(.el-select__wrapper:hover) {
-  border-color: #0083d3;
+  border-color: var(--color-primary);
 }
 
 .script-tags-select :deep(.el-select__wrapper.is-focused) {
-  border-color: #0083d3;
-  box-shadow: 0 0 0 1px rgba(0, 131, 211, 0.2);
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 1px var(--color-focus-ring);
 }
 
 .script-tags-select :deep(.el-select__placeholder) {
-  color: #666;
+  color: var(--color-text-placeholder);
 }
 
 .script-tags-select :deep(.el-tag) {
-  background-color: #333;
-  border-color: #444;
-  color: #e0e0e0;
+  background-color: var(--color-bg-muted);
+  border-color: var(--color-border-default);
+  color: var(--color-text-primary);
 }
 
 .script-tags-select :deep(.el-tag .el-tag__close) {
-  color: #a0a0a0;
+  color: var(--color-text-secondary);
 }
 
 .script-tags-select :deep(.el-tag .el-tag__close:hover) {
-  color: #fff;
+  color: var(--color-text-primary);
 }
 
 /* 脚本弹窗定位样式 - 参考新建连接界面的Modal定位 */

@@ -45,7 +45,7 @@
            :class="{ active: currentRoute === '/' }" 
            data-tooltip="控制台">
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="20" height="20">
-          <path fill="#a0a0a0" d="M19 3H5C3.9 3 3 3.9 3 5V19C3 20.1 3.9 21 5 21H19C20.1 21 21 20.1 21 19V5C21 3.9 20.1 3 19 3M9 17H7V10H9V17M13 17H11V7H13V17M17 17H15V13H17V17Z" />
+          <path fill="currentColor" d="M19 3H5C3.9 3 3 3.9 3 5V19C3 20.1 3.9 21 5 21H19C20.1 21 21 20.1 21 19V5C21 3.9 20.1 3 19 3M9 17H7V10H9V17M13 17H11V7H13V17M17 17H15V13H17V17Z" />
         </svg>
       </div>
       
@@ -56,7 +56,7 @@
            :class="{ active: currentRoute === '/scripts' }" 
            data-tooltip="脚本库">
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="20" height="20">
-          <path fill="#a0a0a0" d="M13,9H18.5L13,3.5V9M6,2H14L20,8V20A2,2 0 0,1 18,22H6C4.89,22 4,21.1 4,20V4C4,2.89 4.89,2 6,2M6.12,15.5L9.86,19.24L11.28,17.83L8.95,15.5L11.28,13.17L9.86,11.76L6.12,15.5M17.28,15.5L13.54,11.76L12.12,13.17L14.45,15.5L12.12,17.83L13.54,19.24L17.28,15.5Z" />
+          <path fill="currentColor" d="M13,9H18.5L13,3.5V9M6,2H14L20,8V20A2,2 0 0,1 18,22H6C4.89,22 4,21.1 4,20V4C4,2.89 4.89,2 6,2M6.12,15.5L9.86,19.24L11.28,17.83L8.95,15.5L11.28,13.17L9.86,11.76L6.12,15.5M17.28,15.5L13.54,11.76L12.12,13.17L14.45,15.5L12.12,17.83L13.54,19.24L17.28,15.5Z" />
         </svg>
       </div>
       
@@ -66,7 +66,7 @@
            :class="{ active: currentRoute === '/settings' }" 
            data-tooltip="设置">
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="20" height="20">
-          <path fill="#a0a0a0" d="M12,15.5A3.5,3.5 0 0,1 8.5,12A3.5,3.5 0 0,1 12,8.5A3.5,3.5 0 0,1 15.5,12A3.5,3.5 0 0,1 12,15.5M19.43,12.97C19.47,12.65 19.5,12.33 19.5,12C19.5,11.67 19.47,11.34 19.43,11L21.54,9.37C21.73,9.22 21.78,8.95 21.66,8.73L19.66,5.27C19.54,5.05 19.27,4.96 19.05,5.05L16.56,6.05C16.04,5.66 15.5,5.32 14.87,5.07L14.5,2.42C14.46,2.18 14.25,2 14,2H10C9.75,2 9.54,2.18 9.5,2.42L9.13,5.07C8.5,5.32 7.96,5.66 7.44,6.05L4.95,5.05C4.73,4.96 4.46,5.05 4.34,5.27L2.34,8.73C2.21,8.95 2.27,9.22 2.46,9.37L4.57,11C4.53,11.34 4.5,11.67 4.5,12C4.5,12.33 4.53,12.65 4.57,12.97L2.46,14.63C2.27,14.78 2.21,15.05 2.34,15.27L4.34,18.73C4.46,18.95 4.73,19.03 4.95,18.95L7.44,17.94C7.96,18.34 8.5,18.68 9.13,18.93L9.5,21.58C9.54,21.82 9.75,22 10,22H14C14.25,22 14.46,21.82 14.5,21.58L14.87,18.93C15.5,18.67 16.04,18.34 16.56,17.94L19.05,18.95C19.27,19.03 19.54,18.95 19.66,18.73L21.66,15.27C21.78,15.05 21.73,14.78 21.54,14.63L19.43,12.97Z" />
+          <path fill="currentColor" d="M12,15.5A3.5,3.5 0 0,1 8.5,12A3.5,3.5 0 0,1 12,8.5A3.5,3.5 0 0,1 15.5,12A3.5,3.5 0 0,1 12,15.5M19.43,12.97C19.47,12.65 19.5,12.33 19.5,12C19.5,11.67 19.47,11.34 19.43,11L21.54,9.37C21.73,9.22 21.78,8.95 21.66,8.73L19.66,5.27C19.54,5.05 19.27,4.96 19.05,5.05L16.56,6.05C16.04,5.66 15.5,5.32 14.87,5.07L14.5,2.42C14.46,2.18 14.25,2 14,2H10C9.75,2 9.54,2.18 9.5,2.42L9.13,5.07C8.5,5.32 7.96,5.66 7.44,6.05L4.95,5.05C4.73,4.96 4.46,5.05 4.34,5.27L2.34,8.73C2.21,8.95 2.27,9.22 2.46,9.37L4.57,11C4.53,11.34 4.5,11.67 4.5,12C4.5,12.33 4.53,12.65 4.57,12.97L2.46,14.63C2.27,14.78 2.21,15.05 2.34,15.27L4.34,18.73C4.46,18.95 4.73,19.03 4.95,18.95L7.44,17.94C7.96,18.34 8.5,18.68 9.13,18.93L9.5,21.58C9.54,21.82 9.75,22 10,22H14C14.25,22 14.46,21.82 14.5,21.58L14.87,18.93C15.5,18.67 16.04,18.34 16.56,17.94L19.05,18.95C19.27,19.03 19.54,18.95 19.66,18.73L21.66,15.27C21.78,15.05 21.73,14.78 21.54,14.63L19.43,12.97Z" />
         </svg>
       </div>
     </nav>
@@ -119,10 +119,10 @@ export default defineComponent({
 .sidebar {
   width: 40px;
   height: 100vh;
-  background-color: #1e1e1e;
+  background-color: var(--sidebar-bg);
   transition: width 0.3s;
   overflow: visible;
-  border-right: 1px solid #333;
+  border-right: 1px solid var(--sidebar-border);
   box-sizing: border-box;
   z-index: 10000;
 }
@@ -136,10 +136,10 @@ export default defineComponent({
   width: 40px;
   height: 54px;
   margin: 0;
-  background-color: #1e1e1e;
+  background-color: var(--sidebar-logo-bg);
   box-sizing: border-box;
   z-index: 1;
-  border-right: 1px solid #333;
+  border-right: 1px solid var(--sidebar-border);
 }
 
 .logo svg {
@@ -149,7 +149,7 @@ export default defineComponent({
 .rainbow-logo {
   position: relative;
   z-index: 10;
-  background-color: #1e1e1e;
+  background-color: var(--sidebar-logo-bg);
 }
 
 .rainbow-logo svg {
@@ -187,7 +187,7 @@ export default defineComponent({
   justify-content: center;
   padding: 0;
   cursor: pointer;
-  color: #a0a0a0;
+  color: var(--sidebar-nav-color);
   border-radius: 4px;
   width: 40px;
   height: 40px;
@@ -209,35 +209,35 @@ export default defineComponent({
 }
 
 .nav-item:hover {
-  background-color: rgba(255, 255, 255, 0.1);
-  color: #ffffff;
+  background-color: var(--sidebar-nav-hover-bg);
+  color: var(--sidebar-nav-hover-color);
 }
 
 .nav-item:hover svg path {
-  fill: #ffffff;
+  fill: var(--sidebar-nav-hover-color);
 }
 
 .nav-item.active {
-  color: #a0a0a0;
+  color: var(--sidebar-nav-active-color);
   background-color: transparent;
   border-left: none;
 }
 
 .nav-item.active svg path {
-  fill: #d0d0d0;
+  fill: var(--sidebar-nav-active-color);
 }
 
 .nav-item.active:hover {
-  background-color: rgba(255, 255, 255, 0.1);
+  background-color: var(--sidebar-nav-hover-bg);
 }
 
 .nav-item.active:hover svg path {
-  fill: #ffffff;
+  fill: var(--sidebar-nav-hover-color);
 }
 
 .nav-item .icon {
   font-size: 16px;
-  color: #a0a0a0;
+  color: var(--sidebar-nav-color);
 }
 
 .nav-item:hover::after {
@@ -246,8 +246,8 @@ export default defineComponent({
   left: 100%;
   top: 50%;
   transform: translateY(-50%);
-  background-color: #333;
-  color: #e0e0e0;
+  background-color: var(--sidebar-tooltip-bg);
+  color: var(--sidebar-tooltip-color);
   padding: 8px 12px;
   border-radius: 4px;
   font-size: 13px;
@@ -269,7 +269,7 @@ export default defineComponent({
   height: 0;
   border-top: 5px solid transparent;
   border-bottom: 5px solid transparent;
-  border-right: 5px solid #333;
+  border-right: 5px solid var(--sidebar-tooltip-bg);
   z-index: 2100;
   pointer-events: none;
 }

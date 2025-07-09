@@ -8,11 +8,11 @@
     @click="handleItemClick"
   >
     <div class="sftp-file-name">
-      <svg v-if="file.isDirectory" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24">
-        <path fill="#e8b339" d="M10,4H4C2.89,4 2,4.89 2,6V18A2,2 0 0,0 4,20H20A2,2 0 0,0 22,18V8C22,6.89 21.1,6 20,6H12L10,4Z" />
+      <svg v-if="file.isDirectory" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" class="folder-icon">
+        <path fill="currentColor" d="M10,4H4C2.89,4 2,4.89 2,6V18A2,2 0 0,0 4,20H20A2,2 0 0,0 22,18V8C22,6.89 21.1,6 20,6H12L10,4Z" />
       </svg>
-      <svg v-else xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24">
-        <path fill="#80cbc4" d="M13,9V3.5L18.5,9M6,2C4.89,2 4,2.89 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2H6Z" />
+      <svg v-else xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" class="file-icon">
+        <path fill="currentColor" d="M13,9V3.5L18.5,9M6,2C4.89,2 4,2.89 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2H6Z" />
       </svg>
 
       <!-- 编辑模式：显示输入框和操作按钮 -->
@@ -611,6 +611,15 @@ export default defineComponent({
     width: 10px;
     height: 10px;
   }
+}
+
+/* 图标颜色 */
+.folder-icon {
+  color: var(--color-warning);
+}
+
+.file-icon {
+  color: var(--color-info);
 }
 
 /* 高分辨率屏幕优化 */

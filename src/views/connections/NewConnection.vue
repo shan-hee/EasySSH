@@ -1139,10 +1139,11 @@ export default {
   padding: 20px;
   height: 100%;
   overflow-y: auto;
-  background-color: #121212;
+  background-color: var(--color-bg-page);
   max-width: 850px;
   margin: 0 auto;
   font-weight: bold;
+  color: var(--color-text-primary);
 }
 
 .connection-header {
@@ -1154,7 +1155,7 @@ export default {
 
 .connection-header h1 {
   font-size: 20px;
-  color: #ffffff;
+  color: var(--color-text-primary);
   font-weight: bold;
 }
 
@@ -1182,6 +1183,7 @@ h2 {
   font-size: 16px;
   margin-bottom: 15px;
   font-weight: bold;
+  color: var(--color-text-primary);
 }
 
 .connection-grid {
@@ -1193,7 +1195,8 @@ h2 {
 .connection-card {
   padding: 15px;
   border-radius: 4px;
-  background-color: #2c2c2c;
+  background-color: var(--color-bg-container);
+  border: 1px solid var(--color-border-lighter);
   cursor: pointer;
   transition: background-color 0.2s;
   box-shadow: none !important;
@@ -1202,10 +1205,10 @@ h2 {
 
 /* 保留悬浮时的背景色变化，移除浮动效果 */
 .connection-card:hover {
-  background-color: #3a3a3a;
+  background-color: var(--color-bg-muted);
   transform: none !important;
   box-shadow: none !important;
-  border: none !important;
+  border: 1px solid var(--color-border-default) !important;
   outline: none !important;
 }
 
@@ -1236,10 +1239,11 @@ h2 {
 .connection-name {
   margin-bottom: 4px;
   font-weight: bold;
+  color: var(--color-text-primary);
 }
 
 .connection-address {
-  color: #ffffff;
+  color: var(--color-text-regular);
   font-weight: normal;
 }
 
@@ -1253,14 +1257,16 @@ h2 {
   display: flex;
   align-items: center;
   padding: 12px 15px;
-  background-color: #2c2c2c;
+  background-color: var(--color-bg-container);
+  border: 1px solid var(--color-border-lighter);
   border-radius: 4px;
   position: relative;
   cursor: pointer;
 }
 
 .row-item:hover {
-  background-color: #3a3a3a;
+  background-color: var(--color-bg-muted);
+  border-color: var(--color-border-default);
 }
 
 .row-item-left {
@@ -1284,20 +1290,21 @@ h2 {
 
 .name-cell {
   font-weight: bold;
+  color: var(--color-text-primary);
 }
 
 .address-cell {
   position: absolute;
   left: 50%;
   transform: translateX(-50%);
-  color: #ffffff;
+  color: var(--color-text-regular);
   text-align: left;
   width: 15%;
   font-weight: normal;
 }
 
 .connection-address {
-  color: #ffffff;
+  color: var(--color-text-regular);
   font-weight: normal;
 }
 
@@ -1324,7 +1331,7 @@ h2 {
 }
 
 .action-btn:hover svg path {
-  fill: #ffffff;
+  fill: var(--color-primary);
 }
 
 .action-btn .pinned {
@@ -1348,7 +1355,8 @@ h2 {
 
 .modal-container {
   width: 500px;
-  background-color: #121212;
+  background-color: var(--color-bg-page);
+  border: 1px solid var(--color-border-default);
   border-radius: 4px;
   overflow: hidden;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
@@ -1359,11 +1367,12 @@ h2 {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  background-color: #121212;
+  background-color: var(--color-bg-muted);
+  border-bottom: 1px solid var(--color-border-lighter);
 }
 
 .modal-header span {
-  color: #fff;
+  color: var(--color-text-primary);
   font-size: 16px;
   font-weight: bold;
 }
@@ -1371,6 +1380,7 @@ h2 {
 .close-btn {
   cursor: pointer;
   font-size: 20px;
+  color: var(--color-text-regular);
 }
 
 .modal-tab {
@@ -1398,7 +1408,7 @@ h2 {
 
 .modal-body {
   padding: 15px;
-  background-color: #121212;
+  background-color: var(--color-bg-page);
 }
 
 .form-row {
@@ -1422,6 +1432,7 @@ h2 {
   margin-bottom: 8px;
   font-size: 12px;
   font-weight: normal;
+  color: var(--color-text-primary);
 }
 
 .input-wrapper {
@@ -1431,10 +1442,10 @@ h2 {
 .form-item input {
   width: 100%;
   height: 36px;
-  background-color: transparent;
-  border: 1px solid #666;
+  background-color: var(--color-bg-container);
+  border: 1px solid var(--color-border-default);
   border-radius: 6px;
-  color: #fff;
+  color: var(--color-text-primary);
   padding: 0 10px;
   box-sizing: border-box;
   outline: none;
@@ -1442,21 +1453,21 @@ h2 {
 }
 
 .form-item input:focus {
-  border-color: #0083d3;
-  box-shadow: 0 0 0 1px rgba(0, 131, 211, 0.2);
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 1px var(--color-primary-light);
 }
 
 .form-item input::placeholder {
-  color: #666;
+  color: var(--color-text-placeholder);
 }
 
 .auth-switcher {
   display: flex;
   border-radius: 6px;
   overflow: hidden;
-  background-color: #242424;
+  background-color: var(--color-bg-muted);
+  border: 1px solid var(--color-border-default);
   width: 48%;  /* 调整为一半宽度 */
-  border: none;
 }
 
 .auth-switcher button {
@@ -1464,7 +1475,7 @@ h2 {
   background-color: transparent;
   border: none;
   padding: 8px 10px;
-  color: #fff;
+  color: var(--color-text-regular);
   cursor: pointer;
   outline: none;
   font-weight: normal;
@@ -1472,8 +1483,8 @@ h2 {
 }
 
 .auth-switcher button.active {
-  background-color: #383838;
-  color: #fff;
+  background-color: var(--color-primary);
+  color: var(--color-text-white);
 }
 
 .modal-footer {
@@ -1481,26 +1492,26 @@ h2 {
   justify-content: flex-end;
   gap: 10px;
   padding: 15px;
-  border-top: 1px solid #333;
-  background-color: #121212;
+  border-top: 1px solid var(--color-border-lighter);
+  background-color: var(--color-bg-muted);
 }
 
 .btn-cancel {
   padding: 8px 20px;
-  background-color: #3f3f3f;
-  border: none;
+  background-color: var(--color-bg-muted);
+  border: 1px solid var(--color-border-default);
   border-radius: 4px;
-  color: #fff;
+  color: var(--color-text-primary);
   cursor: pointer;
   font-weight: bold;
 }
 
 .btn-confirm {
   padding: 8px 20px;
-  background-color: #0083d3;
+  background-color: var(--color-primary);
   border: none;
   border-radius: 4px;
-  color: #fff;
+  color: var(--color-bg-container);
   cursor: pointer;
   font-weight: bold;
 }
@@ -1566,7 +1577,7 @@ h2 {
 }
 
 :deep(.connection-modal .tab-item) {
-  color: #fff;
+  color: var(--color-text-primary);
   padding-left: 0;
   padding-right: 0;
   display: inline-block;
@@ -1582,7 +1593,7 @@ h2 {
   left: 0;
   width: 100%;
   height: 2px;
-  background-color: #fff;
+  background-color: var(--color-primary);
 }
 
 :deep(.connection-modal .modal-footer) {
@@ -1591,28 +1602,32 @@ h2 {
 
 :deep(.connection-modal .btn-confirm) {
   border-radius: 6px;
-  background-color: #404040;
+  background-color: var(--color-primary);
   width: 80px;
   height: 36px;
   font-weight: bold;
   font-size: 14px;
+  color: var(--color-text-white);
 }
 
 :deep(.connection-modal .btn-cancel) {
   border-radius: 6px;
-  background-color: #3f3f3f;
+  background-color: var(--color-bg-muted);
+  border: 1px solid var(--color-border-default);
   width: 80px;
   height: 36px;
   font-weight: bold;
   font-size: 14px;
+  color: var(--color-text-primary);
 }
 
 :deep(.connection-modal .btn-primary) {
   border-radius: 6px;
-  background-color: #0083d3;
+  background-color: var(--color-primary);
   height: 36px;
   font-weight: bold;
   font-size: 14px;
+  color: var(--color-text-white);
 }
 
 .key-file-wrapper {
@@ -1636,17 +1651,17 @@ h2 {
 }
 
 .key-file-wrapper input:focus + .select-file-btn {
-  border-color: #0083d3;
-  background-color: #1e1e1e;
+  border-color: var(--color-primary);
+  background-color: var(--color-bg-muted);
 }
 
 .select-file-btn {
   height: 36px;
   min-width: 75px;
-  background-color: #1e1e1e;
-  border: 1px solid #666;
+  background-color: var(--color-bg-muted);
+  border: 1px solid var(--color-border-default);
   border-left: none;
-  color: #fff;
+  color: var(--color-text-primary);
   padding: 0;
   border-radius: 0 6px 6px 0;
   cursor: pointer;
@@ -1660,7 +1675,7 @@ h2 {
 }
 
 .select-file-btn:hover {
-  background-color: #333;
+  background-color: var(--color-hover-bg);
 }
 
 .remember-password {
@@ -1672,7 +1687,7 @@ h2 {
 
 .remember-password span {
   font-size: 12px;
-  color: #fff;
+  color: var(--color-text-primary);
   font-weight: normal;
 }
 
@@ -1680,7 +1695,7 @@ h2 {
   position: relative;
   width: 16px;
   height: 16px;
-  border: 1px solid #666;
+  border: 1px solid var(--color-border-default);
   border-radius: 2px;
   background-color: transparent;
   transition: all 0.3s;
@@ -1725,18 +1740,19 @@ h2 {
 .checkbox-wrapper.checked .checkbox-check {
   width: 9px;
   height: 5px;
-  border-color: #fff;
+  border-color: var(--color-primary);
   transform: translate(-50%, -70%) rotate(-45deg) scale(1);
   opacity: 1;
 }
 
 /* 添加置顶项的样式 */
 .row-item[data-pinned="true"] {
-  background-color: #555;
+  background-color: var(--color-primary-lightest);
+  border-color: var(--color-primary-light);
 }
 
 .row-item[data-pinned="true"]:hover {
-  background-color: #404040;
+  background-color: var(--color-primary-light);
 }
 
 .action-btn .pinned {
@@ -1755,7 +1771,7 @@ h2 {
 .edit-btn {
   background: none;
   border: none;
-  color: #a0a0a0;
+  color: var(--color-text-secondary);
   cursor: pointer;
   padding: 6px;
   border-radius: 4px;
@@ -1766,13 +1782,13 @@ h2 {
 }
 
 .edit-btn:hover {
-  color: #ffffff;
-  background-color: #3a3a3a;
+  color: var(--color-text-primary);
+  background-color: var(--color-hover-bg);
 }
 
 .edit-btn.active {
-  color: #409eff;
-  background-color: #2a2a2a;
+  color: var(--color-primary);
+  background-color: var(--color-primary-lightest);
 }
 
 /* 删除按钮样式 */
@@ -1790,21 +1806,21 @@ h2 {
   cursor: pointer;
   transition: all 0.2s ease;
   z-index: 10;
-  border: 1.5px solid #a0a0a0;
+  border: 1.5px solid var(--color-text-secondary);
 }
 
 .delete-btn:hover {
-  border-color: #ff4757;
+  border-color: var(--color-danger);
 }
 
 .delete-btn svg {
-  color: #a0a0a0;
+  color: var(--color-text-secondary);
   width: 8px;
   height: 8px;
 }
 
 .delete-btn:hover svg {
-  color: #ff4757;
+  color: var(--color-danger);
 }
 
 /* 优化的拖拽样式 - 基于参考代码简化 */
@@ -1834,7 +1850,7 @@ h2 {
 }
 
 .connection-card:hover {
-  background-color: #3a3a3a;
+  background-color: var(--color-bg-muted);
 }
 
 /* 编辑模式下的拖拽样式 */
@@ -1844,18 +1860,18 @@ h2 {
 }
 
 .connection-grid.edit-mode .connection-card:hover:not(.being-dragged) {
-  background-color: #3a3a3a;
+  background-color: var(--color-bg-muted);
   transform: translateY(-2px);
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+  box-shadow: var(--shadow-md);
 }
 
 /* 正在被拖拽的卡片样式 */
 .connection-card.being-dragged {
   opacity: 0.8;
   transform: scale(1.02) !important;
-  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.4) !important;
+  box-shadow: var(--shadow-lg) !important;
   z-index: 1000;
-  background-color: #4a4a4a !important;
+  background-color: var(--color-primary-lightest) !important;
   transition: none !important;
 }
 
@@ -1957,7 +1973,7 @@ h2 {
   align-items: center;
   justify-content: center;
   padding: 40px 20px;
-  color: #a0a0a0;
+  color: var(--color-text-secondary);
   font-size: 14px;
   gap: 12px;
 }
@@ -1965,8 +1981,8 @@ h2 {
 .loading-spinner {
   width: 20px;
   height: 20px;
-  border: 2px solid #333;
-  border-top: 2px solid #409eff;
+  border: 2px solid var(--color-border-lighter);
+  border-top: 2px solid var(--color-primary);
   border-radius: 50%;
   animation: spin 1s linear infinite;
 }
@@ -1982,7 +1998,7 @@ h2 {
   align-items: center;
   justify-content: center;
   padding: 40px 20px;
-  color: #ff6b6b;
+  color: var(--color-danger);
   font-size: 14px;
   gap: 12px;
 }
@@ -1999,26 +2015,26 @@ h2 {
 }
 
 .error-message {
-  color: #ff6b6b;
+  color: var(--color-danger);
 }
 
 .retry-btn {
   padding: 6px 12px;
-  background-color: #409eff;
+  background-color: var(--color-primary);
   border: none;
   border-radius: 4px;
-  color: white;
+  color: var(--color-text-white);
   cursor: pointer;
   font-size: 12px;
   transition: background-color 0.2s;
 }
 
 .retry-btn:hover {
-  background-color: #66b1ff;
+  background-color: var(--color-primary-hover);
 }
 
 .retry-info {
-  color: #a0a0a0;
+  color: var(--color-text-secondary);
   font-size: 12px;
   margin-left: 8px;
 }
