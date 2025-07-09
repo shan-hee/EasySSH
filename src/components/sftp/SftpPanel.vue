@@ -72,14 +72,9 @@
                 </div>
                 <p>正在加载文件列表...</p>
               </div>
-              
-              <!-- 空文件夹提示 -->
-              <div v-else-if="fileList.length === 0" class="sftp-empty-folder">
-                <p>此文件夹为空</p>
-              </div>
-              
-              <!-- 文件列表 -->
-              <div v-else class="sftp-file-items">
+
+              <!-- 非加载状态的内容容器 -->
+              <div v-else class="sftp-content-container">
                 <!-- 内联编辑器（新建文件夹或文件时显示） -->
                 <SftpInlineEditor
                   v-if="isCreating"
@@ -89,17 +84,25 @@
                   @cancel="cancelCreate"
                 />
 
-                <SftpFileItem
-                  v-for="(file, index) in fileList"
-                  :key="index"
-                  :file="file"
-                  :sessionId="sessionId"
-                  :currentPath="currentPath"
-                  @item-click="handleItemClick"
-                  @download="downloadFile"
-                  @delete="deleteFile"
-                  @refresh="refreshCurrentDirectory"
-                />
+                <!-- 空文件夹提示 -->
+                <div v-if="fileList.length === 0 && !isCreating" class="sftp-empty-folder">
+                  <p>此文件夹为空</p>
+                </div>
+
+                <!-- 文件列表 -->
+                <div v-if="fileList.length > 0" class="sftp-file-items">
+                  <SftpFileItem
+                    v-for="(file, index) in fileList"
+                    :key="index"
+                    :file="file"
+                    :sessionId="sessionId"
+                    :currentPath="currentPath"
+                    @item-click="handleItemClick"
+                    @download="downloadFile"
+                    @delete="deleteFile"
+                    @refresh="refreshCurrentDirectory"
+                  />
+                </div>
               </div>
             </div>
           </div>
@@ -372,7 +375,7 @@ export default defineComponent({
     // 加载当前目录文件列表
     const loadDirectoryContents = async (path) => {
       resetError();
-      
+
       // 显示加载状态
       isLoadingSftp.value = true;
       // 不立即清空文件列表，保持UI稳定状态
@@ -560,11 +563,33 @@ export default defineComponent({
       isCreating.value = false;
       creatingType.value = 'folder';
     };
+
+    // 处理全局点击事件，清除创建状态
+    const handleGlobalClick = (event) => {
+      if (!isCreating.value) return;
+
+      // 检查点击是否在内联编辑器内部
+      const inlineEditorElement = inlineEditor.value?.$el;
+      if (inlineEditorElement && inlineEditorElement.contains(event.target)) {
+        return; // 点击在编辑器内部，不清除状态
+      }
+
+      // 检查点击是否在工具栏的创建按钮上
+      const target = event.target;
+      if (target.closest('.sftp-toolbar') &&
+          (target.closest('[data-action="new-folder"]') || target.closest('[data-action="new-file"]'))) {
+        return; // 点击在创建按钮上，不清除状态
+      }
+
+      // 其他地方的点击都清除创建状态
+      isCreating.value = false;
+      log.debug('全局点击清除创建状态');
+    };
     
     // 上传文件
     const uploadFile = () => {
       resetError();
-      
+
       // 创建一个隐藏的文件输入元素
       const fileInput = document.createElement('input');
       fileInput.type = 'file';
@@ -590,7 +615,7 @@ export default defineComponent({
     // 上传文件夹
     const uploadFolder = () => {
       resetError();
-      
+
       // 创建一个隐藏的文件输入元素
       const fileInput = document.createElement('input');
       fileInput.type = 'file';
@@ -1600,7 +1625,13 @@ export default defineComponent({
     const handleDrop = async (event) => {
       isDragOver.value = false;
       event.preventDefault();
-      
+
+      // 清除创建状态（拖拽上传时取消任何正在进行的创建操作）
+      if (isCreating.value) {
+        isCreating.value = false;
+        log.debug('拖拽上传时清除创建状态');
+      }
+
       // 重置上传状态，确保可以正确开始新的上传
       isUploading.value = true;
       uploadProgress.value = 0;
@@ -2280,7 +2311,10 @@ export default defineComponent({
     // 组件挂载时初始化SFTP会话
     onMounted(() => {
       window.addEventListener('sftp:session-changed', handleSessionChanged);
-      
+
+      // 添加全局点击监听，用于清除创建状态
+      document.addEventListener('click', handleGlobalClick, true);
+
       // 初始化SFTP连接
       initSftp();
     });
@@ -2288,7 +2322,10 @@ export default defineComponent({
     // 组件卸载时清理资源
     onUnmounted(() => {
       window.removeEventListener('sftp:session-changed', handleSessionChanged);
-      
+
+      // 移除全局点击监听
+      document.removeEventListener('click', handleGlobalClick, true);
+
       // 清理传输速度计算定时器
       if (transferInterval.value) {
         clearInterval(transferInterval.value);
