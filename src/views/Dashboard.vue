@@ -329,40 +329,40 @@ export default {
 
 <style>
 .dashboard-container {
-  padding: 20px;
+  padding: var(--spacing-lg);
   max-width: 1200px;
   margin: 0 auto;
-  color: #e0e0e0;
+  color: var(--color-text-primary);
 }
 
 .dashboard-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 20px;
+  margin-bottom: var(--spacing-lg);
 }
 
 .dashboard-title {
-  color: #a0a0a0;
+  color: #A0A0A0;
   margin: 0;
 }
 
 .dashboard-actions {
   display: flex;
   align-items: center;
-  gap: 15px;
+  gap: var(--spacing-md);
 }
 
 .last-update {
-  font-size: 12px;
-  color: #999;
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
 }
 
 .dashboard-card {
-  background-color: #252526;
-  border-radius: 8px;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.3);
-  margin-bottom: 20px;
+  background-color: var(--color-bg-container);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
+  margin-bottom: var(--spacing-lg);
   overflow: hidden;
   border: 1px solid #333;
 }
@@ -371,30 +371,30 @@ export default {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 15px;
+  padding: var(--spacing-md);
   border-bottom: 1px solid #333;
   font-weight: bold;
-  background-color: #2d2d2d;
+  background-color: var(--color-bg-muted);
 }
 
 .card-content {
-  padding: 15px;
+  padding: var(--spacing-md);
 }
 
 .status-item {
   display: flex;
   justify-content: space-between;
-  margin-bottom: 15px;
+  margin-bottom: var(--spacing-md);
 }
 
 .status-label {
-  color: #a0a0a0;
-  font-size: 14px;
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
 }
 
 .status-value {
   font-weight: 500;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
 }
 
 .quick-action-btn {

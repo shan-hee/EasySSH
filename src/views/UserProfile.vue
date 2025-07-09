@@ -350,8 +350,7 @@ export default defineComponent({
 }
 
 .profile-header {
-  padding: 16px;
-  background-color: #121212; /* 更深的头部背景 */
+  padding: var(--spacing-md);
   border-bottom: 1px solid #333;
 }
 
@@ -406,28 +405,28 @@ label {
   width: 100%;
   height: 36px;
   background-color: transparent;
-  border: 1px solid #666;
+  border: 1px solid var(--color-border-default);
   border-radius: 6px;
-  color: #fff;
-  padding: 0 10px;
+  color: var(--color-text-primary);
+  padding: 0 var(--spacing-sm);
   box-sizing: border-box;
   outline: none;
   font-weight: normal;
 }
 
 .form-input:focus {
-  border-color: #0083d3;
-  box-shadow: 0 0 0 1px rgba(0, 131, 211, 0.2);
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 1px var(--color-focus-ring);
 }
 
 .form-input::placeholder {
-  color: #666;
+  color: var(--color-text-placeholder);
 }
 
 /* 修改两步验证部分的样式 */
 .mfa-section {
-  border-top: 1px solid #333;
-  padding-top: 20px;
+  border-top: 1px solid var(--color-border-default);
+  padding-top: var(--spacing-lg);
 }
 
 .mfa-header {
@@ -443,13 +442,13 @@ label {
 
 .mfa-switch button {
   background-color: transparent;
-  border: 1px solid #666;
-  border-radius: 6px;
-  color: #fff;
-  padding: 5px 15px;
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-md);
+  color: var(--color-text-primary);
+  padding: var(--spacing-xs) var(--spacing-md);
   cursor: pointer;
-  font-size: 14px;
-  transition: all 0.3s;
+  font-size: var(--font-size-sm);
+  transition: all var(--transition-base);
 }
 
 .mfa-switch button:hover {
@@ -475,7 +474,7 @@ label {
   background-color: #3f3f3f;
   color: #fff;
   border: none;
-  border-radius: 4px;
+  border-radius: var(--radius-md);
   cursor: pointer;
   font-weight: bold;
 }
@@ -485,7 +484,7 @@ label {
   background-color: #0083d3;
   color: #ffffff;
   border: none;
-  border-radius: 4px;
+  border-radius: var(--radius-md);
   cursor: pointer;
   font-weight: bold;
 }
@@ -510,8 +509,8 @@ label {
 }
 
 .tag-success {
-  background-color: rgba(35, 203, 167, 0.2);
-  color: #23cba7;
-  border: 1px solid rgba(35, 203, 167, 0.3);
+  background-color: var(--color-success-bg);
+  color: var(--color-success);
+  border: 1px solid var(--color-success-light);
 }
 </style> 

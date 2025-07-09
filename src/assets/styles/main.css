@@ -3,8 +3,13 @@
  * 用于导入所有样式模块，优化加载策略
  */
 
+/* 主题样式 - 优先加载，确保CSS变量可用 */
+@import './themes/theme.css';
+
 /* 基础样式 */
 @import './base/base.css';
+@import './base/utilities.css';
+@import './base/mixins.css';
 @import './base/critical.css';
 
 /* 布局样式 */
@@ -19,9 +24,6 @@
 @import './components/forms.css';
 @import './components/critical-components.css';
 @import './components/accessibility.css';
-
-/* 主题样式 */
-@import './themes/theme.css';
 
 /* 打印样式 - 仅在打印时使用 */
 @media print {

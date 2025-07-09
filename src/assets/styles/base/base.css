@@ -6,70 +6,8 @@
 /* 导入字体定义 */
 @import './fonts.css';
 
-:root {
-  /* 颜色变量 */
-  --primary-color: #2563eb;
-  --primary-light: #3b82f6;
-  --primary-dark: #1d4ed8;
-  --secondary-color: #64748b;
-  --success-color: #10b981;
-  --danger-color: #ef4444;
-  --warning-color: #f59e0b;
-  --info-color: #3b82f6;
-  
-  /* 中性色 */
-  --dark-color: #1e293b;
-  --light-color: #f8fafc;
-  --gray-100: #f1f5f9;
-  --gray-200: #e2e8f0;
-  --gray-300: #cbd5e1;
-  --gray-400: #94a3b8;
-  --gray-500: #64748b;
-  --gray-600: #475569;
-  --gray-700: #334155;
-  --gray-800: #1e293b;
-  --gray-900: #0f172a;
-  
-  /* 排版 */
-  --font-family: 'Microsoft YaHei', sans-serif;
-  --font-size-xs: 0.75rem;  /* 12px */
-  --font-size-sm: 0.875rem; /* 14px */
-  --font-size-md: 1rem;     /* 16px */
-  --font-size-lg: 1.125rem; /* 18px */
-  --font-size-xl: 1.25rem;  /* 20px */
-  
-  /* 间距 */
-  --spacing-xs: 0.25rem;  /* 4px */
-  --spacing-sm: 0.5rem;   /* 8px */
-  --spacing-md: 1rem;     /* 16px */
-  --spacing-lg: 1.5rem;   /* 24px */
-  --spacing-xl: 2rem;     /* 32px */
-  
-  /* 边框 */
-  --border-radius-sm: 0.125rem; /* 2px */
-  --border-radius-md: 0.25rem;  /* 4px */
-  --border-radius-lg: 0.5rem;   /* 8px */
-  --border-radius-xl: 1rem;     /* 16px */
-  
-  /* 阴影 */
-  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
-  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
-  
-  /* 过渡 */
-  --transition-fast: 0.15s ease;
-  --transition-normal: 0.3s ease;
-  --transition-slow: 0.5s ease;
-  
-  /* Z-index */
-  --z-dropdown: 1000;
-  --z-sticky: 1020;
-  --z-fixed: 1030;
-  --z-modal-backdrop: 1040;
-  --z-modal: 1050;
-  --z-popover: 1060;
-  --z-tooltip: 1070;
-}
+/* 注意：主要的CSS变量现在在 themes/theme.css 中定义 */
+/* 这里只保留基础样式重置和通用样式 */
 
 /* 重置样式 */
 * {
@@ -80,11 +18,11 @@
 
 html, body {
   height: 100%;
-  font-family: var(--font-family);
-  font-size: var(--font-size-md);
+  font-family: var(--font-family-base);
+  font-size: var(--font-size-base);
   line-height: 1.5;
-  color: var(--dark-color);
-  background-color: var(--light-color);
+  color: var(--color-text-primary);
+  background-color: var(--color-bg-page);
 }
 
 body {
@@ -92,13 +30,13 @@ body {
 }
 
 a {
-  color: var(--primary-color);
+  color: var(--color-primary);
   text-decoration: none;
   transition: color var(--transition-fast);
 }
 
 a:hover {
-  color: var(--primary-dark);
+  color: var(--color-primary-hover);
 }
 
 img, svg {

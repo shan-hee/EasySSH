@@ -11,23 +11,23 @@
 }
 
 body {
-  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-  font-size: 14px;
+  font-family: var(--font-family-base);
+  font-size: var(--font-size-sm);
   line-height: 1.5;
-  color: #333;
-  background-color: #f5f7fa;
+  color: var(--color-text-primary);
+  background-color: var(--color-bg-page);
   overflow-x: hidden;
 }
 
-/* 关键布局变量 */
+/* 关键布局变量 - 使用统一主题变量 */
 :root {
-  --header-height: 45px;
-  --sidebar-width: 240px;
-  --sidebar-collapsed-width: 64px;
-  --content-transition: 0.3s ease;
-  --primary-color: #1890ff;
-  --text-color: #333;
-  --background-color: #f5f7fa;
+  --header-height: var(--layout-header-height);
+  --sidebar-width: var(--layout-sidebar-expanded-width);
+  --sidebar-collapsed-width: var(--layout-sidebar-width);
+  --content-transition: var(--transition-base);
+  --primary-color: var(--color-primary);
+  --text-color: var(--color-text-primary);
+  --background-color: var(--color-bg-page);
 }
 
 /* 页面主容器 */

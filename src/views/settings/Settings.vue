@@ -144,12 +144,12 @@
           <div class="theme-section-title">
             终端快捷键
             <div class="shortcut-actions">
-              <el-button 
-                type="primary" 
-                size="small" 
+              <el-button
+                type="primary"
+                size="small"
                 @click="resetAllShortcuts"
                 :disabled="resettingShortcuts"
-                style="background-color: #444; border-color: #444;"
+                style="background-color: #444; border-color: #444; color: var(--color-text-primary);"
               >
                 重置为默认值
               </el-button>
@@ -225,14 +225,14 @@
       <el-form :model="uiSettings">
         <div class="form-row-flex">
           <el-form-item label="界面主题" class="flex-form-item">
-            <el-select 
-              v-model="uiSettings.theme" 
+            <el-select
+              v-model="uiSettings.theme"
               placeholder="选择界面主题"
               @change="saveUISettings"
               class="full-width"
             >
               <el-option label="深色主题" value="dark" />
-              <el-option label="浅色主题 (待开发)" value="light" disabled />
+              <el-option label="浅色主题" value="light" />
               <el-option label="跟随系统" value="system" />
             </el-select>
           </el-form-item>
@@ -730,13 +730,8 @@ export default {
         settingsService.updateUISettings(uiSettings)
         ElMessage.success('界面设置已保存')
 
-        // 应用主题变更
-        if (uiSettings.theme === 'system') {
-          const isDarkMode = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches
-          document.documentElement.setAttribute('data-theme', isDarkMode ? 'dark' : 'light')
-        } else {
-          document.documentElement.setAttribute('data-theme', uiSettings.theme)
-        }
+        // 应用主题变更 - 使用设置服务的统一主题应用方法
+        settingsService.applyTheme(uiSettings.theme)
       } catch (error) {
         log.error('保存界面设置失败', error)
         ElMessage.error('保存界面设置失败')

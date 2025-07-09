@@ -5,61 +5,76 @@
 
 /* 按钮组件 - 首屏必需 */
 .btn {
+  /* 继承基础按钮样式 */
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 8px 16px;
-  font-size: 14px;
+  padding: var(--spacing-xs) var(--spacing-md);
+  font-size: var(--font-size-sm);
   font-weight: 500;
-  border-radius: 4px;
-  transition: all 0.2s ease;
-  cursor: pointer;
+  border-radius: var(--radius-md);
   border: none;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  gap: var(--spacing-xs);
   outline: none;
-  gap: 8px;
 }
 
 .btn--primary {
-  background-color: var(--primary-color);
-  color: white;
+  /* 使用主要按钮样式 Mixin */
+  background-color: var(--color-primary);
+  color: var(--color-bg-container);
+  border: 1px solid var(--color-primary);
 }
 
 .btn--primary:hover {
-  background-color: #40a9ff;
+  background-color: var(--color-primary-hover);
+  border-color: var(--color-primary-hover);
+}
+
+.btn--primary:active {
+  background-color: var(--color-primary-active);
+  border-color: var(--color-primary-active);
 }
 
 .btn--secondary {
-  background-color: #f0f0f0;
-  color: #666;
+  /* 使用次要按钮样式 Mixin */
+  background-color: transparent;
+  color: var(--color-text-primary);
+  border: 1px solid var(--color-border-default);
 }
 
 .btn--secondary:hover {
-  background-color: #e0e0e0;
+  background-color: var(--color-hover-bg);
+  border-color: var(--color-border-dark);
 }
 
 /* 特性卡片 - 首屏必需 */
 .feature-card {
+  /* 使用卡片基础样式 */
   display: flex;
-  padding: 15px;
-  background: white;
-  border-radius: 4px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-  margin-bottom: 15px;
-  transition: transform 0.2s;
+  background-color: var(--color-bg-container);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-base);
+  padding: var(--spacing-md);
+  margin-bottom: var(--spacing-md);
+  transition: transform var(--transition-fast), box-shadow var(--transition-fast);
 }
 
 .feature-card:hover {
   transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
 }
 
 .feature-card__icon {
+  /* 使用图标容器基础样式 */
   display: flex;
   align-items: center;
   justify-content: center;
   width: 50px;
   height: 50px;
-  border-radius: 50%;
-  margin-right: 15px;
+  border-radius: var(--radius-full);
+  margin-right: var(--spacing-md);
   flex-shrink: 0;
 }
 
@@ -77,33 +92,33 @@
 }
 
 .feature-card__description {
-  color: #666;
-  font-size: 14px;
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
   line-height: 1.5;
 }
 
 .feature-card--security .feature-card__icon {
-  background-color: #e6f7ff;
-  color: #1890ff;
+  background-color: var(--color-info-bg);
+  color: var(--color-info);
 }
 
 .feature-card--performance .feature-card__icon {
-  background-color: #fff7e6;
-  color: #fa8c16;
+  background-color: var(--color-warning-bg);
+  color: var(--color-warning);
 }
 
 .feature-card--tools .feature-card__icon {
-  background-color: #f6ffed;
-  color: #52c41a;
+  background-color: var(--color-success-bg);
+  color: var(--color-success);
 }
 
 /* 连接卡片 - 首屏必需 */
 .connection-card {
-  background-color: white;
-  border-radius: 4px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-  padding: 15px;
-  transition: transform 0.2s;
+  background-color: var(--color-bg-container);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-base);
+  padding: var(--spacing-md);
+  transition: transform var(--transition-fast);
   height: 100%;
   display: flex;
   flex-direction: column;
@@ -111,7 +126,7 @@
 
 .connection-card:hover {
   transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  box-shadow: var(--shadow-md);
 }
 
 .connection-card__header {
@@ -123,18 +138,18 @@
 .connection-card__icon {
   width: 36px;
   height: 36px;
-  border-radius: 4px;
-  background-color: #f0f5ff;
+  border-radius: var(--radius-md);
+  background-color: var(--color-primary-lightest);
   display: flex;
   align-items: center;
   justify-content: center;
-  margin-right: 10px;
-  color: #1890ff;
+  margin-right: var(--spacing-sm);
+  color: var(--color-primary);
 }
 
 .connection-card__name {
   font-weight: 500;
-  font-size: 16px;
+  font-size: var(--font-size-base);
   flex: 1;
   white-space: nowrap;
   overflow: hidden;
@@ -142,9 +157,9 @@
 }
 
 .connection-card__host {
-  color: #666;
-  margin-bottom: 10px;
-  font-family: monospace;
+  color: var(--color-text-secondary);
+  margin-bottom: var(--spacing-sm);
+  font-family: var(--font-family-mono);
 }
 
 .connection-card__footer {
@@ -153,16 +168,16 @@
 }
 
 .connection-card__connect-btn {
-  background-color: var(--primary-color);
-  color: white;
+  background-color: var(--color-primary);
+  color: var(--color-bg-container);
   border: none;
-  border-radius: 4px;
-  padding: 6px 12px;
+  border-radius: var(--radius-md);
+  padding: var(--spacing-xs) var(--spacing-sm);
   cursor: pointer;
-  transition: background-color 0.2s;
+  transition: background-color var(--transition-fast);
   width: 100%;
 }
 
 .connection-card__connect-btn:hover {
-  background-color: #40a9ff;
+  background-color: var(--color-primary-hover);
 }

@@ -5,14 +5,14 @@
 
 /* 主页眉 */
 .app-header {
-  height: 45px;
-  background-color: var(--bg-header);
-  color: var(--text-primary);
+  height: var(--layout-header-height);
+  background-color: var(--color-bg-container);
+  color: var(--color-text-primary);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 20px;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  padding: 0 var(--spacing-lg);
+  box-shadow: var(--shadow-base);
   position: relative;
   z-index: 100;
 }
@@ -32,14 +32,14 @@
 }
 
 .app-header__dropdown {
-  font-size: 0.8rem;
+  font-size: var(--font-size-xs);
   cursor: pointer;
-  transition: transform 0.3s ease;
-  color: var(--text-secondary);
+  transition: transform var(--transition-base) ease;
+  color: var(--color-text-secondary);
 }
 
 .app-header__dropdown:hover {
-  color: var(--text-primary);
+  color: var(--color-text-primary);
 }
 
 /* 页眉下拉菜单 */
@@ -116,12 +116,12 @@
 }
 
 .app-header__tab:hover {
-  background-color: var(--bg-hover);
+  background-color: var(--color-hover-bg);
 }
 
 .app-header__tab--active {
   border-bottom-color: var(--color-primary);
-  background-color: var(--bg-hover);
+  background-color: var(--color-hover-bg);
 }
 
 .app-header__tab-close {
@@ -171,7 +171,7 @@
 }
 
 .app-header__action:hover {
-  background-color: var(--bg-hover);
+  background-color: var(--color-hover-bg);
 }
 
 .app-header__badge {
@@ -181,7 +181,7 @@
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background-color: var(--color-danger);
+  background-color: var(--color-error);
   display: none;
 }
 
@@ -198,14 +198,14 @@
 }
 
 .title-area h3 {
-  font-size: 1.8rem;
-  margin-bottom: 5px;
-  color: var(--text-primary);
+  font-size: var(--font-size-2xl);
+  margin-bottom: var(--spacing-xs);
+  color: var(--color-text-primary);
 }
 
 .title-area p {
-  color: var(--text-secondary);
-  font-size: 1rem;
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-base);
   margin: 0;
 }
 
@@ -215,11 +215,11 @@
 }
 
 .version {
-  font-size: 0.8rem;
+  font-size: var(--font-size-xs);
   background-color: var(--color-primary);
-  color: white;
-  padding: 2px 6px;
-  border-radius: 10px;
+  color: var(--color-bg-container);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  border-radius: var(--radius-full);
   vertical-align: middle;
-  margin-left: 5px;
-} 
+  margin-left: var(--spacing-xs);
+}

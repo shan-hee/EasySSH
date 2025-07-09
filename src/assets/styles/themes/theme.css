@@ -1,257 +1,329 @@
 /*
- * theme.css - 主题样式
- * 包含亮色和暗色主题变量和切换逻辑
+ * theme.css - 统一主题配置文件
+ * 中心化管理所有颜色变量和主题设置
+ * 使用语义化命名规范，支持深色和浅色主题
  */
 
-/* 亮色主题（默认） */
+/* ===== 基础设计令牌 ===== */
 :root {
-  /* 主色调 */
-  --primary-color: #1890ff;
-  --primary-light: #40a9ff;
-  --primary-dark: #096dd9;
-  
-  /* 辅助色 */
-  --success-color: #52c41a;
-  --warning-color: #faad14;
-  --error-color: #f5222d;
-  --info-color: #1890ff;
-  
-  /* 文本颜色 */
-  --text-primary: rgba(0, 0, 0, 0.85);
-  --text-secondary: rgba(0, 0, 0, 0.65);
-  --text-hint: rgba(0, 0, 0, 0.45);
-  --text-disabled: rgba(0, 0, 0, 0.25);
-  
-  /* 背景颜色 */
-  --bg-color: #f5f7fa;
-  --bg-light: #ffffff;
-  --bg-dark: #f0f2f5;
-  
-  /* 边框颜色 */
-  --border-color: #d9d9d9;
-  --border-light: #e8e8e8;
-  --border-dark: #bfbfbf;
-  
-  /* 阴影 */
-  --shadow-light: 0 2px 8px rgba(0, 0, 0, 0.08);
-  --shadow-medium: 0 4px 12px rgba(0, 0, 0, 0.12);
-  --shadow-dark: 0 8px 16px rgba(0, 0, 0, 0.16);
-  
-  /* 交互状态 */
-  --hover-bg: rgba(24, 144, 255, 0.1);
-  --active-bg: rgba(24, 144, 255, 0.2);
-  --selected-bg: rgba(24, 144, 255, 0.2);
-  --disabled-bg: rgba(0, 0, 0, 0.04);
-  
-  /* 字体 */
-  --font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-  --font-code: 'Menlo', Monaco, Consolas, monospace;
-  
-  /* 字号 */
-  --font-size-xs: 12px;
-  --font-size-sm: 14px;
-  --font-size-md: 16px;
-  --font-size-lg: 18px;
-  --font-size-xl: 20px;
-  --font-size-xxl: 24px;
-  
-  /* 间距 */
-  --spacing-xs: 4px;
-  --spacing-sm: 8px;
-  --spacing-md: 16px;
-  --spacing-lg: 24px;
-  --spacing-xl: 32px;
-  --spacing-xxl: 48px;
-  
-  /* 圆角 */
-  --radius-sm: 2px;
-  --radius-md: 4px;
-  --radius-lg: 8px;
-  --radius-xl: 16px;
-  --radius-circle: 50%;
-  
-  /* 动画时间 */
-  --anim-time-fast: 0.15s;
-  --anim-time-medium: 0.3s;
-  --anim-time-slow: 0.5s;
+  /* 布局尺寸 */
+  --layout-header-height: 50px;
+  --layout-sidebar-width: 60px;
+  --layout-sidebar-expanded-width: 240px;
+
+  /* 字体系统 */
+  --font-family-base: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  --font-family-mono: 'JetBrains Mono', 'Menlo', Monaco, Consolas, monospace;
+
+  /* 字号系统 (rem单位，基于16px) */
+  --font-size-xs: 0.75rem;   /* 12px */
+  --font-size-sm: 0.875rem;  /* 14px */
+  --font-size-base: 1rem;    /* 16px */
+  --font-size-lg: 1.125rem;  /* 18px */
+  --font-size-xl: 1.25rem;   /* 20px */
+  --font-size-2xl: 1.5rem;   /* 24px */
+
+  /* 间距系统 (rem单位) */
+  --spacing-xs: 0.25rem;  /* 4px */
+  --spacing-sm: 0.5rem;   /* 8px */
+  --spacing-md: 1rem;     /* 16px */
+  --spacing-lg: 1.5rem;   /* 24px */
+  --spacing-xl: 2rem;     /* 32px */
+  --spacing-2xl: 3rem;    /* 48px */
+
+  /* 圆角系统 */
+  --radius-sm: 0.125rem;  /* 2px */
+  --radius-md: 0.25rem;   /* 4px */
+  --radius-lg: 0.5rem;    /* 8px */
+  --radius-xl: 1rem;      /* 16px */
+  --radius-full: 50%;
+
+  /* 过渡动画 */
+  --transition-fast: 0.15s ease;
+  --transition-base: 0.3s ease;
+  --transition-slow: 0.5s ease;
+
+  /* Z-index层级 */
+  --z-dropdown: 1000;
+  --z-sticky: 1020;
+  --z-fixed: 1030;
+  --z-modal-backdrop: 1040;
+  --z-modal: 1050;
+  --z-popover: 1060;
+  --z-tooltip: 1070;
 }
 
-/* 暗色主题 */
+/* ===== 浅色主题（默认） ===== */
+:root {
+  /* 品牌色系 */
+  --color-primary: #0083d3;
+  --color-primary-hover: #3399dd;
+  --color-primary-active: #0066a6;
+  --color-primary-light: #66b1e8;
+  --color-primary-lighter: #99ccf2;
+  --color-primary-lightest: #f0f7ff;
+
+  /* 功能色系 */
+  --color-success: #52c41a;
+  --color-success-light: #73d13d;
+  --color-success-bg: #f6ffed;
+
+  --color-warning: #faad14;
+  --color-warning-light: #ffc53d;
+  --color-warning-bg: #fff7e6;
+
+  --color-error: #f5222d;
+  --color-error-light: #ff4d4f;
+  --color-error-bg: #fff2f0;
+
+  --color-info: #1890ff;
+  --color-info-light: #40a9ff;
+  --color-info-bg: #e6f7ff;
+
+  /* 文本色系 */
+  --color-text-primary: #303133;
+  --color-text-regular: #606266;
+  --color-text-secondary: #909399;
+  --color-text-placeholder: #c0c4cc;
+  --color-text-disabled: rgba(0, 0, 0, 0.25);
+
+  /* 背景色系 */
+  --color-bg-page: #f5f7fa;
+  --color-bg-container: #ffffff;
+  --color-bg-elevated: #ffffff;
+  --color-bg-overlay: #ffffff;
+  --color-bg-muted: #f0f2f5;
+  --color-bg-subtle: #fafbfc;
+
+  /* 边框色系 */
+  --color-border-default: #dcdfe6;
+  --color-border-light: #e4e7ed;
+  --color-border-lighter: #ebeef5;
+  --color-border-dark: #d4d7de;
+
+  /* 阴影系统 */
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --shadow-base: 0 2px 8px rgba(0, 0, 0, 0.08);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.12);
+  --shadow-lg: 0 8px 16px rgba(0, 0, 0, 0.16);
+  --shadow-xl: 0 12px 24px rgba(0, 0, 0, 0.20);
+
+  /* 交互状态 */
+  --color-hover-bg: rgba(0, 131, 211, 0.1);
+  --color-active-bg: rgba(0, 131, 211, 0.15);
+  --color-selected-bg: rgba(0, 131, 211, 0.1);
+  --color-disabled-bg: rgba(0, 0, 0, 0.04);
+  --color-focus-ring: rgba(0, 131, 211, 0.2);
+}
+
+/* ===== 浅色主题（明确定义） ===== */
+:root[data-theme="light"],
+.light-theme {
+  /* 品牌色系 */
+  --color-primary: #0083d3;
+  --color-primary-hover: #3399dd;
+  --color-primary-active: #0066a6;
+  --color-primary-light: #66b1e8;
+  --color-primary-lighter: #99ccf2;
+  --color-primary-lightest: #f0f7ff;
+
+  /* 功能色系 */
+  --color-success: #52c41a;
+  --color-success-light: #73d13d;
+  --color-success-bg: #f6ffed;
+
+  --color-warning: #faad14;
+  --color-warning-light: #ffc53d;
+  --color-warning-bg: #fff7e6;
+
+  --color-error: #f5222d;
+  --color-error-light: #ff4d4f;
+  --color-error-bg: #fff2f0;
+
+  --color-info: #1890ff;
+  --color-info-light: #40a9ff;
+  --color-info-bg: #e6f7ff;
+
+  /* 文本色系 */
+  --color-text-primary: #303133;
+  --color-text-regular: #606266;
+  --color-text-secondary: #909399;
+  --color-text-placeholder: #c0c4cc;
+  --color-text-disabled: rgba(0, 0, 0, 0.25);
+
+  /* 背景色系 */
+  --color-bg-page: #f5f7fa;
+  --color-bg-container: #ffffff;
+  --color-bg-elevated: #ffffff;
+  --color-bg-overlay: #ffffff;
+  --color-bg-muted: #f0f2f5;
+  --color-bg-subtle: #fafbfc;
+
+  /* 边框色系 */
+  --color-border-default: #dcdfe6;
+  --color-border-light: #e4e7ed;
+  --color-border-lighter: #ebeef5;
+  --color-border-dark: #d4d7de;
+
+  /* 阴影系统 */
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --shadow-base: 0 2px 8px rgba(0, 0, 0, 0.08);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.12);
+  --shadow-lg: 0 8px 16px rgba(0, 0, 0, 0.16);
+  --shadow-xl: 0 12px 24px rgba(0, 0, 0, 0.20);
+
+  /* 交互状态 */
+  --color-hover-bg: rgba(0, 131, 211, 0.08);
+  --color-active-bg: rgba(0, 131, 211, 0.15);
+  --color-selected-bg: rgba(0, 131, 211, 0.1);
+  --color-focus-ring: rgba(0, 131, 211, 0.2);
+}
+
+/* ===== 深色主题 ===== */
+:root[data-theme="dark"],
 .dark-theme {
-  /* 主色调 */
-  --primary-color: #177ddc;
-  --primary-light: #3c9ae8;
-  --primary-dark: #0958a8;
-  
-  /* 辅助色 */
-  --success-color: #49aa19;
-  --warning-color: #d89614;
-  --error-color: #d32029;
-  --info-color: #177ddc;
-  
-  /* 文本颜色 */
-  --text-primary: #FFFFFF;
-  --text-secondary: rgba(255, 255, 255, 0.65);
-  --text-hint: rgba(255, 255, 255, 0.45);
-  --text-disabled: rgba(255, 255, 255, 0.3);
-  
-  /* 背景颜色 */
-  --bg-color: #141414;
-  --bg-light: #1f1f1f;
-  --bg-dark: #0a0a0a;
-  
-  /* 边框颜色 */
-  --border-color: #434343;
-  --border-light: #555555;
-  --border-dark: #2e2e2e;
-  
-  /* 阴影 */
-  --shadow-light: 0 2px 8px rgba(0, 0, 0, 0.2);
-  --shadow-medium: 0 4px 12px rgba(0, 0, 0, 0.3);
-  --shadow-dark: 0 8px 16px rgba(0, 0, 0, 0.4);
-  
-  /* 交互状态 */
-  --hover-bg: rgba(24, 144, 255, 0.15);
-  --active-bg: rgba(24, 144, 255, 0.25);
-  --selected-bg: rgba(24, 144, 255, 0.25);
-  --disabled-bg: rgba(255, 255, 255, 0.08);
+  /* 品牌色系 - 深色主题调整 */
+  --color-primary: #177ddc;
+  --color-primary-hover: #3c9ae8;
+  --color-primary-active: #0958a8;
+  --color-primary-light: #3c9ae8;
+  --color-primary-lighter: #5fb3f0;
+  --color-primary-lightest: #2c2c2c;
+
+  /* 功能色系 - 深色主题调整 */
+  --color-success: #49aa19;
+  --color-success-light: #6abe39;
+  --color-success-bg: #162312;
+
+  --color-warning: #d89614;
+  --color-warning-light: #e2b340;
+  --color-warning-bg: #2b2111;
+
+  --color-error: #d32029;
+  --color-error-light: #e84749;
+  --color-error-bg: #2a1215;
+
+  --color-info: #177ddc;
+  --color-info-light: #3c9ae8;
+  --color-info-bg: #111b26;
+
+  /* 文本色系 - 深色主题 */
+  --color-text-primary: #ffffff;
+  --color-text-regular: #ffffff;
+  --color-text-secondary: rgba(255, 255, 255, 0.65);
+  --color-text-placeholder: rgba(255, 255, 255, 0.45);
+  --color-text-disabled: rgba(255, 255, 255, 0.3);
+
+  /* 背景色系 - 深色主题 */
+  --color-bg-page: #141414;
+  --color-bg-container: #1e1e1e;
+  --color-bg-elevated: #1f1f1f;
+  --color-bg-overlay: #1e1e1e;
+  --color-bg-muted: #2c2c2c;
+  --color-bg-subtle: #0a0a0a;
+
+  /* 边框色系 - 深色主题 */
+  --color-border-default: #434343;
+  --color-border-light: #555555;
+  --color-border-lighter: #666666;
+  --color-border-dark: #2e2e2e;
+
+  /* 阴影系统 - 深色主题 */
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.3);
+  --shadow-base: 0 2px 8px rgba(0, 0, 0, 0.2);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.3);
+  --shadow-lg: 0 8px 16px rgba(0, 0, 0, 0.4);
+  --shadow-xl: 0 12px 24px rgba(0, 0, 0, 0.5);
+
+  /* 交互状态 - 深色主题 */
+  --color-hover-bg: rgba(23, 125, 220, 0.15);
+  --color-active-bg: rgba(23, 125, 220, 0.25);
+  --color-selected-bg: rgba(23, 125, 220, 0.2);
+  --color-disabled-bg: rgba(255, 255, 255, 0.08);
+  --color-focus-ring: rgba(23, 125, 220, 0.3);
 }
 
-/* 高对比度主题 */
-.high-contrast-theme {
-  /* 主色调 */
-  --primary-color: #0080ff;
-  --primary-light: #40a9ff;
-  --primary-dark: #005cb8;
-  
-  /* 辅助色 */
-  --success-color: #00b800;
-  --warning-color: #ffd500;
-  --error-color: #ff0000;
-  --info-color: #0080ff;
-  
-  /* 文本颜色 */
-  --text-primary: #000000;
-  --text-secondary: #303030;
-  --text-hint: #505050;
-  --text-disabled: #707070;
-  
-  /* 背景颜色 */
-  --bg-color: #ffffff;
-  --bg-light: #f0f0f0;
-  --bg-dark: #e0e0e0;
-  
-  /* 边框颜色 */
-  --border-color: #000000;
-  --border-light: #505050;
-  --border-dark: #000000;
-  
-  /* 交互状态 */
-  --hover-bg: #e0f0ff;
-  --active-bg: #c0e0ff;
-  --selected-bg: #c0e0ff;
-  --disabled-bg: #e0e0e0;
+/* ===== Element Plus 组件主题变量 ===== */
+:root {
+  /* Element Plus 基础变量覆盖 - 浅色主题 */
+  --el-color-primary: var(--color-primary) !important;
+  --el-color-primary-light-3: var(--color-primary-hover) !important;
+  --el-color-primary-light-5: var(--color-primary-light) !important;
+  --el-color-primary-light-7: var(--color-primary-lighter) !important;
+  --el-color-primary-light-9: var(--color-primary-lightest) !important;
+
+  --el-bg-color: var(--color-bg-container) !important;
+  --el-bg-color-overlay: var(--color-bg-overlay) !important;
+  --el-fill-color-blank: var(--color-bg-container) !important;
+  --el-fill-color-light: var(--color-bg-muted) !important;
+
+  --el-text-color-primary: var(--color-text-primary) !important;
+  --el-text-color-regular: var(--color-text-regular) !important;
+  --el-text-color-secondary: var(--color-text-secondary) !important;
+  --el-text-color-placeholder: var(--color-text-placeholder) !important;
+  --el-color-white: var(--color-bg-container) !important;
+
+  --el-border-color: var(--color-border-default) !important;
+  --el-border-color-light: var(--color-border-light) !important;
+
+  /* Element Plus 下拉菜单变量 */
+  --el-dropdown-menuItem-hover-fill: var(--color-hover-bg) !important;
+  --el-dropdown-menuItem-hover-color: var(--color-primary) !important;
+  --el-select-dropdown-bg-color: var(--color-bg-container) !important;
+  --el-select-option-hover-background: var(--color-hover-bg) !important;
 }
 
-/* 应用主题变量到具体元素 */
+/* ===== 系统偏好自适应已移除 ===== */
+/* 现在完全由设置服务的 applyTheme 方法控制主题切换 */
+
+/* ===== 基础元素样式应用 ===== */
 body {
-  background-color: var(--bg-color);
-  color: var(--text-primary);
-  font-family: var(--font-family);
+  background-color: var(--color-bg-page);
+  color: var(--color-text-primary);
+  font-family: var(--font-family-base);
   font-size: var(--font-size-sm);
   line-height: 1.5;
+  transition: background-color var(--transition-base), color var(--transition-base);
 }
 
-/* 响应式主题调整 */
-@media (prefers-color-scheme: dark) {
-  :root:not(.light-theme):not(.high-contrast-theme) {
-    /* 自动应用暗黑主题变量 */
-    --primary-color: #177ddc;
-    --primary-light: #3c9ae8;
-    --primary-dark: #0958a8;
-    --bg-color: #141414;
-    --bg-light: #1f1f1f;
-    --bg-dark: #0a0a0a;
-    --text-primary: #FFFFFF;
-    --text-secondary: rgba(255, 255, 255, 0.65);
-    /* ... 其他暗黑主题变量 ... */
-  }
+/* 主题切换过渡动画 */
+:root {
+  --theme-transition-duration: 0.3s;
+  --theme-transition-timing: cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-/* 主题特定样式 */
+/* 为所有可能变化的属性添加过渡动画 */
+*,
+*::before,
+*::after {
+  transition:
+    background-color var(--theme-transition-duration) var(--theme-transition-timing),
+    border-color var(--theme-transition-duration) var(--theme-transition-timing),
+    color var(--theme-transition-duration) var(--theme-transition-timing),
+    box-shadow var(--theme-transition-duration) var(--theme-transition-timing),
+    fill var(--theme-transition-duration) var(--theme-transition-timing),
+    stroke var(--theme-transition-duration) var(--theme-transition-timing);
+}
 
-/* 主体 */
+/* 为特定元素提供更精细的过渡控制 */
 body {
-  background-color: var(--bg-primary);
-  color: var(--text-primary);
-  transition: background-color var(--transition-normal), color var(--transition-normal);
+  transition:
+    background-color var(--theme-transition-duration) var(--theme-transition-timing),
+    color var(--theme-transition-duration) var(--theme-transition-timing);
 }
 
-/* 卡片 */
-.card {
-  background-color: var(--bg-primary);
-  border: 1px solid var(--border-color);
+/* 避免某些元素的过渡动画（如输入框光标） */
+input,
+textarea,
+[contenteditable] {
+  caret-color: var(--color-primary);
 }
 
-.dark-theme .card {
-  box-shadow: 0 4px 6px -1px var(--shadow-color);
+/* 为主题切换提供视觉反馈 */
+.theme-switching {
+  pointer-events: none;
 }
 
-/* 输入框 */
-.form__control {
-  background-color: var(--bg-primary);
-  color: var(--text-primary);
-  border-color: var(--border-color);
+.theme-switching * {
+  transition-duration: 0.15s !important;
 }
-
-.form__control:focus {
-  border-color: var(--primary-color);
-}
-
-/* 模态框 */
-.modal__content {
-  background-color: var(--bg-primary);
-}
-
-.modal__header,
-.modal__footer {
-  border-color: var(--border-color);
-}
-
-/* 侧边栏 */
-.sidebar {
-  background-color: var(--bg-secondary);
-  border-color: var(--border-color);
-}
-
-/* 菜单 */
-.menu__item:hover {
-  background-color: var(--bg-tertiary);
-}
-
-/* 头部 */
-.header {
-  background-color: var(--bg-primary);
-  border-bottom: 1px solid var(--border-color);
-}
-
-/* 主题切换按钮 */
-.theme-toggle {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  cursor: pointer;
-  color: var(--text-primary);
-  transition: all var(--transition-fast);
-}
-
-.theme-toggle:hover {
-  background-color: var(--bg-tertiary);
-}
-
-.theme-toggle__icon {
-  font-size: var(--font-size-md);
-} 

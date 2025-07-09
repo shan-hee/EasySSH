@@ -57,6 +57,9 @@ class SettingsService {
       // 应用初始主题
       this.applyTheme(this.settings.ui.theme)
 
+      // 设置系统主题变化监听器
+      this._setupSystemThemeListener()
+
       this.isInitialized = true
       log.debug('设置服务初始化完成')
       return true
@@ -389,6 +392,41 @@ class SettingsService {
   }
 
   /**
+   * 设置系统主题变化监听器
+   * @private
+   */
+  _setupSystemThemeListener() {
+    if (typeof window === 'undefined' || !window.matchMedia) {
+      return
+    }
+
+    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)')
+
+    const handleSystemThemeChange = (e) => {
+      // 只有当用户选择了"跟随系统"时才响应系统主题变化
+      if (this.settings.ui.theme === 'system') {
+        const newTheme = e.matches ? 'dark' : 'light'
+        log.debug('系统主题变化，自动切换主题', { newTheme })
+        this.applyTheme('system')
+      }
+    }
+
+    // 兼容不同浏览器的事件监听
+    if (mediaQuery.addEventListener) {
+      mediaQuery.addEventListener('change', handleSystemThemeChange)
+    } else {
+      // 旧版浏览器支持
+      mediaQuery.addListener(handleSystemThemeChange)
+    }
+
+    // 保存监听器引用，用于清理
+    this._systemThemeListener = {
+      mediaQuery,
+      handler: handleSystemThemeChange
+    }
+  }
+
+  /**
    * 应用主题
    * @param {string} theme - 主题名称 (light, dark, system)
    */
@@ -399,6 +437,15 @@ class SettingsService {
     if (theme === 'system') {
       actualTheme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
     }
+
+    // 获取当前主题，避免不必要的切换
+    const currentTheme = document.documentElement.getAttribute('data-theme')
+    if (currentTheme === actualTheme) {
+      return // 主题没有变化，无需切换
+    }
+
+    // 添加主题切换状态类，提供视觉反馈
+    document.documentElement.classList.add('theme-switching')
 
     // 设置主题
     document.documentElement.setAttribute('data-theme', actualTheme)
@@ -412,7 +459,17 @@ class SettingsService {
       document.documentElement.setAttribute('lang', language)
     }
 
-    log.debug('主题已应用', { theme, actualTheme, language })
+    // 移除主题切换状态类
+    setTimeout(() => {
+      document.documentElement.classList.remove('theme-switching')
+    }, 300)
+
+    // 触发主题变化事件，供其他组件监听
+    window.dispatchEvent(new CustomEvent('theme-changed', {
+      detail: { theme, actualTheme, previousTheme: currentTheme }
+    }))
+
+    log.debug('主题已应用', { theme, actualTheme, previousTheme: currentTheme, language })
   }
 
   /**

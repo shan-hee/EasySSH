@@ -104,8 +104,8 @@ export default {
 
 .hero-section {
   min-height: 80vh;
-  padding: 2rem;
-  background: linear-gradient(135deg, #c2e0ff, #a2d2ff);
+  padding: var(--spacing-2xl);
+  background: linear-gradient(135deg, var(--color-primary-lighter), var(--color-primary-light));
   text-align: center;
   display: flex;
   justify-content: center;
@@ -115,19 +115,19 @@ export default {
 .hero-content {
   max-width: 800px;
   margin: 0 auto;
-  padding: 2rem;
+  padding: var(--spacing-2xl);
 }
 
 .title {
   font-size: 3.5rem;
   margin: 0.5rem 0;
-  color: #0066cc;
+  color: var(--color-primary);
 }
 
 .subtitle {
-  font-size: 1.5rem;
-  margin-bottom: 2rem;
-  color: #333;
+  font-size: var(--font-size-lg);
+  margin-bottom: var(--spacing-2xl);
+  color: var(--color-text-primary);
   max-width: 80%;
   margin-left: auto;
   margin-right: auto;
@@ -195,12 +195,12 @@ export default {
 }
 
 .feature-card {
-  background-color: white;
-  border-radius: 8px;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.1);
-  padding: 2rem;
+  background-color: var(--color-bg-container);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-base);
+  padding: var(--spacing-2xl);
   text-align: center;
-  transition: transform 0.3s ease;
+  transition: transform var(--transition-base) ease;
 }
 
 .feature-card:hover {
@@ -209,17 +209,17 @@ export default {
 
 .feature-icon {
   font-size: 2.5rem;
-  margin-bottom: 1rem;
-  color: #1890ff;
+  margin-bottom: var(--spacing-md);
+  color: var(--color-primary);
 }
 
 .feature-card h3 {
-  margin-bottom: 1rem;
-  color: #333;
+  margin-bottom: var(--spacing-md);
+  color: var(--color-text-primary);
 }
 
 .feature-card p {
-  color: #666;
+  color: var(--color-text-secondary);
   line-height: 1.6;
 }
 </style>
