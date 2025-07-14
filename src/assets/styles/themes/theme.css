@@ -118,6 +118,9 @@
   --color-bg-subtle: #fafbfc;
   --color-bg-hover: #f5f7fa;
 
+  /* 组件特定背景色 */
+  --shortcut-item-bg: #ffffff80;
+
   /* 边框色系 */
   --color-border-default: #dcdfe6;
   --color-border-light: #e4e7ed;
@@ -231,6 +234,9 @@
   --color-bg-muted: #f0f2f5;
   --color-bg-subtle: #fafbfc;
   --color-bg-hover: #f5f7fa;
+
+  /* 组件特定背景色 */
+  --shortcut-item-bg: #ffffff80;
 
   /* 边框色系 */
   --color-border-default: #dcdfe6;
@@ -361,6 +367,9 @@
   --color-bg-muted: #2c2c2c;
   --color-bg-subtle: #0a0a0a;
   --color-bg-hover: #333333;
+
+  /* 组件特定背景色 - 深色主题 */
+  --shortcut-item-bg: #1e1e1e80;
 
   /* 边框色系 - 深色主题 */
   --color-border-default: #333333;

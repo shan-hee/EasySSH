@@ -30,12 +30,12 @@ export default defineComponent({
   --switch-border-color: var(--color-border-default);
   --switch-active-bg-color: #AAAAAA;
   --switch-active-border-color: #AAAAAA;
-  --switch-button-color: var(--color-bg-container);
+  --switch-button-color: #AAAAAA;
   --switch-active-button-color: var(--color-bg-container);
 
   --slider-runway-color: var(--color-border-default);
   --slider-bar-color: #AAAAAA;
-  --slider-button-color: var(--color-bg-container);
+  --slider-button-color: #AAAAAA;
   --slider-button-border-color: #AAAAAA;
 }
 

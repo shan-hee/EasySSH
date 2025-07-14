@@ -132,7 +132,6 @@ export default defineComponent({
   justify-content: space-between;
   align-items: center;
   background-color: var(--color-bg-muted);
-  border-bottom: 1px solid var(--color-border-lighter);
 }
 
 .modal-header span {
@@ -148,7 +147,6 @@ export default defineComponent({
 
 .modal-tab {
   display: flex;
-  border-bottom: 1px solid var(--color-border-lighter);
 }
 
 .tab-item {
@@ -184,7 +182,6 @@ export default defineComponent({
   justify-content: flex-end;
   gap: 10px;
   padding: 15px;
-  border-top: 1px solid var(--color-border-lighter);
   background-color: var(--color-bg-muted);
 }
 

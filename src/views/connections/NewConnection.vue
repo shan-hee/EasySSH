@@ -1196,7 +1196,6 @@ h2 {
   padding: 15px;
   border-radius: 4px;
   background-color: var(--color-bg-container);
-  border: 1px solid var(--color-border-lighter);
   cursor: pointer;
   transition: background-color 0.2s;
   box-shadow: none !important;
@@ -1258,7 +1257,6 @@ h2 {
   align-items: center;
   padding: 12px 15px;
   background-color: var(--color-bg-container);
-  border: 1px solid var(--color-border-lighter);
   border-radius: 4px;
   position: relative;
   cursor: pointer;
@@ -1368,7 +1366,6 @@ h2 {
   justify-content: space-between;
   align-items: center;
   background-color: var(--color-bg-muted);
-  border-bottom: 1px solid var(--color-border-lighter);
 }
 
 .modal-header span {
@@ -1492,7 +1489,6 @@ h2 {
   justify-content: flex-end;
   gap: 10px;
   padding: 15px;
-  border-top: 1px solid var(--color-border-lighter);
   background-color: var(--color-bg-muted);
 }
 

@@ -868,7 +868,12 @@ export default {
   padding: 15px;
   border-radius: 8px;
   background-color: var(--color-bg-muted);
-  border: 1px solid var(--color-border-light);
+}
+
+/* 暗色模式下的背景色 */
+:root[data-theme="dark"] .terminal-bg-settings,
+.dark-theme .terminal-bg-settings {
+  background-color: #0003;
 }
 
 .terminal-bg-preview {
@@ -1020,13 +1025,17 @@ export default {
   padding: 15px;
   border-radius: 8px;
   background-color: var(--color-bg-muted);
-  border: 1px solid var(--color-border-light);
+}
+
+/* 暗色模式下的背景色 */
+:root[data-theme="dark"] .terminal-shortcuts-settings,
+.dark-theme .terminal-shortcuts-settings {
+  background-color: #0003;
 }
 
 .theme-section-title {
   margin-bottom: 15px;
   font-size: 16px;
-  font-weight: 500;
   color: var(--settings-section-title-color);
   display: flex;
   justify-content: space-between;
@@ -1050,8 +1059,7 @@ export default {
   justify-content: space-between;
   align-items: center;
   padding: 8px 12px;
-  background-color: var(--color-bg-container);
-  border: 1px solid var(--color-border-lighter);
+  background-color: var(--shortcut-item-bg);
   border-radius: 4px;
   margin-bottom: 5px;
 }

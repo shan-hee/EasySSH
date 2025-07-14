@@ -33,17 +33,13 @@ export default {
   font-size: 16px;
   color: var(--color-text-primary);
   background-color: var(--color-bg-muted);
-  border: 1px solid var(--color-border-light);
   border-radius: 4px;
   margin-bottom: 1px;
-  font-weight: 500;
+  font-weight: bold;
 }
 
 .card-body {
   padding: 20px 20px 10px;
-  background-color: var(--color-bg-container);
-  border: 1px solid var(--color-border-lighter);
-  border-top: none;
   border-radius: 0 0 4px 4px;
 }
 </style> 
