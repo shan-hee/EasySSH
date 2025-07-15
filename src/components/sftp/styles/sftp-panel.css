@@ -3,7 +3,7 @@
   top: 45px;
   right: 0;
   bottom: 0;
-  background-color: var(--color-bg-page);
+  background-color: var(--sftp-panel-bg);
   border-left: 1px solid var(--color-border-default);
   box-shadow: -2px 0 5px rgba(0, 0, 0, 0.3);
   z-index: 900;
@@ -64,7 +64,7 @@
   justify-content: space-between;
   align-items: center;
   padding: 12px 16px;
-  background-color: var(--color-bg-container);
+  background-color: var(--sftp-panel-header-bg);
   border-bottom: 1px solid var(--color-border-default);
   min-height: 52px; /* 确保头部高度固定 */
   flex-shrink: 0; /* 防止头部被压缩 */

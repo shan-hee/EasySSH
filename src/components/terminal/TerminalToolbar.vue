@@ -4,8 +4,8 @@
       <div class="terminal-tools__left">
         <div class="icon-button" @click="handleSftpClick"
                :class="{ 'icon-available': isSshConnected }" ref="sftpButtonRef">
-          <img src="@/assets/icons/icon-file-manager.svg" class="ruyi-icon ruyi-icon-ot-file-manager" width="16" height="16"
-               :class="{ 'icon-gray': !isSshConnected, 'icon-white': isSshConnected }" />
+          <ToolbarIcon name="file-manager" :size="16"
+                       :class="{ 'icon-active': isSshConnected }" />
         </div>
         
         <!-- 使用teleport将tooltip内容传送到body中 -->
@@ -24,7 +24,7 @@
         <transition name="fade">
           <div v-if="showNetworkIcon" class="network-monitor" @click="toggleNetworkPopup" ref="networkIconRef">
             <div class="network-icon">
-              <img src="@/assets/icons/icon-network.svg" class="ruyi-icon ruyi-icon-ot-network-icon" width="16" height="16" />
+              <ToolbarIcon name="network" :size="16" class="icon-active" />
             </div>
             <div class="network-stats">
               <div class="network-stats-value" :class="rttStatusClass">{{ rttValue }}</div>
@@ -37,8 +37,8 @@
           @click.stop="handleMonitoringClick()"
           :class="{ 'icon-available': monitoringServiceInstalled, 'active': isPanelVisible }"
           ref="monitorButtonRef">
-          <img src="@/assets/icons/icon-monitoring.svg" class="ruyi-icon ruyi-icon-ot-monitoring" width="16" height="16"
-               :class="{ 'icon-gray': !monitoringServiceInstalled, 'icon-white': monitoringServiceInstalled }" />
+          <ToolbarIcon name="monitoring" :size="16"
+                       :class="{ 'icon-active': monitoringServiceInstalled }" />
         </div>
 
         <!-- 监控指标显示 -->
@@ -131,11 +131,13 @@ import { LATENCY_EVENTS } from '../../services/constants'
 import log from '../../services/log'
 import scriptLibraryService from '../../services/scriptLibrary'
 import ToolbarMonitoring from '../monitoring/ToolbarMonitoring.vue'
+import ToolbarIcon from '../common/ToolbarIcon.vue'
 
 export default defineComponent({
   name: 'TerminalToolbar',
   components: {
-    ToolbarMonitoring
+    ToolbarMonitoring,
+    ToolbarIcon
   },
   emits: ['toggle-sftp-panel', 'toggle-monitoring-panel'],
   props: {
@@ -1544,16 +1546,7 @@ export default defineComponent({
   cursor: not-allowed !important;
 }
 
-/* 灰色图标样式 */
-.icon-gray {
-  opacity: 0.5;
-  filter: grayscale(100%);
-}
 
-/* 白色图标样式 */
-.icon-white {
-  opacity: 1;
-}
 
 .network-monitor {
   display: flex;

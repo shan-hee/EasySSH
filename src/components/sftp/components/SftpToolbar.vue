@@ -136,18 +136,17 @@ export default defineComponent({
   width: 100%;
   height: 32px;
   background-color: var(--color-bg-container);
-  border: none;
+  border: 1px solid var(--color-border-default);
   border-radius: 4px;
   color: var(--color-text-primary);
   font-size: 12px;
   padding: 0 32px 0 36px;
   outline: none;
-  transition: all 0.2s ease;
 }
 
 .sftp-search-input:focus {
   background-color: var(--color-bg-hover);
-  box-shadow: 0 0 0 2px var(--color-primary-lighter);
+  border: 1px solid var(--color-primary);
 }
 
 .sftp-search-icon {
@@ -214,13 +213,14 @@ html[data-theme="dark"] .sftp-toolbar-button:hover {
 html[data-theme="dark"] .sftp-search-input {
   background-color: #2c2c2c !important;
   color: #e0e0e0 !important;
+  border: 1px solid #333333 !important;
 }
 
 :root[data-theme="dark"] .sftp-search-input:focus,
 .dark-theme .sftp-search-input:focus,
 html[data-theme="dark"] .sftp-search-input:focus {
   background-color: #3a3a3a !important;
-  box-shadow: 0 0 0 2px rgba(64, 158, 255, 0.4) !important;
+  border: 1px solid var(--color-primary) !important;
 }
 
 :root[data-theme="dark"] .sftp-search-icon,
@@ -268,8 +268,7 @@ html[data-theme="light"] .sftp-search-input {
 .light-theme .sftp-search-input:focus,
 html[data-theme="light"] .sftp-search-input:focus {
   background-color: #ffffff !important;
-  border-color: #409eff !important;
-  box-shadow: 0 0 0 2px rgba(64, 158, 255, 0.2) !important;
+  border-color: var(--color-primary) !important;
 }
 
 :root[data-theme="light"] .sftp-search-icon,

@@ -36,19 +36,19 @@
         </div>
         <div class="card-content">
           <button class="btn btn-primary quick-action-btn" @click="handleNewConnection">
-            <img src="@/assets/icons/icon-add-connection.svg" width="24" height="24" class="icon" /> 新建连接
+            <ThemedIcon name="add-connection" :size="24" /> 新建连接
           </button>
           <button
             class="btn btn-default quick-action-btn"
             @click="refreshDashboardData"
             :disabled="isLoading"
           >
-            <img src="@/assets/icons/icon-refresh.svg" width="24" height="24" class="icon" />
+            <ThemedIcon name="refresh" :size="24" />
             <span v-if="isLoading">刷新中...</span>
             <span v-else>刷新状态</span>
           </button>
           <button class="btn btn-default quick-action-btn" @click="handleSettings">
-            <img src="@/assets/icons/icon-settings.svg" width="24" height="24" class="icon" /> 设置
+            <ThemedIcon name="settings" :size="24" /> 设置
           </button>
         </div>
       </div>
@@ -133,9 +133,13 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useUserStore } from '@/store/user'
 import log from '@/services/log'
+import ThemedIcon from '@/components/common/ThemedIcon.vue'
 
 export default {
   name: 'Dashboard',
+  components: {
+    ThemedIcon
+  },
   setup() {
     const router = useRouter()
     const userStore = useUserStore()
@@ -511,7 +515,7 @@ export default {
 }
 
 .btn-default:hover:not(:disabled) {
-  color: var(--color-primary);
+  color: var(--color-text-primary);
   border-color: var(--color-primary);
   background-color: var(--color-hover-bg);
 }

@@ -1207,7 +1207,6 @@ h2 {
   background-color: var(--color-bg-muted);
   transform: none !important;
   box-shadow: none !important;
-  border: 1px solid var(--color-border-default) !important;
   outline: none !important;
 }
 

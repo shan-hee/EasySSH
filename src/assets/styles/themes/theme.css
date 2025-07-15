@@ -120,6 +120,8 @@
 
   /* 组件特定背景色 */
   --shortcut-item-bg: #ffffff80;
+  --sftp-panel-bg: #ffffff;
+  --sftp-panel-header-bg: #e0e0e0;
 
   /* 边框色系 */
   --color-border-default: #dcdfe6;
@@ -321,6 +323,8 @@
 
   /* 组件特定背景色 */
   --shortcut-item-bg: #ffffff80;
+  --sftp-panel-bg: #ffffff;
+  --sftp-panel-header-bg: #e0e0e0;
 
   /* 边框色系 */
   --color-border-default: #dcdfe6;
@@ -538,6 +542,8 @@
 
   /* 组件特定背景色 - 深色主题 */
   --shortcut-item-bg: #1e1e1e80;
+  --sftp-panel-bg: #1f1f1f;
+  --sftp-panel-header-bg: #2c2c2c;
 
   /* 边框色系 - 深色主题 */
   --color-border-default: #333333;
