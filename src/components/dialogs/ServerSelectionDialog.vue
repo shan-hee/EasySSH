@@ -249,23 +249,23 @@ export default defineComponent({
 }
 
 .server-selection-dialog :deep(.el-dialog) {
-  background-color: #2a2a2a;
-  border: 1px solid #444;
+  background-color: var(--dialog-bg);
+  border: 1px solid var(--dialog-border);
 }
 
 .server-selection-dialog :deep(.el-dialog__header) {
-  background-color: #2a2a2a;
-  border-bottom: 1px solid #444;
-  color: #e0e0e0;
+  background-color: var(--dialog-header-bg);
+  border-bottom: 1px solid var(--dialog-border);
+  color: var(--dialog-title-color);
 }
 
 .server-selection-dialog :deep(.el-dialog__title) {
-  color: #e0e0e0;
+  color: var(--dialog-title-color);
 }
 
 .server-selection-dialog :deep(.el-dialog__body) {
-  background-color: #2a2a2a;
-  color: #e0e0e0;
+  background-color: var(--dialog-bg);
+  color: var(--color-text-primary);
 }
 
 .dialog-content {
@@ -276,14 +276,14 @@ export default defineComponent({
 .script-info {
   margin-bottom: 24px;
   padding: 16px;
-  background-color: #333;
+  background-color: var(--color-bg-muted);
   border-radius: 6px;
-  border: 1px solid #444;
+  border: 1px solid var(--color-border-default);
 }
 
 .script-info h4 {
   margin: 0 0 12px 0;
-  color: #e0e0e0;
+  color: var(--color-text-primary);
   font-size: 14px;
   font-weight: 600;
 }
@@ -302,33 +302,33 @@ export default defineComponent({
 
 .detail-item .label {
   font-weight: 500;
-  color: #b0b0b0;
+  color: var(--color-text-secondary);
   min-width: 50px;
 }
 
 .detail-item .value {
-  color: #e0e0e0;
+  color: var(--color-text-primary);
 }
 
 .detail-item code.value {
-  background-color: #444;
+  background-color: var(--color-bg-muted);
   padding: 2px 6px;
   border-radius: 3px;
   font-family: 'Consolas', 'Monaco', monospace;
   font-size: 13px;
-  color: #e0e0e0;
+  color: var(--color-text-primary);
 }
 
 .server-selection h4 {
   margin: 0 0 16px 0;
-  color: #e0e0e0;
+  color: var(--color-text-primary);
   font-size: 14px;
   font-weight: 600;
 }
 
 .select-all-row {
   padding: 8px 0;
-  border-bottom: 1px solid #444;
+  border-bottom: 1px solid var(--color-border-default);
   margin-bottom: 12px;
 }
 
@@ -340,20 +340,20 @@ export default defineComponent({
 
 .server-item {
   padding: 12px;
-  border: 1px solid #444;
+  border: 1px solid var(--color-border-default);
   border-radius: 6px;
   transition: all 0.2s ease;
-  background-color: #333;
+  background-color: var(--color-bg-muted);
 }
 
 .server-item:hover {
-  border-color: #409eff;
-  background-color: #3a3a3a;
+  border-color: var(--color-primary);
+  background-color: var(--color-hover-bg);
 }
 
 .server-item.selected {
-  border-color: #409eff;
-  background-color: #2a4a6b;
+  border-color: var(--color-primary);
+  background-color: var(--color-selected-bg);
 }
 
 .server-info {
@@ -362,7 +362,7 @@ export default defineComponent({
 
 .server-name {
   font-weight: 500;
-  color: #e0e0e0;
+  color: var(--color-text-primary);
   margin-bottom: 4px;
 }
 
@@ -370,7 +370,7 @@ export default defineComponent({
   display: flex;
   gap: 16px;
   font-size: 12px;
-  color: #b0b0b0;
+  color: var(--color-text-secondary);
 }
 
 .server-details .host {
@@ -378,7 +378,7 @@ export default defineComponent({
 }
 
 .server-details .group {
-  color: #888;
+  color: var(--color-text-placeholder);
 }
 
 .no-selection {
@@ -386,8 +386,8 @@ export default defineComponent({
 }
 
 .no-selection :deep(.el-alert) {
-  background-color: #2a2a1a !important;
-  border-color: #555500 !important;
+  background-color: var(--color-warning-bg);
+  border-color: var(--color-warning);
 }
 
 .dialog-footer {
@@ -398,67 +398,67 @@ export default defineComponent({
 
 /* Element Plus 组件样式覆盖 */
 .server-selection-dialog :deep(.el-checkbox) {
-  color: #e0e0e0;
+  color: var(--color-text-primary);
 }
 
 .server-selection-dialog :deep(.el-checkbox__label) {
-  color: #e0e0e0;
+  color: var(--color-text-primary);
 }
 
 .server-selection-dialog :deep(.el-checkbox__input.is-checked .el-checkbox__inner) {
-  background-color: #409eff;
-  border-color: #409eff;
+  background-color: var(--color-primary);
+  border-color: var(--color-primary);
 }
 
 .server-selection-dialog :deep(.el-checkbox__inner) {
-  background-color: #444;
-  border-color: #666;
+  background-color: var(--color-bg-muted);
+  border-color: var(--color-border-default);
 }
 
 .server-selection-dialog :deep(.el-checkbox__inner:hover) {
-  border-color: #409eff;
+  border-color: var(--color-primary);
 }
 
 .server-selection-dialog :deep(.el-alert) {
-  background-color: #2a2a2a;
-  border: 1px solid #555;
+  background-color: var(--color-bg-container);
+  border: 1px solid var(--color-border-default);
 }
 
 .server-selection-dialog :deep(.el-alert.el-alert--warning) {
-  background-color: #3a2f1a;
-  border-color: #664d00;
+  background-color: var(--color-warning-bg);
+  border-color: var(--color-warning);
 }
 
 .server-selection-dialog :deep(.el-alert__title) {
-  color: #e0e0e0;
+  color: var(--color-text-primary);
 }
 
 .server-selection-dialog :deep(.el-alert--warning .el-alert__title) {
-  color: #ffd666;
+  color: var(--color-warning);
 }
 
 .server-selection-dialog :deep(.el-alert__icon) {
-  color: #ffd666;
+  color: var(--color-warning);
 }
 
 .server-selection-dialog :deep(.el-button) {
-  background-color: #444;
-  border-color: #666;
-  color: #e0e0e0;
+  background-color: var(--color-bg-muted);
+  border-color: var(--color-border-default);
+  color: var(--color-text-primary);
 }
 
 .server-selection-dialog :deep(.el-button:hover) {
-  background-color: #555;
-  border-color: #777;
+  background-color: var(--color-hover-bg);
+  border-color: var(--color-border-dark);
 }
 
 .server-selection-dialog :deep(.el-button--primary) {
-  background-color: #409eff;
-  border-color: #409eff;
+  background-color: var(--color-primary);
+  border-color: var(--color-primary);
 }
 
 .server-selection-dialog :deep(.el-button--primary:hover) {
-  background-color: #66b1ff;
-  border-color: #66b1ff;
+  background-color: var(--color-primary-hover);
+  border-color: var(--color-primary-hover);
 }
 </style>

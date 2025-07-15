@@ -89,28 +89,28 @@ export default defineComponent({
     const getThemeSettings = () => {
       const terminalOptions = settingsService.getTerminalOptions();
       // 从终端选项中获取主题配置
-      const theme = terminalOptions.theme || {
-        background: '#1e1e1e',
-        foreground: '#d4d4d4'
-      };
+      const theme = terminalOptions.theme || {};
 
       // 获取UI主题名称
       const uiSettings = settingsService.getUISettings();
       const themeName = uiSettings.theme || 'dark';
 
+      // 使用CSS变量作为默认值
+      const computedStyle = getComputedStyle(document.documentElement);
+
       return {
-        background: theme.background || '#282c34',
-        foreground: theme.foreground || '#abb2bf',
-        cursor: theme.cursor || '#FFFFFF',
-        selection: theme.selectionBackground || '#264F78',
-        comment: theme.brightBlack || '#5c6370',
-        keyword: theme.magenta || '#c678dd',
-        string: theme.green || '#98c379',
-        function: theme.blue || '#61afef',
-        variable: theme.red || '#e06c75',
-        number: theme.yellow || '#d19a66',
-        operator: theme.cyan || '#56b6c2',
-        className: theme.brightYellow || '#e5c07b',
+        background: theme.background || computedStyle.getPropertyValue('--editor-bg').trim(),
+        foreground: theme.foreground || computedStyle.getPropertyValue('--editor-fg').trim(),
+        cursor: theme.cursor || computedStyle.getPropertyValue('--editor-cursor').trim(),
+        selection: theme.selectionBackground || computedStyle.getPropertyValue('--editor-selection').trim(),
+        comment: theme.brightBlack || computedStyle.getPropertyValue('--editor-comment').trim(),
+        keyword: theme.magenta || computedStyle.getPropertyValue('--editor-keyword').trim(),
+        string: theme.green || computedStyle.getPropertyValue('--editor-string').trim(),
+        function: theme.blue || computedStyle.getPropertyValue('--editor-function').trim(),
+        variable: theme.red || computedStyle.getPropertyValue('--editor-variable').trim(),
+        number: theme.yellow || computedStyle.getPropertyValue('--editor-number').trim(),
+        operator: theme.cyan || computedStyle.getPropertyValue('--editor-operator').trim(),
+        className: theme.brightYellow || computedStyle.getPropertyValue('--editor-classname').trim(),
         themeName: themeName
       };
     };
@@ -748,13 +748,13 @@ export default defineComponent({
   flex-direction: column;
   height: 100%;
   width: 100%;
-  background-color: var(--editor-bg, #282c34);
-  color: var(--editor-fg, #abb2bf);
+  background-color: var(--editor-bg);
+  color: var(--editor-fg);
   border-radius: 4px;
   overflow: hidden;
   position: relative;
   z-index: 10;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.15);
+  box-shadow: var(--shadow-base);
   transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
   
   &.fullscreen {
@@ -766,32 +766,32 @@ export default defineComponent({
     z-index: 1000;
     border-radius: 0;
     box-shadow: none;
-    background-color: var(--editor-bg, #282c34) !important;
-    color: var(--editor-fg, #abb2bf) !important;
-    
+    background-color: var(--editor-bg) !important;
+    color: var(--editor-fg) !important;
+
     // 确保编辑器颜色在全屏模式下正确
     .cm-editor {
-      background-color: var(--editor-bg, #282c34) !important;
-      
-      .cm-scroller { color: var(--editor-fg, #abb2bf) !important; }
-      .cm-content { color: var(--editor-fg, #abb2bf) !important; }
-      .cm-line { color: var(--editor-fg, #abb2bf) !important; }
-      
+      background-color: var(--editor-bg) !important;
+
+      .cm-scroller { color: var(--editor-fg) !important; }
+      .cm-content { color: var(--editor-fg) !important; }
+      .cm-line { color: var(--editor-fg) !important; }
+
       // 语法高亮颜色
-      .cm-keyword { color: var(--editor-keyword, #c678dd) !important; }
-      .cm-comment { 
-        color: var(--editor-comment, #5c6370) !important; 
+      .cm-keyword { color: var(--editor-keyword) !important; }
+      .cm-comment {
+        color: var(--editor-comment) !important;
         font-style: italic !important;
       }
-      .cm-def, .cm-definition { color: var(--editor-function, #61afef) !important; }
-      .cm-variable, .cm-variableName { color: var(--editor-variable, #e06c75) !important; }
-      .cm-string { color: var(--editor-string, #98c379) !important; }
-      .cm-number { color: var(--editor-number, #d19a66) !important; }
-      .cm-operator { color: var(--editor-operator, #56b6c2) !important; }
-      .cm-punctuation { color: var(--editor-fg, #abb2bf) !important; }
-      .cm-property { color: var(--editor-variable, #e06c75) !important; }
-      .cm-function { color: var(--editor-function, #61afef) !important; }
-      .cm-className { color: var(--editor-class, #e5c07b) !important; }
+      .cm-def, .cm-definition { color: var(--editor-function) !important; }
+      .cm-variable, .cm-variableName { color: var(--editor-variable) !important; }
+      .cm-string { color: var(--editor-string) !important; }
+      .cm-number { color: var(--editor-number) !important; }
+      .cm-operator { color: var(--editor-operator) !important; }
+      .cm-punctuation { color: var(--editor-fg) !important; }
+      .cm-property { color: var(--editor-variable) !important; }
+      .cm-function { color: var(--editor-function) !important; }
+      .cm-className { color: var(--editor-classname) !important; }
     }
   }
 }
@@ -801,8 +801,8 @@ export default defineComponent({
   justify-content: space-between;
   align-items: center;
   padding: 8px 16px;
-  background-color: #21252b;
-  border-bottom: 1px solid #181a1f;
+  background-color: var(--color-bg-muted);
+  border-bottom: 1px solid var(--color-border-default);
 }
 
 .sftp-editor-path {
@@ -817,7 +817,7 @@ export default defineComponent({
 
 .sftp-editor-status {
   margin-left: 6px;
-  color: #e5c07b;
+  color: var(--editor-classname);
 }
 
 .sftp-editor-controls {
@@ -830,8 +830,8 @@ export default defineComponent({
   align-items: center;
   justify-content: center;
   background: transparent;
-  border: 1px solid #181a1f;
-  color: #abb2bf;
+  border: 1px solid var(--color-border-default);
+  color: var(--editor-fg);
   border-radius: 4px;
   padding: 4px 8px;
   margin-left: 8px;
@@ -841,12 +841,12 @@ export default defineComponent({
 }
 
 .sftp-editor-btn:hover {
-  background-color: rgba(255, 255, 255, 0.05);
-  color: #ffffff;
+  background-color: var(--color-hover-bg);
+  color: var(--color-text-primary);
 }
 
 .sftp-editor-btn:active {
-  background-color: rgba(255, 255, 255, 0.1);
+  background-color: var(--color-selected-bg);
 }
 
 .sftp-editor-btn:disabled {
@@ -855,9 +855,9 @@ export default defineComponent({
 }
 
 .sftp-editor-btn.close:hover {
-  background-color: rgba(224, 108, 117, 0.2);
-  color: #e06c75;
-  border-color: rgba(224, 108, 117, 0.3);
+  background-color: var(--color-error-bg);
+  color: var(--editor-variable);
+  border-color: var(--color-error);
 }
 
 .sftp-editor-body {
@@ -875,8 +875,8 @@ export default defineComponent({
   display: flex;
   align-items: center;
   padding: 6px 12px;
-  background-color: #21252b;
-  border-top: 1px solid #181a1f;
+  background-color: var(--color-bg-muted);
+  border-top: 1px solid var(--color-border-default);
   font-size: 12px;
 }
 
@@ -884,7 +884,7 @@ export default defineComponent({
   display: flex;
   justify-content: space-between;
   width: 100%;
-  color: #abb2bf;
+  color: var(--editor-fg);
 }
 
 /* CodeMirror 自定义样式 */
@@ -898,9 +898,9 @@ export default defineComponent({
 }
 
 .cm-gutters {
-  background-color: #21252b;
-  border-right: 1px solid #181a1f;
-  color: #636d83;
+  background-color: var(--color-bg-muted);
+  border-right: 1px solid var(--color-border-default);
+  color: var(--color-text-secondary);
   font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
 }
 
@@ -924,22 +924,22 @@ export default defineComponent({
 }
 
 .cm-scroller::-webkit-scrollbar-track {
-  background: #21252b;
+  background: var(--color-bg-muted);
   border-radius: 4px;
 }
 
 .cm-scroller::-webkit-scrollbar-thumb {
-  background: #3e4451;
+  background: var(--color-border-dark);
   border-radius: 4px;
-  border: 2px solid #21252b;
+  border: 2px solid var(--color-bg-muted);
 }
 
 .cm-scroller::-webkit-scrollbar-thumb:hover {
-  background: #4b5363;
+  background: var(--color-text-secondary);
 }
 
 /* 添加滚动条交界处（角落）的样式 */
 .cm-scroller::-webkit-scrollbar-corner {
-  background: #21252b; /* 与编辑器背景色一致 */
+  background: var(--color-bg-muted);
 }
 </style> 

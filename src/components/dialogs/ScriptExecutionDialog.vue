@@ -253,24 +253,24 @@ export default defineComponent({
 }
 
 .script-execution-dialog :deep(.el-dialog) {
-  background-color: #2a2a2a;
-  border: 1px solid #444;
+  background-color: var(--dialog-bg);
+  border: 1px solid var(--dialog-border);
   max-height: 90vh;
 }
 
 .script-execution-dialog :deep(.el-dialog__header) {
-  background-color: #2a2a2a;
-  border-bottom: 1px solid #444;
-  color: #e0e0e0;
+  background-color: var(--dialog-header-bg);
+  border-bottom: 1px solid var(--dialog-border);
+  color: var(--dialog-title-color);
 }
 
 .script-execution-dialog :deep(.el-dialog__title) {
-  color: #e0e0e0;
+  color: var(--dialog-title-color);
 }
 
 .script-execution-dialog :deep(.el-dialog__body) {
-  background-color: #2a2a2a;
-  color: #e0e0e0;
+  background-color: var(--dialog-bg);
+  color: var(--color-text-primary);
   padding: 0;
   height: 70vh;
   overflow: hidden;
@@ -284,23 +284,23 @@ export default defineComponent({
 
 .script-header {
   padding: 16px;
-  border-bottom: 1px solid #444;
-  background-color: #333;
+  border-bottom: 1px solid var(--color-border-default);
+  background-color: var(--color-bg-muted);
 }
 
 .script-header h3 {
   margin: 0 0 8px 0;
-  color: #e0e0e0;
+  color: var(--color-text-primary);
   font-size: 16px;
 }
 
 .script-command {
-  background-color: #444;
+  background-color: var(--color-bg-muted);
   padding: 8px 12px;
   border-radius: 4px;
   font-family: 'Consolas', 'Monaco', monospace;
   font-size: 13px;
-  color: #e0e0e0;
+  color: var(--color-text-primary);
   display: block;
 }
 
@@ -312,7 +312,7 @@ export default defineComponent({
 
 .server-list-panel {
   width: 300px;
-  border-right: 1px solid #444;
+  border-right: 1px solid var(--color-border-default);
   display: flex;
   flex-direction: column;
 }
@@ -326,13 +326,13 @@ export default defineComponent({
 
 .panel-header {
   padding: 12px 16px;
-  border-bottom: 1px solid #444;
-  background-color: #333;
+  border-bottom: 1px solid var(--color-border-default);
+  background-color: var(--color-bg-muted);
 }
 
 .panel-header h4 {
   margin: 0 0 8px 0;
-  color: #e0e0e0;
+  color: var(--color-text-primary);
   font-size: 14px;
 }
 
@@ -343,15 +343,15 @@ export default defineComponent({
 }
 
 .success-count {
-  color: #67c23a;
+  color: var(--color-success);
 }
 
 .failed-count {
-  color: #f56c6c;
+  color: var(--color-error);
 }
 
 .running-count {
-  color: #409eff;
+  color: var(--color-info);
 }
 
 .server-items {
@@ -364,30 +364,30 @@ export default defineComponent({
   align-items: center;
   justify-content: space-between;
   padding: 12px 16px;
-  border-bottom: 1px solid #444;
+  border-bottom: 1px solid var(--color-border-default);
   cursor: pointer;
   transition: all 0.2s ease;
 }
 
 .server-item:hover {
-  background-color: #3a3a3a;
+  background-color: var(--color-hover-bg);
 }
 
 .server-item.active {
-  background-color: #2a4a6b;
-  border-left: 3px solid #409eff;
+  background-color: var(--color-selected-bg);
+  border-left: 3px solid var(--color-info);
 }
 
 .server-item.success {
-  border-left: 3px solid #67c23a;
+  border-left: 3px solid var(--color-success);
 }
 
 .server-item.failed {
-  border-left: 3px solid #f56c6c;
+  border-left: 3px solid var(--color-error);
 }
 
 .server-item.running {
-  border-left: 3px solid #409eff;
+  border-left: 3px solid var(--color-info);
 }
 
 .server-info {
@@ -396,13 +396,13 @@ export default defineComponent({
 
 .server-name {
   font-weight: 500;
-  color: #e0e0e0;
+  color: var(--color-text-primary);
   margin-bottom: 4px;
 }
 
 .server-host {
   font-size: 12px;
-  color: #b0b0b0;
+  color: var(--color-text-secondary);
   font-family: 'Consolas', 'Monaco', monospace;
 }
 
@@ -411,20 +411,20 @@ export default defineComponent({
 }
 
 .success-icon {
-  color: #67c23a;
+  color: var(--color-success);
 }
 
 .failed-icon {
-  color: #f56c6c;
+  color: var(--color-error);
 }
 
 .running-icon {
-  color: #409eff;
+  color: var(--color-info);
   animation: spin 1s linear infinite;
 }
 
 .pending-icon {
-  color: #909399;
+  color: var(--color-text-secondary);
 }
 
 @keyframes spin {
@@ -443,7 +443,7 @@ export default defineComponent({
   gap: 24px;
   margin-bottom: 16px;
   padding: 12px;
-  background-color: #333;
+  background-color: var(--color-bg-muted);
   border-radius: 4px;
 }
 
@@ -455,23 +455,23 @@ export default defineComponent({
 
 .meta-item .label {
   font-weight: 500;
-  color: #b0b0b0;
+  color: var(--color-text-secondary);
 }
 
 .meta-item .value {
-  color: #e0e0e0;
+  color: var(--color-text-primary);
 }
 
 .meta-item .value.success {
-  color: #67c23a;
+  color: var(--color-success);
 }
 
 .meta-item .value.failed {
-  color: #f56c6c;
+  color: var(--color-error);
 }
 
 .meta-item .value.running {
-  color: #409eff;
+  color: var(--color-info);
 }
 
 .output-section {
@@ -480,13 +480,13 @@ export default defineComponent({
 
 .output-section h5 {
   margin: 0 0 8px 0;
-  color: #e0e0e0;
+  color: var(--color-text-primary);
   font-size: 14px;
 }
 
 .output-content {
-  background-color: #1e1e1e;
-  border: 1px solid #444;
+  background-color: var(--color-bg-subtle);
+  border: 1px solid var(--color-border-default);
   border-radius: 4px;
   padding: 12px;
   font-family: 'Consolas', 'Monaco', monospace;
@@ -499,15 +499,15 @@ export default defineComponent({
 }
 
 .output-content.stdout {
-  color: #e0e0e0;
+  color: var(--color-text-primary);
 }
 
 .output-content.stderr {
-  color: #f56c6c;
+  color: var(--color-error);
 }
 
 .output-content.error {
-  color: #f56c6c;
+  color: var(--color-error);
 }
 
 .running-status {
@@ -515,9 +515,9 @@ export default defineComponent({
   align-items: center;
   gap: 8px;
   padding: 16px;
-  background-color: #333;
+  background-color: var(--color-bg-muted);
   border-radius: 4px;
-  color: #409eff;
+  color: var(--color-info);
 }
 
 .loading-icon {
@@ -530,7 +530,7 @@ export default defineComponent({
 
 .error-section h5 {
   margin: 0 0 8px 0;
-  color: #f56c6c;
+  color: var(--color-error);
   font-size: 14px;
 }
 
@@ -575,13 +575,13 @@ export default defineComponent({
 }
 
 .script-execution-dialog :deep(.el-button--primary:hover) {
-  background-color: #66b1ff;
-  border-color: #66b1ff;
+  background-color: var(--color-primary-hover);
+  border-color: var(--color-primary-hover);
 }
 
 .script-execution-dialog :deep(.el-button:disabled) {
-  background-color: #333;
-  border-color: #555;
-  color: #666;
+  background-color: var(--btn-disabled-bg);
+  border-color: var(--color-border-default);
+  color: var(--btn-disabled-color);
 }
 </style>

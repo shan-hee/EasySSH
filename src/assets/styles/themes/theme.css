@@ -173,6 +173,90 @@
   --header-btn-hover-bg: rgba(170, 170, 170, 0.1);
   --header-btn-hover-color: #aaaaaa;
 
+  /* 对话框组件 */
+  --dialog-bg: var(--color-bg-container);
+  --dialog-border: var(--color-border-default);
+  --dialog-header-bg: var(--color-bg-muted);
+  --dialog-title-color: var(--color-text-primary);
+  --dialog-overlay-bg: rgba(0, 0, 0, 0.5);
+
+  /* 编辑器组件 */
+  --editor-bg: #ffffff;
+  --editor-fg: #303133;
+  --editor-cursor: #303133;
+  --editor-selection: #e6f7ff;
+  --editor-comment: #909399;
+  --editor-keyword: #d73a49;
+  --editor-string: #22863a;
+  --editor-function: #6f42c1;
+  --editor-variable: #e36209;
+  --editor-number: #005cc5;
+  --editor-operator: #d73a49;
+  --editor-classname: #6f42c1;
+
+  /* SFTP组件 */
+  --sftp-panel-header-bg: var(--color-bg-container);
+  --sftp-file-list-header-bg: var(--color-bg-container);
+  --sftp-empty-folder-color: var(--color-text-secondary);
+  --sftp-scrollbar-track: var(--color-bg-container);
+  --sftp-scrollbar-thumb: var(--color-border-default);
+  --sftp-scrollbar-thumb-hover: var(--color-border-dark);
+
+  /* 自动完成组件 */
+  --autocomplete-bg: var(--color-bg-container);
+  --autocomplete-border: var(--color-border-default);
+  --autocomplete-item-hover-bg: var(--color-hover-bg);
+  --autocomplete-command-color: var(--color-primary);
+  --autocomplete-description-color: var(--color-text-secondary);
+  --autocomplete-type-bg: var(--color-bg-muted);
+  --autocomplete-type-color: var(--color-text-secondary);
+  --autocomplete-type-border: var(--color-border-light);
+  --autocomplete-footer-bg: var(--color-bg-muted);
+  --autocomplete-hint-color: var(--color-text-placeholder);
+
+  /* 自动完成类型颜色 */
+  --autocomplete-type-script-bg: #f0f9ff;
+  --autocomplete-type-script-color: #0369a1;
+  --autocomplete-type-script-border: #0369a1;
+  --autocomplete-type-word-bg: #eff6ff;
+  --autocomplete-type-word-color: #1d4ed8;
+  --autocomplete-type-word-border: #1d4ed8;
+  --autocomplete-type-commands-bg: #fff7ed;
+  --autocomplete-type-commands-color: #ea580c;
+  --autocomplete-type-commands-border: #ea580c;
+  --autocomplete-type-options-bg: #faf5ff;
+  --autocomplete-type-options-color: #9333ea;
+  --autocomplete-type-options-border: #9333ea;
+  --autocomplete-type-development-bg: #ecfeff;
+  --autocomplete-type-development-color: #0891b2;
+  --autocomplete-type-development-border: #0891b2;
+
+  /* 登录组件 */
+  --login-title-color: var(--color-text-primary);
+  --login-input-bg: var(--color-bg-container);
+  --login-input-border: var(--color-border-default);
+  --login-input-color: var(--color-text-primary);
+  --login-link-color: var(--color-text-secondary);
+  --login-link-hover-color: var(--color-text-primary);
+
+  /* 按钮状态 */
+  --btn-disabled-bg: var(--color-disabled-bg);
+  --btn-disabled-color: var(--color-text-disabled);
+
+  /* Element Plus 组件变量 */
+  --el-dropdown-bg: var(--color-bg-container);
+  --el-dropdown-border: var(--color-border-default);
+  --el-dropdown-item-color: var(--color-text-primary);
+  --el-dropdown-item-hover-bg: var(--color-hover-bg);
+  --el-dropdown-item-selected-color: var(--color-primary);
+  --el-input-color: var(--color-text-primary);
+  --el-input-bg: var(--color-bg-container);
+  --el-input-number-bg: var(--color-bg-muted);
+  --el-message-bg: var(--color-bg-container);
+  --el-message-border: var(--color-border-light);
+  --el-message-color: var(--color-text-regular);
+  --el-message-icon-color: var(--color-text-regular);
+
   /* 登录面板 */
   --login-panel-bg: rgba(255, 255, 255, 0.95);
   --login-panel-title-color: #303133;
@@ -288,6 +372,90 @@
   --header-scrollbar-thumb: #c0c4cc;
   --header-btn-hover-bg: rgba(170, 170, 170, 0.1);
   --header-btn-hover-color: #aaaaaa;
+
+  /* 对话框组件 */
+  --dialog-bg: var(--color-bg-container);
+  --dialog-border: var(--color-border-default);
+  --dialog-header-bg: var(--color-bg-muted);
+  --dialog-title-color: var(--color-text-primary);
+  --dialog-overlay-bg: rgba(0, 0, 0, 0.5);
+
+  /* 编辑器组件 */
+  --editor-bg: #ffffff;
+  --editor-fg: #303133;
+  --editor-cursor: #303133;
+  --editor-selection: #e6f7ff;
+  --editor-comment: #909399;
+  --editor-keyword: #d73a49;
+  --editor-string: #22863a;
+  --editor-function: #6f42c1;
+  --editor-variable: #e36209;
+  --editor-number: #005cc5;
+  --editor-operator: #d73a49;
+  --editor-classname: #6f42c1;
+
+  /* SFTP组件 */
+  --sftp-panel-header-bg: var(--color-bg-container);
+  --sftp-file-list-header-bg: var(--color-bg-container);
+  --sftp-empty-folder-color: var(--color-text-secondary);
+  --sftp-scrollbar-track: var(--color-bg-container);
+  --sftp-scrollbar-thumb: var(--color-border-default);
+  --sftp-scrollbar-thumb-hover: var(--color-border-dark);
+
+  /* 自动完成组件 */
+  --autocomplete-bg: var(--color-bg-container);
+  --autocomplete-border: var(--color-border-default);
+  --autocomplete-item-hover-bg: var(--color-hover-bg);
+  --autocomplete-command-color: var(--color-primary);
+  --autocomplete-description-color: var(--color-text-secondary);
+  --autocomplete-type-bg: var(--color-bg-muted);
+  --autocomplete-type-color: var(--color-text-secondary);
+  --autocomplete-type-border: var(--color-border-light);
+  --autocomplete-footer-bg: var(--color-bg-muted);
+  --autocomplete-hint-color: var(--color-text-placeholder);
+
+  /* 自动完成类型颜色 */
+  --autocomplete-type-script-bg: #f0f9ff;
+  --autocomplete-type-script-color: #0369a1;
+  --autocomplete-type-script-border: #0369a1;
+  --autocomplete-type-word-bg: #eff6ff;
+  --autocomplete-type-word-color: #1d4ed8;
+  --autocomplete-type-word-border: #1d4ed8;
+  --autocomplete-type-commands-bg: #fff7ed;
+  --autocomplete-type-commands-color: #ea580c;
+  --autocomplete-type-commands-border: #ea580c;
+  --autocomplete-type-options-bg: #faf5ff;
+  --autocomplete-type-options-color: #9333ea;
+  --autocomplete-type-options-border: #9333ea;
+  --autocomplete-type-development-bg: #ecfeff;
+  --autocomplete-type-development-color: #0891b2;
+  --autocomplete-type-development-border: #0891b2;
+
+  /* 登录组件 */
+  --login-title-color: var(--color-text-primary);
+  --login-input-bg: var(--color-bg-container);
+  --login-input-border: var(--color-border-default);
+  --login-input-color: var(--color-text-primary);
+  --login-link-color: var(--color-text-secondary);
+  --login-link-hover-color: var(--color-text-primary);
+
+  /* 按钮状态 */
+  --btn-disabled-bg: var(--color-disabled-bg);
+  --btn-disabled-color: var(--color-text-disabled);
+
+  /* Element Plus 组件变量 */
+  --el-dropdown-bg: var(--color-bg-container);
+  --el-dropdown-border: var(--color-border-default);
+  --el-dropdown-item-color: var(--color-text-primary);
+  --el-dropdown-item-hover-bg: #f5f7fa;
+  --el-dropdown-item-selected-color: #aaaaaa;
+  --el-input-color: #606266;
+  --el-input-bg: #ffffff;
+  --el-input-number-bg: #f5f7fa;
+  --el-message-bg: var(--color-bg-container);
+  --el-message-border: var(--color-border-light);
+  --el-message-color: var(--color-text-regular);
+  --el-message-icon-color: #606266;
 
   /* 登录面板 */
   --login-panel-bg: rgba(255, 255, 255, 0.95);
@@ -423,6 +591,90 @@
   --header-btn-hover-bg: #333333;
   --header-btn-hover-color: #ffffff;
 
+  /* 对话框组件 - 深色主题 */
+  --dialog-bg: var(--color-bg-container);
+  --dialog-border: var(--color-border-default);
+  --dialog-header-bg: var(--color-bg-container);
+  --dialog-title-color: var(--color-text-primary);
+  --dialog-overlay-bg: rgba(0, 0, 0, 0.7);
+
+  /* 编辑器组件 - 深色主题 */
+  --editor-bg: #282c34;
+  --editor-fg: #abb2bf;
+  --editor-cursor: #ffffff;
+  --editor-selection: #264f78;
+  --editor-comment: #5c6370;
+  --editor-keyword: #c678dd;
+  --editor-string: #98c379;
+  --editor-function: #61afef;
+  --editor-variable: #e06c75;
+  --editor-number: #d19a66;
+  --editor-operator: #56b6c2;
+  --editor-classname: #e5c07b;
+
+  /* SFTP组件 - 深色主题 */
+  --sftp-panel-header-bg: #252525;
+  --sftp-file-list-header-bg: #252525;
+  --sftp-empty-folder-color: #888888;
+  --sftp-scrollbar-track: rgba(0, 0, 0, 0.1);
+  --sftp-scrollbar-thumb: rgba(255, 255, 255, 0.2);
+  --sftp-scrollbar-thumb-hover: rgba(255, 255, 255, 0.3);
+
+  /* 自动完成组件 - 深色主题 */
+  --autocomplete-bg: #1e1e1e;
+  --autocomplete-border: #404040;
+  --autocomplete-item-hover-bg: #333333;
+  --autocomplete-command-color: #4fc1ff;
+  --autocomplete-description-color: #cccccc;
+  --autocomplete-type-bg: #404040;
+  --autocomplete-type-color: #cccccc;
+  --autocomplete-type-border: #555555;
+  --autocomplete-footer-bg: #2d2d2d;
+  --autocomplete-hint-color: #888888;
+
+  /* 自动完成类型颜色 - 深色主题 */
+  --autocomplete-type-script-bg: #0e4f1c;
+  --autocomplete-type-script-color: #4ec9b0;
+  --autocomplete-type-script-border: #4ec9b0;
+  --autocomplete-type-word-bg: #1e3a8a;
+  --autocomplete-type-word-color: #60a5fa;
+  --autocomplete-type-word-border: #60a5fa;
+  --autocomplete-type-commands-bg: #7c2d12;
+  --autocomplete-type-commands-color: #fb923c;
+  --autocomplete-type-commands-border: #fb923c;
+  --autocomplete-type-options-bg: #581c87;
+  --autocomplete-type-options-color: #c084fc;
+  --autocomplete-type-options-border: #c084fc;
+  --autocomplete-type-development-bg: #164e63;
+  --autocomplete-type-development-color: #22d3ee;
+  --autocomplete-type-development-border: #22d3ee;
+
+  /* 登录组件 - 深色主题 */
+  --login-title-color: var(--color-text-primary);
+  --login-input-bg: rgba(245, 247, 250, 0.1);
+  --login-input-border: var(--color-border-default);
+  --login-input-color: var(--color-text-primary);
+  --login-link-color: var(--color-text-secondary);
+  --login-link-hover-color: #eeeeee;
+
+  /* 按钮状态 - 深色主题 */
+  --btn-disabled-bg: #555555;
+  --btn-disabled-color: var(--color-text-disabled);
+
+  /* Element Plus 组件变量 - 深色主题 */
+  --el-dropdown-bg: var(--color-bg-container);
+  --el-dropdown-border: var(--color-border-default);
+  --el-dropdown-item-color: var(--color-text-primary);
+  --el-dropdown-item-hover-bg: var(--color-hover-bg);
+  --el-dropdown-item-selected-color: var(--color-primary);
+  --el-input-color: var(--color-text-primary);
+  --el-input-bg: transparent;
+  --el-input-number-bg: var(--color-bg-muted);
+  --el-message-bg: var(--color-bg-container);
+  --el-message-border: var(--color-border-default);
+  --el-message-color: var(--color-text-primary);
+  --el-message-icon-color: var(--color-text-primary);
+
   /* 登录面板 */
   --login-panel-bg: rgba(40, 40, 40, 0.95);
   --login-panel-title-color: #ffffff;
@@ -490,6 +742,318 @@
 
 /* ===== 系统偏好自适应已移除 ===== */
 /* 现在完全由设置服务的 applyTheme 方法控制主题切换 */
+
+/* ===== 组件样式定义 ===== */
+
+/* SFTP组件样式 */
+.sftp-panel-header {
+  background-color: var(--sftp-panel-header-bg);
+  border-bottom-color: var(--color-border-default);
+}
+
+.sftp-panel-header h3 {
+  color: var(--color-text-primary);
+}
+
+.sftp-panel-header .close-button {
+  color: var(--color-text-primary);
+}
+
+.sftp-panel-header .close-button:hover {
+  background-color: var(--color-hover-bg);
+}
+
+.sftp-placeholder p {
+  color: var(--color-text-secondary);
+}
+
+.sftp-file-list-header {
+  background-color: var(--sftp-file-list-header-bg);
+  color: var(--color-text-secondary);
+  border-bottom-color: var(--color-border-default);
+}
+
+.sftp-empty-folder {
+  color: var(--sftp-empty-folder-color);
+}
+
+/* SFTP滚动条样式 */
+.sftp-file-items::-webkit-scrollbar-track {
+  background: var(--sftp-scrollbar-track);
+}
+
+.sftp-file-items::-webkit-scrollbar-thumb {
+  background: var(--sftp-scrollbar-thumb);
+}
+
+.sftp-file-items::-webkit-scrollbar-thumb:hover {
+  background: var(--sftp-scrollbar-thumb-hover);
+}
+
+/* Element Plus 全局组件样式 */
+.el-select-dropdown,
+.el-dropdown-menu,
+.el-cascader__dropdown,
+.el-date-picker,
+.el-time-panel,
+.el-popper.is-light {
+  background-color: var(--el-dropdown-bg);
+  border: 1px solid var(--el-dropdown-border);
+  color: var(--el-dropdown-item-color);
+  box-shadow: var(--shadow-lg);
+}
+
+.el-popper.is-light .el-popper__arrow::before,
+.el-select-dropdown.el-popper .el-popper__arrow::before,
+.el-cascader__dropdown.el-popper .el-popper__arrow::before,
+.el-dropdown-menu.el-popper .el-popper__arrow::before {
+  background-color: var(--el-dropdown-bg);
+  border-color: var(--el-dropdown-border);
+}
+
+.el-select-dropdown__item,
+.el-dropdown-menu__item,
+.el-cascader-node {
+  color: var(--el-dropdown-item-color);
+}
+
+.el-select-dropdown__item.hover,
+.el-select-dropdown__item:hover,
+.el-select-dropdown__item.is-hover,
+.el-dropdown-menu__item:hover,
+.el-dropdown-menu__item:focus,
+.el-cascader-node:hover,
+.el-cascader-node:focus {
+  background-color: var(--el-dropdown-item-hover-bg);
+  color: var(--el-dropdown-item-color);
+}
+
+.el-select-dropdown__item.selected,
+.el-select-dropdown__item.is-selected,
+.el-dropdown-menu__item.is-selected,
+.el-cascader-node.is-active,
+.el-cascader-node.in-active-path {
+  color: var(--el-dropdown-item-selected-color);
+  font-weight: bold;
+  background-color: transparent;
+}
+
+.el-select-dropdown__item.selected.hover,
+.el-select-dropdown__item.selected:hover,
+.el-select-dropdown__item.is-selected.is-hover,
+.el-select-dropdown__item.is-selected:hover,
+.el-dropdown-menu__item.is-selected:hover,
+.el-cascader-node.is-active:hover {
+  background-color: var(--el-dropdown-item-hover-bg);
+}
+
+.el-input__inner,
+.el-textarea__inner {
+  color: var(--el-input-color);
+  caret-color: var(--color-primary);
+  background-color: var(--el-input-bg);
+}
+
+.el-input-number {
+  border: none;
+  background-color: var(--el-input-number-bg);
+  border-radius: var(--radius-sm);
+  height: 36px;
+  width: 100px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.el-input-number__decrease,
+.el-input-number__increase {
+  border: none;
+  background-color: transparent;
+  color: var(--el-input-color);
+  box-shadow: none;
+  width: 36px;
+  height: 36px;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.el-input-number__wrapper {
+  box-shadow: none;
+  border: none;
+  background-color: transparent;
+  border-radius: 0;
+  padding: 0;
+  flex: 1;
+}
+
+.el-input-number .el-input__wrapper {
+  box-shadow: none;
+  background-color: transparent;
+  padding: 0;
+}
+
+.el-input-number .el-input {
+  width: 100%;
+  text-align: center;
+}
+
+.el-input-number .el-input__inner {
+  text-align: center;
+  padding: 0;
+  height: 36px;
+}
+
+.el-switch__core {
+  background-color: var(--switch-bg-color);
+  border-color: var(--switch-border-color);
+}
+
+.el-switch.is-checked .el-switch__core {
+  background-color: var(--switch-active-bg-color);
+  border-color: var(--switch-active-border-color);
+}
+
+.el-switch__core .el-switch__action {
+  background-color: var(--switch-button-color);
+}
+
+.el-switch.is-checked .el-switch__core .el-switch__action {
+  background-color: var(--switch-active-button-color);
+}
+
+.el-slider__runway {
+  background-color: var(--slider-runway-color);
+}
+
+.el-slider__bar {
+  background-color: var(--slider-bar-color);
+}
+
+.el-slider__button {
+  border-color: var(--slider-button-border-color);
+  background-color: var(--slider-button-color);
+}
+
+.el-select-dropdown__item.is-disabled,
+.el-dropdown-menu__item.is-disabled,
+.el-cascader-node.is-disabled {
+  color: var(--color-text-disabled);
+}
+
+.el-message {
+  background-color: var(--el-message-bg);
+  border-color: var(--el-message-border);
+  color: var(--el-message-color);
+  box-shadow: var(--shadow-base);
+}
+
+.el-message .el-message__icon,
+.el-message--success .el-message__icon,
+.el-message__content {
+  color: var(--el-message-icon-color);
+}
+
+/* 终端自动完成组件样式 */
+.terminal-autocomplete {
+  background: var(--autocomplete-bg);
+  border-color: var(--autocomplete-border);
+  box-shadow: var(--shadow-lg);
+}
+
+.autocomplete-header {
+  background: var(--autocomplete-footer-bg);
+  border-bottom-color: var(--autocomplete-border);
+}
+
+.autocomplete-title {
+  color: var(--color-text-primary);
+}
+
+.autocomplete-count {
+  color: var(--autocomplete-hint-color);
+}
+
+.autocomplete-item {
+  border-bottom-color: var(--color-border-lighter);
+}
+
+.autocomplete-item--active {
+  background: var(--color-selected-bg);
+}
+
+.autocomplete-item:hover {
+  background: var(--autocomplete-item-hover-bg);
+}
+
+.autocomplete-command {
+  color: var(--autocomplete-command-color);
+}
+
+.autocomplete-description {
+  color: var(--autocomplete-description-color);
+}
+
+.autocomplete-type {
+  background: var(--autocomplete-type-bg);
+  color: var(--autocomplete-type-color);
+  border-color: var(--autocomplete-type-border);
+}
+
+.autocomplete-footer {
+  background: var(--autocomplete-footer-bg);
+  border-top-color: var(--autocomplete-border);
+}
+
+.autocomplete-hint {
+  color: var(--autocomplete-hint-color);
+}
+
+/* 自动完成滚动条样式 */
+.autocomplete-list::-webkit-scrollbar-track {
+  background: var(--autocomplete-bg);
+}
+
+.autocomplete-list::-webkit-scrollbar-thumb {
+  background: var(--autocomplete-border);
+}
+
+.autocomplete-list::-webkit-scrollbar-thumb:hover {
+  background: var(--color-border-dark);
+}
+
+/* 自动完成类型样式 */
+.autocomplete-type--script {
+  background: var(--autocomplete-type-script-bg);
+  color: var(--autocomplete-type-script-color);
+  border-color: var(--autocomplete-type-script-border);
+}
+
+.autocomplete-type--word {
+  background: var(--autocomplete-type-word-bg);
+  color: var(--autocomplete-type-word-color);
+  border-color: var(--autocomplete-type-word-border);
+}
+
+.autocomplete-type--commands {
+  background: var(--autocomplete-type-commands-bg);
+  color: var(--autocomplete-type-commands-color);
+  border-color: var(--autocomplete-type-commands-border);
+}
+
+.autocomplete-type--options {
+  background: var(--autocomplete-type-options-bg);
+  color: var(--autocomplete-type-options-color);
+  border-color: var(--autocomplete-type-options-border);
+}
+
+.autocomplete-type--development {
+  background: var(--autocomplete-type-development-bg);
+  color: var(--autocomplete-type-development-color);
+  border-color: var(--autocomplete-type-development-border);
+}
 
 /* ===== 基础元素样式应用 ===== */
 body {

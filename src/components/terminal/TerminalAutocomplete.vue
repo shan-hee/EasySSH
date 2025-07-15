@@ -422,36 +422,7 @@ export default {
   border: 1px solid var(--color-border-default);
 }
 
-/* 不同类型的颜色 */
-.autocomplete-type--script {
-  background: #0e4f1c;
-  color: #4ec9b0;
-  border-color: #4ec9b0;
-}
-
-.autocomplete-type--word {
-  background: #1e3a8a;
-  color: #60a5fa;
-  border-color: #60a5fa;
-}
-
-.autocomplete-type--commands {
-  background: #7c2d12;
-  color: #fb923c;
-  border-color: #fb923c;
-}
-
-.autocomplete-type--options {
-  background: #581c87;
-  color: #c084fc;
-  border-color: #c084fc;
-}
-
-.autocomplete-type--development {
-  background: #164e63;
-  color: #22d3ee;
-  border-color: #22d3ee;
-}
+/* 不同类型的颜色已迁移到主题文件 */
 
 .autocomplete-type--network {
   background: #065f46;
@@ -553,16 +524,16 @@ export default {
 /* 高对比度模式支持 */
 @media (prefers-contrast: high) {
   .terminal-autocomplete {
-    border-color: #ffffff;
+    border-color: var(--color-text-primary);
     box-shadow: 0 4px 12px rgba(255, 255, 255, 0.2);
   }
 
   .autocomplete-item--active {
-    background: #0078d4;
+    background: var(--color-info);
   }
 
   .autocomplete-command {
-    color: #ffffff;
+    color: var(--color-text-primary);
   }
 }
 
@@ -573,125 +544,5 @@ export default {
   }
 }
 
-/* 深色主题特定样式 */
-:root[data-theme="dark"] .terminal-autocomplete,
-.dark-theme .terminal-autocomplete {
-  background: #1e1e1e;
-  border-color: #404040;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-}
-
-:root[data-theme="dark"] .autocomplete-header,
-.dark-theme .autocomplete-header {
-  background: #2d2d2d;
-  border-bottom-color: #404040;
-}
-
-:root[data-theme="dark"] .autocomplete-title,
-.dark-theme .autocomplete-title {
-  color: #cccccc;
-}
-
-:root[data-theme="dark"] .autocomplete-count,
-.dark-theme .autocomplete-count {
-  color: #888888;
-}
-
-:root[data-theme="dark"] .autocomplete-item,
-.dark-theme .autocomplete-item {
-  border-bottom-color: #333333;
-}
-
-:root[data-theme="dark"] .autocomplete-item--active,
-.dark-theme .autocomplete-item--active {
-  background: #264f78;
-}
-
-:root[data-theme="dark"] .autocomplete-item:hover,
-.dark-theme .autocomplete-item:hover {
-  background: rgba(255, 255, 255, 0.05);
-}
-
-:root[data-theme="dark"] .autocomplete-command,
-.dark-theme .autocomplete-command {
-  color: #4fc1ff;
-}
-
-:root[data-theme="dark"] .autocomplete-description,
-.dark-theme .autocomplete-description {
-  color: #cccccc;
-}
-
-:root[data-theme="dark"] .autocomplete-type,
-.dark-theme .autocomplete-type {
-  background: #404040;
-  color: #cccccc;
-  border-color: #555555;
-}
-
-/* 深色主题footer样式 */
-:root[data-theme="dark"] .autocomplete-footer,
-.dark-theme .autocomplete-footer,
-html[data-theme="dark"] .autocomplete-footer {
-  background: #2d2d2d !important;
-  border-top-color: #404040 !important;
-}
-
-:root[data-theme="dark"] .autocomplete-hint,
-.dark-theme .autocomplete-hint,
-html[data-theme="dark"] .autocomplete-hint {
-  color: #888888 !important;
-}
-
-/* 深色主题滚动条样式 */
-:root[data-theme="dark"] .autocomplete-list::-webkit-scrollbar-track,
-.dark-theme .autocomplete-list::-webkit-scrollbar-track,
-html[data-theme="dark"] .autocomplete-list::-webkit-scrollbar-track {
-  background: #1e1e1e !important;
-}
-
-:root[data-theme="dark"] .autocomplete-list::-webkit-scrollbar-thumb,
-.dark-theme .autocomplete-list::-webkit-scrollbar-thumb,
-html[data-theme="dark"] .autocomplete-list::-webkit-scrollbar-thumb {
-  background: #404040 !important;
-}
-
-:root[data-theme="dark"] .autocomplete-list::-webkit-scrollbar-thumb:hover,
-.dark-theme .autocomplete-list::-webkit-scrollbar-thumb:hover,
-html[data-theme="dark"] .autocomplete-list::-webkit-scrollbar-thumb:hover {
-  background: #505050 !important;
-}
-
-/* 浅色主题footer样式 */
-:root[data-theme="light"] .autocomplete-footer,
-.light-theme .autocomplete-footer,
-html[data-theme="light"] .autocomplete-footer {
-  background: #ffffff !important;
-  border-top-color: #dcdfe6 !important;
-}
-
-:root[data-theme="light"] .autocomplete-hint,
-.light-theme .autocomplete-hint,
-html[data-theme="light"] .autocomplete-hint {
-  color: #909399 !important;
-}
-
-/* 浅色主题滚动条样式 */
-:root[data-theme="light"] .autocomplete-list::-webkit-scrollbar-track,
-.light-theme .autocomplete-list::-webkit-scrollbar-track,
-html[data-theme="light"] .autocomplete-list::-webkit-scrollbar-track {
-  background: #ffffff !important;
-}
-
-:root[data-theme="light"] .autocomplete-list::-webkit-scrollbar-thumb,
-.light-theme .autocomplete-list::-webkit-scrollbar-thumb,
-html[data-theme="light"] .autocomplete-list::-webkit-scrollbar-thumb {
-  background: #dcdfe6 !important;
-}
-
-:root[data-theme="light"] .autocomplete-list::-webkit-scrollbar-thumb:hover,
-.light-theme .autocomplete-list::-webkit-scrollbar-thumb:hover,
-html[data-theme="light"] .autocomplete-list::-webkit-scrollbar-thumb:hover {
-  background: #d4d7de !important;
-}
+/* 主题相关样式已迁移到 src/assets/styles/themes/theme.css */
 </style>
