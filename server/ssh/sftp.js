@@ -525,21 +525,62 @@ async function handleSftpDelete(ws, data) {
 }
 
 /**
+ * SFTP处理函数 - 修改文件权限
+ * @param {WebSocket} ws WebSocket连接
+ * @param {Object} data 请求数据
+ */
+async function handleSftpChmod(ws, data) {
+  const { sessionId, path: targetPath, permissions, operationId } = data;
+
+  if (!validateSftpSession(ws, sessionId, sftpSessions, operationId)) {
+    return;
+  }
+
+  await safeExec(async () => {
+    const sftpSession = sftpSessions.get(sessionId);
+    const sftp = sftpSession.sftp;
+
+    // 修改文件权限
+    sftp.chmod(targetPath, permissions, (err) => {
+      if (err) {
+        logger.error('SFTP修改权限失败', { targetPath, permissions: permissions.toString(8), error: err.message });
+        sendSftpError(ws, sessionId, operationId, `修改权限失败: ${err.message}`);
+        return;
+      }
+
+      logger.info('SFTP权限修改成功', { targetPath, permissions: permissions.toString(8) });
+      sendSftpSuccess(ws, sessionId, operationId, {
+        message: '权限修改成功'
+      });
+
+      // 刷新当前目录
+      if (path.dirname(targetPath) === sftpSession.currentPath) {
+        handleSftpList(ws, {
+          sessionId,
+          path: sftpSession.currentPath,
+          operationId: `${operationId}_refresh`
+        });
+      }
+    });
+  }, ws, '修改权限错误', sessionId, operationId);
+}
+
+/**
  * SFTP处理函数 - 重命名文件或目录
  * @param {WebSocket} ws WebSocket连接
  * @param {Object} data 请求数据
  */
 async function handleSftpRename(ws, data) {
   const { sessionId, oldPath, newPath, operationId } = data;
-  
+
   if (!validateSftpSession(ws, sessionId, sftpSessions, operationId)) {
     return;
   }
-  
+
   await safeExec(async () => {
     const sftpSession = sftpSessions.get(sessionId);
     const sftp = sftpSession.sftp;
-    
+
     // 重命名文件或目录
     sftp.rename(oldPath, newPath, (err) => {
       if (err) {
@@ -547,12 +588,12 @@ async function handleSftpRename(ws, data) {
         sendSftpError(ws, sessionId, operationId, `重命名失败: ${err.message}`);
         return;
       }
-      
+
       logger.info('SFTP重命名成功', { oldPath, newPath });
       sendSftpSuccess(ws, sessionId, operationId, {
         message: '重命名成功'
       });
-      
+
       // 刷新当前目录
       if (path.dirname(oldPath) === sftpSession.currentPath) {
         handleSftpList(ws, {
@@ -1048,6 +1089,7 @@ module.exports = {
   handleSftpDownloadFolder,
   handleSftpMkdir,
   handleSftpDelete,
+  handleSftpChmod,
   handleSftpRename,
   handleSftpClose,
   getMimeType

@@ -520,8 +520,8 @@
   --color-error-light: #e84749;
   --color-error-bg: #2a1215;
 
-  --color-info: #aaaaaa;
-  --color-info-light: #3c9ae8;
+  --color-info: #1890ff;
+  --color-info-light: #40a9ff;
   --color-info-bg: #111b26;
 
   /* 文本色系 - 深色主题 */
@@ -559,11 +559,11 @@
   --shadow-xl: 0 12px 24px rgba(0, 0, 0, 0.5);
 
   /* Tooltip 颜色系统 - 深色主题 */
-  --tooltip-bg: var(--color-text-primary);
-  --tooltip-color: var(--color-bg-container);
+  --tooltip-bg: var(--color-bg-container);
+  --tooltip-color: var(--color-text-primary);
   --tooltip-border: var(--color-border-default);
   --tooltip-shadow: var(--shadow-lg);
-  --tooltip-arrow-color: var(--color-text-primary);
+  --tooltip-arrow-color: var(--color-bg-container);
 
   /* 交互状态 - 深色主题 */
   --color-hover-bg: rgba(170, 170, 170, 0.15);

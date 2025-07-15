@@ -101,6 +101,7 @@
                     @download="downloadFile"
                     @delete="deleteFile"
                     @refresh="refreshCurrentDirectory"
+                    @permissions="handlePermissions"
                   />
                 </div>
               </div>
@@ -109,6 +110,14 @@
         </div>
       </div>
     </div>
+
+    <!-- 权限编辑对话框 -->
+    <SftpPermissionsDialog
+      v-if="selectedFileForPermissions"
+      v-model="showPermissionsDialog"
+      :file="selectedFileForPermissions"
+      @save="handlePermissionsSave"
+    />
   </div>
 </template>
 
@@ -125,6 +134,7 @@ import SftpInlineEditor from './components/SftpInlineEditor.vue'
 import SftpToolbar from './components/SftpToolbar.vue'
 import SftpPathNavigator from './components/SftpPathNavigator.vue'
 import SftpEditor from './components/SftpEditor.vue'
+import SftpPermissionsDialog from './components/SftpPermissionsDialog.vue'
 
 // 导入可复用逻辑
 import { useFileUtils } from './composables/useFileUtils'
@@ -136,7 +146,8 @@ export default defineComponent({
     SftpInlineEditor,
     SftpToolbar,
     SftpPathNavigator,
-    SftpEditor
+    SftpEditor,
+    SftpPermissionsDialog
   },
   props: {
     sessionId: {
@@ -182,6 +193,9 @@ export default defineComponent({
     const errorMessage = ref('')
     // 拖拽上传状态
     const isDragOver = ref(false)
+    // 权限编辑状态
+    const showPermissionsDialog = ref(false)
+    const selectedFileForPermissions = ref(null)
     
     // 添加当前上传文件名
     const currentUploadingFile = ref('');
@@ -2193,6 +2207,35 @@ export default defineComponent({
       showHiddenFiles.value = value;
       refreshCurrentDirectory();
     };
+
+    // 处理权限编辑
+    const handlePermissions = (file) => {
+      selectedFileForPermissions.value = file;
+      showPermissionsDialog.value = true;
+    };
+
+    // 保存权限
+    const handlePermissionsSave = async (file, newPermissions) => {
+      try {
+        // 构建完整文件路径
+        const fullPath = currentPath.value === '/' ?
+          currentPath.value + file.name :
+          currentPath.value + '/' + file.name;
+
+        log.info('修改文件权限:', { file: file.name, path: fullPath, permissions: newPermissions.toString(8) });
+
+        // 调用SFTP服务的权限修改方法
+        await sftpService.changePermissions(props.sessionId, fullPath, newPermissions);
+
+        // 刷新目录以更新权限显示
+        await refreshCurrentDirectory();
+
+        ElMessage.success('权限修改成功');
+      } catch (error) {
+        log.error('权限修改失败:', error);
+        throw error;
+      }
+    };
     
     // 打开文件编辑器
     const openEditor = async (file) => {
@@ -2373,6 +2416,8 @@ export default defineComponent({
       isCreating,
       creatingType,
       inlineEditor,
+      showPermissionsDialog,
+      selectedFileForPermissions,
       
       // 方法
       close,
@@ -2401,6 +2446,8 @@ export default defineComponent({
       openEditor,
       closeEditor,
       handleEditorSave,
+      handlePermissions,
+      handlePermissionsSave,
       
       // 格式化函数
       formatFileSize,

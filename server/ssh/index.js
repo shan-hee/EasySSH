@@ -324,7 +324,12 @@ function initWebSocketServer(server) {
             // 处理SFTP删除
             sftp.handleSftpDelete(ws, data);
             break;
-            
+
+          case 'sftp_chmod':
+            // 处理SFTP权限修改
+            sftp.handleSftpChmod(ws, data);
+            break;
+
           case 'sftp_rename':
             // 处理SFTP重命名
             sftp.handleSftpRename(ws, data);

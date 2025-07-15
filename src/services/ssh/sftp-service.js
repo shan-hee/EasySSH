@@ -886,6 +886,65 @@ class SFTPService {
   }
 
   /**
+   * 修改文件权限
+   * @param {string} sessionId - SFTP会话ID
+   * @param {string} remotePath - 远程文件路径
+   * @param {number} permissions - 新权限（八进制数字）
+   * @returns {Promise<Object>} - 修改结果
+   */
+  async changePermissions(sessionId, remotePath, permissions) {
+    await this._ensureSftpSession(sessionId);
+
+    return new Promise((resolve, reject) => {
+      const operationId = this._nextOperationId();
+
+      try {
+        // 获取SSH会话
+        const { sshSessionId, session } = this._getSSHSession(sessionId);
+
+        // 设置操作超时
+        const timeout = setTimeout(() => {
+          this.fileOperations.delete(operationId);
+          reject(new Error('修改权限超时'));
+        }, 30000);
+
+        // 保存操作回调
+        this.fileOperations.set(operationId, {
+          resolve: (data) => {
+            clearTimeout(timeout);
+            resolve(data);
+          },
+          reject: (error) => {
+            clearTimeout(timeout);
+            reject(error);
+          },
+          type: 'chmod'
+        });
+
+        // 发送修改权限请求
+        if (session.socket && session.socket.readyState === WS_CONSTANTS.OPEN) {
+          session.socket.send(JSON.stringify({
+            type: 'sftp_chmod',
+            data: {
+              sessionId: sshSessionId,
+              path: remotePath,
+              permissions,
+              operationId
+            }
+          }));
+        } else {
+          clearTimeout(timeout);
+          this.fileOperations.delete(operationId);
+          reject(new Error('WebSocket连接未就绪'));
+        }
+      } catch (error) {
+        this.fileOperations.delete(operationId);
+        reject(error);
+      }
+    });
+  }
+
+  /**
    * 重命名文件或目录
    * @param {string} sessionId - SFTP会话ID
    * @param {string} oldPath - 原路径
