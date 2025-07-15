@@ -371,7 +371,7 @@ export default defineComponent({
 }
 
 .btn:disabled {
-  background-color: #555;
+  background-color: var(--color-disabled-bg);
   cursor: not-allowed;
   opacity: 0.7;
 }
@@ -401,15 +401,15 @@ export default defineComponent({
   left: 0;
   width: 100%;
   height: 100%;
-  border: 1px solid #444;
+  border: 1px solid var(--color-border-default);
   border-radius: 4px;
-  background-color: #2a2a2a;
+  background-color: var(--color-bg-container);
   color: transparent;
   font-size: 20px;
   text-align: center;
   outline: none;
   z-index: 1;
-  caret-color: #0083d3;
+  caret-color: var(--color-primary);
 }
 
 .digit-display {
@@ -422,18 +422,18 @@ export default defineComponent({
   align-items: center;
   justify-content: center;
   font-size: 20px;
-  color: #fff;
+  color: var(--color-text-primary);
   pointer-events: none;
   z-index: 2;
 }
 
 .code-input:focus {
-  border-color: #0083d3;
-  box-shadow: 0 0 0 2px rgba(0, 131, 211, 0.2);
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 2px var(--color-focus-ring);
 }
 
 .digit-container.active .code-input {
-  border-color: #0083d3;
+  border-color: var(--color-primary);
 }
 
 .code-separator {
@@ -443,7 +443,7 @@ export default defineComponent({
 }
 
 .verify-error {
-  color: #f44336;
+  color: var(--color-error);
   margin-top: 15px;
   text-align: center;
   font-size: 14px;

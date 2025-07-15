@@ -442,39 +442,39 @@ export default defineComponent({
   width: 36px;
   height: 36px;
   border-radius: 50%;
-  background-color: #2a2a2a;
-  color: #999;
+  background-color: var(--color-bg-muted);
+  color: var(--color-text-secondary);
   display: flex;
   align-items: center;
   justify-content: center;
   margin-bottom: 10px;
   font-weight: bold;
   transition: all 0.3s ease;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+  box-shadow: var(--shadow-sm);
 }
 
 .step-item.active .step-number {
-  background-color: #0083d3;
-  color: #fff;
+  background-color: var(--color-primary);
+  color: var(--color-bg-container);
   transform: scale(1.1);
-  box-shadow: 0 0 0 4px rgba(0, 131, 211, 0.2);
+  box-shadow: 0 0 0 4px var(--color-focus-ring);
 }
 
 .step-text {
   font-size: 13px;
-  color: #999;
+  color: var(--color-text-secondary);
   transition: all 0.3s ease;
 }
 
 .step-item.active .step-text {
-  color: #fff;
+  color: var(--color-text-primary);
   font-weight: 500;
 }
 
 .step-divider {
   width: 100px;
   height: 2px;
-  background-color: #2a2a2a;
+  background-color: var(--color-bg-muted);
   margin: 0 15px;
   margin-bottom: 25px;
   transition: all 0.5s ease;
@@ -482,7 +482,7 @@ export default defineComponent({
 }
 
 .step-divider.active {
-  background-color: #0083d3;
+  background-color: var(--color-primary);
 }
 
 .step-divider::after {
@@ -490,7 +490,7 @@ export default defineComponent({
   position: absolute;
   width: 0%;
   height: 100%;
-  background-color: #0083d3;
+  background-color: var(--color-primary);
   left: 0;
   top: 0;
   transition: width 0.5s ease;
@@ -511,19 +511,19 @@ export default defineComponent({
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  background-color: #181818;
+  background-color: var(--color-bg-muted);
   border-radius: 8px;
-  color: #999;
+  color: var(--color-text-secondary);
   margin-bottom: 20px;
-  box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.3);
+  box-shadow: var(--shadow-base);
 }
 
 .loading-spinner {
   width: 40px;
   height: 40px;
-  border: 3px solid rgba(255, 255, 255, 0.1);
+  border: 3px solid var(--color-border-light);
   border-radius: 50%;
-  border-top-color: #0083d3;
+  border-top-color: var(--color-primary);
   animation: spin 1s ease-in-out infinite;
   margin-bottom: 10px;
 }
@@ -546,12 +546,12 @@ export default defineComponent({
 }
 
 .qrcode-wrap {
-  background-color: #fff;
+  background-color: #ffffff;
   padding: 15px;
   border-radius: 12px;
   margin-bottom: 30px;
   width: fit-content;
-  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.2);
+  box-shadow: var(--shadow-lg);
 }
 
 .qrcode-image {
@@ -575,8 +575,8 @@ export default defineComponent({
   min-width: 24px;
   height: 24px;
   border-radius: 50%;
-  background-color: #0083d3;
-  color: #fff;
+  background-color: var(--color-primary);
+  color: var(--color-bg-container);
   font-size: 12px;
   display: flex;
   align-items: center;
@@ -587,24 +587,24 @@ export default defineComponent({
 
 .instruction-step p {
   margin: 0;
-  color: #ddd;
+  color: var(--color-text-primary);
   font-size: 14px;
   line-height: 1.6;
 }
 
 .mfa-secret {
   width: 100%;
-  background-color: #1a1a1a;
+  background-color: var(--color-bg-muted);
   padding: 15px;
   border-radius: 8px;
   margin-bottom: 20px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  border: 1px solid var(--color-border-default);
+  box-shadow: var(--shadow-sm);
 }
 
 .secret-title {
   margin: 0 0 10px;
-  color: #999;
+  color: var(--color-text-secondary);
   font-size: 13px;
 }
 
@@ -615,13 +615,13 @@ export default defineComponent({
 .secret-code {
   font-family: monospace;
   font-size: 16px;
-  color: #fff;
+  color: var(--color-text-primary);
   letter-spacing: 1px;
   word-break: break-all;
-  background-color: rgba(0, 0, 0, 0.2);
+  background-color: var(--color-bg-container);
   padding: 10px;
   border-radius: 4px;
-  border: 1px solid rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--color-border-default);
   position: relative;
 }
 
@@ -637,7 +637,7 @@ export default defineComponent({
   height: 24px;
   background-color: transparent;
   border: none;
-  color: #ccc;
+  color: var(--color-text-secondary);
   cursor: pointer;
   transition: all 0.2s ease;
   padding: 0;
@@ -667,7 +667,7 @@ export default defineComponent({
 
 .verify-instructions p {
   margin: 0;
-  color: #ddd;
+  color: var(--color-text-primary);
   font-size: 15px;
   line-height: 1.5;
 }
@@ -691,7 +691,7 @@ export default defineComponent({
   background-color: rgba(255, 255, 255, 0.05);
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 8px;
-  color: #fff;
+  color: var(--color-text-primary);
   font-size: 24px;
   font-weight: 500;
   text-align: center;
@@ -703,9 +703,9 @@ export default defineComponent({
 }
 
 .code-input:focus {
-  border-color: #0083d3;
-  background-color: rgba(0, 131, 211, 0.1);
-  box-shadow: 0 0 0 2px rgba(0, 131, 211, 0.2);
+  border-color: var(--color-primary);
+  background-color: var(--color-hover-bg);
+  box-shadow: 0 0 0 2px var(--color-focus-ring);
   transform: translateY(-2px);
 }
 
@@ -717,21 +717,21 @@ export default defineComponent({
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #ff4d4f;
+  color: var(--color-error);
   font-size: 14px;
   margin-bottom: 20px;
   text-align: center;
-  background-color: rgba(255, 77, 79, 0.1);
+  background-color: var(--color-error-bg);
   padding: 8px 15px;
   border-radius: 4px;
-  border: 1px solid rgba(255, 77, 79, 0.2);
+  border: 1px solid var(--color-error-light);
 }
 
 .error-icon {
   display: inline-block;
   width: 16px;
   height: 16px;
-  background-color: #ff4d4f;
+  background-color: var(--color-error);
   border-radius: 50%;
   margin-right: 8px;
   position: relative;
@@ -772,29 +772,56 @@ export default defineComponent({
   overflow: hidden;
 }
 
-.btn-next, .btn-verify {
-  background-color: #0083d3;
-  color: #fff;
-  box-shadow: 0 4px 8px rgba(0, 131, 211, 0.2);
+/* 浅色主题下的按钮样式 - 默认蓝色 */
+.btn-next, .btn-verify,
+:root[data-theme="light"] .btn-next,
+:root[data-theme="light"] .btn-verify,
+.light-theme .btn-next,
+.light-theme .btn-verify {
+  background-color: #1890ff !important;
+  color: #ffffff !important;
+  box-shadow: var(--shadow-base);
 }
 
-.btn-next:hover, .btn-verify:hover {
-  background-color: #0096f2;
-  box-shadow: 0 6px 12px rgba(0, 131, 211, 0.3);
+.btn-next:hover, .btn-verify:hover,
+:root[data-theme="light"] .btn-next:hover,
+:root[data-theme="light"] .btn-verify:hover,
+.light-theme .btn-next:hover,
+.light-theme .btn-verify:hover {
+  background-color: #1890ff !important;
+  box-shadow: var(--shadow-base) !important;
+}
+
+/* 深色主题下的按钮样式 */
+:root[data-theme="dark"] .btn-next,
+:root[data-theme="dark"] .btn-verify,
+.dark-theme .btn-next,
+.dark-theme .btn-verify {
+  background-color: #555 !important;
+  color: var(--color-text-primary) !important;
+}
+
+:root[data-theme="dark"] .btn-next:hover,
+:root[data-theme="dark"] .btn-verify:hover,
+.dark-theme .btn-next:hover,
+.dark-theme .btn-verify:hover {
+  background-color: #555 !important;
+  box-shadow: var(--shadow-base) !important;
 }
 
 .btn-back {
-  background-color: #333;
-  color: #fff;
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+  background-color: var(--color-bg-muted);
+  color: var(--color-text-primary);
+  box-shadow: var(--shadow-base);
+  border: 1px solid var(--color-border-default);
 }
 
 .btn-back:hover {
-  background-color: #444;
+  background-color: var(--color-hover-bg);
 }
 
 .btn-verify:disabled {
-  background-color: #555;
+  background-color: var(--color-disabled-bg);
   cursor: not-allowed;
   box-shadow: none;
 }
@@ -803,9 +830,9 @@ export default defineComponent({
   display: inline-block;
   width: 14px;
   height: 14px;
-  border: 2px solid rgba(255, 255, 255, 0.3);
+  border: 2px solid var(--color-border-light);
   border-radius: 50%;
-  border-top-color: #fff;
+  border-top-color: var(--color-bg-container);
   animation: spin 1s linear infinite;
   margin-right: 8px;
   vertical-align: middle;

@@ -287,14 +287,14 @@ export default defineComponent({
 .verify-title {
   font-size: 20px;
   font-weight: bold;
-  color: #fff;
+  color: var(--color-text-primary);
   margin-bottom: 15px;
   text-align: center;
 }
 
 .verify-subtitle {
   font-size: 14px;
-  color: #aaa;
+  color: var(--color-text-secondary);
   text-align: center;
   margin-bottom: 30px;
   line-height: 1.5;
@@ -325,15 +325,15 @@ export default defineComponent({
   left: 0;
   width: 100%;
   height: 100%;
-  border: 1px solid #444;
+  border: 1px solid var(--color-border-default);
   border-radius: 4px;
-  background-color: #2a2a2a;
+  background-color: var(--color-bg-container);
   color: transparent;
   font-size: 20px;
   text-align: center;
   outline: none;
   z-index: 1;
-  caret-color: #0083d3;
+  caret-color: var(--color-primary);
 }
 
 .digit-display {
@@ -346,18 +346,14 @@ export default defineComponent({
   align-items: center;
   justify-content: center;
   font-size: 20px;
-  color: #fff;
+  color: var(--color-text-primary);
   pointer-events: none;
   z-index: 2;
 }
 
 .code-input:focus {
-  border-color: #0083d3;
-  box-shadow: 0 0 0 2px rgba(0, 131, 211, 0.2);
-}
-
-.digit-container.active .code-input {
-  border-color: #0083d3;
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 2px var(--color-focus-ring);
 }
 
 .code-separator {
@@ -367,7 +363,7 @@ export default defineComponent({
 }
 
 .verify-error {
-  color: #f44336;
+  color: var(--color-error);
   margin-top: 15px;
   text-align: center;
   font-size: 14px;
@@ -390,19 +386,40 @@ export default defineComponent({
   min-width: 80px;
 }
 
-.btn-verify {
-  background-color: #0083d3;
-  color: #fff;
+/* 浅色主题下的按钮样式 - 默认蓝色 */
+.btn-verify,
+:root[data-theme="light"] .btn-verify,
+.light-theme .btn-verify {
+  background-color: #1890ff !important;
+  color: #ffffff !important;
+}
+
+.btn-verify:hover,
+:root[data-theme="light"] .btn-verify:hover,
+.light-theme .btn-verify:hover {
+  background-color: #1890ff !important;
+}
+
+/* 深色主题下的按钮样式 */
+:root[data-theme="dark"] .btn-verify,
+.dark-theme .btn-verify {
+  background-color: #555 !important;
+  color: var(--color-text-primary) !important;
+}
+
+:root[data-theme="dark"] .btn-verify:hover,
+.dark-theme .btn-verify:hover {
+  background-color: #555 !important;
 }
 
 .btn-cancel {
-  background-color: #3f3f3f;
-  color: #fff;
+  background-color: var(--color-bg-muted);
+  color: var(--color-text-primary);
+  border: 1px solid var(--color-border-default);
 }
 
 .btn-verify:disabled {
-  background-color: #555;
+  background-color: var(--color-disabled-bg);
   cursor: not-allowed;
-  opacity: 0.7;
 }
 </style> 
