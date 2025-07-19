@@ -10,11 +10,11 @@
     </div>
     <div class="row" style="display: flex; gap: 20px; margin-bottom: 20px;">
       <div class="dashboard-card" style="flex: 1;">
-        <div class="card-header">
+        <div class="card-header dashboard-card-header">
           <span>连接状态</span>
           <button class="btn btn-text" @click="handleViewAllConnections">查看全部</button>
         </div>
-        <div class="card-content">
+        <div class="card-content dashboard-table-container">
           <div class="status-item">
             <div class="status-label">活跃连接</div>
             <div class="status-value">{{ connectionStats.activeConnections }}</div>
@@ -31,10 +31,10 @@
       </div>
       
       <div class="dashboard-card" style="flex: 1;">
-        <div class="card-header">
+        <div class="card-header dashboard-card-header">
           <span>快速操作</span>
         </div>
-        <div class="card-content">
+        <div class="card-content dashboard-table-container">
           <button class="btn btn-primary quick-action-btn" @click="handleNewConnection">
             <ThemedIcon name="add-connection" :size="24" /> 新建连接
           </button>
@@ -54,10 +54,10 @@
       </div>
       
       <div class="dashboard-card" style="flex: 1;">
-        <div class="card-header">
+        <div class="card-header dashboard-card-header">
           <span>系统信息</span>
         </div>
-        <div class="card-content">
+        <div class="card-content dashboard-table-container">
           <div class="status-item">
             <div class="status-label">版本</div>
             <div class="status-value">{{ appVersion }}</div>
@@ -78,12 +78,12 @@
     
     <div class="row" style="display: flex; gap: 20px;">
       <div class="dashboard-card" style="flex: 2;">
-        <div class="card-header">
+        <div class="card-header dashboard-card-header">
           <span>最近连接</span>
           <button class="btn btn-text" @click="handleViewAllRecentConnections">查看全部</button>
         </div>
-        <div class="recent-connections">
-          <table class="connection-table">
+        <div class="recent-connections dashboard-table-container">
+          <table class="connection-table dashboard-table">
             <thead>
               <tr>
                 <th>名称</th>
@@ -108,11 +108,11 @@
       </div>
       
       <div class="dashboard-card" style="flex: 1;">
-        <div class="card-header">
+        <div class="card-header dashboard-card-header">
           <span>活动日志</span>
           <button class="btn btn-text" @click="handleClearActivityLog">清除</button>
         </div>
-        <div class="activity-log">
+        <div class="activity-log dashboard-table-container">
           <div class="timeline">
             <div class="timeline-item" v-for="(activity, index) in activityLog" :key="index">
               <div class="timeline-marker"></div>
@@ -363,13 +363,16 @@ export default {
 }
 
 .dashboard-card {
-  background-color: var(--color-bg-container);
+  background-color: var(--dashboard-card-bg);
+  color: var(--dashboard-card-text);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-md);
   margin-bottom: var(--spacing-lg);
   overflow: hidden;
   border: 1px solid var(--color-border-default);
 }
+
+/* 控制面板卡片不需要悬浮效果 */
 
 .card-header {
   display: flex;
@@ -406,6 +409,21 @@ export default {
   width: 100%;
   margin-bottom: 10px;
   text-align: left;
+}
+
+/* 统一的主要按钮样式 */
+.btn-primary {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: var(--btn-primary-bg);
+  color: var(--btn-primary-text);
+  border: 1px solid var(--btn-primary-bg);
+}
+
+.btn-primary:hover {
+  background-color: var(--btn-primary-hover-bg);
+  border-color: var(--btn-primary-hover-bg);
 }
 
 .btn-text {
@@ -450,6 +468,21 @@ export default {
   font-weight: 500;
   color: var(--color-text-secondary);
 }
+
+/* 控制面板专用卡片头部样式 */
+.dashboard-card-header {
+  background-color: var(--dashboard-card-header-bg);
+  color: var(--dashboard-card-text);
+}
+
+.dashboard-table-container {
+  background-color: var(--dashboard-card-bg);
+  color: var(--dashboard-card-text);
+  border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+  overflow: hidden;
+}
+
+/* 表格内容继承容器的背景色和文字颜色 */
 
 .activity-log {
   height: 300px;
@@ -528,15 +561,7 @@ export default {
   opacity: 0.6;
 }
 
-.btn-primary {
-  background-color: var(--color-primary);
-  color: var(--color-bg-container);
-  border: none;
-}
-
-.btn-primary:hover {
-  background-color: var(--color-primary-hover);
-}
+/* 按钮样式已统一到 components/forms.css 和 components/critical-components.css */
 
 
 

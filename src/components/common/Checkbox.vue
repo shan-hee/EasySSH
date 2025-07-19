@@ -47,7 +47,8 @@ export default defineComponent({
 })
 </script>
 
-<style>
+<style scoped>
+/* 使用scoped样式避免与全局样式冲突 */
 .custom-checkbox {
   display: flex;
   align-items: center;
@@ -55,60 +56,64 @@ export default defineComponent({
   user-select: none;
 }
 
+/* 复选框容器 - 与统一样式保持一致 */
 .checkbox-wrapper {
   position: relative;
-  width: 16px;
-  height: 16px;
-  border: 1px solid var(--color-border-default);
-  border-radius: 2px;
-  background-color: transparent;
-  transition: all 0.3s;
-  overflow: hidden;
+  width: 18px;
+  height: 18px;
+  border: 2px solid var(--color-border-default);
+  border-radius: 3px;
+  background-color: var(--color-bg-container);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .custom-checkbox:hover .checkbox-wrapper {
+  border-color: var(--color-primary-light);
+}
+
+/* 选中状态 - 背景变为主题色 */
+.checkbox-wrapper.checked {
+  background-color: var(--color-primary);
   border-color: var(--color-primary);
 }
 
-.checkbox-wrapper.checked {
-  background-color: transparent;
-  border-color: transparent;
-}
-
+/* 内部装饰元素（暂时不使用） */
 .checkbox-inner {
   position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background-color: transparent;
-  transition: all 0.3s;
+  top: 50%;
+  left: 50%;
+  width: 10px;
+  height: 10px;
+  background-color: var(--color-bg-container);
+  border-radius: 1px;
+  transform: translate(-50%, -50%) scale(0);
+  transition: transform 0.2s ease;
 }
 
-.checkbox-wrapper.checked .checkbox-inner {
-  background-color: transparent;
-}
-
+/* 勾选标记 - 未选中时隐藏 */
 .checkbox-check {
   position: absolute;
   top: 50%;
   left: 50%;
-  width: 0;
-  height: 0;
-  border: 2px solid transparent;
-  border-top: 0;
-  border-right: 0;
-  transform: translate(-50%, -50%) rotate(-45deg) scale(0);
-  transition: all 0.3s;
-  transform-origin: center;
+  width: 4px;
+  height: 8px;
+  border: solid var(--color-bg-container);
+  border-width: 0 2px 2px 0;
+  transform: translate(-50%, -60%) rotate(45deg) scale(0);
+  transition: all 0.2s ease;
   opacity: 0;
 }
 
+/* 选中时显示勾选标记 */
 .checkbox-wrapper.checked .checkbox-check {
-  width: 9px;
-  height: 5px;
-  border-color: var(--color-primary);
-  transform: translate(-50%, -70%) rotate(-45deg) scale(1);
+  width: 5px;
+  height: 9px;
+  border-color: var(--color-bg-container);
+  transform: translate(-50%, -60%) rotate(45deg) scale(1);
   opacity: 1;
 }
 
@@ -118,4 +123,4 @@ export default defineComponent({
   color: var(--color-text-primary);
   font-weight: normal;
 }
-</style> 
+</style>

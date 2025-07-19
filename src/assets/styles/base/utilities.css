@@ -249,7 +249,7 @@
 .select-all { user-select: all; }
 
 /* ===== 显示工具类 ===== */
-.hidden { display: none; }
+.hidden { display: none !important; }
 .block { display: block; }
 .inline { display: inline; }
 .inline-block { display: inline-block; }

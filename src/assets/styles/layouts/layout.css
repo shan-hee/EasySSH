@@ -3,13 +3,7 @@
  * 包含应用的主要布局结构
  */
 
-/* 主容器 */
-.container {
-  width: 100%;
-  max-width: 1200px;
-  margin: 0 auto;
-  padding: 0 var(--spacing-md);
-}
+/* 主容器样式已移至 layout-main.css */
 
 /* 头部布局 */
 .header {
@@ -59,16 +53,16 @@
 .sidebar {
   width: 250px;
   height: 100%;
-  background-color: var(--gray-100);
-  border-right: 1px solid var(--gray-200);
-  transition: width var(--transition-normal);
+  background-color: var(--color-bg-container);
+  border-right: 1px solid var(--color-border-default);
+  transition: width var(--transition-base);
   overflow-y: auto;
   overflow-x: hidden;
   z-index: var(--z-sticky);
 }
 
 .sidebar--collapsed {
-  width: 70px;
+  width: var(--sidebar-collapsed-width);
 }
 
 /* 侧边栏可折叠按钮 */

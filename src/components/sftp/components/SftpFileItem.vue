@@ -600,11 +600,11 @@ export default defineComponent({
 
 /* 图标颜色 - 在所有主题下保持一致 */
 .folder-icon {
-  color: #d89614 !important; /* 文件夹图标：橙黄色 */
+  color: #d89614; /* 文件夹图标：橙黄色 */
 }
 
 .file-icon {
-  color: rgb(128, 203, 196) !important; /* 文件图标：青绿色 */
+  color: rgb(128, 203, 196); /* 文件图标：青绿色 */
 }
 
 /* 高分辨率屏幕优化 */
@@ -616,77 +616,77 @@ export default defineComponent({
 
 /* 使用主题变量替代主题特定样式 */
 .sftp-file-item {
-  border-bottom-color: var(--sftp-file-item-border) !important;
-  color: var(--sftp-file-item-color) !important;
+  border-bottom-color: var(--sftp-file-item-border);
+  color: var(--sftp-file-item-color);
 }
 
 .sftp-file-item:hover {
-  background-color: var(--sftp-file-item-hover-bg) !important;
+  background-color: var(--sftp-file-item-hover-bg);
 }
 
 .sftp-file-item:active {
-  background-color: var(--sftp-file-item-active-bg) !important;
+  background-color: var(--sftp-file-item-active-bg);
 }
 
 /* 使用主题变量替代主题特定样式 */
 .sftp-file-item.sftp-file-directory {
-  color: var(--sftp-file-directory-color) !important;
+  color: var(--sftp-file-directory-color);
 }
 
 /* 使用主题变量替代主题特定样式 */
 .sftp-file-name-input {
-  background: var(--sftp-file-name-input-bg) !important;
-  border-color: var(--sftp-file-name-input-border) !important;
-  color: var(--sftp-file-name-input-color) !important;
-  box-shadow: 0 1px 3px var(--sftp-file-name-input-shadow) !important;
+  background: var(--sftp-file-name-input-bg);
+  border-color: var(--sftp-file-name-input-border);
+  color: var(--sftp-file-name-input-color);
+  box-shadow: 0 1px 3px var(--sftp-file-name-input-shadow);
 }
 
 .sftp-file-name-input:focus {
-  border-color: var(--sftp-file-name-input-focus-border) !important;
-  box-shadow: 0 0 0 2px var(--sftp-file-name-input-focus-shadow) !important;
+  border-color: var(--sftp-file-name-input-focus-border);
+  box-shadow: 0 0 0 2px var(--sftp-file-name-input-focus-shadow);
 }
 
 .sftp-file-name-input.sftp-input-error {
-  border-color: var(--sftp-file-name-input-error-border) !important;
-  background-color: var(--sftp-file-name-input-error-bg) !important;
+  border-color: var(--sftp-file-name-input-error-border);
+  background-color: var(--sftp-file-name-input-error-bg);
 }
 
 .sftp-file-name-input.sftp-input-error:focus {
-  border-color: var(--sftp-file-name-input-error-border) !important;
-  box-shadow: 0 0 0 2px var(--sftp-file-name-input-error-shadow) !important;
+  border-color: var(--sftp-file-name-input-error-border);
+  box-shadow: 0 0 0 2px var(--sftp-file-name-input-error-shadow);
 }
 
 .sftp-confirm-btn {
-  color: var(--sftp-confirm-btn-color) !important;
-  background: var(--sftp-confirm-btn-bg) !important;
-  border-color: var(--sftp-confirm-btn-border) !important;
+  color: var(--sftp-confirm-btn-color);
+  background: var(--sftp-confirm-btn-bg);
+  border-color: var(--sftp-confirm-btn-border);
 }
 
 .sftp-confirm-btn:hover:not(:disabled) {
-  background: var(--sftp-confirm-btn-hover-bg) !important;
+  background: var(--sftp-confirm-btn-hover-bg);
 }
 
 .sftp-cancel-btn {
-  color: var(--sftp-cancel-btn-color) !important;
-  background: var(--sftp-cancel-btn-bg) !important;
-  border-color: var(--sftp-cancel-btn-border) !important;
+  color: var(--sftp-cancel-btn-color);
+  background: var(--sftp-cancel-btn-bg);
+  border-color: var(--sftp-cancel-btn-border);
 }
 
 .sftp-cancel-btn:hover:not(:disabled) {
-  background: var(--sftp-cancel-btn-hover-bg) !important;
+  background: var(--sftp-cancel-btn-hover-bg);
 }
 
 .sftp-rename-spinner {
-  color: var(--sftp-rename-spinner-color) !important;
+  color: var(--sftp-rename-spinner-color);
 }
 
 .sftp-action-button {
-  color: var(--sftp-action-button-color) !important;
+  color: var(--sftp-action-button-color);
 }
 
 .sftp-action-button:hover {
-  background-color: var(--sftp-action-button-hover-bg) !important;
-  color: var(--sftp-action-button-hover-color) !important;
+  background-color: var(--sftp-action-button-hover-bg);
+  color: var(--sftp-action-button-hover-color);
 }
 
 /* 所有主题特定样式已迁移到主题变量 */

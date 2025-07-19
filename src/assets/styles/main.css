@@ -15,7 +15,7 @@
 /* 布局样式 */
 @import './layouts/layout.css';
 @import './layouts/critical-layout.css';
-@import './layouts/layout-main.css';
+@import './layout-main.css';
 
 /* 组件样式 */
 @import './components/header.css';

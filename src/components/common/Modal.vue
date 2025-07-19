@@ -183,6 +183,9 @@ export default defineComponent({
 }
 
 .modal-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
   padding: 8px 20px;
   border: none;
   border-radius: 4px;
@@ -207,8 +210,12 @@ export default defineComponent({
 }
 
 .btn-primary {
-  background-color: var(--color-primary);
-  color: var(--color-bg-container);
+  background-color: var(--btn-primary-bg);
+  color: var(--btn-primary-text);
+}
+
+.btn-primary:hover {
+  background-color: var(--btn-primary-hover-bg);
 }
 
 /* 动画相关样式 */

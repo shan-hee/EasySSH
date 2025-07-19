@@ -372,6 +372,14 @@ export default defineComponent({
   max-width: 100%;
   background: transparent;
   overflow: hidden;
+
+  /* 统一字体设置，避免在每个子元素中重复使用!important */
+  font-family: "Microsoft YaHei", sans-serif;
+
+  /* 确保所有子元素继承字体 */
+  * {
+    font-family: inherit;
+  }
 }
 
 .login-panel-content {
@@ -386,7 +394,7 @@ export default defineComponent({
   font-weight: 500;
   text-align: center;
   letter-spacing: 1px;
-  font-family: "Microsoft YaHei", sans-serif !important;
+  /* font-family继承自父元素，无需!important */
 }
 
 .form-group {
@@ -402,12 +410,12 @@ export default defineComponent({
   color: #ffffff;
   font-size: 1rem;
   transition: all 0.2s ease;
-  font-family: "Microsoft YaHei", sans-serif !important;
+  /* font-family继承自父元素 */
 }
 
 .form-group input::placeholder {
   color: #888888;
-  font-family: "Microsoft YaHei", sans-serif !important;
+  /* font-family继承自父元素 */
 }
 
 .form-group input:focus {
@@ -429,7 +437,7 @@ export default defineComponent({
   font-size: 0.9rem;
   text-decoration: none;
   transition: color 0.2s;
-  font-family: "Microsoft YaHei", sans-serif !important;
+  /* font-family继承自父元素 */
 }
 
 .forgot-password:hover {
@@ -449,7 +457,7 @@ export default defineComponent({
   cursor: pointer;
   transition: background-color 0.2s ease;
   letter-spacing: 1px;
-  font-family: "Microsoft YaHei", sans-serif !important;
+  /* font-family继承自父元素 */
 }
 
 .login-submit-btn:hover {
@@ -488,7 +496,7 @@ export default defineComponent({
   margin: 0;
   color: #999999;
   font-size: 0.9rem;
-  font-family: "Microsoft YaHei", sans-serif !important;
+  /* font-family继承自父元素 */
 }
 
 .login-footer a {
@@ -496,7 +504,7 @@ export default defineComponent({
   text-decoration: none;
   transition: color 0.2s;
   font-weight: 500;
-  font-family: "Microsoft YaHei", sans-serif !important;
+  /* font-family继承自父元素 */
 }
 
 .login-footer a:hover {
@@ -509,7 +517,7 @@ export default defineComponent({
   text-align: center;
   font-size: 0.8rem;
   opacity: 0.5;
-  font-family: "Microsoft YaHei", sans-serif !important;
+  /* font-family继承自父元素 */
 }
 
 .login-copyright a {

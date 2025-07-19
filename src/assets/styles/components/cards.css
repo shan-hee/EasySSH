@@ -7,7 +7,8 @@
 .connection-card {
   display: flex;
   flex-direction: column;
-  background-color: var(--color-bg-container);
+  background-color: var(--card-bg);
+  color: var(--card-text);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-sm);
   padding: var(--spacing-md);
@@ -17,6 +18,7 @@
 }
 
 .connection-card:hover {
+  background-color: var(--card-hover-bg);
   transform: translateY(-4px);
   box-shadow: var(--shadow-md);
 }

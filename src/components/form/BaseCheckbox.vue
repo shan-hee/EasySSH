@@ -88,22 +88,20 @@ export default defineComponent({
   position: absolute;
   top: 50%;
   left: 50%;
-  width: 0;
-  height: 0;
-  border: 2px solid transparent;
-  border-top: 0;
-  border-right: 0;
-  transform: translate(-50%, -50%) rotate(-45deg) scale(0);
-  transition: all 0.3s;
-  transform-origin: center;
+  width: 4px;
+  height: 8px;
+  border: solid var(--color-bg-container);
+  border-width: 0 2px 2px 0;
+  transform: translate(-50%, -60%) rotate(45deg) scale(0);
+  transition: all 0.2s ease;
   opacity: 0;
 }
 
 .checkbox-wrapper.checked .checkbox-check {
-  width: 9px;
-  height: 5px;
-  border-color: var(--color-primary);
-  transform: translate(-50%, -70%) rotate(-45deg) scale(1);
+  width: 5px;
+  height: 9px;
+  border-color: var(--color-bg-container);
+  transform: translate(-50%, -60%) rotate(45deg) scale(1);
   opacity: 1;
 }
 </style> 

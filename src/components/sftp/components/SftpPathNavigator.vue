@@ -351,53 +351,54 @@ export default defineComponent({
   box-shadow: 0 0 0 1px var(--sftp-path-input-focus-shadow) !important;
 }
 
+/* 浅色主题下的路径导航样式 - 使用主题变量 */
 :root[data-theme="light"] .sftp-path-home-button,
 .light-theme .sftp-path-home-button,
 html[data-theme="light"] .sftp-path-home-button {
-  color: #909399 !important;
+  color: var(--color-text-secondary);
 }
 
 :root[data-theme="light"] .sftp-path-home-button:hover,
 .light-theme .sftp-path-home-button:hover,
 html[data-theme="light"] .sftp-path-home-button:hover {
-  color: #303133 !important;
+  color: var(--color-text-primary);
 }
 
 :root[data-theme="light"] .sftp-path-separator,
 .light-theme .sftp-path-separator,
 html[data-theme="light"] .sftp-path-separator {
-  color: #c0c4cc !important;
+  color: var(--color-text-placeholder);
 }
 
 :root[data-theme="light"] .sftp-path-part-button,
 .light-theme .sftp-path-part-button,
 html[data-theme="light"] .sftp-path-part-button {
-  color: #303133 !important;
+  color: var(--color-text-primary);
 }
 
 :root[data-theme="light"] .sftp-path-part-button:hover,
 .light-theme .sftp-path-part-button:hover,
 html[data-theme="light"] .sftp-path-part-button:hover {
-  background-color: #f5f7fa !important;
+  background-color: var(--color-bg-muted);
 }
 
 :root[data-theme="light"] .sftp-path-field,
 .light-theme .sftp-path-field,
 html[data-theme="light"] .sftp-path-field {
-  color: #303133 !important;
+  color: var(--color-text-primary);
 }
 
 :root[data-theme="light"] .sftp-nav-button,
 .light-theme .sftp-nav-button,
 html[data-theme="light"] .sftp-nav-button {
-  background-color: #ffffff !important;
-  color: #303133 !important;
-  border: 1px solid #dcdfe6 !important;
+  background-color: var(--color-bg-container);
+  color: var(--color-text-primary);
+  border: 1px solid var(--color-border-light);
 }
 
 :root[data-theme="light"] .sftp-nav-button:hover,
 .light-theme .sftp-nav-button:hover,
 html[data-theme="light"] .sftp-nav-button:hover {
-  background-color: #f5f7fa !important;
+  background-color: var(--color-bg-muted);
 }
 </style>

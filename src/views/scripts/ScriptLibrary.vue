@@ -1192,24 +1192,44 @@ export default defineComponent({
   align-items: center;
 }
 
-.btn-primary {
+/* 通用按钮基础样式 */
+.btn-primary,
+.btn-secondary {
   display: flex;
   align-items: center;
-  background-color: var(--color-primary);
-  color: var(--color-bg-container);
+  justify-content: center;
   border: none;
   border-radius: 4px;
   padding: 8px 16px;
   font-size: 14px;
   cursor: pointer;
+  transition: background-color 0.2s ease;
 }
 
-.btn-primary svg {
-  margin-right: 8px;
+/* 主要按钮样式 */
+.btn-primary {
+  background-color: var(--btn-primary-bg);
+  color: var(--btn-primary-text);
 }
 
 .btn-primary:hover {
-  background-color: var(--color-primary-hover);
+  background-color: var(--btn-primary-hover-bg);
+}
+
+/* 次要按钮样式 */
+.btn-secondary {
+  background-color: var(--color-bg-muted);
+  color: var(--color-text-primary);
+}
+
+.btn-secondary:hover {
+  background-color: var(--color-hover-bg);
+}
+
+/* 按钮图标样式 */
+.btn-primary svg,
+.btn-secondary svg {
+  margin-right: 8px;
 }
 
 .script-categories {
@@ -1475,38 +1495,19 @@ export default defineComponent({
   font-size: 16px;
 }
 
-.btn-secondary {
-  display: flex;
-  align-items: center;
-  background-color: var(--color-bg-muted);
-  color: var(--color-text-primary);
-  border: none;
-  border-radius: 4px;
-  padding: 8px 16px;
-  font-size: 14px;
-  cursor: pointer;
-  transition: background-color 0.2s ease;
-}
+/* 重复的btn-secondary样式已移至上方统一定义 */
 
-.btn-secondary svg {
-  margin-right: 8px;
-}
-
-.btn-secondary:hover {
-  background-color: var(--color-hover-bg);
-}
-
-/* 滚动条样式 */
-::-webkit-scrollbar {
+/* 滚动条样式 - 限制在脚本库容器内 */
+.script-library-container ::-webkit-scrollbar {
   width: 8px;
   height: 8px;
 }
 
-::-webkit-scrollbar-track {
+.script-library-container ::-webkit-scrollbar-track {
   background: var(--color-bg-subtle);
 }
 
-::-webkit-scrollbar-thumb {
+.script-library-container ::-webkit-scrollbar-thumb {
   background: var(--color-border-default);
   border-radius: 4px;
 }

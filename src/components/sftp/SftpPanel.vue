@@ -1243,7 +1243,7 @@ export default defineComponent({
               下载进度: ${Math.floor(progress)}%${speedText ? ` (${speedText})` : ''}
             </div>
             <div style="width: 100%; height: 6px; background-color: #f0f0f0; border-radius: 3px; overflow: hidden;">
-              <div style="width: ${progress}%; height: 100%; background-color: #409eff; transition: width 0.3s ease;"></div>
+              <div style="width: ${progress}%; height: 100%; background-color: var(--color-primary); transition: width 0.3s ease;"></div>
             </div>
           `;
         };
@@ -1398,7 +1398,7 @@ export default defineComponent({
               压缩进度: ${Math.floor(progress)}%${speedText ? ` (${speedText})` : ''}
             </div>
             <div style="width: 100%; height: 6px; background-color: #f0f0f0; border-radius: 3px; overflow: hidden;">
-              <div style="width: ${progress}%; height: 100%; background-color: #409eff; transition: width 0.3s ease;"></div>
+              <div style="width: ${progress}%; height: 100%; background-color: var(--color-primary); transition: width 0.3s ease;"></div>
             </div>
           `;
         };

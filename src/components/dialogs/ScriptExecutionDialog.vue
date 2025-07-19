@@ -570,8 +570,14 @@ export default defineComponent({
 }
 
 .script-execution-dialog :deep(.el-button--primary) {
-  background-color: var(--color-primary);
-  border-color: var(--color-primary);
+  background-color: var(--btn-primary-bg);
+  border-color: var(--btn-primary-bg);
+  color: var(--btn-primary-text);
+}
+
+.script-execution-dialog :deep(.el-button--primary:hover) {
+  background-color: var(--btn-primary-hover-bg);
+  border-color: var(--btn-primary-hover-bg);
 }
 
 .script-execution-dialog :deep(.el-button--primary:hover) {

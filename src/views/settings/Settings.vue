@@ -817,8 +817,9 @@ export default {
 }
 
 /* 统一表单元素样式 */
-:deep(.el-form) {
-  --el-text-color-regular: var(--settings-form-label-color);
+/* 使用更具体的选择器避免重新定义全局变量 */
+:deep(.el-form .el-form-item__label) {
+  color: var(--settings-form-label-color);
 }
 
 :deep(.el-form-item__label) {

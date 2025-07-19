@@ -4,6 +4,9 @@
  * 使用语义化命名规范，支持深色和浅色主题
  */
 
+/* CSS层级定义 - 确保主题变量优先级 */
+@layer element-plus, theme-overrides;
+
 /* ===== 基础设计令牌 ===== */
 :root {
   /* 布局尺寸 */
@@ -47,10 +50,9 @@
   --z-dropdown: 1000;
   --z-sticky: 1020;
   --z-fixed: 1030;
-  --z-modal-backdrop: 1040;
   --z-modal: 1050;
-  --z-popover: 1060;
   --z-tooltip: 10000; /* 提高tooltip层级，确保显示在所有元素之上 */
+  /* 移除未使用的z-index变量: --z-modal-backdrop, --z-popover */
 
   /* ===== Tooltip 样式系统 ===== */
   /* Tooltip 字体 */
@@ -90,6 +92,21 @@
   --color-primary-light: #bbbbbb;
   --color-primary-lighter: #cccccc;
   --color-primary-lightest: #f5f5f5;
+
+  /* 按钮色系 - 浅色主题 */
+  --btn-primary-bg: #e0e0e0;
+  --btn-primary-hover-bg: #d0d0d0;
+  --btn-primary-text: #333333;
+
+  /* 卡片色系 - 浅色主题 */
+  --card-bg: #e8e8e8;
+  --card-hover-bg: #d8d8d8;
+  --card-text: #333333;
+
+  /* 控制面板卡片色系 - 浅色主题 */
+  --dashboard-card-bg: #f0f0f0;
+  --dashboard-card-header-bg: #e8e8e8;
+  --dashboard-card-text: #333333;
 
   /* 功能色系 */
   --color-success: #52c41a;
@@ -218,7 +235,7 @@
   /* SFTP加载动画 */
   --sftp-loading-bg: rgba(255, 255, 255, 0.9);
   --sftp-loading-color: var(--color-text-secondary);
-  --sftp-loading-spinner-color: #409EFF;
+  --sftp-loading-spinner-color: var(--color-primary);
 
   /* SFTP导航按钮 */
   --sftp-nav-button-bg: var(--color-bg-container);
@@ -232,7 +249,7 @@
   --sftp-path-input-border: var(--color-border-default);
   --sftp-path-input-hover-bg: var(--color-bg-hover);
   --sftp-path-input-focus-bg: var(--color-bg-container);
-  --sftp-path-input-focus-border: #409eff;
+  --sftp-path-input-focus-border: var(--color-primary);
   --sftp-path-input-focus-shadow: rgba(64, 158, 255, 0.2);
 
   /* SFTP路径组件 */
@@ -248,7 +265,7 @@
   --sftp-file-item-color: var(--color-text-primary);
   --sftp-file-item-hover-bg: var(--color-hover-bg);
   --sftp-file-item-active-bg: var(--color-active-bg);
-  --sftp-file-directory-color: #409eff;
+  --sftp-file-directory-color: var(--color-primary);
   --sftp-action-button-color: var(--color-text-secondary);
   --sftp-action-button-hover-bg: var(--color-bg-hover);
   --sftp-action-button-hover-color: var(--color-text-primary);
@@ -291,11 +308,7 @@
   --sftp-search-clear-color: var(--color-text-secondary);
   --sftp-search-clear-hover-bg: var(--color-hover-bg);
 
-  /* 页面级别变量（从index.html迁移） */
-  --font-color: var(--color-text-primary);
-  --border-color: var(--color-border-default);
-  --background-color: var(--color-bg-page);
-  --component-background: var(--color-bg-muted);
+  /* 页面级别变量已迁移为语义化变量，不再需要这些别名 */
 
   /* 按钮与交互元素 */
   --btn-secondary-bg: #f0f0f0;
@@ -383,21 +396,15 @@
   --el-message-icon-color: #606266;
 
   /* 登录面板 */
-  --login-panel-bg: rgba(255, 255, 255, 0.95);
+  /* 移除未使用的变量: --login-panel-bg */
   --login-panel-title-color: #303133;
-  --login-panel-input-bg: rgba(245, 247, 250, 0.8);
-  --login-panel-input-border: #dcdfe6;
-  --login-panel-input-color: #606266;
-  --login-panel-input-placeholder: #c0c4cc;
-  --login-panel-input-focus-bg: rgba(236, 245, 255, 0.8);
-  --login-panel-input-focus-border: #aaaaaa;
+  /* 移除未使用的登录面板输入框变量 */
   --login-panel-btn-bg: #aaaaaa;
   --login-panel-btn-hover-bg: #bbbbbb;
   --login-panel-btn-color: #ffffff;
   --login-panel-link-color: #909399;
   --login-panel-link-hover-color: #aaaaaa;
-  --login-panel-footer-color: #c0c4cc;
-  --login-panel-footer-border: #e4e7ed;
+  /* 移除未使用的登录面板页脚变量 */
 
   /* 登录面板深色样式变量 - 在浅色主题中定义为对比 */
   --login-panel-forgot-password-color: var(--color-primary);
@@ -452,36 +459,7 @@
   --slider-button-color: var(--color-bg-container);
   --slider-button-border-color: var(--color-primary);
 
-  /* Element Plus 基础变量覆盖 - 浅色主题 */
-  /* 主色系 */
-  --el-color-primary: var(--color-primary) !important;
-  --el-color-primary-light-3: var(--color-primary-hover) !important;
-  --el-color-primary-light-5: var(--color-primary-light) !important;
-  --el-color-primary-light-7: var(--color-primary-lighter) !important;
-  --el-color-primary-light-9: var(--color-primary-lightest) !important;
 
-  /* 背景色系 */
-  --el-bg-color: var(--color-bg-container) !important;
-  --el-bg-color-overlay: var(--color-bg-overlay) !important;
-  --el-fill-color-blank: var(--color-bg-container) !important;
-  --el-fill-color-light: var(--color-bg-muted) !important;
-  --el-color-white: var(--color-bg-container) !important;
-
-  /* 文本色系 */
-  --el-text-color-primary: var(--color-text-primary) !important;
-  --el-text-color-regular: var(--color-text-regular) !important;
-  --el-text-color-secondary: var(--color-text-secondary) !important;
-  --el-text-color-placeholder: var(--color-text-placeholder) !important;
-
-  /* 边框色系 */
-  --el-border-color: var(--color-border-default) !important;
-  --el-border-color-light: var(--color-border-light) !important;
-
-  /* 交互组件 */
-  --el-dropdown-menuItem-hover-fill: var(--color-hover-bg) !important;
-  --el-dropdown-menuItem-hover-color: var(--color-primary) !important;
-  --el-select-dropdown-bg-color: var(--color-bg-container) !important;
-  --el-select-option-hover-background: var(--color-hover-bg) !important;
 }
 
 /* ===== 深色主题 ===== */
@@ -494,6 +472,21 @@
   --color-primary-light: #bbbbbb;
   --color-primary-lighter: #cccccc;
   --color-primary-lightest: #2c2c2c;
+
+  /* 按钮色系 - 深色主题 */
+  --btn-primary-bg: #444444;
+  --btn-primary-hover-bg: #555555;
+  --btn-primary-text: #ffffff;
+
+  /* 卡片色系 - 深色主题 */
+  --card-bg: #2c2c2c;
+  --card-hover-bg: #3a3a3a;
+  --card-text: #ffffff;
+
+  /* 控制面板卡片色系 - 深色主题 */
+  --dashboard-card-bg: #252526;
+  --dashboard-card-header-bg: #2c2c2c;
+  --dashboard-card-text: #ffffff;
 
   /* 功能色系 - 深色主题调整 */
   --color-success: #49aa19;
@@ -551,6 +544,33 @@
   --tooltip-color: var(--color-text-primary);
   --tooltip-border: var(--color-border-default);
   --tooltip-shadow: var(--shadow-lg);
+
+  /* Element Plus 变量覆盖 - 深色主题 */
+  --el-color-primary: var(--color-primary);
+  --el-color-primary-light-3: var(--color-primary-hover);
+  --el-color-primary-light-5: var(--color-primary-light);
+  --el-color-primary-light-7: var(--color-primary-lighter);
+  --el-color-primary-light-8: var(--color-primary-lightest);
+  --el-color-primary-light-9: var(--color-primary-lightest);
+
+  --el-bg-color: var(--color-bg-container);
+  --el-bg-color-overlay: var(--color-bg-overlay);
+  --el-fill-color-blank: var(--color-bg-container);
+  --el-fill-color-light: var(--color-bg-muted);
+  --el-color-white: var(--color-bg-container);
+
+  --el-text-color-primary: var(--color-text-primary);
+  --el-text-color-regular: var(--color-text-regular);
+  --el-text-color-secondary: var(--color-text-secondary);
+  --el-text-color-placeholder: var(--color-text-placeholder);
+
+  --el-border-color: var(--color-border-default);
+  --el-border-color-light: var(--color-border-light);
+
+  --el-dropdown-menuItem-hover-fill: var(--color-hover-bg);
+  --el-dropdown-menuItem-hover-color: var(--color-primary);
+  --el-select-dropdown-bg-color: var(--color-bg-container);
+  --el-select-option-hover-background: var(--color-hover-bg);
   --tooltip-arrow-color: var(--color-bg-container);
 
   /* 交互状态 - 深色主题 */
@@ -622,7 +642,7 @@
   /* SFTP加载动画 - 深色主题 */
   --sftp-loading-bg: rgba(30, 30, 30, 0.9);
   --sftp-loading-color: #909399;
-  --sftp-loading-spinner-color: #409EFF;
+  --sftp-loading-spinner-color: var(--color-primary);
 
   /* SFTP导航按钮 - 深色主题 */
   --sftp-nav-button-bg: #2c2c2c;
@@ -636,7 +656,7 @@
   --sftp-path-input-border: var(--color-border-default);
   --sftp-path-input-hover-bg: var(--color-bg-hover);
   --sftp-path-input-focus-bg: var(--color-bg-container);
-  --sftp-path-input-focus-border: #409eff;
+  --sftp-path-input-focus-border: var(--color-primary);
   --sftp-path-input-focus-shadow: rgba(64, 158, 255, 0.2);
 
   /* SFTP路径组件 - 深色主题 */
@@ -695,11 +715,7 @@
   --sftp-search-clear-color: #aaaaaa;
   --sftp-search-clear-hover-bg: rgba(255, 255, 255, 0.1);
 
-  /* 页面级别变量（从index.html迁移） - 深色主题 */
-  --font-color: var(--color-text-primary);
-  --border-color: var(--color-border-default);
-  --background-color: var(--color-bg-page);
-  --component-background: var(--color-bg-elevated);
+  /* 页面级别变量已迁移为语义化变量，不再需要这些别名 */
 
   /* 按钮与交互元素 - 深色主题 */
   --btn-secondary-bg: #333333;
@@ -787,21 +803,14 @@
   --el-message-icon-color: var(--color-text-primary);
 
   /* 登录面板 */
-  --login-panel-bg: rgba(40, 40, 40, 0.95);
+  /* 移除未使用的登录面板变量 */
   --login-panel-title-color: #ffffff;
-  --login-panel-input-bg: rgba(40, 40, 40, 0.4);
-  --login-panel-input-border: transparent;
-  --login-panel-input-color: #ffffff;
-  --login-panel-input-placeholder: #888888;
-  --login-panel-input-focus-bg: rgba(50, 50, 50, 0.6);
-  --login-panel-input-focus-border: rgba(100, 100, 100, 0.3);
   --login-panel-btn-bg: rgba(60, 60, 60, 0.6);
   --login-panel-btn-hover-bg: rgba(80, 80, 80, 0.8);
   --login-panel-btn-color: #ffffff;
   --login-panel-link-color: #aaaaaa;
   --login-panel-link-hover-color: #eeeeee;
-  --login-panel-footer-color: #999999;
-  --login-panel-footer-border: rgba(100, 100, 100, 0.15);
+  /* 移除未使用的登录面板页脚变量 */
 
   /* 登录面板深色样式变量 - 深色主题 */
   --login-panel-forgot-password-color: #aaaaaa;
@@ -867,36 +876,7 @@
   --slider-button-color: var(--color-primary);
   --slider-button-border-color: var(--color-primary);
 
-  /* Element Plus 基础变量覆盖 - 深色主题 */
-  /* 主色系 */
-  --el-color-primary: var(--color-primary) !important;
-  --el-color-primary-light-3: var(--color-primary-hover) !important;
-  --el-color-primary-light-5: var(--color-primary-light) !important;
-  --el-color-primary-light-7: var(--color-primary-lighter) !important;
-  --el-color-primary-light-9: var(--color-primary-lightest) !important;
 
-  /* 背景色系 */
-  --el-bg-color: var(--color-bg-container) !important;
-  --el-bg-color-overlay: var(--color-bg-overlay) !important;
-  --el-fill-color-blank: var(--color-bg-container) !important;
-  --el-fill-color-light: var(--color-bg-muted) !important;
-  --el-color-white: var(--color-bg-container) !important;
-
-  /* 文本色系 */
-  --el-text-color-primary: var(--color-text-primary) !important;
-  --el-text-color-regular: var(--color-text-regular) !important;
-  --el-text-color-secondary: var(--color-text-secondary) !important;
-  --el-text-color-placeholder: var(--color-text-placeholder) !important;
-
-  /* 边框色系 */
-  --el-border-color: var(--color-border-default) !important;
-  --el-border-color-light: var(--color-border-light) !important;
-
-  /* 交互组件 */
-  --el-dropdown-menuItem-hover-fill: var(--color-hover-bg) !important;
-  --el-dropdown-menuItem-hover-color: var(--color-primary) !important;
-  --el-select-dropdown-bg-color: var(--color-bg-container) !important;
-  --el-select-option-hover-background: var(--color-hover-bg) !important;
 }
 
 /* ===== Element Plus 组件主题变量已整合到各主题定义中 ===== */
@@ -1217,19 +1197,18 @@
 }
 
 /* ===== 基础元素样式应用 ===== */
-body {
-  background-color: var(--color-bg-page);
-  color: var(--color-text-primary);
-  font-family: var(--font-family-base);
-  font-size: var(--font-size-sm);
-  line-height: 1.5;
-  transition: background-color var(--transition-base), color var(--transition-base);
-}
+/* body样式已移至 base/critical.css */
 
 /* 主题切换过渡动画 */
 :root {
   --theme-transition-duration: 0.3s;
   --theme-transition-timing: cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* 关键布局变量 - 向后兼容 */
+  --header-height: var(--layout-header-height);
+  --sidebar-width: var(--layout-sidebar-expanded-width);
+  --sidebar-collapsed-width: var(--layout-sidebar-width);
+  --content-transition: var(--transition-base);
 }
 
 /* 为所有可能变化的属性添加过渡动画 */
@@ -1246,11 +1225,7 @@ body {
 }
 
 /* 为特定元素提供更精细的过渡控制 */
-body {
-  transition:
-    background-color var(--theme-transition-duration) var(--theme-transition-timing),
-    color var(--theme-transition-duration) var(--theme-transition-timing);
-}
+/* body过渡样式已合并到 base/critical.css */
 
 /* 避免某些元素的过渡动画（如输入框光标） */
 input,
@@ -1266,4 +1241,45 @@ textarea,
 
 .theme-switching * {
   transition-duration: 0.15s !important;
+}
+
+/* ===== Element Plus 主题变量覆盖层级 ===== */
+/* 使用CSS层级确保主题变量优先级，避免使用!important */
+@layer theme-overrides {
+  /* 浅色主题 Element Plus 变量覆盖 */
+  :root[data-theme="light"],
+  .light-theme {
+    /* 主色系 */
+    --el-color-primary: var(--color-primary);
+    --el-color-primary-light-3: var(--color-primary-hover);
+    --el-color-primary-light-5: var(--color-primary-light);
+    --el-color-primary-light-7: var(--color-primary-lighter);
+    --el-color-primary-light-8: var(--color-primary-lightest);
+    --el-color-primary-light-9: var(--color-primary-lightest);
+
+    /* 背景色系 */
+    --el-bg-color: var(--color-bg-container);
+    --el-bg-color-overlay: var(--color-bg-overlay);
+    --el-fill-color-blank: var(--color-bg-container);
+    --el-fill-color-light: var(--color-bg-muted);
+    --el-color-white: var(--color-bg-container);
+
+    /* 文本色系 */
+    --el-text-color-primary: var(--color-text-primary);
+    --el-text-color-regular: var(--color-text-regular);
+    --el-text-color-secondary: var(--color-text-secondary);
+    --el-text-color-placeholder: var(--color-text-placeholder);
+
+    /* 边框色系 */
+    --el-border-color: var(--color-border-default);
+    --el-border-color-light: var(--color-border-light);
+
+    /* 交互组件 */
+    --el-dropdown-menuItem-hover-fill: var(--color-hover-bg);
+    --el-dropdown-menuItem-hover-color: var(--color-primary);
+    --el-select-dropdown-bg-color: var(--color-bg-container);
+    --el-select-option-hover-background: var(--color-hover-bg);
+  }
+
+  /* 深色主题 Element Plus 变量覆盖已合并到上面的深色主题定义中 */
 }

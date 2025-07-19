@@ -766,32 +766,33 @@ export default defineComponent({
     z-index: 1000;
     border-radius: 0;
     box-shadow: none;
-    background-color: var(--editor-bg) !important;
-    color: var(--editor-fg) !important;
+    background-color: var(--editor-bg);
+    color: var(--editor-fg);
 
     // 确保编辑器颜色在全屏模式下正确
-    .cm-editor {
-      background-color: var(--editor-bg) !important;
+    // 使用更高特异性的选择器覆盖CodeMirror默认样式
+    .cm-editor.cm-editor {
+      background-color: var(--editor-bg);
 
-      .cm-scroller { color: var(--editor-fg) !important; }
-      .cm-content { color: var(--editor-fg) !important; }
-      .cm-line { color: var(--editor-fg) !important; }
+      .cm-scroller.cm-scroller { color: var(--editor-fg); }
+      .cm-content.cm-content { color: var(--editor-fg); }
+      .cm-line.cm-line { color: var(--editor-fg); }
 
-      // 语法高亮颜色
-      .cm-keyword { color: var(--editor-keyword) !important; }
-      .cm-comment {
-        color: var(--editor-comment) !important;
-        font-style: italic !important;
+      // 语法高亮颜色 - 使用更高特异性
+      .cm-keyword.cm-keyword { color: var(--editor-keyword); }
+      .cm-comment.cm-comment {
+        color: var(--editor-comment);
+        font-style: italic;
       }
-      .cm-def, .cm-definition { color: var(--editor-function) !important; }
-      .cm-variable, .cm-variableName { color: var(--editor-variable) !important; }
-      .cm-string { color: var(--editor-string) !important; }
-      .cm-number { color: var(--editor-number) !important; }
-      .cm-operator { color: var(--editor-operator) !important; }
-      .cm-punctuation { color: var(--editor-fg) !important; }
-      .cm-property { color: var(--editor-variable) !important; }
-      .cm-function { color: var(--editor-function) !important; }
-      .cm-className { color: var(--editor-classname) !important; }
+      .cm-def.cm-def, .cm-definition.cm-definition { color: var(--editor-function); }
+      .cm-variable.cm-variable, .cm-variableName.cm-variableName { color: var(--editor-variable); }
+      .cm-string.cm-string { color: var(--editor-string); }
+      .cm-number.cm-number { color: var(--editor-number); }
+      .cm-operator.cm-operator { color: var(--editor-operator); }
+      .cm-punctuation.cm-punctuation { color: var(--editor-fg); }
+      .cm-property.cm-property { color: var(--editor-variable); }
+      .cm-function.cm-function { color: var(--editor-function); }
+      .cm-className.cm-className { color: var(--editor-classname); }
     }
   }
 }

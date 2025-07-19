@@ -12,7 +12,6 @@
   align-items: center;
   justify-content: space-between;
   padding: 0 var(--spacing-lg);
-  box-shadow: var(--shadow-base);
   position: relative;
   z-index: 100;
 }

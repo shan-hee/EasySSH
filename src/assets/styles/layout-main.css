@@ -65,7 +65,7 @@
 .content {
   flex: 1;
   overflow-y: auto;
-  padding: 20px;
+  padding: 0px;
 }
 
 /* 侧边栏 */
@@ -77,67 +77,11 @@
   position: relative;
 }
 
-.sidebar--collapsed {
-  width: 64px;
-}
+/* .sidebar--collapsed 样式已移至 layouts/layout-base.css */
 
 /* 布局工具类 */
-.text-center {
-  text-align: center;
-}
+/* 文本对齐工具类已移至 base/utilities.css */
 
-.text-right {
-  text-align: right;
-}
+/* Flexbox工具类已移至 base/utilities.css */
 
-.d-flex {
-  display: flex;
-}
-
-.flex-column {
-  flex-direction: column;
-}
-
-.justify-content-between {
-  justify-content: space-between;
-}
-
-.align-items-center {
-  align-items: center;
-}
-
-.flex-grow-1 {
-  flex-grow: 1;
-}
-
-.p-1 {
-  padding: 0.25rem;
-}
-
-.p-2 {
-  padding: 0.5rem;
-}
-
-.p-3 {
-  padding: 1rem;
-}
-
-.m-1 {
-  margin: 0.25rem;
-}
-
-.m-2 {
-  margin: 0.5rem;
-}
-
-.m-3 {
-  margin: 1rem;
-}
-
-.mt-3 {
-  margin-top: 1rem;
-}
-
-.mb-3 {
-  margin-bottom: 1rem;
-} 
+/* 间距工具类已移至 base/utilities.css */

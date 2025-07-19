@@ -28,7 +28,7 @@
   padding: var(--spacing-sm) var(--spacing-md);
   font-size: var(--font-size-base);
   color: var(--color-text-primary);
-  background-color: var(--color-bg-container);
+  background-color: transparent;
   border: 1px solid var(--color-border-default);
   border-radius: var(--radius-md);
   transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
@@ -246,4 +246,69 @@ textarea.form__control {
   gap: var(--spacing-sm);
   padding: var(--spacing-md);
   border-top: 1px solid var(--gray-200);
-} 
+}
+
+/* 统一的复选框样式 - 避免重复定义 */
+.checkbox-wrapper {
+  position: relative;
+  width: 18px;
+  height: 18px;
+  border: 2px solid var(--color-border-default);
+  border-radius: 3px;
+  background-color: var(--color-bg-container);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.checkbox-wrapper:hover {
+  border-color: var(--color-primary-light);
+}
+
+.checkbox-wrapper.checked {
+  background-color: var(--color-primary);
+  border-color: var(--color-primary);
+}
+
+.checkbox-inner {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 10px;
+  height: 10px;
+  background-color: var(--color-bg-container);
+  border-radius: 1px;
+  transform: translate(-50%, -50%) scale(0);
+  transition: transform 0.2s ease;
+}
+
+.checkbox-check {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 4px;
+  height: 8px;
+  border: solid var(--color-bg-container);
+  border-width: 0 2px 2px 0;
+  transform: translate(-50%, -60%) rotate(45deg) scale(0);
+  transition: all 0.2s ease;
+  opacity: 0;
+}
+
+.checkbox-wrapper.checked .checkbox-check {
+  width: 5px;
+  height: 9px;
+  border-color: var(--color-bg-container);
+  transform: translate(-50%, -60%) rotate(45deg) scale(1);
+  opacity: 1;
+}
+
+/* MFA验证码输入框样式 - 统一管理 */
+.code-input:focus {
+  border-color: var(--color-primary);
+  background-color: var(--color-hover-bg);
+  box-shadow: 0 0 0 2px var(--color-focus-ring);
+  transform: translateY(-2px);
+}

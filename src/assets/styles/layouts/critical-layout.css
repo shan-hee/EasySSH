@@ -74,7 +74,7 @@
 }
 
 /* 基本间距系统 - 首屏必需 */
-.mb-0 { margin-bottom: 0; }
+/* .mb-0 已移至 base/utilities.css */
 .mb-10 { margin-bottom: 10px; }
 .mb-20 { margin-bottom: 20px; }
 .mt-10 { margin-top: 10px; }

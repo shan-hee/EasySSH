@@ -11,17 +11,17 @@
     
     <!-- 应用基础样式 -->
     <style>
+        /* 基础变量已迁移到 src/assets/styles/themes/theme.css */
+        /* 这里只保留应用启动时必需的基础样式 */
         :root {
+          /* 应用启动时的基础颜色，避免闪烁 */
           --primary-color: #1890ff;
           --primary-hover: #40a9ff;
           --primary-active: #096dd9;
           --success-color: #52c41a;
           --warning-color: #faad14;
           --error-color: #f5222d;
-          --font-color: #e0e0e0;
-          --border-color: #333;
-          --background-color: #1e1e1e;
-          --component-background: #252526;
+          /* 页面级变量已移至主题文件，支持主题切换 */
         }
         
         /* 主题变量已迁移到 src/assets/styles/themes/theme.css */
@@ -34,8 +34,8 @@
           height: 100%;
           overflow: hidden;
           font-family: 'Microsoft YaHei', sans-serif;
-          background-color: var(--background-color);
-          color: var(--font-color);
+          background-color: var(--color-bg-page);
+          color: var(--color-text-primary);
         }
         
         #app {
@@ -73,7 +73,7 @@
         }
         
         .card {
-          background-color: var(--component-background);
+          background-color: var(--color-bg-container);
           border-radius: 4px;
           box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
           padding: 16px;
@@ -87,12 +87,12 @@
         }
         
         .dashboard-card {
-          background-color: var(--component-background);
+          background-color: var(--color-bg-container);
           border-radius: 8px;
           box-shadow: 0 2px 12px rgba(0, 0, 0, 0.3);
           margin-bottom: 20px;
           overflow: hidden;
-          border: 1px solid var(--border-color);
+          border: 1px solid var(--color-border-default);
         }
         
         .card-header {

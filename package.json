@@ -21,7 +21,9 @@
     "clean": "rimraf dist node_modules/.vite",
     "clean:all": "rimraf dist node_modules/.vite node_modules package-lock.json",
     "reinstall": "npm run clean:all && npm install",
-    "size": "npm run build && bundlesize"
+    "size": "npm run build && bundlesize",
+    "style:check": "node scripts/style-checker.js",
+    "style:clean": "rimraf *-report.html *-report.json style-quality-report.json"
   },
   "engines": {
     "node": ">=20.0.0",

@@ -1,0 +1,139 @@
+/**
+ * CSS Layers 配置
+ * 定义样式层级顺序，管理样式优先级，减少冲突
+ */
+
+/* 定义层级顺序 - 后面的层级优先级更高 */
+@layer reset, base, themes, layouts, components, utilities, overrides;
+
+/**
+ * 层级说明：
+ * 
+ * 1. reset - 重置样式
+ *    - 浏览器默认样式重置
+ *    - normalize.css 等
+ * 
+ * 2. base - 基础样式
+ *    - 基础元素样式 (body, html, h1-h6, p, a 等)
+ *    - 基础字体、颜色定义
+ * 
+ * 3. themes - 主题样式
+ *    - CSS 变量定义
+ *    - 主题切换相关样式
+ *    - 全局主题配置
+ * 
+ * 4. layouts - 布局样式
+ *    - 网格系统
+ *    - 容器、行、列
+ *    - 页面布局结构
+ * 
+ * 5. components - 组件样式
+ *    - 可复用组件样式
+ *    - 组件状态和变体
+ *    - 组件交互样式
+ * 
+ * 6. utilities - 工具类
+ *    - 原子化工具类
+ *    - 辅助类 (.hidden, .text-center 等)
+ *    - 响应式工具类
+ * 
+ * 7. overrides - 覆盖样式
+ *    - 第三方库样式覆盖
+ *    - 特殊情况的样式覆盖
+ *    - 临时修复样式
+ */
+
+/* 重置层 - 最低优先级 */
+@layer reset {
+  /* 基础重置样式将在这里 */
+}
+
+/* 基础层 */
+@layer base {
+  /* 基础元素样式将在这里 */
+}
+
+/* 主题层 */
+@layer themes {
+  /* 主题变量和全局样式将在这里 */
+}
+
+/* 布局层 */
+@layer layouts {
+  /* 布局相关样式将在这里 */
+}
+
+/* 组件层 */
+@layer components {
+  /* 组件样式将在这里 */
+}
+
+/* 工具类层 */
+@layer utilities {
+  /* 工具类样式将在这里 */
+}
+
+/* 覆盖层 - 最高优先级 */
+@layer overrides {
+  /* 第三方库覆盖和特殊情况样式将在这里 */
+}
+
+/**
+ * 使用示例：
+ * 
+ * 在具体的CSS文件中使用：
+ * 
+ * @layer base {
+ *   body {
+ *     font-family: var(--font-family-base);
+ *     color: var(--color-text-primary);
+ *   }
+ * }
+ * 
+ * @layer components {
+ *   .button {
+ *     padding: var(--spacing-sm) var(--spacing-md);
+ *     border-radius: var(--radius-md);
+ *   }
+ * }
+ * 
+ * @layer utilities {
+ *   .hidden {
+ *     display: none !important;
+ *   }
+ * }
+ * 
+ * @layer overrides {
+ *   .el-button {
+ *     border-radius: var(--radius-md);
+ *   }
+ * }
+ */
+
+/**
+ * 迁移指南：
+ * 
+ * 1. 现有样式文件逐步迁移到对应层级
+ * 2. 使用 @layer 包装现有样式规则
+ * 3. 根据功能将样式分配到正确的层级
+ * 4. 测试确保样式优先级正确
+ * 
+ * 迁移优先级：
+ * 1. 先迁移工具类和基础样式
+ * 2. 再迁移组件样式
+ * 3. 最后迁移覆盖样式
+ */
+
+/**
+ * 兼容性说明：
+ * 
+ * CSS Layers 支持情况：
+ * - Chrome 99+
+ * - Firefox 97+
+ * - Safari 15.4+
+ * 
+ * 对于不支持的浏览器，样式仍然有效，
+ * 只是没有层级管理功能。
+ * 
+ * 可以使用 PostCSS 插件进行降级处理。
+ */

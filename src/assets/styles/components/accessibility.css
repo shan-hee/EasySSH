@@ -18,35 +18,36 @@
 
 /* 高对比度模式 */
 .high-contrast {
-  --color-bg-primary: #000;
-  --color-bg-secondary: #111;
-  --color-bg-tertiary: #222;
-  --color-bg-hover: #333;
-  --color-text-primary: #fff;
-  --color-text-secondary: #eee;
-  --color-border: #fff;
-  --color-link: #ffff00;
-  --color-link-visited: #d2d200;
-  --color-focus: #ffff00;
-  --color-error: #ff6666;
-  --color-success: #66ff66;
-  --color-warning: #ffff66;
-  --color-info: #66ffff;
-  --shadow-strength: 0;
+  /* 使用无障碍专用变量名避免与主题变量冲突 */
+  --a11y-color-bg-primary: #000;
+  --a11y-color-bg-secondary: #111;
+  --a11y-color-bg-tertiary: #222;
+  --a11y-color-bg-hover: #333;
+  --a11y-color-text-primary: #fff;
+  --a11y-color-text-secondary: #eee;
+  --a11y-color-border: #fff;
+  --a11y-color-link: #ffff00;
+  --a11y-color-link-visited: #d2d200;
+  --a11y-color-focus: #ffff00;
+  --a11y-color-error: #ff6666;
+  --a11y-color-success: #66ff66;
+  --a11y-color-warning: #ffff66;
+  --a11y-color-info: #66ffff;
+  --a11y-shadow-strength: 0;
 }
 
 /* 对比度级别样式 */
 [data-contrast="high"] {
-  --contrast-multiplier: 1.2;
+  /* 高对比度模式 - 移除未使用的contrast-multiplier变量 */
 }
 
 [data-contrast="very-high"] {
-  --contrast-multiplier: 1.5;
   --color-link: #ffff00;
   --color-focus: #ffff00;
-  --color-error: #ff5555;
-  --color-success: #55ff55;
-  --color-warning: #ffff55;
+  /* 使用无障碍专用变量名避免与主题变量冲突 */
+  --a11y-color-error: #ff5555;
+  --a11y-color-success: #55ff55;
+  --a11y-color-warning: #ffff55;
 }
 
 /* 减少动效 */

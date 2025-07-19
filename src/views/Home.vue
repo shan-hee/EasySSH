@@ -152,12 +152,12 @@ export default {
 }
 
 .btn-primary {
-  background-color: #1890ff;
-  color: white;
+  background-color: var(--color-primary);
+  color: var(--color-bg-container);
 }
 
 .btn-primary:hover {
-  background-color: #096dd9;
+  background-color: var(--color-primary-hover);
 }
 
 .btn-secondary {

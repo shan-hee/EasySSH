@@ -17,18 +17,13 @@ body {
   color: var(--color-text-primary);
   background-color: var(--color-bg-page);
   overflow-x: hidden;
+  /* 主题切换过渡动画 */
+  transition:
+    background-color var(--theme-transition-duration, var(--transition-base)) var(--theme-transition-timing, ease),
+    color var(--theme-transition-duration, var(--transition-base)) var(--theme-transition-timing, ease);
 }
 
-/* 关键布局变量 - 使用统一主题变量 */
-:root {
-  --header-height: var(--layout-header-height);
-  --sidebar-width: var(--layout-sidebar-expanded-width);
-  --sidebar-collapsed-width: var(--layout-sidebar-width);
-  --content-transition: var(--transition-base);
-  --primary-color: var(--color-primary);
-  --text-color: var(--color-text-primary);
-  --background-color: var(--color-bg-page);
-}
+/* 关键布局变量已移至 themes/theme.css */
 
 /* 页面主容器 */
 #app {
@@ -38,23 +33,9 @@ body {
   flex-direction: column;
 }
 
-/* 页面头部 - 首屏可见 */
-.app-header {
-  height: var(--header-height);
-  background-color: #fff;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
-  display: flex;
-  align-items: center;
-  padding: 0 20px;
-  position: relative;
-  z-index: 10;
-}
+/* 页面头部样式已移至 components/header.css */
 
-.app-header__logo {
-  font-weight: bold;
-  font-size: 1.2rem;
-  color: var(--primary-color);
-}
+/* .app-header__logo 样式已移至 components/header.css */
 
 /* 页面主体布局 - 首屏可见 */
 .main {
@@ -76,9 +57,7 @@ body {
   z-index: 5;
 }
 
-.sidebar--collapsed {
-  width: var(--sidebar-collapsed-width);
-}
+/* .sidebar--collapsed 样式已移至 layouts/layout.css */
 
 /* 内容区域 - 首屏可见 */
 .content {

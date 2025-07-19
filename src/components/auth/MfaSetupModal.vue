@@ -702,12 +702,7 @@ export default defineComponent({
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
-.code-input:focus {
-  border-color: var(--color-primary);
-  background-color: var(--color-hover-bg);
-  box-shadow: 0 0 0 2px var(--color-focus-ring);
-  transform: translateY(-2px);
-}
+/* .code-input:focus 样式已移至 components/forms.css 统一管理 */
 
 .code-separator {
   width: 8px;

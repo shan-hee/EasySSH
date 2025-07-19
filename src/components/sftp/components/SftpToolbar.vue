@@ -135,7 +135,7 @@ export default defineComponent({
 .sftp-search-input {
   width: 100%;
   height: 32px;
-  background-color: var(--color-bg-container);
+  background-color: transparent;
   border: 1px solid var(--color-border-default);
   border-radius: 4px;
   color: var(--color-text-primary);
@@ -145,7 +145,7 @@ export default defineComponent({
 }
 
 .sftp-search-input:focus {
-  background-color: var(--color-bg-hover);
+  background-color: transparent;
   border: 1px solid var(--color-primary);
 }
 
@@ -233,21 +233,22 @@ export default defineComponent({
 
 /* 浅色主题样式已迁移到主题变量 */
 
+/* 浅色主题下的搜索图标样式 - 使用主题变量 */
 :root[data-theme="light"] .sftp-search-icon,
 .light-theme .sftp-search-icon,
 html[data-theme="light"] .sftp-search-icon {
-  color: #909399 !important;
+  color: var(--color-text-secondary);
 }
 
 :root[data-theme="light"] .sftp-search-clear,
 .light-theme .sftp-search-clear,
 html[data-theme="light"] .sftp-search-clear {
-  color: #909399 !important;
+  color: var(--color-text-secondary);
 }
 
 :root[data-theme="light"] .sftp-search-clear:hover,
 .light-theme .sftp-search-clear:hover,
 html[data-theme="light"] .sftp-search-clear:hover {
-  background-color: #f5f7fa !important;
+  background-color: var(--color-bg-muted);
 }
 </style>

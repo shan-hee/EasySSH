@@ -481,9 +481,12 @@ label {
 }
 
 .btn-submit {
+  display: flex;
+  align-items: center;
+  justify-content: center;
   padding: 8px 16px;
-  background-color: var(--color-primary);
-  color: var(--color-bg-container);
+  background-color: var(--btn-primary-bg);
+  color: var(--btn-primary-text);
   border: none;
   border-radius: var(--radius-md);
   cursor: pointer;
@@ -496,7 +499,7 @@ label {
 }
 
 .btn-submit:hover {
-  background-color: var(--color-primary-hover);
+  background-color: var(--btn-primary-hover-bg);
 }
 
 /* 添加状态标签样式 */

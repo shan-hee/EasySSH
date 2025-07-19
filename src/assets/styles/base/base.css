@@ -16,18 +16,12 @@
   box-sizing: border-box;
 }
 
+/* html, body 样式已移至 base/critical.css */
 html, body {
   height: 100%;
-  font-family: var(--font-family-base);
-  font-size: var(--font-size-base);
-  line-height: 1.5;
-  color: var(--color-text-primary);
-  background-color: var(--color-bg-page);
 }
 
-body {
-  overflow-x: hidden;
-}
+/* body样式已合并到critical.css中 */
 
 a {
   color: var(--color-primary);
@@ -60,10 +54,7 @@ ul, ol {
   list-style: none;
 }
 
-/* 辅助类 */
-.hidden {
-  display: none !important;
-}
+/* 辅助类已移至 base/utilities.css */
 
 .visually-hidden {
   position: absolute;
@@ -83,17 +74,7 @@ ul, ol {
   clear: both;
 }
 
-.text-center {
-  text-align: center;
-}
-
-.text-left {
-  text-align: left;
-}
-
-.text-right {
-  text-align: right;
-}
+/* 文本对齐工具类已移至utilities.css */
 
 .text-truncate {
   overflow: hidden;

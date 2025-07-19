@@ -83,7 +83,7 @@ export default {
 .custom-search-input {
   width: 100%;
   height: 36px;
-  background-color: var(--color-bg-muted);
+  background-color: transparent;
   border: 1px solid var(--color-border-default);
   border-radius: 6px;
   color: var(--color-text-primary);

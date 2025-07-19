@@ -1195,7 +1195,8 @@ h2 {
 .connection-card {
   padding: 15px;
   border-radius: 4px;
-  background-color: var(--color-bg-container);
+  background-color: var(--card-bg);
+  color: var(--card-text);
   cursor: pointer;
   transition: background-color 0.2s;
   box-shadow: none !important;
@@ -1204,7 +1205,7 @@ h2 {
 
 /* 保留悬浮时的背景色变化，移除浮动效果 */
 .connection-card:hover {
-  background-color: var(--color-bg-muted);
+  background-color: var(--card-hover-bg);
   transform: none !important;
   box-shadow: none !important;
   outline: none !important;
@@ -1255,14 +1256,15 @@ h2 {
   display: flex;
   align-items: center;
   padding: 12px 15px;
-  background-color: var(--color-bg-container);
+  background-color: var(--card-bg);
+  color: var(--card-text);
   border-radius: 4px;
   position: relative;
   cursor: pointer;
 }
 
 .row-item:hover {
-  background-color: var(--color-bg-muted);
+  background-color: var(--card-hover-bg);
   border-color: var(--color-border-default);
 }
 
@@ -1332,7 +1334,7 @@ h2 {
 }
 
 .action-btn .pinned {
-  color: #409EFF;
+  color: var(--color-primary);
   font-weight: bold;
 }
 
@@ -1387,7 +1389,7 @@ h2 {
 
 .tab-item {
   padding: 10px 15px;
-  color: #409eff;
+  color: var(--color-primary);
   font-weight: bold;
   position: relative;
 }
@@ -1399,7 +1401,7 @@ h2 {
   left: 0;
   width: 100%;
   height: 2px;
-  background-color: #409eff;
+  background-color: var(--color-primary);
 }
 
 .modal-body {
@@ -1438,7 +1440,7 @@ h2 {
 .form-item input {
   width: 100%;
   height: 36px;
-  background-color: var(--color-bg-container);
+  background-color: transparent;
   border: 1px solid var(--color-border-default);
   border-radius: 6px;
   color: var(--color-text-primary);
@@ -1450,7 +1452,6 @@ h2 {
 
 .form-item input:focus {
   border-color: var(--color-primary);
-  box-shadow: 0 0 0 1px var(--color-primary-light);
 }
 
 .form-item input::placeholder {
@@ -1479,8 +1480,8 @@ h2 {
 }
 
 .auth-switcher button.active {
-  background-color: var(--color-primary);
-  color: var(--color-text-white);
+  background-color: var(--btn-primary-bg);
+  color: var(--btn-primary-text);
 }
 
 .modal-footer {
@@ -1503,10 +1504,10 @@ h2 {
 
 .btn-confirm {
   padding: 8px 20px;
-  background-color: var(--color-primary);
+  background-color: var(--btn-primary-bg);
   border: none;
   border-radius: 4px;
-  color: var(--color-bg-container);
+  color: var(--btn-primary-text);
   cursor: pointer;
   font-weight: bold;
 }
@@ -1569,6 +1570,7 @@ h2 {
 :deep(.connection-modal .modal-tab) {
   padding: 0 15px;
   margin-bottom: 10px;
+  border-bottom: 1px solid var(--color-border-default);
 }
 
 :deep(.connection-modal .tab-item) {
@@ -1596,6 +1598,9 @@ h2 {
 }
 
 :deep(.connection-modal .btn-confirm) {
+  display: flex;
+  align-items: center;
+  justify-content: center;
   border-radius: 6px;
   background-color: var(--color-bg-muted);
   border: 1px solid var(--color-border-default);
@@ -1607,6 +1612,9 @@ h2 {
 }
 
 :deep(.connection-modal .btn-cancel) {
+  display: flex;
+  align-items: center;
+  justify-content: center;
   border-radius: 6px;
   background-color: var(--color-bg-muted);
   border: 1px solid var(--color-border-default);
@@ -1618,12 +1626,19 @@ h2 {
 }
 
 :deep(.connection-modal .btn-primary) {
+  display: flex;
+  align-items: center;
+  justify-content: center;
   border-radius: 6px;
-  background-color: var(--color-primary);
+  background-color: var(--btn-primary-bg);
   height: 36px;
   font-weight: bold;
   font-size: 14px;
-  color: var(--color-bg-container);
+  color: var(--btn-primary-text);
+}
+
+:deep(.connection-modal .btn-primary:hover) {
+  background-color: var(--btn-primary-hover-bg);
 }
 
 .key-file-wrapper {
@@ -1642,7 +1657,7 @@ h2 {
 }
 
 .key-file-wrapper input:focus {
-  border-color: #0083d3;
+  border-color: var(--color-primary);
   box-shadow: none;
 }
 
@@ -1687,59 +1702,7 @@ h2 {
   font-weight: normal;
 }
 
-.checkbox-wrapper {
-  position: relative;
-  width: 16px;
-  height: 16px;
-  border: 1px solid var(--color-border-default);
-  border-radius: 2px;
-  background-color: transparent;
-  transition: all 0.3s;
-  overflow: hidden;
-  cursor: pointer;
-}
-
-.checkbox-wrapper.checked {
-  background-color: transparent;
-  border-color: transparent;
-}
-
-.checkbox-inner {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background-color: transparent;
-  transition: all 0.3s;
-}
-
-.checkbox-wrapper.checked .checkbox-inner {
-  background-color: transparent;
-}
-
-.checkbox-check {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  width: 0;
-  height: 0;
-  border: 2px solid transparent;
-  border-top: 0;
-  border-right: 0;
-  transform: translate(-50%, -50%) rotate(-45deg) scale(0);
-  transition: all 0.3s;
-  transform-origin: center;
-  opacity: 0;
-}
-
-.checkbox-wrapper.checked .checkbox-check {
-  width: 9px;
-  height: 5px;
-  border-color: var(--color-primary);
-  transform: translate(-50%, -70%) rotate(-45deg) scale(1);
-  opacity: 1;
-}
+/* 复选框样式已移至 components/forms.css 统一管理 */
 
 /* 添加置顶项的样式 */
 .row-item[data-pinned="true"] {
@@ -1752,7 +1715,7 @@ h2 {
 }
 
 .action-btn .pinned {
-  color: #409EFF;
+  color: var(--color-primary);
   font-weight: bold;
 }
 
@@ -1843,10 +1806,12 @@ h2 {
   cursor: pointer;
   transition: all 0.2s ease;
   position: relative;
+  background-color: var(--card-bg);
+  color: var(--card-text);
 }
 
 .connection-card:hover {
-  background-color: var(--color-bg-muted);
+  background-color: var(--card-hover-bg);
 }
 
 /* 编辑模式下的拖拽样式 */
@@ -1856,7 +1821,7 @@ h2 {
 }
 
 .connection-grid.edit-mode .connection-card:hover:not(.being-dragged) {
-  background-color: var(--color-bg-muted);
+  background-color: var(--card-hover-bg);
   transform: translateY(-2px);
   box-shadow: var(--shadow-md);
 }
