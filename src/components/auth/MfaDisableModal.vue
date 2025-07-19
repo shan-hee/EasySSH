@@ -40,21 +40,18 @@
         <div class="verify-input-container">
           <div class="code-inputs">
             <template v-for="(digit, index) in 6" :key="index">
-              <div class="digit-container" :class="{ 'active': codeDigits[index] }">
-                <input
-                  type="tel"
-                  maxlength="1"
-                  inputmode="numeric"
-                  pattern="[0-9]*"
-                  class="code-input"
-                  v-model="codeDigits[index]"
-                  @keydown="handleKeyDown($event, index)"
-                  @paste="handlePaste"
-                  @keyup.enter="handleEnterKey"
-                  ref="codeInputs"
-                />
-                <span class="digit-display">{{ codeDigits[index] }}</span>
-              </div>
+              <input
+                type="tel"
+                maxlength="1"
+                inputmode="numeric"
+                pattern="[0-9]*"
+                class="code-input"
+                v-model="codeDigits[index]"
+                @keydown="handleKeyDown($event, index)"
+                @paste="handlePaste"
+                @keyup.enter="handleEnterKey"
+                ref="codeInputs"
+              />
               <span class="code-separator" v-if="index < 5"></span>
             </template>
           </div>
@@ -295,7 +292,7 @@ export default defineComponent({
 
 <style scoped>
 .mfa-disable-container {
-  padding: 30px;
+  padding: 0 20px 20px;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -379,67 +376,43 @@ export default defineComponent({
 /* 验证码输入样式 */
 .verify-input-container {
   width: 100%;
-  max-width: 360px;
-  margin: 0 auto;
+  margin: 30px 0;
 }
 
 .code-inputs {
   display: flex;
   justify-content: center;
-  gap: 8px;
-}
-
-.digit-container {
-  position: relative;
-  width: 40px;
-  height: 48px;
+  align-items: center;
+  width: 100%;
+  margin: 0 auto;
 }
 
 .code-input {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  border: 1px solid var(--color-border-default);
-  border-radius: 4px;
-  background-color: var(--color-bg-container);
-  color: transparent;
-  font-size: 20px;
+  width: 45px;
+  height: 55px;
+  background-color: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  color: var(--color-text-primary);
+  font-size: 24px;
+  font-weight: 500;
   text-align: center;
   outline: none;
-  z-index: 1;
-  caret-color: var(--color-primary);
-}
-
-.digit-display {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 20px;
-  color: var(--color-text-primary);
-  pointer-events: none;
-  z-index: 2;
+  transition: all 0.3s ease;
+  padding: 0;
+  margin: 0;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
 .code-input:focus {
   border-color: var(--color-primary);
+  background-color: var(--color-hover-bg);
   box-shadow: 0 0 0 2px var(--color-focus-ring);
-}
-
-.digit-container.active .code-input {
-  border-color: var(--color-primary);
+  transform: translateY(-2px);
 }
 
 .code-separator {
-  display: flex;
-  align-items: center;
-  margin: 0 2px;
+  width: 8px;
 }
 
 .verify-error {
@@ -447,5 +420,16 @@ export default defineComponent({
   margin-top: 15px;
   text-align: center;
   font-size: 14px;
+}
+
+/* 修改弹窗样式 */
+:deep(.mfa-disable-modal) {
+  width: 500px !important;
+  border-radius: 12px !important;
+  overflow: hidden !important;
+}
+
+:deep(.mfa-disable-modal .modal-header) {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05) !important;
 }
 </style> 

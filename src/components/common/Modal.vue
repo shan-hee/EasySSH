@@ -120,7 +120,6 @@ export default defineComponent({
 .modal-container {
   width: 550px;
   background-color: var(--color-bg-page);
-  border: 1px solid var(--color-border-default);
   border-radius: 8px;
   overflow: hidden;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
