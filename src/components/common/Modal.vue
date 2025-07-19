@@ -131,7 +131,6 @@ export default defineComponent({
   display: flex;
   justify-content: space-between;
   align-items: center;
-  background-color: var(--color-bg-muted);
 }
 
 .modal-header span {
@@ -182,7 +181,6 @@ export default defineComponent({
   justify-content: flex-end;
   gap: 10px;
   padding: 15px;
-  background-color: var(--color-bg-muted);
 }
 
 .modal-btn {
