@@ -172,7 +172,7 @@ import { useUserStore } from './store/user'
 
 // 应用初始化时强制同步token状态，并主动验证和刷新数据
 const userStore = useUserStore()
-const savedToken = storageService.getItem('auth_token')
+const savedToken = localStorage.getItem('auth_token')
 if (savedToken) {
   userStore.setToken(savedToken)
 
@@ -409,7 +409,7 @@ window.addEventListener('auth:remote-logout', () => {
   // 清除全局状态指示器
   window._isAuthFailed = true
   // 清除token，确保不再获取登录信息
-  storageService.removeItem('auth_token')
+  localStorage.removeItem('auth_token')
   // 远程注销时清理记住的凭据（这是唯一清理凭据的场景）
   storageService.removeItem('easyssh_credentials')
   log.info('远程注销：已清理记住的凭据')

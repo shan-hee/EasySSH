@@ -85,11 +85,11 @@ export const useUserStore = defineStore('user', () => {
   // 操作方法
   function setToken(newToken) {
     token.value = newToken
-    // 将token保存到统一存储
+    // 直接使用localStorage确保与API拦截器一致
     if (newToken) {
-      storageService.setItem('auth_token', newToken)
+      localStorage.setItem('auth_token', newToken)
     } else {
-      storageService.removeItem('auth_token')
+      localStorage.removeItem('auth_token')
     }
   }
   
