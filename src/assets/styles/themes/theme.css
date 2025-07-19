@@ -75,209 +75,12 @@
   --tooltip-delay: 0.5s;
 }
 
-/* ===== 浅色主题（默认） ===== */
-:root {
-  /* 品牌色系 */
-  --color-primary: #aaaaaa;
-  --color-primary-hover: #bbbbbb;
-  --color-primary-active: #999999;
-  --color-primary-light: #bbbbbb;
-  --color-primary-lighter: #cccccc;
-  --color-primary-lightest: #f5f5f5;
+/* ===== 默认主题设置 ===== */
+/* 注意：颜色变量现在只在具体主题选择器中定义 */
+/* 浅色主题作为默认主题，在 :root[data-theme="light"] 中定义 */
+/* 深色主题在 :root[data-theme="dark"] 中定义 */
 
-  /* 功能色系 */
-  --color-success: #52c41a;
-  --color-success-light: #73d13d;
-  --color-success-bg: #f6ffed;
-
-  --color-warning: #faad14;
-  --color-warning-light: #ffc53d;
-  --color-warning-bg: #fff7e6;
-
-  --color-error: #f5222d;
-  --color-error-light: #ff4d4f;
-  --color-error-bg: #fff2f0;
-
-  --color-info: #1890ff;
-  --color-info-light: #40a9ff;
-  --color-info-bg: #e6f7ff;
-
-  /* 文本色系 */
-  --color-text-primary: #303133;
-  --color-text-regular: #606266;
-  --color-text-secondary: #909399;
-  --color-text-placeholder: #c0c4cc;
-  --color-text-disabled: rgba(0, 0, 0, 0.25);
-
-  /* 背景色系 */
-  --color-bg-page: #f5f7fa;
-  --color-bg-container: #ffffff;
-  --color-bg-elevated: #ffffff;
-  --color-bg-overlay: #ffffff;
-  --color-bg-muted: #f0f2f5;
-  --color-bg-subtle: #fafbfc;
-  --color-bg-hover: #f5f7fa;
-
-  /* 组件特定背景色 */
-  --shortcut-item-bg: #ffffff80;
-  --sftp-panel-bg: #ffffff;
-  --sftp-panel-header-bg: #e0e0e0;
-
-  /* 边框色系 */
-  --color-border-default: #dcdfe6;
-  --color-border-light: #e4e7ed;
-  --color-border-lighter: #ebeef5;
-  --color-border-dark: #d4d7de;
-
-  /* 阴影系统 */
-  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
-  --shadow-base: 0 2px 8px rgba(0, 0, 0, 0.08);
-  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.12);
-  --shadow-lg: 0 8px 16px rgba(0, 0, 0, 0.16);
-  --shadow-xl: 0 12px 24px rgba(0, 0, 0, 0.20);
-
-  /* Tooltip 颜色系统 - 浅色主题 */
-  --tooltip-bg: var(--color-bg-container);
-  --tooltip-color: var(--color-text-primary);
-  --tooltip-border: none;
-  --tooltip-shadow: var(--shadow-lg);
-  --tooltip-arrow-color: var(--color-bg-container);
-
-  /* 交互状态 */
-  --color-hover-bg: rgba(170, 170, 170, 0.1);
-  --color-active-bg: rgba(170, 170, 170, 0.15);
-  --color-selected-bg: rgba(170, 170, 170, 0.1);
-  --color-disabled-bg: rgba(0, 0, 0, 0.04);
-  --color-focus-ring: rgba(170, 170, 170, 0.2);
-
-  /* 组件级变量 - 浅色主题 */
-  /* 侧边栏 */
-  --sidebar-bg: #ffffff;
-  --sidebar-border: #e4e7ed;
-  --sidebar-logo-bg: #ffffff;
-  --sidebar-nav-color: #606266;
-  --sidebar-nav-hover-bg: rgba(170, 170, 170, 0.1);
-  --sidebar-nav-hover-color: #aaaaaa;
-  --sidebar-nav-active-color: #aaaaaa;
-  --sidebar-tooltip-bg: #303133;
-  --sidebar-tooltip-color: #ffffff;
-
-  /* 顶部栏 */
-  --header-bg: #ffffff;
-  --header-border: #e4e7ed;
-  --header-color: #606266;
-  --header-tab-bg: #ffffff;
-  --header-tab-hover-bg: #ecf5ff;
-  --header-tab-active-bg: #f5f7fa;
-  --header-tab-color: #606266;
-  --header-tab-active-color: #303133;
-  --header-scrollbar-thumb: #c0c4cc;
-  --header-btn-hover-bg: rgba(170, 170, 170, 0.1);
-  --header-btn-hover-color: #aaaaaa;
-
-  /* 对话框组件 */
-  --dialog-bg: var(--color-bg-container);
-  --dialog-border: var(--color-border-default);
-  --dialog-header-bg: var(--color-bg-muted);
-  --dialog-title-color: var(--color-text-primary);
-  --dialog-overlay-bg: rgba(0, 0, 0, 0.5);
-
-  /* 编辑器组件 */
-  --editor-bg: #ffffff;
-  --editor-fg: #303133;
-  --editor-cursor: #303133;
-  --editor-selection: #e6f7ff;
-  --editor-comment: #909399;
-  --editor-keyword: #d73a49;
-  --editor-string: #22863a;
-  --editor-function: #6f42c1;
-  --editor-variable: #e36209;
-  --editor-number: #005cc5;
-  --editor-operator: #d73a49;
-  --editor-classname: #6f42c1;
-
-  /* SFTP组件 */
-  --sftp-panel-header-bg: var(--color-bg-container);
-  --sftp-file-list-header-bg: var(--color-bg-container);
-  --sftp-empty-folder-color: var(--color-text-secondary);
-  --sftp-scrollbar-track: var(--color-bg-container);
-  --sftp-scrollbar-thumb: var(--color-border-default);
-  --sftp-scrollbar-thumb-hover: var(--color-border-dark);
-
-  /* 自动完成组件 */
-  --autocomplete-bg: var(--color-bg-container);
-  --autocomplete-border: var(--color-border-default);
-  --autocomplete-item-hover-bg: var(--color-hover-bg);
-  --autocomplete-command-color: var(--color-primary);
-  --autocomplete-description-color: var(--color-text-secondary);
-  --autocomplete-type-bg: var(--color-bg-muted);
-  --autocomplete-type-color: var(--color-text-secondary);
-  --autocomplete-type-border: var(--color-border-light);
-  --autocomplete-footer-bg: var(--color-bg-muted);
-  --autocomplete-hint-color: var(--color-text-placeholder);
-
-  /* 自动完成类型颜色 */
-  --autocomplete-type-script-bg: #f0f9ff;
-  --autocomplete-type-script-color: #0369a1;
-  --autocomplete-type-script-border: #0369a1;
-  --autocomplete-type-word-bg: #eff6ff;
-  --autocomplete-type-word-color: #1d4ed8;
-  --autocomplete-type-word-border: #1d4ed8;
-  --autocomplete-type-commands-bg: #fff7ed;
-  --autocomplete-type-commands-color: #ea580c;
-  --autocomplete-type-commands-border: #ea580c;
-  --autocomplete-type-options-bg: #faf5ff;
-  --autocomplete-type-options-color: #9333ea;
-  --autocomplete-type-options-border: #9333ea;
-  --autocomplete-type-development-bg: #ecfeff;
-  --autocomplete-type-development-color: #0891b2;
-  --autocomplete-type-development-border: #0891b2;
-
-  /* 登录组件 */
-  --login-title-color: var(--color-text-primary);
-  --login-input-bg: var(--color-bg-container);
-  --login-input-border: var(--color-border-default);
-  --login-input-color: var(--color-text-primary);
-  --login-link-color: var(--color-text-secondary);
-  --login-link-hover-color: var(--color-text-primary);
-
-  /* 按钮状态 */
-  --btn-disabled-bg: var(--color-disabled-bg);
-  --btn-disabled-color: var(--color-text-disabled);
-
-  /* Element Plus 组件变量 */
-  --el-dropdown-bg: var(--color-bg-container);
-  --el-dropdown-border: var(--color-border-default);
-  --el-dropdown-item-color: var(--color-text-primary);
-  --el-dropdown-item-hover-bg: var(--color-hover-bg);
-  --el-dropdown-item-selected-color: var(--color-primary);
-  --el-input-color: var(--color-text-primary);
-  --el-input-bg: var(--color-bg-container);
-  --el-input-number-bg: var(--color-bg-muted);
-  --el-message-bg: var(--color-bg-container);
-  --el-message-border: var(--color-border-light);
-  --el-message-color: var(--color-text-regular);
-  --el-message-icon-color: var(--color-text-regular);
-
-  /* 登录面板 */
-  --login-panel-bg: rgba(255, 255, 255, 0.95);
-  --login-panel-title-color: #303133;
-  --login-panel-input-bg: rgba(245, 247, 250, 0.8);
-  --login-panel-input-border: #dcdfe6;
-  --login-panel-input-color: #606266;
-  --login-panel-input-placeholder: #c0c4cc;
-  --login-panel-input-focus-bg: rgba(236, 245, 255, 0.8);
-  --login-panel-input-focus-border: #aaaaaa;
-  --login-panel-btn-bg: #aaaaaa;
-  --login-panel-btn-hover-bg: #bbbbbb;
-  --login-panel-btn-color: #ffffff;
-  --login-panel-link-color: #909399;
-  --login-panel-link-hover-color: #aaaaaa;
-  --login-panel-footer-color: #c0c4cc;
-  --login-panel-footer-border: #e4e7ed;
-}
-
-/* ===== 浅色主题（明确定义） ===== */
+/* ===== 浅色主题（默认主题） ===== */
 :root[data-theme="light"],
 .light-theme {
   /* 品牌色系 */
@@ -350,6 +153,7 @@
   --color-hover-bg: rgba(170, 170, 170, 0.08);
   --color-active-bg: rgba(170, 170, 170, 0.15);
   --color-selected-bg: rgba(170, 170, 170, 0.1);
+  --color-disabled-bg: rgba(0, 0, 0, 0.04);
   --color-focus-ring: rgba(170, 170, 170, 0.2);
 
   /* 组件级变量 - 浅色主题 */
@@ -385,11 +189,11 @@
   --dialog-overlay-bg: rgba(0, 0, 0, 0.5);
 
   /* 编辑器组件 */
-  --editor-bg: #ffffff;
-  --editor-fg: #303133;
-  --editor-cursor: #303133;
-  --editor-selection: #e6f7ff;
-  --editor-comment: #909399;
+  --editor-bg: var(--color-bg-container);
+  --editor-fg: var(--color-text-primary);
+  --editor-cursor: var(--color-text-primary);
+  --editor-selection: var(--color-info-bg);
+  --editor-comment: var(--color-text-secondary);
   --editor-keyword: #d73a49;
   --editor-string: #22863a;
   --editor-function: #6f42c1;
@@ -405,6 +209,109 @@
   --sftp-scrollbar-track: var(--color-bg-container);
   --sftp-scrollbar-thumb: var(--color-border-default);
   --sftp-scrollbar-thumb-hover: var(--color-border-dark);
+
+  /* SFTP进度条颜色 */
+  --sftp-progress-low: #ff9800;
+  --sftp-progress-medium: #42a5f5;
+  --sftp-progress-high: #4caf50;
+
+  /* SFTP加载动画 */
+  --sftp-loading-bg: rgba(255, 255, 255, 0.9);
+  --sftp-loading-color: var(--color-text-secondary);
+  --sftp-loading-spinner-color: #409EFF;
+
+  /* SFTP导航按钮 */
+  --sftp-nav-button-bg: var(--color-bg-container);
+  --sftp-nav-button-color: var(--color-text-primary);
+  --sftp-nav-button-hover-bg: var(--color-hover-bg);
+  --sftp-nav-button-border: var(--color-border-default);
+
+  /* SFTP路径输入框 */
+  --sftp-path-input-bg: var(--color-bg-container);
+  --sftp-path-input-color: var(--color-text-primary);
+  --sftp-path-input-border: var(--color-border-default);
+  --sftp-path-input-hover-bg: var(--color-bg-hover);
+  --sftp-path-input-focus-bg: var(--color-bg-container);
+  --sftp-path-input-focus-border: #409eff;
+  --sftp-path-input-focus-shadow: rgba(64, 158, 255, 0.2);
+
+  /* SFTP路径组件 */
+  --sftp-path-separator-color: var(--color-text-placeholder);
+  --sftp-path-part-button-color: var(--color-text-primary);
+  --sftp-path-part-button-hover-bg: var(--color-hover-bg);
+  --sftp-path-field-color: var(--color-text-primary);
+  --sftp-path-home-button-color: var(--color-text-secondary);
+  --sftp-path-home-button-hover-color: var(--color-text-primary);
+
+  /* SFTP文件项 */
+  --sftp-file-item-border: var(--color-border-light);
+  --sftp-file-item-color: var(--color-text-primary);
+  --sftp-file-item-hover-bg: var(--color-hover-bg);
+  --sftp-file-item-active-bg: var(--color-active-bg);
+  --sftp-file-directory-color: #409eff;
+  --sftp-action-button-color: var(--color-text-secondary);
+  --sftp-action-button-hover-bg: var(--color-bg-hover);
+  --sftp-action-button-hover-color: var(--color-text-primary);
+
+  /* SFTP文件名输入框 */
+  --sftp-file-name-input-bg: var(--color-bg-container);
+  --sftp-file-name-input-border: var(--color-primary);
+  --sftp-file-name-input-color: var(--color-text-primary);
+  --sftp-file-name-input-shadow: var(--shadow-sm);
+  --sftp-file-name-input-focus-border: var(--color-primary);
+  --sftp-file-name-input-focus-shadow: rgba(170, 170, 170, 0.2);
+  --sftp-file-name-input-error-border: var(--color-error);
+  --sftp-file-name-input-error-bg: rgba(245, 34, 45, 0.1);
+  --sftp-file-name-input-error-shadow: rgba(245, 34, 45, 0.2);
+
+  /* SFTP操作按钮 */
+  --sftp-confirm-btn-color: var(--color-success);
+  --sftp-confirm-btn-bg: rgba(82, 196, 26, 0.1);
+  --sftp-confirm-btn-border: rgba(82, 196, 26, 0.3);
+  --sftp-confirm-btn-hover-bg: rgba(82, 196, 26, 0.2);
+  --sftp-cancel-btn-color: var(--color-error);
+  --sftp-cancel-btn-bg: rgba(245, 34, 45, 0.1);
+  --sftp-cancel-btn-border: rgba(245, 34, 45, 0.3);
+  --sftp-cancel-btn-hover-bg: rgba(245, 34, 45, 0.2);
+  --sftp-rename-spinner-color: var(--color-primary);
+
+  /* SFTP工具栏按钮 */
+  --sftp-toolbar-button-bg: var(--color-bg-container);
+  --sftp-toolbar-button-color: var(--color-text-primary);
+  --sftp-toolbar-button-border: var(--color-border-default);
+  --sftp-toolbar-button-hover-bg: var(--color-bg-hover);
+
+  /* SFTP搜索输入框 */
+  --sftp-search-input-bg: var(--color-bg-container);
+  --sftp-search-input-color: var(--color-text-primary);
+  --sftp-search-input-border: var(--color-border-default);
+  --sftp-search-input-focus-bg: var(--color-bg-container);
+  --sftp-search-input-focus-border: var(--color-primary);
+  --sftp-search-icon-color: var(--color-text-secondary);
+  --sftp-search-clear-color: var(--color-text-secondary);
+  --sftp-search-clear-hover-bg: var(--color-hover-bg);
+
+  /* 页面级别变量（从index.html迁移） */
+  --font-color: var(--color-text-primary);
+  --border-color: var(--color-border-default);
+  --background-color: var(--color-bg-page);
+  --component-background: var(--color-bg-muted);
+
+  /* 按钮与交互元素 */
+  --btn-secondary-bg: #f0f0f0;
+  --btn-secondary-color: var(--color-text-primary);
+  --btn-secondary-border: var(--color-border-light);
+  --btn-secondary-hover: #e6e6e6;
+
+  /* 卡片标题栏 */
+  --card-header-bg: var(--color-bg-muted);
+  --card-header-border: var(--color-border-default);
+
+  /* 消息通知 */
+  --message-bg: var(--color-bg-container);
+  --message-border: var(--color-border-default);
+  --message-color: var(--color-text-secondary);
+  --message-shadow: var(--shadow-sm);
 
   /* 自动完成组件 */
   --autocomplete-bg: var(--color-bg-container);
@@ -434,6 +341,20 @@
   --autocomplete-type-development-bg: #ecfeff;
   --autocomplete-type-development-color: #0891b2;
   --autocomplete-type-development-border: #0891b2;
+
+  /* 终端自动完成特殊类型颜色 - 浅色主题 */
+  --autocomplete-type-network-bg: #f0fdf4;
+  --autocomplete-type-network-color: #16a34a;
+  --autocomplete-type-network-border: #16a34a;
+  --autocomplete-type-system-bg: #fef3c7;
+  --autocomplete-type-system-color: #d97706;
+  --autocomplete-type-system-border: #d97706;
+  --autocomplete-type-files-bg: #f3e8ff;
+  --autocomplete-type-files-color: #9333ea;
+  --autocomplete-type-files-border: #9333ea;
+  --autocomplete-type-extensions-bg: #fdf2f8;
+  --autocomplete-type-extensions-color: #ec4899;
+  --autocomplete-type-extensions-border: #ec4899;
 
   /* 登录组件 */
   --login-title-color: var(--color-text-primary);
@@ -478,6 +399,24 @@
   --login-panel-footer-color: #c0c4cc;
   --login-panel-footer-border: #e4e7ed;
 
+  /* 登录面板深色样式变量 - 在浅色主题中定义为对比 */
+  --login-panel-forgot-password-color: var(--color-primary);
+  --login-panel-forgot-password-hover-color: var(--color-text-primary);
+  --login-panel-submit-btn-bg: var(--login-panel-btn-bg);
+  --login-panel-submit-btn-hover-bg: var(--login-panel-btn-hover-bg);
+  --login-panel-submit-btn-color: var(--login-panel-btn-color);
+
+  /* MFA验证模态框 */
+  --mfa-verify-btn-bg: #1890ff;
+  --mfa-verify-btn-hover-bg: #40a9ff;
+  --mfa-verify-btn-color: #ffffff;
+
+  /* 登录面板容器背景 */
+  --login-panel-container-bg: radial-gradient(circle at center,
+    var(--color-bg-page) 0%,
+    var(--color-bg-muted) 50%,
+    var(--color-border-lighter) 100%);
+
   /* 设置页面 */
   --settings-form-label-color: #606266;
   --settings-input-border: #dcdfe6;
@@ -494,6 +433,55 @@
   --settings-reset-btn-bg: #f5f7fa;
   --settings-reset-btn-border: #dcdfe6;
   --settings-reset-btn-color: #606266;
+
+  /* 设置页面特殊组件 */
+  --settings-overlay-bg: rgba(0, 0, 0, 0.5);
+  --settings-preview-label-bg: rgba(0, 0, 0, 0.5);
+  --settings-preview-label-color: rgba(255, 255, 255, 0.7);
+
+  /* Element Plus 组件样式变量 - 浅色主题 */
+  --switch-bg-color: var(--color-border-light);
+  --switch-border-color: var(--color-border-light);
+  --switch-active-bg-color: var(--color-primary);
+  --switch-active-border-color: var(--color-primary);
+  --switch-button-color: var(--color-bg-container);
+  --switch-active-button-color: var(--color-bg-container);
+
+  --slider-runway-color: var(--color-border-light);
+  --slider-bar-color: var(--color-primary);
+  --slider-button-color: var(--color-bg-container);
+  --slider-button-border-color: var(--color-primary);
+
+  /* Element Plus 基础变量覆盖 - 浅色主题 */
+  /* 主色系 */
+  --el-color-primary: var(--color-primary) !important;
+  --el-color-primary-light-3: var(--color-primary-hover) !important;
+  --el-color-primary-light-5: var(--color-primary-light) !important;
+  --el-color-primary-light-7: var(--color-primary-lighter) !important;
+  --el-color-primary-light-9: var(--color-primary-lightest) !important;
+
+  /* 背景色系 */
+  --el-bg-color: var(--color-bg-container) !important;
+  --el-bg-color-overlay: var(--color-bg-overlay) !important;
+  --el-fill-color-blank: var(--color-bg-container) !important;
+  --el-fill-color-light: var(--color-bg-muted) !important;
+  --el-color-white: var(--color-bg-container) !important;
+
+  /* 文本色系 */
+  --el-text-color-primary: var(--color-text-primary) !important;
+  --el-text-color-regular: var(--color-text-regular) !important;
+  --el-text-color-secondary: var(--color-text-secondary) !important;
+  --el-text-color-placeholder: var(--color-text-placeholder) !important;
+
+  /* 边框色系 */
+  --el-border-color: var(--color-border-default) !important;
+  --el-border-color-light: var(--color-border-light) !important;
+
+  /* 交互组件 */
+  --el-dropdown-menuItem-hover-fill: var(--color-hover-bg) !important;
+  --el-dropdown-menuItem-hover-color: var(--color-primary) !important;
+  --el-select-dropdown-bg-color: var(--color-bg-container) !important;
+  --el-select-option-hover-background: var(--color-hover-bg) !important;
 }
 
 /* ===== 深色主题 ===== */
@@ -605,11 +593,11 @@
   --dialog-overlay-bg: rgba(0, 0, 0, 0.7);
 
   /* 编辑器组件 - 深色主题 */
-  --editor-bg: #282c34;
-  --editor-fg: #abb2bf;
-  --editor-cursor: #ffffff;
-  --editor-selection: #264f78;
-  --editor-comment: #5c6370;
+  --editor-bg: var(--color-bg-container);
+  --editor-fg: var(--color-text-primary);
+  --editor-cursor: var(--color-text-primary);
+  --editor-selection: var(--color-info-bg);
+  --editor-comment: var(--color-text-secondary);
   --editor-keyword: #c678dd;
   --editor-string: #98c379;
   --editor-function: #61afef;
@@ -625,6 +613,109 @@
   --sftp-scrollbar-track: rgba(0, 0, 0, 0.1);
   --sftp-scrollbar-thumb: rgba(255, 255, 255, 0.2);
   --sftp-scrollbar-thumb-hover: rgba(255, 255, 255, 0.3);
+
+  /* SFTP进度条颜色 - 深色主题 */
+  --sftp-progress-low: #ff9800;
+  --sftp-progress-medium: #42a5f5;
+  --sftp-progress-high: #4caf50;
+
+  /* SFTP加载动画 - 深色主题 */
+  --sftp-loading-bg: rgba(30, 30, 30, 0.9);
+  --sftp-loading-color: #909399;
+  --sftp-loading-spinner-color: #409EFF;
+
+  /* SFTP导航按钮 - 深色主题 */
+  --sftp-nav-button-bg: #2c2c2c;
+  --sftp-nav-button-color: #e0e0e0;
+  --sftp-nav-button-hover-bg: #3c3c3c;
+  --sftp-nav-button-border: var(--color-border-default);
+
+  /* SFTP路径输入框 - 深色主题 */
+  --sftp-path-input-bg: var(--color-bg-container);
+  --sftp-path-input-color: var(--color-text-primary);
+  --sftp-path-input-border: var(--color-border-default);
+  --sftp-path-input-hover-bg: var(--color-bg-hover);
+  --sftp-path-input-focus-bg: var(--color-bg-container);
+  --sftp-path-input-focus-border: #409eff;
+  --sftp-path-input-focus-shadow: rgba(64, 158, 255, 0.2);
+
+  /* SFTP路径组件 - 深色主题 */
+  --sftp-path-separator-color: #666666;
+  --sftp-path-part-button-color: #e0e0e0;
+  --sftp-path-part-button-hover-bg: rgba(255, 255, 255, 0.1);
+  --sftp-path-field-color: #ffffff;
+  --sftp-path-home-button-color: #aaaaaa;
+  --sftp-path-home-button-hover-color: #ffffff;
+
+  /* SFTP文件项 - 深色主题 */
+  --sftp-file-item-border: #333333;
+  --sftp-file-item-color: #e0e0e0;
+  --sftp-file-item-hover-bg: rgba(64, 158, 255, 0.1);
+  --sftp-file-item-active-bg: rgba(64, 158, 255, 0.2);
+  --sftp-file-directory-color: #42a5f5;
+  --sftp-action-button-color: #aaaaaa;
+  --sftp-action-button-hover-bg: rgba(255, 255, 255, 0.1);
+  --sftp-action-button-hover-color: #ffffff;
+
+  /* SFTP文件名输入框 - 深色主题 */
+  --sftp-file-name-input-bg: #2a2a2a;
+  --sftp-file-name-input-border: #42a5f5;
+  --sftp-file-name-input-color: #e0e0e0;
+  --sftp-file-name-input-shadow: rgba(0, 0, 0, 0.2);
+  --sftp-file-name-input-focus-border: #64b5f6;
+  --sftp-file-name-input-focus-shadow: rgba(66, 165, 245, 0.2);
+  --sftp-file-name-input-error-border: #f56c6c;
+  --sftp-file-name-input-error-bg: rgba(245, 108, 108, 0.1);
+  --sftp-file-name-input-error-shadow: rgba(245, 108, 108, 0.2);
+
+  /* SFTP操作按钮 - 深色主题 */
+  --sftp-confirm-btn-color: #67c23a;
+  --sftp-confirm-btn-bg: rgba(103, 194, 58, 0.2);
+  --sftp-confirm-btn-border: rgba(103, 194, 58, 0.3);
+  --sftp-confirm-btn-hover-bg: rgba(103, 194, 58, 0.3);
+  --sftp-cancel-btn-color: #f56c6c;
+  --sftp-cancel-btn-bg: rgba(245, 108, 108, 0.2);
+  --sftp-cancel-btn-border: rgba(245, 108, 108, 0.3);
+  --sftp-cancel-btn-hover-bg: rgba(245, 108, 108, 0.3);
+  --sftp-rename-spinner-color: #42a5f5;
+
+  /* SFTP工具栏按钮 - 深色主题 */
+  --sftp-toolbar-button-bg: var(--color-bg-container);
+  --sftp-toolbar-button-color: var(--color-text-primary);
+  --sftp-toolbar-button-border: var(--color-border-default);
+  --sftp-toolbar-button-hover-bg: var(--color-bg-hover);
+
+  /* SFTP搜索输入框 - 深色主题 */
+  --sftp-search-input-bg: var(--color-bg-container);
+  --sftp-search-input-color: var(--color-text-primary);
+  --sftp-search-input-border: var(--color-border-default);
+  --sftp-search-input-focus-bg: #3a3a3a;
+  --sftp-search-input-focus-border: var(--color-primary);
+  --sftp-search-icon-color: #aaaaaa;
+  --sftp-search-clear-color: #aaaaaa;
+  --sftp-search-clear-hover-bg: rgba(255, 255, 255, 0.1);
+
+  /* 页面级别变量（从index.html迁移） - 深色主题 */
+  --font-color: var(--color-text-primary);
+  --border-color: var(--color-border-default);
+  --background-color: var(--color-bg-page);
+  --component-background: var(--color-bg-elevated);
+
+  /* 按钮与交互元素 - 深色主题 */
+  --btn-secondary-bg: #333333;
+  --btn-secondary-color: var(--color-text-primary);
+  --btn-secondary-border: var(--color-border-default);
+  --btn-secondary-hover: #444444;
+
+  /* 卡片标题栏 - 深色主题 */
+  --card-header-bg: #2d2d2d;
+  --card-header-border: var(--color-border-default);
+
+  /* 消息通知 - 深色主题 */
+  --message-bg: #242424;
+  --message-border: var(--color-border-default);
+  --message-color: var(--color-text-secondary);
+  --message-shadow: rgba(0, 0, 0, 0.2);
 
   /* 自动完成组件 - 深色主题 */
   --autocomplete-bg: #1e1e1e;
@@ -654,6 +745,20 @@
   --autocomplete-type-development-bg: #164e63;
   --autocomplete-type-development-color: #22d3ee;
   --autocomplete-type-development-border: #22d3ee;
+
+  /* 终端自动完成特殊类型颜色 - 深色主题 */
+  --autocomplete-type-network-bg: #065f46;
+  --autocomplete-type-network-color: #34d399;
+  --autocomplete-type-network-border: #34d399;
+  --autocomplete-type-system-bg: #7c2d12;
+  --autocomplete-type-system-color: #fbbf24;
+  --autocomplete-type-system-border: #fbbf24;
+  --autocomplete-type-files-bg: #4c1d95;
+  --autocomplete-type-files-color: #a78bfa;
+  --autocomplete-type-files-border: #a78bfa;
+  --autocomplete-type-extensions-bg: #831843;
+  --autocomplete-type-extensions-color: #f472b6;
+  --autocomplete-type-extensions-border: #f472b6;
 
   /* 登录组件 - 深色主题 */
   --login-title-color: var(--color-text-primary);
@@ -698,6 +803,35 @@
   --login-panel-footer-color: #999999;
   --login-panel-footer-border: rgba(100, 100, 100, 0.15);
 
+  /* 登录面板深色样式变量 - 深色主题 */
+  --login-panel-forgot-password-color: #aaaaaa;
+  --login-panel-forgot-password-hover-color: #eeeeee;
+  --login-panel-submit-btn-bg: rgba(60, 60, 60, 0.6);
+  --login-panel-submit-btn-hover-bg: rgba(80, 80, 80, 0.8);
+  --login-panel-submit-btn-color: #ffffff;
+
+  /* MFA验证模态框 - 深色主题 */
+  --mfa-verify-btn-bg: #555555;
+  --mfa-verify-btn-hover-bg: #666666;
+  --mfa-verify-btn-color: var(--color-text-primary);
+
+  /* 登录面板容器背景 - 深色主题 */
+  --login-panel-container-bg: radial-gradient(circle at center,
+    #161616 0%,
+    #161616 3%,
+    #141414 7%,
+    #141414 10%,
+    #121212 14%,
+    #121212 18%,
+    #101010 22%,
+    #101010 26%,
+    #0e0e0e 30%,
+    #0e0e0e 34%,
+    #0c0c0c 38%,
+    #0c0c0c 42%,
+    #0a0a0a 46%,
+    #0a0a0a 100%);
+
   /* 设置页面 */
   --settings-form-label-color: #ffffff;
   --settings-input-border: #666666;
@@ -714,37 +848,58 @@
   --settings-reset-btn-bg: #444444;
   --settings-reset-btn-border: #444444;
   --settings-reset-btn-color: #ffffff;
-}
 
-/* ===== Element Plus 组件主题变量 ===== */
-:root {
-  /* Element Plus 基础变量覆盖 - 浅色主题 */
+  /* 设置页面特殊组件 - 深色主题 */
+  --settings-overlay-bg: rgba(0, 0, 0, 0.7);
+  --settings-preview-label-bg: rgba(0, 0, 0, 0.7);
+  --settings-preview-label-color: rgba(255, 255, 255, 0.8);
+
+  /* Element Plus 组件样式变量 - 深色主题 */
+  --switch-bg-color: var(--color-border-default);
+  --switch-border-color: var(--color-border-default);
+  --switch-active-bg-color: var(--color-primary);
+  --switch-active-border-color: var(--color-primary);
+  --switch-button-color: var(--color-primary);
+  --switch-active-button-color: var(--color-bg-container);
+
+  --slider-runway-color: var(--color-border-default);
+  --slider-bar-color: var(--color-primary);
+  --slider-button-color: var(--color-primary);
+  --slider-button-border-color: var(--color-primary);
+
+  /* Element Plus 基础变量覆盖 - 深色主题 */
+  /* 主色系 */
   --el-color-primary: var(--color-primary) !important;
   --el-color-primary-light-3: var(--color-primary-hover) !important;
   --el-color-primary-light-5: var(--color-primary-light) !important;
   --el-color-primary-light-7: var(--color-primary-lighter) !important;
   --el-color-primary-light-9: var(--color-primary-lightest) !important;
 
+  /* 背景色系 */
   --el-bg-color: var(--color-bg-container) !important;
   --el-bg-color-overlay: var(--color-bg-overlay) !important;
   --el-fill-color-blank: var(--color-bg-container) !important;
   --el-fill-color-light: var(--color-bg-muted) !important;
+  --el-color-white: var(--color-bg-container) !important;
 
+  /* 文本色系 */
   --el-text-color-primary: var(--color-text-primary) !important;
   --el-text-color-regular: var(--color-text-regular) !important;
   --el-text-color-secondary: var(--color-text-secondary) !important;
   --el-text-color-placeholder: var(--color-text-placeholder) !important;
-  --el-color-white: var(--color-bg-container) !important;
 
+  /* 边框色系 */
   --el-border-color: var(--color-border-default) !important;
   --el-border-color-light: var(--color-border-light) !important;
 
-  /* Element Plus 下拉菜单变量 */
+  /* 交互组件 */
   --el-dropdown-menuItem-hover-fill: var(--color-hover-bg) !important;
   --el-dropdown-menuItem-hover-color: var(--color-primary) !important;
   --el-select-dropdown-bg-color: var(--color-bg-container) !important;
   --el-select-option-hover-background: var(--color-hover-bg) !important;
 }
+
+/* ===== Element Plus 组件主题变量已整合到各主题定义中 ===== */
 
 /* ===== 系统偏好自适应已移除 ===== */
 /* 现在完全由设置服务的 applyTheme 方法控制主题切换 */

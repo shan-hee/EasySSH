@@ -425,27 +425,27 @@ export default {
 /* 不同类型的颜色已迁移到主题文件 */
 
 .autocomplete-type--network {
-  background: #065f46;
-  color: #34d399;
-  border-color: #34d399;
+  background: var(--autocomplete-type-network-bg);
+  color: var(--autocomplete-type-network-color);
+  border-color: var(--autocomplete-type-network-border);
 }
 
 .autocomplete-type--system {
-  background: #7c2d12;
-  color: #fbbf24;
-  border-color: #fbbf24;
+  background: var(--autocomplete-type-system-bg);
+  color: var(--autocomplete-type-system-color);
+  border-color: var(--autocomplete-type-system-border);
 }
 
 .autocomplete-type--files {
-  background: #4c1d95;
-  color: #a78bfa;
-  border-color: #a78bfa;
+  background: var(--autocomplete-type-files-bg);
+  color: var(--autocomplete-type-files-color);
+  border-color: var(--autocomplete-type-files-border);
 }
 
 .autocomplete-type--extensions {
-  background: #831843;
-  color: #f472b6;
-  border-color: #f472b6;
+  background: var(--autocomplete-type-extensions-bg);
+  color: var(--autocomplete-type-extensions-color);
+  border-color: var(--autocomplete-type-extensions-border);
 }
 
 .autocomplete-full-command {

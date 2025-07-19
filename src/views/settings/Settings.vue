@@ -873,7 +873,7 @@ export default {
 /* 暗色模式下的背景色 */
 :root[data-theme="dark"] .terminal-bg-settings,
 .dark-theme .terminal-bg-settings {
-  background-color: #0003;
+  background-color: var(--settings-overlay-bg);
 }
 
 .terminal-bg-preview {
@@ -890,11 +890,11 @@ export default {
 }
 
 .preview-label {
-  color: rgba(255, 255, 255, 0.7);
+  color: var(--settings-preview-label-color);
   font-size: 14px;
   position: relative;
   z-index: 2;
-  background-color: rgba(0, 0, 0, 0.5);
+  background-color: var(--settings-preview-label-bg);
   padding: 5px 10px;
   border-radius: 4px;
 }

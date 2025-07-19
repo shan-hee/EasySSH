@@ -60,7 +60,7 @@ export default {
   border-radius: 50%; /* 初始状态为圆形 */
   position: relative; /* 为光泽效果的伪元素提供定位基准 */
   /* 添加边缘模糊效果 - 增强模糊程度 */
-  box-shadow: 0 0 15px 8px rgba(255, 255, 255, 0.4); /* 增强发光外阴影 */
+  box-shadow: var(--shadow-xl); /* 使用主题阴影变量 */
   filter: blur(5px); /* 整体强模糊效果 */
   /* 立体效果 */
   transform-style: preserve-3d; /* 保留3D空间 */

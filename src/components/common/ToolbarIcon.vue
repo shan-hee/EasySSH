@@ -95,7 +95,7 @@ export default defineComponent({
 
 /* 浅色主题下的默认状态 - 使用更浅的颜色增加对比度 */
 :root[data-theme="light"] .toolbar-icon {
-  color: #909399;
+  color: var(--color-text-secondary);
 }
 
 /* 激活状态 - 使用指定的亮色 */

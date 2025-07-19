@@ -498,37 +498,8 @@ export default defineComponent({
   );
 }
 
-/* 浅色主题的登录面板容器背景 */
-:root[data-theme="light"] .login-panel-container,
-.light-theme .login-panel-container,
-html[data-theme="light"] .login-panel-container {
-  background: radial-gradient(circle at center,
-    #f8f9fa 0%,
-    #f8f9fa 3%,
-    #f5f7fa 7%,
-    #f5f7fa 10%,
-    #f2f4f7 14%,
-    #f2f4f7 18%,
-    #eff1f4 22%,
-    #eff1f4 26%,
-    #eceff2 30%,
-    #eceff2 34%,
-    #e9ecef 38%,
-    #e9ecef 42%,
-    #e6e9ed 46%,
-    #e6e9ed 50%,
-    #e3e7ea 54%,
-    #e3e7ea 58%,
-    #e0e4e8 62%,
-    #e0e4e8 66%,
-    #dde1e5 70%,
-    #dde1e5 74%,
-    #dadfe3 78%,
-    #dadfe3 82%,
-    #d7dce0 86%,
-    #d7dce0 90%,
-    #d4d9de 94%,
-    #d4d9de 100%
-  );
+/* 登录面板容器背景 - 使用主题变量 */
+.login-panel-container {
+  background: var(--login-panel-container-bg);
 }
 </style>

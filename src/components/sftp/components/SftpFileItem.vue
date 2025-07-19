@@ -614,151 +614,82 @@ export default defineComponent({
   }
 }
 
-/* 深色主题特定样式 */
-:root[data-theme="dark"] .sftp-file-item,
-.dark-theme .sftp-file-item,
-html[data-theme="dark"] .sftp-file-item {
-  border-bottom-color: #333 !important;
-  color: #e0e0e0 !important;
+/* 使用主题变量替代主题特定样式 */
+.sftp-file-item {
+  border-bottom-color: var(--sftp-file-item-border) !important;
+  color: var(--sftp-file-item-color) !important;
 }
 
-:root[data-theme="dark"] .sftp-file-item:hover,
-.dark-theme .sftp-file-item:hover,
-html[data-theme="dark"] .sftp-file-item:hover {
-  background-color: rgba(64, 158, 255, 0.1) !important;
+.sftp-file-item:hover {
+  background-color: var(--sftp-file-item-hover-bg) !important;
 }
 
-:root[data-theme="dark"] .sftp-file-item:active,
-.dark-theme .sftp-file-item:active,
-html[data-theme="dark"] .sftp-file-item:active {
-  background-color: rgba(64, 158, 255, 0.15) !important;
+.sftp-file-item:active {
+  background-color: var(--sftp-file-item-active-bg) !important;
 }
 
-/* 移除深色主题的svg颜色覆盖，让图标颜色保持一致 */
-
-:root[data-theme="dark"] .sftp-file-item.sftp-file-directory,
-.dark-theme .sftp-file-item.sftp-file-directory,
-html[data-theme="dark"] .sftp-file-item.sftp-file-directory {
-  color: #42a5f5 !important;
+/* 使用主题变量替代主题特定样式 */
+.sftp-file-item.sftp-file-directory {
+  color: var(--sftp-file-directory-color) !important;
 }
 
-:root[data-theme="dark"] .sftp-file-name-input,
-.dark-theme .sftp-file-name-input,
-html[data-theme="dark"] .sftp-file-name-input {
-  background: #2a2a2a !important;
-  border-color: #42a5f5 !important;
-  color: #e0e0e0 !important;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2) !important;
+/* 使用主题变量替代主题特定样式 */
+.sftp-file-name-input {
+  background: var(--sftp-file-name-input-bg) !important;
+  border-color: var(--sftp-file-name-input-border) !important;
+  color: var(--sftp-file-name-input-color) !important;
+  box-shadow: 0 1px 3px var(--sftp-file-name-input-shadow) !important;
 }
 
-:root[data-theme="dark"] .sftp-file-name-input:focus,
-.dark-theme .sftp-file-name-input:focus,
-html[data-theme="dark"] .sftp-file-name-input:focus {
-  border-color: #64b5f6 !important;
-  box-shadow: 0 0 0 2px rgba(66, 165, 245, 0.2) !important;
+.sftp-file-name-input:focus {
+  border-color: var(--sftp-file-name-input-focus-border) !important;
+  box-shadow: 0 0 0 2px var(--sftp-file-name-input-focus-shadow) !important;
 }
 
-:root[data-theme="dark"] .sftp-file-name-input.sftp-input-error,
-.dark-theme .sftp-file-name-input.sftp-input-error,
-html[data-theme="dark"] .sftp-file-name-input.sftp-input-error {
-  border-color: #f56c6c !important;
-  background-color: rgba(245, 108, 108, 0.1) !important;
+.sftp-file-name-input.sftp-input-error {
+  border-color: var(--sftp-file-name-input-error-border) !important;
+  background-color: var(--sftp-file-name-input-error-bg) !important;
 }
 
-:root[data-theme="dark"] .sftp-file-name-input.sftp-input-error:focus,
-.dark-theme .sftp-file-name-input.sftp-input-error:focus,
-html[data-theme="dark"] .sftp-file-name-input.sftp-input-error:focus {
-  border-color: #f56c6c !important;
-  box-shadow: 0 0 0 2px rgba(245, 108, 108, 0.2) !important;
+.sftp-file-name-input.sftp-input-error:focus {
+  border-color: var(--sftp-file-name-input-error-border) !important;
+  box-shadow: 0 0 0 2px var(--sftp-file-name-input-error-shadow) !important;
 }
 
-:root[data-theme="dark"] .sftp-confirm-btn,
-.dark-theme .sftp-confirm-btn,
-html[data-theme="dark"] .sftp-confirm-btn {
-  color: #67c23a !important;
-  background: rgba(103, 194, 58, 0.2) !important;
-  border-color: rgba(103, 194, 58, 0.3) !important;
+.sftp-confirm-btn {
+  color: var(--sftp-confirm-btn-color) !important;
+  background: var(--sftp-confirm-btn-bg) !important;
+  border-color: var(--sftp-confirm-btn-border) !important;
 }
 
-:root[data-theme="dark"] .sftp-confirm-btn:hover:not(:disabled),
-.dark-theme .sftp-confirm-btn:hover:not(:disabled),
-html[data-theme="dark"] .sftp-confirm-btn:hover:not(:disabled) {
-  background: rgba(103, 194, 58, 0.3) !important;
+.sftp-confirm-btn:hover:not(:disabled) {
+  background: var(--sftp-confirm-btn-hover-bg) !important;
 }
 
-:root[data-theme="dark"] .sftp-cancel-btn,
-.dark-theme .sftp-cancel-btn,
-html[data-theme="dark"] .sftp-cancel-btn {
-  color: #f56c6c !important;
-  background: rgba(245, 108, 108, 0.2) !important;
-  border-color: rgba(245, 108, 108, 0.3) !important;
+.sftp-cancel-btn {
+  color: var(--sftp-cancel-btn-color) !important;
+  background: var(--sftp-cancel-btn-bg) !important;
+  border-color: var(--sftp-cancel-btn-border) !important;
 }
 
-:root[data-theme="dark"] .sftp-cancel-btn:hover:not(:disabled),
-.dark-theme .sftp-cancel-btn:hover:not(:disabled),
-html[data-theme="dark"] .sftp-cancel-btn:hover:not(:disabled) {
-  background: rgba(245, 108, 108, 0.3) !important;
+.sftp-cancel-btn:hover:not(:disabled) {
+  background: var(--sftp-cancel-btn-hover-bg) !important;
 }
 
-:root[data-theme="dark"] .sftp-rename-spinner,
-.dark-theme .sftp-rename-spinner,
-html[data-theme="dark"] .sftp-rename-spinner {
-  color: #42a5f5 !important;
+.sftp-rename-spinner {
+  color: var(--sftp-rename-spinner-color) !important;
 }
 
-:root[data-theme="dark"] .sftp-action-button,
-.dark-theme .sftp-action-button,
-html[data-theme="dark"] .sftp-action-button {
-  color: #aaa !important;
+.sftp-action-button {
+  color: var(--sftp-action-button-color) !important;
 }
 
-:root[data-theme="dark"] .sftp-action-button:hover,
-.dark-theme .sftp-action-button:hover,
-html[data-theme="dark"] .sftp-action-button:hover {
-  background-color: rgba(255, 255, 255, 0.1) !important;
-  color: #fff !important;
+.sftp-action-button:hover {
+  background-color: var(--sftp-action-button-hover-bg) !important;
+  color: var(--sftp-action-button-hover-color) !important;
 }
 
-/* 浅色主题特定样式 */
-:root[data-theme="light"] .sftp-file-item,
-.light-theme .sftp-file-item,
-html[data-theme="light"] .sftp-file-item {
-  border-bottom-color: #dcdfe6 !important;
-  color: #303133 !important;
-}
-
-:root[data-theme="light"] .sftp-file-item:hover,
-.light-theme .sftp-file-item:hover,
-html[data-theme="light"] .sftp-file-item:hover {
-  background-color: rgba(64, 158, 255, 0.1) !important;
-}
-
-:root[data-theme="light"] .sftp-file-item:active,
-.light-theme .sftp-file-item:active,
-html[data-theme="light"] .sftp-file-item:active {
-  background-color: rgba(64, 158, 255, 0.15) !important;
-}
-
-/* 移除浅色主题的svg颜色覆盖，让图标颜色保持一致 */
-
-:root[data-theme="light"] .sftp-file-item.sftp-file-directory,
-.light-theme .sftp-file-item.sftp-file-directory,
-html[data-theme="light"] .sftp-file-item.sftp-file-directory {
-  color: #409eff !important;
-}
-
-:root[data-theme="light"] .sftp-action-button,
-.light-theme .sftp-action-button,
-html[data-theme="light"] .sftp-action-button {
-  color: #909399 !important;
-}
-
-:root[data-theme="light"] .sftp-action-button:hover,
-.light-theme .sftp-action-button:hover,
-html[data-theme="light"] .sftp-action-button:hover {
-  background-color: #f5f7fa !important;
-  color: #303133 !important;
-}
+/* 所有主题特定样式已迁移到主题变量 */
 
 
 </style>

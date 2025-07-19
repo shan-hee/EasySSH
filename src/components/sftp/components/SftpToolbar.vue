@@ -194,82 +194,44 @@ export default defineComponent({
   }
 }
 
-/* 深色主题特定样式 */
-:root[data-theme="dark"] .sftp-toolbar-button,
-.dark-theme .sftp-toolbar-button,
-html[data-theme="dark"] .sftp-toolbar-button {
-  background-color: #2c2c2c !important;
-  color: #e0e0e0 !important;
+/* 深色主题样式已迁移到主题变量 */
+
+/* 使用主题变量替代主题特定样式 */
+.sftp-search-input:focus {
+  background-color: var(--sftp-search-input-focus-bg) !important;
+  border: 1px solid var(--sftp-search-input-focus-border) !important;
 }
 
-:root[data-theme="dark"] .sftp-toolbar-button:hover,
-.dark-theme .sftp-toolbar-button:hover,
-html[data-theme="dark"] .sftp-toolbar-button:hover {
-  background-color: #3c3c3c !important;
+.sftp-search-icon {
+  color: var(--sftp-search-icon-color) !important;
 }
 
-:root[data-theme="dark"] .sftp-search-input,
-.dark-theme .sftp-search-input,
-html[data-theme="dark"] .sftp-search-input {
-  background-color: #2c2c2c !important;
-  color: #e0e0e0 !important;
-  border: 1px solid #333333 !important;
+.sftp-search-clear {
+  color: var(--sftp-search-clear-color) !important;
 }
 
-:root[data-theme="dark"] .sftp-search-input:focus,
-.dark-theme .sftp-search-input:focus,
-html[data-theme="dark"] .sftp-search-input:focus {
-  background-color: #3a3a3a !important;
-  border: 1px solid var(--color-primary) !important;
+.sftp-search-clear:hover {
+  background-color: var(--sftp-search-clear-hover-bg) !important;
 }
 
-:root[data-theme="dark"] .sftp-search-icon,
-.dark-theme .sftp-search-icon,
-html[data-theme="dark"] .sftp-search-icon {
-  color: #aaa !important;
+/* 使用主题变量替代主题特定样式 */
+.sftp-toolbar-button {
+  background-color: var(--sftp-toolbar-button-bg) !important;
+  color: var(--sftp-toolbar-button-color) !important;
+  border: 1px solid var(--sftp-toolbar-button-border) !important;
 }
 
-:root[data-theme="dark"] .sftp-search-clear,
-.dark-theme .sftp-search-clear,
-html[data-theme="dark"] .sftp-search-clear {
-  color: #aaa !important;
+.sftp-toolbar-button:hover {
+  background-color: var(--sftp-toolbar-button-hover-bg) !important;
 }
 
-:root[data-theme="dark"] .sftp-search-clear:hover,
-.dark-theme .sftp-search-clear:hover,
-html[data-theme="dark"] .sftp-search-clear:hover {
-  background-color: rgba(255, 255, 255, 0.1) !important;
+.sftp-search-input {
+  background-color: var(--sftp-search-input-bg) !important;
+  color: var(--sftp-search-input-color) !important;
+  border: 1px solid var(--sftp-search-input-border) !important;
 }
 
-/* 浅色主题特定样式 */
-:root[data-theme="light"] .sftp-toolbar-button,
-.light-theme .sftp-toolbar-button,
-html[data-theme="light"] .sftp-toolbar-button {
-  background-color: #ffffff !important;
-  color: #303133 !important;
-  border: 1px solid #dcdfe6 !important;
-}
-
-:root[data-theme="light"] .sftp-toolbar-button:hover,
-.light-theme .sftp-toolbar-button:hover,
-html[data-theme="light"] .sftp-toolbar-button:hover {
-  background-color: #f5f7fa !important;
-}
-
-:root[data-theme="light"] .sftp-search-input,
-.light-theme .sftp-search-input,
-html[data-theme="light"] .sftp-search-input {
-  background-color: #ffffff !important;
-  color: #303133 !important;
-  border: 1px solid #dcdfe6 !important;
-}
-
-:root[data-theme="light"] .sftp-search-input:focus,
-.light-theme .sftp-search-input:focus,
-html[data-theme="light"] .sftp-search-input:focus {
-  background-color: #ffffff !important;
-  border-color: var(--color-primary) !important;
-}
+/* 浅色主题样式已迁移到主题变量 */
 
 :root[data-theme="light"] .sftp-search-icon,
 .light-theme .sftp-search-icon,

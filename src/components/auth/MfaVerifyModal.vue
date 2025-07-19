@@ -363,25 +363,14 @@ export default defineComponent({
   min-width: 80px;
 }
 
-/* 浅色主题下的按钮样式 - 默认蓝色 */
-.btn-verify,
-:root[data-theme="light"] .btn-verify,
-.light-theme .btn-verify {
-  background-color: #1890ff !important;
-  color: #ffffff !important;
+/* MFA验证按钮样式 - 使用主题变量 */
+.btn-verify {
+  background-color: var(--mfa-verify-btn-bg) !important;
+  color: var(--mfa-verify-btn-color) !important;
 }
 
-.btn-verify:hover,
-:root[data-theme="light"] .btn-verify:hover,
-.light-theme .btn-verify:hover {
-  background-color: #1890ff !important;
-}
-
-/* 深色主题下的按钮样式 */
-:root[data-theme="dark"] .btn-verify,
-.dark-theme .btn-verify {
-  background-color: #555 !important;
-  color: var(--color-text-primary) !important;
+.btn-verify:hover {
+  background-color: var(--mfa-verify-btn-hover-bg) !important;
 }
 
 :root[data-theme="dark"] .btn-verify:hover,

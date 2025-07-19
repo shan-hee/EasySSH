@@ -425,7 +425,7 @@ export default defineComponent({
 }
 
 .forgot-password {
-  color: #aaaaaa;
+  color: var(--login-panel-forgot-password-color);
   font-size: 0.9rem;
   text-decoration: none;
   transition: color 0.2s;
@@ -433,17 +433,17 @@ export default defineComponent({
 }
 
 .forgot-password:hover {
-  color: #eeeeee;
+  color: var(--login-panel-forgot-password-hover-color);
 }
 
 .login-submit-btn {
   width: 100%;
   padding: 12px;
   margin-top: 10px;
-  background-color: rgba(60, 60, 60, 0.6);
+  background-color: var(--login-panel-submit-btn-bg);
   border: none;
   border-radius: 4px;
-  color: #ffffff;
+  color: var(--login-panel-submit-btn-color);
   font-size: 1rem;
   font-weight: 500;
   cursor: pointer;
@@ -453,7 +453,7 @@ export default defineComponent({
 }
 
 .login-submit-btn:hover {
-  background-color: rgba(80, 80, 80, 0.8);
+  background-color: var(--login-panel-submit-btn-hover-bg);
 }
 
 .login-submit-btn:disabled {
@@ -492,7 +492,7 @@ export default defineComponent({
 }
 
 .login-footer a {
-  color: #aaaaaa;
+  color: var(--login-panel-link-color);
   text-decoration: none;
   transition: color 0.2s;
   font-weight: 500;
@@ -500,7 +500,7 @@ export default defineComponent({
 }
 
 .login-footer a:hover {
-  color: #eeeeee;
+  color: var(--login-panel-link-hover-color);
   text-decoration: none;
 }
 
@@ -517,11 +517,9 @@ export default defineComponent({
   text-decoration: none;
 }
 
-/* 浅色主题适配 */
-:root[data-theme="light"] .login-panel-content h2,
-.light-theme .login-panel-content h2,
-html[data-theme="light"] .login-panel-content h2 {
-  color: #303133;
+/* 主题特定样式已迁移到主题变量 */
+.login-panel-content h2 {
+  color: var(--login-panel-title-color);
 }
 
 :root[data-theme="light"] .form-group input,

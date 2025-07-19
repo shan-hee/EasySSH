@@ -148,21 +148,21 @@
   border-radius: 4px;
 }
 
-.simplified-ui .card, 
+.simplified-ui .card,
 .simplified-ui .panel,
 .simplified-ui .dialog,
 .simplified-ui .modal {
   box-shadow: none;
-  border: 1px solid var(--color-border);
+  border: 1px solid var(--color-border-default);
 }
 
 .simplified-ui .tabs {
-  border-bottom: 1px solid var(--color-border);
+  border-bottom: 1px solid var(--color-border-default);
 }
 
 .simplified-ui button {
-  background: var(--color-bg-secondary);
-  border: 1px solid var(--color-border);
+  background: var(--color-bg-muted);
+  border: 1px solid var(--color-border-default);
   box-shadow: none;
 }
 

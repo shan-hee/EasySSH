@@ -1005,9 +1005,10 @@ export default defineComponent({
     
     // 获取进度条颜色
     const getProgressColor = (progress) => {
-      if (progress < 30) return '#ff9800'; // 橙色
-      if (progress < 70) return '#42a5f5'; // 蓝色
-      return '#4caf50'; // 绿色
+      const computedStyle = getComputedStyle(document.documentElement);
+      if (progress < 30) return computedStyle.getPropertyValue('--sftp-progress-low').trim();
+      if (progress < 70) return computedStyle.getPropertyValue('--sftp-progress-medium').trim();
+      return computedStyle.getPropertyValue('--sftp-progress-high').trim();
     };
     
     // 取消上传
@@ -2468,8 +2469,8 @@ export default defineComponent({
   align-items: center;
   height: 100%;
   min-height: 150px;
-  color: var(--color-text-secondary);
-  background-color: rgba(255, 255, 255, 0.9);
+  color: var(--sftp-loading-color);
+  background-color: var(--sftp-loading-bg);
   padding: 20px 0;
   position: absolute;
   top: 0;
@@ -2493,7 +2494,7 @@ export default defineComponent({
       stroke-dasharray: 90, 150;
       stroke-dashoffset: 0;
       stroke-width: 2;
-      stroke: #409EFF;
+      stroke: var(--sftp-loading-spinner-color);
       stroke-linecap: round;
       animation: loading-dash 1.5s ease-in-out infinite;
     }
@@ -2535,21 +2536,5 @@ export default defineComponent({
   }
 }
 
-/* 深色主题加载样式 */
-:root[data-theme="dark"] .sftp-loading-files,
-.dark-theme .sftp-loading-files,
-html[data-theme="dark"] .sftp-loading-files {
-  background-color: rgba(30, 30, 30, 0.9) !important;
-  color: #909399 !important;
-  backdrop-filter: blur(4px) !important;
-}
-
-/* 浅色主题加载样式 */
-:root[data-theme="light"] .sftp-loading-files,
-.light-theme .sftp-loading-files,
-html[data-theme="light"] .sftp-loading-files {
-  background-color: rgba(255, 255, 255, 0.9) !important;
-  color: #909399 !important;
-  backdrop-filter: blur(4px) !important;
-}
+/* 主题特定样式已迁移到主题文件中 */
 </style>

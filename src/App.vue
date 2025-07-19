@@ -20,39 +20,7 @@ export default defineComponent({
 /* 注意：基础样式现在在 base/base.css 中定义，这里只保留应用特定的样式 */
 
 /* 应用级别特定样式 */
-:root {
-  /* 应用布局变量 - 保持现有布局不变 */
-  --app-header-height: var(--layout-header-height);
-  --app-sidebar-width: var(--layout-sidebar-width);
-
-  /* 自定义组件样式变量 - 深色主题 */
-  --switch-bg-color: var(--color-border-default);
-  --switch-border-color: var(--color-border-default);
-  --switch-active-bg-color: #AAAAAA;
-  --switch-active-border-color: #AAAAAA;
-  --switch-button-color: #AAAAAA;
-  --switch-active-button-color: var(--color-bg-container);
-
-  --slider-runway-color: var(--color-border-default);
-  --slider-bar-color: #AAAAAA;
-  --slider-button-color: #AAAAAA;
-  --slider-button-border-color: #AAAAAA;
-}
-
-/* 浅色主题下的自定义组件样式调整 */
-:root[data-theme="light"] {
-  --switch-bg-color: var(--color-border-light);
-  --switch-border-color: var(--color-border-light);
-  --switch-active-bg-color: var(--color-primary);
-  --switch-active-border-color: var(--color-primary);
-  --switch-button-color: var(--color-bg-container);
-  --switch-active-button-color: var(--color-bg-container);
-
-  --slider-runway-color: var(--color-border-light);
-  --slider-bar-color: var(--color-primary);
-  --slider-button-color: var(--color-bg-container);
-  --slider-button-border-color: var(--color-primary);
-}
+/* 注意：Element Plus 组件样式变量已迁移到主题文件中 */
 
 /* Element Plus 全局组件样式已迁移到主题文件 */
 

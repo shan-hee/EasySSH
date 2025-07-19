@@ -19,25 +19,6 @@ export default defineComponent({
 </script>
 
 <style scoped>
-.add-button {
-  background-color: var(--color-primary) !important;
-  border: 1px solid var(--color-primary) !important;
-  color: var(--color-bg-container) !important;
-  transition: background-color 0.2s ease;
-  font-weight: bold;
-  display: flex;
-  align-items: center;
-  border-radius: 4px !important;
-  box-shadow: none !important;
-}
-
-.add-button:hover {
-  background-color: var(--color-primary-hover) !important;
-  border-color: var(--color-primary-hover) !important;
-  color: var(--color-bg-container) !important;
-  transform: none !important;
-  box-shadow: none !important;
-}
 
 /* 确保Element Plus按钮内的文字加粗且颜色正确 */
 :deep(span) {

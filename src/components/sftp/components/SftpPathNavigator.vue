@@ -299,95 +299,56 @@ export default defineComponent({
   }
 }
 
-/* 深色主题特定样式 */
-:root[data-theme="dark"] .sftp-path-input,
-.dark-theme .sftp-path-input,
-html[data-theme="dark"] .sftp-path-input {
-  background-color: #2c2c2c !important;
+/* 使用主题变量替代主题特定样式 */
+.sftp-path-home-button {
+  color: var(--sftp-path-home-button-color) !important;
 }
 
-:root[data-theme="dark"] .sftp-path-input:hover,
-.dark-theme .sftp-path-input:hover,
-html[data-theme="dark"] .sftp-path-input:hover {
-  background-color: #333 !important;
+.sftp-path-home-button:hover {
+  color: var(--sftp-path-home-button-hover-color) !important;
 }
 
-:root[data-theme="dark"] .sftp-path-input:focus,
-.dark-theme .sftp-path-input:focus,
-html[data-theme="dark"] .sftp-path-input:focus {
-  background-color: #333 !important;
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.1) !important;
+.sftp-path-separator {
+  color: var(--sftp-path-separator-color) !important;
 }
 
-:root[data-theme="dark"] .sftp-path-home-button,
-.dark-theme .sftp-path-home-button,
-html[data-theme="dark"] .sftp-path-home-button {
-  color: #aaa !important;
+.sftp-path-part-button {
+  color: var(--sftp-path-part-button-color) !important;
 }
 
-:root[data-theme="dark"] .sftp-path-home-button:hover,
-.dark-theme .sftp-path-home-button:hover,
-html[data-theme="dark"] .sftp-path-home-button:hover {
-  color: #fff !important;
+.sftp-path-part-button:hover {
+  background-color: var(--sftp-path-part-button-hover-bg) !important;
 }
 
-:root[data-theme="dark"] .sftp-path-separator,
-.dark-theme .sftp-path-separator,
-html[data-theme="dark"] .sftp-path-separator {
-  color: #666 !important;
+.sftp-path-field {
+  color: var(--sftp-path-field-color) !important;
 }
 
-:root[data-theme="dark"] .sftp-path-part-button,
-.dark-theme .sftp-path-part-button,
-html[data-theme="dark"] .sftp-path-part-button {
-  color: #e0e0e0 !important;
+/* 使用主题变量替代主题特定样式 */
+.sftp-nav-button {
+  background-color: var(--sftp-nav-button-bg) !important;
+  color: var(--sftp-nav-button-color) !important;
+  border: 1px solid var(--sftp-nav-button-border) !important;
 }
 
-:root[data-theme="dark"] .sftp-path-part-button:hover,
-.dark-theme .sftp-path-part-button:hover,
-html[data-theme="dark"] .sftp-path-part-button:hover {
-  background-color: rgba(255, 255, 255, 0.1) !important;
+.sftp-nav-button:hover {
+  background-color: var(--sftp-nav-button-hover-bg) !important;
 }
 
-:root[data-theme="dark"] .sftp-path-field,
-.dark-theme .sftp-path-field,
-html[data-theme="dark"] .sftp-path-field {
-  color: #fff !important;
+.sftp-path-input {
+  background-color: var(--sftp-path-input-bg) !important;
+  color: var(--sftp-path-input-color) !important;
+  border: 1px solid var(--sftp-path-input-border) !important;
 }
 
-:root[data-theme="dark"] .sftp-nav-button,
-.dark-theme .sftp-nav-button,
-html[data-theme="dark"] .sftp-nav-button {
-  background-color: #2c2c2c !important;
-  color: #e0e0e0 !important;
+.sftp-path-input:hover {
+  background-color: var(--sftp-path-input-hover-bg) !important;
 }
 
-:root[data-theme="dark"] .sftp-nav-button:hover,
-.dark-theme .sftp-nav-button:hover,
-html[data-theme="dark"] .sftp-nav-button:hover {
-  background-color: #3c3c3c !important;
-}
-
-/* 浅色主题特定样式 */
-:root[data-theme="light"] .sftp-path-input,
-.light-theme .sftp-path-input,
-html[data-theme="light"] .sftp-path-input {
-  background-color: #ffffff !important;
-  border: 1px solid #dcdfe6 !important;
-}
-
-:root[data-theme="light"] .sftp-path-input:hover,
-.light-theme .sftp-path-input:hover,
-html[data-theme="light"] .sftp-path-input:hover {
-  background-color: #f5f7fa !important;
-}
-
-:root[data-theme="light"] .sftp-path-input:focus,
-.light-theme .sftp-path-input:focus,
-html[data-theme="light"] .sftp-path-input:focus {
-  background-color: #ffffff !important;
-  border-color: #409eff !important;
-  box-shadow: 0 0 0 1px rgba(64, 158, 255, 0.2) !important;
+.sftp-path-input:focus {
+  background-color: var(--sftp-path-input-focus-bg) !important;
+  border-color: var(--sftp-path-input-focus-border) !important;
+  box-shadow: 0 0 0 1px var(--sftp-path-input-focus-shadow) !important;
 }
 
 :root[data-theme="light"] .sftp-path-home-button,
