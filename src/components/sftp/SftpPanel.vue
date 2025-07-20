@@ -56,9 +56,30 @@
           <!-- 文件列表 -->
           <div class="sftp-file-list">
             <div class="sftp-file-list-header">
-              <div class="sftp-file-name">名称</div>
-              <div class="sftp-file-size">大小</div>
-              <div class="sftp-file-date">修改日期</div>
+              <div class="sftp-file-name sortable-header"
+                   :class="{ 'active': isActiveSort('name') }"
+                   @click="toggleSort('name')">
+                <span class="header-text">
+                  名称
+                  <span class="sort-indicator">{{ getSortIndicator('name') }}</span>
+                </span>
+              </div>
+              <div class="sftp-file-size sortable-header"
+                   :class="{ 'active': isActiveSort('size') }"
+                   @click="toggleSort('size')">
+                <span class="header-text">
+                  大小
+                  <span class="sort-indicator">{{ getSortIndicator('size') }}</span>
+                </span>
+              </div>
+              <div class="sftp-file-date sortable-header"
+                   :class="{ 'active': isActiveSort('date') }"
+                   @click="toggleSort('date')">
+                <span class="header-text">
+                  修改日期
+                  <span class="sort-indicator">{{ getSortIndicator('date') }}</span>
+                </span>
+              </div>
               <div class="sftp-file-actions">操作</div>
             </div>
             
@@ -85,14 +106,14 @@
                 />
 
                 <!-- 空文件夹提示 -->
-                <div v-if="fileList.length === 0 && !isCreating" class="sftp-empty-folder">
+                <div v-if="sortedFileList.length === 0 && !isCreating" class="sftp-empty-folder">
                   <p>此文件夹为空</p>
                 </div>
 
                 <!-- 文件列表 -->
-                <div v-if="fileList.length > 0" class="sftp-file-items">
+                <div v-if="sortedFileList.length > 0" class="sftp-file-items">
                   <SftpFileItem
-                    v-for="(file, index) in fileList"
+                    v-for="(file, index) in sortedFileList"
                     :key="index"
                     :file="file"
                     :sessionId="sessionId"
@@ -122,7 +143,7 @@
 </template>
 
 <script>
-import { defineComponent, ref, nextTick, onMounted, onUnmounted, watch } from 'vue'
+import { defineComponent, ref, nextTick, onMounted, onUnmounted, watch, computed } from 'vue'
 import { ElMessageBox, ElMessage } from 'element-plus'
 import { sftpService } from '@/services/ssh'
 import log from '@/services/log'
@@ -138,6 +159,7 @@ import SftpPermissionsDialog from './components/SftpPermissionsDialog.vue'
 
 // 导入可复用逻辑
 import { useFileUtils } from './composables/useFileUtils'
+import { useSortable } from './composables/useSortable'
 
 export default defineComponent({
   name: 'SftpPanel',
@@ -167,11 +189,22 @@ export default defineComponent({
   setup(props, { emit }) {
     // SFTP面板状态
     const isResizing = ref(false)
-    
+
     // SFTP文件管理器相关状态
     const isLoadingSftp = ref(true)
     const currentPath = ref('/')
     const fileList = ref([])
+
+    // 排序功能
+    const { toggleSort, sortFiles, getSortIndicator, isActiveSort, sortField, sortOrder } = useSortable()
+
+    // 原始文件列表（未排序）
+    const rawFileList = ref([])
+
+    // 计算属性：排序后的文件列表
+    const sortedFileList = computed(() => {
+      return sortFiles(rawFileList.value)
+    })
 
     // 内联创建状态
     const isCreating = ref(false)
@@ -427,25 +460,15 @@ export default defineComponent({
           );
         }
 
-        // 对文件列表进行排序：文件夹在前，文件在后，然后按名称排序
-        filteredFiles.sort((a, b) => {
-          // 文件夹排在文件前面
-          if (a.isDirectory && !b.isDirectory) return -1;
-          if (!a.isDirectory && b.isDirectory) return 1;
-
-          // 同类型按名称字母顺序排序
-          return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
-        });
-        
-        // 更新文件列表和当前路径
-        fileList.value = filteredFiles;
+        // 更新原始文件列表和当前路径
+        rawFileList.value = filteredFiles;
         currentPath.value = path;
         isLoadingSftp.value = false;
       } catch (error) {
         log.error('加载目录内容失败:', error);
         showError(`加载目录内容失败: ${error.message}`);
         // 如果出错，提供一个空列表
-        fileList.value = [];
+        rawFileList.value = [];
         isLoadingSftp.value = false;
       }
     };
@@ -2200,7 +2223,7 @@ export default defineComponent({
       log.debug(`搜索结果: 找到 ${filteredFiles.length} 个匹配项`);
       
       // 更新文件列表
-      fileList.value = filteredFiles;
+      rawFileList.value = filteredFiles;
     };
     
     // 切换显示/隐藏隐藏文件
@@ -2400,6 +2423,7 @@ export default defineComponent({
       isLoadingSftp,
       currentPath,
       fileList,
+      sortedFileList,
       uploadProgress,
       isUploading,
       downloadProgress,
@@ -2449,7 +2473,12 @@ export default defineComponent({
       handleEditorSave,
       handlePermissions,
       handlePermissionsSave,
-      
+
+      // 排序功能
+      toggleSort,
+      getSortIndicator,
+      isActiveSort,
+
       // 格式化函数
       formatFileSize,
       formatDate,

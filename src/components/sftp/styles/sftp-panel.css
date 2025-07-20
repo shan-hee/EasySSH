@@ -155,6 +155,45 @@
   align-items: center;
 }
 
+/* 可排序表头样式 */
+.sortable-header {
+  cursor: pointer;
+  user-select: none;
+  transition: all 0.2s ease;
+  position: relative;
+  justify-content: flex-start;
+}
+
+.header-text {
+  display: inline-block;
+  padding: 2px 6px;
+  border-radius: 4px;
+  transition: background-color 0.2s ease;
+}
+
+.sortable-header:hover .header-text {
+  background-color: rgba(64, 158, 255, 0.1);
+  color: var(--color-text-primary);
+}
+
+.sortable-header.active .header-text {
+  background-color: rgba(64, 158, 255, 0.15);
+  color: #409eff;
+  font-weight: 600;
+}
+
+.sort-indicator {
+  font-size: 12px;
+  margin-left: 2px;
+  opacity: 0.7;
+  transition: opacity 0.2s ease;
+  display: inline-block;
+}
+
+.sortable-header.active .sort-indicator {
+  opacity: 1;
+}
+
 .sftp-file-name {
   overflow: hidden;
   text-overflow: ellipsis;

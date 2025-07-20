@@ -265,7 +265,7 @@
   --sftp-file-item-color: var(--color-text-primary);
   --sftp-file-item-hover-bg: var(--color-hover-bg);
   --sftp-file-item-active-bg: var(--color-active-bg);
-  --sftp-file-directory-color: var(--color-primary);
+  --sftp-file-directory-color: #42a5f5;
   --sftp-action-button-color: var(--color-text-secondary);
   --sftp-action-button-hover-bg: var(--color-bg-hover);
   --sftp-action-button-hover-color: var(--color-text-primary);
