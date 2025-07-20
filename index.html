@@ -8,6 +8,46 @@
     <meta name="theme-color" content="#1976d2">
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><path fill='%23a0a0a0' d='M20,19V7H4V19H20M20,3A2,2 0 0,1 22,5V19A2,2 0 0,1 20,21H4A2,2 0 0,1 2,19V5C2,3.89 2.9,3 4,3H20M13,17V15H18V17H13M9.58,13L5.57,9H8.4L11.7,12.3C12.09,12.69 12.09,13.33 11.7,13.72L8.42,17H5.59L9.58,13Z'/></svg>">
     <title>EasySSH</title>
+
+    <!-- 防主题闪烁脚本 - 必须在CSS加载前执行 -->
+    <script>
+        (function() {
+            try {
+                // 从localStorage读取用户设置
+                const savedSettings = localStorage.getItem('easyssh:user_settings');
+                let theme = 'light'; // 默认主题
+
+                if (savedSettings) {
+                    const settings = JSON.parse(savedSettings);
+                    theme = settings.ui?.theme || 'light';
+                }
+
+                // 处理系统主题
+                if (theme === 'system') {
+                    theme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+                }
+
+                // 立即设置主题，避免闪烁
+                const html = document.documentElement;
+                html.setAttribute('data-theme', theme);
+                html.className = html.className.replace(/\b(light|dark)-theme\b/g, '');
+                html.classList.add(theme + '-theme');
+
+                // 禁用初始动画，避免页面加载时的过渡效果
+                html.classList.add('no-transitions');
+
+                // 页面加载完成后启用动画
+                window.addEventListener('load', function() {
+                    setTimeout(function() {
+                        html.classList.remove('no-transitions');
+                    }, 100);
+                });
+
+            } catch (error) {
+                console.warn('主题初始化失败，使用默认主题:', error);
+            }
+        })();
+    </script>
     
     <!-- 应用基础样式 -->
     <style>

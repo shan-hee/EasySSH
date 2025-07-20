@@ -1534,7 +1534,7 @@ export default defineComponent({
   cursor: pointer;
   color: var(--color-text-primary);
   padding: 0;
-  transition: background-color 0.2s ease;
+  transition: background-color var(--theme-transition-duration) var(--theme-transition-timing);
 }
 
 .icon-button:hover {

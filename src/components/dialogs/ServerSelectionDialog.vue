@@ -342,7 +342,7 @@ export default defineComponent({
   padding: 12px;
   border: 1px solid var(--color-border-default);
   border-radius: 6px;
-  transition: all 0.2s ease;
+  transition: all var(--theme-transition-duration) var(--theme-transition-timing);
   background-color: var(--color-bg-muted);
 }
 

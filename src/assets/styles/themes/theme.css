@@ -42,9 +42,9 @@
   --radius-full: 50%;
 
   /* 过渡动画 */
-  --transition-fast: 0.15s ease;
-  --transition-base: 0.3s ease;
-  --transition-slow: 0.5s ease;
+  --transition-fast: 0.1s ease;
+  --transition-base: 0.15s ease;
+  --transition-slow: 0.3s ease;
 
   /* Z-index层级 */
   --z-dropdown: 1000;
@@ -1201,8 +1201,9 @@
 
 /* 主题切换过渡动画 */
 :root {
-  --theme-transition-duration: 0.3s;
-  --theme-transition-timing: cubic-bezier(0.4, 0, 0.2, 1);
+  --theme-transition-duration: 0.5s; /* 适中的过渡时间，既快速又有渐变效果 */
+  --theme-transition-timing: cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  --theme-transition-fast: 0.06s; /* 稍快的过渡时间 */
 
   /* 关键布局变量 - 向后兼容 */
   --header-height: var(--layout-header-height);
@@ -1211,21 +1212,96 @@
   --content-transition: var(--transition-base);
 }
 
-/* 为所有可能变化的属性添加过渡动画 */
-*,
-*::before,
-*::after {
+/* 只对关键视觉元素应用主题过渡动画 */
+/* 移除全局通配符选择器，改为精确选择器 */
+body,
+.app-header,
+.app-sidebar,
+.sidebar,
+.nav-menu,
+.nav-item,
+.logo,
+.menu,
+.menu__item,
+.menu__icon-wrapper,
+.menu__text,
+.menu__shortcut-group,
+.menu__submenu,
+.menu__submenu-item,
+.tab-container,
+.tab-item,
+.tab-title,
+.tab-close,
+.tab-adder,
+.tab-adder-dropdown-trigger,
+.tab-adder-icon,
+.header-actions,
+.btn-icon,
+.login-btn,
+.user-btn,
+.user-dropdown,
+.user-dropdown-item,
+.user-menu-container,
+.card,
+.btn,
+.el-button,
+.el-input,
+.el-select,
+.el-switch,
+.el-slider,
+.settings-panel,
+.connection-card,
+.sftp-container,
+.dashboard-container,
+.dashboard-card,
+.card-header,
+.card-content,
+.dashboard-table-container,
+.connection-table,
+.status-item,
+.timeline-item,
+.activity-log,
+.connection-header,
+.connection-content,
+.connection-section,
+.connection-grid,
+.connection-form-container,
+.control-row,
+.search-container,
+.row-item,
+.connection-list,
+.connection-item,
+.connection-info,
+.connection-actions,
+.no-connections,
+.error-indicator,
+.loading-indicator,
+.terminal-container,
+.terminals-wrapper,
+.terminal-toolbar-container,
+.terminal-tools,
+.terminal-tools__left,
+.terminal-autocomplete,
+.connecting-overlay,
+.terminal-content-wrapper,
+.terminal-content,
+.terminal-content-padding {
   transition:
     background-color var(--theme-transition-duration) var(--theme-transition-timing),
     border-color var(--theme-transition-duration) var(--theme-transition-timing),
     color var(--theme-transition-duration) var(--theme-transition-timing),
-    box-shadow var(--theme-transition-duration) var(--theme-transition-timing),
-    fill var(--theme-transition-duration) var(--theme-transition-timing),
-    stroke var(--theme-transition-duration) var(--theme-transition-timing);
+    box-shadow var(--theme-transition-duration) var(--theme-transition-timing);
 }
 
-/* 为特定元素提供更精细的过渡控制 */
-/* body过渡样式已合并到 base/critical.css */
+/* SVG图标过渡 */
+svg,
+.themed-icon,
+.ruyi-icon {
+  transition:
+    fill var(--theme-transition-fast) var(--theme-transition-timing),
+    stroke var(--theme-transition-fast) var(--theme-transition-timing),
+    color var(--theme-transition-fast) var(--theme-transition-timing);
+}
 
 /* 避免某些元素的过渡动画（如输入框光标） */
 input,
@@ -1234,13 +1310,46 @@ textarea,
   caret-color: var(--color-primary);
 }
 
+/* 终端容器特定过渡 - 为背景色变化添加渐变效果 */
+.terminal-container,
+.terminals-wrapper,
+.terminal-content-wrapper,
+.terminal-content,
+.terminal-content-padding {
+  transition:
+    background-color var(--theme-transition-duration) var(--theme-transition-timing),
+    background var(--theme-transition-duration) var(--theme-transition-timing),
+    border-color var(--theme-transition-duration) var(--theme-transition-timing),
+    color var(--theme-transition-duration) var(--theme-transition-timing),
+    box-shadow var(--theme-transition-duration) var(--theme-transition-timing) !important;
+}
+
+/* 避免对性能敏感元素应用过渡 - 但允许背景色过渡 */
+.cm-editor,
+.cm-content,
+.cm-line {
+  transition: none !important;
+}
+
+/* xterm元素允许背景色过渡，但禁用其他属性过渡 */
+.xterm,
+.xterm-viewport,
+.xterm-screen {
+  transition: background-color 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94) !important;
+}
+
 /* 为主题切换提供视觉反馈 */
 .theme-switching {
   pointer-events: none;
 }
 
-.theme-switching * {
-  transition-duration: 0.15s !important;
+/* 防止页面加载时的主题闪烁 - 禁用初始动画 */
+.no-transitions,
+.no-transitions *,
+.no-transitions *:before,
+.no-transitions *:after {
+  transition: none !important;
+  animation: none !important;
 }
 
 /* ===== Element Plus 主题变量覆盖层级 ===== */

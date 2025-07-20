@@ -695,34 +695,41 @@ export default defineComponent({
       }
     })
     
-    // 监听设置变化 - 使用统一设置服务的监听器
+    // 监听设置变化 - 优化为同步更新
     settingsService.addChangeListener((settings) => {
-      // 更新主题和字体设置
-      themeSettings.value = getThemeSettings();
-      fontSettings.value = getFontSettings();
+      // 批量更新主题和字体设置
+      const newThemeSettings = getThemeSettings();
+      const newFontSettings = getFontSettings();
 
-      // 重新应用样式
-      nextTick(() => {
+      // 检查是否真的有变化，避免不必要的更新
+      const themeChanged = JSON.stringify(themeSettings.value) !== JSON.stringify(newThemeSettings);
+      const fontChanged = JSON.stringify(fontSettings.value) !== JSON.stringify(newFontSettings);
+
+      if (themeChanged || fontChanged) {
+        themeSettings.value = newThemeSettings;
+        fontSettings.value = newFontSettings;
+
+        // 同步应用样式，避免使用nextTick
         applyEditorStyles();
         reapplyThemeAndHighlight();
-      });
+      }
 
       // 处理语言设置变化
       if (editorView.value) {
         // 获取最新的语言短语设置
         const phrases = getLanguagePhrases();
 
-        // 应用新的语言设置到编辑器
+        // 同步应用新的语言设置到编辑器
         editorView.value.dispatch({
           effects: EditorState.phrases.reconfigure(phrases)
         });
 
-        // 重新测量以确保UI更新
-        setTimeout(() => {
+        // 使用requestAnimationFrame替代setTimeout，更高效
+        requestAnimationFrame(() => {
           if (editorView.value) {
             editorView.value.requestMeasure();
           }
-        }, 10);
+        });
       }
     });
     

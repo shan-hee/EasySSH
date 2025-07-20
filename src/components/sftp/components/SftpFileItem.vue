@@ -402,7 +402,7 @@ export default defineComponent({
   flex: 1;
   min-width: 120px;
   max-width: 200px;
-  transition: all 0.2s ease;
+  transition: all var(--theme-transition-duration) var(--theme-transition-timing);
   box-shadow: 0 1px 3px var(--color-shadow-light);
 }
 
@@ -445,7 +445,7 @@ export default defineComponent({
   border: none;
   border-radius: 4px;
   cursor: pointer;
-  transition: background-color 0.2s ease;
+  transition: background-color var(--theme-transition-duration) var(--theme-transition-timing);
   padding: 0;
   background: transparent;
   position: relative;
@@ -521,7 +521,10 @@ export default defineComponent({
   cursor: pointer;
   border-radius: 4px;
   opacity: 0.7;
-  transition: opacity 0.2s, background-color 0.2s, color 0.2s;
+  transition:
+    opacity var(--theme-transition-duration) var(--theme-transition-timing),
+    background-color var(--theme-transition-duration) var(--theme-transition-timing),
+    color var(--theme-transition-duration) var(--theme-transition-timing);
   padding: 0;
   margin: 0 1px;
   position: relative;

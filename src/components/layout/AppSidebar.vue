@@ -154,8 +154,8 @@ export default defineComponent({
     // 主题切换函数
     const toggleTheme = () => {
       const newTheme = currentTheme.value === 'dark' ? 'light' : 'dark'
+      // updateUISettings内部已经会调用applyTheme，无需重复调用
       settingsService.updateUISettings({ theme: newTheme })
-      settingsService.applyTheme(newTheme)
     }
 
     // GitHub 链接跳转函数
@@ -180,7 +180,10 @@ export default defineComponent({
   width: 40px;
   height: 100vh;
   background-color: var(--sidebar-bg);
-  transition: width 0.3s;
+  transition:
+    width var(--theme-transition-duration) var(--theme-transition-timing),
+    background-color var(--theme-transition-duration) var(--theme-transition-timing),
+    border-color var(--theme-transition-duration) var(--theme-transition-timing);
   overflow: visible;
   border-right: 1px solid var(--sidebar-border);
   box-sizing: border-box;
@@ -252,7 +255,10 @@ export default defineComponent({
   width: 40px;
   height: 40px;
   position: relative;
-  transition: all 0.2s ease;
+  transition:
+    background-color var(--theme-transition-duration) var(--theme-transition-timing),
+    color var(--theme-transition-duration) var(--theme-transition-timing),
+    border-color var(--theme-transition-duration) var(--theme-transition-timing);
   margin: 1px auto;
   background: none;
   border: none;
@@ -265,7 +271,7 @@ export default defineComponent({
 }
 
 .nav-item svg path {
-  transition: fill 0.2s ease;
+  transition: fill var(--theme-transition-fast) var(--theme-transition-timing);
 }
 
 .nav-item:hover {

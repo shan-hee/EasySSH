@@ -7,7 +7,10 @@
 .menu {
   width: 100%;
   height: 100%;
-  transition: all 0.3s ease;
+  transition:
+    background-color var(--theme-transition-duration) var(--theme-transition-timing),
+    border-color var(--theme-transition-duration) var(--theme-transition-timing),
+    color var(--theme-transition-duration) var(--theme-transition-timing);
   overflow-x: hidden;
   overflow-y: auto;
 }
@@ -74,7 +77,9 @@
   justify-content: center;
   margin-right: 12px;
   border-radius: 6px;
-  transition: all 0.3s ease;
+  transition:
+    background-color var(--theme-transition-duration) var(--theme-transition-timing),
+    color var(--theme-transition-duration) var(--theme-transition-timing);
 }
 
 .menu__item--active .menu__icon-wrapper {
@@ -92,7 +97,7 @@
   flex: 1;
   white-space: nowrap;
   opacity: 1;
-  transition: opacity 0.3s ease;
+  transition: opacity var(--theme-transition-duration) var(--theme-transition-timing);
 }
 
 .sidebar--collapsed .menu__text {
@@ -104,7 +109,7 @@
 .menu__shortcut-group {
   display: flex;
   gap: 2px;
-  transition: opacity 0.3s ease;
+  transition: opacity var(--theme-transition-duration) var(--theme-transition-timing);
 }
 
 .menu__shortcut {
@@ -151,7 +156,7 @@
   margin-left: 36px;
   height: 0;
   overflow: hidden;
-  transition: height 0.3s ease;
+  transition: height var(--theme-transition-duration) var(--theme-transition-timing);
 }
 
 .menu__submenu--expanded {
@@ -163,7 +168,7 @@
   cursor: pointer;
   font-size: 13px;
   color: var(--text-secondary);
-  transition: color 0.2s ease;
+  transition: color var(--theme-transition-duration) var(--theme-transition-timing);
 }
 
 .menu__submenu-item:hover {

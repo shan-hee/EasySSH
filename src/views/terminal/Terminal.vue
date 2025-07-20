@@ -444,24 +444,25 @@ export default {
           return false
         }
         
+        // 根据终端store的实现，存储的是直接的xterm.js实例
         const terminal = terminalInstance
         const settings = settingsService.getTerminalSettings()
         let hasChanges = false
-        
+
         // 应用字体大小
         if (settings.fontSize && terminal.options.fontSize !== settings.fontSize) {
           log.debug(`终端 ${termId}: 更新字体大小 ${terminal.options.fontSize} -> ${settings.fontSize}`)
           terminal.options.fontSize = settings.fontSize
           hasChanges = true
         }
-        
+
         // 应用字体系列
         if (settings.fontFamily && terminal.options.fontFamily !== settings.fontFamily) {
           log.debug(`终端 ${termId}: 更新字体系列 ${terminal.options.fontFamily} -> ${settings.fontFamily}`)
           terminal.options.fontFamily = settings.fontFamily
           hasChanges = true
         }
-        
+
         // 应用光标样式
         if (settings.cursorStyle && terminal.options.cursorStyle !== settings.cursorStyle) {
           log.debug(`终端 ${termId}: 更新光标样式 ${terminal.options.cursorStyle} -> ${settings.cursorStyle}`)
@@ -490,28 +491,25 @@ export default {
         
         // 应用主题设置
         try {
-          if (settings.theme && settings.theme !== 'default') {
-            log.debug(`终端 ${termId}: 更新主题 ${settings.theme}`)
+          if (settings.theme) {
+            const themeConfig = settingsService.getTerminalTheme(settings.theme)
 
-            // 验证主题名称
-            if (settingsService.isValidTheme(settings.theme)) {
-              // 将主题名称转换为标准格式
-              const themeName = settings.theme.toLowerCase()
-              const themeClass = `xterm-theme-${themeName}`
+            // 比较当前主题和新主题
+            const currentBg = terminal.options.theme?.background
+            const newBg = themeConfig.background
 
-              // 移除所有主题类
-              const themeClasses = Array.from(terminal.element.classList)
-                .filter(className => className.startsWith('xterm-theme-'))
+            if (currentBg !== newBg) {
+              log.debug(`终端 ${termId}: 更新主题 ${currentBg} -> ${newBg}`)
 
-              themeClasses.forEach(className => {
-                terminal.element.classList.remove(className)
-              })
+              // 应用新主题到xterm.js实例
+              terminal.options.theme = themeConfig
 
-              // 添加新主题类
-              terminal.element.classList.add(themeClass)
+              // 使用setOption方法立即应用主题
+              if (terminal.setOption) {
+                terminal.setOption('theme', themeConfig)
+              }
+
               hasChanges = true
-            } else {
-              log.warn(`无效的主题名称: ${settings.theme}`)
             }
           }
         } catch (error) {
@@ -757,6 +755,8 @@ export default {
         const settings = settingsService.getTerminalSettings()
 
         if (terminal && settings) {
+          // 根据终端store的实现，terminal直接是xterm.js实例
+
           // 立即应用光标样式
           if (settings.cursorStyle && terminal.setOption) {
             terminal.setOption('cursorStyle', settings.cursorStyle)
@@ -945,28 +945,32 @@ export default {
       }
     }
 
-    // 处理终端主题更新事件
-    const handleTerminalThemeUpdate = (event) => {
-      log.debug('收到终端主题更新事件:', event.detail)
+    // 处理终端主题更新事件 - 优化为同步批量更新
+    const handleTerminalThemeUpdate = async (event) => {
+      log.info('收到终端主题更新事件:', event.detail)
+      log.info('当前终端ID列表:', terminalIds.value)
 
-      // 更新所有活动终端的主题
-      terminalIds.value.forEach(terminalId => {
-        if (terminalStore.hasTerminal(terminalId)) {
-          try {
-            // 获取最新的终端选项（包含更新后的主题）
-            const newOptions = settingsService.getTerminalOptions()
+      // 直接获取当前UI主题对应的终端主题
+      const uiTheme = event.detail?.uiTheme || 'dark'
+      const terminalThemeName = uiTheme === 'light' ? 'light' : 'dark'
+      const themeConfig = settingsService.getTerminalTheme(terminalThemeName)
+      log.info('获取到的新主题配置:', themeConfig)
 
-            // 应用新主题到终端
-            terminalStore.updateTerminalSettings(terminalId, {
-              theme: newOptions.theme
-            })
+      // 使用applySettingsToAllTerminals方法批量更新所有终端的主题
+      try {
+        log.info(`开始批量更新所有终端主题为: ${terminalThemeName}`)
+        const results = await terminalStore.applySettingsToAllTerminals({
+          theme: terminalThemeName
+        })
+        log.info(`批量更新终端主题完成:`, results)
 
-            log.debug(`终端 ${terminalId} 主题已更新`)
-          } catch (error) {
-            log.error(`更新终端 ${terminalId} 主题失败:`, error)
-          }
-        }
-      })
+        // 统计成功和失败的数量
+        const successCount = Object.values(results).filter(success => success).length
+        const totalCount = Object.keys(results).length
+        log.info(`主题更新结果: ${successCount}/${totalCount} 个终端更新成功`)
+      } catch (error) {
+        log.error('批量更新终端主题失败:', error)
+      }
     }
     
     // 监听外部工具栏事件
@@ -1936,6 +1940,13 @@ export default {
   /* 添加容器定位 */
   display: flex;
   flex-direction: column;
+  /* 添加主题切换过渡效果 */
+  transition:
+    background-color 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+    background 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+    border-color 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+    color 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+    box-shadow 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94);
 }
 
 .terminals-wrapper {
@@ -1948,6 +1959,13 @@ export default {
   flex: 1;
   display: flex;
   flex-direction: column;
+  /* 添加主题切换过渡效果 */
+  transition:
+    background-color 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+    background 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+    border-color 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+    color 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+    box-shadow 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94);
 }
 
 .terminal-content-wrapper {
@@ -1973,6 +1991,13 @@ export default {
   /* 添加flex布局使工具栏和终端内容能垂直排列 */
   display: flex;
   flex-direction: column;
+  /* 添加主题切换过渡效果 */
+  transition:
+    background-color 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+    background 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+    border-color 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+    color 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+    box-shadow 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94);
 }
 
 .terminal-content-wrapper.terminal-active {
@@ -2008,6 +2033,13 @@ export default {
   overflow: visible;
   /* 移除padding，改为在内部内容添加padding */
   padding: 0;
+  /* 添加主题切换过渡效果 */
+  transition:
+    background-color 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+    background 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+    border-color 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+    color 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+    box-shadow 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94);
 }
 
 .terminal-content {
@@ -2018,6 +2050,13 @@ export default {
   /* 确保容器有明确的尺寸 */
   box-sizing: border-box;
   overflow: hidden;
+  /* 添加主题切换过渡效果 */
+  transition:
+    background-color 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+    background 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+    border-color 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+    color 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+    box-shadow 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94);
 }
 .connecting-overlay {
   position: absolute;
@@ -2044,16 +2083,20 @@ export default {
   width: 100% !important; /* 修改为100%，不要超出容器 */
   position: relative; /* 添加相对定位 */
   box-sizing: border-box;
+  /* 为xterm.js背景色添加过渡效果 */
+  transition: background-color 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94) !important;
 }
 
 :deep(.xterm-viewport) {
   overflow-y: auto !important;
   overflow-x: hidden;
-  /* position: absolute; 
-  right: 0; 
-  top: -20px !important; 
-  bottom: -20px !important; 
+  /* position: absolute;
+  right: 0;
+  top: -20px !important;
+  bottom: -20px !important;
   height: calc(100% + 40px);  */
+  /* 为xterm视口背景色添加过渡效果 */
+  transition: background-color 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94) !important;
 }
 
 /* 添加Webkit浏览器的滚动条样式 */
@@ -2075,6 +2118,8 @@ export default {
 :deep(.xterm-screen) {
   width: 100%;
   height: 100%;
+  /* 为xterm屏幕背景色添加过渡效果 */
+  transition: background-color 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94) !important;
 }
 
 /* 确保光标样式立即生效，避免闪烁 */

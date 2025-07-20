@@ -171,7 +171,7 @@ export default {
   border-radius: 4px;
   padding: 0 8px;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all var(--theme-transition-duration) var(--theme-transition-timing);
   user-select: none;
   position: relative;
   border: 1px solid transparent;

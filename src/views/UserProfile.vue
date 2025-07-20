@@ -477,7 +477,7 @@ label {
   border-radius: var(--radius-md);
   cursor: pointer;
   font-weight: bold;
-  transition: all 0.2s ease;
+  transition: all var(--theme-transition-duration) var(--theme-transition-timing);
 }
 
 .btn-submit {
@@ -491,7 +491,7 @@ label {
   border-radius: var(--radius-md);
   cursor: pointer;
   font-weight: bold;
-  transition: all 0.2s ease;
+  transition: all var(--theme-transition-duration) var(--theme-transition-timing);
 }
 
 .btn-cancel:hover {

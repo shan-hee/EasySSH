@@ -104,7 +104,7 @@ label {
   box-sizing: border-box;
   outline: none;
   font-weight: normal;
-  transition: border-color 0.3s;
+  transition: border-color var(--theme-transition-duration) var(--theme-transition-timing);
   cursor: pointer;
   z-index: 1;
 }
@@ -134,7 +134,9 @@ label {
   cursor: pointer;
   white-space: nowrap;
   font-size: 13px;
-  transition: background-color 0.3s, border-color 0.3s;
+  transition:
+    background-color var(--theme-transition-duration) var(--theme-transition-timing),
+    border-color var(--theme-transition-duration) var(--theme-transition-timing);
   display: flex;
   align-items: center;
   justify-content: center;

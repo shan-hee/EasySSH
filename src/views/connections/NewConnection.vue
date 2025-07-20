@@ -1198,7 +1198,7 @@ h2 {
   background-color: var(--card-bg);
   color: var(--card-text);
   cursor: pointer;
-  transition: background-color 0.2s;
+  transition: background-color var(--theme-transition-duration) var(--theme-transition-timing);
   box-shadow: none !important;
   position: relative;
 }
@@ -1734,7 +1734,7 @@ h2 {
   cursor: pointer;
   padding: 6px;
   border-radius: 4px;
-  transition: all 0.2s ease;
+  transition: all var(--theme-transition-duration) var(--theme-transition-timing);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1763,7 +1763,7 @@ h2 {
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all var(--theme-transition-duration) var(--theme-transition-timing);
   z-index: 10;
   border: 1.5px solid var(--color-text-secondary);
 }
@@ -1804,7 +1804,7 @@ h2 {
 
 .connection-card {
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all var(--theme-transition-duration) var(--theme-transition-timing);
   position: relative;
   background-color: var(--card-bg);
   color: var(--card-text);
@@ -1817,7 +1817,10 @@ h2 {
 /* 编辑模式下的拖拽样式 */
 .connection-grid.edit-mode .connection-card {
   cursor: move;
-  transition: transform 0.3s ease, box-shadow 0.2s ease, background-color 0.2s ease;
+  transition:
+    transform var(--theme-transition-duration) var(--theme-transition-timing),
+    box-shadow var(--theme-transition-duration) var(--theme-transition-timing),
+    background-color var(--theme-transition-duration) var(--theme-transition-timing);
 }
 
 .connection-grid.edit-mode .connection-card:hover:not(.being-dragged) {
@@ -1987,7 +1990,7 @@ h2 {
   color: var(--color-text-white);
   cursor: pointer;
   font-size: 12px;
-  transition: background-color 0.2s;
+  transition: background-color var(--theme-transition-duration) var(--theme-transition-timing);
 }
 
 .retry-btn:hover {

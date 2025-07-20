@@ -1203,7 +1203,7 @@ export default defineComponent({
   padding: 8px 16px;
   font-size: 14px;
   cursor: pointer;
-  transition: background-color 0.2s ease;
+  transition: background-color var(--theme-transition-duration) var(--theme-transition-timing);
 }
 
 /* 主要按钮样式 */
@@ -1253,7 +1253,7 @@ export default defineComponent({
   border: 1px solid var(--color-border-default);
   font-size: 13px;
   color: var(--color-text-secondary);
-  transition: all 0.2s ease;
+  transition: all var(--theme-transition-duration) var(--theme-transition-timing);
   white-space: nowrap;
   flex-shrink: 0;
 }
@@ -1563,7 +1563,7 @@ export default defineComponent({
   padding: 2px 8px;
   font-size: 12px;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all var(--theme-transition-duration) var(--theme-transition-timing);
 }
 
 .script-tag:hover {

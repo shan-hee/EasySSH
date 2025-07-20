@@ -204,7 +204,7 @@ export default defineComponent({
   margin: 0;
   cursor: pointer;
   color: var(--color-text-secondary);
-  transition: color 0.2s;
+  transition: color var(--theme-transition-duration) var(--theme-transition-timing);
   flex-shrink: 0;
   z-index: 1; /* 确保按钮可点击 */
 }
@@ -254,7 +254,7 @@ export default defineComponent({
   cursor: pointer;
   padding: 2px 4px;
   border-radius: 3px;
-  transition: background-color 0.2s;
+  transition: background-color var(--theme-transition-duration) var(--theme-transition-timing);
   z-index: 1; /* 确保按钮可点击 */
 }
 
@@ -285,7 +285,7 @@ export default defineComponent({
   height: 32px;
   color: var(--color-text-primary);
   cursor: pointer;
-  transition: background-color 0.2s;
+  transition: background-color var(--theme-transition-duration) var(--theme-transition-timing);
   flex-shrink: 0;
 }
 

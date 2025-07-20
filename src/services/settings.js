@@ -444,40 +444,49 @@ class SettingsService {
       return // 主题没有变化，无需切换
     }
 
+    // 批量同步更新DOM，避免多次重绘
+    const documentElement = document.documentElement
+
     // 添加主题切换状态类，提供视觉反馈
-    document.documentElement.classList.add('theme-switching')
+    documentElement.classList.add('theme-switching')
 
-    // 设置主题
-    document.documentElement.setAttribute('data-theme', actualTheme)
-    document.documentElement.className = document.documentElement.className
-      .replace(/\b(light|dark)-theme\b/g, '')
-    document.documentElement.classList.add(`${actualTheme}-theme`)
+    // 使用requestAnimationFrame确保在下一帧开始时应用主题
+    requestAnimationFrame(() => {
+      // 设置主题属性和类名
+      documentElement.setAttribute('data-theme', actualTheme)
+      documentElement.className = documentElement.className
+        .replace(/\b(light|dark)-theme\b/g, '')
+      documentElement.classList.add(`${actualTheme}-theme`)
 
-    // 设置语言
-    const language = this.settings.ui.language
-    if (language) {
-      document.documentElement.setAttribute('lang', language)
-    }
+      // 设置语言
+      const language = this.settings.ui.language
+      if (language) {
+        documentElement.setAttribute('lang', language)
+      }
 
-    // 移除主题切换状态类
-    setTimeout(() => {
-      document.documentElement.classList.remove('theme-switching')
-    }, 300)
+      // 清除终端主题缓存，确保下次获取时使用新的CSS变量值
+      this._themeCache.clear()
 
-    // 清除终端主题缓存，确保下次获取时使用新的CSS变量值
-    this._themeCache.clear()
+      // 同步触发所有主题相关事件，减少事件传播延迟
+      const themeChangeEvent = new CustomEvent('theme-changed', {
+        detail: { theme, actualTheme, previousTheme: currentTheme }
+      })
 
-    // 触发主题变化事件，供其他组件监听
-    window.dispatchEvent(new CustomEvent('theme-changed', {
-      detail: { theme, actualTheme, previousTheme: currentTheme }
-    }))
+      const terminalThemeEvent = new CustomEvent('terminal-theme-update', {
+        detail: { uiTheme: actualTheme }
+      })
 
-    // 触发终端主题更新事件，让终端跟随界面主题
-    window.dispatchEvent(new CustomEvent('terminal-theme-update', {
-      detail: { uiTheme: actualTheme }
-    }))
+      // 批量分发事件
+      window.dispatchEvent(themeChangeEvent)
+      window.dispatchEvent(terminalThemeEvent)
 
-    log.debug('主题已应用', { theme, actualTheme, previousTheme: currentTheme, language })
+      // 使用适中的延迟移除切换状态类，与CSS过渡时间同步
+      setTimeout(() => {
+        documentElement.classList.remove('theme-switching')
+      }, 500) // 与CSS过渡时间保持一致（0.5s = 500ms）
+
+      log.debug('主题已应用', { theme, actualTheme, previousTheme: currentTheme, language })
+    })
   }
 
   /**

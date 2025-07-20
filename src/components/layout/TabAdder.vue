@@ -85,7 +85,9 @@ export default defineComponent({
   height: 30px;
   cursor: pointer;
   border-radius: 4px;
-  transition: background-color 0.2s ease;
+  transition:
+    background-color var(--theme-transition-duration) var(--theme-transition-timing),
+    color var(--theme-transition-duration) var(--theme-transition-timing);
 }
 
 .tab-adder-dropdown-trigger:hover {

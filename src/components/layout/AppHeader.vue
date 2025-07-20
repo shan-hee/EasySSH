@@ -319,7 +319,10 @@ export default defineComponent({
   opacity: 0;
   visibility: hidden;
   cursor: pointer;
-  transition: opacity 0.2s ease, visibility 0.2s ease, background-color 0.2s ease;
+  transition:
+    opacity var(--theme-transition-duration) var(--theme-transition-timing),
+    visibility var(--theme-transition-duration) var(--theme-transition-timing),
+    background-color var(--theme-transition-duration) var(--theme-transition-timing);
   position: absolute;
   right: 5px;
   top: 50%;
@@ -363,7 +366,9 @@ export default defineComponent({
   align-items: center;
   justify-content: center;
   border-radius: 4px;
-  transition: all 0.2s ease;
+  transition:
+    background-color var(--theme-transition-duration) var(--theme-transition-timing),
+    color var(--theme-transition-duration) var(--theme-transition-timing);
 }
 
 .btn-icon svg {
@@ -372,7 +377,7 @@ export default defineComponent({
 }
 
 .btn-icon svg path {
-  transition: fill 0.2s ease;
+  transition: fill var(--theme-transition-fast) var(--theme-transition-timing);
 }
 
 .btn-icon:hover {
@@ -391,7 +396,9 @@ export default defineComponent({
   border-radius: 4px;
   font-size: 14px;
   width: auto;
-  transition: all 0.2s ease;
+  transition:
+    background-color var(--theme-transition-duration) var(--theme-transition-timing),
+    color var(--theme-transition-duration) var(--theme-transition-timing);
 }
 
 .login-btn:hover {
@@ -423,7 +430,12 @@ export default defineComponent({
   overflow: hidden;
   opacity: 0;
   visibility: hidden;
-  transition: opacity 0.2s ease, visibility 0.2s ease;
+  transition:
+    opacity var(--theme-transition-duration) var(--theme-transition-timing),
+    visibility var(--theme-transition-duration) var(--theme-transition-timing),
+    background-color var(--theme-transition-duration) var(--theme-transition-timing),
+    border-color var(--theme-transition-duration) var(--theme-transition-timing),
+    box-shadow var(--theme-transition-duration) var(--theme-transition-timing);
 }
 
 .user-menu-container:hover .user-dropdown {
@@ -436,7 +448,9 @@ export default defineComponent({
   align-items: center;
   padding: 10px 15px;
   cursor: pointer;
-  transition: background-color 0.2s ease, color 0.2s ease;
+  transition:
+    background-color var(--theme-transition-duration) var(--theme-transition-timing),
+    color var(--theme-transition-duration) var(--theme-transition-timing);
   color: var(--color-text-primary);
 }
 

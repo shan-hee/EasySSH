@@ -1138,27 +1138,80 @@ export const useTerminalStore = defineStore('terminal', () => {
         if (settings.theme) {
           try {
             const themeConfig = settingsService.getTerminalTheme(settings.theme)
+            log.info(`终端 ${termId}: 获取到主题配置:`, themeConfig)
 
             // 优化主题比较：只比较背景色来判断主题是否变化
-            const currentBg = terminal.options.theme?.background
+            const currentBg = terminal.options?.theme?.background
             const newBg = themeConfig.background
+            log.info(`终端 ${termId}: 主题比较 - 当前: ${currentBg}, 新: ${newBg}`)
 
             if (currentBg !== newBg) {
               log.info(`终端 ${termId}: 更新主题 ${currentBg} -> ${newBg}`)
+              log.info(`终端 ${termId}: 终端对象结构:`, {
+                hasTerminal: !!terminal.terminal,
+                hasSetOption: !!(terminal.terminal?.setOption || terminal.setOption),
+                terminalType: typeof terminal
+              })
 
-              // 应用新主题
-              terminal.options.theme = themeConfig
+              // 应用新主题到终端实例
+              // xterm.js 5.x版本中，直接修改options.theme属性即可
+              try {
+                // 方法1: 直接修改options属性（推荐方式）
+                if (terminal.options) {
+                  terminal.options.theme = themeConfig
+                  log.info(`终端 ${termId}: 主题已通过options属性应用`)
 
-              // 如果终端实例有setOption方法，直接应用主题
-              if (terminal.terminal && typeof terminal.terminal.setOption === 'function') {
-                terminal.terminal.setOption('theme', themeConfig)
+                  // 使用更轻量的刷新方式
+                  setTimeout(() => {
+                    if (typeof terminal.refresh === 'function') {
+                      terminal.refresh(0, terminal.rows - 1)
+                    } else if (terminal._core && typeof terminal._core.refresh === 'function') {
+                      terminal._core.refresh(0, terminal.rows - 1)
+                    }
+                  }, 0) // 异步执行，避免阻塞UI
+                }
+                // 方法2: 尝试使用setOption（如果存在）
+                else if (typeof terminal.setOption === 'function') {
+                  terminal.setOption('theme', themeConfig)
+                  log.info(`终端 ${termId}: 主题已通过setOption应用`)
+                }
+                // 方法3: 如果是终端实例对象
+                else if (terminal.terminal) {
+                  if (terminal.terminal.options) {
+                    terminal.terminal.options.theme = themeConfig
+                    log.info(`终端 ${termId}: 主题已通过terminal.terminal.options应用`)
+
+                    // 强制刷新
+                    if (typeof terminal.terminal.refresh === 'function') {
+                      terminal.terminal.refresh(0, terminal.terminal.rows - 1)
+                    }
+                  } else if (typeof terminal.terminal.setOption === 'function') {
+                    terminal.terminal.setOption('theme', themeConfig)
+                    log.info(`终端 ${termId}: 主题已通过terminal.terminal.setOption应用`)
+                  }
+                }
+                else {
+                  log.warn(`终端 ${termId}: 无法找到主题设置方法`, {
+                    hasOptions: !!terminal.options,
+                    hasSetOption: !!terminal.setOption,
+                    hasTerminalSetOption: !!(terminal.terminal?.setOption),
+                    terminalType: typeof terminal,
+                    terminalKeys: Object.keys(terminal || {}).slice(0, 10) // 只显示前10个键
+                  })
+                }
+              } catch (themeError) {
+                log.error(`终端 ${termId}: 应用主题时发生错误:`, themeError)
               }
 
               hasChanges = true
+            } else {
+              log.info(`终端 ${termId}: 主题无需更新`)
             }
           } catch (error) {
             log.error(`应用终端 ${termId} 主题失败:`, error)
           }
+        } else {
+          log.warn(`终端 ${termId}: 没有提供主题设置`)
         }
         
         // 仅在有更改时执行渲染和调整
@@ -1173,14 +1226,14 @@ export const useTerminalStore = defineStore('terminal', () => {
               terminal.refresh(0, terminal.rows - 1)
             }
             
-            // 延迟调整终端大小
+            // 减少终端大小调整延迟，仅在主题变化时调整
             setTimeout(() => {
               try {
                 fitTerminal(termId)
               } catch (e) {
                 log.warn(`调整终端 ${termId} 大小失败:`, e)
               }
-            }, 100)
+            }, 50) // 减少延迟从100ms到50ms
             
             results[termId] = true
             log.info(`成功应用设置到终端 ${termId}`)

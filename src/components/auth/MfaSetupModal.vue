@@ -639,7 +639,7 @@ export default defineComponent({
   border: none;
   color: var(--color-text-secondary);
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all var(--theme-transition-duration) var(--theme-transition-timing);
   padding: 0;
 }
 
@@ -762,7 +762,7 @@ export default defineComponent({
   cursor: pointer;
   font-weight: 500;
   min-width: 100px;
-  transition: all 0.2s ease;
+  transition: all var(--theme-transition-duration) var(--theme-transition-timing);
   position: relative;
   overflow: hidden;
 }

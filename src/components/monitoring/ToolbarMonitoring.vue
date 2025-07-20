@@ -207,7 +207,7 @@ onUnmounted(() => {
   padding: 2px 6px;
   border-radius: 4px;
   background: rgba(255, 255, 255, 0.05);
-  transition: all 0.2s ease;
+  transition: all var(--theme-transition-duration) var(--theme-transition-timing);
   min-width: 60px;
 }
 

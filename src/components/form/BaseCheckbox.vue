@@ -93,7 +93,7 @@ export default defineComponent({
   border: solid var(--color-bg-container);
   border-width: 0 2px 2px 0;
   transform: translate(-50%, -60%) rotate(45deg) scale(0);
-  transition: all 0.2s ease;
+  transition: all var(--theme-transition-duration) var(--theme-transition-timing);
   opacity: 0;
 }
 

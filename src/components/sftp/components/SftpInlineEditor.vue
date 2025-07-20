@@ -264,7 +264,7 @@ export default defineComponent({
   flex: 1;
   min-width: 120px;
   max-width: 200px;
-  transition: all 0.2s ease;
+  transition: all var(--theme-transition-duration) var(--theme-transition-timing);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
 }
 
@@ -305,7 +305,7 @@ export default defineComponent({
   border: none;
   border-radius: 4px;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all var(--theme-transition-duration) var(--theme-transition-timing);
   padding: 0;
   background: transparent;
 }

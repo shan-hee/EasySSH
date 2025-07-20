@@ -118,7 +118,7 @@ input {
   box-sizing: border-box;
   outline: none;
   font-weight: normal;
-  transition: border-color 0.3s;
+  transition: border-color var(--theme-transition-duration) var(--theme-transition-timing);
 }
 
 input.with-suffix {

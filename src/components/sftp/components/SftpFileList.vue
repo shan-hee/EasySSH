@@ -196,7 +196,7 @@
     cursor: pointer;
     font-size: 13px;
     border-bottom: 1px solid #333;
-    transition: background-color 0.2s;
+    transition: background-color var(--theme-transition-duration) var(--theme-transition-timing);
   }
   
   .sftp-file-item:hover {

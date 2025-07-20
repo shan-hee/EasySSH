@@ -232,7 +232,7 @@ html {
   color: var(--color-text-primary);
   padding: 8px;
   z-index: 100;
-  transition: top 0.2s ease;
+  transition: top var(--theme-transition-duration) var(--theme-transition-timing);
 }
 
 .skip-link:focus {

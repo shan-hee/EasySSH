@@ -409,7 +409,7 @@ export default defineComponent({
   border-radius: 4px;
   color: #ffffff;
   font-size: 1rem;
-  transition: all 0.2s ease;
+  transition: all var(--theme-transition-duration) var(--theme-transition-timing);
   /* font-family继承自父元素 */
 }
 
@@ -436,7 +436,7 @@ export default defineComponent({
   color: var(--login-panel-forgot-password-color);
   font-size: 0.9rem;
   text-decoration: none;
-  transition: color 0.2s;
+  transition: color var(--theme-transition-duration) var(--theme-transition-timing);
   /* font-family继承自父元素 */
 }
 
@@ -455,7 +455,7 @@ export default defineComponent({
   font-size: 1rem;
   font-weight: 500;
   cursor: pointer;
-  transition: background-color 0.2s ease;
+  transition: background-color var(--theme-transition-duration) var(--theme-transition-timing);
   letter-spacing: 1px;
   /* font-family继承自父元素 */
 }
@@ -502,7 +502,7 @@ export default defineComponent({
 .login-footer a {
   color: var(--login-panel-link-color);
   text-decoration: none;
-  transition: color 0.2s;
+  transition: color var(--theme-transition-duration) var(--theme-transition-timing);
   font-weight: 500;
   /* font-family继承自父元素 */
 }
