@@ -220,8 +220,8 @@
   --editor-classname: #6f42c1;
 
   /* SFTP组件 */
-  --sftp-panel-header-bg: var(--color-bg-container);
-  --sftp-file-list-header-bg: var(--color-bg-container);
+  --sftp-panel-header-bg: #d0d0d0;
+  --sftp-file-list-header-bg: #d0d0d0;
   --sftp-empty-folder-color: var(--color-text-secondary);
   --sftp-scrollbar-track: var(--color-bg-container);
   --sftp-scrollbar-thumb: var(--color-border-default);
@@ -238,17 +238,17 @@
   --sftp-loading-spinner-color: var(--color-primary);
 
   /* SFTP导航按钮 */
-  --sftp-nav-button-bg: var(--color-bg-container);
+  --sftp-nav-button-bg: #d0d0d0;
   --sftp-nav-button-color: var(--color-text-primary);
   --sftp-nav-button-hover-bg: var(--color-hover-bg);
   --sftp-nav-button-border: var(--color-border-default);
 
   /* SFTP路径输入框 */
-  --sftp-path-input-bg: var(--color-bg-container);
+  --sftp-path-input-bg: #d0d0d0;
   --sftp-path-input-color: var(--color-text-primary);
   --sftp-path-input-border: var(--color-border-default);
   --sftp-path-input-hover-bg: var(--color-bg-hover);
-  --sftp-path-input-focus-bg: var(--color-bg-container);
+  --sftp-path-input-focus-bg: #d0d0d0;
   --sftp-path-input-focus-border: var(--color-primary);
   --sftp-path-input-focus-shadow: rgba(64, 158, 255, 0.2);
 
@@ -299,10 +299,10 @@
   --sftp-toolbar-button-hover-bg: var(--color-bg-hover);
 
   /* SFTP搜索输入框 */
-  --sftp-search-input-bg: var(--color-bg-container);
+  --sftp-search-input-bg: #d0d0d0;
   --sftp-search-input-color: var(--color-text-primary);
   --sftp-search-input-border: var(--color-border-default);
-  --sftp-search-input-focus-bg: var(--color-bg-container);
+  --sftp-search-input-focus-bg: #d0d0d0;
   --sftp-search-input-focus-border: var(--color-primary);
   --sftp-search-icon-color: var(--color-text-secondary);
   --sftp-search-clear-color: var(--color-text-secondary);
@@ -627,8 +627,8 @@
   --editor-classname: #e5c07b;
 
   /* SFTP组件 - 深色主题 */
-  --sftp-panel-header-bg: #252525;
-  --sftp-file-list-header-bg: #252525;
+  --sftp-panel-header-bg: #2c2c2c;
+  --sftp-file-list-header-bg: #2c2c2c;
   --sftp-empty-folder-color: #888888;
   --sftp-scrollbar-track: rgba(0, 0, 0, 0.1);
   --sftp-scrollbar-thumb: rgba(255, 255, 255, 0.2);
@@ -651,11 +651,11 @@
   --sftp-nav-button-border: var(--color-border-default);
 
   /* SFTP路径输入框 - 深色主题 */
-  --sftp-path-input-bg: var(--color-bg-container);
+  --sftp-path-input-bg: #2c2c2c;
   --sftp-path-input-color: var(--color-text-primary);
   --sftp-path-input-border: var(--color-border-default);
   --sftp-path-input-hover-bg: var(--color-bg-hover);
-  --sftp-path-input-focus-bg: var(--color-bg-container);
+  --sftp-path-input-focus-bg: #2c2c2c;
   --sftp-path-input-focus-border: var(--color-primary);
   --sftp-path-input-focus-shadow: rgba(64, 158, 255, 0.2);
 
@@ -706,10 +706,10 @@
   --sftp-toolbar-button-hover-bg: var(--color-bg-hover);
 
   /* SFTP搜索输入框 - 深色主题 */
-  --sftp-search-input-bg: var(--color-bg-container);
+  --sftp-search-input-bg: #2c2c2c;
   --sftp-search-input-color: var(--color-text-primary);
   --sftp-search-input-border: var(--color-border-default);
-  --sftp-search-input-focus-bg: #3a3a3a;
+  --sftp-search-input-focus-bg: #2c2c2c;
   --sftp-search-input-focus-border: var(--color-primary);
   --sftp-search-icon-color: #aaaaaa;
   --sftp-search-clear-color: #aaaaaa;
