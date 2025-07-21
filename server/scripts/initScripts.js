@@ -132,7 +132,7 @@ async function getDefaultScripts() {
     description: '收集服务器系统信息，包括CPU、内存、磁盘使用情况等。',
     command: 'free -h && df -h && cat /proc/cpuinfo | grep "model name" | head -1',
     author: '系统管理员',
-    tags: ['系统', '监控', '信息收集'],
+    tags: ['系统', '监控'],
     keywords: ['系统', '信息', '内存', '磁盘', 'cpu', 'free', 'df'],
     category: '系统监控',
     isSystem: true
@@ -142,7 +142,7 @@ async function getDefaultScripts() {
     description: '查看Docker容器和镜像的状态信息。',
     command: 'docker ps -a && docker images && docker system df',
     author: '容器管理员',
-    tags: ['Docker', '容器', '监控'],
+    tags: ['Docker', '监控'],
     keywords: ['docker', '容器', 'ps', 'images'],
     category: '容器管理',
     isSystem: true
@@ -152,7 +152,7 @@ async function getDefaultScripts() {
     description: '清理所有未使用的Docker镜像和卷。',
     command: 'docker system prune -af --volumes',
     author: '容器管理员',
-    tags: ['Docker', '镜像', '清理'],
+    tags: ['Docker', '清理'],
     keywords: ['docker', '镜像', 'prune'],
     category: '容器管理',
     isSystem: true
@@ -162,7 +162,7 @@ async function getDefaultScripts() {
     description: `一键安装EasySSH监控服务，支持系统资源监控、网络监控等功能。`,
     command: `curl -L https://raw.githubusercontent.com/shan-hee/EasySSH/main/server/scripts/easyssh-monitor-install.sh -o easyssh-monitor-install.sh && chmod +x easyssh-monitor-install.sh && sudo env EASYSSH_SERVER=${serverAddress} ./easyssh-monitor-install.sh`,
     author: 'EasySSH团队',
-    tags: ['监控', '安装', 'EasySSH', '系统监控', '一键安装'],
+    tags: ['EasySSH', '安装'],
     keywords: ['easyssh', 'monitor', 'install', '监控', '安装'],
     category: 'EasySSH监控',
     isSystem: true
@@ -172,9 +172,69 @@ async function getDefaultScripts() {
     description: '一键卸载EasySSH监控服务及其所有相关文件，包括服务、配置文件、日志等。',
     command: 'curl -L https://raw.githubusercontent.com/shan-hee/EasySSH/main/server/scripts/easyssh-monitor-uninstall.sh -o easyssh-monitor-uninstall.sh && chmod +x easyssh-monitor-uninstall.sh && sudo ./easyssh-monitor-uninstall.sh',
     author: 'EasySSH团队',
-    tags: ['监控', '卸载', 'EasySSH', '清理'],
+    tags: ['EasySSH', '卸载'],
     keywords: ['easyssh', 'monitor', 'uninstall', '监控', '卸载', '清理'],
     category: 'EasySSH监控',
+    isSystem: true
+  },
+  {
+    name: 'Docker Compose 服务状态',
+    description: '查看当前目录下 docker-compose.yml 中所有服务的运行状态。',
+    command: 'docker-compose ps',
+    author: '容器管理员',
+    tags: ['Docker', '监控'],
+    keywords: ['docker-compose', 'ps', '状态', '服务'],
+    category: '容器管理',
+    isSystem: true
+  },
+  {
+    name: 'Docker Compose 启动服务',
+    description: '启动 docker-compose.yml 中定义的所有服务，如果镜像不存在会自动拉取。',
+    command: 'docker-compose up -d',
+    author: '容器管理员',
+    tags: ['Docker', '启动'],
+    keywords: ['docker-compose', 'up', '启动', '服务'],
+    category: '容器管理',
+    isSystem: true
+  },
+  {
+    name: 'Docker Compose 停止服务',
+    description: '停止 docker-compose.yml 中所有正在运行的服务，但保留容器。',
+    command: 'docker-compose stop',
+    author: '容器管理员',
+    tags: ['Docker', '停止'],
+    keywords: ['docker-compose', 'stop', '停止', '服务'],
+    category: '容器管理',
+    isSystem: true
+  },
+  {
+    name: 'Docker Compose 重启服务',
+    description: '重启 docker-compose.yml 中的所有服务。',
+    command: 'docker-compose restart',
+    author: '容器管理员',
+    tags: ['Docker', '重启'],
+    keywords: ['docker-compose', 'restart', '重启', '服务'],
+    category: '容器管理',
+    isSystem: true
+  },
+  {
+    name: 'Docker Compose 查看日志',
+    description: '查看所有服务的实时日志输出，按 Ctrl+C 退出。',
+    command: 'docker-compose logs -f',
+    author: '容器管理员',
+    tags: ['Docker', '日志'],
+    keywords: ['docker-compose', 'logs', '日志', '实时'],
+    category: '容器管理',
+    isSystem: true
+  },
+  {
+    name: 'Docker Compose 完全清理',
+    description: '停止并删除当前 compose 项目所有容器、网络和卷，完全清理 docker-compose 环境。',
+    command: 'docker-compose down -v --remove-orphans',
+    author: '容器管理员',
+    tags: ['Docker', '清理'],
+    keywords: ['docker-compose', 'down', '清理', '删除', '卷'],
+    category: '容器管理',
     isSystem: true
   }
   ];
