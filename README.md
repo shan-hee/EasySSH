@@ -89,7 +89,7 @@
 
 ## 快速开始
 
-### 🐳 Docker 快速启动（推荐）
+### 🐳 Docker 快速启动
 
 ```bash
 # Docker 快速启动
@@ -201,12 +201,19 @@ npm run dev
 
 ## 部署指南
 
-### 🐳 使用Docker Compose
+### 🐳 Docker Compose 部署（推荐）
+
+推荐使用 Docker Compose 进行生产环境部署，便于管理和升级：
 
 ```bash
-# 克隆项目
-git clone https://github.com/shanheee/easyssh.git
-cd easyssh
+# 创建部署目录
+mkdir easyssh && cd easyssh
+
+# 下载 docker-compose.yml
+wget https://raw.githubusercontent.com/shanheee/easyssh/main/docker-compose.yml
+
+# 配置环境变量（可选）
+# 创建 .env 文件设置 JWT_SECRET 和 ENCRYPTION_KEY
 
 # 启动所有服务
 docker-compose up -d
@@ -218,27 +225,28 @@ docker-compose ps
 docker-compose logs -f
 ```
 
+#### 升级版本
+
+```bash
+# 进入部署目录
+cd easyssh
+
+# 拉取最新镜像
+docker-compose pull
+
+# 重启服务
+docker-compose up -d
+```
 
 #### Docker部署配置
 
 **环境变量：**
 - `NODE_ENV`: 运行环境（development/production）
-- `PORT`: 后端服务端口（默认8000）
+- `JWT_SECRET`: JWT令牌密钥（生产环境必须修改）
+- `ENCRYPTION_KEY`: 数据加密密钥（生产环境必须修改）
+- `SERVER_ADDRESS`: 服务器地址（可选，不配置则自动获取）
 
-**数据持久化：**
-- `./easyssh_data`: SQLite数据库存储目录
-- `./easyssh_logs`: 应用日志存储目录
-
-> **💡 数据持久化说明**：使用Docker部署时，请将数据目录挂载到主机目录，以确保数据安全，容器删除重建时数据不会丢失。数据目录会自动创建在当前工作目录下。
-
-**使用最新版本：**
-```bash
-docker pull shanheee/easyssh:latest
-pm2 start index.js --name easyssh-server
-
-# 配置Nginx反向代理
-# 参考开发指南中的Nginx配置示例
-```
+> **💡 数据持久化说明**：所有相关文件都在 `easyssh` 目录中，便于统一管理、备份和迁移。
 
 ### 云平台部署
 

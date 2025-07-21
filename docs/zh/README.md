@@ -86,7 +86,21 @@
 
 ## 快速开始
 
-### 安装
+### 🐳 Docker 快速启动（推荐）
+
+```bash
+# Docker 快速启动
+docker run -d \
+  --name easyssh \
+  --restart unless-stopped \
+  -p 8520:8520 \
+  -v easyssh-data:/app/server/data \
+  -v easyssh-logs:/app/server/logs \
+  shanheee/easyssh:latest
+```
+> **访问方式**：部署完成后，直接通过服务器的 IP 地址访问 `http://<服务器IP>:8520` 即可打开 EasySSH 界面。
+
+### 💻 本地开发安装
 
 ```bash
 # 克隆仓库
@@ -106,7 +120,7 @@ npm run dev
 
 ### 使用方法
 
-1. 访问 http://localhost:5173
+1. 访问 http://localhost:8520
 2. 注册账号或使用默认管理员账号登录
 3. 添加您的第一台服务器
 4. 点击连接按钮，开始远程管理！
@@ -170,6 +184,42 @@ npm run dev
 
 ## 部署指南
 
+### 🐳 Docker Compose 部署（推荐）
+
+推荐使用 Docker Compose 进行生产环境部署，便于管理和升级：
+
+```bash
+# 创建部署目录
+mkdir easyssh && cd easyssh
+
+# 下载 docker-compose.yml
+wget https://raw.githubusercontent.com/shanheee/easyssh/main/docker-compose.yml
+
+# 配置环境变量（可选）
+# 创建 .env 文件设置 JWT_SECRET 和 ENCRYPTION_KEY
+
+# 启动所有服务
+docker-compose up -d
+
+# 查看服务状态
+docker-compose ps
+
+# 查看日志
+docker-compose logs -f
+```
+#### 升级版本
+
+```bash
+# 进入部署目录
+cd easyssh
+
+# 拉取最新镜像
+docker-compose pull
+
+# 重启服务
+docker-compose up -d
+```
+
 ### 传统部署
 
 ```bash
@@ -181,16 +231,6 @@ npm run build
 cd server
 npm install --production
 pm2 start index.js --name easyssh-server
-```
-
-### Docker部署
-
-```bash
-# 构建并启动所有服务
-docker-compose up -d
-
-# 仅重启后端服务
-docker-compose restart api
 ```
 
 ### 云平台部署

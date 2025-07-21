@@ -86,7 +86,21 @@
 
 ## Quick Start
 
-### Installation
+### 🐳 Docker Quick Start (Recommended)
+
+```bash
+# Docker quick start
+docker run -d \
+  --name easyssh \
+  --restart unless-stopped \
+  -p 8520:8520 \
+  -v easyssh-data:/app/server/data \
+  -v easyssh-logs:/app/server/logs \
+  shanheee/easyssh:latest
+```
+> **Access**: After deployment, access EasySSH interface directly via `http://<server-ip>:8520`.
+
+### 💻 Local Development Installation
 
 ```bash
 # Clone repository
@@ -106,7 +120,7 @@ npm run dev
 
 ### Usage
 
-1. Visit http://localhost:5173
+1. Visit http://localhost:8520
 2. Register an account or login with default admin account
 3. Add your first server
 4. Click connect button and start remote management!
@@ -171,6 +185,43 @@ npm run dev
 
 ## Deployment Guide
 
+### 🐳 Docker Compose Deployment (Recommended)
+
+Recommended for production environment deployment, easy to manage and upgrade:
+
+```bash
+# Create deployment directory
+mkdir easyssh && cd easyssh
+
+# Download docker-compose.yml
+wget https://raw.githubusercontent.com/shanheee/easyssh/main/docker-compose.yml
+
+# Configure environment variables (optional)
+# Create .env file to set JWT_SECRET and ENCRYPTION_KEY
+
+# Start all services
+docker-compose up -d
+
+# Check service status
+docker-compose ps
+
+# View logs
+docker-compose logs -f
+```
+
+#### Version Upgrade
+
+```bash
+# Enter deployment directory
+cd easyssh
+
+# Pull latest image
+docker-compose pull
+
+# Restart services
+docker-compose up -d
+```
+
 ### Traditional Deployment
 
 ```bash
@@ -182,16 +233,6 @@ npm run build
 cd server
 npm install --production
 pm2 start index.js --name easyssh-server
-```
-
-### Docker Deployment
-
-```bash
-# Build and start all services
-docker-compose up -d
-
-# Restart backend service only
-docker-compose restart api
 ```
 
 ### Cloud Platform Deployment

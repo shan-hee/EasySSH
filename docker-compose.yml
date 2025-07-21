@@ -2,12 +2,7 @@ version: '3.8'
 
 services:
   easyssh:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      args:
-        BUILDKIT_INLINE_CACHE: 1
-    image: easyssh:latest
+    image: shanheee/easyssh:latest
     container_name: easyssh
     ports:
       - "8520:8520"
@@ -17,18 +12,6 @@ services:
       - JWT_SECRET=${JWT_SECRET:-your-jwt-secret-key-please-change-in-production}
       - ENCRYPTION_KEY=${ENCRYPTION_KEY:-your-encryption-key-please-change-in-production}
     volumes:
-      - easyssh_data:/app/server/data
-      - easyssh_logs:/app/server/logs
+      - ./data:/app/server/data
+      - ./logs:/app/server/logs
     restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8520/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 60s
-
-volumes:
-  easyssh_data:
-    driver: local
-  easyssh_logs:
-    driver: local
