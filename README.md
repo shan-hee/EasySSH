@@ -210,10 +210,14 @@ npm run dev
 mkdir easyssh && cd easyssh
 
 # 下载 docker-compose.yml
-wget https://raw.githubusercontent.com/shanheee/easyssh/main/docker-compose.yml
+wget https://raw.githubusercontent.com/shan-hee/EasySSH/main/docker-compose.yml
 
-# 配置环境变量（可选）
+# 配置环境变量（可选）或 生成随机密钥（如下）
 # 创建 .env 文件设置 JWT_SECRET 和 ENCRYPTION_KEY
+cat > .env << EOF
+JWT_SECRET=$(openssl rand -base64 32)
+ENCRYPTION_KEY=$(openssl rand -base64 32)
+EOF
 
 # 启动所有服务
 docker-compose up -d
