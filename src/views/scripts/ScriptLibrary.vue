@@ -954,7 +954,7 @@ export default defineComponent({
     }
 
     // 处理文件导入
-    const handleFileImport = (event) => {
+    const handleFileImport = async (event) => {
       const file = event.target.files[0]
       if (!file) return
 
@@ -964,7 +964,7 @@ export default defineComponent({
       }
 
       const reader = new FileReader()
-      reader.onload = (e) => {
+      reader.onload = async (e) => {
         try {
           const importedData = JSON.parse(e.target.result)
 
@@ -976,46 +976,125 @@ export default defineComponent({
 
           let importedCount = 0
           let skippedCount = 0
+          let errorCount = 0
+          const importErrors = []
 
-          importedData.forEach(scriptData => {
-            // 验证必要字段
-            if (!scriptData.name || !scriptData.command) {
-              skippedCount++
-              return
-            }
-
-            // 检查是否已存在同名脚本
-            const existingScript = scripts.value.find(s => s.name === scriptData.name)
-            if (existingScript) {
-              skippedCount++
-              return
-            }
-
-            // 创建新脚本
-            const maxId = Math.max(...scripts.value.map(s => s.id), 0)
-            const newScript = {
-              id: maxId + importedCount + 1,
-              name: scriptData.name,
-              description: scriptData.description || '',
-              command: scriptData.command,
-              tags: Array.isArray(scriptData.tags) ? scriptData.tags : [],
-              author: scriptData.author || '导入用户',
-              updatedAt: new Date()
-            }
-
-            scripts.value.push(newScript)
-            importedCount++
+          // 显示导入进度提示
+          const loadingMessage = ElMessage({
+            message: '正在导入脚本，请稍候...',
+            type: 'info',
+            duration: 0
           })
 
-          if (importedCount > 0) {
-            ElMessage.success(`成功导入 ${importedCount} 个脚本${skippedCount > 0 ? `，跳过 ${skippedCount} 个重复或无效脚本` : ''}`)
-          } else {
-            ElMessage.warning('没有导入任何脚本，可能存在重复或格式错误')
+          try {
+            // 批量处理导入的脚本
+            for (let i = 0; i < importedData.length; i++) {
+              const scriptData = importedData[i]
+
+              // 更新进度提示
+              loadingMessage.message = `正在导入脚本 (${i + 1}/${importedData.length}): ${scriptData.name || '未命名'}`
+
+              try {
+                // 验证必要字段
+                if (!scriptData.name || !scriptData.command) {
+                  skippedCount++
+                  importErrors.push(`脚本 "${scriptData.name || '未命名'}" 缺少必要字段`)
+                  continue
+                }
+
+                // 检查是否已存在同名脚本
+                const existingScript = scripts.value.find(s => s.name === scriptData.name)
+                if (existingScript) {
+                  skippedCount++
+                  importErrors.push(`脚本 "${scriptData.name}" 已存在，跳过导入`)
+                  continue
+                }
+
+                // 通过API创建脚本
+                const response = await apiService.post('/scripts/user', {
+                  name: scriptData.name.trim(),
+                  description: scriptData.description?.trim() || '',
+                  command: scriptData.command.trim(),
+                  tags: Array.isArray(scriptData.tags) ? scriptData.tags : [],
+                  keywords: Array.isArray(scriptData.keywords) ? scriptData.keywords : [],
+                  category: scriptData.category?.trim() || '导入脚本'
+                })
+
+                if (response && response.success) {
+                  // 添加到本地脚本库
+                  const newScript = {
+                    ...response.script,
+                    source: 'user'
+                  }
+                  scriptLibraryService.userScripts.value.push(newScript)
+                  importedCount++
+                  log.debug(`成功导入脚本: ${scriptData.name}`)
+                } else {
+                  errorCount++
+                  importErrors.push(`脚本 "${scriptData.name}" 保存失败: ${response?.message || '未知错误'}`)
+                }
+
+              } catch (error) {
+                errorCount++
+                importErrors.push(`脚本 "${scriptData.name}" 导入失败: ${error.message}`)
+                log.error('导入单个脚本失败:', error)
+              }
+            }
+
+            // 保存到本地存储
+            if (importedCount > 0) {
+              scriptLibraryService.saveToLocal()
+            }
+
+            // 关闭加载提示
+            loadingMessage.close()
+
+            // 显示导入结果
+            if (importedCount > 0) {
+              let message = `导入完成：${importedCount} 个脚本`
+              if (skippedCount > 0) {
+                message += `，跳过 ${skippedCount} 个`
+              }
+              if (errorCount > 0) {
+                message += `，失败 ${errorCount} 个`
+              }
+              ElMessage.success(message)
+            } else {
+              ElMessage.warning('没有导入任何脚本，可能存在重复或格式错误')
+            }
+
+            // 如果有错误，显示详细信息
+            if (importErrors.length > 0) {
+              setTimeout(() => {
+                if (importErrors.length <= 5) {
+                  // 错误较少时显示详细信息
+                  ElMessage({
+                    message: '导入详情：\n' + importErrors.join('\n'),
+                    type: 'warning',
+                    duration: 10000,
+                    showClose: true
+                  })
+                } else {
+                  // 错误较多时显示汇总信息
+                  ElMessage({
+                    message: `导入完成，共 ${importErrors.length} 个问题。请检查脚本格式和重复性。`,
+                    type: 'warning',
+                    duration: 8000,
+                    showClose: true
+                  })
+                }
+              }, 1000)
+            }
+
+          } catch (error) {
+            loadingMessage.close()
+            ElMessage.error('导入过程中发生错误: ' + error.message)
+            log.error('批量导入脚本失败:', error)
           }
 
         } catch (error) {
           ElMessage.error('文件解析失败，请检查文件格式')
-          console.error('Import error:', error)
+          log.error('Import file parse error:', error)
         }
       }
 

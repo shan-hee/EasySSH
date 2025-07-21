@@ -901,6 +901,87 @@ class ScriptLibraryService {
   }
 
   /**
+   * 添加新的用户脚本
+   * @param {Object} scriptData - 脚本数据
+   */
+  addUserScript(scriptData) {
+    const newScript = {
+      ...scriptData,
+      source: 'user',
+      updatedAt: new Date(),
+      keywords: this.generateKeywords(scriptData)
+    }
+
+    this.userScripts.value.push(newScript)
+    this.saveToLocal()
+    return newScript
+  }
+
+  /**
+   * 批量添加用户脚本
+   * @param {Array} scriptsData - 脚本数据数组
+   * @returns {Object} 添加结果统计
+   */
+  addUserScriptsBatch(scriptsData) {
+    if (!Array.isArray(scriptsData)) {
+      throw new Error('脚本数据必须是数组格式')
+    }
+
+    let addedCount = 0
+    let skippedCount = 0
+    const addedScripts = []
+    const errors = []
+
+    scriptsData.forEach((scriptData, index) => {
+      try {
+        // 验证必要字段
+        if (!scriptData.name || !scriptData.command) {
+          skippedCount++
+          errors.push(`第${index + 1}个脚本缺少必要字段`)
+          return
+        }
+
+        // 检查是否已存在同名脚本
+        const existingScript = this.userScripts.value.find(s => s.name === scriptData.name)
+        if (existingScript) {
+          skippedCount++
+          errors.push(`脚本 "${scriptData.name}" 已存在`)
+          return
+        }
+
+        // 添加脚本
+        const newScript = {
+          ...scriptData,
+          source: 'user',
+          updatedAt: new Date(),
+          keywords: this.generateKeywords(scriptData)
+        }
+
+        this.userScripts.value.push(newScript)
+        addedScripts.push(newScript)
+        addedCount++
+
+      } catch (error) {
+        skippedCount++
+        errors.push(`第${index + 1}个脚本添加失败: ${error.message}`)
+      }
+    })
+
+    // 保存到本地存储
+    if (addedCount > 0) {
+      this.saveToLocal()
+    }
+
+    return {
+      addedCount,
+      skippedCount,
+      addedScripts,
+      errors,
+      total: scriptsData.length
+    }
+  }
+
+  /**
    * 更新脚本
    * @param {number} id - 脚本ID
    * @param {Object} updates - 更新数据
