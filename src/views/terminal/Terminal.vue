@@ -1393,67 +1393,8 @@ export default {
       }
     };
     
-    // 添加记录已处理的SSH会话连接事件
-    const processedSshSessions = ref(new Set())
-    
-    // 修改SSH连接成功处理函数，添加去重逻辑
-    const handleSshConnected = (event) => {
-      if (!event.detail) return;
-      
-      const sessionId = event.detail.sessionId;
-      let terminalId = event.detail.terminalId;
-      
-      // 检查是否已经处理过该会话的连接成功事件
-      if (processedSshSessions.value.has(sessionId)) {
-        log.debug(`SSH会话 ${sessionId} 的连接成功事件已处理，跳过重复处理`);
-        return;
-      }
-      
-      // 添加到已处理集合
-      processedSshSessions.value.add(sessionId);
-      
-      // 尝试从SSH会话ID获取终端ID（以防上面的修改未生效或向后兼容）
-      if (!terminalId && sessionId && terminalStore && terminalStore.sessions) {
-        // 通过反向查找获取终端ID
-        for (const [tId, sId] of Object.entries(terminalStore.sessions)) {
-          if (sId === sessionId) {
-            terminalId = tId;
-            break;
-          }
-        }
-      }
-      
-      log.info(`收到SSH连接成功事件: 会话ID=${sessionId}, 终端ID=${terminalId || '未知'}`);
-      
-      if (sessionId) {
-        // 保存会话连接状态
-        updateConnectionStatus(sessionId, true);
-        
-        // 更新对应终端的状态
-        if (terminalId) {
-          // 如果没有该终端的状态，先创建
-          const terminalState = getTerminalToolbarState(terminalId);
-          if (terminalState) {
-            terminalState.isSshConnected = true;
-            
-            // 只有是当前活动终端时才更新UI
-            if (terminalId === props.activeSessionId) {
-              isSshConnected.value = true;
-            }
-          }
-        }
-        
-        // 额外检查：如果当前没有活动终端但会话ID与当前活动会话匹配，也更新UI
-        // 这是为了处理新建连接的情况
-        if (!terminalId && sessionId === sessionStore.getActiveSession()) {
-          isSshConnected.value = true;
-        }
-        
-        // 在SSH连接成功时，立即检查监控状态
-        // 去掉setTimeout，立即检查监控状态
-        checkMonitoringServiceStatus();
-      }
-    };
+    // SSH连接成功事件处理已移至 TerminalToolbar.vue 组件中统一管理
+    // 这里移除了重复的死代码，避免混淆和潜在的冲突
     
     // 添加终端状态更新事件监听
     const setupTerminalEvents = () => {

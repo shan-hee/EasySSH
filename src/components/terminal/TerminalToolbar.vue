@@ -152,6 +152,20 @@ export default defineComponent({
   },
   
   setup(props, { emit }) {
+    // 生成组件实例唯一标识，用于调试和去重
+    const componentInstanceId = `toolbar_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+
+    // 全局组件实例追踪器
+    if (!window.terminalToolbarInstances) {
+      window.terminalToolbarInstances = new Map()
+    }
+
+    // 注册当前实例
+    window.terminalToolbarInstances.set(componentInstanceId, {
+      activeSessionId: props.activeSessionId,
+      createdAt: new Date().toISOString()
+    })
+
     const rttValue = ref('--')
     const showNetworkPopup = ref(false)
     const clientDelay = ref(0)
@@ -777,8 +791,6 @@ export default defineComponent({
 
       const { installed, terminalId, hostname, status, message } = event.detail;
 
-      log.debug(`[终端工具栏] 收到监控状态变更事件: 主机=${hostname}, 已安装=${installed}, 终端=${terminalId}, 状态=${status}`);
-
       if (terminalId) {
         // 处理特定终端的状态更新
         const terminalState = getTerminalToolbarState(terminalId);
@@ -790,16 +802,18 @@ export default defineComponent({
           terminalState.monitoringStatus = status;
           terminalState.monitoringMessage = message;
 
-          // 如果是当前活动的终端，同时更新UI
+          // 如果是当前活动的终端，同时更新UI和记录日志
           if (terminalId === props.activeSessionId) {
+            log.debug(`[${componentInstanceId}] 收到监控状态变更事件: 主机=${hostname}, 已安装=${installed}, 终端=${terminalId}, 状态=${status}`);
+
             monitoringServiceInstalled.value = installed;
-            log.debug(`[终端工具栏] 更新当前活动终端[${terminalId}]的监控状态: ${installed}`);
+            log.debug(`[${componentInstanceId}] 更新当前活动终端[${terminalId}]的监控状态: ${installed}`);
 
             // 提供更详细的状态反馈
             if (installed) {
-              log.info(`[终端工具栏] 监控服务已安装: ${message || '监控数据可用'}`);
+              log.info(`[${componentInstanceId}] 监控服务已安装: ${message || '监控数据可用'}`);
             } else {
-              log.info(`[终端工具栏] 监控服务未安装: ${message || '监控数据不可用'}`);
+              log.info(`[${componentInstanceId}] 监控服务未安装: ${message || '监控数据不可用'}`);
             }
           }
         }
@@ -821,10 +835,10 @@ export default defineComponent({
           if (terminalState) {
             terminalState.monitoringInstalled = installed;
 
-            // 如果是当前活动终端，更新UI
+            // 如果是当前活动终端，更新UI和记录日志
             if (terminalId === props.activeSessionId) {
               monitoringServiceInstalled.value = installed;
-              log.debug(`[终端工具栏] 通过会话ID[${sessionId}]更新终端[${terminalId}]的监控状态: ${installed}`);
+              log.debug(`[${componentInstanceId}] 通过会话ID[${sessionId}]更新终端[${terminalId}]的监控状态: ${installed}`);
             }
           }
         }
@@ -838,20 +852,22 @@ export default defineComponent({
           if (sshSessionId && sshService && sshService.sessions) {
             const session = sshService.sessions.get(sshSessionId);
             if (session && session.connection && session.connection.host === hostAddress) {
-              // 更新终端状态
+              // 更新终端状态和记录日志
               const terminalState = getTerminalToolbarState(props.activeSessionId);
               if (terminalState) {
                 terminalState.monitoringInstalled = installed;
                 monitoringServiceInstalled.value = installed;
-                log.debug(`[终端工具栏] 通过主机地址[${hostAddress}]匹配更新当前终端的监控状态: ${installed}`);
+                log.debug(`[${componentInstanceId}] 通过主机地址[${hostAddress}]匹配更新当前终端的监控状态: ${installed}`);
               }
             }
           }
         }
       } else {
-        // 全局状态更新（向后兼容）
-        monitoringServiceInstalled.value = installed;
-        log.debug(`[终端工具栏] 更新全局监控状态: ${installed}`);
+        // 全局状态更新（向后兼容）- 只在当前活动实例中记录日志
+        if (props.activeSessionId) {
+          monitoringServiceInstalled.value = installed;
+          log.debug(`[${componentInstanceId}] 更新全局监控状态: ${installed}`);
+        }
       }
     };
     
@@ -995,12 +1011,13 @@ export default defineComponent({
     // 处理工具栏状态重置的函数
     const handleToolbarReset = (event) => {
       if (!event.detail || !event.detail.sessionId) return;
-      
+
       const { sessionId } = event.detail;
-      log.debug(`收到工具栏重置事件: sessionId=${sessionId}`);
-      
-      // 只有当当前活动会话是目标会话时才重置UI状态
+
+      // 只有当当前活动会话是目标会话时才处理和记录日志
       if (sessionId === props.activeSessionId) {
+        log.debug(`[${componentInstanceId}] 收到工具栏重置事件: sessionId=${sessionId}`);
+
         // 清除当前工具栏UI状态
         isSshConnected.value = false;
         showNetworkIcon.value = false; // 默认不显示网络图标，等待有效数据
@@ -1039,20 +1056,14 @@ export default defineComponent({
     
     // 处理SSH连接成功事件的函数
     const handleSshConnected = (event) => {
-      if (!event.detail) return;
-      
-      const sessionId = event.detail.sessionId;
-      let terminalId = event.detail.terminalId;
-      
-      // 检查是否已经处理过该SSH会话
-      if (processedSshSessions.value.has(sessionId)) {
-        log.debug(`SSH会话 ${sessionId} 的连接成功事件已处理，跳过重复处理`);
+      if (!event.detail) {
+        log.warn(`[${componentInstanceId}] SSH连接成功事件缺少detail信息`);
         return;
       }
-      
-      // 添加到已处理集合
-      processedSshSessions.value.add(sessionId);
-      
+
+      const sessionId = event.detail.sessionId;
+      let terminalId = event.detail.terminalId;
+
       // 尝试从SSH会话ID获取终端ID（以防上面的修改未生效或向后兼容）
       if (!terminalId && sessionId && terminalStore && terminalStore.sessions) {
         // 通过反向查找获取终端ID
@@ -1063,33 +1074,54 @@ export default defineComponent({
           }
         }
       }
-      
-      log.debug(`收到SSH连接成功事件: 会话ID=${sessionId}, 终端ID=${terminalId || '未知'}`);
-      
+
+      // 关键优化：只有当事件的终端ID与当前组件实例的活动终端ID匹配时才处理
+      const isRelevantToThisInstance = terminalId === props.activeSessionId ||
+                                       (!terminalId && sessionId === sessionStore.getActiveSession());
+
+      if (!isRelevantToThisInstance) {
+        log.debug(`[${componentInstanceId}] SSH连接成功事件与当前实例无关，跳过处理 (事件终端ID=${terminalId}, 当前终端ID=${props.activeSessionId})`);
+        return;
+      }
+
+      // 检查是否已经处理过该SSH会话
+      if (processedSshSessions.value.has(sessionId)) {
+        log.debug(`[${componentInstanceId}] SSH会话 ${sessionId} 的连接成功事件已处理，跳过重复处理`);
+        return;
+      }
+
+      // 添加到已处理集合
+      processedSshSessions.value.add(sessionId);
+
+      log.debug(`[${componentInstanceId}] 处理SSH连接成功事件: 会话ID=${sessionId}, 终端ID=${terminalId || '未知'}, 当前活动终端=${props.activeSessionId}`);
+
       if (sessionId) {
         // 保存会话连接状态
         updateConnectionStatus(sessionId, true);
-        
+
         // 更新对应终端的状态
         if (terminalId) {
           // 如果没有该终端的状态，先创建
           const terminalState = getTerminalToolbarState(terminalId);
           if (terminalState) {
             terminalState.isSshConnected = true;
-            
+            log.debug(`[${componentInstanceId}] 已更新终端 ${terminalId} 的SSH连接状态为true`);
+
             // 只有是当前活动终端时才更新UI
             if (terminalId === props.activeSessionId) {
               isSshConnected.value = true;
+              log.debug(`[${componentInstanceId}] 已更新当前活动终端的UI状态`);
             }
           }
         }
-        
+
         // 额外检查：如果当前没有活动终端但会话ID与当前活动会话匹配，也更新UI
         // 这是为了处理新建连接的情况
         if (!terminalId && sessionId === sessionStore.getActiveSession()) {
           isSshConnected.value = true;
+          log.debug(`[${componentInstanceId}] 通过会话存储匹配更新UI状态`);
         }
-        
+
         // 在SSH连接成功时，立即检查监控状态
         checkMonitoringServiceStatus();
       }
@@ -1098,15 +1130,16 @@ export default defineComponent({
     // 处理工具栏状态同步事件的函数 - 不会触发加载动画
     const handleToolbarSync = (event) => {
       if (!event.detail || !event.detail.sessionId) return;
-      
+
       const { sessionId } = event.detail;
-      log.debug(`收到工具栏同步事件: sessionId=${sessionId}`);
-      
-      // 只有当当前活动会话是目标会话时才同步UI状态
+
+      // 只有当当前活动会话是目标会话时才处理和记录日志
       if (sessionId === props.activeSessionId) {
+        log.debug(`[${componentInstanceId}] 收到工具栏同步事件: sessionId=${sessionId}`);
+
         // 获取终端特定状态
         const terminalState = getTerminalToolbarState(sessionId);
-        
+
         // 同步SSH连接状态
         if (terminalState && terminalState.isSshConnected !== undefined) {
           isSshConnected.value = terminalState.isSshConnected;
@@ -1114,7 +1147,7 @@ export default defineComponent({
           // 如果没有确定的状态，检查SSH连接
           checkSshConnectionStatus();
         }
-        
+
         // 同步监控服务状态
         if (terminalState && terminalState.monitoringInstalled !== undefined) {
           monitoringServiceInstalled.value = terminalState.monitoringInstalled;
@@ -1167,11 +1200,13 @@ export default defineComponent({
     // 添加新会话事件处理函数
     const handleNewSession = (event) => {
       if (!event.detail || !event.detail.sessionId) return;
-      
+
       const { sessionId, isNewCreation } = event.detail;
-      log.debug(`工具栏收到新会话事件: ${sessionId}, 是否新创建: ${isNewCreation}`);
-      
+
+      // 只有当是新创建且是当前活动会话时才处理和记录日志
       if (isNewCreation && sessionId === props.activeSessionId) {
+        log.debug(`[${componentInstanceId}] 工具栏收到新会话事件: ${sessionId}, 是否新创建: ${isNewCreation}`);
+
         // 清理当前工具栏状态
         isSshConnected.value = false;
         showNetworkIcon.value = false;
@@ -1179,7 +1214,7 @@ export default defineComponent({
         serverDelay.value = 0;
         clientDelay.value = 0;
         monitoringServiceInstalled.value = false;
-        
+
         // 清理对应终端的工具栏状态
         if (terminalToolbarStates.value[sessionId]) {
           // 创建新的状态对象而不是清理现有状态，保证状态完全隔离
@@ -1307,6 +1342,15 @@ export default defineComponent({
     
     // 在组件卸载时清理所有防抖定时器
     onUnmounted(() => {
+      log.debug(`[${componentInstanceId}] TerminalToolbar组件正在卸载，活动终端ID: ${props.activeSessionId}`);
+
+      // 从全局追踪器中移除当前实例
+      if (window.terminalToolbarInstances) {
+        window.terminalToolbarInstances.delete(componentInstanceId)
+        const remainingCount = window.terminalToolbarInstances.size
+        log.debug(`[${componentInstanceId}] 已从全局追踪器移除，剩余 ${remainingCount} 个实例`)
+      }
+
       // 移除所有事件监听器，使用常量替代硬编码字符串
       window.removeEventListener(LATENCY_EVENTS.TOOLBAR, handleNetworkLatencyUpdate);
       window.removeEventListener('ssh-connected', handleSshConnected);
@@ -1317,18 +1361,30 @@ export default defineComponent({
       // 移除监控连接成功事件监听器（已废弃）
       window.removeEventListener('resize', updateSftpTooltipPosition);
       window.removeEventListener('resize', handleResize);
-      
+
       // 移除新会话事件监听
       window.removeEventListener('terminal:new-session', handleNewSession);
-      
+
+      log.debug(`[${componentInstanceId}] 已移除SSH连接成功事件监听器`);
+
       // 清理所有防抖定时器
       Object.keys(statusCheckDebounceTimers.value).forEach(id => {
         clearTimeout(statusCheckDebounceTimers.value[id]);
       });
+
+      log.debug(`[${componentInstanceId}] TerminalToolbar组件卸载完成`);
     });
 
     // 在onMounted中添加事件监听
     onMounted(() => {
+      const instanceCount = window.terminalToolbarInstances.size
+      const allInstances = Array.from(window.terminalToolbarInstances.entries()).map(([id, info]) =>
+        `${id.split('_')[1]}(${info.activeSessionId})`
+      ).join(', ')
+
+      log.debug(`[${componentInstanceId}] TerminalToolbar组件已挂载，活动终端ID: ${props.activeSessionId}`)
+      log.debug(`[${componentInstanceId}] 当前共有 ${instanceCount} 个TerminalToolbar实例: ${allInstances}`)
+
       // 添加全局事件监听器，使用常量替代硬编码字符串
       window.addEventListener(LATENCY_EVENTS.TOOLBAR, handleNetworkLatencyUpdate);
       window.addEventListener('ssh-connected', handleSshConnected);
@@ -1339,12 +1395,14 @@ export default defineComponent({
       // window.addEventListener('terminal:refresh-status', handleTerminalRefreshStatus);
       // 移除监控连接成功事件监听（已废弃）
       // WebSocket连接成功不等于监控服务已安装
-      
+
+      log.debug(`[${componentInstanceId}] 已注册SSH连接成功事件监听器`);
+
       // 立即检查SSH连接状态
       checkSshConnectionStatus();
       // 立即检查监控服务状态
       checkMonitoringServiceStatus();
-      
+
       // 确保工具栏状态严格隔离，避免状态意外共享
       applyInitialStatus();
       
