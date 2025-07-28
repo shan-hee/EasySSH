@@ -129,7 +129,7 @@ export default defineConfig(({ mode }) => {
         },
         // WebSocket代理配置 - SSH连接
         '/ssh': {
-          target: 'ws://localhost:8000', // 后端WebSocket服务地址
+          target: (env.VITE_API_TARGET || 'http://localhost:8000').replace('http', 'ws'), // 从环境变量动态生成WebSocket地址
           ws: true, // 启用WebSocket代理
           changeOrigin: true,
           secure: false,
@@ -145,7 +145,7 @@ export default defineConfig(({ mode }) => {
         },
         // WebSocket代理配置 - 监控服务
         '/monitor': {
-          target: 'ws://localhost:8000', // 监控WebSocket服务地址
+          target: (env.VITE_API_TARGET || 'http://localhost:8000').replace('http', 'ws'), // 从环境变量动态生成WebSocket地址
           ws: true, // 启用WebSocket代理
           changeOrigin: true,
           secure: false,
