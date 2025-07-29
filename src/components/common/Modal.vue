@@ -296,7 +296,7 @@ export default defineComponent({
 
 :deep(label) {
   display: block;
-  margin-bottom: 8px;
+  /* margin-bottom: 8px; */
   color: var(--color-text-primary);
   font-size: 14px;
   font-weight: normal;

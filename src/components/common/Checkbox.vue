@@ -1,18 +1,25 @@
 <template>
-  <div class="custom-checkbox" @click="toggleChecked">
-    <div 
-      class="checkbox-wrapper" 
-      :class="{ 'checked': modelValue }"
+  <div class="custom-checkbox">
+    <input
+      type="checkbox"
+      :id="checkboxId"
+      :checked="modelValue"
+      :disabled="disabled"
+      @change="toggleChecked"
+      style="display: none;"
     >
-      <div class="checkbox-inner"></div>
-      <div class="checkbox-check"></div>
-    </div>
+    <label :for="checkboxId" class="check">
+      <svg width="18px" height="18px" viewBox="0 0 18 18">
+        <path d="M 1 1 L 17 1 L 17 17 L 1 17 Z"></path>
+        <polyline points="4 9 8 13 14 5"></polyline>
+      </svg>
+    </label>
     <span v-if="label" class="checkbox-label">{{ label }}</span>
   </div>
 </template>
 
 <script>
-import { defineComponent } from 'vue'
+import { defineComponent, computed } from 'vue'
 
 export default defineComponent({
   name: 'Checkbox',
@@ -32,15 +39,19 @@ export default defineComponent({
   },
   emits: ['update:modelValue', 'change'],
   setup(props, { emit }) {
-    const toggleChecked = () => {
+    // 生成唯一的 checkbox ID
+    const checkboxId = computed(() => `checkbox-${Math.random().toString(36).substring(2, 11)}`)
+
+    const toggleChecked = (event) => {
       if (props.disabled) return
-      
-      const newValue = !props.modelValue
+
+      const newValue = event.target.checked
       emit('update:modelValue', newValue)
       emit('change', newValue)
     }
-    
+
     return {
+      checkboxId,
       toggleChecked
     }
   }
@@ -48,79 +59,93 @@ export default defineComponent({
 </script>
 
 <style scoped>
-/* 使用scoped样式避免与全局样式冲突 */
+/* Variation of work by @mrhyddenn for Radios */
 .custom-checkbox {
   display: flex;
   align-items: center;
-  cursor: pointer;
   user-select: none;
+  gap: 8px;
 }
 
-/* 复选框容器 - 与统一样式保持一致 */
-.checkbox-wrapper {
+.check {
+  cursor: pointer;
   position: relative;
   width: 18px;
   height: 18px;
-  border: 2px solid var(--color-border-default);
-  border-radius: 3px;
-  background-color: var(--color-bg-container);
-  cursor: pointer;
-  transition: all var(--theme-transition-duration) var(--theme-transition-timing);
-  display: inline-flex;
+  -webkit-tap-highlight-color: transparent;
+  transform: translate3d(0, 0, 0);
+  display: flex;
   align-items: center;
   justify-content: center;
+  flex-shrink: 0;
 }
 
-.custom-checkbox:hover .checkbox-wrapper {
-  border-color: var(--color-primary-light);
+.check svg {
+  position: relative;
+  z-index: 1;
+  fill: none;
+  border-radius: 3px;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke: var(--color-border-default, #c8ccd4);
+  stroke-width: 2;
+  transform: translate3d(0, 0, 0);
+  transition: all 0.2s ease;
 }
 
-/* 选中状态 - 背景变为主题色 */
-.checkbox-wrapper.checked {
-  background-color: var(--color-primary);
-  border-color: var(--color-primary);
+.check svg path {
+  stroke-dasharray: 64;
+  stroke-dashoffset: 0;
 }
 
-/* 内部装饰元素（暂时不使用） */
-.checkbox-inner {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  width: 10px;
-  height: 10px;
-  background-color: var(--color-bg-container);
-  border-radius: 1px;
-  transform: translate(-50%, -50%) scale(0);
-  transition: transform var(--theme-transition-duration) var(--theme-transition-timing);
+.check svg polyline {
+  stroke-dasharray: 22;
+  stroke-dashoffset: 66;
 }
 
-/* 勾选标记 - 未选中时隐藏 */
-.checkbox-check {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  width: 4px;
-  height: 8px;
-  border: solid var(--color-bg-container);
-  border-width: 0 2px 2px 0;
-  transform: translate(-50%, -60%) rotate(45deg) scale(0);
-  transition: all var(--theme-transition-duration) var(--theme-transition-timing);
-  opacity: 0;
-}
-
-/* 选中时显示勾选标记 */
-.checkbox-wrapper.checked .checkbox-check {
-  width: 5px;
-  height: 9px;
-  border-color: var(--color-bg-container);
-  transform: translate(-50%, -60%) rotate(45deg) scale(1);
+.check:hover:before {
   opacity: 1;
 }
 
+.check:hover svg {
+  stroke: var(--color-primary, #a3e583);
+}
+
+input[type="checkbox"]:checked + .check svg {
+  stroke: var(--color-primary, #a3e583);
+}
+
+input[type="checkbox"]:checked + .check svg path {
+  stroke-dashoffset: 64;
+  transition: all 0.3s linear;
+}
+
+input[type="checkbox"]:checked + .check svg polyline {
+  stroke-dashoffset: 42;
+  transition: all 0.2s linear;
+  transition-delay: 0.15s;
+}
+
+input[type="checkbox"]:disabled + .check {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+input[type="checkbox"]:disabled + .check:hover:before {
+  opacity: 0;
+}
+
+input[type="checkbox"]:disabled + .check:hover svg {
+  stroke: var(--color-border-default, #c8ccd4);
+}
+
 .checkbox-label {
-  margin-left: 8px;
   font-size: 12px;
   color: var(--color-text-primary);
   font-weight: normal;
+  cursor: pointer;
+  line-height: 18px;
+  display: flex;
+  align-items: center;
 }
 </style>
