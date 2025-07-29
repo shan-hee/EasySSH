@@ -256,9 +256,9 @@ export default defineComponent({
   height: 40px;
   position: relative;
   transition:
-    background-color var(--theme-transition-duration) var(--theme-transition-timing),
-    color var(--theme-transition-duration) var(--theme-transition-timing),
-    border-color var(--theme-transition-duration) var(--theme-transition-timing);
+    background-color var(--transition-fast),
+    color var(--transition-fast),
+    border-color var(--transition-fast);
   margin: 1px auto;
   background: none;
   border: none;
@@ -271,7 +271,7 @@ export default defineComponent({
 }
 
 .nav-item svg path {
-  transition: fill var(--theme-transition-fast) var(--theme-transition-timing);
+  transition: fill var(--transition-fast);
 }
 
 .nav-item:hover {
