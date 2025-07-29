@@ -1,8 +1,23 @@
 <template>
   <div class="app-container">
-    <AppSidebar />
+    <!-- 移动端遮罩层 -->
+    <div
+      v-if="isMobile && isSidebarOpen"
+      class="mobile-overlay"
+      @click="toggleSidebar"
+    ></div>
+
+    <AppSidebar
+      :is-mobile="isMobile"
+      :is-sidebar-open="isSidebarOpen"
+      @toggle-sidebar="toggleSidebar"
+    />
     <div class="main-content">
-      <AppHeader />
+      <AppHeader
+        :is-mobile="isMobile"
+        :is-sidebar-open="isSidebarOpen"
+        @toggle-sidebar="toggleSidebar"
+      />
 
       <!-- 添加终端背景层，仅在终端界面显示 -->
       <div v-if="isTerminalRoute && terminalHasBackground" class="terminal-background"></div>
@@ -68,6 +83,31 @@ export default defineComponent({
     const route = useRoute()
     const router = useRouter()
     const terminalTitle = ref('')
+
+    // 移动端检测和侧边栏状态管理
+    const isMobile = ref(false)
+    const isSidebarOpen = ref(false)
+
+    // 检测是否为移动端
+    const checkMobile = () => {
+      isMobile.value = window.innerWidth <= 768
+      // 移动端默认隐藏侧边栏
+      if (isMobile.value) {
+        isSidebarOpen.value = false
+      }
+    }
+
+    // 切换侧边栏显示状态
+    const toggleSidebar = () => {
+      if (isMobile.value) {
+        isSidebarOpen.value = !isSidebarOpen.value
+      }
+    }
+
+    // 监听窗口大小变化
+    const handleResize = () => {
+      checkMobile()
+    }
 
     const showSftpPanel = ref(false)
     const sftpPanelWidth = ref(450)
@@ -234,6 +274,10 @@ export default defineComponent({
     
     // 初始化
     onMounted(() => {
+      // 初始化移动端检测
+      checkMobile()
+      window.addEventListener('resize', handleResize)
+
       // 获取并设置当前活动会话ID
       const currentId = getCurrentSessionId();
       if (currentId) {
@@ -389,6 +433,7 @@ export default defineComponent({
 
     // 在组件卸载时移除监听器
     onUnmounted(() => {
+      window.removeEventListener('resize', handleResize);
       window.removeEventListener('resize', handleWindowResize);
       
       // 移除会话相关监听器
@@ -556,6 +601,11 @@ export default defineComponent({
       isTerminalRoute,
       terminalTitle,
 
+      // 移动端和侧边栏状态
+      isMobile,
+      isSidebarOpen,
+      toggleSidebar,
+
       showSftpPanel,
       toggleSftpPanel,
       closeSftpPanel,
@@ -628,4 +678,26 @@ export default defineComponent({
     left: 0; /* 在移动设备上占满整个宽度 */
   }
 }
-</style> 
+
+/* 移动端遮罩层样式 */
+.mobile-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  z-index: 15000;
+  opacity: 0;
+  animation: fadeIn 0.3s ease-in-out forwards;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+</style>

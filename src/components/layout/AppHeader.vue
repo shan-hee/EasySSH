@@ -1,5 +1,16 @@
 <template>
   <header class="app-header">
+    <!-- 移动端Logo -->
+    <div v-if="isMobile" class="mobile-logo-container">
+      <Logo
+        :size="24"
+        :clickable="true"
+        :width="40"
+        :height="45"
+        @click="handleMobileLogoClick"
+      />
+    </div>
+
     <!-- 标签页容器 -->
     <div class="tab-container">
       <div v-for="(tab, index) in tabStore.tabs" 
@@ -80,16 +91,31 @@ import { useUserStore } from '@/store/user'
 import { useTabStore } from '@/store/tab'
 import LoginPanel from '@/components/auth/LoginPanel.vue'
 import TabAdder from '@/components/layout/TabAdder.vue'
+import Logo from '@/components/common/Logo.vue'
 import { ElMessage } from 'element-plus'
 import log from '@/services/log'
 
 export default defineComponent({
   name: 'AppHeader',
+  props: {
+    // 是否为移动端
+    isMobile: {
+      type: Boolean,
+      default: false
+    },
+    // 侧边栏是否打开（移动端使用）
+    isSidebarOpen: {
+      type: Boolean,
+      default: false
+    }
+  },
+  emits: ['toggle-sidebar'],
   components: {
     LoginPanel,
-    TabAdder
+    TabAdder,
+    Logo
   },
-  setup() {
+  setup(props, { emit }) {
     const router = useRouter()
     const userStore = useUserStore()
     const tabStore = useTabStore()
@@ -208,6 +234,11 @@ export default defineComponent({
       }
     }
     
+    // 移动端Logo点击处理函数
+    const handleMobileLogoClick = () => {
+      emit('toggle-sidebar')
+    }
+
     // 组件卸载时清理事件监听器
     onUnmounted(() => {
       window.removeEventListener('auth:login-success-clear-tabs', handleLoginSuccessClearTabs);
@@ -225,7 +256,8 @@ export default defineComponent({
       handleTabClick,
       handleTabMouseDown,
       handleLoginSuccessClearTabs,
-      handleLogoutClearTabs
+      handleLogoutClearTabs,
+      handleMobileLogoClick
     }
   }
 })
@@ -515,5 +547,41 @@ export default defineComponent({
 /* 登录面板容器背景 - 使用主题变量 */
 .login-panel-container {
   background: var(--login-panel-container-bg);
+}
+
+/* 移动端Logo样式 */
+.mobile-logo-container {
+  display: none;
+}
+
+@media screen and (max-width: 768px) {
+  .mobile-logo-container {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 45px;
+    background-color: var(--header-bg); /* 使用与AppHeader相同的背景色 */
+    border-right: none; /* 移除移动端logo右边框 */
+    flex-shrink: 0;
+    -webkit-tap-highlight-color: transparent; /* 移除移动端点击高亮 */
+    -webkit-touch-callout: none; /* 移除长按菜单 */
+    -webkit-user-select: none; /* 移除文本选择 */
+    user-select: none;
+    cursor: pointer;
+  }
+
+  .mobile-logo-container:hover {
+    background-color: var(--header-bg); /* 保持与正常状态相同的背景色 */
+  }
+
+  .mobile-logo-container:active {
+    background-color: var(--header-bg); /* 保持与正常状态相同的背景色 */
+    transform: none; /* 移除任何变换效果 */
+  }
+
+  .tab-container {
+    margin-left: 0;
+  }
 }
 </style>

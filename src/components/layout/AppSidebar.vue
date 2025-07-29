@@ -1,7 +1,7 @@
 <template>
-  <aside class="sidebar">
+  <aside :class="['sidebar', { 'sidebar--mobile': isMobile, 'sidebar--open': isMobile && isSidebarOpen }]">
     <!-- Logo -->
-    <div class="logo rainbow-logo">
+    <div class="logo rainbow-logo" @click="handleLogoClick">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24">
         <defs>
           <linearGradient id="rainbow-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
@@ -108,7 +108,20 @@ import settingsService from '@/services/settings'
 
 export default defineComponent({
   name: 'AppSidebar',
-  setup() {
+  props: {
+    // 是否为移动端
+    isMobile: {
+      type: Boolean,
+      default: false
+    },
+    // 侧边栏是否打开（移动端使用）
+    isSidebarOpen: {
+      type: Boolean,
+      default: false
+    }
+  },
+  emits: ['toggle-sidebar'],
+  setup(props, { emit }) {
     const router = useRouter()
     const route = useRoute()
     const userStore = useUserStore()
@@ -163,12 +176,20 @@ export default defineComponent({
       window.open('https://github.com/shan-hee/EasySSH', '_blank')
     }
 
+    // Logo点击处理函数
+    const handleLogoClick = () => {
+      if (props.isMobile) {
+        emit('toggle-sidebar')
+      }
+    }
+
     return {
       currentRoute,
       currentTheme,
       handleNavigation,
       toggleTheme,
       openGitHub,
+      handleLogoClick,
       userStore
     }
   }
@@ -353,5 +374,131 @@ export default defineComponent({
   display: flex;
   flex-direction: column;
   align-items: center;
+}
+
+/* 移动端适配样式 */
+@media screen and (max-width: 768px) {
+  .sidebar--mobile {
+    position: fixed;
+    left: 0;
+    top: 0;
+    width: 250px;
+    height: 100vh;
+    z-index: 20000;
+    transform: translateX(-100%);
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    overflow-y: auto;
+    overflow-x: hidden;
+    box-shadow: 2px 0 8px rgba(0, 0, 0, 0.15);
+    border-right: none; /* 移除右边框 */
+    -webkit-tap-highlight-color: transparent; /* 移除移动端点击高亮 */
+  }
+
+  .sidebar--mobile.sidebar--open {
+    transform: translateX(0);
+  }
+
+  .sidebar--mobile .logo {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 40px;
+    height: 45px;
+    cursor: pointer;
+    border-right: none; /* 移除右边框 */
+    border-bottom: none;
+    transition: background-color 0.2s ease;
+    z-index: 1;
+    -webkit-tap-highlight-color: transparent; /* 移除移动端点击高亮 */
+    -webkit-touch-callout: none; /* 移除长按菜单 */
+    -webkit-user-select: none; /* 移除文本选择 */
+    user-select: none;
+  }
+
+  .sidebar--mobile .logo:hover {
+    background-color: transparent; /* 移除hover背景色 */
+  }
+
+  .sidebar--mobile .logo:active {
+    background-color: transparent; /* 移除active背景色 */
+    transform: none; /* 移除缩放效果 */
+  }
+
+  .sidebar--mobile .nav-menu {
+    width: 100%;
+    padding: 0;
+    margin-top: 45px; /* 为顶部logo留出空间 */
+  }
+
+  .sidebar--mobile .nav-item {
+    width: 100%;
+    height: 48px;
+    margin: 2px 0;
+    justify-content: flex-start;
+    padding: 0 15px 0 50px; /* 左侧留出空间给图标 */
+    border-radius: 0;
+    position: relative;
+    -webkit-tap-highlight-color: transparent; /* 移除移动端点击高亮 */
+    -webkit-touch-callout: none; /* 移除长按菜单 */
+    -webkit-user-select: none; /* 移除文本选择 */
+    user-select: none;
+  }
+
+  .sidebar--mobile .nav-item svg {
+    position: absolute;
+    left: 10px; /* 20px图标宽度的一半，使图标中心在20px位置，与logo中心对齐 */
+    top: 50%;
+    transform: translateY(-50%);
+  }
+
+  .sidebar--mobile .nav-item::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    left: 50px; /* 与padding-left保持一致 */
+    top: 50%;
+    transform: translateY(-50%);
+    background: none;
+    color: var(--sidebar-nav-color);
+    padding: 0;
+    border-radius: 0;
+    font-family: inherit;
+    font-size: 14px;
+    font-weight: normal;
+    line-height: normal;
+    white-space: nowrap;
+    max-width: none;
+    z-index: auto;
+    box-shadow: none;
+    display: block;
+    pointer-events: auto;
+    transition: none;
+  }
+
+  .sidebar--mobile .nav-item::before {
+    display: none;
+  }
+
+  .sidebar--mobile .nav-item:hover {
+    background-color: transparent; /* 移除hover背景色 */
+  }
+
+  .sidebar--mobile .nav-item:active {
+    background-color: transparent; /* 移除active背景色 */
+    transform: none; /* 移除缩放效果 */
+  }
+
+  .sidebar--mobile .nav-item:hover::after {
+    color: var(--sidebar-nav-hover-color);
+  }
+
+  .sidebar--mobile .nav-item.active::after {
+    color: var(--sidebar-nav-active-color);
+  }
+
+  .sidebar--mobile .bottom-buttons {
+    position: relative;
+    margin-top: auto;
+    padding: 20px 0;
+  }
 }
 </style>
