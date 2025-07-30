@@ -1,7 +1,7 @@
 <template>
   <Modal 
     v-model:visible="isVisible" 
-    title="用户设置" 
+    title="设置"
     customClass="user-settings-modal"
     :hide-footer="true"
     @close="handleClose"
