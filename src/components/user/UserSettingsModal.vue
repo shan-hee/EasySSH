@@ -69,45 +69,50 @@
         <!-- 账户设置面板 -->
         <div v-if="activeMenu === 'account'" class="content-panel">
           <div class="panel-body">
-            <!-- 用户名修改 -->
-            <div class="form-group">
-              <label>用户名</label>
-              <div class="input-group">
-                <input 
-                  v-model="accountForm.username" 
-                  type="text" 
-                  placeholder="请输入用户名"
-                  class="form-input"
-                />
+            <form @submit.prevent="updateAccount">
+              <!-- 用户名修改 -->
+              <div class="form-group">
+                <label>用户名</label>
+                <div class="input-group">
+                  <input
+                    v-model="accountForm.username"
+                    type="text"
+                    placeholder="请输入用户名"
+                    class="form-input"
+                    autocomplete="username"
+                  />
+                </div>
               </div>
-            </div>
-            
-            <!-- 密码修改 -->
-            <div class="form-group">
-              <label>原密码</label>
-              <div class="input-group">
-                <input 
-                  v-model="accountForm.oldPassword" 
-                  type="password" 
-                  placeholder="请输入原密码"
-                  class="form-input"
-                />
+
+              <!-- 密码修改 -->
+              <div class="form-group">
+                <label>原密码</label>
+                <div class="input-group">
+                  <input
+                    v-model="accountForm.oldPassword"
+                    type="password"
+                    placeholder="请输入原密码"
+                    class="form-input"
+                    autocomplete="current-password"
+                  />
+                </div>
               </div>
-            </div>
-            
-            <div class="form-group">
-              <label>新密码</label>
-              <div class="input-group">
-                <input 
-                  v-model="accountForm.newPassword" 
-                  type="password" 
-                  placeholder="请输入新密码"
-                  class="form-input"
-                />
+
+              <div class="form-group">
+                <label>新密码</label>
+                <div class="input-group">
+                  <input
+                    v-model="accountForm.newPassword"
+                    type="password"
+                    placeholder="请输入新密码"
+                    class="form-input"
+                    autocomplete="new-password"
+                  />
+                </div>
               </div>
-            </div>
+            </form>
           </div>
-          
+
           <div class="panel-footer">
             <button class="btn btn-primary" @click="updateAccount" :disabled="isLoading">
               <span v-if="isLoading" class="btn-loading"></span>
@@ -167,13 +172,15 @@
         <div v-if="activeMenu === 'terminal'" class="content-panel">
           <div class="panel-body">
 
-            <!-- 终端基础设置 -->
-            <div class="settings-section">
-              <h4 class="section-title">基础设置</h4>
-
-              <!-- 终端主题 -->
-              <div class="form-group form-group-horizontal">
-                <label>终端主题</label>
+            <!-- 终端主题 -->
+            <div class="security-item">
+              <div class="security-info">
+                <div class="security-title">终端主题</div>
+                <div class="security-description">
+                  选择您喜欢的终端主题风格，提供多种预设主题
+                </div>
+              </div>
+              <div class="security-action">
                 <select
                   v-model="terminalSettings.theme"
                   @change="saveTerminalSettings"
@@ -186,10 +193,17 @@
                   <option value="material">Material</option>
                 </select>
               </div>
+            </div>
 
-              <!-- 光标样式 -->
-              <div class="form-group form-group-horizontal">
-                <label>光标样式</label>
+            <!-- 光标样式 -->
+            <div class="security-item">
+              <div class="security-info">
+                <div class="security-title">光标样式</div>
+                <div class="security-description">
+                  设置终端光标的显示样式，影响输入位置的视觉效果
+                </div>
+              </div>
+              <div class="security-action">
                 <select
                   v-model="terminalSettings.cursorStyle"
                   @change="saveTerminalSettings"
@@ -200,10 +214,17 @@
                   <option value="bar">竖线</option>
                 </select>
               </div>
+            </div>
 
-              <!-- 终端字体 -->
-              <div class="form-group form-group-horizontal">
-                <label>终端字体</label>
+            <!-- 终端字体 -->
+            <div class="security-item">
+              <div class="security-info">
+                <div class="security-title">终端字体</div>
+                <div class="security-description">
+                  选择终端显示的字体，建议使用等宽字体以获得最佳效果
+                </div>
+              </div>
+              <div class="security-action">
                 <select
                   v-model="terminalSettings.fontFamily"
                   @change="saveTerminalSettings"
@@ -216,10 +237,17 @@
                   <option value="'Ubuntu Mono'">Ubuntu Mono</option>
                 </select>
               </div>
+            </div>
 
-              <!-- 字体大小 -->
-              <div class="form-group">
-                <label>字体大小</label>
+            <!-- 字体大小 -->
+            <div class="security-item">
+              <div class="security-info">
+                <div class="security-title">字体大小</div>
+                <div class="security-description">
+                  调整终端文字的大小，范围从8px到24px
+                </div>
+              </div>
+              <div class="security-action">
                 <div class="slider-container">
                   <input
                     type="range"
@@ -233,10 +261,9 @@
                   <span class="slider-value">{{ terminalSettings.fontSize }}px</span>
                 </div>
               </div>
+            </div>
 
-              <!-- 开关设置 -->
-              <div class="settings-section">
-                <!-- 选中复制 -->
+            <!-- 选中复制 -->
                 <div class="security-item">
                   <div class="security-info">
                     <div class="security-title">
@@ -301,15 +328,9 @@
                     </button>
                   </div>
                 </div>
-              </div>
-            </div>
 
-            <!-- 终端背景设置 -->
-            <div class="settings-section">
-              <h4 class="section-title">终端背景</h4>
-
-              <!-- 启用背景图片 -->
-              <div class="security-item">
+            <!-- 启用背景图片 -->
+            <div class="security-item">
                 <div class="security-info">
                   <div class="security-title">
                     背景图片
@@ -328,61 +349,60 @@
                     {{ terminalBgSettings.enabled ? '禁用' : '启用' }}
                   </button>
                 </div>
+            </div>
+
+            <template v-if="terminalBgSettings.enabled">
+              <div class="form-group">
+                <label>图片URL</label>
+                <input
+                  type="text"
+                  v-model="terminalBgSettings.url"
+                  placeholder="输入图片URL"
+                  @change="updateTerminalBg"
+                  class="form-input"
+                />
               </div>
 
-              <template v-if="terminalBgSettings.enabled">
-                <div class="form-group">
-                  <label>图片URL</label>
-                  <input
-                    type="text"
-                    v-model="terminalBgSettings.url"
-                    placeholder="输入图片URL"
+              <div class="form-row-flex">
+                <div class="form-group flex-item">
+                  <label>透明度</label>
+                  <div class="slider-container">
+                    <input
+                      type="range"
+                      v-model="terminalBgSettings.opacity"
+                      min="0.1"
+                      max="1"
+                      step="0.05"
+                      @input="updateTerminalBg"
+                      class="form-slider"
+                    />
+                    <span class="slider-value">{{ Math.round(terminalBgSettings.opacity * 100) }}%</span>
+                  </div>
+                </div>
+
+                <div class="form-group flex-item">
+                  <label>显示模式</label>
+                  <select
+                    v-model="terminalBgSettings.mode"
                     @change="updateTerminalBg"
-                    class="form-input"
-                  />
+                    class="form-select"
+                  >
+                    <option value="cover">适应(cover)</option>
+                    <option value="contain">包含(contain)</option>
+                    <option value="fill">填充(fill)</option>
+                    <option value="none">原始大小</option>
+                    <option value="repeat">重复平铺</option>
+                  </select>
                 </div>
+              </div>
 
-                <div class="form-row-flex">
-                  <div class="form-group flex-item">
-                    <label>透明度</label>
-                    <div class="slider-container">
-                      <input
-                        type="range"
-                        v-model="terminalBgSettings.opacity"
-                        min="0.1"
-                        max="1"
-                        step="0.05"
-                        @input="updateTerminalBg"
-                        class="form-slider"
-                      />
-                      <span class="slider-value">{{ Math.round(terminalBgSettings.opacity * 100) }}%</span>
-                    </div>
-                  </div>
-
-                  <div class="form-group flex-item">
-                    <label>显示模式</label>
-                    <select
-                      v-model="terminalBgSettings.mode"
-                      @change="updateTerminalBg"
-                      class="form-select"
-                    >
-                      <option value="cover">适应(cover)</option>
-                      <option value="contain">包含(contain)</option>
-                      <option value="fill">填充(fill)</option>
-                      <option value="none">原始大小</option>
-                      <option value="repeat">重复平铺</option>
-                    </select>
-                  </div>
+              <div class="form-group">
+                <label>背景预览</label>
+                <div class="terminal-bg-preview" :style="bgPreviewStyle">
+                  <div class="preview-label">背景预览</div>
                 </div>
-
-                <div class="form-group">
-                  <label>背景预览</label>
-                  <div class="terminal-bg-preview" :style="bgPreviewStyle">
-                    <div class="preview-label">背景预览</div>
-                  </div>
-                </div>
-              </template>
-            </div>
+              </div>
+            </template>
 
             <!-- 终端快捷键设置 -->
             <div class="settings-section">
@@ -403,11 +423,15 @@
                   <div class="shortcut-key-editor">
                     <input
                       type="text"
-                      v-model="shortcut.key"
-                      @blur="updateShortcut(shortcut, shortcut.key)"
-                      @keydown.enter="$event.target.blur()"
+                      :value="getDisplayValue(shortcut)"
+                      @focus="startKeyCapture(shortcut, $event)"
+                      @blur="endKeyCapture(shortcut)"
+                      @keydown="captureKeyDown($event, shortcut)"
+                      @keyup="captureKeyUp($event, shortcut)"
                       class="shortcut-input"
-                      placeholder="按键组合"
+                      :class="{ 'capturing': shortcut.isCapturing }"
+                      :placeholder="shortcut.isCapturing ? '' : '点击设置快捷键'"
+                      readonly
                     />
                   </div>
                 </div>
@@ -419,11 +443,7 @@
         <!-- 连接设置面板 -->
         <div v-if="activeMenu === 'connection'" class="content-panel">
           <div class="panel-body">
-
-
             <div class="settings-section">
-              <h4 class="section-title">连接配置</h4>
-
               <!-- 自动重连 -->
               <div class="security-item">
                 <div class="security-info">
@@ -521,6 +541,7 @@
             </div>
           </div>
         </div>
+
       </div>
     </div>
     
@@ -550,7 +571,7 @@
 </template>
 
 <script>
-import { defineComponent, ref, onMounted, onUnmounted, computed, watch, reactive } from 'vue'
+import { defineComponent, ref, onMounted, onUnmounted, computed, watch, reactive, nextTick } from 'vue'
 import { useUserStore } from '@/store/user'
 import { useTerminalStore } from '@/store/terminal'
 import { ElMessage } from 'element-plus'
@@ -620,15 +641,7 @@ export default defineComponent({
       initialized: false
     })
 
-    // 连接设置数据
-    const connectionSettings = reactive({
-      autoReconnect: true,
-      reconnectInterval: 3,
-      connectionTimeout: 10,
-      keepAlive: true,
-      keepAliveInterval: 30,
-      initialized: false
-    })
+
 
     // 终端背景设置数据
     const terminalBgSettings = reactive({
@@ -639,14 +652,34 @@ export default defineComponent({
       initialized: false
     })
 
+    // 连接设置数据
+    const connectionSettings = reactive({
+      autoReconnect: true,
+      reconnectInterval: 3,
+      connectionTimeout: 10,
+      keepAlive: true,
+      keepAliveInterval: 30,
+      initialized: false
+    })
+
+    // 默认快捷键定义
+    const defaultShortcuts = {
+      'terminal.copy': 'Ctrl+Shift+C',
+      'terminal.paste': 'Ctrl+Shift+V',
+      'accessibility.increaseFontSize': 'Ctrl+Alt+=',
+      'accessibility.decreaseFontSize': 'Ctrl+Alt+-',
+      'terminal.clear': 'Ctrl+L',
+      'settings.open': 'Ctrl+,'
+    }
+
     // 终端快捷键数据
     const terminalShortcuts = reactive([
-      { description: '复制选中内容', key: 'Ctrl+Shift+C', action: 'terminal.copy' },
-      { description: '粘贴', key: 'Ctrl+Shift+V', action: 'terminal.paste' },
-      { description: '增加字体大小', key: 'Ctrl+Alt+=', action: 'accessibility.increaseFontSize' },
-      { description: '减小字体大小', key: 'Ctrl+Alt+-', action: 'accessibility.decreaseFontSize' },
-      { description: '清空终端', key: 'Ctrl+L', action: 'terminal.clear' },
-      { description: '打开设置', key: 'Ctrl+,', action: 'settings.open' }
+      { description: '复制选中内容', key: 'Ctrl+Shift+C', action: 'terminal.copy', isCapturing: false },
+      { description: '粘贴', key: 'Ctrl+Shift+V', action: 'terminal.paste', isCapturing: false },
+      { description: '增加字体大小', key: 'Ctrl+Alt+=', action: 'accessibility.increaseFontSize', isCapturing: false },
+      { description: '减小字体大小', key: 'Ctrl+Alt+-', action: 'accessibility.decreaseFontSize', isCapturing: false },
+      { description: '清空终端', key: 'Ctrl+L', action: 'terminal.clear', isCapturing: false },
+      { description: '打开设置', key: 'Ctrl+,', action: 'settings.open', isCapturing: false }
     ])
 
     // 重置状态
@@ -707,6 +740,8 @@ export default defineComponent({
           Object.assign(connectionSettings, savedConnectionSettings)
           connectionSettings.initialized = true
         }
+
+
 
         // 初始化终端背景设置
         const savedBgSettings = localStorage.getItem('easyssh_terminal_bg')
@@ -868,6 +903,8 @@ export default defineComponent({
       }
     }
 
+
+
     // 更新终端背景设置
     const updateTerminalBg = () => {
       try {
@@ -929,48 +966,7 @@ export default defineComponent({
       }
     }
 
-    // 连接设置的数字控制方法
-    const incrementReconnectInterval = () => {
-      if (connectionSettings.reconnectInterval < 60) {
-        connectionSettings.reconnectInterval += 1
-        saveConnectionSettings()
-      }
-    }
 
-    const decrementReconnectInterval = () => {
-      if (connectionSettings.reconnectInterval > 1) {
-        connectionSettings.reconnectInterval -= 1
-        saveConnectionSettings()
-      }
-    }
-
-    const incrementConnectionTimeout = () => {
-      if (connectionSettings.connectionTimeout < 120) {
-        connectionSettings.connectionTimeout += 1
-        saveConnectionSettings()
-      }
-    }
-
-    const decrementConnectionTimeout = () => {
-      if (connectionSettings.connectionTimeout > 5) {
-        connectionSettings.connectionTimeout -= 1
-        saveConnectionSettings()
-      }
-    }
-
-    const incrementKeepAliveInterval = () => {
-      if (connectionSettings.keepAliveInterval < 300) {
-        connectionSettings.keepAliveInterval += 1
-        saveConnectionSettings()
-      }
-    }
-
-    const decrementKeepAliveInterval = () => {
-      if (connectionSettings.keepAliveInterval > 30) {
-        connectionSettings.keepAliveInterval -= 1
-        saveConnectionSettings()
-      }
-    }
 
     // 更新快捷键设置
     const updateShortcut = (shortcut, newValue) => {
@@ -1038,17 +1034,34 @@ export default defineComponent({
       if (confirm('确定要将所有快捷键重置为默认值吗？这将删除所有自定义快捷键设置。')) {
         try {
           resettingShortcuts.value = true;
+          log.info('开始重置所有快捷键...');
 
           // 获取键盘管理器服务
           const keyboardManager = window.services?.keyboardManager || localKeyboardManager;
 
           // 调用重置方法
-          keyboardManager.resetAllShortcuts();
+          const resetResult = keyboardManager.resetAllShortcuts();
 
-          // 重新加载快捷键
-          loadShortcuts();
+          if (resetResult) {
+            // 直接将所有快捷键重置为默认值
+            terminalShortcuts.forEach((shortcut, index) => {
+              const defaultKey = defaultShortcuts[shortcut.action];
+              if (defaultKey) {
+                // 使用Vue的响应式更新
+                Object.assign(terminalShortcuts[index], {
+                  ...shortcut,
+                  key: defaultKey,
+                  isCapturing: false
+                });
+                log.info(`重置快捷键: ${shortcut.action} -> ${defaultKey}`);
+              }
+            });
 
-          ElMessage.success('所有快捷键已重置为默认值');
+            log.info('所有快捷键已重置为默认值');
+            ElMessage.success('所有快捷键已重置为默认值');
+          } else {
+            throw new Error('重置操作失败');
+          }
         } catch (error) {
           log.error('重置快捷键失败', error);
           ElMessage.error(`重置快捷键失败：${error.message || '未知错误'}`);
@@ -1068,8 +1081,225 @@ export default defineComponent({
         const shortcutInfo = keyboardManager.getShortcutForAction(shortcut.action);
         if (shortcutInfo) {
           shortcut.key = shortcutInfo.key;
+        } else {
+          // 如果没有找到快捷键信息，使用默认值
+          const defaultKey = defaultShortcuts[shortcut.action];
+          if (defaultKey) {
+            shortcut.key = defaultKey;
+            log.info(`使用默认快捷键: ${shortcut.action} -> ${defaultKey}`);
+          } else {
+            log.warn(`未找到快捷键信息: ${shortcut.action}，且无默认值`);
+          }
+        }
+        // 确保每个快捷键都有 isCapturing 属性
+        if (shortcut.isCapturing === undefined) {
+          shortcut.isCapturing = false;
         }
       });
+
+      log.info('快捷键设置已重新加载');
+    }
+
+    // 连接设置的数字控制方法
+    const incrementReconnectInterval = () => {
+      if (connectionSettings.reconnectInterval < 60) {
+        connectionSettings.reconnectInterval += 1
+        saveConnectionSettings()
+      }
+    }
+
+    const decrementReconnectInterval = () => {
+      if (connectionSettings.reconnectInterval > 1) {
+        connectionSettings.reconnectInterval -= 1
+        saveConnectionSettings()
+      }
+    }
+
+    const incrementConnectionTimeout = () => {
+      if (connectionSettings.connectionTimeout < 120) {
+        connectionSettings.connectionTimeout += 1
+        saveConnectionSettings()
+      }
+    }
+
+    const decrementConnectionTimeout = () => {
+      if (connectionSettings.connectionTimeout > 5) {
+        connectionSettings.connectionTimeout -= 1
+        saveConnectionSettings()
+      }
+    }
+
+    const incrementKeepAliveInterval = () => {
+      if (connectionSettings.keepAliveInterval < 300) {
+        connectionSettings.keepAliveInterval += 1
+        saveConnectionSettings()
+      }
+    }
+
+    const decrementKeepAliveInterval = () => {
+      if (connectionSettings.keepAliveInterval > 30) {
+        connectionSettings.keepAliveInterval -= 1
+        saveConnectionSettings()
+      }
+    }
+
+    // 按键捕获相关变量
+    const captureState = reactive({
+      currentShortcut: null,
+      originalKey: '',
+      captureTimeout: null,
+      tempKey: '' // 临时显示的按键组合
+    })
+
+    // 获取显示值的方法
+    const getDisplayValue = (shortcut) => {
+      if (shortcut.isCapturing) {
+        return captureState.tempKey || '请按下快捷键组合...'
+      }
+      return shortcut.key
+    }
+
+    // 开始按键捕获
+    const startKeyCapture = (shortcut, event) => {
+      // 防止其他快捷键同时捕获
+      terminalShortcuts.forEach(s => s.isCapturing = false)
+
+      // 保存原始快捷键值
+      captureState.originalKey = shortcut.key
+      captureState.tempKey = '' // 清空临时按键
+
+      shortcut.isCapturing = true
+      captureState.currentShortcut = shortcut
+
+      // 清除之前的超时
+      if (captureState.captureTimeout) {
+        clearTimeout(captureState.captureTimeout)
+      }
+
+      // 设置超时自动取消捕获（5秒后自动恢复）
+      captureState.captureTimeout = setTimeout(() => {
+        endKeyCapture(shortcut)
+      }, 5000)
+
+      log.info(`开始捕获快捷键: ${shortcut.description}`)
+    }
+
+    // 结束按键捕获
+    const endKeyCapture = (shortcut) => {
+      // 延迟结束捕获，给按键事件处理留时间
+      setTimeout(() => {
+        if (shortcut.isCapturing) {
+          shortcut.isCapturing = false
+          captureState.currentShortcut = null
+          captureState.tempKey = ''
+
+          // 如果没有成功捕获到新的快捷键，恢复原始值
+          if (!shortcut.key || shortcut.key === '请按下快捷键组合...') {
+            shortcut.key = captureState.originalKey
+          }
+
+          if (captureState.captureTimeout) {
+            clearTimeout(captureState.captureTimeout)
+            captureState.captureTimeout = null
+          }
+        }
+      }, 100)
+    }
+
+    // 捕获按键按下事件
+    const captureKeyDown = (event, shortcut) => {
+      if (!shortcut.isCapturing) return
+
+      event.preventDefault()
+      event.stopPropagation()
+
+      const key = event.key
+
+      // 实时显示按键组合（包括修饰键）
+      const keyCombo = buildKeyComboString(event)
+      if (keyCombo) {
+        captureState.tempKey = keyCombo
+      }
+
+      // 忽略单独的修饰键，不完成捕获
+      if (['Control', 'Alt', 'Shift', 'Meta'].includes(key)) {
+        return
+      }
+
+      // 有实际按键时完成捕获
+      if (keyCombo && !['Control', 'Alt', 'Shift', 'Meta'].includes(key)) {
+        // 直接设置新的快捷键值
+        shortcut.key = keyCombo
+
+        // 尝试更新快捷键设置
+        try {
+          updateShortcut(shortcut, keyCombo)
+          log.info(`快捷键已更新: ${shortcut.description} -> ${keyCombo}`)
+        } catch (error) {
+          log.error('更新快捷键失败:', error)
+          // 如果更新失败，恢复原始值
+          shortcut.key = captureState.originalKey
+        }
+
+        // 结束捕获
+        shortcut.isCapturing = false
+        captureState.currentShortcut = null
+        captureState.tempKey = ''
+
+        if (captureState.captureTimeout) {
+          clearTimeout(captureState.captureTimeout)
+          captureState.captureTimeout = null
+        }
+      }
+    }
+
+    // 捕获按键释放事件（简化处理）
+    const captureKeyUp = (event, shortcut) => {
+      if (!shortcut.isCapturing) return
+      event.preventDefault()
+      event.stopPropagation()
+    }
+
+    // 构建快捷键组合字符串
+    const buildKeyComboString = (event) => {
+      const parts = []
+
+      // 添加修饰键（按固定顺序）
+      if (event.ctrlKey) parts.push('Ctrl')
+      if (event.altKey) parts.push('Alt')
+      if (event.shiftKey) parts.push('Shift')
+      if (event.metaKey) parts.push('Meta')
+
+      // 添加主键
+      let mainKey = event.key
+
+      // 处理特殊键名
+      const keyMap = {
+        ' ': 'Space',
+        'ArrowUp': 'Up',
+        'ArrowDown': 'Down',
+        'ArrowLeft': 'Left',
+        'ArrowRight': 'Right',
+        'Escape': 'Esc'
+      }
+
+      if (keyMap[mainKey]) {
+        mainKey = keyMap[mainKey]
+      }
+
+      // 处理字母键大小写
+      if (mainKey.length === 1 && mainKey.match(/[a-zA-Z]/)) {
+        mainKey = mainKey.toUpperCase()
+      }
+
+      // 忽略单独的修饰键
+      if (['Control', 'Alt', 'Shift', 'Meta'].includes(mainKey)) {
+        return null
+      }
+
+      parts.push(mainKey)
+
+      return parts.join('+')
     }
 
     // 关闭弹窗
@@ -1134,6 +1364,11 @@ export default defineComponent({
       updateShortcut,
       resetAllShortcuts,
       loadShortcuts,
+      getDisplayValue,
+      startKeyCapture,
+      endKeyCapture,
+      captureKeyDown,
+      captureKeyUp,
       incrementReconnectInterval,
       decrementReconnectInterval,
       incrementConnectionTimeout,
@@ -1224,6 +1459,7 @@ export default defineComponent({
   flex: 1;
   padding: 0;
   overflow-y: auto;
+  padding: 0px 20px 40px 0px;
 }
 
 .content-panel {
@@ -1235,8 +1471,32 @@ export default defineComponent({
 /* 面板主体 */
 .panel-body {
   flex: 1;
-  padding: 12px 32px 32px 32px;
+  /* padding: 12px 32px 52px 32px; */
   overflow-y: auto;
+}
+
+/* 自定义滚动条样式 */
+.panel-body::-webkit-scrollbar {
+  width: 8px;
+}
+
+.panel-body::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.panel-body::-webkit-scrollbar-thumb {
+  background-color: #333333;
+  border-radius: 4px;
+}
+
+.panel-body::-webkit-scrollbar-thumb:hover {
+  background-color: #333333;
+}
+
+/* Firefox 滚动条样式 */
+.panel-body {
+  scrollbar-width: thin;
+  scrollbar-color: #333333 transparent;
 }
 
 /* 表单组件 */
@@ -1473,11 +1733,6 @@ export default defineComponent({
   }
 }
 
-/* 设置界面样式 */
-.settings-section {
-  margin-bottom: 32px;
-}
-
 .section-title {
   font-size: 16px;
   font-weight: 600;
@@ -1528,7 +1783,7 @@ export default defineComponent({
 /* 表单选择框 */
 .form-select {
   width: 100%;
-  padding: 10px 12px;
+  padding: 7px 12px;
   border: 1px solid var(--color-border-default);
   border-radius: 6px;
   background-color: var(--color-bg-container);
@@ -1543,11 +1798,22 @@ export default defineComponent({
   box-shadow: 0 0 0 2px var(--color-primary-lightest);
 }
 
+/* 在安全设置项中的选择框样式 */
+.security-action .form-select {
+  min-width: 160px;
+  width: auto;
+}
+
 /* 滑块容器 */
 .slider-container {
   display: flex;
   align-items: center;
   gap: 12px;
+}
+
+/* 在安全设置项中的滑块容器样式 */
+.security-action .slider-container {
+  min-width: 160px;
 }
 
 .form-slider {
@@ -1723,8 +1989,7 @@ export default defineComponent({
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 20px;
-  padding-bottom: 8px;
+  padding: 20px 0 0 0;
   border-bottom: 1px solid var(--color-border-muted);
 }
 
@@ -1768,11 +2033,6 @@ export default defineComponent({
   transition: all 0.2s ease;
 }
 
-.shortcut-item:hover {
-  border-color: var(--color-primary-light);
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-}
-
 .shortcut-description {
   font-size: 14px;
   color: var(--color-text-primary);
@@ -1796,12 +2056,27 @@ export default defineComponent({
   min-width: 120px;
   text-align: center;
   transition: all 0.2s ease;
+  cursor: pointer;
+}
+
+.shortcut-input:hover {
+  border-color: var(--color-primary-light);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
 .shortcut-input:focus {
   outline: none;
   border-color: var(--color-primary);
   box-shadow: 0 0 0 2px var(--color-primary-lightest);
+}
+
+.shortcut-input.capturing {
+  border-color: var(--color-primary);
+  background-color: var(--color-primary-bg);
+  color: var(--color-primary);
+  font-family: monospace;
+  font-style: normal;
+  font-size: 13px;
 }
 
 

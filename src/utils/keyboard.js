@@ -134,29 +134,23 @@ export function setShortcut(action, key) {
  */
 export function resetShortcuts(action) {
   try {
-    // 获取现有自定义快捷键
-    const storedShortcuts = localStorage.getItem(SHORTCUTS_STORAGE_KEY);
-    if (!storedShortcuts) {
-      return true; // 没有自定义设置，不需要重置
-    }
-    
-    const customShortcuts = JSON.parse(storedShortcuts);
-    
     if (action) {
       // 重置特定快捷键
+      const storedShortcuts = localStorage.getItem(SHORTCUTS_STORAGE_KEY);
+      if (!storedShortcuts) {
+        return true; // 没有自定义设置，不需要重置
+      }
+
+      const customShortcuts = JSON.parse(storedShortcuts);
       if (customShortcuts[action]) {
         delete customShortcuts[action];
+        localStorage.setItem(SHORTCUTS_STORAGE_KEY, JSON.stringify(customShortcuts));
       }
     } else {
-      // 重置所有快捷键
-      Object.keys(customShortcuts).forEach(key => {
-        delete customShortcuts[key];
-      });
+      // 重置所有快捷键 - 直接清空整个存储
+      localStorage.removeItem(SHORTCUTS_STORAGE_KEY);
     }
-    
-    // 保存到本地存储
-    localStorage.setItem(SHORTCUTS_STORAGE_KEY, JSON.stringify(customShortcuts));
-    
+
     return true;
   } catch (error) {
     console.error('重置快捷键失败:', error);
