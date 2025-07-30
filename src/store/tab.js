@@ -234,34 +234,16 @@ export const useTabStore = defineStore('tab', () => {
     }
   }
   
-  // 添加设置标签页
+  // 添加设置标签页 - 现在打开用户设置模态框
   const addSettings = async () => {
-    const newTab = {
-      title: '设置',
-      type: 'settings',
-      path: '/settings',
-      data: {}
-    }
-    
     try {
-      // 强制创建新数组以触发响应式更新
-      const newTabs = [...state.tabs, newTab]
-      state.tabs = newTabs
-      
-      // 计算新索引
-      const newIndex = state.tabs.length - 1
-      
-      // 立即更新激活索引
-      state.activeTabIndex = newIndex
-      
-      // 用户添加了标签，重置清空标记
-      state.hasUserClearedTabs = false
-      
-      // 确保状态更新后再导航
-      await nextTick()
-      router.push('/settings')
+      // 发送打开用户设置的全局事件
+      window.dispatchEvent(new CustomEvent('open-user-settings', {
+        detail: { activeTab: 'terminal' }
+      }))
+      log.info('打开用户设置模态框')
     } catch (error) {
-      log.error('添加设置标签页失败:', error)
+      log.error('打开设置失败:', error)
     }
   }
   

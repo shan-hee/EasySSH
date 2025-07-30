@@ -158,6 +158,7 @@ export default defineComponent({
 
       // 监听打开用户设置事件
       window.addEventListener('auth:open-user-settings', handleOpenUserSettings);
+      window.addEventListener('open-user-settings', handleOpenUserSettings);
     });
     
     // 添加对标签状态的监听
@@ -214,8 +215,14 @@ export default defineComponent({
     const handleOpenUserSettings = (event) => {
       // 显示用户设置弹窗
       isUserSettingsVisible.value = true
-      // 可以通过event.detail.activeTab来设置默认激活的标签页
-      // 这里暂时不处理，让UserSettingsModal使用默认的account标签页
+      // 通过全局事件通知UserSettingsModal设置默认激活的标签页
+      if (event?.detail?.activeTab) {
+        setTimeout(() => {
+          window.dispatchEvent(new CustomEvent('user-settings-set-active-tab', {
+            detail: { activeTab: event.detail.activeTab }
+          }))
+        }, 100)
+      }
     }
 
     // 关闭用户设置弹窗
@@ -275,6 +282,7 @@ export default defineComponent({
       window.removeEventListener('auth:login-success-clear-tabs', handleLoginSuccessClearTabs);
       window.removeEventListener('auth:logout-clear-tabs', handleLogoutClearTabs);
       window.removeEventListener('auth:open-user-settings', handleOpenUserSettings);
+      window.removeEventListener('open-user-settings', handleOpenUserSettings);
     })
 
     return {

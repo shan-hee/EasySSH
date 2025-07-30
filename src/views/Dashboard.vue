@@ -217,8 +217,11 @@ export default {
     }
 
     const handleSettings = () => {
-      log.info('跳转到设置页面')
-      router.push('/settings')
+      log.info('打开用户设置')
+      // 发送打开用户设置的全局事件
+      window.dispatchEvent(new CustomEvent('open-user-settings', {
+        detail: { activeTab: 'terminal' }
+      }))
     }
 
     const handleViewAllConnections = () => {
