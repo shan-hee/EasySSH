@@ -10,7 +10,7 @@ const NewConnection = () => import('../views/connections/NewConnection.vue')
 // 创建一个空组件替代原Terminal组件
 const EmptyTerminal = { render: () => null }
 const Settings = () => import('../views/settings/Settings.vue')
-const UserProfile = () => import('../views/UserProfile.vue')
+
 const NotFound = () => import('../views/errors/NotFound.vue')
 const ScriptLibrary = () => import('../views/scripts/ScriptLibrary.vue')
 
@@ -105,15 +105,7 @@ const routes = [
       requiresAuth: false // 临时关闭认证要求
     }
   },
-  {
-    path: '/profile',
-    name: 'UserProfile',
-    component: UserProfile,
-    meta: {
-      title: 'EasySSH ',
-      requiresAuth: true
-    }
-  },
+
   {
     path: '/:pathMatch(.*)*',
     redirect: '/'

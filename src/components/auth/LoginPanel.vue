@@ -296,7 +296,7 @@ export default defineComponent({
       // 发出清空页签的全局事件
       window.dispatchEvent(new CustomEvent('auth:login-success-clear-tabs'))
 
-      // 如果使用默认密码，显示安全提示并导向修改密码页面
+      // 如果使用默认密码，显示安全提示并自动打开用户设置
       if (isDefaultPassword) {
         ElMessage({
           message: '您当前使用的是系统初始密码，存在严重安全风险。为了保障您的账户安全，请立即修改密码。',
@@ -306,8 +306,16 @@ export default defineComponent({
           duration: 5000
         })
 
-        // 导航到用户资料页进行密码修改
-        router.push('/profile')
+        // 先导航到主页
+        router.push('/')
+
+        // 延迟一下再打开用户设置，确保页面已加载
+        setTimeout(() => {
+          // 发送打开用户设置的全局事件
+          window.dispatchEvent(new CustomEvent('auth:open-user-settings', {
+            detail: { activeTab: 'account' }
+          }))
+        }, 500)
         return
       }
 
