@@ -15,6 +15,9 @@ const logger = require('../utils/logger');
 const utils = require('./utils');
 const { MSG_TYPE, sendMessage, sendError, validateSshSession, safeExec, recordActivity, logMessage } = utils;
 
+// 导入监控桥接服务
+const monitoringBridge = require('../services/monitoringBridge');
+
 // 存储活动的SSH连接
 const sessions = new Map();
 
@@ -351,9 +354,21 @@ function cleanupSession(sessionId) {
     }
   }
   
+  // 确保监控数据收集已停止（防止重复调用）
+  try {
+    monitoringBridge.stopMonitoring(sessionId);
+    logger.debug('SSH会话清理，确保监控数据收集已停止', { sessionId });
+  } catch (error) {
+    logger.error('SSH会话清理时停止监控数据收集失败', {
+      sessionId,
+      error: error.message,
+      stack: error.stack
+    });
+  }
+
   // 从会话映射中移除
   sessions.delete(sessionId);
-  
+
   logger.info('SSH会话已清理', { sessionId });
 }
 
@@ -369,18 +384,38 @@ async function handleConnect(ws, data) {
     // 检查是否是重新连接到现有会话
     if (sessions.has(sessionId)) {
       const session = sessions.get(sessionId);
-      
+
       // 更新WebSocket连接
       session.ws = ws;
       clearTimeout(session.cleanupTimeout);
-      
+
       // 通知客户端连接成功
       sendMessage(ws, MSG_TYPE.CONNECTED, { sessionId });
-      
+
+      // SSH重连成功后重新启动监控数据收集
+      try {
+        const hostInfo = {
+          address: session.connectionInfo.host,
+          port: session.connectionInfo.port,
+          username: session.connectionInfo.username
+        };
+
+        monitoringBridge.startMonitoring(sessionId, session.conn, hostInfo);
+        logger.info('SSH重连成功，监控数据收集已重新启动', {
+          sessionId,
+          host: `${hostInfo.username || 'unknown'}@${hostInfo.address || 'unknown'}:${hostInfo.port || 22}`
+        });
+      } catch (error) {
+        logger.error('SSH重连成功但重新启动监控数据收集失败', {
+          sessionId,
+          error: error.message
+        });
+      }
+
       logger.info('重新连接到SSH会话', { sessionId });
-      
+
       // 延迟测量现在通过保活机制触发，无需在此处执行
-      
+
       return sessionId;
     }
     
@@ -408,7 +443,55 @@ async function handleConnect(ws, data) {
     };
     
     sessions.set(sessionId, session);
-    
+
+    // 处理SSH连接断开
+    conn.on('close', () => {
+      logger.info('SSH连接已断开', { sessionId });
+
+      // SSH连接断开时立即停止监控数据收集
+      try {
+        monitoringBridge.stopMonitoring(sessionId);
+        logger.info('SSH连接断开，监控数据收集已停止', { sessionId });
+      } catch (error) {
+        logger.warn('停止监控数据收集失败', {
+          sessionId,
+          error: error.message
+        });
+      }
+
+      // 通知客户端连接断开
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        sendMessage(ws, MSG_TYPE.DISCONNECTED, { sessionId });
+      }
+
+      // 清理会话
+      cleanupSession(sessionId);
+    });
+
+    // 处理SSH连接错误
+    conn.on('error', (err) => {
+      logger.error('SSH连接错误', { sessionId, error: err.message });
+
+      // SSH连接错误时立即停止监控数据收集
+      try {
+        monitoringBridge.stopMonitoring(sessionId);
+        logger.info('SSH连接错误，监控数据收集已停止', { sessionId });
+      } catch (error) {
+        logger.warn('停止监控数据收集失败', {
+          sessionId,
+          error: error.message
+        });
+      }
+
+      // 通知客户端连接错误
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        sendError(ws, `SSH连接错误: ${err.message}`, sessionId);
+      }
+
+      // 清理会话
+      cleanupSession(sessionId);
+    });
+
     // 创建SSH Shell
     conn.shell({ term: 'xterm-color' }, (err, stream) => {
       if (err) {
@@ -433,23 +516,67 @@ async function handleConnect(ws, data) {
       // 处理SSH错误
       stream.on('error', (err) => {
         logger.error('SSH Shell错误', { sessionId, error: err.message });
+
+        // SSH连接错误时立即停止监控数据收集
+        try {
+          monitoringBridge.stopMonitoring(sessionId);
+          logger.info('SSH连接错误，监控数据收集已停止', { sessionId });
+        } catch (error) {
+          logger.warn('停止监控数据收集失败', {
+            sessionId,
+            error: error.message
+          });
+        }
+
         sendError(ws, `Shell错误: ${err.message}`, sessionId);
       });
       
       // 处理SSH关闭
       stream.on('close', () => {
         logger.info('SSH Shell会话已关闭', { sessionId });
-        
+
+        // SSH连接关闭时立即停止监控数据收集
+        try {
+          monitoringBridge.stopMonitoring(sessionId);
+          logger.info('SSH连接关闭，监控数据收集已停止', { sessionId });
+        } catch (error) {
+          logger.warn('停止监控数据收集失败', {
+            sessionId,
+            error: error.message
+          });
+        }
+
         sendMessage(ws, MSG_TYPE.CLOSED, { sessionId });
-        
+
         cleanupSession(sessionId);
       });
       
       // 通知客户端连接成功
       sendMessage(ws, MSG_TYPE.CONNECTED, { sessionId });
-      
+
+      // SSH连接成功后立即启动监控数据收集
+      try {
+        const hostInfo = {
+          address: connectionInfo.address,
+          port: connectionInfo.port,
+          username: connectionInfo.username
+        };
+
+        monitoringBridge.startMonitoring(sessionId, conn, hostInfo);
+        logger.info('SSH连接成功，监控数据收集已启动', {
+          sessionId,
+          host: `${hostInfo.username || 'unknown'}@${hostInfo.address || 'unknown'}:${hostInfo.port || 22}`
+        });
+      } catch (error) {
+        logger.error('SSH连接成功但启动监控数据收集失败', {
+          sessionId,
+          host: `${connectionInfo.username}@${connectionInfo.address}:${connectionInfo.port}`,
+          error: error.message
+        });
+      }
+
       logger.info('新SSH会话已创建', { sessionId });
-      
+
       // 延迟测量现在通过保活机制触发，无需在此处执行
     });
     

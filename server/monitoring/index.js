@@ -8,20 +8,16 @@ const logger = require('../utils/logger');
 
 // 存储前端监控会话（浏览器连接）
 const frontendSessions = new Map();
-// 存储监控客户端会话（服务器上的监控程序连接）
-const monitoringClientSessions = new Map();
 // 存储服务器订阅关系：serverId -> Set<frontendSessionId>
 const serverSubscriptions = new Map();
 // 存储监控数据缓存：serverId -> 最新监控数据
 const monitoringDataCache = new Map();
 // 存储IP到组合标识符的映射：ipAddress -> hostId (hostname@ip)
 const ipToHostIdMap = new Map();
-// 存储监控客户端到主机ID的映射：sessionId -> hostId
-const clientSessionToHostIdMap = new Map();
 
 /**
- * 初始化前端监控WebSocket服务器 - 重构版
- * 专门处理前端监控数据传输，移除监控客户端逻辑
+ * 初始化前端监控WebSocket服务器 - SSH集成版
+ * 处理前端监控数据传输，数据来源为SSH收集器
  * @param {Object} server HTTP服务器实例，用于集成到主服务器
  */
 function initMonitoringWebSocketServer(server) {
@@ -45,7 +41,7 @@ function initMonitoringWebSocketServer(server) {
     }
   });
 
-  // 监听连接事件 - 现在只处理前端连接，监控客户端连接通过专用路径处理
+  // 监听连接事件 - 只处理前端连接，监控数据来源为SSH收集器
   wss.on('connection', (ws, req) => {
     logger.debug('收到前端监控WebSocket连接请求', { url: req.url });
 
@@ -60,15 +56,28 @@ function initMonitoringWebSocketServer(server) {
     handleFrontendConnection(ws, sessionId, clientIp, subscribeServer);
   });
 
-  // 定期清理长时间不活跃的连接（每5分钟）
+  // 定期清理长时间不活跃的前端连接（每5分钟）
   setInterval(() => {
     const now = Date.now();
 
     // 清理不活跃的前端会话
     frontendSessions.forEach((session, id) => {
+      // 检查WebSocket连接状态
+      if (session.ws && session.ws.readyState !== WebSocket.OPEN) {
+        logger.info('清理已断开的前端监控会话', {
+          sessionId: id,
+          readyState: session.ws.readyState
+        });
+        cleanupFrontendSession(id);
+        return;
+      }
+
       // 超过30分钟不活跃则清理
       if (now - session.lastActivity > 30 * 60 * 1000) {
-        logger.info('清理不活跃的前端会话', { sessionId: id });
+        logger.info('清理不活跃的前端监控会话', {
+          sessionId: id,
+          inactiveTime: Math.round((now - session.lastActivity) / 1000) + 's'
+        });
         if (session.ws && session.ws.readyState === WebSocket.OPEN) {
           session.ws.close();
         }
@@ -76,84 +85,19 @@ function initMonitoringWebSocketServer(server) {
       }
     });
 
-    // 清理不活跃的监控客户端会话
-    monitoringClientSessions.forEach((session, id) => {
-      // 超过10分钟不活跃则清理
-      if (now - session.lastActivity > 10 * 60 * 1000) {
-        logger.info('清理不活跃的监控客户端会话', { sessionId: id });
-        if (session.ws && session.ws.readyState === WebSocket.OPEN) {
-          session.ws.close();
-        }
-        cleanupMonitoringClientSession(id);
-      }
-    });
+    // 记录当前活跃的前端监控会话数量（仅在有会话时记录）
+    if (frontendSessions.size > 0) {
+      logger.debug('当前活跃前端监控会话', {
+        count: frontendSessions.size,
+        sessions: Array.from(frontendSessions.keys()).slice(0, 5) // 只显示前5个会话ID
+      });
+    }
   }, 5 * 60 * 1000);
 
   return wss;
 }
 
-/**
- * 处理监控客户端连接
- * @param {WebSocket} ws WebSocket连接
- * @param {string} sessionId 会话ID
- * @param {string} clientIp 客户端IP
- */
-function handleMonitoringClientConnection(ws, sessionId, clientIp) {
-  // 存储监控客户端会话信息
-  monitoringClientSessions.set(sessionId, {
-    id: sessionId,
-    ws,
-    connectedAt: new Date(),
-    clientIp,
-    lastActivity: Date.now(),
-    hostId: null, // 将在收到第一条数据时设置
-    stats: {
-      messagesReceived: 0,
-      messagesSent: 0
-    }
-  });
 
-  logger.info('监控客户端会话已创建', { sessionId, clientIp });
-
-  // 发送会话确认
-  sendMessage(ws, {
-    type: 'session_created',
-    data: {
-      sessionId,
-      timestamp: Date.now(),
-      connectionType: 'monitoring_client'
-    }
-  });
-
-  // 处理接收到的消息
-  ws.on('message', (message) => {
-    try {
-      const session = monitoringClientSessions.get(sessionId);
-      if (session) {
-        session.lastActivity = Date.now();
-        session.stats.messagesReceived++;
-      }
-
-      const data = JSON.parse(message);
-      handleMonitoringClientMessage(ws, sessionId, data);
-    } catch (err) {
-      logger.error('处理监控客户端消息出错', { sessionId, error: err.message });
-      sendError(ws, '消息处理错误', sessionId);
-    }
-  });
-
-  // 处理连接关闭
-  ws.on('close', () => {
-    logger.info('监控客户端连接已关闭', { sessionId });
-    cleanupMonitoringClientSession(sessionId);
-  });
-
-  // 处理错误
-  ws.on('error', (err) => {
-    logger.error('监控客户端WebSocket错误', { sessionId, error: err.message });
-    cleanupMonitoringClientSession(sessionId);
-  });
-}
 
 /**
  * 处理前端连接
@@ -216,8 +160,13 @@ function handleFrontendConnection(ws, sessionId, clientIp, subscribeServer) {
   });
 
   // 处理连接关闭
-  ws.on('close', () => {
-    logger.info('前端连接已关闭', { sessionId });
+  ws.on('close', (code, reason) => {
+    logger.info('前端监控连接已关闭', {
+      sessionId,
+      code,
+      reason: reason?.toString(),
+      clientIp
+    });
 
     // 发送监控断开状态给其他可能的连接
     const session = frontendSessions.get(sessionId);
@@ -235,7 +184,7 @@ function handleFrontendConnection(ws, sessionId, clientIp, subscribeServer) {
                   data: {
                     serverId,
                     status: 'disconnected',
-                    message: '监控WebSocket连接已断开',
+                    message: '前端监控WebSocket连接已断开',
                     timestamp: Date.now()
                   }
                 });
@@ -374,15 +323,68 @@ function unsubscribeFromServer(frontendSessionId, serverId) {
 
   // 从全局订阅映射中移除
   if (serverSubscriptions.has(serverId)) {
-    serverSubscriptions.get(serverId).delete(frontendSessionId);
+    const subscribedSessions = serverSubscriptions.get(serverId);
+    subscribedSessions.delete(frontendSessionId);
 
-    // 如果没有订阅者了，删除服务器映射
-    if (serverSubscriptions.get(serverId).size === 0) {
+    // 如果没有订阅者了，删除服务器映射并停止SSH监控
+    if (subscribedSessions.size === 0) {
       serverSubscriptions.delete(serverId);
+
+      // 通知SSH监控停止收集该服务器的数据
+      try {
+        const monitoringBridge = require('../services/monitoringBridge');
+        const activeCollectors = monitoringBridge.getAllCollectorStatus();
+
+        // 查找对应服务器的SSH会话并停止监控
+        for (const collector of activeCollectors) {
+          let shouldStop = false;
+
+          // 多种匹配方式确保能找到对应的收集器
+          if (collector.hostInfo) {
+            // 1. 直接匹配IP地址
+            if (collector.hostInfo.address === serverId) {
+              shouldStop = true;
+            }
+            // 2. 匹配主机ID
+            else if (collector.hostId === serverId) {
+              shouldStop = true;
+            }
+            // 3. 主机ID包含服务器ID（如 "hostname@ip" 包含 "ip"）
+            else if (collector.hostId && collector.hostId.includes(serverId)) {
+              shouldStop = true;
+            }
+            // 4. 服务器ID包含主机IP（处理端口情况）
+            else if (serverId.includes(collector.hostInfo.address)) {
+              shouldStop = true;
+            }
+          }
+
+          if (shouldStop) {
+            logger.info('前端订阅已清空，停止SSH监控数据收集', {
+              serverId,
+              sessionId: collector.sessionId,
+              hostId: collector.hostId,
+              hostAddress: collector.hostInfo?.address
+            });
+            monitoringBridge.stopMonitoring(collector.sessionId);
+            break;
+          }
+        }
+      } catch (error) {
+        logger.error('停止SSH监控数据收集失败', {
+          serverId,
+          error: error.message,
+          stack: error.stack
+        });
+      }
     }
   }
 
-  logger.info('前端会话已取消订阅服务器', { frontendSessionId, serverId });
+  logger.info('前端会话已取消订阅服务器', {
+    frontendSessionId,
+    serverId,
+    remainingSubscribers: serverSubscriptions.get(serverId)?.size || 0
+  });
 }
 
 /**
@@ -425,87 +427,9 @@ function handleUnsubscribeServer(ws, sessionId, payload) {
   });
 }
 
-/**
- * 处理监控客户端消息
- * @param {WebSocket} ws WebSocket连接
- * @param {string} sessionId 会话ID
- * @param {Object} data 消息数据
- */
-function handleMonitoringClientMessage(ws, sessionId, data) {
-  const { type } = data;
 
-  switch (type) {
-    case 'system_stats':
-      // 处理监控数据（来自监控客户端）
-      handleMonitoringDataFromClient(ws, sessionId, data);
-      break;
 
-    case 'ping':
-      // 处理心跳消息
-      sendMessage(ws, {
-        type: 'pong',
-        data: {
-          timestamp: Date.now(),
-          sessionId
-        }
-      });
-      break;
 
-    case 'pong':
-      // 处理心跳响应
-      logger.debug('收到监控客户端心跳响应', { sessionId });
-      break;
-
-    default:
-      logger.warn('收到未知类型的监控客户端消息', { sessionId, messageType: type });
-      sendError(ws, '未知的消息类型', sessionId);
-  }
-}
-
-/**
- * 清理监控客户端会话
- * @param {string} sessionId 会话ID
- */
-function cleanupMonitoringClientSession(sessionId) {
-  const session = monitoringClientSessions.get(sessionId);
-  if (session) {
-    logger.info('清理监控客户端会话', { sessionId });
-
-    // 获取该客户端的主机ID
-    const hostId = session.hostId;
-
-    // 关闭WebSocket连接
-    if (session.ws && session.ws.readyState === WebSocket.OPEN) {
-      session.ws.close();
-    }
-
-    // 删除会话
-    monitoringClientSessions.delete(sessionId);
-
-    // 如果有主机ID，清理相关的监控数据
-    if (hostId) {
-      logger.info('监控客户端断开，清理监控数据', { sessionId, hostId });
-
-      // 删除监控数据缓存
-      monitoringDataCache.delete(hostId);
-
-      // 清理IP映射
-      if (hostId.includes('@')) {
-        const [, ipAddress] = hostId.split('@');
-        if (ipAddress && ipToHostIdMap.get(ipAddress) === hostId) {
-          ipToHostIdMap.delete(ipAddress);
-          logger.debug('清理IP映射', { ipAddress, hostId });
-        }
-      }
-
-      // 清理客户端会话到主机ID的映射
-      clientSessionToHostIdMap.delete(sessionId);
-
-      // 通知所有订阅该主机的前端会话：监控服务已卸载
-      notifyMonitoringStatusChange(hostId, 'not_installed', '监控客户端已断开连接');
-    }
-  }
-}
 
 /**
  * 清理前端会话
@@ -514,12 +438,20 @@ function cleanupMonitoringClientSession(sessionId) {
 function cleanupFrontendSession(sessionId) {
   const session = frontendSessions.get(sessionId);
   if (session) {
-    logger.info('清理前端会话', { sessionId });
+    logger.info('清理前端监控会话', {
+      sessionId,
+      clientIp: session.clientIp,
+      subscribedServers: session.subscribedServers?.size || 0,
+      connectedAt: session.connectedAt
+    });
 
     // 取消所有订阅
-    session.subscribedServers.forEach(serverId => {
-      unsubscribeFromServer(sessionId, serverId);
-    });
+    if (session.subscribedServers) {
+      session.subscribedServers.forEach(serverId => {
+        unsubscribeFromServer(sessionId, serverId);
+        logger.debug('取消前端会话订阅', { sessionId, serverId });
+      });
+    }
 
     // 关闭WebSocket连接
     if (session.ws && session.ws.readyState === WebSocket.OPEN) {
@@ -528,66 +460,19 @@ function cleanupFrontendSession(sessionId) {
 
     // 删除会话
     frontendSessions.delete(sessionId);
+
+    logger.debug('前端监控会话已清理', {
+      sessionId,
+      remainingSessions: frontendSessions.size
+    });
+  } else {
+    logger.debug('前端监控会话不存在，跳过清理', { sessionId });
   }
 }
 
 
 
-/**
- * 通知前端监控状态变化
- * @param {string} hostId 主机标识符
- * @param {string} status 状态（installed/not_installed）
- * @param {string} message 状态消息
- */
-function notifyMonitoringStatusChange(hostId, status, message) {
-  const statusMessage = {
-    type: 'monitoring_status',
-    data: {
-      hostId: hostId,
-      status: status,
-      available: status === 'installed',
-      message: message,
-      timestamp: Date.now()
-    }
-  };
 
-  let notifiedCount = 0;
-
-  // 通知直接订阅该主机的前端会话
-  if (serverSubscriptions.has(hostId)) {
-    const subscribedFrontends = serverSubscriptions.get(hostId);
-    subscribedFrontends.forEach(frontendSessionId => {
-      const targetSession = frontendSessions.get(frontendSessionId);
-      if (targetSession && targetSession.ws && targetSession.ws.readyState === WebSocket.OPEN) {
-        sendMessage(targetSession.ws, statusMessage);
-        notifiedCount++;
-      }
-    });
-  }
-
-  // 如果是组合标识符，还要通知订阅IP地址的前端会话
-  if (hostId.includes('@')) {
-    const [, ipAddress] = hostId.split('@');
-    if (ipAddress && serverSubscriptions.has(ipAddress)) {
-      const subscribedFrontends = serverSubscriptions.get(ipAddress);
-      subscribedFrontends.forEach(frontendSessionId => {
-        const targetSession = frontendSessions.get(frontendSessionId);
-        if (targetSession && targetSession.ws && targetSession.ws.readyState === WebSocket.OPEN) {
-          sendMessage(targetSession.ws, statusMessage);
-          notifiedCount++;
-        }
-      });
-    }
-  }
-
-  if (notifiedCount > 0) {
-    logger.info('已通知前端监控状态变化', {
-      hostId,
-      status,
-      notifiedCount
-    });
-  }
-}
 
 
 
@@ -734,41 +619,74 @@ function handleMonitoringDataFromClient(_ws, sessionId, data) {
     return;
   }
 
-  logger.debug('收到监控数据', { hostId, sessionId });
+  logger.debug('收到监控客户端数据', { hostId, sessionId });
 
-  // 记录监控客户端会话的主机ID
-  const clientSession = monitoringClientSessions.get(sessionId);
-  if (clientSession && !clientSession.hostId) {
-    clientSession.hostId = hostId;
-    clientSessionToHostIdMap.set(sessionId, hostId);
-    logger.info('监控客户端主机ID已记录', { sessionId, hostId });
+  // 处理监控数据的通用逻辑
+  processMonitoringData(sessionId, hostId, monitoringData, 'monitoring_client');
+}
+
+/**
+ * 处理来自SSH的监控数据
+ * @param {string} sessionId SSH会话ID
+ * @param {Object} data 监控数据
+ */
+function handleMonitoringDataFromSSH(sessionId, data) {
+  // 只在开发环境记录详细的监控数据日志
+  if (process.env.NODE_ENV === 'development') {
+    logger.debug('收到SSH监控数据', { sessionId, type: data.type });
   }
 
+  // 从payload中提取监控数据
+  const monitoringData = data.payload || data;
+  const hostId = data.hostId || monitoringData.hostId;
+
+  if (!hostId) {
+    logger.warn('无法确定SSH监控数据的主机标识', { sessionId });
+    return;
+  }
+
+  logger.debug('收到SSH监控数据', { hostId, sessionId });
+
+  // 处理监控数据的通用逻辑
+  processMonitoringData(sessionId, hostId, monitoringData, 'ssh_collector');
+}
+
+/**
+ * 处理监控数据的通用逻辑
+ * @param {string} sessionId 会话ID
+ * @param {string} hostId 主机标识符
+ * @param {Object} monitoringData 监控数据
+ * @param {string} source 数据来源
+ */
+function processMonitoringData(sessionId, hostId, monitoringData, source) {
   // 如果是组合标识符，建立IP映射
   if (hostId.includes('@')) {
     const [hostname, ipAddress] = hostId.split('@');
     if (hostname && ipAddress) {
+      // 只在首次建立映射时记录日志
+      if (!ipToHostIdMap.has(ipAddress)) {
+        logger.debug('建立IP映射', { ipAddress, hostId });
+      }
       ipToHostIdMap.set(ipAddress, hostId);
-      logger.debug('建立IP映射', { ipAddress, hostId });
     }
   }
 
-  // 直接使用客户端提供的主机标识符缓存数据
+  // 直接使用主机标识符缓存数据
   const cacheData = {
     ...monitoringData,
     lastUpdated: Date.now(),
     sessionId,
-    source: 'monitoring_client',
+    source: source,
     hostId: hostId
   };
 
-  // 使用客户端提供的标识符作为缓存key
+  // 使用主机标识符作为缓存key
   monitoringDataCache.set(hostId, cacheData);
 
   logger.debug('监控数据已更新', {
     hostId,
     sessionId,
-    source: 'monitoring_client'
+    source: source
   });
 
   // 向订阅了该主机的前端会话广播数据
@@ -816,12 +734,14 @@ function handleMonitoringDataFromClient(_ws, sessionId, data) {
     logger.debug('监控数据已广播', {
       hostId,
       broadcastCount,
-      sessionId
+      sessionId,
+      source
     });
   } else {
     logger.debug('没有前端订阅该主机', {
       hostId,
-      sessionId
+      sessionId,
+      source
     });
   }
 }
@@ -1009,6 +929,6 @@ module.exports = {
   subscribeToServer,
   unsubscribeFromServer,
   cleanupFrontendSession,
-  // 监控客户端相关函数
-  handleMonitoringClientConnection
+  // SSH监控数据处理函数
+  handleMonitoringDataFromSSH
 };

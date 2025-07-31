@@ -355,13 +355,27 @@ function initWebSocketServer(server) {
     });
     
     ws.on('close', () => {
-      logger.info('SSH WebSocket连接已关闭');
-      
+      logger.info('SSH WebSocket连接已关闭', { sessionId });
+
+      // 立即停止监控数据收集
+      if (sessionId) {
+        try {
+          const monitoringBridge = require('../services/monitoringBridge');
+          monitoringBridge.stopMonitoring(sessionId);
+          logger.debug('SSH WebSocket断开，监控数据收集已停止', { sessionId });
+        } catch (error) {
+          logger.warn('停止监控数据收集失败', {
+            sessionId,
+            error: error.message
+          });
+        }
+      }
+
       // 清理资源
       if (sessionId && ssh.sessions.has(sessionId)) {
         const session = ssh.sessions.get(sessionId);
         session.ws = null;
-        
+
         // 如果客户端意外断开，先保留SSH连接一段时间
         // 允许客户端重新连接，延长保留时间到24小时
         clearTimeout(session.cleanupTimeout);
@@ -374,7 +388,21 @@ function initWebSocketServer(server) {
     });
     
     ws.on('error', (err) => {
-      logger.error('SSH WebSocket错误', { error: err.message });
+      logger.error('SSH WebSocket错误', { sessionId, error: err.message });
+
+      // WebSocket错误时也停止监控数据收集
+      if (sessionId) {
+        try {
+          const monitoringBridge = require('../services/monitoringBridge');
+          monitoringBridge.stopMonitoring(sessionId);
+          logger.debug('SSH WebSocket错误，监控数据收集已停止', { sessionId });
+        } catch (error) {
+          logger.warn('停止监控数据收集失败', {
+            sessionId,
+            error: error.message
+          });
+        }
+      }
     });
   });
 

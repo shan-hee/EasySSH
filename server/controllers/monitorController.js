@@ -1,50 +1,12 @@
 /**
- * 系统监控控制器 - 重构版
- * 专门处理前端监控状态检查和初始化的API
+ * 系统监控控制器 - SSH集成版
+ * 处理基于SSH的监控状态检查API
  */
 
-const path = require('path');
-const fs = require('fs');
 const { getAllSessions, getSessionByHostname } = require('../monitoring');
 
 /**
- * 获取系统监控安装脚本
- */
-exports.getInstallScript = async (req, res) => {
-  try {
-    const { host } = req.query;
-    
-    if (!host) {
-      return res.status(400).json({
-        success: false,
-        message: '缺少必要参数: host'
-      });
-    }
-    
-    // 获取服务器地址
-    const serverAddr = process.env.SERVER_ADDRESS || req.get('host') || 'localhost:3000';
-    
-    // 创建安装命令
-    const installCommand = `curl -sSL http://${serverAddr}/api/monitor/download-script | sudo env EASYSSH_SERVER=${serverAddr} bash`;
-    
-    return res.json({
-      success: true,
-      installCommand,
-      serverAddress: serverAddr,
-      message: '获取安装命令成功'
-    });
-  } catch (error) {
-    console.error('获取安装脚本失败:', error);
-    return res.status(500).json({
-      success: false,
-      message: '获取安装脚本失败',
-      error: error.message
-    });
-  }
-};
-
-/**
- * 检查监控状态 - 重构版（仅用于初始状态获取）
+ * 检查监控状态 - SSH集成版
  */
 exports.checkStatus = async (req, res) => {
   try {
@@ -71,19 +33,20 @@ exports.checkStatus = async (req, res) => {
       });
     }
 
-    // 检查特定主机的监控数据可用性
+    // 检查特定主机的监控数据可用性（基于SSH收集的数据）
     const monitoringData = getSessionByHostname(hostname);
 
     if (monitoringData) {
       return res.json({
         success: true,
         status: 'connected',
-        message: `主机 ${hostname} 的监控数据可用`,
+        message: `主机 ${hostname} 的监控数据可用（通过SSH收集）`,
         client: {
           hostname: hostname,
           lastUpdated: monitoringData.lastUpdated,
           hasData: true,
-          dataAge: Date.now() - (monitoringData.lastUpdated || 0)
+          dataAge: Date.now() - (monitoringData.lastUpdated || 0),
+          source: monitoringData.source || 'ssh_collector'
         }
       });
     } else {
@@ -91,7 +54,7 @@ exports.checkStatus = async (req, res) => {
         success: true,
         status: 'disconnected',
         installed: false,
-        message: `主机 ${hostname} 的监控数据不可用`
+        message: `主机 ${hostname} 的监控数据不可用（需要SSH连接）`
       });
     }
 
@@ -107,48 +70,12 @@ exports.checkStatus = async (req, res) => {
 
 
 
-/**
- * 下载监控服务安装脚本
- */
-exports.downloadInstallScript = async (req, res) => {
-  try {
-    const fs = require('fs');
-    const path = require('path');
-    
-    // 脚本路径
-    const scriptPath = path.join(__dirname, '../scripts/easyssh-monitor-install.sh');
-    
-    // 检查脚本是否存在
-    if (!fs.existsSync(scriptPath)) {
-      return res.status(404).json({
-        success: false,
-        message: '安装脚本不存在'
-      });
-    }
-    
-    // 读取脚本内容
-    const scriptContent = fs.readFileSync(scriptPath, 'utf8');
-    
-    // 设置响应头
-    res.set('Content-Type', 'text/plain');
-    res.set('Content-Disposition', 'attachment; filename=easyssh-monitor-install.sh');
-    
-    // 返回脚本内容
-    return res.send(scriptContent);
-  } catch (error) {
-    console.error('下载安装脚本失败:', error);
-    return res.status(500).json({
-      success: false,
-      message: '下载安装脚本失败',
-      error: error.message
-    });
-  }
-};
+
 
 /**
- * 获取所有活跃的前端监控会话 - 重构版
+ * 获取所有活跃的前端监控会话 - SSH集成版
  */
-exports.getSessions = async (req, res) => {
+exports.getSessions = async (_req, res) => {
   try {
     // 获取所有前端会话
     const sessions = getAllSessions();

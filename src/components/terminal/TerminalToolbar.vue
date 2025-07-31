@@ -63,11 +63,11 @@
             查看系统监控
           </div>
 
-          <!-- 已登录但未安装监控服务提示 -->
+          <!-- 已登录但监控服务未连接提示 - SSH集成版 -->
           <div v-else-if="isLoggedIn && !monitoringServiceInstalled && showMonitorTooltip"
                class="sftp-tooltip" :style="monitorTooltipStyle"
                @mouseenter="onMonitorTooltipMouseEnter" @mouseleave="onMonitorTooltipMouseLeave">
-            未连接到监控服务，点击<span class="install-link" @click.stop="installMonitoring">一键安装</span>
+            {{ isSshConnected ? '监控服务初始化中，请稍候...' : '需要SSH连接以启用监控' }}
           </div>
         </teleport>
       </div>
@@ -388,168 +388,14 @@ export default defineComponent({
     
     // 切换监控面板
     const toggleMonitoringPanel = () => {
-      // 只有当监控服务已安装时才能切换面板
-      if (monitoringServiceInstalled.value) {
-        // 通过事件将当前终端ID传递给父组件
-        emit('toggle-monitoring-panel');
-      } else {
-        // 尝试安装监控服务
-        installMonitoring();
-      }
-      }
-      
-    // 安装监控服务
-    const installMonitoring = async () => {
-      try {
-        // 检查用户是否已登录
-        if (!isLoggedIn.value) {
-          ElMessage.warning('请先登录后再安装监控服务');
-          return;
-        }
-
-        // 检查是否有活动的终端会话
-        const terminalId = props.activeSessionId;
-        if (!terminalId) {
-          ElMessage.warning('请先连接到服务器');
-          return;
-        }
-
-        // 检查是否有SSH连接
-        if (!isSshConnected.value) {
-          ElMessage.warning('请先建立SSH连接');
-          return;
-        }
-
-        // 隐藏tooltip
-        showMonitorTooltip.value = false;
-
-        // 显示安装提示
-        ElMessage.info('正在获取监控安装脚本...');
-
-        // 从脚本库获取"EasySSH监控服务安装"脚本
-        const monitoringScript = scriptLibraryService.getScriptByName('EasySSH监控服务安装');
-
-        if (!monitoringScript) {
-          ElMessage.error('未找到监控安装脚本，请检查脚本库');
-          return;
-        }
-
-        if (!monitoringScript.command) {
-          ElMessage.error('监控安装脚本命令为空');
-          return;
-        }
-
-        log.info('找到监控安装脚本:', monitoringScript.name);
-
-        // 检查终端是否存在
-        if (!terminalStore.hasTerminal(terminalId)) {
-          ElMessage.error('终端不存在，请重新连接');
-          return;
-        }
-
-        // 发送命令到终端
-        try {
-          // 先清除当前行，然后发送监控安装命令
-          log.info(`准备发送监控安装命令: ${monitoringScript.command}`);
-
-          // 使用改进的命令发送方式
-          terminalStore.sendCommand(terminalId, monitoringScript.command, {
-            clearLine: true,
-            execute: true,
-            sendCtrlC: true  // 监控安装时不发送Ctrl+C，避免干扰
-          });
-
-          ElMessage.success('监控安装命令已发送到终端，请等待安装完成');
-          log.info(`监控安装命令已发送到终端 ${terminalId}`);
-
-          // 设置一个定时器来检查安装状态
-          setupMonitoringInstallationCheck(terminalId);
-
-        } catch (sendError) {
-          log.error('发送命令到终端失败:', sendError);
-          ElMessage.error('发送命令到终端失败: ' + sendError.message);
-        }
-
-      } catch (error) {
-        log.error('安装监控服务失败:', error);
-        ElMessage.error(`安装监控服务失败: ${error.message}`);
-      }
+      // 监控服务基于SSH连接，无需安装
+      emit('toggle-monitoring-panel');
     }
 
-    // 设置监控安装状态检查
-    const setupMonitoringInstallationCheck = (terminalId) => {
-      let checkCount = 0;
-      const maxChecks = 30; // 最多检查30次 (约5分钟)
-      const checkInterval = 10000; // 每10秒检查一次
 
-      const checkInstallation = async () => {
-        checkCount++;
 
-        try {
-          // 获取SSH会话信息
-          const sshSessionId = terminalStore.sessions[terminalId];
-          if (!sshSessionId || !sshService || !sshService.sessions) {
-            log.debug('无法获取SSH会话信息，停止监控安装检查');
-            return;
-          }
-
-          const session = sshService.sessions.get(sshSessionId);
-          if (!session || !session.connection) {
-            log.debug('SSH会话无效，停止监控安装检查');
-            return;
-          }
-
-          const host = session.connection.host;
-
-          // 使用重构后的监控服务检查状态
-          try {
-            const status = monitoringService.getStatus(terminalId);
-
-            if (status && status.connected) {
-              // 监控数据可用
-              ElMessage.success('监控服务安装成功！');
-              log.info(`监控服务安装成功: ${host}`);
-
-              // 更新终端状态
-              const terminalState = getTerminalToolbarState(terminalId);
-              if (terminalState) {
-                terminalState.monitoringInstalled = true;
-              }
-
-              // 如果是当前活动终端，更新UI
-              if (terminalId === props.activeSessionId) {
-                monitoringServiceInstalled.value = true;
-              }
-
-              return; // 安装成功，停止检查
-            }
-          } catch (error) {
-            log.warn(`检查监控状态失败: ${error.message}`);
-          }
-
-          // 如果还没有达到最大检查次数，继续检查
-          if (checkCount < maxChecks) {
-            setTimeout(checkInstallation, checkInterval);
-          } else {
-            log.info('监控安装状态检查超时，请手动检查安装结果');
-            ElMessage.info('监控安装检查超时，请手动验证安装结果');
-          }
-
-        } catch (error) {
-          log.warn('检查监控安装状态失败:', error);
-
-          // 如果还没有达到最大检查次数，继续检查
-          if (checkCount < maxChecks) {
-            setTimeout(checkInstallation, checkInterval);
-          }
-        }
-      };
-
-      // 延迟30秒后开始第一次检查，给安装脚本一些时间
-      setTimeout(checkInstallation, 30000);
-    }
     
-    // 检查监控服务状态
+    // 检查监控服务状态 - SSH集成版
     const checkMonitoringServiceStatus = () => {
       // 如果用户未登录，直接跳过状态检查
       if (!isLoggedIn.value) {
@@ -558,45 +404,29 @@ export default defineComponent({
       }
 
       const currentTerminalId = props.activeSessionId;
-      if (!currentTerminalId) return;
-
-      const terminalState = getTerminalToolbarState(currentTerminalId);
-      if (!terminalState) return;
-
-      // 优先使用缓存状态
-      if (terminalState.monitoringInstalled !== undefined) {
-        monitoringServiceInstalled.value = terminalState.monitoringInstalled;
+      if (!currentTerminalId) {
+        monitoringServiceInstalled.value = false;
         return;
       }
 
-      // 检查终端关联的SSH会话
-      if (terminalStore?.sessions) {
-        const sshSessionId = terminalStore.sessions[currentTerminalId];
-        if (sshSessionId && sshService?.sessions) {
-          const session = sshService.sessions.get(sshSessionId);
-          if (session?.connection) {
-            const host = session.connection.host;
+      // 基于SSH连接状态判断监控服务可用性
+      if (isSshConnected.value) {
+        try {
+          // 检查监控服务连接状态
+          const status = monitoringService.getStatus(currentTerminalId);
+          const isConnected = status && status.connected;
 
-            // 使用监控服务检查状态
-            if (monitoringService?.isTerminalMonitored) {
-              try {
-                terminalState.monitoringInstalled = monitoringService.isTerminalMonitored(currentTerminalId);
-                monitoringServiceInstalled.value = terminalState.monitoringInstalled;
-                return;
-              } catch (error) {
-                // 使用备选方案
-              }
-            }
+          monitoringServiceInstalled.value = isConnected;
 
-            // 备选方案：检查主机匹配
-            if (monitoringService?.state) {
-              terminalState.monitoringInstalled =
-                monitoringService.state.connected &&
-                monitoringService.state.targetHost === host;
-              monitoringServiceInstalled.value = terminalState.monitoringInstalled;
-            }
-          }
+          log.debug(`SSH监控服务状态: ${currentTerminalId} -> ${isConnected}`);
+        } catch (error) {
+          log.warn('检查SSH监控服务状态失败:', error);
+          // SSH连接存在但监控服务未连接，可能正在初始化
+          monitoringServiceInstalled.value = false;
         }
+      } else {
+        // SSH未连接，监控服务不可用
+        monitoringServiceInstalled.value = false;
       }
     };
     
@@ -1234,12 +1064,17 @@ export default defineComponent({
       }
     };
     
-    // 处理监控图标点击的函数 - 现在只显示状态信息
+    // 处理监控图标点击的函数 - SSH集成版
     const handleMonitoringClick = () => {
       // 如果用户未登录，显示登录提示
       if (!isLoggedIn.value) {
-        updateMonitorTooltipPosition();
-        showMonitorTooltip.value = true;
+        ElMessage.info('请先登录以使用监控功能');
+        return;
+      }
+
+      // 检查SSH连接状态
+      if (!isSshConnected.value) {
+        ElMessage.info('请先建立SSH连接以启用监控功能');
         return;
       }
 
@@ -1247,9 +1082,7 @@ export default defineComponent({
       if (monitoringServiceInstalled.value) {
         ElMessage.success('监控服务已连接，实时数据显示在工具栏中');
       } else {
-        // 监控服务未安装时显示tooltip
-        updateMonitorTooltipPosition();
-        showMonitorTooltip.value = true;
+        ElMessage.info('监控服务正在初始化，请稍候...');
       }
     };
     
@@ -1505,7 +1338,6 @@ export default defineComponent({
       toggleMonitoringPanel,
       showNetworkIcon,
       monitoringServiceInstalled,
-      installMonitoring,
       isPanelVisible,
       isSshConnected,
       handleSftpClick,

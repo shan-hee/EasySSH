@@ -157,26 +157,7 @@ async function getDefaultScripts() {
     category: '容器管理',
     isSystem: true
   },
-  {
-    name: 'EasySSH监控服务安装',
-    description: `一键安装EasySSH监控服务，支持系统资源监控、网络监控等功能。`,
-    command: `curl -L https://raw.githubusercontent.com/shan-hee/EasySSH/main/server/scripts/easyssh-monitor-install.sh -o easyssh-monitor-install.sh && chmod +x easyssh-monitor-install.sh && sudo env EASYSSH_SERVER=${serverAddress} ./easyssh-monitor-install.sh`,
-    author: 'EasySSH团队',
-    tags: ['EasySSH', '安装'],
-    keywords: ['easyssh', 'monitor', 'install', '监控', '安装'],
-    category: 'EasySSH监控',
-    isSystem: true
-  },
-  {
-    name: 'EasySSH监控服务卸载',
-    description: '一键卸载EasySSH监控服务及其所有相关文件，包括服务、配置文件、日志等。',
-    command: 'curl -L https://raw.githubusercontent.com/shan-hee/EasySSH/main/server/scripts/easyssh-monitor-uninstall.sh -o easyssh-monitor-uninstall.sh && chmod +x easyssh-monitor-uninstall.sh && sudo ./easyssh-monitor-uninstall.sh',
-    author: 'EasySSH团队',
-    tags: ['EasySSH', '卸载'],
-    keywords: ['easyssh', 'monitor', 'uninstall', '监控', '卸载', '清理'],
-    category: 'EasySSH监控',
-    isSystem: true
-  },
+
   {
     name: 'Docker Compose 服务状态',
     description: '查看当前目录下 docker-compose.yml 中所有服务的运行状态。',

@@ -1,6 +1,6 @@
 /**
- * 统一监控服务
- * 简化的监控WebSocket客户端服务，整合了原有的代理和工厂模式
+ * 统一监控服务 - SSH集成版
+ * 基于SSH的监控WebSocket客户端服务
  */
 
 import log from './log';
@@ -399,6 +399,9 @@ class MonitoringService {
         this._syncActiveTerminalStatus(event.detail.terminalId);
       }
     });
+
+    // 添加页面卸载时的清理逻辑
+    this._initPageUnloadCleanup();
   }
 
   /**
@@ -746,6 +749,48 @@ class MonitoringService {
       getStatus: this.getStatus.bind(this),
       requestSystemStats: this.requestSystemStats.bind(this)
     };
+  }
+
+  /**
+   * 初始化页面卸载时的清理逻辑
+   * @private
+   */
+  _initPageUnloadCleanup() {
+    try {
+      // 页面卸载前清理所有监控连接
+      window.addEventListener('beforeunload', () => {
+        try {
+          log.debug('[监控] 页面卸载，清理所有监控连接');
+          this.disconnectAll();
+        } catch (error) {
+          console.error('[监控] 页面卸载清理失败:', error);
+        }
+      });
+
+      // 页面隐藏时也清理连接（处理页面刷新等情况）
+      window.addEventListener('pagehide', () => {
+        try {
+          log.debug('[监控] 页面隐藏，清理所有监控连接');
+          this.disconnectAll();
+        } catch (error) {
+          console.error('[监控] 页面隐藏清理失败:', error);
+        }
+      });
+
+      // 监听页面可见性变化
+      document.addEventListener('visibilitychange', () => {
+        try {
+          if (document.visibilityState === 'hidden') {
+            log.debug('[监控] 页面变为隐藏状态，清理所有监控连接');
+            this.disconnectAll();
+          }
+        } catch (error) {
+          console.error('[监控] 页面可见性变化处理失败:', error);
+        }
+      });
+    } catch (error) {
+      console.error('[监控] 初始化页面卸载清理逻辑失败:', error);
+    }
   }
 }
 

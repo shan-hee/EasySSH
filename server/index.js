@@ -23,6 +23,9 @@ const connectionRoutes = require('./routes/connectionRoutes');
 // 导入日志工具
 const logger = require('./utils/logger');
 
+// 导入监控桥接服务
+const monitoringBridge = require('./services/monitoringBridge');
+
 // ANSI颜色代码
 const colors = {
   reset: '\x1b[0m',
@@ -104,6 +107,10 @@ const server = http.createServer(app);
 
 // 初始化WebSocket服务（包含SSH和监控）
 const { sshWss, monitorWss } = initWebSocketServer(server);
+
+// 初始化监控桥接服务
+const monitoringService = require('./monitoring');
+monitoringBridge.setMonitoringService(monitoringService);
 
 // 更新服务器启动信息，添加监控WebSocket信息
 const startApp = async () => {
