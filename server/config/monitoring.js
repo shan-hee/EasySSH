@@ -60,7 +60,7 @@ const config = {
   
   // 性能优化配置
   performance: {
-    enableCompression: true
+    enableCompression: false // 禁用应用层压缩，使用WebSocket层的perMessageDeflate
   }
 };
 

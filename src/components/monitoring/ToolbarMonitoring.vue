@@ -4,28 +4,28 @@
     <div class="monitoring-item" :class="{ 'warning': cpuUsage > 80, 'critical': cpuUsage > 95 }">
       <i class="icon-cpu"></i>
       <span class="label">CPU</span>
-      <span class="value">{{ cpuUsage }}%</span>
+      <span class="value">{{ formatPercentage(cpuUsage) }}</span>
     </div>
 
     <!-- 内存指标 -->
     <div class="monitoring-item" :class="{ 'warning': memoryUsage > 80, 'critical': memoryUsage > 95 }">
       <i class="icon-memory"></i>
       <span class="label">内存</span>
-      <span class="value">{{ memoryUsage }}%</span>
+      <span class="value">{{ formatPercentage(memoryUsage) }}</span>
     </div>
 
     <!-- 交换分区指标 -->
     <div class="monitoring-item" :class="{ 'warning': swapUsage > 50, 'critical': swapUsage > 80 }" v-if="hasSwap">
       <i class="icon-swap"></i>
       <span class="label">交换</span>
-      <span class="value">{{ swapUsage }}%</span>
+      <span class="value">{{ formatPercentage(swapUsage) }}</span>
     </div>
 
     <!-- 磁盘指标 -->
     <div class="monitoring-item" :class="{ 'warning': diskUsage > 80, 'critical': diskUsage > 95 }" v-if="diskUsage > 0">
       <i class="icon-disk"></i>
       <span class="label">磁盘</span>
-      <span class="value">{{ diskUsage }}%</span>
+      <span class="value">{{ formatPercentage(diskUsage) }}</span>
     </div>
 
     <!-- 上传速度 -->
@@ -51,6 +51,7 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import log from '../../services/log'
+import { formatPercentage, formatNetworkSpeed } from '@/utils/productionFormatters'
 
 // Props
 const props = defineProps({
@@ -79,16 +80,7 @@ let monitoringService = null
 let dataEventHandler = null
 let statusEventHandler = null
 
-// 格式化网络速度
-const formatNetworkSpeed = (bytesPerSecond) => {
-  if (bytesPerSecond < 1024) {
-    return `${bytesPerSecond}B/s`
-  } else if (bytesPerSecond < 1024 * 1024) {
-    return `${(bytesPerSecond / 1024).toFixed(1)}KB/s`
-  } else {
-    return `${(bytesPerSecond / (1024 * 1024)).toFixed(1)}MB/s`
-  }
-}
+// 使用生产级格式化器，已在导入中定义
 
 
 
@@ -97,26 +89,26 @@ const handleMonitoringData = (data) => {
   try {
     // CPU数据处理
     if (data.cpu && typeof data.cpu.usage === 'number' && !isNaN(data.cpu.usage)) {
-      cpuUsage.value = Math.round(Math.max(0, Math.min(100, data.cpu.usage)))
+      cpuUsage.value = Math.max(0, Math.min(100, data.cpu.usage))
     }
 
     // 内存数据处理
     if (data.memory) {
       if (typeof data.memory.usedPercentage === 'number' && !isNaN(data.memory.usedPercentage)) {
-        memoryUsage.value = Math.round(Math.max(0, Math.min(100, data.memory.usedPercentage)))
+        memoryUsage.value = Math.max(0, Math.min(100, data.memory.usedPercentage))
       } else if (data.memory.total > 0 && typeof data.memory.used === 'number') {
         const percentage = (data.memory.used / data.memory.total) * 100
-        memoryUsage.value = Math.round(Math.max(0, Math.min(100, percentage)))
+        memoryUsage.value = Math.max(0, Math.min(100, percentage))
       }
     }
 
     // 磁盘数据处理
     if (data.disk) {
       if (typeof data.disk.usedPercentage === 'number' && !isNaN(data.disk.usedPercentage)) {
-        diskUsage.value = Math.round(Math.max(0, Math.min(100, data.disk.usedPercentage)))
+        diskUsage.value = Math.max(0, Math.min(100, data.disk.usedPercentage))
       } else if (data.disk.total > 0 && typeof data.disk.used === 'number') {
         const percentage = (data.disk.used / data.disk.total) * 100
-        diskUsage.value = Math.round(Math.max(0, Math.min(100, percentage)))
+        diskUsage.value = Math.max(0, Math.min(100, percentage))
       }
     }
 
@@ -124,10 +116,10 @@ const handleMonitoringData = (data) => {
     if (data.swap) {
       hasSwap.value = true
       if (typeof data.swap.usedPercentage === 'number' && !isNaN(data.swap.usedPercentage)) {
-        swapUsage.value = Math.round(Math.max(0, Math.min(100, data.swap.usedPercentage)))
+        swapUsage.value = Math.max(0, Math.min(100, data.swap.usedPercentage))
       } else if (data.swap.total > 0 && typeof data.swap.used === 'number') {
         const percentage = (data.swap.used / data.swap.total) * 100
-        swapUsage.value = Math.round(Math.max(0, Math.min(100, percentage)))
+        swapUsage.value = Math.max(0, Math.min(100, percentage))
       }
     }
 

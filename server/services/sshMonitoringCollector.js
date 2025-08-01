@@ -93,6 +93,8 @@ class SSHMonitoringCollector {
     }
 
     try {
+      logger.info('开始收集系统信息', { hostId: this.hostId });
+
       const systemInfo = {
         timestamp: Date.now(),
         machineId: await this.getMachineId(),
@@ -101,10 +103,18 @@ class SSHMonitoringCollector {
         swap: await this.getSwapInfo(),
         disk: await this.getDiskInfo(),
         network: await this.getNetworkInfo(),
+        processes: await this.getProcessInfo(),
         os: await this.getOsInfo(),
         ip: await this.getIpInfo(),
         location: await this.getLocationInfo()
       };
+
+      logger.info('系统信息收集完成', {
+        hostId: this.hostId,
+        cpu: systemInfo.cpu,
+        memory: systemInfo.memory,
+        swap: systemInfo.swap
+      });
 
       // 生成hostId
       if (!this.hostId) {
@@ -187,8 +197,12 @@ class SSHMonitoringCollector {
         return;
       }
 
+      logger.debug('执行SSH命令', { command, hostId: this.hostId });
+      console.log(`🔧 [DEBUG] 执行SSH命令: ${command}`);
+
       this.sshConnection.exec(command, (err, stream) => {
         if (err) {
+          logger.warn('SSH命令执行失败', { command, error: err.message });
           reject(err);
           return;
         }
@@ -198,8 +212,18 @@ class SSHMonitoringCollector {
 
         stream.on('close', (code) => {
           if (code === 0) {
+            logger.debug('SSH命令执行成功', {
+              command,
+              outputLength: output.length,
+              output: output.substring(0, 100) + (output.length > 100 ? '...' : '')
+            });
             resolve(output.trim());
           } else {
+            logger.warn('SSH命令执行失败', {
+              command,
+              exitCode: code,
+              error: errorOutput
+            });
             reject(new Error(`命令执行失败，退出码: ${code}, 错误: ${errorOutput}`));
           }
         });
@@ -246,21 +270,46 @@ class SSHMonitoringCollector {
    */
   async getCpuInfo() {
     try {
-      // 获取CPU使用率
-      const cpuUsage = await this.executeCommand('top -bn1 | grep "Cpu(s)" | sed "s/.*, *\\([0-9.]*\\)%* id.*/\\1/" | awk \'{print 100 - $1}\'');
+      // 使用更简单的方法获取CPU使用率
+      const cpuUsage = await this.executeCommand('sar 1 1 | grep "Average" | awk \'{print 100 - $8}\' || echo "0"');
 
       // 获取CPU核心数和型号
       const cpuCores = await this.executeCommand('nproc');
       const cpuModel = await this.executeCommand('cat /proc/cpuinfo | grep "model name" | head -1 | cut -d: -f2 | sed "s/^ *//"');
 
-      return {
-        usage: Math.round(parseFloat(cpuUsage) * 100) / 100 || 0,
-        cores: parseInt(cpuCores) || 1,
-        model: cpuModel || 'Unknown'
+      // 获取负载平均值
+      const loadAvg = await this.executeCommand('cat /proc/loadavg | awk \'{print $1, $2, $3}\'');
+
+      // 验证数据
+      const usage = parseFloat(cpuUsage) || 0;
+      const cores = parseInt(cpuCores) || 1;
+      const model = cpuModel || 'Unknown';
+
+      let load1 = 0, load5 = 0, load15 = 0;
+      if (loadAvg && loadAvg.trim()) {
+        const loads = loadAvg.trim().split(' ').map(Number);
+        load1 = loads[0] || 0;
+        load5 = loads[1] || 0;
+        load15 = loads[2] || 0;
+      }
+
+      const result = {
+        usage: Math.round(usage * 100) / 100,
+        cores,
+        model,
+        loadAverage: { load1, load5, load15 }
       };
+
+      logger.info('CPU信息获取成功', { result });
+      return result;
     } catch (error) {
-      logger.warn('获取CPU信息失败', { error: error.message });
-      return { usage: 0, cores: 1, model: 'Unknown' };
+      logger.error('获取CPU信息失败', { error: error.message });
+      return {
+        usage: 0,
+        cores: 1,
+        model: 'Unknown',
+        loadAverage: { load1: 0, load5: 0, load15: 0 }
+      };
     }
   }
 
@@ -269,7 +318,14 @@ class SSHMonitoringCollector {
    */
   async getMemoryInfo() {
     try {
+      // 使用free命令获取内存信息
       const memInfo = await this.executeCommand('free -m');
+
+      if (!memInfo || memInfo.trim() === '') {
+        logger.error('free命令返回空结果');
+        return { total: 0, used: 0, free: 0, cached: 0, usedPercentage: 0 };
+      }
+
       const lines = memInfo.trim().split('\n');
       const memLine = lines.find(line => line.startsWith('Mem:'));
 
@@ -277,20 +333,26 @@ class SSHMonitoringCollector {
         const parts = memLine.split(/\s+/);
         const total = parseInt(parts[1]) || 0;
         const used = parseInt(parts[2]) || 0;
-        const free = parseInt(parts[3]) || 0;
+        const buffCache = parseInt(parts[5]) || 0;
+        const available = parseInt(parts[6]) || 0;
 
-        return {
+        const result = {
           total,
           used,
-          free,
+          free: available, // 使用available作为可用内存
+          cached: buffCache,
           usedPercentage: total > 0 ? Math.round((used / total) * 100 * 100) / 100 : 0
         };
+
+        logger.info('内存信息获取成功', { result });
+        return result;
       }
 
-      return { total: 0, used: 0, free: 0, usedPercentage: 0 };
+      logger.error('未找到Mem:行', { memInfo, lines: lines.length });
+      return { total: 0, used: 0, free: 0, cached: 0, usedPercentage: 0 };
     } catch (error) {
-      logger.warn('获取内存信息失败', { error: error.message });
-      return { total: 0, used: 0, free: 0, usedPercentage: 0 };
+      logger.error('获取内存信息失败', { error: error.message });
+      return { total: 0, used: 0, free: 0, cached: 0, usedPercentage: 0 };
     }
   }
 
@@ -300,6 +362,12 @@ class SSHMonitoringCollector {
   async getSwapInfo() {
     try {
       const memInfo = await this.executeCommand('free -m');
+
+      if (!memInfo || memInfo.trim() === '') {
+        logger.error('free命令返回空结果(swap)');
+        return { total: 0, used: 0, free: 0, usedPercentage: 0 };
+      }
+
       const lines = memInfo.trim().split('\n');
       const swapLine = lines.find(line => line.startsWith('Swap:'));
 
@@ -309,17 +377,21 @@ class SSHMonitoringCollector {
         const used = parseInt(parts[2]) || 0;
         const free = parseInt(parts[3]) || 0;
 
-        return {
+        const result = {
           total,
           used,
           free,
           usedPercentage: total > 0 ? Math.round((used / total) * 100 * 100) / 100 : 0
         };
+
+        logger.info('交换分区信息获取成功', { result });
+        return result;
       }
 
+      logger.error('未找到Swap:行', { memInfo, lines: lines.length });
       return { total: 0, used: 0, free: 0, usedPercentage: 0 };
     } catch (error) {
-      logger.warn('获取交换分区信息失败', { error: error.message });
+      logger.error('获取交换分区信息失败', { error: error.message });
       return { total: 0, used: 0, free: 0, usedPercentage: 0 };
     }
   }
@@ -329,13 +401,30 @@ class SSHMonitoringCollector {
    */
   async getDiskInfo() {
     try {
-      const diskInfo = await this.executeCommand('df -h / | tail -1');
+      const diskInfo = await this.executeCommand('df -BG / | tail -1');
       const parts = diskInfo.trim().split(/\s+/);
 
       if (parts.length >= 5) {
-        const total = parseFloat(parts[1].replace('G', '')) || 0;
-        const used = parseFloat(parts[2].replace('G', '')) || 0;
-        const free = parseFloat(parts[3].replace('G', '')) || 0;
+        // 解析大小，处理不同单位
+        const parseSize = (sizeStr) => {
+          const match = sizeStr.match(/^(\d+(?:\.\d+)?)(G|M|K|T)?$/i);
+          if (!match) return 0;
+
+          const value = parseFloat(match[1]);
+          const unit = (match[2] || 'G').toUpperCase();
+
+          switch (unit) {
+            case 'T': return value * 1024;
+            case 'G': return value;
+            case 'M': return value / 1024;
+            case 'K': return value / (1024 * 1024);
+            default: return value;
+          }
+        };
+
+        const total = parseSize(parts[1]);
+        const used = parseSize(parts[2]);
+        const free = parseSize(parts[3]);
         const usedPercentage = parseFloat(parts[4].replace('%', '')) || 0;
 
         return {
@@ -475,6 +564,35 @@ class SSHMonitoringCollector {
       internal: this.ipCache.internal || this.hostInfo.address,
       public: this.ipCache.public || '获取失败'
     };
+  }
+
+  /**
+   * 获取进程信息
+   */
+  async getProcessInfo() {
+    try {
+      // 获取进程总数
+      const totalProcesses = await this.executeCommand('ps aux | wc -l');
+
+      // 获取运行中的进程数
+      const runningProcesses = await this.executeCommand('ps aux | awk \'$8 ~ /^R/ {count++} END {print count+0}\'');
+
+      // 获取睡眠中的进程数
+      const sleepingProcesses = await this.executeCommand('ps aux | awk \'$8 ~ /^S/ {count++} END {print count+0}\'');
+
+      // 获取僵尸进程数
+      const zombieProcesses = await this.executeCommand('ps aux | awk \'$8 ~ /^Z/ {count++} END {print count+0}\'');
+
+      return {
+        total: parseInt(totalProcesses) - 1 || 0, // 减去标题行
+        running: parseInt(runningProcesses) || 0,
+        sleeping: parseInt(sleepingProcesses) || 0,
+        zombie: parseInt(zombieProcesses) || 0
+      };
+    } catch (error) {
+      logger.warn('获取进程信息失败', { error: error.message });
+      return { total: 0, running: 0, sleeping: 0, zombie: 0 };
+    }
   }
 
   /**

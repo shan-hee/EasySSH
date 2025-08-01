@@ -135,6 +135,7 @@ class OptimizedSSHMonitoringCollector extends EventEmitter {
 
     try {
       const startTime = Date.now();
+      logger.info('开始收集系统信息', { hostId: this.hostId });
       
       // 并行收集数据以提高性能
       const [
@@ -144,6 +145,7 @@ class OptimizedSSHMonitoringCollector extends EventEmitter {
         swap,
         disk,
         network,
+        processes,
         osInfo,
         ipInfo
       ] = await Promise.allSettled([
@@ -153,6 +155,7 @@ class OptimizedSSHMonitoringCollector extends EventEmitter {
         this.getSwapInfo(),
         this.getDiskInfo(),
         this.getNetworkInfo(),
+        this.getProcessInfo(),
         this.getOsInfo(),
         this.getIpInfo()
       ]);
@@ -160,11 +163,12 @@ class OptimizedSSHMonitoringCollector extends EventEmitter {
       const systemInfo = {
         timestamp: Date.now(),
         machineId: this.getSettledValue(machineId, 'unknown'),
-        cpu: this.getSettledValue(cpu, { usage: 0, cores: 1, model: 'Unknown' }),
-        memory: this.getSettledValue(memory, { total: 0, used: 0, free: 0, usedPercentage: 0 }),
+        cpu: this.getSettledValue(cpu, { usage: 0, cores: 1, model: 'Unknown', loadAverage: { load1: 0, load5: 0, load15: 0 } }),
+        memory: this.getSettledValue(memory, { total: 0, used: 0, free: 0, cached: 0, usedPercentage: 0 }),
         swap: this.getSettledValue(swap, { total: 0, used: 0, free: 0, usedPercentage: 0 }),
         disk: this.getSettledValue(disk, { total: 0, used: 0, free: 0, usedPercentage: 0 }),
         network: this.getSettledValue(network, { connections: 0, total_rx_speed: "0.00", total_tx_speed: "0.00" }),
+        processes: this.getSettledValue(processes, { total: 0, running: 0, sleeping: 0, zombie: 0 }),
         os: this.getSettledValue(osInfo, { hostname: this.hostInfo.address, platform: 'Linux', release: 'unknown', arch: 'unknown', distro: 'Unknown Linux' }),
         ip: this.getSettledValue(ipInfo, { internal: this.hostInfo.address, public: '获取失败' }),
         collectionTime: Date.now() - startTime // 添加收集耗时统计
@@ -395,20 +399,38 @@ class OptimizedSSHMonitoringCollector extends EventEmitter {
   async getCpuInfo() {
     try {
       // 并行获取CPU信息
-      const [cpuUsage, cpuCores, cpuModel] = await Promise.allSettled([
-        this.executeCommand('top -bn1 | grep "Cpu(s)" | sed "s/.*, *\\([0-9.]*\\)%* id.*/\\1/" | awk \'{print 100 - $1}\''),
+      const [cpuUsage, cpuCores, cpuModel, loadAvg] = await Promise.allSettled([
+        this.executeCommand('vmstat 1 2 | tail -1 | awk \'{print 100 - $15}\''), // 使用vmstat获取更准确的CPU使用率
         this.executeCommand('nproc', true), // CPU核心数不变，使用缓存
-        this.executeCommand('cat /proc/cpuinfo | grep "model name" | head -1 | cut -d: -f2 | sed "s/^ *//"', true) // CPU型号不变，使用缓存
+        this.executeCommand('cat /proc/cpuinfo | grep "model name" | head -1 | cut -d: -f2 | sed "s/^ *//"', true), // CPU型号不变，使用缓存
+        this.executeCommand('cat /proc/loadavg | awk \'{print $1, $2, $3}\'')
       ]);
 
-      return {
+      // 解析负载平均值
+      const loadAvgStr = this.getSettledValue(loadAvg, '0 0 0');
+      const [load1, load5, load15] = loadAvgStr.split(' ').map(Number);
+
+      const result = {
         usage: Math.round(parseFloat(this.getSettledValue(cpuUsage, '0')) * 100) / 100 || 0,
         cores: parseInt(this.getSettledValue(cpuCores, '1')) || 1,
-        model: this.getSettledValue(cpuModel, 'Unknown') || 'Unknown'
+        model: this.getSettledValue(cpuModel, 'Unknown') || 'Unknown',
+        loadAverage: {
+          load1: load1 || 0,
+          load5: load5 || 0,
+          load15: load15 || 0
+        }
       };
+
+      logger.debug('CPU信息获取成功', { result });
+      return result;
     } catch (error) {
-      logger.warn('获取CPU信息失败', { error: error.message });
-      return { usage: 0, cores: 1, model: 'Unknown' };
+      logger.error('获取CPU信息失败', { error: error.message });
+      return {
+        usage: 0,
+        cores: 1,
+        model: 'Unknown',
+        loadAverage: { load1: 0, load5: 0, load15: 0 }
+      };
     }
   }
 
@@ -417,7 +439,14 @@ class OptimizedSSHMonitoringCollector extends EventEmitter {
    */
   async getMemoryInfo() {
     try {
-      const memInfo = await this.executeCommand('free -m');
+      // 使用LANG=C强制英文输出
+      const memInfo = await this.executeCommand('LANG=C free -m');
+
+      if (!memInfo || memInfo.trim() === '') {
+        logger.error('free命令返回空结果');
+        return { total: 0, used: 0, free: 0, cached: 0, usedPercentage: 0 };
+      }
+
       const lines = memInfo.trim().split('\n');
       const memLine = lines.find(line => line.startsWith('Mem:'));
 
@@ -425,20 +454,26 @@ class OptimizedSSHMonitoringCollector extends EventEmitter {
         const parts = memLine.split(/\s+/);
         const total = parseInt(parts[1]) || 0;
         const used = parseInt(parts[2]) || 0;
-        const free = parseInt(parts[3]) || 0;
+        const buffCache = parseInt(parts[5]) || 0;
+        const available = parseInt(parts[6]) || 0;
 
-        return {
+        const result = {
           total,
           used,
-          free,
+          free: available, // 使用available作为可用内存
+          cached: buffCache,
           usedPercentage: total > 0 ? Math.round((used / total) * 100 * 100) / 100 : 0
         };
+
+        logger.debug('内存信息获取成功', { result });
+        return result;
       }
 
-      return { total: 0, used: 0, free: 0, usedPercentage: 0 };
+      logger.error('未找到Mem:行', { memInfo, lines: lines.length });
+      return { total: 0, used: 0, free: 0, cached: 0, usedPercentage: 0 };
     } catch (error) {
-      logger.warn('获取内存信息失败', { error: error.message });
-      return { total: 0, used: 0, free: 0, usedPercentage: 0 };
+      logger.error('获取内存信息失败', { error: error.message });
+      return { total: 0, used: 0, free: 0, cached: 0, usedPercentage: 0 };
     }
   }
 
@@ -447,7 +482,14 @@ class OptimizedSSHMonitoringCollector extends EventEmitter {
    */
   async getSwapInfo() {
     try {
-      const memInfo = await this.executeCommand('free -m');
+      // 使用LANG=C强制英文输出
+      const memInfo = await this.executeCommand('LANG=C free -m');
+
+      if (!memInfo || memInfo.trim() === '') {
+        logger.error('free命令返回空结果(swap)');
+        return { total: 0, used: 0, free: 0, usedPercentage: 0 };
+      }
+
       const lines = memInfo.trim().split('\n');
       const swapLine = lines.find(line => line.startsWith('Swap:'));
 
@@ -457,17 +499,21 @@ class OptimizedSSHMonitoringCollector extends EventEmitter {
         const used = parseInt(parts[2]) || 0;
         const free = parseInt(parts[3]) || 0;
 
-        return {
+        const result = {
           total,
           used,
           free,
           usedPercentage: total > 0 ? Math.round((used / total) * 100 * 100) / 100 : 0
         };
+
+        logger.debug('交换分区信息获取成功', { result });
+        return result;
       }
 
+      logger.error('未找到Swap:行', { memInfo, lines: lines.length });
       return { total: 0, used: 0, free: 0, usedPercentage: 0 };
     } catch (error) {
-      logger.warn('获取交换分区信息失败', { error: error.message });
+      logger.error('获取交换分区信息失败', { error: error.message });
       return { total: 0, used: 0, free: 0, usedPercentage: 0 };
     }
   }
@@ -669,6 +715,33 @@ class OptimizedSSHMonitoringCollector extends EventEmitter {
     ];
 
     return privateRanges.some(range => range.test(ip));
+  }
+
+  /**
+   * 获取进程信息
+   */
+  async getProcessInfo() {
+    try {
+      const [totalProcesses, runningProcesses, sleepingProcesses, zombieProcesses] = await Promise.allSettled([
+        this.executeCommand('ps aux | wc -l'),
+        this.executeCommand('ps aux | awk \'$8 ~ /^R/ {count++} END {print count+0}\''),
+        this.executeCommand('ps aux | awk \'$8 ~ /^S/ {count++} END {print count+0}\''),
+        this.executeCommand('ps aux | awk \'$8 ~ /^Z/ {count++} END {print count+0}\'')
+      ]);
+
+      const result = {
+        total: (parseInt(this.getSettledValue(totalProcesses, '1')) - 1) || 0, // 减去标题行
+        running: parseInt(this.getSettledValue(runningProcesses, '0')) || 0,
+        sleeping: parseInt(this.getSettledValue(sleepingProcesses, '0')) || 0,
+        zombie: parseInt(this.getSettledValue(zombieProcesses, '0')) || 0
+      };
+
+      logger.debug('进程信息获取成功', { result });
+      return result;
+    } catch (error) {
+      logger.error('获取进程信息失败', { error: error.message });
+      return { total: 0, running: 0, sleeping: 0, zombie: 0 };
+    }
   }
 
   /**
