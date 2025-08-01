@@ -155,35 +155,65 @@ class MonitoringInstance {
       switch (message.type) {
         case 'monitoring_data':
           this._handleMonitoringData(message.data);
-          // 收到监控数据时更新活动时间
           this.state.lastActivity = Date.now();
           break;
         case 'system_stats':
-          // 处理系统统计数据
           this._handleMonitoringData(message.payload);
-          // 收到系统统计数据时更新活动时间
           this.state.lastActivity = Date.now();
+          break;
+        case 'batch':
+          this._handleBatchMessage(message);
           break;
         case 'monitoring_status':
           this._handleMonitoringStatus(message);
           break;
         case 'session_created':
-          // 会话创建确认，无需额外处理
-          break;
         case 'subscribe_ack':
-          // 订阅确认，无需额外处理
+          // 确认消息，无需处理
           break;
         case 'error':
           const errorMsg = message.message || message.data?.message || message.error || '未知错误';
           log.error(`[监控] 服务器错误: ${errorMsg}`);
           break;
         default:
-          // 未知消息类型，静默忽略
+          log.warn(`[监控] 未知消息类型: ${message.type}`);
           break;
       }
     } catch (error) {
       log.error('[监控] 消息解析失败', error);
     }
+  }
+
+  /**
+   * 处理批量消息
+   * @param {Object} batchMessage - 批量消息
+   * @private
+   */
+  _handleBatchMessage(batchMessage) {
+    if (!batchMessage.items || !Array.isArray(batchMessage.items)) {
+      return;
+    }
+
+    // 逐个处理批量消息中的每个项目
+    batchMessage.items.forEach((item) => {
+      try {
+        switch (item.type) {
+          case 'monitoring_data':
+            this._handleMonitoringData(item.data);
+            break;
+          case 'system_stats':
+            this._handleMonitoringData(item.payload);
+            break;
+          case 'monitoring_status':
+            this._handleMonitoringStatus(item);
+            break;
+        }
+      } catch (error) {
+        log.error(`[监控] 处理批量消息项目失败: ${error.message}`);
+      }
+    });
+
+    this.state.lastActivity = Date.now();
   }
 
   /**
@@ -217,30 +247,15 @@ class MonitoringInstance {
     }
 
     // 检查是否有任何有意义的监控数据
-    const hasCpuData = data.cpu && (
-      typeof data.cpu.usage === 'number' ||
-      typeof data.cpu.cores === 'number' ||
-      data.cpu.model
+    return !!(
+      (data.cpu && Object.keys(data.cpu).length > 0) ||
+      (data.memory && Object.keys(data.memory).length > 0) ||
+      (data.disk && Object.keys(data.disk).length > 0) ||
+      (data.network && Object.keys(data.network).length > 0) ||
+      (data.os && Object.keys(data.os).length > 0) ||
+      (data.swap && Object.keys(data.swap).length > 0) ||
+      (data.hostId && typeof data.hostId === 'string')
     );
-
-    const hasMemoryData = data.memory && (
-      typeof data.memory.total === 'number' && data.memory.total > 0 ||
-      typeof data.memory.used === 'number' ||
-      typeof data.memory.usedPercentage === 'number'
-    );
-
-    const hasDiskData = data.disk && (
-      typeof data.disk.total === 'number' && data.disk.total > 0 ||
-      typeof data.disk.used === 'number' ||
-      typeof data.disk.usedPercentage === 'number'
-    );
-
-    const hasNetworkData = data.network && Object.keys(data.network).length > 0;
-
-    const hasOsData = data.os && Object.keys(data.os).length > 0;
-
-    // 至少要有一种类型的有效数据
-    return hasCpuData || hasMemoryData || hasDiskData || hasNetworkData || hasOsData;
   }
 
   /**

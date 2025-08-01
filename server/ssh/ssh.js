@@ -356,8 +356,10 @@ function cleanupSession(sessionId) {
   
   // 确保监控数据收集已停止（防止重复调用）
   try {
-    monitoringBridge.stopMonitoring(sessionId);
-    logger.debug('SSH会话清理，确保监控数据收集已停止', { sessionId });
+    const stopped = monitoringBridge.stopMonitoring(sessionId, 'session_cleanup');
+    if (stopped) {
+      logger.debug('SSH会话清理，监控数据收集已停止', { sessionId });
+    }
   } catch (error) {
     logger.error('SSH会话清理时停止监控数据收集失败', {
       sessionId,
@@ -395,7 +397,7 @@ async function handleConnect(ws, data) {
       // SSH重连成功后重新启动监控数据收集
       try {
         const hostInfo = {
-          address: session.connectionInfo.host,
+          address: session.connectionInfo.host,  // 这里已经是正确的
           port: session.connectionInfo.port,
           username: session.connectionInfo.username
         };
@@ -450,8 +452,10 @@ async function handleConnect(ws, data) {
 
       // SSH连接断开时立即停止监控数据收集
       try {
-        monitoringBridge.stopMonitoring(sessionId);
-        logger.info('SSH连接断开，监控数据收集已停止', { sessionId });
+        const stopped = monitoringBridge.stopMonitoring(sessionId, 'connection_close');
+        if (stopped) {
+          logger.info('SSH连接断开，监控数据收集已停止', { sessionId });
+        }
       } catch (error) {
         logger.warn('停止监控数据收集失败', {
           sessionId,
@@ -474,8 +478,10 @@ async function handleConnect(ws, data) {
 
       // SSH连接错误时立即停止监控数据收集
       try {
-        monitoringBridge.stopMonitoring(sessionId);
-        logger.info('SSH连接错误，监控数据收集已停止', { sessionId });
+        const stopped = monitoringBridge.stopMonitoring(sessionId, 'connection_error');
+        if (stopped) {
+          logger.info('SSH连接错误，监控数据收集已停止', { sessionId });
+        }
       } catch (error) {
         logger.warn('停止监控数据收集失败', {
           sessionId,
@@ -517,10 +523,12 @@ async function handleConnect(ws, data) {
       stream.on('error', (err) => {
         logger.error('SSH Shell错误', { sessionId, error: err.message });
 
-        // SSH连接错误时立即停止监控数据收集
+        // SSH Shell错误时立即停止监控数据收集
         try {
-          monitoringBridge.stopMonitoring(sessionId);
-          logger.info('SSH连接错误，监控数据收集已停止', { sessionId });
+          const stopped = monitoringBridge.stopMonitoring(sessionId, 'shell_error');
+          if (stopped) {
+            logger.info('SSH Shell错误，监控数据收集已停止', { sessionId });
+          }
         } catch (error) {
           logger.warn('停止监控数据收集失败', {
             sessionId,
@@ -535,10 +543,12 @@ async function handleConnect(ws, data) {
       stream.on('close', () => {
         logger.info('SSH Shell会话已关闭', { sessionId });
 
-        // SSH连接关闭时立即停止监控数据收集
+        // SSH Shell关闭时立即停止监控数据收集
         try {
-          monitoringBridge.stopMonitoring(sessionId);
-          logger.info('SSH连接关闭，监控数据收集已停止', { sessionId });
+          const stopped = monitoringBridge.stopMonitoring(sessionId, 'shell_close');
+          if (stopped) {
+            logger.info('SSH Shell关闭，监控数据收集已停止', { sessionId });
+          }
         } catch (error) {
           logger.warn('停止监控数据收集失败', {
             sessionId,
@@ -557,7 +567,7 @@ async function handleConnect(ws, data) {
       // SSH连接成功后立即启动监控数据收集
       try {
         const hostInfo = {
-          address: connectionInfo.address,
+          address: connectionInfo.host,  // 修复：使用 host 而不是 address
           port: connectionInfo.port,
           username: connectionInfo.username
         };

@@ -46,6 +46,14 @@
           v-if="terminalId"
           :terminal-id="terminalId"
         />
+
+        <!-- 监控详情面板 -->
+        <MonitoringDetailPanel
+          :visible="showMonitoringDetailPanel"
+          :monitoring-data="currentMonitoringData"
+          :server-info="serverInfo"
+          @close="hideMonitoringDetailPanel"
+        />
         
         <!-- 使用teleport将监控工具提示内容传送到body中 -->
         <teleport to="body">
@@ -131,12 +139,14 @@ import { LATENCY_EVENTS } from '../../services/constants'
 import log from '../../services/log'
 import scriptLibraryService from '../../services/scriptLibrary'
 import ToolbarMonitoring from '../monitoring/ToolbarMonitoring.vue'
+import MonitoringDetailPanel from '../MonitoringDetailPanel.vue'
 import ToolbarIcon from '../common/ToolbarIcon.vue'
 
 export default defineComponent({
   name: 'TerminalToolbar',
   components: {
     ToolbarMonitoring,
+    MonitoringDetailPanel,
     ToolbarIcon
   },
   emits: ['toggle-sftp-panel', 'toggle-monitoring-panel'],
@@ -180,6 +190,11 @@ export default defineComponent({
     const showSftpTooltip = ref(false)
     const sftpButtonRef = ref(null)
     const networkIconRef = ref(null)
+
+    // 监控详情面板相关
+    const showMonitoringDetailPanel = ref(false)
+    const currentMonitoringData = ref({})
+    const serverInfo = ref({})
 
     // 用户登录状态
     const isLoggedIn = computed(() => userStore.isLoggedIn)
@@ -240,7 +255,7 @@ export default defineComponent({
     
     // 添加监控面板可见性状态
     const isPanelVisible = computed(() => {
-      return !!document.querySelector('.monitoring-panel-container');
+      return showMonitoringDetailPanel.value;
     });
     
     // 计算总RTT
@@ -1064,6 +1079,75 @@ export default defineComponent({
       }
     };
     
+    // 显示监控详情面板
+    const showMonitoringDetailPanel_func = async () => {
+      try {
+        // 获取当前监控数据
+        const { default: monitoringService } = await import('../../services/monitoring.js');
+        const instance = monitoringService.getInstance(props.activeSessionId);
+
+        if (instance && instance.state.connected) {
+          // 获取最新的监控数据
+          const latestData = instance.state.lastData || {};
+
+          // 转换数据格式为详情面板所需格式
+          currentMonitoringData.value = {
+            cpu: {
+              usage: latestData.cpu?.usage || 0,
+              cores: latestData.cpu?.cores || latestData.system?.cpu_cores || 1
+            },
+            memory: {
+              usage: latestData.memory?.usedPercentage || 0,
+              total: latestData.memory?.total || 0,
+              used: latestData.memory?.used || 0,
+              available: latestData.memory?.available || latestData.memory?.free || 0
+            },
+            disk: {
+              usage: latestData.disk?.usedPercentage || 0,
+              total: latestData.disk?.total || 0,
+              used: latestData.disk?.used || 0,
+              available: latestData.disk?.available || latestData.disk?.free || 0,
+              filesystem: latestData.disk?.filesystem || 'Unknown'
+            },
+            swap: {
+              usage: latestData.swap?.usedPercentage || 0,
+              total: latestData.swap?.total || 0,
+              used: latestData.swap?.used || 0
+            },
+            network: {
+              upload: latestData.network?.total_tx_speed || 0,
+              download: latestData.network?.total_rx_speed || 0,
+              totalUpload: latestData.network?.total_tx_bytes || 0,
+              totalDownload: latestData.network?.total_rx_bytes || 0
+            },
+            system: {
+              os: latestData.system?.os || latestData.system?.platform || 'Unknown',
+              hostname: latestData.system?.hostname || 'Unknown',
+              uptime: latestData.system?.uptime || 0
+            }
+          };
+
+          // 设置服务器信息
+          serverInfo.value = {
+            hostname: latestData.system?.hostname || 'Unknown',
+            address: instance.state.targetHost || 'Unknown'
+          };
+
+          showMonitoringDetailPanel.value = true;
+        } else {
+          ElMessage.warning('监控服务未连接，无法显示详情面板');
+        }
+      } catch (error) {
+        log.error('[工具栏] 显示监控详情面板失败:', error);
+        ElMessage.error('显示监控详情面板失败');
+      }
+    };
+
+    // 隐藏监控详情面板
+    const hideMonitoringDetailPanel = () => {
+      showMonitoringDetailPanel.value = false;
+    };
+
     // 处理监控图标点击的函数 - SSH集成版
     const handleMonitoringClick = () => {
       // 如果用户未登录，显示登录提示
@@ -1078,11 +1162,11 @@ export default defineComponent({
         return;
       }
 
-      // 显示监控状态信息
-      if (monitoringServiceInstalled.value) {
-        ElMessage.success('监控服务已连接，实时数据显示在工具栏中');
+      // 切换监控详情面板显示状态
+      if (showMonitoringDetailPanel.value) {
+        hideMonitoringDetailPanel();
       } else {
-        ElMessage.info('监控服务正在初始化，请稍候...');
+        showMonitoringDetailPanel_func();
       }
     };
     
@@ -1359,6 +1443,11 @@ export default defineComponent({
       updateNetworkPopupPosition,
       networkPopupStyle,
       handleMonitoringClick,
+      // 监控详情面板相关
+      showMonitoringDetailPanel,
+      currentMonitoringData,
+      serverInfo,
+      hideMonitoringDetailPanel,
       // 用户状态
       isLoggedIn,
       // 终端ID（用于监控组件）

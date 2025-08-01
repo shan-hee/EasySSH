@@ -41,11 +41,15 @@
       <span class="label">下载</span>
       <span class="value">{{ formatNetworkSpeed(networkSpeed.rx) }}</span>
     </div>
+
+
   </div>
+
+
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import log from '../../services/log'
 
 // Props
@@ -66,6 +70,8 @@ const hasSwap = ref(false)
 const networkSpeed = ref({ total: 0, rx: 0, tx: 0 })
 const lastUpdateTime = ref(0)
 
+
+
 // 监控服务实例
 let monitoringService = null
 
@@ -84,40 +90,62 @@ const formatNetworkSpeed = (bytesPerSecond) => {
   }
 }
 
+
+
 // 处理监控数据
 const handleMonitoringData = (data) => {
   try {
-    if (data.cpu && typeof data.cpu.usage === 'number') {
-      cpuUsage.value = Math.round(data.cpu.usage)
-    }
-    
-    if (data.memory && typeof data.memory.usedPercentage === 'number') {
-      memoryUsage.value = Math.round(data.memory.usedPercentage)
-    }
-    
-    if (data.disk && typeof data.disk.usedPercentage === 'number') {
-      diskUsage.value = Math.round(data.disk.usedPercentage)
+    // CPU数据处理
+    if (data.cpu && typeof data.cpu.usage === 'number' && !isNaN(data.cpu.usage)) {
+      cpuUsage.value = Math.round(Math.max(0, Math.min(100, data.cpu.usage)))
     }
 
-    if (data.swap && typeof data.swap.usedPercentage === 'number') {
-      swapUsage.value = Math.round(data.swap.usedPercentage)
-      // 如果收到交换分区数据，说明系统有交换分区
-      hasSwap.value = true
-    }
-
-    if (data.network) {
-      networkSpeed.value = {
-        total: (data.network.total_rx_speed || 0) + (data.network.total_tx_speed || 0),
-        rx: data.network.total_rx_speed || 0,
-        tx: data.network.total_tx_speed || 0
+    // 内存数据处理
+    if (data.memory) {
+      if (typeof data.memory.usedPercentage === 'number' && !isNaN(data.memory.usedPercentage)) {
+        memoryUsage.value = Math.round(Math.max(0, Math.min(100, data.memory.usedPercentage)))
+      } else if (data.memory.total > 0 && typeof data.memory.used === 'number') {
+        const percentage = (data.memory.used / data.memory.total) * 100
+        memoryUsage.value = Math.round(Math.max(0, Math.min(100, percentage)))
       }
     }
-    
+
+    // 磁盘数据处理
+    if (data.disk) {
+      if (typeof data.disk.usedPercentage === 'number' && !isNaN(data.disk.usedPercentage)) {
+        diskUsage.value = Math.round(Math.max(0, Math.min(100, data.disk.usedPercentage)))
+      } else if (data.disk.total > 0 && typeof data.disk.used === 'number') {
+        const percentage = (data.disk.used / data.disk.total) * 100
+        diskUsage.value = Math.round(Math.max(0, Math.min(100, percentage)))
+      }
+    }
+
+    // 交换分区数据处理
+    if (data.swap) {
+      hasSwap.value = true
+      if (typeof data.swap.usedPercentage === 'number' && !isNaN(data.swap.usedPercentage)) {
+        swapUsage.value = Math.round(Math.max(0, Math.min(100, data.swap.usedPercentage)))
+      } else if (data.swap.total > 0 && typeof data.swap.used === 'number') {
+        const percentage = (data.swap.used / data.swap.total) * 100
+        swapUsage.value = Math.round(Math.max(0, Math.min(100, percentage)))
+      }
+    }
+
+    // 网络数据处理
+    if (data.network && typeof data.network === 'object') {
+      const rxSpeed = parseFloat(data.network.total_rx_speed) || 0
+      const txSpeed = parseFloat(data.network.total_tx_speed) || 0
+
+      networkSpeed.value = {
+        total: rxSpeed + txSpeed,
+        rx: rxSpeed,
+        tx: txSpeed
+      }
+    }
+
     lastUpdateTime.value = Date.now()
-    
-    log.debug(`[工具栏监控] 数据更新: CPU=${cpuUsage.value}%, 内存=${memoryUsage.value}%, 磁盘=${diskUsage.value}%, 交换=${swapUsage.value}%`)
   } catch (error) {
-    log.warn('[工具栏监控] 处理监控数据失败:', error)
+    log.error('[工具栏监控] 处理监控数据失败:', error)
   }
 }
 
@@ -192,13 +220,16 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 0 8px;
+  padding: 4px 8px;
   font-size: 12px;
   color: #e5e5e5;
   border-left: 1px solid #3a3a3a;
   margin-left: 8px;
   padding-left: 12px;
+  border-radius: 6px;
 }
+
+
 
 .monitoring-item {
   display: flex;
@@ -234,6 +265,8 @@ onUnmounted(() => {
   font-weight: 600;
   font-family: 'JetBrains Mono', 'Courier New', monospace;
 }
+
+
 
 /* 图标样式 */
 .icon-cpu::before { content: '🖥️'; }

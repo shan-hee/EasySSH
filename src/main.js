@@ -136,29 +136,27 @@ window.debugMonitoring = {
     return monitoringService.state;
   },
   
-  // 添加显式创建监控面板的方法
+  // 显示监控面板
   showPanel: (host) => {
-    log.info(`[监控调试] 显式创建监控面板: ${host || '未指定主机'}`);
     if (!host) {
       // 尝试从当前SSH会话获取主机
       const sessions = JSON.parse(sessionStorage.getItem('ssh-sessions') || '[]');
       if (sessions.length > 0) {
         host = sessions[0].host;
-        log.info(`[监控调试] 使用当前会话主机: ${host}`);
       } else {
-        log.error('[监控调试] 未找到主机，请指定主机地址');
+        log.error('[监控] 未找到主机，请指定主机地址');
         return false;
       }
     }
-    
+
     // 触发自定义事件，通知需要显示监控面板
     try {
-      window.dispatchEvent(new CustomEvent('show-monitoring-panel', { 
-        detail: { host, serverId: 'debug' }
+      window.dispatchEvent(new CustomEvent('show-monitoring-panel', {
+        detail: { host, serverId: 'panel' }
       }));
       return true;
     } catch (error) {
-      log.error('[监控调试] 显示监控面板失败:', error);
+      log.error('[监控] 显示监控面板失败:', error);
       return false;
     }
   }

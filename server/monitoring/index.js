@@ -5,6 +5,9 @@
 
 const WebSocket = require('ws');
 const logger = require('../utils/logger');
+const OptimizedDataTransport = require('../services/optimizedDataTransport');
+const monitoringConfig = require('../config/monitoring');
+const { handleWebSocketError } = require('../utils/errorHandler');
 
 // 存储前端监控会话（浏览器连接）
 const frontendSessions = new Map();
@@ -14,6 +17,9 @@ const serverSubscriptions = new Map();
 const monitoringDataCache = new Map();
 // 存储IP到组合标识符的映射：ipAddress -> hostId (hostname@ip)
 const ipToHostIdMap = new Map();
+
+// 创建优化的数据传输管理器
+const dataTransport = new OptimizedDataTransport();
 
 /**
  * 初始化前端监控WebSocket服务器 - SSH集成版
@@ -123,15 +129,22 @@ function handleFrontendConnection(ws, sessionId, clientIp, subscribeServer) {
 
   logger.info('前端会话已创建', { sessionId, clientIp });
 
+  // 注册到数据传输管理器
+  dataTransport.registerConnection(sessionId, ws, {
+    clientIp,
+    subscribeServer,
+    type: 'frontend'
+  });
+
   // 发送会话确认
-  sendMessage(ws, {
+  dataTransport.sendData(sessionId, {
     type: 'session_created',
     data: {
       sessionId,
       timestamp: Date.now(),
       connectionType: 'frontend'
     }
-  });
+  }, { immediate: true });
 
   // 移除 monitoring_connected 消息发送
   // 前端连接不需要发送连接成功状态
@@ -154,7 +167,7 @@ function handleFrontendConnection(ws, sessionId, clientIp, subscribeServer) {
       const data = JSON.parse(message);
       handleFrontendMessage(ws, sessionId, data);
     } catch (err) {
-      logger.error('处理前端消息出错', { sessionId, error: err.message });
+      handleWebSocketError(err, { sessionId, operation: '处理前端消息' });
       sendError(ws, '消息处理错误', sessionId);
     }
   });
@@ -167,6 +180,9 @@ function handleFrontendConnection(ws, sessionId, clientIp, subscribeServer) {
       reason: reason?.toString(),
       clientIp
     });
+
+    // 从数据传输管理器注销
+    dataTransport.unregisterConnection(sessionId);
 
     // 发送监控断开状态给其他可能的连接
     const session = frontendSessions.get(sessionId);
@@ -200,7 +216,7 @@ function handleFrontendConnection(ws, sessionId, clientIp, subscribeServer) {
 
   // 处理错误
   ws.on('error', (err) => {
-    logger.error('前端WebSocket错误', { sessionId, error: err.message });
+    handleWebSocketError(err, { sessionId, operation: '前端WebSocket连接' });
     cleanupFrontendSession(sessionId);
   });
 }
@@ -626,29 +642,82 @@ function handleMonitoringDataFromClient(_ws, sessionId, data) {
 }
 
 /**
+ * 标准化监控数据格式
+ * @param {Object} rawData 原始监控数据
+ * @returns {Object} 标准化后的监控数据
+ */
+function standardizeMonitoringData(rawData) {
+  if (!rawData || typeof rawData !== 'object') {
+    return rawData;
+  }
+
+  const standardized = { ...rawData };
+
+  // 标准化数值字段的通用函数
+  const normalizeNumber = (value, min = 0, max = 100) => {
+    const num = parseFloat(value);
+    return isNaN(num) ? 0 : Math.max(min, Math.min(max, num));
+  };
+
+  // 标准化CPU数据
+  if (standardized.cpu) {
+    standardized.cpu.usage = normalizeNumber(standardized.cpu.usage);
+    standardized.cpu.cores = normalizeNumber(standardized.cpu.cores, 1, 1000);
+    if (typeof standardized.cpu.model !== 'string') {
+      standardized.cpu.model = 'Unknown';
+    }
+  }
+
+  // 标准化内存和磁盘数据
+  ['memory', 'disk', 'swap'].forEach(type => {
+    if (standardized[type]) {
+      const data = standardized[type];
+      data.total = normalizeNumber(data.total, 0, Number.MAX_SAFE_INTEGER);
+      data.used = normalizeNumber(data.used, 0, Number.MAX_SAFE_INTEGER);
+      data.free = normalizeNumber(data.free, 0, Number.MAX_SAFE_INTEGER);
+
+      // 计算使用率
+      if (data.total > 0) {
+        data.usedPercentage = normalizeNumber((data.used / data.total) * 100);
+      } else {
+        data.usedPercentage = 0;
+      }
+    }
+  });
+
+  // 标准化网络数据
+  if (standardized.network) {
+    standardized.network.total_rx_speed = normalizeNumber(standardized.network.total_rx_speed, 0, Number.MAX_SAFE_INTEGER);
+    standardized.network.total_tx_speed = normalizeNumber(standardized.network.total_tx_speed, 0, Number.MAX_SAFE_INTEGER);
+  }
+
+  // 添加时间戳
+  if (!standardized.timestamp) {
+    standardized.timestamp = Date.now();
+  }
+
+  return standardized;
+}
+
+/**
  * 处理来自SSH的监控数据
  * @param {string} sessionId SSH会话ID
  * @param {Object} data 监控数据
  */
 function handleMonitoringDataFromSSH(sessionId, data) {
-  // 只在开发环境记录详细的监控数据日志
-  if (process.env.NODE_ENV === 'development') {
-    logger.debug('收到SSH监控数据', { sessionId, type: data.type });
-  }
-
-  // 从payload中提取监控数据
-  const monitoringData = data.payload || data;
-  const hostId = data.hostId || monitoringData.hostId;
+  const rawMonitoringData = data.payload || data;
+  const hostId = data.hostId || rawMonitoringData.hostId;
 
   if (!hostId) {
     logger.warn('无法确定SSH监控数据的主机标识', { sessionId });
     return;
   }
 
-  logger.debug('收到SSH监控数据', { hostId, sessionId });
+  // 标准化监控数据格式
+  const standardizedData = standardizeMonitoringData(rawMonitoringData);
 
   // 处理监控数据的通用逻辑
-  processMonitoringData(sessionId, hostId, monitoringData, 'ssh_collector');
+  processMonitoringData(sessionId, hostId, standardizedData, 'ssh_collector');
 }
 
 /**
@@ -683,28 +752,19 @@ function processMonitoringData(sessionId, hostId, monitoringData, source) {
   // 使用主机标识符作为缓存key
   monitoringDataCache.set(hostId, cacheData);
 
-  logger.debug('监控数据已更新', {
-    hostId,
-    sessionId,
-    source: source
-  });
-
   // 向订阅了该主机的前端会话广播数据
-  let broadcastCount = 0;
-  const notifiedSessions = new Set(); // 避免重复通知
+  const notifiedSessions = new Set();
 
   // 检查直接订阅（使用完整hostId）
   if (serverSubscriptions.has(hostId)) {
     const subscribedFrontends = serverSubscriptions.get(hostId);
-
     subscribedFrontends.forEach(frontendSessionId => {
       if (!notifiedSessions.has(frontendSessionId)) {
         const targetSession = frontendSessions.get(frontendSessionId);
         if (targetSession && targetSession.ws && targetSession.ws.readyState === WebSocket.OPEN) {
-          broadcastMonitoringData(targetSession.ws, hostId, monitoringData);
-          targetSession.stats.messagesSent += 2; // 发送了两条消息
+          broadcastMonitoringData(frontendSessionId, hostId, monitoringData);
+          targetSession.stats.messagesSent += 2;
           notifiedSessions.add(frontendSessionId);
-          broadcastCount++;
         }
       }
     });
@@ -715,34 +775,17 @@ function processMonitoringData(sessionId, hostId, monitoringData, source) {
     const [, ipAddress] = hostId.split('@');
     if (ipAddress && serverSubscriptions.has(ipAddress)) {
       const subscribedFrontends = serverSubscriptions.get(ipAddress);
-
       subscribedFrontends.forEach(frontendSessionId => {
         if (!notifiedSessions.has(frontendSessionId)) {
           const targetSession = frontendSessions.get(frontendSessionId);
           if (targetSession && targetSession.ws && targetSession.ws.readyState === WebSocket.OPEN) {
-            broadcastMonitoringData(targetSession.ws, hostId, monitoringData);
-            targetSession.stats.messagesSent += 2; // 发送了两条消息
+            broadcastMonitoringData(frontendSessionId, hostId, monitoringData);
+            targetSession.stats.messagesSent += 2;
             notifiedSessions.add(frontendSessionId);
-            broadcastCount++;
           }
         }
       });
     }
-  }
-
-  if (broadcastCount > 0) {
-    logger.debug('监控数据已广播', {
-      hostId,
-      broadcastCount,
-      sessionId,
-      source
-    });
-  } else {
-    logger.debug('没有前端订阅该主机', {
-      hostId,
-      sessionId,
-      source
-    });
   }
 }
 
@@ -813,14 +856,14 @@ function handleMonitoringDataUpdate(ws, sessionId, data) {
 
 
 /**
- * 广播监控数据到前端
- * @param {WebSocket} ws WebSocket连接
+ * 广播监控数据到前端（优化版）
+ * @param {string} sessionId 会话ID
  * @param {string} hostId 主机标识符
  * @param {Object} monitoringData 监控数据
  */
-function broadcastMonitoringData(ws, hostId, monitoringData) {
-  // 发送监控状态更新（数据可用）
-  sendMessage(ws, {
+async function broadcastMonitoringData(sessionId, hostId, monitoringData) {
+  // 使用批量传输发送监控状态和数据
+  await dataTransport.sendData(sessionId, {
     type: 'monitoring_status',
     data: {
       hostId: hostId,
@@ -831,8 +874,7 @@ function broadcastMonitoringData(ws, hostId, monitoringData) {
     }
   });
 
-  // 发送实际的监控数据
-  sendMessage(ws, {
+  await dataTransport.sendData(sessionId, {
     type: 'system_stats',
     payload: {
       ...monitoringData,

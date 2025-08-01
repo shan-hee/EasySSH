@@ -4,6 +4,7 @@
  */
 
 const logger = require('../utils/logger');
+const { handleMonitoringError } = require('../utils/errorHandler');
 
 class SSHMonitoringCollector {
   constructor(sshConnection, hostInfo) {
@@ -110,15 +111,29 @@ class SSHMonitoringCollector {
         const hostname = systemInfo.os.hostname;
         const publicIp = systemInfo.ip.public;
         const internalIp = systemInfo.ip.internal;
+        const connectionIp = this.hostInfo.address; // 用户连接时使用的IP
 
-        // 优先使用公网IP，如果公网IP无效则使用内网IP
-        let ipAddress = internalIp;
-        if (publicIp && publicIp !== '获取失败' && publicIp !== 'null' && publicIp.trim() !== '') {
-          ipAddress = publicIp;
+        // 始终优先使用连接IP，确保前端订阅能够匹配
+        let ipAddress = connectionIp;
+
+        // 如果连接IP无效，才考虑其他选项
+        if (!ipAddress || ipAddress === '获取失败' || ipAddress === 'null' || ipAddress.trim() === '') {
+          // 优先使用公网IP，最后使用内网IP
+          if (publicIp && publicIp !== '获取失败' && publicIp !== 'null' && publicIp.trim() !== '') {
+            ipAddress = publicIp;
+          } else {
+            ipAddress = internalIp || 'unknown';
+          }
         }
 
         this.hostId = `${hostname}@${ipAddress}`;
-        logger.info('生成主机标识符', { hostId: this.hostId });
+        logger.info('生成主机标识符', {
+          hostId: this.hostId,
+          connectionIp,
+          publicIp,
+          internalIp,
+          selectedIp: ipAddress
+        });
       }
 
       // 添加hostId到系统信息
@@ -137,20 +152,17 @@ class SSHMonitoringCollector {
       }
 
     } catch (error) {
-      logger.error('收集系统信息失败', {
-        error: error.message,
-        host: this.hostInfo.address,
-        hostId: this.hostId
+      const result = handleMonitoringError(error, {
+        sessionId: this.hostId,
+        operation: '收集系统信息',
+        host: this.hostInfo.address
       });
 
-      // 如果是连接相关错误，自动停止收集
-      if (error.message.includes('SSH连接') ||
-          error.message.includes('Not connected') ||
-          error.message.includes('Unable to exec') ||
-          error.message.includes('监控数据收集已停止')) {
-        logger.info('检测到SSH连接问题，自动停止监控数据收集', {
+      if (result.shouldStop) {
+        logger.info('检测到严重错误，自动停止监控数据收集', {
           hostId: this.hostId,
-          error: error.message
+          errorType: result.errorType,
+          errorCount: result.errorCount
         });
         this.stopCollection();
       }
@@ -476,6 +488,30 @@ class SSHMonitoringCollector {
       city: 'Unknown',
       timezone: 'Unknown'
     };
+  }
+
+  /**
+   * 判断IP是否为私有IP地址
+   * @param {string} ip IP地址
+   * @returns {boolean} 是否为私有IP
+   */
+  isPrivateIP(ip) {
+    if (!ip || typeof ip !== 'string') return false;
+
+    // 私有IP地址范围：
+    // 10.0.0.0 - 10.255.255.255 (10.0.0.0/8)
+    // 172.16.0.0 - 172.31.255.255 (172.16.0.0/12)
+    // 192.168.0.0 - 192.168.255.255 (192.168.0.0/16)
+    // 127.0.0.0 - 127.255.255.255 (localhost)
+
+    const privateRanges = [
+      /^10\./,
+      /^172\.(1[6-9]|2[0-9]|3[0-1])\./,
+      /^192\.168\./,
+      /^127\./
+    ];
+
+    return privateRanges.some(range => range.test(ip));
   }
 }
 
