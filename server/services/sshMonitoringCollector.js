@@ -29,7 +29,7 @@ class SSHMonitoringCollector {
    * @param {Function} dataCallback 数据回调函数
    * @param {number} interval 收集间隔（毫秒），默认3秒
    */
-  startCollection(dataCallback, interval = 3000) {
+  startCollection(dataCallback, interval = 1000) {
     if (this.isCollecting) {
       logger.warn('监控数据收集已在进行中', { hostId: this.hostId });
       return;
@@ -93,7 +93,10 @@ class SSHMonitoringCollector {
     }
 
     try {
-      logger.info('开始收集系统信息', { hostId: this.hostId });
+      // 只在首次收集时记录日志
+      if (this.collectionCount === 0) {
+        logger.info('开始监控数据收集', { hostId: this.hostId });
+      }
 
       const systemInfo = {
         timestamp: Date.now(),
@@ -109,12 +112,15 @@ class SSHMonitoringCollector {
         location: await this.getLocationInfo()
       };
 
-      logger.info('系统信息收集完成', {
-        hostId: this.hostId,
-        cpu: systemInfo.cpu,
-        memory: systemInfo.memory,
-        swap: systemInfo.swap
-      });
+      // 只记录关键指标，减少日志输出
+      if (this.collectionCount % 60 === 0) { // 每分钟记录一次
+        logger.info('监控数据摘要', {
+          hostId: this.hostId,
+          cpu: `${systemInfo.cpu?.usage || 0}%`,
+          memory: `${systemInfo.memory?.usedPercentage || 0}%`,
+          collections: this.collectionCount + 1
+        });
+      }
 
       // 生成hostId
       if (!this.hostId) {
@@ -300,7 +306,7 @@ class SSHMonitoringCollector {
         loadAverage: { load1, load5, load15 }
       };
 
-      logger.info('CPU信息获取成功', { result });
+      logger.debug('CPU信息获取成功', { result });
       return result;
     } catch (error) {
       logger.error('获取CPU信息失败', { error: error.message });
@@ -344,7 +350,7 @@ class SSHMonitoringCollector {
           usedPercentage: total > 0 ? Math.round((used / total) * 100 * 100) / 100 : 0
         };
 
-        logger.info('内存信息获取成功', { result });
+        logger.debug('内存信息获取成功', { result });
         return result;
       }
 
@@ -384,7 +390,7 @@ class SSHMonitoringCollector {
           usedPercentage: total > 0 ? Math.round((used / total) * 100 * 100) / 100 : 0
         };
 
-        logger.info('交换分区信息获取成功', { result });
+        logger.debug('交换分区信息获取成功', { result });
         return result;
       }
 

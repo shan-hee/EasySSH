@@ -40,7 +40,7 @@ class OptimizedSSHMonitoringCollector extends EventEmitter {
       lastErrorTime: 0,
       maxRetries: 3,
       backoffMultiplier: 1.5,
-      baseInterval: 3000
+      baseInterval: 1000
     };
     
     // 命令执行缓存
@@ -53,7 +53,7 @@ class OptimizedSSHMonitoringCollector extends EventEmitter {
    * @param {Function} dataCallback 数据回调函数
    * @param {number} interval 收集间隔（毫秒）
    */
-  startCollection(dataCallback, interval = 3000) {
+  startCollection(dataCallback, interval = 1000) {
     if (this.isCollecting) {
       logger.warn('监控数据收集已在进行中', { hostId: this.hostId });
       return;

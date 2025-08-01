@@ -5,11 +5,15 @@
 const config = {
   // SSH监控收集器配置
   collector: {
-    // 数据收集间隔（毫秒）
-    defaultInterval: parseInt(process.env.MONITORING_INTERVAL) || 3000,
+    // 数据收集间隔（毫秒）- 默认1秒，可通过设置界面调整
+    defaultInterval: 1000,
+
+    // 间隔范围限制
+    minInterval: 500,    // 最小0.5秒
+    maxInterval: 10000,  // 最大10秒
 
     // 命令执行超时（毫秒）
-    commandTimeout: parseInt(process.env.MONITORING_COMMAND_TIMEOUT) || 8000,
+    commandTimeout: 8000,
 
     // 错误处理配置
     errorHandling: {

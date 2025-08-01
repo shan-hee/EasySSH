@@ -846,7 +846,8 @@ function handleMonitoringDataUpdate(ws, sessionId, data) {
     }
   });
 
-  logger.debug('监控数据已更新', { hostId, sessionId });
+  // 减少频繁的数据更新日志
+  // logger.debug('监控数据已更新', { hostId, sessionId });
 }
 
 

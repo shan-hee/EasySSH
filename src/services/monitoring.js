@@ -167,9 +167,15 @@ class MonitoringInstance {
         case 'monitoring_status':
           this._handleMonitoringStatus(message);
           break;
+        case 'monitoring_disconnected':
+          // 处理监控断开连接消息
+          this._handleMonitoringDisconnected(message);
+          break;
         case 'session_created':
         case 'subscribe_ack':
-          // 确认消息，无需处理
+        case 'monitoring_data_updated':
+        case 'pong':
+          // 确认消息和心跳响应，无需处理
           break;
         case 'error':
           const errorMsg = message.message || message.data?.message || message.error || '未知错误';
@@ -278,6 +284,25 @@ class MonitoringInstance {
       installed: installed,
       available: available,
       source: 'websocket'
+    });
+  }
+
+  /**
+   * 处理监控断开连接
+   * @param {Object} message - 断开连接消息
+   * @private
+   */
+  _handleMonitoringDisconnected(message) {
+    const data = message.data || {};
+    const { hostId, reason } = data;
+
+    log.debug(`[监控] 收到断开连接通知: ${hostId || this.state.targetHost}`, reason ? { reason } : {});
+
+    // 触发断开连接事件
+    this._emitEvent('monitoring-disconnected', {
+      terminalId: this.terminalId,
+      host: hostId || this.state.targetHost,
+      reason: reason || '服务器断开连接'
     });
   }
 

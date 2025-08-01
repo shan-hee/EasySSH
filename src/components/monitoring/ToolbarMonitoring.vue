@@ -125,13 +125,18 @@ const handleMonitoringData = (data) => {
 
     // 网络数据处理
     if (data.network && typeof data.network === 'object') {
-      const rxSpeed = parseFloat(data.network.total_rx_speed) || 0
-      const txSpeed = parseFloat(data.network.total_tx_speed) || 0
+      // 服务器返回的是 KB/s，需要转换为 B/s 供格式化函数使用
+      const rxSpeedKB = parseFloat(data.network.total_rx_speed) || 0
+      const txSpeedKB = parseFloat(data.network.total_tx_speed) || 0
+
+      // 转换为字节/秒
+      const rxSpeedBytes = rxSpeedKB * 1024
+      const txSpeedBytes = txSpeedKB * 1024
 
       networkSpeed.value = {
-        total: rxSpeed + txSpeed,
-        rx: rxSpeed,
-        tx: txSpeed
+        total: rxSpeedBytes + txSpeedBytes,
+        rx: rxSpeedBytes,
+        tx: txSpeedBytes
       }
     }
 
@@ -144,10 +149,15 @@ const handleMonitoringData = (data) => {
 // 处理监控状态变更
 const handleMonitoringStatusChange = (event) => {
   const { terminalId: eventTerminalId, installed, available } = event.detail
-  
+
   if (eventTerminalId === props.terminalId) {
+    const previousState = isConnected.value
     isConnected.value = installed && available
-    log.debug(`[工具栏监控] 状态变更: 终端=${eventTerminalId}, 连接=${isConnected.value}`)
+
+    // 只在状态真正发生变化时记录日志
+    if (previousState !== isConnected.value) {
+      log.debug(`[工具栏监控] 状态变更: 终端=${eventTerminalId}, ${previousState ? '已连接' : '未连接'} → ${isConnected.value ? '已连接' : '未连接'}`)
+    }
   }
 }
 

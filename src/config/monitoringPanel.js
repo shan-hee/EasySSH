@@ -320,15 +320,24 @@ export const PANEL_UTILS = {
 
   /**
    * 格式化网络速度
-   * @param {number} speed 速度（KB/s）
+   * @param {number} speed 速度（字节/秒）
    * @returns {string} 格式化后的速度
    */
   formatNetworkSpeed(speed) {
     const numSpeed = parseFloat(speed) || 0;
+
+    if (numSpeed === 0) {
+      return '0 B/s';
+    }
+
     if (numSpeed < 1024) {
-      return `${numSpeed.toFixed(1)} KB/s`;
+      return `${numSpeed.toFixed(1)} B/s`;
+    } else if (numSpeed < 1024 * 1024) {
+      return `${(numSpeed / 1024).toFixed(1)} KB/s`;
+    } else if (numSpeed < 1024 * 1024 * 1024) {
+      return `${(numSpeed / (1024 * 1024)).toFixed(1)} MB/s`;
     } else {
-      return `${(numSpeed / 1024).toFixed(1)} MB/s`;
+      return `${(numSpeed / (1024 * 1024 * 1024)).toFixed(1)} GB/s`;
     }
   },
 

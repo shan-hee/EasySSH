@@ -132,6 +132,11 @@ export const userSettingsDefaults = {
     highlightActiveLine: true
   },
 
+  // 监控设置
+  monitoring: {
+    updateInterval: 1000      // 更新间隔（毫秒）
+  },
+
   // 高级设置
   advanced: {
     experimentalFeatures: false,

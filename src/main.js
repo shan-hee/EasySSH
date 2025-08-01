@@ -437,6 +437,7 @@ window.addEventListener('ssh-connecting', async (event) => {
       // 立即开始监控连接，与SSH连接并行
       try {
         const connected = await monitoringService.connect(terminalId, host)
+        // 只在连接成功时记录INFO日志，失败时使用DEBUG级别
         if (connected) {
           log.info(`[监控] 终端 ${terminalId} 连接到 ${host} 成功`)
         } else {

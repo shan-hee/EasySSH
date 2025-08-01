@@ -161,7 +161,8 @@ class OptimizedDataTransport extends EventEmitter {
     // 发送批量数据
     const success = await this.sendMessage(sessionId, batchData);
     
-    if (success) {
+    // 只在批量较大时记录日志，减少输出
+    if (success && queue.length >= 5) {
       logger.debug('批量数据发送成功', {
         sessionId,
         batchSize: queue.length

@@ -196,6 +196,9 @@ export default defineComponent({
     const currentMonitoringData = ref({})
     const serverInfo = ref({})
 
+    // 监控数据更新事件处理器
+    let monitoringDataEventHandler = null
+
     // 用户登录状态
     const isLoggedIn = computed(() => userStore.isLoggedIn)
     
@@ -615,13 +618,16 @@ export default defineComponent({
     }, { immediate: true });
     
     // 监听监控服务状态变化，确保UI及时更新
-    watch(() => monitoringService.state, (newState) => {
+    watch(() => monitoringService.state, (newState, oldState) => {
       if (!newState) return;
-      
+
       // 当监控服务状态变化时，重新应用当前终端的状态
       const currentId = props.activeSessionId;
       if (currentId) {
-        log.debug('监控服务状态已变化，重新检查终端状态');
+        // 只在连接状态真正发生变化时记录日志
+        if (!oldState || newState.connected !== oldState.connected) {
+          log.debug(`监控服务状态变化: ${oldState?.connected ? '已连接' : '未连接'} → ${newState.connected ? '已连接' : '未连接'}`);
+        }
         nextTick(() => {
           applyInitialStatus();
         });
@@ -647,18 +653,19 @@ export default defineComponent({
           terminalState.monitoringStatus = status;
           terminalState.monitoringMessage = message;
 
-          // 如果是当前活动的终端，同时更新UI和记录日志
+          // 如果是当前活动的终端，更新UI状态
           if (terminalId === props.activeSessionId) {
-            log.debug(`[${componentInstanceId}] 收到监控状态变更事件: 主机=${hostname}, 已安装=${installed}, 终端=${terminalId}, 状态=${status}`);
-
+            // 只在状态真正发生变化时记录日志
+            const previousState = monitoringServiceInstalled.value;
             monitoringServiceInstalled.value = installed;
-            log.debug(`[${componentInstanceId}] 更新当前活动终端[${terminalId}]的监控状态: ${installed}`);
 
-            // 提供更详细的状态反馈
-            if (installed) {
-              log.info(`[${componentInstanceId}] 监控服务已安装: ${message || '监控数据可用'}`);
-            } else {
-              log.info(`[${componentInstanceId}] 监控服务未安装: ${message || '监控数据不可用'}`);
+            if (previousState !== installed) {
+              log.debug(`[${componentInstanceId}] 监控状态变更: 终端=${terminalId}, ${previousState ? '已安装' : '未安装'} → ${installed ? '已安装' : '未安装'}`);
+
+              // 只在安装成功时记录INFO级别日志
+              if (installed) {
+                log.info(`[${componentInstanceId}] 监控服务已安装: ${message || '监控数据可用'}`);
+              }
             }
           }
         }
@@ -708,10 +715,15 @@ export default defineComponent({
           }
         }
       } else {
-        // 全局状态更新（向后兼容）- 只在当前活动实例中记录日志
+        // 全局状态更新（向后兼容）- 减少重复日志
         if (props.activeSessionId) {
+          const previousState = monitoringServiceInstalled.value;
           monitoringServiceInstalled.value = installed;
-          log.debug(`[${componentInstanceId}] 更新全局监控状态: ${installed}`);
+
+          // 只在状态变化时记录日志
+          if (previousState !== installed) {
+            log.debug(`[${componentInstanceId}] 全局监控状态变更: ${previousState ? '已安装' : '未安装'} → ${installed ? '已安装' : '未安装'}`);
+          }
         }
       }
     };
@@ -1078,7 +1090,49 @@ export default defineComponent({
         }
       }
     };
-    
+
+    // 更新监控详情面板数据的函数
+    const updateMonitoringDetailPanelData = (data) => {
+      if (!showMonitoringDetailPanel.value) return;
+
+      // 转换数据格式为详情面板所需格式
+      currentMonitoringData.value = {
+        cpu: {
+          usage: data.cpu?.usage || 0,
+          cores: data.cpu?.cores || data.system?.cpu_cores || 1
+        },
+        memory: {
+          usage: data.memory?.usedPercentage || 0,
+          total: data.memory?.total || 0,
+          used: data.memory?.used || 0,
+          available: data.memory?.available || data.memory?.free || 0
+        },
+        disk: {
+          usage: data.disk?.usedPercentage || 0,
+          total: data.disk?.total || 0,
+          used: data.disk?.used || 0,
+          available: data.disk?.available || data.disk?.free || 0,
+          filesystem: data.disk?.filesystem || 'Unknown'
+        },
+        swap: {
+          usage: data.swap?.usedPercentage || 0,
+          total: data.swap?.total || 0,
+          used: data.swap?.used || 0
+        },
+        network: {
+          upload: data.network?.total_tx_speed || 0,
+          download: data.network?.total_rx_speed || 0,
+          totalUpload: data.network?.total_tx_bytes || 0,
+          totalDownload: data.network?.total_rx_bytes || 0
+        },
+        system: {
+          os: data.system?.os || data.system?.platform || 'Unknown',
+          hostname: data.system?.hostname || 'Unknown',
+          uptime: data.system?.uptime || 0
+        }
+      };
+    };
+
     // 显示监控详情面板
     const showMonitoringDetailPanel_func = async () => {
       try {
@@ -1090,48 +1144,24 @@ export default defineComponent({
           // 获取最新的监控数据
           const latestData = instance.state.lastData || {};
 
-          // 转换数据格式为详情面板所需格式
-          currentMonitoringData.value = {
-            cpu: {
-              usage: latestData.cpu?.usage || 0,
-              cores: latestData.cpu?.cores || latestData.system?.cpu_cores || 1
-            },
-            memory: {
-              usage: latestData.memory?.usedPercentage || 0,
-              total: latestData.memory?.total || 0,
-              used: latestData.memory?.used || 0,
-              available: latestData.memory?.available || latestData.memory?.free || 0
-            },
-            disk: {
-              usage: latestData.disk?.usedPercentage || 0,
-              total: latestData.disk?.total || 0,
-              used: latestData.disk?.used || 0,
-              available: latestData.disk?.available || latestData.disk?.free || 0,
-              filesystem: latestData.disk?.filesystem || 'Unknown'
-            },
-            swap: {
-              usage: latestData.swap?.usedPercentage || 0,
-              total: latestData.swap?.total || 0,
-              used: latestData.swap?.used || 0
-            },
-            network: {
-              upload: latestData.network?.total_tx_speed || 0,
-              download: latestData.network?.total_rx_speed || 0,
-              totalUpload: latestData.network?.total_tx_bytes || 0,
-              totalDownload: latestData.network?.total_rx_bytes || 0
-            },
-            system: {
-              os: latestData.system?.os || latestData.system?.platform || 'Unknown',
-              hostname: latestData.system?.hostname || 'Unknown',
-              uptime: latestData.system?.uptime || 0
-            }
-          };
+          // 初始化监控数据
+          updateMonitoringDetailPanelData(latestData);
 
           // 设置服务器信息
           serverInfo.value = {
             hostname: latestData.system?.hostname || 'Unknown',
             address: instance.state.targetHost || 'Unknown'
           };
+
+          // 创建监控数据更新事件监听器
+          monitoringDataEventHandler = (event) => {
+            if (event.detail.terminalId === props.activeSessionId) {
+              updateMonitoringDetailPanelData(event.detail.data);
+            }
+          };
+
+          // 监听监控数据更新事件
+          window.addEventListener('monitoring-data-received', monitoringDataEventHandler);
 
           showMonitoringDetailPanel.value = true;
         } else {
@@ -1146,6 +1176,12 @@ export default defineComponent({
     // 隐藏监控详情面板
     const hideMonitoringDetailPanel = () => {
       showMonitoringDetailPanel.value = false;
+
+      // 移除监控数据更新事件监听器
+      if (monitoringDataEventHandler) {
+        window.removeEventListener('monitoring-data-received', monitoringDataEventHandler);
+        monitoringDataEventHandler = null;
+      }
     };
 
     // 处理监控图标点击的函数 - SSH集成版
@@ -1281,6 +1317,12 @@ export default defineComponent({
 
       // 移除新会话事件监听
       window.removeEventListener('terminal:new-session', handleNewSession);
+
+      // 移除监控数据更新事件监听器
+      if (monitoringDataEventHandler) {
+        window.removeEventListener('monitoring-data-received', monitoringDataEventHandler);
+        monitoringDataEventHandler = null;
+      }
 
       log.debug(`[${componentInstanceId}] 已移除SSH连接成功事件监听器`);
 

@@ -379,6 +379,14 @@ class SettingsService {
   }
 
   /**
+   * 更新监控设置
+   * @param {Object} updates - 要更新的设置
+   */
+  updateMonitoringSettings(updates) {
+    Object.assign(this.settings.monitoring, updates)
+  }
+
+  /**
    * 更新UI设置
    * @param {Object} updates - 要更新的设置
    */

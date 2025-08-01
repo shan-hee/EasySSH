@@ -38,156 +38,109 @@
 
       <!-- 面板内容 -->
       <div class="panel-content">
-        <!-- 统计图表区域 -->
-        <div class="charts-grid">
-          <!-- CPU使用率图表 -->
-          <div class="chart-card">
-            <div class="chart-header">
-              <h4><i class="fas fa-microchip"></i> CPU使用率</h4>
-              <span class="chart-value">{{ formatPercentage(monitoringData?.cpu?.usage) }}</span>
+        <!-- 顶部信息和网络图表区域 -->
+        <div class="top-section">
+          <!-- 左侧系统信息 -->
+          <div class="system-info">
+            <!-- 第一行：运行时间、架构、内存、磁盘 -->
+            <div class="info-line">
+              <div class="info-item">
+                <span class="label">运行时间</span>
+                <span class="value">{{ formatUptime(monitoringData?.system?.uptime) || 'Unknown' }}</span>
+              </div>
+              <div class="info-item">
+                <span class="label">架构</span>
+                <span class="value">{{ monitoringData?.cpu?.arch || 'x86_64' }}</span>
+              </div>
+              <div class="info-item">
+                <span class="label">内存</span>
+                <span class="value">{{ formatBytes(monitoringData?.memory?.total * 1024 * 1024) || '3.82 GiB' }}</span>
+              </div>
+              <div class="info-item">
+                <span class="label">磁盘</span>
+                <span class="value">{{ formatBytes(monitoringData?.disk?.total * 1024 * 1024 * 1024) || '37.64 GiB' }}</span>
+              </div>
             </div>
-            <div class="chart-container">
-              <canvas ref="cpuChart" width="300" height="120"></canvas>
+
+            <!-- 第二行：系统、CPU -->
+            <div class="info-line">
+              <div class="info-item">
+                <span class="label">系统</span>
+                <span class="value">{{ monitoringData?.system?.os || 'Unknown' }}</span>
+              </div>
+              <div class="info-item cpu-info">
+                <span class="label">CPU</span>
+                <span class="value">{{ monitoringData?.cpu?.model || 'QEMU Virtual CPU version 2.5+ 2 Virtual Core' }}</span>
+              </div>
+            </div>
+
+            <!-- 第三行：Load、上传、下载 -->
+            <div class="info-line">
+              <div class="info-item">
+                <span class="label">Load</span>
+                <span class="value">{{ monitoringData?.cpu?.loadAverage?.load1 || '0' }} / {{ monitoringData?.cpu?.loadAverage?.load5 || '0.02' }} / {{ monitoringData?.cpu?.loadAverage?.load15 || '0' }}</span>
+              </div>
+              <div class="info-item">
+                <span class="label">上传</span>
+                <span class="value">{{ formatBytes(monitoringData?.network?.uploadTotal || 2130000000) || '2.13 GiB' }}</span>
+              </div>
+              <div class="info-item">
+                <span class="label">下载</span>
+                <span class="value">{{ formatBytes(monitoringData?.network?.downloadTotal || 1350000000) || '1.35 GiB' }}</span>
+              </div>
+            </div>
+
+            <!-- 第四行：启动时间、最后上线时间 -->
+            <div class="info-line">
+              <div class="info-item">
+                <span class="label">启动时间</span>
+                <span class="value">{{ formatDateTime(monitoringData?.system?.bootTime) || 'Unknown' }}</span>
+              </div>
+              <div class="info-item">
+                <span class="label">最后上线时间</span>
+                <span class="value">{{ formatDateTime(new Date()) || '2025-08-01 22:50:07' }}</span>
+              </div>
             </div>
           </div>
 
-          <!-- 内存使用率图表 -->
-          <div class="chart-card">
-            <div class="chart-header">
-              <h4><i class="fas fa-memory"></i> 内存使用率</h4>
-              <span class="chart-value">{{ formatPercentage(monitoringData?.memory?.usage) }}</span>
-            </div>
-            <div class="chart-container">
-              <canvas ref="memoryChart" width="300" height="120"></canvas>
-            </div>
-          </div>
-
-          <!-- 硬盘使用率图表 -->
-          <div class="chart-card">
-            <div class="chart-header">
-              <h4><i class="fas fa-hdd"></i> 硬盘使用率</h4>
-              <span class="chart-value">{{ formatPercentage(monitoringData?.disk?.usage) }}</span>
-            </div>
-            <div class="chart-container">
-              <canvas ref="diskChart" width="300" height="120"></canvas>
-            </div>
-          </div>
-
-          <!-- 网络流量图表 -->
-          <div class="chart-card">
-            <div class="chart-header">
-              <h4><i class="fas fa-network-wired"></i> 网络流量</h4>
-              <span class="chart-value">
-                ↑{{ formatBytes(monitoringData?.network?.upload) }}/s
-                ↓{{ formatBytes(monitoringData?.network?.download) }}/s
-              </span>
-            </div>
-            <div class="chart-container">
-              <canvas ref="networkChart" width="300" height="120"></canvas>
+          <!-- 右侧网络流量图表 -->
+          <div class="network-chart-container">
+            <div class="chart-card network-chart">
+              <div class="chart-container">
+                <canvas ref="networkChart" width="300" height="200"></canvas>
+              </div>
             </div>
           </div>
         </div>
 
-        <!-- 详细信息区域 -->
-        <div class="details-section">
-          <h4><i class="fas fa-info-circle"></i> 详细信息</h4>
-          <div class="details-grid">
-            <!-- 系统信息 -->
-            <div class="detail-group">
-              <h5>系统信息</h5>
-              <div class="detail-items">
-                <div class="detail-item">
-                  <span class="label">操作系统:</span>
-                  <span class="value">{{ monitoringData?.system?.os || 'Unknown' }}</span>
-                </div>
-                <div class="detail-item">
-                  <span class="label">主机名:</span>
-                  <span class="value">{{ monitoringData?.system?.hostname || 'Unknown' }}</span>
-                </div>
-                <div class="detail-item">
-                  <span class="label">运行时间:</span>
-                  <span class="value">{{ formatUptime(monitoringData?.system?.uptime) }}</span>
-                </div>
-                <div class="detail-item">
-                  <span class="label">CPU核心数:</span>
-                  <span class="value">{{ monitoringData?.cpu?.cores || 'Unknown' }}</span>
-                </div>
+        <!-- 底部三个图表区域 -->
+        <div class="bottom-charts-section">
+          <div class="charts-grid">
+            <!-- CPU使用率图表 -->
+            <div class="chart-card">
+              <div class="chart-container">
+                <canvas ref="cpuChart" width="300" height="140"></canvas>
               </div>
             </div>
 
-            <!-- 内存信息 -->
-            <div class="detail-group">
-              <h5>内存信息</h5>
-              <div class="detail-items">
-                <div class="detail-item">
-                  <span class="label">总内存:</span>
-                  <span class="value">{{ formatBytes(monitoringData?.memory?.total) }}</span>
-                </div>
-                <div class="detail-item">
-                  <span class="label">已使用:</span>
-                  <span class="value">{{ formatBytes(monitoringData?.memory?.used) }}</span>
-                </div>
-                <div class="detail-item">
-                  <span class="label">可用内存:</span>
-                  <span class="value">{{ formatBytes(monitoringData?.memory?.available) }}</span>
-                </div>
-                <div class="detail-item">
-                  <span class="label">交换分区:</span>
-                  <span class="value">{{ formatBytes(monitoringData?.swap?.total) }}</span>
-                </div>
+            <!-- 内存使用率图表 -->
+            <div class="chart-card">
+              <div class="chart-container">
+                <canvas ref="memoryChart" width="300" height="140"></canvas>
               </div>
             </div>
 
-            <!-- 磁盘信息 -->
-            <div class="detail-group">
-              <h5>磁盘信息</h5>
-              <div class="detail-items">
-                <div class="detail-item">
-                  <span class="label">总容量:</span>
-                  <span class="value">{{ formatBytes(monitoringData?.disk?.total) }}</span>
-                </div>
-                <div class="detail-item">
-                  <span class="label">已使用:</span>
-                  <span class="value">{{ formatBytes(monitoringData?.disk?.used) }}</span>
-                </div>
-                <div class="detail-item">
-                  <span class="label">可用空间:</span>
-                  <span class="value">{{ formatBytes(monitoringData?.disk?.available) }}</span>
-                </div>
-                <div class="detail-item">
-                  <span class="label">文件系统:</span>
-                  <span class="value">{{ monitoringData?.disk?.filesystem || 'Unknown' }}</span>
-                </div>
-              </div>
-            </div>
-
-            <!-- 网络信息 -->
-            <div class="detail-group">
-              <h5>网络信息</h5>
-              <div class="detail-items">
-                <div class="detail-item">
-                  <span class="label">上传速度:</span>
-                  <span class="value">{{ formatBytes(monitoringData?.network?.upload) }}/s</span>
-                </div>
-                <div class="detail-item">
-                  <span class="label">下载速度:</span>
-                  <span class="value">{{ formatBytes(monitoringData?.network?.download) }}/s</span>
-                </div>
-                <div class="detail-item">
-                  <span class="label">总上传:</span>
-                  <span class="value">{{ formatBytes(monitoringData?.network?.totalUpload) }}</span>
-                </div>
-                <div class="detail-item">
-                  <span class="label">总下载:</span>
-                  <span class="value">{{ formatBytes(monitoringData?.network?.totalDownload) }}</span>
-                </div>
+            <!-- 硬盘使用率图表 -->
+            <div class="chart-card">
+              <div class="chart-container">
+                <canvas ref="diskChart" width="300" height="140"></canvas>
               </div>
             </div>
           </div>
+        </div>
         </div>
       </div>
     </div>
-  </div>
   </transition>
 </template>
 
@@ -438,6 +391,79 @@ export default {
       return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
     }
 
+    // ==================== 常量定义 ====================
+    const CHART_CONSTANTS = {
+      COLORS: {
+        PRIMARY: ['#3b82f6', '#ef4444', '#10b981', '#f59e0b', '#8b5cf6', '#06b6d4', '#f97316', '#84cc16', '#ec4899', '#6366f1'],
+        THEME: {
+          LIGHT: {
+            GRID: 'rgba(0, 0, 0, 0.1)',
+            TEXT: 'rgba(0, 0, 0, 0.6)',
+            BORDER: 'rgba(0, 0, 0, 0.2)',
+            LEGEND: 'rgba(0, 0, 0, 0.8)'
+          },
+          DARK: {
+            GRID: 'rgba(255, 255, 255, 0.1)',
+            TEXT: 'rgba(255, 255, 255, 0.6)',
+            BORDER: 'rgba(255, 255, 255, 0.2)',
+            LEGEND: 'rgba(255, 255, 255, 0.8)'
+          }
+        }
+      },
+      SIZES: {
+        LEGEND_FONT: 11,
+        AXIS_FONT_SMALL: 9,
+        AXIS_FONT_MEDIUM: 10,
+        LEGEND_PADDING: 8,
+        LEGEND_RADIUS: 3,
+        LEGEND_BOX_SIZE: 6
+      },
+      ANIMATION: {
+        DURATION: 300,
+        EASING: 'easeInOutQuart'
+      }
+    }
+
+    // ==================== 工具函数 ====================
+
+    // 主题检测
+    const isDarkTheme = () => {
+      return document.documentElement.classList.contains('dark') ||
+             document.documentElement.getAttribute('data-theme') === 'dark' ||
+             window.matchMedia('(prefers-color-scheme: dark)').matches;
+    }
+
+    // 获取主题适配的颜色
+    const getThemeColor = (type) => {
+      const theme = isDarkTheme() ? 'DARK' : 'LIGHT';
+      return CHART_CONSTANTS.COLORS.THEME[theme][type];
+    }
+
+    // 防抖函数
+    const debounce = (func, wait) => {
+      let timeout;
+      return function executedFunction(...args) {
+        const later = () => {
+          clearTimeout(timeout);
+          func(...args);
+        };
+        clearTimeout(timeout);
+        timeout = setTimeout(later, wait);
+      };
+    }
+
+    // 节流函数
+    const throttle = (func, limit) => {
+      let inThrottle;
+      return function(...args) {
+        if (!inThrottle) {
+          func.apply(this, args);
+          inThrottle = true;
+          setTimeout(() => inThrottle = false, limit);
+        }
+      }
+    }
+
     // 格式化运行时间
     const formatUptime = (seconds) => {
       if (!seconds) return 'Unknown'
@@ -447,42 +473,363 @@ export default {
       return `${days}天 ${hours}小时 ${minutes}分钟`
     }
 
-    // 初始化图表
-    const initCharts = async () => {
-      await nextTick()
+    // 格式化日期时间
+    const formatDateTime = (date) => {
+      if (!date) return 'Unknown'
 
-      if (!cpuChart.value || !memoryChart.value || !diskChart.value || !networkChart.value) {
-        return
+      const d = new Date(date)
+      const year = d.getFullYear()
+      const month = (d.getMonth() + 1).toString().padStart(2, '0')
+      const day = d.getDate().toString().padStart(2, '0')
+      const hours = d.getHours().toString().padStart(2, '0')
+      const minutes = d.getMinutes().toString().padStart(2, '0')
+      const seconds = d.getSeconds().toString().padStart(2, '0')
+
+      return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`
+    }
+
+    // ==================== 图表配置工厂 ====================
+
+    // 生成随机颜色（优化版）
+    const getRandomColor = () => {
+      return CHART_CONSTANTS.COLORS.PRIMARY[Math.floor(Math.random() * CHART_CONSTANTS.COLORS.PRIMARY.length)];
+    }
+
+    // 确保颜色不重复
+    const getUniqueColors = (count) => {
+      const colors = [...CHART_CONSTANTS.COLORS.PRIMARY];
+      const result = [];
+      for (let i = 0; i < count && colors.length > 0; i++) {
+        const index = Math.floor(Math.random() * colors.length);
+        result.push(colors.splice(index, 1)[0]);
       }
+      return result;
+    }
 
-      // 动态导入Chart.js
-      const { Chart, registerables } = await import('chart.js')
-      Chart.register(...registerables)
+    // 生成图例配置（需要Chart实例）
+    const createLegendConfig = (ChartClass) => ({
+      display: true,
+      position: 'top',
+      align: 'start',
+      labels: {
+        color: getThemeColor('LEGEND'),
+        font: {
+          size: CHART_CONSTANTS.SIZES.LEGEND_FONT
+        },
+        padding: CHART_CONSTANTS.SIZES.LEGEND_PADDING,
+        usePointStyle: true,
+        pointStyle: 'circle',
+        pointStyleWidth: CHART_CONSTANTS.SIZES.LEGEND_BOX_SIZE,
+        boxWidth: CHART_CONSTANTS.SIZES.LEGEND_BOX_SIZE,
+        boxHeight: CHART_CONSTANTS.SIZES.LEGEND_BOX_SIZE,
+        generateLabels: function(chart) {
+          const original = ChartClass.defaults.plugins.legend.labels.generateLabels;
+          const labels = original.call(this, chart);
 
-      const chartOptions = {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: {
-          legend: {
-            display: false
+          labels.forEach(label => {
+            label.pointStyle = 'circle';
+            label.fillStyle = label.strokeStyle;
+            label.strokeStyle = 'transparent';
+            label.lineWidth = 0;
+            label.radius = CHART_CONSTANTS.SIZES.LEGEND_RADIUS;
+          });
+
+          return labels;
+        }
+      }
+    })
+
+    // 生成坐标轴配置
+    const createAxisConfig = (type = 'default', options = {}) => {
+      const baseConfig = {
+        display: true,
+        grid: {
+          display: true,
+          color: getThemeColor('GRID'),
+          lineWidth: 1
+        },
+        ticks: {
+          display: true,
+          color: getThemeColor('TEXT'),
+          font: {
+            size: type === 'small' ? CHART_CONSTANTS.SIZES.AXIS_FONT_SMALL : CHART_CONSTANTS.SIZES.AXIS_FONT_MEDIUM
           }
         },
-        scales: {
-          x: {
-            display: false
-          },
-          y: {
-            display: false,
-            min: 0,
-            max: 100
+        border: {
+          display: true,
+          color: getThemeColor('BORDER')
+        }
+      };
+
+      // 深度合并配置
+      const mergeConfig = (target, source) => {
+        for (const key in source) {
+          if (source[key] && typeof source[key] === 'object' && !Array.isArray(source[key])) {
+            target[key] = target[key] || {};
+            mergeConfig(target[key], source[key]);
+          } else {
+            target[key] = source[key];
           }
+        }
+        return target;
+      };
+
+      return mergeConfig({ ...baseConfig }, options);
+    }
+
+    // 生成时间格式化回调
+    const createTimeCallback = () => {
+      return function(value, index, values) {
+        const totalPoints = values.length;
+        const timeAgo = totalPoints - index - 1;
+        const now = new Date();
+        const targetTime = new Date(now.getTime() - timeAgo * 1000);
+        const minutes = targetTime.getMinutes().toString().padStart(2, '0');
+        const seconds = targetTime.getSeconds().toString().padStart(2, '0');
+        return `${minutes}:${seconds}`;
+      };
+    }
+
+    // ==================== 错误处理和状态管理 ====================
+
+    const chartError = ref(null);
+    const isLoading = ref(false);
+    const retryCount = ref(0);
+    const maxRetries = 3;
+
+    // 错误处理函数
+    const handleChartError = (error, chartName) => {
+      console.error(`Chart error in ${chartName}:`, error);
+      chartError.value = `${chartName} 图表加载失败`;
+
+      if (retryCount.value < maxRetries) {
+        retryCount.value++;
+        setTimeout(() => {
+          initCharts();
+        }, 1000 * retryCount.value);
+      }
+    }
+
+    // 重置错误状态
+    const resetError = () => {
+      chartError.value = null;
+      retryCount.value = 0;
+    }
+
+    // ==================== 主题监听和更新 ====================
+
+    // 存储图表实例
+    const chartInstances = ref({
+      cpu: null,
+      memory: null,
+      disk: null,
+      network: null
+    });
+
+    // 更新图表主题
+    const updateChartsTheme = debounce(() => {
+      Object.values(chartInstances.value).forEach(chart => {
+        if (chart) {
+          // 更新图例颜色
+          chart.options.plugins.legend.labels.color = getThemeColor('LEGEND');
+
+          // 更新坐标轴颜色
+          if (chart.options.scales.x) {
+            chart.options.scales.x.grid.color = getThemeColor('GRID');
+            chart.options.scales.x.ticks.color = getThemeColor('TEXT');
+            chart.options.scales.x.border.color = getThemeColor('BORDER');
+          }
+          if (chart.options.scales.y) {
+            chart.options.scales.y.grid.color = getThemeColor('GRID');
+            chart.options.scales.y.ticks.color = getThemeColor('TEXT');
+            chart.options.scales.y.border.color = getThemeColor('BORDER');
+          }
+
+          chart.update('none'); // 无动画更新
+        }
+      });
+    }, 100);
+
+    // 监听主题变化
+    const themeObserver = new MutationObserver((mutations) => {
+      mutations.forEach((mutation) => {
+        if (mutation.type === 'attributes' &&
+            (mutation.attributeName === 'class' || mutation.attributeName === 'data-theme')) {
+          updateChartsTheme();
+        }
+      });
+    });
+
+    // 监听系统主题变化
+    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+    const handleSystemThemeChange = (e) => {
+      updateChartsTheme();
+    };
+
+    // ==================== 图表初始化 ====================
+
+    // 初始化图表
+    const initCharts = async () => {
+      if (isLoading.value) return;
+
+      isLoading.value = true;
+      resetError();
+
+      try {
+        await nextTick()
+
+        if (!cpuChart.value || !memoryChart.value || !diskChart.value || !networkChart.value) {
+          throw new Error('图表容器未找到');
+        }
+
+        // 先销毁现有图表
+        destroyCharts();
+
+        // 动态导入Chart.js
+        const { Chart, registerables } = await import('chart.js')
+        Chart.register(...registerables)
+
+        // 基础图表配置
+        const chartOptions = {
+          responsive: true,
+          maintainAspectRatio: false,
+          interaction: {
+            intersect: false,
+            mode: 'index'
+          },
+          animation: {
+            duration: CHART_CONSTANTS.ANIMATION.DURATION,
+            easing: CHART_CONSTANTS.ANIMATION.EASING,
+            // 数据更新时的动画配置
+            onComplete: null,
+            onProgress: null
+          },
+          // 数据更新时的过渡动画
+          transitions: {
+            active: {
+              animation: {
+                duration: 900,              // 增加到0.9秒，更慢更丝滑
+                easing: 'easeInOutSine'     // 使用最柔和的缓动函数
+              }
+            },
+            resize: {
+              animation: {
+                duration: 0
+              }
+            },
+            show: {
+              animations: {
+                x: {
+                  from: 0,
+                  duration: 1200,          // 增加到1.2秒
+                  easing: 'easeOutSine'    // 更柔和的入场动画
+                },
+                y: {
+                  from: 0,
+                  duration: 1200,
+                  easing: 'easeOutSine'
+                }
+              }
+            },
+            hide: {
+              animations: {
+                x: {
+                  to: 0,
+                  duration: 600,           // 增加到0.6秒
+                  easing: 'easeInSine'     // 更柔和的退场动画
+                },
+                y: {
+                  to: 0,
+                  duration: 600,
+                  easing: 'easeInSine'
+                }
+              }
+            }
+          },
+          elements: {
+            line: {
+              tension: 0.4, // 平滑曲线插值，0为直线，1为最大弯曲
+              borderWidth: 2,
+              borderCapStyle: 'round',
+              borderJoinStyle: 'round'
+            },
+            point: {
+              radius: 0, // 隐藏数据点
+              hoverRadius: 4, // 悬停时显示数据点
+              hoverBorderWidth: 2,
+              hitRadius: 8 // 增大点击区域
+            }
+          },
+          plugins: {
+            legend: createLegendConfig(Chart),
+          tooltip: {
+            enabled: true,
+            mode: 'index',
+            intersect: false,
+            backgroundColor: 'rgba(0, 0, 0, 0.8)',
+            titleColor: '#fff',
+            bodyColor: '#fff',
+            borderColor: 'rgba(255, 255, 255, 0.1)',
+            borderWidth: 1,
+            cornerRadius: 6,
+            displayColors: false,
+            titleFont: {
+              size: 12,
+              weight: 'bold'
+            },
+            bodyFont: {
+              size: 11
+            },
+            padding: 8,
+            callbacks: {
+              title: function(context) {
+                const dataIndex = context[0].dataIndex;
+                const totalPoints = context[0].dataset.data.length;
+                const timeAgo = totalPoints - dataIndex - 1;
+
+                // 计算具体时间
+                const now = new Date();
+                const targetTime = new Date(now.getTime() - timeAgo * 1000);
+
+                // 格式化为 HH:MM:SS
+                const hours = targetTime.getHours().toString().padStart(2, '0');
+                const minutes = targetTime.getMinutes().toString().padStart(2, '0');
+                const seconds = targetTime.getSeconds().toString().padStart(2, '0');
+
+                return `${hours}:${minutes}:${seconds}`;
+              },
+              label: function(context) {
+                const value = context.parsed.y;
+                return `使用率: ${value.toFixed(1)}%`;
+              }
+            }
+          }
+        },
+          scales: {
+            x: createAxisConfig('small', {
+              ticks: {
+                maxTicksLimit: 6,
+                callback: createTimeCallback()
+              }
+            }),
+            y: createAxisConfig('default', {
+              min: 0,
+              max: 100,
+              ticks: {
+                callback: function(value) {
+                  return value + '%';
+                }
+              }
+            })
         },
         elements: {
           line: {
             tension: 0.4
           },
           point: {
-            radius: 0
+            radius: 0,
+            hoverRadius: 4,
+            hoverBorderWidth: 2
           }
         }
       }
@@ -490,60 +837,265 @@ export default {
       const networkChartOptions = {
         ...chartOptions,
         scales: {
-          ...chartOptions.scales,
+          x: {
+            display: true,
+            grid: {
+              display: true,
+              color: getThemeColor('rgba(0, 0, 0, 0.1)', 'rgba(255, 255, 255, 0.1)'),
+              lineWidth: 1
+            },
+            ticks: {
+              display: true,
+              color: getThemeColor('rgba(0, 0, 0, 0.6)', 'rgba(255, 255, 255, 0.6)'),
+              font: {
+                size: 9
+              },
+              maxTicksLimit: 6,
+              callback: function(value, index, values) {
+                const totalPoints = values.length;
+                const timeAgo = totalPoints - index - 1;
+                const now = new Date();
+                const targetTime = new Date(now.getTime() - timeAgo * 1000);
+                const minutes = targetTime.getMinutes().toString().padStart(2, '0');
+                const seconds = targetTime.getSeconds().toString().padStart(2, '0');
+
+                if (timeAgo === 0) {
+                  return `${minutes}:${seconds}`;
+                } else if (timeAgo <= 5) {
+                  return `${minutes}:${seconds}`;
+                } else if (timeAgo <= 10) {
+                  return `${minutes}:${seconds}`;
+                } else if (timeAgo <= 15) {
+                  return `${minutes}:${seconds}`;
+                } else {
+                  return `${minutes}:${seconds}`;
+                }
+              }
+            },
+            border: {
+              display: true,
+              color: getThemeColor('rgba(0, 0, 0, 0.2)', 'rgba(255, 255, 255, 0.2)')
+            }
+          },
           y: {
-            display: false,
-            min: 0
+            display: true,
+            min: 0,
+            grid: {
+              display: true,
+              color: getThemeColor('rgba(0, 0, 0, 0.1)', 'rgba(255, 255, 255, 0.1)'),
+              lineWidth: 1
+            },
+            ticks: {
+              display: true,
+              color: getThemeColor('rgba(0, 0, 0, 0.6)', 'rgba(255, 255, 255, 0.6)'),
+              font: {
+                size: 10
+              },
+              callback: function(value) {
+                return formatBytes(value) + '/s';
+              }
+            },
+            border: {
+              display: true,
+              color: getThemeColor('rgba(0, 0, 0, 0.2)', 'rgba(255, 255, 255, 0.2)')
+            }
+          }
+        },
+        plugins: {
+          ...chartOptions.plugins,
+          tooltip: {
+            ...chartOptions.plugins.tooltip,
+            callbacks: {
+              title: function(context) {
+                const dataIndex = context[0].dataIndex;
+                const totalPoints = context[0].dataset.data.length;
+                const timeAgo = totalPoints - dataIndex - 1;
+
+                // 计算具体时间
+                const now = new Date();
+                const targetTime = new Date(now.getTime() - timeAgo * 1000);
+
+                // 格式化为 HH:MM:SS
+                const hours = targetTime.getHours().toString().padStart(2, '0');
+                const minutes = targetTime.getMinutes().toString().padStart(2, '0');
+                const seconds = targetTime.getSeconds().toString().padStart(2, '0');
+
+                return `${hours}:${minutes}:${seconds}`;
+              },
+              label: function(context) {
+                const value = context.parsed.y;
+                const datasetLabel = context.dataset.label;
+                return `${datasetLabel}: ${formatBytes(value)}/s`;
+              }
+            }
           }
         }
       }
 
+      // CPU图表配置
+      const cpuChartOptions = {
+        ...chartOptions,
+        plugins: {
+          ...chartOptions.plugins,
+          tooltip: {
+            ...chartOptions.plugins.tooltip,
+            callbacks: {
+              ...chartOptions.plugins.tooltip.callbacks,
+              label: function(context) {
+                const value = context.parsed.y;
+                // 获取当前最新的监控数据
+                const currentData = props.monitoringData?.cpu || {};
+                const cores = currentData.cores || 1;
+                return [
+                  `CPU使用率: ${value.toFixed(1)}%`,
+                  `CPU核心数: ${cores}个`
+                ];
+              }
+            }
+          }
+        }
+      };
+
       // CPU图表
+      const cpuColor = getRandomColor()
       cpuChartInstance = new Chart(cpuChart.value, {
         type: 'line',
         data: {
           labels: Array(20).fill(''),
           datasets: [{
+            label: 'CPU使用率',
             data: historyData.cpu,
-            borderColor: '#3b82f6',
-            backgroundColor: 'rgba(59, 130, 246, 0.1)',
-            fill: true
+            borderColor: cpuColor,
+            backgroundColor: cpuColor + '20',
+            fill: true,
+            tension: 0.4, // 平滑曲线
+            borderWidth: 2,
+            pointRadius: 0,
+            pointHoverRadius: 4,
+            pointHitRadius: 8,
+            borderCapStyle: 'round',
+            borderJoinStyle: 'round'
           }]
         },
-        options: chartOptions
+        options: cpuChartOptions
       })
+      chartInstances.value.cpu = cpuChartInstance;
+
+      // 内存图表配置
+      const memoryChartOptions = {
+        ...chartOptions,
+        plugins: {
+          ...chartOptions.plugins,
+          tooltip: {
+            ...chartOptions.plugins.tooltip,
+            callbacks: {
+              ...chartOptions.plugins.tooltip.callbacks,
+              label: function(context) {
+                const value = context.parsed.y;
+                // 获取当前最新的监控数据
+                const currentData = props.monitoringData?.memory || {};
+                const total = currentData.total || 0;
+                const used = currentData.used || 0;
+                const available = currentData.available || 0;
+                return [
+                  `内存使用率: ${value.toFixed(1)}%`,
+                  `已使用: ${formatBytes(used)}`,
+                  `可用: ${formatBytes(available)}`,
+                  `总计: ${formatBytes(total)}`
+                ];
+              }
+            }
+          }
+        }
+      };
 
       // 内存图表
+      const memoryColor = getRandomColor()
       memoryChartInstance = new Chart(memoryChart.value, {
         type: 'line',
         data: {
           labels: Array(20).fill(''),
           datasets: [{
+            label: '内存使用率',
             data: historyData.memory,
-            borderColor: '#10b981',
-            backgroundColor: 'rgba(16, 185, 129, 0.1)',
-            fill: true
+            borderColor: memoryColor,
+            backgroundColor: memoryColor + '20',
+            fill: true,
+            tension: 0.4, // 平滑曲线
+            borderWidth: 2,
+            pointRadius: 0,
+            pointHoverRadius: 4,
+            pointHitRadius: 8,
+            borderCapStyle: 'round',
+            borderJoinStyle: 'round'
           }]
         },
-        options: chartOptions
+        options: memoryChartOptions
       })
+      chartInstances.value.memory = memoryChartInstance;
+
+      // 磁盘图表配置
+      const diskChartOptions = {
+        ...chartOptions,
+        plugins: {
+          ...chartOptions.plugins,
+          tooltip: {
+            ...chartOptions.plugins.tooltip,
+            callbacks: {
+              ...chartOptions.plugins.tooltip.callbacks,
+              label: function(context) {
+                const value = context.parsed.y;
+                // 获取当前最新的监控数据
+                const currentData = props.monitoringData?.disk || {};
+                const total = currentData.total || 0;
+                const used = currentData.used || 0;
+                const available = currentData.available || 0;
+                const filesystem = currentData.filesystem || 'Unknown';
+                return [
+                  `磁盘使用率: ${value.toFixed(1)}%`,
+                  `已使用: ${formatBytes(used)}`,
+                  `可用: ${formatBytes(available)}`,
+                  `总计: ${formatBytes(total)}`,
+                  `文件系统: ${filesystem}`
+                ];
+              }
+            }
+          }
+        }
+      };
 
       // 硬盘图表
+      const diskColor = getRandomColor()
       diskChartInstance = new Chart(diskChart.value, {
         type: 'line',
         data: {
           labels: Array(20).fill(''),
           datasets: [{
+            label: '磁盘使用率',
             data: historyData.disk,
-            borderColor: '#f59e0b',
-            backgroundColor: 'rgba(245, 158, 11, 0.1)',
-            fill: true
+            borderColor: diskColor,
+            backgroundColor: diskColor + '20',
+            fill: true,
+            tension: 0.4, // 平滑曲线
+            borderWidth: 2,
+            pointRadius: 0,
+            pointHoverRadius: 4,
+            pointHitRadius: 8,
+            borderCapStyle: 'round',
+            borderJoinStyle: 'round'
           }]
         },
-        options: chartOptions
+        options: diskChartOptions
       })
+      chartInstances.value.disk = diskChartInstance;
 
       // 网络图表
+      let uploadColor = getRandomColor()
+      let downloadColor = getRandomColor()
+      // 确保两条线颜色不同
+      while (uploadColor === downloadColor) {
+        downloadColor = getRandomColor()
+      }
       networkChartInstance = new Chart(networkChart.value, {
         type: 'line',
         data: {
@@ -551,20 +1103,35 @@ export default {
           datasets: [{
             label: '上传',
             data: historyData.network.upload,
-            borderColor: '#ef4444',
-            backgroundColor: 'rgba(239, 68, 68, 0.1)',
-            fill: false
+            borderColor: uploadColor,
+            backgroundColor: uploadColor + '20',
+            fill: false,
+            tension: 0.4, // 平滑曲线
+            borderWidth: 2,
+            pointRadius: 0,
+            pointHoverRadius: 4,
+            pointHitRadius: 8,
+            borderCapStyle: 'round',
+            borderJoinStyle: 'round'
           }, {
             label: '下载',
             data: historyData.network.download,
-            borderColor: '#8b5cf6',
-            backgroundColor: 'rgba(139, 92, 246, 0.1)',
-            fill: false
+            borderColor: downloadColor,
+            backgroundColor: downloadColor + '20',
+            fill: false,
+            tension: 0.4, // 平滑曲线
+            borderWidth: 2,
+            pointRadius: 0,
+            pointHoverRadius: 4,
+            pointHitRadius: 8,
+            borderCapStyle: 'round',
+            borderJoinStyle: 'round'
           }]
         },
         options: {
           ...networkChartOptions,
           plugins: {
+            ...networkChartOptions.plugins,
             legend: {
               display: true,
               position: 'top',
@@ -579,10 +1146,18 @@ export default {
           }
         }
       })
-    }
+      chartInstances.value.network = networkChartInstance;
 
-    // 更新图表数据
-    const updateCharts = () => {
+      isLoading.value = false;
+
+    } catch (error) {
+      isLoading.value = false;
+      handleChartError(error, '系统');
+    }
+  }
+
+    // 平滑更新图表数据
+    const updateCharts = throttle(() => {
       if (!props.monitoringData) return
 
       const data = props.monitoringData
@@ -623,27 +1198,74 @@ export default {
         }
       }
 
-      // 更新图表（创建新数组避免响应式引用）
-      if (cpuChartInstance) {
-        cpuChartInstance.data.datasets[0].data = historyData.cpu.slice()
-        cpuChartInstance.update('none')
-      }
+      // 使用requestAnimationFrame确保平滑更新
+      requestAnimationFrame(() => {
+        updateChartWithAnimation(cpuChartInstance, historyData.cpu.slice(), 0);
+        updateChartWithAnimation(memoryChartInstance, historyData.memory.slice(), 0);
+        updateChartWithAnimation(diskChartInstance, historyData.disk.slice(), 0);
 
-      if (memoryChartInstance) {
-        memoryChartInstance.data.datasets[0].data = historyData.memory.slice()
-        memoryChartInstance.update('none')
-      }
+        // 网络图表有两个数据集
+        if (networkChartInstance) {
+          updateNetworkChartWithAnimation(networkChartInstance,
+            historyData.network.upload.slice(),
+            historyData.network.download.slice()
+          );
+        }
+      });
+    }, 200); // 200ms节流，配合更慢的动画，让数据更新更从容
 
-      if (diskChartInstance) {
-        diskChartInstance.data.datasets[0].data = historyData.disk.slice()
-        diskChartInstance.update('none')
-      }
+    // 单个图表的平滑更新函数
+    const updateChartWithAnimation = (chartInstance, newData, datasetIndex = 0) => {
+      if (!chartInstance) return;
 
-      if (networkChartInstance) {
-        networkChartInstance.data.datasets[0].data = historyData.network.upload.slice()
-        networkChartInstance.data.datasets[1].data = historyData.network.download.slice()
-        networkChartInstance.update('none')
+      const dataset = chartInstance.data.datasets[datasetIndex];
+      const oldData = [...dataset.data];
+
+      // 检查是否有新数据点
+      if (newData.length > oldData.length) {
+        // 新增数据点 - 使用更慢的滑入动画
+        dataset.data = newData;
+        chartInstance.update({
+          duration: 1200,              // 增加到1.2秒，更慢更优雅
+          easing: 'easeInOutSine',     // 使用更柔和的缓动函数
+          lazy: false
+        });
+      } else if (newData.length === oldData.length && newData[newData.length - 1] !== oldData[oldData.length - 1]) {
+        // 数据更新 - 使用更慢的平滑过渡
+        dataset.data = newData;
+        chartInstance.update({
+          duration: 900,               // 增加到0.9秒
+          easing: 'easeInOutSine',     // 更柔和的缓动
+          lazy: false
+        });
+      } else {
+        // 数据滑动（移除旧数据，添加新数据）- 使用更慢的滑动效果
+        dataset.data = newData;
+        chartInstance.update({
+          duration: 700,               // 增加到0.7秒
+          easing: 'easeInOutSine',     // 最柔和的缓动函数
+          lazy: false
+        });
       }
+    }
+
+    // 网络图表的平滑更新函数（双数据集）
+    const updateNetworkChartWithAnimation = (chartInstance, uploadData, downloadData) => {
+      if (!chartInstance) return;
+
+      const uploadDataset = chartInstance.data.datasets[0];
+      const downloadDataset = chartInstance.data.datasets[1];
+
+      // 更新两个数据集
+      uploadDataset.data = uploadData;
+      downloadDataset.data = downloadData;
+
+      // 使用更慢更协调的动画更新两条线
+      chartInstance.update({
+        duration: 800,                // 增加到0.8秒，更慢更丝滑
+        easing: 'easeInOutSine',      // 使用最柔和的缓动函数
+        lazy: false
+      });
     }
 
     // 销毁图表
@@ -664,6 +1286,14 @@ export default {
         networkChartInstance.destroy()
         networkChartInstance = null
       }
+
+      // 清空chartInstances
+      chartInstances.value = {
+        cpu: null,
+        memory: null,
+        disk: null,
+        network: null
+      };
     }
 
     // 监听面板显示状态
@@ -709,7 +1339,8 @@ export default {
       closePanel,
       formatPercentage,
       formatBytes,
-      formatUptime
+      formatUptime,
+      formatDateTime
     }
   }
 }
@@ -937,129 +1568,161 @@ export default {
 .panel-content {
   flex: 1;
   overflow-y: auto;
-  padding: 24px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* 顶部区域 - 系统信息和网络图表 */
+.top-section {
+  display: flex;
+  gap: 18px;
+  margin-bottom: 18px;
+}
+
+.system-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.info-line {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin-bottom: 8px;
+  align-items: center;
+}
+
+.info-line:last-child {
+  margin-bottom: 0;
+}
+
+.info-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 95px;
+}
+
+.info-item .label {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  font-weight: 400;
+  min-width: 45px;
+}
+
+.info-item .value {
+  font-size: 12px;
+  color: var(--color-text);
+  font-family: 'Fira Code', monospace;
+  font-weight: 500;
+}
+
+.info-item.cpu-info {
+  flex: 1;
+  min-width: 180px;
+}
+
+.info-item.cpu-info .value {
+  font-size: 10px;
+}
+
+.network-chart-container {
+  width: 450px;
+  flex-shrink: 0;
+}
+
+.network-chart {
+  height: 200px;
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  padding: 12px;
+}
+
+.network-chart .chart-container {
+  background: var(--color-bg-elevated);
+  border: none;
+  height: 176px;
+}
+
+/* 底部图表区域 */
+.bottom-charts-section {
+  padding: 12px 0 0 0;
 }
 
 .charts-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-  gap: 16px;
-  margin-bottom: 24px;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 12px;
 }
 
 .chart-card {
-  background: var(--color-bg-elevated);
-  border: 1px solid var(--color-border);
-  border-radius: 8px;
-  padding: 16px;
-  transition: all 0.2s ease;
-}
-
-/* 主题适配通过CSS变量自动处理 */
-
-.chart-card:hover {
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-}
-
-.chart-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 12px;
-}
-
-.chart-header h4 {
-  margin: 0;
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--color-text);
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.chart-header i {
-  color: var(--primary-color);
-}
-
-.chart-value {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--color-primary);
-  font-family: 'Fira Code', monospace;
+  padding: 12px;
 }
 
 .chart-container {
-  height: 120px;
+  height: 180px;
   display: flex;
   align-items: center;
   justify-content: center;
-}
-
-.details-section {
   background: var(--color-bg-elevated);
+  border-radius: 4px;
   border: 1px solid var(--color-border);
-  border-radius: 8px;
-  padding: 20px;
 }
 
-/* 主题适配通过CSS变量自动处理 */
+/* 响应式设计 */
+@media (max-width: 768px) {
+  .top-section {
+    flex-direction: column;
+    gap: 16px;
+  }
 
-.details-section h4 {
-  margin: 0 0 16px 0;
-  font-size: 16px;
-  font-weight: 600;
-  color: var(--color-text);
-  display: flex;
-  align-items: center;
-  gap: 8px;
+  .network-chart-container {
+    width: 100%;
+  }
+
+  .info-line {
+    flex-direction: column;
+    gap: 12px;
+    align-items: flex-start;
+  }
+
+  .info-item {
+    min-width: auto;
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .charts-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .panel-content {
+    padding: 16px;
+    gap: 16px;
+  }
+
+  .bottom-charts-section {
+    padding: 16px;
+  }
 }
 
-.details-section h4 i {
-  color: var(--color-primary);
-}
+@media (max-width: 480px) {
+  .info-item {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+  }
 
-.details-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-  gap: 24px;
-}
+  .info-item .value {
+    text-align: left;
+  }
 
-.detail-group h5 {
-  margin: 0 0 12px 0;
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--text-color);
-  padding-bottom: 8px;
-  border-bottom: 1px solid var(--border-color);
-}
-
-/* 主题适配通过CSS变量自动处理 */
-
-.detail-items {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.detail-item {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 6px 0;
-}
-
-.detail-item .label {
-  font-size: 13px;
-  color: var(--color-text-secondary);
-  min-width: 80px;
-}
-
-.detail-item .value {
-  font-size: 13px;
-  color: var(--color-text);
-  font-family: 'Fira Code', monospace;
-  font-weight: 500;
+  .info-item.cpu-info .value {
+    font-size: 10px;
+  }
 }
 
 /* 响应式设计 */

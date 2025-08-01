@@ -22,7 +22,7 @@ import logger from '../../utils/logger.js';
 export class ProductionSSHMonitoringCollector extends BaseMonitoringCollector {
   constructor(hostInfo, options = {}) {
     super(hostInfo, {
-      collectInterval: 3000,
+      collectInterval: 1000,
       timeout: 10000,
       retryAttempts: 3,
       enableCache: true,

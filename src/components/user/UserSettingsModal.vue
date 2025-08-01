@@ -61,6 +61,19 @@
             </div>
             <span class="menu-text">连接设置</span>
           </div>
+
+          <div
+            class="menu-item"
+            :class="{ active: activeMenu === 'monitoring' }"
+            @click="activeMenu = 'monitoring'"
+          >
+            <div class="menu-icon">
+              <svg viewBox="0 0 24 24" width="16" height="16">
+                <path fill="currentColor" d="M3,3V21H21V19H5V3H3M9,17H7V10H9V17M13,17H11V7H13V17M17,17H15V13H17V17M21,17H19V4H21V17Z" />
+              </svg>
+            </div>
+            <span class="menu-text">监控设置</span>
+          </div>
         </div>
       </div>
       
@@ -542,6 +555,30 @@
           </div>
         </div>
 
+        <!-- 监控设置面板 -->
+        <div v-if="activeMenu === 'monitoring'" class="content-panel">
+          <div class="panel-body">
+            <div class="settings-section">
+              <!-- 更新间隔 -->
+              <div class="security-item">
+                <div class="security-info">
+                  <div class="security-title">更新间隔</div>
+                  <div class="security-description">
+                    监控数据的更新频率，建议设置为 0.5-10 秒之间
+                  </div>
+                </div>
+                <div class="security-action">
+                  <div class="number-input-with-controls">
+                    <button class="control-btn" @click="decrementMonitoringInterval">－</button>
+                    <span class="number-display">{{ formatMonitoringInterval(monitoringSettings.updateInterval) }}</span>
+                    <button class="control-btn" @click="incrementMonitoringInterval">＋</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
       </div>
     </div>
     
@@ -659,6 +696,12 @@ export default defineComponent({
       connectionTimeout: 10,
       keepAlive: true,
       keepAliveInterval: 30,
+      initialized: false
+    })
+
+    // 监控设置数据
+    const monitoringSettings = reactive({
+      updateInterval: 1000, // 更新间隔（毫秒）
       initialized: false
     })
 
@@ -900,6 +943,63 @@ export default defineComponent({
       } catch (error) {
         log.error('保存连接设置失败', error)
         ElMessage.error('保存连接设置失败')
+      }
+    }
+
+    // 保存监控设置
+    const saveMonitoringSettings = async () => {
+      try {
+        monitoringSettings.initialized = true
+
+        if (!settingsService.isInitialized) {
+          await settingsService.init()
+        }
+
+        settingsService.updateMonitoringSettings(monitoringSettings)
+
+        // 触发监控配置更新事件
+        const event = new CustomEvent('monitoring-config-changed', {
+          detail: { ...monitoringSettings }
+        })
+        window.dispatchEvent(event)
+
+        ElMessage.success('监控设置已保存')
+      } catch (error) {
+        log.error('保存监控设置失败', error)
+        ElMessage.error('保存监控设置失败')
+      }
+    }
+
+    // 格式化监控间隔显示
+    const formatMonitoringInterval = (interval) => {
+      if (interval < 1000) {
+        return `${interval}毫秒`
+      } else {
+        return `${interval / 1000}秒`
+      }
+    }
+
+    // 增加监控间隔
+    const incrementMonitoringInterval = () => {
+      if (monitoringSettings.updateInterval < 10000) {
+        if (monitoringSettings.updateInterval < 1000) {
+          monitoringSettings.updateInterval += 100 // 毫秒级增量
+        } else {
+          monitoringSettings.updateInterval += 1000 // 秒级增量
+        }
+        saveMonitoringSettings()
+      }
+    }
+
+    // 减少监控间隔
+    const decrementMonitoringInterval = () => {
+      if (monitoringSettings.updateInterval > 500) {
+        if (monitoringSettings.updateInterval <= 1000) {
+          monitoringSettings.updateInterval -= 100 // 毫秒级减量
+        } else {
+          monitoringSettings.updateInterval -= 1000 // 秒级减量
+        }
+        saveMonitoringSettings()
       }
     }
 
@@ -1343,6 +1443,7 @@ export default defineComponent({
       securityForm,
       terminalSettings,
       connectionSettings,
+      monitoringSettings,
       terminalBgSettings,
       terminalShortcuts,
       resettingShortcuts,
@@ -1360,6 +1461,10 @@ export default defineComponent({
       handleLogoutCancelled,
       saveTerminalSettings,
       saveConnectionSettings,
+      saveMonitoringSettings,
+      formatMonitoringInterval,
+      incrementMonitoringInterval,
+      decrementMonitoringInterval,
       updateTerminalBg,
       updateShortcut,
       resetAllShortcuts,
@@ -2094,5 +2199,54 @@ export default defineComponent({
 .switch input:disabled + .switch-slider {
   opacity: 0.6;
   cursor: not-allowed;
+}
+
+/* 监控设置样式 */
+.number-input-with-controls {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  overflow: hidden;
+  background: var(--color-bg-secondary);
+}
+
+.control-btn {
+  width: 32px;
+  height: 32px;
+  border: none;
+  background: var(--color-bg-secondary);
+  color: var(--color-text-secondary);
+  font-size: 14px;
+  font-weight: bold;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.control-btn:hover {
+  background: var(--color-bg-hover);
+  color: var(--color-primary);
+}
+
+.control-btn:active {
+  background: var(--color-bg-active);
+}
+
+.number-display {
+  min-width: 60px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-text-primary);
+  background: var(--color-bg-primary);
+  border-left: 1px solid var(--color-border);
+  border-right: 1px solid var(--color-border);
 }
 </style>

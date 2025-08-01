@@ -21,7 +21,7 @@ export class BaseMonitoringCollector extends EventEmitter {
     this.hostInfo = hostInfo;
     this.hostId = `${hostInfo.username}@${hostInfo.address}`;
     this.options = {
-      collectInterval: 3000,
+      collectInterval: 1000,
       timeout: 10000,
       retryAttempts: 3,
       enableCache: true,
@@ -142,11 +142,14 @@ export class BaseMonitoringCollector extends EventEmitter {
         this.collectionCount++;
         this.lastCollectionTime = Date.now();
         
-        logger.debug('监控数据收集成功', {
-          hostId: this.hostId,
-          duration,
-          collectionCount: this.collectionCount
-        });
+        // 只在特定间隔记录收集成功日志，减少输出
+        if (this.collectionCount % 30 === 0) {
+          logger.debug('监控数据收集状态', {
+            hostId: this.hostId,
+            duration,
+            collectionCount: this.collectionCount
+          });
+        }
       }
     } catch (error) {
       const duration = Date.now() - startTime;
