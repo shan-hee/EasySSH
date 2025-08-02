@@ -489,11 +489,19 @@ class SSHMonitoringCollector {
       return {
         connections: 0, // 暂不实现连接数统计
         total_rx_speed: (rxSpeed / 1024).toFixed(2), // KB/s
-        total_tx_speed: (txSpeed / 1024).toFixed(2)  // KB/s
+        total_tx_speed: (txSpeed / 1024).toFixed(2), // KB/s
+        total_rx_bytes: totalRxBytes, // 总接收字节数
+        total_tx_bytes: totalTxBytes  // 总发送字节数
       };
     } catch (error) {
       logger.warn('获取网络信息失败', { error: error.message });
-      return { connections: 0, total_rx_speed: "0.00", total_tx_speed: "0.00" };
+      return {
+        connections: 0,
+        total_rx_speed: "0.00",
+        total_tx_speed: "0.00",
+        total_rx_bytes: 0,
+        total_tx_bytes: 0
+      };
     }
   }
 
@@ -519,12 +527,37 @@ class SSHMonitoringCollector {
         }
       }
 
+      // 获取系统启动时间 (从/proc/stat获取btime)
+      let bootTime = null;
+      try {
+        const bootTimeStr = await this.executeCommand('cat /proc/stat | grep btime | awk \'{print $2}\'');
+        if (bootTimeStr) {
+          bootTime = parseInt(bootTimeStr) * 1000; // 转换为毫秒时间戳
+        }
+      } catch (e) {
+        logger.debug('获取启动时间失败', { error: e.message });
+      }
+
+      // 获取系统运行时间
+      let uptime = 0;
+      try {
+        const uptimeStr = await this.executeCommand('cat /proc/uptime | awk \'{print $1}\'');
+        if (uptimeStr) {
+          uptime = parseFloat(uptimeStr);
+        }
+      } catch (e) {
+        logger.debug('获取运行时间失败', { error: e.message });
+      }
+
       return {
         hostname: hostname || 'unknown',
         platform: platform || 'Linux',
         release: release || 'unknown',
         arch: arch || 'unknown',
-        distro: distro || 'Unknown Linux'
+        distro: distro || 'Unknown Linux',
+        os: distro || 'Unknown Linux', // 添加os字段用于前端显示
+        bootTime: bootTime,
+        uptime: uptime
       };
     } catch (error) {
       logger.warn('获取操作系统信息失败', { error: error.message });
@@ -533,7 +566,10 @@ class SSHMonitoringCollector {
         platform: 'Linux',
         release: 'unknown',
         arch: 'unknown',
-        distro: 'Unknown Linux'
+        distro: 'Unknown Linux',
+        os: 'Unknown Linux',
+        bootTime: null,
+        uptime: 0
       };
     }
   }

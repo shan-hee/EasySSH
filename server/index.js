@@ -3,11 +3,14 @@
  * 主入口文件
  */
 
+// 首先加载环境变量
+const path = require('path');
+const dotenv = require('dotenv');
+dotenv.config({ path: path.resolve(__dirname, '../.env') });
+
 const express = require('express');
 const http = require('http');
-const path = require('path');
 const cors = require('cors');
-const dotenv = require('dotenv');
 const { initWebSocketServer } = require('./ssh');
 const { initMonitoringWebSocketServer } = require('./monitoring');
 const { connectDatabase, getDatabaseStatus, closeDatabase } = require('./config/database');
@@ -40,9 +43,6 @@ const colors = {
   bgBlue: '\x1b[44m',
   white: '\x1b[37m'
 };
-
-// 加载环境变量
-dotenv.config({ path: path.resolve(__dirname, '../.env') });
 
 // 输出关键环境变量（隐藏实际值，仅显示是否存在）
 logger.info('环境变量加载状态', {

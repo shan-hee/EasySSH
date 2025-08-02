@@ -29,6 +29,16 @@ class MonitoringInstance {
         disk: { total: 0, used: 0, free: 0, usedPercentage: 0 },
         network: {},
         os: {}
+      },
+      // 历史数据存储（全局持久化）
+      historyData: {
+        cpu: Array(20).fill(0),
+        memory: Array(20).fill(0),
+        disk: Array(20).fill(0),
+        network: {
+          upload: Array(20).fill(0),
+          download: Array(20).fill(0)
+        }
       }
     };
     this.reconnectAttempts = 0;
@@ -231,6 +241,9 @@ class MonitoringInstance {
     if (data && this._isValidMonitoringData(data)) {
       this.state.monitorData = { ...this.state.monitorData, ...data };
 
+      // 更新历史数据（后台持续收集）
+      this._updateHistoryData(data);
+
       // 触发数据更新事件
       this._emitEvent('monitoring-data-received', {
         terminalId: this.terminalId,
@@ -238,6 +251,75 @@ class MonitoringInstance {
         data: data,
         source: 'websocket'
       });
+    }
+  }
+
+  /**
+   * 更新历史数据
+   * @param {Object} data - 监控数据
+   * @private
+   */
+  _updateHistoryData(data) {
+    try {
+      // 更新CPU历史数据
+      if (data.cpu?.usage !== undefined) {
+        const cpuData = this.state.historyData.cpu;
+        cpuData.push(data.cpu.usage);
+        if (cpuData.length > 20) {
+          cpuData.shift();
+        }
+      }
+
+      // 更新内存历史数据
+      if (data.memory?.usedPercentage !== undefined) {
+        const memoryData = this.state.historyData.memory;
+        memoryData.push(data.memory.usedPercentage);
+        if (memoryData.length > 20) {
+          memoryData.shift();
+        }
+      }
+
+      // 更新磁盘历史数据
+      if (data.disk?.usedPercentage !== undefined) {
+        const diskData = this.state.historyData.disk;
+        diskData.push(data.disk.usedPercentage);
+        if (diskData.length > 20) {
+          diskData.shift();
+        }
+      }
+
+      // 更新网络历史数据
+      if (data.network) {
+        const uploadData = this.state.historyData.network.upload;
+        const downloadData = this.state.historyData.network.download;
+
+        // 处理不同的网络数据格式
+        let txSpeedKB = 0;
+        let rxSpeedKB = 0;
+
+        if (data.network.upload !== undefined && data.network.download !== undefined) {
+          // 如果已经有 upload/download 字段（来自工具栏转换）
+          txSpeedKB = parseFloat(data.network.upload) || 0;
+          rxSpeedKB = parseFloat(data.network.download) || 0;
+        } else if (data.network.total_tx_speed !== undefined && data.network.total_rx_speed !== undefined) {
+          // 如果是服务器原始数据格式（total_tx_speed/total_rx_speed）
+          txSpeedKB = parseFloat(data.network.total_tx_speed) || 0;
+          rxSpeedKB = parseFloat(data.network.total_rx_speed) || 0;
+        }
+
+        // 转换为 B/s 以保持与工具栏一致
+        const txSpeedBytes = txSpeedKB * 1024;
+        const rxSpeedBytes = rxSpeedKB * 1024;
+
+        uploadData.push(txSpeedBytes);
+        downloadData.push(rxSpeedBytes);
+        if (uploadData.length > 20) {
+          uploadData.shift();
+          downloadData.shift();
+        }
+      }
+    } catch (error) {
+      log.warn('[监控] 更新历史数据失败:', error);
     }
   }
 
@@ -318,6 +400,37 @@ class MonitoringInstance {
         this.connect(this.state.targetHost);
       }, this.reconnectDelay * this.reconnectAttempts);
     }
+  }
+
+  /**
+   * 获取历史数据
+   * @returns {Object} 历史数据
+   */
+  getHistoryData() {
+    return {
+      cpu: [...this.state.historyData.cpu],
+      memory: [...this.state.historyData.memory],
+      disk: [...this.state.historyData.disk],
+      network: {
+        upload: [...this.state.historyData.network.upload],
+        download: [...this.state.historyData.network.download]
+      }
+    };
+  }
+
+  /**
+   * 清空历史数据
+   */
+  clearHistoryData() {
+    this.state.historyData = {
+      cpu: Array(20).fill(0),
+      memory: Array(20).fill(0),
+      disk: Array(20).fill(0),
+      network: {
+        upload: Array(20).fill(0),
+        download: Array(20).fill(0)
+      }
+    };
   }
 
   /**
@@ -779,6 +892,27 @@ class MonitoringService {
   }
 
   /**
+   * 获取指定终端的历史数据
+   * @param {string} terminalId - 终端ID
+   * @returns {Object|null} 历史数据
+   */
+  getHistoryData(terminalId) {
+    const instance = this.getInstance(terminalId);
+    return instance ? instance.getHistoryData() : null;
+  }
+
+  /**
+   * 清空指定终端的历史数据
+   * @param {string} terminalId - 终端ID
+   */
+  clearHistoryData(terminalId) {
+    const instance = this.getInstance(terminalId);
+    if (instance) {
+      instance.clearHistoryData();
+    }
+  }
+
+  /**
    * 初始化全局API
    * @private
    */
@@ -787,7 +921,9 @@ class MonitoringService {
       connect: this.connect.bind(this),
       disconnect: this.disconnect.bind(this),
       getStatus: this.getStatus.bind(this),
-      requestSystemStats: this.requestSystemStats.bind(this)
+      requestSystemStats: this.requestSystemStats.bind(this),
+      getHistoryData: this.getHistoryData.bind(this),
+      clearHistoryData: this.clearHistoryData.bind(this)
     };
   }
 
@@ -807,31 +943,14 @@ class MonitoringService {
         }
       });
 
-      // 页面隐藏时也清理连接（处理页面刷新等情况）
-      window.addEventListener('pagehide', () => {
-        try {
-          log.debug('[监控] 页面隐藏，清理所有监控连接');
-          this.disconnectAll();
-        } catch (error) {
-          console.error('[监控] 页面隐藏清理失败:', error);
-        }
-      });
-
-      // 监听页面可见性变化
-      document.addEventListener('visibilitychange', () => {
-        try {
-          if (document.visibilityState === 'hidden') {
-            log.debug('[监控] 页面变为隐藏状态，清理所有监控连接');
-            this.disconnectAll();
-          }
-        } catch (error) {
-          console.error('[监控] 页面可见性变化处理失败:', error);
-        }
-      });
+      // 持续监控模式：移除页面隐藏时的连接断开逻辑
+      // 监控连接将始终保持活跃，直到页面真正卸载
     } catch (error) {
       console.error('[监控] 初始化页面卸载清理逻辑失败:', error);
     }
   }
+
+
 }
 
 // 创建服务实例

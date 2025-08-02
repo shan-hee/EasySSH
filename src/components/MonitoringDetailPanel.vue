@@ -18,10 +18,6 @@
               <i class="fas fa-chart-line"></i>
               系统监控详情
             </h3>
-            <div class="server-info" v-if="serverInfo">
-              <span class="server-name">{{ serverInfo.hostname || serverInfo.address }}</span>
-              <span class="server-address">{{ serverInfo.address }}</span>
-            </div>
           </div>
           <div class="header-controls">
             <button class="control-btn minimize-btn" @click="minimizePanel" title="最小化">
@@ -42,63 +38,67 @@
         <div class="top-section">
           <!-- 左侧系统信息 -->
           <div class="system-info">
-            <!-- 第一行：运行时间、架构、内存、磁盘 -->
-            <div class="info-line">
-              <div class="info-item">
-                <span class="label">运行时间</span>
-                <span class="value">{{ formatUptime(monitoringData?.system?.uptime) || 'Unknown' }}</span>
-              </div>
-              <div class="info-item">
-                <span class="label">架构</span>
-                <span class="value">{{ monitoringData?.cpu?.arch || 'x86_64' }}</span>
-              </div>
-              <div class="info-item">
-                <span class="label">内存</span>
-                <span class="value">{{ formatBytes(monitoringData?.memory?.total * 1024 * 1024) || '3.82 GiB' }}</span>
-              </div>
-              <div class="info-item">
-                <span class="label">磁盘</span>
-                <span class="value">{{ formatBytes(monitoringData?.disk?.total * 1024 * 1024 * 1024) || '37.64 GiB' }}</span>
-              </div>
-            </div>
-
-            <!-- 第二行：系统、CPU -->
+            <!-- 第一行：系统、CPU -->
             <div class="info-line">
               <div class="info-item">
                 <span class="label">系统</span>
-                <span class="value">{{ monitoringData?.system?.os || 'Unknown' }}</span>
+                <span class="value">{{ monitoringData?.os?.os || monitoringData?.os?.distro || monitoringData?.system?.os || 'Unknown' }}</span>
               </div>
               <div class="info-item cpu-info">
                 <span class="label">CPU</span>
-                <span class="value">{{ monitoringData?.cpu?.model || 'QEMU Virtual CPU version 2.5+ 2 Virtual Core' }}</span>
+                <span class="value">{{ monitoringData?.cpu?.model || 'Unknown' }}</span>
               </div>
             </div>
 
-            <!-- 第三行：Load、上传、下载 -->
+            <!-- 第二行：CPU核心、架构、内存、磁盘 -->
+            <div class="info-line">
+              <div class="info-item">
+                <span class="label">CPU核心</span>
+                <span class="value">{{ monitoringData?.cpu?.cores || monitoringData?.system?.cpu_cores || 'Unknown' }} 核</span>
+              </div>
+              <div class="info-item">
+                <span class="label">架构</span>
+                <span class="value">{{ monitoringData?.os?.arch || monitoringData?.system?.arch || 'Unknown' }}</span>
+              </div>
+              <div class="info-item">
+                <span class="label">内存</span>
+                <span class="value">{{ formatBytes((monitoringData?.memory?.total || 0) * 1024 * 1024) || 'Unknown' }}</span>
+              </div>
+              <div class="info-item">
+                <span class="label">磁盘</span>
+                <span class="value">{{ formatBytes((monitoringData?.disk?.total || 0) * 1024 * 1024 * 1024) || 'Unknown' }}</span>
+              </div>
+            </div>
+
+            <!-- 第三行：Load、Swap、上传、下载 -->
             <div class="info-line">
               <div class="info-item">
                 <span class="label">Load</span>
-                <span class="value">{{ monitoringData?.cpu?.loadAverage?.load1 || '0' }} / {{ monitoringData?.cpu?.loadAverage?.load5 || '0.02' }} / {{ monitoringData?.cpu?.loadAverage?.load15 || '0' }}</span>
+                <span class="value">{{ (monitoringData?.cpu?.loadAverage?.load1 || 0).toFixed(2) }} / {{ (monitoringData?.cpu?.loadAverage?.load5 || 0).toFixed(2) }} / {{ (monitoringData?.cpu?.loadAverage?.load15 || 0).toFixed(2) }}</span>
+              </div>
+              <div class="info-item">
+                <span class="label">Swap</span>
+                <span class="value">{{ formatBytes((monitoringData?.swap?.total || 0) * 1024 * 1024) || '0 B' }}</span>
               </div>
               <div class="info-item">
                 <span class="label">上传</span>
-                <span class="value">{{ formatBytes(monitoringData?.network?.uploadTotal || 2130000000) || '2.13 GiB' }}</span>
+                <span class="value">{{ formatBytes(monitoringData?.network?.totalUpload || monitoringData?.network?.total_tx_bytes || 0) || '0 B' }}</span>
               </div>
               <div class="info-item">
                 <span class="label">下载</span>
-                <span class="value">{{ formatBytes(monitoringData?.network?.downloadTotal || 1350000000) || '1.35 GiB' }}</span>
+                <span class="value">{{ formatBytes(monitoringData?.network?.totalDownload || monitoringData?.network?.total_rx_bytes || 0) || '0 B' }}</span>
               </div>
             </div>
 
-            <!-- 第四行：启动时间、最后上线时间 -->
+            <!-- 第四行：启动时间、运行时间 -->
             <div class="info-line">
               <div class="info-item">
                 <span class="label">启动时间</span>
-                <span class="value">{{ formatDateTime(monitoringData?.system?.bootTime) || 'Unknown' }}</span>
+                <span class="value">{{ formatDateTime(monitoringData?.os?.bootTime || monitoringData?.system?.bootTime) || 'Unknown' }}</span>
               </div>
               <div class="info-item">
-                <span class="label">最后上线时间</span>
-                <span class="value">{{ formatDateTime(new Date()) || '2025-08-01 22:50:07' }}</span>
+                <span class="label">运行时间</span>
+                <span class="value">{{ formatUptime(monitoringData?.os?.uptime || monitoringData?.system?.uptime) || 'Unknown' }}</span>
               </div>
             </div>
           </div>
@@ -161,6 +161,10 @@ export default {
     serverInfo: {
       type: Object,
       default: () => ({})
+    },
+    terminalId: {
+      type: String,
+      default: ''
     }
   },
   emits: ['close'],
@@ -212,10 +216,10 @@ export default {
       if (isMinimized.value) {
         return {
           position: 'fixed',
-          bottom: '20px',
-          right: '20px',
-          width: '300px',
-          height: '40px',
+          top: `${panelPosition.value.y}px`,
+          left: `${panelPosition.value.x}px`,
+          width: '600px',
+          height: '280px',
           maxWidth: 'none',
           maxHeight: 'none',
           transform: 'none',
@@ -241,32 +245,74 @@ export default {
     let diskChartInstance = null
     let networkChartInstance = null
 
-    // 历史数据存储（使用普通对象避免响应式问题）
-    const historyData = {
-      cpu: [],
-      memory: [],
-      disk: [],
-      network: { upload: [], download: [] }
+    // 历史数据存储（从全局监控服务获取）
+    const historyData = ref({
+      cpu: Array(20).fill(0),
+      memory: Array(20).fill(0),
+      disk: Array(20).fill(0),
+      network: {
+        upload: Array(20).fill(0),
+        download: Array(20).fill(0)
+      }
+    })
+
+    // 从全局监控服务加载历史数据
+    const loadHistoryDataFromService = () => {
+      try {
+        // 使用传入的终端ID
+        const currentTerminalId = props.terminalId;
+        if (!currentTerminalId) {
+          console.warn('[监控面板] 无法获取终端ID');
+          return;
+        }
+
+        // 从全局监控服务获取历史数据
+        const globalHistoryData = window.monitoringAPI?.getHistoryData?.(currentTerminalId);
+        if (globalHistoryData) {
+          historyData.value = {
+            cpu: [...globalHistoryData.cpu],
+            memory: [...globalHistoryData.memory],
+            disk: [...globalHistoryData.disk],
+            network: {
+              upload: [...globalHistoryData.network.upload],
+              download: [...globalHistoryData.network.download]
+            }
+          };
+        } else {
+          console.warn('[监控面板] 无法从全局服务获取历史数据');
+        }
+      } catch (error) {
+        console.error('[监控面板] 加载历史数据失败:', error);
+      }
     }
 
-    // 初始化面板位置（居中显示）
+    // 初始化面板位置
     const initPanelPosition = () => {
       const windowWidth = window.innerWidth
       const windowHeight = window.innerHeight
 
-      // 获取面板的实际大小
-      let actualWidth = panelSize.value.width
-      let actualHeight = panelSize.value.height
+      if (isMinimized.value) {
+        // 最小化状态：设置到右下角
+        panelPosition.value = {
+          x: windowWidth - 600,
+          y: windowHeight - 280 - 120 
+        }
+      } else {
+        // 正常状态：居中显示
+        // 获取面板的实际大小
+        let actualWidth = panelSize.value.width
+        let actualHeight = panelSize.value.height
 
-      if (panelContainer.value) {
-        const rect = panelContainer.value.getBoundingClientRect()
-        actualWidth = rect.width
-        actualHeight = rect.height
-      }
+        if (panelContainer.value) {
+          const rect = panelContainer.value.getBoundingClientRect()
+          actualWidth = rect.width
+          actualHeight = rect.height
+        }
 
-      panelPosition.value = {
-        x: Math.max(0, (windowWidth - actualWidth) / 2),
-        y: Math.max(0, (windowHeight - actualHeight) / 2)
+        panelPosition.value = {
+          x: Math.max(0, (windowWidth - actualWidth) / 2),
+          y: Math.max(0, (windowHeight - actualHeight) / 2)
+        }
       }
     }
 
@@ -281,10 +327,40 @@ export default {
           if (!isMaximized.value && !isMinimized.value) {
             panelSize.value = { width, height }
           }
+
+          // 响应式布局控制
+          updateResponsiveLayout(width)
         }
       })
 
       resizeObserver.observe(panelContainer.value)
+    }
+
+    // 响应式布局控制
+    const updateResponsiveLayout = (containerWidth) => {
+      if (!panelContainer.value) return
+
+      const topSection = panelContainer.value.querySelector('.top-section')
+      if (!topSection) return
+
+      // 当容器宽度小于850px时，让图表换行，确保系统信息有足够空间
+      if (containerWidth < 850) {
+        topSection.style.flexDirection = 'column'
+        topSection.style.gap = '16px'
+        // 确保系统信息区域有足够的最小宽度
+        const systemInfo = topSection.querySelector('.system-info')
+        if (systemInfo) {
+          systemInfo.style.minWidth = '350px'
+        }
+      } else {
+        topSection.style.flexDirection = 'row'
+        topSection.style.gap = '18px'
+        // 恢复系统信息区域的最小宽度
+        const systemInfo = topSection.querySelector('.system-info')
+        if (systemInfo) {
+          systemInfo.style.minWidth = '350px'
+        }
+      }
     }
 
     // 清理ResizeObserver
@@ -297,7 +373,7 @@ export default {
 
     // 开始拖动
     const startDrag = (event) => {
-      if (isMaximized.value || isMinimized.value) return
+      if (isMaximized.value) return
 
       isDragging.value = true
       dragStart.value = { x: event.clientX, y: event.clientY }
@@ -364,10 +440,23 @@ export default {
     // 最小化
     const minimizePanel = () => {
       if (!isMinimized.value) {
+        // 保存当前位置和大小
         originalPosition.value = { ...panelPosition.value }
         originalSize.value = { ...panelSize.value }
+
+        // 设置最小化默认位置到右下角
+        panelPosition.value = {
+          x: window.innerWidth - 600 ,  // 600px宽度 + 20px边距
+          y: window.innerHeight - 280 - 120  // 280px高度 + 20px边距
+        }
+
+        isMinimized.value = true
+      } else {
+        // 还原时恢复原位置
+        panelPosition.value = { ...originalPosition.value }
+        panelSize.value = { ...originalSize.value }
+        isMinimized.value = false
       }
-      isMinimized.value = !isMinimized.value
       isMaximized.value = false
     }
 
@@ -384,11 +473,43 @@ export default {
 
     // 格式化字节
     const formatBytes = (bytes) => {
-      if (!bytes || bytes === 0) return '0 B'
-      const k = 1024
-      const sizes = ['B', 'KB', 'MB', 'GB', 'TB']
-      const i = Math.floor(Math.log(bytes) / Math.log(k))
-      return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
+      try {
+        // 处理无效值
+        if (bytes === undefined || bytes === null || isNaN(bytes) || bytes < 0 || !isFinite(bytes)) {
+          return '0 B'
+        }
+        if (bytes === 0) return '0 B'
+
+        const k = 1024
+        const sizes = ['B', 'KB', 'MB', 'GB', 'TB']
+
+        // 防止 Math.log 出现问题
+        if (bytes <= 0) return '0 B'
+
+        const i = Math.floor(Math.log(bytes) / Math.log(k))
+
+        // 确保索引在有效范围内
+        const sizeIndex = Math.max(0, Math.min(i, sizes.length - 1))
+        const value = bytes / Math.pow(k, sizeIndex)
+
+        // 确保计算结果是有效数值
+        if (!isFinite(value) || isNaN(value)) {
+          return '0 B'
+        }
+
+        const formattedValue = parseFloat(value.toFixed(2))
+        const unit = sizes[sizeIndex]
+
+        // 最终验证
+        if (!isFinite(formattedValue) || isNaN(formattedValue) || !unit) {
+          return '0 B'
+        }
+
+        return formattedValue + ' ' + unit
+      } catch (error) {
+        console.warn('formatBytes 错误:', error, 'bytes:', bytes)
+        return '0 B'
+      }
     }
 
     // ==================== 常量定义 ====================
@@ -676,6 +797,9 @@ export default {
       resetError();
 
       try {
+        // 首先从全局监控服务加载历史数据
+        loadHistoryDataFromService();
+
         await nextTick()
 
         if (!cpuChart.value || !memoryChart.value || !diskChart.value || !networkChart.value) {
@@ -880,6 +1004,8 @@ export default {
           y: {
             display: true,
             min: 0,
+            // 移除固定的max值，让Chart.js根据数据自动调整
+            beginAtZero: true,
             grid: {
               display: true,
               color: getThemeColor('rgba(0, 0, 0, 0.1)', 'rgba(255, 255, 255, 0.1)'),
@@ -892,7 +1018,29 @@ export default {
                 size: 10
               },
               callback: function(value) {
-                return formatBytes(value) + '/s';
+                try {
+                  // 确保 value 是有效数值
+                  const numValue = Number(value)
+                  if (isNaN(numValue) || numValue < 0 || !isFinite(numValue)) {
+                    return '0 B/s'
+                  }
+
+                  // 对于非常小的值，直接返回0
+                  if (numValue < 0.01) {
+                    return '0 B/s'
+                  }
+
+                  const formatted = formatBytes(numValue)
+                  // 再次验证格式化结果
+                  if (!formatted || formatted.includes('undefined') || formatted.includes('NaN')) {
+                    return '0 B/s'
+                  }
+
+                  return formatted + '/s';
+                } catch (error) {
+                  console.warn('Y轴格式化错误:', error, 'value:', value)
+                  return '0 B/s'
+                }
               }
             },
             border: {
@@ -956,6 +1104,8 @@ export default {
         }
       };
 
+      // 历史数据已经在 loadHistoryDataFromService 中初始化，无需再次初始化
+
       // CPU图表
       const cpuColor = getRandomColor()
       cpuChartInstance = new Chart(cpuChart.value, {
@@ -964,7 +1114,7 @@ export default {
           labels: Array(20).fill(''),
           datasets: [{
             label: 'CPU使用率',
-            data: historyData.cpu,
+            data: historyData.value.cpu,
             borderColor: cpuColor,
             backgroundColor: cpuColor + '20',
             fill: true,
@@ -999,9 +1149,9 @@ export default {
                 const available = currentData.available || 0;
                 return [
                   `内存使用率: ${value.toFixed(1)}%`,
-                  `已使用: ${formatBytes(used)}`,
-                  `可用: ${formatBytes(available)}`,
-                  `总计: ${formatBytes(total)}`
+                  `已使用: ${formatBytes(used * 1024 * 1024)}`,
+                  `可用: ${formatBytes(available * 1024 * 1024)}`,
+                  `总计: ${formatBytes(total * 1024 * 1024)}`
                 ];
               }
             }
@@ -1017,7 +1167,7 @@ export default {
           labels: Array(20).fill(''),
           datasets: [{
             label: '内存使用率',
-            data: historyData.memory,
+            data: historyData.value.memory,
             borderColor: memoryColor,
             backgroundColor: memoryColor + '20',
             fill: true,
@@ -1050,13 +1200,11 @@ export default {
                 const total = currentData.total || 0;
                 const used = currentData.used || 0;
                 const available = currentData.available || 0;
-                const filesystem = currentData.filesystem || 'Unknown';
                 return [
                   `磁盘使用率: ${value.toFixed(1)}%`,
-                  `已使用: ${formatBytes(used)}`,
-                  `可用: ${formatBytes(available)}`,
-                  `总计: ${formatBytes(total)}`,
-                  `文件系统: ${filesystem}`
+                  `已使用: ${formatBytes(used * 1024 * 1024 * 1024)}`,
+                  `可用: ${formatBytes(available * 1024 * 1024 * 1024)}`,
+                  `总计: ${formatBytes(total * 1024 * 1024 * 1024)}`
                 ];
               }
             }
@@ -1072,7 +1220,7 @@ export default {
           labels: Array(20).fill(''),
           datasets: [{
             label: '磁盘使用率',
-            data: historyData.disk,
+            data: historyData.value.disk,
             borderColor: diskColor,
             backgroundColor: diskColor + '20',
             fill: true,
@@ -1096,13 +1244,16 @@ export default {
       while (uploadColor === downloadColor) {
         downloadColor = getRandomColor()
       }
+
+      // 网络历史数据已经在 loadHistoryDataFromService 中初始化
+
       networkChartInstance = new Chart(networkChart.value, {
         type: 'line',
         data: {
           labels: Array(20).fill(''),
           datasets: [{
             label: '上传',
-            data: historyData.network.upload,
+            data: historyData.value.network.upload,
             borderColor: uploadColor,
             backgroundColor: uploadColor + '20',
             fill: false,
@@ -1115,7 +1266,7 @@ export default {
             borderJoinStyle: 'round'
           }, {
             label: '下载',
-            data: historyData.network.download,
+            data: historyData.value.network.download,
             borderColor: downloadColor,
             backgroundColor: downloadColor + '20',
             fill: false,
@@ -1162,53 +1313,20 @@ export default {
 
       const data = props.monitoringData
 
-      // 更新历史数据（使用普通数组避免响应式问题）
-      if (data.cpu?.usage !== undefined) {
-        const cpuData = historyData.cpu
-        cpuData.push(data.cpu.usage)
-        if (cpuData.length > 20) {
-          cpuData.shift()
-        }
-      }
-
-      if (data.memory?.usage !== undefined) {
-        const memoryData = historyData.memory
-        memoryData.push(data.memory.usage)
-        if (memoryData.length > 20) {
-          memoryData.shift()
-        }
-      }
-
-      if (data.disk?.usage !== undefined) {
-        const diskData = historyData.disk
-        diskData.push(data.disk.usage)
-        if (diskData.length > 20) {
-          diskData.shift()
-        }
-      }
-
-      if (data.network) {
-        const uploadData = historyData.network.upload
-        const downloadData = historyData.network.download
-        uploadData.push(data.network.upload || 0)
-        downloadData.push(data.network.download || 0)
-        if (uploadData.length > 20) {
-          uploadData.shift()
-          downloadData.shift()
-        }
-      }
+      // 从全局监控服务获取最新的历史数据（历史数据由全局服务维护）
+      loadHistoryDataFromService();
 
       // 使用requestAnimationFrame确保平滑更新
       requestAnimationFrame(() => {
-        updateChartWithAnimation(cpuChartInstance, historyData.cpu.slice(), 0);
-        updateChartWithAnimation(memoryChartInstance, historyData.memory.slice(), 0);
-        updateChartWithAnimation(diskChartInstance, historyData.disk.slice(), 0);
+        updateChartWithAnimation(cpuChartInstance, historyData.value.cpu.slice(), 0);
+        updateChartWithAnimation(memoryChartInstance, historyData.value.memory.slice(), 0);
+        updateChartWithAnimation(diskChartInstance, historyData.value.disk.slice(), 0);
 
         // 网络图表有两个数据集
         if (networkChartInstance) {
           updateNetworkChartWithAnimation(networkChartInstance,
-            historyData.network.upload.slice(),
-            historyData.network.download.slice()
+            historyData.value.network.upload.slice(),
+            historyData.value.network.download.slice()
           );
         }
       });
@@ -1340,7 +1458,8 @@ export default {
       formatPercentage,
       formatBytes,
       formatUptime,
-      formatDateTime
+      formatDateTime,
+      loadHistoryDataFromService
     }
   }
 }
@@ -1409,6 +1528,8 @@ export default {
   transform: scale(1);
   transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   pointer-events: auto;
+  min-width: 600px;
+  min-height: 400px;
   resize: both;
   min-width: 600px;
   min-height: 400px;
@@ -1450,6 +1571,7 @@ export default {
   margin: 0;
   font-size: 18px;
   font-weight: 600;
+  font-family: var(--font-family-base);
   color: var(--color-text);
   display: flex;
   align-items: center;
@@ -1465,16 +1587,18 @@ export default {
   align-items: center;
   gap: 12px;
   font-size: 14px;
+  font-family: var(--font-family-base);
 }
 
 .server-name {
   color: var(--color-text);
   font-weight: 500;
+  font-family: var(--font-family-base);
 }
 
 .server-address {
   color: var(--color-text-secondary);
-  font-family: 'Fira Code', monospace;
+  font-family: var(--font-family-base);
 }
 
 .header-controls {
@@ -1497,6 +1621,7 @@ export default {
   width: 28px;
   height: 28px;
   font-size: 12px;
+  font-family: var(--font-family-base);
   opacity: 0.8;
 }
 
@@ -1550,20 +1675,7 @@ export default {
   transform: scale(1.05);
 }
 
-/* 最小化状态样式 */
-.panel-container.minimized {
-  height: 40px !important;
-  width: 300px !important;
-}
-
-.panel-container.minimized .panel-content {
-  display: none;
-}
-
-.panel-container.minimized .panel-header {
-  border-bottom: none;
-  padding: 8px 12px;
-}
+/* 最小化状态样式 - 使用正常布局 */
 
 .panel-content {
   flex: 1;
@@ -1577,74 +1689,94 @@ export default {
 /* 顶部区域 - 系统信息和网络图表 */
 .top-section {
   display: flex;
+  align-items: flex-start;
   gap: 18px;
   margin-bottom: 18px;
+  flex-wrap: wrap;
+}
+
+/* 当容器宽度不足时，自动换行 */
+.panel-container[style*="width"] .top-section {
+  flex-wrap: wrap;
+}
+
+.panel-container[style*="width"] .top-section .system-info {
+  min-width: 400px;
+  flex: 1 1 400px;
+}
+
+.panel-container[style*="width"] .top-section .network-chart-container {
+  flex: 1 1 300px;
+  max-width: 450px;
 }
 
 .system-info {
   flex: 1;
-  min-width: 0;
+  min-width: 350px;
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  padding: 16px;
 }
 
 .info-line {
   display: flex;
   flex-wrap: wrap;
-  gap: 14px;
-  margin-bottom: 8px;
-  align-items: center;
+  gap: 20px;
+  margin-bottom: 16px;
+  align-items: flex-start;
 }
 
 .info-line:last-child {
-  margin-bottom: 0;
+  margin-bottom: 4px;
 }
 
 .info-item {
   display: flex;
-  align-items: center;
-  gap: 4px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
   min-width: 95px;
 }
 
 .info-item .label {
-  font-size: 12px;
+  font-size: 11px;
   color: var(--color-text-secondary);
   font-weight: 400;
-  min-width: 45px;
+  font-family: var(--font-family-base);
+  margin-bottom: 1px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
 .info-item .value {
-  font-size: 12px;
+  font-size: 13px;
   color: var(--color-text);
-  font-family: 'Fira Code', monospace;
+  font-family: var(--font-family-base);
   font-weight: 500;
-}
-
-.info-item.cpu-info {
-  flex: 1;
-  min-width: 180px;
-}
-
-.info-item.cpu-info .value {
-  font-size: 10px;
+  line-height: 1.2;
 }
 
 .network-chart-container {
   width: 450px;
-  flex-shrink: 0;
+  flex-shrink: 1;
+  min-width: 300px;
 }
 
 .network-chart {
-  height: 200px;
+  height: auto;
+  min-height: 200px;
   background: var(--color-bg-elevated);
   border: 1px solid var(--color-border);
   border-radius: 6px;
-  padding: 12px;
+  padding: 16px;
 }
 
 .network-chart .chart-container {
   background: var(--color-bg-elevated);
   border: none;
-  height: 176px;
+  height: 180px;
+  border-radius: 4px;
 }
 
 /* 底部图表区域 */
@@ -1673,12 +1805,25 @@ export default {
 }
 
 /* 响应式设计 */
-@media (max-width: 768px) {
+/* 中等屏幕 - 当面板宽度不足时图表换行 */
+@media (max-width: 900px) {
   .top-section {
     flex-direction: column;
     gap: 16px;
   }
 
+  .network-chart-container {
+    width: 100%;
+    min-width: unset;
+  }
+
+  .system-info {
+    min-width: unset;
+  }
+}
+
+/* 小屏幕优化 */
+@media (max-width: 768px) {
   .network-chart-container {
     width: 100%;
   }
@@ -1692,7 +1837,6 @@ export default {
   .info-item {
     min-width: auto;
     width: 100%;
-    justify-content: space-between;
   }
 
   .charts-grid {
@@ -1710,10 +1854,13 @@ export default {
 }
 
 @media (max-width: 480px) {
+  .info-line {
+    gap: 16px;
+  }
+
   .info-item {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 4px;
+    min-width: auto;
+    width: 100%;
   }
 
   .info-item .value {
@@ -1721,7 +1868,7 @@ export default {
   }
 
   .info-item.cpu-info .value {
-    font-size: 10px;
+    font-size: 12px;
   }
 }
 

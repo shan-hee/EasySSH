@@ -9,13 +9,13 @@ const EventEmitter = require('events');
 class OptimizedSSHMonitoringCollector extends EventEmitter {
   constructor(sshConnection, hostInfo) {
     super();
-    
+
     this.sshConnection = sshConnection;
     this.hostInfo = hostInfo;
     this.isCollecting = false;
     this.collectionInterval = null;
     this.hostId = null;
-    
+
     // 性能优化：数据缓存
     this.dataCache = {
       lastNetworkStats: { rx_bytes: 0, tx_bytes: 0, timestamp: Date.now() },
@@ -23,7 +23,7 @@ class OptimizedSSHMonitoringCollector extends EventEmitter {
       lastStaticInfoUpdate: 0,
       staticInfoUpdateInterval: 5 * 60 * 1000 // 静态信息每5分钟更新一次
     };
-    
+
     // IP信息缓存优化
     this.ipCache = {
       internal: null,
@@ -33,19 +33,31 @@ class OptimizedSSHMonitoringCollector extends EventEmitter {
       publicUpdateInterval: 10 * 60 * 1000,
       internalUpdateInterval: 60 * 1000 // 优化：内网IP每分钟更新一次
     };
-    
-    // 错误处理和重试机制
+
+    // 生产级错误处理和重试机制
     this.errorStats = {
       consecutiveErrors: 0,
+      totalErrors: 0,
+      channelErrors: 0, // SSH通道错误计数
       lastErrorTime: 0,
       maxRetries: 3,
       backoffMultiplier: 1.5,
-      baseInterval: 1000
+      baseInterval: 1000,
+      maxConsecutiveErrors: 10 // 最大连续错误数
     };
-    
+
     // 命令执行缓存
     this.commandCache = new Map();
     this.commandCacheTimeout = 2000; // 2秒内相同命令使用缓存
+
+    // 生产级监控
+    this.lastHealthCheck = 0;
+    this.reconnecting = false;
+    this.performanceMetrics = {
+      collectionTimes: [],
+      errorRates: [],
+      lastMetricsLog: 0
+    };
   }
 
   /**
@@ -307,20 +319,77 @@ class OptimizedSSHMonitoringCollector extends EventEmitter {
       }
     }
 
+    // 生产级优化：添加重试机制和更好的错误处理
+    let lastError;
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        const result = await this._executeCommandOnce(command, attempt);
+
+        // 缓存结果
+        if (useCache) {
+          this.commandCache.set(command, {
+            result,
+            timestamp: Date.now()
+          });
+        }
+
+        // 重置错误计数
+        if (this.errorStats.consecutiveErrors > 0) {
+          this.errorStats.consecutiveErrors = 0;
+        }
+
+        return result;
+      } catch (error) {
+        lastError = error;
+        this.errorStats.consecutiveErrors++;
+        this.errorStats.totalErrors++;
+
+        // 如果是SSH通道错误，增加特殊计数
+        if (error.message.includes('Channel open failure')) {
+          this.errorStats.channelErrors++;
+        }
+
+        logger.debug(`命令执行失败 (尝试 ${attempt}/3)`, {
+          command: command.substring(0, 50) + '...',
+          error: error.message,
+          attempt
+        });
+
+        // 最后一次尝试失败，或者是致命错误，直接抛出
+        if (attempt === 3 || error.message.includes('SSH连接不可用')) {
+          break;
+        }
+
+        // 等待后重试，使用指数退避
+        await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
+      }
+    }
+
+    throw lastError;
+  }
+
+  async _executeCommandOnce(command, attempt = 1) {
     return new Promise((resolve, reject) => {
       if (!this.isCollecting || !this.sshConnection) {
-        reject(new Error('监控数据收集已停止或SSH连接不可用'));
+        const error = new Error('监控数据收集已停止或SSH连接不可用');
+        reject(error);
         return;
       }
 
       const timeout = setTimeout(() => {
-        reject(new Error('命令执行超时'));
-      }, 8000); // 减少超时时间到8秒
+        const error = new Error(`命令执行超时: ${command.substring(0, 50)}...`);
+        reject(error);
+      }, 10000); // 增加超时时间到10秒
 
       this.sshConnection.exec(command, (err, stream) => {
         if (err) {
           clearTimeout(timeout);
-          reject(err);
+          // 特殊处理SSH通道错误
+          if (err.message && err.message.includes('Channel open failure')) {
+            reject(new Error(`SSH通道打开失败 (尝试 ${attempt}): ${err.message}`));
+          } else {
+            reject(err);
+          }
           return;
         }
 
@@ -331,18 +400,10 @@ class OptimizedSSHMonitoringCollector extends EventEmitter {
           clearTimeout(timeout);
           if (code === 0) {
             const result = output.trim();
-            
-            // 缓存结果
-            if (useCache) {
-              this.commandCache.set(command, {
-                result,
-                timestamp: Date.now()
-              });
-            }
-            
             resolve(result);
           } else {
-            reject(new Error(`命令执行失败，退出码: ${code}, 错误: ${errorOutput}`));
+            const error = new Error(`命令执行失败，退出码: ${code}, 错误: ${errorOutput}`);
+            reject(error);
           }
         });
 
@@ -352,6 +413,12 @@ class OptimizedSSHMonitoringCollector extends EventEmitter {
 
         stream.stderr.on('data', (data) => {
           errorOutput += data.toString();
+        });
+
+        // 添加错误处理
+        stream.on('error', (err) => {
+          clearTimeout(timeout);
+          reject(err);
         });
       });
     });
@@ -398,22 +465,40 @@ class OptimizedSSHMonitoringCollector extends EventEmitter {
    */
   async getCpuInfo() {
     try {
-      // 并行获取CPU信息
-      const [cpuUsage, cpuCores, cpuModel, loadAvg] = await Promise.allSettled([
-        this.executeCommand('vmstat 1 2 | tail -1 | awk \'{print 100 - $15}\''), // 使用vmstat获取更准确的CPU使用率
-        this.executeCommand('nproc', true), // CPU核心数不变，使用缓存
-        this.executeCommand('cat /proc/cpuinfo | grep "model name" | head -1 | cut -d: -f2 | sed "s/^ *//"', true), // CPU型号不变，使用缓存
-        this.executeCommand('cat /proc/loadavg | awk \'{print $1, $2, $3}\'')
-      ]);
+      // 改为串行执行，避免SSH通道并发限制
+      let cpuUsage = '0', cpuCores = '1', cpuModel = 'Unknown', loadAvgStr = '0 0 0';
+
+      try {
+        cpuUsage = await this.executeCommand('vmstat 1 2 | tail -1 | awk \'{print 100 - $15}\'');
+      } catch (e) {
+        logger.debug('CPU使用率获取失败', { error: e.message });
+      }
+
+      try {
+        cpuCores = await this.executeCommand('nproc', true);
+      } catch (e) {
+        logger.debug('CPU核心数获取失败', { error: e.message });
+      }
+
+      try {
+        cpuModel = await this.executeCommand('cat /proc/cpuinfo | grep "model name" | head -1 | cut -d: -f2 | sed "s/^ *//"', true);
+      } catch (e) {
+        logger.debug('CPU型号获取失败', { error: e.message });
+      }
+
+      try {
+        loadAvgStr = await this.executeCommand('cat /proc/loadavg | awk \'{print $1, $2, $3}\'');
+      } catch (e) {
+        logger.debug('负载平均值获取失败', { error: e.message });
+      }
 
       // 解析负载平均值
-      const loadAvgStr = this.getSettledValue(loadAvg, '0 0 0');
       const [load1, load5, load15] = loadAvgStr.split(' ').map(Number);
 
       const result = {
-        usage: Math.round(parseFloat(this.getSettledValue(cpuUsage, '0')) * 100) / 100 || 0,
-        cores: parseInt(this.getSettledValue(cpuCores, '1')) || 1,
-        model: this.getSettledValue(cpuModel, 'Unknown') || 'Unknown',
+        usage: Math.round(parseFloat(cpuUsage) * 100) / 100 || 0,
+        cores: parseInt(cpuCores) || 1,
+        model: cpuModel || 'Unknown',
         loadAverage: {
           load1: load1 || 0,
           load5: load5 || 0,
@@ -607,12 +692,40 @@ class OptimizedSSHMonitoringCollector extends EventEmitter {
         return this.dataCache.staticInfo.osInfo;
       }
 
-      const [hostname, platform, release, arch] = await Promise.allSettled([
-        this.executeCommand('hostname', true),
-        this.executeCommand('uname -s', true),
-        this.executeCommand('uname -r', true),
-        this.executeCommand('uname -m', true)
-      ]);
+      // 改为串行执行，避免SSH通道并发限制
+      let hostname, platform, release, arch;
+
+      try {
+        hostname = await this.executeCommand('hostname', true);
+        logger.debug('hostname命令执行成功', { hostname });
+      } catch (e) {
+        logger.debug('hostname命令执行失败', { error: e.message });
+        hostname = this.hostInfo.address;
+      }
+
+      try {
+        platform = await this.executeCommand('uname -s', true);
+        logger.debug('platform命令执行成功', { platform });
+      } catch (e) {
+        logger.debug('platform命令执行失败', { error: e.message });
+        platform = 'Linux';
+      }
+
+      try {
+        release = await this.executeCommand('uname -r', true);
+        logger.debug('release命令执行成功', { release });
+      } catch (e) {
+        logger.debug('release命令执行失败', { error: e.message });
+        release = 'unknown';
+      }
+
+      try {
+        arch = await this.executeCommand('uname -m', true);
+        logger.debug('arch命令执行成功', { arch });
+      } catch (e) {
+        logger.debug('arch命令执行失败', { error: e.message });
+        arch = 'unknown';
+      }
 
       // 尝试获取发行版信息
       let distro = 'Unknown';
@@ -621,21 +734,50 @@ class OptimizedSSHMonitoringCollector extends EventEmitter {
           'cat /etc/os-release | grep PRETTY_NAME | cut -d= -f2 | sed \'s/"//g\'',
           true
         );
+        logger.debug('发行版信息获取成功', { distro });
       } catch (e) {
+        logger.debug('发行版信息获取失败，尝试备用方案', { error: e.message });
         try {
           distro = await this.executeCommand('lsb_release -d | cut -f2', true);
+          logger.debug('备用发行版信息获取成功', { distro });
         } catch (e2) {
+          logger.debug('备用发行版信息获取也失败', { error: e2.message });
           // 使用默认值
         }
       }
 
+      // 获取系统运行时间和启动时间
+      let uptime = 0, bootTime = null;
+
+      try {
+        const uptimeStr = await this.executeCommand('cat /proc/uptime | awk \'{print $1}\'', true);
+        uptime = parseFloat(uptimeStr) || 0;
+        logger.debug('运行时间获取成功', { uptime });
+      } catch (e) {
+        logger.debug('运行时间获取失败', { error: e.message });
+      }
+
+      try {
+        const bootTimeStr = await this.executeCommand('cat /proc/stat | grep btime | awk \'{print $2}\'', true);
+        if (bootTimeStr) {
+          bootTime = parseInt(bootTimeStr) * 1000; // 转换为毫秒时间戳
+          logger.debug('启动时间获取成功', { bootTime });
+        }
+      } catch (e) {
+        logger.debug('启动时间获取失败', { error: e.message });
+      }
+
       const osInfo = {
-        hostname: this.getSettledValue(hostname, this.hostInfo.address),
-        platform: this.getSettledValue(platform, 'Linux'),
-        release: this.getSettledValue(release, 'unknown'),
-        arch: this.getSettledValue(arch, 'unknown'),
-        distro: distro || 'Unknown Linux'
+        hostname: hostname || this.hostInfo.address,
+        platform: platform || 'Linux',
+        release: release || 'unknown',
+        arch: arch || 'unknown',
+        distro: distro || 'Unknown Linux',
+        uptime: uptime,
+        bootTime: bootTime
       };
+
+      logger.debug('最终OS信息', { osInfo });
 
       // 缓存操作系统信息
       this.updateStaticInfoCache('osInfo', osInfo);
@@ -647,7 +789,9 @@ class OptimizedSSHMonitoringCollector extends EventEmitter {
         platform: 'Linux',
         release: 'unknown',
         arch: 'unknown',
-        distro: 'Unknown Linux'
+        distro: 'Unknown Linux',
+        uptime: 0,
+        bootTime: null
       };
     }
   }
@@ -722,18 +866,38 @@ class OptimizedSSHMonitoringCollector extends EventEmitter {
    */
   async getProcessInfo() {
     try {
-      const [totalProcesses, runningProcesses, sleepingProcesses, zombieProcesses] = await Promise.allSettled([
-        this.executeCommand('ps aux | wc -l'),
-        this.executeCommand('ps aux | awk \'$8 ~ /^R/ {count++} END {print count+0}\''),
-        this.executeCommand('ps aux | awk \'$8 ~ /^S/ {count++} END {print count+0}\''),
-        this.executeCommand('ps aux | awk \'$8 ~ /^Z/ {count++} END {print count+0}\'')
-      ]);
+      // 改为串行执行，避免SSH通道并发限制
+      let totalProcesses = '1', runningProcesses = '0', sleepingProcesses = '0', zombieProcesses = '0';
+
+      try {
+        totalProcesses = await this.executeCommand('ps aux | wc -l');
+      } catch (e) {
+        logger.debug('总进程数获取失败', { error: e.message });
+      }
+
+      try {
+        runningProcesses = await this.executeCommand('ps aux | awk \'$8 ~ /^R/ {count++} END {print count+0}\'');
+      } catch (e) {
+        logger.debug('运行进程数获取失败', { error: e.message });
+      }
+
+      try {
+        sleepingProcesses = await this.executeCommand('ps aux | awk \'$8 ~ /^S/ {count++} END {print count+0}\'');
+      } catch (e) {
+        logger.debug('睡眠进程数获取失败', { error: e.message });
+      }
+
+      try {
+        zombieProcesses = await this.executeCommand('ps aux | awk \'$8 ~ /^Z/ {count++} END {print count+0}\'');
+      } catch (e) {
+        logger.debug('僵尸进程数获取失败', { error: e.message });
+      }
 
       const result = {
-        total: (parseInt(this.getSettledValue(totalProcesses, '1')) - 1) || 0, // 减去标题行
-        running: parseInt(this.getSettledValue(runningProcesses, '0')) || 0,
-        sleeping: parseInt(this.getSettledValue(sleepingProcesses, '0')) || 0,
-        zombie: parseInt(this.getSettledValue(zombieProcesses, '0')) || 0
+        total: (parseInt(totalProcesses) - 1) || 0, // 减去标题行
+        running: parseInt(runningProcesses) || 0,
+        sleeping: parseInt(sleepingProcesses) || 0,
+        zombie: parseInt(zombieProcesses) || 0
       };
 
       logger.debug('进程信息获取成功', { result });
@@ -779,6 +943,108 @@ class OptimizedSSHMonitoringCollector extends EventEmitter {
     this.commandCache.clear();
     this.dataCache.staticInfo = null;
     this.removeAllListeners();
+  }
+  /**
+   * 生产级优化：记录最终统计信息
+   */
+  logFinalStats() {
+    const avgCollectionTime = this.performanceMetrics.collectionTimes.length > 0
+      ? this.performanceMetrics.collectionTimes.reduce((a, b) => a + b, 0) / this.performanceMetrics.collectionTimes.length
+      : 0;
+
+    logger.info('监控收集器最终统计', {
+      hostId: this.hostId,
+      totalCollections: this.performanceMetrics.collectionTimes.length,
+      averageCollectionTime: Math.round(avgCollectionTime),
+      totalErrors: this.errorStats.totalErrors,
+      channelErrors: this.errorStats.channelErrors,
+      errorRate: this.performanceMetrics.collectionTimes.length > 0
+        ? (this.errorStats.totalErrors / this.performanceMetrics.collectionTimes.length * 100).toFixed(2) + '%'
+        : '0%'
+    });
+  }
+
+  /**
+   * 生产级优化：健康检查
+   */
+  async performHealthCheck() {
+    // 每30秒进行一次健康检查
+    if (Date.now() - this.lastHealthCheck < 30000) {
+      return;
+    }
+
+    this.lastHealthCheck = Date.now();
+
+    try {
+      // 简单的健康检查命令
+      await this.executeCommand('echo "health_check"', false);
+
+      // 如果之前有错误，记录恢复信息
+      if (this.errorStats.consecutiveErrors > 0) {
+        logger.info('SSH连接健康检查通过，连接已恢复', {
+          hostId: this.hostId,
+          previousConsecutiveErrors: this.errorStats.consecutiveErrors
+        });
+        this.errorStats.consecutiveErrors = 0;
+      }
+    } catch (error) {
+      logger.warn('SSH连接健康检查失败', {
+        hostId: this.hostId,
+        error: error.message,
+        consecutiveErrors: this.errorStats.consecutiveErrors
+      });
+    }
+  }
+
+  /**
+   * 生产级优化：记录性能指标
+   */
+  recordPerformanceMetrics(collectionTime) {
+    this.performanceMetrics.collectionTimes.push(collectionTime);
+
+    // 保持最近100次记录
+    if (this.performanceMetrics.collectionTimes.length > 100) {
+      this.performanceMetrics.collectionTimes.shift();
+    }
+
+    // 每50次收集记录一次性能日志
+    if (this.performanceMetrics.collectionTimes.length % 50 === 0) {
+      const avgTime = this.performanceMetrics.collectionTimes.reduce((a, b) => a + b, 0) /
+                      this.performanceMetrics.collectionTimes.length;
+
+      logger.info('监控性能统计', {
+        hostId: this.hostId,
+        averageCollectionTime: Math.round(avgTime),
+        totalCollections: this.performanceMetrics.collectionTimes.length,
+        errorRate: (this.errorStats.totalErrors / this.performanceMetrics.collectionTimes.length * 100).toFixed(2) + '%',
+        channelErrorRate: (this.errorStats.channelErrors / this.performanceMetrics.collectionTimes.length * 100).toFixed(2) + '%'
+      });
+    }
+  }
+
+  /**
+   * 生产级优化：获取监控器状态
+   */
+  getCollectorStatus() {
+    return {
+      isCollecting: this.isCollecting,
+      hostId: this.hostId,
+      errorStats: { ...this.errorStats },
+      performanceMetrics: {
+        totalCollections: this.performanceMetrics.collectionTimes.length,
+        averageCollectionTime: this.performanceMetrics.collectionTimes.length > 0
+          ? Math.round(this.performanceMetrics.collectionTimes.reduce((a, b) => a + b, 0) / this.performanceMetrics.collectionTimes.length)
+          : 0,
+        errorRate: this.performanceMetrics.collectionTimes.length > 0
+          ? (this.errorStats.totalErrors / this.performanceMetrics.collectionTimes.length * 100).toFixed(2) + '%'
+          : '0%'
+      },
+      cacheStats: {
+        commandCacheSize: this.commandCache.size,
+        staticInfoCached: !!this.dataCache.staticInfo,
+        lastStaticInfoUpdate: this.dataCache.lastStaticInfoUpdate
+      }
+    };
   }
 }
 
