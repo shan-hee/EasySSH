@@ -34,12 +34,27 @@
             @toggle-monitoring-panel="toggleMonitoringPanel"
           />
         </div>
-        <div class="terminal-content-padding">
-          <div
-            :ref="el => setTerminalRef(el, termId)"
-            class="terminal-content"
-            :data-terminal-id="termId"
-          ></div>
+
+        <!-- 终端主体区域：监控面板 + 终端内容 -->
+        <div class="terminal-main-area">
+          <!-- 响应式监控面板 - 左侧 -->
+          <div class="terminal-monitoring-panel"
+               v-if="shouldShowMonitoringPanel(termId)">
+            <ResponsiveMonitoringPanel
+              :visible="isMonitoringPanelVisible(termId)"
+              :monitoring-data="getMonitoringData(termId)"
+              :terminal-id="termId"
+            />
+          </div>
+
+          <!-- 终端内容区域 - 右侧 -->
+          <div class="terminal-content-padding" :class="{ 'with-monitoring-panel': shouldShowMonitoringPanel(termId) }">
+            <div
+              :ref="el => setTerminalRef(el, termId)"
+              class="terminal-content"
+              :data-terminal-id="termId"
+            ></div>
+          </div>
         </div>
       </div>
     </div>
@@ -77,6 +92,8 @@ import TerminalAutocomplete from '../../components/terminal/TerminalAutocomplete
 import terminalAutocompleteService from '../../services/terminal-autocomplete'
 // 导入日志服务
 import log from '../../services/log'
+// 导入响应式监控面板组件
+import ResponsiveMonitoringPanel from '../../components/monitoring/ResponsiveMonitoringPanel.vue'
 
 // 导入会话存储
 import { useSessionStore } from '../../store/session'
@@ -89,7 +106,8 @@ export default {
   components: {
     RocketLoader,
     TerminalToolbar, // 注册工具栏组件
-    TerminalAutocomplete // 注册自动完成组件
+    TerminalAutocomplete, // 注册自动完成组件
+    ResponsiveMonitoringPanel // 注册响应式监控面板组件
   },
   props: {
     id: {
@@ -126,6 +144,11 @@ export default {
 
     // 替换全局初始化标志为每个终端的初始化状态映射
     const terminalInitializingStates = ref({})
+
+    // 监控面板相关状态
+    const monitoringPanelStates = ref({}) // 每个终端的监控面板显示状态
+    const monitoringDataCache = ref({})   // 每个终端的监控数据缓存
+    let cleanupMonitoringListener = null  // 监控数据监听器清理函数
 
     // 每个终端的火箭动画阶段状态
     const terminalRocketPhases = ref({})
@@ -882,6 +905,12 @@ export default {
       if (!terminalIds.value.includes(sessionId)) {
         terminalIds.value.push(sessionId);
       }
+
+      // 为新终端初始化监控面板默认状态
+      if (monitoringPanelStates.value[sessionId] === undefined) {
+        monitoringPanelStates.value[sessionId] = isDesktop(); // 桌面端默认显示
+        log.debug(`[终端] 新终端监控面板默认状态: ${sessionId}, 显示: ${isDesktop()}`);
+      }
       
       // 检查是否是标签切换模式
       if (!isTabSwitch) {
@@ -1150,6 +1179,10 @@ export default {
         terminalSized.value = {}
         // 调整所有终端大小
         resizeTerminal()
+
+        // 处理监控面板响应式状态
+        handleMonitoringPanelResize()
+
         windowResizeTimer = null
       }, 100) // 100ms防抖
     }
@@ -1173,32 +1206,112 @@ export default {
       }
 
       try {
-        // 获取当前SSH连接信息
-        const sshSessionId = terminalStore.sessions[sessionId];
-        if (!sshSessionId || !sshService.sessions.has(sshSessionId)) {
-          log.warn('[终端] 无法切换监控面板：SSH会话不存在');
-          return;
+        // 切换当前活动终端的监控面板显示状态
+        const currentState = monitoringPanelStates.value[sessionId] || false;
+        monitoringPanelStates.value[sessionId] = !currentState;
+
+        // 管理用户偏好
+        if (!currentState) {
+          // 用户手动显示面板，清除隐藏偏好
+          localStorage.removeItem(`monitoring-panel-user-hidden-${sessionId}`);
+        } else {
+          // 用户手动隐藏面板，记录偏好
+          localStorage.setItem(`monitoring-panel-user-hidden-${sessionId}`, 'true');
         }
 
-        const session = sshService.sessions.get(sshSessionId);
-        const host = session?.connection?.host;
-
-        if (!host) {
-          log.warn('[终端] 无法切换监控面板：无法获取主机地址');
-          return;
-        }
-
-        // 使用重构后的监控服务检查状态
-        const { default: monitoringService } = await import('../../services/monitoring.js');
-        const status = monitoringService.getStatus(sessionId);
-
-        // 监控功能已集成到工具栏，不再需要切换面板
-        log.info('[终端] 监控功能已集成到工具栏，实时显示监控数据');
+        log.info(`[终端] 监控面板已${!currentState ? '显示' : '隐藏'}: ${sessionId}`);
 
       } catch (error) {
         log.error(`[终端] 切换监控面板失败: ${error.message}`);
         ElMessage.error(`切换监控面板失败: ${error.message}`);
       }
+    }
+
+    // 检测是否为桌面端
+    const isDesktop = () => {
+      return window.innerWidth >= 768;
+    }
+
+    // 监控面板相关方法
+    const shouldShowMonitoringPanel = (termId) => {
+      // 如果没有设置过状态，则根据屏幕尺寸设置默认值
+      if (monitoringPanelStates.value[termId] === undefined) {
+        monitoringPanelStates.value[termId] = isDesktop(); // 桌面端默认显示，移动端默认隐藏
+      }
+      return monitoringPanelStates.value[termId] || false;
+    }
+
+    const isMonitoringPanelVisible = (termId) => {
+      return monitoringPanelStates.value[termId] || false;
+    }
+
+    const getMonitoringData = (termId) => {
+      return monitoringDataCache.value[termId] || {};
+    }
+
+    const hideMonitoringPanel = (termId) => {
+      monitoringPanelStates.value[termId] = false;
+      // 记录用户手动隐藏的偏好
+      localStorage.setItem(`monitoring-panel-user-hidden-${termId}`, 'true');
+      log.info(`[终端] 监控面板已隐藏: ${termId}`);
+    }
+
+
+
+    // 设置监控数据监听器
+    const setupMonitoringDataListener = () => {
+      // 监听监控数据更新事件
+      const handleMonitoringData = (event) => {
+        const { terminalId, data } = event.detail;
+        if (terminalId && data) {
+          // 更新对应终端的监控数据缓存
+          monitoringDataCache.value[terminalId] = { ...data };
+          log.debug(`[终端] 监控数据已更新: ${terminalId}`);
+        }
+      };
+
+      window.addEventListener('monitoring-data-received', handleMonitoringData);
+
+      // 返回清理函数
+      return () => {
+        window.removeEventListener('monitoring-data-received', handleMonitoringData);
+      };
+    }
+
+    // 初始化监控面板默认状态
+    const initializeMonitoringPanelDefaults = () => {
+      // 为所有现有的终端设置默认监控面板状态
+      const currentTerminals = Object.keys(terminalStore.sessions);
+      currentTerminals.forEach(termId => {
+        if (monitoringPanelStates.value[termId] === undefined) {
+          monitoringPanelStates.value[termId] = isDesktop(); // 桌面端默认显示
+          log.debug(`[终端] 初始化监控面板默认状态: ${termId}, 显示: ${isDesktop()}`);
+        }
+      });
+
+      // 如果有活动终端，也确保其状态被初始化
+      if (activeConnectionId.value && monitoringPanelStates.value[activeConnectionId.value] === undefined) {
+        monitoringPanelStates.value[activeConnectionId.value] = isDesktop();
+        log.debug(`[终端] 初始化活动终端监控面板状态: ${activeConnectionId.value}, 显示: ${isDesktop()}`);
+      }
+    }
+
+    // 处理监控面板响应式状态变化
+    const handleMonitoringPanelResize = () => {
+      // 当从移动端切换到桌面端时，自动显示监控面板（如果用户没有手动设置过）
+      const currentIsDesktop = isDesktop();
+
+      Object.keys(terminalStore.sessions).forEach(termId => {
+        // 只有在桌面端且面板当前隐藏时才自动显示
+        if (currentIsDesktop && !monitoringPanelStates.value[termId]) {
+          // 检查用户是否手动隐藏过面板（通过localStorage）
+          const userPreference = localStorage.getItem(`monitoring-panel-user-hidden-${termId}`);
+          if (!userPreference) {
+            monitoringPanelStates.value[termId] = true;
+            log.debug(`[终端] 窗口切换到桌面端，自动显示监控面板: ${termId}`);
+          }
+        }
+      });
     }
     
     // 组件挂载
@@ -1213,6 +1326,12 @@ export default {
 
       // 添加全局键盘事件监听
       document.addEventListener('keydown', handleGlobalKeydown, true)
+
+      // 设置监控数据监听器
+      cleanupMonitoringListener = setupMonitoringDataListener()
+
+      // 初始化监控面板默认状态
+      initializeMonitoringPanelDefaults()
 
       // 初始化ResizeObserver - 在DOM挂载后安全地初始化
       nextTick(() => {
@@ -1319,6 +1438,7 @@ export default {
       // 移除事件监听
       if (cleanupEvents) cleanupEvents()
       if (cleanupSSHFailureEvents) cleanupSSHFailureEvents()
+      if (cleanupMonitoringListener) cleanupMonitoringListener()
       window.removeEventListener('terminal-command', handleTerminalEvent)
       window.removeEventListener('terminal:session-change', handleSessionChange)
       window.removeEventListener('terminal-theme-update', handleTerminalThemeUpdate)
@@ -1851,6 +1971,11 @@ export default {
       shouldShowConnectingAnimation,
       toggleSftpPanel,
       toggleMonitoringPanel,
+      // 监控面板相关方法
+      shouldShowMonitoringPanel,
+      isMonitoringPanelVisible,
+      getMonitoringData,
+      hideMonitoringPanel,
       // 每个终端独立的火箭动画相关
       shouldShowTerminalConnectingAnimation,
       getTerminalRocketPhase,
@@ -1963,11 +2088,32 @@ export default {
   height: 40px; /* 确保工具栏高度固定为40px */
 }
 
+.terminal-main-area {
+  flex: 1;
+  display: flex;
+  flex-direction: row;
+  height: calc(100% - 40px); /* 减去工具栏高度 */
+  overflow: hidden;
+}
+
+.terminal-monitoring-panel {
+  flex-shrink: 0;
+  z-index: 9;
+  width: 280px; /* 减小固定宽度 */
+  max-width: 35vw; /* 最大不超过视口宽度的35% */
+  height: 100%;
+  overflow: hidden;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  border-right: 1px solid var(--monitoring-panel-border, rgba(255, 255, 255, 0.1));
+}
+
+
+
 .terminal-content-padding {
   flex: 1;
   /* 移除padding */
   box-sizing: border-box;
-  height: calc(100% - 40px); /* 减去工具栏的高度 */
+  height: 100%; /* 占满主体区域高度 */
   width: 100%;
   position: relative;
   /* 修改overflow为可见，让内部的xterm-viewport控制滚动 */
@@ -1981,6 +2127,48 @@ export default {
     border-color 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94),
     color 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94),
     box-shadow 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+
+.terminal-content-padding.with-monitoring-panel {
+  /* 当显示监控面板时，终端内容区域自动调整宽度 */
+  width: calc(100% - 350px); /* 减去监控面板宽度 */
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+  .terminal-main-area {
+    flex-direction: column; /* 移动端改为垂直布局 */
+  }
+
+  .terminal-monitoring-panel {
+    width: 100%; /* 移动端占满宽度 */
+    max-width: none;
+    height: 40vh; /* 移动端固定高度 */
+    border-right: none;
+    border-bottom: 1px solid var(--monitoring-panel-border, rgba(255, 255, 255, 0.1));
+  }
+
+
+
+  .terminal-content-padding {
+    height: auto; /* 移动端自动高度 */
+    flex: 1;
+  }
+
+  .terminal-content-padding.with-monitoring-panel {
+    width: 100%; /* 移动端占满宽度 */
+    height: calc(100% - 40vh); /* 减去监控面板高度 */
+  }
+}
+
+@media (max-width: 480px) {
+  .terminal-monitoring-panel {
+    height: 35vh; /* 小屏幕减少监控面板高度 */
+  }
+
+  .terminal-content-padding.with-monitoring-panel {
+    height: calc(100% - 35vh);
+  }
 }
 
 .terminal-content {

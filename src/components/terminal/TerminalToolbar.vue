@@ -1246,12 +1246,8 @@ export default defineComponent({
         return;
       }
 
-      // 切换监控详情面板显示状态
-      if (showMonitoringDetailPanel.value) {
-        hideMonitoringDetailPanel();
-      } else {
-        showMonitoringDetailPanel_func();
-      }
+      // 触发监控面板切换事件，由父组件处理
+      emit('toggle-monitoring-panel');
     };
     
     // 添加防抖包装函数
