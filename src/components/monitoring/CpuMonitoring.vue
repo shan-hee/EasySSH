@@ -3,7 +3,7 @@
     <!-- CPU监控标题 -->
     <div class="section-header">
       <div class="section-title">
-        <i class="fas fa-microchip cpu-icon"></i>
+        <MonitoringIcon name="cpu" :size="16" class="cpu-icon" />
         <span>CPU</span>
       </div>
       <div class="section-info">
@@ -18,7 +18,7 @@
 
     <div class="cpu-display">
       <div v-if="!hasData" class="no-data-message">
-        <i class="loading-icon">⏳</i>
+        <MonitoringIcon name="loading" :size="16" class="loading-icon" />
         <span>等待CPU数据...</span>
       </div>
 
@@ -38,6 +38,7 @@
 import { ref, onMounted, onUnmounted, watch, computed, nextTick } from 'vue'
 import { Chart, registerables } from 'chart.js'
 import { formatPercentage } from '@/utils/productionFormatters'
+import MonitoringIcon from './MonitoringIcon.vue'
 
 // 注册Chart.js组件
 Chart.register(...registerables)
@@ -325,7 +326,7 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   align-items: flex-end;
-  gap: 4px;
+  /* gap: 4px; */
 }
 
 .cores-info,
@@ -400,7 +401,7 @@ onUnmounted(() => {
 
 .cpu-details {
   display: flex;
-  gap: 16px;
+  /* gap: 16px; */
   width: 100%;
   justify-content: center;
 }

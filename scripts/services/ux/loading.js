@@ -3,7 +3,7 @@
  * 管理全局和局部加载状态
  */
 
-import { EventEmitter } from '../../utils/events.js';
+import { EventEmitter } from './EventEmitter.js';
 
 /**
  * 加载状态服务类

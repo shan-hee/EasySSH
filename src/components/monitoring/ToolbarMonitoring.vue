@@ -2,42 +2,42 @@
   <div class="toolbar-monitoring" v-if="isConnected">
     <!-- CPU指标 -->
     <div class="monitoring-item" :class="{ 'warning': cpuUsage > 80, 'critical': cpuUsage > 95 }">
-      <i class="icon-cpu"></i>
+      <MonitoringIcon name="cpu" :size="12" />
       <span class="label">CPU</span>
       <span class="value">{{ formatPercentage(cpuUsage) }}</span>
     </div>
 
     <!-- 内存指标 -->
     <div class="monitoring-item" :class="{ 'warning': memoryUsage > 80, 'critical': memoryUsage > 95 }">
-      <i class="icon-memory"></i>
+      <MonitoringIcon name="memory" :size="12" />
       <span class="label">内存</span>
       <span class="value">{{ formatPercentage(memoryUsage) }}</span>
     </div>
 
     <!-- 交换分区指标 -->
     <div class="monitoring-item" :class="{ 'warning': swapUsage > 50, 'critical': swapUsage > 80 }" v-if="hasSwap">
-      <i class="icon-swap"></i>
+      <MonitoringIcon name="swap" :size="12" />
       <span class="label">交换</span>
       <span class="value">{{ formatPercentage(swapUsage) }}</span>
     </div>
 
     <!-- 磁盘指标 -->
     <div class="monitoring-item" :class="{ 'warning': diskUsage > 80, 'critical': diskUsage > 95 }" v-if="diskUsage > 0">
-      <i class="icon-disk"></i>
+      <MonitoringIcon name="disk" :size="12" />
       <span class="label">磁盘</span>
       <span class="value">{{ formatPercentage(diskUsage) }}</span>
     </div>
 
     <!-- 上传速度 -->
     <div class="monitoring-item" v-if="networkSpeed.tx > 0">
-      <i class="icon-upload"></i>
+      <MonitoringIcon name="upload" :size="12" />
       <span class="label">上传</span>
       <span class="value">{{ formatNetworkSpeed(networkSpeed.tx) }}</span>
     </div>
 
     <!-- 下载速度 -->
     <div class="monitoring-item" v-if="networkSpeed.rx > 0">
-      <i class="icon-download"></i>
+      <MonitoringIcon name="download" :size="12" />
       <span class="label">下载</span>
       <span class="value">{{ formatNetworkSpeed(networkSpeed.rx) }}</span>
     </div>
@@ -52,6 +52,7 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import log from '../../services/log'
 import { formatPercentage, formatNetworkSpeed } from '@/utils/productionFormatters'
+import MonitoringIcon from './MonitoringIcon.vue'
 
 // Props
 const props = defineProps({
@@ -270,13 +271,7 @@ onUnmounted(() => {
 
 
 
-/* 图标样式 */
-.icon-cpu::before { content: '🖥️'; }
-.icon-memory::before { content: '💾'; }
-.icon-upload::before { content: '🔼'; }
-.icon-download::before { content: '🔽'; }
-.icon-swap::before { content: '🔄'; }
-.icon-disk::before { content: '💿'; }
+/* 图标样式已迁移到MonitoringIcon组件 */
 
 /* 响应式设计 */
 @media (max-width: 1200px) {

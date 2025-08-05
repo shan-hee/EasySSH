@@ -3,7 +3,7 @@
     <!-- 系统信息标题 -->
     <div class="section-header">
       <div class="section-title">
-        <i class="fas fa-desktop system-icon"></i>
+        <MonitoringIcon name="system-info" :size="16" class="system-icon" />
         <span>系统信息</span>
       </div>
     </div>
@@ -54,6 +54,7 @@
 
 <script setup>
 import { computed } from 'vue'
+import MonitoringIcon from './MonitoringIcon.vue'
 
 // Props
 const props = defineProps({
@@ -174,7 +175,7 @@ const formatDateTime = (timestamp) => {
 .info-grid {
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  /* gap: 3px; */
   flex: 1;
 }
 

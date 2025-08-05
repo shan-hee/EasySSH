@@ -28,6 +28,8 @@ import configManager from './utils/config-manager'
 import storageService from './services/storage'
 // 导入自定义指令
 import directives from './directives'
+// 导入Iconify Vue组件
+import { Icon } from '@iconify/vue'
 
 // 主题初始化现在由settingsService统一处理
 
@@ -85,6 +87,9 @@ const app = createApp(App)
 app.use(router)
 app.use(pinia)
 app.use(ElementPlus)
+
+// 注册Iconify全局组件
+app.component('Icon', Icon)
 
 // 注册自定义指令
 Object.keys(directives).forEach(key => {

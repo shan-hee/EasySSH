@@ -3,7 +3,7 @@
  * 提供统一的表单验证、错误处理和交互增强
  */
 
-import { EventEmitter } from '../../utils/events.js';
+import { EventEmitter } from './EventEmitter.js';
 import notificationService from './notifications.js';
 
 // 验证规则类型

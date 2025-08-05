@@ -3,7 +3,7 @@
  * 提供无障碍支持和用户体验增强
  */
 
-import { EventEmitter } from '../../utils/events.js';
+import { EventEmitter } from './EventEmitter.js';
 // Settings类已移除，使用统一的设置服务
 import settingsService from '../../../src/services/settings.js';
 

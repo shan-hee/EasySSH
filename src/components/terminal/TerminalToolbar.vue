@@ -35,7 +35,7 @@
         
         <div class="icon-button"
           @click.stop="handleMonitoringClick()"
-          :class="{ 'icon-available': monitoringServiceInstalled, 'active': isPanelVisible }"
+          :class="{ 'icon-available': monitoringServiceInstalled }"
           ref="monitorButtonRef">
           <ToolbarIcon name="monitoring" :size="16"
                        :class="{ 'icon-active': monitoringServiceInstalled }" />
@@ -47,14 +47,7 @@
           :terminal-id="terminalId"
         />
 
-        <!-- 监控详情面板 -->
-        <MonitoringDetailPanel
-          :visible="showMonitoringDetailPanel"
-          :monitoring-data="currentMonitoringData"
-          :server-info="serverInfo"
-          :terminal-id="activeSessionId"
-          @close="hideMonitoringDetailPanel"
-        />
+
         
         <!-- 使用teleport将监控工具提示内容传送到body中 -->
         <teleport to="body">
@@ -66,7 +59,7 @@
           </div>
 
           <!-- 已登录且已安装监控服务提示 -->
-          <div v-else-if="isLoggedIn && monitoringServiceInstalled && !isPanelVisible && showMonitorTooltip"
+          <div v-else-if="isLoggedIn && monitoringServiceInstalled && showMonitorTooltip"
                class="sftp-tooltip" :style="monitorTooltipStyle"
                @mouseenter="onMonitorTooltipMouseEnter" @mouseleave="onMonitorTooltipMouseLeave">
             查看系统监控
@@ -138,16 +131,15 @@ import { ElMessage } from 'element-plus'
 import { useTerminalStore } from '../../store/terminal'
 import { LATENCY_EVENTS } from '../../services/constants'
 import log from '../../services/log'
-import scriptLibraryService from '../../services/scriptLibrary'
+
 import ToolbarMonitoring from '../monitoring/ToolbarMonitoring.vue'
-import MonitoringDetailPanel from '../MonitoringDetailPanel.vue'
+
 import ToolbarIcon from '../common/ToolbarIcon.vue'
 
 export default defineComponent({
   name: 'TerminalToolbar',
   components: {
     ToolbarMonitoring,
-    MonitoringDetailPanel,
     ToolbarIcon
   },
   emits: ['toggle-sftp-panel', 'toggle-monitoring-panel'],
@@ -192,48 +184,9 @@ export default defineComponent({
     const sftpButtonRef = ref(null)
     const networkIconRef = ref(null)
 
-    // 监控详情面板相关
-    const showMonitoringDetailPanel = ref(false)
-    const currentMonitoringData = ref({})
-    const serverInfo = ref({})
 
-    // 监控数据更新事件处理器
-    let monitoringDataEventHandler = null
 
-    // 初始化监控数据监听器 - 立即开始监听，实现预加载
-    const initMonitoringDataListener = async () => {
-      try {
-        // 如果已经有监听器，先清理
-        if (monitoringDataEventHandler) {
-          window.removeEventListener('monitoring-data-received', monitoringDataEventHandler);
-        }
 
-        // 创建新的监控数据更新事件监听器
-        monitoringDataEventHandler = (event) => {
-          if (event.detail.terminalId === props.activeSessionId) {
-            updateMonitoringDetailPanelData(event.detail.data);
-          }
-        };
-
-        // 立即监听监控数据更新事件
-        window.addEventListener('monitoring-data-received', monitoringDataEventHandler);
-
-        // 尝试获取当前已有的监控数据
-        const { default: monitoringService } = await import('../../services/monitoring.js');
-        const instance = monitoringService.getInstance(props.activeSessionId);
-
-        if (instance && instance.state.connected) {
-          // 如果已有数据，立即更新
-          const latestData = instance.state.lastData || {};
-          if (Object.keys(latestData).length > 0) {
-            updateMonitoringDetailPanelData(latestData);
-            log.debug(`[${componentInstanceId}] 预加载监控数据成功`);
-          }
-        }
-      } catch (error) {
-        log.error(`[${componentInstanceId}] 初始化监控数据监听器失败:`, error);
-      }
-    };
 
     // 用户登录状态
     const isLoggedIn = computed(() => userStore.isLoggedIn)
@@ -292,10 +245,7 @@ export default defineComponent({
       width: '280px',
     })
     
-    // 添加监控面板可见性状态
-    const isPanelVisible = computed(() => {
-      return showMonitoringDetailPanel.value;
-    });
+
     
     // 计算总RTT
     const totalRtt = computed(() => {
@@ -614,10 +564,7 @@ export default defineComponent({
         clientDelay.value = 0;
         showNetworkIcon.value = false; // 默认不显示网络图标，根据下面的条件决定是否显示
 
-        // 重新初始化监控数据监听器以适应新的会话
-        nextTick(() => {
-          initMonitoringDataListener();
-        });
+        // 监控数据监听器已移除，现在使用ResponsiveMonitoringPanel
         
         // 设置SSH连接状态 - 这决定了SFTP按钮是否可用
         if (terminalState && terminalState.isSshConnected !== undefined) {
@@ -1132,105 +1079,9 @@ export default defineComponent({
       }
     };
 
-    // 更新监控详情面板数据的函数 - 始终更新数据以便预加载
-    const updateMonitoringDetailPanelData = (data) => {
-      if (!data || typeof data !== 'object') {
-        return;
-      }
 
-      // 转换数据格式为详情面板所需格式
-      currentMonitoringData.value = {
-        cpu: {
-          usage: data.cpu?.usage || 0,
-          cores: data.cpu?.cores || data.system?.cpu_cores || 0,
-          model: data.cpu?.model || 'Unknown',
-          loadAverage: data.cpu?.loadAverage || { load1: 0, load5: 0, load15: 0 }
-        },
-        memory: {
-          usage: data.memory?.usedPercentage || 0,
-          total: data.memory?.total || 0,
-          used: data.memory?.used || 0,
-          available: data.memory?.available || data.memory?.free || 0
-        },
-        disk: {
-          usage: data.disk?.usedPercentage || 0,
-          total: data.disk?.total || 0,
-          used: data.disk?.used || 0,
-          available: data.disk?.available || data.disk?.free || 0,
-          filesystem: data.disk?.filesystem || 'Unknown'
-        },
-        swap: {
-          usage: data.swap?.usedPercentage || 0,
-          total: data.swap?.total || 0,
-          used: data.swap?.used || 0
-        },
-        network: {
-          upload: data.network?.total_tx_speed || 0,
-          download: data.network?.total_rx_speed || 0,
-          totalUpload: data.network?.total_tx_bytes || 0,
-          totalDownload: data.network?.total_rx_bytes || 0
-        },
-        os: {
-          os: data.os?.os || data.os?.distro || 'Unknown',
-          arch: data.os?.arch || 'Unknown',
-          hostname: data.os?.hostname || 'Unknown',
-          bootTime: data.os?.bootTime || null,
-          uptime: data.os?.uptime || 0
-        },
-        system: {
-          os: data.os?.os || data.os?.distro || data.system?.os || 'Unknown',
-          hostname: data.os?.hostname || data.system?.hostname || 'Unknown',
-          uptime: data.os?.uptime || data.system?.uptime || 0,
-          bootTime: data.os?.bootTime || data.system?.bootTime || null,
-          arch: data.os?.arch || data.system?.arch || 'Unknown'
-        }
-      };
 
-      // 同时更新服务器信息
-      serverInfo.value = {
-        hostname: currentMonitoringData.value.os.hostname || currentMonitoringData.value.system.hostname || 'Unknown',
-        address: data.hostInfo?.address || 'Unknown'
-      };
-    };
 
-    // 显示监控详情面板
-    const showMonitoringDetailPanel_func = async () => {
-      try {
-        // 获取当前监控数据
-        const { default: monitoringService } = await import('../../services/monitoring.js');
-        const instance = monitoringService.getInstance(props.activeSessionId);
-
-        if (instance && instance.state.connected) {
-          // 如果还没有监控数据，尝试获取最新数据
-          if (Object.keys(currentMonitoringData.value).length === 0) {
-            const latestData = instance.state.lastData || {};
-            if (Object.keys(latestData).length > 0) {
-              updateMonitoringDetailPanelData(latestData);
-            }
-          }
-
-          // 确保监听器已设置（防御性编程）
-          if (!monitoringDataEventHandler) {
-            await initMonitoringDataListener();
-          }
-
-          showMonitoringDetailPanel.value = true;
-        } else {
-          ElMessage.warning('监控服务未连接，无法显示详情面板');
-        }
-      } catch (error) {
-        log.error('[工具栏] 显示监控详情面板失败:', error);
-        ElMessage.error('显示监控详情面板失败');
-      }
-    };
-
-    // 隐藏监控详情面板
-    const hideMonitoringDetailPanel = () => {
-      showMonitoringDetailPanel.value = false;
-
-      // 注意：不移除监控数据监听器，让数据继续预加载
-      // 监听器只在组件卸载时才移除
-    };
 
     // 处理监控图标点击的函数 - SSH集成版
     const handleMonitoringClick = () => {
@@ -1396,7 +1247,7 @@ export default defineComponent({
       window.addEventListener('terminal:toolbar-sync', handleToolbarSync);
 
       // 立即开始监听监控数据，实现预加载
-      initMonitoringDataListener();
+      // 监控数据监听器已移除，现在使用ResponsiveMonitoringPanel
 
       // 移除重复的事件监听器 - 工具栏状态由 terminal-status-update 事件统一管理
       // window.addEventListener('terminal:refresh-status', handleTerminalRefreshStatus);
@@ -1512,7 +1363,6 @@ export default defineComponent({
       toggleMonitoringPanel,
       showNetworkIcon,
       monitoringServiceInstalled,
-      isPanelVisible,
       isSshConnected,
       handleSftpClick,
       sftpButtonRef,
@@ -1533,11 +1383,6 @@ export default defineComponent({
       updateNetworkPopupPosition,
       networkPopupStyle,
       handleMonitoringClick,
-      // 监控详情面板相关
-      showMonitoringDetailPanel,
-      currentMonitoringData,
-      serverInfo,
-      hideMonitoringDetailPanel,
       // 用户状态
       isLoggedIn,
       // 终端ID（用于监控组件）

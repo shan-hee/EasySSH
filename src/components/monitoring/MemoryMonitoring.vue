@@ -3,7 +3,7 @@
     <!-- 内存监控标题 -->
     <div class="section-header">
       <div class="section-title">
-        <i class="fas fa-memory memory-icon"></i>
+        <MonitoringIcon name="memory" :size="16" class="memory-icon" />
         <span>内存</span>
       </div>
       <div class="section-info">
@@ -18,7 +18,7 @@
 
     <div class="memory-display">
       <div v-if="!hasData" class="no-data-message">
-        <i class="loading-icon">⏳</i>
+        <MonitoringIcon name="loading" :size="16" class="loading-icon" />
         <span>等待内存数据...</span>
       </div>
 
@@ -55,6 +55,7 @@
 import { ref, onMounted, onUnmounted, watch, computed, nextTick } from 'vue'
 import { Chart, registerables } from 'chart.js'
 import { formatBytes, formatPercentage } from '@/utils/productionFormatters'
+import MonitoringIcon from './MonitoringIcon.vue'
 
 // 注册Chart.js组件
 Chart.register(...registerables)
@@ -368,7 +369,7 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   align-items: flex-end;
-  gap: 4px;
+  /* gap: 4px; */
 }
 
 .memory-info,
@@ -393,7 +394,7 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 12px;
+  /* gap: 12px; */
   width: 100%;
 }
 

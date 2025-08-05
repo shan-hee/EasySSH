@@ -2,7 +2,7 @@
   <div class="network-monitoring-section">
     <div class="section-header">
       <div class="section-title">
-        <i class="fas fa-network-wired network-icon"></i>
+        <MonitoringIcon name="network" :size="16" class="network-icon" />
         <span>网络</span>
       </div>
       <div class="section-info">
@@ -16,7 +16,7 @@
     <div class="chart-container">
       <canvas ref="networkChartRef" class="network-chart"></canvas>
       <div v-if="!hasData" class="no-data-message">
-        <i class="loading-icon">⏳</i>
+        <MonitoringIcon name="loading" :size="16" class="loading-icon" />
         <span>等待网络数据...</span>
       </div>
     </div>
@@ -24,14 +24,14 @@
     <div class="current-speed" v-if="hasData">
       <div class="speed-item upload">
         <span class="speed-label">
-          <i class="speed-icon">🔼</i>
+          <MonitoringIcon name="upload" :size="12" class="speed-icon" />
           上传
         </span>
         <span class="speed-value">{{ formatNetworkSpeed(currentSpeed.upload) }}</span>
       </div>
       <div class="speed-item download">
         <span class="speed-label">
-          <i class="speed-icon">🔽</i>
+          <MonitoringIcon name="download" :size="12" class="speed-icon" />
           下载
         </span>
         <span class="speed-value">{{ formatNetworkSpeed(currentSpeed.download) }}</span>
@@ -44,6 +44,7 @@
 import { ref, onMounted, onUnmounted, watch, computed, nextTick } from 'vue'
 import { Chart, registerables } from 'chart.js'
 import { formatBytes, formatNetworkSpeed } from '@/utils/productionFormatters'
+import MonitoringIcon from './MonitoringIcon.vue'
 
 // 注册Chart.js组件
 Chart.register(...registerables)

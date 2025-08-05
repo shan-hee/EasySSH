@@ -2,7 +2,7 @@
   <div class="disk-monitoring-section">
     <div class="section-header">
       <div class="section-title">
-        <i class="fas fa-hdd disk-icon"></i>
+        <MonitoringIcon name="disk" :size="16" class="disk-icon" />
         <span>硬盘</span>
       </div>
       <div class="section-info" v-if="diskInfo.total">
@@ -52,7 +52,7 @@
       </div>
       
       <div v-if="!hasData" class="no-data-message">
-        <i class="loading-icon">⏳</i>
+        <MonitoringIcon name="loading" :size="16" class="loading-icon" />
         <span>等待硬盘数据...</span>
       </div>
     </div>
@@ -73,6 +73,7 @@
 <script setup>
 import { ref, computed, watch } from 'vue'
 import { formatBytes, formatPercentage } from '@/utils/productionFormatters'
+import MonitoringIcon from './MonitoringIcon.vue'
 
 // Props
 const props = defineProps({

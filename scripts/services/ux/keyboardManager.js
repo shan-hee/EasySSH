@@ -3,7 +3,7 @@
  * 提供全局快捷键、组合键和手势的管理
  */
 
-import { EventEmitter } from '../../utils/events.js';
+import { EventEmitter } from './EventEmitter.js';
 // Settings类已移除，使用统一的设置服务
 import settingsService from '../../../src/services/settings.js';
 import accessibilityService from './accessibility.js';
