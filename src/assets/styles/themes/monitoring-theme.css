@@ -1,0 +1,261 @@
+/*
+ * monitoring-theme.css - 监控组件专用主题配置
+ * 现代极简风格 - "数据至上"设计理念
+ * 支持深浅主题切换，提供统一的视觉语言
+ */
+
+/* ===== 监控组件颜色系统 ===== */
+:root {
+  /* CPU监控 - 蓝绿渐变色系 */
+  --monitor-cpu-primary: #3b82f6;
+  --monitor-cpu-secondary: #10b981;
+  --monitor-cpu-gradient-start: rgba(59, 130, 246, 0.8);
+  --monitor-cpu-gradient-end: rgba(16, 185, 129, 0.2);
+  --monitor-cpu-warning: #f59e0b;
+  --monitor-cpu-critical: #ef4444;
+  
+  /* 内存监控 - 紫色系 */
+  --monitor-memory-primary: #8b5cf6;
+  --monitor-memory-secondary: #a78bfa;
+  --monitor-memory-gradient-start: rgba(139, 92, 246, 0.8);
+  --monitor-memory-gradient-end: rgba(167, 139, 250, 0.3);
+  --monitor-memory-swap: #c084fc;
+  --monitor-memory-available: rgba(255, 255, 255, 0.1);
+  
+  /* 网络监控 - 红绿对比色系 */
+  --monitor-network-upload: #ef4444;
+  --monitor-network-download: #10b981;
+  --monitor-network-upload-light: rgba(239, 68, 68, 0.1);
+  --monitor-network-download-light: rgba(16, 185, 129, 0.1);
+  
+  /* 硬盘监控 - 橙色系 */
+  --monitor-disk-primary: #f97316;
+  --monitor-disk-secondary: #fb923c;
+  --monitor-disk-gradient-start: rgba(249, 115, 22, 0.8);
+  --monitor-disk-gradient-end: rgba(251, 146, 60, 0.3);
+  --monitor-disk-available: rgba(255, 255, 255, 0.1);
+  
+  /* 通用监控颜色 */
+  --monitor-success: #10b981;
+  --monitor-warning: #f59e0b;
+  --monitor-error: #ef4444;
+  --monitor-info: #3b82f6;
+  
+  /* 背景和边框 */
+  --monitor-bg-primary: rgba(255, 255, 255, 0.05);
+  --monitor-bg-secondary: rgba(255, 255, 255, 0.02);
+  --monitor-border: rgba(255, 255, 255, 0.1);
+  --monitor-border-hover: rgba(255, 255, 255, 0.2);
+  
+  /* 文字颜色 */
+  --monitor-text-primary: #e5e5e5;
+  --monitor-text-secondary: #b0b0b0;
+  --monitor-text-muted: #6b7280;
+  
+  /* 阴影效果 */
+  --monitor-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.1);
+  --monitor-shadow-md: 0 4px 6px rgba(0, 0, 0, 0.1);
+  --monitor-shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.1);
+  
+  /* 动画配置 */
+  --monitor-transition-fast: 0.15s ease-out;
+  --monitor-transition-normal: 0.3s ease-out;
+  --monitor-transition-slow: 0.5s ease-out;
+  
+  /* 图表配置 */
+  --monitor-chart-grid: rgba(255, 255, 255, 0.1);
+  --monitor-chart-axis: rgba(255, 255, 255, 0.3);
+  --monitor-chart-tooltip-bg: rgba(0, 0, 0, 0.8);
+  --monitor-chart-tooltip-border: rgba(255, 255, 255, 0.2);
+}
+
+/* ===== 浅色主题适配 ===== */
+:root[data-theme="light"],
+.light-theme {
+  /* CPU监控 - 浅色主题调整 */
+  --monitor-cpu-gradient-start: rgba(59, 130, 246, 0.6);
+  --monitor-cpu-gradient-end: rgba(16, 185, 129, 0.1);
+  
+  /* 内存监控 - 浅色主题调整 */
+  --monitor-memory-gradient-start: rgba(139, 92, 246, 0.6);
+  --monitor-memory-gradient-end: rgba(167, 139, 250, 0.2);
+  --monitor-memory-available: rgba(0, 0, 0, 0.1);
+  
+  /* 网络监控 - 浅色主题调整 */
+  --monitor-network-upload-light: rgba(239, 68, 68, 0.08);
+  --monitor-network-download-light: rgba(16, 185, 129, 0.08);
+  
+  /* 硬盘监控 - 浅色主题调整 */
+  --monitor-disk-gradient-start: rgba(249, 115, 22, 0.6);
+  --monitor-disk-gradient-end: rgba(251, 146, 60, 0.2);
+  --monitor-disk-available: rgba(0, 0, 0, 0.1);
+  
+  /* 背景和边框 - 浅色主题 */
+  --monitor-bg-primary: rgba(0, 0, 0, 0.03);
+  --monitor-bg-secondary: rgba(0, 0, 0, 0.01);
+  --monitor-border: rgba(0, 0, 0, 0.1);
+  --monitor-border-hover: rgba(0, 0, 0, 0.2);
+  
+  /* 文字颜色 - 浅色主题 */
+  --monitor-text-primary: #1f2937;
+  --monitor-text-secondary: #4b5563;
+  --monitor-text-muted: #9ca3af;
+  
+  /* 图表配置 - 浅色主题 */
+  --monitor-chart-grid: rgba(0, 0, 0, 0.1);
+  --monitor-chart-axis: rgba(0, 0, 0, 0.3);
+  --monitor-chart-tooltip-bg: rgba(255, 255, 255, 0.95);
+  --monitor-chart-tooltip-border: rgba(0, 0, 0, 0.1);
+}
+
+/* ===== 响应式断点配置 ===== */
+:root {
+  /* 监控组件专用断点 */
+  --monitor-breakpoint-xs: 480px;
+  --monitor-breakpoint-sm: 640px;
+  --monitor-breakpoint-md: 768px;
+  --monitor-breakpoint-lg: 1024px;
+  --monitor-breakpoint-xl: 1280px;
+  
+  /* 组件尺寸配置 */
+  --monitor-component-height-xs: 100px;
+  --monitor-component-height-sm: 130px;
+  --monitor-component-height-md: 160px;
+  --monitor-component-height-lg: 180px;
+  
+  /* 图表尺寸配置 */
+  --monitor-chart-height-xs: 60px;
+  --monitor-chart-height-sm: 80px;
+  --monitor-chart-height-md: 100px;
+  --monitor-chart-height-lg: 120px;
+  
+  /* 间距配置 */
+  --monitor-spacing-xs: 4px;
+  --monitor-spacing-sm: 8px;
+  --monitor-spacing-md: 12px;
+  --monitor-spacing-lg: 16px;
+  --monitor-spacing-xl: 24px;
+  
+  /* 圆角配置 */
+  --monitor-radius-sm: 4px;
+  --monitor-radius-md: 6px;
+  --monitor-radius-lg: 8px;
+  --monitor-radius-xl: 12px;
+}
+
+/* ===== 通用监控组件样式类 ===== */
+.monitor-section {
+  background: var(--monitor-bg-primary);
+  border: 1px solid var(--monitor-border);
+  border-radius: var(--monitor-radius-lg);
+  padding: var(--monitor-spacing-md);
+  transition: all var(--monitor-transition-fast);
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  flex-shrink: 0;
+  height: auto;
+  margin-bottom: 0;
+}
+
+.monitor-section:hover {
+  border-color: var(--monitor-border-hover);
+  box-shadow: var(--monitor-shadow-md);
+}
+
+.monitor-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--monitor-spacing-md);
+  flex-shrink: 0;
+}
+
+.monitor-title {
+  display: flex;
+  align-items: center;
+  gap: var(--monitor-spacing-sm);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--monitor-text-primary);
+}
+
+.monitor-info {
+  display: flex;
+  align-items: center;
+  gap: var(--monitor-spacing-sm);
+  font-size: 12px;
+  color: var(--monitor-text-secondary);
+}
+
+.monitor-chart-container {
+  position: relative;
+  height: var(--monitor-chart-height-md);
+  flex-shrink: 0;
+}
+
+.monitor-no-data {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--monitor-text-muted);
+  font-size: 12px;
+  gap: var(--monitor-spacing-sm);
+}
+
+/* ===== 状态指示器样式 ===== */
+.monitor-status-normal { color: var(--monitor-success); }
+.monitor-status-warning { color: var(--monitor-warning); }
+.monitor-status-critical { color: var(--monitor-error); }
+
+.monitor-value-display {
+  display: flex;
+  align-items: center;
+  gap: var(--monitor-spacing-xs);
+  padding: var(--monitor-spacing-xs) var(--monitor-spacing-sm);
+  background: var(--monitor-bg-secondary);
+  border-radius: var(--monitor-radius-sm);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+/* ===== 响应式适配 ===== */
+@media (max-width: 768px) {
+  .monitor-section {
+    padding: var(--monitor-spacing-sm);
+  }
+  
+  .monitor-chart-container {
+    min-height: var(--monitor-chart-height-sm);
+  }
+  
+  .monitor-title {
+    font-size: 13px;
+  }
+  
+  .monitor-info {
+    font-size: 11px;
+  }
+}
+
+@media (max-width: 480px) {
+  .monitor-section {
+    padding: var(--monitor-spacing-xs);
+  }
+  
+  .monitor-chart-container {
+    min-height: var(--monitor-chart-height-xs);
+  }
+  
+  .monitor-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--monitor-spacing-xs);
+  }
+  
+  .monitor-title {
+    font-size: 12px;
+  }
+}

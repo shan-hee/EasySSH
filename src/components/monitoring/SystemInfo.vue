@@ -29,10 +29,7 @@
         <span class="info-value">{{ systemInfo.architecture }}</span>
       </div>
 
-      <div class="info-item" v-if="systemInfo.cpuCores">
-        <span class="info-label">CPU核心</span>
-        <span class="info-value">{{ systemInfo.cpuCores }} 核</span>
-      </div>
+      <!-- CPU核心信息已隐藏 -->
 
       <div class="info-item" v-if="systemInfo.loadAverage">
         <span class="info-label">系统负载</span>
@@ -145,9 +142,15 @@ const formatDateTime = (timestamp) => {
   border: 1px solid var(--monitoring-panel-border, rgba(255, 255, 255, 0.1));
   border-radius: 8px;
   padding: 12px;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
   transition: all 0.3s ease;
   display: flex;
   flex-direction: column;
+  width: 100%;
+  flex-shrink: 0;
+  height: auto;
+  margin-bottom: 0;
 }
 
 .section-header {
@@ -183,13 +186,13 @@ const formatDateTime = (timestamp) => {
   display: flex;
   justify-content: flex-start;
   align-items: flex-start;
-  padding: 6px 8px;
-  background: var(--monitoring-item-bg, rgba(255, 255, 255, 0.03));
+  /* padding: 6px 8px; */
+  /* background: var(--monitoring-item-bg, rgba(255, 255, 255, 0.03)); */
   border-radius: 4px;
-  border: 1px solid var(--monitoring-item-border, rgba(255, 255, 255, 0.05));
+  /* border: 1px solid var(--monitoring-item-border, rgba(255, 255, 255, 0.05)); */
   flex-shrink: 0;
   min-height: 24px;
-  gap: 8px;
+  /* gap: 8px; */
 }
 
 

@@ -115,15 +115,18 @@ watch(() => props.visible, (newVisible) => {
 </script>
 
 <style scoped>
+/* 导入监控主题样式 */
+@import '@/assets/styles/themes/monitoring-theme.css';
+
 .responsive-monitoring-panel {
-  background: var(--monitoring-panel-bg, rgba(0, 0, 0, 0.8));
-  border: 1px solid var(--monitoring-panel-border, rgba(255, 255, 255, 0.1));
-  border-radius: 8px;
+  background: var(--monitor-bg-primary);
+  border: 1px solid var(--monitor-border);
+  border-radius: var(--monitor-radius-lg);
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: all var(--monitor-transition-normal);
   overflow: hidden;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+  box-shadow: var(--monitor-shadow-lg);
   height: 100%;
   display: flex;
   flex-direction: column;
@@ -148,13 +151,14 @@ watch(() => props.visible, (newVisible) => {
 .monitoring-sections {
   display: flex;
   flex-direction: column;
-  padding: 12px;
-  gap: 8px;
+  gap: var(--monitor-spacing-md);
+  padding: var(--monitor-spacing-md);
+  min-height: min-content;
+  overflow-y: auto;
 }
 
 .monitoring-section {
-  display: flex;
-  flex-direction: column;
+  min-height: var(--monitor-component-height-md);
 }
 
 /* 过渡动画 */
@@ -176,25 +180,35 @@ watch(() => props.visible, (newVisible) => {
 }
 
 /* 响应式设计 */
+@media (max-width: 1024px) {
+  .monitoring-sections {
+    gap: var(--monitor-spacing-md);
+  }
+}
+
 @media (max-width: 768px) {
   .responsive-monitoring-panel {
-    border-radius: 6px;
-  }
-
-  .panel-content {
-    height: calc(100% - 40px);
+    border-radius: var(--monitor-radius-md);
   }
 
   .monitoring-sections {
-    padding: 12px;
+    gap: var(--monitor-spacing-md);
+    padding: var(--monitor-spacing-md);
   }
 
-  .header-title {
-    font-size: 13px;
+  .monitoring-section {
+    min-height: var(--monitor-component-height-sm);
+  }
+}
+
+@media (max-width: 480px) {
+  .monitoring-sections {
+    gap: var(--monitor-spacing-sm);
+    padding: var(--monitor-spacing-sm);
   }
 
-  .monitor-icon {
-    font-size: 14px;
+  .monitoring-section {
+    min-height: var(--monitor-component-height-xs);
   }
 }
 

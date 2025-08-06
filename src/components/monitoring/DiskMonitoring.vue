@@ -1,79 +1,41 @@
 <template>
-  <div class="disk-monitoring-section">
-    <div class="section-header">
-      <div class="section-title">
+  <div class="monitor-section disk-monitoring-section">
+    <div class="monitor-header">
+      <div class="monitor-title">
         <MonitoringIcon name="disk" :size="16" class="disk-icon" />
         <span>硬盘</span>
       </div>
-      <div class="section-info" v-if="diskInfo.total">
-        <span class="capacity-info">{{ formatBytes(diskInfo.used) }} / {{ formatBytes(diskInfo.total) }}</span>
+      <div class="monitor-info">
+        <div class="disk-usage-info" v-if="diskInfo.total">
+          <span class="usage-percentage" :class="getUsageStatusClass(diskUsage)">{{ formatPercentage(diskUsage) }}</span>
+          <span class="usage-text">{{ formatBytes(diskInfo.used) }}/{{ formatBytes(diskInfo.total) }}</span>
+        </div>
       </div>
     </div>
-    
-    <div class="chart-container">
-      <div class="disk-visual">
-        <!-- 3D圆柱图效果 -->
-        <div class="cylinder-container">
-          <div class="cylinder">
-            <!-- 圆柱顶部 -->
-            <div class="cylinder-top"></div>
-            <!-- 圆柱主体 -->
-            <div class="cylinder-body">
-              <div class="usage-fill" :style="{ height: usagePercentage + '%' }"></div>
-            </div>
-            <!-- 圆柱底部 -->
-            <div class="cylinder-bottom"></div>
-          </div>
-          
-          <!-- 使用率标签 -->
-          <div class="usage-label">
-            <span class="usage-text">{{ formatPercentage(diskUsage) }}</span>
-            <span class="usage-desc">已使用</span>
-          </div>
-        </div>
-        
-        <!-- 读写速度指示器 -->
-        <div class="io-indicators" v-if="hasIOData">
-          <div class="io-item read">
-            <div class="io-icon">📖</div>
-            <div class="io-info">
-              <span class="io-label">读取</span>
-              <span class="io-value">{{ formatIOSpeed(ioStats.read) }}</span>
-            </div>
-          </div>
-          <div class="io-item write">
-            <div class="io-icon">✏️</div>
-            <div class="io-info">
-              <span class="io-label">写入</span>
-              <span class="io-value">{{ formatIOSpeed(ioStats.write) }}</span>
-            </div>
-          </div>
-        </div>
+
+    <div class="monitor-chart-container">
+      <!-- 堆叠柱形图 -->
+      <div class="chart-item stacked-bar-chart">
+        <canvas ref="diskChartRef" class="disk-chart"></canvas>
       </div>
-      
-      <div v-if="!hasData" class="no-data-message">
+
+      <div v-if="!hasData" class="monitor-no-data">
         <MonitoringIcon name="loading" :size="16" class="loading-icon" />
         <span>等待硬盘数据...</span>
-      </div>
-    </div>
-    
-    <div class="disk-summary" v-if="hasData">
-      <div class="summary-item">
-        <span class="summary-label">可用空间</span>
-        <span class="summary-value available">{{ formatBytes(diskInfo.available) }}</span>
-      </div>
-      <div class="summary-item">
-        <span class="summary-label">总容量</span>
-        <span class="summary-value total">{{ formatBytes(diskInfo.total) }}</span>
       </div>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted, nextTick, markRaw } from 'vue'
+import { Chart, registerables } from 'chart.js'
 import { formatBytes, formatPercentage } from '@/utils/productionFormatters'
+import { getDiskChartConfig, getStatusColors } from '@/utils/chartConfig'
 import MonitoringIcon from './MonitoringIcon.vue'
+
+// 注册Chart.js组件
+Chart.register(...registerables)
 
 // Props
 const props = defineProps({
@@ -82,6 +44,10 @@ const props = defineProps({
     default: () => ({})
   }
 })
+
+// 响应式数据
+const diskChartRef = ref(null)
+const chartInstance = ref(null)
 
 // 计算属性
 const diskInfo = computed(() => {
@@ -104,410 +70,210 @@ const diskUsage = computed(() => {
   return diskInfo.value.usedPercentage || 0
 })
 
-const usagePercentage = computed(() => {
-  return Math.min(Math.max(diskUsage.value, 0), 100)
-})
-
-const ioStats = computed(() => {
-  const disk = props.monitoringData?.disk || {}
-  return {
-    read: disk.read_speed || disk.readSpeed || 0,
-    write: disk.write_speed || disk.writeSpeed || 0
-  }
-})
-
 const hasData = computed(() => {
   return diskInfo.value.total > 0
 })
 
-const hasIOData = computed(() => {
-  return ioStats.value.read > 0 || ioStats.value.write > 0
+// 获取使用率状态样式类
+const getUsageStatusClass = (usage) => {
+  if (usage >= 95) return 'monitor-status-critical'
+  if (usage >= 80) return 'monitor-status-warning'
+  return 'monitor-status-normal'
+}
+
+// 初始化硬盘图表 - 堆叠柱形图版本
+const initChart = async () => {
+  await nextTick()
+
+  if (!diskChartRef.value) return
+
+  const ctx = diskChartRef.value.getContext('2d')
+
+  if (chartInstance.value) {
+    chartInstance.value.destroy()
+  }
+
+  // 使用配置工具创建硬盘堆叠柱形图
+  const config = getDiskChartConfig()
+
+  // 设置初始数据
+  const used = diskUsage.value
+  const free = 100 - used
+  const statusColors = getStatusColors(used)
+
+  config.data.datasets[0].data = [used]
+  config.data.datasets[1].data = [free]
+  config.data.datasets[0].backgroundColor = statusColors.primary
+
+  // 设置tooltip回调函数
+  config.options.plugins.tooltip.callbacks.afterBody = function() {
+    const freePercent = 100 - used
+    // 计算可用空间：总空间 - 已使用空间
+    const totalBytes = diskInfo.value.total || 0
+    const usedBytes = diskInfo.value.used || 0
+    const freeBytes = totalBytes - usedBytes
+    return [`可用: ${freePercent.toFixed(1)}% (${formatBytes(freeBytes)})`]
+  }
+
+  chartInstance.value = markRaw(new Chart(ctx, config))
+
+  // 柱形图不需要设置数据点，直接完成初始化
+  nextTick(() => {
+    if (chartInstance.value) {
+      chartInstance.value.update('none')
+    }
+  })
+}
+
+// 更新图表数据 - 堆叠柱形图版本
+const updateChart = () => {
+  if (!chartInstance.value || !hasData.value) return
+
+  try {
+    const used = diskUsage.value
+    const free = 100 - used
+
+    // 检查图表实例是否有效
+    if (!chartInstance.value.data || !chartInstance.value.data.datasets || chartInstance.value.data.datasets.length < 2) {
+      console.warn('[硬盘监控] 图表数据结构无效')
+      return
+    }
+
+    // 使用状态颜色工具函数
+    const statusColors = getStatusColors(used)
+
+    // 更新堆叠柱形图数据
+    chartInstance.value.data.datasets[0].data = [used]  // 已使用
+    chartInstance.value.data.datasets[1].data = [free]  // 可用空间
+    chartInstance.value.data.datasets[0].backgroundColor = statusColors.primary
+
+    // 更新tooltip回调函数，显示可用空间信息
+    if (chartInstance.value.options.plugins.tooltip.callbacks) {
+      chartInstance.value.options.plugins.tooltip.callbacks.afterBody = function() {
+        const freePercent = 100 - used
+        // 计算可用空间：总空间 - 已使用空间
+        const totalBytes = diskInfo.value.total || 0
+        const usedBytes = diskInfo.value.used || 0
+        const freeBytes = totalBytes - usedBytes
+        return [`可用: ${freePercent.toFixed(1)}% (${formatBytes(freeBytes)})`]
+      }
+    }
+
+    // 使用自定义transition模式保持动画
+    chartInstance.value.update('dataUpdate')
+  } catch (error) {
+    console.error('[硬盘监控] 更新图表失败:', error)
+  }
+}
+
+// 监听数据变化 - 堆叠柱形图支持动态更新
+watch(() => props.monitoringData?.disk, (newDisk) => {
+  if (newDisk && chartInstance.value && hasData.value) {
+    try {
+      updateChart()
+    } catch (error) {
+      console.error('[硬盘监控] 更新图表失败:', error)
+    }
+  }
+}, { deep: true })
+
+// 生命周期
+onMounted(() => {
+  initChart()
 })
 
-// 格式化IO速度（使用网络速度格式化函数）
-const formatIOSpeed = (bytesPerSecond) => {
-  if (!bytesPerSecond || bytesPerSecond === 0) return '0 B/s'
-
-  const k = 1024
-  const sizes = ['B/s', 'KB/s', 'MB/s', 'GB/s']
-  const i = Math.floor(Math.log(bytesPerSecond) / Math.log(k))
-
-  return parseFloat((bytesPerSecond / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i]
-}
-
-// 获取使用率颜色
-const getUsageColor = (usage) => {
-  if (usage >= 95) return '#ef4444'
-  if (usage >= 80) return '#f59e0b'
-  return '#10b981'
-}
+onUnmounted(() => {
+  if (chartInstance.value) {
+    chartInstance.value.destroy()
+  }
+})
 </script>
 
 <style scoped>
-.disk-monitoring-section {
-  background: var(--monitoring-panel-bg, rgba(255, 255, 255, 0.05));
-  border: 1px solid var(--monitoring-panel-border, rgba(255, 255, 255, 0.1));
-  border-radius: 8px;
-  padding: 16px;
-  margin-bottom: 16px;
-  transition: all 0.3s ease;
-}
+/* 导入监控主题样式 */
+@import '@/assets/styles/themes/monitoring-theme.css';
 
-.section-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 16px;
-}
-
-.section-title {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 16px;
-  font-weight: 600;
-  color: var(--monitoring-text-primary, #e5e5e5);
-}
+/* 硬盘监控组件继承通用监控组件样式 */
 
 .disk-icon {
-  font-size: 16px;
-  color: #8b5cf6;
+  color: var(--monitor-disk-primary);
 }
 
-.section-info {
-  display: flex;
-  align-items: center;
-}
-
-.capacity-info {
-  font-size: 10px;
-  color: var(--monitoring-text-secondary, #b0b0b0);
-  background: var(--monitoring-item-bg, rgba(255, 255, 255, 0.1));
-  padding: 2px 5px;
-  border-radius: 4px;
-}
-
-.chart-container {
-  position: relative;
-  height: 140px;
-  margin-bottom: 12px;
-}
-
-.disk-visual {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  height: 100%;
-  gap: 20px;
-}
-
-.cylinder-container {
-  display: flex;
-  align-items: center;
-  gap: 20px;
-  flex: 1;
-}
-
-.cylinder {
-  position: relative;
-  width: 60px;
-  height: 100px;
-  margin: 0 auto;
-}
-
-.cylinder-top {
-  width: 60px;
-  height: 20px;
-  background: linear-gradient(45deg, #4a5568, #2d3748);
-  border-radius: 50%;
-  border: 2px solid #718096;
-  position: relative;
-  z-index: 3;
-}
-
-.cylinder-body {
-  width: 60px;
-  height: 80px;
-  background: linear-gradient(to right, #4a5568, #2d3748, #4a5568);
-  border-left: 2px solid #718096;
-  border-right: 2px solid #718096;
-  position: relative;
-  overflow: hidden;
-}
-
-.cylinder-bottom {
-  width: 60px;
-  height: 20px;
-  background: linear-gradient(225deg, #2d3748, #1a202c);
-  border-radius: 50%;
-  border: 2px solid #718096;
-  position: relative;
-  z-index: 1;
-  margin-top: -10px;
-}
-
-.usage-fill {
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  width: 100%;
-  background: linear-gradient(to top, v-bind('getUsageColor(diskUsage)'), rgba(16, 185, 129, 0.7));
-  transition: height 0.8s cubic-bezier(0.4, 0, 0.2, 1);
-  border-radius: 0 0 4px 4px;
-}
-
-.usage-label {
+/* 硬盘使用信息样式 */
+.disk-usage-info {
   display: flex;
   flex-direction: column;
-  align-items: center;
-  text-align: center;
+  align-items: flex-end;
+  /* gap: 2px; */
 }
 
 .usage-text {
-  font-size: 16px;
-  color: v-bind('getUsageColor(diskUsage)');
-  margin-bottom: 4px;
-}
-
-.usage-desc {
   font-size: 11px;
-  color: var(--monitoring-text-secondary, #b0b0b0);
-  font-weight: 500;
-}
-
-.io-indicators {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  min-width: 120px;
-}
-
-.io-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 10px;
-  background: var(--monitoring-item-bg, rgba(255, 255, 255, 0.03));
-  border-radius: 6px;
-  border: 1px solid var(--monitoring-item-border, rgba(255, 255, 255, 0.05));
-}
-
-.io-icon {
-  font-size: 16px;
-  flex-shrink: 0;
-}
-
-.io-info {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  flex: 1;
-}
-
-.io-label {
-  font-size: 10px;
-  color: var(--monitoring-text-secondary, #b0b0b0);
-  font-weight: 500;
-}
-
-.io-value {
-  font-size: 11px;
-  color: var(--monitoring-text-primary, #e5e5e5);
-}
-
-.no-data-message {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  color: var(--monitoring-text-secondary, #b0b0b0);
-  font-size: 14px;
-}
-
-.loading-icon {
-  animation: spin 2s linear infinite;
-}
-
-@keyframes spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
-}
-
-.disk-summary {
-  display: flex;
-  gap: 12px;
-}
-
-.summary-item {
-  flex: 1;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 8px 12px;
-  background: var(--monitoring-item-bg, rgba(255, 255, 255, 0.03));
-  border-radius: 6px;
-  border: 1px solid var(--monitoring-item-border, rgba(255, 255, 255, 0.05));
-}
-
-.summary-label {
-  font-size: 13px;
-  color: var(--monitoring-text-secondary, #b0b0b0);
-  font-weight: 500;
-}
-
-.summary-value {
-  font-size: 13px;
-  font-weight: 700;
+  color: var(--monitor-text-secondary);
   font-family: 'JetBrains Mono', 'Courier New', monospace;
 }
 
-.summary-value.available {
-  color: #10b981;
+.usage-percentage {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--monitor-disk-primary);
+  font-family: 'JetBrains Mono', 'Courier New', monospace;
 }
 
-.summary-value.total {
-  color: var(--monitoring-text-primary, #e5e5e5);
+.usage-percentage.monitor-status-warning {
+  color: var(--monitor-warning);
 }
 
-/* 响应式设计 */
+.usage-percentage.monitor-status-critical {
+  color: var(--monitor-error);
+}
+
+/* 堆叠柱形图样式 */
+.chart-item.stacked-bar-chart {
+  position: relative;
+  width: 100%;
+  height: 50px; /* 水平柱形图高度 */
+}
+
+.disk-chart {
+  width: 100%;
+  height: 100%;
+}
+
+/* 确保Chart.js tooltip显示在最上层 */
+:deep(.chartjs-tooltip) {
+  z-index: 10000 !important;
+  position: absolute !important;
+}
+
+/* 旧的进度条样式已移除，现在使用堆叠柱形图 */
+
+/* 响应式适配 */
 @media (max-width: 768px) {
-  .chart-container {
-    height: 120px;
+  .chart-item.stacked-bar-chart {
+    height: 45px;
   }
-  
-  .disk-visual {
-    gap: 15px;
-  }
-  
-  .cylinder {
-    width: 50px;
-    height: 80px;
-  }
-  
-  .cylinder-top,
-  .cylinder-bottom {
-    width: 50px;
-    height: 16px;
-  }
-  
-  .cylinder-body {
-    width: 50px;
-    height: 64px;
-  }
-  
+
   .usage-text {
-    font-size: 16px;
+    font-size: 10px;
   }
-  
-  .section-title {
-    font-size: 14px;
-  }
-  
-  .disk-icon {
-    font-size: 16px;
-  }
-  
-  .io-indicators {
-    min-width: 100px;
-    gap: 10px;
+
+  .usage-percentage {
+    font-size: 13px;
   }
 }
 
 @media (max-width: 480px) {
-  .disk-monitoring-section {
-    padding: 12px;
-    margin-bottom: 12px;
+  .chart-item.stacked-bar-chart {
+    height: 40px;
   }
-  
-  .chart-container {
-    height: 100px;
-  }
-  
-  .disk-visual {
-    flex-direction: column;
-    gap: 10px;
-  }
-  
-  .cylinder-container {
-    gap: 15px;
-  }
-  
-  .cylinder {
-    width: 40px;
-    height: 60px;
-  }
-  
-  .cylinder-top,
-  .cylinder-bottom {
-    width: 40px;
-    height: 12px;
-  }
-  
-  .cylinder-body {
-    width: 40px;
-    height: 48px;
-  }
-  
-  .io-indicators {
-    flex-direction: row;
-    min-width: auto;
-    width: 100%;
-  }
-  
-  .io-item {
-    flex: 1;
-    padding: 4px 8px;
-  }
-  
-  .disk-summary {
-    flex-direction: column;
-    gap: 8px;
-  }
-  
-  .summary-item {
-    padding: 6px 10px;
-  }
-}
 
-/* 深色主题适配 */
-@media (prefers-color-scheme: dark) {
-  .disk-monitoring-section {
-    --monitoring-panel-bg: rgba(255, 255, 255, 0.05);
-    --monitoring-panel-border: rgba(255, 255, 255, 0.1);
-    --monitoring-item-bg: rgba(255, 255, 255, 0.03);
-    --monitoring-item-border: rgba(255, 255, 255, 0.05);
-    --monitoring-text-primary: #e5e5e5;
-    --monitoring-text-secondary: #b0b0b0;
+  .usage-text {
+    font-size: 9px;
   }
-}
 
-/* 浅色主题适配 */
-@media (prefers-color-scheme: light) {
-  .disk-monitoring-section {
-    --monitoring-panel-bg: rgba(0, 0, 0, 0.05);
-    --monitoring-panel-border: rgba(0, 0, 0, 0.1);
-    --monitoring-item-bg: rgba(0, 0, 0, 0.03);
-    --monitoring-item-border: rgba(0, 0, 0, 0.05);
-    --monitoring-text-primary: #2c3e50;
-    --monitoring-text-secondary: #6c757d;
-  }
-  
-  .cylinder-top {
-    background: linear-gradient(45deg, #e2e8f0, #cbd5e0);
-    border-color: #a0aec0;
-  }
-  
-  .cylinder-body {
-    background: linear-gradient(to right, #e2e8f0, #cbd5e0, #e2e8f0);
-    border-color: #a0aec0;
-  }
-  
-  .cylinder-bottom {
-    background: linear-gradient(225deg, #cbd5e0, #a0aec0);
-    border-color: #a0aec0;
+  .usage-percentage {
+    font-size: 12px;
   }
 }
 </style>

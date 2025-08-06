@@ -1,44 +1,35 @@
 <template>
-  <div class="cpu-monitoring-section">
-    <!-- CPU监控标题 -->
-    <div class="section-header">
-      <div class="section-title">
+  <div class="monitor-section cpu-monitoring-section">
+    <div class="monitor-header">
+      <div class="monitor-title">
         <MonitoringIcon name="cpu" :size="16" class="cpu-icon" />
         <span>CPU</span>
       </div>
-      <div class="section-info">
-        <div class="cpu-details" v-if="cpuCores || loadAverage">
-          <span class="cores-info" v-if="cpuCores">{{ cpuCores }} 核</span>
-          <span class="load-info" v-if="loadAverage && loadAverage.load1 !== undefined">
-            负载: {{ formatLoadAverage(loadAverage) }}
-          </span>
+      <div class="monitor-info">
+        <div class="monitor-value-display" :class="getUsageStatusClass(currentUsage)">
+          <span class="usage-value">{{ formatPercentage(currentUsage) }}</span>
+          <span v-if="cpuCores > 0" class="cores-info">{{ cpuCores }}核</span>
         </div>
       </div>
     </div>
 
-    <div class="cpu-display">
-      <div v-if="!hasData" class="no-data-message">
+    <div class="monitor-chart-container">
+      <canvas ref="cpuChartRef" class="cpu-chart"></canvas>
+      <div v-if="!hasData" class="monitor-no-data">
         <MonitoringIcon name="loading" :size="16" class="loading-icon" />
         <span>等待CPU数据...</span>
-      </div>
-
-      <div v-if="hasData" class="cpu-info">
-        <div class="usage-display">
-          <div class="usage-circle" :class="getUsageClass(currentUsage)">
-            <span class="usage-text">{{ formatPercentage(currentUsage) }}</span>
-          </div>
-          <div class="usage-label">CPU使用率</div>
-        </div>
       </div>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted, watch, computed, nextTick } from 'vue'
+import { ref, onMounted, onUnmounted, computed, nextTick, markRaw, watch } from 'vue'
 import { Chart, registerables } from 'chart.js'
 import { formatPercentage } from '@/utils/productionFormatters'
+import { getCpuChartConfig, getStatusColors } from '@/utils/chartConfig'
 import MonitoringIcon from './MonitoringIcon.vue'
+import monitoringConfigManager from '@/services/monitoringConfigManager'
 
 // 注册Chart.js组件
 Chart.register(...registerables)
@@ -54,8 +45,17 @@ const props = defineProps({
 // 响应式数据
 const cpuChartRef = ref(null)
 const chartInstance = ref(null)
-const historyData = ref([])
-const maxDataPoints = 50
+// 真实历史数据记录
+let historyData = []
+const maxDataPoints = 10
+// 当前更新间隔
+const currentUpdateInterval = ref(1000)
+// 上次CPU使用率，用于检测变化
+let lastCpuUsage = 0
+// 防抖定时器
+let debounceTimer = null
+// 动画状态标记，避免动画冲突
+let isAnimating = false
 
 // 计算属性
 const currentUsage = computed(() => {
@@ -66,217 +66,292 @@ const currentUsage = computed(() => {
   return cpu.usage || cpu.usedPercentage || 0
 })
 
+// CPU核心数
 const cpuCores = computed(() => {
   const cpu = props.monitoringData?.cpu
-  const system = props.monitoringData?.system
+  if (!cpu) return 0
 
-  return cpu?.cores || system?.cpu_cores || ''
-})
-
-const cpuModel = computed(() => {
-  const cpu = props.monitoringData?.cpu
-  const system = props.monitoringData?.system
-
-  return cpu?.model || system?.cpu_model || ''
-})
-
-const loadAverage = computed(() => {
-  const cpu = props.monitoringData?.cpu
-  const system = props.monitoringData?.system
-
-  return cpu?.loadAverage || system?.load_average || system?.loadavg || null
+  return cpu.cores || 0
 })
 
 const hasData = computed(() => {
-  return currentUsage.value > 0 || historyData.value.length > 0
+  return currentUsage.value > 0
 })
 
-// 获取使用率样式类
-const getUsageClass = (usage) => {
-  if (usage >= 95) return 'critical'
-  if (usage >= 80) return 'warning'
-  return 'normal'
+// 获取使用率状态样式类
+const getUsageStatusClass = (usage) => {
+  if (usage >= 95) return 'monitor-status-critical'
+  if (usage >= 80) return 'monitor-status-warning'
+  return 'monitor-status-normal'
 }
 
-// 格式化负载平均值
-const formatLoadAverage = (loadAvg) => {
-  if (!loadAvg || typeof loadAvg !== 'object') return '--'
-
-  const { load1, load5, load15 } = loadAvg
-  if (load1 === undefined) return '--'
-
-  // 只显示1分钟负载，节省空间
-  return parseFloat(load1).toFixed(2)
-}
-
-// 初始化图表
+// 初始化图表 - 静态版本避免响应式冲突
 const initChart = async () => {
   await nextTick()
-  
+
   if (!cpuChartRef.value) return
-  
-  const ctx = cpuChartRef.value.getContext('2d')
-  
-  // 销毁现有图表
-  if (chartInstance.value) {
-    chartInstance.value.destroy()
+
+  try {
+    const ctx = cpuChartRef.value.getContext('2d')
+
+    // 销毁现有图表
+    if (chartInstance.value) {
+      chartInstance.value.destroy()
+    }
+
+    // 使用简化的配置工具创建图表
+    const config = getCpuChartConfig()
+
+    // 添加当前数据点到历史记录
+    const currentCpuUsage = currentUsage.value || 0
+    const now = new Date()
+    const timeLabel = now.toLocaleTimeString('zh-CN', {
+      hour12: false,
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit'
+    })
+
+    // 只在初始化时添加当前数据点
+    if (historyData.length === 0) {
+      historyData.push({
+        time: timeLabel,
+        value: currentCpuUsage,
+        timestamp: now.getTime()
+      })
+    }
+
+    // 使用真实历史数据
+    const labels = historyData.map(item => item.time)
+    const data = historyData.map(item => item.value)
+
+    config.data.labels = labels
+    config.data.datasets[0].data = data
+
+    // 根据当前使用率设置颜色
+    const statusColors = getStatusColors(currentCpuUsage)
+    config.data.datasets[0].borderColor = statusColors.primary
+    config.data.datasets[0].pointBackgroundColor = statusColors.primary
+    config.data.datasets[0].pointBorderColor = '#ffffff'
+    config.data.datasets[0].pointBorderWidth = 1
+    config.data.datasets[0].pointRadius = 0 // 默认不显示点
+    config.data.datasets[0].pointHoverRadius = 3 // 悬浮时显示小点
+    config.data.datasets[0].pointHoverBackgroundColor = statusColors.primary
+    config.data.datasets[0].pointHoverBorderColor = '#ffffff'
+    config.data.datasets[0].pointHoverBorderWidth = 1
+
+    // 创建渐变背景
+    const gradient = ctx.createLinearGradient(0, 0, 0, 200)
+    gradient.addColorStop(0, statusColors.primary + 'CC')
+    gradient.addColorStop(1, statusColors.primary + '33')
+    config.data.datasets[0].backgroundColor = gradient
+
+    // 使用 markRaw 防止 Chart.js 实例被 Vue 响应式系统追踪
+    chartInstance.value = markRaw(new Chart(ctx, config))
+
+    // 简单确保数据点隐藏（transition配置会处理动画时的隐藏）
+    nextTick(() => {
+      if (chartInstance.value && chartInstance.value.data.datasets[0]) {
+        chartInstance.value.data.datasets[0].pointRadius = 0
+        chartInstance.value.data.datasets[0].pointHoverRadius = 3
+        chartInstance.value.update('none')
+      }
+    })
+  } catch (error) {
+    console.error('[CPU监控] 初始化图表失败:', error)
   }
-  
-  chartInstance.value = new Chart(ctx, {
-    type: 'line',
-    data: {
-      labels: [],
-      datasets: [{
-        label: 'CPU使用率',
-        data: [],
-        borderColor: '#3b82f6',
-        backgroundColor: 'rgba(59, 130, 246, 0.1)',
-        borderWidth: 2,
-        fill: true,
-        tension: 0.4,
-        pointRadius: 0,
-        pointHoverRadius: 4,
-        pointBackgroundColor: '#3b82f6',
-        pointBorderColor: '#ffffff',
-        pointBorderWidth: 2
-      }]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      interaction: {
-        intersect: false,
-        mode: 'index'
-      },
-      plugins: {
-        legend: {
-          display: false
-        },
-        tooltip: {
-          backgroundColor: 'rgba(0, 0, 0, 0.8)',
-          titleColor: '#ffffff',
-          bodyColor: '#ffffff',
-          borderColor: '#3b82f6',
-          borderWidth: 1,
-          cornerRadius: 6,
-          displayColors: false,
-          callbacks: {
-            title: () => 'CPU使用率',
-            label: (context) => `${context.parsed.y.toFixed(1)}%`
-          }
-        }
-      },
-      scales: {
-        x: {
-          display: false,
-          grid: {
-            display: false
-          }
-        },
-        y: {
-          min: 0,
-          max: 100,
-          grid: {
-            color: 'rgba(255, 255, 255, 0.1)',
-            lineWidth: 1
-          },
-          ticks: {
-            color: 'rgba(255, 255, 255, 0.7)',
-            font: {
-              size: 11
-            },
-            callback: (value) => `${value}%`
-          }
-        }
-      },
-      animation: {
-        duration: 750,
-        easing: 'easeInOutQuart'
+}
+
+// 增量更新图表数据（性能优化版本）
+const updateChartData = () => {
+  if (!chartInstance.value || !cpuChartRef.value) return
+
+  const currentCpuUsage = currentUsage.value || 0
+
+  // 检测数据是否真正发生变化
+  if (Math.abs(currentCpuUsage - lastCpuUsage) < 0.1) {
+    return // 变化太小，跳过更新
+  }
+
+  try {
+    const now = new Date()
+    const timeLabel = now.toLocaleTimeString('zh-CN', {
+      hour12: false,
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit'
+    })
+
+    // 添加新数据点到历史记录
+    historyData.push({
+      time: timeLabel,
+      value: currentCpuUsage,
+      timestamp: now.getTime()
+    })
+
+    // 限制数据点数量
+    if (historyData.length > maxDataPoints) {
+      historyData = historyData.slice(-maxDataPoints)
+    }
+
+    // 更新图表数据
+    const labels = historyData.map(item => item.time)
+    const data = historyData.map(item => item.value)
+
+    chartInstance.value.data.labels = labels
+    chartInstance.value.data.datasets[0].data = data
+
+    // 根据当前使用率更新颜色
+    const statusColors = getStatusColors(currentCpuUsage)
+    chartInstance.value.data.datasets[0].borderColor = statusColors.primary
+    chartInstance.value.data.datasets[0].pointBackgroundColor = statusColors.primary
+    chartInstance.value.data.datasets[0].pointHoverBackgroundColor = statusColors.primary
+
+    // 更新渐变背景
+    const ctx = cpuChartRef.value.getContext('2d')
+    const gradient = ctx.createLinearGradient(0, 0, 0, 200)
+    gradient.addColorStop(0, statusColors.primary + 'CC')
+    gradient.addColorStop(1, statusColors.primary + '33')
+    chartInstance.value.data.datasets[0].backgroundColor = gradient
+
+    // 使用自定义transition模式：既有动画又隐藏数据点
+    if (!isAnimating) {
+      isAnimating = true
+      chartInstance.value.update('dataUpdate')
+      // 动画完成后重置标记
+      setTimeout(() => {
+        isAnimating = false
+      }, 400) // 与动画时长一致
+    }
+
+    // 强制重新设置数据点配置（多层级确保生效）
+    chartInstance.value.data.datasets[0].pointRadius = 0 // 默认不显示
+    chartInstance.value.data.datasets[0].pointHoverRadius = 3 // 悬浮时显示小点
+    chartInstance.value.data.datasets[0].pointBorderWidth = 1
+    chartInstance.value.data.datasets[0].pointHoverBorderWidth = 1
+
+    // 同时在options级别强制设置
+    if (chartInstance.value.options.elements && chartInstance.value.options.elements.point) {
+      chartInstance.value.options.elements.point.radius = 0
+      chartInstance.value.options.elements.point.hoverRadius = 3
+    }
+
+    // 更新上次使用率
+    lastCpuUsage = currentCpuUsage
+
+  } catch (error) {
+    console.error('[CPU监控] 增量更新图表失败:', error)
+  }
+}
+
+// 定期更新图表数据
+let updateInterval = null
+
+const startPeriodicUpdate = () => {
+  if (updateInterval) {
+    clearInterval(updateInterval)
+  }
+
+  updateInterval = setInterval(() => {
+    if (cpuChartRef.value && chartInstance.value && currentUsage.value >= 0) {
+      try {
+        // 使用增量更新而不是重新初始化
+        updateChartData()
+      } catch (error) {
+        console.error('[CPU监控] 定时更新图表失败:', error)
       }
     }
-  })
+  }, currentUpdateInterval.value) // 使用动态配置的更新间隔
 }
 
-// 更新图表数据
-const updateChart = () => {
-  if (!chartInstance.value || !hasData.value) return
-  
-  const now = new Date()
-  const timeLabel = now.toLocaleTimeString('zh-CN', { 
-    hour12: false, 
-    hour: '2-digit', 
-    minute: '2-digit', 
-    second: '2-digit' 
-  })
-  
-  // 添加新数据点
-  historyData.value.push({
-    time: timeLabel,
-    value: currentUsage.value,
-    timestamp: now.getTime()
-  })
-  
-  // 保持数据点数量限制
-  if (historyData.value.length > maxDataPoints) {
-    historyData.value.shift()
+const stopPeriodicUpdate = () => {
+  if (updateInterval) {
+    clearInterval(updateInterval)
+    updateInterval = null
   }
-  
-  // 更新图表
-  chartInstance.value.data.labels = historyData.value.map(item => item.time)
-  chartInstance.value.data.datasets[0].data = historyData.value.map(item => item.value)
-  
-  // 动态调整颜色
-  const latestUsage = currentUsage.value
-  let borderColor = '#3b82f6'
-  let backgroundColor = 'rgba(59, 130, 246, 0.1)'
-  
-  if (latestUsage >= 95) {
-    borderColor = '#ef4444'
-    backgroundColor = 'rgba(239, 68, 68, 0.1)'
-  } else if (latestUsage >= 80) {
-    borderColor = '#f59e0b'
-    backgroundColor = 'rgba(245, 158, 11, 0.1)'
-  }
-  
-  chartInstance.value.data.datasets[0].borderColor = borderColor
-  chartInstance.value.data.datasets[0].backgroundColor = backgroundColor
-  chartInstance.value.data.datasets[0].pointBackgroundColor = borderColor
-  
-  chartInstance.value.update('none')
 }
 
-// 暂时禁用图表更新，避免Chart.js循环引用问题
-// 监听数据变化
-// let updateTimer = null
-// watch(() => props.monitoringData, (newData, oldData) => {
-//   // 防抖处理，避免频繁更新
-//   if (updateTimer) {
-//     clearTimeout(updateTimer)
-//   }
+// 配置变更监听器
+let configListener = null
 
-//   updateTimer = setTimeout(() => {
-//     // 检查数据是否真的发生了变化
-//     if (hasData.value && chartInstance.value && newData !== oldData) {
-//       try {
-//         updateChart()
-//       } catch (error) {
-//         console.error('[CPU监控] 更新图表失败:', error)
-//       }
-//     }
-//     updateTimer = null
-//   }, 100) // 100ms防抖
-// }, { deep: true })
+// 初始化监控配置
+const initMonitoringConfig = async () => {
+  try {
+    // 初始化配置管理器
+    await monitoringConfigManager.init()
+
+    // 获取当前配置
+    const config = monitoringConfigManager.getConfig()
+    currentUpdateInterval.value = config.updateInterval
+
+    // 添加配置变更监听器
+    configListener = (newConfig) => {
+      const oldInterval = currentUpdateInterval.value
+      currentUpdateInterval.value = newConfig.updateInterval
+
+      // 如果间隔发生变化，重新启动定期更新
+      if (oldInterval !== newConfig.updateInterval) {
+        console.log(`[CPU监控] 更新间隔变更: ${oldInterval}ms → ${newConfig.updateInterval}ms`)
+
+        // 清空历史数据，重新初始化图表以适应新的时间间隔
+        historyData = []
+        lastCpuUsage = 0
+
+        stopPeriodicUpdate()
+
+        // 重新初始化图表以适应新的时间间隔
+        setTimeout(() => {
+          initChart()
+          startPeriodicUpdate()
+        }, 100)
+      }
+    }
+
+    monitoringConfigManager.addListener(configListener)
+  } catch (error) {
+    console.error('[CPU监控] 初始化监控配置失败:', error)
+    // 使用默认值
+    currentUpdateInterval.value = 1000
+  }
+}
+
+// 监听CPU使用率变化，实现响应式更新
+watch(() => currentUsage.value, (newUsage, oldUsage) => {
+  // 只有在图表已初始化且数据真正变化时才更新
+  if (chartInstance.value && Math.abs(newUsage - (oldUsage || 0)) >= 0.1) {
+    // 使用防抖避免过于频繁的更新
+    clearTimeout(debounceTimer)
+    debounceTimer = setTimeout(() => {
+      updateChartData()
+    }, 100)
+  }
+}, { immediate: false })
 
 // 生命周期
-onMounted(() => {
+onMounted(async () => {
+  // 先初始化监控配置
+  await initMonitoringConfig()
+
+  // 然后初始化图表和定期更新
   initChart()
+  startPeriodicUpdate()
 })
 
 onUnmounted(() => {
-  if (updateTimer) {
-    clearTimeout(updateTimer)
-    updateTimer = null
+  stopPeriodicUpdate()
+
+  // 清理防抖定时器
+  if (debounceTimer) {
+    clearTimeout(debounceTimer)
+    debounceTimer = null
   }
+
+  // 移除配置监听器
+  if (configListener) {
+    monitoringConfigManager.removeListener(configListener)
+    configListener = null
+  }
+
   if (chartInstance.value) {
     chartInstance.value.destroy()
   }
@@ -284,256 +359,47 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
-.cpu-monitoring-section {
-  background: var(--monitoring-panel-bg, rgba(255, 255, 255, 0.05));
-  border: 1px solid var(--monitoring-panel-border, rgba(255, 255, 255, 0.1));
-  border-radius: 8px;
-  padding: 12px;
-  transition: all 0.3s ease;
-  display: flex;
-  flex-direction: column;
-}
+/* 导入监控主题样式 */
+@import '@/assets/styles/themes/monitoring-theme.css';
 
-.section-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 12px;
-  flex-shrink: 0;
-}
-
-.section-title {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--monitoring-text-primary, #e5e5e5);
-}
+/* CPU监控组件继承通用监控组件样式 */
 
 .cpu-icon {
-  font-size: 16px;
-  color: #3b82f6;
+  color: var(--monitor-cpu-primary);
 }
 
-.section-info {
-  display: flex;
-  align-items: center;
-  gap: 8px;
+.cores-info {
+  font-size: 11px;
+  color: var(--monitor-text-secondary);
+  margin-left: 6px;
+  opacity: 0.8;
 }
 
-.cpu-details {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  /* gap: 4px; */
+.cpu-cores-info {
+  font-size: 11px;
+  color: var(--monitor-text-secondary);
+  padding: var(--monitor-spacing-xs);
+  background: var(--monitor-bg-secondary);
+  border-radius: var(--monitor-radius-sm);
 }
 
-.cores-info,
-.load-info {
-  font-size: 10px;
-  color: var(--monitoring-text-secondary, #b0b0b0);
-  background: var(--monitoring-item-bg, rgba(255, 255, 255, 0.1));
-  padding: 2px 6px;
-  border-radius: 4px;
-}
-
-.cpu-display {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 16px;
-}
-
-.cpu-info {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 16px;
+.cpu-chart {
   width: 100%;
+  height: var(--monitor-chart-height-md);
 }
 
-.usage-display {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
-}
+/* 旧样式已移除，使用统一的监控主题样式 */
 
-.usage-circle {
-  width: 80px;
-  height: 80px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border: 4px solid;
-  transition: all 0.3s ease;
-}
-
-.usage-circle.normal {
-  border-color: #3b82f6;
-  background: rgba(59, 130, 246, 0.1);
-}
-
-.usage-circle.warning {
-  border-color: #f59e0b;
-  background: rgba(245, 158, 11, 0.1);
-}
-
-.usage-circle.critical {
-  border-color: #ef4444;
-  background: rgba(239, 68, 68, 0.1);
-}
-
-.usage-text {
-  font-size: 16px;
-  color: var(--monitoring-text-primary, #e5e5e5);
-}
-
-.usage-label {
-  font-size: 12px;
-  color: var(--monitoring-text-secondary, #b0b0b0);
-  text-align: center;
-}
-
-.cpu-details {
-  display: flex;
-  /* gap: 16px; */
-  width: 100%;
-  justify-content: center;
-}
-
-.detail-item {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 4px;
-  padding: 8px 12px;
-  background: var(--monitoring-item-bg, rgba(255, 255, 255, 0.03));
-  border-radius: 6px;
-  border: 1px solid var(--monitoring-item-border, rgba(255, 255, 255, 0.05));
-}
-
-.detail-label {
-  font-size: 12px;
-  color: var(--monitoring-text-secondary, #b0b0b0);
-}
-
-.detail-value {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--monitoring-text-primary, #e5e5e5);
-  font-family: 'JetBrains Mono', 'Courier New', monospace;
-}
-
-.no-data-message {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  color: var(--monitoring-text-secondary, #b0b0b0);
-  font-size: 14px;
-}
-
-.loading-icon {
-  animation: spin 2s linear infinite;
-}
-
-@keyframes spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
-}
-
-.usage-value {
-  font-size: 16px;
-  font-weight: 700;
-  font-family: 'JetBrains Mono', 'Courier New', monospace;
-}
-
-.usage-value.normal {
-  color: #10b981;
-}
-
-.usage-value.warning {
-  color: #f59e0b;
-}
-
-.usage-value.critical {
-  color: #ef4444;
-}
-
-/* 响应式设计 */
+/* 响应式适配 */
 @media (max-width: 768px) {
-  .chart-container {
-    height: 100px;
-  }
-  
-  .section-title {
-    font-size: 14px;
-  }
-  
-  .cpu-icon {
-    font-size: 16px;
-  }
-  
-  .cores-info,
-  .load-info {
-    font-size: 10px;
-    padding: 2px 4px;
-  }
-
-  .cpu-details {
-    align-items: flex-start;
-  }
-  
-  .usage-value {
-    font-size: 14px;
+  .cpu-chart {
+    height: var(--monitor-chart-height-sm);
   }
 }
 
 @media (max-width: 480px) {
-  .cpu-monitoring-section {
-    padding: 12px;
-    margin-bottom: 12px;
-  }
-  
-  .chart-container {
-    height: 80px;
-  }
-  
-  .current-usage {
-    padding: 6px 10px;
-  }
-  
-  .usage-label,
-  .usage-value {
-    font-size: 12px;
-  }
-}
-
-/* 深色主题适配 */
-@media (prefers-color-scheme: dark) {
-  .cpu-monitoring-section {
-    --monitoring-panel-bg: rgba(255, 255, 255, 0.05);
-    --monitoring-panel-border: rgba(255, 255, 255, 0.1);
-    --monitoring-item-bg: rgba(255, 255, 255, 0.03);
-    --monitoring-item-border: rgba(255, 255, 255, 0.05);
-    --monitoring-text-primary: #e5e5e5;
-    --monitoring-text-secondary: #b0b0b0;
-  }
-}
-
-/* 浅色主题适配 */
-@media (prefers-color-scheme: light) {
-  .cpu-monitoring-section {
-    --monitoring-panel-bg: rgba(0, 0, 0, 0.05);
-    --monitoring-panel-border: rgba(0, 0, 0, 0.1);
-    --monitoring-item-bg: rgba(0, 0, 0, 0.03);
-    --monitoring-item-border: rgba(0, 0, 0, 0.05);
-    --monitoring-text-primary: #2c3e50;
-    --monitoring-text-secondary: #6c757d;
+  .cpu-chart {
+    height: var(--monitor-chart-height-xs);
   }
 }
 </style>

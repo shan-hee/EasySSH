@@ -5,6 +5,7 @@
 
 /* 主题样式 - 优先加载，确保CSS变量可用 */
 @import './themes/theme.css';
+@import './themes/monitoring-theme.css';
 
 /* 基础样式 */
 @import './base/base.css';

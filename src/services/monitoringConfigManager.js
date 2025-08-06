@@ -5,7 +5,7 @@
 
 import { reactive } from 'vue'
 import settingsService from './settings.js'
-import log from '../utils/logger.js'
+import log from './log.js'
 
 class MonitoringConfigManager {
   constructor() {

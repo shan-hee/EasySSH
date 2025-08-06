@@ -1,49 +1,39 @@
 <template>
-  <div class="network-monitoring-section">
-    <div class="section-header">
-      <div class="section-title">
+  <div class="monitor-section network-monitoring-section">
+    <div class="monitor-header">
+      <div class="monitor-title">
         <MonitoringIcon name="network" :size="16" class="network-icon" />
         <span>网络</span>
       </div>
-      <div class="section-info">
-        <div class="traffic-info" v-if="totalTraffic.upload || totalTraffic.download">
-          <span class="info-text">↑ {{ formatBytes(totalTraffic.upload) }}</span>
-          <span class="info-text">↓ {{ formatBytes(totalTraffic.download) }}</span>
+      <div class="monitor-info">
+        <div class="network-speed-info" v-if="hasData">
+          <div class="speed-indicator upload">
+            <span class="speed-icon">↑</span>
+            <span class="speed-value">{{ formatNetworkSpeed(currentSpeed.upload) }}</span>
+          </div>
+          <div class="speed-indicator download">
+            <span class="speed-icon">↓</span>
+            <span class="speed-value">{{ formatNetworkSpeed(currentSpeed.download) }}</span>
+          </div>
         </div>
       </div>
     </div>
-    
-    <div class="chart-container">
+
+    <div class="monitor-chart-container">
       <canvas ref="networkChartRef" class="network-chart"></canvas>
-      <div v-if="!hasData" class="no-data-message">
+      <div v-if="!hasData" class="monitor-no-data">
         <MonitoringIcon name="loading" :size="16" class="loading-icon" />
         <span>等待网络数据...</span>
-      </div>
-    </div>
-    
-    <div class="current-speed" v-if="hasData">
-      <div class="speed-item upload">
-        <span class="speed-label">
-          <MonitoringIcon name="upload" :size="12" class="speed-icon" />
-          上传
-        </span>
-        <span class="speed-value">{{ formatNetworkSpeed(currentSpeed.upload) }}</span>
-      </div>
-      <div class="speed-item download">
-        <span class="speed-label">
-          <MonitoringIcon name="download" :size="12" class="speed-icon" />
-          下载
-        </span>
-        <span class="speed-value">{{ formatNetworkSpeed(currentSpeed.download) }}</span>
       </div>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted, watch, computed, nextTick } from 'vue'
+import { ref, onMounted, onUnmounted, watch, computed, nextTick, markRaw } from 'vue'
 import { Chart, registerables } from 'chart.js'
 import { formatBytes, formatNetworkSpeed } from '@/utils/productionFormatters'
+import { getNetworkChartConfig, limitDataPoints } from '@/utils/chartConfig'
 import MonitoringIcon from './MonitoringIcon.vue'
 
 // 注册Chart.js组件
@@ -64,7 +54,7 @@ const historyData = ref({
   upload: [],
   download: []
 })
-const maxDataPoints = 50
+const maxDataPoints = 10 // 限制为10个数据点，符合现代极简设计
 
 // 计算属性
 const currentSpeed = computed(() => {
@@ -98,174 +88,120 @@ const hasData = computed(() => {
 // 初始化图表
 const initChart = async () => {
   await nextTick()
-  
+
   if (!networkChartRef.value) return
-  
+
   const ctx = networkChartRef.value.getContext('2d')
-  
+
   // 销毁现有图表
   if (chartInstance.value) {
     chartInstance.value.destroy()
   }
-  
-  chartInstance.value = new Chart(ctx, {
-    type: 'line',
-    data: {
-      labels: [],
-      datasets: [
-        {
-          label: '上传速度',
-          data: [],
-          borderColor: '#ef4444',
-          backgroundColor: 'rgba(239, 68, 68, 0.1)',
-          borderWidth: 2,
-          fill: false,
-          tension: 0.4,
-          pointRadius: 0,
-          pointHoverRadius: 4,
-          pointBackgroundColor: '#ef4444',
-          pointBorderColor: '#ffffff',
-          pointBorderWidth: 2
-        },
-        {
-          label: '下载速度',
-          data: [],
-          borderColor: '#10b981',
-          backgroundColor: 'rgba(16, 185, 129, 0.1)',
-          borderWidth: 2,
-          fill: false,
-          tension: 0.4,
-          pointRadius: 0,
-          pointHoverRadius: 4,
-          pointBackgroundColor: '#10b981',
-          pointBorderColor: '#ffffff',
-          pointBorderWidth: 2
-        }
-      ]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      interaction: {
-        intersect: false,
-        mode: 'index'
-      },
-      plugins: {
-        legend: {
-          display: false
-        },
-        tooltip: {
-          backgroundColor: 'rgba(0, 0, 0, 0.8)',
-          titleColor: '#ffffff',
-          bodyColor: '#ffffff',
-          borderColor: '#3b82f6',
-          borderWidth: 1,
-          cornerRadius: 6,
-          displayColors: true,
-          callbacks: {
-            title: () => '网络速度',
-            label: (context) => {
-              const label = context.dataset.label
-              const value = context.parsed.y
-              return `${label}: ${formatNetworkSpeed(value)}`
-            }
-          }
-        }
-      },
-      scales: {
-        x: {
-          display: false,
-          grid: {
-            display: false
-          }
-        },
-        y: {
-          min: 0,
-          grid: {
-            color: 'rgba(255, 255, 255, 0.1)',
-            lineWidth: 1
-          },
-          ticks: {
-            color: 'rgba(255, 255, 255, 0.7)',
-            font: {
-              size: 11
-            },
-            callback: (value) => formatNetworkSpeed(value)
-          }
-        }
-      },
-      animation: {
-        duration: 750,
-        easing: 'easeInOutQuart'
-      }
+
+  // 使用新的配置工具创建网络图表
+  const config = getNetworkChartConfig()
+  chartInstance.value = markRaw(new Chart(ctx, config))
+
+  // 简单确保数据点隐藏（transition配置会处理动画时的隐藏）
+  nextTick(() => {
+    if (chartInstance.value && chartInstance.value.data.datasets) {
+      chartInstance.value.data.datasets.forEach(dataset => {
+        dataset.pointRadius = 0
+        dataset.pointHoverRadius = 3
+      })
+      chartInstance.value.update('none')
     }
   })
 }
 
 // 更新图表数据
 const updateChart = () => {
-  if (!chartInstance.value || !hasData.value) return
-  
-  const now = new Date()
-  const timeLabel = now.toLocaleTimeString('zh-CN', { 
-    hour12: false, 
-    hour: '2-digit', 
-    minute: '2-digit', 
-    second: '2-digit' 
-  })
-  
-  // 添加新数据点
-  historyData.value.upload.push({
-    time: timeLabel,
-    value: currentSpeed.value.upload,
-    timestamp: now.getTime()
-  })
-  
-  historyData.value.download.push({
-    time: timeLabel,
-    value: currentSpeed.value.download,
-    timestamp: now.getTime()
-  })
-  
-  // 保持数据点数量限制
-  if (historyData.value.upload.length > maxDataPoints) {
-    historyData.value.upload.shift()
-    historyData.value.download.shift()
+  if (!chartInstance.value) return
+
+  try {
+    // 检查图表实例是否有效
+    if (!chartInstance.value.data || !chartInstance.value.data.datasets || chartInstance.value.data.datasets.length < 2) {
+      console.warn('[网络监控] 图表数据结构无效')
+      return
+    }
+
+    const now = new Date()
+    const timeLabel = now.toLocaleTimeString('zh-CN', {
+      hour12: false,
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit'
+    })
+
+    // 添加新数据点
+    historyData.value.upload.push({
+      time: timeLabel,
+      value: currentSpeed.value.upload,
+      timestamp: now.getTime()
+    })
+
+    historyData.value.download.push({
+      time: timeLabel,
+      value: currentSpeed.value.download,
+      timestamp: now.getTime()
+    })
+
+    // 使用工具函数限制数据点数量
+    historyData.value.upload = limitDataPoints(historyData.value.upload, maxDataPoints)
+    historyData.value.download = limitDataPoints(historyData.value.download, maxDataPoints)
+
+    // 更新图表数据
+    chartInstance.value.data.labels = historyData.value.upload.map(item => item.time)
+    chartInstance.value.data.datasets[0].data = historyData.value.upload.map(item => item.value)
+    chartInstance.value.data.datasets[1].data = historyData.value.download.map(item => item.value)
+
+    // 使用自定义transition模式：既有动画又隐藏数据点
+    if (!isAnimating) {
+      isAnimating = true
+      chartInstance.value.update('dataUpdate')
+      // 动画完成后重置标记
+      setTimeout(() => {
+        isAnimating = false
+      }, 400) // 与动画时长一致
+    }
+  } catch (error) {
+    console.error('[网络监控] 更新图表失败:', error)
   }
-  
-  // 更新图表
-  chartInstance.value.data.labels = historyData.value.upload.map(item => item.time)
-  chartInstance.value.data.datasets[0].data = historyData.value.upload.map(item => item.value)
-  chartInstance.value.data.datasets[1].data = historyData.value.download.map(item => item.value)
-  
-  chartInstance.value.update('none')
 }
 
-// 暂时禁用图表更新，避免Chart.js循环引用问题
 // 监听数据变化
-// let updateTimer = null
-// watch(() => props.monitoringData, (newData, oldData) => {
-//   // 防抖处理，避免频繁更新
-//   if (updateTimer) {
-//     clearTimeout(updateTimer)
-//   }
+let updateTimer = null
+// 动画状态标记，避免动画冲突
+let isAnimating = false
+watch(() => props.monitoringData, (newData, oldData) => {
+  // 防抖处理，避免频繁更新
+  if (updateTimer) {
+    clearTimeout(updateTimer)
+  }
 
-//   updateTimer = setTimeout(() => {
-//     // 检查数据是否真的发生了变化
-//     if (hasData.value && chartInstance.value && newData !== oldData) {
-//       try {
-//         updateChart()
-//       } catch (error) {
-//         console.error('[网络监控] 更新图表失败:', error)
-//       }
-//     }
-//     updateTimer = null
-//   }, 100) // 100ms防抖
-// }, { deep: true })
+  updateTimer = setTimeout(() => {
+    // 检查数据是否真的发生了变化
+    if (chartInstance.value && newData !== oldData) {
+      try {
+        updateChart()
+      } catch (error) {
+        console.error('[网络监控] 更新图表失败:', error)
+      }
+    }
+    updateTimer = null
+  }, 100) // 100ms防抖
+}, { deep: true })
 
 // 生命周期
 onMounted(() => {
   initChart()
+
+  // 添加一个初始数据点来确保图表显示
+  setTimeout(() => {
+    if (chartInstance.value) {
+      updateChart()
+    }
+  }, 1000)
 })
 
 onUnmounted(() => {
@@ -280,205 +216,60 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
-.network-monitoring-section {
-  background: var(--monitoring-panel-bg, rgba(255, 255, 255, 0.05));
-  border: 1px solid var(--monitoring-panel-border, rgba(255, 255, 255, 0.1));
-  border-radius: 8px;
-  padding: 16px;
-  margin-bottom: 16px;
-  transition: all 0.3s ease;
-}
+/* 导入监控主题样式 */
+@import '@/assets/styles/themes/monitoring-theme.css';
 
-.section-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 16px;
-}
-
-.section-title {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 16px;
-  font-weight: 600;
-  color: var(--monitoring-text-primary, #e5e5e5);
-}
+/* 网络监控组件继承通用监控组件样式 */
 
 .network-icon {
-  font-size: 16px;
-  color: #10b981;
+  color: var(--monitor-info);
 }
 
-.section-info {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.traffic-info {
+.network-speed-info {
   display: flex;
   flex-direction: column;
-  align-items: flex-end;
-  gap: 2px;
+  /* gap: var(--monitor-spacing-xs); */
 }
 
-.info-text {
-  font-size: 10px;
-  color: var(--monitoring-text-secondary, #b0b0b0);
-  background: var(--monitoring-item-bg, rgba(255, 255, 255, 0.1));
-  padding: 2px 5px;
-  border-radius: 4px;
-}
-
-.chart-container {
-  position: relative;
-  height: 120px;
-  margin-bottom: 12px;
-}
-
-.network-chart {
-  width: 100% !important;
-  height: 100% !important;
-}
-
-.no-data-message {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
+.speed-indicator {
   display: flex;
   align-items: center;
-  gap: 8px;
-  color: var(--monitoring-text-secondary, #b0b0b0);
-  font-size: 14px;
-}
-
-.loading-icon {
-  animation: spin 2s linear infinite;
-}
-
-@keyframes spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
-}
-
-.current-speed {
-  display: flex;
-  gap: 12px;
-}
-
-.speed-item {
-  flex: 1;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 8px 12px;
-  background: var(--monitoring-item-bg, rgba(255, 255, 255, 0.03));
-  border-radius: 6px;
-  border: 1px solid var(--monitoring-item-border, rgba(255, 255, 255, 0.05));
-}
-
-.speed-label {
-  display: flex;
-  align-items: center;
-  gap: 4px;
+  gap: var(--monitor-spacing-xs);
+  padding: var(--monitor-spacing-xs);
+  background: var(--monitor-bg-secondary);
+  border-radius: var(--monitor-radius-sm);
   font-size: 11px;
-  color: var(--monitoring-text-secondary, #b0b0b0);
-  font-weight: 500;
 }
 
-.speed-icon {
-  font-size: 10px;
+.speed-indicator.upload .speed-icon {
+  color: var(--monitor-network-upload);
+}
+
+.speed-indicator.download .speed-icon {
+  color: var(--monitor-network-download);
 }
 
 .speed-value {
-  font-size: 11px;
+  font-family: 'JetBrains Mono', 'Courier New', monospace;
+  font-weight: 500;
+  color: var(--monitor-text-primary);
 }
 
-.speed-item.upload .speed-value {
-  color: #ef4444;
+.network-chart {
+  width: 100%;
+  height: var(--monitor-chart-height-md);
 }
 
-.speed-item.download .speed-value {
-  color: #10b981;
-}
-
-/* 响应式设计 */
+/* 响应式适配 */
 @media (max-width: 768px) {
-  .chart-container {
-    height: 100px;
-  }
-  
-  .section-title {
-    font-size: 14px;
-  }
-  
-  .network-icon {
-    font-size: 16px;
-  }
-  
-  .info-text {
+  .speed-indicator {
     font-size: 10px;
-    padding: 2px 4px;
-  }
-  
-  .speed-value {
-    font-size: 12px;
   }
 }
 
 @media (max-width: 480px) {
-  .network-monitoring-section {
-    padding: 12px;
-    margin-bottom: 12px;
-  }
-  
-  .chart-container {
-    height: 80px;
-  }
-  
-  .current-speed {
-    flex-direction: column;
-    gap: 8px;
-  }
-  
-  .speed-item {
-    padding: 6px 10px;
-  }
-  
-  .section-header {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 8px;
-  }
-  
-  .section-info {
-    align-self: flex-end;
-  }
-}
-
-/* 深色主题适配 */
-@media (prefers-color-scheme: dark) {
-  .network-monitoring-section {
-    --monitoring-panel-bg: rgba(255, 255, 255, 0.05);
-    --monitoring-panel-border: rgba(255, 255, 255, 0.1);
-    --monitoring-item-bg: rgba(255, 255, 255, 0.03);
-    --monitoring-item-border: rgba(255, 255, 255, 0.05);
-    --monitoring-text-primary: #e5e5e5;
-    --monitoring-text-secondary: #b0b0b0;
-  }
-}
-
-/* 浅色主题适配 */
-@media (prefers-color-scheme: light) {
-  .network-monitoring-section {
-    --monitoring-panel-bg: rgba(0, 0, 0, 0.05);
-    --monitoring-panel-border: rgba(0, 0, 0, 0.1);
-    --monitoring-item-bg: rgba(0, 0, 0, 0.03);
-    --monitoring-item-border: rgba(0, 0, 0, 0.05);
-    --monitoring-text-primary: #2c3e50;
-    --monitoring-text-secondary: #6c757d;
+  .network-chart {
+    height: var(--monitor-chart-height-xs);
   }
 }
 </style>

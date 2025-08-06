@@ -2099,7 +2099,7 @@ export default {
 .terminal-monitoring-panel {
   flex-shrink: 0;
   z-index: 9;
-  width: 280px; /* 减小固定宽度 */
+  width: 320px; /* 增加宽度以适应内容 */
   max-width: 35vw; /* 最大不超过视口宽度的35% */
   height: 100%;
   overflow: hidden;
@@ -2131,7 +2131,7 @@ export default {
 
 .terminal-content-padding.with-monitoring-panel {
   /* 当显示监控面板时，终端内容区域自动调整宽度 */
-  width: calc(100% - 350px); /* 减去监控面板宽度 */
+  width: calc(100% - 320px); /* 减去监控面板宽度 */
 }
 
 /* 响应式设计 */
