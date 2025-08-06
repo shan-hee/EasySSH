@@ -355,7 +355,7 @@ class MonitoringInstance {
     const data = message.data || {};
     const { status, available, hostId } = data;
 
-    // 判断是否已安装
+    // 判断监控数据是否可用（SSH方案中status为'installed'表示数据可用）
     const installed = status === 'installed';
 
     // 触发状态变更事件

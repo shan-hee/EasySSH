@@ -106,38 +106,3 @@ exports.getSessions = async (_req, res) => {
   }
 };
 
-/**
- * 更新监控数据 - 新增API端点
- * 用于接收外部监控数据并广播给前端
- */
-exports.updateMonitoringData = async (req, res) => {
-  try {
-    const { hostname, monitoringData } = req.body;
-
-    if (!hostname || !monitoringData) {
-      return res.status(400).json({
-        success: false,
-        message: '缺少必要参数: hostname 和 monitoringData'
-      });
-    }
-
-    // 这里可以添加认证逻辑，确保只有授权的来源可以更新监控数据
-
-    // 通过WebSocket广播监控数据更新
-    // 注意：这里需要访问WebSocket服务，可能需要重构架构
-
-    return res.json({
-      success: true,
-      message: '监控数据更新成功',
-      hostname,
-      timestamp: Date.now()
-    });
-  } catch (error) {
-    console.error('更新监控数据失败:', error);
-    return res.status(500).json({
-      success: false,
-      message: '更新监控数据失败',
-      error: error.message
-    });
-  }
-};

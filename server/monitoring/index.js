@@ -555,14 +555,14 @@ function handleSystemStatsRequest(ws, sessionId, data) {
   }
 
   if (cachedData) {
-    // 发送监控服务已安装状态
+    // 发送监控数据可用状态（SSH方案）
     sendMessage(ws, {
       type: 'monitoring_status',
       data: {
         hostId: actualHostId,
         status: 'installed',
         available: true,
-        message: '监控服务已安装且数据可用',
+        message: '监控数据可用（通过SSH收集）',
         timestamp: Date.now()
       }
     });
@@ -582,19 +582,19 @@ function handleSystemStatsRequest(ws, sessionId, data) {
       sessionId
     });
   } else {
-    // 发送监控服务未安装状态
+    // 发送监控数据不可用状态（SSH方案）
     sendMessage(ws, {
       type: 'monitoring_status',
       data: {
         hostId: requestedHostId || '未知',
         status: 'not_installed',
         available: false,
-        message: '监控服务未安装或数据不可用',
+        message: '监控数据不可用（需要SSH连接）',
         timestamp: Date.now()
       }
     });
 
-    logger.debug('监控服务未安装', {
+    logger.debug('监控数据不可用', {
       requestedHostId: requestedHostId || '未知',
       sessionId
     });
@@ -635,10 +635,10 @@ function handleMonitoringDataFromClient(_ws, sessionId, data) {
     return;
   }
 
-  logger.debug('收到监控客户端数据', { hostId, sessionId });
+  logger.debug('收到SSH监控数据', { hostId, sessionId });
 
   // 处理监控数据的通用逻辑
-  processMonitoringData(sessionId, hostId, monitoringData, 'monitoring_client');
+  processMonitoringData(sessionId, hostId, monitoringData, 'ssh_collector');
 }
 
 /**
