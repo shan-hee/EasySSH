@@ -119,14 +119,15 @@ watch(() => props.visible, (newVisible) => {
 @import '@/assets/styles/themes/monitoring-theme.css';
 
 .responsive-monitoring-panel {
-  background: var(--monitor-bg-primary);
-  border: 1px solid var(--monitor-border);
-  border-radius: var(--monitor-radius-lg);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
+  /* 移除所有装饰样式，保持简洁 */
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
   transition: all var(--monitor-transition-normal);
-  overflow: hidden;
-  box-shadow: var(--monitor-shadow-lg);
+  overflow: visible; /* 允许悬浮提示显示 */
+  box-shadow: none;
   height: 100%;
   display: flex;
   flex-direction: column;
@@ -151,14 +152,39 @@ watch(() => props.visible, (newVisible) => {
 .monitoring-sections {
   display: flex;
   flex-direction: column;
-  gap: var(--monitor-spacing-md);
-  padding: var(--monitor-spacing-md);
-  min-height: min-content;
-  overflow-y: auto;
+  gap: 0; /* 移除组件间距 */
+  padding: 0; /* 移除内边距 */
+  height: 100%; /* 占满整个高度 */
+  overflow: visible; /* 允许悬浮提示显示 */
 }
 
 .monitoring-section {
-  min-height: var(--monitor-component-height-md);
+  flex: 1; /* 自动分配空间 */
+  min-height: 0; /* 允许缩小 */
+  display: flex;
+  flex-direction: column;
+  overflow: visible; /* 允许悬浮提示显示 */
+}
+
+/* 特殊组件高度调整 */
+.monitoring-section:nth-child(1) { /* 系统信息 */
+  flex: 1.3; /* 增加高度，系统信息内容较多 */
+}
+
+.monitoring-section:nth-child(2) { /* CPU */
+  flex: 1.2; /* 稍微大一点，需要显示图表 */
+}
+
+.monitoring-section:nth-child(3) { /* 内存 */
+  flex: 1; /* 标准大小，可以缩小 */
+}
+
+.monitoring-section:nth-child(4) { /* 网络 */
+  flex: 1.2; /* 稍微大一点，需要显示图表 */
+}
+
+.monitoring-section:nth-child(5) { /* 硬盘 */
+  flex: 0.8; /* 稍微小一点，只有简单图表 */
 }
 
 /* 过渡动画 */
@@ -182,33 +208,60 @@ watch(() => props.visible, (newVisible) => {
 /* 响应式设计 */
 @media (max-width: 1024px) {
   .monitoring-sections {
-    gap: var(--monitor-spacing-md);
+    gap: 0;
+  }
+
+  /* 调整组件比例 */
+  .monitoring-section:nth-child(1) { /* 系统信息 */
+    flex: 1.2; /* 保持足够高度 */
+  }
+
+  .monitoring-section:nth-child(3) { /* 内存 */
+    flex: 1.1; /* 增加内存组件空间，避免圆环被截断 */
   }
 }
 
 @media (max-width: 768px) {
   .responsive-monitoring-panel {
-    border-radius: var(--monitor-radius-md);
+    border-radius: 0; /* 移除圆角 */
   }
 
   .monitoring-sections {
-    gap: var(--monitor-spacing-md);
-    padding: var(--monitor-spacing-md);
+    gap: 0; /* 移除间距 */
+    padding: 0; /* 移除内边距 */
   }
 
-  .monitoring-section {
-    min-height: var(--monitor-component-height-sm);
+  /* 移动端进一步调整比例 */
+  .monitoring-section:nth-child(1) { /* 系统信息 */
+    flex: 1.1; /* 保持足够高度，避免重叠 */
+  }
+
+  .monitoring-section:nth-child(3) { /* 内存 */
+    flex: 1.0; /* 保持足够空间显示圆环 */
+  }
+
+  .monitoring-section:nth-child(5) { /* 硬盘 */
+    flex: 0.7; /* 更小 */
   }
 }
 
 @media (max-width: 480px) {
   .monitoring-sections {
-    gap: var(--monitor-spacing-sm);
-    padding: var(--monitor-spacing-sm);
+    gap: 0; /* 移除间距 */
+    padding: 0; /* 移除内边距 */
   }
 
-  .monitoring-section {
-    min-height: var(--monitor-component-height-xs);
+  /* 小屏幕进一步压缩 */
+  .monitoring-section:nth-child(1) { /* 系统信息 */
+    flex: 1.0; /* 保持基本高度，避免重叠 */
+  }
+
+  .monitoring-section:nth-child(3) { /* 内存 */
+    flex: 0.9; /* 保持基本空间显示圆环 */
+  }
+
+  .monitoring-section:nth-child(5) { /* 硬盘 */
+    flex: 0.6; /* 最小 */
   }
 }
 
@@ -216,11 +269,11 @@ watch(() => props.visible, (newVisible) => {
   .panel-header {
     padding: 6px 12px;
   }
-  
+
   .monitoring-sections {
-    padding: 8px;
+    padding: 0; /* 移除内边距 */
   }
-  
+
   .panel-content {
     height: calc(100% - 40px);
   }

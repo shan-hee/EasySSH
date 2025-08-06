@@ -291,14 +291,21 @@ onUnmounted(() => {
 .memory-chart-layout {
   display: flex;
   align-items: center;
-  gap: var(--monitor-spacing-lg);
+  gap: var(--monitor-spacing-md);
   height: 100%;
+  min-height: 0; /* 允许缩小 */
+  padding: 8px; /* 添加内边距，为悬浮提示留空间 */
+  overflow: visible; /* 确保悬浮提示可以显示 */
 }
 
 .chart-section {
   flex-shrink: 0;
-  width: 120px;
-  height: 120px;
+  width: 120px; /* 恢复合适的图表尺寸 */
+  height: 120px; /* 恢复合适的图表尺寸 */
+  min-width: 100px; /* 调整最小尺寸 */
+  min-height: 100px; /* 调整最小尺寸 */
+  position: relative; /* 为悬浮提示定位 */
+  overflow: visible; /* 确保悬浮提示可以显示 */
 }
 
 .memory-nested-chart {
@@ -310,13 +317,16 @@ onUnmounted(() => {
   flex: 1;
   display: flex;
   flex-direction: column;
-  gap: var(--monitor-spacing-md);
+  gap: var(--monitor-spacing-sm); /* 减小间距 */
+  min-height: 0; /* 允许缩小 */
+  overflow: hidden; /* 防止溢出 */
 }
 
 .memory-info-item {
   display: flex;
   align-items: center;
-  gap: var(--monitor-spacing-sm);
+  gap: var(--monitor-spacing-xs); /* 减小间距 */
+  margin-bottom: var(--monitor-spacing-xs); /* 减小底部间距 */
 }
 
 .info-indicator {
@@ -336,26 +346,30 @@ onUnmounted(() => {
 
 .info-content {
   flex: 1;
+  min-height: 0; /* 允许缩小 */
 }
 
 .info-label {
-  font-size: 11px;
+  font-size: 10px; /* 缩小字体 */
   color: var(--monitor-text-secondary);
-  margin-bottom: 2px;
+  margin-bottom: 1px; /* 减小间距 */
+  line-height: 1.2; /* 紧凑行高 */
 }
 
 .info-value {
-  font-size: 16px;
+  font-size: 14px; /* 缩小字体 */
   font-weight: 700;
   color: var(--monitor-text-primary);
   font-family: 'JetBrains Mono', 'Courier New', monospace;
   margin-bottom: 1px;
+  line-height: 1.2; /* 紧凑行高 */
 }
 
 .info-detail {
-  font-size: 10px;
+  font-size: 9px; /* 缩小字体 */
   color: var(--monitor-text-secondary);
   font-family: 'JetBrains Mono', 'Courier New', monospace;
+  line-height: 1.2; /* 紧凑行高 */
 }
 
 /* 响应式适配 */
@@ -363,11 +377,14 @@ onUnmounted(() => {
   .memory-chart-layout {
     flex-direction: column;
     gap: var(--monitor-spacing-md);
+    padding: 6px; /* 减小内边距但保留空间 */
   }
 
   .chart-section {
-    width: 100px;
-    height: 100px;
+    width: 110px; /* 稍微增大以避免截断 */
+    height: 110px;
+    min-width: 90px;
+    min-height: 90px;
   }
 
   .info-value {
@@ -382,8 +399,10 @@ onUnmounted(() => {
 
 @media (max-width: 480px) {
   .chart-section {
-    width: 80px;
-    height: 80px;
+    width: 90px; /* 增大以避免截断 */
+    height: 90px;
+    min-width: 80px;
+    min-height: 80px;
   }
 
   .info-value {
@@ -397,6 +416,7 @@ onUnmounted(() => {
 
   .memory-chart-layout {
     gap: var(--monitor-spacing-sm);
+    padding: 4px; /* 保持最小内边距 */
   }
 }
 </style>

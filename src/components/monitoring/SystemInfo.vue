@@ -138,12 +138,13 @@ const formatDateTime = (timestamp) => {
 
 <style scoped>
 .system-info-section {
-  background: var(--monitoring-panel-bg, rgba(255, 255, 255, 0.05));
-  border: 1px solid var(--monitoring-panel-border, rgba(255, 255, 255, 0.1));
-  border-radius: 8px;
+  /* 移除装饰样式，保持简洁 */
+  background: transparent;
+  border: none;
+  border-radius: 0;
   padding: 12px;
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
   transition: all 0.3s ease;
   display: flex;
   flex-direction: column;
@@ -157,7 +158,7 @@ const formatDateTime = (timestamp) => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 12px;
+  margin-bottom: 8px; /* 减小底部间距 */
   flex-shrink: 0;
 }
 
@@ -186,35 +187,31 @@ const formatDateTime = (timestamp) => {
   display: flex;
   justify-content: flex-start;
   align-items: flex-start;
-  /* padding: 6px 8px; */
-  /* background: var(--monitoring-item-bg, rgba(255, 255, 255, 0.03)); */
-  border-radius: 4px;
-  /* border: 1px solid var(--monitoring-item-border, rgba(255, 255, 255, 0.05)); */
+  border-radius: 0; /* 移除圆角 */
   flex-shrink: 0;
-  min-height: 24px;
-  /* gap: 8px; */
+  min-height: 20px; /* 减小最小高度 */
+  margin-bottom: 2px; /* 添加小间距 */
+  gap: 8px; /* 添加标签和值之间的间距 */
 }
 
-
-
 .info-label {
-  font-size: 12px;
+  font-size: 11px; /* 缩小字体 */
   color: var(--monitoring-text-secondary, #b0b0b0);
   font-weight: 500;
   min-width: 60px;
   flex-shrink: 0;
-  line-height: 1.4;
-  padding-top: 1px;
+  line-height: 1.3; /* 紧凑行高 */
+  padding-top: 0; /* 移除顶部内边距 */
 }
 
 .info-value {
-  font-size: 12px;
+  font-size: 11px; /* 缩小字体 */
   color: var(--monitoring-text-primary, #e5e5e5);
   text-align: left;
   flex: 1;
   word-wrap: break-word;
   word-break: break-all;
-  line-height: 1.4;
+  line-height: 1.3; /* 紧凑行高 */
 }
 
 /* 响应式设计 */

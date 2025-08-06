@@ -145,9 +145,10 @@
 
 /* ===== 通用监控组件样式类 ===== */
 .monitor-section {
-  background: var(--monitor-bg-primary);
-  border: 1px solid var(--monitor-border);
-  border-radius: var(--monitor-radius-lg);
+  /* 移除装饰样式，保持简洁 */
+  background: transparent;
+  border: none;
+  border-radius: 0;
   padding: var(--monitor-spacing-md);
   transition: all var(--monitor-transition-fast);
   display: flex;
@@ -159,8 +160,9 @@
 }
 
 .monitor-section:hover {
-  border-color: var(--monitor-border-hover);
-  box-shadow: var(--monitor-shadow-md);
+  /* 移除悬浮效果 */
+  border-color: transparent;
+  box-shadow: none;
 }
 
 .monitor-header {
@@ -190,8 +192,9 @@
 
 .monitor-chart-container {
   position: relative;
-  height: var(--monitor-chart-height-md);
-  flex-shrink: 0;
+  flex: 1; /* 占满可用空间 */
+  min-height: 0; /* 允许缩小 */
+  overflow: hidden;
 }
 
 .monitor-no-data {
@@ -215,8 +218,8 @@
   align-items: center;
   gap: var(--monitor-spacing-xs);
   padding: var(--monitor-spacing-xs) var(--monitor-spacing-sm);
-  background: var(--monitor-bg-secondary);
-  border-radius: var(--monitor-radius-sm);
+  background: transparent; /* 移除背景 */
+  border-radius: 0; /* 移除圆角 */
   font-size: 12px;
   font-weight: 500;
 }
@@ -226,15 +229,11 @@
   .monitor-section {
     padding: var(--monitor-spacing-sm);
   }
-  
-  .monitor-chart-container {
-    min-height: var(--monitor-chart-height-sm);
-  }
-  
+
   .monitor-title {
     font-size: 13px;
   }
-  
+
   .monitor-info {
     font-size: 11px;
   }
@@ -244,17 +243,13 @@
   .monitor-section {
     padding: var(--monitor-spacing-xs);
   }
-  
-  .monitor-chart-container {
-    min-height: var(--monitor-chart-height-xs);
-  }
-  
+
   .monitor-header {
     flex-direction: column;
     align-items: flex-start;
     gap: var(--monitor-spacing-xs);
   }
-  
+
   .monitor-title {
     font-size: 12px;
   }
