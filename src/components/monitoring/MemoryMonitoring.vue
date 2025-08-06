@@ -48,7 +48,7 @@
 import { ref, onMounted, onUnmounted, watch, computed, nextTick, markRaw } from 'vue'
 import { Chart, registerables } from 'chart.js'
 import { formatBytes, formatPercentage } from '@/utils/productionFormatters'
-import { getStatusColors } from '@/utils/chartConfig'
+import { getCSSVar } from '@/utils/chartConfig'
 import MonitoringIcon from './MonitoringIcon.vue'
 
 // 注册Chart.js组件
@@ -121,29 +121,36 @@ const hasData = computed(() => {
 
 // 创建双圆环嵌套图表配置
 const createNestedDoughnutConfig = () => {
-  const memoryColors = getStatusColors(memoryUsage.value)
-  const swapColors = getStatusColors(swapUsage.value)
+  // 内存监控使用固定颜色，不根据使用率变化
+  const memoryColors = {
+    primary: getCSSVar('--monitor-memory-primary'),
+    background: 'rgba(255, 255, 255, 0.1)'
+  }
+  const swapColors = {
+    primary: getCSSVar('--monitor-memory-swap'),
+    background: 'rgba(255, 255, 255, 0.1)'
+  }
 
   return {
     type: 'doughnut',
     data: {
       datasets: [
-        // 外圈 - 内存
+        // dataset[0] 实际渲染为外圈 - 物理内存
         {
           data: [memoryUsage.value, 100 - memoryUsage.value],
           backgroundColor: [memoryColors.primary, memoryColors.background],
           borderWidth: 0,
-          cutout: '50%',  // 调整为50%，为内圈留出空间
+          cutout: '50%',  // 外圈的内径
           radius: '100%', // 外圈占满整个区域
-          label: '内存'
+          label: '物理内存'
         },
-        // 内圈 - 交换分区
+        // dataset[1] 实际渲染为内圈 - 交换分区
         {
           data: hasSwap.value ? [swapUsage.value, 100 - swapUsage.value] : [0, 100],
           backgroundColor: hasSwap.value ? [swapColors.primary, swapColors.background] : ['transparent', 'transparent'],
           borderWidth: 0,
           cutout: '50%',  // 内圈的内径
-          radius: '100%',  // 内圈的外径，与外圈的内径相同，消除间隙
+          radius: '100%',  // 内圈的外径，与外圈的内径匹配
           label: '交换分区'
         }
       ]
@@ -208,17 +215,23 @@ const updateCharts = () => {
       const swapUsed = swapUsage.value
       const swapFree = 100 - swapUsed
 
-      // 更新外圈（内存）数据
+      // 更新外圈（物理内存）数据 - dataset[0] - 使用固定颜色
       if (memoryChartInstance.value.data.datasets[0]) {
-        const memoryColors = getStatusColors(memUsed)
+        const memoryColors = {
+          primary: getCSSVar('--monitor-memory-primary'),
+          background: 'rgba(255, 255, 255, 0.1)'
+        }
         memoryChartInstance.value.data.datasets[0].data = [memUsed, memFree]
         memoryChartInstance.value.data.datasets[0].backgroundColor = [memoryColors.primary, memoryColors.background]
       }
 
-      // 更新内圈（交换分区）数据
+      // 更新内圈（交换分区）数据 - dataset[1] - 使用固定颜色
       if (memoryChartInstance.value.data.datasets[1]) {
         if (hasSwap.value) {
-          const swapColors = getStatusColors(swapUsed)
+          const swapColors = {
+            primary: getCSSVar('--monitor-memory-swap'),
+            background: 'rgba(255, 255, 255, 0.1)'
+          }
           memoryChartInstance.value.data.datasets[1].data = [swapUsed, swapFree]
           memoryChartInstance.value.data.datasets[1].backgroundColor = [swapColors.primary, swapColors.background]
         } else {
@@ -341,7 +354,7 @@ onUnmounted(() => {
 }
 
 .swap-indicator {
-  background-color: var(--monitor-disk-primary);
+  background-color: var(--monitor-memory-swap);
 }
 
 .info-content {

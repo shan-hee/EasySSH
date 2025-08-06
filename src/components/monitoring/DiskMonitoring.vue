@@ -31,7 +31,7 @@
 import { ref, computed, watch, onMounted, onUnmounted, nextTick, markRaw } from 'vue'
 import { Chart, registerables } from 'chart.js'
 import { formatBytes, formatPercentage } from '@/utils/productionFormatters'
-import { getDiskChartConfig, getStatusColors } from '@/utils/chartConfig'
+import { getDiskChartConfig, getMonitoringColors } from '@/utils/chartConfig'
 import MonitoringIcon from './MonitoringIcon.vue'
 
 // 注册Chart.js组件
@@ -99,11 +99,11 @@ const initChart = async () => {
   // 设置初始数据
   const used = diskUsage.value
   const free = 100 - used
-  const statusColors = getStatusColors(used)
+  const diskColors = getMonitoringColors(used, 'disk')
 
   config.data.datasets[0].data = [used]
   config.data.datasets[1].data = [free]
-  config.data.datasets[0].backgroundColor = statusColors.primary
+  config.data.datasets[0].backgroundColor = diskColors.primary
 
   // 设置tooltip回调函数
   config.options.plugins.tooltip.callbacks.afterBody = function() {
@@ -139,13 +139,13 @@ const updateChart = () => {
       return
     }
 
-    // 使用状态颜色工具函数
-    const statusColors = getStatusColors(used)
+    // 使用硬盘专属颜色工具函数
+    const diskColors = getMonitoringColors(used, 'disk')
 
     // 更新堆叠柱形图数据
     chartInstance.value.data.datasets[0].data = [used]  // 已使用
     chartInstance.value.data.datasets[1].data = [free]  // 可用空间
-    chartInstance.value.data.datasets[0].backgroundColor = statusColors.primary
+    chartInstance.value.data.datasets[0].backgroundColor = diskColors.primary
 
     // 更新tooltip回调函数，显示可用空间信息
     if (chartInstance.value.options.plugins.tooltip.callbacks) {

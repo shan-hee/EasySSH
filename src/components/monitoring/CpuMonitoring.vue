@@ -27,7 +27,7 @@
 import { ref, onMounted, onUnmounted, computed, nextTick, markRaw, watch } from 'vue'
 import { Chart, registerables } from 'chart.js'
 import { formatPercentage } from '@/utils/productionFormatters'
-import { getCpuChartConfig, getStatusColors } from '@/utils/chartConfig'
+import { getCpuChartConfig, getMonitoringColors } from '@/utils/chartConfig'
 import MonitoringIcon from './MonitoringIcon.vue'
 import monitoringConfigManager from '@/services/monitoringConfigManager'
 
@@ -128,22 +128,22 @@ const initChart = async () => {
     config.data.labels = labels
     config.data.datasets[0].data = data
 
-    // 根据当前使用率设置颜色
-    const statusColors = getStatusColors(currentCpuUsage)
-    config.data.datasets[0].borderColor = statusColors.primary
-    config.data.datasets[0].pointBackgroundColor = statusColors.primary
+    // 根据当前使用率设置CPU专属颜色
+    const cpuColors = getMonitoringColors(currentCpuUsage, 'cpu')
+    config.data.datasets[0].borderColor = cpuColors.primary
+    config.data.datasets[0].pointBackgroundColor = cpuColors.primary
     config.data.datasets[0].pointBorderColor = '#ffffff'
     config.data.datasets[0].pointBorderWidth = 1
     config.data.datasets[0].pointRadius = 0 // 默认不显示点
     config.data.datasets[0].pointHoverRadius = 3 // 悬浮时显示小点
-    config.data.datasets[0].pointHoverBackgroundColor = statusColors.primary
+    config.data.datasets[0].pointHoverBackgroundColor = cpuColors.primary
     config.data.datasets[0].pointHoverBorderColor = '#ffffff'
     config.data.datasets[0].pointHoverBorderWidth = 1
 
     // 创建渐变背景
     const gradient = ctx.createLinearGradient(0, 0, 0, 200)
-    gradient.addColorStop(0, statusColors.primary + 'CC')
-    gradient.addColorStop(1, statusColors.primary + '33')
+    gradient.addColorStop(0, cpuColors.primary + 'CC')
+    gradient.addColorStop(1, cpuColors.primary + '33')
     config.data.datasets[0].backgroundColor = gradient
 
     // 使用 markRaw 防止 Chart.js 实例被 Vue 响应式系统追踪
@@ -201,17 +201,17 @@ const updateChartData = () => {
     chartInstance.value.data.labels = labels
     chartInstance.value.data.datasets[0].data = data
 
-    // 根据当前使用率更新颜色
-    const statusColors = getStatusColors(currentCpuUsage)
-    chartInstance.value.data.datasets[0].borderColor = statusColors.primary
-    chartInstance.value.data.datasets[0].pointBackgroundColor = statusColors.primary
-    chartInstance.value.data.datasets[0].pointHoverBackgroundColor = statusColors.primary
+    // 根据当前使用率更新CPU专属颜色
+    const cpuColors = getMonitoringColors(currentCpuUsage, 'cpu')
+    chartInstance.value.data.datasets[0].borderColor = cpuColors.primary
+    chartInstance.value.data.datasets[0].pointBackgroundColor = cpuColors.primary
+    chartInstance.value.data.datasets[0].pointHoverBackgroundColor = cpuColors.primary
 
     // 更新渐变背景
     const ctx = cpuChartRef.value.getContext('2d')
     const gradient = ctx.createLinearGradient(0, 0, 0, 200)
-    gradient.addColorStop(0, statusColors.primary + 'CC')
-    gradient.addColorStop(1, statusColors.primary + '33')
+    gradient.addColorStop(0, cpuColors.primary + 'CC')
+    gradient.addColorStop(1, cpuColors.primary + '33')
     chartInstance.value.data.datasets[0].backgroundColor = gradient
 
     // 使用自定义transition模式：既有动画又隐藏数据点

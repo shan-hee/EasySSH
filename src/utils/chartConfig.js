@@ -10,7 +10,7 @@
  * @param {string} varName - CSS变量名
  * @returns {string} CSS变量值
  */
-function getCSSVar(varName) {
+export function getCSSVar(varName) {
   return getComputedStyle(document.documentElement).getPropertyValue(varName).trim()
 }
 
@@ -30,7 +30,7 @@ export function createGradient(ctx, startColor, endColor, height = 200) {
 }
 
 /**
- * 获取状态颜色
+ * 获取状态颜色 - 通用版本（保持向后兼容）
  * @param {number} value - 数值
  * @param {Object} thresholds - 阈值配置
  * @returns {Object} 颜色配置
@@ -39,17 +39,94 @@ export function getStatusColors(value, thresholds = { warning: 80, critical: 95 
   if (value >= thresholds.critical) {
     return {
       primary: getCSSVar('--monitor-error'),
-      light: getCSSVar('--monitor-error') + '20'
+      light: getCSSVar('--monitor-error') + '20',
+      background: 'rgba(255, 255, 255, 0.1)'
     }
   } else if (value >= thresholds.warning) {
     return {
       primary: getCSSVar('--monitor-warning'),
-      light: getCSSVar('--monitor-warning') + '20'
+      light: getCSSVar('--monitor-warning') + '20',
+      background: 'rgba(255, 255, 255, 0.1)'
     }
   }
   return {
     primary: getCSSVar('--monitor-success'),
-    light: getCSSVar('--monitor-success') + '20'
+    light: getCSSVar('--monitor-success') + '20',
+    background: 'rgba(255, 255, 255, 0.1)'
+  }
+}
+
+/**
+ * 获取监控组件专属颜色 - 新版本，支持组件主题
+ * @param {number} value - 数值
+ * @param {string} componentType - 组件类型 ('cpu', 'memory', 'disk', 'network')
+ * @param {Object} thresholds - 阈值配置
+ * @returns {Object} 颜色配置
+ */
+export function getMonitoringColors(value, componentType, thresholds = { warning: 80, critical: 95 }) {
+  // 危险状态：使用红色
+  if (value >= thresholds.critical) {
+    return {
+      primary: getCSSVar('--monitor-error'),
+      light: getCSSVar('--monitor-error') + '20',
+      background: 'rgba(255, 255, 255, 0.1)'
+    }
+  }
+
+  // 警告状态：使用黄色
+  if (value >= thresholds.warning) {
+    return {
+      primary: getCSSVar('--monitor-warning'),
+      light: getCSSVar('--monitor-warning') + '20',
+      background: 'rgba(255, 255, 255, 0.1)'
+    }
+  }
+
+  // 正常状态：使用组件专属颜色
+  switch (componentType) {
+    case 'cpu':
+      return {
+        primary: getCSSVar('--monitor-cpu-primary'),
+        light: getCSSVar('--monitor-cpu-primary') + '20',
+        background: 'rgba(255, 255, 255, 0.1)'
+      }
+    case 'memory':
+      return {
+        primary: getCSSVar('--monitor-memory-primary'),
+        light: getCSSVar('--monitor-memory-primary') + '20',
+        background: 'rgba(255, 255, 255, 0.1)'
+      }
+    case 'memory-swap':
+      return {
+        primary: getCSSVar('--monitor-memory-swap'),
+        light: getCSSVar('--monitor-memory-swap') + '20',
+        background: 'rgba(255, 255, 255, 0.1)'
+      }
+    case 'disk':
+      return {
+        primary: getCSSVar('--monitor-disk-primary'),
+        light: getCSSVar('--monitor-disk-primary') + '20',
+        background: 'rgba(255, 255, 255, 0.1)'
+      }
+    case 'network-upload':
+      return {
+        primary: getCSSVar('--monitor-network-upload'),
+        light: getCSSVar('--monitor-network-upload') + '20',
+        background: 'rgba(255, 255, 255, 0.1)'
+      }
+    case 'network-download':
+      return {
+        primary: getCSSVar('--monitor-network-download'),
+        light: getCSSVar('--monitor-network-download') + '20',
+        background: 'rgba(255, 255, 255, 0.1)'
+      }
+    default:
+      // 默认使用成功色（绿色）
+      return {
+        primary: getCSSVar('--monitor-success'),
+        light: getCSSVar('--monitor-success') + '20',
+        background: 'rgba(255, 255, 255, 0.1)'
+      }
   }
 }
 
