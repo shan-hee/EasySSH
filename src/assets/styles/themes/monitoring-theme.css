@@ -225,33 +225,4 @@
   font-weight: 500;
 }
 
-/* ===== 响应式适配 ===== */
-@media (max-width: 768px) {
-  .monitor-section {
-    padding: var(--monitor-spacing-sm);
-  }
-
-  .monitor-title {
-    font-size: 13px;
-  }
-
-  .monitor-info {
-    font-size: 11px;
-  }
-}
-
-@media (max-width: 480px) {
-  .monitor-section {
-    padding: var(--monitor-spacing-xs);
-  }
-
-  .monitor-header {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: var(--monitor-spacing-xs);
-  }
-
-  .monitor-title {
-    font-size: 12px;
-  }
-}
+/* 移除所有响应式适配，保持桌面端样式 */

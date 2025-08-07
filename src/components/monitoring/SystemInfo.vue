@@ -214,48 +214,9 @@ const formatDateTime = (timestamp) => {
   line-height: 1.3; /* 紧凑行高 */
 }
 
-/* 响应式设计 */
-@media (max-width: 768px) {
-  .info-grid {
-    grid-template-columns: 1fr;
-    gap: 8px;
-  }
-  
-  .info-item {
-    padding: 6px 10px;
-  }
-  
-  .info-label,
-  .info-value {
-    font-size: 12px;
-  }
-  
-  .section-title {
-    font-size: 14px;
-  }
-  
-  .system-icon {
-    font-size: 16px;
-  }
-}
+/* 移除所有响应式样式，保持桌面端布局 */
 
-@media (max-width: 480px) {
-  .system-info-section {
-    padding: 12px;
-    margin-bottom: 12px;
-  }
-  
-  .info-item {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 4px;
-  }
-  
-  .info-value {
-    max-width: 100%;
-    text-align: left;
-  }
-}
+/* 移除480px响应式样式，保持行内布局 */
 
 /* 深色主题适配 */
 @media (prefers-color-scheme: dark) {

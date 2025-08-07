@@ -248,32 +248,5 @@ onUnmounted(() => {
 
 /* 旧的进度条样式已移除，现在使用堆叠柱形图 */
 
-/* 响应式适配 */
-@media (max-width: 768px) {
-  .chart-item.stacked-bar-chart {
-    height: 45px;
-  }
-
-  .usage-text {
-    font-size: 10px;
-  }
-
-  .usage-percentage {
-    font-size: 13px;
-  }
-}
-
-@media (max-width: 480px) {
-  .chart-item.stacked-bar-chart {
-    height: 40px;
-  }
-
-  .usage-text {
-    font-size: 9px;
-  }
-
-  .usage-percentage {
-    font-size: 12px;
-  }
-}
+/* 移除响应式样式，保持桌面端布局 */
 </style>

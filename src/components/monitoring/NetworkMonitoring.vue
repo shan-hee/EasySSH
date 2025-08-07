@@ -260,16 +260,5 @@ onUnmounted(() => {
   height: var(--monitor-chart-height-md);
 }
 
-/* 响应式适配 */
-@media (max-width: 768px) {
-  .speed-indicator {
-    font-size: 10px;
-  }
-}
-
-@media (max-width: 480px) {
-  .network-chart {
-    height: var(--monitor-chart-height-xs);
-  }
-}
+/* 移除响应式样式，保持桌面端布局 */
 </style>

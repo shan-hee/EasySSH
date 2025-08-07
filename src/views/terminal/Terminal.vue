@@ -37,9 +37,9 @@
 
         <!-- 终端主体区域：监控面板 + 终端内容 -->
         <div class="terminal-main-area">
-          <!-- 响应式监控面板 - 左侧 -->
+          <!-- 桌面端监控面板 - 左侧 -->
           <div class="terminal-monitoring-panel"
-               v-if="shouldShowMonitoringPanel(termId)">
+               v-if="shouldShowDesktopMonitoringPanel(termId)">
             <ResponsiveMonitoringPanel
               :visible="isMonitoringPanelVisible(termId)"
               :monitoring-data="getMonitoringData(termId)"
@@ -47,8 +47,8 @@
             />
           </div>
 
-          <!-- 终端内容区域 - 右侧 -->
-          <div class="terminal-content-padding" :class="{ 'with-monitoring-panel': shouldShowMonitoringPanel(termId) }">
+          <!-- 终端内容区域 -->
+          <div class="terminal-content-padding" :class="{ 'with-monitoring-panel': shouldShowDesktopMonitoringPanel(termId) }">
             <div
               :ref="el => setTerminalRef(el, termId)"
               class="terminal-content"
@@ -56,6 +56,15 @@
             ></div>
           </div>
         </div>
+
+        <!-- 移动端监控抽屉 -->
+        <MobileMonitoringDrawer
+          :visible="shouldShowMobileMonitoringDrawer(termId)"
+          :monitoring-data="getMonitoringData(termId)"
+          :terminal-id="termId"
+          @close="hideMobileMonitoringDrawer(termId)"
+          @update:visible="updateMobileDrawerVisibility(termId, $event)"
+        />
       </div>
     </div>
 
@@ -94,6 +103,8 @@ import terminalAutocompleteService from '../../services/terminal-autocomplete'
 import log from '../../services/log'
 // 导入响应式监控面板组件
 import ResponsiveMonitoringPanel from '../../components/monitoring/ResponsiveMonitoringPanel.vue'
+// 导入移动端监控抽屉组件
+import MobileMonitoringDrawer from '../../components/monitoring/MobileMonitoringDrawer.vue'
 
 // 导入会话存储
 import { useSessionStore } from '../../store/session'
@@ -107,7 +118,8 @@ export default {
     RocketLoader,
     TerminalToolbar, // 注册工具栏组件
     TerminalAutocomplete, // 注册自动完成组件
-    ResponsiveMonitoringPanel // 注册响应式监控面板组件
+    ResponsiveMonitoringPanel, // 注册响应式监控面板组件
+    MobileMonitoringDrawer // 注册移动端监控抽屉组件
   },
   props: {
     id: {
@@ -1232,6 +1244,11 @@ export default {
       return window.innerWidth >= 768;
     }
 
+    // 检测是否为移动端
+    const isMobile = () => {
+      return window.innerWidth < 768;
+    }
+
     // 监控面板相关方法
     const shouldShowMonitoringPanel = (termId) => {
       // 如果没有设置过状态，则根据屏幕尺寸设置默认值
@@ -1239,6 +1256,16 @@ export default {
         monitoringPanelStates.value[termId] = isDesktop(); // 桌面端默认显示，移动端默认隐藏
       }
       return monitoringPanelStates.value[termId] || false;
+    }
+
+    // 桌面端监控面板显示逻辑
+    const shouldShowDesktopMonitoringPanel = (termId) => {
+      return isDesktop() && shouldShowMonitoringPanel(termId);
+    }
+
+    // 移动端监控抽屉显示逻辑
+    const shouldShowMobileMonitoringDrawer = (termId) => {
+      return isMobile() && shouldShowMonitoringPanel(termId);
     }
 
     const isMonitoringPanelVisible = (termId) => {
@@ -1254,6 +1281,23 @@ export default {
       // 记录用户手动隐藏的偏好
       localStorage.setItem(`monitoring-panel-user-hidden-${termId}`, 'true');
       log.info(`[终端] 监控面板已隐藏: ${termId}`);
+    }
+
+    // 移动端抽屉特定方法
+    const hideMobileMonitoringDrawer = (termId) => {
+      hideMonitoringPanel(termId);
+    }
+
+    const updateMobileDrawerVisibility = (termId, visible) => {
+      monitoringPanelStates.value[termId] = visible;
+      if (!visible) {
+        // 记录用户手动隐藏的偏好
+        localStorage.setItem(`monitoring-panel-user-hidden-${termId}`, 'true');
+      } else {
+        // 用户手动显示，清除隐藏偏好
+        localStorage.removeItem(`monitoring-panel-user-hidden-${termId}`);
+      }
+      log.info(`[终端] 移动端监控抽屉${visible ? '显示' : '隐藏'}: ${termId}`);
     }
 
 
@@ -1298,11 +1342,11 @@ export default {
 
     // 处理监控面板响应式状态变化
     const handleMonitoringPanelResize = () => {
-      // 当从移动端切换到桌面端时，自动显示监控面板（如果用户没有手动设置过）
       const currentIsDesktop = isDesktop();
+      const currentIsMobile = isMobile();
 
       Object.keys(terminalStore.sessions).forEach(termId => {
-        // 只有在桌面端且面板当前隐藏时才自动显示
+        // 桌面端逻辑：当从移动端切换到桌面端时，自动显示监控面板（如果用户没有手动设置过）
         if (currentIsDesktop && !monitoringPanelStates.value[termId]) {
           // 检查用户是否手动隐藏过面板（通过localStorage）
           const userPreference = localStorage.getItem(`monitoring-panel-user-hidden-${termId}`);
@@ -1310,6 +1354,12 @@ export default {
             monitoringPanelStates.value[termId] = true;
             log.debug(`[终端] 窗口切换到桌面端，自动显示监控面板: ${termId}`);
           }
+        }
+
+        // 移动端逻辑：当从桌面端切换到移动端时，如果面板是显示的，保持状态但切换为抽屉模式
+        if (currentIsMobile && monitoringPanelStates.value[termId]) {
+          log.debug(`[终端] 窗口切换到移动端，监控面板切换为抽屉模式: ${termId}`);
+          // 状态保持不变，只是显示方式从侧边面板切换为抽屉
         }
       });
     }
@@ -1973,9 +2023,13 @@ export default {
       toggleMonitoringPanel,
       // 监控面板相关方法
       shouldShowMonitoringPanel,
+      shouldShowDesktopMonitoringPanel,
+      shouldShowMobileMonitoringDrawer,
       isMonitoringPanelVisible,
       getMonitoringData,
       hideMonitoringPanel,
+      hideMobileMonitoringDrawer,
+      updateMobileDrawerVisibility,
       // 每个终端独立的火箭动画相关
       shouldShowTerminalConnectingAnimation,
       getTerminalRocketPhase,
@@ -2137,37 +2191,36 @@ export default {
 /* 响应式设计 */
 @media (max-width: 768px) {
   .terminal-main-area {
-    flex-direction: column; /* 移动端改为垂直布局 */
+    flex-direction: row; /* 移动端保持水平布局，因为不再显示侧边监控面板 */
   }
 
   .terminal-monitoring-panel {
-    width: 100%; /* 移动端占满宽度 */
-    max-width: none;
-    height: 40vh; /* 移动端固定高度 */
-    border-right: none;
-    border-bottom: 1px solid var(--monitoring-panel-border, rgba(255, 255, 255, 0.1));
+    /* 移动端隐藏桌面端监控面板，使用抽屉代替 */
+    display: none;
   }
 
-
-
   .terminal-content-padding {
-    height: auto; /* 移动端自动高度 */
+    width: 100%; /* 移动端占满全宽 */
+    height: 100%; /* 移动端占满全高 */
     flex: 1;
   }
 
   .terminal-content-padding.with-monitoring-panel {
-    width: 100%; /* 移动端占满宽度 */
-    height: calc(100% - 40vh); /* 减去监控面板高度 */
+    /* 移动端即使有监控面板也占满全宽，因为使用抽屉模式 */
+    width: 100%;
+    height: 100%;
   }
 }
 
 @media (max-width: 480px) {
   .terminal-monitoring-panel {
-    height: 35vh; /* 小屏幕减少监控面板高度 */
+    /* 小屏幕也隐藏桌面端监控面板 */
+    display: none;
   }
 
   .terminal-content-padding.with-monitoring-panel {
-    height: calc(100% - 35vh);
+    /* 小屏幕占满全高 */
+    height: 100%;
   }
 }
 

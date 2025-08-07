@@ -390,16 +390,5 @@ onUnmounted(() => {
 
 /* 旧样式已移除，使用统一的监控主题样式 */
 
-/* 响应式适配 */
-@media (max-width: 768px) {
-  .cpu-chart {
-    height: var(--monitor-chart-height-sm);
-  }
-}
-
-@media (max-width: 480px) {
-  .cpu-chart {
-    height: var(--monitor-chart-height-xs);
-  }
-}
+/* 移除响应式样式，保持桌面端布局 */
 </style>

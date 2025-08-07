@@ -13,6 +13,7 @@
 
 // 导入所有监控组件
 import ResponsiveMonitoringPanel from './ResponsiveMonitoringPanel.vue'
+import MobileMonitoringDrawer from './MobileMonitoringDrawer.vue'
 import SystemInfo from './SystemInfo.vue'
 import CpuMonitoring from './CpuMonitoring.vue'
 import MemoryMonitoring from './MemoryMonitoring.vue'
@@ -26,6 +27,7 @@ export default ResponsiveMonitoringPanel
 // 命名导出所有组件
 export {
   ResponsiveMonitoringPanel,
+  MobileMonitoringDrawer,
   SystemInfo,
   CpuMonitoring,
   MemoryMonitoring,
@@ -37,6 +39,7 @@ export {
 // 组件安装函数（用于Vue插件）
 export const install = (app) => {
   app.component('ResponsiveMonitoringPanel', ResponsiveMonitoringPanel)
+  app.component('MobileMonitoringDrawer', MobileMonitoringDrawer)
   app.component('SystemInfo', SystemInfo)
   app.component('CpuMonitoring', CpuMonitoring)
   app.component('MemoryMonitoring', MemoryMonitoring)
@@ -56,6 +59,13 @@ export const componentInfo = {
       description: '响应式监控面板主组件，集成所有监控功能',
       props: ['visible', 'monitoringData', 'terminalId', 'showHeader'],
       events: ['close', 'toggle-collapse']
+    },
+    {
+      name: 'MobileMonitoringDrawer',
+      description: '移动端监控抽屉组件，提供侧边滑入的监控面板',
+      props: ['visible', 'monitoringData', 'terminalId'],
+      events: ['close', 'update:visible'],
+      features: ['侧边滑入动画', '触摸手势支持', '遮罩层交互', 'ESC键关闭']
     },
     {
       name: 'SystemInfo',
