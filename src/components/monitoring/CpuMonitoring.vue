@@ -14,11 +14,17 @@
     </div>
 
     <div class="monitor-chart-container">
-      <canvas ref="cpuChartRef" class="cpu-chart"></canvas>
-      <div v-if="!hasData" class="monitor-no-data">
-        <MonitoringIcon name="loading" :size="16" class="loading-icon" />
-        <span>等待CPU数据...</span>
-      </div>
+      <canvas ref="cpuChartRef" class="cpu-chart" v-show="componentState.hasData"></canvas>
+
+      <!-- 统一加载指示器 -->
+      <MonitoringLoader
+        v-if="!componentState.hasData"
+        :state="componentState.state"
+        :error-message="componentState.error"
+        :skeleton-type="'chart'"
+        :loading-text="'加载CPU数据...'"
+        @retry="handleRetry"
+      />
     </div>
   </div>
 </template>
@@ -29,7 +35,9 @@ import { Chart, registerables } from 'chart.js'
 import { formatPercentage } from '@/utils/productionFormatters'
 import { getCpuChartConfig, getMonitoringColors } from '@/utils/chartConfig'
 import MonitoringIcon from './MonitoringIcon.vue'
+import MonitoringLoader from '../common/MonitoringLoader.vue'
 import monitoringConfigManager from '@/services/monitoringConfigManager'
+import monitoringStateManager, { MonitoringComponent } from '@/services/monitoringStateManager'
 
 // 注册Chart.js组件
 Chart.register(...registerables)
@@ -74,8 +82,13 @@ const cpuCores = computed(() => {
   return cpu.cores || 0
 })
 
+// 使用统一状态管理器
+const componentState = computed(() => {
+  return monitoringStateManager.getComponentState(MonitoringComponent.CPU)
+})
+
 const hasData = computed(() => {
-  return currentUsage.value > 0
+  return componentState.value.hasData && currentUsage.value > 0
 })
 
 // 获取使用率状态样式类
@@ -326,6 +339,11 @@ watch(() => currentUsage.value, (newUsage, oldUsage) => {
     }, 100)
   }
 }, { immediate: false })
+
+// 重试处理
+const handleRetry = () => {
+  monitoringStateManager.retry()
+}
 
 // 生命周期
 onMounted(async () => {

@@ -41,11 +41,7 @@
                        :class="{ 'icon-active': monitoringServiceInstalled }" />
         </div>
 
-        <!-- 监控指标显示 -->
-        <ToolbarMonitoring
-          v-if="terminalId"
-          :terminal-id="terminalId"
-        />
+        <!-- 工具栏监控显示已移除，监控数据现在通过专用的监控面板显示 -->
 
 
         
@@ -132,14 +128,13 @@ import { useTerminalStore } from '../../store/terminal'
 import { LATENCY_EVENTS } from '../../services/constants'
 import log from '../../services/log'
 
-import ToolbarMonitoring from '../monitoring/ToolbarMonitoring.vue'
+// ToolbarMonitoring 组件已移除，监控数据现在通过专用的监控面板显示
 
 import ToolbarIcon from '../common/ToolbarIcon.vue'
 
 export default defineComponent({
   name: 'TerminalToolbar',
   components: {
-    ToolbarMonitoring,
     ToolbarIcon
   },
   emits: ['toggle-sftp-panel', 'toggle-monitoring-panel'],
@@ -1213,11 +1208,7 @@ export default defineComponent({
       // 移除新会话事件监听
       window.removeEventListener('terminal:new-session', handleNewSession);
 
-      // 移除监控数据更新事件监听器
-      if (monitoringDataEventHandler) {
-        window.removeEventListener('monitoring-data-received', monitoringDataEventHandler);
-        monitoringDataEventHandler = null;
-      }
+      // 监控数据事件监听器已移除，现在使用统一的监控状态管理器
 
       log.debug(`[${componentInstanceId}] 已移除SSH连接成功事件监听器`);
 
@@ -1225,6 +1216,12 @@ export default defineComponent({
       Object.keys(statusCheckDebounceTimers.value).forEach(id => {
         clearTimeout(statusCheckDebounceTimers.value[id]);
       });
+
+      // 清理会话变化的定时器
+      if (sessionChangeTimeout) {
+        clearTimeout(sessionChangeTimeout);
+        sessionChangeTimeout = null;
+      }
 
       log.debug(`[${componentInstanceId}] TerminalToolbar组件卸载完成`);
     });

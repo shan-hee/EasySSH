@@ -112,6 +112,9 @@ import { useSessionStore } from '../../store/session'
 // 在import部分添加字体加载器导入
 import { waitForFontsLoaded } from '../../utils/fontLoader'
 
+// 导入监控状态管理器
+import monitoringStateManager from '../../services/monitoringStateManager'
+
 export default {
   name: 'Terminal',
   components: {
@@ -327,15 +330,29 @@ export default {
       if (props.id) {
         return props.id
       }
-      
+
       // 其次使用路由参数
       if (route.params.id) {
         return route.params.id
       }
-      
+
       // 最后使用会话存储中的活动会话
       return sessionStore.getActiveSession()
     })
+
+    // 监听活动终端变化，更新状态管理器
+    watch(activeConnectionId, (newTerminalId, oldTerminalId) => {
+      if (newTerminalId && newTerminalId !== oldTerminalId) {
+        // 获取主机信息
+        const session = terminalStore.sessions[newTerminalId]
+        const hostId = session?.host || newTerminalId
+
+        // 设置状态管理器的当前终端
+        monitoringStateManager.setTerminal(newTerminalId, hostId)
+
+        log.debug(`[终端] 状态管理器已切换到终端: ${newTerminalId}`)
+      }
+    }, { immediate: true })
     
     // 检查终端是否为当前活动终端
     const isActiveTerminal = (termId) => {
@@ -360,66 +377,16 @@ export default {
       }
     }
     
-    // 初始化特定ID的终端 - 替换为使用统一初始化流程
+    // 初始化特定ID的终端 - 使用统一初始化流程，避免重复逻辑
     const initTerminal = async (termId, container) => {
       try {
         if (!termId || !container) {
           log.error('初始化终端失败: 缺少ID或容器')
           return false
         }
-        
+
         // 确保字体已经加载完成
         await waitForFontsLoaded()
-        
-        // 获取连接配置信息
-        let connectionConfig = null
-        
-        // 首先从会话存储中查找
-        const sessionData = sessionStore.getSession(termId)
-        if (sessionData) {
-          connectionConfig = sessionData
-          log.debug(`从会话存储获取连接配置: ${termId}`)
-        } else {
-          // 从用户存储或本地连接存储中查找
-          if (userStore.isLoggedIn) {
-            const connection = userStore.connections.find(c => c.id === termId)
-            if (connection) {
-              connectionConfig = connection
-              log.debug(`从用户存储获取连接配置: ${termId}`)
-              
-              // 注册到会话存储
-              sessionStore.registerSession(termId, {
-                ...connection,
-                title: connection.name || `${connection.username}@${connection.host}`
-              })
-            }
-          } else {
-            const connection = localConnectionsStore.getAllConnections.find(c => c.id === termId)
-            if (connection) {
-              connectionConfig = connection
-              log.debug(`从本地连接存储获取连接配置: ${termId}`)
-              
-              // 注册到会话存储
-              sessionStore.registerSession(termId, {
-                ...connection,
-                title: connection.name || `${connection.username}@${connection.host}`
-              })
-            }
-          }
-        }
-        
-        // 如果找不到连接配置，尝试从URL获取
-        if (!connectionConfig && route.params.id) {
-          log.debug(`尝试从URL参数获取连接ID: ${route.params.id}`)
-          // 这里可以添加从URL参数解析连接信息的逻辑
-        }
-        
-        // 如果仍然找不到连接配置，则失败
-        if (!connectionConfig) {
-          log.error(`无法找到连接配置信息: ${termId}`)
-          ElMessage.error('无法找到连接信息')
-          return false
-        }
         
         // 清理错误状态的连接
         if (terminalStore.getTerminalStatus(termId) === 'error') {
@@ -1302,24 +1269,24 @@ export default {
 
 
 
-    // 设置监控数据监听器
+    // 设置监控数据监听器 - 通过状态管理器获取数据，避免重复事件监听
     const setupMonitoringDataListener = () => {
-      // 监听监控数据更新事件
-      const handleMonitoringData = (event) => {
-        const { terminalId, data } = event.detail;
-        if (terminalId && data) {
-          // 更新对应终端的监控数据缓存
-          monitoringDataCache.value[terminalId] = { ...data };
-          log.debug(`[终端] 监控数据已更新: ${terminalId}`);
+      // 监听状态管理器的数据变化，而不是直接监听原始事件
+      const monitoringData = computed(() => monitoringStateManager.getMonitoringData())
+
+      // 监听数据变化并更新缓存
+      watch(monitoringData, (newData) => {
+        const currentTerminalId = activeConnectionId.value
+        if (currentTerminalId && newData && Object.keys(newData).length > 0) {
+          monitoringDataCache.value[currentTerminalId] = { ...newData }
+          // 监控数据更新日志已移除，减少日志噪音
         }
-      };
+      }, { deep: true })
 
-      window.addEventListener('monitoring-data-received', handleMonitoringData);
-
-      // 返回清理函数
+      // 返回清理函数（现在不需要移除事件监听器）
       return () => {
-        window.removeEventListener('monitoring-data-received', handleMonitoringData);
-      };
+        // 不需要清理，因为我们使用的是响应式数据
+      }
     }
 
     // 初始化监控面板默认状态

@@ -8,7 +8,17 @@
       </div>
     </div>
 
-    <div class="info-grid">
+    <!-- 统一加载指示器 -->
+    <MonitoringLoader
+      v-if="!componentState.hasData"
+      :state="componentState.state"
+      :error-message="componentState.error"
+      :skeleton-type="'info'"
+      :loading-text="'加载系统信息...'"
+      @retry="handleRetry"
+    />
+
+    <div class="info-grid" v-show="componentState.hasData">
       <div class="info-item" v-if="systemInfo.os">
         <span class="info-label">系统类型</span>
         <span class="info-value">{{ systemInfo.os }}</span>
@@ -52,6 +62,9 @@
 <script setup>
 import { computed } from 'vue'
 import MonitoringIcon from './MonitoringIcon.vue'
+import MonitoringLoader from '../common/MonitoringLoader.vue'
+import monitoringStateManager, { MonitoringComponent } from '@/services/monitoringStateManager'
+import log from '@/services/log'
 
 // Props
 const props = defineProps({
@@ -61,10 +74,24 @@ const props = defineProps({
   }
 })
 
+// 使用统一状态管理器
+const componentState = computed(() => {
+  return monitoringStateManager.getComponentState(MonitoringComponent.SYSTEM_INFO)
+})
+
+// 重试处理
+const handleRetry = () => {
+  monitoringStateManager.retry()
+}
+
 // 系统信息数据
 const systemInfo = computed(() => {
   const data = props.monitoringData
-  console.log('SystemInfo 监控数据:', data) // 调试日志
+
+  // 只在有实际数据时输出DEBUG级别日志，避免空对象的噪音
+  if (data && Object.keys(data).length > 0) {
+    log.debug('SystemInfo 监控数据:', data)
+  }
 
   return {
     // 操作系统信息 - 从os对象获取

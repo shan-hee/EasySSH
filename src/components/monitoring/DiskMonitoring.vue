@@ -19,10 +19,15 @@
         <canvas ref="diskChartRef" class="disk-chart"></canvas>
       </div>
 
-      <div v-if="!hasData" class="monitor-no-data">
-        <MonitoringIcon name="loading" :size="16" class="loading-icon" />
-        <span>等待硬盘数据...</span>
-      </div>
+      <!-- 统一加载指示器 -->
+      <MonitoringLoader
+        v-if="!componentState.hasData"
+        :state="componentState.state"
+        :error-message="componentState.error"
+        :skeleton-type="'chart'"
+        :loading-text="'加载硬盘数据...'"
+        @retry="handleRetry"
+      />
     </div>
   </div>
 </template>
@@ -33,6 +38,8 @@ import { Chart, registerables } from 'chart.js'
 import { formatBytes, formatPercentage } from '@/utils/productionFormatters'
 import { getDiskChartConfig, getMonitoringColors } from '@/utils/chartConfig'
 import MonitoringIcon from './MonitoringIcon.vue'
+import MonitoringLoader from '../common/MonitoringLoader.vue'
+import monitoringStateManager, { MonitoringComponent } from '@/services/monitoringStateManager'
 
 // 注册Chart.js组件
 Chart.register(...registerables)
@@ -70,9 +77,19 @@ const diskUsage = computed(() => {
   return diskInfo.value.usedPercentage || 0
 })
 
-const hasData = computed(() => {
-  return diskInfo.value.total > 0
+// 使用统一状态管理器
+const componentState = computed(() => {
+  return monitoringStateManager.getComponentState(MonitoringComponent.DISK)
 })
+
+const hasData = computed(() => {
+  return componentState.value.hasData && diskInfo.value.total > 0
+})
+
+// 重试处理
+const handleRetry = () => {
+  monitoringStateManager.retry()
+}
 
 // 获取使用率状态样式类
 const getUsageStatusClass = (usage) => {

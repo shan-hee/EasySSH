@@ -10,33 +10,46 @@
     >
       <!-- 监控内容区域 -->
       <div class="panel-content">
-        <div class="monitoring-sections">
+        <!-- 全局加载状态 -->
+        <div v-if="showGlobalLoader" class="global-loader">
+          <MonitoringLoader
+            :state="globalState.connectionState"
+            :error-message="globalState.errorMessage"
+            :show-progress="true"
+            :progress="loadingProgress"
+            :loading-text="getLoadingText()"
+            @retry="handleGlobalRetry"
+          />
+        </div>
+
+        <!-- 监控组件区域 -->
+        <div v-else class="monitoring-sections">
           <!-- 系统信息 -->
-          <SystemInfo 
+          <SystemInfo
             :monitoring-data="monitoringData"
             class="monitoring-section"
           />
-          
+
           <!-- CPU监控 -->
-          <CpuMonitoring 
+          <CpuMonitoring
             :monitoring-data="monitoringData"
             class="monitoring-section"
           />
-          
+
           <!-- 内存监控 -->
-          <MemoryMonitoring 
+          <MemoryMonitoring
             :monitoring-data="monitoringData"
             class="monitoring-section"
           />
-          
+
           <!-- 网络监控 -->
-          <NetworkMonitoring 
+          <NetworkMonitoring
             :monitoring-data="monitoringData"
             class="monitoring-section"
           />
-          
+
           <!-- 硬盘监控 -->
-          <DiskMonitoring 
+          <DiskMonitoring
             :monitoring-data="monitoringData"
             class="monitoring-section"
           />
@@ -47,12 +60,14 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted, watch } from 'vue'
+import { ref, onMounted, onUnmounted, watch, computed } from 'vue'
 import SystemInfo from './SystemInfo.vue'
 import CpuMonitoring from './CpuMonitoring.vue'
 import MemoryMonitoring from './MemoryMonitoring.vue'
 import NetworkMonitoring from './NetworkMonitoring.vue'
 import DiskMonitoring from './DiskMonitoring.vue'
+import MonitoringLoader from '../common/MonitoringLoader.vue'
+import monitoringStateManager, { LoadingState } from '@/services/monitoringStateManager'
 
 // Props
 const props = defineProps({
@@ -73,6 +88,41 @@ const props = defineProps({
 // 响应式数据
 const isMobile = ref(false)
 
+// 状态管理
+const globalState = computed(() => monitoringStateManager.getGlobalState())
+const loadingProgress = computed(() => monitoringStateManager.getLoadingProgress())
+
+// 是否显示全局加载器
+const showGlobalLoader = computed(() => {
+  const state = globalState.value.connectionState
+  return state === LoadingState.INITIAL ||
+         state === LoadingState.CONNECTING ||
+         state === LoadingState.RECONNECTING ||
+         (state === LoadingState.ERROR && !monitoringStateManager.hasAnyData())
+})
+
+// 获取加载文本
+const getLoadingText = () => {
+  const state = globalState.value.connectionState
+  switch (state) {
+    case LoadingState.INITIAL:
+      return '初始化监控服务...'
+    case LoadingState.CONNECTING:
+      return '连接监控服务...'
+    case LoadingState.RECONNECTING:
+      return '重新连接中...'
+    case LoadingState.ERROR:
+      return '连接失败'
+    default:
+      return '加载监控数据...'
+  }
+}
+
+// 全局重试处理
+const handleGlobalRetry = () => {
+  monitoringStateManager.retry()
+}
+
 // 检测屏幕尺寸
 const checkScreenSize = () => {
   isMobile.value = window.innerWidth < 768
@@ -83,13 +133,16 @@ const checkScreenSize = () => {
 // 窗口大小变化监听器
 let resizeObserver = null
 
+// 移除重复的状态管理器设置，由 Terminal.vue 统一处理
+// 避免多个组件重复调用 setTerminal 导致的重复事件处理
+
 // 生命周期
 onMounted(() => {
   checkScreenSize()
 
   // 监听窗口大小变化
   window.addEventListener('resize', checkScreenSize)
-  
+
   // 使用ResizeObserver监听更精确的尺寸变化
   if (window.ResizeObserver) {
     resizeObserver = new ResizeObserver(() => {
@@ -97,6 +150,8 @@ onMounted(() => {
     })
     resizeObserver.observe(document.body)
   }
+
+  // 移除重复的状态管理器设置，由 Terminal.vue 统一处理
 })
 
 onUnmounted(() => {
@@ -147,6 +202,16 @@ watch(() => props.visible, (newVisible) => {
   overflow-y: auto;
   display: flex;
   flex-direction: column;
+}
+
+/* 全局加载器样式 */
+.global-loader {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 200px;
+  padding: var(--monitor-spacing-xl);
 }
 
 .monitoring-sections {

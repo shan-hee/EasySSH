@@ -36,10 +36,15 @@
         </div>
       </div>
 
-      <div v-if="!hasData" class="monitor-no-data">
-        <MonitoringIcon name="loading" :size="16" class="loading-icon" />
-        <span>等待内存数据...</span>
-      </div>
+      <!-- 统一加载指示器 -->
+      <MonitoringLoader
+        v-if="!componentState.hasData"
+        :state="componentState.state"
+        :error-message="componentState.error"
+        :skeleton-type="'doughnut'"
+        :loading-text="'加载内存数据...'"
+        @retry="handleRetry"
+      />
     </div>
   </div>
 </template>
@@ -50,6 +55,8 @@ import { Chart, registerables } from 'chart.js'
 import { formatBytes, formatPercentage } from '@/utils/productionFormatters'
 import { getCSSVar } from '@/utils/chartConfig'
 import MonitoringIcon from './MonitoringIcon.vue'
+import MonitoringLoader from '../common/MonitoringLoader.vue'
+import monitoringStateManager, { MonitoringComponent } from '@/services/monitoringStateManager'
 
 // 注册Chart.js组件
 Chart.register(...registerables)
@@ -113,9 +120,19 @@ const hasSwap = computed(() => {
   return swapInfo.value.total > 0
 })
 
-const hasData = computed(() => {
-  return memoryInfo.value.total > 0
+// 使用统一状态管理器
+const componentState = computed(() => {
+  return monitoringStateManager.getComponentState(MonitoringComponent.MEMORY)
 })
+
+const hasData = computed(() => {
+  return componentState.value.hasData && memoryInfo.value.total > 0
+})
+
+// 重试处理
+const handleRetry = () => {
+  monitoringStateManager.retry()
+}
 
 
 

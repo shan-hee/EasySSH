@@ -43,6 +43,8 @@ class MonitoringInstance {
     };
     this.reconnectAttempts = 0;
     this.maxReconnectAttempts = 3;
+    this._lastDataHash = null; // 防重复处理的数据哈希
+    this._lastStatusHash = null; // 防重复处理的状态哈希
     this.reconnectDelay = 2000;
   }
 
@@ -239,6 +241,14 @@ class MonitoringInstance {
    */
   _handleMonitoringData(data) {
     if (data && this._isValidMonitoringData(data)) {
+      // 防止重复处理相同的数据（排除时间戳字段）
+      const { timestamp, ...dataWithoutTimestamp } = data;
+      const dataHash = JSON.stringify(dataWithoutTimestamp);
+      if (this._lastDataHash === dataHash) {
+        return;
+      }
+      this._lastDataHash = dataHash;
+
       this.state.monitorData = { ...this.state.monitorData, ...data };
 
       // 更新历史数据（后台持续收集）
@@ -357,6 +367,13 @@ class MonitoringInstance {
 
     // 判断监控数据是否可用（SSH方案中status为'installed'表示数据可用）
     const installed = status === 'installed';
+
+    // 防止重复处理相同的状态
+    const statusKey = `${installed}-${available}-${hostId}`;
+    if (this._lastStatusHash === statusKey) {
+      return;
+    }
+    this._lastStatusHash = statusKey;
 
     // 触发状态变更事件
     this._emitEvent('monitoring-status-change', {
@@ -511,47 +528,8 @@ class MonitoringService {
    * @private
    */
   _initEvents() {
-    // 监听监控数据接收事件，同步到全局状态
-    window.addEventListener('monitoring-data-received', (event) => {
-      const { terminalId, data } = event.detail;
-
-      // 如果是当前活动终端，更新全局状态
-      if (terminalId === this._getActiveTerminalId()) {
-        this.state.monitorData = { ...this.state.monitorData, ...data };
-        this.state.lastActivity = Date.now();
-
-        // 更新统计信息
-        this.state.stats.messagesReceived++;
-      }
-    });
-
-    // 监听连接状态变化
-    window.addEventListener('monitoring-connected', (event) => {
-      const { terminalId, host } = event.detail;
-
-      if (terminalId === this._getActiveTerminalId()) {
-        this.state.connected = true;
-        this.state.connecting = false;
-        this.state.targetHost = host;
-        this.state.error = null;
-      }
-    });
-
-    window.addEventListener('monitoring-disconnected', (event) => {
-      const { terminalId } = event.detail;
-
-      if (terminalId === this._getActiveTerminalId()) {
-        this.state.connected = false;
-        this.state.connecting = false;
-      }
-    });
-
-    // 监听终端切换事件
-    window.addEventListener('terminal:activated', (event) => {
-      if (event.detail && event.detail.terminalId) {
-        this._syncActiveTerminalStatus(event.detail.terminalId);
-      }
-    });
+    // 移除所有全局事件监听器，现在由监控状态管理器统一处理
+    // 这避免了重复的事件处理和日志输出
 
     // 添加页面卸载时的清理逻辑
     this._initPageUnloadCleanup();
@@ -880,8 +858,8 @@ class MonitoringService {
    * @private
    */
   _syncMonitoringStatusToTerminal(terminalId, host, masterInstance) {
-    // 触发数据同步事件
-    window.dispatchEvent(new CustomEvent('monitoring-data-received', {
+    // 触发数据同步事件 - 使用不同的事件名称避免与实时数据重复处理
+    window.dispatchEvent(new CustomEvent('monitoring-data-synced', {
       detail: {
         terminalId: terminalId,
         host: host,

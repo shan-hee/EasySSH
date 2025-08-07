@@ -20,11 +20,17 @@
     </div>
 
     <div class="monitor-chart-container">
-      <canvas ref="networkChartRef" class="network-chart"></canvas>
-      <div v-if="!hasData" class="monitor-no-data">
-        <MonitoringIcon name="loading" :size="16" class="loading-icon" />
-        <span>等待网络数据...</span>
-      </div>
+      <canvas ref="networkChartRef" class="network-chart" v-show="componentState.hasData"></canvas>
+
+      <!-- 统一加载指示器 -->
+      <MonitoringLoader
+        v-if="!componentState.hasData"
+        :state="componentState.state"
+        :error-message="componentState.error"
+        :skeleton-type="'chart'"
+        :loading-text="'加载网络数据...'"
+        @retry="handleRetry"
+      />
     </div>
   </div>
 </template>
@@ -35,6 +41,8 @@ import { Chart, registerables } from 'chart.js'
 import { formatBytes, formatNetworkSpeed } from '@/utils/productionFormatters'
 import { getNetworkChartConfig, limitDataPoints } from '@/utils/chartConfig'
 import MonitoringIcon from './MonitoringIcon.vue'
+import MonitoringLoader from '../common/MonitoringLoader.vue'
+import monitoringStateManager, { MonitoringComponent } from '@/services/monitoringStateManager'
 
 // 注册Chart.js组件
 Chart.register(...registerables)
@@ -78,10 +86,22 @@ const totalTraffic = computed(() => {
   }
 })
 
-const hasData = computed(() => {
-  return currentSpeed.value.upload > 0 || currentSpeed.value.download > 0 ||
-         historyData.value.upload.length > 0 || historyData.value.download.length > 0
+// 使用统一状态管理器
+const componentState = computed(() => {
+  return monitoringStateManager.getComponentState(MonitoringComponent.NETWORK)
 })
+
+const hasData = computed(() => {
+  return componentState.value.hasData && (
+    currentSpeed.value.upload > 0 || currentSpeed.value.download > 0 ||
+    historyData.value.upload.length > 0 || historyData.value.download.length > 0
+  )
+})
+
+// 重试处理
+const handleRetry = () => {
+  monitoringStateManager.retry()
+}
 
 // 网络监控组件已导入格式化函数，无需重复定义
 

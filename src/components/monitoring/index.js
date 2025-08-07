@@ -8,7 +8,7 @@
  * - MemoryMonitoring: 内存监控组件
  * - NetworkMonitoring: 网络监控组件
  * - DiskMonitoring: 硬盘监控组件
- * - ToolbarMonitoring: 工具栏监控组件（现有）
+ * - ToolbarMonitoring: 已移除，监控数据现在通过专用的监控面板显示
  */
 
 // 导入所有监控组件
@@ -19,7 +19,7 @@ import CpuMonitoring from './CpuMonitoring.vue'
 import MemoryMonitoring from './MemoryMonitoring.vue'
 import NetworkMonitoring from './NetworkMonitoring.vue'
 import DiskMonitoring from './DiskMonitoring.vue'
-import ToolbarMonitoring from './ToolbarMonitoring.vue'
+// ToolbarMonitoring 组件已移除，监控数据现在通过专用的监控面板显示
 
 // 默认导出主面板组件
 export default ResponsiveMonitoringPanel
@@ -32,8 +32,7 @@ export {
   CpuMonitoring,
   MemoryMonitoring,
   NetworkMonitoring,
-  DiskMonitoring,
-  ToolbarMonitoring
+  DiskMonitoring
 }
 
 // 组件安装函数（用于Vue插件）
@@ -45,7 +44,7 @@ export const install = (app) => {
   app.component('MemoryMonitoring', MemoryMonitoring)
   app.component('NetworkMonitoring', NetworkMonitoring)
   app.component('DiskMonitoring', DiskMonitoring)
-  app.component('ToolbarMonitoring', ToolbarMonitoring)
+  // ToolbarMonitoring 组件已移除
 }
 
 // 组件信息
@@ -97,11 +96,6 @@ export const componentInfo = {
       props: ['monitoringData'],
       features: ['3D圆柱显示', '使用率可视化', '读写速度', '容量信息']
     },
-    {
-      name: 'ToolbarMonitoring',
-      description: '工具栏监控组件（现有）',
-      props: ['terminalId'],
-      features: ['简化指标显示', '实时数据更新', '状态指示器']
-    }
+    // ToolbarMonitoring 组件已移除，监控数据现在通过专用的监控面板显示
   ]
 }
