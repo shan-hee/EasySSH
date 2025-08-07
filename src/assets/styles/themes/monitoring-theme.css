@@ -149,13 +149,14 @@
   background: transparent;
   border: none;
   border-radius: 0;
-  padding: var(--monitor-spacing-md);
+  padding: 0; /* 移除默认padding，由ResponsiveMonitoringPanel控制 */
   transition: all var(--monitor-transition-fast);
   display: flex;
   flex-direction: column;
   width: 100%;
   flex-shrink: 0;
   height: auto;
+  min-height: 120px; /* 设置合适的最小高度 */
   margin-bottom: 0;
 }
 

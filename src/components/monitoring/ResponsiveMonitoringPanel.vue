@@ -47,7 +47,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
+import { ref, onMounted, onUnmounted, watch } from 'vue'
 import SystemInfo from './SystemInfo.vue'
 import CpuMonitoring from './CpuMonitoring.vue'
 import MemoryMonitoring from './MemoryMonitoring.vue'
@@ -152,40 +152,48 @@ watch(() => props.visible, (newVisible) => {
 .monitoring-sections {
   display: flex;
   flex-direction: column;
-  gap: 0; /* 移除组件间距 */
-  padding: 0; /* 移除内边距 */
-  height: 100%; /* 占满整个高度 */
+  gap: 0; /* 完全移除组件间距 */
+  padding: 0; /* 移除容器内边距 */
+  height: auto; /* 改为自动高度，不强制铺满 */
   overflow: visible; /* 允许悬浮提示显示 */
 }
 
 .monitoring-section {
-  flex: 1; /* 自动分配空间 */
-  min-height: 0; /* 允许缩小 */
+  flex: none; /* 移除自动分配空间，使用内容自然高度 */
+  min-height: 120px; /* 设置最小高度，确保内容可见 */
+  max-height: 180px; /* 默认最大高度 */
   display: flex;
   flex-direction: column;
   overflow: visible; /* 允许悬浮提示显示 */
+  padding: 0 var(--monitor-spacing-md); /* 默认只有左右padding */
 }
 
-/* 特殊组件高度调整 */
-.monitoring-section:nth-child(1) { /* 系统信息 */
-  flex: 1.3; /* 增加高度，系统信息内容较多 */
+/* 特定模块的高度调整 */
+.monitoring-section:has([class*="memory"]) {
+  max-height: 160px; /* 内存模块：160px */
 }
 
-.monitoring-section:nth-child(2) { /* CPU */
-  flex: 1.2; /* 稍微大一点，需要显示图表 */
+.monitoring-section:has([class*="system"]) {
+  max-height: 200px; /* 系统信息模块：200px */
 }
 
-.monitoring-section:nth-child(3) { /* 内存 */
-  flex: 1; /* 标准大小，可以缩小 */
+/* 第一个模块：上padding + 左右padding */
+.monitoring-section:first-child {
+  padding: var(--monitor-spacing-md) var(--monitor-spacing-md) 0 var(--monitor-spacing-md);
 }
 
-.monitoring-section:nth-child(4) { /* 网络 */
-  flex: 1.2; /* 稍微大一点，需要显示图表 */
+/* 最后一个模块：下padding + 左右padding */
+.monitoring-section:last-child {
+  padding: 0 var(--monitor-spacing-md) var(--monitor-spacing-md) var(--monitor-spacing-md);
 }
 
-.monitoring-section:nth-child(5) { /* 硬盘 */
-  flex: 0.8; /* 稍微小一点，只有简单图表 */
+/* 如果只有一个模块，则保留完整padding */
+.monitoring-section:only-child {
+  padding: var(--monitor-spacing-md);
 }
+
+/* 移除特殊组件高度调整，让所有组件使用统一的自然高度 */
+/* 如果需要特殊调整，可以在各组件内部处理 */
 
 /* 过渡动画 */
 .panel-slide-enter-active,
@@ -208,16 +216,38 @@ watch(() => props.visible, (newVisible) => {
 /* 响应式设计 */
 @media (max-width: 1024px) {
   .monitoring-sections {
-    gap: 0;
+    gap: 0; /* 保持无间距 */
+    padding: 0; /* 保持无容器内边距 */
   }
 
-  /* 调整组件比例 */
-  .monitoring-section:nth-child(1) { /* 系统信息 */
-    flex: 1.2; /* 保持足够高度 */
+  .monitoring-section {
+    min-height: 110px; /* 稍微减小最小高度 */
+    max-height: 160px; /* 平板端默认最大高度 */
+    padding: 0 var(--monitor-spacing-sm); /* 减小左右padding */
   }
 
-  .monitoring-section:nth-child(3) { /* 内存 */
-    flex: 1.1; /* 增加内存组件空间，避免圆环被截断 */
+  /* 平板端特定模块的高度调整 */
+  .monitoring-section:has([class*="memory"]) {
+    max-height: 140px; /* 内存模块：140px */
+  }
+
+  .monitoring-section:has([class*="system"]) {
+    max-height: 180px; /* 系统信息模块：180px */
+  }
+
+  /* 第一个模块：上padding + 左右padding */
+  .monitoring-section:first-child {
+    padding: var(--monitor-spacing-sm) var(--monitor-spacing-sm) 0 var(--monitor-spacing-sm);
+  }
+
+  /* 最后一个模块：下padding + 左右padding */
+  .monitoring-section:last-child {
+    padding: 0 var(--monitor-spacing-sm) var(--monitor-spacing-sm) var(--monitor-spacing-sm);
+  }
+
+  /* 如果只有一个模块，则保留完整padding */
+  .monitoring-section:only-child {
+    padding: var(--monitor-spacing-sm);
   }
 }
 
@@ -227,45 +257,77 @@ watch(() => props.visible, (newVisible) => {
   }
 
   .monitoring-sections {
-    gap: 0; /* 移除间距 */
-    padding: 0; /* 移除内边距 */
+    gap: 0; /* 保持无间距 */
+    padding: 0; /* 保持无容器内边距 */
   }
 
-  /* 移动端进一步调整比例 */
-  .monitoring-section:nth-child(1) { /* 系统信息 */
-    flex: 1.1; /* 保持足够高度，避免重叠 */
+  .monitoring-section {
+    min-height: 100px; /* 移动端减小最小高度 */
+    max-height: 140px; /* 移动端默认最大高度 */
+    padding: 0 var(--monitor-spacing-sm); /* 移动端左右padding */
   }
 
-  .monitoring-section:nth-child(3) { /* 内存 */
-    flex: 1.0; /* 保持足够空间显示圆环 */
+  /* 移动端特定模块的高度调整 */
+  .monitoring-section:has([class*="memory"]) {
+    max-height: 120px; /* 内存模块：120px */
   }
 
-  .monitoring-section:nth-child(5) { /* 硬盘 */
-    flex: 0.7; /* 更小 */
+  .monitoring-section:has([class*="system"]) {
+    max-height: 160px; /* 系统信息模块：160px */
+  }
+
+  /* 第一个模块：上padding + 左右padding */
+  .monitoring-section:first-child {
+    padding: var(--monitor-spacing-sm) var(--monitor-spacing-sm) 0 var(--monitor-spacing-sm);
+  }
+
+  /* 最后一个模块：下padding + 左右padding */
+  .monitoring-section:last-child {
+    padding: 0 var(--monitor-spacing-sm) var(--monitor-spacing-sm) var(--monitor-spacing-sm);
+  }
+
+  /* 如果只有一个模块，则保留完整padding */
+  .monitoring-section:only-child {
+    padding: var(--monitor-spacing-sm);
   }
 }
 
 @media (max-width: 480px) {
   .monitoring-sections {
-    gap: 0; /* 移除间距 */
-    padding: 0; /* 移除内边距 */
+    gap: 0; /* 保持无间距 */
+    padding: 0; /* 保持无容器内边距 */
   }
 
-  /* 小屏幕进一步压缩 */
-  .monitoring-section:nth-child(1) { /* 系统信息 */
-    flex: 1.0; /* 保持基本高度，避免重叠 */
+  .monitoring-section {
+    min-height: 90px; /* 小屏幕进一步减小最小高度 */
+    max-height: 120px; /* 小屏幕默认最大高度 */
+    padding: 0 var(--monitor-spacing-xs); /* 小屏幕最小左右padding */
   }
 
-  .monitoring-section:nth-child(3) { /* 内存 */
-    flex: 0.9; /* 保持基本空间显示圆环 */
+  /* 小屏幕特定模块的高度调整 */
+  .monitoring-section:has([class*="memory"]) {
+    max-height: 110px; /* 内存模块：110px */
   }
 
-  .monitoring-section:nth-child(5) { /* 硬盘 */
-    flex: 0.6; /* 最小 */
+  .monitoring-section:has([class*="system"]) {
+    max-height: 140px; /* 系统信息模块：140px */
   }
-}
 
-@media (max-width: 480px) {
+  /* 第一个模块：上padding + 左右padding */
+  .monitoring-section:first-child {
+    padding: var(--monitor-spacing-xs) var(--monitor-spacing-xs) 0 var(--monitor-spacing-xs);
+  }
+
+  /* 最后一个模块：下padding + 左右padding */
+  .monitoring-section:last-child {
+    padding: 0 var(--monitor-spacing-xs) var(--monitor-spacing-xs) var(--monitor-spacing-xs);
+  }
+
+  /* 如果只有一个模块，则保留完整padding */
+  .monitoring-section:only-child {
+    padding: var(--monitor-spacing-xs);
+  }
+
   .panel-header {
     padding: 6px 12px;
   }

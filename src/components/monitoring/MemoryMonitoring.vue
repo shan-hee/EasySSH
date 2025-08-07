@@ -304,35 +304,57 @@ onUnmounted(() => {
 .memory-chart-layout {
   display: flex;
   align-items: center;
-  gap: var(--monitor-spacing-md);
   height: 100%;
   min-height: 0; /* 允许缩小 */
   padding: 8px; /* 添加内边距，为悬浮提示留空间 */
   overflow: visible; /* 确保悬浮提示可以显示 */
+  width: 100%;
+  box-sizing: border-box;
+  /* 中心分割策略：左右两边平分空间 */
+  position: relative;
+}
+
+/* 中心分割线（可选，用于调试布局） */
+.memory-chart-layout::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 10%;
+  bottom: 10%;
+  width: 1px;
+  background: rgba(var(--monitor-border-color-rgb), 0.1);
+  transform: translateX(-50%);
+  pointer-events: none;
+  /* 可以通过注释这个伪元素来隐藏分割线 */
+  display: none; /* 隐藏分割线，布局调试完成 */
 }
 
 .chart-section {
-  flex-shrink: 0;
-  width: 120px; /* 恢复合适的图表尺寸 */
-  height: 120px; /* 恢复合适的图表尺寸 */
-  min-width: 100px; /* 调整最小尺寸 */
-  min-height: 100px; /* 调整最小尺寸 */
+  /* 左半区域：图表向右对齐（靠近中心） */
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end; /* 图表向右对齐，靠近中心分割线 */
+  padding-right: calc(var(--monitor-spacing-lg) / 2); /* 到中心的间距 */
   position: relative; /* 为悬浮提示定位 */
   overflow: visible; /* 确保悬浮提示可以显示 */
 }
-
 .memory-nested-chart {
   width: 100%;
-  height: 100%;
+  height: 100px; /* 固定高度 */
 }
 
 .info-section {
+  /* 右半区域：信息向左对齐（靠近中心） */
   flex: 1;
   display: flex;
   flex-direction: column;
-  gap: var(--monitor-spacing-sm); /* 减小间距 */
+  justify-content: center; /* 垂直居中 */
+  align-items: flex-start; /* 信息向左对齐，靠近中心分割线 */
+  gap: var(--monitor-spacing-sm);
   min-height: 0; /* 允许缩小 */
   overflow: hidden; /* 防止溢出 */
+  padding-left: calc(var(--monitor-spacing-lg) / 2); /* 到中心的间距 */
 }
 
 .memory-info-item {
@@ -388,16 +410,32 @@ onUnmounted(() => {
 /* 响应式适配 */
 @media (max-width: 768px) {
   .memory-chart-layout {
-    flex-direction: column;
+    flex-direction: column; /* 垂直布局 */
+    align-items: center; /* 垂直布局时居中对齐 */
     gap: var(--monitor-spacing-md);
     padding: 6px; /* 减小内边距但保留空间 */
   }
 
+  .memory-chart-layout::before {
+    display: none; /* 垂直布局时隐藏分割线 */
+  }
+
   .chart-section {
-    width: 110px; /* 稍微增大以避免截断 */
-    height: 110px;
-    min-width: 90px;
-    min-height: 90px;
+    justify-content: center; /* 垂直布局时图表居中 */
+    padding-right: 0; /* 移除右边距 */
+  }
+
+  .chart-section > * {
+    width: 100px; /* 统一使用100px */
+    height: 100px;
+    min-width: 100px;
+    min-height: 100px;
+  }
+
+  .info-section {
+    width: 100%; /* 垂直布局时占满可用宽度 */
+    align-items: center; /* 信息项居中 */
+    padding-left: 0; /* 移除左边距 */
   }
 
   .info-value {
@@ -411,11 +449,11 @@ onUnmounted(() => {
 }
 
 @media (max-width: 480px) {
-  .chart-section {
-    width: 90px; /* 增大以避免截断 */
-    height: 90px;
-    min-width: 80px;
-    min-height: 80px;
+  .chart-section > * {
+    width: 100px; /* 统一使用100px */
+    height: 100px;
+    min-width: 100px;
+    min-height: 100px;
   }
 
   .info-value {
@@ -428,8 +466,13 @@ onUnmounted(() => {
   }
 
   .memory-chart-layout {
-    gap: var(--monitor-spacing-sm);
+    gap: var(--monitor-spacing-sm); /* 小屏幕减小间距 */
     padding: 4px; /* 保持最小内边距 */
+    justify-content: center; /* 保持居中 */
+  }
+
+  .info-section {
+    width: 100%; /* 小屏幕占满可用宽度 */
   }
 }
 </style>
