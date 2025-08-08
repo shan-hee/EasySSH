@@ -122,14 +122,25 @@ const initChart = async () => {
   config.data.datasets[1].data = [free]
   config.data.datasets[0].backgroundColor = diskColors.primary
 
-  // 设置tooltip回调函数
-  config.options.plugins.tooltip.callbacks.afterBody = function() {
-    const freePercent = 100 - used
-    // 计算可用空间：总空间 - 已使用空间
-    const totalBytes = diskInfo.value.total || 0
-    const usedBytes = diskInfo.value.used || 0
-    const freeBytes = totalBytes - usedBytes
-    return [`可用: ${freePercent.toFixed(1)}% (${formatBytes(freeBytes)})`]
+  // 设置tooltip回调函数 - 根据悬浮区域显示不同信息
+  config.options.plugins.tooltip.callbacks.label = function(context) {
+    const datasetIndex = context.datasetIndex
+    const value = context.parsed.x
+
+    if (datasetIndex === 0) {
+      // 悬浮在已用区域 - 显示已用信息
+      const totalBytes = diskInfo.value.total || 0
+      const usedBytes = diskInfo.value.used || 0
+      return `已用：${value.toFixed(1)}%(${formatBytes(usedBytes)})`
+    } else if (datasetIndex === 1) {
+      // 悬浮在可用区域 - 显示可用信息
+      const totalBytes = diskInfo.value.total || 0
+      const usedBytes = diskInfo.value.used || 0
+      const freeBytes = totalBytes - usedBytes
+      return `可用：${value.toFixed(1)}%(${formatBytes(freeBytes)})`
+    }
+
+    return null
   }
 
   chartInstance.value = markRaw(new Chart(ctx, config))
@@ -164,15 +175,26 @@ const updateChart = () => {
     chartInstance.value.data.datasets[1].data = [free]  // 可用空间
     chartInstance.value.data.datasets[0].backgroundColor = diskColors.primary
 
-    // 更新tooltip回调函数，显示可用空间信息
+    // 更新tooltip回调函数 - 根据悬浮区域显示不同信息
     if (chartInstance.value.options.plugins.tooltip.callbacks) {
-      chartInstance.value.options.plugins.tooltip.callbacks.afterBody = function() {
-        const freePercent = 100 - used
-        // 计算可用空间：总空间 - 已使用空间
-        const totalBytes = diskInfo.value.total || 0
-        const usedBytes = diskInfo.value.used || 0
-        const freeBytes = totalBytes - usedBytes
-        return [`可用: ${freePercent.toFixed(1)}% (${formatBytes(freeBytes)})`]
+      chartInstance.value.options.plugins.tooltip.callbacks.label = function(context) {
+        const datasetIndex = context.datasetIndex
+        const value = context.parsed.x
+
+        if (datasetIndex === 0) {
+          // 悬浮在已用区域 - 显示已用信息
+          const totalBytes = diskInfo.value.total || 0
+          const usedBytes = diskInfo.value.used || 0
+          return `已用：${value.toFixed(1)}%(${formatBytes(usedBytes)})`
+        } else if (datasetIndex === 1) {
+          // 悬浮在可用区域 - 显示可用信息
+          const totalBytes = diskInfo.value.total || 0
+          const usedBytes = diskInfo.value.used || 0
+          const freeBytes = totalBytes - usedBytes
+          return `可用：${value.toFixed(1)}%(${formatBytes(freeBytes)})`
+        }
+
+        return null
       }
     }
 

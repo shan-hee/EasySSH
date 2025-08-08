@@ -611,8 +611,8 @@ export function getDiskChartConfig() {
       maintainAspectRatio: false,
       indexAxis: 'y', // 水平柱形图
       interaction: {
-        intersect: false,
-        mode: 'index'
+        intersect: true,
+        mode: 'dataset'
       },
       plugins: {
         legend: {
@@ -640,21 +640,33 @@ export function getDiskChartConfig() {
           xAlign: 'center',
           yAlign: 'top',    // 显示在图表上方
           caretPadding: 10,
+          filter: function(tooltipItem) {
+            // 只显示当前鼠标悬浮的数据集，避免显示多个tooltip项
+            return true
+          },
           callbacks: {
             title: function() {
               return '硬盘使用情况'
             },
-            label: function() {
-              // 不显示默认的label，我们在afterBody中自定义显示
+            label: function(context) {
+              // 根据数据集索引判断悬浮的区域
+              const datasetIndex = context.datasetIndex
+              const value = context.parsed.x
+
+              if (datasetIndex === 0) {
+                // 悬浮在已用区域 - 显示已用信息
+                return `已用：${value.toFixed(1)}%`
+              } else if (datasetIndex === 1) {
+                // 悬浮在可用区域 - 显示可用信息
+                return `可用：${value.toFixed(1)}%`
+              }
+
               return null
             },
             afterBody: function(context) {
-              // 计算可用空间百分比
-              const usedPercent = context.find(item => item.dataset.label === '已使用')?.parsed?.x || 0
-              const freePercent = 100 - usedPercent
-
               // 这里会在组件中动态更新，显示实际的空间大小
-              return [`可用: ${freePercent.toFixed(1)}%`]
+              // 返回空数组，因为容量信息会在组件中通过动态更新tooltip来显示
+              return []
             }
           }
         }
