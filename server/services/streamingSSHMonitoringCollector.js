@@ -1,0 +1,393 @@
+/**
+ * 流式SSH监控收集器 - 优化版
+ * 使用单会话长连接，直接读取 /proc 和 /sys，NDJSON流式输出
+ */
+
+const EventEmitter = require('events');
+const path = require('path');
+const fs = require('fs');
+const logger = require('../utils/logger');
+const monitoringConfig = require('../config/monitoring');
+
+class StreamingSSHMonitoringCollector extends EventEmitter {
+  constructor(sshConnection, hostInfo) {
+    super();
+
+    this.sshConnection = sshConnection;
+    this.hostInfo = hostInfo;
+    this.isCollecting = false;
+    this.stream = null;
+    this.hostId = null;
+
+    // 数据缓存和状态
+    this.dataCache = {
+      lastData: null,
+      staticInfo: null,
+      lastStaticUpdate: 0
+    };
+
+    // 性能监控
+    this.metrics = {
+      totalMessages: 0,
+      errorCount: 0,
+      lastMessageTime: 0,
+      averageLatency: 0,
+      startTime: Date.now()
+    };
+
+    // 错误处理
+    this.errorStats = {
+      consecutiveErrors: 0,
+      maxConsecutiveErrors: 5,
+      lastErrorTime: 0
+    };
+
+    // 生成唯一主机标识符
+    this.generateHostId();
+  }
+
+  /**
+   * 生成主机标识符
+   */
+  generateHostId() {
+    if (this.hostInfo.address) {
+      // 使用 hostname@ip 格式，如果有hostname的话
+      this.hostId = this.hostInfo.hostname ? 
+        `${this.hostInfo.hostname}@${this.hostInfo.address}` : 
+        this.hostInfo.address;
+    } else {
+      this.hostId = `unknown_${Date.now()}`;
+    }
+  }
+
+  /**
+   * 开始流式监控数据收集
+   * @param {Function} dataCallback 数据回调函数
+   * @param {number} interval 收集间隔（毫秒）
+   */
+  startCollection(dataCallback, interval = 1000) {
+    if (this.isCollecting) {
+      logger.warn('流式监控数据收集已在进行中', { hostId: this.hostId });
+      return;
+    }
+
+    this.isCollecting = true;
+    this.dataCallback = dataCallback;
+    this.interval = interval;
+
+    logger.info('开始流式SSH监控数据收集', { 
+      hostId: this.hostId,
+      interval: interval + 'ms',
+      host: `${this.hostInfo.username}@${this.hostInfo.address}:${this.hostInfo.port}`
+    });
+
+    this.startStreamingCollection();
+  }
+
+  /**
+   * 启动流式收集
+   */
+  async startStreamingCollection() {
+    try {
+      // 读取监控脚本
+      const scriptPath = path.join(__dirname, '../scripts/streaming-monitor.sh');
+      const scriptExists = fs.existsSync(scriptPath);
+      
+      if (!scriptExists) {
+        throw new Error('流式监控脚本不存在: ' + scriptPath);
+      }
+
+      // 计算间隔（转换为秒）
+      const intervalSeconds = Math.max(1, Math.floor(this.interval / 1000));
+      
+      // 构建执行命令（关闭调试模式）
+      const command = `bash -s ${intervalSeconds} 0 < ${scriptPath}`;
+      
+      logger.debug('执行流式监控命令', { 
+        hostId: this.hostId, 
+        command: command.substring(0, 50) + '...',
+        interval: intervalSeconds
+      });
+
+      // 执行SSH命令
+      this.sshConnection.exec(command, (err, stream) => {
+        if (err) {
+          this.handleError(new Error(`SSH执行失败: ${err.message}`));
+          return;
+        }
+
+        this.stream = stream;
+        this.setupStreamHandlers();
+      });
+
+    } catch (error) {
+      this.handleError(error);
+    }
+  }
+
+  /**
+   * 设置流处理器
+   */
+  setupStreamHandlers() {
+    let buffer = '';
+
+    // 数据接收处理
+    this.stream.on('data', (data) => {
+      try {
+        buffer += data.toString();
+        
+        // 按行处理NDJSON数据
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || ''; // 保留不完整的行
+
+        for (const line of lines) {
+          if (line.trim() && !line.startsWith('#')) {
+            this.processStreamData(line.trim());
+          }
+        }
+      } catch (error) {
+        logger.debug('处理流数据失败', { 
+          hostId: this.hostId, 
+          error: error.message 
+        });
+      }
+    });
+
+    // 错误处理
+    this.stream.stderr.on('data', (data) => {
+      const errorMsg = data.toString().trim();
+      if (errorMsg && !errorMsg.includes('warning')) {
+        // 显示调试信息
+        if (errorMsg.includes('NET DEBUG') || errorMsg.includes('流式监控开始')) {
+          logger.info('监控脚本调试信息', { hostId: this.hostId, debug: errorMsg });
+        } else {
+          logger.debug('SSH流错误输出', {
+            hostId: this.hostId,
+            stderr: errorMsg
+          });
+        }
+      }
+    });
+
+    // 流关闭处理
+    this.stream.on('close', (code, signal) => {
+      logger.info('SSH流已关闭', { 
+        hostId: this.hostId, 
+        code, 
+        signal,
+        isCollecting: this.isCollecting
+      });
+
+      if (this.isCollecting) {
+        // 如果是意外关闭，尝试重连
+        this.handleStreamClose(code);
+      }
+    });
+
+    // 流错误处理
+    this.stream.on('error', (error) => {
+      this.handleError(new Error(`SSH流错误: ${error.message}`));
+    });
+
+    logger.debug('SSH流处理器已设置', { hostId: this.hostId });
+  }
+
+  /**
+   * 处理流数据
+   * @param {string} jsonLine NDJSON行数据
+   */
+  processStreamData(jsonLine) {
+    try {
+      const data = JSON.parse(jsonLine);
+      
+      // 验证数据格式
+      if (!data.timestamp) {
+        logger.debug('无效的监控数据格式', { hostId: this.hostId });
+        return;
+      }
+
+      // 添加主机标识符
+      data.hostId = this.hostId;
+      data.source = 'streaming_ssh';
+      data.collectorVersion = '2.0';
+
+      // 更新性能指标
+      this.updateMetrics(data);
+
+      // 重置错误计数
+      if (this.errorStats.consecutiveErrors > 0) {
+        this.errorStats.consecutiveErrors = 0;
+      }
+
+      // 缓存数据
+      this.dataCache.lastData = data;
+
+      // 调用数据回调
+      if (this.dataCallback) {
+        this.dataCallback(data);
+      }
+
+      // 触发数据事件
+      this.emit('data', data);
+
+    } catch (error) {
+      this.handleError(new Error(`解析监控数据失败: ${error.message}`));
+    }
+  }
+
+  /**
+   * 更新性能指标
+   * @param {Object} data 监控数据
+   */
+  updateMetrics(data) {
+    this.metrics.totalMessages++;
+    this.metrics.lastMessageTime = Date.now();
+
+    // 计算延迟（如果有时间戳）
+    if (data.timestamp) {
+      const latency = Date.now() - data.timestamp;
+      if (this.metrics.averageLatency === 0) {
+        this.metrics.averageLatency = latency;
+      } else {
+        // 指数移动平均
+        this.metrics.averageLatency = this.metrics.averageLatency * 0.9 + latency * 0.1;
+      }
+    }
+
+    // 每100条消息记录一次性能日志
+    if (this.metrics.totalMessages % 100 === 0) {
+      const uptime = Date.now() - this.metrics.startTime;
+      const messagesPerSecond = this.metrics.totalMessages / (uptime / 1000);
+
+      logger.debug('流式监控性能统计', {
+        hostId: this.hostId,
+        totalMessages: this.metrics.totalMessages,
+        messagesPerSecond: messagesPerSecond.toFixed(2),
+        averageLatency: Math.round(this.metrics.averageLatency),
+        errorRate: (this.metrics.errorCount / this.metrics.totalMessages * 100).toFixed(2) + '%',
+        uptime: Math.round(uptime / 1000) + 's'
+      });
+    }
+  }
+
+  /**
+   * 处理流关闭
+   * @param {number} code 退出码
+   */
+  handleStreamClose(code) {
+    if (code !== 0 && this.isCollecting) {
+      this.errorStats.consecutiveErrors++;
+      
+      if (this.errorStats.consecutiveErrors < this.errorStats.maxConsecutiveErrors) {
+        // 尝试重连
+        const retryDelay = Math.min(5000, 1000 * Math.pow(2, this.errorStats.consecutiveErrors));
+        
+        logger.info('SSH流意外关闭，准备重连', {
+          hostId: this.hostId,
+          code,
+          retryDelay,
+          consecutiveErrors: this.errorStats.consecutiveErrors
+        });
+
+        setTimeout(() => {
+          if (this.isCollecting) {
+            this.startStreamingCollection();
+          }
+        }, retryDelay);
+      } else {
+        logger.error('SSH流连续错误过多，停止收集', {
+          hostId: this.hostId,
+          consecutiveErrors: this.errorStats.consecutiveErrors
+        });
+        this.stopCollection();
+      }
+    }
+  }
+
+  /**
+   * 处理错误
+   * @param {Error} error 错误对象
+   */
+  handleError(error) {
+    this.metrics.errorCount++;
+    this.errorStats.consecutiveErrors++;
+    this.errorStats.lastErrorTime = Date.now();
+
+    logger.error('流式监控收集错误', {
+      hostId: this.hostId,
+      error: error.message,
+      consecutiveErrors: this.errorStats.consecutiveErrors
+    });
+
+    // 如果错误过多，停止收集
+    if (this.errorStats.consecutiveErrors >= this.errorStats.maxConsecutiveErrors) {
+      logger.warn('连续错误过多，停止流式监控收集', {
+        hostId: this.hostId,
+        consecutiveErrors: this.errorStats.consecutiveErrors
+      });
+      this.stopCollection();
+    }
+
+    this.emit('error', error);
+  }
+
+  /**
+   * 停止监控数据收集
+   */
+  stopCollection() {
+    if (!this.isCollecting) {
+      logger.debug('流式监控数据收集已停止，跳过重复停止', { hostId: this.hostId });
+      return;
+    }
+
+    this.isCollecting = false;
+
+    // 关闭SSH流
+    if (this.stream) {
+      try {
+        this.stream.end();
+        this.stream = null;
+      } catch (error) {
+        logger.debug('关闭SSH流失败', { 
+          hostId: this.hostId, 
+          error: error.message 
+        });
+      }
+    }
+
+    // 清理引用
+    this.sshConnection = null;
+    this.dataCallback = null;
+
+    // 记录最终统计
+    const uptime = Date.now() - this.metrics.startTime;
+    logger.info('停止流式SSH监控数据收集', { 
+      hostId: this.hostId,
+      totalMessages: this.metrics.totalMessages,
+      errorCount: this.metrics.errorCount,
+      uptime: Math.round(uptime / 1000) + 's'
+    });
+
+    this.emit('stopped');
+  }
+
+  /**
+   * 获取收集器状态
+   * @returns {Object} 状态信息
+   */
+  getStatus() {
+    return {
+      hostId: this.hostId,
+      isCollecting: this.isCollecting,
+      metrics: { ...this.metrics },
+      errorStats: { ...this.errorStats },
+      hasStream: !!this.stream,
+      lastData: this.dataCache.lastData ? {
+        timestamp: this.dataCache.lastData.timestamp,
+        hasData: true
+      } : null
+    };
+  }
+}
+
+module.exports = StreamingSSHMonitoringCollector;

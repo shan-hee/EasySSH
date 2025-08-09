@@ -77,17 +77,17 @@ const memoryChartInstance = ref(null)
 const memoryInfo = computed(() => {
   const memory = props.monitoringData?.memory || {}
 
-  // 兼容不同的数据格式，内存数据通常以MB为单位
+  // 后端已经返回字节数，无需转换
   const total = memory.total || 0
   const used = memory.used || 0
   const free = memory.free || memory.available || 0
   const cached = memory.cached || 0
 
   return {
-    total: total * 1024 * 1024, // 转换为字节
-    used: used * 1024 * 1024,   // 转换为字节
-    free: free * 1024 * 1024,   // 转换为字节
-    cached: cached * 1024 * 1024, // 转换为字节
+    total: total,    // 已经是字节
+    used: used,      // 已经是字节
+    free: free,      // 已经是字节
+    cached: cached,  // 已经是字节
     usedPercentage: memory.usedPercentage || (total > 0 ? (used / total) * 100 : 0)
   }
 })
@@ -95,15 +95,15 @@ const memoryInfo = computed(() => {
 const swapInfo = computed(() => {
   const swap = props.monitoringData?.swap || {}
 
-  // 兼容不同的数据格式，交换分区数据通常以MB为单位
+  // 后端已经返回字节数，无需转换
   const total = swap.total || 0
   const used = swap.used || 0
   const free = swap.free || 0
 
   return {
-    total: total * 1024 * 1024, // 转换为字节
-    used: used * 1024 * 1024,   // 转换为字节
-    free: free * 1024 * 1024,   // 转换为字节
+    total: total,    // 已经是字节
+    used: used,      // 已经是字节
+    free: free,      // 已经是字节
     usedPercentage: swap.usedPercentage || (total > 0 ? (used / total) * 100 : 0)
   }
 })

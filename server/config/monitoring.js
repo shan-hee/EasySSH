@@ -15,9 +15,23 @@ const config = {
     // 命令执行超时（毫秒）
     commandTimeout: 8000,
 
+    // 流式采集配置
+    streaming: {
+      enabled: true,              // 启用流式采集
+      preferStreaming: true,      // 优先使用流式采集
+      adaptiveInterval: {
+        enabled: true,            // 启用自适应间隔
+        cpuHighWatermark: 80,     // CPU高水位阈值
+        scale: [1.0, 1.5, 2.0]    // 间隔缩放因子
+      },
+      enablePSI: true,            // 启用PSI压力指标
+      containerAwareness: true    // 启用容器感知
+    },
+
     // 错误处理配置
     errorHandling: {
       maxRetries: 3,
+      maxConsecutiveErrors: 5,    // 流式采集最大连续错误数
       connectionErrorPatterns: [
         'SSH连接',
         'Not connected',
@@ -40,6 +54,20 @@ const config = {
       enabled: true,
       size: 10,
       timeout: 1000
+    },
+
+    // WebSocket增强配置
+    ws: {
+      perMessageDeflate: true,           // 启用原生压缩
+      binaryCodec: 'json',               // 编码格式: 'json' | 'msgpack'
+      backpressureBytes: 1000000,        // 背压阈值 (1MB)
+      dropPolicy: 'oldest'               // 丢弃策略: 'oldest' | 'current'
+    },
+
+    // 差量更新配置
+    delta: {
+      enabled: true,                     // 启用差量更新
+      staticFieldsTTL: 300000           // 静态字段TTL (5分钟)
     }
   },
   

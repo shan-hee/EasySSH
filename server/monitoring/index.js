@@ -5,7 +5,7 @@
 
 const WebSocket = require('ws');
 const logger = require('../utils/logger');
-const OptimizedDataTransport = require('../services/optimizedDataTransport');
+const EnhancedDataTransport = require('../services/enhancedDataTransport');
 const monitoringConfig = require('../config/monitoring');
 const { handleWebSocketError } = require('../utils/errorHandler');
 
@@ -18,8 +18,8 @@ const monitoringDataCache = new Map();
 // 存储IP到组合标识符的映射：ipAddress -> hostId (hostname@ip)
 const ipToHostIdMap = new Map();
 
-// 创建优化的数据传输管理器
-const dataTransport = new OptimizedDataTransport();
+// 创建增强版数据传输管理器
+const dataTransport = new EnhancedDataTransport();
 
 /**
  * 初始化前端监控WebSocket服务器 - SSH集成版
@@ -27,9 +27,20 @@ const dataTransport = new OptimizedDataTransport();
  * @param {Object} server HTTP服务器实例，用于集成到主服务器
  */
 function initMonitoringWebSocketServer(server) {
-  // 创建不绑定到特定端口的WebSocket服务器，集成到主HTTP服务器
+  // 创建支持压缩的WebSocket服务器，集成到主HTTP服务器
   const wss = new WebSocket.Server({
-    noServer: true
+    noServer: true,
+    perMessageDeflate: {
+      threshold: 1024,        // 超过1KB的消息启用压缩
+      concurrencyLimit: 10,   // 并发压缩限制
+      memLevel: 7,           // 内存级别 (1-9)
+      serverMaxWindowBits: 15, // 服务器窗口大小
+      clientMaxWindowBits: 15, // 客户端窗口大小
+      serverMaxNoContextTakeover: false, // 服务器上下文接管
+      clientMaxNoContextTakeover: false, // 客户端上下文接管
+      serverNoContextTakeover: false,
+      clientNoContextTakeover: false
+    }
   });
 
   logger.info('前端监控WebSocket服务器已初始化，等待前端连接到 /monitor 路径');

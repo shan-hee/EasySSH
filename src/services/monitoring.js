@@ -45,6 +45,7 @@ class MonitoringInstance {
     this.maxReconnectAttempts = 3;
     this._lastDataHash = null; // 防重复处理的数据哈希
     this._lastStatusHash = null; // 防重复处理的状态哈希
+    this._staticDataCache = null; // 静态数据缓存（用于差量更新）
     this.reconnectDelay = 2000;
   }
 
@@ -176,6 +177,9 @@ class MonitoringInstance {
         case 'batch':
           this._handleBatchMessage(message);
           break;
+        case 'delta':
+          this._handleDeltaMessage(message);
+          break;
         case 'monitoring_status':
           this._handleMonitoringStatus(message);
           break;
@@ -186,6 +190,7 @@ class MonitoringInstance {
         case 'session_created':
         case 'subscribe_ack':
         case 'monitoring_data_updated':
+        case 'ping':
         case 'pong':
           // 确认消息和心跳响应，无需处理
           break;
@@ -220,18 +225,71 @@ class MonitoringInstance {
             this._handleMonitoringData(item.data);
             break;
           case 'system_stats':
-            this._handleMonitoringData(item.payload);
+            // 处理新的差量格式
+            let payload = item.payload || item.delta?.payload || item.delta;
+            if (payload) {
+              this._handleMonitoringData(payload);
+            }
             break;
           case 'monitoring_status':
             this._handleMonitoringStatus(item);
             break;
         }
       } catch (error) {
-        log.error(`[监控] 处理批量消息项目失败: ${error.message}`);
+        log.error(`[监控] 处理批量消息项目失败: ${error.message}`, { item });
       }
     });
 
     this.state.lastActivity = Date.now();
+  }
+
+  /**
+   * 处理差量更新消息
+   * @param {Object} message - 差量消息
+   * @private
+   */
+  _handleDeltaMessage(message) {
+    try {
+      // 重构完整数据
+      const fullData = this._reconstructDeltaData(message);
+      if (fullData) {
+        this._handleMonitoringData(fullData);
+      }
+    } catch (error) {
+      log.error('[监控] 差量消息处理失败:', error);
+    }
+  }
+
+  /**
+   * 重构差量数据为完整数据
+   * @param {Object} deltaMessage - 差量消息
+   * @returns {Object|null} 完整数据
+   * @private
+   */
+  _reconstructDeltaData(deltaMessage) {
+    const { staticVersion, delta, staticFields } = deltaMessage;
+
+    // 如果有静态字段更新，保存到缓存
+    if (staticFields) {
+      this._staticDataCache = {
+        version: staticVersion,
+        data: staticFields
+      };
+    }
+
+    // 如果没有缓存的静态数据，无法重构
+    if (!this._staticDataCache) {
+      return null;
+    }
+
+    // 合并静态数据和差量数据
+    const fullData = {
+      ...this._staticDataCache.data,
+      ...delta,
+      timestamp: deltaMessage.timestamp
+    };
+
+    return fullData;
   }
 
   /**
@@ -240,16 +298,21 @@ class MonitoringInstance {
    * @private
    */
   _handleMonitoringData(data) {
+    // 处理监控数据（日志已移除，用户可在WebSocket中查看）
+
     if (data && this._isValidMonitoringData(data)) {
       // 防止重复处理相同的数据（排除时间戳字段）
       const { timestamp, ...dataWithoutTimestamp } = data;
       const dataHash = JSON.stringify(dataWithoutTimestamp);
       if (this._lastDataHash === dataHash) {
+        log.debug('[监控] 跳过重复数据');
         return;
       }
       this._lastDataHash = dataHash;
 
       this.state.monitorData = { ...this.state.monitorData, ...data };
+
+      // 监控数据已更新（日志已移除，用户可在WebSocket中查看）
 
       // 更新历史数据（后台持续收集）
       this._updateHistoryData(data);
@@ -260,6 +323,11 @@ class MonitoringInstance {
         host: this.state.targetHost,
         data: data,
         source: 'websocket'
+      });
+    } else {
+      log.warn('[监控] 监控数据无效或为空', {
+        data,
+        terminalId: this.terminalId
       });
     }
   }
@@ -352,7 +420,11 @@ class MonitoringInstance {
       (data.network && Object.keys(data.network).length > 0) ||
       (data.os && Object.keys(data.os).length > 0) ||
       (data.swap && Object.keys(data.swap).length > 0) ||
-      (data.hostId && typeof data.hostId === 'string')
+      (data.psi && Object.keys(data.psi).length > 0) ||
+      (data.container && Object.keys(data.container).length > 0) ||
+      (data.ip && Object.keys(data.ip).length > 0) ||
+      (data.hostId && typeof data.hostId === 'string') ||
+      (data.timestamp && typeof data.timestamp === 'number')
     );
   }
 
@@ -362,11 +434,20 @@ class MonitoringInstance {
    * @private
    */
   _handleMonitoringStatus(message) {
-    const data = message.data || {};
+    // 处理新的差量更新格式
+    let data = message.data || message.delta?.data || message;
+
+    // 如果是嵌套的差量格式，提取实际数据
+    if (data.delta && data.delta.data) {
+      data = data.delta.data;
+    }
+
     const { status, available, hostId } = data;
 
     // 判断监控数据是否可用（SSH方案中status为'installed'表示数据可用）
     const installed = status === 'installed';
+
+    // 处理状态消息（日志已移除，用户可在WebSocket中查看）
 
     // 防止重复处理相同的状态
     const statusKey = `${installed}-${available}-${hostId}`;

@@ -60,15 +60,15 @@ const chartInstance = ref(null)
 const diskInfo = computed(() => {
   const disk = props.monitoringData?.disk || {}
 
-  // 硬盘数据通常以GB为单位，需要转换为字节
+  // 后端已经返回字节数，无需转换
   const total = disk.total || 0
   const used = disk.used || 0
   const free = disk.free || disk.available || 0
 
   return {
-    total: total * 1024 * 1024 * 1024, // 转换为字节
-    used: used * 1024 * 1024 * 1024,   // 转换为字节
-    available: free * 1024 * 1024 * 1024, // 转换为字节
+    total: total,      // 已经是字节
+    used: used,        // 已经是字节
+    available: free,   // 已经是字节
     usedPercentage: disk.usedPercentage || (total > 0 ? (used / total) * 100 : 0)
   }
 })

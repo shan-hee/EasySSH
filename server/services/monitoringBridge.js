@@ -62,12 +62,12 @@ class MonitoringBridge {
     }
 
     try {
-      // 动态导入优化版SSH监控收集器
-      const OptimizedSSHMonitoringCollector = require('./optimizedSSHMonitoringCollector');
+      // 动态导入流式SSH监控收集器（优化版）
+      const StreamingSSHMonitoringCollector = require('./streamingSSHMonitoringCollector');
       const monitoringConfig = require('../config/monitoring');
 
-      // 创建优化版监控收集器实例
-      const collector = new OptimizedSSHMonitoringCollector(sshConnection, hostInfo);
+      // 创建流式监控收集器实例
+      const collector = new StreamingSSHMonitoringCollector(sshConnection, hostInfo);
 
       // 设置数据回调函数
       const dataCallback = (monitoringData) => {

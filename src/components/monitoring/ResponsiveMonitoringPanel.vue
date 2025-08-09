@@ -113,6 +113,10 @@ const showGlobalLoader = computed(() => {
          (state === LoadingState.ERROR && !currentStateManager.value.hasAnyData())
 })
 
+
+
+
+
 // 获取加载文本
 const getLoadingText = () => {
   const globalStateValue = globalState.value

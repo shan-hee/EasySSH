@@ -80,6 +80,11 @@ class MonitoringStateManager {
     // 事件监听器
     this.eventListeners = new Map()
 
+    // 日志优化相关状态
+    this._lastDataHash = null
+    this._hasReceivedData = false
+    this._lastEventTerminalId = null
+
     // 初始化事件监听
     this._initEventListeners()
 
@@ -111,6 +116,8 @@ class MonitoringStateManager {
     // 统一的监控数据处理器 - 处理实时数据和同步数据
     const unifiedDataHandler = (event) => {
       const { terminalId, data } = event.detail
+
+      // 处理监控数据事件（日志已移除，用户可在WebSocket中查看）
       if (this._shouldHandleEvent(terminalId)) {
         this._handleMonitoringData(data)
       }
@@ -247,15 +254,66 @@ class MonitoringStateManager {
    * @private
    */
   _handleMonitoringStatus(installed, available) {
-    if (installed && available) {
-      this.globalState.connectionState = LoadingState.LOADED
-      this.globalState.errorMessage = null
-    } else {
-      this.globalState.connectionState = LoadingState.ERROR
-      this.globalState.errorMessage = '监控服务不可用'
+    const newState = installed && available ? LoadingState.LOADED : LoadingState.ERROR
+    const newErrorMessage = installed && available ? null : '监控服务不可用'
+
+    // 避免重复处理相同的状态
+    if (this.globalState.connectionState === newState &&
+        this.globalState.errorMessage === newErrorMessage) {
+      return
     }
 
-    log.debug('[监控状态管理器] 监控状态变化', { installed, available })
+    this.globalState.connectionState = newState
+    this.globalState.errorMessage = newErrorMessage
+
+    if (installed && available) {
+      // 更新所有组件状态为已加载
+      Object.values(MonitoringComponent).forEach(component => {
+        if (this.componentStates[component]) {
+          this.componentStates[component].state = LoadingState.LOADED
+          this.componentStates[component].hasData = true
+          this.componentStates[component].error = null
+        }
+      })
+    }
+
+    log.debug('[监控状态管理器] 监控状态变化', {
+      installed,
+      available,
+      globalState: this.globalState.connectionState,
+      componentStates: Object.keys(this.componentStates).map(key => ({
+        component: key,
+        state: this.componentStates[key].state,
+        hasData: this.componentStates[key].hasData
+      }))
+    })
+  }
+
+  /**
+   * 处理监控状态消息（新格式）
+   * @param {Object} statusData 状态数据
+   * @private
+   */
+  _handleMonitoringStatusMessage(statusData) {
+    // 处理差量更新格式
+    let actualData = statusData
+    if (statusData.delta && statusData.delta.data) {
+      actualData = statusData.delta.data
+    } else if (statusData.data) {
+      actualData = statusData.data
+    }
+
+    const installed = actualData.status === 'installed'
+    const available = actualData.available === true
+
+    log.debug('[监控状态管理器] 处理状态消息', {
+      originalData: statusData,
+      actualData,
+      installed,
+      available
+    })
+
+    this._handleMonitoringStatus(installed, available)
   }
 
   /**
@@ -410,6 +468,11 @@ class MonitoringStateManager {
    * @param {string} hostId - 主机ID（可选）
    */
   setTerminal(terminalId, hostId = null) {
+    // 避免重复绑定相同的终端
+    if (this.boundTerminalId === terminalId && this.boundHostId === hostId) {
+      return
+    }
+
     this.boundTerminalId = terminalId
     this.boundHostId = hostId
     this.globalState.terminalId = terminalId

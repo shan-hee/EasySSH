@@ -6,7 +6,7 @@
         <span>CPU</span>
       </div>
       <div class="monitor-info">
-        <div class="monitor-value-display" :class="getUsageStatusClass(currentUsage)">
+        <div class="cpu-stats">
           <span class="usage-value">{{ formatPercentage(currentUsage) }}</span>
           <span v-if="cpuCores > 0" class="cores-info">{{ cpuCores }}核</span>
         </div>
@@ -80,6 +80,27 @@ const cpuCores = computed(() => {
   if (!cpu) return 0
 
   return cpu.cores || 0
+})
+
+// CPU型号
+const cpuModel = computed(() => {
+  const cpu = props.monitoringData?.cpu
+  if (!cpu) return '未知'
+
+  return cpu.model || '未知'
+})
+
+// 负载平均值
+const loadAverage = computed(() => {
+  const cpu = props.monitoringData?.cpu
+  if (!cpu || !cpu.loadAverage) return { load1: 0, load5: 0, load15: 0 }
+
+  const loadAvg = cpu.loadAverage
+  return {
+    load1: parseFloat(loadAvg.load1) || 0,
+    load5: parseFloat(loadAvg.load5) || 0,
+    load15: parseFloat(loadAvg.load15) || 0
+  }
 })
 
 // 使用统一状态管理器
@@ -401,11 +422,24 @@ onUnmounted(() => {
   color: var(--monitor-cpu-primary);
 }
 
+.cpu-stats {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.usage-value {
+  color: var(--monitor-cpu-primary);
+  font-weight: 600;
+  font-size: 14px;
+  line-height: 1;
+}
+
 .cores-info {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--monitor-text-secondary);
-  margin-left: 6px;
   opacity: 0.8;
+  line-height: 1;
 }
 
 .cpu-cores-info {

@@ -1314,23 +1314,46 @@ export default {
 
 
 
-    // 设置监控数据监听器 - 通过状态管理器获取数据，避免重复事件监听
+    // 设置监控数据监听器 - 监听每个终端的独立状态管理器
     const setupMonitoringDataListener = () => {
-      // 监听状态管理器的数据变化，而不是直接监听原始事件
-      const monitoringData = computed(() => monitoringStateManager.getMonitoringData())
+      // 监听所有终端状态管理器的数据变化
+      const watchers = []
 
-      // 监听数据变化并更新缓存
-      watch(monitoringData, (newData) => {
-        const currentTerminalId = activeConnectionId.value
-        if (currentTerminalId && newData && Object.keys(newData).length > 0) {
-          monitoringDataCache.value[currentTerminalId] = { ...newData }
-          // 监控数据更新日志已移除，减少日志噪音
+      // 为现有终端设置监听器
+      const setupWatcherForTerminal = (termId) => {
+        const stateManager = getTerminalStateManager(termId)
+        if (stateManager) {
+          const monitoringData = computed(() => stateManager.getMonitoringData())
+
+          const watcher = watch(monitoringData, (newData) => {
+            if (newData && Object.keys(newData).length > 0) {
+              monitoringDataCache.value[termId] = { ...newData }
+              // 监控数据已更新（日志已移除，用户可在WebSocket中查看）
+            }
+          }, { deep: true })
+
+          watchers.push({ termId, watcher })
         }
-      }, { deep: true })
+      }
 
-      // 返回清理函数（现在不需要移除事件监听器）
+      // 为现有终端设置监听器
+      Object.keys(terminalStore.sessions).forEach(setupWatcherForTerminal)
+
+      // 监听新终端的创建
+      const sessionWatcher = watch(() => Object.keys(terminalStore.sessions), (newTerminals, oldTerminals) => {
+        const addedTerminals = newTerminals.filter(id => !oldTerminals.includes(id))
+        addedTerminals.forEach(setupWatcherForTerminal)
+      })
+
+      watchers.push({ termId: 'session-watcher', watcher: sessionWatcher })
+
+      // 返回清理函数
       return () => {
-        // 不需要清理，因为我们使用的是响应式数据
+        watchers.forEach(({ watcher }) => {
+          if (typeof watcher === 'function') {
+            watcher()
+          }
+        })
       }
     }
 

@@ -55,6 +55,16 @@
         <span class="info-label">启动时间</span>
         <span class="info-value">{{ formatDateTime(systemInfo.bootTime) }}</span>
       </div>
+
+      <div class="info-item" v-if="systemInfo.internalIp">
+        <span class="info-label">内网IP</span>
+        <span class="info-value">{{ systemInfo.internalIp }}</span>
+      </div>
+
+      <div class="info-item" v-if="systemInfo.publicIp">
+        <span class="info-label">公网IP</span>
+        <span class="info-value">{{ systemInfo.publicIp }}</span>
+      </div>
     </div>
   </div>
 </template>
@@ -64,7 +74,6 @@ import { computed } from 'vue'
 import MonitoringIcon from './MonitoringIcon.vue'
 import MonitoringLoader from '../common/MonitoringLoader.vue'
 import monitoringStateManager, { MonitoringComponent } from '@/services/monitoringStateManager'
-import log from '@/services/log'
 
 // Props
 const props = defineProps({
@@ -88,14 +97,11 @@ const handleRetry = () => {
 const systemInfo = computed(() => {
   const data = props.monitoringData
 
-  // 只在有实际数据时输出DEBUG级别日志，避免空对象的噪音
-  if (data && Object.keys(data).length > 0) {
-    log.debug('SystemInfo 监控数据:', data)
-  }
+  // 监控数据处理（不输出日志，用户可在WebSocket中查看）
 
   return {
-    // 操作系统信息 - 从os对象获取
-    os: data.os?.distro || data.os?.platform || data.system?.os || '',
+    // 操作系统信息 - 新格式
+    os: data.os?.release || data.os?.platform || data.system?.os || '',
     hostname: data.os?.hostname || data.system?.hostname || '',
     architecture: data.os?.arch || data.system?.arch || data.system?.architecture || '',
 
@@ -108,19 +114,37 @@ const systemInfo = computed(() => {
 
     // 运行时间和启动时间 - 从os对象获取
     uptime: data.os?.uptime || data.system?.uptime || '',
-    bootTime: data.os?.bootTime || data.system?.boot_time || data.system?.bootTime || ''
+    bootTime: data.os?.bootTime || data.system?.boot_time || data.system?.bootTime || '',
+
+    // IP地址信息 - 新增
+    internalIp: data.ip?.internal || '',
+    publicIp: data.ip?.public || ''
   }
 })
 
 // 格式化负载平均值
 const formatLoadAverage = (loadAvg) => {
   if (!loadAvg) return '-'
+
+  // 处理对象格式 {load1: 2.5, load5: 0.98, load15: 0.48}
+  if (typeof loadAvg === 'object' && !Array.isArray(loadAvg)) {
+    const load1 = parseFloat(loadAvg.load1 || 0).toFixed(2)
+    const load5 = parseFloat(loadAvg.load5 || 0).toFixed(2)
+    const load15 = parseFloat(loadAvg.load15 || 0).toFixed(2)
+    return `${load1}, ${load5}, ${load15}`
+  }
+
+  // 处理数组格式
   if (Array.isArray(loadAvg)) {
     return loadAvg.slice(0, 3).map(val => parseFloat(val).toFixed(2)).join(', ')
   }
+
+  // 处理字符串格式
   if (typeof loadAvg === 'string') {
     return loadAvg
   }
+
+  // 处理单个数值
   return parseFloat(loadAvg).toFixed(2)
 }
 

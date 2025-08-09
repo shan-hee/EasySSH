@@ -68,13 +68,13 @@ const maxDataPoints = 10 // 限制为10个数据点，符合现代极简设计
 const currentSpeed = computed(() => {
   const network = props.monitoringData?.network || {}
 
-  // 服务器返回的是 KB/s，需要转换为 B/s
-  const txSpeedKB = parseFloat(network.total_tx_speed) || 0
-  const rxSpeedKB = parseFloat(network.total_rx_speed) || 0
+  // 新格式：服务器返回的是 B/s
+  const txSpeed = parseFloat(network.total_tx_speed) || 0
+  const rxSpeed = parseFloat(network.total_rx_speed) || 0
 
   return {
-    upload: txSpeedKB * 1024,   // 转换为 B/s
-    download: rxSpeedKB * 1024  // 转换为 B/s
+    upload: txSpeed,    // B/s
+    download: rxSpeed   // B/s
   }
 })
 
@@ -83,6 +83,21 @@ const totalTraffic = computed(() => {
   return {
     upload: parseFloat(network.total_tx_bytes) || 0,
     download: parseFloat(network.total_rx_bytes) || 0
+  }
+})
+
+const networkInterface = computed(() => {
+  const network = props.monitoringData?.network || {}
+  return network.interface || '未知'
+})
+
+const linkInfo = computed(() => {
+  const network = props.monitoringData?.network || {}
+  return {
+    speed: parseInt(network.link_speed) || 0,
+    state: network.link_state || 'unknown',
+    rxPackets: parseInt(network.rx_packets) || 0,
+    txPackets: parseInt(network.tx_packets) || 0
   }
 })
 

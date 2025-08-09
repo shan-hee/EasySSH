@@ -13,8 +13,8 @@ import ElementPlus from 'element-plus'
 import '@xterm/xterm/css/xterm.css'
 import './assets/styles/main.css'
 import './components/sftp/styles/sftp-panel.css'
-// 导入监控服务
-import monitoringService from './services/monitoring'
+
+
 // 导入服务初始化模块
 import { initializeServices } from '../scripts/services'
 import servicesManager from './services'
@@ -96,154 +96,9 @@ Object.keys(directives).forEach(key => {
   app.directive(key, directives[key])
 })
 
-// 扩展调试方法
-window.debugSettings = {
-  // 检查设置状态
-  status: () => {
-    import('./services/settings.js').then(({ default: settingsService }) => {
-      console.log('=== 设置服务状态 ===')
-      console.log('初始化状态:', settingsService.isInitialized)
-      console.log('当前设置:', settingsService.settings)
-      console.log('终端选项:', settingsService.getTerminalOptions())
-      console.log('=== 存储状态 ===')
-      console.log('设置存储:', localStorage.getItem('easyssh:user_settings'))
-    })
-  },
 
 
 
-  // 重置设置
-  reset: () => {
-    localStorage.removeItem('easyssh:user_settings')
-    console.log('设置已重置，请刷新页面')
-  }
-}
-
-window.debugMonitoring = {
-  // 向后兼容的连接方法（使用默认终端ID）
-  connect: (host) => {
-    log.info(`[监控调试] 手动触发监控连接: ${host || '未指定主机'}`);
-    if (!host) {
-      // 尝试从当前SSH会话获取主机
-      const sessions = JSON.parse(sessionStorage.getItem('ssh-sessions') || '[]');
-      if (sessions.length > 0) {
-        host = sessions[0].host;
-        log.info(`[监控调试] 使用当前会话主机: ${host}`);
-      } else {
-        log.error('[监控调试] 未找到主机，请指定主机地址');
-        return false;
-      }
-    }
-    // 使用默认终端ID进行连接（向后兼容）
-    return monitoringService.connect('default-terminal', host);
-  },
-
-  // 新的多实例连接方法
-  connectTerminal: (terminalId, host) => {
-    log.info(`[监控调试] 为终端 ${terminalId} 连接监控: ${host || '未指定主机'}`);
-    if (!terminalId) {
-      log.error('[监控调试] 终端ID不能为空');
-      return false;
-    }
-    if (!host) {
-      log.error('[监控调试] 主机地址不能为空');
-      return false;
-    }
-    return monitoringService.connect(terminalId, host);
-  },
-
-  // 向后兼容的状态方法（显示全局状态）
-  status: () => {
-    log.info('[监控调试] 当前监控状态:');
-    monitoringService.printStatus();
-    return monitoringService.state;
-  },
-
-  // 新的多实例状态方法
-  getTerminalStatus: (terminalId) => {
-    if (!terminalId) {
-      log.error('[监控调试] 终端ID不能为空');
-      return null;
-    }
-    const status = monitoringService.getStatus(terminalId);
-    log.info(`[监控调试] 终端 ${terminalId} 状态:`, status);
-    return status;
-  },
-
-  // 获取所有活动终端的状态
-  getAllStatus: () => {
-    const stats = monitoringService.getStats();
-    log.info('[监控调试] 所有终端状态:', stats);
-    return stats;
-  },
-
-  // 状态管理器工厂调试方法
-  getStateManagerStats: () => {
-    // 动态导入状态管理器工厂以避免循环依赖
-    import('./services/monitoringStateManagerFactory').then(module => {
-      const factory = module.default;
-      const stats = factory.getStats();
-      log.info('[监控调试] 状态管理器工厂统计:', stats);
-      return stats;
-    }).catch(error => {
-      log.error('[监控调试] 获取状态管理器统计失败:', error);
-    });
-  },
-
-
-
-
-
-
-
-  // 配置验证
-  validateConfig: async () => {
-    try {
-      const { validateConfig } = await import('./config/monitoringPanelConfig');
-      const result = validateConfig();
-
-      console.log('=== 配置验证结果 ===');
-      if (result.isValid) {
-        console.log('✅ 配置验证通过');
-      } else {
-        console.error('❌ 配置验证失败:');
-        result.errors.forEach(error => console.error(`  - ${error}`));
-      }
-
-      return result;
-    } catch (error) {
-      log.error('[监控调试] 配置验证失败:', error);
-      return null;
-    }
-  },
-
-
-  
-  // 显示监控面板
-  showPanel: (host) => {
-    if (!host) {
-      // 尝试从当前SSH会话获取主机
-      const sessions = JSON.parse(sessionStorage.getItem('ssh-sessions') || '[]');
-      if (sessions.length > 0) {
-        host = sessions[0].host;
-      } else {
-        log.error('[监控] 未找到主机，请指定主机地址');
-        return false;
-      }
-    }
-
-    // 触发自定义事件，通知需要显示监控面板
-    try {
-      window.dispatchEvent(new CustomEvent('show-monitoring-panel', {
-        detail: { host, serverId: 'panel' }
-      }));
-      return true;
-    } catch (error) {
-      log.error('[监控] 显示监控面板失败:', error);
-      return false;
-    }
-  }
-};
 
 // 挂载应用并初始化服务
 app.mount('#app')
