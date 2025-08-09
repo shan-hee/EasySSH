@@ -51,6 +51,13 @@
   --monitor-text-primary: #e5e5e5;
   --monitor-text-secondary: #b0b0b0;
   --monitor-text-muted: #6b7280;
+
+  /* 图表配置 - 深色主题 */
+  --monitor-chart-grid: rgba(255, 255, 255, 0.1);
+  --monitor-chart-axis: rgba(255, 255, 255, 0.4);
+  --monitor-chart-tooltip-bg: rgba(0, 0, 0, 0.9);
+  --monitor-chart-tooltip-border: rgba(255, 255, 255, 0.2);
+  --monitor-chart-tooltip-text: #e5e5e5;
   
   /* 阴影效果 */
   --monitor-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.1);
@@ -103,9 +110,10 @@
   
   /* 图表配置 - 浅色主题 */
   --monitor-chart-grid: rgba(0, 0, 0, 0.1);
-  --monitor-chart-axis: rgba(0, 0, 0, 0.3);
+  --monitor-chart-axis: rgba(0, 0, 0, 0.4);
   --monitor-chart-tooltip-bg: rgba(255, 255, 255, 0.95);
   --monitor-chart-tooltip-border: rgba(0, 0, 0, 0.1);
+  --monitor-chart-tooltip-text: #303133;
 }
 
 /* ===== 响应式断点配置 ===== */

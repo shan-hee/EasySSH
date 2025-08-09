@@ -1,31 +1,43 @@
 <template>
-  <!-- 纯净的监控容器 -->
-  <div v-if="visible" class="mobile-monitoring-drawer">
-    <!-- 系统信息 -->
-    <SystemInfo
-      :monitoring-data="monitoringData"
-    />
+  <!-- 移动端监控抽屉 -->
+  <transition name="drawer-slide" appear>
+    <div
+      v-show="visible"
+      class="mobile-monitoring-drawer"
+      role="dialog"
+      aria-label="移动端监控抽屉"
+      :aria-hidden="!visible"
+      tabindex="-1"
+      @keydown.esc="$emit('close')"
+    >
+      <div class="drawer-content">
+        <!-- 系统信息 -->
+        <div class="mobile-monitoring-section system-section">
+          <SystemInfo :monitoring-data="monitoringData" />
+        </div>
 
-    <!-- CPU监控 -->
-    <CpuMonitoring
-      :monitoring-data="monitoringData"
-    />
+        <!-- CPU监控 -->
+        <div class="mobile-monitoring-section cpu-section">
+          <CpuMonitoring :monitoring-data="monitoringData" />
+        </div>
 
-    <!-- 内存监控 -->
-    <MemoryMonitoring
-      :monitoring-data="monitoringData"
-    />
+        <!-- 内存监控 -->
+        <div class="mobile-monitoring-section memory-section">
+          <MemoryMonitoring :monitoring-data="monitoringData" />
+        </div>
 
-    <!-- 网络监控 -->
-    <NetworkMonitoring
-      :monitoring-data="monitoringData"
-    />
+        <!-- 网络监控 -->
+        <div class="mobile-monitoring-section network-section">
+          <NetworkMonitoring :monitoring-data="monitoringData" />
+        </div>
 
-    <!-- 硬盘监控 -->
-    <DiskMonitoring
-      :monitoring-data="monitoringData"
-    />
-  </div>
+        <!-- 硬盘监控 -->
+        <div class="mobile-monitoring-section disk-section">
+          <DiskMonitoring :monitoring-data="monitoringData" />
+        </div>
+      </div>
+    </div>
+  </transition>
 </template>
 
 <script setup>
@@ -62,15 +74,91 @@ const emit = defineEmits(['close', 'update:visible'])
 /* 左侧抽屉样式 - 从工具栏下方开始 */
 .mobile-monitoring-drawer {
   position: fixed;
-  top: 45px; /* 工具栏高度 */
+  top: 45px;
   left: 0;
-  width: 80vw; /* 占屏幕宽度的80% */
-  max-width: 400px; /* 最大宽度限制 */
-  height: calc(100vh - 45px); /* 减去工具栏高度 */
+  width: 80vw;
+  max-width: 400px;
+  height: calc(100vh - 45px);
   background: rgba(0, 0, 0, 0.95);
   border-right: 1px solid rgba(255, 255, 255, 0.1);
   box-shadow: 4px 0 20px rgba(0, 0, 0, 0.3);
   z-index: 9999;
+  overflow: hidden;
+  transform: translateZ(0);
+  -webkit-overflow-scrolling: touch;
+}
+
+.drawer-content {
+  height: 100%;
   overflow-y: auto;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* 移动端监控组件固定高度 */
+.mobile-monitoring-section {
+  flex-shrink: 0;
+  overflow: hidden;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+/* 系统信息：200px */
+.mobile-monitoring-section.system-section {
+  height: 200px;
+}
+
+/* CPU：180px */
+.mobile-monitoring-section.cpu-section {
+  height: 180px;
+}
+
+/* 内存：150px */
+.mobile-monitoring-section.memory-section {
+  height: 150px;
+}
+
+/* 网络：180px */
+.mobile-monitoring-section.network-section {
+  height: 180px;
+}
+
+/* 硬盘：120px */
+.mobile-monitoring-section.disk-section {
+  height: 120px;
+}
+
+/* 抽屉滑入动画 */
+.drawer-slide-enter-active,
+.drawer-slide-leave-active {
+  transition: transform 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+              opacity 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  will-change: transform, opacity;
+}
+
+.drawer-slide-enter-from,
+.drawer-slide-leave-to {
+  transform: translate3d(-100%, 0, 0);
+  opacity: 0;
+}
+
+.drawer-slide-enter-to,
+.drawer-slide-leave-from {
+  will-change: auto;
+}
+
+/* 移动端组件内部样式适配 */
+.mobile-monitoring-section :deep(.monitor-section),
+.mobile-monitoring-section :deep(.system-info-section) {
+  height: 100%;
+  margin: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+}
+
+.mobile-monitoring-section :deep(.monitor-chart-container) {
+  flex: 1;
+  min-height: 0;
 }
 </style>

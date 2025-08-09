@@ -26,14 +26,18 @@ export const MonitoringComponent = {
 }
 
 class MonitoringStateManager {
-  constructor() {
+  constructor(terminalId = null, hostId = null) {
+    // 实例绑定的终端ID和主机ID
+    this.boundTerminalId = terminalId
+    this.boundHostId = hostId
+
     // 全局状态
     this.globalState = reactive({
       connectionState: LoadingState.INITIAL,
       lastActivity: null,
       errorMessage: null,
-      terminalId: null,
-      hostId: null
+      terminalId: terminalId,
+      hostId: hostId
     })
 
     // 各组件的状态
@@ -90,16 +94,16 @@ class MonitoringStateManager {
     // 监听监控连接状态变化
     const connectionHandler = (event) => {
       const { terminalId } = event.detail
-      // 只有当连接的是当前活动终端时才处理
-      if (terminalId === this.globalState.terminalId && this.globalState.terminalId) {
+      // 只处理绑定终端的事件，如果没有绑定则处理所有事件（向后兼容）
+      if (this._shouldHandleEvent(terminalId)) {
         this._handleConnectionStateChange(LoadingState.LOADED)
       }
     }
 
     const disconnectionHandler = (event) => {
       const { terminalId } = event.detail
-      // 只有当断开的是当前活动终端时才处理，避免旧连接的断开事件影响新连接
-      if (terminalId === this.globalState.terminalId && this.globalState.terminalId) {
+      // 只处理绑定终端的事件，避免其他终端的断开事件影响当前实例
+      if (this._shouldHandleEvent(terminalId)) {
         this._handleConnectionStateChange(LoadingState.ERROR, '连接已断开')
       }
     }
@@ -107,7 +111,7 @@ class MonitoringStateManager {
     // 统一的监控数据处理器 - 处理实时数据和同步数据
     const unifiedDataHandler = (event) => {
       const { terminalId, data } = event.detail
-      if (terminalId === this.globalState.terminalId) {
+      if (this._shouldHandleEvent(terminalId)) {
         this._handleMonitoringData(data)
       }
     }
@@ -115,7 +119,7 @@ class MonitoringStateManager {
     // 监听监控状态变化
     const statusHandler = (event) => {
       const { terminalId, installed, available } = event.detail
-      if (terminalId === this.globalState.terminalId) {
+      if (this._shouldHandleEvent(terminalId)) {
         this._handleMonitoringStatus(installed, available)
       }
     }
@@ -401,6 +405,61 @@ class MonitoringStateManager {
   }
 
   /**
+   * 设置终端绑定
+   * @param {string} terminalId - 终端ID
+   * @param {string} hostId - 主机ID（可选）
+   */
+  setTerminal(terminalId, hostId = null) {
+    this.boundTerminalId = terminalId
+    this.boundHostId = hostId
+    this.globalState.terminalId = terminalId
+    this.globalState.hostId = hostId
+
+    log.debug(`[监控状态管理器] 已绑定终端: ${terminalId}${hostId ? ` (主机: ${hostId})` : ''}`)
+  }
+
+  /**
+   * 获取绑定的终端ID
+   * @returns {string|null} 终端ID
+   */
+  getBoundTerminalId() {
+    return this.boundTerminalId
+  }
+
+  /**
+   * 获取绑定的主机ID
+   * @returns {string|null} 主机ID
+   */
+  getBoundHostId() {
+    return this.boundHostId
+  }
+
+  /**
+   * 检查是否应该处理指定终端的事件
+   * @param {string} eventTerminalId - 事件中的终端ID
+   * @returns {boolean} 是否应该处理
+   * @private
+   */
+  _shouldHandleEvent(eventTerminalId) {
+    // 如果没有绑定终端，则处理所有事件（向后兼容单例模式）
+    if (!this.boundTerminalId) {
+      return eventTerminalId === this.globalState.terminalId
+    }
+
+    // 如果有绑定终端，只处理绑定终端的事件
+    return eventTerminalId === this.boundTerminalId
+  }
+
+  /**
+   * 检查实例是否绑定到指定终端
+   * @param {string} terminalId - 终端ID
+   * @returns {boolean} 是否绑定
+   */
+  isBoundTo(terminalId) {
+    return this.boundTerminalId === terminalId
+  }
+
+  /**
    * 清理资源
    */
   destroy() {
@@ -420,11 +479,14 @@ class MonitoringStateManager {
     })
 
     this.eventListeners.clear()
-    log.debug('[监控状态管理器] 已清理资源')
+    log.debug(`[监控状态管理器] 已清理资源${this.boundTerminalId ? ` (终端: ${this.boundTerminalId})` : ''}`)
   }
 }
 
-// 创建单例实例
+// 导出类供工厂使用
+export { MonitoringStateManager }
+
+// 创建单例实例（向后兼容）
 const monitoringStateManager = new MonitoringStateManager()
 
 export default monitoringStateManager

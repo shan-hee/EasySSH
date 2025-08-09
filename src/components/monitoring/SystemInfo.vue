@@ -177,7 +177,8 @@ const formatDateTime = (timestamp) => {
   flex-direction: column;
   width: 100%;
   flex-shrink: 0;
-  height: auto;
+  height: 100%; /* 使用父容器的固定高度 */
+  overflow: hidden; /* 防止内容溢出 */
   margin-bottom: 0;
 }
 
@@ -195,7 +196,7 @@ const formatDateTime = (timestamp) => {
   gap: 8px;
   font-size: 14px;
   font-weight: 600;
-  color: var(--monitoring-text-primary, #e5e5e5);
+  color: var(--monitor-text-primary, var(--color-text-primary, #e5e5e5));
 }
 
 .system-icon {
@@ -222,54 +223,51 @@ const formatDateTime = (timestamp) => {
 }
 
 .info-label {
-  font-size: 11px; /* 缩小字体 */
-  color: var(--monitoring-text-secondary, #b0b0b0);
+  font-size: 12px;
+  color: var(--monitor-text-secondary, var(--color-text-secondary, #b0b0b0));
   font-weight: 500;
   min-width: 60px;
   flex-shrink: 0;
-  line-height: 1.3; /* 紧凑行高 */
-  padding-top: 0; /* 移除顶部内边距 */
+  line-height: 1.4;
+  padding-top: 0;
 }
 
 .info-value {
-  font-size: 11px; /* 缩小字体 */
-  color: var(--monitoring-text-primary, #e5e5e5);
+  font-size: 12px;
+  color: var(--monitor-text-primary, var(--color-text-primary, #e5e5e5));
   text-align: left;
   flex: 1;
   word-wrap: break-word;
   word-break: break-all;
-  line-height: 1.3; /* 紧凑行高 */
+  line-height: 1.4;
+  font-weight: 400;
 }
 
 /* 移除所有响应式样式，保持桌面端布局 */
 
 /* 移除480px响应式样式，保持行内布局 */
 
-/* 深色主题适配 */
-@media (prefers-color-scheme: dark) {
-  .system-info-section {
-    --monitoring-panel-bg: rgba(255, 255, 255, 0.05);
-    --monitoring-panel-border: rgba(255, 255, 255, 0.1);
-    --monitoring-item-bg: rgba(255, 255, 255, 0.03);
-    --monitoring-item-border: rgba(255, 255, 255, 0.05);
-    --monitoring-item-hover-bg: rgba(255, 255, 255, 0.08);
-    --monitoring-item-hover-border: rgba(255, 255, 255, 0.15);
-    --monitoring-text-primary: #e5e5e5;
-    --monitoring-text-secondary: #b0b0b0;
-  }
+/* 主题适配 - 使用统一的主题变量 */
+:root[data-theme="dark"] .system-info-section,
+.dark-theme .system-info-section {
+  --monitor-text-primary: #e5e5e5;
+  --monitor-text-secondary: #b0b0b0;
 }
 
-/* 浅色主题适配 */
-@media (prefers-color-scheme: light) {
-  .system-info-section {
-    --monitoring-panel-bg: rgba(0, 0, 0, 0.05);
-    --monitoring-panel-border: rgba(0, 0, 0, 0.1);
-    --monitoring-item-bg: rgba(0, 0, 0, 0.03);
-    --monitoring-item-border: rgba(0, 0, 0, 0.05);
-    --monitoring-item-hover-bg: rgba(0, 0, 0, 0.08);
-    --monitoring-item-hover-border: rgba(0, 0, 0, 0.15);
-    --monitoring-text-primary: #2c3e50;
-    --monitoring-text-secondary: #6c757d;
-  }
+:root[data-theme="light"] .system-info-section,
+.light-theme .system-info-section {
+  --monitor-text-primary: #303133;
+  --monitor-text-secondary: #606266;
+}
+
+/* 系统图标主题适配 */
+:root[data-theme="dark"] .system-icon,
+.dark-theme .system-icon {
+  color: #3b82f6;
+}
+
+:root[data-theme="light"] .system-icon,
+.light-theme .system-icon {
+  color: #1890ff;
 }
 </style>

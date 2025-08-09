@@ -564,33 +564,32 @@ class MonitoringService {
       return false;
     }
 
-    // 检查是否已有到该主机的连接
-    if (this.hostConnections.has(host)) {
-      const masterInstance = this.hostConnections.get(host);
-
-      // 将当前终端添加到主机的终端列表
-      this._addTerminalToHost(terminalId, host);
-
-      // 如果主连接已连接，立即同步状态到新终端
-      if (masterInstance.state.connected) {
-        this._syncMonitoringStatusToTerminal(terminalId, host, masterInstance);
-      }
-
-      return true;
-    }
-
     // 获取或创建监控实例
     const instance = this.getInstance(terminalId);
     if (!instance) {
       return false;
     }
 
-    // 将此实例设为该主机的主连接
-    this.hostConnections.set(host, instance);
+    // 记录终端到主机的映射
     this._addTerminalToHost(terminalId, host);
 
-    // 建立实际的WebSocket连接
-    return await instance.connect(host);
+    // 每个终端都建立独立的WebSocket连接
+    // 这确保了每个终端都能接收到完整的监控数据
+    log.info(`[监控] 为终端 ${terminalId} 建立独立连接到 ${host}`);
+    const connected = await instance.connect(host);
+
+    if (connected) {
+      log.info(`[监控] 终端 ${terminalId} 连接成功: ${host}`);
+      // 如果这是该主机的第一个连接，记录为主连接（用于统计）
+      if (!this.hostConnections.has(host)) {
+        this.hostConnections.set(host, instance);
+        log.debug(`[监控] 设置主连接记录: 终端 ${terminalId} -> ${host}`);
+      }
+    } else {
+      log.warn(`[监控] 终端 ${terminalId} 连接失败: ${host}`);
+    }
+
+    return connected;
   }
 
   /**
@@ -615,19 +614,21 @@ class MonitoringService {
     // 从映射中移除
     this._removeTerminalFromHost(terminalId);
 
-    // 如果这是主连接，需要选择新的主连接或清除主机连接
+    // 如果这是主连接的记录实例，需要选择新的主连接或清除主机连接
     if (host && this.hostConnections.get(host) === instance) {
       this.hostConnections.delete(host);
 
-      // 查找该主机的其他终端，选择新的主连接
+      // 查找该主机的其他终端，选择新的主连接记录
       const terminals = this.hostToTerminals.get(host);
       if (terminals && terminals.length > 0) {
         const newMasterTerminal = terminals[0];
         const newMasterInstance = this.getInstance(newMasterTerminal);
         if (newMasterInstance && newMasterInstance.state.connected) {
           this.hostConnections.set(host, newMasterInstance);
-          log.debug(`选择新的主监控连接: 终端 ${newMasterTerminal} -> ${host}`);
+          log.debug(`[监控] 选择新的主连接记录: 终端 ${newMasterTerminal} -> ${host}`);
         }
+      } else {
+        log.debug(`[监控] 主机 ${host} 的所有连接已断开`);
       }
     }
 
@@ -903,6 +904,46 @@ class MonitoringService {
       getHistoryData: this.getHistoryData.bind(this),
       clearHistoryData: this.clearHistoryData.bind(this)
     };
+  }
+
+  /**
+   * 获取所有监控实例的统计信息
+   * @returns {Object} 统计信息
+   */
+  getStats() {
+    const stats = {
+      totalInstances: this.instances.size,
+      totalHosts: this.hostConnections.size,
+      instances: [],
+      hosts: []
+    }
+
+    // 收集实例信息
+    for (const [terminalId, instance] of this.instances) {
+      const host = this.terminalToHost.get(terminalId)
+      stats.instances.push({
+        terminalId,
+        host,
+        connected: instance.state.connected,
+        connecting: instance.state.connecting,
+        hasData: this._hasValidMonitoringData(instance),
+        lastActivity: instance.state.lastActivity
+      })
+    }
+
+    // 收集主机信息
+    for (const [host, masterInstance] of this.hostConnections) {
+      const terminals = this.hostToTerminals.get(host) || []
+      stats.hosts.push({
+        host,
+        masterTerminal: masterInstance.terminalId,
+        connectedTerminals: terminals.length,
+        connected: masterInstance.state.connected,
+        lastActivity: masterInstance.state.lastActivity
+      })
+    }
+
+    return stats
   }
 
   /**

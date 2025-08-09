@@ -39,7 +39,7 @@
 import { ref, onMounted, onUnmounted, watch, computed, nextTick, markRaw } from 'vue'
 import { Chart, registerables } from 'chart.js'
 import { formatBytes, formatNetworkSpeed } from '@/utils/productionFormatters'
-import { getNetworkChartConfig, limitDataPoints } from '@/utils/chartConfig'
+import { getNetworkChartConfig, limitDataPoints, watchThemeChange } from '@/utils/chartConfig'
 import MonitoringIcon from './MonitoringIcon.vue'
 import MonitoringLoader from '../common/MonitoringLoader.vue'
 import monitoringStateManager, { MonitoringComponent } from '@/services/monitoringStateManager'
@@ -122,6 +122,14 @@ const initChart = async () => {
   const config = getNetworkChartConfig()
   chartInstance.value = markRaw(new Chart(ctx, config))
 
+  // 监听主题变化
+  const themeObserver = watchThemeChange(chartInstance.value, () => {
+    // 主题变化时重新获取配置并更新图表
+    const newConfig = getNetworkChartConfig()
+    chartInstance.value.options = { ...chartInstance.value.options, ...newConfig.options }
+    chartInstance.value.update('none')
+  })
+
   // 简单确保数据点隐藏（transition配置会处理动画时的隐藏）
   nextTick(() => {
     if (chartInstance.value && chartInstance.value.data.datasets) {
@@ -132,6 +140,9 @@ const initChart = async () => {
       chartInstance.value.update('none')
     }
   })
+
+  // 保存观察器引用以便清理
+  chartInstance.value._themeObserver = themeObserver
 }
 
 // 更新图表数据
@@ -230,6 +241,10 @@ onUnmounted(() => {
     updateTimer = null
   }
   if (chartInstance.value) {
+    // 清理主题观察器
+    if (chartInstance.value._themeObserver) {
+      chartInstance.value._themeObserver.disconnect()
+    }
     chartInstance.value.destroy()
   }
 })
@@ -278,6 +293,17 @@ onUnmounted(() => {
 .network-chart {
   width: 100%;
   height: var(--monitor-chart-height-md);
+}
+
+/* 网络监控组件固定高度适配 */
+.network-monitoring-section {
+  height: 100%; /* 使用父容器的固定高度 */
+  overflow: hidden; /* 防止内容溢出 */
+}
+
+.network-monitoring-section .monitor-chart-container {
+  flex: 1; /* 图表容器占用剩余空间 */
+  min-height: 0; /* 允许flex子项缩小 */
 }
 
 /* 移除响应式样式，保持桌面端布局 */

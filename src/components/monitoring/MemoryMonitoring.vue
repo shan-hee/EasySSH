@@ -53,7 +53,7 @@
 import { ref, onMounted, onUnmounted, watch, computed, nextTick, markRaw } from 'vue'
 import { Chart, registerables } from 'chart.js'
 import { formatBytes, formatPercentage } from '@/utils/productionFormatters'
-import { getCSSVar } from '@/utils/chartConfig'
+import { getCSSVar, getThemeAwareChartOptions, watchThemeChange, getThemeBackgroundColor } from '@/utils/chartConfig'
 import MonitoringIcon from './MonitoringIcon.vue'
 import MonitoringLoader from '../common/MonitoringLoader.vue'
 import monitoringStateManager, { MonitoringComponent } from '@/services/monitoringStateManager'
@@ -139,13 +139,19 @@ const handleRetry = () => {
 // 创建双圆环嵌套图表配置
 const createNestedDoughnutConfig = () => {
   // 内存监控使用固定颜色，不根据使用率变化
+  const isDark = document.documentElement.getAttribute('data-theme') === 'dark' ||
+                 document.documentElement.classList.contains('dark-theme') ||
+                 (!document.documentElement.getAttribute('data-theme') &&
+                  !document.documentElement.classList.contains('light-theme') &&
+                  window.matchMedia('(prefers-color-scheme: dark)').matches)
+
   const memoryColors = {
     primary: getCSSVar('--monitor-memory-primary'),
-    background: 'rgba(255, 255, 255, 0.1)'
+    background: isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)'
   }
   const swapColors = {
     primary: getCSSVar('--monitor-memory-swap'),
-    background: 'rgba(255, 255, 255, 0.1)'
+    background: isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)'
   }
 
   return {
@@ -181,6 +187,11 @@ const createNestedDoughnutConfig = () => {
         },
         tooltip: {
           enabled: true,
+          backgroundColor: isDark ? 'rgba(0, 0, 0, 0.9)' : 'rgba(255, 255, 255, 0.95)',
+          titleColor: isDark ? '#e5e5e5' : '#303133',
+          bodyColor: isDark ? '#e5e5e5' : '#303133',
+          borderColor: isDark ? 'rgba(255, 255, 255, 0.2)' : 'rgba(0, 0, 0, 0.1)',
+          borderWidth: 1,
           callbacks: {
             label: function(context) {
               const datasetLabel = context.dataset.label
@@ -213,6 +224,27 @@ const initMemoryChart = async () => {
   // 创建双圆环嵌套图表
   const config = createNestedDoughnutConfig()
   memoryChartInstance.value = markRaw(new Chart(ctx, config))
+
+  // 监听主题变化
+  const themeObserver = watchThemeChange(memoryChartInstance.value, () => {
+    // 主题变化时只更新颜色相关的配置，不重新创建数据
+    const newConfig = createNestedDoughnutConfig()
+
+    // 只更新背景色，保持数据不变
+    if (memoryChartInstance.value.data.datasets[0]) {
+      memoryChartInstance.value.data.datasets[0].backgroundColor = newConfig.data.datasets[0].backgroundColor
+    }
+    if (memoryChartInstance.value.data.datasets[1]) {
+      memoryChartInstance.value.data.datasets[1].backgroundColor = newConfig.data.datasets[1].backgroundColor
+    }
+
+    // 更新选项（tooltip颜色等）
+    memoryChartInstance.value.options = { ...memoryChartInstance.value.options, ...newConfig.options }
+    memoryChartInstance.value.update('none')
+  })
+
+  // 保存观察器引用以便清理
+  memoryChartInstance.value._themeObserver = themeObserver
 }
 
 
@@ -232,22 +264,22 @@ const updateCharts = () => {
       const swapUsed = swapUsage.value
       const swapFree = 100 - swapUsed
 
-      // 更新外圈（物理内存）数据 - dataset[0] - 使用固定颜色
+      // 更新外圈（物理内存）数据 - dataset[0] - 使用主题感知颜色
       if (memoryChartInstance.value.data.datasets[0]) {
         const memoryColors = {
           primary: getCSSVar('--monitor-memory-primary'),
-          background: 'rgba(255, 255, 255, 0.1)'
+          background: getThemeBackgroundColor()
         }
         memoryChartInstance.value.data.datasets[0].data = [memUsed, memFree]
         memoryChartInstance.value.data.datasets[0].backgroundColor = [memoryColors.primary, memoryColors.background]
       }
 
-      // 更新内圈（交换分区）数据 - dataset[1] - 使用固定颜色
+      // 更新内圈（交换分区）数据 - dataset[1] - 使用主题感知颜色
       if (memoryChartInstance.value.data.datasets[1]) {
         if (hasSwap.value) {
           const swapColors = {
             primary: getCSSVar('--monitor-memory-swap'),
-            background: 'rgba(255, 255, 255, 0.1)'
+            background: getThemeBackgroundColor()
           }
           memoryChartInstance.value.data.datasets[1].data = [swapUsed, swapFree]
           memoryChartInstance.value.data.datasets[1].backgroundColor = [swapColors.primary, swapColors.background]
@@ -295,6 +327,10 @@ onMounted(() => {
 
 onUnmounted(() => {
   if (memoryChartInstance.value) {
+    // 清理主题观察器
+    if (memoryChartInstance.value._themeObserver) {
+      memoryChartInstance.value._themeObserver.disconnect()
+    }
     memoryChartInstance.value.destroy()
   }
 })
@@ -422,6 +458,17 @@ onUnmounted(() => {
   color: var(--monitor-text-secondary);
   font-family: 'JetBrains Mono', 'Courier New', monospace;
   line-height: 1.2; /* 紧凑行高 */
+}
+
+/* 内存监控组件固定高度适配 */
+.memory-monitoring-section {
+  height: 100%; /* 使用父容器的固定高度 */
+  overflow: hidden; /* 防止内容溢出 */
+}
+
+.memory-monitoring-section .monitor-chart-container {
+  flex: 1; /* 图表容器占用剩余空间 */
+  min-height: 0; /* 允许flex子项缩小 */
 }
 
 /* 移除响应式样式，保持桌面端布局 */

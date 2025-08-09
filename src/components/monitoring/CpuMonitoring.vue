@@ -33,7 +33,7 @@
 import { ref, onMounted, onUnmounted, computed, nextTick, markRaw, watch } from 'vue'
 import { Chart, registerables } from 'chart.js'
 import { formatPercentage } from '@/utils/productionFormatters'
-import { getCpuChartConfig, getMonitoringColors } from '@/utils/chartConfig'
+import { getCpuChartConfig, getMonitoringColors, watchThemeChange } from '@/utils/chartConfig'
 import MonitoringIcon from './MonitoringIcon.vue'
 import MonitoringLoader from '../common/MonitoringLoader.vue'
 import monitoringConfigManager from '@/services/monitoringConfigManager'
@@ -162,6 +162,14 @@ const initChart = async () => {
     // 使用 markRaw 防止 Chart.js 实例被 Vue 响应式系统追踪
     chartInstance.value = markRaw(new Chart(ctx, config))
 
+    // 监听主题变化
+    const themeObserver = watchThemeChange(chartInstance.value, () => {
+      // 主题变化时重新获取配置并更新图表
+      const newConfig = getCpuChartConfig()
+      chartInstance.value.options = { ...chartInstance.value.options, ...newConfig.options }
+      chartInstance.value.update('none')
+    })
+
     // 简单确保数据点隐藏（transition配置会处理动画时的隐藏）
     nextTick(() => {
       if (chartInstance.value && chartInstance.value.data.datasets[0]) {
@@ -170,6 +178,9 @@ const initChart = async () => {
         chartInstance.value.update('none')
       }
     })
+
+    // 保存观察器引用以便清理
+    chartInstance.value._themeObserver = themeObserver
   } catch (error) {
     console.error('[CPU监控] 初始化图表失败:', error)
   }
@@ -371,6 +382,10 @@ onUnmounted(() => {
   }
 
   if (chartInstance.value) {
+    // 清理主题观察器
+    if (chartInstance.value._themeObserver) {
+      chartInstance.value._themeObserver.disconnect()
+    }
     chartInstance.value.destroy()
   }
 })
@@ -404,6 +419,17 @@ onUnmounted(() => {
 .cpu-chart {
   width: 100%;
   height: var(--monitor-chart-height-md);
+}
+
+/* CPU监控组件固定高度适配 */
+.cpu-monitoring-section {
+  height: 100%; /* 使用父容器的固定高度 */
+  overflow: hidden; /* 防止内容溢出 */
+}
+
+.cpu-monitoring-section .monitor-chart-container {
+  flex: 1; /* 图表容器占用剩余空间 */
+  min-height: 0; /* 允许flex子项缩小 */
 }
 
 /* 旧样式已移除，使用统一的监控主题样式 */

@@ -36,7 +36,7 @@
 import { ref, computed, watch, onMounted, onUnmounted, nextTick, markRaw } from 'vue'
 import { Chart, registerables } from 'chart.js'
 import { formatBytes, formatPercentage } from '@/utils/productionFormatters'
-import { getDiskChartConfig, getMonitoringColors } from '@/utils/chartConfig'
+import { getDiskChartConfig, getMonitoringColors, watchThemeChange, getThemeBackgroundColor } from '@/utils/chartConfig'
 import MonitoringIcon from './MonitoringIcon.vue'
 import MonitoringLoader from '../common/MonitoringLoader.vue'
 import monitoringStateManager, { MonitoringComponent } from '@/services/monitoringStateManager'
@@ -145,12 +145,31 @@ const initChart = async () => {
 
   chartInstance.value = markRaw(new Chart(ctx, config))
 
+  // 监听主题变化
+  const themeObserver = watchThemeChange(chartInstance.value, () => {
+    // 主题变化时只更新颜色相关的配置，不重新创建数据
+    const newConfig = getDiskChartConfig()
+
+    // 只更新背景色，保持数据不变
+    if (chartInstance.value.data.datasets[1]) {
+      chartInstance.value.data.datasets[1].backgroundColor = newConfig.data.datasets[1].backgroundColor
+      chartInstance.value.data.datasets[1].borderColor = newConfig.data.datasets[1].borderColor
+    }
+
+    // 更新选项（tooltip颜色等）
+    chartInstance.value.options = { ...chartInstance.value.options, ...newConfig.options }
+    chartInstance.value.update('none')
+  })
+
   // 柱形图不需要设置数据点，直接完成初始化
   nextTick(() => {
     if (chartInstance.value) {
       chartInstance.value.update('none')
     }
   })
+
+  // 保存观察器引用以便清理
+  chartInstance.value._themeObserver = themeObserver
 }
 
 // 更新图表数据 - 堆叠柱形图版本
@@ -174,6 +193,8 @@ const updateChart = () => {
     chartInstance.value.data.datasets[0].data = [used]  // 已使用
     chartInstance.value.data.datasets[1].data = [free]  // 可用空间
     chartInstance.value.data.datasets[0].backgroundColor = diskColors.primary
+    // 更新可用空间的背景色，使其主题感知
+    chartInstance.value.data.datasets[1].backgroundColor = getThemeBackgroundColor()
 
     // 更新tooltip回调函数 - 根据悬浮区域显示不同信息
     if (chartInstance.value.options.plugins.tooltip.callbacks) {
@@ -223,6 +244,10 @@ onMounted(() => {
 
 onUnmounted(() => {
   if (chartInstance.value) {
+    // 清理主题观察器
+    if (chartInstance.value._themeObserver) {
+      chartInstance.value._themeObserver.disconnect()
+    }
     chartInstance.value.destroy()
   }
 })
@@ -283,6 +308,19 @@ onUnmounted(() => {
 :deep(.chartjs-tooltip) {
   z-index: 10000 !important;
   position: absolute !important;
+}
+
+/* 硬盘监控组件固定高度适配 */
+.disk-monitoring-section {
+  height: 100%; /* 使用父容器的固定高度 */
+  overflow: hidden; /* 防止内容溢出 */
+}
+
+.disk-monitoring-section .monitor-chart-container {
+  flex: 1; /* 图表容器占用剩余空间 */
+  min-height: 0; /* 允许flex子项缩小 */
+  display: flex;
+  align-items: center; /* 垂直居中 */
 }
 
 /* 旧的进度条样式已移除，现在使用堆叠柱形图 */

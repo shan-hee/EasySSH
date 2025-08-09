@@ -39,11 +39,12 @@
         <div class="terminal-main-area">
           <!-- 桌面端监控面板 - 左侧 -->
           <div class="terminal-monitoring-panel"
-               v-if="shouldShowDesktopMonitoringPanel(termId)">
+               v-show="shouldShowDesktopMonitoringPanel(termId) && isActiveTerminal(termId)">
             <ResponsiveMonitoringPanel
               :visible="isMonitoringPanelVisible(termId)"
               :monitoring-data="getMonitoringData(termId)"
               :terminal-id="termId"
+              :state-manager="getTerminalStateManager(termId)"
             />
           </div>
 
@@ -59,7 +60,7 @@
 
         <!-- 移动端监控抽屉 -->
         <MobileMonitoringDrawer
-          :visible="shouldShowMobileMonitoringDrawer(termId)"
+          :visible="shouldShowMobileMonitoringDrawer(termId) && isActiveTerminal(termId)"
           :monitoring-data="getMonitoringData(termId)"
           :terminal-id="termId"
           @close="hideMobileMonitoringDrawer(termId)"
@@ -114,6 +115,8 @@ import { waitForFontsLoaded } from '../../utils/fontLoader'
 
 // 导入监控状态管理器
 import monitoringStateManager from '../../services/monitoringStateManager'
+// 导入监控状态管理器工厂
+import monitoringStateManagerFactory from '../../services/monitoringStateManagerFactory'
 
 export default {
   name: 'Terminal',
@@ -163,6 +166,7 @@ export default {
     // 监控面板相关状态
     const monitoringPanelStates = ref({}) // 每个终端的监控面板显示状态
     const monitoringDataCache = ref({})   // 每个终端的监控数据缓存
+    const terminalStateManagers = ref({}) // 每个终端的状态管理器实例映射
     let cleanupMonitoringListener = null  // 监控数据监听器清理函数
 
     // 每个终端的火箭动画阶段状态
@@ -890,6 +894,11 @@ export default {
         monitoringPanelStates.value[sessionId] = isDesktop(); // 桌面端默认显示
         log.debug(`[终端] 新终端监控面板默认状态: ${sessionId}, 显示: ${isDesktop()}`);
       }
+
+      // 为新终端创建状态管理器实例
+      if (!terminalStateManagers.value[sessionId]) {
+        getTerminalStateManager(sessionId);
+      }
       
       // 检查是否是标签切换模式
       if (!isTabSwitch) {
@@ -1243,6 +1252,42 @@ export default {
       return monitoringDataCache.value[termId] || {};
     }
 
+    // 获取或创建指定终端的状态管理器实例
+    const getTerminalStateManager = (termId) => {
+      if (!termId) {
+        log.warn('[终端] 无法获取状态管理器：终端ID为空')
+        return null
+      }
+
+      // 如果已存在实例，直接返回
+      if (terminalStateManagers.value[termId]) {
+        return terminalStateManagers.value[termId]
+      }
+
+      // 获取终端对应的主机信息
+      const session = terminalStore.sessions[termId]
+      const hostId = session?.host || termId
+
+      // 通过工厂创建新实例
+      const stateManager = monitoringStateManagerFactory.getInstance(termId, hostId)
+      if (stateManager) {
+        terminalStateManagers.value[termId] = stateManager
+        log.debug(`[终端] 已创建状态管理器实例: ${termId} (主机: ${hostId})`)
+      }
+
+      return stateManager
+    }
+
+    // 清理指定终端的状态管理器实例
+    const cleanupTerminalStateManager = (termId) => {
+      if (terminalStateManagers.value[termId]) {
+        // 通过工厂销毁实例
+        monitoringStateManagerFactory.destroyInstance(termId)
+        delete terminalStateManagers.value[termId]
+        log.debug(`[终端] 已清理状态管理器实例: ${termId}`)
+      }
+    }
+
     const hideMonitoringPanel = (termId) => {
       monitoringPanelStates.value[termId] = false;
       // 记录用户手动隐藏的偏好
@@ -1470,6 +1515,11 @@ export default {
 
       // 清理自动完成服务
       terminalAutocompleteService.destroy()
+
+      // 清理所有状态管理器实例
+      Object.keys(terminalStateManagers.value).forEach(termId => {
+        cleanupTerminalStateManager(termId)
+      })
 
       // 保持会话不关闭，但停止特定组件的监听
       log.debug('终端组件卸载，保留会话')
@@ -1997,6 +2047,9 @@ export default {
       hideMonitoringPanel,
       hideMobileMonitoringDrawer,
       updateMobileDrawerVisibility,
+      // 状态管理器相关方法
+      getTerminalStateManager,
+      cleanupTerminalStateManager,
       // 每个终端独立的火箭动画相关
       shouldShowTerminalConnectingAnimation,
       getTerminalRocketPhase,
@@ -2124,9 +2177,10 @@ export default {
   max-width: 35vw; /* 最大不超过视口宽度的35% */
   height: 100%;
   overflow: hidden;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   border-right: 1px solid var(--monitoring-panel-border, rgba(255, 255, 255, 0.1));
 }
+
+/* 移除外层动画CSS，改为在ResponsiveMonitoringPanel内部控制 */
 
 
 

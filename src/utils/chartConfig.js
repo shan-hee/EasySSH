@@ -15,6 +15,40 @@ export function getCSSVar(varName) {
 }
 
 /**
+ * 检测当前主题
+ * @returns {string} 'dark' | 'light'
+ */
+export function getCurrentTheme() {
+  const theme = document.documentElement.getAttribute('data-theme')
+  if (theme) return theme
+
+  // 检查class
+  if (document.documentElement.classList.contains('dark-theme')) return 'dark'
+  if (document.documentElement.classList.contains('light-theme')) return 'light'
+
+  // 默认检查系统偏好
+  return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+}
+
+/**
+ * 获取主题感知的颜色
+ * @param {string} darkColor - 深色主题颜色
+ * @param {string} lightColor - 浅色主题颜色
+ * @returns {string} 当前主题对应的颜色
+ */
+export function getThemeColor(darkColor, lightColor) {
+  return getCurrentTheme() === 'dark' ? darkColor : lightColor
+}
+
+/**
+ * 获取主题感知的背景颜色（用于图表未使用部分）
+ * @returns {string} 当前主题对应的背景颜色
+ */
+export function getThemeBackgroundColor() {
+  return getCurrentTheme() === 'dark' ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)'
+}
+
+/**
  * 创建渐变色
  * @param {CanvasRenderingContext2D} ctx - Canvas上下文
  * @param {string} startColor - 起始颜色
@@ -131,99 +165,113 @@ export function getMonitoringColors(value, componentType, thresholds = { warning
 }
 
 /**
- * 通用图表配置 - 修复Chart.js兼容性问题
+ * 获取主题感知的图表配置
+ * @returns {Object} Chart.js配置对象
  */
-export const commonChartOptions = {
-  responsive: true,
-  maintainAspectRatio: false,
-  resizeDelay: 0,
-  interaction: {
-    intersect: false,
-    mode: 'index'
-  },
-  plugins: {
-    legend: {
-      display: false
+export function getThemeAwareChartOptions() {
+  const isDark = getCurrentTheme() === 'dark'
+
+  return {
+    responsive: true,
+    maintainAspectRatio: false,
+    resizeDelay: 0,
+    interaction: {
+      intersect: false,
+      mode: 'index'
     },
-    tooltip: {
-      enabled: true,
-      backgroundColor: 'rgba(0, 0, 0, 0.8)',
-      titleColor: '#e5e5e5',
-      bodyColor: '#e5e5e5',
-      borderColor: 'rgba(255, 255, 255, 0.2)',
-      borderWidth: 1,
-      cornerRadius: 6,
-      padding: 8,
-      displayColors: false,
-      titleFont: {
-        size: 12,
-        weight: '600'
-      },
-      bodyFont: {
-        size: 11
-      }
-    }
-  },
-  scales: {
-    x: {
-      display: true,
-      grid: {
-        display: true,
-        color: 'rgba(255, 255, 255, 0.1)',
-        lineWidth: 1
-      },
-      ticks: {
-        display: true,
-        color: 'rgba(255, 255, 255, 0.3)',
-        font: {
-          size: 10
-        },
-        maxTicksLimit: 6
-      },
-      border: {
+    plugins: {
+      legend: {
         display: false
-      }
-    },
-    y: {
-      display: true,
-      grid: {
-        display: true,
-        color: 'rgba(255, 255, 255, 0.1)',
-        lineWidth: 1
       },
-      ticks: {
-        display: true,
-        color: 'rgba(255, 255, 255, 0.3)',
-        font: {
-          size: 10
+      tooltip: {
+        enabled: true,
+        backgroundColor: isDark ? 'rgba(0, 0, 0, 0.9)' : 'rgba(255, 255, 255, 0.95)',
+        titleColor: isDark ? '#e5e5e5' : '#303133',
+        bodyColor: isDark ? '#e5e5e5' : '#303133',
+        borderColor: isDark ? 'rgba(255, 255, 255, 0.2)' : 'rgba(0, 0, 0, 0.1)',
+        borderWidth: 1,
+        cornerRadius: 6,
+        padding: 8,
+        displayColors: false,
+        titleFont: {
+          size: 12,
+          weight: '600'
         },
-        maxTicksLimit: 5
-      },
-      border: {
-        display: false
+        bodyFont: {
+          size: 11
+        }
       }
-    }
-  },
-  animation: {
-    duration: 300,
-    easing: 'easeOutQuart'
-  },
-  elements: {
-    point: {
-      radius: 0,
-      hoverRadius: 4
     },
-    line: {
-      tension: 0.4
+    scales: {
+      x: {
+        display: true,
+        grid: {
+          display: true,
+          color: isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)',
+          lineWidth: 1
+        },
+        ticks: {
+          display: true,
+          color: isDark ? 'rgba(255, 255, 255, 0.4)' : 'rgba(0, 0, 0, 0.4)',
+          font: {
+            size: 10
+          },
+          maxTicksLimit: 6
+        },
+        border: {
+          display: false
+        }
+      },
+      y: {
+        display: true,
+        grid: {
+          display: true,
+          color: isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)',
+          lineWidth: 1
+        },
+        ticks: {
+          display: true,
+          color: isDark ? 'rgba(255, 255, 255, 0.4)' : 'rgba(0, 0, 0, 0.4)',
+          font: {
+            size: 10
+          },
+          maxTicksLimit: 5
+        },
+        border: {
+          display: false
+        }
+      }
+    },
+    animation: {
+      duration: 300,
+      easing: 'easeOutQuart'
+    },
+    elements: {
+      point: {
+        radius: 0,
+        hoverRadius: 4
+      },
+      line: {
+        tension: 0.4
+      }
     }
   }
 }
 
 /**
- * CPU监控图表配置 - 简化版本避免Chart.js错误
+ * 通用图表配置 - 向后兼容
+ * @deprecated 请使用 getThemeAwareChartOptions() 获取主题感知配置
+ */
+export const commonChartOptions = getThemeAwareChartOptions()
+
+/**
+ * CPU监控图表配置 - 主题感知版本
  * @returns {Object} Chart.js配置
  */
 export function getCpuChartConfig() {
+  const isDark = getCurrentTheme() === 'dark'
+  const pointBorderColor = isDark ? '#ffffff' : '#000000'
+
   return {
     type: 'line',
     data: {
@@ -236,10 +284,10 @@ export function getCpuChartConfig() {
         borderWidth: 2,
         fill: true,
         tension: 0.4,
-        pointRadius: 0, // 默认不显示数据点
-        pointHoverRadius: 3, // 悬浮时显示小一点的数据点
+        pointRadius: 0,
+        pointHoverRadius: 3,
         pointBackgroundColor: '#3b82f6',
-        pointBorderColor: '#ffffff',
+        pointBorderColor: pointBorderColor,
         pointBorderWidth: 1
       }]
     },
@@ -256,10 +304,10 @@ export function getCpuChartConfig() {
         },
         tooltip: {
           enabled: true,
-          backgroundColor: 'rgba(0, 0, 0, 0.8)',
-          titleColor: '#e5e5e5',
-          bodyColor: '#e5e5e5',
-          borderColor: 'rgba(255, 255, 255, 0.2)',
+          backgroundColor: isDark ? 'rgba(0, 0, 0, 0.9)' : 'rgba(255, 255, 255, 0.95)',
+          titleColor: isDark ? '#e5e5e5' : '#303133',
+          bodyColor: isDark ? '#e5e5e5' : '#303133',
+          borderColor: isDark ? 'rgba(255, 255, 255, 0.2)' : 'rgba(0, 0, 0, 0.1)',
           borderWidth: 1,
           cornerRadius: 6,
           padding: 8,
@@ -288,7 +336,7 @@ export function getCpuChartConfig() {
             display: false
           },
           ticks: {
-            color: 'rgba(255, 255, 255, 0.5)',
+            color: isDark ? 'rgba(255, 255, 255, 0.5)' : 'rgba(0, 0, 0, 0.5)',
             font: {
               size: 10
             },
@@ -303,10 +351,10 @@ export function getCpuChartConfig() {
           min: 0,
           max: 100,
           grid: {
-            color: 'rgba(255, 255, 255, 0.1)'
+            color: isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)'
           },
           ticks: {
-            color: 'rgba(255, 255, 255, 0.3)',
+            color: isDark ? 'rgba(255, 255, 255, 0.4)' : 'rgba(0, 0, 0, 0.4)',
             callback: function(value) {
               return value + '%'
             }
@@ -407,6 +455,9 @@ export function getMemoryChartConfig() {
  * @returns {Object} Chart.js配置
  */
 export function getNetworkChartConfig() {
+  const isDark = getCurrentTheme() === 'dark'
+  const pointBorderColor = isDark ? '#ffffff' : '#000000'
+
   return {
     type: 'line',
     data: {
@@ -423,7 +474,7 @@ export function getNetworkChartConfig() {
           pointRadius: 0,
           pointHoverRadius: 3,
           pointBackgroundColor: '#ef4444',
-          pointBorderColor: '#ffffff',
+          pointBorderColor: pointBorderColor,
           pointBorderWidth: 1
         },
         {
@@ -437,7 +488,7 @@ export function getNetworkChartConfig() {
           pointRadius: 0,
           pointHoverRadius: 3,
           pointBackgroundColor: '#10b981',
-          pointBorderColor: '#ffffff',
+          pointBorderColor: pointBorderColor,
           pointBorderWidth: 1
         }
       ]
@@ -455,10 +506,10 @@ export function getNetworkChartConfig() {
         },
         tooltip: {
           enabled: true,
-          backgroundColor: 'rgba(0, 0, 0, 0.8)',
-          titleColor: '#e5e5e5',
-          bodyColor: '#e5e5e5',
-          borderColor: 'rgba(255, 255, 255, 0.2)',
+          backgroundColor: isDark ? 'rgba(0, 0, 0, 0.9)' : 'rgba(255, 255, 255, 0.95)',
+          titleColor: isDark ? '#e5e5e5' : '#303133',
+          bodyColor: isDark ? '#e5e5e5' : '#303133',
+          borderColor: isDark ? 'rgba(255, 255, 255, 0.2)' : 'rgba(0, 0, 0, 0.1)',
           borderWidth: 1,
           cornerRadius: 6,
           padding: 8,
@@ -501,7 +552,7 @@ export function getNetworkChartConfig() {
             display: false
           },
           ticks: {
-            color: 'rgba(255, 255, 255, 0.5)',
+            color: isDark ? 'rgba(255, 255, 255, 0.5)' : 'rgba(0, 0, 0, 0.5)',
             font: {
               size: 10
             },
@@ -514,10 +565,10 @@ export function getNetworkChartConfig() {
         y: {
           min: 0,
           grid: {
-            color: 'rgba(255, 255, 255, 0.1)'
+            color: isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)'
           },
           ticks: {
-            color: 'rgba(255, 255, 255, 0.3)',
+            color: isDark ? 'rgba(255, 255, 255, 0.4)' : 'rgba(0, 0, 0, 0.4)',
             callback: function(value) {
               // 动态格式化Y轴标签
               if (value >= 1024 * 1024) {
@@ -579,6 +630,8 @@ export function getNetworkChartConfig() {
  * @returns {Object} Chart.js配置
  */
 export function getDiskChartConfig() {
+  const isDark = getCurrentTheme() === 'dark'
+
   return {
     type: 'bar',
     data: {
@@ -597,8 +650,8 @@ export function getDiskChartConfig() {
         {
           label: '可用空间',
           data: [100],
-          backgroundColor: 'rgba(255, 255, 255, 0.1)',
-          borderColor: 'rgba(255, 255, 255, 0.2)',
+          backgroundColor: isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)',
+          borderColor: isDark ? 'rgba(255, 255, 255, 0.2)' : 'rgba(0, 0, 0, 0.2)',
           borderWidth: 0,
           borderRadius: 4,
           borderSkipped: false,
@@ -620,10 +673,10 @@ export function getDiskChartConfig() {
         },
         tooltip: {
           enabled: true,
-          backgroundColor: 'rgba(0, 0, 0, 0.9)',
-          titleColor: '#e5e5e5',
-          bodyColor: '#e5e5e5',
-          borderColor: 'rgba(255, 255, 255, 0.2)',
+          backgroundColor: isDark ? 'rgba(0, 0, 0, 0.9)' : 'rgba(255, 255, 255, 0.95)',
+          titleColor: isDark ? '#e5e5e5' : '#303133',
+          bodyColor: isDark ? '#e5e5e5' : '#303133',
+          borderColor: isDark ? 'rgba(255, 255, 255, 0.2)' : 'rgba(0, 0, 0, 0.1)',
           borderWidth: 1,
           cornerRadius: 6,
           padding: 10,
@@ -682,7 +735,7 @@ export function getDiskChartConfig() {
           },
           ticks: {
             display: true,
-            color: 'rgba(255, 255, 255, 0.5)',
+            color: isDark ? 'rgba(255, 255, 255, 0.5)' : 'rgba(0, 0, 0, 0.5)',
             font: {
               size: 10
             },
@@ -789,8 +842,42 @@ export function limitDataPoints(dataArray, maxPoints = 10) {
 }
 
 /**
+ * 监听主题变化并更新图表
+ * @param {Object} chartInstance - Chart.js实例
+ * @param {Function} updateCallback - 更新回调函数
+ */
+export function watchThemeChange(chartInstance, updateCallback) {
+  if (!chartInstance) return
+
+  // 监听主题属性变化
+  const observer = new MutationObserver((mutations) => {
+    mutations.forEach((mutation) => {
+      if (mutation.type === 'attributes' &&
+          (mutation.attributeName === 'data-theme' || mutation.attributeName === 'class')) {
+        // 主题发生变化，更新图表配置
+        if (updateCallback) {
+          updateCallback()
+        } else {
+          // 默认更新图表选项
+          const newOptions = getThemeAwareChartOptions()
+          chartInstance.options = { ...chartInstance.options, ...newOptions }
+          chartInstance.update('none') // 无动画更新
+        }
+      }
+    })
+  })
+
+  observer.observe(document.documentElement, {
+    attributes: true,
+    attributeFilter: ['data-theme', 'class']
+  })
+
+  return observer
+}
+
+/**
  * 强制隐藏图表数据点的工具函数
- * @param {Chart} chartInstance - Chart.js实例
+ * @param {Object} chartInstance - Chart.js实例
  */
 export function forceHideDataPoints(chartInstance) {
   if (!chartInstance) return

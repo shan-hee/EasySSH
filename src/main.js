@@ -120,6 +120,7 @@ window.debugSettings = {
 }
 
 window.debugMonitoring = {
+  // 向后兼容的连接方法（使用默认终端ID）
   connect: (host) => {
     log.info(`[监控调试] 手动触发监控连接: ${host || '未指定主机'}`);
     if (!host) {
@@ -133,13 +134,90 @@ window.debugMonitoring = {
         return false;
       }
     }
-    return monitoringService.connect(host);
+    // 使用默认终端ID进行连接（向后兼容）
+    return monitoringService.connect('default-terminal', host);
   },
+
+  // 新的多实例连接方法
+  connectTerminal: (terminalId, host) => {
+    log.info(`[监控调试] 为终端 ${terminalId} 连接监控: ${host || '未指定主机'}`);
+    if (!terminalId) {
+      log.error('[监控调试] 终端ID不能为空');
+      return false;
+    }
+    if (!host) {
+      log.error('[监控调试] 主机地址不能为空');
+      return false;
+    }
+    return monitoringService.connect(terminalId, host);
+  },
+
+  // 向后兼容的状态方法（显示全局状态）
   status: () => {
     log.info('[监控调试] 当前监控状态:');
     monitoringService.printStatus();
     return monitoringService.state;
   },
+
+  // 新的多实例状态方法
+  getTerminalStatus: (terminalId) => {
+    if (!terminalId) {
+      log.error('[监控调试] 终端ID不能为空');
+      return null;
+    }
+    const status = monitoringService.getStatus(terminalId);
+    log.info(`[监控调试] 终端 ${terminalId} 状态:`, status);
+    return status;
+  },
+
+  // 获取所有活动终端的状态
+  getAllStatus: () => {
+    const stats = monitoringService.getStats();
+    log.info('[监控调试] 所有终端状态:', stats);
+    return stats;
+  },
+
+  // 状态管理器工厂调试方法
+  getStateManagerStats: () => {
+    // 动态导入状态管理器工厂以避免循环依赖
+    import('./services/monitoringStateManagerFactory').then(module => {
+      const factory = module.default;
+      const stats = factory.getStats();
+      log.info('[监控调试] 状态管理器工厂统计:', stats);
+      return stats;
+    }).catch(error => {
+      log.error('[监控调试] 获取状态管理器统计失败:', error);
+    });
+  },
+
+
+
+
+
+
+
+  // 配置验证
+  validateConfig: async () => {
+    try {
+      const { validateConfig } = await import('./config/monitoringPanelConfig');
+      const result = validateConfig();
+
+      console.log('=== 配置验证结果 ===');
+      if (result.isValid) {
+        console.log('✅ 配置验证通过');
+      } else {
+        console.error('❌ 配置验证失败:');
+        result.errors.forEach(error => console.error(`  - ${error}`));
+      }
+
+      return result;
+    } catch (error) {
+      log.error('[监控调试] 配置验证失败:', error);
+      return null;
+    }
+  },
+
+
   
   // 显示监控面板
   showPanel: (host) => {
