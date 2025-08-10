@@ -362,6 +362,7 @@ function initWebSocketServer(server) {
         try {
           const monitoringBridge = require('../services/monitoringBridge');
           const stopped = monitoringBridge.stopMonitoring(sessionId, 'websocket_close');
+          // 只在实际停止时记录日志，避免重复日志
           if (stopped) {
             logger.debug('SSH WebSocket断开，监控数据收集已停止', { sessionId });
           }

@@ -10,6 +10,7 @@ class MonitoringBridge {
     this.collectors = new Map(); // sessionId -> SSHMonitoringCollector
     this.collectorStates = new Map(); // sessionId -> state (starting, running, stopping, stopped)
     this.monitoringService = null;
+    this.cleanupTaskStarted = false; // 标记清理任务是否已启动，避免重复日志
 
     // 启动定期清理任务
     this.startCleanupTask();
@@ -128,11 +129,7 @@ class MonitoringBridge {
     // 检查当前状态，避免重复停止
     const currentState = this.collectorStates.get(sessionId);
     if (currentState === 'stopping' || currentState === 'stopped') {
-      logger.debug('监控收集器已在停止中或已停止，跳过重复操作', {
-        sessionId,
-        currentState,
-        reason
-      });
+      // 静默跳过重复操作，不记录日志避免噪音
       return false; // 返回false表示没有执行停止操作
     }
 
@@ -363,7 +360,11 @@ class MonitoringBridge {
       }
     }, 5 * 60 * 1000);
 
-    logger.debug('监控桥接清理任务已启动');
+    // 只在首次启动时记录，避免重启时的重复日志
+    if (!this.cleanupTaskStarted) {
+      logger.debug('监控桥接清理任务已启动');
+      this.cleanupTaskStarted = true;
+    }
   }
 
   /**

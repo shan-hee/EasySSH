@@ -24,10 +24,10 @@ class UserService {
       const cachedUser = cache.get(userKey);
       
       if (cachedUser) {
-        logger.debug('从缓存获取用户数据');
+        // 缓存命中时减少日志输出，避免频繁认证时的日志噪音
         return cachedUser;
       }
-      
+
       // 从SQLite获取
       logger.debug('从SQLite获取用户数据');
       const user = await User.findById(userId);

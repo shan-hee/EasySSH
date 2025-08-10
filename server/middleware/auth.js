@@ -73,9 +73,10 @@ exports.authMiddleware = async (req, res, next) => {
     req.user = result.user;
     req.token = token;
     
-    logger.info('认证成功', { 
-      userId: result.user.id, 
+    logger.info('认证成功', {
+      userId: result.user.id,
       username: result.user.username,
+      path: req.path,
       tokenLength: token.length
     });
     

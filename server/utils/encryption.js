@@ -68,8 +68,8 @@ function decryptPassword(encryptedPassword) {
       logger.warn('密码解密结果为空，可能是密钥不匹配');
       return '';
     }
-    
-    logger.debug('密码解密成功');
+
+    // 移除重复的成功日志，只在出错时记录
     return decrypted;
   } catch (error) {
     logger.error('密码解密失败:', error.message);
@@ -118,8 +118,8 @@ function decryptPrivateKey(encryptedPrivateKey) {
       logger.warn('私钥解密结果为空，可能是密钥不匹配');
       return '';
     }
-    
-    logger.debug('私钥解密成功');
+
+    // 移除重复的成功日志，只在出错时记录
     return decrypted;
   } catch (error) {
     logger.error('私钥解密失败:', error.message);

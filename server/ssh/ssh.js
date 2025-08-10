@@ -357,6 +357,7 @@ function cleanupSession(sessionId) {
   // 确保监控数据收集已停止（防止重复调用）
   try {
     const stopped = monitoringBridge.stopMonitoring(sessionId, 'session_cleanup');
+    // 只在实际停止时记录日志，避免重复日志
     if (stopped) {
       logger.debug('SSH会话清理，监控数据收集已停止', { sessionId });
     }
@@ -546,8 +547,9 @@ async function handleConnect(ws, data) {
         // SSH Shell关闭时立即停止监控数据收集
         try {
           const stopped = monitoringBridge.stopMonitoring(sessionId, 'shell_close');
+          // 只在实际停止时记录日志，避免重复日志
           if (stopped) {
-            logger.info('SSH Shell关闭，监控数据收集已停止', { sessionId });
+            logger.debug('SSH Shell关闭，监控数据收集已停止', { sessionId });
           }
         } catch (error) {
           logger.warn('停止监控数据收集失败', {
