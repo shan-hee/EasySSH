@@ -77,6 +77,10 @@
     <td>🚀 <b>混合存储引擎</b></td>
     <td>SQLite + node-cache混合存储架构，平衡性能和可靠性</td>
   </tr>
+  <tr>
+    <td>🔧 <b>广泛兼容性</b></td>
+    <td>支持bash、ash、dash等多种shell，完美兼容OpenWrt/ImmortalWrt等嵌入式系统</td>
+  </tr>
 </table>
 
 ## 使用场景
@@ -198,6 +202,13 @@ npm run dev
 - **高速缓存**: node-cache减少了70%以上的数据库查询，平均API响应时间降低了150ms
 - **安全保障**: 所有敏感数据通过AES-256加密，密码使用bcrypt哈希存储
 - **可伸缩性**: 分布式架构设计，支持水平扩展
+
+### 兼容性支持
+
+- **多Shell兼容**: 监控脚本采用POSIX标准编写，支持bash、ash、dash等多种shell
+- **嵌入式系统**: 完美支持OpenWrt、ImmortalWrt等路由器系统的监控功能
+- **跨平台部署**: 支持Linux、macOS、Windows等多种操作系统
+- **浏览器兼容**: 支持Chrome、Firefox、Safari、Edge等现代浏览器
 
 ## 部署指南
 

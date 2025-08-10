@@ -89,24 +89,28 @@ class StreamingSSHMonitoringCollector extends EventEmitter {
    */
   async startStreamingCollection() {
     try {
-      // 读取监控脚本
+      // 读取监控脚本内容
       const scriptPath = path.join(__dirname, '../scripts/streaming-monitor.sh');
       const scriptExists = fs.existsSync(scriptPath);
-      
+
       if (!scriptExists) {
         throw new Error('流式监控脚本不存在: ' + scriptPath);
       }
 
+      const scriptContent = fs.readFileSync(scriptPath, 'utf8');
+
       // 计算间隔（转换为秒）
       const intervalSeconds = Math.max(1, Math.floor(this.interval / 1000));
-      
-      // 构建执行命令（关闭调试模式）
-      const command = `bash -s ${intervalSeconds} 0 < ${scriptPath}`;
-      
-      logger.debug('执行流式监控命令', { 
-        hostId: this.hostId, 
-        command: command.substring(0, 50) + '...',
-        interval: intervalSeconds
+
+      // 构建执行命令（通过标准输入传输脚本）- 使用sh以兼容ash/dash等shell
+      const command = `sh -s ${intervalSeconds} 0`;
+
+      logger.debug('执行流式监控命令', {
+        hostId: this.hostId,
+        command: command,
+        interval: intervalSeconds,
+        scriptSize: scriptContent.length,
+        shellType: 'sh (POSIX兼容)'
       });
 
       // 执行SSH命令
@@ -117,6 +121,11 @@ class StreamingSSHMonitoringCollector extends EventEmitter {
         }
 
         this.stream = stream;
+
+        // 将脚本内容写入标准输入
+        stream.write(scriptContent);
+        stream.end();
+
         this.setupStreamHandlers();
       });
 
