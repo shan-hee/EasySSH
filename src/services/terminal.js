@@ -243,15 +243,20 @@ class TerminalService {
       termOptions.fastScrollSensitivity = 5 // 提高滚动速度
       termOptions.scrollSensitivity = 1 // 设置滚动灵敏度
       termOptions.tabStopWidth = 8 // 标准Tab宽度
-      
+
       // 优化大数据量渲染性能
       termOptions.windowsMode = false // 禁用Windows模式改善性能
       if (!termOptions.hasOwnProperty('logLevel')) {
         termOptions.logLevel = 'off' // 关闭xterm内部日志
       }
-      
+
       // 启用ANSI解析器优化
       termOptions.customGlyphs = true // 使用自定义字形渲染
+
+      // WebGL渲染器优化配置
+      termOptions.allowTransparency = false // 禁用透明度以提升WebGL性能
+      termOptions.drawBoldTextInBrightColors = false // 减少颜色计算
+      termOptions.scrollback = Math.min(termOptions.scrollback || 3000, 5000) // 限制滚动缓冲区大小
       
       // 创建xterm实例
       const terminal = new Terminal(termOptions)
@@ -294,33 +299,75 @@ class TerminalService {
       }
       
       // 添加WebGL渲染插件 (优先使用WebGL渲染)
+      let webglEnabled = false;
       try {
-        const webglAddon = new WebglAddon()
-        // 使用try-catch以防WebGL不可用
-        try {
-        terminal.loadAddon(webglAddon)
-        addons.webgl = webglAddon
-          
-          // 设置额外的渲染器选项
-          if (webglAddon.onContextLoss) {
-            webglAddon.onContextLoss(e => {
-              log.warn(`终端 ${id} WebGL上下文丢失，尝试恢复`, e)
-              // 尝试创建新的WebGL渲染器
-              try {
-                const newWebglAddon = new WebglAddon()
-                terminal.loadAddon(newWebglAddon)
-                addons.webgl = newWebglAddon
-                log.info(`终端 ${id} WebGL渲染器已恢复`)
-              } catch (err) {
-                log.error(`终端 ${id} WebGL渲染器恢复失败`, err)
-              }
-            })
+        // 检查WebGL支持
+        const canvas = document.createElement('canvas');
+        const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+
+        if (gl) {
+          const webglAddon = new WebglAddon();
+
+          try {
+            terminal.loadAddon(webglAddon);
+            addons.webgl = webglAddon;
+            webglEnabled = true;
+
+            log.info(`终端 ${id} WebGL渲染器已启用`);
+
+            // 设置WebGL上下文丢失处理
+            if (webglAddon.onContextLoss) {
+              webglAddon.onContextLoss(e => {
+                log.warn(`终端 ${id} WebGL上下文丢失，尝试恢复`, e);
+
+                // 尝试创建新的WebGL渲染器
+                setTimeout(() => {
+                  try {
+                    const newWebglAddon = new WebglAddon();
+                    terminal.loadAddon(newWebglAddon);
+                    addons.webgl = newWebglAddon;
+                    log.info(`终端 ${id} WebGL渲染器已恢复`);
+                  } catch (err) {
+                    log.error(`终端 ${id} WebGL渲染器恢复失败，回退到DOM渲染`, err);
+                  }
+                }, 100);
+              });
+            }
+
+            // 监控WebGL性能
+            if (webglAddon.onRender) {
+              let renderCount = 0;
+              let lastLogTime = Date.now();
+
+              webglAddon.onRender(() => {
+                renderCount++;
+                const now = Date.now();
+
+                // 每10秒记录一次渲染统计
+                if (now - lastLogTime > 10000) {
+                  const fps = renderCount / 10;
+                  log.debug(`终端 ${id} WebGL渲染性能: ${fps.toFixed(1)} FPS`);
+                  renderCount = 0;
+                  lastLogTime = now;
+                }
+              });
+            }
+
+          } catch (loadErr) {
+            log.warn(`终端 ${id} WebGL渲染器加载失败，使用DOM渲染`, loadErr);
           }
-        } catch (innerErr) {
-          log.warn(`终端 ${id} WebGL渲染初始化失败，回退到canvas渲染`, innerErr)
+        } else {
+          log.info(`终端 ${id} 浏览器不支持WebGL，使用DOM渲染`);
         }
       } catch (e) {
-        log.warn(`终端 ${id} 加载WebglAddon失败:`, e)
+        log.warn(`终端 ${id} WebGL检测失败:`, e);
+      }
+
+      // 记录渲染器类型
+      if (webglEnabled) {
+        log.info(`终端 ${id} 使用WebGL渲染器`);
+      } else {
+        log.info(`终端 ${id} 使用DOM渲染器`);
       }
       
       // 添加Unicode11Addon (可选)
@@ -342,11 +389,19 @@ class TerminalService {
       
       // 打开终端
       terminal.open(container)
-      
+
       // 记录打开终端的时间
       const openTime = performance.now() - createStartTime
       if (openTime > 50) { // 如果打开时间超过50ms，记录性能问题
         log.info(`终端 ${id} 打开耗时较长: ${openTime.toFixed(2)}ms`)
+      }
+
+      // 启用bracketed paste模式 - 防止粘贴时的意外换行
+      try {
+        terminal.write('\x1b[?2004h'); // 启用bracketed paste
+        log.debug(`终端 ${id} bracketed paste模式已启用`);
+      } catch (e) {
+        log.warn(`终端 ${id} 启用bracketed paste失败:`, e);
       }
       
       // 适应容器大小

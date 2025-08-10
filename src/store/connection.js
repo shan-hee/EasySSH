@@ -1,6 +1,8 @@
 import { defineStore } from 'pinia'
 import { ref, reactive, computed } from 'vue'
 import { ElMessage } from 'element-plus'
+import passwordManager from '../services/password-manager.js'
+import log from '../services/log.js'
 
 /**
  * 连接管理状态
@@ -8,81 +10,185 @@ import { ElMessage } from 'element-plus'
 export const useConnectionStore = defineStore('connection', () => {
   // 连接列表
   const connections = ref([])
-  
+
   // 搜索关键字
   const searchKeyword = ref('')
-  
+
   // 分组列表
   const groups = ref(['默认分组', '开发服务器', '测试服务器', '生产服务器'])
+
+  // 加密存储相关
+  const CONNECTIONS_STORAGE_KEY = 'connections'
+  const GROUPS_STORAGE_KEY = 'groups'
+
+  // 初始化标志
+  const initialized = ref(false)
   
-  // 添加连接
-  const addConnection = (connection) => {
+  /**
+   * 初始化连接存储
+   * 从加密存储中加载连接数据
+   */
+  const initializeStore = async () => {
+    if (initialized.value) {
+      return true;
+    }
+
     try {
+      // 检查是否有主密码
+      if (!passwordManager.hasMasterPassword()) {
+        log.info('未设置主密码，使用默认连接数据');
+        initialized.value = true;
+        return true;
+      }
+
+      // 尝试加载加密的连接数据
+      const encryptedConnections = await passwordManager.secureRetrieve(CONNECTIONS_STORAGE_KEY);
+      const encryptedGroups = await passwordManager.secureRetrieve(GROUPS_STORAGE_KEY);
+
+      if (encryptedConnections) {
+        connections.value = encryptedConnections;
+        log.info(`已加载 ${connections.value.length} 个加密连接配置`);
+      }
+
+      if (encryptedGroups) {
+        groups.value = encryptedGroups;
+        log.info(`已加载 ${groups.value.length} 个连接分组`);
+      }
+
+      initialized.value = true;
+      return true;
+    } catch (error) {
+      log.error('初始化连接存储失败:', error);
+      ElMessage.error('加载连接配置失败，请检查主密码');
+      return false;
+    }
+  };
+
+  /**
+   * 保存连接数据到加密存储
+   */
+  const saveToSecureStorage = async () => {
+    try {
+      if (!passwordManager.hasMasterPassword()) {
+        log.debug('未设置主密码，跳过加密存储');
+        return true;
+      }
+
+      // 过滤敏感信息，只保存必要的连接数据
+      const safeConnections = connections.value.map(conn => ({
+        ...conn,
+        // 确保密码等敏感信息被正确处理
+        password: conn.password || '',
+        privateKey: conn.privateKey || ''
+      }));
+
+      const connectionsSuccess = await passwordManager.secureStore(CONNECTIONS_STORAGE_KEY, safeConnections);
+      const groupsSuccess = await passwordManager.secureStore(GROUPS_STORAGE_KEY, groups.value);
+
+      if (connectionsSuccess && groupsSuccess) {
+        log.debug('连接数据已保存到加密存储');
+        return true;
+      } else {
+        log.warn('保存连接数据到加密存储失败');
+        return false;
+      }
+    } catch (error) {
+      log.error('保存到加密存储失败:', error);
+      return false;
+    }
+  };
+
+  // 添加连接
+  const addConnection = async (connection) => {
+    try {
+      // 确保存储已初始化
+      await initializeStore();
+
       if (!connection.id) {
         connection.id = Date.now().toString()
       }
-      
+
       if (!connection.name) {
         connection.name = `${connection.host}:${connection.port}`
       }
-      
+
       if (!connection.group) {
         connection.group = '默认分组'
       }
-      
+
       // 连接创建日期
       connection.createdAt = new Date().toISOString()
-      
+
       // 设置最后更新日期
       connection.updatedAt = new Date().toISOString()
-      
+
       // 添加到列表
       connections.value.push(connection)
-      
+
+      // 保存到加密存储
+      await saveToSecureStorage();
+
+      log.info(`已添加连接: ${connection.name} (${connection.host}:${connection.port})`);
       return connection.id
     } catch (error) {
-      console.error('添加连接失败', error)
+      log.error('添加连接失败:', error)
       ElMessage.error('添加连接失败')
       return null
     }
   }
   
   // 更新连接
-  const updateConnection = (id, updatedConnection) => {
+  const updateConnection = async (id, updatedConnection) => {
     try {
+      // 确保存储已初始化
+      await initializeStore();
+
       const index = connections.value.findIndex(conn => conn.id === id)
       if (index === -1) {
         throw new Error(`未找到ID为${id}的连接`)
       }
-      
+
       // 更新最后修改日期
       updatedConnection.updatedAt = new Date().toISOString()
-      
+
       // 更新连接信息
       connections.value[index] = { ...connections.value[index], ...updatedConnection }
-      
+
+      // 保存到加密存储
+      await saveToSecureStorage();
+
+      log.info(`已更新连接: ${connections.value[index].name}`);
       return connections.value[index]
     } catch (error) {
-      console.error('更新连接失败', error)
+      log.error('更新连接失败:', error)
       ElMessage.error('更新连接失败')
       return null
     }
   }
   
   // 删除连接
-  const deleteConnection = (id) => {
+  const deleteConnection = async (id) => {
     try {
+      // 确保存储已初始化
+      await initializeStore();
+
       const index = connections.value.findIndex(conn => conn.id === id)
       if (index === -1) {
         throw new Error(`未找到ID为${id}的连接`)
       }
-      
+
+      const connectionName = connections.value[index].name;
+
       // 删除连接
       connections.value.splice(index, 1)
-      
+
+      // 保存到加密存储
+      await saveToSecureStorage();
+
+      log.info(`已删除连接: ${connectionName}`);
       return true
     } catch (error) {
-      console.error('删除连接失败', error)
+      log.error('删除连接失败:', error)
       ElMessage.error('删除连接失败')
       return false
     }
@@ -264,15 +370,15 @@ export const useConnectionStore = defineStore('connection', () => {
     connections.value = exampleConnections
   }
   
-  // 初始化连接列表
-  initExampleConnections()
-  
   return {
     connections,
     groups,
     searchKeyword,
     filteredConnections,
     connectionsByGroup,
+    initialized,
+    initializeStore,
+    saveToSecureStorage,
     addConnection,
     updateConnection,
     deleteConnection,
@@ -280,8 +386,7 @@ export const useConnectionStore = defineStore('connection', () => {
     addGroup,
     renameGroup,
     deleteGroup,
-    setSearchKeyword
+    setSearchKeyword,
+    initExampleConnections
   }
-}, {
-  persist: true
-}) 
+})

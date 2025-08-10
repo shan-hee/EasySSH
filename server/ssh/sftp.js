@@ -414,11 +414,13 @@ async function handleSftpMkdir(ws, data) {
  */
 async function handleSftpDelete(ws, data) {
   const { sessionId, path: targetPath, isDirectory, operationId } = data;
-  
+
+  logger.debug('SFTP删除请求', { sessionId, targetPath, isDirectory, operationId, dataKeys: Object.keys(data) });
+
   if (!validateSftpSession(ws, sessionId, sftpSessions, operationId)) {
     return;
   }
-  
+
   await safeExec(async () => {
     const sftpSession = sftpSessions.get(sessionId);
     const sftp = sftpSession.sftp;
@@ -427,6 +429,8 @@ async function handleSftpDelete(ws, data) {
     if (isDirectory) {
       // 递归删除目录及其内容
       const deleteDirectoryRecursive = (dirPath, callback) => {
+        logger.debug('SFTP开始删除目录', { dirPath });
+
         sftp.readdir(dirPath, (err, list) => {
           if (err) {
             logger.error('SFTP读取目录失败', { dirPath, error: err.message });
@@ -434,9 +438,22 @@ async function handleSftpDelete(ws, data) {
             return;
           }
 
+          logger.debug('SFTP目录内容', { dirPath, itemCount: list.length, items: list.map(item => ({ name: item.filename, isDir: item.attrs.isDirectory() })) });
+
+          // 过滤掉 . 和 .. 目录
+          const filteredList = list.filter(item => item.filename !== '.' && item.filename !== '..');
+
           // 如果目录为空，直接删除
-          if (list.length === 0) {
-            sftp.rmdir(dirPath, callback);
+          if (filteredList.length === 0) {
+            logger.debug('SFTP删除空目录', { dirPath });
+            sftp.rmdir(dirPath, (err) => {
+              if (err) {
+                logger.error('SFTP删除空目录失败', { dirPath, error: err.message });
+              } else {
+                logger.debug('SFTP空目录删除成功', { dirPath });
+              }
+              callback(err);
+            });
             return;
           }
 
@@ -449,27 +466,46 @@ async function handleSftpDelete(ws, data) {
 
             if (err) {
               hasError = true;
+              logger.error('SFTP删除子项失败', { dirPath, error: err.message });
               callback(err);
               return;
             }
 
             completed++;
-            if (completed === list.length) {
+            logger.debug('SFTP子项删除进度', { dirPath, completed, total: filteredList.length });
+
+            if (completed === filteredList.length) {
               // 所有子项都删除完成，删除目录本身
-              sftp.rmdir(dirPath, callback);
+              logger.debug('SFTP删除目录本身', { dirPath });
+              sftp.rmdir(dirPath, (err) => {
+                if (err) {
+                  logger.error('SFTP删除目录本身失败', { dirPath, error: err.message });
+                } else {
+                  logger.debug('SFTP目录删除成功', { dirPath });
+                }
+                callback(err);
+              });
             }
           };
 
           // 遍历目录中的每个项目
-          list.forEach(item => {
+          filteredList.forEach(item => {
             const itemPath = path.posix.join(dirPath, item.filename);
+            logger.debug('SFTP删除子项', { itemPath, isDirectory: item.attrs.isDirectory() });
 
             if (item.attrs.isDirectory()) {
               // 递归删除子目录
               deleteDirectoryRecursive(itemPath, checkComplete);
             } else {
               // 删除文件
-              sftp.unlink(itemPath, checkComplete);
+              sftp.unlink(itemPath, (err) => {
+                if (err) {
+                  logger.error('SFTP删除文件失败', { itemPath, error: err.message });
+                } else {
+                  logger.debug('SFTP文件删除成功', { itemPath });
+                }
+                checkComplete(err);
+              });
             }
           });
         });
@@ -522,6 +558,67 @@ async function handleSftpDelete(ws, data) {
       });
     }
   }, ws, '删除错误', sessionId, operationId);
+}
+
+/**
+ * SFTP处理函数 - 快速删除目录（使用SSH命令）
+ * @param {WebSocket} ws WebSocket连接
+ * @param {Object} data 请求数据
+ */
+async function handleSftpFastDelete(ws, data) {
+  const { sessionId, path: targetPath, operationId } = data;
+
+  if (!validateSftpSession(ws, sessionId, sftpSessions, operationId)) {
+    return;
+  }
+
+  await safeExec(async () => {
+    const sftpSession = sftpSessions.get(sessionId);
+    const sshConnection = sftpSession.sshConnection;
+
+    // 使用SSH命令快速删除目录
+    const deleteCommand = `rm -rf "${targetPath.replace(/"/g, '\\"')}"`;
+
+    sshConnection.exec(deleteCommand, (err, stream) => {
+      if (err) {
+        logger.error('SFTP快速删除执行失败', { targetPath, error: err.message });
+        sendSftpError(ws, sessionId, operationId, `快速删除失败: ${err.message}`);
+        return;
+      }
+
+      let stderr = '';
+
+      stream.on('close', (code) => {
+        if (code === 0) {
+          logger.info('SFTP快速删除成功', { targetPath });
+          sendSftpSuccess(ws, sessionId, operationId, {
+            message: '快速删除成功'
+          });
+
+          // 刷新当前目录
+          if (path.dirname(targetPath) === sftpSession.currentPath) {
+            handleSftpList(ws, {
+              sessionId,
+              path: sftpSession.currentPath,
+              operationId: `${operationId}_refresh`
+            });
+          }
+        } else {
+          logger.error('SFTP快速删除命令失败', {
+            targetPath,
+            exitCode: code,
+            stderr: stderr.trim()
+          });
+          sendSftpError(ws, sessionId, operationId,
+            `快速删除失败 (退出码: ${code}): ${stderr.trim() || '未知错误'}`);
+        }
+      }).on('data', (data) => {
+        // 忽略stdout
+      }).stderr.on('data', (data) => {
+        stderr += data.toString();
+      });
+    });
+  }, ws, '快速删除错误', sessionId, operationId);
 }
 
 /**
@@ -1089,6 +1186,7 @@ module.exports = {
   handleSftpDownloadFolder,
   handleSftpMkdir,
   handleSftpDelete,
+  handleSftpFastDelete,
   handleSftpChmod,
   handleSftpRename,
   handleSftpClose,

@@ -13,6 +13,21 @@ class SFTPService {
     this.operationId = 0; // 操作ID计数器
     log.debug('SFTP服务初始化完成');
   }
+
+  /**
+   * 创建标准化的SFTP消息
+   * @param {string} type 消息类型
+   * @param {Object} data 消息数据
+   * @returns {Object} 标准化的消息对象
+   */
+  _createSftpMessage(type, data) {
+    return {
+      type,
+      data,
+      timestamp: Date.now(),
+      version: '2.0'
+    };
+  }
   
   /**
    * 创建SFTP会话
@@ -120,12 +135,10 @@ class SFTPService {
           
           // 发送SFTP初始化请求
           log.info(`发送SFTP初始化请求: ${sshSessionId}`);
-          session.socket.send(JSON.stringify({
-            type: 'sftp_init',
-            data: {
-              sessionId: sshSessionId
-            }
-          }));
+          const initMessage = this._createSftpMessage('sftp_init', {
+            sessionId: sshSessionId
+          });
+          session.socket.send(JSON.stringify(initMessage));
         });
       } else {
         throw new Error(`创建SFTP会话失败: WebSocket连接未就绪，当前状态: ${session.socket ? session.socket.readyState : 'null'}`);
@@ -247,14 +260,12 @@ class SFTPService {
       
       // 发送列目录请求
       if (session.socket && session.socket.readyState === WS_CONSTANTS.OPEN) {
-        session.socket.send(JSON.stringify({
-          type: 'sftp_list',
-          data: {
-            sessionId: sshSessionId,
-            path,
-            operationId
-          }
-        }));
+        const listMessage = this._createSftpMessage('sftp_list', {
+          sessionId: sshSessionId,
+          path,
+          operationId
+        });
+        session.socket.send(JSON.stringify(listMessage));
       } else {
         clearTimeout(timeout);
         this.fileOperations.delete(operationId);
@@ -336,17 +347,15 @@ class SFTPService {
             try {
               // 发送上传请求
               if (session.socket && session.socket.readyState === WS_CONSTANTS.OPEN) {
-                session.socket.send(JSON.stringify({
-                  type: 'sftp_upload',
-                  data: {
-                    sessionId: sshSessionId,
-                    filename: file.name,
-                    path: remotePath,
-                    size: file.size,
-                    content: fileContent,
-                    operationId
-                  }
-                }));
+                const uploadMessage = this._createSftpMessage('sftp_upload', {
+                  sessionId: sshSessionId,
+                  filename: file.name,
+                  path: remotePath,
+                  size: file.size,
+                  content: fileContent,
+                  operationId
+                });
+                session.socket.send(JSON.stringify(uploadMessage));
               } else {
                 clearTimeout(timeout);
                 this.fileOperations.delete(operationId);
@@ -373,17 +382,15 @@ class SFTPService {
             try {
               // 发送上传请求
               if (session.socket && session.socket.readyState === WS_CONSTANTS.OPEN) {
-                session.socket.send(JSON.stringify({
-                  type: 'sftp_upload',
-                  data: {
-                    sessionId: sshSessionId,
-                    filename: file.name,
-                    path: remotePath,
-                    size: file.size,
-                    content: 'data:application/octet-stream;base64,',
-                    operationId
-                  }
-                }));
+                const emptyUploadMessage = this._createSftpMessage('sftp_upload', {
+                  sessionId: sshSessionId,
+                  filename: file.name,
+                  path: remotePath,
+                  size: file.size,
+                  content: 'data:application/octet-stream;base64,',
+                  operationId
+                });
+                session.socket.send(JSON.stringify(emptyUploadMessage));
               } else {
                 clearTimeout(timeout);
                 this.fileOperations.delete(operationId);
@@ -691,14 +698,12 @@ class SFTPService {
 
         // 发送创建目录请求
         if (session.socket && session.socket.readyState === WS_CONSTANTS.OPEN) {
-          session.socket.send(JSON.stringify({
-            type: 'sftp_mkdir',
-            data: {
-              sessionId: sshSessionId,
-              path: remotePath,
-              operationId
-            }
-          }));
+          const mkdirMessage = this._createSftpMessage('sftp_mkdir', {
+            sessionId: sshSessionId,
+            path: remotePath,
+            operationId
+          });
+          session.socket.send(JSON.stringify(mkdirMessage));
         } else {
           clearTimeout(timeout);
           this.fileOperations.delete(operationId);
@@ -748,15 +753,13 @@ class SFTPService {
 
         // 发送删除文件请求
         if (session.socket && session.socket.readyState === WS_CONSTANTS.OPEN) {
-          session.socket.send(JSON.stringify({
-            type: 'sftp_delete',
-            data: {
-              sessionId: sshSessionId,
-              path: remotePath,
-              isDirectory: false,
-              operationId
-            }
-          }));
+          const deleteMessage = this._createSftpMessage('sftp_delete', {
+            sessionId: sshSessionId,
+            path: remotePath,
+            isDirectory: false,
+            operationId
+          });
+          session.socket.send(JSON.stringify(deleteMessage));
         } else {
           clearTimeout(timeout);
           this.fileOperations.delete(operationId);
@@ -807,15 +810,13 @@ class SFTPService {
 
         // 发送删除请求
         if (session.socket && session.socket.readyState === WS_CONSTANTS.OPEN) {
-          session.socket.send(JSON.stringify({
-            type: 'sftp_delete',
-            data: {
-              sessionId: sshSessionId,
-              path: remotePath,
-              isDirectory: isDirectory,
-              operationId
-            }
-          }));
+          const deleteMessage = this._createSftpMessage('sftp_delete', {
+            sessionId: sshSessionId,
+            path: remotePath,
+            isDirectory: isDirectory,
+            operationId
+          });
+          session.socket.send(JSON.stringify(deleteMessage));
         } else {
           clearTimeout(timeout);
           this.fileOperations.delete(operationId);
@@ -865,14 +866,12 @@ class SFTPService {
 
         // 发送快速删除目录请求
         if (session.socket && session.socket.readyState === WS_CONSTANTS.OPEN) {
-          session.socket.send(JSON.stringify({
-            type: 'sftp_fast_delete',
-            data: {
-              sessionId: sshSessionId,
-              path: remotePath,
-              operationId
-            }
-          }));
+          const fastDeleteMessage = this._createSftpMessage('sftp_fast_delete', {
+            sessionId: sshSessionId,
+            path: remotePath,
+            operationId
+          });
+          session.socket.send(JSON.stringify(fastDeleteMessage));
         } else {
           clearTimeout(timeout);
           this.fileOperations.delete(operationId);
@@ -923,15 +922,13 @@ class SFTPService {
 
         // 发送修改权限请求
         if (session.socket && session.socket.readyState === WS_CONSTANTS.OPEN) {
-          session.socket.send(JSON.stringify({
-            type: 'sftp_chmod',
-            data: {
-              sessionId: sshSessionId,
-              path: remotePath,
-              permissions,
-              operationId
-            }
-          }));
+          const chmodMessage = this._createSftpMessage('sftp_chmod', {
+            sessionId: sshSessionId,
+            path: remotePath,
+            permissions,
+            operationId
+          });
+          session.socket.send(JSON.stringify(chmodMessage));
         } else {
           clearTimeout(timeout);
           this.fileOperations.delete(operationId);
@@ -982,15 +979,13 @@ class SFTPService {
 
         // 发送重命名请求
         if (session.socket && session.socket.readyState === WS_CONSTANTS.OPEN) {
-          session.socket.send(JSON.stringify({
-            type: 'sftp_rename',
-            data: {
-              sessionId: sshSessionId,
-              oldPath: oldPath,
-              newPath: newPath,
-              operationId
-            }
-          }));
+          const renameMessage = this._createSftpMessage('sftp_rename', {
+            sessionId: sshSessionId,
+            oldPath: oldPath,
+            newPath: newPath,
+            operationId
+          });
+          session.socket.send(JSON.stringify(renameMessage));
         } else {
           clearTimeout(timeout);
           this.fileOperations.delete(operationId);
@@ -1100,7 +1095,7 @@ class SFTPService {
    * @private
    */
   _nextOperationId() {
-    return ++this.operationId;
+    return String(++this.operationId);
   }
   
   /**
@@ -1138,10 +1133,10 @@ class SFTPService {
         return; // 静默处理刷新操作
       }
 
-      // 特殊处理可能已完成的操作
+      // 对于sftp_success消息，如果操作不存在，可能是延迟响应，记录但不处理
       if (message.type === 'sftp_success') {
-        log.debug(`收到已完成操作的响应: ${operationId}, 消息类型: ${message.type}`);
-        return; // 静默处理已完成的操作
+        log.debug(`收到延迟的操作响应: ${operationId}, 消息类型: ${message.type}`);
+        return; // 静默处理延迟响应
       }
 
       // 特殊处理已取消操作的进度消息

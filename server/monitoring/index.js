@@ -5,7 +5,6 @@
 
 const WebSocket = require('ws');
 const logger = require('../utils/logger');
-const EnhancedDataTransport = require('../services/enhancedDataTransport');
 const monitoringConfig = require('../config/monitoring');
 const { handleWebSocketError } = require('../utils/errorHandler');
 
@@ -18,8 +17,20 @@ const monitoringDataCache = new Map();
 // 存储IP到组合标识符的映射：ipAddress -> hostId (hostname@ip)
 const ipToHostIdMap = new Map();
 
-// 创建增强版数据传输管理器
-const dataTransport = new EnhancedDataTransport();
+/**
+ * 简化的消息发送函数
+ * @param {WebSocket} ws WebSocket连接
+ * @param {Object} data 要发送的数据
+ */
+function sendMessage(ws, data) {
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    try {
+      ws.send(JSON.stringify(data));
+    } catch (error) {
+      logger.error('发送消息失败', { error: error.message });
+    }
+  }
+}
 
 /**
  * 初始化前端监控WebSocket服务器 - SSH集成版
@@ -140,15 +151,8 @@ function handleFrontendConnection(ws, sessionId, clientIp, subscribeServer) {
 
   logger.info('前端会话已创建', { sessionId, clientIp });
 
-  // 注册到数据传输管理器
-  dataTransport.registerConnection(sessionId, ws, {
-    clientIp,
-    subscribeServer,
-    type: 'frontend'
-  });
-
   // 发送会话确认
-  dataTransport.sendData(sessionId, {
+  sendMessage(ws, {
     type: 'session_created',
     data: {
       sessionId,
@@ -192,8 +196,7 @@ function handleFrontendConnection(ws, sessionId, clientIp, subscribeServer) {
       clientIp
     });
 
-    // 从数据传输管理器注销
-    dataTransport.unregisterConnection(sessionId);
+    // 清理会话数据（替代数据传输管理器注销）
 
     // 发送监控断开状态给其他可能的连接
     const session = frontendSessions.get(sessionId);
@@ -874,8 +877,13 @@ function handleMonitoringDataUpdate(ws, sessionId, data) {
  * @param {Object} monitoringData 监控数据
  */
 async function broadcastMonitoringData(sessionId, hostId, monitoringData) {
-  // 使用批量传输发送监控状态和数据
-  await dataTransport.sendData(sessionId, {
+  const session = frontendSessions.get(sessionId);
+  if (!session || !session.ws) {
+    return;
+  }
+
+  // 发送监控状态
+  sendMessage(session.ws, {
     type: 'monitoring_status',
     data: {
       hostId: hostId,
@@ -886,7 +894,8 @@ async function broadcastMonitoringData(sessionId, hostId, monitoringData) {
     }
   });
 
-  await dataTransport.sendData(sessionId, {
+  // 发送监控数据
+  sendMessage(session.ws, {
     type: 'system_stats',
     payload: {
       ...monitoringData,

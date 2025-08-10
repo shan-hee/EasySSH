@@ -38,11 +38,11 @@ function createSSHConnection(config) {
   return new Promise((resolve, reject) => {
     const conn = new ssh2.Client();
     
-    // 连接超时设置
+    // 连接超时设置 - 与readyTimeout保持一致
     const timeout = setTimeout(() => {
       conn.end();
       reject(new Error('连接超时'));
-    }, 10000);
+    }, 25000); // 比readyTimeout多5秒，确保SSH2库的超时先触发
     
     conn.on('ready', () => {
       clearTimeout(timeout);
@@ -56,20 +56,70 @@ function createSSHConnection(config) {
     
     conn.on('error', (err) => {
       clearTimeout(timeout);
+
+      // 分类处理SSH连接错误
+      let errorType = 'unknown';
+      let userMessage = err.message;
+
+      if (err.code === 'ECONNREFUSED') {
+        errorType = 'connection_refused';
+        userMessage = '连接被拒绝，请检查服务器地址和端口';
+      } else if (err.code === 'ETIMEDOUT' || err.code === 'ECONNRESET') {
+        errorType = 'network_timeout';
+        userMessage = '网络超时，请检查网络连接';
+      } else if (err.message.includes('Authentication')) {
+        errorType = 'auth_failed';
+        userMessage = '认证失败，请检查用户名和密码';
+      } else if (err.message.includes('Host key verification failed')) {
+        errorType = 'host_key_failed';
+        userMessage = '主机密钥验证失败';
+      }
+
       logger.error('SSH连接错误', {
         address: config.address,
         port: config.port,
         username: config.username,
-        error: err.message
+        errorType,
+        error: err.message,
+        code: err.code
       });
-      reject(err);
+
+      // 创建增强的错误对象
+      const enhancedError = new Error(userMessage);
+      enhancedError.type = errorType;
+      enhancedError.originalError = err;
+
+      reject(enhancedError);
     });
     
     const sshConfig = {
       host: config.address,
       port: config.port || 22,
       username: config.username,
-      readyTimeout: 10000,
+      readyTimeout: 20000,        // 增加连接超时时间，适应高延迟网络
+      keepaliveInterval: 15000,   // 15秒发送一次keepalive
+      keepaliveCountMax: 3,       // 最多3次keepalive失败后断开
+      algorithms: {               // 优化算法选择
+        kex: [
+          'diffie-hellman-group14-sha256',
+          'diffie-hellman-group16-sha512',
+          'ecdh-sha2-nistp256',
+          'ecdh-sha2-nistp384',
+          'ecdh-sha2-nistp521'
+        ],
+        cipher: [
+          'aes128-ctr',
+          'aes192-ctr',
+          'aes256-ctr',
+          'aes128-gcm',
+          'aes256-gcm'
+        ],
+        hmac: [
+          'hmac-sha2-256',
+          'hmac-sha2-512',
+          'hmac-sha1'
+        ]
+      }
     };
     
     // 记录安全的连接日志
@@ -442,7 +492,9 @@ async function handleConnect(ws, data) {
       lastActivity: new Date(),
       cleanupTimeout: null,
       connectionInfo, // 保存连接信息
-      clientIP: data.clientIP // 保存客户端IP地址
+      clientIP: data.clientIP, // 保存客户端IP地址
+      supportsBinary: data.supportsBinary || false, // 客户端是否支持二进制传输
+      protocolVersion: data.protocolVersion || '1.0' // 协议版本
     };
     
     sessions.set(sessionId, session);
@@ -510,15 +562,8 @@ async function handleConnect(ws, data) {
       // 设置会话流
       session.stream = stream;
       
-      // 转发SSH数据到WebSocket
-      stream.on('data', (data) => {
-        if (ws.readyState === utils.WS_STATE.OPEN) {
-          sendMessage(ws, MSG_TYPE.DATA, {
-            sessionId,
-            data: data.toString('base64')
-          });
-        }
-      });
+      // 转发SSH数据到WebSocket - 支持二进制传输和背压控制
+      setupStreamWithBackpressure(session, stream, ws, sessionId);
       
       // 处理SSH错误
       stream.on('error', (err) => {
@@ -752,6 +797,208 @@ async function handleSshExec(ws, data) {
   }, ws, 'SSH命令执行错误', sessionId, operationId);
 }
 
+/**
+ * 设置SSH流的背压控制
+ * @param {Object} session 会话对象
+ * @param {Stream} stream SSH流
+ * @param {WebSocket} ws WebSocket连接
+ * @param {string} sessionId 会话ID
+ */
+function setupStreamWithBackpressure(session, stream, ws, sessionId) {
+  const BACKPRESSURE_THRESHOLD = 4 * 1024 * 1024; // 4MB
+  const BACKPRESSURE_RESUME_THRESHOLD = 2 * 1024 * 1024; // 2MB
+  let paused = false;
+  let totalBytesSent = 0;
+  let lastStatsTime = Date.now();
+
+  // 初始化背压控制状态
+  session.backpressure = {
+    paused: false,
+    totalBytes: 0,
+    pauseCount: 0,
+    resumeCount: 0
+  };
+
+  stream.on('data', (data) => {
+    if (ws.readyState !== utils.WS_STATE.OPEN) {
+      return;
+    }
+
+    totalBytesSent += data.length;
+    session.backpressure.totalBytes += data.length;
+
+    // 检查WebSocket缓冲区状态
+    const bufferedAmount = ws.bufferedAmount || 0;
+    const shouldPause = bufferedAmount > BACKPRESSURE_THRESHOLD;
+
+    if (shouldPause && !paused) {
+      // 暂停SSH流
+      stream.pause();
+      paused = true;
+      session.backpressure.paused = true;
+      session.backpressure.pauseCount++;
+
+      logger.debug('SSH流已暂停 - WebSocket背压', {
+        sessionId,
+        bufferedAmount,
+        threshold: BACKPRESSURE_THRESHOLD,
+        dataSize: data.length
+      });
+
+      // 设置恢复检查
+      const checkResume = () => {
+        const currentBuffered = ws.bufferedAmount || 0;
+
+        if (currentBuffered < BACKPRESSURE_RESUME_THRESHOLD && paused) {
+          // 恢复SSH流
+          stream.resume();
+          paused = false;
+          session.backpressure.paused = false;
+          session.backpressure.resumeCount++;
+
+          logger.debug('SSH流已恢复', {
+            sessionId,
+            bufferedAmount: currentBuffered,
+            resumeThreshold: BACKPRESSURE_RESUME_THRESHOLD
+          });
+        } else if (paused) {
+          // 继续检查
+          setTimeout(checkResume, 100);
+        }
+      };
+
+      setTimeout(checkResume, 100);
+    }
+
+    // 发送数据
+    try {
+      if (session.supportsBinary) {
+        sendBinaryDataWithStats(ws, sessionId, data);
+      } else {
+        sendMessage(ws, MSG_TYPE.DATA, {
+          sessionId,
+          data: data.toString('base64')
+        });
+      }
+    } catch (error) {
+      logger.error('发送SSH数据失败', {
+        sessionId,
+        error: error.message,
+        dataLength: data.length
+      });
+    }
+
+    // 定期记录统计信息
+    const now = Date.now();
+    if (now - lastStatsTime > 30000) { // 每30秒记录一次
+      const throughput = totalBytesSent / 30; // 字节/秒
+      logger.debug('SSH数据传输统计', {
+        sessionId,
+        throughputBps: Math.round(throughput),
+        totalBytes: totalBytesSent,
+        pauseCount: session.backpressure.pauseCount,
+        resumeCount: session.backpressure.resumeCount,
+        currentlyPaused: paused
+      });
+
+      totalBytesSent = 0;
+      lastStatsTime = now;
+    }
+  });
+
+  // 处理流错误
+  stream.on('error', (err) => {
+    logger.error('SSH流错误', { sessionId, error: err.message });
+
+    if (paused) {
+      stream.resume();
+      paused = false;
+      session.backpressure.paused = false;
+    }
+  });
+}
+
+/**
+ * 发送二进制数据到WebSocket（带统计）
+ * @param {WebSocket} ws WebSocket连接
+ * @param {string} sessionId 会话ID
+ * @param {Buffer} data 要发送的数据
+ */
+function sendBinaryDataWithStats(ws, sessionId, data) {
+  try {
+    const sessionIdBytes = Buffer.from(sessionId, 'utf8');
+    const header = Buffer.from([0x02, sessionIdBytes.length]); // 0x02: 服务器到客户端数据
+    const frame = Buffer.concat([header, sessionIdBytes, data]);
+
+    ws.send(frame, { binary: true });
+
+    // 记录传输统计
+    if (global.metricsCollector) {
+      global.metricsCollector.recordDataTransfer('outbound', 'binary', frame.length);
+    }
+  } catch (error) {
+    logger.error('发送二进制数据失败', {
+      sessionId,
+      error: error.message,
+      dataLength: data.length
+    });
+
+    // 回退到JSON发送
+    sendMessage(ws, MSG_TYPE.DATA, {
+      sessionId,
+      data: data.toString('base64')
+    });
+  }
+}
+
+/**
+ * 发送二进制数据到WebSocket
+ * @param {WebSocket} ws WebSocket连接
+ * @param {string} sessionId 会话ID
+ * @param {Buffer} data 要发送的数据
+ */
+function sendBinaryData(ws, sessionId, data) {
+  return sendBinaryDataWithStats(ws, sessionId, data);
+}
+
+/**
+ * 处理二进制数据输入
+ * @param {WebSocket} ws WebSocket连接
+ * @param {Object} data 包含sessionId和payload的对象
+ */
+function handleDataBinary(ws, data) {
+  const { sessionId, payload } = data;
+
+  if (!validateSshSession(ws, sessionId, sessions)) {
+    return;
+  }
+
+  const session = sessions.get(sessionId);
+
+  if (!session.stream) {
+    sendError(ws, 'SSH流未创建', sessionId);
+    return;
+  }
+
+  try {
+    // 直接写入二进制数据，无需Base64解码
+    session.stream.write(payload);
+    recordActivity(session);
+
+    // 记录传输统计
+    if (global.metricsCollector) {
+      global.metricsCollector.recordDataTransfer('inbound', 'binary', payload.length);
+    }
+  } catch (error) {
+    logger.error('写入SSH流失败', {
+      sessionId,
+      error: error.message,
+      payloadLength: payload.length
+    });
+    sendError(ws, `数据传输失败: ${error.message}`, sessionId);
+  }
+}
+
 // 导出函数和对象
 module.exports = {
   sessions,
@@ -761,8 +1008,11 @@ module.exports = {
   cleanupSession,
   handleConnect,
   handleData,
+  handleDataBinary,
   handleResize,
   handleDisconnect,
   handlePing,
-  handleSshExec
+  handleSshExec,
+  sendBinaryData,
+  setupStreamWithBackpressure
 };

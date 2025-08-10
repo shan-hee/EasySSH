@@ -15,6 +15,11 @@ const utils = require('./utils');
 // 导入监控处理模块
 const monitoring = require('../monitoring');
 
+// 导入消息验证器
+const { validateMessage, createErrorResponse, formatValidationErrors, ERROR_CODES } = require('../utils/message-validator');
+
+
+
 // 存储临时连接配置的映射
 const pendingConnections = new Map();
 
@@ -70,11 +75,19 @@ function initWebSocketServer(server) {
     maxMessageSizeBytes: maxMessageSize
   });
 
-  // 创建SSH WebSocket服务器
+  // 创建SSH WebSocket服务器 - 优化配置
   const sshWss = new WebSocket.Server({
     noServer: true,
     maxPayload: maxMessageSize, // 设置最大消息大小
-    perMessageDeflate: false // 禁用压缩以提高大文件传输性能
+    perMessageDeflate: {
+      threshold: 1024,        // 仅压缩>1KB的消息
+      concurrencyLimit: 10,   // 限制并发压缩
+      memLevel: 7,           // 平衡内存和压缩率
+      serverMaxWindowBits: 15, // 服务器窗口大小
+      clientMaxWindowBits: 15, // 客户端窗口大小
+      serverMaxNoContextTakeover: false, // 允许服务器上下文复用
+      clientMaxNoContextTakeover: false  // 允许客户端上下文复用
+    }
   });
 
   // 创建监控WebSocket服务器
@@ -134,17 +147,73 @@ function initWebSocketServer(server) {
 
   // 处理SSH WebSocket连接
   sshWss.on('connection', (ws, request) => {
-    logger.info('新的SSH WebSocket连接已建立');
-    let sessionId = null;
-
     // 获取客户端IP地址
     const clientIP = getClientIP(request);
-    logger.debug('SSH客户端连接信息', { clientIP: clientIP || '未知' });
+
+    logger.info('新的SSH WebSocket连接已建立', {
+      clientIP: clientIP || '未知',
+      userAgent: request.headers['user-agent']
+    });
+
+    let sessionId = null;
+
+    // 设置原生WebSocket心跳
+    ws.isAlive = true;
+    ws.connectionTime = Date.now();
+    ws.lastPing = 0;
+
+    ws.on('pong', () => {
+      ws.isAlive = true;
+      const latency = Date.now() - ws.lastPing;
+      logger.debug('收到WebSocket pong', {
+        sessionId,
+        latency: `${latency}ms`,
+        clientIP
+      });
+    });
     
-    ws.on('message', async (message) => {
+    ws.on('message', async (message, isBinary) => {
       try {
-        const msg = JSON.parse(message);
-        const { type, data } = msg;
+        if (isBinary) {
+          // 处理二进制消息
+          handleBinaryMessage(ws, message, sessionId);
+          return;
+        }
+
+        // 处理JSON消息
+        let msg;
+        try {
+          msg = JSON.parse(message);
+        } catch (parseError) {
+          logger.warn('JSON解析失败', { error: parseError.message });
+          const errorResponse = createErrorResponse(
+            ERROR_CODES.INVALID_MESSAGE_FORMAT,
+            'JSON格式错误'
+          );
+          ws.send(JSON.stringify(errorResponse));
+          return;
+        }
+
+        // 验证消息格式
+        const validation = validateMessage(msg);
+        if (!validation.isValid) {
+          logger.warn('消息验证失败', {
+            errorCode: validation.errorCode,
+            errorMessage: validation.errorMessage,
+            errors: formatValidationErrors(validation.errors)
+          });
+
+          const errorResponse = createErrorResponse(
+            validation.errorCode,
+            validation.errorMessage,
+            msg.requestId
+          );
+          ws.send(JSON.stringify(errorResponse));
+          return;
+        }
+
+        // 使用验证后的消息
+        const { type, data } = validation.sanitizedMessage;
         
         switch (type) {
           case 'connect':
@@ -325,6 +394,11 @@ function initWebSocketServer(server) {
             sftp.handleSftpDelete(ws, data);
             break;
 
+          case 'sftp_fast_delete':
+            // 处理SFTP快速删除
+            sftp.handleSftpFastDelete(ws, data);
+            break;
+
           case 'sftp_chmod':
             // 处理SFTP权限修改
             sftp.handleSftpChmod(ws, data);
@@ -412,6 +486,9 @@ function initWebSocketServer(server) {
   // 注意：监控WebSocket连接现在直接在upgrade事件中处理，
   // 不再需要单独的connection事件监听器
 
+  // 设置全局WebSocket心跳机制
+  setupGlobalHeartbeat(sshWss);
+
   return { sshWss, monitorWss };
 }
 
@@ -453,6 +530,172 @@ function decryptSensitiveData(encryptedData, key) {
   }
 }
 
+/**
+ * 设置全局WebSocket心跳机制
+ * @param {WebSocket.Server} wss WebSocket服务器
+ */
+function setupGlobalHeartbeat(wss) {
+  const HEARTBEAT_INTERVAL = 15000; // 15秒
+  const HEARTBEAT_TIMEOUT = 45000;  // 45秒超时
+
+  logger.info('启动WebSocket原生心跳机制', {
+    interval: `${HEARTBEAT_INTERVAL / 1000}s`,
+    timeout: `${HEARTBEAT_TIMEOUT / 1000}s`
+  });
+
+  const interval = setInterval(() => {
+    const now = Date.now();
+    let activeConnections = 0;
+    let terminatedConnections = 0;
+
+    wss.clients.forEach((ws) => {
+      // 检查连接是否超时
+      const connectionAge = now - ws.connectionTime;
+      const timeSinceLastPong = now - (ws.lastPing || ws.connectionTime);
+
+      if (ws.isAlive === false || timeSinceLastPong > HEARTBEAT_TIMEOUT) {
+        logger.info('WebSocket连接超时，终止连接', {
+          connectionAge: `${Math.round(connectionAge / 1000)}s`,
+          timeSinceLastPong: `${Math.round(timeSinceLastPong / 1000)}s`,
+          readyState: ws.readyState
+        });
+
+        ws.terminate();
+        terminatedConnections++;
+        return;
+      }
+
+      // 发送ping
+      ws.isAlive = false;
+      ws.lastPing = now;
+
+      try {
+        ws.ping();
+        activeConnections++;
+      } catch (error) {
+        logger.warn('发送WebSocket ping失败', { error: error.message });
+        ws.terminate();
+        terminatedConnections++;
+      }
+    });
+
+    if (activeConnections > 0 || terminatedConnections > 0) {
+      logger.debug('WebSocket心跳统计', {
+        activeConnections,
+        terminatedConnections,
+        totalClients: wss.clients.size
+      });
+    }
+  }, HEARTBEAT_INTERVAL);
+
+  // 服务器关闭时清理心跳
+  wss.on('close', () => {
+    logger.info('WebSocket服务器关闭，停止心跳机制');
+    clearInterval(interval);
+  });
+
+  return interval;
+}
+
+/**
+ * 处理二进制WebSocket消息
+ * 消息格式: [type:1][sessionId_len:1][sessionId][payload]
+ * @param {WebSocket} ws WebSocket连接
+ * @param {Buffer} buffer 二进制数据
+ * @param {string} sessionId 当前会话ID
+ */
+function handleBinaryMessage(ws, buffer, sessionId) {
+  try {
+    if (buffer.length < 2) {
+      logger.warn('二进制消息长度不足', { length: buffer.length });
+      return;
+    }
+
+    // 调试：打印原始数据
+    logger.debug('二进制消息原始数据', {
+      length: buffer.length,
+      first8Bytes: Array.from(buffer.slice(0, Math.min(8, buffer.length))),
+      bufferType: buffer.constructor.name
+    });
+
+    // 确保正确处理Buffer对象
+    let arrayBuffer;
+    if (buffer instanceof ArrayBuffer) {
+      arrayBuffer = buffer;
+    } else if (buffer.buffer instanceof ArrayBuffer) {
+      // 对于TypedArray，需要考虑byteOffset和byteLength
+      arrayBuffer = buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength);
+    } else {
+      // 对于Node.js Buffer，转换为ArrayBuffer
+      arrayBuffer = buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength);
+    }
+
+    const view = new DataView(arrayBuffer);
+    const type = view.getUint8(0);
+    const sessionIdLen = view.getUint8(1);
+
+    logger.debug('二进制消息解析', {
+      type,
+      sessionIdLen,
+      totalLength: buffer.length,
+      expectedMinLength: 2 + sessionIdLen
+    });
+
+    if (buffer.length < 2 + sessionIdLen) {
+      logger.warn('二进制消息格式错误', {
+        length: buffer.length,
+        expectedMinLength: 2 + sessionIdLen,
+        type,
+        sessionIdLen
+      });
+      return;
+    }
+
+    // 提取sessionId和payload
+    const sessionIdBytes = new Uint8Array(arrayBuffer, 2, sessionIdLen);
+    const extractedSessionId = new TextDecoder().decode(sessionIdBytes);
+    const payloadBytes = new Uint8Array(arrayBuffer, 2 + sessionIdLen);
+    const payload = new TextDecoder().decode(payloadBytes);
+
+    logger.debug('收到二进制消息', {
+      type,
+      sessionId: extractedSessionId,
+      payloadLength: payload.length
+    });
+
+    switch (type) {
+      case 0x01: // DATA类型 - 终端输入数据
+        ssh.handleDataBinary(ws, {
+          sessionId: extractedSessionId,
+          payload
+        });
+        break;
+
+      case 0x03: // RESIZE类型 - 终端大小调整
+        if (payload.length >= 8) {
+          const resizeView = new DataView(payload.buffer || payload);
+          const cols = resizeView.getUint32(0, true); // 小端序
+          const rows = resizeView.getUint32(4, true);
+
+          ssh.handleResize(ws, {
+            sessionId: extractedSessionId,
+            cols,
+            rows
+          });
+        }
+        break;
+
+      default:
+        logger.warn('未知的二进制消息类型', { type, sessionId: extractedSessionId });
+    }
+  } catch (error) {
+    logger.error('处理二进制消息失败', {
+      error: error.message,
+      sessionId
+    });
+  }
+}
+
 module.exports = {
   initWebSocketServer
-}; 
+};

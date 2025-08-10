@@ -228,6 +228,9 @@ class SSHService {
       log.info(`建立SSH连接: ${connection.username}@${connection.host}:${connection.port} via ${wsUrl}`);
       const socket = new WebSocket(wsUrl);
 
+      // 启用二进制数据接收
+      socket.binaryType = 'arraybuffer';
+
       const session = {
         id: sessionId,
         connection: { ...connection },
@@ -341,14 +344,14 @@ class SSHService {
           createdAt: Date.now()
         });
         
-        // 3. 只发送最小化必要信息
-        socket.send(JSON.stringify({
-          type: 'connect',
-          data: {
-            sessionId,
-            connectionId // 只传递连接ID，不传递完整连接信息
-          }
-        }));
+        // 3. 只发送最小化必要信息，包含二进制支持标识
+        const connectMessage = this._createStandardMessage('connect', {
+          sessionId,
+          connectionId, // 只传递连接ID，不传递完整连接信息
+          supportsBinary: true, // 标识客户端支持二进制传输
+          protocolVersion: '2.0' // 协议版本
+        });
+        socket.send(JSON.stringify(connectMessage));
       };
       
       // 连接错误时
@@ -415,9 +418,16 @@ class SSHService {
         reject(new Error(reason));
       };
       
-      // 接收消息时
+      // 接收消息时 - 支持二进制和JSON消息
       socket.onmessage = (event) => {
         try {
+          // 检查是否为二进制消息
+          if (event.data instanceof ArrayBuffer) {
+            this._handleBinaryMessage(event.data, sessionId);
+            return;
+          }
+
+          // 处理JSON消息
           let message;
           try {
             message = JSON.parse(event.data);
@@ -548,10 +558,8 @@ class SSHService {
                   authData.keyId = randomKey;
                   
                   // 发送认证请求
-                  socket.send(JSON.stringify({
-                    type: 'authenticate',
-                    data: authData
-                  }));
+                  const authMessage = this._createStandardMessage('authenticate', authData);
+                  socket.send(JSON.stringify(authMessage));
                 } catch (encryptError) {
                   log.error('加密认证信息失败', encryptError);
                   reject(new Error('加密认证信息失败，无法安全连接'));
@@ -739,7 +747,7 @@ class SSHService {
                           // 发送包含WebSocket延迟的ping消息，让后端直接处理延迟测量
                           if (session.socket && session.socket.readyState === WS_CONSTANTS.OPEN) {
                             const now = new Date();
-                            const timestamp = now.toISOString();
+                            const timestamp = Date.now(); // 使用数字时间戳
                             const requestId = `latency_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
                             const clientSendTime = performance.now();
 
@@ -752,18 +760,15 @@ class SSHService {
                             });
 
                             // 发送包含WebSocket延迟的ping消息
-                            session.socket.send(JSON.stringify({
-                              type: MESSAGE_TYPES.PING,
-                              data: {
-                                sessionId,
-                                timestamp,
-                                clientSendTime,
-                                requestId,
-                                webSocketLatency, // 直接在ping中包含WebSocket延迟
-                                measureLatency: true,
-                                client: 'easyssh'
-                              }
-                            }));
+                            const pingMessage = this._createStandardMessage(MESSAGE_TYPES.PING, {
+                              sessionId,
+                              timestamp,
+                              requestId,
+                              webSocketLatency, // 直接在ping中包含WebSocket延迟
+                              measureLatency: true,
+                              client: 'easyssh'
+                            });
+                            session.socket.send(JSON.stringify(pingMessage));
                           }
                         } else {
                           log.warn(`WebSocket延迟值异常: ${webSocketLatency}ms, 跳过处理`);
@@ -855,7 +860,7 @@ class SSHService {
 
       if (session.socket && session.socket.readyState === WS_CONSTANTS.OPEN) {
         try {
-          const timestamp = now.toISOString();
+          const timestamp = Date.now(); // 使用数字时间戳
           const requestId = Date.now().toString();
           const clientSendTime = performance.now(); // 高精度时间戳
 
@@ -865,17 +870,15 @@ class SSHService {
             sessionId
           });
 
-          session.socket.send(JSON.stringify({
-            type: MESSAGE_TYPES.PING,
-            data: {
-              sessionId,
-              timestamp,
-              clientSendTime, // 发送高精度时间戳
-              requestId,
-              measureLatency: true,
-              client: 'easyssh'
-            }
-          }));
+          const pingMessage = this._createStandardMessage(MESSAGE_TYPES.PING, {
+            sessionId,
+            timestamp,
+            clientSendTime, // 发送高精度时间戳
+            requestId,
+            measureLatency: true,
+            client: 'easyssh'
+          });
+          session.socket.send(JSON.stringify(pingMessage));
 
           session.lastActivity = now;
 
@@ -924,7 +927,7 @@ class SSHService {
 
     if (session.socket && session.socket.readyState === WS_CONSTANTS.OPEN) {
       try {
-        const timestamp = now.toISOString();
+        const timestamp = Date.now(); // 使用数字时间戳
         const requestId = `immediate_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
         const clientSendTime = performance.now();
 
@@ -943,18 +946,16 @@ class SSHService {
             sessionId
           });
 
-          session.socket.send(JSON.stringify({
-            type: MESSAGE_TYPES.PING,
-            data: {
-              sessionId,
-              timestamp,
-              clientSendTime,
-              requestId,
-              measureLatency: true,
-              client: 'easyssh',
-              immediate: true // 标记为立即ping
-            }
-          }));
+          const immediatePingMessage = this._createStandardMessage(MESSAGE_TYPES.PING, {
+            sessionId,
+            timestamp,
+            clientSendTime,
+            requestId,
+            measureLatency: true,
+            client: 'easyssh',
+            immediate: true // 标记为立即ping
+          });
+          session.socket.send(JSON.stringify(immediatePingMessage));
 
           session.lastActivity = now;
           log.debug(`SSH连接成功后立即发送ping: ${sessionId}`);
@@ -1140,13 +1141,17 @@ class SSHService {
     }
     
     try {
-      session.socket.send(JSON.stringify({
-        type: 'data',
-        data: {
+      // 检查是否支持二进制传输
+      if (session.supportsBinary !== false) { // 默认支持二进制
+        this._sendBinaryData(session, data);
+      } else {
+        // 回退到JSON传输
+        const dataMessage = this._createStandardMessage('data', {
           sessionId: sessionId,
           data: data
-        }
-      }));
+        });
+        session.socket.send(JSON.stringify(dataMessage));
+      }
     } catch (error) {
       log.error(`发送数据到会话 [${sessionId}] 失败:`, error);
     }
@@ -1179,12 +1184,10 @@ class SSHService {
         if (session.socket.readyState === WS_CONSTANTS.OPEN) {
           try {
             log.debug(`向服务器发送断开请求: ${sessionId}`);
-            session.socket.send(JSON.stringify({
-              type: 'disconnect',
-              data: {
-                sessionId
-              }
-            }));
+            const disconnectMessage = this._createStandardMessage('disconnect', {
+              sessionId
+            });
+            session.socket.send(JSON.stringify(disconnectMessage));
           } catch (sendError) {
             log.warn(`发送断开请求失败: ${sessionId}`, sendError);
           }
@@ -1491,6 +1494,133 @@ class SSHService {
     }
 
     return this.sessionTerminalMap.get(sessionId) || null;
+  }
+
+  /**
+   * 创建标准化的WebSocket消息
+   * @param {string} type 消息类型
+   * @param {Object} data 消息数据
+   * @param {string} requestId 可选的请求ID
+   * @returns {Object} 标准化的消息对象
+   */
+  _createStandardMessage(type, data, requestId = null) {
+    const message = {
+      type,
+      data,
+      timestamp: Date.now(),
+      version: '2.0'
+    };
+
+    if (requestId) {
+      message.requestId = requestId;
+    }
+
+    return message;
+  }
+
+  /**
+   * 处理二进制WebSocket消息
+   * @param {ArrayBuffer} buffer 二进制数据
+   * @param {string} sessionId 会话ID
+   */
+  _handleBinaryMessage(buffer, sessionId) {
+    try {
+      if (buffer.byteLength < 2) {
+        log.warn('二进制消息长度不足', { length: buffer.byteLength });
+        return;
+      }
+
+      const view = new DataView(buffer);
+      const type = view.getUint8(0);
+      const sessionIdLen = view.getUint8(1);
+
+      if (buffer.byteLength < 2 + sessionIdLen) {
+        log.warn('二进制消息格式错误', {
+          length: buffer.byteLength,
+          expectedMinLength: 2 + sessionIdLen
+        });
+        return;
+      }
+
+      const extractedSessionId = new TextDecoder().decode(
+        buffer.slice(2, 2 + sessionIdLen)
+      );
+      const payload = buffer.slice(2 + sessionIdLen);
+
+      switch (type) {
+        case 0x02: // 服务器到客户端数据
+          this._handleServerData(extractedSessionId, payload);
+          break;
+
+        default:
+          log.warn('未知的二进制消息类型', { type, sessionId: extractedSessionId });
+      }
+    } catch (error) {
+      log.error('处理二进制消息失败', { error: error.message, sessionId });
+    }
+  }
+
+  /**
+   * 处理服务器发送的二进制数据
+   * @param {string} sessionId 会话ID
+   * @param {ArrayBuffer} payload 数据载荷
+   */
+  _handleServerData(sessionId, payload) {
+    if (!this.sessions.has(sessionId)) {
+      log.warn('收到未知会话的数据', { sessionId });
+      return;
+    }
+
+    const session = this.sessions.get(sessionId);
+    session.lastActivity = new Date();
+
+    if (session.terminal) {
+      try {
+        // 直接解码为UTF-8文本并写入终端
+        const text = new TextDecoder('utf-8', { fatal: false }).decode(payload);
+        session.terminal.write(text);
+      } catch (error) {
+        log.error('写入终端数据失败', { sessionId, error: error.message });
+      }
+    } else if (session.buffer !== undefined) {
+      // 如果终端还未准备好，缓存数据
+      const text = new TextDecoder('utf-8', { fatal: false }).decode(payload);
+      session.buffer += text;
+    }
+  }
+
+  /**
+   * 发送二进制数据到服务器
+   * @param {Object} session 会话对象
+   * @param {string} data 要发送的文本数据
+   */
+  _sendBinaryData(session, data) {
+    try {
+      const sessionIdBytes = new TextEncoder().encode(session.id);
+      const dataBytes = new TextEncoder().encode(data);
+
+      // 创建二进制帧: [type:1][sessionId_len:1][sessionId][data]
+      const buffer = new ArrayBuffer(2 + sessionIdBytes.length + dataBytes.length);
+      const view = new DataView(buffer);
+      const uint8Array = new Uint8Array(buffer);
+
+      view.setUint8(0, 0x01); // DATA类型
+      view.setUint8(1, sessionIdBytes.length);
+
+      uint8Array.set(sessionIdBytes, 2);
+      uint8Array.set(dataBytes, 2 + sessionIdBytes.length);
+
+      session.socket.send(buffer);
+    } catch (error) {
+      log.error('发送二进制数据失败', { sessionId: session.id, error: error.message });
+
+      // 回退到JSON发送
+      const fallbackMessage = this._createStandardMessage('data', {
+        sessionId: session.id,
+        data: data
+      });
+      session.socket.send(JSON.stringify(fallbackMessage));
+    }
   }
 }
 
