@@ -54,23 +54,17 @@ class MonitoringStatusChecker {
     }
 
     try {
-      const stats = this.monitoringBridge.getStateStats();
       const collectors = Array.from(this.monitoringBridge.collectors.keys());
-      
+      const activeCount = this.monitoringBridge.collectors.size;
+
       return {
         available: true,
         collectors: {
-          active: stats.activeCollectors,
-          total: stats.total,
-          states: {
-            starting: stats.starting,
-            running: stats.running,
-            stopping: stats.stopping,
-            stopped: stats.stopped
-          }
+          active: activeCount,
+          total: activeCount
         },
         sessions: collectors,
-        health: this.assessBridgeHealth(stats)
+        health: { status: 'healthy' }
       };
     } catch (error) {
       return {

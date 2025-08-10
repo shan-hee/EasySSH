@@ -65,7 +65,6 @@ class MonitoringBridge {
     try {
       // 动态导入流式SSH监控收集器（优化版）
       const StreamingSSHMonitoringCollector = require('./streamingSSHMonitoringCollector');
-      const monitoringConfig = require('../config/monitoring');
 
       // 创建流式监控收集器实例
       const collector = new StreamingSSHMonitoringCollector(sshConnection, hostInfo);
@@ -94,8 +93,8 @@ class MonitoringBridge {
         this.collectors.delete(sessionId);
       });
 
-      // 开始数据收集（使用配置的间隔）
-      collector.startCollection(dataCallback, monitoringConfig.collector.defaultInterval);
+      // 开始数据收集（使用默认间隔1秒）
+      collector.startCollection(dataCallback, 1000);
 
       // 存储收集器实例
       this.collectors.set(sessionId, collector);
@@ -150,12 +149,11 @@ class MonitoringBridge {
         this.collectors.delete(sessionId);
         this.collectorStates.set(sessionId, 'stopped');
 
-        // 记录停止信息（在删除后计算剩余收集器数量）
+        // 记录停止信息
         logger.info('SSH监控数据收集已停止', {
           sessionId,
           hostId: collector.hostId,
-          reason,
-          remainingCollectors: this.collectors.size
+          reason
         });
 
         return true; // 返回true表示成功执行停止操作
@@ -267,22 +265,7 @@ class MonitoringBridge {
     return statuses;
   }
 
-  /**
-   * 获取所有活跃收集器的状态
-   * @returns {Array} 收集器状态列表
-   */
-  getAllCollectorStatus() {
-    const statuses = [];
-    this.collectors.forEach((collector, sessionId) => {
-      statuses.push({
-        sessionId,
-        isCollecting: collector.isCollecting,
-        hostId: collector.hostId,
-        hostInfo: collector.hostInfo
-      });
-    });
-    return statuses;
-  }
+
 
   /**
    * 清理过期状态记录
@@ -312,29 +295,7 @@ class MonitoringBridge {
     return this.collectorStates.get(sessionId) || 'unknown';
   }
 
-  /**
-   * 获取所有收集器状态统计
-   * @returns {Object} 状态统计
-   */
-  getStateStats() {
-    const stats = {
-      starting: 0,
-      running: 0,
-      stopping: 0,
-      stopped: 0,
-      unknown: 0
-    };
 
-    this.collectorStates.forEach(state => {
-      stats[state] = (stats[state] || 0) + 1;
-    });
-
-    return {
-      ...stats,
-      total: this.collectorStates.size,
-      activeCollectors: this.collectors.size
-    };
-  }
 
   /**
    * 启动定期清理任务
@@ -344,20 +305,7 @@ class MonitoringBridge {
     this.cleanupTimer = setInterval(() => {
       this.cleanupStaleStates();
 
-      // 记录统计信息
-      const stats = this.getStateStats();
-      if (stats.total > 0) {
-        logger.debug('监控收集器状态统计', stats);
-
-        // 如果有异常状态，记录警告
-        if (stats.stopped > stats.running * 2) {
-          logger.warn('检测到过多已停止的收集器', {
-            stopped: stats.stopped,
-            running: stats.running,
-            suggestion: '可能存在内存泄漏，建议检查'
-          });
-        }
-      }
+      // 基本清理，不记录详细统计
     }, 5 * 60 * 1000);
 
     // 只在首次启动时记录，避免重启时的重复日志
@@ -383,8 +331,7 @@ class MonitoringBridge {
    */
   cleanup() {
     logger.info('清理所有监控收集器', {
-      count: this.collectors.size,
-      states: this.getStateStats()
+      count: this.collectors.size
     });
 
     // 停止清理任务

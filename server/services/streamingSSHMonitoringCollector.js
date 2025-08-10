@@ -7,7 +7,6 @@ const EventEmitter = require('events');
 const path = require('path');
 const fs = require('fs');
 const logger = require('../utils/logger');
-const monitoringConfig = require('../config/monitoring');
 
 class StreamingSSHMonitoringCollector extends EventEmitter {
   constructor(sshConnection, hostInfo) {
@@ -26,16 +25,7 @@ class StreamingSSHMonitoringCollector extends EventEmitter {
       lastStaticUpdate: 0
     };
 
-    // 性能监控
-    this.metrics = {
-      totalMessages: 0,
-      errorCount: 0,
-      lastMessageTime: 0,
-      averageLatency: 0,
-      startTime: Date.now()
-    };
-
-    // 错误处理
+    // 基本状态跟踪（保留必要的错误处理）
     this.errorStats = {
       consecutiveErrors: 0,
       maxConsecutiveErrors: 5,
@@ -220,9 +210,6 @@ class StreamingSSHMonitoringCollector extends EventEmitter {
       data.source = 'streaming_ssh';
       data.collectorVersion = '2.0';
 
-      // 更新性能指标
-      this.updateMetrics(data);
-
       // 重置错误计数
       if (this.errorStats.consecutiveErrors > 0) {
         this.errorStats.consecutiveErrors = 0;
@@ -244,40 +231,7 @@ class StreamingSSHMonitoringCollector extends EventEmitter {
     }
   }
 
-  /**
-   * 更新性能指标
-   * @param {Object} data 监控数据
-   */
-  updateMetrics(data) {
-    this.metrics.totalMessages++;
-    this.metrics.lastMessageTime = Date.now();
 
-    // 计算延迟（如果有时间戳）
-    if (data.timestamp) {
-      const latency = Date.now() - data.timestamp;
-      if (this.metrics.averageLatency === 0) {
-        this.metrics.averageLatency = latency;
-      } else {
-        // 指数移动平均
-        this.metrics.averageLatency = this.metrics.averageLatency * 0.9 + latency * 0.1;
-      }
-    }
-
-    // 每100条消息记录一次性能日志
-    if (this.metrics.totalMessages % 100 === 0) {
-      const uptime = Date.now() - this.metrics.startTime;
-      const messagesPerSecond = this.metrics.totalMessages / (uptime / 1000);
-
-      logger.debug('流式监控性能统计', {
-        hostId: this.hostId,
-        totalMessages: this.metrics.totalMessages,
-        messagesPerSecond: messagesPerSecond.toFixed(2),
-        averageLatency: Math.round(this.metrics.averageLatency),
-        errorRate: (this.metrics.errorCount / this.metrics.totalMessages * 100).toFixed(2) + '%',
-        uptime: Math.round(uptime / 1000) + 's'
-      });
-    }
-  }
 
   /**
    * 处理流关闭
@@ -318,7 +272,6 @@ class StreamingSSHMonitoringCollector extends EventEmitter {
    * @param {Error} error 错误对象
    */
   handleError(error) {
-    this.metrics.errorCount++;
     this.errorStats.consecutiveErrors++;
     this.errorStats.lastErrorTime = Date.now();
 
@@ -368,13 +321,8 @@ class StreamingSSHMonitoringCollector extends EventEmitter {
     this.sshConnection = null;
     this.dataCallback = null;
 
-    // 记录最终统计
-    const uptime = Date.now() - this.metrics.startTime;
-    logger.info('停止流式SSH监控数据收集', { 
-      hostId: this.hostId,
-      totalMessages: this.metrics.totalMessages,
-      errorCount: this.metrics.errorCount,
-      uptime: Math.round(uptime / 1000) + 's'
+    logger.info('停止流式SSH监控数据收集', {
+      hostId: this.hostId
     });
 
     this.emit('stopped');
@@ -388,7 +336,6 @@ class StreamingSSHMonitoringCollector extends EventEmitter {
     return {
       hostId: this.hostId,
       isCollecting: this.isCollecting,
-      metrics: { ...this.metrics },
       errorStats: { ...this.errorStats },
       hasStream: !!this.stream,
       lastData: this.dataCache.lastData ? {
