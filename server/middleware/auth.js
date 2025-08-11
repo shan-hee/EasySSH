@@ -10,13 +10,12 @@ const jwt = require('jsonwebtoken');
 // 验证JWT令牌
 exports.authMiddleware = async (req, res, next) => {
   try {
-    logger.debug('认证中间件 - 请求路径', req.path);
-    
     // 从请求头获取令牌
     const authHeader = req.headers.authorization;
-    
+
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      logger.warn('认证失败 - 未提供有效的授权头', { 
+      logger.debug('认证失败 - 未提供有效的授权头', {
+        path: req.path,
         authHeader: authHeader ? `${authHeader.substring(0, 15)}...` : 'undefined'
       });
       return res.status(401).json({
@@ -24,21 +23,22 @@ exports.authMiddleware = async (req, res, next) => {
         message: '未提供身份验证令牌'
       });
     }
-    
+
     // 提取令牌
     const token = authHeader.split(' ')[1];
-    
+
     if (!token) {
-      logger.warn('认证失败 - 授权头中没有令牌');
+      logger.debug('认证失败 - 授权头中没有令牌', { path: req.path });
       return res.status(401).json({
         success: false,
         message: '无效的身份验证格式'
       });
     }
-    
+
     // 基本验证token格式
     if (token.split('.').length !== 3) {
-      logger.warn('认证失败 - 无效的JWT格式', { 
+      logger.debug('认证失败 - 无效的JWT格式', {
+        path: req.path,
         token: token.substring(0, 15) + '...',
         segments: token.split('.').length
       });
@@ -47,20 +47,14 @@ exports.authMiddleware = async (req, res, next) => {
         message: '无效的身份验证格式'
       });
     }
-    
-    logger.debug('验证令牌', { 
-      length: token.length, 
-      prefix: token.substring(0, 10) + '...' 
-    });
-    
+
     // 验证令牌
     const result = await userService.verifyToken(token);
-    
+
     if (!result.valid) {
-      logger.warn('认证失败 - 令牌验证结果', { 
-        valid: result.valid,
+      logger.debug('认证失败 - 令牌验证失败', {
+        path: req.path,
         error: result.error || '未知错误',
-        tokenExists: !!token,
         tokenLength: token ? token.length : 0
       });
       return res.status(401).json({
@@ -68,22 +62,23 @@ exports.authMiddleware = async (req, res, next) => {
         message: result.error || '身份验证失败'
       });
     }
-    
+
     // 将用户信息和令牌添加到请求对象
     req.user = result.user;
     req.token = token;
-    
+
+    // 合并认证日志为单条INFO级别
     logger.info('认证成功', {
       userId: result.user.id,
       username: result.user.username,
       path: req.path,
       tokenLength: token.length
     });
-    
+
     // 继续处理请求
     next();
   } catch (error) {
-    logger.error('身份验证错误', error);
+    logger.error('身份验证错误', { path: req.path, error: error.message });
     res.status(401).json({
       success: false,
       message: '身份验证失败'

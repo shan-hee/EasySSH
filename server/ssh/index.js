@@ -165,11 +165,15 @@ function initWebSocketServer(server) {
     ws.on('pong', () => {
       ws.isAlive = true;
       const latency = Date.now() - ws.lastPing;
-      logger.debug('收到WebSocket pong', {
-        sessionId,
-        latency: `${latency}ms`,
-        clientIP
-      });
+
+      // 只在延迟异常时记录日志（超过500ms）
+      if (latency > 500) {
+        logger.debug('收到WebSocket pong - 高延迟', {
+          sessionId,
+          latency: `${latency}ms`,
+          clientIP
+        });
+      }
     });
     
     ws.on('message', async (message, isBinary) => {
@@ -579,8 +583,9 @@ function setupGlobalHeartbeat(wss) {
       }
     });
 
-    if (activeConnections > 0 || terminatedConnections > 0) {
-      logger.debug('WebSocket心跳统计', {
+    // 只在有异常连接时记录心跳统计
+    if (terminatedConnections > 0) {
+      logger.debug('WebSocket心跳统计 - 发现异常连接', {
         activeConnections,
         terminatedConnections,
         totalClients: wss.clients.size
@@ -611,12 +616,7 @@ function handleBinaryMessage(ws, buffer, sessionId) {
       return;
     }
 
-    // 调试：打印原始数据
-    logger.debug('二进制消息原始数据', {
-      length: buffer.length,
-      first8Bytes: Array.from(buffer.slice(0, Math.min(8, buffer.length))),
-      bufferType: buffer.constructor.name
-    });
+    // 移除冗余的原始数据日志，只在出错时记录详细信息
 
     // 确保正确处理Buffer对象
     let arrayBuffer;
@@ -634,19 +634,15 @@ function handleBinaryMessage(ws, buffer, sessionId) {
     const type = view.getUint8(0);
     const sessionIdLen = view.getUint8(1);
 
-    logger.debug('二进制消息解析', {
-      type,
-      sessionIdLen,
-      totalLength: buffer.length,
-      expectedMinLength: 2 + sessionIdLen
-    });
+    // 移除冗余的解析日志，只在出错时记录详细信息
 
     if (buffer.length < 2 + sessionIdLen) {
       logger.warn('二进制消息格式错误', {
         length: buffer.length,
         expectedMinLength: 2 + sessionIdLen,
         type,
-        sessionIdLen
+        sessionIdLen,
+        first8Bytes: Array.from(buffer.slice(0, Math.min(8, buffer.length)))
       });
       return;
     }
@@ -657,11 +653,7 @@ function handleBinaryMessage(ws, buffer, sessionId) {
     const payloadBytes = new Uint8Array(arrayBuffer, 2 + sessionIdLen);
     const payload = new TextDecoder().decode(payloadBytes);
 
-    logger.debug('收到二进制消息', {
-      type,
-      sessionId: extractedSessionId,
-      payloadLength: payload.length
-    });
+    // 移除冗余的接收日志，正常情况下不记录二进制消息处理
 
     switch (type) {
       case 0x01: // DATA类型 - 终端输入数据
@@ -691,7 +683,10 @@ function handleBinaryMessage(ws, buffer, sessionId) {
   } catch (error) {
     logger.error('处理二进制消息失败', {
       error: error.message,
-      sessionId
+      sessionId,
+      bufferLength: buffer.length,
+      first8Bytes: Array.from(buffer.slice(0, Math.min(8, buffer.length))),
+      stack: error.stack
     });
   }
 }

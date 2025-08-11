@@ -29,7 +29,6 @@ class UserService {
       }
 
       // 从SQLite获取
-      logger.debug('从SQLite获取用户数据');
       const user = await User.findById(userId);
       
       if (!user) {
@@ -242,60 +241,44 @@ class UserService {
    */
   async verifyToken(token) {
     try {
-      logger.debug('开始验证令牌', { tokenLength: token.length });
-      
       // 首先检查令牌是否过期，并解码用户ID
       const secretKey = process.env.JWT_SECRET || 'your-secret-key';
-      logger.debug('使用密钥验证JWT', { 
-        secretKeyExists: !!secretKey,
-        secretKeyLength: secretKey.length,
-        usingDefault: secretKey === 'your-secret-key'
-      });
-      
+
       const decoded = jwt.verify(token, secretKey);
-      logger.debug('JWT解码成功', { 
-        userId: decoded.userId,
-        iat: decoded.iat,
-        exp: decoded.exp,
-        currentTime: Math.floor(Date.now() / 1000)
-      });
-      
+
       // 然后检查令牌是否在缓存中
       const tokenKey = `token:${token}`;
       const session = cache.get(tokenKey);
-      logger.debug('缓存中的会话状态', { 
-        sessionExists: !!session,
-        sessionValid: session ? session.valid : false,
-        sessionUserId: session ? session.userId : null,
-        decodedUserId: decoded.userId,
-        match: session ? String(session.userId) === String(decoded.userId) : false,
-        remoteLogout: session ? session.remoteLogout : false
-      });
       
       if (!session || !session.valid || String(session.userId) !== String(decoded.userId)) {
         // 新增：如果是remote-logout，返回特定错误
         if (session && session.remoteLogout) {
-          logger.warn('令牌验证失败 - 远程注销', { tokenKey });
+          logger.debug('令牌验证失败 - 远程注销', { tokenKey });
           return { valid: false, error: 'remote-logout' };
         }
-        logger.warn('令牌验证失败 - 缓存数据不匹配或无效');
+        logger.debug('令牌验证失败 - 缓存数据不匹配或无效', {
+          sessionExists: !!session,
+          sessionValid: session ? session.valid : false,
+          sessionUserId: session ? session.userId : null,
+          decodedUserId: decoded.userId
+        });
         return { valid: false };
       }
-      
+
       // 获取用户信息
       const user = await this.getUserById(decoded.userId);
-      logger.debug('已获取用户信息', { 
-        userExists: !!user,
-        userId: user ? user.id : null,
-        username: user ? user.username : null
-      });
+
+      if (!user) {
+        logger.debug('令牌验证失败 - 用户不存在', { userId: decoded.userId });
+        return { valid: false };
+      }
       
       return {
         valid: true,
         user
       };
     } catch (error) {
-      logger.error('令牌验证错误', error);
+      logger.debug('令牌验证失败', { error: error.message, tokenLength: token.length });
       return { valid: false, error: error.message };
     }
   }
