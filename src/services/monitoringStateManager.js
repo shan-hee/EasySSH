@@ -33,8 +33,8 @@ class MonitoringStateManager {
 
     // 全局状态
     this.globalState = reactive({
-      connectionState: LoadingState.INITIAL,
-      lastActivity: null,
+      connectionState: LoadingState.CONNECTING,
+      lastActivity: Date.now(),
       errorMessage: null,
       terminalId: terminalId,
       hostId: hostId
@@ -43,31 +43,31 @@ class MonitoringStateManager {
     // 各组件的状态
     this.componentStates = reactive({
       [MonitoringComponent.SYSTEM_INFO]: {
-        state: LoadingState.INITIAL,
+        state: LoadingState.LOADING,
         hasData: false,
         lastUpdate: null,
         error: null
       },
       [MonitoringComponent.CPU]: {
-        state: LoadingState.INITIAL,
+        state: LoadingState.LOADING,
         hasData: false,
         lastUpdate: null,
         error: null
       },
       [MonitoringComponent.MEMORY]: {
-        state: LoadingState.INITIAL,
+        state: LoadingState.LOADING,
         hasData: false,
         lastUpdate: null,
         error: null
       },
       [MonitoringComponent.NETWORK]: {
-        state: LoadingState.INITIAL,
+        state: LoadingState.LOADING,
         hasData: false,
         lastUpdate: null,
         error: null
       },
       [MonitoringComponent.DISK]: {
-        state: LoadingState.INITIAL,
+        state: LoadingState.LOADING,
         hasData: false,
         lastUpdate: null,
         error: null
@@ -160,8 +160,9 @@ class MonitoringStateManager {
 
       this.globalState.terminalId = terminalId
       this.globalState.hostId = hostId
-      // 保持 INITIAL 状态，等待监控服务主动连接
-      this.globalState.connectionState = LoadingState.INITIAL
+      // 设置为连接中状态，显示加载指示器
+      this.globalState.connectionState = LoadingState.CONNECTING
+      this.globalState.lastActivity = Date.now()
     }
   }
 
@@ -170,13 +171,13 @@ class MonitoringStateManager {
    * @private
    */
   _resetStates() {
-    this.globalState.connectionState = LoadingState.INITIAL
-    this.globalState.lastActivity = null
+    this.globalState.connectionState = LoadingState.CONNECTING
+    this.globalState.lastActivity = Date.now()
     this.globalState.errorMessage = null
 
     Object.keys(this.componentStates).forEach(component => {
       this.componentStates[component] = {
-        state: LoadingState.INITIAL,
+        state: LoadingState.LOADING,
         hasData: false,
         lastUpdate: null,
         error: null

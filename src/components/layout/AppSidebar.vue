@@ -125,14 +125,24 @@ export default defineComponent({
     const currentTheme = ref('dark')
 
     // 初始化主题
-    onMounted(async () => {
-      await settingsService.init()
-      const theme = settingsService.settings.ui.theme
-      if (theme === 'system') {
-        currentTheme.value = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
-      } else {
-        currentTheme.value = theme
+    onMounted(() => {
+      // 不重复初始化设置服务，直接读取当前主题
+      const updateCurrentTheme = () => {
+        if (!settingsService.isInitialized) {
+          // 如果设置服务还未初始化，等待初始化完成
+          setTimeout(updateCurrentTheme, 100)
+          return
+        }
+
+        const theme = settingsService.settings.ui.theme
+        if (theme === 'system') {
+          currentTheme.value = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+        } else {
+          currentTheme.value = theme
+        }
       }
+
+      updateCurrentTheme()
 
       // 监听主题变化事件
       window.addEventListener('theme-changed', (event) => {
@@ -158,8 +168,20 @@ export default defineComponent({
 
     // 主题切换函数
     const toggleTheme = () => {
-      const newTheme = currentTheme.value === 'dark' ? 'light' : 'dark'
-      // updateUISettings内部已经会调用applyTheme，无需重复调用
+      // 获取当前设置的主题（不是显示的主题）
+      const currentSettingTheme = settingsService.settings.ui.theme
+      let newTheme
+
+      // 根据当前设置的主题决定下一个主题
+      if (currentSettingTheme === 'system') {
+        // 如果当前是系统主题，切换到与当前显示相反的固定主题
+        newTheme = currentTheme.value === 'dark' ? 'light' : 'dark'
+      } else {
+        // 如果当前是固定主题，切换到相反的固定主题
+        newTheme = currentSettingTheme === 'dark' ? 'light' : 'dark'
+      }
+
+      // 更新主题设置
       settingsService.updateUISettings({ theme: newTheme })
     }
 

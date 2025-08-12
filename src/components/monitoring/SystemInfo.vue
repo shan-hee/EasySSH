@@ -80,17 +80,24 @@ const props = defineProps({
   monitoringData: {
     type: Object,
     default: () => ({})
+  },
+  stateManager: {
+    type: Object,
+    default: null
   }
 })
 
-// 使用统一状态管理器
+// 使用传入的状态管理器实例，如果没有则使用全局实例（向后兼容）
+const currentStateManager = computed(() => props.stateManager || monitoringStateManager)
+
+// 使用当前状态管理器
 const componentState = computed(() => {
-  return monitoringStateManager.getComponentState(MonitoringComponent.SYSTEM_INFO)
+  return currentStateManager.value.getComponentState(MonitoringComponent.SYSTEM_INFO)
 })
 
 // 重试处理
 const handleRetry = () => {
-  monitoringStateManager.retry()
+  currentStateManager.value.retry()
 }
 
 // 系统信息数据

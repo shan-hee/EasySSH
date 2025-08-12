@@ -31,30 +31,35 @@
           <!-- 系统信息 -->
           <SystemInfo
             :monitoring-data="monitoringData"
+            :state-manager="currentStateManager"
             class="monitoring-section"
           />
 
           <!-- CPU监控 -->
           <CpuMonitoring
             :monitoring-data="monitoringData"
+            :state-manager="currentStateManager"
             class="monitoring-section"
           />
 
           <!-- 内存监控 -->
           <MemoryMonitoring
             :monitoring-data="monitoringData"
+            :state-manager="currentStateManager"
             class="monitoring-section"
           />
 
           <!-- 网络监控 -->
           <NetworkMonitoring
             :monitoring-data="monitoringData"
+            :state-manager="currentStateManager"
             class="monitoring-section"
           />
 
           <!-- 硬盘监控 -->
           <DiskMonitoring
             :monitoring-data="monitoringData"
+            :state-manager="currentStateManager"
             class="monitoring-section"
           />
         </div>

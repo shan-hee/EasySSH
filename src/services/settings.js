@@ -52,14 +52,28 @@ class SettingsService {
       // 从存储加载设置
       await this.loadSettings()
 
-      // 设置监听器，自动保存变更
-      this._setupAutoSave()
+      // 应用初始主题（检查是否已经由防闪烁脚本正确应用）
+      const currentTheme = document.documentElement.getAttribute('data-theme')
+      const expectedTheme = this.settings.ui.theme === 'system'
+        ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
+        : this.settings.ui.theme
 
-      // 应用初始主题
-      this.applyTheme(this.settings.ui.theme)
+      // 主题状态检查
+      log.debug('主题状态检查', { currentTheme, expectedTheme })
+
+      if (currentTheme !== expectedTheme) {
+        // 只有当主题不匹配时才应用主题
+        log.debug('主题不匹配，需要应用主题', { current: currentTheme, expected: expectedTheme })
+        this.applyTheme(this.settings.ui.theme)
+      } else {
+        log.debug('主题已正确应用，跳过重复操作', { theme: expectedTheme })
+      }
 
       // 设置系统主题变化监听器
       this._setupSystemThemeListener()
+
+      // 在主题应用完成后再设置监听器，避免初始化时触发不必要的保存
+      this._setupAutoSave()
 
       this.isInitialized = true
       log.debug('设置服务初始化完成')
@@ -84,8 +98,8 @@ class SettingsService {
         try {
           const storageAdapter = await import('./storage-adapter.js').then(m => m.default)
 
-          // 加载各个分类的设置
-          const categories = ['terminal', 'ui', 'connection', 'editor', 'advanced']
+          // 加载各个分类的设置（UI设置保持本地化，不从服务器同步）
+          const categories = ['terminal', 'connection', 'editor', 'advanced']
           const serverSettings = {}
 
           for (const category of categories) {
@@ -103,33 +117,42 @@ class SettingsService {
             log.debug('设置已从服务器加载', {
               loadedCategories: Object.keys(serverSettings),
               hasTerminalSettings: !!serverSettings.terminal,
-              hasUISettings: !!serverSettings.ui,
               hasConnectionSettings: !!serverSettings.connection
             })
 
             // 深度合并服务器设置，保留默认值
             this._mergeSettings(this.settings, serverSettings)
-            return
           }
         } catch (error) {
           log.warn('从服务器加载设置失败，回退到本地存储:', error)
         }
       }
 
-      // 未登录状态或服务器加载失败：从本地存储加载
+      // 无论登录状态如何，UI设置始终从本地存储加载（保持设备相关的偏好设置）
       const storedSettings = this.storage.get(SETTINGS_STORAGE_KEY, {})
 
-      // 优化：只记录设置加载的摘要信息，避免大对象重复输出
-      const settingsKeys = Object.keys(storedSettings)
-      log.debug('设置已从本地存储加载', {
-        storedKeys: settingsKeys,
-        hasTerminalSettings: !!storedSettings.terminal,
-        hasUISettings: !!storedSettings.ui,
-        hasConnectionSettings: !!storedSettings.connection
-      })
+      // 如果已登录，只合并UI设置；如果未登录，合并所有设置
+      let settingsToMerge = storedSettings
+
+      if (userStore.isLoggedIn && storedSettings.ui) {
+        // 登录状态：只合并UI设置，其他设置已从服务器加载
+        settingsToMerge = { ui: storedSettings.ui }
+        log.debug('UI设置已从本地存储加载', {
+          theme: storedSettings.ui?.theme
+        })
+      } else {
+        // 未登录状态：合并所有本地设置
+        const settingsKeys = Object.keys(storedSettings)
+        log.debug('设置已从本地存储加载', {
+          storedKeys: settingsKeys,
+          hasTerminalSettings: !!storedSettings.terminal,
+          hasUISettings: !!storedSettings.ui,
+          hasConnectionSettings: !!storedSettings.connection
+        })
+      }
 
       // 深度合并设置，保留默认值
-      this._mergeSettings(this.settings, storedSettings)
+      this._mergeSettings(this.settings, settingsToMerge)
     } catch (error) {
       log.warn('加载设置失败，使用默认设置', error)
     }
@@ -144,6 +167,13 @@ class SettingsService {
       // 始终保存到本地存储作为备份
       this.storage.set(SETTINGS_STORAGE_KEY, this.settings)
 
+      // 调试信息：显示保存的数据
+      log.debug('设置已保存到本地存储', {
+        key: `easyssh:${SETTINGS_STORAGE_KEY}`,
+        uiTheme: this.settings.ui?.theme,
+        fullSettings: this.settings
+      })
+
       // 检查是否已登录，如果已登录则同时保存到服务器
       try {
         const userStore = await import('../store/user.js').then(m => m.useUserStore())
@@ -151,8 +181,8 @@ class SettingsService {
         if (userStore.isLoggedIn) {
           const storageAdapter = await import('./storage-adapter.js').then(m => m.default)
 
-          // 分别保存各个分类的设置到服务器
-          const categories = ['terminal', 'ui', 'connection', 'editor', 'advanced']
+          // 分别保存各个分类的设置到服务器（UI设置保持本地化，不同步到服务器）
+          const categories = ['terminal', 'connection', 'editor', 'advanced']
           const savePromises = categories.map(async (category) => {
             if (this.settings[category]) {
               try {
@@ -176,6 +206,8 @@ class SettingsService {
       log.error('保存设置失败', error)
     }
   }
+
+
 
   /**
    * 深度合并设置对象
@@ -462,12 +494,32 @@ class SettingsService {
    * @param {Object} updates - 要更新的设置
    */
   updateUISettings(updates) {
+    if (!updates || typeof updates !== 'object') {
+      log.warn('updateUISettings: 无效的更新参数', updates)
+      return
+    }
+
     Object.assign(this.settings.ui, updates)
 
     // 如果主题发生变化，立即应用
-    if (updates.theme) {
+    if (updates.theme && this.isValidTheme(updates.theme)) {
       this.applyTheme(updates.theme)
+    } else if (updates.theme) {
+      log.warn('updateUISettings: 无效的主题值', updates.theme)
     }
+  }
+
+  /**
+   * 解析实际主题（处理system主题）
+   * @param {string} theme - 原始主题设置
+   * @returns {string} 实际主题 (light|dark)
+   * @private
+   */
+  _resolveActualTheme(theme) {
+    if (theme === 'system') {
+      return window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+    }
+    return theme === 'dark' ? 'dark' : 'light' // 确保只返回有效值
   }
 
   /**
@@ -490,13 +542,8 @@ class SettingsService {
       }
     }
 
-    // 兼容不同浏览器的事件监听
-    if (mediaQuery.addEventListener) {
-      mediaQuery.addEventListener('change', handleSystemThemeChange)
-    } else {
-      // 旧版浏览器支持
-      mediaQuery.addListener(handleSystemThemeChange)
-    }
+    // 监听系统主题变化
+    mediaQuery.addEventListener('change', handleSystemThemeChange)
 
     // 保存监听器引用，用于清理
     this._systemThemeListener = {
@@ -508,18 +555,20 @@ class SettingsService {
   /**
    * 应用主题
    * @param {string} theme - 主题名称 (light, dark, system)
+   * @param {Object} options - 选项
+   * @param {boolean} options.skipIfSame - 如果主题相同则跳过所有操作
    */
-  applyTheme(theme = this.settings.ui.theme) {
-    let actualTheme = theme
-
-    // 处理系统主题
-    if (theme === 'system') {
-      actualTheme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
-    }
+  applyTheme(theme = this.settings.ui.theme, options = {}) {
+    // 解析实际主题
+    const actualTheme = this._resolveActualTheme(theme)
 
     // 获取当前主题，避免不必要的切换
     const currentTheme = document.documentElement.getAttribute('data-theme')
     if (currentTheme === actualTheme) {
+      if (options.skipIfSame) {
+        log.debug('主题已正确应用，跳过重复操作', { theme, actualTheme })
+        return
+      }
       return // 主题没有变化，无需切换
     }
 

@@ -236,12 +236,11 @@
                 <input type="password" v-model="connectionForm.password" placeholder="请输入密码" autocomplete="current-password" />
               </form>
             </div>
-            <div class="remember-password">
-              <Checkbox
-                v-model="connectionForm.rememberPassword"
-                label="记住密码"
-              />
-            </div>
+            <Checkbox
+              v-model="connectionForm.rememberPassword"
+              label="记住密码"
+              style="margin-top: 10px;"
+            />
           </div>
         </div>
         
@@ -1735,19 +1734,6 @@ h2 {
 
 .select-file-btn:hover {
   background-color: var(--color-hover-bg);
-}
-
-.remember-password {
-  display: flex;
-  align-items: center;
-  margin-top: 10px;
-  cursor: pointer;
-}
-
-.remember-password span {
-  font-size: 12px;
-  color: var(--color-text-primary);
-  font-weight: normal;
 }
 
 /* 复选框样式已移至 components/forms.css 统一管理 */

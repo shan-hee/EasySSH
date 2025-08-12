@@ -49,6 +49,10 @@ const props = defineProps({
   monitoringData: {
     type: Object,
     default: () => ({})
+  },
+  stateManager: {
+    type: Object,
+    default: null
   }
 })
 
@@ -77,9 +81,12 @@ const diskUsage = computed(() => {
   return diskInfo.value.usedPercentage || 0
 })
 
-// 使用统一状态管理器
+// 使用传入的状态管理器实例，如果没有则使用全局实例（向后兼容）
+const currentStateManager = computed(() => props.stateManager || monitoringStateManager)
+
+// 使用当前状态管理器
 const componentState = computed(() => {
-  return monitoringStateManager.getComponentState(MonitoringComponent.DISK)
+  return currentStateManager.value.getComponentState(MonitoringComponent.DISK)
 })
 
 const hasData = computed(() => {
@@ -88,7 +95,7 @@ const hasData = computed(() => {
 
 // 重试处理
 const handleRetry = () => {
-  monitoringStateManager.retry()
+  currentStateManager.value.retry()
 }
 
 // 获取使用率状态样式类

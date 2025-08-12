@@ -47,6 +47,10 @@ const props = defineProps({
   monitoringData: {
     type: Object,
     default: () => ({})
+  },
+  stateManager: {
+    type: Object,
+    default: null
   }
 })
 
@@ -103,9 +107,12 @@ const loadAverage = computed(() => {
   }
 })
 
-// 使用统一状态管理器
+// 使用传入的状态管理器实例，如果没有则使用全局实例（向后兼容）
+const currentStateManager = computed(() => props.stateManager || monitoringStateManager)
+
+// 使用当前状态管理器
 const componentState = computed(() => {
-  return monitoringStateManager.getComponentState(MonitoringComponent.CPU)
+  return currentStateManager.value.getComponentState(MonitoringComponent.CPU)
 })
 
 const hasData = computed(() => {
@@ -374,7 +381,7 @@ watch(() => currentUsage.value, (newUsage, oldUsage) => {
 
 // 重试处理
 const handleRetry = () => {
-  monitoringStateManager.retry()
+  currentStateManager.value.retry()
 }
 
 // 生命周期

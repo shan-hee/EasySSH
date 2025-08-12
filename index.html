@@ -13,39 +13,70 @@
     <!-- 防主题闪烁脚本 - 必须在CSS加载前执行 -->
     <script>
         (function() {
-            try {
-                // 从localStorage读取用户设置
-                const savedSettings = localStorage.getItem('easyssh:user_settings');
-                let theme = 'light'; // 默认主题
+            'use strict';
 
-                if (savedSettings) {
-                    const settings = JSON.parse(savedSettings);
-                    theme = settings.ui?.theme || 'light';
+            /**
+             * 从存储中获取主题设置
+             * @returns {string} 主题名称 (light|dark|system)
+             */
+            function getStoredTheme() {
+                try {
+                    const data = localStorage.getItem('easyssh:user_settings');
+                    if (!data) return 'system';
+
+                    const parsed = JSON.parse(data);
+                    const settings = parsed.value || parsed; // 兼容包装结构
+
+                    return settings.ui?.theme || 'system';
+                } catch {
+                    return 'system'; // 解析失败时使用默认值
                 }
+            }
 
-                // 处理系统主题
+            /**
+             * 解析实际主题（处理system主题）
+             * @param {string} theme 原始主题设置
+             * @returns {string} 实际主题 (light|dark)
+             */
+            function resolveActualTheme(theme) {
                 if (theme === 'system') {
-                    theme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+                    return window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
                 }
+                return theme === 'dark' ? 'dark' : 'light'; // 确保只返回有效值
+            }
 
-                // 立即设置主题，避免闪烁
+            /**
+             * 应用主题到DOM
+             * @param {string} theme 主题名称
+             */
+            function applyTheme(theme) {
                 const html = document.documentElement;
                 html.setAttribute('data-theme', theme);
                 html.className = html.className.replace(/\b(light|dark)-theme\b/g, '');
-                html.classList.add(theme + '-theme');
+                html.classList.add(`${theme}-theme`);
+            }
+
+            try {
+                const storedTheme = getStoredTheme();
+                const actualTheme = resolveActualTheme(storedTheme);
+
+                // 立即应用主题
+                applyTheme(actualTheme);
 
                 // 禁用初始动画，避免页面加载时的过渡效果
-                html.classList.add('no-transitions');
+                document.documentElement.classList.add('no-transitions');
 
                 // 页面加载完成后启用动画
-                window.addEventListener('load', function() {
-                    setTimeout(function() {
-                        html.classList.remove('no-transitions');
+                window.addEventListener('load', () => {
+                    setTimeout(() => {
+                        document.documentElement.classList.remove('no-transitions');
                     }, 100);
-                });
+                }, { once: true });
 
             } catch (error) {
-                console.warn('主题初始化失败，使用默认主题:', error);
+                // 发生任何错误时，应用默认浅色主题
+                applyTheme('light');
+                console.warn('主题初始化失败，已应用默认主题');
             }
         })();
     </script>

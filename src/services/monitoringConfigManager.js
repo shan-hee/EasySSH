@@ -28,10 +28,21 @@ class MonitoringConfigManager {
     try {
       // 从设置服务加载配置
       await this.loadFromSettings()
-      
+
       // 监听配置变更事件
       this.setupEventListeners()
-      
+
+      // 如果设置服务尚未初始化，监听其初始化完成事件
+      if (!settingsService.isInitialized) {
+        const handleSettingsReady = () => {
+          this.loadFromSettings().catch(error => {
+            log.error('设置服务就绪后加载监控配置失败', error)
+          })
+          window.removeEventListener('services:ready', handleSettingsReady)
+        }
+        window.addEventListener('services:ready', handleSettingsReady)
+      }
+
       this.initialized = true
       log.debug('监控配置管理器初始化完成', this.config)
     } catch (error) {
@@ -43,8 +54,11 @@ class MonitoringConfigManager {
    * 从设置服务加载配置
    */
   async loadFromSettings() {
+    // 等待设置服务初始化完成，但不主动初始化它
+    // 避免重复初始化导致的主题闪烁问题
     if (!settingsService.isInitialized) {
-      await settingsService.init()
+      log.warn('设置服务尚未初始化，使用默认监控配置')
+      return
     }
 
     const monitoringSettings = settingsService.get('monitoring', {})

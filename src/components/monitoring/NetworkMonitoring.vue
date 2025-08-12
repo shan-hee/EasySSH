@@ -52,6 +52,10 @@ const props = defineProps({
   monitoringData: {
     type: Object,
     default: () => ({})
+  },
+  stateManager: {
+    type: Object,
+    default: null
   }
 })
 
@@ -101,9 +105,12 @@ const linkInfo = computed(() => {
   }
 })
 
-// 使用统一状态管理器
+// 使用传入的状态管理器实例，如果没有则使用全局实例（向后兼容）
+const currentStateManager = computed(() => props.stateManager || monitoringStateManager)
+
+// 使用当前状态管理器
 const componentState = computed(() => {
-  return monitoringStateManager.getComponentState(MonitoringComponent.NETWORK)
+  return currentStateManager.value.getComponentState(MonitoringComponent.NETWORK)
 })
 
 const hasData = computed(() => {
@@ -115,7 +122,7 @@ const hasData = computed(() => {
 
 // 重试处理
 const handleRetry = () => {
-  monitoringStateManager.retry()
+  currentStateManager.value.retry()
 }
 
 // 网络监控组件已导入格式化函数，无需重复定义
