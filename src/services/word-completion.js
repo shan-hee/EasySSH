@@ -50,6 +50,12 @@ class WordCompletionService {
     'docker', 'kubectl', 'terraform', 'ansible'
   ],
 
+  // AI助手命令
+  ai: [
+    '/ai', '/explain', '/fix', '/gen', '/ai help',
+    '/ai explain', '/ai fix', '/ai gen', '/ai generate'
+  ],
+
   // 常用选项
   options: [
     '-l', '-a', '-h', '--help', '-v', '--version', '-r', '-R', '--recursive',

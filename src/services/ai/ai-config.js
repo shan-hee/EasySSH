@@ -10,9 +10,7 @@ class AIConfig {
   constructor() {
     this.storageKey = 'ai-config'
     this.config = this.getDefaultConfig()
-
-    // 初始化存储服务
-    this.initStorage()
+    this.initialized = false
 
     log.debug('AI配置管理器已初始化')
   }
@@ -21,42 +19,21 @@ class AIConfig {
    * 初始化存储服务
    */
   async initStorage() {
+    if (this.initialized) {
+      return // 避免重复初始化
+    }
+
     try {
       await storageAdapter.init()
 
-      // 迁移旧的localStorage数据
-      await this.migrateOldData()
-
-      // 加载保存的配置
-      await this.load()
+      this.initialized = true
+      log.debug('AI配置存储服务初始化完成')
     } catch (error) {
       log.error('AI配置存储服务初始化失败', error)
     }
   }
 
-  /**
-   * 迁移旧的localStorage数据
-   */
-  async migrateOldData() {
-    try {
-      const oldKey = 'easyssh-ai-config'
-      const oldData = localStorage.getItem(oldKey)
 
-      if (oldData) {
-        const parsedData = JSON.parse(oldData)
-
-        // 保存到新的存储服务
-        await storageAdapter.set(this.storageKey, parsedData)
-
-        // 删除旧数据
-        localStorage.removeItem(oldKey)
-
-        log.info('AI配置数据已迁移到统一存储服务')
-      }
-    } catch (error) {
-      log.warn('迁移AI配置数据失败', error)
-    }
-  }
 
   /**
    * 获取默认配置
@@ -70,7 +47,7 @@ class AIConfig {
       apiKey: '',
       model: '', // 移除默认模型，要求用户手动输入
       features: {
-        completion: true,
+        interaction: true,
         explanation: true,
         fix: true,
         generation: true
@@ -84,6 +61,9 @@ class AIConfig {
    */
   async load() {
     try {
+      // 确保存储服务已初始化
+      await this.initStorage()
+
       const saved = await storageAdapter.get(this.storageKey)
       if (saved) {
         // 合并默认配置和保存的配置
@@ -123,7 +103,7 @@ class AIConfig {
       // 保存到统一存储服务
       await storageAdapter.set(this.storageKey, this.config)
 
-      log.info('AI配置已保存', {
+      log.debug('AI配置已保存', {
         enabled: this.config.enabled,
         provider: this.config.provider,
         model: this.config.model

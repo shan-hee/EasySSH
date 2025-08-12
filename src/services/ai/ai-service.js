@@ -17,18 +17,31 @@ class AIService {
     this.config = new AIConfig()
     this.activeRequests = new Map()
     this.isEnabled = false
-    
-    // 初始化配置
-    this.loadConfig()
-    
-    log.debug('AI服务已初始化')
+    this.temporarilyDisabled = true // 临时禁用AI功能
+
+    // 不在构造函数中加载配置，等待外部调用init()
+    log.debug('AI服务已初始化（临时禁用）')
+  }
+
+  /**
+   * 初始化AI服务
+   */
+  async init() {
+    try {
+      // 只在这里加载配置，避免重复请求
+      await this.loadConfig()
+      log.debug('AI服务初始化完成')
+    } catch (error) {
+      log.error('AI服务初始化失败', error)
+    }
   }
 
   /**
    * 启用AI服务
    * @param {Object} config AI配置
+   * @param {boolean} saveConfig 是否保存配置（默认false，避免重复保存）
    */
-  async enable(config) {
+  async enable(config, saveConfig = false) {
     try {
       // 验证配置
       const validation = await this.validateConfig(config)
@@ -36,15 +49,23 @@ class AIService {
         throw new Error(validation.error)
       }
 
-      // 保存配置
-      await this.config.save(config)
-      
+      // 只在明确需要时才保存配置
+      if (saveConfig) {
+        await this.config.save(config)
+      } else {
+        // 更新内存中的配置，但不保存到存储
+        this.config.config = this.config.mergeConfig(this.config.config, config)
+      }
+
       // 连接AI服务
       await this.client.connect(config)
-      
+
       this.isEnabled = true
       log.info('AI服务已启用', { provider: config.provider })
-      
+
+      // 发送AI服务状态变化事件
+      this._notifyStatusChange('enabled')
+
       return { success: true }
     } catch (error) {
       log.error('启用AI服务失败', error)
@@ -65,7 +86,10 @@ class AIService {
       
       this.isEnabled = false
       log.info('AI服务已禁用')
-      
+
+      // 发送AI服务状态变化事件
+      this._notifyStatusChange('disabled')
+
       return { success: true }
     } catch (error) {
       log.error('禁用AI服务失败', error)
@@ -73,44 +97,32 @@ class AIService {
     }
   }
 
+
+
   /**
-   * 请求智能补全
+   * 请求AI交互对话
    * @param {Object} context 上下文信息
    * @param {Object} options 选项
-   * @returns {Promise<Object>} 补全结果
+   * @returns {Promise<Object>} 交互结果
    */
-  async requestCompletion(context, options = {}) {
+  async requestInteraction(context, options = {}) {
     if (!this.isEnabled) {
       throw new Error('AI服务未启用')
     }
 
     try {
-      // 生成缓存键
-      const cacheKey = this.cache.generateKey('completion', context)
-      
-      // 检查缓存
-      const cached = this.cache.get(cacheKey)
-      if (cached && !options.skipCache) {
-        log.debug('使用缓存的补全结果')
-        return cached
-      }
-
-      // 生成请求ID
       const requestId = this.generateRequestId()
-      
-      // 创建取消控制器
       const controller = new AbortController()
       this.activeRequests.set(requestId, controller)
 
       try {
-        // 发送AI请求
         const result = await this.client.sendRequest({
           type: 'ai_request',
           requestId,
-          mode: 'completion',
+          mode: 'interaction',
           input: {
-            prefix: context.prefix || '',
-            suffix: context.suffix || '',
+            prompt: context.prompt || '',
+            question: context.question || '',
             currentLine: context.currentLine || ''
           },
           context: {
@@ -120,16 +132,11 @@ class AIService {
           },
           settings: {
             model: this.config.get('model'),
-            temperature: 0.2,
-            maxTokens: 128,
+            temperature: 0.7,
+            maxTokens: 1024,
             stream: true
           }
         }, controller.signal)
-
-        // 缓存结果
-        if (result && result.suggestions) {
-          this.cache.set(cacheKey, result, 300) // 5分钟缓存
-        }
 
         return result
       } finally {
@@ -138,11 +145,11 @@ class AIService {
 
     } catch (error) {
       if (error.name === 'AbortError') {
-        log.debug('补全请求已取消')
+        log.debug('交互请求已取消')
         return null
       }
-      
-      log.error('智能补全请求失败', error)
+
+      log.error('AI交互请求失败', error)
       throw error
     }
   }
@@ -390,19 +397,26 @@ class AIService {
   /**
    * 加载配置
    */
-  loadConfig() {
+  async loadConfig() {
     try {
-      const config = this.config.load()
+      // 确保配置管理器已初始化
+      await this.config.initStorage()
+
+      const config = await this.config.load()
       if (config && config.enabled) {
         // 自动启用AI服务（如果配置有效）
-        this.enable(config).catch(error => {
+        try {
+          await this.enable(config)
+        } catch (error) {
           log.warn('自动启用AI服务失败', error)
-        })
+        }
       }
     } catch (error) {
       log.warn('加载AI配置失败', error)
     }
   }
+
+
 
   /**
    * 生成请求ID
@@ -422,6 +436,22 @@ class AIService {
       connected: this.client.isConnected(),
       activeRequests: this.activeRequests.size,
       config: this.config.getSafeConfig() // 不包含敏感信息的配置
+    }
+  }
+
+  /**
+   * 通知AI服务状态变化
+   * @param {string} status 状态
+   */
+  _notifyStatusChange(status) {
+    try {
+      // 发送自定义事件通知状态变化
+      window.dispatchEvent(new CustomEvent('ai-service-status-change', {
+        detail: { status, isEnabled: this.isEnabled }
+      }))
+      log.debug('AI服务状态变化通知已发送', { status })
+    } catch (error) {
+      log.error('发送AI服务状态变化通知失败', error)
     }
   }
 }

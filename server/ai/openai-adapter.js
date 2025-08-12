@@ -484,7 +484,8 @@ class OpenAIAdapter {
       completion: `${basePrompt} Your task is to provide command completion suggestions. Only output the text that should be appended to the current input. Do not repeat the existing prefix.`,
       explanation: `${basePrompt} Your task is to explain terminal output, identify errors, and provide clear solutions.`,
       fix: `${basePrompt} Your task is to provide specific commands to fix the identified problem. List commands with brief explanations.`,
-      generation: `${basePrompt} Your task is to generate shell scripts based on the user's description. Provide clean, commented code.`
+      generation: `${basePrompt} Your task is to generate shell scripts based on the user's description. Provide clean, commented code.`,
+      interaction: `${basePrompt} Your task is to have a natural conversation with the user about shell/terminal topics. Answer questions, provide guidance, and help with command-line tasks. Be conversational but informative.`
     };
 
     return modePrompts[mode] || basePrompt;
@@ -521,7 +522,8 @@ class OpenAIAdapter {
       completion: `Complete the command starting with: "${input.prefix || ''}"`,
       explanation: "Explain the output and identify any issues.",
       fix: "Provide commands to fix the identified problem.",
-      generation: `Generate a script for: ${input.prompt || input.currentLine}`
+      generation: `Generate a script for: ${input.prompt || input.currentLine}`,
+      interaction: `User question: ${input.question || input.prompt || input.currentLine}`
     };
 
     if (modeInstructions[mode]) {

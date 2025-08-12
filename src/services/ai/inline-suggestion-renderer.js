@@ -76,6 +76,37 @@ class InlineSuggestionRenderer {
   render(options = {}) {
     try {
       if (!this.currentSuggestion) {
+        log.debug('没有当前建议，跳过渲染')
+        return
+      }
+
+      log.debug('开始渲染AI建议', {
+        suggestion: this.currentSuggestion.substring(0, 50),
+        length: this.currentSuggestion.length
+      })
+
+      // 使用DOM覆盖层方式实现幽灵文本
+      this.renderWithOverlay(options)
+
+    } catch (error) {
+      log.error('渲染建议失败', error, {
+        suggestion: this.currentSuggestion?.substring(0, 50),
+        hasTerminal: !!this.terminal,
+        hasBuffer: !!this.terminal?.buffer?.active
+      })
+    }
+  }
+
+  /**
+   * 使用DOM覆盖层渲染建议
+   * @param {Object} options 渲染选项
+   */
+  renderWithOverlay(options = {}) {
+    try {
+      // 获取终端容器
+      const terminalElement = this.terminal.element
+      if (!terminalElement) {
+        log.warn('无法获取终端元素')
         return
       }
 
@@ -84,36 +115,87 @@ class InlineSuggestionRenderer {
       const cursorY = buffer.cursorY
       const cursorX = buffer.cursorX
 
-      // 创建标记器
-      const marker = this.terminal.registerMarker(0)
-      if (!marker) {
-        log.warn('无法创建终端标记器')
+      log.debug('终端光标位置', { cursorX, cursorY })
+
+      // 计算光标的像素位置
+      const cellDimensions = this.getCellDimensions()
+      if (!cellDimensions) {
+        log.warn('无法获取终端单元格尺寸')
         return
       }
 
-      // 创建装饰
-      this.decoration = this.terminal.registerDecoration({
-        marker,
-        x: cursorX,
-        width: this.currentSuggestion.length,
-        layer: 'top'
-      })
+      const pixelX = cursorX * cellDimensions.width
+      const pixelY = cursorY * cellDimensions.height
 
-      if (!this.decoration) {
-        log.warn('无法创建终端装饰')
-        marker.dispose()
-        return
-      }
+      log.debug('光标像素位置', { pixelX, pixelY, cellDimensions })
 
-      // 设置渲染回调
-      this.decoration.onRender((element) => {
-        this.renderElement(element, options)
-      })
+      // 创建建议元素
+      this.suggestionElement = document.createElement('div')
+      this.suggestionElement.textContent = this.currentSuggestion
+
+      // 应用样式
+      Object.assign(this.suggestionElement.style, {
+        position: 'absolute',
+        left: `${pixelX}px`,
+        top: `${pixelY}px`,
+        color: '#888888',
+        opacity: '0.6',
+        fontFamily: 'inherit',
+        fontSize: 'inherit',
+        fontWeight: 'inherit',
+        lineHeight: 'inherit',
+        pointerEvents: 'none',
+        userSelect: 'none',
+        whiteSpace: 'pre',
+        zIndex: '1000'
+      }, this.styles, options.styles || {})
+
+      // 添加CSS类
+      this.suggestionElement.className = 'ai-inline-suggestion'
+
+      // 添加到终端容器
+      terminalElement.appendChild(this.suggestionElement)
 
       this.isVisible = true
+      log.debug('AI建议DOM覆盖层渲染完成')
 
     } catch (error) {
-      log.error('渲染建议失败', error)
+      log.error('DOM覆盖层渲染失败', error)
+    }
+  }
+
+  /**
+   * 获取终端单元格尺寸
+   * @returns {Object|null} 单元格尺寸
+   */
+  getCellDimensions() {
+    try {
+      // 尝试从终端选项获取
+      const fontSize = this.terminal.options.fontSize || 14
+      const fontFamily = this.terminal.options.fontFamily || 'monospace'
+
+      // 创建测量元素
+      const measureElement = document.createElement('div')
+      measureElement.style.cssText = `
+        position: absolute;
+        visibility: hidden;
+        font-family: ${fontFamily};
+        font-size: ${fontSize}px;
+        white-space: pre;
+      `
+      measureElement.textContent = 'M' // 使用M字符测量
+
+      document.body.appendChild(measureElement)
+      const rect = measureElement.getBoundingClientRect()
+      document.body.removeChild(measureElement)
+
+      return {
+        width: rect.width,
+        height: rect.height
+      }
+    } catch (error) {
+      log.error('获取单元格尺寸失败', error)
+      return null
     }
   }
 
@@ -124,21 +206,37 @@ class InlineSuggestionRenderer {
    */
   renderElement(element, options = {}) {
     try {
+      log.debug('开始渲染DOM元素', {
+        hasElement: !!element,
+        suggestion: this.currentSuggestion?.substring(0, 50)
+      })
+
       // 设置文本内容
       element.textContent = this.currentSuggestion
+      log.debug('文本内容已设置')
 
       // 应用样式
       Object.assign(element.style, this.styles, options.styles || {})
+      log.debug('样式已应用')
 
       // 添加CSS类
       element.className = 'ai-inline-suggestion'
+      log.debug('CSS类已添加')
 
       // 设置数据属性
       element.setAttribute('data-suggestion-index', this.currentIndex)
       element.setAttribute('data-suggestion-count', this.suggestions.length)
+      log.debug('数据属性已设置')
+
+      log.debug('DOM元素渲染完成')
 
     } catch (error) {
-      log.error('渲染DOM元素失败', error)
+      log.error('渲染DOM元素失败', error, {
+        hasElement: !!element,
+        suggestion: this.currentSuggestion?.substring(0, 50),
+        currentIndex: this.currentIndex,
+        suggestionsLength: this.suggestions.length
+      })
     }
   }
 
@@ -147,9 +245,18 @@ class InlineSuggestionRenderer {
    */
   clear() {
     try {
+      // 清理装饰
       if (this.decoration) {
         this.decoration.dispose()
         this.decoration = null
+      }
+
+      // 清理DOM元素
+      if (this.suggestionElement) {
+        if (this.suggestionElement.parentNode) {
+          this.suggestionElement.parentNode.removeChild(this.suggestionElement)
+        }
+        this.suggestionElement = null
       }
 
       this.currentSuggestion = ''

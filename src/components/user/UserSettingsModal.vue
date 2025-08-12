@@ -623,190 +623,104 @@
               <!-- API配置 -->
               <div class="settings-divider"></div>
 
-                <div class="security-item">
-                  <div class="security-info">
-                    <div class="security-title">API地址</div>
-                    <div class="security-description">
-                      OpenAI 兼容 API 的接口地址
-                    </div>
-                  </div>
-                  <div class="security-action">
-                    <div class="input-with-icon">
-                      <input
-                        v-model="aiSettings.baseUrl"
-                        type="text"
-                        class="form-input"
-                        placeholder="https://api.openai.com"
-                        :disabled="aiLoading"
-                      />
-                    </div>
-                  </div>
-                </div>
+              <!-- AI配置表单 -->
+              <form @submit.prevent="saveAISettings" class="ai-config-form" autocomplete="off">
+                <fieldset class="ai-config-fieldset">
+                  <legend class="sr-only">AI服务配置</legend>
 
-                <div class="security-item">
-                  <div class="security-info">
-                    <div class="security-title">API密钥</div>
-                    <div class="security-description">
-                      您的API访问密钥，将被安全加密存储
+                  <div class="security-item">
+                    <div class="security-info">
+                      <div class="security-title">API地址</div>
+                      <div class="security-description">
+                        OpenAI 兼容 API 的接口地址
+                      </div>
+                    </div>
+                    <div class="security-action">
+                      <div class="input-with-icon">
+                        <input
+                          v-model="aiSettings.baseUrl"
+                          type="url"
+                          class="form-input"
+                          placeholder="https://api.openai.com"
+                          :disabled="aiLoading"
+                          autocomplete="off"
+                          name="ai-api-base-url"
+                        />
+                      </div>
                     </div>
                   </div>
-                  <div class="security-action">
-                    <div class="input-with-icon">
-                      <input
-                        v-model="aiSettings.apiKey"
-                        :type="showApiKey ? 'text' : 'password'"
-                        class="form-input"
-                        placeholder="sk-..."
-                        :disabled="aiLoading"
-                      />
-                      <button
-                        class="btn btn-icon btn-eye"
-                        @click="showApiKey = !showApiKey"
-                        type="button"
-                      >
-                        <svg v-if="showApiKey" viewBox="0 0 24 24" width="16" height="16">
-                          <path fill="currentColor" d="M11.83,9L15,12.16C15,12.11 15,12.05 15,12A3,3 0 0,0 12,9C11.94,9 11.89,9 11.83,9M7.53,9.8L9.08,11.35C9.03,11.56 9,11.77 9,12A3,3 0 0,0 12,15C12.22,15 12.44,14.97 12.65,14.92L14.2,16.47C13.53,16.8 12.79,17 12,17A5,5 0 0,1 7,12C7,11.21 7.2,10.47 7.53,9.8M2,4.27L4.28,6.55L4.73,7C3.08,8.3 1.78,10 1,12C2.73,16.39 7,19.5 12,19.5C13.55,19.5 15.03,19.2 16.38,18.66L16.81,19.09L19.73,22L21,20.73L3.27,3M12,7A5,5 0 0,1 17,12C17,12.64 16.87,13.26 16.64,13.82L19.57,16.75C21.07,15.5 22.27,13.86 23,12C21.27,7.61 17,4.5 12,4.5C10.6,4.5 9.26,4.75 8,5.2L10.17,7.35C10.76,7.13 11.37,7 12,7Z" />
-                        </svg>
-                        <svg v-else viewBox="0 0 24 24" width="16" height="16">
-                          <path fill="currentColor" d="M12,9A3,3 0 0,0 9,12A3,3 0 0,0 12,15A3,3 0 0,0 15,12A3,3 0 0,0 12,9M12,17A5,5 0 0,1 7,12A5,5 0 0,1 12,7A5,5 0 0,1 17,12A5,5 0 0,1 12,17M12,4.5C7,4.5 2.73,7.61 1,12C2.73,16.39 7,19.5 12,19.5C17,19.5 21.27,16.39 23,12C21.27,7.61 17,4.5 12,4.5Z" />
-                        </svg>
-                      </button>
+
+                  <div class="security-item">
+                    <div class="security-info">
+                      <div class="security-title">API密钥</div>
+                      <div class="security-description">
+                        您的API访问密钥，将被安全加密存储
+                      </div>
+                    </div>
+                    <div class="security-action">
+                      <div class="input-with-icon">
+                        <input
+                          v-model="aiSettings.apiKey"
+                          :type="showApiKey ? 'text' : 'password'"
+                          class="form-input"
+                          placeholder="sk-..."
+                          :disabled="aiLoading"
+                          autocomplete="off"
+                          name="ai-api-key"
+                        />
+                        <button
+                          class="btn btn-icon btn-eye"
+                          @click="showApiKey = !showApiKey"
+                          type="button"
+                        >
+                          <svg v-if="showApiKey" viewBox="0 0 24 24" width="16" height="16">
+                            <path fill="currentColor" d="M11.83,9L15,12.16C15,12.11 15,12.05 15,12A3,3 0 0,0 12,9C11.94,9 11.89,9 11.83,9M7.53,9.8L9.08,11.35C9.03,11.56 9,11.77 9,12A3,3 0 0,0 12,15C12.22,15 12.44,14.97 12.65,14.92L14.2,16.47C13.53,16.8 12.79,17 12,17A5,5 0 0,1 7,12C7,11.21 7.2,10.47 7.53,9.8M2,4.27L4.28,6.55L4.73,7C3.08,8.3 1.78,10 1,12C2.73,16.39 7,19.5 12,19.5C13.55,19.5 15.03,19.2 16.38,18.66L16.81,19.09L19.73,22L21,20.73L3.27,3M12,7A5,5 0 0,1 17,12C17,12.64 16.87,13.26 16.64,13.82L19.57,16.75C21.07,15.5 22.27,13.86 23,12C21.27,7.61 17,4.5 12,4.5C10.6,4.5 9.26,4.75 8,5.2L10.17,7.35C10.76,7.13 11.37,7 12,7Z" />
+                          </svg>
+                          <svg v-else viewBox="0 0 24 24" width="16" height="16">
+                            <path fill="currentColor" d="M12,9A3,3 0 0,0 9,12A3,3 0 0,0 12,15A3,3 0 0,0 15,12A3,3 0 0,0 12,9M12,17A5,5 0 0,1 7,12A5,5 0 0,1 12,7A5,5 0 0,1 17,12A5,5 0 0,1 12,17M12,4.5C7,4.5 2.73,7.61 1,12C2.73,16.39 7,19.5 12,19.5C17,19.5 21.27,16.39 23,12C21.27,7.61 17,4.5 12,4.5Z" />
+                          </svg>
+                        </button>
+                      </div>
                     </div>
                   </div>
-                </div>
 
-                <!-- API密钥已合并到上面 -->
-
-                <div class="security-item">
-                  <div class="security-info">
-                    <div class="security-title">AI模型</div>
-                    <div class="security-description">
-                      输入要使用的AI模型名称（必填）
+                  <div class="security-item">
+                    <div class="security-info">
+                      <div class="security-title">AI模型</div>
+                      <div class="security-description">
+                        输入要使用的AI模型名称（必填）
+                      </div>
+                    </div>
+                    <div class="security-action">
+                      <div class="input-with-icon">
+                        <input
+                          v-model="aiSettings.model"
+                          type="text"
+                          class="form-input"
+                          placeholder="请输入模型名称，如：gpt-4o-mini"
+                          :disabled="aiLoading"
+                          autocomplete="off"
+                          name="ai-model"
+                        />
+                        <button
+                          class="btn btn-icon btn-refresh"
+                          @click="testAIConnection"
+                          :disabled="!aiSettings.apiKey || !aiSettings.baseUrl || !aiSettings.model || aiTesting"
+                          type="button"
+                          title="测试API连接"
+                        >
+                          <span v-if="aiTesting" class="btn-loading"></span>
+                          <svg v-else viewBox="0 0 24 24" width="16" height="16">
+                            <path fill="currentColor" d="M17.65,6.35C16.2,4.9 14.21,4 12,4A8,8 0 0,0 4,12A8,8 0 0,0 12,20C15.73,20 18.84,17.45 19.73,14H17.65C16.83,16.33 14.61,18 12,18A6,6 0 0,1 6,12A6,6 0 0,1 12,6C13.66,6 15.14,6.69 16.22,7.78L13,11H20V4L17.65,6.35Z" />
+                          </svg>
+                        </button>
+                      </div>
                     </div>
                   </div>
-                  <div class="security-action">
-                    <div class="input-with-icon">
-                      <input
-                        v-model="aiSettings.model"
-                        type="text"
-                        class="form-input"
-                        placeholder="请输入模型名称，如：gpt-4o-mini"
-                        :disabled="aiLoading"
-                      />
-                      <button
-                        class="btn btn-icon btn-refresh"
-                        @click="testAIConnection"
-                        :disabled="!aiSettings.apiKey || !aiSettings.baseUrl || !aiSettings.model || aiTesting"
-                        type="button"
-                        title="测试API连接"
-                      >
-                        <span v-if="aiTesting" class="btn-loading"></span>
-                        <svg v-else viewBox="0 0 24 24" width="16" height="16">
-                          <path fill="currentColor" d="M17.65,6.35C16.2,4.9 14.21,4 12,4A8,8 0 0,0 4,12A8,8 0 0,0 12,20C15.73,20 18.84,17.45 19.73,14H17.65C16.83,16.33 14.61,18 12,18A6,6 0 0,1 6,12A6,6 0 0,1 12,6C13.66,6 15.14,6.69 16.22,7.78L13,11H20V4L17.65,6.35Z" />
-                        </svg>
-                      </button>
-                    </div>
-                  </div>
-                </div>
-
-                <!-- 移除请求超时设置，使用默认值 -->
+                </fieldset>
+              </form>
 
 
-
-                <!-- 功能开关 -->
-                <div class="settings-divider"></div>
-
-                <div class="security-item">
-                  <div class="security-info">
-                    <div class="security-title">
-                      智能补全
-                      <span v-if="aiSettings.features.completion && aiSettings.enabled" class="status-badge enabled">已启用</span>
-                      <span v-else class="status-badge disabled">未启用</span>
-                    </div>
-                    <div class="security-description">
-                      自动提供命令补全建议
-                    </div>
-                  </div>
-                  <div class="security-action">
-                    <button
-                      class="btn btn-outline"
-                      @click="aiSettings.features.completion = !aiSettings.features.completion"
-                      :disabled="!aiSettings.enabled"
-                    >
-                      {{ (aiSettings.features.completion && aiSettings.enabled) ? '禁用' : '启用' }}
-                    </button>
-                  </div>
-                </div>
-
-                <div class="security-item">
-                  <div class="security-info">
-                    <div class="security-title">
-                      智能解释
-                      <span v-if="aiSettings.features.explanation && aiSettings.enabled" class="status-badge enabled">已启用</span>
-                      <span v-else class="status-badge disabled">未启用</span>
-                    </div>
-                    <div class="security-description">
-                      解释终端输出和错误信息
-                    </div>
-                  </div>
-                  <div class="security-action">
-                    <button
-                      class="btn btn-outline"
-                      @click="aiSettings.features.explanation = !aiSettings.features.explanation"
-                      :disabled="!aiSettings.enabled"
-                    >
-                      {{ (aiSettings.features.explanation && aiSettings.enabled) ? '禁用' : '启用' }}
-                    </button>
-                  </div>
-                </div>
-
-                <div class="security-item">
-                  <div class="security-info">
-                    <div class="security-title">
-                      命令修复
-                      <span v-if="aiSettings.features.fix && aiSettings.enabled" class="status-badge enabled">已启用</span>
-                      <span v-else class="status-badge disabled">未启用</span>
-                    </div>
-                    <div class="security-description">
-                      提供错误修复建议
-                    </div>
-                  </div>
-                  <div class="security-action">
-                    <button
-                      class="btn btn-outline"
-                      @click="aiSettings.features.fix = !aiSettings.features.fix"
-                      :disabled="!aiSettings.enabled"
-                    >
-                      {{ (aiSettings.features.fix && aiSettings.enabled) ? '禁用' : '启用' }}
-                    </button>
-                  </div>
-                </div>
-
-                <div class="security-item">
-                  <div class="security-info">
-                    <div class="security-title">
-                      脚本生成
-                      <span v-if="aiSettings.features.generation && aiSettings.enabled" class="status-badge enabled">已启用</span>
-                      <span v-else class="status-badge disabled">未启用</span>
-                    </div>
-                    <div class="security-description">
-                      根据描述生成shell脚本
-                    </div>
-                  </div>
-                  <div class="security-action">
-                    <button
-                      class="btn btn-outline"
-                      @click="aiSettings.features.generation = !aiSettings.features.generation"
-                      :disabled="!aiSettings.enabled"
-                    >
-                      {{ (aiSettings.features.generation && aiSettings.enabled) ? '禁用' : '启用' }}
-                    </button>
-                  </div>
-                </div>
-
-                <!-- 移除复杂的高级设置，使用默认值 -->
-
-                <!-- 移除自定义API配置，简化设置 -->
 
                 <!-- 移除使用统计，简化界面 -->
 
@@ -860,7 +774,6 @@ import MfaSetupModal from '@/components/auth/MfaSetupModal.vue'
 import MfaDisableModal from '@/components/auth/MfaDisableModal.vue'
 import LogoutAllDevicesModal from '@/components/auth/LogoutAllDevicesModal.vue'
 import mfaService from '@/services/mfa'
-import settingsService from '@/services/settings'
 import storageAdapter from '@/services/storage-adapter'
 import log from '@/services/log'
 import { localKeyboardManager } from '@/utils/keyboard'
@@ -960,7 +873,7 @@ export default defineComponent({
       apiKey: '',
       model: '', // 移除默认模型，要求用户手动输入
       features: {
-        completion: true,
+        interaction: true,
         explanation: true,
         fix: true,
         generation: true
@@ -1034,27 +947,64 @@ export default defineComponent({
       accountForm.value.username = userStore.username || ''
       securityForm.value.mfaEnabled = userStore.userInfo.mfaEnabled || false
 
-      // 初始化终端设置
+      // 初始化所有设置 - 统一使用storageAdapter从服务器获取
       try {
-        if (!settingsService.isInitialized) {
-          await settingsService.init()
+        // 初始化终端设置 - 从服务器获取
+        try {
+          const savedTerminalSettings = await storageAdapter.get('terminal', {
+            fontSize: 16,
+            fontFamily: "'JetBrains Mono'",
+            theme: 'dark',
+            cursorStyle: 'block',
+            cursorBlink: true,
+            copyOnSelect: false,
+            rightClickSelectsWord: false
+          })
+
+          if (savedTerminalSettings) {
+            Object.assign(terminalSettings, savedTerminalSettings)
+            terminalSettings.initialized = true
+            log.debug('终端设置已从服务器加载')
+          }
+        } catch (error) {
+          log.error('加载终端设置失败:', error)
         }
 
-        const savedTerminalSettings = settingsService.getTerminalSettings()
-        if (savedTerminalSettings) {
-          Object.assign(terminalSettings, savedTerminalSettings)
-          terminalSettings.initialized = true
+        // 初始化连接设置 - 从服务器获取
+        try {
+          const savedConnectionSettings = await storageAdapter.get('connection', {
+            autoReconnect: true,
+            reconnectInterval: 3,
+            connectionTimeout: 10,
+            keepAlive: true,
+            keepAliveInterval: 30
+          })
+
+          if (savedConnectionSettings) {
+            Object.assign(connectionSettings, savedConnectionSettings)
+            connectionSettings.initialized = true
+            log.debug('连接设置已从服务器加载')
+          }
+        } catch (error) {
+          log.error('加载连接设置失败:', error)
         }
 
-        const savedConnectionSettings = settingsService.getConnectionSettings()
-        if (savedConnectionSettings) {
-          Object.assign(connectionSettings, savedConnectionSettings)
-          connectionSettings.initialized = true
+        // 初始化监控设置 - 从服务器获取
+        try {
+          const savedMonitoringSettings = await storageAdapter.get('monitoring', {
+            updateInterval: 1000
+          })
+
+          if (savedMonitoringSettings) {
+            Object.assign(monitoringSettings, savedMonitoringSettings)
+            monitoringSettings.initialized = true
+            log.debug('监控设置已从服务器加载')
+          }
+        } catch (error) {
+          log.error('加载监控设置失败:', error)
         }
 
-
-
-        // 初始化终端背景设置
+        // 初始化终端背景设置 - 从服务器获取
         try {
           // 先尝试迁移旧数据
           const oldBgSettings = localStorage.getItem('easyssh_terminal_bg')
@@ -1070,40 +1020,34 @@ export default defineComponent({
           }
 
           // 加载设置
-          const savedBgSettings = await storageAdapter.get('terminal.background')
+          const savedBgSettings = await storageAdapter.get('terminal.background', {
+            enabled: false,
+            url: '',
+            opacity: 0.5,
+            mode: 'cover'
+          })
+
           if (savedBgSettings) {
             Object.assign(terminalBgSettings, savedBgSettings)
             terminalBgSettings.initialized = true
+            log.debug('终端背景设置已从服务器加载')
           }
-        } catch (e) {
-          log.error('加载终端背景设置失败:', e)
+        } catch (error) {
+          log.error('加载终端背景设置失败:', error)
         }
 
         // 初始化快捷键设置
         loadShortcuts()
 
-        // 初始化AI设置
+        // 初始化AI设置 - 从已初始化的AI服务获取配置
         try {
-          // 等待AI配置管理器初始化完成
-          await aiConfigManager.initStorage()
-
-          const savedAISettings = await aiConfigManager.load()
-          if (savedAISettings) {
-            Object.assign(aiSettings, savedAISettings)
+          // 获取AI服务的当前配置，避免重复请求
+          const currentConfig = aiConfigManager.config
+          if (currentConfig) {
+            Object.assign(aiSettings, currentConfig)
             aiSettings.initialized = true
-
-            // 如果AI已启用，尝试连接服务
-            if (aiSettings.enabled && aiSettings.apiKey) {
-              try {
-                await aiService.enable(aiSettings)
-              } catch (error) {
-                log.warn('AI服务自动启用失败:', error)
-                aiSettings.enabled = false
-              }
-            }
+            log.debug('AI设置已从服务获取')
           }
-
-          // 移除使用统计加载
         } catch (error) {
           log.error('初始化AI设置失败:', error)
         }
@@ -1217,19 +1161,28 @@ export default defineComponent({
       try {
         terminalSettings.initialized = true
 
-        if (!settingsService.isInitialized) {
-          await settingsService.init()
+        // 使用storageAdapter保存到服务器（登录时）或本地（未登录时）
+        const success = await storageAdapter.set('terminal', {
+          fontSize: terminalSettings.fontSize,
+          fontFamily: terminalSettings.fontFamily,
+          theme: terminalSettings.theme,
+          cursorStyle: terminalSettings.cursorStyle,
+          cursorBlink: terminalSettings.cursorBlink,
+          copyOnSelect: terminalSettings.copyOnSelect,
+          rightClickSelectsWord: terminalSettings.rightClickSelectsWord
+        })
+
+        if (success) {
+          // 发送全局事件，通知所有终端设置已更新
+          window.dispatchEvent(new CustomEvent('terminal-settings-updated', {
+            detail: { settings: terminalSettings }
+          }))
+
+          log.info('终端设置已保存到服务器:', terminalSettings)
+          ElMessage.success('终端设置已保存')
+        } else {
+          throw new Error('保存失败')
         }
-
-        settingsService.updateTerminalSettings(terminalSettings, true)
-
-        // 发送全局事件，通知所有终端设置已更新
-        window.dispatchEvent(new CustomEvent('terminal-settings-updated', {
-          detail: { settings: terminalSettings }
-        }))
-
-        log.info('终端设置已保存:', terminalSettings)
-        ElMessage.success('终端设置已保存')
       } catch (error) {
         log.error('保存终端设置失败', error)
         ElMessage.error('保存终端设置失败')
@@ -1241,12 +1194,21 @@ export default defineComponent({
       try {
         connectionSettings.initialized = true
 
-        if (!settingsService.isInitialized) {
-          await settingsService.init()
-        }
+        // 使用storageAdapter保存到服务器（登录时）或本地（未登录时）
+        const success = await storageAdapter.set('connection', {
+          autoReconnect: connectionSettings.autoReconnect,
+          reconnectInterval: connectionSettings.reconnectInterval,
+          connectionTimeout: connectionSettings.connectionTimeout,
+          keepAlive: connectionSettings.keepAlive,
+          keepAliveInterval: connectionSettings.keepAliveInterval
+        })
 
-        settingsService.updateConnectionSettings(connectionSettings)
-        ElMessage.success('连接设置已保存')
+        if (success) {
+          log.info('连接设置已保存到服务器:', connectionSettings)
+          ElMessage.success('连接设置已保存')
+        } else {
+          throw new Error('保存失败')
+        }
       } catch (error) {
         log.error('保存连接设置失败', error)
         ElMessage.error('保存连接设置失败')
@@ -1258,19 +1220,23 @@ export default defineComponent({
       try {
         monitoringSettings.initialized = true
 
-        if (!settingsService.isInitialized) {
-          await settingsService.init()
-        }
-
-        settingsService.updateMonitoringSettings(monitoringSettings)
-
-        // 触发监控配置更新事件
-        const event = new CustomEvent('monitoring-config-changed', {
-          detail: { ...monitoringSettings }
+        // 使用storageAdapter保存到服务器（登录时）或本地（未登录时）
+        const success = await storageAdapter.set('monitoring', {
+          updateInterval: monitoringSettings.updateInterval
         })
-        window.dispatchEvent(event)
 
-        ElMessage.success('监控设置已保存')
+        if (success) {
+          // 触发监控配置更新事件
+          const event = new CustomEvent('monitoring-config-changed', {
+            detail: { ...monitoringSettings }
+          })
+          window.dispatchEvent(event)
+
+          log.info('监控设置已保存到服务器:', monitoringSettings)
+          ElMessage.success('监控设置已保存')
+        } else {
+          throw new Error('保存失败')
+        }
       } catch (error) {
         log.error('保存监控设置失败', error)
         ElMessage.error('保存监控设置失败')
@@ -1321,6 +1287,11 @@ export default defineComponent({
           // 禁用AI服务
           await aiService.disable()
           aiSettings.enabled = false
+          // 禁用AI时，同时禁用所有子功能
+          aiSettings.features.interaction = false
+          aiSettings.features.explanation = false
+          aiSettings.features.fix = false
+          aiSettings.features.generation = false
           ElMessage.info('AI功能已禁用')
         } else {
           // 启用AI服务需要先有API配置
@@ -1331,7 +1302,12 @@ export default defineComponent({
 
           await aiService.enable(aiSettings)
           aiSettings.enabled = true
-          ElMessage.success('AI功能已启用')
+          // 启用AI时，默认启用所有子功能
+          aiSettings.features.interaction = true
+          aiSettings.features.explanation = true
+          aiSettings.features.fix = true
+          aiSettings.features.generation = true
+          ElMessage.success('AI功能已启用，所有智能功能已开启')
         }
 
         await saveAISettings()
@@ -1411,9 +1387,9 @@ export default defineComponent({
 
         await aiConfigManager.save(aiSettings)
 
-        // 如果AI已启用，更新服务配置
+        // 如果AI已启用，更新服务配置（需要保存配置）
         if (aiSettings.enabled) {
-          await aiService.enable(aiSettings)
+          await aiService.enable(aiSettings, true)
         }
 
         aiSettings.initialized = true
@@ -1695,7 +1671,7 @@ export default defineComponent({
     }
 
     // 开始按键捕获
-    const startKeyCapture = (shortcut, event) => {
+    const startKeyCapture = (shortcut) => {
       // 防止其他快捷键同时捕获
       terminalShortcuts.forEach(s => s.isCapturing = false)
 
@@ -2370,7 +2346,7 @@ export default defineComponent({
   border-radius: 3px;
   background: var(--color-border-muted);
   outline: none;
-  -webkit-appearance: none;
+  /* -webkit-appearance: none; */
 }
 
 .form-slider::-webkit-slider-thumb {
@@ -2734,5 +2710,31 @@ export default defineComponent({
 
 .btn-refresh {
   flex-shrink: 0;
+}
+
+/* AI配置表单样式 */
+.ai-config-form {
+  width: 100%;
+  display: contents; /* 使表单不影响现有布局 */
+}
+
+.ai-config-fieldset {
+  border: none;
+  margin: 0;
+  padding: 0;
+  display: contents; /* 使fieldset不影响现有布局 */
+}
+
+/* 屏幕阅读器专用样式 */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 </style>

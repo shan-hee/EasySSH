@@ -16,6 +16,7 @@ import auth from './auth'
 import mfaService from './mfa'
 import sshService, { sftpService } from './ssh'
 import terminal from './terminal'
+import aiService from './ai/ai-service'
 
 // 使用设置服务实例
 const settings = settingsService
@@ -35,7 +36,8 @@ const servicesStatus = {
   // notification: false,
   auth: false,
   terminal: false,
-  mfa: false
+  mfa: false,
+  ai: false
 }
 
 // 初始化所有服务的方法
@@ -92,6 +94,11 @@ async function initServices() {
     servicesStatus.ssh = true
     servicesStatus.sftp = true
     log.debug('SSH和SFTP服务初始化完成')
+
+    // 初始化AI服务
+    await aiService.init()
+    servicesStatus.ai = true
+    log.debug('AI服务初始化完成')
     
     // 将服务实例挂载到全局对象，供终端等组件动态访问
     if (typeof window !== 'undefined') {
@@ -153,6 +160,7 @@ export {
   auth,
   terminal,
   mfaService,
+  aiService,
   initServices,
   getServicesStatus
 }
@@ -173,6 +181,7 @@ export default {
   auth,
   terminal,
   mfa: mfaService,
+  ai: aiService,
   initServices,
   getServicesStatus
 }

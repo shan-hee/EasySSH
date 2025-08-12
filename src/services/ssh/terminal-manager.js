@@ -30,6 +30,9 @@ class TerminalManager {
     this.aiBlockRenderers = new Map(); // AI块渲染器
     this.commandInterceptors = new Map(); // 命令拦截器
 
+    // 监听AI服务状态变化
+    this._setupAIStatusListener();
+
     log.debug('终端管理器初始化完成');
   }
   
@@ -98,13 +101,50 @@ class TerminalManager {
       log.warn(`聚焦终端失败: ${e.message}`);
     }
     
-    // 处理用户输入
-    terminal.onData((data) => {
-      // 处理自动完成
-      terminalAutocompleteService.processInput(data, terminal);
+    // 处理用户输入 - 统一的数据处理入口
+    terminal.onData(async (data) => {
+      log.debug('终端数据输入', { sessionId, data: data.charCodeAt ? data.charCodeAt(0) : data });
 
-      // 处理SSH输入
-      this.sshService._processTerminalInput(session, data);
+      // 根据AI服务状态决定使用哪种补全方式
+      if (!aiService.isEnabled) {
+        // AI功能未启用时，使用传统智能补全
+        terminalAutocompleteService.processInput(data, terminal);
+      }
+      // AI功能启用时，传统补全已被禁用，AI补全会在AI命令拦截器中处理
+
+      // 检查是否有AI命令拦截器，如果有则更新输入缓冲区
+      const commandInterceptor = this.commandInterceptors.get(sessionId);
+      let shouldBlock = false;
+
+      if (commandInterceptor) {
+        // 更新命令拦截器的输入缓冲区
+        this._updateCommandInterceptorBuffer(commandInterceptor, data);
+
+        // 如果是回车键，检查AI命令
+        if (data === '\r' || data === '\n') {
+          log.debug('检测到回车键，准备检查AI命令', { sessionId });
+          // 直接调用命令拦截器的处理方法，让它决定是否拦截
+          try {
+            const intercepted = await commandInterceptor.handleEnterKey();
+            if (intercepted) {
+              shouldBlock = true;
+              log.debug('AI命令已被拦截器处理，不发送到SSH服务器', { sessionId });
+            } else {
+              log.debug('非AI命令，继续正常处理', { sessionId });
+            }
+          } catch (error) {
+            log.error('AI命令拦截处理失败', error);
+          }
+        }
+      }
+
+      // 只有在不需要阻止的情况下才处理SSH输入
+      if (!shouldBlock) {
+        log.debug('发送数据到SSH服务器', { sessionId, blocked: shouldBlock });
+        this.sshService._processTerminalInput(session, data);
+      } else {
+        log.debug('数据被AI拦截器阻止，不发送到SSH服务器', { sessionId });
+      }
     });
     
     // 处理终端大小变化
@@ -216,8 +256,22 @@ class TerminalManager {
     session.terminal = terminal;
     this.terminals.set(sessionId, terminal);
 
-    // 添加AI增强功能
-    this._enhanceTerminalWithAI(terminal, sessionId, options);
+    // 始终启用系统默认补全
+    terminalAutocompleteService.enable();
+    log.debug('系统默认补全已启用', { sessionId });
+
+    // 根据AI服务状态添加AI增强功能
+    if (aiService.isEnabled) {
+      // AI服务启用时，添加AI增强功能（不影响系统补全）
+      log.info('准备为终端添加AI增强功能', { sessionId });
+      this._enhanceTerminalWithAI(terminal, sessionId, options);
+
+      // 验证AI组件是否成功创建
+      const hasInterceptor = this.commandInterceptors.has(sessionId);
+      log.info('AI增强功能添加结果', { sessionId, hasInterceptor });
+    } else {
+      log.debug('AI服务未启用，仅使用系统默认补全', { sessionId });
+    }
 
     // 如果有缓冲的数据，写入终端
     if (session.buffer) {
@@ -256,6 +310,38 @@ class TerminalManager {
   }
 
   /**
+   * 更新命令拦截器的输入缓冲区
+   * @param {CommandInterceptor} commandInterceptor - 命令拦截器实例
+   * @param {string} data - 输入数据
+   */
+  _updateCommandInterceptorBuffer(commandInterceptor, data) {
+    try {
+      // 如果是回车键，清空缓冲区
+      if (data === '\r' || data === '\n') {
+        commandInterceptor.inputBuffer = '';
+        return;
+      }
+
+      // 如果是退格键，删除最后一个字符
+      if (data === '\x7f' || data === '\b') {
+        commandInterceptor.inputBuffer = commandInterceptor.inputBuffer.slice(0, -1);
+        return;
+      }
+
+      // 如果是Escape键或其他控制字符，清空缓冲区
+      if (data.charCodeAt(0) < 32 && data !== '\t') {
+        commandInterceptor.inputBuffer = '';
+        return;
+      }
+
+      // 普通字符，添加到缓冲区
+      commandInterceptor.inputBuffer += data;
+    } catch (error) {
+      log.error('更新命令拦截器缓冲区失败', error);
+    }
+  }
+
+  /**
    * 为终端添加AI增强功能
    * @param {Terminal} terminal - 终端实例
    * @param {string} sessionId - 会话ID
@@ -263,11 +349,21 @@ class TerminalManager {
    */
   _enhanceTerminalWithAI(terminal, sessionId, options = {}) {
     try {
+      // 详细检查AI服务状态
+      const aiStatus = aiService.getStatus();
+      log.debug('AI服务状态检查', {
+        sessionId,
+        isEnabled: aiService.isEnabled,
+        status: aiStatus
+      });
+
       // 检查AI服务是否启用
       if (!aiService.isEnabled) {
-        log.debug('AI服务未启用，跳过AI增强');
+        log.warn('AI服务未启用，跳过AI增强', { sessionId });
         return;
       }
+
+      log.info('AI服务已启用，开始创建AI组件', { sessionId });
 
       // 创建行内建议渲染器
       const suggestionRenderer = new InlineSuggestionRenderer(terminal);
@@ -278,13 +374,15 @@ class TerminalManager {
       this.aiBlockRenderers.set(sessionId, aiBlockRenderer);
 
       // 创建命令拦截器
-      const commandInterceptor = new CommandInterceptor(terminal, aiService);
+      log.info('创建命令拦截器', { sessionId });
+      const commandInterceptor = new CommandInterceptor(terminal, aiService, sessionId);
       this.commandInterceptors.set(sessionId, commandInterceptor);
+      log.info('命令拦截器已创建并存储', { sessionId, hasInterceptor: this.commandInterceptors.has(sessionId) });
 
       // 绑定AI相关事件
       this._bindAIEvents(terminal, sessionId);
 
-      log.debug('终端AI增强功能已启用', { sessionId });
+      log.info('终端AI增强功能已启用', { sessionId, aiStatus });
 
     } catch (error) {
       log.error('添加AI增强功能失败', error);
@@ -305,25 +403,7 @@ class TerminalManager {
         return;
       }
 
-      // 监听终端输入变化，触发智能补全
-      let completionTimer = null;
-      const completionDelay = 500; // 500ms延迟
 
-      terminal.onData((data) => {
-        // 清除之前的定时器
-        if (completionTimer) {
-          clearTimeout(completionTimer);
-        }
-
-        // 设置新的定时器
-        completionTimer = setTimeout(async () => {
-          try {
-            await this._triggerSmartCompletion(terminal, sessionId);
-          } catch (error) {
-            log.error('触发智能补全失败', error);
-          }
-        }, completionDelay);
-      });
 
       log.debug('AI事件已绑定', { sessionId });
 
@@ -332,56 +412,7 @@ class TerminalManager {
     }
   }
 
-  /**
-   * 触发智能补全
-   * @param {Terminal} terminal - 终端实例
-   * @param {string} sessionId - 会话ID
-   */
-  async _triggerSmartCompletion(terminal, sessionId) {
-    try {
-      const suggestionRenderer = this.suggestionRenderers.get(sessionId);
-      if (!suggestionRenderer) {
-        return;
-      }
 
-      // 获取当前行内容
-      const buffer = terminal.buffer.active;
-      const currentRow = buffer.cursorY;
-      const line = buffer.getLine(currentRow);
-
-      if (!line) {
-        return;
-      }
-
-      const currentLine = line.translateToString(true).trim();
-
-      // 如果当前行为空或太短，不触发补全
-      if (!currentLine || currentLine.length < 2) {
-        suggestionRenderer.clear();
-        return;
-      }
-
-      // 构建上下文
-      const context = this._buildTerminalContext(terminal, sessionId);
-
-      // 请求AI补全
-      const result = await aiService.requestCompletion({
-        prefix: currentLine,
-        terminalOutput: context.terminalOutput,
-        osHint: context.osHint,
-        shellHint: context.shellHint
-      });
-
-      if (result && result.suggestions && result.suggestions.length > 0) {
-        suggestionRenderer.show(result.suggestions);
-      } else {
-        suggestionRenderer.clear();
-      }
-
-    } catch (error) {
-      log.error('智能补全失败', error);
-    }
-  }
 
   /**
    * 构建终端上下文
@@ -460,6 +491,112 @@ class TerminalManager {
       /no such file or directory/i
     ];
     return errorPatterns.some(pattern => pattern.test(output));
+  }
+
+  /**
+   * 获取终端当前行内容
+   * @param {Terminal} terminal - 终端实例
+   * @returns {string} 当前行文本
+   */
+  _getCurrentLine(terminal) {
+    try {
+      const buffer = terminal.buffer.active;
+      const currentRow = buffer.cursorY;
+      const line = buffer.getLine(currentRow);
+
+      if (!line) return '';
+
+      return line.translateToString(true).trim();
+    } catch (error) {
+      log.error('获取当前行失败', error);
+      return '';
+    }
+  }
+
+  /**
+   * 检查是否是AI命令
+   * @param {string} line - 命令行文本
+   * @returns {boolean} 是否是AI命令
+   */
+  _isAICommand(line) {
+    const aiPrefixes = ['/ai', '/explain', '/fix', '/gen'];
+    return aiPrefixes.some(prefix => line.startsWith(prefix));
+  }
+
+  /**
+   * 设置AI状态监听器
+   */
+  _setupAIStatusListener() {
+    try {
+      window.addEventListener('ai-service-status-change', (event) => {
+        const { status, isEnabled } = event.detail;
+        log.debug('收到AI服务状态变化通知', { status, isEnabled });
+
+        if (isEnabled) {
+          // AI服务已启用，为所有终端添加AI功能
+          this.refreshAIForAllTerminals();
+        } else {
+          // AI服务已禁用，清理所有终端的AI功能
+          this.cleanupAIForAllTerminals();
+        }
+
+        // 无论AI服务状态如何，都确保系统补全始终启用
+        terminalAutocompleteService.enable();
+        log.debug('AI状态变化后，系统补全已确保启用');
+      });
+
+      log.debug('AI状态监听器已设置');
+    } catch (error) {
+      log.error('设置AI状态监听器失败', error);
+    }
+  }
+
+  /**
+   * 为所有现有终端重新启用AI功能
+   * 当AI服务状态改变时调用
+   */
+  refreshAIForAllTerminals() {
+    try {
+      log.debug('为所有终端刷新AI功能', { terminalCount: this.terminals.size });
+
+      for (const [sessionId, terminal] of this.terminals.entries()) {
+        if (aiService.isEnabled) {
+          // AI服务启用时，先清理现有的AI组件，然后重新添加
+          this._cleanupAIComponents(sessionId);
+          this._enhanceTerminalWithAI(terminal, sessionId);
+        } else {
+          // AI服务禁用时，清理AI组件
+          this._cleanupAIComponents(sessionId);
+        }
+      }
+
+      // 始终确保系统补全启用（不再依赖AI状态）
+      terminalAutocompleteService.enable();
+      log.debug('系统补全已确保启用，不受AI状态影响');
+
+      log.debug('所有终端AI功能刷新完成');
+    } catch (error) {
+      log.error('刷新终端AI功能失败', error);
+    }
+  }
+
+  /**
+   * 清理所有终端的AI功能
+   */
+  cleanupAIForAllTerminals() {
+    try {
+      log.info('清理所有终端AI功能', { terminalCount: this.terminals.size });
+
+      for (const sessionId of this.terminals.keys()) {
+        this._cleanupAIComponents(sessionId);
+      }
+
+      // 确保系统补全在清理AI功能后仍然启用
+      terminalAutocompleteService.enable();
+      log.debug('AI功能清理完成，系统补全已确保启用');
+    } catch (error) {
+      log.error('清理所有终端AI功能失败', error);
+    }
   }
 
   /**

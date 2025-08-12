@@ -8,7 +8,6 @@ import log from './log'
 import { useUserStore } from '@/store/user'
 import { autocompleteConfig } from '@/config/app-config'
 import { SmartDebounce } from '@/utils/smart-debounce'
-import aiService from './ai/ai-service'
 
 class TerminalAutocompleteService {
   constructor() {
@@ -48,11 +47,7 @@ class TerminalAutocompleteService {
       enablePriority: true
     })
 
-    // AI相关属性
-    this.aiEnabled = false
-    this.aiSuggestions = []
-    this.aiIdleTimer = null
-    this.aiIdleDelay = 500
+
 
     // 创建防抖函数
     this.debouncedUpdate = this.smartDebounce.create(
@@ -144,6 +139,11 @@ class TerminalAutocompleteService {
    */
   processInput(data, terminal) {
     try {
+      // 检查服务是否启用
+      if (!this.isEnabled()) {
+        return false
+      }
+
       // 处理特殊字符
       if (this.isControlCharacter(data)) {
         const handled = this.handleControlCharacter(data, terminal)
@@ -181,8 +181,7 @@ class TerminalAutocompleteService {
         this.hideSuggestions()
       }
 
-      // 处理AI补全
-      this.processAICompletion(data, terminal)
+
 
       return false // 不阻止默认处理
 
@@ -1199,180 +1198,35 @@ class TerminalAutocompleteService {
     this.cleanupAI()
   }
 
+
+
   /**
-   * 处理AI补全
-   * @param {string} data - 输入数据
-   * @param {Object} terminal - 终端实例
+   * 启用整个补全服务
    */
-  processAICompletion(data, terminal) {
-    try {
-      if (!this.aiEnabled || !aiService.isEnabled) {
-        return
-      }
-
-      // 清除之前的定时器
-      if (this.aiIdleTimer) {
-        clearTimeout(this.aiIdleTimer)
-      }
-
-      // 设置空闲触发定时器
-      this.aiIdleTimer = setTimeout(() => {
-        this.triggerAICompletion(terminal)
-      }, this.aiIdleDelay)
-
-    } catch (error) {
-      log.error('处理AI补全失败', error)
-    }
+  enable() {
+    this.isActive = false // 重置状态，但允许处理输入
+    this._enabled = true
+    log.debug('智能补全服务已启用')
   }
 
   /**
-   * 触发AI补全
-   * @param {Object} terminal - 终端实例
+   * 禁用整个补全服务
    */
-  async triggerAICompletion(terminal) {
-    try {
-      if (!this.aiEnabled || !aiService.isEnabled) {
-        return
-      }
-
-      const currentLine = this.inputBuffer.trim()
-
-      // 如果当前行为空或太短，不触发AI补全
-      if (!currentLine || currentLine.length < 2) {
-        return
-      }
-
-      // 构建上下文
-      const context = this.buildAIContext(terminal)
-
-      // 请求AI补全
-      const result = await aiService.requestCompletion({
-        prefix: currentLine,
-        terminalOutput: context.terminalOutput,
-        osHint: context.osHint,
-        shellHint: context.shellHint
-      })
-
-      if (result && result.suggestions && result.suggestions.length > 0) {
-        this.aiSuggestions = result.suggestions
-        log.debug('收到AI补全建议', { count: result.suggestions.length })
-      }
-
-    } catch (error) {
-      log.error('AI补全失败', error)
-    }
+  disable() {
+    this.isActive = false
+    this._enabled = false
+    this.hideSuggestions()
+    log.debug('智能补全服务已禁用')
   }
 
   /**
-   * 构建AI上下文
-   * @param {Object} terminal - 终端实例
-   * @returns {Object} 上下文对象
+   * 检查服务是否启用
    */
-  buildAIContext(terminal) {
-    try {
-      const buffer = terminal.buffer.active
-      const lines = []
-
-      // 获取最近的终端输出
-      const startRow = Math.max(0, buffer.cursorY - 30)
-      for (let i = startRow; i <= buffer.cursorY; i++) {
-        const line = buffer.getLine(i)
-        if (line) {
-          lines.push(line.translateToString(true))
-        }
-      }
-
-      const terminalOutput = lines.join('\n')
-
-      return {
-        terminalOutput,
-        osHint: this.detectOS(terminalOutput),
-        shellHint: this.detectShell(terminalOutput)
-      }
-
-    } catch (error) {
-      log.error('构建AI上下文失败', error)
-      return {
-        terminalOutput: '',
-        osHint: 'unknown',
-        shellHint: 'unknown'
-      }
-    }
+  isEnabled() {
+    return this._enabled !== false // 默认启用
   }
 
-  /**
-   * 检测操作系统
-   * @param {string} output - 终端输出
-   * @returns {string} 操作系统类型
-   */
-  detectOS(output) {
-    if (/Linux|Ubuntu|CentOS|Debian/i.test(output)) return 'linux'
-    if (/Darwin|macOS/i.test(output)) return 'darwin'
-    if (/Windows|MINGW/i.test(output)) return 'windows'
-    return 'unknown'
-  }
 
-  /**
-   * 检测Shell类型
-   * @param {string} output - 终端输出
-   * @returns {string} Shell类型
-   */
-  detectShell(output) {
-    if (/bash/i.test(output) || output.includes('$ ')) return 'bash'
-    if (/zsh/i.test(output) || output.includes('% ')) return 'zsh'
-    if (/fish/i.test(output)) return 'fish'
-    return 'unknown'
-  }
-
-  /**
-   * 启用AI补全
-   */
-  enableAI() {
-    this.aiEnabled = true
-    log.debug('AI补全已启用')
-  }
-
-  /**
-   * 禁用AI补全
-   */
-  disableAI() {
-    this.aiEnabled = false
-    this.cleanupAI()
-    log.debug('AI补全已禁用')
-  }
-
-  /**
-   * 清理AI资源
-   */
-  cleanupAI() {
-    if (this.aiIdleTimer) {
-      clearTimeout(this.aiIdleTimer)
-      this.aiIdleTimer = null
-    }
-    this.aiSuggestions = []
-  }
-
-  /**
-   * 获取AI建议
-   * @returns {Array} AI建议列表
-   */
-  getAISuggestions() {
-    return this.aiSuggestions
-  }
-
-  /**
-   * 设置AI配置
-   * @param {Object} config - AI配置
-   */
-  setAIConfig(config) {
-    if (config.enabled !== undefined) {
-      this.aiEnabled = config.enabled
-    }
-    if (config.idleDelay !== undefined) {
-      this.aiIdleDelay = config.idleDelay
-    }
-    log.debug('AI配置已更新', config)
-  }
 }
 
 // 创建单例实例

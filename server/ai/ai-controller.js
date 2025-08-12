@@ -127,15 +127,19 @@ class AIController {
       case 'ai_request':
         await this.handleAIRequest(connectionId, data);
         break;
-      
+
       case 'ai_cancel':
         await this.handleAICancel(connectionId, data);
         break;
-      
+
       case 'ai_config_test':
         await this.handleConfigTest(connectionId, data);
         break;
-      
+
+      case 'ai_config_sync':
+        await this.handleConfigSync(connectionId, data);
+        break;
+
       default:
         logger.warn('未知的AI消息类型', { connectionId, type, requestId });
         this.sendError(connectionId, 'UNKNOWN_MESSAGE_TYPE', `未知的消息类型: ${type}`);
@@ -236,7 +240,7 @@ class AIController {
 
     try {
       const result = await this.keyVault.testApiConfig(config);
-      
+
       this.sendMessage(connectionId, {
         type: 'ai_config_test_result',
         requestId,
@@ -258,6 +262,44 @@ class AIController {
   }
 
   /**
+   * 处理配置同步请求
+   * @param {string} connectionId 连接ID
+   * @param {Object} data 配置数据
+   */
+  async handleConfigSync(connectionId, data) {
+    const { config, userId } = data;
+
+    try {
+      // 存储用户的API配置到后端
+      await this.keyVault.storeApiConfig(userId, config, { sessionOnly: true });
+
+      logger.info('AI配置已同步到后端', {
+        connectionId,
+        userId,
+        provider: config.provider,
+        model: config.model
+      });
+
+      // 发送同步成功确认
+      this.sendMessage(connectionId, {
+        type: 'ai_config_sync_result',
+        success: true,
+        message: '配置同步成功',
+        timestamp: new Date().toISOString()
+      });
+
+    } catch (error) {
+      logger.error('AI配置同步失败', { connectionId, userId, error: error.message });
+      this.sendMessage(connectionId, {
+        type: 'ai_config_sync_result',
+        success: false,
+        message: error.message,
+        timestamp: new Date().toISOString()
+      });
+    }
+  }
+
+  /**
    * 验证消息格式
    * @param {Object} data 消息数据
    * @returns {boolean} 是否有效
@@ -267,18 +309,20 @@ class AIController {
       return false;
     }
 
-    const { type, requestId } = data;
-    if (!type || !requestId) {
+    const { type } = data;
+    if (!type) {
       return false;
     }
 
     // 根据消息类型进行具体验证
     switch (type) {
       case 'ai_request':
-        return !!(data.mode && data.input);
+        return !!(data.requestId && data.mode && data.input);
       case 'ai_cancel':
       case 'ai_config_test':
-        return true;
+        return !!data.requestId;
+      case 'ai_config_sync':
+        return !!(data.config && data.userId);
       default:
         return false;
     }

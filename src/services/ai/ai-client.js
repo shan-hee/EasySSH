@@ -199,6 +199,9 @@ class AIClient {
     this.connected = true
     this.reconnectAttempts = 0
     log.info('AI WebSocket连接已建立')
+
+    // 连接建立后，立即发送配置到后端
+    this.sendConfigToBackend()
   }
 
   /**
@@ -208,7 +211,7 @@ class AIClient {
   onMessage(event) {
     try {
       const message = JSON.parse(event.data)
-      log.debug('收到AI消息', { type: message.type, requestId: message.requestId })
+      log.debug('收到AI消息', { type: message.type })
 
       // 路由消息到相应的处理器
       this.routeMessage(message)
@@ -252,6 +255,25 @@ class AIClient {
    */
   routeMessage(message) {
     const { type, requestId } = message
+
+    // 对于连接确认消息，不需要处理器
+    if (type === 'ai_connected') {
+      log.debug('收到AI连接确认消息')
+      return
+    }
+
+    // 对于配置同步结果消息，不需要处理器
+    if (type === 'ai_config_sync_result') {
+      log.debug('收到AI配置同步结果', { success: message.success, message: message.message })
+      return
+    }
+
+    // 对于全局错误消息（没有requestId），直接处理
+    if (type === 'ai_error' && !requestId) {
+      log.error('收到AI服务全局错误', message)
+      return
+    }
+
     const handler = this.messageHandlers.get(requestId)
 
     if (!handler) {
@@ -260,9 +282,6 @@ class AIClient {
     }
 
     switch (type) {
-      case 'ai_connected':
-        // 连接确认消息，无需特殊处理
-        break
 
       case 'ai_stream':
         handler.onStream?.(message)
@@ -365,6 +384,37 @@ class AIClient {
       reconnectAttempts: this.reconnectAttempts,
       maxReconnectAttempts: this.maxReconnectAttempts,
       activeHandlers: this.messageHandlers.size
+    }
+  }
+
+  /**
+   * 发送配置到后端
+   */
+  sendConfigToBackend() {
+    if (!this.connected || !this.config) {
+      return
+    }
+
+    try {
+      // 发送配置到后端，让后端存储用户的API配置
+      this.send({
+        type: 'ai_config_sync',
+        config: {
+          provider: this.config.provider,
+          baseUrl: this.config.baseUrl,
+          model: this.config.model,
+          apiKey: this.config.apiKey,
+          temperature: this.config.temperature,
+          maxTokens: this.config.maxTokens,
+          timeout: this.config.timeout
+        },
+        userId: this.getUserId(),
+        timestamp: new Date().toISOString()
+      })
+
+      log.debug('AI配置已发送到后端')
+    } catch (error) {
+      log.error('发送AI配置到后端失败', error)
     }
   }
 }

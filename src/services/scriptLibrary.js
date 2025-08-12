@@ -585,6 +585,92 @@ class ScriptLibraryService {
   }
 
   /**
+   * 获取AI命令建议
+   * @param {string} input - 用户输入
+   * @param {number} limit - 返回结果数量限制
+   */
+  getAICommandSuggestions(input, limit = 5) {
+    const aiCommands = [
+      {
+        id: 'ai-help',
+        text: '/ai help',
+        description: '显示AI助手帮助信息',
+        fullCommand: '/ai help',
+        score: 100,
+        category: 'ai'
+      },
+      {
+        id: 'ai-interaction',
+        text: '/ai',
+        description: '与AI助手对话交流',
+        fullCommand: '/ai <问题内容>',
+        score: 95,
+        category: 'ai'
+      },
+      {
+        id: 'ai-explain',
+        text: '/ai explain',
+        description: '解释终端输出或命令',
+        fullCommand: '/ai explain [问题]',
+        score: 90,
+        category: 'ai'
+      },
+      {
+        id: 'ai-fix',
+        text: '/ai fix',
+        description: '获取错误修复建议',
+        fullCommand: '/ai fix [描述]',
+        score: 85,
+        category: 'ai'
+      },
+      {
+        id: 'ai-gen',
+        text: '/ai gen',
+        description: '生成脚本或命令',
+        fullCommand: '/ai gen <描述>',
+        score: 80,
+        category: 'ai'
+      },
+      {
+        id: 'explain-quick',
+        text: '/explain',
+        description: '快速解释最近的输出',
+        fullCommand: '/explain',
+        score: 75,
+        category: 'ai'
+      },
+      {
+        id: 'fix-quick',
+        text: '/fix',
+        description: '快速获取修复建议',
+        fullCommand: '/fix',
+        score: 70,
+        category: 'ai'
+      },
+      {
+        id: 'gen-quick',
+        text: '/gen',
+        description: '快速生成脚本',
+        fullCommand: '/gen <描述>',
+        score: 65,
+        category: 'ai'
+      }
+    ]
+
+    if (!input || input.trim() === '') {
+      return aiCommands.slice(0, limit)
+    }
+
+    const query = input.toLowerCase()
+    const filtered = aiCommands.filter(cmd =>
+      cmd.text.toLowerCase().includes(query) ||
+      cmd.description.toLowerCase().includes(query)
+    )
+
+    return filtered.slice(0, limit)
+  }
+
+  /**
    * 获取命令建议
    * @param {string} input - 用户输入
    * @param {number} limit - 返回结果数量限制
@@ -625,6 +711,9 @@ class ScriptLibraryService {
       return []
     }
 
+    // 添加AI命令建议
+    const aiSuggestions = this.getAICommandSuggestions(input, limit)
+
     // 直接计算建议
     const suggestions = this.getCommandSuggestions(input, limit)
     const result = suggestions.map(script => ({
@@ -635,7 +724,8 @@ class ScriptLibraryService {
       score: script.score
     }))
 
-    return result
+    // 合并AI建议和脚本建议
+    return [...aiSuggestions, ...result].slice(0, limit)
   }
 
   /**
@@ -648,8 +738,11 @@ class ScriptLibraryService {
       return []
     }
 
+    // 添加AI命令建议
+    const aiSuggestions = this.getAICommandSuggestions(input, Math.min(3, limit))
+
     // 直接计算建议（同步）
-    const suggestions = this.getCommandSuggestions(input, limit)
+    const suggestions = this.getCommandSuggestions(input, limit - aiSuggestions.length)
     const result = suggestions.map(script => ({
       id: script.id,
       text: script.command,
@@ -658,7 +751,8 @@ class ScriptLibraryService {
       score: script.score
     }))
 
-    return result
+    // 合并AI建议和脚本建议
+    return [...aiSuggestions, ...result].slice(0, limit)
   }
 
 
