@@ -68,7 +68,7 @@ class AIConfig {
       provider: 'openai', // 固定为OpenAI兼容格式
       baseUrl: 'https://api.openai.com', // 默认OpenAI官方API，但可修改
       apiKey: '',
-      model: 'gpt-4o-mini',
+      model: '', // 移除默认模型，要求用户手动输入
       features: {
         completion: true,
         explanation: true,

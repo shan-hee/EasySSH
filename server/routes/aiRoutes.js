@@ -18,10 +18,10 @@ router.post('/test-connection', authMiddleware, async (req, res) => {
     const { baseUrl, apiKey, model } = req.body;
 
     // 验证请求参数
-    if (!baseUrl || !apiKey) {
+    if (!baseUrl || !apiKey || !model) {
       return res.status(400).json({
         success: false,
-        message: '缺少必要参数：baseUrl 和 apiKey'
+        message: '缺少必要参数：baseUrl、apiKey 和 model'
       });
     }
 
@@ -29,7 +29,7 @@ router.post('/test-connection', authMiddleware, async (req, res) => {
     const adapter = new OpenAIAdapter({
       baseUrl: baseUrl.replace(/\/$/, ''), // 移除末尾斜杠
       apiKey,
-      model: model || 'gpt-4o-mini'
+      model // 移除默认值，要求用户必须提供
     });
 
     const result = await adapter.testConnection();

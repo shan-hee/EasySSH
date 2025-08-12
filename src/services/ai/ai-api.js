@@ -19,10 +19,19 @@ class AIApiService {
    */
   async testConnection(config) {
     try {
+      // 验证必要参数
+      if (!config.model) {
+        return {
+          success: false,
+          valid: false,
+          message: '请输入AI模型名称'
+        }
+      }
+
       const response = await apiService.post(`${this.baseUrl}/test-connection?t=${Date.now()}`, {
         baseUrl: config.baseUrl,
         apiKey: config.apiKey,
-        model: config.model || 'gpt-4o-mini'
+        model: config.model // 移除默认值，要求用户必须提供
       })
 
       if (response.success) {

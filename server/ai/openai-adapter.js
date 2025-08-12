@@ -12,14 +12,19 @@ class OpenAIAdapter {
   constructor(config) {
     this.baseUrl = config.baseUrl || 'https://api.openai.com';
     this.apiKey = config.apiKey;
-    this.model = config.model || 'gpt-4o-mini';
+    this.model = config.model; // 移除默认值，要求用户必须提供
     this.timeout = config.timeout || 30000;
-    
+
+    // 验证必要参数
+    if (!this.model) {
+      throw new Error('模型名称是必需的参数');
+    }
+
     // 确保baseUrl不以斜杠结尾
     this.baseUrl = this.baseUrl.replace(/\/$/, '');
-    
-    logger.debug('OpenAI适配器已初始化', { 
-      baseUrl: this.baseUrl, 
+
+    logger.debug('OpenAI适配器已初始化', {
+      baseUrl: this.baseUrl,
       model: this.model,
       hasApiKey: !!this.apiKey
     });
@@ -75,7 +80,7 @@ class OpenAIAdapter {
   }
 
   /**
-   * 测试API配置 - 使用非流式请求进行简单验证
+   * 测试API配置 - 完整验证API+Key+Model组合
    * @param {Object} testConfig 测试配置
    * @returns {Promise<Object>} 测试结果
    */
@@ -86,16 +91,31 @@ class OpenAIAdapter {
       model: this.model
     };
 
+    // 验证配置完整性
+    if (!config.baseUrl || !config.apiKey || !config.model) {
+      return {
+        valid: false,
+        success: false,
+        message: '配置不完整：需要API地址、密钥和模型名称'
+      };
+    }
+
     const url = `${config.baseUrl}/v1/chat/completions`;
     const requestBody = {
       model: config.model,
       messages: [
-        { role: 'user', content: 'Hi!' }
+        { role: 'user', content: 'Hi' }
       ],
       stream: false,  // 使用非流式请求
-      max_tokens: 5,  // 极少token节省费用
+      max_tokens: 10,  // 少量token用于测试
       temperature: 0
     };
+
+    logger.debug('开始测试API配置', {
+      baseUrl: config.baseUrl,
+      model: config.model,
+      hasApiKey: !!config.apiKey
+    });
 
 
 
@@ -112,12 +132,16 @@ class OpenAIAdapter {
           const content = data.choices[0].message?.content || '';
           const finishReason = data.choices[0].finish_reason;
 
-
+          logger.info('API配置测试成功', {
+            model: data.model,
+            usage: data.usage,
+            finishReason
+          });
 
           return {
             valid: true,
             success: true,
-            message: 'API连接测试成功',
+            message: `API+模型(${data.model})测试成功`,
             data: {
               model: data.model,
               content: content.trim(),
@@ -137,14 +161,21 @@ class OpenAIAdapter {
         return {
           valid: false,
           success: false,
-          message: 'API密钥无效或未授权'
+          message: 'API密钥无效或未授权，请检查密钥是否正确'
+        };
+
+      } else if (response.status === 404) {
+        return {
+          valid: false,
+          success: false,
+          message: `模型 "${config.model}" 不存在或不可用，请检查模型名称`
         };
 
       } else if (response.status === 429) {
         return {
           valid: false,
           success: false,
-          message: 'API请求限流或配额耗尽'
+          message: 'API请求限流或配额耗尽，请稍后重试'
         };
 
       } else {
@@ -152,10 +183,20 @@ class OpenAIAdapter {
         let errorMsg = `HTTP ${response.status}`;
         try {
           const errorData = JSON.parse(response.data);
-          errorMsg = errorData.error?.message || errorMsg;
+          if (errorData.error?.message) {
+            errorMsg = errorData.error.message;
+          } else if (errorData.message) {
+            errorMsg = errorData.message;
+          }
         } catch (e) {
           // 解析失败，使用状态码
         }
+
+        logger.warn('API测试失败', {
+          status: response.status,
+          error: errorMsg,
+          model: config.model
+        });
 
         return {
           valid: false,
@@ -166,13 +207,25 @@ class OpenAIAdapter {
 
     } catch (error) {
       logger.error('API连接测试异常', {
-        error: error.message
+        error: error.message,
+        baseUrl: config.baseUrl,
+        model: config.model
       });
+
+      // 提供更具体的错误信息
+      let errorMessage = error.message;
+      if (error.code === 'ENOTFOUND') {
+        errorMessage = 'API地址无法访问，请检查网络连接或地址是否正确';
+      } else if (error.code === 'ECONNREFUSED') {
+        errorMessage = 'API服务器拒绝连接，请检查地址和端口';
+      } else if (error.code === 'ETIMEDOUT') {
+        errorMessage = '连接超时，请检查网络或稍后重试';
+      }
 
       return {
         valid: false,
         success: false,
-        message: `连接测试失败: ${error.message}`
+        message: `连接测试失败: ${errorMessage}`
       };
     }
   }
