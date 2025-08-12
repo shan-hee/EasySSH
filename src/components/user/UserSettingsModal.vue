@@ -631,13 +631,15 @@
                     </div>
                   </div>
                   <div class="security-action">
-                    <input
-                      v-model="aiSettings.baseUrl"
-                      type="text"
-                      class="form-input"
-                      placeholder="https://api.openai.com"
-                      :disabled="aiLoading"
-                    />
+                    <div class="input-with-icon">
+                      <input
+                        v-model="aiSettings.baseUrl"
+                        type="text"
+                        class="form-input"
+                        placeholder="https://api.openai.com"
+                        :disabled="aiLoading"
+                      />
+                    </div>
                   </div>
                 </div>
 
