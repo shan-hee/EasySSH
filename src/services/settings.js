@@ -76,11 +76,52 @@ class SettingsService {
    */
   async loadSettings() {
     try {
+      // 检查是否已登录，如果已登录则从服务器加载设置
+      const userStore = await import('../store/user.js').then(m => m.useUserStore())
+
+      if (userStore.isLoggedIn) {
+        // 登录状态：从服务器加载设置
+        try {
+          const storageAdapter = await import('./storage-adapter.js').then(m => m.default)
+
+          // 加载各个分类的设置
+          const categories = ['terminal', 'ui', 'connection', 'editor', 'advanced']
+          const serverSettings = {}
+
+          for (const category of categories) {
+            try {
+              const categoryData = await storageAdapter.get(category, null)
+              if (categoryData) {
+                serverSettings[category] = categoryData
+              }
+            } catch (error) {
+              log.warn(`从服务器加载${category}设置失败:`, error)
+            }
+          }
+
+          if (Object.keys(serverSettings).length > 0) {
+            log.debug('设置已从服务器加载', {
+              loadedCategories: Object.keys(serverSettings),
+              hasTerminalSettings: !!serverSettings.terminal,
+              hasUISettings: !!serverSettings.ui,
+              hasConnectionSettings: !!serverSettings.connection
+            })
+
+            // 深度合并服务器设置，保留默认值
+            this._mergeSettings(this.settings, serverSettings)
+            return
+          }
+        } catch (error) {
+          log.warn('从服务器加载设置失败，回退到本地存储:', error)
+        }
+      }
+
+      // 未登录状态或服务器加载失败：从本地存储加载
       const storedSettings = this.storage.get(SETTINGS_STORAGE_KEY, {})
 
       // 优化：只记录设置加载的摘要信息，避免大对象重复输出
       const settingsKeys = Object.keys(storedSettings)
-      log.debug('设置已从存储加载', {
+      log.debug('设置已从本地存储加载', {
         storedKeys: settingsKeys,
         hasTerminalSettings: !!storedSettings.terminal,
         hasUISettings: !!storedSettings.ui,
@@ -100,8 +141,37 @@ class SettingsService {
    */
   async saveSettings() {
     try {
+      // 始终保存到本地存储作为备份
       this.storage.set(SETTINGS_STORAGE_KEY, this.settings)
-      log.debug('设置已保存到存储')
+
+      // 检查是否已登录，如果已登录则同时保存到服务器
+      try {
+        const userStore = await import('../store/user.js').then(m => m.useUserStore())
+
+        if (userStore.isLoggedIn) {
+          const storageAdapter = await import('./storage-adapter.js').then(m => m.default)
+
+          // 分别保存各个分类的设置到服务器
+          const categories = ['terminal', 'ui', 'connection', 'editor', 'advanced']
+          const savePromises = categories.map(async (category) => {
+            if (this.settings[category]) {
+              try {
+                await storageAdapter.set(category, this.settings[category])
+              } catch (error) {
+                log.warn(`保存${category}设置到服务器失败:`, error)
+              }
+            }
+          })
+
+          await Promise.allSettled(savePromises)
+          log.debug('设置已保存到本地存储和服务器')
+        } else {
+          log.debug('设置已保存到本地存储')
+        }
+      } catch (error) {
+        log.warn('保存设置到服务器失败，仅保存到本地:', error)
+        log.debug('设置已保存到本地存储')
+      }
     } catch (error) {
       log.error('保存设置失败', error)
     }

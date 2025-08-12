@@ -989,7 +989,44 @@ export default {
         log.error('批量更新终端主题失败:', error)
       }
     }
-    
+
+    // 处理终端设置更新事件
+    const handleTerminalSettingsUpdate = async (event) => {
+      if (event.detail && event.detail.settings) {
+        log.info('收到终端设置更新事件，应用到所有活动终端')
+
+        // 更新设置服务中的设置（确保同步）
+        try {
+          const newSettings = event.detail.settings
+          if (settingsService.isInitialized) {
+            // 更新设置服务中的终端设置
+            Object.keys(newSettings).forEach(key => {
+              if (newSettings[key] !== undefined) {
+                settingsService.set(`terminal.${key}`, newSettings[key])
+              }
+            })
+            log.debug('设置服务中的终端设置已同步更新')
+          }
+        } catch (error) {
+          log.error('同步设置服务失败:', error)
+        }
+
+        // 使用terminalStore的批量更新方法应用设置到所有终端
+        try {
+          log.info('开始批量更新所有终端设置')
+          const results = await terminalStore.applySettingsToAllTerminals(event.detail.settings)
+          log.info('批量更新终端设置完成:', results)
+
+          // 统计成功和失败的数量
+          const successCount = Object.values(results).filter(success => success).length
+          const totalCount = Object.keys(results).length
+          log.info(`设置更新结果: ${successCount}/${totalCount} 个终端更新成功`)
+        } catch (error) {
+          log.error('批量更新终端设置失败:', error)
+        }
+      }
+    }
+
     // 监听外部工具栏事件
     const setupToolbarListeners = () => {
       window.addEventListener('terminal:send-command', sendTerminalCommand)
@@ -1445,6 +1482,9 @@ export default {
       // 添加终端主题更新监听器
       window.addEventListener('terminal-theme-update', handleTerminalThemeUpdate)
 
+      // 添加终端设置更新监听器
+      window.addEventListener('terminal-settings-updated', handleTerminalSettingsUpdate)
+
       // 如果有活动连接ID，则更新终端ID列表
       if (activeConnectionId.value) {
         if (!terminalIds.value.includes(activeConnectionId.value)) {
@@ -1527,6 +1567,7 @@ export default {
       window.removeEventListener('terminal-command', handleTerminalEvent)
       window.removeEventListener('terminal:session-change', handleSessionChange)
       window.removeEventListener('terminal-theme-update', handleTerminalThemeUpdate)
+      window.removeEventListener('terminal-settings-updated', handleTerminalSettingsUpdate)
       // window.removeEventListener('terminal:refresh-status', handleTerminalRefreshStatus)
       document.removeEventListener('keydown', handleGlobalKeydown, true)
 

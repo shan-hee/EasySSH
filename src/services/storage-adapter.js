@@ -96,6 +96,22 @@ class StorageAdapter {
         if (response.success) {
           // 同时缓存到本地，用于离线时使用
           storageService.setItem(`cache.settings.${category}`, data)
+
+          // 同步更新设置服务中的设置
+          try {
+            const settingsService = await import('./settings.js').then(m => m.default)
+            if (settingsService.isInitialized) {
+              Object.keys(data).forEach(key => {
+                if (data[key] !== undefined) {
+                  settingsService.set(`${category}.${key}`, data[key])
+                }
+              })
+              log.debug(`设置服务已同步更新 [${category}]`)
+            }
+          } catch (error) {
+            log.warn(`同步设置服务失败 [${category}]:`, error)
+          }
+
           log.debug(`设置已保存到服务器 [${category}]`)
           return true
         }
@@ -105,6 +121,21 @@ class StorageAdapter {
         // 未登录状态：保存到本地存储
         const success = storageService.setItem(`settings.${category}`, data)
         if (success) {
+          // 同步更新设置服务中的设置
+          try {
+            const settingsService = await import('./settings.js').then(m => m.default)
+            if (settingsService.isInitialized) {
+              Object.keys(data).forEach(key => {
+                if (data[key] !== undefined) {
+                  settingsService.set(`${category}.${key}`, data[key])
+                }
+              })
+              log.debug(`设置服务已同步更新 [${category}]`)
+            }
+          } catch (error) {
+            log.warn(`同步设置服务失败 [${category}]:`, error)
+          }
+
           log.debug(`设置已保存到本地 [${category}]`)
         }
         return success

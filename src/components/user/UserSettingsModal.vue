@@ -2346,7 +2346,8 @@ export default defineComponent({
   border-radius: 3px;
   background: var(--color-border-muted);
   outline: none;
-  /* -webkit-appearance: none; */
+  -webkit-appearance: none;
+  appearance: none;
 }
 
 .form-slider::-webkit-slider-thumb {
