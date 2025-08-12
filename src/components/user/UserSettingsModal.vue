@@ -1039,14 +1039,14 @@ export default defineComponent({
         // 初始化快捷键设置
         loadShortcuts()
 
-        // 初始化AI设置 - 从已初始化的AI服务获取配置
+        // 初始化AI设置 - 从存储中加载已保存的配置
         try {
-          // 获取AI服务的当前配置，避免重复请求
-          const currentConfig = aiConfigManager.config
-          if (currentConfig) {
-            Object.assign(aiSettings, currentConfig)
+          // 调用load方法从存储中加载配置
+          const loadedConfig = await aiConfigManager.load()
+          if (loadedConfig) {
+            Object.assign(aiSettings, loadedConfig)
             aiSettings.initialized = true
-            log.debug('AI设置已从服务获取')
+            log.debug('AI设置已从存储加载')
           }
         } catch (error) {
           log.error('初始化AI设置失败:', error)

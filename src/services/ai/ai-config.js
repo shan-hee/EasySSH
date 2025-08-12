@@ -69,11 +69,7 @@ class AIConfig {
         // 合并默认配置和保存的配置
         this.config = this.mergeConfig(this.getDefaultConfig(), saved)
 
-        log.debug('AI配置已加载', {
-          enabled: this.config.enabled,
-          provider: this.config.provider,
-          model: this.config.model
-        })
+        log.debug('AI配置已加载')
       }
 
       return this.config
