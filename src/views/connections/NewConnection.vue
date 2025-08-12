@@ -603,14 +603,17 @@ export default {
           }
         )
 
+        let result
         if (userStore.isLoggedIn) {
-          userStore.removeFromHistory(connection.id, connection.timestamp)
+          result = await userStore.removeFromHistory(connection.id, connection.timestamp)
         } else {
-          localConnectionsStore.removeFromHistory(connection.id, connection.timestamp)
+          result = localConnectionsStore.removeFromHistory(connection.id, connection.timestamp)
         }
 
-        ElMessage.success('历史记录已删除')
-        log.debug('删除历史连接', { connection: getDisplayName(connection), index })
+        if (result !== false) {
+          ElMessage.success('历史记录已删除')
+          log.debug('删除历史连接', { connection: getDisplayName(connection), index })
+        }
       } catch {
         // 用户取消删除
       }
@@ -700,66 +703,82 @@ export default {
 
 
     // 保存连接
-    const saveConnection = () => {
+    const saveConnection = async () => {
       if (!validateForm()) {
         return
       }
 
-      if (isEdit.value) {
-        // 检查是否是从历史连接编辑的，且在我的连接配置中不存在
-        if (isFromHistory.value) {
-          const existingConnection = findExistingConnection(connectionForm.value)
+      try {
+        if (isEdit.value) {
+          // 检查是否是从历史连接编辑的，且在我的连接配置中不存在
+          if (isFromHistory.value) {
+            const existingConnection = findExistingConnection(connectionForm.value)
 
-          if (!existingConnection) {
-            // 如果连接不存在于我的连接配置中，则添加为新连接
-            if (userStore.isLoggedIn) {
-              const connectionId = userStore.addConnection(connectionForm.value)
-              // 检查是否是更新了现有连接
-              if (connectionId !== connectionForm.value.id) {
-                ElMessage.success('连接已存在，已更新连接信息')
+            if (!existingConnection) {
+              // 如果连接不存在于我的连接配置中，则添加为新连接
+              if (userStore.isLoggedIn) {
+                const connectionId = await userStore.addConnection(connectionForm.value)
+                // 检查是否成功保存
+                if (connectionId) {
+                  if (connectionId !== connectionForm.value.id) {
+                    ElMessage.success('连接已存在，已更新连接信息')
+                  } else {
+                    ElMessage.success('连接已保存到我的连接配置')
+                  }
+                }
               } else {
-                ElMessage.success('连接已保存到我的连接配置')
+                const connectionId = localConnectionsStore.addConnection(connectionForm.value)
+                // 检查是否是更新了现有连接
+                if (connectionId !== connectionForm.value.id) {
+                  ElMessage.success('连接已存在，已更新连接信息')
+                } else {
+                  ElMessage.success('连接已保存到我的连接配置')
+                }
               }
             } else {
-              const connectionId = localConnectionsStore.addConnection(connectionForm.value)
-              // 检查是否是更新了现有连接
-              if (connectionId !== connectionForm.value.id) {
-                ElMessage.success('连接已存在，已更新连接信息')
+              // 更新已有连接，使用现有连接的ID
+              const updatedConnection = { ...connectionForm.value, id: existingConnection.id }
+              if (userStore.isLoggedIn) {
+                const result = await userStore.updateConnection(existingConnection.id, updatedConnection)
+                if (result) {
+                  ElMessage.success('连接已更新')
+                }
               } else {
-                ElMessage.success('连接已保存到我的连接配置')
+                localConnectionsStore.updateConnection(existingConnection.id, updatedConnection)
+                ElMessage.success('连接已更新')
               }
             }
-          } else {
-            // 更新已有连接，使用现有连接的ID
-            const updatedConnection = { ...connectionForm.value, id: existingConnection.id }
-            if (userStore.isLoggedIn) {
-              userStore.updateConnection(existingConnection.id, updatedConnection)
-            } else {
-              localConnectionsStore.updateConnection(existingConnection.id, updatedConnection)
-            }
-            ElMessage.success('连接已更新')
-          }
         } else {
           // 更新已有连接（来自我的连接配置的编辑）
           if (userStore.isLoggedIn) {
-            userStore.updateConnection(connectionForm.value.id, connectionForm.value)
+            const result = await userStore.updateConnection(connectionForm.value.id, connectionForm.value)
+            if (result) {
+              ElMessage.success('连接已更新')
+            }
           } else {
             localConnectionsStore.updateConnection(connectionForm.value.id, connectionForm.value)
+            ElMessage.success('连接已更新')
           }
-          ElMessage.success('连接已更新')
         }
       } else {
         // 添加新连接到我的连接配置
         if (userStore.isLoggedIn) {
-          userStore.addConnection(connectionForm.value)
+          const result = await userStore.addConnection(connectionForm.value)
+          if (result) {
+            ElMessage.success('连接已保存')
+          }
         } else {
           localConnectionsStore.addConnection(connectionForm.value)
+          ElMessage.success('连接已保存')
         }
-        ElMessage.success('连接已保存')
       }
 
       dialogVisible.value = false
+    } catch (error) {
+      log.error('保存连接时发生错误', error)
+      // 错误消息已在store中处理，这里不需要重复显示
     }
+  }
     
     // 选择密钥文件
     const selectKeyFile = () => {
@@ -781,58 +800,64 @@ export default {
     }
     
     // 保存并连接
-    const saveAndConnect = () => {
+    const saveAndConnect = async () => {
       if (!validateForm()) {
         return
       }
 
-      let connectionId;
+      try {
+        let connectionId;
 
-      // 生成新的会话ID，确保每次都是新会话
-      const sessionId = Date.now().toString();
+        // 生成新的会话ID，确保每次都是新会话
+        const sessionId = Date.now().toString();
 
-      // 先保存连接 - 关键修复：始终使用用户当前输入的数据，而不是已有数据
-      if (isEdit.value) {
-        // 检查是否是从历史连接编辑的
-        if (isFromHistory.value) {
-          // 从历史连接编辑：检查是否已存在相同配置的连接
-          const existingConnection = findExistingConnection(connectionForm.value)
+        // 先保存连接 - 关键修复：始终使用用户当前输入的数据，而不是已有数据
+        if (isEdit.value) {
+          // 检查是否是从历史连接编辑的
+          if (isFromHistory.value) {
+            // 从历史连接编辑：检查是否已存在相同配置的连接
+            const existingConnection = findExistingConnection(connectionForm.value)
 
-          if (!existingConnection) {
-            // 如果连接不存在于我的连接配置中，则添加为新连接
-            // 使用用户当前输入的表单数据
-            if (userStore.isLoggedIn) {
-              connectionId = userStore.addConnection(connectionForm.value)
+            if (!existingConnection) {
+              // 如果连接不存在于我的连接配置中，则添加为新连接
+              // 使用用户当前输入的表单数据
+              if (userStore.isLoggedIn) {
+                connectionId = await userStore.addConnection(connectionForm.value)
+              } else {
+                connectionId = localConnectionsStore.addConnection(connectionForm.value)
+              }
             } else {
-              connectionId = localConnectionsStore.addConnection(connectionForm.value)
+              // 如果连接已存在，更新该连接的信息为用户当前输入的数据
+              // 这确保了用户的修改会被保存，而不是使用旧数据
+              connectionId = existingConnection.id;
+              if (userStore.isLoggedIn) {
+                await userStore.updateConnection(connectionId, connectionForm.value)
+              } else {
+                localConnectionsStore.updateConnection(connectionId, connectionForm.value)
+              }
             }
           } else {
-            // 如果连接已存在，更新该连接的信息为用户当前输入的数据
-            // 这确保了用户的修改会被保存，而不是使用旧数据
-            connectionId = existingConnection.id;
+            // 来自我的连接配置的编辑：直接更新
+            connectionId = connectionForm.value.id;
             if (userStore.isLoggedIn) {
-              userStore.updateConnection(connectionId, connectionForm.value)
+              await userStore.updateConnection(connectionId, connectionForm.value)
             } else {
               localConnectionsStore.updateConnection(connectionId, connectionForm.value)
             }
           }
         } else {
-          // 来自我的连接配置的编辑：直接更新
-          connectionId = connectionForm.value.id;
+          // 添加新连接到我的连接配置
           if (userStore.isLoggedIn) {
-            userStore.updateConnection(connectionId, connectionForm.value)
+            connectionId = await userStore.addConnection(connectionForm.value)
           } else {
-            localConnectionsStore.updateConnection(connectionId, connectionForm.value)
+            connectionId = localConnectionsStore.addConnection(connectionForm.value)
           }
         }
-      } else {
-        // 添加新连接到我的连接配置
-        if (userStore.isLoggedIn) {
-          connectionId = userStore.addConnection(connectionForm.value)
-        } else {
-          connectionId = localConnectionsStore.addConnection(connectionForm.value)
+
+        // 如果保存失败，不继续连接
+        if (!connectionId) {
+          return
         }
-      }
 
       // 准备用于连接的数据 - 始终使用用户当前输入的表单数据
       const connectionDataForSession = {
@@ -886,7 +911,11 @@ export default {
         // 导航到终端页面，使用新的会话ID
         router.push(`/terminal/${sessionId}`)
       }
+    } catch (error) {
+      log.error('保存并连接时发生错误', error)
+      // 错误消息已在store中处理，这里不需要重复显示
     }
+  }
     
     // 处理登录
     const handleLogin = async (connection) => {
@@ -989,13 +1018,23 @@ export default {
     }
     
     // 处理置顶
-    const handleTop = (connection) => {
-      if (userStore.isLoggedIn) {
-        userStore.togglePin(connection.id)
-      } else {
-        localConnectionsStore.togglePin(connection.id)
+    const handleTop = async (connection) => {
+      try {
+        let result
+        if (userStore.isLoggedIn) {
+          result = await userStore.togglePin(connection.id)
+        } else {
+          result = localConnectionsStore.togglePin(connection.id)
+        }
+
+        // 只有在操作成功时才显示成功消息
+        if (result !== false) {
+          ElMessage.success(isPinned(connection.id) ? '已置顶' : '已取消置顶')
+        }
+      } catch (error) {
+        log.error('置顶操作时发生错误', error)
+        // 错误消息已在store中处理，这里不需要重复显示
       }
-      ElMessage.success(isPinned(connection.id) ? '已置顶' : '已取消置顶')
     }
     
     // 处理编辑
@@ -1019,13 +1058,22 @@ export default {
     }
     
     // 处理删除
-    const handleDelete = (connection) => {
-      if (userStore.isLoggedIn) {
-        userStore.deleteConnection(connection.id)
-      } else {
-        localConnectionsStore.deleteConnection(connection.id)
+    const handleDelete = async (connection) => {
+      try {
+        let result
+        if (userStore.isLoggedIn) {
+          result = await userStore.deleteConnection(connection.id)
+        } else {
+          result = localConnectionsStore.deleteConnection(connection.id)
+        }
+
+        if (result) {
+          ElMessage.success('删除成功')
+        }
+      } catch (error) {
+        log.error('删除连接时发生错误', error)
+        // 错误消息已在store中处理，这里不需要重复显示
       }
-      ElMessage.success('删除成功')
     }
 
     // 重试加载连接数据

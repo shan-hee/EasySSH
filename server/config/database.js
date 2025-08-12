@@ -221,6 +221,23 @@ const connectDatabase = () => {
       )
     `);
 
+    // 创建用户设置表
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS user_settings (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        category TEXT NOT NULL, -- 设置分类：terminal, connection, ai, keyboard, ui等
+        settings_data TEXT NOT NULL, -- JSON格式的设置数据
+        version INTEGER DEFAULT 1, -- 设置版本号，用于冲突解决
+        client_timestamp TEXT, -- 客户端时间戳
+        server_timestamp TEXT NOT NULL DEFAULT (datetime('now')), -- 服务器时间戳
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+        FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
+        UNIQUE(user_id, category) -- 每个用户每个分类只能有一条记录
+      )
+    `);
+
     return db;
   } catch (error) {
     console.error('SQLite数据库连接失败:', error);

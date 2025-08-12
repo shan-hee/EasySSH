@@ -5,6 +5,7 @@
 import { reactive, watch } from 'vue'
 import { userSettingsDefaults } from '../config/app-config.js'
 import storageUtils from '../utils/storage.js'
+import storageAdapter from './storage-adapter'
 import log from './log'
 
 const SETTINGS_STORAGE_KEY = 'user_settings'

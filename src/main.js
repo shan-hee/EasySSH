@@ -146,7 +146,7 @@ async function refreshUserData() {
   }
 }
 
-// 智能数据刷新策略
+// 智能数据刷新策略（优化为按需加载模式）
 async function smartDataRefresh(userStore) {
   try {
     // 检查网络状态
@@ -170,7 +170,7 @@ async function smartDataRefresh(userStore) {
     // 更新刷新时间
     localStorage.setItem('last_data_refresh', now.toString())
 
-    // 启动数据刷新任务
+    // 启动数据刷新任务（仅脚本库主动刷新，其他数据按需加载）
     const refreshTasks = []
 
     // 1. 脚本库数据刷新（需要同步缓存，优先级高）
@@ -180,9 +180,9 @@ async function smartDataRefresh(userStore) {
       })
     )
 
-    // 2. 其他数据刷新（按需请求+内存缓存，仅在已加载时刷新）
-    // 连接数据 - 如果已缓存则刷新
-    if (userStore.connectionsLoaded) {
+    // 2. 其他数据改为按需加载模式，仅在已加载且用户正在使用时才刷新
+    // 连接数据 - 仅在已缓存且页面正在显示连接相关内容时刷新
+    if (userStore.connectionsLoaded && isConnectionPageActive()) {
       refreshTasks.push(
         refreshConnectionsData(userStore).catch(error => {
           log.warn('连接数据刷新失败', error)
@@ -190,8 +190,8 @@ async function smartDataRefresh(userStore) {
       )
     }
 
-    // 历史记录 - 如果已缓存则刷新
-    if (userStore.historyLoaded) {
+    // 历史记录 - 仅在已缓存且页面正在显示历史记录时刷新
+    if (userStore.historyLoaded && isHistoryPageActive()) {
       refreshTasks.push(
         refreshHistoryData(userStore).catch(error => {
           log.warn('历史记录刷新失败', error)
@@ -199,8 +199,8 @@ async function smartDataRefresh(userStore) {
       )
     }
 
-    // 收藏数据 - 如果已缓存则刷新
-    if (userStore.favoritesLoaded) {
+    // 收藏数据 - 仅在已缓存且页面正在显示收藏内容时刷新
+    if (userStore.favoritesLoaded && isFavoritesPageActive()) {
       refreshTasks.push(
         refreshFavoritesData(userStore).catch(error => {
           log.warn('收藏数据刷新失败', error)
@@ -219,7 +219,7 @@ async function smartDataRefresh(userStore) {
       })
     })
 
-    log.info('智能数据刷新任务已启动')
+    log.info('智能数据刷新任务已启动（按需加载模式）')
   } catch (error) {
     log.error('智能数据刷新失败', error)
   }
@@ -273,6 +273,22 @@ async function refreshFavoritesData(userStore) {
     log.warn('收藏数据刷新失败', error)
     throw error
   }
+}
+
+// 页面活跃状态检测函数（用于智能数据刷新）
+function isConnectionPageActive() {
+  const currentPath = window.location.pathname
+  return currentPath.includes('/connections') || currentPath === '/' || currentPath === '/dashboard'
+}
+
+function isHistoryPageActive() {
+  const currentPath = window.location.pathname
+  return currentPath.includes('/history') || currentPath === '/' || currentPath === '/dashboard'
+}
+
+function isFavoritesPageActive() {
+  const currentPath = window.location.pathname
+  return currentPath.includes('/favorites') || currentPath === '/' || currentPath === '/dashboard'
 }
 
 // 防止重复认证跳转

@@ -83,7 +83,16 @@
           <button class="btn btn-text" @click="handleViewAllRecentConnections">查看全部</button>
         </div>
         <div class="recent-connections dashboard-table-container">
-          <table class="connection-table dashboard-table">
+          <!-- 加载指示器 -->
+          <LoadingIndicator
+            v-if="userStore.isLoggedIn && !userStore.connectionsLoaded && userStore.connectionsLoading"
+            :loading="true"
+            message="加载连接数据..."
+            :inline="true"
+          />
+
+          <!-- 连接数据表格 -->
+          <table v-else class="connection-table dashboard-table">
             <thead>
               <tr>
                 <th>名称</th>
@@ -134,11 +143,13 @@ import { useRouter } from 'vue-router'
 import { useUserStore } from '@/store/user'
 import log from '@/services/log'
 import ThemedIcon from '@/components/common/ThemedIcon.vue'
+import LoadingIndicator from '@/components/common/LoadingIndicator.vue'
 
 export default {
   name: 'Dashboard',
   components: {
-    ThemedIcon
+    ThemedIcon,
+    LoadingIndicator
   },
   setup() {
     const router = useRouter()
@@ -192,14 +203,18 @@ export default {
       })
     })
 
-    // 刷新Dashboard数据
+    // 刷新Dashboard数据（优化为按需加载模式）
     const refreshDashboardData = async () => {
       try {
         isLoading.value = true
-        log.debug('开始刷新Dashboard数据')
+        log.debug('开始刷新Dashboard数据（按需加载模式）')
 
-        // 强制刷新连接数据
-        await userStore.loadConnectionsFromServer(true)
+        // 按需加载连接数据，如果已有数据则强制刷新
+        if (userStore.connectionsLoaded) {
+          await userStore.loadConnectionsFromServer(true)
+        } else {
+          await userStore.loadConnectionsOnDemand()
+        }
 
         lastUpdateTime.value = new Date().toLocaleString('zh-CN')
         log.info('Dashboard数据刷新完成')
@@ -300,9 +315,12 @@ export default {
       // 设置初始更新时间
       lastUpdateTime.value = new Date().toLocaleString('zh-CN')
 
-      // 如果用户已登录但数据为空，则刷新数据
-      if (userStore.isLoggedIn && userStore.connections.length === 0) {
-        refreshDashboardData()
+      // 如果用户已登录但数据为空，则按需加载数据
+      if (userStore.isLoggedIn && userStore.connections.length === 0 && !userStore.connectionsLoaded) {
+        log.debug('Dashboard检测到需要连接数据，触发按需加载')
+        userStore.loadConnectionsOnDemand().catch(error => {
+          log.warn('Dashboard按需加载连接数据失败', error)
+        })
       }
 
       // 监听数据刷新事件
@@ -315,6 +333,7 @@ export default {
     })
 
     return {
+      userStore,
       appVersion,
       recentConnections,
       activityLog,

@@ -74,6 +74,19 @@
             </div>
             <span class="menu-text">监控设置</span>
           </div>
+
+          <div
+            class="menu-item"
+            :class="{ active: activeMenu === 'ai' }"
+            @click="activeMenu = 'ai'"
+          >
+            <div class="menu-icon">
+              <svg viewBox="0 0 24 24" width="16" height="16">
+                <path fill="currentColor" d="M12,2A2,2 0 0,1 14,4C14,4.74 13.6,5.39 13,5.73V7H14A7,7 0 0,1 21,14H22A1,1 0 0,1 23,15V18A1,1 0 0,1 22,19H21V20A2,2 0 0,1 19,22H5A2,2 0 0,1 3,20V19H2A1,1 0 0,1 1,18V15A1,1 0 0,1 2,14H3A7,7 0 0,1 10,7H11V5.73C10.4,5.39 10,4.74 10,4A2,2 0 0,1 12,2M7.5,13A2.5,2.5 0 0,0 5,15.5A2.5,2.5 0 0,0 7.5,18A2.5,2.5 0 0,0 10,15.5A2.5,2.5 0 0,0 7.5,13M16.5,13A2.5,2.5 0 0,0 14,15.5A2.5,2.5 0 0,0 16.5,18A2.5,2.5 0 0,0 19,15.5A2.5,2.5 0 0,0 16.5,13Z" />
+              </svg>
+            </div>
+            <span class="menu-text">AI智能助手</span>
+          </div>
         </div>
       </div>
       
@@ -579,6 +592,234 @@
           </div>
         </div>
 
+        <!-- AI智能助手设置面板 -->
+        <div v-if="activeMenu === 'ai'" class="content-panel">
+          <div class="panel-body">
+            <div class="settings-section">
+              <!-- AI功能总开关 -->
+              <div class="security-item">
+                <div class="security-info">
+                  <div class="security-title">
+                    启用AI功能
+                    <span v-if="aiSettings.enabled" class="status-badge enabled">已启用</span>
+                    <span v-else class="status-badge disabled">未启用</span>
+                  </div>
+                  <div class="security-description">
+                    启用后可使用智能补全、解释和修复建议等功能
+                  </div>
+                </div>
+                <div class="security-action">
+                  <button
+                    class="btn btn-outline"
+                    @click="toggleAIFeature"
+                    :disabled="aiLoading"
+                  >
+                    <span v-if="aiLoading" class="btn-loading"></span>
+                    {{ aiSettings.enabled ? '禁用' : '启用' }}
+                  </button>
+                </div>
+              </div>
+
+              <!-- API配置 -->
+              <div class="settings-divider"></div>
+
+                <div class="security-item">
+                  <div class="security-info">
+                    <div class="security-title">API地址</div>
+                    <div class="security-description">
+                      OpenAI 兼容 API 的接口地址
+                    </div>
+                  </div>
+                  <div class="security-action">
+                    <div class="input-with-icon">
+                      <input
+                        v-model="aiSettings.baseUrl"
+                        type="text"
+                        class="form-input"
+                        placeholder="https://api.openai.com"
+                        :disabled="aiLoading"
+                      />
+                      <button
+                        class="btn btn-icon btn-refresh"
+                        @click="testAIConnection"
+                        :disabled="!aiSettings.apiKey || !aiSettings.baseUrl || aiTesting"
+                        type="button"
+                        title="测试API连接"
+                      >
+                        <span v-if="aiTesting" class="btn-loading"></span>
+                        <svg v-else viewBox="0 0 24 24" width="16" height="16">
+                          <path fill="currentColor" d="M17.65,6.35C16.2,4.9 14.21,4 12,4A8,8 0 0,0 4,12A8,8 0 0,0 12,20C15.73,20 18.84,17.45 19.73,14H17.65C16.83,16.33 14.61,18 12,18A6,6 0 0,1 6,12A6,6 0 0,1 12,6C13.66,6 15.14,6.69 16.22,7.78L13,11H20V4L17.65,6.35Z" />
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="security-item">
+                  <div class="security-info">
+                    <div class="security-title">API密钥</div>
+                    <div class="security-description">
+                      您的API访问密钥，将被安全加密存储
+                    </div>
+                  </div>
+                  <div class="security-action">
+                    <div class="input-with-icon">
+                      <input
+                        v-model="aiSettings.apiKey"
+                        :type="showApiKey ? 'text' : 'password'"
+                        class="form-input"
+                        placeholder="sk-..."
+                        :disabled="aiLoading"
+                      />
+                      <button
+                        class="btn btn-icon btn-eye"
+                        @click="showApiKey = !showApiKey"
+                        type="button"
+                      >
+                        <svg v-if="showApiKey" viewBox="0 0 24 24" width="16" height="16">
+                          <path fill="currentColor" d="M11.83,9L15,12.16C15,12.11 15,12.05 15,12A3,3 0 0,0 12,9C11.94,9 11.89,9 11.83,9M7.53,9.8L9.08,11.35C9.03,11.56 9,11.77 9,12A3,3 0 0,0 12,15C12.22,15 12.44,14.97 12.65,14.92L14.2,16.47C13.53,16.8 12.79,17 12,17A5,5 0 0,1 7,12C7,11.21 7.2,10.47 7.53,9.8M2,4.27L4.28,6.55L4.73,7C3.08,8.3 1.78,10 1,12C2.73,16.39 7,19.5 12,19.5C13.55,19.5 15.03,19.2 16.38,18.66L16.81,19.09L19.73,22L21,20.73L3.27,3M12,7A5,5 0 0,1 17,12C17,12.64 16.87,13.26 16.64,13.82L19.57,16.75C21.07,15.5 22.27,13.86 23,12C21.27,7.61 17,4.5 12,4.5C10.6,4.5 9.26,4.75 8,5.2L10.17,7.35C10.76,7.13 11.37,7 12,7Z" />
+                        </svg>
+                        <svg v-else viewBox="0 0 24 24" width="16" height="16">
+                          <path fill="currentColor" d="M12,9A3,3 0 0,0 9,12A3,3 0 0,0 12,15A3,3 0 0,0 15,12A3,3 0 0,0 12,9M12,17A5,5 0 0,1 7,12A5,5 0 0,1 12,7A5,5 0 0,1 17,12A5,5 0 0,1 12,17M12,4.5C7,4.5 2.73,7.61 1,12C2.73,16.39 7,19.5 12,19.5C17,19.5 21.27,16.39 23,12C21.27,7.61 17,4.5 12,4.5Z" />
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- API密钥已合并到上面 -->
+
+                <div class="security-item">
+                  <div class="security-info">
+                    <div class="security-title">AI模型</div>
+                    <div class="security-description">
+                      输入要使用的AI模型名称
+                    </div>
+                  </div>
+                  <div class="security-action">
+                    <input
+                      v-model="aiSettings.model"
+                      type="text"
+                      class="form-input"
+                      placeholder="gpt-4o-mini"
+                      :disabled="aiLoading"
+                    />
+                  </div>
+                </div>
+
+                <!-- 移除请求超时设置，使用默认值 -->
+
+
+
+                <!-- 功能开关 -->
+                <div class="settings-divider"></div>
+
+                <div class="security-item">
+                  <div class="security-info">
+                    <div class="security-title">
+                      智能补全
+                      <span v-if="aiSettings.features.completion && aiSettings.enabled" class="status-badge enabled">已启用</span>
+                      <span v-else class="status-badge disabled">未启用</span>
+                    </div>
+                    <div class="security-description">
+                      自动提供命令补全建议
+                    </div>
+                  </div>
+                  <div class="security-action">
+                    <button
+                      class="btn btn-outline"
+                      @click="aiSettings.features.completion = !aiSettings.features.completion"
+                      :disabled="!aiSettings.enabled"
+                    >
+                      {{ (aiSettings.features.completion && aiSettings.enabled) ? '禁用' : '启用' }}
+                    </button>
+                  </div>
+                </div>
+
+                <div class="security-item">
+                  <div class="security-info">
+                    <div class="security-title">
+                      智能解释
+                      <span v-if="aiSettings.features.explanation && aiSettings.enabled" class="status-badge enabled">已启用</span>
+                      <span v-else class="status-badge disabled">未启用</span>
+                    </div>
+                    <div class="security-description">
+                      解释终端输出和错误信息
+                    </div>
+                  </div>
+                  <div class="security-action">
+                    <button
+                      class="btn btn-outline"
+                      @click="aiSettings.features.explanation = !aiSettings.features.explanation"
+                      :disabled="!aiSettings.enabled"
+                    >
+                      {{ (aiSettings.features.explanation && aiSettings.enabled) ? '禁用' : '启用' }}
+                    </button>
+                  </div>
+                </div>
+
+                <div class="security-item">
+                  <div class="security-info">
+                    <div class="security-title">
+                      命令修复
+                      <span v-if="aiSettings.features.fix && aiSettings.enabled" class="status-badge enabled">已启用</span>
+                      <span v-else class="status-badge disabled">未启用</span>
+                    </div>
+                    <div class="security-description">
+                      提供错误修复建议
+                    </div>
+                  </div>
+                  <div class="security-action">
+                    <button
+                      class="btn btn-outline"
+                      @click="aiSettings.features.fix = !aiSettings.features.fix"
+                      :disabled="!aiSettings.enabled"
+                    >
+                      {{ (aiSettings.features.fix && aiSettings.enabled) ? '禁用' : '启用' }}
+                    </button>
+                  </div>
+                </div>
+
+                <div class="security-item">
+                  <div class="security-info">
+                    <div class="security-title">
+                      脚本生成
+                      <span v-if="aiSettings.features.generation && aiSettings.enabled" class="status-badge enabled">已启用</span>
+                      <span v-else class="status-badge disabled">未启用</span>
+                    </div>
+                    <div class="security-description">
+                      根据描述生成shell脚本
+                    </div>
+                  </div>
+                  <div class="security-action">
+                    <button
+                      class="btn btn-outline"
+                      @click="aiSettings.features.generation = !aiSettings.features.generation"
+                      :disabled="!aiSettings.enabled"
+                    >
+                      {{ (aiSettings.features.generation && aiSettings.enabled) ? '禁用' : '启用' }}
+                    </button>
+                  </div>
+                </div>
+
+                <!-- 移除复杂的高级设置，使用默认值 -->
+
+                <!-- 移除自定义API配置，简化设置 -->
+
+                <!-- 移除使用统计，简化界面 -->
+
+                <!-- 移除配置管理，简化界面 -->
+            </div>
+          </div>
+
+          <div class="panel-footer">
+            <button class="btn btn-primary" @click="saveAISettings" :disabled="aiLoading">
+              <span v-if="aiLoading" class="btn-loading"></span>
+              {{ aiLoading ? '保存中...' : '保存AI设置' }}
+            </button>
+          </div>
+        </div>
+
       </div>
     </div>
     
@@ -611,15 +852,18 @@
 import { defineComponent, ref, onMounted, onUnmounted, computed, watch, reactive, nextTick } from 'vue'
 import { useUserStore } from '@/store/user'
 import { useTerminalStore } from '@/store/terminal'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import Modal from '@/components/common/Modal.vue'
 import MfaSetupModal from '@/components/auth/MfaSetupModal.vue'
 import MfaDisableModal from '@/components/auth/MfaDisableModal.vue'
 import LogoutAllDevicesModal from '@/components/auth/LogoutAllDevicesModal.vue'
 import mfaService from '@/services/mfa'
 import settingsService from '@/services/settings'
+import storageAdapter from '@/services/storage-adapter'
 import log from '@/services/log'
 import { localKeyboardManager } from '@/utils/keyboard'
+import aiService from '@/services/ai/ai-service'
+import AIConfig from '@/services/ai/ai-config'
 
 export default defineComponent({
   name: 'UserSettingsModal',
@@ -705,6 +949,28 @@ export default defineComponent({
       initialized: false
     })
 
+    // AI设置数据 - 简化版本
+    const aiConfigManager = new AIConfig()
+    const aiSettings = reactive({
+      enabled: false,
+      provider: 'openai', // 固定为OpenAI兼容格式
+      baseUrl: 'https://api.openai.com', // 默认OpenAI官方API，但可修改
+      apiKey: '',
+      model: 'gpt-4o-mini',
+      features: {
+        completion: true,
+        explanation: true,
+        fix: true,
+        generation: true
+      },
+      initialized: false
+    })
+
+    // AI相关状态
+    const aiLoading = ref(false)
+    const aiTesting = ref(false)
+    const showApiKey = ref(false)
+
     // 默认快捷键定义
     const defaultShortcuts = {
       'terminal.copy': 'Ctrl+Shift+C',
@@ -787,19 +1053,58 @@ export default defineComponent({
 
 
         // 初始化终端背景设置
-        const savedBgSettings = localStorage.getItem('easyssh_terminal_bg')
-        if (savedBgSettings) {
-          try {
-            const parsedBgSettings = JSON.parse(savedBgSettings)
-            Object.assign(terminalBgSettings, parsedBgSettings)
-            terminalBgSettings.initialized = true
-          } catch (e) {
-            log.error('解析终端背景设置失败:', e)
+        try {
+          // 先尝试迁移旧数据
+          const oldBgSettings = localStorage.getItem('easyssh_terminal_bg')
+          if (oldBgSettings) {
+            try {
+              const parsedOldSettings = JSON.parse(oldBgSettings)
+              await storageAdapter.set('terminal.background', parsedOldSettings)
+              localStorage.removeItem('easyssh_terminal_bg')
+              log.info('终端背景设置已迁移到统一存储服务')
+            } catch (e) {
+              log.warn('迁移终端背景设置失败:', e)
+            }
           }
+
+          // 加载设置
+          const savedBgSettings = await storageAdapter.get('terminal.background')
+          if (savedBgSettings) {
+            Object.assign(terminalBgSettings, savedBgSettings)
+            terminalBgSettings.initialized = true
+          }
+        } catch (e) {
+          log.error('加载终端背景设置失败:', e)
         }
 
         // 初始化快捷键设置
         loadShortcuts()
+
+        // 初始化AI设置
+        try {
+          // 等待AI配置管理器初始化完成
+          await aiConfigManager.initStorage()
+
+          const savedAISettings = await aiConfigManager.load()
+          if (savedAISettings) {
+            Object.assign(aiSettings, savedAISettings)
+            aiSettings.initialized = true
+
+            // 如果AI已启用，尝试连接服务
+            if (aiSettings.enabled && aiSettings.apiKey) {
+              try {
+                await aiService.enable(aiSettings)
+              } catch (error) {
+                log.warn('AI服务自动启用失败:', error)
+                aiSettings.enabled = false
+              }
+            }
+          }
+
+          // 移除使用统计加载
+        } catch (error) {
+          log.error('初始化AI设置失败:', error)
+        }
       } catch (error) {
         log.error('初始化设置失败:', error)
       }
@@ -1003,15 +1308,121 @@ export default defineComponent({
       }
     }
 
+    // 移除availableModels，使用硬编码的模型选项
+
+    // AI功能开关
+    const toggleAIFeature = async () => {
+      try {
+        aiLoading.value = true
+
+        if (aiSettings.enabled) {
+          // 禁用AI服务
+          await aiService.disable()
+          aiSettings.enabled = false
+          ElMessage.info('AI功能已禁用')
+        } else {
+          // 启用AI服务需要先有API配置
+          if (!aiSettings.apiKey) {
+            ElMessage.warning('请先配置API密钥')
+            return
+          }
+
+          await aiService.enable(aiSettings)
+          aiSettings.enabled = true
+          ElMessage.success('AI功能已启用')
+        }
+
+        await saveAISettings()
+      } catch (error) {
+        // 回滚状态
+        aiSettings.enabled = !aiSettings.enabled
+        ElMessage.error(`操作失败: ${error.message}`)
+        log.error('切换AI状态失败', error)
+      } finally {
+        aiLoading.value = false
+      }
+    }
+
+    // 测试AI连接
+    const testAIConnection = async () => {
+      try {
+        aiTesting.value = true
+
+        const result = await aiService.testConnection(aiSettings)
+
+        if (result.success) {
+          ElMessage({
+            message: 'API连接测试成功',
+            type: 'success',
+            offset: 3,
+            zIndex: 9999
+          })
+        } else {
+          ElMessage({
+            message: `API连接测试失败: ${result.message || '未知错误'}`,
+            type: 'error',
+            offset: 3,
+            zIndex: 9999
+          })
+        }
+      } catch (error) {
+        ElMessage({
+          message: `API连接测试失败: ${error.message || '网络错误'}`,
+          type: 'error',
+          offset: 3,
+          zIndex: 9999
+        })
+        log.error('API连接测试失败', error)
+      } finally {
+        aiTesting.value = false
+      }
+    }
+
+    // 移除服务商变更处理，固定使用OpenAI
+
+    // 保存AI设置 - 简化版本
+    const saveAISettings = async () => {
+      try {
+        aiLoading.value = true
+
+        await aiConfigManager.save(aiSettings)
+
+        // 如果AI已启用，更新服务配置
+        if (aiSettings.enabled) {
+          await aiService.enable(aiSettings)
+        }
+
+        aiSettings.initialized = true
+        ElMessage.success('AI设置已保存')
+        log.info('AI设置已保存')
+      } catch (error) {
+        log.error('保存AI设置失败', error)
+        ElMessage.error(`保存失败: ${error.message}`)
+      } finally {
+        aiLoading.value = false
+      }
+    }
+
+    // 移除数值调整方法，使用默认值
+
+    // 移除使用统计相关方法
+
+    // 移除配置管理方法
+
 
 
     // 更新终端背景设置
-    const updateTerminalBg = () => {
+    const updateTerminalBg = async () => {
       try {
         terminalBgSettings.initialized = true
 
-        // 保存终端背景设置到本地存储
-        localStorage.setItem('easyssh_terminal_bg', JSON.stringify(terminalBgSettings))
+        // 确保存储适配器已初始化
+        if (!storageAdapter.initialized) {
+          await storageAdapter.init()
+        }
+
+        // 保存终端背景设置到统一存储服务
+        await storageAdapter.set('terminal.background', terminalBgSettings)
 
         // 更新CSS变量
         updateCssVariables()
@@ -1480,7 +1891,15 @@ export default defineComponent({
       decrementConnectionTimeout,
       incrementKeepAliveInterval,
       decrementKeepAliveInterval,
-      handleClose
+      handleClose,
+      // AI相关 - 简化版本
+      aiSettings,
+      aiLoading,
+      aiTesting,
+      showApiKey,
+      toggleAIFeature,
+      testAIConnection,
+      saveAISettings
     }
   }
 })
@@ -1512,7 +1931,7 @@ export default defineComponent({
 
 .user-settings-container {
   display: flex;
-  height: 550px;
+  height: 530px;
   background-color: var(--color-bg-page);
 }
 
@@ -1564,7 +1983,7 @@ export default defineComponent({
   flex: 1;
   padding: 0;
   overflow-y: auto;
-  padding: 0px 20px 40px 0px;
+  padding: 0px 20px 20px 0px;
 }
 
 .content-panel {
@@ -1572,6 +1991,7 @@ export default defineComponent({
   display: flex;
   flex-direction: column;
 }
+
 
 /* 面板主体 */
 .panel-body {
@@ -1612,7 +2032,7 @@ export default defineComponent({
 .form-group label {
   display: block;
   margin-bottom: 8px;
-  font-size: 14px;
+  font-size: 12px;
   font-weight: 500;
   color: var(--color-text-primary);
 }
@@ -1649,7 +2069,7 @@ export default defineComponent({
   border-radius: 6px;
   background-color: var(--color-bg-container);
   color: var(--color-text-primary);
-  font-size: 14px;
+  font-size: 12px;
   transition: all 0.2s ease;
   box-sizing: border-box;
 }
@@ -1686,13 +2106,13 @@ export default defineComponent({
   display: flex;
   align-items: center;
   margin-bottom: 8px;
-  font-size: 16px;
+  font-size: 14px;
   font-weight: 500;
   color: var(--color-text-primary);
 }
 
 .security-description {
-  font-size: 14px;
+  font-size: 12px;
   color: var(--color-text-secondary);
   line-height: 1.5;
 }
@@ -1715,7 +2135,7 @@ export default defineComponent({
   margin-left: 12px;
   padding: 2px 8px;
   border-radius: 12px;
-  font-size: 12px;
+  font-size: 10px;
   font-weight: 500;
 }
 
@@ -1731,7 +2151,6 @@ export default defineComponent({
 
 /* 面板底部 */
 .panel-footer {
-  padding: 0 32px 32px;
   display: flex;
   justify-content: flex-end;
 }
@@ -1740,7 +2159,7 @@ export default defineComponent({
 .btn {
   padding: 10px 20px;
   border-radius: 6px;
-  font-size: 14px;
+  font-size: 12px;
   font-weight: 500;
   cursor: pointer;
   transition: all 0.2s ease;
@@ -1839,7 +2258,7 @@ export default defineComponent({
 }
 
 .section-title {
-  font-size: 16px;
+  font-size: 14px;
   font-weight: 600;
   color: var(--color-text-primary);
   margin-bottom: 20px;
@@ -1893,7 +2312,7 @@ export default defineComponent({
   border-radius: 6px;
   background-color: var(--color-bg-container);
   color: var(--color-text-primary);
-  font-size: 14px;
+  font-size: 12px;
   transition: all 0.2s ease;
 }
 
@@ -1953,7 +2372,7 @@ export default defineComponent({
 }
 
 .slider-value {
-  font-size: 14px;
+  font-size: 12px;
   font-weight: 500;
   color: var(--color-text-primary);
   min-width: 45px;
@@ -2017,7 +2436,7 @@ export default defineComponent({
 }
 
 .number-display {
-  font-size: 14px;
+  font-size: 12px;
   color: var(--color-text-primary);
   min-width: 20px;
   text-align: center;
@@ -2028,7 +2447,7 @@ export default defineComponent({
   background-color: transparent;
   border: 1px solid var(--color-border-default);
   color: var(--color-text-primary);
-  font-size: 14px;
+  font-size: 12px;
   cursor: pointer;
   width: 28px;
   height: 28px;
@@ -2080,7 +2499,7 @@ export default defineComponent({
 
 .preview-label {
   color: var(--color-text-secondary);
-  font-size: 14px;
+  font-size: 12px;
   position: relative;
   z-index: 2;
   background-color: rgba(0, 0, 0, 0.6);
@@ -2139,7 +2558,7 @@ export default defineComponent({
 }
 
 .shortcut-description {
-  font-size: 14px;
+  font-size: 12px;
   color: var(--color-text-primary);
   margin-right: 12px;
   flex: 1;
@@ -2152,7 +2571,7 @@ export default defineComponent({
 
 .shortcut-input {
   font-family: monospace;
-  font-size: 13px;
+  font-size: 11px;
   background-color: var(--color-bg-muted);
   padding: 4px 8px;
   border: 1px solid var(--color-border-default);
@@ -2248,5 +2667,48 @@ export default defineComponent({
   background: var(--color-bg-primary);
   border-left: 1px solid var(--color-border);
   border-right: 1px solid var(--color-border);
+}
+
+/* AI设置输入框布局样式 */
+.input-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.input-with-icon {
+  position: relative;
+  flex: 1;
+}
+
+.input-with-icon .form-input {
+  padding-right: 40px;
+}
+
+.input-with-icon .btn-eye,
+.input-with-icon .btn-refresh {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: transparent;
+  border: none;
+  color: var(--color-text-secondary);
+  padding: 4px;
+  cursor: pointer;
+}
+
+.input-with-icon .btn-eye:hover,
+.input-with-icon .btn-refresh:hover {
+  color: var(--color-text-primary);
+}
+
+.input-with-icon .btn-refresh:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-refresh {
+  flex-shrink: 0;
 }
 </style>

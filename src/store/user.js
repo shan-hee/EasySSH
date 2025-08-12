@@ -6,6 +6,7 @@ import apiService from '../services/api'
 import log from '../services/log'
 import scriptLibraryService from '../services/scriptLibrary'
 import storageService from '../services/storage'
+import authStateManager from '../services/auth-state-manager'
 
 // 用于存储加密凭据的键名
 const CREDENTIALS_KEY = 'easyssh_credentials'
@@ -131,7 +132,7 @@ export const useUserStore = defineStore('user', () => {
   const addingConnections = new Set()
 
   // 添加新连接
-  function addConnection(connection) {
+  async function addConnection(connection) {
     try {
       // 检查是否已存在相同的连接（去重）
       const existingConnection = connections.value.find(conn =>
@@ -157,33 +158,40 @@ export const useUserStore = defineStore('user', () => {
         return null
       }
 
-      connections.value.push(connection)
-
-      // 同步到服务器
+      // 如果用户已登录，先同步到服务器再更新本地状态
       if (isLoggedIn.value) {
         // 标记正在添加
         addingConnections.add(connectionKey)
 
-        // 异步保存到服务器，不阻塞UI
-        apiService.post('/connections', { connection })
-          .then(response => {
-            if (response && !response.success && response.existingConnectionId) {
-              // 服务器返回连接已存在，更新本地ID
-              const localConnection = connections.value.find(c => c.id === connection.id)
-              if (localConnection) {
-                localConnection.id = response.existingConnectionId
-              }
-              log.info('服务器检测到重复连接，已更新本地ID')
-            }
-          })
-          .catch(error => {
-            // API可能未实现，不影响用户体验
-            log.warn('同步连接到服务器失败，仅保存在本地', error)
-          })
-          .finally(() => {
-            // 清除添加状态
-            addingConnections.delete(connectionKey)
-          })
+        try {
+          // 同步保存到服务器
+          const response = await apiService.post('/connections', { connection })
+
+          if (response && response.success) {
+            // 服务器保存成功，使用服务器返回的ID
+            connection.id = response.connectionId || connection.id
+            connections.value.push(connection)
+            log.info('连接已成功保存到服务器和本地')
+          } else if (response && !response.success && response.existingConnectionId) {
+            // 服务器返回连接已存在，使用现有连接ID
+            connection.id = response.existingConnectionId
+            connections.value.push(connection)
+            log.info('服务器检测到重复连接，已更新本地ID')
+          } else {
+            throw new Error(response?.message || '服务器保存失败')
+          }
+        } catch (error) {
+          log.error('同步连接到服务器失败', error)
+          ElMessage.error('保存连接失败：' + (error.message || '网络错误'))
+          return null
+        } finally {
+          // 清除添加状态
+          addingConnections.delete(connectionKey)
+        }
+      } else {
+        // 用户未登录，仅保存到本地
+        connections.value.push(connection)
+        log.info('连接已保存到本地（用户未登录）')
       }
 
       return connection.id
@@ -195,25 +203,64 @@ export const useUserStore = defineStore('user', () => {
   }
   
   // 更新连接
-  function updateConnection(id, updatedConnection) {
+  async function updateConnection(id, updatedConnection) {
     try {
       const index = connections.value.findIndex(conn => conn.id === id)
       if (index === -1) {
         throw new Error(`未找到ID为${id}的连接`)
       }
-      
+
+      // 保存原始数据，以便回滚
+      const originalConnection = { ...connections.value[index] }
+
       // 更新连接信息
       connections.value[index] = { ...connections.value[index], ...updatedConnection }
-      
+
       // 同步到服务器
       if (isLoggedIn.value) {
-        apiService.put(`/connections/${id}`, { connection: connections.value[index] })
-          .catch(error => {
-            // API可能未实现，不影响用户体验
-            log.warn('同步连接更新到服务器失败，仅保存在本地', error)
-          })
+        try {
+          const response = await apiService.put(`/connections/${id}`, { connection: connections.value[index] })
+
+          if (response && response.success) {
+            log.info('连接更新已同步到服务器')
+          } else {
+            throw new Error(response?.message || '服务器更新失败')
+          }
+        } catch (error) {
+          // 如果是404错误，说明服务器上没有这个连接，需要重新创建
+          if (error.response && error.response.status === 404) {
+            log.warn('服务器上未找到连接，尝试重新创建', { connectionId: id })
+
+            try {
+              // 尝试重新创建连接
+              const createResponse = await apiService.post('/connections', { connection: connections.value[index] })
+
+              if (createResponse && createResponse.success) {
+                // 更新本地连接ID为服务器返回的ID
+                const newId = createResponse.connectionId
+                connections.value[index].id = newId
+                log.info('连接已重新创建到服务器', { oldId: id, newId })
+                ElMessage.success('连接已重新同步到服务器')
+              } else {
+                throw new Error(createResponse?.message || '重新创建连接失败')
+              }
+            } catch (createError) {
+              log.error('重新创建连接失败', createError)
+              // 回滚本地更改
+              connections.value[index] = originalConnection
+              ElMessage.error('连接同步失败，已回滚更改：' + (createError.message || '网络错误'))
+              return null
+            }
+          } else {
+            log.error('同步连接更新到服务器失败', error)
+            // 回滚本地更改
+            connections.value[index] = originalConnection
+            ElMessage.error('连接更新失败，已回滚更改：' + (error.message || '网络错误'))
+            return null
+          }
+        }
       }
-      
+
       return connections.value[index]
     } catch (error) {
       log.error('更新连接失败', error)
@@ -223,32 +270,57 @@ export const useUserStore = defineStore('user', () => {
   }
   
   // 删除连接
-  function deleteConnection(id) {
+  async function deleteConnection(id) {
     try {
       const index = connections.value.findIndex(conn => conn.id === id)
       if (index === -1) {
         throw new Error(`未找到ID为${id}的连接`)
       }
-      
-      // 删除连接
+
+      // 保存原始数据用于回滚
+      const originalConnection = connections.value[index]
+      const originalFavIndex = favorites.value.indexOf(id)
+      const originalPinned = pinnedConnections.value[id]
+
+      // 先删除本地数据
       connections.value.splice(index, 1)
-      
+
       // 同时从收藏和置顶中移除
-      const favIndex = favorites.value.indexOf(id)
-      if (favIndex !== -1) {
-        favorites.value.splice(favIndex, 1)
+      if (originalFavIndex !== -1) {
+        favorites.value.splice(originalFavIndex, 1)
       }
-      
-      if (pinnedConnections.value[id]) {
+
+      if (originalPinned) {
         delete pinnedConnections.value[id]
       }
-      
+
       // 同步到服务器
       if (isLoggedIn.value) {
-        apiService.delete(`/connections/${id}`)
-          .catch(error => log.error('同步连接删除到服务器失败', error))
+        try {
+          const response = await apiService.delete(`/connections/${id}`)
+
+          if (response && response.success) {
+            log.info('连接删除已同步到服务器')
+          } else {
+            throw new Error(response?.message || '服务器删除失败')
+          }
+        } catch (error) {
+          log.error('同步连接删除到服务器失败', error)
+
+          // 回滚本地更改
+          connections.value.splice(index, 0, originalConnection)
+          if (originalFavIndex !== -1) {
+            favorites.value.splice(originalFavIndex, 0, id)
+          }
+          if (originalPinned) {
+            pinnedConnections.value[id] = originalPinned
+          }
+
+          ElMessage.error('删除连接失败，已回滚更改：' + (error.message || '网络错误'))
+          return false
+        }
       }
-      
+
       return true
     } catch (error) {
       log.error('删除连接失败', error)
@@ -401,16 +473,37 @@ export const useUserStore = defineStore('user', () => {
   }
 
   // 从历史记录中删除指定连接
-  function removeFromHistory(connectionId, timestamp) {
+  async function removeFromHistory(connectionId, timestamp) {
+    // 保存原始数据用于回滚
+    const originalHistory = [...history.value]
+
+    // 删除指定的历史记录
     history.value = history.value.filter(h =>
       !(h.id === connectionId && h.timestamp === timestamp)
     )
 
     // 同步到服务器
     if (isLoggedIn.value) {
-      apiService.post('/connections/history', { history: history.value })
-        .catch(error => log.error('同步历史记录删除到服务器失败', error))
+      try {
+        const response = await apiService.post('/connections/history', { history: history.value })
+
+        if (response && response.success) {
+          log.info('历史记录删除已同步到服务器')
+        } else {
+          throw new Error(response?.message || '服务器同步失败')
+        }
+      } catch (error) {
+        log.error('同步历史记录删除到服务器失败', error)
+
+        // 回滚本地更改
+        history.value = originalHistory
+
+        ElMessage.error('删除历史记录失败，已回滚更改：' + (error.message || '网络错误'))
+        return false
+      }
     }
+
+    return true
   }
 
   // 重新排序历史连接
@@ -430,42 +523,81 @@ export const useUserStore = defineStore('user', () => {
   }
   
   // 收藏连接
-  function toggleFavorite(id) {
+  async function toggleFavorite(id) {
     const index = favorites.value.indexOf(id)
-    
-    if (index === -1) {
+    const wasAdding = index === -1
+
+    // 保存原始状态用于回滚
+    const originalFavorites = [...favorites.value]
+
+    if (wasAdding) {
       // 添加到收藏
       favorites.value.push(id)
     } else {
       // 从收藏中移除
       favorites.value.splice(index, 1)
     }
-    
+
     // 同步到服务器
     if (isLoggedIn.value) {
-      apiService.post('/connections/favorites', { favorites: favorites.value })
-        .catch(error => log.error('同步收藏状态到服务器失败', error))
+      try {
+        const response = await apiService.post('/connections/favorites', { favorites: favorites.value })
+
+        if (response && response.success) {
+          log.info('收藏状态已同步到服务器')
+        } else {
+          throw new Error(response?.message || '服务器同步失败')
+        }
+      } catch (error) {
+        log.error('同步收藏状态到服务器失败', error)
+
+        // 回滚本地更改
+        favorites.value = originalFavorites
+
+        ElMessage.error('收藏操作失败，已回滚更改：' + (error.message || '网络错误'))
+        return !wasAdding // 返回回滚后的状态
+      }
     }
-    
-    return index === -1 // 返回当前是否为收藏状态
+
+    return wasAdding // 返回当前是否为收藏状态
   }
   
   // 置顶连接
-  function togglePin(id) {
-    if (pinnedConnections.value[id]) {
+  async function togglePin(id) {
+    const wasPinned = !!pinnedConnections.value[id]
+
+    // 保存原始状态用于回滚
+    const originalPinned = { ...pinnedConnections.value }
+
+    if (wasPinned) {
       // 取消置顶
       delete pinnedConnections.value[id]
     } else {
       // 添加置顶
       pinnedConnections.value[id] = true
     }
-    
+
     // 同步到服务器
     if (isLoggedIn.value) {
-      apiService.post('/connections/pinned', { pinned: pinnedConnections.value })
-        .catch(error => log.error('同步置顶状态到服务器失败', error))
+      try {
+        const response = await apiService.post('/connections/pinned', { pinned: pinnedConnections.value })
+
+        if (response && response.success) {
+          log.info('置顶状态已同步到服务器')
+        } else {
+          throw new Error(response?.message || '服务器同步失败')
+        }
+      } catch (error) {
+        log.error('同步置顶状态到服务器失败', error)
+
+        // 回滚本地更改
+        pinnedConnections.value = originalPinned
+
+        ElMessage.error('置顶操作失败，已回滚更改：' + (error.message || '网络错误'))
+        return wasPinned // 返回回滚后的状态
+      }
     }
-    
+
     return !!pinnedConnections.value[id] // 返回当前是否为置顶状态
   }
   
@@ -543,17 +675,26 @@ export const useUserStore = defineStore('user', () => {
         
         setUserInfo(response.user)
 
-        // 登录成功后，延迟启动脚本库数据的异步同步（不阻塞登录流程）
+        // 通知状态管理器用户已登录
+        try {
+          await authStateManager.onUserLogin(response.user)
+        } catch (error) {
+          log.warn('通知登录状态管理器失败', error)
+        }
+
+        // 登录成功后，仅启动脚本库数据的异步同步（不阻塞登录流程）
+        // 其他数据（连接列表、历史记录、收藏等）改为按需加载模式
         // 使用 setTimeout 确保登录响应优先完成
         setTimeout(() => {
           try {
             scriptLibraryService.syncFromServer().catch(() => {
               log.warn('后台同步脚本库数据失败，将使用本地数据')
             })
+            log.info('登录后数据同步策略：脚本库后台同步，其他数据按需加载')
           } catch (error) {
             log.warn('启动脚本库后台同步失败:', error)
           }
-        }, 2000) // 延迟2秒启动，确保登录流程完全完成
+        }, 1500) // 减少延迟时间，提升响应速度
       
         return { 
           success: true, 
@@ -634,7 +775,14 @@ export const useUserStore = defineStore('user', () => {
       // 0. 发出清空页签的全局事件（在清理其他状态之前）
       window.dispatchEvent(new CustomEvent('auth:logout-clear-tabs'))
 
-      // 1. 清空token和用户信息
+      // 1. 通知状态管理器用户已登出
+      try {
+        await authStateManager.onUserLogout()
+      } catch (error) {
+        log.warn('通知登出状态管理器失败', error)
+      }
+
+      // 2. 清空token和用户信息
       setToken('')
       setUserInfo({
         id: '',

@@ -14,6 +14,7 @@ const utils = require('./utils');
 
 // 导入监控处理模块
 const monitoring = require('../monitoring');
+const aiService = require('../ai');
 
 // 导入消息验证器
 const { validateMessage, createErrorResponse, formatValidationErrors, ERROR_CODES } = require('../utils/message-validator');
@@ -139,6 +140,13 @@ function initWebSocketServer(server) {
         // 直接处理为监控客户端连接
         monitoring.handleMonitoringClientConnection(ws, sessionId, clientIp);
       });
+    } else if (pathname === '/ai') {
+      // 处理AI WebSocket连接
+      logger.debug('收到AI WebSocket连接请求', {
+        url: request.url
+      });
+
+      aiService.handleUpgrade(request, socket, head);
     } else {
       // 未知路径，关闭连接
       socket.destroy();

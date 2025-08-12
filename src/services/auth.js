@@ -635,7 +635,8 @@ class AuthService {
   
   /**
    * 触发数据刷新
-   * 在认证成功后延迟刷新脚本库数据（采用按需加载策略）
+   * 在认证成功后仅同步脚本库数据（完全按需加载策略）
+   * 其他数据（连接、历史、收藏等）改为页面访问时按需加载
    * @private
    */
   async triggerDataRefresh() {
@@ -646,11 +647,11 @@ class AuthService {
 
       // 检查是否已经在进行数据刷新
       if (this._isRefreshing) {
-        log.debug('数据刷新已在进行中，跳过重复触发')
+        log.debug('脚本库同步已在进行中，跳过重复触发')
         return
       }
 
-      log.debug('开始触发认证后数据刷新（按需加载模式）')
+      log.debug('开始触发认证后脚本库同步（其他数据按需加载）')
 
       // 检查是否需要启动脚本库同步（避免重复同步）
       const lastSyncTime = localStorage.getItem('last_script_sync')
@@ -683,9 +684,9 @@ class AuthService {
           // 重置刷新标记
           this._isRefreshing = false
         }
-      }, 3000) // 延迟3秒，确保认证流程完全完成
+      }, 2000) // 减少延迟时间，提升响应速度
 
-      log.info('认证后数据刷新策略已启动（按需加载模式）')
+      log.info('认证后数据刷新策略已启动：仅脚本库同步，其他数据按需加载')
     } catch (error) {
       log.error('触发数据刷新失败', error)
       this._isRefreshing = false

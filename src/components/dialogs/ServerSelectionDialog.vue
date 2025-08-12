@@ -91,6 +91,7 @@
 <script>
 import { defineComponent, ref, computed, watch } from 'vue'
 import { ElMessage } from 'element-plus'
+import { useUserStore } from '@/store/user'
 import apiService from '@/services/api.js'
 import log from '@/services/log.js'
 
@@ -121,14 +122,24 @@ export default defineComponent({
       return selected > 0 && selected < total
     })
 
-    // 加载服务器列表
+    // 加载服务器列表（优化为按需加载模式）
     const loadServers = async () => {
       try {
         loading.value = true
+
+        // 优先从用户store获取已缓存的连接数据
+        const userStore = useUserStore()
+        if (userStore.isLoggedIn && userStore.connectionsLoaded && userStore.connections.length > 0) {
+          servers.value = userStore.connections
+          log.info('从缓存加载服务器列表成功', { count: servers.value.length })
+          return
+        }
+
+        // 如果没有缓存数据，则请求API
         const response = await apiService.get('/connections')
         if (response && response.success) {
           servers.value = response.connections || []
-          log.info('加载服务器列表成功', { count: servers.value.length })
+          log.info('从API加载服务器列表成功', { count: servers.value.length })
         } else {
           throw new Error(response?.message || '获取服务器列表失败')
         }

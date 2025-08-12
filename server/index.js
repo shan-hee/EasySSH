@@ -13,12 +13,14 @@ const http = require('http');
 const cors = require('cors');
 const { initWebSocketServer } = require('./ssh');
 const { initMonitoringWebSocketServer } = require('./monitoring');
+const { initAIWebSocketServer } = require('./ai');
 const { connectDatabase, getDatabaseStatus, closeDatabase } = require('./config/database');
 const setupAdmin = require('./scripts/setupAdmin');
 const { initializeScripts } = require('./scripts/initScripts');
 
 // 导入路由
 const userRoutes = require('./routes/userRoutes');
+const userSettingsRoutes = require('./routes/userSettings');
 const serverRoutes = require('./routes/serverRoutes');
 const monitorRoutes = require('./routes/monitorRoutes');
 const connectionRoutes = require('./routes/connectionRoutes');
@@ -77,10 +79,12 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 // API路由
 app.use('/api/users', userRoutes);
+app.use('/api/users/settings', userSettingsRoutes);
 app.use('/api/servers', serverRoutes);
 app.use('/api/monitor', monitorRoutes);
 app.use('/api/connections', connectionRoutes);
 app.use('/api/scripts', require('./routes/scripts'));
+app.use('/api/ai', require('./routes/aiRoutes'));
 
 // 状态API
 app.get('/api/status', (req, res) => {
@@ -105,8 +109,11 @@ const getStatusIcon = (status) => {
 // 创建HTTP服务器
 const server = http.createServer(app);
 
-// 初始化WebSocket服务（包含SSH和监控）
+// 初始化WebSocket服务（包含SSH、监控和AI）
 const { sshWss, monitorWss } = initWebSocketServer(server);
+
+// 初始化AI WebSocket服务
+const aiWss = initAIWebSocketServer(server);
 
 // 初始化监控桥接服务
 const monitoringService = require('./monitoring');

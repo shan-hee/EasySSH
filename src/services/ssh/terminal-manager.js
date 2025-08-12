@@ -5,6 +5,10 @@ import { ClipboardAddon } from '@xterm/addon-clipboard';
 import log from '../log';
 import { WS_CONSTANTS } from '../constants';
 import terminalAutocompleteService from '../terminal-autocomplete';
+import aiService from '../ai/ai-service';
+import InlineSuggestionRenderer from '../ai/inline-suggestion-renderer';
+import AIBlockRenderer from '../ai/ai-block-renderer';
+import CommandInterceptor from '../ai/command-interceptor';
 
 // 常量定义
 const RESIZE_DEBOUNCE_DELAY = 100; // 大小调整防抖延迟(ms)
@@ -20,6 +24,12 @@ class TerminalManager {
     this.terminals = new Map(); // 存储终端实例
     this.resizeTimeouts = new Map(); // 存储大小调整防抖定时器
     this.resizeObservers = new Map(); // 存储大小监听器
+
+    // AI相关组件
+    this.suggestionRenderers = new Map(); // 智能补全渲染器
+    this.aiBlockRenderers = new Map(); // AI块渲染器
+    this.commandInterceptors = new Map(); // 命令拦截器
+
     log.debug('终端管理器初始化完成');
   }
   
@@ -205,7 +215,10 @@ class TerminalManager {
     // 将终端与会话绑定
     session.terminal = terminal;
     this.terminals.set(sessionId, terminal);
-    
+
+    // 添加AI增强功能
+    this._enhanceTerminalWithAI(terminal, sessionId, options);
+
     // 如果有缓冲的数据，写入终端
     if (session.buffer) {
       terminal.write(session.buffer);
@@ -228,6 +241,9 @@ class TerminalManager {
         this.resizeTimeouts.delete(sessionId);
       }
 
+      // 清理AI组件
+      this._cleanupAIComponents(sessionId);
+
       terminal.dispose();
       this.terminals.delete(sessionId);
     };
@@ -237,6 +253,247 @@ class TerminalManager {
 
 
     return terminal;
+  }
+
+  /**
+   * 为终端添加AI增强功能
+   * @param {Terminal} terminal - 终端实例
+   * @param {string} sessionId - 会话ID
+   * @param {Object} options - 选项
+   */
+  _enhanceTerminalWithAI(terminal, sessionId, options = {}) {
+    try {
+      // 检查AI服务是否启用
+      if (!aiService.isEnabled) {
+        log.debug('AI服务未启用，跳过AI增强');
+        return;
+      }
+
+      // 创建行内建议渲染器
+      const suggestionRenderer = new InlineSuggestionRenderer(terminal);
+      this.suggestionRenderers.set(sessionId, suggestionRenderer);
+
+      // 创建AI块渲染器
+      const aiBlockRenderer = new AIBlockRenderer(terminal);
+      this.aiBlockRenderers.set(sessionId, aiBlockRenderer);
+
+      // 创建命令拦截器
+      const commandInterceptor = new CommandInterceptor(terminal, aiService);
+      this.commandInterceptors.set(sessionId, commandInterceptor);
+
+      // 绑定AI相关事件
+      this._bindAIEvents(terminal, sessionId);
+
+      log.debug('终端AI增强功能已启用', { sessionId });
+
+    } catch (error) {
+      log.error('添加AI增强功能失败', error);
+    }
+  }
+
+  /**
+   * 绑定AI相关事件
+   * @param {Terminal} terminal - 终端实例
+   * @param {string} sessionId - 会话ID
+   */
+  _bindAIEvents(terminal, sessionId) {
+    try {
+      const suggestionRenderer = this.suggestionRenderers.get(sessionId);
+      const aiBlockRenderer = this.aiBlockRenderers.get(sessionId);
+
+      if (!suggestionRenderer || !aiBlockRenderer) {
+        return;
+      }
+
+      // 监听终端输入变化，触发智能补全
+      let completionTimer = null;
+      const completionDelay = 500; // 500ms延迟
+
+      terminal.onData((data) => {
+        // 清除之前的定时器
+        if (completionTimer) {
+          clearTimeout(completionTimer);
+        }
+
+        // 设置新的定时器
+        completionTimer = setTimeout(async () => {
+          try {
+            await this._triggerSmartCompletion(terminal, sessionId);
+          } catch (error) {
+            log.error('触发智能补全失败', error);
+          }
+        }, completionDelay);
+      });
+
+      log.debug('AI事件已绑定', { sessionId });
+
+    } catch (error) {
+      log.error('绑定AI事件失败', error);
+    }
+  }
+
+  /**
+   * 触发智能补全
+   * @param {Terminal} terminal - 终端实例
+   * @param {string} sessionId - 会话ID
+   */
+  async _triggerSmartCompletion(terminal, sessionId) {
+    try {
+      const suggestionRenderer = this.suggestionRenderers.get(sessionId);
+      if (!suggestionRenderer) {
+        return;
+      }
+
+      // 获取当前行内容
+      const buffer = terminal.buffer.active;
+      const currentRow = buffer.cursorY;
+      const line = buffer.getLine(currentRow);
+
+      if (!line) {
+        return;
+      }
+
+      const currentLine = line.translateToString(true).trim();
+
+      // 如果当前行为空或太短，不触发补全
+      if (!currentLine || currentLine.length < 2) {
+        suggestionRenderer.clear();
+        return;
+      }
+
+      // 构建上下文
+      const context = this._buildTerminalContext(terminal, sessionId);
+
+      // 请求AI补全
+      const result = await aiService.requestCompletion({
+        prefix: currentLine,
+        terminalOutput: context.terminalOutput,
+        osHint: context.osHint,
+        shellHint: context.shellHint
+      });
+
+      if (result && result.suggestions && result.suggestions.length > 0) {
+        suggestionRenderer.show(result.suggestions);
+      } else {
+        suggestionRenderer.clear();
+      }
+
+    } catch (error) {
+      log.error('智能补全失败', error);
+    }
+  }
+
+  /**
+   * 构建终端上下文
+   * @param {Terminal} terminal - 终端实例
+   * @param {string} sessionId - 会话ID
+   * @returns {Object} 上下文对象
+   */
+  _buildTerminalContext(terminal, sessionId) {
+    try {
+      const buffer = terminal.buffer.active;
+      const lines = [];
+
+      // 获取最近的终端输出
+      const startRow = Math.max(0, buffer.cursorY - 50);
+      for (let i = startRow; i <= buffer.cursorY; i++) {
+        const line = buffer.getLine(i);
+        if (line) {
+          lines.push(line.translateToString(true));
+        }
+      }
+
+      const terminalOutput = lines.join('\n');
+
+      return {
+        terminalOutput,
+        osHint: this._detectOS(terminalOutput),
+        shellHint: this._detectShell(terminalOutput),
+        errorDetected: this._detectError(terminalOutput)
+      };
+
+    } catch (error) {
+      log.error('构建终端上下文失败', error);
+      return {
+        terminalOutput: '',
+        osHint: 'unknown',
+        shellHint: 'unknown',
+        errorDetected: false
+      };
+    }
+  }
+
+  /**
+   * 检测操作系统
+   * @param {string} output - 终端输出
+   * @returns {string} 操作系统类型
+   */
+  _detectOS(output) {
+    if (/Linux|Ubuntu|CentOS|Debian/i.test(output)) return 'linux';
+    if (/Darwin|macOS/i.test(output)) return 'darwin';
+    if (/Windows|MINGW/i.test(output)) return 'windows';
+    return 'unknown';
+  }
+
+  /**
+   * 检测Shell类型
+   * @param {string} output - 终端输出
+   * @returns {string} Shell类型
+   */
+  _detectShell(output) {
+    if (/bash/i.test(output) || output.includes('$ ')) return 'bash';
+    if (/zsh/i.test(output) || output.includes('% ')) return 'zsh';
+    if (/fish/i.test(output)) return 'fish';
+    return 'unknown';
+  }
+
+  /**
+   * 检测错误
+   * @param {string} output - 终端输出
+   * @returns {boolean} 是否有错误
+   */
+  _detectError(output) {
+    const errorPatterns = [
+      /error|failed|failure/i,
+      /not found|command not found/i,
+      /permission denied/i,
+      /no such file or directory/i
+    ];
+    return errorPatterns.some(pattern => pattern.test(output));
+  }
+
+  /**
+   * 清理AI组件
+   * @param {string} sessionId - 会话ID
+   */
+  _cleanupAIComponents(sessionId) {
+    try {
+      // 清理建议渲染器
+      const suggestionRenderer = this.suggestionRenderers.get(sessionId);
+      if (suggestionRenderer) {
+        suggestionRenderer.destroy();
+        this.suggestionRenderers.delete(sessionId);
+      }
+
+      // 清理AI块渲染器
+      const aiBlockRenderer = this.aiBlockRenderers.get(sessionId);
+      if (aiBlockRenderer) {
+        aiBlockRenderer.destroy();
+        this.aiBlockRenderers.delete(sessionId);
+      }
+
+      // 清理命令拦截器
+      const commandInterceptor = this.commandInterceptors.get(sessionId);
+      if (commandInterceptor) {
+        commandInterceptor.destroy();
+        this.commandInterceptors.delete(sessionId);
+      }
+
+      log.debug('AI组件已清理', { sessionId });
+
+    } catch (error) {
+      log.error('清理AI组件失败', error);
+    }
   }
 
   /**
