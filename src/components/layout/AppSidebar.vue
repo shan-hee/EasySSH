@@ -212,7 +212,7 @@ export default defineComponent({
 
 <style scoped>
 .sidebar {
-  width: 40px;
+  width: var(--layout-sidebar-width); /* 使用侧边栏宽度设计令牌 */
   height: 100vh;
   background-color: var(--sidebar-bg);
   transition:
@@ -231,7 +231,7 @@ export default defineComponent({
   justify-content: center;
   font-size: 18px;
   font-weight: bold;
-  width: 40px;
+  width: var(--layout-sidebar-width); /* 使用侧边栏宽度设计令牌 */
   height: 54px;
   margin: 0;
   background-color: var(--sidebar-logo-bg);
@@ -287,8 +287,8 @@ export default defineComponent({
   cursor: pointer;
   color: var(--sidebar-nav-color);
   border-radius: 4px;
-  width: 40px;
-  height: 40px;
+  width: var(--layout-sidebar-width); /* 使用侧边栏宽度设计令牌 */
+  height: var(--layout-sidebar-width); /* 保持正方形 */
   position: relative;
   transition:
     background-color var(--transition-fast),
@@ -416,8 +416,8 @@ export default defineComponent({
     position: absolute;
     top: 0;
     left: 0;
-    width: 40px;
-    height: 45px;
+    width: var(--layout-sidebar-width); /* 使用侧边栏宽度设计令牌 */
+    height: var(--layout-header-height); /* 使用应用头部高度设计令牌 */
     cursor: pointer;
     border-right: none; /* 移除右边框 */
     border-bottom: none;

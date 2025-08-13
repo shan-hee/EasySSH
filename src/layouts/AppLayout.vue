@@ -649,7 +649,7 @@ export default defineComponent({
 /* 系统监控面板容器 */
 .monitoring-panel-container {
   position: fixed;
-  top: 40px;
+  top: var(--layout-header-height); /* 使用应用头部高度令牌 */
   right: 0;
   bottom: 0;
   z-index: 1000;
@@ -660,8 +660,8 @@ export default defineComponent({
 /* 终端背景样式 */
 .terminal-background {
   position: absolute;
-  top: 40px; /* 留出顶部导航栏的空间 */
-  left: 40px; /* 留出侧边栏的空间 */
+  top: var(--layout-header-height); /* 使用应用头部高度令牌 */
+  left: var(--layout-sidebar-width); /* 使用侧边栏宽度令牌 */
   right: 0;
   bottom: 0;
   z-index: 1; /* 确保在内容下方 */

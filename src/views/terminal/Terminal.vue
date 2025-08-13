@@ -2437,110 +2437,110 @@ export default {
 </script>
 
 <style scoped>
-/* 定义通用的主题切换过渡效果 */
+/* ===== 终端组件样式 - 使用系统设计令牌 ===== */
+
+/* 通用主题切换过渡效果 - 使用系统令牌 */
 .theme-transition {
   transition:
-    background-color 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94),
-    background 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94),
-    border-color 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94),
-    color 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94),
-    box-shadow 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+    background-color var(--theme-transition-duration) var(--theme-transition-timing),
+    background var(--theme-transition-duration) var(--theme-transition-timing),
+    border-color var(--theme-transition-duration) var(--theme-transition-timing),
+    color var(--theme-transition-duration) var(--theme-transition-timing),
+    box-shadow var(--theme-transition-duration) var(--theme-transition-timing);
 }
 
+/* 终端主容器 */
 .terminal-container {
   height: 100%;
   width: 100%;
   position: relative;
   background-color: var(--color-bg-page);
   overflow: hidden;
-  /* 添加3D渲染上下文，减少层间闪烁 */
+  /* 性能优化 */
   transform-style: preserve-3d;
   perspective: 1000px;
-  /* 对整体容器加渲染合成*/
   will-change: contents;
   contain: layout size paint;
-  /* 添加容器定位 */
+  /* 布局 */
   display: flex;
   flex-direction: column;
 }
 
+/* 终端包装器 */
 .terminals-wrapper {
   position: relative;
   height: 100%;
   width: 100%;
-  /* 预先创建堆叠上下文 */
-  isolation: isolate;
-  /* 添加flex布局 */
+  isolation: isolate; /* 创建堆叠上下文 */
   flex: 1;
   display: flex;
   flex-direction: column;
 }
 
+/* 单个终端内容包装器 */
 .terminal-content-wrapper {
   position: absolute;
   top: 0;
   left: 0;
   width: 100%;
   height: 100%;
-  /* 完全不透明，避免透明度变化导致闪烁 */
   opacity: 1;
-  /* 去除clip-path和transition */
+  /* 性能优化 */
   transform: translate3d(0, 0, 0);
   backface-visibility: hidden;
   -webkit-backface-visibility: hidden;
-  /* 默认隐藏所有终端 */
+  /* 默认隐藏，只显示活动终端 */
   visibility: hidden;
-  /* 内容渲染优化 */
+  /* 渲染优化 */
   contain: strict;
-  /* 降低失活终端的合成成本 */
   content-visibility: auto;
-  /* 启用缓存，提高切换性能 */
   contain-intrinsic-size: 100%;
-  /* 添加flex布局使工具栏和终端内容能垂直排列 */
+  /* 布局 */
   display: flex;
   flex-direction: column;
 }
 
+/* 活动终端状态 */
 .terminal-content-wrapper.terminal-active {
   z-index: 5;
-  /* 只显示活动终端 */
   visibility: visible;
-  /* 使活动终端能接收输入 */
   pointer-events: auto;
-  /* 优先级最高 */
   content-visibility: visible;
 }
 
+/* 非活动终端状态 */
 .terminal-content-wrapper:not(.terminal-active) {
   z-index: 1;
-  /* 非活动终端不接收输入 */
   pointer-events: none;
 }
 
+/* 终端工具栏 */
 .terminal-individual-toolbar {
   flex-shrink: 0;
   z-index: 10;
-  height: 40px; /* 确保工具栏高度固定为40px */
+  height: var(--layout-toolbar-height); /* 使用终端工具栏专用高度令牌 */
 }
 
+/* 终端主体区域 */
 .terminal-main-area {
   flex: 1;
   display: flex;
   flex-direction: row;
-  height: calc(100% - 40px); /* 减去工具栏高度 */
+  height: calc(100% - var(--layout-toolbar-height)); /* 使用终端工具栏专用高度令牌 */
   overflow: hidden;
 }
 
+/* 监控面板 */
 .terminal-monitoring-panel {
   flex-shrink: 0;
   z-index: 9;
-  width: 320px; /* 增加宽度以适应内容 */
-  max-width: 35vw; /* 最大不超过视口宽度的35% */
+  width: 320px; /* 监控面板固定宽度 */
+  max-width: 35vw; /* 响应式最大宽度 */
   height: 100%;
   overflow: hidden;
   border-right: 1px solid var(--color-border-default);
-  /* 使用与主题切换一致的过渡效果 */
-  transition: border-color 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  /* 使用系统主题过渡令牌 */
+  transition: border-color var(--theme-transition-duration) var(--theme-transition-timing);
 }
 
 
@@ -2554,11 +2554,12 @@ export default {
   overflow: hidden;
 }
 
+/* 有监控面板时的右侧区域 */
 .terminal-right-area.with-monitoring-panel {
-  /* 当显示监控面板时，右侧区域自动调整宽度 */
   width: calc(100% - 320px); /* 减去监控面板宽度 */
 }
 
+/* 终端内容填充区域 */
 .terminal-content-padding {
   flex: 1;
   box-sizing: border-box;
@@ -2566,76 +2567,78 @@ export default {
   position: relative;
   overflow: visible;
   padding: 0;
-  min-height: 0; /* 允许flex子项收缩 */
+  min-height: 0; /* 允许flex收缩 */
 }
 
 /* AI输入栏区域 */
 .terminal-ai-input-area {
   flex-shrink: 0;
   height: auto;
-  min-height: 80px;
-  max-height: 200px;
+  min-height: 80px; /* 最小高度 */
+  max-height: 200px; /* 最大高度 */
   background: transparent;
   z-index: 10;
   overflow: hidden;
 }
 
-/* 响应式设计 */
+/* ===== 响应式设计 ===== */
+
+/* 平板和移动端 */
 @media (max-width: 768px) {
   .terminal-main-area {
-    flex-direction: row; /* 移动端保持水平布局，因为不再显示侧边监控面板 */
+    flex-direction: row; /* 保持水平布局 */
   }
 
   .terminal-monitoring-panel {
-    /* 移动端隐藏桌面端监控面板，使用抽屉代替 */
-    display: none;
+    display: none; /* 移动端隐藏侧边监控面板，使用抽屉模式 */
   }
 
   .terminal-right-area {
     width: 100%; /* 移动端占满全宽 */
-    height: 100%; /* 移动端占满全高 */
+    height: 100%;
   }
 
   .terminal-right-area.with-monitoring-panel {
-    /* 移动端即使有监控面板也占满全宽，因为使用抽屉模式 */
-    width: 100%;
+    width: 100%; /* 移动端抽屉模式，占满全宽 */
     height: 100%;
   }
 
   .terminal-ai-input-area {
-    /* 移动端AI输入栏调整 */
-    min-height: 70px;
+    min-height: 70px; /* 移动端调整AI输入栏高度 */
     max-height: 150px;
   }
 }
 
+/* 小屏幕手机 */
 @media (max-width: 480px) {
   .terminal-monitoring-panel {
-    /* 小屏幕也隐藏桌面端监控面板 */
-    display: none;
+    display: none; /* 小屏幕隐藏监控面板 */
   }
 
   .terminal-right-area.with-monitoring-panel {
-    /* 小屏幕占满全高 */
-    height: 100%;
+    height: 100%; /* 小屏幕占满全高 */
   }
 
   .terminal-ai-input-area {
-    /* 小屏幕AI输入栏进一步调整 */
-    min-height: 60px;
+    min-height: 60px; /* 小屏幕进一步压缩AI输入栏 */
     max-height: 120px;
   }
 }
 
+/* ===== 终端内容区域 ===== */
+
+/* 终端内容容器 */
 .terminal-content {
-  height: calc(100% - 40px); /* 减去margin空间 */
-  width: calc(100% - 20px); /* 减去margin空间 */
+  height: calc(100% - var(--spacing-xl)); /* 减去底部间距 */
+  width: calc(100% - var(--spacing-md)); /* 减去右侧间距 */
   position: relative;
-  margin: 20px 0 20px 20px; /* 使用margin替代padding */
-  /* 确保容器有明确的尺寸 */
+  margin: var(--spacing-md) 0 var(--spacing-md) var(--spacing-md); /* 使用系统间距令牌 */
   box-sizing: border-box;
   overflow: hidden;
 }
+/* ===== 连接状态覆盖层 ===== */
+
+/* 连接中覆盖层 */
 .connecting-overlay {
   position: absolute;
   top: 0;
@@ -2646,44 +2649,49 @@ export default {
   justify-content: center;
   align-items: center;
   background-color: transparent;
-  /* z-index: 10; */
-  transition: opacity 0.3s ease-in-out;
+  transition: opacity var(--transition-slow); /* 使用系统过渡令牌 */
 }
 
+/* 淡出状态 */
 .connecting-overlay.fade-out {
   opacity: 0;
   pointer-events: none;
 }
 
-/* 添加全局样式修复，确保xterm.js正常工作 */
+/* ===== XTerm.js 样式优化 ===== */
+
+/* XTerm 主容器 */
 :deep(.xterm) {
   height: 100% !important;
-  width: 100% !important; /* 修改为100%，不要超出容器 */
-  position: relative; /* 添加相对定位 */
+  width: 100% !important;
+  position: relative;
   box-sizing: border-box;
 }
 
+/* XTerm 视口 */
 :deep(.xterm-viewport) {
   overflow-y: auto !important;
   overflow-x: hidden;
 }
 
-/* 添加Webkit浏览器的滚动条样式 */
+/* XTerm 滚动条样式 - 使用系统设计令牌 */
 :deep(.xterm-viewport::-webkit-scrollbar) {
-  width: 5px; /* 减小滚动条宽度 */
-  height: 0; /* 确保横向滚动条不显示 */
+  width: 5px; /* 细滚动条 */
+  height: 0; /* 隐藏横向滚动条 */
 }
 
 :deep(.xterm-viewport::-webkit-scrollbar-thumb) {
-  background-color: rgba(255, 255, 255, 0.3);
-  border-radius: 10px; /* 设置滚动条圆角 */
-  border: none; /* 移除边框 */
+  background-color: var(--color-border-default);
+  border-radius: var(--radius-lg); /* 使用系统圆角令牌 */
+  border: none;
+  transition: background-color var(--transition-fast); /* 使用系统过渡令牌 */
 }
 
 :deep(.xterm-viewport::-webkit-scrollbar-thumb:hover) {
-  background-color: rgba(255, 255, 255, 0.5);
+  background-color: var(--color-border-dark);
 }
 
+/* XTerm 屏幕 */
 :deep(.xterm-screen) {
   width: 100%;
   height: 100%;

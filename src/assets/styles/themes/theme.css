@@ -10,8 +10,9 @@
 /* ===== 基础设计令牌 ===== */
 :root {
   /* 布局尺寸 */
-  --layout-header-height: 50px;
-  --layout-sidebar-width: 60px;
+  --layout-header-height: 45px; /* 应用头部实际高度 */
+  --layout-toolbar-height: 40px; /* 终端工具栏高度 */
+  --layout-sidebar-width: 40px; /* 侧边栏折叠状态宽度 */
   --layout-sidebar-expanded-width: 240px;
 
   /* 字体系统 */

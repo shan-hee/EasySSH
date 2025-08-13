@@ -312,7 +312,7 @@ export default defineComponent({
   display: flex;
   justify-content: space-between;
   align-items: stretch;
-  height: 45px;
+  height: var(--layout-header-height); /* 使用应用头部高度令牌 */
   padding: 0;
   background-color: var(--header-bg);
   color: var(--header-color);
@@ -604,8 +604,8 @@ export default defineComponent({
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 40px;
-    height: 45px;
+    width: var(--layout-sidebar-width); /* 使用侧边栏宽度设计令牌 */
+    height: var(--layout-header-height); /* 使用应用头部高度令牌 */
     background-color: var(--header-bg); /* 使用与AppHeader相同的背景色 */
     border-right: none; /* 移除移动端logo右边框 */
     flex-shrink: 0;

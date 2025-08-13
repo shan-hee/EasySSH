@@ -1390,31 +1390,38 @@ export default defineComponent({
 </script>
 
 <style scoped>
+/* ===== 终端工具栏样式 - 使用系统设计令牌 ===== */
+
+/* 工具栏容器 */
 .terminal-toolbar-container {
   position: relative;
   width: 100%;
   z-index: 3;
   background-color: transparent;
-  /* 固定高度以确保所有终端工具栏一致 */
-  height: 40px;
+  height: var(--layout-toolbar-height); /* 使用终端工具栏专用高度令牌 */
 }
 
+/* 工具栏主体 */
 .terminal-tools {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 16px;
-  height: 40px;
-  background-color: var(--color-bg-elevated); /* 默认不透明背景 */
+  padding: 0 var(--spacing-md); /* 使用系统间距令牌 */
+  height: var(--layout-toolbar-height); /* 使用终端工具栏专用高度令牌 */
+  background-color: var(--color-bg-elevated);
   position: relative;
+  /* 添加主题过渡效果 */
+  transition:
+    background-color var(--theme-transition-duration) var(--theme-transition-timing),
+    border-color var(--theme-transition-duration) var(--theme-transition-timing);
 }
 
-/* 当有背景图时应用透明样式 */
+/* 透明背景样式（有背景图时） */
 .terminal-tools.transparent-bg {
   background-color: transparent;
 }
 
-/* 当有背景图时的半透明覆盖层 */
+/* 透明背景的半透明覆盖层 */
 .terminal-tools.transparent-bg::before {
   content: "";
   position: absolute;
@@ -1422,17 +1429,21 @@ export default defineComponent({
   left: 0;
   right: 0;
   bottom: 0;
-  background-color: rgba(31, 31, 31, 0.5);
+  background-color: var(--color-bg-overlay);
   backdrop-filter: blur(2px);
   z-index: -1;
+  opacity: 0.5;
+  transition: opacity var(--theme-transition-duration) var(--theme-transition-timing);
 }
 
+/* 工具栏左侧区域 */
 .terminal-tools__left {
   display: flex;
-  gap: 8px;
+  gap: var(--spacing-sm); /* 使用系统间距令牌 */
   align-items: center;
 }
 
+/* 图标按钮基础样式 */
 .icon-button {
   display: flex;
   align-items: center;
@@ -1441,44 +1452,61 @@ export default defineComponent({
   height: 28px;
   background-color: transparent;
   border: none;
-  border-radius: 4px;
+  border-radius: var(--radius-md); /* 使用系统圆角令牌 */
   cursor: pointer;
   color: var(--color-text-primary);
   padding: 0;
-  transition: background-color var(--theme-transition-duration) var(--theme-transition-timing);
+  /* 使用系统过渡令牌 */
+  transition:
+    background-color var(--theme-transition-duration) var(--theme-transition-timing),
+    color var(--theme-transition-duration) var(--theme-transition-timing),
+    transform var(--transition-fast);
 }
 
+/* 图标按钮悬停状态 */
 .icon-button:hover {
-  background-color: rgba(255, 255, 255, 0.2);
+  background-color: var(--color-hover-bg); /* 使用系统交互状态令牌 */
+  transform: scale(1.05); /* 轻微放大效果 */
 }
 
-/* 禁用状态的图标按钮 */
+/* 图标按钮禁用状态 */
 .icon-button.icon-disabled {
   cursor: not-allowed !important;
+  color: var(--color-text-disabled); /* 使用系统禁用状态令牌 */
+  opacity: 0.5;
 }
 
+/* ===== 网络监控组件 ===== */
 
-
+/* 网络监控容器 */
 .network-monitor {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--spacing-xs); /* 使用系统间距令牌 */
   cursor: pointer;
-  padding: 3px 6px;
-  border-radius: 4px;
+  padding: var(--spacing-xs) var(--spacing-xs); /* 使用系统间距令牌 */
+  border-radius: var(--radius-md); /* 使用系统圆角令牌 */
+  transition:
+    background-color var(--theme-transition-duration) var(--theme-transition-timing),
+    transform var(--transition-fast);
 }
 
+/* 网络监控悬停状态 */
 .network-monitor:hover {
-  background-color: rgba(255, 255, 255, 0.1);
+  background-color: var(--color-hover-bg); /* 使用系统交互状态令牌 */
+  transform: scale(1.02); /* 轻微放大效果 */
 }
 
+/* 网络图标 */
 .network-icon {
   display: flex;
   align-items: center;
   justify-content: center;
   color: var(--color-text-primary);
+  transition: color var(--theme-transition-duration) var(--theme-transition-timing);
 }
 
+/* 网络统计数据 */
 .network-stats {
   display: flex;
   flex-direction: column;
@@ -1486,11 +1514,14 @@ export default defineComponent({
   line-height: 1;
 }
 
+/* 网络统计值 */
 .network-stats-value {
-  font-size: 12px;
+  font-size: var(--font-size-xs); /* 使用系统字体令牌 */
   font-weight: 500;
+  transition: color var(--theme-transition-duration) var(--theme-transition-timing);
 }
 
+/* 网络状态颜色 */
 .network-path-value.success {
   color: var(--color-success);
 }
@@ -1503,23 +1534,34 @@ export default defineComponent({
   color: var(--color-error);
 }
 
+/* 网络统计标签 */
 .network-stats-label {
-  font-size: 10px;
+  font-size: 10px; /* 保持小字体 */
   color: var(--color-text-secondary);
   text-transform: uppercase;
   line-height: 1;
-  margin-top: 2px;
+  margin-top: var(--spacing-xs); /* 使用系统间距令牌 */
+  transition: color var(--theme-transition-duration) var(--theme-transition-timing);
 }
 
-/* 网络监控弹窗 */
+/* ===== 网络监控弹窗 ===== */
+
+/* 弹窗容器 */
 .network-popup {
   background-color: var(--color-bg-container);
-  border-radius: 4px;
+  border-radius: var(--radius-lg); /* 使用系统圆角令牌 */
   box-shadow: var(--shadow-lg);
-  z-index: 10000;
+  z-index: var(--z-tooltip); /* 使用系统层级令牌 */
   overflow: hidden;
+  border: 1px solid var(--color-border-default);
+  /* 添加主题过渡效果 */
+  transition:
+    background-color var(--theme-transition-duration) var(--theme-transition-timing),
+    border-color var(--theme-transition-duration) var(--theme-transition-timing),
+    box-shadow var(--theme-transition-duration) var(--theme-transition-timing);
 }
 
+/* 弹窗箭头 */
 .network-popup:after {
   content: '';
   position: absolute;
@@ -1528,29 +1570,37 @@ export default defineComponent({
   transform: translateX(-50%);
   border-width: 5px;
   border-style: solid;
-  border-color: transparent transparent var(--color-bg-muted) transparent;
+  border-color: transparent transparent var(--color-bg-container) transparent;
 }
 
+/* 弹窗头部 */
 .network-popup-header {
-  padding: 10px 12px;
-  font-size: 14px;
+  padding: var(--spacing-sm) var(--spacing-md); /* 使用系统间距令牌 */
+  font-size: var(--font-size-sm); /* 使用系统字体令牌 */
   font-weight: 500;
   color: var(--color-text-primary);
   background-color: var(--color-bg-muted);
   border-bottom: 1px solid var(--color-border-default);
   text-align: center;
+  transition:
+    background-color var(--theme-transition-duration) var(--theme-transition-timing),
+    border-color var(--theme-transition-duration) var(--theme-transition-timing),
+    color var(--theme-transition-duration) var(--theme-transition-timing);
 }
 
+/* 弹窗内容 */
 .network-popup-content {
-  padding: 16px 12px;
+  padding: var(--spacing-md) var(--spacing-md); /* 使用系统间距令牌 */
 }
 
+/* 网络节点容器 */
 .network-nodes {
   display: flex;
   align-items: center;
   justify-content: space-between;
 }
 
+/* 单个网络节点 */
 .network-node {
   display: flex;
   flex-direction: column;
@@ -1558,45 +1608,57 @@ export default defineComponent({
   justify-content: center;
 }
 
+/* 网络节点指示点 */
 .network-node-dot {
   width: 10px;
   height: 10px;
-  border-radius: 50%;
+  border-radius: var(--radius-full); /* 使用系统圆角令牌 */
   background-color: var(--color-text-secondary);
-  margin-bottom: 6px;
+  margin-bottom: var(--spacing-xs); /* 使用系统间距令牌 */
+  transition: background-color var(--theme-transition-duration) var(--theme-transition-timing);
 }
 
+/* 网络节点标签 */
 .network-node-label {
-  font-size: 12px;
+  font-size: var(--font-size-xs); /* 使用系统字体令牌 */
   color: var(--color-text-secondary);
   white-space: nowrap;
+  transition: color var(--theme-transition-duration) var(--theme-transition-timing);
 }
 
+/* 网络路径 */
 .network-path {
   flex: 1;
   display: flex;
   flex-direction: column;
   align-items: center;
-  margin: 0 5px;
+  margin: 0 var(--spacing-xs); /* 使用系统间距令牌 */
   position: relative;
 }
 
+/* 网络路径连接线 */
 .network-path-line {
   width: 100%;
   height: 1px;
   background-color: var(--color-border-default);
   position: relative;
   top: -10px;
+  transition: background-color var(--theme-transition-duration) var(--theme-transition-timing);
 }
 
+/* 网络路径数值 */
 .network-path-value {
-  font-size: 12px;
+  font-size: var(--font-size-xs); /* 使用系统字体令牌 */
   position: relative;
   top: -6px;
   background-color: var(--color-bg-container);
-  padding: 0 5px;
+  padding: 0 var(--spacing-xs); /* 使用系统间距令牌 */
+  transition:
+    color var(--theme-transition-duration) var(--theme-transition-timing),
+    background-color var(--theme-transition-duration) var(--theme-transition-timing);
 }
 
+/* 网络统计状态颜色 */
 .network-stats-value.success {
   color: var(--color-success);
 }
@@ -1609,10 +1671,12 @@ export default defineComponent({
   color: var(--color-error);
 }
 
-/* 淡入淡出动画 */
+/* ===== 动画效果 ===== */
+
+/* 淡入淡出过渡 */
 .fade-enter-active,
 .fade-leave-active {
-  transition: opacity 0.5s ease;
+  transition: opacity var(--transition-slow); /* 使用系统过渡令牌 */
 }
 
 .fade-enter-from,
@@ -1620,6 +1684,7 @@ export default defineComponent({
   opacity: 0;
 }
 
+/* 测量中状态动画 */
 .network-stats-value.measuring {
   color: var(--color-info);
   animation: pulse 1.5s infinite;
@@ -1630,28 +1695,29 @@ export default defineComponent({
   animation: pulse 1.5s infinite;
 }
 
+/* 脉冲动画关键帧 */
 @keyframes pulse {
   0% { opacity: 0.6; }
   50% { opacity: 1; }
   100% { opacity: 0.6; }
 }
 
-/* 移除旧的tooltip系统，统一使用.sftp-tooltip */
+/* ===== 交互元素样式 ===== */
 
-/* 一键安装链接样式 */
+/* 一键安装链接 */
 .install-link {
   color: var(--color-info);
   cursor: pointer;
   text-decoration: none;
   font-weight: bold;
+  transition: opacity var(--transition-fast); /* 使用系统过渡令牌 */
 }
 
 .install-link:hover {
   opacity: 0.8;
 }
 
-/* 移除旧的tooltip容器样式 */
-
+/* 图标状态样式 */
 .icon-disabled {
   opacity: 0.5;
   cursor: not-allowed;
@@ -1665,7 +1731,9 @@ export default defineComponent({
   cursor: not-allowed;
 }
 
-/* 统一的 tooltip 样式 */
+/* ===== 统一的 Tooltip 样式 ===== */
+
+/* Tooltip 容器 - 使用系统设计令牌 */
 .sftp-tooltip {
   position: fixed;
   z-index: var(--z-tooltip);

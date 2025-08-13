@@ -11,7 +11,7 @@
   top: 0;
   left: 0;
   right: 0;
-  height: 45px;
+  height: var(--layout-header-height); /* 使用应用头部高度令牌 */
   background-color: var(--light-color);
   box-shadow: var(--shadow-sm);
   z-index: var(--z-fixed);
@@ -44,8 +44,8 @@
 /* 主体布局 */
 .main {
   display: flex;
-  height: calc(100vh - 45px);
-  margin-top: 40px;
+  height: calc(100vh - var(--layout-header-height)); /* 使用应用头部高度令牌 */
+  margin-top: 40px; /* 保持原有的margin-top */
   overflow: hidden;
 }
 

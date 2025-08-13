@@ -118,7 +118,7 @@ export default defineComponent({
   justify-content: center;
   font-size: 18px;
   font-weight: bold;
-  width: 40px;
+  width: var(--layout-sidebar-width); /* 使用侧边栏宽度设计令牌 */
   height: 54px;
   margin: 0;
   background-color: var(--sidebar-logo-bg);

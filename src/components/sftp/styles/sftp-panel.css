@@ -1,6 +1,6 @@
 .sftp-panel-container {
   position: fixed;
-  top: 45px;
+  top: var(--layout-header-height); /* 使用应用头部高度设计令牌 */
   right: 0;
   bottom: 0;
   background-color: var(--sftp-panel-bg);

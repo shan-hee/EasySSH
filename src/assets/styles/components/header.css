@@ -5,7 +5,7 @@
 
 /* 主页眉 */
 .app-header {
-  height: var(--layout-header-height);
+  height: var(--layout-header-height); /* 应用头部使用45px */
   background-color: var(--color-bg-container);
   color: var(--color-text-primary);
   display: flex;
