@@ -407,7 +407,6 @@ watch(() => props.aiService?.isEnabled, (newValue) => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 8px;
 }
 
 /* 输入框包装器 - 支持内置按钮 */
