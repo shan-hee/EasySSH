@@ -2549,7 +2549,7 @@ export default {
   max-width: 35vw; /* 最大不超过视口宽度的35% */
   height: 100%;
   overflow: hidden;
-  border-right: 1px solid var(--monitoring-panel-border, rgba(255, 255, 255, 0.1));
+  border-right: 1px solid var(--color-border-default, rgba(255, 255, 255, 0.1));
 }
 
 /* 移除外层动画CSS，改为在ResponsiveMonitoringPanel内部控制 */
@@ -2595,8 +2595,7 @@ export default {
   height: auto;
   min-height: 80px;
   max-height: 200px;
-  border-top: 1px solid var(--color-border-default);
-  background: var(--color-bg-container);
+  background: transparent;
   z-index: 10;
   overflow: hidden;
 }

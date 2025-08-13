@@ -379,7 +379,7 @@ watch(() => props.aiService?.isEnabled, (newValue) => {
   align-items: center;
   padding: 4px 8px;
   background: transparent;
-  border-bottom: 1px solid var(--color-border-default);
+  /* border-bottom: 1px solid var(--color-border-default); */
   min-height: 28px;
   flex-shrink: 0;
 }
