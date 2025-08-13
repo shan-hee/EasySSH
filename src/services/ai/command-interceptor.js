@@ -4,6 +4,7 @@
  */
 
 import log from '../log'
+import languageDetector from './language-detector.js'
 
 class CommandInterceptor {
   constructor(terminal, aiService, sessionId = null) {
@@ -14,29 +15,29 @@ class CommandInterceptor {
     this.inputBuffer = '' // 跟踪用户输入
     this.currentCommand = '' // 当前正在输入的命令
 
-    // AI命令前缀配置
+    // 语言环境检测（使用专用服务）
+    this.languageDetector = languageDetector
+
+    // AI命令前缀配置 - 两种核心模式
     this.commandPrefixes = {
       '/ai': {
         handler: this.handleAICommand.bind(this),
-        description: 'AI命令前缀'
+        description: 'AI通用命令前缀（自动路由）'
       },
-      '/explain': {
-        handler: this.handleExplainCommand.bind(this),
-        description: '解释最近的输出'
+      '/chat': {
+        handler: this.handleChatCommand.bind(this),
+        description: 'Chat模式 - 自由对话交流'
       },
-      '/fix': {
-        handler: this.handleFixCommand.bind(this),
-        description: '修复最近的错误'
-      },
-      '/gen': {
-        handler: this.handleGenerateCommand.bind(this),
-        description: '生成脚本'
+      '/agent': {
+        handler: this.handleAgentCommand.bind(this),
+        description: 'Agent模式 - 智能助手分析'
       }
     }
     
-    // 键盘快捷键配置
+    // 键盘快捷键配置 - 优化为新模式
     this.shortcuts = {
-      'Alt+Enter': this.handleExplainShortcut.bind(this),
+      'Alt+Enter': this.handleAgentShortcut.bind(this), // Agent模式快捷键
+      'Ctrl+Enter': this.handleChatShortcut.bind(this), // Chat模式快捷键
       'Tab': this.handleTabCompletion.bind(this),
       'Escape': this.handleEscape.bind(this)
     }
@@ -251,7 +252,7 @@ class CommandInterceptor {
   }
 
   /**
-   * 处理通用AI命令
+   * 处理通用AI命令 - 智能路由到合适的模式
    * @param {string} args 命令参数
    * @param {Object} command 命令对象
    */
@@ -267,24 +268,20 @@ class CommandInterceptor {
       const subCommand = subCommands[0]
       const subArgs = subCommands.slice(1).join(' ')
 
-      // 检查是否是特定子命令
+      // 智能路由：根据子命令自动选择模式
       switch (subCommand) {
-        case 'explain':
-          await this.handleExplainCommand(subArgs)
+        case 'chat':
+          await this.handleChatCommand(subArgs)
           break
-        case 'fix':
-          await this.handleFixCommand(subArgs)
-          break
-        case 'gen':
-        case 'generate':
-          await this.handleGenerateCommand(subArgs)
+        case 'agent':
+          await this.handleAgentCommand(subArgs)
           break
         case 'help':
           this.showHelp()
           break
         default:
-          // 如果不是特定子命令，则作为交互内容处理
-          await this.handleInteractionCommand(args)
+          // 默认情况：智能判断用户意图
+          await this.handleSmartRouting(args)
       }
     } catch (error) {
       log.error('处理AI命令失败', error)
@@ -293,18 +290,24 @@ class CommandInterceptor {
   }
 
   /**
-   * 处理AI交互命令
-   * @param {string} content 交互内容
+   * 处理Chat模式命令 - 自由对话交流
+   * @param {string} content 对话内容
    */
-  async handleInteractionCommand(content) {
+  async handleChatCommand(content) {
     try {
-      this.terminal.writeln(`\r\n🤖 AI正在思考您的问题...`)
+      if (!content.trim()) {
+        this.terminal.writeln('\r\n💬 Chat模式：请输入您想要讨论的问题')
+        this.terminal.writeln('示例：/chat 如何优化Linux系统性能？\r\n')
+        return
+      }
+
+      this.terminal.writeln(`\r\n💬 Chat模式启动，AI正在思考您的问题...`)
 
       // 构建上下文
       const context = this.buildContext()
 
-      // 请求AI交互
-      const result = await this.aiService.requestInteraction({
+      // 请求Chat模式AI服务
+      const result = await this.aiService.requestChat({
         question: content,
         prompt: content,
         terminalOutput: context.terminalOutput,
@@ -313,115 +316,133 @@ class CommandInterceptor {
       })
 
       if (result && result.success && result.content) {
-        this.terminal.writeln(`\r\n💡 AI回答:`)
-        this.terminal.writeln(`${result.content}\r\n`)
+        this.renderAIResponse('💡 AI回答:', result.content, 'chat')
       } else {
-        this.terminal.writeln(`\r\n❌ AI暂时无法回答您的问题\r\n`)
+        this.renderAIResponse('❌ 错误:', 'Chat模式暂时无法回答您的问题', 'error')
       }
 
     } catch (error) {
-      log.error('处理AI交互失败', error)
-      this.terminal.writeln(`\r\n❌ AI交互失败: ${error.message}\r\n`)
+      log.error('处理Chat模式失败', error)
+      this.terminal.writeln(`\r\n❌ Chat模式失败: ${error.message}\r\n`)
     }
   }
 
   /**
-   * 处理解释命令
+   * 处理Agent模式命令 - 智能助手分析
    * @param {string} args 命令参数
    */
-  async handleExplainCommand(args) {
+  async handleAgentCommand(args = '') {
     try {
-      this.terminal.writeln('AI正在分析终端输出...')
-      
+      this.terminal.writeln(`\r\n🤖 Agent模式启动，正在分析终端状态...`)
+
+      // 构建上下文
       const context = this.buildContext()
-      const result = await this.aiService.requestExplanation({
-        prompt: args || '请解释最近的终端输出',
+
+      // 请求Agent模式AI服务
+      const result = await this.aiService.requestAgent({
+        prompt: args,
+        operationType: 'auto', // 始终使用自动模式
         terminalOutput: context.terminalOutput,
         osHint: context.osHint,
         shellHint: context.shellHint,
         errorDetected: context.errorDetected
       })
 
-      if (result && result.content) {
-        this.displayAIResponse('explanation', result.content, result.metadata)
+      if (result && result.success && result.content) {
+        const icon = this.getAgentIcon(result.operationType)
+        this.renderAIResponse(`${icon} Agent分析结果:`, result.content, 'agent')
       } else {
-        this.terminal.writeln('AI解释请求失败')
+        this.renderAIResponse('❌ 错误:', 'Agent模式分析失败', 'error')
       }
+
     } catch (error) {
-      log.error('处理解释命令失败', error)
-      this.terminal.writeln(`解释失败: ${error.message}`)
+      log.error('处理Agent模式失败', error)
+      this.terminal.writeln(`\r\n❌ Agent模式失败: ${error.message}\r\n`)
     }
   }
 
   /**
-   * 处理修复命令
-   * @param {string} args 命令参数
+   * 智能路由 - 根据用户输入自动选择合适的模式
+   * @param {string} content 用户输入
    */
-  async handleFixCommand(args) {
+  async handleSmartRouting(content) {
     try {
-      this.terminal.writeln('AI正在分析错误并生成修复建议...')
-      
+      // 简单的意图识别
+      const chatKeywords = ['如何', '什么是', '为什么', '怎么样', '请问', '能否', '可以']
+      const agentKeywords = ['错误', '失败', '问题', '修复', '生成', '创建', '脚本']
+
+      const isChatIntent = chatKeywords.some(keyword => content.includes(keyword))
+      const isAgentIntent = agentKeywords.some(keyword => content.includes(keyword))
+
+      if (isChatIntent && !isAgentIntent) {
+        // 倾向于Chat模式
+        await this.handleChatCommand(content)
+      } else if (isAgentIntent || this.hasTerminalError()) {
+        // 倾向于Agent模式
+        await this.handleAgentCommand(content)
+      } else {
+        // 默认使用Chat模式
+        await this.handleChatCommand(content)
+      }
+    } catch (error) {
+      log.error('智能路由失败', error)
+      // 降级到Chat模式
+      await this.handleChatCommand(content)
+    }
+  }
+
+  /**
+   * 处理Agent模式快捷键 (Alt+Enter)
+   */
+  async handleAgentShortcut() {
+    try {
+      await this.handleAgentCommand()
+    } catch (error) {
+      log.error('Agent快捷键处理失败', error)
+    }
+  }
+
+  /**
+   * 处理Chat模式快捷键 (Ctrl+Enter)
+   */
+  async handleChatShortcut() {
+    try {
+      const currentLine = this.getCurrentLine()
+      if (currentLine) {
+        await this.handleChatCommand(currentLine)
+      } else {
+        this.terminal.writeln('\r\n💬 Chat模式：请输入问题后按 Ctrl+Enter\r\n')
+      }
+    } catch (error) {
+      log.error('Chat快捷键处理失败', error)
+    }
+  }
+
+  /**
+   * 获取Agent模式操作类型对应的图标
+   * @param {string} operationType 操作类型
+   * @returns {string} 图标
+   */
+  getAgentIcon(operationType) {
+    const icons = {
+      'explanation': '📖',
+      'fix': '🔧',
+      'generation': '📝',
+      'auto': '🤖'
+    }
+    return icons[operationType] || '🤖'
+  }
+
+  /**
+   * 检查终端是否有错误
+   * @returns {boolean} 是否有错误
+   */
+  hasTerminalError() {
+    try {
       const context = this.buildContext()
-      const result = await this.aiService.requestFix({
-        prompt: args || '请提供修复建议',
-        terminalOutput: context.terminalOutput,
-        osHint: context.osHint,
-        shellHint: context.shellHint
-      })
-
-      if (result && result.content) {
-        this.displayAIResponse('fix', result.content, result.metadata)
-      } else {
-        this.terminal.writeln('AI修复建议请求失败')
-      }
+      return context.errorDetected || false
     } catch (error) {
-      log.error('处理修复命令失败', error)
-      this.terminal.writeln(`修复建议失败: ${error.message}`)
-    }
-  }
-
-  /**
-   * 处理生成命令
-   * @param {string} args 命令参数
-   */
-  async handleGenerateCommand(args) {
-    try {
-      if (!args) {
-        this.terminal.writeln('请提供脚本描述，例如: /gen 备份数据库脚本')
-        return
-      }
-
-      this.terminal.writeln(`AI正在生成脚本: ${args}`)
-      
-      const context = this.buildContext()
-      const result = await this.aiService.requestGeneration({
-        prompt: args,
-        description: args,
-        terminalOutput: context.terminalOutput,
-        osHint: context.osHint,
-        shellHint: context.shellHint
-      })
-
-      if (result && result.content) {
-        this.displayAIResponse('generation', result.content, result.metadata)
-      } else {
-        this.terminal.writeln('AI脚本生成请求失败')
-      }
-    } catch (error) {
-      log.error('处理生成命令失败', error)
-      this.terminal.writeln(`脚本生成失败: ${error.message}`)
-    }
-  }
-
-  /**
-   * 处理解释快捷键
-   * @param {KeyboardEvent} event 键盘事件
-   */
-  async handleExplainShortcut(event) {
-    try {
-      await this.handleExplainCommand('')
-    } catch (error) {
-      log.error('处理解释快捷键失败', error)
+      return false
     }
   }
 
@@ -472,12 +493,16 @@ class CommandInterceptor {
       }
 
       const terminalOutput = lines.join('\n')
-      
+
+      // 更新服务器语言环境
+      const langStatus = this.languageDetector.detectServerLanguage(terminalOutput)
+
       return {
         terminalOutput,
         osHint: this.detectOS(terminalOutput),
         shellHint: this.detectShell(terminalOutput),
-        errorDetected: this.detectError(terminalOutput)
+        errorDetected: this.detectError(terminalOutput),
+        languageStatus: langStatus
       }
     } catch (error) {
       log.error('构建上下文失败', error)
@@ -570,25 +595,45 @@ class CommandInterceptor {
    */
   showHelp() {
     try {
-      this.terminal.writeln('\r\n--- AI命令帮助 ---')
-      this.terminal.writeln('/ai <问题内容> - 与AI直接对话交流')
-      this.terminal.writeln('/ai explain [问题] - 解释最近的终端输出')
-      this.terminal.writeln('/ai fix [描述] - 获取错误修复建议')
-      this.terminal.writeln('/ai gen <描述> - 生成脚本')
-      this.terminal.writeln('/explain - 快速解释')
-      this.terminal.writeln('/fix - 快速修复建议')
-      this.terminal.writeln('/gen <描述> - 快速生成脚本')
-      this.terminal.writeln('\r\n使用示例:')
-      this.terminal.writeln('/ai 如何查看系统内存使用情况？')
-      this.terminal.writeln('/ai 这个错误是什么意思？')
-      this.terminal.writeln('/ai gen 备份当前目录到/tmp')
-      this.terminal.writeln('\r\n快捷键:')
-      this.terminal.writeln('Alt+Enter - 解释输出')
-      this.terminal.writeln('Escape - 清除AI内容')
-      this.terminal.writeln('\r\n调试信息:')
-      this.terminal.writeln(`AI服务状态: ${this.aiService.isEnabled ? '已启用' : '未启用'}`)
-      this.terminal.writeln(`拦截器状态: ${this.isEnabled ? '已启用' : '未启用'}`)
-      this.terminal.writeln('--- 帮助结束 ---\r\n')
+      this.terminal.writeln('\r\n=== EasySSH AI助手帮助 ===')
+      this.terminal.writeln('')
+      this.terminal.writeln('🎯 两种核心模式:')
+      this.terminal.writeln('💬 Chat模式  - 自由对话交流，回答技术问题')
+      this.terminal.writeln('🤖 Agent模式 - 智能分析终端状态，提供操作建议')
+      this.terminal.writeln('')
+      this.terminal.writeln('📝 命令使用:')
+      this.terminal.writeln('/chat <问题>     - 进入Chat模式对话')
+      this.terminal.writeln('/agent [描述]    - 启动Agent模式分析')
+      this.terminal.writeln('/ai <内容>       - 智能路由到合适模式')
+      this.terminal.writeln('')
+      this.terminal.writeln('⌨️ 快捷键:')
+      this.terminal.writeln('Alt+Enter       - 快速启动Agent模式')
+      this.terminal.writeln('Ctrl+Enter      - 快速启动Chat模式')
+      this.terminal.writeln('Escape          - 清除AI内容')
+      this.terminal.writeln('')
+      this.terminal.writeln('💡 使用示例:')
+      this.terminal.writeln('/chat 如何优化Linux系统性能？')
+      this.terminal.writeln('/agent 分析这个错误并提供修复方案')
+      this.terminal.writeln('/ai 生成一个备份脚本')
+      this.terminal.writeln('')
+
+      const langStatus = this.languageDetector.getStatus()
+
+      this.terminal.writeln('📊 状态信息:')
+      this.terminal.writeln(`AI服务: ${this.aiService.isEnabled ? '✅ 已启用' : '❌ 未启用'}`)
+      this.terminal.writeln(`拦截器: ${this.isEnabled ? '✅ 已启用' : '❌ 未启用'}`)
+      this.terminal.writeln(`服务器语言: ${langStatus.serverLanguage}`)
+      this.terminal.writeln(`客户端语言: ${langStatus.clientLanguage}`)
+      this.terminal.writeln(`Unicode支持: ${langStatus.unicodeSupport ? '✅ 支持' : '❌ 不支持'}`)
+      this.terminal.writeln(`ASCII模式: ${langStatus.shouldUseAsciiMode ? '✅ 启用' : '❌ 禁用'}`)
+      this.terminal.writeln(`推荐AI语言: ${langStatus.recommendedAILanguage}`)
+      this.terminal.writeln('')
+      this.terminal.writeln('🌐 多语言支持:')
+      this.terminal.writeln('• AI命令在客户端处理，避免服务器编码问题')
+      this.terminal.writeln('• 自动检测服务器语言环境和Unicode支持')
+      this.terminal.writeln('• 不支持Unicode时自动启用ASCII兼容模式')
+      this.terminal.writeln('• 原始内容可在浏览器控制台查看')
+      this.terminal.writeln('========================\r\n')
     } catch (error) {
       log.error('显示帮助失败', error)
     }
@@ -614,7 +659,7 @@ class CommandInterceptor {
   }
 
   /**
-   * 阻止命令执行
+   * 阻止命令执行 - 增强版，确保AI命令不会发送到服务器
    */
   preventCommandExecution() {
     try {
@@ -624,14 +669,82 @@ class CommandInterceptor {
       const line = buffer.getLine(currentRow)
 
       if (line) {
-        // 清除当前行内容
-        this.terminal.write('\r\x1b[K')
-        log.debug('AI命令已被拦截，当前行已清除')
+        // 清除当前行内容，使用更强的清除方式
+        this.terminal.write('\r\x1b[2K') // 清除整行
+        this.terminal.write('\r') // 回到行首
+        log.debug('AI命令已被拦截，当前行已完全清除')
       }
+
+      // 清空输入缓冲区
+      this.inputBuffer = ''
+      this.currentCommand = ''
+
     } catch (error) {
       log.error('阻止命令执行失败', error)
     }
   }
+
+  /**
+   * 渲染AI响应 - 支持多语言兼容
+   * @param {string} title 标题
+   * @param {string} content 内容
+   * @param {string} type 类型 (chat/agent/error)
+   */
+  renderAIResponse(title, content, type = 'chat') {
+    try {
+      // 更新服务器语言环境检测
+      const context = this.buildContext()
+      const langStatus = this.languageDetector.detectServerLanguage(context.terminalOutput)
+
+      log.debug('AI响应渲染', {
+        langStatus,
+        type
+      })
+
+      // 处理标题和内容
+      let displayTitle = title
+      let displayContent = content
+
+      if (langStatus.shouldUseAsciiMode) {
+        // ASCII兼容模式
+        displayTitle = this.languageDetector.toAsciiCompatible(title)
+        displayContent = this.languageDetector.toAsciiCompatible(content)
+
+        // 添加ASCII模式提示
+        this.terminal.writeln('\r\n[ASCII Mode - Server does not support Unicode]')
+      }
+
+      // 渲染响应
+      this.terminal.writeln(`\r\n${displayTitle}`)
+
+      // 分行显示内容，避免长行显示问题
+      const lines = displayContent.split('\n')
+      lines.forEach(line => {
+        if (line.trim()) {
+          this.terminal.writeln(line)
+        } else {
+          this.terminal.writeln('')
+        }
+      })
+
+      this.terminal.writeln('') // 添加空行分隔
+
+      // 如果是ASCII模式，提供原始内容的提示
+      if (langStatus.shouldUseAsciiMode && content !== displayContent) {
+        this.terminal.writeln('[Tip: Use browser console to see original Unicode content]')
+        console.log('AI Response (Original):', { title, content })
+      }
+
+    } catch (error) {
+      log.error('渲染AI响应失败', error)
+      // 降级显示
+      this.terminal.writeln(`\r\n${title}`)
+      this.terminal.writeln(content)
+      this.terminal.writeln('')
+    }
+  }
+
+
 
   /**
    * 启用拦截器
@@ -657,7 +770,7 @@ class CommandInterceptor {
       this.disable()
       this.terminal = null
       this.aiService = null
-      
+
       log.debug('命令拦截器已销毁')
     } catch (error) {
       log.error('销毁拦截器失败', error)

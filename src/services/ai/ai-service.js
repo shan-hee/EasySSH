@@ -100,12 +100,12 @@ class AIService {
 
 
   /**
-   * 请求AI交互对话
+   * Chat模式 - 自由对话交流
    * @param {Object} context 上下文信息
    * @param {Object} options 选项
-   * @returns {Promise<Object>} 交互结果
+   * @returns {Promise<Object>} 对话结果
    */
-  async requestInteraction(context, options = {}) {
+  async requestChat(context, options = {}) {
     if (!this.isEnabled) {
       throw new Error('AI服务未启用')
     }
@@ -119,7 +119,7 @@ class AIService {
         const result = await this.client.sendRequest({
           type: 'ai_request',
           requestId,
-          mode: 'interaction',
+          mode: 'chat',
           input: {
             prompt: context.prompt || '',
             question: context.question || '',
@@ -132,8 +132,8 @@ class AIService {
           },
           settings: {
             model: this.config.get('model'),
-            temperature: 0.7,
-            maxTokens: 1024,
+            temperature: 0.7, // 较高温度，更有创造性
+            maxTokens: 1024,  // 较多token，支持详细回答
             stream: true
           }
         }, controller.signal)
@@ -145,22 +145,22 @@ class AIService {
 
     } catch (error) {
       if (error.name === 'AbortError') {
-        log.debug('交互请求已取消')
+        log.debug('Chat请求已取消')
         return null
       }
 
-      log.error('AI交互请求失败', error)
+      log.error('Chat模式请求失败', error)
       throw error
     }
   }
 
   /**
-   * 请求智能解释
+   * Agent模式 - 智能助手分析
    * @param {Object} context 上下文信息
    * @param {Object} options 选项
-   * @returns {Promise<Object>} 解释结果
+   * @returns {Promise<Object>} 分析结果
    */
-  async requestExplanation(context, options = {}) {
+  async requestAgent(context, options = {}) {
     if (!this.isEnabled) {
       throw new Error('AI服务未启用')
     }
@@ -174,9 +174,10 @@ class AIService {
         const result = await this.client.sendRequest({
           type: 'ai_request',
           requestId,
-          mode: 'explanation',
+          mode: 'agent',
           input: {
             prompt: context.prompt || '',
+            operationType: context.operationType || 'auto',
             currentLine: context.currentLine || ''
           },
           context: {
@@ -187,8 +188,8 @@ class AIService {
           },
           settings: {
             model: this.config.get('model'),
-            temperature: 0.3,
-            maxTokens: 512,
+            temperature: 0.3, // 较低温度，更准确
+            maxTokens: 512,   // 适中token，专注于具体建议
             stream: true
           }
         }, controller.signal)
@@ -200,122 +201,70 @@ class AIService {
 
     } catch (error) {
       if (error.name === 'AbortError') {
-        log.debug('解释请求已取消')
+        log.debug('Agent请求已取消')
         return null
       }
-      
-      log.error('智能解释请求失败', error)
+
+      log.error('Agent模式请求失败', error)
       throw error
     }
   }
 
   /**
-   * 请求命令修复
+   * 请求AI交互对话 (兼容方法，路由到Chat模式)
+   * @param {Object} context 上下文信息
+   * @param {Object} options 选项
+   * @returns {Promise<Object>} 交互结果
+   */
+  async requestInteraction(context, options = {}) {
+    log.debug('使用兼容方法requestInteraction，路由到Chat模式')
+    return await this.requestChat(context, options)
+  }
+
+  /**
+   * 请求智能解释 (兼容方法，路由到Agent模式)
+   * @param {Object} context 上下文信息
+   * @param {Object} options 选项
+   * @returns {Promise<Object>} 解释结果
+   */
+  async requestExplanation(context, options = {}) {
+    log.debug('使用兼容方法requestExplanation，路由到Agent模式')
+    const agentContext = {
+      ...context,
+      operationType: 'explanation'
+    }
+    return await this.requestAgent(agentContext, options)
+  }
+
+  /**
+   * 请求命令修复 (兼容方法，路由到Agent模式)
    * @param {Object} context 上下文信息
    * @param {Object} options 选项
    * @returns {Promise<Object>} 修复建议
    */
   async requestFix(context, options = {}) {
-    if (!this.isEnabled) {
-      throw new Error('AI服务未启用')
+    log.debug('使用兼容方法requestFix，路由到Agent模式')
+    const agentContext = {
+      ...context,
+      operationType: 'fix',
+      errorDetected: true
     }
-
-    try {
-      const requestId = this.generateRequestId()
-      const controller = new AbortController()
-      this.activeRequests.set(requestId, controller)
-
-      try {
-        const result = await this.client.sendRequest({
-          type: 'ai_request',
-          requestId,
-          mode: 'fix',
-          input: {
-            prompt: context.prompt || '',
-            currentLine: context.currentLine || ''
-          },
-          context: {
-            terminalOutput: context.terminalOutput || '',
-            osHint: context.osHint || 'unknown',
-            shellHint: context.shellHint || 'unknown',
-            errorDetected: true
-          },
-          settings: {
-            model: this.config.get('model'),
-            temperature: 0.2,
-            maxTokens: 256,
-            stream: true
-          }
-        }, controller.signal)
-
-        return result
-      } finally {
-        this.activeRequests.delete(requestId)
-      }
-
-    } catch (error) {
-      if (error.name === 'AbortError') {
-        log.debug('修复请求已取消')
-        return null
-      }
-      
-      log.error('命令修复请求失败', error)
-      throw error
-    }
+    return await this.requestAgent(agentContext, options)
   }
 
   /**
-   * 请求脚本生成
+   * 请求脚本生成 (兼容方法，路由到Agent模式)
    * @param {Object} context 上下文信息
    * @param {Object} options 选项
    * @returns {Promise<Object>} 生成的脚本
    */
   async requestGeneration(context, options = {}) {
-    if (!this.isEnabled) {
-      throw new Error('AI服务未启用')
+    log.debug('使用兼容方法requestGeneration，路由到Agent模式')
+    const agentContext = {
+      ...context,
+      operationType: 'generation'
     }
-
-    try {
-      const requestId = this.generateRequestId()
-      const controller = new AbortController()
-      this.activeRequests.set(requestId, controller)
-
-      try {
-        const result = await this.client.sendRequest({
-          type: 'ai_request',
-          requestId,
-          mode: 'generation',
-          input: {
-            prompt: context.prompt || '',
-            description: context.description || ''
-          },
-          context: {
-            terminalOutput: context.terminalOutput || '',
-            osHint: context.osHint || 'unknown',
-            shellHint: context.shellHint || 'unknown'
-          },
-          settings: {
-            model: this.config.get('model'),
-            temperature: 0.4,
-            maxTokens: 1024,
-            stream: true
-          }
-        }, controller.signal)
-
-        return result
-      } finally {
-        this.activeRequests.delete(requestId)
-      }
-
-    } catch (error) {
-      if (error.name === 'AbortError') {
-        log.debug('生成请求已取消')
-        return null
-      }
-      
-      log.error('脚本生成请求失败', error)
-      throw error
-    }
+    return await this.requestAgent(agentContext, options)
   }
 
   /**

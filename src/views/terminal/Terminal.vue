@@ -35,7 +35,7 @@
           />
         </div>
 
-        <!-- 终端主体区域：监控面板 + 终端内容 -->
+        <!-- 终端主体区域：监控面板 + 终端内容 + AI输入栏 -->
         <div class="terminal-main-area">
           <!-- 桌面端监控面板 - 左侧 -->
           <div class="terminal-monitoring-panel"
@@ -48,13 +48,30 @@
             />
           </div>
 
-          <!-- 终端内容区域 -->
-          <div class="terminal-content-padding" :class="{ 'with-monitoring-panel': shouldShowDesktopMonitoringPanel(termId) }">
-            <div
-              :ref="el => setTerminalRef(el, termId)"
-              class="terminal-content"
-              :data-terminal-id="termId"
-            ></div>
+          <!-- 右侧内容区域：终端 + AI输入栏 -->
+          <div class="terminal-right-area" :class="{ 'with-monitoring-panel': shouldShowDesktopMonitoringPanel(termId) }">
+            <!-- 终端内容区域 -->
+            <div class="terminal-content-padding">
+              <div
+                :ref="el => setTerminalRef(el, termId)"
+                class="terminal-content"
+                :data-terminal-id="termId"
+              ></div>
+            </div>
+
+            <!-- AI输入栏 -->
+            <div class="terminal-ai-input-area" v-if="shouldShowAIInputBar(termId) && isActiveTerminal(termId)">
+              <AIInputBar
+                :terminal-id="termId"
+                :ai-service="getAIService()"
+                :is-mobile="isMobile()"
+                @ai-response="handleAIResponse"
+                @mode-change="handleAIModeChange"
+                @input-focus="handleAIInputFocus"
+                @input-blur="handleAIInputBlur"
+                @execute-command="handleExecuteCommand"
+              />
+            </div>
           </div>
         </div>
 
@@ -106,6 +123,8 @@ import log from '../../services/log'
 import ResponsiveMonitoringPanel from '../../components/monitoring/ResponsiveMonitoringPanel.vue'
 // 导入移动端监控抽屉组件
 import MobileMonitoringDrawer from '../../components/monitoring/MobileMonitoringDrawer.vue'
+// 导入AI输入栏组件
+import AIInputBar from '../../components/ai/AIInputBar.vue'
 
 // 导入会话存储
 import { useSessionStore } from '../../store/session'
@@ -117,6 +136,8 @@ import { waitForFontsLoaded } from '../../utils/fontLoader'
 import monitoringStateManager from '../../services/monitoringStateManager'
 // 导入监控状态管理器工厂
 import monitoringStateManagerFactory from '../../services/monitoringStateManagerFactory'
+// 导入AI服务
+import aiService from '../../services/ai/ai-service.js'
 
 export default {
   name: 'Terminal',
@@ -125,7 +146,8 @@ export default {
     TerminalToolbar, // 注册工具栏组件
     TerminalAutocomplete, // 注册自动完成组件
     ResponsiveMonitoringPanel, // 注册响应式监控面板组件
-    MobileMonitoringDrawer // 注册移动端监控抽屉组件
+    MobileMonitoringDrawer, // 注册移动端监控抽屉组件
+    AIInputBar // 注册AI输入栏组件
   },
   props: {
     id: {
@@ -168,6 +190,9 @@ export default {
     const monitoringDataCache = ref({})   // 每个终端的监控数据缓存
     const terminalStateManagers = ref({}) // 每个终端的状态管理器实例映射
     let cleanupMonitoringListener = null  // 监控数据监听器清理函数
+
+    // AI输入栏相关状态
+    const aiInputBarStates = ref({}) // 每个终端的AI输入栏显示状态
 
     // 每个终端的火箭动画阶段状态
     const terminalRocketPhases = ref({})
@@ -1262,6 +1287,8 @@ export default {
       return window.innerWidth < 768;
     }
 
+
+
     // 监控面板相关方法
     const shouldShowMonitoringPanel = (termId) => {
       // 如果没有设置过状态，则根据屏幕尺寸设置默认值
@@ -2084,7 +2111,279 @@ export default {
         window.removeEventListener('ssh-connection-failed', handleSSHConnectionFailed)
       }
     }
-    
+
+    // ===== AI输入栏相关方法 =====
+
+    /**
+     * 检查是否应该显示AI输入栏
+     * @param {string} termId 终端ID
+     * @returns {boolean} 是否显示AI输入栏
+     */
+    const shouldShowAIInputBar = (termId) => {
+      if (!termId) return false
+
+      // 检查AI服务是否可用
+      const aiService = getAIService()
+      if (!aiService || !aiService.isEnabled) return false
+
+      // 检查终端是否已连接
+      if (!terminalStore.hasTerminal(termId)) return false
+
+      // 检查用户设置（可以添加开关控制）
+      return aiInputBarStates.value[termId] !== false // 默认显示
+    }
+
+    /**
+     * 获取AI服务实例
+     * @returns {Object} AI服务实例
+     */
+    const getAIService = () => {
+      try {
+        return aiService
+      } catch (error) {
+        console.error('获取AI服务失败:', error)
+        return null
+      }
+    }
+
+    /**
+     * 处理AI响应
+     * @param {Object} response AI响应数据
+     */
+    const handleAIResponse = (response) => {
+      try {
+        if (response.success) {
+          // 将AI响应直接显示在终端中
+          displayAIResponseInTerminal(response)
+          log.info('AI响应成功', response)
+        } else {
+          // 处理错误响应
+          displayAIResponseInTerminal({
+            ...response,
+            content: `❌ 错误: ${response.content}`,
+            mode: 'error'
+          })
+          log.error('AI响应失败', response)
+        }
+      } catch (error) {
+        log.error('处理AI响应失败', { error: error.message })
+      }
+    }
+
+    /**
+     * 在终端中显示AI响应
+     * @param {Object} response AI响应数据
+     */
+    const displayAIResponseInTerminal = (response) => {
+      try {
+        const terminalId = activeConnectionId.value
+        if (!terminalId) return
+
+        const terminal = terminalStore.getTerminal(terminalId)
+        if (!terminal) return
+
+        // 获取模式图标和标题
+        const modeIcons = {
+          'chat': '💡',
+          'agent': '🤖',
+          'error': '❌'
+        }
+        const modeTitles = {
+          'chat': 'AI回答',
+          'agent': 'Agent分析',
+          'error': '错误'
+        }
+
+        const icon = modeIcons[response.mode] || '💡'
+        const title = modeTitles[response.mode] || 'AI响应'
+
+        // 在终端中显示响应
+        terminal.writeln('\r\n')
+        terminal.writeln(`╭─ ${icon} ${title} ─────────────────────────────────────────╮`)
+
+        // 处理响应内容，提取命令并添加运行提示
+        const { content: processedContent, commands } = processAIResponseContent(response.content, terminalId)
+
+        // 分行显示内容
+        const lines = processedContent.split('\n')
+        lines.forEach(line => {
+          if (line.trim()) {
+            terminal.writeln(`│ ${line}`)
+          } else {
+            terminal.writeln('│')
+          }
+        })
+
+        // 如果有命令，显示执行提示
+        if (commands && commands.length > 0) {
+          terminal.writeln('│')
+          terminal.writeln('│ 💡 提示: 复制上述命令到终端执行，或使用执行模式快速运行')
+        }
+
+        terminal.writeln('╰─────────────────────────────────────────────────────────╯')
+        terminal.writeln('\r\n')
+
+      } catch (error) {
+        log.error('在终端显示AI响应失败', { error: error.message })
+      }
+    }
+
+    /**
+     * 处理AI响应内容，为命令添加可执行的按钮
+     * @param {string} content 原始内容
+     * @param {string} terminalId 终端ID
+     * @returns {Object} {content: 处理后的内容, commands: 找到的命令列表}
+     */
+    const processAIResponseContent = (content, terminalId) => {
+      try {
+        // 匹配代码块中的命令 (```bash 或 ``` 包围的内容)
+        const codeBlockRegex = /```(?:bash|shell|sh)?\n?([\s\S]*?)```/g
+        // 匹配行内代码 (`command`)
+        const inlineCodeRegex = /`([^`\n]+)`/g
+
+        let processedContent = content
+        const commandsFound = []
+        let commandIndex = 0
+
+        // 处理代码块
+        processedContent = processedContent.replace(codeBlockRegex, (_, code) => {
+          const commands = code.trim().split('\n').filter(line => line.trim())
+          const processedCommands = commands.map(cmd => {
+            const cleanCmd = cmd.trim()
+            if (cleanCmd && !cleanCmd.startsWith('#') && !cleanCmd.startsWith('//')) {
+              const cmdId = `ai_cmd_${terminalId}_${commandIndex++}`
+              commandsFound.push({ id: cmdId, command: cleanCmd })
+              return `${cleanCmd} [执行 ⚡]`
+            }
+            return cleanCmd
+          }).join('\n')
+
+          return `\n${processedCommands}\n`
+        })
+
+        // 处理行内代码（简单命令）
+        processedContent = processedContent.replace(inlineCodeRegex, (match, code) => {
+          const cleanCmd = code.trim()
+          // 判断是否是命令（包含常见命令关键词）
+          const commandKeywords = ['ls', 'cd', 'mkdir', 'rm', 'cp', 'mv', 'cat', 'grep', 'find', 'ps', 'top', 'docker', 'git', 'npm', 'yarn', 'sudo', 'chmod', 'chown', 'systemctl', 'service', 'wget', 'curl', 'apt', 'yum', 'pip', 'node']
+          const isCommand = commandKeywords.some(keyword => cleanCmd.startsWith(keyword))
+
+          if (isCommand) {
+            const cmdId = `ai_cmd_${terminalId}_${commandIndex++}`
+            commandsFound.push({ id: cmdId, command: cleanCmd })
+            return `${cleanCmd} [执行 ⚡]`
+          }
+          return match
+        })
+
+        // 存储命令映射，用于后续点击处理
+        if (commandsFound.length > 0) {
+          if (!window.aiCommandMap) {
+            window.aiCommandMap = new Map()
+          }
+          commandsFound.forEach(({ id, command }) => {
+            window.aiCommandMap.set(id, { command, terminalId })
+          })
+        }
+
+        return {
+          content: processedContent,
+          commands: commandsFound
+        }
+      } catch (error) {
+        log.error('处理AI响应内容失败', { error: error.message })
+        return {
+          content: content,
+          commands: []
+        }
+      }
+    }
+
+    /**
+     * 处理AI模式变化
+     * @param {string} mode 新的AI模式
+     */
+    const handleAIModeChange = (mode) => {
+      try {
+        log.debug('AI模式切换', { mode })
+      } catch (error) {
+        log.error('处理AI模式变化失败', { error: error.message })
+      }
+    }
+
+    /**
+     * 处理AI输入框获得焦点
+     */
+    const handleAIInputFocus = () => {
+      try {
+        log.debug('AI输入框获得焦点')
+        // 可以在这里添加焦点处理逻辑
+      } catch (error) {
+        log.error('处理AI输入框焦点失败', { error: error.message })
+      }
+    }
+
+    /**
+     * 处理AI输入框失去焦点
+     */
+    const handleAIInputBlur = () => {
+      try {
+        log.debug('AI输入框失去焦点')
+        // 可以在这里添加失焦处理逻辑
+      } catch (error) {
+        log.error('处理AI输入框失焦失败', { error: error.message })
+      }
+    }
+
+    /**
+     * 处理执行命令
+     * @param {Object} data 命令数据 {terminalId, command}
+     */
+    const handleExecuteCommand = (data) => {
+      try {
+        const { terminalId, command } = data
+
+        log.debug('执行命令', { terminalId, command })
+
+        // 获取SSH会话ID
+        const sessionId = terminalStore.sessions[terminalId]
+        if (!sessionId) {
+          log.error('未找到SSH会话ID', { terminalId })
+          return
+        }
+
+        // 通过SSH服务获取会话
+        const session = sshService.sessions.get(sessionId)
+        if (!session) {
+          log.error('未找到SSH会话', { sessionId })
+          return
+        }
+
+        // 检查WebSocket连接状态
+        if (!session.socket || session.socket.readyState !== WebSocket.OPEN) {
+          log.error('SSH连接未就绪', { sessionId, readyState: session.socket?.readyState })
+          return
+        }
+
+        // 检查SSH连接状态
+        if (session.connectionState?.status !== 'connected') {
+          log.error('SSH会话未连接', { sessionId, status: session.connectionState?.status })
+          return
+        }
+
+        // 发送命令到SSH会话
+        sshService._processTerminalInput(session, command + '\r')
+
+        log.info('命令已发送到SSH会话', { terminalId, sessionId, command })
+      } catch (error) {
+        log.error('执行命令失败', { error: error.message })
+      }
+    }
+
+
+
+
+
     return {
       terminalIds,
       title,
@@ -2122,7 +2421,16 @@ export default {
       autocomplete,
       autocompleteRef,
       handleAutocompleteSelect,
-      handleAutocompleteClose
+      handleAutocompleteClose,
+      // AI输入栏相关
+      shouldShowAIInputBar,
+      getAIService,
+      handleAIResponse,
+      handleAIModeChange,
+      handleAIInputFocus,
+      handleAIInputBlur,
+      handleExecuteCommand,
+      isMobile
     }
   }
 }
@@ -2248,17 +2556,30 @@ export default {
 
 
 
+
+
+/* 右侧内容区域：终端 + AI输入栏 */
+.terminal-right-area {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+.terminal-right-area.with-monitoring-panel {
+  /* 当显示监控面板时，右侧区域自动调整宽度 */
+  width: calc(100% - 320px); /* 减去监控面板宽度 */
+}
+
 .terminal-content-padding {
   flex: 1;
-  /* 移除padding */
   box-sizing: border-box;
-  height: 100%; /* 占满主体区域高度 */
   width: 100%;
   position: relative;
-  /* 修改overflow为可见，让内部的xterm-viewport控制滚动 */
   overflow: visible;
-  /* 移除padding，改为在内部内容添加padding */
   padding: 0;
+  min-height: 0; /* 允许flex子项收缩 */
   /* 添加主题切换过渡效果 */
   transition:
     background-color 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94),
@@ -2268,9 +2589,16 @@ export default {
     box-shadow 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94);
 }
 
-.terminal-content-padding.with-monitoring-panel {
-  /* 当显示监控面板时，终端内容区域自动调整宽度 */
-  width: calc(100% - 320px); /* 减去监控面板宽度 */
+/* AI输入栏区域 */
+.terminal-ai-input-area {
+  flex-shrink: 0;
+  height: auto;
+  min-height: 80px;
+  max-height: 200px;
+  border-top: 1px solid var(--color-border-default);
+  background: var(--color-bg-container);
+  z-index: 10;
+  overflow: hidden;
 }
 
 /* 响应式设计 */
@@ -2284,16 +2612,21 @@ export default {
     display: none;
   }
 
-  .terminal-content-padding {
+  .terminal-right-area {
     width: 100%; /* 移动端占满全宽 */
     height: 100%; /* 移动端占满全高 */
-    flex: 1;
   }
 
-  .terminal-content-padding.with-monitoring-panel {
+  .terminal-right-area.with-monitoring-panel {
     /* 移动端即使有监控面板也占满全宽，因为使用抽屉模式 */
     width: 100%;
     height: 100%;
+  }
+
+  .terminal-ai-input-area {
+    /* 移动端AI输入栏调整 */
+    min-height: 70px;
+    max-height: 150px;
   }
 }
 
@@ -2303,9 +2636,15 @@ export default {
     display: none;
   }
 
-  .terminal-content-padding.with-monitoring-panel {
+  .terminal-right-area.with-monitoring-panel {
     /* 小屏幕占满全高 */
     height: 100%;
+  }
+
+  .terminal-ai-input-area {
+    /* 小屏幕AI输入栏进一步调整 */
+    min-height: 60px;
+    max-height: 120px;
   }
 }
 

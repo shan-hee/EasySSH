@@ -605,7 +605,7 @@
                     <span v-else class="status-badge disabled">未启用</span>
                   </div>
                   <div class="security-description">
-                    启用后可使用智能补全、解释和修复建议等功能
+                    启用后可使用Chat模式（自由对话）和Agent模式（智能助手）
                   </div>
                 </div>
                 <div class="security-action">
@@ -873,10 +873,8 @@ export default defineComponent({
       apiKey: '',
       model: '', // 移除默认模型，要求用户手动输入
       features: {
-        interaction: true,
-        explanation: true,
-        fix: true,
-        generation: true
+        chat: true,    // Chat模式 - 自由对话交流
+        agent: true    // Agent模式 - 智能助手分析
       },
       initialized: false
     })
@@ -1287,11 +1285,9 @@ export default defineComponent({
           // 禁用AI服务
           await aiService.disable()
           aiSettings.enabled = false
-          // 禁用AI时，同时禁用所有子功能
-          aiSettings.features.interaction = false
-          aiSettings.features.explanation = false
-          aiSettings.features.fix = false
-          aiSettings.features.generation = false
+          // 禁用AI时，同时禁用所有模式
+          aiSettings.features.chat = false
+          aiSettings.features.agent = false
           ElMessage.info('AI功能已禁用')
         } else {
           // 启用AI服务需要先有API配置
@@ -1302,12 +1298,10 @@ export default defineComponent({
 
           await aiService.enable(aiSettings)
           aiSettings.enabled = true
-          // 启用AI时，默认启用所有子功能
-          aiSettings.features.interaction = true
-          aiSettings.features.explanation = true
-          aiSettings.features.fix = true
-          aiSettings.features.generation = true
-          ElMessage.success('AI功能已启用，所有智能功能已开启')
+          // 启用AI时，默认启用所有模式
+          aiSettings.features.chat = true
+          aiSettings.features.agent = true
+          ElMessage.success('AI功能已启用，Chat模式和Agent模式已开启')
         }
 
         await saveAISettings()

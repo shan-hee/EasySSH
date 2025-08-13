@@ -47,10 +47,8 @@ class AIConfig {
       apiKey: '',
       model: '', // 移除默认模型，要求用户手动输入
       features: {
-        interaction: true,
-        explanation: true,
-        fix: true,
-        generation: true
+        chat: true,    // Chat模式 - 自由对话交流
+        agent: true    // Agent模式 - 智能助手分析
       }
     }
   }

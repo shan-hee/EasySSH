@@ -479,13 +479,12 @@ class OpenAIAdapter {
    */
   _getSystemPrompt(mode, context) {
     const basePrompt = "You are an expert shell assistant embedded in a web terminal. Be concise and helpful. Never execute commands yourself; only suggest.";
-    
+
     const modePrompts = {
-      completion: `${basePrompt} Your task is to provide command completion suggestions. Only output the text that should be appended to the current input. Do not repeat the existing prefix.`,
-      explanation: `${basePrompt} Your task is to explain terminal output, identify errors, and provide clear solutions.`,
-      fix: `${basePrompt} Your task is to provide specific commands to fix the identified problem. List commands with brief explanations.`,
-      generation: `${basePrompt} Your task is to generate shell scripts based on the user's description. Provide clean, commented code.`,
-      interaction: `${basePrompt} Your task is to have a natural conversation with the user about shell/terminal topics. Answer questions, provide guidance, and help with command-line tasks. Be conversational but informative.`
+      // 两种核心模式
+      chat: `${basePrompt} You are in Chat mode - engage in natural conversation with the user about technical topics, shell commands, system administration, and programming. Be conversational, informative, and helpful. Answer questions thoroughly and provide examples when appropriate.`,
+
+      agent: `${basePrompt} You are in Agent mode - act as an intelligent assistant that analyzes the terminal state and provides specific, actionable recommendations. Based on the terminal output and context, automatically determine what the user needs: explanation of output, error fixing, or script generation. Be precise and focused on practical solutions.`
     };
 
     return modePrompts[mode] || basePrompt;
@@ -519,11 +518,10 @@ class OpenAIAdapter {
 
     // 添加特定模式的指令
     const modeInstructions = {
-      completion: `Complete the command starting with: "${input.prefix || ''}"`,
-      explanation: "Explain the output and identify any issues.",
-      fix: "Provide commands to fix the identified problem.",
-      generation: `Generate a script for: ${input.prompt || input.currentLine}`,
-      interaction: `User question: ${input.question || input.prompt || input.currentLine}`
+      // 两种核心模式
+      chat: `User question: ${input.question || input.prompt || input.currentLine}`,
+
+      agent: this._buildAgentInstruction(input, context)
     };
 
     if (modeInstructions[mode]) {
@@ -531,6 +529,42 @@ class OpenAIAdapter {
     }
 
     return parts.join('\n\n');
+  }
+
+  /**
+   * 构建Agent模式的指令
+   * @param {Object} input 用户输入
+   * @param {Object} context 上下文
+   * @returns {string} Agent指令
+   */
+  _buildAgentInstruction(input, context) {
+    const operationType = input.operationType || 'auto';
+
+    if (operationType === 'auto') {
+      // 自动模式：让AI根据上下文判断需要什么操作
+      let instruction = "Analyze the terminal state and provide appropriate assistance. ";
+
+      if (context.metadata && context.metadata.errorDetected) {
+        instruction += "There appears to be an error - provide specific fix commands. ";
+      }
+
+      if (input.prompt) {
+        instruction += `User request: ${input.prompt}`;
+      } else {
+        instruction += "Explain the recent output and suggest next steps if needed.";
+      }
+
+      return instruction;
+    } else {
+      // 指定操作类型
+      const typeInstructions = {
+        explanation: "Explain the terminal output and identify any issues.",
+        fix: "Analyze the error and provide specific commands to fix the problem.",
+        generation: `Generate a shell script for: ${input.prompt || 'the requested task'}`
+      };
+
+      return typeInstructions[operationType] || "Provide assistance based on the terminal context.";
+    }
   }
 
   /**
