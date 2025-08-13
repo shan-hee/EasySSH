@@ -1,12 +1,12 @@
 <template>
-  <div class="terminal-container">
+  <div class="terminal-container theme-transition">
     <!-- 多终端容器 - 每个终端都有自己的容器，通过z-index和opacity控制显示/隐藏 -->
-    <div class="terminals-wrapper">
+    <div class="terminals-wrapper theme-transition">
       <!-- 为每个终端创建独立容器 -->
       <div
         v-for="termId in terminalIds"
         :key="termId"
-        class="terminal-content-wrapper"
+        class="terminal-content-wrapper theme-transition"
         :class="{
           'terminal-active': isActiveTerminal(termId),
           'terminal-ready': terminalInitialized[termId]
@@ -38,7 +38,7 @@
         <!-- 终端主体区域：监控面板 + 终端内容 + AI输入栏 -->
         <div class="terminal-main-area">
           <!-- 桌面端监控面板 - 左侧 -->
-          <div class="terminal-monitoring-panel"
+          <div class="terminal-monitoring-panel theme-transition"
                v-show="shouldShowDesktopMonitoringPanel(termId) && isActiveTerminal(termId)">
             <ResponsiveMonitoringPanel
               :visible="isMonitoringPanelVisible(termId)"
@@ -51,16 +51,16 @@
           <!-- 右侧内容区域：终端 + AI输入栏 -->
           <div class="terminal-right-area" :class="{ 'with-monitoring-panel': shouldShowDesktopMonitoringPanel(termId) }">
             <!-- 终端内容区域 -->
-            <div class="terminal-content-padding">
+            <div class="terminal-content-padding theme-transition">
               <div
                 :ref="el => setTerminalRef(el, termId)"
-                class="terminal-content"
+                class="terminal-content theme-transition"
                 :data-terminal-id="termId"
               ></div>
             </div>
 
             <!-- AI输入栏 -->
-            <div class="terminal-ai-input-area" v-if="shouldShowAIInputBar(termId) && isActiveTerminal(termId)">
+            <div class="terminal-ai-input-area theme-transition" v-if="shouldShowAIInputBar(termId) && isActiveTerminal(termId)">
               <AIInputBar
                 :terminal-id="termId"
                 :ai-service="getAIService()"
@@ -2437,6 +2437,16 @@ export default {
 </script>
 
 <style scoped>
+/* 定义通用的主题切换过渡效果 */
+.theme-transition {
+  transition:
+    background-color 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+    background 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+    border-color 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+    color 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+    box-shadow 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+
 .terminal-container {
   height: 100%;
   width: 100%;
@@ -2452,13 +2462,6 @@ export default {
   /* 添加容器定位 */
   display: flex;
   flex-direction: column;
-  /* 添加主题切换过渡效果 */
-  transition:
-    background-color 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94),
-    background 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94),
-    border-color 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94),
-    color 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94),
-    box-shadow 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94);
 }
 
 .terminals-wrapper {
@@ -2471,13 +2474,6 @@ export default {
   flex: 1;
   display: flex;
   flex-direction: column;
-  /* 添加主题切换过渡效果 */
-  transition:
-    background-color 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94),
-    background 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94),
-    border-color 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94),
-    color 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94),
-    box-shadow 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94);
 }
 
 .terminal-content-wrapper {
@@ -2503,13 +2499,6 @@ export default {
   /* 添加flex布局使工具栏和终端内容能垂直排列 */
   display: flex;
   flex-direction: column;
-  /* 添加主题切换过渡效果 */
-  transition:
-    background-color 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94),
-    background 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94),
-    border-color 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94),
-    color 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94),
-    box-shadow 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94);
 }
 
 .terminal-content-wrapper.terminal-active {
@@ -2549,12 +2538,10 @@ export default {
   max-width: 35vw; /* 最大不超过视口宽度的35% */
   height: 100%;
   overflow: hidden;
-  border-right: 1px solid var(--color-border-default, rgba(255, 255, 255, 0.1));
+  border-right: 1px solid var(--color-border-default);
+  /* 使用与主题切换一致的过渡效果 */
+  transition: border-color 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94);
 }
-
-/* 移除外层动画CSS，改为在ResponsiveMonitoringPanel内部控制 */
-
-
 
 
 
@@ -2580,13 +2567,6 @@ export default {
   overflow: visible;
   padding: 0;
   min-height: 0; /* 允许flex子项收缩 */
-  /* 添加主题切换过渡效果 */
-  transition:
-    background-color 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94),
-    background 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94),
-    border-color 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94),
-    color 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94),
-    box-shadow 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94);
 }
 
 /* AI输入栏区域 */
@@ -2655,13 +2635,6 @@ export default {
   /* 确保容器有明确的尺寸 */
   box-sizing: border-box;
   overflow: hidden;
-  /* 添加主题切换过渡效果 */
-  transition:
-    background-color 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94),
-    background 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94),
-    border-color 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94),
-    color 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94),
-    box-shadow 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94);
 }
 .connecting-overlay {
   position: absolute;
@@ -2688,20 +2661,11 @@ export default {
   width: 100% !important; /* 修改为100%，不要超出容器 */
   position: relative; /* 添加相对定位 */
   box-sizing: border-box;
-  /* 为xterm.js背景色添加过渡效果 */
-  transition: background-color 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94) !important;
 }
 
 :deep(.xterm-viewport) {
   overflow-y: auto !important;
   overflow-x: hidden;
-  /* position: absolute;
-  right: 0;
-  top: -20px !important;
-  bottom: -20px !important;
-  height: calc(100% + 40px);  */
-  /* 为xterm视口背景色添加过渡效果 */
-  transition: background-color 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94) !important;
 }
 
 /* 添加Webkit浏览器的滚动条样式 */
@@ -2723,8 +2687,6 @@ export default {
 :deep(.xterm-screen) {
   width: 100%;
   height: 100%;
-  /* 为xterm屏幕背景色添加过渡效果 */
-  transition: background-color 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94) !important;
 }
 
 /* 确保光标样式立即生效，避免闪烁 */

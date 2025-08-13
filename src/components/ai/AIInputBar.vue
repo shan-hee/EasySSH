@@ -360,7 +360,12 @@ watch(() => props.aiService?.isEnabled, (newValue) => {
   border-top: 1px solid var(--color-border-default);
   border-radius: 8px 8px 0 0;
   box-shadow: none;
-  transition: all 0.3s ease;
+  /* 使用与主题切换一致的过渡效果 */
+  transition:
+    border-color 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+    background-color 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+    color 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+    box-shadow 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94);
   height: 100%;
   max-height: 200px;
   overflow: hidden;
@@ -382,6 +387,11 @@ watch(() => props.aiService?.isEnabled, (newValue) => {
   /* border-bottom: 1px solid var(--color-border-default); */
   min-height: 28px;
   flex-shrink: 0;
+  /* 添加平滑的主题切换过渡效果 */
+  transition:
+    background-color 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+    border-color 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+    color 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94);
 }
 
 
@@ -396,6 +406,11 @@ watch(() => props.aiService?.isEnabled, (newValue) => {
   gap: 8px;
   flex: 1;
   min-height: 0;
+  /* 添加平滑的主题切换过渡效果 */
+  transition:
+    background-color 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+    border-color 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+    color 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94);
 }
 
 .ai-input-area {
@@ -428,19 +443,25 @@ watch(() => props.aiService?.isEnabled, (newValue) => {
   font-size: 13px !important;
   line-height: 1.4 !important;
   resize: none !important;
-  transition: none !important;
+  /* 添加平滑的主题切换过渡效果 */
+  transition:
+    border-color 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+    background-color 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+    color 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94) !important;
   box-shadow: none !important;
 }
 
 .ai-input-field :deep(.el-textarea__inner):hover:not(:focus) {
   border-color: var(--color-border-default) !important;
   box-shadow: none !important;
+  /* 继承过渡效果 */
 }
 
 .ai-input-field :deep(.el-textarea__inner):focus {
   border-color: var(--color-primary) !important;
   box-shadow: none !important;
   outline: none !important;
+  /* 继承过渡效果 */
 }
 
 /* 字数统计样式 */
@@ -448,6 +469,8 @@ watch(() => props.aiService?.isEnabled, (newValue) => {
   font-size: 11px;
   color: var(--color-text-secondary);
   white-space: nowrap;
+  /* 添加平滑的主题切换过渡效果 */
+  transition: color 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94);
 }
 
 /* 内置发送按钮 - 纯图标样式 */
@@ -463,7 +486,11 @@ watch(() => props.aiService?.isEnabled, (newValue) => {
   justify-content: center;
   padding: 4px;
   border-radius: 4px;
-  transition: all 0.2s ease;
+  /* 结合主题切换和交互过渡效果 */
+  transition:
+    background-color 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+    color 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+    opacity 0.2s ease;
 }
 
 .ai-send-button-inline:hover:not(.disabled) {
@@ -477,7 +504,10 @@ watch(() => props.aiService?.isEnabled, (newValue) => {
 
 .send-icon {
   color: var(--color-primary);
-  transition: all 0.2s ease;
+  /* 结合主题切换和交互过渡效果 */
+  transition:
+    color 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+    transform 0.2s ease;
 }
 
 .send-icon:hover {
@@ -488,6 +518,8 @@ watch(() => props.aiService?.isEnabled, (newValue) => {
 .send-icon-disabled {
   color: var(--color-text-disabled) !important;
   cursor: not-allowed !important;
+  /* 添加平滑的主题切换过渡效果 */
+  transition: color 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94) !important;
 }
 
 .send-icon-disabled:hover {
@@ -496,6 +528,8 @@ watch(() => props.aiService?.isEnabled, (newValue) => {
 
 .loading-icon {
   color: var(--color-primary);
+  /* 添加平滑的主题切换过渡效果 */
+  transition: color 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94);
 }
 
 /* 模式按钮样式 - 现在在顶部 */
@@ -503,6 +537,10 @@ watch(() => props.aiService?.isEnabled, (newValue) => {
   display: flex;
   justify-content: center;
   margin-bottom: 4px;
+  /* 添加平滑的主题切换过渡效果 */
+  transition:
+    background-color 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+    color 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94);
 }
 
 .ai-mode-buttons :deep(.el-button-group) {
@@ -517,6 +555,11 @@ watch(() => props.aiService?.isEnabled, (newValue) => {
   font-size: 11px;
   padding: 2px 6px;
   height: 24px;
+  /* 为Element Plus按钮添加平滑的主题切换过渡效果 */
+  transition:
+    background-color 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94) !important,
+    border-color 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94) !important,
+    color 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94) !important;
 }
 
 .send-icon {
