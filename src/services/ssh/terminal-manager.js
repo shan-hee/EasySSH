@@ -78,9 +78,61 @@ class TerminalManager {
     const fitAddon = new FitAddon();
     terminal.loadAddon(fitAddon);
     
-    // 添加WebLinksAddon以支持链接点击
+    // 添加WebLinksAddon以支持普通链接点击
     const webLinksAddon = new WebLinksAddon();
     terminal.loadAddon(webLinksAddon);
+
+    // 注册自定义AI命令链接提供器
+    terminal.registerLinkProvider({
+      provideLinks: (bufferLineNumber, callback) => {
+        console.log(`[Debug] provideLinks called for line: ${bufferLineNumber}`);
+        const line = terminal.buffer.active.getLine(bufferLineNumber);
+        if (!line) {
+          callback([]);
+          return;
+        }
+
+        const lineText = line.translateToString();
+        const links = [];
+
+        // 匹配 [执行:cmdId] 格式
+        const linkRegex = /\[执行:([^\]]+)\]/g;
+        let match;
+
+        while ((match = linkRegex.exec(lineText)) !== null) {
+          console.log('[Debug] Match found!', match);
+          const cmdId = match[1];
+          const startIndex = match.index;
+          const endIndex = match.index + match[0].length;
+
+          const startX = startIndex + 1;
+          const endX = startIndex + length; // 结束坐标
+
+          const linkObject = {
+        range: {
+          start: { x: startX, y: bufferLineNumber },
+          end: { x: endX, y: bufferLineNumber }
+        },
+        text: match[0],
+        activate: () => {
+          this._handleAICommandClick(cmdId, sessionId);
+        },
+        decorations: {
+          pointer: true,
+          underline: false,
+          hover: { underline: true }
+        }
+      };
+
+      // 日志 3: 检查生成的 link 对象是否正确
+      console.log('[Debug] Pushing link object:', linkObject);
+
+      links.push(linkObject);
+        };
+        
+        callback(links);
+      }
+    });
 
     // 添加ClipboardAddon以支持复制粘贴
     const clipboardAddon = new ClipboardAddon();
@@ -746,6 +798,93 @@ class TerminalManager {
         errorFeedback.parentNode.removeChild(errorFeedback);
       }
     }, ERROR_FEEDBACK_DURATION);
+  }
+
+  /**
+   * 设置AI链接装饰
+   * @param {Terminal} terminal - 终端实例
+   * @param {string} sessionId - 会话ID
+   */
+  _setupAILinkDecorations(terminal, sessionId) {
+    // 存储装饰器引用
+    if (!this.linkDecorations) {
+      this.linkDecorations = new Map();
+    }
+    this.linkDecorations.set(sessionId, new Map());
+  }
+
+  /**
+   * 添加或移除链接装饰
+   * @param {Terminal} terminal - 终端实例
+   * @param {number} line - 行号
+   * @param {number} startX - 开始列
+   * @param {number} endX - 结束列
+   * @param {boolean} isHover - 是否为悬浮状态
+   */
+  _addLinkDecoration(terminal, line, startX, endX, isHover) {
+    try {
+      const decorationKey = `${line}-${startX}-${endX}`;
+      const sessionDecorations = this.linkDecorations.get(terminal._sessionId);
+
+      if (!sessionDecorations) return;
+
+      // 移除现有装饰
+      if (sessionDecorations.has(decorationKey)) {
+        const decoration = sessionDecorations.get(decorationKey);
+        decoration.dispose();
+        sessionDecorations.delete(decorationKey);
+      }
+
+      // 添加新装饰（如果需要）
+      if (isHover) {
+        const decoration = terminal.registerDecoration({
+          marker: {
+            range: {
+              start: { x: startX, y: line },
+              end: { x: endX, y: line }
+            }
+          },
+          backgroundColor: 'transparent',
+          foregroundColor: '#0066cc', // 蓝色
+          fontStyle: 'italic',
+          textDecoration: 'underline'
+        });
+
+        if (decoration) {
+          sessionDecorations.set(decorationKey, decoration);
+        }
+      }
+    } catch (error) {
+      log.warn('添加链接装饰失败:', error);
+    }
+  }
+
+  /**
+   * 处理AI命令链接点击
+   * @param {string} cmdId - 命令ID
+   * @param {string} sessionId - 会话ID
+   */
+  _handleAICommandClick(cmdId, sessionId) {
+    try {
+      // 从全局命令映射中获取命令
+      if (window.aiCommandMap && window.aiCommandMap.has(cmdId)) {
+        const { command, terminalId } = window.aiCommandMap.get(cmdId);
+
+        // 确保是正确的终端
+        if (terminalId === sessionId && this.terminals.has(sessionId)) {
+          const terminal = this.terminals.get(sessionId);
+
+          // 发送命令到终端
+          terminal.write('\r\n');
+          terminal.write(command);
+          terminal.write('\r');
+
+          log.info(`执行AI命令: ${command}`);
+        }
+      }
+    } catch (error) {
+      log.error('处理AI命令点击失败:', error);
+    }
   }
 
   /**

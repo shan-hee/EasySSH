@@ -2199,7 +2199,6 @@ export default {
 
         // 在终端中显示响应
         terminal.writeln('\r\n')
-        terminal.writeln(`╭─ ${icon} ${title} ─────────────────────────────────────────╮`)
 
         // 处理响应内容，提取命令并添加运行提示
         const { content: processedContent, commands } = processAIResponseContent(response.content, terminalId)
@@ -2208,19 +2207,12 @@ export default {
         const lines = processedContent.split('\n')
         lines.forEach(line => {
           if (line.trim()) {
-            terminal.writeln(`│ ${line}`)
+            terminal.writeln(line)
           } else {
-            terminal.writeln('│')
+            terminal.writeln('')
           }
         })
 
-        // 如果有命令，显示执行提示
-        if (commands && commands.length > 0) {
-          terminal.writeln('│')
-          terminal.writeln('│ 💡 提示: 复制上述命令到终端执行，或使用执行模式快速运行')
-        }
-
-        terminal.writeln('╰─────────────────────────────────────────────────────────╯')
         terminal.writeln('\r\n')
 
       } catch (error) {
@@ -2253,7 +2245,7 @@ export default {
             if (cleanCmd && !cleanCmd.startsWith('#') && !cleanCmd.startsWith('//')) {
               const cmdId = `ai_cmd_${terminalId}_${commandIndex++}`
               commandsFound.push({ id: cmdId, command: cleanCmd })
-              return `${cleanCmd} [执行 ⚡]`
+              return `${cleanCmd} [执行:${cmdId}]`
             }
             return cleanCmd
           }).join('\n')
@@ -2271,7 +2263,7 @@ export default {
           if (isCommand) {
             const cmdId = `ai_cmd_${terminalId}_${commandIndex++}`
             commandsFound.push({ id: cmdId, command: cleanCmd })
-            return `${cleanCmd} [执行 ⚡]`
+            return `${cleanCmd} [执行:${cmdId}]`
           }
           return match
         })
@@ -2709,5 +2701,29 @@ export default {
 /* 强制应用光标样式 */
 :deep(.xterm.focus .xterm-cursor) {
   transition: none !important;
+}
+
+/* AI命令链接样式 */
+:deep(.xterm-decoration-overview-ruler) {
+  display: none;
+}
+
+/* 终端中的链接样式 */
+:deep(.xterm-link) {
+  color: var(--color-primary) !important;
+  font-style: italic !important;
+  text-decoration: none !important;
+  cursor: pointer !important;
+  transition: all 0.2s ease !important;
+}
+
+:deep(.xterm-link:hover) {
+  text-decoration: underline !important;
+  color: var(--color-primary-hover) !important;
+}
+
+/* 确保AI命令链接有正确的样式 */
+:deep(.xterm-rows .xterm-link) {
+  background: transparent !important;
 }
 </style> 
