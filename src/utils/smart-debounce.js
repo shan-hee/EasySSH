@@ -138,19 +138,19 @@ export class SmartDebounce {
     const timeSpan = history[history.length - 1].timestamp - history[0].timestamp
     const frequency = history.length / (timeSpan / 1000) // 每秒调用次数
     
-    // 自适应调整策略
+    // 自适应调整策略 - 优化版本
     let adaptiveDelay = this.defaultDelay
-    
-    // 如果执行时间长，增加延迟
+
+    // 如果执行时间长，适度增加延迟
     if (avgExecutionTime > 100) {
-      adaptiveDelay *= 1.5
+      adaptiveDelay *= 1.3 // 降低倍数
     }
-    
-    // 如果调用频率高，增加延迟
-    if (frequency > 5) {
-      adaptiveDelay *= 1.2
-    } else if (frequency < 1) {
-      adaptiveDelay *= 0.8
+
+    // 如果调用频率高，适度增加延迟；频率低时更积极地减少延迟
+    if (frequency > 8) { // 提高阈值
+      adaptiveDelay *= 1.1 // 降低倍数
+    } else if (frequency < 2) { // 提高阈值
+      adaptiveDelay *= 0.7 // 更积极地减少延迟
     }
     
     this.adaptiveDelays.set(key, adaptiveDelay)

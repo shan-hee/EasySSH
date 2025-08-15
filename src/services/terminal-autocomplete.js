@@ -38,11 +38,11 @@ class TerminalAutocompleteService {
       onPositionUpdate: null
     }
 
-    // 智能防抖系统
+    // 智能防抖系统 - 优化配置
     this.smartDebounce = new SmartDebounce({
       defaultDelay: autocompleteConfig.debounceDelay,
       minDelay: 0,
-      maxDelay: 500,
+      maxDelay: 300, // 降低最大延迟
       enableAdaptive: true,
       enablePriority: true
     })
@@ -59,14 +59,15 @@ class TerminalAutocompleteService {
       }
     )
 
-    // 高优先级防抖函数（用于删除操作）
+    // 高优先级防抖函数（用于删除操作）- 优化为零延迟
     this.debouncedUpdateHighPriority = this.smartDebounce.create(
       this.updateSuggestions.bind(this),
       {
         key: 'updateSuggestionsHighPriority',
-        delay: 20,
+        delay: 0,
         priority: 2,
-        adaptive: false
+        adaptive: false,
+        immediate: true
       }
     )
 
@@ -218,14 +219,18 @@ class TerminalAutocompleteService {
       case 8:   // Backspace
       case 127: // DEL
         const needsUpdate = this.handleBackspace()
+
+        // 优化：如果不需要更新建议，直接返回，避免不必要的处理
+        if (!needsUpdate) {
+          return false
+        }
+
         // 获取删除后的当前单词
         const currentWord = this.getCurrentWord()
 
-        // 如果需要更新建议（删除前补全框是激活的）或者补全框未激活但满足条件
+        // 如果需要更新建议且当前单词满足条件，立即更新
         if (currentWord && currentWord.length >= this.config.minInputLength) {
-          if (needsUpdate || !this.isActive) {
-            this.debouncedUpdateHighPriority(currentWord, terminal)
-          }
+          this.debouncedUpdateHighPriority(currentWord, terminal)
         }
         break
 
@@ -270,7 +275,7 @@ class TerminalAutocompleteService {
   }
 
   /**
-   * 处理退格键
+   * 处理退格键 - 优化版本
    */
   handleBackspace() {
     if (this.inputBuffer.length > 0) {
@@ -280,10 +285,10 @@ class TerminalAutocompleteService {
     // 获取当前单词
     const currentWord = this.getCurrentWord()
 
-    // 如果当前单词为空或太短，隐藏建议
+    // 如果当前单词为空或太短，立即隐藏建议
     if (!currentWord || currentWord.length < this.config.minInputLength) {
       this.hideSuggestions()
-      return
+      return false
     }
 
     // 如果补全框当前是激活状态，需要重新计算建议
@@ -291,6 +296,8 @@ class TerminalAutocompleteService {
       // 重新计算建议，确保建议与当前输入匹配
       return true // 返回true表示需要在外部重新计算建议
     }
+
+    return false
   }
 
   /**

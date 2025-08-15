@@ -1589,7 +1589,26 @@ export default {
 
     // 在组件卸载时清理
     onBeforeUnmount(() => {
-      // 移除事件监听
+      log.debug('离开终端路由，隐藏终端')
+
+      // 1. 首先停止所有键盘事件监听，防止在销毁过程中触发新的操作
+      document.removeEventListener('keydown', handleGlobalKeydown, true)
+
+      // 2. 清理自动完成服务，停止所有防抖任务
+      terminalAutocompleteService.destroy()
+
+      // 3. 安全地断开ResizeObserver
+      if (resizeObserver) {
+        resizeObserver.disconnect()
+        resizeObserver = null
+      }
+
+      // 4. 清理所有状态管理器实例
+      Object.keys(terminalStateManagers.value).forEach(termId => {
+        cleanupTerminalStateManager(termId)
+      })
+
+      // 5. 移除其他事件监听
       if (cleanupEvents) cleanupEvents()
       if (cleanupSSHFailureEvents) cleanupSSHFailureEvents()
       if (cleanupMonitoringListener) cleanupMonitoringListener()
@@ -1597,22 +1616,6 @@ export default {
       window.removeEventListener('terminal:session-change', handleSessionChange)
       window.removeEventListener('terminal-theme-update', handleTerminalThemeUpdate)
       window.removeEventListener('terminal-settings-updated', handleTerminalSettingsUpdate)
-      // window.removeEventListener('terminal:refresh-status', handleTerminalRefreshStatus)
-      document.removeEventListener('keydown', handleGlobalKeydown, true)
-
-      // 安全地断开ResizeObserver
-      if (resizeObserver) {
-        resizeObserver.disconnect()
-        resizeObserver = null
-      }
-
-      // 清理自动完成服务
-      terminalAutocompleteService.destroy()
-
-      // 清理所有状态管理器实例
-      Object.keys(terminalStateManagers.value).forEach(termId => {
-        cleanupTerminalStateManager(termId)
-      })
 
       // 保持会话不关闭，但停止特定组件的监听
       log.debug('终端组件卸载，保留会话')

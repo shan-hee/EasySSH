@@ -1165,11 +1165,11 @@ class SSHService {
       log.error('关闭会话失败: 未提供会话ID');
       return false;
     }
-    
-    log.info(`准备关闭会话: ${sessionId}`);
-    
+
+    log.info(`关闭SSH会话: ${sessionId}`);
+
     if (!this.sessions.has(sessionId)) {
-      log.warn(`会话 ${sessionId} 不存在，可能已关闭`);
+      log.debug(`会话 ${sessionId} 不存在，可能已关闭`);
       return true;
     }
     
@@ -1189,35 +1189,34 @@ class SSHService {
             });
             session.socket.send(JSON.stringify(disconnectMessage));
           } catch (sendError) {
-            log.warn(`发送断开请求失败: ${sessionId}`, sendError);
+            log.debug(`发送断开请求失败: ${sessionId}`, sendError);
           }
         }
-        
+
         try {
           if (session.socket.readyState !== WS_CONSTANTS.CLOSED) {
             log.debug(`关闭WebSocket连接: ${sessionId}`);
             session.socket.close();
           }
         } catch (closeError) {
-          log.warn(`关闭WebSocket连接失败: ${sessionId}`, closeError);
+          log.debug(`关闭WebSocket连接失败: ${sessionId}`, closeError);
         }
       }
       
       if (typeof session.onClose === 'function') {
         try {
-          log.debug(`执行会话关闭回调: ${sessionId}`);
           session.onClose();
         } catch (callbackError) {
-          log.warn(`执行会话关闭回调失败: ${sessionId}`, callbackError);
+          log.debug(`执行会话关闭回调失败: ${sessionId}`, callbackError);
         }
       }
-      
+
       if (session.destroy && typeof session.destroy === 'function') {
         try {
           log.debug(`销毁会话终端: ${sessionId}`);
           session.destroy();
         } catch (destroyError) {
-          log.warn(`销毁会话终端失败: ${sessionId}`, destroyError);
+          log.debug(`销毁会话终端失败: ${sessionId}`, destroyError);
         }
       }
       
@@ -1229,8 +1228,8 @@ class SSHService {
       log.debug(`彻底释放会话资源: ${sessionId}`);
       this.releaseResources(sessionId);
     }
-    
-    log.info(`SSH会话 ${sessionId} 已${closeSuccess ? '成功' : '尝试'}关闭`);
+
+    log.info(`SSH会话已关闭: ${sessionId}`);
     return closeSuccess;
   }
   

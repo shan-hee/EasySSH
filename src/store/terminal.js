@@ -699,16 +699,13 @@ export const useTerminalStore = defineStore('terminal', () => {
   const disconnectTerminal = async (connectionId) => {
     try {
       log.info(`准备断开终端连接: ${connectionId}`)
-      const disconnectStartTime = performance.now()
-      
+
       // 获取会话ID
       const sessionId = state.sessions[connectionId]
       if (!sessionId) {
-        log.warn(`断开终端连接: 找不到会话ID，连接ID=${connectionId}`)
+        log.debug(`断开终端连接: 找不到会话ID，连接ID=${connectionId}`)
         return false
       }
-      
-      log.info(`关闭SSH会话: ${sessionId}`)
       
       // 关闭SSH会话
       try {
@@ -739,26 +736,26 @@ export const useTerminalStore = defineStore('terminal', () => {
             delete state.sessions[connectionId];
             delete state.connectionStatus[connectionId];
             delete state.fitAddons[connectionId];
-            log.info(`已清理无效终端的状态: ${connectionId}`);
+            log.debug(`已清理无效终端的状态: ${connectionId}`);
             return true;
           } else if (typeof terminal !== 'object') {
-            log.warn(`终端实例类型无效，类型: ${typeof terminal}`);
+            log.debug(`终端实例类型无效，类型: ${typeof terminal}`);
             // 清理状态
             delete state.terminals[connectionId];
             delete state.sessions[connectionId];
             delete state.connectionStatus[connectionId];
             delete state.fitAddons[connectionId];
-            log.info(`已清理类型无效的终端状态: ${connectionId}`);
+            log.debug(`已清理类型无效的终端状态: ${connectionId}`);
             return true;
           }
-          
+
           // 优化终端结构检测和处理
           if (terminal.terminal && typeof terminal.terminal === 'object') {
             // 标准终端结构处理
-            log.info('检测到标准终端结构，使用安全销毁流程')
-            
+            log.debug('检测到标准终端结构，使用安全销毁流程')
+
             // 处理标准终端结构的代码保持不变...
-          } 
+          }
           // 简化检测逻辑，统一处理其他类型终端
           else {
             log.info('检测到终端对象，执行通用销毁流程')
@@ -856,9 +853,9 @@ export const useTerminalStore = defineStore('terminal', () => {
               } catch (e) {
                 // 更精确的错误处理
                 if (e.message.includes("Cannot read properties of undefined")) {
-                  log.info('忽略未初始化属性访问');
+                  log.debug('忽略未初始化属性访问');
                 } else {
-                  log.warn('清理终端内部资源时遇到非致命错误:', e.message);
+                  log.debug('清理终端内部资源时遇到非致命错误:', e.message);
                 }
               }
               
@@ -926,7 +923,7 @@ export const useTerminalStore = defineStore('terminal', () => {
               
               fitAddon.dispose();
             } catch (e) {
-              log.info(`FitAddon销毁出错，继续处理:`, e.message);
+              log.debug(`FitAddon销毁出错，继续处理:`, e.message);
             }
           }
         } catch (e) {
@@ -961,7 +958,7 @@ export const useTerminalStore = defineStore('terminal', () => {
       
       // 如果有任何资源未释放，再次尝试清理
       if (Object.values(resourceCheck).some(v => v)) {
-        log.warn(`检测到未完全释放的资源，再次清理: ${connectionId}`);
+        log.debug(`检测到未完全释放的资源，再次清理: ${connectionId}`);
         for (const key in resourceCheck) {
           if (resourceCheck[key]) {
             state[key === 'fitAddon' ? 'fitAddons' : key + 's'][connectionId] = null;
@@ -978,8 +975,7 @@ export const useTerminalStore = defineStore('terminal', () => {
         detail: { terminalId: connectionId }
       }));
       
-      const disconnectTime = performance.now() - disconnectStartTime;
-      log.info(`终端连接断开完成: ${connectionId}，耗时: ${disconnectTime.toFixed(2)}ms`);
+      log.info(`终端 ${connectionId} 断开成功`);
       return true;
     } catch (error) {
       log.error(`断开终端连接失败: ${connectionId}`, error);

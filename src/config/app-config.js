@@ -48,7 +48,7 @@ export const uiConfig = {
 export const autocompleteConfig = {
   minInputLength: 1,               // 最小输入长度
   maxSuggestions: 8,               // 最大建议数量
-  debounceDelay: 50,               // 防抖延迟：50ms
+  debounceDelay: 30,               // 防抖延迟：30ms（优化后）
 
   // 智能混合补全配置
   enableWordCompletion: true,      // 启用单词补全

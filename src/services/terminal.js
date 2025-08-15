@@ -954,8 +954,8 @@ class TerminalService {
       log.warn(`尝试销毁不存在的终端: ${id}`)
       return
     }
-    
-    log.debug(`销毁终端 ${id}`)
+
+    log.info(`销毁终端实例: ${id}`)
 
     try {
       // 清理性能监视器
@@ -966,7 +966,7 @@ class TerminalService {
 
       // 清理事件监听器 - 防止内存泄漏
       if (term.terminal && term.terminal._eventListeners) {
-        log.debug(`清理终端 ${id} 的 ${term.terminal._eventListeners.length} 个事件监听器`);
+        const listenerCount = term.terminal._eventListeners.length;
 
         term.terminal._eventListeners.forEach(({ type, element, handler, listener }) => {
           try {
@@ -978,11 +978,14 @@ class TerminalService {
               listener.dispose();
             }
           } catch (error) {
-            log.warn(`清理终端 ${id} 事件监听器 ${type} 失败:`, error);
+            log.debug(`清理终端 ${id} 事件监听器 ${type} 失败:`, error);
           }
         });
 
         term.terminal._eventListeners = [];
+        if (listenerCount > 0) {
+          log.debug(`已清理 ${listenerCount} 个事件监听器`);
+        }
       }
 
       // 恢复原始的write方法
@@ -1004,13 +1007,27 @@ class TerminalService {
       // 安全地销毁终端实例
       if (term.terminal) {
         try {
-          log.debug(`开始安全销毁终端 ${id} 实例`);
+          log.info(`检测到终端对象，执行通用销毁流程`);
 
           // 创建安全的内部销毁函数
           const safeDestroyTerminalAndAddons = () => {
-            // 1. 首先确保清理 addons 对象中的所有引用
+            // 0. 首先停止终端的所有异步操作
+            try {
+              // 停止终端的焦点处理
+              if (term.terminal.element) {
+                term.terminal.element.blur();
+              }
+              // 停止终端的渲染循环
+              if (term.terminal._core && term.terminal._core._renderService) {
+                term.terminal._core._renderService._isPaused = true;
+              }
+            } catch (stopError) {
+              log.debug(`停止终端异步操作时出错: ${stopError.message}`);
+            }
+
+            // 1. 然后清理 addons 对象中的所有引用
             if (term.addons) {
-              log.debug(`销毁终端 ${id} 的 ${Object.keys(term.addons).length} 个插件`);
+              const addonCount = Object.keys(term.addons).length;
 
               // 创建插件列表副本
               const addonEntries = Object.entries(term.addons).filter(([_, addon]) => !!addon);
@@ -1024,6 +1041,27 @@ class TerminalService {
               for (const [name, addon] of addonEntries) {
                 try {
                   if (addon && typeof addon === 'object' && typeof addon.dispose === 'function') {
+                    // 特殊处理WebGL插件，确保停止所有渲染循环
+                    if (name === 'webgl' && addon._core) {
+                      try {
+                        // 停止光标闪烁动画
+                        if (addon._core._cursorBlinkStateManager) {
+                          addon._core._cursorBlinkStateManager.pause();
+                        }
+                        // 停止渲染循环
+                        if (addon._core._renderService) {
+                          addon._core._renderService._isPaused = true;
+                        }
+                        // 清理WebGL上下文
+                        if (addon._core._gl) {
+                          const gl = addon._core._gl;
+                          gl.getExtension('WEBGL_lose_context')?.loseContext();
+                        }
+                      } catch (webglError) {
+                        log.debug(`WebGL插件特殊清理失败: ${webglError.message}`);
+                      }
+                    }
+
                     // 包装dispose方法以安全处理可能的错误
                     const originalDispose = addon.dispose;
                     addon.dispose = function() {
@@ -1039,11 +1077,14 @@ class TerminalService {
                       }
                     };
                     addon.dispose();
-                    log.debug(`终端 ${id} 的插件 ${name} 已销毁`);
                   }
                 } catch (e) {
-                  log.warn(`终端 ${id} 安全包装插件 ${name} 时出错: ${e.message}`);
+                  log.debug(`插件 ${name} 销毁时出错: ${e.message}`);
                 }
+              }
+
+              if (addonCount > 0) {
+                log.debug(`已销毁 ${addonCount} 个插件`);
               }
             }
             
@@ -1099,19 +1140,16 @@ class TerminalService {
                 // 清理可能的事件监听器
                 try {
                   if (term.terminal._core._events) {
-                    log.debug(`清理终端 ${id} 的事件监听器`);
                     for (const eventName in term.terminal._core._events) {
                       term.terminal._core._events[eventName] = null;
                     }
                   }
                 } catch (eventsError) {
-                  log.warn(`清理终端 ${id} 事件监听器失败: ${eventsError.message}`);
+                  log.debug(`清理事件监听器失败: ${eventsError.message}`);
                 }
-
-                log.debug(`终端 ${id} 的核心插件管理器已清理`);
               }
             } catch (coreManagerError) {
-              log.warn(`终端 ${id} 清理核心插件管理器失败: ${coreManagerError.message}`);
+              log.debug(`清理核心插件管理器失败: ${coreManagerError.message}`);
             }
             
             // 3. 安全地销毁终端实例
@@ -1125,24 +1163,26 @@ class TerminalService {
                   } catch (e) {
                     // 特别处理"addon has not been loaded"错误
                     if (e.message && e.message.includes("addon that has not been loaded")) {
-                      log.debug(`忽略终端实例销毁时的插件未加载错误`);
+                      log.debug(`忽略插件未加载错误`);
                     } else {
-                      log.warn(`安全忽略终端实例销毁错误: ${e.message}`);
+                      log.debug(`忽略终端销毁错误: ${e.message}`);
                     }
                   }
                 };
                 term.terminal.dispose();
-                log.debug(`终端 ${id} 实例已销毁`);
+                log.info(`调用终端dispose方法`);
               } else {
-                log.warn(`终端 ${id} 实例缺少dispose方法`);
+                log.debug(`终端实例缺少dispose方法`);
               }
             } catch (disposeError) {
-              log.warn(`终端 ${id} 实例最终销毁尝试失败: ${disposeError.message}`);
+              log.debug(`终端实例销毁失败: ${disposeError.message}`);
             }
           };
           
-          // 执行安全销毁
-          safeDestroyTerminalAndAddons();
+          // 执行安全销毁 - 使用微任务确保异步操作完成
+          setTimeout(() => {
+            safeDestroyTerminalAndAddons();
+          }, 0);
           
           // 帮助垃圾回收
           setTimeout(() => {
@@ -1162,16 +1202,16 @@ class TerminalService {
           }, 100);
           
         } catch (termError) {
-          log.warn(`终端 ${id} 销毁过程中发生错误: ${termError.message}`);
+          log.debug(`终端销毁过程中发生错误: ${termError.message}`);
         }
       }
-      
+
       // 移除活动终端ID
       if (this.activeTerminalId.value === id) {
         this.activeTerminalId.value = null
       }
 
-      log.debug(`销毁终端 ${id} 成功`)
+      log.info(`终端实例已尝试销毁: ${id}`)
     } catch (error) {
       log.error(`销毁终端 ${id} 失败`, error)
     }
