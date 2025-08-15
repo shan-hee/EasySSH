@@ -263,7 +263,23 @@ class TerminalService {
       if (termOptions.rendererType === 'webgl') {
         termOptions.allowTransparency = false // 禁用透明度以提升WebGL性能
         termOptions.drawBoldTextInBrightColors = false // 减少颜色计算
+
+        // WebGL渲染器字体优化
+        termOptions.fontWeight = 'normal' // 确保字体权重一致
+        termOptions.fontWeightBold = 'bold' // 粗体字体权重
+        termOptions.letterSpacing = 0 // 字符间距
+        termOptions.lineHeight = 1.0 // 行高
+
+        // WebGL特定的字体渲染优化
+        termOptions.smoothScrollDuration = 0 // 禁用平滑滚动以提升性能
+        termOptions.windowsMode = false // 禁用Windows模式
+      } else if (termOptions.rendererType === 'canvas') {
+        // Canvas渲染器字体优化
+        termOptions.letterSpacing = 0 // 保持字符间距一致
+        termOptions.lineHeight = 1.0 // 保持行高一致
+        termOptions.smoothScrollDuration = 120 // Canvas可以使用适度的平滑滚动
       }
+
       termOptions.scrollback = Math.min(termOptions.scrollback || 3000, 5000) // 限制滚动缓冲区大小
       
       // 创建xterm实例
@@ -280,28 +296,28 @@ class TerminalService {
         ligatures: null
       }
       
-      // 添加FitAddon
+      // 添加FitAddon - 增强兼容性检查
       try {
         const fitAddon = new FitAddon()
-        terminal.loadAddon(fitAddon)
+        this._loadAddonSafely(terminal, fitAddon, 'fit', id)
         addons.fit = fitAddon
       } catch (e) {
         log.warn(`终端 ${id} 加载FitAddon失败:`, e)
       }
-      
-      // 添加WebLinksAddon
+
+      // 添加WebLinksAddon - 增强兼容性检查
       try {
         const webLinksAddon = new WebLinksAddon()
-        terminal.loadAddon(webLinksAddon)
+        this._loadAddonSafely(terminal, webLinksAddon, 'webLinks', id)
         addons.webLinks = webLinksAddon
       } catch (e) {
         log.warn(`终端 ${id} 加载WebLinksAddon失败:`, e)
       }
-      
-      // 添加SearchAddon
+
+      // 添加SearchAddon - 增强兼容性检查
       try {
         const searchAddon = new SearchAddon()
-        terminal.loadAddon(searchAddon)
+        this._loadAddonSafely(terminal, searchAddon, 'search', id)
         addons.search = searchAddon
       } catch (e) {
         log.warn(`终端 ${id} 加载SearchAddon失败:`, e)
@@ -347,23 +363,9 @@ class TerminalService {
                 });
               }
 
-              // 监控WebGL性能
+              // 增强WebGL性能监控
               if (webglAddon.onRender) {
-                let renderCount = 0;
-                let lastLogTime = Date.now();
-
-                webglAddon.onRender(() => {
-                  renderCount++;
-                  const now = Date.now();
-
-                  // 每10秒记录一次渲染统计
-                  if (now - lastLogTime > 10000) {
-                    const fps = renderCount / 10;
-                    log.debug(`终端 ${id} WebGL渲染性能: ${fps.toFixed(1)} FPS`);
-                    renderCount = 0;
-                    lastLogTime = now;
-                  }
-                });
+                this._setupWebGLPerformanceMonitoring(webglAddon, terminal, id, addons);
               }
 
             } catch (webglErr) {
@@ -436,9 +438,14 @@ class TerminalService {
       
       // 记录终端创建的性能指标
       const createStartTime = performance.now()
-      
-      // 打开终端
-      terminal.open(container)
+
+      // 等待字体加载完成后再打开终端，确保渲染一致性
+      this._waitForFontsAndOpen(terminal, container, termOptions, id).then(() => {
+        // 字体加载完成，终端已打开
+        log.debug(`终端 ${id} 字体加载完成并已打开`);
+      }).catch(error => {
+        log.warn(`终端 ${id} 字体加载失败，使用默认字体:`, error);
+      });
 
       // 记录打开终端的时间
       const openTime = performance.now() - createStartTime
@@ -564,111 +571,263 @@ class TerminalService {
    * @private
    */
   _setupTerminalEvents(terminal, id) {
-    // 在xterm.js 5.x中，事件方法在terminal._core中
-    const core = terminal._core;
-    if (!core) {
-      log.error(`终端 ${id} 核心对象不存在，无法设置事件`);
-      return;
-    }
-
     try {
-      // 处理数据事件
-      if (typeof core.onData === 'function') {
-        core.onData(data => {
-          this._emitEvent('data', { id, data })
-        })
+      // 兼容性检查：支持不同版本的xterm.js事件API
+      const eventTarget = terminal._core || terminal;
+
+      if (!eventTarget) {
+        log.error(`终端 ${id} 事件目标对象不存在，无法设置事件`);
+        return;
       }
 
-      // 处理标题变更事件
-      if (typeof core.onTitleChange === 'function') {
-        core.onTitleChange(title => {
-          this._emitEvent('title', { id, title })
-        })
-      }
+      // 存储事件监听器引用，便于清理
+      const eventListeners = [];
 
-      // 处理选择事件
-      if (typeof core.onSelectionChange === 'function') {
-        core.onSelectionChange(() => {
-          const selection = terminal.getSelection()
+      // 处理数据事件 - 兼容多种API
+      const setupDataEvent = () => {
+        if (typeof eventTarget.onData === 'function') {
+          const listener = eventTarget.onData(data => {
+            this._emitEvent('data', { id, data })
+          });
+          eventListeners.push({ type: 'data', listener });
+        } else if (typeof terminal.onData === 'function') {
+          const listener = terminal.onData(data => {
+            this._emitEvent('data', { id, data })
+          });
+          eventListeners.push({ type: 'data', listener });
+        }
+      };
 
-          // 获取当前的终端设置
-          const terminalOptions = settingsService.getTerminalOptions()
+      // 处理标题变更事件 - 兼容多种API
+      const setupTitleEvent = () => {
+        if (typeof eventTarget.onTitleChange === 'function') {
+          const listener = eventTarget.onTitleChange(title => {
+            this._emitEvent('title', { id, title })
+          });
+          eventListeners.push({ type: 'title', listener });
+        } else if (typeof terminal.onTitleChange === 'function') {
+          const listener = terminal.onTitleChange(title => {
+            this._emitEvent('title', { id, title })
+          });
+          eventListeners.push({ type: 'title', listener });
+        }
+      };
 
-          if (selection && terminalOptions.copyOnSelect) {
-            clipboard.copyText(selection, { silent: true })
+      // 处理选择事件 - 增强兼容性
+      const setupSelectionEvent = () => {
+        const selectionHandler = () => {
+          try {
+            const selection = terminal.getSelection();
+
+            // 获取当前的终端设置
+            const terminalOptions = settingsService.getTerminalOptions();
+
+            if (selection && terminalOptions.copyOnSelect) {
+              clipboard.copyText(selection, { silent: true });
+            }
+
+            this._emitEvent('selection', { id, selection });
+          } catch (error) {
+            log.warn(`终端 ${id} 选择事件处理失败:`, error);
           }
+        };
 
-          this._emitEvent('selection', { id, selection })
-        })
-      }
+        if (typeof eventTarget.onSelectionChange === 'function') {
+          const listener = eventTarget.onSelectionChange(selectionHandler);
+          eventListeners.push({ type: 'selection', listener });
+        } else if (typeof terminal.onSelectionChange === 'function') {
+          const listener = terminal.onSelectionChange(selectionHandler);
+          eventListeners.push({ type: 'selection', listener });
+        }
+      };
 
-      // 处理光标移动事件
-      if (typeof core.onCursorMove === 'function') {
-        core.onCursorMove(() => {
-          const cursorPosition = {
-            x: terminal.buffer.active.cursorX,
-            y: terminal.buffer.active.cursorY
+      // 处理光标移动事件 - 增强错误处理
+      const setupCursorEvent = () => {
+        const cursorHandler = () => {
+          try {
+            const cursorPosition = {
+              x: terminal.buffer?.active?.cursorX || 0,
+              y: terminal.buffer?.active?.cursorY || 0
+            };
+            this._emitEvent('cursor', { id, position: cursorPosition });
+          } catch (error) {
+            log.warn(`终端 ${id} 光标事件处理失败:`, error);
           }
-          this._emitEvent('cursor', { id, position: cursorPosition })
-        })
-      }
+        };
 
-      // 处理按键事件
-      if (typeof core.onKey === 'function') {
-        core.onKey(({ key, domEvent }) => {
-          this._emitEvent('key', { id, key, domEvent })
-        })
-      }
+        if (typeof eventTarget.onCursorMove === 'function') {
+          const listener = eventTarget.onCursorMove(cursorHandler);
+          eventListeners.push({ type: 'cursor', listener });
+        } else if (typeof terminal.onCursorMove === 'function') {
+          const listener = terminal.onCursorMove(cursorHandler);
+          eventListeners.push({ type: 'cursor', listener });
+        }
+      };
 
-      // 处理滚动事件
-      if (typeof core.onScroll === 'function') {
-        core.onScroll(scrollPosition => {
-          this._emitEvent('scroll', { id, scrollPosition })
-        })
-      }
+      // 处理按键事件 - 增强WebGL/Canvas兼容性
+      const setupKeyEvent = () => {
+        const keyHandler = ({ key, domEvent }) => {
+          try {
+            // 在WebGL/Canvas渲染器下，确保事件正确传播
+            this._emitEvent('key', { id, key, domEvent });
+          } catch (error) {
+            log.warn(`终端 ${id} 按键事件处理失败:`, error);
+          }
+        };
 
-      // 处理终端获得焦点事件
-      if (typeof core.onFocus === 'function') {
-        core.onFocus(() => {
-          this.activeTerminalId.value = id
-          this._emitEvent('focus', { id })
-        })
-      }
+        if (typeof eventTarget.onKey === 'function') {
+          const listener = eventTarget.onKey(keyHandler);
+          eventListeners.push({ type: 'key', listener });
+        } else if (typeof terminal.onKey === 'function') {
+          const listener = terminal.onKey(keyHandler);
+          eventListeners.push({ type: 'key', listener });
+        }
+      };
 
-      // 处理终端失去焦点事件
-      if (typeof core.onBlur === 'function') {
-        core.onBlur(() => {
-          this._emitEvent('blur', { id })
-        })
-      }
+      // 处理滚动事件 - 兼容不同渲染器
+      const setupScrollEvent = () => {
+        const scrollHandler = (scrollPosition) => {
+          try {
+            this._emitEvent('scroll', { id, scrollPosition });
+          } catch (error) {
+            log.warn(`终端 ${id} 滚动事件处理失败:`, error);
+          }
+        };
 
-      // 事件设置完成
+        if (typeof eventTarget.onScroll === 'function') {
+          const listener = eventTarget.onScroll(scrollHandler);
+          eventListeners.push({ type: 'scroll', listener });
+        } else if (typeof terminal.onScroll === 'function') {
+          const listener = terminal.onScroll(scrollHandler);
+          eventListeners.push({ type: 'scroll', listener });
+        }
+      };
+
+      // 处理焦点事件 - 增强稳定性
+      const setupFocusEvents = () => {
+        const focusHandler = () => {
+          try {
+            this.activeTerminalId.value = id;
+            this._emitEvent('focus', { id });
+          } catch (error) {
+            log.warn(`终端 ${id} 焦点事件处理失败:`, error);
+          }
+        };
+
+        const blurHandler = () => {
+          try {
+            this._emitEvent('blur', { id });
+          } catch (error) {
+            log.warn(`终端 ${id} 失焦事件处理失败:`, error);
+          }
+        };
+
+        if (typeof eventTarget.onFocus === 'function') {
+          const listener = eventTarget.onFocus(focusHandler);
+          eventListeners.push({ type: 'focus', listener });
+        } else if (typeof terminal.onFocus === 'function') {
+          const listener = terminal.onFocus(focusHandler);
+          eventListeners.push({ type: 'focus', listener });
+        }
+
+        if (typeof eventTarget.onBlur === 'function') {
+          const listener = eventTarget.onBlur(blurHandler);
+          eventListeners.push({ type: 'blur', listener });
+        } else if (typeof terminal.onBlur === 'function') {
+          const listener = terminal.onBlur(blurHandler);
+          eventListeners.push({ type: 'blur', listener });
+        }
+      };
+
+      // 执行所有事件设置
+      setupDataEvent();
+      setupTitleEvent();
+      setupSelectionEvent();
+      setupCursorEvent();
+      setupKeyEvent();
+      setupScrollEvent();
+      setupFocusEvents();
+
+      // 存储事件监听器引用到终端实例，便于清理
+      if (!terminal._eventListeners) {
+        terminal._eventListeners = [];
+      }
+      terminal._eventListeners.push(...eventListeners);
+
+      log.debug(`终端 ${id} 事件设置完成，共注册 ${eventListeners.length} 个监听器`);
 
     } catch (error) {
       log.error(`设置终端 ${id} 事件时出错`, error);
     }
-    
-    // 处理右键点击事件
-    const element = terminal.element
-    if (element) {
-      element.addEventListener('contextmenu', (event) => {
-        // 获取当前的终端设置
-        const terminalOptions = settingsService.getTerminalOptions()
-        
-        if (terminalOptions.rightClickSelectsWord) {
-          event.preventDefault()
-          
-          // 获取粘贴板内容并写入终端
-          clipboard.readText().then(text => {
-            if (text) {
-              terminal.paste(text)
+
+    // 处理右键点击事件 - 增强WebGL/Canvas渲染器兼容性
+    const setupContextMenuEvent = () => {
+      // 尝试多种方式获取终端元素
+      let element = terminal.element;
+
+      // 如果直接获取失败，尝试其他方式
+      if (!element && terminal._core && terminal._core._screenElement) {
+        element = terminal._core._screenElement;
+      }
+
+      // 如果还是没有，尝试查找DOM中的终端元素
+      if (!element) {
+        // 延迟查找，等待DOM渲染完成
+        setTimeout(() => {
+          const terminalContainer = document.querySelector(`[data-terminal-id="${id}"]`);
+          if (terminalContainer) {
+            const xtermElement = terminalContainer.querySelector('.xterm');
+            if (xtermElement) {
+              setupContextMenuOnElement(xtermElement);
             }
-          }).catch(error => {
-            log.error('从粘贴板获取文本失败', error)
-          })
+          }
+        }, 100);
+        return;
+      }
+
+      setupContextMenuOnElement(element);
+    };
+
+    const setupContextMenuOnElement = (element) => {
+      if (!element) return;
+
+      const contextMenuHandler = (event) => {
+        try {
+          // 获取当前的终端设置
+          const terminalOptions = settingsService.getTerminalOptions();
+
+          if (terminalOptions.rightClickSelectsWord) {
+            event.preventDefault();
+            event.stopPropagation();
+
+            // 获取粘贴板内容并写入终端
+            clipboard.readText().then(text => {
+              if (text && terminal && typeof terminal.paste === 'function') {
+                terminal.paste(text);
+              }
+            }).catch(error => {
+              log.warn(`终端 ${id} 从粘贴板获取文本失败:`, error);
+            });
+          }
+        } catch (error) {
+          log.warn(`终端 ${id} 右键菜单事件处理失败:`, error);
         }
-      })
-    }
+      };
+
+      element.addEventListener('contextmenu', contextMenuHandler);
+
+      // 存储事件监听器引用
+      if (!terminal._eventListeners) {
+        terminal._eventListeners = [];
+      }
+      terminal._eventListeners.push({
+        type: 'contextmenu',
+        element,
+        handler: contextMenuHandler
+      });
+    };
+
+    setupContextMenuEvent();
   }
   
   /**
@@ -804,7 +963,28 @@ class TerminalService {
         clearInterval(term.performanceMonitor)
         term.performanceMonitor = null
       }
-      
+
+      // 清理事件监听器 - 防止内存泄漏
+      if (term.terminal && term.terminal._eventListeners) {
+        log.debug(`清理终端 ${id} 的 ${term.terminal._eventListeners.length} 个事件监听器`);
+
+        term.terminal._eventListeners.forEach(({ type, element, handler, listener }) => {
+          try {
+            if (element && handler) {
+              // DOM事件监听器
+              element.removeEventListener(type, handler);
+            } else if (listener && typeof listener.dispose === 'function') {
+              // xterm.js事件监听器
+              listener.dispose();
+            }
+          } catch (error) {
+            log.warn(`清理终端 ${id} 事件监听器 ${type} 失败:`, error);
+          }
+        });
+
+        term.terminal._eventListeners = [];
+      }
+
       // 恢复原始的write方法
       if (term.terminal && term.terminal.write && term.terminal._core) {
         try {
@@ -998,6 +1178,389 @@ class TerminalService {
   }
   
   /**
+   * 等待字体加载完成并打开终端
+   * @param {Terminal} terminal - 终端实例
+   * @param {HTMLElement} container - 容器元素
+   * @param {Object} termOptions - 终端选项
+   * @param {string} id - 终端ID
+   * @private
+   */
+  async _waitForFontsAndOpen(terminal, container, termOptions, id) {
+    try {
+      // 检查字体是否已加载
+      const fontFamily = termOptions.fontFamily || "'JetBrains Mono'";
+      const fontSize = termOptions.fontSize || 16;
+
+      // 等待字体加载
+      await this._waitForFontLoad(fontFamily, fontSize);
+
+      // 字体加载完成，打开终端
+      terminal.open(container);
+
+      // 根据渲染器类型应用特定的字体优化
+      this._applyRendererSpecificFontOptimizations(terminal, termOptions, id);
+
+    } catch (error) {
+      log.warn(`终端 ${id} 字体加载超时，直接打开终端:`, error);
+      // 即使字体加载失败，也要打开终端
+      terminal.open(container);
+    }
+  }
+
+  /**
+   * 等待字体加载
+   * @param {string} fontFamily - 字体族
+   * @param {number} fontSize - 字体大小
+   * @private
+   */
+  async _waitForFontLoad(fontFamily, fontSize) {
+    return new Promise((resolve, reject) => {
+      // 设置超时时间，避免无限等待
+      const timeout = setTimeout(() => {
+        reject(new Error('字体加载超时'));
+      }, 3000);
+
+      // 如果浏览器支持FontFace API
+      if (document.fonts && document.fonts.ready) {
+        // 尝试检查特定字体是否可用
+        try {
+          const testFont = new FontFace('test', `local('${fontFamily.replace(/'/g, '')}')`);
+          testFont.load().then(() => {
+            clearTimeout(timeout);
+            resolve();
+          }).catch(() => {
+            // 字体检查失败，使用通用字体加载检测
+            document.fonts.ready.then(() => {
+              clearTimeout(timeout);
+              resolve();
+            }).catch(() => {
+              clearTimeout(timeout);
+              reject(new Error('字体加载失败'));
+            });
+          });
+        } catch (e) {
+          // FontFace构造失败，使用通用检测
+          document.fonts.ready.then(() => {
+            clearTimeout(timeout);
+            resolve();
+          }).catch(() => {
+            clearTimeout(timeout);
+            reject(new Error('字体加载失败'));
+          });
+        }
+      } else {
+        // 降级方案：使用简单的延迟，考虑字体大小影响加载时间
+        const loadTime = Math.min(500 + fontSize * 10, 2000);
+        setTimeout(() => {
+          clearTimeout(timeout);
+          resolve();
+        }, loadTime);
+      }
+    });
+  }
+
+  /**
+   * 应用渲染器特定的字体优化
+   * @param {Terminal} terminal - 终端实例
+   * @param {Object} termOptions - 终端选项
+   * @param {string} id - 终端ID
+   * @private
+   */
+  _applyRendererSpecificFontOptimizations(terminal, termOptions, id) {
+    try {
+      const actualRenderer = termOptions._actualRenderer || 'dom';
+
+      if (actualRenderer === 'webgl') {
+        // WebGL渲染器字体优化
+        this._optimizeWebGLFontRendering(terminal, id);
+      } else if (actualRenderer === 'canvas') {
+        // Canvas渲染器字体优化
+        this._optimizeCanvasFontRendering(terminal, id);
+      }
+
+      // 通用字体优化
+      this._applyCommonFontOptimizations(terminal, id);
+
+    } catch (error) {
+      log.warn(`终端 ${id} 应用字体优化失败:`, error);
+    }
+  }
+
+  /**
+   * WebGL渲染器字体优化
+   * @param {Terminal} terminal - 终端实例
+   * @param {string} id - 终端ID
+   * @private
+   */
+  _optimizeWebGLFontRendering(terminal, id) {
+    try {
+      // WebGL渲染器特定优化
+      if (terminal.setOption) {
+        // 确保字体渲染清晰
+        terminal.setOption('fontWeight', 'normal');
+        terminal.setOption('fontWeightBold', 'bold');
+
+        // 优化字符间距和行高
+        terminal.setOption('letterSpacing', 0);
+        terminal.setOption('lineHeight', 1.0);
+
+        // 禁用可能影响WebGL性能的选项
+        terminal.setOption('smoothScrollDuration', 0);
+      }
+
+      log.debug(`终端 ${id} WebGL字体优化已应用`);
+    } catch (error) {
+      log.warn(`终端 ${id} WebGL字体优化失败:`, error);
+    }
+  }
+
+  /**
+   * Canvas渲染器字体优化
+   * @param {Terminal} terminal - 终端实例
+   * @param {string} id - 终端ID
+   * @private
+   */
+  _optimizeCanvasFontRendering(terminal, id) {
+    try {
+      // Canvas渲染器特定优化
+      if (terminal.setOption) {
+        // 保持字体渲染一致性
+        terminal.setOption('letterSpacing', 0);
+        terminal.setOption('lineHeight', 1.0);
+
+        // Canvas可以使用适度的平滑滚动
+        terminal.setOption('smoothScrollDuration', 120);
+      }
+
+      log.debug(`终端 ${id} Canvas字体优化已应用`);
+    } catch (error) {
+      log.warn(`终端 ${id} Canvas字体优化失败:`, error);
+    }
+  }
+
+  /**
+   * 通用字体优化
+   * @param {Terminal} terminal - 终端实例
+   * @param {string} id - 终端ID
+   * @private
+   */
+  _applyCommonFontOptimizations(terminal, id) {
+    try {
+      // 确保字体渲染的一致性
+      if (terminal.element) {
+        const terminalElement = terminal.element;
+
+        // 应用CSS优化
+        terminalElement.style.fontSmooth = 'always';
+        terminalElement.style.webkitFontSmoothing = 'antialiased';
+        terminalElement.style.mozOsxFontSmoothing = 'grayscale';
+
+        // 确保字体渲染清晰
+        terminalElement.style.textRendering = 'optimizeLegibility';
+      }
+
+      log.debug(`终端 ${id} 通用字体优化已应用`);
+    } catch (error) {
+      log.warn(`终端 ${id} 通用字体优化失败:`, error);
+    }
+  }
+
+  /**
+   * 设置WebGL性能监控
+   * @param {Object} webglAddon - WebGL插件实例
+   * @param {Terminal} terminal - 终端实例
+   * @param {string} id - 终端ID
+   * @param {Object} addons - 插件集合
+   * @private
+   */
+  _setupWebGLPerformanceMonitoring(webglAddon, terminal, id, addons) {
+    try {
+      let renderCount = 0;
+      let lastLogTime = Date.now();
+      let performanceIssues = 0;
+      let lastPerformanceCheck = Date.now();
+
+      // 性能阈值配置
+      const PERFORMANCE_THRESHOLDS = {
+        MIN_FPS: 30,           // 最低FPS
+        MAX_FRAME_TIME: 33,    // 最大帧时间(ms)
+        DEGRADATION_LIMIT: 5,  // 性能问题次数限制
+        CHECK_INTERVAL: 5000   // 检查间隔(ms)
+      };
+
+      const renderHandler = () => {
+        const now = Date.now();
+        const frameTime = now - lastLogTime;
+        renderCount++;
+
+        // 检测性能问题
+        if (frameTime > PERFORMANCE_THRESHOLDS.MAX_FRAME_TIME) {
+          performanceIssues++;
+        }
+
+        // 定期性能检查和报告
+        if (now - lastPerformanceCheck > PERFORMANCE_THRESHOLDS.CHECK_INTERVAL) {
+          const fps = renderCount / ((now - lastPerformanceCheck) / 1000);
+          const avgFrameTime = (now - lastPerformanceCheck) / renderCount;
+
+          // 记录性能统计
+          log.debug(`终端 ${id} WebGL性能: ${fps.toFixed(1)} FPS, 平均帧时间: ${avgFrameTime.toFixed(2)}ms`);
+
+          // 检查是否需要降级
+          if (fps < PERFORMANCE_THRESHOLDS.MIN_FPS ||
+              performanceIssues > PERFORMANCE_THRESHOLDS.DEGRADATION_LIMIT) {
+            log.warn(`终端 ${id} WebGL性能不佳，考虑降级到Canvas渲染`);
+            this._considerRendererDowngrade(terminal, id, addons, 'webgl', 'canvas');
+          }
+
+          // 重置计数器
+          renderCount = 0;
+          performanceIssues = 0;
+          lastPerformanceCheck = now;
+        }
+
+        lastLogTime = now;
+      };
+
+      webglAddon.onRender(renderHandler);
+
+      log.debug(`终端 ${id} WebGL性能监控已启用`);
+    } catch (error) {
+      log.warn(`终端 ${id} WebGL性能监控设置失败:`, error);
+    }
+  }
+
+  /**
+   * 考虑渲染器降级
+   * @param {Terminal} terminal - 终端实例
+   * @param {string} id - 终端ID
+   * @param {Object} addons - 插件集合
+   * @param {string} fromRenderer - 当前渲染器
+   * @param {string} toRenderer - 目标渲染器
+   * @private
+   */
+  _considerRendererDowngrade(terminal, id, addons, fromRenderer, toRenderer) {
+    try {
+      // 防止频繁降级
+      const terminalInstance = this.getTerminal(id);
+      if (!terminalInstance) return;
+
+      const now = Date.now();
+      if (terminalInstance._lastDowngradeAttempt &&
+          now - terminalInstance._lastDowngradeAttempt < 30000) {
+        return; // 30秒内不重复降级
+      }
+
+      terminalInstance._lastDowngradeAttempt = now;
+
+      log.info(`终端 ${id} 开始渲染器降级: ${fromRenderer} -> ${toRenderer}`);
+
+      // 执行降级
+      if (fromRenderer === 'webgl' && toRenderer === 'canvas') {
+        this._downgradeWebGLToCanvas(terminal, id, addons);
+      }
+
+      // 发送用户通知
+      this._notifyRendererChange(id, fromRenderer, toRenderer, 'performance');
+
+    } catch (error) {
+      log.error(`终端 ${id} 渲染器降级失败:`, error);
+    }
+  }
+
+  /**
+   * 从WebGL降级到Canvas
+   * @param {Terminal} terminal - 终端实例
+   * @param {string} id - 终端ID
+   * @param {Object} addons - 插件集合
+   * @private
+   */
+  _downgradeWebGLToCanvas(terminal, id, addons) {
+    try {
+      // 移除WebGL插件
+      if (addons.webgl && typeof addons.webgl.dispose === 'function') {
+        addons.webgl.dispose();
+        addons.webgl = null;
+      }
+
+      // 添加Canvas插件
+      const canvasAddon = new CanvasAddon();
+      terminal.loadAddon(canvasAddon);
+      addons.canvas = canvasAddon;
+
+      // 更新渲染器信息
+      if (terminal.options) {
+        terminal.options._actualRenderer = 'canvas';
+      }
+
+      log.info(`终端 ${id} 已成功降级到Canvas渲染器`);
+
+    } catch (error) {
+      log.error(`终端 ${id} WebGL到Canvas降级失败:`, error);
+    }
+  }
+
+  /**
+   * 通知渲染器变更
+   * @param {string} id - 终端ID
+   * @param {string} fromRenderer - 原渲染器
+   * @param {string} toRenderer - 新渲染器
+   * @param {string} reason - 变更原因
+   * @private
+   */
+  _notifyRendererChange(id, fromRenderer, toRenderer, reason) {
+    try {
+      // 发送自定义事件
+      window.dispatchEvent(new CustomEvent('terminal-renderer-change', {
+        detail: {
+          terminalId: id,
+          fromRenderer,
+          toRenderer,
+          reason,
+          timestamp: Date.now()
+        }
+      }));
+
+      // 可选：显示用户通知
+      if (reason === 'performance') {
+        ElMessage.info(`终端渲染器已优化：${fromRenderer.toUpperCase()} → ${toRenderer.toUpperCase()}`);
+      }
+
+    } catch (error) {
+      log.warn(`终端 ${id} 渲染器变更通知失败:`, error);
+    }
+  }
+
+
+
+  /**
+   * 检查WebGL支持
+   * @private
+   */
+  _checkWebGLSupport() {
+    try {
+      const canvas = document.createElement('canvas')
+      const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl')
+      return !!gl
+    } catch (e) {
+      return false
+    }
+  }
+
+  /**
+   * 检查Canvas支持
+   * @private
+   */
+  _checkCanvasSupport() {
+    try {
+      const canvas = document.createElement('canvas')
+      return !!(canvas.getContext && canvas.getContext('2d'))
+    } catch (e) {
+      return false
+    }
+  }
+
+  /**
    * 在终端中搜索
    * @param {string} id - 终端ID
    * @param {string} query - 搜索关键字
@@ -1057,7 +1620,7 @@ class TerminalService {
   findPrevious(id) {
     const term = this.getTerminal(id)
     if (!term || !term.addons || !term.addons.search) return false
-    
+
     try {
       return term.addons.search.findPrevious()
     } catch (error) {
@@ -1065,6 +1628,205 @@ class TerminalService {
       return false
     }
   }
+
+
+
+
+
+  /**
+   * 安全地加载插件
+   * @param {Terminal} terminal - 终端实例
+   * @param {Object} addon - 插件实例
+   * @param {string} addonName - 插件名称
+   * @param {string} terminalId - 终端ID
+   * @private
+   */
+  _loadAddonSafely(terminal, addon, addonName, terminalId) {
+    try {
+      // 检查插件兼容性
+      const compatibility = this._checkAddonCompatibility(addon, addonName, terminal);
+
+      if (!compatibility.compatible) {
+        log.warn(`终端 ${terminalId} 插件 ${addonName} 兼容性检查失败:`, compatibility.issues);
+        return false;
+      }
+
+      // 加载插件
+      terminal.loadAddon(addon);
+
+      // 验证插件是否正确加载
+      const verification = this._verifyAddonLoaded(terminal, addon, addonName);
+      if (!verification.success) {
+        log.warn(`终端 ${terminalId} 插件 ${addonName} 加载验证失败:`, verification.error);
+        return false;
+      }
+
+      log.debug(`终端 ${terminalId} 插件 ${addonName} 加载成功`);
+      return true;
+
+    } catch (error) {
+      log.error(`终端 ${terminalId} 安全加载插件 ${addonName} 失败:`, error);
+      return false;
+    }
+  }
+
+  /**
+   * 检查插件兼容性
+   * @param {Object} addon - 插件实例
+   * @param {string} addonName - 插件名称
+   * @param {Terminal} terminal - 终端实例
+   * @private
+   */
+  _checkAddonCompatibility(addon, addonName, terminal) {
+    const result = {
+      compatible: true,
+      issues: []
+    };
+
+    try {
+      // 检查插件基本结构
+      if (!addon || typeof addon !== 'object') {
+        result.compatible = false;
+        result.issues.push('插件对象无效');
+        return result;
+      }
+
+      // 检查必需的方法
+      const requiredMethods = ['activate'];
+      for (const method of requiredMethods) {
+        if (typeof addon[method] !== 'function') {
+          result.issues.push(`缺少必需方法: ${method}`);
+        }
+      }
+
+      // 特定插件的兼容性检查
+      switch (addonName) {
+        case 'fit':
+          if (typeof addon.fit !== 'function') {
+            result.issues.push('FitAddon缺少fit方法');
+          }
+          break;
+
+        case 'search':
+          if (typeof addon.findNext !== 'function' || typeof addon.findPrevious !== 'function') {
+            result.issues.push('SearchAddon缺少搜索方法');
+          }
+          break;
+
+        case 'webLinks':
+          // WebLinksAddon通常不需要特殊检查
+          break;
+
+        case 'webgl':
+        case 'canvas':
+          // 渲染器插件的特殊检查
+          if (!this._checkRendererAddonCompatibility(addon, addonName, terminal)) {
+            result.issues.push(`${addonName}渲染器不兼容当前环境`);
+          }
+          break;
+      }
+
+      if (result.issues.length > 0) {
+        result.compatible = false;
+      }
+
+    } catch (error) {
+      result.compatible = false;
+      result.issues.push(`兼容性检查异常: ${error.message}`);
+    }
+
+    return result;
+  }
+
+  /**
+   * 检查渲染器插件兼容性
+   * @param {Object} addon - 渲染器插件
+   * @param {string} addonName - 插件名称
+   * @param {Terminal} terminal - 终端实例
+   * @private
+   */
+  _checkRendererAddonCompatibility(addon, addonName, terminal) {
+    try {
+      // 记录插件和终端信息用于调试
+      log.debug(`检查渲染器插件兼容性: ${addonName}`, {
+        hasAddon: !!addon,
+        hasTerminal: !!terminal
+      });
+
+      if (addonName === 'webgl') {
+        // 检查WebGL支持
+        return this._checkWebGLSupport();
+      } else if (addonName === 'canvas') {
+        // 检查Canvas支持
+        return this._checkCanvasSupport();
+      }
+      return true;
+    } catch (error) {
+      log.warn(`渲染器插件 ${addonName} 兼容性检查失败:`, error);
+      return false;
+    }
+  }
+
+  /**
+   * 验证插件是否正确加载
+   * @param {Terminal} terminal - 终端实例
+   * @param {Object} addon - 插件实例
+   * @param {string} addonName - 插件名称
+   * @private
+   */
+  _verifyAddonLoaded(terminal, addon, addonName) {
+    try {
+      // 检查插件是否在终端的插件管理器中注册
+      if (terminal._core && terminal._core._addonManager) {
+        const registeredAddons = terminal._core._addonManager._addons || [];
+        const isRegistered = registeredAddons.includes(addon);
+
+        if (!isRegistered) {
+          return {
+            success: false,
+            error: '插件未在插件管理器中注册'
+          };
+        }
+      }
+
+      // 特定插件的验证
+      switch (addonName) {
+        case 'fit':
+          // 验证fit插件是否可以调用
+          if (typeof addon.fit === 'function') {
+            // 尝试调用fit方法（在安全的上下文中）
+            try {
+              addon.fit();
+            } catch (e) {
+              // fit调用失败是正常的，因为终端可能还没有完全初始化
+            }
+          }
+          break;
+
+        case 'search':
+          // 验证搜索插件的方法是否可用
+          if (typeof addon.findNext !== 'function') {
+            return {
+              success: false,
+              error: 'SearchAddon的findNext方法不可用'
+            };
+          }
+          break;
+      }
+
+      return { success: true };
+
+    } catch (error) {
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  }
+
+
+
+
 }
 
-export default new TerminalService() 
+export default new TerminalService()

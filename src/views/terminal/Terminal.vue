@@ -95,6 +95,8 @@
       @close="handleAutocompleteClose"
       ref="autocompleteRef"
     />
+
+
   </div>
 </template>
 
@@ -2383,6 +2385,7 @@ export default {
       isConnectingInProgress,
       terminalBg,
       terminalBgStyle,
+      activeConnectionId,
       isActiveTerminal,
       getTerminalStyle,
       setTerminalRef,
@@ -2658,6 +2661,15 @@ export default {
   width: 100% !important;
   position: relative;
   box-sizing: border-box;
+
+  /* 字体渲染优化 - 确保所有渲染器下一致 */
+  font-smooth: always;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+
+  /* 防止字体渲染闪烁 */
+  font-display: swap;
 }
 
 /* XTerm 视口 */
@@ -2725,5 +2737,63 @@ export default {
 /* 确保AI命令链接有正确的样式 */
 :deep(.xterm-rows .xterm-link) {
   background: transparent !important;
+}
+
+/* ===== 渲染器特定优化 ===== */
+
+/* WebGL渲染器优化 */
+:deep(.xterm-webgl-canvas) {
+  /* 确保WebGL画布的字体渲染清晰 */
+  image-rendering: -webkit-optimize-contrast;
+  image-rendering: crisp-edges;
+
+  /* 防止WebGL画布模糊 */
+  transform: translateZ(0);
+  backface-visibility: hidden;
+  perspective: 1000;
+}
+
+/* Canvas渲染器优化 */
+:deep(.xterm-canvas) {
+  /* 确保Canvas渲染清晰 */
+  image-rendering: -webkit-optimize-contrast;
+  image-rendering: crisp-edges;
+
+  /* 优化Canvas性能 */
+  will-change: transform;
+}
+
+/* DOM渲染器优化 */
+:deep(.xterm-rows) {
+  /* 确保DOM渲染的字体清晰 */
+  font-smooth: always;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+
+  /* 优化文本渲染 */
+  text-rendering: optimizeLegibility;
+  font-feature-settings: "liga" 0; /* 禁用连字以保持一致性 */
+}
+
+/* 字符网格对齐优化 */
+:deep(.xterm-char-measure-element) {
+  /* 确保字符测量准确 */
+  font-variant-ligatures: none;
+  font-feature-settings: "liga" 0;
+}
+
+/* 光标渲染优化 */
+:deep(.xterm-cursor-layer) {
+  /* 确保光标在所有渲染器下都清晰 */
+  image-rendering: pixelated;
+  image-rendering: -moz-crisp-edges;
+  image-rendering: crisp-edges;
+}
+
+/* 选择高亮优化 */
+:deep(.xterm-selection) {
+  /* 确保选择高亮在所有渲染器下一致 */
+  opacity: 0.3;
+  mix-blend-mode: multiply;
 }
 </style> 
