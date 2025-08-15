@@ -52,6 +52,7 @@
     "@iconify/vue": "^5.0.0",
     "@lezer/common": "^1.2.3",
     "@lezer/highlight": "^1.2.1",
+    "@xterm/addon-canvas": "^0.7.0",
     "@xterm/addon-clipboard": "^0.1.0",
     "@xterm/addon-fit": "^0.10.0",
     "@xterm/addon-search": "^0.15.0",

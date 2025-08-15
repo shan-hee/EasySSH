@@ -9,6 +9,7 @@ import aiService from '../ai/ai-service';
 import InlineSuggestionRenderer from '../ai/inline-suggestion-renderer';
 import AIBlockRenderer from '../ai/ai-block-renderer';
 import CommandInterceptor from '../ai/command-interceptor';
+import terminalService from '../terminal';
 
 // 常量定义
 const RESIZE_DEBOUNCE_DELAY = 100; // 大小调整防抖延迟(ms)
@@ -43,49 +44,32 @@ class TerminalManager {
    * @param {Object} options - 终端选项
    * @returns {Terminal} - 创建的终端实例
    */
-  createTerminal(sessionId, container, options = {}) {
+  async createTerminal(sessionId, container, options = {}) {
     if (!this.sshService.sessions.has(sessionId)) {
       throw new Error(`未找到会话ID: ${sessionId}`);
     }
-    
+
     const session = this.sshService.sessions.get(sessionId);
-    
-    // 从传入的选项中获取光标样式和闪烁设置，如果未提供则使用默认值
-    const cursorStyle = options.cursorStyle || 'block';
-    const cursorBlink = options.cursorBlink !== undefined ? options.cursorBlink : true;
-    
-    // 优化：将光标样式信息合并到终端初始化完成日志中，减少分散的日志输出
-    // log.info(`创建终端，使用光标样式: ${cursorStyle}, 闪烁: ${cursorBlink}`);
-    
-    // 创建终端实例 - 使用传入的选项，避免重复创建设置服务
-    const terminal = new Terminal({
-      fontSize: options.fontSize || 16,
-      fontFamily: options.fontFamily || "'JetBrains Mono'",
-      theme: options.theme,
-      cursorStyle: cursorStyle, // 确保使用传入的光标样式
-      cursorBlink: cursorBlink, // 确保使用传入的光标闪烁设置
-      scrollback: 5000, // 增加滚动历史行数，默认值通常是1000
-      rightClickSelectsWord: options.rightClickSelectsWord || false, // 使用设置中的值
-      copyOnSelect: options.copyOnSelect || false, // 使用设置中的值
-      disableStdin: false,
-      letterSpacing: options.letterSpacing || 0, // 确保应用字符间距设置
-      fastScrollModifier: 'alt', // 按住alt键可以快速滚动
-      fastScrollSensitivity: 5, // 快速滚动的灵敏度
-      smoothScrollDuration: 50 // 平滑滚动持续时间，单位为毫秒
-    });
-    
-    // 添加FitAddon以自动调整终端大小
-    const fitAddon = new FitAddon();
-    terminal.loadAddon(fitAddon);
-    
-    // 添加WebLinksAddon以支持普通链接点击
-    const webLinksAddon = new WebLinksAddon();
-    terminal.loadAddon(webLinksAddon);
+
+    log.debug(`终端管理器创建终端，会话ID: ${sessionId}`);
+
+    // 使用终端服务创建终端实例，这样可以应用正确的渲染器配置
+    const terminalInstance = await terminalService.createTerminal(sessionId, container, options);
+
+    if (!terminalInstance) {
+      throw new Error(`终端服务创建终端失败，会话ID: ${sessionId}`);
+    }
+
+    const terminal = terminalInstance.terminal;
+
+    // 终端服务已经处理了FitAddon和WebLinksAddon，这里获取引用
+    const fitAddon = terminalInstance.addons.fit;
+    const webLinksAddon = terminalInstance.addons.webLinks;
 
     // 注册自定义AI命令链接提供器
     terminal.registerLinkProvider({
       provideLinks: (bufferLineNumber, callback) => {
-        console.log(`[Debug] provideLinks called for line: ${bufferLineNumber}`);
+        // 检查链接提供
         const line = terminal.buffer.active.getLine(bufferLineNumber);
         if (!line) {
           callback([]);
@@ -100,7 +84,7 @@ class TerminalManager {
         let match;
 
         while ((match = linkRegex.exec(lineText)) !== null) {
-          console.log('[Debug] Match found!', match);
+          // 找到AI命令链接
           const cmdId = match[1];
           const startIndex = match.index;
           const endIndex = match.index + match[0].length;

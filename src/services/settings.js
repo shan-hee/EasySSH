@@ -429,7 +429,8 @@ class SettingsService {
       cursorStyle: terminalSettings.cursorStyle,
       scrollback: terminalSettings.scrollback,
       allowTransparency: true,
-      rendererType: 'canvas',
+      rendererType: terminalSettings.rendererType || 'webgl', // 首选WebGL渲染器
+      fallbackRenderer: terminalSettings.fallbackRenderer || 'canvas', // 备用Canvas渲染器
       convertEol: true,
       disableStdin: false,
       drawBoldTextInBrightColors: true,
@@ -832,7 +833,8 @@ class SettingsService {
       cursorStyle: 'block',
       scrollback: 3000,
       allowTransparency: true,
-      rendererType: 'canvas',
+      rendererType: 'webgl', // 默认使用WebGL渲染器
+      fallbackRenderer: 'canvas', // 备用Canvas渲染器
       convertEol: true,
       disableStdin: false,
       drawBoldTextInBrightColors: true,

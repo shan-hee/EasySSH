@@ -68,7 +68,7 @@ export const useTerminalStore = defineStore('terminal', () => {
       
       // 检查终端是否已在初始化中，使用锁机制防止并发初始化
       if (state.terminalInitLocks[connectionId]) {
-        log.debug(`终端 ${connectionId} 初始化已被锁定，等待完成`)
+        // 终端初始化已被锁定
         return false
       }
       
@@ -88,7 +88,7 @@ export const useTerminalStore = defineStore('terminal', () => {
       
       // 检查终端是否已在创建中但尚未完成
       if (currentState === 'initializing' || state.creatingSessionIds.includes(connectionId)) {
-        log.debug(`终端 ${connectionId} 正在初始化中，跳过重复初始化请求`)
+        // 终端正在初始化中
         return false
       }
       
@@ -123,7 +123,7 @@ export const useTerminalStore = defineStore('terminal', () => {
       const sessionData = sessionStore.getSession(connectionId)
 
       if (sessionData) {
-        log.debug(`[Terminal] 从会话存储获取连接配置: ${connectionId}`)
+        // 从会话存储获取连接配置
         connection = sessionData
       } else {
         // 尝试使用原始连接ID查找连接信息

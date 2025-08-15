@@ -920,7 +920,7 @@ export default defineComponent({
                                        (!terminalId && sessionId === sessionStore.getActiveSession());
 
       if (!isRelevantToThisInstance) {
-        log.debug(`[${componentInstanceId}] SSH连接成功事件与当前实例无关，跳过处理 (事件终端ID=${terminalId}, 当前终端ID=${props.activeSessionId})`);
+        // SSH连接成功事件与当前实例无关，跳过处理
         return;
       }
 
@@ -933,7 +933,7 @@ export default defineComponent({
       // 添加到已处理集合
       processedSshSessions.value.add(sessionId);
 
-      log.debug(`[${componentInstanceId}] 处理SSH连接成功事件: 会话ID=${sessionId}, 终端ID=${terminalId || '未知'}, 当前活动终端=${props.activeSessionId}`);
+      // 处理SSH连接成功事件
 
       if (sessionId) {
         // 保存会话连接状态
@@ -945,12 +945,12 @@ export default defineComponent({
           const terminalState = getTerminalToolbarState(terminalId);
           if (terminalState) {
             terminalState.isSshConnected = true;
-            log.debug(`[${componentInstanceId}] 已更新终端 ${terminalId} 的SSH连接状态为true`);
+            // 已更新终端SSH连接状态
 
             // 只有是当前活动终端时才更新UI
             if (terminalId === props.activeSessionId) {
               isSshConnected.value = true;
-              log.debug(`[${componentInstanceId}] 已更新当前活动终端的UI状态`);
+              // 已更新当前活动终端的UI状态
             }
           }
         }
@@ -1185,7 +1185,7 @@ export default defineComponent({
     
     // 在组件卸载时清理所有防抖定时器
     onUnmounted(() => {
-      log.debug(`[${componentInstanceId}] TerminalToolbar组件正在卸载，活动终端ID: ${props.activeSessionId}`);
+      // TerminalToolbar组件正在卸载
 
       // 从全局追踪器中移除当前实例
       if (window.terminalToolbarInstances) {
@@ -1223,7 +1223,7 @@ export default defineComponent({
         sessionChangeTimeout = null;
       }
 
-      log.debug(`[${componentInstanceId}] TerminalToolbar组件卸载完成`);
+      // TerminalToolbar组件卸载完成
     });
 
     // 在onMounted中添加事件监听
@@ -1233,8 +1233,7 @@ export default defineComponent({
         `${id.split('_')[1]}(${info.activeSessionId})`
       ).join(', ')
 
-      log.debug(`[${componentInstanceId}] TerminalToolbar组件已挂载，活动终端ID: ${props.activeSessionId}`)
-      log.debug(`[${componentInstanceId}] 当前共有 ${instanceCount} 个TerminalToolbar实例: ${allInstances}`)
+      // TerminalToolbar组件已挂载
 
       // 添加全局事件监听器，使用常量替代硬编码字符串
       window.addEventListener(LATENCY_EVENTS.TOOLBAR, handleNetworkLatencyUpdate);
@@ -1251,7 +1250,7 @@ export default defineComponent({
       // 移除监控连接成功事件监听（已废弃）
       // WebSocket连接成功不等于监控服务已安装
 
-      log.debug(`[${componentInstanceId}] 已注册SSH连接成功事件监听器`);
+      // 已注册SSH连接成功事件监听器
 
       // 立即检查SSH连接状态
       checkSshConnectionStatus();

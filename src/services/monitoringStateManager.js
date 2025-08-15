@@ -88,7 +88,7 @@ class MonitoringStateManager {
     // 初始化事件监听
     this._initEventListeners()
 
-    log.debug('[监控状态管理器] 已初始化')
+    // 监控状态管理器已初始化
   }
 
   /**
@@ -153,7 +153,7 @@ class MonitoringStateManager {
    */
   setTerminal(terminalId, hostId = null) {
     if (this.globalState.terminalId !== terminalId) {
-      log.debug('[监控状态管理器] 切换终端', { from: this.globalState.terminalId, to: terminalId })
+      // 切换终端
 
       // 重置状态
       this._resetStates()
@@ -216,7 +216,7 @@ class MonitoringStateManager {
       })
     }
 
-    log.debug('[监控状态管理器] 连接状态变化', { state, errorMessage })
+    // 连接状态变化
   }
 
   /**
@@ -278,16 +278,7 @@ class MonitoringStateManager {
       })
     }
 
-    log.debug('[监控状态管理器] 监控状态变化', {
-      installed,
-      available,
-      globalState: this.globalState.connectionState,
-      componentStates: Object.keys(this.componentStates).map(key => ({
-        component: key,
-        state: this.componentStates[key].state,
-        hasData: this.componentStates[key].hasData
-      }))
-    })
+    // 监控状态变化
   }
 
   /**
@@ -307,12 +298,7 @@ class MonitoringStateManager {
     const installed = actualData.status === 'installed'
     const available = actualData.available === true
 
-    log.debug('[监控状态管理器] 处理状态消息', {
-      originalData: statusData,
-      actualData,
-      installed,
-      available
-    })
+    // 处理状态消息
 
     this._handleMonitoringStatus(installed, available)
   }
@@ -479,7 +465,7 @@ class MonitoringStateManager {
     this.globalState.terminalId = terminalId
     this.globalState.hostId = hostId
 
-    log.debug(`[监控状态管理器] 已绑定终端: ${terminalId}${hostId ? ` (主机: ${hostId})` : ''}`)
+    // 已绑定终端
   }
 
   /**
@@ -543,7 +529,7 @@ class MonitoringStateManager {
     })
 
     this.eventListeners.clear()
-    log.debug(`[监控状态管理器] 已清理资源${this.boundTerminalId ? ` (终端: ${this.boundTerminalId})` : ''}`)
+    // 已清理资源
   }
 }
 

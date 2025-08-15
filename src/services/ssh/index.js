@@ -10,8 +10,8 @@ import { MESSAGE_TYPES } from '../constants';
 const terminalManager = new TerminalManager(SSHService);
 
 // 集成终端管理功能到SSH服务
-SSHService.createTerminal = (sessionId, container, options = {}) => {
-  return terminalManager.createTerminal(sessionId, container, options);
+SSHService.createTerminal = async (sessionId, container, options = {}) => {
+  return await terminalManager.createTerminal(sessionId, container, options);
 };
 
 // 创建SFTP服务实例

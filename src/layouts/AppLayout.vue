@@ -218,7 +218,7 @@ export default defineComponent({
             const currentId = getCurrentSessionId();
             
             if (currentId) {
-              log.debug(`[AppLayout] 路由切换到终端: ${currentId}`);
+              // 路由切换到终端
 
               // 检查终端是否已经存在，如果存在则不设置isNewCreation
               const terminalStore = useTerminalStore();
@@ -231,7 +231,7 @@ export default defineComponent({
 
               // 优化：只在新创建终端时记录详细状态，减少重复日志
               if (isNewCreation) {
-                log.debug(`[AppLayout] 终端状态: 新建终端 ${currentId}`);
+                // 新建终端
               }
               
               // 直接处理终端初始化，避免重复的事件触发
@@ -240,7 +240,7 @@ export default defineComponent({
 
                 if (isNewCreation) {
                   // 新创建的终端，需要初始化
-                  log.debug(`[AppLayout] 准备初始化新终端: ${currentId}`)
+                  // 准备初始化新终端
 
                   // 等待DOM更新后再初始化
                   nextTick(async () => {
@@ -252,7 +252,7 @@ export default defineComponent({
                 } else {
                   // 已存在的终端，只需聚焦
                   if (terminalStore.hasTerminal(currentId)) {
-                    log.debug(`[AppLayout] 聚焦已存在的终端: ${currentId}`)
+                    // 聚焦已存在的终端
                     terminalStore.focusTerminal(currentId)
                   }
                 }
@@ -282,7 +282,7 @@ export default defineComponent({
       const currentId = getCurrentSessionId();
       if (currentId) {
         activeSessionId.value = currentId;
-        log.debug(`AppLayout初始化时设置activeSessionId: ${activeSessionId.value}`);
+        // AppLayout初始化设置activeSessionId
         
         // 如果当前有SSH会话，确保可以接收网络延迟更新
         try {
@@ -415,19 +415,14 @@ export default defineComponent({
         const backgroundRepeat = bgSettings.mode === 'repeat' ? 'repeat' : 'no-repeat'
         document.documentElement.style.setProperty('--terminal-bg-repeat', backgroundRepeat)
 
-        log.debug('AppLayout CSS变量已更新:', {
-          image: bgSettings.url,
-          opacity: bgSettings.opacity,
-          size: backgroundSize,
-          repeat: backgroundRepeat
-        })
+        // AppLayout CSS变量已更新
       } else {
         document.documentElement.style.removeProperty('--terminal-bg-image')
         document.documentElement.style.removeProperty('--terminal-bg-opacity')
         document.documentElement.style.removeProperty('--terminal-bg-size')
         document.documentElement.style.removeProperty('--terminal-bg-repeat')
 
-        log.debug('AppLayout CSS变量已清除')
+        // AppLayout CSS变量已清除
       }
     }
 
