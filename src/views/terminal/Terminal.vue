@@ -48,7 +48,7 @@
             />
           </div>
 
-          <!-- 右侧内容区域：终端 + AI输入栏 -->
+          <!-- 右侧内容区域：终端 + AI面板 + AI输入栏 -->
           <div class="terminal-right-area" :class="{ 'with-monitoring-panel': shouldShowDesktopMonitoringPanel(termId) }">
             <!-- 终端内容区域 -->
             <div class="terminal-content-padding theme-transition">
@@ -59,17 +59,28 @@
               ></div>
             </div>
 
-            <!-- AI输入栏 -->
-            <div class="terminal-ai-input-area theme-transition" v-if="shouldShowAIInputBar(termId) && isActiveTerminal(termId)">
-              <AIInputBar
+            <!-- AI合并面板 - 包含交互面板和输入栏 -->
+            <div class="terminal-ai-combined-area theme-transition" v-if="shouldShowAICombinedPanel(termId) && isActiveTerminal(termId)">
+              <AICombinedPanel
+                :ref="el => setAICombinedPanelRef(el, termId)"
                 :terminal-id="termId"
-                :ai-service="getAIService()"
+                :messages="getAIMessages(termId)"
+                :max-height="getAIPanelMaxHeight()"
                 :is-mobile="isMobile()"
+                :is-streaming="getAIStreamingState(termId)"
+                :ai-service="getAIService()"
                 @ai-response="handleAIResponse"
+                @ai-streaming="handleAIStreaming"
                 @mode-change="handleAIModeChange"
                 @input-focus="handleAIInputFocus"
                 @input-blur="handleAIInputBlur"
                 @execute-command="handleExecuteCommand"
+                @clear-history="handleAIClearHistory"
+                @edit-command="handleAIEditCommand"
+                @add-to-scripts="handleAIAddToScripts"
+                @height-change="handleAIPanelHeightChange"
+                @height-change-start="handleAIPanelHeightChangeStart"
+                @height-change-end="handleAIPanelHeightChangeEnd"
               />
             </div>
           </div>
@@ -125,8 +136,10 @@ import log from '../../services/log'
 import ResponsiveMonitoringPanel from '../../components/monitoring/ResponsiveMonitoringPanel.vue'
 // 导入移动端监控抽屉组件
 import MobileMonitoringDrawer from '../../components/monitoring/MobileMonitoringDrawer.vue'
-// 导入AI输入栏组件
-import AIInputBar from '../../components/ai/AIInputBar.vue'
+// 导入AI合并面板组件
+import AICombinedPanel from '../../components/ai/AICombinedPanel.vue'
+// 导入AI面板状态管理
+import { useAIPanelStore } from '../../store/ai-panel.js'
 
 // 导入会话存储
 import { useSessionStore } from '../../store/session'
@@ -149,7 +162,7 @@ export default {
     TerminalAutocomplete, // 注册自动完成组件
     ResponsiveMonitoringPanel, // 注册响应式监控面板组件
     MobileMonitoringDrawer, // 注册移动端监控抽屉组件
-    AIInputBar // 注册AI输入栏组件
+    AICombinedPanel // 注册AI合并面板组件
   },
   props: {
     id: {
@@ -168,14 +181,14 @@ export default {
     const terminalStore = useTerminalStore()
 
     const sessionStore = useSessionStore() // 添加会话存储
-    
+
     // 终端引用映射，key为连接ID，value为DOM元素
     const terminalRefs = ref({})
     // 终端初始化状态，key为连接ID，value为是否已初始化
     const terminalInitialized = ref({})
     // 当前所有打开的终端ID列表
     const terminalIds = ref([])
-    
+
     const title = ref('终端')
     const status = ref('正在连接...')
     // 将isConnecting从普通的响应式变量改为每个终端的连接状态跟踪
@@ -193,8 +206,11 @@ export default {
     const terminalStateManagers = ref({}) // 每个终端的状态管理器实例映射
     let cleanupMonitoringListener = null  // 监控数据监听器清理函数
 
-    // AI输入栏相关状态
-    const aiInputBarStates = ref({}) // 每个终端的AI输入栏显示状态
+    // AI合并面板相关状态
+    const aiCombinedPanelStates = ref({}) // 每个终端的AI合并面板显示状态
+    const aiPanelStore = useAIPanelStore() // AI面板状态管理
+    const aiCombinedPanelRefs = ref({}) // AI合并面板组件引用
+    const aiStreamingStates = ref({}) // 每个终端的AI流式输出状态
 
     // 每个终端的火箭动画阶段状态
     const terminalRocketPhases = ref({})
@@ -261,7 +277,7 @@ export default {
       const currentPhase = getTerminalRocketPhase(termId);
       return currentPhase === 'connected' || currentPhase === 'completing';
     }
-    
+
     // 终端背景设置
     const terminalBg = ref({
       enabled: false,
@@ -279,7 +295,7 @@ export default {
 
     // 自动完成组件引用
     const autocompleteRef = ref(null)
-    
+
     // 计算属性：是否应该显示火箭加载动画
     const shouldShowConnectingAnimation = computed(() => {
       const activeId = activeConnectionId.value;
@@ -328,13 +344,13 @@ export default {
 
       return rocketAnimationPhase.value === 'connected' || rocketAnimationPhase.value === 'completing';
     })
-    
+
     // 计算终端背景样式
     const terminalBgStyle = computed(() => {
       if (!terminalBg.value.enabled || !terminalBg.value.url) {
         return {}
       }
-      
+
       let backgroundSize = 'cover'
       if (terminalBg.value.mode === 'contain') {
         backgroundSize = 'contain'
@@ -345,7 +361,7 @@ export default {
       } else if (terminalBg.value.mode === 'repeat') {
         backgroundSize = 'auto'
       }
-      
+
       return {
         backgroundImage: `url(${terminalBg.value.url})`,
         backgroundSize: backgroundSize,
@@ -354,7 +370,7 @@ export default {
         opacity: terminalBg.value.opacity,
       }
     })
-    
+
     // 计算当前连接ID，优先使用props中的ID，如果没有则使用路由参数或会话存储
     const activeConnectionId = computed(() => {
       // 优先使用props中的ID
@@ -384,19 +400,19 @@ export default {
         log.debug(`[终端] 状态管理器已切换到终端: ${newTerminalId}`)
       }
     }, { immediate: true })
-    
+
     // 检查终端是否为当前活动终端
     const isActiveTerminal = (termId) => {
       return termId === activeConnectionId.value
     }
-    
+
     // 获取终端样式，控制显示/隐藏
     const getTerminalStyle = (termId) => {
       // 不再通过内联样式控制可见性，改为通过CSS类控制
       // 返回空对象，让CSS类处理所有样式变化
       return {}
     }
-    
+
     // 设置终端引用
     const setTerminalRef = (el, termId) => {
       if (el && !terminalRefs.value[termId]) {
@@ -407,7 +423,7 @@ export default {
         }
       }
     }
-    
+
     // 初始化特定ID的终端 - 使用统一初始化流程，避免重复逻辑
     const initTerminal = async (termId, container) => {
       try {
@@ -418,7 +434,7 @@ export default {
 
         // 确保字体已经加载完成
         await waitForFontsLoaded()
-        
+
         // 清理错误状态的连接
         if (terminalStore.getTerminalStatus(termId) === 'error') {
           delete terminalInitialized.value[termId]
@@ -434,7 +450,7 @@ export default {
         const hasTerminal = terminalStore.hasTerminal(termId)
         const hasSession = terminalStore.hasTerminalSession(termId)
         const isCreating = terminalStore.isSessionCreating(termId)
-        
+
         // 如果终端或会话不存在，且不在创建中，才尝试初始化
         if ((!hasTerminal || !hasSession) && !isCreating) {
           // 调用统一初始化流程
@@ -452,7 +468,7 @@ export default {
           terminalConnectingStates.value[termId] = true
           return false
         }
-        
+
         // 未满足初始化条件
         return false
       } catch (error) {
@@ -466,17 +482,17 @@ export default {
       try {
         // 获取终端实例
         const terminalInstance = terminalStore.getTerminal(termId)
-        
+
         if (!terminalStore.hasTerminalSession(termId)) {
           log.warn(`跳过应用设置：终端 ${termId} 不存在`)
           return false
         }
-        
+
         if (!terminalInstance) {
           log.warn(`跳过应用设置：无法获取终端 ${termId} 实例`)
           return false
         }
-        
+
         // 根据终端store的实现，存储的是直接的xterm.js实例
         const terminal = terminalInstance
         const settings = settingsService.getTerminalSettings()
@@ -519,9 +535,9 @@ export default {
           }
           hasChanges = true
         }
-        
+
         // 应用其他可配置项...
-        
+
         // 应用主题设置
         try {
           if (settings.theme) {
@@ -548,27 +564,27 @@ export default {
         } catch (error) {
           log.error(`应用终端 ${termId} 主题失败:`, error)
         }
-        
+
         // 应用调整大小
             try {
           terminal.fit()
             } catch (e) {
           log.warn(`调整终端 ${termId} 大小失败:`, e)
             }
-          
+
         if (hasChanges) {
           log.debug(`终端 ${termId}: 设置已成功应用`)
         } else {
           log.debug(`终端 ${termId}: 没有需要应用的设置变更`)
         }
-        
+
         return true
       } catch (error) {
         log.error(`应用终端 ${termId} 设置失败:`, error)
         return false
       }
     }
-    
+
     // 加载终端背景设置
     const loadTerminalBgSettings = () => {
       try {
@@ -576,10 +592,10 @@ export default {
         if (savedBgSettings) {
           const parsedSettings = JSON.parse(savedBgSettings)
           terminalBg.value = { ...parsedSettings }
-          
+
           // 更新本地背景状态
           terminalHasBackground.value = parsedSettings.enabled
-          
+
           // 发送背景图状态事件
           window.dispatchEvent(new CustomEvent('terminal-bg-status', {
             detail: {
@@ -587,7 +603,7 @@ export default {
               bgSettings: terminalBg.value
             }
           }))
-          
+
           // 更新CSS变量以供AppLayout使用
           updateCssVariables()
         }
@@ -595,13 +611,13 @@ export default {
         log.error('加载终端背景设置失败:', error)
       }
     }
-    
+
     // 更新CSS变量以供AppLayout使用
     const updateCssVariables = () => {
       if (terminalBg.value.enabled && terminalBg.value.url) {
         document.documentElement.style.setProperty('--terminal-bg-image', `url(${terminalBg.value.url})`)
         document.documentElement.style.setProperty('--terminal-bg-opacity', terminalBg.value.opacity.toString())
-        
+
         // 设置背景尺寸
         let backgroundSize = 'cover'
         if (terminalBg.value.mode === 'contain') {
@@ -614,7 +630,7 @@ export default {
           backgroundSize = 'auto'
         }
         document.documentElement.style.setProperty('--terminal-bg-size', backgroundSize)
-        
+
         // 设置背景重复
         const backgroundRepeat = terminalBg.value.mode === 'repeat' ? 'repeat' : 'no-repeat'
         document.documentElement.style.setProperty('--terminal-bg-repeat', backgroundRepeat)
@@ -625,7 +641,7 @@ export default {
         document.documentElement.style.removeProperty('--terminal-bg-repeat')
       }
     }
-    
+
     // 监听终端背景设置变化事件（使用命名函数以便正确移除）
     let bgChangeHandler = null
     const listenForBgChanges = () => {
@@ -633,10 +649,10 @@ export default {
       bgChangeHandler = (event) => {
         if (event.detail) {
           terminalBg.value = { ...event.detail }
-          
+
           // 更新本地背景状态
           terminalHasBackground.value = event.detail.enabled
-          
+
           // 发送背景图状态变更事件
           window.dispatchEvent(new CustomEvent('terminal-bg-status', {
             detail: {
@@ -644,43 +660,43 @@ export default {
               bgSettings: terminalBg.value
             }
           }))
-          
+
           // 更新CSS变量
           updateCssVariables()
         }
       }
-      
+
       // 使用命名函数添加监听器
       window.addEventListener('terminal-bg-changed', bgChangeHandler)
     }
-    
+
     // 添加防抖计时器
     const updateIdListDebounceTimer = ref(null)
-    
+
     // 监听打开的终端标签页，更新终端ID列表
     const updateTerminalIds = () => {
       // 添加防抖处理
       if (updateIdListDebounceTimer.value) {
         clearTimeout(updateIdListDebounceTimer.value)
       }
-      
+
       updateIdListDebounceTimer.value = setTimeout(() => {
         // 获取所有终端类型的标签页
-        const terminalTabs = tabStore.tabs.filter(tab => 
-          tab.type === 'terminal' && 
-          tab.data && 
+        const terminalTabs = tabStore.tabs.filter(tab =>
+          tab.type === 'terminal' &&
+          tab.data &&
           tab.data.connectionId
         )
-        
+
         // 提取所有终端ID
         const newIds = [...new Set(terminalTabs.map(tab => tab.data.connectionId))]
-        
+
         // 查找要删除的ID
         const idsToRemove = terminalIds.value.filter(id => !newIds.includes(id));
-        
+
         if (idsToRemove.length > 0) {
           log.debug(`发现${idsToRemove.length}个不在标签页中的终端ID，准备移除:`, idsToRemove);
-          
+
           // 清理不在标签页中的终端ID及其相关状态
           for (const idToRemove of idsToRemove) {
             // 清理终端状态
@@ -688,13 +704,13 @@ export default {
             delete terminalInitializingStates.value[idToRemove];
             delete terminalConnectingStates.value[idToRemove];
             delete terminalSized.value[idToRemove];
-            
+
             // 清理定时器
             if (resizeDebounceTimers.value[idToRemove]) {
               clearTimeout(resizeDebounceTimers.value[idToRemove]);
               delete resizeDebounceTimers.value[idToRemove];
             }
-            
+
             // 清理引用
             if (terminalRefs.value[idToRemove]) {
               terminalRefs.value[idToRemove] = null;
@@ -702,29 +718,29 @@ export default {
             }
           }
         }
-        
+
         // 比较新旧ID列表，只有当内容不同时才更新和记录日志
         const currentIds = terminalIds.value
-        const hasChanged = newIds.length !== currentIds.length || 
+        const hasChanged = newIds.length !== currentIds.length ||
                            newIds.some(id => !currentIds.includes(id)) ||
                            currentIds.some(id => !newIds.includes(id))
-        
+
         if (hasChanged) {
           // 更新ID列表
           terminalIds.value = newIds
           log.debug('更新终端ID列表:', terminalIds.value)
         }
-        
+
         updateIdListDebounceTimer.value = null
       }, 50) // 50ms防抖延迟
     }
-    
+
     // 添加防抖控制
     const resizeDebounceTimers = ref({})
-    
+
     // 添加终端尺寸已调整标志
     const terminalSized = ref({})
-    
+
     // 调整终端大小（添加防抖逻辑和尺寸状态跟踪）
     const resizeTerminal = (termId = null) => {
       // 防抖函数 - 避免短时间内多次调整同一终端
@@ -733,11 +749,11 @@ export default {
         if (resizeDebounceTimers.value[id]) {
           clearTimeout(resizeDebounceTimers.value[id])
         }
-        
+
         // 设置新的定时器
         resizeDebounceTimers.value[id] = setTimeout(() => {
           if (!terminalStore.hasTerminal(id)) return
-          
+
           try {
             // 移除重复的调整日志 - 由 terminalStore.fitTerminal 统一输出
             terminalStore.fitTerminal(id)
@@ -750,7 +766,7 @@ export default {
           }
         }, 50) // 短延迟防抖
       }
-      
+
       // 如果指定了ID，只调整该终端大小
       if (termId) {
         // 仅当终端未被调整过大小时才进行调整
@@ -761,13 +777,13 @@ export default {
         }
         return
       }
-      
+
       // 否则调整所有终端大小，优先调整活动终端
       const activeId = activeConnectionId.value
       if (activeId && terminalStore.hasTerminal(activeId) && !terminalSized.value[activeId]) {
         debouncedResize(activeId)
       }
-      
+
       // 然后调整其它未调整过大小的终端
       terminalIds.value.forEach(id => {
         if (id !== activeId && terminalStore.hasTerminal(id) && !terminalSized.value[id]) {
@@ -775,7 +791,7 @@ export default {
         }
       })
     }
-    
+
     // 为组件添加最后聚焦的终端ID跟踪
     const lastFocusedTerminalId = ref(null)
 
@@ -832,7 +848,7 @@ export default {
         return false
       }
     }
-    
+
     // 切换终端函数
     const switchToTerminal = async (termId) => {
       if (!termId || !terminalStore.hasTerminal(termId)) return
@@ -854,7 +870,7 @@ export default {
         }
       })
     }
-    
+
     // 监听标签页状态变化，更新终端ID列表
     watch(
       () => tabStore.tabs,
@@ -862,35 +878,35 @@ export default {
         // 检测已关闭的终端标签
         if (oldTabs && oldTabs.length > newTabs.length) {
           // 查找已关闭的终端标签
-          const closedTabs = oldTabs.filter(oldTab => 
-            !newTabs.some(newTab => 
+          const closedTabs = oldTabs.filter(oldTab =>
+            !newTabs.some(newTab =>
               newTab.data && oldTab.data && newTab.data.connectionId === oldTab.data.connectionId
-            ) && 
-            oldTab.type === 'terminal' && 
-            oldTab.data && 
+            ) &&
+            oldTab.type === 'terminal' &&
+            oldTab.data &&
             oldTab.data.connectionId
           );
-          
+
           // 处理已关闭的终端标签
           if (closedTabs.length > 0) {
             for (const closedTab of closedTabs) {
               const closedId = closedTab.data.connectionId;
               log.debug(`检测到标签页关闭，移除终端ID: ${closedId}`);
-              
+
               // 从终端ID列表中移除
               terminalIds.value = terminalIds.value.filter(id => id !== closedId);
-              
+
               // 清理与此终端相关的所有状态
               delete terminalInitialized.value[closedId];
               delete terminalInitializingStates.value[closedId];
               delete terminalConnectingStates.value[closedId];
               delete terminalSized.value[closedId];
-              
+
               if (resizeDebounceTimers.value[closedId]) {
                 clearTimeout(resizeDebounceTimers.value[closedId]);
                 delete resizeDebounceTimers.value[closedId];
               }
-              
+
               // 清理引用
               if (terminalRefs.value[closedId]) {
                 terminalRefs.value[closedId] = null;
@@ -899,12 +915,12 @@ export default {
             }
           }
         }
-        
+
         updateTerminalIds();
       },
       { deep: true, immediate: true }
     )
-    
+
     // 监听会话切换，确保工具栏同步和终端切换
     const handleSessionChange = (event) => {
       if (!event?.detail?.sessionId) return;
@@ -926,7 +942,7 @@ export default {
       if (!terminalStateManagers.value[sessionId]) {
         getTerminalStateManager(sessionId);
       }
-      
+
       // 检查是否是标签切换模式
       if (!isTabSwitch) {
         // 重置该终端的火箭动画状态为连接中
@@ -965,7 +981,7 @@ export default {
         }
       }, 100);
     };
-    
+
     // 修改watch函数，添加连接中状态检查
     watch(
       () => route.path,
@@ -981,7 +997,7 @@ export default {
       },
       { immediate: true }
     )
-    
+
     // 定义处理键盘快捷键事件的函数
     const handleKeyboardAction = (action) => {
       if (action === 'terminal.clear') {
@@ -1060,12 +1076,12 @@ export default {
       window.addEventListener('terminal:clear', clearTerminal)
       window.addEventListener('terminal:disconnect', disconnectTerminal)
       window.addEventListener('terminal:execute-command', executeTerminalCommand)
-      
+
       // 全局键盘管理器服务可用时绑定事件
       if (window.services?.keyboardManager) {
         window.services.keyboardManager.on('action', handleKeyboardAction)
       }
-      
+
       // 监听服务就绪事件，以便在服务加载后绑定
       window.addEventListener('services:ready', () => {
         if (window.services?.keyboardManager) {
@@ -1073,20 +1089,20 @@ export default {
         }
       }, { once: true })
     }
-    
+
     // 移除外部工具栏事件监听
     const removeToolbarListeners = () => {
       window.removeEventListener('terminal:send-command', sendTerminalCommand)
       window.removeEventListener('terminal:clear', clearTerminal)
       window.removeEventListener('terminal:disconnect', disconnectTerminal)
       window.removeEventListener('terminal:execute-command', executeTerminalCommand)
-      
+
       // 移除键盘快捷键事件监听
       if (window.services?.keyboardManager) {
         window.services.keyboardManager.off('action', handleKeyboardAction)
       }
     }
-    
+
     // 清空当前活动终端
     const clearTerminal = () => {
       const id = activeConnectionId.value
@@ -1094,7 +1110,7 @@ export default {
         terminalStore.clearTerminal(id)
       }
     }
-    
+
     // 发送命令到当前活动终端
     const sendTerminalCommand = () => {
       try {
@@ -1115,7 +1131,7 @@ export default {
         log.error('发送命令失败:', error)
       }
     }
-    
+
     // 执行指定命令到终端
     const executeTerminalCommand = (event) => {
       if (event.detail && event.detail.command) {
@@ -1127,14 +1143,14 @@ export default {
           setTimeout(() => {
             terminalStore.sendCommand(id, event.detail.command)
           }, 100)
-          
+
           log.debug(`执行命令到终端 ${id}: ${event.detail.command}`)
         } else {
           log.error('无法执行命令：终端不存在或无效')
         }
       }
     }
-    
+
     // 处理SSH错误
     const handleSSHError = (event) => {
       if (event.detail && activeConnectionId.value) {
@@ -1142,20 +1158,20 @@ export default {
         if (sessionId && event.detail.sessionId === sessionId) {
           ElMessage.error(`连接失败: ${event.detail.message || '服务器无响应'}`)
           status.value = '连接错误'
-          
+
           // 直接清理本地状态，避免断开时找不到会话ID的问题
           delete terminalInitialized.value[activeConnectionId.value]
           delete terminalInitializingStates.value[activeConnectionId.value]
           delete terminalConnectingStates.value[activeConnectionId.value]
-          
+
           // 从终端ID列表中移除
           terminalIds.value = terminalIds.value.filter(id => id !== activeConnectionId.value)
-          
+
           // 清理会话存储中的状态
           if (sessionStore.getSession(activeConnectionId.value)) {
             sessionStore.setActiveSession(null)
           }
-          
+
           // 仅在会话实际存在的情况下尝试断开连接
           if (terminalStore.hasTerminalSession(activeConnectionId.value)) {
             terminalStore.disconnectTerminal(activeConnectionId.value)
@@ -1170,7 +1186,7 @@ export default {
         }
       }
     }
-    
+
     // 断开当前活动终端连接
     const disconnectTerminal = async () => {
       ElMessageBox.confirm('确定要断开此连接吗？', '断开连接', {
@@ -1183,7 +1199,7 @@ export default {
         // 用户取消，不执行任何操作
       })
     }
-    
+
     // 断开会话函数
     const disconnectSession = async () => {
       const id = activeConnectionId.value
@@ -1191,32 +1207,35 @@ export default {
         const success = await terminalStore.disconnectTerminal(id)
         if (success) {
           log.info(`终端 ${id} 已断开`)
-          
+
           // 从终端ID列表中移除
           terminalIds.value = terminalIds.value.filter(termId => termId !== id)
           // 移除终端初始化状态标记
           delete terminalInitialized.value[id]
           delete terminalInitializingStates.value[id]
           delete terminalConnectingStates.value[id]
-          
+
+          // 清理AI面板状态
+          aiPanelStore.cleanupTerminal(id)
+
           // 检查是否所有终端都已完成连接
           const anyConnecting = Object.values(terminalConnectingStates.value).some(state => state === true)
           isConnectingInProgress.value = anyConnecting
-          
+
           // 找到对应标签页关闭
-          const tabIndex = tabStore.tabs.findIndex(tab => 
-            tab.type === 'terminal' && 
-            tab.data && 
+          const tabIndex = tabStore.tabs.findIndex(tab =>
+            tab.type === 'terminal' &&
+            tab.data &&
             tab.data.connectionId === id
           )
-          
+
           if (tabIndex >= 0) {
             tabStore.closeTab(tabIndex)
           }
         }
       }
     }
-    
+
     // 创建全局的窗口大小变化处理函数，防止多个匿名函数导致无法正确移除
     let windowResizeTimer = null
     const handleWindowResize = () => {
@@ -1224,7 +1243,7 @@ export default {
       if (windowResizeTimer) {
         clearTimeout(windowResizeTimer)
       }
-      
+
       windowResizeTimer = setTimeout(() => {
         log.debug('窗口大小变化，重置所有终端尺寸状态')
         // 清空已调整标记，让所有终端都能重新调整
@@ -1238,10 +1257,10 @@ export default {
         windowResizeTimer = null
       }, 100) // 100ms防抖
     }
-    
+
     // 在变量声明部分添加sftpPanelWidth
     const sftpPanelWidth = ref(600) // 默认SFTP面板宽度
-    
+
     // 添加SFTP和监控面板相关方法
     const toggleSftpPanel = () => {
       // 通过事件将当前终端ID传递给父组件
@@ -1464,7 +1483,7 @@ export default {
         }
       });
     }
-    
+
     // 组件挂载
     onMounted(() => {
       // 初始化标签页标题
@@ -1620,65 +1639,65 @@ export default {
       // 保持会话不关闭，但停止特定组件的监听
       log.debug('终端组件卸载，保留会话')
     })
-    
+
     // 移除重复的事件处理函数 - 统一使用 terminal-status-update 事件系统
     // 原 handleTerminalRefreshStatus 函数已删除，避免与 terminal-status-update 事件重复处理
-    
+
     // 添加处理新会话事件的函数
     const handleNewSession = (event) => {
       if (!event.detail || !event.detail.sessionId) return;
-      
+
       const { sessionId, isNewCreation } = event.detail;
       log.debug(`收到新会话事件: ${sessionId}, 是否新创建: ${isNewCreation}`);
-      
+
       if (isNewCreation) {
         // 检查是否已经有正在创建中的SSH会话或已存在的会话
         const hasExistingSession = terminalStore.hasTerminalSession(sessionId);
         const isCreating = terminalStore.isSessionCreating(sessionId);
-        
+
         if (hasExistingSession || isCreating) {
           log.debug(`终端${sessionId}已有会话或正在创建中，跳过重复初始化`);
           return;
         }
-        
+
         // 确保清理旧的状态
         // 从终端ID列表中移除重复的ID
         terminalIds.value = terminalIds.value.filter(id => id !== sessionId);
-        
+
         // 清理所有状态
         delete terminalInitialized.value[sessionId];
         delete terminalInitializingStates.value[sessionId];
         delete terminalConnectingStates.value[sessionId];
         delete terminalSized.value[sessionId];
-        
+
         // 清理引用
         if (terminalRefs.value[sessionId]) {
           terminalRefs.value[sessionId] = null;
           delete terminalRefs.value[sessionId];
         }
-        
+
         // 清理定时器
         if (resizeDebounceTimers.value[sessionId]) {
           clearTimeout(resizeDebounceTimers.value[sessionId]);
           delete resizeDebounceTimers.value[sessionId];
         }
-        
+
         // 清理终端存储中的连接（如果有）
         if (terminalStore.hasTerminal(sessionId)) {
           log.debug(`检测到新创建的终端[${sessionId}]但存在旧终端，断开旧连接`);
           terminalStore.disconnectTerminal(sessionId)
             .catch(error => log.error(`清理旧终端连接失败: ${error.message}`));
         }
-        
+
         // 添加到终端ID列表，确保初始化
         terminalIds.value.push(sessionId);
         log.debug(`为新会话[${sessionId}]重置状态，准备初始化`);
       }
     };
-    
+
     // SSH连接成功事件处理已移至 TerminalToolbar.vue 组件中统一管理
     // 这里移除了重复的死代码，避免混淆和潜在的冲突
-    
+
     // 添加终端状态更新事件监听
     const setupTerminalEvents = () => {
       // 监听终端状态变化事件
@@ -1689,12 +1708,12 @@ export default {
         if (status === 'ready' || status === 'error') {
           log.debug(`收到终端状态刷新事件: ${terminalId}, ${status}, 新创建=${isNew || false}`)
         }
-        
+
         // 根据状态更新UI
         if (status === 'initializing') {
           terminalInitializingStates.value[terminalId] = true
           terminalConnectingStates.value[terminalId] = true
-          
+
           // 如果是新会话，确保添加到终端ID列表
           if (isNew && !terminalIds.value.includes(terminalId)) {
             terminalIds.value.push(terminalId)
@@ -1705,15 +1724,18 @@ export default {
           terminalInitialized.value[terminalId] = true
           terminalInitializingStates.value[terminalId] = false
           terminalConnectingStates.value[terminalId] = false
-          
+
+          // 初始化AI面板状态
+          aiPanelStore.initializeTerminal(terminalId)
+
           // 确保终端显示独立状态
           // 降低日志频率 - 状态独立确保是常规操作
           // log.debug(`正在确保终端[${terminalId}]的状态独立`)
-          
+
           if (isNew) {
             log.debug(`强制显示终端: ${terminalId}`)
           }
-          
+
           // 终端就绪后，尝试聚焦终端
           nextTick(() => {
             // 如果这是当前活动的终端，自动聚焦
@@ -1735,7 +1757,7 @@ export default {
               }, 100)
             }
           })
-          
+
           // 收到连接成功事件后，如果是当前激活的终端，更新标题等信息
           if (isActiveTerminal(terminalId) && sessionId) {
             // 获取连接信息
@@ -1745,13 +1767,13 @@ export default {
             } else {
               connection = localConnectionsStore.getConnectionById(terminalId)
             }
-            
+
             if (connection) {
               // 更新标题和标签页标题
               title.value = `${connection.name || connection.host} - 终端`
               const tabTitle = `${connection.username}@${connection.host}`
               tabStore.updateTabTitle('/terminal', tabTitle)
-              
+
               // 通知会话存储这是当前活动会话
               sessionStore.setActiveSession(terminalId)
               log.debug(`当前活动会话ID已更新: ${terminalId}`)
@@ -1762,18 +1784,18 @@ export default {
           terminalInitializingStates.value[terminalId] = false
           terminalConnectingStates.value[terminalId] = false
           terminalInitialized.value[terminalId] = false
-          
+
           // 直接清理本地状态
           delete terminalRefs.value[terminalId]
-          
+
           // 从终端ID列表中移除
           terminalIds.value = terminalIds.value.filter(id => id !== terminalId)
-          
+
           // 清理会话存储中的状态
           if (sessionStore.getSession(terminalId)) {
             sessionStore.setActiveSession(null)
           }
-          
+
           // 仅在会话实际存在的情况下尝试断开连接
           if (terminalStore.hasTerminalSession(terminalId)) {
             terminalStore.disconnectTerminal(terminalId)
@@ -1787,42 +1809,42 @@ export default {
           }
         }
       }
-      
+
       // 添加SSH会话创建失败事件监听
       const handleSessionCreationFailed = (event) => {
         if (!event.detail) return
-        
+
         const { sessionId, terminalId, error } = event.detail
         log.debug(`收到SSH会话创建失败事件: 会话ID=${sessionId}, 终端ID=${terminalId || '未知'}, 错误=${error}`)
-        
+
         // 如果有终端ID，清理相关状态
         if (terminalId) {
           // 清理终端状态
           terminalInitializingStates.value[terminalId] = false
           terminalConnectingStates.value[terminalId] = false
           terminalInitialized.value[terminalId] = false
-          
+
           // 清理引用
           if (terminalRefs.value[terminalId]) {
             terminalRefs.value[terminalId] = null
             delete terminalRefs.value[terminalId]
           }
-          
+
           // 从终端ID列表中移除
           terminalIds.value = terminalIds.value.filter(id => id !== terminalId)
-          
+
           // 清理会话存储
           if (sessionStore.getSession(terminalId)) {
             sessionStore.setActiveSession(null)
           }
-          
+
           // 如果是当前活动连接，显示错误并导航回连接配置界面
           if (terminalId === activeConnectionId.value) {
             // 提取简洁错误信息，避免重复
             let errorMessage = error || '服务器无响应';
             // 如果错误消息包含"SSH连接失败:"，则删除这个前缀
             errorMessage = errorMessage.replace(/SSH连接失败:\s*/g, '');
-            
+
             // 翻译常见的英文错误消息为中文
             const errorTranslations = {
               'All configured authentication methods failed': '所有认证方式均失败，请检查用户名和密码',
@@ -1837,7 +1859,7 @@ export default {
               'Connection failed': '连接失败',
               'Invalid username or password': '用户名或密码错误'
             };
-            
+
             // 寻找完全匹配的错误消息进行翻译
             if (errorTranslations[errorMessage]) {
               errorMessage = errorTranslations[errorMessage];
@@ -1850,7 +1872,7 @@ export default {
                 }
               }
             }
-            
+
             // 显示优化后的错误消息
             ElMessage.error(`连接失败: ${errorMessage}`);
 
@@ -1874,18 +1896,18 @@ export default {
           }
         }
       }
-      
+
       // 添加事件监听
       window.addEventListener('terminal-status-update', handleTerminalStatusUpdate)
       window.addEventListener('ssh-session-creation-failed', handleSessionCreationFailed)
-      
+
       // 返回清理函数
       return () => {
         window.removeEventListener('terminal-status-update', handleTerminalStatusUpdate)
         window.removeEventListener('ssh-session-creation-failed', handleSessionCreationFailed)
       }
     }
-    
+
     // 监听URL路径和参数变化
     watch(
       () => [route.params.id, route.path],
@@ -1894,13 +1916,13 @@ export default {
         if (!newPath.includes('/terminal')) {
           return
         }
-        
+
         // 获取最新的连接ID
         const currentId = activeConnectionId.value
-        
+
         // 如果路由参数不是ID，则使用会话存储ID
         const routeId = newId || sessionStore.getActiveSession()
-        
+
         if (routeId && routeId !== currentId) {
           log.debug(`[Terminal] 会话切换: ${currentId} -> ${routeId}`)
 
@@ -1909,10 +1931,10 @@ export default {
             terminalIds.value.push(routeId)
             log.debug(`[Terminal] 终端列表更新: ${terminalIds.value.length}个终端`)
           }
-          
+
           // 通知会话存储更新活动会话
           sessionStore.setActiveSession(routeId)
-          
+
           // 如果已有终端引用，尝试初始化
           if (terminalRefs.value[routeId]) {
             log.debug(`切换到终端: ${routeId}`)
@@ -1926,7 +1948,7 @@ export default {
       },
       { immediate: true }
     )
-    
+
     // 自动完成处理函数
     const handleAutocompleteSelect = (suggestion) => {
       try {
@@ -2027,12 +2049,12 @@ export default {
     const setupSSHFailureHandler = () => {
       const handleSSHConnectionFailed = (event) => {
         if (!event.detail) return
-        
+
         const { connectionId, error, message } = event.detail
         log.debug(`收到全局SSH连接失败事件: ${connectionId}, 错误: ${error}`)
-        
+
         if (!connectionId) return
-        
+
         // 清理本地状态
         if (terminalInitialized.value[connectionId]) {
           delete terminalInitialized.value[connectionId]
@@ -2046,12 +2068,12 @@ export default {
         if (terminalRefs.value[connectionId]) {
           delete terminalRefs.value[connectionId]
         }
-        
+
         // 提取简洁错误信息，避免重复的"SSH连接失败"前缀
         let errorMessage = message || error || '服务器无响应';
         // 如果错误消息包含"SSH连接失败:"，则删除这个前缀
         errorMessage = errorMessage.replace(/SSH连接失败:\s*/g, '');
-        
+
         // 翻译常见的英文错误消息为中文
         const errorTranslations = {
           'All configured authentication methods failed': '所有认证方式均失败，请检查用户名和密码',
@@ -2066,7 +2088,7 @@ export default {
           'Connection failed': '连接失败',
           'Invalid username or password': '用户名或密码错误'
         };
-        
+
         // 寻找完全匹配的错误消息进行翻译
         if (errorTranslations[errorMessage]) {
           errorMessage = errorTranslations[errorMessage];
@@ -2079,7 +2101,7 @@ export default {
             }
           }
         }
-        
+
         // 显示优化后的错误消息
         ElMessage.error(`连接失败: ${errorMessage}`);
 
@@ -2107,10 +2129,10 @@ export default {
           }, 100)
         }
       }
-      
+
       // 添加全局事件监听
       window.addEventListener('ssh-connection-failed', handleSSHConnectionFailed)
-      
+
       // 返回清理函数
       return () => {
         window.removeEventListener('ssh-connection-failed', handleSSHConnectionFailed)
@@ -2120,11 +2142,11 @@ export default {
     // ===== AI输入栏相关方法 =====
 
     /**
-     * 检查是否应该显示AI输入栏
+     * 检查是否应该显示AI合并面板
      * @param {string} termId 终端ID
-     * @returns {boolean} 是否显示AI输入栏
+     * @returns {boolean} 是否显示AI合并面板
      */
-    const shouldShowAIInputBar = (termId) => {
+    const shouldShowAICombinedPanel = (termId) => {
       if (!termId) return false
 
       // 检查AI服务是否可用
@@ -2135,7 +2157,7 @@ export default {
       if (!terminalStore.hasTerminal(termId)) return false
 
       // 检查用户设置（可以添加开关控制）
-      return aiInputBarStates.value[termId] !== false // 默认显示
+      return aiCombinedPanelStates.value[termId] !== false // 默认显示
     }
 
     /**
@@ -2152,24 +2174,83 @@ export default {
     }
 
     /**
+     * 处理AI流式输出开始
+     * @param {Object} data 流式输出数据
+     */
+    const handleAIStreaming = (data) => {
+      try {
+        const termId = activeConnectionId.value
+        if (!termId) return
+
+        const { isStreaming, userMessage, partialContent } = data
+
+        // 更新流式状态
+        aiStreamingStates.value[termId] = isStreaming
+
+        if (isStreaming) {
+          // 开始流式输出时，显示面板并添加用户消息
+          aiPanelStore.showPanel(termId)
+
+          if (userMessage) {
+            aiPanelStore.addMessage(termId, {
+              type: 'user',
+              content: userMessage,
+              timestamp: Date.now()
+            })
+          }
+
+          // 添加或更新AI响应消息（流式）
+          const messages = aiPanelStore.getMessages(termId)
+          const lastMessage = messages[messages.length - 1]
+
+          if (lastMessage && lastMessage.type === 'assistant' && lastMessage.isStreaming) {
+            // 更新现有的流式消息
+            lastMessage.content = partialContent
+            lastMessage.timestamp = Date.now()
+          } else {
+            // 添加新的流式消息
+            aiPanelStore.addMessage(termId, {
+              type: 'assistant',
+              content: partialContent,
+              timestamp: Date.now(),
+              isStreaming: true
+            })
+          }
+        } else {
+          // 流式输出结束，标记消息为完成
+          const messages = aiPanelStore.getMessages(termId)
+          const lastMessage = messages[messages.length - 1]
+
+          if (lastMessage && lastMessage.isStreaming) {
+            lastMessage.isStreaming = false
+          }
+        }
+
+        log.debug('AI流式输出处理', { termId, isStreaming, contentLength: partialContent?.length })
+      } catch (error) {
+        log.error('处理AI流式输出失败', { error: error.message })
+      }
+    }
+
+    /**
      * 处理AI响应
      * @param {Object} response AI响应数据
      */
-    const handleAIResponse = (response) => {
+    const handleAIResponse = async (response) => {
       try {
-        if (response.success) {
-          // 将AI响应直接显示在终端中
-          displayAIResponseInTerminal(response)
-          log.info('AI响应成功', response)
-        } else {
-          // 处理错误响应
-          displayAIResponseInTerminal({
-            ...response,
-            content: `❌ 错误: ${response.content}`,
-            mode: 'error'
-          })
-          log.error('AI响应失败', response)
+        const termId = activeConnectionId.value
+        if (!termId) return
+
+        // 结束流式状态
+        aiStreamingStates.value[termId] = false
+
+        // 使用AI服务的面板集成方法
+        const aiService = getAIService()
+        if (aiService) {
+          await aiService.handleResponseForPanel(termId, response.userMessage, response)
         }
+
+        log.info('AI响应已处理', response)
       } catch (error) {
         log.error('处理AI响应失败', { error: error.message })
       }
@@ -2376,6 +2457,188 @@ export default {
         log.error('执行命令失败', { error: error.message })
       }
     }
+    // ===== AI交互面板相关方法 =====
+
+    /**
+     * 检查是否应该显示AI面板
+     * @param {string} termId 终端ID
+     * @returns {boolean} 是否显示AI面板
+     */
+    const shouldShowAIPanel = (termId) => {
+      if (!termId) return false
+
+      // 检查AI服务是否可用
+      const aiService = getAIService()
+      if (!aiService || !aiService.isEnabled) return false
+
+      // 检查终端是否已连接
+      if (!terminalStore.hasTerminal(termId)) return false
+
+      // 默认显示AI面板
+      return true
+    }
+
+    /**
+     * 获取AI消息历史
+     * @param {string} termId 终端ID
+     * @returns {Array} AI消息列表
+     */
+    const getAIMessages = (termId) => {
+      return aiPanelStore.getMessages(termId)
+    }
+
+    /**
+     * 获取AI面板最大高度
+     * @returns {number} 最大高度（像素）
+     */
+    const getAIPanelMaxHeight = () => {
+      // 计算终端高度的50%作为最大高度
+      const terminalHeight = window.innerHeight - 200 // 减去头部和其他UI元素
+      return Math.max(aiPanelStore.globalSettings.minPanelHeight, Math.floor(terminalHeight * 0.5))
+    }
+
+    /**
+     * 获取AI流式输出状态
+     * @param {string} termId 终端ID
+     * @returns {boolean} 是否正在流式输出
+     */
+    const getAIStreamingState = (termId) => {
+      return aiStreamingStates.value[termId] || false
+    }
+
+    /**
+     * 设置AI合并面板引用
+     * @param {Object} el DOM元素
+     * @param {string} termId 终端ID
+     */
+    const setAICombinedPanelRef = (el, termId) => {
+      if (el && termId) {
+        aiCombinedPanelRefs.value[termId] = el
+      }
+    }
+
+    /**
+     * 处理AI面板显示/隐藏切换
+     * @param {boolean} visible 是否可见
+     */
+    const handleAIPanelToggle = (visible) => {
+      const termId = activeConnectionId.value
+      if (termId) {
+        if (visible) {
+          aiPanelStore.showPanel(termId)
+        } else {
+          aiPanelStore.hidePanel(termId)
+        }
+        log.debug(`AI面板${visible ? '显示' : '隐藏'}`, { termId })
+      }
+    }
+
+    /**
+     * 处理清空AI历史
+     */
+    const handleAIClearHistory = () => {
+      const termId = activeConnectionId.value
+      if (termId) {
+        aiPanelStore.clearMessages(termId)
+        log.debug('AI历史已清空', { termId })
+      }
+    }
+
+    /**
+     * 处理AI面板执行命令
+     * @param {Object} data 命令数据
+     */
+    const handleAIExecuteCommand = (data) => {
+      const { command, terminalId } = data
+      handleExecuteCommand({ terminalId, command })
+    }
+
+    /**
+     * 处理AI面板编辑命令
+     * @param {Object} data 命令数据
+     */
+    const handleAIEditCommand = (data) => {
+      const { command, terminalId } = data
+      const termId = terminalId || activeConnectionId.value
+
+      if (!termId) {
+        log.error('无法编辑命令：没有活动终端')
+        return
+      }
+
+      // 将编辑后的命令作为新消息添加到AI面板
+      aiPanelStore.addMessage(termId, {
+        type: 'user',
+        content: `编辑后的命令：\n\`\`\`bash\n${command}\n\`\`\``,
+        timestamp: Date.now()
+      })
+
+      log.debug('命令已编辑并添加到AI面板', { command, termId })
+    }
+
+    /**
+     * 处理添加到脚本库
+     * @param {Object} data 脚本数据
+     */
+    const handleAIAddToScripts = (data) => {
+      const { command, name, description, language } = data
+      const termId = activeConnectionId.value
+
+      if (!termId) {
+        log.error('无法添加脚本：没有活动终端')
+        return
+      }
+
+      // 添加成功消息到AI面板
+      aiPanelStore.addMessage(termId, {
+        type: 'system',
+        content: `✅ 脚本 "${name}" 已成功添加到脚本库\n\n**命令：** \`${command}\`\n**描述：** ${description}`,
+        timestamp: Date.now()
+      })
+
+      log.info('脚本已添加到脚本库', { name, command, description, language })
+    }
+
+    // AI面板高度调整状态
+    const isAIPanelResizing = ref(false)
+
+    /**
+     * 处理AI面板高度变化开始
+     */
+    const handleAIPanelHeightChangeStart = () => {
+      isAIPanelResizing.value = true
+    }
+
+    /**
+     * 处理AI面板高度变化结束
+     */
+    const handleAIPanelHeightChangeEnd = () => {
+      isAIPanelResizing.value = false
+      // 调整结束后，调整终端大小
+      const termId = activeConnectionId.value
+      if (termId) {
+        nextTick(() => {
+          resizeTerminal(termId)
+        })
+      }
+    }
+
+    /**
+     * 处理AI面板高度变化
+     * @param {number} height 新高度
+     */
+    const handleAIPanelHeightChange = (height) => {
+      const termId = activeConnectionId.value
+      if (termId) {
+        aiPanelStore.setPanelHeight(termId, height)
+        // 只有在不是拖拽过程中才调整终端大小
+        if (!isAIPanelResizing.value) {
+          nextTick(() => {
+            resizeTerminal(termId)
+          })
+        }
+      }
+    }
 
 
 
@@ -2420,14 +2683,27 @@ export default {
       autocompleteRef,
       handleAutocompleteSelect,
       handleAutocompleteClose,
-      // AI输入栏相关
-      shouldShowAIInputBar,
+      // AI合并面板相关
+      shouldShowAICombinedPanel,
       getAIService,
       handleAIResponse,
+      handleAIStreaming,
       handleAIModeChange,
       handleAIInputFocus,
       handleAIInputBlur,
       handleExecuteCommand,
+      getAIMessages,
+      getAIPanelMaxHeight,
+      getAIStreamingState,
+      setAICombinedPanelRef,
+      handleAIPanelToggle,
+      handleAIClearHistory,
+      handleAIExecuteCommand,
+      handleAIEditCommand,
+      handleAIAddToScripts,
+      handleAIPanelHeightChange,
+      handleAIPanelHeightChangeStart,
+      handleAIPanelHeightChangeEnd,
       isMobile
     }
   }
@@ -2568,15 +2844,16 @@ export default {
   min-height: 0; /* 允许flex收缩 */
 }
 
-/* AI输入栏区域 */
-.terminal-ai-input-area {
+/* AI合并面板区域 */
+.terminal-ai-combined-area {
   flex-shrink: 0;
   height: auto;
-  min-height: 80px; /* 最小高度 */
-  max-height: 200px; /* 最大高度 */
   background: transparent;
   z-index: 10;
-  overflow: hidden;
+  overflow: visible;
+  order: 3; /* AI合并面板在最下方 */
+  border-top: 1px solid var(--color-border);
+  background: var(--color-bg-elevated);
 }
 
 /* ===== 响应式设计 ===== */
@@ -2601,9 +2878,8 @@ export default {
     height: 100%;
   }
 
-  .terminal-ai-input-area {
-    min-height: 70px; /* 移动端调整AI输入栏高度 */
-    max-height: 150px;
+  .terminal-ai-combined-area {
+    margin: 0 var(--spacing-xs);
   }
 }
 
@@ -2617,9 +2893,8 @@ export default {
     height: 100%; /* 小屏幕占满全高 */
   }
 
-  .terminal-ai-input-area {
-    min-height: 60px; /* 小屏幕进一步压缩AI输入栏 */
-    max-height: 120px;
+  .terminal-ai-combined-area {
+    margin: 0;
   }
 }
 
@@ -2799,4 +3074,26 @@ export default {
   opacity: 0.3;
   mix-blend-mode: multiply;
 }
-</style> 
+
+/* ===== AI合并面板区域样式 ===== */
+/* 确保AI合并面板不影响终端布局 */
+.terminal-right-area {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+.terminal-content-padding {
+  flex: 1;
+  overflow: hidden;
+  order: 1; /* 终端内容在最上方 */
+}
+
+/* 移动端AI合并面板适配 */
+@media (max-width: 768px) {
+  .terminal-ai-combined-area {
+    margin: 0 var(--spacing-xs);
+  }
+}
+</style>

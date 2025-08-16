@@ -81,6 +81,10 @@
     <td>🔧 <b>广泛兼容性</b></td>
     <td>支持bash、ash、dash等多种shell，完美兼容OpenWrt/ImmortalWrt等嵌入式系统</td>
   </tr>
+  <tr>
+    <td>🤖 <b>AI智能助手</b></td>
+    <td>集成AI助手功能，支持命令建议、错误分析和智能对话，提升运维效率</td>
+  </tr>
 </table>
 
 ## 使用场景

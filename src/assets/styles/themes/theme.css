@@ -460,6 +460,31 @@
   --slider-button-color: var(--color-bg-container);
   --slider-button-border-color: var(--color-primary);
 
+  /* AI面板相关颜色 - 浅色主题 */
+  --ai-panel-bg: transparent;
+  --ai-panel-border: transparent;
+  --ai-panel-header-bg: transparent;
+  --ai-panel-content-bg: transparent;
+  --ai-panel-shadow: none;
+
+  --ai-message-user-bg: transparent;
+  --ai-message-user-border: var(--color-primary);
+  --ai-message-assistant-bg: transparent;
+  --ai-message-assistant-border: var(--color-success);
+  --ai-message-system-bg: transparent;
+  --ai-message-system-border: var(--color-warning);
+
+  --ai-code-block-bg: var(--color-bg-page);
+  --ai-code-block-border: var(--color-border-default);
+  --ai-code-header-bg: var(--color-bg-elevated);
+
+  --ai-action-btn-bg: var(--color-bg-elevated);
+  --ai-action-btn-border: var(--color-border-default);
+  --ai-action-btn-hover-bg: var(--color-bg-hover);
+
+  --ai-empty-icon-color: var(--color-text-tertiary);
+  --ai-empty-text-color: var(--color-text-secondary);
+
 
 }
 
@@ -876,6 +901,31 @@
   --slider-bar-color: var(--color-primary);
   --slider-button-color: var(--color-primary);
   --slider-button-border-color: var(--color-primary);
+
+  /* AI面板相关颜色 - 深色主题 */
+  --ai-panel-bg: transparent;
+  --ai-panel-border: transparent;
+  --ai-panel-header-bg: transparent;
+  --ai-panel-content-bg: transparent;
+  --ai-panel-shadow: none;
+
+  --ai-message-user-bg: transparent;
+  --ai-message-user-border: var(--color-primary);
+  --ai-message-assistant-bg: transparent;
+  --ai-message-assistant-border: var(--color-success);
+  --ai-message-system-bg: transparent;
+  --ai-message-system-border: var(--color-warning);
+
+  --ai-code-block-bg: var(--color-bg-page);
+  --ai-code-block-border: var(--color-border-default);
+  --ai-code-header-bg: var(--color-bg-elevated);
+
+  --ai-action-btn-bg: var(--color-bg-elevated);
+  --ai-action-btn-border: var(--color-border-default);
+  --ai-action-btn-hover-bg: var(--color-bg-hover);
+
+  --ai-empty-icon-color: var(--color-text-tertiary);
+  --ai-empty-text-color: var(--color-text-secondary);
 
 
 }

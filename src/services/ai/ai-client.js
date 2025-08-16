@@ -211,7 +211,11 @@ class AIClient {
   onMessage(event) {
     try {
       const message = JSON.parse(event.data)
-      log.debug('收到AI消息', { type: message.type })
+
+      // 只对非流式消息记录DEBUG日志，减少日志噪音
+      if (message.type !== 'ai_stream') {
+        log.debug('收到AI消息', { type: message.type })
+      }
 
       // 路由消息到相应的处理器
       this.routeMessage(message)

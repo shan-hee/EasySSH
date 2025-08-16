@@ -732,7 +732,8 @@ class CommandInterceptor {
       // 如果是ASCII模式，提供原始内容的提示
       if (langStatus.shouldUseAsciiMode && content !== displayContent) {
         this.terminal.writeln('[Tip: Use browser console to see original Unicode content]')
-        console.log('AI Response (Original):', { title, content })
+        // 使用日志服务而不是console.log
+        log.debug('AI Response (Original):', { title, content })
       }
 
     } catch (error) {

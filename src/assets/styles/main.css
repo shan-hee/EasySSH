@@ -25,6 +25,8 @@
 @import './components/forms.css';
 @import './components/critical-components.css';
 @import './components/accessibility.css';
+@import './components/ai-panel.css';
+@import './components/ai-message.css';
 
 /* 打印样式 - 仅在打印时使用 */
 @media print {

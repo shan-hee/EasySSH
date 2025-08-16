@@ -18,6 +18,7 @@ class AIService {
     this.activeRequests = new Map()
     this.isEnabled = false
     this.temporarilyDisabled = true // 临时禁用AI功能
+    this.storageEventListener = null // 存储事件监听器引用
 
     // 不在构造函数中加载配置，等待外部调用init()
     log.debug('AI服务已初始化（临时禁用）')
@@ -30,6 +31,10 @@ class AIService {
     try {
       // 只在这里加载配置，避免重复请求
       await this.loadConfig()
+
+      // 添加存储模式变化监听器
+      this.setupStorageModeListener()
+
       log.debug('AI服务初始化完成')
     } catch (error) {
       log.error('AI服务初始化失败', error)
@@ -365,6 +370,75 @@ class AIService {
     }
   }
 
+  /**
+   * 设置存储模式变化监听器
+   */
+  setupStorageModeListener() {
+    // 如果已经设置过监听器，先移除
+    if (this.storageEventListener) {
+      window.removeEventListener('storage-mode-changed', this.storageEventListener)
+    }
+
+    // 创建事件处理函数
+    this.storageEventListener = this.handleStorageModeChange.bind(this)
+
+    // 添加事件监听器
+    window.addEventListener('storage-mode-changed', this.storageEventListener)
+
+    log.debug('AI服务存储模式变化监听器已设置')
+  }
+
+  /**
+   * 处理存储模式变化事件
+   * @param {CustomEvent} event 存储模式变化事件
+   */
+  async handleStorageModeChange(event) {
+    try {
+      const { mode, isLoggedIn, user } = event.detail
+
+      log.debug('AI服务收到存储模式变化事件', { mode, isLoggedIn, username: user?.username })
+
+      if (isLoggedIn && mode === 'server') {
+        // 用户登录，切换到服务器存储模式，重新加载配置
+        log.info('用户登录，重新加载AI服务配置')
+        await this.reloadConfig()
+      } else if (!isLoggedIn && mode === 'local') {
+        // 用户登出，切换到本地存储模式
+        log.info('用户登出，AI服务切换到本地模式')
+        // 可以选择禁用AI服务或保持当前状态
+        // 这里选择保持当前状态，因为本地也可能有AI配置
+      }
+    } catch (error) {
+      log.error('处理存储模式变化事件失败', error)
+    }
+  }
+
+  /**
+   * 重新加载配置
+   * 与loadConfig类似，但会记录重新加载的日志
+   */
+  async reloadConfig() {
+    try {
+      // 确保配置管理器已初始化
+      await this.config.initStorage()
+
+      const config = await this.config.load()
+      if (config && config.enabled) {
+        // 自动启用AI服务（如果配置有效）
+        try {
+          await this.enable(config)
+          log.info('AI服务配置重新加载并启用成功', { provider: config.provider })
+        } catch (error) {
+          log.warn('重新启用AI服务失败', error)
+        }
+      } else {
+        log.debug('重新加载的AI配置未启用或无效')
+      }
+    } catch (error) {
+      log.warn('重新加载AI配置失败', error)
+    }
+  }
+
 
 
   /**
@@ -401,6 +475,146 @@ class AIService {
       log.debug('AI服务状态变化通知已发送', { status })
     } catch (error) {
       log.error('发送AI服务状态变化通知失败', error)
+    }
+  }
+
+  // ===== AI面板集成方法 =====
+
+  /**
+   * 发送消息到AI面板
+   * @param {string} terminalId 终端ID
+   * @param {Object} message 消息对象
+   */
+  async sendToPanel(terminalId, message) {
+    try {
+      // 使用异步导入但等待完成
+      const { useAIPanelStore } = await import('../../store/ai-panel.js')
+      const aiPanelStore = useAIPanelStore()
+      aiPanelStore.addMessage(terminalId, message)
+
+      // 只对重要消息类型记录日志，减少日志噪音
+      if (message.type === 'user' || (message.type === 'assistant' && !message.content?.includes('...'))) {
+        log.debug('消息已发送到AI面板', { terminalId, messageType: message.type })
+      }
+    } catch (error) {
+      log.error('发送消息到AI面板失败', { error: error.message, terminalId })
+    }
+  }
+
+  /**
+   * 处理AI响应并发送到面板
+   * @param {string} terminalId 终端ID
+   * @param {string} userMessage 用户消息
+   * @param {Object} response AI响应
+   */
+  async handleResponseForPanel(terminalId, userMessage, response) {
+    try {
+      // 添加用户消息
+      if (userMessage) {
+        await this.sendToPanel(terminalId, {
+          type: 'user',
+          content: userMessage,
+          timestamp: Date.now()
+        })
+      }
+
+      // 添加AI响应
+      if (response.success) {
+        await this.sendToPanel(terminalId, {
+          type: 'assistant',
+          content: response.content,
+          timestamp: Date.now(),
+          metadata: {
+            model: response.model,
+            tokens: response.tokens,
+            duration: response.duration
+          }
+        })
+      } else {
+        await this.sendToPanel(terminalId, {
+          type: 'system',
+          content: `❌ AI响应失败: ${response.error || '未知错误'}`,
+          timestamp: Date.now(),
+          status: 'error'
+        })
+      }
+    } catch (error) {
+      log.error('处理AI响应到面板失败', { error: error.message, terminalId })
+    }
+  }
+
+  /**
+   * 清空终端的AI面板历史
+   * @param {string} terminalId 终端ID
+   */
+  clearPanelHistory(terminalId) {
+    try {
+      import('../../store/ai-panel.js').then(({ useAIPanelStore }) => {
+        const aiPanelStore = useAIPanelStore()
+        aiPanelStore.clearMessages(terminalId)
+      })
+    } catch (error) {
+      log.error('清空AI面板历史失败', { error: error.message, terminalId })
+    }
+  }
+
+  /**
+   * 获取AI面板状态
+   * @param {string} terminalId 终端ID
+   * @returns {Object} 面板状态信息
+   */
+  async getPanelStatus(terminalId) {
+    try {
+      const { useAIPanelStore } = await import('../../store/ai-panel.js')
+      const aiPanelStore = useAIPanelStore()
+
+      return {
+        isVisible: aiPanelStore.isPanelVisible(terminalId),
+        messageCount: aiPanelStore.getMessages(terminalId).length,
+        height: aiPanelStore.getPanelHeight(terminalId),
+        hasUnread: aiPanelStore.getMessages(terminalId).some(msg => msg.unread)
+      }
+    } catch (error) {
+      log.error('获取AI面板状态失败', { error: error.message, terminalId })
+      return {
+        isVisible: false,
+        messageCount: 0,
+        height: 250,
+        hasUnread: false
+      }
+    }
+  }
+
+  /**
+   * 销毁AI服务
+   * 清理所有资源和事件监听器
+   */
+  destroy() {
+    try {
+      // 移除存储模式变化监听器
+      if (this.storageEventListener) {
+        window.removeEventListener('storage-mode-changed', this.storageEventListener)
+        this.storageEventListener = null
+        log.debug('AI服务存储模式变化监听器已移除')
+      }
+
+      // 取消所有活跃请求
+      this.cancelAllRequests()
+
+      // 断开客户端连接
+      if (this.client) {
+        this.client.disconnect().catch(error => {
+          log.warn('断开AI客户端连接失败', error)
+        })
+      }
+
+      // 重置状态
+      this.isEnabled = false
+      this.temporarilyDisabled = true
+
+      log.debug('AI服务已销毁')
+    } catch (error) {
+      log.error('销毁AI服务失败', error)
     }
   }
 }
