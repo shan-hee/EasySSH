@@ -1399,6 +1399,9 @@ export default defineComponent({
       // 立即显示下载确认消息
       ElMessage.info(`正在压缩并下载文件夹 ${folder.name}...`);
 
+      // 创建文件夹下载进度通知（移到try外部）
+      let progressNotification = null;
+
       try {
         // 重置传输状态
         isDownloading.value = true;
@@ -1410,9 +1413,6 @@ export default defineComponent({
         const remotePath = currentPath.value === '/' ?
           currentPath.value + folder.name :
           currentPath.value + '/' + folder.name;
-
-        // 创建文件夹下载进度通知
-        let progressNotification = null;
 
         // 创建进度条HTML
         const createProgressHTML = (progress, speedText) => {
@@ -1471,8 +1471,31 @@ export default defineComponent({
           progressNotification.close();
         }
 
+        // 验证下载结果
+        if (!result.blob || !(result.blob instanceof Blob)) {
+          throw new Error(`下载失败: 无效的文件数据`);
+        }
+
+        if (typeof result.blob.size !== 'number' || result.blob.size <= 0) {
+          throw new Error(`下载失败: 文件大小无效`);
+        }
+
         // 创建下载链接
-        const url = URL.createObjectURL(result.blob);
+        let url;
+        try {
+          url = URL.createObjectURL(result.blob);
+        } catch (urlError) {
+          log.warn('创建下载链接失败，尝试备用方案', { error: urlError.message });
+
+          try {
+            // 备用方案: 重新创建Blob对象
+            const newBlob = new Blob([result.blob], { type: result.blob.type || 'application/zip' });
+            url = URL.createObjectURL(newBlob);
+          } catch (retryError) {
+            log.error('下载链接创建失败', { error: retryError.message });
+            throw new Error(`无法创建下载链接，请重试`);
+          }
+        }
         const a = document.createElement('a');
         a.href = url;
         a.download = `${folder.name}.zip`;
@@ -1485,28 +1508,22 @@ export default defineComponent({
           document.body.removeChild(a);
         }, 100);
 
-        log.info(`文件夹下载完成: ${folder.name}, 大小: ${result.blob.size} 字节`);
+        const sizeText = result.blob.size > 1024 * 1024
+          ? `${(result.blob.size / 1024 / 1024).toFixed(2)}MB`
+          : `${(result.blob.size / 1024).toFixed(1)}KB`;
 
-        // 显示下载完成消息，包含详细信息
-        const successMessage = `文件夹 ${folder.name} 下载成功`;
+        log.info(`文件夹下载完成: ${folder.name}, 大小: ${sizeText}`);
+
+        // 显示下载完成消息
         ElMessage.success({
-          message: successMessage,
+          message: `文件夹 ${folder.name} 下载成功 (${sizeText})`,
           type: 'success',
           duration: 3000
         });
 
-        // 调试信息
-        console.log('下载结果:', result);
-
         // 如果有跳过的文件，显示详细报告
         if (result && (result.skippedFiles?.length > 0 || result.errorFiles?.length > 0)) {
-          console.log('显示下载报告:', {
-            skippedCount: result.skippedFiles?.length,
-            errorCount: result.errorFiles?.length
-          });
           showDownloadReport(folder.name, result);
-        } else {
-          console.log('没有跳过的文件，不显示报告');
         }
       } catch (error) {
         log.error('下载文件夹失败:', error);
@@ -1578,6 +1595,8 @@ export default defineComponent({
         dangerouslyUseHTMLString: true,
         confirmButtonText: '确定',
         type: 'info'
+      }).catch(() => {
+        // 用户取消或关闭弹窗，静默处理
       });
     };
 

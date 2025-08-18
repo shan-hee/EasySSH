@@ -9,7 +9,8 @@ const logger = require('../utils/logger');
 
 // 导入SSH、SFTP和工具模块
 const ssh = require('./ssh');
-const sftp = require('./sftp');
+const sftpOperations = require('./sftp-operations');
+const sftpBinary = require('./sftp-binary');
 const utils = require('./utils');
 
 // 导入监控处理模块
@@ -363,67 +364,44 @@ function initWebSocketServer(server) {
 
           case 'sftp_init':
             // 处理SFTP初始化
-            sftp.handleSftpInit(ws, data, ssh.sessions);
-            break;
-            
-          case 'sftp_list':
-            // 处理SFTP列表目录
-            sftp.handleSftpList(ws, data);
-            break;
-            
-          case 'sftp_upload':
-            // 处理SFTP上传
-            logger.debug('收到SFTP上传请求', {
-              sessionId: data.sessionId,
-              operationId: data.operationId,
-              path: data.path
-            });
-            sftp.handleSftpUpload(ws, data);
-            break;
-            
-          case 'sftp_download':
-            // 处理SFTP下载
-            sftp.handleSftpDownload(ws, data);
+            sftpOperations.handleSftpInit(ws, data, ssh.sessions);
             break;
 
-          case 'sftp_download_folder':
-            // 处理SFTP文件夹下载
-            logger.debug('收到SFTP文件夹下载请求', {
-              sessionId: data.sessionId,
-              operationId: data.operationId,
-              path: data.path
-            });
-            sftp.handleSftpDownloadFolder(ws, data);
+          case 'sftp_list':
+            // 处理SFTP列表目录
+            sftpOperations.handleSftpList(ws, data);
             break;
+
+          // 注意：旧的Base64传输方式已移除，现在只使用高性能二进制传输
 
           case 'sftp_mkdir':
             // 处理SFTP创建目录
-            sftp.handleSftpMkdir(ws, data);
+            sftpOperations.handleSftpMkdir(ws, data);
             break;
-            
+
           case 'sftp_delete':
             // 处理SFTP删除
-            sftp.handleSftpDelete(ws, data);
+            sftpOperations.handleSftpDelete(ws, data);
             break;
 
           case 'sftp_fast_delete':
             // 处理SFTP快速删除
-            sftp.handleSftpFastDelete(ws, data);
+            sftpOperations.handleSftpFastDelete(ws, data);
             break;
 
           case 'sftp_chmod':
             // 处理SFTP权限修改
-            sftp.handleSftpChmod(ws, data);
+            sftpOperations.handleSftpChmod(ws, data);
             break;
 
           case 'sftp_rename':
             // 处理SFTP重命名
-            sftp.handleSftpRename(ws, data);
+            sftpOperations.handleSftpRename(ws, data);
             break;
-            
+
           case 'sftp_close':
             // 处理SFTP关闭
-            sftp.handleSftpClose(ws, data);
+            sftpOperations.handleSftpClose(ws, data);
             break;
             
           case 'ssh_exec':
@@ -612,7 +590,9 @@ function setupGlobalHeartbeat(wss) {
 
 /**
  * 处理二进制WebSocket消息
- * 消息格式: [type:1][sessionId_len:1][sessionId][payload]
+ * 支持两种协议:
+ * 1. 旧协议: [type:1][sessionId_len:1][sessionId][payload] - 用于终端数据
+ * 2. 新协议: [Magic:4][Version:1][Type:1][HeaderLen:4][Header][Payload] - 用于SFTP
  * @param {WebSocket} ws WebSocket连接
  * @param {Buffer} buffer 二进制数据
  * @param {string} sessionId 当前会话ID
@@ -624,8 +604,60 @@ function handleBinaryMessage(ws, buffer, sessionId) {
       return;
     }
 
-    // 移除冗余的原始数据日志，只在出错时记录详细信息
+    // 检查是否为新的SFTP二进制协议
+    if (buffer.length >= 10) {
+      const magicNumber = buffer.readUInt32BE(0);
+      if (magicNumber === 0x45535348) { // "ESSH"
+        // 使用新的SFTP二进制协议处理
+        handleSftpBinaryMessage(ws, buffer, sessionId);
+        return;
+      }
+    }
 
+    // 使用旧的终端二进制协议处理
+    handleLegacyBinaryMessage(ws, buffer, sessionId);
+  } catch (error) {
+    logger.error('处理二进制消息失败', {
+      error: error.message,
+      sessionId,
+      bufferLength: buffer.length,
+      first8Bytes: Array.from(buffer.slice(0, Math.min(8, buffer.length))),
+      stack: error.stack
+    });
+  }
+}
+
+/**
+ * 处理SFTP二进制消息
+ * @param {WebSocket} ws WebSocket连接
+ * @param {Buffer} buffer 二进制数据
+ * @param {string} sessionId 当前会话ID
+ */
+async function handleSftpBinaryMessage(ws, buffer, sessionId) {
+  try {
+    // 设置SFTP会话引用
+    sftpBinary.setSftpSessions(sftpOperations.sftpSessions);
+
+    // 使用SFTP二进制处理器
+    await sftpBinary.handleBinaryMessage(ws, buffer, ssh.sessions);
+  } catch (error) {
+    logger.error('处理SFTP二进制消息失败', {
+      error: error.message,
+      sessionId,
+      bufferLength: buffer.length,
+      stack: error.stack
+    });
+  }
+}
+
+/**
+ * 处理旧版终端二进制消息
+ * @param {WebSocket} ws WebSocket连接
+ * @param {Buffer} buffer 二进制数据
+ * @param {string} sessionId 当前会话ID
+ */
+function handleLegacyBinaryMessage(ws, buffer, sessionId) {
+  try {
     // 确保正确处理Buffer对象
     let arrayBuffer;
     if (buffer instanceof ArrayBuffer) {
@@ -642,10 +674,8 @@ function handleBinaryMessage(ws, buffer, sessionId) {
     const type = view.getUint8(0);
     const sessionIdLen = view.getUint8(1);
 
-    // 移除冗余的解析日志，只在出错时记录详细信息
-
     if (buffer.length < 2 + sessionIdLen) {
-      logger.warn('二进制消息格式错误', {
+      logger.warn('旧版二进制消息格式错误', {
         length: buffer.length,
         expectedMinLength: 2 + sessionIdLen,
         type,
@@ -660,8 +690,6 @@ function handleBinaryMessage(ws, buffer, sessionId) {
     const extractedSessionId = new TextDecoder().decode(sessionIdBytes);
     const payloadBytes = new Uint8Array(arrayBuffer, 2 + sessionIdLen);
     const payload = new TextDecoder().decode(payloadBytes);
-
-    // 移除冗余的接收日志，正常情况下不记录二进制消息处理
 
     switch (type) {
       case 0x01: // DATA类型 - 终端输入数据
@@ -686,10 +714,10 @@ function handleBinaryMessage(ws, buffer, sessionId) {
         break;
 
       default:
-        logger.warn('未知的二进制消息类型', { type, sessionId: extractedSessionId });
+        logger.warn('未知的旧版二进制消息类型', { type, sessionId: extractedSessionId });
     }
   } catch (error) {
-    logger.error('处理二进制消息失败', {
+    logger.error('处理旧版二进制消息失败', {
       error: error.message,
       sessionId,
       bufferLength: buffer.length,

@@ -1519,6 +1519,9 @@ class SSHService {
 
   /**
    * 处理二进制WebSocket消息
+   * 支持两种协议:
+   * 1. 旧协议: [type:1][sessionId_len:1][sessionId][payload] - 用于终端数据
+   * 2. 新协议: [Magic:4][Version:1][Type:1][HeaderLen:4][Header][Payload] - 用于SFTP
    * @param {ArrayBuffer} buffer 二进制数据
    * @param {string} sessionId 会话ID
    */
@@ -1529,12 +1532,54 @@ class SSHService {
         return;
       }
 
+      // 检查是否为新的SFTP二进制协议
+      if (buffer.byteLength >= 10) {
+        const view = new DataView(buffer);
+        const magicNumber = view.getUint32(0, false); // 大端序
+        if (magicNumber === 0x45535348) { // "ESSH"
+          // 使用SFTP服务处理新协议消息
+          this._handleSftpBinaryMessage(buffer, sessionId);
+          return;
+        }
+      }
+
+      // 使用旧的终端二进制协议处理
+      this._handleLegacyBinaryMessage(buffer, sessionId);
+    } catch (error) {
+      log.error('处理二进制消息失败', { error: error.message, sessionId });
+    }
+  }
+
+  /**
+   * 处理SFTP二进制消息
+   * @param {ArrayBuffer} buffer 二进制数据
+   * @param {string} sessionId 会话ID
+   */
+  _handleSftpBinaryMessage(buffer, sessionId) {
+    try {
+      // 通知SFTP服务处理二进制消息
+      // 这里需要通过事件或回调机制通知SFTP服务
+      window.dispatchEvent(new CustomEvent('sftp-binary-message', {
+        detail: { buffer, sessionId }
+      }));
+    } catch (error) {
+      log.error('处理SFTP二进制消息失败', { error: error.message, sessionId });
+    }
+  }
+
+  /**
+   * 处理旧版终端二进制消息
+   * @param {ArrayBuffer} buffer 二进制数据
+   * @param {string} sessionId 会话ID
+   */
+  _handleLegacyBinaryMessage(buffer, sessionId) {
+    try {
       const view = new DataView(buffer);
       const type = view.getUint8(0);
       const sessionIdLen = view.getUint8(1);
 
       if (buffer.byteLength < 2 + sessionIdLen) {
-        log.warn('二进制消息格式错误', {
+        log.warn('旧版二进制消息格式错误', {
           length: buffer.byteLength,
           expectedMinLength: 2 + sessionIdLen
         });
@@ -1552,10 +1597,10 @@ class SSHService {
           break;
 
         default:
-          log.warn('未知的二进制消息类型', { type, sessionId: extractedSessionId });
+          log.warn('未知的旧版二进制消息类型', { type, sessionId: extractedSessionId });
       }
     } catch (error) {
-      log.error('处理二进制消息失败', { error: error.message, sessionId });
+      log.error('处理旧版二进制消息失败', { error: error.message, sessionId });
     }
   }
 
