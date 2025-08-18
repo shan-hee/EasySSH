@@ -60,8 +60,8 @@ const baseMessageSchema = {
       enum: [
         'connect', 'auth', 'authenticate', 'data', 'resize', 'disconnect', 'ping', 'pong', 'ssh_exec',
         // SFTP消息类型
-        'sftp_init', 'sftp_list', 'sftp_upload', 'sftp_download', 'sftp_delete', 'sftp_rename',
-        'sftp_mkdir', 'sftp_chmod', 'sftp_stat', 'sftp_move', 'sftp_copy', 'sftp_fast_delete'
+        'sftp_init', 'sftp_list', 'sftp_upload', 'sftp_download', 'sftp_download_folder', 'sftp_delete', 'sftp_rename',
+        'sftp_mkdir', 'sftp_chmod', 'sftp_stat', 'sftp_move', 'sftp_copy', 'sftp_fast_delete', 'sftp_close'
       ]
     },
     data: {
@@ -565,6 +565,58 @@ const sftpOperationMessageSchema = {
   }
 };
 
+// SFTP文件夹下载消息Schema
+const sftpDownloadFolderMessageSchema = {
+  ...baseMessageSchema,
+  properties: {
+    ...baseMessageSchema.properties,
+    type: { const: 'sftp_download_folder' },
+    data: {
+      type: 'object',
+      required: ['sessionId', 'path'],
+      properties: {
+        sessionId: {
+          type: 'string',
+          pattern: '^[a-zA-Z0-9-_]{1,128}$'
+        },
+        path: {
+          type: 'string',
+          maxLength: 4096
+        },
+        operationId: {
+          type: 'string',
+          maxLength: 128
+        }
+      },
+      additionalProperties: false
+    }
+  }
+};
+
+// SFTP关闭会话消息Schema
+const sftpCloseMessageSchema = {
+  ...baseMessageSchema,
+  properties: {
+    ...baseMessageSchema.properties,
+    type: { const: 'sftp_close' },
+    data: {
+      type: 'object',
+      required: ['sessionId'],
+      properties: {
+        sessionId: {
+          type: 'string',
+          pattern: '^[a-zA-Z0-9-_]{1,128}$'
+        },
+        operationId: {
+          type: 'string',
+          maxLength: 128
+        }
+      },
+      additionalProperties: false
+    }
+  }
+};
+
 // 编译所有Schema
 const validators = {
   connect: ajv.compile(connectMessageSchema),
@@ -585,10 +637,12 @@ const validators = {
   sftp_chmod: ajv.compile(sftpOperationMessageSchema),
   sftp_stat: ajv.compile(sftpOperationMessageSchema),
   sftp_download: ajv.compile(sftpOperationMessageSchema),
+  sftp_download_folder: ajv.compile(sftpDownloadFolderMessageSchema),
   sftp_rename: ajv.compile(sftpOperationMessageSchema),
   sftp_move: ajv.compile(sftpOperationMessageSchema),
   sftp_copy: ajv.compile(sftpOperationMessageSchema),
   sftp_fast_delete: ajv.compile(sftpOperationMessageSchema),
+  sftp_close: ajv.compile(sftpCloseMessageSchema),
   base: ajv.compile(baseMessageSchema)
 };
 
