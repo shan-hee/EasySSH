@@ -6,12 +6,16 @@
 /* ===== AI交互面板基础样式 ===== */
 .ai-interaction-panel {
   position: relative;
-  background: transparent; /* 移除背景色 */
-  border: none; /* 移除边框 */
+  background: var(--color-bg-page); /* 添加背景色 */
+  border: 1px solid var(--color-border); /* 添加边框 */
   border-radius: var(--radius-lg) var(--radius-lg) 0 0; /* 只有上边圆角 */
   overflow: hidden;
-  transition: all var(--transition-base);
-  box-shadow: none; /* 移除阴影 */
+  transition:
+    all var(--transition-base),
+    background-color 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+    border-color 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+    box-shadow 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  box-shadow: var(--shadow-sm); /* 添加轻微阴影 */
   z-index: 10;
   transform-origin: bottom; /* 从底部开始变换 */
 }
@@ -33,11 +37,15 @@
   align-items: center;
   justify-content: space-between;
   padding: calc(var(--spacing-sm) + 4px) var(--spacing-md) var(--spacing-sm) var(--spacing-md); /* 顶部增加4px为调整指示器留空间 */
-  background: transparent; /* 移除背景色 */
-  border-bottom: none; /* 移除底边框 */
+  background: var(--color-bg-secondary); /* 添加头部背景色 */
+  border-bottom: 1px solid var(--color-border); /* 添加底边框 */
   min-height: 32px;
   cursor: pointer;
   user-select: none;
+  transition:
+    background-color 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+    border-color 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+    color 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94);
 }
 
 .ai-panel-title {
@@ -47,11 +55,15 @@
   font-size: var(--font-size-sm);
   font-weight: 500;
   color: var(--color-text-primary);
+  transition:
+    color 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94);
 }
 
 .ai-icon {
   color: var(--color-primary);
   flex-shrink: 0;
+  transition:
+    color 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94);
 }
 
 .ai-panel-controls {
@@ -71,7 +83,10 @@
   background: transparent;
   color: var(--color-text-secondary);
   cursor: pointer;
-  transition: all var(--transition-fast);
+  transition:
+    all var(--transition-fast),
+    background-color 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+    color 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94);
 }
 
 .ai-control-btn:hover:not(:disabled) {
@@ -89,12 +104,18 @@
   max-height: calc(100% - 1.5rem); /* 减去输入区域的高度，留出适当空间 */
   overflow-y: auto;
   overflow-x: hidden;
-  background: transparent; /* 移除背景色 */
+  background: var(--color-bg-page); /* 添加背景色 */
+  transition:
+    background-color 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+    border-color 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94);
 }
 
 .ai-messages-container {
   padding: var(--spacing-md);
   min-height: 100px;
+  transition:
+    background-color 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+    color 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94);
 }
 
 /* ===== 空状态 ===== */
@@ -222,19 +243,30 @@
 .ai-panel-dark {
   background: var(--color-bg-muted);
   border-color: var(--color-border-dark, #404040);
+  transition:
+    background-color 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+    border-color 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+    box-shadow 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94);
 }
 
 .ai-panel-dark .ai-panel-header {
   background: var(--color-bg-muted);
   border-bottom-color: var(--color-border-dark, #404040);
+  transition:
+    background-color 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+    border-color 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94);
 }
 
 .ai-panel-dark .ai-panel-content {
   background: var(--color-bg-container);
+  transition:
+    background-color 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94);
 }
 
 .ai-panel-dark .ai-control-btn:hover:not(:disabled) {
   background: var(--color-bg-hover-dark, #3a3a3a);
+  transition:
+    background-color 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94);
 }
 
 /* ===== 滚动条样式 ===== */

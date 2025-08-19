@@ -777,6 +777,10 @@ defineExpose({
   background: transparent;
   padding: 8px;
   min-height: 60px;
+  transition:
+    background-color 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+    border-color 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+    color 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94);
   max-height: none; /* 移除固定最大高度限制 */
 }
 
@@ -812,7 +816,10 @@ defineExpose({
   background: transparent;
   color: var(--color-text-secondary);
   cursor: pointer;
-  transition: all var(--transition-fast);
+  transition:
+    all var(--transition-fast),
+    background-color 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+    color 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94);
 }
 
 .ai-expand-btn:hover {
@@ -845,8 +852,8 @@ defineExpose({
   color: var(--color-text-secondary);
   cursor: pointer;
   transition:
-    background-color 0.2s ease,
-    color 0.2s ease;
+    background-color 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+    color 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -873,6 +880,9 @@ defineExpose({
 .ai-input-wrapper {
   position: relative;
   width: 100%;
+  transition:
+    background-color 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+    border-color 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94);
 }
 
 .ai-input-field {
@@ -922,8 +932,8 @@ defineExpose({
   color: var(--color-primary);
   cursor: pointer;
   transition:
-    background-color 0.2s ease,
-    color 0.2s ease,
+    background-color 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+    color 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94),
     transform 0.2s ease;
 }
 
@@ -939,7 +949,9 @@ defineExpose({
 
 .send-icon {
   color: currentColor;
-  transition: transform 0.2s ease;
+  transition:
+    transform 0.2s ease,
+    color 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94);
 }
 
 .send-icon-disabled {
@@ -955,6 +967,13 @@ defineExpose({
   order: 1; /* 交互面板在上方 */
   height: 0;
   opacity: 0;
+  transition:
+    background-color 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+    border-color 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+    color 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+    box-shadow 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+    opacity 0.3s ease,
+    height 0.3s ease;
 }
 
 .ai-interaction-section.ai-panel-expanded {
