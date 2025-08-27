@@ -29,7 +29,7 @@ WORKDIR /app
 
 # 复制并安装后端依赖（利用缓存）
 COPY server/package*.json ./
-RUN npm ci --omit=dev --legacy-peer-deps --no-audit --no-fund && \
+RUN npm install --omit=dev --legacy-peer-deps --no-audit --no-fund && \
     npm rebuild better-sqlite3 && \
     npm cache clean --force
 
@@ -80,10 +80,7 @@ RUN chmod +x /start.sh && \
 # 元数据
 LABEL maintainer="EasySSH Team" \
       version="1.0.0" \
-      description="现代化的SSH客户端，提供高效、安全、易用的远程服务器管理体验" \
-      build-date="${BUILD_DATE}" \
-      git-sha="${GIT_SHA}" \
-      git-ref="${GIT_REF}"
+      description="现代化的SSH客户端，提供高效、安全、易用的远程服务器管理体验"
 
 # 保持root用户，在启动脚本中处理权限
 
