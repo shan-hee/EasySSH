@@ -1462,12 +1462,6 @@ export default defineComponent({
     transform var(--transition-fast);
 }
 
-/* 图标按钮悬停状态 */
-.icon-button:hover {
-  background-color: var(--color-hover-bg); /* 使用系统交互状态令牌 */
-  transform: scale(1.05); /* 轻微放大效果 */
-}
-
 /* 图标按钮禁用状态 */
 .icon-button.icon-disabled {
   cursor: not-allowed !important;
@@ -1490,11 +1484,6 @@ export default defineComponent({
     transform var(--transition-fast);
 }
 
-/* 网络监控悬停状态 */
-.network-monitor:hover {
-  background-color: var(--color-hover-bg); /* 使用系统交互状态令牌 */
-  transform: scale(1.02); /* 轻微放大效果 */
-}
 
 /* 网络图标 */
 .network-icon {
