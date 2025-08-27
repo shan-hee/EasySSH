@@ -96,7 +96,7 @@ export default {
 }
 </script>
 
-<style>
+<style scoped>
 .home-container {
   width: 100%;
   min-height: 100vh;
@@ -183,7 +183,7 @@ export default {
   text-align: center;
   margin-bottom: 3rem;
   font-size: 2rem;
-  color: #333;
+  color: var(--color-text-primary);
 }
 
 .feature-grid {
