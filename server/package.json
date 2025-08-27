@@ -17,6 +17,8 @@
     "db:restore": "node scripts/restore-db.js"
   },
   "dependencies": {
+    "ajv": "^8.17.1",
+    "ajv-formats": "^3.0.1",
     "archiver": "^7.0.1",
     "axios": "^1.8.0",
     "bcryptjs": "^3.0.2",
