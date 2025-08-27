@@ -200,13 +200,13 @@ wget https://raw.githubusercontent.com/shanheee/easyssh/main/docker-compose.yml
 # Create .env file to set JWT_SECRET and ENCRYPTION_KEY
 
 # Start all services
-docker-compose up -d
+docker compose up -d
 
 # Check service status
-docker-compose ps
+docker compose ps
 
 # View logs
-docker-compose logs -f
+docker compose logs -f
 ```
 
 #### Version Upgrade
@@ -216,10 +216,10 @@ docker-compose logs -f
 cd easyssh
 
 # Pull latest image
-docker-compose pull
+docker compose pull
 
 # Restart services
-docker-compose up -d
+docker compose up -d
 ```
 
 ### Traditional Deployment

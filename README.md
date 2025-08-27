@@ -235,13 +235,13 @@ ENCRYPTION_KEY=$(openssl rand -base64 32)
 EOF
 
 # 启动所有服务
-docker-compose up -d
+docker compose up -d
 
 # 查看服务状态
-docker-compose ps
+docker compose ps
 
 # 查看日志
-docker-compose logs -f
+docker compose logs -f
 ```
 
 #### 升级版本
@@ -251,10 +251,10 @@ docker-compose logs -f
 cd easyssh
 
 # 拉取最新镜像
-docker-compose pull
+docker compose pull
 
 # 重启服务
-docker-compose up -d
+docker compose up -d
 ```
 
 #### Docker部署配置

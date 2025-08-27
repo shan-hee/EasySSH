@@ -199,13 +199,13 @@ wget https://raw.githubusercontent.com/shanheee/easyssh/main/docker-compose.yml
 # 创建 .env 文件设置 JWT_SECRET 和 ENCRYPTION_KEY
 
 # 启动所有服务
-docker-compose up -d
+docker compose up -d
 
 # 查看服务状态
-docker-compose ps
+docker compose ps
 
 # 查看日志
-docker-compose logs -f
+docker compose logs -f
 ```
 #### 升级版本
 
@@ -214,10 +214,10 @@ docker-compose logs -f
 cd easyssh
 
 # 拉取最新镜像
-docker-compose pull
+docker compose pull
 
 # 重启服务
-docker-compose up -d
+docker compose up -d
 ```
 
 ### 传统部署
