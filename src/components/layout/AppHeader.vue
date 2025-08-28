@@ -95,7 +95,7 @@
 </template>
 
 <script>
-import { defineComponent, ref, computed, watch, onMounted, onUnmounted } from 'vue'
+import { defineComponent, ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { useUserStore } from '@/store/user'
 import { useTabStore } from '@/store/tab'
@@ -267,7 +267,9 @@ export default defineComponent({
         // 阻止默认行为和事件冒泡
         event.preventDefault()
         event.stopPropagation()
-        // 关闭对应的标签页
+        
+        // 直接关闭标签页，与X按钮保持一致的执行时机
+        // 移除nextTick延迟以避免WebGL渲染器竞态条件
         tabStore.closeTab(index)
       }
     }

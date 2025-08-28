@@ -5,7 +5,6 @@ import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { WebLinksAddon } from '@xterm/addon-web-links'
 import { SearchAddon } from '@xterm/addon-search'
-import { WebglAddon } from '@xterm/addon-webgl'
 import { CanvasAddon } from '@xterm/addon-canvas'
 import { Unicode11Addon } from '@xterm/addon-unicode11'
 // LigaturesAddon 已移除 - 连字功能可选，避免导入问题
@@ -146,8 +145,8 @@ class TerminalService {
       cursorStyle: 'block',
       scrollback: 1000,
       allowTransparency: true,
-      rendererType: 'webgl', // 首选WebGL渲染器
-      fallbackRenderer: 'canvas', // 备用Canvas渲染器
+      rendererType: 'canvas', // 使用Canvas渲染器
+      fallbackRenderer: 'dom', // 备用DOM渲染器
       convertEol: true,
       disableStdin: false,
       drawBoldTextInBrightColors: true,
@@ -180,7 +179,7 @@ class TerminalService {
       try {
         const terminalSettings = settingsService.getTerminalOptions()
         if (terminalSettings) {
-          log.debug(`终端服务加载配置: 渲染器=${terminalSettings.rendererType || 'webgl'}`);
+          log.debug(`终端服务加载配置: 渲染器=${terminalSettings.rendererType || 'canvas'}`);
           this.defaultOptions = {
             ...this.defaultOptions,
             ...terminalSettings
@@ -259,21 +258,8 @@ class TerminalService {
       // 启用ANSI解析器优化
       termOptions.customGlyphs = true // 使用自定义字形渲染
 
-      // 渲染器优化配置
-      if (termOptions.rendererType === 'webgl') {
-        termOptions.allowTransparency = false // 禁用透明度以提升WebGL性能
-        termOptions.drawBoldTextInBrightColors = false // 减少颜色计算
-
-        // WebGL渲染器字体优化
-        termOptions.fontWeight = 'normal' // 确保字体权重一致
-        termOptions.fontWeightBold = 'bold' // 粗体字体权重
-        termOptions.letterSpacing = 0 // 字符间距
-        termOptions.lineHeight = 1.0 // 行高
-
-        // WebGL特定的字体渲染优化
-        termOptions.smoothScrollDuration = 0 // 禁用平滑滚动以提升性能
-        termOptions.windowsMode = false // 禁用Windows模式
-      } else if (termOptions.rendererType === 'canvas') {
+      // 渲染器优化配置 - 仅支持Canvas渲染器
+      if (termOptions.rendererType === 'canvas') {
         // Canvas渲染器字体优化
         termOptions.letterSpacing = 0 // 保持字符间距一致
         termOptions.lineHeight = 1.0 // 保持行高一致
@@ -290,7 +276,6 @@ class TerminalService {
         fit: null,
         webLinks: null,
         search: null,
-        webgl: null,
         canvas: null,
         unicode11: null,
         ligatures: null
@@ -323,91 +308,22 @@ class TerminalService {
         log.warn(`终端 ${id} 加载SearchAddon失败:`, e)
       }
       
-      // 智能渲染器选择：首选WebGL，备用Canvas，移除DOM
+      // 智能渲染器选择：优先Canvas，禁用WebGL以避免销毁时的缓冲区访问问题
       let renderingMode = 'dom'; // 默认DOM渲染器
 
-      // 开始渲染器选择
+      // 开始渲染器选择 - 临时禁用WebGL以解决资源清理问题
 
       try {
-        // 首先尝试WebGL渲染器
-        if (termOptions.rendererType === 'webgl') {
-          // 检查WebGL支持
-          const canvas = document.createElement('canvas');
-          const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
-
-          if (gl) {
-            try {
-              const webglAddon = new WebglAddon();
-              terminal.loadAddon(webglAddon);
-              addons.webgl = webglAddon;
-              renderingMode = 'webgl';
-
-              log.info(`终端 ${id} WebGL渲染器已启用`);
-
-              // 设置WebGL上下文丢失处理
-              if (webglAddon.onContextLoss) {
-                webglAddon.onContextLoss(e => {
-                  log.warn(`终端 ${id} WebGL上下文丢失，降级到Canvas渲染`, e);
-
-                  // WebGL失败时加载Canvas渲染器
-                  try {
-                    const canvasAddon = new CanvasAddon();
-                    terminal.loadAddon(canvasAddon);
-                    addons.canvas = canvasAddon;
-                    renderingMode = 'canvas';
-                    log.info(`终端 ${id} 已切换到Canvas渲染器`);
-                  } catch (canvasErr) {
-                    log.warn(`终端 ${id} Canvas渲染器加载失败，使用DOM渲染`, canvasErr);
-                    renderingMode = 'dom';
-                  }
-                });
-              }
-
-              // 增强WebGL性能监控
-              if (webglAddon.onRender) {
-                this._setupWebGLPerformanceMonitoring(webglAddon, terminal, id, addons);
-              }
-
-            } catch (webglErr) {
-              log.warn(`终端 ${id} WebGL渲染器加载失败，尝试Canvas渲染`, webglErr);
-              // 降级到Canvas渲染器
-              try {
-                const canvasAddon = new CanvasAddon();
-                terminal.loadAddon(canvasAddon);
-                addons.canvas = canvasAddon;
-                renderingMode = 'canvas';
-                log.info(`终端 ${id} Canvas渲染器已启用（WebGL降级）`);
-              } catch (canvasErr) {
-                log.warn(`终端 ${id} Canvas渲染器也加载失败，使用DOM渲染`, canvasErr);
-                renderingMode = 'dom';
-              }
-            }
-          } else {
-            log.info(`终端 ${id} 浏览器不支持WebGL，尝试Canvas渲染`);
-            // 降级到Canvas渲染器
-            try {
-              const canvasAddon = new CanvasAddon();
-              terminal.loadAddon(canvasAddon);
-              addons.canvas = canvasAddon;
-              renderingMode = 'canvas';
-              log.info(`终端 ${id} Canvas渲染器已启用（WebGL不支持）`);
-            } catch (canvasErr) {
-              log.warn(`终端 ${id} Canvas渲染器加载失败，使用DOM渲染`, canvasErr);
-              renderingMode = 'dom';
-            }
-          }
-        } else {
-          // 直接使用Canvas渲染器
-          try {
-            const canvasAddon = new CanvasAddon();
-            terminal.loadAddon(canvasAddon);
-            addons.canvas = canvasAddon;
-            renderingMode = 'canvas';
-            log.info(`终端 ${id} Canvas渲染器已启用（配置选择）`);
-          } catch (canvasErr) {
-            log.warn(`终端 ${id} Canvas渲染器加载失败，使用DOM渲染`, canvasErr);
-            renderingMode = 'dom';
-          }
+        // 直接使用Canvas渲染器，跳过WebGL
+        try {
+          const canvasAddon = new CanvasAddon();
+          terminal.loadAddon(canvasAddon);
+          addons.canvas = canvasAddon;
+          renderingMode = 'canvas';
+          log.info(`终端 ${id} Canvas渲染器已启用（WebGL已禁用）`);
+        } catch (canvasErr) {
+          log.warn(`终端 ${id} Canvas渲染器加载失败，使用DOM渲染`, canvasErr);
+          renderingMode = 'dom';
         }
       } catch (e) {
         log.warn(`终端 ${id} 渲染器初始化失败，使用DOM渲染:`, e);
@@ -415,8 +331,7 @@ class TerminalService {
       }
 
       // 记录最终使用的渲染器类型
-      const rendererName = renderingMode === 'webgl' ? 'WebGL' :
-                          renderingMode === 'canvas' ? 'Canvas' : 'DOM';
+      const rendererName = renderingMode === 'canvas' ? 'Canvas' : 'DOM';
       log.info(`终端 ${id} 使用${rendererName}渲染器`);
 
       // 存储渲染器信息到终端实例
@@ -1041,26 +956,7 @@ class TerminalService {
               for (const [name, addon] of addonEntries) {
                 try {
                   if (addon && typeof addon === 'object' && typeof addon.dispose === 'function') {
-                    // 特殊处理WebGL插件，确保停止所有渲染循环
-                    if (name === 'webgl' && addon._core) {
-                      try {
-                        // 停止光标闪烁动画
-                        if (addon._core._cursorBlinkStateManager) {
-                          addon._core._cursorBlinkStateManager.pause();
-                        }
-                        // 停止渲染循环
-                        if (addon._core._renderService) {
-                          addon._core._renderService._isPaused = true;
-                        }
-                        // 清理WebGL上下文
-                        if (addon._core._gl) {
-                          const gl = addon._core._gl;
-                          gl.getExtension('WEBGL_lose_context')?.loseContext();
-                        }
-                      } catch (webglError) {
-                        log.debug(`WebGL插件特殊清理失败: ${webglError.message}`);
-                      }
-                    }
+                    // WebGL渲染器已禁用，所以不需要特殊处理
 
                     // 包装dispose方法以安全处理可能的错误
                     const originalDispose = addon.dispose;
@@ -1071,7 +967,16 @@ class TerminalService {
                         // 特别处理"addon has not been loaded"错误
                         if (e.message && e.message.includes("addon that has not been loaded")) {
                           log.debug(`忽略插件 ${name} 未加载错误`);
-                        } else {
+                        }
+                        // 特别处理WebGL缓冲区访问错误
+                        else if (e.message && e.message.includes("Cannot read properties of null (reading 'buffers')")) {
+                          log.debug(`忽略插件 ${name} WebGL缓冲区访问错误（已销毁）`);
+                        }
+                        // 特别处理其他WebGL相关错误
+                        else if (e.message && (e.message.includes("WebGL") || e.message.includes("buffers") || e.message.includes("gl context"))) {
+                          log.debug(`忽略插件 ${name} WebGL相关错误: ${e.message}`);
+                        }
+                        else {
                           log.warn(`终端 ${id} 销毁插件 ${name} 时出错: ${e.message}`);
                         }
                       }
@@ -1119,7 +1024,16 @@ class TerminalService {
                               // 特别处理"addon has not been loaded"错误
                               if (e.message && e.message.includes("addon that has not been loaded")) {
                                 log.debug(`忽略核心插件未加载错误`);
-                              } else {
+                              }
+                              // 特别处理WebGL缓冲区访问错误
+                              else if (e.message && e.message.includes("Cannot read properties of null (reading 'buffers')")) {
+                                log.debug(`忽略核心插件WebGL缓冲区访问错误（已销毁）`);
+                              }
+                              // 特别处理其他WebGL相关错误
+                              else if (e.message && (e.message.includes("WebGL") || e.message.includes("buffers") || e.message.includes("gl context"))) {
+                                log.debug(`忽略核心插件WebGL相关错误: ${e.message}`);
+                              }
+                              else {
                                 log.warn(`安全忽略插件销毁错误: ${e.message}`);
                               }
                             }
@@ -1152,8 +1066,40 @@ class TerminalService {
               log.debug(`清理核心插件管理器失败: ${coreManagerError.message}`);
             }
             
-            // 3. 安全地销毁终端实例
+          // 3. 安全地销毁终端实例
             try {
+              // 首先强制禁用终端的焦点事件处理，防止销毁后仍被触发
+              if (term.terminal.element) {
+                term.terminal.element.blur();
+                // 移除所有焦点相关事件监听器
+                const focusEvents = ['focus', 'blur', 'focusin', 'focusout'];
+                focusEvents.forEach(event => {
+                  try {
+                    term.terminal.element.removeEventListener(event, () => {});
+                  } catch (e) {
+                    // 忽略移除失败
+                  }
+                });
+              }
+              
+              // 禁用终端核心的焦点处理
+              if (term.terminal._core) {
+                if (term.terminal._core._handleTextAreaFocus) {
+                  term.terminal._core._handleTextAreaFocus = () => {};
+                }
+                if (term.terminal._core._handleTextAreaBlur) {
+                  term.terminal._core._handleTextAreaBlur = () => {};
+                }
+                // 禁用事件发射器
+                if (term.terminal._core._events) {
+                  ['focus', 'blur'].forEach(event => {
+                    if (term.terminal._core._events[event]) {
+                      term.terminal._core._events[event] = { fire: () => {} };
+                    }
+                  });
+                }
+              }
+              
               if (typeof term.terminal.dispose === 'function') {
                 // 修改dispose方法防止其抛出异常
                 const originalDispose = term.terminal.dispose;
@@ -1179,10 +1125,8 @@ class TerminalService {
             }
           };
           
-          // 执行安全销毁 - 使用微任务确保异步操作完成
-          setTimeout(() => {
-            safeDestroyTerminalAndAddons();
-          }, 0);
+          // 执行安全销毁 - 改为同步执行，确保完全清理
+          safeDestroyTerminalAndAddons();
           
           // 帮助垃圾回收
           setTimeout(() => {
@@ -1310,10 +1254,7 @@ class TerminalService {
     try {
       const actualRenderer = termOptions._actualRenderer || 'dom';
 
-      if (actualRenderer === 'webgl') {
-        // WebGL渲染器字体优化
-        this._optimizeWebGLFontRendering(terminal, id);
-      } else if (actualRenderer === 'canvas') {
+      if (actualRenderer === 'canvas') {
         // Canvas渲染器字体优化
         this._optimizeCanvasFontRendering(terminal, id);
       }
@@ -1323,34 +1264,6 @@ class TerminalService {
 
     } catch (error) {
       log.warn(`终端 ${id} 应用字体优化失败:`, error);
-    }
-  }
-
-  /**
-   * WebGL渲染器字体优化
-   * @param {Terminal} terminal - 终端实例
-   * @param {string} id - 终端ID
-   * @private
-   */
-  _optimizeWebGLFontRendering(terminal, id) {
-    try {
-      // WebGL渲染器特定优化
-      if (terminal.setOption) {
-        // 确保字体渲染清晰
-        terminal.setOption('fontWeight', 'normal');
-        terminal.setOption('fontWeightBold', 'bold');
-
-        // 优化字符间距和行高
-        terminal.setOption('letterSpacing', 0);
-        terminal.setOption('lineHeight', 1.0);
-
-        // 禁用可能影响WebGL性能的选项
-        terminal.setOption('smoothScrollDuration', 0);
-      }
-
-      log.debug(`终端 ${id} WebGL字体优化已应用`);
-    } catch (error) {
-      log.warn(`终端 ${id} WebGL字体优化失败:`, error);
     }
   }
 
@@ -1402,188 +1315,6 @@ class TerminalService {
       log.debug(`终端 ${id} 通用字体优化已应用`);
     } catch (error) {
       log.warn(`终端 ${id} 通用字体优化失败:`, error);
-    }
-  }
-
-  /**
-   * 设置WebGL性能监控
-   * @param {Object} webglAddon - WebGL插件实例
-   * @param {Terminal} terminal - 终端实例
-   * @param {string} id - 终端ID
-   * @param {Object} addons - 插件集合
-   * @private
-   */
-  _setupWebGLPerformanceMonitoring(webglAddon, terminal, id, addons) {
-    try {
-      let renderCount = 0;
-      let lastLogTime = Date.now();
-      let performanceIssues = 0;
-      let lastPerformanceCheck = Date.now();
-
-      // 性能阈值配置
-      const PERFORMANCE_THRESHOLDS = {
-        MIN_FPS: 30,           // 最低FPS
-        MAX_FRAME_TIME: 33,    // 最大帧时间(ms)
-        DEGRADATION_LIMIT: 5,  // 性能问题次数限制
-        CHECK_INTERVAL: 5000   // 检查间隔(ms)
-      };
-
-      const renderHandler = () => {
-        const now = Date.now();
-        const frameTime = now - lastLogTime;
-        renderCount++;
-
-        // 检测性能问题
-        if (frameTime > PERFORMANCE_THRESHOLDS.MAX_FRAME_TIME) {
-          performanceIssues++;
-        }
-
-        // 定期性能检查和报告
-        if (now - lastPerformanceCheck > PERFORMANCE_THRESHOLDS.CHECK_INTERVAL) {
-          const fps = renderCount / ((now - lastPerformanceCheck) / 1000);
-          const avgFrameTime = (now - lastPerformanceCheck) / renderCount;
-
-          // 记录性能统计
-          log.debug(`终端 ${id} WebGL性能: ${fps.toFixed(1)} FPS, 平均帧时间: ${avgFrameTime.toFixed(2)}ms`);
-
-          // 检查是否需要降级
-          if (fps < PERFORMANCE_THRESHOLDS.MIN_FPS ||
-              performanceIssues > PERFORMANCE_THRESHOLDS.DEGRADATION_LIMIT) {
-            log.warn(`终端 ${id} WebGL性能不佳，考虑降级到Canvas渲染`);
-            this._considerRendererDowngrade(terminal, id, addons, 'webgl', 'canvas');
-          }
-
-          // 重置计数器
-          renderCount = 0;
-          performanceIssues = 0;
-          lastPerformanceCheck = now;
-        }
-
-        lastLogTime = now;
-      };
-
-      webglAddon.onRender(renderHandler);
-
-      log.debug(`终端 ${id} WebGL性能监控已启用`);
-    } catch (error) {
-      log.warn(`终端 ${id} WebGL性能监控设置失败:`, error);
-    }
-  }
-
-  /**
-   * 考虑渲染器降级
-   * @param {Terminal} terminal - 终端实例
-   * @param {string} id - 终端ID
-   * @param {Object} addons - 插件集合
-   * @param {string} fromRenderer - 当前渲染器
-   * @param {string} toRenderer - 目标渲染器
-   * @private
-   */
-  _considerRendererDowngrade(terminal, id, addons, fromRenderer, toRenderer) {
-    try {
-      // 防止频繁降级
-      const terminalInstance = this.getTerminal(id);
-      if (!terminalInstance) return;
-
-      const now = Date.now();
-      if (terminalInstance._lastDowngradeAttempt &&
-          now - terminalInstance._lastDowngradeAttempt < 30000) {
-        return; // 30秒内不重复降级
-      }
-
-      terminalInstance._lastDowngradeAttempt = now;
-
-      log.info(`终端 ${id} 开始渲染器降级: ${fromRenderer} -> ${toRenderer}`);
-
-      // 执行降级
-      if (fromRenderer === 'webgl' && toRenderer === 'canvas') {
-        this._downgradeWebGLToCanvas(terminal, id, addons);
-      }
-
-      // 发送用户通知
-      this._notifyRendererChange(id, fromRenderer, toRenderer, 'performance');
-
-    } catch (error) {
-      log.error(`终端 ${id} 渲染器降级失败:`, error);
-    }
-  }
-
-  /**
-   * 从WebGL降级到Canvas
-   * @param {Terminal} terminal - 终端实例
-   * @param {string} id - 终端ID
-   * @param {Object} addons - 插件集合
-   * @private
-   */
-  _downgradeWebGLToCanvas(terminal, id, addons) {
-    try {
-      // 移除WebGL插件
-      if (addons.webgl && typeof addons.webgl.dispose === 'function') {
-        addons.webgl.dispose();
-        addons.webgl = null;
-      }
-
-      // 添加Canvas插件
-      const canvasAddon = new CanvasAddon();
-      terminal.loadAddon(canvasAddon);
-      addons.canvas = canvasAddon;
-
-      // 更新渲染器信息
-      if (terminal.options) {
-        terminal.options._actualRenderer = 'canvas';
-      }
-
-      log.info(`终端 ${id} 已成功降级到Canvas渲染器`);
-
-    } catch (error) {
-      log.error(`终端 ${id} WebGL到Canvas降级失败:`, error);
-    }
-  }
-
-  /**
-   * 通知渲染器变更
-   * @param {string} id - 终端ID
-   * @param {string} fromRenderer - 原渲染器
-   * @param {string} toRenderer - 新渲染器
-   * @param {string} reason - 变更原因
-   * @private
-   */
-  _notifyRendererChange(id, fromRenderer, toRenderer, reason) {
-    try {
-      // 发送自定义事件
-      window.dispatchEvent(new CustomEvent('terminal-renderer-change', {
-        detail: {
-          terminalId: id,
-          fromRenderer,
-          toRenderer,
-          reason,
-          timestamp: Date.now()
-        }
-      }));
-
-      // 可选：显示用户通知
-      if (reason === 'performance') {
-        ElMessage.info(`终端渲染器已优化：${fromRenderer.toUpperCase()} → ${toRenderer.toUpperCase()}`);
-      }
-
-    } catch (error) {
-      log.warn(`终端 ${id} 渲染器变更通知失败:`, error);
-    }
-  }
-
-
-
-  /**
-   * 检查WebGL支持
-   * @private
-   */
-  _checkWebGLSupport() {
-    try {
-      const canvas = document.createElement('canvas')
-      const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl')
-      return !!gl
-    } catch (e) {
-      return false
     }
   }
 
@@ -1757,7 +1488,6 @@ class TerminalService {
           // WebLinksAddon通常不需要特殊检查
           break;
 
-        case 'webgl':
         case 'canvas':
           // 渲染器插件的特殊检查
           if (!this._checkRendererAddonCompatibility(addon, addonName, terminal)) {
@@ -1793,10 +1523,7 @@ class TerminalService {
         hasTerminal: !!terminal
       });
 
-      if (addonName === 'webgl') {
-        // 检查WebGL支持
-        return this._checkWebGLSupport();
-      } else if (addonName === 'canvas') {
+      if (addonName === 'canvas') {
         // 检查Canvas支持
         return this._checkCanvasSupport();
       }

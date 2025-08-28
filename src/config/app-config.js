@@ -105,9 +105,9 @@ export const userSettingsDefaults = {
     bellSound: true,
     copyOnSelect: false,
     rightClickSelectsWord: false,
-    // 渲染器配置：首选WebGL，备用Canvas，移除DOM
-    rendererType: 'webgl', // 首选WebGL渲染器，提供最佳性能
-    fallbackRenderer: 'canvas' // 备用Canvas渲染器，确保兼容性
+    // 渲染器配置：使用Canvas渲染器，提供稳定的性能和资源管理
+    rendererType: 'canvas', // 使用Canvas渲染器，避免WebGL资源清理问题
+    fallbackRenderer: 'dom' // 备用DOM渲染器，确保最大兼容性
   },
 
   // 连接设置

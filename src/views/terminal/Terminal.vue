@@ -3019,18 +3019,6 @@ export default {
 
 /* ===== 渲染器特定优化 ===== */
 
-/* WebGL渲染器优化 */
-:deep(.xterm-webgl-canvas) {
-  /* 确保WebGL画布的字体渲染清晰 */
-  image-rendering: -webkit-optimize-contrast;
-  image-rendering: crisp-edges;
-
-  /* 防止WebGL画布模糊 */
-  transform: translateZ(0);
-  backface-visibility: hidden;
-  perspective: 1000;
-}
-
 /* Canvas渲染器优化 */
 :deep(.xterm-canvas) {
   /* 确保Canvas渲染清晰 */
