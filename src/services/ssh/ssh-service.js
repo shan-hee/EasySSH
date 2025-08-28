@@ -5,6 +5,15 @@ import settingsService from '../settings';
 import { wsServerConfig } from '../../config/app-config';
 import { WS_CONSTANTS, MESSAGE_TYPES, LATENCY_EVENTS, LATENCY_CONFIG, getDynamicConstants } from '../constants';
 
+// 导入统一二进制协议
+import {
+  BINARY_MSG_TYPE,
+  BinaryMessageDecoder,
+  BinaryMessageSender,
+  LegacyDataHandler,
+  UnifiedBinaryHandler
+} from './binary-protocol';
+
 /**
  * SSH服务模块，负责管理SSH连接和终端会话
  */
@@ -17,6 +26,10 @@ class SSHService {
     this.keepAliveIntervals = new Map();
     this.terminalSessionMap = new Map(); // 终端ID到会话ID的映射
     this.sessionTerminalMap = new Map(); // 会话ID到终端ID的映射（双向映射提高查询效率）
+    
+    // 初始化统一二进制处理器
+    this.binaryHandler = new UnifiedBinaryHandler();
+    this._setupBinaryHandlers();
     
     // 从配置构建WebSocket URL - 使用当前页面的host和协议
     const { path } = wsServerConfig;
@@ -84,6 +97,119 @@ class SSHService {
       this.isInitializing = false;
       log.error('SSH服务初始化失败', error);
       return false;
+    }
+  }
+  
+  /**
+   * 设置统一二进制处理器
+   */
+  _setupBinaryHandlers() {
+    try {
+      // 注册SSH终端数据处理器
+      this.binaryHandler.registerHandler(BINARY_MSG_TYPE.SSH_DATA, (headerData, payloadData) => {
+        this._handleBinarySSHData(headerData, payloadData);
+      });
+
+      // 注册SSH数据确认处理器
+      this.binaryHandler.registerHandler(BINARY_MSG_TYPE.SSH_DATA_ACK, (headerData, payloadData) => {
+        this._handleSSHDataAck(headerData);
+      });
+
+      // 注册SFTP相关消息处理器（委托给SFTP服务）
+      this.binaryHandler.registerHandler(BINARY_MSG_TYPE.SFTP_SUCCESS, (headerData, payloadData) => {
+        // 通过事件系统转发给SFTP服务
+        window.dispatchEvent(new CustomEvent('sftp-binary-message', {
+          detail: { headerData, payloadData, messageType: BINARY_MSG_TYPE.SFTP_SUCCESS }
+        }));
+      });
+
+      this.binaryHandler.registerHandler(BINARY_MSG_TYPE.SFTP_ERROR, (headerData, payloadData) => {
+        window.dispatchEvent(new CustomEvent('sftp-binary-message', {
+          detail: { headerData, payloadData, messageType: BINARY_MSG_TYPE.SFTP_ERROR }
+        }));
+      });
+
+      this.binaryHandler.registerHandler(BINARY_MSG_TYPE.SFTP_PROGRESS, (headerData, payloadData) => {
+        window.dispatchEvent(new CustomEvent('sftp-binary-message', {
+          detail: { headerData, payloadData, messageType: BINARY_MSG_TYPE.SFTP_PROGRESS }
+        }));
+      });
+
+      this.binaryHandler.registerHandler(BINARY_MSG_TYPE.SFTP_FILE_DATA, (headerData, payloadData) => {
+        window.dispatchEvent(new CustomEvent('sftp-binary-message', {
+          detail: { headerData, payloadData, messageType: BINARY_MSG_TYPE.SFTP_FILE_DATA }
+        }));
+      });
+
+      this.binaryHandler.registerHandler(BINARY_MSG_TYPE.SFTP_FOLDER_DATA, (headerData, payloadData) => {
+        window.dispatchEvent(new CustomEvent('sftp-binary-message', {
+          detail: { headerData, payloadData, messageType: BINARY_MSG_TYPE.SFTP_FOLDER_DATA }
+        }));
+      });
+
+      log.debug('统一二进制处理器已设置');
+    } catch (error) {
+      log.error('设置二进制处理器失败:', error);
+    }
+  }
+
+  /**
+   * 处理SSH二进制数据
+   */
+  _handleBinarySSHData(headerData, payloadData) {
+    const { sessionId } = headerData;
+    const session = this.sessions.get(sessionId);
+    
+    if (!session) {
+      log.warn(`收到未知会话的SSH数据: ${sessionId}`);
+      return;
+    }
+
+    if (!session.terminal) {
+      // 如果终端还没准备好，缓存数据
+      if (!session.buffer) {
+        session.buffer = '';
+      }
+      // 将二进制数据转换为字符串缓存
+      const data = new TextDecoder('utf-8', { fatal: false }).decode(payloadData);
+      session.buffer += data;
+      log.debug(`缓存SSH数据，等待终端就绪: ${sessionId}`);
+      return;
+    }
+
+    try {
+      // 解码二进制数据为字符串
+      const data = new TextDecoder('utf-8', { fatal: false }).decode(payloadData);
+      
+      // 写入终端
+      session.terminal.write(data);
+      
+      // 记录活动时间
+      this._recordSessionActivity(session);
+      
+      log.debug('SSH二进制数据已处理', {
+        sessionId,
+        dataLength: payloadData.byteLength
+      });
+    } catch (error) {
+      log.error('处理SSH二进制数据失败:', error);
+    }
+  }
+
+  /**
+   * 处理SSH数据确认
+   */
+  _handleSSHDataAck(headerData) {
+    const { sessionId, bytesProcessed } = headerData;
+    log.debug('收到SSH数据确认', { sessionId, bytesProcessed });
+  }
+
+  /**
+   * 记录会话活动时间
+   */
+  _recordSessionActivity(session) {
+    if (session) {
+      session.lastActivity = new Date();
     }
   }
   
@@ -607,19 +733,8 @@ class SSHService {
                 
                 let data;
                 try {
-                  if (typeof window.TextDecoder !== 'undefined') {
-                    const base64 = message.data.data;
-                    const binary = window.atob(base64);
-                    const bytes = new Uint8Array(binary.length);
-                    for (let i = 0; i < binary.length; i++) {
-                      bytes[i] = binary.charCodeAt(i);
-                    }
-                    const decoder = new TextDecoder('utf-8', { fatal: false, ignoreBOM: true });
-                    data = decoder.decode(bytes);
-                  } else {
-                    const binary = atob(message.data.data);
-                    data = binary;
-                  }
+                  // 使用统一的Base64数据处理器
+                  data = LegacyDataHandler.decodeTerminalData(message.data.data);
                 } catch (e) {
                   log.warn(`Base64解码失败, 使用原始数据:`, e);
                   data = message.data.data;
@@ -1143,7 +1258,8 @@ class SSHService {
     try {
       // 检查是否支持二进制传输
       if (session.supportsBinary !== false) { // 默认支持二进制
-        this._sendBinaryData(session, data);
+        // 使用统一二进制协议发送SSH终端数据
+        BinaryMessageSender.sendSSHData(session.socket, sessionId, data);
       } else {
         // 回退到JSON传输
         const dataMessage = this._createStandardMessage('data', {
@@ -1532,18 +1648,18 @@ class SSHService {
         return;
       }
 
-      // 检查是否为新的SFTP二进制协议
+      // 检查是否为统一的二进制协议
       if (buffer.byteLength >= 10) {
         const view = new DataView(buffer);
         const magicNumber = view.getUint32(0, false); // 大端序
         if (magicNumber === 0x45535348) { // "ESSH"
-          // 使用SFTP服务处理新协议消息
-          this._handleSftpBinaryMessage(buffer, sessionId);
+          // 使用统一二进制协议处理
+          this.binaryHandler.handleMessage(buffer);
           return;
         }
       }
 
-      // 使用旧的终端二进制协议处理
+      // 使用旧的终端二进制协议处理（向后兼容）
       this._handleLegacyBinaryMessage(buffer, sessionId);
     } catch (error) {
       log.error('处理二进制消息失败', { error: error.message, sessionId });

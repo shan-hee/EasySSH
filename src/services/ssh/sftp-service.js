@@ -1,33 +1,8 @@
 import log from '../log';
 import { WS_CONSTANTS } from '../constants';
 
-/**
- * 二进制消息类型常量
- */
-const BINARY_MSG_TYPE = {
-  // 控制消息 (0x00-0x0F)
-  HANDSHAKE: 0x00,
-  HEARTBEAT: 0x01,
-  ERROR: 0x02,
-
-  // SFTP操作 (0x10-0x2F)
-  SFTP_INIT: 0x10,
-  SFTP_LIST: 0x11,
-  SFTP_UPLOAD: 0x12,
-  SFTP_DOWNLOAD: 0x13,
-  SFTP_MKDIR: 0x14,
-  SFTP_DELETE: 0x15,
-  SFTP_RENAME: 0x16,
-  SFTP_CHMOD: 0x17,
-  SFTP_DOWNLOAD_FOLDER: 0x18,
-
-  // 响应消息 (0x80-0xFF)
-  SFTP_SUCCESS: 0x80,
-  SFTP_ERROR: 0x81,
-  SFTP_PROGRESS: 0x82,
-  SFTP_FILE_DATA: 0x83,
-  SFTP_FOLDER_DATA: 0x84
-};
+// 导入统一的二进制协议
+import { BINARY_MSG_TYPE } from './binary-protocol';
 
 /**
  * SFTP文件传输功能实现
@@ -49,7 +24,7 @@ class SFTPService {
 
     // 监听SFTP二进制消息事件
     window.addEventListener('sftp-binary-message', (event) => {
-      this.handleBinaryMessage(event.detail.buffer);
+      this.handleBinaryMessage(event.detail);
     });
 
     log.debug('SFTP服务初始化完成');
@@ -1294,15 +1269,14 @@ class SFTPService {
 
   /**
    * 处理二进制WebSocket消息
-   * @param {ArrayBuffer} arrayBuffer 二进制数据
+   * @param {Object} messageDetail - 消息详情包含messageType, headerData, payloadData
    */
-  handleBinaryMessage(arrayBuffer) {
+  handleBinaryMessage(messageDetail) {
     try {
-      const message = SFTPService._decodeBinaryMessage(arrayBuffer);
-      const { messageType, headerData, payloadData } = message;
+      const { messageType, headerData, payloadData } = messageDetail;
 
       log.debug('收到二进制SFTP消息', {
-        type: messageType,
+        type: messageType.toString ? messageType.toString(16) : messageType,
         sessionId: headerData.sessionId,
         operationId: headerData.operationId,
         payloadSize: payloadData ? payloadData.byteLength : 0

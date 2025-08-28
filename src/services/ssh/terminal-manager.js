@@ -11,6 +11,9 @@ import AIBlockRenderer from '../ai/ai-block-renderer';
 import CommandInterceptor from '../ai/command-interceptor';
 import terminalService from '../terminal';
 
+// 导入二进制协议支持
+import { BinaryMessageSender } from './binary-protocol';
+
 // 常量定义
 const RESIZE_DEBOUNCE_DELAY = 100; // 大小调整防抖延迟(ms)
 const ERROR_FEEDBACK_DURATION = 3000; // 错误提示显示时间(ms)
@@ -186,14 +189,34 @@ class TerminalManager {
     // 处理终端大小变化
     terminal.onResize(({ cols, rows }) => {
       if (session.socket && session.socket.readyState === WS_CONSTANTS.OPEN) {
-        session.socket.send(JSON.stringify({
-          type: 'resize',
-          data: {
-            sessionId,
-            cols,
-            rows
+        try {
+          // 检查是否支持二进制协议
+          if (session.supportsBinary !== false) {
+            // 使用统一二进制协议发送大小调整消息
+            BinaryMessageSender.sendSSHResize(session.socket, sessionId, cols, rows);
+          } else {
+            // 回退到JSON消息
+            session.socket.send(JSON.stringify({
+              type: 'resize',
+              data: {
+                sessionId,
+                cols,
+                rows
+              }
+            }));
           }
-        }));
+        } catch (error) {
+          log.error('发送终端大小调整消息失败:', error);
+          // 回退到JSON消息
+          session.socket.send(JSON.stringify({
+            type: 'resize',
+            data: {
+              sessionId,
+              cols,
+              rows
+            }
+          }));
+        }
       }
     });
     

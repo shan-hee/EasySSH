@@ -13,6 +13,13 @@ const sftpOperations = require('./sftp-operations');
 const sftpBinary = require('./sftp-binary');
 const utils = require('./utils');
 
+// 导入统一二进制协议
+const { 
+  BINARY_MSG_TYPE, 
+  BinaryMessageDecoder, 
+  BinaryMessageSender 
+} = require('./binary-protocol');
+
 // 导入监控处理模块
 const monitoring = require('../monitoring');
 const aiService = require('../ai');
@@ -604,17 +611,17 @@ function handleBinaryMessage(ws, buffer, sessionId) {
       return;
     }
 
-    // 检查是否为新的SFTP二进制协议
+    // 检查是否为统一的二进制协议
     if (buffer.length >= 10) {
       const magicNumber = buffer.readUInt32BE(0);
-      if (magicNumber === 0x45535348) { // "ESSH"
-        // 使用新的SFTP二进制协议处理
-        handleSftpBinaryMessage(ws, buffer, sessionId);
+      if (magicNumber === 0x45535348) { // "ESSH" - 统一二进制协议
+        // 使用统一二进制协议处理
+        handleUnifiedBinaryMessage(ws, buffer, sessionId);
         return;
       }
     }
 
-    // 使用旧的终端二进制协议处理
+    // 使用旧的终端二进制协议处理（向后兼容）
     handleLegacyBinaryMessage(ws, buffer, sessionId);
   } catch (error) {
     logger.error('处理二进制消息失败', {
@@ -625,6 +632,169 @@ function handleBinaryMessage(ws, buffer, sessionId) {
       stack: error.stack
     });
   }
+}
+
+/**
+ * 处理统一二进制消息（SSH终端+SFTP）
+ * @param {WebSocket} ws WebSocket连接
+ * @param {Buffer} buffer 消息缓冲区
+ * @param {string} currentSessionId 当前会话ID
+ */
+async function handleUnifiedBinaryMessage(ws, buffer, currentSessionId) {
+  try {
+    // 解码统一二进制消息
+    const message = BinaryMessageDecoder.decode(buffer);
+    const { messageType, headerData, payloadData } = message;
+    
+    logger.debug('收到统一二进制消息', { 
+      type: messageType.toString(16), 
+      sessionId: headerData.sessionId,
+      operationId: headerData.operationId,
+      payloadSize: payloadData ? payloadData.length : 0
+    });
+    
+    // 根据消息类型分发处理
+    switch (messageType) {
+      // SSH终端数据消息
+      case BINARY_MSG_TYPE.SSH_DATA:
+        await handleSSHBinaryData(ws, headerData, payloadData);
+        break;
+        
+      case BINARY_MSG_TYPE.SSH_RESIZE:
+        await handleSSHResize(ws, headerData);
+        break;
+        
+      case BINARY_MSG_TYPE.SSH_COMMAND:
+        await handleSSHCommand(ws, headerData, payloadData);
+        break;
+        
+      // SFTP操作消息 - 委托给SFTP处理器
+      case BINARY_MSG_TYPE.SFTP_UPLOAD:
+      case BINARY_MSG_TYPE.SFTP_DOWNLOAD:
+      case BINARY_MSG_TYPE.SFTP_DOWNLOAD_FOLDER:
+      case BINARY_MSG_TYPE.SFTP_LIST:
+      case BINARY_MSG_TYPE.SFTP_MKDIR:
+      case BINARY_MSG_TYPE.SFTP_DELETE:
+      case BINARY_MSG_TYPE.SFTP_RENAME:
+      case BINARY_MSG_TYPE.SFTP_CHMOD:
+        // 设置SFTP会话引用并处理
+        sftpBinary.setSftpSessions(sftpOperations.sftpSessions);
+        await sftpBinary.handleBinaryMessage(ws, buffer, ssh.sessions);
+        break;
+        
+      default:
+        logger.warn(`未知的统一二进制消息类型: 0x${messageType.toString(16)}`);
+        BinaryMessageSender.send(ws, BINARY_MSG_TYPE.ERROR, {
+          sessionId: headerData.sessionId,
+          operationId: headerData.operationId,
+          errorMessage: `未知的消息类型: 0x${messageType.toString(16)}`,
+          errorCode: 'INVALID_MESSAGE_TYPE'
+        });
+    }
+  } catch (error) {
+    logger.error('处理统一二进制消息失败:', error);
+    try {
+      const partialMessage = BinaryMessageDecoder.decode(buffer.slice(0, Math.min(1024, buffer.length)));
+      BinaryMessageSender.send(ws, BINARY_MSG_TYPE.ERROR, {
+        sessionId: partialMessage.headerData.sessionId,
+        operationId: partialMessage.headerData.operationId,
+        errorMessage: error.message,
+        errorCode: 'MESSAGE_PROCESSING_ERROR'
+      });
+    } catch (decodeError) {
+      logger.error('无法解码错误消息:', decodeError);
+    }
+  }
+}
+
+/**
+ * 处理SSH二进制终端数据
+ * @param {WebSocket} ws WebSocket连接
+ * @param {Object} headerData 头部数据
+ * @param {Buffer} payloadData 终端数据
+ */
+async function handleSSHBinaryData(ws, headerData, payloadData) {
+  const { sessionId } = headerData;
+  
+  if (!ssh.sessions.has(sessionId)) {
+    logger.error(`SSH会话不存在: ${sessionId}`);
+    BinaryMessageSender.send(ws, BINARY_MSG_TYPE.ERROR, {
+      sessionId,
+      errorMessage: `SSH会话不存在: ${sessionId}`,
+      errorCode: 'SESSION_NOT_FOUND'
+    });
+    return;
+  }
+  
+  const session = ssh.sessions.get(sessionId);
+  
+  if (!session.stream) {
+    BinaryMessageSender.send(ws, BINARY_MSG_TYPE.ERROR, {
+      sessionId,
+      errorMessage: 'SSH流未创建',
+      errorCode: 'SSH_STREAM_NOT_CREATED'
+    });
+    return;
+  }
+  
+  try {
+    // 写入SSH流
+    session.stream.write(payloadData);
+    
+    // 记录活动
+    if (ssh.recordActivity) {
+      ssh.recordActivity(session);
+    }
+    
+    // 记录传输统计
+    if (global.metricsCollector) {
+      global.metricsCollector.recordDataTransfer('inbound', 'binary', payloadData.length);
+    }
+    
+    logger.debug('SSH二进制数据已处理', {
+      sessionId,
+      dataLength: payloadData.length
+    });
+    
+  } catch (error) {
+    logger.error('写入SSH流失败', {
+      sessionId,
+      error: error.message,
+      payloadLength: payloadData.length
+    });
+    
+    BinaryMessageSender.send(ws, BINARY_MSG_TYPE.ERROR, {
+      sessionId,
+      errorMessage: `数据传输失败: ${error.message}`,
+      errorCode: 'SSH_WRITE_ERROR'
+    });
+  }
+}
+
+/**
+ * 处理SSH终端大小调整
+ * @param {WebSocket} ws WebSocket连接
+ * @param {Object} headerData 头部数据
+ */
+async function handleSSHResize(ws, headerData) {
+  const { sessionId, cols, rows } = headerData;
+  
+  // 调用原有的resize处理函数
+  ssh.handleResize(ws, { sessionId, cols, rows });
+}
+
+/**
+ * 处理SSH命令
+ * @param {WebSocket} ws WebSocket连接
+ * @param {Object} headerData 头部数据
+ * @param {Buffer} payloadData 命令数据
+ */
+async function handleSSHCommand(ws, headerData, payloadData) {
+  const { sessionId } = headerData;
+  const command = payloadData.toString('utf8');
+  
+  // 委托给SSH模块处理
+  ssh.handleSshExec(ws, { sessionId, command });
 }
 
 /**

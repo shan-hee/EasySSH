@@ -15,6 +15,15 @@ const logger = require('../utils/logger');
 const utils = require('./utils');
 const { MSG_TYPE, sendMessage, sendError, validateSshSession, safeExec, recordActivity, logMessage } = utils;
 
+// 导入统一二进制协议
+const { 
+  BINARY_MSG_TYPE, 
+  BinaryMessageDecoder, 
+  BinaryMessageSender,
+  validateSession,
+  safeExec: binarySafeExec
+} = require('./binary-protocol');
+
 // 导入监控桥接服务
 const monitoringBridge = require('../services/monitoringBridge');
 
@@ -873,8 +882,10 @@ function setupStreamWithBackpressure(session, stream, ws, sessionId) {
     // 发送数据
     try {
       if (session.supportsBinary) {
-        sendBinaryDataWithStats(ws, sessionId, data);
+        // 使用统一的二进制协议发送SSH终端数据
+        BinaryMessageSender.sendSSHData(ws, sessionId, data);
       } else {
+        // 向后兼容：使用Base64编码的JSON消息
         sendMessage(ws, MSG_TYPE.DATA, {
           sessionId,
           data: data.toString('base64')
