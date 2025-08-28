@@ -502,8 +502,7 @@ async function handleConnect(ws, data) {
       cleanupTimeout: null,
       connectionInfo, // 保存连接信息
       clientIP: data.clientIP, // 保存客户端IP地址
-      supportsBinary: data.supportsBinary || false, // 客户端是否支持二进制传输
-      protocolVersion: data.protocolVersion || '1.0' // 协议版本
+      protocolVersion: data.protocolVersion || '2.0' // 统一使用协议版本2.0
     };
     
     sessions.set(sessionId, session);
@@ -881,22 +880,15 @@ function setupStreamWithBackpressure(session, stream, ws, sessionId) {
 
     // 发送数据
     try {
-      if (session.supportsBinary) {
-        // 使用统一的二进制协议发送SSH终端数据
-        BinaryMessageSender.sendSSHData(ws, sessionId, data);
-      } else {
-        // 向后兼容：使用Base64编码的JSON消息
-        sendMessage(ws, MSG_TYPE.DATA, {
-          sessionId,
-          data: data.toString('base64')
-        });
-      }
+      // 使用统一的二进制协议发送SSH终端数据
+      BinaryMessageSender.sendSSHData(ws, sessionId, data);
     } catch (error) {
       logger.error('发送SSH数据失败', {
         sessionId,
         error: error.message,
         dataLength: data.length
       });
+      throw error; // 抛出错误，不再使用Base64回退
     }
 
     // 定期记录统计信息
@@ -937,39 +929,21 @@ function setupStreamWithBackpressure(session, stream, ws, sessionId) {
  */
 function sendBinaryDataWithStats(ws, sessionId, data) {
   try {
-    const sessionIdBytes = Buffer.from(sessionId, 'utf8');
-    const header = Buffer.from([0x02, sessionIdBytes.length]); // 0x02: 服务器到客户端数据
-    const frame = Buffer.concat([header, sessionIdBytes, data]);
-
-    ws.send(frame, { binary: true });
-
+    // 使用统一的二进制协议发送SSH终端数据
+    BinaryMessageSender.sendSSHData(ws, sessionId, data);
+    
     // 记录传输统计
     if (global.metricsCollector) {
-      global.metricsCollector.recordDataTransfer('outbound', 'binary', frame.length);
+      global.metricsCollector.recordDataTransfer('outbound', 'binary', data.length);
     }
   } catch (error) {
-    logger.error('发送二进制数据失败', {
+    logger.error('发送SSH二进制数据失败', {
       sessionId,
       error: error.message,
       dataLength: data.length
     });
-
-    // 回退到JSON发送
-    sendMessage(ws, MSG_TYPE.DATA, {
-      sessionId,
-      data: data.toString('base64')
-    });
+    throw error; // 抛出错误，不再使用Base64回退
   }
-}
-
-/**
- * 发送二进制数据到WebSocket
- * @param {WebSocket} ws WebSocket连接
- * @param {string} sessionId 会话ID
- * @param {Buffer} data 要发送的数据
- */
-function sendBinaryData(ws, sessionId, data) {
-  return sendBinaryDataWithStats(ws, sessionId, data);
 }
 
 /**
@@ -1024,6 +998,6 @@ module.exports = {
   handleDisconnect,
   handlePing,
   handleSshExec,
-  sendBinaryData,
+  sendBinaryDataWithStats, // 使用统一的二进制数据发送方法
   setupStreamWithBackpressure
 };

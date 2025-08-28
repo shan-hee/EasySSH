@@ -190,32 +190,11 @@ class TerminalManager {
     terminal.onResize(({ cols, rows }) => {
       if (session.socket && session.socket.readyState === WS_CONSTANTS.OPEN) {
         try {
-          // 检查是否支持二进制协议
-          if (session.supportsBinary !== false) {
-            // 使用统一二进制协议发送大小调整消息
-            BinaryMessageSender.sendSSHResize(session.socket, sessionId, cols, rows);
-          } else {
-            // 回退到JSON消息
-            session.socket.send(JSON.stringify({
-              type: 'resize',
-              data: {
-                sessionId,
-                cols,
-                rows
-              }
-            }));
-          }
+          // 使用统一二进制协议发送大小调整消息
+          BinaryMessageSender.sendSSHResize(session.socket, sessionId, cols, rows);
         } catch (error) {
           log.error('发送终端大小调整消息失败:', error);
-          // 回退到JSON消息
-          session.socket.send(JSON.stringify({
-            type: 'resize',
-            data: {
-              sessionId,
-              cols,
-              rows
-            }
-          }));
+          throw error; // 抛出错误，不再使用JSON回退
         }
       }
     });

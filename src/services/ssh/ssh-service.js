@@ -8,7 +8,6 @@ import { WS_CONSTANTS, MESSAGE_TYPES, LATENCY_EVENTS, LATENCY_CONFIG, getDynamic
 // 导入统一二进制协议
 import {
   BINARY_MSG_TYPE,
-  BinaryMessageDecoder,
   BinaryMessageSender,
   LegacyDataHandler,
   UnifiedBinaryHandler
@@ -474,8 +473,7 @@ class SSHService {
         const connectMessage = this._createStandardMessage('connect', {
           sessionId,
           connectionId, // 只传递连接ID，不传递完整连接信息
-          supportsBinary: true, // 标识客户端支持二进制传输
-          protocolVersion: '2.0' // 协议版本
+          protocolVersion: '2.0' // 统一使用协议版本2.0
         });
         socket.send(JSON.stringify(connectMessage));
       };
@@ -733,7 +731,8 @@ class SSHService {
                 
                 let data;
                 try {
-                  // 使用统一的Base64数据处理器
+                  // 向后兼容：处理旧版本的Base64编码数据
+                  log.warn(`收到旧版Base64格式数据，建议服务端升级到二进制协议: ${sessionId}`);
                   data = LegacyDataHandler.decodeTerminalData(message.data.data);
                 } catch (e) {
                   log.warn(`Base64解码失败, 使用原始数据:`, e);
@@ -1256,20 +1255,11 @@ class SSHService {
     }
     
     try {
-      // 检查是否支持二进制传输
-      if (session.supportsBinary !== false) { // 默认支持二进制
-        // 使用统一二进制协议发送SSH终端数据
-        BinaryMessageSender.sendSSHData(session.socket, sessionId, data);
-      } else {
-        // 回退到JSON传输
-        const dataMessage = this._createStandardMessage('data', {
-          sessionId: sessionId,
-          data: data
-        });
-        session.socket.send(JSON.stringify(dataMessage));
-      }
+      // 使用统一二进制协议发送SSH终端数据
+      BinaryMessageSender.sendSSHData(session.socket, sessionId, data);
     } catch (error) {
-      log.error(`发送数据到会话 [${sessionId}] 失败:`, error);
+      log.error(`发送SSH数据失败 [${sessionId}]:`, error);
+      throw error; // 抛出错误，不再使用JSON回退
     }
   }
   
@@ -1746,40 +1736,6 @@ class SSHService {
       // 如果终端还未准备好，缓存数据
       const text = new TextDecoder('utf-8', { fatal: false }).decode(payload);
       session.buffer += text;
-    }
-  }
-
-  /**
-   * 发送二进制数据到服务器
-   * @param {Object} session 会话对象
-   * @param {string} data 要发送的文本数据
-   */
-  _sendBinaryData(session, data) {
-    try {
-      const sessionIdBytes = new TextEncoder().encode(session.id);
-      const dataBytes = new TextEncoder().encode(data);
-
-      // 创建二进制帧: [type:1][sessionId_len:1][sessionId][data]
-      const buffer = new ArrayBuffer(2 + sessionIdBytes.length + dataBytes.length);
-      const view = new DataView(buffer);
-      const uint8Array = new Uint8Array(buffer);
-
-      view.setUint8(0, 0x01); // DATA类型
-      view.setUint8(1, sessionIdBytes.length);
-
-      uint8Array.set(sessionIdBytes, 2);
-      uint8Array.set(dataBytes, 2 + sessionIdBytes.length);
-
-      session.socket.send(buffer);
-    } catch (error) {
-      log.error('发送二进制数据失败', { sessionId: session.id, error: error.message });
-
-      // 回退到JSON发送
-      const fallbackMessage = this._createStandardMessage('data', {
-        sessionId: session.id,
-        data: data
-      });
-      session.socket.send(JSON.stringify(fallbackMessage));
     }
   }
 }
