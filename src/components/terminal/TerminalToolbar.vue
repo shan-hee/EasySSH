@@ -445,9 +445,18 @@ export default defineComponent({
         serverLatency,
         terminalId: eventTerminalId
       } = event.detail;
+      
 
-      if (!sessionId) {
-        // 如果没有会话ID，无法处理
+      // 验证延迟数据的有效性
+      const hasValidLatencyData = (
+        (totalLatency && totalLatency > 0) ||
+        (clientLatency && clientLatency > 0) ||
+        (serverLatency && serverLatency > 0) ||
+        (localLatency && localLatency > 0) ||
+        (remoteLatency && remoteLatency > 0)
+      );
+
+      if (!sessionId || !hasValidLatencyData) {
         return;
       }
 
@@ -468,28 +477,39 @@ export default defineComponent({
         // 如果不是SSH会话ID，可能直接就是终端ID
         terminalId = sessionId;
       }
+      
 
       // 如果找到了终端ID，更新其工具栏状态
       if (terminalId) {
         const terminalState = getTerminalToolbarState(terminalId);
         if (terminalState) {
-          // 优先使用新的分段延迟字段，并四舍五入到整数
-          terminalState.clientDelay = Math.round(clientLatency || localLatency || 0);
-          terminalState.serverDelay = Math.round(serverLatency || remoteLatency || 0);
+          // 使用真实延迟数据，四舍五入到整数
+          terminalState.clientDelay = clientLatency ? Math.round(clientLatency) : 
+                                      (localLatency ? Math.round(localLatency) : undefined);
+          terminalState.serverDelay = serverLatency ? Math.round(serverLatency) : 
+                                      (remoteLatency ? Math.round(remoteLatency) : undefined);
           terminalState.rttValue = totalLatency ? `${Math.round(totalLatency)} ms` : '--';
           terminalState.isSshConnected = true;
+          
 
           // 如果是当前活动终端，直接更新界面状态
           if (terminalId === props.activeSessionId) {
             clientDelay.value = terminalState.clientDelay;
             serverDelay.value = terminalState.serverDelay;
             rttValue.value = terminalState.rttValue;
-            showNetworkIcon.value = true;
-
-            // 优化：移除此处的延迟显示更新日志，避免与SSH服务中的延迟信息日志重复
-            // log.debug(`延迟显示更新: 客户端${clientDelay.value}ms, 服务器${serverDelay.value}ms, 总计${Math.round(totalLatency)}ms`);
+            
+            // 只有在有真实延迟数据时才显示网络图标
+            if (terminalState.clientDelay > 0 || terminalState.serverDelay > 0) {
+              showNetworkIcon.value = true;
+            } else {
+              showNetworkIcon.value = false;
+            }
+          }
+        } else {
+          log.warn('无法获取终端状态', { terminalId });
         }
-      }
+      } else {
+        log.warn('无法解析终端ID', { sessionId, eventTerminalId });
       }
     };
 
@@ -579,7 +599,7 @@ export default defineComponent({
           checkMonitoringServiceStatus();
         }
         
-        // 在切换终端标签页时，恢复显示该终端的网络延迟数据
+        // 在切换终端标签页时，根据该终端的实际延迟数据决定是否显示网络图标
         if (terminalState && 
             typeof terminalState.serverDelay === 'number' &&
             typeof terminalState.clientDelay === 'number' &&
@@ -588,6 +608,15 @@ export default defineComponent({
           rttValue.value = terminalState.rttValue || '--';
           serverDelay.value = terminalState.serverDelay || 0;
           clientDelay.value = terminalState.clientDelay || 0;
+          
+          log.debug('切换终端时恢复网络图标显示', {
+            terminalId: newId,
+            clientDelay: terminalState.clientDelay,
+            serverDelay: terminalState.serverDelay,
+            rttValue: terminalState.rttValue
+          });
+        } else {
+          // 该终端没有有效的延迟数据，保持图标隐藏
         }
         
         // 将会话ID记录为最后处理的ID
@@ -832,7 +861,7 @@ export default defineComponent({
         isSshConnected.value = true;
       }
       
-      // 检查网络状态 - 先不显示网络图标，只有在有有效的延迟数据时才显示
+      // 检查网络状态 - 只有在有有效的延迟数据时才显示网络图标
       if (terminalState && 
           typeof terminalState.serverDelay === 'number' &&
           typeof terminalState.clientDelay === 'number' &&
@@ -842,9 +871,20 @@ export default defineComponent({
         rttValue.value = terminalState.rttValue || '--';
         serverDelay.value = terminalState.serverDelay;
         clientDelay.value = terminalState.clientDelay;
+        
+        log.debug('恢复显示网络图标，基于缓存的延迟数据', {
+          clientDelay: terminalState.clientDelay,
+          serverDelay: terminalState.serverDelay,
+          rttValue: terminalState.rttValue
+        });
       } else {
-        // 如果终端状态中没有延迟数据，不显示网络图标
+        // 如果终端状态中没有有效的延迟数据，不显示网络图标
         showNetworkIcon.value = false;
+        rttValue.value = '--';
+        serverDelay.value = 0;
+        clientDelay.value = 0;
+        
+        log.debug('隐藏网络图标，无有效延迟数据');
       }
     };
     
@@ -950,7 +990,10 @@ export default defineComponent({
             // 只有是当前活动终端时才更新UI
             if (terminalId === props.activeSessionId) {
               isSshConnected.value = true;
-              // 已更新当前活动终端的UI状态
+              
+              // SSH连接成功后，先不显示网络图标，等待延迟测量结果
+              // 移除强制显示延迟图标的逻辑，改为基于实际数据显示
+              log.debug('SSH连接成功，等待延迟测量结果...');
             }
           }
         }
@@ -996,7 +1039,7 @@ export default defineComponent({
           checkMonitoringServiceStatus();
         }
         
-        // 同步网络信息
+        // 同步网络信息 - 只在有有效延迟数据时显示图标
         if (terminalState && 
             typeof terminalState.serverDelay === 'number' && 
             typeof terminalState.clientDelay === 'number' &&
@@ -1005,13 +1048,21 @@ export default defineComponent({
           rttValue.value = terminalState.rttValue || '--';
           serverDelay.value = terminalState.serverDelay || 0;
           clientDelay.value = terminalState.clientDelay || 0;
-          } else {
+          
+          log.debug('同步显示网络图标，基于有效延迟数据', {
+            clientDelay: terminalState.clientDelay,
+            serverDelay: terminalState.serverDelay,
+            rttValue: terminalState.rttValue
+          });
+        } else {
           // 没有有效的延迟数据，不显示网络图标
-            showNetworkIcon.value = false;
-            rttValue.value = '--';
-            clientDelay.value = 0;
-            serverDelay.value = 0;
-          }
+          showNetworkIcon.value = false;
+          rttValue.value = '--';
+          clientDelay.value = 0;
+          serverDelay.value = 0;
+          
+          log.debug('同步隐藏网络图标，无有效延迟数据');
+        }
         
         // 确保状态完全隔离
         nextTick(() => {
@@ -1321,16 +1372,17 @@ export default defineComponent({
           monitoringServiceInstalled.value = terminalState.monitoringInstalled;
         }
         
-        // 同步网络数据
-        if (terminalState.rttValue && terminalState.rttValue !== '--') {
+        // 同步网络数据 - 只在有有效延迟数据时显示
+        if (terminalState.rttValue && terminalState.rttValue !== '--' &&
+            (terminalState.clientDelay > 0 || terminalState.serverDelay > 0)) {
           rttValue.value = terminalState.rttValue;
-          showNetworkIcon.value = true;
-        }
-        
-        if (terminalState.clientDelay > 0 || terminalState.serverDelay > 0) {
           clientDelay.value = terminalState.clientDelay;
           serverDelay.value = terminalState.serverDelay;
           showNetworkIcon.value = true;
+          
+        } else {
+          // 没有有效的延迟数据，保持图标隐藏
+          showNetworkIcon.value = false;
         }
       }
       

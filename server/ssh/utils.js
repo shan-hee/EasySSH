@@ -40,17 +40,32 @@ const BINARY_MSG_TYPE = {
   HANDSHAKE: 0x00,
   HEARTBEAT: 0x01,
   ERROR: 0x02,
+  PING: 0x03,
+  PONG: 0x04,
+  CONNECT: 0x05,
+  AUTHENTICATE: 0x06,
+  DISCONNECT: 0x07,
+  CONNECTION_REGISTERED: 0x08,
+  CONNECTED: 0x09,
+  NETWORK_LATENCY: 0x0A,
+  STATUS_UPDATE: 0x0B,
 
-  // SFTP操作 (0x10-0x2F)
-  SFTP_INIT: 0x10,
-  SFTP_LIST: 0x11,
-  SFTP_UPLOAD: 0x12,
-  SFTP_DOWNLOAD: 0x13,
-  SFTP_MKDIR: 0x14,
-  SFTP_DELETE: 0x15,
-  SFTP_RENAME: 0x16,
-  SFTP_CHMOD: 0x17,
-  SFTP_DOWNLOAD_FOLDER: 0x18,
+  // SSH终端数据 (0x10-0x1F) 
+  SSH_DATA: 0x10,           // SSH终端数据传输
+  SSH_RESIZE: 0x11,         // 终端大小调整
+  SSH_COMMAND: 0x12,        // 终端命令
+  SSH_DATA_ACK: 0x13,       // SSH数据确认
+
+  // SFTP操作 (0x20-0x3F)
+  SFTP_INIT: 0x20,
+  SFTP_LIST: 0x21,
+  SFTP_UPLOAD: 0x22,
+  SFTP_DOWNLOAD: 0x23,
+  SFTP_MKDIR: 0x24,
+  SFTP_DELETE: 0x25,
+  SFTP_RENAME: 0x26,
+  SFTP_CHMOD: 0x27,
+  SFTP_DOWNLOAD_FOLDER: 0x28,
 
   // 响应消息 (0x80-0xFF)
   SFTP_SUCCESS: 0x80,
@@ -248,7 +263,7 @@ function logMessage(action, target, result = '成功', details = '') {
  */
 class BinaryMessageEncoder {
   static MAGIC_NUMBER = 0x45535348; // "ESSH"
-  static VERSION = 0x01;
+  static VERSION = 0x02;
 
   /**
    * 编码二进制消息
@@ -571,6 +586,148 @@ function sendBinarySftpError(ws, sessionId, operationId, errorMessage, errorCode
   sendBinaryMessage(ws, BINARY_MSG_TYPE.SFTP_ERROR, headerData);
 }
 
+/**
+ * 发送二进制PING消息
+ * @param {WebSocket} ws WebSocket连接
+ * @param {Object} data PING数据
+ */
+function sendBinaryPing(ws, data) {
+  const headerData = {
+    sessionId: data.sessionId,
+    requestId: data.requestId || generateRequestId(),
+    timestamp: Date.now(),
+    clientSendTime: data.clientSendTime,
+    measureLatency: data.measureLatency || true,
+    immediate: data.immediate || false,
+    client: data.client || 'server'
+  };
+
+  sendBinaryMessage(ws, BINARY_MSG_TYPE.PING, headerData);
+}
+
+/**
+ * 发送二进制PONG消息
+ * @param {WebSocket} ws WebSocket连接
+ * @param {Object} data PONG数据
+ */
+function sendBinaryPong(ws, data) {
+  const headerData = {
+    sessionId: data.sessionId,
+    requestId: data.requestId,
+    timestamp: data.timestamp || Date.now(),
+    serverTime: data.serverTime || Date.now(),
+    latency: data.latency || 0,
+    originalTimestamp: data.originalTimestamp,
+    originTimestamp: data.originTimestamp, // 保持兼容性
+    serverReceiveTime: data.serverReceiveTime,
+    serverSendTime: data.serverSendTime
+  };
+
+  sendBinaryMessage(ws, BINARY_MSG_TYPE.PONG, headerData);
+}
+
+/**
+ * 发送二进制连接注册确认消息
+ * @param {WebSocket} ws WebSocket连接
+ * @param {Object} data 连接数据
+ */
+function sendBinaryConnectionRegistered(ws, data) {
+  const headerData = {
+    connectionId: data.connectionId,
+    sessionId: data.sessionId,
+    status: encodeConnectionStatus(data.status),
+    timestamp: Date.now(),
+    needAuth: data.status === 'need_auth'
+  };
+
+  sendBinaryMessage(ws, BINARY_MSG_TYPE.CONNECTION_REGISTERED, headerData);
+}
+
+/**
+ * 发送二进制连接完成消息
+ * @param {WebSocket} ws WebSocket连接
+ * @param {Object} data 连接数据
+ */
+function sendBinaryConnected(ws, data) {
+  const headerData = {
+    sessionId: data.sessionId,
+    connectionId: data.connectionId,
+    status: encodeConnectionStatus('connected'),
+    timestamp: Date.now(),
+    serverInfo: data.serverInfo || {}
+  };
+
+  sendBinaryMessage(ws, BINARY_MSG_TYPE.CONNECTED, headerData);
+}
+
+/**
+ * 发送二进制网络延迟消息
+ * @param {WebSocket} ws WebSocket连接
+ * @param {Object} data 延迟数据
+ */
+function sendBinaryNetworkLatency(ws, data) {
+  const headerData = {
+    sessionId: data.sessionId,
+    clientLatency: data.clientLatency || 0,
+    serverLatency: data.serverLatency || 0,
+    totalLatency: data.totalLatency || 0,
+    timestamp: data.timestamp || Date.now(),
+    type: data.type || 'measurement',
+    source: data.source || 'server'
+  };
+
+  sendBinaryMessage(ws, BINARY_MSG_TYPE.NETWORK_LATENCY, headerData);
+}
+
+/**
+ * 编码连接状态为数字
+ * @param {string} status 状态字符串
+ * @returns {number} 状态数字
+ */
+function encodeConnectionStatus(status) {
+  const statusMap = {
+    'connecting': 0,
+    'connected': 1,
+    'disconnecting': 2,
+    'disconnected': 3,
+    'need_auth': 4,
+    'authenticating': 5,
+    'reconnected': 6,
+    'error': 7
+  };
+  
+  return statusMap[status] || 7;
+}
+
+/**
+ * 解码连接状态数字为字符串
+ * @param {number} statusCode 状态数字
+ * @returns {string} 状态字符串
+ */
+function decodeConnectionStatus(statusCode) {
+  const statusMap = {
+    0: 'connecting',
+    1: 'connected',
+    2: 'disconnecting',
+    3: 'disconnected',
+    4: 'need_auth',
+    5: 'authenticating',
+    6: 'reconnected',
+    7: 'error'
+  };
+  
+  return statusMap[statusCode] || 'error';
+}
+
+/**
+ * 生成唯一请求ID
+ * @returns {string} 请求ID
+ */
+function generateRequestId() {
+  return crypto.randomUUID ? crypto.randomUUID() : 
+    `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+}
+
 // 导出所有函数和常量
 module.exports = {
   WS_STATE,
@@ -584,6 +741,14 @@ module.exports = {
   sendBinaryMessage,
   sendBinarySftpSuccess,
   sendBinarySftpError,
+  sendBinaryPing,
+  sendBinaryPong,
+  sendBinaryConnectionRegistered,
+  sendBinaryConnected,
+  sendBinaryNetworkLatency,
+  encodeConnectionStatus,
+  decodeConnectionStatus,
+  generateRequestId,
   validateSshSession,
   validateSftpSession,
   safeExec,

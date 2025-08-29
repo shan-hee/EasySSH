@@ -6,6 +6,9 @@
 const path = require('path');
 const logger = require('../utils/logger');
 
+// 导入二进制SFTP工具函数
+const { sendBinarySftpSuccess, sendBinarySftpError } = require('./utils');
+
 // 存储SFTP会话
 const sftpSessions = new Map();
 
@@ -32,36 +35,6 @@ function getMimeType(filename) {
   return mimeTypes[ext] || 'application/octet-stream';
 }
 
-/**
- * 发送SFTP成功响应
- */
-function sendSftpSuccess(ws, sessionId, operationId, data) {
-  const response = {
-    type: 'sftp_success',
-    data: {
-      sessionId,
-      operationId,
-      ...data
-    }
-  };
-  ws.send(JSON.stringify(response));
-}
-
-/**
- * 发送SFTP错误响应
- */
-function sendSftpError(ws, sessionId, operationId, message, code = 'SFTP_ERROR') {
-  const response = {
-    type: 'sftp_error',
-    data: {
-      sessionId,
-      operationId,
-      error: message,
-      code
-    }
-  };
-  ws.send(JSON.stringify(response));
-}
 
 /**
  * 处理SFTP初始化
@@ -98,7 +71,7 @@ function handleSftpInit(ws, data, sshSessions) {
     sshSession.conn.sftp((err, sftp) => {
       if (err) {
         logger.error('SFTP初始化失败', { sessionId, error: err.message });
-        sendSftpError(ws, sessionId, operationId, `SFTP初始化失败: ${err.message}`, 'SFTP_INIT_ERROR');
+        sendBinarySftpError(ws, sessionId, operationId, `SFTP初始化失败: ${err.message}`, 'SFTP_INIT_ERROR');
         return;
       }
 
@@ -110,11 +83,11 @@ function handleSftpInit(ws, data, sshSessions) {
       });
 
       logger.info('SFTP会话已建立', { sessionId });
-      sendSftpSuccess(ws, sessionId, operationId, { message: 'SFTP会话已建立' });
+      sendBinarySftpSuccess(ws, sessionId, operationId, { message: 'SFTP会话已建立' });
     });
   } catch (error) {
     logger.error('SFTP初始化错误', { sessionId, error: error.message });
-    sendSftpError(ws, sessionId, operationId, error.message, 'SFTP_INIT_ERROR');
+    sendBinarySftpError(ws, sessionId, operationId, error.message, 'SFTP_INIT_ERROR');
   }
 }
 
@@ -135,7 +108,7 @@ function handleSftpList(ws, data) {
     sftp.readdir(remotePath, (err, list) => {
       if (err) {
         logger.error('SFTP列表目录失败', { sessionId, path: remotePath, error: err.message });
-        sendSftpError(ws, sessionId, operationId, `列表目录失败: ${err.message}`, 'SFTP_LIST_ERROR');
+        sendBinarySftpError(ws, sessionId, operationId, `列表目录失败: ${err.message}`, 'SFTP_LIST_ERROR');
         return;
       }
 
@@ -149,14 +122,19 @@ function handleSftpList(ws, data) {
       }));
 
       logger.debug('SFTP已列出目录', { path: remotePath, fileCount: formattedList.length });
-      sendSftpSuccess(ws, sessionId, operationId, { 
+      
+      // 将目录数据作为payload发送
+      const responseData = {
         files: formattedList,
         path: remotePath
-      });
+      };
+      const payloadBuffer = Buffer.from(JSON.stringify(responseData), 'utf-8');
+      
+      sendBinarySftpSuccess(ws, sessionId, operationId, {}, payloadBuffer);
     });
   } catch (error) {
     logger.error('SFTP列表目录错误', { sessionId, error: error.message });
-    sendSftpError(ws, sessionId, operationId, error.message, 'SFTP_LIST_ERROR');
+    sendBinarySftpError(ws, sessionId, operationId, error.message, 'SFTP_LIST_ERROR');
   }
 }
 
@@ -177,19 +155,19 @@ function handleSftpMkdir(ws, data) {
     sftp.mkdir(remotePath, (err) => {
       if (err) {
         logger.error('SFTP创建目录失败', { sessionId, path: remotePath, error: err.message });
-        sendSftpError(ws, sessionId, operationId, `创建目录失败: ${err.message}`, 'SFTP_MKDIR_ERROR');
+        sendBinarySftpError(ws, sessionId, operationId, `创建目录失败: ${err.message}`, 'SFTP_MKDIR_ERROR');
         return;
       }
 
       logger.info('SFTP目录已创建', { path: remotePath });
-      sendSftpSuccess(ws, sessionId, operationId, { 
+      sendBinarySftpSuccess(ws, sessionId, operationId, { 
         message: '目录创建成功',
         path: remotePath
       });
     });
   } catch (error) {
     logger.error('SFTP创建目录错误', { sessionId, error: error.message });
-    sendSftpError(ws, sessionId, operationId, error.message, 'SFTP_MKDIR_ERROR');
+    sendBinarySftpError(ws, sessionId, operationId, error.message, 'SFTP_MKDIR_ERROR');
   }
 }
 
@@ -211,7 +189,7 @@ function handleSftpDelete(ws, data) {
     sftp.stat(remotePath, (err, stats) => {
       if (err) {
         logger.error('SFTP获取文件信息失败', { sessionId, path: remotePath, error: err.message });
-        sendSftpError(ws, sessionId, operationId, `获取文件信息失败: ${err.message}`, 'SFTP_STAT_ERROR');
+        sendBinarySftpError(ws, sessionId, operationId, `获取文件信息失败: ${err.message}`, 'SFTP_STAT_ERROR');
         return;
       }
 
@@ -220,12 +198,12 @@ function handleSftpDelete(ws, data) {
         sftp.rmdir(remotePath, (err) => {
           if (err) {
             logger.error('SFTP删除目录失败', { sessionId, path: remotePath, error: err.message });
-            sendSftpError(ws, sessionId, operationId, `删除目录失败: ${err.message}`, 'SFTP_DELETE_ERROR');
+            sendBinarySftpError(ws, sessionId, operationId, `删除目录失败: ${err.message}`, 'SFTP_DELETE_ERROR');
             return;
           }
 
           logger.info('SFTP目录已删除', { path: remotePath });
-          sendSftpSuccess(ws, sessionId, operationId, { 
+          sendBinarySftpSuccess(ws, sessionId, operationId, { 
             message: '目录删除成功',
             path: remotePath
           });
@@ -235,12 +213,12 @@ function handleSftpDelete(ws, data) {
         sftp.unlink(remotePath, (err) => {
           if (err) {
             logger.error('SFTP删除文件失败', { sessionId, path: remotePath, error: err.message });
-            sendSftpError(ws, sessionId, operationId, `删除文件失败: ${err.message}`, 'SFTP_DELETE_ERROR');
+            sendBinarySftpError(ws, sessionId, operationId, `删除文件失败: ${err.message}`, 'SFTP_DELETE_ERROR');
             return;
           }
 
           logger.info('SFTP文件已删除', { path: remotePath });
-          sendSftpSuccess(ws, sessionId, operationId, { 
+          sendBinarySftpSuccess(ws, sessionId, operationId, { 
             message: '文件删除成功',
             path: remotePath
           });
@@ -249,7 +227,7 @@ function handleSftpDelete(ws, data) {
     });
   } catch (error) {
     logger.error('SFTP删除错误', { sessionId, error: error.message });
-    sendSftpError(ws, sessionId, operationId, error.message, 'SFTP_DELETE_ERROR');
+    sendBinarySftpError(ws, sessionId, operationId, error.message, 'SFTP_DELETE_ERROR');
   }
 }
 
@@ -315,19 +293,19 @@ function handleSftpFastDelete(ws, data) {
     recursiveDelete(remotePath, (err) => {
       if (err) {
         logger.error('SFTP快速删除失败', { sessionId, path: remotePath, error: err.message });
-        sendSftpError(ws, sessionId, operationId, `快速删除失败: ${err.message}`, 'SFTP_FAST_DELETE_ERROR');
+        sendBinarySftpError(ws, sessionId, operationId, `快速删除失败: ${err.message}`, 'SFTP_FAST_DELETE_ERROR');
         return;
       }
 
       logger.info('SFTP快速删除完成', { path: remotePath });
-      sendSftpSuccess(ws, sessionId, operationId, { 
+      sendBinarySftpSuccess(ws, sessionId, operationId, { 
         message: '快速删除成功',
         path: remotePath
       });
     });
   } catch (error) {
     logger.error('SFTP快速删除错误', { sessionId, error: error.message });
-    sendSftpError(ws, sessionId, operationId, error.message, 'SFTP_FAST_DELETE_ERROR');
+    sendBinarySftpError(ws, sessionId, operationId, error.message, 'SFTP_FAST_DELETE_ERROR');
   }
 }
 
@@ -348,12 +326,12 @@ function handleSftpChmod(ws, data) {
     sftp.chmod(remotePath, mode, (err) => {
       if (err) {
         logger.error('SFTP权限修改失败', { sessionId, path: remotePath, mode, error: err.message });
-        sendSftpError(ws, sessionId, operationId, `权限修改失败: ${err.message}`, 'SFTP_CHMOD_ERROR');
+        sendBinarySftpError(ws, sessionId, operationId, `权限修改失败: ${err.message}`, 'SFTP_CHMOD_ERROR');
         return;
       }
 
       logger.info('SFTP权限已修改', { path: remotePath, mode });
-      sendSftpSuccess(ws, sessionId, operationId, { 
+      sendBinarySftpSuccess(ws, sessionId, operationId, { 
         message: '权限修改成功',
         path: remotePath,
         mode
@@ -361,7 +339,7 @@ function handleSftpChmod(ws, data) {
     });
   } catch (error) {
     logger.error('SFTP权限修改错误', { sessionId, error: error.message });
-    sendSftpError(ws, sessionId, operationId, error.message, 'SFTP_CHMOD_ERROR');
+    sendBinarySftpError(ws, sessionId, operationId, error.message, 'SFTP_CHMOD_ERROR');
   }
 }
 
@@ -382,12 +360,12 @@ function handleSftpRename(ws, data) {
     sftp.rename(oldPath, newPath, (err) => {
       if (err) {
         logger.error('SFTP重命名失败', { sessionId, oldPath, newPath, error: err.message });
-        sendSftpError(ws, sessionId, operationId, `重命名失败: ${err.message}`, 'SFTP_RENAME_ERROR');
+        sendBinarySftpError(ws, sessionId, operationId, `重命名失败: ${err.message}`, 'SFTP_RENAME_ERROR');
         return;
       }
 
       logger.info('SFTP重命名成功', { oldPath, newPath });
-      sendSftpSuccess(ws, sessionId, operationId, { 
+      sendBinarySftpSuccess(ws, sessionId, operationId, { 
         message: '重命名成功',
         oldPath,
         newPath
@@ -395,7 +373,7 @@ function handleSftpRename(ws, data) {
     });
   } catch (error) {
     logger.error('SFTP重命名错误', { sessionId, error: error.message });
-    sendSftpError(ws, sessionId, operationId, error.message, 'SFTP_RENAME_ERROR');
+    sendBinarySftpError(ws, sessionId, operationId, error.message, 'SFTP_RENAME_ERROR');
   }
 }
 
@@ -413,10 +391,10 @@ function handleSftpClose(ws, data) {
       logger.info('SFTP会话已关闭', { sessionId });
     }
 
-    sendSftpSuccess(ws, sessionId, operationId, { message: 'SFTP会话已关闭' });
+    sendBinarySftpSuccess(ws, sessionId, operationId, { message: 'SFTP会话已关闭' });
   } catch (error) {
     logger.error('SFTP关闭错误', { sessionId, error: error.message });
-    sendSftpError(ws, sessionId, operationId, error.message, 'SFTP_CLOSE_ERROR');
+    sendBinarySftpError(ws, sessionId, operationId, error.message, 'SFTP_CLOSE_ERROR');
   }
 }
 

@@ -3,13 +3,14 @@ import { ElMessage } from 'element-plus';
 import log from '../log';
 import settingsService from '../settings';
 import { wsServerConfig } from '../../config/app-config';
-import { WS_CONSTANTS, MESSAGE_TYPES, LATENCY_EVENTS, LATENCY_CONFIG, getDynamicConstants } from '../constants';
+import { WS_CONSTANTS, MESSAGE_TYPES, BINARY_MESSAGE_TYPES, CONNECTION_STATUS, LATENCY_EVENTS, LATENCY_CONFIG, getDynamicConstants } from '../constants';
+
+// 导入二进制消息处理工具
+import { BinaryMessageDecoder, BinaryMessageUtils } from '../binary-message-utils';
 
 // 导入统一二进制协议
 import {
-  BINARY_MSG_TYPE,
   BinaryMessageSender,
-  LegacyDataHandler,
   UnifiedBinaryHandler
 } from './binary-protocol';
 
@@ -23,6 +24,7 @@ class SSHService {
     this.isReady = false;
     this.isInitializing = false;
     this.keepAliveIntervals = new Map();
+    this.latencyTimers = new Map(); // 存储延迟测量定时器
     this.terminalSessionMap = new Map(); // 终端ID到会话ID的映射
     this.sessionTerminalMap = new Map(); // 会话ID到终端ID的映射（双向映射提高查询效率）
     
@@ -48,8 +50,8 @@ class SSHService {
     this.dynamicConfig = null; // 在init方法中再获取动态配置
     
     // 清理相关配置
-    this.cleanupInterval = 60000 * 15; // 15分钟清理一次
-    this.connectionIdExpiration = 60000 * 30; // 30分钟过期时间
+    this.cleanupInterval = 60000 * 5; // 5分钟清理一次
+    this.connectionIdExpiration = 60000 * 10; // 10分钟过期时间
     
     // 启动定期清理
     setInterval(() => this._cleanupPendingConnections(), this.cleanupInterval);
@@ -104,45 +106,66 @@ class SSHService {
    */
   _setupBinaryHandlers() {
     try {
+      // 注册新的控制消息处理器
+      this.binaryHandler.registerHandler(BINARY_MESSAGE_TYPES.PING, (headerData, payloadData) => {
+        this._handleBinaryPing(headerData);
+      });
+
+      this.binaryHandler.registerHandler(BINARY_MESSAGE_TYPES.PONG, (headerData, payloadData) => {
+        this._handleBinaryPong(headerData);
+      });
+
+      this.binaryHandler.registerHandler(BINARY_MESSAGE_TYPES.CONNECTION_REGISTERED, (headerData, payloadData) => {
+        this._handleBinaryConnectionRegistered(headerData);
+      });
+
+      this.binaryHandler.registerHandler(BINARY_MESSAGE_TYPES.CONNECTED, (headerData, payloadData) => {
+        this._handleBinaryConnected(headerData);
+      });
+
+      this.binaryHandler.registerHandler(BINARY_MESSAGE_TYPES.NETWORK_LATENCY, (headerData, payloadData) => {
+        this._handleBinaryNetworkLatency(headerData);
+      });
+
       // 注册SSH终端数据处理器
-      this.binaryHandler.registerHandler(BINARY_MSG_TYPE.SSH_DATA, (headerData, payloadData) => {
+      this.binaryHandler.registerHandler(BINARY_MESSAGE_TYPES.SSH_DATA, (headerData, payloadData) => {
         this._handleBinarySSHData(headerData, payloadData);
       });
 
       // 注册SSH数据确认处理器
-      this.binaryHandler.registerHandler(BINARY_MSG_TYPE.SSH_DATA_ACK, (headerData, payloadData) => {
+      this.binaryHandler.registerHandler(BINARY_MESSAGE_TYPES.SSH_DATA_ACK, (headerData, payloadData) => {
         this._handleSSHDataAck(headerData);
       });
 
       // 注册SFTP相关消息处理器（委托给SFTP服务）
-      this.binaryHandler.registerHandler(BINARY_MSG_TYPE.SFTP_SUCCESS, (headerData, payloadData) => {
+      this.binaryHandler.registerHandler(BINARY_MESSAGE_TYPES.SFTP_SUCCESS, (headerData, payloadData) => {
         // 通过事件系统转发给SFTP服务
         window.dispatchEvent(new CustomEvent('sftp-binary-message', {
-          detail: { headerData, payloadData, messageType: BINARY_MSG_TYPE.SFTP_SUCCESS }
+          detail: { headerData, payloadData, messageType: BINARY_MESSAGE_TYPES.SFTP_SUCCESS }
         }));
       });
 
-      this.binaryHandler.registerHandler(BINARY_MSG_TYPE.SFTP_ERROR, (headerData, payloadData) => {
+      this.binaryHandler.registerHandler(BINARY_MESSAGE_TYPES.SFTP_ERROR, (headerData, payloadData) => {
         window.dispatchEvent(new CustomEvent('sftp-binary-message', {
-          detail: { headerData, payloadData, messageType: BINARY_MSG_TYPE.SFTP_ERROR }
+          detail: { headerData, payloadData, messageType: BINARY_MESSAGE_TYPES.SFTP_ERROR }
         }));
       });
 
-      this.binaryHandler.registerHandler(BINARY_MSG_TYPE.SFTP_PROGRESS, (headerData, payloadData) => {
+      this.binaryHandler.registerHandler(BINARY_MESSAGE_TYPES.SFTP_PROGRESS, (headerData, payloadData) => {
         window.dispatchEvent(new CustomEvent('sftp-binary-message', {
-          detail: { headerData, payloadData, messageType: BINARY_MSG_TYPE.SFTP_PROGRESS }
+          detail: { headerData, payloadData, messageType: BINARY_MESSAGE_TYPES.SFTP_PROGRESS }
         }));
       });
 
-      this.binaryHandler.registerHandler(BINARY_MSG_TYPE.SFTP_FILE_DATA, (headerData, payloadData) => {
+      this.binaryHandler.registerHandler(BINARY_MESSAGE_TYPES.SFTP_FILE_DATA, (headerData, payloadData) => {
         window.dispatchEvent(new CustomEvent('sftp-binary-message', {
-          detail: { headerData, payloadData, messageType: BINARY_MSG_TYPE.SFTP_FILE_DATA }
+          detail: { headerData, payloadData, messageType: BINARY_MESSAGE_TYPES.SFTP_FILE_DATA }
         }));
       });
 
-      this.binaryHandler.registerHandler(BINARY_MSG_TYPE.SFTP_FOLDER_DATA, (headerData, payloadData) => {
+      this.binaryHandler.registerHandler(BINARY_MESSAGE_TYPES.SFTP_FOLDER_DATA, (headerData, payloadData) => {
         window.dispatchEvent(new CustomEvent('sftp-binary-message', {
-          detail: { headerData, payloadData, messageType: BINARY_MSG_TYPE.SFTP_FOLDER_DATA }
+          detail: { headerData, payloadData, messageType: BINARY_MESSAGE_TYPES.SFTP_FOLDER_DATA }
         }));
       });
 
@@ -377,6 +400,8 @@ class SSHService {
 
       this._setupKeepAlive(sessionId);
 
+      this._setupLatencyTimer(sessionId);
+
       // 优化：合并会话创建成功和映射建立的日志，减少重复输出
       // log.info(`SSH会话创建成功: ${sessionId}`) - 移至连接成功回调中统一输出
       
@@ -401,6 +426,7 @@ class SSHService {
           }
           
           this._clearKeepAlive(sessionId);
+      this._clearLatencyTimer(sessionId);
           this.sessions.delete(sessionId);
         }
         
@@ -466,16 +492,20 @@ class SSHService {
         }
         this.pendingConnections.set(connectionId, {
           connection,
-          createdAt: Date.now()
+          createdAt: Date.now(),
+          socket: socket,    // 保存WebSocket连接引用
+          resolve: resolve,  // 保存Promise resolve回调
+          reject: reject     // 保存Promise reject回调
         });
         
-        // 3. 只发送最小化必要信息，包含二进制支持标识
-        const connectMessage = this._createStandardMessage('connect', {
+        // 3. 使用二进制协议发送连接消息
+        const connectMessage = BinaryMessageUtils.createConnectMessage({
           sessionId,
           connectionId, // 只传递连接ID，不传递完整连接信息
+          supportsBinary: true,
           protocolVersion: '2.0' // 统一使用协议版本2.0
         });
-        socket.send(JSON.stringify(connectMessage));
+        socket.send(connectMessage);
       };
       
       // 连接错误时
@@ -681,9 +711,9 @@ class SSHService {
                   authData.encryptedPayload = encryptedPayload;
                   authData.keyId = randomKey;
                   
-                  // 发送认证请求
-                  const authMessage = this._createStandardMessage('authenticate', authData);
-                  socket.send(JSON.stringify(authMessage));
+                  // 发送认证请求 - 使用二进制协议
+                  const authMessage = BinaryMessageUtils.createAuthenticateMessage(authData);
+                  socket.send(authMessage);
                 } catch (encryptError) {
                   log.error('加密认证信息失败', encryptError);
                   reject(new Error('加密认证信息失败，无法安全连接'));
@@ -729,15 +759,7 @@ class SSHService {
                   return;
                 }
                 
-                let data;
-                try {
-                  // 向后兼容：处理旧版本的Base64编码数据
-                  log.warn(`收到旧版Base64格式数据，建议服务端升级到二进制协议: ${sessionId}`);
-                  data = LegacyDataHandler.decodeTerminalData(message.data.data);
-                } catch (e) {
-                  log.warn(`Base64解码失败, 使用原始数据:`, e);
-                  data = message.data.data;
-                }
+                const data = message.data.data;
                 
                 if (session.terminal) {
                   session.terminal.write(data);
@@ -750,10 +772,9 @@ class SSHService {
                   session.buffer += data;
                   session.bufferSize += data.length;
                   
-                  const MAX_BUFFER_SIZE = 1024 * 1024 * 5;  // 5MB
+                  const MAX_BUFFER_SIZE = 512 * 1024;  // 512KB
                   if (session.bufferSize > MAX_BUFFER_SIZE) {
-                    log.warn(`会话 ${sessionId} 缓冲区过大(${session.bufferSize}B)，截断旧数据`);
-                    const keepSize = 1024 * 1024;
+                    const keepSize = 256 * 1024;  // 保留256KB
                     session.buffer = session.buffer.substring(session.buffer.length - keepSize);
                     session.bufferSize = session.buffer.length;
                   }
@@ -769,14 +790,14 @@ class SSHService {
                 // 解析延迟数据（简化格式）
                 const latencyDetail = {
                   sessionId: message.data?.sessionId || sessionId,
-                  clientLatency: Math.round(message.data?.clientLatency || 0),    // 前端到EasySSH延迟（整数毫秒）
-                  serverLatency: Math.round(message.data?.serverLatency || 0),   // EasySSH到服务器延迟（整数毫秒）
-                  totalLatency: Math.round(message.data?.totalLatency ||
-                    (message.data?.clientLatency || 0) + (message.data?.serverLatency || 0)), // 总延迟（整数毫秒）
+                  clientLatency: message.data?.clientLatency ? Math.round(message.data.clientLatency) : undefined,
+                  serverLatency: message.data?.serverLatency ? Math.round(message.data.serverLatency) : undefined,
+                  totalLatency: message.data?.totalLatency ? Math.round(message.data.totalLatency) : 
+                    (message.data?.clientLatency && message.data?.serverLatency ? 
+                     Math.round(message.data.clientLatency + message.data.serverLatency) : undefined),
                   timestamp: message.data?.timestamp || new Date().toISOString()
                 };
 
-                log.debug(`收到网络延迟信息: 客户端${latencyDetail.clientLatency}ms, 服务器${latencyDetail.serverLatency}ms, 总计${latencyDetail.totalLatency}ms`);
 
                 // 保存延迟数据到内部状态
                 this.latencyData.set(sessionId, {
@@ -815,10 +836,6 @@ class SSHService {
                   }));
                 }
               } catch (e) {
-                log.warn('处理网络延迟消息失败:', e);
-                // 记录详细错误和消息数据，帮助调试
-                log.debug('延迟消息数据:', JSON.stringify(message.data || {}));
-                log.debug('错误详情:', e.message, e.stack);
               }
               break;
               
@@ -829,87 +846,12 @@ class SSHService {
                 if (this.sessions.has(sessionId)) {
                   const session = this.sessions.get(sessionId);
                   session.lastActivity = new Date();
-
-                  // 计算WebSocket延迟
-                  const pongData = message.data;
-                  if (pongData && pongData.requestId) {
-                    const clientReceiveTime = performance.now();
-
-                    // 从保活间隔数据中获取对应的ping请求
-                    const keepAliveData = this.keepAliveIntervals.get(sessionId);
-                    if (keepAliveData && keepAliveData.pingRequests) {
-                      const pingRequest = keepAliveData.pingRequests.get(pongData.requestId);
-                      if (pingRequest && pingRequest.clientSendTime) {
-                        const webSocketLatency = clientReceiveTime - pingRequest.clientSendTime;
-
-                        // 清理已处理的ping请求
-                        keepAliveData.pingRequests.delete(pongData.requestId);
-
-                        // 如果这是延迟测量ping的响应，不需要再发送延迟更新
-                        if (pingRequest.isLatencyMeasurement) {
-                          // log.debug(`延迟测量ping响应: ${Math.round(webSocketLatency)}ms`);
-                          return; // 直接返回，不执行后续的延迟更新逻辑
-                        }
-
-                        // 只有当延迟值合理时才处理（0-5000ms）
-                        if (webSocketLatency > 0 && webSocketLatency < 5000) {
-                          // log.debug(`WebSocket延迟: ${Math.round(webSocketLatency)}ms`);
-
-                          // 清理已处理的ping请求
-                          keepAliveData.pingRequests.delete(pongData.requestId);
-
-                          // 发送包含WebSocket延迟的ping消息，让后端直接处理延迟测量
-                          if (session.socket && session.socket.readyState === WS_CONSTANTS.OPEN) {
-                            const now = new Date();
-                            const timestamp = Date.now(); // 使用数字时间戳
-                            const requestId = `latency_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
-                            const clientSendTime = performance.now();
-
-                            // 将延迟测量请求记录到保活数据中
-                            keepAliveData.pingRequests.set(requestId, {
-                              timestamp: now,
-                              clientSendTime,
-                              sessionId,
-                              isLatencyMeasurement: true
-                            });
-
-                            // 发送包含WebSocket延迟的ping消息
-                            const pingMessage = this._createStandardMessage(MESSAGE_TYPES.PING, {
-                              sessionId,
-                              timestamp,
-                              requestId,
-                              webSocketLatency, // 直接在ping中包含WebSocket延迟
-                              measureLatency: true,
-                              client: 'easyssh'
-                            });
-                            session.socket.send(JSON.stringify(pingMessage));
-                          }
-                        } else {
-                          log.warn(`WebSocket延迟值异常: ${webSocketLatency}ms, 跳过处理`);
-                        }
-                      } else {
-                        log.warn(`未找到ping请求记录: requestId=${pongData.requestId}, sessionId=${sessionId}`);
-                      }
-                    } else {
-                      log.warn(`未找到保活数据: sessionId=${sessionId}`);
-                    }
-                  }
                 }
               } catch (e) {
-                log.warn('处理PONG消息失败:', e);
               }
               break;
 
-            // 增加SFTP相关消息类型的处理
-            case MESSAGE_TYPES.SFTP_SUCCESS:
-            case MESSAGE_TYPES.SFTP_PROGRESS:
-            case MESSAGE_TYPES.SFTP_ERROR:
-            case MESSAGE_TYPES.SFTP_READY:
-            case MESSAGE_TYPES.SFTP_FILE:
-            case MESSAGE_TYPES.SFTP_LIST:
-            case MESSAGE_TYPES.SFTP_CONFIRM:
-              // 由handleSftpMessages处理，此处仅标记为已识别类型
-              break;
+            // SFTP消息已迁移到二进制协议处理
 
             // 处理其他消息类型
             default:
@@ -930,14 +872,7 @@ class SSHService {
               }
           }
           
-          // SFTP消息专门由SFTP服务处理
-          if (message.type && message.type.startsWith('sftp_')) {
-            if (this.handleSftpMessages) {
-              this.handleSftpMessages(message);
-            } else {
-              log.debug(`收到SFTP消息但未配置处理器: ${message.type}`, { sessionId });
-            }
-          }
+          // SFTP消息已全部迁移到二进制协议，不再需要JSON处理
           
         } catch (error) {
           log.error('处理WebSocket消息失败', error);
@@ -966,6 +901,7 @@ class SSHService {
     const interval = setInterval(() => {
       if (!this.sessions.has(sessionId)) {
         this._clearKeepAlive(sessionId);
+      this._clearLatencyTimer(sessionId);
         return;
       }
 
@@ -974,33 +910,32 @@ class SSHService {
 
       if (session.socket && session.socket.readyState === WS_CONSTANTS.OPEN) {
         try {
-          const timestamp = Date.now(); // 使用数字时间戳
+          const timestamp = Date.now();
           const requestId = Date.now().toString();
-          const clientSendTime = performance.now(); // 高精度时间戳
 
           pingRequests.set(requestId, {
             timestamp: now,
-            clientSendTime, // 保存客户端发送时间
             sessionId
           });
 
-          const pingMessage = this._createStandardMessage(MESSAGE_TYPES.PING, {
+          const pingMessage = BinaryMessageUtils.createPingMessage({
             sessionId,
             timestamp,
-            clientSendTime, // 发送高精度时间戳
             requestId,
-            measureLatency: true,
+            measureLatency: false,  // 保活ping不测量延迟
             client: 'easyssh'
           });
-          session.socket.send(JSON.stringify(pingMessage));
+          session.socket.send(pingMessage);
 
           session.lastActivity = now;
 
-          // 清理超时的ping请求
-          const expireTime = new Date(now.getTime() - 10000);
-          for (const [id, request] of pingRequests.entries()) {
-            if (request.timestamp < expireTime) {
-              pingRequests.delete(id);
+          // 定期清理过期ping请求（减少频率）
+          if (pingRequests.size > 50) {
+            const expireTime = new Date(now.getTime() - 30000);
+            for (const [id, request] of pingRequests.entries()) {
+              if (request.timestamp < expireTime) {
+                pingRequests.delete(id);
+              }
             }
           }
         } catch (error) {
@@ -1029,7 +964,7 @@ class SSHService {
   }
 
   /**
-   * 立即触发一次保活ping（用于SSH连接成功后获取延迟信息）
+   * 立即触发一次保活ping（用于SSH连接成功后获取完整延迟信息）
    */
   _triggerImmediatePing(sessionId) {
     if (!this.sessions.has(sessionId)) {
@@ -1041,14 +976,13 @@ class SSHService {
 
     if (session.socket && session.socket.readyState === WS_CONSTANTS.OPEN) {
       try {
-        const timestamp = Date.now(); // 使用数字时间戳
-        const requestId = `immediate_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
+        const timestamp = Date.now();
+        const requestId = `parallel_ping_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
         const clientSendTime = performance.now();
 
         // 获取或创建保活数据
         let keepAliveData = this.keepAliveIntervals.get(sessionId);
         if (!keepAliveData) {
-          // 如果保活机制还没设置，先设置它
           this._setupKeepAlive(sessionId);
           keepAliveData = this.keepAliveIntervals.get(sessionId);
         }
@@ -1057,22 +991,24 @@ class SSHService {
           keepAliveData.pingRequests.set(requestId, {
             timestamp: now,
             clientSendTime,
-            sessionId
+            sessionId,
+            isParallelPingMeasurement: true // 标记为并行ping测量
           });
 
-          const immediatePingMessage = this._createStandardMessage(MESSAGE_TYPES.PING, {
+          // 发送并行ping延迟测量请求 - 服务端将并行ping客户端和SSH主机
+          const binaryPingMessage = BinaryMessageUtils.createPingMessage({
             sessionId,
             timestamp,
             clientSendTime,
             requestId,
             measureLatency: true,
             client: 'easyssh',
-            immediate: true // 标记为立即ping
+            webSocketLatency: 1 // 触发服务端并行ping测量
           });
-          session.socket.send(JSON.stringify(immediatePingMessage));
+          session.socket.send(binaryPingMessage);
 
           session.lastActivity = now;
-          log.debug(`SSH连接成功后立即发送ping: ${sessionId}`);
+          // 定期保活不需要详细日志，只记录异常情况
         }
       } catch (error) {
         log.warn(`立即发送保活消息失败: ${sessionId}`, error);
@@ -1204,18 +1140,16 @@ class SSHService {
   
   /**
    * 清理过期的待处理连接
-   * 定期清理超过30分钟未使用的连接信息
    */
   _cleanupPendingConnections() {
     if (!this.pendingConnections) return;
     
     const now = Date.now();
-    const expirationTime = 30 * 60 * 1000; // 30分钟过期
+    const expirationTime = this.connectionIdExpiration;
     
     for (const [id, data] of this.pendingConnections.entries()) {
       if (now - data.createdAt > expirationTime) {
         this.pendingConnections.delete(id);
-        log.debug(`已清理过期连接ID: ${id}`);
       }
     }
   }
@@ -1285,6 +1219,7 @@ class SSHService {
     try {
       log.debug(`清除会话 ${sessionId} 的保活定时器`);
       this._clearKeepAlive(sessionId);
+      this._clearLatencyTimer(sessionId);
       
       if (session.socket) {
         if (session.socket.readyState === WS_CONSTANTS.OPEN) {
@@ -1401,6 +1336,7 @@ class SSHService {
       }
       
       this._clearKeepAlive(sessionId);
+      this._clearLatencyTimer(sessionId);
       
       if (this.sessions.has(sessionId)) {
         const session = this.sessions.get(sessionId);
@@ -1445,16 +1381,6 @@ class SSHService {
       log.error(`释放会话 ${sessionId} 资源失败`, error);
       return false;
     }
-  }
-
-  /**
-   * 创建终端并绑定到会话
-   */
-  createTerminal(sessionId, container, options = {}) {
-    // 这个方法内容太长，需要移到单独文件中实现
-    // 此处仅保留方法签名，具体实现将在终端管理器模块中
-    console.log('终端创建功能已移至终端管理模块');
-    throw new Error('终端创建功能已移至终端管理模块');
   }
 
   /**
@@ -1625,119 +1551,390 @@ class SSHService {
 
   /**
    * 处理二进制WebSocket消息
-   * 支持两种协议:
-   * 1. 旧协议: [type:1][sessionId_len:1][sessionId][payload] - 用于终端数据
-   * 2. 新协议: [Magic:4][Version:1][Type:1][HeaderLen:4][Header][Payload] - 用于SFTP
+   * 使用统一二进制协议: [Magic:4][Version:1][Type:1][HeaderLen:4][Header][Payload]
    * @param {ArrayBuffer} buffer 二进制数据
    * @param {string} sessionId 会话ID
    */
   _handleBinaryMessage(buffer, sessionId) {
     try {
-      if (buffer.byteLength < 2) {
-        log.warn('二进制消息长度不足', { length: buffer.byteLength });
+      if (buffer.byteLength < 10) {
+        log.error('二进制消息长度不足', { length: buffer.byteLength });
         return;
       }
 
-      // 检查是否为统一的二进制协议
-      if (buffer.byteLength >= 10) {
-        const view = new DataView(buffer);
-        const magicNumber = view.getUint32(0, false); // 大端序
-        if (magicNumber === 0x45535348) { // "ESSH"
-          // 使用统一二进制协议处理
-          this.binaryHandler.handleMessage(buffer);
-          return;
-        }
+      const view = new DataView(buffer);
+      const magicNumber = view.getUint32(0, false);
+      
+      if (magicNumber !== 0x45535348) {
+        log.error('无效的二进制协议格式');
+        return;
       }
 
-      // 使用旧的终端二进制协议处理（向后兼容）
-      this._handleLegacyBinaryMessage(buffer, sessionId);
+      const decoded = BinaryMessageDecoder.decode(buffer);
+      
+      // 委托给统一二进制处理器
+      if (this.binaryHandler) {
+        this.binaryHandler.handleDecodedMessage(decoded);
+      }
     } catch (error) {
       log.error('处理二进制消息失败', { error: error.message, sessionId });
     }
   }
 
   /**
-   * 处理SFTP二进制消息
-   * @param {ArrayBuffer} buffer 二进制数据
-   * @param {string} sessionId 会话ID
+   * 处理二进制PING消息
+   * @param {Object} headerData 头部数据
    */
-  _handleSftpBinaryMessage(buffer, sessionId) {
-    try {
-      // 通知SFTP服务处理二进制消息
-      // 这里需要通过事件或回调机制通知SFTP服务
-      window.dispatchEvent(new CustomEvent('sftp-binary-message', {
-        detail: { buffer, sessionId }
-      }));
-    } catch (error) {
-      log.error('处理SFTP二进制消息失败', { error: error.message, sessionId });
-    }
+  _handleBinaryPing(headerData) {
+    log.debug('收到二进制PING消息', headerData);
+    // 此处可以执行相关的PING处理逻辑
+    // 一般情况下客户端不会主动发PING，都是服务端发送
   }
 
   /**
-   * 处理旧版终端二进制消息
-   * @param {ArrayBuffer} buffer 二进制数据
-   * @param {string} sessionId 会话ID
+   * 处理二进制PONG消息
+   * @param {Object} headerData 头部数据
    */
-  _handleLegacyBinaryMessage(buffer, sessionId) {
-    try {
-      const view = new DataView(buffer);
-      const type = view.getUint8(0);
-      const sessionIdLen = view.getUint8(1);
-
-      if (buffer.byteLength < 2 + sessionIdLen) {
-        log.warn('旧版二进制消息格式错误', {
-          length: buffer.byteLength,
-          expectedMinLength: 2 + sessionIdLen
-        });
-        return;
-      }
-
-      const extractedSessionId = new TextDecoder().decode(
-        buffer.slice(2, 2 + sessionIdLen)
-      );
-      const payload = buffer.slice(2 + sessionIdLen);
-
-      switch (type) {
-        case 0x02: // 服务器到客户端数据
-          this._handleServerData(extractedSessionId, payload);
-          break;
-
-        default:
-          log.warn('未知的旧版二进制消息类型', { type, sessionId: extractedSessionId });
-      }
-    } catch (error) {
-      log.error('处理旧版二进制消息失败', { error: error.message, sessionId });
-    }
-  }
-
-  /**
-   * 处理服务器发送的二进制数据
-   * @param {string} sessionId 会话ID
-   * @param {ArrayBuffer} payload 数据载荷
-   */
-  _handleServerData(sessionId, payload) {
-    if (!this.sessions.has(sessionId)) {
-      log.warn('收到未知会话的数据', { sessionId });
+  _handleBinaryPong(headerData) {
+    const { sessionId } = headerData;
+    
+    if (!sessionId || !this.sessions.has(sessionId)) {
+      log.warn('无效的会话ID在PONG消息中', { sessionId });
       return;
     }
 
     const session = this.sessions.get(sessionId);
     session.lastActivity = new Date();
+    
+  }
 
-    if (session.terminal) {
-      try {
-        // 直接解码为UTF-8文本并写入终端
-        const text = new TextDecoder('utf-8', { fatal: false }).decode(payload);
-        session.terminal.write(text);
-      } catch (error) {
-        log.error('写入终端数据失败', { sessionId, error: error.message });
+  /**
+   * 处理二进制连接注册消息
+   * @param {Object} headerData 头部数据
+   */
+  _handleBinaryConnectionRegistered(headerData) {
+    const { connectionId, sessionId, status } = headerData;
+    log.info('收到二进制连接注册消息', { connectionId, sessionId, status });
+    
+    const statusName = BinaryMessageUtils.decodeConnectionStatus(status);
+    
+    if (statusName === 'need_auth') {
+      log.info(`连接ID已注册，需要发送认证信息: ${connectionId}`);
+      
+      // 从 pending 连接中获取完整的连接信息
+      if (!this.pendingConnections || !this.pendingConnections.has(connectionId)) {
+        log.error(`无法找到连接ID对应的信息: ${connectionId}`);
+        return;
       }
-    } else if (session.buffer !== undefined) {
-      // 如果终端还未准备好，缓存数据
-      const text = new TextDecoder('utf-8', { fatal: false }).decode(payload);
-      session.buffer += text;
+      
+      const pendingData = this.pendingConnections.get(connectionId);
+      const authConnection = pendingData.connection;
+      const socket = pendingData.socket; // 获取WebSocket连接
+      
+      // 生成临时的AES密钥
+      const randomKey = Array.from(crypto.getRandomValues(new Uint8Array(16)))
+        .map(b => b.toString(16).padStart(2, '0'))
+        .join('');
+      
+      // 准备完整的认证数据对象
+      const authPayload = {
+        address: authConnection.host,
+        port: authConnection.port || 22,
+        username: authConnection.username,
+        authType: authConnection.authType || 'password'
+      };
+      
+      // 根据认证方式添加凭据
+      if (authPayload.authType === 'password') {
+        authPayload.password = authConnection.password;
+      } else if (authPayload.authType === 'key' || authPayload.authType === 'privateKey') {
+        authPayload.privateKey = authConnection.keyFile;
+        if (authConnection.passphrase) {
+          authPayload.passphrase = authConnection.passphrase;
+        }
+      }
+      
+      // 构建认证消息数据
+      const authData = {
+        connectionId: connectionId,
+        sessionId: sessionId,
+      };
+      
+      // 使用同步方式处理
+      try {
+        // 对完整的认证载荷进行加密
+        const encryptedPayload = this._encryptSensitiveData(JSON.stringify(authPayload), randomKey);
+        authData.encryptedPayload = encryptedPayload;
+        authData.keyId = randomKey;
+        
+        // 发送认证请求 - 使用二进制协议
+        const authMessage = BinaryMessageUtils.createAuthenticateMessage(authData);
+        socket.send(authMessage);
+        
+        log.debug('已发送加密认证请求', { connectionId, sessionId });
+      } catch (encryptError) {
+        log.error('加密认证信息失败', encryptError);
+        // 触发错误回调
+        if (pendingData.reject) {
+          pendingData.reject(new Error('加密认证信息失败，无法安全连接'));
+        }
+      }
+    } else if (statusName === 'reconnected') {
+      log.info(`连接ID已重连: ${connectionId}`);
     }
   }
+
+  /**
+   * 处理二进制连接完成消息
+   * @param {Object} headerData 头部数据
+   */
+  _handleBinaryConnected(headerData) {
+    const { sessionId, connectionId, status, serverInfo } = headerData;
+    log.info('收到二进制连接完成消息', { sessionId, connectionId });
+
+    if (!sessionId || !this.sessions.has(sessionId)) {
+      log.warn('无效的会话ID在CONNECTED消息中', { sessionId });
+      return;
+    }
+
+    const session = this.sessions.get(sessionId);
+    session.lastActivity = new Date();
+    session.retryCount = 0;
+    session.isReconnecting = false;
+    
+    // 更新连接状态
+    if (session.connectionState) {
+      session.connectionState.status = 'connected';
+      session.connectionState.message = '已连接';
+    }
+
+    // 如果有connectionId，查找并调用pendingConnection的resolve回调
+    if (connectionId && this.pendingConnections && this.pendingConnections.has(connectionId)) {
+      const pendingData = this.pendingConnections.get(connectionId);
+      if (pendingData.resolve) {
+        log.debug('调用连接Promise的resolve回调', { sessionId, connectionId });
+        pendingData.resolve(sessionId);
+      }
+      // 清理pendingConnection
+      this.pendingConnections.delete(connectionId);
+    }
+    
+    // 触发连接成功事件
+    this._triggerConnectionSuccess(sessionId, serverInfo);
+  }
+
+  /**
+   * 处理二进制网络延迟消息
+   * @param {Object} headerData 头部数据
+   */
+  _handleBinaryNetworkLatency(headerData) {
+    const { sessionId, clientLatency, serverLatency, totalLatency, timestamp } = headerData;
+    
+    if (!sessionId || !this.sessions.has(sessionId)) {
+      log.warn('收到无效会话的延迟数据', { sessionId });
+      return;
+    }
+
+    const session = this.sessions.get(sessionId);
+    
+    // 更新会话中的延迟信息
+    session.latency = {
+      total: totalLatency,
+      client: clientLatency,
+      server: serverLatency,
+      lastUpdate: new Date(timestamp)
+    };
+
+    //log.debug(`客户端：${clientLatency} 服务器：${serverLatency} 总延迟：${totalLatency}ms`);
+
+    // 获取终端ID
+    const terminalId = session.terminalId;
+
+    // 触发延迟更新事件 - 使用与TerminalToolbar期望匹配的数据格式
+    const latencyDetail = {
+      sessionId,
+      terminalId,
+      clientLatency,
+      serverLatency,
+      totalLatency,
+      timestamp: Date.now()
+    };
+
+    // 保存延迟数据
+    this.latencyData.set(sessionId, {
+      ...latencyDetail,
+      lastUpdate: new Date()
+    });
+
+    // 触发全局延迟事件
+    window.dispatchEvent(new CustomEvent(LATENCY_EVENTS.GLOBAL, {
+      detail: latencyDetail
+    }));
+
+    // 触发工具栏延迟事件
+    window.dispatchEvent(new CustomEvent(LATENCY_EVENTS.TOOLBAR, {
+      detail: latencyDetail
+    }));
+
+    // 触发终端延迟事件
+    if (terminalId) {
+      window.dispatchEvent(new CustomEvent(LATENCY_EVENTS.TERMINAL, {
+        detail: { ...latencyDetail, terminalId }
+      }));
+    }
+
+  }
+
+  /**
+   * 触发连接成功事件
+   * @param {string} sessionId 会话ID
+   * @param {Object} serverInfo 服务器信息
+   */
+  _triggerConnectionSuccess(sessionId, serverInfo = {}) {
+    try {
+      const session = this.sessions.get(sessionId);
+      if (!session) return;
+      
+      const connection = session.connection || {};
+      const connHost = serverInfo.host || connection.host;
+      
+      if (connHost) {
+        // 获取终端ID
+        let terminalId = this.sessionTerminalMap.get(sessionId);
+        if (!terminalId && connection.terminalId) {
+          terminalId = connection.terminalId;
+          this.sessionTerminalMap.set(sessionId, terminalId);
+          this.terminalSessionMap.set(terminalId, sessionId);
+        }
+        
+        // 更新会话对象
+        if (terminalId) {
+          session.terminalId = terminalId;
+        }
+        
+        const sshConnectedEvent = new CustomEvent('ssh-connected', {
+          detail: { 
+            sessionId: sessionId,
+            host: connHost,
+            terminalId: terminalId,
+            connection: connection
+          }
+        });
+        window.dispatchEvent(sshConnectedEvent);
+        log.info(`已触发SSH连接成功事件，主机: ${connHost}, 终端ID: ${terminalId || '未知'}`);
+      }
+
+      // SSH连接成功后稍微延迟触发保活ping来获取延迟信息
+      setTimeout(() => {
+        this._triggerImmediatePing(sessionId);
+      }, 100);
+      
+    } catch (err) {
+      log.error('触发SSH连接事件失败:', err);
+    }
+  }
+
+  /**
+   * 设置延迟测量定时器
+   * @param {string} sessionId 会话ID
+   */
+  _setupLatencyTimer(sessionId) {
+    if (!sessionId || !this.sessions.has(sessionId)) {
+      return;
+    }
+
+    // 清除已存在的定时器
+    this._clearLatencyTimer(sessionId);
+
+    // 获取延迟测量专用间隔配置
+    const dynamicConfig = getDynamicConstants(settingsService);
+    const intervalSeconds = dynamicConfig.LATENCY_CONFIG.CHECK_INTERVAL || 5;
+    const intervalMs = intervalSeconds * 1000;
+
+    // 创建延迟测量定时器
+    const timer = setInterval(() => {
+      if (!this.sessions.has(sessionId)) {
+        this._clearLatencyTimer(sessionId);
+        return;
+      }
+
+      const session = this.sessions.get(sessionId);
+      if (session.socket && session.socket.readyState === WS_CONSTANTS.OPEN && 
+          session.connectionState && session.connectionState.status === 'connected') {
+        this._triggerLatencyMeasurement(sessionId);
+      }
+    }, intervalMs);
+
+    this.latencyTimers.set(sessionId, timer);
+    log.debug(`延迟测量定时器已设置，间隔: ${intervalSeconds}秒`, { sessionId });
+  }
+
+  /**
+   * 清除延迟测量定时器
+   * @param {string} sessionId 会话ID
+   */
+  _clearLatencyTimer(sessionId) {
+    if (this.latencyTimers.has(sessionId)) {
+      const timer = this.latencyTimers.get(sessionId);
+      clearInterval(timer);
+      this.latencyTimers.delete(sessionId);
+      log.debug(`延迟测量定时器已清除`, { sessionId });
+    }
+  }
+
+  /**
+   * 触发延迟测量（定时触发版本）
+   * @param {string} sessionId 会话ID
+   */
+  _triggerLatencyMeasurement(sessionId) {
+    if (!this.sessions.has(sessionId)) {
+      return;
+    }
+
+    const session = this.sessions.get(sessionId);
+    if (!session.socket || session.socket.readyState !== WS_CONSTANTS.OPEN) {
+      return;
+    }
+
+    try {
+      const timestamp = Date.now();
+      const requestId = `latency_timer_${timestamp}_${Math.random().toString(36).substring(2, 9)}`;
+      const clientSendTime = performance.now();
+
+      // 获取或创建保活数据以复用ping请求机制
+      let keepAliveData = this.keepAliveIntervals.get(sessionId);
+      if (!keepAliveData) {
+        this._setupKeepAlive(sessionId);
+        keepAliveData = this.keepAliveIntervals.get(sessionId);
+      }
+
+      if (keepAliveData && keepAliveData.pingRequests) {
+        keepAliveData.pingRequests.set(requestId, {
+          timestamp: new Date(),
+          clientSendTime,
+          sessionId,
+          isTimedLatencyMeasurement: true
+        });
+
+        // 发送延迟测量ping消息
+        const binaryPingMessage = BinaryMessageUtils.createPingMessage({
+          sessionId,
+          timestamp,
+          clientSendTime,
+          requestId,
+          measureLatency: true,
+          client: 'easyssh',
+          webSocketLatency: 1 // 触发服务端并行ping测量
+        });
+        session.socket.send(binaryPingMessage);
+
+        session.lastActivity = new Date();
+      }
+    } catch (error) {
+      log.warn(`定时延迟测量失败: ${sessionId}`, error);
+    }
+  }
+
 }
 
 // 创建单例

@@ -7,21 +7,31 @@ const logger = require('../utils/logger');
 
 // 协议魔数 "ESSH" - 0x45535348
 const PROTOCOL_MAGIC = 0x45535348;
-const PROTOCOL_VERSION = 0x02; // 版本2：统一协议
+const PROTOCOL_VERSION = 0x02; // 统一协议版本
 
 /**
- * 扩展的二进制消息类型
+ * 完整的二进制消息类型 - 与前端保持一致
  */
 const BINARY_MSG_TYPE = {
   // 控制消息 (0x00-0x0F)
   HANDSHAKE: 0x00,
   HEARTBEAT: 0x01,
   ERROR: 0x02,
+  PING: 0x03,
+  PONG: 0x04,
+  CONNECT: 0x05,
+  AUTHENTICATE: 0x06,
+  DISCONNECT: 0x07,
+  CONNECTION_REGISTERED: 0x08,
+  CONNECTED: 0x09,
+  NETWORK_LATENCY: 0x0A,
+  STATUS_UPDATE: 0x0B,
   
   // SSH终端数据 (0x10-0x1F) 
   SSH_DATA: 0x10,           // SSH终端数据传输
   SSH_RESIZE: 0x11,         // 终端大小调整
   SSH_COMMAND: 0x12,        // 终端命令
+  SSH_DATA_ACK: 0x13,       // SSH数据确认
   
   // SFTP操作 (0x20-0x3F)
   SFTP_INIT: 0x20,
@@ -33,16 +43,15 @@ const BINARY_MSG_TYPE = {
   SFTP_RENAME: 0x26,
   SFTP_CHMOD: 0x27,
   SFTP_DOWNLOAD_FOLDER: 0x28,
+  SFTP_CLOSE: 0x29,
+  SFTP_CANCEL: 0x2A,
   
   // 响应消息 (0x80-0xFF)
-  SUCCESS: 0x80,            // 通用成功响应
-  PROGRESS: 0x81,           // 进度更新
-  SFTP_SUCCESS: 0x82,       // SFTP成功响应
-  SFTP_ERROR: 0x83,         // SFTP错误响应
-  SFTP_PROGRESS: 0x84,      // SFTP进度
-  SFTP_FILE_DATA: 0x85,     // SFTP文件数据
-  SFTP_FOLDER_DATA: 0x86,   // SFTP文件夹数据
-  SSH_DATA_ACK: 0x87        // SSH数据确认
+  SFTP_SUCCESS: 0x80,
+  SFTP_ERROR: 0x81,
+  SFTP_PROGRESS: 0x82,
+  SFTP_FILE_DATA: 0x83,
+  SFTP_FOLDER_DATA: 0x84
 };
 
 /**
@@ -146,7 +155,7 @@ class BinaryMessageDecoder {
       // 读取Version
       const version = buffer.readUInt8(offset);
       if (version !== PROTOCOL_VERSION) {
-        throw new Error(`不支持的协议版本: ${version}`);
+        throw new Error(`不支持的协议版本: ${version}，当前版本: ${PROTOCOL_VERSION}`);
       }
       offset += 1;
 
@@ -181,7 +190,12 @@ class BinaryMessageDecoder {
         payloadData
       };
     } catch (error) {
-      logger.error('二进制消息解码失败:', error);
+      // 增强错误日志，提供更多调试信息
+      logger.error('二进制消息解码失败:', {
+        error: error.message,
+        bufferLength: buffer.length,
+        bufferPreview: Array.from(buffer.slice(0, Math.min(16, buffer.length))).map(b => '0x' + b.toString(16).padStart(2, '0')).join(' ')
+      });
       throw new Error(`消息解码失败: ${error.message}`);
     }
   }

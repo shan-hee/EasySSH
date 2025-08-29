@@ -37,11 +37,11 @@ export const BINARY_MSG_TYPE = {
   // 响应消息 (0x80-0xFF)
   SUCCESS: 0x80,            // 通用成功响应
   PROGRESS: 0x81,           // 进度更新
-  SFTP_SUCCESS: 0x82,       // SFTP成功响应
-  SFTP_ERROR: 0x83,         // SFTP错误响应
-  SFTP_PROGRESS: 0x84,      // SFTP进度
-  SFTP_FILE_DATA: 0x85,     // SFTP文件数据
-  SFTP_FOLDER_DATA: 0x86,   // SFTP文件夹数据
+  SFTP_SUCCESS: 0x80,       // SFTP成功响应
+  SFTP_ERROR: 0x81,         // SFTP错误响应
+  SFTP_PROGRESS: 0x82,      // SFTP进度
+  SFTP_FILE_DATA: 0x83,     // SFTP文件数据
+  SFTP_FOLDER_DATA: 0x84,   // SFTP文件夹数据
   SSH_DATA_ACK: 0x87        // SSH数据确认
 };
 
@@ -346,6 +346,25 @@ export class UnifiedBinaryHandler {
       }
     } catch (error) {
       log.error('处理二进制消息失败:', error);
+    }
+  }
+
+  /**
+   * 处理已解码的消息（避免重复解码）
+   * @param {Object} decodedMessage - 已解码的消息对象 {version, messageType, headerData, payloadData}
+   */
+  async handleDecodedMessage(decodedMessage) {
+    try {
+      const { messageType, headerData, payloadData } = decodedMessage;
+
+      const handler = this.messageHandlers.get(messageType);
+      if (handler) {
+        await handler(headerData, payloadData);
+      } else {
+        log.warn(`未知的二进制消息类型: 0x${messageType.toString(16)}`);
+      }
+    } catch (error) {
+      log.error('处理已解码消息失败:', error);
     }
   }
 }

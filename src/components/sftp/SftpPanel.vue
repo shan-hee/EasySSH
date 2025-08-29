@@ -193,7 +193,6 @@ export default defineComponent({
     // SFTP文件管理器相关状态
     const isLoadingSftp = ref(true)
     const currentPath = ref('/')
-    const fileList = ref([])
 
     // 排序功能
     const { toggleSort, sortFiles, getSortIndicator, isActiveSort, sortField, sortOrder } = useSortable()
@@ -568,30 +567,45 @@ export default defineComponent({
         const fullPath = currentPath.value === '/' ?
           currentPath.value + name :
           currentPath.value + '/' + name;
-
+        
+        // 执行实际的创建操作
         if (type === 'folder') {
           // 创建文件夹
+          log.debug(`开始创建文件夹: ${fullPath}`);
           await sftpService.createDirectory(props.sessionId, fullPath);
+          log.debug(`文件夹创建成功: ${fullPath}`);
           ElMessage.success(`文件夹 ${name} 创建成功`);
         } else {
           // 创建文件
+          log.debug(`开始创建文件: ${fullPath}`);
           await sftpService.createFile(props.sessionId, fullPath);
+          log.debug(`文件创建成功: ${fullPath}`);
           ElMessage.success(`文件 ${name} 创建成功`);
         }
 
         // 取消创建状态
         cancelCreate();
-
-        // 刷新目录以显示新项目
-        refreshCurrentDirectory();
-      } catch (error) {
-        console.error(`创建${type === 'folder' ? '文件夹' : '文件'}失败:`, error);
-        showError(`创建${type === 'folder' ? '文件夹' : '文件'}失败: ${error.message}`);
-
-        // 重置创建状态
+        
+        // 重置内联编辑器的动画状态
         if (inlineEditor.value) {
           inlineEditor.value.resetCreating();
         }
+
+        // 刷新目录显示新创建的项目
+        log.debug(`${type === 'folder' ? '文件夹' : '文件'}创建成功，刷新目录显示: ${fullPath}`);
+        await refreshCurrentDirectory();
+        
+      } catch (error) {
+        // 立即重置创建状态，停止动画
+        cancelCreate();
+        
+        // 重置内联编辑器的动画状态
+        if (inlineEditor.value) {
+          inlineEditor.value.resetCreating();
+        }
+
+        console.error(`创建${type === 'folder' ? '文件夹' : '文件'}失败:`, error);
+        showError(`创建${type === 'folder' ? '文件夹' : '文件'}失败: ${error.message}`);
       }
     };
 
@@ -2230,7 +2244,7 @@ export default defineComponent({
       log.debug('执行搜索:', query);
       
       // 获取原始文件列表的一个副本（如果需要刷新）
-      const originalFileList = [...fileList.value]; 
+      const originalFileList = [...rawFileList.value]; 
       
       // 搜索当前目录中匹配的文件
       const lowercaseQuery = query.toLowerCase();
@@ -2441,7 +2455,6 @@ export default defineComponent({
       isResizing,
       isLoadingSftp,
       currentPath,
-      fileList,
       sortedFileList,
       uploadProgress,
       isUploading,

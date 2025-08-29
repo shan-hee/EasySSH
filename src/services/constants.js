@@ -23,6 +23,7 @@ export const MESSAGE_TYPES = {
   RESIZE: 'resize',
   EXEC: 'exec',
   EXIT: 'exit',
+  CONNECTION_REGISTERED: 'connection_id_registered',
   SFTP_REQUEST: 'sftp_request',
   SFTP_RESPONSE: 'sftp_response',
   SFTP_ERROR: 'sftp_error',
@@ -44,6 +45,88 @@ export const MESSAGE_TYPES = {
 };
 
 /**
+ * 二进制消息类型常量
+ */
+export const BINARY_MESSAGE_TYPES = {
+  // 控制消息 (0x00-0x0F)
+  HANDSHAKE: 0x00,
+  HEARTBEAT: 0x01,
+  ERROR: 0x02,
+  PING: 0x03,
+  PONG: 0x04,
+  CONNECT: 0x05,
+  AUTHENTICATE: 0x06,
+  DISCONNECT: 0x07,
+  CONNECTION_REGISTERED: 0x08,
+  CONNECTED: 0x09,
+  NETWORK_LATENCY: 0x0A,
+  STATUS_UPDATE: 0x0B,
+
+  // SSH终端数据 (0x10-0x1F) 
+  SSH_DATA: 0x10,           // SSH终端数据传输
+  SSH_RESIZE: 0x11,         // 终端大小调整
+  SSH_COMMAND: 0x12,        // 终端命令
+  SSH_DATA_ACK: 0x13,       // SSH数据确认
+
+  // SFTP操作 (0x20-0x3F)
+  SFTP_INIT: 0x20,
+  SFTP_LIST: 0x21,
+  SFTP_UPLOAD: 0x22,
+  SFTP_DOWNLOAD: 0x23,
+  SFTP_MKDIR: 0x24,
+  SFTP_DELETE: 0x25,
+  SFTP_RENAME: 0x26,
+  SFTP_CHMOD: 0x27,
+  SFTP_DOWNLOAD_FOLDER: 0x28,
+  SFTP_CLOSE: 0x29,
+  SFTP_CANCEL: 0x2A,
+
+  // 响应消息 (0x80-0xFF)
+  SFTP_SUCCESS: 0x80,
+  SFTP_ERROR: 0x81,
+  SFTP_PROGRESS: 0x82,
+  SFTP_FILE_DATA: 0x83,
+  SFTP_FOLDER_DATA: 0x84
+};
+
+/**
+ * 连接状态编码映射
+ */
+export const CONNECTION_STATUS = {
+  CODES: {
+    CONNECTING: 0,
+    CONNECTED: 1,
+    DISCONNECTING: 2,
+    DISCONNECTED: 3,
+    NEED_AUTH: 4,
+    AUTHENTICATING: 5,
+    RECONNECTED: 6,
+    ERROR: 7
+  },
+  NAMES: {
+    0: 'connecting',
+    1: 'connected',
+    2: 'disconnecting',
+    3: 'disconnected',
+    4: 'need_auth',
+    5: 'authenticating',
+    6: 'reconnected',
+    7: 'error'
+  }
+};
+
+/**
+ * 二进制协议配置
+ */
+export const BINARY_PROTOCOL = {
+  MAGIC_NUMBER: 0x45535348, // "ESSH"
+  VERSION: 0x02,  // 统一使用版本2
+  MAX_HEADER_SIZE: 8192, // 8KB
+  MAX_PAYLOAD_SIZE: 10485760, // 10MB
+  CHUNK_SIZE: 65536 // 64KB per chunk
+};
+
+/**
  * 网络延迟事件常量
  */
 export const LATENCY_EVENTS = {
@@ -57,8 +140,7 @@ export const LATENCY_EVENTS = {
  * 注意：部分值可能会被settings中的配置覆盖
  */
 export const LATENCY_CONFIG = {
-  DEFAULT_LOCAL: 1,  // 默认本地延迟值
-  CHECK_INTERVAL: 30, // 秒，可被settings.getConnectionSettings().keepAliveInterval覆盖
+  CHECK_INTERVAL: 5, // 秒，延迟测量间隔
   UPDATE_THROTTLE: 1000 // 毫秒，更新UI的节流时间
 };
 
@@ -133,10 +215,10 @@ export const getDynamicConstants = (settings) => {
       console.warn('获取终端设置失败，使用默认值', error);
     }
     
-    // 动态延迟配置
+    // 动态延迟配置 - 延迟测量间隔独立于保活间隔
     const dynamicLatencyConfig = {
-      ...LATENCY_CONFIG,
-      CHECK_INTERVAL: connectionSettings.keepAliveInterval || LATENCY_CONFIG.CHECK_INTERVAL
+      ...LATENCY_CONFIG
+      // 保持LATENCY_CONFIG.CHECK_INTERVAL = 5秒，不被keepAliveInterval覆盖
     };
     
     // 动态终端配置
@@ -175,6 +257,9 @@ export const getDynamicConstants = (settings) => {
 export default {
   WS_CONSTANTS,
   MESSAGE_TYPES,
+  BINARY_MESSAGE_TYPES,
+  CONNECTION_STATUS,
+  BINARY_PROTOCOL,
   LATENCY_EVENTS,
   LATENCY_CONFIG,
   TERMINAL_CONSTANTS,

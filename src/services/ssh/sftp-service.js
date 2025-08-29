@@ -1,8 +1,10 @@
 import log from '../log';
-import { WS_CONSTANTS } from '../constants';
+import { WS_CONSTANTS, BINARY_MESSAGE_TYPES } from '../constants';
 
 // 导入统一的二进制协议
 import { BINARY_MSG_TYPE } from './binary-protocol';
+// 导入二进制消息工具
+import { BinaryMessageUtils } from '../binary-message-utils';
 
 /**
  * SFTP文件传输功能实现
@@ -50,7 +52,7 @@ class SFTPService {
    */
   static _encodeBinaryMessage(messageType, headerData, payloadData = null) {
     const MAGIC_NUMBER = 0x45535348; // "ESSH"
-    const VERSION = 0x01;
+    const VERSION = 0x02;
 
     try {
       // 编码header为UTF-8
@@ -106,7 +108,7 @@ class SFTPService {
    */
   static _decodeBinaryMessage(messageBuffer) {
     const MAGIC_NUMBER = 0x45535348; // "ESSH"
-    const VERSION = 0x01;
+    const VERSION = 0x02;
 
     try {
       if (messageBuffer.byteLength < 10) {
@@ -235,58 +237,59 @@ class SFTPService {
           }, 10000);
           
           // 一次性消息处理器，用于接收SFTP初始化响应
-          const handleSftpInitResponse = (event) => {
-            try {
-              const message = JSON.parse(event.data);
+        // 创建二进制SFTP初始化消息处理器
+        const handleSftpInitResponse = (event) => {
+          // 检查是否是SFTP初始化成功的二进制消息事件
+          if (event.type === 'sftp-binary-message') {
+            const { messageType, headerData } = event.detail;
+            
+            // 只处理与此会话相关的SFTP成功消息
+            if (headerData && headerData.sessionId === sshSessionId && 
+                messageType === BINARY_MESSAGE_TYPES.SFTP_SUCCESS &&
+                headerData.message === 'SFTP会话已建立') {
               
-              // 只处理与此会话相关的消息
-              if (message.data && message.data.sessionId === sshSessionId) {
-                if (message.type === 'sftp_success' && message.data.message === 'SFTP会话已建立') {
-                  // 移除消息监听器
-                  session.socket.removeEventListener('message', handleSftpInitResponse);
-                  clearTimeout(timeout);
+              // 移除消息监听器
+              window.removeEventListener('sftp-binary-message', handleSftpInitResponse);
+              clearTimeout(timeout);
 
-                  // 获取SSH会话中的连接信息
-                  const connectionInfo = session.connectionInfo || {};
+              // 获取SSH会话中的连接信息
+              const connectionInfo = session.connectionInfo || {};
 
-                  // 创建SFTP会话记录
-                  this.activeSftpSessions.set(sessionId, {
-                    id: sessionId,
-                    sshSessionId: sshSessionId, // 保存SSH会话ID
-                    currentPath: '/', // 默认根目录
-                    isActive: true,
-                    createdAt: new Date(),
-                    // 保存连接信息
-                    host: connectionInfo.host,
-                    username: connectionInfo.username,
-                    port: connectionInfo.port
-                  });
+              // 创建SFTP会话记录
+              this.activeSftpSessions.set(sessionId, {
+                id: sessionId,
+                sshSessionId: sshSessionId,
+                currentPath: '/',
+                isActive: true,
+                createdAt: new Date(),
+                host: connectionInfo.host,
+                username: connectionInfo.username,
+                port: connectionInfo.port
+              });
 
-                  log.info(`SFTP会话 ${sessionId} 创建成功`);
-                  resolve(sessionId);
-                } else if (message.type === 'sftp_error') {
-                  // 处理SFTP初始化错误
-                  session.socket.removeEventListener('message', handleSftpInitResponse);
-                  clearTimeout(timeout);
-                  reject(new Error(`SFTP初始化失败: ${message.data.error}`));
-                }
-              }
-            } catch (error) {
-              log.error('处理SFTP初始化响应失败:', error);
+              log.info(`SFTP会话 ${sessionId} 创建成功`);
+              resolve(sessionId);
+            } else if (headerData && headerData.sessionId === sshSessionId && 
+                       messageType === BINARY_MESSAGE_TYPES.SFTP_ERROR) {
+              // 处理SFTP初始化错误
+              window.removeEventListener('sftp-binary-message', handleSftpInitResponse);
+              clearTimeout(timeout);
+              reject(new Error(`SFTP初始化失败: ${headerData.error || 'Unknown error'}`));
             }
-          };
+          }
+        };
           
-          // 添加消息监听器
-          session.socket.addEventListener('message', handleSftpInitResponse);
+        // 添加二进制消息监听器
+        window.addEventListener('sftp-binary-message', handleSftpInitResponse);
           
           // 发送SFTP初始化请求
           const operationId = this._nextOperationId();
           log.info(`发送SFTP初始化请求: ${sshSessionId}`);
-          const initMessage = this._createSftpMessage('sftp_init', {
+          const initMessage = BinaryMessageUtils.createSftpInitMessage({
             sessionId: sshSessionId,
             operationId
           });
-          session.socket.send(JSON.stringify(initMessage));
+          session.socket.send(initMessage);
         });
       } else {
         throw new Error(`创建SFTP会话失败: WebSocket连接未就绪，当前状态: ${session.socket ? session.socket.readyState : 'null'}`);
@@ -329,12 +332,12 @@ class SFTPService {
       
       // 发送SFTP关闭请求
       if (session.socket && session.socket.readyState === WS_CONSTANTS.OPEN) {
-        session.socket.send(JSON.stringify({
-          type: 'sftp_close',
-          data: {
-            sessionId: sshSessionId
-          }
-        }));
+        const operationId = this._nextOperationId();
+        const closeMessage = BinaryMessageUtils.createSftpCloseMessage({
+          sessionId: sshSessionId,
+          operationId
+        });
+        session.socket.send(closeMessage);
       }
       
       // 无论服务器是否响应，都清理本地会话
@@ -388,16 +391,36 @@ class SFTPService {
         resolve: (data) => {
           clearTimeout(timeout);
           
-          // 更新当前路径
-          if (this.activeSftpSessions.has(sessionId)) {
-            const sftpSession = this.activeSftpSessions.get(sessionId);
-            // 只有当请求的是绝对路径时才更新当前路径
-            if (path.startsWith('/')) {
-              sftpSession.currentPath = path;
+          try {
+            // 处理二进制响应数据
+            let files = [];
+            if (data.payloadData && data.payloadData.byteLength > 0) {
+              // 解析payload中的JSON数据
+              const payloadText = new TextDecoder().decode(data.payloadData);
+              const responseData = JSON.parse(payloadText);
+              files = responseData.files || [];
+            } else if (data.headerData && data.headerData.files) {
+              // 兼容header中的数据（旧格式）
+              files = data.headerData.files;
+            } else if (Array.isArray(data)) {
+              // 兼容直接返回数组的格式
+              files = data;
             }
-          }
           
-          resolve(data);
+            // 更新当前路径
+            if (this.activeSftpSessions.has(sessionId)) {
+              const sftpSession = this.activeSftpSessions.get(sessionId);
+              // 只有当请求的是绝对路径时才更新当前路径
+              if (path.startsWith('/')) {
+                sftpSession.currentPath = path;
+              }
+            }
+            
+            resolve(files);
+          } catch (parseError) {
+            console.error('解析SFTP目录数据失败:', parseError);
+            reject(new Error(`解析目录数据失败: ${parseError.message}`));
+          }
         },
         reject: (error) => {
           clearTimeout(timeout);
@@ -408,12 +431,12 @@ class SFTPService {
       
       // 发送列目录请求
       if (session.socket && session.socket.readyState === WS_CONSTANTS.OPEN) {
-        const listMessage = this._createSftpMessage('sftp_list', {
+        const listMessage = BinaryMessageUtils.createSftpListMessage({
           sessionId: sshSessionId,
           path,
           operationId
         });
-        session.socket.send(JSON.stringify(listMessage));
+        session.socket.send(listMessage);
       } else {
         clearTimeout(timeout);
         this.fileOperations.delete(operationId);
@@ -463,7 +486,13 @@ class SFTPService {
         const reader = new FileReader();
         reader.onload = async (event) => {
           try {
-            const fileBuffer = event.target.result;
+            let fileBuffer = event.target.result;
+            
+            // 处理空文件情况
+            if (!fileBuffer || fileBuffer.byteLength === 0) {
+              fileBuffer = new ArrayBuffer(0);
+              log.debug('处理空文件上传', { operationId, remotePath, size: file.size });
+            }
 
             // 计算校验和
             const checksum = await SFTPService._calculateSHA256(fileBuffer);
@@ -597,8 +626,26 @@ class SFTPService {
 
             // 处理二进制数据
             try {
+              log.debug('处理下载的文件数据', {
+                operationId,
+                hasHeaderData: !!data.headerData,
+                hasPayloadData: !!data.payloadData,
+                payloadSize: data.payloadData ? data.payloadData.byteLength : 0,
+                headerData: data.headerData
+              });
+
+              if (!data.payloadData) {
+                reject(new Error('没有接收到文件数据'));
+                return;
+              }
+
               const blob = new Blob([data.payloadData], {
                 type: data.headerData.mimeType || 'application/octet-stream'
+              });
+
+              log.debug('成功创建文件Blob', {
+                blobSize: blob.size,
+                blobType: blob.type
               });
 
               resolve({
@@ -608,6 +655,7 @@ class SFTPService {
                 checksum: data.headerData.checksum
               });
             } catch (error) {
+              log.error('处理下载数据失败:', error);
               reject(new Error(`处理下载数据失败: ${error.message}`));
             }
           },
@@ -670,15 +718,47 @@ class SFTPService {
     await this._ensureSftpSession(sessionId);
     
     try {
+      log.debug('开始获取文件内容', { remotePath });
+      
       // 获取文件为Blob
       const fileBlob = await this.downloadFile(sessionId, remotePath, () => {});
       
-      // 读取Blob内容为文本
+      log.debug('文件下载完成，准备读取内容', {
+        blobSize: fileBlob.size,
+        blobType: fileBlob.type
+      });
+      
+      // 读取Blob内容为文本，使用UTF-8编码
       return new Promise((resolve, reject) => {
         const reader = new FileReader();
-        reader.onload = (e) => resolve(e.target.result);
-        reader.onerror = () => reject(new Error('读取文件内容失败'));
-        reader.readAsText(fileBlob);
+        reader.onload = (e) => {
+          try {
+            // 确保结果是字符串
+            const content = e.target.result;
+            log.debug('文件内容读取完成', {
+              contentType: typeof content,
+              contentLength: content ? content.length : 0,
+              preview: content ? content.substring(0, 100) + '...' : 'empty'
+            });
+            
+            if (typeof content === 'string') {
+              resolve(content);
+            } else {
+              // 如果不是字符串，尝试转换
+              resolve(String(content || ''));
+            }
+          } catch (error) {
+            log.error('处理文件内容失败:', error);
+            reject(new Error(`处理文件内容失败: ${error.message}`));
+          }
+        };
+        reader.onerror = (error) => {
+          log.error('FileReader错误:', error);
+          reject(new Error('读取文件内容失败'));
+        };
+        
+        // 使用UTF-8编码读取文本
+        reader.readAsText(fileBlob, 'UTF-8');
       });
     } catch (error) {
       log.error(`获取文件内容失败 ${remotePath}:`, error);
@@ -799,22 +879,62 @@ class SFTPService {
   async createFile(sessionId, remotePath) {
     await this._ensureSftpSession(sessionId);
 
-    try {
-      // 创建一个空的Blob对象
-      const emptyBlob = new Blob([''], { type: 'text/plain' });
+    return new Promise((resolve, reject) => {
+      const operationId = this._nextOperationId();
 
-      // 创建临时File对象
-      const fileName = remotePath.split('/').pop();
-      const emptyFile = new File([emptyBlob], fileName, { type: 'text/plain' });
+      try {
+        // 获取SSH会话
+        const { sshSessionId, session } = this._getSSHSession(sessionId);
 
-      // 使用uploadFile方法上传空文件
-      await this.uploadFile(sessionId, emptyFile, remotePath, () => {});
+        // 设置较短的超时时间，创建空文件应该很快
+        const timeout = setTimeout(() => {
+          this.fileOperations.delete(operationId);
+          reject(new Error('创建文件超时'));
+        }, 10000); // 10秒超时
 
-      return { success: true, message: '文件创建成功' };
-    } catch (error) {
-      log.error(`创建文件失败 ${remotePath}:`, error);
-      throw new Error(`创建文件失败: ${error.message || '未知错误'}`);
-    }
+        // 保存操作回调
+        this.fileOperations.set(operationId, {
+          resolve: (data) => {
+            clearTimeout(timeout);
+            resolve(data);
+          },
+          reject: (error) => {
+            clearTimeout(timeout);
+            reject(error);
+          },
+          type: 'create_file'
+        });
+
+        // 创建空文件的元数据
+        const metadata = {
+          sessionId: sshSessionId,
+          operationId,
+          filename: remotePath.split('/').pop(),
+          remotePath,
+          fileSize: 0,
+          mimeType: 'text/plain',
+          checksum: 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855', // SHA256 of empty string
+          timestamp: Date.now()
+        };
+
+        // 发送创建空文件的二进制消息
+        if (session.socket && session.socket.readyState === WS_CONSTANTS.OPEN) {
+          const messageBuffer = SFTPService._encodeBinaryMessage(
+            BINARY_MSG_TYPE.SFTP_UPLOAD,
+            metadata,
+            new ArrayBuffer(0) // 空的payload
+          );
+          session.socket.send(messageBuffer);
+        } else {
+          clearTimeout(timeout);
+          this.fileOperations.delete(operationId);
+          reject(new Error('WebSocket连接未就绪'));
+        }
+      } catch (error) {
+        this.fileOperations.delete(operationId);
+        reject(error);
+      }
+    });
   }
 
   /**
@@ -854,12 +974,12 @@ class SFTPService {
 
         // 发送创建目录请求
         if (session.socket && session.socket.readyState === WS_CONSTANTS.OPEN) {
-          const mkdirMessage = this._createSftpMessage('sftp_mkdir', {
+          const mkdirMessage = BinaryMessageUtils.createSftpMkdirMessage({
             sessionId: sshSessionId,
             path: remotePath,
             operationId
           });
-          session.socket.send(JSON.stringify(mkdirMessage));
+          session.socket.send(mkdirMessage);
         } else {
           clearTimeout(timeout);
           this.fileOperations.delete(operationId);
@@ -909,13 +1029,13 @@ class SFTPService {
 
         // 发送删除文件请求
         if (session.socket && session.socket.readyState === WS_CONSTANTS.OPEN) {
-          const deleteMessage = this._createSftpMessage('sftp_delete', {
+          const deleteMessage = BinaryMessageUtils.createSftpDeleteMessage({
             sessionId: sshSessionId,
             path: remotePath,
             isDirectory: false,
             operationId
           });
-          session.socket.send(JSON.stringify(deleteMessage));
+          session.socket.send(deleteMessage);
         } else {
           clearTimeout(timeout);
           this.fileOperations.delete(operationId);
@@ -966,13 +1086,13 @@ class SFTPService {
 
         // 发送删除请求
         if (session.socket && session.socket.readyState === WS_CONSTANTS.OPEN) {
-          const deleteMessage = this._createSftpMessage('sftp_delete', {
+          const deleteMessage = BinaryMessageUtils.createSftpDeleteMessage({
             sessionId: sshSessionId,
             path: remotePath,
             isDirectory: isDirectory,
             operationId
           });
-          session.socket.send(JSON.stringify(deleteMessage));
+          session.socket.send(deleteMessage);
         } else {
           clearTimeout(timeout);
           this.fileOperations.delete(operationId);
@@ -1022,12 +1142,13 @@ class SFTPService {
 
         // 发送快速删除目录请求
         if (session.socket && session.socket.readyState === WS_CONSTANTS.OPEN) {
-          const fastDeleteMessage = this._createSftpMessage('sftp_fast_delete', {
+          const fastDeleteMessage = BinaryMessageUtils.createSftpDeleteMessage({
             sessionId: sshSessionId,
             path: remotePath,
+            isDirectory: true, // 快速删除通常用于目录
             operationId
           });
-          session.socket.send(JSON.stringify(fastDeleteMessage));
+          session.socket.send(fastDeleteMessage);
         } else {
           clearTimeout(timeout);
           this.fileOperations.delete(operationId);
@@ -1078,13 +1199,13 @@ class SFTPService {
 
         // 发送修改权限请求
         if (session.socket && session.socket.readyState === WS_CONSTANTS.OPEN) {
-          const chmodMessage = this._createSftpMessage('sftp_chmod', {
+          const chmodMessage = BinaryMessageUtils.createSftpChmodMessage({
             sessionId: sshSessionId,
             path: remotePath,
             permissions,
             operationId
           });
-          session.socket.send(JSON.stringify(chmodMessage));
+          session.socket.send(chmodMessage);
         } else {
           clearTimeout(timeout);
           this.fileOperations.delete(operationId);
@@ -1135,13 +1256,13 @@ class SFTPService {
 
         // 发送重命名请求
         if (session.socket && session.socket.readyState === WS_CONSTANTS.OPEN) {
-          const renameMessage = this._createSftpMessage('sftp_rename', {
+          const renameMessage = BinaryMessageUtils.createSftpRenameMessage({
             sessionId: sshSessionId,
             oldPath: oldPath,
             newPath: newPath,
             operationId
           });
-          session.socket.send(JSON.stringify(renameMessage));
+          session.socket.send(renameMessage);
         } else {
           clearTimeout(timeout);
           this.fileOperations.delete(operationId);
@@ -1175,13 +1296,11 @@ class SFTPService {
 
         // 发送取消上传请求
         if (session.socket && session.socket.readyState === WS_CONSTANTS.OPEN) {
-          session.socket.send(JSON.stringify({
-            type: 'sftp_cancel',
-            data: {
-              sessionId: sshSessionId,
-              operationId: operationId
-            }
-          }));
+          const cancelMessage = BinaryMessageUtils.createSftpCancelMessage({
+            sessionId: sshSessionId,
+            operationId: operationId
+          });
+          session.socket.send(cancelMessage);
 
           // 清理本地操作记录
           if (this.fileOperations.has(operationId)) {
@@ -1284,8 +1403,16 @@ class SFTPService {
 
       // 根据消息类型处理
       switch (messageType) {
+        case BINARY_MSG_TYPE.SUCCESS:
         case BINARY_MSG_TYPE.SFTP_SUCCESS:
-          this._handleBinarySuccess(headerData, payloadData);
+          // 只有带有实际文件数据的消息才当作下载成功
+          // 进度消息没有 payloadData，所以会被过滤掉
+          if (payloadData && payloadData.byteLength > 0) {
+            this._handleBinarySuccess(headerData, payloadData);
+          } else if (headerData.message || headerData.responseType) {
+            // 如果没有文件数据但有成功消息，也当作成功处理（如文件创建成功）
+            this._handleBinarySuccess(headerData, payloadData);
+          }
           break;
 
         case BINARY_MSG_TYPE.SFTP_ERROR:
@@ -1457,145 +1584,6 @@ class SFTPService {
     }
   }
 
-  /**
-   * 处理来自服务器的SFTP消息 (兼容旧版JSON方式)
-   */
-  handleSftpMessage(message) {
-    if (!message || !message.data) {
-      log.warn('收到无效的SFTP消息:', message);
-      return;
-    }
-
-    // 特殊处理：某些SFTP消息可能没有operationId
-    if (message.type === 'sftp_success' && message.data && message.data.message &&
-        (message.data.message.includes('SFTP会话已关闭') ||
-         message.data.message.includes('SFTP会话已建立')) &&
-        !message.data.operationId) {
-      return; // 这些消息由专门的处理器处理，无需产生警告
-    }
-
-    if (!message.data.operationId) {
-      log.warn('收到无效的SFTP消息:', message);
-      return;
-    }
-
-    const { operationId } = message.data;
-
-    // 用于跟踪已取消操作的进度消息计数，避免日志刷屏
-    if (!this.cancelledOperationCounts) {
-      this.cancelledOperationCounts = new Map();
-    }
-
-    // 查找对应的操作
-    if (!this.fileOperations.has(operationId)) {
-      // 特殊处理一些可能的服务器端自动操作
-      if (typeof operationId === 'string' && operationId.includes('_refresh')) {
-        log.debug(`收到服务器端刷新操作响应: ${operationId}, 消息类型: ${message.type}`);
-        return; // 静默处理刷新操作
-      }
-
-      // 对于sftp_success消息，如果操作不存在，可能是延迟响应，记录但不处理
-      if (message.type === 'sftp_success') {
-        log.debug(`收到延迟的操作响应: ${operationId}, 消息类型: ${message.type}`);
-        return; // 静默处理延迟响应
-      }
-
-      // 特殊处理已取消操作的进度消息
-      if (message.type === 'sftp_progress') {
-        // 获取或初始化计数器
-        const countKey = `cancelled_${operationId}`;
-        const count = this.cancelledOperationCounts.get(countKey) || 0;
-        this.cancelledOperationCounts.set(countKey, count + 1);
-
-        // 只在第一次记录日志，后续完全静默
-        if (count === 0) {
-          log.debug(`已取消操作 ${operationId}，忽略后续进度消息`);
-        }
-
-        return; // 静默处理已取消操作的进度消息
-      }
-
-      log.warn(`未找到SFTP操作: ${operationId}, 消息类型: ${message.type}`);
-      return;
-    }
-    
-    const operation = this.fileOperations.get(operationId);
-    
-    switch (message.type) {
-      case 'sftp_progress':
-        // 处理进度回调
-        if (operation.progress && typeof operation.progress === 'function') {
-          operation.progress(message.data.progress);
-        }
-        break;
-
-
-
-      case 'sftp_success':
-        // 处理成功回调
-        if (operation.resolve && typeof operation.resolve === 'function') {
-          // 确保文件列表操作返回的是数组
-          if (operation.type === 'list') {
-            // 确保返回的文件列表是数组
-            let filesList = message.data.files || [];
-            
-            // 如果不是数组，转换为空数组
-            if (!Array.isArray(filesList)) {
-              log.warn(`文件列表不是数组，而是 ${typeof filesList}，将转换为空数组`);
-              filesList = [];
-            }
-            
-            operation.resolve(filesList);
-          } else if (operation.type === 'upload') {
-            try {
-              // 检查操作是否已经自动完成
-              if (operation.autoCompleted) {
-                log.debug('文件上传操作已自动完成，跳过处理');
-              } else {
-                // 直接resolve成功消息
-                operation.resolve(message.data);
-              }
-            } catch (error) {
-              log.error(`调用resolve回调时出错: ${error.message}`);
-            }
-          } else {
-            try {
-              operation.resolve(message.data);
-            } catch (error) {
-              log.error(`调用resolve回调时出错: ${error.message}`);
-            }
-          }
-          
-          // 从映射中删除操作
-          this.fileOperations.delete(operationId);
-        }
-        break;
-        
-      case 'sftp_error':
-        // 处理错误回调
-        log.error(`SFTP操作错误: 类型=${operation.type}, 错误=${message.data.message || '未知SFTP错误'}`);
-        
-        if (operation.reject && typeof operation.reject === 'function') {
-          // 对于列表操作，如果出错返回空数组
-          if (operation.type === 'list') {
-            log.warn(`列出目录失败: ${message.data.message || '未知SFTP错误'}，返回空数组`);
-            operation.resolve([]);
-          } else {
-            try {
-              operation.reject(new Error(message.data.message || '未知SFTP错误'));
-            } catch (error) {
-              log.error(`调用reject回调时出错: ${error.message}`);
-            }
-          }
-          this.fileOperations.delete(operationId);
-        }
-        break;
-        
-      default:
-        log.warn(`未知的SFTP消息类型: ${message.type}`);
-        break;
-    }
-  }
 }
 
 export default SFTPService; 

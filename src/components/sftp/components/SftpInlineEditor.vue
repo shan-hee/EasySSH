@@ -160,7 +160,11 @@ export default defineComponent({
       isCreating.value = true;
       
       try {
+        // 发送创建事件，等待父组件处理完成
         emit('create', { name, type: props.type });
+        
+        // 注意：不在这里重置状态，等待父组件调用 resetCreating()
+        
       } catch (error) {
         console.error('创建失败:', error);
         ElMessage.error(`创建${props.type === 'folder' ? '文件夹' : '文件'}失败: ${error.message}`);

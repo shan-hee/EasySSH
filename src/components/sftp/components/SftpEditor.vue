@@ -53,7 +53,6 @@ import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirro
 import { searchKeymap } from '@codemirror/search'
 import { foldGutter, bracketMatching, syntaxHighlighting, HighlightStyle, indentOnInput } from '@codemirror/language'
 import { javascript } from '@codemirror/lang-javascript'
-import { oneDark } from '@codemirror/theme-one-dark'
 import { tags } from '@lezer/highlight'
 
 export default defineComponent({
@@ -95,22 +94,48 @@ export default defineComponent({
       const uiSettings = settingsService.getUISettings();
       const themeName = uiSettings.theme || 'dark';
 
-      // 使用CSS变量作为默认值
-      const computedStyle = getComputedStyle(document.documentElement);
+      // 定义主题默认值，避免循环依赖CSS变量
+      const defaultTheme = themeName === 'dark' ? {
+        background: '#1e1e1e',
+        foreground: '#ffffff',
+        cursor: '#ffffff',
+        selection: '#264f78',
+        comment: 'rgba(255, 255, 255, 0.65)',
+        keyword: '#c678dd',
+        string: '#98c379',
+        function: '#61afef',
+        variable: '#e06c75',
+        number: '#d19a66',
+        operator: '#56b6c2',
+        className: '#e5c07b'
+      } : {
+        background: '#ffffff',
+        foreground: '#303133',
+        cursor: '#303133',
+        selection: '#e6f7ff',
+        comment: '#909399',
+        keyword: '#d73a49',
+        string: '#22863a',
+        function: '#6f42c1',
+        variable: '#e36209',
+        number: '#005cc5',
+        operator: '#d73a49',
+        className: '#6f42c1'
+      };
 
       return {
-        background: theme.background || computedStyle.getPropertyValue('--editor-bg').trim(),
-        foreground: theme.foreground || computedStyle.getPropertyValue('--editor-fg').trim(),
-        cursor: theme.cursor || computedStyle.getPropertyValue('--editor-cursor').trim(),
-        selection: theme.selectionBackground || computedStyle.getPropertyValue('--editor-selection').trim(),
-        comment: theme.brightBlack || computedStyle.getPropertyValue('--editor-comment').trim(),
-        keyword: theme.magenta || computedStyle.getPropertyValue('--editor-keyword').trim(),
-        string: theme.green || computedStyle.getPropertyValue('--editor-string').trim(),
-        function: theme.blue || computedStyle.getPropertyValue('--editor-function').trim(),
-        variable: theme.red || computedStyle.getPropertyValue('--editor-variable').trim(),
-        number: theme.yellow || computedStyle.getPropertyValue('--editor-number').trim(),
-        operator: theme.cyan || computedStyle.getPropertyValue('--editor-operator').trim(),
-        className: theme.brightYellow || computedStyle.getPropertyValue('--editor-classname').trim(),
+        background: theme.background || defaultTheme.background,
+        foreground: theme.foreground || defaultTheme.foreground,
+        cursor: theme.cursor || defaultTheme.cursor,
+        selection: theme.selectionBackground || defaultTheme.selection,
+        comment: theme.brightBlack || defaultTheme.comment,
+        keyword: theme.magenta || defaultTheme.keyword,
+        string: theme.green || defaultTheme.string,
+        function: theme.blue || defaultTheme.function,
+        variable: theme.red || defaultTheme.variable,
+        number: theme.yellow || defaultTheme.number,
+        operator: theme.cyan || defaultTheme.operator,
+        className: theme.brightYellow || defaultTheme.className,
         themeName: themeName
       };
     };
@@ -200,15 +225,105 @@ export default defineComponent({
       ]);
     };
     
-    // 动态创建高亮样式
+    // 创建自定义主题
+    const createCustomTheme = () => {
+      const theme = themeSettings.value;
+      
+      // 同步更新CSS变量，确保全屏模式和窗口模式主题一致
+      updateCSSVariables(theme);
+      
+      return EditorView.theme({
+        "&": {
+          backgroundColor: theme.background,
+          color: theme.foreground,
+          fontSize: `${fontSize}px`,
+          fontFamily: fontFamily
+        },
+        ".cm-content": {
+          padding: "4px 0",
+          caretColor: theme.cursor,
+          fontFamily: fontFamily,
+          color: theme.foreground
+        },
+        ".cm-focused": {
+          outline: "none"
+        },
+        ".cm-editor": {
+          fontSize: `${fontSize}px`,
+          fontFamily: fontFamily
+        },
+        ".cm-scroller": {
+          fontFamily: fontFamily,
+          lineHeight: "1.5"
+        },
+        ".cm-gutters": {
+          backgroundColor: theme.background,
+          color: theme.comment,
+          border: "none",
+          fontFamily: fontFamily
+        },
+        ".cm-gutterElement": {
+          padding: "0 8px"
+        },
+        ".cm-lineNumbers .cm-gutterElement": {
+          color: theme.comment
+        },
+        ".cm-activeLineGutter": {
+          backgroundColor: "rgba(255, 255, 255, 0.05)"
+        },
+        ".cm-activeLine": {
+          backgroundColor: "rgba(255, 255, 255, 0.02)"
+        },
+        ".cm-selectionBackground": {
+          backgroundColor: theme.selection
+        },
+        ".cm-searchMatch": {
+          backgroundColor: theme.selection,
+          outline: `1px solid ${theme.cursor}`
+        },
+        ".cm-searchMatch.cm-searchMatch-selected": {
+          backgroundColor: theme.cursor
+        }
+      }, { dark: theme.themeName === 'dark' });
+    };
+    
+    // 独立的CSS变量更新函数，避免重复代码
+    const updateCSSVariables = (theme) => {
+      if (typeof document !== 'undefined') {
+        const root = document.documentElement;
+        root.style.setProperty('--editor-bg', theme.background);
+        root.style.setProperty('--editor-fg', theme.foreground);
+        root.style.setProperty('--editor-cursor', theme.cursor);
+        root.style.setProperty('--editor-selection', theme.selection);
+        root.style.setProperty('--editor-comment', theme.comment);
+        root.style.setProperty('--editor-keyword', theme.keyword);
+        root.style.setProperty('--editor-string', theme.string);
+        root.style.setProperty('--editor-function', theme.function);
+        root.style.setProperty('--editor-variable', theme.variable);
+        root.style.setProperty('--editor-number', theme.number);
+        root.style.setProperty('--editor-operator', theme.operator);
+        root.style.setProperty('--editor-classname', theme.className);
+      }
+    };
+    
+    // 获取字体设置，确保与终端一致
+    const fontFamily = fontSettings.value.fontFamily || "'JetBrains Mono', 'Courier New', monospace";
+    const fontSize = 14;//不使用 fontSettings.value.fontSize
+    
+    // 动态创建自定义主题
+    const customTheme = createCustomTheme();
+    
+    // 动态创建自定义语法高亮样式
     const customHighlightStyle = createHighlightStyle();
     
     // 语言配置模块，可以动态更新
     const languageConf = new Compartment()
     
-    // 获取字体设置，确保与终端一致
-    const fontFamily = fontSettings.value.fontFamily || "'JetBrains Mono', 'Courier New', monospace";
-    const fontSize = 14;//不使用 fontSettings.value.fontSize
+    // 主题配置模块，可以动态更新
+    const themeConf = new Compartment()
+    
+    // 语法高亮配置模块，可以动态更新
+    const highlightConf = new Compartment()
     
     // 定义中文搜索面板词组
     const chinesePhrases = {
@@ -314,10 +429,9 @@ export default defineComponent({
             }
           }),
           
-          // 主题 - 使用动态生成的主题
-          oneDark,
-          EditorView.theme({}, { dark: true }),
-          syntaxHighlighting(customHighlightStyle, { fallback: true }),
+          // 主题 - 使用可重新配置的主题
+          themeConf.of(customTheme),
+          highlightConf.of(syntaxHighlighting(customHighlightStyle, { fallback: true })),
           
           // 国际化设置
           EditorState.phrases.of(phrases),
@@ -576,23 +690,39 @@ export default defineComponent({
       }
     };
     
-    // 强制重新应用主题和高亮
+    // 强制重新应用主题和高亮 - 优化后的版本
     const reapplyThemeAndHighlight = () => {
       if (editorView.value) {
-        // 应用语言配置
-        editorView.value.dispatch({
-          effects: [languageConf.reconfigure(getLanguageSupport())]
-        });
-        
-        // 直接应用DOM样式
-        applyEditorStyles();
-        
-        // 请求重新测量以刷新视图
-        setTimeout(() => {
-          if (editorView.value) {
-            editorView.value.requestMeasure();
-          }
-        }, 10);
+        try {
+          // 重新获取最新的主题设置
+          const currentThemeSettings = getThemeSettings();
+          themeSettings.value = currentThemeSettings;
+          
+          // 立即更新CSS变量
+          updateCSSVariables(currentThemeSettings);
+          
+          // 重新创建主题和高亮样式
+          const newCustomTheme = createCustomTheme();
+          const newCustomHighlightStyle = createHighlightStyle();
+          
+          // 同步重新配置主题和高亮
+          editorView.value.dispatch({
+            effects: [
+              languageConf.reconfigure(getLanguageSupport()),
+              themeConf.reconfigure(newCustomTheme),
+              highlightConf.reconfigure(syntaxHighlighting(newCustomHighlightStyle, { fallback: true }))
+            ]
+          });
+          
+          // 强制应用DOM样式
+          applyEditorStyles();
+          
+          // 请求重新测量视图
+          editorView.value.requestMeasure();
+          
+        } catch (error) {
+          log.error('重新应用主题失败:', error);
+        }
       }
     };
     
@@ -601,16 +731,29 @@ export default defineComponent({
       reapplyThemeAndHighlight();
     };
     
-    // 切换全屏显示
+    // 切换全屏显示 - 优化版本确保主题一致性
     const toggleFullscreen = () => {
       isFullscreen.value = !isFullscreen.value;
       
-      // 全屏切换后处理
+      // 全屏切换后立即同步主题，避免视觉不一致
       nextTick(() => {
         if (editorView.value) {
-          // 应用样式和重绘
-          applyEditorStyles();
-          reapplyThemeAndHighlight();
+          try {
+            // 确保主题设置是最新的
+            const currentThemeSettings = getThemeSettings();
+            themeSettings.value = currentThemeSettings;
+            
+            // 立即应用主题更新
+            updateCSSVariables(currentThemeSettings);
+            reapplyThemeAndHighlight();
+            
+            log.debug('全屏切换主题同步完成', { 
+              isFullscreen: isFullscreen.value,
+              themeName: currentThemeSettings.themeName 
+            });
+          } catch (error) {
+            log.error('全屏切换主题同步失败:', error);
+          }
         }
       });
     };
@@ -695,7 +838,7 @@ export default defineComponent({
       }
     })
     
-    // 监听设置变化 - 优化为同步更新
+    // 监听设置变化 - 优化主题切换同步
     settingsService.addChangeListener((settings) => {
       // 批量更新主题和字体设置
       const newThemeSettings = getThemeSettings();
@@ -706,12 +849,48 @@ export default defineComponent({
       const fontChanged = JSON.stringify(fontSettings.value) !== JSON.stringify(newFontSettings);
 
       if (themeChanged || fontChanged) {
+        log.debug('SFTP编辑器主题设置发生变化', { 
+          themeChanged, 
+          fontChanged,
+          oldTheme: themeSettings.value.themeName,
+          newTheme: newThemeSettings.themeName 
+        });
+        
+        // 立即更新响应式变量
         themeSettings.value = newThemeSettings;
         fontSettings.value = newFontSettings;
 
-        // 同步应用样式，避免使用nextTick
-        applyEditorStyles();
-        reapplyThemeAndHighlight();
+        // 使用同步方法立即应用主题，避免延迟造成的视觉闪烁
+        if (editorView.value) {
+          // 分步骤同步应用，确保每步都完成后再进行下一步
+          try {
+            // 第1步：立即更新CSS变量
+            updateCSSVariables(newThemeSettings);
+            
+            // 第2步：重新创建并应用CodeMirror主题
+            const newCustomTheme = createCustomTheme();
+            const newCustomHighlightStyle = createHighlightStyle();
+            
+            // 第3步：同步重新配置编辑器
+            editorView.value.dispatch({
+              effects: [
+                languageConf.reconfigure(getLanguageSupport()),
+                themeConf.reconfigure(newCustomTheme),
+                highlightConf.reconfigure(syntaxHighlighting(newCustomHighlightStyle, { fallback: true }))
+              ]
+            });
+            
+            // 第4步：强制应用DOM样式（确保所有元素都更新）
+            applyEditorStyles();
+            
+            // 第5步：请求重新测量视图
+            editorView.value.requestMeasure();
+            
+            log.debug('SFTP编辑器主题切换完成');
+          } catch (error) {
+            log.error('主题切换失败:', error);
+          }
+        }
       }
 
       // 处理语言设置变化
@@ -724,12 +903,7 @@ export default defineComponent({
           effects: EditorState.phrases.reconfigure(phrases)
         });
 
-        // 使用requestAnimationFrame替代setTimeout，更高效
-        requestAnimationFrame(() => {
-          if (editorView.value) {
-            editorView.value.requestMeasure();
-          }
-        });
+        editorView.value.requestMeasure();
       }
     });
     

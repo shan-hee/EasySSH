@@ -53,19 +53,81 @@ setInterval(() => {
 function getClientIP(request) {
   if (!request) return null;
   
-  // 尝试从各种可能的请求头中获取IP
-  const clientIP = request.headers['x-forwarded-for'] || 
-                   request.headers['x-real-ip'] || 
-                   request.connection.remoteAddress ||
-                   request.socket.remoteAddress ||
-                   (request.connection.socket ? request.connection.socket.remoteAddress : null);
-  
-  // 处理IPv6格式 (::ffff:127.0.0.1)
-  if (clientIP && clientIP.indexOf('::ffff:') === 0) {
-    return clientIP.substring(7);
+  try {
+    // 优先级策略：
+    // 1. X-Forwarded-For (反向代理/负载均衡器设置)
+    // 2. X-Real-IP (Nginx常用)  
+    // 3. 直接连接的远程地址
+    
+    const forwardedFor = request.headers?.['x-forwarded-for'];
+    const realIP = request.headers?.['x-real-ip'];
+    const remoteAddress = request.connection?.remoteAddress || 
+                         request.socket?.remoteAddress ||
+                         (request.connection?.socket ? request.connection.socket.remoteAddress : null);
+    
+    let clientIP = null;
+    
+    if (forwardedFor) {
+      // X-Forwarded-For可能包含多个IP，取第一个（客户端真实IP）
+      clientIP = forwardedFor.split(',')[0].trim();
+      logger.debug('客户端IP来源: X-Forwarded-For', { originalValue: forwardedFor, extractedIP: clientIP });
+    } else if (realIP) {
+      clientIP = realIP.trim();
+      logger.debug('客户端IP来源: X-Real-IP', { extractedIP: clientIP });
+    } else if (remoteAddress) {
+      clientIP = remoteAddress;
+      logger.debug('客户端IP来源: 直接连接', { extractedIP: clientIP });
+    }
+    
+    if (clientIP) {
+      // 处理IPv6格式 (::ffff:127.0.0.1) - IPv4映射到IPv6
+      if (clientIP.startsWith('::ffff:')) {
+        clientIP = clientIP.substring(7);
+        logger.debug('转换IPv6映射地址', { convertedIP: clientIP });
+      }
+      
+      // 基本IP格式验证
+      if (isValidIP(clientIP)) {
+        return clientIP;
+      } else {
+        logger.warn('检测到无效IP格式', { invalidIP: clientIP });
+        return null;
+      }
+    }
+    
+    logger.debug('无法获取客户端IP', { 
+      hasHeaders: !!request.headers,
+      hasConnection: !!request.connection,
+      hasSocket: !!request.socket
+    });
+    return null;
+  } catch (error) {
+    logger.error('获取客户端IP时发生错误', { 
+      error: error.message,
+      stack: error.stack
+    });
+    return null;
   }
+}
+
+/**
+ * 简单的IP地址格式验证
+ * @param {string} ip IP地址字符串
+ * @returns {boolean} 是否为有效IP
+ */
+function isValidIP(ip) {
+  if (!ip || typeof ip !== 'string') return false;
   
-  return clientIP;
+  // IPv4正则表达式
+  const ipv4Regex = /^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/;
+  
+  // IPv6正则表达式（更完整的支持）
+  const ipv6Regex = /^(?:[0-9a-fA-F]{0,4}:){2,7}[0-9a-fA-F]{0,4}$|^::1$|^::$/;
+  
+  // 特殊IPv6地址
+  const specialIPv6 = ['::1', '::', '::ffff:0:0', '::ffff:127.0.0.1'];
+  
+  return ipv4Regex.test(ip) || ipv6Regex.test(ip) || specialIPv6.includes(ip);
 }
 
 /**
@@ -163,12 +225,16 @@ function initWebSocketServer(server) {
 
   // 处理SSH WebSocket连接
   sshWss.on('connection', (ws, request) => {
-    // 获取客户端IP地址
+    // 获取客户端IP地址并保存到WebSocket对象
     const clientIP = getClientIP(request);
+    ws.clientIP = clientIP; // 保存到WebSocket对象，供后续使用
 
     logger.info('新的SSH WebSocket连接已建立', {
       clientIP: clientIP || '未知',
-      userAgent: request.headers['user-agent']
+      userAgent: request.headers['user-agent'],
+      remoteAddress: request.connection?.remoteAddress,
+      forwardedFor: request.headers['x-forwarded-for'],
+      realIP: request.headers['x-real-ip']
     });
 
     let sessionId = null;
@@ -187,7 +253,7 @@ function initWebSocketServer(server) {
         logger.debug('收到WebSocket pong - 高延迟', {
           sessionId,
           latency: `${latency}ms`,
-          clientIP
+          clientIP: ws.clientIP
         });
       }
     });
@@ -239,8 +305,8 @@ function initWebSocketServer(server) {
           case 'connect':
             // 处理连接请求
             if (data) {
-              // 添加客户端IP到连接数据
-              data.clientIP = clientIP;
+              // 使用WebSocket连接时保存的客户端IP
+              data.clientIP = ws.clientIP;
               
               // 检查是否使用安全连接ID模式
               if (data.connectionId) {
@@ -253,8 +319,8 @@ function initWebSocketServer(server) {
                     sessionId: data.sessionId
                   });
                   
-                  // 通知客户端连接ID已注册，请求认证信息
-                  utils.sendMessage(ws, 'connection_id_registered', {
+                  // 通知客户端连接ID已注册，请求认证信息 - 使用二进制协议
+                  utils.sendBinaryConnectionRegistered(ws, {
                     connectionId: data.connectionId,
                     sessionId: data.sessionId,
                     status: 'need_auth'
@@ -264,10 +330,11 @@ function initWebSocketServer(server) {
                   const pendingData = pendingConnections.get(data.connectionId);
                   pendingData.timestamp = Date.now(); // 更新时间戳
                   
-                  utils.sendMessage(ws, 'connection_id_registered', {
+                  // 连接ID已存在，可能是重连 - 使用二进制协议
+                  utils.sendBinaryConnectionRegistered(ws, {
                     connectionId: data.connectionId,
                     sessionId: data.sessionId || pendingData.sessionId,
-                    status: 'reconnected' 
+                    status: 'reconnected'
                   });
                 }
               } else {
@@ -289,7 +356,8 @@ function initWebSocketServer(server) {
                 // 获取基本连接信息
                 let connectionConfig = {
                   sessionId: pendingData.sessionId || data.sessionId,
-                  clientIP: clientIP
+                  clientIP: clientIP,
+                  connectionId: data.connectionId  // 添加connectionId
                 };
                 
                 // 解密认证载荷
@@ -655,6 +723,19 @@ async function handleUnifiedBinaryMessage(ws, buffer, currentSessionId) {
     
     // 根据消息类型分发处理
     switch (messageType) {
+      // 控制消息
+      case BINARY_MSG_TYPE.CONNECT:
+        await handleBinaryConnect(ws, headerData);
+        break;
+        
+      case BINARY_MSG_TYPE.AUTHENTICATE:
+        await handleBinaryAuthenticate(ws, headerData, payloadData);
+        break;
+        
+      case BINARY_MSG_TYPE.PING:
+        await handleBinaryPing(ws, headerData);
+        break;
+        
       // SSH终端数据消息
       case BINARY_MSG_TYPE.SSH_DATA:
         await handleSSHBinaryData(ws, headerData, payloadData);
@@ -669,6 +750,7 @@ async function handleUnifiedBinaryMessage(ws, buffer, currentSessionId) {
         break;
         
       // SFTP操作消息 - 委托给SFTP处理器
+      case BINARY_MSG_TYPE.SFTP_INIT:
       case BINARY_MSG_TYPE.SFTP_UPLOAD:
       case BINARY_MSG_TYPE.SFTP_DOWNLOAD:
       case BINARY_MSG_TYPE.SFTP_DOWNLOAD_FOLDER:
@@ -677,6 +759,8 @@ async function handleUnifiedBinaryMessage(ws, buffer, currentSessionId) {
       case BINARY_MSG_TYPE.SFTP_DELETE:
       case BINARY_MSG_TYPE.SFTP_RENAME:
       case BINARY_MSG_TYPE.SFTP_CHMOD:
+      case BINARY_MSG_TYPE.SFTP_CLOSE:
+      case BINARY_MSG_TYPE.SFTP_CANCEL:
         // 设置SFTP会话引用并处理
         sftpBinary.setSftpSessions(sftpOperations.sftpSessions);
         await sftpBinary.handleBinaryMessage(ws, buffer, ssh.sessions);
@@ -692,8 +776,16 @@ async function handleUnifiedBinaryMessage(ws, buffer, currentSessionId) {
         });
     }
   } catch (error) {
-    logger.error('处理统一二进制消息失败:', error);
+    logger.error('处理统一二进制消息失败:', {
+      error: error.message,
+      stack: error.stack,
+      messageType: error.messageType || 'unknown',
+      bufferLength: buffer.length,
+      first16Bytes: Array.from(buffer.slice(0, Math.min(16, buffer.length)))
+    });
+    
     try {
+      // 尝试部分解码以获取会话信息
       const partialMessage = BinaryMessageDecoder.decode(buffer.slice(0, Math.min(1024, buffer.length)));
       BinaryMessageSender.send(ws, BINARY_MSG_TYPE.ERROR, {
         sessionId: partialMessage.headerData.sessionId,
@@ -702,7 +794,10 @@ async function handleUnifiedBinaryMessage(ws, buffer, currentSessionId) {
         errorCode: 'MESSAGE_PROCESSING_ERROR'
       });
     } catch (decodeError) {
-      logger.error('无法解码错误消息:', decodeError);
+      logger.error('无法解码错误消息:', {
+        decodeError: decodeError.message,
+        originalError: error.message
+      });
     }
   }
 }
@@ -892,6 +987,176 @@ function handleLegacyBinaryMessage(ws, buffer, sessionId) {
       sessionId,
       bufferLength: buffer.length,
       first8Bytes: Array.from(buffer.slice(0, Math.min(8, buffer.length))),
+      stack: error.stack
+    });
+  }
+}
+
+/**
+ * 处理二进制连接请求
+ * @param {WebSocket} ws WebSocket连接
+ * @param {Object} headerData 头部数据
+ */
+async function handleBinaryConnect(ws, headerData) {
+  const { sessionId, connectionId, protocolVersion } = headerData;
+  
+  logger.debug('处理二进制连接请求', { sessionId, connectionId, protocolVersion });
+  
+  // 注册连接ID
+  if (!pendingConnections.has(connectionId)) {
+    pendingConnections.set(connectionId, {
+      timestamp: Date.now(),
+      sessionId: sessionId
+    });
+    
+    // 通知客户端连接ID已注册，请求认证信息 - 使用二进制协议
+    utils.sendBinaryConnectionRegistered(ws, {
+      connectionId: connectionId,
+      sessionId: sessionId,
+      status: 'need_auth'
+    });
+  } else {
+    // 连接ID已存在，可能是重连
+    const pendingData = pendingConnections.get(connectionId);
+    pendingData.timestamp = Date.now(); // 更新时间戳
+    
+    // 连接ID已存在，可能是重连 - 使用二进制协议
+    utils.sendBinaryConnectionRegistered(ws, {
+      connectionId: connectionId,
+      sessionId: sessionId || pendingData.sessionId,
+      status: 'reconnected'
+    });
+  }
+}
+
+/**
+ * 处理二进制认证请求
+ * @param {WebSocket} ws WebSocket连接
+ * @param {Object} headerData 头部数据
+ * @param {Buffer} payloadData 载荷数据
+ */
+async function handleBinaryAuthenticate(ws, headerData, payloadData) {
+  try {
+    const { connectionId, sessionId, encryptedPayload, keyId } = headerData;
+    // 使用WebSocket连接时保存的客户端IP
+    const clientIP = ws.clientIP;
+    
+    logger.debug('处理二进制认证请求', { 
+      connectionId, 
+      sessionId, 
+      hasEncryptedPayload: !!encryptedPayload,
+      hasKeyId: !!keyId,
+      clientIP 
+    });
+    
+    // 验证连接ID是否存在
+    if (pendingConnections.has(connectionId)) {
+      const pendingData = pendingConnections.get(connectionId);
+      
+      // 获取基本连接信息
+      let connectionConfig = {
+        sessionId: pendingData.sessionId || sessionId,
+        clientIP: clientIP,
+        connectionId: connectionId  // 添加connectionId
+      };
+      
+      // 解密认证载荷
+      if (encryptedPayload && keyId) {
+        try {
+          // 解密完整认证载荷
+          const decryptedPayloadString = decryptSensitiveData(encryptedPayload, keyId);
+          const authPayload = JSON.parse(decryptedPayloadString);
+          
+          // 将解密的载荷合并到连接配置中
+          connectionConfig = {
+            ...connectionConfig,
+            address: authPayload.address,
+            port: authPayload.port || 22,
+            username: authPayload.username,
+            authType: authPayload.authType || 'password'
+          };
+          
+          // 添加认证凭据
+          if (authPayload.authType === 'password') {
+            connectionConfig.password = authPayload.password;
+          } else if (authPayload.authType === 'privateKey' || authPayload.authType === 'key') {
+            connectionConfig.privateKey = authPayload.privateKey;
+            if (authPayload.passphrase) {
+              connectionConfig.passphrase = authPayload.passphrase;
+            }
+          }
+          
+          // 记录安全日志，不包含敏感信息
+          logger.info('SSH连接请求（二进制安全模式）', {
+            username: connectionConfig.username,
+            address: connectionConfig.address,
+            port: connectionConfig.port,
+            authType: connectionConfig.authType,
+            clientIP: connectionConfig.clientIP || '未知'
+          });
+          
+          // 建立SSH连接
+          const resultSessionId = await ssh.handleConnect(ws, connectionConfig);
+          
+          // 连接成功后删除临时连接ID
+          pendingConnections.delete(connectionId);
+        } catch (decryptError) {
+          logger.error('解密二进制认证载荷失败', { 
+            error: decryptError.message, 
+            stack: decryptError.stack,
+            connectionId,
+            sessionId
+          });
+          utils.sendError(ws, `认证失败: 无法解密认证信息`, sessionId);
+        }
+      } else {
+        logger.error('无效的二进制认证信息: 缺少加密数据', { 
+          connectionId,
+          sessionId,
+          hasEncryptedPayload: !!encryptedPayload,
+          hasKeyId: !!keyId
+        });
+        utils.sendError(ws, '无效的二进制认证信息: 缺少加密数据', sessionId);
+      }
+    } else {
+      logger.error('无效的连接ID或已过期', { 
+        connectionId,
+        sessionId,
+        availableConnections: Array.from(pendingConnections.keys())
+      });
+      utils.sendError(ws, '无效的连接ID或已过期', sessionId);
+    }
+  } catch (error) {
+    logger.error('处理二进制认证请求时发生未捕获错误', {
+      error: error.message,
+      stack: error.stack,
+      headerData,
+      payloadDataLength: payloadData ? payloadData.length : 0
+    });
+    utils.sendError(ws, '认证处理失败', headerData?.sessionId);
+  }
+}
+
+/**
+ * 处理二进制PING消息
+ * @param {WebSocket} ws WebSocket连接
+ * @param {Object} headerData 头部数据
+ */
+async function handleBinaryPing(ws, headerData) {
+  try {
+    const { sessionId, measureLatency, webSocketLatency, requestId } = headerData;
+    
+    // 委托给SSH模块处理，传递完整的延迟测量参数
+    ssh.handlePing(ws, {
+      sessionId,
+      measureLatency,
+      webSocketLatency,
+      requestId
+    });
+  } catch (error) {
+    logger.error('处理二进制PING消息失败', {
+      error: error.message,
+      sessionId: headerData?.sessionId,
       stack: error.stack
     });
   }
