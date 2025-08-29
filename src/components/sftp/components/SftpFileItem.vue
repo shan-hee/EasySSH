@@ -535,9 +535,17 @@ export default defineComponent({
   opacity: 1;
 }
 
+.sftp-action-button svg {
+  transition: fill var(--theme-transition-fast) var(--theme-transition-timing);
+}
+
 .sftp-action-button:hover {
   background-color: var(--color-bg-hover);
   color: var(--color-text-primary);
+}
+
+.sftp-action-button:hover svg {
+  fill: var(--color-text-primary);
 }
 
 /* 响应式设计 */
