@@ -255,8 +255,8 @@ export default defineComponent({
 }
 
 .sftp-file-name-input {
-  background: #2a2a2a;
-  border: 1px solid #42a5f5;
+  background: var(--color-bg-container);
+  border: 1px solid var(--color-primary);
   border-radius: 4px;
   color: #e0e0e0;
   font-size: 13px;

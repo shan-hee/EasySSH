@@ -1336,7 +1336,28 @@ body,
 .connecting-overlay,
 .terminal-content-wrapper,
 .terminal-content,
-.terminal-content-padding {
+.terminal-content-padding,
+.sftp-panel-container,
+.sftp-panel,
+.sftp-panel-header,
+.sftp-panel-content,
+.sftp-editor-container,
+.sftp-editor-wrapper,
+.sftp-editor-header,
+.sftp-editor-footer,
+.sftp-editor-body,
+.sftp-path-navigator,
+.sftp-nav-button,
+.sftp-path-part-button,
+.sftp-path-input,
+.sftp-toolbar,
+.sftp-toolbar-button,
+.sftp-search-input,
+.sftp-file-explorer,
+.sftp-file-list,
+.sftp-file-list-header,
+.sftp-file-list-content,
+.sftp-file-item {
   transition:
     background-color var(--theme-transition-duration) var(--theme-transition-timing),
     border-color var(--theme-transition-duration) var(--theme-transition-timing),
@@ -1378,8 +1399,11 @@ textarea,
 /* 避免对性能敏感元素应用过渡 - 但允许背景色过渡 */
 .cm-editor,
 .cm-content,
-.cm-line {
-  transition: none !important;
+.cm-line,
+.cm-gutters,
+.cm-scroller {
+  /* 只允许背景色过渡，禁用其他可能影响性能的过渡 */
+  transition: background-color var(--theme-transition-duration) var(--theme-transition-timing) !important;
 }
 
 /* xterm元素允许背景色过渡，但禁用其他属性过渡 */

@@ -152,17 +152,17 @@
     width: 100%;
     border-radius: 4px;
     overflow: hidden;
-    background-color: #252525;
+    background-color: var(--sftp-panel-bg);
   }
   
   .sftp-file-list-header {
     display: grid;
     grid-template-columns: 2fr 1fr 1.5fr 1fr 1fr;
-    background-color: #333;
-    color: #ddd;
+    background-color: var(--sftp-file-list-header-bg);
+    color: var(--color-text-secondary);
     font-weight: bold;
     padding: 8px 12px;
-    border-bottom: 1px solid #444;
+    border-bottom: 1px solid var(--color-border-default);
     font-size: 12px;
   }
   
@@ -195,16 +195,17 @@
     padding: 8px 12px;
     cursor: pointer;
     font-size: 13px;
-    border-bottom: 1px solid #333;
+    color: var(--color-text-primary);
+    border-bottom: 1px solid var(--color-border-default);
     transition: background-color var(--theme-transition-duration) var(--theme-transition-timing);
   }
   
   .sftp-file-item:hover {
-    background-color: #2a2a2a;
+    background-color: var(--color-hover-bg);
   }
   
   .sftp-file-item.selected {
-    background-color: #37474F;
+    background-color: var(--color-selected-bg);
   }
   
   .sftp-file-list-loading,

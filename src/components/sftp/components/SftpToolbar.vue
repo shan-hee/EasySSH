@@ -135,17 +135,20 @@ export default defineComponent({
 .sftp-search-input {
   width: 100%;
   height: 32px;
-  background-color: transparent;
+  background-color: var(--color-bg-container);
   border: 1px solid var(--color-border-default);
   border-radius: 4px;
   color: var(--color-text-primary);
   font-size: 12px;
   padding: 0 32px 0 36px;
   outline: none;
+  transition: 
+    background-color var(--theme-transition-duration) var(--theme-transition-timing),
+    border-color var(--theme-transition-duration) var(--theme-transition-timing);
 }
 
 .sftp-search-input:focus {
-  background-color: transparent;
+  background-color: var(--color-bg-hover);
   border: 1px solid var(--color-primary);
 }
 
@@ -198,8 +201,8 @@ export default defineComponent({
 
 /* 使用主题变量替代主题特定样式 */
 .sftp-search-input:focus {
-  background-color: var(--sftp-search-input-focus-bg) !important;
-  border: 1px solid var(--sftp-search-input-focus-border) !important;
+  background-color: var(--sftp-search-input-focus-bg);
+  border: 1px solid var(--sftp-search-input-focus-border);
 }
 
 .sftp-search-icon {
@@ -226,9 +229,13 @@ export default defineComponent({
 }
 
 .sftp-search-input {
-  background-color: var(--sftp-search-input-bg) !important;
-  color: var(--sftp-search-input-color) !important;
-  border: 1px solid var(--sftp-search-input-border) !important;
+  background-color: var(--sftp-search-input-bg);
+  color: var(--sftp-search-input-color);
+  border: 1px solid var(--sftp-search-input-border);
+  transition: 
+    background-color var(--theme-transition-duration) var(--theme-transition-timing),
+    border-color var(--theme-transition-duration) var(--theme-transition-timing),
+    color var(--theme-transition-duration) var(--theme-transition-timing);
 }
 
 /* 浅色主题样式已迁移到主题变量 */

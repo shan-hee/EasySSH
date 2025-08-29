@@ -44,6 +44,7 @@ import { defineComponent, ref, onMounted, watch, nextTick, onBeforeUnmount } fro
 import { ElMessageBox, ElMessage, ElLoading } from 'element-plus'
 import { sftpService } from '@/services/ssh/index'
 import settingsService from '@/services/settings'
+import log from '@/services/log'
 
 
 // CodeMirror 6 Imports
@@ -232,9 +233,13 @@ export default defineComponent({
       // 同步更新CSS变量，确保全屏模式和窗口模式主题一致
       updateCSSVariables(theme);
       
+      // 获取 SFTP 面板的背景色，保持一致性
+      const root = document.documentElement;
+      const sftpBg = getComputedStyle(root).getPropertyValue('--sftp-panel-bg').trim() || theme.background;
+      
       return EditorView.theme({
         "&": {
-          backgroundColor: theme.background,
+          backgroundColor: sftpBg,
           color: theme.foreground,
           fontSize: `${fontSize}px`,
           fontFamily: fontFamily
@@ -257,7 +262,7 @@ export default defineComponent({
           lineHeight: "1.5"
         },
         ".cm-gutters": {
-          backgroundColor: theme.background,
+          backgroundColor: sftpBg,
           color: theme.comment,
           border: "none",
           fontFamily: fontFamily
@@ -291,7 +296,10 @@ export default defineComponent({
     const updateCSSVariables = (theme) => {
       if (typeof document !== 'undefined') {
         const root = document.documentElement;
-        root.style.setProperty('--editor-bg', theme.background);
+        
+        // 使用 SFTP 面板背景作为编辑器背景，保持一致性
+        const computedSftpBg = getComputedStyle(root).getPropertyValue('--sftp-panel-bg').trim();
+        root.style.setProperty('--editor-bg', computedSftpBg || theme.background);
         root.style.setProperty('--editor-fg', theme.foreground);
         root.style.setProperty('--editor-cursor', theme.cursor);
         root.style.setProperty('--editor-selection', theme.selection);
@@ -303,6 +311,11 @@ export default defineComponent({
         root.style.setProperty('--editor-number', theme.number);
         root.style.setProperty('--editor-operator', theme.operator);
         root.style.setProperty('--editor-classname', theme.className);
+        
+        log.debug('CSS变量已更新:', { 
+          sftpBg: computedSftpBg, 
+          themeBackground: theme.background 
+        });
       }
     };
     
@@ -799,10 +812,63 @@ export default defineComponent({
       }
     }
     
+    // 添加主题变化事件监听器
+    const handleThemeChange = (event) => {
+      log.debug('SFTP编辑器收到主题变化事件:', event.detail)
+      
+      if (editorView.value) {
+        try {
+          
+          log.debug('SFTP编辑器立即应用主题', { 
+            actualTheme: event.detail.actualTheme 
+          });
+          
+          // 立即获取最新的主题设置
+          const newThemeSettings = getThemeSettings();
+          const newFontSettings = getFontSettings();
+          
+          // 更新响应式变量
+          themeSettings.value = newThemeSettings;
+          fontSettings.value = newFontSettings;
+          
+          // 立即更新，让CSS过渡自然发生
+          nextTick(() => {
+            // 第1步：更新CSS变量
+            updateCSSVariables(newThemeSettings);
+            
+            // 第2步：重新创建主题
+            const newCustomTheme = createCustomTheme();
+            const newCustomHighlightStyle = createHighlightStyle();
+            
+            // 第3步：应用新主题到编辑器
+            editorView.value.dispatch({
+              effects: [
+                languageConf.reconfigure(getLanguageSupport()),
+                themeConf.reconfigure(newCustomTheme),
+                highlightConf.reconfigure(syntaxHighlighting(newCustomHighlightStyle, { fallback: true }))
+              ]
+            });
+            
+            // 第4步：强制应用DOM样式
+            applyEditorStyles();
+            
+            // 第5步：请求重新测量视图
+            editorView.value.requestMeasure();
+            
+            log.debug('SFTP编辑器主题切换完成（通过事件监听）');
+          });
+        } catch (error) {
+          log.error('SFTP编辑器主题切换失败:', error);
+        }
+      }
+    };
+
     // 生命周期钩子
     onMounted(() => {
       window.addEventListener('keydown', handleGlobalKeyDown)
       window.addEventListener('resize', handleWindowResize)
+      // 添加主题变化事件监听
+      window.addEventListener('theme-changed', handleThemeChange)
       isComponentMounted.value = true
       nextTick(() => {
         initEditor()
@@ -812,6 +878,8 @@ export default defineComponent({
     onBeforeUnmount(() => {
       window.removeEventListener('keydown', handleGlobalKeyDown)
       window.removeEventListener('resize', handleWindowResize)
+      // 移除主题变化事件监听
+      window.removeEventListener('theme-changed', handleThemeChange)
       
       // 销毁编辑器
       if (editorView.value) {
@@ -838,62 +906,9 @@ export default defineComponent({
       }
     })
     
-    // 监听设置变化 - 优化主题切换同步
+    // 监听设置变化 - 只处理非主题相关的设置（如语言）
     settingsService.addChangeListener((settings) => {
-      // 批量更新主题和字体设置
-      const newThemeSettings = getThemeSettings();
-      const newFontSettings = getFontSettings();
-
-      // 检查是否真的有变化，避免不必要的更新
-      const themeChanged = JSON.stringify(themeSettings.value) !== JSON.stringify(newThemeSettings);
-      const fontChanged = JSON.stringify(fontSettings.value) !== JSON.stringify(newFontSettings);
-
-      if (themeChanged || fontChanged) {
-        log.debug('SFTP编辑器主题设置发生变化', { 
-          themeChanged, 
-          fontChanged,
-          oldTheme: themeSettings.value.themeName,
-          newTheme: newThemeSettings.themeName 
-        });
-        
-        // 立即更新响应式变量
-        themeSettings.value = newThemeSettings;
-        fontSettings.value = newFontSettings;
-
-        // 使用同步方法立即应用主题，避免延迟造成的视觉闪烁
-        if (editorView.value) {
-          // 分步骤同步应用，确保每步都完成后再进行下一步
-          try {
-            // 第1步：立即更新CSS变量
-            updateCSSVariables(newThemeSettings);
-            
-            // 第2步：重新创建并应用CodeMirror主题
-            const newCustomTheme = createCustomTheme();
-            const newCustomHighlightStyle = createHighlightStyle();
-            
-            // 第3步：同步重新配置编辑器
-            editorView.value.dispatch({
-              effects: [
-                languageConf.reconfigure(getLanguageSupport()),
-                themeConf.reconfigure(newCustomTheme),
-                highlightConf.reconfigure(syntaxHighlighting(newCustomHighlightStyle, { fallback: true }))
-              ]
-            });
-            
-            // 第4步：强制应用DOM样式（确保所有元素都更新）
-            applyEditorStyles();
-            
-            // 第5步：请求重新测量视图
-            editorView.value.requestMeasure();
-            
-            log.debug('SFTP编辑器主题切换完成');
-          } catch (error) {
-            log.error('主题切换失败:', error);
-          }
-        }
-      }
-
-      // 处理语言设置变化
+      // 只处理语言设置变化，主题变化由 theme-changed 事件处理
       if (editorView.value) {
         // 获取最新的语言短语设置
         const phrases = getLanguagePhrases();
@@ -904,6 +919,7 @@ export default defineComponent({
         });
 
         editorView.value.requestMeasure();
+        log.debug('SFTP编辑器语言设置已更新');
       }
     });
     
@@ -929,8 +945,8 @@ export default defineComponent({
   flex-direction: column;
   height: 100%;
   width: 100%;
-  background-color: var(--editor-bg);
-  color: var(--editor-fg);
+  background-color: var(--sftp-panel-bg);
+  color: var(--color-text-primary);
   border-radius: 4px;
   overflow: hidden;
   position: relative;
@@ -947,8 +963,8 @@ export default defineComponent({
     z-index: 1000;
     border-radius: 0;
     box-shadow: none;
-    background-color: var(--editor-bg);
-    color: var(--editor-fg);
+    background-color: var(--sftp-panel-bg);
+    color: var(--color-text-primary);
 
     // 确保编辑器颜色在全屏模式下正确
     // 使用更高特异性的选择器覆盖CodeMirror默认样式
@@ -983,7 +999,7 @@ export default defineComponent({
   justify-content: space-between;
   align-items: center;
   padding: 8px 16px;
-  background-color: var(--color-bg-muted);
+  background-color: var(--sftp-panel-header-bg);
   border-bottom: 1px solid var(--color-border-default);
 }
 
@@ -1013,7 +1029,7 @@ export default defineComponent({
   justify-content: center;
   background: transparent;
   border: 1px solid var(--color-border-default);
-  color: var(--editor-fg);
+  color: var(--color-text-regular);
   border-radius: 4px;
   padding: 4px 8px;
   margin-left: 8px;
@@ -1057,7 +1073,7 @@ export default defineComponent({
   display: flex;
   align-items: center;
   padding: 6px 12px;
-  background-color: var(--color-bg-muted);
+  background-color: var(--sftp-panel-header-bg);
   border-top: 1px solid var(--color-border-default);
   font-size: 12px;
 }
@@ -1066,24 +1082,30 @@ export default defineComponent({
   display: flex;
   justify-content: space-between;
   width: 100%;
-  color: var(--editor-fg);
+  color: var(--color-text-secondary);
 }
 
 /* CodeMirror 自定义样式 */
 .cm-editor {
   height: 100%;
   font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
+  /* 确保编辑器背景色有过渡效果 */
+  transition: background-color var(--theme-transition-duration) var(--theme-transition-timing);
 }
 
 .cm-scroller {
   overflow: auto;
+  /* 确保滚动区域背景色有过渡效果 */
+  transition: background-color var(--theme-transition-duration) var(--theme-transition-timing);
 }
 
 .cm-gutters {
-  background-color: var(--color-bg-muted);
+  background-color: var(--sftp-panel-header-bg);
   border-right: 1px solid var(--color-border-default);
   color: var(--color-text-secondary);
   font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
+  /* 确保行号区域背景色有过渡效果 */
+  transition: background-color var(--theme-transition-duration) var(--theme-transition-timing);
 }
 
 .cm-activeLineGutter {
@@ -1106,14 +1128,14 @@ export default defineComponent({
 }
 
 .cm-scroller::-webkit-scrollbar-track {
-  background: var(--color-bg-muted);
+  background: var(--sftp-panel-header-bg);
   border-radius: 4px;
 }
 
 .cm-scroller::-webkit-scrollbar-thumb {
   background: var(--color-border-dark);
   border-radius: 4px;
-  border: 2px solid var(--color-bg-muted);
+  border: 2px solid var(--sftp-panel-header-bg);
 }
 
 .cm-scroller::-webkit-scrollbar-thumb:hover {
@@ -1122,6 +1144,6 @@ export default defineComponent({
 
 /* 添加滚动条交界处（角落）的样式 */
 .cm-scroller::-webkit-scrollbar-corner {
-  background: var(--color-bg-muted);
+  background: var(--sftp-panel-header-bg);
 }
 </style> 

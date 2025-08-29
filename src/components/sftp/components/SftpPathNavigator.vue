@@ -301,54 +301,68 @@ export default defineComponent({
 
 /* 使用主题变量替代主题特定样式 */
 .sftp-path-home-button {
-  color: var(--sftp-path-home-button-color) !important;
+  color: var(--sftp-path-home-button-color);
+  transition: color var(--theme-transition-duration) var(--theme-transition-timing);
 }
 
 .sftp-path-home-button:hover {
-  color: var(--sftp-path-home-button-hover-color) !important;
+  color: var(--sftp-path-home-button-hover-color);
 }
 
 .sftp-path-separator {
-  color: var(--sftp-path-separator-color) !important;
+  color: var(--sftp-path-separator-color);
+  transition: color var(--theme-transition-duration) var(--theme-transition-timing);
 }
 
 .sftp-path-part-button {
-  color: var(--sftp-path-part-button-color) !important;
+  color: var(--sftp-path-part-button-color);
+  transition: 
+    background-color var(--theme-transition-duration) var(--theme-transition-timing),
+    color var(--theme-transition-duration) var(--theme-transition-timing);
 }
 
 .sftp-path-part-button:hover {
-  background-color: var(--sftp-path-part-button-hover-bg) !important;
+  background-color: var(--sftp-path-part-button-hover-bg);
 }
 
 .sftp-path-field {
-  color: var(--sftp-path-field-color) !important;
+  color: var(--sftp-path-field-color);
+  transition: color var(--theme-transition-duration) var(--theme-transition-timing);
 }
 
 /* 使用主题变量替代主题特定样式 */
 .sftp-nav-button {
-  background-color: var(--sftp-nav-button-bg) !important;
-  color: var(--sftp-nav-button-color) !important;
-  border: 1px solid var(--sftp-nav-button-border) !important;
+  background-color: var(--sftp-nav-button-bg);
+  color: var(--sftp-nav-button-color);
+  border: 1px solid var(--sftp-nav-button-border);
+  transition: 
+    background-color var(--theme-transition-duration) var(--theme-transition-timing),
+    color var(--theme-transition-duration) var(--theme-transition-timing),
+    border-color var(--theme-transition-duration) var(--theme-transition-timing);
 }
 
 .sftp-nav-button:hover {
-  background-color: var(--sftp-nav-button-hover-bg) !important;
+  background-color: var(--sftp-nav-button-hover-bg);
 }
 
 .sftp-path-input {
-  background-color: var(--sftp-path-input-bg) !important;
-  color: var(--sftp-path-input-color) !important;
-  border: 1px solid var(--sftp-path-input-border) !important;
+  background-color: var(--sftp-path-input-bg);
+  color: var(--sftp-path-input-color);
+  border: 1px solid var(--sftp-path-input-border);
+  transition: 
+    background-color var(--theme-transition-duration) var(--theme-transition-timing),
+    color var(--theme-transition-duration) var(--theme-transition-timing),
+    border-color var(--theme-transition-duration) var(--theme-transition-timing);
 }
 
 .sftp-path-input:hover {
-  background-color: var(--sftp-path-input-hover-bg) !important;
+  background-color: var(--sftp-path-input-hover-bg);
 }
 
 .sftp-path-input:focus {
-  background-color: var(--sftp-path-input-focus-bg) !important;
-  border-color: var(--sftp-path-input-focus-border) !important;
-  box-shadow: 0 0 0 1px var(--sftp-path-input-focus-shadow) !important;
+  background-color: var(--sftp-path-input-focus-bg);
+  border-color: var(--sftp-path-input-focus-border);
+  box-shadow: 0 0 0 1px var(--sftp-path-input-focus-shadow);
 }
 
 /* 浅色主题下的路径导航样式 - 使用主题变量 */

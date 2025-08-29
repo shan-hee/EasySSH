@@ -328,7 +328,6 @@ export default defineComponent({
   font-size: 13px;
   color: var(--color-text-primary);
   cursor: pointer;
-  transition: background-color 0.15s ease;
   position: relative;
 }
 
