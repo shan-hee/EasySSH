@@ -865,11 +865,11 @@ function handlePing(ws, data) {
     const clientIP = session.clientIP || ws.clientIP || '127.0.0.1';
     const sshHost = session.connectionInfo.host;
     
-    logger.info('触发延迟测量', { 
-      sessionId, 
-      client: clientIP,
-      server: sshHost
-    });
+    // logger.info('触发延迟测量', { 
+    //   sessionId, 
+    //   client: clientIP,
+    //   server: sshHost
+    // });
     
     // 使用setImmediate确保PONG先发送，然后进行并行ping测量
     setImmediate(() => {
