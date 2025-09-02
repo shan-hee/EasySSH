@@ -226,11 +226,11 @@ class BinaryMessageSender {
         global.metricsCollector.recordDataTransfer('outbound', 'binary', messageBuffer.length);
       }
       
-      logger.debug('二进制消息已发送', {
-        messageType: messageType.toString(16),
-        headerSize: JSON.stringify(headerData).length,
-        payloadSize: payloadData ? Buffer.byteLength(payloadData) : 0
-      });
+      // logger.debug('二进制消息已发送', {
+      //   messageType: messageType.toString(16),
+      //   headerSize: JSON.stringify(headerData).length,
+      //   payloadSize: payloadData ? Buffer.byteLength(payloadData) : 0
+      // });
     } catch (error) {
       logger.error('发送二进制消息失败:', error);
       throw error;

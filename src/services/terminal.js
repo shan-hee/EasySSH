@@ -358,6 +358,23 @@ class TerminalService {
       this._waitForFontsAndOpen(terminal, container, termOptions, id).then(() => {
         // 字体加载完成，终端已打开
         log.debug(`终端 ${id} 字体加载完成并已打开`);
+        
+        // 终端完全初始化后，调用fit方法
+        setTimeout(() => {
+          try {
+            if (addons.fit && terminal.element) {
+              const fitStartTime = performance.now()
+              addons.fit.fit()
+              const fitTime = performance.now() - fitStartTime
+              if (fitTime > 20) { // 如果适配时间超过20ms，记录性能问题
+                log.debug(`终端 ${id} 大小适配耗时: ${fitTime.toFixed(2)}ms`)
+              }
+            }
+          } catch (e) {
+            log.debug(`终端 ${id} 大小适应失败:`, e.message)
+          }
+        }, 50) // 增加延迟确保终端完全就绪
+        
       }).catch(error => {
         log.warn(`终端 ${id} 字体加载失败，使用默认字体:`, error);
       });
@@ -379,21 +396,7 @@ class TerminalService {
         log.warn(`终端 ${id} 启用bracketed paste失败:`, e);
       }
 
-      // 适应容器大小
-      setTimeout(() => {
-        try {
-          if (addons.fit) {
-            const fitStartTime = performance.now()
-            addons.fit.fit()
-            const fitTime = performance.now() - fitStartTime
-            if (fitTime > 20) { // 如果适配时间超过20ms，记录性能问题
-              log.debug(`终端 ${id} 大小适配耗时: ${fitTime.toFixed(2)}ms`)
-            }
-          }
-        } catch (e) {
-          log.warn('终端大小适应失败', e)
-        }
-      }, 0)
+      // 大小适应现在在字体加载完成后处理
 
       // 设置活动终端
       this.activeTerminalId.value = id

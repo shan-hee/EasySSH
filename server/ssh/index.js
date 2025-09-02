@@ -846,10 +846,10 @@ async function handleSSHBinaryData(ws, headerData, payloadData) {
       global.metricsCollector.recordDataTransfer('inbound', 'binary', payloadData.length);
     }
     
-    logger.debug('SSH二进制数据已处理', {
-      sessionId,
-      dataLength: payloadData.length
-    });
+    // logger.debug('SSH二进制数据已处理', {
+    //   sessionId,
+    //   dataLength: payloadData.length
+    // });
     
   } catch (error) {
     logger.error('写入SSH流失败', {

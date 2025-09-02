@@ -203,11 +203,11 @@ export class BinaryMessageSender {
       const messageBuffer = BinaryMessageEncoder.encode(messageType, headerData, payloadData);
       ws.send(messageBuffer);
       
-      log.debug('二进制消息已发送', {
-        messageType: messageType.toString(16),
-        headerSize: JSON.stringify(headerData).length,
-        payloadSize: payloadData ? payloadData.byteLength : 0
-      });
+      // log.debug('二进制消息已发送', {
+      //   messageType: messageType.toString(16),
+      //   headerSize: JSON.stringify(headerData).length,
+      //   payloadSize: payloadData ? payloadData.byteLength : 0
+      // });
     } catch (error) {
       log.error('发送二进制消息失败:', error);
       throw error;

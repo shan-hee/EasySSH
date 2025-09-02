@@ -209,10 +209,10 @@ class SSHService {
       // 记录活动时间
       this._recordSessionActivity(session);
       
-      log.debug('SSH二进制数据已处理', {
-        sessionId,
-        dataLength: payloadData.byteLength
-      });
+      // log.debug('SSH二进制数据已处理', {
+      //   sessionId,
+      //   dataLength: payloadData.byteLength
+      // });
     } catch (error) {
       log.error('处理SSH二进制数据失败:', error);
     }
