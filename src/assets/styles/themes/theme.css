@@ -1366,14 +1366,14 @@ body,
 }
 
 /* SVG图标过渡 */
-svg,
+/* svg,
 .themed-icon,
 .ruyi-icon {
   transition:
     fill var(--theme-transition-fast) var(--theme-transition-timing),
     stroke var(--theme-transition-fast) var(--theme-transition-timing),
     color var(--theme-transition-fast) var(--theme-transition-timing);
-}
+} */
 
 /* 避免某些元素的过渡动画（如输入框光标） */
 input,
