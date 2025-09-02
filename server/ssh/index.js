@@ -714,12 +714,12 @@ async function handleUnifiedBinaryMessage(ws, buffer, currentSessionId) {
     const message = BinaryMessageDecoder.decode(buffer);
     const { messageType, headerData, payloadData } = message;
     
-    logger.debug('收到统一二进制消息', { 
-      type: messageType.toString(16), 
-      sessionId: headerData.sessionId,
-      operationId: headerData.operationId,
-      payloadSize: payloadData ? payloadData.length : 0
-    });
+    // logger.debug('收到统一二进制消息', { 
+    //   type: messageType.toString(16), 
+    //   sessionId: headerData.sessionId,
+    //   operationId: headerData.operationId,
+    //   payloadSize: payloadData ? payloadData.length : 0
+    // });
     
     // 根据消息类型分发处理
     switch (messageType) {
