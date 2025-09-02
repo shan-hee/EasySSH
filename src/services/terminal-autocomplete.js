@@ -97,6 +97,12 @@ class TerminalAutocompleteService {
 
     // 用户存储引用
     this.userStore = null
+
+    // 装饰器锚点相关（用于精准定位补全框）
+    this._decoration = null
+    this._marker = null
+    this._anchorElement = null
+    this._decorationSupported = undefined
   }
 
   /**
@@ -390,8 +396,13 @@ class TerminalAutocompleteService {
       }
 
       if (this.callbacks.onSuggestionsUpdate) {
-        // 使用缓存的位置或重新计算
-        const position = terminal ? this.calculatePosition(terminal) : this.lastPosition || { x: 0, y: 0 }
+        // 使用装饰器锚点位置，若不可用回退
+        let position = this.lastPosition || { x: 0, y: 0 }
+        if (terminal) {
+          this._ensureDecoration(terminal)
+          position = this._getAnchorPosition(terminal) || this.calculatePosition(terminal)
+          this.lastPosition = position
+        }
         this.callbacks.onSuggestionsUpdate(this.suggestions, position, this.selectedIndex)
       } else {
         log.warn('onSuggestionsUpdate回调未设置')
@@ -512,7 +523,8 @@ class TerminalAutocompleteService {
       this.isActive = true
 
       // 计算显示位置并缓存
-      const position = this.calculatePosition(terminal)
+      this._ensureDecoration(terminal)
+      const position = this._getAnchorPosition(terminal) || this.calculatePosition(terminal)
       this.lastPosition = position
 
       // 通知回调
@@ -981,19 +993,27 @@ class TerminalAutocompleteService {
         return { x: 0, y: 0 }
       }
 
-      const terminalRect = terminal.element.getBoundingClientRect()
+      // 优先使用终端视口，避免内部滚动/内边距带来的偏差
+      const viewportEl = terminal.element.querySelector('.xterm-viewport')
+      const baseRect = (viewportEl || terminal.element).getBoundingClientRect()
       const buffer = terminal.buffer.active
       
       if (!buffer) {
-        return { x: terminalRect.left, y: terminalRect.top + 20 }
+        return { x: baseRect.left, y: baseRect.top + 20 }
       }
 
-      // 计算光标位置
-      const charWidth = terminal._core._renderService.dimensions.actualCellWidth || 9
-      const charHeight = terminal._core._renderService.dimensions.actualCellHeight || 17
+      // 计算光标位置（以CSS像素为单位，兼容高DPI/缩放）
+      const dims = terminal._core && terminal._core._renderService && terminal._core._renderService.dimensions
+      const dpr = typeof window !== 'undefined' && window.devicePixelRatio ? window.devicePixelRatio : 1
+      const cssCellWidth = (dims && dims.css && dims.css.cell && dims.css.cell.width) || null
+      const cssCellHeight = (dims && dims.css && dims.css.cell && dims.css.cell.height) || null
+      const actualCellWidth = (dims && dims.actualCellWidth) || 9
+      const actualCellHeight = (dims && dims.actualCellHeight) || 17
+      const charWidth = cssCellWidth != null ? cssCellWidth : (actualCellWidth / dpr)
+      const charHeight = cssCellHeight != null ? cssCellHeight : (actualCellHeight / dpr)
 
-      const x = terminalRect.left + (buffer.cursorX * charWidth)
-      const y = terminalRect.top + ((buffer.cursorY + 1) * charHeight)
+      const x = Math.round(baseRect.left + (buffer.cursorX * charWidth))
+      const y = Math.round(baseRect.top + ((buffer.cursorY + 1) * charHeight))
 
       return { x, y }
 
@@ -1018,6 +1038,9 @@ class TerminalAutocompleteService {
 
     // 取消所有防抖任务
     this.smartDebounce.cancelAll()
+
+    // 释放装饰器锚点
+    this._disposeDecoration()
 
     if (this.callbacks.onSuggestionsUpdate) {
       this.callbacks.onSuggestionsUpdate([], { x: 0, y: 0 }, -1)
@@ -1203,6 +1226,9 @@ class TerminalAutocompleteService {
 
     // 清理AI相关资源
     this.cleanupAI()
+
+    // 释放装饰器
+    this._disposeDecoration()
   }
 
 
@@ -1233,6 +1259,118 @@ class TerminalAutocompleteService {
     return this._enabled !== false // 默认启用
   }
 
+
+  /**
+   * 确保创建并维护基于装饰器的锚点
+   */
+  _ensureDecoration(terminal) {
+    try {
+      if (!terminal || !terminal.element) return
+
+      // 首次检测是否支持装饰器
+      if (this._decorationSupported === undefined) {
+        this._decorationSupported = typeof terminal.registerDecoration === 'function'
+      }
+      if (!this._decorationSupported) return
+
+      const buffer = terminal.buffer?.active
+      if (!buffer) return
+
+      const cursorX = buffer.cursorX || 0
+
+      // 若已有装饰器，尝试更新列；若不可更新则重建
+      if (this._decoration) {
+        try {
+          if (typeof this._decoration.updateOptions === 'function') {
+            this._decoration.updateOptions({ x: cursorX })
+            return
+          }
+        } catch (_) {}
+        this._disposeDecoration()
+      }
+
+      // 使用 marker 锚定当前行
+      let marker = null
+      try {
+        if (typeof terminal.registerMarker === 'function') {
+          marker = terminal.registerMarker(0)
+        }
+      } catch (_) {}
+
+      // 注册装饰器
+      try {
+        const options = marker ? { marker, x: cursorX } : { x: cursorX }
+        const decoration = terminal.registerDecoration(options)
+        if (decoration) {
+          this._decoration = decoration
+          this._marker = marker
+          if (typeof decoration.onRender === 'function') {
+            // 使用 rAF 节流，避免在 xterm 渲染帧内触发多次 Vue 更新
+            let rafId = null
+            decoration.onRender((el) => {
+              try {
+                if (!el) return
+                if (rafId) cancelAnimationFrame(rafId)
+                rafId = requestAnimationFrame(() => {
+                  this._anchorElement = el
+                  el.style.width = '0px'
+                  el.style.height = '0px'
+                  el.style.pointerEvents = 'none'
+                  el.style.opacity = '0'
+
+                  const rect = el.getBoundingClientRect()
+                  if (rect && this.isActive && this.suggestions.length > 0) {
+                    // 将Y定位到字符格底部（rect为锚点元素自身，height为0，需加上单元格高度）
+                    const dims = terminal._core && terminal._core._renderService && terminal._core._renderService.dimensions
+                    const dpr = typeof window !== 'undefined' && window.devicePixelRatio ? window.devicePixelRatio : 1
+                    const cssCellHeight = (dims && dims.css && dims.css.cell && dims.css.cell.height) || null
+                    const actualCellHeight = (dims && dims.actualCellHeight) || 17
+                    const charHeight = cssCellHeight != null ? cssCellHeight : (actualCellHeight / dpr)
+                    const verticalOffset = 0
+                    const pos = { x: Math.round(rect.left), y: Math.round(rect.top + charHeight + verticalOffset), cellHeight: charHeight }
+                    this.lastPosition = pos
+                    if (this.callbacks.onSuggestionsUpdate) {
+                      this.callbacks.onSuggestionsUpdate(this.suggestions, pos, this.selectedIndex)
+                    }
+                  }
+                })
+              } catch (_) {}
+            })
+          }
+        }
+      } catch (e) {
+        this._decorationSupported = false
+      }
+    } catch (_) {}
+  }
+
+  /**
+   * 获取锚点位置
+   */
+  _getAnchorPosition(_terminal) {
+    try {
+      if (!this._anchorElement) return null
+      const rect = this._anchorElement.getBoundingClientRect()
+      if (!rect) return null
+      return { x: Math.round(rect.left), y: Math.round(rect.bottom) }
+    } catch (_) {
+      return null
+    }
+  }
+
+  /**
+   * 释放装饰器锚点
+   */
+  _disposeDecoration() {
+    try {
+      if (this._decoration && typeof this._decoration.dispose === 'function') {
+        this._decoration.dispose()
+      }
+    } catch (_) {}
+    this._decoration = null
+    this._marker = null
+    this._anchorElement = null
+  }
 
 }
 

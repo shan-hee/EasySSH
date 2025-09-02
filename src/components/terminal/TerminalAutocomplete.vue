@@ -1,10 +1,11 @@
 <template>
-  <div
-    v-if="visible && suggestions.length > 0"
-    class="terminal-autocomplete"
-    :style="positionStyle"
-    @mousedown.prevent
-  >
+  <teleport :to="teleportTo || 'body'">
+    <div
+      v-if="visible && suggestions.length > 0"
+      class="terminal-autocomplete"
+      :style="positionStyle"
+      @mousedown.prevent
+    >
     <div class="autocomplete-header">
       <span class="autocomplete-title">命令建议</span>
       <span class="autocomplete-count">{{ suggestions.length }}</span>
@@ -36,11 +37,12 @@
           </div>
         </div>
       </div>
+      </div>
+      <div class="autocomplete-footer">
+        <span class="autocomplete-hint">↑↓ 选择 • Tab/Enter 确认 • Esc 取消</span>
+      </div>
     </div>
-    <div class="autocomplete-footer">
-      <span class="autocomplete-hint">↑↓ 选择 • Tab/Enter 确认 • Esc 取消</span>
-    </div>
-  </div>
+  </teleport>
 </template>
 
 <script>
@@ -60,6 +62,10 @@ export default {
     position: {
       type: Object,
       default: () => ({ x: 0, y: 0 })
+    },
+    teleportTo: {
+      type: [String, Object],
+      default: ''
     }
   },
   emits: ['select', 'close'],
@@ -68,52 +74,76 @@ export default {
     const listRef = ref(null)
     // 键盘导航为主模式：只通过键盘控制选中状态
 
-    // 缓存视口尺寸
-    const viewportSize = ref({ width: window.innerWidth, height: window.innerHeight })
+    // 缓存容器尺寸（支持 Teleport 到自定义容器）
+    const containerSize = ref({ width: window.innerWidth, height: window.innerHeight, left: 0, top: 0 })
 
     // 监听窗口大小变化（使用节流）
     let resizeTimer = null
     const handleResize = () => {
       if (resizeTimer) clearTimeout(resizeTimer)
       resizeTimer = setTimeout(() => {
-        viewportSize.value = { width: window.innerWidth, height: window.innerHeight }
+        updateContainerMetrics()
       }, 100)
     }
 
-    // 计算位置样式，包含智能位置调整（优化版）
-    const positionStyle = computed(() => {
-      const { x, y } = props.position
-      const { width: viewportWidth, height: viewportHeight } = viewportSize.value
-
-      // 预估自动补全框的尺寸
-      const estimatedWidth = Math.min(700, Math.max(350, viewportWidth * 0.4))
-      const estimatedHeight = Math.min(350, Math.max(200, props.suggestions.length * 50 + 100))
-
-      // 调整水平位置
-      let adjustedX = x
-      if (x + estimatedWidth > viewportWidth - 20) {
-        adjustedX = Math.max(20, viewportWidth - estimatedWidth - 20)
-      }
-
-      // 调整垂直位置
-      let adjustedY = y
-      if (y + estimatedHeight > viewportHeight - 20) {
-        // 如果下方空间不够，尝试显示在上方
-        const spaceAbove = y - 20
-        const spaceBelow = viewportHeight - y - 20
-
-        if (spaceAbove > spaceBelow && spaceAbove > 200) {
-          adjustedY = Math.max(20, y - estimatedHeight)
+    const updateContainerMetrics = () => {
+      try {
+        const target = typeof props.teleportTo === 'string'
+          ? (props.teleportTo ? document.querySelector(props.teleportTo) : null)
+          : (props.teleportTo && props.teleportTo.nodeType === 1 ? props.teleportTo : null)
+        if (target) {
+          const rect = target.getBoundingClientRect()
+          containerSize.value = { width: rect.width, height: rect.height, left: rect.left, top: rect.top }
         } else {
-          adjustedY = Math.max(20, viewportHeight - estimatedHeight - 20)
+          containerSize.value = { width: window.innerWidth, height: window.innerHeight, left: 0, top: 0 }
         }
+      } catch (_) {
+        containerSize.value = { width: window.innerWidth, height: window.innerHeight, left: 0, top: 0 }
       }
+    }
+
+    // 计算位置样式，包含智能位置调整（避免累计偏差）
+    const positionStyle = computed(() => {
+      const { x, y, cellHeight } = props.position
+      const { width: containerWidth, height: containerHeight, left: baseLeft, top: baseTop } = containerSize.value
+
+      const containerRight = baseLeft + containerWidth
+      const containerBottom = baseTop + containerHeight
+
+      // 预估宽度仅用于裁剪，避免越界
+      const estimatedWidth = Math.min(700, Math.max(350, containerWidth * 0.4))
+      let adjustedX = x
+      if (x + estimatedWidth > containerRight - 20) {
+        adjustedX = Math.max(baseLeft + 20, containerRight - estimatedWidth - 20)
+      }
+
+      // 估算弹窗高度：壳层 + 行数*行高
+      const itemHeight = 40
+      const shellHeight = 64
+      const itemCount = Array.isArray(props.suggestions) ? props.suggestions.length : 0
+      const estimatedPopupHeight = Math.min(350, Math.max(itemHeight + shellHeight, itemCount * itemHeight + shellHeight))
+
+      // 翻转判定：当下方可用空间小于“估算弹窗高度 + 缓冲”时，向上展开
+      const padding = 12
+      const spaceBelowAbs = containerBottom - y
+      const shouldFlipUp = (estimatedPopupHeight + padding) > spaceBelowAbs
+
+      // 在对应方向限制最大高度，避免超界
+      const maxHeightDown = Math.max(120, spaceBelowAbs - padding)
+      const maxHeightUp = Math.max(120, (y - baseTop) - padding)
+
+      // 使用 transform 实现翻转；向上展开时，将锚点从行底部上移一个字符格，避免覆盖当前行
+      const anchorYOffset = shouldFlipUp ? -(cellHeight || 18) : 0
+      const topCss = `${(y - baseTop) + anchorYOffset}px`
+      const transformCss = shouldFlipUp ? 'translateY(-100%)' : 'translateY(0)'
+      const maxHeightCss = `${Math.min(350, shouldFlipUp ? maxHeightUp : maxHeightDown)}px`
 
       return {
-        left: `${adjustedX}px`,
-        top: `${adjustedY}px`,
-        maxWidth: `${Math.min(700, viewportWidth - adjustedX - 40)}px`,
-        maxHeight: `${Math.min(350, viewportHeight - adjustedY - 40)}px`
+        left: `${adjustedX - baseLeft}px`,
+        top: topCss,
+        transform: transformCss,
+        maxWidth: `${Math.min(700, containerRight - adjustedX - 40)}px`,
+        maxHeight: maxHeightCss
       }
     })
 
@@ -202,8 +232,10 @@ export default {
       }
     }
 
-    // 添加窗口大小变化监听
+    // 添加窗口大小变化监听并初始化容器度量
     window.addEventListener('resize', handleResize)
+    updateContainerMetrics()
+    watch(() => props.teleportTo, () => updateContainerMetrics())
 
     // 组件卸载时清理
     const cleanup = () => {
@@ -299,7 +331,7 @@ export default {
 
 <style scoped>
 .terminal-autocomplete {
-  position: fixed;
+  position: absolute;
   z-index: 9999;
   background: var(--color-bg-container);
   border: 1px solid var(--color-border-default);

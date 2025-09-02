@@ -295,6 +295,37 @@ export default {
 
     // 自动完成组件引用
     const autocompleteRef = ref(null)
+    // 自动完成 Teleport 目标（稳定的容器元素）
+    const autocompleteTeleportEl = computed(() => {
+      try {
+        // 仅将补全框挂载到当前激活终端的 viewport
+        const activeId = activeConnectionId.value
+        if (!activeId || !terminalStore.hasTerminal(activeId)) return ''
+        const el = terminalRefs.value[activeId]
+        if (!el) return ''
+        const vp = el.querySelector('.xterm-viewport')
+        return vp || ''
+      } catch (e) {
+        return ''
+      }
+    })
+
+    // 自动完成位置更新相关
+    const autocompleteEventDisposers = ref([])
+
+    const updateAutocompletePosition = () => {
+      try {
+        const id = activeConnectionId.value
+        if (!id || !autocomplete.value.visible) return
+        if (!terminalStore.hasTerminal(id)) return
+        const terminal = terminalStore.getTerminal(id)
+        if (!terminal) return
+        const position = terminalAutocompleteService.calculatePosition(terminal)
+        autocomplete.value.position = position
+      } catch (error) {
+        // 忽略位置计算错误，避免打断输入
+      }
+    }
 
     // 计算属性：是否应该显示火箭加载动画
     const shouldShowConnectingAnimation = computed(() => {
@@ -1254,6 +1285,9 @@ export default {
         // 处理监控面板响应式状态
         handleMonitoringPanelResize()
 
+        // 若补全框可见，更新其位置
+        updateAutocompletePosition()
+
         windowResizeTimer = null
       }, 100) // 100ms防抖
     }
@@ -1982,6 +2016,41 @@ export default {
       })
     }
 
+    // 监听自动补全可见性，绑定/解绑事件保持位置同步
+    watch(
+      () => autocomplete.value.visible,
+      (visible) => {
+        // 清理旧的监听
+        if (autocompleteEventDisposers.value && autocompleteEventDisposers.value.length) {
+          autocompleteEventDisposers.value.forEach(d => {
+            try { d && typeof d.dispose === 'function' && d.dispose() } catch (_) {}
+          })
+          autocompleteEventDisposers.value = []
+        }
+
+        if (visible) {
+          // 立即对齐
+          updateAutocompletePosition()
+
+          const id = activeConnectionId.value
+          if (id && terminalStore.hasTerminal(id)) {
+            const terminal = terminalStore.getTerminal(id)
+            if (terminal) {
+              try {
+                const d1 = terminal.onCursorMove(() => updateAutocompletePosition())
+                const d2 = terminal.onScroll(() => updateAutocompletePosition())
+                const d3 = terminal.onResize(() => updateAutocompletePosition())
+                autocompleteEventDisposers.value.push(d1, d2, d3)
+              } catch (_) {
+                // 某些版本可能没有这些事件
+              }
+            }
+          }
+        }
+      },
+      { immediate: false }
+    )
+
 
 
     // 监听用户登录状态变化，处理自动补全
@@ -2704,7 +2773,9 @@ export default {
       handleAIPanelHeightChange,
       handleAIPanelHeightChangeStart,
       handleAIPanelHeightChangeEnd,
-      isMobile
+      isMobile,
+      // 自动完成 Teleport 目标
+      autocompleteTeleportEl
     }
   }
 }
