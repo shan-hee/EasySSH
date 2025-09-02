@@ -227,17 +227,15 @@ async function handleBinaryUpload(ws, headerData, payloadData, sshSessions) {
     
     // 对于非空文件，使用流处理
     const writeStream = sftp.createWriteStream(remotePath);
-    
-    writeStream.on('error', (err) => {
-      logger.error('二进制文件上传错误', { remotePath, error: err.message });
-      sendBinarySftpError(ws, sessionId, operationId, `文件上传错误: ${err.message}`, 'UPLOAD_ERROR');
-    });
-    
-    writeStream.on('finish', () => {
+
+    let uploadNotified = false;
+
+    const notifySuccess = () => {
+      if (uploadNotified) return;
+      uploadNotified = true;
+
       const uploadEndTime = Date.now();
       const uploadDuration = uploadEndTime - uploadStartTime;
-
-      // 上传完成
 
       logger.info('二进制文件上传完成', {
         remotePath,
@@ -253,10 +251,20 @@ async function handleBinaryUpload(ws, headerData, payloadData, sshSessions) {
         totalSize: fileBuffer.length,
         checksum: ChecksumValidator.calculateSHA256(fileBuffer),
         uploadDuration,
-        transferSpeed: fileBuffer.length / (uploadDuration / 1000) // bytes per second
+        transferSpeed: fileBuffer.length / (uploadDuration / 1000)
       });
+    };
+
+    writeStream.on('error', (err) => {
+      if (uploadNotified) return;
+      logger.error('二进制文件上传错误', { remotePath, error: err.message });
+      sendBinarySftpError(ws, sessionId, operationId, `文件上传错误: ${err.message}`, 'UPLOAD_ERROR');
     });
-    
+
+    // 某些环境只触发close，不触发finish，这里都监听并只发送一次成功
+    writeStream.on('finish', notifySuccess);
+    writeStream.on('close', notifySuccess);
+
     // 写入完整文件数据
     writeStream.end(fileBuffer);
     

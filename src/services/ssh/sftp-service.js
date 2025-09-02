@@ -462,23 +462,35 @@ class SFTPService {
       try {
         const { sshSessionId, session } = this._getSSHSession(sessionId);
 
-        // 设置操作超时
-        const timeout = setTimeout(() => {
-          this.fileOperations.delete(operationId);
-          reject(new Error('文件上传超时'));
-        }, 60 * 1000);
+        // 设置滑动操作超时：从环境或默认transferTimeout，进度时重置
+        const baseTimeoutMs = this.transferTimeout || 300000; // 默认5分钟
+        let timeout = null;
+        const resetTimeout = () => {
+          if (timeout) clearTimeout(timeout);
+          timeout = setTimeout(() => {
+            this.fileOperations.delete(operationId);
+            reject(new Error('文件上传超时'));
+          }, baseTimeoutMs);
+        };
+        resetTimeout();
 
         // 保存操作回调
         this.fileOperations.set(operationId, {
           resolve: (data) => {
-            clearTimeout(timeout);
+            if (timeout) clearTimeout(timeout);
             resolve(data);
           },
           reject: (error) => {
-            clearTimeout(timeout);
+            if (timeout) clearTimeout(timeout);
             reject(error);
           },
-          progress: progressCallback,
+          progress: (progress) => {
+            // 进度回调扩展：附带operationId，且滑动重置超时
+            resetTimeout();
+            if (typeof progressCallback === 'function') {
+              try { progressCallback(progress, operationId); } catch (e) {}
+            }
+          },
           type: 'upload_binary'
         });
 
@@ -528,14 +540,14 @@ class SFTPService {
               session.socket.send(messageBuffer);
             }
           } catch (error) {
-            clearTimeout(timeout);
+            if (timeout) clearTimeout(timeout);
             this.fileOperations.delete(operationId);
             reject(new Error(`处理文件失败: ${error.message}`));
           }
         };
 
         reader.onerror = () => {
-          clearTimeout(timeout);
+          if (timeout) clearTimeout(timeout);
           this.fileOperations.delete(operationId);
           reject(new Error('读取文件失败'));
         };
@@ -634,14 +646,23 @@ class SFTPService {
                 headerData: data.headerData
               });
 
+              let blob;
               if (!data.payloadData) {
-                reject(new Error('没有接收到文件数据'));
-                return;
+                // 允许空文件：当服务端返回size=0时，创建空Blob
+                const size = data.headerData?.size || 0;
+                if (size === 0) {
+                  blob = new Blob([], {
+                    type: data.headerData?.mimeType || 'application/octet-stream'
+                  });
+                } else {
+                  reject(new Error('没有接收到文件数据'));
+                  return;
+                }
+              } else {
+                blob = new Blob([data.payloadData], {
+                  type: data.headerData.mimeType || 'application/octet-stream'
+                });
               }
-
-              const blob = new Blob([data.payloadData], {
-                type: data.headerData.mimeType || 'application/octet-stream'
-              });
 
               log.debug('成功创建文件Blob', {
                 blobSize: blob.size,

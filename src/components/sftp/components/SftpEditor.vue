@@ -535,7 +535,6 @@ export default defineComponent({
       
       isSaving.value = true
       let loading = null
-      let saveTimeout = null
       
       try {
         console.log('[SftpEditor] 开始保存:', props.filePath)
@@ -547,57 +546,18 @@ export default defineComponent({
           background: 'rgba(0, 0, 0, 0.7)'
         })
         
-        // 创建上传任务
-        const saveTask = new Promise(async (resolve, reject) => {
-          try {
-            // 超时保护 - 3秒
-            saveTimeout = setTimeout(() => {
-              console.log('[SftpEditor] 上传超时')
-              resolve({ timedOut: true })
-            }, 3000)
-            
-            // 上传文件
-            const tempFile = new File([content], fileName.value, { type: 'text/plain' })
-            
-            await sftpService.uploadFile(
-              props.sessionId, 
-              tempFile, 
-              props.filePath, 
-              (progress) => {
-                // 只在收到100%进度时处理
-                if (progress === 100) {
-                  console.log(`[SftpEditor] 上传完成(100%)`)
-                  
-                  // 清除超时
-                  if (saveTimeout) {
-                    clearTimeout(saveTimeout)
-                    saveTimeout = null
-                  }
-                  
-                  // 立即完成
-                  resolve({ complete: true })
-                }
-              }
-            )
-            
-            // 清除超时
-            if (saveTimeout) {
-              clearTimeout(saveTimeout)
-              saveTimeout = null
+        // 上传文件：依赖SFTP服务自身的完成/超时机制
+        const tempFile = new File([content], fileName.value, { type: 'text/plain' })
+        await sftpService.uploadFile(
+          props.sessionId,
+          tempFile,
+          props.filePath,
+          (progress) => {
+            if (progress === 100) {
+              console.log('[SftpEditor] 上传完成(100%)')
             }
-            
-            resolve({ success: true })
-          } catch (error) {
-            if (saveTimeout) {
-              clearTimeout(saveTimeout)
-              saveTimeout = null
-            }
-            reject(error)
           }
-        })
-        
-        // 等待保存任务完成
-        const result = await saveTask
+        )
         
         // 关闭加载指示器
         if (loading) {
@@ -619,11 +579,6 @@ export default defineComponent({
         if (loading) {
           loading.close()
           loading = null
-        }
-        
-        if (saveTimeout) {
-          clearTimeout(saveTimeout)
-          saveTimeout = null
         }
         
         ElMessage.error(`保存文件失败: ${error.message}`)
