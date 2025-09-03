@@ -534,31 +534,89 @@ async function handleBinaryDownloadFolder(ws, headerData, sshSessions) {
           conn.exec(cmd, (err, stream) => {
             if (err) return reject(err);
 
-            const chunks = [];
+            // 改为边读边分块下发，避免一次性发送超大帧导致阻塞或断连
+            const crypto = require('crypto');
+            const hash = crypto.createHash('sha256');
             let bytesTransferred = 0;
+            let partIndex = 0;
+            // 分块大小可通过环境变量覆盖，默认2MB，最低256KB
+            const envChunk = parseInt(process.env.SFTP_FOLDER_CHUNK_SIZE || '', 10);
+            const CHUNK_SIZE = Math.max(256 * 1024, isNaN(envChunk) ? (2 * 1024 * 1024) : envChunk);
+            let pendingBuf = Buffer.alloc(0);
+
             activeTransfers.set(operationId, { type: 'tar', stream });
+
+            const flushChunk = () => {
+              if (pendingBuf.length === 0) return;
+              // 发送一个分块的FOLDER_DATA消息（标注为分块）
+              sendBinaryMessage(ws, BINARY_MSG_TYPE.SFTP_FOLDER_DATA, {
+                sessionId,
+                operationId,
+                responseType: 'folder_download',
+                filename: tgzFilename,
+                remotePath,
+                mimeType: 'application/gzip',
+                chunkIndex: partIndex,
+                totalChunks: 0,
+                isChunked: true,
+                final: false,
+                bytesTransferred,
+                totalBytes,
+                timestamp: Date.now()
+              }, pendingBuf);
+              partIndex += 1;
+              pendingBuf = Buffer.alloc(0);
+            };
 
             stream.on('data', (chunk) => {
               const buf = Buffer.from(chunk);
-              chunks.push(buf);
+              hash.update(buf);
               bytesTransferred += buf.length;
 
-              // 发送进度（使用实际传输字节数，估算压缩比约30%）
+              // 进度：基于压缩估算（30%）与已传输字节上限取大，避免过早100%
               let progress = 0;
-              if (totalBytes > 0) {
-                // 假设tar.gz压缩比约为30%，动态调整预期大小
-                const estimatedCompressedSize = Math.max(totalBytes * 0.3, bytesTransferred);
+              const estimatedCompressedSize = totalBytes > 0 ? Math.max(Math.floor(totalBytes * 0.3), bytesTransferred) : bytesTransferred;
+              if (estimatedCompressedSize > 0) {
                 progress = Math.min(99, Math.round((bytesTransferred / estimatedCompressedSize) * 100));
               }
               sendBinaryMessage(ws, BINARY_MSG_TYPE.SFTP_PROGRESS, {
                 sessionId,
                 operationId,
+                phase: 'transferring',
                 progress,
                 bytesTransferred,
-                totalBytes: totalBytes, // 保持原始大小用于显示
-                estimatedSize: Math.max(totalBytes * 0.3, bytesTransferred), // 新增：预估压缩后大小
+                totalBytes,
+                estimatedSize: estimatedCompressedSize,
                 timestamp: Date.now()
               });
+
+              // 累积并按1MB分块发送给前端
+              if (pendingBuf.length === 0) {
+                pendingBuf = buf;
+              } else {
+                pendingBuf = Buffer.concat([pendingBuf, buf]);
+              }
+              while (pendingBuf.length >= CHUNK_SIZE) {
+                const out = pendingBuf.subarray(0, CHUNK_SIZE);
+                pendingBuf = pendingBuf.subarray(CHUNK_SIZE);
+                // 发送分块
+                sendBinaryMessage(ws, BINARY_MSG_TYPE.SFTP_FOLDER_DATA, {
+                  sessionId,
+                  operationId,
+                  responseType: 'folder_download',
+                  filename: tgzFilename,
+                  remotePath,
+                  mimeType: 'application/gzip',
+                  chunkIndex: partIndex,
+                  totalChunks: 0,
+                  isChunked: true,
+                  final: false,
+                  bytesTransferred,
+                  totalBytes,
+                  timestamp: Date.now()
+                }, out);
+                partIndex += 1;
+              }
             });
 
             stream.stderr.on('data', (d) => {
@@ -581,29 +639,40 @@ async function handleBinaryDownloadFolder(ws, headerData, sshSessions) {
                 return reject(new Error(`tar 退出码: ${code}`));
               }
               try {
-                const tarBuffer = Buffer.concat(chunks);
-                const checksum = ChecksumValidator.calculateSHA256(tarBuffer);
+                // 发送剩余缓冲为最后一个分块
+                if (pendingBuf.length > 0) {
+                  sendBinaryMessage(ws, BINARY_MSG_TYPE.SFTP_FOLDER_DATA, {
+                    sessionId,
+                    operationId,
+                    responseType: 'folder_download',
+                    filename: tgzFilename,
+                    remotePath,
+                    mimeType: 'application/gzip',
+                    chunkIndex: partIndex,
+                    totalChunks: 0,
+                    isChunked: true,
+                    final: false,
+                    bytesTransferred,
+                    totalBytes,
+                    timestamp: Date.now()
+                  }, pendingBuf);
+                  partIndex += 1;
+                  pendingBuf = Buffer.alloc(0);
+                }
 
-                // 发送最终进度（100%）
-                sendBinaryMessage(ws, BINARY_MSG_TYPE.SFTP_PROGRESS, {
-                  sessionId,
-                  operationId,
-                  progress: 100,
-                  bytesTransferred: tarBuffer.length,
-                  totalBytes,
-                  estimatedSize: tarBuffer.length, // 最终确定的压缩后大小
-                  timestamp: Date.now()
-                });
-
-                // 发送文件夹数据
+                // 结束：发送最终元信息帧（不包含payload），包含checksum与总大小
+                const checksum = hash.digest('hex');
                 sendBinaryMessage(ws, BINARY_MSG_TYPE.SFTP_FOLDER_DATA, {
                   sessionId,
                   operationId,
                   responseType: 'folder_download',
                   filename: tgzFilename,
                   remotePath,
-                  size: tarBuffer.length,
                   mimeType: 'application/gzip',
+                  isChunked: true,
+                  final: true,
+                  totalChunks: partIndex,
+                  size: bytesTransferred,
                   checksum,
                   fileCount,
                   skippedFiles: [],
@@ -615,11 +684,23 @@ async function handleBinaryDownloadFolder(ws, headerData, sshSessions) {
                     errorCount: 0
                   },
                   timestamp: Date.now()
-                }, tarBuffer);
+                });
+
+                // 发送最终进度（100%）
+                sendBinaryMessage(ws, BINARY_MSG_TYPE.SFTP_PROGRESS, {
+                  sessionId,
+                  operationId,
+                  phase: 'completed',
+                  progress: 100,
+                  bytesTransferred,
+                  totalBytes,
+                  estimatedSize: bytesTransferred,
+                  timestamp: Date.now()
+                });
 
                 logger.info('远端tar.gz文件夹下载完成', {
                   path: path.basename(remotePath),
-                  size: tarBuffer.length,
+                  size: bytesTransferred,
                   files: fileCount
                 });
                 resolve();

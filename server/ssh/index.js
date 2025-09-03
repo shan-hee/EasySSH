@@ -149,16 +149,9 @@ function initWebSocketServer(server) {
   // 创建SSH WebSocket服务器 - 优化配置
   const sshWss = new WebSocket.Server({
     noServer: true,
-    maxPayload: maxMessageSize, // 设置最大消息大小
-    perMessageDeflate: {
-      threshold: 1024,        // 仅压缩>1KB的消息
-      concurrencyLimit: 10,   // 限制并发压缩
-      memLevel: 7,           // 平衡内存和压缩率
-      serverMaxWindowBits: 15, // 服务器窗口大小
-      clientMaxWindowBits: 15, // 客户端窗口大小
-      serverMaxNoContextTakeover: false, // 允许服务器上下文复用
-      clientMaxNoContextTakeover: false  // 允许客户端上下文复用
-    }
+    maxPayload: maxMessageSize, // 设置最大消息大小（接收）
+    // 对SSH/SFTP的大体积二进制帧禁用perMessageDeflate，避免对已压缩数据再次压缩造成CPU阻塞
+    perMessageDeflate: false
   });
 
   // 创建监控WebSocket服务器

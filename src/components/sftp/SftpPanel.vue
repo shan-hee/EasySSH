@@ -1511,11 +1511,16 @@ export default defineComponent({
           currentPath.value + '/' + folder.name;
 
         // 创建进度条HTML（响应式弹性布局）
-        const createProgressHTML = (progress, speedText) => {
+        const createProgressHTML = (progress, speedText, phaseText) => {
           return `
             <div class="sftp-progress-container">
               <div class="sftp-progress-content">
-                <div class="sftp-progress-text">压缩进度: ${Math.floor(progress)}%${speedText ? ` (${speedText})` : ''}</div>
+                <div class="sftp-progress-text">
+                  <span class="sftp-progress-phase">${phaseText || '准备中'}</span>
+                  <span class="sftp-progress-sep"> | </span>
+                  <span class="sftp-progress-pct">进度: ${Math.floor(progress)}%</span>
+                  <span class=\"sftp-progress-speed\">(${speedText || ''})</span>
+                </div>
                 <div class="sftp-progress-bar">
                   <div class="sftp-progress-fill" style="width: ${progress}%;"></div>
                 </div>
@@ -1530,12 +1535,17 @@ export default defineComponent({
         };
 
         // 更新进度条内容（避免重新创建取消按钮）
-        const updateProgressContent = (notificationEl, progress, speedText) => {
+        const updateProgressContent = (notificationEl, progress, speedText, phaseText) => {
           const textEl = notificationEl.querySelector('.sftp-progress-text');
           const fillEl = notificationEl.querySelector('.sftp-progress-fill');
           
           if (textEl) {
-            textEl.textContent = `压缩进度: ${Math.floor(progress)}%${speedText ? ` (${speedText})` : ''}`;
+            textEl.innerHTML = `
+              <span class=\"sftp-progress-phase\">${phaseText || '准备中'}</span>
+              <span class=\"sftp-progress-sep\"> | </span>
+              <span class=\"sftp-progress-pct\">进度: ${Math.floor(progress)}%</span>
+              <span class=\"sftp-progress-speed\">(${speedText || ''})</span>
+            `;
           }
           if (fillEl) {
             fillEl.style.width = `${progress}%`;
@@ -1546,11 +1556,29 @@ export default defineComponent({
         // 记录上次字节数用于计算实时速度
         let lastBytes = 0;
         let lastTs = Date.now();
+        // 速度平滑与防闪烁
+        let speedEma = 0; // 指数滑动平均
+        let lastSpeedUpdateTs = 0;
+        const SPEED_HOLD_MS = 1500; // 1.5s 内无新采样，保留上次速度
+        const SPEED_ALPHA = 0.25; // EMA 系数
+        // 滑动窗口平均，降低瞬时尖峰
+        const SPEED_WINDOW_MS = 2000; // 2秒窗口
+        const speedSamples = []; // [{ts, bytes}]
         let lastRenderedPct = 0;
         let lastRenderTs = 0;
         let isCompleted = false;
 
         const progressCallback = (progress, meta) => {
+          // 阶段说明
+          let phaseText = '准备中';
+          if (meta && typeof meta.phase === 'string') {
+            switch (meta.phase) {
+              case 'transferring': phaseText = '传输中'; break;
+              case 'completed': phaseText = '完成'; break;
+              case 'preparing': phaseText = '准备中'; break;
+              default: phaseText = meta.phase; // 原样显示
+            }
+          }
           // 优先使用服务端的字节统计计算百分比（压缩后的准确进度）
           if (meta && typeof meta.bytesTransferred === 'number') {
             let pct = 0;
@@ -1570,25 +1598,59 @@ export default defineComponent({
             downloadProgress.value = pct;
           }
 
-          // 计算传输速度（基于bytes delta）
+          // 计算传输速度（基于bytes delta）+ EMA 平滑 + 保留上次值避免闪烁
           let speedText = '';
           const now = Date.now();
           if (meta && typeof meta.bytesTransferred === 'number') {
             const deltaBytes = meta.bytesTransferred - lastBytes;
             const deltaTime = (now - lastTs) / 1000;
-            if (deltaBytes >= 0 && deltaTime > 0) {
-              transferSpeed.value = deltaBytes / deltaTime;
-              speedText = formatTransferSpeed(transferSpeed.value);
-              lastBytes = meta.bytesTransferred;
-              lastTs = now;
+
+            // 更新滑动窗口样本
+            speedSamples.push({ ts: now, bytes: meta.bytesTransferred });
+            // 移除过期样本
+            while (speedSamples.length > 1 && (now - speedSamples[0].ts) > SPEED_WINDOW_MS) {
+              speedSamples.shift();
             }
+
+            // 计算窗口平均速度（至少覆盖250ms以避免极小时间片）
+            let avgBps = 0;
+            if (speedSamples.length >= 2) {
+              const first = speedSamples[0];
+              const last = speedSamples[speedSamples.length - 1];
+              const dt = (last.ts - first.ts) / 1000;
+              if (dt >= 0.25) {
+                const db = Math.max(0, last.bytes - first.bytes);
+                avgBps = db / dt;
+              }
+            }
+
+            if (avgBps > 0) {
+              transferSpeed.value = avgBps;
+              speedText = formatTransferSpeed(transferSpeed.value);
+            } else if (deltaBytes >= 0 && deltaTime > 0) {
+              // 回退使用 EMA
+              const instant = deltaBytes / deltaTime;
+              speedEma = speedEma === 0 ? instant : (SPEED_ALPHA * instant + (1 - SPEED_ALPHA) * speedEma);
+              transferSpeed.value = speedEma;
+              speedText = formatTransferSpeed(transferSpeed.value);
+            }
+
+            lastBytes = meta.bytesTransferred;
+            lastTs = now;
+            lastSpeedUpdateTs = now;
           } else {
             // 回退：按时间和进度估算
             const timeDelta = (now - transferStartTime.value) / 1000;
             if (timeDelta > 0 && typeof downloadProgress.value === 'number') {
               transferSpeed.value = (downloadProgress.value * 1024 * 1024) / timeDelta; // 估算
               speedText = formatTransferSpeed(transferSpeed.value);
+              lastSpeedUpdateTs = now;
             }
+          }
+
+          // 本次未得到新速度，但仍在保持期内，沿用上次速度以避免闪烁
+          if (!speedText && lastSpeedUpdateTs && (now - lastSpeedUpdateTs <= SPEED_HOLD_MS)) {
+            speedText = formatTransferSpeed(transferSpeed.value);
           }
 
           // 节流渲染，避免闪烁：1%变化或150ms间隔才更新
@@ -1600,7 +1662,7 @@ export default defineComponent({
           // 更新或创建进度通知
           if (!progressNotification) {
             progressNotification = ElMessage({
-              message: createProgressHTML(downloadProgress.value, speedText),
+              message: createProgressHTML(downloadProgress.value, speedText, phaseText),
               type: 'info',
               duration: 0, // 不自动关闭
               showClose: false,
@@ -1611,7 +1673,7 @@ export default defineComponent({
             // 使用新的更新方法，避免重新创建按钮
             const notificationEl = document.querySelector('.download-progress-notification .el-message__content');
             if (notificationEl) {
-              updateProgressContent(notificationEl, downloadProgress.value, speedText);
+              updateProgressContent(notificationEl, downloadProgress.value, speedText, phaseText);
             }
           }
 

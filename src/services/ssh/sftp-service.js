@@ -23,6 +23,8 @@ class SFTPService {
     this.transferTimeout = parseInt(import.meta.env.VITE_SFTP_TRANSFER_TIMEOUT) || 300000; // 默认5分钟
 
     this.chunkReassembler = new Map(); // 分块重组器
+    // 分块文件夹下载的临时缓冲：operationId -> { chunks: Array<Uint8Array>, received: number, filename, mimeType }
+    this._folderDownloads = new Map();
 
     // 进度日志节流状态
     this._progressLogState = new Map(); // operationId -> { lastProgress, lastTs }
@@ -1628,41 +1630,90 @@ class SFTPService {
 
     if (operation && operation.resolve) {
       try {
-        // 确保payloadData是正确的格式
-        let blobData;
-        if (payloadData instanceof ArrayBuffer) {
-          blobData = new Uint8Array(payloadData);
-        } else if (payloadData instanceof Uint8Array) {
-          blobData = payloadData;
+        // 支持分块模式与一次性模式
+        if (headerData && headerData.isChunked) {
+          // 分块传输
+          if (headerData.final) {
+            // 最终元信息帧：拼接已有分块并resolve
+            const state = this._folderDownloads.get(operationId);
+            if (!state || !state.chunks || state.chunks.length === 0) {
+              throw new Error('缺少已接收的分块数据');
+            }
+            const blob = new Blob(state.chunks, { type: headerData.mimeType || state.mimeType || 'application/octet-stream' });
+            log.debug('文件夹下载数据处理完成', {
+              filename: headerData.filename || state.filename,
+              size: `${(blob.size / 1024 / 1024).toFixed(2)}MB`,
+              fileCount: headerData.summary?.totalFiles || 'unknown'
+            });
+            const result = {
+              blob,
+              filename: headerData.filename || state.filename,
+              summary: headerData.summary,
+              skippedFiles: headerData.skippedFiles || [],
+              errorFiles: headerData.errorFiles || [],
+              checksum: headerData.checksum,
+              size: headerData.size
+            };
+            this._folderDownloads.delete(operationId);
+            operation.resolve(result);
+            this.fileOperations.delete(operationId);
+          } else {
+            // 中间分块：缓存，不resolve
+            if (!payloadData) return; // 可能是空的控制帧
+            let chunk;
+            if (payloadData instanceof ArrayBuffer) {
+              chunk = new Uint8Array(payloadData);
+            } else if (payloadData instanceof Uint8Array) {
+              chunk = payloadData;
+            } else {
+              chunk = new Uint8Array(payloadData);
+            }
+            let state = this._folderDownloads.get(operationId);
+            if (!state) {
+              state = { chunks: [], received: 0, filename: headerData.filename, mimeType: headerData.mimeType };
+              this._folderDownloads.set(operationId, state);
+            }
+            state.chunks.push(chunk);
+            state.received += chunk.byteLength || chunk.length || 0;
+            // 不在这里写入进度，统一由SFTP_PROGRESS事件处理
+          }
         } else {
-          // 如果是其他类型，尝试转换
-          blobData = new Uint8Array(payloadData);
+          // 一次性整包（兼容旧路径）
+          let blobData;
+          if (payloadData instanceof ArrayBuffer) {
+            blobData = new Uint8Array(payloadData);
+          } else if (payloadData instanceof Uint8Array) {
+            blobData = payloadData;
+          } else {
+            // 如果是其他类型，尝试转换
+            blobData = new Uint8Array(payloadData);
+          }
+
+          // 根据服务器提供的MIME类型创建Blob（兼容zip/tar.gz等）
+          const blob = new Blob([blobData], { type: headerData.mimeType || 'application/octet-stream' });
+
+          // 验证Blob对象
+          if (!(blob instanceof Blob) || typeof blob.size !== 'number' || blob.size <= 0) {
+            throw new Error(`创建的Blob对象无效: instanceof=${blob instanceof Blob}, size=${blob.size}`);
+          }
+
+          log.debug('文件夹下载数据处理完成', {
+            filename: headerData.filename,
+            size: `${(blob.size / 1024 / 1024).toFixed(2)}MB`,
+            fileCount: headerData.summary?.totalFiles || 'unknown'
+          });
+
+          const result = {
+            blob,
+            filename: headerData.filename,
+            summary: headerData.summary,
+            skippedFiles: headerData.skippedFiles || [],
+            errorFiles: headerData.errorFiles || []
+          };
+
+          operation.resolve(result);
+          this.fileOperations.delete(operationId);
         }
-
-        // 根据服务器提供的MIME类型创建Blob（兼容zip/tar.gz等）
-        const blob = new Blob([blobData], { type: headerData.mimeType || 'application/octet-stream' });
-
-        // 验证Blob对象
-        if (!(blob instanceof Blob) || typeof blob.size !== 'number' || blob.size <= 0) {
-          throw new Error(`创建的Blob对象无效: instanceof=${blob instanceof Blob}, size=${blob.size}`);
-        }
-
-        log.debug('文件夹下载数据处理完成', {
-          filename: headerData.filename,
-          size: `${(blob.size / 1024 / 1024).toFixed(2)}MB`,
-          fileCount: headerData.summary?.totalFiles || 'unknown'
-        });
-
-        const result = {
-          blob,
-          filename: headerData.filename,
-          summary: headerData.summary,
-          skippedFiles: headerData.skippedFiles || [],
-          errorFiles: headerData.errorFiles || []
-        };
-
-        operation.resolve(result);
-        this.fileOperations.delete(operationId);
       } catch (error) {
         log.error('处理二进制文件夹数据失败:', error);
         if (operation.reject) {
