@@ -24,6 +24,9 @@ class SFTPService {
 
     this.chunkReassembler = new Map(); // 分块重组器
 
+    // 进度日志节流状态
+    this._progressLogState = new Map(); // operationId -> { lastProgress, lastTs }
+
     // 监听SFTP二进制消息事件
     window.addEventListener('sftp-binary-message', (event) => {
       this.handleBinaryMessage(event.detail);
@@ -619,8 +622,8 @@ class SFTPService {
   async downloadFileBinary(sessionId, remotePath, progressCallback) {
     await this._ensureSftpSession(sessionId);
 
-    return new Promise((resolve, reject) => {
-      const operationId = this._nextOperationId();
+    const operationId = this._nextOperationId();
+    const promise = new Promise((resolve, reject) => {
 
       try {
         const { sshSessionId, session } = this._getSSHSession(sessionId);
@@ -685,7 +688,8 @@ class SFTPService {
             reject(error);
           },
           progress: progressCallback,
-          type: 'download_binary'
+          type: 'download_binary',
+          sshSessionId
         });
 
         // 创建下载请求元数据
@@ -713,6 +717,9 @@ class SFTPService {
         reject(error);
       }
     });
+    // 暴露operationId以便外部取消
+    promise.operationId = operationId;
+    return promise;
   }
 
   /**
@@ -797,8 +804,8 @@ class SFTPService {
   async downloadFolderBinary(sessionId, remotePath, progressCallback) {
     await this._ensureSftpSession(sessionId);
 
-    return new Promise((resolve, reject) => {
-      const operationId = this._nextOperationId();
+    const operationId = this._nextOperationId();
+    const promise = new Promise((resolve, reject) => {
 
       try {
         const { sshSessionId, session } = this._getSSHSession(sessionId);
@@ -820,7 +827,8 @@ class SFTPService {
             reject(error);
           },
           progress: progressCallback,
-          type: 'download_folder_binary'
+          type: 'download_folder_binary',
+          sshSessionId
         });
 
         // 创建下载请求元数据
@@ -848,6 +856,9 @@ class SFTPService {
         reject(error);
       }
     });
+    // 暴露operationId以便外部取消
+    promise.operationId = operationId;
+    return promise;
   }
 
   /**
@@ -860,6 +871,32 @@ class SFTPService {
   async downloadFolder(sessionId, remotePath, progressCallback) {
     const result = await this.downloadFolderBinary(sessionId, remotePath, progressCallback);
     return result; // 返回完整的result对象，包含blob属性
+  }
+
+  /**
+   * 取消进行中的二进制SFTP操作
+   * @param {string} operationId
+   */
+  cancelOperation(operationId) {
+    const op = this.fileOperations.get(operationId);
+    if (!op) return;
+    try {
+      // 尝试发送取消消息给后端
+      const { sshSessionId } = op;
+      const session = this.sshService.sessions.get(sshSessionId);
+      if (session && session.socket && session.socket.readyState === WS_CONSTANTS.OPEN) {
+        const header = { sessionId: sshSessionId, operationId };
+        const buf = SFTPService._encodeBinaryMessage(BINARY_MSG_TYPE.SFTP_CANCEL, header);
+        session.socket.send(buf);
+      }
+    } catch (e) {
+      // 忽略发送取消的错误
+    }
+    // 主动拒绝并清理
+    if (op.reject) {
+      op.reject(new Error('操作已取消'));
+    }
+    this.fileOperations.delete(operationId);
   }
 
 
@@ -1415,12 +1452,15 @@ class SFTPService {
     try {
       const { messageType, headerData, payloadData } = messageDetail;
 
-      log.debug('收到二进制SFTP消息', {
-        type: messageType.toString ? messageType.toString(16) : messageType,
-        sessionId: headerData.sessionId,
-        operationId: headerData.operationId,
-        payloadSize: payloadData ? payloadData.byteLength : 0
-      });
+      // 降低日志噪音：对进度消息不逐条打印debug，其他类型正常记录
+      if (messageType !== BINARY_MSG_TYPE.SFTP_PROGRESS) {
+        log.debug('收到二进制SFTP消息', {
+          type: messageType.toString ? messageType.toString(16) : messageType,
+          sessionId: headerData.sessionId,
+          operationId: headerData.operationId,
+          payloadSize: payloadData ? payloadData.byteLength : 0
+        });
+      }
 
       // 根据消息类型处理
       switch (messageType) {
@@ -1442,6 +1482,33 @@ class SFTPService {
 
         case BINARY_MSG_TYPE.SFTP_PROGRESS:
           this._handleBinaryProgress(headerData);
+          // 节流记录关键进度（每1秒或提升>=10% 或达到100%）
+          try {
+            const { operationId, progress, bytesTransferred, totalBytes } = headerData;
+            const now = Date.now();
+            const state = this._progressLogState.get(operationId) || { lastProgress: -1, lastTs: 0 };
+            const progressedEnough = state.lastProgress < 0 || (typeof progress === 'number' && progress >= 100) || (typeof progress === 'number' && state.lastProgress >= 0 && (progress - state.lastProgress) >= 10);
+            const timeEnough = (now - state.lastTs) >= 1000;
+            if (progressedEnough || timeEnough) {
+              // 友好格式化字节
+              const fmt = (n) => {
+                if (typeof n !== 'number' || isNaN(n)) return undefined;
+                if (n >= 1024*1024*1024) return (n/1024/1024/1024).toFixed(2) + 'GB';
+                if (n >= 1024*1024) return (n/1024/1024).toFixed(2) + 'MB';
+                if (n >= 1024) return (n/1024).toFixed(0) + 'KB';
+                return n + 'B';
+              };
+              const detail = {
+                progress,
+                transferred: fmt(bytesTransferred),
+                total: fmt(totalBytes)
+              };
+              log.info('SFTP下载进度', detail);
+              this._progressLogState.set(operationId, { lastProgress: typeof progress === 'number' ? progress : state.lastProgress, lastTs: now });
+            }
+          } catch (e) {
+            // 忽略进度日志错误
+          }
           break;
 
         case BINARY_MSG_TYPE.SFTP_FILE_DATA:
@@ -1497,7 +1564,8 @@ class SFTPService {
     const operation = this.fileOperations.get(operationId);
 
     if (operation && operation.progress && typeof operation.progress === 'function') {
-      operation.progress(progress);
+      // 兼容：第一个参数保留百分比；第二个参数传递完整元数据（包含bytesTransferred/totalBytes）
+      operation.progress(progress, headerData);
     }
   }
 
@@ -1571,8 +1639,8 @@ class SFTPService {
           blobData = new Uint8Array(payloadData);
         }
 
-        // 创建ZIP Blob
-        const blob = new Blob([blobData], { type: 'application/zip' });
+        // 根据服务器提供的MIME类型创建Blob（兼容zip/tar.gz等）
+        const blob = new Blob([blobData], { type: headerData.mimeType || 'application/octet-stream' });
 
         // 验证Blob对象
         if (!(blob instanceof Blob) || typeof blob.size !== 'number' || blob.size <= 0) {

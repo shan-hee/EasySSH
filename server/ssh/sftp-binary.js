@@ -30,6 +30,11 @@ let sftpSessions = null;
 // 分块重组器实例
 const chunkReassembler = new ChunkReassembler();
 
+// 活动传输映射：operationId -> { type: 'file'|'tar'|'zip', stream?, archive? }
+const activeTransfers = new Map();
+// 已取消操作集合，用于抑制后续成功回调
+const canceledOperations = new Set();
+
 /**
  * 设置SFTP会话引用
  * @param {Map} sessions SFTP会话Map
@@ -227,6 +232,7 @@ async function handleBinaryUpload(ws, headerData, payloadData, sshSessions) {
     
     // 对于非空文件，使用流处理
     const writeStream = sftp.createWriteStream(remotePath);
+    activeTransfers.set(operationId, { type: 'upload', stream: writeStream });
 
     let uploadNotified = false;
 
@@ -259,11 +265,12 @@ async function handleBinaryUpload(ws, headerData, payloadData, sshSessions) {
       if (uploadNotified) return;
       logger.error('二进制文件上传错误', { remotePath, error: err.message });
       sendBinarySftpError(ws, sessionId, operationId, `文件上传错误: ${err.message}`, 'UPLOAD_ERROR');
+      activeTransfers.delete(operationId);
     });
 
     // 某些环境只触发close，不触发finish，这里都监听并只发送一次成功
-    writeStream.on('finish', notifySuccess);
-    writeStream.on('close', notifySuccess);
+    writeStream.on('finish', () => { activeTransfers.delete(operationId); notifySuccess(); });
+    writeStream.on('close', () => { activeTransfers.delete(operationId); notifySuccess(); });
 
     // 写入完整文件数据
     writeStream.end(fileBuffer);
@@ -308,12 +315,14 @@ async function handleBinaryDownload(ws, headerData, sshSessions) {
       
       // 创建可读流
       const readStream = sftp.createReadStream(remotePath);
+      activeTransfers.set(operationId, { type: 'file', stream: readStream });
       const chunks = [];
       let downloaded = 0;
       
       readStream.on('error', (err) => {
         logger.error('二进制文件下载错误', { remotePath, error: err.message });
         sendBinarySftpError(ws, sessionId, operationId, `文件下载错误: ${err.message}`, 'DOWNLOAD_ERROR');
+        activeTransfers.delete(operationId);
       });
       
       readStream.on('data', (chunk) => {
@@ -334,6 +343,12 @@ async function handleBinaryDownload(ws, headerData, sshSessions) {
       
       readStream.on('end', () => {
         try {
+          if (canceledOperations.has(operationId)) {
+            // 已取消则不再发送成功
+            canceledOperations.delete(operationId);
+            return;
+          }
+          activeTransfers.delete(operationId);
           const downloadEndTime = Date.now();
           const downloadDuration = downloadEndTime - downloadStartTime;
 
@@ -383,32 +398,249 @@ async function handleBinaryDownload(ws, headerData, sshSessions) {
  * @param {Object} sshSessions SSH会话集合
  */
 async function handleBinaryDownloadFolder(ws, headerData, sshSessions) {
-  const { sessionId, operationId, remotePath } = headerData;
-  
-  if (!validateSftpSession(ws, sessionId, sftpSessions, operationId)) {
-    return;
-  }
-  
+  const { sessionId, operationId, remotePath, archiveMethod } = headerData;
+
+  // 不强制SFTP会话（主流方案走SSH远端tar），仅在回退ZIP时检查是否存在SFTP会话
+
+  // 优先使用远端tar.gz流式下载；失败再回退到现有ZIP方案
   await safeExec(async () => {
-    const sftpSession = sftpSessions.get(sessionId);
-    const sftp = sftpSession.sftp;
-    
-    // 验证路径是否为目录
-    sftp.stat(remotePath, (err, stats) => {
-      if (err) {
-        logger.error('获取文件夹信息失败', { remotePath, error: err.message });
-        sendBinarySftpError(ws, sessionId, operationId, `获取文件夹信息失败: ${err.message}`, 'FOLDER_STAT_ERROR');
-        return;
-      }
-      
-      if (!stats.isDirectory()) {
-        sendBinarySftpError(ws, sessionId, operationId, '指定路径不是文件夹', 'INVALID_FOLDER_TYPE');
-        return;
-      }
-      
-      // 开始二进制ZIP压缩
-      startBinaryFolderZipStream(ws, sessionId, operationId, sftp, remotePath);
+    // 校验SSH会话可用
+    if (!sshSessions || !sshSessions.has(sessionId)) {
+      throw new Error('SSH会话不存在');
+    }
+
+    const sshSession = sshSessions.get(sessionId);
+    if (!sshSession || !sshSession.conn) {
+      throw new Error('SSH连接未建立');
+    }
+
+    const conn = sshSession.conn;
+
+    // 远端路径安全转义（单引号安全）
+    const escapeSingleQuotes = (s) => String(s).replace(/'/g, `'"'"'`);
+    const remoteQuoted = `'${escapeSingleQuotes(remotePath)}'`;
+
+    // 预检查：确认tar存在，并估算大小/文件数（用于进度与摘要）
+    const preflightCmd = `sh -c "set -e; if ! command -v tar >/dev/null 2>&1; then echo __NO_TAR__; exit 127; fi; D=${remoteQuoted}; if [ ! -d \"$D\" ]; then echo __NOT_DIR__; exit 126; fi; BYTES=$(du -sb -- \"$D\" 2>/dev/null | awk '{print $1}'); if [ -z \"$BYTES\" ]; then BYTES=$(du -sk -- \"$D\" 2>/dev/null | awk '{print $1 * 1024}'); fi; FILES=$(find -- \"$D\" -type f 2>/dev/null | wc -l | tr -d ' '); echo $BYTES $FILES"`;
+
+    const execOnce = (command) => new Promise((resolve, reject) => {
+      conn.exec(command, (err, stream) => {
+        if (err) return reject(err);
+        let stdout = Buffer.alloc(0);
+        let stderr = Buffer.alloc(0);
+        stream.on('data', (d) => { stdout = Buffer.concat([stdout, Buffer.from(d)]); });
+        stream.stderr.on('data', (d) => { stderr = Buffer.concat([stderr, Buffer.from(d)]); });
+        stream.on('close', (code) => {
+          resolve({ code, stdout: stdout.toString('utf8').trim(), stderr: stderr.toString('utf8') });
+        });
+        stream.on('error', reject);
+      });
     });
+
+    const preflight = await execOnce(preflightCmd);
+
+    if (preflight.code !== 0 || preflight.stdout.includes('__NO_TAR__')) {
+      logger.warn('远端无tar或预检查失败，回退到SFTP ZIP方案', { code: preflight.code, out: preflight.stdout, err: preflight.stderr });
+      // 回退：使用现有ZIP方案
+      const sftpSession = sftpSessions.get(sessionId);
+      if (!sftpSession) throw new Error('SFTP会话不存在，无法回退ZIP');
+      startBinaryFolderZipStream(ws, sessionId, operationId, sftpSession.sftp, remotePath);
+      return;
+    }
+
+    if (preflight.stdout.includes('__NOT_DIR__')) {
+      sendBinarySftpError(ws, sessionId, operationId, '指定路径不是文件夹', 'INVALID_FOLDER_TYPE');
+      return;
+    }
+
+    let totalBytes = 0;
+    let fileCount = 0;
+    try {
+      const parts = preflight.stdout.split(/\s+/);
+      totalBytes = parseInt(parts[0] || '0', 10) || 0;
+      fileCount = parseInt(parts[1] || '0', 10) || 0;
+    } catch (_) {
+      totalBytes = 0;
+      fileCount = 0;
+    }
+
+    // 如果无法通过du获取大小，降级用SFTP递归估算
+    if (!totalBytes && sftpSessions && sftpSessions.has(sessionId)) {
+      try {
+        const sftp = sftpSessions.get(sessionId).sftp;
+        totalBytes = await estimateFolderSizeViaSftp(sftp, remotePath);
+        logger.debug('通过SFTP估算目录大小', { remotePath, totalBytes });
+      } catch (e) {
+        logger.warn('SFTP估算目录大小失败', { error: e.message });
+      }
+    }
+
+    // 进一步尝试：使用远端find+stat累加（GNU/BSD兼容探测）
+    if (!totalBytes) {
+      try {
+        const sumCmd = `sh -c "D=${remoteQuoted}; if [ ! -d \"$D\" ]; then echo 0; exit 0; fi; \
+          if stat --version >/dev/null 2>&1; then \
+            find \"$D\" -type f -exec stat -c %s {} + 2>/dev/null | awk '{s+=\$1} END {print s+0}'; \
+          else \
+            find \"$D\" -type f -exec stat -f %z {} + 2>/dev/null | awk '{s+=\$1} END {print s+0}'; \
+          fi"`;
+        const sumRes = await execOnce(sumCmd);
+        const parsed = parseInt((sumRes.stdout || '').trim() || '0', 10) || 0;
+        if (parsed > 0) {
+          totalBytes = parsed;
+          logger.debug('通过find/stat估算目录大小', { remotePath, totalBytes });
+        }
+      } catch (e) {
+        logger.warn('find/stat估算目录大小失败', { error: e.message });
+      }
+    }
+
+    // 文件夹大小限制（与现有ZIP方案保持一致，默认500MB，可通过MAX_FOLDER_SIZE配置）
+    const maxFolderSize = parseInt(process.env.MAX_FOLDER_SIZE) || 524288000; // 500MB
+    if (totalBytes > maxFolderSize) {
+      logger.warn('文件夹过大（远端tar预检查）', { remotePath, totalBytes, maxFolderSize });
+      sendBinarySftpError(ws, sessionId, operationId,
+        `文件夹太大 (${(totalBytes / (1024 * 1024)).toFixed(2)} MB)，超过限制 (${(maxFolderSize / (1024 * 1024)).toFixed(2)} MB)`,
+        'FOLDER_TOO_LARGE');
+      return;
+    }
+
+    // 根据用户指定或默认，选择tar方案（默认远端tar.gz）
+    const preferTar = archiveMethod ? (archiveMethod === 'remote_tar') : true;
+    if (!preferTar) {
+      const sftpSession = sftpSessions.get(sessionId);
+      if (!sftpSession) throw new Error('SFTP会话不存在，无法回退ZIP');
+      startBinaryFolderZipStream(ws, sessionId, operationId, sftpSession.sftp, remotePath);
+      return;
+    }
+
+    const folderName = path.basename(remotePath) || 'folder';
+    const tgzFilename = `${folderName}.tar.gz`;
+
+    // 构建tar命令（尽可能保留权限/ACL/xattrs），如失败再尝试简化参数
+    const tarCmds = [
+      `sh -c "cd ${remoteQuoted} && tar --numeric-owner -p --acls --xattrs -czf - ."`,
+      `sh -c "cd ${remoteQuoted} && tar -p -czf - ."`
+    ];
+
+    let tried = 0;
+    let succeeded = false;
+    let lastErr = null;
+
+    while (tried < tarCmds.length && !succeeded) {
+      const cmd = tarCmds[tried++];
+      try {
+        await new Promise((resolve, reject) => {
+          conn.exec(cmd, (err, stream) => {
+            if (err) return reject(err);
+
+            const chunks = [];
+            let bytesTransferred = 0;
+            activeTransfers.set(operationId, { type: 'tar', stream });
+
+            stream.on('data', (chunk) => {
+              const buf = Buffer.from(chunk);
+              chunks.push(buf);
+              bytesTransferred += buf.length;
+
+              // 发送进度（使用目录估算大小）
+              let progress = 0;
+              if (totalBytes > 0) {
+                progress = Math.min(99, Math.round((bytesTransferred / totalBytes) * 100));
+              }
+              sendBinaryMessage(ws, BINARY_MSG_TYPE.SFTP_PROGRESS, {
+                sessionId,
+                operationId,
+                progress,
+                bytesTransferred,
+                totalBytes,
+                timestamp: Date.now()
+              });
+            });
+
+            stream.stderr.on('data', (d) => {
+              // 有些tar会把进度或警告写入stderr，必要时可记录
+              const msg = d.toString('utf8');
+              if (msg && msg.trim()) {
+                logger.debug('tar stderr', { msg: msg.slice(0, 256) });
+              }
+            });
+
+            stream.on('close', (code) => {
+              const wasCancelled = canceledOperations.has(operationId);
+              canceledOperations.delete(operationId);
+              activeTransfers.delete(operationId);
+              if (wasCancelled) {
+                // 已取消则不返回成功
+                return resolve();
+              }
+              if (code !== 0) {
+                return reject(new Error(`tar 退出码: ${code}`));
+              }
+              try {
+                const tarBuffer = Buffer.concat(chunks);
+                const checksum = ChecksumValidator.calculateSHA256(tarBuffer);
+
+                // 发送最终进度（100%）
+                sendBinaryMessage(ws, BINARY_MSG_TYPE.SFTP_PROGRESS, {
+                  sessionId,
+                  operationId,
+                  progress: 100,
+                  bytesTransferred: tarBuffer.length,
+                  totalBytes,
+                  timestamp: Date.now()
+                });
+
+                // 发送文件夹数据
+                sendBinaryMessage(ws, BINARY_MSG_TYPE.SFTP_FOLDER_DATA, {
+                  sessionId,
+                  operationId,
+                  responseType: 'folder_download',
+                  filename: tgzFilename,
+                  remotePath,
+                  size: tarBuffer.length,
+                  mimeType: 'application/gzip',
+                  checksum,
+                  fileCount,
+                  skippedFiles: [],
+                  errorFiles: [],
+                  summary: {
+                    totalFiles: fileCount,
+                    includedFiles: fileCount,
+                    skippedCount: 0,
+                    errorCount: 0
+                  },
+                  timestamp: Date.now()
+                }, tarBuffer);
+
+                logger.info('远端tar.gz文件夹下载完成', {
+                  path: path.basename(remotePath),
+                  size: tarBuffer.length,
+                  files: fileCount
+                });
+                resolve();
+              } catch (e) {
+                reject(e);
+              }
+            });
+
+            stream.on('error', reject);
+          });
+        });
+        succeeded = true;
+      } catch (err) {
+        lastErr = err;
+        logger.warn('远端tar打包失败，尝试下一方案或回退', { error: err.message, attempt: tried });
+      }
+    }
+
+    if (!succeeded) {
+      // 回退：使用现有ZIP方案
+      const sftpSession = sftpSessions.get(sessionId);
+      if (!sftpSession) throw new Error(`远端tar失败且无SFTP会话可用: ${lastErr ? lastErr.message : 'unknown error'}`);
+      logger.warn('远端tar全部失败，回退到SFTP ZIP方案', { reason: lastErr ? lastErr.message : 'unknown' });
+      startBinaryFolderZipStream(ws, sessionId, operationId, sftpSession.sftp, remotePath);
+    }
   }, ws, '二进制文件夹下载错误', sessionId, operationId);
 }
 
@@ -450,6 +682,11 @@ function startBinaryFolderZipStream(ws, sessionId, operationId, sftp, remotePath
   // 监听ZIP完成事件
   archive.on('end', () => {
     try {
+      if (canceledOperations.has(operationId)) {
+        canceledOperations.delete(operationId);
+        activeTransfers.delete(operationId);
+        return;
+      }
       // 合并所有ZIP数据块
       const zipBuffer = Buffer.concat(zipChunks);
       const checksum = ChecksumValidator.calculateSHA256(zipBuffer);
@@ -499,6 +736,7 @@ function startBinaryFolderZipStream(ws, sessionId, operationId, sftp, remotePath
         size: sizeText,
         files: totalFiles
       });
+      activeTransfers.delete(operationId);
     } catch (err) {
       logger.error('处理ZIP数据错误', { remotePath, error: err.message });
       sendBinarySftpError(ws, sessionId, operationId, `处理ZIP数据错误: ${err.message}`, 'ZIP_PROCESSING_ERROR');
@@ -509,7 +747,11 @@ function startBinaryFolderZipStream(ws, sessionId, operationId, sftp, remotePath
   archive.on('error', (err) => {
     logger.error('ZIP压缩错误', { remotePath, error: err.message });
     sendBinarySftpError(ws, sessionId, operationId, `ZIP压缩错误: ${err.message}`, 'ZIP_COMPRESSION_ERROR');
+    activeTransfers.delete(operationId);
   });
+
+  // 注册活动传输
+  activeTransfers.set(operationId, { type: 'zip', archive });
 
   // 开始递归添加文件到ZIP
   addFolderToZipBinary(archive, sftp, remotePath, '', skippedFiles, errorFiles, (fileCount, size) => {
@@ -928,9 +1170,31 @@ async function handleBinarySftpClose(ws, headerData) {
  */
 async function handleBinarySftpCancel(ws, headerData) {
   const { sessionId, operationId } = headerData;
-  
-  // 对于取消操作，直接发送成功响应
-  sendBinarySftpSuccess(ws, sessionId, operationId, '操作已取消', 'OPERATION_CANCELLED');
+
+  try {
+    canceledOperations.add(operationId);
+    if (activeTransfers.has(operationId)) {
+      const entry = activeTransfers.get(operationId);
+      if (entry.type === 'file' && entry.stream) {
+        try { entry.stream.destroy(); } catch (e) {}
+      } else if (entry.type === 'tar' && entry.stream) {
+        try { if (typeof entry.stream.signal === 'function') entry.stream.signal('TERM'); } catch (e) {}
+        try { entry.stream.close(); } catch (e) {}
+        try { entry.stream.end(); } catch (e) {}
+        try { entry.stream.destroy(); } catch (e) {}
+      } else if (entry.type === 'zip' && entry.archive) {
+        try { if (typeof entry.archive.abort === 'function') entry.archive.abort(); } catch (e) {}
+        try { if (typeof entry.archive.destroy === 'function') entry.archive.destroy(); } catch (e) {}
+      } else if (entry.type === 'upload' && entry.stream) {
+        try { entry.stream.destroy(); } catch (e) {}
+      }
+      activeTransfers.delete(operationId);
+    }
+
+    sendBinarySftpSuccess(ws, sessionId, operationId, { message: '操作已取消' });
+  } catch (error) {
+    sendBinarySftpError(ws, sessionId, operationId, `取消失败: ${error.message}`, 'CANCEL_ERROR');
+  }
 }
 
 // 导出函数
@@ -953,3 +1217,41 @@ module.exports = {
   addFileToZipBinary,
   getMimeType
 };
+
+// 估算目录大小（通过SFTP递归）
+function estimateFolderSizeViaSftp(sftp, rootPath) {
+  return new Promise((resolve) => {
+    let total = 0;
+    let pending = 0;
+    let done = false;
+
+    function finish() {
+      if (!done && pending === 0) {
+        done = true;
+        resolve(total);
+      }
+    }
+
+    function walk(dir) {
+      pending++;
+      sftp.readdir(dir, (err, list) => {
+        if (err) {
+          pending--;
+          return finish();
+        }
+        list.forEach(item => {
+          const p = path.posix.join(dir, item.filename);
+          if (item.attrs && item.attrs.isDirectory()) {
+            walk(p);
+          } else if (item.attrs && item.attrs.isFile()) {
+            total += item.attrs.size || 0;
+          }
+        });
+        pending--;
+        finish();
+      });
+    }
+
+    walk(rootPath);
+  });
+}

@@ -1273,35 +1273,72 @@ export default defineComponent({
         // 创建下载进度通知
         let progressNotification = null;
 
-        // 创建进度条HTML
+        // 创建进度条HTML（系统风格取消按钮，置于进度条右侧居中）
         const createProgressHTML = (progress, speedText) => {
           return `
-            <div style="margin-bottom: 8px;">
-              下载进度: ${Math.floor(progress)}%${speedText ? ` (${speedText})` : ''}
-            </div>
-            <div style="width: 100%; height: 6px; background-color: #f0f0f0; border-radius: 3px; overflow: hidden;">
-              <div style="width: ${progress}%; height: 100%; background-color: var(--color-primary); transition: width 0.3s ease;"></div>
+            <div style="display:flex; align-items:center; gap:10px; width: 520px;">
+              <div style="flex:1; min-width:0;">
+                <div style="margin-bottom: 8px;">下载进度: ${Math.floor(progress)}%${speedText ? ` (${speedText})` : ''}</div>
+                <div style="width: 100%; height: 6px; background-color: #f0f0f0; border-radius: 3px; overflow: hidden;">
+                  <div style="width: ${progress}%; height: 100%; background-color: var(--color-primary); transition: width 0.2s linear;"></div>
+                </div>
+              </div>
+              <button class="sftp-edit-action-btn sftp-cancel-btn download-cancel-btn" title="取消">×</button>
             </div>
           `;
         };
 
-        // 定义进度回调函数
-        const progressCallback = (progress) => {
-          downloadProgress.value = progress;
+        // 定义进度回调函数（平滑渲染 + 取消）
+        let lastBytes = 0;
+        let lastTs = Date.now();
+        let lastPct = 0;
+        let lastRenderTs = 0;
+        let singleCompleted = false;
+        let singleOpId = null;
+        const progressCallback = (progress, meta) => {
+          // 优先使用服务端的bytes统计
+          if (meta && typeof meta.totalBytes === 'number' && meta.totalBytes > 0 && typeof meta.bytesTransferred === 'number') {
+            let pct = Math.min(100, Math.max(0, Math.floor((meta.bytesTransferred / meta.totalBytes) * 1000) / 10));
+            if (!singleCompleted && pct >= 100) pct = 99;
+            if (pct < lastPct) pct = lastPct;
+            downloadProgress.value = pct;
+          } else if (typeof progress === 'number') {
+            let pct = typeof progress === 'number' ? progress : 0;
+            if (!singleCompleted && pct >= 100) pct = 99;
+            if (pct < lastPct) pct = lastPct;
+            downloadProgress.value = pct;
+          }
 
           // 计算传输速度
-          const now = Date.now();
-          const timeDelta = (now - transferStartTime.value) / 1000;
           let speedText = '';
-          if (timeDelta > 0) {
-            transferSpeed.value = (file.size * progress / 100) / timeDelta;
-            speedText = formatTransferSpeed(transferSpeed.value);
+          const now = Date.now();
+          if (meta && typeof meta.bytesTransferred === 'number') {
+            const deltaBytes = meta.bytesTransferred - lastBytes;
+            const deltaTime = (now - lastTs) / 1000;
+            if (deltaBytes >= 0 && deltaTime > 0) {
+              transferSpeed.value = deltaBytes / deltaTime;
+              speedText = formatTransferSpeed(transferSpeed.value);
+              lastBytes = meta.bytesTransferred;
+              lastTs = now;
+            }
+          } else {
+            const timeDelta = (now - transferStartTime.value) / 1000;
+            if (timeDelta > 0) {
+              transferSpeed.value = (file.size * (downloadProgress.value || 0) / 100) / timeDelta;
+              speedText = formatTransferSpeed(transferSpeed.value);
+            }
           }
+
+          // 节流渲染：>=0.2% 或 250ms
+          const shouldRender = (downloadProgress.value - lastPct >= 0.2) || (now - lastRenderTs >= 250);
+          if (!shouldRender) return;
+          lastPct = downloadProgress.value;
+          lastRenderTs = now;
 
           // 更新或创建进度通知
           if (!progressNotification) {
             progressNotification = ElMessage({
-              message: createProgressHTML(progress, speedText),
+              message: createProgressHTML(downloadProgress.value, speedText),
               type: 'info',
               duration: 0, // 不自动关闭
               showClose: false,
@@ -1309,20 +1346,33 @@ export default defineComponent({
               customClass: 'download-progress-notification'
             });
           } else {
-            // 直接更新现有通知的内容
             const notificationEl = document.querySelector('.download-progress-notification .el-message__content');
             if (notificationEl) {
-              notificationEl.innerHTML = createProgressHTML(progress, speedText);
+              notificationEl.innerHTML = createProgressHTML(downloadProgress.value, speedText);
             }
+          }
+
+          // 绑定取消
+          const cancelBtn = document.querySelector('.download-progress-notification .download-cancel-btn');
+          if (cancelBtn && !cancelBtn._bound) {
+            cancelBtn._bound = true;
+            cancelBtn.addEventListener('click', () => {
+              if (singleOpId) sftpService.cancelOperation(singleOpId);
+              if (progressNotification) progressNotification.close();
+              ElMessage.info('已取消下载');
+            });
           }
         };
 
-        // 调用SFTP服务下载文件
-        const blob = await sftpService.downloadFile(
+        // 调用SFTP服务下载文件（获取operationId以支持取消）
+        const singlePromise = sftpService.downloadFileBinary(
           props.sessionId,
           remotePath,
           progressCallback
         );
+        singleOpId = singlePromise.operationId;
+        const { blob } = await singlePromise;
+        singleCompleted = true;
 
         // 关闭进度通知
         if (progressNotification) {
@@ -1368,6 +1418,9 @@ export default defineComponent({
           errorMessage = `文件 "${file.name}" 不存在或已被删除`;
         } else if (error.message.includes('太大')) {
           errorMessage = `文件 "${file.name}" 太大，无法下载`;
+        } else if (error.message.includes('已取消')) {
+          ElMessage.info('已取消下载');
+          return;
         } else {
           errorMessage = `下载文件失败: ${error.message}`;
         }
@@ -1428,36 +1481,74 @@ export default defineComponent({
           currentPath.value + folder.name :
           currentPath.value + '/' + folder.name;
 
-        // 创建进度条HTML
+        // 创建进度条HTML（系统风格取消按钮，置于进度条右侧居中）
         const createProgressHTML = (progress, speedText) => {
           return `
-            <div style="margin-bottom: 8px;">
-              压缩进度: ${Math.floor(progress)}%${speedText ? ` (${speedText})` : ''}
-            </div>
-            <div style="width: 100%; height: 6px; background-color: #f0f0f0; border-radius: 3px; overflow: hidden;">
-              <div style="width: ${progress}%; height: 100%; background-color: var(--color-primary); transition: width 0.3s ease;"></div>
+            <div style="display:flex; align-items:center; gap:10px; width: 520px;">
+              <div style="flex:1; min-width:0;">
+                <div style="margin-bottom: 8px;">压缩进度: ${Math.floor(progress)}%${speedText ? ` (${speedText})` : ''}</div>
+                <div style="width: 100%; height: 6px; background-color: #f0f0f0; border-radius: 3px; overflow: hidden;">
+                  <div style="width: ${progress}%; height: 100%; background-color: var(--color-primary); transition: width 0.2s linear;"></div>
+                </div>
+              </div>
+              <button class="sftp-edit-action-btn sftp-cancel-btn download-cancel-btn" title="取消">×</button>
             </div>
           `;
         };
 
         // 定义进度回调函数
-        const progressCallback = (progress) => {
-          downloadProgress.value = progress;
+        // 记录上次字节数用于计算实时速度
+        let lastBytes = 0;
+        let lastTs = Date.now();
+        let lastRenderedPct = 0;
+        let lastRenderTs = 0;
+        let isCompleted = false;
 
-          // 计算传输速度
-          const now = Date.now();
-          const timeDelta = (now - transferStartTime.value) / 1000;
-          let speedText = '';
-          if (timeDelta > 0) {
-            // 对于文件夹，我们无法准确计算传输速度，显示一个估算值
-            transferSpeed.value = (progress * 1024 * 1024) / timeDelta; // 假设1MB/s基准
-            speedText = formatTransferSpeed(transferSpeed.value);
+        const progressCallback = (progress, meta) => {
+          // 优先使用服务端的字节统计计算百分比
+          if (meta && typeof meta.totalBytes === 'number' && meta.totalBytes > 0 && typeof meta.bytesTransferred === 'number') {
+            let pct = Math.min(100, Math.max(0, Math.floor((meta.bytesTransferred / meta.totalBytes) * 1000) / 10));
+            if (!isCompleted && pct >= 100) pct = 99; // 完成前最多到99，避免100来回跳
+            if (pct < lastRenderedPct) pct = lastRenderedPct; // 保证单调不减
+            downloadProgress.value = pct;
+          } else if (typeof progress === 'number') {
+            let pct = progress;
+            if (!isCompleted && pct >= 100) pct = 99;
+            if (pct < lastRenderedPct) pct = lastRenderedPct;
+            downloadProgress.value = pct;
           }
+
+          // 计算传输速度（基于bytes delta）
+          let speedText = '';
+          const now = Date.now();
+          if (meta && typeof meta.bytesTransferred === 'number') {
+            const deltaBytes = meta.bytesTransferred - lastBytes;
+            const deltaTime = (now - lastTs) / 1000;
+            if (deltaBytes >= 0 && deltaTime > 0) {
+              transferSpeed.value = deltaBytes / deltaTime;
+              speedText = formatTransferSpeed(transferSpeed.value);
+              lastBytes = meta.bytesTransferred;
+              lastTs = now;
+            }
+          } else {
+            // 回退：按时间和进度估算
+            const timeDelta = (now - transferStartTime.value) / 1000;
+            if (timeDelta > 0 && typeof downloadProgress.value === 'number') {
+              transferSpeed.value = (downloadProgress.value * 1024 * 1024) / timeDelta; // 估算
+              speedText = formatTransferSpeed(transferSpeed.value);
+            }
+          }
+
+          // 节流渲染，避免闪烁：1%变化或150ms间隔才更新
+          const shouldRender = (downloadProgress.value - lastRenderedPct >= 0.2) || (now - lastRenderTs >= 250);
+          if (!shouldRender) return;
+          lastRenderedPct = downloadProgress.value;
+          lastRenderTs = now;
 
           // 更新或创建进度通知
           if (!progressNotification) {
             progressNotification = ElMessage({
-              message: createProgressHTML(progress, speedText),
+              message: createProgressHTML(downloadProgress.value, speedText),
               type: 'info',
               duration: 0, // 不自动关闭
               showClose: false,
@@ -1468,17 +1559,34 @@ export default defineComponent({
             // 直接更新现有通知的内容
             const notificationEl = document.querySelector('.download-progress-notification .el-message__content');
             if (notificationEl) {
-              notificationEl.innerHTML = createProgressHTML(progress, speedText);
+              notificationEl.innerHTML = createProgressHTML(downloadProgress.value, speedText);
             }
+          }
+
+          // 绑定取消按钮点击（每次更新后重新绑定）
+          const cancelBtn = document.querySelector('.download-progress-notification .download-cancel-btn');
+          if (cancelBtn && !cancelBtn._bound) {
+            cancelBtn._bound = true;
+            cancelBtn.addEventListener('click', () => {
+              if (currentOperationId) {
+                sftpService.cancelOperation(currentOperationId);
+              }
+              if (progressNotification) progressNotification.close();
+              ElMessage.info('已取消下载');
+            });
           }
         };
 
-        // 调用SFTP服务下载文件夹
-        const result = await sftpService.downloadFolder(
+        // 调用SFTP服务下载文件夹（获取operationId用于取消）
+        const folderPromise = sftpService.downloadFolder(
           props.sessionId,
           remotePath,
           progressCallback
         );
+        const currentOperationId = folderPromise.operationId;
+
+        const result = await folderPromise;
+        isCompleted = true;
 
         // 关闭进度通知
         if (progressNotification) {
@@ -1503,7 +1611,7 @@ export default defineComponent({
 
           try {
             // 备用方案: 重新创建Blob对象
-            const newBlob = new Blob([result.blob], { type: result.blob.type || 'application/zip' });
+            const newBlob = new Blob([result.blob], { type: result.blob.type || 'application/octet-stream' });
             url = URL.createObjectURL(newBlob);
           } catch (retryError) {
             log.error('下载链接创建失败', { error: retryError.message });
@@ -1512,7 +1620,7 @@ export default defineComponent({
         }
         const a = document.createElement('a');
         a.href = url;
-        a.download = `${folder.name}.zip`;
+        a.download = result.filename || `${folder.name}`;
         document.body.appendChild(a);
         a.click();
 
@@ -1557,6 +1665,9 @@ export default defineComponent({
           errorMessage = `文件夹 "${folder.name}" 不存在或已被删除`;
         } else if (error.message.includes('ZIP')) {
           errorMessage = `压缩文件夹时出错: ${error.message}`;
+        } else if (error.message.includes('已取消')) {
+          ElMessage.info('已取消下载');
+          return;
         } else {
           errorMessage = `下载文件夹失败: ${error.message}`;
         }
@@ -2598,4 +2709,14 @@ export default defineComponent({
 }
 
 /* 主题特定样式已迁移到主题文件中 */
+</style>
+<style>
+.download-progress-notification{
+  min-width: 480px;
+  max-width: 480px;
+}
+.upload-progress-notification{
+  min-width: 520px;
+  max-width: 520px;
+}
 </style>

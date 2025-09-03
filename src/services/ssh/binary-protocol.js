@@ -33,6 +33,8 @@ export const BINARY_MSG_TYPE = {
   SFTP_RENAME: 0x26,
   SFTP_CHMOD: 0x27,
   SFTP_DOWNLOAD_FOLDER: 0x28,
+  SFTP_CLOSE: 0x29,
+  SFTP_CANCEL: 0x2A,
   
   // 响应消息 (0x80-0xFF)
   SUCCESS: 0x80,            // 通用成功响应
