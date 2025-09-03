@@ -773,18 +773,23 @@ export default defineComponent({
       // 显示上传开始的消息通知
       let uploadCancelled = false; // 标记是否被用户取消
 
-      // 创建上传进度条HTML
+      // 创建上传进度条HTML（响应式弹性布局）
       const createUploadProgressHTML = (progress, currentFile, fileIndex, totalFiles, speedText) => {
         const progressText = totalFiles > 1 ?
-          `上传进度: ${Math.floor(progress)}%${speedText ? ` (${speedText})` : ''}(${fileIndex}/${totalFiles}): ${currentFile}` :
-          `上传进度: ${Math.floor(progress)}%${speedText ? ` (${speedText})` : ''}: ${currentFile}`;
+          `上传进度: ${Math.floor(progress)}%${speedText ? ` (${speedText})` : ''}(${fileIndex}/${totalFiles})` :
+          `上传进度: ${Math.floor(progress)}%${speedText ? ` (${speedText})` : ''}`;
+        
+        const fileName = currentFile.length > 30 ? currentFile.substring(0, 27) + '...' : currentFile;
 
         return `
-          <div style="margin-bottom: 8px;">
-            ${progressText}
-          </div>
-          <div style="width: 100%; height: 6px; background-color: #f0f0f0; border-radius: 3px; overflow: hidden;">
-            <div style="width: ${progress}%; height: 100%; background-color: #67c23a; transition: width 0.3s ease;"></div>
+          <div class="sftp-progress-container sftp-upload-progress">
+            <div class="sftp-progress-content">
+              <div class="sftp-progress-text">${progressText}</div>
+              <div class="sftp-progress-file">${fileName}</div>
+              <div class="sftp-progress-bar">
+                <div class="sftp-progress-fill" style="width: ${progress}%;"></div>
+              </div>
+            </div>
           </div>
         `;
       };
@@ -1273,19 +1278,36 @@ export default defineComponent({
         // 创建下载进度通知
         let progressNotification = null;
 
-        // 创建进度条HTML（系统风格取消按钮，置于进度条右侧居中）
+        // 创建进度条HTML（响应式弹性布局）
         const createProgressHTML = (progress, speedText) => {
           return `
-            <div style="display:flex; align-items:center; gap:10px; width: 520px;">
-              <div style="flex:1; min-width:0;">
-                <div style="margin-bottom: 8px;">下载进度: ${Math.floor(progress)}%${speedText ? ` (${speedText})` : ''}</div>
-                <div style="width: 100%; height: 6px; background-color: #f0f0f0; border-radius: 3px; overflow: hidden;">
-                  <div style="width: ${progress}%; height: 100%; background-color: var(--color-primary); transition: width 0.2s linear;"></div>
+            <div class="sftp-progress-container">
+              <div class="sftp-progress-content">
+                <div class="sftp-progress-text">下载进度: ${Math.floor(progress)}%${speedText ? ` (${speedText})` : ''}</div>
+                <div class="sftp-progress-bar">
+                  <div class="sftp-progress-fill" style="width: ${progress}%;"></div>
                 </div>
               </div>
-              <button class="sftp-edit-action-btn sftp-cancel-btn download-cancel-btn" title="取消">×</button>
+              <button class="sftp-progress-cancel-btn download-cancel-btn" title="取消">
+                <svg viewBox="0 0 16 16" width="16" height="16">
+                  <path d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708z" fill="currentColor"/>
+                </svg>
+              </button>
             </div>
           `;
+        };
+
+        // 更新进度条内容（避免重新创建取消按钮）
+        const updateProgressContent = (notificationEl, progress, speedText) => {
+          const textEl = notificationEl.querySelector('.sftp-progress-text');
+          const fillEl = notificationEl.querySelector('.sftp-progress-fill');
+          
+          if (textEl) {
+            textEl.textContent = `下载进度: ${Math.floor(progress)}%${speedText ? ` (${speedText})` : ''}`;
+          }
+          if (fillEl) {
+            fillEl.style.width = `${progress}%`;
+          }
         };
 
         // 定义进度回调函数（平滑渲染 + 取消）
@@ -1348,7 +1370,8 @@ export default defineComponent({
           } else {
             const notificationEl = document.querySelector('.download-progress-notification .el-message__content');
             if (notificationEl) {
-              notificationEl.innerHTML = createProgressHTML(downloadProgress.value, speedText);
+              // 使用新的更新方法，避免重新创建按钮
+              updateProgressContent(notificationEl, downloadProgress.value, speedText);
             }
           }
 
@@ -1481,19 +1504,36 @@ export default defineComponent({
           currentPath.value + folder.name :
           currentPath.value + '/' + folder.name;
 
-        // 创建进度条HTML（系统风格取消按钮，置于进度条右侧居中）
+        // 创建进度条HTML（响应式弹性布局）
         const createProgressHTML = (progress, speedText) => {
           return `
-            <div style="display:flex; align-items:center; gap:10px; width: 520px;">
-              <div style="flex:1; min-width:0;">
-                <div style="margin-bottom: 8px;">压缩进度: ${Math.floor(progress)}%${speedText ? ` (${speedText})` : ''}</div>
-                <div style="width: 100%; height: 6px; background-color: #f0f0f0; border-radius: 3px; overflow: hidden;">
-                  <div style="width: ${progress}%; height: 100%; background-color: var(--color-primary); transition: width 0.2s linear;"></div>
+            <div class="sftp-progress-container">
+              <div class="sftp-progress-content">
+                <div class="sftp-progress-text">压缩进度: ${Math.floor(progress)}%${speedText ? ` (${speedText})` : ''}</div>
+                <div class="sftp-progress-bar">
+                  <div class="sftp-progress-fill" style="width: ${progress}%;"></div>
                 </div>
               </div>
-              <button class="sftp-edit-action-btn sftp-cancel-btn download-cancel-btn" title="取消">×</button>
+              <button class="sftp-progress-cancel-btn download-cancel-btn" title="取消">
+                <svg viewBox="0 0 16 16" width="16" height="16">
+                  <path d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708z" fill="currentColor"/>
+                </svg>
+              </button>
             </div>
           `;
+        };
+
+        // 更新进度条内容（避免重新创建取消按钮）
+        const updateProgressContent = (notificationEl, progress, speedText) => {
+          const textEl = notificationEl.querySelector('.sftp-progress-text');
+          const fillEl = notificationEl.querySelector('.sftp-progress-fill');
+          
+          if (textEl) {
+            textEl.textContent = `压缩进度: ${Math.floor(progress)}%${speedText ? ` (${speedText})` : ''}`;
+          }
+          if (fillEl) {
+            fillEl.style.width = `${progress}%`;
+          }
         };
 
         // 定义进度回调函数
@@ -1556,10 +1596,10 @@ export default defineComponent({
               customClass: 'download-progress-notification'
             });
           } else {
-            // 直接更新现有通知的内容
+            // 使用新的更新方法，避免重新创建按钮
             const notificationEl = document.querySelector('.download-progress-notification .el-message__content');
             if (notificationEl) {
-              notificationEl.innerHTML = createProgressHTML(downloadProgress.value, speedText);
+              updateProgressContent(notificationEl, downloadProgress.value, speedText);
             }
           }
 
@@ -1942,16 +1982,20 @@ export default defineComponent({
       transferSpeed.value = 0;
       transferStartTime.value = Date.now();
 
-      // 创建文件夹上传进度条HTML
+      // 创建文件夹上传进度条HTML（响应式弹性布局）
       const createFolderUploadProgressHTML = (progress, currentFile, processedFiles, totalFiles, speedText) => {
-        const progressText = `上传进度: ${Math.floor(progress)}%${speedText ? ` (${speedText})` : ''}(${processedFiles}/${totalFiles}): ${currentFile}`;
+        const progressText = `上传进度: ${Math.floor(progress)}%${speedText ? ` (${speedText})` : ''}(${processedFiles}/${totalFiles})`;
+        const fileName = currentFile.length > 30 ? currentFile.substring(0, 27) + '...' : currentFile;
 
         return `
-          <div style="margin-bottom: 8px;">
-            ${progressText}
-          </div>
-          <div style="width: 100%; height: 6px; background-color: #f0f0f0; border-radius: 3px; overflow: hidden;">
-            <div style="width: ${progress}%; height: 100%; background-color: #67c23a; transition: width 0.3s ease;"></div>
+          <div class="sftp-progress-container sftp-upload-progress">
+            <div class="sftp-progress-content">
+              <div class="sftp-progress-text">${progressText}</div>
+              <div class="sftp-progress-file">${fileName}</div>
+              <div class="sftp-progress-bar">
+                <div class="sftp-progress-fill" style="width: ${progress}%;"></div>
+              </div>
+            </div>
           </div>
         `;
       };
@@ -2711,12 +2755,127 @@ export default defineComponent({
 /* 主题特定样式已迁移到主题文件中 */
 </style>
 <style>
-.download-progress-notification{
-  min-width: 480px;
-  max-width: 480px;
+/* SFTP进度条样式 */
+.sftp-progress-container {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 320px;
+  max-width: 600px;
+  width: max-content;
 }
-.upload-progress-notification{
-  min-width: 520px;
-  max-width: 520px;
+
+.sftp-progress-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.sftp-progress-text {
+  margin-bottom: 6px;
+  font-size: 13px;
+  color: var(--color-text-primary, #333);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sftp-progress-file {
+  margin-bottom: 6px;
+  font-size: 12px;
+  color: var(--color-text-secondary, #666);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sftp-progress-bar {
+  width: 100%;
+  height: 6px;
+  background-color: #f0f0f0;
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.sftp-progress-fill {
+  height: 100%;
+  background-color: var(--color-primary, #409eff);
+  transition: width 0.2s linear;
+  border-radius: 3px;
+}
+
+.sftp-upload-progress .sftp-progress-fill {
+  background-color: #67c23a;
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+  .sftp-progress-container {
+    max-width: 90vw;
+    min-width: 280px;
+  }
+  
+  .sftp-progress-text {
+    font-size: 12px;
+  }
+  
+  .sftp-progress-file {
+    font-size: 11px;
+  }
+}
+
+@media (max-width: 480px) {
+  .sftp-progress-container {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+}
+
+/* 进度条取消按钮样式 */
+.sftp-progress-cancel-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: #999;
+  cursor: pointer;
+  border-radius: 50%;
+  transition: border-color 0.15s ease;
+  padding: 0;
+  flex-shrink: 0;
+  position: relative;
+  isolation: isolate;
+  will-change: border-color;
+}
+
+.sftp-progress-cancel-btn:hover {
+  border-color: #999;
+}
+
+.sftp-progress-cancel-btn:active {
+  border-color: #666;
+}
+
+.sftp-progress-cancel-btn svg {
+  pointer-events: none;
+  position: relative;
+  z-index: 1;
+}
+
+/* 通知框样式优化 */
+.download-progress-notification,
+.upload-progress-notification {
+  width: auto !important;
+  min-width: auto !important;
+  max-width: none !important;
+}
+
+.download-progress-notification .el-message__content,
+.upload-progress-notification .el-message__content {
+  line-height: 1.4;
+  padding: 0;
 }
 </style>

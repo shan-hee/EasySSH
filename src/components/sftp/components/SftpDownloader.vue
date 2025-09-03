@@ -175,25 +175,28 @@ export default defineComponent({
   text-overflow: ellipsis;
   flex: 1;
   color: #ddd;
+  max-width: calc(100% - 50px); /* 为进度百分数留出空间 */
 }
 
 .sftp-download-item-progress {
   color: #0a84ff;
   margin-left: 10px;
+  white-space: nowrap;
 }
 
 .sftp-download-progress-bar {
-  height: 4px;
+  height: 6px; /* 与主面板进度条保持一致 */
   background-color: #333;
-  border-radius: 2px;
+  border-radius: 3px; /* 与主面板进度条保持一致 */
   overflow: hidden;
   margin-bottom: 8px;
 }
 
 .sftp-download-progress-fill {
   height: 100%;
-  background-color: #0a84ff;
-  transition: width 0.3s ease;
+  background-color: var(--color-primary, #409eff); /* 与主面板下载进度条颜色保持一致 */
+  transition: width 0.2s linear; /* 与主面板进度条保持一致 */
+  border-radius: 3px;
 }
 
 .sftp-download-item-status {

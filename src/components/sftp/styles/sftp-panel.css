@@ -259,23 +259,8 @@
   margin-bottom: 16px;
 }
 
-/* 下载进度通知样式 */
-.download-progress-notification {
-  min-width: 300px;
-}
-
-.download-progress-notification .el-message__content {
-  line-height: 1.4;
-}
-
-/* 上传进度通知样式 */
-.upload-progress-notification {
-  min-width: 350px;
-}
-
-.upload-progress-notification .el-message__content {
-  line-height: 1.4;
-}
+/* 进度通知样式（已移至SftpPanel.vue中的style标签） */
+/* 保留注释以便理解样式迁移 */
 
 /* 拖拽上传样式 */
 .sftp-drag-over {
