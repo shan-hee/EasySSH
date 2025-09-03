@@ -543,17 +543,20 @@ async function handleBinaryDownloadFolder(ws, headerData, sshSessions) {
               chunks.push(buf);
               bytesTransferred += buf.length;
 
-              // 发送进度（使用目录估算大小）
+              // 发送进度（使用实际传输字节数，估算压缩比约30%）
               let progress = 0;
               if (totalBytes > 0) {
-                progress = Math.min(99, Math.round((bytesTransferred / totalBytes) * 100));
+                // 假设tar.gz压缩比约为30%，动态调整预期大小
+                const estimatedCompressedSize = Math.max(totalBytes * 0.3, bytesTransferred);
+                progress = Math.min(99, Math.round((bytesTransferred / estimatedCompressedSize) * 100));
               }
               sendBinaryMessage(ws, BINARY_MSG_TYPE.SFTP_PROGRESS, {
                 sessionId,
                 operationId,
                 progress,
                 bytesTransferred,
-                totalBytes,
+                totalBytes: totalBytes, // 保持原始大小用于显示
+                estimatedSize: Math.max(totalBytes * 0.3, bytesTransferred), // 新增：预估压缩后大小
                 timestamp: Date.now()
               });
             });
@@ -588,6 +591,7 @@ async function handleBinaryDownloadFolder(ws, headerData, sshSessions) {
                   progress: 100,
                   bytesTransferred: tarBuffer.length,
                   totalBytes,
+                  estimatedSize: tarBuffer.length, // 最终确定的压缩后大小
                   timestamp: Date.now()
                 });
 
@@ -677,6 +681,24 @@ function startBinaryFolderZipStream(ws, sessionId, operationId, sftp, remotePath
   // 监听ZIP数据事件
   archive.on('data', (chunk) => {
     zipChunks.push(chunk);
+    
+    // 实时发送ZIP压缩进度（基于已生成的ZIP数据大小）
+    const currentZipSize = zipChunks.reduce((total, buf) => total + buf.length, 0);
+    if (totalSize > 0) {
+      // 估算ZIP压缩比约为40%，动态调整预期大小
+      const estimatedZipSize = Math.max(totalSize * 0.4, currentZipSize);
+      const progress = Math.min(99, Math.round((currentZipSize / estimatedZipSize) * 100));
+      
+      sendBinaryMessage(ws, BINARY_MSG_TYPE.SFTP_PROGRESS, {
+        sessionId,
+        operationId,
+        progress,
+        bytesTransferred: currentZipSize,
+        totalBytes: totalSize,
+        estimatedSize: estimatedZipSize,
+        timestamp: Date.now()
+      });
+    }
   });
 
   // 监听ZIP完成事件
@@ -700,8 +722,9 @@ function startBinaryFolderZipStream(ws, sessionId, operationId, sftp, remotePath
         sessionId,
         operationId,
         progress: 100,
-        bytesTransferred: totalSize,
+        bytesTransferred: zipBuffer.length, // 使用实际ZIP大小
         totalBytes: totalSize,
+        estimatedSize: zipBuffer.length, // 最终确定的压缩后大小
         timestamp: Date.now()
       });
 

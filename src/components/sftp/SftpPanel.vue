@@ -1318,9 +1318,15 @@ export default defineComponent({
         let singleCompleted = false;
         let singleOpId = null;
         const progressCallback = (progress, meta) => {
-          // 优先使用服务端的bytes统计
-          if (meta && typeof meta.totalBytes === 'number' && meta.totalBytes > 0 && typeof meta.bytesTransferred === 'number') {
-            let pct = Math.min(100, Math.max(0, Math.floor((meta.bytesTransferred / meta.totalBytes) * 1000) / 10));
+          // 优先使用服务端的bytes统计（压缩后的准确进度）
+          if (meta && typeof meta.bytesTransferred === 'number') {
+            let pct = 0;
+            // 对于压缩下载，优先使用estimatedSize计算更准确的进度
+            if (typeof meta.estimatedSize === 'number' && meta.estimatedSize > 0) {
+              pct = Math.min(100, Math.max(0, Math.floor((meta.bytesTransferred / meta.estimatedSize) * 1000) / 10));
+            } else if (typeof meta.totalBytes === 'number' && meta.totalBytes > 0) {
+              pct = Math.min(100, Math.max(0, Math.floor((meta.bytesTransferred / meta.totalBytes) * 1000) / 10));
+            }
             if (!singleCompleted && pct >= 100) pct = 99;
             if (pct < lastPct) pct = lastPct;
             downloadProgress.value = pct;
@@ -1545,9 +1551,15 @@ export default defineComponent({
         let isCompleted = false;
 
         const progressCallback = (progress, meta) => {
-          // 优先使用服务端的字节统计计算百分比
-          if (meta && typeof meta.totalBytes === 'number' && meta.totalBytes > 0 && typeof meta.bytesTransferred === 'number') {
-            let pct = Math.min(100, Math.max(0, Math.floor((meta.bytesTransferred / meta.totalBytes) * 1000) / 10));
+          // 优先使用服务端的字节统计计算百分比（压缩后的准确进度）
+          if (meta && typeof meta.bytesTransferred === 'number') {
+            let pct = 0;
+            // 对于压缩下载，优先使用estimatedSize计算更准确的进度
+            if (typeof meta.estimatedSize === 'number' && meta.estimatedSize > 0) {
+              pct = Math.min(100, Math.max(0, Math.floor((meta.bytesTransferred / meta.estimatedSize) * 1000) / 10));
+            } else if (typeof meta.totalBytes === 'number' && meta.totalBytes > 0) {
+              pct = Math.min(100, Math.max(0, Math.floor((meta.bytesTransferred / meta.totalBytes) * 1000) / 10));
+            }
             if (!isCompleted && pct >= 100) pct = 99; // 完成前最多到99，避免100来回跳
             if (pct < lastRenderedPct) pct = lastRenderedPct; // 保证单调不减
             downloadProgress.value = pct;
