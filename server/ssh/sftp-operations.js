@@ -185,45 +185,64 @@ function handleSftpDelete(ws, data) {
 
     const sftp = sftpSession.sftp;
     
-    // 先检查是文件还是目录
-    sftp.stat(remotePath, (err, stats) => {
+    // 递归删除函数
+    function recursiveDelete(path, callback) {
+      sftp.stat(path, (err, stats) => {
+        if (err) {
+          return callback(err);
+        }
+
+        if (stats.isDirectory()) {
+          sftp.readdir(path, (err, list) => {
+            if (err) {
+              return callback(err);
+            }
+
+            if (list.length === 0) {
+              // 空目录，直接删除
+              sftp.rmdir(path, callback);
+            } else {
+              // 先删除所有子项
+              let completed = 0;
+              let hasError = false;
+
+              list.forEach(item => {
+                const itemPath = `${path}/${item.filename}`;
+                recursiveDelete(itemPath, (err) => {
+                  if (err && !hasError) {
+                    hasError = true;
+                    return callback(err);
+                  }
+                  
+                  completed++;
+                  if (completed === list.length && !hasError) {
+                    // 所有子项删除完成，删除目录
+                    sftp.rmdir(path, callback);
+                  }
+                });
+              });
+            }
+          });
+        } else {
+          // 删除文件
+          sftp.unlink(path, callback);
+        }
+      });
+    }
+
+    // 使用递归删除
+    recursiveDelete(remotePath, (err) => {
       if (err) {
-        logger.error('SFTP获取文件信息失败', { sessionId, path: remotePath, error: err.message });
-        sendBinarySftpError(ws, sessionId, operationId, `获取文件信息失败: ${err.message}`, 'SFTP_STAT_ERROR');
+        logger.error('SFTP删除失败', { sessionId, path: remotePath, error: err.message });
+        sendBinarySftpError(ws, sessionId, operationId, `删除失败: ${err.message}`, 'SFTP_DELETE_ERROR');
         return;
       }
 
-      if (stats.isDirectory()) {
-        // 删除目录
-        sftp.rmdir(remotePath, (err) => {
-          if (err) {
-            logger.error('SFTP删除目录失败', { sessionId, path: remotePath, error: err.message });
-            sendBinarySftpError(ws, sessionId, operationId, `删除目录失败: ${err.message}`, 'SFTP_DELETE_ERROR');
-            return;
-          }
-
-          logger.info('SFTP目录已删除', { path: remotePath });
-          sendBinarySftpSuccess(ws, sessionId, operationId, { 
-            message: '目录删除成功',
-            path: remotePath
-          });
-        });
-      } else {
-        // 删除文件
-        sftp.unlink(remotePath, (err) => {
-          if (err) {
-            logger.error('SFTP删除文件失败', { sessionId, path: remotePath, error: err.message });
-            sendBinarySftpError(ws, sessionId, operationId, `删除文件失败: ${err.message}`, 'SFTP_DELETE_ERROR');
-            return;
-          }
-
-          logger.info('SFTP文件已删除', { path: remotePath });
-          sendBinarySftpSuccess(ws, sessionId, operationId, { 
-            message: '文件删除成功',
-            path: remotePath
-          });
-        });
-      }
+      logger.info('SFTP删除成功', { path: remotePath });
+      sendBinarySftpSuccess(ws, sessionId, operationId, { 
+        message: '删除成功',
+        path: remotePath
+      });
     });
   } catch (error) {
     logger.error('SFTP删除错误', { sessionId, error: error.message });
