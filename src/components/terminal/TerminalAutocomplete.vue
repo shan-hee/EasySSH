@@ -1,7 +1,7 @@
 <template>
   <teleport :to="teleportTo || 'body'">
     <div
-      v-if="visible && suggestions.length > 0"
+      v-if="visible && suggestions.length > 0 && position && position.x > 4 && position.y > 4"
       class="terminal-autocomplete"
       :style="positionStyle"
       @mousedown.prevent

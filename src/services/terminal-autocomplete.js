@@ -103,6 +103,70 @@ class TerminalAutocompleteService {
     this._marker = null
     this._anchorElement = null
     this._decorationSupported = undefined
+    // 调试状态已移除（如需可再加回）
+    // 位置有效性与rAF合并
+    this._lastValidPosition = null
+    this._pendingRaf = null
+    this._lastEmitted = { count: -1, index: -2, pos: null }
+  }
+
+  // 位置有效性判断
+  _isValidPos(pos) {
+    return !!(pos && typeof pos.x === 'number' && typeof pos.y === 'number' && pos.x > 4 && pos.y > 4)
+  }
+
+  _posEquals(a, b) {
+    if (!a || !b) return false
+    return a.x === b.x && a.y === b.y
+  }
+
+  // 统一的建议更新发射器，带位置保护与rAF重试
+  _emitSuggestionsUpdate(suggestions, position, selectedIndex = -1, terminal = null) {
+    try {
+      if (!this.callbacks.onSuggestionsUpdate) return
+
+      // 首选当前位置，其次使用上次有效位置
+      let finalPos = this._isValidPos(position) ? position : (this._isValidPos(this._lastValidPosition) ? this._lastValidPosition : null)
+
+      if (!finalPos) {
+        // 无有效位置：尝试在下一帧通过锚点计算一次
+        if (this._pendingRaf) return
+        this._pendingRaf = requestAnimationFrame(() => {
+          this._pendingRaf = null
+          try {
+            let retryPos = null
+            if (terminal) {
+              this._ensureDecoration(terminal)
+              retryPos = this._getAnchorPosition(terminal) || this.calculatePosition(terminal)
+            }
+            if (this._isValidPos(retryPos)) {
+              this._lastValidPosition = retryPos
+              this.callbacks.onSuggestionsUpdate(suggestions, retryPos, selectedIndex)
+              this._lastEmitted = { count: suggestions?.length || 0, index: selectedIndex, pos: { ...retryPos } }
+            } else {
+              // 无有效位置，跳过此次发射
+            }
+          } catch (_) {}
+        })
+        return
+      }
+
+      // 有有效位置，如与上次完全一致且状态未变则跳过
+      const count = suggestions?.length || 0
+      if (this._posEquals(finalPos, this._lastEmitted.pos) && count === this._lastEmitted.count && selectedIndex === this._lastEmitted.index) {
+        return
+      }
+
+      // 更新缓存并发射
+      this._lastValidPosition = finalPos
+      this.callbacks.onSuggestionsUpdate(suggestions, finalPos, selectedIndex)
+      this._lastEmitted = { count, index: selectedIndex, pos: { ...finalPos } }
+    } catch (error) {
+      // 降级：直接调用原回调，避免丢失
+      try {
+        this.callbacks.onSuggestionsUpdate(suggestions, position || { x: 0, y: 0 }, selectedIndex)
+      } catch (_) {}
+    }
   }
 
   /**
@@ -403,9 +467,9 @@ class TerminalAutocompleteService {
           position = this._getAnchorPosition(terminal) || this.calculatePosition(terminal)
           this.lastPosition = position
         }
-        this.callbacks.onSuggestionsUpdate(this.suggestions, position, this.selectedIndex)
+        this._emitSuggestionsUpdate(this.suggestions, position, this.selectedIndex, terminal)
       } else {
-        log.warn('onSuggestionsUpdate回调未设置')
+        // 无回调，跳过
       }
     } catch (error) {
       log.error('更新建议显示失败:', error)
@@ -527,10 +591,8 @@ class TerminalAutocompleteService {
       const position = this._getAnchorPosition(terminal) || this.calculatePosition(terminal)
       this.lastPosition = position
 
-      // 通知回调
-      if (this.callbacks.onSuggestionsUpdate) {
-        this.callbacks.onSuggestionsUpdate(suggestions, position, this.selectedIndex)
-      }
+      // 通知回调（带位置保护）
+      this._emitSuggestionsUpdate(suggestions, position, this.selectedIndex, terminal)
 
     } catch (error) {
       log.error('更新自动完成建议失败:', error)
@@ -1042,6 +1104,12 @@ class TerminalAutocompleteService {
     // 释放装饰器锚点
     this._disposeDecoration()
 
+    this._lastValidPosition = null
+    this._lastEmitted = { count: -1, index: -2, pos: null }
+    if (this._pendingRaf) {
+      try { cancelAnimationFrame(this._pendingRaf) } catch (_) {}
+      this._pendingRaf = null
+    }
     if (this.callbacks.onSuggestionsUpdate) {
       this.callbacks.onSuggestionsUpdate([], { x: 0, y: 0 }, -1)
     }
@@ -1229,6 +1297,12 @@ class TerminalAutocompleteService {
 
     // 释放装饰器
     this._disposeDecoration()
+
+    // 清理 rAF
+    if (this._pendingRaf) {
+      try { cancelAnimationFrame(this._pendingRaf) } catch (_) {}
+      this._pendingRaf = null
+    }
   }
 
 
@@ -1329,9 +1403,8 @@ class TerminalAutocompleteService {
                     const verticalOffset = 0
                     const pos = { x: Math.round(rect.left), y: Math.round(rect.top + charHeight + verticalOffset), cellHeight: charHeight }
                     this.lastPosition = pos
-                    if (this.callbacks.onSuggestionsUpdate) {
-                      this.callbacks.onSuggestionsUpdate(this.suggestions, pos, this.selectedIndex)
-                    }
+                    // 使用统一发射器，避免无效位置闪烁
+                    this._emitSuggestionsUpdate(this.suggestions, pos, this.selectedIndex, terminal)
                   }
                 })
               } catch (_) {}

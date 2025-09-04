@@ -321,7 +321,11 @@ export default {
         const terminal = terminalStore.getTerminal(id)
         if (!terminal) return
         const position = terminalAutocompleteService.calculatePosition(terminal)
-        autocomplete.value.position = position
+        // 位置保护：仅在有效时覆盖，避免用无效位置顶掉有效位置
+        const isValid = position && position.x > 4 && position.y > 4
+        if (isValid || !autocomplete.value.position || !(autocomplete.value.position.x > 4 && autocomplete.value.position.y > 4)) {
+          autocomplete.value.position = position
+        }
       } catch (error) {
         // 忽略位置计算错误，避免打断输入
       }
