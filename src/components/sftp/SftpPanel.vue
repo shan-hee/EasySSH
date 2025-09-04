@@ -94,6 +94,22 @@
                 <p>正在加载文件列表...</p>
               </div>
 
+              <!-- SFTP初始化错误（内联显示） -->
+              <div v-else-if="hasInitError" class="sftp-init-error">
+                <div class="sftp-error-icon">
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="48" height="48" fill="currentColor">
+                    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/>
+                  </svg>
+                </div>
+                <div class="sftp-error-content">
+                  <h3>SFTP连接失败</h3>
+                  <p class="sftp-error-message">{{ initErrorMessage }}</p>
+                  <div class="sftp-error-actions">
+                    <button class="sftp-retry-button" @click="initSftp">重新连接</button>
+                  </div>
+                </div>
+              </div>
+
               <!-- 非加载状态的内容容器 -->
               <div v-else class="sftp-content-container">
                 <!-- 内联编辑器（新建文件夹或文件时显示） -->
@@ -223,6 +239,8 @@ export default defineComponent({
     // 添加错误状态
     const hasError = ref(false)
     const errorMessage = ref('')
+    const hasInitError = ref(false)
+    const initErrorMessage = ref('')
     // 拖拽上传状态
     const isDragOver = ref(false)
     // 权限编辑状态
@@ -311,6 +329,8 @@ export default defineComponent({
     const resetError = () => {
       hasError.value = false;
       errorMessage.value = '';
+      hasInitError.value = false;
+      initErrorMessage.value = '';
     };
     
     // 显示错误消息
@@ -318,6 +338,13 @@ export default defineComponent({
       hasError.value = true;
       errorMessage.value = message;
       ElMessage.error(message);
+    };
+    
+    // 显示SFTP初始化错误（内联显示）
+    const showInitError = (message) => {
+      hasInitError.value = true;
+      initErrorMessage.value = message;
+      // 初始化错误不显示弹窗，只显示内联错误
     };
     
     // 关闭SFTP面板
@@ -365,13 +392,13 @@ export default defineComponent({
             log.debug(`SFTP会话切换完成: ${newSessionId}`);
           } catch (error) {
             isLoadingSftp.value = false;
-            showError(`加载SFTP文件列表失败: ${error.message || '未知错误'}`);
+            showInitError(`加载SFTP文件列表失败: ${error.message || '未知错误'}`);
             log.error('加载SFTP文件列表失败:', error);
           }
         }, 300);
       } catch (error) {
         isLoadingSftp.value = false;
-        showError(`切换SFTP会话失败: ${error.message || '未知错误'}`);
+        showInitError(`切换SFTP会话失败: ${error.message || '未知错误'}`);
         log.error('切换SFTP会话失败:', error);
       }
     };
@@ -2627,7 +2654,7 @@ export default defineComponent({
       try {
         // 如果会话ID无效，显示错误
         if (!props.sessionId) {
-          showError('无效的会话ID');
+          showInitError('无效的会话ID');
           isLoadingSftp.value = false;
           return;
         }
@@ -2657,7 +2684,7 @@ export default defineComponent({
         isLoadingSftp.value = false;
       } catch (error) {
         isLoadingSftp.value = false;
-        showError(`初始化SFTP失败: ${error.message || '未知错误'}`);
+        showInitError(`初始化SFTP失败: ${error.message || '未知错误'}`);
         log.error('初始化SFTP会话失败:', error);
       }
     };
@@ -2717,6 +2744,8 @@ export default defineComponent({
       transferSpeed,
       hasError,
       errorMessage,
+      hasInitError,
+      initErrorMessage,
       isDragOver,
       showHiddenFiles,
       currentUploadingFile,
@@ -2759,6 +2788,7 @@ export default defineComponent({
       handleEditorSave,
       handlePermissions,
       handlePermissionsSave,
+      initSftp,
 
       // 排序功能
       toggleSort,
@@ -2976,5 +3006,80 @@ export default defineComponent({
 .upload-progress-notification .el-message__content {
   line-height: 1.4;
   padding: 0;
+}
+
+/* SFTP初始化错误内联显示样式 */
+.sftp-init-error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  min-height: 300px;
+  padding: 40px 20px;
+  text-align: center;
+  color: var(--color-text-primary, #333);
+}
+
+.sftp-error-icon {
+  margin-bottom: 24px;
+  color: #f56565;
+  opacity: 0.8;
+}
+
+.sftp-error-content h3 {
+  margin: 0 0 16px 0;
+  font-size: 20px;
+  font-weight: 500;
+  color: var(--color-text-primary, #333);
+}
+
+.sftp-error-content .sftp-error-message {
+  margin: 0 0 24px 0;
+  font-size: 14px;
+  color: var(--color-text-secondary, #666);
+  line-height: 1.5;
+  max-width: 400px;
+}
+
+.sftp-error-actions {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+}
+
+.sftp-retry-button {
+  padding: 10px 20px;
+  background: var(--color-primary, #409eff);
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.sftp-retry-button:hover {
+  background: var(--color-primary-dark, #337ecc);
+}
+
+.sftp-retry-button:active {
+  transform: translateY(1px);
+}
+
+/* 响应式调整 */
+@media (max-width: 768px) {
+  .sftp-init-error {
+    min-height: 250px;
+    padding: 30px 15px;
+  }
+  
+  .sftp-error-content h3 {
+    font-size: 18px;
+  }
+  
+  .sftp-error-content .sftp-error-message {
+    font-size: 13px;
+  }
 }
 </style>
