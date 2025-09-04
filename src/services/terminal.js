@@ -678,74 +678,8 @@ class TerminalService {
       log.error(`设置终端 ${id} 事件时出错`, error);
     }
 
-    // 处理右键点击事件 - 增强WebGL/Canvas渲染器兼容性
-    const setupContextMenuEvent = () => {
-      // 尝试多种方式获取终端元素
-      let element = terminal.element;
-
-      // 如果直接获取失败，尝试其他方式
-      if (!element && terminal._core && terminal._core._screenElement) {
-        element = terminal._core._screenElement;
-      }
-
-      // 如果还是没有，尝试查找DOM中的终端元素
-      if (!element) {
-        // 延迟查找，等待DOM渲染完成
-        setTimeout(() => {
-          const terminalContainer = document.querySelector(`[data-terminal-id="${id}"]`);
-          if (terminalContainer) {
-            const xtermElement = terminalContainer.querySelector('.xterm');
-            if (xtermElement) {
-              setupContextMenuOnElement(xtermElement);
-            }
-          }
-        }, 100);
-        return;
-      }
-
-      setupContextMenuOnElement(element);
-    };
-
-    const setupContextMenuOnElement = (element) => {
-      if (!element) return;
-
-      const contextMenuHandler = (event) => {
-        try {
-          // 获取当前的终端设置
-          const terminalOptions = settingsService.getTerminalOptions();
-
-          if (terminalOptions.rightClickSelectsWord) {
-            event.preventDefault();
-            event.stopPropagation();
-
-            // 获取粘贴板内容并写入终端
-            clipboard.readText().then(text => {
-              if (text && terminal && typeof terminal.paste === 'function') {
-                terminal.paste(text);
-              }
-            }).catch(error => {
-              log.warn(`终端 ${id} 从粘贴板获取文本失败:`, error);
-            });
-          }
-        } catch (error) {
-          log.warn(`终端 ${id} 右键菜单事件处理失败:`, error);
-        }
-      };
-
-      element.addEventListener('contextmenu', contextMenuHandler);
-
-      // 存储事件监听器引用
-      if (!terminal._eventListeners) {
-        terminal._eventListeners = [];
-      }
-      terminal._eventListeners.push({
-        type: 'contextmenu',
-        element,
-        handler: contextMenuHandler
-      });
-    };
-
-    setupContextMenuEvent();
+    // 右键粘贴逻辑已统一到容器层（terminal-manager）+ 全局事件（main.js）
+    // 这里不再在 xterm 元素上单独处理 contextmenu，避免重复与冲突。
   }
   
   /**

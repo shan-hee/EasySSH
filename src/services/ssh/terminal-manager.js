@@ -102,13 +102,15 @@ class TerminalManager {
 
     // 处理上下文菜单和粘贴
     const handleContextMenu = (event) => {
-      event.preventDefault();
+      // 不再无条件阻止默认行为；改为分发自定义事件供上层决定
       const customEvent = new CustomEvent('terminal-context-menu', {
-        detail: { 
+        detail: {
           originalEvent: event,
           sessionId: sessionId,
           terminalElement: container
-        }
+        },
+        bubbles: true,
+        composed: true
       });
       container.dispatchEvent(customEvent);
     };

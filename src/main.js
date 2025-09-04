@@ -30,6 +30,9 @@ import storageService from './services/storage'
 import directives from './directives'
 // 导入Iconify Vue组件
 import { Icon } from '@iconify/vue'
+// 右键粘贴：全局处理终端自定义事件
+import settingsService from './services/settings'
+import clipboard from './services/clipboard'
 
 // 主题初始化现在由settingsService统一处理
 
@@ -124,6 +127,36 @@ if (savedToken) {
     window.location.href = '/login'
   }
 }
+
+// 处理来自终端的右键上下文事件（作为统一入口）
+// 说明：terminal-manager 会在容器上派发 'terminal-context-menu' 事件；
+// 这里根据设置决定是否执行粘贴，避免无处理导致默认菜单被拦截。
+document.addEventListener(
+  'terminal-context-menu',
+  async (e) => {
+    try {
+      const opts = settingsService.getTerminalOptions?.() || {}
+      const enableRightClickPaste = !!opts.rightClickSelectsWord
+
+      if (enableRightClickPaste) {
+        // 阻止默认菜单并执行粘贴，避免重复处理
+        // 优先阻止原始的 contextmenu 事件
+        const orig = e.detail?.originalEvent
+        if (orig && typeof orig.preventDefault === 'function') orig.preventDefault()
+        if (orig && typeof orig.stopPropagation === 'function') orig.stopPropagation()
+        // 兜底：也阻止自定义事件继续传播
+        if (typeof e.preventDefault === 'function') e.preventDefault()
+        if (typeof e.stopPropagation === 'function') e.stopPropagation()
+        const target = e.detail?.terminalElement || e.target
+        await clipboard.pasteToTerminal(target)
+      }
+      // 如果未启用右键粘贴，不做处理，保留系统菜单
+    } catch (_) {
+      // 忽略粘贴异常，避免影响其他行为
+    }
+  },
+  true // 捕获阶段，确保能够监听到非冒泡的自定义事件
+)
 
 // 刷新用户数据的统一方法（智能缓存优先策略）
 async function refreshUserData() {
