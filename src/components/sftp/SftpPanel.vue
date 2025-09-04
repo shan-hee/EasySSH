@@ -1516,7 +1516,7 @@ export default defineComponent({
       // 显示确认对话框
       try {
         await ElMessageBox.confirm(
-          `确定要下载文件夹 "${folder.name}" 吗？\n\n文件夹将被压缩为ZIP文件，可能需要一些时间。`,
+          `确定要下载文件夹 "${folder.name}" 吗？\n\n文件夹将被压缩后下载，可能需要一些时间。`,
           '下载文件夹',
           {
             confirmButtonText: '开始下载',
@@ -1533,7 +1533,7 @@ export default defineComponent({
       }
 
       // 立即显示下载确认消息
-      ElMessage.info(`正在压缩并下载文件夹 ${folder.name}...`);
+      ElMessage.info(`正在打包并下载文件夹 ${folder.name}...`);
 
       // 创建文件夹下载进度通知（移到try外部）
       let progressNotification = null;

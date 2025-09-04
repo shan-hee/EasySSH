@@ -28,6 +28,8 @@ class SFTPService {
 
     // 进度日志节流状态
     this._progressLogState = new Map(); // operationId -> { lastProgress, lastTs }
+    // 进度归一化状态（用于防止进度回退/重置）
+    this._progressState = new Map(); // operationId -> { lastProgress }
 
     // 监听SFTP二进制消息事件
     window.addEventListener('sftp-binary-message', (event) => {
@@ -812,23 +814,35 @@ class SFTPService {
       try {
         const { sshSessionId, session } = this._getSSHSession(sessionId);
 
-        // 设置操作超时
-        const timeout = setTimeout(() => {
-          this.fileOperations.delete(operationId);
-          reject(new Error('文件夹下载超时'));
-        }, this.transferTimeout);
+        // 设置“滑动”操作超时：收到进度就重置计时，避免长时间大文件夹误判超时
+        const baseTimeoutMs = this.transferTimeout || 300000; // 默认5分钟
+        let timeout = null;
+        const resetTimeout = () => {
+          if (timeout) clearTimeout(timeout);
+          timeout = setTimeout(() => {
+            this.fileOperations.delete(operationId);
+            reject(new Error('文件夹下载超时'));
+          }, baseTimeoutMs);
+        };
+        resetTimeout();
 
         // 保存操作回调
         this.fileOperations.set(operationId, {
           resolve: (data) => {
-            clearTimeout(timeout);
+            if (timeout) clearTimeout(timeout);
             resolve(data); // 二进制数据已在handleBinaryMessage中处理
           },
           reject: (error) => {
-            clearTimeout(timeout);
+            if (timeout) clearTimeout(timeout);
             reject(error);
           },
-          progress: progressCallback,
+          progress: (progress, meta) => {
+            // 进度回调时刷新超时
+            resetTimeout();
+            if (typeof progressCallback === 'function') {
+              try { progressCallback(progress, meta); } catch (_) {}
+            }
+          },
           type: 'download_folder_binary',
           sshSessionId
         });
@@ -849,7 +863,7 @@ class SFTPService {
           );
           session.socket.send(messageBuffer);
         } else {
-          clearTimeout(timeout);
+          if (timeout) clearTimeout(timeout);
           this.fileOperations.delete(operationId);
           reject(new Error('WebSocket连接未就绪'));
         }
@@ -1562,12 +1576,49 @@ class SFTPService {
    * @private
    */
   _handleBinaryProgress(headerData) {
-    const { operationId, progress } = headerData;
+    const { operationId } = headerData;
+    let { progress } = headerData;
+
+    // 归一化进度，处理total为0/未知的情况，且保证单调不减
+    try {
+      const bytes = typeof headerData.bytesTransferred === 'number' ? headerData.bytesTransferred : undefined;
+      const total = typeof headerData.totalBytes === 'number' ? headerData.totalBytes : undefined;
+      const est = typeof headerData.estimatedSize === 'number' ? headerData.estimatedSize : undefined;
+      const phase = headerData.phase;
+
+      const clampPct = (v, completed) => {
+        if (typeof v !== 'number' || isNaN(v)) return 0;
+        let p = Math.max(0, Math.min(100, Math.floor(v)));
+        if (!completed && p >= 100) p = 99;
+        return p;
+      };
+
+      let derived;
+      if (typeof bytes === 'number' && bytes >= 0) {
+        if (typeof est === 'number' && est > 0) {
+          derived = (bytes / est) * 100;
+        } else if (typeof total === 'number' && total > 0) {
+          derived = (bytes / total) * 100;
+        }
+      }
+
+      const completed = phase === 'completed' || progress === 100;
+      let safeProgress = (derived !== undefined) ? clampPct(derived, completed) : clampPct(progress, completed);
+
+      const st = this._progressState.get(operationId) || { lastProgress: -1 };
+      if (st.lastProgress >= 0 && safeProgress < st.lastProgress) {
+        safeProgress = st.lastProgress;
+      }
+      this._progressState.set(operationId, { lastProgress: safeProgress });
+
+      headerData.progress = safeProgress; // 回写用于后续日志
+    } catch (_) {}
+
     const operation = this.fileOperations.get(operationId);
 
     if (operation && operation.progress && typeof operation.progress === 'function') {
       // 兼容：第一个参数保留百分比；第二个参数传递完整元数据（包含bytesTransferred/totalBytes）
-      operation.progress(progress, headerData);
+      operation.progress(headerData.progress, headerData);
     }
   }
 
