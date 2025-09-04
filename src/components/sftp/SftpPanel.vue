@@ -1316,8 +1316,16 @@ export default defineComponent({
         let lastPct = 0;
         let lastRenderTs = 0;
         let singleCompleted = false;
+        
+        // 用于保存operationId的变量
         let singleOpId = null;
+
         const progressCallback = (progress, meta) => {
+          // 第一次进度回调时，如果还没有operationId，从meta中获取
+          if (!singleOpId && meta && meta.operationId) {
+            singleOpId = meta.operationId;
+          }
+
           // 优先使用服务端的bytes统计（压缩后的准确进度）
           if (meta && typeof meta.bytesTransferred === 'number') {
             let pct = 0;
@@ -1393,14 +1401,12 @@ export default defineComponent({
           }
         };
 
-        // 调用SFTP服务下载文件（获取operationId以支持取消）
-        const singlePromise = sftpService.downloadFileBinary(
+        // 调用SFTP服务下载文件
+        const { blob } = await sftpService.downloadFileBinary(
           props.sessionId,
           remotePath,
           progressCallback
         );
-        singleOpId = singlePromise.operationId;
-        const { blob } = await singlePromise;
         singleCompleted = true;
 
         // 关闭进度通知
@@ -1430,6 +1436,13 @@ export default defineComponent({
           duration: 3000
         });
       } catch (error) {
+        // 检查是否是用户主动取消的操作
+        if (error.message && error.message.includes('操作已取消')) {
+          // 用户主动取消，不显示错误信息，记录信息级日志
+          log.info('用户取消了文件下载操作');
+          return;
+        }
+
         log.error('下载文件失败:', error);
 
         // 关闭进度通知
@@ -1567,8 +1580,16 @@ export default defineComponent({
         let lastRenderedPct = 0;
         let lastRenderTs = 0;
         let isCompleted = false;
+        
+        // 用于保存operationId的变量
+        let currentOperationId = null;
 
         const progressCallback = (progress, meta) => {
+          // 第一次进度回调时，如果还没有operationId，从meta中获取
+          if (!currentOperationId && meta && meta.operationId) {
+            currentOperationId = meta.operationId;
+          }
+
           // 阶段说明
           let phaseText = '准备中';
           if (meta && typeof meta.phase === 'string') {
@@ -1691,15 +1712,12 @@ export default defineComponent({
           }
         };
 
-        // 调用SFTP服务下载文件夹（获取operationId用于取消）
-        const folderPromise = sftpService.downloadFolder(
+        // 调用SFTP服务下载文件夹（传入正确的进度回调）
+        const result = await sftpService.downloadFolder(
           props.sessionId,
           remotePath,
           progressCallback
         );
-        const currentOperationId = folderPromise.operationId;
-
-        const result = await folderPromise;
         isCompleted = true;
 
         // 关闭进度通知
@@ -1762,6 +1780,13 @@ export default defineComponent({
           showDownloadReport(folder.name, result);
         }
       } catch (error) {
+        // 检查是否是用户主动取消的操作
+        if (error.message && error.message.includes('操作已取消')) {
+          // 用户主动取消，不显示错误信息，记录信息级日志
+          log.info('用户取消了文件夹下载操作');
+          return;
+        }
+
         log.error('下载文件夹失败:', error);
 
         // 关闭进度通知

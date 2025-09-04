@@ -326,6 +326,15 @@ async function handleBinaryDownload(ws, headerData, sshSessions) {
       });
       
       readStream.on('data', (chunk) => {
+        // 检查操作是否已被取消
+        if (canceledOperations.has(operationId)) {
+          try {
+            readStream.destroy();
+          } catch (e) {}
+          activeTransfers.delete(operationId);
+          return;
+        }
+
         chunks.push(chunk);
         downloaded += chunk.length;
         
@@ -569,11 +578,19 @@ async function handleBinaryDownloadFolder(ws, headerData, sshSessions) {
             };
 
             stream.on('data', (chunk) => {
+              // 检查操作是否已被取消，如果取消则立即终止数据传输
+              if (canceledOperations.has(operationId)) {
+                try {
+                  stream.destroy();
+                } catch (e) {}
+                return;
+              }
+
               const buf = Buffer.from(chunk);
               hash.update(buf);
               bytesTransferred += buf.length;
 
-              // 进度：基于压缩估算（30%）与已传输字节上限取大，避免过早100%
+              // 计算并发送传输进度
               let progress = 0;
               const estimatedCompressedSize = totalBytes > 0 ? Math.max(Math.floor(totalBytes * 0.3), bytesTransferred) : bytesTransferred;
               if (estimatedCompressedSize > 0) {
@@ -590,16 +607,24 @@ async function handleBinaryDownloadFolder(ws, headerData, sshSessions) {
                 timestamp: Date.now()
               });
 
-              // 累积并按1MB分块发送给前端
+              // 按分块大小缓存数据并发送给前端
               if (pendingBuf.length === 0) {
                 pendingBuf = buf;
               } else {
                 pendingBuf = Buffer.concat([pendingBuf, buf]);
               }
               while (pendingBuf.length >= CHUNK_SIZE) {
+                // 在发送分块前再次检查取消状态
+                if (canceledOperations.has(operationId)) {
+                  try {
+                    stream.destroy();
+                  } catch (e) {}
+                  return;
+                }
+
                 const out = pendingBuf.subarray(0, CHUNK_SIZE);
                 pendingBuf = pendingBuf.subarray(CHUNK_SIZE);
-                // 发送分块
+                
                 sendBinaryMessage(ws, BINARY_MSG_TYPE.SFTP_FOLDER_DATA, {
                   sessionId,
                   operationId,
@@ -1277,8 +1302,11 @@ async function handleBinarySftpCancel(ws, headerData) {
 
   try {
     canceledOperations.add(operationId);
+    
     if (activeTransfers.has(operationId)) {
       const entry = activeTransfers.get(operationId);
+      
+      // 根据传输类型执行相应的取消操作
       if (entry.type === 'file' && entry.stream) {
         try { entry.stream.destroy(); } catch (e) {}
       } else if (entry.type === 'tar' && entry.stream) {
@@ -1292,11 +1320,14 @@ async function handleBinarySftpCancel(ws, headerData) {
       } else if (entry.type === 'upload' && entry.stream) {
         try { entry.stream.destroy(); } catch (e) {}
       }
+      
       activeTransfers.delete(operationId);
+      logger.info('SFTP操作已取消', { operationId, type: entry.type });
     }
 
     sendBinarySftpSuccess(ws, sessionId, operationId, { message: '操作已取消' });
   } catch (error) {
+    logger.error('取消SFTP操作失败', { operationId, error: error.message });
     sendBinarySftpError(ws, sessionId, operationId, `取消失败: ${error.message}`, 'CANCEL_ERROR');
   }
 }
