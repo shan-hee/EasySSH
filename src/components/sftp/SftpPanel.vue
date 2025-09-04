@@ -2888,9 +2888,9 @@ export default defineComponent({
 .sftp-progress-container {
   display: flex;
   align-items: center;
-  gap: 12px;
-  min-width: 320px;
-  max-width: 600px;
+  gap: 10px;
+  min-width: 280px;
+  max-width: 400px;
   width: max-content;
 }
 
@@ -2940,7 +2940,7 @@ export default defineComponent({
 @media (max-width: 768px) {
   .sftp-progress-container {
     max-width: 90vw;
-    min-width: 280px;
+    min-width: 260px;
   }
   
   .sftp-progress-text {
@@ -2950,6 +2950,8 @@ export default defineComponent({
   .sftp-progress-file {
     font-size: 11px;
   }
+  /* 进度条跟随容器宽度 */
+  .sftp-progress-bar { width: 100%; }
 }
 
 @media (max-width: 480px) {
@@ -2958,6 +2960,7 @@ export default defineComponent({
     align-items: stretch;
     gap: 8px;
   }
+  .sftp-progress-bar { width: 100%; }
 }
 
 /* 进度条取消按钮样式 */
