@@ -32,6 +32,7 @@
             :active-session-id="termId"
             @toggle-sftp-panel="toggleSftpPanel"
             @toggle-monitoring-panel="toggleMonitoringPanel"
+            @toggle-ai-input="handleAIInputToggle"
           />
         </div>
 
@@ -60,29 +61,34 @@
             </div>
 
             <!-- AI合并面板 - 包含交互面板和输入栏 -->
-            <div class="terminal-ai-combined-area theme-transition" v-if="shouldShowAICombinedPanel(termId) && isActiveTerminal(termId)">
-              <AICombinedPanel
-                :ref="el => setAICombinedPanelRef(el, termId)"
-                :terminal-id="termId"
-                :messages="getAIMessages(termId)"
-                :max-height="getAIPanelMaxHeight()"
-                :is-mobile="isMobile()"
-                :is-streaming="getAIStreamingState(termId)"
-                :ai-service="getAIService()"
-                @ai-response="handleAIResponse"
-                @ai-streaming="handleAIStreaming"
-                @mode-change="handleAIModeChange"
-                @input-focus="handleAIInputFocus"
-                @input-blur="handleAIInputBlur"
-                @execute-command="handleExecuteCommand"
-                @clear-history="handleAIClearHistory"
-                @edit-command="handleAIEditCommand"
-                @add-to-scripts="handleAIAddToScripts"
-                @height-change="handleAIPanelHeightChange"
-                @height-change-start="handleAIPanelHeightChangeStart"
-                @height-change-end="handleAIPanelHeightChangeEnd"
-              />
-            </div>
+            <transition name="ai-combined-toggle" appear>
+              <div
+                class="terminal-ai-combined-area theme-transition"
+                v-if="shouldShowAICombinedPanel(termId) && isActiveTerminal(termId)"
+              >
+                <AICombinedPanel
+                  :ref="el => setAICombinedPanelRef(el, termId)"
+                  :terminal-id="termId"
+                  :messages="getAIMessages(termId)"
+                  :max-height="getAIPanelMaxHeight()"
+                  :is-mobile="isMobile()"
+                  :is-streaming="getAIStreamingState(termId)"
+                  :ai-service="getAIService()"
+                  @ai-response="handleAIResponse"
+                  @ai-streaming="handleAIStreaming"
+                  @mode-change="handleAIModeChange"
+                  @input-focus="handleAIInputFocus"
+                  @input-blur="handleAIInputBlur"
+                  @execute-command="handleExecuteCommand"
+                  @clear-history="handleAIClearHistory"
+                  @edit-command="handleAIEditCommand"
+                  @add-to-scripts="handleAIAddToScripts"
+                  @height-change="handleAIPanelHeightChange"
+                  @height-change-start="handleAIPanelHeightChangeStart"
+                  @height-change-end="handleAIPanelHeightChangeEnd"
+                />
+              </div>
+            </transition>
           </div>
         </div>
 
@@ -1334,6 +1340,25 @@ export default {
         log.error(`[终端] 切换监控面板失败: ${error.message}`);
         ElMessage.error(`切换监控面板失败: ${error.message}`);
       }
+    }
+
+    // 处理AI输入栏切换
+    const handleAIInputToggle = (visible) => {
+      const termId = activeConnectionId.value;
+      if (!termId) {
+        log.warn('[终端] 无法切换AI输入栏：没有活动终端');
+        return;
+      }
+      
+      // 根据visible参数设置AI合并面板状态
+      // visible为true时显示，false时隐藏
+      if (visible) {
+        aiCombinedPanelStates.value[termId] = true;
+      } else {
+        aiCombinedPanelStates.value[termId] = false;
+      }
+      
+      log.debug(`[终端] AI输入栏状态已切换: ${termId} -> ${visible}`);
     }
 
     // 检测是否为桌面端
@@ -2735,6 +2760,7 @@ export default {
       shouldShowConnectingAnimation,
       toggleSftpPanel,
       toggleMonitoringPanel,
+      handleAIInputToggle,
       // 监控面板相关方法
       shouldShowMonitoringPanel,
       shouldShowDesktopMonitoringPanel,
@@ -2929,6 +2955,27 @@ export default {
   order: 3; /* AI合并面板在最下方 */
   border-top: 1px solid var(--color-border);
   background: var(--color-bg-elevated);
+}
+
+/* ===== AI合并面板显隐过渡 ===== */
+/* 入场/离场动画：轻微上滑 + 淡入淡出 */
+.ai-combined-toggle-enter-active,
+.ai-combined-toggle-leave-active {
+  transition:
+    opacity var(--transition-slow),
+    transform var(--transition-slow);
+}
+
+.ai-combined-toggle-enter-from,
+.ai-combined-toggle-leave-to {
+  opacity: 0;
+  transform: translateY(12px);
+}
+
+.ai-combined-toggle-enter-to,
+.ai-combined-toggle-leave-from {
+  opacity: 1;
+  transform: translateY(0);
 }
 
 /* ===== 响应式设计 ===== */

@@ -4,7 +4,7 @@
       <div class="terminal-tools__left">
         <div class="icon-button" @click="handleSftpClick"
                :class="{ 'icon-available': isSshConnected }" ref="sftpButtonRef">
-          <ToolbarIcon name="file-manager" :size="16"
+          <ToolbarIcon name="file-manager"
                        :class="{ 'icon-active': isSshConnected }" />
         </div>
         
@@ -24,7 +24,7 @@
         <transition name="fade">
           <div v-if="showNetworkIcon" class="network-monitor" @click="toggleNetworkPopup" ref="networkIconRef">
             <div class="network-icon">
-              <ToolbarIcon name="network" :size="16" class="icon-active" />
+              <ToolbarIcon name="network" class="icon-active" />
             </div>
             <div class="network-stats">
               <div class="network-stats-value" :class="rttStatusClass">{{ rttValue }}</div>
@@ -37,8 +37,16 @@
           @click.stop="handleMonitoringClick()"
           :class="{ 'icon-available': monitoringServiceInstalled }"
           ref="monitorButtonRef">
-          <ToolbarIcon name="monitoring" :size="16"
+          <ToolbarIcon name="monitoring"
                        :class="{ 'icon-active': monitoringServiceInstalled }" />
+        </div>
+        
+        <div class="icon-button"
+          @click.stop="handleAiClick()"
+          :class="{ 'icon-available': isAiServiceEnabled }"
+          ref="aiButtonRef">
+          <ToolbarIcon name="ai"
+                       :class="{ 'icon-active': showAiInput }" />
         </div>
 
         <!-- 工具栏监控显示已移除，监控数据现在通过专用的监控面板显示 -->
@@ -66,6 +74,14 @@
                class="sftp-tooltip" :style="monitorTooltipStyle"
                @mouseenter="onMonitorTooltipMouseEnter" @mouseleave="onMonitorTooltipMouseLeave">
             {{ isSshConnected ? '监控服务初始化中，请稍候...' : '需要SSH连接以启用监控' }}
+          </div>
+        </teleport>
+        
+        <!-- AI助手tooltip -->
+        <teleport to="body">
+          <div v-if="showAiTooltip" class="sftp-tooltip" :style="aiTooltipStyle"
+               @mouseenter="onAiTooltipMouseEnter" @mouseleave="onAiTooltipMouseLeave">
+            {{ getAiTooltipText() }}
           </div>
         </teleport>
       </div>
@@ -127,6 +143,7 @@ import { ElMessage } from 'element-plus'
 import { useTerminalStore } from '../../store/terminal'
 import { LATENCY_EVENTS } from '../../services/constants'
 import log from '../../services/log'
+import aiService from '../../services/ai/ai-service.js'
 
 // ToolbarMonitoring 组件已移除，监控数据现在通过专用的监控面板显示
 
@@ -137,7 +154,7 @@ export default defineComponent({
   components: {
     ToolbarIcon
   },
-  emits: ['toggle-sftp-panel', 'toggle-monitoring-panel'],
+  emits: ['toggle-sftp-panel', 'toggle-monitoring-panel', 'toggle-ai-input'],
   props: {
     hasBackground: {
       type: Boolean,
@@ -178,6 +195,18 @@ export default defineComponent({
     const showSftpTooltip = ref(false)
     const sftpButtonRef = ref(null)
     const networkIconRef = ref(null)
+    const showAiInput = ref(true) // 默认显示AI输入框
+    const isAiServiceEnabled = ref(false) // AI服务是否启用
+    const aiButtonRef = ref(null)
+    const showAiTooltip = ref(false)
+    const aiTooltipHover = ref(false)
+    const aiTooltipStyle = ref({
+      position: 'fixed',
+      zIndex: 10000,
+      top: '0px',
+      left: '0px',
+      display: 'none'
+    })
 
 
 
@@ -383,6 +412,20 @@ export default defineComponent({
         left: `${rect.left + rect.width / 2}px`,
         transform: 'translateX(-50%)'
       }
+    }
+    
+    // 切换AI输入框显示状态
+    const handleAiClick = () => {
+      showAiInput.value = !showAiInput.value
+      emit('toggle-ai-input', showAiInput.value)
+    }
+    
+    // 获取AI助手tooltip文本
+    const getAiTooltipText = () => {
+      if (!isAiServiceEnabled.value) {
+        return '未启用AI助手'
+      }
+      return 'AI助手'
     }
     
     // 切换监控面板
@@ -744,6 +787,29 @@ export default defineComponent({
     // WebSocket连接成功不等于监控服务已安装
     // 监控状态应该完全基于 monitoring-status-change 事件
     
+    // 处理AI服务状态变化事件
+    const handleAiServiceStatusChange = (event) => {
+      if (!event || !event.detail) {
+        return;
+      }
+      
+      const { status, isEnabled } = event.detail;
+      isAiServiceEnabled.value = isEnabled;
+      
+      log.debug(`[${componentInstanceId}] AI服务状态变更: ${status}, enabled: ${isEnabled}`);
+    };
+    
+    // 检查AI服务状态
+    const checkAiServiceStatus = () => {
+      try {
+        isAiServiceEnabled.value = aiService.isEnabled || false;
+        log.debug(`[${componentInstanceId}] AI服务状态检查: ${isAiServiceEnabled.value}`);
+      } catch (error) {
+        log.warn('检查AI服务状态失败:', error);
+        isAiServiceEnabled.value = false;
+      }
+    };
+    
     // 添加一个变量跟踪鼠标是否在tooltip上
     const tooltipHover = ref(false)
     
@@ -809,6 +875,44 @@ export default defineComponent({
       }
     }
     
+    // 计算并更新AI tooltip的位置
+    const updateAiTooltipPosition = () => {
+      if (!aiButtonRef.value) return
+
+      const rect = aiButtonRef.value.getBoundingClientRect()
+      const tooltipOffset = getComputedStyle(document.documentElement).getPropertyValue('--tooltip-offset').trim() || '10px'
+
+      aiTooltipStyle.value = {
+        position: 'fixed',
+        zIndex: 10000,
+        backgroundColor: 'var(--tooltip-bg)',
+        color: 'var(--tooltip-color)',
+        padding: 'var(--tooltip-padding-vertical) var(--tooltip-padding-horizontal)',
+        borderRadius: 'var(--tooltip-border-radius)',
+        fontFamily: 'var(--tooltip-font-family)',
+        fontSize: 'var(--tooltip-font-size)',
+        fontWeight: 'var(--tooltip-font-weight)',
+        lineHeight: 'var(--tooltip-line-height)',
+        whiteSpace: 'nowrap',
+        maxWidth: 'var(--tooltip-max-width)',
+        boxShadow: 'var(--tooltip-shadow)',
+        transition: 'var(--tooltip-transition)',
+        top: `${rect.bottom + parseInt(tooltipOffset)}px`,
+        left: `${rect.left + rect.width / 2}px`,
+        transform: 'translateX(-50%)'
+      }
+    }
+    
+    // AI tooltip鼠标事件处理
+    const onAiTooltipMouseEnter = () => {
+      aiTooltipHover.value = true
+    }
+    
+    const onAiTooltipMouseLeave = () => {
+      aiTooltipHover.value = false
+      showAiTooltip.value = false
+    }
+    
     // 监控tooltip鼠标事件处理
     const onMonitorTooltipMouseEnter = () => {
       monitorTooltipHover.value = true
@@ -828,6 +932,11 @@ export default defineComponent({
       // 同时更新SFTP提示位置
       if (showSftpTooltip.value || showConnectedSftpTooltip.value) {
         updateSftpTooltipPosition();
+      }
+      
+      // 同时更新AI提示位置
+      if (showAiTooltip.value) {
+        updateAiTooltipPosition();
       }
     };
     
@@ -1249,6 +1358,7 @@ export default defineComponent({
       window.removeEventListener(LATENCY_EVENTS.TOOLBAR, handleNetworkLatencyUpdate);
       window.removeEventListener('ssh-connected', handleSshConnected);
       window.removeEventListener('monitoring-status-change', handleMonitoringStatusChange);
+      window.removeEventListener('ai-service-status-change', handleAiServiceStatusChange);
       window.removeEventListener('terminal:toolbar-reset', handleToolbarReset);
       window.removeEventListener('terminal:toolbar-sync', handleToolbarSync);
       // window.removeEventListener('terminal:refresh-status', handleTerminalRefreshStatus);
@@ -1290,6 +1400,7 @@ export default defineComponent({
       window.addEventListener(LATENCY_EVENTS.TOOLBAR, handleNetworkLatencyUpdate);
       window.addEventListener('ssh-connected', handleSshConnected);
       window.addEventListener('monitoring-status-change', handleMonitoringStatusChange);
+      window.addEventListener('ai-service-status-change', handleAiServiceStatusChange);
       window.addEventListener('terminal:toolbar-reset', handleToolbarReset);
       window.addEventListener('terminal:toolbar-sync', handleToolbarSync);
 
@@ -1307,6 +1418,8 @@ export default defineComponent({
       checkSshConnectionStatus();
       // 立即检查监控服务状态
       checkMonitoringServiceStatus();
+      // 立即检查AI服务状态
+      checkAiServiceStatus();
 
       // 确保工具栏状态严格隔离，避免状态意外共享
       applyInitialStatus();
@@ -1333,6 +1446,22 @@ export default defineComponent({
             }
             if (!connectedTooltipHover.value) {
               showConnectedSftpTooltip.value = false;
+            }
+          }, 100);
+        });
+      }
+      
+      // AI按钮鼠标悬停事件
+      if (aiButtonRef.value) {
+        aiButtonRef.value.addEventListener('mouseenter', () => {
+          updateAiTooltipPosition();
+          showAiTooltip.value = true;
+        });
+        
+        aiButtonRef.value.addEventListener('mouseleave', () => {
+          setTimeout(() => {
+            if (!aiTooltipHover.value) {
+              showAiTooltip.value = false;
             }
           }, 100);
         });
@@ -1431,6 +1560,16 @@ export default defineComponent({
       updateNetworkPopupPosition,
       networkPopupStyle,
       handleMonitoringClick,
+      // AI相关
+      showAiInput,
+      handleAiClick,
+      getAiTooltipText,
+      isAiServiceEnabled,
+      aiButtonRef,
+      showAiTooltip,
+      aiTooltipStyle,
+      onAiTooltipMouseEnter,
+      onAiTooltipMouseLeave,
       // 用户状态
       isLoggedIn,
       // 终端ID（用于监控组件）
