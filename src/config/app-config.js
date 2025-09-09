@@ -105,8 +105,8 @@ export const userSettingsDefaults = {
     bellSound: true,
     copyOnSelect: false,
     rightClickSelectsWord: false,
-    // 渲染器配置：使用Canvas渲染器，提供稳定的性能和资源管理
-    rendererType: 'canvas', // 使用Canvas渲染器，避免WebGL资源清理问题
+    // 渲染器配置：自动选择（WebGL > Canvas > DOM）
+    rendererType: 'auto',
     fallbackRenderer: 'dom' // 备用DOM渲染器，确保最大兼容性
   },
 

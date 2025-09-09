@@ -429,7 +429,7 @@ class SettingsService {
       cursorStyle: terminalSettings.cursorStyle,
       scrollback: terminalSettings.scrollback,
       allowTransparency: true,
-      rendererType: terminalSettings.rendererType || 'canvas', // 使用Canvas渲染器
+      rendererType: terminalSettings.rendererType || 'auto', // 自动选择渲染器
       fallbackRenderer: terminalSettings.fallbackRenderer || 'dom', // 备用DOM渲染器
       convertEol: true,
       disableStdin: false,
@@ -833,7 +833,7 @@ class SettingsService {
       cursorStyle: 'block',
       scrollback: 3000,
       allowTransparency: true,
-      rendererType: 'canvas', // 默认使用Canvas渲染器
+      rendererType: 'auto', // 默认自动选择渲染器
       fallbackRenderer: 'dom', // 备用DOM渲染器
       convertEol: true,
       disableStdin: false,

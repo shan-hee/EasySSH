@@ -6,6 +6,7 @@ import { FitAddon } from '@xterm/addon-fit'
 import { WebLinksAddon } from '@xterm/addon-web-links'
 import { SearchAddon } from '@xterm/addon-search'
 import { CanvasAddon } from '@xterm/addon-canvas'
+import { WebglAddon } from '@xterm/addon-webgl'
 import { Unicode11Addon } from '@xterm/addon-unicode11'
 // LigaturesAddon 已移除 - 连字功能可选，避免导入问题
 import { ref } from 'vue'
@@ -145,7 +146,7 @@ class TerminalService {
       cursorStyle: 'block',
       scrollback: 1000,
       allowTransparency: true,
-      rendererType: 'canvas', // 使用Canvas渲染器
+      rendererType: 'auto', // 自动选择渲染器（webgl > canvas > dom）
       fallbackRenderer: 'dom', // 备用DOM渲染器
       convertEol: true,
       disableStdin: false,
@@ -277,6 +278,7 @@ class TerminalService {
         webLinks: null,
         search: null,
         canvas: null,
+        webgl: null,
         unicode11: null,
         ligatures: null
       }
@@ -308,30 +310,52 @@ class TerminalService {
         log.warn(`终端 ${id} 加载SearchAddon失败:`, e)
       }
       
-      // 智能渲染器选择：优先Canvas，禁用WebGL以避免销毁时的缓冲区访问问题
+      // 智能渲染器选择：优先WebGL（如果可用），否则Canvas，最后DOM
       let renderingMode = 'dom'; // 默认DOM渲染器
 
-      // 开始渲染器选择 - 临时禁用WebGL以解决资源清理问题
+      const desired = (termOptions.rendererType || 'auto').toLowerCase();
+      const tryWebGL = desired === 'auto' || desired === 'webgl';
+      const tryCanvas = desired === 'auto' || desired === 'canvas' || desired === 'webgl';
 
       try {
-        // 直接使用Canvas渲染器，跳过WebGL
-        try {
-          const canvasAddon = new CanvasAddon();
-          terminal.loadAddon(canvasAddon);
-          addons.canvas = canvasAddon;
-          renderingMode = 'canvas';
-          log.info(`终端 ${id} Canvas渲染器已启用（WebGL已禁用）`);
-        } catch (canvasErr) {
-          log.warn(`终端 ${id} Canvas渲染器加载失败，使用DOM渲染`, canvasErr);
-          renderingMode = 'dom';
+        // 1) WebGL 优先
+        if (tryWebGL && this._checkWebGLSupport()) {
+          try {
+            const webglAddon = new WebglAddon();
+            const compatibility = this._checkRendererAddonCompatibility(webglAddon, 'webgl', terminal)
+            if (compatibility) {
+              terminal.loadAddon(webglAddon);
+              addons.webgl = webglAddon;
+              renderingMode = 'webgl';
+              log.info(`终端 ${id} WebGL渲染器已启用`);
+            }
+          } catch (webglErr) {
+            log.warn(`终端 ${id} WebGL渲染器加载失败，回退到Canvas`, webglErr);
+          }
         }
+
+        // 2) Canvas 其次
+        if (renderingMode !== 'webgl' && tryCanvas && this._checkCanvasSupport()) {
+          try {
+            const canvasAddon = new CanvasAddon();
+            terminal.loadAddon(canvasAddon);
+            addons.canvas = canvasAddon;
+            renderingMode = 'canvas';
+            log.info(`终端 ${id} Canvas渲染器已启用`);
+          } catch (canvasErr) {
+            log.warn(`终端 ${id} Canvas渲染器加载失败，使用DOM渲染`, canvasErr);
+            renderingMode = 'dom';
+          }
+        }
+
+        // 3) DOM 兜底（无需额外插件）
       } catch (e) {
         log.warn(`终端 ${id} 渲染器初始化失败，使用DOM渲染:`, e);
         renderingMode = 'dom';
       }
 
       // 记录最终使用的渲染器类型
-      const rendererName = renderingMode === 'canvas' ? 'Canvas' : 'DOM';
+      const rendererName = renderingMode === 'webgl' ? 'WebGL' : (renderingMode === 'canvas' ? 'Canvas' : 'DOM');
       log.info(`终端 ${id} 使用${rendererName}渲染器`);
 
       // 存储渲染器信息到终端实例
@@ -889,11 +913,29 @@ class TerminalService {
                 term.addons[key] = null;
               }
               
-              // 逐个尝试销毁插件
-              for (const [name, addon] of addonEntries) {
-                try {
-                  if (addon && typeof addon === 'object' && typeof addon.dispose === 'function') {
-                    // WebGL渲染器已禁用，所以不需要特殊处理
+            // 优先销毁 WebGL 渲染器，避免其持有的 GPU 资源在后续阶段访问
+            const webglEntryIndex = addonEntries.findIndex(([name]) => name === 'webgl')
+            if (webglEntryIndex >= 0) {
+              const [name, addon] = addonEntries.splice(webglEntryIndex, 1)[0]
+              try {
+                if (addon && typeof addon.dispose === 'function') {
+                  const originalDispose = addon.dispose;
+                  addon.dispose = function() {
+                    try { return originalDispose.apply(this, arguments) } catch (_) { return undefined }
+                  }
+                  addon.dispose()
+                  log.debug('WebGL 渲染器已安全释放')
+                }
+              } catch (e) {
+                log.debug('释放 WebGL 渲染器失败，已忽略:', e?.message)
+              }
+            }
+
+            // 逐个尝试销毁其余插件
+            for (const [name, addon] of addonEntries) {
+              try {
+                if (addon && typeof addon === 'object' && typeof addon.dispose === 'function') {
+                  // WebGL渲染器已禁用，所以不需要特殊处理
 
                     // 包装dispose方法以安全处理可能的错误
                     const originalDispose = addon.dispose;
@@ -1194,6 +1236,9 @@ class TerminalService {
       if (actualRenderer === 'canvas') {
         // Canvas渲染器字体优化
         this._optimizeCanvasFontRendering(terminal, id);
+      } else if (actualRenderer === 'webgl') {
+        // WebGL渲染器优化（目前主要依赖插件内部实现）
+        this._applyCommonFontOptimizations(terminal, id);
       }
 
       // 通用字体优化
@@ -1263,6 +1308,23 @@ class TerminalService {
     try {
       const canvas = document.createElement('canvas')
       return !!(canvas.getContext && canvas.getContext('2d'))
+    } catch (e) {
+      return false
+    }
+  }
+
+  /**
+   * 检查WebGL支持
+   * @private
+   */
+  _checkWebGLSupport() {
+    try {
+      const canvas = document.createElement('canvas')
+      const attrs = { antialias: true, depth: false, stencil: false, preserveDrawingBuffer: false }
+      const gl2 = canvas.getContext('webgl2', attrs)
+      if (gl2 && typeof gl2.getParameter === 'function') return true
+      const gl = canvas.getContext('webgl', attrs) || canvas.getContext('experimental-webgl', attrs)
+      return !!(gl && typeof gl.getParameter === 'function')
     } catch (e) {
       return false
     }
@@ -1463,6 +1525,8 @@ class TerminalService {
       if (addonName === 'canvas') {
         // 检查Canvas支持
         return this._checkCanvasSupport();
+      } else if (addonName === 'webgl') {
+        return this._checkWebGLSupport();
       }
       return true;
     } catch (error) {

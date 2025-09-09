@@ -198,6 +198,33 @@
         <div v-if="activeMenu === 'terminal'" class="content-panel">
           <div class="panel-body">
 
+            <!-- 渲染器类型 -->
+            <div class="security-item">
+              <div class="security-info">
+                <div class="security-title">
+                  渲染器
+                  <span v-if="currentRenderer" class="status-badge enabled" style="margin-left:8px;">
+                    当前：{{ currentRendererDisplay }}
+                  </span>
+                </div>
+                <div class="security-description">
+                  自动根据环境选择（WebGL > Canvas > DOM），或手动指定
+                </div>
+              </div>
+              <div class="security-action">
+                <select
+                  v-model="terminalSettings.rendererType"
+                  @change="saveTerminalSettings"
+                  class="form-select"
+                >
+                  <option value="auto">自动</option>
+                  <option value="webgl">WebGL（性能最佳，需浏览器支持）</option>
+                  <option value="canvas">Canvas（兼容性好）</option>
+                  <option value="dom">DOM（兜底模式）</option>
+                </select>
+              </div>
+            </div>
+
             <!-- 终端主题 -->
             <div class="security-item">
               <div class="security-info">
@@ -779,6 +806,8 @@ import log from '@/services/log'
 import { localKeyboardManager } from '@/utils/keyboard'
 import aiService from '@/services/ai/ai-service'
 import AIConfig from '@/services/ai/ai-config'
+import settingsService from '@/services/settings'
+import terminalService from '@/services/terminal'
 
 export default defineComponent({
   name: 'UserSettingsModal',
@@ -834,8 +863,43 @@ export default defineComponent({
       cursorBlink: true,
       copyOnSelect: false,
       rightClickSelectsWord: false,
+      rendererType: 'auto',
       initialized: false
     })
+
+    // 当前启用的渲染器标识
+    const currentRenderer = ref('')
+    const currentRendererDisplay = computed(() => {
+      const map = { webgl: 'WebGL', canvas: 'Canvas', dom: 'DOM' }
+      return map[currentRenderer.value] || '未知'
+    })
+
+    const detectCurrentRenderer = () => {
+      try {
+        // 优先取已打开终端的实际渲染器
+        const terms = terminalService?.getAllTerminals?.()
+        if (terms && typeof terms.size === 'number' && terms.size > 0) {
+          for (const [, inst] of terms) {
+            if (inst?.addons?.webgl) { currentRenderer.value = 'webgl'; return }
+            if (inst?.addons?.canvas) { currentRenderer.value = 'canvas'; return }
+            currentRenderer.value = 'dom'; return
+          }
+        }
+
+        // 否则根据环境能力+设置推断
+        const desired = (terminalSettings.rendererType || 'auto').toLowerCase()
+        const canWebGL = terminalService?._checkWebGLSupport?.() || false
+        const canCanvas = terminalService?._checkCanvasSupport?.() || false
+
+        if (desired === 'webgl' && canWebGL) currentRenderer.value = 'webgl'
+        else if (desired === 'canvas' && canCanvas) currentRenderer.value = 'canvas'
+        else if (desired === 'dom') currentRenderer.value = 'dom'
+        else if (desired === 'auto') currentRenderer.value = canWebGL ? 'webgl' : (canCanvas ? 'canvas' : 'dom')
+        else currentRenderer.value = 'dom'
+      } catch (_) {
+        currentRenderer.value = ''
+      }
+    }
 
 
 
@@ -956,11 +1020,13 @@ export default defineComponent({
             cursorStyle: 'block',
             cursorBlink: true,
             copyOnSelect: false,
-            rightClickSelectsWord: false
+            rightClickSelectsWord: false,
+            rendererType: 'auto'
           })
 
           if (savedTerminalSettings) {
             Object.assign(terminalSettings, savedTerminalSettings)
+            if (!terminalSettings.rendererType) terminalSettings.rendererType = 'auto'
             terminalSettings.initialized = true
             log.debug('终端设置已从服务器加载')
           }
@@ -1052,6 +1118,9 @@ export default defineComponent({
       } catch (error) {
         log.error('初始化设置失败:', error)
       }
+
+      // 初始化时检测当前渲染器
+      detectCurrentRenderer()
     }
     
     // 更新账户信息
@@ -1167,8 +1236,26 @@ export default defineComponent({
           cursorStyle: terminalSettings.cursorStyle,
           cursorBlink: terminalSettings.cursorBlink,
           copyOnSelect: terminalSettings.copyOnSelect,
-          rightClickSelectsWord: terminalSettings.rightClickSelectsWord
+          rightClickSelectsWord: terminalSettings.rightClickSelectsWord,
+          rendererType: terminalSettings.rendererType || 'auto'
         })
+
+        // 同步到运行时设置服务，并应用到已打开的终端
+        try {
+          settingsService.updateTerminalSettings({
+            fontSize: terminalSettings.fontSize,
+            fontFamily: terminalSettings.fontFamily,
+            theme: terminalSettings.theme,
+            cursorStyle: terminalSettings.cursorStyle,
+            cursorBlink: terminalSettings.cursorBlink,
+            copyOnSelect: terminalSettings.copyOnSelect,
+            rightClickSelectsWord: terminalSettings.rightClickSelectsWord,
+            rendererType: terminalSettings.rendererType || 'auto'
+          }, true)
+        } catch (e) {
+          // 同步运行时设置失败不影响保存
+          log.debug('同步运行时终端设置失败（已忽略）:', e?.message)
+        }
 
         if (success) {
           // 发送全局事件，通知所有终端设置已更新
@@ -1184,8 +1271,23 @@ export default defineComponent({
       } catch (error) {
         log.error('保存终端设置失败', error)
         ElMessage.error('保存终端设置失败')
+      } finally {
+        // 设置保存后更新一次当前渲染器显示
+        detectCurrentRenderer()
       }
     }
+
+    // 监听相关事件，更新当前渲染器标识
+    onMounted(() => {
+      window.addEventListener('terminal-settings-updated', detectCurrentRenderer)
+      window.addEventListener('terminal-status-update', detectCurrentRenderer)
+      window.addEventListener('terminal:new-session', detectCurrentRenderer)
+    })
+    onUnmounted(() => {
+      window.removeEventListener('terminal-settings-updated', detectCurrentRenderer)
+      window.removeEventListener('terminal-status-update', detectCurrentRenderer)
+      window.removeEventListener('terminal:new-session', detectCurrentRenderer)
+    })
 
     // 保存连接设置
     const saveConnectionSettings = async () => {
@@ -1894,6 +1996,8 @@ export default defineComponent({
       toggleAIFeature,
       testAIConnection,
       saveAISettings
+      ,currentRenderer
+      ,currentRendererDisplay
     }
   }
 })
