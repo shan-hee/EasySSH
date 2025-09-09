@@ -39,15 +39,17 @@
         <!-- 终端主体区域：监控面板 + 终端内容 + AI输入栏 -->
         <div class="terminal-main-area">
           <!-- 桌面端监控面板 - 左侧 -->
-          <div class="terminal-monitoring-panel theme-transition"
-               v-show="shouldShowDesktopMonitoringPanel(termId) && isActiveTerminal(termId)">
-            <ResponsiveMonitoringPanel
-              :visible="isMonitoringPanelVisible(termId)"
-              :monitoring-data="getMonitoringData(termId)"
-              :terminal-id="termId"
-              :state-manager="getTerminalStateManager(termId)"
-            />
-          </div>
+          <transition name="monitoring-toggle" appear>
+            <div class="terminal-monitoring-panel theme-transition"
+                 v-show="shouldShowDesktopMonitoringPanel(termId) && isActiveTerminal(termId)">
+              <ResponsiveMonitoringPanel
+                :visible="isMonitoringPanelVisible(termId)"
+                :monitoring-data="getMonitoringData(termId)"
+                :terminal-id="termId"
+                :state-manager="getTerminalStateManager(termId)"
+              />
+            </div>
+          </transition>
 
           <!-- 右侧内容区域：终端 + AI面板 + AI输入栏 -->
           <div class="terminal-right-area" :class="{ 'with-monitoring-panel': shouldShowDesktopMonitoringPanel(termId) }">
@@ -217,6 +219,45 @@ export default {
     const aiPanelStore = useAIPanelStore() // AI面板状态管理
     const aiCombinedPanelRefs = ref({}) // AI合并面板组件引用
     const aiStreamingStates = ref({}) // 每个终端的AI流式输出状态
+
+    // 监控面板动画/尺寸调整状态，避免动画期间频繁 fit 导致闪烁
+    const isMonitoringPanelAnimating = ref(false)
+    let resizeAfterAnimationTimer = null
+
+    // 回滚：移除仅在动画后应用右侧布局的逻辑
+
+    // 终端柔性适配：在最终 fit 前后做一次轻微淡入，掩盖画布重绘造成的闪烁
+    const softRefitTerminal = (termId) => {
+      try {
+        const id = termId || activeConnectionId.value
+        if (!id || !terminalStore.hasTerminal(id)) return
+
+        // 选择 xterm 根元素（我们在创建时为元素打过 data-terminal-id 标识）
+        const el = document.querySelector(`.xterm[data-terminal-id="${id}"]`)
+        if (!el) {
+          terminalStore.fitTerminal(id)
+          return
+        }
+
+        // 轻微淡出，下一帧执行 fit，再淡入
+        const previousTransition = el.style.transition
+        el.style.transition = el.style.transition ? `${el.style.transition}, opacity 120ms ease` : 'opacity 120ms ease'
+        el.style.willChange = 'opacity'
+        el.style.opacity = '0.01'
+
+        requestAnimationFrame(() => {
+          try { terminalStore.fitTerminal(id) } catch (_) {}
+          requestAnimationFrame(() => {
+            el.style.opacity = '1'
+            // 清理 will-change，避免长期占用合成层
+            setTimeout(() => { el.style.willChange = ''; /* 保留过渡属性以复用 */ }, 160)
+          })
+        })
+      } catch (_) {
+        // 兜底直接适配
+        try { terminalStore.fitTerminal(termId || activeConnectionId.value) } catch (_) {}
+      }
+    }
 
     // 每个终端的火箭动画阶段状态
     const terminalRocketPhases = ref({})
@@ -1571,8 +1612,18 @@ export default {
         const terminalContainer = document.querySelector('.terminal-container')
         if (terminalContainer) {
           resizeObserver = new ResizeObserver(() => {
+            // 在AI面板拖拽或监控面板过渡动画期间，不频繁触发 fit，改为动画结束/短延迟后统一触发一次
+            if (isAIPanelResizing.value || isMonitoringPanelAnimating.value) {
+              if (resizeAfterAnimationTimer) clearTimeout(resizeAfterAnimationTimer)
+              resizeAfterAnimationTimer = setTimeout(() => {
+                if (activeConnectionId.value && terminalStore.hasTerminal(activeConnectionId.value)) {
+                  terminalStore.fitTerminal(activeConnectionId.value)
+                }
+              }, 120)
+              return
+            }
+
             if (activeConnectionId.value && terminalStore.hasTerminal(activeConnectionId.value)) {
-              // 仅在终端实际存在时调整大小
               terminalStore.fitTerminal(activeConnectionId.value)
             }
           })
@@ -1595,6 +1646,54 @@ export default {
 
       // 添加终端设置更新监听器
       window.addEventListener('terminal-settings-updated', handleTerminalSettingsUpdate)
+
+      // 监听监控面板的过渡动画，规避动画期间反复 fit 导致的闪烁
+      const onMonitoringTransitionStart = (e) => {
+        try {
+          if (e?.target?.classList?.contains('terminal-monitoring-panel') && (e.propertyName === 'width' || e.propertyName === 'transform')) {
+            isMonitoringPanelAnimating.value = true
+          }
+        } catch (_) {}
+      }
+      const onMonitoringTransitionEnd = (e) => {
+        try {
+          if (e?.target?.classList?.contains('terminal-monitoring-panel') && (e.propertyName === 'width' || e.propertyName === 'transform')) {
+            isMonitoringPanelAnimating.value = false
+            if (activeConnectionId.value && terminalStore.hasTerminal(activeConnectionId.value)) {
+              // 在动画结束时做一次柔性适配，避免瞬时闪烁
+              // 先将右侧区域宽度临时锁定为整数像素，避免亚像素导致的画布重采样
+              try {
+                const rightArea = document.querySelector('.terminal-content-wrapper.terminal-active .terminal-right-area')
+                if (rightArea) {
+                  const rect = rightArea.getBoundingClientRect()
+                  rightArea.style.width = `${Math.round(rect.width)}px`
+                  requestAnimationFrame(() => {
+                    softRefitTerminal(activeConnectionId.value)
+                    setTimeout(() => { rightArea.style.width = '' }, 160)
+                  })
+                } else {
+                  softRefitTerminal(activeConnectionId.value)
+                }
+              } catch (_) {
+                softRefitTerminal(activeConnectionId.value)
+              }
+            }
+          }
+        } catch (_) {}
+      }
+
+      // 使用捕获阶段更稳妥地获取事件
+      window.addEventListener('transitionstart', onMonitoringTransitionStart, true)
+      window.addEventListener('transitionend', onMonitoringTransitionEnd, true)
+
+      // 保存清理函数
+      if (!cleanupEvents) cleanupEvents = () => {}
+      const prevCleanup = cleanupEvents
+      cleanupEvents = () => {
+        try { prevCleanup && prevCleanup() } catch (_) {}
+        window.removeEventListener('transitionstart', onMonitoringTransitionStart, true)
+        window.removeEventListener('transitionend', onMonitoringTransitionEnd, true)
+      }
 
       // 如果有活动连接ID，则更新终端ID列表
       if (activeConnectionId.value) {
@@ -1694,6 +1793,10 @@ export default {
       if (cleanupEvents) cleanupEvents()
       if (cleanupSSHFailureEvents) cleanupSSHFailureEvents()
       if (cleanupMonitoringListener) cleanupMonitoringListener()
+      if (resizeAfterAnimationTimer) {
+        clearTimeout(resizeAfterAnimationTimer)
+        resizeAfterAnimationTimer = null
+      }
       window.removeEventListener('terminal-command', handleTerminalEvent)
       window.removeEventListener('terminal:session-change', handleSessionChange)
       window.removeEventListener('terminal-theme-update', handleTerminalThemeUpdate)
@@ -2932,6 +3035,7 @@ export default {
 /* 有监控面板时的右侧区域 */
 .terminal-right-area.with-monitoring-panel {
   width: calc(100% - 320px); /* 减去监控面板宽度 */
+  transition: width var(--transition-slow);
 }
 
 /* 终端内容填充区域 */
@@ -2964,6 +3068,29 @@ export default {
   transition:
     opacity var(--transition-slow),
     transform var(--transition-slow);
+}
+
+/* ===== 监控面板显隐过渡（含宽度） ===== */
+.monitoring-toggle-enter-active,
+.monitoring-toggle-leave-active {
+  transition:
+    width var(--transition-slow),
+    opacity var(--transition-slow),
+    transform var(--transition-slow);
+}
+
+.monitoring-toggle-enter-from,
+.monitoring-toggle-leave-to {
+  width: 0;
+  opacity: 0;
+  transform: translateX(-12px);
+}
+
+.monitoring-toggle-enter-to,
+.monitoring-toggle-leave-from {
+  width: 320px;
+  opacity: 1;
+  transform: translateX(0);
 }
 
 .ai-combined-toggle-enter-from,
@@ -3070,6 +3197,9 @@ export default {
 
   /* 防止字体渲染闪烁 */
   font-display: swap;
+
+  /* 柔性适配时的轻微淡入过渡，掩盖画布重绘 */
+  transition: opacity 120ms ease;
 }
 
 /* XTerm 视口 */
