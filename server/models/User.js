@@ -12,7 +12,7 @@ class User {
     this.username = data.username;
     this.email = data.email;
     this.password = data.password;
-    
+
     // 从数据库提取的独立字段
     this.displayName = data.displayName || '';
     this.avatar = data.avatar || '';
@@ -20,11 +20,11 @@ class User {
     this.mfaSecret = data.mfaSecret || '';
     this.theme = data.theme || 'dark';
     this.fontSize = data.fontSize || 14;
-    
+
     // 解析其他配置JSON
     let profileData = {};
     let settingsData = {};
-    
+
     // 解析profileJson
     if (data.profileJson) {
       try {
@@ -33,7 +33,7 @@ class User {
         console.error('解析profileJson失败:', e);
       }
     }
-    
+
     // 解析settingsJson
     if (data.settingsJson) {
       try {
@@ -42,7 +42,7 @@ class User {
         console.error('解析settingsJson失败:', e);
       }
     }
-    
+
     // 兼容旧的profile和settings字段（用于迁移）
     if (data.profile && !data.profileJson) {
       try {
@@ -51,7 +51,7 @@ class User {
         this.avatar = parsedProfile.avatar || this.avatar;
         this.mfaEnabled = parsedProfile.mfaEnabled || this.mfaEnabled;
         this.mfaSecret = parsedProfile.mfaSecret || this.mfaSecret;
-        
+
         // 其他profile属性复制到profileData
         profileData = { ...parsedProfile };
         delete profileData.displayName;
@@ -62,13 +62,13 @@ class User {
         console.error('解析旧profile失败:', e);
       }
     }
-    
+
     if (data.settings && !data.settingsJson) {
       try {
         const parsedSettings = typeof data.settings === 'string' ? JSON.parse(data.settings) : data.settings;
         this.theme = parsedSettings.theme || this.theme;
         this.fontSize = parsedSettings.fontSize || this.fontSize;
-        
+
         // 其他settings属性复制到settingsData
         settingsData = { ...parsedSettings };
         delete settingsData.theme;
@@ -77,11 +77,11 @@ class User {
         console.error('解析旧settings失败:', e);
       }
     }
-    
+
     // 存储剩余配置属性
     this.profileData = profileData;
     this.settingsData = settingsData;
-    
+
     // 其他用户属性
     this.isAdmin = data.isAdmin || false;
     this.status = data.status || 'active';
@@ -96,18 +96,18 @@ class User {
     const db = connectDatabase();
     const now = new Date().toISOString();
     this.updatedAt = now;
-    
+
     // 如果密码被修改，进行哈希处理
     if (this._passwordModified) {
       const salt = await bcrypt.genSalt(10);
       this.password = await bcrypt.hash(this.password, salt);
       this._passwordModified = false;
     }
-    
+
     // 准备JSON字段 - 仅包含非独立字段的数据
     const profileJson = JSON.stringify(this.profileData || {});
     const settingsJson = JSON.stringify(this.settingsData || {});
-    
+
     if (this.id) {
       // 更新现有用户
       const stmt = db.prepare(`
@@ -119,7 +119,7 @@ class User {
           updatedAt = ?
         WHERE id = ?
       `);
-      
+
       stmt.run(
         this.username,
         this.email,
@@ -142,7 +142,7 @@ class User {
     } else {
       // 创建新用户
       this.createdAt = now;
-      
+
       const stmt = db.prepare(`
         INSERT INTO users (
           username, email, password, 
@@ -152,7 +152,7 @@ class User {
           createdAt, updatedAt
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
-      
+
       const info = stmt.run(
         this.username,
         this.email,
@@ -172,10 +172,10 @@ class User {
         now,
         now
       );
-      
+
       this.id = info.lastInsertRowid;
     }
-    
+
     return this;
   }
 
@@ -197,11 +197,11 @@ class User {
     delete userObj.password;
     delete userObj._passwordModified;
     delete userObj.mfaSecret; // 移除敏感的MFA密钥
-    
+
     // 删除profileData和settingsData，不再创建重复的子对象
     delete userObj.profileData;
     delete userObj.settingsData;
-    
+
     return userObj;
   }
 
@@ -219,9 +219,9 @@ class User {
     const db = connectDatabase();
     const stmt = db.prepare('SELECT * FROM users WHERE id = ?');
     const row = stmt.get(id);
-    
+
     if (!row) return null;
-    
+
     return new User(row);
   }
 
@@ -230,9 +230,9 @@ class User {
     const db = connectDatabase();
     const stmt = db.prepare('SELECT * FROM users WHERE username = ?');
     const row = stmt.get(username);
-    
+
     if (!row) return null;
-    
+
     return new User(row);
   }
 
@@ -241,19 +241,19 @@ class User {
     const db = connectDatabase();
     const stmt = db.prepare('SELECT * FROM users WHERE email = ?');
     const row = stmt.get(email);
-    
+
     if (!row) return null;
-    
+
     return new User(row);
   }
 
   // 查找一个符合条件的用户
   static findOne(conditions) {
     const db = connectDatabase();
-    
+
     let query = 'SELECT * FROM users WHERE 1=1';
     const params = [];
-    
+
     if (conditions._id) {
       query += ' AND id = ?';
       params.push(conditions._id);
@@ -261,40 +261,40 @@ class User {
       query += ' AND id = ?';
       params.push(conditions.id);
     }
-    
+
     if (conditions.username) {
       query += ' AND username = ?';
       params.push(conditions.username);
     }
-    
+
     if (conditions.email) {
       query += ' AND email = ?';
       params.push(conditions.email);
     }
-    
+
     const stmt = db.prepare(query);
     const row = stmt.get(...params);
-    
+
     if (!row) return null;
-    
+
     return new User(row);
   }
 
   // 查找所有符合条件的用户
   static find(conditions = {}) {
     const db = connectDatabase();
-    
+
     let query = 'SELECT * FROM users WHERE 1=1';
     const params = [];
-    
+
     if (conditions.status) {
       query += ' AND status = ?';
       params.push(conditions.status);
     }
-    
+
     const stmt = db.prepare(query);
     const rows = stmt.all(...params);
-    
+
     return rows.map(row => new User(row));
   }
 
@@ -302,7 +302,7 @@ class User {
   static findByIdAndUpdate(id, update, options = {}) {
     const user = this.findById(id);
     if (!user) return null;
-    
+
     // 处理设置字段
     if (update.$set) {
       Object.keys(update.$set).forEach(key => {
@@ -313,17 +313,17 @@ class User {
         }
       });
     }
-    
+
     // 保存更新
     user.save();
-    
+
     // 返回新文档
     if (options.new) {
       return user;
     }
-    
+
     return user;
   }
 }
 
-module.exports = User; 
+module.exports = User;

@@ -228,7 +228,6 @@ class MonitoringBridge {
   }
 
 
-
   /**
    * 获取指定会话的监控收集器状态
    * @param {string} sessionId SSH会话ID
@@ -266,7 +265,6 @@ class MonitoringBridge {
   }
 
 
-
   /**
    * 清理过期状态记录
    */
@@ -294,7 +292,6 @@ class MonitoringBridge {
   getCollectorState(sessionId) {
     return this.collectorStates.get(sessionId) || 'unknown';
   }
-
 
 
   /**

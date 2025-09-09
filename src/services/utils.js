@@ -1,8 +1,8 @@
 /**
  * 工具函数服务模块，提供各种通用工具方法
  */
-import { ElMessage } from 'element-plus'
-import CryptoJS from 'crypto-js'
+import { ElMessage } from 'element-plus';
+import CryptoJS from 'crypto-js';
 
 /**
  * 格式化日期时间
@@ -11,18 +11,18 @@ import CryptoJS from 'crypto-js'
  * @returns {string} - 格式化后的日期字符串
  */
 export function formatDate(date, format = 'YYYY-MM-DD HH:mm:ss') {
-  if (!date) return ''
-  
+  if (!date) return '';
+
   // 转换为Date对象
-  let dateObj = date
+  let dateObj = date;
   if (typeof date === 'string' || typeof date === 'number') {
-    dateObj = new Date(date)
+    dateObj = new Date(date);
   }
-  
+
   if (!(dateObj instanceof Date) || isNaN(dateObj)) {
-    return ''
+    return '';
   }
-  
+
   const options = {
     'Y+': dateObj.getFullYear().toString(),
     'M+': (dateObj.getMonth() + 1).toString(),
@@ -33,32 +33,32 @@ export function formatDate(date, format = 'YYYY-MM-DD HH:mm:ss') {
     's+': dateObj.getSeconds().toString(),
     'S+': dateObj.getMilliseconds().toString(),
     'q+': Math.floor((dateObj.getMonth() + 3) / 3).toString(),
-    'a': dateObj.getHours() < 12 ? 'am' : 'pm',
-    'A': dateObj.getHours() < 12 ? 'AM' : 'PM'
-  }
-  
-  let result = format
+    a: dateObj.getHours() < 12 ? 'am' : 'pm',
+    A: dateObj.getHours() < 12 ? 'AM' : 'PM'
+  };
+
+  let result = format;
   for (const key in options) {
-    const regex = new RegExp(`(${key})`)
+    const regex = new RegExp(`(${key})`);
     if (regex.test(result)) {
-      const match = regex.exec(result)[1]
-      let value = options[key]
-      
+      const match = regex.exec(result)[1];
+      let value = options[key];
+
       // 处理前导零
       if (/(M+|D+|H+|h+|m+|s+|S+)/.test(key)) {
-        value = value.padStart(match.length, '0')
+        value = value.padStart(match.length, '0');
       }
-      
+
       // 处理毫秒
       if (key === 'S+' && match.length > 3) {
-        value = value.padEnd(match.length, '0')
+        value = value.padEnd(match.length, '0');
       }
-      
-      result = result.replace(match, value)
+
+      result = result.replace(match, value);
     }
   }
-  
-  return result
+
+  return result;
 }
 
 /**
@@ -67,7 +67,7 @@ export function formatDate(date, format = 'YYYY-MM-DD HH:mm:ss') {
  * @returns {Promise} - Promise对象
  */
 export function delay(ms) {
-  return new Promise(resolve => setTimeout(resolve, ms))
+  return new Promise(resolve => setTimeout(resolve, ms));
 }
 
 /**
@@ -77,18 +77,18 @@ export function delay(ms) {
  * @returns {Function} - 防抖后的函数
  */
 export function debounce(fn, wait = 300) {
-  let timeout = null
-  
-  return function(...args) {
-    const context = this
-    
-    if (timeout) clearTimeout(timeout)
-    
+  let timeout = null;
+
+  return function (...args) {
+    const context = this;
+
+    if (timeout) clearTimeout(timeout);
+
     timeout = setTimeout(() => {
-      fn.apply(context, args)
-      timeout = null
-    }, wait)
-  }
+      fn.apply(context, args);
+      timeout = null;
+    }, wait);
+  };
 }
 
 /**
@@ -98,28 +98,31 @@ export function debounce(fn, wait = 300) {
  * @returns {Function} - 节流后的函数
  */
 export function throttle(fn, wait = 300) {
-  let last = 0
-  let timeout = null
-  
-  return function(...args) {
-    const context = this
-    const now = Date.now()
-    
+  let last = 0;
+  let timeout = null;
+
+  return function (...args) {
+    const context = this;
+    const now = Date.now();
+
     if (now - last > wait) {
       if (timeout) {
-        clearTimeout(timeout)
-        timeout = null
+        clearTimeout(timeout);
+        timeout = null;
       }
-      fn.apply(context, args)
-      last = now
+      fn.apply(context, args);
+      last = now;
     } else if (!timeout) {
-      timeout = setTimeout(() => {
-        fn.apply(context, args)
-        last = Date.now()
-        timeout = null
-      }, wait - (now - last))
+      timeout = setTimeout(
+        () => {
+          fn.apply(context, args);
+          last = Date.now();
+          timeout = null;
+        },
+        wait - (now - last)
+      );
     }
-  }
+  };
 }
 
 /**
@@ -129,28 +132,28 @@ export function throttle(fn, wait = 300) {
  */
 export function deepClone(obj) {
   if (obj === null || typeof obj !== 'object') {
-    return obj
+    return obj;
   }
-  
+
   // 处理日期对象
   if (obj instanceof Date) {
-    return new Date(obj.getTime())
+    return new Date(obj.getTime());
   }
-  
+
   // 处理数组
   if (Array.isArray(obj)) {
-    return obj.map(item => deepClone(item))
+    return obj.map(item => deepClone(item));
   }
-  
+
   // 处理对象
-  const cloned = {}
+  const cloned = {};
   for (const key in obj) {
     if (Object.prototype.hasOwnProperty.call(obj, key)) {
-      cloned[key] = deepClone(obj[key])
+      cloned[key] = deepClone(obj[key]);
     }
   }
-  
-  return cloned
+
+  return cloned;
 }
 
 /**
@@ -159,7 +162,7 @@ export function deepClone(obj) {
  * @returns {string} - 唯一ID
  */
 export function generateId(prefix = '') {
-  return `${prefix}${Date.now().toString(36)}${Math.random().toString(36).substring(2, 9)}`
+  return `${prefix}${Date.now().toString(36)}${Math.random().toString(36).substring(2, 9)}`;
 }
 
 /**
@@ -169,13 +172,13 @@ export function generateId(prefix = '') {
  * @returns {string} - 格式化后的文件大小
  */
 export function formatFileSize(bytes, decimals = 2) {
-  if (bytes === 0) return '0 Bytes'
-  
-  const k = 1024
-  const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB', 'ZB', 'YB']
-  const i = Math.floor(Math.log(bytes) / Math.log(k))
-  
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(decimals)) + ' ' + sizes[i]
+  if (bytes === 0) return '0 Bytes';
+
+  const k = 1024;
+  const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB', 'ZB', 'YB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+
+  return `${parseFloat((bytes / Math.pow(k, i)).toFixed(decimals))} ${sizes[i]}`;
 }
 
 /**
@@ -186,21 +189,21 @@ export function formatFileSize(bytes, decimals = 2) {
 export async function copyToClipboard(text, showMessage = true) {
   try {
     // 动态导入剪贴板服务，避免循环依赖
-    const { default: clipboardService } = await import('./clipboard.js')
+    const { default: clipboardService } = await import('./clipboard.js');
 
-    const success = await clipboardService.copyToClipboard(text)
+    const success = await clipboardService.copyToClipboard(text);
 
     if (success && showMessage) {
-      ElMessage.success('复制成功')
+      ElMessage.success('复制成功');
     } else if (!success && showMessage) {
-      ElMessage.error('复制失败')
+      ElMessage.error('复制失败');
     }
 
-    return success
+    return success;
   } catch (error) {
-    console.error('复制文本失败:', error)
-    if (showMessage) ElMessage.error('复制失败')
-    return false
+    console.error('复制文本失败:', error);
+    if (showMessage) ElMessage.error('复制失败');
+    return false;
   }
 }
 
@@ -212,13 +215,13 @@ export async function copyToClipboard(text, showMessage = true) {
  * @returns {boolean} - 是否为空
  */
 export function isEmpty(obj) {
-  if (obj === null || obj === undefined) return true
-  if (typeof obj === 'string') return obj.trim() === ''
+  if (obj === null || obj === undefined) return true;
+  if (typeof obj === 'string') return obj.trim() === '';
   if (typeof obj === 'object') {
-    if (Array.isArray(obj)) return obj.length === 0
-    return Object.keys(obj).length === 0
+    if (Array.isArray(obj)) return obj.length === 0;
+    return Object.keys(obj).length === 0;
   }
-  return false
+  return false;
 }
 
 /**
@@ -227,17 +230,17 @@ export function isEmpty(obj) {
  * @returns {Object} - 解析后的查询参数对象
  */
 export function getQueryParams(url) {
-  const params = {}
-  const searchString = url ? url.split('?')[1] : window.location.search.slice(1)
-  
+  const params = {};
+  const searchString = url ? url.split('?')[1] : window.location.search.slice(1);
+
   if (searchString) {
-    const searchParams = new URLSearchParams(searchString)
+    const searchParams = new URLSearchParams(searchString);
     for (const [key, value] of searchParams.entries()) {
-      params[key] = value
+      params[key] = value;
     }
   }
-  
-  return params
+
+  return params;
 }
 
 /**
@@ -249,7 +252,7 @@ export function objectToQueryString(params) {
   return Object.keys(params)
     .filter(key => params[key] !== undefined && params[key] !== null)
     .map(key => `${encodeURIComponent(key)}=${encodeURIComponent(params[key])}`)
-    .join('&')
+    .join('&');
 }
 
 /**
@@ -258,7 +261,7 @@ export function objectToQueryString(params) {
  * @returns {string} - 类型字符串
  */
 export function getType(data) {
-  return Object.prototype.toString.call(data).slice(8, -1).toLowerCase()
+  return Object.prototype.toString.call(data).slice(8, -1).toLowerCase();
 }
 
 /**
@@ -268,7 +271,7 @@ export function getType(data) {
  * @returns {boolean} - 是否为指定类型
  */
 export function isType(data, type) {
-  return getType(data) === type.toLowerCase()
+  return getType(data) === type.toLowerCase();
 }
 
 /**
@@ -279,17 +282,17 @@ export function isType(data, type) {
  * @returns {*} - 属性值或默认值
  */
 export function getObjectValue(obj, path, defaultValue = undefined) {
-  const keys = path.split('.')
-  let result = obj
-  
+  const keys = path.split('.');
+  let result = obj;
+
   for (const key of keys) {
     if (result === null || result === undefined) {
-      return defaultValue
+      return defaultValue;
     }
-    result = result[key]
+    result = result[key];
   }
-  
-  return result === undefined ? defaultValue : result
+
+  return result === undefined ? defaultValue : result;
 }
 
 /**
@@ -300,24 +303,24 @@ export function getObjectValue(obj, path, defaultValue = undefined) {
  * @returns {Object} - 设置后的对象
  */
 export function setObjectValue(obj, path, value) {
-  if (!obj || typeof obj !== 'object') return obj
-  
-  const keys = path.split('.')
-  let current = obj
-  
+  if (!obj || typeof obj !== 'object') return obj;
+
+  const keys = path.split('.');
+  let current = obj;
+
   for (let i = 0; i < keys.length - 1; i++) {
-    const key = keys[i]
-    
+    const key = keys[i];
+
     if (current[key] === undefined || current[key] === null) {
       // 如果下一级键是数字，创建数组，否则创建对象
-      current[key] = /^\d+$/.test(keys[i + 1]) ? [] : {}
+      current[key] = /^\d+$/.test(keys[i + 1]) ? [] : {};
     }
-    
-    current = current[key]
+
+    current = current[key];
   }
-  
-  current[keys[keys.length - 1]] = value
-  return obj
+
+  current[keys[keys.length - 1]] = value;
+  return obj;
 }
 
 /**
@@ -327,21 +330,21 @@ export function setObjectValue(obj, path, value) {
  * @returns {Object} - 扁平化后的对象
  */
 export function flattenObject(obj, prefix = '') {
-  const result = {}
-  
+  const result = {};
+
   for (const key in obj) {
     if (Object.prototype.hasOwnProperty.call(obj, key)) {
-      const newKey = prefix ? `${prefix}.${key}` : key
-      
+      const newKey = prefix ? `${prefix}.${key}` : key;
+
       if (typeof obj[key] === 'object' && obj[key] !== null && !Array.isArray(obj[key])) {
-        Object.assign(result, flattenObject(obj[key], newKey))
+        Object.assign(result, flattenObject(obj[key], newKey));
       } else {
-        result[newKey] = obj[key]
+        result[newKey] = obj[key];
       }
     }
   }
-  
-  return result
+
+  return result;
 }
 
 /**
@@ -350,15 +353,15 @@ export function flattenObject(obj, prefix = '') {
  * @returns {Object} - 嵌套对象
  */
 export function unflattenObject(obj) {
-  const result = {}
-  
+  const result = {};
+
   for (const key in obj) {
     if (Object.prototype.hasOwnProperty.call(obj, key)) {
-      setObjectValue(result, key, obj[key])
+      setObjectValue(result, key, obj[key]);
     }
   }
-  
-  return result
+
+  return result;
 }
 
 /**
@@ -368,29 +371,29 @@ export function unflattenObject(obj) {
  * @param {string} type - MIME类型
  */
 export function downloadFile(content, filename, type = 'text/plain') {
-  let blob
-  
+  let blob;
+
   if (content instanceof Blob) {
-    blob = content
+    blob = content;
   } else if (typeof content === 'string') {
-    blob = new Blob([content], { type })
+    blob = new Blob([content], { type });
   } else {
-    throw new Error('不支持的内容类型')
+    throw new Error('不支持的内容类型');
   }
-  
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = filename
-  a.style.display = 'none'
-  
-  document.body.appendChild(a)
-  a.click()
-  
+
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.style.display = 'none';
+
+  document.body.appendChild(a);
+  a.click();
+
   setTimeout(() => {
-    document.body.removeChild(a)
-    URL.revokeObjectURL(url)
-  }, 100)
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }, 100);
 }
 
 /**
@@ -400,10 +403,10 @@ export function downloadFile(content, filename, type = 'text/plain') {
  */
 export function isValidJSON(str) {
   try {
-    JSON.parse(str)
-    return true
+    JSON.parse(str);
+    return true;
   } catch (e) {
-    return false
+    return false;
   }
 }
 
@@ -415,21 +418,21 @@ export function isValidJSON(str) {
  * @returns {string} - 格式化后的时间
  */
 export function formatDuration(ms) {
-  if (ms < 0) return '0秒'
-  
-  const seconds = Math.floor(ms / 1000)
-  const minutes = Math.floor(seconds / 60)
-  const hours = Math.floor(minutes / 60)
-  const days = Math.floor(hours / 24)
-  
+  if (ms < 0) return '0秒';
+
+  const seconds = Math.floor(ms / 1000);
+  const minutes = Math.floor(seconds / 60);
+  const hours = Math.floor(minutes / 60);
+  const days = Math.floor(hours / 24);
+
   if (days > 0) {
-    return `${days}天${hours % 24}小时`
+    return `${days}天${hours % 24}小时`;
   } else if (hours > 0) {
-    return `${hours}小时${minutes % 60}分钟`
+    return `${hours}小时${minutes % 60}分钟`;
   } else if (minutes > 0) {
-    return `${minutes}分钟${seconds % 60}秒`
+    return `${minutes}分钟${seconds % 60}秒`;
   } else {
-    return `${seconds}秒`
+    return `${seconds}秒`;
   }
 }
 
@@ -439,35 +442,35 @@ export function formatDuration(ms) {
  * @returns {string} - 相对时间描述
  */
 export function formatRelativeTime(date) {
-  if (!date) return ''
-  
-  const now = new Date()
-  const dateObj = new Date(date)
-  const diff = now - dateObj
-  
+  if (!date) return '';
+
+  const now = new Date();
+  const dateObj = new Date(date);
+  const diff = now - dateObj;
+
   // 处理无效日期
-  if (isNaN(dateObj)) return ''
-  
+  if (isNaN(dateObj)) return '';
+
   // 显示相对时间
-  const seconds = Math.floor(diff / 1000)
-  const minutes = Math.floor(seconds / 60)
-  const hours = Math.floor(minutes / 60)
-  const days = Math.floor(hours / 24)
-  const months = Math.floor(days / 30)
-  const years = Math.floor(days / 365)
-  
+  const seconds = Math.floor(diff / 1000);
+  const minutes = Math.floor(seconds / 60);
+  const hours = Math.floor(minutes / 60);
+  const days = Math.floor(hours / 24);
+  const months = Math.floor(days / 30);
+  const years = Math.floor(days / 365);
+
   if (seconds < 60) {
-    return '刚刚'
+    return '刚刚';
   } else if (minutes < 60) {
-    return `${minutes}分钟前`
+    return `${minutes}分钟前`;
   } else if (hours < 24) {
-    return `${hours}小时前`
+    return `${hours}小时前`;
   } else if (days < 30) {
-    return `${days}天前`
+    return `${days}天前`;
   } else if (months < 12) {
-    return `${months}个月前`
+    return `${months}个月前`;
   } else {
-    return `${years}年前`
+    return `${years}年前`;
   }
 }
 
@@ -478,17 +481,21 @@ export function formatRelativeTime(date) {
  * @returns {string} - 设备类型('mobile', 'tablet', 'desktop')
  */
 export function getDeviceType() {
-  const ua = navigator.userAgent
-  
+  const ua = navigator.userAgent;
+
   if (/(tablet|ipad|playbook|silk)|(android(?!.*mobi))/i.test(ua)) {
-    return 'tablet'
+    return 'tablet';
   }
-  
-  if (/Mobile|iP(hone|od)|Android|BlackBerry|IEMobile|Kindle|NetFront|Silk-Accelerated|(hpw|web)OS|Fennec|Minimo|Opera M(obi|ini)|Blazer|Dolfin|Dolphin|Skyfire|Zune/.test(ua)) {
-    return 'mobile'
+
+  if (
+    /Mobile|iP(hone|od)|Android|BlackBerry|IEMobile|Kindle|NetFront|Silk-Accelerated|(hpw|web)OS|Fennec|Minimo|Opera M(obi|ini)|Blazer|Dolfin|Dolphin|Skyfire|Zune/.test(
+      ua
+    )
+  ) {
+    return 'mobile';
   }
-  
-  return 'desktop'
+
+  return 'desktop';
 }
 
 /**
@@ -496,47 +503,47 @@ export function getDeviceType() {
  * @returns {Object} - 浏览器信息 {name, version}
  */
 export function getBrowserInfo() {
-  const ua = navigator.userAgent
-  let browserName = 'Unknown'
-  let browserVersion = ''
-  
+  const ua = navigator.userAgent;
+  let browserName = 'Unknown';
+  let browserVersion = '';
+
   // 检测 Chrome
   if (/Chrome/.test(ua) && !/Chromium|Edge|Edg|OPR|Opera/.test(ua)) {
-    browserName = 'Chrome'
-    browserVersion = ua.match(/Chrome\/(\d+\.\d+)/)?.[1] || ''
+    browserName = 'Chrome';
+    browserVersion = ua.match(/Chrome\/(\d+\.\d+)/)?.[1] || '';
   }
   // 检测 Firefox
   else if (/Firefox/.test(ua)) {
-    browserName = 'Firefox'
-    browserVersion = ua.match(/Firefox\/(\d+\.\d+)/)?.[1] || ''
+    browserName = 'Firefox';
+    browserVersion = ua.match(/Firefox\/(\d+\.\d+)/)?.[1] || '';
   }
   // 检测 Safari
   else if (/Safari/.test(ua) && !/Chrome|Chromium|Edge|Edg|OPR|Opera/.test(ua)) {
-    browserName = 'Safari'
-    browserVersion = ua.match(/Version\/(\d+\.\d+)/)?.[1] || ''
+    browserName = 'Safari';
+    browserVersion = ua.match(/Version\/(\d+\.\d+)/)?.[1] || '';
   }
   // 检测 Edge (Chromium based)
   else if (/Edg/.test(ua)) {
-    browserName = 'Edge'
-    browserVersion = ua.match(/Edg\/(\d+\.\d+)/)?.[1] || ''
+    browserName = 'Edge';
+    browserVersion = ua.match(/Edg\/(\d+\.\d+)/)?.[1] || '';
   }
   // 检测 Edge (legacy)
   else if (/Edge/.test(ua)) {
-    browserName = 'Edge Legacy'
-    browserVersion = ua.match(/Edge\/(\d+\.\d+)/)?.[1] || ''
+    browserName = 'Edge Legacy';
+    browserVersion = ua.match(/Edge\/(\d+\.\d+)/)?.[1] || '';
   }
   // 检测 Opera
   else if (/OPR|Opera/.test(ua)) {
-    browserName = 'Opera'
-    browserVersion = ua.match(/(?:OPR|Opera)\/(\d+\.\d+)/)?.[1] || ''
+    browserName = 'Opera';
+    browserVersion = ua.match(/(?:OPR|Opera)\/(\d+\.\d+)/)?.[1] || '';
   }
   // 检测 IE
   else if (/Trident/.test(ua)) {
-    browserName = 'Internet Explorer'
-    browserVersion = ua.match(/rv:(\d+\.\d+)/)?.[1] || ''
+    browserName = 'Internet Explorer';
+    browserVersion = ua.match(/rv:(\d+\.\d+)/)?.[1] || '';
   }
-  
-  return { name: browserName, version: browserVersion }
+
+  return { name: browserName, version: browserVersion };
 }
 
 // 导出核心工具函数（已清理未使用的函数）
@@ -573,4 +580,4 @@ export default {
   isValidJSON,
   getDeviceType,
   getBrowserInfo
-}
+};

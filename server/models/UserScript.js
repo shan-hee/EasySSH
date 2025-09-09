@@ -27,7 +27,7 @@ class UserScript {
   async save() {
     const db = getDb();
     const now = new Date().toISOString();
-    
+
     try {
       if (this.id) {
         // 更新现有脚本
@@ -37,13 +37,13 @@ class UserScript {
             keywords = ?, category = ?, usage_count = ?, updated_at = ?
           WHERE id = ? AND user_id = ?
         `);
-        
+
         const result = stmt.run(
           this.name, this.description, this.command,
           JSON.stringify(this.tags), JSON.stringify(this.keywords),
           this.category, this.usageCount, now, this.id, this.userId
         );
-        
+
         this.updatedAt = now;
         return result.changes > 0;
       } else {
@@ -54,13 +54,13 @@ class UserScript {
             category, usage_count, created_at, updated_at
           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `);
-        
+
         const result = stmt.run(
           this.userId, this.name, this.description, this.command,
           JSON.stringify(this.tags), JSON.stringify(this.keywords),
           this.category, this.usageCount, now, now
         );
-        
+
         this.id = result.lastInsertRowid;
         this.createdAt = now;
         this.updatedAt = now;
@@ -79,7 +79,7 @@ class UserScript {
     if (!this.id || !this.userId) {
       throw new Error('无法删除未保存的脚本');
     }
-    
+
     const db = getDb();
     try {
       const stmt = db.prepare('DELETE FROM user_scripts WHERE id = ? AND user_id = ?');
@@ -96,7 +96,7 @@ class UserScript {
    */
   async incrementUsage() {
     if (!this.id) return false;
-    
+
     const db = getDb();
     try {
       const stmt = db.prepare('UPDATE user_scripts SET usage_count = usage_count + 1 WHERE id = ? AND user_id = ?');
@@ -151,25 +151,25 @@ class UserScript {
   static async findByUserId(userId, options = {}) {
     const db = getDb();
     const { limit = 100, offset = 0, category, search } = options;
-    
+
     try {
       let sql = 'SELECT * FROM user_scripts WHERE user_id = ?';
       const params = [userId];
-      
+
       if (category) {
         sql += ' AND category = ?';
         params.push(category);
       }
-      
+
       if (search) {
         sql += ' AND (name LIKE ? OR description LIKE ? OR command LIKE ?)';
         const searchPattern = `%${search}%`;
         params.push(searchPattern, searchPattern, searchPattern);
       }
-      
+
       sql += ' ORDER BY usage_count DESC, updated_at DESC LIMIT ? OFFSET ?';
       params.push(limit, offset);
-      
+
       const stmt = db.prepare(sql);
       const rows = stmt.all(...params);
       return rows.map(row => new UserScript(row));
@@ -220,7 +220,7 @@ class UserScript {
   static async searchUserScripts(userId, query, options = {}) {
     const db = getDb();
     const { limit = 50, offset = 0 } = options;
-    
+
     try {
       const searchPattern = `%${query}%`;
       const stmt = db.prepare(`
@@ -242,14 +242,14 @@ class UserScript {
           usage_count DESC
         LIMIT ? OFFSET ?
       `);
-      
+
       const rows = stmt.all(
         userId,
         searchPattern, searchPattern, searchPattern, searchPattern, searchPattern,
         searchPattern, searchPattern, searchPattern,
         limit, offset
       );
-      
+
       return rows.map(row => new UserScript(row));
     } catch (error) {
       log.error('搜索用户脚本失败:', error);
@@ -263,7 +263,7 @@ class UserScript {
   static async getAllUserScripts(userId, options = {}) {
     const db = getDb();
     const { limit = 100, offset = 0, search } = options;
-    
+
     try {
       let sql = `
         SELECT 
@@ -272,11 +272,11 @@ class UserScript {
         FROM scripts 
         WHERE is_public = 1
       `;
-      
+
       if (search) {
-        sql += ` AND (name LIKE ? OR description LIKE ? OR command LIKE ?)`;
+        sql += ' AND (name LIKE ? OR description LIKE ? OR command LIKE ?)';
       }
-      
+
       sql += `
         UNION ALL
         SELECT 
@@ -285,13 +285,13 @@ class UserScript {
         FROM user_scripts 
         WHERE user_id = ?
       `;
-      
+
       if (search) {
-        sql += ` AND (name LIKE ? OR description LIKE ? OR command LIKE ?)`;
+        sql += ' AND (name LIKE ? OR description LIKE ? OR command LIKE ?)';
       }
-      
-      sql += ` ORDER BY usage_count DESC, updated_at DESC LIMIT ? OFFSET ?`;
-      
+
+      sql += ' ORDER BY usage_count DESC, updated_at DESC LIMIT ? OFFSET ?';
+
       const params = [];
       if (search) {
         const searchPattern = `%${search}%`;
@@ -303,10 +303,10 @@ class UserScript {
         params.push(searchPattern, searchPattern, searchPattern);
       }
       params.push(limit, offset);
-      
+
       const stmt = db.prepare(sql);
       const rows = stmt.all(...params);
-      
+
       return rows.map(row => ({
         ...row,
         tags: row.tags ? JSON.parse(row.tags) : [],

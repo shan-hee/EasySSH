@@ -3,8 +3,8 @@
  * 提供统一的错误处理、日志记录和用户友好的错误提示
  */
 
-import { ElMessage, ElNotification } from 'element-plus'
-import log from '../services/log.js'
+import { ElMessage, ElNotification } from 'element-plus';
+import log from '../services/log.js';
 
 /**
  * 错误类型枚举
@@ -17,7 +17,7 @@ export const ErrorTypes = {
   STORAGE_ERROR: 'storage_error',
   COMPONENT_ERROR: 'component_error',
   UNKNOWN_ERROR: 'unknown_error'
-}
+};
 
 /**
  * 错误严重程度枚举
@@ -27,16 +27,16 @@ export const ErrorSeverity = {
   MEDIUM: 'medium',
   HIGH: 'high',
   CRITICAL: 'critical'
-}
+};
 
 /**
  * AI面板错误处理器
  */
 export class AIErrorHandler {
   constructor() {
-    this.errorHistory = []
-    this.maxHistorySize = 100
-    this.errorCounts = {}
+    this.errorHistory = [];
+    this.maxHistorySize = 100;
+    this.errorCounts = {};
   }
 
   /**
@@ -46,30 +46,30 @@ export class AIErrorHandler {
    * @param {string} severity 错误严重程度
    */
   handleError(error, context = {}, severity = ErrorSeverity.MEDIUM) {
-    const errorInfo = this.normalizeError(error, context, severity)
-    
+    const errorInfo = this.normalizeError(error, context, severity);
+
     // 记录错误
-    this.recordError(errorInfo)
-    
+    this.recordError(errorInfo);
+
     // 根据严重程度决定处理方式
     switch (severity) {
-      case ErrorSeverity.CRITICAL:
-        this.handleCriticalError(errorInfo)
-        break
-      case ErrorSeverity.HIGH:
-        this.handleHighSeverityError(errorInfo)
-        break
-      case ErrorSeverity.MEDIUM:
-        this.handleMediumSeverityError(errorInfo)
-        break
-      case ErrorSeverity.LOW:
-        this.handleLowSeverityError(errorInfo)
-        break
-      default:
-        this.handleMediumSeverityError(errorInfo)
+    case ErrorSeverity.CRITICAL:
+      this.handleCriticalError(errorInfo);
+      break;
+    case ErrorSeverity.HIGH:
+      this.handleHighSeverityError(errorInfo);
+      break;
+    case ErrorSeverity.MEDIUM:
+      this.handleMediumSeverityError(errorInfo);
+      break;
+    case ErrorSeverity.LOW:
+      this.handleLowSeverityError(errorInfo);
+      break;
+    default:
+      this.handleMediumSeverityError(errorInfo);
     }
-    
-    return errorInfo
+
+    return errorInfo;
   }
 
   /**
@@ -80,25 +80,25 @@ export class AIErrorHandler {
    * @returns {Object} 标准化的错误信息
    */
   normalizeError(error, context, severity) {
-    const timestamp = new Date().toISOString()
-    const id = this.generateErrorId()
-    
-    let message, stack, type
-    
+    const timestamp = new Date().toISOString();
+    const id = this.generateErrorId();
+
+    let message, stack, type;
+
     if (error instanceof Error) {
-      message = error.message
-      stack = error.stack
-      type = this.detectErrorType(error)
+      message = error.message;
+      stack = error.stack;
+      type = this.detectErrorType(error);
     } else if (typeof error === 'string') {
-      message = error
-      stack = new Error().stack
-      type = context.type || ErrorTypes.UNKNOWN_ERROR
+      message = error;
+      stack = new Error().stack;
+      type = context.type || ErrorTypes.UNKNOWN_ERROR;
     } else {
-      message = '未知错误'
-      stack = new Error().stack
-      type = ErrorTypes.UNKNOWN_ERROR
+      message = '未知错误';
+      stack = new Error().stack;
+      type = ErrorTypes.UNKNOWN_ERROR;
     }
-    
+
     return {
       id,
       timestamp,
@@ -109,7 +109,7 @@ export class AIErrorHandler {
       context,
       userAgent: navigator.userAgent,
       url: window.location.href
-    }
+    };
   }
 
   /**
@@ -118,25 +118,25 @@ export class AIErrorHandler {
    * @returns {string} 错误类型
    */
   detectErrorType(error) {
-    const message = error.message.toLowerCase()
-    
+    const message = error.message.toLowerCase();
+
     if (message.includes('parse') || message.includes('syntax')) {
-      return ErrorTypes.PARSE_ERROR
+      return ErrorTypes.PARSE_ERROR;
     }
     if (message.includes('network') || message.includes('fetch')) {
-      return ErrorTypes.NETWORK_ERROR
+      return ErrorTypes.NETWORK_ERROR;
     }
     if (message.includes('permission') || message.includes('unauthorized')) {
-      return ErrorTypes.PERMISSION_ERROR
+      return ErrorTypes.PERMISSION_ERROR;
     }
     if (message.includes('storage') || message.includes('quota')) {
-      return ErrorTypes.STORAGE_ERROR
+      return ErrorTypes.STORAGE_ERROR;
     }
     if (message.includes('validation') || message.includes('invalid')) {
-      return ErrorTypes.VALIDATION_ERROR
+      return ErrorTypes.VALIDATION_ERROR;
     }
-    
-    return ErrorTypes.UNKNOWN_ERROR
+
+    return ErrorTypes.UNKNOWN_ERROR;
   }
 
   /**
@@ -145,17 +145,17 @@ export class AIErrorHandler {
    */
   recordError(errorInfo) {
     // 添加到历史记录
-    this.errorHistory.push(errorInfo)
-    
+    this.errorHistory.push(errorInfo);
+
     // 限制历史记录大小
     if (this.errorHistory.length > this.maxHistorySize) {
-      this.errorHistory.shift()
+      this.errorHistory.shift();
     }
-    
+
     // 统计错误次数
-    const key = `${errorInfo.type}:${errorInfo.message}`
-    this.errorCounts[key] = (this.errorCounts[key] || 0) + 1
-    
+    const key = `${errorInfo.type}:${errorInfo.message}`;
+    this.errorCounts[key] = (this.errorCounts[key] || 0) + 1;
+
     // 记录到日志
     log.error('AI面板错误', {
       id: errorInfo.id,
@@ -164,7 +164,7 @@ export class AIErrorHandler {
       severity: errorInfo.severity,
       context: errorInfo.context,
       count: this.errorCounts[key]
-    })
+    });
   }
 
   /**
@@ -178,10 +178,10 @@ export class AIErrorHandler {
       type: 'error',
       duration: 0, // 不自动关闭
       showClose: true
-    })
-    
+    });
+
     // 可能需要重置AI面板状态
-    this.suggestRecovery(errorInfo)
+    this.suggestRecovery(errorInfo);
   }
 
   /**
@@ -194,7 +194,7 @@ export class AIErrorHandler {
       message: this.getUserFriendlyMessage(errorInfo),
       type: 'error',
       duration: 8000
-    })
+    });
   }
 
   /**
@@ -206,7 +206,7 @@ export class AIErrorHandler {
       message: this.getUserFriendlyMessage(errorInfo),
       type: 'error',
       duration: 5000
-    })
+    });
   }
 
   /**
@@ -218,7 +218,7 @@ export class AIErrorHandler {
       message: this.getUserFriendlyMessage(errorInfo),
       type: 'warning',
       duration: 3000
-    })
+    });
   }
 
   /**
@@ -235,9 +235,9 @@ export class AIErrorHandler {
       [ErrorTypes.STORAGE_ERROR]: '存储空间不足或访问受限',
       [ErrorTypes.COMPONENT_ERROR]: 'AI面板组件异常，正在尝试恢复',
       [ErrorTypes.UNKNOWN_ERROR]: '发生未知错误，请稍后重试'
-    }
-    
-    return friendlyMessages[errorInfo.type] || errorInfo.message
+    };
+
+    return friendlyMessages[errorInfo.type] || errorInfo.message;
   }
 
   /**
@@ -252,7 +252,7 @@ export class AIErrorHandler {
           message: '建议清理AI面板历史记录以释放存储空间',
           type: 'info',
           duration: 10000
-        })
+        });
       },
       [ErrorTypes.COMPONENT_ERROR]: () => {
         ElNotification({
@@ -260,13 +260,13 @@ export class AIErrorHandler {
           message: '建议刷新页面以重置AI面板状态',
           type: 'info',
           duration: 10000
-        })
+        });
       }
-    }
-    
-    const action = recoveryActions[errorInfo.type]
+    };
+
+    const action = recoveryActions[errorInfo.type];
     if (action) {
-      setTimeout(action, 1000)
+      setTimeout(action, 1000);
     }
   }
 
@@ -275,7 +275,7 @@ export class AIErrorHandler {
    * @returns {string} 错误ID
    */
   generateErrorId() {
-    return `ai_error_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+    return `ai_error_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
   }
 
   /**
@@ -283,23 +283,23 @@ export class AIErrorHandler {
    * @returns {Object} 错误统计信息
    */
   getErrorStats() {
-    const totalErrors = this.errorHistory.length
-    const errorsByType = {}
-    const errorsBySeverity = {}
-    const recentErrors = this.errorHistory.slice(-10)
-    
+    const totalErrors = this.errorHistory.length;
+    const errorsByType = {};
+    const errorsBySeverity = {};
+    const recentErrors = this.errorHistory.slice(-10);
+
     this.errorHistory.forEach(error => {
-      errorsByType[error.type] = (errorsByType[error.type] || 0) + 1
-      errorsBySeverity[error.severity] = (errorsBySeverity[error.severity] || 0) + 1
-    })
-    
+      errorsByType[error.type] = (errorsByType[error.type] || 0) + 1;
+      errorsBySeverity[error.severity] = (errorsBySeverity[error.severity] || 0) + 1;
+    });
+
     return {
       totalErrors,
       errorsByType,
       errorsBySeverity,
       recentErrors,
       mostFrequentErrors: this.getMostFrequentErrors()
-    }
+    };
   }
 
   /**
@@ -308,20 +308,20 @@ export class AIErrorHandler {
    */
   getMostFrequentErrors() {
     const sorted = Object.entries(this.errorCounts)
-      .sort(([,a], [,b]) => b - a)
+      .sort(([, a], [, b]) => b - a)
       .slice(0, 5)
-      .map(([key, count]) => ({ key, count }))
-    
-    return sorted
+      .map(([key, count]) => ({ key, count }));
+
+    return sorted;
   }
 
   /**
    * 清理错误历史
    */
   clearErrorHistory() {
-    this.errorHistory = []
-    this.errorCounts = {}
-    log.info('AI面板错误历史已清理')
+    this.errorHistory = [];
+    this.errorCounts = {};
+    log.info('AI面板错误历史已清理');
   }
 
   /**
@@ -335,14 +335,14 @@ export class AIErrorHandler {
       history: this.errorHistory,
       userAgent: navigator.userAgent,
       url: window.location.href
-    }
-    
-    return JSON.stringify(report, null, 2)
+    };
+
+    return JSON.stringify(report, null, 2);
   }
 }
 
 // 创建全局错误处理器实例
-export const aiErrorHandler = new AIErrorHandler()
+export const aiErrorHandler = new AIErrorHandler();
 
 /**
  * 包装函数，自动处理异步函数的错误
@@ -354,12 +354,12 @@ export const aiErrorHandler = new AIErrorHandler()
 export function withErrorHandling(fn, context = {}, severity = ErrorSeverity.MEDIUM) {
   return async (...args) => {
     try {
-      return await fn(...args)
+      return await fn(...args);
     } catch (error) {
-      aiErrorHandler.handleError(error, context, severity)
-      throw error // 重新抛出错误，让调用者决定如何处理
+      aiErrorHandler.handleError(error, context, severity);
+      throw error; // 重新抛出错误，让调用者决定如何处理
     }
-  }
+  };
 }
 
 /**
@@ -371,33 +371,41 @@ export function withErrorHandling(fn, context = {}, severity = ErrorSeverity.MED
  */
 export function safeExecute(fn, fallback = null, context = {}) {
   try {
-    return fn()
+    return fn();
   } catch (error) {
-    aiErrorHandler.handleError(error, context, ErrorSeverity.LOW)
-    return fallback
+    aiErrorHandler.handleError(error, context, ErrorSeverity.LOW);
+    return fallback;
   }
 }
 
 // 全局错误监听器
 if (typeof window !== 'undefined') {
-  window.addEventListener('error', (event) => {
-    aiErrorHandler.handleError(event.error, {
-      type: ErrorTypes.COMPONENT_ERROR,
-      filename: event.filename,
-      lineno: event.lineno,
-      colno: event.colno
-    }, ErrorSeverity.HIGH)
-  })
-  
-  window.addEventListener('unhandledrejection', (event) => {
-    aiErrorHandler.handleError(event.reason, {
-      type: ErrorTypes.UNKNOWN_ERROR,
-      promise: true
-    }, ErrorSeverity.HIGH)
-  })
-  
+  window.addEventListener('error', event => {
+    aiErrorHandler.handleError(
+      event.error,
+      {
+        type: ErrorTypes.COMPONENT_ERROR,
+        filename: event.filename,
+        lineno: event.lineno,
+        colno: event.colno
+      },
+      ErrorSeverity.HIGH
+    );
+  });
+
+  window.addEventListener('unhandledrejection', event => {
+    aiErrorHandler.handleError(
+      event.reason,
+      {
+        type: ErrorTypes.UNKNOWN_ERROR,
+        promise: true
+      },
+      ErrorSeverity.HIGH
+    );
+  });
+
   // 添加到全局对象以便调试
-  window.aiErrorHandler = aiErrorHandler
+  window.aiErrorHandler = aiErrorHandler;
 }
 
 export default {
@@ -407,4 +415,4 @@ export default {
   aiErrorHandler,
   withErrorHandling,
   safeExecute
-}
+};

@@ -1,12 +1,12 @@
 <template>
   <el-dialog
     :model-value="visible"
-    @update:model-value="$emit('update:visible', $event)"
     title="选择执行服务器"
     width="600px"
     :close-on-click-modal="false"
     :close-on-press-escape="false"
     class="server-selection-dialog"
+    @update:model-value="$emit('update:visible', $event)"
   >
     <div class="dialog-content">
       <div class="script-info">
@@ -35,7 +35,7 @@
               全选
             </el-checkbox>
           </div>
-          
+
           <div class="server-items">
             <div
               v-for="server in servers"
@@ -45,11 +45,13 @@
             >
               <el-checkbox
                 :model-value="selectedServers.includes(server.id)"
-                @change="(checked) => handleServerSelection(server.id, checked)"
+                @change="checked => handleServerSelection(server.id, checked)"
               >
                 <template #default>
                   <div class="server-info">
-                    <div class="server-name">{{ server.name }}</div>
+                    <div class="server-name">
+                      {{ server.name }}
+                    </div>
                     <div class="server-details">
                       <span class="host">{{ server.username }}@{{ server.host }}:{{ server.port }}</span>
                       <span class="group">{{ server.group }}</span>
@@ -62,7 +64,10 @@
         </div>
       </div>
 
-      <div v-if="selectedServers.length === 0" class="no-selection">
+      <div
+        v-if="selectedServers.length === 0"
+        class="no-selection"
+      >
         <el-alert
           title="请至少选择一个服务器"
           type="warning"
@@ -74,7 +79,9 @@
 
     <template #footer>
       <div class="dialog-footer">
-        <el-button @click="handleCancel">取消</el-button>
+        <el-button @click="handleCancel">
+          取消
+        </el-button>
         <el-button
           type="primary"
           :disabled="selectedServers.length === 0"
@@ -89,11 +96,11 @@
 </template>
 
 <script>
-import { defineComponent, ref, computed, watch } from 'vue'
-import { ElMessage } from 'element-plus'
-import { useUserStore } from '@/store/user'
-import apiService from '@/services/api.js'
-import log from '@/services/log.js'
+import { defineComponent, ref, computed, watch } from 'vue';
+import { ElMessage } from 'element-plus';
+import { useUserStore } from '@/store/user';
+import apiService from '@/services/api.js';
+import log from '@/services/log.js';
 
 export default defineComponent({
   name: 'ServerSelectionDialog',
@@ -109,133 +116,139 @@ export default defineComponent({
   },
   emits: ['update:visible', 'execute'],
   setup(props, { emit }) {
-    const servers = ref([])
-    const selectedServers = ref([])
-    const executing = ref(false)
-    const loading = ref(false)
+    const servers = ref([]);
+    const selectedServers = ref([]);
+    const executing = ref(false);
+    const loading = ref(false);
 
     // 全选状态
-    const selectAll = ref(false)
+    const selectAll = ref(false);
     const isIndeterminate = computed(() => {
-      const selected = selectedServers.value.length
-      const total = servers.value.length
-      return selected > 0 && selected < total
-    })
+      const selected = selectedServers.value.length;
+      const total = servers.value.length;
+      return selected > 0 && selected < total;
+    });
 
     // 加载服务器列表（优化为按需加载模式）
     const loadServers = async () => {
       try {
-        loading.value = true
+        loading.value = true;
 
         // 优先从用户store获取已缓存的连接数据
-        const userStore = useUserStore()
-        if (userStore.isLoggedIn && userStore.connectionsLoaded && userStore.connections.length > 0) {
-          servers.value = userStore.connections
-          log.info('从缓存加载服务器列表成功', { count: servers.value.length })
-          return
+        const userStore = useUserStore();
+        if (
+          userStore.isLoggedIn &&
+          userStore.connectionsLoaded &&
+          userStore.connections.length > 0
+        ) {
+          servers.value = userStore.connections;
+          log.info('从缓存加载服务器列表成功', { count: servers.value.length });
+          return;
         }
 
         // 如果没有缓存数据，则请求API
-        const response = await apiService.get('/connections')
+        const response = await apiService.get('/connections');
         if (response && response.success) {
-          servers.value = response.connections || []
-          log.info('从API加载服务器列表成功', { count: servers.value.length })
+          servers.value = response.connections || [];
+          log.info('从API加载服务器列表成功', { count: servers.value.length });
         } else {
-          throw new Error(response?.message || '获取服务器列表失败')
+          throw new Error(response?.message || '获取服务器列表失败');
         }
       } catch (error) {
-        log.error('加载服务器列表失败', error)
-        ElMessage.error('加载服务器列表失败: ' + error.message)
-        servers.value = []
+        log.error('加载服务器列表失败', error);
+        ElMessage.error(`加载服务器列表失败: ${error.message}`);
+        servers.value = [];
       } finally {
-        loading.value = false
+        loading.value = false;
       }
-    }
+    };
 
     // 处理全选
-    const handleSelectAll = (checked) => {
+    const handleSelectAll = checked => {
       if (checked) {
-        selectedServers.value = servers.value.map(server => server.id)
+        selectedServers.value = servers.value.map(server => server.id);
       } else {
-        selectedServers.value = []
+        selectedServers.value = [];
       }
-    }
+    };
 
     // 处理单个服务器选择
     const handleServerSelection = (serverId, checked) => {
       if (checked) {
         if (!selectedServers.value.includes(serverId)) {
-          selectedServers.value.push(serverId)
+          selectedServers.value.push(serverId);
         }
       } else {
-        const index = selectedServers.value.indexOf(serverId)
+        const index = selectedServers.value.indexOf(serverId);
         if (index > -1) {
-          selectedServers.value.splice(index, 1)
+          selectedServers.value.splice(index, 1);
         }
       }
-      updateSelectAllState()
-    }
+      updateSelectAllState();
+    };
 
     // 更新全选状态
     const updateSelectAllState = () => {
-      const selected = selectedServers.value.length
-      const total = servers.value.length
-      selectAll.value = selected === total && total > 0
-    }
+      const selected = selectedServers.value.length;
+      const total = servers.value.length;
+      selectAll.value = selected === total && total > 0;
+    };
 
     // 处理取消
     const handleCancel = () => {
-      emit('update:visible', false)
+      emit('update:visible', false);
       // 重置状态
-      selectedServers.value = []
-      selectAll.value = false
-    }
+      selectedServers.value = [];
+      selectAll.value = false;
+    };
 
     // 处理执行
     const handleExecute = async () => {
       if (selectedServers.value.length === 0) {
-        ElMessage.warning('请至少选择一个服务器')
-        return
+        ElMessage.warning('请至少选择一个服务器');
+        return;
       }
 
       try {
-        executing.value = true
-        
+        executing.value = true;
+
         // 获取选中的服务器信息
-        const selectedServerList = servers.value.filter(server => 
+        const selectedServerList = servers.value.filter(server =>
           selectedServers.value.includes(server.id)
-        )
+        );
 
         // 触发执行事件
         emit('execute', {
           script: props.script,
           servers: selectedServerList
-        })
+        });
 
         // 关闭对话框
-        emit('update:visible', false)
-        
+        emit('update:visible', false);
+
         // 重置状态
-        selectedServers.value = []
-        selectAll.value = false
-        
+        selectedServers.value = [];
+        selectAll.value = false;
       } catch (error) {
-        log.error('执行脚本失败', error)
-        ElMessage.error('执行脚本失败: ' + error.message)
+        log.error('执行脚本失败', error);
+        ElMessage.error(`执行脚本失败: ${error.message}`);
       } finally {
-        executing.value = false
+        executing.value = false;
       }
-    }
+    };
 
     // 监听对话框显示状态
-    watch(() => props.visible, (newVal) => {
-      if (newVal) {
-        loadServers()
+    watch(
+      () => props.visible,
+      newVal => {
+        if (newVal) {
+          loadServers();
+        }
       }
-    })
+    );
 
     // 监听选中服务器变化
-    watch(selectedServers, updateSelectAllState, { deep: true })
+    watch(selectedServers, updateSelectAllState, { deep: true });
 
     return {
       servers,
@@ -249,9 +262,9 @@ export default defineComponent({
       updateSelectAllState,
       handleCancel,
       handleExecute
-    }
+    };
   }
-})
+});
 </script>
 
 <style scoped>

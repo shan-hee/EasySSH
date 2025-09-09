@@ -1,7 +1,7 @@
 /**
  * 生产级数据传输管理器
  * 优化WebSocket数据传输，避免压缩冲突，提供高效可靠的数据传输
- * 
+ *
  * @author EasySSH Team
  * @version 2.0.0
  * @since 2025-08-01
@@ -26,7 +26,7 @@ const TRANSPORT_CONFIG = {
     level: 6, // 压缩级别 (1-9)
     chunkSize: 16384 // 分块大小
   },
-  
+
   // 批量传输配置
   batching: {
     enabled: true,
@@ -34,7 +34,7 @@ const TRANSPORT_CONFIG = {
     maxBatchDelay: 100, // 最大批量延迟（毫秒）
     maxBatchBytes: 64 * 1024 // 最大批量字节数
   },
-  
+
   // 重试配置
   retry: {
     maxAttempts: 3,
@@ -42,7 +42,7 @@ const TRANSPORT_CONFIG = {
     maxDelay: 10000,
     backoffFactor: 2
   },
-  
+
   // 性能配置
   performance: {
     enableMetrics: true,
@@ -58,13 +58,13 @@ const TRANSPORT_CONFIG = {
 export class ProductionDataTransport extends EventEmitter {
   constructor(options = {}) {
     super();
-    
+
     this.config = { ...TRANSPORT_CONFIG, ...options };
     this.connections = new Map(); // WebSocket连接管理
     this.messageQueue = new Map(); // 消息队列
     this.batchTimers = new Map(); // 批量定时器
     this.retryQueues = new Map(); // 重试队列
-    
+
     // 性能指标
     this.metrics = {
       totalMessages: 0,
@@ -77,7 +77,7 @@ export class ProductionDataTransport extends EventEmitter {
       peakMemoryUsage: 0,
       startTime: Date.now()
     };
-    
+
     // 启动性能监控
     if (this.config.performance.enableMetrics) {
       this.startMetricsCollection();
@@ -102,15 +102,15 @@ export class ProductionDataTransport extends EventEmitter {
 
     this.connections.set(connectionId, connection);
     this.messageQueue.set(connectionId, []);
-    
+
     // 设置WebSocket事件监听
     this.setupWebSocketEvents(connection);
-    
-    logger.info('WebSocket连接已注册', { 
-      connectionId, 
-      totalConnections: this.connections.size 
+
+    logger.info('WebSocket连接已注册', {
+      connectionId,
+      totalConnections: this.connections.size
     });
-    
+
     this.emit('connectionRegistered', connection);
     return connection;
   }
@@ -141,7 +141,7 @@ export class ProductionDataTransport extends EventEmitter {
         websocket.terminate();
         return;
       }
-      
+
       connection.isAlive = false;
       websocket.ping();
     }, 30000);
@@ -174,16 +174,16 @@ export class ProductionDataTransport extends EventEmitter {
         await this.sendMessage(message);
       }
     } catch (error) {
-      logger.error('发送数据失败', { 
-        connectionId, 
-        messageId: message.id, 
-        error: error.message 
+      logger.error('发送数据失败', {
+        connectionId,
+        messageId: message.id,
+        error: error.message
       });
-      
+
       if (options.retry !== false) {
         await this.addToRetryQueue(message, error);
       }
-      
+
       throw error;
     }
   }
@@ -194,7 +194,7 @@ export class ProductionDataTransport extends EventEmitter {
   async addToBatch(message) {
     const { connectionId } = message;
     const queue = this.messageQueue.get(connectionId);
-    
+
     if (!queue) {
       throw new Error(`消息队列不存在: ${connectionId}`);
     }
@@ -202,7 +202,7 @@ export class ProductionDataTransport extends EventEmitter {
     queue.push(message);
 
     // 检查是否需要立即发送批量
-    const shouldSendBatch = 
+    const shouldSendBatch =
       queue.length >= this.config.batching.maxBatchSize ||
       this.calculateQueueSize(queue) >= this.config.batching.maxBatchBytes;
 
@@ -254,7 +254,7 @@ export class ProductionDataTransport extends EventEmitter {
 
     // 提取所有消息
     const messages = queue.splice(0);
-    
+
     if (messages.length === 1) {
       // 单个消息直接发送
       await this.sendMessage(messages[0]);
@@ -299,13 +299,13 @@ export class ProductionDataTransport extends EventEmitter {
 
     try {
       const startTime = Date.now();
-      
+
       // 序列化数据
       let payload = JSON.stringify(message.data);
       let compressed = false;
 
       // 应用层压缩（如果启用）
-      if (this.config.compression.enabled && 
+      if (this.config.compression.enabled &&
           payload.length > this.config.compression.threshold) {
         const compressedBuffer = await gzipAsync(Buffer.from(payload));
         if (compressedBuffer.length < payload.length * 0.8) {
@@ -324,7 +324,7 @@ export class ProductionDataTransport extends EventEmitter {
       // 更新统计
       const duration = Date.now() - startTime;
       this.updateMetrics(message, payload.length, duration);
-      
+
       connection.messageCount++;
       connection.bytesSent += payload.length;
 
@@ -347,7 +347,7 @@ export class ProductionDataTransport extends EventEmitter {
    */
   async addToRetryQueue(message, error) {
     const { connectionId } = message;
-    
+
     if (message.attempts >= this.config.retry.maxAttempts) {
       logger.error('消息重试次数超限', {
         connectionId,
@@ -387,7 +387,7 @@ export class ProductionDataTransport extends EventEmitter {
 
     const now = Date.now();
     const readyMessages = retryQueue.filter(msg => msg.nextRetryAt <= now);
-    
+
     for (const message of readyMessages) {
       try {
         await this.sendMessage(message);
@@ -407,7 +407,7 @@ export class ProductionDataTransport extends EventEmitter {
    * 计算重试延迟
    */
   calculateRetryDelay(attempts) {
-    const delay = this.config.retry.baseDelay * 
+    const delay = this.config.retry.baseDelay *
       Math.pow(this.config.retry.backoffFactor, attempts - 1);
     return Math.min(delay, this.config.retry.maxDelay);
   }
@@ -427,10 +427,10 @@ export class ProductionDataTransport extends EventEmitter {
   updateMetrics(message, bytesSent, duration) {
     this.metrics.totalMessages++;
     this.metrics.totalBytes += bytesSent;
-    
+
     // 更新平均延迟
     const totalMessages = this.metrics.totalMessages;
-    this.metrics.averageLatency = 
+    this.metrics.averageLatency =
       (this.metrics.averageLatency * (totalMessages - 1) + duration) / totalMessages;
   }
 
@@ -463,9 +463,9 @@ export class ProductionDataTransport extends EventEmitter {
     this.messageQueue.delete(connectionId);
     this.retryQueues.delete(connectionId);
 
-    logger.info('WebSocket连接已关闭', { 
-      connectionId, 
-      code, 
+    logger.info('WebSocket连接已关闭', {
+      connectionId,
+      code,
       reason: reason?.toString(),
       duration: Date.now() - connection.registeredAt
     });
@@ -477,9 +477,9 @@ export class ProductionDataTransport extends EventEmitter {
    * 处理连接错误
    */
   handleConnectionError(connectionId, error) {
-    logger.error('WebSocket连接错误', { 
-      connectionId, 
-      error: error.message 
+    logger.error('WebSocket连接错误', {
+      connectionId,
+      error: error.message
     });
 
     this.emit('connectionError', { connectionId, error });
@@ -500,12 +500,12 @@ export class ProductionDataTransport extends EventEmitter {
   collectMetrics() {
     const memoryUsage = process.memoryUsage();
     this.metrics.peakMemoryUsage = Math.max(
-      this.metrics.peakMemoryUsage, 
+      this.metrics.peakMemoryUsage,
       memoryUsage.heapUsed
     );
 
     const uptime = Date.now() - this.metrics.startTime;
-    
+
     logger.info('数据传输性能指标', {
       ...this.metrics,
       uptime,

@@ -59,9 +59,9 @@ function initAIWebSocketServer(server) {
 
 /**
  * 处理HTTP服务器的upgrade事件，路由AI WebSocket连接
- * @param {http.IncomingMessage} request 
- * @param {net.Socket} socket 
- * @param {Buffer} head 
+ * @param {http.IncomingMessage} request
+ * @param {net.Socket} socket
+ * @param {Buffer} head
  */
 function handleUpgrade(request, socket, head) {
   const url = new URL(request.url, `http://${request.headers.host}`);
@@ -71,7 +71,7 @@ function handleUpgrade(request, socket, head) {
   if (pathname === '/ai') {
     // TODO: 在这里可以添加身份验证逻辑
     // 目前先允许所有连接，后续会添加JWT验证
-    
+
     aiWss.handleUpgrade(request, socket, head, (ws) => {
       aiWss.emit('connection', ws, request);
     });

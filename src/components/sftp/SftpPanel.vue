@@ -1,119 +1,191 @@
 <template>
-  <div class="sftp-panel-container" :class="{ 'resizing': isResizing, 'closing': isClosing }" :style="{ width: width + 'px' }">
-    <div class="sftp-panel-resizer" @mousedown="startResizing"></div>
+  <div
+    class="sftp-panel-container"
+    :class="{ resizing: isResizing, closing: isClosing }"
+    :style="{ width: width + 'px' }"
+  >
+    <div
+      class="sftp-panel-resizer"
+      @mousedown="startResizing"
+    />
     <div class="sftp-panel">
       <div class="sftp-panel-header">
         <h3>SFTP 文件管理器</h3>
-        <button class="close-button" @click="close">
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="18" height="18">
-            <path fill="currentColor" d="M19,6.41L17.59,5L12,10.59L6.41,5L5,6.41L10.59,12L5,17.59L6.41,19L12,13.41L17.59,19L19,17.59L13.41,12L19,6.41Z"></path>
+        <button
+          class="close-button"
+          @click="close"
+        >
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            viewBox="0 0 24 24"
+            width="18"
+            height="18"
+          >
+            <path
+              fill="currentColor"
+              d="M19,6.41L17.59,5L12,10.59L6.41,5L5,6.41L10.59,12L5,17.59L6.41,19L12,13.41L17.59,19L19,17.59L13.41,12L19,6.41Z"
+            />
           </svg>
         </button>
       </div>
       <div class="sftp-panel-content">
         <!-- 错误提示 -->
-        <div v-if="hasError" class="sftp-error-message">
-          <el-alert :title="errorMessage" type="error" :closable="false" show-icon />
+        <div
+          v-if="hasError"
+          class="sftp-error-message"
+        >
+          <el-alert
+            :title="errorMessage"
+            type="error"
+            :closable="false"
+            show-icon
+          />
         </div>
-        
+
         <!-- 下载进度已移至全局通知区域 -->
-        
+
         <!-- 编辑器 -->
-        <div v-if="isEditing" class="sftp-editor-wrapper">
-          <SftpEditor
-            :sessionId="sessionId"
-            :filePath="editingFilePath"
+        <div
+          v-if="isEditing"
+          class="sftp-editor-wrapper"
+        >
+          <sftp-editor
+            :session-id="sessionId"
+            :file-path="editingFilePath"
             :content="editingFileContent"
             @close="closeEditor"
             @save="handleEditorSave"
           />
         </div>
-        
+
         <!-- SFTP文件浏览器 -->
-        <div v-else class="sftp-file-explorer" 
+        <div
+          v-else
+          class="sftp-file-explorer"
           :class="{ 'sftp-drag-over': isDragOver }"
           @dragover.prevent="handleDragOver"
           @dragleave.prevent="handleDragLeave"
           @drop.prevent="handleDrop"
         >
           <!-- 路径导航 -->
-          <SftpPathNavigator 
-            :currentPath="currentPath" 
+          <sftp-path-navigator
+            :current-path="currentPath"
             @navigate="loadDirectoryContents"
             @refresh="refreshCurrentDirectory"
             @toggle-hidden-files="toggleHiddenFiles"
           />
-          
+
           <!-- 工具栏 -->
-          <SftpToolbar
+          <sftp-toolbar
             @upload="uploadFile"
             @upload-folder="uploadFolder"
             @new-folder="startCreateFolder"
             @new-file="startCreateFile"
             @search="handleSearch"
           />
-          
+
           <!-- 文件列表 -->
           <div class="sftp-file-list">
             <div class="sftp-file-list-header">
-              <div class="sftp-file-name sortable-header"
-                   :class="{ 'active': isActiveSort('name') }"
-                   @click="toggleSort('name')">
+              <div
+                class="sftp-file-name sortable-header"
+                :class="{ active: isActiveSort('name') }"
+                @click="toggleSort('name')"
+              >
                 <span class="header-text">
                   名称
                   <span class="sort-indicator">{{ getSortIndicator('name') }}</span>
                 </span>
               </div>
-              <div class="sftp-file-size sortable-header"
-                   :class="{ 'active': isActiveSort('size') }"
-                   @click="toggleSort('size')">
+              <div
+                class="sftp-file-size sortable-header"
+                :class="{ active: isActiveSort('size') }"
+                @click="toggleSort('size')"
+              >
                 <span class="header-text">
                   大小
                   <span class="sort-indicator">{{ getSortIndicator('size') }}</span>
                 </span>
               </div>
-              <div class="sftp-file-date sortable-header"
-                   :class="{ 'active': isActiveSort('date') }"
-                   @click="toggleSort('date')">
+              <div
+                class="sftp-file-date sortable-header"
+                :class="{ active: isActiveSort('date') }"
+                @click="toggleSort('date')"
+              >
                 <span class="header-text">
                   修改日期
                   <span class="sort-indicator">{{ getSortIndicator('date') }}</span>
                 </span>
               </div>
-              <div class="sftp-file-actions">操作</div>
+              <div class="sftp-file-actions">
+                操作
+              </div>
             </div>
-            
+
             <div class="sftp-file-list-content">
               <!-- 加载状态 -->
-              <div v-if="isLoadingSftp" class="sftp-loading-files">
+              <div
+                v-if="isLoadingSftp"
+                class="sftp-loading-files"
+              >
                 <div class="sftp-loading-spinner">
-                  <svg class="circular" viewBox="25 25 50 50">
-                    <circle class="path" cx="50" cy="50" r="20" fill="none"/>
+                  <svg
+                    class="circular"
+                    viewBox="25 25 50 50"
+                  >
+                    <circle
+                      class="path"
+                      cx="50"
+                      cy="50"
+                      r="20"
+                      fill="none"
+                    />
                   </svg>
                 </div>
                 <p>正在加载文件列表...</p>
               </div>
 
               <!-- SFTP初始化错误（内联显示） -->
-              <div v-else-if="hasInitError" class="sftp-init-error">
+              <div
+                v-else-if="hasInitError"
+                class="sftp-init-error"
+              >
                 <div class="sftp-error-icon">
-                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="48" height="48" fill="currentColor">
-                    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/>
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    viewBox="0 0 24 24"
+                    width="48"
+                    height="48"
+                    fill="currentColor"
+                  >
+                    <path
+                      d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"
+                    />
                   </svg>
                 </div>
                 <div class="sftp-error-content">
                   <h3>SFTP连接失败</h3>
-                  <p class="sftp-error-message">{{ initErrorMessage }}</p>
+                  <p class="sftp-error-message">
+                    {{ initErrorMessage }}
+                  </p>
                   <div class="sftp-error-actions">
-                    <button class="sftp-retry-button" @click="initSftp">重新连接</button>
+                    <button
+                      class="sftp-retry-button"
+                      @click="initSftp"
+                    >
+                      重新连接
+                    </button>
                   </div>
                 </div>
               </div>
 
               <!-- 非加载状态的内容容器 -->
-              <div v-else class="sftp-content-container">
+              <div
+                v-else
+                class="sftp-content-container"
+              >
                 <!-- 内联编辑器（新建文件夹或文件时显示） -->
-                <SftpInlineEditor
+                <sftp-inline-editor
                   v-if="isCreating"
                   ref="inlineEditor"
                   :type="creatingType"
@@ -122,18 +194,24 @@
                 />
 
                 <!-- 空文件夹提示 -->
-                <div v-if="sortedFileList.length === 0 && !isCreating" class="sftp-empty-folder">
+                <div
+                  v-if="sortedFileList.length === 0 && !isCreating"
+                  class="sftp-empty-folder"
+                >
                   <p>此文件夹为空</p>
                 </div>
 
                 <!-- 文件列表 -->
-                <div v-if="sortedFileList.length > 0" class="sftp-file-items">
-                  <SftpFileItem
+                <div
+                  v-if="sortedFileList.length > 0"
+                  class="sftp-file-items"
+                >
+                  <sftp-file-item
                     v-for="(file, index) in sortedFileList"
                     :key="index"
                     :file="file"
-                    :sessionId="sessionId"
-                    :currentPath="currentPath"
+                    :session-id="sessionId"
+                    :current-path="currentPath"
                     @item-click="handleItemClick"
                     @download="downloadFile"
                     @delete="deleteFile"
@@ -149,7 +227,7 @@
     </div>
 
     <!-- 权限编辑对话框 -->
-    <SftpPermissionsDialog
+    <sftp-permissions-dialog
       v-if="selectedFileForPermissions"
       v-model="showPermissionsDialog"
       :file="selectedFileForPermissions"
@@ -159,23 +237,23 @@
 </template>
 
 <script>
-import { defineComponent, ref, nextTick, onMounted, onUnmounted, watch, computed } from 'vue'
-import { ElMessageBox, ElMessage } from 'element-plus'
-import { sftpService } from '@/services/ssh'
-import log from '@/services/log'
-import { SFTP_CONSTANTS } from '@/services/constants'
+import { defineComponent, ref, nextTick, onMounted, onUnmounted, watch, computed } from 'vue';
+import { ElMessageBox, ElMessage } from 'element-plus';
+import { sftpService } from '@/services/ssh';
+import log from '@/services/log';
+import { SFTP_CONSTANTS } from '@/services/constants';
 
 // 导入子组件
-import SftpFileItem from './components/SftpFileItem.vue'
-import SftpInlineEditor from './components/SftpInlineEditor.vue'
-import SftpToolbar from './components/SftpToolbar.vue'
-import SftpPathNavigator from './components/SftpPathNavigator.vue'
-import SftpEditor from './components/SftpEditor.vue'
-import SftpPermissionsDialog from './components/SftpPermissionsDialog.vue'
+import SftpFileItem from './components/SftpFileItem.vue';
+import SftpInlineEditor from './components/SftpInlineEditor.vue';
+import SftpToolbar from './components/SftpToolbar.vue';
+import SftpPathNavigator from './components/SftpPathNavigator.vue';
+import SftpEditor from './components/SftpEditor.vue';
+import SftpPermissionsDialog from './components/SftpPermissionsDialog.vue';
 
 // 导入可复用逻辑
-import { useFileUtils } from './composables/useFileUtils'
-import { useSortable } from './composables/useSortable'
+import { useFileUtils } from './composables/useFileUtils';
+import { useSortable } from './composables/useSortable';
 
 export default defineComponent({
   name: 'SftpPanel',
@@ -204,49 +282,50 @@ export default defineComponent({
   emits: ['close', 'resize', 'update:width'],
   setup(props, { emit }) {
     // SFTP面板状态
-    const isResizing = ref(false)
+    const isResizing = ref(false);
 
     // SFTP文件管理器相关状态
-    const isLoadingSftp = ref(true)
-    const currentPath = ref('/')
+    const isLoadingSftp = ref(true);
+    const currentPath = ref('/');
 
     // 排序功能
-    const { toggleSort, sortFiles, getSortIndicator, isActiveSort, sortField, sortOrder } = useSortable()
+    const { toggleSort, sortFiles, getSortIndicator, isActiveSort } =
+      useSortable();
 
     // 原始文件列表（未排序）
-    const rawFileList = ref([])
+    const rawFileList = ref([]);
 
     // 计算属性：排序后的文件列表
     const sortedFileList = computed(() => {
-      return sortFiles(rawFileList.value)
-    })
+      return sortFiles(rawFileList.value);
+    });
 
     // 内联创建状态
-    const isCreating = ref(false)
-    const creatingType = ref('folder') // 'folder' 或 'file'
-    const inlineEditor = ref(null)
-    const showHiddenFiles = ref(false)
+    const isCreating = ref(false);
+    const creatingType = ref('folder'); // 'folder' 或 'file'
+    const inlineEditor = ref(null);
+    const showHiddenFiles = ref(false);
     // 添加上传进度状态
-    const uploadProgress = ref(0)
-    const isUploading = ref(false)
-    const downloadProgress = ref(0)
-    const isDownloading = ref(false)
+    const uploadProgress = ref(0);
+    const isUploading = ref(false);
+    const downloadProgress = ref(0);
+    const isDownloading = ref(false);
     // 添加传输速度相关状态
-    const transferSpeed = ref(0) // 传输速度(字节/秒)
-    const transferStartTime = ref(0) // 传输开始时间
-    const transferredBytes = ref(0) // 已传输字节数
-    const transferInterval = ref(null) // 速度计算定时器
+    const transferSpeed = ref(0); // 传输速度(字节/秒)
+    const transferStartTime = ref(0); // 传输开始时间
+    const transferredBytes = ref(0); // 已传输字节数
+    const transferInterval = ref(null); // 速度计算定时器
     // 添加错误状态
-    const hasError = ref(false)
-    const errorMessage = ref('')
-    const hasInitError = ref(false)
-    const initErrorMessage = ref('')
+    const hasError = ref(false);
+    const errorMessage = ref('');
+    const hasInitError = ref(false);
+    const initErrorMessage = ref('');
     // 拖拽上传状态
-    const isDragOver = ref(false)
+    const isDragOver = ref(false);
     // 权限编辑状态
-    const showPermissionsDialog = ref(false)
-    const selectedFileForPermissions = ref(null)
-    
+    const showPermissionsDialog = ref(false);
+    const selectedFileForPermissions = ref(null);
+
     // 添加当前上传文件名
     const currentUploadingFile = ref('');
     // 添加当前上传操作ID
@@ -259,72 +338,120 @@ export default defineComponent({
     const isEditing = ref(false);
     const editingFilePath = ref('');
     const editingFileContent = ref('');
-    
+
     // 从可复用逻辑中获取工具函数
-    const { formatFileSize, formatDate } = useFileUtils()
-    
+    const { formatFileSize, formatDate } = useFileUtils();
+
     // 判断是否是文本文件
-    const isTextFile = (filename) => {
+    const isTextFile = filename => {
       if (!filename) return false;
-      
+
       const textExtensions = [
         // 编程语言
-        'js', 'jsx', 'ts', 'tsx', 'html', 'htm', 'css', 'scss', 'sass', 'less',
-        'py', 'rb', 'php', 'java', 'c', 'cpp', 'h', 'hpp', 'cs', 'go', 'rs',
-        'swift', 'kt', 'dart', 'sh', 'bash', 'ps1', 'bat', 'cmd',
-        
+        'js',
+        'jsx',
+        'ts',
+        'tsx',
+        'html',
+        'htm',
+        'css',
+        'scss',
+        'sass',
+        'less',
+        'py',
+        'rb',
+        'php',
+        'java',
+        'c',
+        'cpp',
+        'h',
+        'hpp',
+        'cs',
+        'go',
+        'rs',
+        'swift',
+        'kt',
+        'dart',
+        'sh',
+        'bash',
+        'ps1',
+        'bat',
+        'cmd',
+
         // 数据格式
-        'json', 'xml', 'yaml', 'yml', 'toml', 'ini', 'conf', 'properties',
-        
+        'json',
+        'xml',
+        'yaml',
+        'yml',
+        'toml',
+        'ini',
+        'conf',
+        'properties',
+
         // 文本文档
-        'txt', 'md', 'markdown', 'rst', 'tex', 'log',
-        
+        'txt',
+        'md',
+        'markdown',
+        'rst',
+        'tex',
+        'log',
+
         // 配置文件
-        'env', 'gitignore', 'dockerignore', 'dockerfile', 'editorconfig',
-        'gitattributes', 'npmrc', 'prettierrc', 'eslintrc'
+        'env',
+        'gitignore',
+        'dockerignore',
+        'dockerfile',
+        'editorconfig',
+        'gitattributes',
+        'npmrc',
+        'prettierrc',
+        'eslintrc'
       ];
-      
+
       const ext = filename.split('.').pop().toLowerCase();
       return textExtensions.includes(ext);
     };
-    
+
     // 监听sessionId的变化
-    watch(() => props.sessionId, (newSessionId, oldSessionId) => {
-      if (newSessionId !== oldSessionId && newSessionId) {
-        log.debug(`sessionId prop变化: ${oldSessionId} -> ${newSessionId}`);
-        // 执行相同的文件列表刷新逻辑，但不进行完整的SFTP重新初始化
-        isLoadingSftp.value = true;
-        
-        // 创建SFTP会话并选择初始目录
-        (async () => {
-          try {
-            await sftpService.createSftpSession(newSessionId);
-            
-            // 尝试进入/root目录，如果不存在则使用当前路径
-            let initialPath = '/root';
-            if (sftpService.activeSftpSessions.has(newSessionId)) {
-              const sftpSession = sftpService.activeSftpSessions.get(newSessionId);
-              try {
-                await sftpService.listDirectory(newSessionId, initialPath);
-                log.debug(`/root目录存在，使用它作为初始目录`);
-              } catch (error) {
-                log.debug(`/root目录不存在，使用默认路径: ${sftpSession.currentPath}`);
-                initialPath = sftpSession.currentPath || '/';
+    watch(
+      () => props.sessionId,
+      (newSessionId, oldSessionId) => {
+        if (newSessionId !== oldSessionId && newSessionId) {
+          log.debug(`sessionId prop变化: ${oldSessionId} -> ${newSessionId}`);
+          // 执行相同的文件列表刷新逻辑，但不进行完整的SFTP重新初始化
+          isLoadingSftp.value = true;
+
+          // 创建SFTP会话并选择初始目录
+          (async () => {
+            try {
+              await sftpService.createSftpSession(newSessionId);
+
+              // 尝试进入/root目录，如果不存在则使用当前路径
+              let initialPath = '/root';
+              if (sftpService.activeSftpSessions.has(newSessionId)) {
+                const sftpSession = sftpService.activeSftpSessions.get(newSessionId);
+                try {
+                  await sftpService.listDirectory(newSessionId, initialPath);
+                  log.debug('/root目录存在，使用它作为初始目录');
+                } catch (error) {
+                  log.debug(`/root目录不存在，使用默认路径: ${sftpSession.currentPath}`);
+                  initialPath = sftpSession.currentPath || '/';
+                }
               }
+
+              // 加载目录内容
+              await loadDirectoryContents(initialPath);
+              isLoadingSftp.value = false;
+            } catch (error) {
+              isLoadingSftp.value = false;
+              showError(`会话切换失败: ${error.message || '未知错误'}`);
+              log.error('会话切换失败:', error);
             }
-            
-            // 加载目录内容
-            await loadDirectoryContents(initialPath);
-            isLoadingSftp.value = false;
-          } catch (error) {
-            isLoadingSftp.value = false;
-            showError(`会话切换失败: ${error.message || '未知错误'}`);
-            log.error('会话切换失败:', error);
-          }
-        })();
+          })();
+        }
       }
-    });
-    
+    );
+
     // 重置错误状态
     const resetError = () => {
       hasError.value = false;
@@ -332,62 +459,62 @@ export default defineComponent({
       hasInitError.value = false;
       initErrorMessage.value = '';
     };
-    
+
     // 显示错误消息
-    const showError = (message) => {
+    const showError = message => {
       hasError.value = true;
       errorMessage.value = message;
       ElMessage.error(message);
     };
-    
+
     // 显示SFTP初始化错误（内联显示）
-    const showInitError = (message) => {
+    const showInitError = message => {
       hasInitError.value = true;
       initErrorMessage.value = message;
       // 初始化错误不显示弹窗，只显示内联错误
     };
-    
+
     // 关闭SFTP面板
     const close = () => {
       emit('close');
-    }
-    
+    };
+
     // 监听会话变更事件
-    const handleSessionChanged = (event) => {
+    const handleSessionChanged = event => {
       const newSessionId = event.detail;
       log.debug(`SFTP会话变更: ${newSessionId}`);
-      
+
       // 显示加载状态
       isLoadingSftp.value = true;
       // 不立即清空文件列表，保持UI稳定
-      
+
       try {
         // 延迟一会儿等SFTP连接准备好，避免并发问题
         setTimeout(async () => {
           try {
             log.debug(`开始创建SFTP会话: ${newSessionId}`);
-            
+
             // 创建SFTP会话
             const sessionResult = await sftpService.createSftpSession(newSessionId);
-            log.debug(`SFTP会话创建结果:`, sessionResult);
-            
+            log.debug('SFTP会话创建结果:', sessionResult);
+
             // 尝试进入/root目录，如果不存在则使用当前路径
             let initialPath = '/root';
             if (sftpService.activeSftpSessions.has(newSessionId)) {
               const sftpSession = sftpService.activeSftpSessions.get(newSessionId);
               try {
                 await sftpService.listDirectory(newSessionId, initialPath);
-                log.debug(`/root目录存在，使用它作为初始目录`);
+                log.debug('/root目录存在，使用它作为初始目录');
               } catch (error) {
                 log.debug(`/root目录不存在，使用默认路径: ${sftpSession.currentPath}`);
                 initialPath = sftpSession.currentPath || '/';
               }
             }
-            
+
             // 加载目录内容
             log.debug(`加载目录内容: ${initialPath}`);
             await loadDirectoryContents(initialPath);
-            
+
             isLoadingSftp.value = false;
             log.debug(`SFTP会话切换完成: ${newSessionId}`);
           } catch (error) {
@@ -402,88 +529,91 @@ export default defineComponent({
         log.error('切换SFTP会话失败:', error);
       }
     };
-    
+
     // 开始调整SFTP面板宽度
-    const startResizing = (event) => {
+    const startResizing = event => {
       // 设置正在调整状态
       isResizing.value = true;
-      
+
       // 记录初始鼠标位置和面板宽度
       const startX = event.clientX;
       const startWidth = props.width;
-      
+
       // 创建鼠标移动和释放事件处理函数
-      const handleMouseMove = (moveEvent) => {
+      const handleMouseMove = moveEvent => {
         // 计算鼠标移动距离
         const deltaX = moveEvent.clientX - startX;
-        
+
         // 计算新宽度（从右向左拖动，所以是减法）
         const newWidth = startWidth - deltaX;
-        
+
         // 计算最大宽度为窗口宽度的90%
         const maxWidth = window.innerWidth * 0.95;
-        
+
         // 设置宽度范围在 300px 到 窗口宽度的90% 之间
         if (newWidth >= 300 && newWidth <= maxWidth) {
           emit('update:width', newWidth);
           emit('resize', newWidth);
         }
       };
-      
+
       const handleMouseUp = () => {
         // 移除事件监听器
         document.removeEventListener('mousemove', handleMouseMove);
         document.removeEventListener('mouseup', handleMouseUp);
-        
+
         // 重置调整状态
         isResizing.value = false;
       };
-      
+
       // 添加事件监听器
       document.addEventListener('mousemove', handleMouseMove);
       document.addEventListener('mouseup', handleMouseUp);
-    }
-    
+    };
+
     // SFTP文件管理器方法
     // 加载当前目录文件列表
-    const loadDirectoryContents = async (path) => {
+    const loadDirectoryContents = async path => {
       resetError();
 
       // 显示加载状态
       isLoadingSftp.value = true;
       // 不立即清空文件列表，保持UI稳定状态
-      
+
       try {
         // 确保有会话ID
         if (!props.sessionId) {
           throw new Error('没有活动的SSH会话，无法使用SFTP');
         }
-        
+
         log.debug(`加载目录内容: 会话ID=${props.sessionId}, 路径=${path}`);
-        
+
         // 使用SFTP服务加载目录内容
         const rawFiles = await sftpService.listDirectory(props.sessionId, path);
-        
+
         // 确保返回值是数组
         const files = Array.isArray(rawFiles) ? rawFiles : [];
-        
+
         // 确保数据格式正确并移除返回上层目录的选项
-        let processedFiles = files.map(file => ({
-          ...file,
-          // 确保size是数字类型
-          size: typeof file.size === 'string' ? parseInt(file.size, 10) : file.size,
-          // 确保日期是Date对象
-          modifiedTime: file.modifiedTime instanceof Date ?
-            file.modifiedTime :
-            (file.modifiedTime ? new Date(file.modifiedTime) : new Date())
-        })).filter(file => file.name !== '..');  // 移除返回上层目录的选项，因为已有路径导航栏
-        
+        const processedFiles = files
+          .map(file => ({
+            ...file,
+            // 确保size是数字类型
+            size: typeof file.size === 'string' ? parseInt(file.size, 10) : file.size,
+            // 确保日期是Date对象
+            modifiedTime:
+              file.modifiedTime instanceof Date
+                ? file.modifiedTime
+                : file.modifiedTime
+                  ? new Date(file.modifiedTime)
+                  : new Date()
+          }))
+          .filter(file => file.name !== '..'); // 移除返回上层目录的选项，因为已有路径导航栏
+
         // 如果不显示隐藏文件，过滤掉以点开头的文件
         let filteredFiles = processedFiles;
         if (!showHiddenFiles.value) {
-          filteredFiles = processedFiles.filter(file =>
-            !file.name.startsWith('.')
-          );
+          filteredFiles = processedFiles.filter(file => !file.name.startsWith('.'));
         }
 
         // 更新原始文件列表和当前路径
@@ -498,7 +628,7 @@ export default defineComponent({
         isLoadingSftp.value = false;
       }
     };
-    
+
     // 刷新当前目录
     const refreshCurrentDirectory = async () => {
       log.debug(`开始刷新目录: ${currentPath.value}`);
@@ -510,9 +640,9 @@ export default defineComponent({
         // 出错时不抛出异常，以避免中断流程
       }
     };
-    
+
     // 处理文件项单击事件
-    const handleItemClick = async (file) => {
+    const handleItemClick = async file => {
       // 如果是文件，则打开查看器
       if (!file.isDirectory) {
         if (isTextFile(file.name)) {
@@ -529,24 +659,25 @@ export default defineComponent({
               type: 'info'
             }
           ).catch(() => false);
-          
+
           if (confirmed) {
             downloadFile(file);
           }
         }
         return;
       }
-      
+
       // 如果是目录，则进入该目录
       // 显示加载指示器
       isLoadingSftp.value = true;
       // 不立即清空文件列表，保持UI稳定
-      
+
       try {
         // 构建新的路径
-        const newPath = currentPath.value === '/' ?
-          currentPath.value + file.name :
-          currentPath.value + '/' + file.name;
+        const newPath =
+          currentPath.value === '/'
+            ? currentPath.value + file.name
+            : `${currentPath.value}/${file.name}`;
 
         if (file.isDirectory) {
           // 进入子目录
@@ -561,7 +692,7 @@ export default defineComponent({
         isLoadingSftp.value = false;
       }
     };
-    
+
     // 开始创建文件夹（内联模式）
     const startCreateFolder = async () => {
       resetError();
@@ -591,10 +722,9 @@ export default defineComponent({
     // 处理创建操作
     const handleCreate = async ({ name, type }) => {
       try {
-        const fullPath = currentPath.value === '/' ?
-          currentPath.value + name :
-          currentPath.value + '/' + name;
-        
+        const fullPath =
+          currentPath.value === '/' ? currentPath.value + name : `${currentPath.value}/${name}`;
+
         // 执行实际的创建操作
         if (type === 'folder') {
           // 创建文件夹
@@ -612,7 +742,7 @@ export default defineComponent({
 
         // 取消创建状态
         cancelCreate();
-        
+
         // 重置内联编辑器的动画状态
         if (inlineEditor.value) {
           inlineEditor.value.resetCreating();
@@ -621,11 +751,10 @@ export default defineComponent({
         // 刷新目录显示新创建的项目
         log.debug(`${type === 'folder' ? '文件夹' : '文件'}创建成功，刷新目录显示: ${fullPath}`);
         await refreshCurrentDirectory();
-        
       } catch (error) {
         // 立即重置创建状态，停止动画
         cancelCreate();
-        
+
         // 重置内联编辑器的动画状态
         if (inlineEditor.value) {
           inlineEditor.value.resetCreating();
@@ -643,7 +772,7 @@ export default defineComponent({
     };
 
     // 处理全局点击事件，清除创建状态
-    const handleGlobalClick = (event) => {
+    const handleGlobalClick = event => {
       if (!isCreating.value) return;
 
       // 检查点击是否在内联编辑器内部
@@ -654,8 +783,10 @@ export default defineComponent({
 
       // 检查点击是否在工具栏的创建按钮上
       const target = event.target;
-      if (target.closest('.sftp-toolbar') &&
-          (target.closest('[data-action="new-folder"]') || target.closest('[data-action="new-file"]'))) {
+      if (
+        target.closest('.sftp-toolbar') &&
+        (target.closest('[data-action="new-folder"]') || target.closest('[data-action="new-file"]'))
+      ) {
         return; // 点击在创建按钮上，不清除状态
       }
 
@@ -663,7 +794,7 @@ export default defineComponent({
       isCreating.value = false;
       log.debug('全局点击清除创建状态');
     };
-    
+
     // 上传文件
     const uploadFile = () => {
       resetError();
@@ -674,22 +805,22 @@ export default defineComponent({
       fileInput.style.display = 'none';
       fileInput.multiple = true; // 支持多选
       document.body.appendChild(fileInput);
-      
+
       // 监听文件选择事件
       fileInput.addEventListener('change', async () => {
         if (fileInput.files && fileInput.files.length > 0) {
           // 使用新函数处理多个文件或文件夹
           await uploadMultipleFiles(fileInput.files);
         }
-        
+
         // 从DOM中移除文件输入元素
         document.body.removeChild(fileInput);
       });
-      
+
       // 触发文件选择对话框
       fileInput.click();
     };
-    
+
     // 上传文件夹
     const uploadFolder = () => {
       resetError();
@@ -701,24 +832,24 @@ export default defineComponent({
       fileInput.webkitdirectory = true; // 支持选择文件夹
       fileInput.multiple = true; // 必须设置multiple才能正确获取文件夹内的所有文件
       document.body.appendChild(fileInput);
-      
+
       // 监听文件选择事件
       fileInput.addEventListener('change', async () => {
         if (fileInput.files && fileInput.files.length > 0) {
           // 使用新函数处理多个文件或文件夹
           await uploadMultipleFiles(fileInput.files);
         }
-        
+
         // 从DOM中移除文件输入元素
         document.body.removeChild(fileInput);
       });
-      
+
       // 触发文件选择对话框
       fileInput.click();
     };
 
     // 验证文件大小
-    const validateFileSize = (file) => {
+    const validateFileSize = file => {
       const maxSize = SFTP_CONSTANTS.MAX_UPLOAD_SIZE;
       if (file.size > maxSize) {
         const fileSizeMB = (file.size / (1024 * 1024)).toFixed(2);
@@ -730,7 +861,7 @@ export default defineComponent({
     };
 
     // 上传多个文件或整个文件夹
-    const uploadMultipleFiles = async (files) => {
+    const uploadMultipleFiles = async files => {
       if (!files || files.length === 0) return;
 
       // 验证所有文件大小
@@ -772,7 +903,9 @@ export default defineComponent({
       const filesToUpload = validFiles;
 
       // 检查是否包含文件夹（通过检查文件的webkitRelativePath属性）
-      const hasDirectories = Array.from(filesToUpload).some(file => file.webkitRelativePath && file.webkitRelativePath.includes('/'));
+      const hasDirectories = Array.from(filesToUpload).some(
+        file => file.webkitRelativePath && file.webkitRelativePath.includes('/')
+      );
 
       if (hasDirectories) {
         // 如果包含文件夹，使用文件夹上传处理（文件夹上传有自己的进度通知）
@@ -801,12 +934,20 @@ export default defineComponent({
       let uploadCancelled = false; // 标记是否被用户取消
 
       // 创建上传进度条HTML（响应式弹性布局）
-      const createUploadProgressHTML = (progress, currentFile, fileIndex, totalFiles, speedText) => {
-        const progressText = totalFiles > 1 ?
-          `上传进度: ${Math.floor(progress)}%${speedText ? ` (${speedText})` : ''}(${fileIndex}/${totalFiles})` :
-          `上传进度: ${Math.floor(progress)}%${speedText ? ` (${speedText})` : ''}`;
-        
-        const fileName = currentFile.length > 30 ? currentFile.substring(0, 27) + '...' : currentFile;
+      const createUploadProgressHTML = (
+        progress,
+        currentFile,
+        fileIndex,
+        totalFiles,
+        speedText
+      ) => {
+        const progressText =
+          totalFiles > 1
+            ? `上传进度: ${Math.floor(progress)}%${speedText ? ` (${speedText})` : ''}(${fileIndex}/${totalFiles})`
+            : `上传进度: ${Math.floor(progress)}%${speedText ? ` (${speedText})` : ''}`;
+
+        const fileName =
+          currentFile.length > 30 ? `${currentFile.substring(0, 27)}...` : currentFile;
 
         return `
           <div class="sftp-progress-container sftp-upload-progress">
@@ -824,7 +965,7 @@ export default defineComponent({
       // 创建带取消功能的通知
       const createUploadNotification = (message, isProgressNotification = false) => {
         const notification = ElMessage.info({
-          message: message,
+          message,
           duration: 0, // 不自动关闭
           showClose: true,
           dangerouslyUseHTMLString: isProgressNotification,
@@ -842,7 +983,13 @@ export default defineComponent({
       };
 
       // 创建初始进度通知
-      const initialProgress = createUploadProgressHTML(0, filesToUpload[0].name, 1, filesToUpload.length, '');
+      const initialProgress = createUploadProgressHTML(
+        0,
+        filesToUpload[0].name,
+        1,
+        filesToUpload.length,
+        ''
+      );
       currentUploadNotification = createUploadNotification(initialProgress, true);
 
       // 重置上传状态（保留原有逻辑以防其他地方依赖）
@@ -851,7 +998,7 @@ export default defineComponent({
       transferSpeed.value = 0;
       transferredBytes.value = 0;
       transferStartTime.value = Date.now();
-      
+
       // 收集所有需要创建的目录路径，使用Set去重
       const dirsToCreate = new Set();
       const totalSize = Array.from(filesToUpload).reduce((total, file) => total + file.size, 0);
@@ -862,33 +1009,34 @@ export default defineComponent({
       const failedFiles = [];
 
       // 更新全局进度条信息
-      currentUploadingFile.value = `批量上传中`;
+      currentUploadingFile.value = '批量上传中';
 
       // 预处理：收集所有需要创建的目录
       for (const file of filesToUpload) {
-        let relativePath = file.webkitRelativePath || file.name;
-        
+        const relativePath = file.webkitRelativePath || file.name;
+
         if (relativePath.includes('/')) {
           // 提取目录结构
           const pathParts = relativePath.split('/');
           pathParts.pop(); // 移除文件名，只保留路径部分
-          
+
           if (pathParts.length > 0) {
-            let currentDirPath = currentPath.value === '/' ? '/' : currentPath.value + '/';
+            const currentDirPath = currentPath.value === '/' ? '/' : `${currentPath.value}/`;
             let partialPath = '';
-            
+
             for (const part of pathParts) {
               partialPath += (partialPath ? '/' : '') + part;
-              const dirPath = currentDirPath === '/' ? 
-                currentDirPath + partialPath : 
-                currentDirPath + '/' + partialPath;
-              
+              const dirPath =
+                currentDirPath === '/'
+                  ? currentDirPath + partialPath
+                  : `${currentDirPath}/${partialPath}`;
+
               dirsToCreate.add(dirPath);
             }
           }
         }
       }
-      
+
       // 创建所有目录
       for (const dirPath of dirsToCreate) {
         try {
@@ -901,14 +1049,17 @@ export default defineComponent({
           }
         }
       }
-      
+
       // 设置进度更新函数
       const updateBatchProgress = (fileProgress, fileSize, currentFileName, fileIndex) => {
         // 计算当前文件的已上传大小
         const fileUploaded = fileSize * (fileProgress / 100);
 
         // 更新总进度 - 防止超过100%
-        const totalProgress = Math.min(100, Math.floor(((uploadedSize + fileUploaded) / totalSize) * 100));
+        const totalProgress = Math.min(
+          100,
+          Math.floor(((uploadedSize + fileUploaded) / totalSize) * 100)
+        );
         uploadProgress.value = totalProgress;
 
         // 更新传输速度
@@ -922,17 +1073,25 @@ export default defineComponent({
 
         // 更新进度通知
         if (currentUploadNotification && !uploadCancelled) {
-          const progressHTML = createUploadProgressHTML(totalProgress, currentFileName, fileIndex, filesToUpload.length, speedText);
-          const notificationEl = document.querySelector('.upload-progress-notification .el-message__content');
+          const progressHTML = createUploadProgressHTML(
+            totalProgress,
+            currentFileName,
+            fileIndex,
+            filesToUpload.length,
+            speedText
+          );
+          const notificationEl = document.querySelector(
+            '.upload-progress-notification .el-message__content'
+          );
           if (notificationEl) {
             notificationEl.innerHTML = progressHTML;
           }
         }
       };
-      
+
       // 实际成功上传的文件大小
       let actualUploadedSize = 0;
-      
+
       // 开始上传文件
       for (let i = 0; i < filesToUpload.length; i++) {
         // 如果上传被取消，则停止
@@ -945,29 +1104,31 @@ export default defineComponent({
 
         // 更新当前上传文件名和进度信息
         currentUploadingFile.value = file.name;
-        
+
         try {
           // 获取文件的相对路径部分
-          let relativePath = file.webkitRelativePath || file.name;
-          
+          const relativePath = file.webkitRelativePath || file.name;
+
           // 构建完整的远程路径
           let remotePath;
           if (relativePath.includes('/')) {
-            remotePath = currentPath.value === '/' ? 
-              currentPath.value + relativePath : 
-              currentPath.value + '/' + relativePath;
+            remotePath =
+              currentPath.value === '/'
+                ? currentPath.value + relativePath
+                : `${currentPath.value}/${relativePath}`;
           } else {
-            remotePath = currentPath.value === '/' ? 
-              currentPath.value + file.name : 
-              currentPath.value + '/' + file.name;
+            remotePath =
+              currentPath.value === '/'
+                ? currentPath.value + file.name
+                : `${currentPath.value}/${file.name}`;
           }
-          
+
           // 记录文件大小，用于进度计算
           const fileSize = file.size;
           log.debug(`上传文件: ${remotePath} (${formatFileSize(fileSize)})`);
-          
+
           // 跟踪当前文件上传进度，防止重复计算
-          let lastFileProgress = 0;
+          let _lastFileProgress = 0;
           let fileCompleted = false; // 防止重复记录完成日志
 
           // 上传单个文件
@@ -989,38 +1150,37 @@ export default defineComponent({
                 fileCompleted = true;
                 log.debug(`文件完成上传: ${remotePath}`);
                 // 重置最后进度以避免重复计算
-                lastFileProgress = 100;
+                _lastFileProgress = 100;
               }
             }
           );
-          
+
           // 单个文件上传完成，添加到已上传大小
           uploadedSize += fileSize;
           actualUploadedSize += fileSize; // 记录实际上传成功的大小
           completedFiles++;
-          
+
           // 重新计算总体进度 - 确保不超过100%
           uploadProgress.value = Math.min(100, Math.floor((uploadedSize / totalSize) * 100));
-          
         } catch (error) {
           log.error(`上传失败: ${file.name}`, error);
           failedFiles.push({ name: file.name, error: error.message });
           // 继续上传下一个文件，不中断整个过程
         }
       }
-      
-      log.debug(`所有文件上传完成，准备显示结果和刷新目录...`);
-      
+
+      log.debug('所有文件上传完成，准备显示结果和刷新目录...');
+
       // 添加一个强制执行标记
       let finishExecuted = false;
-      
+
       // 创建一个完成上传的函数，确保只执行一次
       const finishUpload = async () => {
         // 如果已经执行过，直接返回
         if (finishExecuted) return;
         finishExecuted = true;
 
-        log.debug("执行文件上传完成操作");
+        log.debug('执行文件上传完成操作');
 
         // 关闭上传通知
         if (currentUploadNotification) {
@@ -1040,7 +1200,9 @@ export default defineComponent({
             log.warn('上传失败的文件:', failedFiles);
           } else {
             // 全部成功
-            ElMessage.success(`成功上传${completedFiles}个文件，总大小${formatFileSize(actualUploadedSize)}`);
+            ElMessage.success(
+              `成功上传${completedFiles}个文件，总大小${formatFileSize(actualUploadedSize)}`
+            );
           }
         }
 
@@ -1057,29 +1219,29 @@ export default defineComponent({
         // 一次性刷新目录（仅在未被取消时刷新，因为取消时cancelUpload已经刷新了）
         if (!uploadCancelled) {
           try {
-            log.debug("开始刷新目录...");
+            log.debug('开始刷新目录...');
             await loadDirectoryContents(currentPath.value);
-            log.debug("目录刷新完成");
+            log.debug('目录刷新完成');
           } catch (error) {
-            log.error("刷新目录失败:", error);
+            log.error('刷新目录失败:', error);
           }
         }
       };
-      
+
       // 立即调用完成函数
       await finishUpload();
-      
+
       // 不再需要设置备用超时，上面的函数已经确保会执行
     };
-    
+
     // 获取进度条颜色
-    const getProgressColor = (progress) => {
+    const getProgressColor = progress => {
       const computedStyle = getComputedStyle(document.documentElement);
       if (progress < 30) return computedStyle.getPropertyValue('--sftp-progress-low').trim();
       if (progress < 70) return computedStyle.getPropertyValue('--sftp-progress-medium').trim();
       return computedStyle.getPropertyValue('--sftp-progress-high').trim();
     };
-    
+
     // 取消上传
     const cancelUpload = async () => {
       log.info('用户取消了文件上传');
@@ -1131,14 +1293,14 @@ export default defineComponent({
 
       // 立即刷新目录
       try {
-        log.debug("开始刷新目录...");
+        log.debug('开始刷新目录...');
         await loadDirectoryContents(currentPath.value);
-        log.debug("目录刷新完成");
+        log.debug('目录刷新完成');
       } catch (error) {
-        log.error("刷新目录失败:", error);
+        log.error('刷新目录失败:', error);
       }
     };
-    
+
     // 上传文件到服务器
     const uploadFileToServer = async (file, customRemotePath, isBatchUpload = false) => {
       try {
@@ -1150,92 +1312,91 @@ export default defineComponent({
           transferredBytes.value = 0;
           transferStartTime.value = Date.now();
         }
-        
+
         currentUploadingFile.value = file.name; // 设置当前上传文件名
         currentUploadId.value = null; // 重置操作ID
-        
+
         // 清除之前的计时器
         if (transferInterval.value) {
           clearInterval(transferInterval.value);
           transferInterval.value = null;
         }
-        
+
         // 使用自定义远程路径或构建默认远程路径
-        const remotePath = customRemotePath || (currentPath.value === '/' ? 
-          currentPath.value + file.name : 
-          currentPath.value + '/' + file.name);
-        
+        const remotePath =
+          customRemotePath ||
+          (currentPath.value === '/'
+            ? currentPath.value + file.name
+            : `${currentPath.value}/${file.name}`);
+
         // 定义进度回调函数
         const progressCallback = (progress, operationId) => {
           // 保存操作ID用于取消上传
           if (operationId && !currentUploadId.value) {
             currentUploadId.value = operationId;
           }
-          
+
           // 如果是批量上传的一部分，不更新总进度
           if (isBatchUpload) return;
-          
+
           const now = Date.now();
-          const newTransferredBytes = Math.floor(file.size * progress / 100);
+          const newTransferredBytes = Math.floor((file.size * progress) / 100);
           const bytesDelta = newTransferredBytes - transferredBytes.value;
           const timeDelta = (now - transferStartTime.value) / 1000;
-          
+
           // 更新进度
           uploadProgress.value = progress;
-          
+
           // 只有当有实际进度变化时才更新速度
           if (bytesDelta > 0 && timeDelta > 0) {
             // 计算当前速度 (bytes/s)
             const currentSpeed = bytesDelta / timeDelta;
-            
+
             // 更新传输速度 (使用加权平均实现平滑过渡)
-            transferSpeed.value = transferSpeed.value === 0 ? 
-              currentSpeed : (transferSpeed.value * 0.7 + currentSpeed * 0.3);
-            
+            transferSpeed.value =
+              transferSpeed.value === 0
+                ? currentSpeed
+                : transferSpeed.value * 0.7 + currentSpeed * 0.3;
+
             // 更新状态
             transferredBytes.value = newTransferredBytes;
             transferStartTime.value = now;
           }
-          
+
           // 当上传完成时(进度为100%)
           if (progress >= 100 && !isBatchUpload) {
             // 记录上传完成时间
             const uploadEndTime = Date.now();
-            const totalTimeSeconds = ((uploadEndTime - transferStartTime.value) / 1000).toFixed(2);
-            
+            const _totalTimeSeconds = ((uploadEndTime - transferStartTime.value) / 1000).toFixed(2);
+
             // 延迟关闭上传状态并刷新目录
             setTimeout(() => {
               isUploading.value = false;
               currentUploadId.value = null; // 清除操作ID
-              
+
               // 清除计时器
               if (transferInterval.value) {
                 clearInterval(transferInterval.value);
                 transferInterval.value = null;
               }
-              
+
               // 确保刷新当前目录
               refreshCurrentDirectory();
               log.debug('已刷新目录:', currentPath.value);
             }, 1500);
           }
         };
-        
+
         // 调用SFTP服务上传文件
-        await sftpService.uploadFile(
-          props.sessionId,
-          file,
-          remotePath,
-          progressCallback
-        );
-        
+        await sftpService.uploadFile(props.sessionId, file, remotePath, progressCallback);
+
         // 确保进度为100%（仅对单文件上传）
         if (!isBatchUpload && uploadProgress.value < 100) {
           uploadProgress.value = 100;
-          
+
           // 如果回调没有触发100%的进度，在这里显示成功消息
           ElMessage.success(`文件 ${file.name} 上传成功`);
-          
+
           // 确保刷新目录
           setTimeout(() => {
             isUploading.value = false;
@@ -1252,29 +1413,28 @@ export default defineComponent({
           // 如果已经处理了100%进度，只显示成功消息
           ElMessage.success(`文件 ${file.name} 上传成功`);
         }
-        
       } catch (error) {
         log.error('上传文件失败:', error);
-        
+
         if (!isBatchUpload) {
           showError(`上传文件失败: ${error.message}`);
           isUploading.value = false;
           currentUploadId.value = null; // 清除操作ID
-          
+
           // 清除计时器
           if (transferInterval.value) {
             clearInterval(transferInterval.value);
             transferInterval.value = null;
           }
         }
-        
+
         // 重新抛出错误，让调用者知道发生了错误
         throw error;
       }
     };
-    
+
     // 下载文件或文件夹
-    const downloadFile = async (file) => {
+    const downloadFile = async file => {
       // 根据文件类型选择不同的下载方法
       if (file.isDirectory) {
         await downloadFolder(file);
@@ -1284,11 +1444,14 @@ export default defineComponent({
     };
 
     // 下载单个文件
-    const downloadSingleFile = async (file) => {
+    const downloadSingleFile = async file => {
       resetError();
 
       // 立即显示下载确认消息
       ElMessage.info(`正在下载文件 ${file.name}...`);
+
+      // 创建下载进度通知（外部声明，try/catch 内部均可访问）
+      let progressNotification = null;
 
       try {
         // 重置传输状态
@@ -1298,12 +1461,12 @@ export default defineComponent({
         transferStartTime.value = Date.now();
 
         // 构建远程路径
-        const remotePath = currentPath.value === '/' ?
-          currentPath.value + file.name :
-          currentPath.value + '/' + file.name;
+        const remotePath =
+          currentPath.value === '/'
+            ? currentPath.value + file.name
+            : `${currentPath.value}/${file.name}`;
 
-        // 创建下载进度通知
-        let progressNotification = null;
+        // 进度通知的创建在首次渲染时进行
 
         // 创建进度条HTML（响应式弹性布局）
         const createProgressHTML = (progress, speedText) => {
@@ -1328,7 +1491,7 @@ export default defineComponent({
         const updateProgressContent = (notificationEl, progress, speedText) => {
           const textEl = notificationEl.querySelector('.sftp-progress-text');
           const fillEl = notificationEl.querySelector('.sftp-progress-fill');
-          
+
           if (textEl) {
             textEl.textContent = `下载进度: ${Math.floor(progress)}%${speedText ? ` (${speedText})` : ''}`;
           }
@@ -1343,7 +1506,7 @@ export default defineComponent({
         let lastPct = 0;
         let lastRenderTs = 0;
         let singleCompleted = false;
-        
+
         // 用于保存operationId的变量
         let singleOpId = null;
 
@@ -1358,9 +1521,15 @@ export default defineComponent({
             let pct = 0;
             // 对于压缩下载，优先使用estimatedSize计算更准确的进度
             if (typeof meta.estimatedSize === 'number' && meta.estimatedSize > 0) {
-              pct = Math.min(100, Math.max(0, Math.floor((meta.bytesTransferred / meta.estimatedSize) * 1000) / 10));
+              pct = Math.min(
+                100,
+                Math.max(0, Math.floor((meta.bytesTransferred / meta.estimatedSize) * 1000) / 10)
+              );
             } else if (typeof meta.totalBytes === 'number' && meta.totalBytes > 0) {
-              pct = Math.min(100, Math.max(0, Math.floor((meta.bytesTransferred / meta.totalBytes) * 1000) / 10));
+              pct = Math.min(
+                100,
+                Math.max(0, Math.floor((meta.bytesTransferred / meta.totalBytes) * 1000) / 10)
+              );
             }
             if (!singleCompleted && pct >= 100) pct = 99;
             if (pct < lastPct) pct = lastPct;
@@ -1387,13 +1556,13 @@ export default defineComponent({
           } else {
             const timeDelta = (now - transferStartTime.value) / 1000;
             if (timeDelta > 0) {
-              transferSpeed.value = (file.size * (downloadProgress.value || 0) / 100) / timeDelta;
+              transferSpeed.value = (file.size * (downloadProgress.value || 0)) / 100 / timeDelta;
               speedText = formatTransferSpeed(transferSpeed.value);
             }
           }
 
           // 节流渲染：>=0.2% 或 250ms
-          const shouldRender = (downloadProgress.value - lastPct >= 0.2) || (now - lastRenderTs >= 250);
+          const shouldRender = downloadProgress.value - lastPct >= 0.2 || now - lastRenderTs >= 250;
           if (!shouldRender) return;
           lastPct = downloadProgress.value;
           lastRenderTs = now;
@@ -1409,7 +1578,9 @@ export default defineComponent({
               customClass: 'download-progress-notification'
             });
           } else {
-            const notificationEl = document.querySelector('.download-progress-notification .el-message__content');
+            const notificationEl = document.querySelector(
+              '.download-progress-notification .el-message__content'
+            );
             if (notificationEl) {
               // 使用新的更新方法，避免重新创建按钮
               updateProgressContent(notificationEl, downloadProgress.value, speedText);
@@ -1417,7 +1588,9 @@ export default defineComponent({
           }
 
           // 绑定取消
-          const cancelBtn = document.querySelector('.download-progress-notification .download-cancel-btn');
+          const cancelBtn = document.querySelector(
+            '.download-progress-notification .download-cancel-btn'
+          );
           if (cancelBtn && !cancelBtn._bound) {
             cancelBtn._bound = true;
             cancelBtn.addEventListener('click', () => {
@@ -1480,7 +1653,7 @@ export default defineComponent({
         // 根据错误类型提供更友好的错误信息
         let errorMessage = '下载文件失败';
         if (error.message.includes('超时')) {
-          errorMessage = `下载文件超时，请检查网络连接`;
+          errorMessage = '下载文件超时，请检查网络连接';
         } else if (error.message.includes('权限')) {
           errorMessage = `没有权限访问文件 "${file.name}"`;
         } else if (error.message.includes('不存在')) {
@@ -1510,7 +1683,7 @@ export default defineComponent({
     };
 
     // 下载文件夹
-    const downloadFolder = async (folder) => {
+    const downloadFolder = async folder => {
       resetError();
 
       // 显示确认对话框
@@ -1546,9 +1719,10 @@ export default defineComponent({
         transferStartTime.value = Date.now();
 
         // 构建远程路径
-        const remotePath = currentPath.value === '/' ?
-          currentPath.value + folder.name :
-          currentPath.value + '/' + folder.name;
+        const remotePath =
+          currentPath.value === '/'
+            ? currentPath.value + folder.name
+            : `${currentPath.value}/${folder.name}`;
 
         // 创建进度条HTML（响应式弹性布局）
         const createProgressHTML = (progress, speedText, phaseText) => {
@@ -1578,7 +1752,7 @@ export default defineComponent({
         const updateProgressContent = (notificationEl, progress, speedText, phaseText) => {
           const textEl = notificationEl.querySelector('.sftp-progress-text');
           const fillEl = notificationEl.querySelector('.sftp-progress-fill');
-          
+
           if (textEl) {
             textEl.innerHTML = `
               <span class=\"sftp-progress-phase\">${phaseText || '准备中'}</span>
@@ -1607,7 +1781,7 @@ export default defineComponent({
         let lastRenderedPct = 0;
         let lastRenderTs = 0;
         let isCompleted = false;
-        
+
         // 用于保存operationId的变量
         let currentOperationId = null;
 
@@ -1621,10 +1795,17 @@ export default defineComponent({
           let phaseText = '准备中';
           if (meta && typeof meta.phase === 'string') {
             switch (meta.phase) {
-              case 'transferring': phaseText = '传输中'; break;
-              case 'completed': phaseText = '完成'; break;
-              case 'preparing': phaseText = '准备中'; break;
-              default: phaseText = meta.phase; // 原样显示
+            case 'transferring':
+              phaseText = '传输中';
+              break;
+            case 'completed':
+              phaseText = '完成';
+              break;
+            case 'preparing':
+              phaseText = '准备中';
+              break;
+            default:
+              phaseText = meta.phase; // 原样显示
             }
           }
           // 优先使用服务端的字节统计计算百分比（压缩后的准确进度）
@@ -1632,9 +1813,15 @@ export default defineComponent({
             let pct = 0;
             // 对于压缩下载，优先使用estimatedSize计算更准确的进度
             if (typeof meta.estimatedSize === 'number' && meta.estimatedSize > 0) {
-              pct = Math.min(100, Math.max(0, Math.floor((meta.bytesTransferred / meta.estimatedSize) * 1000) / 10));
+              pct = Math.min(
+                100,
+                Math.max(0, Math.floor((meta.bytesTransferred / meta.estimatedSize) * 1000) / 10)
+              );
             } else if (typeof meta.totalBytes === 'number' && meta.totalBytes > 0) {
-              pct = Math.min(100, Math.max(0, Math.floor((meta.bytesTransferred / meta.totalBytes) * 1000) / 10));
+              pct = Math.min(
+                100,
+                Math.max(0, Math.floor((meta.bytesTransferred / meta.totalBytes) * 1000) / 10)
+              );
             }
             if (!isCompleted && pct >= 100) pct = 99; // 完成前最多到99，避免100来回跳
             if (pct < lastRenderedPct) pct = lastRenderedPct; // 保证单调不减
@@ -1656,7 +1843,7 @@ export default defineComponent({
             // 更新滑动窗口样本
             speedSamples.push({ ts: now, bytes: meta.bytesTransferred });
             // 移除过期样本
-            while (speedSamples.length > 1 && (now - speedSamples[0].ts) > SPEED_WINDOW_MS) {
+            while (speedSamples.length > 1 && now - speedSamples[0].ts > SPEED_WINDOW_MS) {
               speedSamples.shift();
             }
 
@@ -1678,7 +1865,8 @@ export default defineComponent({
             } else if (deltaBytes >= 0 && deltaTime > 0) {
               // 回退使用 EMA
               const instant = deltaBytes / deltaTime;
-              speedEma = speedEma === 0 ? instant : (SPEED_ALPHA * instant + (1 - SPEED_ALPHA) * speedEma);
+              speedEma =
+                speedEma === 0 ? instant : SPEED_ALPHA * instant + (1 - SPEED_ALPHA) * speedEma;
               transferSpeed.value = speedEma;
               speedText = formatTransferSpeed(transferSpeed.value);
             }
@@ -1697,12 +1885,13 @@ export default defineComponent({
           }
 
           // 本次未得到新速度，但仍在保持期内，沿用上次速度以避免闪烁
-          if (!speedText && lastSpeedUpdateTs && (now - lastSpeedUpdateTs <= SPEED_HOLD_MS)) {
+          if (!speedText && lastSpeedUpdateTs && now - lastSpeedUpdateTs <= SPEED_HOLD_MS) {
             speedText = formatTransferSpeed(transferSpeed.value);
           }
 
           // 节流渲染，避免闪烁：1%变化或150ms间隔才更新
-          const shouldRender = (downloadProgress.value - lastRenderedPct >= 0.2) || (now - lastRenderTs >= 250);
+          const shouldRender =
+            downloadProgress.value - lastRenderedPct >= 0.2 || now - lastRenderTs >= 250;
           if (!shouldRender) return;
           lastRenderedPct = downloadProgress.value;
           lastRenderTs = now;
@@ -1719,14 +1908,18 @@ export default defineComponent({
             });
           } else {
             // 使用新的更新方法，避免重新创建按钮
-            const notificationEl = document.querySelector('.download-progress-notification .el-message__content');
+            const notificationEl = document.querySelector(
+              '.download-progress-notification .el-message__content'
+            );
             if (notificationEl) {
               updateProgressContent(notificationEl, downloadProgress.value, speedText, phaseText);
             }
           }
 
           // 绑定取消按钮点击（每次更新后重新绑定）
-          const cancelBtn = document.querySelector('.download-progress-notification .download-cancel-btn');
+          const cancelBtn = document.querySelector(
+            '.download-progress-notification .download-cancel-btn'
+          );
           if (cancelBtn && !cancelBtn._bound) {
             cancelBtn._bound = true;
             cancelBtn.addEventListener('click', () => {
@@ -1754,11 +1947,11 @@ export default defineComponent({
 
         // 验证下载结果
         if (!result.blob || !(result.blob instanceof Blob)) {
-          throw new Error(`下载失败: 无效的文件数据`);
+          throw new Error('下载失败: 无效的文件数据');
         }
 
         if (typeof result.blob.size !== 'number' || result.blob.size <= 0) {
-          throw new Error(`下载失败: 文件大小无效`);
+          throw new Error('下载失败: 文件大小无效');
         }
 
         // 创建下载链接
@@ -1770,11 +1963,13 @@ export default defineComponent({
 
           try {
             // 备用方案: 重新创建Blob对象
-            const newBlob = new Blob([result.blob], { type: result.blob.type || 'application/octet-stream' });
+            const newBlob = new Blob([result.blob], {
+              type: result.blob.type || 'application/octet-stream'
+            });
             url = URL.createObjectURL(newBlob);
           } catch (retryError) {
             log.error('下载链接创建失败', { error: retryError.message });
-            throw new Error(`无法创建下载链接，请重试`);
+            throw new Error('无法创建下载链接，请重试');
           }
         }
         const a = document.createElement('a');
@@ -1789,9 +1984,10 @@ export default defineComponent({
           document.body.removeChild(a);
         }, 100);
 
-        const sizeText = result.blob.size > 1024 * 1024
-          ? `${(result.blob.size / 1024 / 1024).toFixed(2)}MB`
-          : `${(result.blob.size / 1024).toFixed(1)}KB`;
+        const sizeText =
+          result.blob.size > 1024 * 1024
+            ? `${(result.blob.size / 1024 / 1024).toFixed(2)}MB`
+            : `${(result.blob.size / 1024).toFixed(1)}KB`;
 
         log.info(`文件夹下载完成: ${folder.name}, 大小: ${sizeText}`);
 
@@ -1824,7 +2020,7 @@ export default defineComponent({
         // 根据错误类型提供更友好的错误信息
         let errorMessage = '下载文件夹失败';
         if (error.message.includes('超时')) {
-          errorMessage = `下载文件夹超时，请检查网络连接或尝试下载较小的文件夹`;
+          errorMessage = '下载文件夹超时，请检查网络连接或尝试下载较小的文件夹';
         } else if (error.message.includes('权限')) {
           errorMessage = `没有权限访问文件夹 "${folder.name}"`;
         } else if (error.message.includes('不存在')) {
@@ -1857,30 +2053,30 @@ export default defineComponent({
     const showDownloadReport = (folderName, result) => {
       const { summary, skippedFiles, errorFiles } = result;
 
-      let reportContent = `<div style="text-align: left;">`;
+      let reportContent = '<div style="text-align: left;">';
       reportContent += `<h4>文件夹 "${folderName}" 下载报告</h4>`;
       reportContent += `<p><strong>总计:</strong> ${summary.totalFiles} 个文件</p>`;
       reportContent += `<p><strong>已包含:</strong> ${summary.includedFiles} 个文件</p>`;
 
       if (summary.skippedCount > 0) {
         reportContent += `<p><strong>已跳过:</strong> ${summary.skippedCount} 个文件</p>`;
-        reportContent += `<details><summary>查看跳过的文件</summary><ul>`;
+        reportContent += '<details><summary>查看跳过的文件</summary><ul>';
         skippedFiles.forEach(file => {
           reportContent += `<li><code>${file.path}</code><br><small>原因: ${file.reason}</small></li>`;
         });
-        reportContent += `</ul></details>`;
+        reportContent += '</ul></details>';
       }
 
       if (summary.errorCount > 0) {
         reportContent += `<p><strong>错误:</strong> ${summary.errorCount} 个文件</p>`;
-        reportContent += `<details><summary>查看错误文件</summary><ul>`;
+        reportContent += '<details><summary>查看错误文件</summary><ul>';
         errorFiles.forEach(file => {
           reportContent += `<li><code>${file.path}</code><br><small>错误: ${file.reason}</small></li>`;
         });
-        reportContent += `</ul></details>`;
+        reportContent += '</ul></details>';
       }
 
-      reportContent += `</div>`;
+      reportContent += '</div>';
 
       ElMessageBox.alert(reportContent, '下载报告', {
         dangerouslyUseHTMLString: true,
@@ -1891,36 +2087,32 @@ export default defineComponent({
       });
     };
 
-
-    
     // 删除文件
-    const deleteFile = (file) => {
+    const deleteFile = file => {
       resetError();
-      
-      // 如果是文件夹，使用不同的确认信息
-      const confirmMessage = file.isDirectory ? 
-        `确定要删除文件夹 ${file.name} 及其所有内容吗？此操作无法撤销。` : 
-        `确定要删除 ${file.name} 吗？此操作无法撤销。`;
-      
-      ElMessageBox.confirm(
-        confirmMessage, 
-        '删除确认', 
-        {
-          confirmButtonText: '删除',
-          cancelButtonText: '取消',
-          type: 'warning'
-        }
-      ).then(async () => {
-        try {
-          // 构建完整路径
-          const fullPath = currentPath.value === '/' ?
-            currentPath.value + file.name :
-            currentPath.value + '/' + file.name;
 
-          // 创建与文件列表加载一致的加载状态
-          const loadingDiv = document.createElement('div');
-          loadingDiv.className = 'sftp-loading-files';
-          loadingDiv.innerHTML = `
+      // 如果是文件夹，使用不同的确认信息
+      const confirmMessage = file.isDirectory
+        ? `确定要删除文件夹 ${file.name} 及其所有内容吗？此操作无法撤销。`
+        : `确定要删除 ${file.name} 吗？此操作无法撤销。`;
+
+      ElMessageBox.confirm(confirmMessage, '删除确认', {
+        confirmButtonText: '删除',
+        cancelButtonText: '取消',
+        type: 'warning'
+      })
+        .then(async () => {
+          try {
+            // 构建完整路径
+            const fullPath =
+              currentPath.value === '/'
+                ? currentPath.value + file.name
+                : `${currentPath.value}/${file.name}`;
+
+            // 创建与文件列表加载一致的加载状态
+            const loadingDiv = document.createElement('div');
+            loadingDiv.className = 'sftp-loading-files';
+            loadingDiv.innerHTML = `
             <div class="sftp-loading-spinner">
               <svg class="circular" viewBox="25 25 50 50">
                 <circle class="path" cx="50" cy="50" r="20" fill="none"/>
@@ -1929,48 +2121,51 @@ export default defineComponent({
             <p>${file.isDirectory ? '删除文件夹中...' : '删除文件中...'}</p>
           `;
 
-          // 将加载状态添加到文件列表区域
-          const fileListContent = document.querySelector('.sftp-file-list-content');
-          if (fileListContent) {
-            fileListContent.appendChild(loadingDiv);
+            // 将加载状态添加到文件列表区域
+            const fileListContent = document.querySelector('.sftp-file-list-content');
+            if (fileListContent) {
+              fileListContent.appendChild(loadingDiv);
+            }
+
+            if (file.isDirectory) {
+              // 使用通用删除方法删除文件夹
+              log.debug(`删除文件夹: ${fullPath}`);
+              await sftpService.delete(props.sessionId, fullPath, true);
+            } else {
+              // 删除单个文件
+              log.debug(`删除文件: ${fullPath}`);
+              await sftpService.delete(props.sessionId, fullPath, false);
+            }
+
+            // 移除加载状态
+            if (fileListContent && loadingDiv.parentNode === fileListContent) {
+              fileListContent.removeChild(loadingDiv);
+            }
+
+            ElMessage.success(`${file.isDirectory ? '文件夹' : '文件'} ${file.name} 已删除`);
+
+            // 刷新目录以移除已删除文件
+            refreshCurrentDirectory();
+          } catch (error) {
+            // 移除加载状态
+            const loadingDiv = document.querySelector(
+              '.sftp-file-list-content .sftp-loading-files'
+            );
+            if (loadingDiv && loadingDiv.parentNode) {
+              loadingDiv.parentNode.removeChild(loadingDiv);
+            }
+
+            log.error('删除失败:', error);
+            showError(`删除失败: ${error.message}`);
           }
-
-          if (file.isDirectory) {
-            // 使用通用删除方法删除文件夹
-            log.debug(`删除文件夹: ${fullPath}`);
-            await sftpService.delete(props.sessionId, fullPath, true);
-          } else {
-            // 删除单个文件
-            log.debug(`删除文件: ${fullPath}`);
-            await sftpService.delete(props.sessionId, fullPath, false);
-          }
-
-          // 移除加载状态
-          if (fileListContent && loadingDiv.parentNode === fileListContent) {
-            fileListContent.removeChild(loadingDiv);
-          }
-
-          ElMessage.success(`${file.isDirectory ? '文件夹' : '文件'} ${file.name} 已删除`);
-
-          // 刷新目录以移除已删除文件
-          refreshCurrentDirectory();
-        } catch (error) {
-          // 移除加载状态
-          const loadingDiv = document.querySelector('.sftp-file-list-content .sftp-loading-files');
-          if (loadingDiv && loadingDiv.parentNode) {
-            loadingDiv.parentNode.removeChild(loadingDiv);
-          }
-
-          log.error('删除失败:', error);
-          showError(`删除失败: ${error.message}`);
-        }
-      }).catch(() => {
-        // 用户取消
-      });
+        })
+        .catch(() => {
+          // 用户取消
+        });
     };
-    
+
     // 处理拖拽上传
-    const handleDrop = async (event) => {
+    const handleDrop = async event => {
       isDragOver.value = false;
       event.preventDefault();
 
@@ -1983,7 +2178,7 @@ export default defineComponent({
       // 重置上传状态，确保可以正确开始新的上传
       isUploading.value = true;
       uploadProgress.value = 0;
-      
+
       // 获取拖拽的文件
       const files = event.dataTransfer.files;
       if (files && files.length > 0) {
@@ -2001,7 +2196,7 @@ export default defineComponent({
                   entries.push(entry);
                 }
               }
-              
+
               // 处理所有文件和目录
               await processEntries(entries);
             } else {
@@ -2015,16 +2210,16 @@ export default defineComponent({
         } catch (error) {
           log.error('拖放上传处理失败:', error);
           ElMessage.error(`上传失败: ${error.message}`);
-          
+
           // 确保重置上传状态
           isUploading.value = false;
-          
+
           // 清除计时器
           if (transferInterval.value) {
             clearInterval(transferInterval.value);
             transferInterval.value = null;
           }
-          
+
           // 刷新目录
           refreshCurrentDirectory();
         }
@@ -2033,15 +2228,15 @@ export default defineComponent({
         isUploading.value = false;
       }
     };
-    
+
     // 处理文件系统条目（可能是文件或文件夹）
-    const processEntries = async (entries) => {
+    const processEntries = async entries => {
       // 确认批量上传
       if (entries.length > 1) {
         try {
           await ElMessageBox.confirm(
-            `您选择了${entries.length}个项目，确定要全部上传吗？`, 
-            '批量上传确认', 
+            `您选择了${entries.length}个项目，确定要全部上传吗？`,
+            '批量上传确认',
             {
               confirmButtonText: '全部上传',
               cancelButtonText: '取消',
@@ -2053,55 +2248,61 @@ export default defineComponent({
           return; // 用户取消了上传
         }
       }
-      
+
       // 用于追踪文件总数和已处理文件数
       let totalFiles = 0;
       let processedFiles = 0;
       let totalBytes = 0;
-      let uploadedBytes = 0;
+      const uploadedBytes = 0;
       let currentFileBytes = 0; // 当前文件已上传字节数
-      
+
       // 提前计算文件总数和总大小
-      const countFiles = async (entry) => {
+      const countFiles = async entry => {
         if (entry.isFile) {
           totalFiles++;
-          return new Promise((resolve) => {
-            entry.file(file => {
-              totalBytes += file.size;
-              resolve();
-            }, () => resolve());
+          return new Promise(resolve => {
+            entry.file(
+              file => {
+                totalBytes += file.size;
+                resolve();
+              },
+              () => resolve()
+            );
           });
         } else if (entry.isDirectory) {
           const dirReader = entry.createReader();
-          return new Promise((resolve) => {
-            dirReader.readEntries(async (entries) => {
-              const promises = [];
-              for (const childEntry of entries) {
-                promises.push(countFiles(childEntry));
-              }
-              await Promise.all(promises);
-              resolve();
-            }, () => resolve());
+          return new Promise(resolve => {
+            dirReader.readEntries(
+              async entries => {
+                const promises = [];
+                for (const childEntry of entries) {
+                  promises.push(countFiles(childEntry));
+                }
+                await Promise.all(promises);
+                resolve();
+              },
+              () => resolve()
+            );
           });
         }
       };
-      
+
       // 计算所有条目中的文件总数和大小
       const countPromises = [];
       for (const entry of entries) {
         countPromises.push(countFiles(entry));
       }
       await Promise.all(countPromises);
-      
+
       log.debug(`总共需要上传 ${totalFiles} 个文件，总大小 ${formatFileSize(totalBytes)}`);
-      
+
       // 如果没有文件需要上传，结束处理
       if (totalFiles === 0) {
         isUploading.value = false;
         ElMessage.info('选择的文件夹为空，没有文件需要上传');
         return;
       }
-      
+
       // 设置初始上传状态
       isUploading.value = true;
       uploadProgress.value = 0;
@@ -2109,9 +2310,16 @@ export default defineComponent({
       transferStartTime.value = Date.now();
 
       // 创建文件夹上传进度条HTML（响应式弹性布局）
-      const createFolderUploadProgressHTML = (progress, currentFile, processedFiles, totalFiles, speedText) => {
+      const createFolderUploadProgressHTML = (
+        progress,
+        currentFile,
+        processedFiles,
+        totalFiles,
+        speedText
+      ) => {
         const progressText = `上传进度: ${Math.floor(progress)}%${speedText ? ` (${speedText})` : ''}(${processedFiles}/${totalFiles})`;
-        const fileName = currentFile.length > 30 ? currentFile.substring(0, 27) + '...' : currentFile;
+        const fileName =
+          currentFile.length > 30 ? `${currentFile.substring(0, 27)}...` : currentFile;
 
         return `
           <div class="sftp-progress-container sftp-upload-progress">
@@ -2141,17 +2349,17 @@ export default defineComponent({
           }
         }
       });
-      
+
       // 开始定期更新速度
       let lastUpdateTime = Date.now();
       let lastUploadedBytes = 0;
-      
+
       // 清除之前的计时器
       if (transferInterval.value) {
         clearInterval(transferInterval.value);
         transferInterval.value = null;
       }
-      
+
       // 创建计时器来更新传输速度 - 更频繁地更新UI
       transferInterval.value = setInterval(() => {
         const now = Date.now();
@@ -2161,22 +2369,24 @@ export default defineComponent({
           const bytesDelta = currentTotalBytes - lastUploadedBytes;
           if (bytesDelta > 0) {
             const currentSpeed = bytesDelta / timeDelta;
-            transferSpeed.value = transferSpeed.value === 0 ?
-              currentSpeed : (transferSpeed.value * 0.7 + currentSpeed * 0.3);
+            transferSpeed.value =
+              transferSpeed.value === 0
+                ? currentSpeed
+                : transferSpeed.value * 0.7 + currentSpeed * 0.3;
           }
           lastUpdateTime = now;
           lastUploadedBytes = currentTotalBytes;
         }
       }, 300); // 更高的更新频率
-      
+
       // 重置上传ID
       currentUploadId.value = null;
-      
+
       // 用于跟踪实际上传成功的文件
       let actualUploadedFiles = 0;
       let actualUploadedBytes = 0;
       let currentFileIndex = 0; // 当前正在处理的文件索引
-      
+
       try {
         // 处理每一个条目
         for (const entry of entries) {
@@ -2204,8 +2414,16 @@ export default defineComponent({
 
               // 更新文件夹上传进度通知
               const speedText = formatTransferSpeed(transferSpeed.value);
-              const progressHTML = createFolderUploadProgressHTML(progress, file.name, currentFileIndex, totalFiles, speedText);
-              const notificationEl = document.querySelector('.upload-progress-notification .el-message__content');
+              const progressHTML = createFolderUploadProgressHTML(
+                progress,
+                file.name,
+                currentFileIndex,
+                totalFiles,
+                speedText
+              );
+              const notificationEl = document.querySelector(
+                '.upload-progress-notification .el-message__content'
+              );
               if (notificationEl) {
                 notificationEl.innerHTML = progressHTML;
               }
@@ -2234,15 +2452,23 @@ export default defineComponent({
 
               // 更新文件夹上传进度通知
               const speedText = formatTransferSpeed(transferSpeed.value);
-              const progressHTML = createFolderUploadProgressHTML(progress, file.name, currentFileIndex, totalFiles, speedText);
-              const notificationEl = document.querySelector('.upload-progress-notification .el-message__content');
+              const progressHTML = createFolderUploadProgressHTML(
+                progress,
+                file.name,
+                currentFileIndex,
+                totalFiles,
+                speedText
+              );
+              const notificationEl = document.querySelector(
+                '.upload-progress-notification .el-message__content'
+              );
               if (notificationEl) {
                 notificationEl.innerHTML = progressHTML;
               }
             });
           }
         }
-        
+
         // 确保进度条显示100%
         uploadProgress.value = 100;
 
@@ -2252,17 +2478,19 @@ export default defineComponent({
         }
 
         // 显示完成消息 - 使用实际上传成功的文件数量和大小
-        ElMessage.success(`成功上传了${actualUploadedFiles}个文件，总大小${formatFileSize(actualUploadedBytes)}`);
+        ElMessage.success(
+          `成功上传了${actualUploadedFiles}个文件，总大小${formatFileSize(actualUploadedBytes)}`
+        );
 
         // 重置状态并刷新
         isUploading.value = false;
-        
+
         // 清除计时器
         if (transferInterval.value) {
           clearInterval(transferInterval.value);
           transferInterval.value = null;
         }
-        
+
         // 最后只刷新一次
         refreshCurrentDirectory();
       } catch (error) {
@@ -2277,120 +2505,124 @@ export default defineComponent({
 
         // 出错时也确保关闭进度条
         isUploading.value = false;
-        
+
         // 清除计时器
         if (transferInterval.value) {
           clearInterval(transferInterval.value);
           transferInterval.value = null;
         }
-        
+
         // 出错时也刷新一次
         refreshCurrentDirectory();
       }
     };
-    
+
     // 处理文件条目
     const processFileEntry = async (fileEntry, path, onProgress) => {
       // 如果上传被取消，停止处理
       if (!isUploading.value && path !== '') {
         return;
       }
-      
+
       return new Promise((resolve, reject) => {
-        fileEntry.file(async (file) => {
-          try {
-            // 设置当前上传文件名以便在进度条中显示（移除百分比显示）
-            currentUploadingFile.value = path ? `${path}/${file.name}` : file.name;
-            
-            // 构建远程路径
-            const remotePath = path ? 
-              (currentPath.value === '/' ? 
-                currentPath.value + path + '/' + file.name : 
-                currentPath.value + '/' + path + '/' + file.name) :
-              (currentPath.value === '/' ? 
-                currentPath.value + file.name : 
-                currentPath.value + '/' + file.name);
-            
-            log.debug(`上传文件: ${remotePath} (${formatFileSize(file.size)})`);
-            
-            // 跟踪上传的进度以避免重复计算
-            let lastProgress = 0;
-            
-            // 上传文件并传递专门的进度回调
-            await uploadFileToDirectoryBatch(file, remotePath, (progress, opId) => {
-              // 保存操作ID用于取消上传
-              if (opId && !currentUploadId.value) {
-                currentUploadId.value = opId;
-              }
-              
-              // 实时更新进度 - 每个百分比都更新
-              // 为部分进度计算部分上传的字节
-              const partialBytes = (file.size * progress / 100);
-              
-              // 当达到100%时回调上传完成
-              if (progress >= 100 && typeof onProgress === 'function') {
-                // 防止重复调用完成回调
-                if (lastProgress < 100) {
-                  onProgress(file, file.size);
-                  lastProgress = 100;
+        fileEntry.file(
+          async file => {
+            try {
+              // 设置当前上传文件名以便在进度条中显示（移除百分比显示）
+              currentUploadingFile.value = path ? `${path}/${file.name}` : file.name;
+
+              // 构建远程路径
+              const remotePath = path
+                ? currentPath.value === '/'
+                  ? `${currentPath.value + path}/${file.name}`
+                  : `${currentPath.value}/${path}/${file.name}`
+                : currentPath.value === '/'
+                  ? currentPath.value + file.name
+                  : `${currentPath.value}/${file.name}`;
+
+              log.debug(`上传文件: ${remotePath} (${formatFileSize(file.size)})`);
+
+              // 跟踪上传的进度以避免重复计算
+              let lastProgress = 0;
+
+              // 上传文件并传递专门的进度回调
+              await uploadFileToDirectoryBatch(file, remotePath, (progress, opId) => {
+                // 保存操作ID用于取消上传
+                if (opId && !currentUploadId.value) {
+                  currentUploadId.value = opId;
                 }
-              } 
-              // 实时更新部分进度
-              else if (typeof onProgress === 'function' && progress > 0) {
-                // 只计算增量进度，避免重复计算
-                const progressDiff = progress - lastProgress;
-                if (progressDiff > 0) {
-                  const incrementalBytes = (file.size * progressDiff / 100);
-                  onProgress(file, incrementalBytes, true);
-                  lastProgress = progress;
+
+                // 实时更新进度 - 每个百分比都更新
+                // 为部分进度计算部分上传的字节
+                const partialBytes = (file.size * progress) / 100;
+
+                // 当达到100%时回调上传完成
+                if (progress >= 100 && typeof onProgress === 'function') {
+                  // 防止重复调用完成回调
+                  if (lastProgress < 100) {
+                    onProgress(file, file.size);
+                    lastProgress = 100;
+                  }
                 }
+                // 实时更新部分进度
+                else if (typeof onProgress === 'function' && progress > 0) {
+                  // 只计算增量进度，避免重复计算
+                  const progressDiff = progress - lastProgress;
+                  if (progressDiff > 0) {
+                    const incrementalBytes = (file.size * progressDiff) / 100;
+                    onProgress(file, incrementalBytes, true);
+                    lastProgress = progress;
+                  }
+                }
+              });
+
+              resolve();
+            } catch (error) {
+              log.error(`处理文件失败: ${path}/${file.name}`, error);
+              ElMessage.error(`上传 ${file.name} 失败: ${error.message}`);
+
+              // 调用进度回调，即使失败也计入进度
+              if (typeof onProgress === 'function') {
+                onProgress(file, 0); // 失败时传0字节
               }
-            });
-            
-            resolve();
-          } catch (error) {
-            log.error(`处理文件失败: ${path}/${file.name}`, error);
-            ElMessage.error(`上传 ${file.name} 失败: ${error.message}`);
-            
+
+              resolve(); // 即使失败也继续下一个
+            }
+          },
+          error => {
+            log.error(`读取文件失败: ${path}/${fileEntry.name}`, error);
+            ElMessage.error(`读取 ${fileEntry.name} 失败`);
+
             // 调用进度回调，即使失败也计入进度
             if (typeof onProgress === 'function') {
-              onProgress(file, 0); // 失败时传0字节
+              onProgress(file, 0);
             }
-            
+
             resolve(); // 即使失败也继续下一个
           }
-        }, (error) => {
-          log.error(`读取文件失败: ${path}/${fileEntry.name}`, error);
-          ElMessage.error(`读取 ${fileEntry.name} 失败`);
-          
-          // 调用进度回调，即使失败也计入进度
-          if (typeof onProgress === 'function') {
-            onProgress(file, 0);
-          }
-          
-          resolve(); // 即使失败也继续下一个
-        });
+        );
       });
     };
-    
+
     // 处理目录条目
     const processDirectoryEntry = async (directoryEntry, path, onProgress) => {
       // 如果上传被取消，停止处理
       if (!isUploading.value && path !== '') {
         return;
       }
-      
+
       // 构建新路径
-      const newPath = path ? path + '/' + directoryEntry.name : directoryEntry.name;
-      
+      const newPath = path ? `${path}/${directoryEntry.name}` : directoryEntry.name;
+
       try {
         // 创建远程目录
-        const remoteDirPath = currentPath.value === '/' ? 
-          currentPath.value + newPath : 
-          currentPath.value + '/' + newPath;
-          
+        const remoteDirPath =
+          currentPath.value === '/'
+            ? currentPath.value + newPath
+            : `${currentPath.value}/${newPath}`;
+
         log.debug(`创建目录: ${remoteDirPath}`);
-        
+
         try {
           // 创建远程目录
           await sftpService.createDirectory(props.sessionId, remoteDirPath);
@@ -2400,53 +2632,55 @@ export default defineComponent({
             console.warn(`创建目录失败: ${remoteDirPath}`, error);
           }
         }
-        
+
         // 读取目录内容
         const dirReader = directoryEntry.createReader();
-        
+
         // 使用递归读取所有的文件和子目录
         const readEntries = async () => {
           return new Promise((resolve, reject) => {
-            dirReader.readEntries(async (entries) => {
-              try {
-                // 如果还有条目，处理并继续读取
-                if (entries.length > 0) {
-                  const promises = [];
-                  for (const entry of entries) {
-                    if (entry.isFile) {
-                      promises.push(processFileEntry(entry, newPath, onProgress));
-                    } else if (entry.isDirectory) {
-                      promises.push(processDirectoryEntry(entry, newPath, onProgress));
+            dirReader.readEntries(
+              async entries => {
+                try {
+                  // 如果还有条目，处理并继续读取
+                  if (entries.length > 0) {
+                    const promises = [];
+                    for (const entry of entries) {
+                      if (entry.isFile) {
+                        promises.push(processFileEntry(entry, newPath, onProgress));
+                      } else if (entry.isDirectory) {
+                        promises.push(processDirectoryEntry(entry, newPath, onProgress));
+                      }
                     }
+
+                    // 等待所有子任务完成
+                    await Promise.all(promises);
+
+                    // 继续读取，直到没有更多条目
+                    await readEntries();
                   }
-                  
-                  // 等待所有子任务完成
-                  await Promise.all(promises);
-                  
-                  // 继续读取，直到没有更多条目
-                  await readEntries();
+                  resolve();
+                } catch (error) {
+                  log.error(`读取目录失败: ${newPath}`, error);
+                  resolve(); // 即使失败也继续
                 }
-                resolve();
-              } catch (error) {
-                log.error(`读取目录失败: ${newPath}`, error);
+              },
+              error => {
+                log.error(`目录读取错误: ${newPath}`, error);
                 resolve(); // 即使失败也继续
               }
-            }, (error) => {
-              log.error(`目录读取错误: ${newPath}`, error);
-              resolve(); // 即使失败也继续
-            });
+            );
           });
         };
-        
+
         // 开始读取目录
         await readEntries();
-        
       } catch (error) {
         log.error(`处理目录失败: ${newPath}`, error);
         ElMessage.error(`处理目录 ${directoryEntry.name} 失败: ${error.message}`);
       }
     };
-    
+
     // 特殊的目录批量上传文件函数，不改变全局上传状态
     const uploadFileToDirectoryBatch = async (file, remotePath, progressCallback) => {
       return new Promise((resolve, reject) => {
@@ -2454,11 +2688,8 @@ export default defineComponent({
 
         try {
           // 调用SFTP服务上传文件
-          sftpService.uploadFile(
-            props.sessionId,
-            file,
-            remotePath,
-            (progress, operationId) => {
+          sftpService
+            .uploadFile(props.sessionId, file, remotePath, (progress, operationId) => {
               // 先调用原始回调 - 每次进度回调都实时更新
               if (typeof progressCallback === 'function') {
                 progressCallback(progress, operationId);
@@ -2472,13 +2703,13 @@ export default defineComponent({
                 // 上传完成时解析Promise
                 resolve();
               }
-            }
-          ).catch(error => {
-            if (!fileCompleted) {
-              log.error(`上传文件失败: ${remotePath}`, error);
-              reject(error);
-            }
-          });
+            })
+            .catch(error => {
+              if (!fileCompleted) {
+                log.error(`上传文件失败: ${remotePath}`, error);
+                reject(error);
+              }
+            });
         } catch (error) {
           if (!fileCompleted) {
             log.error(`初始化上传失败: ${remotePath}`, error);
@@ -2487,21 +2718,21 @@ export default defineComponent({
         }
       });
     };
-    
+
     // 处理拖拽进入
-    const handleDragOver = (event) => {
+    const handleDragOver = event => {
       event.preventDefault();
       isDragOver.value = true;
     };
-    
+
     // 处理拖拽离开
-    const handleDragLeave = (event) => {
+    const handleDragLeave = event => {
       event.preventDefault();
       isDragOver.value = false;
     };
-    
+
     // 格式化传输速度
-    const formatTransferSpeed = (bytesPerSecond) => {
+    const formatTransferSpeed = bytesPerSecond => {
       if (bytesPerSecond < 1024) {
         return `${bytesPerSecond.toFixed(1)} B/s`;
       } else if (bytesPerSecond < 1024 * 1024) {
@@ -2510,44 +2741,44 @@ export default defineComponent({
         return `${(bytesPerSecond / (1024 * 1024)).toFixed(1)} MB/s`;
       }
     };
-    
+
     // 搜索文件
-    const handleSearch = (query) => {
+    const handleSearch = query => {
       log.debug('接收到搜索查询:', query);
-      
+
       // 如果搜索查询为空，显示所有文件
       if (!query || query.trim() === '') {
         log.debug('搜索查询为空，刷新目录显示所有文件');
         refreshCurrentDirectory();
         return;
       }
-      
+
       log.debug('执行搜索:', query);
-      
+
       // 获取原始文件列表的一个副本（如果需要刷新）
-      const originalFileList = [...rawFileList.value]; 
-      
+      const originalFileList = [...rawFileList.value];
+
       // 搜索当前目录中匹配的文件
       const lowercaseQuery = query.toLowerCase();
       const filteredFiles = originalFileList.filter(file => {
         // 文件名匹配查询
         return file.name.toLowerCase().includes(lowercaseQuery);
       });
-      
+
       log.debug(`搜索结果: 找到 ${filteredFiles.length} 个匹配项`);
-      
+
       // 更新文件列表
       rawFileList.value = filteredFiles;
     };
-    
+
     // 切换显示/隐藏隐藏文件
-    const toggleHiddenFiles = (value) => {
+    const toggleHiddenFiles = value => {
       showHiddenFiles.value = value;
       refreshCurrentDirectory();
     };
 
     // 处理权限编辑
-    const handlePermissions = (file) => {
+    const handlePermissions = file => {
       selectedFileForPermissions.value = file;
       showPermissionsDialog.value = true;
     };
@@ -2556,11 +2787,16 @@ export default defineComponent({
     const handlePermissionsSave = async (file, newPermissions) => {
       try {
         // 构建完整文件路径
-        const fullPath = currentPath.value === '/' ?
-          currentPath.value + file.name :
-          currentPath.value + '/' + file.name;
+        const fullPath =
+          currentPath.value === '/'
+            ? currentPath.value + file.name
+            : `${currentPath.value}/${file.name}`;
 
-        log.info('修改文件权限:', { file: file.name, path: fullPath, permissions: newPermissions.toString(8) });
+        log.info('修改文件权限:', {
+          file: file.name,
+          path: fullPath,
+          permissions: newPermissions.toString(8)
+        });
 
         // 调用SFTP服务的权限修改方法
         await sftpService.changePermissions(props.sessionId, fullPath, newPermissions);
@@ -2574,20 +2810,21 @@ export default defineComponent({
         throw error;
       }
     };
-    
+
     // 打开文件编辑器
-    const openEditor = async (file) => {
+    const openEditor = async file => {
       resetError();
-      
+
       if (file.isDirectory) {
         return;
       }
-      
+
       // 构建完整文件路径
-      const fullPath = currentPath.value === '/' ? 
-        currentPath.value + file.name : 
-        currentPath.value + '/' + file.name;
-      
+      const fullPath =
+        currentPath.value === '/'
+          ? currentPath.value + file.name
+          : `${currentPath.value}/${file.name}`;
+
       try {
         // 创建与文件列表加载一致的加载状态
         const loadingFileContentDiv = document.createElement('div');
@@ -2600,57 +2837,59 @@ export default defineComponent({
           </div>
           <p>正在加载文件内容...</p>
         `;
-        
+
         // 将加载状态添加到文件列表区域
         const fileListContent = document.querySelector('.sftp-file-list-content');
         if (fileListContent) {
           fileListContent.appendChild(loadingFileContentDiv);
         }
-        
+
         // 获取文件内容
         const content = await sftpService.getFileContent(props.sessionId, fullPath);
-        
+
         // 移除加载状态
         if (fileListContent && loadingFileContentDiv.parentNode === fileListContent) {
           fileListContent.removeChild(loadingFileContentDiv);
         }
-        
+
         // 设置编辑器状态
         editingFilePath.value = fullPath;
         editingFileContent.value = content;
         isEditing.value = true;
       } catch (error) {
         // 移除加载状态
-        const loadingFileContentDiv = document.querySelector('.sftp-file-list-content .sftp-loading-files');
+        const loadingFileContentDiv = document.querySelector(
+          '.sftp-file-list-content .sftp-loading-files'
+        );
         if (loadingFileContentDiv && loadingFileContentDiv.parentNode) {
           loadingFileContentDiv.parentNode.removeChild(loadingFileContentDiv);
         }
-        
+
         log.error('加载文件内容失败:', error);
         showError(`加载文件内容失败: ${error.message}`);
       }
     };
-    
+
     // 关闭编辑器
     const closeEditor = () => {
       isEditing.value = false;
       editingFilePath.value = '';
       editingFileContent.value = '';
     };
-    
+
     // 处理编辑器保存事件
     const handleEditorSave = () => {
       // 刷新文件列表，以更新文件修改日期
       refreshCurrentDirectory();
     };
-    
+
     // 初始化SFTP会话
     const initSftp = async () => {
       resetError();
-      
+
       // 显示加载状态
       isLoadingSftp.value = true;
-      
+
       try {
         // 如果会话ID无效，显示错误
         if (!props.sessionId) {
@@ -2658,12 +2897,12 @@ export default defineComponent({
           isLoadingSftp.value = false;
           return;
         }
-        
+
         log.debug(`初始化SFTP会话: ${props.sessionId}`);
-        
+
         // 创建SFTP会话
         const result = await sftpService.createSftpSession(props.sessionId);
-        
+
         // 获取初始路径
         let initialPath = '/root';
         if (sftpService.activeSftpSessions.has(props.sessionId)) {
@@ -2671,16 +2910,16 @@ export default defineComponent({
           // 尝试加载/root目录，如果不存在则使用当前路径（通常是根目录）
           try {
             await sftpService.listDirectory(props.sessionId, initialPath);
-            log.debug(`/root目录存在，使用它作为初始目录`);
+            log.debug('/root目录存在，使用它作为初始目录');
           } catch (error) {
             log.debug(`/root目录不存在，使用默认路径: ${sftpSession.currentPath}`);
             initialPath = sftpSession.currentPath || '/';
           }
         }
-        
+
         // 加载目录内容
         await loadDirectoryContents(initialPath);
-        
+
         isLoadingSftp.value = false;
       } catch (error) {
         isLoadingSftp.value = false;
@@ -2688,7 +2927,7 @@ export default defineComponent({
         log.error('初始化SFTP会话失败:', error);
       }
     };
-    
+
     // 组件挂载时初始化SFTP会话
     onMounted(() => {
       window.addEventListener('sftp:session-changed', handleSessionChanged);
@@ -2699,7 +2938,7 @@ export default defineComponent({
       // 初始化SFTP连接
       initSftp();
     });
-    
+
     // 组件卸载时清理资源
     onUnmounted(() => {
       window.removeEventListener('sftp:session-changed', handleSessionChanged);
@@ -2712,13 +2951,16 @@ export default defineComponent({
         clearInterval(transferInterval.value);
         transferInterval.value = null;
       }
-      
+
       // 关闭SFTP会话，清理资源
       try {
         if (props.sessionId) {
           log.debug(`组件卸载，关闭SFTP会话: ${props.sessionId}`);
           // 检查会话是否仍然存在
-          if (sftpService.activeSftpSessions && sftpService.activeSftpSessions.has(props.sessionId)) {
+          if (
+            sftpService.activeSftpSessions &&
+            sftpService.activeSftpSessions.has(props.sessionId)
+          ) {
             sftpService.closeSftpSession(props.sessionId).catch(error => {
               log.error(`关闭SFTP会话失败: ${error.message || '未知错误'}`, error);
             });
@@ -2730,7 +2972,7 @@ export default defineComponent({
         log.error('清理SFTP资源时出错:', error);
       }
     });
-    
+
     return {
       // 状态
       isResizing,
@@ -2758,7 +3000,7 @@ export default defineComponent({
       inlineEditor,
       showPermissionsDialog,
       selectedFileForPermissions,
-      
+
       // 方法
       close,
       startResizing,
@@ -2825,16 +3067,16 @@ export default defineComponent({
   z-index: 2;
   border-radius: 4px;
   backdrop-filter: blur(4px);
-  
+
   .sftp-loading-spinner {
     margin-bottom: 15px;
-    
+
     .circular {
       height: 40px;
       width: 40px;
       animation: loading-rotate 2s linear infinite;
     }
-    
+
     .path {
       stroke-dasharray: 90, 150;
       stroke-dashoffset: 0;
@@ -2942,16 +3184,18 @@ export default defineComponent({
     max-width: 90vw;
     min-width: 260px;
   }
-  
+
   .sftp-progress-text {
     font-size: 12px;
   }
-  
+
   .sftp-progress-file {
     font-size: 11px;
   }
   /* 进度条跟随容器宽度 */
-  .sftp-progress-bar { width: 100%; }
+  .sftp-progress-bar {
+    width: 100%;
+  }
 }
 
 @media (max-width: 480px) {
@@ -2960,7 +3204,9 @@ export default defineComponent({
     align-items: stretch;
     gap: 8px;
   }
-  .sftp-progress-bar { width: 100%; }
+  .sftp-progress-bar {
+    width: 100%;
+  }
 }
 
 /* 进度条取消按钮样式 */
@@ -3076,11 +3322,11 @@ export default defineComponent({
     min-height: 250px;
     padding: 30px 15px;
   }
-  
+
   .sftp-error-content h3 {
     font-size: 18px;
   }
-  
+
   .sftp-error-content .sftp-error-message {
     font-size: 13px;
   }

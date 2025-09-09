@@ -36,7 +36,7 @@ const validators = {
     },
     message: '该字段不能为空'
   },
-  
+
   // 邮箱验证
   [ValidationType.EMAIL]: {
     validate: value => {
@@ -46,7 +46,7 @@ const validators = {
     },
     message: '请输入有效的电子邮箱地址'
   },
-  
+
   // 数字验证
   [ValidationType.NUMBER]: {
     validate: value => {
@@ -55,7 +55,7 @@ const validators = {
     },
     message: '请输入有效的数字'
   },
-  
+
   // 整数验证
   [ValidationType.INTEGER]: {
     validate: value => {
@@ -64,7 +64,7 @@ const validators = {
     },
     message: '请输入有效的整数'
   },
-  
+
   // 最小长度验证
   [ValidationType.MIN_LENGTH]: {
     validate: (value, param) => {
@@ -73,7 +73,7 @@ const validators = {
     },
     message: (param) => `长度不能少于 ${param} 个字符`
   },
-  
+
   // 最大长度验证
   [ValidationType.MAX_LENGTH]: {
     validate: (value, param) => {
@@ -82,7 +82,7 @@ const validators = {
     },
     message: (param) => `长度不能超过 ${param} 个字符`
   },
-  
+
   // 模式验证(正则)
   [ValidationType.PATTERN]: {
     validate: (value, param) => {
@@ -92,7 +92,7 @@ const validators = {
     },
     message: '输入格式不正确'
   },
-  
+
   // 匹配验证
   [ValidationType.MATCH]: {
     validate: (value, param, formData) => {
@@ -101,7 +101,7 @@ const validators = {
     },
     message: (param) => `输入必须与${param}字段匹配`
   },
-  
+
   // 最小值验证
   [ValidationType.MIN]: {
     validate: (value, param) => {
@@ -110,7 +110,7 @@ const validators = {
     },
     message: (param) => `不能小于 ${param}`
   },
-  
+
   // 最大值验证
   [ValidationType.MAX]: {
     validate: (value, param) => {
@@ -119,7 +119,7 @@ const validators = {
     },
     message: (param) => `不能大于 ${param}`
   },
-  
+
   // 日期验证
   [ValidationType.DATE]: {
     validate: value => {
@@ -129,7 +129,7 @@ const validators = {
     },
     message: '请输入有效的日期'
   },
-  
+
   // URL验证
   [ValidationType.URL]: {
     validate: value => {
@@ -143,7 +143,7 @@ const validators = {
     },
     message: '请输入有效的URL'
   },
-  
+
   // 确认验证
   [ValidationType.CONFIRM]: {
     validate: (value, param, formData) => {
@@ -165,14 +165,14 @@ class ValidationRule {
   constructor(type, options = {}) {
     this.type = type;
     this.param = options.param;
-    this.message = options.message || 
-      (validators[type] ? 
-        (typeof validators[type].message === 'function' ? 
-          validators[type].message(this.param) : 
-          validators[type].message) : 
+    this.message = options.message ||
+      (validators[type] ?
+        (typeof validators[type].message === 'function' ?
+          validators[type].message(this.param) :
+          validators[type].message) :
         '验证失败');
     this.when = options.when || (() => true);
-    
+
     // 自定义验证函数
     if (type === ValidationType.CUSTOM) {
       if (!options.validate || typeof options.validate !== 'function') {
@@ -183,7 +183,7 @@ class ValidationRule {
       this.validate = validators[type] ? validators[type].validate : () => true;
     }
   }
-  
+
   /**
    * 执行验证
    * @param {any} value 字段值
@@ -195,10 +195,10 @@ class ValidationRule {
     if (!this.when(value, formData)) {
       return true;
     }
-    
+
     return this.validate(value, this.param, formData);
   }
-  
+
   /**
    * 获取错误消息
    * @param {Object} fieldMeta 字段元数据
@@ -208,7 +208,7 @@ class ValidationRule {
     if (typeof this.message === 'function') {
       return this.message(this.param, fieldMeta);
     }
-    
+
     return this.message;
   }
 }
@@ -239,12 +239,12 @@ class FormField {
     this.defaultValue = this.value;
     this.options = options.options || [];
     this.meta = options.meta || {};
-    
+
     // 自动添加必填验证
     if (this.required) {
       this.addRule(ValidationType.REQUIRED);
     }
-    
+
     // 添加其他规则
     if (options.rules && Array.isArray(options.rules)) {
       options.rules.forEach(rule => {
@@ -256,7 +256,7 @@ class FormField {
       });
     }
   }
-  
+
   /**
    * 添加验证规则
    * @param {string} type 验证类型
@@ -268,7 +268,7 @@ class FormField {
     this.rules.push(rule);
     return this;
   }
-  
+
   /**
    * 设置字段值
    * @param {any} value 字段值
@@ -279,7 +279,7 @@ class FormField {
     this.dirty = this.value !== this.defaultValue;
     return this;
   }
-  
+
   /**
    * 设置触摸状态
    * @param {boolean} touched 是否已触摸
@@ -289,7 +289,7 @@ class FormField {
     this.touched = touched;
     return this;
   }
-  
+
   /**
    * 设置焦点状态
    * @param {boolean} focused 是否已获取焦点
@@ -299,7 +299,7 @@ class FormField {
     this.focused = focused;
     return this;
   }
-  
+
   /**
    * 重置字段
    * @returns {FormField} 当前字段实例
@@ -312,7 +312,7 @@ class FormField {
     this.focused = false;
     return this;
   }
-  
+
   /**
    * 验证字段
    * @param {Object} formData 表单数据
@@ -320,12 +320,12 @@ class FormField {
    */
   validate(formData = {}) {
     this.errors = [];
-    
+
     // 如果字段禁用，不进行验证
     if (this.disabled) {
       return true;
     }
-    
+
     // 遍历验证规则
     for (const rule of this.rules) {
       if (!rule.isValid(this.value, formData)) {
@@ -336,10 +336,10 @@ class FormField {
         }));
       }
     }
-    
+
     return this.errors.length === 0;
   }
-  
+
   /**
    * 获取字段状态
    * @returns {Object} 字段状态
@@ -368,14 +368,14 @@ export class FormService extends EventEmitter {
    */
   constructor() {
     super();
-    
+
     // 表单注册表 { formId: { fields, options } }
     this.forms = new Map();
-    
+
     // 添加自定义验证器
     this.customValidators = new Map();
   }
-  
+
   /**
    * 注册自定义验证器
    * @param {string} name 验证器名称
@@ -387,15 +387,15 @@ export class FormService extends EventEmitter {
     if (typeof validateFn !== 'function') {
       throw new Error('验证器必须是一个函数');
     }
-    
+
     validators[name] = {
       validate: validateFn,
       message
     };
-    
+
     return this;
   }
-  
+
   /**
    * 创建表单
    * @param {string} formId 表单ID
@@ -406,7 +406,7 @@ export class FormService extends EventEmitter {
     if (this.forms.has(formId)) {
       throw new Error(`表单 ${formId} 已存在`);
     }
-    
+
     const fields = {};
     const options = {
       validateOnChange: config.validateOnChange !== false,
@@ -420,26 +420,26 @@ export class FormService extends EventEmitter {
       onReset: config.onReset || null,
       onChange: config.onChange || null
     };
-    
+
     // 创建字段
     if (config.fields) {
       Object.entries(config.fields).forEach(([name, fieldConfig]) => {
         fields[name] = new FormField(name, fieldConfig);
       });
     }
-    
+
     // 保存表单状态
     this.forms.set(formId, { fields, options });
-    
+
     // 创建表单控制器
     const formController = this._createFormController(formId);
-    
+
     // 触发表单创建事件
     this.emit('form:created', formId, formController);
-    
+
     return formController;
   }
-  
+
   /**
    * 获取表单控制器
    * @param {string} formId 表单ID
@@ -449,10 +449,10 @@ export class FormService extends EventEmitter {
     if (!this.forms.has(formId)) {
       throw new Error(`表单 ${formId} 不存在`);
     }
-    
+
     return this._createFormController(formId);
   }
-  
+
   /**
    * 创建表单控制器
    * @param {string} formId 表单ID
@@ -462,7 +462,7 @@ export class FormService extends EventEmitter {
   _createFormController(formId) {
     const { fields, options } = this.forms.get(formId);
     const self = this;
-    
+
     return {
       /**
        * 获取表单ID
@@ -470,7 +470,7 @@ export class FormService extends EventEmitter {
       get id() {
         return formId;
       },
-      
+
       /**
        * 获取表单数据
        */
@@ -481,7 +481,7 @@ export class FormService extends EventEmitter {
         });
         return values;
       },
-      
+
       /**
        * 获取表单字段状态
        */
@@ -492,21 +492,21 @@ export class FormService extends EventEmitter {
         });
         return result;
       },
-      
+
       /**
        * 获取表单整体验证状态
        */
       get isValid() {
         return Object.values(fields).every(field => field.errors.length === 0);
       },
-      
+
       /**
        * 获取表单是否有修改
        */
       get isDirty() {
         return Object.values(fields).some(field => field.dirty);
       },
-      
+
       /**
        * 获取所有字段错误
        */
@@ -519,7 +519,7 @@ export class FormService extends EventEmitter {
         });
         return allErrors;
       },
-      
+
       /**
        * 设置字段值
        * @param {string} name 字段名
@@ -529,22 +529,22 @@ export class FormService extends EventEmitter {
         if (!fields[name]) {
           throw new Error(`字段 ${name} 不存在`);
         }
-        
+
         fields[name].setValue(value);
-        
+
         // 如果需要，进行验证
         if (options.validateOnChange) {
           this.validateField(name);
         }
-        
+
         // 触发变更事件
         self.emit('field:change', formId, name, value, fields[name].getState());
-        
+
         if (options.onChange && typeof options.onChange === 'function') {
           options.onChange(name, value, this.values);
         }
       },
-      
+
       /**
        * 批量设置表单值
        * @param {Object} values 字段值对象
@@ -553,26 +553,26 @@ export class FormService extends EventEmitter {
         if (!values || typeof values !== 'object') {
           return;
         }
-        
+
         Object.entries(values).forEach(([name, value]) => {
           if (fields[name]) {
             fields[name].setValue(value);
           }
         });
-        
+
         // 如果需要，进行整体验证
         if (options.validateOnChange) {
           this.validate();
         }
-        
+
         // 触发表单变更事件
         self.emit('form:change', formId, this.values);
-        
+
         if (options.onChange && typeof options.onChange === 'function') {
           options.onChange(null, null, this.values);
         }
       },
-      
+
       /**
        * 设置字段触摸状态
        * @param {string} name 字段名
@@ -582,18 +582,18 @@ export class FormService extends EventEmitter {
         if (!fields[name]) {
           throw new Error(`字段 ${name} 不存在`);
         }
-        
+
         fields[name].setTouched(touched);
-        
+
         // 如果需要，进行验证
         if (touched && options.validateOnBlur) {
           this.validateField(name);
         }
-        
+
         // 触发触摸事件
         self.emit('field:blur', formId, name, fields[name].getState());
       },
-      
+
       /**
        * 设置字段焦点状态
        * @param {string} name 字段名
@@ -603,13 +603,13 @@ export class FormService extends EventEmitter {
         if (!fields[name]) {
           throw new Error(`字段 ${name} 不存在`);
         }
-        
+
         fields[name].setFocused(focused);
-        
+
         // 触发焦点事件
         self.emit('field:focus', formId, name, fields[name].getState());
       },
-      
+
       /**
        * 验证单个字段
        * @param {string} name 字段名
@@ -619,34 +619,34 @@ export class FormService extends EventEmitter {
         if (!fields[name]) {
           throw new Error(`字段 ${name} 不存在`);
         }
-        
+
         const isValid = fields[name].validate(this.values);
-        
+
         // 触发字段验证事件
         self.emit('field:validate', formId, name, isValid, fields[name].errors);
-        
+
         return isValid;
       },
-      
+
       /**
        * 验证整个表单
        * @returns {boolean} 是否验证通过
        */
       validate() {
         let isValid = true;
-        
+
         // 验证所有字段
         Object.entries(fields).forEach(([name, field]) => {
           const fieldValid = field.validate(this.values);
           isValid = isValid && fieldValid;
         });
-        
+
         // 触发表单验证事件
         self.emit('form:validate', formId, isValid, this.errors);
-        
+
         return isValid;
       },
-      
+
       /**
        * 获取字段状态
        * @param {string} name 字段名
@@ -656,24 +656,24 @@ export class FormService extends EventEmitter {
         if (!fields[name]) {
           throw new Error(`字段 ${name} 不存在`);
         }
-        
+
         return fields[name].getState();
       },
-      
+
       /**
        * 重置表单
        */
       reset() {
         Object.values(fields).forEach(field => field.reset());
-        
+
         // 触发表单重置事件
         self.emit('form:reset', formId);
-        
+
         if (options.onReset && typeof options.onReset === 'function') {
           options.onReset(this.values);
         }
       },
-      
+
       /**
        * 添加字段
        * @param {string} name 字段名
@@ -683,13 +683,13 @@ export class FormService extends EventEmitter {
         if (fields[name]) {
           throw new Error(`字段 ${name} 已存在`);
         }
-        
+
         fields[name] = new FormField(name, config);
-        
+
         // 触发字段添加事件
         self.emit('field:add', formId, name, fields[name].getState());
       },
-      
+
       /**
        * 移除字段
        * @param {string} name 字段名
@@ -698,13 +698,13 @@ export class FormService extends EventEmitter {
         if (!fields[name]) {
           return;
         }
-        
+
         delete fields[name];
-        
+
         // 触发字段移除事件
         self.emit('field:remove', formId, name);
       },
-      
+
       /**
        * 提交表单
        * @returns {boolean} 是否验证通过并提交
@@ -712,28 +712,28 @@ export class FormService extends EventEmitter {
       submit() {
         // 如果需要，进行整体验证
         let isValid = true;
-        
+
         if (options.validateOnSubmit) {
           isValid = this.validate();
-          
+
           // 处理验证失败
           if (!isValid && options.showErrorsOnSubmit) {
             // 获取第一个错误字段
             const firstErrorField = Object.entries(fields)
               .find(([_, field]) => field.errors.length > 0);
-            
+
             if (firstErrorField) {
               const [fieldName, field] = firstErrorField;
-              
+
               // 显示错误通知
               notificationService.error(`表单验证失败: ${field.errors[0]}`);
-              
+
               // 焦点到第一个错误字段
               if (options.focusOnError) {
                 // 发出聚焦错误字段事件，由视图层处理
                 self.emit('form:focusError', formId, fieldName);
               }
-              
+
               // 滚动到错误字段
               if (options.scrollToErrors) {
                 // 发出滚动到错误字段事件，由视图层处理
@@ -742,23 +742,23 @@ export class FormService extends EventEmitter {
             }
           }
         }
-        
+
         // 触发表单提交事件
         self.emit('form:submit', formId, isValid, this.values);
-        
+
         // 调用提交回调
         if (isValid && options.onSubmit && typeof options.onSubmit === 'function') {
           options.onSubmit(this.values);
         }
-        
+
         // 如果成功且需要，重置表单
         if (isValid && options.resetOnSubmit) {
           this.reset();
         }
-        
+
         return isValid;
       },
-      
+
       /**
        * 设置表单选项
        * @param {Object} newOptions 新选项
@@ -768,7 +768,7 @@ export class FormService extends EventEmitter {
       }
     };
   }
-  
+
   /**
    * 删除表单
    * @param {string} formId 表单ID
@@ -778,20 +778,20 @@ export class FormService extends EventEmitter {
     if (!this.forms.has(formId)) {
       return false;
     }
-    
+
     this.forms.delete(formId);
-    
+
     // 触发表单删除事件
     this.emit('form:removed', formId);
-    
+
     return true;
   }
-  
+
   /**
    * 单例实例
    */
   static instance = null;
-  
+
   /**
    * 获取服务实例
    * @returns {FormService} 表单服务实例
@@ -805,4 +805,4 @@ export class FormService extends EventEmitter {
 }
 
 // 导出默认实例
-export default FormService.getInstance(); 
+export default FormService.getInstance();

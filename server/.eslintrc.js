@@ -16,11 +16,11 @@ module.exports = {
     // Node.js相关规则
     'no-console': 'off', // 服务端允许console
     'no-debugger': process.env.NODE_ENV === 'production' ? 'error' : 'warn',
-    'no-unused-vars': ['error', { 
+    'no-unused-vars': ['error', {
       argsIgnorePattern: '^_',
       varsIgnorePattern: '^_'
     }],
-    
+
     // JavaScript规则
     'prefer-const': 'error',
     'no-var': 'error',
@@ -35,7 +35,7 @@ module.exports = {
     'no-trailing-spaces': 'error',
     'eol-last': 'error',
     'no-multiple-empty-lines': ['error', { max: 2, maxEOF: 1 }],
-    
+
     // Node.js特定规则
     'no-process-exit': 'error',
     'no-path-concat': 'error',

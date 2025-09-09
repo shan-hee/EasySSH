@@ -37,11 +37,11 @@
 }
 
 /* 对比度级别样式 */
-[data-contrast="high"] {
+[data-contrast='high'] {
   /* 高对比度模式 - 移除未使用的contrast-multiplier变量 */
 }
 
-[data-contrast="very-high"] {
+[data-contrast='very-high'] {
   --color-link: #ffff00;
   --color-focus: #ffff00;
   /* 使用无障碍专用变量名避免与主题变量冲突 */
@@ -61,12 +61,12 @@
 }
 
 /* 动效级别样式 */
-[data-motion="reduced"] {
+[data-motion='reduced'] {
   --transition-multiplier: 0.5;
   --animation-multiplier: 0.5;
 }
 
-[data-motion="none"] {
+[data-motion='none'] {
   --transition-multiplier: 0;
   --animation-multiplier: 0;
 }
@@ -80,39 +80,39 @@
 }
 
 /* 焦点样式 */
-[data-focus-mode="standard"] :focus {
+[data-focus-mode='standard'] :focus {
   outline: var(--focus-border-width, 2px) solid transparent;
   outline-offset: 2px;
 }
 
-[data-focus-mode="enhanced"] :focus {
+[data-focus-mode='enhanced'] :focus {
   outline: var(--focus-border-width, 3px) solid transparent;
   outline-offset: 3px;
   box-shadow: none;
 }
 
-[data-focus-mode="high-visibility"] :focus {
+[data-focus-mode='high-visibility'] :focus {
   outline: var(--focus-border-width, 4px) solid transparent;
   outline-offset: 4px;
   box-shadow: none;
 }
 
 /* 不同焦点模式下按钮轮廓 */
-[data-focus-mode="standard"] button:focus, 
-[data-focus-mode="standard"] a:focus {
+[data-focus-mode='standard'] button:focus,
+[data-focus-mode='standard'] a:focus {
   outline: var(--focus-border-width, 2px) solid transparent;
   outline-offset: 2px;
 }
 
-[data-focus-mode="enhanced"] button:focus,
-[data-focus-mode="enhanced"] a:focus {
+[data-focus-mode='enhanced'] button:focus,
+[data-focus-mode='enhanced'] a:focus {
   outline: var(--focus-border-width, 3px) solid transparent;
   outline-offset: 3px;
   box-shadow: none;
 }
 
-[data-focus-mode="high-visibility"] button:focus,
-[data-focus-mode="high-visibility"] a:focus {
+[data-focus-mode='high-visibility'] button:focus,
+[data-focus-mode='high-visibility'] a:focus {
   outline: var(--focus-border-width, 4px) solid transparent;
   outline-offset: 4px;
   box-shadow: none;
@@ -123,9 +123,9 @@
   pointer-events: none !important;
 }
 
-.no-hover a, 
+.no-hover a,
 .no-hover button,
-.no-hover [role="button"],
+.no-hover [role='button'],
 .no-hover input,
 .no-hover select,
 .no-hover textarea {
@@ -134,7 +134,7 @@
 
 .no-hover a:hover,
 .no-hover button:hover,
-.no-hover [role="button"]:hover {
+.no-hover [role='button']:hover {
   transform: none !important;
   filter: none !important;
   box-shadow: none !important;
@@ -168,7 +168,7 @@
 }
 
 /* 屏幕阅读器友好 */
-.sr-friendly [aria-hidden="true"] {
+.sr-friendly [aria-hidden='true'] {
   display: none !important;
 }
 
@@ -177,7 +177,7 @@
 }
 
 .sr-friendly button:not([aria-label]):not([title])::after {
-  content: "";
+  content: '';
   position: absolute;
   bottom: -5px;
   left: 0;
@@ -188,11 +188,11 @@
 }
 
 /* 表单标签位置 */
-[data-form-labels="top"] label {
+[data-form-labels='top'] label {
   display: block;
 }
 
-[data-form-labels="left"] label {
+[data-form-labels='left'] label {
   display: inline-block;
   min-width: 120px;
   margin-right: 1rem;
@@ -205,10 +205,10 @@ html {
 }
 
 /* ARIA提示元素 */
-[role="tooltip"],
-[role="alert"],
-[role="status"],
-[role="progressbar"] {
+[role='tooltip'],
+[role='alert'],
+[role='status'],
+[role='progressbar'] {
   border: 1px solid var(--tooltip-border);
   padding: var(--tooltip-padding-vertical) var(--tooltip-padding-horizontal);
   background: var(--tooltip-bg);
@@ -237,4 +237,4 @@ html {
 
 .skip-link:focus {
   top: 0;
-} 
+}

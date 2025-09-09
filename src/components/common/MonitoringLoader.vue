@@ -1,12 +1,18 @@
 <template>
-  <div class="monitoring-loader" :class="loaderClasses">
+  <div
+    class="monitoring-loader"
+    :class="loaderClasses"
+  >
     <!-- 连接状态指示器 -->
-    <div v-if="state === 'connecting' || state === 'reconnecting'" class="loader-connecting">
+    <div
+      v-if="state === 'connecting' || state === 'reconnecting'"
+      class="loader-connecting"
+    >
       <div class="connecting-animation">
         <div class="connecting-dots">
-          <span></span>
-          <span></span>
-          <span></span>
+          <span />
+          <span />
+          <span />
         </div>
       </div>
       <div class="loader-text">
@@ -15,14 +21,27 @@
     </div>
 
     <!-- 数据加载指示器 -->
-    <div v-else-if="state === 'loading'" class="loader-loading">
+    <div
+      v-else-if="state === 'loading'"
+      class="loader-loading"
+    >
       <div class="loading-animation">
         <div class="loading-spinner">
-          <MonitoringIcon name="loading" :size="16" class="spinner-icon" />
+          <monitoring-icon
+            name="loading"
+            :size="16"
+            class="spinner-icon"
+          />
         </div>
-        <div class="loading-progress" v-if="showProgress">
+        <div
+          v-if="showProgress"
+          class="loading-progress"
+        >
           <div class="progress-bar">
-            <div class="progress-fill" :style="{ width: `${progress}%` }"></div>
+            <div
+              class="progress-fill"
+              :style="{ width: `${progress}%` }"
+            />
           </div>
           <span class="progress-text">{{ progress }}%</span>
         </div>
@@ -33,56 +52,95 @@
     </div>
 
     <!-- 错误状态指示器 -->
-    <div v-else-if="state === 'error'" class="loader-error">
+    <div
+      v-else-if="state === 'error'"
+      class="loader-error"
+    >
       <div class="error-animation">
-        <MonitoringIcon name="close" :size="16" class="error-icon" />
+        <monitoring-icon
+          name="close"
+          :size="16"
+          class="error-icon"
+        />
       </div>
       <div class="loader-text error-text">
         {{ errorMessage || '加载失败' }}
       </div>
-      <button v-if="showRetry" @click="$emit('retry')" class="retry-button">
+      <button
+        v-if="showRetry"
+        class="retry-button"
+        @click="onRetry"
+      >
         重试
       </button>
     </div>
 
     <!-- 骨架屏加载器 -->
-    <div v-else-if="state === 'skeleton'" class="loader-skeleton">
+    <div
+      v-else-if="state === 'skeleton'"
+      class="loader-skeleton"
+    >
       <div class="skeleton-content">
         <!-- 图表骨架 -->
-        <div v-if="skeletonType === 'chart'" class="skeleton-chart">
+        <div
+          v-if="skeletonType === 'chart'"
+          class="skeleton-chart"
+        >
           <div class="skeleton-header">
-            <div class="skeleton-title"></div>
-            <div class="skeleton-value"></div>
+            <div class="skeleton-title" />
+            <div class="skeleton-value" />
           </div>
           <div class="skeleton-graph">
-            <div class="skeleton-line" v-for="i in 5" :key="i" :style="{ height: `${20 + Math.random() * 40}%` }"></div>
+            <div
+              v-for="i in 5"
+              :key="i"
+              class="skeleton-line"
+              :style="{ height: `${20 + Math.random() * 40}%` }"
+            />
           </div>
         </div>
 
         <!-- 圆环图骨架 -->
-        <div v-else-if="skeletonType === 'doughnut'" class="skeleton-doughnut">
+        <div
+          v-else-if="skeletonType === 'doughnut'"
+          class="skeleton-doughnut"
+        >
           <div class="skeleton-header">
-            <div class="skeleton-title"></div>
+            <div class="skeleton-title" />
           </div>
           <div class="skeleton-circle">
-            <div class="skeleton-ring"></div>
+            <div class="skeleton-ring" />
           </div>
         </div>
 
         <!-- 信息卡片骨架 -->
-        <div v-else class="skeleton-info">
-          <div class="skeleton-row" v-for="i in 3" :key="i">
-            <div class="skeleton-label"></div>
-            <div class="skeleton-value"></div>
+        <div
+          v-else
+          class="skeleton-info"
+        >
+          <div
+            v-for="i in 3"
+            :key="i"
+            class="skeleton-row"
+          >
+            <div class="skeleton-label" />
+            <div class="skeleton-value" />
           </div>
         </div>
       </div>
     </div>
 
     <!-- 初始状态 -->
-    <div v-else-if="state === 'initial'" class="loader-initial">
+    <div
+      v-else-if="state === 'initial'"
+      class="loader-initial"
+    >
       <div class="initial-animation">
-        <MonitoringIcon name="chart-line" :size="16" class="initial-icon" />
+        <monitoring-icon
+          name="chart-line"
+          :size="16"
+          class="initial-icon"
+        />
       </div>
       <div class="loader-text">
         准备监控数据...
@@ -92,20 +150,23 @@
 </template>
 
 <script setup>
-import { computed } from 'vue'
-import MonitoringIcon from '../monitoring/MonitoringIcon.vue'
+import { computed } from 'vue';
+import MonitoringIcon from '../monitoring/MonitoringIcon.vue';
 
 // Props定义
 const props = defineProps({
   state: {
     type: String,
     required: true,
-    validator: (value) => ['initial', 'connecting', 'loading', 'loaded', 'error', 'reconnecting', 'skeleton'].includes(value)
+    validator: value =>
+      ['initial', 'connecting', 'loading', 'loaded', 'error', 'reconnecting', 'skeleton'].includes(
+        value
+      )
   },
   progress: {
     type: Number,
     default: 0,
-    validator: (value) => value >= 0 && value <= 100
+    validator: value => value >= 0 && value <= 100
   },
   showProgress: {
     type: Boolean,
@@ -126,23 +187,24 @@ const props = defineProps({
   skeletonType: {
     type: String,
     default: 'chart',
-    validator: (value) => ['chart', 'doughnut', 'info'].includes(value)
+    validator: value => ['chart', 'doughnut', 'info'].includes(value)
   },
   size: {
     type: String,
     default: 'normal',
-    validator: (value) => ['small', 'normal', 'large'].includes(value)
+    validator: value => ['small', 'normal', 'large'].includes(value)
   }
-})
+});
 
 // 事件定义
-const emit = defineEmits(['retry'])
+const emit = defineEmits(['retry']);
+const onRetry = () => emit('retry');
 
 // 计算属性
 const loaderClasses = computed(() => ({
   [`loader-${props.state}`]: true,
   [`loader-size-${props.size}`]: true
-}))
+}));
 </script>
 
 <style scoped>
@@ -192,12 +254,20 @@ const loaderClasses = computed(() => ({
   animation: connecting-pulse 1.4s ease-in-out infinite both;
 }
 
-.connecting-dots span:nth-child(1) { animation-delay: -0.32s; }
-.connecting-dots span:nth-child(2) { animation-delay: -0.16s; }
-.connecting-dots span:nth-child(3) { animation-delay: 0s; }
+.connecting-dots span:nth-child(1) {
+  animation-delay: -0.32s;
+}
+.connecting-dots span:nth-child(2) {
+  animation-delay: -0.16s;
+}
+.connecting-dots span:nth-child(3) {
+  animation-delay: 0s;
+}
 
 @keyframes connecting-pulse {
-  0%, 80%, 100% {
+  0%,
+  80%,
+  100% {
     transform: scale(0.8);
     opacity: 0.5;
   }
@@ -350,11 +420,21 @@ const loaderClasses = computed(() => ({
   animation: skeleton-wave 2s ease-in-out infinite;
 }
 
-.skeleton-line:nth-child(1) { animation-delay: 0s; }
-.skeleton-line:nth-child(2) { animation-delay: 0.2s; }
-.skeleton-line:nth-child(3) { animation-delay: 0.4s; }
-.skeleton-line:nth-child(4) { animation-delay: 0.6s; }
-.skeleton-line:nth-child(5) { animation-delay: 0.8s; }
+.skeleton-line:nth-child(1) {
+  animation-delay: 0s;
+}
+.skeleton-line:nth-child(2) {
+  animation-delay: 0.2s;
+}
+.skeleton-line:nth-child(3) {
+  animation-delay: 0.4s;
+}
+.skeleton-line:nth-child(4) {
+  animation-delay: 0.6s;
+}
+.skeleton-line:nth-child(5) {
+  animation-delay: 0.8s;
+}
 
 /* 圆环图骨架 */
 .skeleton-doughnut {
@@ -412,7 +492,8 @@ const loaderClasses = computed(() => ({
 
 /* 骨架屏动画 */
 @keyframes skeleton-pulse {
-  0%, 100% {
+  0%,
+  100% {
     opacity: 1;
   }
   50% {
@@ -421,7 +502,8 @@ const loaderClasses = computed(() => ({
 }
 
 @keyframes skeleton-wave {
-  0%, 100% {
+  0%,
+  100% {
     transform: scaleY(1);
   }
   50% {
@@ -440,7 +522,11 @@ const loaderClasses = computed(() => ({
 
 /* 动画定义 */
 @keyframes spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
 }
 </style>

@@ -14,7 +14,7 @@ const servicesState = {
 
 // 所有服务的集合
 const services = {
-  keyboardManager: keyboardManager,
+  keyboardManager,
   accessibility: accessibilityService
 };
 
@@ -72,15 +72,15 @@ async function initializeServices() {
     return Object.values(servicesState).every(status => status === true);
   } catch (error) {
     log.error('UI服务初始化过程中发生错误', error);
-    
+
     // 发布服务初始化错误事件
     window.dispatchEvent(new CustomEvent('services:error', {
-      detail: { 
+      detail: {
         error: error.message,
         status: { ...servicesState }
       }
     }));
-    
+
     return false;
   }
 }
@@ -98,4 +98,4 @@ export {
   accessibilityService
 };
 
-export default services; 
+export default services;

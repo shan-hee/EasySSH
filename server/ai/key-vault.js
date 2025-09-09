@@ -15,10 +15,10 @@ class KeyVault {
     this.keyLength = 32;
     this.ivLength = 16;
     this.tagLength = 16;
-    
+
     // 获取加密密钥
     this.encryptionKey = this._getEncryptionKey();
-    
+
     logger.debug('密钥管理器已初始化');
   }
 
@@ -31,7 +31,7 @@ class KeyVault {
   async storeApiConfig(userId, config, options = {}) {
     try {
       const storageKey = this._generateStorageKey(userId, 'api_config');
-      
+
       // 验证配置格式
       if (!this._validateApiConfig(config)) {
         throw new Error('API配置格式无效');
@@ -78,7 +78,7 @@ class KeyVault {
     try {
       const storageKey = this._generateStorageKey(userId, 'api_config');
       const stored = this.cache.get(storageKey);
-      
+
       if (!stored) {
         logger.debug('未找到API配置', { userId });
         return null;
@@ -124,7 +124,7 @@ class KeyVault {
    */
   async testApiConfig(config) {
     try {
-      logger.debug('开始测试API配置', { 
+      logger.debug('开始测试API配置', {
         provider: config.provider,
         baseUrl: config.baseUrl,
         model: config.model
@@ -142,14 +142,14 @@ class KeyVault {
       // 创建适配器并测试连接
       const adapter = new OpenAIAdapter(config);
       const result = await adapter.testConnection();
-      
+
       if (result.valid) {
-        logger.info('API配置测试成功', { 
+        logger.info('API配置测试成功', {
           provider: config.provider,
           model: config.model
         });
       } else {
-        logger.warn('API配置测试失败', { 
+        logger.warn('API配置测试失败', {
           provider: config.provider,
           error: result.error
         });
@@ -199,7 +199,7 @@ class KeyVault {
     try {
       const statsKey = this._generateStorageKey(userId, 'usage_stats');
       const stats = await this.getApiUsageStats(userId);
-      
+
       // 更新统计数据
       stats.totalRequests += 1;
       stats.totalTokens.input += usage.tokens?.input || 0;
@@ -216,7 +216,7 @@ class KeyVault {
           cost: 0
         };
       }
-      
+
       stats.dailyStats[today].requests += 1;
       stats.dailyStats[today].tokens.input += usage.tokens?.input || 0;
       stats.dailyStats[today].tokens.output += usage.tokens?.output || 0;
@@ -225,8 +225,8 @@ class KeyVault {
       // 保存更新后的统计数据
       this.cache.set(statsKey, stats, 86400 * 30); // 30天过期
 
-      logger.debug('使用统计已更新', { 
-        userId, 
+      logger.debug('使用统计已更新', {
+        userId,
         totalRequests: stats.totalRequests,
         todayRequests: stats.dailyStats[today].requests
       });
@@ -288,13 +288,13 @@ class KeyVault {
     try {
       const iv = crypto.randomBytes(this.ivLength);
       const cipher = crypto.createCipher(this.algorithm, this.encryptionKey, iv);
-      
+
       const configJson = JSON.stringify(config);
       let encrypted = cipher.update(configJson, 'utf8', 'hex');
       encrypted += cipher.final('hex');
-      
+
       const tag = cipher.getAuthTag();
-      
+
       return `encrypted:${iv.toString('hex')}:${tag.toString('hex')}:${encrypted}`;
     } catch (error) {
       logger.error('配置加密失败', { error: error.message });
@@ -317,13 +317,13 @@ class KeyVault {
       const [, ivHex, tagHex, encrypted] = parts;
       const iv = Buffer.from(ivHex, 'hex');
       const tag = Buffer.from(tagHex, 'hex');
-      
+
       const decipher = crypto.createDecipher(this.algorithm, this.encryptionKey, iv);
       decipher.setAuthTag(tag);
-      
+
       let decrypted = decipher.update(encrypted, 'hex', 'utf8');
       decrypted += decipher.final('utf8');
-      
+
       return JSON.parse(decrypted);
     } catch (error) {
       logger.error('配置解密失败', { error: error.message });
@@ -347,11 +347,11 @@ class KeyVault {
   _getEncryptionKey() {
     // 优先使用环境变量
     const keySource = process.env.AI_ENCRYPTION_KEY || 'easyssh-ai-default-key-change-in-production';
-    
+
     if (keySource === 'easyssh-ai-default-key-change-in-production') {
       logger.warn('使用默认加密密钥，生产环境请设置AI_ENCRYPTION_KEY环境变量');
     }
-    
+
     return crypto.scryptSync(keySource, 'easyssh-salt', this.keyLength);
   }
 

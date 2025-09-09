@@ -58,7 +58,9 @@
   box-shadow: var(--shadow-base);
   padding: var(--spacing-md);
   margin-bottom: var(--spacing-md);
-  transition: transform var(--transition-fast), box-shadow var(--transition-fast);
+  transition:
+    transform var(--transition-fast),
+    box-shadow var(--transition-fast);
 }
 
 .feature-card:hover {

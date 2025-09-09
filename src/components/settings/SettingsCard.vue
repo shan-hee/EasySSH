@@ -4,7 +4,7 @@
       <span>{{ title }}</span>
     </div>
     <div class="card-body">
-      <slot></slot>
+      <slot />
     </div>
   </div>
 </template>
@@ -18,7 +18,7 @@ export default {
       required: true
     }
   }
-}
+};
 </script>
 
 <style scoped>
@@ -42,4 +42,4 @@ export default {
   padding: 20px 20px 10px;
   border-radius: 0 0 4px 4px;
 }
-</style> 
+</style>

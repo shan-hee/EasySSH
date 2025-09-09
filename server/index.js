@@ -101,8 +101,8 @@ app.get('/api/status', (req, res) => {
 
 // 获取状态图标
 const getStatusIcon = (status) => {
-  return status === 'connected' 
-    ? `${colors.green}✓${colors.reset}` 
+  return status === 'connected'
+    ? `${colors.green}✓${colors.reset}`
     : `${colors.red}✗${colors.reset}`;
 };
 
@@ -127,7 +127,7 @@ const startApp = async () => {
     console.error('无法启动应用：数据库连接失败');
     process.exit(1);
   }
-  
+
   // 初始化管理员账户
   await setupAdmin();
 
@@ -148,29 +148,29 @@ const startApp = async () => {
     const displayHost = (addr.address === '::') ? 'localhost' : addr.address;
     const ipv4Host = '127.0.0.1';
     const ipv6Host = '[::1]';
-    
+
     // 获取数据库状态
     const dbStatus = getDatabaseStatus();
     const now = new Date();
     const timeStr = now.toLocaleTimeString();
     const dateStr = now.toLocaleDateString();
-    
+
     // 清除控制台
     console.clear();
-    
+
     console.log(`\n${colors.bright}${colors.cyan}SSH WebSocket代理服务器已启动${colors.reset}\n`);
-    
+
     console.log(`${colors.white}HTTP服务${colors.reset}    : ${colors.yellow}${protocol}://${displayHost}:${PORT}${colors.reset}`);
     console.log(`${colors.white}SSH WS${colors.reset}      : ${colors.yellow}${wsProtocol}://${displayHost}:${PORT}/ssh${colors.reset}`);
     console.log(`${colors.white}监控 WS${colors.reset}     : ${colors.yellow}${wsProtocol}://${displayHost}:${PORT}/monitor${colors.reset}`);
     console.log(`${colors.white}启动时间${colors.reset}    : ${dateStr} ${timeStr}`);
     console.log(`${colors.white}运行环境${colors.reset}    : ${colors.green}${process.env.NODE_ENV || 'development'}${colors.reset}`);
-    
+
     console.log(); // 空行
-    
+
     console.log(`${colors.white}SQLite${colors.reset}      : ${getStatusIcon(dbStatus.sqlite)} ${dbStatus.sqlite}`);
     console.log(`${colors.white}缓存${colors.reset}        : ${getStatusIcon(dbStatus.cache)} ${dbStatus.cache}`);
-    
+
     console.log(`\n${colors.dim}按 ${colors.bright}Ctrl+C${colors.reset}${colors.dim} 停止服务${colors.reset}\n`);
   });
 };

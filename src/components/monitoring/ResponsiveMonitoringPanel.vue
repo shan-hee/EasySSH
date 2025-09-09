@@ -1,5 +1,8 @@
 <template>
-  <transition name="panel-slide" appear>
+  <transition
+    name="panel-slide"
+    appear
+  >
     <div
       v-show="visible"
       class="responsive-monitoring-panel"
@@ -15,8 +18,11 @@
       <!-- 监控内容区域 -->
       <div class="panel-content">
         <!-- 全局加载状态 -->
-        <div v-if="showGlobalLoader" class="global-loader">
-          <MonitoringLoader
+        <div
+          v-if="showGlobalLoader"
+          class="global-loader"
+        >
+          <monitoring-loader
             :state="globalState.connectionState"
             :error-message="globalState.errorMessage"
             :show-progress="true"
@@ -27,37 +33,40 @@
         </div>
 
         <!-- 监控组件区域 -->
-        <div v-else class="monitoring-sections">
+        <div
+          v-else
+          class="monitoring-sections"
+        >
           <!-- 系统信息 -->
-          <SystemInfo
+          <system-info
             :monitoring-data="monitoringData"
             :state-manager="currentStateManager"
             class="monitoring-section"
           />
 
           <!-- CPU监控 -->
-          <CpuMonitoring
+          <cpu-monitoring
             :monitoring-data="monitoringData"
             :state-manager="currentStateManager"
             class="monitoring-section"
           />
 
           <!-- 内存监控 -->
-          <MemoryMonitoring
+          <memory-monitoring
             :monitoring-data="monitoringData"
             :state-manager="currentStateManager"
             class="monitoring-section"
           />
 
           <!-- 网络监控 -->
-          <NetworkMonitoring
+          <network-monitoring
             :monitoring-data="monitoringData"
             :state-manager="currentStateManager"
             class="monitoring-section"
           />
 
           <!-- 硬盘监控 -->
-          <DiskMonitoring
+          <disk-monitoring
             :monitoring-data="monitoringData"
             :state-manager="currentStateManager"
             class="monitoring-section"
@@ -69,14 +78,14 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted, watch, computed } from 'vue'
-import SystemInfo from './SystemInfo.vue'
-import CpuMonitoring from './CpuMonitoring.vue'
-import MemoryMonitoring from './MemoryMonitoring.vue'
-import NetworkMonitoring from './NetworkMonitoring.vue'
-import DiskMonitoring from './DiskMonitoring.vue'
-import MonitoringLoader from '../common/MonitoringLoader.vue'
-import monitoringStateManager, { LoadingState } from '@/services/monitoringStateManager'
+import { ref, onMounted, onUnmounted, watch, computed } from 'vue';
+import SystemInfo from './SystemInfo.vue';
+import CpuMonitoring from './CpuMonitoring.vue';
+import MemoryMonitoring from './MemoryMonitoring.vue';
+import NetworkMonitoring from './NetworkMonitoring.vue';
+import DiskMonitoring from './DiskMonitoring.vue';
+import MonitoringLoader from '../common/MonitoringLoader.vue';
+import monitoringStateManager, { LoadingState } from '@/services/monitoringStateManager';
 
 // Props
 const props = defineProps({
@@ -96,110 +105,110 @@ const props = defineProps({
     type: Object,
     default: null
   }
-})
+});
 
 // 响应式数据
-const isMobile = ref(false)
+const isMobile = ref(false);
 
 // 状态管理 - 使用传入的状态管理器实例，如果没有则使用全局实例（向后兼容）
-const currentStateManager = computed(() => props.stateManager || monitoringStateManager)
-const globalState = computed(() => currentStateManager.value.getGlobalState())
-const loadingProgress = computed(() => currentStateManager.value.getLoadingProgress())
+const currentStateManager = computed(() => props.stateManager || monitoringStateManager);
+const globalState = computed(() => currentStateManager.value.getGlobalState());
+const loadingProgress = computed(() => currentStateManager.value.getLoadingProgress());
 
 // 是否显示全局加载器
 const showGlobalLoader = computed(() => {
-  const globalStateValue = globalState.value
-  if (!globalStateValue) return true
+  const globalStateValue = globalState.value;
+  if (!globalStateValue) return true;
 
-  const state = globalStateValue.connectionState
-  return state === LoadingState.INITIAL ||
-         state === LoadingState.CONNECTING ||
-         state === LoadingState.RECONNECTING ||
-         (state === LoadingState.ERROR && !currentStateManager.value.hasAnyData())
-})
-
-
-
-
+  const state = globalStateValue.connectionState;
+  return (
+    state === LoadingState.INITIAL ||
+    state === LoadingState.CONNECTING ||
+    state === LoadingState.RECONNECTING ||
+    (state === LoadingState.ERROR && !currentStateManager.value.hasAnyData())
+  );
+});
 
 // 获取加载文本
 const getLoadingText = () => {
-  const globalStateValue = globalState.value
-  if (!globalStateValue) return '加载中...'
+  const globalStateValue = globalState.value;
+  if (!globalStateValue) return '加载中...';
 
-  const state = globalStateValue.connectionState
+  const state = globalStateValue.connectionState;
   switch (state) {
-    case LoadingState.INITIAL:
-      return '初始化监控服务...'
-    case LoadingState.CONNECTING:
-      return '连接监控服务...'
-    case LoadingState.RECONNECTING:
-      return '重新连接中...'
-    case LoadingState.ERROR:
-      return '连接失败'
-    default:
-      return '加载监控数据...'
+  case LoadingState.INITIAL:
+    return '初始化监控服务...';
+  case LoadingState.CONNECTING:
+    return '连接监控服务...';
+  case LoadingState.RECONNECTING:
+    return '重新连接中...';
+  case LoadingState.ERROR:
+    return '连接失败';
+  default:
+    return '加载监控数据...';
   }
-}
+};
 
 // 全局重试处理
 const handleGlobalRetry = () => {
-  currentStateManager.value.retry()
-}
+  currentStateManager.value.retry();
+};
 
 // 检测屏幕尺寸
 const checkScreenSize = () => {
-  isMobile.value = window.innerWidth < 768 ||
-                   /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
-}
-
-
+  isMobile.value =
+    window.innerWidth < 768 ||
+    /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+};
 
 // 窗口大小变化监听器
-let resizeObserver = null
+let resizeObserver = null;
 
 // 移除重复的状态管理器设置，由 Terminal.vue 统一处理
 // 避免多个组件重复调用 setTerminal 导致的重复事件处理
 
 // 生命周期
 // 防抖的resize处理函数
-let resizeTimer = null
+let resizeTimer = null;
 const debouncedCheckScreenSize = () => {
-  if (resizeTimer) clearTimeout(resizeTimer)
-  resizeTimer = setTimeout(checkScreenSize, 150)
-}
+  if (resizeTimer) clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(checkScreenSize, 150);
+};
 
 onMounted(() => {
-  checkScreenSize()
-  window.addEventListener('resize', debouncedCheckScreenSize, { passive: true })
+  checkScreenSize();
+  window.addEventListener('resize', debouncedCheckScreenSize, { passive: true });
 
   // 使用ResizeObserver监听更精确的尺寸变化
   if (window.ResizeObserver) {
-    resizeObserver = new ResizeObserver(debouncedCheckScreenSize)
-    resizeObserver.observe(document.body)
+    resizeObserver = new ResizeObserver(debouncedCheckScreenSize);
+    resizeObserver.observe(document.body);
   }
-})
+});
 
 onUnmounted(() => {
   if (resizeTimer) {
-    clearTimeout(resizeTimer)
-    resizeTimer = null
+    clearTimeout(resizeTimer);
+    resizeTimer = null;
   }
 
-  window.removeEventListener('resize', debouncedCheckScreenSize)
+  window.removeEventListener('resize', debouncedCheckScreenSize);
 
   if (resizeObserver) {
-    resizeObserver.disconnect()
-    resizeObserver = null
+    resizeObserver.disconnect();
+    resizeObserver = null;
   }
-})
+});
 
 // 监听面板可见性变化
-watch(() => props.visible, (newVisible) => {
-  if (newVisible) {
-    checkScreenSize()
+watch(
+  () => props.visible,
+  newVisible => {
+    if (newVisible) {
+      checkScreenSize();
+    }
   }
-})
+);
 </script>
 
 <style scoped>
@@ -228,7 +237,6 @@ watch(() => props.visible, (newVisible) => {
 .panel-mobile {
   height: 100%;
 }
-
 
 .panel-content {
   flex: 1;
@@ -272,11 +280,21 @@ watch(() => props.visible, (newVisible) => {
 }
 
 /* 固定各组件高度 */
-.monitoring-section:nth-child(1) { height: 200px; } /* 系统信息 */
-.monitoring-section:nth-child(2) { height: 180px; } /* CPU */
-.monitoring-section:nth-child(3) { height: 150px; } /* 内存 */
-.monitoring-section:nth-child(4) { height: 180px; } /* 网络 */
-.monitoring-section:nth-child(5) { height: 120px; } /* 硬盘 */
+.monitoring-section:nth-child(1) {
+  height: 200px;
+} /* 系统信息 */
+.monitoring-section:nth-child(2) {
+  height: 180px;
+} /* CPU */
+.monitoring-section:nth-child(3) {
+  height: 150px;
+} /* 内存 */
+.monitoring-section:nth-child(4) {
+  height: 180px;
+} /* 网络 */
+.monitoring-section:nth-child(5) {
+  height: 120px;
+} /* 硬盘 */
 
 /* 移动端适配 */
 .panel-mobile .monitoring-section {
@@ -285,8 +303,9 @@ watch(() => props.visible, (newVisible) => {
 
 /* 监控面板滑入滑出动画 - 只在visible状态变化时触发 */
 .panel-slide-enter-active {
-  transition: transform 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94),
-              opacity 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  transition:
+    transform 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+    opacity 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94);
   /* 启用硬件加速 */
   will-change: transform, opacity;
   transform: translateZ(0);
@@ -294,8 +313,9 @@ watch(() => props.visible, (newVisible) => {
 }
 
 .panel-slide-leave-active {
-  transition: transform 0.3s cubic-bezier(0.55, 0.055, 0.675, 0.19),
-              opacity 0.3s cubic-bezier(0.55, 0.055, 0.675, 0.19);
+  transition:
+    transform 0.3s cubic-bezier(0.55, 0.055, 0.675, 0.19),
+    opacity 0.3s cubic-bezier(0.55, 0.055, 0.675, 0.19);
   /* 启用硬件加速 */
   will-change: transform, opacity;
   transform: translateZ(0);
@@ -381,7 +401,7 @@ watch(() => props.visible, (newVisible) => {
 }
 
 /* 强制主题样式（覆盖系统检测） */
-.responsive-monitoring-panel[data-theme="dark"] {
+.responsive-monitoring-panel[data-theme='dark'] {
   --monitoring-panel-bg: rgba(0, 0, 0, 0.8);
   --monitoring-panel-border: rgba(255, 255, 255, 0.1);
   --monitoring-header-bg: rgba(255, 255, 255, 0.05);
@@ -391,7 +411,7 @@ watch(() => props.visible, (newVisible) => {
   --monitoring-text-secondary: #b0b0b0;
 }
 
-.responsive-monitoring-panel[data-theme="light"] {
+.responsive-monitoring-panel[data-theme='light'] {
   --monitoring-panel-bg: rgba(255, 255, 255, 0.9);
   --monitoring-panel-border: rgba(0, 0, 0, 0.1);
   --monitoring-header-bg: rgba(0, 0, 0, 0.05);

@@ -292,11 +292,11 @@
   .sftp-file-name {
     min-width: 120px;
   }
-  
+
   .sftp-file-size {
     min-width: 60px;
   }
-  
+
   .sftp-file-date {
     min-width: 110px;
   }
@@ -306,11 +306,11 @@
   .sftp-file-date {
     display: none;
   }
-  
+
   .sftp-file-name {
     flex: 4;
   }
-  
+
   .sftp-file-size {
     min-width: 50px;
   }
@@ -327,4 +327,3 @@
 }
 
 /* 主题相关样式已迁移到 src/assets/styles/themes/theme.css */
-

@@ -1,81 +1,88 @@
 <template>
   <div class="connect-form-container">
-    <FormLayout :rows="formRows">
+    <form-layout :rows="formRows">
       <template #row-0>
-        <FormItem>
-          <BaseInput
+        <form-item>
+          <base-input
             v-model="form.host"
             label="云服务器公网IP或域名"
             placeholder="请输入云服务器公网IP或域名"
           />
-        </FormItem>
-        <FormItem>
-          <BaseInput
+        </form-item>
+        <form-item>
+          <base-input
             v-model="form.port"
             label="云服务器端口"
             placeholder="22"
           />
-        </FormItem>
+        </form-item>
       </template>
-      
+
       <template #row-1>
-        <FormItem>
-          <BaseInput
+        <form-item>
+          <base-input
             v-model="form.username"
             label="用户名"
             placeholder="请输入用户名"
           />
-        </FormItem>
-        <FormItem>
-          <BaseInput
+        </form-item>
+        <form-item>
+          <base-input
             v-model="form.description"
             label="备注 (选填)"
             placeholder="请输入备注"
           />
-        </FormItem>
+        </form-item>
       </template>
-      
+
       <template #row-2>
-        <FormItem>
-          <BaseRadioGroup
+        <form-item>
+          <base-radio-group
             v-model="form.authType"
             :options="authOptions"
             label="验证方式"
           />
-        </FormItem>
+        </form-item>
       </template>
-      
+
       <template #row-3>
-        <FormItem v-if="form.authType === 'password'">
-          <BaseInput
+        <form-item v-if="form.authType === 'password'">
+          <base-input
             v-model="form.password"
             type="password"
             label="密码 (选填)"
             placeholder="请输入密码"
           />
-          <BaseCheckbox
+          <base-checkbox
             v-model="form.rememberPassword"
             label="记住密码"
-            style="margin-top: 10px;"
+            style="margin-top: 10px"
           />
-        </FormItem>
-        <FormItem v-else>
-          <FileInput
+        </form-item>
+        <form-item v-else>
+          <file-input
             v-model="form.keyFile"
             label="秘钥文件"
             placeholder="请选择秘钥文件"
-            buttonText="选择密钥"
+            button-text="选择密钥"
             accept=".pem,.ppk,.key"
           />
-        </FormItem>
+        </form-item>
       </template>
-    </FormLayout>
+    </form-layout>
   </div>
 </template>
 
 <script>
-import { defineComponent, reactive, watch } from 'vue'
-import { BaseInput, BaseRadioGroup, BaseCheckbox, FileInput, FormLayout, FormItem } from '@/components/form'
+import { defineComponent, reactive, watch } from 'vue';
+import {
+  BaseInput,
+  BaseRadioGroup,
+  BaseCheckbox,
+  FileInput,
+  FormLayout,
+  FormItem
+} from '@/components/form';
 
 export default defineComponent({
   name: 'ConnectForm',
@@ -98,14 +105,14 @@ export default defineComponent({
     const formRows = [
       { type: 'two-columns' }, // 云服务器IP和端口
       { type: 'two-columns' }, // 用户名和备注
-      { type: 'single' },      // 验证方式
-      { type: 'single' }       // 密码/秘钥
-    ]
+      { type: 'single' }, // 验证方式
+      { type: 'single' } // 密码/秘钥
+    ];
 
     const authOptions = [
       { label: '密码验证', value: 'password' },
       { label: '秘钥验证', value: 'key' }
-    ]
+    ];
 
     const form = reactive({
       host: props.initialData.host || '',
@@ -116,32 +123,32 @@ export default defineComponent({
       password: props.initialData.password || '',
       keyFile: props.initialData.keyFile || '',
       rememberPassword: props.initialData.rememberPassword || false
-    })
+    });
 
     // 监听表单变化并通知父组件
     const emitFormChange = () => {
-      emit('update:form', { ...form })
-    }
+      emit('update:form', { ...form });
+    };
 
     // 监听表单变化
-    watch(() => ({ ...form }), emitFormChange, { deep: true })
+    watch(() => ({ ...form }), emitFormChange, { deep: true });
 
     // 获取表单数据方法
     const getFormData = () => {
-      return { ...form }
-    }
+      return { ...form };
+    };
 
     // 重置表单
     const resetForm = () => {
-      form.host = ''
-      form.port = 22
-      form.username = ''
-      form.description = ''
-      form.authType = 'password'
-      form.password = ''
-      form.keyFile = ''
-      form.rememberPassword = false
-    }
+      form.host = '';
+      form.port = 22;
+      form.username = '';
+      form.description = '';
+      form.authType = 'password';
+      form.password = '';
+      form.keyFile = '';
+      form.rememberPassword = false;
+    };
 
     return {
       formRows,
@@ -149,13 +156,13 @@ export default defineComponent({
       form,
       getFormData,
       resetForm
-    }
+    };
   }
-})
+});
 </script>
 
 <style scoped>
 .connect-form-container {
   width: 100%;
 }
-</style> 
+</style>

@@ -1,13 +1,13 @@
-import CryptoJS from 'crypto-js'
-import apiService from './api'
-import log from './log'
+import CryptoJS from 'crypto-js';
+import apiService from './api';
+import log from './log';
 
 /**
  * 多因素认证服务
  */
 class MfaService {
   constructor() {
-    this.allowedChars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567' // Base32字符集
+    this.allowedChars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567'; // Base32字符集
   }
 
   /**
@@ -16,29 +16,29 @@ class MfaService {
    * @returns {string} - 生成的随机密钥
    */
   generateSecretKey(length = 16) {
-    let key = ''
-    const allowedChars = this.allowedChars
-    
+    let key = '';
+    const allowedChars = this.allowedChars;
+
     // 使用密码学安全的随机数生成
-    const randomValues = new Uint8Array(length)
-    
+    const randomValues = new Uint8Array(length);
+
     // 尝试使用Web Crypto API (如果可用)
     if (window.crypto && window.crypto.getRandomValues) {
-      window.crypto.getRandomValues(randomValues)
+      window.crypto.getRandomValues(randomValues);
     } else {
       // 回退到Math.random (不够安全，但为了兼容)
       for (let i = 0; i < length; i++) {
-        randomValues[i] = Math.floor(Math.random() * 256)
+        randomValues[i] = Math.floor(Math.random() * 256);
       }
     }
-    
+
     // 基于随机值生成Base32字符串
     for (let i = 0; i < length; i++) {
-      const randomIndex = randomValues[i] % allowedChars.length
-      key += allowedChars[randomIndex]
+      const randomIndex = randomValues[i] % allowedChars.length;
+      key += allowedChars[randomIndex];
     }
-    
-    return key
+
+    return key;
   }
 
   /**
@@ -49,7 +49,7 @@ class MfaService {
    * @returns {string} - 完整的otpauth URI
    */
   generateOtpAuthUri(secret, username = 'user@easyssh.com', issuer = 'EasySSH') {
-    return `otpauth://totp/${encodeURIComponent(issuer)}:${encodeURIComponent(username)}?secret=${secret}&issuer=${encodeURIComponent(issuer)}&algorithm=SHA1&digits=6&period=30`
+    return `otpauth://totp/${encodeURIComponent(issuer)}:${encodeURIComponent(username)}?secret=${secret}&issuer=${encodeURIComponent(issuer)}&algorithm=SHA1&digits=6&period=30`;
   }
 
   /**
@@ -59,7 +59,7 @@ class MfaService {
    * @returns {string} - QR码生成URL
    */
   generateQrCodeUrl(otpAuthUri, size = 200) {
-    return `https://api.qrserver.com/v1/create-qr-code/?size=${size}x${size}&data=${encodeURIComponent(otpAuthUri)}`
+    return `https://api.qrserver.com/v1/create-qr-code/?size=${size}x${size}&data=${encodeURIComponent(otpAuthUri)}`;
   }
 
   /**
@@ -70,60 +70,59 @@ class MfaService {
   generateTOTP(secret) {
     try {
       if (!secret) {
-        log.error('生成TOTP失败：密钥为空')
-        return null
+        log.error('生成TOTP失败：密钥为空');
+        return null;
       }
-      
+
       // 标准化密钥（移除空格和破折号）
-      secret = secret.replace(/\s|-/g, '').toUpperCase()
-      
+      secret = secret.replace(/\s|-/g, '').toUpperCase();
+
       // 将Base32密钥解码为字节数组
-      const keyBytes = this._decodeBase32ToBytes(secret)
+      const keyBytes = this._decodeBase32ToBytes(secret);
       if (!keyBytes) {
-        log.error('Base32解码失败')
-        return null
+        log.error('Base32解码失败');
+        return null;
       }
-      
+
       // 获取当前UNIX时间（秒）
-      const now = Math.floor(Date.now() / 1000)
-      
+      const now = Math.floor(Date.now() / 1000);
+
       // 获取当前30秒时间窗口（除以30，取整）
-      const time = Math.floor(now / 30)
-      
+      const time = Math.floor(now / 30);
+
       // 将时间转换为8字节的大端字节数组
-      const timeBytes = new Uint8Array(8)
-      let value = time
+      const timeBytes = new Uint8Array(8);
+      let value = time;
       for (let i = 7; i >= 0; i--) {
-        timeBytes[i] = value & 0xff
-        value = value >> 8
+        timeBytes[i] = value & 0xff;
+        value = value >> 8;
       }
-      
+
       // 计算HMAC-SHA1
-      const hmacResult = this._hmacSha1(keyBytes, timeBytes)
+      const hmacResult = this._hmacSha1(keyBytes, timeBytes);
       if (!hmacResult) {
-        log.error('HMAC计算失败')
-        return null
+        log.error('HMAC计算失败');
+        return null;
       }
-      
+
       // 从HMAC结果中获取4字节动态截断值
-      const offset = hmacResult[hmacResult.length - 1] & 0x0f
-      
+      const offset = hmacResult[hmacResult.length - 1] & 0x0f;
+
       // 从偏移量开始取4字节，转换为31位整数（最高位被屏蔽）
-      let code = (
-        ((hmacResult[offset] & 0x7f) << 24) | 
-        ((hmacResult[offset + 1] & 0xff) << 16) | 
-        ((hmacResult[offset + 2] & 0xff) << 8) | 
-        (hmacResult[offset + 3] & 0xff)
-      )
-      
+      let code =
+        ((hmacResult[offset] & 0x7f) << 24) |
+        ((hmacResult[offset + 1] & 0xff) << 16) |
+        ((hmacResult[offset + 2] & 0xff) << 8) |
+        (hmacResult[offset + 3] & 0xff);
+
       // 将结果截断为6位数字
-      code = code % 1000000
-      
+      code = code % 1000000;
+
       // 如果结果不足6位，前面补0
-      return code.toString().padStart(6, '0')
+      return code.toString().padStart(6, '0');
     } catch (error) {
-      log.error('生成TOTP验证码失败', error)
-      return null
+      log.error('生成TOTP验证码失败', error);
+      return null;
     }
   }
 
@@ -136,71 +135,70 @@ class MfaService {
    */
   verifyTOTP(userCode, secret, window = 5) {
     if (!userCode || !secret) {
-      log.warn('验证码或密钥为空')
-      return false
+      log.warn('验证码或密钥为空');
+      return false;
     }
-    
+
     // 标准化输入
-    userCode = userCode.replace(/\s/g, '')
-    secret = secret.replace(/\s|-/g, '').toUpperCase()
-    
+    userCode = userCode.replace(/\s/g, '');
+    secret = secret.replace(/\s|-/g, '').toUpperCase();
+
     if (userCode.length !== 6 || !/^\d+$/.test(userCode)) {
-      log.warn('验证码格式无效')
-      return false
+      log.warn('验证码格式无效');
+      return false;
     }
-    
+
     // 获取当前时间片
-    const currentTime = Math.floor(Date.now() / 1000)
-    const currentWindow = Math.floor(currentTime / 30)
-    
+    const currentTime = Math.floor(Date.now() / 1000);
+    const currentWindow = Math.floor(currentTime / 30);
+
     // 在验证窗口内验证
     for (let i = -window; i <= window; i++) {
-      const testWindow = currentWindow + i
-      
+      const testWindow = currentWindow + i;
+
       try {
         // 将时间转换为8字节的大端字节数组
-        const timeBytes = new Uint8Array(8)
-        let value = testWindow
+        const timeBytes = new Uint8Array(8);
+        let value = testWindow;
         for (let j = 7; j >= 0; j--) {
-          timeBytes[j] = value & 0xff
-          value = value >> 8
+          timeBytes[j] = value & 0xff;
+          value = value >> 8;
         }
-        
+
         // 将Base32密钥解码为字节数组
-        const keyBytes = this._decodeBase32ToBytes(secret)
-        if (!keyBytes) continue
-        
+        const keyBytes = this._decodeBase32ToBytes(secret);
+        if (!keyBytes) continue;
+
         // 计算HMAC-SHA1
-        const hmacResult = this._hmacSha1(keyBytes, timeBytes)
-        if (!hmacResult) continue
-        
+        const hmacResult = this._hmacSha1(keyBytes, timeBytes);
+        if (!hmacResult) continue;
+
         // 从HMAC结果中获取4字节动态截断值
-        const offset = hmacResult[hmacResult.length - 1] & 0x0f
-        
+        const offset = hmacResult[hmacResult.length - 1] & 0x0f;
+
         // 从偏移量开始取4字节，转换为31位整数（最高位被屏蔽）
-        let code = (
-          ((hmacResult[offset] & 0x7f) << 24) | 
-          ((hmacResult[offset + 1] & 0xff) << 16) | 
-          ((hmacResult[offset + 2] & 0xff) << 8) | 
-          (hmacResult[offset + 3] & 0xff)
-        )
-        
+        let code =
+          ((hmacResult[offset] & 0x7f) << 24) |
+          ((hmacResult[offset + 1] & 0xff) << 16) |
+          ((hmacResult[offset + 2] & 0xff) << 8) |
+          (hmacResult[offset + 3] & 0xff);
+
         // 将结果截断为6位数字
-        code = code % 1000000
-        
+        code = code % 1000000;
+
         // 如果结果不足6位，前面补0
-        const codeForThisWindow = code.toString().padStart(6, '0')
-        
+        const codeForThisWindow = code.toString().padStart(6, '0');
+
         // 验证码匹配
         if (codeForThisWindow === userCode) {
-          return true
+          return true;
         }
       } catch (error) {
-        log.error(`验证TOTP码失败 [窗口: ${i}]`, error)
+        log.error(`验证TOTP码失败 [窗口: ${i}]`, error);
       }
     }
-    
-    return false
+
+    return false;
   }
 
   /**
@@ -216,7 +214,7 @@ class MfaService {
         return {
           success: false,
           message: '请输入6位数字验证码'
-        }
+        };
       }
       // 直接提交API，由后端校验
       const response = await apiService.put('/users/me', {
@@ -225,21 +223,21 @@ class MfaService {
           mfaSecret: secret
         },
         mfaCode: code // 新增：将验证码一并提交
-      })
+      });
       if (!response || !response.success) {
-        throw new Error(response?.message || '启用MFA失败')
+        throw new Error(response?.message || '启用MFA失败');
       }
       return {
         success: true,
         message: 'MFA已成功启用',
         data: response
-      }
+      };
     } catch (error) {
-      log.error('启用MFA失败', error)
+      log.error('启用MFA失败', error);
       return {
         success: false,
         message: error.message || '启用MFA失败，请稍后重试'
-      }
+      };
     }
   }
 
@@ -255,17 +253,17 @@ class MfaService {
         return {
           success: false,
           message: '请输入6位数字验证码'
-        }
+        };
       }
       // 直接提交API，由后端校验
       // 使用全局存储的auth_token，不再依赖currentUser
-      const token = localStorage.getItem('auth_token')
+      const token = localStorage.getItem('auth_token');
       if (!token) {
-        log.error('禁用MFA失败：未找到有效的认证令牌')
+        log.error('禁用MFA失败：未找到有效的认证令牌');
         return {
           success: false,
           message: '认证已过期，请重新登录后再试'
-        }
+        };
       }
       // 先调用验证API确认身份
       try {
@@ -273,27 +271,28 @@ class MfaService {
           mfaCode: code,
           isMfaVerification: true,
           operation: 'disable'
-        })
+        });
         if (!verifyResponse || !verifyResponse.success) {
           return {
             success: false,
             message: verifyResponse?.message || '验证码无效，请确认后重试'
-          }
+          };
         }
         if (verifyResponse.token) {
-          log.info('MFA验证成功，更新token')
-          localStorage.setItem('auth_token', verifyResponse.token)
+          log.info('MFA验证成功，更新token');
+          localStorage.setItem('auth_token', verifyResponse.token);
         }
       } catch (verifyError) {
         if (verifyError.response && verifyError.response.status === 401) {
-          const errorMessage = verifyError.response.data?.message || '验证失败，该用户未启用两步验证'
-          log.warn('MFA验证失败', { status: 401, message: errorMessage })
+          const errorMessage =
+            verifyError.response.data?.message || '验证失败，该用户未启用两步验证';
+          log.warn('MFA验证失败', { status: 401, message: errorMessage });
           return {
             success: false,
             message: errorMessage
-          }
+          };
         }
-        throw verifyError
+        throw verifyError;
       }
       // 验证成功后，再调用更新用户资料API禁用MFA
       const response = await apiService.put('/users/me', {
@@ -302,22 +301,22 @@ class MfaService {
           mfaSecret: ''
         },
         mfaCode: code // 关键：带上验证码
-      })
+      });
       if (!response || !response.success) {
-        throw new Error(response?.message || '禁用MFA失败')
+        throw new Error(response?.message || '禁用MFA失败');
       }
       return {
         success: true,
         message: 'MFA已成功禁用',
         data: response,
-        user: response.user  // 确保返回更新后的用户数据
-      }
+        user: response.user // 确保返回更新后的用户数据
+      };
     } catch (error) {
-      log.error('禁用MFA失败', error)
+      log.error('禁用MFA失败', error);
       return {
         success: false,
         message: error.message || '禁用MFA失败，请稍后重试'
-      }
+      };
     }
   }
 
@@ -330,38 +329,38 @@ class MfaService {
   async verifyMfa(code, userId) {
     try {
       // 使用全局存储的auth_token，不再依赖currentUser
-      const token = localStorage.getItem('auth_token')
+      const token = localStorage.getItem('auth_token');
       if (!token) {
-        log.error('验证MFA失败：未找到有效的认证令牌')
+        log.error('验证MFA失败：未找到有效的认证令牌');
         return {
           success: false,
           message: '认证已过期，请重新登录后再试'
-        }
+        };
       }
-      
+
       // 调用验证MFA的API
       const response = await apiService.post('/users/verify-mfa', {
         mfaCode: code,
         isMfaVerification: true
-      })
-      
+      });
+
       // 如果验证成功且返回了新token，更新本地token
       if (response.success && response.token) {
-        log.info('MFA验证成功，更新token')
-        localStorage.setItem('auth_token', response.token)
+        log.info('MFA验证成功，更新token');
+        localStorage.setItem('auth_token', response.token);
       }
-      
+
       return {
         success: response.success,
         message: response.message || 'MFA验证成功',
         data: response
-      }
+      };
     } catch (error) {
-      log.error('MFA验证失败', error)
+      log.error('MFA验证失败', error);
       return {
         success: false,
         message: error.message || 'MFA验证失败，请检查验证码是否正确'
-      }
+      };
     }
   }
 
@@ -374,42 +373,42 @@ class MfaService {
   _decodeBase32ToBytes(base32) {
     try {
       // 标准Base32字符集
-      const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567'
-      
+      const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+
       // 移除所有非Base32字符
-      base32 = base32.replace(/[^A-Z2-7]/gi, '').toUpperCase()
-      
-      if (base32.length === 0) return null
-      
-      let bits = 0
-      let value = 0
-      let index = 0
-      
+      base32 = base32.replace(/[^A-Z2-7]/gi, '').toUpperCase();
+
+      if (base32.length === 0) return null;
+
+      let bits = 0;
+      let value = 0;
+      let index = 0;
+
       // 计算输出长度：每8个Base32字符产生5个字节
-      const output = new Uint8Array(Math.floor(base32.length * 5 / 8))
-      
+      const output = new Uint8Array(Math.floor((base32.length * 5) / 8));
+
       for (let i = 0; i < base32.length; i++) {
-        const charValue = chars.indexOf(base32.charAt(i))
-        if (charValue === -1) continue // 跳过无效字符
-        
+        const charValue = chars.indexOf(base32.charAt(i));
+        if (charValue === -1) continue; // 跳过无效字符
+
         // 添加5位
-        value = (value << 5) | charValue
-        bits += 5
-        
+        value = (value << 5) | charValue;
+        bits += 5;
+
         // 当累积至少8位时，取出一个字节
         if (bits >= 8) {
-          output[index++] = (value >>> (bits - 8)) & 0xff
-          bits -= 8
+          output[index++] = (value >>> (bits - 8)) & 0xff;
+          bits -= 8;
         }
       }
-      
-      return output.slice(0, index)
+
+      return output.slice(0, index);
     } catch (error) {
-      log.error('Base32解码失败', error)
-      return null
+      log.error('Base32解码失败', error);
+      return null;
     }
   }
-  
+
   /**
    * 使用CryptoJS计算HMAC-SHA1
    * @private
@@ -420,29 +419,29 @@ class MfaService {
   _hmacSha1(key, message) {
     try {
       // 转换为CryptoJS支持的格式
-      const keyWords = CryptoJS.lib.WordArray.create(key)
-      const messageWords = CryptoJS.lib.WordArray.create(message)
-      
+      const keyWords = CryptoJS.lib.WordArray.create(key);
+      const messageWords = CryptoJS.lib.WordArray.create(message);
+
       // 计算HMAC
-      const hmac = CryptoJS.HmacSHA1(messageWords, keyWords)
-      
+      const hmac = CryptoJS.HmacSHA1(messageWords, keyWords);
+
       // 转换回字节数组
-      const result = new Uint8Array(hmac.sigBytes)
-      const words = hmac.words
-      
+      const result = new Uint8Array(hmac.sigBytes);
+      const words = hmac.words;
+
       for (let i = 0; i < hmac.sigBytes; i++) {
-        result[i] = (words[i >>> 2] >>> (24 - (i % 4) * 8)) & 0xff
+        result[i] = (words[i >>> 2] >>> (24 - (i % 4) * 8)) & 0xff;
       }
-      
-      return result
+
+      return result;
     } catch (error) {
-      log.error('HMAC-SHA1计算失败', error)
-      return null
+      log.error('HMAC-SHA1计算失败', error);
+      return null;
     }
   }
 }
 
 // 创建单例实例
-const mfaService = new MfaService()
+const mfaService = new MfaService();
 
-export default mfaService 
+export default mfaService;

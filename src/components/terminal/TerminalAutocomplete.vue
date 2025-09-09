@@ -6,37 +6,57 @@
       :style="positionStyle"
       @mousedown.prevent
     >
-    <div class="autocomplete-header">
-      <span class="autocomplete-title">命令建议</span>
-      <span class="autocomplete-count">{{ suggestions.length }}</span>
-    </div>
-    <div class="autocomplete-list" ref="listRef">
+      <div class="autocomplete-header">
+        <span class="autocomplete-title">命令建议</span>
+        <span class="autocomplete-count">{{ suggestions.length }}</span>
+      </div>
       <div
-        v-for="(suggestion, index) in suggestions"
-        v-memo="[suggestion.id, suggestion.text, suggestion.description, index === selectedIndex]"
-        :key="suggestion.id"
-        class="autocomplete-item"
-        :class="{ 'autocomplete-item--active': index === selectedIndex }"
-        @click="selectSuggestion(index)"
-        :title="suggestionTooltips[index]"
+        ref="listRef"
+        class="autocomplete-list"
       >
-        <div class="autocomplete-item-content">
-          <div class="autocomplete-item-main">
-            <div class="autocomplete-item-left">
-              <span class="autocomplete-command" :title="suggestion.text">{{ suggestion.text }}</span>
-              <span class="autocomplete-description" :title="suggestion.description">{{ suggestion.description }}</span>
+        <div
+          v-for="(suggestion, index) in suggestions"
+          :key="suggestion.id"
+          v-memo="[suggestion.id, suggestion.text, suggestion.description, index === selectedIndex]"
+          class="autocomplete-item"
+          :class="{ 'autocomplete-item--active': index === selectedIndex }"
+          :title="suggestionTooltips[index]"
+          @click="selectSuggestion(index)"
+        >
+          <div class="autocomplete-item-content">
+            <div class="autocomplete-item-main">
+              <div class="autocomplete-item-left">
+                <span
+                  class="autocomplete-command"
+                  :title="suggestion.text"
+                >{{
+                  suggestion.text
+                }}</span>
+                <span
+                  class="autocomplete-description"
+                  :title="suggestion.description"
+                >{{
+                  suggestion.description
+                }}</span>
+              </div>
+              <div class="autocomplete-item-right">
+                <span
+                  class="autocomplete-type"
+                  :class="typeClasses[index]"
+                >
+                  {{ typeLabels[index] }}
+                </span>
+              </div>
             </div>
-            <div class="autocomplete-item-right">
-              <span class="autocomplete-type" :class="typeClasses[index]">
-                {{ typeLabels[index] }}
-              </span>
+            <div
+              v-if="suggestion.fullCommand && suggestion.fullCommand !== suggestion.text"
+              class="autocomplete-full-command"
+              :title="suggestion.fullCommand"
+            >
+              {{ suggestion.fullCommand }}
             </div>
-          </div>
-          <div v-if="suggestion.fullCommand && suggestion.fullCommand !== suggestion.text" class="autocomplete-full-command" :title="suggestion.fullCommand">
-            {{ suggestion.fullCommand }}
           </div>
         </div>
-      </div>
       </div>
       <div class="autocomplete-footer">
         <span class="autocomplete-hint">↑↓ 选择 • Tab/Enter 确认 • Esc 取消</span>
@@ -46,7 +66,7 @@
 </template>
 
 <script>
-import { ref, computed, watch, nextTick, onUnmounted } from 'vue'
+import { ref, computed, watch, nextTick, onUnmounted } from 'vue';
 
 export default {
   name: 'TerminalAutocomplete',
@@ -70,73 +90,106 @@ export default {
   },
   emits: ['select', 'close'],
   setup(props, { emit }) {
-    const selectedIndex = ref(-1)  // 初始化为-1，表示默认不选中
-    const listRef = ref(null)
+    const selectedIndex = ref(-1); // 初始化为-1，表示默认不选中
+    const listRef = ref(null);
     // 键盘导航为主模式：只通过键盘控制选中状态
 
     // 缓存容器尺寸（支持 Teleport 到自定义容器）
-    const containerSize = ref({ width: window.innerWidth, height: window.innerHeight, left: 0, top: 0 })
+    const containerSize = ref({
+      width: window.innerWidth,
+      height: window.innerHeight,
+      left: 0,
+      top: 0
+    });
 
     // 监听窗口大小变化（使用节流）
-    let resizeTimer = null
+    let resizeTimer = null;
     const handleResize = () => {
-      if (resizeTimer) clearTimeout(resizeTimer)
+      if (resizeTimer) clearTimeout(resizeTimer);
       resizeTimer = setTimeout(() => {
-        updateContainerMetrics()
-      }, 100)
-    }
+        updateContainerMetrics();
+      }, 100);
+    };
 
     const updateContainerMetrics = () => {
       try {
-        const target = typeof props.teleportTo === 'string'
-          ? (props.teleportTo ? document.querySelector(props.teleportTo) : null)
-          : (props.teleportTo && props.teleportTo.nodeType === 1 ? props.teleportTo : null)
+        const target =
+          typeof props.teleportTo === 'string'
+            ? props.teleportTo
+              ? document.querySelector(props.teleportTo)
+              : null
+            : props.teleportTo && props.teleportTo.nodeType === 1
+              ? props.teleportTo
+              : null;
         if (target) {
-          const rect = target.getBoundingClientRect()
-          containerSize.value = { width: rect.width, height: rect.height, left: rect.left, top: rect.top }
+          const rect = target.getBoundingClientRect();
+          containerSize.value = {
+            width: rect.width,
+            height: rect.height,
+            left: rect.left,
+            top: rect.top
+          };
         } else {
-          containerSize.value = { width: window.innerWidth, height: window.innerHeight, left: 0, top: 0 }
+          containerSize.value = {
+            width: window.innerWidth,
+            height: window.innerHeight,
+            left: 0,
+            top: 0
+          };
         }
       } catch (_) {
-        containerSize.value = { width: window.innerWidth, height: window.innerHeight, left: 0, top: 0 }
+        containerSize.value = {
+          width: window.innerWidth,
+          height: window.innerHeight,
+          left: 0,
+          top: 0
+        };
       }
-    }
+    };
 
     // 计算位置样式，包含智能位置调整（避免累计偏差）
     const positionStyle = computed(() => {
-      const { x, y, cellHeight } = props.position
-      const { width: containerWidth, height: containerHeight, left: baseLeft, top: baseTop } = containerSize.value
+      const { x, y, cellHeight } = props.position;
+      const {
+        width: containerWidth,
+        height: containerHeight,
+        left: baseLeft,
+        top: baseTop
+      } = containerSize.value;
 
-      const containerRight = baseLeft + containerWidth
-      const containerBottom = baseTop + containerHeight
+      const containerRight = baseLeft + containerWidth;
+      const containerBottom = baseTop + containerHeight;
 
       // 预估宽度仅用于裁剪，避免越界
-      const estimatedWidth = Math.min(700, Math.max(350, containerWidth * 0.4))
-      let adjustedX = x
+      const estimatedWidth = Math.min(700, Math.max(350, containerWidth * 0.4));
+      let adjustedX = x;
       if (x + estimatedWidth > containerRight - 20) {
-        adjustedX = Math.max(baseLeft + 20, containerRight - estimatedWidth - 20)
+        adjustedX = Math.max(baseLeft + 20, containerRight - estimatedWidth - 20);
       }
 
       // 估算弹窗高度：壳层 + 行数*行高
-      const itemHeight = 40
-      const shellHeight = 64
-      const itemCount = Array.isArray(props.suggestions) ? props.suggestions.length : 0
-      const estimatedPopupHeight = Math.min(350, Math.max(itemHeight + shellHeight, itemCount * itemHeight + shellHeight))
+      const itemHeight = 40;
+      const shellHeight = 64;
+      const itemCount = Array.isArray(props.suggestions) ? props.suggestions.length : 0;
+      const estimatedPopupHeight = Math.min(
+        350,
+        Math.max(itemHeight + shellHeight, itemCount * itemHeight + shellHeight)
+      );
 
       // 翻转判定：当下方可用空间小于“估算弹窗高度 + 缓冲”时，向上展开
-      const padding = 12
-      const spaceBelowAbs = containerBottom - y
-      const shouldFlipUp = (estimatedPopupHeight + padding) > spaceBelowAbs
+      const padding = 12;
+      const spaceBelowAbs = containerBottom - y;
+      const shouldFlipUp = estimatedPopupHeight + padding > spaceBelowAbs;
 
       // 在对应方向限制最大高度，避免超界
-      const maxHeightDown = Math.max(120, spaceBelowAbs - padding)
-      const maxHeightUp = Math.max(120, (y - baseTop) - padding)
+      const maxHeightDown = Math.max(120, spaceBelowAbs - padding);
+      const maxHeightUp = Math.max(120, y - baseTop - padding);
 
       // 使用 transform 实现翻转；向上展开时，将锚点从行底部上移一个字符格，避免覆盖当前行
-      const anchorYOffset = shouldFlipUp ? -(cellHeight || 18) : 0
-      const topCss = `${(y - baseTop) + anchorYOffset}px`
-      const transformCss = shouldFlipUp ? 'translateY(-100%)' : 'translateY(0)'
-      const maxHeightCss = `${Math.min(350, shouldFlipUp ? maxHeightUp : maxHeightDown)}px`
+      const anchorYOffset = shouldFlipUp ? -(cellHeight || 18) : 0;
+      const topCss = `${y - baseTop + anchorYOffset}px`;
+      const transformCss = shouldFlipUp ? 'translateY(-100%)' : 'translateY(0)';
+      const maxHeightCss = `${Math.min(350, shouldFlipUp ? maxHeightUp : maxHeightDown)}px`;
 
       return {
         left: `${adjustedX - baseLeft}px`,
@@ -144,8 +197,8 @@ export default {
         transform: transformCss,
         maxWidth: `${Math.min(700, containerRight - adjustedX - 40)}px`,
         maxHeight: maxHeightCss
-      }
-    })
+      };
+    });
 
     // 缓存类型标签映射
     const typeLabelMap = {
@@ -158,161 +211,168 @@ export default {
       system: '系统',
       files: '文件',
       extensions: '扩展名'
-    }
+    };
 
     // 计算属性：预计算类型标签
     const typeLabels = computed(() => {
       return props.suggestions.map(suggestion => {
-        const key = suggestion.category || suggestion.type || 'script'
-        return typeLabelMap[key] || '其他'
-      })
-    })
+        const key = suggestion.category || suggestion.type || 'script';
+        return typeLabelMap[key] || '其他';
+      });
+    });
 
     // 计算属性：预计算类型CSS类
     const typeClasses = computed(() => {
       return props.suggestions.map(suggestion => {
-        const type = suggestion.type || 'script'
-        return `autocomplete-type autocomplete-type--${type}`
-      })
-    })
+        const type = suggestion.type || 'script';
+        return `autocomplete-type autocomplete-type--${type}`;
+      });
+    });
 
     // 计算属性：预计算工具提示
     const suggestionTooltips = computed(() => {
       return props.suggestions.map(suggestion => {
-        const parts = []
+        const parts = [];
         if (suggestion.text) {
-          const typeLabel = typeLabelMap[suggestion.category || suggestion.type || 'script'] || '其他'
-          parts.push(`${typeLabel}: ${suggestion.text}`)
+          const typeLabel =
+            typeLabelMap[suggestion.category || suggestion.type || 'script'] || '其他';
+          parts.push(`${typeLabel}: ${suggestion.text}`);
         }
         if (suggestion.description) {
-          parts.push(`描述: ${suggestion.description}`)
+          parts.push(`描述: ${suggestion.description}`);
         }
         if (suggestion.fullCommand && suggestion.fullCommand !== suggestion.text) {
-          parts.push(`完整命令: ${suggestion.fullCommand}`)
+          parts.push(`完整命令: ${suggestion.fullCommand}`);
         }
         if (suggestion.category) {
-          parts.push(`类别: ${suggestion.category}`)
+          parts.push(`类别: ${suggestion.category}`);
         }
-        return parts.join('\n')
-      })
-    })
+        return parts.join('\n');
+      });
+    });
 
     // 监听建议变化，重置选中索引
-    watch(() => props.suggestions, () => {
-      selectedIndex.value = -1  // 默认不选中任何项
-    })
+    watch(
+      () => props.suggestions,
+      () => {
+        selectedIndex.value = -1; // 默认不选中任何项
+      }
+    );
 
     // 监听选中索引变化，滚动到可见区域
     watch(selectedIndex, async () => {
-      await nextTick()
-      scrollToSelected()
-    })
+      await nextTick();
+      scrollToSelected();
+    });
 
     // 滚动到选中项（优化版）
     const scrollToSelected = () => {
-      if (!listRef.value || selectedIndex.value < 0) return
+      if (!listRef.value || selectedIndex.value < 0) return;
 
-      const selectedElement = listRef.value.children[selectedIndex.value]
+      const selectedElement = listRef.value.children[selectedIndex.value];
       if (selectedElement) {
         // 使用更高效的滚动方式
         selectedElement.scrollIntoView({
           block: 'nearest',
           behavior: 'auto' // 改为auto以提升性能
-        })
+        });
       }
-    }
+    };
 
     // 注释：移除鼠标悬浮选中功能，改为键盘导航为主
 
     // 选择建议
-    const selectSuggestion = (index) => {
+    const selectSuggestion = index => {
       if (index >= 0 && index < props.suggestions.length) {
-        selectedIndex.value = index
-        emit('select', props.suggestions[index])
+        selectedIndex.value = index;
+        emit('select', props.suggestions[index]);
       }
-    }
+    };
 
     // 添加窗口大小变化监听并初始化容器度量
-    window.addEventListener('resize', handleResize)
-    updateContainerMetrics()
-    watch(() => props.teleportTo, () => updateContainerMetrics())
+    window.addEventListener('resize', handleResize);
+    updateContainerMetrics();
+    watch(
+      () => props.teleportTo,
+      () => updateContainerMetrics()
+    );
 
     // 组件卸载时清理
     const cleanup = () => {
-      window.removeEventListener('resize', handleResize)
-      if (resizeTimer) clearTimeout(resizeTimer)
-    }
+      window.removeEventListener('resize', handleResize);
+      if (resizeTimer) clearTimeout(resizeTimer);
+    };
 
-    onUnmounted(cleanup)
+    onUnmounted(cleanup);
 
     // 键盘导航
-    const handleKeydown = (event) => {
-      if (!props.visible || props.suggestions.length === 0) return false
+    const handleKeydown = event => {
+      if (!props.visible || props.suggestions.length === 0) return false;
 
-      let handled = false
+      let handled = false;
 
       switch (event.key) {
-        case 'ArrowUp':
-          event.preventDefault()
-          event.stopPropagation()
-          if (selectedIndex.value === -1) {
-            // 如果当前没有选中项，选中最后一项
-            selectedIndex.value = props.suggestions.length - 1
-          } else if (selectedIndex.value > 0) {
-            selectedIndex.value = selectedIndex.value - 1
-          } else {
-            // 循环到最后一项
-            selectedIndex.value = props.suggestions.length - 1
-          }
-          handled = true
-          break
+      case 'ArrowUp':
+        event.preventDefault();
+        event.stopPropagation();
+        if (selectedIndex.value === -1) {
+          // 如果当前没有选中项，选中最后一项
+          selectedIndex.value = props.suggestions.length - 1;
+        } else if (selectedIndex.value > 0) {
+          selectedIndex.value = selectedIndex.value - 1;
+        } else {
+          // 循环到最后一项
+          selectedIndex.value = props.suggestions.length - 1;
+        }
+        handled = true;
+        break;
 
-        case 'ArrowDown':
-          event.preventDefault()
-          event.stopPropagation()
-          if (selectedIndex.value === -1) {
-            // 如果当前没有选中项，选中第一项
-            selectedIndex.value = 0
-          } else if (selectedIndex.value < props.suggestions.length - 1) {
-            selectedIndex.value = selectedIndex.value + 1
-          } else {
-            // 循环到第一项
-            selectedIndex.value = 0
-          }
-          handled = true
-          break
+      case 'ArrowDown':
+        event.preventDefault();
+        event.stopPropagation();
+        if (selectedIndex.value === -1) {
+          // 如果当前没有选中项，选中第一项
+          selectedIndex.value = 0;
+        } else if (selectedIndex.value < props.suggestions.length - 1) {
+          selectedIndex.value = selectedIndex.value + 1;
+        } else {
+          // 循环到第一项
+          selectedIndex.value = 0;
+        }
+        handled = true;
+        break;
 
-        case 'Tab':
-          event.preventDefault()
-          event.stopPropagation()
-          selectSuggestion(selectedIndex.value)
-          handled = true
-          break
+      case 'Tab':
+        event.preventDefault();
+        event.stopPropagation();
+        selectSuggestion(selectedIndex.value);
+        handled = true;
+        break;
 
-        case 'Enter':
-          if (selectedIndex.value >= 0 && selectedIndex.value < props.suggestions.length) {
-            // 有选中项时，阻止默认行为并应用补全
-            event.preventDefault()
-            event.stopPropagation()
-            selectSuggestion(selectedIndex.value)
-            handled = true
-          } else {
-            // 无选中项时，关闭补全框但不阻止默认行为，让终端正常处理回车
-            emit('close')
-            handled = false  // 不阻止默认行为
-          }
-          break
+      case 'Enter':
+        if (selectedIndex.value >= 0 && selectedIndex.value < props.suggestions.length) {
+          // 有选中项时，阻止默认行为并应用补全
+          event.preventDefault();
+          event.stopPropagation();
+          selectSuggestion(selectedIndex.value);
+          handled = true;
+        } else {
+          // 无选中项时，关闭补全框但不阻止默认行为，让终端正常处理回车
+          emit('close');
+          handled = false; // 不阻止默认行为
+        }
+        break;
 
-        case 'Escape':
-          event.preventDefault()
-          event.stopPropagation()
-          emit('close')
-          handled = true
-          break
+      case 'Escape':
+        event.preventDefault();
+        event.stopPropagation();
+        emit('close');
+        handled = true;
+        break;
       }
 
-      return handled
-    }
+      return handled;
+    };
 
     return {
       selectedIndex,
@@ -324,9 +384,9 @@ export default {
       typeClasses,
       suggestionTooltips,
       cleanup
-    }
+    };
   }
-}
+};
 </script>
 
 <style scoped>

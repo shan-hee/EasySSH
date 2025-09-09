@@ -1,19 +1,19 @@
 <template>
-  <AppLayout>
+  <app-layout>
     <RouterView />
-  </AppLayout>
+  </app-layout>
 </template>
 
 <script>
-import { defineComponent } from 'vue'
-import AppLayout from './layouts/AppLayout.vue'
+import { defineComponent } from 'vue';
+import AppLayout from './layouts/AppLayout.vue';
 
 export default defineComponent({
   name: 'App',
   components: {
     AppLayout
   }
-})
+});
 </script>
 
 <style>
@@ -52,6 +52,4 @@ export default defineComponent({
   background-color: var(--tooltip-arrow-color);
   border-color: var(--tooltip-arrow-color);
 }
-
-
-</style> 
+</style>

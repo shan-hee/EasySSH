@@ -34,7 +34,7 @@ export class BinaryMessageEncoder {
       const messageBuffer = new ArrayBuffer(totalLength);
       const dataView = new DataView(messageBuffer);
       const uint8View = new Uint8Array(messageBuffer);
-      
+
       let offset = 0;
 
       // 写入Magic Number (大端序)
@@ -151,9 +151,11 @@ export class BinaryMessageUtils {
    * @returns {boolean}
    */
   static isBinaryMessage(data) {
-    return data instanceof ArrayBuffer || 
-           data instanceof Uint8Array ||
-           (data && typeof data === 'object' && data.constructor === ArrayBuffer);
+    return (
+      data instanceof ArrayBuffer ||
+      data instanceof Uint8Array ||
+      (data && typeof data === 'object' && data.constructor === ArrayBuffer)
+    );
   }
 
   /**
@@ -232,7 +234,7 @@ export class BinaryMessageUtils {
       headerData.encryptedPayload = options.encryptedPayload;
       headerData.keyId = options.keyId;
     }
-    
+
     if (options.address) headerData.address = options.address;
     if (options.port) headerData.port = options.port;
     if (options.username) headerData.username = options.username;

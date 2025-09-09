@@ -89,14 +89,14 @@ const getPublicScripts = async (req, res) => {
   try {
     const { page = 1, limit = 20, category, search } = req.query;
     const offset = (page - 1) * limit;
-    
+
     const scripts = await Script.findPublic({
       limit: parseInt(limit),
       offset: parseInt(offset),
       category,
       search
     });
-    
+
     res.json({
       success: true,
       scripts: scripts.map(script => script.toJSON()),
@@ -141,7 +141,7 @@ const getPopularScripts = async (req, res) => {
   try {
     const { limit = 10 } = req.query;
     const scripts = await Script.getPopular(parseInt(limit));
-    
+
     res.json({
       success: true,
       scripts: scripts.map(script => script.toJSON())
@@ -161,20 +161,20 @@ const getPopularScripts = async (req, res) => {
 const searchScripts = async (req, res) => {
   try {
     const { q: query, page = 1, limit = 20 } = req.query;
-    
+
     if (!query || query.trim().length === 0) {
       return res.status(400).json({
         success: false,
         message: '搜索关键词不能为空'
       });
     }
-    
+
     const offset = (page - 1) * limit;
     const scripts = await Script.search(query.trim(), {
       limit: parseInt(limit),
       offset: parseInt(offset)
     });
-    
+
     res.json({
       success: true,
       scripts: scripts.map(script => script.toJSON()),
@@ -202,14 +202,14 @@ const getUserScripts = async (req, res) => {
     const userId = req.user.id;
     const { page = 1, limit = 20, category, search } = req.query;
     const offset = (page - 1) * limit;
-    
+
     const scripts = await UserScript.findByUserId(userId, {
       limit: parseInt(limit),
       offset: parseInt(offset),
       category,
       search
     });
-    
+
     res.json({
       success: true,
       scripts: scripts.map(script => script.toJSON()),
@@ -235,14 +235,14 @@ const createUserScript = async (req, res) => {
   try {
     const userId = req.user.id;
     const { name, description, command, tags, keywords, category } = req.body;
-    
+
     if (!name || !command) {
       return res.status(400).json({
         success: false,
         message: '脚本名称和命令不能为空'
       });
     }
-    
+
     const userScript = new UserScript({
       user_id: userId,
       name: name.trim(),
@@ -252,9 +252,9 @@ const createUserScript = async (req, res) => {
       keywords: Array.isArray(keywords) ? keywords : [],
       category: category?.trim() || '我的脚本'
     });
-    
+
     await userScript.save();
-    
+
     res.status(201).json({
       success: true,
       script: userScript.toJSON(),
@@ -277,7 +277,7 @@ const updateUserScript = async (req, res) => {
     const userId = req.user.id;
     const scriptId = req.params.id;
     const { name, description, command, tags, keywords, category } = req.body;
-    
+
     const userScript = await UserScript.findById(scriptId, userId);
     if (!userScript) {
       return res.status(404).json({
@@ -285,7 +285,7 @@ const updateUserScript = async (req, res) => {
         message: '脚本不存在'
       });
     }
-    
+
     // 更新脚本信息
     if (name !== undefined) userScript.name = name.trim();
     if (description !== undefined) userScript.description = description.trim();
@@ -293,9 +293,9 @@ const updateUserScript = async (req, res) => {
     if (Array.isArray(tags)) userScript.tags = tags;
     if (Array.isArray(keywords)) userScript.keywords = keywords;
     if (category !== undefined) userScript.category = category.trim() || '我的脚本';
-    
+
     await userScript.save();
-    
+
     res.json({
       success: true,
       script: userScript.toJSON(),
@@ -317,7 +317,7 @@ const deleteUserScript = async (req, res) => {
   try {
     const userId = req.user.id;
     const scriptId = req.params.id;
-    
+
     const userScript = await UserScript.findById(scriptId, userId);
     if (!userScript) {
       return res.status(404).json({
@@ -325,9 +325,9 @@ const deleteUserScript = async (req, res) => {
         message: '脚本不存在'
       });
     }
-    
+
     await userScript.delete();
-    
+
     res.json({
       success: true,
       message: '脚本删除成功'
@@ -482,16 +482,16 @@ const recordScriptUsage = async (req, res) => {
   try {
     const userId = req.user.id;
     const { scriptId, userScriptId, scriptName, command } = req.body;
-    
+
     const db = getDb();
-    
+
     // 记录使用历史
     const insertHistoryStmt = db.prepare(`
       INSERT INTO script_usage_history (
         user_id, script_id, user_script_id, script_name, command, used_at
       ) VALUES (?, ?, ?, ?, ?, ?)
     `);
-    
+
     insertHistoryStmt.run(
       userId,
       scriptId || null,
@@ -500,7 +500,7 @@ const recordScriptUsage = async (req, res) => {
       command,
       new Date().toISOString()
     );
-    
+
     // 更新使用次数
     if (scriptId) {
       const script = await Script.findById(scriptId);
@@ -513,7 +513,7 @@ const recordScriptUsage = async (req, res) => {
         await userScript.incrementUsage();
       }
     }
-    
+
     res.json({
       success: true,
       message: '使用记录已保存'
@@ -639,7 +639,7 @@ const executeScript = async (req, res) => {
     log.error('执行脚本失败:', error);
     res.status(500).json({
       success: false,
-      message: '脚本执行失败: ' + error.message
+      message: `脚本执行失败: ${error.message}`
     });
   }
 };

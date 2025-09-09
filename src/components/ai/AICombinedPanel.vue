@@ -1,10 +1,14 @@
 <template>
-  <div class="ai-combined-panel" :class="{ 'ai-panel-mobile': isMobile }">
+  <div
+    class="ai-combined-panel"
+    :class="{ 'ai-panel-mobile': isMobile }"
+  >
     <!-- AI输入栏 - 始终显示 -->
     <div class="ai-input-section">
       <!-- 输入框区域 -->
       <div class="ai-input-wrapper">
         <el-input
+          ref="inputRef"
           v-model="inputText"
           type="textarea"
           :placeholder="getPlaceholder()"
@@ -12,12 +16,11 @@
           :maxlength="200"
           resize="none"
           class="ai-input-field"
-          ref="inputRef"
+          :disabled="isProcessing"
           @keydown="handleKeydown"
           @focus="handleInputFocus"
           @blur="handleInputBlur"
           @input="handleInputChange"
-          :disabled="isProcessing"
         />
       </div>
 
@@ -28,24 +31,24 @@
             <button
               class="ai-mode-btn"
               :class="{ 'ai-mode-btn-active': selectedMode === 'chat' }"
-              @click="selectMode('chat')"
               :disabled="isProcessing"
+              @click="selectMode('chat')"
             >
               💬 Chat
             </button>
             <button
               class="ai-mode-btn"
               :class="{ 'ai-mode-btn-active': selectedMode === 'agent' }"
-              @click="selectMode('agent')"
               :disabled="isProcessing"
+              @click="selectMode('agent')"
             >
               🤖 Agent
             </button>
             <button
               class="ai-mode-btn"
               :class="{ 'ai-mode-btn-active': selectedMode === 'exec' }"
-              @click="selectMode('exec')"
               :disabled="isProcessing"
+              @click="selectMode('exec')"
             >
               ⚡ 执行
             </button>
@@ -55,22 +58,33 @@
         <div class="ai-footer-controls">
           <!-- 展开/收起按钮 -->
           <button
-            class="ai-control-btn ai-expand-btn"
-            @click="togglePanel"
-            :title="isPanelExpanded ? '收起AI面板' : '展开AI面板'"
             v-if="messages.length > 0"
+            class="ai-control-btn ai-expand-btn"
+            :title="isPanelExpanded ? '收起AI面板' : '展开AI面板'"
+            @click="togglePanel"
           >
-            <svg viewBox="0 0 24 24" width="14" height="14">
-              <path fill="currentColor" :d="isPanelExpanded ? 'M7.41,8.58L12,13.17L16.59,8.58L18,10L12,16L6,10L7.41,8.58Z' : 'M7.41,15.41L12,10.83L16.59,15.41L18,14L12,8L6,14L7.41,15.41Z'"/>
+            <svg
+              viewBox="0 0 24 24"
+              width="14"
+              height="14"
+            >
+              <path
+                fill="currentColor"
+                :d="
+                  isPanelExpanded
+                    ? 'M7.41,8.58L12,13.17L16.59,8.58L18,10L12,16L6,10L7.41,8.58Z'
+                    : 'M7.41,15.41L12,10.83L16.59,15.41L18,14L12,8L6,14L7.41,15.41Z'
+                "
+              />
             </svg>
           </button>
 
           <!-- 发送按钮 -->
           <button
             class="ai-send-button"
-            @click="canSend && !isProcessing ? handleSend() : null"
-            :class="{ 'disabled': !canSend || isProcessing }"
+            :class="{ disabled: !canSend || isProcessing }"
             :disabled="!canSend || isProcessing"
+            @click="canSend && !isProcessing ? handleSend() : null"
           >
             <svg
               v-if="!isProcessing"
@@ -80,7 +94,10 @@
               height="18"
               :class="{ 'send-icon-disabled': !canSend }"
             >
-              <path fill="currentColor" d="M2,21L23,12L2,3V10L17,12L2,14V21Z"/>
+              <path
+                fill="currentColor"
+                d="M2,21L23,12L2,3V10L17,12L2,14V21Z"
+              />
             </svg>
             <svg
               v-else
@@ -89,9 +106,24 @@
               width="18"
               height="18"
             >
-              <circle cx="12" cy="12" r="2" fill="currentColor">
-                <animate attributeName="r" values="2;4;2" dur="1s" repeatCount="indefinite"/>
-                <animate attributeName="opacity" values="1;0.3;1" dur="1s" repeatCount="indefinite"/>
+              <circle
+                cx="12"
+                cy="12"
+                r="2"
+                fill="currentColor"
+              >
+                <animate
+                  attributeName="r"
+                  values="2;4;2"
+                  dur="1s"
+                  repeatCount="indefinite"
+                />
+                <animate
+                  attributeName="opacity"
+                  values="1;0.3;1"
+                  dur="1s"
+                  repeatCount="indefinite"
+                />
               </circle>
             </svg>
           </button>
@@ -101,6 +133,7 @@
 
     <!-- AI交互面板 - 可展开/收起 -->
     <div
+      v-show="isPanelExpanded && messages.length > 0"
       class="ai-interaction-section ai-interaction-panel ai-panel-bottom-expand"
       :class="{
         'ai-panel-visible': isPanelExpanded,
@@ -108,7 +141,6 @@
         'ai-panel-dark': isDarkTheme,
         'ai-panel-streaming': isStreaming
       }"
-      v-show="isPanelExpanded && messages.length > 0"
       :style="panelStyle"
     >
       <!-- 调整大小指示器 -->
@@ -117,53 +149,78 @@
         class="ai-panel-resize-indicator ai-panel-resize-top"
         @mousedown="startResize"
       >
-        <div class="resize-handle"></div>
+        <div class="resize-handle" />
       </div>
 
       <!-- 面板头部 -->
       <div class="ai-panel-header">
         <div class="ai-panel-title">
-          <svg class="ai-icon" viewBox="0 0 24 24" width="16" height="16">
-            <path fill="currentColor" d="M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2M12,4A8,8 0 0,1 20,12A8,8 0 0,1 12,20A8,8 0 0,1 4,12A8,8 0 0,1 12,4M11,6V9H8V11H11V14H13V11H16V9H13V6H11Z"/>
+          <svg
+            class="ai-icon"
+            viewBox="0 0 24 24"
+            width="16"
+            height="16"
+          >
+            <path
+              fill="currentColor"
+              d="M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2M12,4A8,8 0 0,1 20,12A8,8 0 0,1 12,20A8,8 0 0,1 4,12A8,8 0 0,1 12,4M11,6V9H8V11H11V14H13V11H16V9H13V6H11Z"
+            />
           </svg>
           <span>AI 助手</span>
         </div>
-        
+
         <div class="ai-panel-controls">
           <!-- 清空历史按钮 -->
-          <button 
+          <button
             class="ai-control-btn"
-            @click="clearHistory"
             title="清空历史"
             :disabled="messages.length === 0"
+            @click="clearHistory"
           >
-            <svg viewBox="0 0 24 24" width="14" height="14">
-              <path fill="currentColor" d="M19,4H15.5L14.5,3H9.5L8.5,4H5V6H19M6,19A2,2 0 0,0 8,21H16A2,2 0 0,0 18,19V7H6V19Z"/>
+            <svg
+              viewBox="0 0 24 24"
+              width="14"
+              height="14"
+            >
+              <path
+                fill="currentColor"
+                d="M19,4H15.5L14.5,3H9.5L8.5,4H5V6H19M6,19A2,2 0 0,0 8,21H16A2,2 0 0,0 18,19V7H6V19Z"
+              />
             </svg>
           </button>
-          
+
           <!-- 收起按钮 -->
-          <button 
+          <button
             class="ai-control-btn"
-            @click="togglePanel"
             title="收起面板"
+            @click="togglePanel"
           >
-            <svg viewBox="0 0 24 24" width="14" height="14">
-              <path fill="currentColor" d="M7.41,8.58L12,13.17L16.59,8.58L18,10L12,16L6,10L7.41,8.58Z"/>
+            <svg
+              viewBox="0 0 24 24"
+              width="14"
+              height="14"
+            >
+              <path
+                fill="currentColor"
+                d="M7.41,8.58L12,13.17L16.59,8.58L18,10L12,16L6,10L7.41,8.58Z"
+              />
             </svg>
           </button>
         </div>
       </div>
 
       <!-- 消息列表容器 -->
-      <div 
-        class="ai-panel-content"
+      <div
         ref="contentRef"
+        class="ai-panel-content"
       >
-        <div class="ai-messages-container" ref="messagesRef">
+        <div
+          ref="messagesRef"
+          class="ai-messages-container"
+        >
           <!-- 消息列表 -->
           <div class="ai-messages-list">
-            <AIMessageItem
+            <a-i-message-item
               v-for="(message, index) in messages"
               :key="message.id || index"
               :message="message"
@@ -181,12 +238,12 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue'
-import { ElInput, ElMessage } from 'element-plus'
-import settingsService from '../../services/settings'
-import AIMessageItem from './AIMessageItem.vue'
-import { aiPerformanceMonitor, debounce } from '../../utils/ai-panel-performance.js'
-import { withErrorHandling, ErrorSeverity } from '../../utils/ai-panel-error-handler.js'
+import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue';
+import { ElInput, ElMessage } from 'element-plus';
+import settingsService from '../../services/settings';
+import AIMessageItem from './AIMessageItem.vue';
+import { aiPerformanceMonitor, debounce } from '../../utils/ai-panel-performance.js';
+import { withErrorHandling, ErrorSeverity } from '../../utils/ai-panel-error-handler.js';
 
 // Props
 const props = defineProps({
@@ -214,12 +271,12 @@ const props = defineProps({
     type: Object,
     required: true
   }
-})
+});
 
 // Emits
 const emit = defineEmits([
   'ai-response',
-  'ai-streaming', 
+  'ai-streaming',
   'mode-change',
   'input-focus',
   'input-blur',
@@ -230,197 +287,197 @@ const emit = defineEmits([
   'height-change',
   'height-change-start',
   'height-change-end'
-])
+]);
 
 // 响应式数据
-const inputText = ref('')
-const selectedMode = ref('chat')
-const isProcessing = ref(false)
-const isPanelExpanded = ref(false)
-const currentHeight = ref(0)
-const isResizing = ref(false)
-const contentRef = ref(null)
-const messagesRef = ref(null)
-const inputRef = ref(null)
+const inputText = ref('');
+const selectedMode = ref('chat');
+const isProcessing = ref(false);
+const isPanelExpanded = ref(false);
+const currentHeight = ref(0);
+const isResizing = ref(false);
+const contentRef = ref(null);
+const messagesRef = ref(null);
+const inputRef = ref(null);
 
 // 计算属性
 const isDarkTheme = computed(() => {
-  if (!settingsService.isInitialized) return false
-  const theme = settingsService.get('ui.theme', 'dark')
-  return settingsService._resolveActualTheme(theme) === 'dark'
-})
+  if (!settingsService.isInitialized) return false;
+  const theme = settingsService.get('ui.theme', 'dark');
+  return settingsService._resolveActualTheme(theme) === 'dark';
+});
 
 const canSend = computed(() => {
-  return inputText.value.trim().length > 0 && !isProcessing.value && props.aiService?.isEnabled
-})
+  return inputText.value.trim().length > 0 && !isProcessing.value && props.aiService?.isEnabled;
+});
 
 const panelStyle = computed(() => {
-  const style = {}
+  const style = {};
 
   if (isPanelExpanded.value) {
-    style.height = `${currentHeight.value}px`
-    style.maxHeight = `${props.maxHeight}px`
+    style.height = `${currentHeight.value}px`;
+    style.maxHeight = `${props.maxHeight}px`;
   } else {
-    style.height = '0px'
+    style.height = '0px';
   }
 
-  return style
-})
+  return style;
+});
 
 // 方法
 const getPlaceholder = () => {
   if (!props.aiService?.isEnabled) {
-    return 'AI服务未启用，请在设置中配置'
+    return 'AI服务未启用，请在设置中配置';
   }
 
-  const mode = selectedMode.value
+  const mode = selectedMode.value;
   const placeholders = {
     chat: '输入问题与AI对话，如：如何优化Linux性能？',
     agent: '描述需要分析的问题，如：分析这个错误',
     exec: '输入命令直接执行，如：ls -la'
-  }
+  };
 
-  return placeholders[mode] || '输入您的问题...'
-}
+  return placeholders[mode] || '输入您的问题...';
+};
 
-const selectMode = (mode) => {
-  if (isProcessing.value) return
+const selectMode = mode => {
+  if (isProcessing.value) return;
 
-  selectedMode.value = mode
-  emit('mode-change', mode)
+  selectedMode.value = mode;
+  emit('mode-change', mode);
 
   // 更新输入框占位符
-  const inputEl = document.querySelector('.ai-input-field textarea')
+  const inputEl = document.querySelector('.ai-input-field textarea');
   if (inputEl) {
-    inputEl.placeholder = getPlaceholder()
+    inputEl.placeholder = getPlaceholder();
   }
-}
+};
 
 const togglePanel = () => {
-  const startTime = performance.now()
+  const startTime = performance.now();
 
-  isPanelExpanded.value = !isPanelExpanded.value
+  isPanelExpanded.value = !isPanelExpanded.value;
 
   if (isPanelExpanded.value) {
     nextTick(() => {
-      adjustHeight()
-      scrollToBottom()
+      adjustHeight();
+      scrollToBottom();
 
       // 记录性能指标
-      const duration = performance.now() - startTime
-      aiPerformanceMonitor.recordPanelToggleTime(duration)
-    })
+      const duration = performance.now() - startTime;
+      aiPerformanceMonitor.recordPanelToggleTime(duration);
+    });
   } else {
     // 记录性能指标
-    const duration = performance.now() - startTime
-    aiPerformanceMonitor.recordPanelToggleTime(duration)
+    const duration = performance.now() - startTime;
+    aiPerformanceMonitor.recordPanelToggleTime(duration);
   }
-}
+};
 
-const handleKeydown = (event) => {
+const handleKeydown = event => {
   // Enter 发送（不按Shift时）
   if (event.key === 'Enter' && !event.shiftKey) {
-    event.preventDefault()
-    handleSend()
+    event.preventDefault();
+    handleSend();
   }
 
   // Shift+Enter 换行（默认行为，不需要特殊处理）
 
   // Escape 清空输入
   if (event.key === 'Escape') {
-    inputText.value = ''
+    inputText.value = '';
     nextTick(() => {
-      adjustInputHeight()
-    })
+      adjustInputHeight();
+    });
   }
-}
+};
 
 const handleInputFocus = () => {
-  emit('input-focus')
-}
+  emit('input-focus');
+};
 
 const handleInputBlur = () => {
-  emit('input-blur')
-}
+  emit('input-blur');
+};
 
 // 处理输入框内容变化，自动调整高度
 const handleInputChange = () => {
   nextTick(() => {
-    adjustInputHeight()
-  })
-}
+    adjustInputHeight();
+  });
+};
 
 // 自动调整输入框高度
 const adjustInputHeight = () => {
-  if (!inputRef.value) return
+  if (!inputRef.value) return;
 
-  const textarea = inputRef.value.$el.querySelector('textarea')
-  if (!textarea) return
+  const textarea = inputRef.value.$el.querySelector('textarea');
+  if (!textarea) return;
 
   // 重置高度以获取正确的scrollHeight
-  textarea.style.height = 'auto'
+  textarea.style.height = 'auto';
 
   // 计算所需高度
-  const scrollHeight = textarea.scrollHeight
+  const scrollHeight = textarea.scrollHeight;
 
   // 计算行高（基于字体大小和line-height）
-  const computedStyle = window.getComputedStyle(textarea)
-  const fontSize = parseFloat(computedStyle.fontSize) || 13
-  const lineHeight = parseFloat(computedStyle.lineHeight) || fontSize * 1.4
+  const computedStyle = window.getComputedStyle(textarea);
+  const fontSize = parseFloat(computedStyle.fontSize) || 13;
+  const lineHeight = parseFloat(computedStyle.lineHeight) || fontSize * 1.4;
 
   // 计算最小和最大高度
-  const minHeight = lineHeight + 16 // 1行 + padding
-  const maxHeight = Math.max(150, Math.floor(props.maxHeight * 0.4)) // 最大高度为面板高度的40%，至少150px
+  const minHeight = lineHeight + 16; // 1行 + padding
+  const maxHeight = Math.max(150, Math.floor(props.maxHeight * 0.4)); // 最大高度为面板高度的40%，至少150px
 
   // 限制高度范围
-  const newHeight = Math.max(minHeight, Math.min(scrollHeight, maxHeight))
+  const newHeight = Math.max(minHeight, Math.min(scrollHeight, maxHeight));
 
   // 应用新高度
-  textarea.style.height = `${newHeight}px`
+  textarea.style.height = `${newHeight}px`;
 
   // 如果内容超过最大高度，显示滚动条
   if (scrollHeight > maxHeight) {
-    textarea.style.overflowY = 'auto'
+    textarea.style.overflowY = 'auto';
   } else {
-    textarea.style.overflowY = 'hidden'
+    textarea.style.overflowY = 'hidden';
   }
-}
+};
 
 const handleSend = async () => {
-  if (!canSend.value) return
+  if (!canSend.value) return;
 
-  const text = inputText.value.trim()
-  if (!text) return
+  const text = inputText.value.trim();
+  if (!text) return;
 
   try {
-    isProcessing.value = true
+    isProcessing.value = true;
 
     // 构建上下文信息
-    const context = buildTerminalContext()
+    const context = buildTerminalContext();
 
     // 根据模式处理
     if (selectedMode.value === 'exec') {
       // 执行模式：直接执行命令，不显示响应
-      await executeCommand(text)
+      await executeCommand(text);
       // 清空输入框
-      inputText.value = ''
+      inputText.value = '';
     } else {
       // AI模式（chat/agent）
-      let result
+      let result;
       if (selectedMode.value === 'chat') {
         // 聊天模式
         result = await props.aiService.requestChat({
           question: text,
           prompt: text,
           ...context
-        })
+        });
       } else {
         // Agent模式
         result = await props.aiService.requestAgent({
           prompt: text,
           operationType: 'auto',
           ...context
-        })
+        });
       }
 
       if (result && result.success && result.content) {
@@ -430,31 +487,30 @@ const handleSend = async () => {
           userMessage: text, // 添加用户消息
           content: result.content,
           success: true
-        })
+        });
 
         // 清空输入框并重置高度
-        inputText.value = ''
+        inputText.value = '';
         nextTick(() => {
-          adjustInputHeight()
-        })
+          adjustInputHeight();
+        });
 
         // 自动展开面板显示响应
         if (!isPanelExpanded.value) {
-          isPanelExpanded.value = true
+          isPanelExpanded.value = true;
           nextTick(() => {
-            adjustHeight()
-            scrollToBottom()
-          })
+            adjustHeight();
+            scrollToBottom();
+          });
         }
 
-        ElMessage.success('AI响应成功')
+        ElMessage.success('AI响应成功');
       } else {
-        throw new Error('AI响应失败')
+        throw new Error('AI响应失败');
       }
     }
-
   } catch (error) {
-    console.error('AI请求失败:', error)
+    console.error('AI请求失败:', error);
 
     // 发送错误响应事件
     emit('ai-response', {
@@ -462,211 +518,215 @@ const handleSend = async () => {
       userMessage: text, // 添加用户消息
       content: error.message,
       success: false
-    })
+    });
 
-    ElMessage.error('AI请求失败')
+    ElMessage.error('AI请求失败');
   } finally {
-    isProcessing.value = false
+    isProcessing.value = false;
   }
-}
+};
 
 // 执行命令
-const executeCommand = async (command) => {
+const executeCommand = async command => {
   try {
     // 直接通过emit发送命令到父组件（Terminal.vue）
     emit('execute-command', {
       terminalId: props.terminalId,
       command: command.trim()
-    })
+    });
 
     return {
       success: true,
       content: `命令已执行: ${command}`
-    }
+    };
   } catch (error) {
-    console.error('执行命令失败:', error)
+    console.error('执行命令失败:', error);
     return {
       success: false,
       content: `执行失败: ${error.message}`
-    }
+    };
   }
-}
+};
 
-const clearHistory = withErrorHandling(() => {
-  emit('clear-history')
-}, { component: 'AICombinedPanel', action: 'clearHistory' }, ErrorSeverity.LOW)
+const clearHistory = withErrorHandling(
+  () => {
+    emit('clear-history');
+  },
+  { component: 'AICombinedPanel', action: 'clearHistory' },
+  ErrorSeverity.LOW
+);
 
-const handleExecuteCommand = (command) => {
-  emit('execute-command', { command, terminalId: props.terminalId })
-}
+const handleExecuteCommand = command => {
+  emit('execute-command', { command, terminalId: props.terminalId });
+};
 
-const handleEditCommand = (command) => {
-  emit('edit-command', { command, terminalId: props.terminalId })
-}
+const handleEditCommand = command => {
+  emit('edit-command', { command, terminalId: props.terminalId });
+};
 
-const handleAddToScripts = (command) => {
-  emit('add-to-scripts', { command, terminalId: props.terminalId })
-}
+const handleAddToScripts = command => {
+  emit('add-to-scripts', { command, terminalId: props.terminalId });
+};
 
 // 自动调整高度
 const adjustHeight = () => {
-  if (!isPanelExpanded.value || !messagesRef.value) return
+  if (!isPanelExpanded.value || !messagesRef.value) return;
 
-  const messagesHeight = messagesRef.value.scrollHeight
-  const headerHeight = 32 // 头部高度
-  const padding = 16 // 内边距
-  const totalHeight = Math.min(messagesHeight + headerHeight + padding, props.maxHeight)
+  const messagesHeight = messagesRef.value.scrollHeight;
+  const headerHeight = 32; // 头部高度
+  const padding = 16; // 内边距
+  const totalHeight = Math.min(messagesHeight + headerHeight + padding, props.maxHeight);
 
   if (totalHeight !== currentHeight.value) {
-    currentHeight.value = totalHeight
-    emit('height-change', totalHeight)
+    currentHeight.value = totalHeight;
+    emit('height-change', totalHeight);
   }
-}
+};
 
 // 滚动到底部
 const scrollToBottom = () => {
-  if (!contentRef.value) return
+  if (!contentRef.value) return;
 
   nextTick(() => {
-    contentRef.value.scrollTop = contentRef.value.scrollHeight
-  })
-}
+    contentRef.value.scrollTop = contentRef.value.scrollHeight;
+  });
+};
 
 // 调整大小功能
-const startResize = (event) => {
-  event.preventDefault()
-  isResizing.value = true
+const startResize = event => {
+  event.preventDefault();
+  isResizing.value = true;
 
-  const startY = event.clientY
-  const startHeight = currentHeight.value
-  const minHeight = 100
-  const maxHeight = props.maxHeight
+  const startY = event.clientY;
+  const startHeight = currentHeight.value;
+  const minHeight = 100;
+  const maxHeight = props.maxHeight;
 
   // 发送调整开始事件
-  emit('height-change-start')
+  emit('height-change-start');
 
   // 添加视觉反馈
-  document.body.style.cursor = 'ns-resize'
-  document.body.style.userSelect = 'none'
+  document.body.style.cursor = 'ns-resize';
+  document.body.style.userSelect = 'none';
 
   // 使用requestAnimationFrame优化性能
-  let animationFrameId = null
+  let animationFrameId = null;
 
-  const handleMouseMove = (e) => {
-    if (!isResizing.value) return
+  const handleMouseMove = e => {
+    if (!isResizing.value) return;
 
-    e.preventDefault()
+    e.preventDefault();
 
     // 取消之前的动画帧
     if (animationFrameId) {
-      cancelAnimationFrame(animationFrameId)
+      cancelAnimationFrame(animationFrameId);
     }
 
     // 使用requestAnimationFrame确保流畅的动画
     animationFrameId = requestAnimationFrame(() => {
-      const currentY = e.clientY
-      const deltaY = currentY - startY
+      const currentY = e.clientY;
+      const deltaY = currentY - startY;
 
       // 顶部调整器：向上拖拽增加高度，向下拖拽减少高度
-      const sensitivity = 1.0
-      const heightChange = -deltaY * sensitivity
+      const sensitivity = 1.0;
+      const heightChange = -deltaY * sensitivity;
 
-      let newHeight = startHeight + heightChange
+      let newHeight = startHeight + heightChange;
 
       // 确保高度在合理范围内
-      newHeight = Math.max(minHeight, Math.min(newHeight, maxHeight))
+      newHeight = Math.max(minHeight, Math.min(newHeight, maxHeight));
 
       // 只有当高度真正改变时才更新
       if (Math.abs(newHeight - currentHeight.value) > 0.5) {
-        currentHeight.value = Math.round(newHeight)
+        currentHeight.value = Math.round(newHeight);
       }
-    })
-  }
+    });
+  };
 
   const handleMouseUp = () => {
-    isResizing.value = false
+    isResizing.value = false;
 
     // 取消任何待处理的动画帧
     if (animationFrameId) {
-      cancelAnimationFrame(animationFrameId)
-      animationFrameId = null
+      cancelAnimationFrame(animationFrameId);
+      animationFrameId = null;
     }
 
     // 恢复默认样式
-    document.body.style.cursor = ''
-    document.body.style.userSelect = ''
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
 
     // 移除事件监听器
-    document.removeEventListener('mousemove', handleMouseMove)
-    document.removeEventListener('mouseup', handleMouseUp)
+    document.removeEventListener('mousemove', handleMouseMove);
+    document.removeEventListener('mouseup', handleMouseUp);
 
     // 发送调整结束事件和最终高度
-    emit('height-change', currentHeight.value)
-    emit('height-change-end')
-  }
+    emit('height-change', currentHeight.value);
+    emit('height-change-end');
+  };
 
   // 添加事件监听器
-  document.addEventListener('mousemove', handleMouseMove, { passive: false })
-  document.addEventListener('mouseup', handleMouseUp)
-}
+  document.addEventListener('mousemove', handleMouseMove, { passive: false });
+  document.addEventListener('mouseup', handleMouseUp);
+};
 
 // 构建终端上下文信息
 const buildTerminalContext = () => {
   try {
     // 尝试获取终端输出（简化版本）
-    const terminalElement = document.querySelector(`[data-terminal-id="${props.terminalId}"]`)
-    let terminalOutput = ''
+    const terminalElement = document.querySelector(`[data-terminal-id="${props.terminalId}"]`);
+    let terminalOutput = '';
 
     if (terminalElement) {
       // 获取终端的可见文本内容
-      const textContent = terminalElement.textContent || ''
+      const textContent = terminalElement.textContent || '';
       // 取最后1000个字符作为上下文
-      terminalOutput = textContent.slice(-1000)
+      terminalOutput = textContent.slice(-1000);
     }
 
     // 简单的OS和Shell检测
-    const osHint = detectOS(terminalOutput)
-    const shellHint = detectShell(terminalOutput)
-    const errorDetected = detectError(terminalOutput)
+    const osHint = detectOS(terminalOutput);
+    const shellHint = detectShell(terminalOutput);
+    const errorDetected = detectError(terminalOutput);
 
     return {
       terminalOutput,
       osHint,
       shellHint,
       errorDetected
-    }
+    };
   } catch (error) {
-    console.error('构建终端上下文失败:', error)
+    console.error('构建终端上下文失败:', error);
     return {
       terminalOutput: '',
       osHint: 'unknown',
       shellHint: 'unknown',
       errorDetected: false
-    }
+    };
   }
-}
+};
 
 // 检测操作系统
-const detectOS = (output) => {
-  if (/ubuntu|debian/i.test(output)) return 'ubuntu'
-  if (/centos|rhel|redhat/i.test(output)) return 'centos'
-  if (/alpine/i.test(output)) return 'alpine'
-  if (/windows/i.test(output)) return 'windows'
-  if (/darwin|macos/i.test(output)) return 'macos'
-  return 'linux'
-}
+const detectOS = output => {
+  if (/ubuntu|debian/i.test(output)) return 'ubuntu';
+  if (/centos|rhel|redhat/i.test(output)) return 'centos';
+  if (/alpine/i.test(output)) return 'alpine';
+  if (/windows/i.test(output)) return 'windows';
+  if (/darwin|macos/i.test(output)) return 'macos';
+  return 'linux';
+};
 
 // 检测Shell类型
-const detectShell = (output) => {
-  if (/bash/i.test(output)) return 'bash'
-  if (/zsh/i.test(output)) return 'zsh'
-  if (/fish/i.test(output)) return 'fish'
-  if (/sh/i.test(output)) return 'sh'
-  return 'bash'
-}
+const detectShell = output => {
+  if (/bash/i.test(output)) return 'bash';
+  if (/zsh/i.test(output)) return 'zsh';
+  if (/fish/i.test(output)) return 'fish';
+  if (/sh/i.test(output)) return 'sh';
+  return 'bash';
+};
 
 // 检测错误
-const detectError = (output) => {
+const detectError = output => {
   const errorPatterns = [
     /error/i,
     /failed/i,
@@ -674,82 +734,92 @@ const detectError = (output) => {
     /permission denied/i,
     /command not found/i,
     /no such file/i
-  ]
+  ];
 
-  return errorPatterns.some(pattern => pattern.test(output))
-}
+  return errorPatterns.some(pattern => pattern.test(output));
+};
 
 // 监听消息变化
-watch(() => props.messages, (newMessages, oldMessages) => {
-  // 如果有新消息且当前不可见，自动显示面板
-  if (newMessages.length > (oldMessages?.length || 0)) {
-    if (!isPanelExpanded.value) {
-      isPanelExpanded.value = true
+watch(
+  () => props.messages,
+  (newMessages, oldMessages) => {
+    // 如果有新消息且当前不可见，自动显示面板
+    if (newMessages.length > (oldMessages?.length || 0)) {
+      if (!isPanelExpanded.value) {
+        isPanelExpanded.value = true;
+      }
     }
-  }
 
-  if (isPanelExpanded.value) {
-    nextTick(() => {
-      adjustHeight()
-      scrollToBottom()
-    })
-  }
-}, { deep: true })
+    if (isPanelExpanded.value) {
+      nextTick(() => {
+        adjustHeight();
+        scrollToBottom();
+      });
+    }
+  },
+  { deep: true }
+);
 
 // 监听流式输出状态
-watch(() => props.isStreaming, (streaming) => {
-  if (streaming && !isPanelExpanded.value) {
-    // 流式输出开始时自动显示面板
-    isPanelExpanded.value = true
+watch(
+  () => props.isStreaming,
+  streaming => {
+    if (streaming && !isPanelExpanded.value) {
+      // 流式输出开始时自动显示面板
+      isPanelExpanded.value = true;
 
-    nextTick(() => {
-      adjustHeight()
-      scrollToBottom()
-    })
+      nextTick(() => {
+        adjustHeight();
+        scrollToBottom();
+      });
+    }
   }
-})
+);
 
 // 监听AI服务状态变化
-watch(() => props.aiService?.isEnabled, (newValue) => {
-  if (!newValue) {
-    isProcessing.value = false
+watch(
+  () => props.aiService?.isEnabled,
+  newValue => {
+    if (!newValue) {
+      isProcessing.value = false;
+    }
   }
-})
+);
 
 // 监听窗口大小变化（使用防抖优化性能）
 const handleResize = debounce(() => {
   if (isPanelExpanded.value) {
-    adjustHeight()
+    adjustHeight();
   }
-}, 150)
+}, 150);
 
 onMounted(() => {
-  window.addEventListener('resize', handleResize)
+  window.addEventListener('resize', handleResize);
 
   // 初始化输入框高度
   nextTick(() => {
-    adjustInputHeight()
-  })
-})
+    adjustInputHeight();
+  });
+});
 
 onUnmounted(() => {
-  window.removeEventListener('resize', handleResize)
-})
+  window.removeEventListener('resize', handleResize);
+});
 
 // 暴露方法给父组件
 defineExpose({
   show: () => {
-    isPanelExpanded.value = true
+    isPanelExpanded.value = true;
     nextTick(() => {
-      adjustHeight()
-      scrollToBottom()
-    })
+      adjustHeight();
+      scrollToBottom();
+    });
   },
   hide: () => {
-    isPanelExpanded.value = false
+    isPanelExpanded.value = false;
   },
   scrollToBottom
-})
+});
 </script>
 
 <style scoped>

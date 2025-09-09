@@ -1,11 +1,14 @@
 <template>
-  <div class="form-item" :style="{ padding: padding }">
-    <slot></slot>
+  <div
+    class="form-item"
+    :style="{ padding: padding }"
+  >
+    <slot />
   </div>
 </template>
 
 <script>
-import { defineComponent } from 'vue'
+import { defineComponent } from 'vue';
 
 export default defineComponent({
   name: 'FormItem',
@@ -15,7 +18,7 @@ export default defineComponent({
       default: '0 10px'
     }
   }
-})
+});
 </script>
 
 <style scoped>
@@ -23,4 +26,4 @@ export default defineComponent({
   width: 100%;
   box-sizing: border-box;
 }
-</style> 
+</style>

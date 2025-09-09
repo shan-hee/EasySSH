@@ -1,15 +1,23 @@
 <template>
-  <Modal 
-    v-model:visible="isVisible" 
-    title="验证身份" 
-    customClass="mfa-verify-modal"
+  <modal
+    v-model:visible="isVisible"
+    title="验证身份"
+    custom-class="mfa-verify-modal"
     :hide-footer="true"
     @close="handleClose"
   >
     <div class="mfa-verify-container">
       <div class="verify-icon">
-        <svg viewBox="0 0 24 24" width="50" height="50" class="security-icon">
-          <path fill="currentColor" d="M12,1L3,5v6c0,5.55 3.84,10.74 9,12 5.16,-1.26 9,-6.45 9,-12V5L12,1zM11,7h2v2h-2V7zM11,11h2v6h-2V11z" />
+        <svg
+          viewBox="0 0 24 24"
+          width="50"
+          height="50"
+          class="security-icon"
+        >
+          <path
+            fill="currentColor"
+            d="M12,1L3,5v6c0,5.55 3.84,10.74 9,12 5.16,-1.26 9,-6.45 9,-12V5L12,1zM11,7h2v2h-2V7zM11,11h2v6h-2V11z"
+          />
         </svg>
       </div>
       <div class="verify-title">
@@ -20,30 +28,44 @@
       </div>
       <div class="verify-input-container">
         <div class="code-inputs">
-          <template v-for="(digit, index) in 6" :key="index">
+          <template
+            v-for="(digit, index) in 6"
+            :key="index"
+          >
             <input
+              ref="codeInputs"
+              v-model="codeDigits[index]"
               type="tel"
               maxlength="1"
               inputmode="numeric"
               pattern="[0-9]*"
               class="code-input"
-              v-model="codeDigits[index]"
               @keydown="handleKeyDown($event, index)"
               @paste="handlePaste"
               @keyup.enter="handleEnterKey"
-              ref="codeInputs"
+            >
+            <span
+              v-if="index < 5"
+              class="code-separator"
             />
-            <span class="code-separator" v-if="index < 5"></span>
           </template>
         </div>
       </div>
-      <div class="verify-error" v-if="verifyError">
+      <div
+        v-if="verifyError"
+        class="verify-error"
+      >
         {{ verifyError }}
       </div>
       <div class="mfa-btn-container">
-        <button class="mfa-btn btn-cancel" @click="handleClose">取消</button>
-        <button 
-          class="mfa-btn btn-verify" 
+        <button
+          class="mfa-btn btn-cancel"
+          @click="handleClose"
+        >
+          取消
+        </button>
+        <button
+          class="mfa-btn btn-verify"
           :disabled="verificationCode.length !== 6 || isVerifying"
           @click="verifyCode"
         >
@@ -51,13 +73,13 @@
         </button>
       </div>
     </div>
-  </Modal>
+  </modal>
 </template>
 
 <script>
-import { defineComponent, ref, watch, computed, nextTick } from 'vue'
-import Modal from '@/components/common/Modal.vue'
-import { useUserStore } from '@/store/user'
+import { defineComponent, ref, watch, computed, nextTick } from 'vue';
+import Modal from '@/components/common/Modal.vue';
+import { useUserStore } from '@/store/user';
 
 export default defineComponent({
   name: 'MfaVerifyModal',
@@ -76,178 +98,185 @@ export default defineComponent({
   },
   emits: ['update:show', 'success', 'cancel'],
   setup(props, { emit }) {
-    const userStore = useUserStore()
+    const userStore = useUserStore();
     const isVisible = computed({
       get: () => props.show,
-      set: (value) => emit('update:show', value)
-    })
-    const codeDigits = ref(['', '', '', '', '', ''])
-    const verificationCode = ref('')
-    const verifyError = ref('')
-    const isVerifying = ref(false)
-    const codeInputs = ref([])
-    const MAX_RETRY_ATTEMPTS = 3
-    const retryCount = ref(0)
-    
+      set: value => emit('update:show', value)
+    });
+    const codeDigits = ref(['', '', '', '', '', '']);
+    const verificationCode = ref('');
+    const verifyError = ref('');
+    const isVerifying = ref(false);
+    const codeInputs = ref([]);
+    const MAX_RETRY_ATTEMPTS = 3;
+    const retryCount = ref(0);
+
     // 监听弹窗显示状态
-    watch(() => props.show, (newVal) => {
-      if (newVal) {
-        codeDigits.value = ['', '', '', '', '', '']
-        verificationCode.value = ''
-        verifyError.value = ''
-        isVerifying.value = false
-        retryCount.value = 0
-        // 自动聚焦第一个输入框
-        nextTick(() => {
-          if (codeInputs.value && codeInputs.value[0]) {
-            codeInputs.value[0].focus()
-          }
-        })
+    watch(
+      () => props.show,
+      newVal => {
+        if (newVal) {
+          codeDigits.value = ['', '', '', '', '', ''];
+          verificationCode.value = '';
+          verifyError.value = '';
+          isVerifying.value = false;
+          retryCount.value = 0;
+          // 自动聚焦第一个输入框
+          nextTick(() => {
+            if (codeInputs.value && codeInputs.value[0]) {
+              codeInputs.value[0].focus();
+            }
+          });
+        }
       }
-    })
+    );
 
     // 监听数字输入变化，更新验证码
-    watch(codeDigits, (newDigits) => {
-      verificationCode.value = newDigits.join('')
-      // 自动聚焦到下一个输入框
-      const emptyIndex = newDigits.findIndex(d => d === '')
-      const lastFilledIndex = emptyIndex > 0 ? emptyIndex - 1 : -1
-      if (lastFilledIndex >= 0 && lastFilledIndex < 5) {
-        nextTick(() => {
-          if (codeInputs.value && codeInputs.value[lastFilledIndex + 1]) {
-            codeInputs.value[lastFilledIndex + 1].focus()
-          }
-        })
-      }
-      // 自动提交
-      const isAllDigits = newDigits.length === 6 && newDigits.every(c => /^[0-9]$/.test(c))
-      if (isAllDigits && !isVerifying.value) {
-        verifyCode()
-      }
-      // 清除之前的错误
-      if (verifyError.value) {
-        verifyError.value = ''
-      }
-    }, { deep: true })
+    watch(
+      codeDigits,
+      newDigits => {
+        verificationCode.value = newDigits.join('');
+        // 自动聚焦到下一个输入框
+        const emptyIndex = newDigits.findIndex(d => d === '');
+        const lastFilledIndex = emptyIndex > 0 ? emptyIndex - 1 : -1;
+        if (lastFilledIndex >= 0 && lastFilledIndex < 5) {
+          nextTick(() => {
+            if (codeInputs.value && codeInputs.value[lastFilledIndex + 1]) {
+              codeInputs.value[lastFilledIndex + 1].focus();
+            }
+          });
+        }
+        // 自动提交
+        const isAllDigits = newDigits.length === 6 && newDigits.every(c => /^[0-9]$/.test(c));
+        if (isAllDigits && !isVerifying.value) {
+          verifyCode();
+        }
+        // 清除之前的错误
+        if (verifyError.value) {
+          verifyError.value = '';
+        }
+      },
+      { deep: true }
+    );
 
     // 处理键盘事件
     const handleKeyDown = (e, index) => {
       // 退格键处理
       if (e.key === 'Backspace') {
         if (!codeDigits.value[index] && index > 0) {
-          codeDigits.value[index-1] = ''
+          codeDigits.value[index - 1] = '';
           nextTick(() => {
             if (codeInputs.value && codeInputs.value[index - 1]) {
-              codeInputs.value[index - 1].focus()
+              codeInputs.value[index - 1].focus();
             }
-          })
+          });
         }
       }
       // 左右箭头导航
       if (e.key === 'ArrowLeft' && index > 0) {
         nextTick(() => {
-          codeInputs.value[index - 1].focus()
-        })
+          codeInputs.value[index - 1].focus();
+        });
       }
       if (e.key === 'ArrowRight' && index < 5) {
         nextTick(() => {
-          codeInputs.value[index + 1].focus()
-        })
+          codeInputs.value[index + 1].focus();
+        });
       }
-    }
+    };
 
     // 处理回车键确认
     const handleEnterKey = () => {
       if (verificationCode.value.length === 6) {
-        verifyCode()
+        verifyCode();
       }
-    }
+    };
 
     // 处理粘贴事件
-    const handlePaste = (e) => {
-      e.preventDefault()
-      const pasteData = e.clipboardData.getData('text')
-      const digits = pasteData.replace(/[^0-9]/g, '').substring(0, 6)
+    const handlePaste = e => {
+      e.preventDefault();
+      const pasteData = e.clipboardData.getData('text');
+      const digits = pasteData.replace(/[^0-9]/g, '').substring(0, 6);
       if (digits) {
         for (let i = 0; i < 6; i++) {
-          codeDigits.value[i] = i < digits.length ? digits[i] : ''
+          codeDigits.value[i] = i < digits.length ? digits[i] : '';
         }
         // 聚焦最后一个有值的输入框的下一个，或者最后一个
-        const focusIndex = Math.min(digits.length, 5)
+        const focusIndex = Math.min(digits.length, 5);
         nextTick(() => {
           if (codeInputs.value && codeInputs.value[focusIndex]) {
-            codeInputs.value[focusIndex].focus()
+            codeInputs.value[focusIndex].focus();
           }
-        })
+        });
       }
-    }
-    
+    };
+
     // 验证代码
     const verifyCode = async () => {
       if (verificationCode.value.length !== 6 || !/^\d{6}$/.test(verificationCode.value)) {
-        verifyError.value = '请输入6位数字验证码'
+        verifyError.value = '请输入6位数字验证码';
         // 新增：失败时聚焦最后一个输入框
         nextTick(() => {
           if (codeInputs.value && codeInputs.value[5]) {
-            codeInputs.value[5].focus()
+            codeInputs.value[5].focus();
           }
-        })
-        return
+        });
+        return;
       }
       if (retryCount.value >= MAX_RETRY_ATTEMPTS) {
-        verifyError.value = '错误次数过多，请稍后再试或联系管理员'
+        verifyError.value = '错误次数过多，请稍后再试或联系管理员';
         // 新增：失败时聚焦最后一个输入框
         nextTick(() => {
           if (codeInputs.value && codeInputs.value[5]) {
-            codeInputs.value[5].focus()
+            codeInputs.value[5].focus();
           }
-        })
-        return
+        });
+        return;
       }
-      isVerifying.value = true
+      isVerifying.value = true;
       try {
-        const result = await userStore.verifyMfaCode(verificationCode.value, props.userInfo)
+        const result = await userStore.verifyMfaCode(verificationCode.value, props.userInfo);
         if (result.success) {
-          emit('success')
-          handleClose()
+          emit('success');
+          handleClose();
         } else {
-          retryCount.value++
+          retryCount.value++;
           if (retryCount.value >= MAX_RETRY_ATTEMPTS) {
-            verifyError.value = '错误次数过多，请稍后再试或联系管理员'
+            verifyError.value = '错误次数过多，请稍后再试或联系管理员';
             setTimeout(() => {
-              handleClose()
-            }, 2000)
+              handleClose();
+            }, 2000);
           } else {
-            const remainingAttempts = MAX_RETRY_ATTEMPTS - retryCount.value
-            verifyError.value = `验证码不正确，您还有${remainingAttempts}次尝试机会`
+            const remainingAttempts = MAX_RETRY_ATTEMPTS - retryCount.value;
+            verifyError.value = `验证码不正确，您还有${remainingAttempts}次尝试机会`;
             // 新增：失败时聚焦最后一个输入框
             nextTick(() => {
               if (codeInputs.value && codeInputs.value[5]) {
-                codeInputs.value[5].focus()
+                codeInputs.value[5].focus();
               }
-            })
+            });
           }
         }
       } catch (error) {
-        retryCount.value++
-        verifyError.value = '验证失败，请重试'
+        retryCount.value++;
+        verifyError.value = '验证失败，请重试';
         // 新增：失败时聚焦最后一个输入框
         nextTick(() => {
           if (codeInputs.value && codeInputs.value[5]) {
-            codeInputs.value[5].focus()
+            codeInputs.value[5].focus();
           }
-        })
+        });
       } finally {
-        isVerifying.value = false
+        isVerifying.value = false;
       }
-    }
-    
+    };
+
     // 关闭弹窗
     const handleClose = () => {
-      isVisible.value = false
-      emit('cancel')
-    }
-    
+      isVisible.value = false;
+      emit('cancel');
+    };
+
     return {
       isVisible,
       codeDigits,
@@ -260,9 +289,9 @@ export default defineComponent({
       handleEnterKey,
       verifyCode,
       handleClose
-    }
+    };
   }
-})
+});
 </script>
 
 <style scoped>
@@ -368,7 +397,7 @@ export default defineComponent({
   background-color: var(--mfa-verify-btn-hover-bg) !important;
 }
 
-:root[data-theme="dark"] .btn-verify:hover,
+:root[data-theme='dark'] .btn-verify:hover,
 .dark-theme .btn-verify:hover {
   background-color: #555 !important;
 }
@@ -394,4 +423,4 @@ export default defineComponent({
 :deep(.mfa-verify-modal .modal-header) {
   border-bottom: 1px solid rgba(255, 255, 255, 0.05) !important;
 }
-</style> 
+</style>

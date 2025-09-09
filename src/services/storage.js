@@ -7,7 +7,7 @@ import storageUtils from '../utils/storage.js';
 
 class StorageService {
   constructor() {
-    this.prefix = 'easyssh:'
+    this.prefix = 'easyssh:';
     this.initialized = false;
     // 创建带前缀的存储实例
     this.prefixedStorage = storageUtils.createPrefixedStorage(this.prefix);
@@ -33,7 +33,7 @@ class StorageService {
       }
     });
   }
-  
+
   /**
    * 存储数据项
    * @param {string} key - 键名
@@ -54,7 +54,7 @@ class StorageService {
       return false;
     }
   }
-  
+
   /**
    * 获取数据项
    * @param {string} key - 键名
@@ -69,7 +69,7 @@ class StorageService {
       return defaultValue;
     }
   }
-  
+
   /**
    * 移除数据项
    * @param {string} key - 键名
@@ -82,7 +82,7 @@ class StorageService {
       return false;
     }
   }
-  
+
   /**
    * 清空所有数据
    * @param {boolean} clearAll - 是否清除所有数据(包括非本应用)
@@ -99,7 +99,7 @@ class StorageService {
       return false;
     }
   }
-  
+
   /**
    * 获取存储中的所有键
    * @returns {Array<string>} - 键名数组
@@ -112,7 +112,7 @@ class StorageService {
       return [];
     }
   }
-  
+
   /**
    * 检查键是否存在
    * @param {string} key - 键名
@@ -155,6 +155,6 @@ class StorageService {
 }
 
 // 创建单例实例
-const storageService = new StorageService()
+const storageService = new StorageService();
 
-export default storageService 
+export default storageService;

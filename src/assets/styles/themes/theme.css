@@ -20,26 +20,26 @@
   --font-family-mono: 'JetBrains Mono', 'Menlo', Monaco, Consolas, monospace;
 
   /* 字号系统 (rem单位，基于16px) */
-  --font-size-xs: 0.75rem;   /* 12px */
-  --font-size-sm: 0.875rem;  /* 14px */
-  --font-size-base: 1rem;    /* 16px */
-  --font-size-lg: 1.125rem;  /* 18px */
-  --font-size-xl: 1.25rem;   /* 20px */
-  --font-size-2xl: 1.5rem;   /* 24px */
+  --font-size-xs: 0.75rem; /* 12px */
+  --font-size-sm: 0.875rem; /* 14px */
+  --font-size-base: 1rem; /* 16px */
+  --font-size-lg: 1.125rem; /* 18px */
+  --font-size-xl: 1.25rem; /* 20px */
+  --font-size-2xl: 1.5rem; /* 24px */
 
   /* 间距系统 (rem单位) */
-  --spacing-xs: 0.25rem;  /* 4px */
-  --spacing-sm: 0.5rem;   /* 8px */
-  --spacing-md: 1rem;     /* 16px */
-  --spacing-lg: 1.5rem;   /* 24px */
-  --spacing-xl: 2rem;     /* 32px */
-  --spacing-2xl: 3rem;    /* 48px */
+  --spacing-xs: 0.25rem; /* 4px */
+  --spacing-sm: 0.5rem; /* 8px */
+  --spacing-md: 1rem; /* 16px */
+  --spacing-lg: 1.5rem; /* 24px */
+  --spacing-xl: 2rem; /* 32px */
+  --spacing-2xl: 3rem; /* 48px */
 
   /* 圆角系统 */
-  --radius-sm: 0.125rem;  /* 2px */
-  --radius-md: 0.25rem;   /* 4px */
-  --radius-lg: 0.5rem;    /* 8px */
-  --radius-xl: 1rem;      /* 16px */
+  --radius-sm: 0.125rem; /* 2px */
+  --radius-md: 0.25rem; /* 4px */
+  --radius-lg: 0.5rem; /* 8px */
+  --radius-xl: 1rem; /* 16px */
   --radius-full: 50%;
 
   /* 过渡动画 */
@@ -84,7 +84,7 @@
 /* 深色主题在 :root[data-theme="dark"] 中定义 */
 
 /* ===== 浅色主题（默认主题） ===== */
-:root[data-theme="light"],
+:root[data-theme='light'],
 .light-theme {
   /* 品牌色系 */
   --color-primary: #aaaaaa;
@@ -158,7 +158,7 @@
   --shadow-base: 0 2px 8px rgba(0, 0, 0, 0.08);
   --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.12);
   --shadow-lg: 0 8px 16px rgba(0, 0, 0, 0.16);
-  --shadow-xl: 0 12px 24px rgba(0, 0, 0, 0.20);
+  --shadow-xl: 0 12px 24px rgba(0, 0, 0, 0.2);
 
   /* Tooltip 颜色系统 - 浅色主题 */
   --tooltip-bg: var(--color-bg-container);
@@ -420,10 +420,12 @@
   --mfa-verify-btn-color: #ffffff;
 
   /* 登录面板容器背景 */
-  --login-panel-container-bg: radial-gradient(circle at center,
+  --login-panel-container-bg: radial-gradient(
+    circle at center,
     var(--color-bg-page) 0%,
     var(--color-bg-muted) 50%,
-    var(--color-border-lighter) 100%);
+    var(--color-border-lighter) 100%
+  );
 
   /* 设置页面 */
   --settings-form-label-color: #606266;
@@ -484,12 +486,10 @@
 
   --ai-empty-icon-color: var(--color-text-tertiary);
   --ai-empty-text-color: var(--color-text-secondary);
-
-
 }
 
 /* ===== 深色主题 ===== */
-:root[data-theme="dark"],
+:root[data-theme='dark'],
 .dark-theme {
   /* 品牌色系 - 深色主题调整 */
   --color-primary: #aaaaaa;
@@ -851,7 +851,8 @@
   --mfa-verify-btn-color: var(--color-text-primary);
 
   /* 登录面板容器背景 - 深色主题 */
-  --login-panel-container-bg: radial-gradient(circle at center,
+  --login-panel-container-bg: radial-gradient(
+    circle at center,
     #161616 0%,
     #161616 3%,
     #141414 7%,
@@ -865,7 +866,8 @@
     #0c0c0c 38%,
     #0c0c0c 42%,
     #0a0a0a 46%,
-    #0a0a0a 100%);
+    #0a0a0a 100%
+  );
 
   /* 设置页面 */
   --settings-form-label-color: #ffffff;
@@ -926,8 +928,6 @@
 
   --ai-empty-icon-color: var(--color-text-tertiary);
   --ai-empty-text-color: var(--color-text-secondary);
-
-
 }
 
 /* ===== Element Plus 组件主题变量已整合到各主题定义中 ===== */
@@ -1431,7 +1431,7 @@ textarea,
 /* 使用CSS层级确保主题变量优先级，避免使用!important */
 @layer theme-overrides {
   /* 浅色主题 Element Plus 变量覆盖 */
-  :root[data-theme="light"],
+  :root[data-theme='light'],
   .light-theme {
     /* 主色系 */
     --el-color-primary: var(--color-primary);

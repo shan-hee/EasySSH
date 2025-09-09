@@ -35,7 +35,11 @@ export function decodeBase64(base64) {
  * @returns {string} - 生成的ID
  */
 export function generateId(prefix = '') {
-  return prefix + Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+  return (
+    prefix +
+    Math.random().toString(36).substring(2, 15) +
+    Math.random().toString(36).substring(2, 15)
+  );
 }
 
 /**
@@ -63,7 +67,7 @@ export function parseCloseCode(code, reason) {
     1014: '服务器终止',
     1015: 'TLS握手失败'
   };
-  
+
   const codeText = closeCodeMap[code] || `未知错误(${code})`;
   return reason ? `${codeText}：${reason}` : codeText;
 }
@@ -100,7 +104,7 @@ export function isIPv6(address) {
  */
 export function joinPath(basePath, filename) {
   // 确保路径以"/"结尾
-  const normalizedPath = basePath.endsWith('/') ? basePath : basePath + '/';
+  const normalizedPath = basePath.endsWith('/') ? basePath : `${basePath}/`;
   // 确保文件名没有前导"/"
   const normalizedFilename = filename.startsWith('/') ? filename.substring(1) : filename;
   return normalizedPath + normalizedFilename;

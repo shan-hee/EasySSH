@@ -50,7 +50,7 @@ const BINARY_MSG_TYPE = {
   NETWORK_LATENCY: 0x0A,
   STATUS_UPDATE: 0x0B,
 
-  // SSH终端数据 (0x10-0x1F) 
+  // SSH终端数据 (0x10-0x1F)
   SSH_DATA: 0x10,           // SSH终端数据传输
   SSH_RESIZE: 0x11,         // 终端大小调整
   SSH_COMMAND: 0x12,        // 终端命令
@@ -697,7 +697,7 @@ function encodeConnectionStatus(status) {
     'reconnected': 6,
     'error': 7
   };
-  
+
   return statusMap[status] || 7;
 }
 
@@ -717,7 +717,7 @@ function decodeConnectionStatus(statusCode) {
     6: 'reconnected',
     7: 'error'
   };
-  
+
   return statusMap[statusCode] || 'error';
 }
 
@@ -726,7 +726,7 @@ function decodeConnectionStatus(statusCode) {
  * @returns {string} 请求ID
  */
 function generateRequestId() {
-  return crypto.randomUUID ? crypto.randomUUID() : 
+  return crypto.randomUUID ? crypto.randomUUID() :
     `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 }
 

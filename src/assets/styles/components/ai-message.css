@@ -54,8 +54,7 @@
   display: flex;
   align-items: center;
   gap: var(--spacing-sm);
-  transition:
-    color 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  transition: color 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94);
 }
 
 .ai-message-avatar {
@@ -103,29 +102,25 @@
   font-size: var(--font-size-sm);
   font-weight: 500;
   color: var(--color-text-primary);
-  transition:
-    color 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  transition: color 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94);
 }
 
 .ai-message-time {
   font-size: var(--font-size-xs);
   color: var(--color-text-tertiary);
-  transition:
-    color 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  transition: color 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94);
 }
 
 /* ===== 消息内容 ===== */
 .ai-message-content {
   line-height: 1.5;
-  transition:
-    color 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  transition: color 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94);
 }
 
 .ai-message-text {
   color: var(--color-text-primary);
   font-size: var(--font-size-sm);
-  transition:
-    color 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  transition: color 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94);
   word-wrap: break-word;
   overflow-wrap: break-word;
 }
@@ -190,8 +185,7 @@
   color: var(--color-text-secondary);
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  transition:
-    color 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  transition: color 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94);
 }
 
 .ai-code-content {
@@ -329,8 +323,7 @@
 
 .ai-message-dark .ai-code-content {
   background: var(--color-bg-page-dark, #1e1e1e);
-  transition:
-    background-color 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  transition: background-color 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94);
 }
 
 /* ===== 代码块滚动条 ===== */
@@ -357,11 +350,11 @@
     padding: var(--spacing-sm);
     border-radius: var(--radius-md);
   }
-  
+
   .ai-code-header {
     padding: var(--spacing-xs) var(--spacing-sm);
   }
-  
+
   .ai-code-content {
     padding: var(--spacing-sm);
     font-size: var(--font-size-xs);
@@ -374,11 +367,11 @@
   .ai-message-item {
     border-width: 2px;
   }
-  
+
   .ai-code-block {
     border-width: 2px;
   }
-  
+
   .ai-message-text code {
     border-width: 2px;
   }
@@ -413,7 +406,8 @@
 
 /* 流式输出动画 */
 @keyframes ai-streaming-pulse {
-  0%, 100% {
+  0%,
+  100% {
     opacity: 0.3;
     transform: scale(0.8);
   }
@@ -424,10 +418,12 @@
 }
 
 @keyframes ai-cursor-blink {
-  0%, 50% {
+  0%,
+  50% {
     opacity: 1;
   }
-  51%, 100% {
+  51%,
+  100% {
     opacity: 0;
   }
 }

@@ -42,8 +42,8 @@ class StreamingSSHMonitoringCollector extends EventEmitter {
   generateHostId() {
     if (this.hostInfo.address) {
       // 使用 hostname@ip 格式，如果有hostname的话
-      this.hostId = this.hostInfo.hostname ? 
-        `${this.hostInfo.hostname}@${this.hostInfo.address}` : 
+      this.hostId = this.hostInfo.hostname ?
+        `${this.hostInfo.hostname}@${this.hostInfo.address}` :
         this.hostInfo.address;
     } else {
       this.hostId = `unknown_${Date.now()}`;
@@ -65,9 +65,9 @@ class StreamingSSHMonitoringCollector extends EventEmitter {
     this.dataCallback = dataCallback;
     this.interval = interval;
 
-    logger.info('开始流式SSH监控数据收集', { 
+    logger.info('开始流式SSH监控数据收集', {
       hostId: this.hostId,
-      interval: interval + 'ms',
+      interval: `${interval}ms`,
       host: `${this.hostInfo.username}@${this.hostInfo.address}:${this.hostInfo.port}`
     });
 
@@ -84,7 +84,7 @@ class StreamingSSHMonitoringCollector extends EventEmitter {
       const scriptExists = fs.existsSync(scriptPath);
 
       if (!scriptExists) {
-        throw new Error('流式监控脚本不存在: ' + scriptPath);
+        throw new Error(`流式监控脚本不存在: ${scriptPath}`);
       }
 
       const scriptContent = fs.readFileSync(scriptPath, 'utf8');
@@ -97,7 +97,7 @@ class StreamingSSHMonitoringCollector extends EventEmitter {
 
       logger.debug('执行流式监控命令', {
         hostId: this.hostId,
-        command: command,
+        command,
         interval: intervalSeconds,
         scriptSize: scriptContent.length,
         shellType: 'sh (POSIX兼容)'
@@ -134,7 +134,7 @@ class StreamingSSHMonitoringCollector extends EventEmitter {
     this.stream.on('data', (data) => {
       try {
         buffer += data.toString();
-        
+
         // 按行处理NDJSON数据
         const lines = buffer.split('\n');
         buffer = lines.pop() || ''; // 保留不完整的行
@@ -145,9 +145,9 @@ class StreamingSSHMonitoringCollector extends EventEmitter {
           }
         }
       } catch (error) {
-        logger.debug('处理流数据失败', { 
-          hostId: this.hostId, 
-          error: error.message 
+        logger.debug('处理流数据失败', {
+          hostId: this.hostId,
+          error: error.message
         });
       }
     });
@@ -170,9 +170,9 @@ class StreamingSSHMonitoringCollector extends EventEmitter {
 
     // 流关闭处理
     this.stream.on('close', (code, signal) => {
-      logger.info('SSH流已关闭', { 
-        hostId: this.hostId, 
-        code, 
+      logger.info('SSH流已关闭', {
+        hostId: this.hostId,
+        code,
         signal,
         isCollecting: this.isCollecting
       });
@@ -198,7 +198,7 @@ class StreamingSSHMonitoringCollector extends EventEmitter {
   processStreamData(jsonLine) {
     try {
       const data = JSON.parse(jsonLine);
-      
+
       // 验证数据格式
       if (!data.timestamp) {
         logger.debug('无效的监控数据格式', { hostId: this.hostId });
@@ -232,7 +232,6 @@ class StreamingSSHMonitoringCollector extends EventEmitter {
   }
 
 
-
   /**
    * 处理流关闭
    * @param {number} code 退出码
@@ -240,11 +239,11 @@ class StreamingSSHMonitoringCollector extends EventEmitter {
   handleStreamClose(code) {
     if (code !== 0 && this.isCollecting) {
       this.errorStats.consecutiveErrors++;
-      
+
       if (this.errorStats.consecutiveErrors < this.errorStats.maxConsecutiveErrors) {
         // 尝试重连
         const retryDelay = Math.min(5000, 1000 * Math.pow(2, this.errorStats.consecutiveErrors));
-        
+
         logger.info('SSH流意外关闭，准备重连', {
           hostId: this.hostId,
           code,
@@ -310,9 +309,9 @@ class StreamingSSHMonitoringCollector extends EventEmitter {
         this.stream.end();
         this.stream = null;
       } catch (error) {
-        logger.debug('关闭SSH流失败', { 
-          hostId: this.hostId, 
-          error: error.message 
+        logger.debug('关闭SSH流失败', {
+          hostId: this.hostId,
+          error: error.message
         });
       }
     }

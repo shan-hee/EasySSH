@@ -11,7 +11,7 @@
  */
 export function debounce(fn, delay = 300) {
   let timer = null;
-  return function(...args) {
+  return function (...args) {
     if (timer) clearTimeout(timer);
     timer = setTimeout(() => {
       fn.apply(this, args);
@@ -34,21 +34,21 @@ export function createResizeObserver(element, callback, options = {}) {
     console.warn('无效的元素或回调函数');
     return null;
   }
-  
+
   const { debounceTime = 150, immediate = false } = options;
-  
+
   // 使用防抖包装回调函数
-  const debouncedCallback = debounce((entries) => {
+  const debouncedCallback = debounce(entries => {
     for (const entry of entries) {
       callback(entry.contentRect);
     }
   }, debounceTime);
-  
+
   try {
     const observer = new ResizeObserver(debouncedCallback);
-    
+
     observer.observe(element);
-    
+
     // 如果设置立即执行，则立即触发一次回调
     if (immediate) {
       callback({
@@ -60,7 +60,7 @@ export function createResizeObserver(element, callback, options = {}) {
         bottom: element.clientHeight
       });
     }
-    
+
     return observer;
   } catch (error) {
     console.error('创建ResizeObserver失败:', error);
@@ -75,7 +75,7 @@ export function createResizeObserver(element, callback, options = {}) {
  */
 export function disconnectResizeObserver(observer, element) {
   if (!observer) return;
-  
+
   try {
     if (element) {
       observer.unobserve(element);
@@ -93,4 +93,4 @@ export function disconnectResizeObserver(observer, element) {
  */
 export function isResizeObserverSupported() {
   return typeof ResizeObserver !== 'undefined';
-} 
+}

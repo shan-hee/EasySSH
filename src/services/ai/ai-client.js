@@ -3,23 +3,23 @@
  * 负责与后端AI服务的WebSocket通信
  */
 
-import log from '../log'
+import log from '../log';
 
 class AIClient {
   constructor() {
-    this.ws = null
-    this.connected = false
-    this.reconnectAttempts = 0
-    this.maxReconnectAttempts = 5
-    this.reconnectDelay = 1000
-    this.messageHandlers = new Map()
-    this.config = null
-    
+    this.ws = null;
+    this.connected = false;
+    this.reconnectAttempts = 0;
+    this.maxReconnectAttempts = 5;
+    this.reconnectDelay = 1000;
+    this.messageHandlers = new Map();
+    this.config = null;
+
     // 绑定方法
-    this.onOpen = this.onOpen.bind(this)
-    this.onMessage = this.onMessage.bind(this)
-    this.onClose = this.onClose.bind(this)
-    this.onError = this.onError.bind(this)
+    this.onOpen = this.onOpen.bind(this);
+    this.onMessage = this.onMessage.bind(this);
+    this.onClose = this.onClose.bind(this);
+    this.onError = this.onError.bind(this);
   }
 
   /**
@@ -28,37 +28,36 @@ class AIClient {
    */
   async connect(config) {
     if (this.connected) {
-      log.debug('AI客户端已连接')
-      return
+      log.debug('AI客户端已连接');
+      return;
     }
 
-    this.config = config
-    
+    this.config = config;
+
     try {
       // 构建WebSocket URL
-      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
       // 后端服务器运行在8001端口
-      const backendHost = window.location.hostname + ':8001'
-      const userId = this.getUserId()
-      const sessionId = this.getSessionId()
+      const backendHost = `${window.location.hostname}:8001`;
+      const userId = this.getUserId();
+      const sessionId = this.getSessionId();
 
-      const wsUrl = `${protocol}//${backendHost}/ai?userId=${userId}&sessionId=${sessionId}`
-      
-      log.debug('连接AI WebSocket', { url: wsUrl })
-      
+      const wsUrl = `${protocol}//${backendHost}/ai?userId=${userId}&sessionId=${sessionId}`;
+
+      log.debug('连接AI WebSocket', { url: wsUrl });
+
       // 创建WebSocket连接
-      this.ws = new WebSocket(wsUrl)
-      this.ws.onopen = this.onOpen
-      this.ws.onmessage = this.onMessage
-      this.ws.onclose = this.onClose
-      this.ws.onerror = this.onError
+      this.ws = new WebSocket(wsUrl);
+      this.ws.onopen = this.onOpen;
+      this.ws.onmessage = this.onMessage;
+      this.ws.onclose = this.onClose;
+      this.ws.onerror = this.onError;
 
       // 等待连接建立
-      await this.waitForConnection()
-      
+      await this.waitForConnection();
     } catch (error) {
-      log.error('连接AI服务失败', error)
-      throw error
+      log.error('连接AI服务失败', error);
+      throw error;
     }
   }
 
@@ -67,12 +66,12 @@ class AIClient {
    */
   async disconnect() {
     if (this.ws) {
-      this.ws.close(1000, '客户端主动断开')
-      this.ws = null
+      this.ws.close(1000, '客户端主动断开');
+      this.ws = null;
     }
-    this.connected = false
-    this.reconnectAttempts = 0
-    log.debug('AI客户端已断开连接')
+    this.connected = false;
+    this.reconnectAttempts = 0;
+    log.debug('AI客户端已断开连接');
   }
 
   /**
@@ -83,56 +82,56 @@ class AIClient {
    */
   async sendRequest(request, signal = null) {
     if (!this.connected) {
-      throw new Error('AI服务未连接')
+      throw new Error('AI服务未连接');
     }
 
     return new Promise((resolve, reject) => {
-      const requestId = request.requestId
-      let result = {
+      const requestId = request.requestId;
+      const result = {
         content: '',
         metadata: null,
         success: false
-      }
+      };
 
       // 设置消息处理器
       const handler = {
-        onStream: (data) => {
-          result.content += data.delta || ''
+        onStream: data => {
+          result.content += data.delta || '';
         },
-        onDone: (data) => {
-          result.metadata = data.metadata
-          result.success = true
-          this.messageHandlers.delete(requestId)
-          resolve(result)
+        onDone: data => {
+          result.metadata = data.metadata;
+          result.success = true;
+          this.messageHandlers.delete(requestId);
+          resolve(result);
         },
-        onError: (data) => {
-          this.messageHandlers.delete(requestId)
-          reject(new Error(data.error?.message || '未知错误'))
+        onError: data => {
+          this.messageHandlers.delete(requestId);
+          reject(new Error(data.error?.message || '未知错误'));
         },
         onCancel: () => {
-          this.messageHandlers.delete(requestId)
-          reject(new Error('请求已取消'))
+          this.messageHandlers.delete(requestId);
+          reject(new Error('请求已取消'));
         }
-      }
+      };
 
-      this.messageHandlers.set(requestId, handler)
+      this.messageHandlers.set(requestId, handler);
 
       // 处理取消信号
       if (signal) {
         signal.addEventListener('abort', () => {
-          this.cancelRequest(requestId)
-          handler.onCancel()
-        })
+          this.cancelRequest(requestId);
+          handler.onCancel();
+        });
       }
 
       // 发送请求
       try {
-        this.send(request)
+        this.send(request);
       } catch (error) {
-        this.messageHandlers.delete(requestId)
-        reject(error)
+        this.messageHandlers.delete(requestId);
+        reject(error);
       }
-    })
+    });
   }
 
   /**
@@ -144,7 +143,7 @@ class AIClient {
       this.send({
         type: 'ai_cancel',
         requestId
-      })
+      });
     }
   }
 
@@ -154,15 +153,15 @@ class AIClient {
    */
   send(message) {
     if (!this.connected || !this.ws) {
-      throw new Error('AI服务未连接')
+      throw new Error('AI服务未连接');
     }
 
     try {
-      this.ws.send(JSON.stringify(message))
-      log.debug('发送AI消息', { type: message.type, requestId: message.requestId })
+      this.ws.send(JSON.stringify(message));
+      log.debug('发送AI消息', { type: message.type, requestId: message.requestId });
     } catch (error) {
-      log.error('发送AI消息失败', error)
-      throw error
+      log.error('发送AI消息失败', error);
+      throw error;
     }
   }
 
@@ -173,35 +172,35 @@ class AIClient {
   waitForConnection() {
     return new Promise((resolve, reject) => {
       const timeout = setTimeout(() => {
-        reject(new Error('连接超时'))
-      }, 10000) // 10秒超时
+        reject(new Error('连接超时'));
+      }, 10000); // 10秒超时
 
       const checkConnection = () => {
         if (this.connected) {
-          clearTimeout(timeout)
-          resolve()
+          clearTimeout(timeout);
+          resolve();
         } else if (this.ws && this.ws.readyState === WebSocket.CLOSED) {
-          clearTimeout(timeout)
-          reject(new Error('连接失败'))
+          clearTimeout(timeout);
+          reject(new Error('连接失败'));
         } else {
-          setTimeout(checkConnection, 100)
+          setTimeout(checkConnection, 100);
         }
-      }
+      };
 
-      checkConnection()
-    })
+      checkConnection();
+    });
   }
 
   /**
    * WebSocket连接打开事件
    */
   onOpen() {
-    this.connected = true
-    this.reconnectAttempts = 0
-    log.info('AI WebSocket连接已建立')
+    this.connected = true;
+    this.reconnectAttempts = 0;
+    log.info('AI WebSocket连接已建立');
 
     // 连接建立后，立即发送配置到后端
-    this.sendConfigToBackend()
+    this.sendConfigToBackend();
   }
 
   /**
@@ -210,18 +209,17 @@ class AIClient {
    */
   onMessage(event) {
     try {
-      const message = JSON.parse(event.data)
+      const message = JSON.parse(event.data);
 
       // 只对非流式消息记录DEBUG日志，减少日志噪音
       if (message.type !== 'ai_stream') {
-        log.debug('收到AI消息', { type: message.type })
+        log.debug('收到AI消息', { type: message.type });
       }
 
       // 路由消息到相应的处理器
-      this.routeMessage(message)
-
+      this.routeMessage(message);
     } catch (error) {
-      log.error('解析AI消息失败', error)
+      log.error('解析AI消息失败', error);
     }
   }
 
@@ -230,18 +228,18 @@ class AIClient {
    * @param {CloseEvent} event 关闭事件
    */
   onClose(event) {
-    this.connected = false
-    log.info('AI WebSocket连接已关闭', { code: event.code, reason: event.reason })
+    this.connected = false;
+    log.info('AI WebSocket连接已关闭', { code: event.code, reason: event.reason });
 
     // 清理所有消息处理器
     for (const [requestId, handler] of this.messageHandlers.entries()) {
-      handler.onCancel?.()
+      handler.onCancel?.();
     }
-    this.messageHandlers.clear()
+    this.messageHandlers.clear();
 
     // 尝试重连（如果不是主动关闭）
     if (event.code !== 1000 && this.reconnectAttempts < this.maxReconnectAttempts) {
-      this.attemptReconnect()
+      this.attemptReconnect();
     }
   }
 
@@ -250,7 +248,7 @@ class AIClient {
    * @param {Event} event 错误事件
    */
   onError(event) {
-    log.error('AI WebSocket错误', event)
+    log.error('AI WebSocket错误', event);
   }
 
   /**
@@ -258,68 +256,67 @@ class AIClient {
    * @param {Object} message 消息对象
    */
   routeMessage(message) {
-    const { type, requestId } = message
+    const { type, requestId } = message;
 
     // 对于连接确认消息，不需要处理器
     if (type === 'ai_connected') {
-      log.debug('收到AI连接确认消息')
-      return
+      log.debug('收到AI连接确认消息');
+      return;
     }
 
     // 对于配置同步结果消息，不需要处理器
     if (type === 'ai_config_sync_result') {
-      log.debug('收到AI配置同步结果', { success: message.success, message: message.message })
-      return
+      log.debug('收到AI配置同步结果', { success: message.success, message: message.message });
+      return;
     }
 
     // 对于全局错误消息（没有requestId），直接处理
     if (type === 'ai_error' && !requestId) {
-      log.error('收到AI服务全局错误', message)
-      return
+      log.error('收到AI服务全局错误', message);
+      return;
     }
 
-    const handler = this.messageHandlers.get(requestId)
+    const handler = this.messageHandlers.get(requestId);
 
     if (!handler) {
-      log.warn('未找到消息处理器', { type, requestId })
-      return
+      log.warn('未找到消息处理器', { type, requestId });
+      return;
     }
 
     switch (type) {
+    case 'ai_stream':
+      handler.onStream?.(message);
+      break;
 
-      case 'ai_stream':
-        handler.onStream?.(message)
-        break
+    case 'ai_done':
+      handler.onDone?.(message);
+      break;
 
-      case 'ai_done':
-        handler.onDone?.(message)
-        break
+    case 'ai_error':
+      handler.onError?.(message);
+      break;
 
-      case 'ai_error':
-        handler.onError?.(message)
-        break
+    case 'ai_cancelled':
+      handler.onCancel?.(message);
+      break;
 
-      case 'ai_cancelled':
-        handler.onCancel?.(message)
-        break
+    case 'ai_config_test_result':
+      // 配置测试结果需要特殊处理
+      if (message.success) {
+        handler.onDone?.({
+          success: true,
+          message: message.message,
+          metadata: { testResult: true }
+        });
+      } else {
+        handler.onError?.({
+          error: { message: message.message }
+        });
+      }
+      break;
 
-      case 'ai_config_test_result':
-        // 配置测试结果需要特殊处理
-        if (message.success) {
-          handler.onDone?.({
-            success: true,
-            message: message.message,
-            metadata: { testResult: true }
-          })
-        } else {
-          handler.onError?.({
-            error: { message: message.message }
-          })
-        }
-        break
-
-      default:
-        log.warn('未知的AI消息类型', { type, requestId })
+    default:
+      log.warn('未知的AI消息类型', { type, requestId });
     }
   }
 
@@ -327,23 +324,23 @@ class AIClient {
    * 尝试重连
    */
   async attemptReconnect() {
-    this.reconnectAttempts++
-    const delay = this.reconnectDelay * Math.pow(2, this.reconnectAttempts - 1)
+    this.reconnectAttempts++;
+    const delay = this.reconnectDelay * Math.pow(2, this.reconnectAttempts - 1);
 
-    log.info(`尝试重连AI服务 (${this.reconnectAttempts}/${this.maxReconnectAttempts})`, { delay })
+    log.info(`尝试重连AI服务 (${this.reconnectAttempts}/${this.maxReconnectAttempts})`, { delay });
 
     setTimeout(async () => {
       try {
-        await this.connect(this.config)
-        log.info('AI服务重连成功')
+        await this.connect(this.config);
+        log.info('AI服务重连成功');
       } catch (error) {
-        log.error('AI服务重连失败', error)
-        
+        log.error('AI服务重连失败', error);
+
         if (this.reconnectAttempts >= this.maxReconnectAttempts) {
-          log.error('AI服务重连次数已达上限，停止重连')
+          log.error('AI服务重连次数已达上限，停止重连');
         }
       }
-    }, delay)
+    }, delay);
   }
 
   /**
@@ -352,8 +349,8 @@ class AIClient {
    */
   getUserId() {
     // 从localStorage或其他地方获取用户ID
-    const userInfo = JSON.parse(localStorage.getItem('user') || '{}')
-    return userInfo.id || 'anonymous'
+    const userInfo = JSON.parse(localStorage.getItem('user') || '{}');
+    return userInfo.id || 'anonymous';
   }
 
   /**
@@ -362,12 +359,12 @@ class AIClient {
    */
   getSessionId() {
     // 生成或获取会话ID
-    let sessionId = sessionStorage.getItem('ai-session-id')
+    let sessionId = sessionStorage.getItem('ai-session-id');
     if (!sessionId) {
-      sessionId = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
-      sessionStorage.setItem('ai-session-id', sessionId)
+      sessionId = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      sessionStorage.setItem('ai-session-id', sessionId);
     }
-    return sessionId
+    return sessionId;
   }
 
   /**
@@ -375,7 +372,7 @@ class AIClient {
    * @returns {boolean} 连接状态
    */
   isConnected() {
-    return this.connected && this.ws && this.ws.readyState === WebSocket.OPEN
+    return this.connected && this.ws && this.ws.readyState === WebSocket.OPEN;
   }
 
   /**
@@ -388,7 +385,7 @@ class AIClient {
       reconnectAttempts: this.reconnectAttempts,
       maxReconnectAttempts: this.maxReconnectAttempts,
       activeHandlers: this.messageHandlers.size
-    }
+    };
   }
 
   /**
@@ -396,7 +393,7 @@ class AIClient {
    */
   sendConfigToBackend() {
     if (!this.connected || !this.config) {
-      return
+      return;
     }
 
     try {
@@ -414,13 +411,13 @@ class AIClient {
         },
         userId: this.getUserId(),
         timestamp: new Date().toISOString()
-      })
+      });
 
-      log.debug('AI配置已发送到后端')
+      log.debug('AI配置已发送到后端');
     } catch (error) {
-      log.error('发送AI配置到后端失败', error)
+      log.error('发送AI配置到后端失败', error);
     }
   }
 }
 
-export default AIClient
+export default AIClient;

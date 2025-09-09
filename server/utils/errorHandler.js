@@ -46,7 +46,7 @@ class ErrorHandler {
    */
   isConnectionError(error) {
     const message = typeof error === 'string' ? error : error.message || '';
-    return CONNECTION_ERROR_PATTERNS.some(pattern => 
+    return CONNECTION_ERROR_PATTERNS.some(pattern =>
       message.includes(pattern)
     );
   }
@@ -62,19 +62,19 @@ class ErrorHandler {
     }
 
     const message = typeof error === 'string' ? error : error.message || '';
-    
+
     if (message.includes('timeout') || message.includes('ETIMEDOUT')) {
       return ErrorTypes.TIMEOUT_ERROR;
     }
-    
+
     if (message.includes('validation') || message.includes('invalid')) {
       return ErrorTypes.VALIDATION_ERROR;
     }
-    
+
     if (message.includes('system') || message.includes('ENOSYS')) {
       return ErrorTypes.SYSTEM_ERROR;
     }
-    
+
     return ErrorTypes.UNKNOWN_ERROR;
   }
 
@@ -100,7 +100,7 @@ class ErrorHandler {
 
     const errorType = this.getErrorType(error);
     const errorMessage = typeof error === 'string' ? error : error.message || '未知错误';
-    
+
     // 更新错误计数
     const errorKey = `${component}:${sessionId || 'global'}`;
     const currentCount = this.errorCounts.get(errorKey) || 0;
@@ -124,8 +124,8 @@ class ErrorHandler {
     }
 
     // 判断是否应该停止操作
-    const shouldStopOperation = shouldStop || 
-      this.isConnectionError(error) || 
+    const shouldStopOperation = shouldStop ||
+      this.isConnectionError(error) ||
       (currentCount + 1) >= maxRetries;
 
     return {
@@ -168,7 +168,7 @@ class ErrorHandler {
    */
   cleanup(maxAge = 24 * 60 * 60 * 1000) { // 默认24小时
     const now = Date.now();
-    
+
     for (const [key, timestamp] of this.lastErrors.entries()) {
       if (now - timestamp > maxAge) {
         this.errorCounts.delete(key);

@@ -8,15 +8,38 @@
     @click="handleItemClick"
   >
     <div class="sftp-file-name">
-      <svg v-if="file.isDirectory" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" class="folder-icon">
-        <path fill="currentColor" d="M10,4H4C2.89,4 2,4.89 2,6V18A2,2 0 0,0 4,20H20A2,2 0 0,0 22,18V8C22,6.89 21.1,6 20,6H12L10,4Z" />
+      <svg
+        v-if="file.isDirectory"
+        xmlns="http://www.w3.org/2000/svg"
+        width="16"
+        height="16"
+        viewBox="0 0 24 24"
+        class="folder-icon"
+      >
+        <path
+          fill="currentColor"
+          d="M10,4H4C2.89,4 2,4.89 2,6V18A2,2 0 0,0 4,20H20A2,2 0 0,0 22,18V8C22,6.89 21.1,6 20,6H12L10,4Z"
+        />
       </svg>
-      <svg v-else xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" class="file-icon">
-        <path fill="currentColor" d="M13,9V3.5L18.5,9M6,2C4.89,2 4,2.89 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2H6Z" />
+      <svg
+        v-else
+        xmlns="http://www.w3.org/2000/svg"
+        width="16"
+        height="16"
+        viewBox="0 0 24 24"
+        class="file-icon"
+      >
+        <path
+          fill="currentColor"
+          d="M13,9V3.5L18.5,9M6,2C4.89,2 4,2.89 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2H6Z"
+        />
       </svg>
 
       <!-- 编辑模式：显示输入框和操作按钮 -->
-      <div v-if="isEditing" class="sftp-edit-container">
+      <div
+        v-if="isEditing"
+        class="sftp-edit-container"
+      >
         <input
           ref="editInput"
           v-model="editingName"
@@ -27,7 +50,7 @@
           @keydown.esc="cancelRename"
           @input="validateInput"
           @click.stop
-        />
+        >
 
         <!-- 确认和取消按钮 -->
         <div class="sftp-edit-actions">
@@ -35,11 +58,19 @@
           <button
             class="sftp-edit-action-btn sftp-confirm-btn"
             :disabled="isRenaming || hasValidationError || !editingName.trim()"
-            @click.stop="confirmRename"
             title="确认重命名"
+            @click.stop="confirmRename"
           >
-            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24">
-              <path fill="currentColor" d="M9,20.42L2.79,14.21L5.62,11.38L9,14.77L18.88,4.88L21.71,7.71L9,20.42Z" />
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+            >
+              <path
+                fill="currentColor"
+                d="M9,20.42L2.79,14.21L5.62,11.38L9,14.77L18.88,4.88L21.71,7.71L9,20.42Z"
+              />
             </svg>
           </button>
 
@@ -47,20 +78,54 @@
           <button
             class="sftp-edit-action-btn sftp-cancel-btn"
             :disabled="isRenaming"
-            @click.stop="cancelRename"
             title="取消重命名"
+            @click.stop="cancelRename"
           >
-            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24">
-              <path fill="currentColor" d="M19,6.41L17.59,5L12,10.59L6.41,5L5,6.41L10.59,12L5,17.59L6.41,19L12,13.41L17.59,19L19,17.59L13.41,12L19,6.41Z" />
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+            >
+              <path
+                fill="currentColor"
+                d="M19,6.41L17.59,5L12,10.59L6.41,5L5,6.41L10.59,12L5,17.59L6.41,19L12,13.41L17.59,19L19,17.59L13.41,12L19,6.41Z"
+              />
             </svg>
           </button>
 
           <!-- 加载状态 -->
-          <div v-if="isRenaming" class="sftp-rename-loading">
-            <svg class="sftp-rename-spinner" viewBox="0 0 16 16">
-              <circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-dasharray="18.85" stroke-dashoffset="18.85">
-                <animate attributeName="stroke-dasharray" dur="1.5s" values="0 18.85;9.425 9.425;0 18.85" repeatCount="indefinite"/>
-                <animate attributeName="stroke-dashoffset" dur="1.5s" values="0;-9.425;-18.85" repeatCount="indefinite"/>
+          <div
+            v-if="isRenaming"
+            class="sftp-rename-loading"
+          >
+            <svg
+              class="sftp-rename-spinner"
+              viewBox="0 0 16 16"
+            >
+              <circle
+                cx="8"
+                cy="8"
+                r="6"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-dasharray="18.85"
+                stroke-dashoffset="18.85"
+              >
+                <animate
+                  attributeName="stroke-dasharray"
+                  dur="1.5s"
+                  values="0 18.85;9.425 9.425;0 18.85"
+                  repeatCount="indefinite"
+                />
+                <animate
+                  attributeName="stroke-dashoffset"
+                  dur="1.5s"
+                  values="0;-9.425;-18.85"
+                  repeatCount="indefinite"
+                />
               </circle>
             </svg>
           </div>
@@ -70,27 +135,79 @@
       <!-- 显示模式：显示文件名 -->
       <span v-else>{{ file.name }}</span>
     </div>
-    <div class="sftp-file-size">{{ formatFileSize(file.size, file.isDirectory) }}</div>
-    <div class="sftp-file-date">{{ formatDate(file.modifiedTime) }}</div>
+    <div class="sftp-file-size">
+      {{ formatFileSize(file.size, file.isDirectory) }}
+    </div>
+    <div class="sftp-file-date">
+      {{ formatDate(file.modifiedTime) }}
+    </div>
     <div class="sftp-file-actions">
-      <button class="sftp-action-button" @click.stop="$emit('download', file)" title="下载">
-        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24">
-          <path fill="currentColor" d="M5,20H19V18H5M19,9H15V3H9V9H5L12,16L19,9Z" />
+      <button
+        class="sftp-action-button"
+        title="下载"
+        @click.stop="$emit('download', file)"
+      >
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          width="16"
+          height="16"
+          viewBox="0 0 24 24"
+        >
+          <path
+            fill="currentColor"
+            d="M5,20H19V18H5M19,9H15V3H9V9H5L12,16L19,9Z"
+          />
         </svg>
       </button>
-      <button class="sftp-action-button" @click.stop="startRename" title="重命名">
-        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24">
-          <path fill="currentColor" d="M20.71,7.04C21.1,6.65 21.1,6 20.71,5.63L18.37,3.29C18,2.9 17.35,2.9 16.96,3.29L15.12,5.12L18.87,8.87M3,17.25V21H6.75L17.81,9.93L14.06,6.18L3,17.25Z" />
+      <button
+        class="sftp-action-button"
+        title="重命名"
+        @click.stop="startRename"
+      >
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          width="16"
+          height="16"
+          viewBox="0 0 24 24"
+        >
+          <path
+            fill="currentColor"
+            d="M20.71,7.04C21.1,6.65 21.1,6 20.71,5.63L18.37,3.29C18,2.9 17.35,2.9 16.96,3.29L15.12,5.12L18.87,8.87M3,17.25V21H6.75L17.81,9.93L14.06,6.18L3,17.25Z"
+          />
         </svg>
       </button>
-      <button class="sftp-action-button" @click.stop="$emit('permissions', file)" title="权限">
-        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24">
-          <path fill="currentColor" d="M12,17A2,2 0 0,0 14,15C14,13.89 13.1,13 12,13A2,2 0 0,0 10,15A2,2 0 0,0 12,17M18,8A2,2 0 0,1 20,10V20A2,2 0 0,1 18,22H6A2,2 0 0,1 4,20V10C4,8.89 4.9,8 6,8H7V6A5,5 0 0,1 12,1A5,5 0 0,1 17,6V8H18M12,3A3,3 0 0,0 9,6V8H15V6A3,3 0 0,0 12,3Z" />
+      <button
+        class="sftp-action-button"
+        title="权限"
+        @click.stop="$emit('permissions', file)"
+      >
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          width="16"
+          height="16"
+          viewBox="0 0 24 24"
+        >
+          <path
+            fill="currentColor"
+            d="M12,17A2,2 0 0,0 14,15C14,13.89 13.1,13 12,13A2,2 0 0,0 10,15A2,2 0 0,0 12,17M18,8A2,2 0 0,1 20,10V20A2,2 0 0,1 18,22H6A2,2 0 0,1 4,20V10C4,8.89 4.9,8 6,8H7V6A5,5 0 0,1 12,1A5,5 0 0,1 17,6V8H18M12,3A3,3 0 0,0 9,6V8H15V6A3,3 0 0,0 12,3Z"
+          />
         </svg>
       </button>
-      <button class="sftp-action-button" @click.stop="$emit('delete', file)" title="删除">
-        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24">
-          <path fill="currentColor" d="M19,4H15.5L14.5,3H9.5L8.5,4H5V6H19M6,19A2,2 0 0,0 8,21H16A2,2 0 0,0 18,19V7H6V19Z" />
+      <button
+        class="sftp-action-button"
+        title="删除"
+        @click.stop="$emit('delete', file)"
+      >
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          width="16"
+          height="16"
+          viewBox="0 0 24 24"
+        >
+          <path
+            fill="currentColor"
+            d="M19,4H15.5L14.5,3H9.5L8.5,4H5V6H19M6,19A2,2 0 0,0 8,21H16A2,2 0 0,0 18,19V7H6V19Z"
+          />
         </svg>
       </button>
     </div>
@@ -98,10 +215,10 @@
 </template>
 
 <script>
-import { defineComponent, ref, nextTick } from 'vue'
-import { useFileUtils } from '../composables/useFileUtils'
-import { ElMessage } from 'element-plus'
-import sftpService from '@/services/ssh/sftp-service'
+import { defineComponent, ref, nextTick } from 'vue';
+import { useFileUtils } from '../composables/useFileUtils';
+import { ElMessage } from 'element-plus';
+import sftpService from '@/services/ssh/sftp-service';
 
 export default defineComponent({
   name: 'SftpFileItem',
@@ -131,13 +248,13 @@ export default defineComponent({
     const isRenaming = ref(false);
     const hasValidationError = ref(false);
     const validationErrorMessage = ref('');
-    
+
     // 文件名验证正则表达式和规则
     const fileNamePattern = /^[^\\/:\*\?"<>\|]+$/;
     const maxFileNameLength = 255;
 
     // 验证文件名
-    const validateFileName = (name) => {
+    const validateFileName = name => {
       if (!name || name.trim() === '') {
         return { valid: false, message: '文件名不能为空' };
       }
@@ -153,7 +270,30 @@ export default defineComponent({
       }
 
       // 检查是否为保留名称（Windows系统）
-      const reservedNames = ['CON', 'PRN', 'AUX', 'NUL', 'COM1', 'COM2', 'COM3', 'COM4', 'COM5', 'COM6', 'COM7', 'COM8', 'COM9', 'LPT1', 'LPT2', 'LPT3', 'LPT4', 'LPT5', 'LPT6', 'LPT7', 'LPT8', 'LPT9'];
+      const reservedNames = [
+        'CON',
+        'PRN',
+        'AUX',
+        'NUL',
+        'COM1',
+        'COM2',
+        'COM3',
+        'COM4',
+        'COM5',
+        'COM6',
+        'COM7',
+        'COM8',
+        'COM9',
+        'LPT1',
+        'LPT2',
+        'LPT3',
+        'LPT4',
+        'LPT5',
+        'LPT6',
+        'LPT7',
+        'LPT8',
+        'LPT9'
+      ];
       if (reservedNames.includes(trimmedName.toUpperCase())) {
         return { valid: false, message: '不能使用系统保留名称' };
       }
@@ -239,20 +379,22 @@ export default defineComponent({
     };
 
     // 执行重命名操作
-    const performRename = async (newName) => {
+    const performRename = async newName => {
       if (isRenaming.value) return;
 
       isRenaming.value = true;
 
       try {
         // 构建原路径和新路径
-        const oldPath = props.currentPath === '/' ?
-          props.currentPath + props.file.name :
-          props.currentPath + '/' + props.file.name;
+        const oldPath =
+          props.currentPath === '/'
+            ? props.currentPath + props.file.name
+            : `${props.currentPath}/${props.file.name}`;
 
-        const newPath = props.currentPath === '/' ?
-          props.currentPath + newName :
-          props.currentPath + '/' + newName;
+        const newPath =
+          props.currentPath === '/'
+            ? props.currentPath + newName
+            : `${props.currentPath}/${newName}`;
 
         // 调用SFTP服务重命名文件
         await sftpService.rename(props.sessionId, oldPath, newPath);
@@ -273,24 +415,69 @@ export default defineComponent({
     };
 
     // 判断是否是文本文件
-    const isTextFile = (filename) => {
+    const isTextFile = filename => {
       if (!filename) return false;
 
       const textExtensions = [
         // 编程语言
-        'js', 'jsx', 'ts', 'tsx', 'html', 'htm', 'css', 'scss', 'sass', 'less',
-        'py', 'rb', 'php', 'java', 'c', 'cpp', 'h', 'hpp', 'cs', 'go', 'rs',
-        'swift', 'kt', 'dart', 'sh', 'bash', 'ps1', 'bat', 'cmd',
+        'js',
+        'jsx',
+        'ts',
+        'tsx',
+        'html',
+        'htm',
+        'css',
+        'scss',
+        'sass',
+        'less',
+        'py',
+        'rb',
+        'php',
+        'java',
+        'c',
+        'cpp',
+        'h',
+        'hpp',
+        'cs',
+        'go',
+        'rs',
+        'swift',
+        'kt',
+        'dart',
+        'sh',
+        'bash',
+        'ps1',
+        'bat',
+        'cmd',
 
         // 数据格式
-        'json', 'xml', 'yaml', 'yml', 'toml', 'ini', 'conf', 'properties',
+        'json',
+        'xml',
+        'yaml',
+        'yml',
+        'toml',
+        'ini',
+        'conf',
+        'properties',
 
         // 文本文档
-        'txt', 'md', 'markdown', 'rst', 'tex', 'log',
+        'txt',
+        'md',
+        'markdown',
+        'rst',
+        'tex',
+        'log',
 
         // 配置文件
-        'env', 'gitignore', 'dockerignore', 'dockerfile', 'editorconfig',
-        'gitattributes', 'npmrc', 'prettierrc', 'eslintrc'
+        'env',
+        'gitignore',
+        'dockerignore',
+        'dockerfile',
+        'editorconfig',
+        'gitattributes',
+        'npmrc',
+        'prettierrc',
+        'eslintrc'
       ];
 
       const ext = filename.split('.').pop().toLowerCase();
@@ -313,9 +500,9 @@ export default defineComponent({
       confirmRename,
       handleInputBlur,
       validateInput
-    }
+    };
   }
-})
+});
 </script>
 
 <style scoped>
@@ -700,6 +887,4 @@ export default defineComponent({
 }
 
 /* 所有主题特定样式已迁移到主题变量 */
-
-
 </style>

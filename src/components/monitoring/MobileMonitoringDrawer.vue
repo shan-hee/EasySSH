@@ -1,6 +1,9 @@
 <template>
   <!-- 移动端监控抽屉 -->
-  <transition name="drawer-slide" appear>
+  <transition
+    name="drawer-slide"
+    appear
+  >
     <div
       v-show="visible"
       class="mobile-monitoring-drawer"
@@ -8,32 +11,32 @@
       aria-label="移动端监控抽屉"
       :aria-hidden="!visible"
       tabindex="-1"
-      @keydown.esc="$emit('close')"
+      @keydown.esc="onClose"
     >
       <div class="drawer-content">
         <!-- 系统信息 -->
         <div class="mobile-monitoring-section system-section">
-          <SystemInfo :monitoring-data="monitoringData" />
+          <system-info :monitoring-data="monitoringData" />
         </div>
 
         <!-- CPU监控 -->
         <div class="mobile-monitoring-section cpu-section">
-          <CpuMonitoring :monitoring-data="monitoringData" />
+          <cpu-monitoring :monitoring-data="monitoringData" />
         </div>
 
         <!-- 内存监控 -->
         <div class="mobile-monitoring-section memory-section">
-          <MemoryMonitoring :monitoring-data="monitoringData" />
+          <memory-monitoring :monitoring-data="monitoringData" />
         </div>
 
         <!-- 网络监控 -->
         <div class="mobile-monitoring-section network-section">
-          <NetworkMonitoring :monitoring-data="monitoringData" />
+          <network-monitoring :monitoring-data="monitoringData" />
         </div>
 
         <!-- 硬盘监控 -->
         <div class="mobile-monitoring-section disk-section">
-          <DiskMonitoring :monitoring-data="monitoringData" />
+          <disk-monitoring :monitoring-data="monitoringData" />
         </div>
       </div>
     </div>
@@ -42,12 +45,13 @@
 
 <script setup>
 // 移除未使用的Vue导入
-import SystemInfo from './SystemInfo.vue'
-import CpuMonitoring from './CpuMonitoring.vue'
-import MemoryMonitoring from './MemoryMonitoring.vue'
-import NetworkMonitoring from './NetworkMonitoring.vue'
-import DiskMonitoring from './DiskMonitoring.vue'
+import SystemInfo from './SystemInfo.vue';
+import CpuMonitoring from './CpuMonitoring.vue';
+import MemoryMonitoring from './MemoryMonitoring.vue';
+import NetworkMonitoring from './NetworkMonitoring.vue';
+import DiskMonitoring from './DiskMonitoring.vue';
 
+import { toRefs } from 'vue';
 // Props
 const props = defineProps({
   visible: {
@@ -62,10 +66,12 @@ const props = defineProps({
     type: String,
     default: ''
   }
-})
+});
 
 // Emits
-const emit = defineEmits(['close', 'update:visible'])
+const emit = defineEmits(['close', 'update:visible']);
+const { visible } = toRefs(props);
+const onClose = () => emit('close');
 
 // 纯净的监控容器，无任何交互逻辑
 </script>
@@ -131,8 +137,9 @@ const emit = defineEmits(['close', 'update:visible'])
 /* 抽屉滑入动画 */
 .drawer-slide-enter-active,
 .drawer-slide-leave-active {
-  transition: transform 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94),
-              opacity 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  transition:
+    transform 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+    opacity 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
   will-change: transform, opacity;
 }
 

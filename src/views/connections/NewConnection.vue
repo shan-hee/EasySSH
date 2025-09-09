@@ -3,78 +3,175 @@
     <div class="connection-header">
       <h1>连接配置</h1>
     </div>
-    
+
     <div class="connection-content">
-    <div class="connection-form-container">
+      <div class="connection-form-container">
         <div class="control-row">
           <div class="add-connection">
-            <AddButton @click="showNewConnectionDialog" />
+            <add-button @click="showNewConnectionDialog" />
           </div>
           <div class="search-container">
-            <SearchInput 
-              v-model="searchQuery" 
-              @search="handleSearch" 
+            <search-input
+              v-model="searchQuery"
+              @search="handleSearch"
             />
           </div>
         </div>
-        
+
         <div class="connection-section">
           <h2>我的连接配置</h2>
           <div class="connection-rows">
             <!-- 加载状态指示器 -->
-            <div v-if="connectionsLoading && !connectionsLoaded" class="loading-indicator">
-              <div class="loading-spinner"></div>
+            <div
+              v-if="connectionsLoading && !connectionsLoaded"
+              class="loading-indicator"
+            >
+              <div class="loading-spinner" />
               <span>正在加载连接数据...</span>
-              <span v-if="connectionsRetryCount > 0" class="retry-info">
+              <span
+                v-if="connectionsRetryCount > 0"
+                class="retry-info"
+              >
                 (重试 {{ connectionsRetryCount }}/3)
               </span>
             </div>
             <!-- 错误状态指示器 -->
-            <div v-else-if="connectionsError && !connectionsLoaded" class="error-indicator">
-              <div class="error-icon">⚠️</div>
+            <div
+              v-else-if="connectionsError && !connectionsLoaded"
+              class="error-indicator"
+            >
+              <div class="error-icon">
+                ⚠️
+              </div>
               <div class="error-content">
                 <span class="error-message">连接数据加载失败</span>
-                <button class="retry-btn" @click="retryLoadConnections">重试</button>
+                <button
+                  class="retry-btn"
+                  @click="retryLoadConnections"
+                >
+                  重试
+                </button>
               </div>
             </div>
             <!-- 连接列表 -->
-            <div v-else class="row-item" v-for="connection in filteredConnections" :key="connection.id" :data-pinned="isPinned(connection.id)" @click="handleLogin(connection)">
+            <div
+              v-for="connection in filteredConnections"
+              v-else
+              :key="connection.id"
+              class="row-item"
+              :data-pinned="isPinned(connection.id)"
+              @click="handleLogin(connection)"
+            >
               <div class="row-item-left">
                 <div class="icon-cell">
-                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="20" height="20">
-                    <path fill="#a0a0a0" d="M4,1H20A1,1 0 0,1 21,2V6A1,1 0 0,1 20,7H4A1,1 0 0,1 3,6V2A1,1 0 0,1 4,1M4,9H20A1,1 0 0,1 21,10V14A1,1 0 0,1 20,15H4A1,1 0 0,1 3,14V10A1,1 0 0,1 4,9M4,17H20A1,1 0 0,1 21,18V22A1,1 0 0,1 20,23H4A1,1 0 0,1 3,22V18A1,1 0 0,1 4,17M9,5H10V3H9V5M9,13H10V11H9V13M9,21H10V19H9V21M5,3.5A1.5,1.5 0 0,0 6.5,5A1.5,1.5 0 0,0 5,6.5A1.5,1.5 0 0,0 3.5,5A1.5,1.5 0 0,0 5,3.5M5,11.5A1.5,1.5 0 0,0 6.5,13A1.5,1.5 0 0,0 5,14.5A1.5,1.5 0 0,0 3.5,13A1.5,1.5 0 0,0 5,11.5M5,19.5A1.5,1.5 0 0,0 6.5,21A1.5,1.5 0 0,0 5,22.5A1.5,1.5 0 0,0 3.5,21A1.5,1.5 0 0,0 5,19.5Z"></path>
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    viewBox="0 0 24 24"
+                    width="20"
+                    height="20"
+                  >
+                    <path
+                      fill="#a0a0a0"
+                      d="M4,1H20A1,1 0 0,1 21,2V6A1,1 0 0,1 20,7H4A1,1 0 0,1 3,6V2A1,1 0 0,1 4,1M4,9H20A1,1 0 0,1 21,10V14A1,1 0 0,1 20,15H4A1,1 0 0,1 3,14V10A1,1 0 0,1 4,9M4,17H20A1,1 0 0,1 21,18V22A1,1 0 0,1 20,23H4A1,1 0 0,1 3,22V18A1,1 0 0,1 4,17M9,5H10V3H9V5M9,13H10V11H9V13M9,21H10V19H9V21M5,3.5A1.5,1.5 0 0,0 6.5,5A1.5,1.5 0 0,0 5,6.5A1.5,1.5 0 0,0 3.5,5A1.5,1.5 0 0,0 5,3.5M5,11.5A1.5,1.5 0 0,0 6.5,13A1.5,1.5 0 0,0 5,14.5A1.5,1.5 0 0,0 3.5,13A1.5,1.5 0 0,0 5,11.5M5,19.5A1.5,1.5 0 0,0 6.5,21A1.5,1.5 0 0,0 5,22.5A1.5,1.5 0 0,0 3.5,21A1.5,1.5 0 0,0 5,19.5Z"
+                    />
                   </svg>
                 </div>
-                <div class="name-cell">{{ getDisplayName(connection) }}</div>
+                <div class="name-cell">
+                  {{ getDisplayName(connection) }}
+                </div>
               </div>
               <div class="row-item-right">
-                <div class="address-cell">{{ connection.host }}</div>
-                <div class="actions-cell" @click.stop>
-                  <el-button class="action-btn" circle size="small" link title="登录" @click.stop="handleLogin(connection)">
-                    <el-icon><Connection /></el-icon>
+                <div class="address-cell">
+                  {{ connection.host }}
+                </div>
+                <div
+                  class="actions-cell"
+                  @click.stop
+                >
+                  <el-button
+                    class="action-btn"
+                    circle
+                    size="small"
+                    link
+                    title="登录"
+                    @click.stop="handleLogin(connection)"
+                  >
+                    <el-icon><connection /></el-icon>
                   </el-button>
-                  <el-button class="action-btn" circle size="small" link :title="isPinned(connection.id) ? '取消置顶' : '置顶'" @click.stop="handleTop(connection)">
+                  <el-button
+                    class="action-btn"
+                    circle
+                    size="small"
+                    link
+                    :title="isPinned(connection.id) ? '取消置顶' : '置顶'"
+                    @click.stop="handleTop(connection)"
+                  >
                     <template v-if="isPinned(connection.id)">
-                      <svg id="ot-cancel-backtop" class="ruyi-icon ruyi-icon-ot-cancel-backtop" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16">
+                      <svg
+                        id="ot-cancel-backtop"
+                        class="ruyi-icon ruyi-icon-ot-cancel-backtop"
+                        xmlns="http://www.w3.org/2000/svg"
+                        width="16"
+                        height="16"
+                        viewBox="0 0 16 16"
+                      >
                         <g fill="none">
-                          <path d="M2.5 1.48828H13.5V2.48828L2.5 2.48828V1.48828ZM4.48413 7.09557L2.63143 9.11668C2.49745 9.26285 2.46249 9.47438 2.54234 9.65588C2.62218 9.83738 2.80173 9.95455 3.00001 9.95455H5.22728V14C5.22728 14.2761 5.45114 14.5 5.72728 14.5H10.2727C10.5489 14.5 10.7727 14.2761 10.7727 14V13.3842L9.77274 12.3842V13.5H6.22728V9.45455C6.22728 9.1784 6.00343 8.95455 5.72728 8.95455H4.13663L5.1919 7.80334L4.48413 7.09557ZM10.5857 8.95455H11.8634L8.00001 4.73995L7.22099 5.58979L6.51321 4.88201L7.63143 3.66214C7.72614 3.55882 7.85986 3.5 8.00001 3.5C8.14016 3.5 8.27388 3.55882 8.36859 3.66214L13.3686 9.11668C13.5026 9.26285 13.5375 9.47438 13.4577 9.65588C13.3778 9.83738 13.1983 9.95455 13 9.95455H11.5857L10.5857 8.95455ZM13.8536 13.6347L3.36527 3.14645L2.65817 3.85355L13.1464 14.3418L13.8536 13.6347Z" fill="currentColor" fill-rule="evenodd" clip-rule="evenodd" fill-opacity="1"></path>
+                          <path
+                            d="M2.5 1.48828H13.5V2.48828L2.5 2.48828V1.48828ZM4.48413 7.09557L2.63143 9.11668C2.49745 9.26285 2.46249 9.47438 2.54234 9.65588C2.62218 9.83738 2.80173 9.95455 3.00001 9.95455H5.22728V14C5.22728 14.2761 5.45114 14.5 5.72728 14.5H10.2727C10.5489 14.5 10.7727 14.2761 10.7727 14V13.3842L9.77274 12.3842V13.5H6.22728V9.45455C6.22728 9.1784 6.00343 8.95455 5.72728 8.95455H4.13663L5.1919 7.80334L4.48413 7.09557ZM10.5857 8.95455H11.8634L8.00001 4.73995L7.22099 5.58979L6.51321 4.88201L7.63143 3.66214C7.72614 3.55882 7.85986 3.5 8.00001 3.5C8.14016 3.5 8.27388 3.55882 8.36859 3.66214L13.3686 9.11668C13.5026 9.26285 13.5375 9.47438 13.4577 9.65588C13.3778 9.83738 13.1983 9.95455 13 9.95455H11.5857L10.5857 8.95455ZM13.8536 13.6347L3.36527 3.14645L2.65817 3.85355L13.1464 14.3418L13.8536 13.6347Z"
+                            fill="currentColor"
+                            fill-rule="evenodd"
+                            clip-rule="evenodd"
+                            fill-opacity="1"
+                          />
                         </g>
                       </svg>
                     </template>
                     <template v-else>
-                      <svg id="ot-backtop" class="ruyi-icon ruyi-icon-ot-backtop" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16">
+                      <svg
+                        id="ot-backtop"
+                        class="ruyi-icon ruyi-icon-ot-backtop"
+                        xmlns="http://www.w3.org/2000/svg"
+                        width="16"
+                        height="16"
+                        viewBox="0 0 16 16"
+                      >
                         <g fill="none">
-                          <path d="M2.5 1.48828L13.5 1.48828L13.5 2.48828L2.5 2.48828L2.5 1.48828Z" fill="currentColor" fill-rule="evenodd" clip-rule="evenodd" fill-opacity="1"></path>
-                          <path d="M3 9.45455L8 4L13 9.45455H10.2727V14H5.72727V9.45455H3Z" stroke="currentColor" stroke-linejoin="round" stroke-opacity="1"></path>
+                          <path
+                            d="M2.5 1.48828L13.5 1.48828L13.5 2.48828L2.5 2.48828L2.5 1.48828Z"
+                            fill="currentColor"
+                            fill-rule="evenodd"
+                            clip-rule="evenodd"
+                            fill-opacity="1"
+                          />
+                          <path
+                            d="M3 9.45455L8 4L13 9.45455H10.2727V14H5.72727V9.45455H3Z"
+                            stroke="currentColor"
+                            stroke-linejoin="round"
+                            stroke-opacity="1"
+                          />
                         </g>
                       </svg>
                     </template>
                   </el-button>
-                  <el-button class="action-btn" circle size="small" link title="编辑" @click.stop="handleEdit(connection)">
-                    <el-icon><Edit /></el-icon>
+                  <el-button
+                    class="action-btn"
+                    circle
+                    size="small"
+                    link
+                    title="编辑"
+                    @click.stop="handleEdit(connection)"
+                  >
+                    <el-icon><edit /></el-icon>
                   </el-button>
-                  <el-button class="action-btn" circle size="small" link title="删除" @click.stop="handleDelete(connection)">
-                    <el-icon><Delete /></el-icon>
+                  <el-button
+                    class="action-btn"
+                    circle
+                    size="small"
+                    link
+                    title="删除"
+                    @click.stop="handleDelete(connection)"
+                  >
+                    <el-icon><delete /></el-icon>
                   </el-button>
                 </div>
               </div>
@@ -87,29 +184,53 @@
             <h2>历史连接配置</h2>
             <button
               class="edit-btn"
-              @click="toggleEditMode"
               :class="{ active: isEditMode }"
               title="编辑"
+              @click="toggleEditMode"
             >
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16">
-                <path fill="currentColor" d="M20.71,7.04C21.1,6.65 21.1,6 20.71,5.63L18.37,3.29C18,2.9 17.35,2.9 16.96,3.29L15.12,5.12L18.87,8.87M3,17.25V21H6.75L17.81,9.93L14.06,6.18L3,17.25Z"/>
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 24 24"
+                width="16"
+                height="16"
+              >
+                <path
+                  fill="currentColor"
+                  d="M20.71,7.04C21.1,6.65 21.1,6 20.71,5.63L18.37,3.29C18,2.9 17.35,2.9 16.96,3.29L15.12,5.12L18.87,8.87M3,17.25V21H6.75L17.81,9.93L14.06,6.18L3,17.25Z"
+                />
               </svg>
             </button>
           </div>
           <!-- 历史记录加载状态指示器 -->
-          <div v-if="historyLoading && !historyLoaded" class="loading-indicator">
-            <div class="loading-spinner"></div>
+          <div
+            v-if="historyLoading && !historyLoaded"
+            class="loading-indicator"
+          >
+            <div class="loading-spinner" />
             <span>正在加载历史记录...</span>
-            <span v-if="historyRetryCount > 0" class="retry-info">
+            <span
+              v-if="historyRetryCount > 0"
+              class="retry-info"
+            >
               (重试 {{ historyRetryCount }}/3)
             </span>
           </div>
           <!-- 历史记录错误状态指示器 -->
-          <div v-else-if="historyError && !historyLoaded" class="error-indicator">
-            <div class="error-icon">⚠️</div>
+          <div
+            v-else-if="historyError && !historyLoaded"
+            class="error-indicator"
+          >
+            <div class="error-icon">
+              ⚠️
+            </div>
             <div class="error-content">
               <span class="error-message">历史记录加载失败</span>
-              <button class="retry-btn" @click="retryLoadHistory">重试</button>
+              <button
+                class="retry-btn"
+                @click="retryLoadHistory"
+              >
+                重试
+              </button>
             </div>
           </div>
           <!-- 历史记录列表 -->
@@ -121,12 +242,12 @@
             tag="div"
           >
             <div
-              class="connection-card"
               v-for="(connection, index) in filteredHistoryConnections"
               :key="`${connection.id}-${connection.timestamp}`"
+              class="connection-card"
               :class="{
-                'floating': isEditMode,
-                'swinging': isEditMode,
+                floating: isEditMode,
+                swinging: isEditMode,
                 'being-dragged': isEditMode && dragIndex === index
               }"
               :draggable="isEditMode"
@@ -138,24 +259,44 @@
             >
               <div class="card-content">
                 <div class="connection-icon">
-                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="20" height="20">
-                    <path fill="#a0a0a0" d="M4,1H20A1,1 0 0,1 21,2V6A1,1 0 0,1 20,7H4A1,1 0 0,1 3,6V2A1,1 0 0,1 4,1M4,9H20A1,1 0 0,1 21,10V14A1,1 0 0,1 20,15H4A1,1 0 0,1 3,14V10A1,1 0 0,1 4,9M4,17H20A1,1 0 0,1 21,18V22A1,1 0 0,1 20,23H4A1,1 0 0,1 3,22V18A1,1 0 0,1 4,17M9,5H10V3H9V5M9,13H10V11H9V13M9,21H10V19H9V21M5,3.5A1.5,1.5 0 0,0 6.5,5A1.5,1.5 0 0,0 5,6.5A1.5,1.5 0 0,0 3.5,5A1.5,1.5 0 0,0 5,3.5M5,11.5A1.5,1.5 0 0,0 6.5,13A1.5,1.5 0 0,0 5,14.5A1.5,1.5 0 0,0 3.5,13A1.5,1.5 0 0,0 5,11.5M5,19.5A1.5,1.5 0 0,0 6.5,21A1.5,1.5 0 0,0 5,22.5A1.5,1.5 0 0,0 3.5,21A1.5,1.5 0 0,0 5,19.5Z"></path>
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    viewBox="0 0 24 24"
+                    width="20"
+                    height="20"
+                  >
+                    <path
+                      fill="#a0a0a0"
+                      d="M4,1H20A1,1 0 0,1 21,2V6A1,1 0 0,1 20,7H4A1,1 0 0,1 3,6V2A1,1 0 0,1 4,1M4,9H20A1,1 0 0,1 21,10V14A1,1 0 0,1 20,15H4A1,1 0 0,1 3,14V10A1,1 0 0,1 4,9M4,17H20A1,1 0 0,1 21,18V22A1,1 0 0,1 20,23H4A1,1 0 0,1 3,22V18A1,1 0 0,1 4,17M9,5H10V3H9V5M9,13H10V11H9V13M9,21H10V19H9V21M5,3.5A1.5,1.5 0 0,0 6.5,5A1.5,1.5 0 0,0 5,6.5A1.5,1.5 0 0,0 3.5,5A1.5,1.5 0 0,0 5,3.5M5,11.5A1.5,1.5 0 0,0 6.5,13A1.5,1.5 0 0,0 5,14.5A1.5,1.5 0 0,0 3.5,13A1.5,1.5 0 0,0 5,11.5M5,19.5A1.5,1.5 0 0,0 6.5,21A1.5,1.5 0 0,0 5,22.5A1.5,1.5 0 0,0 3.5,21A1.5,1.5 0 0,0 5,19.5Z"
+                    />
                   </svg>
                 </div>
                 <div class="connection-details">
-                  <div class="connection-name">{{ getDisplayName(connection) }}</div>
-                  <div class="connection-address">{{ connection.host }}</div>
+                  <div class="connection-name">
+                    {{ getDisplayName(connection) }}
+                  </div>
+                  <div class="connection-address">
+                    {{ connection.host }}
+                  </div>
                 </div>
               </div>
               <!-- 删除按钮 -->
               <div
                 v-if="isEditMode"
                 class="delete-btn"
-                @click.stop="handleDeleteHistory(connection, index)"
                 title="删除"
+                @click.stop="handleDeleteHistory(connection, index)"
               >
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="8" height="8">
-                  <path fill="currentColor" d="M19,6.41L17.59,5L12,10.59L6.41,5L5,6.41L10.59,12L5,17.59L6.41,19L12,13.41L17.59,19L19,17.59L13.41,12L19,6.41Z"/>
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 24 24"
+                  width="8"
+                  height="8"
+                >
+                  <path
+                    fill="currentColor"
+                    d="M19,6.41L17.59,5L12,10.59L6.41,5L5,6.41L10.59,12L5,17.59L6.41,19L12,13.41L17.59,19L19,17.59L13.41,12L19,6.41Z"
+                  />
                 </svg>
               </div>
             </div>
@@ -163,120 +304,177 @@
         </div>
       </div>
     </div>
-    
+
     <!-- 使用新的 Modal 组件 -->
-    <Modal 
-      v-model:visible="dialogVisible" 
+    <modal
+      v-model:visible="dialogVisible"
       :title="isEdit ? '编辑连接' : '新建连接'"
       :tabs="['云服务器']"
-      @close="resetConnectionForm"
-      @confirm="saveConnection"
-      customClass="connection-modal"
+      custom-class="connection-modal"
       :buttons="[
         { text: '取消', type: 'cancel', onClick: resetConnectionForm },
         { text: '保存', type: 'confirm', onClick: saveConnection },
         { text: '保存并连接', type: 'primary', onClick: saveAndConnect }
       ]"
+      @close="resetConnectionForm"
+      @confirm="saveConnection"
     >
       <div class="connection-form">
         <div class="form-row form-row-two-columns">
           <div class="form-item">
             <label>云服务器公网IP或域名</label>
             <div class="input-wrapper">
-              <input type="text" v-model="connectionForm.host" placeholder="请输入云服务器公网IP或域名" />
+              <input
+                v-model="connectionForm.host"
+                type="text"
+                placeholder="请输入云服务器公网IP或域名"
+              >
             </div>
           </div>
-          
+
           <div class="form-item">
             <label>云服务器端口</label>
             <div class="input-wrapper">
-              <input type="text" v-model="connectionForm.port" placeholder="22" />
+              <input
+                v-model="connectionForm.port"
+                type="text"
+                placeholder="22"
+              >
             </div>
           </div>
         </div>
-        
+
         <div class="form-row form-row-two-columns">
           <div class="form-item">
             <label>用户名</label>
             <div class="input-wrapper">
-              <input type="text" v-model="connectionForm.username" placeholder="请输入用户名" />
+              <input
+                v-model="connectionForm.username"
+                type="text"
+                placeholder="请输入用户名"
+              >
             </div>
           </div>
-          
+
           <div class="form-item">
             <label>备注 (选填)</label>
             <div class="input-wrapper">
-              <input type="text" v-model="connectionForm.description" placeholder="请输入备注" />
+              <input
+                v-model="connectionForm.description"
+                type="text"
+                placeholder="请输入备注"
+              >
             </div>
           </div>
         </div>
-        
+
         <div class="form-row">
           <div class="form-item">
             <label>验证方式</label>
             <div class="auth-switcher">
-              <button 
-                :class="{'active': connectionForm.authType === 'password'}" 
+              <button
+                :class="{ active: connectionForm.authType === 'password' }"
                 @click="connectionForm.authType = 'password'"
-              >密码验证</button>
-              <button 
-                :class="{'active': connectionForm.authType === 'key'}" 
+              >
+                密码验证
+              </button>
+              <button
+                :class="{ active: connectionForm.authType === 'key' }"
                 @click="connectionForm.authType = 'key'"
-              >秘钥验证</button>
+              >
+                秘钥验证
+              </button>
             </div>
           </div>
         </div>
-        
-        <div class="form-row" v-if="connectionForm.authType === 'password'">
+
+        <div
+          v-if="connectionForm.authType === 'password'"
+          class="form-row"
+        >
           <div class="form-item">
             <label>密码 (选填)</label>
             <div class="input-wrapper">
               <form>
-                <input type="text" v-model="connectionForm.username" autocomplete="username" style="display:none;" />
-                <input type="password" v-model="connectionForm.password" placeholder="请输入密码" autocomplete="current-password" />
+                <input
+                  v-model="connectionForm.username"
+                  type="text"
+                  autocomplete="username"
+                  style="display: none"
+                >
+                <input
+                  v-model="connectionForm.password"
+                  type="password"
+                  placeholder="请输入密码"
+                  autocomplete="current-password"
+                >
               </form>
             </div>
-            <Checkbox
+            <checkbox
               v-model="connectionForm.rememberPassword"
               label="记住密码"
-              style="margin-top: 10px;"
+              style="margin-top: 10px"
             />
           </div>
         </div>
-        
-        <div class="form-row" v-else>
+
+        <div
+          v-else
+          class="form-row"
+        >
           <div class="form-item">
             <label>秘钥文件</label>
             <div class="input-wrapper key-file-wrapper">
-              <input type="text" v-model="connectionForm.keyFile" placeholder="请选择秘钥文件" readonly @click="selectKeyFile" />
-              <button class="select-file-btn" @click="selectKeyFile">选择密钥</button>
+              <input
+                v-model="connectionForm.keyFile"
+                type="text"
+                placeholder="请选择秘钥文件"
+                readonly
+                @click="selectKeyFile"
+              >
+              <button
+                class="select-file-btn"
+                @click="selectKeyFile"
+              >
+                选择密钥
+              </button>
             </div>
           </div>
         </div>
       </div>
-    </Modal>
+    </modal>
   </div>
 </template>
 
 <script>
-import { ref, computed, nextTick, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
-import { useUserStore } from '@/store/user'
-import { useLocalConnectionsStore } from '@/store/localConnections'
-import { useTabStore } from '@/store/tab'
-import { useSessionStore } from '@/store/session'
-import { ElMessage, ElMessageBox } from 'element-plus'
-import { Document, CaretBottom, ArrowUp, Edit, Delete, Search, Monitor, Connection, Top } from '@element-plus/icons-vue'
-import Modal from '@/components/common/Modal.vue'
-import AddButton from '@/components/common/AddButton.vue'
-import SearchInput from '@/components/common/SearchInput.vue'
-import Checkbox from '@/components/common/Checkbox.vue'
-import log from '@/services/log'
+import { ref, computed, nextTick, onMounted } from 'vue';
+import { useRouter } from 'vue-router';
+import { useUserStore } from '@/store/user';
+import { useLocalConnectionsStore } from '@/store/localConnections';
+import { useTabStore } from '@/store/tab';
+import { useSessionStore } from '@/store/session';
+import { ElMessage, ElMessageBox } from 'element-plus';
+import {
+  Document,
+  CaretBottom,
+  ArrowUp,
+  Edit,
+  Delete,
+  Search,
+  Monitor,
+  Connection,
+  Top
+} from '@element-plus/icons-vue';
+import Modal from '@/components/common/Modal.vue';
+import AddButton from '@/components/common/AddButton.vue';
+import SearchInput from '@/components/common/SearchInput.vue';
+import Checkbox from '@/components/common/Checkbox.vue';
+import log from '@/services/log';
 
 export default {
   name: 'NewConnection',
   components: {
-    Document, 
+    Document,
     CaretBottom,
     ArrowUp,
     Edit,
@@ -291,303 +489,321 @@ export default {
     Top
   },
   setup() {
-    const userStore = useUserStore()
-    const localConnectionsStore = useLocalConnectionsStore()
-    const tabStore = useTabStore()
-    const sessionStore = useSessionStore()
-    const router = useRouter()
-    
+    const userStore = useUserStore();
+    const localConnectionsStore = useLocalConnectionsStore();
+    const tabStore = useTabStore();
+    const sessionStore = useSessionStore();
+    const router = useRouter();
+
     // 获取显示名称的方法
-    const getDisplayName = (connection) => {
+    const getDisplayName = connection => {
       if (connection.description && connection.description.trim()) {
-        return connection.description
+        return connection.description;
       }
-      return `${connection.username}@${connection.host}`
-    }
+      return `${connection.username}@${connection.host}`;
+    };
 
     // 获取连接列表
     const connections = computed(() => {
-      return userStore.isLoggedIn ? userStore.connections : localConnectionsStore.getAllConnections
-    })
+      return userStore.isLoggedIn ? userStore.connections : localConnectionsStore.getAllConnections;
+    });
 
     // 获取收藏连接（智能按需加载）
     const favoriteConnections = computed(() => {
-      const connections = userStore.isLoggedIn ? userStore.favoriteConnections : localConnectionsStore.getFavoriteConnections
+      const connections = userStore.isLoggedIn
+        ? userStore.favoriteConnections
+        : localConnectionsStore.getFavoriteConnections;
 
       // 如果用户已登录且收藏数据为空且尚未加载，触发按需加载
-      if (userStore.isLoggedIn && connections.length === 0 && !userStore.favoritesLoaded && !userStore.favoritesLoading) {
-        log.debug('检测到需要收藏数据，触发按需加载')
+      if (
+        userStore.isLoggedIn &&
+        connections.length === 0 &&
+        !userStore.favoritesLoaded &&
+        !userStore.favoritesLoading
+      ) {
+        log.debug('检测到需要收藏数据，触发按需加载');
         // 异步触发加载，不阻塞当前计算
         setTimeout(() => {
           userStore.loadFavoritesOnDemand().catch(error => {
-            log.warn('按需加载收藏数据失败:', error)
-          })
-        }, 100)
+            log.warn('按需加载收藏数据失败:', error);
+          });
+        }, 100);
       }
 
-      return connections
-    })
+      return connections;
+    });
 
     // 获取历史记录（智能按需加载）
     const historyConnections = computed(() => {
-      const connections = userStore.isLoggedIn ? userStore.historyConnections : localConnectionsStore.getHistory
+      const connections = userStore.isLoggedIn
+        ? userStore.historyConnections
+        : localConnectionsStore.getHistory;
 
       // 如果用户已登录且历史记录为空且尚未加载，触发按需加载
-      if (userStore.isLoggedIn && connections.length === 0 && !userStore.historyLoaded && !userStore.historyLoading) {
-        log.debug('检测到需要历史记录，触发按需加载')
+      if (
+        userStore.isLoggedIn &&
+        connections.length === 0 &&
+        !userStore.historyLoaded &&
+        !userStore.historyLoading
+      ) {
+        log.debug('检测到需要历史记录，触发按需加载');
         // 异步触发加载，不阻塞当前计算
         setTimeout(() => {
           userStore.loadHistoryOnDemand().catch(error => {
-            log.warn('按需加载历史记录失败:', error)
-          })
-        }, 100)
+            log.warn('按需加载历史记录失败:', error);
+          });
+        }, 100);
       }
 
-      return connections
-    })
+      return connections;
+    });
 
     // 搜索相关
-    const searchQuery = ref('')
+    const searchQuery = ref('');
 
     // 编辑模式相关
-    const isEditMode = ref(false)
-    const dragIndex = ref('')
-    const enterIndex = ref('')
+    const isEditMode = ref(false);
+    const dragIndex = ref('');
+    const enterIndex = ref('');
 
     // 过滤后的连接列表
     const filteredConnections = computed(() => {
       if (!searchQuery.value || !searchQuery.value.trim()) {
-        return connections.value
+        return connections.value;
       }
 
-      const query = searchQuery.value.toLowerCase().trim()
+      const query = searchQuery.value.toLowerCase().trim();
       return connections.value.filter(connection => {
-        const displayName = getDisplayName(connection).toLowerCase()
-        const host = connection.host.toLowerCase()
-        const username = connection.username.toLowerCase()
-        const description = (connection.description || '').toLowerCase()
+        const displayName = getDisplayName(connection).toLowerCase();
+        const host = connection.host.toLowerCase();
+        const username = connection.username.toLowerCase();
+        const description = (connection.description || '').toLowerCase();
 
-        return displayName.includes(query) ||
-               host.includes(query) ||
-               username.includes(query) ||
-               description.includes(query)
-      })
-    })
+        return (
+          displayName.includes(query) ||
+          host.includes(query) ||
+          username.includes(query) ||
+          description.includes(query)
+        );
+      });
+    });
 
     // 过滤后的历史连接列表
     const filteredHistoryConnections = computed(() => {
       if (!searchQuery.value || !searchQuery.value.trim()) {
-        return historyConnections.value
+        return historyConnections.value;
       }
 
-      const query = searchQuery.value.toLowerCase().trim()
+      const query = searchQuery.value.toLowerCase().trim();
       return historyConnections.value.filter(connection => {
-        const displayName = getDisplayName(connection).toLowerCase()
-        const host = connection.host.toLowerCase()
-        const username = connection.username.toLowerCase()
-        const description = (connection.description || '').toLowerCase()
+        const displayName = getDisplayName(connection).toLowerCase();
+        const host = connection.host.toLowerCase();
+        const username = connection.username.toLowerCase();
+        const description = (connection.description || '').toLowerCase();
 
-        return displayName.includes(query) ||
-               host.includes(query) ||
-               username.includes(query) ||
-               description.includes(query)
-      })
-    })
+        return (
+          displayName.includes(query) ||
+          host.includes(query) ||
+          username.includes(query) ||
+          description.includes(query)
+        );
+      });
+    });
 
     // 防抖函数用于优化API请求
-    let reorderTimeout = null
-    const debouncedReorderHistory = (newOrder) => {
+    let reorderTimeout = null;
+    const debouncedReorderHistory = newOrder => {
       // 清除之前的定时器
       if (reorderTimeout) {
-        clearTimeout(reorderTimeout)
+        clearTimeout(reorderTimeout);
       }
 
       // 设置新的定时器，延迟500ms后执行API请求
       reorderTimeout = setTimeout(() => {
         if (userStore.isLoggedIn) {
-          userStore.reorderHistoryConnections(newOrder)
+          userStore.reorderHistoryConnections(newOrder);
         } else {
-          localConnectionsStore.reorderHistoryConnections(newOrder)
+          localConnectionsStore.reorderHistoryConnections(newOrder);
         }
-        log.debug('防抖后同步历史连接排序到服务器')
-      }, 500)
-    }
-    
+        log.debug('防抖后同步历史连接排序到服务器');
+      }, 500);
+    };
+
     // 添加新连接
-    const addConnection = (connection) => {
+    const addConnection = connection => {
       if (userStore.isLoggedIn) {
-        userStore.addConnection(connection)
+        userStore.addConnection(connection);
       } else {
-        localConnectionsStore.addConnection(connection)
+        localConnectionsStore.addConnection(connection);
       }
-    }
-    
+    };
+
     // 更新连接
     const updateConnection = (id, connection) => {
       if (userStore.isLoggedIn) {
-        userStore.updateConnection(id, connection)
+        userStore.updateConnection(id, connection);
       } else {
-        localConnectionsStore.updateConnection(id, connection)
+        localConnectionsStore.updateConnection(id, connection);
       }
-    }
-    
+    };
+
     // 删除连接
-    const deleteConnection = (id) => {
+    const deleteConnection = id => {
       if (userStore.isLoggedIn) {
-        userStore.deleteConnection(id)
+        userStore.deleteConnection(id);
       } else {
-        localConnectionsStore.deleteConnection(id)
+        localConnectionsStore.deleteConnection(id);
       }
-    }
-    
+    };
+
     // 添加到收藏
-    const addToFavorites = (id) => {
+    const addToFavorites = id => {
       if (userStore.isLoggedIn) {
-        userStore.addToFavorites(id)
+        userStore.addToFavorites(id);
       } else {
-        localConnectionsStore.addToFavorites(id)
+        localConnectionsStore.addToFavorites(id);
       }
-    }
-    
+    };
+
     // 从收藏移除
-    const removeFromFavorites = (id) => {
+    const removeFromFavorites = id => {
       if (userStore.isLoggedIn) {
-        userStore.removeFromFavorites(id)
+        userStore.removeFromFavorites(id);
       } else {
-        localConnectionsStore.removeFromFavorites(id)
+        localConnectionsStore.removeFromFavorites(id);
       }
-    }
-    
+    };
+
     // 检查是否已收藏
-    const isFavorite = (id) => {
-      return userStore.isLoggedIn ? userStore.isFavorite(id) : localConnectionsStore.isFavorite(id)
-    }
-    
+    const isFavorite = id => {
+      return userStore.isLoggedIn ? userStore.isFavorite(id) : localConnectionsStore.isFavorite(id);
+    };
+
     // 检查是否已置顶
-    const isPinned = (id) => {
-      return userStore.isLoggedIn ? userStore.isPinned(id) : localConnectionsStore.isPinned(id)
-    }
-    
+    const isPinned = id => {
+      return userStore.isLoggedIn ? userStore.isPinned(id) : localConnectionsStore.isPinned(id);
+    };
+
     // 搜索处理函数
-    const handleSearch = (query) => {
+    const handleSearch = query => {
       // 只在搜索查询发生实际变化时记录日志
       if (searchQuery.value !== query) {
-        log.debug('连接配置搜索', { query, previousQuery: searchQuery.value })
-        searchQuery.value = query
+        log.debug('连接配置搜索', { query, previousQuery: searchQuery.value });
+        searchQuery.value = query;
       }
-    }
+    };
 
     // 编辑模式相关方法
     const toggleEditMode = () => {
-      isEditMode.value = !isEditMode.value
-      log.debug('切换编辑模式', { isEditMode: isEditMode.value })
-    }
+      isEditMode.value = !isEditMode.value;
+      log.debug('切换编辑模式', { isEditMode: isEditMode.value });
+    };
 
     // 简化的拖拽相关方法 - 基于参考代码重新实现
-    const handleDragStart = (index) => {
-      dragIndex.value = index
-      log.debug('开始拖拽', { index })
+    const handleDragStart = index => {
+      dragIndex.value = index;
+      log.debug('开始拖拽', { index });
 
       // 添加一个小延迟确保拖拽状态正确应用
       nextTick(() => {
-        const draggedCard = document.querySelector('.connection-card.being-dragged')
+        const draggedCard = document.querySelector('.connection-card.being-dragged');
         if (draggedCard) {
-          draggedCard.style.transform = 'scale(1.02)'
+          draggedCard.style.transform = 'scale(1.02)';
         }
-      })
-    }
+      });
+    };
 
     const handleDragEnter = (e, index) => {
-      e.preventDefault()
+      e.preventDefault();
       if (dragIndex.value !== index && dragIndex.value !== '') {
         // 直接操作过滤后的历史连接数组，参考示例代码的简洁实现
-        const currentList = [...filteredHistoryConnections.value]
+        const currentList = [...filteredHistoryConnections.value];
 
         // 执行拖拽移动操作
-        const moving = currentList[dragIndex.value]
-        currentList.splice(dragIndex.value, 1)
-        currentList.splice(index, 0, moving)
+        const moving = currentList[dragIndex.value];
+        currentList.splice(dragIndex.value, 1);
+        currentList.splice(index, 0, moving);
 
         // 更新拖拽索引到新位置
-        dragIndex.value = index
+        dragIndex.value = index;
 
         // 如果当前没有搜索过滤，直接更新原始数组
         if (!searchQuery.value || !searchQuery.value.trim()) {
           // 直接更新本地状态
           if (userStore.isLoggedIn) {
-            userStore.updateHistoryOrder(currentList)
+            userStore.updateHistoryOrder(currentList);
           } else {
-            localConnectionsStore.updateHistoryOrder(currentList)
+            localConnectionsStore.updateHistoryOrder(currentList);
           }
 
           // 使用防抖函数延迟API请求
           nextTick(() => {
-            debouncedReorderHistory(currentList)
-          })
+            debouncedReorderHistory(currentList);
+          });
         } else {
           // 如果有搜索过滤，需要重新构建完整的历史数组
-          const fullHistory = userStore.isLoggedIn ?
-            [...userStore.historyConnections] :
-            [...localConnectionsStore.getHistory]
+          const fullHistory = userStore.isLoggedIn
+            ? [...userStore.historyConnections]
+            : [...localConnectionsStore.getHistory];
 
           // 创建一个新的完整历史数组，保持过滤项的新顺序，未过滤项保持原位置
-          const reorderedHistory = []
-          const filteredItems = new Set(currentList.map(item => `${item.id}-${item.timestamp}`))
+          const reorderedHistory = [];
+          const filteredItems = new Set(currentList.map(item => `${item.id}-${item.timestamp}`));
 
           // 先添加重新排序后的过滤项
           currentList.forEach(item => {
-            reorderedHistory.push(item)
-          })
+            reorderedHistory.push(item);
+          });
 
           // 再添加未被过滤的项，保持它们的相对位置
           fullHistory.forEach(item => {
-            const itemKey = `${item.id}-${item.timestamp}`
+            const itemKey = `${item.id}-${item.timestamp}`;
             if (!filteredItems.has(itemKey)) {
-              reorderedHistory.push(item)
+              reorderedHistory.push(item);
             }
-          })
+          });
 
           // 更新本地状态
           if (userStore.isLoggedIn) {
-            userStore.updateHistoryOrder(reorderedHistory)
+            userStore.updateHistoryOrder(reorderedHistory);
           } else {
-            localConnectionsStore.updateHistoryOrder(reorderedHistory)
+            localConnectionsStore.updateHistoryOrder(reorderedHistory);
           }
 
           // 使用防抖函数延迟API请求
           nextTick(() => {
-            debouncedReorderHistory(reorderedHistory)
-          })
+            debouncedReorderHistory(reorderedHistory);
+          });
         }
 
         log.debug('拖拽移动', {
           from: dragIndex.value,
           to: index,
           hasFilter: !!(searchQuery.value && searchQuery.value.trim())
-        })
+        });
       }
-    }
+    };
 
-    const handleDragOver = (e) => {
-      e.preventDefault()
-    }
+    const handleDragOver = e => {
+      e.preventDefault();
+    };
 
     const handleDragEnd = () => {
       // 清理状态
-      const previousDragIndex = dragIndex.value
-      dragIndex.value = ''
-      enterIndex.value = ''
+      const previousDragIndex = dragIndex.value;
+      dragIndex.value = '';
+      enterIndex.value = '';
 
       // 确保所有卡片的样式都被重置
       nextTick(() => {
-        const allCards = document.querySelectorAll('.connection-card')
+        const allCards = document.querySelectorAll('.connection-card');
         allCards.forEach(card => {
-          card.style.transform = ''
-        })
-      })
+          card.style.transform = '';
+        });
+      });
 
-      log.debug('拖拽结束', { previousDragIndex })
-    }
+      log.debug('拖拽结束', { previousDragIndex });
+    };
 
     // 删除历史连接
     const handleDeleteHistory = async (connection, index) => {
@@ -598,30 +814,30 @@ export default {
           {
             confirmButtonText: '确定',
             cancelButtonText: '取消',
-            type: 'warning',
+            type: 'warning'
           }
-        )
+        );
 
-        let result
+        let result;
         if (userStore.isLoggedIn) {
-          result = await userStore.removeFromHistory(connection.id, connection.timestamp)
+          result = await userStore.removeFromHistory(connection.id, connection.timestamp);
         } else {
-          result = localConnectionsStore.removeFromHistory(connection.id, connection.timestamp)
+          result = localConnectionsStore.removeFromHistory(connection.id, connection.timestamp);
         }
 
         if (result !== false) {
-          ElMessage.success('历史记录已删除')
-          log.debug('删除历史连接', { connection: getDisplayName(connection), index })
+          ElMessage.success('历史记录已删除');
+          log.debug('删除历史连接', { connection: getDisplayName(connection), index });
         }
       } catch {
         // 用户取消删除
       }
-    }
-    
+    };
+
     // 新建连接弹窗相关
-    const dialogVisible = ref(false)
-    const isEdit = ref(false)
-    const isFromHistory = ref(false) // 标识是否来自历史连接的编辑
+    const dialogVisible = ref(false);
+    const isEdit = ref(false);
+    const isFromHistory = ref(false); // 标识是否来自历史连接的编辑
     const connectionForm = ref({
       id: null,
       name: '',
@@ -634,15 +850,15 @@ export default {
       favorite: false,
       description: '',
       rememberPassword: false
-    })
-    
+    });
+
     // 显示新建连接对话框
     const showNewConnectionDialog = () => {
-      isEdit.value = false
-      isFromHistory.value = false
-      resetConnectionForm()
-      dialogVisible.value = true
-    }
+      isEdit.value = false;
+      isFromHistory.value = false;
+      resetConnectionForm();
+      dialogVisible.value = true;
+    };
 
     // 重置连接表单
     const resetConnectionForm = () => {
@@ -658,150 +874,159 @@ export default {
         favorite: false,
         description: '',
         rememberPassword: false
-      }
-      isFromHistory.value = false
+      };
+      isFromHistory.value = false;
       // 关闭对话框
-      dialogVisible.value = false
-    }
-    
+      dialogVisible.value = false;
+    };
+
     // 验证表单数据
     const validateForm = () => {
       if (!connectionForm.value.host?.trim()) {
-        ElMessage.error('请输入云服务器公网IP或域名')
-        return false
+        ElMessage.error('请输入云服务器公网IP或域名');
+        return false;
       }
-      
+
       if (!connectionForm.value.username?.trim()) {
-        ElMessage.error('请输入用户名')
-        return false
+        ElMessage.error('请输入用户名');
+        return false;
       }
-      
+
       if (connectionForm.value.authType === 'password' && !connectionForm.value.password?.trim()) {
-        ElMessage.error('请输入密码')
-        return false
+        ElMessage.error('请输入密码');
+        return false;
       }
-      
+
       if (connectionForm.value.authType === 'key' && !connectionForm.value.keyFile?.trim()) {
-        ElMessage.error('请选择密钥文件')
-        return false
+        ElMessage.error('请选择密钥文件');
+        return false;
       }
-      
-      return true
-    }
-    
+
+      return true;
+    };
+
     // 检查连接是否已存在于我的连接配置中，返回连接对象或null
-    const findExistingConnection = (connection) => {
-      const myConnections = userStore.isLoggedIn ? userStore.connections : localConnectionsStore.getAllConnections
-      return myConnections.find(conn =>
-        conn.host === connection.host &&
-        conn.port === connection.port &&
-        conn.username === connection.username
-      ) || null
-    }
-
-
+    const findExistingConnection = connection => {
+      const myConnections = userStore.isLoggedIn
+        ? userStore.connections
+        : localConnectionsStore.getAllConnections;
+      return (
+        myConnections.find(
+          conn =>
+            conn.host === connection.host &&
+            conn.port === connection.port &&
+            conn.username === connection.username
+        ) || null
+      );
+    };
 
     // 保存连接
     const saveConnection = async () => {
       if (!validateForm()) {
-        return
+        return;
       }
 
       try {
         if (isEdit.value) {
           // 检查是否是从历史连接编辑的，且在我的连接配置中不存在
           if (isFromHistory.value) {
-            const existingConnection = findExistingConnection(connectionForm.value)
+            const existingConnection = findExistingConnection(connectionForm.value);
 
             if (!existingConnection) {
               // 如果连接不存在于我的连接配置中，则添加为新连接
               if (userStore.isLoggedIn) {
-                const connectionId = await userStore.addConnection(connectionForm.value)
+                const connectionId = await userStore.addConnection(connectionForm.value);
                 // 检查是否成功保存
                 if (connectionId) {
                   if (connectionId !== connectionForm.value.id) {
-                    ElMessage.success('连接已存在，已更新连接信息')
+                    ElMessage.success('连接已存在，已更新连接信息');
                   } else {
-                    ElMessage.success('连接已保存到我的连接配置')
+                    ElMessage.success('连接已保存到我的连接配置');
                   }
                 }
               } else {
-                const connectionId = localConnectionsStore.addConnection(connectionForm.value)
+                const connectionId = localConnectionsStore.addConnection(connectionForm.value);
                 // 检查是否是更新了现有连接
                 if (connectionId !== connectionForm.value.id) {
-                  ElMessage.success('连接已存在，已更新连接信息')
+                  ElMessage.success('连接已存在，已更新连接信息');
                 } else {
-                  ElMessage.success('连接已保存到我的连接配置')
+                  ElMessage.success('连接已保存到我的连接配置');
                 }
               }
             } else {
               // 更新已有连接，使用现有连接的ID
-              const updatedConnection = { ...connectionForm.value, id: existingConnection.id }
+              const updatedConnection = { ...connectionForm.value, id: existingConnection.id };
               if (userStore.isLoggedIn) {
-                const result = await userStore.updateConnection(existingConnection.id, updatedConnection)
+                const result = await userStore.updateConnection(
+                  existingConnection.id,
+                  updatedConnection
+                );
                 if (result) {
-                  ElMessage.success('连接已更新')
+                  ElMessage.success('连接已更新');
                 }
               } else {
-                localConnectionsStore.updateConnection(existingConnection.id, updatedConnection)
-                ElMessage.success('连接已更新')
+                localConnectionsStore.updateConnection(existingConnection.id, updatedConnection);
+                ElMessage.success('连接已更新');
               }
             }
+          } else {
+            // 更新已有连接（来自我的连接配置的编辑）
+            if (userStore.isLoggedIn) {
+              const result = await userStore.updateConnection(
+                connectionForm.value.id,
+                connectionForm.value
+              );
+              if (result) {
+                ElMessage.success('连接已更新');
+              }
+            } else {
+              localConnectionsStore.updateConnection(connectionForm.value.id, connectionForm.value);
+              ElMessage.success('连接已更新');
+            }
+          }
         } else {
-          // 更新已有连接（来自我的连接配置的编辑）
+          // 添加新连接到我的连接配置
           if (userStore.isLoggedIn) {
-            const result = await userStore.updateConnection(connectionForm.value.id, connectionForm.value)
+            const result = await userStore.addConnection(connectionForm.value);
             if (result) {
-              ElMessage.success('连接已更新')
+              ElMessage.success('连接已保存');
             }
           } else {
-            localConnectionsStore.updateConnection(connectionForm.value.id, connectionForm.value)
-            ElMessage.success('连接已更新')
+            localConnectionsStore.addConnection(connectionForm.value);
+            ElMessage.success('连接已保存');
           }
         }
-      } else {
-        // 添加新连接到我的连接配置
-        if (userStore.isLoggedIn) {
-          const result = await userStore.addConnection(connectionForm.value)
-          if (result) {
-            ElMessage.success('连接已保存')
-          }
-        } else {
-          localConnectionsStore.addConnection(connectionForm.value)
-          ElMessage.success('连接已保存')
-        }
-      }
 
-      dialogVisible.value = false
-    } catch (error) {
-      log.error('保存连接时发生错误', error)
-      // 错误消息已在store中处理，这里不需要重复显示
-    }
-  }
-    
+        dialogVisible.value = false;
+      } catch (error) {
+        log.error('保存连接时发生错误', error);
+        // 错误消息已在store中处理，这里不需要重复显示
+      }
+    };
+
     // 选择密钥文件
     const selectKeyFile = () => {
       // 创建一个隐藏的文件输入元素
-      const fileInput = document.createElement('input')
-      fileInput.type = 'file'
-      fileInput.accept = '.pem,.ppk,.key'
-      
+      const fileInput = document.createElement('input');
+      fileInput.type = 'file';
+      fileInput.accept = '.pem,.ppk,.key';
+
       // 监听文件选择事件
-      fileInput.onchange = (event) => {
-        const file = event.target.files[0]
+      fileInput.onchange = event => {
+        const file = event.target.files[0];
         if (file) {
-          connectionForm.value.keyFile = file.path || file.name
+          connectionForm.value.keyFile = file.path || file.name;
         }
-      }
-      
+      };
+
       // 触发文件选择对话框
-      fileInput.click()
-    }
-    
+      fileInput.click();
+    };
+
     // 保存并连接
     const saveAndConnect = async () => {
       if (!validateForm()) {
-        return
+        return;
       }
 
       try {
@@ -815,310 +1040,318 @@ export default {
           // 检查是否是从历史连接编辑的
           if (isFromHistory.value) {
             // 从历史连接编辑：检查是否已存在相同配置的连接
-            const existingConnection = findExistingConnection(connectionForm.value)
+            const existingConnection = findExistingConnection(connectionForm.value);
 
             if (!existingConnection) {
               // 如果连接不存在于我的连接配置中，则添加为新连接
               // 使用用户当前输入的表单数据
               if (userStore.isLoggedIn) {
-                connectionId = await userStore.addConnection(connectionForm.value)
+                connectionId = await userStore.addConnection(connectionForm.value);
               } else {
-                connectionId = localConnectionsStore.addConnection(connectionForm.value)
+                connectionId = localConnectionsStore.addConnection(connectionForm.value);
               }
             } else {
               // 如果连接已存在，更新该连接的信息为用户当前输入的数据
               // 这确保了用户的修改会被保存，而不是使用旧数据
               connectionId = existingConnection.id;
               if (userStore.isLoggedIn) {
-                await userStore.updateConnection(connectionId, connectionForm.value)
+                await userStore.updateConnection(connectionId, connectionForm.value);
               } else {
-                localConnectionsStore.updateConnection(connectionId, connectionForm.value)
+                localConnectionsStore.updateConnection(connectionId, connectionForm.value);
               }
             }
           } else {
             // 来自我的连接配置的编辑：直接更新
             connectionId = connectionForm.value.id;
             if (userStore.isLoggedIn) {
-              await userStore.updateConnection(connectionId, connectionForm.value)
+              await userStore.updateConnection(connectionId, connectionForm.value);
             } else {
-              localConnectionsStore.updateConnection(connectionId, connectionForm.value)
+              localConnectionsStore.updateConnection(connectionId, connectionForm.value);
             }
           }
         } else {
           // 添加新连接到我的连接配置
           if (userStore.isLoggedIn) {
-            connectionId = await userStore.addConnection(connectionForm.value)
+            connectionId = await userStore.addConnection(connectionForm.value);
           } else {
-            connectionId = localConnectionsStore.addConnection(connectionForm.value)
+            connectionId = localConnectionsStore.addConnection(connectionForm.value);
           }
         }
 
         // 如果保存失败，不继续连接
         if (!connectionId) {
-          return
+          return;
         }
 
-      // 准备用于连接的数据 - 始终使用用户当前输入的表单数据
-      const connectionDataForSession = {
-        ...connectionForm.value,
-        id: sessionId, // 会话使用独立的ID
-        originalConnectionId: connectionId, // 保存原始连接ID以便需要时可以引用
-        title: connectionForm.value.name || `${connectionForm.value.username}@${connectionForm.value.host}`,
+        // 准备用于连接的数据 - 始终使用用户当前输入的表单数据
+        const connectionDataForSession = {
+          ...connectionForm.value,
+          id: sessionId, // 会话使用独立的ID
+          originalConnectionId: connectionId, // 保存原始连接ID以便需要时可以引用
+          title:
+            connectionForm.value.name ||
+            `${connectionForm.value.username}@${connectionForm.value.host}`
+        };
+
+        // 添加到历史记录 - 使用用户输入的数据，但保留连接ID
+        const historyData = {
+          ...connectionForm.value,
+          id: connectionId // 历史记录使用连接配置的ID
+        };
+
+        if (userStore.isLoggedIn) {
+          userStore.addToHistory(historyData);
+        } else {
+          localConnectionsStore.addToHistory(historyData);
+        }
+
+        // 关闭对话框
+        dialogVisible.value = false;
+
+        // 获取当前标签页索引
+        const currentTabIndex = tabStore.activeTabIndex;
+        const currentTab = tabStore.tabs[currentTabIndex];
+
+        // 更新当前标签为终端标签
+        if (
+          currentTab &&
+          (currentTab.type === 'newConnection' || currentTab.path.includes('/connections'))
+        ) {
+          // 更新标签的路径、类型和数据
+          tabStore.updateTab(currentTabIndex, {
+            title: connectionDataForSession.title,
+            type: 'terminal',
+            path: `/terminal/${sessionId}`,
+            data: { connectionId: sessionId }
+          });
+
+          // 在会话存储中注册会话，使用用户输入的连接数据
+          sessionStore.registerSession(sessionId, connectionDataForSession);
+
+          // 导航到终端页面，使用新的会话ID
+          router.push(`/terminal/${sessionId}`);
+        } else {
+          // 如果当前标签不是新建连接标签，则创建新标签
+          tabStore.addTerminal(sessionId);
+
+          // 在会话存储中注册会话，使用用户输入的连接数据
+          sessionStore.registerSession(sessionId, connectionDataForSession);
+
+          // 导航到终端页面，使用新的会话ID
+          router.push(`/terminal/${sessionId}`);
+        }
+      } catch (error) {
+        log.error('保存并连接时发生错误', error);
+        // 错误消息已在store中处理，这里不需要重复显示
       }
+    };
 
-      // 添加到历史记录 - 使用用户输入的数据，但保留连接ID
-      const historyData = {
-        ...connectionForm.value,
-        id: connectionId // 历史记录使用连接配置的ID
-      }
-
-      if (userStore.isLoggedIn) {
-        userStore.addToHistory(historyData)
-      } else {
-        localConnectionsStore.addToHistory(historyData)
-      }
-
-      // 关闭对话框
-      dialogVisible.value = false
-
-      // 获取当前标签页索引
-      const currentTabIndex = tabStore.activeTabIndex
-      const currentTab = tabStore.tabs[currentTabIndex]
-
-      // 更新当前标签为终端标签
-      if (currentTab && (currentTab.type === 'newConnection' || currentTab.path.includes('/connections'))) {
-        // 更新标签的路径、类型和数据
-        tabStore.updateTab(currentTabIndex, {
-          title: connectionDataForSession.title,
-          type: 'terminal',
-          path: `/terminal/${sessionId}`,
-          data: { connectionId: sessionId }
-        })
-
-        // 在会话存储中注册会话，使用用户输入的连接数据
-        sessionStore.registerSession(sessionId, connectionDataForSession)
-
-        // 导航到终端页面，使用新的会话ID
-        router.push(`/terminal/${sessionId}`)
-      } else {
-        // 如果当前标签不是新建连接标签，则创建新标签
-        tabStore.addTerminal(sessionId)
-
-        // 在会话存储中注册会话，使用用户输入的连接数据
-        sessionStore.registerSession(sessionId, connectionDataForSession)
-
-        // 导航到终端页面，使用新的会话ID
-        router.push(`/terminal/${sessionId}`)
-      }
-    } catch (error) {
-      log.error('保存并连接时发生错误', error)
-      // 错误消息已在store中处理，这里不需要重复显示
-    }
-  }
-    
     // 处理登录
-    const handleLogin = async (connection) => {
+    const handleLogin = async connection => {
       try {
-      // 检查是否记住密码
-      if (!connection.rememberPassword || !connection.password) {
-        // 如果没有记住密码，先弹出编辑框让用户输入密码
-        isEdit.value = true
-        isFromHistory.value = true // 标识这是来自历史连接的编辑
+        // 检查是否记住密码
+        if (!connection.rememberPassword || !connection.password) {
+          // 如果没有记住密码，先弹出编辑框让用户输入密码
+          isEdit.value = true;
+          isFromHistory.value = true; // 标识这是来自历史连接的编辑
 
-        // 创建一个新的对象来存储编辑的连接信息
-        const editedConnection = { ...connection }
+          // 创建一个新的对象来存储编辑的连接信息
+          const editedConnection = { ...connection };
 
-        // 确保保留认证方式
-        editedConnection.authType = connection.authType || 'password'
+          // 确保保留认证方式
+          editedConnection.authType = connection.authType || 'password';
 
-        // 如果是密码认证但没记住密码，清空密码字段让用户重新输入
-        if (editedConnection.authType === 'password') {
-          editedConnection.password = ''
+          // 如果是密码认证但没记住密码，清空密码字段让用户重新输入
+          if (editedConnection.authType === 'password') {
+            editedConnection.password = '';
+          }
+
+          connectionForm.value = editedConnection;
+          dialogVisible.value = true;
+          return;
         }
-
-        connectionForm.value = editedConnection
-        dialogVisible.value = true
-        return
-      }
 
         // 生成新的会话ID，确保每次都是新会话
         const sessionId = Date.now().toString();
 
-      // 添加到历史记录
-      if (userStore.isLoggedIn) {
-          await userStore.addToHistory(connection)
-      } else {
-        localConnectionsStore.addToHistory(connection)
-      }
-
-      // 获取当前标签页索引
-      const currentTabIndex = tabStore.activeTabIndex
-      const currentTab = tabStore.tabs[currentTabIndex]
-
-      // 准备连接信息
-      const connectionInfo = {
-        ...connection,
-        id: sessionId,
-        originalConnectionId: connection.id,
-        title: connection.name || `${connection.username}@${connection.host}`,
-      }
-
-      // 更新当前标签为终端标签
-      if (currentTab && (currentTab.type === 'newConnection' || currentTab.path.includes('/connections'))) {
-        // 保存原始标签数据用于回滚
-        const originalTabData = {
-          title: currentTab.title,
-          type: currentTab.type,
-          path: currentTab.path,
-          data: currentTab.data
+        // 添加到历史记录
+        if (userStore.isLoggedIn) {
+          await userStore.addToHistory(connection);
+        } else {
+          localConnectionsStore.addToHistory(connection);
         }
 
-        // 更新标签的路径、类型和数据
-        tabStore.updateTab(currentTabIndex, {
-          title: connectionInfo.title,
-          type: 'terminal',
-          path: `/terminal/${sessionId}`,
-          data: {
-            connectionId: sessionId,
-            originalTabData: originalTabData // 保存原始数据用于回滚
-          }
-        })
+        // 获取当前标签页索引
+        const currentTabIndex = tabStore.activeTabIndex;
+        const currentTab = tabStore.tabs[currentTabIndex];
 
-        // 在会话存储中注册会话
-        sessionStore.registerSession(sessionId, connectionInfo)
+        // 准备连接信息
+        const connectionInfo = {
+          ...connection,
+          id: sessionId,
+          originalConnectionId: connection.id,
+          title: connection.name || `${connection.username}@${connection.host}`
+        };
 
-        // 导航到终端页面
-        router.push(`/terminal/${sessionId}`)
-      } else {
-        // 创建新标签页，使用新的会话ID
-        tabStore.addTerminal(sessionId)
+        // 更新当前标签为终端标签
+        if (
+          currentTab &&
+          (currentTab.type === 'newConnection' || currentTab.path.includes('/connections'))
+        ) {
+          // 保存原始标签数据用于回滚
+          const originalTabData = {
+            title: currentTab.title,
+            type: currentTab.type,
+            path: currentTab.path,
+            data: currentTab.data
+          };
 
-        // 在会话存储中注册会话
-        sessionStore.registerSession(sessionId, connectionInfo)
+          // 更新标签的路径、类型和数据
+          tabStore.updateTab(currentTabIndex, {
+            title: connectionInfo.title,
+            type: 'terminal',
+            path: `/terminal/${sessionId}`,
+            data: {
+              connectionId: sessionId,
+              originalTabData // 保存原始数据用于回滚
+            }
+          });
 
-        // 导航到终端页面
-        router.push(`/terminal/${sessionId}`)
-      }
+          // 在会话存储中注册会话
+          sessionStore.registerSession(sessionId, connectionInfo);
+
+          // 导航到终端页面
+          router.push(`/terminal/${sessionId}`);
+        } else {
+          // 创建新标签页，使用新的会话ID
+          tabStore.addTerminal(sessionId);
+
+          // 在会话存储中注册会话
+          sessionStore.registerSession(sessionId, connectionInfo);
+
+          // 导航到终端页面
+          router.push(`/terminal/${sessionId}`);
+        }
       } catch (error) {
-        console.error('连接创建失败:', error)
-        ElMessage.error('连接创建失败，请重试')
+        console.error('连接创建失败:', error);
+        ElMessage.error('连接创建失败，请重试');
 
         // 如果连接失败，执行回滚操作
         if (sessionId) {
           // 调用页签回滚逻辑
-          tabStore.connectionFailed(sessionId, error.message || '连接失败')
+          tabStore.connectionFailed(sessionId, error.message || '连接失败');
 
           // 清理会话存储
           if (sessionStore.removeSession) {
-            sessionStore.removeSession(sessionId)
+            sessionStore.removeSession(sessionId);
           }
         }
       }
-    }
-    
+    };
+
     // 处理置顶
-    const handleTop = async (connection) => {
+    const handleTop = async connection => {
       try {
-        let result
+        let result;
         if (userStore.isLoggedIn) {
-          result = await userStore.togglePin(connection.id)
+          result = await userStore.togglePin(connection.id);
         } else {
-          result = localConnectionsStore.togglePin(connection.id)
+          result = localConnectionsStore.togglePin(connection.id);
         }
 
         // 只有在操作成功时才显示成功消息
         if (result !== false) {
-          ElMessage.success(isPinned(connection.id) ? '已置顶' : '已取消置顶')
+          ElMessage.success(isPinned(connection.id) ? '已置顶' : '已取消置顶');
         }
       } catch (error) {
-        log.error('置顶操作时发生错误', error)
+        log.error('置顶操作时发生错误', error);
         // 错误消息已在store中处理，这里不需要重复显示
       }
-    }
-    
+    };
+
     // 处理编辑
-    const handleEdit = (connection) => {
-      isEdit.value = true
-      isFromHistory.value = false // 来自我的连接配置的编辑，不是历史连接
+    const handleEdit = connection => {
+      isEdit.value = true;
+      isFromHistory.value = false; // 来自我的连接配置的编辑，不是历史连接
 
       // 创建一个新的对象来存储编辑的连接信息
-      const editedConnection = { ...connection }
+      const editedConnection = { ...connection };
 
       // 确保保留认证方式
-      editedConnection.authType = connection.authType || 'password'
+      editedConnection.authType = connection.authType || 'password';
 
       // 如果是密码认证但没记住密码，则不填充密码字段
       if (editedConnection.authType === 'password' && !connection.rememberPassword) {
-        editedConnection.password = ''
+        editedConnection.password = '';
       }
 
-      connectionForm.value = editedConnection
-      dialogVisible.value = true
-    }
-    
+      connectionForm.value = editedConnection;
+      dialogVisible.value = true;
+    };
+
     // 处理删除
-    const handleDelete = async (connection) => {
+    const handleDelete = async connection => {
       try {
-        let result
+        let result;
         if (userStore.isLoggedIn) {
-          result = await userStore.deleteConnection(connection.id)
+          result = await userStore.deleteConnection(connection.id);
         } else {
-          result = localConnectionsStore.deleteConnection(connection.id)
+          result = localConnectionsStore.deleteConnection(connection.id);
         }
 
         if (result) {
-          ElMessage.success('删除成功')
+          ElMessage.success('删除成功');
         }
       } catch (error) {
-        log.error('删除连接时发生错误', error)
+        log.error('删除连接时发生错误', error);
         // 错误消息已在store中处理，这里不需要重复显示
       }
-    }
+    };
 
     // 重试加载连接数据
     const retryLoadConnections = async () => {
       try {
-        userStore.clearError('connections')
-        await userStore.loadConnectionsOnDemand()
-        log.debug('连接数据重试加载成功')
+        userStore.clearError('connections');
+        await userStore.loadConnectionsOnDemand();
+        log.debug('连接数据重试加载成功');
       } catch (error) {
-        log.warn('连接数据重试加载失败', error)
+        log.warn('连接数据重试加载失败', error);
       }
-    }
+    };
 
     // 重试加载历史记录
     const retryLoadHistory = async () => {
       try {
-        userStore.clearError('history')
-        await userStore.loadHistoryOnDemand()
-        log.debug('历史记录重试加载成功')
+        userStore.clearError('history');
+        await userStore.loadHistoryOnDemand();
+        log.debug('历史记录重试加载成功');
       } catch (error) {
-        log.warn('历史记录重试加载失败', error)
+        log.warn('历史记录重试加载失败', error);
       }
-    }
+    };
 
     // 重试加载收藏数据
     const retryLoadFavorites = async () => {
       try {
-        userStore.clearError('favorites')
-        await userStore.loadFavoritesOnDemand()
-        log.debug('收藏数据重试加载成功')
+        userStore.clearError('favorites');
+        await userStore.loadFavoritesOnDemand();
+        log.debug('收藏数据重试加载成功');
       } catch (error) {
-        log.warn('收藏数据重试加载失败', error)
+        log.warn('收藏数据重试加载失败', error);
       }
-    }
+    };
 
     // 组件挂载时按需加载连接数据
     onMounted(async () => {
       if (userStore.isLoggedIn) {
         try {
-          await userStore.loadConnectionsOnDemand()
-          log.debug('连接管理页面：连接数据按需加载完成')
+          await userStore.loadConnectionsOnDemand();
+          log.debug('连接管理页面：连接数据按需加载完成');
         } catch (error) {
-          log.warn('连接管理页面：按需加载连接数据失败', error)
+          log.warn('连接管理页面：按需加载连接数据失败', error);
         }
       }
-    })
+    });
 
     return {
       connections,
@@ -1176,9 +1409,9 @@ export default {
       retryLoadConnections,
       retryLoadHistory,
       retryLoadFavorites
-    }
+    };
   }
-}
+};
 </script>
 
 <style scoped>
@@ -1511,7 +1744,7 @@ h2 {
   overflow: hidden;
   background-color: var(--color-bg-muted);
   border: 1px solid var(--color-border-default);
-  width: 48%;  /* 调整为一半宽度 */
+  width: 48%; /* 调整为一半宽度 */
 }
 
 .auth-switcher button {
@@ -1725,7 +1958,9 @@ h2 {
   cursor: pointer;
   white-space: nowrap;
   font-size: 13px;
-  transition: background-color 0.3s, border-color 0.3s;
+  transition:
+    background-color 0.3s,
+    border-color 0.3s;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1739,12 +1974,12 @@ h2 {
 /* 复选框样式已移至 components/forms.css 统一管理 */
 
 /* 添加置顶项的样式 */
-.row-item[data-pinned="true"] {
+.row-item[data-pinned='true'] {
   background-color: var(--color-primary-lightest);
   border-color: var(--color-primary-light);
 }
 
-.row-item[data-pinned="true"]:hover {
+.row-item[data-pinned='true']:hover {
   background-color: var(--color-primary-light);
 }
 
@@ -1827,11 +2062,13 @@ h2 {
 }
 
 /* Vue transition-group 进入和离开动画 */
-.drag-enter-active, .drag-leave-active {
+.drag-enter-active,
+.drag-leave-active {
   transition: all 0.3s ease;
 }
 
-.drag-enter-from, .drag-leave-to {
+.drag-enter-from,
+.drag-leave-to {
   opacity: 0;
   transform: translateY(10px);
 }
@@ -1986,8 +2223,12 @@ h2 {
 }
 
 @keyframes spin {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
 }
 
 /* 错误指示器样式 */
@@ -2036,4 +2277,4 @@ h2 {
   font-size: 12px;
   margin-left: 8px;
 }
-</style> 
+</style>

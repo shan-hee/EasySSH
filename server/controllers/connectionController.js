@@ -14,12 +14,12 @@ const { processConnectionSensitiveData, decryptPassword, decryptPrivateKey } = r
 const getUserConnections = async (req, res) => {
   try {
     const userId = req.user.id;
-    
+
     // 从数据库获取用户连接
     const connections = db.prepare(
       'SELECT * FROM connections WHERE user_id = ? ORDER BY updated_at DESC'
     ).all(userId);
-    
+
     // 处理连接数据，将存储的JSON字符串转为对象，并解密敏感信息
     const formattedConnections = connections.map(conn => {
       try {
@@ -62,7 +62,7 @@ const getUserConnections = async (req, res) => {
         return null;
       }
     }).filter(conn => conn !== null);
-    
+
     res.json({
       success: true,
       connections: formattedConnections
@@ -84,7 +84,7 @@ const addConnection = async (req, res) => {
   try {
     const userId = req.user.id;
     const connection = req.body.connection;
-    
+
     // 验证连接数据
     if (!validateConnection(connection)) {
       return res.status(400).json({
@@ -92,7 +92,7 @@ const addConnection = async (req, res) => {
         message: '连接数据格式不正确'
       });
     }
-    
+
     // 检查是否已存在相同的连接（防重复）
     const existingConnection = db.prepare(
       'SELECT id FROM connections WHERE host = ? AND port = ? AND username = ? AND user_id = ?'
@@ -117,42 +117,42 @@ const addConnection = async (req, res) => {
 
     try {
     // 加密敏感数据
-    const encryptedConnection = processConnectionSensitiveData(connection, true);
+      const encryptedConnection = processConnectionSensitiveData(connection, true);
 
-    // 插入新连接
-    db.prepare(
-      `INSERT INTO connections (
+      // 插入新连接
+      db.prepare(
+        `INSERT INTO connections (
         id, user_id, name, host, port, username, password,
         remember_password, privateKey, passphrase, auth_type,
         description, group_name, config, created_at, updated_at
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-    ).run(
-      connectionId,
-      userId,
-      encryptedConnection.name || `${encryptedConnection.username}@${encryptedConnection.host}`,
-      encryptedConnection.host,
-      encryptedConnection.port || 22,
-      encryptedConnection.username,
-      encryptedConnection.rememberPassword ? encryptedConnection.password : '',
-      encryptedConnection.rememberPassword ? 1 : 0,
-      encryptedConnection.privateKey || '',
-      encryptedConnection.passphrase || '',
-      encryptedConnection.authType || 'password',
-      encryptedConnection.description || '',
-      encryptedConnection.group || '默认分组',
-      JSON.stringify(encryptedConnection.config || {}),
-      now,
-      now
-    );
-      
+      ).run(
+        connectionId,
+        userId,
+        encryptedConnection.name || `${encryptedConnection.username}@${encryptedConnection.host}`,
+        encryptedConnection.host,
+        encryptedConnection.port || 22,
+        encryptedConnection.username,
+        encryptedConnection.rememberPassword ? encryptedConnection.password : '',
+        encryptedConnection.rememberPassword ? 1 : 0,
+        encryptedConnection.privateKey || '',
+        encryptedConnection.passphrase || '',
+        encryptedConnection.authType || 'password',
+        encryptedConnection.description || '',
+        encryptedConnection.group || '默认分组',
+        JSON.stringify(encryptedConnection.config || {}),
+        now,
+        now
+      );
+
       // 提交事务
       db.prepare('COMMIT').run();
-    
-    res.json({
-      success: true,
-      connectionId,
-      message: '连接添加成功'
-    });
+
+      res.json({
+        success: true,
+        connectionId,
+        message: '连接添加成功'
+      });
     } catch (error) {
       // 回滚事务
       db.prepare('ROLLBACK').run();
@@ -176,7 +176,7 @@ const updateConnection = async (req, res) => {
     const userId = req.user.id;
     const connectionId = req.params.id;
     const connection = req.body.connection;
-    
+
     // 验证连接数据
     if (!validateConnection(connection)) {
       return res.status(400).json({
@@ -184,19 +184,19 @@ const updateConnection = async (req, res) => {
         message: '连接数据格式不正确'
       });
     }
-    
+
     // 检查连接是否存在并属于当前用户
     const existingConnection = db.prepare(
       'SELECT id FROM connections WHERE id = ? AND user_id = ?'
     ).get(connectionId, userId);
-    
+
     if (!existingConnection) {
       return res.status(404).json({
         success: false,
         message: '未找到指定连接或无权限修改'
       });
     }
-    
+
     // 更新连接
     const now = new Date().toISOString();
 
@@ -236,7 +236,7 @@ const updateConnection = async (req, res) => {
       connectionId,
       userId
     );
-    
+
     res.json({
       success: true,
       message: '连接更新成功'
@@ -258,37 +258,37 @@ const deleteConnection = async (req, res) => {
   try {
     const userId = req.user.id;
     const connectionId = req.params.id;
-    
+
     // 检查连接是否存在并属于当前用户
     const existingConnection = db.prepare(
       'SELECT id FROM connections WHERE id = ? AND user_id = ?'
     ).get(connectionId, userId);
-    
+
     if (!existingConnection) {
       return res.status(404).json({
         success: false,
         message: '未找到指定连接或无权限删除'
       });
     }
-    
+
     // 删除连接
     db.prepare(
       'DELETE FROM connections WHERE id = ? AND user_id = ?'
     ).run(connectionId, userId);
-    
+
     // 同时从收藏和历史记录中删除
     db.prepare(
       'DELETE FROM connection_favorites WHERE connection_id = ? AND user_id = ?'
     ).run(connectionId, userId);
-    
+
     db.prepare(
       'DELETE FROM connection_history WHERE connection_id = ? AND user_id = ?'
     ).run(connectionId, userId);
-    
+
     db.prepare(
       'DELETE FROM connection_pinned WHERE connection_id = ? AND user_id = ?'
     ).run(connectionId, userId);
-    
+
     res.json({
       success: true,
       message: '连接删除成功'
@@ -309,14 +309,14 @@ const deleteConnection = async (req, res) => {
 const getFavorites = async (req, res) => {
   try {
     const userId = req.user.id;
-    
+
     // 获取收藏连接ID列表
     const favorites = db.prepare(
       'SELECT connection_id FROM connection_favorites WHERE user_id = ?'
     ).all(userId);
-    
+
     const favoriteIds = favorites.map(fav => fav.connection_id);
-    
+
     res.json({
       success: true,
       favorites: favoriteIds
@@ -338,35 +338,35 @@ const updateFavorites = async (req, res) => {
   try {
     const userId = req.user.id;
     const { favorites } = req.body;
-    
+
     if (!Array.isArray(favorites)) {
       return res.status(400).json({
         success: false,
         message: '收藏数据格式不正确，应为数组'
       });
     }
-    
+
     // 开始事务
     db.prepare('BEGIN TRANSACTION').run();
-    
+
     try {
       // 清除现有收藏
       db.prepare(
         'DELETE FROM connection_favorites WHERE user_id = ?'
       ).run(userId);
-      
+
       // 添加新收藏
       const insertStmt = db.prepare(
         'INSERT INTO connection_favorites (user_id, connection_id) VALUES (?, ?)'
       );
-      
+
       for (const connectionId of favorites) {
         insertStmt.run(userId, connectionId);
       }
-      
+
       // 提交事务
       db.prepare('COMMIT').run();
-      
+
       res.json({
         success: true,
         message: '收藏连接已更新'
@@ -479,7 +479,7 @@ const addToHistory = async (req, res) => {
            group_name = ?, auth_type = ?, timestamp = ?
            WHERE user_id = ? AND connection_id = ?`
         ).run(name, connection.host, port, connection.username, description,
-               groupName, authType, timestamp, userId, connection.id);
+          groupName, authType, timestamp, userId, connection.id);
       } else {
         // 添加新的历史记录
         db.prepare(
@@ -487,7 +487,7 @@ const addToHistory = async (req, res) => {
            (user_id, connection_id, name, host, port, username, description, group_name, auth_type, timestamp)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
         ).run(userId, connection.id, name, connection.host, port, connection.username,
-               description, groupName, authType, timestamp);
+          description, groupName, authType, timestamp);
       }
 
       // 限制历史记录数量为20条
@@ -530,12 +530,12 @@ const removeFromHistory = async (req, res) => {
   try {
     const userId = req.user.id;
     const connectionId = req.params.id;
-    
+
     // 从历史记录中删除
     db.prepare(
       'DELETE FROM connection_history WHERE connection_id = ? AND user_id = ?'
     ).run(connectionId, userId);
-    
+
     res.json({
       success: true,
       message: '已从历史记录中删除'
@@ -556,18 +556,18 @@ const removeFromHistory = async (req, res) => {
 const getPinned = async (req, res) => {
   try {
     const userId = req.user.id;
-    
+
     // 获取置顶连接
     const pinned = db.prepare(
       'SELECT connection_id FROM connection_pinned WHERE user_id = ?'
     ).all(userId);
-    
+
     // 转换为对象格式
     const pinnedObj = {};
     pinned.forEach(pin => {
       pinnedObj[pin.connection_id] = true;
     });
-    
+
     res.json({
       success: true,
       pinned: pinnedObj
@@ -589,37 +589,37 @@ const updatePinned = async (req, res) => {
   try {
     const userId = req.user.id;
     const { pinned } = req.body;
-    
+
     if (typeof pinned !== 'object') {
       return res.status(400).json({
         success: false,
         message: '置顶数据格式不正确，应为对象'
       });
     }
-    
+
     // 开始事务
     db.prepare('BEGIN TRANSACTION').run();
-    
+
     try {
       // 清除现有置顶
       db.prepare(
         'DELETE FROM connection_pinned WHERE user_id = ?'
       ).run(userId);
-      
+
       // 添加新置顶
       const insertStmt = db.prepare(
         'INSERT INTO connection_pinned (user_id, connection_id) VALUES (?, ?)'
       );
-      
+
       for (const connectionId in pinned) {
         if (pinned[connectionId]) {
           insertStmt.run(userId, connectionId);
         }
       }
-      
+
       // 提交事务
       db.prepare('COMMIT').run();
-      
+
       res.json({
         success: true,
         message: '置顶连接已更新'
@@ -646,29 +646,29 @@ const syncConnections = async (req, res) => {
   try {
     const userId = req.user.id;
     const { connections, favorites, history, pinned } = req.body;
-    
+
     // 验证数据格式
-    if (!Array.isArray(connections) || !Array.isArray(favorites) || 
+    if (!Array.isArray(connections) || !Array.isArray(favorites) ||
         !Array.isArray(history) || typeof pinned !== 'object') {
       return res.status(400).json({
         success: false,
         message: '数据格式不正确'
       });
     }
-    
+
     // 开始事务
     db.prepare('BEGIN TRANSACTION').run();
-    
+
     try {
       // 同步连接
       // 首先获取现有连接ID
       const existingConnections = db.prepare(
         'SELECT id FROM connections WHERE user_id = ?'
       ).all(userId);
-      
+
       const existingIds = new Set(existingConnections.map(conn => conn.id));
       const now = new Date().toISOString();
-      
+
       // 准备语句
       const updateStmt = db.prepare(
         `UPDATE connections SET
@@ -687,7 +687,7 @@ const syncConnections = async (req, res) => {
           updated_at = ?
         WHERE id = ? AND user_id = ?`
       );
-      
+
       const insertStmt = db.prepare(
         `INSERT INTO connections (
           id, user_id, name, host, port, username, password, 
@@ -695,7 +695,7 @@ const syncConnections = async (req, res) => {
           description, group_name, config, created_at, updated_at
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       );
-      
+
       // 更新或新增连接
       for (const connection of connections) {
         // 加密敏感数据
@@ -742,18 +742,18 @@ const syncConnections = async (req, res) => {
           );
         }
       }
-      
+
       // 同步收藏
       db.prepare('DELETE FROM connection_favorites WHERE user_id = ?').run(userId);
-      
+
       const insertFavoriteStmt = db.prepare(
         'INSERT INTO connection_favorites (user_id, connection_id) VALUES (?, ?)'
       );
-      
+
       for (const connectionId of favorites) {
         insertFavoriteStmt.run(userId, connectionId);
       }
-      
+
       // 同步历史记录
       db.prepare('DELETE FROM connection_history WHERE user_id = ?').run(userId);
 
@@ -787,23 +787,23 @@ const syncConnections = async (req, res) => {
           );
         }
       }
-      
+
       // 同步置顶
       db.prepare('DELETE FROM connection_pinned WHERE user_id = ?').run(userId);
-      
+
       const insertPinnedStmt = db.prepare(
         'INSERT INTO connection_pinned (user_id, connection_id) VALUES (?, ?)'
       );
-      
+
       for (const connectionId in pinned) {
         if (pinned[connectionId]) {
           insertPinnedStmt.run(userId, connectionId);
         }
       }
-      
+
       // 提交事务
       db.prepare('COMMIT').run();
-      
+
       res.json({
         success: true,
         message: '连接数据同步成功'
@@ -836,4 +836,4 @@ module.exports = {
   getPinned,
   updatePinned,
   syncConnections
-}; 
+};

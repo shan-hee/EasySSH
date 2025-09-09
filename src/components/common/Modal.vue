@@ -1,15 +1,29 @@
 <template>
   <transition name="modal-fade">
-    <div v-if="visible" class="modal-overlay" @click="handleOverlayClick">
-      <div class="modal-container" :class="customClass" @click.stop>
+    <div
+      v-if="visible"
+      class="modal-overlay"
+      @click="handleOverlayClick"
+    >
+      <div
+        class="modal-container"
+        :class="customClass"
+        @click.stop
+      >
         <div class="modal-header">
           <span>{{ title }}</span>
-          <span class="close-btn" @click="handleClose">&times;</span>
+          <span
+            class="close-btn"
+            @click="handleClose"
+          >&times;</span>
         </div>
-        
-        <div v-if="tabs && tabs.length" class="modal-tab">
-          <div 
-            v-for="tab in tabs" 
+
+        <div
+          v-if="tabs && tabs.length"
+          class="modal-tab"
+        >
+          <div
+            v-for="tab in tabs"
             :key="tab"
             class="tab-item"
             :class="{ active: activeTab === tab }"
@@ -18,15 +32,18 @@
             {{ tab }}
           </div>
         </div>
-        
+
         <div class="modal-body">
-          <slot></slot>
+          <slot />
         </div>
-        
-        <div v-if="!hideFooter" class="modal-footer">
+
+        <div
+          v-if="!hideFooter"
+          class="modal-footer"
+        >
           <template v-if="buttons">
-            <button 
-              v-for="button in buttons" 
+            <button
+              v-for="button in buttons"
               :key="button.text"
               :class="['modal-btn', `btn-${button.type}`]"
               @click="button.onClick"
@@ -35,8 +52,18 @@
             </button>
           </template>
           <template v-else>
-            <button class="modal-btn btn-cancel" @click="handleClose">取消</button>
-            <button class="modal-btn btn-confirm" @click="handleConfirm">确定</button>
+            <button
+              class="modal-btn btn-cancel"
+              @click="handleClose"
+            >
+              取消
+            </button>
+            <button
+              class="modal-btn btn-confirm"
+              @click="handleConfirm"
+            >
+              确定
+            </button>
           </template>
         </div>
       </div>
@@ -45,7 +72,7 @@
 </template>
 
 <script>
-import { ref, defineComponent } from 'vue'
+import { ref, defineComponent } from 'vue';
 
 export default defineComponent({
   name: 'Modal',
@@ -77,30 +104,30 @@ export default defineComponent({
   },
   emits: ['update:visible', 'close', 'confirm'],
   setup(props, { emit }) {
-    const activeTab = ref(0)
+    const activeTab = ref(0);
 
     const handleClose = () => {
-      emit('update:visible', false)
-      emit('close')
-    }
+      emit('update:visible', false);
+      emit('close');
+    };
 
     const handleConfirm = () => {
-      emit('confirm')
-      handleClose()
-    }
+      emit('confirm');
+      handleClose();
+    };
 
     const handleOverlayClick = () => {
       // Implementation of handleOverlayClick
-    }
+    };
 
     return {
       activeTab,
       handleClose,
       handleConfirm,
       handleOverlayClick
-    }
+    };
   }
-})
+});
 </script>
 
 <style scoped>
@@ -312,4 +339,4 @@ export default defineComponent({
   grid-template-columns: 1fr 1fr;
   gap: 15px;
 }
-</style> 
+</style>

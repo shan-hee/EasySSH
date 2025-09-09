@@ -1,75 +1,139 @@
 <template>
-  <Modal 
-    v-model:visible="isVisible" 
-    title="设置两步验证" 
-    customClass="mfa-modal"
+  <modal
+    v-model:visible="isVisible"
+    title="设置两步验证"
+    custom-class="mfa-modal"
     :hide-footer="true"
     @close="handleClose"
   >
     <div class="mfa-setup-container">
       <div class="mfa-steps">
-        <div class="step-item" :class="{ 'active': currentStep === 1 }">
-          <div class="step-number">1</div>
-          <div class="step-text">扫描二维码</div>
+        <div
+          class="step-item"
+          :class="{ active: currentStep === 1 }"
+        >
+          <div class="step-number">
+            1
+          </div>
+          <div class="step-text">
+            扫描二维码
+          </div>
         </div>
-        <div class="step-divider" :class="{ 'active': currentStep === 2 }"></div>
-        <div class="step-item" :class="{ 'active': currentStep === 2 }">
-          <div class="step-number">2</div>
-          <div class="step-text">输入验证码</div>
+        <div
+          class="step-divider"
+          :class="{ active: currentStep === 2 }"
+        />
+        <div
+          class="step-item"
+          :class="{ active: currentStep === 2 }"
+        >
+          <div class="step-number">
+            2
+          </div>
+          <div class="step-text">
+            输入验证码
+          </div>
         </div>
       </div>
-      
+
       <div class="mfa-content">
-        <div v-if="currentStep === 1" class="qrcode-container">
-          <div v-if="isLoading" class="loading-qrcode">
-            <div class="loading-spinner"></div>
+        <div
+          v-if="currentStep === 1"
+          class="qrcode-container"
+        >
+          <div
+            v-if="isLoading"
+            class="loading-qrcode"
+          >
+            <div class="loading-spinner" />
             <span>正在生成二维码...</span>
           </div>
-          <div v-else class="qrcode-content">
+          <div
+            v-else
+            class="qrcode-content"
+          >
             <div class="qrcode-wrap">
-              <img :src="qrCodeUrl" alt="身份验证器二维码" class="qrcode-image" @load="onQrCodeLoaded" />
+              <img
+                :src="qrCodeUrl"
+                alt="身份验证器二维码"
+                class="qrcode-image"
+                @load="onQrCodeLoaded"
+              >
             </div>
             <div class="mfa-instructions">
               <div class="instruction-step">
-                <div class="instruction-number">1</div>
+                <div class="instruction-number">
+                  1
+                </div>
                 <p>下载并安装 Google Authenticator 或其它身份验证器 App</p>
               </div>
               <div class="instruction-step">
-                <div class="instruction-number">2</div>
+                <div class="instruction-number">
+                  2
+                </div>
                 <p>使用验证器应用扫描上方二维码</p>
               </div>
               <div class="instruction-step">
-                <div class="instruction-number">3</div>
+                <div class="instruction-number">
+                  3
+                </div>
                 <p>扫描成功后点击"下一步"输入验证码</p>
               </div>
             </div>
             <div class="mfa-secret">
-              <p class="secret-title">无法扫描？手动输入以下密钥：</p>
+              <p class="secret-title">
+                无法扫描？手动输入以下密钥：
+              </p>
               <div class="secret-code-container">
                 <div class="secret-code">
                   {{ secretKey }}
-                  <button class="copy-btn" @click="copySecretKey" title="复制密钥">
-                    <svg class="copy-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16">
-                      <path fill="currentColor" d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/>
+                  <button
+                    class="copy-btn"
+                    title="复制密钥"
+                    @click="copySecretKey"
+                  >
+                    <svg
+                      class="copy-icon"
+                      xmlns="http://www.w3.org/2000/svg"
+                      viewBox="0 0 24 24"
+                      width="16"
+                      height="16"
+                    >
+                      <path
+                        fill="currentColor"
+                        d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"
+                      />
                     </svg>
                   </button>
                 </div>
               </div>
             </div>
             <div class="mfa-btn-container">
-              <button class="mfa-btn btn-next" @click="goToVerifyStep">下一步</button>
+              <button
+                class="mfa-btn btn-next"
+                @click="goToVerifyStep"
+              >
+                下一步
+              </button>
             </div>
           </div>
         </div>
-        
-        <div v-else-if="currentStep === 2" class="verify-container">
+
+        <div
+          v-else-if="currentStep === 2"
+          class="verify-container"
+        >
           <div class="verify-instructions">
             <p>请输入验证器应用上显示的 6 位验证码</p>
           </div>
           <div class="verify-input-container">
             <div class="code-inputs">
-              <template v-for="(digit, index) in 6" :key="index">
+              <template
+                v-for="(digit, index) in 6"
+                :key="index"
+              >
                 <input
+                  ref="codeInputs"
                   type="text"
                   maxlength="1"
                   inputmode="numeric"
@@ -79,40 +143,52 @@
                   @input="handleDigitInput($event, index)"
                   @keydown="handleKeyDown($event, index)"
                   @paste="handlePaste"
-                  ref="codeInputs"
+                >
+                <span
+                  v-if="index < 5"
+                  class="code-separator"
                 />
-                <span class="code-separator" v-if="index < 5"></span>
               </template>
             </div>
           </div>
-          <div class="verify-error" v-if="verifyError">
-            <i class="error-icon"></i>
+          <div
+            v-if="verifyError"
+            class="verify-error"
+          >
+            <i class="error-icon" />
             {{ verifyError }}
           </div>
           <div class="mfa-btn-container">
-            <button class="mfa-btn btn-back" @click="currentStep = 1">返回</button>
-            <button 
-              class="mfa-btn btn-verify" 
+            <button
+              class="mfa-btn btn-back"
+              @click="currentStep = 1"
+            >
+              返回
+            </button>
+            <button
+              class="mfa-btn btn-verify"
               :disabled="verificationCode.length !== 6 || isVerifying"
               @click="verifyAndEnableMfa"
             >
-              <span v-if="isVerifying" class="btn-loading"></span>
+              <span
+                v-if="isVerifying"
+                class="btn-loading"
+              />
               {{ isVerifying ? '验证中...' : '验证并启用' }}
             </button>
           </div>
         </div>
       </div>
     </div>
-  </Modal>
+  </modal>
 </template>
 
 <script>
-import { defineComponent, ref, onMounted, watch, computed, nextTick } from 'vue'
-import Modal from '@/components/common/Modal.vue'
-import CryptoJS from 'crypto-js'
-import mfaService from '@/services/mfa'
-import { useUserStore } from '@/store/user'
-import { ElMessage } from 'element-plus'
+import { defineComponent, ref, watch, computed, nextTick } from 'vue';
+import Modal from '@/components/common/Modal.vue';
+import mfaService from '@/services/mfa';
+import { useUserStore } from '@/store/user';
+import { ElMessage } from 'element-plus';
 
 export default defineComponent({
   name: 'MfaSetupModal',
@@ -127,151 +203,154 @@ export default defineComponent({
   },
   emits: ['update:visible', 'mfa-setup-complete', 'mfa-setup-cancelled'],
   setup(props, { emit }) {
-    const userStore = useUserStore()
-    
+    const userStore = useUserStore();
+
     // 使用计算属性处理双向绑定
     const isVisible = computed({
       get: () => props.visible,
-      set: (value) => emit('update:visible', value)
-    })
-    
-    const currentStep = ref(1)
-    const isLoading = ref(true)
-    const qrCodeUrl = ref('')
-    const secretKey = ref('')
-    const verificationCode = ref('')
-    const verifyError = ref('')
-    const isVerifying = ref(false)
-    const codeInputs = ref([])
-    let autoSubmitTimeout = null
-    
+      set: value => emit('update:visible', value)
+    });
+
+    const currentStep = ref(1);
+    const isLoading = ref(true);
+    const qrCodeUrl = ref('');
+    const secretKey = ref('');
+    const verificationCode = ref('');
+    const verifyError = ref('');
+    const isVerifying = ref(false);
+    const codeInputs = ref([]);
+    let autoSubmitTimeout = null;
+
     // 监听弹窗显示状态
-    watch(() => props.visible, (newVal) => {
-      if (newVal) {
-        // 弹窗打开时，重置状态并生成QR码
-        resetModal()
-        generateQrCode()
+    watch(
+      () => props.visible,
+      newVal => {
+        if (newVal) {
+          // 弹窗打开时，重置状态并生成QR码
+          resetModal();
+          generateQrCode();
+        }
       }
-    })
-    
+    );
+
     // 重置模态框状态
     const resetModal = () => {
-      currentStep.value = 1
-      isLoading.value = true
-      verificationCode.value = ''
-      verifyError.value = ''
-    }
-    
+      currentStep.value = 1;
+      isLoading.value = true;
+      verificationCode.value = '';
+      verifyError.value = '';
+    };
+
     // 二维码加载完成处理
     const onQrCodeLoaded = () => {
-      isLoading.value = false
-    }
-    
+      isLoading.value = false;
+    };
+
     // 生成QR码
     const generateQrCode = () => {
       try {
         // 预先将loading设为true
-        isLoading.value = true
-        
+        isLoading.value = true;
+
         // 生成安全的随机密钥
-        const key = mfaService.generateSecretKey()
-        secretKey.value = key
-        
+        const key = mfaService.generateSecretKey();
+        secretKey.value = key;
+
         // 获取当前用户信息，用于生成更个性化的URI
-        const username = userStore.username || 'user@easyssh.com'
-        
+        const username = userStore.username || 'user@easyssh.com';
+
         // 生成otpauth URI
-        const otpAuthUri = mfaService.generateOtpAuthUri(key, username)
-        
+        const otpAuthUri = mfaService.generateOtpAuthUri(key, username);
+
         // 生成QR码URL
-        qrCodeUrl.value = mfaService.generateQrCodeUrl(otpAuthUri)
-        
+        qrCodeUrl.value = mfaService.generateQrCodeUrl(otpAuthUri);
+
         // 预加载二维码图片
-        const img = new Image()
+        const img = new Image();
         img.onload = () => {
           // 二维码加载完成后再设置isLoading为false
-          isLoading.value = false
-        }
+          isLoading.value = false;
+        };
         img.onerror = () => {
-          console.error('二维码加载失败')
-          isLoading.value = false
-        }
-        img.src = qrCodeUrl.value
+          console.error('二维码加载失败');
+          isLoading.value = false;
+        };
+        img.src = qrCodeUrl.value;
       } catch (error) {
-        console.error('生成QR码失败:', error)
-        isLoading.value = false
+        console.error('生成QR码失败:', error);
+        isLoading.value = false;
       }
-    }
-    
+    };
+
     // 处理单个数字输入
     const handleDigitInput = (e, index) => {
       // 只允许输入数字
       const inputValue = e.target.value.replace(/[^0-9]/g, '');
       const lastChar = inputValue.length > 0 ? inputValue[inputValue.length - 1] : '';
-      
+
       // 更新verificationCode
-      let newCode = verificationCode.value.split('');
+      const newCode = verificationCode.value.split('');
       newCode[index] = lastChar;
       verificationCode.value = newCode.join('');
-      
+
       // 设置当前输入框的值为最后输入的数字
       e.target.value = lastChar;
-      
+
       // 清除错误信息
       if (verifyError.value) {
         verifyError.value = '';
       }
-      
+
       // 自动跳转到下一个输入框（仅输入新数字时）
       if (lastChar && index < 5) {
         nextTick(() => {
           codeInputs.value[index + 1].focus();
         });
       }
-      
+
       // 自动提交：6位且全为数字才触发
       const codeArr = verificationCode.value.split('');
       const isAllDigits = codeArr.length === 6 && codeArr.every(c => /^[0-9]$/.test(c));
       if (isAllDigits && !isVerifying.value) {
-        clearTimeout(autoSubmitTimeout)
+        clearTimeout(autoSubmitTimeout);
         autoSubmitTimeout = setTimeout(() => {
-          verifyAndEnableMfa()
-        }, 100)
+          verifyAndEnableMfa();
+        }, 100);
       }
-    }
-    
+    };
+
     // 处理键盘导航
     const handleKeyDown = (e, index) => {
       // 处理删除键
       if (e.key === 'Backspace' && !verificationCode.value[index]) {
         if (index > 0) {
           nextTick(() => {
-            codeInputs.value[index - 1].focus()
-          })
+            codeInputs.value[index - 1].focus();
+          });
         }
       }
-      
+
       // 左箭头导航
       if (e.key === 'ArrowLeft' && index > 0) {
         nextTick(() => {
-          codeInputs.value[index - 1].focus()
-        })
+          codeInputs.value[index - 1].focus();
+        });
       }
-      
+
       // 右箭头导航
       if (e.key === 'ArrowRight' && index < 5) {
         nextTick(() => {
-          codeInputs.value[index + 1].focus()
-        })
+          codeInputs.value[index + 1].focus();
+        });
       }
-    }
-    
+    };
+
     // 处理粘贴操作
-    const handlePaste = (e) => {
+    const handlePaste = e => {
       e.preventDefault();
       const pasteData = (e.clipboardData || window.clipboardData).getData('text');
       const digits = pasteData.replace(/[^0-9]/g, '').substring(0, 6);
-      
+
       if (digits) {
         verificationCode.value = digits.padEnd(6, '').substring(0, 6);
         // 将数字分配到每个输入框
@@ -284,28 +363,28 @@ export default defineComponent({
         const codeArr = verificationCode.value.split('');
         const isAllDigits = codeArr.length === 6 && codeArr.every(c => /^[0-9]$/.test(c));
         if (isAllDigits && !isVerifying.value) {
-          clearTimeout(autoSubmitTimeout)
+          clearTimeout(autoSubmitTimeout);
           autoSubmitTimeout = setTimeout(() => {
-            verifyAndEnableMfa()
-          }, 100)
+            verifyAndEnableMfa();
+          }, 100);
         }
       }
-    }
-    
+    };
+
     // 进入验证步骤
     const goToVerifyStep = () => {
-      currentStep.value = 2
-      verificationCode.value = ''
-      verifyError.value = ''
-      
+      currentStep.value = 2;
+      verificationCode.value = '';
+      verifyError.value = '';
+
       // 聚焦第一个输入框
       nextTick(() => {
         if (codeInputs.value[0]) {
-          codeInputs.value[0].focus()
+          codeInputs.value[0].focus();
         }
-      })
-    }
-    
+      });
+    };
+
     // 验证并启用MFA
     const verifyAndEnableMfa = async () => {
       // 1. 输入长度不足
@@ -364,36 +443,36 @@ export default defineComponent({
       } finally {
         isVerifying.value = false;
       }
-    }
-    
+    };
+
     // 关闭弹窗
     const handleClose = () => {
-      isVisible.value = false
-      
+      isVisible.value = false;
+
       // 如果用户取消设置，触发取消事件
       if (currentStep.value !== 2 || verificationCode.value.length !== 6) {
-        emit('mfa-setup-cancelled')
+        emit('mfa-setup-cancelled');
       }
-    }
-    
+    };
+
     // 复制密钥到剪贴板 - 使用统一的剪贴板服务
     const copySecretKey = async () => {
       try {
         // 使用统一的剪贴板服务
-        const { copyToClipboard } = await import('@/services/utils.js')
-        const success = await copyToClipboard(secretKey.value, false)
+        const { copyToClipboard } = await import('@/services/utils.js');
+        const success = await copyToClipboard(secretKey.value, false);
 
         if (success) {
-          ElMessage.success('密钥已复制到剪贴板')
+          ElMessage.success('密钥已复制到剪贴板');
         } else {
-          ElMessage.error('复制失败，请手动复制')
+          ElMessage.error('复制失败，请手动复制');
         }
       } catch (error) {
-        ElMessage.error('复制失败，请手动复制')
-        console.error('复制失败:', error)
+        ElMessage.error('复制失败，请手动复制');
+        console.error('复制失败:', error);
       }
-    }
-    
+    };
+
     return {
       isVisible,
       currentStep,
@@ -412,9 +491,9 @@ export default defineComponent({
       onQrCodeLoaded,
       codeInputs,
       copySecretKey
-    }
+    };
   }
-})
+});
 </script>
 
 <style scoped>
@@ -529,7 +608,9 @@ export default defineComponent({
 }
 
 @keyframes spin {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .qrcode-container {
@@ -733,7 +814,7 @@ export default defineComponent({
 }
 
 .error-icon::before {
-  content: "!";
+  content: '!';
   position: absolute;
   top: 0;
   left: 0;
@@ -768,9 +849,10 @@ export default defineComponent({
 }
 
 /* 浅色主题下的按钮样式 - 默认蓝色 */
-.btn-next, .btn-verify,
-:root[data-theme="light"] .btn-next,
-:root[data-theme="light"] .btn-verify,
+.btn-next,
+.btn-verify,
+:root[data-theme='light'] .btn-next,
+:root[data-theme='light'] .btn-verify,
 .light-theme .btn-next,
 .light-theme .btn-verify {
   background-color: #1890ff !important;
@@ -778,9 +860,10 @@ export default defineComponent({
   box-shadow: var(--shadow-base);
 }
 
-.btn-next:hover, .btn-verify:hover,
-:root[data-theme="light"] .btn-next:hover,
-:root[data-theme="light"] .btn-verify:hover,
+.btn-next:hover,
+.btn-verify:hover,
+:root[data-theme='light'] .btn-next:hover,
+:root[data-theme='light'] .btn-verify:hover,
 .light-theme .btn-next:hover,
 .light-theme .btn-verify:hover {
   background-color: #1890ff !important;
@@ -788,16 +871,16 @@ export default defineComponent({
 }
 
 /* 深色主题下的按钮样式 */
-:root[data-theme="dark"] .btn-next,
-:root[data-theme="dark"] .btn-verify,
+:root[data-theme='dark'] .btn-next,
+:root[data-theme='dark'] .btn-verify,
 .dark-theme .btn-next,
 .dark-theme .btn-verify {
   background-color: #555 !important;
   color: var(--color-text-primary) !important;
 }
 
-:root[data-theme="dark"] .btn-next:hover,
-:root[data-theme="dark"] .btn-verify:hover,
+:root[data-theme='dark'] .btn-next:hover,
+:root[data-theme='dark'] .btn-verify:hover,
 .dark-theme .btn-next:hover,
 .dark-theme .btn-verify:hover {
   background-color: #555 !important;
@@ -843,4 +926,4 @@ export default defineComponent({
 :deep(.mfa-modal .modal-header) {
   border-bottom: 1px solid rgba(255, 255, 255, 0.05) !important;
 }
-</style> 
+</style>

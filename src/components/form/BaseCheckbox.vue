@@ -1,18 +1,21 @@
 <template>
-  <div class="form-item-checkbox" @click="toggleChecked">
-    <div 
-      class="checkbox-wrapper" 
-      :class="{ 'checked': modelValue }" 
+  <div
+    class="form-item-checkbox"
+    @click="toggleChecked"
+  >
+    <div
+      class="checkbox-wrapper"
+      :class="{ checked: modelValue }"
     >
-      <div class="checkbox-inner"></div>
-      <div class="checkbox-check"></div>
+      <div class="checkbox-inner" />
+      <div class="checkbox-check" />
     </div>
     <span v-if="label">{{ label }}</span>
   </div>
 </template>
 
 <script>
-import { defineComponent } from 'vue'
+import { defineComponent } from 'vue';
 
 export default defineComponent({
   name: 'BaseCheckbox',
@@ -29,14 +32,14 @@ export default defineComponent({
   emits: ['update:modelValue'],
   setup(props, { emit }) {
     const toggleChecked = () => {
-      emit('update:modelValue', !props.modelValue)
-    }
+      emit('update:modelValue', !props.modelValue);
+    };
 
     return {
       toggleChecked
-    }
+    };
   }
-})
+});
 </script>
 
 <style scoped>
@@ -104,4 +107,4 @@ export default defineComponent({
   transform: translate(-50%, -60%) rotate(45deg) scale(1);
   opacity: 1;
 }
-</style> 
+</style>

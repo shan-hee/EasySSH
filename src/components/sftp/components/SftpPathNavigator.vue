@@ -1,42 +1,123 @@
 <template>
   <div class="sftp-path-nav">
-    <button class="sftp-nav-button" @click="navigateToParent" title="返回上级目录">
-      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24">
-        <path fill="currentColor" d="M20,11V13H8L13.5,18.5L12.08,19.92L4.16,12L12.08,4.08L13.5,5.5L8,11H20Z" />
+    <button
+      class="sftp-nav-button"
+      title="返回上级目录"
+      @click="navigateToParent"
+    >
+      <svg
+        xmlns="http://www.w3.org/2000/svg"
+        width="16"
+        height="16"
+        viewBox="0 0 24 24"
+      >
+        <path
+          fill="currentColor"
+          d="M20,11V13H8L13.5,18.5L12.08,19.92L4.16,12L12.08,4.08L13.5,5.5L8,11H20Z"
+        />
       </svg>
     </button>
-    <div class="sftp-path-input" @click="enableInputMode" tabindex="0" @focus="enableInputMode">
-      <button class="sftp-path-home-button" @click.stop="navigateToHome" title="返回根目录">
-        <svg class="sftp-path-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24">
-          <path fill="currentColor" d="M10,20V14H14V20H19V12H22L12,3L2,12H5V20H10Z" />
+    <div
+      class="sftp-path-input"
+      tabindex="0"
+      @click="enableInputMode"
+      @focus="enableInputMode"
+    >
+      <button
+        class="sftp-path-home-button"
+        title="返回根目录"
+        @click.stop="navigateToHome"
+      >
+        <svg
+          class="sftp-path-icon"
+          xmlns="http://www.w3.org/2000/svg"
+          width="16"
+          height="16"
+          viewBox="0 0 24 24"
+        >
+          <path
+            fill="currentColor"
+            d="M10,20V14H14V20H19V12H22L12,3L2,12H5V20H10Z"
+          />
         </svg>
       </button>
-      <div v-if="pathParts.length > 0 && !showInputMode" class="sftp-path-segments">
-        <span v-for="(part, index) in pathParts" :key="index" class="sftp-path-segment">
-          <span class="sftp-path-separator" v-if="index > 0">/</span>
-          <button class="sftp-path-part-button" @click.stop="navigateToPathPart(index)" :title="`导航到 /${pathParts.slice(0, index+1).join('/')}`">
+      <div
+        v-if="pathParts.length > 0 && !showInputMode"
+        class="sftp-path-segments"
+      >
+        <span
+          v-for="(part, index) in pathParts"
+          :key="index"
+          class="sftp-path-segment"
+        >
+          <span
+            v-if="index > 0"
+            class="sftp-path-separator"
+          >/</span>
+          <button
+            class="sftp-path-part-button"
+            :title="`导航到 /${pathParts.slice(0, index + 1).join('/')}`"
+            @click.stop="navigateToPathPart(index)"
+          >
             {{ part }}
           </button>
         </span>
       </div>
-      <input v-if="pathParts.length === 0 || showInputMode" type="text" v-model="path" class="sftp-path-field" @keyup.enter="navigateTo" @blur="onInputBlur" ref="pathInput" />
+      <input
+        v-if="pathParts.length === 0 || showInputMode"
+        ref="pathInput"
+        v-model="path"
+        type="text"
+        class="sftp-path-field"
+        @keyup.enter="navigateTo"
+        @blur="onInputBlur"
+      >
     </div>
-    <button class="sftp-nav-button" @click="toggleHiddenFiles" title="显示/隐藏隐藏文件">
-      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24">
-        <path fill="currentColor" d="M12,9A3,3 0 0,1 15,12A3,3 0 0,1 12,15A3,3 0 0,1 9,12A3,3 0 0,1 12,9M12,4.5C17,4.5 21.27,7.61 23,12C21.27,16.39 17,19.5 12,19.5C7,19.5 2.73,16.39 1,12C2.73,7.61 7,4.5 12,4.5M3.18,12C4.83,15.36 8.24,17.5 12,17.5C15.76,17.5 19.17,15.36 20.82,12C19.17,8.64 15.76,6.5 12,6.5C8.24,6.5 4.83,8.64 3.18,12Z" v-if="showHiddenFiles" />
-        <path fill="currentColor" d="M2,5.27L3.28,4L20,20.72L18.73,22L15.65,18.92C14.5,19.3 13.28,19.5 12,19.5C7,19.5 2.73,16.39 1,12C1.69,10.24 2.79,8.69 4.19,7.46L2,5.27M12,9A3,3 0 0,1 15,12C15,12.35 14.94,12.69 14.83,13L11,9.17C11.31,9.06 11.65,9 12,9M12,4.5C17,4.5 21.27,7.61 23,12C22.18,14.08 20.79,15.88 19,17.19L17.58,15.76C18.94,14.82 20.06,13.54 20.82,12C19.17,8.64 15.76,6.5 12,6.5C10.91,6.5 9.84,6.68 8.84,7L7.3,5.47C8.74,4.85 10.33,4.5 12,4.5M3.18,12C4.83,15.36 8.24,17.5 12,17.5C12.69,17.5 13.37,17.43 14,17.29L11.72,15C10.29,14.85 9.15,13.71 9,12.28L5.6,8.87C4.61,9.72 3.78,10.78 3.18,12Z" v-else />
+    <button
+      class="sftp-nav-button"
+      title="显示/隐藏隐藏文件"
+      @click="toggleHiddenFiles"
+    >
+      <svg
+        xmlns="http://www.w3.org/2000/svg"
+        width="16"
+        height="16"
+        viewBox="0 0 24 24"
+      >
+        <path
+          v-if="showHiddenFiles"
+          fill="currentColor"
+          d="M12,9A3,3 0 0,1 15,12A3,3 0 0,1 12,15A3,3 0 0,1 9,12A3,3 0 0,1 12,9M12,4.5C17,4.5 21.27,7.61 23,12C21.27,16.39 17,19.5 12,19.5C7,19.5 2.73,16.39 1,12C2.73,7.61 7,4.5 12,4.5M3.18,12C4.83,15.36 8.24,17.5 12,17.5C15.76,17.5 19.17,15.36 20.82,12C19.17,8.64 15.76,6.5 12,6.5C8.24,6.5 4.83,8.64 3.18,12Z"
+        />
+        <path
+          v-else
+          fill="currentColor"
+          d="M2,5.27L3.28,4L20,20.72L18.73,22L15.65,18.92C14.5,19.3 13.28,19.5 12,19.5C7,19.5 2.73,16.39 1,12C1.69,10.24 2.79,8.69 4.19,7.46L2,5.27M12,9A3,3 0 0,1 15,12C15,12.35 14.94,12.69 14.83,13L11,9.17C11.31,9.06 11.65,9 12,9M12,4.5C17,4.5 21.27,7.61 23,12C22.18,14.08 20.79,15.88 19,17.19L17.58,15.76C18.94,14.82 20.06,13.54 20.82,12C19.17,8.64 15.76,6.5 12,6.5C10.91,6.5 9.84,6.68 8.84,7L7.3,5.47C8.74,4.85 10.33,4.5 12,4.5M3.18,12C4.83,15.36 8.24,17.5 12,17.5C12.69,17.5 13.37,17.43 14,17.29L11.72,15C10.29,14.85 9.15,13.71 9,12.28L5.6,8.87C4.61,9.72 3.78,10.78 3.18,12Z"
+        />
       </svg>
     </button>
-    <button class="sftp-nav-button" @click="$emit('refresh')" title="刷新">
-      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24">
-        <path fill="currentColor" d="M17.65,6.35C16.2,4.9 14.21,4 12,4A8,8 0 0,0 4,12A8,8 0 0,0 12,20C15.73,20 18.84,17.45 19.73,14H17.65C16.83,16.33 14.61,18 12,18A6,6 0 0,1 6,12A6,6 0 0,1 12,6C13.66,6 15.14,6.69 16.22,7.78L13,11H20V4L17.65,6.35Z" />
+    <button
+      class="sftp-nav-button"
+      title="刷新"
+      @click="$emit('refresh')"
+    >
+      <svg
+        xmlns="http://www.w3.org/2000/svg"
+        width="16"
+        height="16"
+        viewBox="0 0 24 24"
+      >
+        <path
+          fill="currentColor"
+          d="M17.65,6.35C16.2,4.9 14.21,4 12,4A8,8 0 0,0 4,12A8,8 0 0,0 12,20C15.73,20 18.84,17.45 19.73,14H17.65C16.83,16.33 14.61,18 12,18A6,6 0 0,1 6,12A6,6 0 0,1 12,6C13.66,6 15.14,6.69 16.22,7.78L13,11H20V4L17.65,6.35Z"
+        />
       </svg>
     </button>
   </div>
 </template>
 
 <script>
-import { defineComponent, ref, watch, computed } from 'vue'
+import { defineComponent, ref, watch, computed } from 'vue';
 
 export default defineComponent({
   name: 'SftpPathNavigator',
@@ -48,101 +129,105 @@ export default defineComponent({
   },
   emits: ['navigate', 'refresh', 'toggle-hidden-files'],
   setup(props, { emit }) {
-    const path = ref(props.currentPath)
-    const showHiddenFiles = ref(false)
-    const showInputMode = ref(false)
-    const pathInput = ref(null)
-    
+    const path = ref(props.currentPath);
+    const showHiddenFiles = ref(false);
+    const showInputMode = ref(false);
+    const pathInput = ref(null);
+
     // 计算路径各部分
     const pathParts = computed(() => {
-      return props.currentPath.split('/').filter(part => part)
-    })
-    
+      return props.currentPath.split('/').filter(part => part);
+    });
+
     // 同步props和内部状态
-    watch(() => props.currentPath, (newPath) => {
-      path.value = newPath
-      // 当路径变更时，退出输入模式
-      showInputMode.value = false
-    })
-    
+    watch(
+      () => props.currentPath,
+      newPath => {
+        path.value = newPath;
+        // 当路径变更时，退出输入模式
+        showInputMode.value = false;
+      }
+    );
+
     // 启用输入模式
-    const enableInputMode = (event) => {
+    const enableInputMode = event => {
       // 防止事件冒泡，避免导航按钮点击后也触发输入模式
       if (event) {
         // 阻止当点击路径段按钮时开启输入模式
-        const target = event.target || event.srcElement
-        if (target && (target.className === 'sftp-path-part-button' || 
-                       target.className === 'sftp-path-home-button' || 
-                       target.closest('.sftp-path-home-button'))) {
-          return
+        const target = event.target || event.srcElement;
+        if (
+          target &&
+          (target.className === 'sftp-path-part-button' ||
+            target.className === 'sftp-path-home-button' ||
+            target.closest('.sftp-path-home-button'))
+        ) {
+          return;
         }
       }
-      
+
       if (!showInputMode.value) {
-        showInputMode.value = true
-        path.value = props.currentPath
-        
+        showInputMode.value = true;
+        path.value = props.currentPath;
+
         // 使用nextTick确保DOM已更新后再聚焦
         setTimeout(() => {
           if (pathInput.value) {
-            pathInput.value.focus()
+            pathInput.value.focus();
           }
-        }, 50)
+        }, 50);
       }
-    }
-    
+    };
+
     // 输入框失去焦点时处理
     const onInputBlur = () => {
       // 如果路径没有变更，则返回到路径导航模式
       if (path.value === props.currentPath) {
-        showInputMode.value = false
+        showInputMode.value = false;
       }
-    }
-    
+    };
+
     // 导航到输入的路径
     const navigateTo = () => {
       // 确保路径以斜杠开头
-      const formattedPath = path.value.startsWith('/') 
-        ? path.value 
-        : '/' + path.value
-      
-      emit('navigate', formattedPath)
+      const formattedPath = path.value.startsWith('/') ? path.value : `/${path.value}`;
+
+      emit('navigate', formattedPath);
       // 导航后退出输入模式
-      showInputMode.value = false
-    }
-    
+      showInputMode.value = false;
+    };
+
     // 导航到父目录
     const navigateToParent = () => {
-      const parts = pathParts.value
-      
+      const parts = pathParts.value;
+
       // 如果已经在根目录，不做任何操作
-      if (parts.length === 0) return
-      
+      if (parts.length === 0) return;
+
       // 移除最后一个目录部分
-      parts.pop()
+      parts.pop();
       // 构建新路径
-      const newPath = parts.length === 0 ? '/' : '/' + parts.join('/')
-      
-      emit('navigate', newPath)
-    }
-    
+      const newPath = parts.length === 0 ? '/' : `/${parts.join('/')}`;
+
+      emit('navigate', newPath);
+    };
+
     // 导航到根目录
     const navigateToHome = () => {
-      emit('navigate', '/')
-    }
-    
+      emit('navigate', '/');
+    };
+
     // 导航到指定层级的路径
-    const navigateToPathPart = (index) => {
-      const targetPath = '/' + pathParts.value.slice(0, index + 1).join('/')
-      emit('navigate', targetPath)
-    }
-    
+    const navigateToPathPart = index => {
+      const targetPath = `/${pathParts.value.slice(0, index + 1).join('/')}`;
+      emit('navigate', targetPath);
+    };
+
     // 切换显示/隐藏隐藏文件
     const toggleHiddenFiles = () => {
-      showHiddenFiles.value = !showHiddenFiles.value
-      emit('toggle-hidden-files', showHiddenFiles.value)
-    }
-    
+      showHiddenFiles.value = !showHiddenFiles.value;
+      emit('toggle-hidden-files', showHiddenFiles.value);
+    };
+
     return {
       path,
       pathParts,
@@ -156,9 +241,9 @@ export default defineComponent({
       toggleHiddenFiles,
       enableInputMode,
       onInputBlur
-    }
+    };
   }
-})
+});
 </script>
 
 <style scoped>
@@ -316,7 +401,7 @@ export default defineComponent({
 
 .sftp-path-part-button {
   color: var(--sftp-path-part-button-color);
-  transition: 
+  transition:
     background-color var(--theme-transition-duration) var(--theme-transition-timing),
     color var(--theme-transition-duration) var(--theme-transition-timing);
 }
@@ -335,7 +420,7 @@ export default defineComponent({
   background-color: var(--sftp-nav-button-bg);
   color: var(--sftp-nav-button-color);
   border: 1px solid var(--sftp-nav-button-border);
-  transition: 
+  transition:
     background-color var(--theme-transition-duration) var(--theme-transition-timing),
     color var(--theme-transition-duration) var(--theme-transition-timing),
     border-color var(--theme-transition-duration) var(--theme-transition-timing);
@@ -349,7 +434,7 @@ export default defineComponent({
   background-color: var(--sftp-path-input-bg);
   color: var(--sftp-path-input-color);
   border: 1px solid var(--sftp-path-input-border);
-  transition: 
+  transition:
     background-color var(--theme-transition-duration) var(--theme-transition-timing),
     color var(--theme-transition-duration) var(--theme-transition-timing),
     border-color var(--theme-transition-duration) var(--theme-transition-timing);
@@ -366,53 +451,53 @@ export default defineComponent({
 }
 
 /* 浅色主题下的路径导航样式 - 使用主题变量 */
-:root[data-theme="light"] .sftp-path-home-button,
+:root[data-theme='light'] .sftp-path-home-button,
 .light-theme .sftp-path-home-button,
-html[data-theme="light"] .sftp-path-home-button {
+html[data-theme='light'] .sftp-path-home-button {
   color: var(--color-text-secondary);
 }
 
-:root[data-theme="light"] .sftp-path-home-button:hover,
+:root[data-theme='light'] .sftp-path-home-button:hover,
 .light-theme .sftp-path-home-button:hover,
-html[data-theme="light"] .sftp-path-home-button:hover {
+html[data-theme='light'] .sftp-path-home-button:hover {
   color: var(--color-text-primary);
 }
 
-:root[data-theme="light"] .sftp-path-separator,
+:root[data-theme='light'] .sftp-path-separator,
 .light-theme .sftp-path-separator,
-html[data-theme="light"] .sftp-path-separator {
+html[data-theme='light'] .sftp-path-separator {
   color: var(--color-text-placeholder);
 }
 
-:root[data-theme="light"] .sftp-path-part-button,
+:root[data-theme='light'] .sftp-path-part-button,
 .light-theme .sftp-path-part-button,
-html[data-theme="light"] .sftp-path-part-button {
+html[data-theme='light'] .sftp-path-part-button {
   color: var(--color-text-primary);
 }
 
-:root[data-theme="light"] .sftp-path-part-button:hover,
+:root[data-theme='light'] .sftp-path-part-button:hover,
 .light-theme .sftp-path-part-button:hover,
-html[data-theme="light"] .sftp-path-part-button:hover {
+html[data-theme='light'] .sftp-path-part-button:hover {
   background-color: var(--color-bg-muted);
 }
 
-:root[data-theme="light"] .sftp-path-field,
+:root[data-theme='light'] .sftp-path-field,
 .light-theme .sftp-path-field,
-html[data-theme="light"] .sftp-path-field {
+html[data-theme='light'] .sftp-path-field {
   color: var(--color-text-primary);
 }
 
-:root[data-theme="light"] .sftp-nav-button,
+:root[data-theme='light'] .sftp-nav-button,
 .light-theme .sftp-nav-button,
-html[data-theme="light"] .sftp-nav-button {
+html[data-theme='light'] .sftp-nav-button {
   background-color: var(--color-bg-container);
   color: var(--color-text-primary);
   border: 1px solid var(--color-border-light);
 }
 
-:root[data-theme="light"] .sftp-nav-button:hover,
+:root[data-theme='light'] .sftp-nav-button:hover,
 .light-theme .sftp-nav-button:hover,
-html[data-theme="light"] .sftp-nav-button:hover {
+html[data-theme='light'] .sftp-nav-button:hover {
   background-color: var(--color-bg-muted);
 }
 </style>

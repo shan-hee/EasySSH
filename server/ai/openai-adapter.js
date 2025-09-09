@@ -39,7 +39,7 @@ class OpenAIAdapter {
    */
   async *streamChatCompletion(messages, options = {}, signal = null) {
     const url = `${this.baseUrl}/v1/chat/completions`;
-    
+
     const requestBody = {
       model: this.model,
       messages,
@@ -49,9 +49,9 @@ class OpenAIAdapter {
       ...options
     };
 
-    logger.debug('发送OpenAI请求', { 
-      url, 
-      model: this.model, 
+    logger.debug('发送OpenAI请求', {
+      url,
+      model: this.model,
       messageCount: messages.length,
       temperature: requestBody.temperature,
       maxTokens: requestBody.max_tokens
@@ -59,7 +59,7 @@ class OpenAIAdapter {
 
     try {
       const response = await this._makeRequest(url, requestBody, signal);
-      
+
       if (!response.ok) {
         const errorText = await this._readStream(response);
         throw new Error(`OpenAI API错误: ${response.status} ${response.statusText} - ${errorText}`);
@@ -73,7 +73,7 @@ class OpenAIAdapter {
         logger.info('OpenAI请求已取消');
         return;
       }
-      
+
       logger.error('OpenAI请求失败', { error: error.message });
       throw error;
     }
@@ -116,7 +116,6 @@ class OpenAIAdapter {
       model: config.model,
       hasApiKey: !!config.apiKey
     });
-
 
 
     try {
@@ -270,7 +269,7 @@ class OpenAIAdapter {
           resolve({
             status: res.statusCode,
             statusText: res.statusMessage,
-            data: data
+            data
           });
         });
       });
@@ -303,7 +302,7 @@ class OpenAIAdapter {
       const httpModule = isHttps ? https : http;
 
       const postData = JSON.stringify(body);
-      
+
       const options = {
         hostname: parsedUrl.hostname,
         port: parsedUrl.port || (isHttps ? 443 : 80),
@@ -360,7 +359,7 @@ class OpenAIAdapter {
    */
   async *_parseSSEStream(response, signal) {
     let buffer = '';
-    let totalTokens = { input: 0, output: 0 };
+    const totalTokens = { input: 0, output: 0 };
 
     try {
       for await (const chunk of response.body) {
@@ -376,7 +375,7 @@ class OpenAIAdapter {
         for (const line of lines) {
           if (line.startsWith('data: ')) {
             const data = line.slice(6).trim();
-            
+
             if (data === '[DONE]') {
               yield {
                 type: 'done',
@@ -391,7 +390,7 @@ class OpenAIAdapter {
             try {
               const json = JSON.parse(data);
               const delta = json.choices?.[0]?.delta?.content;
-              
+
               if (delta) {
                 totalTokens.output += this._estimateTokens(delta);
                 yield {
@@ -408,9 +407,9 @@ class OpenAIAdapter {
               }
 
             } catch (parseError) {
-              logger.warn('解析SSE数据失败', { 
+              logger.warn('解析SSE数据失败', {
                 data: data.substring(0, 100),
-                error: parseError.message 
+                error: parseError.message
               });
             }
           }
@@ -478,7 +477,7 @@ class OpenAIAdapter {
    * @returns {string} 系统提示词
    */
   _getSystemPrompt(mode, context) {
-    const basePrompt = "You are an expert shell assistant embedded in a web terminal. Be concise and helpful. Never execute commands yourself; only suggest.";
+    const basePrompt = 'You are an expert shell assistant embedded in a web terminal. Be concise and helpful. Never execute commands yourself; only suggest.';
 
     const modePrompts = {
       // 两种核心模式
@@ -542,28 +541,28 @@ class OpenAIAdapter {
 
     if (operationType === 'auto') {
       // 自动模式：让AI根据上下文判断需要什么操作
-      let instruction = "Analyze the terminal state and provide appropriate assistance. ";
+      let instruction = 'Analyze the terminal state and provide appropriate assistance. ';
 
       if (context.metadata && context.metadata.errorDetected) {
-        instruction += "There appears to be an error - provide specific fix commands. ";
+        instruction += 'There appears to be an error - provide specific fix commands. ';
       }
 
       if (input.prompt) {
         instruction += `User request: ${input.prompt}`;
       } else {
-        instruction += "Explain the recent output and suggest next steps if needed.";
+        instruction += 'Explain the recent output and suggest next steps if needed.';
       }
 
       return instruction;
     } else {
       // 指定操作类型
       const typeInstructions = {
-        explanation: "Explain the terminal output and identify any issues.",
-        fix: "Analyze the error and provide specific commands to fix the problem.",
+        explanation: 'Explain the terminal output and identify any issues.',
+        fix: 'Analyze the error and provide specific commands to fix the problem.',
         generation: `Generate a shell script for: ${input.prompt || 'the requested task'}`
       };
 
-      return typeInstructions[operationType] || "Provide assistance based on the terminal context.";
+      return typeInstructions[operationType] || 'Provide assistance based on the terminal context.';
     }
   }
 

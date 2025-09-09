@@ -18,7 +18,7 @@ SSHService.createTerminal = async (sessionId, container, options = {}) => {
 const sftpService = new SFTPService(SSHService);
 
 // 扩展SSH服务，添加SFTP处理器
-SSHService.handleSftpMessages = function(message) {
+SSHService.handleSftpMessages = function (message) {
   // 处理来自服务器的SFTP相关消息
   if (message && message.type && message.type.startsWith('sftp_')) {
     // 特殊处理sftp_ready类型消息
@@ -45,9 +45,4 @@ SSHService.utils = utils;
 export default SSHService;
 
 // 同时导出子模块
-export {
-  sftpService,
-  terminalManager,
-  SessionManager,
-  utils
-}; 
+export { sftpService, terminalManager, SessionManager, utils };

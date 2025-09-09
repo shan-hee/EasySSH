@@ -4,52 +4,66 @@
       <h2>EasySSH 登录</h2>
       <form @submit.prevent="handleLogin">
         <div class="form-group">
-          <input 
-            type="text" 
-            id="username" 
-            v-model="loginForm.username" 
+          <input
+            id="username"
+            v-model="loginForm.username"
+            type="text"
             placeholder="请输入用户名"
             :disabled="loginLoading"
             autocomplete="username"
-          />
+          >
         </div>
         <div class="form-group">
-          <input 
-            type="password" 
-            id="password" 
-            v-model="loginForm.password" 
+          <input
+            id="password"
+            v-model="loginForm.password"
+            type="password"
             placeholder="请输入密码"
             :disabled="loginLoading"
             autocomplete="current-password"
-          />
+          >
         </div>
         <div class="login-options">
-          <Checkbox 
-            v-model="rememberMe" 
-            label="记住我" 
-            :disabled="loginLoading" 
+          <checkbox
+            v-model="rememberMe"
+            label="记住我"
+            :disabled="loginLoading"
           />
-          <a href="#" class="forgot-password" @click.prevent="forgotPassword">无法登录？</a>
+          <a
+            href="#"
+            class="forgot-password"
+            @click.prevent="forgotPassword"
+          >无法登录？</a>
         </div>
-        <button 
+        <button
           type="submit"
-          class="login-submit-btn" 
+          class="login-submit-btn"
           :disabled="loginLoading"
         >
           <span v-if="!loginLoading">登录</span>
-          <span v-else class="loading-spinner"></span>
+          <span
+            v-else
+            class="loading-spinner"
+          />
         </button>
       </form>
       <div class="login-footer">
-        <p>还没有账户？ 
-          <a href="#" @click.prevent="goToRegister">立即注册</a>
+        <p>
+          还没有账户？
+          <a
+            href="#"
+            @click.prevent="goToRegister"
+          >立即注册</a>
         </p>
       </div>
       <div class="login-copyright">
-        © 2025 Theme By <a href="https://github.com/shan-hee/EasySSH" target="_blank">EasySSH</a>
+        © 2025 Theme By <a
+          href="https://github.com/shan-hee/EasySSH"
+          target="_blank"
+        >EasySSH</a>
       </div>
     </div>
-    <MfaVerifyModal
+    <mfa-verify-modal
       v-model:show="showMfaModal"
       :user-info="tempUserInfo"
       @success="handleMfaVerifySuccess"
@@ -59,34 +73,34 @@
 </template>
 
 <script>
-import { defineComponent, reactive, ref, onMounted } from 'vue'
-import { useUserStore } from '@/store/user'
-import { ElMessage } from 'element-plus'
-import Checkbox from '@/components/common/Checkbox.vue'
-import MfaVerifyModal from '@/components/auth/MfaVerifyModal.vue'
-import { useRouter } from 'vue-router'
-import log from '@/services/log'
-import storageService from '@/services/storage'
+import { defineComponent, reactive, ref, onMounted } from 'vue';
+import { useUserStore } from '@/store/user';
+import { ElMessage } from 'element-plus';
+import Checkbox from '@/components/common/Checkbox.vue';
+import MfaVerifyModal from '@/components/auth/MfaVerifyModal.vue';
+import { useRouter } from 'vue-router';
+import log from '@/services/log';
+import storageService from '@/services/storage';
 
 // 从统一存储获取保存的凭据函数
 function getSavedCredentials() {
   try {
-    const encrypted = storageService.getItem('easyssh_credentials')
-    if (!encrypted) return { username: '', password: '', hasCredentials: false }
+    const encrypted = storageService.getItem('easyssh_credentials');
+    if (!encrypted) return { username: '', password: '', hasCredentials: false };
 
-    const decoded = JSON.parse(atob(encrypted))
+    const decoded = JSON.parse(atob(encrypted));
     return {
       username: decoded.u,
       password: decoded.p,
       hasCredentials: true
-    }
+    };
   } catch (error) {
-    log.error('解析保存的凭据失败:', error)
+    log.error('解析保存的凭据失败:', error);
     return {
       username: '',
       password: '',
       hasCredentials: false
-    }
+    };
   }
 }
 
@@ -98,39 +112,39 @@ export default defineComponent({
   },
   emits: ['login-success'],
   setup(props, { emit }) {
-    const userStore = useUserStore()
-    const loginLoading = ref(false)
-    const router = useRouter()
-    const showMfaModal = ref(false)
-    const tempUserInfo = ref(null)
-    
+    const userStore = useUserStore();
+    const loginLoading = ref(false);
+    const router = useRouter();
+    const showMfaModal = ref(false);
+    const tempUserInfo = ref(null);
+
     // 在初始化阶段获取保存的凭据
-    const savedCreds = getSavedCredentials()
-    
+    const savedCreds = getSavedCredentials();
+
     // 初始化表单状态，如果有保存的凭据则直接使用（仅自动填充，不自动登录）
     const loginForm = reactive({
       username: savedCreds.username,
       password: savedCreds.password
-    })
-    
+    });
+
     // 初始化记住我选项
-    const rememberMe = ref(savedCreds.hasCredentials)
-    
+    const rememberMe = ref(savedCreds.hasCredentials);
+
     // 移除自动登录代码，用户需要手动点击登录按钮
     onMounted(() => {
       if (!window._loginPanelMounted) {
-        log.info('登录页面初始化，需要用户手动点击登录按钮')
-        window._loginPanelMounted = true
+        log.info('登录页面初始化，需要用户手动点击登录按钮');
+        window._loginPanelMounted = true;
       }
 
       // 检查各种登出场景并显示相应提示
-      checkLogoutScenarios()
-    })
+      checkLogoutScenarios();
+    });
 
     // 检查登出场景并显示相应提示
     const checkLogoutScenarios = () => {
       // 检查URL中是否包含远程注销参数
-      const urlParams = new URLSearchParams(window.location.search)
+      const urlParams = new URLSearchParams(window.location.search);
 
       if (urlParams.has('remote-logout')) {
         ElMessage({
@@ -139,9 +153,9 @@ export default defineComponent({
           duration: 5000,
           offset: 80,
           zIndex: 9999
-        })
+        });
         // 清理URL参数
-        cleanUrlParams(['remote-logout'])
+        cleanUrlParams(['remote-logout']);
       }
 
       // 检查sessionStorage中的完全登出标志
@@ -152,9 +166,9 @@ export default defineComponent({
           duration: 4000,
           offset: 80,
           zIndex: 9999
-        })
+        });
         // 清理标志
-        sessionStorage.removeItem('auth_complete_logout')
+        sessionStorage.removeItem('auth_complete_logout');
       }
 
       // 检查登出错误标志
@@ -165,9 +179,9 @@ export default defineComponent({
           duration: 4000,
           offset: 80,
           zIndex: 9999
-        })
+        });
         // 清理标志
-        sessionStorage.removeItem('auth_logout_error')
+        sessionStorage.removeItem('auth_logout_error');
       }
 
       // 检查强制登出参数（向后兼容）
@@ -178,33 +192,33 @@ export default defineComponent({
           duration: 4000,
           offset: 80,
           zIndex: 9999
-        })
+        });
         // 清理URL参数
-        cleanUrlParams(['force-logout'])
+        cleanUrlParams(['force-logout']);
       }
-    }
+    };
 
     // 清理URL参数的通用函数
-    const cleanUrlParams = (paramsToRemove) => {
-      const urlParams = new URLSearchParams(window.location.search)
-      let hasChanges = false
+    const cleanUrlParams = paramsToRemove => {
+      const urlParams = new URLSearchParams(window.location.search);
+      let hasChanges = false;
 
       paramsToRemove.forEach(param => {
         if (urlParams.has(param)) {
-          urlParams.delete(param)
-          hasChanges = true
+          urlParams.delete(param);
+          hasChanges = true;
         }
-      })
+      });
 
       if (hasChanges) {
         const newUrl =
           window.location.pathname +
-          (urlParams.toString() ? '?' + urlParams.toString() : '') +
-          window.location.hash
-        window.history.replaceState({}, '', newUrl)
+          (urlParams.toString() ? `?${urlParams.toString()}` : '') +
+          window.location.hash;
+        window.history.replaceState({}, '', newUrl);
       }
-    }
-    
+    };
+
     const handleLogin = async () => {
       // 简单表单验证
       if (!loginForm.username.trim() || !loginForm.password.trim()) {
@@ -213,131 +227,134 @@ export default defineComponent({
           type: 'warning',
           offset: 3,
           zIndex: 9999
-        })
-        return
+        });
+        return;
       }
-      
+
       try {
-        loginLoading.value = true
-        
+        loginLoading.value = true;
+
         // 记录登录选项（合并到登录流程日志中）
-        log.info(`开始登录流程`, {
+        log.info('开始登录流程', {
           username: loginForm.username,
           remember: rememberMe.value
-        })
-        
+        });
+
         // 调用登录方法
         const result = await userStore.login({
           username: loginForm.username,
           password: loginForm.password,
           remember: rememberMe.value
-        })
-        
+        });
+
         if (result.success) {
           // 检查是否需要MFA验证
           if (result.requireMfa) {
             // 保存临时用户信息
-            tempUserInfo.value = result.user
-            tempUserInfo.value.isDefaultPassword = result.isDefaultPassword
+            tempUserInfo.value = result.user;
+            tempUserInfo.value.isDefaultPassword = result.isDefaultPassword;
             // 显示MFA验证弹窗
-            showMfaModal.value = true
-            return
+            showMfaModal.value = true;
+            return;
           }
-          
+
           // 不需要MFA，直接完成登录流程
-          completeLogin(result.silent, result.isDefaultPassword)
+          completeLogin(result.silent, result.isDefaultPassword);
         }
       } catch (error) {
-        console.error('登录失败:', error)
-        
+        console.error('登录失败:', error);
+
         ElMessage({
           message: `登录失败: ${error.message || '未知错误'}`,
           type: 'error',
           offset: 3,
           zIndex: 9999
-        })
+        });
       } finally {
-        loginLoading.value = false
+        loginLoading.value = false;
       }
-    }
-    
+    };
+
     // MFA验证成功处理
     const handleMfaVerifySuccess = async () => {
       try {
-        loginLoading.value = true
-        
+        loginLoading.value = true;
+
         // 获取是否使用默认密码的状态
-        const isDefaultPassword = tempUserInfo.value?.isDefaultPassword || false
-        
+        const isDefaultPassword = tempUserInfo.value?.isDefaultPassword || false;
+
         // 完成登录流程
-        completeLogin(false, isDefaultPassword)
+        completeLogin(false, isDefaultPassword);
       } catch (error) {
-        console.error('MFA验证后登录失败:', error)
+        console.error('MFA验证后登录失败:', error);
         ElMessage({
           message: `登录失败: ${error.message || '未知错误'}`,
           type: 'error',
           offset: 3,
           zIndex: 9999
-        })
+        });
       } finally {
-        loginLoading.value = false
+        loginLoading.value = false;
       }
-    }
-    
+    };
+
     // 完成登录流程
     const completeLogin = (silent = false, isDefaultPassword = false) => {
       // 清空表单(密码字段)
-      loginForm.password = ''
-      tempUserInfo.value = null
+      loginForm.password = '';
+      tempUserInfo.value = null;
 
       // 发送登录成功事件，同时发出清空页签的事件
-      emit('login-success')
+      emit('login-success');
 
       // 发出清空页签的全局事件
-      window.dispatchEvent(new CustomEvent('auth:login-success-clear-tabs'))
+      window.dispatchEvent(new CustomEvent('auth:login-success-clear-tabs'));
 
       // 如果使用默认密码，显示安全提示并自动打开用户设置
       if (isDefaultPassword) {
         ElMessage({
-          message: '您当前使用的是系统初始密码，存在严重安全风险。为了保障您的账户安全，请立即修改密码。',
+          message:
+            '您当前使用的是系统初始密码，存在严重安全风险。为了保障您的账户安全，请立即修改密码。',
           type: 'warning',
           offset: 3,
           zIndex: 9999,
           duration: 5000
-        })
+        });
 
         // 先导航到主页
-        router.push('/')
+        router.push('/');
 
         // 延迟一下再打开用户设置，确保页面已加载
         setTimeout(() => {
           // 发送打开用户设置的全局事件
-          window.dispatchEvent(new CustomEvent('auth:open-user-settings', {
-            detail: { activeTab: 'account' }
-          }))
-        }, 500)
-        return
+          window.dispatchEvent(
+            new CustomEvent('auth:open-user-settings', {
+              detail: { activeTab: 'account' }
+            })
+          );
+        }, 500);
+        return;
       }
 
       // 显示登录成功消息(如果不是静默模式)
       if (!silent) {
-      ElMessage({
-        message: '登录成功',
-        type: 'success',
-        offset: 3,
-        zIndex: 9999
-      })
+        ElMessage({
+          message: '登录成功',
+          type: 'success',
+          offset: 3,
+          zIndex: 9999
+        });
       }
 
       // 登录成功后导航到控制台
-      router.push('/')
-    }
-    
+      router.push('/');
+    };
+
     // MFA验证取消处理
     const handleMfaVerifyCancel = () => {
-      tempUserInfo.value = null
-    }
-    
+      tempUserInfo.value = null;
+    };
+
     const forgotPassword = () => {
       // 提示用户联系管理员
       ElMessage({
@@ -345,9 +362,9 @@ export default defineComponent({
         type: 'info',
         offset: 3,
         zIndex: 9999
-      })
-    }
-    
+      });
+    };
+
     const goToRegister = () => {
       // 提示用户功能暂未实现
       ElMessage({
@@ -355,9 +372,9 @@ export default defineComponent({
         type: 'info',
         offset: 3,
         zIndex: 9999
-      })
-    }
-    
+      });
+    };
+
     return {
       loginForm,
       loginLoading,
@@ -369,9 +386,9 @@ export default defineComponent({
       handleMfaVerifySuccess,
       handleMfaVerifyCancel,
       tempUserInfo
-    }
+    };
   }
-})
+});
 </script>
 
 <style scoped>
@@ -382,7 +399,7 @@ export default defineComponent({
   overflow: hidden;
 
   /* 统一字体设置，避免在每个子元素中重复使用!important */
-  font-family: "Microsoft YaHei", sans-serif;
+  font-family: 'Microsoft YaHei', sans-serif;
 
   /* 确保所有子元素继承字体 */
   * {
@@ -538,81 +555,81 @@ export default defineComponent({
   color: var(--login-panel-title-color);
 }
 
-:root[data-theme="light"] .form-group input,
+:root[data-theme='light'] .form-group input,
 .light-theme .form-group input,
-html[data-theme="light"] .form-group input {
+html[data-theme='light'] .form-group input {
   background-color: rgba(245, 247, 250, 0.8);
   border: 1px solid #dcdfe6;
   color: #606266;
 }
 
-:root[data-theme="light"] .form-group input::placeholder,
+:root[data-theme='light'] .form-group input::placeholder,
 .light-theme .form-group input::placeholder,
-html[data-theme="light"] .form-group input::placeholder {
+html[data-theme='light'] .form-group input::placeholder {
   color: #c0c4cc;
 }
 
-:root[data-theme="light"] .form-group input:focus,
+:root[data-theme='light'] .form-group input:focus,
 .light-theme .form-group input:focus,
-html[data-theme="light"] .form-group input:focus {
+html[data-theme='light'] .form-group input:focus {
   background-color: rgba(236, 245, 255, 0.8);
   border-color: #aaaaaa;
   box-shadow: 0 0 0 2px rgba(170, 170, 170, 0.2);
 }
 
-:root[data-theme="light"] .forgot-password,
+:root[data-theme='light'] .forgot-password,
 .light-theme .forgot-password,
-html[data-theme="light"] .forgot-password {
+html[data-theme='light'] .forgot-password {
   color: #909399;
 }
 
-:root[data-theme="light"] .forgot-password:hover,
+:root[data-theme='light'] .forgot-password:hover,
 .light-theme .forgot-password:hover,
-html[data-theme="light"] .forgot-password:hover {
+html[data-theme='light'] .forgot-password:hover {
   color: #aaaaaa;
 }
 
-:root[data-theme="light"] .login-submit-btn,
+:root[data-theme='light'] .login-submit-btn,
 .light-theme .login-submit-btn,
-html[data-theme="light"] .login-submit-btn {
+html[data-theme='light'] .login-submit-btn {
   background-color: #aaaaaa;
   color: #ffffff;
 }
 
-:root[data-theme="light"] .login-submit-btn:hover,
+:root[data-theme='light'] .login-submit-btn:hover,
 .light-theme .login-submit-btn:hover,
-html[data-theme="light"] .login-submit-btn:hover {
+html[data-theme='light'] .login-submit-btn:hover {
   background-color: #bbbbbb;
 }
 
-:root[data-theme="light"] .loading-spinner,
+:root[data-theme='light'] .loading-spinner,
 .light-theme .loading-spinner,
-html[data-theme="light"] .loading-spinner {
+html[data-theme='light'] .loading-spinner {
   border: 2px solid rgba(170, 170, 170, 0.3);
   border-top-color: #ffffff;
 }
 
-:root[data-theme="light"] .login-footer,
+:root[data-theme='light'] .login-footer,
 .light-theme .login-footer,
-html[data-theme="light"] .login-footer {
+html[data-theme='light'] .login-footer {
   border-top: 1px solid #e4e7ed;
 }
 
-:root[data-theme="light"] .login-footer p,
+:root[data-theme='light'] .login-footer p,
 .light-theme .login-footer p,
-html[data-theme="light"] .login-footer p {
+html[data-theme='light'] .login-footer p {
   color: #c0c4cc;
 }
 
-:root[data-theme="light"] .login-footer a,
+:root[data-theme='light'] .login-footer a,
 .light-theme .login-footer a,
-html[data-theme="light"] .login-footer a {
+html[data-theme='light'] .login-footer a {
   color: #909399;
 }
 
-:root[data-theme="light"] .login-footer a:hover,
+:root[data-theme='light'] .login-footer a:hover,
 .light-theme .login-footer a:hover,
-html[data-theme="light"] .login-footer a:hover {
+html[data-theme='light'] .login-footer a:hover {
   color: #aaaaaa;
 }
 </style>

@@ -2,13 +2,23 @@
   <div class="home-container">
     <div class="hero-section">
       <div class="hero-content">
-        <h1 class="title">EasySSH</h1>
-        <p class="subtitle">现代化的SSH客户端，让远程服务器管理更简单</p>
+        <h1 class="title">
+          EasySSH
+        </h1>
+        <p class="subtitle">
+          现代化的SSH客户端，让远程服务器管理更简单
+        </p>
         <div class="action-buttons">
-          <button class="btn btn-primary" @click="getStarted">
+          <button
+            class="btn btn-primary"
+            @click="getStarted"
+          >
             开始使用 <span class="icon">→</span>
           </button>
-          <button class="btn btn-secondary" @click="learnMore">
+          <button
+            class="btn btn-secondary"
+            @click="learnMore"
+          >
             了解更多 <span class="icon">i</span>
           </button>
         </div>
@@ -16,10 +26,16 @@
     </div>
 
     <div class="features-section">
-      <h2 class="section-title">强大功能，简单操作</h2>
+      <h2 class="section-title">
+        强大功能，简单操作
+      </h2>
 
       <div class="feature-grid">
-        <div class="feature-card" v-for="feature in features" :key="feature.title">
+        <div
+          v-for="feature in features"
+          :key="feature.title"
+          class="feature-card"
+        >
           <div class="feature-icon">
             <span class="icon">{{ feature.icon }}</span>
           </div>
@@ -32,14 +48,14 @@
 </template>
 
 <script>
-import { ref, computed } from 'vue'
-import { useRouter } from 'vue-router'
+import { ref, computed } from 'vue';
+import { useRouter } from 'vue-router';
 
 export default {
   name: 'HomePage',
   setup() {
-    const router = useRouter()
-    const currentYear = computed(() => new Date().getFullYear())
+    const router = useRouter();
+    const currentYear = computed(() => new Date().getFullYear());
 
     const features = ref([
       {
@@ -55,7 +71,8 @@ export default {
       {
         icon: '🛠️',
         title: '丰富功能',
-        description: '支持文件传输、端口转发、会话保存、命令记录等多种专业功能，满足各类远程管理需求'
+        description:
+          '支持文件传输、端口转发、会话保存、命令记录等多种专业功能，满足各类远程管理需求'
       },
       {
         icon: '🖥️',
@@ -72,28 +89,28 @@ export default {
         title: '跨平台支持',
         description: '支持Windows、macOS和Linux，提供一致的使用体验，随时随地管理您的服务器'
       }
-    ])
+    ]);
 
     // 导航方法
     const getStarted = () => {
-      router.push('/dashboard')
-    }
+      router.push('/dashboard');
+    };
 
     const learnMore = () => {
       // 滚动到功能区
       document.querySelector('.features-section').scrollIntoView({
         behavior: 'smooth'
-      })
-    }
+      });
+    };
 
     return {
       currentYear,
       features,
       getStarted,
       learnMore
-    }
+    };
   }
-}
+};
 </script>
 
 <style scoped>

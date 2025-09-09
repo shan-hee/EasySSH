@@ -30,35 +30,35 @@ const customLogger = () => {
     configureServer(server) {
       // 保存原始的listen方法
       const originalListen = server.httpServer.listen.bind(server.httpServer);
-      
+
       // 重写listen方法
       server.httpServer.listen = function(...args) {
         const callback = args[args.length - 1];
-        
+
         if (typeof callback === 'function') {
           args[args.length - 1] = () => {
             callback();
-            
+
             clearConsole();
-            
+
             const protocol = server.config.server.https ? 'https' : 'http';
             const host = 'localhost';
             const port = server.config.server.port;
             const networkUrl = `${protocol}://${host}:${port}`;
-            
+
             const projectName = 'EasySSH';
             const version = 'v1.0.0';
             const mode = server.config.mode;
-            
+
             console.log(`\n${colors.bright}${colors.cyan}${projectName} ${colors.white}${version} ${colors.yellow}前端开发服务${colors.reset}\n`);
-            
+
             console.log(`${colors.white}本地地址${colors.reset}    : ${colors.green}${networkUrl}${colors.reset}`);
             console.log(`${colors.white}运行模式${colors.reset}    : ${colors.green}${mode}${colors.reset}`);
             console.log(`${colors.white}开发框架${colors.reset}    : ${colors.green}Vue3 + Vite${colors.reset}`);
-            
+
             const timestamp = new Date().toLocaleTimeString();
             console.log(`${colors.white}启动时间${colors.reset}    : ${timestamp}`);
-            
+
             console.log(`\n${colors.bright}${colors.yellow}可用命令${colors.reset}`);
             console.log(`${colors.white}按 ${colors.bright}h${colors.reset}${colors.white} 键${colors.reset}    : 显示帮助信息`);
             console.log(`${colors.white}按 ${colors.bright}r${colors.reset}${colors.white} 键${colors.reset}    : 手动重载页面`);
@@ -67,7 +67,7 @@ const customLogger = () => {
             console.log(`${colors.white}按 ${colors.bright}Ctrl+C${colors.reset}${colors.white} ${colors.reset} : 退出开发服务器\n`);
           };
         }
-        
+
         return originalListen.apply(this, args);
       };
     }
@@ -84,7 +84,7 @@ export default defineConfig(({ mode }) => {
   // 读取package.json获取版本号
   const packageJson = JSON.parse(readFileSync(resolve(__dirname, 'package.json'), 'utf-8'));
   const appVersion = packageJson.version;
-  
+
   return {
     plugins: [
       vue(),
@@ -123,7 +123,7 @@ export default defineConfig(({ mode }) => {
         // 开发环境API代理配置
         '/api': {
           target: env.VITE_API_TARGET || 'http://localhost:8000', // 从环境变量读取API目标地址
-          changeOrigin: true,
+          changeOrigin: true
           // 不重写路径，保留/api前缀
           // rewrite: (path) => path.replace(/^\/api/, '')
         },
@@ -263,7 +263,7 @@ export default defineConfig(({ mode }) => {
             return 'assets/[name]-[hash][extname]';
           }
         }
-      },
+      }
 
       // chunk大小警告阈值已在上面设置
     },
@@ -273,7 +273,7 @@ export default defineConfig(({ mode }) => {
         scss: {
           // 使用新版 Sass API, 移除错误的CSS导入
           // CSS文件应该通过main.js或组件直接导入
-          additionalData: ``,
+          additionalData: '',
           // 抑制 Sass 弃用警告
           silenceDeprecations: ['legacy-js-api']
         }
@@ -306,7 +306,6 @@ export default defineConfig(({ mode }) => {
       // 强制预构建，确保依赖关系正确
       force: true
     },
-
 
 
     // 定义全局常量，减少运行时检查

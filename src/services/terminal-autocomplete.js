@@ -2,41 +2,41 @@
  * 终端自动完成服务
  * 处理终端输入的自动完成功能
  */
-import scriptLibraryService from './scriptLibrary'
-import wordCompletionService from './word-completion'
-import log from './log'
-import { useUserStore } from '@/store/user'
-import { autocompleteConfig } from '@/config/app-config'
-import { SmartDebounce } from '@/utils/smart-debounce'
+import scriptLibraryService from './scriptLibrary';
+import wordCompletionService from './word-completion';
+import log from './log';
+import { useUserStore } from '@/store/user';
+import { autocompleteConfig } from '@/config/app-config';
+import { SmartDebounce } from '@/utils/smart-debounce';
 
 class TerminalAutocompleteService {
   constructor() {
     // 当前输入缓冲区
-    this.inputBuffer = ''
+    this.inputBuffer = '';
 
     // 当前光标位置
-    this.cursorPosition = 0
+    this.cursorPosition = 0;
 
     // 自动完成状态
-    this.isActive = false
+    this.isActive = false;
 
     // 建议列表
-    this.suggestions = []
+    this.suggestions = [];
 
     // 当前选中的建议索引，-1表示没有选中
-    this.selectedIndex = -1
+    this.selectedIndex = -1;
 
     // 缓存的位置信息
-    this.lastPosition = null
+    this.lastPosition = null;
 
     // 补全完成后是否需要重置输入缓冲区的标志
-    this._shouldResetOnNextInput = false
+    this._shouldResetOnNextInput = false;
 
     // 回调函数
     this.callbacks = {
       onSuggestionsUpdate: null,
       onPositionUpdate: null
-    }
+    };
 
     // 智能防抖系统 - 优化配置
     this.smartDebounce = new SmartDebounce({
@@ -45,19 +45,14 @@ class TerminalAutocompleteService {
       maxDelay: 300, // 降低最大延迟
       enableAdaptive: true,
       enablePriority: true
-    })
-
-
+    });
 
     // 创建防抖函数
-    this.debouncedUpdate = this.smartDebounce.create(
-      this.updateSuggestions.bind(this),
-      {
-        key: 'updateSuggestions',
-        adaptive: true,
-        priority: 1
-      }
-    )
+    this.debouncedUpdate = this.smartDebounce.create(this.updateSuggestions.bind(this), {
+      key: 'updateSuggestions',
+      adaptive: true,
+      priority: 1
+    });
 
     // 高优先级防抖函数（用于删除操作）- 优化为零延迟
     this.debouncedUpdateHighPriority = this.smartDebounce.create(
@@ -69,18 +64,15 @@ class TerminalAutocompleteService {
         adaptive: false,
         immediate: true
       }
-    )
+    );
 
     // 立即更新函数（用于首字符）
-    this.immediateUpdate = this.smartDebounce.create(
-      this.updateSuggestions.bind(this),
-      {
-        key: 'immediateUpdate',
-        delay: 0,
-        priority: 3,
-        immediate: true
-      }
-    )
+    this.immediateUpdate = this.smartDebounce.create(this.updateSuggestions.bind(this), {
+      key: 'immediateUpdate',
+      delay: 0,
+      priority: 3,
+      immediate: true
+    });
 
     // 配置（从配置文件获取）
     this.config = {
@@ -93,78 +85,96 @@ class TerminalAutocompleteService {
       scriptCompletionPriority: autocompleteConfig.scriptCompletionPriority,
       maxWordsPerType: autocompleteConfig.maxWordsPerType,
       contextDetection: autocompleteConfig.contextDetection
-    }
+    };
 
     // 用户存储引用
-    this.userStore = null
+    this.userStore = null;
 
     // 装饰器锚点相关（用于精准定位补全框）
-    this._decoration = null
-    this._marker = null
-    this._anchorElement = null
-    this._decorationSupported = undefined
+    this._decoration = null;
+    this._marker = null;
+    this._anchorElement = null;
+    this._decorationSupported = undefined;
     // 调试状态已移除（如需可再加回）
     // 位置有效性与rAF合并
-    this._lastValidPosition = null
-    this._pendingRaf = null
-    this._lastEmitted = { count: -1, index: -2, pos: null }
+    this._lastValidPosition = null;
+    this._pendingRaf = null;
+    this._lastEmitted = { count: -1, index: -2, pos: null };
   }
 
   // 位置有效性判断
   _isValidPos(pos) {
-    return !!(pos && typeof pos.x === 'number' && typeof pos.y === 'number' && pos.x > 4 && pos.y > 4)
+    return !!(
+      pos &&
+      typeof pos.x === 'number' &&
+      typeof pos.y === 'number' &&
+      pos.x > 4 &&
+      pos.y > 4
+    );
   }
 
   _posEquals(a, b) {
-    if (!a || !b) return false
-    return a.x === b.x && a.y === b.y
+    if (!a || !b) return false;
+    return a.x === b.x && a.y === b.y;
   }
 
   // 统一的建议更新发射器，带位置保护与rAF重试
   _emitSuggestionsUpdate(suggestions, position, selectedIndex = -1, terminal = null) {
     try {
-      if (!this.callbacks.onSuggestionsUpdate) return
+      if (!this.callbacks.onSuggestionsUpdate) return;
 
       // 首选当前位置，其次使用上次有效位置
-      let finalPos = this._isValidPos(position) ? position : (this._isValidPos(this._lastValidPosition) ? this._lastValidPosition : null)
+      const finalPos = this._isValidPos(position)
+        ? position
+        : this._isValidPos(this._lastValidPosition)
+          ? this._lastValidPosition
+          : null;
 
       if (!finalPos) {
         // 无有效位置：尝试在下一帧通过锚点计算一次
-        if (this._pendingRaf) return
+        if (this._pendingRaf) return;
         this._pendingRaf = requestAnimationFrame(() => {
-          this._pendingRaf = null
+          this._pendingRaf = null;
           try {
-            let retryPos = null
+            let retryPos = null;
             if (terminal) {
-              this._ensureDecoration(terminal)
-              retryPos = this._getAnchorPosition(terminal) || this.calculatePosition(terminal)
+              this._ensureDecoration(terminal);
+              retryPos = this._getAnchorPosition(terminal) || this.calculatePosition(terminal);
             }
             if (this._isValidPos(retryPos)) {
-              this._lastValidPosition = retryPos
-              this.callbacks.onSuggestionsUpdate(suggestions, retryPos, selectedIndex)
-              this._lastEmitted = { count: suggestions?.length || 0, index: selectedIndex, pos: { ...retryPos } }
+              this._lastValidPosition = retryPos;
+              this.callbacks.onSuggestionsUpdate(suggestions, retryPos, selectedIndex);
+              this._lastEmitted = {
+                count: suggestions?.length || 0,
+                index: selectedIndex,
+                pos: { ...retryPos }
+              };
             } else {
               // 无有效位置，跳过此次发射
             }
           } catch (_) {}
-        })
-        return
+        });
+        return;
       }
 
       // 有有效位置，如与上次完全一致且状态未变则跳过
-      const count = suggestions?.length || 0
-      if (this._posEquals(finalPos, this._lastEmitted.pos) && count === this._lastEmitted.count && selectedIndex === this._lastEmitted.index) {
-        return
+      const count = suggestions?.length || 0;
+      if (
+        this._posEquals(finalPos, this._lastEmitted.pos) &&
+        count === this._lastEmitted.count &&
+        selectedIndex === this._lastEmitted.index
+      ) {
+        return;
       }
 
       // 更新缓存并发射
-      this._lastValidPosition = finalPos
-      this.callbacks.onSuggestionsUpdate(suggestions, finalPos, selectedIndex)
-      this._lastEmitted = { count, index: selectedIndex, pos: { ...finalPos } }
+      this._lastValidPosition = finalPos;
+      this.callbacks.onSuggestionsUpdate(suggestions, finalPos, selectedIndex);
+      this._lastEmitted = { count, index: selectedIndex, pos: { ...finalPos } };
     } catch (error) {
       // 降级：直接调用原回调，避免丢失
       try {
-        this.callbacks.onSuggestionsUpdate(suggestions, position || { x: 0, y: 0 }, selectedIndex)
+        this.callbacks.onSuggestionsUpdate(suggestions, position || { x: 0, y: 0 }, selectedIndex);
       } catch (_) {}
     }
   }
@@ -174,7 +184,7 @@ class TerminalAutocompleteService {
    * @param {Object} callbacks - 回调函数对象
    */
   setCallbacks(callbacks) {
-    this.callbacks = { ...this.callbacks, ...callbacks }
+    this.callbacks = { ...this.callbacks, ...callbacks };
   }
 
   /**
@@ -183,9 +193,9 @@ class TerminalAutocompleteService {
    */
   getUserStore() {
     if (!this.userStore) {
-      this.userStore = useUserStore()
+      this.userStore = useUserStore();
     }
-    return this.userStore
+    return this.userStore;
   }
 
   /**
@@ -194,11 +204,11 @@ class TerminalAutocompleteService {
    */
   isUserLoggedIn() {
     try {
-      const userStore = this.getUserStore()
-      return userStore.isLoggedIn
+      const userStore = this.getUserStore();
+      return userStore.isLoggedIn;
     } catch (error) {
-      log.warn('检查用户登录状态失败:', error)
-      return false
+      log.warn('检查用户登录状态失败:', error);
+      return false;
     }
   }
 
@@ -212,53 +222,50 @@ class TerminalAutocompleteService {
     try {
       // 检查服务是否启用
       if (!this.isEnabled()) {
-        return false
+        return false;
       }
 
       // 处理特殊字符
       if (this.isControlCharacter(data)) {
-        const handled = this.handleControlCharacter(data, terminal)
+        const handled = this.handleControlCharacter(data, terminal);
         if (handled) {
-          return true // 阻止默认处理
+          return true; // 阻止默认处理
         }
-        return false
+        return false;
       }
 
       // 检查是否是空格键
       if (data === ' ') {
         // 空格键输入时立即隐藏补全框并更新缓冲区
-        this.hideSuggestions()
-        this.updateInputBuffer(data)
-        return false // 不阻止默认处理
+        this.hideSuggestions();
+        this.updateInputBuffer(data);
+        return false; // 不阻止默认处理
       }
 
       // 更新输入缓冲区
-      this.updateInputBuffer(data)
+      this.updateInputBuffer(data);
 
       // 获取当前正在输入的单词
-      const currentWord = this.getCurrentWord()
+      const currentWord = this.getCurrentWord();
 
       // 检查是否应该显示建议
       if (currentWord && currentWord.length >= this.config.minInputLength) {
         // 对于第一个字符，立即显示建议，无延迟
         if (currentWord.length === 1) {
-          this.immediateUpdate(currentWord, terminal)
+          this.immediateUpdate(currentWord, terminal);
         } else {
           // 其他情况使用智能防抖
-          this.debouncedUpdate(currentWord, terminal)
+          this.debouncedUpdate(currentWord, terminal);
         }
       } else {
         // 当前单词为空或太短，隐藏建议
-        this.hideSuggestions()
+        this.hideSuggestions();
       }
 
-
-
-      return false // 不阻止默认处理
-
+      return false; // 不阻止默认处理
     } catch (error) {
-      log.error('处理终端自动完成输入失败:', error)
-      return false
+      log.error('处理终端自动完成输入失败:', error);
+      return false;
     }
   }
 
@@ -267,13 +274,15 @@ class TerminalAutocompleteService {
    * @param {string} data - 输入数据
    */
   isControlCharacter(data) {
-    const charCode = data.charCodeAt(0)
-    
+    const charCode = data.charCodeAt(0);
+
     // 检查常见控制字符
-    return charCode < 32 || 
-           data === '\x7f' || // DEL
-           data === '\x1b' || // ESC
-           data.startsWith('\x1b[') // ANSI escape sequences
+    return (
+      charCode < 32 ||
+      data === '\x7f' || // DEL
+      data === '\x1b' || // ESC
+      data.startsWith('\x1b[')
+    ); // ANSI escape sequences
   }
 
   /**
@@ -283,65 +292,65 @@ class TerminalAutocompleteService {
    * @returns {boolean} 是否已处理该输入（true表示阻止默认处理）
    */
   handleControlCharacter(data, terminal) {
-    const charCode = data.charCodeAt(0)
+    const charCode = data.charCodeAt(0);
 
     switch (charCode) {
-      case 8:   // Backspace
-      case 127: // DEL
-        const needsUpdate = this.handleBackspace()
+    case 8: // Backspace
+    case 127: // DEL
+      const needsUpdate = this.handleBackspace();
 
-        // 优化：如果不需要更新建议，直接返回，避免不必要的处理
-        if (!needsUpdate) {
-          return false
+      // 优化：如果不需要更新建议，直接返回，避免不必要的处理
+      if (!needsUpdate) {
+        return false;
+      }
+
+      // 获取删除后的当前单词
+      const currentWord = this.getCurrentWord();
+
+      // 如果需要更新建议且当前单词满足条件，立即更新
+      if (currentWord && currentWord.length >= this.config.minInputLength) {
+        this.debouncedUpdateHighPriority(currentWord, terminal);
+      }
+      break;
+
+    case 13: // Enter
+      const handled = this.handleEnter(terminal);
+      if (handled) {
+        // 如果自动完成处理了回车，阻止默认行为
+        return true;
+      }
+      break;
+
+    case 9: // Tab
+      // Tab键可能用于自动完成确认
+      if (this.isActive && this.selectedIndex >= 0) {
+        const selectedSuggestion = this.getSelectedSuggestion();
+        if (selectedSuggestion) {
+          this.selectSuggestion(selectedSuggestion, terminal);
+          return true; // 阻止默认Tab处理
         }
+      }
+      break;
 
-        // 获取删除后的当前单词
-        const currentWord = this.getCurrentWord()
+    case 27: // ESC
+      if (this.isActive) {
+        this.hideSuggestions();
+        return true; // 阻止默认ESC处理
+      }
+      break;
 
-        // 如果需要更新建议且当前单词满足条件，立即更新
-        if (currentWord && currentWord.length >= this.config.minInputLength) {
-          this.debouncedUpdateHighPriority(currentWord, terminal)
-        }
-        break
-
-      case 13: // Enter
-        const handled = this.handleEnter(terminal)
+    default:
+      // 处理ANSI转义序列
+      if (data.startsWith('\x1b[')) {
+        const handled = this.handleAnsiSequence(data, terminal);
         if (handled) {
-          // 如果自动完成处理了回车，阻止默认行为
-          return true
+          return true;
         }
-        break
-
-      case 9:  // Tab
-        // Tab键可能用于自动完成确认
-        if (this.isActive && this.selectedIndex >= 0) {
-          const selectedSuggestion = this.getSelectedSuggestion()
-          if (selectedSuggestion) {
-            this.selectSuggestion(selectedSuggestion, terminal)
-            return true // 阻止默认Tab处理
-          }
-        }
-        break
-
-      case 27: // ESC
-        if (this.isActive) {
-          this.hideSuggestions()
-          return true // 阻止默认ESC处理
-        }
-        break
-
-      default:
-        // 处理ANSI转义序列
-        if (data.startsWith('\x1b[')) {
-          const handled = this.handleAnsiSequence(data, terminal)
-          if (handled) {
-            return true
-          }
-        }
-        break
+      }
+      break;
     }
 
-    return false // 默认不阻止处理
+    return false; // 默认不阻止处理
   }
 
   /**
@@ -349,25 +358,25 @@ class TerminalAutocompleteService {
    */
   handleBackspace() {
     if (this.inputBuffer.length > 0) {
-      this.inputBuffer = this.inputBuffer.slice(0, -1)
+      this.inputBuffer = this.inputBuffer.slice(0, -1);
     }
 
     // 获取当前单词
-    const currentWord = this.getCurrentWord()
+    const currentWord = this.getCurrentWord();
 
     // 如果当前单词为空或太短，立即隐藏建议
     if (!currentWord || currentWord.length < this.config.minInputLength) {
-      this.hideSuggestions()
-      return false
+      this.hideSuggestions();
+      return false;
     }
 
     // 如果补全框当前是激活状态，需要重新计算建议
     if (this.isActive) {
       // 重新计算建议，确保建议与当前输入匹配
-      return true // 返回true表示需要在外部重新计算建议
+      return true; // 返回true表示需要在外部重新计算建议
     }
 
-    return false
+    return false;
   }
 
   /**
@@ -378,25 +387,25 @@ class TerminalAutocompleteService {
     // 检查是否有选中的建议
     if (this.isActive && this.selectedIndex >= 0 && this.selectedIndex < this.suggestions.length) {
       // 有选中项时，应用补全
-      const selectedSuggestion = this.getSelectedSuggestion()
+      const selectedSuggestion = this.getSelectedSuggestion();
       if (selectedSuggestion) {
-        this.selectSuggestion(selectedSuggestion, terminal)
-        return true // 阻止默认回车处理
+        this.selectSuggestion(selectedSuggestion, terminal);
+        return true; // 阻止默认回车处理
       }
     }
 
     // 重要修复：无论补全框是否激活，回车键都应该清空输入缓冲区
     // 因为回车意味着命令已经执行，需要重新开始跟踪新的输入
-    this.inputBuffer = ''
-    this._shouldResetOnNextInput = false
+    this.inputBuffer = '';
+    this._shouldResetOnNextInput = false;
 
     // 如果补全框是激活的，隐藏建议框
     if (this.isActive) {
-      this.hideSuggestions()
+      this.hideSuggestions();
     }
 
     // 返回false，让终端正常处理回车键
-    return false
+    return false;
   }
 
   /**
@@ -410,13 +419,15 @@ class TerminalAutocompleteService {
     // 这里只处理终端直接输入的ANSI序列，避免与组件级别的处理冲突
 
     // 处理其他光标移动等ANSI序列
-    if (data.includes('C')) { // 右箭头
-      this.cursorPosition++
-    } else if (data.includes('D')) { // 左箭头
-      this.cursorPosition--
+    if (data.includes('C')) {
+      // 右箭头
+      this.cursorPosition++;
+    } else if (data.includes('D')) {
+      // 左箭头
+      this.cursorPosition--;
     }
 
-    return false // 默认不阻止处理
+    return false; // 默认不阻止处理
   }
 
   /**
@@ -424,14 +435,15 @@ class TerminalAutocompleteService {
    */
   navigateUp(terminal) {
     if (!this.isActive || this.suggestions.length === 0) {
-      return
+      return;
     }
 
-    this.selectedIndex = this.selectedIndex <= 0
-      ? this.suggestions.length - 1  // 循环到最后一项
-      : this.selectedIndex - 1
+    this.selectedIndex =
+      this.selectedIndex <= 0
+        ? this.suggestions.length - 1 // 循环到最后一项
+        : this.selectedIndex - 1;
 
-    this.updateSuggestionsDisplay(terminal)
+    this.updateSuggestionsDisplay(terminal);
   }
 
   /**
@@ -439,14 +451,15 @@ class TerminalAutocompleteService {
    */
   navigateDown(terminal) {
     if (!this.isActive || this.suggestions.length === 0) {
-      return
+      return;
     }
 
-    this.selectedIndex = this.selectedIndex >= this.suggestions.length - 1
-      ? 0  // 循环到第一项
-      : this.selectedIndex + 1
+    this.selectedIndex =
+      this.selectedIndex >= this.suggestions.length - 1
+        ? 0 // 循环到第一项
+        : this.selectedIndex + 1;
 
-    this.updateSuggestionsDisplay(terminal)
+    this.updateSuggestionsDisplay(terminal);
   }
 
   /**
@@ -456,23 +469,23 @@ class TerminalAutocompleteService {
     try {
       // 确保建议框仍然是激活状态
       if (!this.isActive || this.suggestions.length === 0) {
-        return
+        return;
       }
 
       if (this.callbacks.onSuggestionsUpdate) {
         // 使用装饰器锚点位置，若不可用回退
-        let position = this.lastPosition || { x: 0, y: 0 }
+        let position = this.lastPosition || { x: 0, y: 0 };
         if (terminal) {
-          this._ensureDecoration(terminal)
-          position = this._getAnchorPosition(terminal) || this.calculatePosition(terminal)
-          this.lastPosition = position
+          this._ensureDecoration(terminal);
+          position = this._getAnchorPosition(terminal) || this.calculatePosition(terminal);
+          this.lastPosition = position;
         }
-        this._emitSuggestionsUpdate(this.suggestions, position, this.selectedIndex, terminal)
+        this._emitSuggestionsUpdate(this.suggestions, position, this.selectedIndex, terminal);
       } else {
         // 无回调，跳过
       }
     } catch (error) {
-      log.error('更新建议显示失败:', error)
+      log.error('更新建议显示失败:', error);
     }
   }
 
@@ -486,11 +499,11 @@ class TerminalAutocompleteService {
       // 检查是否需要重置输入缓冲区（补全完成后的第一次输入）
       if (this._shouldResetOnNextInput) {
         // 重置缓冲区，从新字符开始重新跟踪
-        this.inputBuffer = data
-        this._shouldResetOnNextInput = false
+        this.inputBuffer = data;
+        this._shouldResetOnNextInput = false;
       } else {
         // 正常追加字符
-        this.inputBuffer += data
+        this.inputBuffer += data;
       }
     }
   }
@@ -501,11 +514,10 @@ class TerminalAutocompleteService {
   getCurrentLineInput() {
     try {
       // 主要依赖输入缓冲区，它是最准确的
-      return this.inputBuffer
-
+      return this.inputBuffer;
     } catch (error) {
-      log.warn('获取当前行输入失败:', error)
-      return ''
+      log.warn('获取当前行输入失败:', error);
+      return '';
     }
   }
 
@@ -515,38 +527,35 @@ class TerminalAutocompleteService {
    */
   getCurrentWord() {
     try {
-      const input = this.inputBuffer
-      if (!input) return ''
+      const input = this.inputBuffer;
+      if (!input) return '';
 
       // 定义单词分隔符
-      const wordSeparators = /[\s&|;()<>]/
+      const wordSeparators = /[\s&|;()<>]/;
 
       // 从输入缓冲区的末尾向前查找，找到当前正在输入的单词
-      let wordStart = input.length
+      let wordStart = input.length;
 
       // 向前查找单词的开始位置
       for (let i = input.length - 1; i >= 0; i--) {
         if (wordSeparators.test(input[i])) {
-          wordStart = i + 1
-          break
+          wordStart = i + 1;
+          break;
         }
         if (i === 0) {
-          wordStart = 0
+          wordStart = 0;
         }
       }
 
       // 提取当前单词
-      const currentWord = input.substring(wordStart).trim()
+      const currentWord = input.substring(wordStart).trim();
 
-      return currentWord
-
+      return currentWord;
     } catch (error) {
-      log.warn('获取当前单词失败:', error)
-      return ''
+      log.warn('获取当前单词失败:', error);
+      return '';
     }
   }
-
-
 
   /**
    * 更新建议列表 - 智能混合补全
@@ -557,46 +566,45 @@ class TerminalAutocompleteService {
     try {
       // 首先检查用户是否已登录
       if (!this.isUserLoggedIn()) {
-        this.hideSuggestions()
-        return
+        this.hideSuggestions();
+        return;
       }
 
       // 严格检查输入长度和内容
       if (!input || input.trim().length < this.config.minInputLength) {
-        this.hideSuggestions()
-        return
+        this.hideSuggestions();
+        return;
       }
 
       // 检查输入是否只包含空白字符
       if (input.trim() === '') {
-        this.hideSuggestions()
-        return
+        this.hideSuggestions();
+        return;
       }
 
       // 获取智能混合建议
-      const suggestions = this.getCombinedSuggestions(input.trim(), terminal)
+      const suggestions = this.getCombinedSuggestions(input.trim(), terminal);
 
       if (suggestions.length === 0) {
-        this.hideSuggestions()
-        return
+        this.hideSuggestions();
+        return;
       }
 
       // 更新建议列表
-      this.suggestions = suggestions
-      this.selectedIndex = -1  // 默认不选中任何项
-      this.isActive = true
+      this.suggestions = suggestions;
+      this.selectedIndex = -1; // 默认不选中任何项
+      this.isActive = true;
 
       // 计算显示位置并缓存
-      this._ensureDecoration(terminal)
-      const position = this._getAnchorPosition(terminal) || this.calculatePosition(terminal)
-      this.lastPosition = position
+      this._ensureDecoration(terminal);
+      const position = this._getAnchorPosition(terminal) || this.calculatePosition(terminal);
+      this.lastPosition = position;
 
       // 通知回调（带位置保护）
-      this._emitSuggestionsUpdate(suggestions, position, this.selectedIndex, terminal)
-
+      this._emitSuggestionsUpdate(suggestions, position, this.selectedIndex, terminal);
     } catch (error) {
-      log.error('更新自动完成建议失败:', error)
-      this.hideSuggestions()
+      log.error('更新自动完成建议失败:', error);
+      this.hideSuggestions();
     }
   }
 
@@ -608,8 +616,8 @@ class TerminalAutocompleteService {
    */
   getCombinedSuggestions(input, terminal) {
     // 获取输入上下文
-    const context = this.getInputContext(input, terminal)
-    const allSuggestions = []
+    const context = this.getInputContext(input, terminal);
+    const allSuggestions = [];
 
     // 获取脚本库建议
     if (this.config.enableScriptCompletion) {
@@ -617,7 +625,7 @@ class TerminalAutocompleteService {
         const scriptSuggestions = scriptLibraryService.getSimpleCommandSuggestionsSync(
           input,
           this.config.maxWordsPerType
-        )
+        );
 
         // 添加类型标识和调整分数
         const typedScriptSuggestions = scriptSuggestions.map(suggestion => ({
@@ -625,11 +633,11 @@ class TerminalAutocompleteService {
           type: 'script',
           category: 'script',
           score: (suggestion.score || 0) * this.config.scriptCompletionPriority
-        }))
+        }));
 
-        allSuggestions.push(...typedScriptSuggestions)
+        allSuggestions.push(...typedScriptSuggestions);
       } catch (error) {
-        log.warn('获取脚本建议失败:', error)
+        log.warn('获取脚本建议失败:', error);
       }
     }
 
@@ -640,25 +648,25 @@ class TerminalAutocompleteService {
           input,
           this.config.maxWordsPerType,
           context
-        )
+        );
 
         // 调整分数
         const typedWordSuggestions = wordSuggestions.map(suggestion => ({
           ...suggestion,
           score: (suggestion.score || 0) * this.config.wordCompletionPriority
-        }))
+        }));
 
-        allSuggestions.push(...typedWordSuggestions)
+        allSuggestions.push(...typedWordSuggestions);
       } catch (error) {
-        log.warn('获取单词建议失败:', error)
+        log.warn('获取单词建议失败:', error);
       }
     }
 
     // 合并、去重和排序
-    const mergedSuggestions = this.mergeSuggestions(allSuggestions, input, context)
-    const finalSuggestions = mergedSuggestions.slice(0, this.config.maxSuggestions)
+    const mergedSuggestions = this.mergeSuggestions(allSuggestions, input, context);
+    const finalSuggestions = mergedSuggestions.slice(0, this.config.maxSuggestions);
 
-    return finalSuggestions
+    return finalSuggestions;
   }
 
   /**
@@ -668,39 +676,39 @@ class TerminalAutocompleteService {
    * @returns {Object} 上下文信息
    */
   getInputContext(input, terminal) {
-    const commandLine = this.inputBuffer
-    const currentWord = input
+    const commandLine = this.inputBuffer;
+    const currentWord = input;
 
     // 计算当前单词在命令行中的位置
-    const wordPosition = this.getWordPosition(commandLine, currentWord)
+    const wordPosition = this.getWordPosition(commandLine, currentWord);
 
     const context = {
       input: currentWord,
-      commandLine: commandLine,
+      commandLine,
       position: commandLine.length,
-      wordPosition: wordPosition,
+      wordPosition,
       isCommandStart: wordPosition === 0, // 第一个单词是命令
       isParameter: currentWord.startsWith('-'),
       hasSpaces: commandLine.includes(' '),
       terminalInfo: null
-    }
+    };
 
     // 尝试获取更多终端上下文
     try {
       if (terminal && terminal.buffer && terminal.buffer.active) {
-        const buffer = terminal.buffer.active
+        const buffer = terminal.buffer.active;
         context.terminalInfo = {
           cursorX: buffer.cursorX,
           cursorY: buffer.cursorY,
           cols: buffer.cols,
           rows: buffer.rows
-        }
+        };
       }
     } catch (error) {
-      log.debug('获取终端上下文失败:', error)
+      log.debug('获取终端上下文失败:', error);
     }
 
-    return context
+    return context;
   }
 
   /**
@@ -711,22 +719,21 @@ class TerminalAutocompleteService {
    */
   getWordPosition(commandLine, currentWord) {
     try {
-      if (!commandLine || !currentWord) return 0
+      if (!commandLine || !currentWord) return 0;
 
       // 定义单词分隔符
-      const wordSeparators = /[\s&|;()<>]+/
+      const wordSeparators = /[\s&|;()<>]+/;
 
       // 分割命令行为单词数组
-      const words = commandLine.split(wordSeparators).filter(word => word.length > 0)
+      const words = commandLine.split(wordSeparators).filter(word => word.length > 0);
 
       // 找到当前单词的位置
-      const position = words.length > 0 ? words.length - 1 : 0
+      const position = words.length > 0 ? words.length - 1 : 0;
 
-      return position
-
+      return position;
     } catch (error) {
-      log.warn('获取单词位置失败:', error)
-      return 0
+      log.warn('获取单词位置失败:', error);
+      return 0;
     }
   }
 
@@ -738,43 +745,45 @@ class TerminalAutocompleteService {
    * @returns {Array} 优化后的建议列表
    */
   mergeSuggestions(suggestions, input, context) {
-    if (!suggestions.length) return []
+    if (!suggestions.length) return [];
 
     // 使用Map进行高效去重和合并
-    const suggestionMap = new Map()
-    const inputLower = input.toLowerCase()
+    const suggestionMap = new Map();
+    const inputLower = input.toLowerCase();
 
     // 预计算类型优先级
-    const typePriority = { script: 3, commands: 2, word: 1 }
+    const typePriority = { script: 3, commands: 2, word: 1 };
 
     for (const suggestion of suggestions) {
-      const text = suggestion.text
-      const existing = suggestionMap.get(text)
+      const text = suggestion.text;
+      const existing = suggestionMap.get(text);
 
       if (!existing) {
         // 预计算匹配信息
-        const matchInfo = this.calculateMatchInfo(suggestion, inputLower)
-        suggestionMap.set(text, { ...suggestion, ...matchInfo })
+        const matchInfo = this.calculateMatchInfo(suggestion, inputLower);
+        suggestionMap.set(text, { ...suggestion, ...matchInfo });
       } else {
         // 保留优先级更高的建议
-        const currentPriority = typePriority[suggestion.type] || 0
-        const existingPriority = typePriority[existing.type] || 0
+        const currentPriority = typePriority[suggestion.type] || 0;
+        const existingPriority = typePriority[existing.type] || 0;
 
-        if (currentPriority > existingPriority ||
-           (currentPriority === existingPriority && suggestion.score > existing.score)) {
-          const matchInfo = this.calculateMatchInfo(suggestion, inputLower)
-          suggestionMap.set(text, { ...suggestion, ...matchInfo })
+        if (
+          currentPriority > existingPriority ||
+          (currentPriority === existingPriority && suggestion.score > existing.score)
+        ) {
+          const matchInfo = this.calculateMatchInfo(suggestion, inputLower);
+          suggestionMap.set(text, { ...suggestion, ...matchInfo });
         }
       }
     }
 
     // 转换为数组
-    const uniqueSuggestions = Array.from(suggestionMap.values())
+    const uniqueSuggestions = Array.from(suggestionMap.values());
 
     // 使用优化的排序算法
-    const sortedSuggestions = this.optimizedSort(uniqueSuggestions, input, context)
+    const sortedSuggestions = this.optimizedSort(uniqueSuggestions, input, context);
 
-    return sortedSuggestions
+    return sortedSuggestions;
   }
 
   /**
@@ -784,41 +793,41 @@ class TerminalAutocompleteService {
    * @returns {Object} 匹配信息
    */
   calculateMatchInfo(suggestion, inputLower) {
-    const textLower = suggestion.text.toLowerCase()
+    const textLower = suggestion.text.toLowerCase();
 
     // 计算匹配类型
-    let matchType = 'contains'
+    let matchType = 'contains';
     if (textLower === inputLower) {
-      matchType = 'exact'
+      matchType = 'exact';
     } else if (textLower.startsWith(inputLower)) {
-      matchType = 'prefix'
+      matchType = 'prefix';
     }
 
     // 计算匹配分数
-    let matchScore = suggestion.score || 0
+    let matchScore = suggestion.score || 0;
 
     // 根据匹配类型调整分数
     switch (matchType) {
-      case 'exact':
-        matchScore *= 2.0
-        break
-      case 'prefix':
-        matchScore *= 1.5
-        break
-      case 'contains':
-        matchScore *= 1.0
-        break
+    case 'exact':
+      matchScore *= 2.0;
+      break;
+    case 'prefix':
+      matchScore *= 1.5;
+      break;
+    case 'contains':
+      matchScore *= 1.0;
+      break;
     }
 
     // 根据类型调整分数
-    const typeMultiplier = { script: 1.2, commands: 1.1, word: 1.0 }
-    matchScore *= (typeMultiplier[suggestion.type] || 1.0)
+    const typeMultiplier = { script: 1.2, commands: 1.1, word: 1.0 };
+    matchScore *= typeMultiplier[suggestion.type] || 1.0;
 
     return {
       matchType,
       finalScore: matchScore,
       sortKey: this.getSortKey(matchType, suggestion.type, matchScore)
-    }
+    };
   }
 
   /**
@@ -830,20 +839,20 @@ class TerminalAutocompleteService {
    */
   getSortKey(matchType, suggestionType, score) {
     // 使用位运算优化排序键计算
-    let key = 0
+    let key = 0;
 
     // 匹配类型权重 (高16位)
-    const matchWeight = { exact: 3, prefix: 2, contains: 1 }
-    key |= (matchWeight[matchType] || 0) << 16
+    const matchWeight = { exact: 3, prefix: 2, contains: 1 };
+    key |= (matchWeight[matchType] || 0) << 16;
 
     // 建议类型权重 (中8位)
-    const typeWeight = { script: 3, commands: 2, word: 1 }
-    key |= (typeWeight[suggestionType] || 0) << 8
+    const typeWeight = { script: 3, commands: 2, word: 1 };
+    key |= (typeWeight[suggestionType] || 0) << 8;
 
     // 分数权重 (低8位，限制在0-255)
-    key |= Math.min(255, Math.max(0, Math.floor(score)))
+    key |= Math.min(255, Math.max(0, Math.floor(score)));
 
-    return key
+    return key;
   }
 
   /**
@@ -857,16 +866,16 @@ class TerminalAutocompleteService {
     // 使用预计算的排序键进行快速排序
     return suggestions.sort((a, b) => {
       // 首先按排序键排序（降序）
-      const keyDiff = b.sortKey - a.sortKey
-      if (keyDiff !== 0) return keyDiff
+      const keyDiff = b.sortKey - a.sortKey;
+      if (keyDiff !== 0) return keyDiff;
 
       // 如果排序键相同，按最终分数排序
-      const scoreDiff = b.finalScore - a.finalScore
-      if (scoreDiff !== 0) return scoreDiff
+      const scoreDiff = b.finalScore - a.finalScore;
+      if (scoreDiff !== 0) return scoreDiff;
 
       // 最后按字母顺序排序
-      return a.text.localeCompare(b.text)
-    })
+      return a.text.localeCompare(b.text);
+    });
   }
 
   /**
@@ -876,38 +885,38 @@ class TerminalAutocompleteService {
    * @returns {string} 匹配类型
    */
   getMatchType(suggestion, input) {
-    const inputLower = input.toLowerCase().trim()
-    const textLower = suggestion.text.toLowerCase()
+    const inputLower = input.toLowerCase().trim();
+    const textLower = suggestion.text.toLowerCase();
 
     if (suggestion.type === 'script') {
       // 脚本类型的匹配判断
 
       // 1. 检查完全匹配（脚本命令与输入完全相同）
       if (textLower === inputLower) {
-        return 'script_exact'
+        return 'script_exact';
       }
 
       // 2. 检查前缀匹配（脚本命令以输入开头）
       if (textLower.startsWith(inputLower)) {
-        return 'script_exact'  // 前缀匹配也视为精确匹配，因为这是用户最可能想要的
+        return 'script_exact'; // 前缀匹配也视为精确匹配，因为这是用户最可能想要的
       }
 
       // 3. 检查命令开头匹配（脚本的第一个单词匹配输入）
-      const firstCommand = textLower.split(/\s+/)[0] // 获取第一个命令
+      const firstCommand = textLower.split(/\s+/)[0]; // 获取第一个命令
       if (firstCommand === inputLower || firstCommand.startsWith(inputLower)) {
-        return 'script_exact'  // 命令开头匹配也视为精确匹配
+        return 'script_exact'; // 命令开头匹配也视为精确匹配
       }
 
       // 4. 检查包含匹配
       if (textLower.includes(inputLower)) {
-        return 'script_contains'
+        return 'script_contains';
       }
     } else if (suggestion.type === 'word') {
       // 单词类型的匹配
-      return 'word_match'
+      return 'word_match';
     }
 
-    return 'other'
+    return 'other';
   }
 
   /**
@@ -919,13 +928,13 @@ class TerminalAutocompleteService {
   getTypeOrder(matchType, _suggestionType) {
     // 排序优先级：完全匹配脚本 > 单词补全 > 包含匹配脚本
     const orderMap = {
-      'script_exact': 1,      // 脚本完全匹配 - 最高优先级
-      'word_match': 2,        // 单词补全 - 中等优先级
-      'script_contains': 3,   // 脚本包含匹配 - 最低优先级
-      'other': 4              // 其他 - 最低
-    }
+      script_exact: 1, // 脚本完全匹配 - 最高优先级
+      word_match: 2, // 单词补全 - 中等优先级
+      script_contains: 3, // 脚本包含匹配 - 最低优先级
+      other: 4 // 其他 - 最低
+    };
 
-    return orderMap[matchType] || 4
+    return orderMap[matchType] || 4;
   }
 
   /**
@@ -937,67 +946,68 @@ class TerminalAutocompleteService {
    * @returns {number} 最终分数
    */
   calculateFinalScore(suggestion, input, context, matchType) {
-    const inputLower = input.toLowerCase().trim()
-    const textLower = suggestion.text.toLowerCase()
+    const inputLower = input.toLowerCase().trim();
+    const textLower = suggestion.text.toLowerCase();
 
     // 根据匹配类型设置基础分数
     const baseScores = {
-      'script_exact': 10000,    // 脚本精确匹配基础分数最高
-      'word_match': 1000,       // 单词补全中等分数
-      'script_contains': 500,   // 脚本包含匹配基础分数较低
-      'other': 100
-    }
+      script_exact: 10000, // 脚本精确匹配基础分数最高
+      word_match: 1000, // 单词补全中等分数
+      script_contains: 500, // 脚本包含匹配基础分数较低
+      other: 100
+    };
 
     // 使用匹配类型的基础分数
-    let score = baseScores[matchType] || 100
+    let score = baseScores[matchType] || 100;
 
     // 对于脚本类型，添加额外的匹配精度加分
     if (suggestion.type === 'script') {
       // 完全匹配加分
       if (textLower === inputLower) {
-        score += 5000
+        score += 5000;
       }
       // 前缀匹配加分
       else if (textLower.startsWith(inputLower)) {
-        score += 3000
+        score += 3000;
       }
       // 命令开头匹配加分
       else {
-        const firstCommand = textLower.split(/\s+/)[0]
+        const firstCommand = textLower.split(/\s+/)[0];
         if (firstCommand === inputLower) {
-          score += 4000
+          score += 4000;
         } else if (firstCommand.startsWith(inputLower)) {
-          score += 2000
+          score += 2000;
         }
       }
 
       // 脚本原始分数加权（来自脚本库的相关性分数）
       if (suggestion.score) {
-        score += suggestion.score * 10
+        score += suggestion.score * 10;
       }
     }
 
     // 对于单词类型的精确匹配加分
     if (suggestion.type === 'word') {
       if (textLower === inputLower) {
-        score += 500
+        score += 500;
       } else if (textLower.startsWith(inputLower)) {
-        score += 300
+        score += 300;
       }
     }
 
     // 应用上下文权重
-    score *= this.getContextWeight(suggestion, input, context)
+    score *= this.getContextWeight(suggestion, input, context);
 
     // 输入长度加分（更短的输入匹配更长的命令应该得到更高分数）
     if (inputLower.length > 0) {
-      const matchRatio = inputLower.length / textLower.length
-      if (matchRatio > 0.1) { // 避免除零和过小的比例
-        score += (1 - matchRatio) * 100
+      const matchRatio = inputLower.length / textLower.length;
+      if (matchRatio > 0.1) {
+        // 避免除零和过小的比例
+        score += (1 - matchRatio) * 100;
       }
     }
 
-    return Math.round(score)
+    return Math.round(score);
   }
 
   /**
@@ -1008,41 +1018,45 @@ class TerminalAutocompleteService {
    * @returns {number} 权重值
    */
   getContextWeight(suggestion, _input, context) {
-    let weight = 1.0
+    let weight = 1.0;
 
     // 命令开始位置，优先命令类型
     if (context.isCommandStart && suggestion.category === 'commands') {
-      weight *= 1.2
+      weight *= 1.2;
     }
 
     // 参数位置，优先选项类型
     if (context.isParameter && suggestion.category === 'options') {
-      weight *= 1.3
+      weight *= 1.3;
     }
 
     // 检查特定上下文
     if (context.commandLine) {
-      const commandLine = context.commandLine.toLowerCase()
+      const commandLine = context.commandLine.toLowerCase();
 
       // Git 上下文
       if (commandLine.includes('git') && suggestion.category === 'development') {
-        weight *= 1.2
+        weight *= 1.2;
       }
 
       // Docker 上下文
-      if ((commandLine.includes('docker') || commandLine.includes('kubectl')) &&
-          suggestion.category === 'development') {
-        weight *= 1.2
+      if (
+        (commandLine.includes('docker') || commandLine.includes('kubectl')) &&
+        suggestion.category === 'development'
+      ) {
+        weight *= 1.2;
       }
 
       // 网络命令上下文
-      if (this.config.contextDetection.commandPrefixes.some(prefix =>
-          commandLine.includes(prefix)) && suggestion.category === 'network') {
-        weight *= 1.1
+      if (
+        this.config.contextDetection.commandPrefixes.some(prefix => commandLine.includes(prefix)) &&
+        suggestion.category === 'network'
+      ) {
+        weight *= 1.1;
       }
     }
 
-    return weight
+    return weight;
   }
 
   /**
@@ -1052,36 +1066,37 @@ class TerminalAutocompleteService {
   calculatePosition(terminal) {
     try {
       if (!terminal || !terminal.element) {
-        return { x: 0, y: 0 }
+        return { x: 0, y: 0 };
       }
 
       // 优先使用终端视口，避免内部滚动/内边距带来的偏差
-      const viewportEl = terminal.element.querySelector('.xterm-viewport')
-      const baseRect = (viewportEl || terminal.element).getBoundingClientRect()
-      const buffer = terminal.buffer.active
-      
+      const viewportEl = terminal.element.querySelector('.xterm-viewport');
+      const baseRect = (viewportEl || terminal.element).getBoundingClientRect();
+      const buffer = terminal.buffer.active;
+
       if (!buffer) {
-        return { x: baseRect.left, y: baseRect.top + 20 }
+        return { x: baseRect.left, y: baseRect.top + 20 };
       }
 
       // 计算光标位置（以CSS像素为单位，兼容高DPI/缩放）
-      const dims = terminal._core && terminal._core._renderService && terminal._core._renderService.dimensions
-      const dpr = typeof window !== 'undefined' && window.devicePixelRatio ? window.devicePixelRatio : 1
-      const cssCellWidth = (dims && dims.css && dims.css.cell && dims.css.cell.width) || null
-      const cssCellHeight = (dims && dims.css && dims.css.cell && dims.css.cell.height) || null
-      const actualCellWidth = (dims && dims.actualCellWidth) || 9
-      const actualCellHeight = (dims && dims.actualCellHeight) || 17
-      const charWidth = cssCellWidth != null ? cssCellWidth : (actualCellWidth / dpr)
-      const charHeight = cssCellHeight != null ? cssCellHeight : (actualCellHeight / dpr)
+      const dims =
+        terminal._core && terminal._core._renderService && terminal._core._renderService.dimensions;
+      const dpr =
+        typeof window !== 'undefined' && window.devicePixelRatio ? window.devicePixelRatio : 1;
+      const cssCellWidth = (dims && dims.css && dims.css.cell && dims.css.cell.width) || null;
+      const cssCellHeight = (dims && dims.css && dims.css.cell && dims.css.cell.height) || null;
+      const actualCellWidth = (dims && dims.actualCellWidth) || 9;
+      const actualCellHeight = (dims && dims.actualCellHeight) || 17;
+      const charWidth = cssCellWidth != null ? cssCellWidth : actualCellWidth / dpr;
+      const charHeight = cssCellHeight != null ? cssCellHeight : actualCellHeight / dpr;
 
-      const x = Math.round(baseRect.left + (buffer.cursorX * charWidth))
-      const y = Math.round(baseRect.top + ((buffer.cursorY + 1) * charHeight))
+      const x = Math.round(baseRect.left + buffer.cursorX * charWidth);
+      const y = Math.round(baseRect.top + (buffer.cursorY + 1) * charHeight);
 
-      return { x, y }
-
+      return { x, y };
     } catch (error) {
-      log.warn('计算自动完成位置失败:', error)
-      return { x: 0, y: 0 }
+      log.warn('计算自动完成位置失败:', error);
+      return { x: 0, y: 0 };
     }
   }
 
@@ -1090,28 +1105,30 @@ class TerminalAutocompleteService {
    */
   hideSuggestions() {
     if (!this.isActive) {
-      return // 如果已经隐藏，直接返回
+      return; // 如果已经隐藏，直接返回
     }
 
-    this.isActive = false
-    this.suggestions = []
-    this.selectedIndex = -1  // 重置选中索引
-    this.lastPosition = null // 清除位置缓存
+    this.isActive = false;
+    this.suggestions = [];
+    this.selectedIndex = -1; // 重置选中索引
+    this.lastPosition = null; // 清除位置缓存
 
     // 取消所有防抖任务
-    this.smartDebounce.cancelAll()
+    this.smartDebounce.cancelAll();
 
     // 释放装饰器锚点
-    this._disposeDecoration()
+    this._disposeDecoration();
 
-    this._lastValidPosition = null
-    this._lastEmitted = { count: -1, index: -2, pos: null }
+    this._lastValidPosition = null;
+    this._lastEmitted = { count: -1, index: -2, pos: null };
     if (this._pendingRaf) {
-      try { cancelAnimationFrame(this._pendingRaf) } catch (_) {}
-      this._pendingRaf = null
+      try {
+        cancelAnimationFrame(this._pendingRaf);
+      } catch (_) {}
+      this._pendingRaf = null;
     }
     if (this.callbacks.onSuggestionsUpdate) {
-      this.callbacks.onSuggestionsUpdate([], { x: 0, y: 0 }, -1)
+      this.callbacks.onSuggestionsUpdate([], { x: 0, y: 0 }, -1);
     }
   }
 
@@ -1119,10 +1136,10 @@ class TerminalAutocompleteService {
    * 重置自动完成状态
    */
   reset() {
-    this.inputBuffer = ''
-    this.selectedIndex = -1
-    this._shouldResetOnNextInput = false
-    this.hideSuggestions()
+    this.inputBuffer = '';
+    this.selectedIndex = -1;
+    this._shouldResetOnNextInput = false;
+    this.hideSuggestions();
   }
 
   /**
@@ -1130,9 +1147,9 @@ class TerminalAutocompleteService {
    */
   getSelectedSuggestion() {
     if (this.selectedIndex >= 0 && this.selectedIndex < this.suggestions.length) {
-      return this.suggestions[this.selectedIndex]
+      return this.suggestions[this.selectedIndex];
     }
-    return null
+    return null;
   }
 
   /**
@@ -1142,22 +1159,21 @@ class TerminalAutocompleteService {
    */
   selectSuggestion(suggestion, terminal) {
     try {
-      if (!suggestion || !terminal) return
+      if (!suggestion || !terminal) return;
 
       // 根据建议类型决定行为
       if (suggestion.type === 'script') {
         // 脚本类型：覆盖整个输入行
-        this.handleScriptSelection(suggestion, terminal)
+        this.handleScriptSelection(suggestion, terminal);
       } else {
         // 系统命令类型：只补全当前单词
-        this.handleWordCompletion(suggestion, terminal)
+        this.handleWordCompletion(suggestion, terminal);
       }
 
       // 立即隐藏建议并重置状态
-      this.hideSuggestions()
-
+      this.hideSuggestions();
     } catch (error) {
-      log.error('选择自动完成建议失败:', error)
+      log.error('选择自动完成建议失败:', error);
     }
   }
 
@@ -1168,24 +1184,23 @@ class TerminalAutocompleteService {
    */
   handleScriptSelection(suggestion, terminal) {
     try {
-      const currentInput = this.getCurrentLineInput()
+      const currentInput = this.getCurrentLineInput();
 
       if (currentInput) {
         // 清除整个当前输入行
-        const inputLength = currentInput.length
+        const inputLength = currentInput.length;
         for (let i = 0; i < inputLength; i++) {
-          terminal._core.coreService.triggerDataEvent('\x08') // Backspace
+          terminal._core.coreService.triggerDataEvent('\x08'); // Backspace
         }
       }
 
       // 输入脚本命令
-      terminal._core.coreService.triggerDataEvent(suggestion.text)
+      terminal._core.coreService.triggerDataEvent(suggestion.text);
 
       // 更新输入缓冲区为脚本命令
-      this.inputBuffer = suggestion.text
-
+      this.inputBuffer = suggestion.text;
     } catch (error) {
-      log.error('处理脚本选择失败:', error)
+      log.error('处理脚本选择失败:', error);
     }
   }
 
@@ -1197,39 +1212,37 @@ class TerminalAutocompleteService {
   handleWordCompletion(suggestion, terminal) {
     try {
       // 获取当前正在输入的单词
-      const currentWord = this.getCurrentWord()
-      const currentInput = this.getCurrentLineInput()
+      const currentWord = this.getCurrentWord();
+      const currentInput = this.getCurrentLineInput();
 
       if (currentWord && currentInput) {
         // 计算当前单词在输入缓冲区中的位置
-        const wordStart = this.getCurrentWordStartPosition()
+        const wordStart = this.getCurrentWordStartPosition();
 
         // 只删除当前单词的字符数
-        const wordLength = currentWord.length
+        const wordLength = currentWord.length;
         for (let i = 0; i < wordLength; i++) {
-          terminal._core.coreService.triggerDataEvent('\x08') // Backspace
+          terminal._core.coreService.triggerDataEvent('\x08'); // Backspace
         }
 
         // 输入选中的建议文本
-        terminal._core.coreService.triggerDataEvent(suggestion.text)
+        terminal._core.coreService.triggerDataEvent(suggestion.text);
 
         // 更新输入缓冲区：替换当前单词
-        const beforeWord = currentInput.substring(0, wordStart)
-        const afterWord = currentInput.substring(wordStart + wordLength)
-        this.inputBuffer = beforeWord + suggestion.text + afterWord
-
+        const beforeWord = currentInput.substring(0, wordStart);
+        const afterWord = currentInput.substring(wordStart + wordLength);
+        this.inputBuffer = beforeWord + suggestion.text + afterWord;
       } else {
         // 如果没有当前单词，直接输入建议
-        terminal._core.coreService.triggerDataEvent(suggestion.text)
-        this.inputBuffer = suggestion.text
+        terminal._core.coreService.triggerDataEvent(suggestion.text);
+        this.inputBuffer = suggestion.text;
       }
 
       // 重要：补全完成后，重置输入缓冲区为当前终端显示的内容
       // 这样可以确保后续输入能够正确追加，而不是基于旧的缓冲区状态
-      this.resetInputBufferAfterCompletion()
-
+      this.resetInputBufferAfterCompletion();
     } catch (error) {
-      log.error('处理单词补全失败:', error)
+      log.error('处理单词补全失败:', error);
     }
   }
 
@@ -1239,25 +1252,24 @@ class TerminalAutocompleteService {
    */
   getCurrentWordStartPosition() {
     try {
-      const input = this.inputBuffer
-      if (!input) return 0
+      const input = this.inputBuffer;
+      if (!input) return 0;
 
       // 定义单词分隔符
-      const wordSeparators = /[\s&|;()<>]/
+      const wordSeparators = /[\s&|;()<>]/;
 
       // 从输入缓冲区的末尾向前查找，找到当前正在输入的单词的开始位置
       for (let i = input.length - 1; i >= 0; i--) {
         if (wordSeparators.test(input[i])) {
-          return i + 1
+          return i + 1;
         }
       }
 
       // 如果没有找到分隔符，说明当前单词从开头开始
-      return 0
-
+      return 0;
     } catch (error) {
-      log.warn('获取当前单词开始位置失败:', error)
-      return 0
+      log.warn('获取当前单词开始位置失败:', error);
+      return 0;
     }
   }
 
@@ -1269,16 +1281,11 @@ class TerminalAutocompleteService {
     try {
       // 关键修复：在补全完成后，我们需要标记一个状态
       // 表示下一次输入应该重新开始跟踪，而不是追加到当前缓冲区
-      this._shouldResetOnNextInput = true
-
+      this._shouldResetOnNextInput = true;
     } catch (error) {
-      log.error('重置输入缓冲区失败:', error)
+      log.error('重置输入缓冲区失败:', error);
     }
   }
-
-
-
-
 
   /**
    * 销毁服务
@@ -1286,133 +1293,149 @@ class TerminalAutocompleteService {
   destroy() {
     // 销毁智能防抖
     if (this.smartDebounce) {
-      this.smartDebounce.destroy()
+      this.smartDebounce.destroy();
     }
 
-    this.hideSuggestions()
-    this.callbacks = {}
+    this.hideSuggestions();
+    this.callbacks = {};
 
     // 清理AI相关资源
-    this.cleanupAI()
+    this.cleanupAI();
 
     // 释放装饰器
-    this._disposeDecoration()
+    this._disposeDecoration();
 
     // 清理 rAF
     if (this._pendingRaf) {
-      try { cancelAnimationFrame(this._pendingRaf) } catch (_) {}
-      this._pendingRaf = null
+      try {
+        cancelAnimationFrame(this._pendingRaf);
+      } catch (_) {}
+      this._pendingRaf = null;
     }
   }
-
-
 
   /**
    * 启用整个补全服务
    */
   enable() {
-    this.isActive = false // 重置状态，但允许处理输入
-    this._enabled = true
-    log.debug('智能补全服务已启用')
+    this.isActive = false; // 重置状态，但允许处理输入
+    this._enabled = true;
+    log.debug('智能补全服务已启用');
   }
 
   /**
    * 禁用整个补全服务
    */
   disable() {
-    this.isActive = false
-    this._enabled = false
-    this.hideSuggestions()
-    log.debug('智能补全服务已禁用')
+    this.isActive = false;
+    this._enabled = false;
+    this.hideSuggestions();
+    log.debug('智能补全服务已禁用');
   }
 
   /**
    * 检查服务是否启用
    */
   isEnabled() {
-    return this._enabled !== false // 默认启用
+    return this._enabled !== false; // 默认启用
   }
-
 
   /**
    * 确保创建并维护基于装饰器的锚点
    */
   _ensureDecoration(terminal) {
     try {
-      if (!terminal || !terminal.element) return
+      if (!terminal || !terminal.element) return;
 
       // 首次检测是否支持装饰器
       if (this._decorationSupported === undefined) {
-        this._decorationSupported = typeof terminal.registerDecoration === 'function'
+        this._decorationSupported = typeof terminal.registerDecoration === 'function';
       }
-      if (!this._decorationSupported) return
+      if (!this._decorationSupported) return;
 
-      const buffer = terminal.buffer?.active
-      if (!buffer) return
+      const buffer = terminal.buffer?.active;
+      if (!buffer) return;
 
-      const cursorX = buffer.cursorX || 0
+      const cursorX = buffer.cursorX || 0;
 
       // 若已有装饰器，尝试更新列；若不可更新则重建
       if (this._decoration) {
         try {
           if (typeof this._decoration.updateOptions === 'function') {
-            this._decoration.updateOptions({ x: cursorX })
-            return
+            this._decoration.updateOptions({ x: cursorX });
+            return;
           }
         } catch (_) {}
-        this._disposeDecoration()
+        this._disposeDecoration();
       }
 
       // 使用 marker 锚定当前行
-      let marker = null
+      let marker = null;
       try {
         if (typeof terminal.registerMarker === 'function') {
-          marker = terminal.registerMarker(0)
+          marker = terminal.registerMarker(0);
         }
       } catch (_) {}
 
       // 注册装饰器
       try {
-        const options = marker ? { marker, x: cursorX } : { x: cursorX }
-        const decoration = terminal.registerDecoration(options)
+        const options = marker ? { marker, x: cursorX } : { x: cursorX };
+        const decoration = terminal.registerDecoration(options);
         if (decoration) {
-          this._decoration = decoration
-          this._marker = marker
+          this._decoration = decoration;
+          this._marker = marker;
           if (typeof decoration.onRender === 'function') {
             // 使用 rAF 节流，避免在 xterm 渲染帧内触发多次 Vue 更新
-            let rafId = null
-            decoration.onRender((el) => {
+            let rafId = null;
+            decoration.onRender(el => {
               try {
-                if (!el) return
-                if (rafId) cancelAnimationFrame(rafId)
+                if (!el) return;
+                if (rafId) cancelAnimationFrame(rafId);
                 rafId = requestAnimationFrame(() => {
-                  this._anchorElement = el
-                  el.style.width = '0px'
-                  el.style.height = '0px'
-                  el.style.pointerEvents = 'none'
-                  el.style.opacity = '0'
+                  this._anchorElement = el;
+                  el.style.width = '0px';
+                  el.style.height = '0px';
+                  el.style.pointerEvents = 'none';
+                  el.style.opacity = '0';
 
-                  const rect = el.getBoundingClientRect()
+                  const rect = el.getBoundingClientRect();
                   if (rect && this.isActive && this.suggestions.length > 0) {
                     // 将Y定位到字符格底部（rect为锚点元素自身，height为0，需加上单元格高度）
-                    const dims = terminal._core && terminal._core._renderService && terminal._core._renderService.dimensions
-                    const dpr = typeof window !== 'undefined' && window.devicePixelRatio ? window.devicePixelRatio : 1
-                    const cssCellHeight = (dims && dims.css && dims.css.cell && dims.css.cell.height) || null
-                    const actualCellHeight = (dims && dims.actualCellHeight) || 17
-                    const charHeight = cssCellHeight != null ? cssCellHeight : (actualCellHeight / dpr)
-                    const verticalOffset = 0
-                    const pos = { x: Math.round(rect.left), y: Math.round(rect.top + charHeight + verticalOffset), cellHeight: charHeight }
-                    this.lastPosition = pos
+                    const dims =
+                      terminal._core &&
+                      terminal._core._renderService &&
+                      terminal._core._renderService.dimensions;
+                    const dpr =
+                      typeof window !== 'undefined' && window.devicePixelRatio
+                        ? window.devicePixelRatio
+                        : 1;
+                    const cssCellHeight =
+                      (dims && dims.css && dims.css.cell && dims.css.cell.height) || null;
+                    const actualCellHeight = (dims && dims.actualCellHeight) || 17;
+                    const charHeight =
+                      cssCellHeight != null ? cssCellHeight : actualCellHeight / dpr;
+                    const verticalOffset = 0;
+                    const pos = {
+                      x: Math.round(rect.left),
+                      y: Math.round(rect.top + charHeight + verticalOffset),
+                      cellHeight: charHeight
+                    };
+                    this.lastPosition = pos;
                     // 使用统一发射器，避免无效位置闪烁
-                    this._emitSuggestionsUpdate(this.suggestions, pos, this.selectedIndex, terminal)
+                    this._emitSuggestionsUpdate(
+                      this.suggestions,
+                      pos,
+                      this.selectedIndex,
+                      terminal
+                    );
                   }
-                })
+                });
               } catch (_) {}
-            })
+            });
           }
         }
       } catch (e) {
-        this._decorationSupported = false
+        this._decorationSupported = false;
       }
     } catch (_) {}
   }
@@ -1422,12 +1445,12 @@ class TerminalAutocompleteService {
    */
   _getAnchorPosition(_terminal) {
     try {
-      if (!this._anchorElement) return null
-      const rect = this._anchorElement.getBoundingClientRect()
-      if (!rect) return null
-      return { x: Math.round(rect.left), y: Math.round(rect.bottom) }
+      if (!this._anchorElement) return null;
+      const rect = this._anchorElement.getBoundingClientRect();
+      if (!rect) return null;
+      return { x: Math.round(rect.left), y: Math.round(rect.bottom) };
     } catch (_) {
-      return null
+      return null;
     }
   }
 
@@ -1437,17 +1460,16 @@ class TerminalAutocompleteService {
   _disposeDecoration() {
     try {
       if (this._decoration && typeof this._decoration.dispose === 'function') {
-        this._decoration.dispose()
+        this._decoration.dispose();
       }
     } catch (_) {}
-    this._decoration = null
-    this._marker = null
-    this._anchorElement = null
+    this._decoration = null;
+    this._marker = null;
+    this._anchorElement = null;
   }
-
 }
 
 // 创建单例实例
-const terminalAutocompleteService = new TerminalAutocompleteService()
+const terminalAutocompleteService = new TerminalAutocompleteService();
 
-export default terminalAutocompleteService
+export default terminalAutocompleteService;

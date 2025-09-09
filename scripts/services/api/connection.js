@@ -25,17 +25,17 @@ export async function getAllConnections(params = {}) {
       const connections = getFromStorage(CACHE_KEYS.RECENT_CONNECTIONS, []);
       return Promise.resolve(connections);
     }
-    
+
     return await get(connectionEndpoints.getAll, params);
   } catch (error) {
     console.error('获取连接列表失败:', error);
-    
+
     // 如果API失败，尝试从本地存储获取
     if (params.fallbackToLocal) {
       console.log('从本地存储获取连接列表');
       return getFromStorage(CACHE_KEYS.RECENT_CONNECTIONS, []);
     }
-    
+
     throw error;
   }
 }
@@ -62,10 +62,10 @@ export async function getConnectionById(id) {
 export async function createConnection(connectionData) {
   try {
     const response = await post(connectionEndpoints.create, connectionData);
-    
+
     // 更新本地缓存的最近连接
     updateRecentConnections(response);
-    
+
     return response;
   } catch (error) {
     console.error('创建连接失败:', error);
@@ -82,10 +82,10 @@ export async function createConnection(connectionData) {
 export async function updateConnection(id, connectionData) {
   try {
     const response = await put(connectionEndpoints.update(id), connectionData);
-    
+
     // 更新本地缓存
     updateLocalConnectionCache(id, response);
-    
+
     return response;
   } catch (error) {
     console.error(`更新连接失败 [ID: ${id}]:`, error);
@@ -101,10 +101,10 @@ export async function updateConnection(id, connectionData) {
 export async function deleteConnection(id) {
   try {
     await del(connectionEndpoints.delete(id));
-    
+
     // 从本地缓存中移除
     removeFromLocalCache(id);
-    
+
     return true;
   } catch (error) {
     console.error(`删除连接失败 [ID: ${id}]:`, error);
@@ -135,21 +135,21 @@ export async function getRecentConnections(limit = 5) {
   try {
     // 先尝试从本地缓存获取
     const cachedConnections = getFromStorage(CACHE_KEYS.RECENT_CONNECTIONS, []);
-    
+
     if (cachedConnections.length > 0) {
       return cachedConnections.slice(0, limit);
     }
-    
+
     // 如果本地没有，从服务器获取
     const connections = await get(connectionEndpoints.recent, { limit });
-    
+
     // 更新本地缓存
     saveToStorage(CACHE_KEYS.RECENT_CONNECTIONS, connections);
-    
+
     return connections;
   } catch (error) {
     console.error('获取最近连接失败:', error);
-    
+
     // 如果API失败，返回空数组而不是抛出错误
     return [];
   }
@@ -191,16 +191,16 @@ export async function saveConnectionConfig(id, config) {
 function updateRecentConnections(connection) {
   try {
     const recentConnections = getFromStorage(CACHE_KEYS.RECENT_CONNECTIONS, []);
-    
+
     // 移除已存在的相同ID连接
     const filtered = recentConnections.filter(conn => conn.id !== connection.id);
-    
+
     // 添加到开头
     filtered.unshift(connection);
-    
+
     // 限制数量
     const limited = filtered.slice(0, 10);
-    
+
     // 保存到本地存储
     saveToStorage(CACHE_KEYS.RECENT_CONNECTIONS, limited);
   } catch (error) {
@@ -217,14 +217,14 @@ function updateLocalConnectionCache(id, updatedConnection) {
   try {
     // 更新最近连接
     const recentConnections = getFromStorage(CACHE_KEYS.RECENT_CONNECTIONS, []);
-    const updatedRecent = recentConnections.map(conn => 
+    const updatedRecent = recentConnections.map(conn =>
       conn.id === id ? { ...conn, ...updatedConnection } : conn
     );
     saveToStorage(CACHE_KEYS.RECENT_CONNECTIONS, updatedRecent);
-    
+
     // 更新收藏连接
     const favoriteConnections = getFromStorage(CACHE_KEYS.FAVORITE_CONNECTIONS, []);
-    const updatedFavorites = favoriteConnections.map(conn => 
+    const updatedFavorites = favoriteConnections.map(conn =>
       conn.id === id ? { ...conn, ...updatedConnection } : conn
     );
     saveToStorage(CACHE_KEYS.FAVORITE_CONNECTIONS, updatedFavorites);
@@ -243,7 +243,7 @@ function removeFromLocalCache(id) {
     const recentConnections = getFromStorage(CACHE_KEYS.RECENT_CONNECTIONS, []);
     const filteredRecent = recentConnections.filter(conn => conn.id !== id);
     saveToStorage(CACHE_KEYS.RECENT_CONNECTIONS, filteredRecent);
-    
+
     // 从收藏连接移除
     const favoriteConnections = getFromStorage(CACHE_KEYS.FAVORITE_CONNECTIONS, []);
     const filteredFavorites = favoriteConnections.filter(conn => conn.id !== id);
@@ -261,16 +261,16 @@ function removeFromLocalCache(id) {
 export function addToFavorites(connection) {
   try {
     const favorites = getFromStorage(CACHE_KEYS.FAVORITE_CONNECTIONS, []);
-    
+
     // 检查是否已存在
     if (favorites.some(fav => fav.id === connection.id)) {
       return true; // 已经是收藏了
     }
-    
+
     // 添加到收藏
     favorites.push(connection);
     saveToStorage(CACHE_KEYS.FAVORITE_CONNECTIONS, favorites);
-    
+
     return true;
   } catch (error) {
     console.error('添加连接到收藏失败:', error);
@@ -288,7 +288,7 @@ export function removeFromFavorites(connectionId) {
     const favorites = getFromStorage(CACHE_KEYS.FAVORITE_CONNECTIONS, []);
     const filtered = favorites.filter(conn => conn.id !== connectionId);
     saveToStorage(CACHE_KEYS.FAVORITE_CONNECTIONS, filtered);
-    
+
     return true;
   } catch (error) {
     console.error('从收藏移除连接失败:', error);
@@ -317,4 +317,4 @@ export default {
   addToFavorites,
   removeFromFavorites,
   getFavoriteConnections
-}; 
+};

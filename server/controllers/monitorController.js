@@ -42,7 +42,7 @@ exports.checkStatus = async (req, res) => {
         status: 'connected',
         message: `主机 ${hostname} 的监控数据可用（通过SSH收集）`,
         client: {
-          hostname: hostname,
+          hostname,
           lastUpdated: monitoringData.lastUpdated,
           hasData: true,
           dataAge: Date.now() - (monitoringData.lastUpdated || 0),
@@ -67,9 +67,6 @@ exports.checkStatus = async (req, res) => {
     });
   }
 };
-
-
-
 
 
 /**

@@ -1,29 +1,55 @@
 <template>
-  <div class="loading-indicator" :class="{ 'loading-indicator--inline': inline }">
-    <div v-if="loading" class="loading-content">
+  <div
+    class="loading-indicator"
+    :class="{ 'loading-indicator--inline': inline }"
+  >
+    <div
+      v-if="loading"
+      class="loading-content"
+    >
       <div class="loading-spinner">
-        <div class="spinner"></div>
+        <div class="spinner" />
       </div>
-      <div class="loading-text">{{ message }}</div>
+      <div class="loading-text">
+        {{ message }}
+      </div>
     </div>
-    
-    <div v-else-if="error" class="error-content">
-      <div class="error-icon">⚠️</div>
-      <div class="error-text">{{ error }}</div>
-      <button v-if="showRetry" class="retry-button" @click="$emit('retry')">
+
+    <div
+      v-else-if="error"
+      class="error-content"
+    >
+      <div class="error-icon">
+        ⚠️
+      </div>
+      <div class="error-text">
+        {{ error }}
+      </div>
+      <button
+        v-if="showRetry"
+        class="retry-button"
+        @click="$emit('retry')"
+      >
         重试
       </button>
     </div>
-    
-    <div v-else-if="empty" class="empty-content">
-      <div class="empty-icon">📭</div>
-      <div class="empty-text">{{ emptyMessage || '暂无数据' }}</div>
+
+    <div
+      v-else-if="empty"
+      class="empty-content"
+    >
+      <div class="empty-icon">
+        📭
+      </div>
+      <div class="empty-text">
+        {{ emptyMessage || '暂无数据' }}
+      </div>
     </div>
   </div>
 </template>
 
 <script>
-import { defineComponent } from 'vue'
+import { defineComponent } from 'vue';
 
 export default defineComponent({
   name: 'LoadingIndicator',
@@ -58,7 +84,7 @@ export default defineComponent({
     }
   },
   emits: ['retry']
-})
+});
 </script>
 
 <style scoped>
@@ -99,8 +125,12 @@ export default defineComponent({
 }
 
 @keyframes spin {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
 }
 
 .loading-text,

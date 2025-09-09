@@ -59,14 +59,14 @@ export const BINARY_MESSAGE_TYPES = {
   DISCONNECT: 0x07,
   CONNECTION_REGISTERED: 0x08,
   CONNECTED: 0x09,
-  NETWORK_LATENCY: 0x0A,
-  STATUS_UPDATE: 0x0B,
+  NETWORK_LATENCY: 0x0a,
+  STATUS_UPDATE: 0x0b,
 
-  // SSH终端数据 (0x10-0x1F) 
-  SSH_DATA: 0x10,           // SSH终端数据传输
-  SSH_RESIZE: 0x11,         // 终端大小调整
-  SSH_COMMAND: 0x12,        // 终端命令
-  SSH_DATA_ACK: 0x13,       // SSH数据确认
+  // SSH终端数据 (0x10-0x1F)
+  SSH_DATA: 0x10, // SSH终端数据传输
+  SSH_RESIZE: 0x11, // 终端大小调整
+  SSH_COMMAND: 0x12, // 终端命令
+  SSH_DATA_ACK: 0x13, // SSH数据确认
 
   // SFTP操作 (0x20-0x3F)
   SFTP_INIT: 0x20,
@@ -79,7 +79,7 @@ export const BINARY_MESSAGE_TYPES = {
   SFTP_CHMOD: 0x27,
   SFTP_DOWNLOAD_FOLDER: 0x28,
   SFTP_CLOSE: 0x29,
-  SFTP_CANCEL: 0x2A,
+  SFTP_CANCEL: 0x2a,
 
   // 响应消息 (0x80-0xFF)
   SFTP_SUCCESS: 0x80,
@@ -120,7 +120,7 @@ export const CONNECTION_STATUS = {
  */
 export const BINARY_PROTOCOL = {
   MAGIC_NUMBER: 0x45535348, // "ESSH"
-  VERSION: 0x02,  // 统一使用版本2
+  VERSION: 0x02, // 统一使用版本2
   MAX_HEADER_SIZE: 8192, // 8KB
   MAX_PAYLOAD_SIZE: 10485760, // 10MB
   CHUNK_SIZE: 65536 // 64KB per chunk
@@ -150,7 +150,7 @@ export const LATENCY_CONFIG = {
  */
 export const TERMINAL_CONSTANTS = {
   DEFAULT_FONT_SIZE: 16, // 可被settings.getTerminalOptions().fontSize覆盖
-  DEFAULT_FONT_FAMILY: "'JetBrains Mono'", // 可被settings.getTerminalOptions().fontFamily覆盖
+  DEFAULT_FONT_FAMILY: '\'JetBrains Mono\'', // 可被settings.getTerminalOptions().fontFamily覆盖
   DEFAULT_SCROLLBACK: 3000
 };
 
@@ -174,7 +174,7 @@ export const SFTP_CONSTANTS = {
 };
 
 // 获取动态常量值的工具函数
-export const getDynamicConstants = (settings) => {
+export const getDynamicConstants = settings => {
   try {
     if (!settings) {
       return {
@@ -204,7 +204,7 @@ export const getDynamicConstants = (settings) => {
     } catch (error) {
       console.warn('获取连接设置失败，使用默认值', error);
     }
-    
+
     // 安全获取终端设置
     let terminalSettings = {};
     try {
@@ -214,28 +214,29 @@ export const getDynamicConstants = (settings) => {
     } catch (error) {
       console.warn('获取终端设置失败，使用默认值', error);
     }
-    
+
     // 动态延迟配置 - 延迟测量间隔独立于保活间隔
     const dynamicLatencyConfig = {
       ...LATENCY_CONFIG
       // 保持LATENCY_CONFIG.CHECK_INTERVAL = 5秒，不被keepAliveInterval覆盖
     };
-    
+
     // 动态终端配置
     const dynamicTerminalConstants = {
       ...TERMINAL_CONSTANTS,
       DEFAULT_FONT_SIZE: terminalSettings.fontSize || TERMINAL_CONSTANTS.DEFAULT_FONT_SIZE,
       DEFAULT_FONT_FAMILY: terminalSettings.fontFamily || TERMINAL_CONSTANTS.DEFAULT_FONT_FAMILY
     };
-    
+
     // 动态SSH配置
     const dynamicSshConstants = {
       ...SSH_CONSTANTS,
       DEFAULT_TIMEOUT: (connectionSettings.connectionTimeout || 10) * 1000,
-      MAX_RECONNECT_ATTEMPTS: connectionSettings.autoReconnect ? 
-        (connectionSettings.reconnectInterval || 3) : 0
+      MAX_RECONNECT_ATTEMPTS: connectionSettings.autoReconnect
+        ? connectionSettings.reconnectInterval || 3
+        : 0
     };
-    
+
     return {
       LATENCY_CONFIG: dynamicLatencyConfig,
       TERMINAL_CONSTANTS: dynamicTerminalConstants,
@@ -266,4 +267,4 @@ export default {
   SSH_CONSTANTS,
   SFTP_CONSTANTS,
   getDynamicConstants
-}; 
+};

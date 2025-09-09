@@ -1,7 +1,7 @@
 /**
  * 密码加密工具类
  * 提供统一的密码加密/解密功能，确保敏感数据安全存储
- * 
+ *
  * 安全特性：
  * - 使用AES加密算法
  * - 支持环境变量配置加密密钥
@@ -19,11 +19,11 @@ const logger = require('./logger');
  */
 function getEncryptionKey() {
   const key = process.env.ENCRYPTION_KEY;
-  
+
   if (!key || key === 'default-secret-key') {
     logger.warn('使用默认加密密钥，生产环境中请设置ENCRYPTION_KEY环境变量');
   }
-  
+
   return key || 'default-secret-key-please-change-in-production';
 }
 
@@ -37,10 +37,10 @@ function encryptPassword(password) {
     if (!password || typeof password !== 'string') {
       return null;
     }
-    
+
     const secretKey = getEncryptionKey();
     const encrypted = crypto.AES.encrypt(password, secretKey).toString();
-    
+
     logger.debug('密码加密成功');
     return encrypted;
   } catch (error) {
@@ -59,11 +59,11 @@ function decryptPassword(encryptedPassword) {
     if (!encryptedPassword || typeof encryptedPassword !== 'string') {
       return '';
     }
-    
+
     const secretKey = getEncryptionKey();
     const bytes = crypto.AES.decrypt(encryptedPassword, secretKey);
     const decrypted = bytes.toString(crypto.enc.Utf8);
-    
+
     if (!decrypted) {
       logger.warn('密码解密结果为空，可能是密钥不匹配');
       return '';
@@ -87,10 +87,10 @@ function encryptPrivateKey(privateKey) {
     if (!privateKey || typeof privateKey !== 'string') {
       return null;
     }
-    
+
     const secretKey = getEncryptionKey();
     const encrypted = crypto.AES.encrypt(privateKey, secretKey).toString();
-    
+
     logger.debug('私钥加密成功');
     return encrypted;
   } catch (error) {
@@ -109,11 +109,11 @@ function decryptPrivateKey(encryptedPrivateKey) {
     if (!encryptedPrivateKey || typeof encryptedPrivateKey !== 'string') {
       return '';
     }
-    
+
     const secretKey = getEncryptionKey();
     const bytes = crypto.AES.decrypt(encryptedPrivateKey, secretKey);
     const decrypted = bytes.toString(crypto.enc.Utf8);
-    
+
     if (!decrypted) {
       logger.warn('私钥解密结果为空，可能是密钥不匹配');
       return '';
@@ -137,7 +137,7 @@ function isEncrypted(str) {
   if (!str || typeof str !== 'string') {
     return false;
   }
-  
+
   // AES加密后的字符串通常包含特殊字符和较长长度
   // 这是一个简单的启发式检查
   return str.length > 20 && /[+/=]/.test(str);
@@ -153,9 +153,9 @@ function processConnectionSensitiveData(connection, encrypt = true) {
   if (!connection || typeof connection !== 'object') {
     return connection;
   }
-  
+
   const processed = { ...connection };
-  
+
   try {
     if (encrypt) {
       // 加密敏感数据
@@ -165,14 +165,14 @@ function processConnectionSensitiveData(connection, encrypt = true) {
           processed.password = encrypted;
         }
       }
-      
+
       if (processed.privateKey) {
         const encrypted = encryptPrivateKey(processed.privateKey);
         if (encrypted) {
           processed.privateKey = encrypted;
         }
       }
-      
+
       if (processed.passphrase) {
         const encrypted = encryptPassword(processed.passphrase);
         if (encrypted) {
@@ -184,16 +184,16 @@ function processConnectionSensitiveData(connection, encrypt = true) {
       if (processed.password) {
         processed.password = decryptPassword(processed.password);
       }
-      
+
       if (processed.privateKey) {
         processed.privateKey = decryptPrivateKey(processed.privateKey);
       }
-      
+
       if (processed.passphrase) {
         processed.passphrase = decryptPassword(processed.passphrase);
       }
     }
-    
+
     return processed;
   } catch (error) {
     logger.error(`处理连接敏感数据失败 (${encrypt ? '加密' : '解密'}):`, error.message);

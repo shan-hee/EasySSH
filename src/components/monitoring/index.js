@@ -1,6 +1,6 @@
 /**
  * 监控组件模块导出
- * 
+ *
  * 这个模块导出了EasySSH系统监控的所有组件：
  * - ResponsiveMonitoringPanel: 响应式监控面板主组件
  * - SystemInfo: 系统信息组件
@@ -12,17 +12,17 @@
  */
 
 // 导入所有监控组件
-import ResponsiveMonitoringPanel from './ResponsiveMonitoringPanel.vue'
-import MobileMonitoringDrawer from './MobileMonitoringDrawer.vue'
-import SystemInfo from './SystemInfo.vue'
-import CpuMonitoring from './CpuMonitoring.vue'
-import MemoryMonitoring from './MemoryMonitoring.vue'
-import NetworkMonitoring from './NetworkMonitoring.vue'
-import DiskMonitoring from './DiskMonitoring.vue'
+import ResponsiveMonitoringPanel from './ResponsiveMonitoringPanel.vue';
+import MobileMonitoringDrawer from './MobileMonitoringDrawer.vue';
+import SystemInfo from './SystemInfo.vue';
+import CpuMonitoring from './CpuMonitoring.vue';
+import MemoryMonitoring from './MemoryMonitoring.vue';
+import NetworkMonitoring from './NetworkMonitoring.vue';
+import DiskMonitoring from './DiskMonitoring.vue';
 // ToolbarMonitoring 组件已移除，监控数据现在通过专用的监控面板显示
 
 // 默认导出主面板组件
-export default ResponsiveMonitoringPanel
+export default ResponsiveMonitoringPanel;
 
 // 命名导出所有组件
 export {
@@ -33,19 +33,19 @@ export {
   MemoryMonitoring,
   NetworkMonitoring,
   DiskMonitoring
-}
+};
 
 // 组件安装函数（用于Vue插件）
-export const install = (app) => {
-  app.component('ResponsiveMonitoringPanel', ResponsiveMonitoringPanel)
-  app.component('MobileMonitoringDrawer', MobileMonitoringDrawer)
-  app.component('SystemInfo', SystemInfo)
-  app.component('CpuMonitoring', CpuMonitoring)
-  app.component('MemoryMonitoring', MemoryMonitoring)
-  app.component('NetworkMonitoring', NetworkMonitoring)
-  app.component('DiskMonitoring', DiskMonitoring)
+export const install = app => {
+  app.component('ResponsiveMonitoringPanel', ResponsiveMonitoringPanel);
+  app.component('MobileMonitoringDrawer', MobileMonitoringDrawer);
+  app.component('SystemInfo', SystemInfo);
+  app.component('CpuMonitoring', CpuMonitoring);
+  app.component('MemoryMonitoring', MemoryMonitoring);
+  app.component('NetworkMonitoring', NetworkMonitoring);
+  app.component('DiskMonitoring', DiskMonitoring);
   // ToolbarMonitoring 组件已移除
-}
+};
 
 // 组件信息
 export const componentInfo = {
@@ -95,7 +95,7 @@ export const componentInfo = {
       description: '硬盘监控3D圆柱图组件',
       props: ['monitoringData'],
       features: ['3D圆柱显示', '使用率可视化', '读写速度', '容量信息']
-    },
+    }
     // ToolbarMonitoring 组件已移除，监控数据现在通过专用的监控面板显示
   ]
-}
+};

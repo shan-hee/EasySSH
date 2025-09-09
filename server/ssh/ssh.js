@@ -14,12 +14,12 @@ const logger = require('../utils/logger');
 // 导入工具模块
 const utils = require('./utils');
 const { MSG_TYPE, sendMessage, sendError, validateSshSession, safeExec, recordActivity, logMessage,
-        sendBinaryPong, sendBinaryConnected, sendBinaryNetworkLatency } = utils;
+  sendBinaryPong, sendBinaryConnected, sendBinaryNetworkLatency } = utils;
 
 // 导入统一二进制协议
-const { 
-  BINARY_MSG_TYPE, 
-  BinaryMessageDecoder, 
+const {
+  BINARY_MSG_TYPE,
+  BinaryMessageDecoder,
   BinaryMessageSender,
   validateSession,
   safeExec: binarySafeExec
@@ -47,13 +47,13 @@ function generateSessionId() {
 function createSSHConnection(config) {
   return new Promise((resolve, reject) => {
     const conn = new ssh2.Client();
-    
+
     // 连接超时设置 - 与readyTimeout保持一致
     const timeout = setTimeout(() => {
       conn.end();
       reject(new Error('连接超时'));
     }, 25000); // 比readyTimeout多5秒，确保SSH2库的超时先触发
-    
+
     conn.on('ready', () => {
       clearTimeout(timeout);
       logger.info('SSH连接成功', {
@@ -63,7 +63,7 @@ function createSSHConnection(config) {
       });
       resolve(conn);
     });
-    
+
     conn.on('error', (err) => {
       clearTimeout(timeout);
 
@@ -101,7 +101,7 @@ function createSSHConnection(config) {
 
       reject(enhancedError);
     });
-    
+
     const sshConfig = {
       host: config.address,
       port: config.port || 22,
@@ -131,7 +131,7 @@ function createSSHConnection(config) {
         ]
       }
     };
-    
+
     // 记录安全的连接日志
     logger.info('尝试SSH连接', {
       host: sshConfig.host,
@@ -139,7 +139,7 @@ function createSSHConnection(config) {
       username: sshConfig.username,
       authType: config.authType || 'password'
     });
-    
+
     // 根据认证方式设置配置
     if (config.authType === 'password') {
       sshConfig.password = config.password;
@@ -149,15 +149,10 @@ function createSSHConnection(config) {
         sshConfig.passphrase = config.passphrase;
       }
     }
-    
+
     conn.connect(sshConfig);
   });
 }
-
-
-
-
-
 
 
 /**
@@ -224,12 +219,12 @@ function measureWithSystemPing(host) {
 
       // 解析ping输出
       const latency = parsePingOutput(stdout);
-      
+
       if (latency > 0) {
       } else {
         logger.warn(`ping解析失败: ${host}`, { output: stdout.substring(0, 100) });
       }
-      
+
       resolve({ method: 'icmp_ping', latency });
     });
   });
@@ -279,7 +274,7 @@ function measureWithTCP(host, port = 22) {
  */
 function parsePingOutput(stdout) {
   if (!stdout) return 0;
-  
+
   const patterns = [
     // Linux/macOS格式: time=20.455 ms 或 time=20.455ms (最优先匹配)
     /time=([0-9.]+)\s*ms/i,
@@ -355,13 +350,13 @@ async function measureLatencyWithParallelPing(clientIP, sshHost, ws, sessionId, 
       session.lastClientLatency = clientLatency;
       session.lastPingLatencyTime = new Date();
       session.lastPingMethod = `client:${clientMethod}, server:${serverMethod}`;
-      session.lastPingError = (clientLatency === 0 || serverLatency === 0) ? 
+      session.lastPingError = (clientLatency === 0 || serverLatency === 0) ?
         `测量失败: client(${clientMethod}), server(${serverMethod})` : null;
     }
 
     // 发送统一的完整延迟数据
     sendCombinedLatencyResult(ws, sessionId, clientLatency, serverLatency);
-    
+
   } catch (error) {
     logger.error('并行ping测量出错', {
       error: error.message,
@@ -371,7 +366,7 @@ async function measureLatencyWithParallelPing(clientIP, sshHost, ws, sessionId, 
       sessionId,
       requestId
     });
-    
+
     // 出错时发送0延迟
     sendCombinedLatencyResult(ws, sessionId, 0, 0);
   }
@@ -396,22 +391,22 @@ function getClientIP(wsOrRequest) {
         return remoteAddress;
       }
     }
-    
+
     // 处理HTTP请求对象
     if (wsOrRequest.headers) {
       const forwardedFor = wsOrRequest.headers['x-forwarded-for'];
       const realIP = wsOrRequest.headers['x-real-ip'];
       const remoteAddress = wsOrRequest.connection?.remoteAddress || wsOrRequest.socket?.remoteAddress;
-      
+
       if (forwardedFor) {
         // X-Forwarded-For可能包含多个IP，取第一个
         return forwardedFor.split(',')[0].trim();
       }
-      
+
       if (realIP) {
         return realIP;
       }
-      
+
       if (remoteAddress) {
         // 处理IPv6映射的IPv4地址
         if (remoteAddress.startsWith('::ffff:')) {
@@ -420,12 +415,12 @@ function getClientIP(wsOrRequest) {
         return remoteAddress;
       }
     }
-    
+
     // 尝试直接访问connection/socket属性
-    const remoteAddress = wsOrRequest.connection?.remoteAddress || 
+    const remoteAddress = wsOrRequest.connection?.remoteAddress ||
                          wsOrRequest.socket?.remoteAddress ||
                          wsOrRequest.remoteAddress;
-    
+
     if (remoteAddress) {
       // 处理IPv6映射的IPv4地址
       if (remoteAddress.startsWith('::ffff:')) {
@@ -433,7 +428,7 @@ function getClientIP(wsOrRequest) {
       }
       return remoteAddress;
     }
-    
+
     return '127.0.0.1'; // 默认本地IP
   } catch (error) {
     logger.warn('获取客户端IP失败', { error: error.message });
@@ -472,9 +467,6 @@ function sendCombinedLatencyResult(ws, sessionId, webSocketLatency, serverLatenc
 }
 
 
-
-
-
 /**
  * 清理SSH会话
  * @param {string} sessionId 会话ID
@@ -483,19 +475,19 @@ function cleanupSession(sessionId) {
   if (!sessions.has(sessionId)) {
     return;
   }
-  
+
   logger.info('清理SSH会话', { sessionId });
-  
+
   const session = sessions.get(sessionId);
-  
+
   // 定期延迟检查已移除，现在使用保活机制
-  
+
   // 清理清理超时
   if (session.cleanupTimeout) {
     clearTimeout(session.cleanupTimeout);
     session.cleanupTimeout = null;
   }
-  
+
   // 关闭SSH流
   if (session.stream) {
     try {
@@ -505,7 +497,7 @@ function cleanupSession(sessionId) {
       logger.error('关闭SSH流错误', { sessionId, error: err.message });
     }
   }
-  
+
   // 关闭SSH连接
   if (session.conn) {
     try {
@@ -515,7 +507,7 @@ function cleanupSession(sessionId) {
       logger.error('关闭SSH连接错误', { sessionId, error: err.message });
     }
   }
-  
+
   // 确保监控数据收集已停止（防止重复调用）
   try {
     const stopped = monitoringBridge.stopMonitoring(sessionId, 'session_cleanup');
@@ -545,7 +537,7 @@ function cleanupSession(sessionId) {
 async function handleConnect(ws, data) {
   return await safeExec(async () => {
     const sessionId = data.sessionId || generateSessionId();
-    
+
     // 检查是否是重新连接到现有会话
     if (sessions.has(sessionId)) {
       const session = sessions.get(sessionId);
@@ -555,8 +547,8 @@ async function handleConnect(ws, data) {
       clearTimeout(session.cleanupTimeout);
 
       // 通知客户端连接成功 - 使用二进制协议
-      sendBinaryConnected(ws, { 
-        sessionId, 
+      sendBinaryConnected(ws, {
+        sessionId,
         connectionId: session.connectionInfo.connectionId,
         serverInfo: {
           host: session.connectionInfo.host,
@@ -591,10 +583,10 @@ async function handleConnect(ws, data) {
 
       return sessionId;
     }
-    
+
     // 创建新的SSH连接
     const conn = await createSSHConnection(data);
-    
+
     // 保存连接信息
     const connectionInfo = {
       host: data.address,
@@ -602,7 +594,7 @@ async function handleConnect(ws, data) {
       username: data.username,
       connectionId: data.connectionId  // 保存connectionId
     };
-    
+
     // 创建新的会话
     const session = {
       id: sessionId,
@@ -616,7 +608,7 @@ async function handleConnect(ws, data) {
       clientIP: data.clientIP, // 保存客户端IP地址
       protocolVersion: data.protocolVersion || '2.0' // 统一使用协议版本2.0
     };
-    
+
     sessions.set(sessionId, session);
 
     // 处理SSH连接断开
@@ -678,13 +670,13 @@ async function handleConnect(ws, data) {
         sendError(ws, `创建Shell失败: ${err.message}`, sessionId);
         return;
       }
-      
+
       // 设置会话流
       session.stream = stream;
-      
+
       // 转发SSH数据到WebSocket - 支持二进制传输和背压控制
       setupStreamWithBackpressure(session, stream, ws, sessionId);
-      
+
       // 处理SSH错误
       stream.on('error', (err) => {
         logger.error('SSH Shell错误', { sessionId, error: err.message });
@@ -704,7 +696,7 @@ async function handleConnect(ws, data) {
 
         sendError(ws, `Shell错误: ${err.message}`, sessionId);
       });
-      
+
       // 处理SSH关闭
       stream.on('close', () => {
         logger.info('SSH Shell会话已关闭', { sessionId });
@@ -727,10 +719,10 @@ async function handleConnect(ws, data) {
 
         cleanupSession(sessionId);
       });
-      
+
       // 通知客户端连接成功 - 使用二进制协议
-      sendBinaryConnected(ws, { 
-        sessionId, 
+      sendBinaryConnected(ws, {
+        sessionId,
         connectionId: session.connectionInfo.connectionId,
         serverInfo: {
           host: session.connectionInfo.host,
@@ -764,7 +756,7 @@ async function handleConnect(ws, data) {
 
       // 延迟测量现在通过保活机制触发，无需在此处执行
     });
-    
+
     return sessionId;
   }, ws, 'SSH连接失败', data.sessionId, null, false);
 }
@@ -776,18 +768,18 @@ async function handleConnect(ws, data) {
  */
 function handleData(ws, data) {
   const { sessionId, data: sshData } = data;
-  
+
   if (!validateSshSession(ws, sessionId, sessions)) {
     return;
   }
-  
+
   const session = sessions.get(sessionId);
-  
+
   if (!session.stream) {
     sendError(ws, 'SSH流未创建', sessionId);
     return;
   }
-  
+
   // 将数据发送到SSH流
   const buffer = Buffer.from(sshData, 'utf8');
   session.stream.write(buffer);
@@ -801,18 +793,18 @@ function handleData(ws, data) {
  */
 function handleResize(ws, data) {
   const { sessionId, cols, rows } = data;
-  
+
   if (!validateSshSession(ws, sessionId, sessions)) {
     return;
   }
-  
+
   const session = sessions.get(sessionId);
-  
+
   if (!session.stream) {
     sendError(ws, 'SSH流未创建', sessionId);
     return;
   }
-  
+
   // 调整终端大小
   session.stream.setWindow(rows, cols);
   recordActivity(session);
@@ -825,13 +817,13 @@ function handleResize(ws, data) {
  */
 function handleDisconnect(ws, data) {
   const { sessionId } = data;
-  
+
   if (!sessionId) {
     return;
   }
-  
+
   cleanupSession(sessionId);
-  
+
   sendMessage(ws, MSG_TYPE.DISCONNECTED, { sessionId });
 }
 
@@ -864,20 +856,19 @@ function handlePing(ws, data) {
     // 优先使用会话中保存的客户端IP，然后是WebSocket对象上的IP，最后使用默认值
     const clientIP = session.clientIP || ws.clientIP || '127.0.0.1';
     const sshHost = session.connectionInfo.host;
-    
-    // logger.info('触发延迟测量', { 
-    //   sessionId, 
+
+    // logger.info('触发延迟测量', {
+    //   sessionId,
     //   client: clientIP,
     //   server: sshHost
     // });
-    
+
     // 使用setImmediate确保PONG先发送，然后进行并行ping测量
     setImmediate(() => {
       measureLatencyWithParallelPing(clientIP, sshHost, ws, sessionId, data.requestId);
     });
   }
 }
-
 
 
 /**
@@ -1058,7 +1049,7 @@ function sendBinaryDataWithStats(ws, sessionId, data) {
   try {
     // 使用统一的二进制协议发送SSH终端数据
     BinaryMessageSender.sendSSHData(ws, sessionId, data);
-    
+
     // 记录传输统计
     if (global.metricsCollector) {
       global.metricsCollector.recordDataTransfer('outbound', 'binary', data.length);

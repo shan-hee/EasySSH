@@ -15,10 +15,10 @@ class UserSettingsController {
     try {
       const userId = req.user.id;
       const { category } = req.query; // 可选：获取特定分类的设置
-      
+
       const db = getDb();
       let query, params;
-      
+
       if (category) {
         // 获取特定分类的设置
         query = `
@@ -36,9 +36,9 @@ class UserSettingsController {
         `;
         params = [userId];
       }
-      
+
       const rows = db.prepare(query).all(...params);
-      
+
       // 将结果转换为对象格式
       const settings = {};
       rows.forEach(row => {
@@ -54,13 +54,13 @@ class UserSettingsController {
           log.error(`解析设置数据失败 [${row.category}]:`, error);
         }
       });
-      
+
       res.json({
         success: true,
         data: settings,
         timestamp: new Date().toISOString()
       });
-      
+
     } catch (error) {
       log.error('获取用户设置失败:', error);
       res.status(500).json({
@@ -79,24 +79,24 @@ class UserSettingsController {
     try {
       const userId = req.user.id;
       const { category, data, version, clientTimestamp } = req.body;
-      
+
       if (!category || !data) {
         return res.status(400).json({
           success: false,
           message: '缺少必要参数：category 和 data'
         });
       }
-      
+
       const db = getDb();
       const now = new Date().toISOString();
-      
+
       // 检查是否存在冲突
       const existing = db.prepare(`
         SELECT version, server_timestamp 
         FROM user_settings 
         WHERE user_id = ? AND category = ?
       `).get(userId, category);
-      
+
       let newVersion = 1;
       if (existing) {
         // 检查版本冲突
@@ -113,7 +113,7 @@ class UserSettingsController {
         }
         newVersion = existing.version + 1;
       }
-      
+
       // 使用 UPSERT 操作
       const upsertQuery = `
         INSERT INTO user_settings (user_id, category, settings_data, version, client_timestamp, server_timestamp, updated_at)
@@ -126,7 +126,7 @@ class UserSettingsController {
           server_timestamp = excluded.server_timestamp,
           updated_at = excluded.updated_at
       `;
-      
+
       db.prepare(upsertQuery).run(
         userId,
         category,
@@ -136,7 +136,7 @@ class UserSettingsController {
         now,
         now
       );
-      
+
       res.json({
         success: true,
         data: {
@@ -146,7 +146,7 @@ class UserSettingsController {
         },
         message: '设置更新成功'
       });
-      
+
     } catch (error) {
       log.error('更新用户设置失败:', error);
       res.status(500).json({
@@ -165,19 +165,19 @@ class UserSettingsController {
     try {
       const userId = req.user.id;
       const { settings, clientTimestamp } = req.body;
-      
+
       if (!settings || typeof settings !== 'object') {
         return res.status(400).json({
           success: false,
           message: '缺少必要参数：settings'
         });
       }
-      
+
       const db = getDb();
       const now = new Date().toISOString();
       const results = {};
       const conflicts = {};
-      
+
       // 开始事务
       const transaction = db.transaction(() => {
         for (const [category, settingData] of Object.entries(settings)) {
@@ -188,7 +188,7 @@ class UserSettingsController {
               FROM user_settings 
               WHERE user_id = ? AND category = ?
             `).get(userId, category);
-            
+
             let newVersion = 1;
             if (existing) {
               // 检查版本冲突
@@ -202,7 +202,7 @@ class UserSettingsController {
               }
               newVersion = existing.version + 1;
             }
-            
+
             // 更新设置
             const upsertQuery = `
               INSERT INTO user_settings (user_id, category, settings_data, version, client_timestamp, server_timestamp, updated_at)
@@ -215,7 +215,7 @@ class UserSettingsController {
                 server_timestamp = excluded.server_timestamp,
                 updated_at = excluded.updated_at
             `;
-            
+
             db.prepare(upsertQuery).run(
               userId,
               category,
@@ -225,13 +225,13 @@ class UserSettingsController {
               now,
               now
             );
-            
+
             results[category] = {
               version: newVersion,
               serverTimestamp: now,
               status: 'updated'
             };
-            
+
           } catch (error) {
             log.error(`更新设置失败 [${category}]:`, error);
             results[category] = {
@@ -241,24 +241,24 @@ class UserSettingsController {
           }
         }
       });
-      
+
       transaction();
-      
+
       const response = {
         success: true,
         data: results,
         timestamp: now
       };
-      
+
       if (Object.keys(conflicts).length > 0) {
         response.conflicts = conflicts;
         response.message = '部分设置存在冲突，需要解决';
       } else {
         response.message = '批量更新成功';
       }
-      
+
       res.json(response);
-      
+
     } catch (error) {
       log.error('批量更新用户设置失败:', error);
       res.status(500).json({
@@ -395,7 +395,7 @@ class UserSettingsController {
                   serverData: serverData.data,
                   serverVersion: serverData.version,
                   serverTimestamp: serverData.timestamp,
-                  localData: localData,
+                  localData,
                   reason: 'data_conflict'
                 };
                 syncResults.summary.conflicts++;

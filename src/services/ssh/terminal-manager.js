@@ -27,7 +27,7 @@ class TerminalManager {
 
     log.debug('终端管理器初始化完成');
   }
-  
+
   /**
    * 创建终端并绑定到会话
    * @param {string} sessionId - SSH会话ID
@@ -60,13 +60,13 @@ class TerminalManager {
     // 添加ClipboardAddon以支持复制粘贴
     const clipboardAddon = new ClipboardAddon();
     terminal.loadAddon(clipboardAddon);
-    
+
     // 渲染终端
     terminal.open(container);
 
     // 异步初始化终端大小，不阻塞创建过程
     this._initializeTerminalSize(terminal, fitAddon, sessionId);
-    
+
     // 尝试聚焦终端
     try {
       terminal.focus();
@@ -74,9 +74,9 @@ class TerminalManager {
     } catch (e) {
       log.warn(`聚焦终端失败: ${e.message}`);
     }
-    
+
     // 处理用户输入 - 统一的数据处理入口
-    terminal.onData(async (data) => {
+    terminal.onData(async data => {
       // log.debug('终端数据输入', { sessionId, data: data.charCodeAt ? data.charCodeAt(0) : data });
 
       // 使用智能补全
@@ -85,12 +85,12 @@ class TerminalManager {
       // 处理SSH输入
       this.sshService._processTerminalInput(session, data);
     });
-    
+
     // 处理终端大小变化
     terminal.onResize(({ cols, rows }) => {
       if (session.socket && session.socket.readyState === WS_CONSTANTS.OPEN) {
         log.debug(`终端大小变化: ${sessionId} -> ${cols}x${rows}`);
-        
+
         try {
           // 使用统一的二进制消息发送器
           BinaryMessageSender.sendSSHResize(session.socket, sessionId, cols, rows);
@@ -101,12 +101,12 @@ class TerminalManager {
     });
 
     // 处理上下文菜单和粘贴
-    const handleContextMenu = (event) => {
+    const handleContextMenu = event => {
       // 不再无条件阻止默认行为；改为分发自定义事件供上层决定
       const customEvent = new CustomEvent('terminal-context-menu', {
         detail: {
           originalEvent: event,
-          sessionId: sessionId,
+          sessionId,
           terminalElement: container
         },
         bubbles: true,
@@ -115,7 +115,7 @@ class TerminalManager {
       container.dispatchEvent(customEvent);
     };
 
-    const handleTerminalPaste = (event) => {
+    const handleTerminalPaste = event => {
       if (event.detail && event.detail.text) {
         terminal.paste(event.detail.text);
       }
@@ -125,25 +125,26 @@ class TerminalManager {
     container.addEventListener('terminal-paste', handleTerminalPaste);
 
     // 处理输出数据以支持特殊功能
-    session.processOutput = (data) => {
+    session.processOutput = data => {
       try {
         // 写入终端显示
         terminal.write(data);
-        
+
         // 触发上下文构建事件
         const context = this._buildTerminalContext(terminal, sessionId);
-        window.dispatchEvent(new CustomEvent('terminal:context-update', {
-          detail: { sessionId, context }
-        }));
-
+        window.dispatchEvent(
+          new CustomEvent('terminal:context-update', {
+            detail: { sessionId, context }
+          })
+        );
       } catch (error) {
         log.error('处理终端输出失败', error);
       }
     };
-    
+
     // 设置容器大小监听
     this._setupResizeObserver(terminal, fitAddon, sessionId, container);
-    
+
     // 将终端与会话绑定
     session.terminal = terminal;
     this.terminals.set(sessionId, terminal);
@@ -158,7 +159,7 @@ class TerminalManager {
       session.buffer = '';
       log.debug(`缓冲数据已写入终端: ${sessionId}`);
     }
-    
+
     // 添加销毁处理
     const destroy = () => {
       container.removeEventListener('contextmenu', handleContextMenu);
@@ -177,7 +178,7 @@ class TerminalManager {
       terminal.dispose();
       this.terminals.delete(sessionId);
     };
-    
+
     session.destroy = destroy;
 
     return terminal;
@@ -191,22 +192,22 @@ class TerminalManager {
     try {
       // 等待延迟确保DOM已准备就绪
       await new Promise(resolve => setTimeout(resolve, 100));
-      
+
       // 检查fitAddon是否存在并且有fit方法
       if (!fitAddon || typeof fitAddon.fit !== 'function') {
         log.warn(`终端 ${sessionId} fitAddon不可用，跳过大小初始化`);
         return;
       }
-      
+
       // 检查终端元素是否已准备好
       if (!terminal.element || !terminal.element.parentNode) {
         log.warn(`终端 ${sessionId} 元素未就绪，跳过大小初始化`);
         return;
       }
-      
+
       // 调整终端大小
       fitAddon.fit();
-      
+
       log.debug(`终端大小初始化完成: ${sessionId}`);
     } catch (error) {
       log.debug(`初始化终端大小失败: ${sessionId}`, error.message);
@@ -221,7 +222,7 @@ class TerminalManager {
     try {
       const buffer = terminal.buffer.active;
       const currentLine = this._getCurrentLine(terminal);
-      
+
       // 获取最近几行输出
       const recentLines = [];
       const maxLines = Math.min(10, buffer.length);
@@ -284,25 +285,25 @@ class TerminalManager {
   _setupResizeObserver(terminal, fitAddon, sessionId, container) {
     try {
       // 创建ResizeObserver监听容器大小变化
-      const resizeObserver = new ResizeObserver((entries) => {
+      const resizeObserver = new ResizeObserver(entries => {
         // 使用防抖避免频繁调整
         this._handleTerminalResize(terminal, fitAddon, sessionId);
       });
 
       // 开始监听容器大小变化
       resizeObserver.observe(container);
-      
+
       // 存储observer以便后续清理
       this.resizeObservers.set(sessionId, resizeObserver);
-      
+
       log.debug(`终端大小监听器已设置: ${sessionId}`);
     } catch (error) {
       log.error('设置终端大小监听器失败', error);
-      
+
       // 降级方案：使用window resize事件
       const handleResize = () => this._handleTerminalResize(terminal, fitAddon, sessionId);
       window.addEventListener('resize', handleResize);
-      
+
       // 存储清理函数
       this.resizeObservers.set(sessionId, {
         disconnect: () => window.removeEventListener('resize', handleResize)
@@ -328,16 +329,16 @@ class TerminalManager {
           log.warn(`终端 ${sessionId} fitAddon不可用，跳过大小调整`);
           return;
         }
-        
+
         if (!terminal || !terminal.element) {
           log.warn(`终端 ${sessionId} 元素不可用，跳过大小调整`);
           return;
         }
-        
+
         // 调整终端大小
         fitAddon.fit();
         log.debug(`终端大小已调整: ${sessionId}`);
-        
+
         // 清除定时器记录
         this.resizeTimeouts.delete(sessionId);
       } catch (error) {
@@ -370,11 +371,11 @@ class TerminalManager {
         pointer-events: none;
       `;
       errorDiv.textContent = message;
-      
+
       // 添加到容器
       container.style.position = 'relative';
       container.appendChild(errorDiv);
-      
+
       // 自动移除
       setTimeout(() => {
         if (errorDiv.parentNode) {
@@ -399,7 +400,7 @@ class TerminalManager {
         if (session && session.destroy) {
           session.destroy();
         }
-        
+
         log.debug(`终端已销毁: ${sessionId}`);
       }
     } catch (error) {

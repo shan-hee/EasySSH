@@ -32,7 +32,7 @@
     flex: 0 0 33.333333%;
     max-width: 33.333333%;
   }
-  
+
   .col-sm-6 {
     flex: 0 0 50%;
     max-width: 50%;
@@ -75,12 +75,20 @@
 
 /* 基本间距系统 - 首屏必需 */
 /* .mb-0 已移至 base/utilities.css */
-.mb-10 { margin-bottom: 10px; }
-.mb-20 { margin-bottom: 20px; }
-.mt-10 { margin-top: 10px; }
-.mt-20 { margin-top: 20px; }
+.mb-10 {
+  margin-bottom: 10px;
+}
+.mb-20 {
+  margin-bottom: 20px;
+}
+.mt-10 {
+  margin-top: 10px;
+}
+.mt-20 {
+  margin-top: 20px;
+}
 
 /* 居中容器 - 首屏必需 */
 .text-center {
   text-align: center;
-} 
+}

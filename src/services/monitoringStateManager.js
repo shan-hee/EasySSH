@@ -3,18 +3,18 @@
  * 统一管理所有监控组件的加载状态，提供一致的用户体验
  */
 
-import { reactive } from 'vue'
-import log from '@/services/log'
+import { reactive } from 'vue';
+import log from '@/services/log';
 
 // 加载状态枚举
 export const LoadingState = {
-  INITIAL: 'initial',        // 初始状态
-  CONNECTING: 'connecting',  // 连接中
-  LOADING: 'loading',        // 数据加载中
-  LOADED: 'loaded',          // 已加载
-  ERROR: 'error',            // 错误状态
+  INITIAL: 'initial', // 初始状态
+  CONNECTING: 'connecting', // 连接中
+  LOADING: 'loading', // 数据加载中
+  LOADED: 'loaded', // 已加载
+  ERROR: 'error', // 错误状态
   RECONNECTING: 'reconnecting' // 重连中
-}
+};
 
 // 监控组件类型
 export const MonitoringComponent = {
@@ -23,22 +23,22 @@ export const MonitoringComponent = {
   MEMORY: 'memory',
   NETWORK: 'network',
   DISK: 'disk'
-}
+};
 
 class MonitoringStateManager {
   constructor(terminalId = null, hostId = null) {
     // 实例绑定的终端ID和主机ID
-    this.boundTerminalId = terminalId
-    this.boundHostId = hostId
+    this.boundTerminalId = terminalId;
+    this.boundHostId = hostId;
 
     // 全局状态
     this.globalState = reactive({
       connectionState: LoadingState.CONNECTING,
       lastActivity: Date.now(),
       errorMessage: null,
-      terminalId: terminalId,
-      hostId: hostId
-    })
+      terminalId,
+      hostId
+    });
 
     // 各组件的状态
     this.componentStates = reactive({
@@ -72,21 +72,21 @@ class MonitoringStateManager {
         lastUpdate: null,
         error: null
       }
-    })
+    });
 
     // 监控数据缓存
-    this.monitoringData = reactive({})
+    this.monitoringData = reactive({});
 
     // 事件监听器
-    this.eventListeners = new Map()
+    this.eventListeners = new Map();
 
     // 日志优化相关状态
-    this._lastDataHash = null
-    this._hasReceivedData = false
-    this._lastEventTerminalId = null
+    this._lastDataHash = null;
+    this._hasReceivedData = false;
+    this._lastEventTerminalId = null;
 
     // 初始化事件监听
-    this._initEventListeners()
+    this._initEventListeners();
 
     // 监控状态管理器已初始化
   }
@@ -97,53 +97,53 @@ class MonitoringStateManager {
    */
   _initEventListeners() {
     // 监听监控连接状态变化
-    const connectionHandler = (event) => {
-      const { terminalId } = event.detail
+    const connectionHandler = event => {
+      const { terminalId } = event.detail;
       // 只处理绑定终端的事件，如果没有绑定则处理所有事件（向后兼容）
       if (this._shouldHandleEvent(terminalId)) {
-        this._handleConnectionStateChange(LoadingState.LOADED)
+        this._handleConnectionStateChange(LoadingState.LOADED);
       }
-    }
+    };
 
-    const disconnectionHandler = (event) => {
-      const { terminalId } = event.detail
+    const disconnectionHandler = event => {
+      const { terminalId } = event.detail;
       // 只处理绑定终端的事件，避免其他终端的断开事件影响当前实例
       if (this._shouldHandleEvent(terminalId)) {
-        this._handleConnectionStateChange(LoadingState.ERROR, '连接已断开')
+        this._handleConnectionStateChange(LoadingState.ERROR, '连接已断开');
       }
-    }
+    };
 
     // 统一的监控数据处理器 - 处理实时数据和同步数据
-    const unifiedDataHandler = (event) => {
-      const { terminalId, data } = event.detail
+    const unifiedDataHandler = event => {
+      const { terminalId, data } = event.detail;
 
       // 处理监控数据事件（日志已移除，用户可在WebSocket中查看）
       if (this._shouldHandleEvent(terminalId)) {
-        this._handleMonitoringData(data)
+        this._handleMonitoringData(data);
       }
-    }
+    };
 
     // 监听监控状态变化
-    const statusHandler = (event) => {
-      const { terminalId, installed, available } = event.detail
+    const statusHandler = event => {
+      const { terminalId, installed, available } = event.detail;
       if (this._shouldHandleEvent(terminalId)) {
-        this._handleMonitoringStatus(installed, available)
+        this._handleMonitoringStatus(installed, available);
       }
-    }
+    };
 
     // 注册事件监听器
-    window.addEventListener('monitoring-connected', connectionHandler)
-    window.addEventListener('monitoring-disconnected', disconnectionHandler)
-    window.addEventListener('monitoring-data-received', unifiedDataHandler)
-    window.addEventListener('monitoring-data-synced', unifiedDataHandler)
-    window.addEventListener('monitoring-status-change', statusHandler)
+    window.addEventListener('monitoring-connected', connectionHandler);
+    window.addEventListener('monitoring-disconnected', disconnectionHandler);
+    window.addEventListener('monitoring-data-received', unifiedDataHandler);
+    window.addEventListener('monitoring-data-synced', unifiedDataHandler);
+    window.addEventListener('monitoring-status-change', statusHandler);
 
     // 保存监听器引用以便清理
-    this.eventListeners.set('connection', connectionHandler)
-    this.eventListeners.set('disconnection', disconnectionHandler)
-    this.eventListeners.set('data', unifiedDataHandler)
-    this.eventListeners.set('sync', unifiedDataHandler)
-    this.eventListeners.set('status', statusHandler)
+    this.eventListeners.set('connection', connectionHandler);
+    this.eventListeners.set('disconnection', disconnectionHandler);
+    this.eventListeners.set('data', unifiedDataHandler);
+    this.eventListeners.set('sync', unifiedDataHandler);
+    this.eventListeners.set('status', statusHandler);
   }
 
   /**
@@ -156,13 +156,13 @@ class MonitoringStateManager {
       // 切换终端
 
       // 重置状态
-      this._resetStates()
+      this._resetStates();
 
-      this.globalState.terminalId = terminalId
-      this.globalState.hostId = hostId
+      this.globalState.terminalId = terminalId;
+      this.globalState.hostId = hostId;
       // 设置为连接中状态，显示加载指示器
-      this.globalState.connectionState = LoadingState.CONNECTING
-      this.globalState.lastActivity = Date.now()
+      this.globalState.connectionState = LoadingState.CONNECTING;
+      this.globalState.lastActivity = Date.now();
     }
   }
 
@@ -171,9 +171,9 @@ class MonitoringStateManager {
    * @private
    */
   _resetStates() {
-    this.globalState.connectionState = LoadingState.CONNECTING
-    this.globalState.lastActivity = Date.now()
-    this.globalState.errorMessage = null
+    this.globalState.connectionState = LoadingState.CONNECTING;
+    this.globalState.lastActivity = Date.now();
+    this.globalState.errorMessage = null;
 
     Object.keys(this.componentStates).forEach(component => {
       this.componentStates[component] = {
@@ -181,13 +181,13 @@ class MonitoringStateManager {
         hasData: false,
         lastUpdate: null,
         error: null
-      }
-    })
+      };
+    });
 
     // 清空监控数据缓存
     Object.keys(this.monitoringData).forEach(key => {
-      delete this.monitoringData[key]
-    })
+      delete this.monitoringData[key];
+    });
   }
 
   /**
@@ -197,23 +197,23 @@ class MonitoringStateManager {
    * @private
    */
   _handleConnectionStateChange(state, errorMessage = null) {
-    this.globalState.connectionState = state
-    this.globalState.errorMessage = errorMessage
-    this.globalState.lastActivity = Date.now()
+    this.globalState.connectionState = state;
+    this.globalState.errorMessage = errorMessage;
+    this.globalState.lastActivity = Date.now();
 
     if (state === LoadingState.LOADED) {
       // 连接成功，设置所有组件为加载中状态
       Object.keys(this.componentStates).forEach(component => {
         if (this.componentStates[component].state === LoadingState.INITIAL) {
-          this.componentStates[component].state = LoadingState.LOADING
+          this.componentStates[component].state = LoadingState.LOADING;
         }
-      })
+      });
     } else if (state === LoadingState.ERROR) {
       // 连接失败，设置所有组件为错误状态
       Object.keys(this.componentStates).forEach(component => {
-        this.componentStates[component].state = LoadingState.ERROR
-        this.componentStates[component].error = errorMessage
-      })
+        this.componentStates[component].state = LoadingState.ERROR;
+        this.componentStates[component].error = errorMessage;
+      });
     }
 
     // 连接状态变化
@@ -225,25 +225,25 @@ class MonitoringStateManager {
    * @private
    */
   _handleMonitoringData(data) {
-    if (!data) return
+    if (!data) return;
 
     // 防止重复处理相同的数据（排除时间戳字段，基于实际监控数据内容）
-    const { timestamp, ...dataWithoutTimestamp } = data
-    const dataHash = JSON.stringify(dataWithoutTimestamp)
+    const { timestamp, ...dataWithoutTimestamp } = data;
+    const dataHash = JSON.stringify(dataWithoutTimestamp);
 
     if (this._lastDataHash === dataHash) {
-      return
+      return;
     }
 
-    this._lastDataHash = dataHash
+    this._lastDataHash = dataHash;
 
-    this.globalState.lastActivity = Date.now()
+    this.globalState.lastActivity = Date.now();
 
     // 更新监控数据缓存
-    Object.assign(this.monitoringData, data)
+    Object.assign(this.monitoringData, data);
 
     // 根据数据内容更新各组件状态
-    this._updateComponentStates(data)
+    this._updateComponentStates(data);
 
     // 监控数据更新日志已简化，减少日志噪音
   }
@@ -255,27 +255,29 @@ class MonitoringStateManager {
    * @private
    */
   _handleMonitoringStatus(installed, available) {
-    const newState = installed && available ? LoadingState.LOADED : LoadingState.ERROR
-    const newErrorMessage = installed && available ? null : '监控服务不可用'
+    const newState = installed && available ? LoadingState.LOADED : LoadingState.ERROR;
+    const newErrorMessage = installed && available ? null : '监控服务不可用';
 
     // 避免重复处理相同的状态
-    if (this.globalState.connectionState === newState &&
-        this.globalState.errorMessage === newErrorMessage) {
-      return
+    if (
+      this.globalState.connectionState === newState &&
+      this.globalState.errorMessage === newErrorMessage
+    ) {
+      return;
     }
 
-    this.globalState.connectionState = newState
-    this.globalState.errorMessage = newErrorMessage
+    this.globalState.connectionState = newState;
+    this.globalState.errorMessage = newErrorMessage;
 
     if (installed && available) {
       // 更新所有组件状态为已加载
       Object.values(MonitoringComponent).forEach(component => {
         if (this.componentStates[component]) {
-          this.componentStates[component].state = LoadingState.LOADED
-          this.componentStates[component].hasData = true
-          this.componentStates[component].error = null
+          this.componentStates[component].state = LoadingState.LOADED;
+          this.componentStates[component].hasData = true;
+          this.componentStates[component].error = null;
         }
-      })
+      });
     }
 
     // 监控状态变化
@@ -288,19 +290,19 @@ class MonitoringStateManager {
    */
   _handleMonitoringStatusMessage(statusData) {
     // 处理差量更新格式
-    let actualData = statusData
+    let actualData = statusData;
     if (statusData.delta && statusData.delta.data) {
-      actualData = statusData.delta.data
+      actualData = statusData.delta.data;
     } else if (statusData.data) {
-      actualData = statusData.data
+      actualData = statusData.data;
     }
 
-    const installed = actualData.status === 'installed'
-    const available = actualData.available === true
+    const installed = actualData.status === 'installed';
+    const available = actualData.available === true;
 
     // 处理状态消息
 
-    this._handleMonitoringStatus(installed, available)
+    this._handleMonitoringStatus(installed, available);
   }
 
   /**
@@ -309,36 +311,46 @@ class MonitoringStateManager {
    * @private
    */
   _updateComponentStates(data) {
-    const now = Date.now()
+    const now = Date.now();
 
     // 系统信息 - 检测更多可能的系统信息字段
-    const hasSystemInfo = data.system || data.hostname || data.uptime || data.machineId ||
-        data.os || data.timestamp || data.bootTime || data.loadAverage ||
-        (data.cpu && data.cpu.model)
+    const hasSystemInfo =
+      data.system ||
+      data.hostname ||
+      data.uptime ||
+      data.machineId ||
+      data.os ||
+      data.timestamp ||
+      data.bootTime ||
+      data.loadAverage ||
+      (data.cpu && data.cpu.model);
 
     if (hasSystemInfo) {
-      this._updateComponentState(MonitoringComponent.SYSTEM_INFO, true, now)
+      this._updateComponentState(MonitoringComponent.SYSTEM_INFO, true, now);
       // 系统信息数据检测日志已移除，减少日志噪音
     }
 
     // CPU数据
     if (data.cpu && (data.cpu.usage !== undefined || data.cpu.usedPercentage !== undefined)) {
-      this._updateComponentState(MonitoringComponent.CPU, true, now)
+      this._updateComponentState(MonitoringComponent.CPU, true, now);
     }
 
     // 内存数据
     if (data.memory && (data.memory.used !== undefined || data.memory.total !== undefined)) {
-      this._updateComponentState(MonitoringComponent.MEMORY, true, now)
+      this._updateComponentState(MonitoringComponent.MEMORY, true, now);
     }
 
     // 网络数据
-    if (data.network && (data.network.total_tx_speed !== undefined || data.network.total_rx_speed !== undefined)) {
-      this._updateComponentState(MonitoringComponent.NETWORK, true, now)
+    if (
+      data.network &&
+      (data.network.total_tx_speed !== undefined || data.network.total_rx_speed !== undefined)
+    ) {
+      this._updateComponentState(MonitoringComponent.NETWORK, true, now);
     }
 
     // 硬盘数据
     if (data.disk && (data.disk.used !== undefined || data.disk.total !== undefined)) {
-      this._updateComponentState(MonitoringComponent.DISK, true, now)
+      this._updateComponentState(MonitoringComponent.DISK, true, now);
     }
   }
 
@@ -351,10 +363,10 @@ class MonitoringStateManager {
    */
   _updateComponentState(component, hasData, timestamp) {
     if (this.componentStates[component]) {
-      this.componentStates[component].hasData = hasData
-      this.componentStates[component].lastUpdate = timestamp
-      this.componentStates[component].state = hasData ? LoadingState.LOADED : LoadingState.LOADING
-      this.componentStates[component].error = null
+      this.componentStates[component].hasData = hasData;
+      this.componentStates[component].lastUpdate = timestamp;
+      this.componentStates[component].state = hasData ? LoadingState.LOADED : LoadingState.LOADING;
+      this.componentStates[component].error = null;
     }
   }
 
@@ -364,12 +376,14 @@ class MonitoringStateManager {
    * @returns {Object} 组件状态
    */
   getComponentState(component) {
-    return this.componentStates[component] || {
-      state: LoadingState.INITIAL,
-      hasData: false,
-      lastUpdate: null,
-      error: null
-    }
+    return (
+      this.componentStates[component] || {
+        state: LoadingState.INITIAL,
+        hasData: false,
+        lastUpdate: null,
+        error: null
+      }
+    );
   }
 
   /**
@@ -377,7 +391,7 @@ class MonitoringStateManager {
    * @returns {Object} 全局状态
    */
   getGlobalState() {
-    return this.globalState
+    return this.globalState;
   }
 
   /**
@@ -385,7 +399,7 @@ class MonitoringStateManager {
    * @returns {Object} 监控数据
    */
   getMonitoringData() {
-    return this.monitoringData
+    return this.monitoringData;
   }
 
   /**
@@ -393,7 +407,7 @@ class MonitoringStateManager {
    * @returns {boolean} 是否有数据
    */
   hasAnyData() {
-    return Object.values(this.componentStates).some(state => state.hasData)
+    return Object.values(this.componentStates).some(state => state.hasData);
   }
 
   /**
@@ -401,9 +415,9 @@ class MonitoringStateManager {
    * @returns {boolean} 是否全部加载完成
    */
   isAllLoaded() {
-    return Object.values(this.componentStates).every(state =>
-      state.state === LoadingState.LOADED || state.hasData
-    )
+    return Object.values(this.componentStates).every(
+      state => state.state === LoadingState.LOADED || state.hasData
+    );
   }
 
   /**
@@ -411,12 +425,12 @@ class MonitoringStateManager {
    * @returns {number} 加载进度 (0-100)
    */
   getLoadingProgress() {
-    const totalComponents = Object.keys(this.componentStates).length
-    const loadedComponents = Object.values(this.componentStates).filter(state =>
-      state.state === LoadingState.LOADED || state.hasData
-    ).length
+    const totalComponents = Object.keys(this.componentStates).length;
+    const loadedComponents = Object.values(this.componentStates).filter(
+      state => state.state === LoadingState.LOADED || state.hasData
+    ).length;
 
-    return Math.round((loadedComponents / totalComponents) * 100)
+    return Math.round((loadedComponents / totalComponents) * 100);
   }
 
   /**
@@ -426,9 +440,9 @@ class MonitoringStateManager {
    */
   setComponentError(component, error) {
     if (this.componentStates[component]) {
-      this.componentStates[component].state = LoadingState.ERROR
-      this.componentStates[component].error = error
-      this.componentStates[component].hasData = false
+      this.componentStates[component].state = LoadingState.ERROR;
+      this.componentStates[component].error = error;
+      this.componentStates[component].hasData = false;
     }
   }
 
@@ -436,17 +450,17 @@ class MonitoringStateManager {
    * 重试连接
    */
   retry() {
-    log.info('[监控状态管理器] 重试连接')
-    this.globalState.connectionState = LoadingState.RECONNECTING
-    this.globalState.errorMessage = null
+    log.info('[监控状态管理器] 重试连接');
+    this.globalState.connectionState = LoadingState.RECONNECTING;
+    this.globalState.errorMessage = null;
 
     // 重置组件状态为加载中
     Object.keys(this.componentStates).forEach(component => {
       if (this.componentStates[component].state === LoadingState.ERROR) {
-        this.componentStates[component].state = LoadingState.LOADING
-        this.componentStates[component].error = null
+        this.componentStates[component].state = LoadingState.LOADING;
+        this.componentStates[component].error = null;
       }
-    })
+    });
   }
 
   /**
@@ -457,13 +471,13 @@ class MonitoringStateManager {
   setTerminal(terminalId, hostId = null) {
     // 避免重复绑定相同的终端
     if (this.boundTerminalId === terminalId && this.boundHostId === hostId) {
-      return
+      return;
     }
 
-    this.boundTerminalId = terminalId
-    this.boundHostId = hostId
-    this.globalState.terminalId = terminalId
-    this.globalState.hostId = hostId
+    this.boundTerminalId = terminalId;
+    this.boundHostId = hostId;
+    this.globalState.terminalId = terminalId;
+    this.globalState.hostId = hostId;
 
     // 已绑定终端
   }
@@ -473,7 +487,7 @@ class MonitoringStateManager {
    * @returns {string|null} 终端ID
    */
   getBoundTerminalId() {
-    return this.boundTerminalId
+    return this.boundTerminalId;
   }
 
   /**
@@ -481,7 +495,7 @@ class MonitoringStateManager {
    * @returns {string|null} 主机ID
    */
   getBoundHostId() {
-    return this.boundHostId
+    return this.boundHostId;
   }
 
   /**
@@ -493,11 +507,11 @@ class MonitoringStateManager {
   _shouldHandleEvent(eventTerminalId) {
     // 如果没有绑定终端，则处理所有事件（向后兼容单例模式）
     if (!this.boundTerminalId) {
-      return eventTerminalId === this.globalState.terminalId
+      return eventTerminalId === this.globalState.terminalId;
     }
 
     // 如果有绑定终端，只处理绑定终端的事件
-    return eventTerminalId === this.boundTerminalId
+    return eventTerminalId === this.boundTerminalId;
   }
 
   /**
@@ -506,7 +520,7 @@ class MonitoringStateManager {
    * @returns {boolean} 是否绑定
    */
   isBoundTo(terminalId) {
-    return this.boundTerminalId === terminalId
+    return this.boundTerminalId === terminalId;
   }
 
   /**
@@ -516,27 +530,27 @@ class MonitoringStateManager {
     // 移除事件监听器
     this.eventListeners.forEach((handler, eventType) => {
       const eventName = {
-        'connection': 'monitoring-connected',
-        'disconnection': 'monitoring-disconnected',
-        'data': 'monitoring-data-received',
-        'sync': 'monitoring-data-synced',
-        'status': 'monitoring-status-change'
-      }[eventType]
+        connection: 'monitoring-connected',
+        disconnection: 'monitoring-disconnected',
+        data: 'monitoring-data-received',
+        sync: 'monitoring-data-synced',
+        status: 'monitoring-status-change'
+      }[eventType];
 
       if (eventName) {
-        window.removeEventListener(eventName, handler)
+        window.removeEventListener(eventName, handler);
       }
-    })
+    });
 
-    this.eventListeners.clear()
+    this.eventListeners.clear();
     // 已清理资源
   }
 }
 
 // 导出类供工厂使用
-export { MonitoringStateManager }
+export { MonitoringStateManager };
 
 // 创建单例实例（向后兼容）
-const monitoringStateManager = new MonitoringStateManager()
+const monitoringStateManager = new MonitoringStateManager();
 
-export default monitoringStateManager
+export default monitoringStateManager;

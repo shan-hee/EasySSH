@@ -1,27 +1,27 @@
 <template>
-  <Icon 
-    :icon="iconName" 
-    :width="size" 
-    :height="size" 
+  <icon
+    :icon="iconName"
+    :width="size"
+    :height="size"
     :class="['monitoring-icon', `monitoring-icon--${name}`, className]"
     :style="iconStyle"
   />
 </template>
 
 <script setup>
-import { Icon } from '@iconify/vue'
-import { computed } from 'vue'
+import { Icon } from '@iconify/vue';
+import { computed } from 'vue';
 
 // Props定义
 const props = defineProps({
   name: {
     type: String,
     required: true,
-    validator: (value) => {
+    validator: value => {
       const validIcons = [
         'system-info',
         'cpu',
-        'memory', 
+        'memory',
         'network',
         'disk',
         'upload',
@@ -33,8 +33,8 @@ const props = defineProps({
         'compress',
         'close',
         'loading'
-      ]
-      return validIcons.includes(value)
+      ];
+      return validIcons.includes(value);
     }
   },
   size: {
@@ -49,39 +49,39 @@ const props = defineProps({
     type: String,
     default: ''
   }
-})
+});
 
 // 图标映射 - 使用高质量的Material Design Icons
 const iconMap = {
   'system-info': 'mdi:information-outline',
-  'cpu': 'mdi:cpu-64-bit',
-  'memory': 'mdi:memory',
-  'network': 'mdi:network',
-  'disk': 'mdi:harddisk',
-  'upload': 'mdi:upload',
-  'download': 'mdi:download',
-  'swap': 'mdi:swap-horizontal',
+  cpu: 'mdi:cpu-64-bit',
+  memory: 'mdi:memory',
+  network: 'mdi:network',
+  disk: 'mdi:harddisk',
+  upload: 'mdi:upload',
+  download: 'mdi:download',
+  swap: 'mdi:swap-horizontal',
   'chart-line': 'mdi:chart-line',
-  'minimize': 'mdi:window-minimize',
-  'maximize': 'mdi:window-maximize',
-  'compress': 'mdi:window-restore',
-  'close': 'mdi:close',
-  'loading': 'mdi:loading'
-}
+  minimize: 'mdi:window-minimize',
+  maximize: 'mdi:window-maximize',
+  compress: 'mdi:window-restore',
+  close: 'mdi:close',
+  loading: 'mdi:loading'
+};
 
 // 计算图标名称
 const iconName = computed(() => {
-  return iconMap[props.name] || 'mdi:help-circle-outline'
-})
+  return iconMap[props.name] || 'mdi:help-circle-outline';
+});
 
 // 计算图标样式
 const iconStyle = computed(() => {
-  const style = {}
+  const style = {};
   if (props.color) {
-    style.color = props.color
+    style.color = props.color;
   }
-  return style
-})
+  return style;
+});
 </script>
 
 <style scoped>

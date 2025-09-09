@@ -50,7 +50,8 @@
 }
 
 @media (max-width: 768px) {
-  .col-md-4, .col-sm-6 {
+  .col-md-4,
+  .col-sm-6 {
     width: 100%;
   }
 }

@@ -2,7 +2,11 @@
   <div class="monitor-section memory-monitoring-section">
     <div class="monitor-header">
       <div class="monitor-title">
-        <MonitoringIcon name="memory" :size="16" class="memory-icon" />
+        <monitoring-icon
+          name="memory"
+          :size="16"
+          class="memory-icon"
+        />
         <span>内存</span>
       </div>
     </div>
@@ -11,33 +15,51 @@
       <div class="memory-chart-layout">
         <!-- 左侧：双圆环嵌套图 -->
         <div class="chart-section">
-          <canvas ref="memoryChartRef" class="memory-nested-chart"></canvas>
+          <canvas
+            ref="memoryChartRef"
+            class="memory-nested-chart"
+          />
         </div>
 
         <!-- 右侧：文本和图例 -->
         <div class="info-section">
           <div class="memory-info-item">
-            <div class="info-indicator memory-indicator"></div>
+            <div class="info-indicator memory-indicator" />
             <div class="info-content">
-              <div class="info-label">物理内存</div>
-              <div class="info-value">{{ formatPercentage(memoryUsage) }}</div>
-              <div class="info-detail">{{ formatBytes(memoryInfo.used) }} / {{ formatBytes(memoryInfo.total) }}</div>
+              <div class="info-label">
+                物理内存
+              </div>
+              <div class="info-value">
+                {{ formatPercentage(memoryUsage) }}
+              </div>
+              <div class="info-detail">
+                {{ formatBytes(memoryInfo.used) }} / {{ formatBytes(memoryInfo.total) }}
+              </div>
             </div>
           </div>
 
-          <div v-if="hasSwap" class="memory-info-item">
-            <div class="info-indicator swap-indicator"></div>
+          <div
+            v-if="hasSwap"
+            class="memory-info-item"
+          >
+            <div class="info-indicator swap-indicator" />
             <div class="info-content">
-              <div class="info-label">交换分区</div>
-              <div class="info-value">{{ formatPercentage(swapUsage) }}</div>
-              <div class="info-detail">{{ formatBytes(swapInfo.used) }} / {{ formatBytes(swapInfo.total) }}</div>
+              <div class="info-label">
+                交换分区
+              </div>
+              <div class="info-value">
+                {{ formatPercentage(swapUsage) }}
+              </div>
+              <div class="info-detail">
+                {{ formatBytes(swapInfo.used) }} / {{ formatBytes(swapInfo.total) }}
+              </div>
             </div>
           </div>
         </div>
       </div>
 
       <!-- 统一加载指示器 -->
-      <MonitoringLoader
+      <monitoring-loader
         v-if="!componentState.hasData"
         :state="componentState.state"
         :error-message="componentState.error"
@@ -50,16 +72,16 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted, watch, computed, nextTick, markRaw } from 'vue'
-import { Chart, registerables } from 'chart.js'
-import { formatBytes, formatPercentage } from '@/utils/productionFormatters'
-import { getCSSVar, getThemeAwareChartOptions, watchThemeChange, getThemeBackgroundColor } from '@/utils/chartConfig'
-import MonitoringIcon from './MonitoringIcon.vue'
-import MonitoringLoader from '../common/MonitoringLoader.vue'
-import monitoringStateManager, { MonitoringComponent } from '@/services/monitoringStateManager'
+import { ref, onMounted, onUnmounted, watch, computed, nextTick, markRaw } from 'vue';
+import { Chart, registerables } from 'chart.js';
+import { formatBytes, formatPercentage } from '@/utils/productionFormatters';
+import { getCSSVar, watchThemeChange, getThemeBackgroundColor } from '@/utils/chartConfig';
+import MonitoringIcon from './MonitoringIcon.vue';
+import MonitoringLoader from '../common/MonitoringLoader.vue';
+import monitoringStateManager, { MonitoringComponent } from '@/services/monitoringStateManager';
 
 // 注册Chart.js组件
-Chart.register(...registerables)
+Chart.register(...registerables);
 
 // Props
 const props = defineProps({
@@ -71,95 +93,94 @@ const props = defineProps({
     type: Object,
     default: null
   }
-})
+});
 
 // 响应式数据
-const memoryChartRef = ref(null)
-const memoryChartInstance = ref(null)
+const memoryChartRef = ref(null);
+const memoryChartInstance = ref(null);
 
 // 计算属性
 const memoryInfo = computed(() => {
-  const memory = props.monitoringData?.memory || {}
+  const memory = props.monitoringData?.memory || {};
 
   // 后端已经返回字节数，无需转换
-  const total = memory.total || 0
-  const used = memory.used || 0
-  const free = memory.free || memory.available || 0
-  const cached = memory.cached || 0
+  const total = memory.total || 0;
+  const used = memory.used || 0;
+  const free = memory.free || memory.available || 0;
+  const cached = memory.cached || 0;
 
   return {
-    total: total,    // 已经是字节
-    used: used,      // 已经是字节
-    free: free,      // 已经是字节
-    cached: cached,  // 已经是字节
+    total, // 已经是字节
+    used, // 已经是字节
+    free, // 已经是字节
+    cached, // 已经是字节
     usedPercentage: memory.usedPercentage || (total > 0 ? (used / total) * 100 : 0)
-  }
-})
+  };
+});
 
 const swapInfo = computed(() => {
-  const swap = props.monitoringData?.swap || {}
+  const swap = props.monitoringData?.swap || {};
 
   // 后端已经返回字节数，无需转换
-  const total = swap.total || 0
-  const used = swap.used || 0
-  const free = swap.free || 0
+  const total = swap.total || 0;
+  const used = swap.used || 0;
+  const free = swap.free || 0;
 
   return {
-    total: total,    // 已经是字节
-    used: used,      // 已经是字节
-    free: free,      // 已经是字节
+    total, // 已经是字节
+    used, // 已经是字节
+    free, // 已经是字节
     usedPercentage: swap.usedPercentage || (total > 0 ? (used / total) * 100 : 0)
-  }
-})
+  };
+});
 
 const memoryUsage = computed(() => {
-  return memoryInfo.value.usedPercentage || 0
-})
+  return memoryInfo.value.usedPercentage || 0;
+});
 
 const swapUsage = computed(() => {
-  return swapInfo.value.usedPercentage || 0
-})
+  return swapInfo.value.usedPercentage || 0;
+});
 
 const hasSwap = computed(() => {
-  return swapInfo.value.total > 0
-})
+  return swapInfo.value.total > 0;
+});
 
 // 使用传入的状态管理器实例，如果没有则使用全局实例（向后兼容）
-const currentStateManager = computed(() => props.stateManager || monitoringStateManager)
+const currentStateManager = computed(() => props.stateManager || monitoringStateManager);
 
 // 使用当前状态管理器
 const componentState = computed(() => {
-  return currentStateManager.value.getComponentState(MonitoringComponent.MEMORY)
-})
+  return currentStateManager.value.getComponentState(MonitoringComponent.MEMORY);
+});
 
 const hasData = computed(() => {
-  return componentState.value.hasData && memoryInfo.value.total > 0
-})
+  return componentState.value.hasData && memoryInfo.value.total > 0;
+});
 
 // 重试处理
 const handleRetry = () => {
-  currentStateManager.value.retry()
-}
-
-
+  currentStateManager.value.retry();
+};
 
 // 创建双圆环嵌套图表配置
 const createNestedDoughnutConfig = () => {
   // 内存监控使用固定颜色，不根据使用率变化
-  const isDark = document.documentElement.getAttribute('data-theme') === 'dark' ||
-                 document.documentElement.classList.contains('dark-theme') ||
-                 (!document.documentElement.getAttribute('data-theme') &&
-                  !document.documentElement.classList.contains('light-theme') &&
-                  window.matchMedia('(prefers-color-scheme: dark)').matches)
+  const isDark =
+    document.documentElement.getAttribute('data-theme') === 'dark' ||
+    document.documentElement.classList.contains('dark-theme') ||
+    (!document.documentElement.getAttribute('data-theme') &&
+      !document.documentElement.classList.contains('light-theme') &&
+      window.matchMedia('(prefers-color-scheme: dark)').matches);
 
   const memoryColors = {
     primary: getCSSVar('--monitor-memory-primary'),
     background: isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)'
-  }
+  };
   const swapColors = {
     primary: getCSSVar('--monitor-memory-swap'),
     background: isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)'
-  }
+  };
 
   return {
     type: 'doughnut',
@@ -170,17 +191,19 @@ const createNestedDoughnutConfig = () => {
           data: [memoryUsage.value, 100 - memoryUsage.value],
           backgroundColor: [memoryColors.primary, memoryColors.background],
           borderWidth: 0,
-          cutout: '50%',  // 外圈的内径
+          cutout: '50%', // 外圈的内径
           radius: '100%', // 外圈占满整个区域
           label: '物理内存'
         },
         // dataset[1] 实际渲染为内圈 - 交换分区
         {
           data: hasSwap.value ? [swapUsage.value, 100 - swapUsage.value] : [0, 100],
-          backgroundColor: hasSwap.value ? [swapColors.primary, swapColors.background] : ['transparent', 'transparent'],
+          backgroundColor: hasSwap.value
+            ? [swapColors.primary, swapColors.background]
+            : ['transparent', 'transparent'],
           borderWidth: 0,
-          cutout: '50%',  // 内圈的内径
-          radius: '100%',  // 内圈的外径，与外圈的内径匹配
+          cutout: '50%', // 内圈的内径
+          radius: '100%', // 内圈的外径，与外圈的内径匹配
           label: '交换分区'
         }
       ]
@@ -200,10 +223,10 @@ const createNestedDoughnutConfig = () => {
           borderColor: isDark ? 'rgba(255, 255, 255, 0.2)' : 'rgba(0, 0, 0, 0.1)',
           borderWidth: 1,
           callbacks: {
-            label: function(context) {
-              const datasetLabel = context.dataset.label
-              const value = context.parsed
-              return `${datasetLabel}: ${value.toFixed(1)}%`
+            label (context) {
+              const datasetLabel = context.dataset.label;
+              const value = context.parsed;
+              return `${datasetLabel}: ${value.toFixed(1)}%`;
             }
           }
         }
@@ -213,48 +236,51 @@ const createNestedDoughnutConfig = () => {
         easing: 'easeInOutQuart'
       }
     }
-  }
-}
+  };
+};
 
 // 初始化双圆环图表
 const initMemoryChart = async () => {
-  await nextTick()
+  await nextTick();
 
-  if (!memoryChartRef.value) return
+  if (!memoryChartRef.value) return;
 
-  const ctx = memoryChartRef.value.getContext('2d')
+  const ctx = memoryChartRef.value.getContext('2d');
 
   if (memoryChartInstance.value) {
-    memoryChartInstance.value.destroy()
+    memoryChartInstance.value.destroy();
   }
 
   // 创建双圆环嵌套图表
-  const config = createNestedDoughnutConfig()
-  memoryChartInstance.value = markRaw(new Chart(ctx, config))
+  const config = createNestedDoughnutConfig();
+  memoryChartInstance.value = markRaw(new Chart(ctx, config));
 
   // 监听主题变化
   const themeObserver = watchThemeChange(memoryChartInstance.value, () => {
     // 主题变化时只更新颜色相关的配置，不重新创建数据
-    const newConfig = createNestedDoughnutConfig()
+    const newConfig = createNestedDoughnutConfig();
 
     // 只更新背景色，保持数据不变
     if (memoryChartInstance.value.data.datasets[0]) {
-      memoryChartInstance.value.data.datasets[0].backgroundColor = newConfig.data.datasets[0].backgroundColor
+      memoryChartInstance.value.data.datasets[0].backgroundColor =
+        newConfig.data.datasets[0].backgroundColor;
     }
     if (memoryChartInstance.value.data.datasets[1]) {
-      memoryChartInstance.value.data.datasets[1].backgroundColor = newConfig.data.datasets[1].backgroundColor
+      memoryChartInstance.value.data.datasets[1].backgroundColor =
+        newConfig.data.datasets[1].backgroundColor;
     }
 
     // 更新选项（tooltip颜色等）
-    memoryChartInstance.value.options = { ...memoryChartInstance.value.options, ...newConfig.options }
-    memoryChartInstance.value.update('none')
-  })
+    memoryChartInstance.value.options = {
+      ...memoryChartInstance.value.options,
+      ...newConfig.options
+    };
+    memoryChartInstance.value.update('none');
+  });
 
   // 保存观察器引用以便清理
-  memoryChartInstance.value._themeObserver = themeObserver
-}
-
-
+  memoryChartInstance.value._themeObserver = themeObserver;
+};
 
 // 更新双圆环图表数据
 const updateCharts = () => {
@@ -262,23 +288,26 @@ const updateCharts = () => {
     if (memoryChartInstance.value && hasData.value) {
       // 检查图表实例是否有效
       if (!memoryChartInstance.value.data || !memoryChartInstance.value.data.datasets) {
-        console.warn('[内存监控] 图表数据结构无效')
-        return
+        console.warn('[内存监控] 图表数据结构无效');
+        return;
       }
 
-      const memUsed = memoryUsage.value
-      const memFree = 100 - memUsed
-      const swapUsed = swapUsage.value
-      const swapFree = 100 - swapUsed
+      const memUsed = memoryUsage.value;
+      const memFree = 100 - memUsed;
+      const swapUsed = swapUsage.value;
+      const swapFree = 100 - swapUsed;
 
       // 更新外圈（物理内存）数据 - dataset[0] - 使用主题感知颜色
       if (memoryChartInstance.value.data.datasets[0]) {
         const memoryColors = {
           primary: getCSSVar('--monitor-memory-primary'),
           background: getThemeBackgroundColor()
-        }
-        memoryChartInstance.value.data.datasets[0].data = [memUsed, memFree]
-        memoryChartInstance.value.data.datasets[0].backgroundColor = [memoryColors.primary, memoryColors.background]
+        };
+        memoryChartInstance.value.data.datasets[0].data = [memUsed, memFree];
+        memoryChartInstance.value.data.datasets[0].backgroundColor = [
+          memoryColors.primary,
+          memoryColors.background
+        ];
       }
 
       // 更新内圈（交换分区）数据 - dataset[1] - 使用主题感知颜色
@@ -287,21 +316,27 @@ const updateCharts = () => {
           const swapColors = {
             primary: getCSSVar('--monitor-memory-swap'),
             background: getThemeBackgroundColor()
-          }
-          memoryChartInstance.value.data.datasets[1].data = [swapUsed, swapFree]
-          memoryChartInstance.value.data.datasets[1].backgroundColor = [swapColors.primary, swapColors.background]
+          };
+          memoryChartInstance.value.data.datasets[1].data = [swapUsed, swapFree];
+          memoryChartInstance.value.data.datasets[1].backgroundColor = [
+            swapColors.primary,
+            swapColors.background
+          ];
         } else {
-          memoryChartInstance.value.data.datasets[1].data = [0, 100]
-          memoryChartInstance.value.data.datasets[1].backgroundColor = ['transparent', 'transparent']
+          memoryChartInstance.value.data.datasets[1].data = [0, 100];
+          memoryChartInstance.value.data.datasets[1].backgroundColor = [
+            'transparent',
+            'transparent'
+          ];
         }
       }
 
-      memoryChartInstance.value.update('none')
+      memoryChartInstance.value.update('none');
     }
   } catch (error) {
-    console.error('[内存监控] 更新图表失败:', error)
+    console.error('[内存监控] 更新图表失败:', error);
   }
-}
+};
 
 // 暂时禁用自动更新，避免Chart.js错误
 // 监听数据变化 - 只监听关键字段避免循环引用
@@ -321,26 +356,30 @@ const updateCharts = () => {
 // }, { deep: true })
 
 // 监听数据变化，重新创建图表以更新双圆环结构
-watch(() => [memoryUsage.value, swapUsage.value, hasSwap.value], () => {
-  if (memoryChartInstance.value) {
-    updateCharts()
-  }
-}, { immediate: false })
+watch(
+  () => [memoryUsage.value, swapUsage.value, hasSwap.value],
+  () => {
+    if (memoryChartInstance.value) {
+      updateCharts();
+    }
+  },
+  { immediate: false }
+);
 
 // 生命周期
 onMounted(() => {
-  initMemoryChart()
-})
+  initMemoryChart();
+});
 
 onUnmounted(() => {
   if (memoryChartInstance.value) {
     // 清理主题观察器
     if (memoryChartInstance.value._themeObserver) {
-      memoryChartInstance.value._themeObserver.disconnect()
+      memoryChartInstance.value._themeObserver.disconnect();
     }
-    memoryChartInstance.value.destroy()
+    memoryChartInstance.value.destroy();
   }
-})
+});
 </script>
 
 <style scoped>

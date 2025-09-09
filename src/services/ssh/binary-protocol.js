@@ -17,12 +17,12 @@ export const BINARY_MSG_TYPE = {
   HANDSHAKE: 0x00,
   HEARTBEAT: 0x01,
   ERROR: 0x02,
-  
-  // SSH终端数据 (0x10-0x1F) 
-  SSH_DATA: 0x10,           // SSH终端数据传输
-  SSH_RESIZE: 0x11,         // 终端大小调整
-  SSH_COMMAND: 0x12,        // 终端命令
-  
+
+  // SSH终端数据 (0x10-0x1F)
+  SSH_DATA: 0x10, // SSH终端数据传输
+  SSH_RESIZE: 0x11, // 终端大小调整
+  SSH_COMMAND: 0x12, // 终端命令
+
   // SFTP操作 (0x20-0x3F)
   SFTP_INIT: 0x20,
   SFTP_LIST: 0x21,
@@ -34,22 +34,22 @@ export const BINARY_MSG_TYPE = {
   SFTP_CHMOD: 0x27,
   SFTP_DOWNLOAD_FOLDER: 0x28,
   SFTP_CLOSE: 0x29,
-  SFTP_CANCEL: 0x2A,
-  
+  SFTP_CANCEL: 0x2a,
+
   // 响应消息 (0x80-0xFF)
-  SUCCESS: 0x80,            // 通用成功响应
-  PROGRESS: 0x81,           // 进度更新
-  SFTP_SUCCESS: 0x80,       // SFTP成功响应
-  SFTP_ERROR: 0x81,         // SFTP错误响应
-  SFTP_PROGRESS: 0x82,      // SFTP进度
-  SFTP_FILE_DATA: 0x83,     // SFTP文件数据
-  SFTP_FOLDER_DATA: 0x84,   // SFTP文件夹数据
-  SSH_DATA_ACK: 0x87        // SSH数据确认
+  SUCCESS: 0x80, // 通用成功响应
+  PROGRESS: 0x81, // 进度更新
+  SFTP_SUCCESS: 0x80, // SFTP成功响应
+  SFTP_ERROR: 0x81, // SFTP错误响应
+  SFTP_PROGRESS: 0x82, // SFTP进度
+  SFTP_FILE_DATA: 0x83, // SFTP文件数据
+  SFTP_FOLDER_DATA: 0x84, // SFTP文件夹数据
+  SSH_DATA_ACK: 0x87 // SSH数据确认
 };
 
 /**
  * 二进制消息编码器
- * 
+ *
  * 消息格式：
  * +--------+--------+--------+--------+--------+--------+...+--------+...+
  * | Magic  |Version | MsgType| HeaderLen (4B) | Header | Payload    |
@@ -204,7 +204,7 @@ export class BinaryMessageSender {
     try {
       const messageBuffer = BinaryMessageEncoder.encode(messageType, headerData, payloadData);
       ws.send(messageBuffer);
-      
+
       // log.debug('二进制消息已发送', {
       //   messageType: messageType.toString(16),
       //   headerSize: JSON.stringify(headerData).length,
@@ -228,7 +228,7 @@ export class BinaryMessageSender {
       timestamp: Date.now(),
       dataType: 'terminal'
     };
-    
+
     // 转换字符串为Uint8Array
     let payloadData;
     if (typeof data === 'string') {
@@ -238,7 +238,7 @@ export class BinaryMessageSender {
     } else {
       payloadData = new Uint8Array(data);
     }
-    
+
     this.send(ws, BINARY_MSG_TYPE.SSH_DATA, headerData, payloadData);
   }
 
@@ -256,7 +256,7 @@ export class BinaryMessageSender {
       rows,
       timestamp: Date.now()
     };
-    
+
     this.send(ws, BINARY_MSG_TYPE.SSH_RESIZE, headerData);
   }
 
@@ -271,7 +271,7 @@ export class BinaryMessageSender {
       sessionId,
       timestamp: Date.now()
     };
-    
+
     const payloadData = new TextEncoder().encode(command);
     this.send(ws, BINARY_MSG_TYPE.SSH_COMMAND, headerData, payloadData);
   }
@@ -332,7 +332,7 @@ export class UnifiedBinaryHandler {
     try {
       const message = BinaryMessageDecoder.decode(messageBuffer);
       const { messageType, headerData, payloadData } = message;
-      
+
       log.debug('收到统一二进制消息', {
         type: messageType.toString(16),
         sessionId: headerData.sessionId,

@@ -1,12 +1,15 @@
 <template>
   <div class="form-item-radio-group">
     <label v-if="label">{{ label }}</label>
-    <div class="radio-button-wrapper" :style="{ width: width }">
+    <div
+      class="radio-button-wrapper"
+      :style="{ width: width }"
+    >
       <button
         v-for="(option, index) in options"
         :key="index"
         class="radio-button"
-        :class="{ 'active': modelValue === option.value }"
+        :class="{ active: modelValue === option.value }"
         @click="onSelect(option.value)"
       >
         {{ option.label }}
@@ -16,7 +19,7 @@
 </template>
 
 <script>
-import { defineComponent } from 'vue'
+import { defineComponent } from 'vue';
 
 export default defineComponent({
   name: 'BaseRadioGroup',
@@ -40,15 +43,15 @@ export default defineComponent({
   },
   emits: ['update:modelValue'],
   setup(props, { emit }) {
-    const onSelect = (value) => {
-      emit('update:modelValue', value)
-    }
+    const onSelect = value => {
+      emit('update:modelValue', value);
+    };
 
     return {
       onSelect
-    }
+    };
   }
-})
+});
 </script>
 
 <style scoped>
@@ -88,4 +91,4 @@ label {
   background-color: #383838;
   color: #fff;
 }
-</style> 
+</style>

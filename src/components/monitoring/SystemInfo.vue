@@ -3,13 +3,17 @@
     <!-- 系统信息标题 -->
     <div class="section-header">
       <div class="section-title">
-        <MonitoringIcon name="system-info" :size="16" class="system-icon" />
+        <monitoring-icon
+          name="system-info"
+          :size="16"
+          class="system-icon"
+        />
         <span>系统信息</span>
       </div>
     </div>
 
     <!-- 统一加载指示器 -->
-    <MonitoringLoader
+    <monitoring-loader
       v-if="!componentState.hasData"
       :state="componentState.state"
       :error-message="componentState.error"
@@ -18,50 +22,80 @@
       @retry="handleRetry"
     />
 
-    <div class="info-grid" v-show="componentState.hasData">
-      <div class="info-item" v-if="systemInfo.os">
+    <div
+      v-show="componentState.hasData"
+      class="info-grid"
+    >
+      <div
+        v-if="systemInfo.os"
+        class="info-item"
+      >
         <span class="info-label">系统类型</span>
         <span class="info-value">{{ systemInfo.os }}</span>
       </div>
 
-      <div class="info-item" v-if="systemInfo.hostname">
+      <div
+        v-if="systemInfo.hostname"
+        class="info-item"
+      >
         <span class="info-label">主机名</span>
         <span class="info-value">{{ systemInfo.hostname }}</span>
       </div>
 
-      <div class="info-item" v-if="systemInfo.cpuModel">
+      <div
+        v-if="systemInfo.cpuModel"
+        class="info-item"
+      >
         <span class="info-label">CPU型号</span>
         <span class="info-value">{{ systemInfo.cpuModel }}</span>
       </div>
 
-      <div class="info-item" v-if="systemInfo.architecture">
+      <div
+        v-if="systemInfo.architecture"
+        class="info-item"
+      >
         <span class="info-label">系统架构</span>
         <span class="info-value">{{ systemInfo.architecture }}</span>
       </div>
 
       <!-- CPU核心信息已隐藏 -->
 
-      <div class="info-item" v-if="systemInfo.loadAverage">
+      <div
+        v-if="systemInfo.loadAverage"
+        class="info-item"
+      >
         <span class="info-label">系统负载</span>
         <span class="info-value">{{ formatLoadAverage(systemInfo.loadAverage) }}</span>
       </div>
 
-      <div class="info-item" v-if="systemInfo.uptime">
+      <div
+        v-if="systemInfo.uptime"
+        class="info-item"
+      >
         <span class="info-label">运行时间</span>
         <span class="info-value">{{ formatUptime(systemInfo.uptime) }}</span>
       </div>
 
-      <div class="info-item" v-if="systemInfo.bootTime">
+      <div
+        v-if="systemInfo.bootTime"
+        class="info-item"
+      >
         <span class="info-label">启动时间</span>
         <span class="info-value">{{ formatDateTime(systemInfo.bootTime) }}</span>
       </div>
 
-      <div class="info-item" v-if="systemInfo.internalIp">
+      <div
+        v-if="systemInfo.internalIp"
+        class="info-item"
+      >
         <span class="info-label">内网IP</span>
         <span class="info-value">{{ systemInfo.internalIp }}</span>
       </div>
 
-      <div class="info-item" v-if="systemInfo.publicIp">
+      <div
+        v-if="systemInfo.publicIp"
+        class="info-item"
+      >
         <span class="info-label">公网IP</span>
         <span class="info-value">{{ systemInfo.publicIp }}</span>
       </div>
@@ -70,10 +104,10 @@
 </template>
 
 <script setup>
-import { computed } from 'vue'
-import MonitoringIcon from './MonitoringIcon.vue'
-import MonitoringLoader from '../common/MonitoringLoader.vue'
-import monitoringStateManager, { MonitoringComponent } from '@/services/monitoringStateManager'
+import { computed } from 'vue';
+import MonitoringIcon from './MonitoringIcon.vue';
+import MonitoringLoader from '../common/MonitoringLoader.vue';
+import monitoringStateManager, { MonitoringComponent } from '@/services/monitoringStateManager';
 
 // Props
 const props = defineProps({
@@ -85,24 +119,24 @@ const props = defineProps({
     type: Object,
     default: null
   }
-})
+});
 
 // 使用传入的状态管理器实例，如果没有则使用全局实例（向后兼容）
-const currentStateManager = computed(() => props.stateManager || monitoringStateManager)
+const currentStateManager = computed(() => props.stateManager || monitoringStateManager);
 
 // 使用当前状态管理器
 const componentState = computed(() => {
-  return currentStateManager.value.getComponentState(MonitoringComponent.SYSTEM_INFO)
-})
+  return currentStateManager.value.getComponentState(MonitoringComponent.SYSTEM_INFO);
+});
 
 // 重试处理
 const handleRetry = () => {
-  currentStateManager.value.retry()
-}
+  currentStateManager.value.retry();
+};
 
 // 系统信息数据
 const systemInfo = computed(() => {
-  const data = props.monitoringData
+  const data = props.monitoringData;
 
   // 监控数据处理（不输出日志，用户可在WebSocket中查看）
 
@@ -126,72 +160,75 @@ const systemInfo = computed(() => {
     // IP地址信息 - 新增
     internalIp: data.ip?.internal || '',
     publicIp: data.ip?.public || ''
-  }
-})
+  };
+});
 
 // 格式化负载平均值
-const formatLoadAverage = (loadAvg) => {
-  if (!loadAvg) return '-'
+const formatLoadAverage = loadAvg => {
+  if (!loadAvg) return '-';
 
   // 处理对象格式 {load1: 2.5, load5: 0.98, load15: 0.48}
   if (typeof loadAvg === 'object' && !Array.isArray(loadAvg)) {
-    const load1 = parseFloat(loadAvg.load1 || 0).toFixed(2)
-    const load5 = parseFloat(loadAvg.load5 || 0).toFixed(2)
-    const load15 = parseFloat(loadAvg.load15 || 0).toFixed(2)
-    return `${load1}, ${load5}, ${load15}`
+    const load1 = parseFloat(loadAvg.load1 || 0).toFixed(2);
+    const load5 = parseFloat(loadAvg.load5 || 0).toFixed(2);
+    const load15 = parseFloat(loadAvg.load15 || 0).toFixed(2);
+    return `${load1}, ${load5}, ${load15}`;
   }
 
   // 处理数组格式
   if (Array.isArray(loadAvg)) {
-    return loadAvg.slice(0, 3).map(val => parseFloat(val).toFixed(2)).join(', ')
+    return loadAvg
+      .slice(0, 3)
+      .map(val => parseFloat(val).toFixed(2))
+      .join(', ');
   }
 
   // 处理字符串格式
   if (typeof loadAvg === 'string') {
-    return loadAvg
+    return loadAvg;
   }
 
   // 处理单个数值
-  return parseFloat(loadAvg).toFixed(2)
-}
+  return parseFloat(loadAvg).toFixed(2);
+};
 
 // 格式化运行时间
-const formatUptime = (uptime) => {
-  if (!uptime) return '-'
-  
-  const seconds = parseInt(uptime)
-  if (isNaN(seconds)) return uptime
-  
-  const days = Math.floor(seconds / 86400)
-  const hours = Math.floor((seconds % 86400) / 3600)
-  const minutes = Math.floor((seconds % 3600) / 60)
-  
+const formatUptime = uptime => {
+  if (!uptime) return '-';
+
+  const seconds = parseInt(uptime);
+  if (isNaN(seconds)) return uptime;
+
+  const days = Math.floor(seconds / 86400);
+  const hours = Math.floor((seconds % 86400) / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+
   if (days > 0) {
-    return `${days}天 ${hours}小时 ${minutes}分钟`
+    return `${days}天 ${hours}小时 ${minutes}分钟`;
   } else if (hours > 0) {
-    return `${hours}小时 ${minutes}分钟`
+    return `${hours}小时 ${minutes}分钟`;
   } else {
-    return `${minutes}分钟`
+    return `${minutes}分钟`;
   }
-}
+};
 
 // 格式化日期时间
-const formatDateTime = (timestamp) => {
-  if (!timestamp) return '-'
-  
+const formatDateTime = timestamp => {
+  if (!timestamp) return '-';
+
   try {
-    const date = new Date(timestamp * 1000) // 假设是Unix时间戳
+    const date = new Date(timestamp * 1000); // 假设是Unix时间戳
     if (isNaN(date.getTime())) {
       // 如果不是时间戳，尝试直接解析
-      const directDate = new Date(timestamp)
-      if (isNaN(directDate.getTime())) return timestamp
-      return directDate.toLocaleString('zh-CN')
+      const directDate = new Date(timestamp);
+      if (isNaN(directDate.getTime())) return timestamp;
+      return directDate.toLocaleString('zh-CN');
     }
-    return date.toLocaleString('zh-CN')
+    return date.toLocaleString('zh-CN');
   } catch (error) {
-    return timestamp
+    return timestamp;
   }
-}
+};
 </script>
 
 <style scoped>
@@ -279,25 +316,25 @@ const formatDateTime = (timestamp) => {
 /* 移除480px响应式样式，保持行内布局 */
 
 /* 主题适配 - 使用统一的主题变量 */
-:root[data-theme="dark"] .system-info-section,
+:root[data-theme='dark'] .system-info-section,
 .dark-theme .system-info-section {
   --monitor-text-primary: #e5e5e5;
   --monitor-text-secondary: #b0b0b0;
 }
 
-:root[data-theme="light"] .system-info-section,
+:root[data-theme='light'] .system-info-section,
 .light-theme .system-info-section {
   --monitor-text-primary: #303133;
   --monitor-text-secondary: #606266;
 }
 
 /* 系统图标主题适配 */
-:root[data-theme="dark"] .system-icon,
+:root[data-theme='dark'] .system-icon,
 .dark-theme .system-icon {
   color: #3b82f6;
 }
 
-:root[data-theme="light"] .system-icon,
+:root[data-theme='light'] .system-icon,
 .light-theme .system-icon {
   color: #1890ff;
 }

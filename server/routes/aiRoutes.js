@@ -110,7 +110,7 @@ router.get('/status', authMiddleware, async (req, res) => {
         ],
         features: [
           'completion',
-          'explanation', 
+          'explanation',
           'fix',
           'generation'
         ]
@@ -134,16 +134,16 @@ function maskApiKey(apiKey) {
   if (!apiKey || typeof apiKey !== 'string') {
     return '[无效密钥]';
   }
-  
+
   if (apiKey.length <= 8) {
     return '***';
   }
-  
+
   // 显示前4位和后4位，中间用*代替
   const start = apiKey.substring(0, 4);
   const end = apiKey.substring(apiKey.length - 4);
   const middle = '*'.repeat(Math.max(4, apiKey.length - 8));
-  
+
   return `${start}${middle}${end}`;
 }
 

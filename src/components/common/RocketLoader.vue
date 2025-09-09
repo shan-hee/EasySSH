@@ -1,20 +1,29 @@
 <template>
-  <div v-if="isVisible" class="rocket-loader-container" :class="{ 'fade-out': !isVisible }">
-    <div class="rocket-body" :class="animationPhase">
+  <div
+    v-if="isVisible"
+    class="rocket-loader-container"
+    :class="{ 'fade-out': !isVisible }"
+  >
+    <div
+      class="rocket-body"
+      :class="animationPhase"
+    >
       <span>
-        <span></span>
-        <span></span>
-        <span></span>
-        <span></span>
+        <span />
+        <span />
+        <span />
+        <span />
       </span>
-      <div class="base"><span></span></div>
-      <div class="face"></div>
+      <div class="base">
+        <span />
+      </div>
+      <div class="face" />
     </div>
     <div class="longfazers">
-      <span></span>
-      <span></span>
-      <span></span>
-      <span></span>
+      <span />
+      <span />
+      <span />
+      <span />
     </div>
     <h1>{{ getLoadingText() }}</h1>
   </div>
@@ -27,18 +36,19 @@ export default {
     phase: {
       type: String,
       default: 'connecting', // connecting, connected, completing
-      validator: (value) => ['connecting', 'connected', 'completing'].includes(value)
+      validator: value => ['connecting', 'connected', 'completing'].includes(value)
     }
   },
+  emits: ['animation-complete'],
   data() {
     return {
       currentPhase: 'connecting',
       isVisible: true
-    }
+    };
   },
   computed: {
     animationPhase() {
-      return `phase-${this.currentPhase}`
+      return `phase-${this.currentPhase}`;
     }
   },
   watch: {
@@ -47,48 +57,48 @@ export default {
         // 如果从completing回到connecting，重置状态
         if (oldPhase === 'completing' && newPhase === 'connecting') {
           // 直接重置状态
-          this.currentPhase = 'connecting'
-          this.isVisible = true
+          this.currentPhase = 'connecting';
+          this.isVisible = true;
         }
         // 处理阶段变化
-        this.handlePhaseChange(newPhase)
+        this.handlePhaseChange(newPhase);
       },
       immediate: true
     }
+  },
+  beforeUnmount() {
+    // 组件销毁前清理状态
+    this.isVisible = false;
+    this.currentPhase = 'connecting';
   },
   methods: {
     handlePhaseChange(newPhase) {
       if (newPhase === 'completing') {
         // 开始完成阶段动画
-        this.currentPhase = 'completing'
+        this.currentPhase = 'completing';
         // 0.5秒后隐藏整个加载器
         setTimeout(() => {
-          this.isVisible = false
-          this.$emit('animation-complete')
-        }, 500)
+          this.isVisible = false;
+          this.$emit('animation-complete');
+        }, 500);
       } else {
-        this.currentPhase = newPhase
+        this.currentPhase = newPhase;
       }
     },
     getLoadingText() {
       switch (this.currentPhase) {
-        case 'connecting':
-          return 'connecting...'
-        case 'connected':
-          return 'connected!'
-        case 'completing':
-          return 'connected!'
-        default:
-          return 'loading...'
+      case 'connecting':
+        return 'connecting...';
+      case 'connected':
+        return 'connected!';
+      case 'completing':
+        return 'connected!';
+      default:
+        return 'loading...';
       }
     }
-  },
-  beforeUnmount() {
-    // 组件销毁前清理状态
-    this.isVisible = false
-    this.currentPhase = 'connecting'
   }
-}
+};
 </script>
 
 <style scoped>
@@ -128,25 +138,33 @@ h1 {
   top: 50%;
   margin-top: -25px;
   animation: speeder 0.4s linear infinite;
-  transition: left 2s ease-in-out, transform 2s ease-in-out;
+  transition:
+    left 2s ease-in-out,
+    transform 2s ease-in-out;
 }
 
 /* 三个阶段的位置 */
 .rocket-body.phase-connecting {
   left: -200px; /* 从左侧开始 */
-  animation: move-to-center 0.5s ease-out forwards, speeder 0.4s linear infinite;
+  animation:
+    move-to-center 0.5s ease-out forwards,
+    speeder 0.4s linear infinite;
 }
 
 .rocket-body.phase-connected {
   left: 50%;
   margin-left: -50px; /* 居中 */
-  animation: speeder 0.4s linear infinite, hover-center 2s ease-in-out infinite;
+  animation:
+    speeder 0.4s linear infinite,
+    hover-center 2s ease-in-out infinite;
 }
 
 .rocket-body.phase-completing {
   left: 50%;
   margin-left: -50px;
-  animation: move-to-right 0.5s ease-in forwards, speeder 0.4s linear infinite;
+  animation:
+    move-to-right 0.5s ease-in forwards,
+    speeder 0.4s linear infinite;
 }
 
 /* 移动动画 */
@@ -176,8 +194,13 @@ h1 {
 
 /* 中间悬停效果 */
 @keyframes hover-center {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-5px); }
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-5px);
+  }
 }
 
 .rocket-body > span {
@@ -200,7 +223,7 @@ h1 {
 }
 
 .base span::before {
-  content: "";
+  content: '';
   height: 22px;
   width: 22px;
   border-radius: 50%;
@@ -211,7 +234,7 @@ h1 {
 }
 
 .base span::after {
-  content: "";
+  content: '';
   position: absolute;
   width: 0;
   height: 0;
@@ -234,7 +257,7 @@ h1 {
 }
 
 .face::after {
-  content: "";
+  content: '';
   height: 12px;
   width: 12px;
   background: var(--color-text-primary); /* 使用主题文字颜色 */
@@ -275,37 +298,79 @@ h1 {
 }
 
 @keyframes fazer1 {
-  0% { left: 0; }
-  100% { left: -80px; opacity: 0; }
+  0% {
+    left: 0;
+  }
+  100% {
+    left: -80px;
+    opacity: 0;
+  }
 }
 
 @keyframes fazer2 {
-  0% { left: 0; }
-  100% { left: -100px; opacity: 0; }
+  0% {
+    left: 0;
+  }
+  100% {
+    left: -100px;
+    opacity: 0;
+  }
 }
 
 @keyframes fazer3 {
-  0% { left: 0; }
-  100% { left: -50px; opacity: 0; }
+  0% {
+    left: 0;
+  }
+  100% {
+    left: -50px;
+    opacity: 0;
+  }
 }
 
 @keyframes fazer4 {
-  0% { left: 0; }
-  100% { left: -150px; opacity: 0; }
+  0% {
+    left: 0;
+  }
+  100% {
+    left: -150px;
+    opacity: 0;
+  }
 }
 
 @keyframes speeder {
-  0% { transform: translate(2px, 1px) rotate(0deg); }
-  10% { transform: translate(-1px, -3px) rotate(-1deg); }
-  20% { transform: translate(-2px, 0px) rotate(1deg); }
-  30% { transform: translate(1px, 2px) rotate(0deg); }
-  40% { transform: translate(1px, -1px) rotate(1deg); }
-  50% { transform: translate(-1px, 3px) rotate(-1deg); }
-  60% { transform: translate(-1px, 1px) rotate(0deg); }
-  70% { transform: translate(3px, 1px) rotate(-1deg); }
-  80% { transform: translate(-2px, -1px) rotate(1deg); }
-  90% { transform: translate(2px, 1px) rotate(0deg); }
-  100% { transform: translate(1px, -2px) rotate(-1deg); }
+  0% {
+    transform: translate(2px, 1px) rotate(0deg);
+  }
+  10% {
+    transform: translate(-1px, -3px) rotate(-1deg);
+  }
+  20% {
+    transform: translate(-2px, 0px) rotate(1deg);
+  }
+  30% {
+    transform: translate(1px, 2px) rotate(0deg);
+  }
+  40% {
+    transform: translate(1px, -1px) rotate(1deg);
+  }
+  50% {
+    transform: translate(-1px, 3px) rotate(-1deg);
+  }
+  60% {
+    transform: translate(-1px, 1px) rotate(0deg);
+  }
+  70% {
+    transform: translate(3px, 1px) rotate(-1deg);
+  }
+  80% {
+    transform: translate(-2px, -1px) rotate(1deg);
+  }
+  90% {
+    transform: translate(2px, 1px) rotate(0deg);
+  }
+  100% {
+    transform: translate(1px, -2px) rotate(-1deg);
+  }
 }
 
 .longfazers {
@@ -345,22 +410,42 @@ h1 {
 }
 
 @keyframes lf {
-  0% { left: 200%; }
-  100% { left: -200%; opacity: 0; }
+  0% {
+    left: 200%;
+  }
+  100% {
+    left: -200%;
+    opacity: 0;
+  }
 }
 
 @keyframes lf2 {
-  0% { left: 200%; }
-  100% { left: -200%; opacity: 0; }
+  0% {
+    left: 200%;
+  }
+  100% {
+    left: -200%;
+    opacity: 0;
+  }
 }
 
 @keyframes lf3 {
-  0% { left: 200%; }
-  100% { left: -100%; opacity: 0; }
+  0% {
+    left: 200%;
+  }
+  100% {
+    left: -100%;
+    opacity: 0;
+  }
 }
 
 @keyframes lf4 {
-  0% { left: 200%; }
-  100% { left: -100%; opacity: 0; }
+  0% {
+    left: 200%;
+  }
+  100% {
+    left: -100%;
+    opacity: 0;
+  }
 }
 </style>

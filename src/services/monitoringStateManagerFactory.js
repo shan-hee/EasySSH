@@ -3,23 +3,23 @@
  * 管理多个监控状态管理器实例，为每个终端提供独立的状态管理
  */
 
-import { MonitoringStateManager } from './monitoringStateManager'
-import log from '@/services/log'
+import { MonitoringStateManager } from './monitoringStateManager';
+import log from '@/services/log';
 
 class MonitoringStateManagerFactory {
   constructor() {
     // 终端ID到状态管理器实例的映射
-    this.instances = new Map()
-    
+    this.instances = new Map();
+
     // 实例创建时间记录（用于清理策略）
-    this.instanceCreationTime = new Map()
-    
+    this.instanceCreationTime = new Map();
+
     // 实例最后活动时间记录
-    this.instanceLastActivity = new Map()
-    
+    this.instanceLastActivity = new Map();
+
     // 清理定时器
-    this.cleanupTimer = null
-    
+    this.cleanupTimer = null;
+
     // 配置参数
     this.config = {
       // 实例最大空闲时间（毫秒）- 30分钟
@@ -28,12 +28,12 @@ class MonitoringStateManagerFactory {
       cleanupInterval: 5 * 60 * 1000,
       // 最大实例数量
       maxInstances: 50
-    }
-    
+    };
+
     // 启动清理定时器
-    this._startCleanupTimer()
-    
-    log.debug('[监控状态管理器工厂] 已初始化')
+    this._startCleanupTimer();
+
+    log.debug('[监控状态管理器工厂] 已初始化');
   }
 
   /**
@@ -44,47 +44,49 @@ class MonitoringStateManagerFactory {
    */
   getInstance(terminalId, hostId = null) {
     if (!terminalId) {
-      log.warn('[监控状态管理器工厂] 终端ID不能为空')
-      return null
+      log.warn('[监控状态管理器工厂] 终端ID不能为空');
+      return null;
     }
 
     // 检查是否已存在实例
     if (this.instances.has(terminalId)) {
-      const instance = this.instances.get(terminalId)
+      const instance = this.instances.get(terminalId);
       // 更新最后活动时间
-      this._updateLastActivity(terminalId)
-      log.debug(`[监控状态管理器工厂] 返回现有实例: ${terminalId}`)
-      return instance
+      this._updateLastActivity(terminalId);
+      log.debug(`[监控状态管理器工厂] 返回现有实例: ${terminalId}`);
+      return instance;
     }
 
     // 检查实例数量限制
     if (this.instances.size >= this.config.maxInstances) {
-      log.warn(`[监控状态管理器工厂] 实例数量已达上限 (${this.config.maxInstances})，尝试清理旧实例`)
-      this._forceCleanupOldInstances()
-      
+      log.warn(
+        `[监控状态管理器工厂] 实例数量已达上限 (${this.config.maxInstances})，尝试清理旧实例`
+      );
+      this._forceCleanupOldInstances();
+
       // 如果清理后仍然超限，拒绝创建新实例
       if (this.instances.size >= this.config.maxInstances) {
-        log.error('[监控状态管理器工厂] 无法创建新实例，实例数量超限')
-        return null
+        log.error('[监控状态管理器工厂] 无法创建新实例，实例数量超限');
+        return null;
       }
     }
 
     // 创建新实例
-    const instance = new MonitoringStateManager()
-    
+    const instance = new MonitoringStateManager();
+
     // 如果提供了hostId，设置终端和主机信息
     if (hostId) {
-      instance.setTerminal(terminalId, hostId)
+      instance.setTerminal(terminalId, hostId);
     }
-    
+
     // 存储实例和相关信息
-    this.instances.set(terminalId, instance)
-    this.instanceCreationTime.set(terminalId, Date.now())
-    this._updateLastActivity(terminalId)
-    
-    log.info(`[监控状态管理器工厂] 创建新实例: ${terminalId}${hostId ? ` (主机: ${hostId})` : ''}`)
-    
-    return instance
+    this.instances.set(terminalId, instance);
+    this.instanceCreationTime.set(terminalId, Date.now());
+    this._updateLastActivity(terminalId);
+
+    log.info(`[监控状态管理器工厂] 创建新实例: ${terminalId}${hostId ? ` (主机: ${hostId})` : ''}`);
+
+    return instance;
   }
 
   /**
@@ -94,31 +96,31 @@ class MonitoringStateManagerFactory {
    */
   destroyInstance(terminalId) {
     if (!terminalId) {
-      return false
+      return false;
     }
 
-    const instance = this.instances.get(terminalId)
+    const instance = this.instances.get(terminalId);
     if (!instance) {
-      log.debug(`[监控状态管理器工厂] 实例不存在，无需销毁: ${terminalId}`)
-      return false
+      log.debug(`[监控状态管理器工厂] 实例不存在，无需销毁: ${terminalId}`);
+      return false;
     }
 
     try {
       // 调用实例的清理方法
       if (typeof instance.destroy === 'function') {
-        instance.destroy()
+        instance.destroy();
       }
-      
+
       // 从映射中移除
-      this.instances.delete(terminalId)
-      this.instanceCreationTime.delete(terminalId)
-      this.instanceLastActivity.delete(terminalId)
-      
-      log.info(`[监控状态管理器工厂] 已销毁实例: ${terminalId}`)
-      return true
+      this.instances.delete(terminalId);
+      this.instanceCreationTime.delete(terminalId);
+      this.instanceLastActivity.delete(terminalId);
+
+      log.info(`[监控状态管理器工厂] 已销毁实例: ${terminalId}`);
+      return true;
     } catch (error) {
-      log.error(`[监控状态管理器工厂] 销毁实例失败: ${terminalId}`, error)
-      return false
+      log.error(`[监控状态管理器工厂] 销毁实例失败: ${terminalId}`, error);
+      return false;
     }
   }
 
@@ -128,7 +130,7 @@ class MonitoringStateManagerFactory {
    * @returns {boolean} 是否存在实例
    */
   hasInstance(terminalId) {
-    return this.instances.has(terminalId)
+    return this.instances.has(terminalId);
   }
 
   /**
@@ -136,7 +138,7 @@ class MonitoringStateManagerFactory {
    * @returns {string[]} 终端ID列表
    */
   getActiveTerminalIds() {
-    return Array.from(this.instances.keys())
+    return Array.from(this.instances.keys());
   }
 
   /**
@@ -144,26 +146,26 @@ class MonitoringStateManagerFactory {
    * @returns {Object} 统计信息
    */
   getStats() {
-    const now = Date.now()
+    const now = Date.now();
     const stats = {
       totalInstances: this.instances.size,
       maxInstances: this.config.maxInstances,
       instances: []
-    }
+    };
 
     for (const [terminalId, instance] of this.instances) {
-      const creationTime = this.instanceCreationTime.get(terminalId)
-      const lastActivity = this.instanceLastActivity.get(terminalId)
-      
+      const creationTime = this.instanceCreationTime.get(terminalId);
+      const lastActivity = this.instanceLastActivity.get(terminalId);
+
       stats.instances.push({
         terminalId,
         age: now - creationTime,
         idleTime: now - lastActivity,
         connected: instance.globalState?.connectionState === 'loaded'
-      })
+      });
     }
 
-    return stats
+    return stats;
   }
 
   /**
@@ -172,7 +174,7 @@ class MonitoringStateManagerFactory {
    * @private
    */
   _updateLastActivity(terminalId) {
-    this.instanceLastActivity.set(terminalId, Date.now())
+    this.instanceLastActivity.set(terminalId, Date.now());
   }
 
   /**
@@ -181,14 +183,14 @@ class MonitoringStateManagerFactory {
    */
   _startCleanupTimer() {
     if (this.cleanupTimer) {
-      clearInterval(this.cleanupTimer)
+      clearInterval(this.cleanupTimer);
     }
 
     this.cleanupTimer = setInterval(() => {
-      this._cleanupIdleInstances()
-    }, this.config.cleanupInterval)
+      this._cleanupIdleInstances();
+    }, this.config.cleanupInterval);
 
-    log.debug('[监控状态管理器工厂] 清理定时器已启动')
+    log.debug('[监控状态管理器工厂] 清理定时器已启动');
   }
 
   /**
@@ -196,19 +198,19 @@ class MonitoringStateManagerFactory {
    * @private
    */
   _cleanupIdleInstances() {
-    const now = Date.now()
-    const toDestroy = []
+    const now = Date.now();
+    const toDestroy = [];
 
     for (const [terminalId, lastActivity] of this.instanceLastActivity) {
-      const idleTime = now - lastActivity
+      const idleTime = now - lastActivity;
       if (idleTime > this.config.maxIdleTime) {
-        toDestroy.push(terminalId)
+        toDestroy.push(terminalId);
       }
     }
 
     if (toDestroy.length > 0) {
-      log.info(`[监控状态管理器工厂] 清理 ${toDestroy.length} 个空闲实例`)
-      toDestroy.forEach(terminalId => this.destroyInstance(terminalId))
+      log.info(`[监控状态管理器工厂] 清理 ${toDestroy.length} 个空闲实例`);
+      toDestroy.forEach(terminalId => this.destroyInstance(terminalId));
     }
   }
 
@@ -219,12 +221,12 @@ class MonitoringStateManagerFactory {
   _forceCleanupOldInstances() {
     const instances = Array.from(this.instanceCreationTime.entries())
       .sort((a, b) => a[1] - b[1]) // 按创建时间排序
-      .slice(0, Math.floor(this.config.maxInstances * 0.2)) // 清理最旧的20%
+      .slice(0, Math.floor(this.config.maxInstances * 0.2)); // 清理最旧的20%
 
     instances.forEach(([terminalId]) => {
-      log.info(`[监控状态管理器工厂] 强制清理旧实例: ${terminalId}`)
-      this.destroyInstance(terminalId)
-    })
+      log.info(`[监控状态管理器工厂] 强制清理旧实例: ${terminalId}`);
+      this.destroyInstance(terminalId);
+    });
   }
 
   /**
@@ -233,24 +235,24 @@ class MonitoringStateManagerFactory {
   destroy() {
     // 停止清理定时器
     if (this.cleanupTimer) {
-      clearInterval(this.cleanupTimer)
-      this.cleanupTimer = null
+      clearInterval(this.cleanupTimer);
+      this.cleanupTimer = null;
     }
 
     // 销毁所有实例
-    const terminalIds = Array.from(this.instances.keys())
-    terminalIds.forEach(terminalId => this.destroyInstance(terminalId))
+    const terminalIds = Array.from(this.instances.keys());
+    terminalIds.forEach(terminalId => this.destroyInstance(terminalId));
 
-    log.info('[监控状态管理器工厂] 已销毁工厂和所有实例')
+    log.info('[监控状态管理器工厂] 已销毁工厂和所有实例');
   }
 }
 
 // 创建全局工厂实例
-const monitoringStateManagerFactory = new MonitoringStateManagerFactory()
+const monitoringStateManagerFactory = new MonitoringStateManagerFactory();
 
 // 页面卸载时清理
 window.addEventListener('beforeunload', () => {
-  monitoringStateManagerFactory.destroy()
-})
+  monitoringStateManagerFactory.destroy();
+});
 
-export default monitoringStateManagerFactory
+export default monitoringStateManagerFactory;

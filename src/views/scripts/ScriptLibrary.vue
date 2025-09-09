@@ -3,23 +3,62 @@
     <div class="page-header">
       <h1>脚本库</h1>
       <div class="header-actions">
-        <button class="btn-secondary" @click="importScripts">
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16">
-            <path fill="currentColor" d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20Z" />
-            <path fill="currentColor" d="M12,11L16,15H13V19H11V15H8L12,11Z" />
+        <button
+          class="btn-secondary"
+          @click="importScripts"
+        >
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            viewBox="0 0 24 24"
+            width="16"
+            height="16"
+          >
+            <path
+              fill="currentColor"
+              d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20Z"
+            />
+            <path
+              fill="currentColor"
+              d="M12,11L16,15H13V19H11V15H8L12,11Z"
+            />
           </svg>
           导入脚本
         </button>
-        <button class="btn-secondary" @click="exportScripts">
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16">
-            <path fill="currentColor" d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20Z" />
-            <path fill="currentColor" d="M12,13L8,9H11V5H13V9H16L12,13Z" />
+        <button
+          class="btn-secondary"
+          @click="exportScripts"
+        >
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            viewBox="0 0 24 24"
+            width="16"
+            height="16"
+          >
+            <path
+              fill="currentColor"
+              d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20Z"
+            />
+            <path
+              fill="currentColor"
+              d="M12,13L8,9H11V5H13V9H16L12,13Z"
+            />
           </svg>
           导出脚本
         </button>
-        <button class="btn-primary" @click="createNewScript">
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16">
-            <path fill="currentColor" d="M19,13H13V19H11V13H5V11H11V5H13V11H19V13Z" />
+        <button
+          class="btn-primary"
+          @click="createNewScript"
+        >
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            viewBox="0 0 24 24"
+            width="16"
+            height="16"
+          >
+            <path
+              fill="currentColor"
+              d="M19,13H13V19H11V13H5V11H11V5H13V11H19V13Z"
+            />
           </svg>
           新建脚本
         </button>
@@ -31,19 +70,19 @@
         accept=".json"
         style="display: none"
         @change="handleFileImport"
-      />
+      >
     </div>
 
     <div class="script-categories">
-      <div 
+      <div
         class="tag-bubble"
         :class="{ active: selectedTags.length === 0 }"
         @click="clearTags"
       >
         <span>全部</span>
       </div>
-      <div 
-        v-for="tag in availableTags" 
+      <div
+        v-for="tag in availableTags"
         :key="tag"
         class="tag-bubble"
         :class="{ active: selectedTags.includes(tag) }"
@@ -55,62 +94,142 @@
 
     <div class="scripts-panel">
       <div class="search-bar">
-        <input 
-          type="text" 
-          v-model="searchQuery" 
-          placeholder="搜索脚本..." 
+        <input
+          v-model="searchQuery"
+          type="text"
+          placeholder="搜索脚本..."
           class="search-input"
-        />
-        <button class="btn-filter" @click="showFilterOptions = !showFilterOptions">
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="18" height="18">
-            <path fill="currentColor" d="M14,12V19.88C14.04,20.18 13.94,20.5 13.71,20.71C13.32,21.1 12.69,21.1 12.3,20.71L10.29,18.7C10.06,18.47 9.96,18.16 10,17.87V12H9.97L4.21,4.62C3.87,4.19 3.95,3.56 4.38,3.22C4.57,3.08 4.78,3 5,3V3H19V3C19.22,3 19.43,3.08 19.62,3.22C20.05,3.56 20.13,4.19 19.79,4.62L14.03,12H14Z" />
+        >
+        <button
+          class="btn-filter"
+          @click="showFilterOptions = !showFilterOptions"
+        >
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            viewBox="0 0 24 24"
+            width="18"
+            height="18"
+          >
+            <path
+              fill="currentColor"
+              d="M14,12V19.88C14.04,20.18 13.94,20.5 13.71,20.71C13.32,21.1 12.69,21.1 12.3,20.71L10.29,18.7C10.06,18.47 9.96,18.16 10,17.87V12H9.97L4.21,4.62C3.87,4.19 3.95,3.56 4.38,3.22C4.57,3.08 4.78,3 5,3V3H19V3C19.22,3 19.43,3.08 19.62,3.22C20.05,3.56 20.13,4.19 19.79,4.62L14.03,12H14Z"
+            />
           </svg>
           筛选
         </button>
-        <div v-if="showFilterOptions" class="filter-dropdown">
+        <div
+          v-if="showFilterOptions"
+          class="filter-dropdown"
+        >
           <div class="filter-option">
-            <input type="checkbox" id="my-scripts" v-model="filterMyScripts">
+            <input
+              id="my-scripts"
+              v-model="filterMyScripts"
+              type="checkbox"
+            >
             <label for="my-scripts">只显示我的脚本</label>
           </div>
           <div class="filter-option">
-            <input type="checkbox" id="recent-scripts" v-model="filterRecentScripts">
+            <input
+              id="recent-scripts"
+              v-model="filterRecentScripts"
+              type="checkbox"
+            >
             <label for="recent-scripts">最近使用</label>
           </div>
           <div class="filter-option">
-            <input type="checkbox" id="favorite-scripts" v-model="filterFavoriteScripts">
+            <input
+              id="favorite-scripts"
+              v-model="filterFavoriteScripts"
+              type="checkbox"
+            >
             <label for="favorite-scripts">收藏的脚本</label>
           </div>
         </div>
       </div>
 
-      <div class="scripts-table-container" ref="tableContainer">
-        <div v-if="allFilteredScripts.length === 0" class="no-scripts">
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="48" height="48">
-            <path fill="var(--color-text-placeholder)" d="M19,3H5C3.89,3 3,3.89 3,5V19A2,2 0 0,0 5,21H19A2,2 0 0,0 21,19V5C21,3.89 20.1,3 19,3M19,5V19H5V5H19Z" />
-            <path fill="var(--color-text-placeholder)" d="M11,7H13V9H11V7M11,11H13V17H11V11Z" />
+      <div
+        ref="tableContainer"
+        class="scripts-table-container"
+      >
+        <div
+          v-if="allFilteredScripts.length === 0"
+          class="no-scripts"
+        >
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            viewBox="0 0 24 24"
+            width="48"
+            height="48"
+          >
+            <path
+              fill="var(--color-text-placeholder)"
+              d="M19,3H5C3.89,3 3,3.89 3,5V19A2,2 0 0,0 5,21H19A2,2 0 0,0 21,19V5C21,3.89 20.1,3 19,3M19,5V19H5V5H19Z"
+            />
+            <path
+              fill="var(--color-text-placeholder)"
+              d="M11,7H13V9H11V7M11,11H13V17H11V11Z"
+            />
           </svg>
           <p>{{ noScriptsMessage }}</p>
-          <button class="btn-secondary" @click="createNewScript">创建第一个脚本</button>
+          <button
+            class="btn-secondary"
+            @click="createNewScript"
+          >
+            创建第一个脚本
+          </button>
         </div>
 
-        <div v-else class="table-with-pagination">
+        <div
+          v-else
+          class="table-with-pagination"
+        >
           <table class="scripts-table">
             <thead>
               <tr>
-                <th class="script-name-column">名称</th>
-                <th class="script-desc-column">备注</th>
-                <th class="script-tags-column">标签</th>
-                <th class="script-command-column">指令内容</th>
-                <th class="script-actions-column">操作</th>
+                <th class="script-name-column">
+                  名称
+                </th>
+                <th class="script-desc-column">
+                  备注
+                </th>
+                <th class="script-tags-column">
+                  标签
+                </th>
+                <th class="script-command-column">
+                  指令内容
+                </th>
+                <th class="script-actions-column">
+                  操作
+                </th>
               </tr>
             </thead>
             <tbody>
-              <tr v-for="script in filteredScripts" :key="`${script.source || 'public'}-${script.id}`" class="script-row">
+              <tr
+                v-for="script in filteredScripts"
+                :key="`${script.source || 'public'}-${script.id}`"
+                class="script-row"
+              >
                 <td class="script-name">
                   <div class="name-with-favorite">
-                    <button class="btn-icon favorite-icon" @click="toggleFavorite(script)">
-                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16">
-                        <path fill="currentColor" :d="scriptLibraryService.isFavorite(script.id) ? 'M12,17.27L18.18,21L16.54,13.97L22,9.24L14.81,8.62L12,2L9.19,8.62L2,9.24L7.45,13.97L5.82,21L12,17.27Z' : 'M12,15.39L8.24,17.66L9.23,13.38L5.91,10.5L10.29,10.13L12,6.09L13.71,10.13L18.09,10.5L14.77,13.38L15.76,17.66M22,9.24L14.81,8.63L12,2L9.19,8.63L2,9.24L7.45,13.97L5.82,21L12,17.27L18.18,21L16.54,13.97L22,9.24Z'" />
+                    <button
+                      class="btn-icon favorite-icon"
+                      @click="toggleFavorite(script)"
+                    >
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        viewBox="0 0 24 24"
+                        width="16"
+                        height="16"
+                      >
+                        <path
+                          fill="currentColor"
+                          :d="
+                            scriptLibraryService.isFavorite(script.id)
+                              ? 'M12,17.27L18.18,21L16.54,13.97L22,9.24L14.81,8.62L12,2L9.19,8.62L2,9.24L7.45,13.97L5.82,21L12,17.27Z'
+                              : 'M12,15.39L8.24,17.66L9.23,13.38L5.91,10.5L10.29,10.13L12,6.09L13.71,10.13L18.09,10.5L14.77,13.38L15.76,17.66M22,9.24L14.81,8.63L12,2L9.19,8.63L2,9.24L7.45,13.97L5.82,21L12,17.27L18.18,21L16.54,13.97L22,9.24Z'
+                          "
+                        />
                       </svg>
                     </button>
                     {{ script.name }}
@@ -120,7 +239,9 @@
                     <span>更新于: {{ formatDate(script.updatedAt) }}</span>
                   </div>
                 </td>
-                <td class="script-description">{{ script.description }}</td>
+                <td class="script-description">
+                  {{ script.description }}
+                </td>
                 <td class="script-tags">
                   <div class="tag-list">
                     <span
@@ -147,11 +268,18 @@
                     title="编辑"
                     @click="editScript(script)"
                   >
-                    <el-icon><Edit /></el-icon>
+                    <el-icon><edit /></el-icon>
                   </el-button>
                   <!-- 运行按钮对所有脚本都显示 -->
-                  <el-button class="action-btn" circle size="small" link title="运行" @click="runScript(script)">
-                    <el-icon><CaretRight /></el-icon>
+                  <el-button
+                    class="action-btn"
+                    circle
+                    size="small"
+                    link
+                    title="运行"
+                    @click="runScript(script)"
+                  >
+                    <el-icon><caret-right /></el-icon>
                   </el-button>
                   <!-- 只有用户脚本才显示删除按钮 -->
                   <el-button
@@ -163,7 +291,7 @@
                     title="删除"
                     @click="deleteScript(script)"
                   >
-                    <el-icon><Delete /></el-icon>
+                    <el-icon><delete /></el-icon>
                   </el-button>
                 </td>
               </tr>
@@ -171,7 +299,10 @@
           </table>
 
           <!-- 分页组件 -->
-          <div class="pagination-container" v-if="shouldShowPagination">
+          <div
+            v-if="shouldShowPagination"
+            class="pagination-container"
+          >
             <div class="custom-pagination">
               <!-- 总数显示 -->
               <span class="pagination-total">共 {{ allFilteredScripts.length }} 条</span>
@@ -185,8 +316,8 @@
                   filterable
                   allow-create
                   default-first-option
-                  @change="handlePageSizeChange"
                   placeholder="输入或选择"
+                  @change="handlePageSizeChange"
                 >
                   <el-option
                     v-for="size in pageSizeOptions"
@@ -205,8 +336,8 @@
                 :page-size="pageSize"
                 layout="prev, pager, next, jumper"
                 background
-                @current-change="handlePageChange"
                 :hide-on-single-page="false"
+                @current-change="handlePageChange"
               />
             </div>
           </div>
@@ -235,13 +366,21 @@
           <div class="form-item">
             <label>脚本名称</label>
             <div class="input-wrapper">
-              <input type="text" v-model="scriptForm.name" placeholder="请输入脚本名称" />
+              <input
+                v-model="scriptForm.name"
+                type="text"
+                placeholder="请输入脚本名称"
+              >
             </div>
           </div>
           <div class="form-item">
             <label>备注</label>
             <div class="input-wrapper">
-              <input type="text" v-model="scriptForm.description" placeholder="请输入备注信息" />
+              <input
+                v-model="scriptForm.description"
+                type="text"
+                placeholder="请输入备注信息"
+              >
             </div>
           </div>
         </div>
@@ -250,7 +389,11 @@
           <div class="form-item">
             <label>指令内容</label>
             <div class="input-wrapper">
-              <textarea v-model="scriptForm.command" rows="4" placeholder="请输入指令内容"></textarea>
+              <textarea
+                v-model="scriptForm.command"
+                rows="4"
+                placeholder="请输入指令内容"
+              />
             </div>
           </div>
         </div>
@@ -282,20 +425,23 @@
       <template #footer>
         <span class="dialog-footer">
           <el-button @click="dialogVisible = false">取消</el-button>
-          <el-button type="primary" @click="saveScript">保存</el-button>
+          <el-button
+            type="primary"
+            @click="saveScript"
+          >保存</el-button>
         </span>
       </template>
     </el-dialog>
 
     <!-- 服务器选择对话框 -->
-    <ServerSelectionDialog
+    <server-selection-dialog
       v-model:visible="serverSelectionVisible"
       :script="selectedScript"
       @execute="handleScriptExecution"
     />
 
     <!-- 脚本执行结果对话框 -->
-    <ScriptExecutionDialog
+    <script-execution-dialog
       v-model:visible="executionResultVisible"
       :script="executingScript"
       :execution-results="executionResults"
@@ -305,14 +451,14 @@
 </template>
 
 <script>
-import { defineComponent, ref, computed, watch, onMounted, nextTick } from 'vue'
-import { Edit, Delete, CaretRight } from '@element-plus/icons-vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
-import scriptLibraryService from '@/services/scriptLibrary.js'
-import ServerSelectionDialog from '@/components/dialogs/ServerSelectionDialog.vue'
-import ScriptExecutionDialog from '@/components/dialogs/ScriptExecutionDialog.vue'
-import apiService from '@/services/api.js'
-import log from '@/services/log.js'
+import { defineComponent, ref, computed, watch, onMounted, nextTick } from 'vue';
+import { Edit, Delete, CaretRight } from '@element-plus/icons-vue';
+import { ElMessage, ElMessageBox } from 'element-plus';
+import scriptLibraryService from '@/services/scriptLibrary.js';
+import ServerSelectionDialog from '@/components/dialogs/ServerSelectionDialog.vue';
+import ScriptExecutionDialog from '@/components/dialogs/ScriptExecutionDialog.vue';
+import apiService from '@/services/api.js';
+import log from '@/services/log.js';
 
 export default defineComponent({
   name: 'ScriptLibrary',
@@ -324,312 +470,321 @@ export default defineComponent({
     ScriptExecutionDialog
   },
   setup() {
-    const searchQuery = ref('')
-    const showFilterOptions = ref(false)
-    const filterMyScripts = ref(false)
-    const filterRecentScripts = ref(false)
-    const filterFavoriteScripts = ref(false)
-    const selectedTags = ref([])
+    const searchQuery = ref('');
+    const showFilterOptions = ref(false);
+    const filterMyScripts = ref(false);
+    const filterRecentScripts = ref(false);
+    const filterFavoriteScripts = ref(false);
+    const selectedTags = ref([]);
 
     // 分页相关
-    const currentPage = ref(1)
-    const pageSize = ref(10) // 默认每页10条，后续会根据容器高度动态调整
-    const tableContainer = ref(null)
-    const userHasChangedPageSize = ref(false) // 用户是否手动调整过页面大小
-    const pageSizeOptions = ref([5, 10, 15, 20, 30, 50, 100]) // 页面大小选项
+    const currentPage = ref(1);
+    const pageSize = ref(10); // 默认每页10条，后续会根据容器高度动态调整
+    const tableContainer = ref(null);
+    const userHasChangedPageSize = ref(false); // 用户是否手动调整过页面大小
+    const pageSizeOptions = ref([5, 10, 15, 20, 30, 50, 100]); // 页面大小选项
 
     // 导入导出相关
-    const fileInput = ref(null)
+    const fileInput = ref(null);
 
     // 从脚本库服务获取数据
-    const scripts = computed(() => scriptLibraryService.getAllScripts())
+    const scripts = computed(() => scriptLibraryService.getAllScripts());
 
     // 获取所有可用的标签
     const availableTags = computed(() => {
-      const tagSet = new Set()
+      const tagSet = new Set();
       scripts.value.forEach(script => {
-        script.tags.forEach(tag => tagSet.add(tag))
-      })
-      return Array.from(tagSet)
-    })
+        script.tags.forEach(tag => tagSet.add(tag));
+      });
+      return Array.from(tagSet);
+    });
 
     // 根据筛选条件过滤脚本（不分页）
     const allFilteredScripts = computed(() => {
-      let result = scripts.value
+      let result = scripts.value;
 
       // 根据标签筛选
       if (selectedTags.value.length > 0) {
         result = result.filter(script =>
           selectedTags.value.every(tag => script.tags.includes(tag))
-        )
+        );
       }
 
       // 根据搜索词筛选
       if (searchQuery.value) {
-        const query = searchQuery.value.toLowerCase()
-        result = result.filter(script =>
-          script.name.toLowerCase().includes(query) ||
-          script.description.toLowerCase().includes(query) ||
-          script.tags.some(tag => tag.toLowerCase().includes(query))
-        )
+        const query = searchQuery.value.toLowerCase();
+        result = result.filter(
+          script =>
+            script.name.toLowerCase().includes(query) ||
+            script.description.toLowerCase().includes(query) ||
+            script.tags.some(tag => tag.toLowerCase().includes(query))
+        );
       }
 
       // 根据其他筛选条件
       if (filterMyScripts.value) {
-        result = result.filter(script => script.source === 'user')
+        result = result.filter(script => script.source === 'user');
       }
 
       if (filterFavoriteScripts.value) {
-        result = result.filter(script => scriptLibraryService.isFavorite(script.id))
+        result = result.filter(script => scriptLibraryService.isFavorite(script.id));
       }
 
       if (filterRecentScripts.value) {
-        const sevenDaysAgo = new Date()
-        sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7)
+        const sevenDaysAgo = new Date();
+        sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
         result = result.filter(script => {
-          if (!script.updatedAt) return false
-          const scriptDate = typeof script.updatedAt === 'string' ? new Date(script.updatedAt) : script.updatedAt
-          return scriptDate >= sevenDaysAgo
-        })
+          if (!script.updatedAt) return false;
+          const scriptDate =
+            typeof script.updatedAt === 'string' ? new Date(script.updatedAt) : script.updatedAt;
+          return scriptDate >= sevenDaysAgo;
+        });
       }
 
-      return result
-    })
+      return result;
+    });
 
     // 总页数
     const totalPages = computed(() => {
-      return Math.ceil(allFilteredScripts.value.length / pageSize.value)
-    })
+      return Math.ceil(allFilteredScripts.value.length / pageSize.value);
+    });
 
     // 是否显示分页组件
     const shouldShowPagination = computed(() => {
-      const dataCount = allFilteredScripts.value.length
+      const dataCount = allFilteredScripts.value.length;
 
       // 如果没有数据，不显示分页
-      if (dataCount === 0) return false
+      if (dataCount === 0) return false;
 
       // 如果用户手动调整过页面大小，始终显示分页组件（除非数据很少）
-      if (userHasChangedPageSize.value && dataCount > 3) return true
+      if (userHasChangedPageSize.value && dataCount > 3) return true;
 
       // 如果数据量大于默认的最小页面大小，显示分页组件
-      if (dataCount > 5) return true
+      if (dataCount > 5) return true;
 
       // 如果有多页，显示分页组件
-      if (totalPages.value > 1) return true
+      if (totalPages.value > 1) return true;
 
-      return false
-    })
+      return false;
+    });
 
     // 当前页显示的脚本（分页后）
     const filteredScripts = computed(() => {
-      const start = (currentPage.value - 1) * pageSize.value
-      const end = start + pageSize.value
-      return allFilteredScripts.value.slice(start, end)
-    })
+      const start = (currentPage.value - 1) * pageSize.value;
+      const end = start + pageSize.value;
+      return allFilteredScripts.value.slice(start, end);
+    });
 
     // 标签操作方法
-    const toggleTag = (tag) => {
-      const index = selectedTags.value.indexOf(tag)
+    const toggleTag = tag => {
+      const index = selectedTags.value.indexOf(tag);
       if (index === -1) {
-        selectedTags.value.push(tag)
+        selectedTags.value.push(tag);
       } else {
-        selectedTags.value.splice(index, 1)
+        selectedTags.value.splice(index, 1);
       }
-    }
+    };
 
     const clearTags = () => {
-      selectedTags.value = []
-      currentPage.value = 1 // 重置到第一页
-    }
+      selectedTags.value = [];
+      currentPage.value = 1; // 重置到第一页
+    };
 
     // 分页相关方法
-    const handlePageChange = (page) => {
-      currentPage.value = page
+    const handlePageChange = page => {
+      currentPage.value = page;
 
       // 页面变化后，检查是否需要滚动
       nextTick(() => {
-        checkScrollNeed()
-      })
-    }
+        checkScrollNeed();
+      });
+    };
 
-    const handlePageSizeChange = (size) => {
+    const handlePageSizeChange = size => {
       // 验证输入值
-      let validSize = parseInt(size)
-      let showMessage = false
-      let originalInput = size
+      let validSize = parseInt(size);
+      let showMessage = false;
+      const originalInput = size;
 
       // 确保是有效数字
       if (isNaN(validSize) || validSize < 1) {
-        validSize = 10 // 默认值
+        validSize = 10; // 默认值
         if (originalInput !== '' && originalInput !== null && originalInput !== undefined) {
-          ElMessage.warning('请输入有效的数字，已重置为默认值10')
-          showMessage = true
+          ElMessage.warning('请输入有效的数字，已重置为默认值10');
+          showMessage = true;
         }
       }
 
       // 限制最大值
       if (validSize > 1000) {
-        validSize = 1000
-        ElMessage.warning('每页最多显示1000条数据，已调整为1000')
-        showMessage = true
+        validSize = 1000;
+        ElMessage.warning('每页最多显示1000条数据，已调整为1000');
+        showMessage = true;
       }
 
       // 限制最小值
       if (validSize < 1) {
-        validSize = 1
-        ElMessage.warning('每页至少显示1条数据，已调整为1')
-        showMessage = true
+        validSize = 1;
+        ElMessage.warning('每页至少显示1条数据，已调整为1');
+        showMessage = true;
       }
 
       // 如果输入的值被调整了，给出提示
       if (!showMessage && parseInt(originalInput) !== validSize && originalInput !== validSize) {
-        ElMessage.info(`已调整为 ${validSize} 条每页`)
+        ElMessage.info(`已调整为 ${validSize} 条每页`);
       }
 
-      pageSize.value = validSize
-      currentPage.value = 1 // 重置到第一页
-      userHasChangedPageSize.value = true // 标记用户已手动调整
+      pageSize.value = validSize;
+      currentPage.value = 1; // 重置到第一页
+      userHasChangedPageSize.value = true; // 标记用户已手动调整
 
       // 如果用户输入了新的值，添加到选项中
       if (!pageSizeOptions.value.includes(validSize) && validSize <= 100) {
-        pageSizeOptions.value.push(validSize)
-        pageSizeOptions.value.sort((a, b) => a - b)
+        pageSizeOptions.value.push(validSize);
+        pageSizeOptions.value.sort((a, b) => a - b);
       }
 
       // 页面大小变化后，检查是否需要滚动
       nextTick(() => {
-        checkScrollNeed()
-      })
-    }
+        checkScrollNeed();
+      });
+    };
 
     // 检查是否需要滚动
     const checkScrollNeed = () => {
-      if (!tableContainer.value) return
+      if (!tableContainer.value) return;
 
       nextTick(() => {
-        const container = tableContainer.value
-        const tableWithPagination = container.querySelector('.table-with-pagination')
+        const container = tableContainer.value;
+        const tableWithPagination = container.querySelector('.table-with-pagination');
 
         if (tableWithPagination) {
-          const containerHeight = container.clientHeight
-          const contentHeight = tableWithPagination.scrollHeight
+          const containerHeight = container.clientHeight;
+          const contentHeight = tableWithPagination.scrollHeight;
 
           // 添加一些容差，避免因为像素差异导致的问题
-          const tolerance = 5
+          const tolerance = 5;
 
           // 如果内容高度超过容器高度，允许滚动
           if (contentHeight > containerHeight + tolerance) {
-            container.style.overflowY = 'auto'
-            tableWithPagination.style.overflowY = 'visible'
+            container.style.overflowY = 'auto';
+            tableWithPagination.style.overflowY = 'visible';
           } else {
             // 否则隐藏滚动条
-            container.style.overflowY = 'hidden'
-            tableWithPagination.style.overflowY = 'hidden'
+            container.style.overflowY = 'hidden';
+            tableWithPagination.style.overflowY = 'hidden';
           }
         }
-      })
-    }
+      });
+    };
 
     // 计算最佳页面大小
     const calculateOptimalPageSize = () => {
-      if (!tableContainer.value || allFilteredScripts.value.length === 0) return
+      if (!tableContainer.value || allFilteredScripts.value.length === 0) return;
 
       // 等待DOM更新完成后再计算
       nextTick(() => {
-        const containerHeight = tableContainer.value.clientHeight
+        const containerHeight = tableContainer.value.clientHeight;
 
         // 查找实际的表头高度
-        const tableHeader = tableContainer.value.querySelector('.scripts-table thead')
-        const headerHeight = tableHeader ? tableHeader.offsetHeight : 50
+        const tableHeader = tableContainer.value.querySelector('.scripts-table thead');
+        const headerHeight = tableHeader ? tableHeader.offsetHeight : 50;
 
         // 查找实际的分页组件高度（如果存在）
-        const paginationEl = tableContainer.value.querySelector('.pagination-container')
-        const paginationHeight = paginationEl ? paginationEl.offsetHeight : 65
+        const paginationEl = tableContainer.value.querySelector('.pagination-container');
+        const paginationHeight = paginationEl ? paginationEl.offsetHeight : 65;
 
         // 查找实际的行高度
-        const firstRow = tableContainer.value.querySelector('.script-row')
-        const rowHeight = firstRow ? firstRow.offsetHeight : 65
+        const firstRow = tableContainer.value.querySelector('.script-row');
+        const rowHeight = firstRow ? firstRow.offsetHeight : 65;
 
         // 计算可用高度，预留分页组件空间
-        const reservedPaginationHeight = shouldShowPagination.value ? paginationHeight : 0
-        const availableHeight = containerHeight - headerHeight - reservedPaginationHeight - 5
-        const optimalRows = Math.floor(availableHeight / rowHeight)
+        const reservedPaginationHeight = shouldShowPagination.value ? paginationHeight : 0;
+        const availableHeight = containerHeight - headerHeight - reservedPaginationHeight - 5;
+        const optimalRows = Math.floor(availableHeight / rowHeight);
 
         // 确保至少显示3行，最多15行
-        let newPageSize = Math.max(3, Math.min(15, optimalRows))
+        let newPageSize = Math.max(3, Math.min(15, optimalRows));
 
         // 如果数据总量小于计算出的页面大小，则使用数据总量
         if (allFilteredScripts.value.length < newPageSize) {
-          newPageSize = allFilteredScripts.value.length
+          newPageSize = allFilteredScripts.value.length;
         }
 
         // 只有当计算出的页面大小与当前不同时才更新
         if (newPageSize !== pageSize.value && newPageSize > 0) {
-          pageSize.value = newPageSize
-          currentPage.value = 1 // 重置到第一页
+          pageSize.value = newPageSize;
+          currentPage.value = 1; // 重置到第一页
         }
-      })
-    }
+      });
+    };
 
     // 监听筛选条件变化，重置到第一页
-    watch([searchQuery, selectedTags, filterMyScripts, filterRecentScripts, filterFavoriteScripts], () => {
-      currentPage.value = 1
-    })
+    watch(
+      [searchQuery, selectedTags, filterMyScripts, filterRecentScripts, filterFavoriteScripts],
+      () => {
+        currentPage.value = 1;
+      }
+    );
 
     // 监听过滤后的脚本数量变化，重新计算页面大小
-    watch(allFilteredScripts, () => {
-      nextTick(() => {
-        // 延迟计算，确保DOM已更新
-        setTimeout(() => {
-          calculateOptimalPageSize()
-          checkScrollNeed()
-        }, 50)
-      })
-    }, { immediate: true })
+    watch(
+      allFilteredScripts,
+      () => {
+        nextTick(() => {
+          // 延迟计算，确保DOM已更新
+          setTimeout(() => {
+            calculateOptimalPageSize();
+            checkScrollNeed();
+          }, 50);
+        });
+      },
+      { immediate: true }
+    );
 
     // 监听当前页显示的脚本变化，检查滚动需求
     watch(filteredScripts, () => {
       nextTick(() => {
         setTimeout(() => {
-          checkScrollNeed()
-        }, 50)
-      })
-    })
+          checkScrollNeed();
+        }, 50);
+      });
+    });
 
     // 监听分页显示状态变化，重新计算和检查滚动
     watch(shouldShowPagination, () => {
       nextTick(() => {
         setTimeout(() => {
-          calculateOptimalPageSize()
-          checkScrollNeed()
-        }, 50)
-      })
-    })
+          calculateOptimalPageSize();
+          checkScrollNeed();
+        }, 50);
+      });
+    });
 
     // 无脚本时显示的消息
     const noScriptsMessage = computed(() => {
       if (searchQuery.value) {
-        return '没有找到匹配的脚本'
+        return '没有找到匹配的脚本';
       } else if (selectedTags.value.length > 0) {
-        return `没有找到包含所选标签的脚本`
+        return '没有找到包含所选标签的脚本';
       } else if (filterMyScripts.value) {
-        return '您还没有创建任何脚本'
+        return '您还没有创建任何脚本';
       } else if (filterFavoriteScripts.value) {
-        return '您还没有收藏任何脚本'
+        return '您还没有收藏任何脚本';
       } else {
-        return '脚本库为空，创建第一个脚本吧'
+        return '脚本库为空，创建第一个脚本吧';
       }
-    })
+    });
 
     // 格式化日期
-    const formatDate = (date) => {
-      if (!date) return '-'
+    const formatDate = date => {
+      if (!date) return '-';
 
       // 如果是字符串，转换为Date对象
-      const dateObj = typeof date === 'string' ? new Date(date) : date
+      const dateObj = typeof date === 'string' ? new Date(date) : date;
 
       // 检查是否是有效的日期
-      if (isNaN(dateObj.getTime())) return '-'
+      if (isNaN(dateObj.getTime())) return '-';
 
       return dateObj.toLocaleDateString('zh-CN', {
         year: 'numeric',
@@ -639,8 +794,8 @@ export default defineComponent({
     };
 
     // 编辑弹窗相关
-    const dialogVisible = ref(false)
-    const isEdit = ref(false)
+    const dialogVisible = ref(false);
+    const isEdit = ref(false);
     const scriptForm = ref({
       id: null,
       name: '',
@@ -649,7 +804,7 @@ export default defineComponent({
       tags: [],
       author: '管理员', // 这里可以从用户状态获取
       updatedAt: null
-    })
+    });
 
     // 重置表单
     const resetForm = () => {
@@ -661,38 +816,38 @@ export default defineComponent({
         tags: [],
         author: '管理员',
         updatedAt: null
-      }
-    }
+      };
+    };
 
     // 创建新脚本
     const createNewScript = () => {
-      isEdit.value = false
-      resetForm()
-      dialogVisible.value = true
-    }
+      isEdit.value = false;
+      resetForm();
+      dialogVisible.value = true;
+    };
 
     // 编辑脚本
-    const editScript = (script) => {
+    const editScript = script => {
       // 只允许编辑用户脚本
       if (script.source !== 'user') {
-        ElMessage.warning('只能编辑自己创建的脚本')
-        return
+        ElMessage.warning('只能编辑自己创建的脚本');
+        return;
       }
 
-      isEdit.value = true
-      scriptForm.value = { ...script }
-      dialogVisible.value = true
-    }
+      isEdit.value = true;
+      scriptForm.value = { ...script };
+      dialogVisible.value = true;
+    };
 
     // 保存脚本
     const saveScript = async () => {
       if (!scriptForm.value.name) {
-        ElMessage.warning('请输入脚本名称')
-        return
+        ElMessage.warning('请输入脚本名称');
+        return;
       }
       if (!scriptForm.value.command) {
-        ElMessage.warning('请输入指令内容')
-        return
+        ElMessage.warning('请输入指令内容');
+        return;
       }
 
       try {
@@ -704,27 +859,29 @@ export default defineComponent({
             command: scriptForm.value.command,
             tags: scriptForm.value.tags,
             category: '我的脚本'
-          })
+          });
 
           if (response && response.success) {
             // 更新本地数据
-            const allScripts = scriptLibraryService.getAllScripts()
-            const index = allScripts.findIndex(s => s.id === scriptForm.value.id && s.source === 'user')
+            const allScripts = scriptLibraryService.getAllScripts();
+            const index = allScripts.findIndex(
+              s => s.id === scriptForm.value.id && s.source === 'user'
+            );
             if (index !== -1) {
               // 更新脚本库服务中的数据
-              const userScripts = scriptLibraryService.getUserScripts()
-              const userIndex = userScripts.findIndex(s => s.id === scriptForm.value.id)
+              const userScripts = scriptLibraryService.getUserScripts();
+              const userIndex = userScripts.findIndex(s => s.id === scriptForm.value.id);
               if (userIndex !== -1) {
                 userScripts[userIndex] = {
                   ...response.script,
                   source: 'user'
-                }
-                scriptLibraryService.saveToLocal()
+                };
+                scriptLibraryService.saveToLocal();
               }
             }
-            ElMessage.success('脚本更新成功')
+            ElMessage.success('脚本更新成功');
           } else {
-            throw new Error(response?.message || '更新脚本失败')
+            throw new Error(response?.message || '更新脚本失败');
           }
         } else {
           // 创建新脚本
@@ -734,99 +891,97 @@ export default defineComponent({
             command: scriptForm.value.command,
             tags: scriptForm.value.tags,
             category: '我的脚本'
-          })
+          });
 
           if (response && response.success) {
             // 添加到本地脚本库
             const newScript = {
               ...response.script,
               source: 'user'
-            }
-            scriptLibraryService.userScripts.value.push(newScript)
-            scriptLibraryService.saveToLocal()
-            ElMessage.success('脚本创建成功')
+            };
+            scriptLibraryService.userScripts.value.push(newScript);
+            scriptLibraryService.saveToLocal();
+            ElMessage.success('脚本创建成功');
           } else {
-            throw new Error(response?.message || '创建脚本失败')
+            throw new Error(response?.message || '创建脚本失败');
           }
         }
 
-        dialogVisible.value = false
-        resetForm()
+        dialogVisible.value = false;
+        resetForm();
       } catch (error) {
-        log.error('保存脚本失败:', error)
-        ElMessage.error('保存脚本失败: ' + error.message)
+        log.error('保存脚本失败:', error);
+        ElMessage.error(`保存脚本失败: ${error.message}`);
       }
-    }
-
-    // 删除脚本
-    const deleteScript = (script) => {
-      ElMessageBox.confirm(
-        '确定要删除这个脚本吗？此操作不可恢复。',
-        '删除确认',
-        {
-          confirmButtonText: '确定',
-          cancelButtonText: '取消',
-          type: 'warning',
-          draggable: true,
-          closeOnClickModal: false
-        }
-      ).then(async () => {
-        try {
-          // 如果是用户脚本，调用后端API删除
-          if (script.source === 'user') {
-            const response = await apiService.delete(`/scripts/user/${script.id}`)
-
-            if (response && response.success) {
-              // 从本地脚本库中删除
-              const userScripts = scriptLibraryService.getUserScripts()
-              const index = userScripts.findIndex(s => s.id === script.id)
-              if (index !== -1) {
-                userScripts.splice(index, 1)
-                scriptLibraryService.saveToLocal()
-              }
-              ElMessage({
-                type: 'success',
-                message: '脚本删除成功'
-              })
-            } else {
-              throw new Error(response?.message || '删除脚本失败')
-            }
-          } else {
-            // 公开脚本不能删除
-            ElMessage.warning('公开脚本不能删除')
-          }
-        } catch (error) {
-          log.error('删除脚本失败:', error)
-          ElMessage.error('删除脚本失败: ' + error.message)
-        }
-      }).catch(() => {
-        ElMessage({
-          type: 'info',
-          message: '已取消删除'
-        })
-      })
-    }
-
-    // 服务器选择对话框状态
-    const serverSelectionVisible = ref(false)
-    const selectedScript = ref(null)
-
-    // 脚本执行结果对话框状态
-    const executionResultVisible = ref(false)
-    const executingScript = ref(null)
-    const executionResults = ref([])
-
-    // 操作方法
-    const runScript = (script) => {
-      selectedScript.value = script
-      serverSelectionVisible.value = true
     };
 
-    const toggleFavorite = async (script) => {
+    // 删除脚本
+    const deleteScript = script => {
+      ElMessageBox.confirm('确定要删除这个脚本吗？此操作不可恢复。', '删除确认', {
+        confirmButtonText: '确定',
+        cancelButtonText: '取消',
+        type: 'warning',
+        draggable: true,
+        closeOnClickModal: false
+      })
+        .then(async () => {
+          try {
+            // 如果是用户脚本，调用后端API删除
+            if (script.source === 'user') {
+              const response = await apiService.delete(`/scripts/user/${script.id}`);
+
+              if (response && response.success) {
+                // 从本地脚本库中删除
+                const userScripts = scriptLibraryService.getUserScripts();
+                const index = userScripts.findIndex(s => s.id === script.id);
+                if (index !== -1) {
+                  userScripts.splice(index, 1);
+                  scriptLibraryService.saveToLocal();
+                }
+                ElMessage({
+                  type: 'success',
+                  message: '脚本删除成功'
+                });
+              } else {
+                throw new Error(response?.message || '删除脚本失败');
+              }
+            } else {
+              // 公开脚本不能删除
+              ElMessage.warning('公开脚本不能删除');
+            }
+          } catch (error) {
+            log.error('删除脚本失败:', error);
+            ElMessage.error(`删除脚本失败: ${error.message}`);
+          }
+        })
+        .catch(() => {
+          ElMessage({
+            type: 'info',
+            message: '已取消删除'
+          });
+        });
+    };
+
+    // 服务器选择对话框状态
+    const serverSelectionVisible = ref(false);
+    const selectedScript = ref(null);
+
+    // 脚本执行结果对话框状态
+    const executionResultVisible = ref(false);
+    const executingScript = ref(null);
+    const executionResults = ref([]);
+
+    // 操作方法
+    const runScript = script => {
+      selectedScript.value = script;
+      serverSelectionVisible.value = true;
+    };
+
+    const toggleFavorite = async script => {
       try {
         await scriptLibraryService.toggleFavorite(script.id);
       } catch (error) {
-        ElMessage.error('收藏操作失败: ' + error.message);
+        ElMessage.error(`收藏操作失败: ${error.message}`);
       }
     };
 
@@ -837,10 +992,10 @@ export default defineComponent({
           scriptName: script.name,
           command: script.command,
           serverCount: servers.length
-        })
+        });
 
         // 设置执行状态
-        executingScript.value = script
+        executingScript.value = script;
         executionResults.value = servers.map(server => ({
           server,
           status: 'pending',
@@ -849,21 +1004,21 @@ export default defineComponent({
           error: null,
           executedAt: null,
           duration: null
-        }))
+        }));
 
         // 显示执行结果对话框
-        executionResultVisible.value = true
+        executionResultVisible.value = true;
 
         // 显示执行开始消息
-        ElMessage.info(`开始在 ${servers.length} 台服务器上执行脚本: ${script.name}`)
+        ElMessage.info(`开始在 ${servers.length} 台服务器上执行脚本: ${script.name}`);
 
         // 并发执行脚本
         const executionPromises = servers.map(async (server, index) => {
-          const startTime = Date.now()
+          const startTime = Date.now();
 
           // 更新状态为执行中
-          executionResults.value[index].status = 'running'
-          executionResults.value[index].executedAt = new Date().toISOString()
+          executionResults.value[index].status = 'running';
+          executionResults.value[index].executedAt = new Date().toISOString();
 
           try {
             const response = await apiService.post('/scripts/execute', {
@@ -875,12 +1030,12 @@ export default defineComponent({
               host: server.host,
               port: server.port,
               username: server.username
-            })
+            });
 
-            const duration = Date.now() - startTime
+            const duration = Date.now() - startTime;
 
             if (response && response.success) {
-              log.info(`脚本在服务器 ${server.name} 上执行成功`)
+              log.info(`脚本在服务器 ${server.name} 上执行成功`);
 
               // 更新执行结果
               executionResults.value[index] = {
@@ -889,14 +1044,14 @@ export default defineComponent({
                 stdout: response.result?.stdout || '',
                 stderr: response.result?.stderr || '',
                 duration
-              }
+              };
             } else {
-              throw new Error(response?.message || '执行失败')
+              throw new Error(response?.message || '执行失败');
             }
           } catch (error) {
-            log.error(`脚本在服务器 ${server.name} 上执行失败`, error)
+            log.error(`脚本在服务器 ${server.name} 上执行失败`, error);
 
-            const duration = Date.now() - startTime
+            const duration = Date.now() - startTime;
 
             // 更新执行结果
             executionResults.value[index] = {
@@ -904,24 +1059,24 @@ export default defineComponent({
               status: 'failed',
               error: error.message,
               duration
-            }
+            };
           }
-        })
+        });
 
         // 等待所有执行完成
-        await Promise.all(executionPromises)
+        await Promise.all(executionPromises);
 
         // 统计执行结果
-        const successCount = executionResults.value.filter(r => r.status === 'success').length
-        const failureCount = executionResults.value.filter(r => r.status === 'failed').length
+        const successCount = executionResults.value.filter(r => r.status === 'success').length;
+        const failureCount = executionResults.value.filter(r => r.status === 'failed').length;
 
         // 显示执行结果
         if (failureCount === 0) {
-          ElMessage.success(`脚本执行完成！成功: ${successCount} 台服务器`)
+          ElMessage.success(`脚本执行完成！成功: ${successCount} 台服务器`);
         } else if (successCount === 0) {
-          ElMessage.error(`脚本执行失败！失败: ${failureCount} 台服务器`)
+          ElMessage.error(`脚本执行失败！失败: ${failureCount} 台服务器`);
         } else {
-          ElMessage.warning(`脚本执行完成！成功: ${successCount} 台，失败: ${failureCount} 台`)
+          ElMessage.warning(`脚本执行完成！成功: ${successCount} 台，失败: ${failureCount} 台`);
         }
 
         // 记录脚本使用
@@ -930,84 +1085,83 @@ export default defineComponent({
             scriptId: script.id,
             scriptName: script.name,
             command: script.command
-          })
+          });
         } catch (error) {
-          log.warn('记录脚本使用失败', error)
+          log.warn('记录脚本使用失败', error);
         }
-
       } catch (error) {
-        log.error('脚本执行过程中发生错误', error)
-        ElMessage.error('脚本执行失败: ' + error.message)
+        log.error('脚本执行过程中发生错误', error);
+        ElMessage.error(`脚本执行失败: ${error.message}`);
       }
     };
 
     // 处理重试执行
     const handleRetryExecution = ({ script, servers }) => {
-      handleScriptExecution({ script, servers })
+      handleScriptExecution({ script, servers });
     };
 
     // 导入脚本功能
     const importScripts = () => {
       if (fileInput.value) {
-        fileInput.value.click()
+        fileInput.value.click();
       }
-    }
+    };
 
     // 处理文件导入
-    const handleFileImport = async (event) => {
-      const file = event.target.files[0]
-      if (!file) return
+    const handleFileImport = async event => {
+      const file = event.target.files[0];
+      if (!file) return;
 
       if (!file.name.endsWith('.json')) {
-        ElMessage.error('请选择JSON格式的文件')
-        return
+        ElMessage.error('请选择JSON格式的文件');
+        return;
       }
 
-      const reader = new FileReader()
-      reader.onload = async (e) => {
+      const reader = new FileReader();
+      reader.onload = async e => {
         try {
-          const importedData = JSON.parse(e.target.result)
+          const importedData = JSON.parse(e.target.result);
 
           // 验证导入数据格式
           if (!Array.isArray(importedData)) {
-            ElMessage.error('文件格式错误：应该是脚本数组')
-            return
+            ElMessage.error('文件格式错误：应该是脚本数组');
+            return;
           }
 
-          let importedCount = 0
-          let skippedCount = 0
-          let errorCount = 0
-          const importErrors = []
+          let importedCount = 0;
+          let skippedCount = 0;
+          let errorCount = 0;
+          const importErrors = [];
 
           // 显示导入进度提示
           const loadingMessage = ElMessage({
             message: '正在导入脚本，请稍候...',
             type: 'info',
             duration: 0
-          })
+          });
 
           try {
             // 批量处理导入的脚本
             for (let i = 0; i < importedData.length; i++) {
-              const scriptData = importedData[i]
+              const scriptData = importedData[i];
 
               // 更新进度提示
-              loadingMessage.message = `正在导入脚本 (${i + 1}/${importedData.length}): ${scriptData.name || '未命名'}`
+              loadingMessage.message = `正在导入脚本 (${i + 1}/${importedData.length}): ${scriptData.name || '未命名'}`;
 
               try {
                 // 验证必要字段
                 if (!scriptData.name || !scriptData.command) {
-                  skippedCount++
-                  importErrors.push(`脚本 "${scriptData.name || '未命名'}" 缺少必要字段`)
-                  continue
+                  skippedCount++;
+                  importErrors.push(`脚本 "${scriptData.name || '未命名'}" 缺少必要字段`);
+                  continue;
                 }
 
                 // 检查是否已存在同名脚本
-                const existingScript = scripts.value.find(s => s.name === scriptData.name)
+                const existingScript = scripts.value.find(s => s.name === scriptData.name);
                 if (existingScript) {
-                  skippedCount++
-                  importErrors.push(`脚本 "${scriptData.name}" 已存在，跳过导入`)
-                  continue
+                  skippedCount++;
+                  importErrors.push(`脚本 "${scriptData.name}" 已存在，跳过导入`);
+                  continue;
                 }
 
                 // 通过API创建脚本
@@ -1018,49 +1172,50 @@ export default defineComponent({
                   tags: Array.isArray(scriptData.tags) ? scriptData.tags : [],
                   keywords: Array.isArray(scriptData.keywords) ? scriptData.keywords : [],
                   category: scriptData.category?.trim() || '导入脚本'
-                })
+                });
 
                 if (response && response.success) {
                   // 添加到本地脚本库
                   const newScript = {
                     ...response.script,
                     source: 'user'
-                  }
-                  scriptLibraryService.userScripts.value.push(newScript)
-                  importedCount++
-                  log.debug(`成功导入脚本: ${scriptData.name}`)
+                  };
+                  scriptLibraryService.userScripts.value.push(newScript);
+                  importedCount++;
+                  log.debug(`成功导入脚本: ${scriptData.name}`);
                 } else {
-                  errorCount++
-                  importErrors.push(`脚本 "${scriptData.name}" 保存失败: ${response?.message || '未知错误'}`)
+                  errorCount++;
+                  importErrors.push(
+                    `脚本 "${scriptData.name}" 保存失败: ${response?.message || '未知错误'}`
+                  );
                 }
-
               } catch (error) {
-                errorCount++
-                importErrors.push(`脚本 "${scriptData.name}" 导入失败: ${error.message}`)
-                log.error('导入单个脚本失败:', error)
+                errorCount++;
+                importErrors.push(`脚本 "${scriptData.name}" 导入失败: ${error.message}`);
+                log.error('导入单个脚本失败:', error);
               }
             }
 
             // 保存到本地存储
             if (importedCount > 0) {
-              scriptLibraryService.saveToLocal()
+              scriptLibraryService.saveToLocal();
             }
 
             // 关闭加载提示
-            loadingMessage.close()
+            loadingMessage.close();
 
             // 显示导入结果
             if (importedCount > 0) {
-              let message = `导入完成：${importedCount} 个脚本`
+              let message = `导入完成：${importedCount} 个脚本`;
               if (skippedCount > 0) {
-                message += `，跳过 ${skippedCount} 个`
+                message += `，跳过 ${skippedCount} 个`;
               }
               if (errorCount > 0) {
-                message += `，失败 ${errorCount} 个`
+                message += `，失败 ${errorCount} 个`;
               }
-              ElMessage.success(message)
+              ElMessage.success(message);
             } else {
-              ElMessage.warning('没有导入任何脚本，可能存在重复或格式错误')
+              ElMessage.warning('没有导入任何脚本，可能存在重复或格式错误');
             }
 
             // 如果有错误，显示详细信息
@@ -1069,11 +1224,11 @@ export default defineComponent({
                 if (importErrors.length <= 5) {
                   // 错误较少时显示详细信息
                   ElMessage({
-                    message: '导入详情：\n' + importErrors.join('\n'),
+                    message: `导入详情：\n${importErrors.join('\n')}`,
                     type: 'warning',
                     duration: 10000,
                     showClose: true
-                  })
+                  });
                 } else {
                   // 错误较多时显示汇总信息
                   ElMessage({
@@ -1081,33 +1236,31 @@ export default defineComponent({
                     type: 'warning',
                     duration: 8000,
                     showClose: true
-                  })
+                  });
                 }
-              }, 1000)
+              }, 1000);
             }
-
           } catch (error) {
-            loadingMessage.close()
-            ElMessage.error('导入过程中发生错误: ' + error.message)
-            log.error('批量导入脚本失败:', error)
+            loadingMessage.close();
+            ElMessage.error(`导入过程中发生错误: ${error.message}`);
+            log.error('批量导入脚本失败:', error);
           }
-
         } catch (error) {
-          ElMessage.error('文件解析失败，请检查文件格式')
-          log.error('Import file parse error:', error)
+          ElMessage.error('文件解析失败，请检查文件格式');
+          log.error('Import file parse error:', error);
         }
-      }
+      };
 
-      reader.readAsText(file)
+      reader.readAsText(file);
       // 清空文件输入，允许重复选择同一文件
-      event.target.value = ''
-    }
+      event.target.value = '';
+    };
 
     // 导出脚本功能
     const exportScripts = () => {
       if (scripts.value.length === 0) {
-        ElMessage.warning('没有可导出的脚本')
-        return
+        ElMessage.warning('没有可导出的脚本');
+        return;
       }
 
       try {
@@ -1119,70 +1272,70 @@ export default defineComponent({
           tags: script.tags,
           author: script.author,
           updatedAt: script.updatedAt
-        }))
+        }));
 
         // 创建下载链接
-        const dataStr = JSON.stringify(exportData, null, 2)
-        const dataBlob = new Blob([dataStr], { type: 'application/json' })
-        const url = URL.createObjectURL(dataBlob)
+        const dataStr = JSON.stringify(exportData, null, 2);
+        const dataBlob = new Blob([dataStr], { type: 'application/json' });
+        const url = URL.createObjectURL(dataBlob);
 
         // 创建下载链接并触发下载
-        const link = document.createElement('a')
-        link.href = url
-        link.download = `scripts_export_${new Date().toISOString().slice(0, 10)}.json`
-        document.body.appendChild(link)
-        link.click()
-        document.body.removeChild(link)
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `scripts_export_${new Date().toISOString().slice(0, 10)}.json`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
 
         // 清理URL对象
-        URL.revokeObjectURL(url)
+        URL.revokeObjectURL(url);
 
-        ElMessage.success(`成功导出 ${scripts.value.length} 个脚本`)
+        ElMessage.success(`成功导出 ${scripts.value.length} 个脚本`);
       } catch (error) {
-        ElMessage.error('导出失败，请重试')
-        console.error('Export error:', error)
+        ElMessage.error('导出失败，请重试');
+        console.error('Export error:', error);
       }
-    }
+    };
 
     // 防抖函数
     const debounce = (func, wait) => {
-      let timeout
+      let timeout;
       return function executedFunction(...args) {
         const later = () => {
-          clearTimeout(timeout)
-          func(...args)
-        }
-        clearTimeout(timeout)
-        timeout = setTimeout(later, wait)
-      }
-    }
+          clearTimeout(timeout);
+          func(...args);
+        };
+        clearTimeout(timeout);
+        timeout = setTimeout(later, wait);
+      };
+    };
 
     // 防抖的计算函数
-    const debouncedCalculatePageSize = debounce(calculateOptimalPageSize, 300)
+    const debouncedCalculatePageSize = debounce(calculateOptimalPageSize, 300);
 
     // 防抖的滚动检查函数
-    const debouncedCheckScroll = debounce(checkScrollNeed, 100)
+    const debouncedCheckScroll = debounce(checkScrollNeed, 100);
 
     // 生命周期钩子
     onMounted(() => {
       // 初始计算
       nextTick(() => {
-        calculateOptimalPageSize()
-        checkScrollNeed()
+        calculateOptimalPageSize();
+        checkScrollNeed();
 
         // 延迟再次计算，确保所有元素都已渲染完成
         setTimeout(() => {
-          calculateOptimalPageSize()
-          checkScrollNeed()
-        }, 100)
+          calculateOptimalPageSize();
+          checkScrollNeed();
+        }, 100);
 
         // 监听窗口大小变化，使用防抖
         window.addEventListener('resize', () => {
-          debouncedCalculatePageSize()
-          debouncedCheckScroll()
-        })
-      })
-    })
+          debouncedCalculatePageSize();
+          debouncedCheckScroll();
+        });
+      });
+    });
 
     return {
       searchQuery,
@@ -1234,9 +1387,9 @@ export default defineComponent({
       executingScript,
       executionResults,
       handleRetryExecution
-    }
+    };
   }
-})
+});
 </script>
 
 <style scoped>
@@ -1622,8 +1775,6 @@ export default defineComponent({
   background-color: var(--color-primary-hover);
 }
 
-
-
 .script-tags {
   padding: 4px 0;
 }
@@ -1983,4 +2134,4 @@ export default defineComponent({
   position: relative;
   transform: none;
 }
-</style> 
+</style>

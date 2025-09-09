@@ -3,36 +3,36 @@
  * 根据登录状态自动切换本地存储和服务器存储
  */
 
-import log from './log'
-import storageService from './storage'
-import apiService from './api'
+import log from './log';
+import storageService from './storage';
+import apiService from './api';
 
 class StorageAdapter {
   constructor() {
-    this.userStore = null
-    this.initialized = false
+    this.userStore = null;
+    this.initialized = false;
   }
 
   /**
    * 初始化存储适配器
    */
   async init() {
-    if (this.initialized) return true
+    if (this.initialized) return true;
 
     try {
       // 动态导入用户store以避免循环依赖
-      const { useUserStore } = await import('../store/user')
-      this.userStore = useUserStore()
-      
+      const { useUserStore } = await import('../store/user');
+      this.userStore = useUserStore();
+
       // 初始化本地存储服务
-      await storageService.init()
-      
-      this.initialized = true
-      log.debug('存储适配器初始化完成')
-      return true
+      await storageService.init();
+
+      this.initialized = true;
+      log.debug('存储适配器初始化完成');
+      return true;
     } catch (error) {
-      log.error('存储适配器初始化失败', error)
-      return false
+      log.error('存储适配器初始化失败', error);
+      return false;
     }
   }
 
@@ -40,7 +40,7 @@ class StorageAdapter {
    * 检查用户是否已登录
    */
   isLoggedIn() {
-    return this.userStore?.isLoggedIn || false
+    return this.userStore?.isLoggedIn || false;
   }
 
   /**
@@ -53,27 +53,27 @@ class StorageAdapter {
     try {
       if (this.isLoggedIn()) {
         // 登录状态：从服务器获取
-        const response = await apiService.get(`/users/settings?category=${category}`)
-        
+        const response = await apiService.get(`/users/settings?category=${category}`);
+
         if (response.success && response.data[category]) {
-          return response.data[category].data
+          return response.data[category].data;
         }
-        
-        return defaultValue
+
+        return defaultValue;
       } else {
         // 未登录状态：从本地存储获取
-        return storageService.getItem(`settings.${category}`, defaultValue)
+        return storageService.getItem(`settings.${category}`, defaultValue);
       }
     } catch (error) {
-      log.error(`获取设置失败 [${category}]:`, error)
-      
+      log.error(`获取设置失败 [${category}]:`, error);
+
       // 如果是网络错误且用户已登录，尝试从本地缓存获取
       if (this.isLoggedIn() && this.isNetworkError(error)) {
-        log.warn(`网络错误，尝试从本地缓存获取设置 [${category}]`)
-        return storageService.getItem(`cache.settings.${category}`, defaultValue)
+        log.warn(`网络错误，尝试从本地缓存获取设置 [${category}]`);
+        return storageService.getItem(`cache.settings.${category}`, defaultValue);
       }
-      
-      return defaultValue
+
+      return defaultValue;
     }
   }
 
@@ -87,7 +87,7 @@ class StorageAdapter {
     try {
       // UI设置保持本地化，不同步到服务器
       if (category === 'ui') {
-        return true  // 直接返回成功，UI设置只保存在本地
+        return true; // 直接返回成功，UI设置只保存在本地
       }
 
       if (this.isLoggedIn()) {
@@ -96,67 +96,68 @@ class StorageAdapter {
           category,
           data,
           clientTimestamp: new Date().toISOString()
-        })
-        
+        });
+
         if (response.success) {
           // 同时缓存到本地，用于离线时使用
-          storageService.setItem(`cache.settings.${category}`, data)
+          storageService.setItem(`cache.settings.${category}`, data);
 
           // 同步更新设置服务中的设置（但不包括UI设置，UI设置保持本地化）
           try {
-            if (category !== 'ui') {  // UI设置不从服务器同步回设置服务
-              const settingsService = await import('./settings.js').then(m => m.default)
+            if (category !== 'ui') {
+              // UI设置不从服务器同步回设置服务
+              const settingsService = await import('./settings.js').then(m => m.default);
               if (settingsService.isInitialized) {
                 Object.keys(data).forEach(key => {
                   if (data[key] !== undefined) {
-                    settingsService.set(`${category}.${key}`, data[key])
+                    settingsService.set(`${category}.${key}`, data[key]);
                   }
-                })
-                log.debug(`设置服务已同步更新 [${category}]`)
+                });
+                log.debug(`设置服务已同步更新 [${category}]`);
               }
             }
           } catch (error) {
-            log.warn(`同步设置服务失败 [${category}]:`, error)
+            log.warn(`同步设置服务失败 [${category}]:`, error);
           }
 
-          log.debug(`设置已保存到服务器 [${category}]`)
-          return true
+          log.debug(`设置已保存到服务器 [${category}]`);
+          return true;
         }
-        
-        return false
+
+        return false;
       } else {
         // 未登录状态：保存到本地存储
-        const success = storageService.setItem(`settings.${category}`, data)
+        const success = storageService.setItem(`settings.${category}`, data);
         if (success) {
           // 同步更新设置服务中的设置
           try {
-            const settingsService = await import('./settings.js').then(m => m.default)
+            const settingsService = await import('./settings.js').then(m => m.default);
             if (settingsService.isInitialized) {
               Object.keys(data).forEach(key => {
                 if (data[key] !== undefined) {
-                  settingsService.set(`${category}.${key}`, data[key])
+                  settingsService.set(`${category}.${key}`, data[key]);
                 }
-              })
-              log.debug(`设置服务已同步更新 [${category}]`)
+              });
+              log.debug(`设置服务已同步更新 [${category}]`);
             }
           } catch (error) {
-            log.warn(`同步设置服务失败 [${category}]:`, error)
+            log.warn(`同步设置服务失败 [${category}]:`, error);
           }
 
-          log.debug(`设置已保存到本地 [${category}]`)
+          log.debug(`设置已保存到本地 [${category}]`);
         }
-        return success
+        return success;
       }
     } catch (error) {
-      log.error(`保存设置失败 [${category}]:`, error)
-      
+      log.error(`保存设置失败 [${category}]:`, error);
+
       // 如果是网络错误且用户已登录，保存到本地作为备份
       if (this.isLoggedIn() && this.isNetworkError(error)) {
-        log.warn(`网络错误，设置保存到本地备份 [${category}]`)
-        return storageService.setItem(`backup.settings.${category}`, data)
+        log.warn(`网络错误，设置保存到本地备份 [${category}]`);
+        return storageService.setItem(`backup.settings.${category}`, data);
       }
-      
-      return false
+
+      return false;
     }
   }
 
@@ -169,27 +170,27 @@ class StorageAdapter {
     try {
       if (this.isLoggedIn()) {
         // 登录状态：从服务器删除
-        const response = await apiService.delete(`/users/settings/${category}`)
-        
+        const response = await apiService.delete(`/users/settings/${category}`);
+
         if (response.success) {
           // 同时删除本地缓存
-          storageService.removeItem(`cache.settings.${category}`)
-          log.debug(`设置已从服务器删除 [${category}]`)
-          return true
+          storageService.removeItem(`cache.settings.${category}`);
+          log.debug(`设置已从服务器删除 [${category}]`);
+          return true;
         }
-        
-        return false
+
+        return false;
       } else {
         // 未登录状态：从本地存储删除
-        const success = storageService.removeItem(`settings.${category}`)
+        const success = storageService.removeItem(`settings.${category}`);
         if (success) {
-          log.debug(`设置已从本地删除 [${category}]`)
+          log.debug(`设置已从本地删除 [${category}]`);
         }
-        return success
+        return success;
       }
     } catch (error) {
-      log.error(`删除设置失败 [${category}]:`, error)
-      return false
+      log.error(`删除设置失败 [${category}]:`, error);
+      return false;
     }
   }
 
@@ -201,34 +202,34 @@ class StorageAdapter {
     try {
       if (this.isLoggedIn()) {
         // 登录状态：从服务器获取所有设置
-        const response = await apiService.get('/users/settings')
-        
+        const response = await apiService.get('/users/settings');
+
         if (response.success) {
-          const settings = {}
+          const settings = {};
           for (const [category, settingData] of Object.entries(response.data)) {
-            settings[category] = settingData.data
+            settings[category] = settingData.data;
           }
-          return settings
+          return settings;
         }
-        
-        return {}
+
+        return {};
       } else {
         // 未登录状态：从本地存储获取所有设置
-        const allKeys = storageService.keys()
-        const settings = {}
-        
+        const allKeys = storageService.keys();
+        const settings = {};
+
         for (const key of allKeys) {
           if (key.startsWith('settings.')) {
-            const category = key.replace('settings.', '')
-            settings[category] = storageService.getItem(key)
+            const category = key.replace('settings.', '');
+            settings[category] = storageService.getItem(key);
           }
         }
-        
-        return settings
+
+        return settings;
       }
     } catch (error) {
-      log.error('获取所有设置失败:', error)
-      return {}
+      log.error('获取所有设置失败:', error);
+      return {};
     }
   }
 
@@ -240,28 +241,26 @@ class StorageAdapter {
     try {
       if (this.isLoggedIn()) {
         // 登录状态：清除服务器上的所有设置
-        const allSettings = await this.getAll()
-        const deletePromises = Object.keys(allSettings).map(category => 
-          this.remove(category)
-        )
-        
-        const results = await Promise.all(deletePromises)
-        return results.every(result => result === true)
+        const allSettings = await this.getAll();
+        const deletePromises = Object.keys(allSettings).map(category => this.remove(category));
+
+        const results = await Promise.all(deletePromises);
+        return results.every(result => result === true);
       } else {
         // 未登录状态：清除本地存储中的所有设置
-        const allKeys = storageService.keys()
-        const settingsKeys = allKeys.filter(key => key.startsWith('settings.'))
-        
+        const allKeys = storageService.keys();
+        const settingsKeys = allKeys.filter(key => key.startsWith('settings.'));
+
         for (const key of settingsKeys) {
-          storageService.removeItem(key)
+          storageService.removeItem(key);
         }
-        
-        log.debug('本地设置已清除')
-        return true
+
+        log.debug('本地设置已清除');
+        return true;
       }
     } catch (error) {
-      log.error('清除设置失败:', error)
-      return false
+      log.error('清除设置失败:', error);
+      return false;
     }
   }
 
@@ -271,9 +270,11 @@ class StorageAdapter {
    * @returns {boolean} 是否为网络错误
    */
   isNetworkError(error) {
-    return error.code === 'NETWORK_ERROR' || 
-           error.message.includes('Network Error') ||
-           error.message.includes('fetch')
+    return (
+      error.code === 'NETWORK_ERROR' ||
+      error.message.includes('Network Error') ||
+      error.message.includes('fetch')
+    );
   }
 
   /**
@@ -285,11 +286,11 @@ class StorageAdapter {
       isLoggedIn: this.isLoggedIn(),
       storageMode: this.isLoggedIn() ? 'server' : 'local',
       initialized: this.initialized
-    }
+    };
   }
 }
 
 // 创建单例实例
-const storageAdapter = new StorageAdapter()
+const storageAdapter = new StorageAdapter();
 
-export default storageAdapter
+export default storageAdapter;

@@ -12,7 +12,7 @@ class SSHSessionManager {
     this.loadMappings();
     log.debug('SSH会话管理器初始化完成');
   }
-  
+
   /**
    * 设置映射关系
    * @param {string} terminalId - 终端ID
@@ -26,7 +26,7 @@ class SSHSessionManager {
     // 优化：降低日志级别，避免与SSH连接成功日志重复
     log.debug(`[SSH] 建立终端会话映射: ${terminalId} -> ${sshSessionId}`);
   }
-  
+
   /**
    * 根据SSH会话ID获取终端ID
    * @param {string} sshSessionId - SSH会话ID
@@ -35,7 +35,7 @@ class SSHSessionManager {
   getTerminalId(sshSessionId) {
     return this.sshToTerminal.get(sshSessionId);
   }
-  
+
   /**
    * 根据终端ID获取SSH会话ID
    * @param {string} terminalId - 终端ID
@@ -44,7 +44,7 @@ class SSHSessionManager {
   getSSHSessionId(terminalId) {
     return this.terminalToSSH.get(terminalId);
   }
-  
+
   /**
    * 移除映射关系
    * @param {string} terminalId - 终端ID
@@ -57,20 +57,20 @@ class SSHSessionManager {
     } else if (!terminalId && sshSessionId) {
       terminalId = this.sshToTerminal.get(sshSessionId);
     }
-    
+
     // 移除双向映射
     if (terminalId) {
       this.terminalToSSH.delete(terminalId);
     }
-    
+
     if (sshSessionId) {
       this.sshToTerminal.delete(sshSessionId);
     }
-    
+
     this.saveMappings();
     log.info(`已移除会话映射: 终端 ${terminalId} <=> SSH ${sshSessionId}`);
   }
-  
+
   /**
    * 保存映射到本地存储
    */
@@ -85,7 +85,7 @@ class SSHSessionManager {
       console.warn('保存会话映射失败', e);
     }
   }
-  
+
   /**
    * 从本地存储加载映射
    */
@@ -104,7 +104,7 @@ class SSHSessionManager {
       console.warn('加载会话映射失败', e);
     }
   }
-  
+
   /**
    * 清除所有映射
    */
@@ -118,7 +118,7 @@ class SSHSessionManager {
     }
     log.info('已清除所有会话映射');
   }
-  
+
   /**
    * 获取所有映射
    * @returns {Array} - 映射数组 [{terminalId, sshSessionId}]
@@ -138,4 +138,4 @@ class SSHSessionManager {
 // 创建单例
 const sessionManager = new SSHSessionManager();
 
-export default sessionManager; 
+export default sessionManager;

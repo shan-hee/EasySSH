@@ -9,7 +9,7 @@ import log from '../services/log';
 /**
  * 带有被动事件监听器的ECharts初始化函数
  * 解决触摸和滚动事件的性能问题
- * 
+ *
  * @param {HTMLElement} dom - 图表容器DOM元素
  * @param {string|Object} [theme] - 可选的主题
  * @param {Object} [opts] - 初始化选项
@@ -20,17 +20,22 @@ export function initChartWithPassiveEvents(dom, theme = null, opts = {}) {
     log.error('[ECharts] 初始化图表失败: DOM元素不存在');
     return null;
   }
-  
+
   // 保存原始的addEventListener方法
   const originalAddEventListener = EventTarget.prototype.addEventListener;
-  
+
   try {
     // 覆盖addEventListener方法，强制添加passive标志
-    EventTarget.prototype.addEventListener = function(type, listener, options) {
+    EventTarget.prototype.addEventListener = function (type, listener, options) {
       // 对于鼠标滚轮和触摸事件，强制设置为passive
-      if (type === 'mousewheel' || type === 'wheel' || type === 'touchstart' || type === 'touchmove') {
+      if (
+        type === 'mousewheel' ||
+        type === 'wheel' ||
+        type === 'touchstart' ||
+        type === 'touchmove'
+      ) {
         let newOptions = options;
-        
+
         if (typeof options === 'boolean') {
           newOptions = {
             capture: options,
@@ -46,21 +51,21 @@ export function initChartWithPassiveEvents(dom, theme = null, opts = {}) {
             passive: true
           };
         }
-        
+
         return originalAddEventListener.call(this, type, listener, newOptions);
       }
-      
+
       // 对于其他事件类型，保持原样
       return originalAddEventListener.call(this, type, listener, options);
     };
-    
+
     // 使用修改后的addEventListener初始化ECharts
     const chart = echarts.init(dom, theme, {
       renderer: 'canvas',
       useDirtyRect: true,
       ...opts
     });
-    
+
     return chart;
   } catch (error) {
     log.error('[ECharts] 初始化图表失败:', error);
@@ -79,7 +84,7 @@ export function initChartWithPassiveEvents(dom, theme = null, opts = {}) {
  */
 export function safeResizeChart(chart, opts = {}) {
   if (!chart) return false;
-  
+
   try {
     chart.resize(opts);
     return true;
@@ -96,7 +101,7 @@ export function safeResizeChart(chart, opts = {}) {
  */
 export function safeDisposeChart(chart) {
   if (!chart) return false;
-  
+
   try {
     chart.dispose();
     return true;
@@ -115,7 +120,7 @@ export function safeDisposeChart(chart) {
  */
 export function safeSetOption(chart, option, opts = {}) {
   if (!chart || !option) return false;
-  
+
   try {
     chart.setOption(option, opts);
     return true;
@@ -123,4 +128,4 @@ export function safeSetOption(chart, option, opts = {}) {
     log.error('[ECharts] 设置图表选项失败:', error);
     return false;
   }
-} 
+}

@@ -1,12 +1,12 @@
 <template>
   <el-dialog
     :model-value="visible"
-    @update:model-value="$emit('update:visible', $event)"
     title="脚本执行结果"
     width="90%"
     :close-on-click-modal="false"
     class="script-execution-dialog"
     top="5vh"
+    @update:model-value="$emit('update:visible', $event)"
   >
     <div class="execution-content">
       <!-- 脚本信息 -->
@@ -23,16 +23,19 @@
             <div class="status-summary">
               <span class="success-count">成功: {{ successCount }}</span>
               <span class="failed-count">失败: {{ failedCount }}</span>
-              <span class="running-count" v-if="runningCount > 0">执行中: {{ runningCount }}</span>
+              <span
+                v-if="runningCount > 0"
+                class="running-count"
+              >执行中: {{ runningCount }}</span>
             </div>
           </div>
-          
+
           <div class="server-items">
             <div
               v-for="(result, index) in executionResults"
               :key="result.server.id"
               class="server-item"
-              :class="{ 
+              :class="{
                 active: selectedServerIndex === index,
                 success: result.status === 'success',
                 failed: result.status === 'failed',
@@ -41,21 +44,37 @@
               @click="selectServer(index)"
             >
               <div class="server-info">
-                <div class="server-name">{{ result.server.name }}</div>
-                <div class="server-host">{{ result.server.username }}@{{ result.server.host }}:{{ result.server.port }}</div>
+                <div class="server-name">
+                  {{ result.server.name }}
+                </div>
+                <div class="server-host">
+                  {{ result.server.username }}@{{ result.server.host }}:{{ result.server.port }}
+                </div>
               </div>
               <div class="status-icon">
-                <el-icon v-if="result.status === 'success'" class="success-icon">
-                  <Check />
+                <el-icon
+                  v-if="result.status === 'success'"
+                  class="success-icon"
+                >
+                  <check />
                 </el-icon>
-                <el-icon v-else-if="result.status === 'failed'" class="failed-icon">
-                  <Close />
+                <el-icon
+                  v-else-if="result.status === 'failed'"
+                  class="failed-icon"
+                >
+                  <close />
                 </el-icon>
-                <el-icon v-else-if="result.status === 'running'" class="running-icon">
-                  <Loading />
+                <el-icon
+                  v-else-if="result.status === 'running'"
+                  class="running-icon"
+                >
+                  <loading />
                 </el-icon>
-                <el-icon v-else class="pending-icon">
-                  <Clock />
+                <el-icon
+                  v-else
+                  class="pending-icon"
+                >
+                  <clock />
                 </el-icon>
               </div>
             </div>
@@ -68,54 +87,85 @@
             <h4 v-if="selectedResult">
               {{ selectedResult.server.name }} - 执行结果
             </h4>
-            <h4 v-else>请选择服务器查看执行结果</h4>
+            <h4 v-else>
+              请选择服务器查看执行结果
+            </h4>
           </div>
 
-          <div v-if="selectedResult" class="result-content">
+          <div
+            v-if="selectedResult"
+            class="result-content"
+          >
             <div class="result-meta">
               <div class="meta-item">
                 <span class="label">状态:</span>
-                <span class="value" :class="selectedResult.status">
+                <span
+                  class="value"
+                  :class="selectedResult.status"
+                >
                   {{ getStatusText(selectedResult.status) }}
                 </span>
               </div>
-              <div class="meta-item" v-if="selectedResult.executedAt">
+              <div
+                v-if="selectedResult.executedAt"
+                class="meta-item"
+              >
                 <span class="label">执行时间:</span>
                 <span class="value">{{ formatTime(selectedResult.executedAt) }}</span>
               </div>
-              <div class="meta-item" v-if="selectedResult.duration">
+              <div
+                v-if="selectedResult.duration"
+                class="meta-item"
+              >
                 <span class="label">耗时:</span>
                 <span class="value">{{ selectedResult.duration }}ms</span>
               </div>
             </div>
 
             <!-- 标准输出 -->
-            <div v-if="selectedResult.stdout" class="output-section">
+            <div
+              v-if="selectedResult.stdout"
+              class="output-section"
+            >
               <h5>标准输出 (stdout)</h5>
               <pre class="output-content stdout">{{ selectedResult.stdout }}</pre>
             </div>
 
             <!-- 错误输出 -->
-            <div v-if="selectedResult.stderr" class="output-section">
+            <div
+              v-if="selectedResult.stderr"
+              class="output-section"
+            >
               <h5>错误输出 (stderr)</h5>
               <pre class="output-content stderr">{{ selectedResult.stderr }}</pre>
             </div>
 
             <!-- 执行中状态 -->
-            <div v-if="selectedResult.status === 'running'" class="running-status">
-              <el-icon class="loading-icon"><Loading /></el-icon>
+            <div
+              v-if="selectedResult.status === 'running'"
+              class="running-status"
+            >
+              <el-icon class="loading-icon">
+                <loading />
+              </el-icon>
               <span>正在执行中...</span>
             </div>
 
             <!-- 错误信息 -->
-            <div v-if="selectedResult.error" class="error-section">
+            <div
+              v-if="selectedResult.error"
+              class="error-section"
+            >
               <h5>错误信息</h5>
               <pre class="output-content error">{{ selectedResult.error }}</pre>
             </div>
           </div>
 
-          <div v-else class="no-selection">
-            <el-icon><Document /></el-icon>
+          <div
+            v-else
+            class="no-selection"
+          >
+            <el-icon><document /></el-icon>
             <p>请从左侧选择服务器查看执行结果</p>
           </div>
         </div>
@@ -124,8 +174,14 @@
 
     <template #footer>
       <div class="dialog-footer">
-        <el-button @click="handleClose">关闭</el-button>
-        <el-button type="primary" @click="handleRetry" :disabled="!hasFailedServers">
+        <el-button @click="handleClose">
+          关闭
+        </el-button>
+        <el-button
+          type="primary"
+          :disabled="!hasFailedServers"
+          @click="handleRetry"
+        >
           重试失败的服务器
         </el-button>
       </div>
@@ -134,8 +190,8 @@
 </template>
 
 <script>
-import { defineComponent, ref, computed, watch } from 'vue'
-import { Check, Close, Loading, Clock, Document } from '@element-plus/icons-vue'
+import { defineComponent, ref, computed, watch } from 'vue';
+import { Check, Close, Loading, Clock, Document } from '@element-plus/icons-vue';
 
 export default defineComponent({
   name: 'ScriptExecutionDialog',
@@ -162,73 +218,77 @@ export default defineComponent({
   },
   emits: ['update:visible', 'retry'],
   setup(props, { emit }) {
-    const selectedServerIndex = ref(0)
+    const selectedServerIndex = ref(0);
 
     // 计算属性
     const selectedResult = computed(() => {
       if (props.executionResults.length > 0 && selectedServerIndex.value >= 0) {
-        return props.executionResults[selectedServerIndex.value]
+        return props.executionResults[selectedServerIndex.value];
       }
-      return null
-    })
+      return null;
+    });
 
     const successCount = computed(() => {
-      return props.executionResults.filter(r => r.status === 'success').length
-    })
+      return props.executionResults.filter(r => r.status === 'success').length;
+    });
 
     const failedCount = computed(() => {
-      return props.executionResults.filter(r => r.status === 'failed').length
-    })
+      return props.executionResults.filter(r => r.status === 'failed').length;
+    });
 
     const runningCount = computed(() => {
-      return props.executionResults.filter(r => r.status === 'running').length
-    })
+      return props.executionResults.filter(r => r.status === 'running').length;
+    });
 
     const hasFailedServers = computed(() => {
-      return failedCount.value > 0
-    })
+      return failedCount.value > 0;
+    });
 
     // 方法
-    const selectServer = (index) => {
-      selectedServerIndex.value = index
-    }
+    const selectServer = index => {
+      selectedServerIndex.value = index;
+    };
 
-    const getStatusText = (status) => {
+    const getStatusText = status => {
       const statusMap = {
         success: '成功',
         failed: '失败',
         running: '执行中',
         pending: '等待中'
-      }
-      return statusMap[status] || '未知'
-    }
+      };
+      return statusMap[status] || '未知';
+    };
 
-    const formatTime = (timestamp) => {
-      if (!timestamp) return '-'
-      return new Date(timestamp).toLocaleString('zh-CN')
-    }
+    const formatTime = timestamp => {
+      if (!timestamp) return '-';
+      return new Date(timestamp).toLocaleString('zh-CN');
+    };
 
     const handleClose = () => {
-      emit('update:visible', false)
-    }
+      emit('update:visible', false);
+    };
 
     const handleRetry = () => {
       const failedServers = props.executionResults
         .filter(r => r.status === 'failed')
-        .map(r => r.server)
-      
+        .map(r => r.server);
+
       emit('retry', {
         script: props.script,
         servers: failedServers
-      })
-    }
+      });
+    };
 
     // 监听执行结果变化，自动选择第一个
-    watch(() => props.executionResults, (newResults) => {
-      if (newResults.length > 0 && selectedServerIndex.value >= newResults.length) {
-        selectedServerIndex.value = 0
-      }
-    }, { immediate: true })
+    watch(
+      () => props.executionResults,
+      newResults => {
+        if (newResults.length > 0 && selectedServerIndex.value >= newResults.length) {
+          selectedServerIndex.value = 0;
+        }
+      },
+      { immediate: true }
+    );
 
     return {
       selectedServerIndex,
@@ -242,9 +302,9 @@ export default defineComponent({
       formatTime,
       handleClose,
       handleRetry
-    }
+    };
   }
-})
+});
 </script>
 
 <style scoped>
@@ -428,8 +488,12 @@ export default defineComponent({
 }
 
 @keyframes spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .result-content {

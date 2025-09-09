@@ -80,11 +80,11 @@ class MonitoringInstance {
         // 触发连接成功事件
         this._emitEvent('monitoring-connected', {
           terminalId: this.terminalId,
-          host: host
+          host
         });
       };
 
-      this.websocket.onmessage = (event) => {
+      this.websocket.onmessage = event => {
         this._handleMessage(event.data);
       };
 
@@ -95,21 +95,21 @@ class MonitoringInstance {
         // 触发断开连接事件
         this._emitEvent('monitoring-disconnected', {
           terminalId: this.terminalId,
-          host: host
+          host
         });
 
         // 尝试重连
         this._attemptReconnect();
       };
 
-      this.websocket.onerror = (error) => {
+      this.websocket.onerror = error => {
         this.state.error = error;
         this.state.connecting = false;
         log.error(`[监控] 连接错误: ${host}`, error);
       };
 
       // 等待连接建立
-      return new Promise((resolve) => {
+      return new Promise(resolve => {
         const checkConnection = () => {
           if (this.state.connected) {
             resolve(true);
@@ -121,7 +121,6 @@ class MonitoringInstance {
         };
         checkConnection();
       });
-
     } catch (error) {
       this.state.connecting = false;
       this.state.error = error;
@@ -148,9 +147,11 @@ class MonitoringInstance {
    */
   requestSystemStats() {
     if (this.state.connected && this.websocket) {
-      this.websocket.send(JSON.stringify({
-        type: 'request_stats'
-      }));
+      this.websocket.send(
+        JSON.stringify({
+          type: 'request_stats'
+        })
+      );
       this.state.stats.messagesSent++;
     }
   }
@@ -166,41 +167,41 @@ class MonitoringInstance {
       this.state.stats.messagesReceived++;
 
       switch (message.type) {
-        case 'monitoring_data':
-          this._handleMonitoringData(message.data);
-          this.state.lastActivity = Date.now();
-          break;
-        case 'system_stats':
-          this._handleMonitoringData(message.payload);
-          this.state.lastActivity = Date.now();
-          break;
-        case 'batch':
-          this._handleBatchMessage(message);
-          break;
-        case 'delta':
-          this._handleDeltaMessage(message);
-          break;
-        case 'monitoring_status':
-          this._handleMonitoringStatus(message);
-          break;
-        case 'monitoring_disconnected':
-          // 处理监控断开连接消息
-          this._handleMonitoringDisconnected(message);
-          break;
-        case 'session_created':
-        case 'subscribe_ack':
-        case 'monitoring_data_updated':
-        case 'ping':
-        case 'pong':
-          // 确认消息和心跳响应，无需处理
-          break;
-        case 'error':
-          const errorMsg = message.message || message.data?.message || message.error || '未知错误';
-          log.error(`[监控] 服务器错误: ${errorMsg}`);
-          break;
-        default:
-          log.warn(`[监控] 未知消息类型: ${message.type}`);
-          break;
+      case 'monitoring_data':
+        this._handleMonitoringData(message.data);
+        this.state.lastActivity = Date.now();
+        break;
+      case 'system_stats':
+        this._handleMonitoringData(message.payload);
+        this.state.lastActivity = Date.now();
+        break;
+      case 'batch':
+        this._handleBatchMessage(message);
+        break;
+      case 'delta':
+        this._handleDeltaMessage(message);
+        break;
+      case 'monitoring_status':
+        this._handleMonitoringStatus(message);
+        break;
+      case 'monitoring_disconnected':
+        // 处理监控断开连接消息
+        this._handleMonitoringDisconnected(message);
+        break;
+      case 'session_created':
+      case 'subscribe_ack':
+      case 'monitoring_data_updated':
+      case 'ping':
+      case 'pong':
+        // 确认消息和心跳响应，无需处理
+        break;
+      case 'error':
+        const errorMsg = message.message || message.data?.message || message.error || '未知错误';
+        log.error(`[监控] 服务器错误: ${errorMsg}`);
+        break;
+      default:
+        log.warn(`[监控] 未知消息类型: ${message.type}`);
+        break;
       }
     } catch (error) {
       log.error('[监控] 消息解析失败', error);
@@ -218,22 +219,22 @@ class MonitoringInstance {
     }
 
     // 逐个处理批量消息中的每个项目
-    batchMessage.items.forEach((item) => {
+    batchMessage.items.forEach(item => {
       try {
         switch (item.type) {
-          case 'monitoring_data':
-            this._handleMonitoringData(item.data);
-            break;
-          case 'system_stats':
-            // 处理新的差量格式
-            let payload = item.payload || item.delta?.payload || item.delta;
-            if (payload) {
-              this._handleMonitoringData(payload);
-            }
-            break;
-          case 'monitoring_status':
-            this._handleMonitoringStatus(item);
-            break;
+        case 'monitoring_data':
+          this._handleMonitoringData(item.data);
+          break;
+        case 'system_stats':
+          // 处理新的差量格式
+          const payload = item.payload || item.delta?.payload || item.delta;
+          if (payload) {
+            this._handleMonitoringData(payload);
+          }
+          break;
+        case 'monitoring_status':
+          this._handleMonitoringStatus(item);
+          break;
         }
       } catch (error) {
         log.error(`[监控] 处理批量消息项目失败: ${error.message}`, { item });
@@ -321,7 +322,7 @@ class MonitoringInstance {
       this._emitEvent('monitoring-data-received', {
         terminalId: this.terminalId,
         host: this.state.targetHost,
-        data: data,
+        data,
         source: 'websocket'
       });
     } else {
@@ -379,7 +380,10 @@ class MonitoringInstance {
           // 如果已经有 upload/download 字段（来自工具栏转换）
           txSpeedKB = parseFloat(data.network.upload) || 0;
           rxSpeedKB = parseFloat(data.network.download) || 0;
-        } else if (data.network.total_tx_speed !== undefined && data.network.total_rx_speed !== undefined) {
+        } else if (
+          data.network.total_tx_speed !== undefined &&
+          data.network.total_rx_speed !== undefined
+        ) {
           // 如果是服务器原始数据格式（total_tx_speed/total_rx_speed）
           txSpeedKB = parseFloat(data.network.total_tx_speed) || 0;
           rxSpeedKB = parseFloat(data.network.total_rx_speed) || 0;
@@ -460,9 +464,9 @@ class MonitoringInstance {
     this._emitEvent('monitoring-status-change', {
       terminalId: this.terminalId,
       hostname: this.state.targetHost,
-      hostId: hostId,
-      installed: installed,
-      available: available,
+      hostId,
+      installed,
+      available,
       source: 'websocket'
     });
   }
@@ -476,7 +480,10 @@ class MonitoringInstance {
     const data = message.data || {};
     const { hostId, reason } = data;
 
-    log.debug(`[监控] 收到断开连接通知: ${hostId || this.state.targetHost}`, reason ? { reason } : {});
+    log.debug(
+      `[监控] 收到断开连接通知: ${hostId || this.state.targetHost}`,
+      reason ? { reason } : {}
+    );
 
     // 触发断开连接事件
     this._emitEvent('monitoring-disconnected', {
@@ -494,7 +501,9 @@ class MonitoringInstance {
     if (this.reconnectAttempts < this.maxReconnectAttempts && this.state.targetHost) {
       this.reconnectAttempts++;
       setTimeout(() => {
-        log.debug(`[监控] 尝试重连 (${this.reconnectAttempts}/${this.maxReconnectAttempts}): ${this.state.targetHost}`);
+        log.debug(
+          `[监控] 尝试重连 (${this.reconnectAttempts}/${this.maxReconnectAttempts}): ${this.state.targetHost}`
+        );
         this.connect(this.state.targetHost);
       }, this.reconnectDelay * this.reconnectAttempts);
     }
@@ -822,7 +831,8 @@ class MonitoringService {
     // 检查活动时间是否在合理范围内（5分钟内）
     const now = Date.now();
     const timeDiff = now - instance.state.lastActivity;
-    if (timeDiff > 5 * 60 * 1000) { // 5分钟
+    if (timeDiff > 5 * 60 * 1000) {
+      // 5分钟
       return false;
     }
 
@@ -941,14 +951,16 @@ class MonitoringService {
    */
   _syncMonitoringStatusToTerminal(terminalId, host, masterInstance) {
     // 触发数据同步事件 - 使用不同的事件名称避免与实时数据重复处理
-    window.dispatchEvent(new CustomEvent('monitoring-data-synced', {
-      detail: {
-        terminalId: terminalId,
-        host: host,
-        data: masterInstance.state.monitorData,
-        source: 'sync'
-      }
-    }));
+    window.dispatchEvent(
+      new CustomEvent('monitoring-data-synced', {
+        detail: {
+          terminalId,
+          host,
+          data: masterInstance.state.monitorData,
+          source: 'sync'
+        }
+      })
+    );
   }
 
   /**
@@ -997,11 +1009,11 @@ class MonitoringService {
       totalHosts: this.hostConnections.size,
       instances: [],
       hosts: []
-    }
+    };
 
     // 收集实例信息
     for (const [terminalId, instance] of this.instances) {
-      const host = this.terminalToHost.get(terminalId)
+      const host = this.terminalToHost.get(terminalId);
       stats.instances.push({
         terminalId,
         host,
@@ -1009,22 +1021,22 @@ class MonitoringService {
         connecting: instance.state.connecting,
         hasData: this._hasValidMonitoringData(instance),
         lastActivity: instance.state.lastActivity
-      })
+      });
     }
 
     // 收集主机信息
     for (const [host, masterInstance] of this.hostConnections) {
-      const terminals = this.hostToTerminals.get(host) || []
+      const terminals = this.hostToTerminals.get(host) || [];
       stats.hosts.push({
         host,
         masterTerminal: masterInstance.terminalId,
         connectedTerminals: terminals.length,
         connected: masterInstance.state.connected,
         lastActivity: masterInstance.state.lastActivity
-      })
+      });
     }
 
-    return stats
+    return stats;
   }
 
   /**
@@ -1049,8 +1061,6 @@ class MonitoringService {
       console.error('[监控] 初始化页面卸载清理逻辑失败:', error);
     }
   }
-
-
 }
 
 // 创建服务实例

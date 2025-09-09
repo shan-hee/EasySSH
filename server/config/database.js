@@ -32,12 +32,12 @@ if (!fs.existsSync(DB_DIR)) {
 // 连接SQLite数据库
 const connectDatabase = () => {
   if (dbConnected && db) return db;
-  
+
   try {
     db = new Database(DB_PATH);
     db.pragma('journal_mode = WAL'); // 使用WAL模式提高性能
     dbConnected = true;
-    
+
     // 创建用户表
     db.exec(`
       CREATE TABLE IF NOT EXISTS users (
@@ -91,7 +91,7 @@ const connectDatabase = () => {
         FOREIGN KEY (user_id) REFERENCES users (id)
       )
     `);
-    
+
     // 创建连接收藏表
     db.exec(`
       CREATE TABLE IF NOT EXISTS connection_favorites (
@@ -102,7 +102,7 @@ const connectDatabase = () => {
         FOREIGN KEY (connection_id) REFERENCES connections (id) ON DELETE CASCADE
       )
     `);
-    
+
     // 创建连接历史表（独立存储，不依赖connections表）
     db.exec(`
       CREATE TABLE IF NOT EXISTS connection_history (
@@ -120,7 +120,7 @@ const connectDatabase = () => {
         FOREIGN KEY (user_id) REFERENCES users (id)
       )
     `);
-    
+
     // 创建连接置顶表
     db.exec(`
       CREATE TABLE IF NOT EXISTS connection_pinned (
@@ -277,4 +277,4 @@ module.exports = {
   getCache,
   getDatabaseStatus,
   getDb
-}; 
+};

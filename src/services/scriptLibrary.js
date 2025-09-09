@@ -2,12 +2,12 @@
  * 脚本库服务
  * 管理脚本数据，提供搜索和过滤功能，支持混合缓存策略
  */
-import { ref } from 'vue'
-import { useUserStore } from '@/store/user'
-import log from './log'
-import apiService from './api.js'
-import { getFromStorage, saveToStorage } from '../utils/storage.js'
-import { autocompleteConfig, environment } from '@/config/app-config'
+import { ref } from 'vue';
+import { useUserStore } from '@/store/user';
+import log from './log';
+import apiService from './api.js';
+import { getFromStorage, saveToStorage } from '../utils/storage.js';
+import { autocompleteConfig, environment } from '@/config/app-config';
 
 // 本地存储键
 const STORAGE_KEYS = {
@@ -15,35 +15,35 @@ const STORAGE_KEYS = {
   USER_SCRIPTS: 'scriptLibrary.userScripts',
   FAVORITES: 'scriptLibrary.favorites',
   LAST_SYNC: 'scriptLibrary.lastSync'
-}
+};
 
 class ScriptLibraryService {
   constructor() {
     // 用户存储引用
-    this.userStore = null
+    this.userStore = null;
 
     // 脚本数据
-    this.scripts = ref([])
-    this.userScripts = ref([])
-    this.favorites = ref([])
-    this.lastSync = ref(null)
+    this.scripts = ref([]);
+    this.userScripts = ref([]);
+    this.favorites = ref([]);
+    this.lastSync = ref(null);
 
     // 后台同步定时器
-    this.backgroundSyncTimer = null
+    this.backgroundSyncTimer = null;
 
     // 加载本地数据
-    this.loadFromLocal()
-    this.setupBackgroundSync()
+    this.loadFromLocal();
+    this.setupBackgroundSync();
 
     // 搜索历史
-    this.searchHistory = ref([])
+    this.searchHistory = ref([]);
 
     // 常用命令
-    this.frequentCommands = ref([])
+    this.frequentCommands = ref([]);
 
     // 开发环境调试
     if (environment.isDevelopment) {
-      log.debug('脚本库服务初始化')
+      log.debug('脚本库服务初始化');
     }
   }
 
@@ -53,22 +53,22 @@ class ScriptLibraryService {
   loadFromLocal() {
     try {
       // 加载脚本数据
-      const scripts = getFromStorage(STORAGE_KEYS.SCRIPTS, [])
+      const scripts = getFromStorage(STORAGE_KEYS.SCRIPTS, []);
       if (scripts.length > 0) {
-        this.scripts.value = scripts
+        this.scripts.value = scripts;
       }
 
       // 加载用户脚本
-      const userScripts = getFromStorage(STORAGE_KEYS.USER_SCRIPTS, [])
-      this.userScripts.value = userScripts
+      const userScripts = getFromStorage(STORAGE_KEYS.USER_SCRIPTS, []);
+      this.userScripts.value = userScripts;
 
       // 加载收藏
-      const favorites = getFromStorage(STORAGE_KEYS.FAVORITES, [])
-      this.favorites.value = favorites
+      const favorites = getFromStorage(STORAGE_KEYS.FAVORITES, []);
+      this.favorites.value = favorites;
 
       // 加载同步时间
-      const lastSync = getFromStorage(STORAGE_KEYS.LAST_SYNC, null)
-      this.lastSync.value = lastSync
+      const lastSync = getFromStorage(STORAGE_KEYS.LAST_SYNC, null);
+      this.lastSync.value = lastSync;
 
       // 只在有实际数据时记录信息
       if (this.scripts.value.length > 0 || this.userScripts.value.length > 0) {
@@ -77,10 +77,10 @@ class ScriptLibraryService {
           userScriptsCount: this.userScripts.value.length,
           favoritesCount: this.favorites.value.length,
           lastSync: this.lastSync.value
-        })
+        });
       }
     } catch (error) {
-      log.error('加载本地脚本库数据失败:', error)
+      log.error('加载本地脚本库数据失败:', error);
     }
   }
 
@@ -90,20 +90,18 @@ class ScriptLibraryService {
    */
   saveToLocal(silent = false) {
     try {
-      saveToStorage(STORAGE_KEYS.SCRIPTS, this.scripts.value)
-      saveToStorage(STORAGE_KEYS.USER_SCRIPTS, this.userScripts.value)
-      saveToStorage(STORAGE_KEYS.FAVORITES, this.favorites.value)
-      saveToStorage(STORAGE_KEYS.LAST_SYNC, this.lastSync.value)
+      saveToStorage(STORAGE_KEYS.SCRIPTS, this.scripts.value);
+      saveToStorage(STORAGE_KEYS.USER_SCRIPTS, this.userScripts.value);
+      saveToStorage(STORAGE_KEYS.FAVORITES, this.favorites.value);
+      saveToStorage(STORAGE_KEYS.LAST_SYNC, this.lastSync.value);
 
       if (!silent) {
-        log.debug('脚本库数据已保存到本地存储')
+        log.debug('脚本库数据已保存到本地存储');
       }
     } catch (error) {
-      log.error('保存脚本库数据到本地存储失败:', error)
+      log.error('保存脚本库数据到本地存储失败:', error);
     }
   }
-
-
 
   /**
    * 设置后台同步
@@ -111,27 +109,26 @@ class ScriptLibraryService {
   setupBackgroundSync() {
     // 清除现有定时器
     if (this.backgroundSyncTimer) {
-      clearInterval(this.backgroundSyncTimer)
+      clearInterval(this.backgroundSyncTimer);
     }
 
     // 设置后台同步定时器 - 每5分钟同步一次
-    this.backgroundSyncTimer = setInterval(() => {
-      if (this.isUserLoggedIn()) {
-        this.backgroundSync()
-      }
-    }, 5 * 60 * 1000) // 5分钟
+    this.backgroundSyncTimer = setInterval(
+      () => {
+        if (this.isUserLoggedIn()) {
+          this.backgroundSync();
+        }
+      },
+      5 * 60 * 1000
+    ); // 5分钟
 
     // 开发环境调试
     if (environment.isDevelopment) {
       log.debug('后台同步已设置', {
         interval: '5分钟'
-      })
+      });
     }
   }
-
-
-
-
 
   /**
    * 后台同步
@@ -141,16 +138,16 @@ class ScriptLibraryService {
       // 检查是否需要同步
       if (this.shouldSkipSync()) {
         // 优化：后台同步跳过时不记录日志，减少噪音
-        return
+        return;
       }
 
       // 执行同步
-      const success = await this.syncFromServer(false)
+      const success = await this.syncFromServer(false);
       if (success) {
-        log.debug('脚本库后台同步完成')
+        log.debug('脚本库后台同步完成');
       }
     } catch (error) {
-      log.warn('后台同步失败:', error)
+      log.warn('后台同步失败:', error);
     }
   }
 
@@ -160,39 +157,37 @@ class ScriptLibraryService {
   async smartSync() {
     try {
       if (!this.isUserLoggedIn()) {
-        log.debug('用户未登录，跳过同步')
-        return false
+        log.debug('用户未登录，跳过同步');
+        return false;
       }
 
       // 检查网络状况
-      const isOnline = navigator.onLine
+      const isOnline = navigator.onLine;
       if (!isOnline) {
-        log.debug('网络离线，跳过同步')
-        return false
+        log.debug('网络离线，跳过同步');
+        return false;
       }
 
       // 根据上次同步时间决定同步策略
-      const lastSyncTime = this.lastSync.value ? new Date(this.lastSync.value).getTime() : 0
-      const now = Date.now()
-      const timeSinceLastSync = now - lastSyncTime
+      const lastSyncTime = this.lastSync.value ? new Date(this.lastSync.value).getTime() : 0;
+      const now = Date.now();
+      const timeSinceLastSync = now - lastSyncTime;
 
       // 1小时强制全量同步
-      const fullSyncInterval = 60 * 60 * 1000
-      const forceFullSync = timeSinceLastSync > fullSyncInterval
+      const fullSyncInterval = 60 * 60 * 1000;
+      const forceFullSync = timeSinceLastSync > fullSyncInterval;
 
       log.debug('同步策略', {
         timeSinceLastSync: Math.round(timeSinceLastSync / 1000),
         forceFullSync
-      })
+      });
 
-      return await this.syncFromServer(forceFullSync)
+      return await this.syncFromServer(forceFullSync);
     } catch (error) {
-      log.error('同步失败:', error)
-      return false
+      log.error('同步失败:', error);
+      return false;
     }
   }
-
-
 
   /**
    * 从服务器同步脚本库数据
@@ -201,32 +196,32 @@ class ScriptLibraryService {
   async syncFromServer(forceFullSync = false) {
     try {
       if (!this.isUserLoggedIn()) {
-        log.debug('用户未登录，跳过脚本库同步')
-        return false
+        log.debug('用户未登录，跳过脚本库同步');
+        return false;
       }
 
       // 检查是否需要同步
       if (!forceFullSync && this.shouldSkipSync()) {
         // 优化：降低跳过同步的日志级别，减少噪音
-        return true
+        return true;
       }
 
-      log.info('开始同步脚本库数据...', { forceFullSync })
+      log.info('开始同步脚本库数据...', { forceFullSync });
 
       // 优先使用增量同步
       if (!forceFullSync && this.lastSync.value) {
-        const incrementalSuccess = await this.incrementalSyncFromServer()
+        const incrementalSuccess = await this.incrementalSyncFromServer();
         if (incrementalSuccess) {
-          return true
+          return true;
         }
-        log.info('增量同步失败，回退到全量同步')
+        log.info('增量同步失败，回退到全量同步');
       }
 
       // 全量同步
-      return await this.fullSyncFromServer()
+      return await this.fullSyncFromServer();
     } catch (error) {
-      log.error('同步脚本库数据失败:', error)
-      return false
+      log.error('同步脚本库数据失败:', error);
+      return false;
     }
   }
 
@@ -235,14 +230,14 @@ class ScriptLibraryService {
    */
   shouldSkipSync() {
     if (!this.lastSync.value) {
-      return false
+      return false;
     }
 
-    const lastSyncTime = new Date(this.lastSync.value).getTime()
-    const now = Date.now()
-    const minSyncInterval = 30000 // 30秒最小间隔
+    const lastSyncTime = new Date(this.lastSync.value).getTime();
+    const now = Date.now();
+    const minSyncInterval = 30000; // 30秒最小间隔
 
-    return (now - lastSyncTime) < minSyncInterval
+    return now - lastSyncTime < minSyncInterval;
   }
 
   /**
@@ -250,54 +245,54 @@ class ScriptLibraryService {
    */
   async incrementalSyncFromServer() {
     try {
-      const lastSyncTime = this.lastSync.value
+      const lastSyncTime = this.lastSync.value;
 
       // 获取增量更新
       const incrementalResponse = await apiService.get('/scripts/incremental', {
         since: lastSyncTime
-      })
+      });
 
       if (incrementalResponse && incrementalResponse.success) {
-        const { updates, deletes, favorites } = incrementalResponse
+        const { updates, deletes, favorites } = incrementalResponse;
 
         // 处理更新和新增的脚本
         if (updates && updates.length > 0) {
-          this.applyScriptUpdates(updates)
-          log.debug('应用脚本增量更新', { count: updates.length })
+          this.applyScriptUpdates(updates);
+          log.debug('应用脚本增量更新', { count: updates.length });
         }
 
         // 处理删除的脚本
         if (deletes && deletes.length > 0) {
-          this.applyScriptDeletes(deletes)
-          log.debug('应用脚本删除', { count: deletes.length })
+          this.applyScriptDeletes(deletes);
+          log.debug('应用脚本删除', { count: deletes.length });
         }
 
         // 更新收藏状态
         if (favorites) {
-          this.favorites.value = favorites
-          log.debug('更新收藏状态', { count: favorites.length })
+          this.favorites.value = favorites;
+          log.debug('更新收藏状态', { count: favorites.length });
         }
 
         // 更新同步时间
-        this.lastSync.value = new Date().toISOString()
+        this.lastSync.value = new Date().toISOString();
 
         // 保存到本地存储
-        this.saveToLocal()
+        this.saveToLocal();
 
-        log.info('脚本库增量同步成功')
-        return true
+        log.info('脚本库增量同步成功');
+        return true;
       }
 
-      return false
+      return false;
     } catch (error) {
       // 如果是404错误，说明后端不支持增量同步
       if (error.response && error.response.status === 404) {
-        log.debug('后端不支持增量同步API')
-        return false
+        log.debug('后端不支持增量同步API');
+        return false;
       }
 
-      log.warn('增量同步失败:', error)
-      return false
+      log.warn('增量同步失败:', error);
+      return false;
     }
   }
 
@@ -307,17 +302,17 @@ class ScriptLibraryService {
   async fullSyncFromServer() {
     try {
       // 同步收藏状态
-      await this.syncFavoritesFromServer()
+      await this.syncFavoritesFromServer();
 
       // 获取公开脚本
-      const publicScriptsResponse = await apiService.get('/scripts/all')
+      const publicScriptsResponse = await apiService.get('/scripts/all');
       if (publicScriptsResponse && publicScriptsResponse.success) {
         // 合并公开脚本和用户脚本
-        const allScripts = publicScriptsResponse.scripts || []
+        const allScripts = publicScriptsResponse.scripts || [];
 
         // 分离公开脚本和用户脚本
-        const publicScripts = allScripts.filter(script => script.source === 'public')
-        const userScripts = allScripts.filter(script => script.source === 'user')
+        const publicScripts = allScripts.filter(script => script.source === 'public');
+        const userScripts = allScripts.filter(script => script.source === 'user');
 
         // 更新本地数据
         this.scripts.value = publicScripts.map(script => ({
@@ -325,33 +320,33 @@ class ScriptLibraryService {
           updatedAt: script.updatedAt || script.updated_at,
           createdAt: script.createdAt || script.created_at,
           isFavorite: this.favorites.value.includes(script.id)
-        }))
+        }));
 
         this.userScripts.value = userScripts.map(script => ({
           ...script,
           updatedAt: script.updatedAt || script.updated_at,
           createdAt: script.createdAt || script.created_at
-        }))
+        }));
 
         // 更新同步时间
-        this.lastSync.value = new Date().toISOString()
+        this.lastSync.value = new Date().toISOString();
 
         // 保存到本地存储
-        this.saveToLocal()
+        this.saveToLocal();
 
         log.info('脚本库数据全量同步成功', {
           publicScripts: publicScripts.length,
           userScripts: userScripts.length
-        })
+        });
 
-        return true
+        return true;
       } else {
-        log.warn('获取脚本库数据失败，使用本地数据')
-        return false
+        log.warn('获取脚本库数据失败，使用本地数据');
+        return false;
       }
     } catch (error) {
-      log.error('全量同步脚本库数据失败:', error)
-      return false
+      log.error('全量同步脚本库数据失败:', error);
+      return false;
     }
   }
 
@@ -365,24 +360,24 @@ class ScriptLibraryService {
         updatedAt: update.updatedAt || update.updated_at,
         createdAt: update.createdAt || update.created_at,
         isFavorite: this.favorites.value.includes(update.id)
-      }
+      };
 
       if (update.source === 'public') {
-        const index = this.scripts.value.findIndex(s => s.id === update.id)
+        const index = this.scripts.value.findIndex(s => s.id === update.id);
         if (index >= 0) {
-          this.scripts.value[index] = script
+          this.scripts.value[index] = script;
         } else {
-          this.scripts.value.push(script)
+          this.scripts.value.push(script);
         }
       } else if (update.source === 'user') {
-        const index = this.userScripts.value.findIndex(s => s.id === update.id)
+        const index = this.userScripts.value.findIndex(s => s.id === update.id);
         if (index >= 0) {
-          this.userScripts.value[index] = script
+          this.userScripts.value[index] = script;
         } else {
-          this.userScripts.value.push(script)
+          this.userScripts.value.push(script);
         }
       }
-    })
+    });
   }
 
   /**
@@ -391,11 +386,11 @@ class ScriptLibraryService {
   applyScriptDeletes(deletes) {
     deletes.forEach(deleteInfo => {
       if (deleteInfo.source === 'public') {
-        this.scripts.value = this.scripts.value.filter(s => s.id !== deleteInfo.id)
+        this.scripts.value = this.scripts.value.filter(s => s.id !== deleteInfo.id);
       } else if (deleteInfo.source === 'user') {
-        this.userScripts.value = this.userScripts.value.filter(s => s.id !== deleteInfo.id)
+        this.userScripts.value = this.userScripts.value.filter(s => s.id !== deleteInfo.id);
       }
-    })
+    });
   }
 
   /**
@@ -404,25 +399,23 @@ class ScriptLibraryService {
   async syncFavoritesFromServer() {
     try {
       if (!this.isUserLoggedIn()) {
-        return false
+        return false;
       }
 
-      const response = await apiService.get('/scripts/favorites')
+      const response = await apiService.get('/scripts/favorites');
       if (response && response.success) {
-        this.favorites.value = response.favorites || []
+        this.favorites.value = response.favorites || [];
         // 合并保存操作，避免重复的"脚本库数据已保存到本地存储"日志
-        this.saveToLocal(true) // 传入silent参数
-        log.info('脚本收藏状态同步成功', { count: this.favorites.value.length })
-        return true
+        this.saveToLocal(true); // 传入silent参数
+        log.info('脚本收藏状态同步成功', { count: this.favorites.value.length });
+        return true;
       }
-      return false
+      return false;
     } catch (error) {
-      log.warn('从服务器同步收藏状态失败:', error)
-      return false
+      log.warn('从服务器同步收藏状态失败:', error);
+      return false;
     }
   }
-
-
 
   /**
    * 记录脚本使用
@@ -430,7 +423,7 @@ class ScriptLibraryService {
   async recordScriptUsage(script) {
     try {
       if (!this.isUserLoggedIn()) {
-        return false
+        return false;
       }
 
       const usageData = {
@@ -438,14 +431,14 @@ class ScriptLibraryService {
         userScriptId: script.source === 'user' ? script.id : null,
         scriptName: script.name,
         command: script.command
-      }
+      };
 
-      await apiService.post('/scripts/usage', usageData)
-      log.debug('脚本使用记录已保存', usageData)
-      return true
+      await apiService.post('/scripts/usage', usageData);
+      log.debug('脚本使用记录已保存', usageData);
+      return true;
     } catch (error) {
-      log.warn('记录脚本使用失败:', error)
-      return false
+      log.warn('记录脚本使用失败:', error);
+      return false;
     }
   }
 
@@ -455,9 +448,9 @@ class ScriptLibraryService {
    */
   getUserStore() {
     if (!this.userStore) {
-      this.userStore = useUserStore()
+      this.userStore = useUserStore();
     }
-    return this.userStore
+    return this.userStore;
   }
 
   /**
@@ -466,11 +459,11 @@ class ScriptLibraryService {
    */
   isUserLoggedIn() {
     try {
-      const userStore = this.getUserStore()
-      return userStore.isLoggedIn
+      const userStore = this.getUserStore();
+      return userStore.isLoggedIn;
     } catch (error) {
-      log.warn('检查用户登录状态失败:', error)
-      return false
+      log.warn('检查用户登录状态失败:', error);
+      return false;
     }
   }
 
@@ -483,43 +476,43 @@ class ScriptLibraryService {
     const allScripts = [
       ...this.scripts.value.map(script => ({ ...script, source: 'public' })),
       ...this.userScripts.value.map(script => ({ ...script, source: 'user' }))
-    ]
+    ];
 
     // 如果没有数据且用户已登录，触发后台同步
     if (allScripts.length === 0 && this.isUserLoggedIn() && !this.lastSync.value) {
-      log.debug('检测到无脚本数据，触发后台同步')
+      log.debug('检测到无脚本数据，触发后台同步');
       // 异步触发同步，不阻塞当前调用
       setTimeout(() => {
         this.smartSync().catch(error => {
-          log.warn('后台智能同步失败:', error)
-        })
-      }, 100)
+          log.warn('后台智能同步失败:', error);
+        });
+      }, 100);
     }
 
     // 按使用次数和更新时间排序
     return allScripts.sort((a, b) => {
       if (a.usageCount !== b.usageCount) {
-        return (b.usageCount || 0) - (a.usageCount || 0)
+        return (b.usageCount || 0) - (a.usageCount || 0);
       }
       // 安全的日期比较
-      const dateA = a.updatedAt ? new Date(a.updatedAt) : new Date(0)
-      const dateB = b.updatedAt ? new Date(b.updatedAt) : new Date(0)
-      return dateB - dateA
-    })
+      const dateA = a.updatedAt ? new Date(a.updatedAt) : new Date(0);
+      const dateB = b.updatedAt ? new Date(b.updatedAt) : new Date(0);
+      return dateB - dateA;
+    });
   }
 
   /**
    * 获取公开脚本
    */
   getPublicScripts() {
-    return this.scripts.value
+    return this.scripts.value;
   }
 
   /**
    * 获取用户脚本
    */
   getUserScripts() {
-    return this.userScripts.value
+    return this.userScripts.value;
   }
 
   /**
@@ -529,10 +522,10 @@ class ScriptLibraryService {
    */
   searchScripts(query, options = {}) {
     if (!query || query.trim() === '') {
-      return this.getAllScripts()
+      return this.getAllScripts();
     }
 
-    const searchQuery = query.toLowerCase().trim()
+    const searchQuery = query.toLowerCase().trim();
     const {
       matchName = true,
       matchDescription = true,
@@ -540,48 +533,56 @@ class ScriptLibraryService {
       matchKeywords = true,
       matchTags = true,
       fuzzyMatch = true
-    } = options
+    } = options;
 
     return this.getAllScripts().filter(script => {
       // 精确匹配
       if (matchName && script.name.toLowerCase().includes(searchQuery)) {
-        return true
+        return true;
       }
-      
+
       if (matchDescription && script.description.toLowerCase().includes(searchQuery)) {
-        return true
+        return true;
       }
-      
+
       if (matchCommand && script.command.toLowerCase().includes(searchQuery)) {
-        return true
+        return true;
       }
-      
-      if (matchKeywords && script.keywords && 
-          script.keywords.some(keyword => keyword.toLowerCase().includes(searchQuery))) {
-        return true
+
+      if (
+        matchKeywords &&
+        script.keywords &&
+        script.keywords.some(keyword => keyword.toLowerCase().includes(searchQuery))
+      ) {
+        return true;
       }
-      
-      if (matchTags && script.tags && 
-          script.tags.some(tag => tag.toLowerCase().includes(searchQuery))) {
-        return true
+
+      if (
+        matchTags &&
+        script.tags &&
+        script.tags.some(tag => tag.toLowerCase().includes(searchQuery))
+      ) {
+        return true;
       }
 
       // 模糊匹配
       if (fuzzyMatch) {
-        const searchTerms = searchQuery.split(/\s+/)
+        const searchTerms = searchQuery.split(/\s+/);
         return searchTerms.every(term => {
-          return (matchName && script.name.toLowerCase().includes(term)) ||
-                 (matchDescription && script.description.toLowerCase().includes(term)) ||
-                 (matchCommand && script.command.toLowerCase().includes(term)) ||
-                 (matchKeywords && script.keywords && 
-                  script.keywords.some(keyword => keyword.toLowerCase().includes(term))) ||
-                 (matchTags && script.tags && 
-                  script.tags.some(tag => tag.toLowerCase().includes(term)))
-        })
+          return (
+            (matchName && script.name.toLowerCase().includes(term)) ||
+            (matchDescription && script.description.toLowerCase().includes(term)) ||
+            (matchCommand && script.command.toLowerCase().includes(term)) ||
+            (matchKeywords &&
+              script.keywords &&
+              script.keywords.some(keyword => keyword.toLowerCase().includes(term))) ||
+            (matchTags && script.tags && script.tags.some(tag => tag.toLowerCase().includes(term)))
+          );
+        });
       }
 
-      return false
-    })
+      return false;
+    });
   }
 
   /**
@@ -655,19 +656,18 @@ class ScriptLibraryService {
         score: 65,
         category: 'ai'
       }
-    ]
+    ];
 
     if (!input || input.trim() === '') {
-      return aiCommands.slice(0, limit)
+      return aiCommands.slice(0, limit);
     }
 
-    const query = input.toLowerCase()
-    const filtered = aiCommands.filter(cmd =>
-      cmd.text.toLowerCase().includes(query) ||
-      cmd.description.toLowerCase().includes(query)
-    )
+    const query = input.toLowerCase();
+    const filtered = aiCommands.filter(
+      cmd => cmd.text.toLowerCase().includes(query) || cmd.description.toLowerCase().includes(query)
+    );
 
-    return filtered.slice(0, limit)
+    return filtered.slice(0, limit);
   }
 
   /**
@@ -678,7 +678,7 @@ class ScriptLibraryService {
   getCommandSuggestions(input, limit = 10) {
     if (!input || input.trim() === '') {
       // 返回常用命令或最近使用的命令
-      return this.getFrequentCommands().slice(0, limit)
+      return this.getFrequentCommands().slice(0, limit);
     }
 
     const suggestions = this.searchScripts(input, {
@@ -686,17 +686,15 @@ class ScriptLibraryService {
       matchName: true,
       matchKeywords: true,
       fuzzyMatch: true
-    })
+    });
 
     // 按相关性排序
     const scored = suggestions.map(script => ({
       ...script,
       score: this.calculateRelevanceScore(script, input)
-    }))
+    }));
 
-    return scored
-      .sort((a, b) => b.score - a.score)
-      .slice(0, limit)
+    return scored.sort((a, b) => b.score - a.score).slice(0, limit);
   }
 
   /**
@@ -707,25 +705,25 @@ class ScriptLibraryService {
   async getSimpleCommandSuggestions(input, limit = 8) {
     // 检查用户是否已登录
     if (!this.isUserLoggedIn()) {
-      log.debug('用户未登录，不提供命令建议')
-      return []
+      log.debug('用户未登录，不提供命令建议');
+      return [];
     }
 
     // 添加AI命令建议
-    const aiSuggestions = this.getAICommandSuggestions(input, limit)
+    const aiSuggestions = this.getAICommandSuggestions(input, limit);
 
     // 直接计算建议
-    const suggestions = this.getCommandSuggestions(input, limit)
+    const suggestions = this.getCommandSuggestions(input, limit);
     const result = suggestions.map(script => ({
       id: script.id,
       text: script.command,
       description: script.name,
       fullCommand: script.command,
       score: script.score
-    }))
+    }));
 
     // 合并AI建议和脚本建议
-    return [...aiSuggestions, ...result].slice(0, limit)
+    return [...aiSuggestions, ...result].slice(0, limit);
   }
 
   /**
@@ -734,45 +732,43 @@ class ScriptLibraryService {
   getSimpleCommandSuggestionsSync(input, limit = 8) {
     // 检查用户是否已登录
     if (!this.isUserLoggedIn()) {
-      log.debug('用户未登录，不提供命令建议')
-      return []
+      log.debug('用户未登录，不提供命令建议');
+      return [];
     }
 
     // 添加AI命令建议
-    const aiSuggestions = this.getAICommandSuggestions(input, Math.min(3, limit))
+    const aiSuggestions = this.getAICommandSuggestions(input, Math.min(3, limit));
 
     // 直接计算建议（同步）
-    const suggestions = this.getCommandSuggestions(input, limit - aiSuggestions.length)
+    const suggestions = this.getCommandSuggestions(input, limit - aiSuggestions.length);
     const result = suggestions.map(script => ({
       id: script.id,
       text: script.command,
       description: script.name,
       fullCommand: script.command,
       score: script.score
-    }))
+    }));
 
     // 合并AI建议和脚本建议
-    return [...aiSuggestions, ...result].slice(0, limit)
+    return [...aiSuggestions, ...result].slice(0, limit);
   }
-
-
 
   /**
    * 提取命令的主要部分（第一个命令）
    * @param {string} command - 完整命令
    */
   extractMainCommand(command) {
-    if (!command) return ''
+    if (!command) return '';
 
     // 处理管道命令，取第一个命令
-    const firstPart = command.split('|')[0].trim()
+    const firstPart = command.split('|')[0].trim();
 
     // 处理复合命令，取第一个命令
-    const firstCommand = firstPart.split('&&')[0].trim()
+    const firstCommand = firstPart.split('&&')[0].trim();
 
     // 提取命令名称（去掉参数）
-    const commandParts = firstCommand.split(/\s+/)
-    return commandParts[0] || command
+    const commandParts = firstCommand.split(/\s+/);
+    return commandParts[0] || command;
   }
 
   /**
@@ -781,48 +777,48 @@ class ScriptLibraryService {
    * @param {string} input - 用户输入
    */
   calculateRelevanceScore(script, input) {
-    const query = input.toLowerCase()
-    let score = 0
+    const query = input.toLowerCase();
+    let score = 0;
 
     // 命令开头匹配得分最高
     if (script.command.toLowerCase().startsWith(query)) {
-      score += 100
+      score += 100;
     }
 
     // 名称匹配
     if (script.name.toLowerCase().includes(query)) {
-      score += 50
+      score += 50;
     }
 
     // 关键词匹配
     if (script.keywords) {
       script.keywords.forEach(keyword => {
         if (keyword.toLowerCase().includes(query)) {
-          score += 30
+          score += 30;
         }
-      })
+      });
     }
 
     // 标签匹配
     if (script.tags) {
       script.tags.forEach(tag => {
         if (tag.toLowerCase().includes(query)) {
-          score += 20
+          score += 20;
         }
-      })
+      });
     }
 
     // 命令包含匹配
     if (script.command.toLowerCase().includes(query)) {
-      score += 10
+      score += 10;
     }
 
     // 收藏的脚本额外加分
     if (script.isFavorite) {
-      score += 5
+      score += 5;
     }
 
-    return score
+    return score;
   }
 
   /**
@@ -830,8 +826,10 @@ class ScriptLibraryService {
    */
   getFrequentCommands() {
     // 返回收藏的脚本作为常用命令
-    const allScripts = this.getAllScripts()
-    return allScripts.filter(script => script.isFavorite || this.favorites.value.includes(script.id))
+    const allScripts = this.getAllScripts();
+    return allScripts.filter(
+      script => script.isFavorite || this.favorites.value.includes(script.id)
+    );
   }
 
   /**
@@ -839,19 +837,19 @@ class ScriptLibraryService {
    * @param {string} query - 搜索查询
    */
   addToSearchHistory(query) {
-    if (!query || query.trim() === '') return
+    if (!query || query.trim() === '') return;
 
-    const trimmedQuery = query.trim()
-    
+    const trimmedQuery = query.trim();
+
     // 移除重复项
-    this.searchHistory.value = this.searchHistory.value.filter(item => item !== trimmedQuery)
-    
+    this.searchHistory.value = this.searchHistory.value.filter(item => item !== trimmedQuery);
+
     // 添加到开头
-    this.searchHistory.value.unshift(trimmedQuery)
-    
+    this.searchHistory.value.unshift(trimmedQuery);
+
     // 限制历史记录数量
     if (this.searchHistory.value.length > 20) {
-      this.searchHistory.value = this.searchHistory.value.slice(0, 20)
+      this.searchHistory.value = this.searchHistory.value.slice(0, 20);
     }
   }
 
@@ -859,10 +857,8 @@ class ScriptLibraryService {
    * 获取搜索历史
    */
   getSearchHistory() {
-    return this.searchHistory.value
+    return this.searchHistory.value;
   }
-
-
 
   /**
    * 销毁服务
@@ -870,11 +866,11 @@ class ScriptLibraryService {
   destroy() {
     // 清理定时器
     if (this.backgroundSyncTimer) {
-      clearInterval(this.backgroundSyncTimer)
-      this.backgroundSyncTimer = null
+      clearInterval(this.backgroundSyncTimer);
+      this.backgroundSyncTimer = null;
     }
 
-    log.debug('脚本库服务已销毁')
+    log.debug('脚本库服务已销毁');
   }
 
   /**
@@ -884,9 +880,9 @@ class ScriptLibraryService {
    */
   getScriptById(id, source = 'public') {
     if (source === 'user') {
-      return this.userScripts.value.find(script => script.id === id)
+      return this.userScripts.value.find(script => script.id === id);
     }
-    return this.scripts.value.find(script => script.id === id)
+    return this.scripts.value.find(script => script.id === id);
   }
 
   /**
@@ -895,35 +891,31 @@ class ScriptLibraryService {
    * @param {string} source - 脚本来源 ('public', 'user', 或 'all')
    */
   getScriptByName(name, source = 'all') {
-    if (!name) return null
+    if (!name) return null;
 
-    const searchName = name.toLowerCase().trim()
+    const searchName = name.toLowerCase().trim();
 
     if (source === 'user') {
-      return this.userScripts.value.find(script =>
-        script.name.toLowerCase() === searchName
-      )
+      return this.userScripts.value.find(script => script.name.toLowerCase() === searchName);
     } else if (source === 'public') {
-      return this.scripts.value.find(script =>
-        script.name.toLowerCase() === searchName
-      )
+      return this.scripts.value.find(script => script.name.toLowerCase() === searchName);
     } else {
       // 搜索所有脚本，优先返回公开脚本
-      const publicScript = this.scripts.value.find(script =>
-        script.name.toLowerCase() === searchName
-      )
+      const publicScript = this.scripts.value.find(
+        script => script.name.toLowerCase() === searchName
+      );
       if (publicScript) {
-        return { ...publicScript, source: 'public' }
+        return { ...publicScript, source: 'public' };
       }
 
-      const userScript = this.userScripts.value.find(script =>
-        script.name.toLowerCase() === searchName
-      )
+      const userScript = this.userScripts.value.find(
+        script => script.name.toLowerCase() === searchName
+      );
       if (userScript) {
-        return { ...userScript, source: 'user' }
+        return { ...userScript, source: 'user' };
       }
 
-      return null
+      return null;
     }
   }
 
@@ -932,42 +924,42 @@ class ScriptLibraryService {
    * @param {number} scriptId - 脚本ID
    */
   async toggleFavorite(scriptId) {
-    const index = this.favorites.value.indexOf(scriptId)
-    const wasFavorite = index > -1
+    const index = this.favorites.value.indexOf(scriptId);
+    const wasFavorite = index > -1;
 
     if (wasFavorite) {
-      this.favorites.value.splice(index, 1)
+      this.favorites.value.splice(index, 1);
     } else {
-      this.favorites.value.push(scriptId)
+      this.favorites.value.push(scriptId);
     }
 
     // 更新本地存储
-    this.saveToLocal()
+    this.saveToLocal();
 
     // 同步到服务器
     try {
       if (this.isUserLoggedIn()) {
         await apiService.post('/scripts/favorites', {
           favorites: this.favorites.value
-        })
-        log.debug('脚本收藏状态已同步到服务器', { scriptId, isFavorite: !wasFavorite })
+        });
+        log.debug('脚本收藏状态已同步到服务器', { scriptId, isFavorite: !wasFavorite });
       }
     } catch (error) {
-      log.warn('同步脚本收藏状态到服务器失败:', error)
+      log.warn('同步脚本收藏状态到服务器失败:', error);
       // 如果同步失败，恢复本地状态
       if (wasFavorite) {
-        this.favorites.value.push(scriptId)
+        this.favorites.value.push(scriptId);
       } else {
-        const restoreIndex = this.favorites.value.indexOf(scriptId)
+        const restoreIndex = this.favorites.value.indexOf(scriptId);
         if (restoreIndex > -1) {
-          this.favorites.value.splice(restoreIndex, 1)
+          this.favorites.value.splice(restoreIndex, 1);
         }
       }
-      this.saveToLocal()
-      throw error
+      this.saveToLocal();
+      throw error;
     }
 
-    return this.favorites.value.includes(scriptId)
+    return this.favorites.value.includes(scriptId);
   }
 
   /**
@@ -975,7 +967,7 @@ class ScriptLibraryService {
    * @param {number} scriptId - 脚本ID
    */
   isFavorite(scriptId) {
-    return this.favorites.value.includes(scriptId)
+    return this.favorites.value.includes(scriptId);
   }
 
   /**
@@ -988,10 +980,10 @@ class ScriptLibraryService {
       ...scriptData,
       updatedAt: new Date(),
       keywords: this.generateKeywords(scriptData)
-    }
+    };
 
-    this.scripts.value.push(newScript)
-    return newScript
+    this.scripts.value.push(newScript);
+    return newScript;
   }
 
   /**
@@ -1004,11 +996,11 @@ class ScriptLibraryService {
       source: 'user',
       updatedAt: new Date(),
       keywords: this.generateKeywords(scriptData)
-    }
+    };
 
-    this.userScripts.value.push(newScript)
-    this.saveToLocal()
-    return newScript
+    this.userScripts.value.push(newScript);
+    this.saveToLocal();
+    return newScript;
   }
 
   /**
@@ -1018,29 +1010,29 @@ class ScriptLibraryService {
    */
   addUserScriptsBatch(scriptsData) {
     if (!Array.isArray(scriptsData)) {
-      throw new Error('脚本数据必须是数组格式')
+      throw new Error('脚本数据必须是数组格式');
     }
 
-    let addedCount = 0
-    let skippedCount = 0
-    const addedScripts = []
-    const errors = []
+    let addedCount = 0;
+    let skippedCount = 0;
+    const addedScripts = [];
+    const errors = [];
 
     scriptsData.forEach((scriptData, index) => {
       try {
         // 验证必要字段
         if (!scriptData.name || !scriptData.command) {
-          skippedCount++
-          errors.push(`第${index + 1}个脚本缺少必要字段`)
-          return
+          skippedCount++;
+          errors.push(`第${index + 1}个脚本缺少必要字段`);
+          return;
         }
 
         // 检查是否已存在同名脚本
-        const existingScript = this.userScripts.value.find(s => s.name === scriptData.name)
+        const existingScript = this.userScripts.value.find(s => s.name === scriptData.name);
         if (existingScript) {
-          skippedCount++
-          errors.push(`脚本 "${scriptData.name}" 已存在`)
-          return
+          skippedCount++;
+          errors.push(`脚本 "${scriptData.name}" 已存在`);
+          return;
         }
 
         // 添加脚本
@@ -1049,21 +1041,20 @@ class ScriptLibraryService {
           source: 'user',
           updatedAt: new Date(),
           keywords: this.generateKeywords(scriptData)
-        }
+        };
 
-        this.userScripts.value.push(newScript)
-        addedScripts.push(newScript)
-        addedCount++
-
+        this.userScripts.value.push(newScript);
+        addedScripts.push(newScript);
+        addedCount++;
       } catch (error) {
-        skippedCount++
-        errors.push(`第${index + 1}个脚本添加失败: ${error.message}`)
+        skippedCount++;
+        errors.push(`第${index + 1}个脚本添加失败: ${error.message}`);
       }
-    })
+    });
 
     // 保存到本地存储
     if (addedCount > 0) {
-      this.saveToLocal()
+      this.saveToLocal();
     }
 
     return {
@@ -1072,7 +1063,7 @@ class ScriptLibraryService {
       addedScripts,
       errors,
       total: scriptsData.length
-    }
+    };
   }
 
   /**
@@ -1081,17 +1072,17 @@ class ScriptLibraryService {
    * @param {Object} updates - 更新数据
    */
   updateScript(id, updates) {
-    const index = this.scripts.value.findIndex(script => script.id === id)
+    const index = this.scripts.value.findIndex(script => script.id === id);
     if (index !== -1) {
       this.scripts.value[index] = {
         ...this.scripts.value[index],
         ...updates,
         updatedAt: new Date(),
         keywords: this.generateKeywords({ ...this.scripts.value[index], ...updates })
-      }
-      return this.scripts.value[index]
+      };
+      return this.scripts.value[index];
     }
-    return null
+    return null;
   }
 
   /**
@@ -1099,12 +1090,12 @@ class ScriptLibraryService {
    * @param {number} id - 脚本ID
    */
   deleteScript(id) {
-    const index = this.scripts.value.findIndex(script => script.id === id)
+    const index = this.scripts.value.findIndex(script => script.id === id);
     if (index !== -1) {
-      const deleted = this.scripts.value.splice(index, 1)[0]
-      return deleted
+      const deleted = this.scripts.value.splice(index, 1)[0];
+      return deleted;
     }
-    return null
+    return null;
   }
 
   /**
@@ -1112,48 +1103,48 @@ class ScriptLibraryService {
    * @param {Object} scriptData - 脚本数据
    */
   generateKeywords(scriptData) {
-    const keywords = new Set()
+    const keywords = new Set();
 
     // 从名称提取关键词
     if (scriptData.name) {
       scriptData.name.split(/\s+/).forEach(word => {
         if (word.length > 1) {
-          keywords.add(word.toLowerCase())
+          keywords.add(word.toLowerCase());
         }
-      })
+      });
     }
 
     // 从描述提取关键词
     if (scriptData.description) {
       scriptData.description.split(/\s+/).forEach(word => {
         if (word.length > 2) {
-          keywords.add(word.toLowerCase())
+          keywords.add(word.toLowerCase());
         }
-      })
+      });
     }
 
     // 从命令提取关键词
     if (scriptData.command) {
-      const commandWords = scriptData.command.match(/\b[a-zA-Z]+\b/g) || []
+      const commandWords = scriptData.command.match(/\b[a-zA-Z]+\b/g) || [];
       commandWords.forEach(word => {
         if (word.length > 1) {
-          keywords.add(word.toLowerCase())
+          keywords.add(word.toLowerCase());
         }
-      })
+      });
     }
 
     // 添加标签
     if (scriptData.tags) {
       scriptData.tags.forEach(tag => {
-        keywords.add(tag.toLowerCase())
-      })
+        keywords.add(tag.toLowerCase());
+      });
     }
 
-    return Array.from(keywords)
+    return Array.from(keywords);
   }
 }
 
 // 创建单例实例
-const scriptLibraryService = new ScriptLibraryService()
+const scriptLibraryService = new ScriptLibraryService();
 
-export default scriptLibraryService
+export default scriptLibraryService;

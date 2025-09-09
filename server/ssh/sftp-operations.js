@@ -96,7 +96,7 @@ function handleSftpInit(ws, data, sshSessions) {
  */
 function handleSftpList(ws, data) {
   const { sessionId, path: remotePath, operationId } = data;
-  
+
   try {
     const sftpSession = sftpSessions.get(sessionId);
     if (!sftpSession) {
@@ -104,7 +104,7 @@ function handleSftpList(ws, data) {
     }
 
     const sftp = sftpSession.sftp;
-    
+
     sftp.readdir(remotePath, (err, list) => {
       if (err) {
         logger.error('SFTP列表目录失败', { sessionId, path: remotePath, error: err.message });
@@ -122,14 +122,14 @@ function handleSftpList(ws, data) {
       }));
 
       logger.debug('SFTP已列出目录', { path: remotePath, fileCount: formattedList.length });
-      
+
       // 将目录数据作为payload发送
       const responseData = {
         files: formattedList,
         path: remotePath
       };
       const payloadBuffer = Buffer.from(JSON.stringify(responseData), 'utf-8');
-      
+
       sendBinarySftpSuccess(ws, sessionId, operationId, {}, payloadBuffer);
     });
   } catch (error) {
@@ -143,7 +143,7 @@ function handleSftpList(ws, data) {
  */
 function handleSftpMkdir(ws, data) {
   const { sessionId, path: remotePath, operationId } = data;
-  
+
   try {
     const sftpSession = sftpSessions.get(sessionId);
     if (!sftpSession) {
@@ -151,7 +151,7 @@ function handleSftpMkdir(ws, data) {
     }
 
     const sftp = sftpSession.sftp;
-    
+
     sftp.mkdir(remotePath, (err) => {
       if (err) {
         logger.error('SFTP创建目录失败', { sessionId, path: remotePath, error: err.message });
@@ -160,7 +160,7 @@ function handleSftpMkdir(ws, data) {
       }
 
       logger.info('SFTP目录已创建', { path: remotePath });
-      sendBinarySftpSuccess(ws, sessionId, operationId, { 
+      sendBinarySftpSuccess(ws, sessionId, operationId, {
         message: '目录创建成功',
         path: remotePath
       });
@@ -176,7 +176,7 @@ function handleSftpMkdir(ws, data) {
  */
 function handleSftpDelete(ws, data) {
   const { sessionId, path: remotePath, operationId } = data;
-  
+
   try {
     const sftpSession = sftpSessions.get(sessionId);
     if (!sftpSession) {
@@ -184,7 +184,7 @@ function handleSftpDelete(ws, data) {
     }
 
     const sftp = sftpSession.sftp;
-    
+
     // 递归删除函数
     function recursiveDelete(path, callback) {
       sftp.stat(path, (err, stats) => {
@@ -213,7 +213,7 @@ function handleSftpDelete(ws, data) {
                     hasError = true;
                     return callback(err);
                   }
-                  
+
                   completed++;
                   if (completed === list.length && !hasError) {
                     // 所有子项删除完成，删除目录
@@ -239,7 +239,7 @@ function handleSftpDelete(ws, data) {
       }
 
       logger.info('SFTP删除成功', { path: remotePath });
-      sendBinarySftpSuccess(ws, sessionId, operationId, { 
+      sendBinarySftpSuccess(ws, sessionId, operationId, {
         message: '删除成功',
         path: remotePath
       });
@@ -255,7 +255,7 @@ function handleSftpDelete(ws, data) {
  */
 function handleSftpFastDelete(ws, data) {
   const { sessionId, path: remotePath, operationId } = data;
-  
+
   try {
     const sftpSession = sftpSessions.get(sessionId);
     if (!sftpSession) {
@@ -263,7 +263,7 @@ function handleSftpFastDelete(ws, data) {
     }
 
     const sftp = sftpSession.sftp;
-    
+
     // 递归删除函数
     function recursiveDelete(path, callback) {
       sftp.stat(path, (err, stats) => {
@@ -292,7 +292,7 @@ function handleSftpFastDelete(ws, data) {
                     hasError = true;
                     return callback(err);
                   }
-                  
+
                   completed++;
                   if (completed === list.length && !hasError) {
                     // 所有子项删除完成，删除目录
@@ -317,7 +317,7 @@ function handleSftpFastDelete(ws, data) {
       }
 
       logger.info('SFTP快速删除完成', { path: remotePath });
-      sendBinarySftpSuccess(ws, sessionId, operationId, { 
+      sendBinarySftpSuccess(ws, sessionId, operationId, {
         message: '快速删除成功',
         path: remotePath
       });
@@ -333,7 +333,7 @@ function handleSftpFastDelete(ws, data) {
  */
 function handleSftpChmod(ws, data) {
   const { sessionId, path: remotePath, mode, operationId } = data;
-  
+
   try {
     const sftpSession = sftpSessions.get(sessionId);
     if (!sftpSession) {
@@ -341,7 +341,7 @@ function handleSftpChmod(ws, data) {
     }
 
     const sftp = sftpSession.sftp;
-    
+
     sftp.chmod(remotePath, mode, (err) => {
       if (err) {
         logger.error('SFTP权限修改失败', { sessionId, path: remotePath, mode, error: err.message });
@@ -350,7 +350,7 @@ function handleSftpChmod(ws, data) {
       }
 
       logger.info('SFTP权限已修改', { path: remotePath, mode });
-      sendBinarySftpSuccess(ws, sessionId, operationId, { 
+      sendBinarySftpSuccess(ws, sessionId, operationId, {
         message: '权限修改成功',
         path: remotePath,
         mode
@@ -367,7 +367,7 @@ function handleSftpChmod(ws, data) {
  */
 function handleSftpRename(ws, data) {
   const { sessionId, oldPath, newPath, operationId } = data;
-  
+
   try {
     const sftpSession = sftpSessions.get(sessionId);
     if (!sftpSession) {
@@ -375,7 +375,7 @@ function handleSftpRename(ws, data) {
     }
 
     const sftp = sftpSession.sftp;
-    
+
     sftp.rename(oldPath, newPath, (err) => {
       if (err) {
         logger.error('SFTP重命名失败', { sessionId, oldPath, newPath, error: err.message });
@@ -384,7 +384,7 @@ function handleSftpRename(ws, data) {
       }
 
       logger.info('SFTP重命名成功', { oldPath, newPath });
-      sendBinarySftpSuccess(ws, sessionId, operationId, { 
+      sendBinarySftpSuccess(ws, sessionId, operationId, {
         message: '重命名成功',
         oldPath,
         newPath
@@ -401,7 +401,7 @@ function handleSftpRename(ws, data) {
  */
 function handleSftpClose(ws, data) {
   const { sessionId, operationId } = data;
-  
+
   try {
     const sftpSession = sftpSessions.get(sessionId);
     if (sftpSession) {

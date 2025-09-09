@@ -1,25 +1,35 @@
 <template>
-  <label class="custom-checkbox" :for="checkboxId">
+  <label
+    class="custom-checkbox"
+    :for="checkboxId"
+  >
     <input
-      type="checkbox"
       :id="checkboxId"
+      type="checkbox"
       :checked="modelValue"
       :disabled="disabled"
+      style="display: none"
       @change="toggleChecked"
-      style="display: none;"
     >
     <span class="check">
-      <svg width="18px" height="18px" viewBox="0 0 18 18">
-        <path d="M 1 1 L 17 1 L 17 17 L 1 17 Z"></path>
-        <polyline points="4 9 8 13 14 5"></polyline>
+      <svg
+        width="18px"
+        height="18px"
+        viewBox="0 0 18 18"
+      >
+        <path d="M 1 1 L 17 1 L 17 17 L 1 17 Z" />
+        <polyline points="4 9 8 13 14 5" />
       </svg>
     </span>
-    <span v-if="label" class="checkbox-label">{{ label }}</span>
+    <span
+      v-if="label"
+      class="checkbox-label"
+    >{{ label }}</span>
   </label>
 </template>
 
 <script>
-import { defineComponent, computed } from 'vue'
+import { defineComponent, computed } from 'vue';
 
 export default defineComponent({
   name: 'Checkbox',
@@ -40,22 +50,22 @@ export default defineComponent({
   emits: ['update:modelValue', 'change'],
   setup(props, { emit }) {
     // 生成唯一的 checkbox ID
-    const checkboxId = computed(() => `checkbox-${Math.random().toString(36).substring(2, 11)}`)
+    const checkboxId = computed(() => `checkbox-${Math.random().toString(36).substring(2, 11)}`);
 
-    const toggleChecked = (event) => {
-      if (props.disabled) return
+    const toggleChecked = event => {
+      if (props.disabled) return;
 
-      const newValue = event.target.checked
-      emit('update:modelValue', newValue)
-      emit('change', newValue)
-    }
+      const newValue = event.target.checked;
+      emit('update:modelValue', newValue);
+      emit('change', newValue);
+    };
 
     return {
       checkboxId,
       toggleChecked
-    }
+    };
   }
-})
+});
 </script>
 
 <style scoped>
@@ -121,16 +131,16 @@ export default defineComponent({
   stroke: var(--color-primary, #a3e583);
 }
 
-.custom-checkbox input[type="checkbox"]:checked ~ .check svg {
+.custom-checkbox input[type='checkbox']:checked ~ .check svg {
   stroke: var(--color-primary, #a3e583);
 }
 
-.custom-checkbox input[type="checkbox"]:checked ~ .check svg path {
+.custom-checkbox input[type='checkbox']:checked ~ .check svg path {
   stroke-dashoffset: 64;
   transition: all 0.3s linear;
 }
 
-.custom-checkbox input[type="checkbox"]:checked ~ .check svg polyline {
+.custom-checkbox input[type='checkbox']:checked ~ .check svg polyline {
   stroke-dashoffset: 42;
   transition: all 0.2s linear;
   transition-delay: 0.15s;

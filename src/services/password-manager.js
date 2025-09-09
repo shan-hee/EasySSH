@@ -12,14 +12,14 @@ class PasswordManager {
   constructor() {
     // 当前会话的主密码
     this.masterPassword = ref(null);
-    
+
     // 密码状态
     this.isUnlocked = computed(() => this.masterPassword.value !== null);
-    
+
     // 自动锁定定时器
     this.autoLockTimer = null;
     this.autoLockDelay = 30 * 60 * 1000; // 30分钟
-    
+
     // 密码强度要求
     this.passwordRequirements = {
       minLength: 8,
@@ -28,7 +28,7 @@ class PasswordManager {
       requireNumbers: true,
       requireSpecialChars: false
     };
-    
+
     this.init();
   }
 
@@ -53,9 +53,13 @@ class PasswordManager {
 
     // 监听用户活动
     ['mousedown', 'mousemove', 'keypress', 'scroll', 'touchstart'].forEach(event => {
-      document.addEventListener(event, () => {
-        this.resetAutoLockTimer();
-      }, { passive: true });
+      document.addEventListener(
+        event,
+        () => {
+          this.resetAutoLockTimer();
+        },
+        { passive: true }
+      );
     });
 
     log.info('密码管理器已初始化');
@@ -137,7 +141,7 @@ class PasswordManager {
       if (success) {
         this.masterPassword.value = password;
         this.resetAutoLockTimer();
-        
+
         ElMessage.success('主密码设置成功');
         log.info('主密码已设置');
         return true;
@@ -160,7 +164,7 @@ class PasswordManager {
   async verifyMasterPassword(password) {
     try {
       const isValid = await cryptoStorage.verifyPassword('master_password_test', password);
-      
+
       if (isValid) {
         this.masterPassword.value = password;
         this.resetAutoLockTimer();
@@ -196,22 +200,18 @@ class PasswordManager {
     }
 
     try {
-      const { value: password } = await ElMessageBox.prompt(
-        `请输入主密码以${action}`,
-        '身份验证',
-        {
-          confirmButtonText: '确定',
-          cancelButtonText: '取消',
-          inputType: 'password',
-          inputPlaceholder: '请输入主密码',
-          inputValidator: (value) => {
-            if (!value) {
-              return '请输入密码';
-            }
-            return true;
+      const { value: password } = await ElMessageBox.prompt(`请输入主密码以${action}`, '身份验证', {
+        confirmButtonText: '确定',
+        cancelButtonText: '取消',
+        inputType: 'password',
+        inputPlaceholder: '请输入主密码',
+        inputValidator: value => {
+          if (!value) {
+            return '请输入密码';
           }
+          return true;
         }
-      );
+      });
 
       const isValid = await this.verifyMasterPassword(password);
       if (!isValid) {
@@ -336,7 +336,7 @@ class PasswordManager {
     } catch (error) {
       log.debug('用户取消清理操作');
     }
-    
+
     return false;
   }
 }

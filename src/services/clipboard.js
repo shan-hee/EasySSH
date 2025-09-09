@@ -13,7 +13,7 @@ import log from './log';
  */
 function debounce(func, wait) {
   let timeout;
-  return function(...args) {
+  return function (...args) {
     const later = () => {
       clearTimeout(timeout);
       func(...args);
@@ -96,7 +96,7 @@ class HistoryManager {
   addToHistory(content) {
     try {
       if (!content || content.trim().length === 0) return;
-      
+
       let history = this.getHistory();
       // 删除重复项
       history = history.filter(item => item !== content);
@@ -127,12 +127,12 @@ class HistoryManager {
  */
 const ContentHandlers = {
   'text/plain': {
-    validate: (content) => typeof content === 'string' && content.length <= 1024 * 1024,
-    process: (content) => content.trim()
+    validate: content => typeof content === 'string' && content.length <= 1024 * 1024,
+    process: content => content.trim()
   },
   'text/html': {
-    validate: (content) => content.length <= 2 * 1024 * 1024,
-    process: (content) => {
+    validate: content => content.length <= 2 * 1024 * 1024,
+    process: content => {
       const div = document.createElement('div');
       div.innerHTML = content;
       return div.innerText;
@@ -178,7 +178,7 @@ class ClipboardManager {
       // 监听粘贴事件 - 只在document存在的情况下添加
       if (typeof document !== 'undefined') {
         try {
-          document.addEventListener('paste', (event) => {
+          document.addEventListener('paste', event => {
             // 简单的空函数，避免直接绑定到可能不存在的方法
             if (typeof this._handlePaste === 'function') {
               this._handlePaste(event);
@@ -243,7 +243,7 @@ class ClipboardManager {
       // 权限检查放宽松，避免阻止用户操作
       const clipboardData = event.clipboardData || window.clipboardData;
       if (!clipboardData) return null;
-      
+
       const content = clipboardData.getData('text/plain');
       if (content && this.validateContent(content)) {
         this.historyManager.addToHistory(content);
@@ -279,15 +279,15 @@ class ClipboardManager {
    */
   async copyToClipboard(text) {
     if (!text) return false;
-    
+
     try {
       // 使用现代Clipboard API
       if (navigator.clipboard) {
         await navigator.clipboard.writeText(text);
         this.historyManager.addToHistory(text);
         return true;
-      } 
-      
+      }
+
       // 回退方案：使用document.execCommand
       const textarea = document.createElement('textarea');
       textarea.value = text;
@@ -295,14 +295,14 @@ class ClipboardManager {
       textarea.style.left = '-9999px';
       document.body.appendChild(textarea);
       textarea.select();
-      
+
       const result = document.execCommand('copy');
       document.body.removeChild(textarea);
-      
+
       if (result) {
         this.historyManager.addToHistory(text);
       }
-      
+
       return result;
     } catch (error) {
       console.error(`复制操作失败: ${error.message}`);
@@ -445,7 +445,7 @@ class EnhancedClipboardManager extends ClipboardManager {
 
   /**
    * 验证内容
-   * @param {string} content - 要验证的内容 
+   * @param {string} content - 要验证的内容
    * @param {string} type - 内容类型
    * @returns {string} - 处理后的内容
    */
@@ -478,12 +478,12 @@ class EnhancedClipboardManager extends ClipboardManager {
   async handlePaste(event) {
     try {
       await this.rateLimiter.checkLimit();
-      
+
       const clipboardData = event.clipboardData || window.clipboardData;
       if (!clipboardData) return null;
-      
+
       const content = clipboardData.getData('text/plain');
-      
+
       try {
         const validatedContent = this.validateContent(content);
         await this.addToHistory(validatedContent);
@@ -505,10 +505,10 @@ class EnhancedClipboardManager extends ClipboardManager {
   async copyToClipboard(text) {
     return this.retryManager.retry(async () => {
       await this.rateLimiter.checkLimit();
-      
+
       try {
         const validatedContent = this.validateContent(text);
-        
+
         if (navigator.clipboard) {
           await navigator.clipboard.writeText(validatedContent);
         } else {
@@ -519,15 +519,15 @@ class EnhancedClipboardManager extends ClipboardManager {
           textarea.style.opacity = '0';
           document.body.appendChild(textarea);
           textarea.select();
-          
+
           const success = document.execCommand('copy');
           document.body.removeChild(textarea);
-          
+
           if (!success) {
             throw new Error('复制失败');
           }
         }
-        
+
         await this.addToHistory(validatedContent);
         return true;
       } catch (error) {
@@ -543,13 +543,13 @@ class EnhancedClipboardManager extends ClipboardManager {
   async addToHistory(content) {
     const timestamp = Date.now();
     this.history.set(timestamp, content);
-    
+
     // 维持历史记录大小限制
     if (this.history.size > this.maxHistorySize) {
       const oldestKey = Array.from(this.history.keys())[0];
       this.history.delete(oldestKey);
     }
-    
+
     // 持久化到localStorage
     this.persistHistory();
   }
@@ -586,7 +586,7 @@ class EnhancedClipboardManager extends ClipboardManager {
   handleError(error) {
     // 记录错误
     console.error('剪贴板操作错误:', error);
-    
+
     // 通知用户
     if (error.message === '操作过于频繁，请稍后再试') {
       console.warn('剪贴板操作过于频繁，请稍后再试');
@@ -602,7 +602,7 @@ class EnhancedClipboardManager extends ClipboardManager {
     this.history.clear();
     localStorage.removeItem('easyssh_clipboard_history');
   }
-  
+
   /**
    * 兼容terminal.js的复制方法
    */
@@ -614,7 +614,7 @@ class EnhancedClipboardManager extends ClipboardManager {
       return false;
     }
   }
-  
+
   /**
    * 兼容terminal.js的读取方法
    */

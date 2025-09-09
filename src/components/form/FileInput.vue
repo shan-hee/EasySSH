@@ -3,20 +3,25 @@
     <label v-if="label">{{ label }}</label>
     <div class="file-input-wrapper">
       <input
+        ref="filePathInput"
         type="text"
         :value="modelValue"
         :placeholder="placeholder"
         readonly
         @click="selectFile"
-        ref="filePathInput"
-      />
-      <button class="select-file-btn" @click="selectFile">{{ buttonText }}</button>
+      >
+      <button
+        class="select-file-btn"
+        @click="selectFile"
+      >
+        {{ buttonText }}
+      </button>
     </div>
   </div>
 </template>
 
 <script>
-import { defineComponent, ref } from 'vue'
+import { defineComponent, ref } from 'vue';
 
 export default defineComponent({
   name: 'FileInput',
@@ -44,32 +49,32 @@ export default defineComponent({
   },
   emits: ['update:modelValue'],
   setup(props, { emit }) {
-    const filePathInput = ref(null)
+    const filePathInput = ref(null);
 
     const selectFile = () => {
       // 创建一个隐藏的文件输入元素
-      const fileInput = document.createElement('input')
-      fileInput.type = 'file'
-      fileInput.accept = props.accept
-      
+      const fileInput = document.createElement('input');
+      fileInput.type = 'file';
+      fileInput.accept = props.accept;
+
       // 监听文件选择事件
-      fileInput.onchange = (event) => {
-        const file = event.target.files[0]
+      fileInput.onchange = event => {
+        const file = event.target.files[0];
         if (file) {
-          emit('update:modelValue', file.path || file.name)
+          emit('update:modelValue', file.path || file.name);
         }
-      }
-      
+      };
+
       // 触发文件选择对话框
-      fileInput.click()
-    }
+      fileInput.click();
+    };
 
     return {
       filePathInput,
       selectFile
-    }
+    };
   }
-})
+});
 </script>
 
 <style scoped>
@@ -146,4 +151,4 @@ label {
 .select-file-btn:hover {
   background-color: #333;
 }
-</style> 
+</style>

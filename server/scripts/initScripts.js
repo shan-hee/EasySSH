@@ -149,16 +149,16 @@ async function initializeScripts() {
       try {
         // 检查脚本是否已存在
         const existingScripts = await Script.search(scriptData.name, { limit: 1 });
-        const exists = existingScripts.some(script => 
+        const exists = existingScripts.some(script =>
           script.name === scriptData.name && script.isSystem
         );
-        
+
         if (exists) {
           console.log(`脚本 "${scriptData.name}" 已存在，跳过创建`);
           skippedCount++;
           continue;
         }
-        
+
         // 创建新脚本
         const script = new Script({
           ...scriptData,
@@ -166,22 +166,22 @@ async function initializeScripts() {
           is_public: true,
           created_by: null // 系统脚本没有创建者
         });
-        
+
         await script.save();
         console.log(`创建脚本: ${scriptData.name}`);
         createdCount++;
-        
+
       } catch (error) {
         console.error(`创建脚本 "${scriptData.name}" 失败:`, error.message);
         skippedCount++;
       }
     }
-    
-    console.log(`\n脚本库初始化完成:`);
+
+    console.log('\n脚本库初始化完成:');
     console.log(`- 成功创建: ${createdCount} 个脚本`);
     console.log(`- 跳过/失败: ${skippedCount} 个脚本`);
     console.log(`- 总计: ${defaultScripts.length} 个脚本`);
-    
+
   } catch (error) {
     console.error('初始化脚本库失败:', error);
     process.exit(1);

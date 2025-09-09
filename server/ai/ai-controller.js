@@ -17,12 +17,12 @@ class AIController {
     this.connections = new Map();
     // 存储正在进行的AI请求
     this.activeRequests = new Map();
-    
+
     // 初始化核心组件
     this.contextBuilder = new ContextBuilder();
     this.keyVault = new KeyVault();
     this.rateLimiter = new RateLimiter();
-    
+
     logger.info('AI控制器已初始化');
   }
 
@@ -124,25 +124,25 @@ class AIController {
     const { type, requestId } = data;
 
     switch (type) {
-      case 'ai_request':
-        await this.handleAIRequest(connectionId, data);
-        break;
+    case 'ai_request':
+      await this.handleAIRequest(connectionId, data);
+      break;
 
-      case 'ai_cancel':
-        await this.handleAICancel(connectionId, data);
-        break;
+    case 'ai_cancel':
+      await this.handleAICancel(connectionId, data);
+      break;
 
-      case 'ai_config_test':
-        await this.handleConfigTest(connectionId, data);
-        break;
+    case 'ai_config_test':
+      await this.handleConfigTest(connectionId, data);
+      break;
 
-      case 'ai_config_sync':
-        await this.handleConfigSync(connectionId, data);
-        break;
+    case 'ai_config_sync':
+      await this.handleConfigSync(connectionId, data);
+      break;
 
-      default:
-        logger.warn('未知的AI消息类型', { connectionId, type, requestId });
-        this.sendError(connectionId, 'UNKNOWN_MESSAGE_TYPE', `未知的消息类型: ${type}`);
+    default:
+      logger.warn('未知的AI消息类型', { connectionId, type, requestId });
+      this.sendError(connectionId, 'UNKNOWN_MESSAGE_TYPE', `未知的消息类型: ${type}`);
     }
   }
 
@@ -219,7 +219,7 @@ class AIController {
       logger.info('取消AI请求', { connectionId, requestId });
       activeRequest.abortController.abort();
       this.activeRequests.delete(requestId);
-      
+
       this.sendMessage(connectionId, {
         type: 'ai_cancelled',
         requestId,
@@ -316,15 +316,15 @@ class AIController {
 
     // 根据消息类型进行具体验证
     switch (type) {
-      case 'ai_request':
-        return !!(data.requestId && data.mode && data.input);
-      case 'ai_cancel':
-      case 'ai_config_test':
-        return !!data.requestId;
-      case 'ai_config_sync':
-        return !!(data.config && data.userId);
-      default:
-        return false;
+    case 'ai_request':
+      return !!(data.requestId && data.mode && data.input);
+    case 'ai_cancel':
+    case 'ai_config_test':
+      return !!data.requestId;
+    case 'ai_config_sync':
+      return !!(data.config && data.userId);
+    default:
+      return false;
     }
   }
 
@@ -366,10 +366,10 @@ class AIController {
    * @param {string} reason 关闭原因
    */
   handleDisconnection(connectionId, code, reason) {
-    logger.info('AI连接已断开', { 
-      connectionId, 
-      code, 
-      reason: reason?.toString() 
+    logger.info('AI连接已断开', {
+      connectionId,
+      code,
+      reason: reason?.toString()
     });
 
     // 取消该连接的所有活跃请求

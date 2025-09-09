@@ -60,6 +60,8 @@ module.exports = {
     'dist',
     'node_modules',
     'server/node_modules',
+    'server/**',
+    'scripts/**',
     '*.min.js',
     'public',
     'coverage'

@@ -1,18 +1,17 @@
-import { createRouter, createWebHashHistory } from 'vue-router'
+import { createRouter, createWebHashHistory } from 'vue-router';
 
 // 直接导入Dashboard组件
-import Dashboard from '../views/Dashboard.vue'
+import Dashboard from '../views/Dashboard.vue';
 
 // 其他组件保持懒加载
-const Home = () => import('../views/Home.vue')
-const ConnectionDetail = () => import('../views/connections/ConnectionDetail.vue')
-const NewConnection = () => import('../views/connections/NewConnection.vue')
+const Home = () => import('../views/Home.vue');
+const ConnectionDetail = () => import('../views/connections/ConnectionDetail.vue');
+const NewConnection = () => import('../views/connections/NewConnection.vue');
 // 创建一个空组件替代原Terminal组件
-const EmptyTerminal = { render: () => null }
+const EmptyTerminal = { render: () => null };
 
-
-const NotFound = () => import('../views/errors/NotFound.vue')
-const ScriptLibrary = () => import('../views/scripts/ScriptLibrary.vue')
+const NotFound = () => import('../views/errors/NotFound.vue');
+const ScriptLibrary = () => import('../views/scripts/ScriptLibrary.vue');
 
 // 定义路由
 const routes = [
@@ -36,7 +35,7 @@ const routes = [
   },
   {
     path: '/login',
-    redirect: '/home',  // 登录页面重定向到首页，首页会显示登录面板
+    redirect: '/home', // 登录页面重定向到首页，首页会显示登录面板
     meta: {
       title: 'EasySSH',
       requiresAuth: false
@@ -97,12 +96,11 @@ const routes = [
     }
   },
 
-
   {
     path: '/:pathMatch(.*)*',
     redirect: '/'
   }
-]
+];
 
 // 创建路由实例
 const router = createRouter({
@@ -110,34 +108,34 @@ const router = createRouter({
   routes,
   scrollBehavior() {
     // 始终滚动到顶部
-    return { top: 0 }
+    return { top: 0 };
   }
-})
+});
 
 // 导入用户状态管理
-import { useUserStore } from '../store/user'
+import { useUserStore } from '../store/user';
 
 // 简化路由守卫，确保页面始终能正常加载
 router.beforeEach((to, from, next) => {
   // 设置页面标题
-  document.title = to.meta.title || 'EasySSH - 高效服务器管理工具'
-  
+  document.title = to.meta.title || 'EasySSH - 高效服务器管理工具';
+
   // 处理登录面板
   const headerElement = document.querySelector('.app-header');
-  
+
   // 检查认证需求
   if (to.meta.requiresAuth) {
-    const userStore = useUserStore()
+    const userStore = useUserStore();
     if (!userStore.isLoggedIn) {
       // 用户未登录，显示登录面板
       if (headerElement) {
         const showLoginEvent = new CustomEvent('show-login-panel');
         headerElement.dispatchEvent(showLoginEvent);
       }
-      
+
       // 取消导航，保持在当前页面
-      next(false)
-      return
+      next(false);
+      return;
     } else if (headerElement) {
       // 已登录用户访问受保护页面，关闭登录面板
       const closeEvent = new CustomEvent('close-login-panel');
@@ -148,15 +146,15 @@ router.beforeEach((to, from, next) => {
     const closeEvent = new CustomEvent('close-login-panel');
     headerElement.dispatchEvent(closeEvent);
   }
-  
+
   // 如果已登录用户访问非认证页面，正常导航
-  next()
-})
+  next();
+});
 
 // 路由错误处理
 router.onError(error => {
-  console.error('路由错误:', error)
+  console.error('路由错误:', error);
   // 可以在这里添加更高级的错误处理逻辑，如上报错误或显示错误通知
-})
+});
 
-export default router 
+export default router;

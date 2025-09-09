@@ -15,7 +15,10 @@ export const appInfo = {
 // 环境配置
 export const environment = {
   // 动态检测环境
-  isDevelopment: import.meta.env.DEV || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1',
+  isDevelopment:
+    import.meta.env.DEV ||
+    window.location.hostname === 'localhost' ||
+    window.location.hostname === '127.0.0.1',
   // 生产环境使用相对路径（通过Nginx代理），开发环境使用绝对路径
   apiBaseUrl: import.meta.env.DEV ? 'http://localhost:8000/api' : '/api',
   analyticsEnabled: !import.meta.env.DEV,
@@ -46,22 +49,22 @@ export const uiConfig = {
 
 // 自动补全配置
 export const autocompleteConfig = {
-  minInputLength: 1,               // 最小输入长度
-  maxSuggestions: 8,               // 最大建议数量
-  debounceDelay: 30,               // 防抖延迟：30ms（优化后）
+  minInputLength: 1, // 最小输入长度
+  maxSuggestions: 8, // 最大建议数量
+  debounceDelay: 30, // 防抖延迟：30ms（优化后）
 
   // 智能混合补全配置
-  enableWordCompletion: true,      // 启用单词补全
-  enableScriptCompletion: true,    // 启用脚本补全
-  wordCompletionPriority: 0.7,     // 单词补全优先级权重
-  scriptCompletionPriority: 1.0,   // 脚本补全优先级权重
-  maxWordsPerType: 6,              // 每种类型最大建议数
+  enableWordCompletion: true, // 启用单词补全
+  enableScriptCompletion: true, // 启用脚本补全
+  wordCompletionPriority: 0.7, // 单词补全优先级权重
+  scriptCompletionPriority: 1.0, // 脚本补全优先级权重
+  maxWordsPerType: 6, // 每种类型最大建议数
 
   // 上下文判断配置
   contextDetection: {
     commandPrefixes: ['sudo', 'ssh', 'scp', 'rsync', 'git', 'docker', 'kubectl'], // 命令前缀
-    scriptKeywords: ['sh', 'bash', 'python', 'node', 'npm', 'yarn'],              // 脚本关键词
-    systemCommands: ['ls', 'cd', 'pwd', 'cat', 'grep', 'find', 'ps', 'top']       // 系统命令
+    scriptKeywords: ['sh', 'bash', 'python', 'node', 'npm', 'yarn'], // 脚本关键词
+    systemCommands: ['ls', 'cd', 'pwd', 'cat', 'grep', 'find', 'ps', 'top'] // 系统命令
   }
 };
 
@@ -95,7 +98,7 @@ export const userSettingsDefaults = {
 
   // 终端设置
   terminal: {
-    fontFamily: "'JetBrains Mono'",
+    fontFamily: '\'JetBrains Mono\'',
     fontSize: 16,
     lineHeight: 1.0, // 与VSCode终端保持一致，无额外行间距
     theme: 'dark', // 默认使用深色主题
@@ -137,7 +140,7 @@ export const userSettingsDefaults = {
 
   // 监控设置
   monitoring: {
-    updateInterval: 1000      // 更新间隔（毫秒）
+    updateInterval: 1000 // 更新间隔（毫秒）
   },
 
   // 高级设置

@@ -54,71 +54,71 @@ async function handleBinaryMessage(ws, messageBuffer, sshSessions) {
     // 解码消息
     const message = BinaryMessageDecoder.decode(messageBuffer);
     const { messageType, headerData, payloadData } = message;
-    
-    logger.debug('收到二进制消息', { 
-      type: messageType, 
+
+    logger.debug('收到二进制消息', {
+      type: messageType,
       sessionId: headerData.sessionId,
       operationId: headerData.operationId,
       payloadSize: payloadData ? payloadData.length : 0
     });
-    
+
     // 根据消息类型分发处理
     switch (messageType) {
-      case BINARY_MSG_TYPE.SFTP_INIT:
-        await handleBinarySftpInit(ws, headerData, sshSessions);
-        break;
-        
-      case BINARY_MSG_TYPE.SFTP_LIST:
-        await handleBinarySftpList(ws, headerData);
-        break;
-        
-      case BINARY_MSG_TYPE.SFTP_MKDIR:
-        await handleBinarySftpMkdir(ws, headerData);
-        break;
-        
-      case BINARY_MSG_TYPE.SFTP_DELETE:
-        await handleBinarySftpDelete(ws, headerData);
-        break;
-        
-      case BINARY_MSG_TYPE.SFTP_RENAME:
-        await handleBinarySftpRename(ws, headerData);
-        break;
-        
-      case BINARY_MSG_TYPE.SFTP_CHMOD:
-        await handleBinarySftpChmod(ws, headerData);
-        break;
-        
-      case BINARY_MSG_TYPE.SFTP_CLOSE:
-        await handleBinarySftpClose(ws, headerData);
-        break;
-        
-      case BINARY_MSG_TYPE.SFTP_CANCEL:
-        await handleBinarySftpCancel(ws, headerData);
-        break;
-        
-      case BINARY_MSG_TYPE.SFTP_UPLOAD:
-        await handleBinaryUpload(ws, headerData, payloadData, sshSessions);
-        break;
-        
-      case BINARY_MSG_TYPE.SFTP_DOWNLOAD:
-        await handleBinaryDownload(ws, headerData, sshSessions);
-        break;
-        
-      case BINARY_MSG_TYPE.SFTP_DOWNLOAD_FOLDER:
-        await handleBinaryDownloadFolder(ws, headerData, sshSessions);
-        break;
-        
-      default:
-        logger.warn(`未知的二进制消息类型: ${messageType}`);
-        sendBinarySftpError(ws, headerData.sessionId, headerData.operationId, 
-          `未知的消息类型: ${messageType}`, 'INVALID_MESSAGE_TYPE');
+    case BINARY_MSG_TYPE.SFTP_INIT:
+      await handleBinarySftpInit(ws, headerData, sshSessions);
+      break;
+
+    case BINARY_MSG_TYPE.SFTP_LIST:
+      await handleBinarySftpList(ws, headerData);
+      break;
+
+    case BINARY_MSG_TYPE.SFTP_MKDIR:
+      await handleBinarySftpMkdir(ws, headerData);
+      break;
+
+    case BINARY_MSG_TYPE.SFTP_DELETE:
+      await handleBinarySftpDelete(ws, headerData);
+      break;
+
+    case BINARY_MSG_TYPE.SFTP_RENAME:
+      await handleBinarySftpRename(ws, headerData);
+      break;
+
+    case BINARY_MSG_TYPE.SFTP_CHMOD:
+      await handleBinarySftpChmod(ws, headerData);
+      break;
+
+    case BINARY_MSG_TYPE.SFTP_CLOSE:
+      await handleBinarySftpClose(ws, headerData);
+      break;
+
+    case BINARY_MSG_TYPE.SFTP_CANCEL:
+      await handleBinarySftpCancel(ws, headerData);
+      break;
+
+    case BINARY_MSG_TYPE.SFTP_UPLOAD:
+      await handleBinaryUpload(ws, headerData, payloadData, sshSessions);
+      break;
+
+    case BINARY_MSG_TYPE.SFTP_DOWNLOAD:
+      await handleBinaryDownload(ws, headerData, sshSessions);
+      break;
+
+    case BINARY_MSG_TYPE.SFTP_DOWNLOAD_FOLDER:
+      await handleBinaryDownloadFolder(ws, headerData, sshSessions);
+      break;
+
+    default:
+      logger.warn(`未知的二进制消息类型: ${messageType}`);
+      sendBinarySftpError(ws, headerData.sessionId, headerData.operationId,
+        `未知的消息类型: ${messageType}`, 'INVALID_MESSAGE_TYPE');
     }
   } catch (error) {
     logger.error('处理二进制消息失败:', error);
     // 尝试从消息中提取会话信息发送错误
     try {
       const partialMessage = BinaryMessageDecoder.decode(messageBuffer.slice(0, Math.min(1024, messageBuffer.length)));
-      sendBinarySftpError(ws, partialMessage.headerData.sessionId, 
+      sendBinarySftpError(ws, partialMessage.headerData.sessionId,
         partialMessage.headerData.operationId, error.message, 'MESSAGE_PROCESSING_ERROR');
     } catch (decodeError) {
       logger.error('无法解码错误消息:', decodeError);
@@ -145,24 +145,24 @@ async function handleBinaryUpload(ws, headerData, payloadData, sshSessions) {
   await safeExec(async () => {
     const sftpSession = sftpSessions.get(sessionId);
     const sftp = sftpSession.sftp;
-    
+
     let fileBuffer = payloadData;
-    
+
     // 处理空文件情况
     if (!fileBuffer || fileBuffer.length === 0) {
       fileBuffer = Buffer.alloc(0); // 创建空的Buffer
       logger.debug('处理空文件上传', { operationId, remotePath });
     }
-    
+
     // 处理分块传输
     if (totalChunks && totalChunks > 1) {
       // 对于分块传输，确保payloadData不为null
       const chunkData = payloadData || Buffer.alloc(0);
       logger.debug(`接收分块 ${chunkIndex + 1}/${totalChunks}`, { operationId, size: chunkData.length });
-      
+
       // 添加分块到重组器
       fileBuffer = chunkReassembler.addChunk(operationId, chunkIndex, totalChunks, chunkData);
-      
+
       if (!fileBuffer) {
         // 分块未完成，发送进度
         const progress = Math.round(((chunkIndex + 1) / totalChunks) * 100);
@@ -176,10 +176,10 @@ async function handleBinaryUpload(ws, headerData, payloadData, sshSessions) {
         });
         return;
       }
-      
-      logger.info(`分块重组完成`, { operationId, totalSize: fileBuffer.length });
+
+      logger.info('分块重组完成', { operationId, totalSize: fileBuffer.length });
     }
-    
+
     // 验证校验和
     if (checksum) {
       const isValid = ChecksumValidator.validateChecksum(fileBuffer, checksum);
@@ -188,7 +188,7 @@ async function handleBinaryUpload(ws, headerData, payloadData, sshSessions) {
       }
       logger.debug('文件校验和验证通过', { operationId });
     }
-    
+
     // 检查文件大小限制
     const maxUploadSize = parseInt(process.env.MAX_UPLOAD_SIZE) || 104857600; // 默认100MB
     if (fileBuffer.length > maxUploadSize) {
@@ -196,26 +196,26 @@ async function handleBinaryUpload(ws, headerData, payloadData, sshSessions) {
       const maxSizeMB = (maxUploadSize / (1024 * 1024)).toFixed(0);
       throw new Error(`文件大小 ${fileSizeMB}MB 超过最大限制 ${maxSizeMB}MB`);
     }
-    
+
     // 对于空文件，使用 writeFile 而不是流，因为某些SFTP实现对空流处理有问题
     if (fileBuffer.length === 0) {
       logger.debug('使用writeFile处理空文件', { operationId, remotePath });
-      
+
       sftp.writeFile(remotePath, fileBuffer, (err) => {
         if (err) {
           logger.error('空文件创建错误', { remotePath, error: err.message });
           sendBinarySftpError(ws, sessionId, operationId, `文件创建错误: ${err.message}`, 'UPLOAD_ERROR');
           return;
         }
-        
+
         const uploadEndTime = Date.now();
         const uploadDuration = uploadEndTime - uploadStartTime;
-        
+
         logger.info('空文件创建完成', {
           remotePath,
           duration: uploadDuration
         });
-        
+
         sendBinarySftpSuccess(ws, sessionId, operationId, {
           message: '文件创建成功',
           filename,
@@ -226,10 +226,10 @@ async function handleBinaryUpload(ws, headerData, payloadData, sshSessions) {
           transferSpeed: 0
         });
       });
-      
+
       return;
     }
-    
+
     // 对于非空文件，使用流处理
     const writeStream = sftp.createWriteStream(remotePath);
     activeTransfers.set(operationId, { type: 'upload', stream: writeStream });
@@ -274,7 +274,7 @@ async function handleBinaryUpload(ws, headerData, payloadData, sshSessions) {
 
     // 写入完整文件数据
     writeStream.end(fileBuffer);
-    
+
   }, ws, '二进制文件上传错误', sessionId, operationId, false);
 }
 
@@ -296,7 +296,7 @@ async function handleBinaryDownload(ws, headerData, sshSessions) {
   await safeExec(async () => {
     const sftpSession = sftpSessions.get(sessionId);
     const sftp = sftpSession.sftp;
-    
+
     // 获取文件信息
     sftp.stat(remotePath, (err, stats) => {
       if (err) {
@@ -304,27 +304,27 @@ async function handleBinaryDownload(ws, headerData, sshSessions) {
         sendBinarySftpError(ws, sessionId, operationId, `获取文件信息失败: ${err.message}`, 'FILE_STAT_ERROR');
         return;
       }
-      
+
       // 确认是文件而非目录
       if (stats.isDirectory()) {
         sendBinarySftpError(ws, sessionId, operationId, '不能下载目录', 'INVALID_FILE_TYPE');
         return;
       }
-      
+
       const fileSize = stats.size;
-      
+
       // 创建可读流
       const readStream = sftp.createReadStream(remotePath);
       activeTransfers.set(operationId, { type: 'file', stream: readStream });
       const chunks = [];
       let downloaded = 0;
-      
+
       readStream.on('error', (err) => {
         logger.error('二进制文件下载错误', { remotePath, error: err.message });
         sendBinarySftpError(ws, sessionId, operationId, `文件下载错误: ${err.message}`, 'DOWNLOAD_ERROR');
         activeTransfers.delete(operationId);
       });
-      
+
       readStream.on('data', (chunk) => {
         // 检查操作是否已被取消
         if (canceledOperations.has(operationId)) {
@@ -337,7 +337,7 @@ async function handleBinaryDownload(ws, headerData, sshSessions) {
 
         chunks.push(chunk);
         downloaded += chunk.length;
-        
+
         // 发送进度更新
         const progress = Math.round((downloaded / fileSize) * 100);
         sendBinaryMessage(ws, BINARY_MSG_TYPE.SFTP_PROGRESS, {
@@ -349,7 +349,7 @@ async function handleBinaryDownload(ws, headerData, sshSessions) {
           timestamp: Date.now()
         });
       });
-      
+
       readStream.on('end', () => {
         try {
           if (canceledOperations.has(operationId)) {
@@ -426,7 +426,7 @@ async function handleBinaryDownloadFolder(ws, headerData, sshSessions) {
     const conn = sshSession.conn;
 
     // 远端路径安全转义（单引号安全）
-    const escapeSingleQuotes = (s) => String(s).replace(/'/g, `'"'"'`);
+    const escapeSingleQuotes = (s) => String(s).replace(/'/g, '\'"\'"\'');
     const remoteQuoted = `'${escapeSingleQuotes(remotePath)}'`;
 
     // 预检查：确认tar存在，并估算大小/文件数（用于进度与摘要）
@@ -624,7 +624,7 @@ async function handleBinaryDownloadFolder(ws, headerData, sshSessions) {
 
                 const out = pendingBuf.subarray(0, CHUNK_SIZE);
                 pendingBuf = pendingBuf.subarray(CHUNK_SIZE);
-                
+
                 sendBinaryMessage(ws, BINARY_MSG_TYPE.SFTP_FOLDER_DATA, {
                   sessionId,
                   operationId,
@@ -787,14 +787,14 @@ function startBinaryFolderZipStream(ws, sessionId, operationId, sftp, remotePath
   // 监听ZIP数据事件
   archive.on('data', (chunk) => {
     zipChunks.push(chunk);
-    
+
     // 实时发送ZIP压缩进度（基于已生成的ZIP数据大小）
     const currentZipSize = zipChunks.reduce((total, buf) => total + buf.length, 0);
     if (totalSize > 0) {
       // 估算ZIP压缩比约为40%，动态调整预期大小
       const estimatedZipSize = Math.max(totalSize * 0.4, currentZipSize);
       const progress = Math.min(99, Math.round((currentZipSize / estimatedZipSize) * 100));
-      
+
       sendBinaryMessage(ws, BINARY_MSG_TYPE.SFTP_PROGRESS, {
         sessionId,
         operationId,
@@ -845,10 +845,10 @@ function startBinaryFolderZipStream(ws, sessionId, operationId, sftp, remotePath
         mimeType: 'application/zip',
         checksum,
         fileCount: totalFiles,
-        skippedFiles: skippedFiles,
-        errorFiles: errorFiles,
+        skippedFiles,
+        errorFiles,
         summary: {
-          totalFiles: totalFiles,
+          totalFiles,
           includedFiles: totalFiles - skippedFiles.length - errorFiles.length,
           skippedCount: skippedFiles.length,
           errorCount: errorFiles.length
@@ -969,7 +969,7 @@ function addFolderToZipBinary(archive, sftp, remotePath, zipPath, skippedFiles, 
 
       if (list.length === 0) {
         // 空目录，直接添加目录条目
-        archive.append('', { name: zipDirPath + '/' });
+        archive.append('', { name: `${zipDirPath}/` });
         pendingOperations--;
         checkCompletion();
         return;
@@ -1186,13 +1186,13 @@ function getMimeType(filepath) {
  */
 async function handleBinarySftpInit(ws, headerData, sshSessions) {
   const { sessionId, operationId } = headerData;
-  
+
   // 转换为JSON格式调用现有处理器
   const jsonData = {
     sessionId,
     operationId
   };
-  
+
   sftpOperations.handleSftpInit(ws, jsonData, sshSessions);
 }
 
@@ -1201,14 +1201,14 @@ async function handleBinarySftpInit(ws, headerData, sshSessions) {
  */
 async function handleBinarySftpList(ws, headerData) {
   const { sessionId, operationId, path } = headerData;
-  
+
   // 转换为JSON格式调用现有处理器
   const jsonData = {
     sessionId,
     operationId,
     path
   };
-  
+
   sftpOperations.handleSftpList(ws, jsonData);
 }
 
@@ -1217,14 +1217,14 @@ async function handleBinarySftpList(ws, headerData) {
  */
 async function handleBinarySftpMkdir(ws, headerData) {
   const { sessionId, operationId, path } = headerData;
-  
+
   // 转换为JSON格式调用现有处理器
   const jsonData = {
     sessionId,
     operationId,
     path
   };
-  
+
   sftpOperations.handleSftpMkdir(ws, jsonData);
 }
 
@@ -1233,7 +1233,7 @@ async function handleBinarySftpMkdir(ws, headerData) {
  */
 async function handleBinarySftpDelete(ws, headerData) {
   const { sessionId, operationId, path, isDirectory } = headerData;
-  
+
   // 转换为JSON格式调用现有处理器
   const jsonData = {
     sessionId,
@@ -1241,7 +1241,7 @@ async function handleBinarySftpDelete(ws, headerData) {
     path,
     isDirectory
   };
-  
+
   sftpOperations.handleSftpDelete(ws, jsonData);
 }
 
@@ -1250,7 +1250,7 @@ async function handleBinarySftpDelete(ws, headerData) {
  */
 async function handleBinarySftpRename(ws, headerData) {
   const { sessionId, operationId, oldPath, newPath } = headerData;
-  
+
   // 转换为JSON格式调用现有处理器
   const jsonData = {
     sessionId,
@@ -1258,7 +1258,7 @@ async function handleBinarySftpRename(ws, headerData) {
     oldPath,
     newPath
   };
-  
+
   sftpOperations.handleSftpRename(ws, jsonData);
 }
 
@@ -1267,7 +1267,7 @@ async function handleBinarySftpRename(ws, headerData) {
  */
 async function handleBinarySftpChmod(ws, headerData) {
   const { sessionId, operationId, path, permissions } = headerData;
-  
+
   // 转换为JSON格式调用现有处理器
   const jsonData = {
     sessionId,
@@ -1275,7 +1275,7 @@ async function handleBinarySftpChmod(ws, headerData) {
     path,
     permissions
   };
-  
+
   sftpOperations.handleSftpChmod(ws, jsonData);
 }
 
@@ -1284,13 +1284,13 @@ async function handleBinarySftpChmod(ws, headerData) {
  */
 async function handleBinarySftpClose(ws, headerData) {
   const { sessionId, operationId } = headerData;
-  
+
   // 转换为JSON格式调用现有处理器
   const jsonData = {
     sessionId,
     operationId
   };
-  
+
   sftpOperations.handleSftpClose(ws, jsonData);
 }
 
@@ -1302,10 +1302,10 @@ async function handleBinarySftpCancel(ws, headerData) {
 
   try {
     canceledOperations.add(operationId);
-    
+
     if (activeTransfers.has(operationId)) {
       const entry = activeTransfers.get(operationId);
-      
+
       // 根据传输类型执行相应的取消操作
       if (entry.type === 'file' && entry.stream) {
         try { entry.stream.destroy(); } catch (e) {}
@@ -1320,7 +1320,7 @@ async function handleBinarySftpCancel(ws, headerData) {
       } else if (entry.type === 'upload' && entry.stream) {
         try { entry.stream.destroy(); } catch (e) {}
       }
-      
+
       activeTransfers.delete(operationId);
       logger.info('SFTP操作已取消', { operationId, type: entry.type });
     }

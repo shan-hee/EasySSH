@@ -30,7 +30,7 @@ class Script {
   async save() {
     const db = getDb();
     const now = new Date().toISOString();
-    
+
     try {
       if (this.id) {
         // 更新现有脚本
@@ -41,14 +41,14 @@ class Script {
             is_system = ?, usage_count = ?, updated_at = ?
           WHERE id = ?
         `);
-        
+
         const result = stmt.run(
           this.name, this.description, this.command, this.author,
           JSON.stringify(this.tags), JSON.stringify(this.keywords),
           this.category, this.isPublic ? 1 : 0, this.isSystem ? 1 : 0,
           this.usageCount, now, this.id
         );
-        
+
         this.updatedAt = now;
         return result.changes > 0;
       } else {
@@ -60,14 +60,14 @@ class Script {
             created_at, updated_at
           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `);
-        
+
         const result = stmt.run(
           this.name, this.description, this.command, this.author,
           JSON.stringify(this.tags), JSON.stringify(this.keywords),
           this.category, this.isPublic ? 1 : 0, this.isSystem ? 1 : 0,
           this.usageCount, this.createdBy, now, now
         );
-        
+
         this.id = result.lastInsertRowid;
         this.createdAt = now;
         this.updatedAt = now;
@@ -86,7 +86,7 @@ class Script {
     if (!this.id) {
       throw new Error('无法删除未保存的脚本');
     }
-    
+
     const db = getDb();
     try {
       const stmt = db.prepare('DELETE FROM scripts WHERE id = ?');
@@ -103,7 +103,7 @@ class Script {
    */
   async incrementUsage() {
     if (!this.id) return false;
-    
+
     const db = getDb();
     try {
       const stmt = db.prepare('UPDATE scripts SET usage_count = usage_count + 1 WHERE id = ?');
@@ -161,25 +161,25 @@ class Script {
   static async findPublic(options = {}) {
     const db = getDb();
     const { limit = 100, offset = 0, category, search } = options;
-    
+
     try {
       let sql = 'SELECT * FROM scripts WHERE is_public = 1';
       const params = [];
-      
+
       if (category) {
         sql += ' AND category = ?';
         params.push(category);
       }
-      
+
       if (search) {
         sql += ' AND (name LIKE ? OR description LIKE ? OR command LIKE ?)';
         const searchPattern = `%${search}%`;
         params.push(searchPattern, searchPattern, searchPattern);
       }
-      
+
       sql += ' ORDER BY usage_count DESC, updated_at DESC LIMIT ? OFFSET ?';
       params.push(limit, offset);
-      
+
       const stmt = db.prepare(sql);
       const rows = stmt.all(...params);
       return rows.map(row => new Script(row));
@@ -230,7 +230,7 @@ class Script {
   static async search(query, options = {}) {
     const db = getDb();
     const { limit = 50, offset = 0 } = options;
-    
+
     try {
       const searchPattern = `%${query}%`;
       const stmt = db.prepare(`
@@ -252,13 +252,13 @@ class Script {
           usage_count DESC
         LIMIT ? OFFSET ?
       `);
-      
+
       const rows = stmt.all(
         searchPattern, searchPattern, searchPattern, searchPattern, searchPattern,
         searchPattern, searchPattern, searchPattern,
         limit, offset
       );
-      
+
       return rows.map(row => new Script(row));
     } catch (error) {
       log.error('搜索脚本失败:', error);

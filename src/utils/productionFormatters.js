@@ -1,7 +1,7 @@
 /**
  * 生产级数据格式化工具
  * 提供一致、准确、用户友好的数据显示格式
- * 
+ *
  * @author EasySSH Team
  * @version 2.0.0
  * @since 2025-08-01
@@ -18,7 +18,7 @@ const FORMAT_CONFIG = {
     maxValue: 100,
     minValue: 0
   },
-  
+
   // 字节大小格式化
   bytes: {
     units: ['B', 'KB', 'MB', 'GB', 'TB', 'PB'],
@@ -26,7 +26,7 @@ const FORMAT_CONFIG = {
     decimals: 1,
     showZeroDecimals: false
   },
-  
+
   // 网络速度格式化
   networkSpeed: {
     units: ['B/s', 'KB/s', 'MB/s', 'GB/s'],
@@ -34,14 +34,14 @@ const FORMAT_CONFIG = {
     decimals: 1,
     showZeroDecimals: false
   },
-  
+
   // 时间格式化
   time: {
     showMilliseconds: false,
     use24Hour: true,
     showSeconds: true
   },
-  
+
   // 数值格式化
   number: {
     decimals: 2,
@@ -68,23 +68,23 @@ export class ProductionFormatter {
    */
   formatPercentage(value, options = {}) {
     const opts = { ...this.config.percentage, ...options };
-    
+
     // 数据验证
     if (value === null || value === undefined || isNaN(value)) {
       return '--';
     }
-    
+
     // 数值范围限制
     const clampedValue = Math.max(opts.minValue, Math.min(opts.maxValue, value));
-    
+
     // 格式化
     const formatted = clampedValue.toFixed(opts.decimals);
-    
+
     // 处理零小数位显示
     if (!opts.showZeroDecimals && formatted.endsWith('.0')) {
       return `${Math.round(clampedValue)}%`;
     }
-    
+
     return `${formatted}%`;
   }
 
@@ -96,24 +96,23 @@ export class ProductionFormatter {
    */
   formatBytes(bytes, options = {}) {
     const opts = { ...this.config.bytes, ...options };
-    
+
     if (bytes === null || bytes === undefined || isNaN(bytes) || bytes < 0) {
       return '0 B';
     }
-    
+
     if (bytes === 0) {
       return '0 B';
     }
-    
+
     const unitIndex = Math.floor(Math.log(bytes) / Math.log(opts.base));
     const clampedIndex = Math.min(unitIndex, opts.units.length - 1);
     const value = bytes / Math.pow(opts.base, clampedIndex);
-    
+
     const formatted = value.toFixed(opts.decimals);
-    const finalValue = opts.showZeroDecimals || !formatted.endsWith('.0') 
-      ? formatted 
-      : Math.round(value).toString();
-    
+    const finalValue =
+      opts.showZeroDecimals || !formatted.endsWith('.0') ? formatted : Math.round(value).toString();
+
     return `${finalValue} ${opts.units[clampedIndex]}`;
   }
 
@@ -125,25 +124,28 @@ export class ProductionFormatter {
    */
   formatNetworkSpeed(bytesPerSecond, options = {}) {
     const opts = { ...this.config.networkSpeed, ...options };
-    
-    if (bytesPerSecond === null || bytesPerSecond === undefined || 
-        isNaN(bytesPerSecond) || bytesPerSecond < 0) {
+
+    if (
+      bytesPerSecond === null ||
+      bytesPerSecond === undefined ||
+      isNaN(bytesPerSecond) ||
+      bytesPerSecond < 0
+    ) {
       return '0 B/s';
     }
-    
+
     if (bytesPerSecond === 0) {
       return '0 B/s';
     }
-    
+
     const unitIndex = Math.floor(Math.log(bytesPerSecond) / Math.log(opts.base));
     const clampedIndex = Math.min(unitIndex, opts.units.length - 1);
     const value = bytesPerSecond / Math.pow(opts.base, clampedIndex);
-    
+
     const formatted = value.toFixed(opts.decimals);
-    const finalValue = opts.showZeroDecimals || !formatted.endsWith('.0') 
-      ? formatted 
-      : Math.round(value).toString();
-    
+    const finalValue =
+      opts.showZeroDecimals || !formatted.endsWith('.0') ? formatted : Math.round(value).toString();
+
     return `${finalValue} ${opts.units[clampedIndex]}`;
   }
 
@@ -155,20 +157,20 @@ export class ProductionFormatter {
    */
   formatNumber(value, options = {}) {
     const opts = { ...this.config.number, ...options };
-    
+
     if (value === null || value === undefined || isNaN(value)) {
       return '--';
     }
-    
+
     const formatted = value.toFixed(opts.decimals);
-    
+
     // 添加千位分隔符
     if (opts.thousandsSeparator) {
       const parts = formatted.split('.');
       parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, opts.thousandsSeparator);
       return parts.join(opts.decimalSeparator);
     }
-    
+
     return formatted;
   }
 
@@ -180,17 +182,17 @@ export class ProductionFormatter {
    */
   formatTimestamp(timestamp, options = {}) {
     const opts = { ...this.config.time, ...options };
-    
+
     if (!timestamp || isNaN(timestamp)) {
       return '--';
     }
-    
+
     const date = new Date(timestamp);
-    
+
     if (isNaN(date.getTime())) {
       return '--';
     }
-    
+
     const formatOptions = {
       timeZone: this.timezone,
       hour12: !opts.use24Hour,
@@ -200,15 +202,15 @@ export class ProductionFormatter {
       hour: '2-digit',
       minute: '2-digit'
     };
-    
+
     if (opts.showSeconds) {
       formatOptions.second = '2-digit';
     }
-    
+
     if (opts.showMilliseconds) {
       formatOptions.fractionalSecondDigits = 3;
     }
-    
+
     return date.toLocaleString(this.locale, formatOptions);
   }
 
@@ -221,30 +223,30 @@ export class ProductionFormatter {
     if (!seconds || isNaN(seconds) || seconds < 0) {
       return '未知';
     }
-    
+
     const days = Math.floor(seconds / 86400);
     const hours = Math.floor((seconds % 86400) / 3600);
     const minutes = Math.floor((seconds % 3600) / 60);
     const remainingSeconds = Math.floor(seconds % 60);
-    
+
     const parts = [];
-    
+
     if (days > 0) {
       parts.push(`${days}天`);
     }
-    
+
     if (hours > 0 || days > 0) {
       parts.push(`${hours}小时`);
     }
-    
+
     if (minutes > 0 || hours > 0 || days > 0) {
       parts.push(`${minutes}分钟`);
     }
-    
+
     if (parts.length === 0 || (parts.length === 1 && days === 0 && hours === 0)) {
       parts.push(`${remainingSeconds}秒`);
     }
-    
+
     return parts.join(' ');
   }
 
@@ -258,28 +260,28 @@ export class ProductionFormatter {
     if (!loadAverage || typeof loadAverage !== 'object') {
       return '--';
     }
-    
+
     const { load1, load5, load15 } = loadAverage;
-    
+
     if (load1 === undefined || load5 === undefined || load15 === undefined) {
       return '--';
     }
-    
-    const format = (value) => {
+
+    const format = value => {
       if (isNaN(value)) return '0.00';
       return value.toFixed(2);
     };
-    
-    const getLoadStatus = (load) => {
+
+    const getLoadStatus = load => {
       const normalized = load / cpuCores;
       if (normalized > 2.0) return 'critical';
       if (normalized > 1.0) return 'warning';
       if (normalized > 0.7) return 'moderate';
       return 'normal';
     };
-    
+
     const status = getLoadStatus(load1);
-    
+
     return {
       formatted: `${format(load1)} ${format(load5)} ${format(load15)}`,
       status,
@@ -299,7 +301,7 @@ export class ProductionFormatter {
       critical: { text: '严重', color: '#ef4444', icon: '✗' },
       unknown: { text: '未知', color: '#6b7280', icon: '?' }
     };
-    
+
     return statusMap[status] || statusMap.unknown;
   }
 
@@ -312,20 +314,20 @@ export class ProductionFormatter {
    */
   smartFormat(value, type) {
     switch (type) {
-      case 'percentage':
-        return this.formatPercentage(value);
-      case 'bytes':
-        return this.formatBytes(value);
-      case 'speed':
-        return this.formatNetworkSpeed(value);
-      case 'timestamp':
-        return this.formatTimestamp(value);
-      case 'uptime':
-        return this.formatUptime(value);
-      case 'number':
-        return this.formatNumber(value);
-      default:
-        return value?.toString() || '--';
+    case 'percentage':
+      return this.formatPercentage(value);
+    case 'bytes':
+      return this.formatBytes(value);
+    case 'speed':
+      return this.formatNetworkSpeed(value);
+    case 'timestamp':
+      return this.formatTimestamp(value);
+    case 'uptime':
+      return this.formatUptime(value);
+    case 'number':
+      return this.formatNumber(value);
+    default:
+      return value?.toString() || '--';
     }
   }
 
@@ -337,13 +339,13 @@ export class ProductionFormatter {
    */
   batchFormat(data, formatMap) {
     const result = {};
-    
+
     for (const [key, formatType] of Object.entries(formatMap)) {
       if (data.hasOwnProperty(key)) {
         result[key] = this.smartFormat(data[key], formatType);
       }
     }
-    
+
     return result;
   }
 
@@ -378,13 +380,17 @@ export class ProductionFormatter {
 export const productionFormatter = new ProductionFormatter();
 
 // 便捷方法导出
-export const formatPercentage = (value, options) => productionFormatter.formatPercentage(value, options);
+export const formatPercentage = (value, options) =>
+  productionFormatter.formatPercentage(value, options);
 export const formatBytes = (bytes, options) => productionFormatter.formatBytes(bytes, options);
-export const formatNetworkSpeed = (speed, options) => productionFormatter.formatNetworkSpeed(speed, options);
+export const formatNetworkSpeed = (speed, options) =>
+  productionFormatter.formatNetworkSpeed(speed, options);
 export const formatNumber = (value, options) => productionFormatter.formatNumber(value, options);
-export const formatTimestamp = (timestamp, options) => productionFormatter.formatTimestamp(timestamp, options);
-export const formatUptime = (seconds) => productionFormatter.formatUptime(seconds);
-export const formatLoadAverage = (loadAverage, cpuCores) => productionFormatter.formatLoadAverage(loadAverage, cpuCores);
-export const formatStatus = (status) => productionFormatter.formatStatus(status);
+export const formatTimestamp = (timestamp, options) =>
+  productionFormatter.formatTimestamp(timestamp, options);
+export const formatUptime = seconds => productionFormatter.formatUptime(seconds);
+export const formatLoadAverage = (loadAverage, cpuCores) =>
+  productionFormatter.formatLoadAverage(loadAverage, cpuCores);
+export const formatStatus = status => productionFormatter.formatStatus(status);
 
 export default productionFormatter;

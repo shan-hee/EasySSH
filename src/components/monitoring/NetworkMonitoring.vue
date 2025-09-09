@@ -2,11 +2,18 @@
   <div class="monitor-section network-monitoring-section">
     <div class="monitor-header">
       <div class="monitor-title">
-        <MonitoringIcon name="network" :size="16" class="network-icon" />
+        <monitoring-icon
+          name="network"
+          :size="16"
+          class="network-icon"
+        />
         <span>网络</span>
       </div>
       <div class="monitor-info">
-        <div class="network-speed-info" v-if="hasData">
+        <div
+          v-if="hasData"
+          class="network-speed-info"
+        >
           <div class="speed-indicator upload">
             <span class="speed-icon">↑</span>
             <span class="speed-value">{{ formatNetworkSpeed(currentSpeed.upload) }}</span>
@@ -20,10 +27,14 @@
     </div>
 
     <div class="monitor-chart-container">
-      <canvas ref="networkChartRef" class="network-chart" v-show="componentState.hasData"></canvas>
+      <canvas
+        v-show="componentState.hasData"
+        ref="networkChartRef"
+        class="network-chart"
+      />
 
       <!-- 统一加载指示器 -->
-      <MonitoringLoader
+      <monitoring-loader
         v-if="!componentState.hasData"
         :state="componentState.state"
         :error-message="componentState.error"
@@ -36,16 +47,16 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted, watch, computed, nextTick, markRaw } from 'vue'
-import { Chart, registerables } from 'chart.js'
-import { formatBytes, formatNetworkSpeed } from '@/utils/productionFormatters'
-import { getNetworkChartConfig, limitDataPoints, watchThemeChange } from '@/utils/chartConfig'
-import MonitoringIcon from './MonitoringIcon.vue'
-import MonitoringLoader from '../common/MonitoringLoader.vue'
-import monitoringStateManager, { MonitoringComponent } from '@/services/monitoringStateManager'
+import { ref, onMounted, onUnmounted, watch, computed, nextTick, markRaw } from 'vue';
+import { Chart, registerables } from 'chart.js';
+import { formatNetworkSpeed } from '@/utils/productionFormatters';
+import { getNetworkChartConfig, limitDataPoints, watchThemeChange } from '@/utils/chartConfig';
+import MonitoringIcon from './MonitoringIcon.vue';
+import MonitoringLoader from '../common/MonitoringLoader.vue';
+import monitoringStateManager, { MonitoringComponent } from '@/services/monitoringStateManager';
 
 // 注册Chart.js组件
-Chart.register(...registerables)
+Chart.register(...registerables);
 
 // Props
 const props = defineProps({
@@ -57,219 +68,209 @@ const props = defineProps({
     type: Object,
     default: null
   }
-})
+});
 
 // 响应式数据
-const networkChartRef = ref(null)
-const chartInstance = ref(null)
+const networkChartRef = ref(null);
+const chartInstance = ref(null);
 const historyData = ref({
   upload: [],
   download: []
-})
-const maxDataPoints = 10 // 限制为10个数据点，符合现代极简设计
+});
+const maxDataPoints = 10; // 限制为10个数据点，符合现代极简设计
 
 // 计算属性
 const currentSpeed = computed(() => {
-  const network = props.monitoringData?.network || {}
+  const network = props.monitoringData?.network || {};
 
   // 新格式：服务器返回的是 B/s
-  const txSpeed = parseFloat(network.total_tx_speed) || 0
-  const rxSpeed = parseFloat(network.total_rx_speed) || 0
+  const txSpeed = parseFloat(network.total_tx_speed) || 0;
+  const rxSpeed = parseFloat(network.total_rx_speed) || 0;
 
   return {
-    upload: txSpeed,    // B/s
-    download: rxSpeed   // B/s
-  }
-})
+    upload: txSpeed, // B/s
+    download: rxSpeed // B/s
+  };
+});
 
-const totalTraffic = computed(() => {
-  const network = props.monitoringData?.network || {}
-  return {
-    upload: parseFloat(network.total_tx_bytes) || 0,
-    download: parseFloat(network.total_rx_bytes) || 0
-  }
-})
-
-const networkInterface = computed(() => {
-  const network = props.monitoringData?.network || {}
-  return network.interface || '未知'
-})
-
-const linkInfo = computed(() => {
-  const network = props.monitoringData?.network || {}
-  return {
-    speed: parseInt(network.link_speed) || 0,
-    state: network.link_state || 'unknown',
-    rxPackets: parseInt(network.rx_packets) || 0,
-    txPackets: parseInt(network.tx_packets) || 0
-  }
-})
+// 移除未使用的统计类计算，保留核心速度展示与图表
 
 // 使用传入的状态管理器实例，如果没有则使用全局实例（向后兼容）
-const currentStateManager = computed(() => props.stateManager || monitoringStateManager)
+const currentStateManager = computed(() => props.stateManager || monitoringStateManager);
 
 // 使用当前状态管理器
 const componentState = computed(() => {
-  return currentStateManager.value.getComponentState(MonitoringComponent.NETWORK)
-})
+  return currentStateManager.value.getComponentState(MonitoringComponent.NETWORK);
+});
 
 const hasData = computed(() => {
-  return componentState.value.hasData && (
-    currentSpeed.value.upload > 0 || currentSpeed.value.download > 0 ||
-    historyData.value.upload.length > 0 || historyData.value.download.length > 0
-  )
-})
+  return (
+    componentState.value.hasData &&
+    (currentSpeed.value.upload > 0 ||
+      currentSpeed.value.download > 0 ||
+      historyData.value.upload.length > 0 ||
+      historyData.value.download.length > 0)
+  );
+});
 
 // 重试处理
 const handleRetry = () => {
-  currentStateManager.value.retry()
-}
+  currentStateManager.value.retry();
+};
 
 // 网络监控组件已导入格式化函数，无需重复定义
 
 // 初始化图表
 const initChart = async () => {
-  await nextTick()
+  await nextTick();
 
-  if (!networkChartRef.value) return
+  if (!networkChartRef.value) return;
 
-  const ctx = networkChartRef.value.getContext('2d')
+  const ctx = networkChartRef.value.getContext('2d');
 
   // 销毁现有图表
   if (chartInstance.value) {
-    chartInstance.value.destroy()
+    chartInstance.value.destroy();
   }
 
   // 使用新的配置工具创建网络图表
-  const config = getNetworkChartConfig()
-  chartInstance.value = markRaw(new Chart(ctx, config))
+  const config = getNetworkChartConfig();
+  chartInstance.value = markRaw(new Chart(ctx, config));
 
   // 监听主题变化
   const themeObserver = watchThemeChange(chartInstance.value, () => {
     // 主题变化时重新获取配置并更新图表
-    const newConfig = getNetworkChartConfig()
-    chartInstance.value.options = { ...chartInstance.value.options, ...newConfig.options }
-    chartInstance.value.update('none')
-  })
+    const newConfig = getNetworkChartConfig();
+    chartInstance.value.options = { ...chartInstance.value.options, ...newConfig.options };
+    chartInstance.value.update('none');
+  });
 
   // 简单确保数据点隐藏（transition配置会处理动画时的隐藏）
   nextTick(() => {
     if (chartInstance.value && chartInstance.value.data.datasets) {
       chartInstance.value.data.datasets.forEach(dataset => {
-        dataset.pointRadius = 0
-        dataset.pointHoverRadius = 3
-      })
-      chartInstance.value.update('none')
+        dataset.pointRadius = 0;
+        dataset.pointHoverRadius = 3;
+      });
+      chartInstance.value.update('none');
     }
-  })
+  });
 
   // 保存观察器引用以便清理
-  chartInstance.value._themeObserver = themeObserver
-}
+  chartInstance.value._themeObserver = themeObserver;
+};
 
 // 更新图表数据
 const updateChart = () => {
-  if (!chartInstance.value) return
+  if (!chartInstance.value) return;
 
   try {
     // 检查图表实例是否有效
-    if (!chartInstance.value.data || !chartInstance.value.data.datasets || chartInstance.value.data.datasets.length < 2) {
-      console.warn('[网络监控] 图表数据结构无效')
-      return
+    if (
+      !chartInstance.value.data ||
+      !chartInstance.value.data.datasets ||
+      chartInstance.value.data.datasets.length < 2
+    ) {
+      console.warn('[网络监控] 图表数据结构无效');
+      return;
     }
 
-    const now = new Date()
+    const now = new Date();
     const timeLabel = now.toLocaleTimeString('zh-CN', {
       hour12: false,
       hour: '2-digit',
       minute: '2-digit',
       second: '2-digit'
-    })
+    });
 
     // 添加新数据点
     historyData.value.upload.push({
       time: timeLabel,
       value: currentSpeed.value.upload,
       timestamp: now.getTime()
-    })
+    });
 
     historyData.value.download.push({
       time: timeLabel,
       value: currentSpeed.value.download,
       timestamp: now.getTime()
-    })
+    });
 
     // 使用工具函数限制数据点数量
-    historyData.value.upload = limitDataPoints(historyData.value.upload, maxDataPoints)
-    historyData.value.download = limitDataPoints(historyData.value.download, maxDataPoints)
+    historyData.value.upload = limitDataPoints(historyData.value.upload, maxDataPoints);
+    historyData.value.download = limitDataPoints(historyData.value.download, maxDataPoints);
 
     // 更新图表数据
-    chartInstance.value.data.labels = historyData.value.upload.map(item => item.time)
-    chartInstance.value.data.datasets[0].data = historyData.value.upload.map(item => item.value)
-    chartInstance.value.data.datasets[1].data = historyData.value.download.map(item => item.value)
+    chartInstance.value.data.labels = historyData.value.upload.map(item => item.time);
+    chartInstance.value.data.datasets[0].data = historyData.value.upload.map(item => item.value);
+    chartInstance.value.data.datasets[1].data = historyData.value.download.map(item => item.value);
 
     // 使用自定义transition模式：既有动画又隐藏数据点
     if (!isAnimating) {
-      isAnimating = true
-      chartInstance.value.update('dataUpdate')
+      isAnimating = true;
+      chartInstance.value.update('dataUpdate');
       // 动画完成后重置标记
       setTimeout(() => {
-        isAnimating = false
-      }, 400) // 与动画时长一致
+        isAnimating = false;
+      }, 400); // 与动画时长一致
     }
   } catch (error) {
-    console.error('[网络监控] 更新图表失败:', error)
+    console.error('[网络监控] 更新图表失败:', error);
   }
-}
+};
 
 // 监听数据变化
-let updateTimer = null
+let updateTimer = null;
 // 动画状态标记，避免动画冲突
-let isAnimating = false
-watch(() => props.monitoringData, (newData, oldData) => {
-  // 防抖处理，避免频繁更新
-  if (updateTimer) {
-    clearTimeout(updateTimer)
-  }
-
-  updateTimer = setTimeout(() => {
-    // 检查数据是否真的发生了变化
-    if (chartInstance.value && newData !== oldData) {
-      try {
-        updateChart()
-      } catch (error) {
-        console.error('[网络监控] 更新图表失败:', error)
-      }
+let isAnimating = false;
+watch(
+  () => props.monitoringData,
+  (newData, oldData) => {
+    // 防抖处理，避免频繁更新
+    if (updateTimer) {
+      clearTimeout(updateTimer);
     }
-    updateTimer = null
-  }, 100) // 100ms防抖
-}, { deep: true })
+
+    updateTimer = setTimeout(() => {
+      // 检查数据是否真的发生了变化
+      if (chartInstance.value && newData !== oldData) {
+        try {
+          updateChart();
+        } catch (error) {
+          console.error('[网络监控] 更新图表失败:', error);
+        }
+      }
+      updateTimer = null;
+    }, 100); // 100ms防抖
+  },
+  { deep: true }
+);
 
 // 生命周期
 onMounted(() => {
-  initChart()
+  initChart();
 
   // 添加一个初始数据点来确保图表显示
   setTimeout(() => {
     if (chartInstance.value) {
-      updateChart()
+      updateChart();
     }
-  }, 1000)
-})
+  }, 1000);
+});
 
 onUnmounted(() => {
   if (updateTimer) {
-    clearTimeout(updateTimer)
-    updateTimer = null
+    clearTimeout(updateTimer);
+    updateTimer = null;
   }
   if (chartInstance.value) {
     // 清理主题观察器
     if (chartInstance.value._themeObserver) {
-      chartInstance.value._themeObserver.disconnect()
+      chartInstance.value._themeObserver.disconnect();
     }
-    chartInstance.value.destroy()
+    chartInstance.value.destroy();
   }
-})
+});
 </script>
 
 <style scoped>

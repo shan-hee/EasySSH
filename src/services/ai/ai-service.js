@@ -3,25 +3,25 @@
  * 前端AI功能的核心服务类
  */
 
-import { ElMessage } from 'element-plus'
-import log from '../log'
-import AIClient from './ai-client'
-import AICache from './ai-cache'
-import AIConfig from './ai-config'
-import aiApiService from './ai-api'
+import { ElMessage } from 'element-plus';
+import log from '../log';
+import AIClient from './ai-client';
+import AICache from './ai-cache';
+import AIConfig from './ai-config';
+import aiApiService from './ai-api';
 
 class AIService {
   constructor() {
-    this.client = new AIClient()
-    this.cache = new AICache()
-    this.config = new AIConfig()
-    this.activeRequests = new Map()
-    this.isEnabled = false
-    this.temporarilyDisabled = true // 临时禁用AI功能
-    this.storageEventListener = null // 存储事件监听器引用
+    this.client = new AIClient();
+    this.cache = new AICache();
+    this.config = new AIConfig();
+    this.activeRequests = new Map();
+    this.isEnabled = false;
+    this.temporarilyDisabled = true; // 临时禁用AI功能
+    this.storageEventListener = null; // 存储事件监听器引用
 
     // 不在构造函数中加载配置，等待外部调用init()
-    log.debug('AI服务已初始化（临时禁用）')
+    log.debug('AI服务已初始化（临时禁用）');
   }
 
   /**
@@ -30,14 +30,14 @@ class AIService {
   async init() {
     try {
       // 只在这里加载配置，避免重复请求
-      await this.loadConfig()
+      await this.loadConfig();
 
       // 添加存储模式变化监听器
-      this.setupStorageModeListener()
+      this.setupStorageModeListener();
 
-      log.debug('AI服务初始化完成')
+      log.debug('AI服务初始化完成');
     } catch (error) {
-      log.error('AI服务初始化失败', error)
+      log.error('AI服务初始化失败', error);
     }
   }
 
@@ -49,32 +49,32 @@ class AIService {
   async enable(config, saveConfig = false) {
     try {
       // 验证配置
-      const validation = await this.validateConfig(config)
+      const validation = await this.validateConfig(config);
       if (!validation.valid) {
-        throw new Error(validation.error)
+        throw new Error(validation.error);
       }
 
       // 只在明确需要时才保存配置
       if (saveConfig) {
-        await this.config.save(config)
+        await this.config.save(config);
       } else {
         // 更新内存中的配置，但不保存到存储
-        this.config.config = this.config.mergeConfig(this.config.config, config)
+        this.config.config = this.config.mergeConfig(this.config.config, config);
       }
 
       // 连接AI服务
-      await this.client.connect(config)
+      await this.client.connect(config);
 
-      this.isEnabled = true
-      log.info('AI服务已启用', { provider: config.provider })
+      this.isEnabled = true;
+      log.info('AI服务已启用', { provider: config.provider });
 
       // 发送AI服务状态变化事件
-      this._notifyStatusChange('enabled')
+      this._notifyStatusChange('enabled');
 
-      return { success: true }
+      return { success: true };
     } catch (error) {
-      log.error('启用AI服务失败', error)
-      throw error
+      log.error('启用AI服务失败', error);
+      throw error;
     }
   }
 
@@ -84,25 +84,23 @@ class AIService {
   async disable() {
     try {
       // 取消所有活跃请求
-      this.cancelAllRequests()
-      
+      this.cancelAllRequests();
+
       // 断开连接
-      await this.client.disconnect()
-      
-      this.isEnabled = false
-      log.info('AI服务已禁用')
+      await this.client.disconnect();
+
+      this.isEnabled = false;
+      log.info('AI服务已禁用');
 
       // 发送AI服务状态变化事件
-      this._notifyStatusChange('disabled')
+      this._notifyStatusChange('disabled');
 
-      return { success: true }
+      return { success: true };
     } catch (error) {
-      log.error('禁用AI服务失败', error)
-      throw error
+      log.error('禁用AI服务失败', error);
+      throw error;
     }
   }
-
-
 
   /**
    * Chat模式 - 自由对话交流
@@ -112,50 +110,52 @@ class AIService {
    */
   async requestChat(context, options = {}) {
     if (!this.isEnabled) {
-      throw new Error('AI服务未启用')
+      throw new Error('AI服务未启用');
     }
 
     try {
-      const requestId = this.generateRequestId()
-      const controller = new AbortController()
-      this.activeRequests.set(requestId, controller)
+      const requestId = this.generateRequestId();
+      const controller = new AbortController();
+      this.activeRequests.set(requestId, controller);
 
       try {
-        const result = await this.client.sendRequest({
-          type: 'ai_request',
-          requestId,
-          mode: 'chat',
-          input: {
-            prompt: context.prompt || '',
-            question: context.question || '',
-            currentLine: context.currentLine || ''
+        const result = await this.client.sendRequest(
+          {
+            type: 'ai_request',
+            requestId,
+            mode: 'chat',
+            input: {
+              prompt: context.prompt || '',
+              question: context.question || '',
+              currentLine: context.currentLine || ''
+            },
+            context: {
+              terminalOutput: context.terminalOutput || '',
+              osHint: context.osHint || 'unknown',
+              shellHint: context.shellHint || 'unknown'
+            },
+            settings: {
+              model: this.config.get('model'),
+              temperature: 0.7, // 较高温度，更有创造性
+              maxTokens: 1024, // 较多token，支持详细回答
+              stream: true
+            }
           },
-          context: {
-            terminalOutput: context.terminalOutput || '',
-            osHint: context.osHint || 'unknown',
-            shellHint: context.shellHint || 'unknown'
-          },
-          settings: {
-            model: this.config.get('model'),
-            temperature: 0.7, // 较高温度，更有创造性
-            maxTokens: 1024,  // 较多token，支持详细回答
-            stream: true
-          }
-        }, controller.signal)
+          controller.signal
+        );
 
-        return result
+        return result;
       } finally {
-        this.activeRequests.delete(requestId)
+        this.activeRequests.delete(requestId);
       }
-
     } catch (error) {
       if (error.name === 'AbortError') {
-        log.debug('Chat请求已取消')
-        return null
+        log.debug('Chat请求已取消');
+        return null;
       }
 
-      log.error('Chat模式请求失败', error)
-      throw error
+      log.error('Chat模式请求失败', error);
+      throw error;
     }
   }
 
@@ -167,51 +167,53 @@ class AIService {
    */
   async requestAgent(context, options = {}) {
     if (!this.isEnabled) {
-      throw new Error('AI服务未启用')
+      throw new Error('AI服务未启用');
     }
 
     try {
-      const requestId = this.generateRequestId()
-      const controller = new AbortController()
-      this.activeRequests.set(requestId, controller)
+      const requestId = this.generateRequestId();
+      const controller = new AbortController();
+      this.activeRequests.set(requestId, controller);
 
       try {
-        const result = await this.client.sendRequest({
-          type: 'ai_request',
-          requestId,
-          mode: 'agent',
-          input: {
-            prompt: context.prompt || '',
-            operationType: context.operationType || 'auto',
-            currentLine: context.currentLine || ''
+        const result = await this.client.sendRequest(
+          {
+            type: 'ai_request',
+            requestId,
+            mode: 'agent',
+            input: {
+              prompt: context.prompt || '',
+              operationType: context.operationType || 'auto',
+              currentLine: context.currentLine || ''
+            },
+            context: {
+              terminalOutput: context.terminalOutput || '',
+              osHint: context.osHint || 'unknown',
+              shellHint: context.shellHint || 'unknown',
+              errorDetected: context.errorDetected || false
+            },
+            settings: {
+              model: this.config.get('model'),
+              temperature: 0.3, // 较低温度，更准确
+              maxTokens: 512, // 适中token，专注于具体建议
+              stream: true
+            }
           },
-          context: {
-            terminalOutput: context.terminalOutput || '',
-            osHint: context.osHint || 'unknown',
-            shellHint: context.shellHint || 'unknown',
-            errorDetected: context.errorDetected || false
-          },
-          settings: {
-            model: this.config.get('model'),
-            temperature: 0.3, // 较低温度，更准确
-            maxTokens: 512,   // 适中token，专注于具体建议
-            stream: true
-          }
-        }, controller.signal)
+          controller.signal
+        );
 
-        return result
+        return result;
       } finally {
-        this.activeRequests.delete(requestId)
+        this.activeRequests.delete(requestId);
       }
-
     } catch (error) {
       if (error.name === 'AbortError') {
-        log.debug('Agent请求已取消')
-        return null
+        log.debug('Agent请求已取消');
+        return null;
       }
 
-      log.error('Agent模式请求失败', error)
-      throw error
+      log.error('Agent模式请求失败', error);
+      throw error;
     }
   }
 
@@ -222,8 +224,8 @@ class AIService {
    * @returns {Promise<Object>} 交互结果
    */
   async requestInteraction(context, options = {}) {
-    log.debug('使用兼容方法requestInteraction，路由到Chat模式')
-    return await this.requestChat(context, options)
+    log.debug('使用兼容方法requestInteraction，路由到Chat模式');
+    return await this.requestChat(context, options);
   }
 
   /**
@@ -233,12 +235,12 @@ class AIService {
    * @returns {Promise<Object>} 解释结果
    */
   async requestExplanation(context, options = {}) {
-    log.debug('使用兼容方法requestExplanation，路由到Agent模式')
+    log.debug('使用兼容方法requestExplanation，路由到Agent模式');
     const agentContext = {
       ...context,
       operationType: 'explanation'
-    }
-    return await this.requestAgent(agentContext, options)
+    };
+    return await this.requestAgent(agentContext, options);
   }
 
   /**
@@ -248,13 +250,13 @@ class AIService {
    * @returns {Promise<Object>} 修复建议
    */
   async requestFix(context, options = {}) {
-    log.debug('使用兼容方法requestFix，路由到Agent模式')
+    log.debug('使用兼容方法requestFix，路由到Agent模式');
     const agentContext = {
       ...context,
       operationType: 'fix',
       errorDetected: true
-    }
-    return await this.requestAgent(agentContext, options)
+    };
+    return await this.requestAgent(agentContext, options);
   }
 
   /**
@@ -264,12 +266,12 @@ class AIService {
    * @returns {Promise<Object>} 生成的脚本
    */
   async requestGeneration(context, options = {}) {
-    log.debug('使用兼容方法requestGeneration，路由到Agent模式')
+    log.debug('使用兼容方法requestGeneration，路由到Agent模式');
     const agentContext = {
       ...context,
       operationType: 'generation'
-    }
-    return await this.requestAgent(agentContext, options)
+    };
+    return await this.requestAgent(agentContext, options);
   }
 
   /**
@@ -280,11 +282,11 @@ class AIService {
   async testConnection(config) {
     try {
       // 使用HTTP API服务进行测试
-      const result = await aiApiService.testConnection(config)
-      return result
+      const result = await aiApiService.testConnection(config);
+      return result;
     } catch (error) {
-      log.error('API配置测试失败', error)
-      throw error
+      log.error('API配置测试失败', error);
+      throw error;
     }
   }
 
@@ -293,11 +295,11 @@ class AIService {
    * @param {string} requestId 请求ID
    */
   cancelRequest(requestId) {
-    const controller = this.activeRequests.get(requestId)
+    const controller = this.activeRequests.get(requestId);
     if (controller) {
-      controller.abort()
-      this.activeRequests.delete(requestId)
-      log.debug('AI请求已取消', { requestId })
+      controller.abort();
+      this.activeRequests.delete(requestId);
+      log.debug('AI请求已取消', { requestId });
     }
   }
 
@@ -306,10 +308,10 @@ class AIService {
    */
   cancelAllRequests() {
     for (const [requestId, controller] of this.activeRequests.entries()) {
-      controller.abort()
+      controller.abort();
     }
-    this.activeRequests.clear()
-    log.debug('所有AI请求已取消')
+    this.activeRequests.clear();
+    log.debug('所有AI请求已取消');
   }
 
   /**
@@ -320,31 +322,31 @@ class AIService {
   async validateConfig(config) {
     try {
       if (!config || typeof config !== 'object') {
-        return { valid: false, error: '配置对象无效' }
+        return { valid: false, error: '配置对象无效' };
       }
 
-      const requiredFields = ['apiKey', 'baseUrl']
+      const requiredFields = ['apiKey', 'baseUrl'];
       for (const field of requiredFields) {
         if (!config[field]) {
-          return { valid: false, error: `缺少必需字段: ${field}` }
+          return { valid: false, error: `缺少必需字段: ${field}` };
         }
       }
 
       // 验证URL格式
       try {
-        new URL(config.baseUrl)
+        new URL(config.baseUrl);
       } catch {
-        return { valid: false, error: 'Base URL格式无效' }
+        return { valid: false, error: 'Base URL格式无效' };
       }
 
       // 验证API密钥格式
       if (config.apiKey.length < 10) {
-        return { valid: false, error: 'API密钥格式无效' }
+        return { valid: false, error: 'API密钥格式无效' };
       }
 
-      return { valid: true }
+      return { valid: true };
     } catch (error) {
-      return { valid: false, error: error.message }
+      return { valid: false, error: error.message };
     }
   }
 
@@ -354,19 +356,19 @@ class AIService {
   async loadConfig() {
     try {
       // 确保配置管理器已初始化
-      await this.config.initStorage()
+      await this.config.initStorage();
 
-      const config = await this.config.load()
+      const config = await this.config.load();
       if (config && config.enabled) {
         // 自动启用AI服务（如果配置有效）
         try {
-          await this.enable(config)
+          await this.enable(config);
         } catch (error) {
-          log.warn('自动启用AI服务失败', error)
+          log.warn('自动启用AI服务失败', error);
         }
       }
     } catch (error) {
-      log.warn('加载AI配置失败', error)
+      log.warn('加载AI配置失败', error);
     }
   }
 
@@ -376,16 +378,16 @@ class AIService {
   setupStorageModeListener() {
     // 如果已经设置过监听器，先移除
     if (this.storageEventListener) {
-      window.removeEventListener('storage-mode-changed', this.storageEventListener)
+      window.removeEventListener('storage-mode-changed', this.storageEventListener);
     }
 
     // 创建事件处理函数
-    this.storageEventListener = this.handleStorageModeChange.bind(this)
+    this.storageEventListener = this.handleStorageModeChange.bind(this);
 
     // 添加事件监听器
-    window.addEventListener('storage-mode-changed', this.storageEventListener)
+    window.addEventListener('storage-mode-changed', this.storageEventListener);
 
-    log.debug('AI服务存储模式变化监听器已设置')
+    log.debug('AI服务存储模式变化监听器已设置');
   }
 
   /**
@@ -394,22 +396,22 @@ class AIService {
    */
   async handleStorageModeChange(event) {
     try {
-      const { mode, isLoggedIn, user } = event.detail
+      const { mode, isLoggedIn, user } = event.detail;
 
-      log.debug('AI服务收到存储模式变化事件', { mode, isLoggedIn, username: user?.username })
+      log.debug('AI服务收到存储模式变化事件', { mode, isLoggedIn, username: user?.username });
 
       if (isLoggedIn && mode === 'server') {
         // 用户登录，切换到服务器存储模式，重新加载配置
-        log.info('用户登录，重新加载AI服务配置')
-        await this.reloadConfig()
+        log.info('用户登录，重新加载AI服务配置');
+        await this.reloadConfig();
       } else if (!isLoggedIn && mode === 'local') {
         // 用户登出，切换到本地存储模式
-        log.info('用户登出，AI服务切换到本地模式')
+        log.info('用户登出，AI服务切换到本地模式');
         // 可以选择禁用AI服务或保持当前状态
         // 这里选择保持当前状态，因为本地也可能有AI配置
       }
     } catch (error) {
-      log.error('处理存储模式变化事件失败', error)
+      log.error('处理存储模式变化事件失败', error);
     }
   }
 
@@ -420,33 +422,31 @@ class AIService {
   async reloadConfig() {
     try {
       // 确保配置管理器已初始化
-      await this.config.initStorage()
+      await this.config.initStorage();
 
-      const config = await this.config.load()
+      const config = await this.config.load();
       if (config && config.enabled) {
         // 自动启用AI服务（如果配置有效）
         try {
-          await this.enable(config)
-          log.info('AI服务配置重新加载并启用成功', { provider: config.provider })
+          await this.enable(config);
+          log.info('AI服务配置重新加载并启用成功', { provider: config.provider });
         } catch (error) {
-          log.warn('重新启用AI服务失败', error)
+          log.warn('重新启用AI服务失败', error);
         }
       } else {
-        log.debug('重新加载的AI配置未启用或无效')
+        log.debug('重新加载的AI配置未启用或无效');
       }
     } catch (error) {
-      log.warn('重新加载AI配置失败', error)
+      log.warn('重新加载AI配置失败', error);
     }
   }
-
-
 
   /**
    * 生成请求ID
    * @returns {string} 请求ID
    */
   generateRequestId() {
-    return `ai_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+    return `ai_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
   }
 
   /**
@@ -459,7 +459,7 @@ class AIService {
       connected: this.client.isConnected(),
       activeRequests: this.activeRequests.size,
       config: this.config.getSafeConfig() // 不包含敏感信息的配置
-    }
+    };
   }
 
   /**
@@ -469,12 +469,14 @@ class AIService {
   _notifyStatusChange(status) {
     try {
       // 发送自定义事件通知状态变化
-      window.dispatchEvent(new CustomEvent('ai-service-status-change', {
-        detail: { status, isEnabled: this.isEnabled }
-      }))
-      log.debug('AI服务状态变化通知已发送', { status })
+      window.dispatchEvent(
+        new CustomEvent('ai-service-status-change', {
+          detail: { status, isEnabled: this.isEnabled }
+        })
+      );
+      log.debug('AI服务状态变化通知已发送', { status });
     } catch (error) {
-      log.error('发送AI服务状态变化通知失败', error)
+      log.error('发送AI服务状态变化通知失败', error);
     }
   }
 
@@ -488,16 +490,19 @@ class AIService {
   async sendToPanel(terminalId, message) {
     try {
       // 使用异步导入但等待完成
-      const { useAIPanelStore } = await import('../../store/ai-panel.js')
-      const aiPanelStore = useAIPanelStore()
-      aiPanelStore.addMessage(terminalId, message)
+      const { useAIPanelStore } = await import('../../store/ai-panel.js');
+      const aiPanelStore = useAIPanelStore();
+      aiPanelStore.addMessage(terminalId, message);
 
       // 只对重要消息类型记录日志，减少日志噪音
-      if (message.type === 'user' || (message.type === 'assistant' && !message.content?.includes('...'))) {
-        log.debug('消息已发送到AI面板', { terminalId, messageType: message.type })
+      if (
+        message.type === 'user' ||
+        (message.type === 'assistant' && !message.content?.includes('...'))
+      ) {
+        log.debug('消息已发送到AI面板', { terminalId, messageType: message.type });
       }
     } catch (error) {
-      log.error('发送消息到AI面板失败', { error: error.message, terminalId })
+      log.error('发送消息到AI面板失败', { error: error.message, terminalId });
     }
   }
 
@@ -515,7 +520,7 @@ class AIService {
           type: 'user',
           content: userMessage,
           timestamp: Date.now()
-        })
+        });
       }
 
       // 添加AI响应
@@ -529,17 +534,17 @@ class AIService {
             tokens: response.tokens,
             duration: response.duration
           }
-        })
+        });
       } else {
         await this.sendToPanel(terminalId, {
           type: 'system',
           content: `❌ AI响应失败: ${response.error || '未知错误'}`,
           timestamp: Date.now(),
           status: 'error'
-        })
+        });
       }
     } catch (error) {
-      log.error('处理AI响应到面板失败', { error: error.message, terminalId })
+      log.error('处理AI响应到面板失败', { error: error.message, terminalId });
     }
   }
 
@@ -550,11 +555,11 @@ class AIService {
   clearPanelHistory(terminalId) {
     try {
       import('../../store/ai-panel.js').then(({ useAIPanelStore }) => {
-        const aiPanelStore = useAIPanelStore()
-        aiPanelStore.clearMessages(terminalId)
-      })
+        const aiPanelStore = useAIPanelStore();
+        aiPanelStore.clearMessages(terminalId);
+      });
     } catch (error) {
-      log.error('清空AI面板历史失败', { error: error.message, terminalId })
+      log.error('清空AI面板历史失败', { error: error.message, terminalId });
     }
   }
 
@@ -565,23 +570,23 @@ class AIService {
    */
   async getPanelStatus(terminalId) {
     try {
-      const { useAIPanelStore } = await import('../../store/ai-panel.js')
-      const aiPanelStore = useAIPanelStore()
+      const { useAIPanelStore } = await import('../../store/ai-panel.js');
+      const aiPanelStore = useAIPanelStore();
 
       return {
         isVisible: aiPanelStore.isPanelVisible(terminalId),
         messageCount: aiPanelStore.getMessages(terminalId).length,
         height: aiPanelStore.getPanelHeight(terminalId),
         hasUnread: aiPanelStore.getMessages(terminalId).some(msg => msg.unread)
-      }
+      };
     } catch (error) {
-      log.error('获取AI面板状态失败', { error: error.message, terminalId })
+      log.error('获取AI面板状态失败', { error: error.message, terminalId });
       return {
         isVisible: false,
         messageCount: 0,
         height: 250,
         hasUnread: false
-      }
+      };
     }
   }
 
@@ -593,33 +598,33 @@ class AIService {
     try {
       // 移除存储模式变化监听器
       if (this.storageEventListener) {
-        window.removeEventListener('storage-mode-changed', this.storageEventListener)
-        this.storageEventListener = null
-        log.debug('AI服务存储模式变化监听器已移除')
+        window.removeEventListener('storage-mode-changed', this.storageEventListener);
+        this.storageEventListener = null;
+        log.debug('AI服务存储模式变化监听器已移除');
       }
 
       // 取消所有活跃请求
-      this.cancelAllRequests()
+      this.cancelAllRequests();
 
       // 断开客户端连接
       if (this.client) {
         this.client.disconnect().catch(error => {
-          log.warn('断开AI客户端连接失败', error)
-        })
+          log.warn('断开AI客户端连接失败', error);
+        });
       }
 
       // 重置状态
-      this.isEnabled = false
-      this.temporarilyDisabled = true
+      this.isEnabled = false;
+      this.temporarilyDisabled = true;
 
-      log.debug('AI服务已销毁')
+      log.debug('AI服务已销毁');
     } catch (error) {
-      log.error('销毁AI服务失败', error)
+      log.error('销毁AI服务失败', error);
     }
   }
 }
 
 // 创建单例实例
-const aiService = new AIService()
+const aiService = new AIService();
 
-export default aiService
+export default aiService;

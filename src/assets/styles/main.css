@@ -61,6 +61,6 @@
 }
 
 /* 覆盖Element Plus按钮中图标和文本之间的间距 */
-.el-button [class*=el-icon]+span {
+.el-button [class*='el-icon'] + span {
   margin-left: 5px;
-} 
+}

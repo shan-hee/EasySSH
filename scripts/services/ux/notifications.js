@@ -29,31 +29,31 @@ export const NotificationPosition = {
 const DEFAULT_OPTIONS = {
   // 通知显示时间(毫秒)，0表示不自动关闭
   duration: 3000,
-  
+
   // 通知位置
   position: NotificationPosition.TOP_RIGHT,
-  
+
   // 是否允许手动关闭
   closable: true,
-  
+
   // 是否显示图标
   showIcon: true,
-  
+
   // 操作按钮
   actions: [],
-  
+
   // 是否启用声音
   sound: false,
-  
+
   // 是否启用震动(移动设备)
   vibrate: false,
-  
+
   // 是否启用桌面通知
   desktop: false,
-  
+
   // 最大消息数量
   maxCount: 5,
-  
+
   // 淡入淡出动画时长(毫秒)
   animationDuration: 300
 };
@@ -78,7 +78,7 @@ class Notification {
     this.options = { ...DEFAULT_OPTIONS, ...options };
     this.visible = true;
     this.timer = null;
-    
+
     // 如果设置了自动关闭，创建定时器
     if (this.options.duration > 0) {
       this.timer = setTimeout(() => {
@@ -89,7 +89,7 @@ class Notification {
       }, this.options.duration);
     }
   }
-  
+
   /**
    * 获取默认标题
    * @returns {string} 默认标题
@@ -97,17 +97,17 @@ class Notification {
    */
   _getDefaultTitle() {
     switch (this.type) {
-      case NotificationType.SUCCESS:
-        return '成功';
-      case NotificationType.WARNING:
-        return '警告';
-      case NotificationType.ERROR:
-        return '错误';
-      default:
-        return '提示';
+    case NotificationType.SUCCESS:
+      return '成功';
+    case NotificationType.WARNING:
+      return '警告';
+    case NotificationType.ERROR:
+      return '错误';
+    default:
+      return '提示';
     }
   }
-  
+
   /**
    * 关闭通知
    */
@@ -117,23 +117,23 @@ class Notification {
       clearTimeout(this.timer);
       this.timer = null;
     }
-    
+
     this.visible = false;
-    
+
     if (typeof this.onClose === 'function') {
       this.onClose(this);
     }
   }
-  
+
   /**
    * 触发动作
    * @param {string|number} actionKey 动作键或索引
    */
   triggerAction(actionKey) {
-    const action = this.options.actions.find(a => 
+    const action = this.options.actions.find(a =>
       a.key === actionKey || a.text === actionKey
     );
-    
+
     if (action && typeof action.onClick === 'function') {
       action.onClick(this);
     }
@@ -150,16 +150,16 @@ export class NotificationService extends EventEmitter {
    */
   constructor(options = {}) {
     super();
-    
+
     // 通知列表
     this.notifications = [];
-    
+
     // 通知计数器
     this.counter = 0;
-    
+
     // 默认选项
     this.defaultOptions = { ...DEFAULT_OPTIONS, ...options };
-    
+
     // 加载设置
     this.settings = settingsService;
     this._loadSettingsConfig();
@@ -167,7 +167,7 @@ export class NotificationService extends EventEmitter {
     // 监听设置变化
     this.settings.addChangeListener(this._loadSettingsConfig.bind(this));
   }
-  
+
   /**
    * 从设置加载配置
    * @private
@@ -183,7 +183,7 @@ export class NotificationService extends EventEmitter {
       };
     }
   }
-  
+
   /**
    * 创建通知
    * @param {string} message 通知消息
@@ -194,43 +194,43 @@ export class NotificationService extends EventEmitter {
   _createNotification(message, type, options = {}) {
     // 生成唯一ID
     const id = `notification-${Date.now()}-${this.counter++}`;
-    
+
     // 合并选项
     const mergedOptions = { ...this.defaultOptions, ...options };
-    
+
     // 创建通知
     const notification = new Notification(id, message, type, mergedOptions);
-    
+
     // 设置关闭回调
     notification.onClose = this._handleClose.bind(this);
-    
+
     // 添加到列表
     this.notifications.push(notification);
-    
+
     // 限制通知数量
     this._enforceMaxCount();
-    
+
     // 触发事件
     this.emit('notification:add', notification);
-    
+
     // 播放声音
     if (mergedOptions.sound) {
       this._playSound(type);
     }
-    
+
     // 震动
     if (mergedOptions.vibrate && navigator.vibrate) {
       this._vibrate();
     }
-    
+
     // 显示桌面通知
     if (mergedOptions.desktop) {
       this._showDesktopNotification(notification);
     }
-    
+
     return notification;
   }
-  
+
   /**
    * 处理通知关闭
    * @param {Notification} notification 通知对象
@@ -239,29 +239,29 @@ export class NotificationService extends EventEmitter {
   _handleClose(notification) {
     // 从列表中移除
     const index = this.notifications.findIndex(n => n.id === notification.id);
-    
+
     if (index !== -1) {
       this.notifications.splice(index, 1);
-      
+
       // 触发事件
       this.emit('notification:remove', notification);
     }
   }
-  
+
   /**
    * 限制通知数量
    * @private
    */
   _enforceMaxCount() {
     const { maxCount } = this.defaultOptions;
-    
+
     // 如果超过最大数量，关闭最早的通知
     while (this.notifications.length > maxCount) {
       const oldest = this.notifications[0];
       oldest.close();
     }
   }
-  
+
   /**
    * 播放声音
    * @param {string} type 通知类型
@@ -275,16 +275,16 @@ export class NotificationService extends EventEmitter {
       [NotificationType.WARNING]: 'notification-warning.mp3',
       [NotificationType.ERROR]: 'notification-error.mp3'
     };
-    
+
     const audioFile = audioMap[type] || audioMap[NotificationType.INFO];
     const audio = new Audio(`/assets/sounds/${audioFile}`);
-    
+
     // 尝试播放
     audio.play().catch(err => {
       console.error('通知音效播放失败:', err);
     });
   }
-  
+
   /**
    * 设备震动
    * @private
@@ -297,7 +297,7 @@ export class NotificationService extends EventEmitter {
       console.error('设备震动失败:', err);
     }
   }
-  
+
   /**
    * 显示桌面通知
    * @param {Notification} notification 通知对象
@@ -312,7 +312,7 @@ export class NotificationService extends EventEmitter {
           body: notification.message,
           icon: `/assets/icons/notification-${notification.type}.png`
         });
-        
+
         // 点击时聚焦窗口
         desktopNotification.onclick = () => {
           window.focus();
@@ -321,13 +321,13 @@ export class NotificationService extends EventEmitter {
       } catch (err) {
         console.error('桌面通知创建失败:', err);
       }
-    } 
+    }
     // 尝试请求权限
     else if (window.Notification && Notification.permission !== 'denied') {
       Notification.requestPermission();
     }
   }
-  
+
   /**
    * 显示信息通知
    * @param {string} message 消息内容
@@ -337,7 +337,7 @@ export class NotificationService extends EventEmitter {
   info(message, options = {}) {
     return this._createNotification(message, NotificationType.INFO, options);
   }
-  
+
   /**
    * 显示成功通知
    * @param {string} message 消息内容
@@ -347,7 +347,7 @@ export class NotificationService extends EventEmitter {
   success(message, options = {}) {
     return this._createNotification(message, NotificationType.SUCCESS, options);
   }
-  
+
   /**
    * 显示警告通知
    * @param {string} message 消息内容
@@ -357,7 +357,7 @@ export class NotificationService extends EventEmitter {
   warning(message, options = {}) {
     return this._createNotification(message, NotificationType.WARNING, options);
   }
-  
+
   /**
    * 显示错误通知
    * @param {string} message 消息内容
@@ -367,7 +367,7 @@ export class NotificationService extends EventEmitter {
   error(message, options = {}) {
     return this._createNotification(message, NotificationType.ERROR, options);
   }
-  
+
   /**
    * 关闭指定通知
    * @param {string} id 通知ID
@@ -375,15 +375,15 @@ export class NotificationService extends EventEmitter {
    */
   close(id) {
     const notification = this.notifications.find(n => n.id === id);
-    
+
     if (notification) {
       notification.close();
       return true;
     }
-    
+
     return false;
   }
-  
+
   /**
    * 关闭所有通知
    */
@@ -392,12 +392,12 @@ export class NotificationService extends EventEmitter {
     const notificationsCopy = [...this.notifications];
     notificationsCopy.forEach(notification => notification.close());
   }
-  
+
   /**
    * 单例实例
    */
   static instance = null;
-  
+
   /**
    * 获取服务实例
    * @param {Object} options 选项
@@ -412,4 +412,4 @@ export class NotificationService extends EventEmitter {
 }
 
 // 导出默认实例
-export default NotificationService.getInstance(); 
+export default NotificationService.getInstance();

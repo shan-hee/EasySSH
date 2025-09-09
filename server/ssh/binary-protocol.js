@@ -26,13 +26,13 @@ const BINARY_MSG_TYPE = {
   CONNECTED: 0x09,
   NETWORK_LATENCY: 0x0A,
   STATUS_UPDATE: 0x0B,
-  
-  // SSH终端数据 (0x10-0x1F) 
+
+  // SSH终端数据 (0x10-0x1F)
   SSH_DATA: 0x10,           // SSH终端数据传输
   SSH_RESIZE: 0x11,         // 终端大小调整
   SSH_COMMAND: 0x12,        // 终端命令
   SSH_DATA_ACK: 0x13,       // SSH数据确认
-  
+
   // SFTP操作 (0x20-0x3F)
   SFTP_INIT: 0x20,
   SFTP_LIST: 0x21,
@@ -45,7 +45,7 @@ const BINARY_MSG_TYPE = {
   SFTP_DOWNLOAD_FOLDER: 0x28,
   SFTP_CLOSE: 0x29,
   SFTP_CANCEL: 0x2A,
-  
+
   // 响应消息 (0x80-0xFF)
   SFTP_SUCCESS: 0x80,
   SFTP_ERROR: 0x81,
@@ -56,7 +56,7 @@ const BINARY_MSG_TYPE = {
 
 /**
  * 二进制消息编码器
- * 
+ *
  * 消息格式：
  * +--------+--------+--------+--------+--------+--------+...+--------+...+
  * | Magic  |Version | MsgType| HeaderLen (4B) | Header | Payload    |
@@ -109,8 +109,8 @@ class BinaryMessageEncoder {
 
       // 写入Payload Data (如果存在)
       if (payloadData) {
-        const payloadBuffer = Buffer.isBuffer(payloadData) 
-          ? payloadData 
+        const payloadBuffer = Buffer.isBuffer(payloadData)
+          ? payloadData
           : Buffer.from(payloadData);
         payloadBuffer.copy(messageBuffer, offset);
       }
@@ -135,8 +135,8 @@ class BinaryMessageDecoder {
   static decode(messageBuffer) {
     try {
       // 确保是Buffer类型
-      const buffer = Buffer.isBuffer(messageBuffer) 
-        ? messageBuffer 
+      const buffer = Buffer.isBuffer(messageBuffer)
+        ? messageBuffer
         : Buffer.from(messageBuffer);
 
       if (buffer.length < 10) {
@@ -194,7 +194,7 @@ class BinaryMessageDecoder {
       logger.error('二进制消息解码失败:', {
         error: error.message,
         bufferLength: buffer.length,
-        bufferPreview: Array.from(buffer.slice(0, Math.min(16, buffer.length))).map(b => '0x' + b.toString(16).padStart(2, '0')).join(' ')
+        bufferPreview: Array.from(buffer.slice(0, Math.min(16, buffer.length))).map(b => `0x${b.toString(16).padStart(2, '0')}`).join(' ')
       });
       throw new Error(`消息解码失败: ${error.message}`);
     }
@@ -220,12 +220,12 @@ class BinaryMessageSender {
     try {
       const messageBuffer = BinaryMessageEncoder.encode(messageType, headerData, payloadData);
       ws.send(messageBuffer, { binary: true });
-      
+
       // 记录传输统计
       if (global.metricsCollector) {
         global.metricsCollector.recordDataTransfer('outbound', 'binary', messageBuffer.length);
       }
-      
+
       // logger.debug('二进制消息已发送', {
       //   messageType: messageType.toString(16),
       //   headerSize: JSON.stringify(headerData).length,
@@ -249,7 +249,7 @@ class BinaryMessageSender {
       timestamp: Date.now(),
       dataType: 'terminal'
     };
-    
+
     this.send(ws, BINARY_MSG_TYPE.SSH_DATA, headerData, data);
   }
 
@@ -267,7 +267,7 @@ class BinaryMessageSender {
       rows,
       timestamp: Date.now()
     };
-    
+
     this.send(ws, BINARY_MSG_TYPE.SSH_RESIZE, headerData);
   }
 
@@ -286,7 +286,7 @@ class BinaryMessageSender {
       timestamp: Date.now(),
       ...data
     };
-    
+
     this.send(ws, BINARY_MSG_TYPE.SFTP_SUCCESS, headerData, payloadData);
   }
 
@@ -306,13 +306,13 @@ class BinaryMessageSender {
       errorCode,
       timestamp: Date.now()
     };
-    
+
     this.send(ws, BINARY_MSG_TYPE.SFTP_ERROR, headerData);
   }
 
   /**
    * 发送进度更新
-   * @param {WebSocket} ws - WebSocket连接  
+   * @param {WebSocket} ws - WebSocket连接
    * @param {string} sessionId - 会话ID
    * @param {string} operationId - 操作ID
    * @param {number} progress - 进度百分比
@@ -328,7 +328,7 @@ class BinaryMessageSender {
       totalBytes,
       timestamp: Date.now()
     };
-    
+
     this.send(ws, BINARY_MSG_TYPE.PROGRESS, headerData);
   }
 }
@@ -378,17 +378,17 @@ function validateSession(ws, sessionId, sessions, operationId = null) {
  */
 async function safeExec(fn, ws, errorContext, sessionId, operationId, enableMetrics = true) {
   const startTime = enableMetrics ? Date.now() : 0;
-  
+
   try {
     await fn();
-    
+
     if (enableMetrics) {
       const duration = Date.now() - startTime;
       logger.debug(`操作完成: ${errorContext}`, { sessionId, operationId, duration });
     }
   } catch (error) {
     const duration = enableMetrics ? Date.now() - startTime : 0;
-    
+
     logger.error(`${errorContext}失败`, {
       sessionId,
       operationId,
@@ -396,7 +396,7 @@ async function safeExec(fn, ws, errorContext, sessionId, operationId, enableMetr
       stack: error.stack,
       duration
     });
-    
+
     // 发送错误响应
     BinaryMessageSender.send(ws, BINARY_MSG_TYPE.ERROR, {
       sessionId,
@@ -413,7 +413,7 @@ module.exports = {
   PROTOCOL_MAGIC,
   PROTOCOL_VERSION,
   BinaryMessageEncoder,
-  BinaryMessageDecoder,  
+  BinaryMessageDecoder,
   BinaryMessageSender,
   validateSession,
   safeExec

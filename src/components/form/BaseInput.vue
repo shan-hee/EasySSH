@@ -9,21 +9,24 @@
         :readonly="readonly"
         :disabled="disabled"
         :autocomplete="getAutocompleteValue"
+        :class="{ 'with-suffix': $slots.suffix }"
         @input="onInput"
         @focus="$emit('focus', $event)"
         @blur="$emit('blur', $event)"
         @click="$emit('click', $event)"
-        :class="{ 'with-suffix': $slots.suffix }"
-      />
-      <div v-if="$slots.suffix" class="input-suffix">
-        <slot name="suffix"></slot>
+      >
+      <div
+        v-if="$slots.suffix"
+        class="input-suffix"
+      >
+        <slot name="suffix" />
       </div>
     </div>
   </div>
 </template>
 
 <script>
-import { defineComponent, computed } from 'vue'
+import { defineComponent, computed } from 'vue';
 
 export default defineComponent({
   name: 'BaseInput',
@@ -59,9 +62,9 @@ export default defineComponent({
   },
   emits: ['update:modelValue', 'focus', 'blur', 'click'],
   setup(props, { emit }) {
-    const onInput = (event) => {
-      emit('update:modelValue', event.target.value)
-    }
+    const onInput = event => {
+      emit('update:modelValue', event.target.value);
+    };
 
     // 自动计算autocomplete属性值
     const getAutocompleteValue = computed(() => {
@@ -69,22 +72,22 @@ export default defineComponent({
       if (props.autocomplete) {
         return props.autocomplete;
       }
-      
+
       // 根据输入类型自动设置适当的值
       if (props.type === 'password') {
         return 'current-password';
       }
-      
+
       // 默认值
       return 'off';
     });
-    
+
     return {
       onInput,
       getAutocompleteValue
-    }
+    };
   }
-})
+});
 </script>
 
 <style scoped>
@@ -147,4 +150,4 @@ input[readonly] {
   align-items: center;
   justify-content: center;
 }
-</style> 
+</style>

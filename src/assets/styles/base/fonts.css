@@ -9,8 +9,9 @@
 /* JetBrains Mono 字体定义 */
 @font-face {
   font-family: 'JetBrains Mono';
-  src: url('../../fonts/JetBrainsMono/fonts/webfonts/JetBrainsMono-Regular.woff2') format('woff2'),
-       url('../../fonts/JetBrainsMono/fonts/ttf/JetBrainsMono-Regular.ttf') format('truetype');
+  src:
+    url('../../fonts/JetBrainsMono/fonts/webfonts/JetBrainsMono-Regular.woff2') format('woff2'),
+    url('../../fonts/JetBrainsMono/fonts/ttf/JetBrainsMono-Regular.ttf') format('truetype');
   font-weight: normal;
   font-style: normal;
   font-display: block; /* 改为block策略，确保字体完全加载后再显示文本 */
@@ -18,8 +19,9 @@
 
 @font-face {
   font-family: 'JetBrains Mono';
-  src: url('../../fonts/JetBrainsMono/fonts/webfonts/JetBrainsMono-Bold.woff2') format('woff2'),
-       url('../../fonts/JetBrainsMono/fonts/ttf/JetBrainsMono-Bold.ttf') format('truetype');
+  src:
+    url('../../fonts/JetBrainsMono/fonts/webfonts/JetBrainsMono-Bold.woff2') format('woff2'),
+    url('../../fonts/JetBrainsMono/fonts/ttf/JetBrainsMono-Bold.ttf') format('truetype');
   font-weight: bold;
   font-style: normal;
   font-display: block; /* 改为block策略，确保字体完全加载后再显示文本 */
@@ -27,11 +29,12 @@
 
 @font-face {
   font-family: 'JetBrains Mono';
-  src: url('../../fonts/JetBrainsMono/fonts/webfonts/JetBrainsMono-Italic.woff2') format('woff2'),
-       url('../../fonts/JetBrainsMono/fonts/ttf/JetBrainsMono-Italic.ttf') format('truetype');
+  src:
+    url('../../fonts/JetBrainsMono/fonts/webfonts/JetBrainsMono-Italic.woff2') format('woff2'),
+    url('../../fonts/JetBrainsMono/fonts/ttf/JetBrainsMono-Italic.ttf') format('truetype');
   font-weight: normal;
   font-style: italic;
   font-display: block; /* 改为block策略，确保字体完全加载后再显示文本 */
-} 
+}
 
-/* 其他字体可以在此处添加 */ 
+/* 其他字体可以在此处添加 */

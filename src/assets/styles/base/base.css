@@ -17,7 +17,8 @@
 }
 
 /* html, body 样式已移至 base/critical.css */
-html, body {
+html,
+body {
   height: 100%;
 }
 
@@ -33,7 +34,8 @@ a:hover {
   color: var(--color-primary-hover);
 }
 
-img, svg {
+img,
+svg {
   vertical-align: middle;
   max-width: 100%;
 }
@@ -45,12 +47,16 @@ button {
   font-family: inherit;
 }
 
-input, textarea, select, button {
+input,
+textarea,
+select,
+button {
   font: inherit;
   color: inherit;
 }
 
-ul, ol {
+ul,
+ol {
   list-style: none;
 }
 
@@ -69,7 +75,7 @@ ul, ol {
 }
 
 .clearfix::after {
-  content: "";
+  content: '';
   display: table;
   clear: both;
 }
@@ -99,4 +105,4 @@ ul, ol {
 
 ::-webkit-scrollbar-thumb:hover {
   background: transparent;
-} 
+}

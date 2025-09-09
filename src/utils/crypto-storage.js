@@ -18,9 +18,11 @@ class CryptoStorage {
    * @returns {boolean} 是否支持WebCrypto
    */
   isSupported() {
-    return typeof crypto !== 'undefined' && 
-           typeof crypto.subtle !== 'undefined' &&
-           typeof crypto.getRandomValues !== 'undefined';
+    return (
+      typeof crypto !== 'undefined' &&
+      typeof crypto.subtle !== 'undefined' &&
+      typeof crypto.getRandomValues !== 'undefined'
+    );
   }
 
   /**
@@ -78,11 +80,7 @@ class CryptoStorage {
     const key = await this.deriveKey(password, salt);
     const encodedData = encoder.encode(JSON.stringify(data));
 
-    const encrypted = await crypto.subtle.encrypt(
-      { name: this.algorithm, iv },
-      key,
-      encodedData
-    );
+    const encrypted = await crypto.subtle.encrypt({ name: this.algorithm, iv }, key, encodedData);
 
     return {
       version: '1.0',
@@ -135,9 +133,9 @@ class CryptoStorage {
     try {
       const encrypted = await this.encryptData(password, data);
       const storageKey = this.storagePrefix + key;
-      
+
       localStorage.setItem(storageKey, JSON.stringify(encrypted));
-      
+
       console.debug(`数据已安全存储: ${key}`);
       return true;
     } catch (error) {
@@ -156,14 +154,14 @@ class CryptoStorage {
     try {
       const storageKey = this.storagePrefix + key;
       const stored = localStorage.getItem(storageKey);
-      
+
       if (!stored) {
         return null;
       }
 
       const encrypted = JSON.parse(stored);
       const decrypted = await this.decryptData(password, encrypted);
-      
+
       console.debug(`数据已安全读取: ${key}`);
       return decrypted;
     } catch (error) {
@@ -211,13 +209,13 @@ class CryptoStorage {
   clearAllSecureData() {
     const keys = this.listSecureKeys();
     let cleared = 0;
-    
+
     keys.forEach(key => {
       if (this.secureRemove(key)) {
         cleared++;
       }
     });
-    
+
     console.info(`已清理 ${cleared} 个加密存储项目`);
     return cleared;
   }
@@ -246,7 +244,7 @@ class CryptoStorage {
     const charset = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*';
     const array = new Uint8Array(length);
     crypto.getRandomValues(array);
-    
+
     return Array.from(array, byte => charset[byte % charset.length]).join('');
   }
 
@@ -257,7 +255,7 @@ class CryptoStorage {
   getStorageStats() {
     const keys = this.listSecureKeys();
     let totalSize = 0;
-    
+
     keys.forEach(key => {
       const storageKey = this.storagePrefix + key;
       const data = localStorage.getItem(storageKey);
@@ -265,11 +263,11 @@ class CryptoStorage {
         totalSize += data.length;
       }
     });
-    
+
     return {
       itemCount: keys.length,
       totalSize,
-      totalSizeKB: Math.round(totalSize / 1024 * 100) / 100,
+      totalSizeKB: Math.round((totalSize / 1024) * 100) / 100,
       keys
     };
   }

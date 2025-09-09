@@ -9,7 +9,7 @@ const logger = require('../utils/logger');
 class RateLimiter {
   constructor(options = {}) {
     this.cache = getCache();
-    
+
     // 默认配置
     this.config = {
       // 每分钟请求限制
@@ -50,8 +50,8 @@ class RateLimiter {
       for (const check of checks) {
         const result = await check;
         if (!result.allowed) {
-          logger.debug('速率限制检查失败', { 
-            userId, 
+          logger.debug('速率限制检查失败', {
+            userId,
             reason: result.reason,
             resetTime: result.resetTime
           });
@@ -89,17 +89,17 @@ class RateLimiter {
   async _checkBurstLimit(userId, now) {
     const key = `burst:${userId}`;
     const windowStart = now - (this.config.burstWindow * 1000);
-    
+
     // 获取突发窗口内的请求记录
     const burstRequests = this.cache.get(key) || [];
-    
+
     // 清理过期的请求记录
     const validRequests = burstRequests.filter(timestamp => timestamp > windowStart);
-    
+
     if (validRequests.length >= this.config.burstLimit) {
       const oldestRequest = Math.min(...validRequests);
       const resetTime = Math.ceil((oldestRequest + this.config.burstWindow * 1000 - now) / 1000);
-      
+
       return {
         allowed: false,
         reason: 'BURST_LIMIT_EXCEEDED',
@@ -130,7 +130,7 @@ class RateLimiter {
 
     if (minuteData.count >= this.config.requestsPerMinute) {
       const resetTime = 60 - Math.floor((now % 60000) / 1000);
-      
+
       return {
         allowed: false,
         reason: 'MINUTE_LIMIT_EXCEEDED',
@@ -161,7 +161,7 @@ class RateLimiter {
 
     if (hourData.count >= this.config.requestsPerHour) {
       const resetTime = 3600 - Math.floor((now % 3600000) / 1000);
-      
+
       return {
         allowed: false,
         reason: 'HOUR_LIMIT_EXCEEDED',
@@ -192,7 +192,7 @@ class RateLimiter {
 
     if (dayData.count >= this.config.requestsPerDay) {
       const resetTime = 86400 - Math.floor((now % 86400000) / 1000);
-      
+
       return {
         allowed: false,
         reason: 'DAY_LIMIT_EXCEEDED',
@@ -216,7 +216,7 @@ class RateLimiter {
 
     if (cooldownEnd && now < cooldownEnd) {
       const resetTime = Math.ceil((cooldownEnd - now) / 1000);
-      
+
       return {
         allowed: false,
         reason: 'COOLDOWN_ACTIVE',
@@ -276,8 +276,8 @@ class RateLimiter {
       dayData.count++;
       this.cache.set(dayKey, dayData, 86400);
 
-      logger.debug('请求已记录', { 
-        userId, 
+      logger.debug('请求已记录', {
+        userId,
         minute: minuteData.count,
         hour: hourData.count,
         day: dayData.count
@@ -324,10 +324,10 @@ class RateLimiter {
     try {
       const cooldownDuration = duration || this.config.cooldownPeriod;
       const cooldownEnd = Date.now() + (cooldownDuration * 1000);
-      
+
       const key = `cooldown:${userId}`;
       this.cache.set(key, cooldownEnd, cooldownDuration);
-      
+
       logger.info('用户冷却时间已设置', { userId, duration: cooldownDuration });
     } catch (error) {
       logger.error('设置冷却时间失败', { userId, error: error.message });
@@ -349,7 +349,7 @@ class RateLimiter {
       ];
 
       keys.forEach(key => this.cache.del(key));
-      
+
       logger.info('用户限制记录已清除', { userId });
     } catch (error) {
       logger.error('清除用户限制记录失败', { userId, error: error.message });
@@ -365,11 +365,11 @@ class RateLimiter {
     try {
       const now = Date.now();
       const remaining = await this._getRemainingRequests(userId, now);
-      
+
       const cooldownKey = `cooldown:${userId}`;
       const cooldownEnd = this.cache.get(cooldownKey);
       const inCooldown = cooldownEnd && now < cooldownEnd;
-      
+
       return {
         remaining,
         inCooldown,

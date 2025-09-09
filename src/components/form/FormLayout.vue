@@ -6,13 +6,13 @@
       class="form-row"
       :class="{ 'form-row-two-columns': row.type === 'two-columns' }"
     >
-      <slot :name="`row-${rowIndex}`"></slot>
+      <slot :name="`row-${rowIndex}`" />
     </div>
   </div>
 </template>
 
 <script>
-import { defineComponent } from 'vue'
+import { defineComponent } from 'vue';
 
 export default defineComponent({
   name: 'FormLayout',
@@ -23,7 +23,7 @@ export default defineComponent({
       // 格式：[{ type: 'single' }, { type: 'two-columns' }]
     }
   }
-})
+});
 </script>
 
 <style scoped>
@@ -41,4 +41,4 @@ export default defineComponent({
   grid-template-columns: 1fr 1fr;
   gap: 15px;
 }
-</style> 
+</style>

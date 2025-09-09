@@ -1,21 +1,14 @@
-import BaseInput from './BaseInput.vue'
-import BaseRadioGroup from './BaseRadioGroup.vue'
-import BaseCheckbox from './BaseCheckbox.vue'
-import FileInput from './FileInput.vue'
-import FormLayout from './FormLayout.vue'
-import FormItem from './FormItem.vue'
+import BaseInput from './BaseInput.vue';
+import BaseRadioGroup from './BaseRadioGroup.vue';
+import BaseCheckbox from './BaseCheckbox.vue';
+import FileInput from './FileInput.vue';
+import FormLayout from './FormLayout.vue';
+import FormItem from './FormItem.vue';
 
-export {
-  BaseInput,
-  BaseRadioGroup,
-  BaseCheckbox,
-  FileInput,
-  FormLayout,
-  FormItem
-}
+export { BaseInput, BaseRadioGroup, BaseCheckbox, FileInput, FormLayout, FormItem };
 
 // 使用示例：
-// 
+//
 // <template>
 //   <FormLayout :rows="formRows">
 //     <template #row-0>
@@ -34,7 +27,7 @@ export {
 //         />
 //       </FormItem>
 //     </template>
-//     
+//
 //     <template #row-1>
 //       <FormItem>
 //         <BaseInput
@@ -51,7 +44,7 @@ export {
 //         />
 //       </FormItem>
 //     </template>
-//     
+//
 //     <template #row-2>
 //       <FormItem>
 //         <BaseRadioGroup
@@ -61,7 +54,7 @@ export {
 //         />
 //       </FormItem>
 //     </template>
-//     
+//
 //     <template #row-3>
 //       <FormItem v-if="form.authType === 'password'">
 //         <BaseInput
@@ -88,11 +81,11 @@ export {
 //     </template>
 //   </FormLayout>
 // </template>
-// 
+//
 // <script>
 // import { reactive } from 'vue'
 // import { BaseInput, BaseRadioGroup, BaseCheckbox, FileInput, FormLayout, FormItem } from '@/components/form'
-// 
+//
 // export default {
 //   components: { BaseInput, BaseRadioGroup, BaseCheckbox, FileInput, FormLayout, FormItem },
 //   setup() {
@@ -102,12 +95,12 @@ export {
 //       { type: 'single' },      // 验证方式
 //       { type: 'single' }       // 密码/秘钥
 //     ]
-// 
+//
 //     const authOptions = [
 //       { label: '密码验证', value: 'password' },
 //       { label: '秘钥验证', value: 'key' }
 //     ]
-// 
+//
 //     const form = reactive({
 //       host: '',
 //       port: 22,
@@ -118,7 +111,7 @@ export {
 //       keyFile: '',
 //       rememberPassword: false
 //     })
-// 
+//
 //     return {
 //       formRows,
 //       authOptions,
@@ -126,4 +119,4 @@ export {
 //     }
 //   }
 // }
-// </script> 
+// </script>

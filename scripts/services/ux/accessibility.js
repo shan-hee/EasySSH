@@ -48,40 +48,40 @@ const FONT_SIZE_MAP = {
 const DEFAULT_CONFIG = {
   // 字体大小级别
   fontSize: FontSizeLevel.MEDIUM,
-  
+
   // 高对比度模式
   highContrast: false,
-  
+
   // 对比度级别
   contrastLevel: ContrastLevel.NORMAL,
-  
+
   // 减少动效
   reduceMotion: false,
-  
+
   // 动效级别
   animationLevel: AnimationLevel.FULL,
-  
+
   // 屏幕阅读器友好模式
   screenReaderFriendly: false,
-  
+
   // 键盘导航增强
   enhancedKeyboardNavigation: true,
-  
+
   // 焦点可见性
   focusMode: FocusMode.STANDARD,
-  
+
   // 焦点边框宽度(px)
   focusBorderWidth: 2,
-  
+
   // 自动阅读标题
   autoAnnounceTitle: true,
-  
+
   // 表单标签位置
   formLabelsPosition: 'top',
-  
+
   // 禁用悬停效果
   disableHoverEffects: false,
-  
+
   // 简化界面
   simplifiedInterface: false
 };
@@ -95,10 +95,10 @@ export class AccessibilityService extends EventEmitter {
    */
   constructor() {
     super();
-    
+
     // 当前配置
     this.config = { ...DEFAULT_CONFIG };
-    
+
     // 设置服务
     this.settings = settingsService;
 
@@ -107,42 +107,42 @@ export class AccessibilityService extends EventEmitter {
 
     // 监听设置变化
     this.settings.addChangeListener(this._loadFromSettings.bind(this));
-    
+
     // 系统偏好检测
     this._detectSystemPreferences();
-    
+
     // LiveRegion用于屏幕阅读器通知
     this._initLiveRegion();
-    
+
     // 应用初始配置
     this._applyConfig();
   }
-  
+
   /**
    * 从设置加载配置
    * @private
    */
   _loadFromSettings() {
     const accessibilitySettings = this.settings.get('advanced.accessibility', {});
-    
+
     // 合并设置到当前配置
     const newConfig = { ...this.config, ...accessibilitySettings };
-    
+
     // 检查是否有变化
     const hasChanges = JSON.stringify(this.config) !== JSON.stringify(newConfig);
-    
+
     if (hasChanges) {
       const oldConfig = { ...this.config };
       this.config = newConfig;
-      
+
       // 应用新配置
       this._applyConfig();
-      
+
       // 触发配置变更事件
       this.emit('config:change', this.config, oldConfig);
     }
   }
-  
+
   /**
    * 检测系统辅助功能偏好
    * @private
@@ -151,12 +151,12 @@ export class AccessibilityService extends EventEmitter {
     // 检测减少动效偏好
     if (window.matchMedia) {
       const motionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
-      
+
       if (motionQuery.matches) {
         this.config.reduceMotion = true;
         this.config.animationLevel = AnimationLevel.REDUCED;
       }
-      
+
       // 监听变化
       try {
         motionQuery.addEventListener('change', e => {
@@ -170,15 +170,15 @@ export class AccessibilityService extends EventEmitter {
           this.setReduceMotion(reduceMotion);
         });
       }
-      
+
       // 检测高对比度偏好
       const contrastQuery = window.matchMedia('(prefers-contrast: more)');
-      
+
       if (contrastQuery.matches) {
         this.config.highContrast = true;
         this.config.contrastLevel = ContrastLevel.HIGH;
       }
-      
+
       // 监听变化
       try {
         contrastQuery.addEventListener('change', e => {
@@ -194,7 +194,7 @@ export class AccessibilityService extends EventEmitter {
       }
     }
   }
-  
+
   /**
    * 初始化LiveRegion
    * @private
@@ -202,7 +202,7 @@ export class AccessibilityService extends EventEmitter {
   _initLiveRegion() {
     // 创建LiveRegion元素用于屏幕阅读器通知
     this.liveRegion = document.getElementById('a11y-live-region');
-    
+
     if (!this.liveRegion) {
       this.liveRegion = document.createElement('div');
       this.liveRegion.id = 'a11y-live-region';
@@ -211,10 +211,10 @@ export class AccessibilityService extends EventEmitter {
       this.liveRegion.setAttribute('aria-atomic', 'true');
       document.body.appendChild(this.liveRegion);
     }
-    
+
     // 创建警报区域
     this.alertRegion = document.getElementById('a11y-alert-region');
-    
+
     if (!this.alertRegion) {
       this.alertRegion = document.createElement('div');
       this.alertRegion.id = 'a11y-alert-region';
@@ -225,43 +225,43 @@ export class AccessibilityService extends EventEmitter {
       document.body.appendChild(this.alertRegion);
     }
   }
-  
+
   /**
    * 应用配置到DOM
    * @private
    */
   _applyConfig() {
     const { documentElement } = document;
-    
+
     // 设置根字体大小
     const fontSize = FONT_SIZE_MAP[this.config.fontSize] || FONT_SIZE_MAP.MEDIUM;
     documentElement.style.setProperty('--root-font-size', `${fontSize}px`);
-    
+
     // 设置高对比度
     documentElement.classList.toggle('high-contrast', this.config.highContrast);
     documentElement.setAttribute('data-contrast', this.config.contrastLevel);
-    
+
     // 设置动效级别
     documentElement.classList.toggle('reduce-motion', this.config.reduceMotion);
     documentElement.setAttribute('data-motion', this.config.animationLevel);
-    
+
     // 设置焦点可见性
     documentElement.setAttribute('data-focus-mode', this.config.focusMode);
     documentElement.style.setProperty('--focus-border-width', `${this.config.focusBorderWidth}px`);
-    
+
     // 设置屏幕阅读器友好模式
     documentElement.classList.toggle('sr-friendly', this.config.screenReaderFriendly);
-    
+
     // 设置表单标签位置
     documentElement.setAttribute('data-form-labels', this.config.formLabelsPosition);
-    
+
     // 设置简化界面
     documentElement.classList.toggle('simplified-ui', this.config.simplifiedInterface);
-    
+
     // 设置禁用悬停效果
     documentElement.classList.toggle('no-hover', this.config.disableHoverEffects);
   }
-  
+
   /**
    * 保存配置到设置
    * @private
@@ -269,27 +269,27 @@ export class AccessibilityService extends EventEmitter {
   _saveConfig() {
     this.settings.set('advanced.accessibility', { ...this.config });
   }
-  
+
   /**
    * 更新配置
    * @param {Object} newConfig 新配置
    */
   updateConfig(newConfig) {
     const oldConfig = { ...this.config };
-    
+
     // 合并配置
     this.config = { ...this.config, ...newConfig };
-    
+
     // 应用新配置
     this._applyConfig();
-    
+
     // 保存到设置
     this._saveConfig();
-    
+
     // 触发事件
     this.emit('config:change', this.config, oldConfig);
   }
-  
+
   /**
    * 设置字体大小
    * @param {string} sizeLevel 字体大小级别
@@ -298,11 +298,11 @@ export class AccessibilityService extends EventEmitter {
     if (!Object.values(FontSizeLevel).includes(sizeLevel)) {
       throw new Error(`无效的字体大小级别: ${sizeLevel}`);
     }
-    
+
     this.updateConfig({ fontSize: sizeLevel });
     this.announce(`字体大小已更改为${this._getFontSizeText(sizeLevel)}`);
   }
-  
+
   /**
    * 获取字体大小描述文本
    * @param {string} sizeLevel 字体大小级别
@@ -311,38 +311,38 @@ export class AccessibilityService extends EventEmitter {
    */
   _getFontSizeText(sizeLevel) {
     switch (sizeLevel) {
-      case FontSizeLevel.SMALL: return '小号';
-      case FontSizeLevel.MEDIUM: return '中号';
-      case FontSizeLevel.LARGE: return '大号';
-      case FontSizeLevel.EXTRA_LARGE: return '超大号';
-      default: return '中号';
+    case FontSizeLevel.SMALL: return '小号';
+    case FontSizeLevel.MEDIUM: return '中号';
+    case FontSizeLevel.LARGE: return '大号';
+    case FontSizeLevel.EXTRA_LARGE: return '超大号';
+    default: return '中号';
     }
   }
-  
+
   /**
    * 增加字体大小
    */
   increaseFontSize() {
     const currentIndex = Object.values(FontSizeLevel).indexOf(this.config.fontSize);
     const levels = Object.values(FontSizeLevel);
-    
+
     if (currentIndex < levels.length - 1) {
       this.setFontSize(levels[currentIndex + 1]);
     }
   }
-  
+
   /**
    * 减小字体大小
    */
   decreaseFontSize() {
     const currentIndex = Object.values(FontSizeLevel).indexOf(this.config.fontSize);
     const levels = Object.values(FontSizeLevel);
-    
+
     if (currentIndex > 0) {
       this.setFontSize(levels[currentIndex - 1]);
     }
   }
-  
+
   /**
    * 设置高对比度模式
    * @param {boolean} enabled 是否启用
@@ -352,15 +352,15 @@ export class AccessibilityService extends EventEmitter {
     if (enabled && !Object.values(ContrastLevel).includes(level)) {
       level = ContrastLevel.HIGH;
     }
-    
-    this.updateConfig({ 
+
+    this.updateConfig({
       highContrast: enabled,
       contrastLevel: enabled ? level : ContrastLevel.NORMAL
     });
-    
+
     this.announce(`高对比度模式已${enabled ? '启用' : '禁用'}`);
   }
-  
+
   /**
    * 设置减少动效
    * @param {boolean} enabled 是否启用
@@ -370,15 +370,15 @@ export class AccessibilityService extends EventEmitter {
     if (enabled && !Object.values(AnimationLevel).includes(level)) {
       level = AnimationLevel.REDUCED;
     }
-    
-    this.updateConfig({ 
+
+    this.updateConfig({
       reduceMotion: enabled,
       animationLevel: enabled ? level : AnimationLevel.FULL
     });
-    
+
     this.announce(`动画效果已${enabled ? '减少' : '恢复正常'}`);
   }
-  
+
   /**
    * 设置焦点模式
    * @param {string} mode 焦点模式
@@ -387,22 +387,22 @@ export class AccessibilityService extends EventEmitter {
     if (!Object.values(FocusMode).includes(mode)) {
       throw new Error(`无效的焦点模式: ${mode}`);
     }
-    
+
     this.updateConfig({ focusMode: mode });
   }
-  
+
   /**
    * 设置屏幕阅读器友好模式
    * @param {boolean} enabled 是否启用
    */
   setScreenReaderFriendly(enabled) {
     this.updateConfig({ screenReaderFriendly: enabled });
-    
+
     if (enabled) {
       this.announce('屏幕阅读器友好模式已启用');
     }
   }
-  
+
   /**
    * 设置简化界面模式
    * @param {boolean} enabled 是否启用
@@ -411,7 +411,7 @@ export class AccessibilityService extends EventEmitter {
     this.updateConfig({ simplifiedInterface: enabled });
     this.announce(`简化界面模式已${enabled ? '启用' : '禁用'}`);
   }
-  
+
   /**
    * 通过LiveRegion进行屏幕阅读器通知
    * @param {string} message 消息内容
@@ -419,19 +419,19 @@ export class AccessibilityService extends EventEmitter {
    */
   announce(message, options = {}) {
     const { assertive = false, clear = true } = options;
-    
+
     const region = assertive ? this.alertRegion : this.liveRegion;
-    
+
     if (clear) {
       region.textContent = '';
-      
+
       // 强制浏览器重绘
       void region.offsetWidth;
     }
-    
+
     region.textContent = message;
   }
-  
+
   /**
    * 使用AlertRegion进行屏幕阅读器警告
    * @param {string} message 消息内容
@@ -439,7 +439,7 @@ export class AccessibilityService extends EventEmitter {
   alert(message) {
     this.announce(message, { assertive: true });
   }
-  
+
   /**
    * 设置页面标题并通知屏幕阅读器
    * @param {string} title 标题内容
@@ -447,12 +447,12 @@ export class AccessibilityService extends EventEmitter {
    */
   setPageTitle(title, announce = true) {
     document.title = title;
-    
+
     if (announce && this.config.autoAnnounceTitle) {
       this.announce(`页面: ${title}`);
     }
   }
-  
+
   /**
    * 为元素添加可访问性标签
    * @param {HTMLElement} element 目标元素
@@ -460,7 +460,7 @@ export class AccessibilityService extends EventEmitter {
    */
   addA11yAttributes(element, attributes) {
     if (!element) return;
-    
+
     Object.entries(attributes).forEach(([key, value]) => {
       if (value === null || value === false) {
         element.removeAttribute(key);
@@ -471,7 +471,7 @@ export class AccessibilityService extends EventEmitter {
       }
     });
   }
-  
+
   /**
    * 创建可访问的HTML元素
    * @param {string} tagName 标签名
@@ -481,9 +481,9 @@ export class AccessibilityService extends EventEmitter {
    */
   createA11yElement(tagName, attributes = {}, children = null) {
     const element = document.createElement(tagName);
-    
+
     this.addA11yAttributes(element, attributes);
-    
+
     if (children) {
       if (Array.isArray(children)) {
         children.forEach(child => {
@@ -497,10 +497,10 @@ export class AccessibilityService extends EventEmitter {
         element.textContent = children;
       }
     }
-    
+
     return element;
   }
-  
+
   /**
    * 将键盘事件转换为可访问的动作
    * @param {Event} event 键盘事件
@@ -508,7 +508,7 @@ export class AccessibilityService extends EventEmitter {
    */
   getA11yAction(event) {
     if (!event || !event.key) return null;
-    
+
     // 基础键映射
     const keyMap = {
       'Enter': 'activate',
@@ -524,10 +524,10 @@ export class AccessibilityService extends EventEmitter {
       'PageUp': 'pageUp',
       'PageDown': 'pageDown'
     };
-    
+
     return keyMap[event.key] || null;
   }
-  
+
   /**
    * 捕获键盘事件并处理常见的可访问性动作
    * @param {Event} event 键盘事件
@@ -536,16 +536,16 @@ export class AccessibilityService extends EventEmitter {
    */
   handleA11yKeyEvent(event, handlers) {
     const action = this.getA11yAction(event);
-    
+
     if (action && handlers[action]) {
       handlers[action](event);
       event.preventDefault();
       return true;
     }
-    
+
     return false;
   }
-  
+
   /**
    * 创建或更新可访问的菜单/列表导航
    * @param {HTMLElement} container 容器元素
@@ -556,7 +556,7 @@ export class AccessibilityService extends EventEmitter {
     if (!container) {
       throw new Error('必须提供容器元素');
     }
-    
+
     const {
       role = 'menu',
       orientation = 'vertical',
@@ -566,17 +566,17 @@ export class AccessibilityService extends EventEmitter {
       onActivate = null,
       onNavigate = null
     } = options;
-    
+
     let currentIndex = -1;
     let itemElements = [];
-    
+
     // 设置容器属性
     this.addA11yAttributes(container, {
-      'role': role,
+      role,
       'aria-orientation': orientation,
       'tabindex': '0'
     });
-    
+
     // 查找项目元素
     const getItems = () => {
       if (typeof items === 'function') {
@@ -587,11 +587,11 @@ export class AccessibilityService extends EventEmitter {
         return Array.from(container.querySelectorAll('[role="menuitem"], [role="option"], li, button, a'));
       }
     };
-    
+
     // 更新项目状态
     const updateItems = () => {
       itemElements = getItems();
-      
+
       itemElements.forEach((item, index) => {
         this.addA11yAttributes(item, {
           'tabindex': index === currentIndex ? '0' : '-1',
@@ -599,7 +599,7 @@ export class AccessibilityService extends EventEmitter {
         });
       });
     };
-    
+
     // 设置当前项目
     const setCurrentItem = (index, userInitiated = true) => {
       if (index < 0 || index >= itemElements.length) {
@@ -609,10 +609,10 @@ export class AccessibilityService extends EventEmitter {
           return;
         }
       }
-      
+
       const previousIndex = currentIndex;
       currentIndex = index;
-      
+
       // 更新tabindex
       if (previousIndex >= 0 && previousIndex < itemElements.length) {
         itemElements[previousIndex].setAttribute('tabindex', '-1');
@@ -620,28 +620,28 @@ export class AccessibilityService extends EventEmitter {
           itemElements[previousIndex].setAttribute('aria-selected', 'false');
         }
       }
-      
+
       const currentItem = itemElements[currentIndex];
       currentItem.setAttribute('tabindex', '0');
       if (role.includes('list')) {
         currentItem.setAttribute('aria-selected', 'true');
       }
-      
+
       // 聚焦到当前项目
       if (userInitiated) {
         currentItem.focus();
       }
-      
+
       // 调用导航回调
       if (onNavigate && typeof onNavigate === 'function') {
         onNavigate(currentIndex, currentItem);
       }
     };
-    
+
     // 键盘事件处理
     const handleKeyDown = (event) => {
       const horizontal = orientation === 'horizontal';
-      
+
       // 基础导航
       const handlers = {
         up: () => horizontal ? null : setCurrentItem(currentIndex - 1),
@@ -656,19 +656,19 @@ export class AccessibilityService extends EventEmitter {
           }
         }
       };
-      
+
       this.handleA11yKeyEvent(event, handlers);
-      
+
       // 类型预览
       if (typeAhead && event.key.length === 1) {
         const searchChar = event.key.toLowerCase();
         const startIndex = (currentIndex + 1) % itemElements.length;
-        
+
         // 查找以该字符开头的项目
         for (let i = 0; i < itemElements.length; i++) {
           const index = (startIndex + i) % itemElements.length;
           const text = itemElements[index].textContent.trim().toLowerCase();
-          
+
           if (text.startsWith(searchChar)) {
             setCurrentItem(index);
             event.preventDefault();
@@ -677,35 +677,35 @@ export class AccessibilityService extends EventEmitter {
         }
       }
     };
-    
+
     // 初始化
     const init = () => {
       updateItems();
-      
+
       // 设置初始索引
       if (currentIndex < 0 && itemElements.length > 0) {
         // 查找已设置tabindex=0的项
-        const activeIndex = itemElements.findIndex(item => 
-          item.getAttribute('tabindex') === '0' || 
+        const activeIndex = itemElements.findIndex(item =>
+          item.getAttribute('tabindex') === '0' ||
           item.getAttribute('aria-selected') === 'true'
         );
-        
+
         setCurrentItem(activeIndex >= 0 ? activeIndex : 0, false);
       }
-      
+
       // 绑定事件
       container.addEventListener('keydown', handleKeyDown);
     };
-    
+
     init();
-    
+
     // 返回控制器
     return {
       refresh: () => {
         updateItems();
         return currentIndex;
       },
-      getItems: getItems,
+      getItems,
       getCurrentIndex: () => currentIndex,
       setCurrentItem,
       destroy: () => {
@@ -713,12 +713,12 @@ export class AccessibilityService extends EventEmitter {
       }
     };
   }
-  
+
   /**
    * 单例实例
    */
   static instance = null;
-  
+
   /**
    * 获取服务实例
    * @returns {AccessibilityService} 辅助功能服务实例
@@ -732,4 +732,4 @@ export class AccessibilityService extends EventEmitter {
 }
 
 // 导出默认实例
-export default AccessibilityService.getInstance(); 
+export default AccessibilityService.getInstance();

@@ -13,7 +13,7 @@
   --monitor-cpu-gradient-end: rgba(16, 185, 129, 0.2);
   --monitor-cpu-warning: #f59e0b;
   --monitor-cpu-critical: #ef4444;
-  
+
   /* 内存监控 - 紫色系 */
   --monitor-memory-primary: #8b5cf6;
   --monitor-memory-secondary: #a78bfa;
@@ -21,32 +21,32 @@
   --monitor-memory-gradient-end: rgba(167, 139, 250, 0.3);
   --monitor-memory-swap: #e879f9;
   --monitor-memory-available: rgba(255, 255, 255, 0.1);
-  
+
   /* 网络监控 - 红绿对比色系 */
   --monitor-network-upload: #ef4444;
   --monitor-network-download: #10b981;
   --monitor-network-upload-light: rgba(239, 68, 68, 0.1);
   --monitor-network-download-light: rgba(16, 185, 129, 0.1);
-  
+
   /* 硬盘监控 - 橙色系 */
   --monitor-disk-primary: #f97316;
   --monitor-disk-secondary: #fb923c;
   --monitor-disk-gradient-start: rgba(249, 115, 22, 0.8);
   --monitor-disk-gradient-end: rgba(251, 146, 60, 0.3);
   --monitor-disk-available: rgba(255, 255, 255, 0.1);
-  
+
   /* 通用监控颜色 */
   --monitor-success: #10b981;
   --monitor-warning: #f59e0b;
   --monitor-error: #ef4444;
   --monitor-info: #3b82f6;
-  
+
   /* 背景和边框 */
   --monitor-bg-primary: rgba(255, 255, 255, 0.05);
   --monitor-bg-secondary: rgba(255, 255, 255, 0.02);
   --monitor-border: rgba(255, 255, 255, 0.1);
   --monitor-border-hover: rgba(255, 255, 255, 0.2);
-  
+
   /* 文字颜色 */
   --monitor-text-primary: #e5e5e5;
   --monitor-text-secondary: #b0b0b0;
@@ -58,17 +58,17 @@
   --monitor-chart-tooltip-bg: rgba(0, 0, 0, 0.9);
   --monitor-chart-tooltip-border: rgba(255, 255, 255, 0.2);
   --monitor-chart-tooltip-text: #e5e5e5;
-  
+
   /* 阴影效果 */
   --monitor-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.1);
   --monitor-shadow-md: 0 4px 6px rgba(0, 0, 0, 0.1);
   --monitor-shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.1);
-  
+
   /* 动画配置 */
   --monitor-transition-fast: 0.15s ease-out;
   --monitor-transition-normal: 0.3s ease-out;
   --monitor-transition-slow: 0.5s ease-out;
-  
+
   /* 图表配置 */
   --monitor-chart-grid: rgba(255, 255, 255, 0.1);
   --monitor-chart-axis: rgba(255, 255, 255, 0.3);
@@ -77,37 +77,37 @@
 }
 
 /* ===== 浅色主题适配 ===== */
-:root[data-theme="light"],
+:root[data-theme='light'],
 .light-theme {
   /* CPU监控 - 浅色主题调整 */
   --monitor-cpu-gradient-start: rgba(59, 130, 246, 0.6);
   --monitor-cpu-gradient-end: rgba(16, 185, 129, 0.1);
-  
+
   /* 内存监控 - 浅色主题调整 */
   --monitor-memory-gradient-start: rgba(139, 92, 246, 0.6);
   --monitor-memory-gradient-end: rgba(167, 139, 250, 0.2);
   --monitor-memory-available: rgba(0, 0, 0, 0.1);
-  
+
   /* 网络监控 - 浅色主题调整 */
   --monitor-network-upload-light: rgba(239, 68, 68, 0.08);
   --monitor-network-download-light: rgba(16, 185, 129, 0.08);
-  
+
   /* 硬盘监控 - 浅色主题调整 */
   --monitor-disk-gradient-start: rgba(249, 115, 22, 0.6);
   --monitor-disk-gradient-end: rgba(251, 146, 60, 0.2);
   --monitor-disk-available: rgba(0, 0, 0, 0.1);
-  
+
   /* 背景和边框 - 浅色主题 */
   --monitor-bg-primary: rgba(0, 0, 0, 0.03);
   --monitor-bg-secondary: rgba(0, 0, 0, 0.01);
   --monitor-border: rgba(0, 0, 0, 0.1);
   --monitor-border-hover: rgba(0, 0, 0, 0.2);
-  
+
   /* 文字颜色 - 浅色主题 */
   --monitor-text-primary: #1f2937;
   --monitor-text-secondary: #4b5563;
   --monitor-text-muted: #9ca3af;
-  
+
   /* 图表配置 - 浅色主题 */
   --monitor-chart-grid: rgba(0, 0, 0, 0.1);
   --monitor-chart-axis: rgba(0, 0, 0, 0.4);
@@ -124,26 +124,26 @@
   --monitor-breakpoint-md: 768px;
   --monitor-breakpoint-lg: 1024px;
   --monitor-breakpoint-xl: 1280px;
-  
+
   /* 组件尺寸配置 */
   --monitor-component-height-xs: 100px;
   --monitor-component-height-sm: 130px;
   --monitor-component-height-md: 160px;
   --monitor-component-height-lg: 180px;
-  
+
   /* 图表尺寸配置 */
   --monitor-chart-height-xs: 60px;
   --monitor-chart-height-sm: 80px;
   --monitor-chart-height-md: 100px;
   --monitor-chart-height-lg: 120px;
-  
+
   /* 间距配置 */
   --monitor-spacing-xs: 4px;
   --monitor-spacing-sm: 8px;
   --monitor-spacing-md: 12px;
   --monitor-spacing-lg: 16px;
   --monitor-spacing-xl: 24px;
-  
+
   /* 圆角配置 */
   --monitor-radius-sm: 4px;
   --monitor-radius-md: 6px;
@@ -218,9 +218,15 @@
 }
 
 /* ===== 状态指示器样式 ===== */
-.monitor-status-normal { color: var(--monitor-success); }
-.monitor-status-warning { color: var(--monitor-warning); }
-.monitor-status-critical { color: var(--monitor-error); }
+.monitor-status-normal {
+  color: var(--monitor-success);
+}
+.monitor-status-warning {
+  color: var(--monitor-warning);
+}
+.monitor-status-critical {
+  color: var(--monitor-error);
+}
 
 .monitor-value-display {
   display: flex;

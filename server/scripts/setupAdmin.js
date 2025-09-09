@@ -8,17 +8,17 @@ const { connectDatabase } = require('../config/database');
 
 async function setupAdmin() {
   console.log('正在检查管理员用户...');
-  
+
   try {
     // 连接数据库
     connectDatabase();
-    
+
     // 检查是否已存在用户
     const users = await User.find();
-    
+
     if (users.length === 0) {
       console.log('未检测到用户，创建默认管理员账户...');
-      
+
       // 创建管理员用户 - 使用新的字段结构
       const adminUser = new User({
         username: 'admin',
@@ -26,11 +26,11 @@ async function setupAdmin() {
         isAdmin: true,
         status: 'active',
         isDefaultPassword: true,
-        
+
         // 直接设置独立字段
         displayName: '系统管理员',
         mfaEnabled: false,
-        
+
         // 其他配置数据
         profileData: {
           bio: '系统默认管理员账号',
@@ -43,13 +43,13 @@ async function setupAdmin() {
           }
         }
       });
-      
+
       // 设置密码
       adminUser.setPassword('admin');
-      
+
       // 保存到数据库
       await adminUser.save();
-      
+
       console.log('默认管理员账户创建成功:');
       console.log('- 用户名: admin');
       console.log('- 密码: admin');
@@ -74,4 +74,4 @@ if (require.main === module) {
     console.error('初始化失败:', err);
     process.exit(1);
   });
-} 
+}

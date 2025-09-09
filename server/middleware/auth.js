@@ -39,7 +39,7 @@ exports.authMiddleware = async (req, res, next) => {
     if (token.split('.').length !== 3) {
       logger.debug('认证失败 - 无效的JWT格式', {
         path: req.path,
-        token: token.substring(0, 15) + '...',
+        token: `${token.substring(0, 15)}...`,
         segments: token.split('.').length
       });
       return res.status(401).json({
@@ -98,10 +98,10 @@ exports.adminMiddleware = (req, res, next) => {
       message: '需要管理员权限'
     });
   }
-  
+
   logger.debug('验证管理员权限成功', { userId: req.user.id });
   next();
-}; 
+};
 
 // 只校验token有效性，不做MFA等额外校验（用于GET /users/me）
 exports.tokenOnlyMiddleware = async (req, res, next) => {
@@ -134,4 +134,4 @@ exports.tokenOnlyMiddleware = async (req, res, next) => {
     logger.error('tokenOnlyMiddleware错误', error);
     res.status(401).json({ success: false, message: '身份验证失败' });
   }
-}; 
+};

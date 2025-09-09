@@ -157,7 +157,7 @@ function writeToFile(logMessage) {
     checkAndRotateLog(logFilePath);
 
     // 异步写入文件
-    fs.appendFile(logFilePath, logMessage + '\n', (error) => {
+    fs.appendFile(logFilePath, `${logMessage}\n`, (error) => {
       if (error && LOG_CONFIG.enableConsoleLog) {
         console.error('写入日志文件失败:', error.message);
       }
@@ -178,7 +178,7 @@ function writeToFile(logMessage) {
  */
 function truncateSensitiveValue(value, maxLength = 20) {
   if (typeof value === 'string' && value.length > maxLength) {
-    return value.substring(0, maxLength) + '...';
+    return `${value.substring(0, maxLength)}...`;
   }
   return value;
 }
@@ -192,12 +192,12 @@ function sanitizeData(data) {
   if (data === null || data === undefined) {
     return data;
   }
-  
+
   if (typeof data === 'object') {
     if (Array.isArray(data)) {
       return data.map(item => sanitizeData(item));
     }
-    
+
     const result = {};
     for (const key in data) {
       // 特殊处理敏感字段
@@ -213,7 +213,7 @@ function sanitizeData(data) {
     }
     return result;
   }
-  
+
   return data;
 }
 
@@ -226,10 +226,10 @@ function formatData(data) {
   if (data === undefined || data === null) {
     return '';
   }
-  
+
   // 先处理敏感数据
   const sanitizedData = sanitizeData(data);
-  
+
   if (typeof sanitizedData === 'object') {
     try {
       return JSON.stringify(sanitizedData);
@@ -237,7 +237,7 @@ function formatData(data) {
       return String(sanitizedData);
     }
   }
-  
+
   return String(sanitizedData);
 }
 

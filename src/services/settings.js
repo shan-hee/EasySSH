@@ -2,13 +2,13 @@
  * 统一设置服务模块
  * 整合了原有的多个设置管理，提供统一的设置接口
  */
-import { reactive, watch } from 'vue'
-import { userSettingsDefaults } from '../config/app-config.js'
-import storageUtils from '../utils/storage.js'
-import storageAdapter from './storage-adapter'
-import log from './log'
+import { reactive, watch } from 'vue';
+import { userSettingsDefaults } from '../config/app-config.js';
+import storageUtils from '../utils/storage.js';
+import storageAdapter from './storage-adapter';
+import log from './log';
 
-const SETTINGS_STORAGE_KEY = 'user_settings'
+const SETTINGS_STORAGE_KEY = 'user_settings';
 
 // 终端主题常量
 export const TERMINAL_THEMES = {
@@ -18,25 +18,25 @@ export const TERMINAL_THEMES = {
   DRACULA: 'dracula',
   MATERIAL: 'material',
   SYSTEM: 'system'
-}
+};
 
-export const VALID_THEMES = Object.values(TERMINAL_THEMES)
+export const VALID_THEMES = Object.values(TERMINAL_THEMES);
 
 class SettingsService {
   constructor() {
-    this.isInitialized = false
+    this.isInitialized = false;
 
     // 响应式设置对象
-    this.settings = reactive({ ...userSettingsDefaults })
+    this.settings = reactive({ ...userSettingsDefaults });
 
     // 创建专用的存储实例
-    this.storage = storageUtils.createPrefixedStorage('easyssh:')
+    this.storage = storageUtils.createPrefixedStorage('easyssh:');
 
     // 设置变更监听器
-    this.changeListeners = new Set()
+    this.changeListeners = new Set();
 
     // 添加主题缓存，避免重复计算
-    this._themeCache = new Map()
+    this._themeCache = new Map();
   }
 
   /**
@@ -45,42 +45,45 @@ class SettingsService {
    */
   async init() {
     if (this.isInitialized) {
-      return true
+      return true;
     }
 
     try {
       // 从存储加载设置
-      await this.loadSettings()
+      await this.loadSettings();
 
       // 应用初始主题（检查是否已经由防闪烁脚本正确应用）
-      const currentTheme = document.documentElement.getAttribute('data-theme')
-      const expectedTheme = this.settings.ui.theme === 'system'
-        ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
-        : this.settings.ui.theme
+      const currentTheme = document.documentElement.getAttribute('data-theme');
+      const expectedTheme =
+        this.settings.ui.theme === 'system'
+          ? window.matchMedia('(prefers-color-scheme: dark)').matches
+            ? 'dark'
+            : 'light'
+          : this.settings.ui.theme;
 
       // 主题状态检查
-      log.debug('主题状态检查', { currentTheme, expectedTheme })
+      log.debug('主题状态检查', { currentTheme, expectedTheme });
 
       if (currentTheme !== expectedTheme) {
         // 只有当主题不匹配时才应用主题
-        log.debug('主题不匹配，需要应用主题', { current: currentTheme, expected: expectedTheme })
-        this.applyTheme(this.settings.ui.theme)
+        log.debug('主题不匹配，需要应用主题', { current: currentTheme, expected: expectedTheme });
+        this.applyTheme(this.settings.ui.theme);
       } else {
-        log.debug('主题已正确应用，跳过重复操作', { theme: expectedTheme })
+        log.debug('主题已正确应用，跳过重复操作', { theme: expectedTheme });
       }
 
       // 设置系统主题变化监听器
-      this._setupSystemThemeListener()
+      this._setupSystemThemeListener();
 
       // 在主题应用完成后再设置监听器，避免初始化时触发不必要的保存
-      this._setupAutoSave()
+      this._setupAutoSave();
 
-      this.isInitialized = true
-      log.debug('设置服务初始化完成')
-      return true
+      this.isInitialized = true;
+      log.debug('设置服务初始化完成');
+      return true;
     } catch (error) {
-      log.error('设置服务初始化失败', error)
-      return false
+      log.error('设置服务初始化失败', error);
+      return false;
     }
   }
 
@@ -91,25 +94,25 @@ class SettingsService {
   async loadSettings() {
     try {
       // 检查是否已登录，如果已登录则从服务器加载设置
-      const userStore = await import('../store/user.js').then(m => m.useUserStore())
+      const userStore = await import('../store/user.js').then(m => m.useUserStore());
 
       if (userStore.isLoggedIn) {
         // 登录状态：从服务器加载设置
         try {
-          const storageAdapter = await import('./storage-adapter.js').then(m => m.default)
+          const storageAdapter = await import('./storage-adapter.js').then(m => m.default);
 
           // 加载各个分类的设置（UI设置保持本地化，不从服务器同步）
-          const categories = ['terminal', 'connection', 'editor', 'advanced']
-          const serverSettings = {}
+          const categories = ['terminal', 'connection', 'editor', 'advanced'];
+          const serverSettings = {};
 
           for (const category of categories) {
             try {
-              const categoryData = await storageAdapter.get(category, null)
+              const categoryData = await storageAdapter.get(category, null);
               if (categoryData) {
-                serverSettings[category] = categoryData
+                serverSettings[category] = categoryData;
               }
             } catch (error) {
-              log.warn(`从服务器加载${category}设置失败:`, error)
+              log.warn(`从服务器加载${category}设置失败:`, error);
             }
           }
 
@@ -118,43 +121,43 @@ class SettingsService {
               loadedCategories: Object.keys(serverSettings),
               hasTerminalSettings: !!serverSettings.terminal,
               hasConnectionSettings: !!serverSettings.connection
-            })
+            });
 
             // 深度合并服务器设置，保留默认值
-            this._mergeSettings(this.settings, serverSettings)
+            this._mergeSettings(this.settings, serverSettings);
           }
         } catch (error) {
-          log.warn('从服务器加载设置失败，回退到本地存储:', error)
+          log.warn('从服务器加载设置失败，回退到本地存储:', error);
         }
       }
 
       // 无论登录状态如何，UI设置始终从本地存储加载（保持设备相关的偏好设置）
-      const storedSettings = this.storage.get(SETTINGS_STORAGE_KEY, {})
+      const storedSettings = this.storage.get(SETTINGS_STORAGE_KEY, {});
 
       // 如果已登录，只合并UI设置；如果未登录，合并所有设置
-      let settingsToMerge = storedSettings
+      let settingsToMerge = storedSettings;
 
       if (userStore.isLoggedIn && storedSettings.ui) {
         // 登录状态：只合并UI设置，其他设置已从服务器加载
-        settingsToMerge = { ui: storedSettings.ui }
+        settingsToMerge = { ui: storedSettings.ui };
         log.debug('UI设置已从本地存储加载', {
           theme: storedSettings.ui?.theme
-        })
+        });
       } else {
         // 未登录状态：合并所有本地设置
-        const settingsKeys = Object.keys(storedSettings)
+        const settingsKeys = Object.keys(storedSettings);
         log.debug('设置已从本地存储加载', {
           storedKeys: settingsKeys,
           hasTerminalSettings: !!storedSettings.terminal,
           hasUISettings: !!storedSettings.ui,
           hasConnectionSettings: !!storedSettings.connection
-        })
+        });
       }
 
       // 深度合并设置，保留默认值
-      this._mergeSettings(this.settings, settingsToMerge)
+      this._mergeSettings(this.settings, settingsToMerge);
     } catch (error) {
-      log.warn('加载设置失败，使用默认设置', error)
+      log.warn('加载设置失败，使用默认设置', error);
     }
   }
 
@@ -165,49 +168,47 @@ class SettingsService {
   async saveSettings() {
     try {
       // 始终保存到本地存储作为备份
-      this.storage.set(SETTINGS_STORAGE_KEY, this.settings)
+      this.storage.set(SETTINGS_STORAGE_KEY, this.settings);
 
       // 调试信息：显示保存的数据
       log.debug('设置已保存到本地存储', {
         key: `easyssh:${SETTINGS_STORAGE_KEY}`,
         uiTheme: this.settings.ui?.theme,
         fullSettings: this.settings
-      })
+      });
 
       // 检查是否已登录，如果已登录则同时保存到服务器
       try {
-        const userStore = await import('../store/user.js').then(m => m.useUserStore())
+        const userStore = await import('../store/user.js').then(m => m.useUserStore());
 
         if (userStore.isLoggedIn) {
-          const storageAdapter = await import('./storage-adapter.js').then(m => m.default)
+          const storageAdapter = await import('./storage-adapter.js').then(m => m.default);
 
           // 分别保存各个分类的设置到服务器（UI设置保持本地化，不同步到服务器）
-          const categories = ['terminal', 'connection', 'editor', 'advanced']
-          const savePromises = categories.map(async (category) => {
+          const categories = ['terminal', 'connection', 'editor', 'advanced'];
+          const savePromises = categories.map(async category => {
             if (this.settings[category]) {
               try {
-                await storageAdapter.set(category, this.settings[category])
+                await storageAdapter.set(category, this.settings[category]);
               } catch (error) {
-                log.warn(`保存${category}设置到服务器失败:`, error)
+                log.warn(`保存${category}设置到服务器失败:`, error);
               }
             }
-          })
+          });
 
-          await Promise.allSettled(savePromises)
-          log.debug('设置已保存到本地存储和服务器')
+          await Promise.allSettled(savePromises);
+          log.debug('设置已保存到本地存储和服务器');
         } else {
-          log.debug('设置已保存到本地存储')
+          log.debug('设置已保存到本地存储');
         }
       } catch (error) {
-        log.warn('保存设置到服务器失败，仅保存到本地:', error)
-        log.debug('设置已保存到本地存储')
+        log.warn('保存设置到服务器失败，仅保存到本地:', error);
+        log.debug('设置已保存到本地存储');
       }
     } catch (error) {
-      log.error('保存设置失败', error)
+      log.error('保存设置失败', error);
     }
   }
-
-
 
   /**
    * 深度合并设置对象
@@ -219,9 +220,9 @@ class SettingsService {
     for (const key in source) {
       if (source.hasOwnProperty(key)) {
         if (target[key] && typeof target[key] === 'object' && typeof source[key] === 'object') {
-          this._mergeSettings(target[key], source[key])
+          this._mergeSettings(target[key], source[key]);
         } else {
-          target[key] = source[key]
+          target[key] = source[key];
         }
       }
     }
@@ -236,11 +237,11 @@ class SettingsService {
     watch(
       () => this.settings,
       () => {
-        this.saveSettings()
-        this._notifyListeners()
+        this.saveSettings();
+        this._notifyListeners();
       },
       { deep: true }
-    )
+    );
   }
 
   /**
@@ -250,11 +251,11 @@ class SettingsService {
   _notifyListeners() {
     this.changeListeners.forEach(listener => {
       try {
-        listener(this.settings)
+        listener(this.settings);
       } catch (error) {
-        log.error('设置变更监听器执行失败', error)
+        log.error('设置变更监听器执行失败', error);
       }
-    })
+    });
   }
 
   /**
@@ -264,18 +265,18 @@ class SettingsService {
    * @returns {any} 设置值
    */
   get(path, defaultValue = undefined) {
-    const keys = path.split('.')
-    let value = this.settings
+    const keys = path.split('.');
+    let value = this.settings;
 
     for (const key of keys) {
       if (value && typeof value === 'object' && key in value) {
-        value = value[key]
+        value = value[key];
       } else {
-        return defaultValue
+        return defaultValue;
       }
     }
 
-    return value
+    return value;
   }
 
   /**
@@ -284,23 +285,23 @@ class SettingsService {
    * @param {any} value - 设置值
    */
   set(path, value) {
-    const keys = path.split('.')
-    let target = this.settings
+    const keys = path.split('.');
+    let target = this.settings;
 
     // 导航到目标对象
     for (let i = 0; i < keys.length - 1; i++) {
-      const key = keys[i]
+      const key = keys[i];
       if (!target[key] || typeof target[key] !== 'object') {
-        target[key] = {}
+        target[key] = {};
       }
-      target = target[key]
+      target = target[key];
     }
 
     // 设置值
-    const lastKey = keys[keys.length - 1]
-    target[lastKey] = value
+    const lastKey = keys[keys.length - 1];
+    target[lastKey] = value;
 
-    log.debug(`设置已更新: ${path} = ${JSON.stringify(value)}`)
+    log.debug(`设置已更新: ${path} = ${JSON.stringify(value)}`);
   }
 
   /**
@@ -310,29 +311,29 @@ class SettingsService {
   reset(path = null) {
     if (path) {
       // 重置指定路径
-      const keys = path.split('.')
-      let defaultValue = userSettingsDefaults
+      const keys = path.split('.');
+      let defaultValue = userSettingsDefaults;
 
       // 获取默认值
       for (const key of keys) {
         if (defaultValue && typeof defaultValue === 'object' && key in defaultValue) {
-          defaultValue = defaultValue[key]
+          defaultValue = defaultValue[key];
         } else {
-          defaultValue = undefined
-          break
+          defaultValue = undefined;
+          break;
         }
       }
 
       // 设置默认值
       if (defaultValue !== undefined) {
-        this.set(path, defaultValue)
+        this.set(path, defaultValue);
       }
     } else {
       // 重置所有设置
-      Object.assign(this.settings, userSettingsDefaults)
+      Object.assign(this.settings, userSettingsDefaults);
     }
 
-    log.debug(`设置已重置: ${path || '全部'}`)
+    log.debug(`设置已重置: ${path || '全部'}`);
   }
 
   /**
@@ -340,7 +341,7 @@ class SettingsService {
    * @param {Function} listener - 监听器函数
    */
   addChangeListener(listener) {
-    this.changeListeners.add(listener)
+    this.changeListeners.add(listener);
   }
 
   /**
@@ -348,7 +349,7 @@ class SettingsService {
    * @param {Function} listener - 监听器函数
    */
   removeChangeListener(listener) {
-    this.changeListeners.delete(listener)
+    this.changeListeners.delete(listener);
   }
 
   /**
@@ -356,7 +357,7 @@ class SettingsService {
    * @returns {Object} 终端设置
    */
   getTerminalSettings() {
-    return { ...this.settings.terminal }
+    return { ...this.settings.terminal };
   }
 
   /**
@@ -364,7 +365,7 @@ class SettingsService {
    * @returns {Object} 连接设置
    */
   getConnectionSettings() {
-    return { ...this.settings.connection }
+    return { ...this.settings.connection };
   }
 
   /**
@@ -372,7 +373,7 @@ class SettingsService {
    * @returns {Object} UI设置
    */
   getUISettings() {
-    return { ...this.settings.ui }
+    return { ...this.settings.ui };
   }
 
   /**
@@ -380,7 +381,7 @@ class SettingsService {
    * @returns {Object} 编辑器设置
    */
   getEditorSettings() {
-    return { ...this.settings.editor }
+    return { ...this.settings.editor };
   }
 
   /**
@@ -388,7 +389,7 @@ class SettingsService {
    * @returns {Object} 高级设置
    */
   getAdvancedSettings() {
-    return { ...this.settings.advanced }
+    return { ...this.settings.advanced };
   }
 
   /**
@@ -398,15 +399,15 @@ class SettingsService {
   getTerminalOptions() {
     // 如果未初始化，先尝试初始化
     if (!this.isInitialized) {
-      log.warn('设置服务未初始化，使用默认终端选项')
-      return this._getDefaultTerminalOptions()
+      log.warn('设置服务未初始化，使用默认终端选项');
+      return this._getDefaultTerminalOptions();
     }
 
-    const terminalSettings = this.settings.terminal
-    const theme = this._getTerminalTheme(terminalSettings.theme || TERMINAL_THEMES.DARK)
+    const terminalSettings = this.settings.terminal;
+    const theme = this._getTerminalTheme(terminalSettings.theme || TERMINAL_THEMES.DARK);
 
     // 优化：只在首次获取或主题变化时记录详细日志
-    const currentTheme = terminalSettings.theme
+    const currentTheme = terminalSettings.theme;
     if (!this._lastLoggedTheme || this._lastLoggedTheme !== currentTheme) {
       log.debug('获取终端选项', {
         fontSize: terminalSettings.fontSize,
@@ -416,15 +417,15 @@ class SettingsService {
           foreground: theme.foreground,
           background: theme.background
         }
-      })
-      this._lastLoggedTheme = currentTheme
+      });
+      this._lastLoggedTheme = currentTheme;
     }
 
     return {
       fontSize: terminalSettings.fontSize,
       fontFamily: terminalSettings.fontFamily,
       lineHeight: terminalSettings.lineHeight,
-      theme: theme,
+      theme,
       cursorBlink: terminalSettings.cursorBlink,
       cursorStyle: terminalSettings.cursorStyle,
       scrollback: terminalSettings.scrollback,
@@ -436,7 +437,7 @@ class SettingsService {
       drawBoldTextInBrightColors: true,
       copyOnSelect: terminalSettings.copyOnSelect,
       rightClickSelectsWord: terminalSettings.rightClickSelectsWord
-    }
+    };
   }
 
   /**
@@ -445,13 +446,13 @@ class SettingsService {
    * @param {boolean} applyToTerminals - 是否立即应用到所有终端
    */
   updateTerminalSettings(updates, applyToTerminals = false) {
-    Object.assign(this.settings.terminal, updates)
-    log.debug('终端设置已更新:', updates)
-    log.debug('更新后的完整终端设置:', this.settings.terminal)
+    Object.assign(this.settings.terminal, updates);
+    log.debug('终端设置已更新:', updates);
+    log.debug('更新后的完整终端设置:', this.settings.terminal);
 
     // 如果需要立即应用到终端，触发应用逻辑
     if (applyToTerminals) {
-      this._applyTerminalSettingsToAllTerminals()
+      this._applyTerminalSettingsToAllTerminals();
     }
   }
 
@@ -462,15 +463,15 @@ class SettingsService {
   async _applyTerminalSettingsToAllTerminals() {
     try {
       // 动态导入终端store以避免循环依赖
-      const { useTerminalStore } = await import('../store/terminal')
-      const terminalStore = useTerminalStore()
+      const { useTerminalStore } = await import('../store/terminal');
+      const terminalStore = useTerminalStore();
 
       if (terminalStore && terminalStore.applySettingsToAllTerminals) {
-        const results = await terminalStore.applySettingsToAllTerminals(this.settings.terminal)
-        log.debug('设置已应用到所有终端:', results)
+        const results = await terminalStore.applySettingsToAllTerminals(this.settings.terminal);
+        log.debug('设置已应用到所有终端:', results);
       }
     } catch (error) {
-      log.error('应用终端设置到所有终端失败:', error)
+      log.error('应用终端设置到所有终端失败:', error);
     }
   }
 
@@ -479,7 +480,7 @@ class SettingsService {
    * @param {Object} updates - 要更新的设置
    */
   updateConnectionSettings(updates) {
-    Object.assign(this.settings.connection, updates)
+    Object.assign(this.settings.connection, updates);
   }
 
   /**
@@ -487,7 +488,7 @@ class SettingsService {
    * @param {Object} updates - 要更新的设置
    */
   updateMonitoringSettings(updates) {
-    Object.assign(this.settings.monitoring, updates)
+    Object.assign(this.settings.monitoring, updates);
   }
 
   /**
@@ -496,17 +497,17 @@ class SettingsService {
    */
   updateUISettings(updates) {
     if (!updates || typeof updates !== 'object') {
-      log.warn('updateUISettings: 无效的更新参数', updates)
-      return
+      log.warn('updateUISettings: 无效的更新参数', updates);
+      return;
     }
 
-    Object.assign(this.settings.ui, updates)
+    Object.assign(this.settings.ui, updates);
 
     // 如果主题发生变化，立即应用
     if (updates.theme && this.isValidTheme(updates.theme)) {
-      this.applyTheme(updates.theme)
+      this.applyTheme(updates.theme);
     } else if (updates.theme) {
-      log.warn('updateUISettings: 无效的主题值', updates.theme)
+      log.warn('updateUISettings: 无效的主题值', updates.theme);
     }
   }
 
@@ -518,9 +519,9 @@ class SettingsService {
    */
   _resolveActualTheme(theme) {
     if (theme === 'system') {
-      return window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+      return window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
     }
-    return theme === 'dark' ? 'dark' : 'light' // 确保只返回有效值
+    return theme === 'dark' ? 'dark' : 'light'; // 确保只返回有效值
   }
 
   /**
@@ -529,28 +530,28 @@ class SettingsService {
    */
   _setupSystemThemeListener() {
     if (typeof window === 'undefined' || !window.matchMedia) {
-      return
+      return;
     }
 
-    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)')
+    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
 
-    const handleSystemThemeChange = (e) => {
+    const handleSystemThemeChange = e => {
       // 只有当用户选择了"跟随系统"时才响应系统主题变化
       if (this.settings.ui.theme === 'system') {
-        const newTheme = e.matches ? 'dark' : 'light'
-        log.debug('系统主题变化，自动切换主题', { newTheme })
-        this.applyTheme('system')
+        const newTheme = e.matches ? 'dark' : 'light';
+        log.debug('系统主题变化，自动切换主题', { newTheme });
+        this.applyTheme('system');
       }
-    }
+    };
 
     // 监听系统主题变化
-    mediaQuery.addEventListener('change', handleSystemThemeChange)
+    mediaQuery.addEventListener('change', handleSystemThemeChange);
 
     // 保存监听器引用，用于清理
     this._systemThemeListener = {
       mediaQuery,
       handler: handleSystemThemeChange
-    }
+    };
   }
 
   /**
@@ -561,61 +562,60 @@ class SettingsService {
    */
   applyTheme(theme = this.settings.ui.theme, options = {}) {
     // 解析实际主题
-    const actualTheme = this._resolveActualTheme(theme)
+    const actualTheme = this._resolveActualTheme(theme);
 
     // 获取当前主题，避免不必要的切换
-    const currentTheme = document.documentElement.getAttribute('data-theme')
+    const currentTheme = document.documentElement.getAttribute('data-theme');
     if (currentTheme === actualTheme) {
       if (options.skipIfSame) {
-        log.debug('主题已正确应用，跳过重复操作', { theme, actualTheme })
-        return
+        log.debug('主题已正确应用，跳过重复操作', { theme, actualTheme });
+        return;
       }
-      return // 主题没有变化，无需切换
+      return; // 主题没有变化，无需切换
     }
 
     // 批量同步更新DOM，避免多次重绘
-    const documentElement = document.documentElement
+    const documentElement = document.documentElement;
 
     // 添加主题切换状态类，提供视觉反馈
-    documentElement.classList.add('theme-switching')
+    documentElement.classList.add('theme-switching');
 
     // 使用requestAnimationFrame确保在下一帧开始时应用主题
     requestAnimationFrame(() => {
       // 设置主题属性和类名
-      documentElement.setAttribute('data-theme', actualTheme)
-      documentElement.className = documentElement.className
-        .replace(/\b(light|dark)-theme\b/g, '')
-      documentElement.classList.add(`${actualTheme}-theme`)
+      documentElement.setAttribute('data-theme', actualTheme);
+      documentElement.className = documentElement.className.replace(/\b(light|dark)-theme\b/g, '');
+      documentElement.classList.add(`${actualTheme}-theme`);
 
       // 设置语言
-      const language = this.settings.ui.language
+      const language = this.settings.ui.language;
       if (language) {
-        documentElement.setAttribute('lang', language)
+        documentElement.setAttribute('lang', language);
       }
 
       // 清除终端主题缓存，确保下次获取时使用新的CSS变量值
-      this._themeCache.clear()
+      this._themeCache.clear();
 
       // 同步触发所有主题相关事件，减少事件传播延迟
       const themeChangeEvent = new CustomEvent('theme-changed', {
         detail: { theme, actualTheme, previousTheme: currentTheme }
-      })
+      });
 
       const terminalThemeEvent = new CustomEvent('terminal-theme-update', {
         detail: { uiTheme: actualTheme }
-      })
+      });
 
       // 批量分发事件
-      window.dispatchEvent(themeChangeEvent)
-      window.dispatchEvent(terminalThemeEvent)
+      window.dispatchEvent(themeChangeEvent);
+      window.dispatchEvent(terminalThemeEvent);
 
       // 使用适中的延迟移除切换状态类，与CSS过渡时间同步
       setTimeout(() => {
-        documentElement.classList.remove('theme-switching')
-      }, 500) // 与CSS过渡时间保持一致（0.5s = 500ms）
+        documentElement.classList.remove('theme-switching');
+      }, 500); // 与CSS过渡时间保持一致（0.5s = 500ms）
 
-      log.debug('主题已应用', { theme, actualTheme, previousTheme: currentTheme, language })
-    })
+      log.debug('主题已应用', { theme, actualTheme, previousTheme: currentTheme, language });
+    });
   }
 
   /**
@@ -624,7 +624,7 @@ class SettingsService {
    * @returns {boolean} 是否有效
    */
   isValidTheme(themeName) {
-    return VALID_THEMES.includes(themeName)
+    return VALID_THEMES.includes(themeName);
   }
 
   /**
@@ -635,10 +635,10 @@ class SettingsService {
   getTerminalTheme(themeName = TERMINAL_THEMES.DARK) {
     // 验证主题名称
     if (!this.isValidTheme(themeName)) {
-      log.warn(`无效的主题名称: ${themeName}，使用默认主题 '${TERMINAL_THEMES.DARK}'`)
-      themeName = TERMINAL_THEMES.DARK
+      log.warn(`无效的主题名称: ${themeName}，使用默认主题 '${TERMINAL_THEMES.DARK}'`);
+      themeName = TERMINAL_THEMES.DARK;
     }
-    return this._getTerminalTheme(themeName)
+    return this._getTerminalTheme(themeName);
   }
 
   /**
@@ -650,7 +650,7 @@ class SettingsService {
   _getTerminalTheme(themeName = TERMINAL_THEMES.DARK) {
     // 检查缓存
     if (this._themeCache.has(themeName)) {
-      return this._themeCache.get(themeName)
+      return this._themeCache.get(themeName);
     }
     const themes = {
       light: {
@@ -763,33 +763,35 @@ class SettingsService {
         brightCyan: '#34E2E2',
         brightWhite: '#FFFFFF'
       }
-    }
+    };
 
     // 处理系统主题
-    let actualTheme = themeName
+    let actualTheme = themeName;
     if (themeName === TERMINAL_THEMES.SYSTEM) {
-      actualTheme = window.matchMedia('(prefers-color-scheme: dark)').matches ? TERMINAL_THEMES.DARK : TERMINAL_THEMES.LIGHT
+      actualTheme = window.matchMedia('(prefers-color-scheme: dark)').matches
+        ? TERMINAL_THEMES.DARK
+        : TERMINAL_THEMES.LIGHT;
     }
 
-    const themeConfig = themes[actualTheme] || themes[TERMINAL_THEMES.DARK]
+    const themeConfig = themes[actualTheme] || themes[TERMINAL_THEMES.DARK];
 
     // 动态解析CSS变量，使终端主题与界面主题保持一致
-    const resolvedTheme = { ...themeConfig }
+    const resolvedTheme = { ...themeConfig };
 
     // 获取当前界面主题的CSS变量值
-    const computedStyle = getComputedStyle(document.documentElement)
-    const bgColor = computedStyle.getPropertyValue('--color-bg-page').trim()
-    const textColor = computedStyle.getPropertyValue('--color-text-primary').trim()
+    const computedStyle = getComputedStyle(document.documentElement);
+    const bgColor = computedStyle.getPropertyValue('--color-bg-page').trim();
+    const textColor = computedStyle.getPropertyValue('--color-text-primary').trim();
 
     // 如果CSS变量有值，则使用界面主题的颜色
     if (bgColor && textColor) {
-      resolvedTheme.background = bgColor
-      resolvedTheme.foreground = textColor
-      resolvedTheme.cursor = textColor
+      resolvedTheme.background = bgColor;
+      resolvedTheme.foreground = textColor;
+      resolvedTheme.cursor = textColor;
     }
 
     // 不缓存，确保每次都能获取到最新的CSS变量值
-    return resolvedTheme
+    return resolvedTheme;
   }
 
   /**
@@ -801,7 +803,7 @@ class SettingsService {
       settings: { ...this.settings },
       timestamp: Date.now(),
       version: '1.0.0'
-    }
+    };
   }
 
   /**
@@ -810,13 +812,11 @@ class SettingsService {
    */
   importSettings(data) {
     if (data.settings) {
-      this._mergeSettings(this.settings, data.settings)
-      this.applyTheme()
-      log.info('设置导入成功')
+      this._mergeSettings(this.settings, data.settings);
+      this.applyTheme();
+      log.info('设置导入成功');
     }
   }
-
-
 
   /**
    * 获取默认终端选项（当设置服务未初始化时使用）
@@ -826,7 +826,7 @@ class SettingsService {
   _getDefaultTerminalOptions() {
     return {
       fontSize: 16,
-      fontFamily: "'JetBrains Mono'",
+      fontFamily: '\'JetBrains Mono\'',
       lineHeight: 1.2,
       theme: this._getTerminalTheme(TERMINAL_THEMES.DARK),
       cursorBlink: true,
@@ -840,12 +840,12 @@ class SettingsService {
       drawBoldTextInBrightColors: true,
       copyOnSelect: false,
       rightClickSelectsWord: false
-    }
+    };
   }
 }
 
 // 创建服务实例
-const settingsService = new SettingsService()
+const settingsService = new SettingsService();
 
 // 导出服务实例
-export default settingsService
+export default settingsService;

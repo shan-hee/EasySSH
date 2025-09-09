@@ -1,13 +1,17 @@
 <template>
-  <el-button type="primary" class="add-button" @click="$emit('click')">
-    <el-icon><Plus /></el-icon>
+  <el-button
+    type="primary"
+    class="add-button"
+    @click="$emit('click')"
+  >
+    <el-icon><plus /></el-icon>
     <span><slot>添加</slot></span>
   </el-button>
 </template>
 
 <script>
-import { defineComponent } from 'vue'
-import { Plus } from '@element-plus/icons-vue'
+import { defineComponent } from 'vue';
+import { Plus } from '@element-plus/icons-vue';
 
 export default defineComponent({
   name: 'AddButton',
@@ -15,7 +19,7 @@ export default defineComponent({
     Plus
   },
   emits: ['click']
-})
+});
 </script>
 
 <style scoped>

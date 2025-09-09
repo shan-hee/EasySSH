@@ -43,7 +43,7 @@ const config = {
       ]
     }
   },
-  
+
   // WebSocket传输配置
   transport: {
     // 数据压缩阈值（字节）
@@ -70,7 +70,7 @@ const config = {
       staticFieldsTTL: 300000           // 静态字段TTL (5分钟)
     }
   },
-  
+
   // 前端面板配置
   frontend: {
     // 图表更新间隔（毫秒）
@@ -89,7 +89,7 @@ const config = {
       resizable: true
     }
   },
-  
+
   // 性能优化配置
   performance: {
     enableCompression: false // 禁用应用层压缩，使用WebSocket层的perMessageDeflate

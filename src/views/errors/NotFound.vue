@@ -7,8 +7,15 @@
         sub-title="抱歉，您访问的页面不存在"
       >
         <template #extra>
-          <el-button type="primary" @click="goHome">返回首页</el-button>
-          <el-button @click="goBack">返回上一页</el-button>
+          <el-button
+            type="primary"
+            @click="goHome"
+          >
+            返回首页
+          </el-button>
+          <el-button @click="goBack">
+            返回上一页
+          </el-button>
         </template>
       </el-result>
     </div>
@@ -16,29 +23,29 @@
 </template>
 
 <script>
-import { useRouter } from 'vue-router'
+import { useRouter } from 'vue-router';
 
 export default {
   name: 'NotFound',
   setup() {
-    const router = useRouter()
-    
+    const router = useRouter();
+
     // 返回首页
     const goHome = () => {
-      router.push('/')
-    }
-    
+      router.push('/');
+    };
+
     // 返回上一页
     const goBack = () => {
-      router.back()
-    }
-    
+      router.back();
+    };
+
     return {
       goHome,
       goBack
-    }
+    };
   }
-}
+};
 </script>
 
 <style scoped>
@@ -58,4 +65,4 @@ export default {
   max-width: 600px;
   padding: 40px;
 }
-</style> 
+</style>

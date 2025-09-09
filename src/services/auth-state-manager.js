@@ -3,33 +3,33 @@
  * 监听用户登录/登出事件，自动触发存储模式切换
  */
 
-import log from './log'
-import storageAdapter from './storage-adapter'
+import log from './log';
+import storageAdapter from './storage-adapter';
 
 class AuthStateManager {
   constructor() {
-    this.initialized = false
-    this.currentUser = null
-    this.isLoggedIn = false
-    this.listeners = new Set()
+    this.initialized = false;
+    this.currentUser = null;
+    this.isLoggedIn = false;
+    this.listeners = new Set();
   }
 
   /**
    * 初始化状态管理器
    */
   async init() {
-    if (this.initialized) return true
+    if (this.initialized) return true;
 
     try {
       // 初始化存储适配器
-      await storageAdapter.init()
-      
-      this.initialized = true
-      log.debug('登录状态管理器初始化完成')
-      return true
+      await storageAdapter.init();
+
+      this.initialized = true;
+      log.debug('登录状态管理器初始化完成');
+      return true;
     } catch (error) {
-      log.error('登录状态管理器初始化失败', error)
-      return false
+      log.error('登录状态管理器初始化失败', error);
+      return false;
     }
   }
 
@@ -39,19 +39,18 @@ class AuthStateManager {
    */
   async onUserLogin(user) {
     try {
-      log.info('用户登录，切换到服务器存储模式', { userId: user.id, username: user.username })
-      
-      this.currentUser = user
-      this.isLoggedIn = true
-      
+      log.info('用户登录，切换到服务器存储模式', { userId: user.id, username: user.username });
+
+      this.currentUser = user;
+      this.isLoggedIn = true;
+
       // 通知存储适配器用户状态变化
-      await this.notifyStorageModeChange('server')
-      
+      await this.notifyStorageModeChange('server');
+
       // 通知所有监听器
-      this.notifyListeners('login', user)
-      
+      this.notifyListeners('login', user);
     } catch (error) {
-      log.error('处理用户登录事件失败', error)
+      log.error('处理用户登录事件失败', error);
     }
   }
 
@@ -60,23 +59,22 @@ class AuthStateManager {
    */
   async onUserLogout() {
     try {
-      const previousUser = this.currentUser
-      log.info('用户登出，切换到本地存储模式', { 
-        userId: previousUser?.id, 
-        username: previousUser?.username 
-      })
-      
-      this.currentUser = null
-      this.isLoggedIn = false
-      
+      const previousUser = this.currentUser;
+      log.info('用户登出，切换到本地存储模式', {
+        userId: previousUser?.id,
+        username: previousUser?.username
+      });
+
+      this.currentUser = null;
+      this.isLoggedIn = false;
+
       // 通知存储适配器用户状态变化
-      await this.notifyStorageModeChange('local')
-      
+      await this.notifyStorageModeChange('local');
+
       // 通知所有监听器
-      this.notifyListeners('logout', previousUser)
-      
+      this.notifyListeners('logout', previousUser);
     } catch (error) {
-      log.error('处理用户登出事件失败', error)
+      log.error('处理用户登出事件失败', error);
     }
   }
 
@@ -88,21 +86,20 @@ class AuthStateManager {
     try {
       // 这里可以添加存储模式切换的额外逻辑
       // 比如清理缓存、预加载数据等
-      
-      log.debug(`存储模式已切换到: ${mode}`)
-      
+
+      log.debug(`存储模式已切换到: ${mode}`);
+
       // 触发自定义事件，通知其他组件
       const event = new CustomEvent('storage-mode-changed', {
-        detail: { 
-          mode, 
+        detail: {
+          mode,
           isLoggedIn: this.isLoggedIn,
-          user: this.currentUser 
+          user: this.currentUser
         }
-      })
-      window.dispatchEvent(event)
-      
+      });
+      window.dispatchEvent(event);
     } catch (error) {
-      log.error('通知存储模式变化失败', error)
+      log.error('通知存储模式变化失败', error);
     }
   }
 
@@ -111,7 +108,7 @@ class AuthStateManager {
    * @param {Function} listener - 监听器函数
    */
   addListener(listener) {
-    this.listeners.add(listener)
+    this.listeners.add(listener);
   }
 
   /**
@@ -119,7 +116,7 @@ class AuthStateManager {
    * @param {Function} listener - 监听器函数
    */
   removeListener(listener) {
-    this.listeners.delete(listener)
+    this.listeners.delete(listener);
   }
 
   /**
@@ -130,9 +127,9 @@ class AuthStateManager {
   notifyListeners(event, data) {
     for (const listener of this.listeners) {
       try {
-        listener(event, data)
+        listener(event, data);
       } catch (error) {
-        log.error('通知监听器失败', error)
+        log.error('通知监听器失败', error);
       }
     }
   }
@@ -147,7 +144,7 @@ class AuthStateManager {
       currentUser: this.currentUser,
       storageMode: this.isLoggedIn ? 'server' : 'local',
       initialized: this.initialized
-    }
+    };
   }
 
   /**
@@ -155,7 +152,7 @@ class AuthStateManager {
    * @returns {boolean} 是否已登录
    */
   checkLoginStatus() {
-    return this.isLoggedIn
+    return this.isLoggedIn;
   }
 
   /**
@@ -163,7 +160,7 @@ class AuthStateManager {
    * @returns {Object|null} 用户信息
    */
   getCurrentUser() {
-    return this.currentUser
+    return this.currentUser;
   }
 
   /**
@@ -173,24 +170,23 @@ class AuthStateManager {
   async refreshLoginStatus() {
     try {
       // 动态导入用户store以避免循环依赖
-      const { useUserStore } = await import('../store/user')
-      const userStore = useUserStore()
-      
-      const wasLoggedIn = this.isLoggedIn
-      this.isLoggedIn = userStore.isLoggedIn
-      this.currentUser = userStore.user
-      
+      const { useUserStore } = await import('../store/user');
+      const userStore = useUserStore();
+
+      const wasLoggedIn = this.isLoggedIn;
+      this.isLoggedIn = userStore.isLoggedIn;
+      this.currentUser = userStore.user;
+
       // 如果状态发生变化，触发相应事件
       if (wasLoggedIn !== this.isLoggedIn) {
         if (this.isLoggedIn) {
-          await this.onUserLogin(this.currentUser)
+          await this.onUserLogin(this.currentUser);
         } else {
-          await this.onUserLogout()
+          await this.onUserLogout();
         }
       }
-      
     } catch (error) {
-      log.error('刷新登录状态失败', error)
+      log.error('刷新登录状态失败', error);
     }
   }
 
@@ -198,15 +194,15 @@ class AuthStateManager {
    * 销毁状态管理器
    */
   destroy() {
-    this.listeners.clear()
-    this.currentUser = null
-    this.isLoggedIn = false
-    this.initialized = false
-    log.debug('登录状态管理器已销毁')
+    this.listeners.clear();
+    this.currentUser = null;
+    this.isLoggedIn = false;
+    this.initialized = false;
+    log.debug('登录状态管理器已销毁');
   }
 }
 
 // 创建单例实例
-const authStateManager = new AuthStateManager()
+const authStateManager = new AuthStateManager();
 
-export default authStateManager
+export default authStateManager;

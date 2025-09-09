@@ -11,10 +11,10 @@ class ContextBuilder {
     this.maxLines = options.maxLines || 200;
     this.maxBytes = options.maxBytes || 32 * 1024; // 32KB
     this.strictRedaction = options.strictRedaction !== false; // 默认启用严格脱敏
-    
+
     // 敏感信息检测模式
     this.sensitivePatterns = this._initSensitivePatterns();
-    
+
     logger.debug('上下文构建器已初始化', {
       maxLines: this.maxLines,
       maxBytes: this.maxBytes,
@@ -43,9 +43,9 @@ class ContextBuilder {
 
       // 应用安全过滤器
       const secureContext = this._applySecurityFilters(context);
-      
+
       secureContext.processingTime = Date.now() - startTime;
-      
+
       logger.debug('上下文构建完成', {
         outputLength: secureContext.terminalOutput?.length || 0,
         inputLength: secureContext.currentInput?.length || 0,
@@ -352,7 +352,7 @@ class ContextBuilder {
     if (buffer.length <= maxBytes) {
       return text;
     }
-    
+
     // 截断并移除可能的不完整字符
     const truncated = buffer.slice(0, maxBytes).toString('utf8');
     return truncated.replace(/\uFFFD/g, ''); // 移除替换字符
@@ -382,11 +382,11 @@ class ContextBuilder {
     if (this.strictRedaction) {
       // 检查是否包含高风险内容
       const hasHighRisk = context.metadata?.riskLevel === 'high';
-      
+
       if (hasHighRisk) {
         filtered.securityWarning = 'High-risk command detected';
-        logger.warn('检测到高风险命令', { 
-          riskLevel: context.metadata.riskLevel 
+        logger.warn('检测到高风险命令', {
+          riskLevel: context.metadata.riskLevel
         });
       }
 

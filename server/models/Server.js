@@ -35,16 +35,16 @@ class Server {
     const db = connectDatabase();
     const now = new Date().toISOString();
     this.updatedAt = now;
-    
+
     // 加密敏感信息
     if (this.password) {
       this.encryptPassword();
     }
-    
+
     if (this.privateKey) {
       this.encryptPrivateKey();
     }
-    
+
     if (this.id) {
       // 更新现有记录
       const stmt = db.prepare(`
@@ -55,7 +55,7 @@ class Server {
           shared = ?, sharedWith = ?, updatedAt = ?
         WHERE id = ?
       `);
-      
+
       stmt.run(
         this.name,
         this.host,
@@ -78,7 +78,7 @@ class Server {
     } else {
       // 新增记录
       this.createdAt = now;
-      
+
       const stmt = db.prepare(`
         INSERT INTO servers (
           name, host, port, username, password, privateKey, usePrivateKey,
@@ -86,7 +86,7 @@ class Server {
           shared, sharedWith, createdAt, updatedAt
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
-      
+
       const info = stmt.run(
         this.name,
         this.host,
@@ -106,10 +106,10 @@ class Server {
         this.createdAt,
         now
       );
-      
+
       this.id = info.lastInsertRowid;
     }
-    
+
     return this;
   }
 
@@ -128,7 +128,7 @@ class Server {
   decryptPassword() {
     const secretKey = process.env.ENCRYPTION_KEY || 'default-secret-key';
     if (!this.password) return '';
-    
+
     const bytes = crypto.AES.decrypt(this.password, secretKey);
     return bytes.toString(crypto.enc.Utf8);
   }
@@ -136,7 +136,7 @@ class Server {
   decryptPrivateKey() {
     const secretKey = process.env.ENCRYPTION_KEY || 'default-secret-key';
     if (!this.privateKey) return '';
-    
+
     const bytes = crypto.AES.decrypt(this.privateKey, secretKey);
     return bytes.toString(crypto.enc.Utf8);
   }
@@ -161,19 +161,19 @@ class Server {
     const db = connectDatabase();
     const stmt = db.prepare('SELECT * FROM servers WHERE id = ?');
     const row = stmt.get(id);
-    
+
     if (!row) return null;
-    
+
     return new Server(row);
   }
 
   // 查找一个符合条件的服务器
   static findOne(conditions) {
     const db = connectDatabase();
-    
+
     let query = 'SELECT * FROM servers WHERE 1=1';
     const params = [];
-    
+
     if (conditions._id) {
       query += ' AND id = ?';
       params.push(conditions._id);
@@ -181,35 +181,35 @@ class Server {
       query += ' AND id = ?';
       params.push(conditions.id);
     }
-    
+
     if (conditions.owner) {
       query += ' AND owner = ?';
       params.push(conditions.owner);
     }
-    
+
     const stmt = db.prepare(query);
     const row = stmt.get(...params);
-    
+
     if (!row) return null;
-    
+
     return new Server(row);
   }
 
   // 查找符合条件的所有服务器
   static find(conditions = {}) {
     const db = connectDatabase();
-    
+
     let query = 'SELECT * FROM servers WHERE 1=1';
     const params = [];
-    
+
     if (conditions.owner) {
       query += ' AND owner = ?';
       params.push(conditions.owner);
     }
-    
+
     const stmt = db.prepare(query);
     const rows = stmt.all(...params);
-    
+
     return rows.map(row => new Server(row));
   }
 
@@ -217,39 +217,39 @@ class Server {
   static findByIdAndUpdate(id, update, options = {}) {
     const server = this.findById(id);
     if (!server) return null;
-    
+
     // 处理增量字段
     if (update.$inc) {
       Object.keys(update.$inc).forEach(key => {
         server[key] = (server[key] || 0) + update.$inc[key];
       });
     }
-    
+
     // 处理设置字段
     if (update.$set) {
       Object.keys(update.$set).forEach(key => {
         server[key] = update.$set[key];
       });
     }
-    
+
     // 保存更新
     server.save();
-    
+
     // 返回新文档
     if (options.new) {
       return server;
     }
-    
+
     return server;
   }
 
   // 删除一个服务器
   static deleteOne(conditions) {
     const db = connectDatabase();
-    
+
     let query = 'DELETE FROM servers WHERE 1=1';
     const params = [];
-    
+
     if (conditions._id) {
       query += ' AND id = ?';
       params.push(conditions._id);
@@ -257,15 +257,15 @@ class Server {
       query += ' AND id = ?';
       params.push(conditions.id);
     }
-    
+
     if (conditions.owner) {
       query += ' AND owner = ?';
       params.push(conditions.owner);
     }
-    
+
     const stmt = db.prepare(query);
     return stmt.run(...params);
   }
 }
 
-module.exports = Server; 
+module.exports = Server;

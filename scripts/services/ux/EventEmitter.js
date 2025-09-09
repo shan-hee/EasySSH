@@ -41,7 +41,7 @@ export class EventEmitter {
    */
   off(event, listener) {
     if (!this._events[event]) return this;
-    
+
     if (!listener) {
       // 如果没有指定监听器，移除所有监听器
       delete this._events[event];
@@ -50,13 +50,13 @@ export class EventEmitter {
       if (index !== -1) {
         this._events[event].splice(index, 1);
       }
-      
+
       // 如果没有监听器了，删除事件
       if (this._events[event].length === 0) {
         delete this._events[event];
       }
     }
-    
+
     return this;
   }
 
@@ -67,10 +67,10 @@ export class EventEmitter {
    */
   emit(event, ...args) {
     if (!this._events[event]) return false;
-    
+
     // 复制监听器数组，避免在执行过程中被修改
     const listeners = [...this._events[event]];
-    
+
     for (const listener of listeners) {
       try {
         listener.apply(this, args);
@@ -78,7 +78,7 @@ export class EventEmitter {
         console.error(`Error in event listener for "${event}":`, error);
       }
     }
-    
+
     return true;
   }
 

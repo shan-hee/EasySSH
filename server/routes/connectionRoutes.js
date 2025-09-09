@@ -37,4 +37,4 @@ router.post('/pinned', connectionController.updatePinned);
 // 批量同步
 router.post('/sync', connectionController.syncConnections);
 
-module.exports = router; 
+module.exports = router;

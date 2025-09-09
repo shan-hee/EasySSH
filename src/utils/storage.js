@@ -11,43 +11,43 @@ const CACHE_CONFIG = {
   cleanupInterval: 30 * 60 * 1000, // 30分钟清理一次（提高清理频率）
   prefix: 'easyssh:', // 默认前缀
   enableMemoryCache: true // 是否启用内存缓存
-}
+};
 
 // 内存缓存
-const memoryCache = new Map()
+const memoryCache = new Map();
 
 // 清理定时器
-let cleanupTimer = null
+let cleanupTimer = null;
 
 // 初始化状态
-let isInitialized = false
+let isInitialized = false;
 
 /**
  * 初始化存储工具
  * @returns {Promise<boolean>} 是否初始化成功
  */
 export function initStorage() {
-  return new Promise((resolve) => {
+  return new Promise(resolve => {
     if (isInitialized) {
-      return resolve(true)
+      return resolve(true);
     }
 
     try {
       // 测试localStorage可用性
-      const testKey = '__storage_test__'
-      localStorage.setItem(testKey, testKey)
-      localStorage.removeItem(testKey)
+      const testKey = '__storage_test__';
+      localStorage.setItem(testKey, testKey);
+      localStorage.removeItem(testKey);
 
       // 启动清理定时器
-      startCleanupTimer()
+      startCleanupTimer();
 
-      isInitialized = true
-      resolve(true)
+      isInitialized = true;
+      resolve(true);
     } catch (e) {
-      console.error('存储工具初始化失败:', e)
-      resolve(false)
+      console.error('存储工具初始化失败:', e);
+      resolve(false);
     }
-  })
+  });
 }
 
 /**
@@ -57,7 +57,7 @@ export function initStorage() {
  * @returns {string} 带前缀的键名
  */
 function getPrefixedKey(key, prefix = CACHE_CONFIG.prefix) {
-  return prefix ? `${prefix}${key}` : key
+  return prefix ? `${prefix}${key}` : key;
 }
 
 /**
@@ -71,44 +71,44 @@ function getPrefixedKey(key, prefix = CACHE_CONFIG.prefix) {
  */
 export function getFromStorage(key, defaultValue = null, options = {}) {
   try {
-    const { usePrefix = true, prefix } = options
-    const finalKey = usePrefix ? getPrefixedKey(key, prefix) : key
+    const { usePrefix = true, prefix } = options;
+    const finalKey = usePrefix ? getPrefixedKey(key, prefix) : key;
 
     // 先从内存缓存获取（如果启用）
     if (CACHE_CONFIG.enableMemoryCache && memoryCache.has(finalKey)) {
-      const cached = memoryCache.get(finalKey)
+      const cached = memoryCache.get(finalKey);
       if (cached.expiration > Date.now()) {
-        return cached.value
+        return cached.value;
       } else {
         // 过期了，删除缓存
-        memoryCache.delete(finalKey)
+        memoryCache.delete(finalKey);
       }
     }
 
     // 从localStorage获取
-    const item = localStorage.getItem(finalKey)
+    const item = localStorage.getItem(finalKey);
     if (!item) {
-      return defaultValue
+      return defaultValue;
     }
 
     // 解析存储项
-    const storageItem = JSON.parse(item)
+    const storageItem = JSON.parse(item);
 
     // 检查是否过期
     if (storageItem.expiration && storageItem.expiration < Date.now()) {
-      localStorage.removeItem(finalKey)
-      return defaultValue
+      localStorage.removeItem(finalKey);
+      return defaultValue;
     }
 
     // 更新内存缓存（如果启用）
     if (CACHE_CONFIG.enableMemoryCache) {
-      memoryCache.set(finalKey, storageItem)
+      memoryCache.set(finalKey, storageItem);
     }
 
-    return storageItem.value
+    return storageItem.value;
   } catch (error) {
-    console.error(`获取存储数据失败 [${key}]:`, error)
-    return defaultValue
+    console.error(`获取存储数据失败 [${key}]:`, error);
+    return defaultValue;
   }
 }
 
@@ -123,48 +123,48 @@ export function getFromStorage(key, defaultValue = null, options = {}) {
  */
 export function saveToStorage(key, value, options = {}) {
   try {
-    const { expiration = CACHE_CONFIG.defaultExpiration, usePrefix = true, prefix } = options
-    const finalKey = usePrefix ? getPrefixedKey(key, prefix) : key
-    const now = Date.now()
+    const { expiration = CACHE_CONFIG.defaultExpiration, usePrefix = true, prefix } = options;
+    const finalKey = usePrefix ? getPrefixedKey(key, prefix) : key;
+    const now = Date.now();
 
     // 创建存储对象，包含值、时间戳和过期时间
     const storageItem = {
       value,
       timestamp: now,
       expiration: now + expiration
-    }
+    };
 
     // 对对象和数组进行序列化
-    const serializedValue = JSON.stringify(storageItem)
+    const serializedValue = JSON.stringify(storageItem);
 
     // 保存到localStorage
-    localStorage.setItem(finalKey, serializedValue)
+    localStorage.setItem(finalKey, serializedValue);
 
     // 同时更新内存缓存（如果启用）
     if (CACHE_CONFIG.enableMemoryCache) {
-      memoryCache.set(finalKey, storageItem)
+      memoryCache.set(finalKey, storageItem);
     }
 
     // 启动自动清理定时器（如果尚未启动）
     if (!cleanupTimer) {
-      startCleanupTimer()
+      startCleanupTimer();
     }
 
-    return true
+    return true;
   } catch (error) {
-    console.error(`存储数据失败 [${key}]:`, error)
+    console.error(`存储数据失败 [${key}]:`, error);
 
     // 如果localStorage已满，尝试清理过期数据后重新尝试
     if (error instanceof DOMException && error.name === 'QuotaExceededError') {
-      cleanupExpiredItems()
+      cleanupExpiredItems();
       try {
-        return saveToStorage(key, value, options)
+        return saveToStorage(key, value, options);
       } catch (retryError) {
-        console.error(`重试存储失败 [${key}]:`, retryError)
+        console.error(`重试存储失败 [${key}]:`, retryError);
       }
     }
 
-    return false
+    return false;
   }
 }
 
@@ -177,17 +177,17 @@ export function saveToStorage(key, value, options = {}) {
  */
 export function removeFromStorage(key, options = {}) {
   try {
-    const { usePrefix = true, prefix } = options
-    const finalKey = usePrefix ? getPrefixedKey(key, prefix) : key
+    const { usePrefix = true, prefix } = options;
+    const finalKey = usePrefix ? getPrefixedKey(key, prefix) : key;
 
-    localStorage.removeItem(finalKey)
+    localStorage.removeItem(finalKey);
     if (CACHE_CONFIG.enableMemoryCache) {
-      memoryCache.delete(finalKey)
+      memoryCache.delete(finalKey);
     }
-    return true
+    return true;
   } catch (error) {
-    console.error(`删除存储数据失败 [${key}]:`, error)
-    return false
+    console.error(`删除存储数据失败 [${key}]:`, error);
+    return false;
   }
 }
 
@@ -199,36 +199,36 @@ export function removeFromStorage(key, options = {}) {
  */
 export function clearStorage(options = {}) {
   try {
-    const { onlyPrefixed = false, prefix = CACHE_CONFIG.prefix } = options
+    const { onlyPrefixed = false, prefix = CACHE_CONFIG.prefix } = options;
 
     if (onlyPrefixed) {
       // 只清理带指定前缀的数据
-      const keysToRemove = []
+      const keysToRemove = [];
       for (let i = 0; i < localStorage.length; i++) {
-        const key = localStorage.key(i)
+        const key = localStorage.key(i);
         if (key && key.startsWith(prefix)) {
-          keysToRemove.push(key)
+          keysToRemove.push(key);
         }
       }
 
       keysToRemove.forEach(key => {
-        localStorage.removeItem(key)
+        localStorage.removeItem(key);
         if (CACHE_CONFIG.enableMemoryCache) {
-          memoryCache.delete(key)
+          memoryCache.delete(key);
         }
-      })
+      });
     } else {
       // 清空所有数据
-      localStorage.clear()
+      localStorage.clear();
       if (CACHE_CONFIG.enableMemoryCache) {
-        memoryCache.clear()
+        memoryCache.clear();
       }
     }
 
-    return true
+    return true;
   } catch (error) {
-    console.error('清空存储失败:', error)
-    return false
+    console.error('清空存储失败:', error);
+    return false;
   }
 }
 
@@ -237,28 +237,28 @@ export function clearStorage(options = {}) {
  */
 export function getStorageInfo() {
   try {
-    let totalSize = 0
-    let itemCount = 0
-    
+    let totalSize = 0;
+    let itemCount = 0;
+
     for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i)
-      const value = localStorage.getItem(key)
+      const key = localStorage.key(i);
+      const value = localStorage.getItem(key);
       if (value) {
-        totalSize += value.length
-        itemCount++
+        totalSize += value.length;
+        itemCount++;
       }
     }
-    
+
     return {
       itemCount,
       totalSize,
       totalSizeKB: Math.round(totalSize / 1024),
       maxSize: CACHE_CONFIG.maxSize,
       usagePercent: Math.round((totalSize / CACHE_CONFIG.maxSize) * 100)
-    }
+    };
   } catch (error) {
-    console.error('获取存储信息失败:', error)
-    return null
+    console.error('获取存储信息失败:', error);
+    return null;
   }
 }
 
@@ -267,44 +267,44 @@ export function getStorageInfo() {
  */
 export function cleanupExpiredItems() {
   try {
-    const now = Date.now()
-    const keysToRemove = []
-    
+    const now = Date.now();
+    const keysToRemove = [];
+
     // 检查localStorage中的过期项
     for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i)
+      const key = localStorage.key(i);
       try {
-        const item = localStorage.getItem(key)
+        const item = localStorage.getItem(key);
         if (item) {
-          const storageItem = JSON.parse(item)
+          const storageItem = JSON.parse(item);
           if (storageItem.expiration && storageItem.expiration < now) {
-            keysToRemove.push(key)
+            keysToRemove.push(key);
           }
         }
       } catch (parseError) {
         // 如果解析失败，可能是非标准格式的数据，跳过
-        continue
+        continue;
       }
     }
-    
+
     // 删除过期项
     keysToRemove.forEach(key => {
-      localStorage.removeItem(key)
-      memoryCache.delete(key)
-    })
-    
+      localStorage.removeItem(key);
+      memoryCache.delete(key);
+    });
+
     // 清理内存缓存中的过期项
     for (const [key, item] of memoryCache.entries()) {
       if (item.expiration < now) {
-        memoryCache.delete(key)
+        memoryCache.delete(key);
       }
     }
-    
-    console.log(`清理了 ${keysToRemove.length} 个过期存储项`)
-    return keysToRemove.length
+
+    console.log(`清理了 ${keysToRemove.length} 个过期存储项`);
+    return keysToRemove.length;
   } catch (error) {
-    console.error('清理过期存储项失败:', error)
-    return 0
+    console.error('清理过期存储项失败:', error);
+    return 0;
   }
 }
 
@@ -313,12 +313,12 @@ export function cleanupExpiredItems() {
  */
 function startCleanupTimer() {
   if (cleanupTimer) {
-    clearInterval(cleanupTimer)
+    clearInterval(cleanupTimer);
   }
-  
+
   cleanupTimer = setInterval(() => {
-    cleanupExpiredItems()
-  }, CACHE_CONFIG.cleanupInterval)
+    cleanupExpiredItems();
+  }, CACHE_CONFIG.cleanupInterval);
 }
 
 /**
@@ -326,8 +326,8 @@ function startCleanupTimer() {
  */
 export function stopCleanupTimer() {
   if (cleanupTimer) {
-    clearInterval(cleanupTimer)
-    cleanupTimer = null
+    clearInterval(cleanupTimer);
+    cleanupTimer = null;
   }
 }
 
@@ -340,16 +340,16 @@ export function stopCleanupTimer() {
  */
 export function hasValidKey(key, options = {}) {
   try {
-    const { usePrefix = true, prefix } = options
-    const finalKey = usePrefix ? getPrefixedKey(key, prefix) : key
+    const { usePrefix = true, prefix } = options;
+    const finalKey = usePrefix ? getPrefixedKey(key, prefix) : key;
 
-    const item = localStorage.getItem(finalKey)
-    if (!item) return false
+    const item = localStorage.getItem(finalKey);
+    if (!item) return false;
 
-    const storageItem = JSON.parse(item)
-    return !storageItem.expiration || storageItem.expiration > Date.now()
+    const storageItem = JSON.parse(item);
+    return !storageItem.expiration || storageItem.expiration > Date.now();
   } catch (error) {
-    return false
+    return false;
   }
 }
 
@@ -362,25 +362,25 @@ export function hasValidKey(key, options = {}) {
  */
 export function getAllKeys(options = {}) {
   try {
-    const { onlyPrefixed = false, prefix = CACHE_CONFIG.prefix, stripPrefix = false } = options
-    const keys = []
+    const { onlyPrefixed = false, prefix = CACHE_CONFIG.prefix, stripPrefix = false } = options;
+    const keys = [];
 
     for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i)
+      const key = localStorage.key(i);
       if (key) {
         if (onlyPrefixed) {
           if (key.startsWith(prefix)) {
-            keys.push(stripPrefix ? key.substring(prefix.length) : key)
+            keys.push(stripPrefix ? key.substring(prefix.length) : key);
           }
         } else {
-          keys.push(key)
+          keys.push(key);
         }
       }
     }
-    return keys
+    return keys;
   } catch (error) {
-    console.error('获取存储键名失败:', error)
-    return []
+    console.error('获取存储键名失败:', error);
+    return [];
   }
 }
 
@@ -393,23 +393,23 @@ export function createPrefixedStorage(prefix) {
   return {
     get: (key, defaultValue) => getFromStorage(key, defaultValue, { prefix }),
     set: (key, value, options = {}) => saveToStorage(key, value, { ...options, prefix }),
-    remove: (key) => removeFromStorage(key, { prefix }),
+    remove: key => removeFromStorage(key, { prefix }),
     clear: () => clearStorage({ onlyPrefixed: true, prefix }),
-    has: (key) => hasValidKey(key, { prefix }),
+    has: key => hasValidKey(key, { prefix }),
     keys: () => getAllKeys({ onlyPrefixed: true, prefix, stripPrefix: true })
-  }
+  };
 }
 
 // 页面加载时自动初始化（如果在浏览器环境）
 if (typeof window !== 'undefined') {
   initStorage().then(success => {
     if (!success) {
-      console.warn('存储工具初始化失败，某些功能可能不可用')
+      console.warn('存储工具初始化失败，某些功能可能不可用');
     }
-  })
+  });
 
   // 页面卸载时停止定时器
-  window.addEventListener('beforeunload', stopCleanupTimer)
+  window.addEventListener('beforeunload', stopCleanupTimer);
 }
 
 // 默认导出对象，保持向后兼容
@@ -433,4 +433,4 @@ export default {
 
   // 配置
   config: CACHE_CONFIG
-}
+};
