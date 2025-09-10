@@ -19,25 +19,25 @@ export default defineComponent({
 </script>
 
 <style scoped>
-/* 使用统一的主要按钮样式 */
+/* 统一通过 Element Plus 按钮 CSS 变量与主题令牌对齐，避免与库样式竞争 */
 .add-button {
-  background-color: var(--btn-primary-bg) !important;
-  border-color: var(--btn-primary-bg) !important;
+  /* 基础与边框 */
+  --el-button-bg-color: var(--btn-primary-bg);
+  --el-button-border-color: var(--btn-primary-bg);
+  --el-button-text-color: var(--btn-primary-text);
+
+  /* 悬停与激活态 */
+  --el-button-hover-bg-color: var(--btn-primary-hover-bg);
+  --el-button-hover-border-color: var(--btn-primary-hover-bg);
+  --el-button-hover-text-color: var(--btn-primary-text);
+  --el-button-active-bg-color: var(--color-primary-active);
+  --el-button-active-border-color: var(--color-primary-active);
+  --el-button-active-text-color: var(--btn-primary-text);
 }
 
-.add-button:hover {
-  background-color: var(--btn-primary-hover-bg) !important;
-  border-color: var(--btn-primary-hover-bg) !important;
-}
-
-/* 确保Element Plus按钮内的文字加粗且颜色正确 */
+/* 仅增强文案的视觉权重，颜色由变量控制 */
+:deep(.el-button__text),
 :deep(span) {
-  font-weight: bold;
-  color: var(--btn-primary-text) !important;
-}
-
-/* 确保图标颜色也正确 */
-:deep(.el-icon) {
-  color: var(--btn-primary-text) !important;
+  font-weight: 600;
 }
 </style>
