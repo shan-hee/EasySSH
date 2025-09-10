@@ -53,20 +53,20 @@ export class AIErrorHandler {
 
     // 根据严重程度决定处理方式
     switch (severity) {
-    case ErrorSeverity.CRITICAL:
-      this.handleCriticalError(errorInfo);
-      break;
-    case ErrorSeverity.HIGH:
-      this.handleHighSeverityError(errorInfo);
-      break;
-    case ErrorSeverity.MEDIUM:
-      this.handleMediumSeverityError(errorInfo);
-      break;
-    case ErrorSeverity.LOW:
-      this.handleLowSeverityError(errorInfo);
-      break;
-    default:
-      this.handleMediumSeverityError(errorInfo);
+      case ErrorSeverity.CRITICAL:
+        this.handleCriticalError(errorInfo);
+        break;
+      case ErrorSeverity.HIGH:
+        this.handleHighSeverityError(errorInfo);
+        break;
+      case ErrorSeverity.MEDIUM:
+        this.handleMediumSeverityError(errorInfo);
+        break;
+      case ErrorSeverity.LOW:
+        this.handleLowSeverityError(errorInfo);
+        break;
+      default:
+        this.handleMediumSeverityError(errorInfo);
     }
 
     return errorInfo;

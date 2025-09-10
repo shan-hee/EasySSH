@@ -3,33 +3,13 @@
     <div class="monitor-header">
       <h3>📊 SFTP性能监控</h3>
       <div class="header-controls">
-        <el-select
-          v-model="timeWindow"
-          size="small"
-          @change="refreshData"
-        >
-          <el-option
-            label="最近1分钟"
-            :value="60000"
-          />
-          <el-option
-            label="最近5分钟"
-            :value="300000"
-          />
-          <el-option
-            label="最近15分钟"
-            :value="900000"
-          />
-          <el-option
-            label="最近1小时"
-            :value="3600000"
-          />
+        <el-select v-model="timeWindow" size="small" @change="refreshData">
+          <el-option label="最近1分钟" :value="60000" />
+          <el-option label="最近5分钟" :value="300000" />
+          <el-option label="最近15分钟" :value="900000" />
+          <el-option label="最近1小时" :value="3600000" />
         </el-select>
-        <el-button
-          size="small"
-          :loading="loading"
-          @click="refreshData"
-        >
+        <el-button size="small" :loading="loading" @click="refreshData">
           <i class="el-icon-refresh" /> 刷新
         </el-button>
         <el-button
@@ -45,16 +25,11 @@
 
     <!-- 系统健康状态 -->
     <div class="health-status">
-      <div
-        class="health-card"
-        :class="healthStatus.status"
-      >
+      <div class="health-card" :class="healthStatus.status">
         <div class="health-score">
           {{ healthStatus.score }}
         </div>
-        <div class="health-label">
-          系统健康分数
-        </div>
+        <div class="health-label">系统健康分数</div>
         <div class="health-status-text">
           {{ getHealthStatusText(healthStatus.status) }}
         </div>
@@ -67,13 +42,8 @@
         <div class="metric-value">
           {{ metrics.transferSpeeds.upload.recent.toFixed(2) }}
         </div>
-        <div class="metric-label">
-          上传速度 (MB/s)
-        </div>
-        <div
-          class="metric-trend"
-          :class="getSpeedTrend('upload')"
-        >
+        <div class="metric-label">上传速度 (MB/s)</div>
+        <div class="metric-trend" :class="getSpeedTrend('upload')">
           <i :class="getSpeedTrendIcon('upload')" />
           {{ getSpeedTrendText('upload') }}
         </div>
@@ -83,29 +53,17 @@
         <div class="metric-value">
           {{ metrics.transferSpeeds.download.recent.toFixed(2) }}
         </div>
-        <div class="metric-label">
-          下载速度 (MB/s)
-        </div>
-        <div
-          class="metric-trend"
-          :class="getSpeedTrend('download')"
-        >
+        <div class="metric-label">下载速度 (MB/s)</div>
+        <div class="metric-trend" :class="getSpeedTrend('download')">
           <i :class="getSpeedTrendIcon('download')" />
           {{ getSpeedTrendText('download') }}
         </div>
       </div>
 
       <div class="metric-card">
-        <div class="metric-value">
-          {{ metrics.reliability.successRate.toFixed(1) }}%
-        </div>
-        <div class="metric-label">
-          成功率
-        </div>
-        <div
-          class="metric-trend"
-          :class="getSuccessRateTrend()"
-        >
+        <div class="metric-value">{{ metrics.reliability.successRate.toFixed(1) }}%</div>
+        <div class="metric-label">成功率</div>
+        <div class="metric-trend" :class="getSuccessRateTrend()">
           <i :class="getSuccessRateTrendIcon()" />
           {{ getSuccessRateTrendText() }}
         </div>
@@ -115,13 +73,8 @@
         <div class="metric-value">
           {{ metrics.reliability.concurrentOperations }}
         </div>
-        <div class="metric-label">
-          并发操作
-        </div>
-        <div
-          class="metric-trend"
-          :class="getConcurrencyTrend()"
-        >
+        <div class="metric-label">并发操作</div>
+        <div class="metric-trend" :class="getConcurrencyTrend()">
           <i :class="getConcurrencyTrendIcon()" />
           {{ getConcurrencyTrendText() }}
         </div>
@@ -132,26 +85,17 @@
     <div class="charts-container">
       <div class="chart-card">
         <h4>传输速度趋势</h4>
-        <div
-          ref="speedChart"
-          class="chart"
-        />
+        <div ref="speedChart" class="chart" />
       </div>
 
       <div class="chart-card">
         <h4>延迟分布</h4>
-        <div
-          ref="latencyChart"
-          class="chart"
-        />
+        <div ref="latencyChart" class="chart" />
       </div>
     </div>
 
     <!-- 建议和警告 -->
-    <div
-      v-if="recommendations.length > 0"
-      class="recommendations"
-    >
+    <div v-if="recommendations.length > 0" class="recommendations">
       <h4>🔧 优化建议</h4>
       <div
         v-for="(rec, index) in recommendations"
@@ -165,10 +109,7 @@
     </div>
 
     <!-- 错误统计 -->
-    <div
-      v-if="errors.length > 0"
-      class="error-stats"
-    >
+    <div v-if="errors.length > 0" class="error-stats">
       <h4>❌ 错误统计</h4>
       <div class="error-list">
         <div

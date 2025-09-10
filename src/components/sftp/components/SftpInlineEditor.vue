@@ -44,7 +44,7 @@
           @keydown.esc="cancelCreate"
           @input="validateInput"
           @click.stop
-        >
+        />
 
         <!-- 确认和取消按钮 -->
         <div class="sftp-edit-actions">
@@ -55,12 +55,7 @@
             :title="`确认创建${type === 'folder' ? '文件夹' : '文件'}`"
             @click.stop="confirmCreate"
           >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              width="14"
-              height="14"
-              viewBox="0 0 24 24"
-            >
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24">
               <path
                 fill="currentColor"
                 d="M9,20.42L2.79,14.21L5.62,11.38L9,14.77L18.88,4.88L21.71,7.71L9,20.42Z"
@@ -75,12 +70,7 @@
             :title="`取消创建${type === 'folder' ? '文件夹' : '文件'}`"
             @click.stop="cancelCreate"
           >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              width="14"
-              height="14"
-              viewBox="0 0 24 24"
-            >
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24">
               <path
                 fill="currentColor"
                 d="M19,6.41L17.59,5L12,10.59L6.41,5L5,6.41L10.59,12L5,17.59L6.41,19L12,13.41L17.59,19L19,17.59L13.41,12L19,6.41Z"
@@ -89,14 +79,8 @@
           </button>
 
           <!-- 加载状态 -->
-          <div
-            v-if="isCreating"
-            class="sftp-rename-loading"
-          >
-            <svg
-              class="sftp-rename-spinner"
-              viewBox="0 0 16 16"
-            >
+          <div v-if="isCreating" class="sftp-rename-loading">
+            <svg class="sftp-rename-spinner" viewBox="0 0 16 16">
               <circle
                 cx="8"
                 cy="8"
@@ -126,12 +110,8 @@
         </div>
       </div>
     </div>
-    <div class="sftp-file-size">
-      -
-    </div>
-    <div class="sftp-file-date">
-      -
-    </div>
+    <div class="sftp-file-size">-</div>
+    <div class="sftp-file-date">-</div>
     <div class="sftp-file-actions">
       <!-- 空的操作区域，保持布局一致 -->
     </div>

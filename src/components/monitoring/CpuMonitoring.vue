@@ -2,30 +2,19 @@
   <div class="monitor-section cpu-monitoring-section">
     <div class="monitor-header">
       <div class="monitor-title">
-        <monitoring-icon
-          name="cpu"
-          :size="16"
-          class="cpu-icon"
-        />
+        <monitoring-icon name="cpu" :size="16" class="cpu-icon" />
         <span>CPU</span>
       </div>
       <div class="monitor-info">
         <div class="cpu-stats">
           <span class="usage-value">{{ formatPercentage(currentUsage) }}</span>
-          <span
-            v-if="cpuCores > 0"
-            class="cores-info"
-          >{{ cpuCores }}核</span>
+          <span v-if="cpuCores > 0" class="cores-info">{{ cpuCores }}核</span>
         </div>
       </div>
     </div>
 
     <div class="monitor-chart-container">
-      <canvas
-        v-show="componentState.hasData"
-        ref="cpuChartRef"
-        class="cpu-chart"
-      />
+      <canvas v-show="componentState.hasData" ref="cpuChartRef" class="cpu-chart" />
 
       <!-- 统一加载指示器 -->
       <monitoring-loader
@@ -97,7 +86,6 @@ const cpuCores = computed(() => {
   return cpu.cores || 0;
 });
 
-
 // 使用传入的状态管理器实例，如果没有则使用全局实例（向后兼容）
 const currentStateManager = computed(() => props.stateManager || monitoringStateManager);
 
@@ -107,7 +95,6 @@ const componentState = computed(() => {
 });
 
 // 旧的 hasData 计算未使用，移除以降低噪音
-
 
 // 初始化图表 - 静态版本避免响应式冲突
 const initChart = async () => {

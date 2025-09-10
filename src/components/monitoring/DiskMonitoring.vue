@@ -2,25 +2,17 @@
   <div class="monitor-section disk-monitoring-section">
     <div class="monitor-header">
       <div class="monitor-title">
-        <monitoring-icon
-          name="disk"
-          :size="16"
-          class="disk-icon"
-        />
+        <monitoring-icon name="disk" :size="16" class="disk-icon" />
         <span>硬盘</span>
       </div>
       <div class="monitor-info">
-        <div
-          v-if="diskInfo.total"
-          class="disk-usage-info"
-        >
-          <span
-            class="usage-percentage"
-            :class="getUsageStatusClass(diskUsage)"
-          >{{
+        <div v-if="diskInfo.total" class="disk-usage-info">
+          <span class="usage-percentage" :class="getUsageStatusClass(diskUsage)">{{
             formatPercentage(diskUsage)
           }}</span>
-          <span class="usage-text">{{ formatBytes(diskInfo.used) }}/{{ formatBytes(diskInfo.total) }}</span>
+          <span class="usage-text"
+            >{{ formatBytes(diskInfo.used) }}/{{ formatBytes(diskInfo.total) }}</span
+          >
         </div>
       </div>
     </div>
@@ -28,10 +20,7 @@
     <div class="monitor-chart-container">
       <!-- 堆叠柱形图 -->
       <div class="chart-item stacked-bar-chart">
-        <canvas
-          ref="diskChartRef"
-          class="disk-chart"
-        />
+        <canvas ref="diskChartRef" class="disk-chart" />
       </div>
 
       <!-- 统一加载指示器 -->

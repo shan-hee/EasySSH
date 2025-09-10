@@ -1,50 +1,23 @@
 <template>
   <div class="sftp-downloader">
-    <div
-      v-if="currentDownloads.length > 0"
-      class="sftp-download-list"
-    >
-      <div
-        v-for="(item, index) in currentDownloads"
-        :key="index"
-        class="sftp-download-item"
-      >
+    <div v-if="currentDownloads.length > 0" class="sftp-download-list">
+      <div v-for="(item, index) in currentDownloads" :key="index" class="sftp-download-item">
         <div class="sftp-download-item-info">
-          <span
-            class="sftp-download-item-name"
-            :title="item.name"
-          >{{ item.name }}</span>
+          <span class="sftp-download-item-name" :title="item.name">{{ item.name }}</span>
           <span class="sftp-download-item-progress">{{ item.progress }}%</span>
         </div>
         <div class="sftp-download-progress-bar">
-          <div
-            class="sftp-download-progress-fill"
-            :style="{ width: `${item.progress}%` }"
-          />
+          <div class="sftp-download-progress-fill" :style="{ width: `${item.progress}%` }" />
         </div>
         <div class="sftp-download-item-status">
-          <span
-            v-if="item.status === 'completed'"
-            class="status-completed"
-          >完成</span>
-          <span
-            v-else-if="item.status === 'error'"
-            class="status-error"
-          >错误</span>
-          <span
-            v-else
-            class="status-pending"
-          >下载中</span>
+          <span v-if="item.status === 'completed'" class="status-completed">完成</span>
+          <span v-else-if="item.status === 'error'" class="status-error">错误</span>
+          <span v-else class="status-pending">下载中</span>
         </div>
       </div>
     </div>
 
-    <div
-      v-else
-      class="sftp-no-downloads"
-    >
-      没有正在下载的文件
-    </div>
+    <div v-else class="sftp-no-downloads">没有正在下载的文件</div>
   </div>
 </template>
 

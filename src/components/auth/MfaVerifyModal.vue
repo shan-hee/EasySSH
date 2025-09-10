@@ -8,30 +8,18 @@
   >
     <div class="mfa-verify-container">
       <div class="verify-icon">
-        <svg
-          viewBox="0 0 24 24"
-          width="50"
-          height="50"
-          class="security-icon"
-        >
+        <svg viewBox="0 0 24 24" width="50" height="50" class="security-icon">
           <path
             fill="currentColor"
             d="M12,1L3,5v6c0,5.55 3.84,10.74 9,12 5.16,-1.26 9,-6.45 9,-12V5L12,1zM11,7h2v2h-2V7zM11,11h2v6h-2V11z"
           />
         </svg>
       </div>
-      <div class="verify-title">
-        双因素身份验证
-      </div>
-      <div class="verify-subtitle">
-        请输入身份验证器应用中的 6 位验证码
-      </div>
+      <div class="verify-title">双因素身份验证</div>
+      <div class="verify-subtitle">请输入身份验证器应用中的 6 位验证码</div>
       <div class="verify-input-container">
         <div class="code-inputs">
-          <template
-            v-for="(digit, index) in 6"
-            :key="index"
-          >
+          <template v-for="(digit, index) in 6" :key="index">
             <input
               ref="codeInputs"
               v-model="codeDigits[index]"
@@ -43,27 +31,16 @@
               @keydown="handleKeyDown($event, index)"
               @paste="handlePaste"
               @keyup.enter="handleEnterKey"
-            >
-            <span
-              v-if="index < 5"
-              class="code-separator"
             />
+            <span v-if="index < 5" class="code-separator" />
           </template>
         </div>
       </div>
-      <div
-        v-if="verifyError"
-        class="verify-error"
-      >
+      <div v-if="verifyError" class="verify-error">
         {{ verifyError }}
       </div>
       <div class="mfa-btn-container">
-        <button
-          class="mfa-btn btn-cancel"
-          @click="handleClose"
-        >
-          取消
-        </button>
+        <button class="mfa-btn btn-cancel" @click="handleClose">取消</button>
         <button
           class="mfa-btn btn-verify"
           :disabled="verificationCode.length !== 6 || isVerifying"

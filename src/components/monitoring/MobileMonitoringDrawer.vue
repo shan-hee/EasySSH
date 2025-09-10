@@ -1,9 +1,6 @@
 <template>
   <!-- 移动端监控抽屉 -->
-  <transition
-    name="drawer-slide"
-    appear
-  >
+  <transition name="drawer-slide" appear>
     <div
       v-show="visible"
       class="mobile-monitoring-drawer"

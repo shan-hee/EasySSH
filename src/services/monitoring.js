@@ -167,42 +167,42 @@ class MonitoringInstance {
       this.state.stats.messagesReceived++;
 
       switch (message.type) {
-      case 'monitoring_data':
-        this._handleMonitoringData(message.data);
-        this.state.lastActivity = Date.now();
-        break;
-      case 'system_stats':
-        this._handleMonitoringData(message.payload);
-        this.state.lastActivity = Date.now();
-        break;
-      case 'batch':
-        this._handleBatchMessage(message);
-        break;
-      case 'delta':
-        this._handleDeltaMessage(message);
-        break;
-      case 'monitoring_status':
-        this._handleMonitoringStatus(message);
-        break;
-      case 'monitoring_disconnected':
-        // 处理监控断开连接消息
-        this._handleMonitoringDisconnected(message);
-        break;
-      case 'session_created':
-      case 'subscribe_ack':
-      case 'monitoring_data_updated':
-      case 'ping':
-      case 'pong':
-        // 确认消息和心跳响应，无需处理
-        break;
-      case 'error': {
-        const errorMsg = message.message || message.data?.message || message.error || '未知错误';
-        log.error(`[监控] 服务器错误: ${errorMsg}`);
-        break;
-      }
-      default:
-        log.warn(`[监控] 未知消息类型: ${message.type}`);
-        break;
+        case 'monitoring_data':
+          this._handleMonitoringData(message.data);
+          this.state.lastActivity = Date.now();
+          break;
+        case 'system_stats':
+          this._handleMonitoringData(message.payload);
+          this.state.lastActivity = Date.now();
+          break;
+        case 'batch':
+          this._handleBatchMessage(message);
+          break;
+        case 'delta':
+          this._handleDeltaMessage(message);
+          break;
+        case 'monitoring_status':
+          this._handleMonitoringStatus(message);
+          break;
+        case 'monitoring_disconnected':
+          // 处理监控断开连接消息
+          this._handleMonitoringDisconnected(message);
+          break;
+        case 'session_created':
+        case 'subscribe_ack':
+        case 'monitoring_data_updated':
+        case 'ping':
+        case 'pong':
+          // 确认消息和心跳响应，无需处理
+          break;
+        case 'error': {
+          const errorMsg = message.message || message.data?.message || message.error || '未知错误';
+          log.error(`[监控] 服务器错误: ${errorMsg}`);
+          break;
+        }
+        default:
+          log.warn(`[监控] 未知消息类型: ${message.type}`);
+          break;
       }
     } catch (error) {
       log.error('[监控] 消息解析失败', error);
@@ -223,20 +223,20 @@ class MonitoringInstance {
     batchMessage.items.forEach(item => {
       try {
         switch (item.type) {
-        case 'monitoring_data':
-          this._handleMonitoringData(item.data);
-          break;
-        case 'system_stats': {
-          // 处理新的差量格式
-          const payload = item.payload || item.delta?.payload || item.delta;
-          if (payload) {
-            this._handleMonitoringData(payload);
+          case 'monitoring_data':
+            this._handleMonitoringData(item.data);
+            break;
+          case 'system_stats': {
+            // 处理新的差量格式
+            const payload = item.payload || item.delta?.payload || item.delta;
+            if (payload) {
+              this._handleMonitoringData(payload);
+            }
+            break;
           }
-          break;
-        }
-        case 'monitoring_status':
-          this._handleMonitoringStatus(item);
-          break;
+          case 'monitoring_status':
+            this._handleMonitoringStatus(item);
+            break;
         }
       } catch (error) {
         log.error(`[监控] 处理批量消息项目失败: ${error.message}`, { item });

@@ -11,7 +11,7 @@
             placeholder="请输入用户名"
             :disabled="loginLoading"
             autocomplete="username"
-          >
+          />
         </div>
         <div class="form-group">
           <input
@@ -21,46 +21,25 @@
             placeholder="请输入密码"
             :disabled="loginLoading"
             autocomplete="current-password"
-          >
+          />
         </div>
         <div class="login-options">
-          <checkbox
-            v-model="rememberMe"
-            label="记住我"
-            :disabled="loginLoading"
-          />
-          <a
-            href="#"
-            class="forgot-password"
-            @click.prevent="forgotPassword"
-          >无法登录？</a>
+          <checkbox v-model="rememberMe" label="记住我" :disabled="loginLoading" />
+          <a href="#" class="forgot-password" @click.prevent="forgotPassword">无法登录？</a>
         </div>
-        <button
-          type="submit"
-          class="login-submit-btn"
-          :disabled="loginLoading"
-        >
+        <button type="submit" class="login-submit-btn" :disabled="loginLoading">
           <span v-if="!loginLoading">登录</span>
-          <span
-            v-else
-            class="loading-spinner"
-          />
+          <span v-else class="loading-spinner" />
         </button>
       </form>
       <div class="login-footer">
         <p>
           还没有账户？
-          <a
-            href="#"
-            @click.prevent="goToRegister"
-          >立即注册</a>
+          <a href="#" @click.prevent="goToRegister">立即注册</a>
         </p>
       </div>
       <div class="login-copyright">
-        © 2025 Theme By <a
-          href="https://github.com/shan-hee/EasySSH"
-          target="_blank"
-        >EasySSH</a>
+        © 2025 Theme By <a href="https://github.com/shan-hee/EasySSH" target="_blank">EasySSH</a>
       </div>
     </div>
     <mfa-verify-modal

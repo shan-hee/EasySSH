@@ -1,12 +1,6 @@
 <template>
-  <div
-    class="form-item-checkbox"
-    @click="toggleChecked"
-  >
-    <div
-      class="checkbox-wrapper"
-      :class="{ checked: modelValue }"
-    >
+  <div class="form-item-checkbox" @click="toggleChecked">
+    <div class="checkbox-wrapper" :class="{ checked: modelValue }">
       <div class="checkbox-inner" />
       <div class="checkbox-check" />
     </div>

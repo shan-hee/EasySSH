@@ -136,14 +136,14 @@ function persistState(store, state, config) {
 function getStorageData(key, storageType) {
   try {
     switch (storageType) {
-    case 'session':
-      return sessionStorage.getItem(key);
-    case 'temp':
-      // 临时存储，使用内存缓存
-      return null; // 暂时不实现
-    case 'persistent':
-    default:
-      return storageService.getItem(key);
+      case 'session':
+        return sessionStorage.getItem(key);
+      case 'temp':
+        // 临时存储，使用内存缓存
+        return null; // 暂时不实现
+      case 'persistent':
+      default:
+        return storageService.getItem(key);
     }
   } catch (error) {
     log.error(`获取存储数据失败: ${key}`, error);
@@ -161,15 +161,15 @@ function getStorageData(key, storageType) {
 function setStorageData(key, data, storageType) {
   try {
     switch (storageType) {
-    case 'session':
-      sessionStorage.setItem(key, data);
-      return true;
-    case 'temp':
-      // 临时存储，使用内存缓存
-      return true; // 暂时不实现
-    case 'persistent':
-    default:
-      return storageService.setItem(key, data);
+      case 'session':
+        sessionStorage.setItem(key, data);
+        return true;
+      case 'temp':
+        // 临时存储，使用内存缓存
+        return true; // 暂时不实现
+      case 'persistent':
+      default:
+        return storageService.setItem(key, data);
     }
   } catch (error) {
     log.error(`保存存储数据失败: ${key}`, error);

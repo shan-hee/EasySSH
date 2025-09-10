@@ -122,49 +122,49 @@ export function getMonitoringColors(
 
   // 正常状态：使用组件专属颜色
   switch (componentType) {
-  case 'cpu':
-    return {
-      primary: getCSSVar('--monitor-cpu-primary'),
-      light: `${getCSSVar('--monitor-cpu-primary')}20`,
-      background: 'rgba(255, 255, 255, 0.1)'
-    };
-  case 'memory':
-    return {
-      primary: getCSSVar('--monitor-memory-primary'),
-      light: `${getCSSVar('--monitor-memory-primary')}20`,
-      background: 'rgba(255, 255, 255, 0.1)'
-    };
-  case 'memory-swap':
-    return {
-      primary: getCSSVar('--monitor-memory-swap'),
-      light: `${getCSSVar('--monitor-memory-swap')}20`,
-      background: 'rgba(255, 255, 255, 0.1)'
-    };
-  case 'disk':
-    return {
-      primary: getCSSVar('--monitor-disk-primary'),
-      light: `${getCSSVar('--monitor-disk-primary')}20`,
-      background: 'rgba(255, 255, 255, 0.1)'
-    };
-  case 'network-upload':
-    return {
-      primary: getCSSVar('--monitor-network-upload'),
-      light: `${getCSSVar('--monitor-network-upload')}20`,
-      background: 'rgba(255, 255, 255, 0.1)'
-    };
-  case 'network-download':
-    return {
-      primary: getCSSVar('--monitor-network-download'),
-      light: `${getCSSVar('--monitor-network-download')}20`,
-      background: 'rgba(255, 255, 255, 0.1)'
-    };
-  default:
-    // 默认使用成功色（绿色）
-    return {
-      primary: getCSSVar('--monitor-success'),
-      light: `${getCSSVar('--monitor-success')}20`,
-      background: 'rgba(255, 255, 255, 0.1)'
-    };
+    case 'cpu':
+      return {
+        primary: getCSSVar('--monitor-cpu-primary'),
+        light: `${getCSSVar('--monitor-cpu-primary')}20`,
+        background: 'rgba(255, 255, 255, 0.1)'
+      };
+    case 'memory':
+      return {
+        primary: getCSSVar('--monitor-memory-primary'),
+        light: `${getCSSVar('--monitor-memory-primary')}20`,
+        background: 'rgba(255, 255, 255, 0.1)'
+      };
+    case 'memory-swap':
+      return {
+        primary: getCSSVar('--monitor-memory-swap'),
+        light: `${getCSSVar('--monitor-memory-swap')}20`,
+        background: 'rgba(255, 255, 255, 0.1)'
+      };
+    case 'disk':
+      return {
+        primary: getCSSVar('--monitor-disk-primary'),
+        light: `${getCSSVar('--monitor-disk-primary')}20`,
+        background: 'rgba(255, 255, 255, 0.1)'
+      };
+    case 'network-upload':
+      return {
+        primary: getCSSVar('--monitor-network-upload'),
+        light: `${getCSSVar('--monitor-network-upload')}20`,
+        background: 'rgba(255, 255, 255, 0.1)'
+      };
+    case 'network-download':
+      return {
+        primary: getCSSVar('--monitor-network-download'),
+        light: `${getCSSVar('--monitor-network-download')}20`,
+        background: 'rgba(255, 255, 255, 0.1)'
+      };
+    default:
+      // 默认使用成功色（绿色）
+      return {
+        primary: getCSSVar('--monitor-success'),
+        light: `${getCSSVar('--monitor-success')}20`,
+        background: 'rgba(255, 255, 255, 0.1)'
+      };
   }
 }
 
@@ -326,10 +326,10 @@ export function getCpuChartConfig() {
             size: 11
           },
           callbacks: {
-            title (context) {
+            title(context) {
               return `时间: ${context[0].label}`;
             },
-            label (context) {
+            label(context) {
               return `CPU使用率: ${context.parsed.y.toFixed(1)}%`;
             }
           }
@@ -347,7 +347,7 @@ export function getCpuChartConfig() {
               size: 10
             },
             maxTicksLimit: 5,
-            callback (value) {
+            callback(value) {
               // 显示时间标签
               return this.getLabelForValue(value);
             }
@@ -361,7 +361,7 @@ export function getCpuChartConfig() {
           },
           ticks: {
             color: isDark ? 'rgba(255, 255, 255, 0.4)' : 'rgba(0, 0, 0, 0.4)',
-            callback (value) {
+            callback(value) {
               return `${value}%`;
             }
           }
@@ -440,7 +440,7 @@ export function getMemoryChartConfig() {
           titleColor: '#e5e5e5',
           bodyColor: '#e5e5e5',
           callbacks: {
-            label (context) {
+            label(context) {
               const label = context.label || '';
               const value = context.parsed;
               return `${label}: ${value.toFixed(1)}%`;
@@ -527,10 +527,10 @@ export function getNetworkChartConfig() {
             size: 11
           },
           callbacks: {
-            title (context) {
+            title(context) {
               return `时间: ${context[0].label}`;
             },
-            label (context) {
+            label(context) {
               // 动态格式化网络速度，需要导入formatNetworkSpeed函数
               const speed = context.parsed.y;
               const label = context.dataset.label;
@@ -562,7 +562,7 @@ export function getNetworkChartConfig() {
               size: 10
             },
             maxTicksLimit: 5,
-            callback (value) {
+            callback(value) {
               return this.getLabelForValue(value);
             }
           }
@@ -574,7 +574,7 @@ export function getNetworkChartConfig() {
           },
           ticks: {
             color: isDark ? 'rgba(255, 255, 255, 0.4)' : 'rgba(0, 0, 0, 0.4)',
-            callback (value) {
+            callback(value) {
               // 动态格式化Y轴标签
               if (value >= 1024 * 1024) {
                 return `${(value / (1024 * 1024)).toFixed(1)}M`;
@@ -698,15 +698,15 @@ export function getDiskChartConfig() {
           xAlign: 'center',
           yAlign: 'top', // 显示在图表上方
           caretPadding: 10,
-          filter (_tooltipItem) {
+          filter(_tooltipItem) {
             // 只显示当前鼠标悬浮的数据集，避免显示多个tooltip项
             return true;
           },
           callbacks: {
-            title () {
+            title() {
               return '硬盘使用情况';
             },
-            label (context) {
+            label(context) {
               // 根据数据集索引判断悬浮的区域
               const datasetIndex = context.datasetIndex;
               const value = context.parsed.x;
@@ -721,7 +721,7 @@ export function getDiskChartConfig() {
 
               return null;
             },
-            afterBody (_context) {
+            afterBody(_context) {
               // 这里会在组件中动态更新，显示实际的空间大小
               // 返回空数组，因为容量信息会在组件中通过动态更新tooltip来显示
               return [];
@@ -745,7 +745,7 @@ export function getDiskChartConfig() {
               size: 10
             },
             maxTicksLimit: 6,
-            callback (value) {
+            callback(value) {
               return `${value}%`;
             }
           },

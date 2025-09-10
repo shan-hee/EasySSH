@@ -6,10 +6,7 @@
     :before-close="handleClose"
     class="sftp-permissions-dialog"
   >
-    <div
-      v-if="file"
-      class="permissions-content"
-    >
+    <div v-if="file" class="permissions-content">
       <div class="file-info">
         <div class="file-icon">
           <svg
@@ -78,9 +75,7 @@
             </thead>
             <tbody>
               <tr>
-                <td class="permission-label">
-                  所有者
-                </td>
+                <td class="permission-label">所有者</td>
                 <td>
                   <el-checkbox
                     v-model="permissions.owner.read"
@@ -101,9 +96,7 @@
                 </td>
               </tr>
               <tr>
-                <td class="permission-label">
-                  群组
-                </td>
+                <td class="permission-label">群组</td>
                 <td>
                   <el-checkbox
                     v-model="permissions.group.read"
@@ -124,9 +117,7 @@
                 </td>
               </tr>
               <tr>
-                <td class="permission-label">
-                  其他
-                </td>
+                <td class="permission-label">其他</td>
                 <td>
                   <el-checkbox
                     v-model="permissions.other.read"
@@ -154,30 +145,10 @@
         <div class="quick-permissions">
           <h5>常用权限</h5>
           <div class="quick-buttons">
-            <el-button
-              size="small"
-              @click="setQuickPermission('755')"
-            >
-              755 (rwxr-xr-x)
-            </el-button>
-            <el-button
-              size="small"
-              @click="setQuickPermission('644')"
-            >
-              644 (rw-r--r--)
-            </el-button>
-            <el-button
-              size="small"
-              @click="setQuickPermission('600')"
-            >
-              600 (rw-------)
-            </el-button>
-            <el-button
-              size="small"
-              @click="setQuickPermission('777')"
-            >
-              777 (rwxrwxrwx)
-            </el-button>
+            <el-button size="small" @click="setQuickPermission('755')"> 755 (rwxr-xr-x) </el-button>
+            <el-button size="small" @click="setQuickPermission('644')"> 644 (rw-r--r--) </el-button>
+            <el-button size="small" @click="setQuickPermission('600')"> 600 (rw-------) </el-button>
+            <el-button size="small" @click="setQuickPermission('777')"> 777 (rwxrwxrwx) </el-button>
           </div>
         </div>
       </div>
@@ -185,16 +156,8 @@
 
     <template #footer>
       <div class="dialog-footer">
-        <el-button @click="handleClose">
-          取消
-        </el-button>
-        <el-button
-          type="primary"
-          :loading="saving"
-          @click="handleSave"
-        >
-          保存
-        </el-button>
+        <el-button @click="handleClose"> 取消 </el-button>
+        <el-button type="primary" :loading="saving" @click="handleSave"> 保存 </el-button>
       </div>
     </template>
   </el-dialog>

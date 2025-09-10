@@ -16,11 +16,7 @@
             @click="activeMenu = 'account'"
           >
             <div class="menu-icon">
-              <svg
-                viewBox="0 0 24 24"
-                width="16"
-                height="16"
-              >
+              <svg viewBox="0 0 24 24" width="16" height="16">
                 <path
                   fill="currentColor"
                   d="M12,4A4,4 0 0,1 16,8A4,4 0 0,1 12,12A4,4 0 0,1 8,8A4,4 0 0,1 12,4M12,14C16.42,14 20,15.79 20,18V20H4V18C4,15.79 7.58,14 12,14Z"
@@ -36,11 +32,7 @@
             @click="activeMenu = 'security'"
           >
             <div class="menu-icon">
-              <svg
-                viewBox="0 0 24 24"
-                width="16"
-                height="16"
-              >
+              <svg viewBox="0 0 24 24" width="16" height="16">
                 <path
                   fill="currentColor"
                   d="M12,1L3,5V11C3,16.55 6.84,21.74 12,23C17.16,21.74 21,16.55 21,11V5L12,1M12,7C13.4,7 14.8,8.6 14.8,10V11H16V18H8V11H9.2V10C9.2,8.6 10.6,7 12,7M12,8.2C11.2,8.2 10.4,8.7 10.4,10V11H13.6V10C13.6,8.7 12.8,8.2 12,8.2Z"
@@ -56,11 +48,7 @@
             @click="activeMenu = 'terminal'"
           >
             <div class="menu-icon">
-              <svg
-                viewBox="0 0 24 24"
-                width="16"
-                height="16"
-              >
+              <svg viewBox="0 0 24 24" width="16" height="16">
                 <path
                   fill="currentColor"
                   d="M20,19V7H4V19H20M20,3A2,2 0 0,1 22,5V19A2,2 0 0,1 20,21H4A2,2 0 0,1 2,19V5C2,3.89 2.9,3 4,3H20M13,17V15H18V17H13M9.58,13L5.57,9H8.4L11.7,12.3C12.09,12.69 12.09,13.33 11.7,13.72L8.42,17H5.59L9.58,13Z"
@@ -76,11 +64,7 @@
             @click="activeMenu = 'connection'"
           >
             <div class="menu-icon">
-              <svg
-                viewBox="0 0 24 24"
-                width="16"
-                height="16"
-              >
+              <svg viewBox="0 0 24 24" width="16" height="16">
                 <path
                   fill="currentColor"
                   d="M15,9H9V7.5H15M15,16.5H9V15H15M21,5V19A2,2 0 0,1 19,21H5A2,2 0 0,1 3,19V5A2,2 0 0,1 5,3H19A2,2 0 0,1 21,5M19,5H5V19H19V5Z"
@@ -96,11 +80,7 @@
             @click="activeMenu = 'monitoring'"
           >
             <div class="menu-icon">
-              <svg
-                viewBox="0 0 24 24"
-                width="16"
-                height="16"
-              >
+              <svg viewBox="0 0 24 24" width="16" height="16">
                 <path
                   fill="currentColor"
                   d="M3,3V21H21V19H5V3H3M9,17H7V10H9V17M13,17H11V7H13V17M17,17H15V13H17V17M21,17H19V4H21V17Z"
@@ -116,11 +96,7 @@
             @click="activeMenu = 'ai'"
           >
             <div class="menu-icon">
-              <svg
-                viewBox="0 0 24 24"
-                width="16"
-                height="16"
-              >
+              <svg viewBox="0 0 24 24" width="16" height="16">
                 <path
                   fill="currentColor"
                   d="M12,2A2,2 0 0,1 14,4C14,4.74 13.6,5.39 13,5.73V7H14A7,7 0 0,1 21,14H22A1,1 0 0,1 23,15V18A1,1 0 0,1 22,19H21V20A2,2 0 0,1 19,22H5A2,2 0 0,1 3,20V19H2A1,1 0 0,1 1,18V15A1,1 0 0,1 2,14H3A7,7 0 0,1 10,7H11V5.73C10.4,5.39 10,4.74 10,4A2,2 0 0,1 12,2M7.5,13A2.5,2.5 0 0,0 5,15.5A2.5,2.5 0 0,0 7.5,18A2.5,2.5 0 0,0 10,15.5A2.5,2.5 0 0,0 7.5,13M16.5,13A2.5,2.5 0 0,0 14,15.5A2.5,2.5 0 0,0 16.5,18A2.5,2.5 0 0,0 19,15.5A2.5,2.5 0 0,0 16.5,13Z"
@@ -135,10 +111,7 @@
       <!-- 右侧内容区域 -->
       <div class="settings-content">
         <!-- 账户设置面板 -->
-        <div
-          v-if="activeMenu === 'account'"
-          class="content-panel"
-        >
+        <div v-if="activeMenu === 'account'" class="content-panel">
           <div class="panel-body">
             <form @submit.prevent="updateAccount">
               <!-- 用户名修改 -->
@@ -151,7 +124,7 @@
                     placeholder="请输入用户名"
                     class="form-input"
                     autocomplete="username"
-                  >
+                  />
                 </div>
               </div>
 
@@ -165,7 +138,7 @@
                     placeholder="请输入原密码"
                     class="form-input"
                     autocomplete="current-password"
-                  >
+                  />
                 </div>
               </div>
 
@@ -178,57 +151,37 @@
                     placeholder="请输入新密码"
                     class="form-input"
                     autocomplete="new-password"
-                  >
+                  />
                 </div>
               </div>
             </form>
           </div>
 
           <div class="panel-footer">
-            <button
-              class="btn btn-primary"
-              :disabled="isLoading"
-              @click="updateAccount"
-            >
-              <span
-                v-if="isLoading"
-                class="btn-loading"
-              />
+            <button class="btn btn-primary" :disabled="isLoading" @click="updateAccount">
+              <span v-if="isLoading" class="btn-loading" />
               {{ isLoading ? '保存中...' : '保存更改' }}
             </button>
           </div>
         </div>
 
         <!-- 安全设置面板 -->
-        <div
-          v-if="activeMenu === 'security'"
-          class="content-panel"
-        >
+        <div v-if="activeMenu === 'security'" class="content-panel">
           <div class="panel-body">
             <!-- 两步验证 -->
             <div class="security-item">
               <div class="security-info">
                 <div class="security-title">
                   两步验证
-                  <span
-                    v-if="securityForm.mfaEnabled"
-                    class="status-badge enabled"
-                  >已启用</span>
-                  <span
-                    v-else
-                    class="status-badge disabled"
-                  >未启用</span>
+                  <span v-if="securityForm.mfaEnabled" class="status-badge enabled">已启用</span>
+                  <span v-else class="status-badge disabled">未启用</span>
                 </div>
                 <div class="security-description">
                   在登录时需要通过额外的安全步骤，如果您无法通过此验证，请联系管理员。
                 </div>
               </div>
               <div class="security-action">
-                <button
-                  class="btn btn-outline"
-                  :disabled="isLoading"
-                  @click="handleMfaToggle"
-                >
+                <button class="btn btn-outline" :disabled="isLoading" @click="handleMfaToggle">
                   {{ securityForm.mfaEnabled ? '禁用' : '启用' }}
                 </button>
               </div>
@@ -237,9 +190,7 @@
             <!-- 注销所有设备 -->
             <div class="security-item">
               <div class="security-info">
-                <div class="security-title">
-                  注销所有设备
-                </div>
+                <div class="security-title">注销所有设备</div>
                 <div class="security-description">
                   立即终止您当前账号在所有设备上的登录状态，提高账号安全性。操作后您需要重新登录，其他设备的会话可能在
                   30 分钟内逐步失效。
@@ -259,20 +210,14 @@
         </div>
 
         <!-- 终端设置面板 -->
-        <div
-          v-if="activeMenu === 'terminal'"
-          class="content-panel"
-        >
+        <div v-if="activeMenu === 'terminal'" class="content-panel">
           <div class="panel-body">
             <!-- 渲染器类型 -->
             <div class="security-item">
               <div class="security-info">
                 <div class="security-title">
                   渲染器
-                  <span
-                    v-if="currentRenderer"
-                    class="status-badge enabled"
-                  >
+                  <span v-if="currentRenderer" class="status-badge enabled">
                     当前：{{ currentRendererDisplay }}
                   </span>
                 </div>
@@ -286,18 +231,10 @@
                   class="form-select"
                   @change="saveTerminalSettings"
                 >
-                  <option value="auto">
-                    自动
-                  </option>
-                  <option value="webgl">
-                    WebGL（性能最佳，需浏览器支持）
-                  </option>
-                  <option value="canvas">
-                    Canvas（兼容性好）
-                  </option>
-                  <option value="dom">
-                    DOM（兜底模式）
-                  </option>
+                  <option value="auto">自动</option>
+                  <option value="webgl">WebGL（性能最佳，需浏览器支持）</option>
+                  <option value="canvas">Canvas（兼容性好）</option>
+                  <option value="dom">DOM（兜底模式）</option>
                 </select>
               </div>
             </div>
@@ -305,12 +242,8 @@
             <!-- 终端主题 -->
             <div class="security-item">
               <div class="security-info">
-                <div class="security-title">
-                  终端主题
-                </div>
-                <div class="security-description">
-                  选择您喜欢的终端主题风格，提供多种预设主题
-                </div>
+                <div class="security-title">终端主题</div>
+                <div class="security-description">选择您喜欢的终端主题风格，提供多种预设主题</div>
               </div>
               <div class="security-action">
                 <select
@@ -318,21 +251,11 @@
                   class="form-select"
                   @change="saveTerminalSettings"
                 >
-                  <option value="dark">
-                    深色主题
-                  </option>
-                  <option value="light">
-                    浅色主题
-                  </option>
-                  <option value="dracula">
-                    Dracula
-                  </option>
-                  <option value="vscode">
-                    VSCode
-                  </option>
-                  <option value="material">
-                    Material
-                  </option>
+                  <option value="dark">深色主题</option>
+                  <option value="light">浅色主题</option>
+                  <option value="dracula">Dracula</option>
+                  <option value="vscode">VSCode</option>
+                  <option value="material">Material</option>
                 </select>
               </div>
             </div>
@@ -340,9 +263,7 @@
             <!-- 光标样式 -->
             <div class="security-item">
               <div class="security-info">
-                <div class="security-title">
-                  光标样式
-                </div>
+                <div class="security-title">光标样式</div>
                 <div class="security-description">
                   设置终端光标的显示样式，影响输入位置的视觉效果
                 </div>
@@ -353,15 +274,9 @@
                   class="form-select"
                   @change="saveTerminalSettings"
                 >
-                  <option value="block">
-                    块状
-                  </option>
-                  <option value="underline">
-                    下划线
-                  </option>
-                  <option value="bar">
-                    竖线
-                  </option>
+                  <option value="block">块状</option>
+                  <option value="underline">下划线</option>
+                  <option value="bar">竖线</option>
                 </select>
               </div>
             </div>
@@ -369,9 +284,7 @@
             <!-- 终端字体 -->
             <div class="security-item">
               <div class="security-info">
-                <div class="security-title">
-                  终端字体
-                </div>
+                <div class="security-title">终端字体</div>
                 <div class="security-description">
                   选择终端显示的字体，建议使用等宽字体以获得最佳效果
                 </div>
@@ -382,21 +295,11 @@
                   class="form-select"
                   @change="saveTerminalSettings"
                 >
-                  <option value="'JetBrains Mono'">
-                    JetBrains Mono
-                  </option>
-                  <option value="'Menlo'">
-                    Menlo
-                  </option>
-                  <option value="'Courier New'">
-                    Courier New
-                  </option>
-                  <option value="'DejaVu Sans Mono'">
-                    DejaVu Sans Mono
-                  </option>
-                  <option value="'Ubuntu Mono'">
-                    Ubuntu Mono
-                  </option>
+                  <option value="'JetBrains Mono'">JetBrains Mono</option>
+                  <option value="'Menlo'">Menlo</option>
+                  <option value="'Courier New'">Courier New</option>
+                  <option value="'DejaVu Sans Mono'">DejaVu Sans Mono</option>
+                  <option value="'Ubuntu Mono'">Ubuntu Mono</option>
                 </select>
               </div>
             </div>
@@ -404,12 +307,8 @@
             <!-- 字体大小 -->
             <div class="security-item">
               <div class="security-info">
-                <div class="security-title">
-                  字体大小
-                </div>
-                <div class="security-description">
-                  调整终端文字的大小，范围从8px到24px
-                </div>
+                <div class="security-title">字体大小</div>
+                <div class="security-description">调整终端文字的大小，范围从8px到24px</div>
               </div>
               <div class="security-action">
                 <div class="slider-container">
@@ -421,7 +320,7 @@
                     step="1"
                     class="form-slider"
                     @input="saveTerminalSettings"
-                  >
+                  />
                   <span class="slider-value">{{ terminalSettings.fontSize }}px</span>
                 </div>
               </div>
@@ -432,18 +331,12 @@
               <div class="security-info">
                 <div class="security-title">
                   选中复制
-                  <span
-                    v-if="terminalSettings.copyOnSelect"
-                    class="status-badge enabled"
-                  >已启用</span>
-                  <span
-                    v-else
-                    class="status-badge disabled"
-                  >未启用</span>
+                  <span v-if="terminalSettings.copyOnSelect" class="status-badge enabled"
+                    >已启用</span
+                  >
+                  <span v-else class="status-badge disabled">未启用</span>
                 </div>
-                <div class="security-description">
-                  选中文本时自动复制到剪贴板，提高操作效率
-                </div>
+                <div class="security-description">选中文本时自动复制到剪贴板，提高操作效率</div>
               </div>
               <div class="security-action">
                 <button
@@ -463,18 +356,12 @@
               <div class="security-info">
                 <div class="security-title">
                   右键粘贴
-                  <span
-                    v-if="terminalSettings.rightClickSelectsWord"
-                    class="status-badge enabled"
-                  >已启用</span>
-                  <span
-                    v-else
-                    class="status-badge disabled"
-                  >未启用</span>
+                  <span v-if="terminalSettings.rightClickSelectsWord" class="status-badge enabled"
+                    >已启用</span
+                  >
+                  <span v-else class="status-badge disabled">未启用</span>
                 </div>
-                <div class="security-description">
-                  右键单击时自动粘贴剪贴板内容，快速输入文本
-                </div>
+                <div class="security-description">右键单击时自动粘贴剪贴板内容，快速输入文本</div>
               </div>
               <div class="security-action">
                 <button
@@ -495,18 +382,12 @@
               <div class="security-info">
                 <div class="security-title">
                   光标闪烁
-                  <span
-                    v-if="terminalSettings.cursorBlink"
-                    class="status-badge enabled"
-                  >已启用</span>
-                  <span
-                    v-else
-                    class="status-badge disabled"
-                  >未启用</span>
+                  <span v-if="terminalSettings.cursorBlink" class="status-badge enabled"
+                    >已启用</span
+                  >
+                  <span v-else class="status-badge disabled">未启用</span>
                 </div>
-                <div class="security-description">
-                  光标定期闪烁以提高可见性，便于定位输入位置
-                </div>
+                <div class="security-description">光标定期闪烁以提高可见性，便于定位输入位置</div>
               </div>
               <div class="security-action">
                 <button
@@ -526,18 +407,10 @@
               <div class="security-info">
                 <div class="security-title">
                   背景图片
-                  <span
-                    v-if="terminalBgSettings.enabled"
-                    class="status-badge enabled"
-                  >已启用</span>
-                  <span
-                    v-else
-                    class="status-badge disabled"
-                  >未启用</span>
+                  <span v-if="terminalBgSettings.enabled" class="status-badge enabled">已启用</span>
+                  <span v-else class="status-badge disabled">未启用</span>
                 </div>
-                <div class="security-description">
-                  为终端设置自定义背景图片，个性化您的工作环境
-                </div>
+                <div class="security-description">为终端设置自定义背景图片，个性化您的工作环境</div>
               </div>
               <div class="security-action">
                 <button
@@ -561,7 +434,7 @@
                   placeholder="输入图片URL"
                   class="form-input"
                   @change="updateTerminalBg"
-                >
+                />
               </div>
 
               <div class="form-row-flex">
@@ -576,8 +449,10 @@
                       step="0.05"
                       class="form-slider"
                       @input="updateTerminalBg"
+                    />
+                    <span class="slider-value"
+                      >{{ Math.round(terminalBgSettings.opacity * 100) }}%</span
                     >
-                    <span class="slider-value">{{ Math.round(terminalBgSettings.opacity * 100) }}%</span>
                   </div>
                 </div>
 
@@ -588,34 +463,19 @@
                     class="form-select"
                     @change="updateTerminalBg"
                   >
-                    <option value="cover">
-                      适应(cover)
-                    </option>
-                    <option value="contain">
-                      包含(contain)
-                    </option>
-                    <option value="fill">
-                      填充(fill)
-                    </option>
-                    <option value="none">
-                      原始大小
-                    </option>
-                    <option value="repeat">
-                      重复平铺
-                    </option>
+                    <option value="cover">适应(cover)</option>
+                    <option value="contain">包含(contain)</option>
+                    <option value="fill">填充(fill)</option>
+                    <option value="none">原始大小</option>
+                    <option value="repeat">重复平铺</option>
                   </select>
                 </div>
               </div>
 
               <div class="form-group">
                 <label>背景预览</label>
-                <div
-                  class="terminal-bg-preview"
-                  :style="bgPreviewStyle"
-                >
-                  <div class="preview-label">
-                    背景预览
-                  </div>
+                <div class="terminal-bg-preview" :style="bgPreviewStyle">
+                  <div class="preview-label">背景预览</div>
                 </div>
               </div>
             </template>
@@ -623,9 +483,7 @@
             <!-- 终端快捷键设置 -->
             <div class="settings-section">
               <div class="section-title-with-actions">
-                <h4 class="section-title">
-                  终端快捷键
-                </h4>
+                <h4 class="section-title">终端快捷键</h4>
                 <button
                   class="btn btn-outline btn-sm"
                   :disabled="resettingShortcuts"
@@ -656,7 +514,7 @@
                       @blur="endKeyCapture(shortcut)"
                       @keydown="captureKeyDown($event, shortcut)"
                       @keyup="captureKeyUp($event, shortcut)"
-                    >
+                    />
                   </div>
                 </div>
               </div>
@@ -665,10 +523,7 @@
         </div>
 
         <!-- 连接设置面板 -->
-        <div
-          v-if="activeMenu === 'connection'"
-          class="content-panel"
-        >
+        <div v-if="activeMenu === 'connection'" class="content-panel">
           <div class="panel-body">
             <div class="settings-section">
               <!-- 自动重连 -->
@@ -676,14 +531,10 @@
                 <div class="security-info">
                   <div class="security-title">
                     自动重连
-                    <span
-                      v-if="connectionSettings.autoReconnect"
-                      class="status-badge enabled"
-                    >已启用</span>
-                    <span
-                      v-else
-                      class="status-badge disabled"
-                    >未启用</span>
+                    <span v-if="connectionSettings.autoReconnect" class="status-badge enabled"
+                      >已启用</span
+                    >
+                    <span v-else class="status-badge disabled">未启用</span>
                   </div>
                   <div class="security-description">
                     连接意外断开时自动尝试重新连接，提高连接稳定性
@@ -705,28 +556,14 @@
               <!-- 重连间隔 -->
               <div class="security-item">
                 <div class="security-info">
-                  <div class="security-title">
-                    重连间隔
-                  </div>
-                  <div class="security-description">
-                    自动重连的时间间隔，建议设置为 3-10 秒之间
-                  </div>
+                  <div class="security-title">重连间隔</div>
+                  <div class="security-description">自动重连的时间间隔，建议设置为 3-10 秒之间</div>
                 </div>
                 <div class="security-action">
                   <div class="number-input-with-controls">
-                    <button
-                      class="control-btn"
-                      @click="decrementReconnectInterval"
-                    >
-                      －
-                    </button>
+                    <button class="control-btn" @click="decrementReconnectInterval">－</button>
                     <span class="number-display">{{ connectionSettings.reconnectInterval }}秒</span>
-                    <button
-                      class="control-btn"
-                      @click="incrementReconnectInterval"
-                    >
-                      ＋
-                    </button>
+                    <button class="control-btn" @click="incrementReconnectInterval">＋</button>
                   </div>
                 </div>
               </div>
@@ -734,28 +571,16 @@
               <!-- 连接超时 -->
               <div class="security-item">
                 <div class="security-info">
-                  <div class="security-title">
-                    连接超时
-                  </div>
+                  <div class="security-title">连接超时</div>
                   <div class="security-description">
                     建立连接的最大等待时间，超时后将终止连接尝试
                   </div>
                 </div>
                 <div class="security-action">
                   <div class="number-input-with-controls">
-                    <button
-                      class="control-btn"
-                      @click="decrementConnectionTimeout"
-                    >
-                      －
-                    </button>
+                    <button class="control-btn" @click="decrementConnectionTimeout">－</button>
                     <span class="number-display">{{ connectionSettings.connectionTimeout }}秒</span>
-                    <button
-                      class="control-btn"
-                      @click="incrementConnectionTimeout"
-                    >
-                      ＋
-                    </button>
+                    <button class="control-btn" @click="incrementConnectionTimeout">＋</button>
                   </div>
                 </div>
               </div>
@@ -765,14 +590,10 @@
                 <div class="security-info">
                   <div class="security-title">
                     保持连接
-                    <span
-                      v-if="connectionSettings.keepAlive"
-                      class="status-badge enabled"
-                    >已启用</span>
-                    <span
-                      v-else
-                      class="status-badge disabled"
-                    >未启用</span>
+                    <span v-if="connectionSettings.keepAlive" class="status-badge enabled"
+                      >已启用</span
+                    >
+                    <span v-else class="status-badge disabled">未启用</span>
                   </div>
                   <div class="security-description">
                     定期发送心跳包保持连接活跃，防止长时间无操作时连接被断开
@@ -792,14 +613,9 @@
               </div>
 
               <!-- 心跳间隔 -->
-              <div
-                class="security-item"
-                :class="{ disabled: !connectionSettings.keepAlive }"
-              >
+              <div class="security-item" :class="{ disabled: !connectionSettings.keepAlive }">
                 <div class="security-info">
-                  <div class="security-title">
-                    心跳间隔
-                  </div>
+                  <div class="security-title">心跳间隔</div>
                   <div class="security-description">
                     发送心跳包的时间间隔，仅在启用保持连接时生效
                   </div>
@@ -832,39 +648,24 @@
         </div>
 
         <!-- 监控设置面板 -->
-        <div
-          v-if="activeMenu === 'monitoring'"
-          class="content-panel"
-        >
+        <div v-if="activeMenu === 'monitoring'" class="content-panel">
           <div class="panel-body">
             <div class="settings-section">
               <!-- 更新间隔 -->
               <div class="security-item">
                 <div class="security-info">
-                  <div class="security-title">
-                    更新间隔
-                  </div>
+                  <div class="security-title">更新间隔</div>
                   <div class="security-description">
                     监控数据的更新频率，建议设置为 0.5-10 秒之间
                   </div>
                 </div>
                 <div class="security-action">
                   <div class="number-input-with-controls">
-                    <button
-                      class="control-btn"
-                      @click="decrementMonitoringInterval"
-                    >
-                      －
-                    </button>
+                    <button class="control-btn" @click="decrementMonitoringInterval">－</button>
                     <span class="number-display">{{
                       formatMonitoringInterval(monitoringSettings.updateInterval)
                     }}</span>
-                    <button
-                      class="control-btn"
-                      @click="incrementMonitoringInterval"
-                    >
-                      ＋
-                    </button>
+                    <button class="control-btn" @click="incrementMonitoringInterval">＋</button>
                   </div>
                 </div>
               </div>
@@ -873,10 +674,7 @@
         </div>
 
         <!-- AI智能助手设置面板 -->
-        <div
-          v-if="activeMenu === 'ai'"
-          class="content-panel"
-        >
+        <div v-if="activeMenu === 'ai'" class="content-panel">
           <div class="panel-body">
             <div class="settings-section">
               <!-- AI功能总开关 -->
@@ -884,29 +682,16 @@
                 <div class="security-info">
                   <div class="security-title">
                     启用AI功能
-                    <span
-                      v-if="aiSettings.enabled"
-                      class="status-badge enabled"
-                    >已启用</span>
-                    <span
-                      v-else
-                      class="status-badge disabled"
-                    >未启用</span>
+                    <span v-if="aiSettings.enabled" class="status-badge enabled">已启用</span>
+                    <span v-else class="status-badge disabled">未启用</span>
                   </div>
                   <div class="security-description">
                     启用后可使用Chat模式（自由对话）和Agent模式（智能助手）
                   </div>
                 </div>
                 <div class="security-action">
-                  <button
-                    class="btn btn-outline"
-                    :disabled="aiLoading"
-                    @click="toggleAIFeature"
-                  >
-                    <span
-                      v-if="aiLoading"
-                      class="btn-loading"
-                    />
+                  <button class="btn btn-outline" :disabled="aiLoading" @click="toggleAIFeature">
+                    <span v-if="aiLoading" class="btn-loading" />
                     {{ aiSettings.enabled ? '禁用' : '启用' }}
                   </button>
                 </div>
@@ -916,24 +701,14 @@
               <div class="settings-divider" />
 
               <!-- AI配置表单 -->
-              <form
-                class="ai-config-form"
-                autocomplete="off"
-                @submit.prevent="saveAISettings"
-              >
+              <form class="ai-config-form" autocomplete="off" @submit.prevent="saveAISettings">
                 <fieldset class="ai-config-fieldset">
-                  <legend class="sr-only">
-                    AI服务配置
-                  </legend>
+                  <legend class="sr-only">AI服务配置</legend>
 
                   <div class="security-item">
                     <div class="security-info">
-                      <div class="security-title">
-                        API地址
-                      </div>
-                      <div class="security-description">
-                        OpenAI 兼容 API 的接口地址
-                      </div>
+                      <div class="security-title">API地址</div>
+                      <div class="security-description">OpenAI 兼容 API 的接口地址</div>
                     </div>
                     <div class="security-action">
                       <div class="input-with-icon">
@@ -945,19 +720,15 @@
                           :disabled="aiLoading"
                           autocomplete="off"
                           name="ai-api-base-url"
-                        >
+                        />
                       </div>
                     </div>
                   </div>
 
                   <div class="security-item">
                     <div class="security-info">
-                      <div class="security-title">
-                        API密钥
-                      </div>
-                      <div class="security-description">
-                        您的API访问密钥，将被安全加密存储
-                      </div>
+                      <div class="security-title">API密钥</div>
+                      <div class="security-description">您的API访问密钥，将被安全加密存储</div>
                     </div>
                     <div class="security-action">
                       <div class="input-with-icon">
@@ -969,29 +740,19 @@
                           :disabled="aiLoading"
                           autocomplete="off"
                           name="ai-api-key"
-                        >
+                        />
                         <button
                           class="btn btn-icon btn-eye"
                           type="button"
                           @click="showApiKey = !showApiKey"
                         >
-                          <svg
-                            v-if="showApiKey"
-                            viewBox="0 0 24 24"
-                            width="16"
-                            height="16"
-                          >
+                          <svg v-if="showApiKey" viewBox="0 0 24 24" width="16" height="16">
                             <path
                               fill="currentColor"
                               d="M11.83,9L15,12.16C15,12.11 15,12.05 15,12A3,3 0 0,0 12,9C11.94,9 11.89,9 11.83,9M7.53,9.8L9.08,11.35C9.03,11.56 9,11.77 9,12A3,3 0 0,0 12,15C12.22,15 12.44,14.97 12.65,14.92L14.2,16.47C13.53,16.8 12.79,17 12,17A5,5 0 0,1 7,12C7,11.21 7.2,10.47 7.53,9.8M2,4.27L4.28,6.55L4.73,7C3.08,8.3 1.78,10 1,12C2.73,16.39 7,19.5 12,19.5C13.55,19.5 15.03,19.2 16.38,18.66L16.81,19.09L19.73,22L21,20.73L3.27,3M12,7A5,5 0 0,1 17,12C17,12.64 16.87,13.26 16.64,13.82L19.57,16.75C21.07,15.5 22.27,13.86 23,12C21.27,7.61 17,4.5 12,4.5C10.6,4.5 9.26,4.75 8,5.2L10.17,7.35C10.76,7.13 11.37,7 12,7Z"
                             />
                           </svg>
-                          <svg
-                            v-else
-                            viewBox="0 0 24 24"
-                            width="16"
-                            height="16"
-                          >
+                          <svg v-else viewBox="0 0 24 24" width="16" height="16">
                             <path
                               fill="currentColor"
                               d="M12,9A3,3 0 0,0 9,12A3,3 0 0,0 12,15A3,3 0 0,0 15,12A3,3 0 0,0 12,9M12,17A5,5 0 0,1 7,12A5,5 0 0,1 12,7A5,5 0 0,1 17,12A5,5 0 0,1 12,17M12,4.5C7,4.5 2.73,7.61 1,12C2.73,16.39 7,19.5 12,19.5C17,19.5 21.27,16.39 23,12C21.27,7.61 17,4.5 12,4.5Z"
@@ -1004,12 +765,8 @@
 
                   <div class="security-item">
                     <div class="security-info">
-                      <div class="security-title">
-                        AI模型
-                      </div>
-                      <div class="security-description">
-                        输入要使用的AI模型名称（必填）
-                      </div>
+                      <div class="security-title">AI模型</div>
+                      <div class="security-description">输入要使用的AI模型名称（必填）</div>
                     </div>
                     <div class="security-action">
                       <div class="input-with-icon">
@@ -1021,29 +778,21 @@
                           :disabled="aiLoading"
                           autocomplete="off"
                           name="ai-model"
-                        >
+                        />
                         <button
                           class="btn btn-icon btn-refresh"
                           :disabled="
                             !aiSettings.apiKey ||
-                              !aiSettings.baseUrl ||
-                              !aiSettings.model ||
-                              aiTesting
+                            !aiSettings.baseUrl ||
+                            !aiSettings.model ||
+                            aiTesting
                           "
                           type="button"
                           title="测试API连接"
                           @click="testAIConnection"
                         >
-                          <span
-                            v-if="aiTesting"
-                            class="btn-loading"
-                          />
-                          <svg
-                            v-else
-                            viewBox="0 0 24 24"
-                            width="16"
-                            height="16"
-                          >
+                          <span v-if="aiTesting" class="btn-loading" />
+                          <svg v-else viewBox="0 0 24 24" width="16" height="16">
                             <path
                               fill="currentColor"
                               d="M17.65,6.35C16.2,4.9 14.21,4 12,4A8,8 0 0,0 4,12A8,8 0 0,0 12,20C15.73,20 18.84,17.45 19.73,14H17.65C16.83,16.33 14.61,18 12,18A6,6 0 0,1 6,12A6,6 0 0,1 12,6C13.66,6 15.14,6.69 16.22,7.78L13,11H20V4L17.65,6.35Z"
@@ -1063,15 +812,8 @@
           </div>
 
           <div class="panel-footer">
-            <button
-              class="btn btn-primary"
-              :disabled="aiLoading"
-              @click="saveAISettings"
-            >
-              <span
-                v-if="aiLoading"
-                class="btn-loading"
-              />
+            <button class="btn btn-primary" :disabled="aiLoading" @click="saveAISettings">
+              <span v-if="aiLoading" class="btn-loading" />
               {{ aiLoading ? '保存中...' : '保存AI设置' }}
             </button>
           </div>
@@ -1165,7 +907,7 @@ export default defineComponent({
     // 终端设置数据
     const terminalSettings = reactive({
       fontSize: 16,
-      fontFamily: '\'JetBrains Mono\'',
+      fontFamily: "'JetBrains Mono'",
       theme: 'dark',
       cursorStyle: 'block',
       cursorBlink: true,
@@ -1344,7 +1086,7 @@ export default defineComponent({
         try {
           const savedTerminalSettings = await storageAdapter.get('terminal', {
             fontSize: 16,
-            fontFamily: '\'JetBrains Mono\'',
+            fontFamily: "'JetBrains Mono'",
             theme: 'dark',
             cursorStyle: 'block',
             cursorBlink: true,

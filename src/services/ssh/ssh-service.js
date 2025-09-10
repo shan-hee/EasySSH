@@ -669,319 +669,319 @@ class SSHService {
           }
 
           switch (message.type) {
-          case MESSAGE_TYPES.CONNECTED:
-            clearTimeout(timeout);
-            connectionState.status = 'connected';
-            connectionState.message = '已连接';
-            log.info(`SSH连接成功: ${sessionId}`);
+            case MESSAGE_TYPES.CONNECTED:
+              clearTimeout(timeout);
+              connectionState.status = 'connected';
+              connectionState.message = '已连接';
+              log.info(`SSH连接成功: ${sessionId}`);
 
-            // SSH连接成功后稍微延迟触发保活ping来获取延迟信息
-            // 使用setTimeout确保保活机制完全设置好
-            setTimeout(() => {
-              this._triggerImmediatePing(sessionId);
-            }, 100);
+              // SSH连接成功后稍微延迟触发保活ping来获取延迟信息
+              // 使用setTimeout确保保活机制完全设置好
+              setTimeout(() => {
+                this._triggerImmediatePing(sessionId);
+              }, 100);
 
-            try {
-              const connHost =
+              try {
+                const connHost =
                   connection.host ||
                   (this.sessions.has(sessionId)
                     ? this.sessions.get(sessionId).connection?.host
                     : null);
-              if (connHost) {
-                // 优先从会话-终端映射中获取终端ID
-                let terminalId = this.sessionTerminalMap.get(sessionId);
+                if (connHost) {
+                  // 优先从会话-终端映射中获取终端ID
+                  let terminalId = this.sessionTerminalMap.get(sessionId);
 
-                // 如果没有映射关系，尝试从连接配置中获取
-                if (!terminalId && connection.terminalId) {
-                  terminalId = connection.terminalId;
-                  // 建立双向映射关系
-                  this.sessionTerminalMap.set(sessionId, terminalId);
-                  this.terminalSessionMap.set(terminalId, sessionId);
-                }
-
-                // 更新会话对象，保存终端ID信息
-                if (this.sessions.has(sessionId) && terminalId) {
-                  const session = this.sessions.get(sessionId);
-                  session.terminalId = terminalId;
-                }
-
-                const sshConnectedEvent = new CustomEvent('ssh-connected', {
-                  detail: {
-                    sessionId,
-                    host: connHost,
-                    terminalId,
-                    connection
+                  // 如果没有映射关系，尝试从连接配置中获取
+                  if (!terminalId && connection.terminalId) {
+                    terminalId = connection.terminalId;
+                    // 建立双向映射关系
+                    this.sessionTerminalMap.set(sessionId, terminalId);
+                    this.terminalSessionMap.set(terminalId, sessionId);
                   }
-                });
-                window.dispatchEvent(sshConnectedEvent);
-                log.info(
-                  `已触发SSH连接成功事件，主机: ${connHost}, 终端ID: ${terminalId || '未知'}`
-                );
+
+                  // 更新会话对象，保存终端ID信息
+                  if (this.sessions.has(sessionId) && terminalId) {
+                    const session = this.sessions.get(sessionId);
+                    session.terminalId = terminalId;
+                  }
+
+                  const sshConnectedEvent = new CustomEvent('ssh-connected', {
+                    detail: {
+                      sessionId,
+                      host: connHost,
+                      terminalId,
+                      connection
+                    }
+                  });
+                  window.dispatchEvent(sshConnectedEvent);
+                  log.info(
+                    `已触发SSH连接成功事件，主机: ${connHost}, 终端ID: ${terminalId || '未知'}`
+                  );
+                }
+              } catch (err) {
+                log.error('触发SSH连接事件失败:', err);
               }
-            } catch (err) {
-              log.error('触发SSH连接事件失败:', err);
-            }
 
-            if (this.sessions.has(sessionId)) {
-              const session = this.sessions.get(sessionId);
-              session.retryCount = 0;
-              session.isReconnecting = false;
-            }
+              if (this.sessions.has(sessionId)) {
+                const session = this.sessions.get(sessionId);
+                session.retryCount = 0;
+                session.isReconnecting = false;
+              }
 
-            resolve(sessionId);
-            break;
+              resolve(sessionId);
+              break;
 
             // 处理安全连接ID注册响应
-          case 'connection_id_registered':
-            if (
-              message.data &&
+            case 'connection_id_registered':
+              if (
+                message.data &&
                 message.data.connectionId &&
                 message.data.status === 'need_auth'
-            ) {
-              log.info(`连接ID已注册，需要发送认证信息: ${message.data.connectionId}`);
+              ) {
+                log.info(`连接ID已注册，需要发送认证信息: ${message.data.connectionId}`);
 
-              // 从pending连接中获取完整的连接信息
-              if (
-                !this.pendingConnections ||
+                // 从pending连接中获取完整的连接信息
+                if (
+                  !this.pendingConnections ||
                   !this.pendingConnections.has(message.data.connectionId)
-              ) {
-                log.error(`无法找到连接ID对应的信息: ${message.data.connectionId}`);
-                reject(new Error('连接ID无效'));
-                return;
-              }
+                ) {
+                  log.error(`无法找到连接ID对应的信息: ${message.data.connectionId}`);
+                  reject(new Error('连接ID无效'));
+                  return;
+                }
 
-              const pendingData = this.pendingConnections.get(message.data.connectionId);
-              const authConnection = pendingData.connection;
+                const pendingData = this.pendingConnections.get(message.data.connectionId);
+                const authConnection = pendingData.connection;
 
-              // 生成临时的AES密钥
-              const randomKey = Array.from(crypto.getRandomValues(new Uint8Array(16)))
-                .map(b => b.toString(16).padStart(2, '0'))
-                .join('');
+                // 生成临时的AES密钥
+                const randomKey = Array.from(crypto.getRandomValues(new Uint8Array(16)))
+                  .map(b => b.toString(16).padStart(2, '0'))
+                  .join('');
 
-              // 准备完整的认证数据对象
-              const authPayload = {
-                address: authConnection.host,
-                port: authConnection.port || 22,
-                username: authConnection.username,
-                authType: authConnection.authType || 'password'
-              };
+                // 准备完整的认证数据对象
+                const authPayload = {
+                  address: authConnection.host,
+                  port: authConnection.port || 22,
+                  username: authConnection.username,
+                  authType: authConnection.authType || 'password'
+                };
 
-              // 根据认证方式添加凭据
-              if (authPayload.authType === 'password') {
-                authPayload.password = authConnection.password;
-              } else if (
-                authPayload.authType === 'key' ||
+                // 根据认证方式添加凭据
+                if (authPayload.authType === 'password') {
+                  authPayload.password = authConnection.password;
+                } else if (
+                  authPayload.authType === 'key' ||
                   authPayload.authType === 'privateKey'
-              ) {
-                authPayload.privateKey = authConnection.keyFile;
-                if (authConnection.passphrase) {
-                  authPayload.passphrase = authConnection.passphrase;
-                }
-              }
-
-              // 构建认证消息数据
-              const authData = {
-                connectionId: message.data.connectionId,
-                sessionId: message.data.sessionId || sessionId
-              };
-
-              // 使用同步方式处理
-              try {
-                // 对完整的认证载荷进行加密 - 直接使用同步加密
-                const encryptedPayload = this._encryptSensitiveData(
-                  JSON.stringify(authPayload),
-                  randomKey
-                );
-                authData.encryptedPayload = encryptedPayload;
-                authData.keyId = randomKey;
-
-                // 发送认证请求 - 使用二进制协议
-                const authMessage = BinaryMessageUtils.createAuthenticateMessage(authData);
-                socket.send(authMessage);
-              } catch (encryptError) {
-                log.error('加密认证信息失败', encryptError);
-                reject(new Error('加密认证信息失败，无法安全连接'));
-              }
-
-              // 不要在这里resolve，等待CONNECTED消息
-            } else if (message.data && message.data.status === 'reconnected') {
-              log.info(`重新连接到已存在的连接ID: ${message.data.connectionId}`);
-            }
-            break;
-
-          case MESSAGE_TYPES.ERROR:
-            clearTimeout(timeout);
-            connectionState.status = 'error';
-            connectionState.message = message.data?.message || '未知错误';
-            log.error(`SSH连接错误: ${connectionState.message}`);
-
-            // 不再单独弹出错误消息，由最终的IPv6失败时统一处理
-            // ElMessage.error(`SSH连接错误: ${connectionState.message}`);
-
-            reject(new Error(connectionState.message));
-            break;
-
-          case MESSAGE_TYPES.CLOSED:
-            connectionState.status = 'closed';
-            connectionState.message = '连接已关闭';
-            log.info(`SSH连接已关闭: ${sessionId}`);
-
-            if (this.sessions.has(sessionId)) {
-              const session = this.sessions.get(sessionId);
-              if (session.onClose) {
-                session.onClose();
-              }
-            }
-            break;
-
-          case MESSAGE_TYPES.DATA:
-            if (this.sessions.has(sessionId)) {
-              const session = this.sessions.get(sessionId);
-
-              if (!message.data || !message.data.data) {
-                log.error('数据格式错误:', message);
-                return;
-              }
-
-              const data = message.data.data;
-
-              if (session.terminal) {
-                session.terminal.write(data);
-              } else {
-                if (!session.buffer) {
-                  session.buffer = '';
-                  session.bufferSize = 0;
+                ) {
+                  authPayload.privateKey = authConnection.keyFile;
+                  if (authConnection.passphrase) {
+                    authPayload.passphrase = authConnection.passphrase;
+                  }
                 }
 
-                session.buffer += data;
-                session.bufferSize += data.length;
+                // 构建认证消息数据
+                const authData = {
+                  connectionId: message.data.connectionId,
+                  sessionId: message.data.sessionId || sessionId
+                };
 
-                const MAX_BUFFER_SIZE = 512 * 1024; // 512KB
-                if (session.bufferSize > MAX_BUFFER_SIZE) {
-                  const keepSize = 256 * 1024; // 保留256KB
-                  session.buffer = session.buffer.substring(session.buffer.length - keepSize);
-                  session.bufferSize = session.buffer.length;
+                // 使用同步方式处理
+                try {
+                  // 对完整的认证载荷进行加密 - 直接使用同步加密
+                  const encryptedPayload = this._encryptSensitiveData(
+                    JSON.stringify(authPayload),
+                    randomKey
+                  );
+                  authData.encryptedPayload = encryptedPayload;
+                  authData.keyId = randomKey;
+
+                  // 发送认证请求 - 使用二进制协议
+                  const authMessage = BinaryMessageUtils.createAuthenticateMessage(authData);
+                  socket.send(authMessage);
+                } catch (encryptError) {
+                  log.error('加密认证信息失败', encryptError);
+                  reject(new Error('加密认证信息失败，无法安全连接'));
+                }
+
+                // 不要在这里resolve，等待CONNECTED消息
+              } else if (message.data && message.data.status === 'reconnected') {
+                log.info(`重新连接到已存在的连接ID: ${message.data.connectionId}`);
+              }
+              break;
+
+            case MESSAGE_TYPES.ERROR:
+              clearTimeout(timeout);
+              connectionState.status = 'error';
+              connectionState.message = message.data?.message || '未知错误';
+              log.error(`SSH连接错误: ${connectionState.message}`);
+
+              // 不再单独弹出错误消息，由最终的IPv6失败时统一处理
+              // ElMessage.error(`SSH连接错误: ${connectionState.message}`);
+
+              reject(new Error(connectionState.message));
+              break;
+
+            case MESSAGE_TYPES.CLOSED:
+              connectionState.status = 'closed';
+              connectionState.message = '连接已关闭';
+              log.info(`SSH连接已关闭: ${sessionId}`);
+
+              if (this.sessions.has(sessionId)) {
+                const session = this.sessions.get(sessionId);
+                if (session.onClose) {
+                  session.onClose();
                 }
               }
+              break;
 
-              session.lastActivity = new Date();
-            }
-            break;
+            case MESSAGE_TYPES.DATA:
+              if (this.sessions.has(sessionId)) {
+                const session = this.sessions.get(sessionId);
+
+                if (!message.data || !message.data.data) {
+                  log.error('数据格式错误:', message);
+                  return;
+                }
+
+                const data = message.data.data;
+
+                if (session.terminal) {
+                  session.terminal.write(data);
+                } else {
+                  if (!session.buffer) {
+                    session.buffer = '';
+                    session.bufferSize = 0;
+                  }
+
+                  session.buffer += data;
+                  session.bufferSize += data.length;
+
+                  const MAX_BUFFER_SIZE = 512 * 1024; // 512KB
+                  if (session.bufferSize > MAX_BUFFER_SIZE) {
+                    const keepSize = 256 * 1024; // 保留256KB
+                    session.buffer = session.buffer.substring(session.buffer.length - keepSize);
+                    session.bufferSize = session.buffer.length;
+                  }
+                }
+
+                session.lastActivity = new Date();
+              }
+              break;
 
             // 处理网络延迟消息
-          case MESSAGE_TYPES.NETWORK_LATENCY:
-            try {
-              // 解析延迟数据（简化格式）
-              const latencyDetail = {
-                sessionId: message.data?.sessionId || sessionId,
-                clientLatency: message.data?.clientLatency
-                  ? Math.round(message.data.clientLatency)
-                  : undefined,
-                serverLatency: message.data?.serverLatency
-                  ? Math.round(message.data.serverLatency)
-                  : undefined,
-                totalLatency: message.data?.totalLatency
-                  ? Math.round(message.data.totalLatency)
-                  : message.data?.clientLatency && message.data?.serverLatency
-                    ? Math.round(message.data.clientLatency + message.data.serverLatency)
+            case MESSAGE_TYPES.NETWORK_LATENCY:
+              try {
+                // 解析延迟数据（简化格式）
+                const latencyDetail = {
+                  sessionId: message.data?.sessionId || sessionId,
+                  clientLatency: message.data?.clientLatency
+                    ? Math.round(message.data.clientLatency)
                     : undefined,
-                timestamp: message.data?.timestamp || new Date().toISOString()
-              };
+                  serverLatency: message.data?.serverLatency
+                    ? Math.round(message.data.serverLatency)
+                    : undefined,
+                  totalLatency: message.data?.totalLatency
+                    ? Math.round(message.data.totalLatency)
+                    : message.data?.clientLatency && message.data?.serverLatency
+                      ? Math.round(message.data.clientLatency + message.data.serverLatency)
+                      : undefined,
+                  timestamp: message.data?.timestamp || new Date().toISOString()
+                };
 
-              // 保存延迟数据到内部状态
-              this.latencyData.set(sessionId, {
-                ...latencyDetail,
-                updatedAt: new Date()
-              });
+                // 保存延迟数据到内部状态
+                this.latencyData.set(sessionId, {
+                  ...latencyDetail,
+                  updatedAt: new Date()
+                });
 
-              // 获取当前会话的终端ID（优先从映射中获取）
-              let terminalId = this.sessionTerminalMap.get(sessionId);
+                // 获取当前会话的终端ID（优先从映射中获取）
+                let terminalId = this.sessionTerminalMap.get(sessionId);
 
-              if (!terminalId && this.sessions.has(sessionId)) {
-                const currentSession = this.sessions.get(sessionId);
-                terminalId = currentSession.terminalId || null;
-              }
+                if (!terminalId && this.sessions.has(sessionId)) {
+                  const currentSession = this.sessions.get(sessionId);
+                  terminalId = currentSession.terminalId || null;
+                }
 
-              // 更新延迟事件数据，包含终端ID
-              const enrichedLatencyDetail = {
-                ...latencyDetail,
-                terminalId
-              };
+                // 更新延迟事件数据，包含终端ID
+                const enrichedLatencyDetail = {
+                  ...latencyDetail,
+                  terminalId
+                };
 
-              // 触发全局网络延迟事件
-              window.dispatchEvent(
-                new CustomEvent(LATENCY_EVENTS.GLOBAL, {
-                  detail: enrichedLatencyDetail
-                })
-              );
-
-              // 为保持兼容性，同时触发工具栏使用的事件格式
-              window.dispatchEvent(
-                new CustomEvent(LATENCY_EVENTS.TOOLBAR, {
-                  detail: enrichedLatencyDetail
-                })
-              );
-
-              // 如果有终端ID，触发终端特定的延迟事件
-              if (terminalId) {
+                // 触发全局网络延迟事件
                 window.dispatchEvent(
-                  new CustomEvent(LATENCY_EVENTS.TERMINAL, {
+                  new CustomEvent(LATENCY_EVENTS.GLOBAL, {
                     detail: enrichedLatencyDetail
                   })
                 );
+
+                // 为保持兼容性，同时触发工具栏使用的事件格式
+                window.dispatchEvent(
+                  new CustomEvent(LATENCY_EVENTS.TOOLBAR, {
+                    detail: enrichedLatencyDetail
+                  })
+                );
+
+                // 如果有终端ID，触发终端特定的延迟事件
+                if (terminalId) {
+                  window.dispatchEvent(
+                    new CustomEvent(LATENCY_EVENTS.TERMINAL, {
+                      detail: enrichedLatencyDetail
+                    })
+                  );
+                }
+              } catch (e) {
+                /* no-op */
               }
-            } catch (e) {
-              /* no-op */
-            }
-            break;
+              break;
 
             // 处理保活响应
-          case MESSAGE_TYPES.PONG:
-            try {
-              // 更新会话活动时间
-              if (this.sessions.has(sessionId)) {
-                const session = this.sessions.get(sessionId);
-                session.lastActivity = new Date();
+            case MESSAGE_TYPES.PONG:
+              try {
+                // 更新会话活动时间
+                if (this.sessions.has(sessionId)) {
+                  const session = this.sessions.get(sessionId);
+                  session.lastActivity = new Date();
+                }
+              } catch (e) {
+                /* no-op */
               }
-            } catch (e) {
-              /* no-op */
-            }
-            break;
+              break;
 
             // SFTP消息已迁移到二进制协议处理
 
             // 处理其他消息类型
-          default: {
-            const ignoredTypes = [
-              MESSAGE_TYPES.PING,
-              'keepalive',
-              'heartbeat',
-              'status',
-              'info',
-              'notification',
-              'system',
-              'stats',
-              'heartbeat_ack',
-              'heartbeat_response',
-              'ack',
-              'response',
-              'server_status',
-              'latency_update',
-              'cancel_response',
-              'cleanup',
-              'file_cleanup',
-              'operation_cleanup'
-            ];
+            default: {
+              const ignoredTypes = [
+                MESSAGE_TYPES.PING,
+                'keepalive',
+                'heartbeat',
+                'status',
+                'info',
+                'notification',
+                'system',
+                'stats',
+                'heartbeat_ack',
+                'heartbeat_response',
+                'ack',
+                'response',
+                'server_status',
+                'latency_update',
+                'cancel_response',
+                'cleanup',
+                'file_cleanup',
+                'operation_cleanup'
+              ];
 
-            // 忽略所有SFTP相关消息类型，避免它们被标记为未知类型
-            if (!ignoredTypes.includes(message.type) && !message.type.startsWith('sftp_')) {
-              // 进一步减少未知消息类型的日志，只在开发模式下显示
-              if (import.meta.env.DEV) {
-                log.debug(`收到未知消息类型: ${message.type}`, { sessionId });
+              // 忽略所有SFTP相关消息类型，避免它们被标记为未知类型
+              if (!ignoredTypes.includes(message.type) && !message.type.startsWith('sftp_')) {
+                // 进一步减少未知消息类型的日志，只在开发模式下显示
+                if (import.meta.env.DEV) {
+                  log.debug(`收到未知消息类型: ${message.type}`, { sessionId });
+                }
               }
+              break;
             }
-            break;
-          }
           }
 
           // SFTP消息已全部迁移到二进制协议，不再需要JSON处理

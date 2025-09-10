@@ -9,11 +9,8 @@
         :placeholder="placeholder"
         readonly
         @click="selectFile"
-      >
-      <button
-        class="select-file-btn"
-        @click="selectFile"
-      >
+      />
+      <button class="select-file-btn" @click="selectFile">
         {{ buttonText }}
       </button>
     </div>

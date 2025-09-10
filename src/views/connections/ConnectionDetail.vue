@@ -2,42 +2,18 @@
   <div class="connection-detail-container">
     <div class="connection-header">
       <div class="connection-info">
-        <el-button
-          class="back-button"
-          link
-          @click="goBack"
-        >
+        <el-button class="back-button" link @click="goBack">
           <el-icon><arrow-left /></el-icon> 返回
         </el-button>
         <h1>{{ connection ? connection.name : '连接详情' }}</h1>
-        <el-tag
-          v-if="isConnected"
-          type="success"
-          size="small"
-        >
-          已连接
-        </el-tag>
-        <el-tag
-          v-else
-          type="info"
-          size="small"
-        >
-          未连接
-        </el-tag>
+        <el-tag v-if="isConnected" type="success" size="small"> 已连接 </el-tag>
+        <el-tag v-else type="info" size="small"> 未连接 </el-tag>
       </div>
       <div class="connection-actions">
-        <el-button
-          v-if="!isConnected"
-          type="primary"
-          @click="connect"
-        >
+        <el-button v-if="!isConnected" type="primary" @click="connect">
           <el-icon><connection /></el-icon>连接
         </el-button>
-        <el-button
-          v-else
-          type="danger"
-          @click="disconnect"
-        >
+        <el-button v-else type="danger" @click="disconnect">
           <el-icon><circle-close /></el-icon>断开连接
         </el-button>
         <el-button @click="editConnection">
@@ -57,51 +33,29 @@
             @click="switchTab(index)"
           >
             <span>{{ tab.title }}</span>
-            <el-icon
-              v-if="tabs.length > 1"
-              class="close-icon"
-              @click.stop="closeTab(index)"
-            >
+            <el-icon v-if="tabs.length > 1" class="close-icon" @click.stop="closeTab(index)">
               <close />
             </el-icon>
           </div>
-          <div
-            class="add-tab"
-            @click="addTab"
-          >
+          <div class="add-tab" @click="addTab">
             <el-icon><plus /></el-icon>
           </div>
         </div>
         <div class="terminal-controls">
-          <el-tooltip
-            content="全屏"
-            placement="top"
-          >
-            <el-button
-              circle
-              @click="toggleFullscreen"
-            >
+          <el-tooltip content="全屏" placement="top">
+            <el-button circle @click="toggleFullscreen">
               <el-icon><full-screen /></el-icon>
             </el-button>
           </el-tooltip>
-          <el-tooltip
-            content="设置"
-            placement="top"
-          >
-            <el-button
-              circle
-              @click="showSettings"
-            >
+          <el-tooltip content="设置" placement="top">
+            <el-button circle @click="showSettings">
               <el-icon><setting /></el-icon>
             </el-button>
           </el-tooltip>
         </div>
       </div>
       <div class="terminal-content">
-        <div
-          ref="terminalElement"
-          class="terminal"
-        />
+        <div ref="terminalElement" class="terminal" />
       </div>
     </div>
 
@@ -130,11 +84,7 @@
     </div>
 
     <!-- 终端设置对话框 -->
-    <el-dialog
-      v-model="settingsVisible"
-      title="终端设置"
-      width="500px"
-    >
+    <el-dialog v-model="settingsVisible" title="终端设置" width="500px">
       <el-form label-position="top">
         <el-form-item label="字体大小">
           <el-slider
@@ -146,90 +96,39 @@
           />
         </el-form-item>
         <el-form-item label="字体">
-          <el-select
-            v-model="terminalSettings.fontFamily"
-            style="width: 100%"
-          >
-            <el-option
-              label="Consolas"
-              value="Consolas"
-            />
-            <el-option
-              label="Monaco"
-              value="Monaco"
-            />
-            <el-option
-              label="Courier New"
-              value="'Courier New'"
-            />
-            <el-option
-              label="Droid Sans Mono"
-              value="'Droid Sans Mono'"
-            />
+          <el-select v-model="terminalSettings.fontFamily" style="width: 100%">
+            <el-option label="Consolas" value="Consolas" />
+            <el-option label="Monaco" value="Monaco" />
+            <el-option label="Courier New" value="'Courier New'" />
+            <el-option label="Droid Sans Mono" value="'Droid Sans Mono'" />
           </el-select>
         </el-form-item>
         <el-form-item label="颜色主题">
-          <el-select
-            v-model="terminalSettings.theme"
-            style="width: 100%"
-          >
-            <el-option
-              label="暗色"
-              value="dark"
-            />
-            <el-option
-              label="亮色"
-              value="light"
-            />
-            <el-option
-              label="复古"
-              value="retro"
-            />
-            <el-option
-              label="黑客风格"
-              value="hacker"
-            />
+          <el-select v-model="terminalSettings.theme" style="width: 100%">
+            <el-option label="暗色" value="dark" />
+            <el-option label="亮色" value="light" />
+            <el-option label="复古" value="retro" />
+            <el-option label="黑客风格" value="hacker" />
           </el-select>
         </el-form-item>
         <el-form-item label="光标样式">
-          <el-select
-            v-model="terminalSettings.cursorStyle"
-            style="width: 100%"
-          >
-            <el-option
-              label="块状"
-              value="block"
-            />
-            <el-option
-              label="下划线"
-              value="underline"
-            />
-            <el-option
-              label="竖线"
-              value="bar"
-            />
+          <el-select v-model="terminalSettings.cursorStyle" style="width: 100%">
+            <el-option label="块状" value="block" />
+            <el-option label="下划线" value="underline" />
+            <el-option label="竖线" value="bar" />
           </el-select>
         </el-form-item>
         <el-form-item>
-          <el-switch
-            v-model="terminalSettings.cursorBlink"
-            active-text="光标闪烁"
-          />
+          <el-switch v-model="terminalSettings.cursorBlink" active-text="光标闪烁" />
         </el-form-item>
         <el-form-item>
-          <el-switch
-            v-model="terminalSettings.scrollback"
-            active-text="启用回滚"
-          />
+          <el-switch v-model="terminalSettings.scrollback" active-text="启用回滚" />
         </el-form-item>
       </el-form>
       <template #footer>
         <span class="dialog-footer">
           <el-button @click="resetSettings">恢复默认</el-button>
-          <el-button
-            type="primary"
-            @click="applySettings"
-          >应用</el-button>
+          <el-button type="primary" @click="applySettings">应用</el-button>
         </span>
       </template>
     </el-dialog>
@@ -408,7 +307,6 @@ export default {
 
     onMounted(() => {
       // 根据路由参数加载连接信息
-
       // 这里应该有加载连接详情的代码
       // 以及初始化终端的代码
     });

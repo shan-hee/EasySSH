@@ -356,7 +356,7 @@ export const useTerminalStore = defineStore('terminal', () => {
     // 获取基础终端选项，主题将从设置服务获取
     let terminalOptions = {
       fontSize: 16,
-      fontFamily: '\'JetBrains Mono\'',
+      fontFamily: "'JetBrains Mono'",
       // 显式设置字符间距为0，避免渲染差异
       letterSpacing: 0,
       // 使用设置服务的默认主题

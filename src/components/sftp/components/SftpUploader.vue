@@ -9,28 +9,14 @@
       @drop.prevent="onDrop"
     >
       <div class="sftp-upload-inner">
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          width="32"
-          height="32"
-          viewBox="0 0 24 24"
-        >
-          <path
-            fill="currentColor"
-            d="M9,16V10H5L12,3L19,10H15V16H9M5,20V18H19V20H5Z"
-          />
+        <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24">
+          <path fill="currentColor" d="M9,16V10H5L12,3L19,10H15V16H9M5,20V18H19V20H5Z" />
         </svg>
         <p class="sftp-upload-text">
           拖放文件至此或
-          <span
-            class="sftp-upload-button"
-            @click="triggerFileInput"
-          >选择文件</span>
+          <span class="sftp-upload-button" @click="triggerFileInput">选择文件</span>
         </p>
-        <p
-          v-if="currentUploads.length > 0"
-          class="sftp-upload-status"
-        >
+        <p v-if="currentUploads.length > 0" class="sftp-upload-status">
           正在上传: {{ currentUploads.length }} 个文件
         </p>
       </div>
@@ -41,27 +27,17 @@
         multiple
         class="sftp-file-input"
         @change="onFileSelected"
-      >
+      />
     </div>
 
-    <div
-      v-if="currentUploads.length > 0"
-      class="sftp-upload-list"
-    >
-      <div
-        v-for="(file, index) in currentUploads"
-        :key="index"
-        class="sftp-upload-item"
-      >
+    <div v-if="currentUploads.length > 0" class="sftp-upload-list">
+      <div v-for="(file, index) in currentUploads" :key="index" class="sftp-upload-item">
         <div class="sftp-upload-item-info">
           <span class="sftp-upload-item-name">{{ file.name }}</span>
           <span class="sftp-upload-item-progress">{{ file.progress }}%</span>
         </div>
         <div class="sftp-upload-progress-bar">
-          <div
-            class="sftp-upload-progress-fill"
-            :style="{ width: `${file.progress}%` }"
-          />
+          <div class="sftp-upload-progress-fill" :style="{ width: `${file.progress}%` }" />
         </div>
       </div>
     </div>

@@ -314,20 +314,20 @@ export class ProductionFormatter {
    */
   smartFormat(value, type) {
     switch (type) {
-    case 'percentage':
-      return this.formatPercentage(value);
-    case 'bytes':
-      return this.formatBytes(value);
-    case 'speed':
-      return this.formatNetworkSpeed(value);
-    case 'timestamp':
-      return this.formatTimestamp(value);
-    case 'uptime':
-      return this.formatUptime(value);
-    case 'number':
-      return this.formatNumber(value);
-    default:
-      return value?.toString() || '--';
+      case 'percentage':
+        return this.formatPercentage(value);
+      case 'bytes':
+        return this.formatBytes(value);
+      case 'speed':
+        return this.formatNetworkSpeed(value);
+      case 'timestamp':
+        return this.formatTimestamp(value);
+      case 'uptime':
+        return this.formatUptime(value);
+      case 'number':
+        return this.formatNumber(value);
+      default:
+        return value?.toString() || '--';
     }
   }
 

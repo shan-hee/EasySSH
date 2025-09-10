@@ -8,90 +8,52 @@
   >
     <div class="mfa-setup-container">
       <div class="mfa-steps">
-        <div
-          class="step-item"
-          :class="{ active: currentStep === 1 }"
-        >
-          <div class="step-number">
-            1
-          </div>
-          <div class="step-text">
-            扫描二维码
-          </div>
+        <div class="step-item" :class="{ active: currentStep === 1 }">
+          <div class="step-number">1</div>
+          <div class="step-text">扫描二维码</div>
         </div>
-        <div
-          class="step-divider"
-          :class="{ active: currentStep === 2 }"
-        />
-        <div
-          class="step-item"
-          :class="{ active: currentStep === 2 }"
-        >
-          <div class="step-number">
-            2
-          </div>
-          <div class="step-text">
-            输入验证码
-          </div>
+        <div class="step-divider" :class="{ active: currentStep === 2 }" />
+        <div class="step-item" :class="{ active: currentStep === 2 }">
+          <div class="step-number">2</div>
+          <div class="step-text">输入验证码</div>
         </div>
       </div>
 
       <div class="mfa-content">
-        <div
-          v-if="currentStep === 1"
-          class="qrcode-container"
-        >
-          <div
-            v-if="isLoading"
-            class="loading-qrcode"
-          >
+        <div v-if="currentStep === 1" class="qrcode-container">
+          <div v-if="isLoading" class="loading-qrcode">
             <div class="loading-spinner" />
             <span>正在生成二维码...</span>
           </div>
-          <div
-            v-else
-            class="qrcode-content"
-          >
+          <div v-else class="qrcode-content">
             <div class="qrcode-wrap">
               <img
                 :src="qrCodeUrl"
                 alt="身份验证器二维码"
                 class="qrcode-image"
                 @load="onQrCodeLoaded"
-              >
+              />
             </div>
             <div class="mfa-instructions">
               <div class="instruction-step">
-                <div class="instruction-number">
-                  1
-                </div>
+                <div class="instruction-number">1</div>
                 <p>下载并安装 Google Authenticator 或其它身份验证器 App</p>
               </div>
               <div class="instruction-step">
-                <div class="instruction-number">
-                  2
-                </div>
+                <div class="instruction-number">2</div>
                 <p>使用验证器应用扫描上方二维码</p>
               </div>
               <div class="instruction-step">
-                <div class="instruction-number">
-                  3
-                </div>
+                <div class="instruction-number">3</div>
                 <p>扫描成功后点击"下一步"输入验证码</p>
               </div>
             </div>
             <div class="mfa-secret">
-              <p class="secret-title">
-                无法扫描？手动输入以下密钥：
-              </p>
+              <p class="secret-title">无法扫描？手动输入以下密钥：</p>
               <div class="secret-code-container">
                 <div class="secret-code">
                   {{ secretKey }}
-                  <button
-                    class="copy-btn"
-                    title="复制密钥"
-                    @click="copySecretKey"
-                  >
+                  <button class="copy-btn" title="复制密钥" @click="copySecretKey">
                     <svg
                       class="copy-icon"
                       xmlns="http://www.w3.org/2000/svg"
@@ -109,29 +71,18 @@
               </div>
             </div>
             <div class="mfa-btn-container">
-              <button
-                class="mfa-btn btn-next"
-                @click="goToVerifyStep"
-              >
-                下一步
-              </button>
+              <button class="mfa-btn btn-next" @click="goToVerifyStep">下一步</button>
             </div>
           </div>
         </div>
 
-        <div
-          v-else-if="currentStep === 2"
-          class="verify-container"
-        >
+        <div v-else-if="currentStep === 2" class="verify-container">
           <div class="verify-instructions">
             <p>请输入验证器应用上显示的 6 位验证码</p>
           </div>
           <div class="verify-input-container">
             <div class="code-inputs">
-              <template
-                v-for="(digit, index) in 6"
-                :key="index"
-              >
+              <template v-for="(digit, index) in 6" :key="index">
                 <input
                   ref="codeInputs"
                   type="text"
@@ -143,37 +94,23 @@
                   @input="handleDigitInput($event, index)"
                   @keydown="handleKeyDown($event, index)"
                   @paste="handlePaste"
-                >
-                <span
-                  v-if="index < 5"
-                  class="code-separator"
                 />
+                <span v-if="index < 5" class="code-separator" />
               </template>
             </div>
           </div>
-          <div
-            v-if="verifyError"
-            class="verify-error"
-          >
+          <div v-if="verifyError" class="verify-error">
             <i class="error-icon" />
             {{ verifyError }}
           </div>
           <div class="mfa-btn-container">
-            <button
-              class="mfa-btn btn-back"
-              @click="currentStep = 1"
-            >
-              返回
-            </button>
+            <button class="mfa-btn btn-back" @click="currentStep = 1">返回</button>
             <button
               class="mfa-btn btn-verify"
               :disabled="verificationCode.length !== 6 || isVerifying"
               @click="verifyAndEnableMfa"
             >
-              <span
-                v-if="isVerifying"
-                class="btn-loading"
-              />
+              <span v-if="isVerifying" class="btn-loading" />
               {{ isVerifying ? '验证中...' : '验证并启用' }}
             </button>
           </div>

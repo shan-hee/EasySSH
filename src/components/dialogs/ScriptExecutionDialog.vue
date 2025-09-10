@@ -23,10 +23,7 @@
             <div class="status-summary">
               <span class="success-count">成功: {{ successCount }}</span>
               <span class="failed-count">失败: {{ failedCount }}</span>
-              <span
-                v-if="runningCount > 0"
-                class="running-count"
-              >执行中: {{ runningCount }}</span>
+              <span v-if="runningCount > 0" class="running-count">执行中: {{ runningCount }}</span>
             </div>
           </div>
 
@@ -52,28 +49,16 @@
                 </div>
               </div>
               <div class="status-icon">
-                <el-icon
-                  v-if="result.status === 'success'"
-                  class="success-icon"
-                >
+                <el-icon v-if="result.status === 'success'" class="success-icon">
                   <check />
                 </el-icon>
-                <el-icon
-                  v-else-if="result.status === 'failed'"
-                  class="failed-icon"
-                >
+                <el-icon v-else-if="result.status === 'failed'" class="failed-icon">
                   <close />
                 </el-icon>
-                <el-icon
-                  v-else-if="result.status === 'running'"
-                  class="running-icon"
-                >
+                <el-icon v-else-if="result.status === 'running'" class="running-icon">
                   <loading />
                 </el-icon>
-                <el-icon
-                  v-else
-                  class="pending-icon"
-                >
+                <el-icon v-else class="pending-icon">
                   <clock />
                 </el-icon>
               </div>
@@ -84,67 +69,42 @@
         <!-- 右侧：执行结果详情 -->
         <div class="result-detail-panel">
           <div class="panel-header">
-            <h4 v-if="selectedResult">
-              {{ selectedResult.server.name }} - 执行结果
-            </h4>
-            <h4 v-else>
-              请选择服务器查看执行结果
-            </h4>
+            <h4 v-if="selectedResult">{{ selectedResult.server.name }} - 执行结果</h4>
+            <h4 v-else>请选择服务器查看执行结果</h4>
           </div>
 
-          <div
-            v-if="selectedResult"
-            class="result-content"
-          >
+          <div v-if="selectedResult" class="result-content">
             <div class="result-meta">
               <div class="meta-item">
                 <span class="label">状态:</span>
-                <span
-                  class="value"
-                  :class="selectedResult.status"
-                >
+                <span class="value" :class="selectedResult.status">
                   {{ getStatusText(selectedResult.status) }}
                 </span>
               </div>
-              <div
-                v-if="selectedResult.executedAt"
-                class="meta-item"
-              >
+              <div v-if="selectedResult.executedAt" class="meta-item">
                 <span class="label">执行时间:</span>
                 <span class="value">{{ formatTime(selectedResult.executedAt) }}</span>
               </div>
-              <div
-                v-if="selectedResult.duration"
-                class="meta-item"
-              >
+              <div v-if="selectedResult.duration" class="meta-item">
                 <span class="label">耗时:</span>
                 <span class="value">{{ selectedResult.duration }}ms</span>
               </div>
             </div>
 
             <!-- 标准输出 -->
-            <div
-              v-if="selectedResult.stdout"
-              class="output-section"
-            >
+            <div v-if="selectedResult.stdout" class="output-section">
               <h5>标准输出 (stdout)</h5>
               <pre class="output-content stdout">{{ selectedResult.stdout }}</pre>
             </div>
 
             <!-- 错误输出 -->
-            <div
-              v-if="selectedResult.stderr"
-              class="output-section"
-            >
+            <div v-if="selectedResult.stderr" class="output-section">
               <h5>错误输出 (stderr)</h5>
               <pre class="output-content stderr">{{ selectedResult.stderr }}</pre>
             </div>
 
             <!-- 执行中状态 -->
-            <div
-              v-if="selectedResult.status === 'running'"
-              class="running-status"
-            >
+            <div v-if="selectedResult.status === 'running'" class="running-status">
               <el-icon class="loading-icon">
                 <loading />
               </el-icon>
@@ -152,19 +112,13 @@
             </div>
 
             <!-- 错误信息 -->
-            <div
-              v-if="selectedResult.error"
-              class="error-section"
-            >
+            <div v-if="selectedResult.error" class="error-section">
               <h5>错误信息</h5>
               <pre class="output-content error">{{ selectedResult.error }}</pre>
             </div>
           </div>
 
-          <div
-            v-else
-            class="no-selection"
-          >
+          <div v-else class="no-selection">
             <el-icon><document /></el-icon>
             <p>请从左侧选择服务器查看执行结果</p>
           </div>
@@ -174,14 +128,8 @@
 
     <template #footer>
       <div class="dialog-footer">
-        <el-button @click="handleClose">
-          关闭
-        </el-button>
-        <el-button
-          type="primary"
-          :disabled="!hasFailedServers"
-          @click="handleRetry"
-        >
+        <el-button @click="handleClose"> 关闭 </el-button>
+        <el-button type="primary" :disabled="!hasFailedServers" @click="handleRetry">
           重试失败的服务器
         </el-button>
       </div>

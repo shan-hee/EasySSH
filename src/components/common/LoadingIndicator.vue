@@ -1,12 +1,6 @@
 <template>
-  <div
-    class="loading-indicator"
-    :class="{ 'loading-indicator--inline': inline }"
-  >
-    <div
-      v-if="loading"
-      class="loading-content"
-    >
+  <div class="loading-indicator" :class="{ 'loading-indicator--inline': inline }">
+    <div v-if="loading" class="loading-content">
       <div class="loading-spinner">
         <div class="spinner" />
       </div>
@@ -15,32 +9,16 @@
       </div>
     </div>
 
-    <div
-      v-else-if="error"
-      class="error-content"
-    >
-      <div class="error-icon">
-        ⚠️
-      </div>
+    <div v-else-if="error" class="error-content">
+      <div class="error-icon">⚠️</div>
       <div class="error-text">
         {{ error }}
       </div>
-      <button
-        v-if="showRetry"
-        class="retry-button"
-        @click="$emit('retry')"
-      >
-        重试
-      </button>
+      <button v-if="showRetry" class="retry-button" @click="$emit('retry')">重试</button>
     </div>
 
-    <div
-      v-else-if="empty"
-      class="empty-content"
-    >
-      <div class="empty-icon">
-        📭
-      </div>
+    <div v-else-if="empty" class="empty-content">
+      <div class="empty-icon">📭</div>
       <div class="empty-text">
         {{ emptyMessage || '暂无数据' }}
       </div>

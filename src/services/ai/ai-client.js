@@ -284,39 +284,39 @@ class AIClient {
     }
 
     switch (type) {
-    case 'ai_stream':
-      handler.onStream?.(message);
-      break;
+      case 'ai_stream':
+        handler.onStream?.(message);
+        break;
 
-    case 'ai_done':
-      handler.onDone?.(message);
-      break;
+      case 'ai_done':
+        handler.onDone?.(message);
+        break;
 
-    case 'ai_error':
-      handler.onError?.(message);
-      break;
+      case 'ai_error':
+        handler.onError?.(message);
+        break;
 
-    case 'ai_cancelled':
-      handler.onCancel?.(message);
-      break;
+      case 'ai_cancelled':
+        handler.onCancel?.(message);
+        break;
 
-    case 'ai_config_test_result':
-      // 配置测试结果需要特殊处理
-      if (message.success) {
-        handler.onDone?.({
-          success: true,
-          message: message.message,
-          metadata: { testResult: true }
-        });
-      } else {
-        handler.onError?.({
-          error: { message: message.message }
-        });
-      }
-      break;
+      case 'ai_config_test_result':
+        // 配置测试结果需要特殊处理
+        if (message.success) {
+          handler.onDone?.({
+            success: true,
+            message: message.message,
+            metadata: { testResult: true }
+          });
+        } else {
+          handler.onError?.({
+            error: { message: message.message }
+          });
+        }
+        break;
 
-    default:
-      log.warn('未知的AI消息类型', { type, requestId });
+      default:
+        log.warn('未知的AI消息类型', { type, requestId });
     }
   }
 

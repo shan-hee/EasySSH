@@ -36,10 +36,7 @@
       </svg>
 
       <!-- 编辑模式：显示输入框和操作按钮 -->
-      <div
-        v-if="isEditing"
-        class="sftp-edit-container"
-      >
+      <div v-if="isEditing" class="sftp-edit-container">
         <input
           ref="editInput"
           v-model="editingName"
@@ -50,7 +47,7 @@
           @keydown.esc="cancelRename"
           @input="validateInput"
           @click.stop
-        >
+        />
 
         <!-- 确认和取消按钮 -->
         <div class="sftp-edit-actions">
@@ -61,12 +58,7 @@
             title="确认重命名"
             @click.stop="confirmRename"
           >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              width="14"
-              height="14"
-              viewBox="0 0 24 24"
-            >
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24">
               <path
                 fill="currentColor"
                 d="M9,20.42L2.79,14.21L5.62,11.38L9,14.77L18.88,4.88L21.71,7.71L9,20.42Z"
@@ -81,12 +73,7 @@
             title="取消重命名"
             @click.stop="cancelRename"
           >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              width="14"
-              height="14"
-              viewBox="0 0 24 24"
-            >
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24">
               <path
                 fill="currentColor"
                 d="M19,6.41L17.59,5L12,10.59L6.41,5L5,6.41L10.59,12L5,17.59L6.41,19L12,13.41L17.59,19L19,17.59L13.41,12L19,6.41Z"
@@ -95,14 +82,8 @@
           </button>
 
           <!-- 加载状态 -->
-          <div
-            v-if="isRenaming"
-            class="sftp-rename-loading"
-          >
-            <svg
-              class="sftp-rename-spinner"
-              viewBox="0 0 16 16"
-            >
+          <div v-if="isRenaming" class="sftp-rename-loading">
+            <svg class="sftp-rename-spinner" viewBox="0 0 16 16">
               <circle
                 cx="8"
                 cy="8"
@@ -142,68 +123,29 @@
       {{ formatDate(file.modifiedTime) }}
     </div>
     <div class="sftp-file-actions">
-      <button
-        class="sftp-action-button"
-        title="下载"
-        @click.stop="$emit('download', file)"
-      >
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          width="16"
-          height="16"
-          viewBox="0 0 24 24"
-        >
-          <path
-            fill="currentColor"
-            d="M5,20H19V18H5M19,9H15V3H9V9H5L12,16L19,9Z"
-          />
+      <button class="sftp-action-button" title="下载" @click.stop="$emit('download', file)">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24">
+          <path fill="currentColor" d="M5,20H19V18H5M19,9H15V3H9V9H5L12,16L19,9Z" />
         </svg>
       </button>
-      <button
-        class="sftp-action-button"
-        title="重命名"
-        @click.stop="startRename"
-      >
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          width="16"
-          height="16"
-          viewBox="0 0 24 24"
-        >
+      <button class="sftp-action-button" title="重命名" @click.stop="startRename">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24">
           <path
             fill="currentColor"
             d="M20.71,7.04C21.1,6.65 21.1,6 20.71,5.63L18.37,3.29C18,2.9 17.35,2.9 16.96,3.29L15.12,5.12L18.87,8.87M3,17.25V21H6.75L17.81,9.93L14.06,6.18L3,17.25Z"
           />
         </svg>
       </button>
-      <button
-        class="sftp-action-button"
-        title="权限"
-        @click.stop="$emit('permissions', file)"
-      >
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          width="16"
-          height="16"
-          viewBox="0 0 24 24"
-        >
+      <button class="sftp-action-button" title="权限" @click.stop="$emit('permissions', file)">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24">
           <path
             fill="currentColor"
             d="M12,17A2,2 0 0,0 14,15C14,13.89 13.1,13 12,13A2,2 0 0,0 10,15A2,2 0 0,0 12,17M18,8A2,2 0 0,1 20,10V20A2,2 0 0,1 18,22H6A2,2 0 0,1 4,20V10C4,8.89 4.9,8 6,8H7V6A5,5 0 0,1 12,1A5,5 0 0,1 17,6V8H18M12,3A3,3 0 0,0 9,6V8H15V6A3,3 0 0,0 12,3Z"
           />
         </svg>
       </button>
-      <button
-        class="sftp-action-button"
-        title="删除"
-        @click.stop="$emit('delete', file)"
-      >
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          width="16"
-          height="16"
-          viewBox="0 0 24 24"
-        >
+      <button class="sftp-action-button" title="删除" @click.stop="$emit('delete', file)">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24">
           <path
             fill="currentColor"
             d="M19,4H15.5L14.5,3H9.5L8.5,4H5V6H19M6,19A2,2 0 0,0 8,21H16A2,2 0 0,0 18,19V7H6V19Z"

@@ -39,10 +39,7 @@
         <!-- 终端主体区域：监控面板 + 终端内容 + AI输入栏 -->
         <div class="terminal-main-area">
           <!-- 桌面端监控面板 - 左侧 -->
-          <transition
-            name="monitoring-toggle"
-            appear
-          >
+          <transition name="monitoring-toggle" appear>
             <div
               v-show="shouldShowDesktopMonitoringPanel(termId) && isActiveTerminal(termId)"
               class="terminal-monitoring-panel theme-transition"
@@ -71,10 +68,7 @@
             </div>
 
             <!-- AI合并面板 - 包含交互面板和输入栏 -->
-            <transition
-              name="ai-combined-toggle"
-              appear
-            >
+            <transition name="ai-combined-toggle" appear>
               <div
                 v-if="shouldShowAICombinedPanel(termId) && isActiveTerminal(termId)"
                 class="terminal-ai-combined-area theme-transition"
@@ -267,7 +261,9 @@ export default {
         requestAnimationFrame(() => {
           try {
             terminalStore.fitTerminal(id);
-          } catch (_) { void 0; }
+          } catch (_) {
+            void 0;
+          }
           requestAnimationFrame(() => {
             el.style.opacity = '1';
             // 清理 will-change，避免长期占用合成层
@@ -280,7 +276,9 @@ export default {
         // 兜底直接适配
         try {
           terminalStore.fitTerminal(termId || activeConnectionId.value);
-        } catch (_) { void 0; }
+        } catch (_) {
+          void 0;
+        }
       }
     };
 

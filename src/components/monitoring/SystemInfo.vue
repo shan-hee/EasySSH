@@ -3,11 +3,7 @@
     <!-- 系统信息标题 -->
     <div class="section-header">
       <div class="section-title">
-        <monitoring-icon
-          name="system-info"
-          :size="16"
-          class="system-icon"
-        />
+        <monitoring-icon name="system-info" :size="16" class="system-icon" />
         <span>系统信息</span>
       </div>
     </div>
@@ -22,80 +18,50 @@
       @retry="handleRetry"
     />
 
-    <div
-      v-show="componentState.hasData"
-      class="info-grid"
-    >
-      <div
-        v-if="systemInfo.os"
-        class="info-item"
-      >
+    <div v-show="componentState.hasData" class="info-grid">
+      <div v-if="systemInfo.os" class="info-item">
         <span class="info-label">系统类型</span>
         <span class="info-value">{{ systemInfo.os }}</span>
       </div>
 
-      <div
-        v-if="systemInfo.hostname"
-        class="info-item"
-      >
+      <div v-if="systemInfo.hostname" class="info-item">
         <span class="info-label">主机名</span>
         <span class="info-value">{{ systemInfo.hostname }}</span>
       </div>
 
-      <div
-        v-if="systemInfo.cpuModel"
-        class="info-item"
-      >
+      <div v-if="systemInfo.cpuModel" class="info-item">
         <span class="info-label">CPU型号</span>
         <span class="info-value">{{ systemInfo.cpuModel }}</span>
       </div>
 
-      <div
-        v-if="systemInfo.architecture"
-        class="info-item"
-      >
+      <div v-if="systemInfo.architecture" class="info-item">
         <span class="info-label">系统架构</span>
         <span class="info-value">{{ systemInfo.architecture }}</span>
       </div>
 
       <!-- CPU核心信息已隐藏 -->
 
-      <div
-        v-if="systemInfo.loadAverage"
-        class="info-item"
-      >
+      <div v-if="systemInfo.loadAverage" class="info-item">
         <span class="info-label">系统负载</span>
         <span class="info-value">{{ formatLoadAverage(systemInfo.loadAverage) }}</span>
       </div>
 
-      <div
-        v-if="systemInfo.uptime"
-        class="info-item"
-      >
+      <div v-if="systemInfo.uptime" class="info-item">
         <span class="info-label">运行时间</span>
         <span class="info-value">{{ formatUptime(systemInfo.uptime) }}</span>
       </div>
 
-      <div
-        v-if="systemInfo.bootTime"
-        class="info-item"
-      >
+      <div v-if="systemInfo.bootTime" class="info-item">
         <span class="info-label">启动时间</span>
         <span class="info-value">{{ formatDateTime(systemInfo.bootTime) }}</span>
       </div>
 
-      <div
-        v-if="systemInfo.internalIp"
-        class="info-item"
-      >
+      <div v-if="systemInfo.internalIp" class="info-item">
         <span class="info-label">内网IP</span>
         <span class="info-value">{{ systemInfo.internalIp }}</span>
       </div>
 
-      <div
-        v-if="systemInfo.publicIp"
-        class="info-item"
-      >
+      <div v-if="systemInfo.publicIp" class="info-item">
         <span class="info-label">公网IP</span>
         <span class="info-value">{{ systemInfo.publicIp }}</span>
       </div>

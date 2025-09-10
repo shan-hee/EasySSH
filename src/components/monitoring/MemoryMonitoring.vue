@@ -2,11 +2,7 @@
   <div class="monitor-section memory-monitoring-section">
     <div class="monitor-header">
       <div class="monitor-title">
-        <monitoring-icon
-          name="memory"
-          :size="16"
-          class="memory-icon"
-        />
+        <monitoring-icon name="memory" :size="16" class="memory-icon" />
         <span>内存</span>
       </div>
     </div>
@@ -15,10 +11,7 @@
       <div class="memory-chart-layout">
         <!-- 左侧：双圆环嵌套图 -->
         <div class="chart-section">
-          <canvas
-            ref="memoryChartRef"
-            class="memory-nested-chart"
-          />
+          <canvas ref="memoryChartRef" class="memory-nested-chart" />
         </div>
 
         <!-- 右侧：文本和图例 -->
@@ -26,9 +19,7 @@
           <div class="memory-info-item">
             <div class="info-indicator memory-indicator" />
             <div class="info-content">
-              <div class="info-label">
-                物理内存
-              </div>
+              <div class="info-label">物理内存</div>
               <div class="info-value">
                 {{ formatPercentage(memoryUsage) }}
               </div>
@@ -38,15 +29,10 @@
             </div>
           </div>
 
-          <div
-            v-if="hasSwap"
-            class="memory-info-item"
-          >
+          <div v-if="hasSwap" class="memory-info-item">
             <div class="info-indicator swap-indicator" />
             <div class="info-content">
-              <div class="info-label">
-                交换分区
-              </div>
+              <div class="info-label">交换分区</div>
               <div class="info-value">
                 {{ formatPercentage(swapUsage) }}
               </div>
@@ -223,7 +209,7 @@ const createNestedDoughnutConfig = () => {
           borderColor: isDark ? 'rgba(255, 255, 255, 0.2)' : 'rgba(0, 0, 0, 0.1)',
           borderWidth: 1,
           callbacks: {
-            label (context) {
+            label(context) {
               const datasetLabel = context.dataset.label;
               const value = context.parsed;
               return `${datasetLabel}: ${value.toFixed(1)}%`;

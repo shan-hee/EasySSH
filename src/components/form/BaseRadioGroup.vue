@@ -1,10 +1,7 @@
 <template>
   <div class="form-item-radio-group">
     <label v-if="label">{{ label }}</label>
-    <div
-      class="radio-button-wrapper"
-      :style="{ width: width }"
-    >
+    <div class="radio-button-wrapper" :style="{ width: width }">
       <button
         v-for="(option, index) in options"
         :key="index"

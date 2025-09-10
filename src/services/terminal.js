@@ -140,7 +140,7 @@ class TerminalService {
     // 默认终端选项
     this.defaultOptions = {
       fontSize: 16,
-      fontFamily: '\'JetBrains Mono\'',
+      fontFamily: "'JetBrains Mono'",
       theme: this.themes.dark,
       cursorBlink: true,
       cursorStyle: 'block',
@@ -965,7 +965,7 @@ class TerminalService {
                         // 特别处理WebGL缓冲区访问错误
                         else if (
                           e.message &&
-                          e.message.includes('Cannot read properties of null (reading \'buffers\')')
+                          e.message.includes("Cannot read properties of null (reading 'buffers')")
                         ) {
                           log.debug(`忽略插件 ${name} WebGL缓冲区访问错误（已销毁）`);
                         }
@@ -1035,7 +1035,7 @@ class TerminalService {
                               else if (
                                 e.message &&
                                 e.message.includes(
-                                  'Cannot read properties of null (reading \'buffers\')'
+                                  "Cannot read properties of null (reading 'buffers')"
                                 )
                               ) {
                                 log.debug('忽略核心插件WebGL缓冲区访问错误（已销毁）');
@@ -1186,7 +1186,7 @@ class TerminalService {
   async _waitForFontsAndOpen(terminal, container, termOptions, id) {
     try {
       // 检查字体是否已加载
-      const fontFamily = termOptions.fontFamily || '\'JetBrains Mono\'';
+      const fontFamily = termOptions.fontFamily || "'JetBrains Mono'";
       const fontSize = termOptions.fontSize || 16;
 
       // 等待字体加载
@@ -1507,28 +1507,28 @@ class TerminalService {
 
       // 特定插件的兼容性检查
       switch (addonName) {
-      case 'fit':
-        if (typeof addon.fit !== 'function') {
-          result.issues.push('FitAddon缺少fit方法');
-        }
-        break;
+        case 'fit':
+          if (typeof addon.fit !== 'function') {
+            result.issues.push('FitAddon缺少fit方法');
+          }
+          break;
 
-      case 'search':
-        if (typeof addon.findNext !== 'function' || typeof addon.findPrevious !== 'function') {
-          result.issues.push('SearchAddon缺少搜索方法');
-        }
-        break;
+        case 'search':
+          if (typeof addon.findNext !== 'function' || typeof addon.findPrevious !== 'function') {
+            result.issues.push('SearchAddon缺少搜索方法');
+          }
+          break;
 
-      case 'webLinks':
-        // WebLinksAddon通常不需要特殊检查
-        break;
+        case 'webLinks':
+          // WebLinksAddon通常不需要特殊检查
+          break;
 
-      case 'canvas':
-        // 渲染器插件的特殊检查
-        if (!this._checkRendererAddonCompatibility(addon, addonName, terminal)) {
-          result.issues.push(`${addonName}渲染器不兼容当前环境`);
-        }
-        break;
+        case 'canvas':
+          // 渲染器插件的特殊检查
+          if (!this._checkRendererAddonCompatibility(addon, addonName, terminal)) {
+            result.issues.push(`${addonName}渲染器不兼容当前环境`);
+          }
+          break;
       }
 
       if (result.issues.length > 0) {
@@ -1594,27 +1594,27 @@ class TerminalService {
 
       // 特定插件的验证
       switch (addonName) {
-      case 'fit':
-        // 验证fit插件是否可以调用
-        if (typeof addon.fit === 'function') {
-          // 尝试调用fit方法（在安全的上下文中）
-          try {
-            addon.fit();
-          } catch (e) {
-            // fit调用失败是正常的，因为终端可能还没有完全初始化
+        case 'fit':
+          // 验证fit插件是否可以调用
+          if (typeof addon.fit === 'function') {
+            // 尝试调用fit方法（在安全的上下文中）
+            try {
+              addon.fit();
+            } catch (e) {
+              // fit调用失败是正常的，因为终端可能还没有完全初始化
+            }
           }
-        }
-        break;
+          break;
 
-      case 'search':
-        // 验证搜索插件的方法是否可用
-        if (typeof addon.findNext !== 'function') {
-          return {
-            success: false,
-            error: 'SearchAddon的findNext方法不可用'
-          };
-        }
-        break;
+        case 'search':
+          // 验证搜索插件的方法是否可用
+          if (typeof addon.findNext !== 'function') {
+            return {
+              success: false,
+              error: 'SearchAddon的findNext方法不可用'
+            };
+          }
+          break;
       }
 
       return { success: true };

@@ -13,30 +13,15 @@
       :disabled="!canExecute"
       @click="handleExecute"
     >
-      <svg
-        viewBox="0 0 24 24"
-        width="14"
-        height="14"
-      >
-        <path
-          fill="currentColor"
-          d="M8,5.14V19.14L19,12.14L8,5.14Z"
-        />
+      <svg viewBox="0 0 24 24" width="14" height="14">
+        <path fill="currentColor" d="M8,5.14V19.14L19,12.14L8,5.14Z" />
       </svg>
       <span v-if="!isMobile">执行</span>
     </button>
 
     <!-- 编辑按钮 -->
-    <button
-      class="ai-action-btn ai-action-edit"
-      title="编辑命令"
-      @click="handleEdit"
-    >
-      <svg
-        viewBox="0 0 24 24"
-        width="14"
-        height="14"
-      >
+    <button class="ai-action-btn ai-action-edit" title="编辑命令" @click="handleEdit">
+      <svg viewBox="0 0 24 24" width="14" height="14">
         <path
           fill="currentColor"
           d="M20.71,7.04C21.1,6.65 21.1,6 20.71,5.63L18.37,3.29C18,2.9 17.35,2.9 16.96,3.29L15.12,5.12L18.87,8.87M3,17.25V21H6.75L17.81,9.93L14.06,6.18L3,17.25Z"
@@ -46,16 +31,8 @@
     </button>
 
     <!-- 添加到脚本库按钮 -->
-    <button
-      class="ai-action-btn ai-action-save"
-      title="添加到脚本库"
-      @click="handleAddToScripts"
-    >
-      <svg
-        viewBox="0 0 24 24"
-        width="14"
-        height="14"
-      >
+    <button class="ai-action-btn ai-action-save" title="添加到脚本库" @click="handleAddToScripts">
+      <svg viewBox="0 0 24 24" width="14" height="14">
         <path
           fill="currentColor"
           d="M17,3H5C3.89,3 3,3.9 3,5V19A2,2 0 0,0 5,21H19A2,2 0 0,0 21,19V7L17,3M19,19H5V5H16.17L19,7.83V19M12,12C10.34,12 9,13.34 9,15C9,16.66 10.34,18 12,18C13.66,18 15,16.66 15,15C15,13.34 13.66,12 12,12Z"
@@ -65,16 +42,8 @@
     </button>
 
     <!-- 复制按钮 -->
-    <button
-      class="ai-action-btn ai-action-copy"
-      title="复制命令"
-      @click="handleCopy"
-    >
-      <svg
-        viewBox="0 0 24 24"
-        width="14"
-        height="14"
-      >
+    <button class="ai-action-btn ai-action-copy" title="复制命令" @click="handleCopy">
+      <svg viewBox="0 0 24 24" width="14" height="14">
         <path
           fill="currentColor"
           d="M19,21H8V7H19M19,5H8A2,2 0 0,0 6,7V21A2,2 0 0,0 8,23H19A2,2 0 0,0 21,21V7A2,2 0 0,0 19,5M16,1H4A2,2 0 0,0 2,3V17H4V3H16V1Z"

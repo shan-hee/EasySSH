@@ -1,11 +1,7 @@
 <template>
   <div class="app-container">
     <!-- 移动端遮罩层 -->
-    <div
-      v-if="isMobile && isSidebarOpen"
-      class="mobile-overlay"
-      @click="toggleSidebar"
-    />
+    <div v-if="isMobile && isSidebarOpen" class="mobile-overlay" @click="toggleSidebar" />
 
     <app-sidebar
       :is-mobile="isMobile"
@@ -20,10 +16,7 @@
       />
 
       <!-- 添加终端背景层，仅在终端界面显示 -->
-      <div
-        v-if="isTerminalRoute && terminalHasBackground"
-        class="terminal-background"
-      />
+      <div v-if="isTerminalRoute && terminalHasBackground" class="terminal-background" />
 
       <main class="content">
         <!-- 终端组件直接嵌入为常驻组件，使用v-show控制显示/隐藏 -->

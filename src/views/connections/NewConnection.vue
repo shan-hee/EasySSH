@@ -11,10 +11,7 @@
             <add-button @click="showNewConnectionDialog" />
           </div>
           <div class="search-container">
-            <search-input
-              v-model="searchQuery"
-              @search="handleSearch"
-            />
+            <search-input v-model="searchQuery" @search="handleSearch" />
           </div>
         </div>
 
@@ -22,35 +19,19 @@
           <h2>我的连接配置</h2>
           <div class="connection-rows">
             <!-- 加载状态指示器 -->
-            <div
-              v-if="connectionsLoading && !connectionsLoaded"
-              class="loading-indicator"
-            >
+            <div v-if="connectionsLoading && !connectionsLoaded" class="loading-indicator">
               <div class="loading-spinner" />
               <span>正在加载连接数据...</span>
-              <span
-                v-if="connectionsRetryCount > 0"
-                class="retry-info"
-              >
+              <span v-if="connectionsRetryCount > 0" class="retry-info">
                 (重试 {{ connectionsRetryCount }}/3)
               </span>
             </div>
             <!-- 错误状态指示器 -->
-            <div
-              v-else-if="connectionsError && !connectionsLoaded"
-              class="error-indicator"
-            >
-              <div class="error-icon">
-                ⚠️
-              </div>
+            <div v-else-if="connectionsError && !connectionsLoaded" class="error-indicator">
+              <div class="error-icon">⚠️</div>
               <div class="error-content">
                 <span class="error-message">连接数据加载失败</span>
-                <button
-                  class="retry-btn"
-                  @click="retryLoadConnections"
-                >
-                  重试
-                </button>
+                <button class="retry-btn" @click="retryLoadConnections">重试</button>
               </div>
             </div>
             <!-- 连接列表 -->
@@ -84,10 +65,7 @@
                 <div class="address-cell">
                   {{ connection.host }}
                 </div>
-                <div
-                  class="actions-cell"
-                  @click.stop
-                >
+                <div class="actions-cell" @click.stop>
                   <el-button
                     class="action-btn"
                     circle
@@ -188,12 +166,7 @@
               title="编辑"
               @click="toggleEditMode"
             >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                viewBox="0 0 24 24"
-                width="16"
-                height="16"
-              >
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16">
                 <path
                   fill="currentColor"
                   d="M20.71,7.04C21.1,6.65 21.1,6 20.71,5.63L18.37,3.29C18,2.9 17.35,2.9 16.96,3.29L15.12,5.12L18.87,8.87M3,17.25V21H6.75L17.81,9.93L14.06,6.18L3,17.25Z"
@@ -202,35 +175,19 @@
             </button>
           </div>
           <!-- 历史记录加载状态指示器 -->
-          <div
-            v-if="historyLoading && !historyLoaded"
-            class="loading-indicator"
-          >
+          <div v-if="historyLoading && !historyLoaded" class="loading-indicator">
             <div class="loading-spinner" />
             <span>正在加载历史记录...</span>
-            <span
-              v-if="historyRetryCount > 0"
-              class="retry-info"
-            >
+            <span v-if="historyRetryCount > 0" class="retry-info">
               (重试 {{ historyRetryCount }}/3)
             </span>
           </div>
           <!-- 历史记录错误状态指示器 -->
-          <div
-            v-else-if="historyError && !historyLoaded"
-            class="error-indicator"
-          >
-            <div class="error-icon">
-              ⚠️
-            </div>
+          <div v-else-if="historyError && !historyLoaded" class="error-indicator">
+            <div class="error-icon">⚠️</div>
             <div class="error-content">
               <span class="error-message">历史记录加载失败</span>
-              <button
-                class="retry-btn"
-                @click="retryLoadHistory"
-              >
-                重试
-              </button>
+              <button class="retry-btn" @click="retryLoadHistory">重试</button>
             </div>
           </div>
           <!-- 历史记录列表 -->
@@ -287,12 +244,7 @@
                 title="删除"
                 @click.stop="handleDeleteHistory(connection, index)"
               >
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  viewBox="0 0 24 24"
-                  width="8"
-                  height="8"
-                >
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="8" height="8">
                   <path
                     fill="currentColor"
                     d="M19,6.41L17.59,5L12,10.59L6.41,5L5,6.41L10.59,12L5,17.59L6.41,19L12,13.41L17.59,19L19,17.59L13.41,12L19,6.41Z"
@@ -328,18 +280,14 @@
                 v-model="connectionForm.host"
                 type="text"
                 placeholder="请输入云服务器公网IP或域名"
-              >
+              />
             </div>
           </div>
 
           <div class="form-item">
             <label>云服务器端口</label>
             <div class="input-wrapper">
-              <input
-                v-model="connectionForm.port"
-                type="text"
-                placeholder="22"
-              >
+              <input v-model="connectionForm.port" type="text" placeholder="22" />
             </div>
           </div>
         </div>
@@ -348,22 +296,14 @@
           <div class="form-item">
             <label>用户名</label>
             <div class="input-wrapper">
-              <input
-                v-model="connectionForm.username"
-                type="text"
-                placeholder="请输入用户名"
-              >
+              <input v-model="connectionForm.username" type="text" placeholder="请输入用户名" />
             </div>
           </div>
 
           <div class="form-item">
             <label>备注 (选填)</label>
             <div class="input-wrapper">
-              <input
-                v-model="connectionForm.description"
-                type="text"
-                placeholder="请输入备注"
-              >
+              <input v-model="connectionForm.description" type="text" placeholder="请输入备注" />
             </div>
           </div>
         </div>
@@ -388,10 +328,7 @@
           </div>
         </div>
 
-        <div
-          v-if="connectionForm.authType === 'password'"
-          class="form-row"
-        >
+        <div v-if="connectionForm.authType === 'password'" class="form-row">
           <div class="form-item">
             <label>密码 (选填)</label>
             <div class="input-wrapper">
@@ -401,13 +338,13 @@
                   type="text"
                   autocomplete="username"
                   style="display: none"
-                >
+                />
                 <input
                   v-model="connectionForm.password"
                   type="password"
                   placeholder="请输入密码"
                   autocomplete="current-password"
-                >
+                />
               </form>
             </div>
             <checkbox
@@ -418,10 +355,7 @@
           </div>
         </div>
 
-        <div
-          v-else
-          class="form-row"
-        >
+        <div v-else class="form-row">
           <div class="form-item">
             <label>秘钥文件</label>
             <div class="input-wrapper key-file-wrapper">
@@ -431,13 +365,8 @@
                 placeholder="请选择秘钥文件"
                 readonly
                 @click="selectKeyFile"
-              >
-              <button
-                class="select-file-btn"
-                @click="selectKeyFile"
-              >
-                选择密钥
-              </button>
+              />
+              <button class="select-file-btn" @click="selectKeyFile">选择密钥</button>
             </div>
           </div>
         </div>
@@ -503,9 +432,7 @@ export default {
 
     // 获取历史记录（纯计算）
     const historyConnections = computed(() => {
-      return userStore.isLoggedIn
-        ? userStore.historyConnections
-        : localConnectionsStore.getHistory;
+      return userStore.isLoggedIn ? userStore.historyConnections : localConnectionsStore.getHistory;
     });
 
     // 在计算属性之外处理按需加载（避免在computed中产生副作用）

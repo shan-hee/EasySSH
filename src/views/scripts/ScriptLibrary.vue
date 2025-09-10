@@ -3,62 +3,29 @@
     <div class="page-header">
       <h1>脚本库</h1>
       <div class="header-actions">
-        <button
-          class="btn-secondary"
-          @click="importScripts"
-        >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            viewBox="0 0 24 24"
-            width="16"
-            height="16"
-          >
+        <button class="btn-secondary" @click="importScripts">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16">
             <path
               fill="currentColor"
               d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20Z"
             />
-            <path
-              fill="currentColor"
-              d="M12,11L16,15H13V19H11V15H8L12,11Z"
-            />
+            <path fill="currentColor" d="M12,11L16,15H13V19H11V15H8L12,11Z" />
           </svg>
           导入脚本
         </button>
-        <button
-          class="btn-secondary"
-          @click="exportScripts"
-        >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            viewBox="0 0 24 24"
-            width="16"
-            height="16"
-          >
+        <button class="btn-secondary" @click="exportScripts">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16">
             <path
               fill="currentColor"
               d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20Z"
             />
-            <path
-              fill="currentColor"
-              d="M12,13L8,9H11V5H13V9H16L12,13Z"
-            />
+            <path fill="currentColor" d="M12,13L8,9H11V5H13V9H16L12,13Z" />
           </svg>
           导出脚本
         </button>
-        <button
-          class="btn-primary"
-          @click="createNewScript"
-        >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            viewBox="0 0 24 24"
-            width="16"
-            height="16"
-          >
-            <path
-              fill="currentColor"
-              d="M19,13H13V19H11V13H5V11H11V5H13V11H19V13Z"
-            />
+        <button class="btn-primary" @click="createNewScript">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16">
+            <path fill="currentColor" d="M19,13H13V19H11V13H5V11H11V5H13V11H19V13Z" />
           </svg>
           新建脚本
         </button>
@@ -70,15 +37,11 @@
         accept=".json"
         style="display: none"
         @change="handleFileImport"
-      >
+      />
     </div>
 
     <div class="script-categories">
-      <div
-        class="tag-bubble"
-        :class="{ active: selectedTags.length === 0 }"
-        @click="clearTags"
-      >
+      <div class="tag-bubble" :class="{ active: selectedTags.length === 0 }" @click="clearTags">
         <span>全部</span>
       </div>
       <div
@@ -94,22 +57,9 @@
 
     <div class="scripts-panel">
       <div class="search-bar">
-        <input
-          v-model="searchQuery"
-          type="text"
-          placeholder="搜索脚本..."
-          class="search-input"
-        >
-        <button
-          class="btn-filter"
-          @click="showFilterOptions = !showFilterOptions"
-        >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            viewBox="0 0 24 24"
-            width="18"
-            height="18"
-          >
+        <input v-model="searchQuery" type="text" placeholder="搜索脚本..." class="search-input" />
+        <button class="btn-filter" @click="showFilterOptions = !showFilterOptions">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="18" height="18">
             <path
               fill="currentColor"
               d="M14,12V19.88C14.04,20.18 13.94,20.5 13.71,20.71C13.32,21.1 12.69,21.1 12.3,20.71L10.29,18.7C10.06,18.47 9.96,18.16 10,17.87V12H9.97L4.21,4.62C3.87,4.19 3.95,3.56 4.38,3.22C4.57,3.08 4.78,3 5,3V3H19V3C19.22,3 19.43,3.08 19.62,3.22C20.05,3.56 20.13,4.19 19.79,4.62L14.03,12H14Z"
@@ -117,91 +67,44 @@
           </svg>
           筛选
         </button>
-        <div
-          v-if="showFilterOptions"
-          class="filter-dropdown"
-        >
+        <div v-if="showFilterOptions" class="filter-dropdown">
           <div class="filter-option">
-            <input
-              id="my-scripts"
-              v-model="filterMyScripts"
-              type="checkbox"
-            >
+            <input id="my-scripts" v-model="filterMyScripts" type="checkbox" />
             <label for="my-scripts">只显示我的脚本</label>
           </div>
           <div class="filter-option">
-            <input
-              id="recent-scripts"
-              v-model="filterRecentScripts"
-              type="checkbox"
-            >
+            <input id="recent-scripts" v-model="filterRecentScripts" type="checkbox" />
             <label for="recent-scripts">最近使用</label>
           </div>
           <div class="filter-option">
-            <input
-              id="favorite-scripts"
-              v-model="filterFavoriteScripts"
-              type="checkbox"
-            >
+            <input id="favorite-scripts" v-model="filterFavoriteScripts" type="checkbox" />
             <label for="favorite-scripts">收藏的脚本</label>
           </div>
         </div>
       </div>
 
-      <div
-        ref="tableContainer"
-        class="scripts-table-container"
-      >
-        <div
-          v-if="allFilteredScripts.length === 0"
-          class="no-scripts"
-        >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            viewBox="0 0 24 24"
-            width="48"
-            height="48"
-          >
+      <div ref="tableContainer" class="scripts-table-container">
+        <div v-if="allFilteredScripts.length === 0" class="no-scripts">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="48" height="48">
             <path
               fill="var(--color-text-placeholder)"
               d="M19,3H5C3.89,3 3,3.89 3,5V19A2,2 0 0,0 5,21H19A2,2 0 0,0 21,19V5C21,3.89 20.1,3 19,3M19,5V19H5V5H19Z"
             />
-            <path
-              fill="var(--color-text-placeholder)"
-              d="M11,7H13V9H11V7M11,11H13V17H11V11Z"
-            />
+            <path fill="var(--color-text-placeholder)" d="M11,7H13V9H11V7M11,11H13V17H11V11Z" />
           </svg>
           <p>{{ noScriptsMessage }}</p>
-          <button
-            class="btn-secondary"
-            @click="createNewScript"
-          >
-            创建第一个脚本
-          </button>
+          <button class="btn-secondary" @click="createNewScript">创建第一个脚本</button>
         </div>
 
-        <div
-          v-else
-          class="table-with-pagination"
-        >
+        <div v-else class="table-with-pagination">
           <table class="scripts-table">
             <thead>
               <tr>
-                <th class="script-name-column">
-                  名称
-                </th>
-                <th class="script-desc-column">
-                  备注
-                </th>
-                <th class="script-tags-column">
-                  标签
-                </th>
-                <th class="script-command-column">
-                  指令内容
-                </th>
-                <th class="script-actions-column">
-                  操作
-                </th>
+                <th class="script-name-column">名称</th>
+                <th class="script-desc-column">备注</th>
+                <th class="script-tags-column">标签</th>
+                <th class="script-command-column">指令内容</th>
+                <th class="script-actions-column">操作</th>
               </tr>
             </thead>
             <tbody>
@@ -212,10 +115,7 @@
               >
                 <td class="script-name">
                   <div class="name-with-favorite">
-                    <button
-                      class="btn-icon favorite-icon"
-                      @click="toggleFavorite(script)"
-                    >
+                    <button class="btn-icon favorite-icon" @click="toggleFavorite(script)">
                       <svg
                         xmlns="http://www.w3.org/2000/svg"
                         viewBox="0 0 24 24"
@@ -299,10 +199,7 @@
           </table>
 
           <!-- 分页组件 -->
-          <div
-            v-if="shouldShowPagination"
-            class="pagination-container"
-          >
+          <div v-if="shouldShowPagination" class="pagination-container">
             <div class="custom-pagination">
               <!-- 总数显示 -->
               <span class="pagination-total">共 {{ allFilteredScripts.length }} 条</span>
@@ -356,9 +253,7 @@
     >
       <!-- 添加标题分界线 -->
       <div class="script-tab">
-        <div class="tab-item active">
-          脚本配置
-        </div>
+        <div class="tab-item active">脚本配置</div>
       </div>
 
       <div class="script-form">
@@ -366,21 +261,13 @@
           <div class="form-item">
             <label>脚本名称</label>
             <div class="input-wrapper">
-              <input
-                v-model="scriptForm.name"
-                type="text"
-                placeholder="请输入脚本名称"
-              >
+              <input v-model="scriptForm.name" type="text" placeholder="请输入脚本名称" />
             </div>
           </div>
           <div class="form-item">
             <label>备注</label>
             <div class="input-wrapper">
-              <input
-                v-model="scriptForm.description"
-                type="text"
-                placeholder="请输入备注信息"
-              >
+              <input v-model="scriptForm.description" type="text" placeholder="请输入备注信息" />
             </div>
           </div>
         </div>
@@ -389,11 +276,7 @@
           <div class="form-item">
             <label>指令内容</label>
             <div class="input-wrapper">
-              <textarea
-                v-model="scriptForm.command"
-                rows="4"
-                placeholder="请输入指令内容"
-              />
+              <textarea v-model="scriptForm.command" rows="4" placeholder="请输入指令内容" />
             </div>
           </div>
         </div>
@@ -411,12 +294,7 @@
                 placeholder="请选择或输入标签"
                 class="script-tags-select"
               >
-                <el-option
-                  v-for="tag in availableTags"
-                  :key="tag"
-                  :label="tag"
-                  :value="tag"
-                />
+                <el-option v-for="tag in availableTags" :key="tag" :label="tag" :value="tag" />
               </el-select>
             </div>
           </div>
@@ -425,10 +303,7 @@
       <template #footer>
         <span class="dialog-footer">
           <el-button @click="dialogVisible = false">取消</el-button>
-          <el-button
-            type="primary"
-            @click="saveScript"
-          >保存</el-button>
+          <el-button type="primary" @click="saveScript">保存</el-button>
         </span>
       </template>
     </el-dialog>

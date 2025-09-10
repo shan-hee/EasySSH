@@ -1,33 +1,15 @@
 <template>
   <div class="sftp-path-nav">
-    <button
-      class="sftp-nav-button"
-      title="返回上级目录"
-      @click="navigateToParent"
-    >
-      <svg
-        xmlns="http://www.w3.org/2000/svg"
-        width="16"
-        height="16"
-        viewBox="0 0 24 24"
-      >
+    <button class="sftp-nav-button" title="返回上级目录" @click="navigateToParent">
+      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24">
         <path
           fill="currentColor"
           d="M20,11V13H8L13.5,18.5L12.08,19.92L4.16,12L12.08,4.08L13.5,5.5L8,11H20Z"
         />
       </svg>
     </button>
-    <div
-      class="sftp-path-input"
-      tabindex="0"
-      @click="enableInputMode"
-      @focus="enableInputMode"
-    >
-      <button
-        class="sftp-path-home-button"
-        title="返回根目录"
-        @click.stop="navigateToHome"
-      >
+    <div class="sftp-path-input" tabindex="0" @click="enableInputMode" @focus="enableInputMode">
+      <button class="sftp-path-home-button" title="返回根目录" @click.stop="navigateToHome">
         <svg
           class="sftp-path-icon"
           xmlns="http://www.w3.org/2000/svg"
@@ -35,25 +17,12 @@
           height="16"
           viewBox="0 0 24 24"
         >
-          <path
-            fill="currentColor"
-            d="M10,20V14H14V20H19V12H22L12,3L2,12H5V20H10Z"
-          />
+          <path fill="currentColor" d="M10,20V14H14V20H19V12H22L12,3L2,12H5V20H10Z" />
         </svg>
       </button>
-      <div
-        v-if="pathParts.length > 0 && !showInputMode"
-        class="sftp-path-segments"
-      >
-        <span
-          v-for="(part, index) in pathParts"
-          :key="index"
-          class="sftp-path-segment"
-        >
-          <span
-            v-if="index > 0"
-            class="sftp-path-separator"
-          >/</span>
+      <div v-if="pathParts.length > 0 && !showInputMode" class="sftp-path-segments">
+        <span v-for="(part, index) in pathParts" :key="index" class="sftp-path-segment">
+          <span v-if="index > 0" class="sftp-path-separator">/</span>
           <button
             class="sftp-path-part-button"
             :title="`导航到 /${pathParts.slice(0, index + 1).join('/')}`"
@@ -71,19 +40,10 @@
         class="sftp-path-field"
         @keyup.enter="navigateTo"
         @blur="onInputBlur"
-      >
+      />
     </div>
-    <button
-      class="sftp-nav-button"
-      title="显示/隐藏隐藏文件"
-      @click="toggleHiddenFiles"
-    >
-      <svg
-        xmlns="http://www.w3.org/2000/svg"
-        width="16"
-        height="16"
-        viewBox="0 0 24 24"
-      >
+    <button class="sftp-nav-button" title="显示/隐藏隐藏文件" @click="toggleHiddenFiles">
+      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24">
         <path
           v-if="showHiddenFiles"
           fill="currentColor"
@@ -96,17 +56,8 @@
         />
       </svg>
     </button>
-    <button
-      class="sftp-nav-button"
-      title="刷新"
-      @click="$emit('refresh')"
-    >
-      <svg
-        xmlns="http://www.w3.org/2000/svg"
-        width="16"
-        height="16"
-        viewBox="0 0 24 24"
-      >
+    <button class="sftp-nav-button" title="刷新" @click="$emit('refresh')">
+      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24">
         <path
           fill="currentColor"
           d="M17.65,6.35C16.2,4.9 14.21,4 12,4A8,8 0 0,0 4,12A8,8 0 0,0 12,20C15.73,20 18.84,17.45 19.73,14H17.65C16.83,16.33 14.61,18 12,18A6,6 0 0,1 6,12A6,6 0 0,1 12,6C13.66,6 15.14,6.69 16.22,7.78L13,11H20V4L17.65,6.35Z"

@@ -9,64 +9,37 @@
     <div class="mfa-disable-container">
       <template v-if="currentStep === 'confirm'">
         <div class="warning-icon">
-          <svg
-            viewBox="0 0 24 24"
-            width="50"
-            height="50"
-          >
+          <svg viewBox="0 0 24 24" width="50" height="50">
             <path
               fill="currentColor"
               d="M1,21h22L12,2L1,21z M13,18h-2v-2h2V18z M13,14h-2V8h2V14z"
             />
           </svg>
         </div>
-        <div class="disable-title">
-          确定要禁用两步验证吗？
-        </div>
+        <div class="disable-title">确定要禁用两步验证吗？</div>
         <div class="disable-description">
           禁用两步验证将降低您账户的安全性。禁用后，您只需要使用用户名和密码即可登录系统。
         </div>
         <div class="btn-container">
-          <button
-            class="btn btn-cancel"
-            @click="handleClose"
-          >
-            取消
-          </button>
-          <button
-            class="btn btn-danger"
-            @click="goToVerify"
-          >
-            禁用
-          </button>
+          <button class="btn btn-cancel" @click="handleClose">取消</button>
+          <button class="btn btn-danger" @click="goToVerify">禁用</button>
         </div>
       </template>
 
       <template v-else-if="currentStep === 'verify'">
         <div class="verify-icon">
-          <svg
-            viewBox="0 0 24 24"
-            width="50"
-            height="50"
-          >
+          <svg viewBox="0 0 24 24" width="50" height="50">
             <path
               fill="currentColor"
               d="M12,1L3,5v6c0,5.55 3.84,10.74 9,12 5.16,-1.26 9,-6.45 9,-12V5L12,1zM11,7h2v2h-2V7zM11,11h2v6h-2V11z"
             />
           </svg>
         </div>
-        <div class="verify-title">
-          验证身份
-        </div>
-        <div class="verify-subtitle">
-          请输入身份验证器应用中的 6 位验证码
-        </div>
+        <div class="verify-title">验证身份</div>
+        <div class="verify-subtitle">请输入身份验证器应用中的 6 位验证码</div>
         <div class="verify-input-container">
           <div class="code-inputs">
-            <template
-              v-for="(digit, index) in 6"
-              :key="index"
-            >
+            <template v-for="(digit, index) in 6" :key="index">
               <input
                 ref="codeInputs"
                 v-model="codeDigits[index]"
@@ -78,27 +51,16 @@
                 @keydown="handleKeyDown($event, index)"
                 @paste="handlePaste"
                 @keyup.enter="handleEnterKey"
-              >
-              <span
-                v-if="index < 5"
-                class="code-separator"
               />
+              <span v-if="index < 5" class="code-separator" />
             </template>
           </div>
         </div>
-        <div
-          v-if="verifyError"
-          class="verify-error"
-        >
+        <div v-if="verifyError" class="verify-error">
           {{ verifyError }}
         </div>
         <div class="btn-container">
-          <button
-            class="btn btn-back"
-            @click="currentStep = 'confirm'"
-          >
-            返回
-          </button>
+          <button class="btn btn-back" @click="currentStep = 'confirm'">返回</button>
           <button
             class="btn btn-disable"
             :disabled="verificationCode.length !== 6 || isVerifying"

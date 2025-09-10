@@ -1,8 +1,5 @@
 <template>
-  <div
-    class="ai-combined-panel"
-    :class="{ 'ai-panel-mobile': isMobile }"
-  >
+  <div class="ai-combined-panel" :class="{ 'ai-panel-mobile': isMobile }">
     <!-- AI输入栏 - 始终显示 -->
     <div class="ai-input-section">
       <!-- 输入框区域 -->
@@ -63,11 +60,7 @@
             :title="isPanelExpanded ? '收起AI面板' : '展开AI面板'"
             @click="togglePanel"
           >
-            <svg
-              viewBox="0 0 24 24"
-              width="14"
-              height="14"
-            >
+            <svg viewBox="0 0 24 24" width="14" height="14">
               <path
                 fill="currentColor"
                 :d="
@@ -94,30 +87,11 @@
               height="18"
               :class="{ 'send-icon-disabled': !canSend }"
             >
-              <path
-                fill="currentColor"
-                d="M2,21L23,12L2,3V10L17,12L2,14V21Z"
-              />
+              <path fill="currentColor" d="M2,21L23,12L2,3V10L17,12L2,14V21Z" />
             </svg>
-            <svg
-              v-else
-              class="send-icon loading-icon"
-              viewBox="0 0 24 24"
-              width="18"
-              height="18"
-            >
-              <circle
-                cx="12"
-                cy="12"
-                r="2"
-                fill="currentColor"
-              >
-                <animate
-                  attributeName="r"
-                  values="2;4;2"
-                  dur="1s"
-                  repeatCount="indefinite"
-                />
+            <svg v-else class="send-icon loading-icon" viewBox="0 0 24 24" width="18" height="18">
+              <circle cx="12" cy="12" r="2" fill="currentColor">
+                <animate attributeName="r" values="2;4;2" dur="1s" repeatCount="indefinite" />
                 <animate
                   attributeName="opacity"
                   values="1;0.3;1"
@@ -155,12 +129,7 @@
       <!-- 面板头部 -->
       <div class="ai-panel-header">
         <div class="ai-panel-title">
-          <svg
-            class="ai-icon"
-            viewBox="0 0 24 24"
-            width="16"
-            height="16"
-          >
+          <svg class="ai-icon" viewBox="0 0 24 24" width="16" height="16">
             <path
               fill="currentColor"
               d="M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2M12,4A8,8 0 0,1 20,12A8,8 0 0,1 12,20A8,8 0 0,1 4,12A8,8 0 0,1 12,4M11,6V9H8V11H11V14H13V11H16V9H13V6H11Z"
@@ -177,11 +146,7 @@
             :disabled="messages.length === 0"
             @click="clearHistory"
           >
-            <svg
-              viewBox="0 0 24 24"
-              width="14"
-              height="14"
-            >
+            <svg viewBox="0 0 24 24" width="14" height="14">
               <path
                 fill="currentColor"
                 d="M19,4H15.5L14.5,3H9.5L8.5,4H5V6H19M6,19A2,2 0 0,0 8,21H16A2,2 0 0,0 18,19V7H6V19Z"
@@ -190,16 +155,8 @@
           </button>
 
           <!-- 收起按钮 -->
-          <button
-            class="ai-control-btn"
-            title="收起面板"
-            @click="togglePanel"
-          >
-            <svg
-              viewBox="0 0 24 24"
-              width="14"
-              height="14"
-            >
+          <button class="ai-control-btn" title="收起面板" @click="togglePanel">
+            <svg viewBox="0 0 24 24" width="14" height="14">
               <path
                 fill="currentColor"
                 d="M7.41,8.58L12,13.17L16.59,8.58L18,10L12,16L6,10L7.41,8.58Z"
@@ -210,14 +167,8 @@
       </div>
 
       <!-- 消息列表容器 -->
-      <div
-        ref="contentRef"
-        class="ai-panel-content"
-      >
-        <div
-          ref="messagesRef"
-          class="ai-messages-container"
-        >
+      <div ref="contentRef" class="ai-panel-content">
+        <div ref="messagesRef" class="ai-messages-container">
           <!-- 消息列表 -->
           <div class="ai-messages-list">
             <a-i-message-item

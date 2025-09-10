@@ -1,8 +1,5 @@
 <template>
-  <label
-    class="custom-checkbox"
-    :for="checkboxId"
-  >
+  <label class="custom-checkbox" :for="checkboxId">
     <input
       :id="checkboxId"
       type="checkbox"
@@ -10,21 +7,14 @@
       :disabled="disabled"
       style="display: none"
       @change="toggleChecked"
-    >
+    />
     <span class="check">
-      <svg
-        width="18px"
-        height="18px"
-        viewBox="0 0 18 18"
-      >
+      <svg width="18px" height="18px" viewBox="0 0 18 18">
         <path d="M 1 1 L 17 1 L 17 17 L 1 17 Z" />
         <polyline points="4 9 8 13 14 5" />
       </svg>
     </span>
-    <span
-      v-if="label"
-      class="checkbox-label"
-    >{{ label }}</span>
+    <span v-if="label" class="checkbox-label">{{ label }}</span>
   </label>
 </template>
 

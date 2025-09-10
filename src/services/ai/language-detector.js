@@ -247,7 +247,9 @@ class LanguageDetector {
       return result;
     } catch (error) {
       log.error('ASCII转换失败', error);
-      return Array.from(text).map(ch => (ch.charCodeAt(0) <= 0x7f ? ch : '?')).join('');
+      return Array.from(text)
+        .map(ch => (ch.charCodeAt(0) <= 0x7f ? ch : '?'))
+        .join('');
     }
   }
 }

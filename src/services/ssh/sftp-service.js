@@ -1489,74 +1489,74 @@ class SFTPService {
 
       // 根据消息类型处理
       switch (messageType) {
-      case BINARY_MSG_TYPE.SUCCESS:
-      case BINARY_MSG_TYPE.SFTP_SUCCESS:
-        // 只有带有实际文件数据的消息才当作下载成功
-        // 进度消息没有 payloadData，所以会被过滤掉
-        if (payloadData && payloadData.byteLength > 0) {
-          this._handleBinarySuccess(headerData, payloadData);
-        } else if (headerData.message || headerData.responseType) {
-          // 如果没有文件数据但有成功消息，也当作成功处理（如文件创建成功）
-          this._handleBinarySuccess(headerData, payloadData);
-        }
-        break;
+        case BINARY_MSG_TYPE.SUCCESS:
+        case BINARY_MSG_TYPE.SFTP_SUCCESS:
+          // 只有带有实际文件数据的消息才当作下载成功
+          // 进度消息没有 payloadData，所以会被过滤掉
+          if (payloadData && payloadData.byteLength > 0) {
+            this._handleBinarySuccess(headerData, payloadData);
+          } else if (headerData.message || headerData.responseType) {
+            // 如果没有文件数据但有成功消息，也当作成功处理（如文件创建成功）
+            this._handleBinarySuccess(headerData, payloadData);
+          }
+          break;
 
-      case BINARY_MSG_TYPE.SFTP_ERROR:
-        this._handleBinaryError(headerData);
-        break;
+        case BINARY_MSG_TYPE.SFTP_ERROR:
+          this._handleBinaryError(headerData);
+          break;
 
-      case BINARY_MSG_TYPE.SFTP_PROGRESS:
-        this._handleBinaryProgress(headerData);
-        // 节流记录关键进度（每1秒或提升>=10% 或达到100%）
-        try {
-          const { operationId, progress, bytesTransferred, totalBytes } = headerData;
-          const now = Date.now();
-          const state = this._progressLogState.get(operationId) || {
-            lastProgress: -1,
-            lastTs: 0
-          };
-          const progressedEnough =
+        case BINARY_MSG_TYPE.SFTP_PROGRESS:
+          this._handleBinaryProgress(headerData);
+          // 节流记录关键进度（每1秒或提升>=10% 或达到100%）
+          try {
+            const { operationId, progress, bytesTransferred, totalBytes } = headerData;
+            const now = Date.now();
+            const state = this._progressLogState.get(operationId) || {
+              lastProgress: -1,
+              lastTs: 0
+            };
+            const progressedEnough =
               state.lastProgress < 0 ||
               (typeof progress === 'number' && progress >= 100) ||
               (typeof progress === 'number' &&
                 state.lastProgress >= 0 &&
                 progress - state.lastProgress >= 10);
-          const timeEnough = now - state.lastTs >= 1000;
-          if (progressedEnough || timeEnough) {
-            // 友好格式化字节
-            const fmt = n => {
-              if (typeof n !== 'number' || isNaN(n)) return undefined;
-              if (n >= 1024 * 1024 * 1024) return `${(n / 1024 / 1024 / 1024).toFixed(2)}GB`;
-              if (n >= 1024 * 1024) return `${(n / 1024 / 1024).toFixed(2)}MB`;
-              if (n >= 1024) return `${(n / 1024).toFixed(0)}KB`;
-              return `${n}B`;
-            };
-            const detail = {
-              progress,
-              transferred: fmt(bytesTransferred),
-              total: fmt(totalBytes)
-            };
-            log.info('SFTP下载进度', detail);
-            this._progressLogState.set(operationId, {
-              lastProgress: typeof progress === 'number' ? progress : state.lastProgress,
-              lastTs: now
-            });
+            const timeEnough = now - state.lastTs >= 1000;
+            if (progressedEnough || timeEnough) {
+              // 友好格式化字节
+              const fmt = n => {
+                if (typeof n !== 'number' || isNaN(n)) return undefined;
+                if (n >= 1024 * 1024 * 1024) return `${(n / 1024 / 1024 / 1024).toFixed(2)}GB`;
+                if (n >= 1024 * 1024) return `${(n / 1024 / 1024).toFixed(2)}MB`;
+                if (n >= 1024) return `${(n / 1024).toFixed(0)}KB`;
+                return `${n}B`;
+              };
+              const detail = {
+                progress,
+                transferred: fmt(bytesTransferred),
+                total: fmt(totalBytes)
+              };
+              log.info('SFTP下载进度', detail);
+              this._progressLogState.set(operationId, {
+                lastProgress: typeof progress === 'number' ? progress : state.lastProgress,
+                lastTs: now
+              });
+            }
+          } catch (e) {
+            // 忽略进度日志错误
           }
-        } catch (e) {
-          // 忽略进度日志错误
-        }
-        break;
+          break;
 
-      case BINARY_MSG_TYPE.SFTP_FILE_DATA:
-        this._handleBinaryFileData(headerData, payloadData);
-        break;
+        case BINARY_MSG_TYPE.SFTP_FILE_DATA:
+          this._handleBinaryFileData(headerData, payloadData);
+          break;
 
-      case BINARY_MSG_TYPE.SFTP_FOLDER_DATA:
-        this._handleBinaryFolderData(headerData, payloadData);
-        break;
+        case BINARY_MSG_TYPE.SFTP_FOLDER_DATA:
+          this._handleBinaryFolderData(headerData, payloadData);
+          break;
 
-      default:
-        log.warn(`未知的二进制SFTP消息类型: ${messageType}`);
+        default:
+          log.warn(`未知的二进制SFTP消息类型: ${messageType}`);
       }
     } catch (error) {
       log.error('处理二进制SFTP消息失败:', error);

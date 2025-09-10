@@ -14,11 +14,8 @@
         @focus="$emit('focus', $event)"
         @blur="$emit('blur', $event)"
         @click="$emit('click', $event)"
-      >
-      <div
-        v-if="$slots.suffix"
-        class="input-suffix"
-      >
+      />
+      <div v-if="$slots.suffix" class="input-suffix">
         <slot name="suffix" />
       </div>
     </div>

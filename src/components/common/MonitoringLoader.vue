@@ -1,13 +1,7 @@
 <template>
-  <div
-    class="monitoring-loader"
-    :class="loaderClasses"
-  >
+  <div class="monitoring-loader" :class="loaderClasses">
     <!-- 连接状态指示器 -->
-    <div
-      v-if="state === 'connecting' || state === 'reconnecting'"
-      class="loader-connecting"
-    >
+    <div v-if="state === 'connecting' || state === 'reconnecting'" class="loader-connecting">
       <div class="connecting-animation">
         <div class="connecting-dots">
           <span />
@@ -21,27 +15,14 @@
     </div>
 
     <!-- 数据加载指示器 -->
-    <div
-      v-else-if="state === 'loading'"
-      class="loader-loading"
-    >
+    <div v-else-if="state === 'loading'" class="loader-loading">
       <div class="loading-animation">
         <div class="loading-spinner">
-          <monitoring-icon
-            name="loading"
-            :size="16"
-            class="spinner-icon"
-          />
+          <monitoring-icon name="loading" :size="16" class="spinner-icon" />
         </div>
-        <div
-          v-if="showProgress"
-          class="loading-progress"
-        >
+        <div v-if="showProgress" class="loading-progress">
           <div class="progress-bar">
-            <div
-              class="progress-fill"
-              :style="{ width: `${progress}%` }"
-            />
+            <div class="progress-fill" :style="{ width: `${progress}%` }" />
           </div>
           <span class="progress-text">{{ progress }}%</span>
         </div>
@@ -52,40 +33,21 @@
     </div>
 
     <!-- 错误状态指示器 -->
-    <div
-      v-else-if="state === 'error'"
-      class="loader-error"
-    >
+    <div v-else-if="state === 'error'" class="loader-error">
       <div class="error-animation">
-        <monitoring-icon
-          name="close"
-          :size="16"
-          class="error-icon"
-        />
+        <monitoring-icon name="close" :size="16" class="error-icon" />
       </div>
       <div class="loader-text error-text">
         {{ errorMessage || '加载失败' }}
       </div>
-      <button
-        v-if="showRetry"
-        class="retry-button"
-        @click="onRetry"
-      >
-        重试
-      </button>
+      <button v-if="showRetry" class="retry-button" @click="onRetry">重试</button>
     </div>
 
     <!-- 骨架屏加载器 -->
-    <div
-      v-else-if="state === 'skeleton'"
-      class="loader-skeleton"
-    >
+    <div v-else-if="state === 'skeleton'" class="loader-skeleton">
       <div class="skeleton-content">
         <!-- 图表骨架 -->
-        <div
-          v-if="skeletonType === 'chart'"
-          class="skeleton-chart"
-        >
+        <div v-if="skeletonType === 'chart'" class="skeleton-chart">
           <div class="skeleton-header">
             <div class="skeleton-title" />
             <div class="skeleton-value" />
@@ -101,10 +63,7 @@
         </div>
 
         <!-- 圆环图骨架 -->
-        <div
-          v-else-if="skeletonType === 'doughnut'"
-          class="skeleton-doughnut"
-        >
+        <div v-else-if="skeletonType === 'doughnut'" class="skeleton-doughnut">
           <div class="skeleton-header">
             <div class="skeleton-title" />
           </div>
@@ -114,15 +73,8 @@
         </div>
 
         <!-- 信息卡片骨架 -->
-        <div
-          v-else
-          class="skeleton-info"
-        >
-          <div
-            v-for="i in 3"
-            :key="i"
-            class="skeleton-row"
-          >
+        <div v-else class="skeleton-info">
+          <div v-for="i in 3" :key="i" class="skeleton-row">
             <div class="skeleton-label" />
             <div class="skeleton-value" />
           </div>
@@ -131,20 +83,11 @@
     </div>
 
     <!-- 初始状态 -->
-    <div
-      v-else-if="state === 'initial'"
-      class="loader-initial"
-    >
+    <div v-else-if="state === 'initial'" class="loader-initial">
       <div class="initial-animation">
-        <monitoring-icon
-          name="chart-line"
-          :size="16"
-          class="initial-icon"
-        />
+        <monitoring-icon name="chart-line" :size="16" class="initial-icon" />
       </div>
-      <div class="loader-text">
-        准备监控数据...
-      </div>
+      <div class="loader-text">准备监控数据...</div>
     </div>
   </div>
 </template>

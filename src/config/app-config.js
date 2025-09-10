@@ -98,7 +98,7 @@ export const userSettingsDefaults = {
 
   // 终端设置
   terminal: {
-    fontFamily: '\'JetBrains Mono\'',
+    fontFamily: "'JetBrains Mono'",
     fontSize: 16,
     lineHeight: 1.0, // 与VSCode终端保持一致，无额外行间距
     theme: 'dark', // 默认使用深色主题

@@ -22,7 +22,6 @@ function encryptCredentials(username, password) {
   );
 }
 
-
 export const useUserStore = defineStore(
   'user',
   () => {
@@ -43,7 +42,7 @@ export const useUserStore = defineStore(
     const preferences = ref({
       theme: 'system',
       language: 'zh-CN',
-      terminalFont: '\'JetBrains Mono\'',
+      terminalFont: "'JetBrains Mono'",
       terminalFontSize: 14,
       showStatusBar: true,
       autoSave: true
@@ -384,9 +383,9 @@ export const useUserStore = defineStore(
 
         const requestOptions = forceRefresh
           ? {
-            headers: { 'Cache-Control': 'no-cache' },
-            timestamp: Date.now() // 添加时间戳防止缓存
-          }
+              headers: { 'Cache-Control': 'no-cache' },
+              timestamp: Date.now() // 添加时间戳防止缓存
+            }
           : {};
 
         // 获取用户连接列表
@@ -1016,18 +1015,18 @@ export const useUserStore = defineStore(
     // 清除错误状态
     function clearError(type) {
       switch (type) {
-      case 'connections':
-        connectionsError.value = null;
-        connectionsRetryCount.value = 0;
-        break;
-      case 'history':
-        historyError.value = null;
-        historyRetryCount.value = 0;
-        break;
-      case 'favorites':
-        favoritesError.value = null;
-        favoritesRetryCount.value = 0;
-        break;
+        case 'connections':
+          connectionsError.value = null;
+          connectionsRetryCount.value = 0;
+          break;
+        case 'history':
+          historyError.value = null;
+          historyRetryCount.value = 0;
+          break;
+        case 'favorites':
+          favoritesError.value = null;
+          favoritesRetryCount.value = 0;
+          break;
       }
     }
 

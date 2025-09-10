@@ -299,61 +299,63 @@ class TerminalAutocompleteService {
     const charCode = data.charCodeAt(0);
 
     switch (charCode) {
-    case 8: // Backspace
-    case 127: { // DEL
-      const needsUpdate = this.handleBackspace();
+      case 8: // Backspace
+      case 127: {
+        // DEL
+        const needsUpdate = this.handleBackspace();
 
-      // 优化：如果不需要更新建议，直接返回，避免不必要的处理
-      if (!needsUpdate) {
-        return false;
-      }
-
-      // 获取删除后的当前单词
-      const currentWord = this.getCurrentWord();
-
-      // 如果需要更新建议且当前单词满足条件，立即更新
-      if (currentWord && currentWord.length >= this.config.minInputLength) {
-        this.debouncedUpdateHighPriority(currentWord, terminal);
-      }
-      break;
-    }
-
-    case 13: { // Enter
-      const handled = this.handleEnter(terminal);
-      if (handled) {
-        // 如果自动完成处理了回车，阻止默认行为
-        return true;
-      }
-      break;
-    }
-
-    case 9: // Tab
-      // Tab键可能用于自动完成确认
-      if (this.isActive && this.selectedIndex >= 0) {
-        const selectedSuggestion = this.getSelectedSuggestion();
-        if (selectedSuggestion) {
-          this.selectSuggestion(selectedSuggestion, terminal);
-          return true; // 阻止默认Tab处理
+        // 优化：如果不需要更新建议，直接返回，避免不必要的处理
+        if (!needsUpdate) {
+          return false;
         }
-      }
-      break;
 
-    case 27: // ESC
-      if (this.isActive) {
-        this.hideSuggestions();
-        return true; // 阻止默认ESC处理
-      }
-      break;
+        // 获取删除后的当前单词
+        const currentWord = this.getCurrentWord();
 
-    default:
-      // 处理ANSI转义序列
-      if (data.startsWith('\x1b[')) {
-        const handled = this.handleAnsiSequence(data, terminal);
+        // 如果需要更新建议且当前单词满足条件，立即更新
+        if (currentWord && currentWord.length >= this.config.minInputLength) {
+          this.debouncedUpdateHighPriority(currentWord, terminal);
+        }
+        break;
+      }
+
+      case 13: {
+        // Enter
+        const handled = this.handleEnter(terminal);
         if (handled) {
+          // 如果自动完成处理了回车，阻止默认行为
           return true;
         }
+        break;
       }
-      break;
+
+      case 9: // Tab
+        // Tab键可能用于自动完成确认
+        if (this.isActive && this.selectedIndex >= 0) {
+          const selectedSuggestion = this.getSelectedSuggestion();
+          if (selectedSuggestion) {
+            this.selectSuggestion(selectedSuggestion, terminal);
+            return true; // 阻止默认Tab处理
+          }
+        }
+        break;
+
+      case 27: // ESC
+        if (this.isActive) {
+          this.hideSuggestions();
+          return true; // 阻止默认ESC处理
+        }
+        break;
+
+      default:
+        // 处理ANSI转义序列
+        if (data.startsWith('\x1b[')) {
+          const handled = this.handleAnsiSequence(data, terminal);
+          if (handled) {
+            return true;
+          }
+        }
+        break;
     }
 
     return false; // 默认不阻止处理
@@ -814,15 +816,15 @@ class TerminalAutocompleteService {
 
     // 根据匹配类型调整分数
     switch (matchType) {
-    case 'exact':
-      matchScore *= 2.0;
-      break;
-    case 'prefix':
-      matchScore *= 1.5;
-      break;
-    case 'contains':
-      matchScore *= 1.0;
-      break;
+      case 'exact':
+        matchScore *= 2.0;
+        break;
+      case 'prefix':
+        matchScore *= 1.5;
+        break;
+      case 'contains':
+        matchScore *= 1.0;
+        break;
     }
 
     // 根据类型调整分数

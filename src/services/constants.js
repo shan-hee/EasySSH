@@ -150,7 +150,7 @@ export const LATENCY_CONFIG = {
  */
 export const TERMINAL_CONSTANTS = {
   DEFAULT_FONT_SIZE: 16, // 可被settings.getTerminalOptions().fontSize覆盖
-  DEFAULT_FONT_FAMILY: '\'JetBrains Mono\'', // 可被settings.getTerminalOptions().fontFamily覆盖
+  DEFAULT_FONT_FAMILY: "'JetBrains Mono'", // 可被settings.getTerminalOptions().fontFamily覆盖
   DEFAULT_SCROLLBACK: 3000
 };
 

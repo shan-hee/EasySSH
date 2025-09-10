@@ -53,7 +53,9 @@
                       {{ server.name }}
                     </div>
                     <div class="server-details">
-                      <span class="host">{{ server.username }}@{{ server.host }}:{{ server.port }}</span>
+                      <span class="host"
+                        >{{ server.username }}@{{ server.host }}:{{ server.port }}</span
+                      >
                       <span class="group">{{ server.group }}</span>
                     </div>
                   </div>
@@ -64,24 +66,14 @@
         </div>
       </div>
 
-      <div
-        v-if="selectedServers.length === 0"
-        class="no-selection"
-      >
-        <el-alert
-          title="请至少选择一个服务器"
-          type="warning"
-          :closable="false"
-          show-icon
-        />
+      <div v-if="selectedServers.length === 0" class="no-selection">
+        <el-alert title="请至少选择一个服务器" type="warning" :closable="false" show-icon />
       </div>
     </div>
 
     <template #footer>
       <div class="dialog-footer">
-        <el-button @click="handleCancel">
-          取消
-        </el-button>
+        <el-button @click="handleCancel"> 取消 </el-button>
         <el-button
           type="primary"
           :disabled="selectedServers.length === 0"

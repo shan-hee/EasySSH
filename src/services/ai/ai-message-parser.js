@@ -288,7 +288,11 @@ export function validateCommand(command) {
  * @returns {string} 格式化后的命令
  */
 export function formatCommandForDisplay(command, options = {}) {
-  const { highlightSyntax = false, showLineNumbers: _showLineNumbers = false, maxLength = 100 } = options;
+  const {
+    highlightSyntax = false,
+    showLineNumbers: _showLineNumbers = false,
+    maxLength = 100
+  } = options;
 
   let formatted = cleanCommand(command);
 

@@ -2,23 +2,13 @@
   <div class="home-container">
     <div class="hero-section">
       <div class="hero-content">
-        <h1 class="title">
-          EasySSH
-        </h1>
-        <p class="subtitle">
-          现代化的SSH客户端，让远程服务器管理更简单
-        </p>
+        <h1 class="title">EasySSH</h1>
+        <p class="subtitle">现代化的SSH客户端，让远程服务器管理更简单</p>
         <div class="action-buttons">
-          <button
-            class="btn btn-primary"
-            @click="getStarted"
-          >
+          <button class="btn btn-primary" @click="getStarted">
             开始使用 <span class="icon">→</span>
           </button>
-          <button
-            class="btn btn-secondary"
-            @click="learnMore"
-          >
+          <button class="btn btn-secondary" @click="learnMore">
             了解更多 <span class="icon">i</span>
           </button>
         </div>
@@ -26,16 +16,10 @@
     </div>
 
     <div class="features-section">
-      <h2 class="section-title">
-        强大功能，简单操作
-      </h2>
+      <h2 class="section-title">强大功能，简单操作</h2>
 
       <div class="feature-grid">
-        <div
-          v-for="feature in features"
-          :key="feature.title"
-          class="feature-card"
-        >
+        <div v-for="feature in features" :key="feature.title" class="feature-card">
           <div class="feature-icon">
             <span class="icon">{{ feature.icon }}</span>
           </div>

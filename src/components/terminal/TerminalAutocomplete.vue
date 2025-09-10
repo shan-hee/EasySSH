@@ -10,10 +10,7 @@
         <span class="autocomplete-title">命令建议</span>
         <span class="autocomplete-count">{{ suggestions.length }}</span>
       </div>
-      <div
-        ref="listRef"
-        class="autocomplete-list"
-      >
+      <div ref="listRef" class="autocomplete-list">
         <div
           v-for="(suggestion, index) in suggestions"
           :key="suggestion.id"
@@ -26,24 +23,15 @@
           <div class="autocomplete-item-content">
             <div class="autocomplete-item-main">
               <div class="autocomplete-item-left">
-                <span
-                  class="autocomplete-command"
-                  :title="suggestion.text"
-                >{{
+                <span class="autocomplete-command" :title="suggestion.text">{{
                   suggestion.text
                 }}</span>
-                <span
-                  class="autocomplete-description"
-                  :title="suggestion.description"
-                >{{
+                <span class="autocomplete-description" :title="suggestion.description">{{
                   suggestion.description
                 }}</span>
               </div>
               <div class="autocomplete-item-right">
-                <span
-                  class="autocomplete-type"
-                  :class="typeClasses[index]"
-                >
+                <span class="autocomplete-type" :class="typeClasses[index]">
                   {{ typeLabels[index] }}
                 </span>
               </div>
@@ -312,63 +300,63 @@ export default {
       let handled = false;
 
       switch (event.key) {
-      case 'ArrowUp':
-        event.preventDefault();
-        event.stopPropagation();
-        if (selectedIndex.value === -1) {
-          // 如果当前没有选中项，选中最后一项
-          selectedIndex.value = props.suggestions.length - 1;
-        } else if (selectedIndex.value > 0) {
-          selectedIndex.value = selectedIndex.value - 1;
-        } else {
-          // 循环到最后一项
-          selectedIndex.value = props.suggestions.length - 1;
-        }
-        handled = true;
-        break;
+        case 'ArrowUp':
+          event.preventDefault();
+          event.stopPropagation();
+          if (selectedIndex.value === -1) {
+            // 如果当前没有选中项，选中最后一项
+            selectedIndex.value = props.suggestions.length - 1;
+          } else if (selectedIndex.value > 0) {
+            selectedIndex.value = selectedIndex.value - 1;
+          } else {
+            // 循环到最后一项
+            selectedIndex.value = props.suggestions.length - 1;
+          }
+          handled = true;
+          break;
 
-      case 'ArrowDown':
-        event.preventDefault();
-        event.stopPropagation();
-        if (selectedIndex.value === -1) {
-          // 如果当前没有选中项，选中第一项
-          selectedIndex.value = 0;
-        } else if (selectedIndex.value < props.suggestions.length - 1) {
-          selectedIndex.value = selectedIndex.value + 1;
-        } else {
-          // 循环到第一项
-          selectedIndex.value = 0;
-        }
-        handled = true;
-        break;
+        case 'ArrowDown':
+          event.preventDefault();
+          event.stopPropagation();
+          if (selectedIndex.value === -1) {
+            // 如果当前没有选中项，选中第一项
+            selectedIndex.value = 0;
+          } else if (selectedIndex.value < props.suggestions.length - 1) {
+            selectedIndex.value = selectedIndex.value + 1;
+          } else {
+            // 循环到第一项
+            selectedIndex.value = 0;
+          }
+          handled = true;
+          break;
 
-      case 'Tab':
-        event.preventDefault();
-        event.stopPropagation();
-        selectSuggestion(selectedIndex.value);
-        handled = true;
-        break;
-
-      case 'Enter':
-        if (selectedIndex.value >= 0 && selectedIndex.value < props.suggestions.length) {
-          // 有选中项时，阻止默认行为并应用补全
+        case 'Tab':
           event.preventDefault();
           event.stopPropagation();
           selectSuggestion(selectedIndex.value);
           handled = true;
-        } else {
-          // 无选中项时，关闭补全框但不阻止默认行为，让终端正常处理回车
-          emit('close');
-          handled = false; // 不阻止默认行为
-        }
-        break;
+          break;
 
-      case 'Escape':
-        event.preventDefault();
-        event.stopPropagation();
-        emit('close');
-        handled = true;
-        break;
+        case 'Enter':
+          if (selectedIndex.value >= 0 && selectedIndex.value < props.suggestions.length) {
+            // 有选中项时，阻止默认行为并应用补全
+            event.preventDefault();
+            event.stopPropagation();
+            selectSuggestion(selectedIndex.value);
+            handled = true;
+          } else {
+            // 无选中项时，关闭补全框但不阻止默认行为，让终端正常处理回车
+            emit('close');
+            handled = false; // 不阻止默认行为
+          }
+          break;
+
+        case 'Escape':
+          event.preventDefault();
+          event.stopPropagation();
+          emit('close');
+          handled = true;
+          break;
       }
 
       return handled;

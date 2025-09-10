@@ -1,8 +1,5 @@
 <template>
-  <transition
-    name="panel-slide"
-    appear
-  >
+  <transition name="panel-slide" appear>
     <div
       v-show="visible"
       class="responsive-monitoring-panel"
@@ -18,10 +15,7 @@
       <!-- 监控内容区域 -->
       <div class="panel-content">
         <!-- 全局加载状态 -->
-        <div
-          v-if="showGlobalLoader"
-          class="global-loader"
-        >
+        <div v-if="showGlobalLoader" class="global-loader">
           <monitoring-loader
             :state="globalState.connectionState"
             :error-message="globalState.errorMessage"
@@ -33,10 +27,7 @@
         </div>
 
         <!-- 监控组件区域 -->
-        <div
-          v-else
-          class="monitoring-sections"
-        >
+        <div v-else class="monitoring-sections">
           <!-- 系统信息 -->
           <system-info
             :monitoring-data="monitoringData"
@@ -136,16 +127,16 @@ const getLoadingText = () => {
 
   const state = globalStateValue.connectionState;
   switch (state) {
-  case LoadingState.INITIAL:
-    return '初始化监控服务...';
-  case LoadingState.CONNECTING:
-    return '连接监控服务...';
-  case LoadingState.RECONNECTING:
-    return '重新连接中...';
-  case LoadingState.ERROR:
-    return '连接失败';
-  default:
-    return '加载监控数据...';
+    case LoadingState.INITIAL:
+      return '初始化监控服务...';
+    case LoadingState.CONNECTING:
+      return '连接监控服务...';
+    case LoadingState.RECONNECTING:
+      return '重新连接中...';
+    case LoadingState.ERROR:
+      return '连接失败';
+    default:
+      return '加载监控数据...';
   }
 };
 

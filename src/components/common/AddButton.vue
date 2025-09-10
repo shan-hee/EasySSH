@@ -1,9 +1,5 @@
 <template>
-  <el-button
-    type="primary"
-    class="add-button"
-    @click="$emit('click')"
-  >
+  <el-button type="primary" class="add-button" @click="$emit('click')">
     <el-icon><plus /></el-icon>
     <span><slot>添加</slot></span>
   </el-button>

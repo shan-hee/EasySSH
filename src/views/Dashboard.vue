@@ -1,51 +1,32 @@
 <template>
   <div class="dashboard-container">
     <div class="dashboard-header">
-      <h1 class="dashboard-title">
-        控制面板
-      </h1>
+      <h1 class="dashboard-title">控制面板</h1>
       <div class="dashboard-actions">
         <span class="last-update"> 最后更新: {{ lastUpdateTime || '未更新' }} </span>
       </div>
     </div>
-    <div
-      class="row"
-      style="display: flex; gap: 20px; margin-bottom: 20px"
-    >
-      <div
-        class="dashboard-card"
-        style="flex: 1"
-      >
+    <div class="row" style="display: flex; gap: 20px; margin-bottom: 20px">
+      <div class="dashboard-card" style="flex: 1">
         <div class="card-header dashboard-card-header">
           <span>连接状态</span>
-          <button
-            class="btn btn-text"
-            @click="handleViewAllConnections"
-          >
-            查看全部
-          </button>
+          <button class="btn btn-text" @click="handleViewAllConnections">查看全部</button>
         </div>
         <div class="card-content dashboard-table-container">
           <div class="status-item">
-            <div class="status-label">
-              活跃连接
-            </div>
+            <div class="status-label">活跃连接</div>
             <div class="status-value">
               {{ connectionStats.activeConnections }}
             </div>
           </div>
           <div class="status-item">
-            <div class="status-label">
-              总连接数
-            </div>
+            <div class="status-label">总连接数</div>
             <div class="status-value">
               {{ connectionStats.totalConnections }}
             </div>
           </div>
           <div class="status-item">
-            <div class="status-label">
-              最近活动
-            </div>
+            <div class="status-label">最近活动</div>
             <div class="status-value">
               {{ connectionStats.lastActivity }}
             </div>
@@ -53,75 +34,46 @@
         </div>
       </div>
 
-      <div
-        class="dashboard-card"
-        style="flex: 1"
-      >
+      <div class="dashboard-card" style="flex: 1">
         <div class="card-header dashboard-card-header">
           <span>快速操作</span>
         </div>
         <div class="card-content dashboard-table-container">
-          <button
-            class="btn btn-primary quick-action-btn"
-            @click="handleNewConnection"
-          >
-            <themed-icon
-              name="add-connection"
-              :size="24"
-            /> 新建连接
+          <button class="btn btn-primary quick-action-btn" @click="handleNewConnection">
+            <themed-icon name="add-connection" :size="24" /> 新建连接
           </button>
           <button
             class="btn btn-default quick-action-btn"
             :disabled="isLoading"
             @click="refreshDashboardData"
           >
-            <themed-icon
-              name="refresh"
-              :size="24"
-            />
+            <themed-icon name="refresh" :size="24" />
             <span v-if="isLoading">刷新中...</span>
             <span v-else>刷新状态</span>
           </button>
-          <button
-            class="btn btn-default quick-action-btn"
-            @click="handleSettings"
-          >
-            <themed-icon
-              name="settings"
-              :size="24"
-            /> 设置
+          <button class="btn btn-default quick-action-btn" @click="handleSettings">
+            <themed-icon name="settings" :size="24" /> 设置
           </button>
         </div>
       </div>
 
-      <div
-        class="dashboard-card"
-        style="flex: 1"
-      >
+      <div class="dashboard-card" style="flex: 1">
         <div class="card-header dashboard-card-header">
           <span>系统信息</span>
         </div>
         <div class="card-content dashboard-table-container">
           <div class="status-item">
-            <div class="status-label">
-              版本
-            </div>
+            <div class="status-label">版本</div>
             <div class="status-value">
               {{ appVersion }}
             </div>
           </div>
           <div class="status-item">
-            <div class="status-label">
-              最后更新
-            </div>
-            <div class="status-value">
-              2023-12-01
-            </div>
+            <div class="status-label">最后更新</div>
+            <div class="status-value">2023-12-01</div>
           </div>
           <div class="status-item">
-            <div class="status-label">
-              运行状态
-            </div>
+            <div class="status-label">运行状态</div>
             <div class="status-value">
               <span class="tag tag-success">正常</span>
             </div>
@@ -130,22 +82,11 @@
       </div>
     </div>
 
-    <div
-      class="row"
-      style="display: flex; gap: 20px"
-    >
-      <div
-        class="dashboard-card"
-        style="flex: 2"
-      >
+    <div class="row" style="display: flex; gap: 20px">
+      <div class="dashboard-card" style="flex: 2">
         <div class="card-header dashboard-card-header">
           <span>最近连接</span>
-          <button
-            class="btn btn-text"
-            @click="handleViewAllRecentConnections"
-          >
-            查看全部
-          </button>
+          <button class="btn btn-text" @click="handleViewAllRecentConnections">查看全部</button>
         </div>
         <div class="recent-connections dashboard-table-container">
           <!-- 加载指示器 -->
@@ -159,10 +100,7 @@
           />
 
           <!-- 连接数据表格 -->
-          <table
-            v-else
-            class="connection-table dashboard-table"
-          >
+          <table v-else class="connection-table dashboard-table">
             <thead>
               <tr>
                 <th>名称</th>
@@ -172,26 +110,13 @@
               </tr>
             </thead>
             <tbody>
-              <tr
-                v-for="(conn, index) in recentConnections"
-                :key="index"
-              >
+              <tr v-for="(conn, index) in recentConnections" :key="index">
                 <td>{{ conn.name }}</td>
                 <td>{{ conn.host }}</td>
                 <td>{{ conn.lastConnected }}</td>
                 <td>
-                  <button
-                    class="btn btn-text"
-                    @click="handleConnectToServer(conn)"
-                  >
-                    连接
-                  </button>
-                  <button
-                    class="btn btn-text"
-                    @click="handleEditConnection(conn)"
-                  >
-                    编辑
-                  </button>
+                  <button class="btn btn-text" @click="handleConnectToServer(conn)">连接</button>
+                  <button class="btn btn-text" @click="handleEditConnection(conn)">编辑</button>
                 </td>
               </tr>
             </tbody>
@@ -199,26 +124,14 @@
         </div>
       </div>
 
-      <div
-        class="dashboard-card"
-        style="flex: 1"
-      >
+      <div class="dashboard-card" style="flex: 1">
         <div class="card-header dashboard-card-header">
           <span>活动日志</span>
-          <button
-            class="btn btn-text"
-            @click="handleClearActivityLog"
-          >
-            清除
-          </button>
+          <button class="btn btn-text" @click="handleClearActivityLog">清除</button>
         </div>
         <div class="activity-log dashboard-table-container">
           <div class="timeline">
-            <div
-              v-for="(activity, index) in activityLog"
-              :key="index"
-              class="timeline-item"
-            >
+            <div v-for="(activity, index) in activityLog" :key="index" class="timeline-item">
               <div class="timeline-marker" />
               <div class="timeline-content">
                 <p>{{ activity.content }}</p>

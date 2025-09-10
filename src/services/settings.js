@@ -825,7 +825,7 @@ class SettingsService {
   _getDefaultTerminalOptions() {
     return {
       fontSize: 16,
-      fontFamily: '\'JetBrains Mono\'',
+      fontFamily: "'JetBrains Mono'",
       lineHeight: 1.2,
       theme: this._getTerminalTheme(TERMINAL_THEMES.DARK),
       cursorBlink: true,

@@ -10,38 +10,22 @@
           />
         </form-item>
         <form-item>
-          <base-input
-            v-model="form.port"
-            label="云服务器端口"
-            placeholder="22"
-          />
+          <base-input v-model="form.port" label="云服务器端口" placeholder="22" />
         </form-item>
       </template>
 
       <template #row-1>
         <form-item>
-          <base-input
-            v-model="form.username"
-            label="用户名"
-            placeholder="请输入用户名"
-          />
+          <base-input v-model="form.username" label="用户名" placeholder="请输入用户名" />
         </form-item>
         <form-item>
-          <base-input
-            v-model="form.description"
-            label="备注 (选填)"
-            placeholder="请输入备注"
-          />
+          <base-input v-model="form.description" label="备注 (选填)" placeholder="请输入备注" />
         </form-item>
       </template>
 
       <template #row-2>
         <form-item>
-          <base-radio-group
-            v-model="form.authType"
-            :options="authOptions"
-            label="验证方式"
-          />
+          <base-radio-group v-model="form.authType" :options="authOptions" label="验证方式" />
         </form-item>
       </template>
 

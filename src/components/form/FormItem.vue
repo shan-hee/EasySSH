@@ -1,8 +1,5 @@
 <template>
-  <div
-    class="form-item"
-    :style="{ padding: padding }"
-  >
+  <div class="form-item" :style="{ padding: padding }">
     <slot />
   </div>
 </template>

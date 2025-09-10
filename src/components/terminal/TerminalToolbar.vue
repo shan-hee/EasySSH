@@ -1,9 +1,6 @@
 <template>
   <div class="terminal-toolbar-container">
-    <div
-      class="terminal-tools"
-      :class="{ 'transparent-bg': hasBackground }"
-    >
+    <div class="terminal-tools" :class="{ 'transparent-bg': hasBackground }">
       <div class="terminal-tools__left">
         <div
           ref="sftpButtonRef"
@@ -11,10 +8,7 @@
           :class="{ 'icon-available': isSshConnected }"
           @click="handleSftpClick"
         >
-          <toolbar-icon
-            name="file-manager"
-            :class="{ 'icon-active': isSshConnected }"
-          />
+          <toolbar-icon name="file-manager" :class="{ 'icon-active': isSshConnected }" />
         </div>
 
         <!-- 使用teleport将tooltip内容传送到body中 -->
@@ -48,21 +42,13 @@
             @click="toggleNetworkPopup"
           >
             <div class="network-icon">
-              <toolbar-icon
-                name="network"
-                class="icon-active"
-              />
+              <toolbar-icon name="network" class="icon-active" />
             </div>
             <div class="network-stats">
-              <div
-                class="network-stats-value"
-                :class="rttStatusClass"
-              >
+              <div class="network-stats-value" :class="rttStatusClass">
                 {{ rttValue }}
               </div>
-              <div class="network-stats-label">
-                RTT
-              </div>
+              <div class="network-stats-label">RTT</div>
             </div>
           </div>
         </transition>
@@ -73,10 +59,7 @@
           :class="{ 'icon-available': monitoringServiceInstalled }"
           @click.stop="handleMonitoringClick()"
         >
-          <toolbar-icon
-            name="monitoring"
-            :class="{ 'icon-active': monitoringServiceInstalled }"
-          />
+          <toolbar-icon name="monitoring" :class="{ 'icon-active': monitoringServiceInstalled }" />
         </div>
 
         <div
@@ -85,10 +68,7 @@
           :class="{ 'icon-available': isAiServiceEnabled }"
           @click.stop="handleAiClick()"
         >
-          <toolbar-icon
-            name="ai"
-            :class="{ 'icon-active': showAiInput }"
-          />
+          <toolbar-icon name="ai" :class="{ 'icon-active': showAiInput }" />
         </div>
 
         <!-- 工具栏监控显示已移除，监控数据现在通过专用的监控面板显示 -->
@@ -161,43 +141,31 @@
           <div class="network-nodes">
             <div class="network-node">
               <div class="network-node-dot" />
-              <div class="network-node-label">
-                本地
-              </div>
+              <div class="network-node-label">本地</div>
             </div>
 
             <div class="network-path">
               <div class="network-path-line" />
-              <div
-                class="network-path-value"
-                :class="getDelayClass(clientDelay)"
-              >
+              <div class="network-path-value" :class="getDelayClass(clientDelay)">
                 ~ {{ clientDelay }} ms
               </div>
             </div>
 
             <div class="network-node">
               <div class="network-node-dot" />
-              <div class="network-node-label">
-                EasySSH
-              </div>
+              <div class="network-node-label">EasySSH</div>
             </div>
 
             <div class="network-path">
               <div class="network-path-line" />
-              <div
-                class="network-path-value"
-                :class="getDelayClass(serverDelay)"
-              >
+              <div class="network-path-value" :class="getDelayClass(serverDelay)">
                 ~ {{ serverDelay }} ms
               </div>
             </div>
 
             <div class="network-node">
               <div class="network-node-dot" />
-              <div class="network-node-label">
-                服务器
-              </div>
+              <div class="network-node-label">服务器</div>
             </div>
           </div>
         </div>

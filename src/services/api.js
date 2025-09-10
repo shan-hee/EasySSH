@@ -121,59 +121,59 @@ class ApiService {
       const data = error.response.data;
 
       switch (status) {
-      case 400:
-        message = data.message || '请求参数错误';
-        break;
-      case 401: {
-        message = data.message || '身份验证失败';
-        // 401错误统一处理，仅在确实是认证问题时触发登录过期逻辑
-        // 排除登录、注册、刷新token等不需要触发认证过期的路径
-        const noAuthRequiredPaths = [
-          '/users/login',
-          '/users/register',
-          '/users/refresh',
-          '/users/verify-mfa'
-        ];
-        const isAuthRequiredPath =
-          error.config && !noAuthRequiredPaths.some(path => error.config.url.includes(path));
+        case 400:
+          message = data.message || '请求参数错误';
+          break;
+        case 401: {
+          message = data.message || '身份验证失败';
+          // 401错误统一处理，仅在确实是认证问题时触发登录过期逻辑
+          // 排除登录、注册、刷新token等不需要触发认证过期的路径
+          const noAuthRequiredPaths = [
+            '/users/login',
+            '/users/register',
+            '/users/refresh',
+            '/users/verify-mfa'
+          ];
+          const isAuthRequiredPath =
+            error.config && !noAuthRequiredPaths.some(path => error.config.url.includes(path));
 
-        if (isAuthRequiredPath) {
-          log.warn('检测到401认证失败，开始处理身份验证失败流程', {
-            url: error.config.url,
-            isRemoteLogout:
-              data && (data.error === 'remote-logout' || data.message === 'remote-logout')
-          });
+          if (isAuthRequiredPath) {
+            log.warn('检测到401认证失败，开始处理身份验证失败流程', {
+              url: error.config.url,
+              isRemoteLogout:
+                data && (data.error === 'remote-logout' || data.message === 'remote-logout')
+            });
 
-          // 判断是否为远程注销情况
-          const isRemoteLogout =
-            (data && data.error === 'remote-logout') ||
-            (data && data.message === 'remote-logout');
+            // 判断是否为远程注销情况
+            const isRemoteLogout =
+              (data && data.error === 'remote-logout') ||
+              (data && data.message === 'remote-logout');
 
-          if (isRemoteLogout) {
-            log.warn('检测到远程注销，执行完整清理流程');
-            // 设置远程注销标志
-            window._isRemoteLogout = true;
-            // 触发远程注销事件
-            window.dispatchEvent(new CustomEvent('auth:remote-logout'));
-          } else {
-            log.warn('检测到普通认证失败，执行标准清理流程');
-            // 普通认证失败，触发完整登出处理
-            this._handleAuthError();
+            if (isRemoteLogout) {
+              log.warn('检测到远程注销，执行完整清理流程');
+              // 设置远程注销标志
+              window._isRemoteLogout = true;
+              // 触发远程注销事件
+              window.dispatchEvent(new CustomEvent('auth:remote-logout'));
+            } else {
+              log.warn('检测到普通认证失败，执行标准清理流程');
+              // 普通认证失败，触发完整登出处理
+              this._handleAuthError();
+            }
           }
+          break;
         }
-        break;
-      }
-      case 403:
-        message = '没有权限进行此操作';
-        break;
-      case 404:
-        message = '请求的资源不存在';
-        break;
-      case 500:
-        message = '服务器内部错误';
-        break;
-      default:
-        message = `请求错误(${status})`;
+        case 403:
+          message = '没有权限进行此操作';
+          break;
+        case 404:
+          message = '请求的资源不存在';
+          break;
+        case 500:
+          message = '服务器内部错误';
+          break;
+        default:
+          message = `请求错误(${status})`;
       }
 
       log.error(`API请求失败: ${status}`, { url: error.config.url, data: error.response.data });

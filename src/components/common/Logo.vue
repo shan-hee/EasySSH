@@ -4,24 +4,10 @@
     :style="logoStyle"
     @click="handleClick"
   >
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      viewBox="0 0 24 24"
-      :width="size"
-      :height="size"
-    >
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" :width="size" :height="size">
       <defs>
-        <linearGradient
-          :id="gradientId"
-          x1="0%"
-          y1="0%"
-          x2="100%"
-          y2="100%"
-        >
-          <stop
-            offset="0%"
-            stop-color="#ff0000"
-          >
+        <linearGradient :id="gradientId" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stop-color="#ff0000">
             <animate
               attributeName="stop-color"
               values="#ff0000; #ff7f00; #ffff00; #00ff00; #0000ff; #4b0082; #8b00ff; #ff0000"
@@ -29,10 +15,7 @@
               repeatCount="indefinite"
             />
           </stop>
-          <stop
-            offset="25%"
-            stop-color="#ff7f00"
-          >
+          <stop offset="25%" stop-color="#ff7f00">
             <animate
               attributeName="stop-color"
               values="#ff7f00; #ffff00; #00ff00; #0000ff; #4b0082; #8b00ff; #ff0000; #ff7f00"
@@ -40,10 +23,7 @@
               repeatCount="indefinite"
             />
           </stop>
-          <stop
-            offset="50%"
-            stop-color="#00ff00"
-          >
+          <stop offset="50%" stop-color="#00ff00">
             <animate
               attributeName="stop-color"
               values="#00ff00; #0000ff; #4b0082; #8b00ff; #ff0000; #ff7f00; #ffff00; #00ff00"
@@ -51,10 +31,7 @@
               repeatCount="indefinite"
             />
           </stop>
-          <stop
-            offset="75%"
-            stop-color="#0000ff"
-          >
+          <stop offset="75%" stop-color="#0000ff">
             <animate
               attributeName="stop-color"
               values="#0000ff; #4b0082; #8b00ff; #ff0000; #ff7f00; #ffff00; #00ff00; #0000ff"
@@ -62,10 +39,7 @@
               repeatCount="indefinite"
             />
           </stop>
-          <stop
-            offset="100%"
-            stop-color="#8b00ff"
-          >
+          <stop offset="100%" stop-color="#8b00ff">
             <animate
               attributeName="stop-color"
               values="#8b00ff; #ff0000; #ff7f00; #ffff00; #00ff00; #0000ff; #4b0082; #8b00ff"

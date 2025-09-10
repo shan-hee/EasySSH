@@ -8,35 +8,17 @@
   >
     <div class="logout-devices-container">
       <div class="warning-icon">
-        <svg
-          viewBox="0 0 24 24"
-          width="50"
-          height="50"
-          class="warning-icon-svg"
-        >
-          <path
-            fill="currentColor"
-            d="M1,21h22L12,2L1,21z M13,18h-2v-2h2V18z M13,14h-2V8h2V14z"
-          />
+        <svg viewBox="0 0 24 24" width="50" height="50" class="warning-icon-svg">
+          <path fill="currentColor" d="M1,21h22L12,2L1,21z M13,18h-2v-2h2V18z M13,14h-2V8h2V14z" />
         </svg>
       </div>
-      <div class="logout-title">
-        确定要注销所有设备吗？
-      </div>
+      <div class="logout-title">确定要注销所有设备吗？</div>
       <div class="logout-description">
         此操作将立即中断您在所有设备上的会话，包括当前设备。您需要重新登录才能继续使用系统。其他设备的会话可能在30分钟内逐步失效。
       </div>
       <div class="btn-container">
-        <button
-          class="btn btn-cancel"
-          @click="handleClose"
-        >
-          取消
-        </button>
-        <button
-          class="btn btn-danger"
-          @click="confirmLogout"
-        >
+        <button class="btn btn-cancel" @click="handleClose">取消</button>
+        <button class="btn btn-danger" @click="confirmLogout">
           {{ isLoggingOut ? '处理中...' : '确认注销' }}
         </button>
       </div>

@@ -6,10 +6,7 @@
     :class="['themed-icon', `themed-icon--${name}`]"
     xmlns="http://www.w3.org/2000/svg"
   >
-    <path
-      :d="iconPath"
-      fill="currentColor"
-    />
+    <path :d="iconPath" fill="currentColor" />
   </svg>
 </template>
 

@@ -1,27 +1,13 @@
 <template>
   <transition name="modal-fade">
-    <div
-      v-if="visible"
-      class="modal-overlay"
-      @click="handleOverlayClick"
-    >
-      <div
-        class="modal-container"
-        :class="customClass"
-        @click.stop
-      >
+    <div v-if="visible" class="modal-overlay" @click="handleOverlayClick">
+      <div class="modal-container" :class="customClass" @click.stop>
         <div class="modal-header">
           <span>{{ title }}</span>
-          <span
-            class="close-btn"
-            @click="handleClose"
-          >&times;</span>
+          <span class="close-btn" @click="handleClose">&times;</span>
         </div>
 
-        <div
-          v-if="tabs && tabs.length"
-          class="modal-tab"
-        >
+        <div v-if="tabs && tabs.length" class="modal-tab">
           <div
             v-for="tab in tabs"
             :key="tab"
@@ -37,10 +23,7 @@
           <slot />
         </div>
 
-        <div
-          v-if="!hideFooter"
-          class="modal-footer"
-        >
+        <div v-if="!hideFooter" class="modal-footer">
           <template v-if="buttons">
             <button
               v-for="button in buttons"
@@ -52,18 +35,8 @@
             </button>
           </template>
           <template v-else>
-            <button
-              class="modal-btn btn-cancel"
-              @click="handleClose"
-            >
-              取消
-            </button>
-            <button
-              class="modal-btn btn-confirm"
-              @click="handleConfirm"
-            >
-              确定
-            </button>
+            <button class="modal-btn btn-cancel" @click="handleClose">取消</button>
+            <button class="modal-btn btn-confirm" @click="handleConfirm">确定</button>
           </template>
         </div>
       </div>

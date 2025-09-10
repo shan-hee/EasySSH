@@ -5,16 +5,10 @@
     @click="startEditing"
     @keydown.stop
   >
-    <div
-      v-if="!isEditing"
-      class="shortcut-content"
-    >
+    <div v-if="!isEditing" class="shortcut-content">
       <span class="shortcut-key">{{ modelValue }}</span>
     </div>
-    <div
-      v-else
-      class="editing-indicator"
-    >
+    <div v-else class="editing-indicator">
       <span class="editing-text">{{ recordedKeys || '请按下快捷键组合...' }}</span>
     </div>
   </div>

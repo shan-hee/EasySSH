@@ -1,13 +1,6 @@
 <template>
-  <div
-    v-if="isVisible"
-    class="rocket-loader-container"
-    :class="{ 'fade-out': !isVisible }"
-  >
-    <div
-      class="rocket-body"
-      :class="animationPhase"
-    >
+  <div v-if="isVisible" class="rocket-loader-container" :class="{ 'fade-out': !isVisible }">
+    <div class="rocket-body" :class="animationPhase">
       <span>
         <span />
         <span />
@@ -87,14 +80,14 @@ export default {
     },
     getLoadingText() {
       switch (this.currentPhase) {
-      case 'connecting':
-        return 'connecting...';
-      case 'connected':
-        return 'connected!';
-      case 'completing':
-        return 'connected!';
-      default:
-        return 'loading...';
+        case 'connecting':
+          return 'connecting...';
+        case 'connected':
+          return 'connected!';
+        case 'completing':
+          return 'connected!';
+        default:
+          return 'loading...';
       }
     }
   }

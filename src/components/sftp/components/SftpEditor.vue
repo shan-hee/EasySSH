@@ -1,28 +1,13 @@
 <template>
-  <div
-    class="sftp-editor-container"
-    :class="{ fullscreen: isFullscreen }"
-  >
+  <div class="sftp-editor-container" :class="{ fullscreen: isFullscreen }">
     <div class="sftp-editor-header">
       <div class="sftp-editor-path">
         <span>{{ fileName }}</span>
-        <span
-          v-if="isDirty"
-          class="sftp-editor-status"
-        >*</span>
+        <span v-if="isDirty" class="sftp-editor-status">*</span>
       </div>
       <div class="sftp-editor-controls">
-        <button
-          class="sftp-editor-btn"
-          :disabled="!isDirty || isSaving"
-          @click="save"
-        >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            width="16"
-            height="16"
-            viewBox="0 0 24 24"
-          >
+        <button class="sftp-editor-btn" :disabled="!isDirty || isSaving" @click="save">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24">
             <path
               fill="currentColor"
               d="M15,9H5V5H15M12,19A3,3 0 0,1 9,16A3,3 0 0,1 12,13A3,3 0 0,1 15,16A3,3 0 0,1 12,19M17,3H5C3.89,3 3,3.9 3,5V19A2,2 0 0,0 5,21H19A2,2 0 0,0 21,19V7L17,3Z"
@@ -30,10 +15,7 @@
           </svg>
           保存
         </button>
-        <button
-          class="sftp-editor-btn"
-          @click="toggleFullscreen"
-        >
+        <button class="sftp-editor-btn" @click="toggleFullscreen">
           <svg
             v-if="!isFullscreen"
             xmlns="http://www.w3.org/2000/svg"
@@ -46,29 +28,15 @@
               d="M5,5H10V7H7V10H5V5M19,5V10H17V7H14V5H19M5,19V14H7V17H10V19H5M19,19H14V17H17V14H19V19Z"
             />
           </svg>
-          <svg
-            v-else
-            xmlns="http://www.w3.org/2000/svg"
-            width="16"
-            height="16"
-            viewBox="0 0 24 24"
-          >
+          <svg v-else xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24">
             <path
               fill="currentColor"
               d="M14,14H19V16H16V19H14V14M5,14H10V19H8V16H5V14M8,5H10V10H5V8H8V5M19,8V10H14V5H16V8H19Z"
             />
           </svg>
         </button>
-        <button
-          class="sftp-editor-btn close"
-          @click="close"
-        >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            width="16"
-            height="16"
-            viewBox="0 0 24 24"
-          >
+        <button class="sftp-editor-btn close" @click="close">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24">
             <path
               fill="currentColor"
               d="M19,6.41L17.59,5L12,10.59L6.41,5L5,6.41L10.59,12L5,17.59L6.41,19L12,13.41L17.59,19L19,17.59L13.41,12L19,6.41Z"
@@ -78,10 +46,7 @@
       </div>
     </div>
     <div class="sftp-editor-body">
-      <div
-        ref="editorContainer"
-        class="editor-container"
-      />
+      <div ref="editorContainer" class="editor-container" />
     </div>
     <div class="sftp-editor-footer">
       <div class="sftp-editor-status-bar">
@@ -156,33 +121,33 @@ export default defineComponent({
       const defaultTheme =
         themeName === 'dark'
           ? {
-            background: '#1e1e1e',
-            foreground: '#ffffff',
-            cursor: '#ffffff',
-            selection: '#264f78',
-            comment: 'rgba(255, 255, 255, 0.65)',
-            keyword: '#c678dd',
-            string: '#98c379',
-            function: '#61afef',
-            variable: '#e06c75',
-            number: '#d19a66',
-            operator: '#56b6c2',
-            className: '#e5c07b'
-          }
+              background: '#1e1e1e',
+              foreground: '#ffffff',
+              cursor: '#ffffff',
+              selection: '#264f78',
+              comment: 'rgba(255, 255, 255, 0.65)',
+              keyword: '#c678dd',
+              string: '#98c379',
+              function: '#61afef',
+              variable: '#e06c75',
+              number: '#d19a66',
+              operator: '#56b6c2',
+              className: '#e5c07b'
+            }
           : {
-            background: '#ffffff',
-            foreground: '#303133',
-            cursor: '#303133',
-            selection: '#e6f7ff',
-            comment: '#909399',
-            keyword: '#d73a49',
-            string: '#22863a',
-            function: '#6f42c1',
-            variable: '#e36209',
-            number: '#005cc5',
-            operator: '#d73a49',
-            className: '#6f42c1'
-          };
+              background: '#ffffff',
+              foreground: '#303133',
+              cursor: '#303133',
+              selection: '#e6f7ff',
+              comment: '#909399',
+              keyword: '#d73a49',
+              string: '#22863a',
+              function: '#6f42c1',
+              variable: '#e36209',
+              number: '#005cc5',
+              operator: '#d73a49',
+              className: '#6f42c1'
+            };
 
       return {
         background: theme.background || defaultTheme.background,
@@ -206,7 +171,7 @@ export default defineComponent({
       const termSettings = settingsService.getTerminalSettings();
       return {
         fontSize: termSettings.fontSize || 14,
-        fontFamily: termSettings.fontFamily || '\'JetBrains Mono\', \'Courier New\', monospace'
+        fontFamily: termSettings.fontFamily || "'JetBrains Mono', 'Courier New', monospace"
       };
     };
 
@@ -385,7 +350,7 @@ export default defineComponent({
 
     // 获取字体设置，确保与终端一致
     const fontFamily =
-      fontSettings.value.fontFamily || '\'JetBrains Mono\', \'Courier New\', monospace';
+      fontSettings.value.fontFamily || "'JetBrains Mono', 'Courier New', monospace";
     const fontSize = 14; //不使用 fontSettings.value.fontSize
 
     // 动态创建自定义主题

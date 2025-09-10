@@ -4,23 +4,12 @@
     :class="{ resizing: isResizing, closing: isClosing }"
     :style="{ width: width + 'px' }"
   >
-    <div
-      class="sftp-panel-resizer"
-      @mousedown="startResizing"
-    />
+    <div class="sftp-panel-resizer" @mousedown="startResizing" />
     <div class="sftp-panel">
       <div class="sftp-panel-header">
         <h3>SFTP 文件管理器</h3>
-        <button
-          class="close-button"
-          @click="close"
-        >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            viewBox="0 0 24 24"
-            width="18"
-            height="18"
-          >
+        <button class="close-button" @click="close">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="18" height="18">
             <path
               fill="currentColor"
               d="M19,6.41L17.59,5L12,10.59L6.41,5L5,6.41L10.59,12L5,17.59L6.41,19L12,13.41L17.59,19L19,17.59L13.41,12L19,6.41Z"
@@ -30,25 +19,14 @@
       </div>
       <div class="sftp-panel-content">
         <!-- 错误提示 -->
-        <div
-          v-if="hasError"
-          class="sftp-error-message"
-        >
-          <el-alert
-            :title="errorMessage"
-            type="error"
-            :closable="false"
-            show-icon
-          />
+        <div v-if="hasError" class="sftp-error-message">
+          <el-alert :title="errorMessage" type="error" :closable="false" show-icon />
         </div>
 
         <!-- 下载进度已移至全局通知区域 -->
 
         <!-- 编辑器 -->
-        <div
-          v-if="isEditing"
-          class="sftp-editor-wrapper"
-        >
+        <div v-if="isEditing" class="sftp-editor-wrapper">
           <sftp-editor
             :session-id="sessionId"
             :file-path="editingFilePath"
@@ -117,39 +95,22 @@
                   <span class="sort-indicator">{{ getSortIndicator('date') }}</span>
                 </span>
               </div>
-              <div class="sftp-file-actions">
-                操作
-              </div>
+              <div class="sftp-file-actions">操作</div>
             </div>
 
             <div class="sftp-file-list-content">
               <!-- 加载状态 -->
-              <div
-                v-if="isLoadingSftp"
-                class="sftp-loading-files"
-              >
+              <div v-if="isLoadingSftp" class="sftp-loading-files">
                 <div class="sftp-loading-spinner">
-                  <svg
-                    class="circular"
-                    viewBox="25 25 50 50"
-                  >
-                    <circle
-                      class="path"
-                      cx="50"
-                      cy="50"
-                      r="20"
-                      fill="none"
-                    />
+                  <svg class="circular" viewBox="25 25 50 50">
+                    <circle class="path" cx="50" cy="50" r="20" fill="none" />
                   </svg>
                 </div>
                 <p>正在加载文件列表...</p>
               </div>
 
               <!-- SFTP初始化错误（内联显示） -->
-              <div
-                v-else-if="hasInitError"
-                class="sftp-init-error"
-              >
+              <div v-else-if="hasInitError" class="sftp-init-error">
                 <div class="sftp-error-icon">
                   <svg
                     xmlns="http://www.w3.org/2000/svg"
@@ -169,21 +130,13 @@
                     {{ initErrorMessage }}
                   </p>
                   <div class="sftp-error-actions">
-                    <button
-                      class="sftp-retry-button"
-                      @click="initSftp"
-                    >
-                      重新连接
-                    </button>
+                    <button class="sftp-retry-button" @click="initSftp">重新连接</button>
                   </div>
                 </div>
               </div>
 
               <!-- 非加载状态的内容容器 -->
-              <div
-                v-else
-                class="sftp-content-container"
-              >
+              <div v-else class="sftp-content-container">
                 <!-- 内联编辑器（新建文件夹或文件时显示） -->
                 <sftp-inline-editor
                   v-if="isCreating"
@@ -194,18 +147,12 @@
                 />
 
                 <!-- 空文件夹提示 -->
-                <div
-                  v-if="sortedFileList.length === 0 && !isCreating"
-                  class="sftp-empty-folder"
-                >
+                <div v-if="sortedFileList.length === 0 && !isCreating" class="sftp-empty-folder">
                   <p>此文件夹为空</p>
                 </div>
 
                 <!-- 文件列表 -->
-                <div
-                  v-if="sortedFileList.length > 0"
-                  class="sftp-file-items"
-                >
+                <div v-if="sortedFileList.length > 0" class="sftp-file-items">
                   <sftp-file-item
                     v-for="(file, index) in sortedFileList"
                     :key="index"
@@ -289,8 +236,7 @@ export default defineComponent({
     const currentPath = ref('/');
 
     // 排序功能
-    const { toggleSort, sortFiles, getSortIndicator, isActiveSort } =
-      useSortable();
+    const { toggleSort, sortFiles, getSortIndicator, isActiveSort } = useSortable();
 
     // 原始文件列表（未排序）
     const rawFileList = ref([]);
@@ -1795,17 +1741,17 @@ export default defineComponent({
           let phaseText = '准备中';
           if (meta && typeof meta.phase === 'string') {
             switch (meta.phase) {
-            case 'transferring':
-              phaseText = '传输中';
-              break;
-            case 'completed':
-              phaseText = '完成';
-              break;
-            case 'preparing':
-              phaseText = '准备中';
-              break;
-            default:
-              phaseText = meta.phase; // 原样显示
+              case 'transferring':
+                phaseText = '传输中';
+                break;
+              case 'completed':
+                phaseText = '完成';
+                break;
+              case 'preparing':
+                phaseText = '准备中';
+                break;
+              default:
+                phaseText = meta.phase; // 原样显示
             }
           }
           // 优先使用服务端的字节统计计算百分比（压缩后的准确进度）

@@ -1,21 +1,11 @@
 <template>
   <div class="sftp-file-list">
     <div class="sftp-file-list-header">
-      <div class="sftp-file-list-column">
-        名称
-      </div>
-      <div class="sftp-file-list-column">
-        大小
-      </div>
-      <div class="sftp-file-list-column">
-        修改日期
-      </div>
-      <div class="sftp-file-list-column">
-        类型
-      </div>
-      <div class="sftp-file-list-column">
-        权限
-      </div>
+      <div class="sftp-file-list-column">名称</div>
+      <div class="sftp-file-list-column">大小</div>
+      <div class="sftp-file-list-column">修改日期</div>
+      <div class="sftp-file-list-column">类型</div>
+      <div class="sftp-file-list-column">权限</div>
     </div>
 
     <div class="sftp-file-list-body">
@@ -39,7 +29,7 @@
             width="48"
             height="48"
             alt="Empty folder"
-          >
+          />
           <p>此文件夹为空</p>
         </div>
       </template>
@@ -60,14 +50,8 @@
                 width="16"
                 height="16"
                 alt="Folder"
-              >
-              <img
-                v-else
-                src="@/assets/icons/icon-file.svg"
-                width="16"
-                height="16"
-                alt="File"
-              >
+              />
+              <img v-else src="@/assets/icons/icon-file.svg" width="16" height="16" alt="File" />
             </div>
             <span>{{ file.name }}</span>
           </div>

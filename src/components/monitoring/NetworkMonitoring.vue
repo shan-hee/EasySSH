@@ -2,18 +2,11 @@
   <div class="monitor-section network-monitoring-section">
     <div class="monitor-header">
       <div class="monitor-title">
-        <monitoring-icon
-          name="network"
-          :size="16"
-          class="network-icon"
-        />
+        <monitoring-icon name="network" :size="16" class="network-icon" />
         <span>网络</span>
       </div>
       <div class="monitor-info">
-        <div
-          v-if="hasData"
-          class="network-speed-info"
-        >
+        <div v-if="hasData" class="network-speed-info">
           <div class="speed-indicator upload">
             <span class="speed-icon">↑</span>
             <span class="speed-value">{{ formatNetworkSpeed(currentSpeed.upload) }}</span>
@@ -27,11 +20,7 @@
     </div>
 
     <div class="monitor-chart-container">
-      <canvas
-        v-show="componentState.hasData"
-        ref="networkChartRef"
-        class="network-chart"
-      />
+      <canvas v-show="componentState.hasData" ref="networkChartRef" class="network-chart" />
 
       <!-- 统一加载指示器 -->
       <monitoring-loader
