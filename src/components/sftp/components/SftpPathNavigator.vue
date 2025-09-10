@@ -25,7 +25,7 @@
           <span v-if="index > 0" class="sftp-path-separator">/</span>
           <button
             class="sftp-path-part-button"
-            :title="`导航到 /${pathParts.slice(0, index + 1).join('/')}`"
+            :title="getPathSegmentTitle(index)"
             @click.stop="navigateToPathPart(index)"
           >
             {{ part }}
@@ -179,6 +179,8 @@ export default defineComponent({
       emit('toggle-hidden-files', showHiddenFiles.value);
     };
 
+    const getPathSegmentTitle = index => `导航到 /${pathParts.value.slice(0, index + 1).join('/')}`;
+
     return {
       path,
       pathParts,
@@ -191,7 +193,8 @@ export default defineComponent({
       navigateToPathPart,
       toggleHiddenFiles,
       enableInputMode,
-      onInputBlur
+      onInputBlur,
+      getPathSegmentTitle
     };
   }
 });

@@ -178,19 +178,56 @@
         }
         
         /* Element Plus 消息通知样式覆盖 */
+        /* 全局消息：居中且允许库动态计算堆叠top（不强制覆盖top） */
         .el-message {
-          top: 3px !important;
-          z-index: 9999 !important;
-          background-color: var(--message-bg) !important;
-          border-color: var(--message-border) !important;
-          color: var(--message-color) !important;
-          box-shadow: var(--message-shadow) !important;
+          position: fixed;
+          left: 50%;
+          right: auto;
+          transform: translateX(-50%);
+          z-index: var(--z-message) !important; /* 使用主题层级变量 */
+          background-color: var(--message-bg);
+          border: 1px solid var(--message-border);
+          color: var(--message-color);
+          box-shadow: var(--message-shadow);
+          display: flex;
+          align-items: center;
+          flex-wrap: nowrap;
+          white-space: nowrap;
+          max-width: 80vw;
         }
+
+        /* 进入/离开过渡，慢慢消失 */
+        .el-message-fade-enter-active,
+        .el-message-fade-leave-active {
+          transition: opacity 0.35s ease, transform 0.35s ease;
+        }
+        .el-message-fade-enter-from,
+        .el-message-fade-leave-to {
+          opacity: 0;
+          transform: translateX(-50%) translateY(-6px);
+        }
+
+        /* 强制移除时的渐隐效果（用于超出最大条数时的清理） */
+        .el-message.el-message--force-leave {
+          opacity: 0 !important;
+          transform: translateX(-50%) translateY(-6px) !important;
+          transition: opacity 0.25s ease, transform 0.25s ease !important;
+        }
+
+        /* 消息内部文本颜色统一 */
+        .el-message__content { color: var(--message-color); }
+        .el-message .el-message__content {
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+        .el-message .el-message__icon { margin-right: 8px; }
         
         /* 确保自定义类也应用相同规则 */
         .custom-el-message {
-          top: 3px !important;
-          z-index: 9999 !important;
+          left: 50%;
+          transform: translateX(-50%);
+          z-index: var(--z-message) !important;
         }
 
         /* 设置消息图标颜色为灰色 */

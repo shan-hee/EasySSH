@@ -52,7 +52,7 @@
           <button
             class="sftp-edit-action-btn sftp-confirm-btn"
             :disabled="isCreating || hasValidationError || !inputName.trim()"
-            :title="`确认创建${type === 'folder' ? '文件夹' : '文件'}`"
+            :title="getCreateConfirmTitle()"
             @click.stop="confirmCreate"
           >
             <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24">
@@ -67,7 +67,7 @@
           <button
             class="sftp-edit-action-btn sftp-cancel-btn"
             :disabled="isCreating"
-            :title="`取消创建${type === 'folder' ? '文件夹' : '文件'}`"
+            :title="getCreateCancelTitle()"
             @click.stop="cancelCreate"
           >
             <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24">
@@ -216,6 +216,10 @@ export default defineComponent({
       validationErrorMessage.value = validation.message;
     };
 
+    // 标题文案
+    const getCreateConfirmTitle = () => `确认创建${props.type === 'folder' ? '文件夹' : '文件'}`;
+    const getCreateCancelTitle = () => `取消创建${props.type === 'folder' ? '文件夹' : '文件'}`;
+
     // 确认创建
     const confirmCreate = async () => {
       const name = inputName.value.trim();
@@ -269,6 +273,8 @@ export default defineComponent({
       validationErrorMessage,
       placeholder,
       validateInput,
+      getCreateConfirmTitle,
+      getCreateCancelTitle,
       confirmCreate,
       cancelCreate,
       focusInput,

@@ -47,12 +47,14 @@
   --transition-base: 0.15s ease;
   --transition-slow: 0.3s ease;
 
-  /* Z-index层级 */
+  /* Z-index层级（使用语义化变量，统一管理） */
   --z-dropdown: 1000;
   --z-sticky: 1020;
   --z-fixed: 1030;
   --z-modal: 1050;
-  --z-tooltip: 10000; /* 提高tooltip层级，确保显示在所有元素之上 */
+  --z-overlay: 9990;        /* 全屏遮罩/抽屉遮罩 */
+  --z-tooltip: 10000;       /* 工具提示 */
+  --z-message: 10010;       /* 全局消息提示，需高于遮罩/tooltip */
   /* 移除未使用的z-index变量: --z-modal-backdrop, --z-popover */
 
   /* ===== Tooltip 样式系统 ===== */
@@ -1140,6 +1142,12 @@
   border-color: var(--el-message-border);
   color: var(--el-message-color);
   box-shadow: var(--shadow-base);
+  z-index: var(--z-message);
+}
+
+/* 统一控制Element Plus遮罩层层级，使用主题变量 */
+.el-overlay {
+  z-index: var(--z-overlay) !important;
 }
 
 .el-message .el-message__icon,

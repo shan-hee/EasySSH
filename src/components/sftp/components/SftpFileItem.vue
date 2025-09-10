@@ -113,8 +113,22 @@
         </div>
       </div>
 
-      <!-- 显示模式：显示文件名 -->
-      <span v-else>{{ file.name }}</span>
+      <!-- 显示模式：显示文件名（非文本文件点击时弹出下载确认） -->
+      <el-popconfirm
+        v-else
+        v-model:visible="showDownloadConfirm"
+        :title="getDownloadTitle(file)"
+        confirm-button-text="下载"
+        cancel-button-text="取消"
+        :width="320"
+        popper-class="sftp-popconfirm"
+        placement="right"
+        @confirm="$emit('download', file)"
+      >
+        <template #reference>
+          <span @click.stop="onFileNameClick">{{ file.name }}</span>
+        </template>
+      </el-popconfirm>
     </div>
     <div class="sftp-file-size">
       {{ formatFileSize(file.size, file.isDirectory) }}
@@ -123,11 +137,33 @@
       {{ formatDate(file.modifiedTime) }}
     </div>
     <div class="sftp-file-actions">
-      <button class="sftp-action-button" title="下载" @click.stop="$emit('download', file)">
-        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24">
-          <path fill="currentColor" d="M5,20H19V18H5M19,9H15V3H9V9H5L12,16L19,9Z" />
-        </svg>
-      </button>
+      <!-- 目录下载需要确认，文件直接下载 -->
+      <template v-if="file.isDirectory">
+        <el-popconfirm
+          :title="getDownloadFolderTitle(file)"
+          confirm-button-text="开始下载"
+          cancel-button-text="取消"
+          :width="320"
+          popper-class="sftp-popconfirm"
+          placement="left"
+          @confirm="$emit('download', file)"
+        >
+          <template #reference>
+            <button class="sftp-action-button" title="下载" @click.stop>
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24">
+                <path fill="currentColor" d="M5,20H19V18H5M19,9H15V3H9V9H5L12,16L19,9Z" />
+              </svg>
+            </button>
+          </template>
+        </el-popconfirm>
+      </template>
+      <template v-else>
+        <button class="sftp-action-button" title="下载" @click.stop="$emit('download', file)">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24">
+            <path fill="currentColor" d="M5,20H19V18H5M19,9H15V3H9V9H5L12,16L19,9Z" />
+          </svg>
+        </button>
+      </template>
       <button class="sftp-action-button" title="重命名" @click.stop="startRename">
         <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24">
           <path
@@ -144,14 +180,27 @@
           />
         </svg>
       </button>
-      <button class="sftp-action-button" title="删除" @click.stop="$emit('delete', file)">
-        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24">
-          <path
-            fill="currentColor"
-            d="M19,4H15.5L14.5,3H9.5L8.5,4H5V6H19M6,19A2,2 0 0,0 8,21H16A2,2 0 0,0 18,19V7H6V19Z"
-          />
-        </svg>
-      </button>
+      <el-popconfirm
+        :title="getDeleteTitle(file)"
+        confirm-button-text="删除"
+        cancel-button-text="取消"
+        confirm-button-type="danger"
+        :width="320"
+        popper-class="sftp-popconfirm"
+        placement="left"
+        @confirm="$emit('delete', file)"
+      >
+        <template #reference>
+          <button class="sftp-action-button" title="删除" @click.stop>
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24">
+              <path
+                fill="currentColor"
+                d="M19,4H15.5L14.5,3H9.5L8.5,4H5V6H19M6,19A2,2 0 0,0 8,21H16A2,2 0 0,0 18,19V7H6V19Z"
+              />
+            </svg>
+          </button>
+        </template>
+      </el-popconfirm>
     </div>
   </div>
 </template>
@@ -259,10 +308,28 @@ export default defineComponent({
       validationErrorMessage.value = validation.message;
     };
 
-    // 处理文件项点击
+    // 处理文件项点击：目录或文本文件直接交由父组件；二进制文件触发就地下载确认
+    const showDownloadConfirm = ref(false);
     const handleItemClick = () => {
-      if (!isEditing.value) {
-        emit('item-click', props.file);
+      if (isEditing.value) return;
+      const f = props.file;
+      if (f.isDirectory) {
+        emit('item-click', f);
+        return;
+      }
+      if (isTextFile(f.name)) {
+        emit('item-click', f);
+      } else {
+        showDownloadConfirm.value = true; // 在文件名单元格右侧弹出确认
+      }
+    };
+
+    const onFileNameClick = () => {
+      const f = props.file;
+      if (f.isDirectory || isTextFile(f.name)) {
+        emit('item-click', f);
+      } else {
+        showDownloadConfirm.value = true;
       }
     };
 
@@ -319,6 +386,16 @@ export default defineComponent({
     const handleInputBlur = () => {
       // 移除自动保存逻辑，用户需要明确点击确认或取消按钮
     };
+
+    // 删除/下载确认标题（包含名称截断，避免弹窗变形）
+    const truncateName = (name, n = 28) => {
+      if (!name) return '';
+      return name.length > n ? name.slice(0, n - 1) + '…' : name;
+    };
+    const getDeleteTitle = file =>
+      file && file.isDirectory
+        ? `确定要删除文件夹 "${truncateName(file.name)}" 及其所有内容吗？`
+        : `确定要删除文件 "${truncateName(file?.name || '')}" 吗？`;
 
     // 执行重命名操作
     const performRename = async newName => {
@@ -426,9 +503,18 @@ export default defineComponent({
       return textExtensions.includes(ext);
     };
 
+    // 下载确认标题
+    const getDownloadTitle = file => `确定要下载文件 "${truncateName(file?.name || '')}" 吗？`;
+    const getDownloadFolderTitle = file => `确定要下载文件夹 "${truncateName(file?.name || '')}" 吗？`;
+
     return {
       formatFileSize,
       formatDate,
+      showDownloadConfirm,
+      onFileNameClick,
+      getDeleteTitle,
+      getDownloadTitle,
+      getDownloadFolderTitle,
       isTextFile,
       isEditing,
       editingName,
@@ -830,3 +916,8 @@ export default defineComponent({
 
 /* 所有主题特定样式已迁移到主题变量 */
 </style>
+    // 删除确认标题
+    const getDeleteTitle = file =>
+      file.isDirectory
+        ? `确定要删除文件夹 "${file.name}" 及其所有内容吗？`
+        : `确定要删除文件 "${file.name}" 吗？`;

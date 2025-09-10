@@ -590,27 +590,13 @@ export default defineComponent({
 
     // 处理文件项单击事件
     const handleItemClick = async file => {
-      // 如果是文件，则打开查看器
+      // 如果是文件
       if (!file.isDirectory) {
         if (isTextFile(file.name)) {
-          // 如果是文本文件，打开编辑器
+          // 文本文件 => 打开编辑器
           openEditor(file);
-        } else {
-          // 如果是二进制文件，提示下载
-          const confirmed = await ElMessageBox.confirm(
-            `${file.name} 可能是二进制文件，是否下载?`,
-            '文件查看',
-            {
-              confirmButtonText: '下载',
-              cancelButtonText: '取消',
-              type: 'info'
-            }
-          ).catch(() => false);
-
-          if (confirmed) {
-            downloadFile(file);
-          }
         }
+        // 二进制文件的下载确认由子项内联Popconfirm处理
         return;
       }
 
@@ -1633,29 +1619,10 @@ export default defineComponent({
     const downloadFolder = async folder => {
       resetError();
 
-      // 显示确认对话框
-      try {
-        await ElMessageBox.confirm(
-          `确定要下载文件夹 "${folder.name}" 吗？\n\n文件夹将被压缩后下载，可能需要一些时间。`,
-          '下载文件夹',
-          {
-            confirmButtonText: '开始下载',
-            cancelButtonText: '取消',
-            type: 'info',
-            distinguishCancelAndClose: true
-          }
-        );
-      } catch (action) {
-        // 用户取消下载
-        if (action === 'cancel' || action === 'close') {
-          return;
-        }
-      }
-
-      // 立即显示下载确认消息
+      // 立即显示下载确认消息（确认由行内Popconfirm完成）
       ElMessage.info(`正在打包并下载文件夹 ${folder.name}...`);
 
-      // 创建文件夹下载进度通知（移到try外部）
+      // 创建文件夹下载进度通知
       let progressNotification = null;
 
       try {
@@ -2034,81 +2001,63 @@ export default defineComponent({
       });
     };
 
-    // 删除文件
-    const deleteFile = file => {
+    // 删除文件（由子项确认后触发）
+    const deleteFile = async file => {
       resetError();
+      try {
+        // 构建完整路径
+        const fullPath =
+          currentPath.value === '/'
+            ? currentPath.value + file.name
+            : `${currentPath.value}/${file.name}`;
 
-      // 如果是文件夹，使用不同的确认信息
-      const confirmMessage = file.isDirectory
-        ? `确定要删除文件夹 ${file.name} 及其所有内容吗？此操作无法撤销。`
-        : `确定要删除 ${file.name} 吗？此操作无法撤销。`;
+        // 创建与文件列表加载一致的加载状态
+        const loadingDiv = document.createElement('div');
+        loadingDiv.className = 'sftp-loading-files';
+        loadingDiv.innerHTML = `
+          <div class="sftp-loading-spinner">
+            <svg class="circular" viewBox="25 25 50 50">
+              <circle class="path" cx="50" cy="50" r="20" fill="none"/>
+            </svg>
+          </div>
+          <p>${file.isDirectory ? '删除文件夹中...' : '删除文件中...'}</p>
+        `;
 
-      ElMessageBox.confirm(confirmMessage, '删除确认', {
-        confirmButtonText: '删除',
-        cancelButtonText: '取消',
-        type: 'warning'
-      })
-        .then(async () => {
-          try {
-            // 构建完整路径
-            const fullPath =
-              currentPath.value === '/'
-                ? currentPath.value + file.name
-                : `${currentPath.value}/${file.name}`;
+        // 将加载状态添加到文件列表区域
+        const fileListContent = document.querySelector('.sftp-file-list-content');
+        if (fileListContent) {
+          fileListContent.appendChild(loadingDiv);
+        }
 
-            // 创建与文件列表加载一致的加载状态
-            const loadingDiv = document.createElement('div');
-            loadingDiv.className = 'sftp-loading-files';
-            loadingDiv.innerHTML = `
-            <div class="sftp-loading-spinner">
-              <svg class="circular" viewBox="25 25 50 50">
-                <circle class="path" cx="50" cy="50" r="20" fill="none"/>
-              </svg>
-            </div>
-            <p>${file.isDirectory ? '删除文件夹中...' : '删除文件中...'}</p>
-          `;
+        if (file.isDirectory) {
+          // 使用通用删除方法删除文件夹
+          log.debug(`删除文件夹: ${fullPath}`);
+          await sftpService.delete(props.sessionId, fullPath, true);
+        } else {
+          // 删除单个文件
+          log.debug(`删除文件: ${fullPath}`);
+          await sftpService.delete(props.sessionId, fullPath, false);
+        }
 
-            // 将加载状态添加到文件列表区域
-            const fileListContent = document.querySelector('.sftp-file-list-content');
-            if (fileListContent) {
-              fileListContent.appendChild(loadingDiv);
-            }
+        // 移除加载状态
+        if (fileListContent && loadingDiv.parentNode === fileListContent) {
+          fileListContent.removeChild(loadingDiv);
+        }
 
-            if (file.isDirectory) {
-              // 使用通用删除方法删除文件夹
-              log.debug(`删除文件夹: ${fullPath}`);
-              await sftpService.delete(props.sessionId, fullPath, true);
-            } else {
-              // 删除单个文件
-              log.debug(`删除文件: ${fullPath}`);
-              await sftpService.delete(props.sessionId, fullPath, false);
-            }
+        ElMessage.success(`${file.isDirectory ? '文件夹' : '文件'} ${file.name} 已删除`);
 
-            // 移除加载状态
-            if (fileListContent && loadingDiv.parentNode === fileListContent) {
-              fileListContent.removeChild(loadingDiv);
-            }
+        // 刷新目录以移除已删除文件
+        refreshCurrentDirectory();
+      } catch (error) {
+        // 移除加载状态
+        const loadingDiv = document.querySelector('.sftp-file-list-content .sftp-loading-files');
+        if (loadingDiv && loadingDiv.parentNode) {
+          loadingDiv.parentNode.removeChild(loadingDiv);
+        }
 
-            ElMessage.success(`${file.isDirectory ? '文件夹' : '文件'} ${file.name} 已删除`);
-
-            // 刷新目录以移除已删除文件
-            refreshCurrentDirectory();
-          } catch (error) {
-            // 移除加载状态
-            const loadingDiv = document.querySelector(
-              '.sftp-file-list-content .sftp-loading-files'
-            );
-            if (loadingDiv && loadingDiv.parentNode) {
-              loadingDiv.parentNode.removeChild(loadingDiv);
-            }
-
-            log.error('删除失败:', error);
-            showError(`删除失败: ${error.message}`);
-          }
-        })
-        .catch(() => {
-          // 用户取消
-        });
+        log.error('删除失败:', error);
+        showError(`删除失败: ${error.message}`);
+      }
     };
 
     // 处理拖拽上传

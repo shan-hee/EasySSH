@@ -259,6 +259,23 @@
   margin-bottom: 16px;
 }
 
+/* Popconfirm: 单行省略，避免长文件名导致弹窗变形 */
+.sftp-popconfirm {
+  white-space: nowrap;
+  max-width: 360px;
+}
+.sftp-popconfirm .el-popconfirm__main,
+.sftp-popconfirm .el-popconfirm__main * {
+  white-space: nowrap;
+}
+.sftp-popconfirm .el-popconfirm__main { display: flex; align-items: center; }
+.sftp-popconfirm .el-popconfirm__main .el-popconfirm__main__title,
+.sftp-popconfirm .el-popconfirm__main .el-popconfirm__main__content {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 320px;
+}
+
 /* 进度通知样式（已移至SftpPanel.vue中的style标签） */
 /* 保留注释以便理解样式迁移 */
 

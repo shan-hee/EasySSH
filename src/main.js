@@ -113,6 +113,66 @@ const ensureElementPlusReady = async () => {
 ensureElementPlusReady().then(() => {
   // 挂载应用并初始化服务
   app.mount('#app');
+
+  // 全局消息行为：最多显示10条，超出时优雅移除最早的
+  try {
+    const MAX_MESSAGES = 10;
+    const SELECTOR = '.el-message';
+
+    const gracefulRemove = el => {
+      if (!el || !el.parentNode) return;
+      el.classList.add('el-message--force-leave');
+      // 等待过渡完成再移除
+      setTimeout(() => {
+        if (el && el.parentNode) el.parentNode.removeChild(el);
+      }, 260);
+    };
+
+    const enforceLimit = () => {
+      const nodes = Array.from(document.querySelectorAll(SELECTOR));
+      if (nodes.length <= MAX_MESSAGES) return;
+
+      // 优先保留进度类消息，先移除非进度消息
+      const isProgress = el =>
+        el.classList.contains('upload-progress-notification') ||
+        el.classList.contains('download-progress-notification');
+
+      const nonProgress = nodes.filter(n => !isProgress(n));
+      let toRemove = nodes.length - MAX_MESSAGES;
+
+      for (let i = 0; i < nonProgress.length && toRemove > 0; i++) {
+        gracefulRemove(nonProgress[i]);
+        toRemove--;
+      }
+
+      // 如仍超限，再从所有消息头部开始移除
+      if (toRemove > 0) {
+        for (let i = 0; i < nodes.length && toRemove > 0; i++) {
+          if (nodes[i].isConnected) {
+            gracefulRemove(nodes[i]);
+            toRemove--;
+          }
+        }
+      }
+    };
+
+    const observer = new MutationObserver(mutations => {
+      let touched = false;
+      for (const m of mutations) {
+        if (m.addedNodes && m.addedNodes.length) {
+          for (const n of m.addedNodes) {
+            if (n.nodeType === 1 && n.matches && n.matches(SELECTOR)) {
+              touched = true;
+            }
+          }
+        }
+      }
+      if (touched) enforceLimit();
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+  } catch (_) {
+    // 忽略消息限制设置失败，避免影响应用
+  }
 });
 
 // 导入用户状态管理，并初始化用户状态
