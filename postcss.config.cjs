@@ -1,4 +1,6 @@
-const purgecss = require('@fullhuman/postcss-purgecss');
+// @fullhuman/postcss-purgecss v7 is ESM; require() returns a namespace object.
+// Use the default export so we can call it as a function in CJS.
+const purgecss = require('@fullhuman/postcss-purgecss').default;
 
 const isProd = process.env.NODE_ENV === 'production';
 
@@ -46,4 +48,3 @@ module.exports = {
       })
   ].filter(Boolean)
 };
-
