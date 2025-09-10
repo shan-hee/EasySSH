@@ -207,7 +207,8 @@ export default defineConfig(async ({ mode }) => {
       assetsInlineLimit: 4096, // 4kb以下的资源内联为base64
       cssCodeSplit: true,
       sourcemap: !isDev ? false : 'inline',
-      minify: !isDev ? 'terser' : false,
+      // 使用 esbuild 压缩以避免某些 Terser 在 ESM 下的 TDZ 问题
+      minify: !isDev ? 'esbuild' : false,
       // 启用构建缓存
       reportCompressedSize: !isDev,
       chunkSizeWarningLimit: 1000,
@@ -215,16 +216,7 @@ export default defineConfig(async ({ mode }) => {
       commonjsOptions: {
         ignoreTryCatch: false
       },
-      terserOptions: {
-        compress: {
-          drop_console: !isDev, // 生产环境下移除console
-          drop_debugger: !isDev,
-          pure_funcs: !isDev ? ['console.log', 'console.info', 'console.debug'] : []
-        },
-        mangle: {
-          safari10: true
-        }
-      },
+      // 不再使用 terser，自然忽略 terserOptions 配置
       rollupOptions: {
         output: {
           // 精细化第三方库分包；保留应用代码的路由级拆分
