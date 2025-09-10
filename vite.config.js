@@ -222,10 +222,10 @@ export default defineConfig(async ({ mode }) => {
           // 精细化第三方库分包；保留应用代码的路由级拆分
           manualChunks: (id) => {
             if (id.includes('node_modules')) {
-              // Vue 相关
+              // Vue 相关：交由 Vite/Rollup 默认策略处理，避免手动分包造成初始化顺序问题
               if (id.includes('/vue-router')) return 'vue-router';
               if (id.includes('/pinia')) return 'pinia';
-              if (id.includes('/vue') || id.includes('@vue')) return 'vue-core';
+              // 不再手动抽取 vue/@vue 到独立 chunk
 
               // UI & 可视化
               if (id.includes('element-plus')) return 'element-plus';
