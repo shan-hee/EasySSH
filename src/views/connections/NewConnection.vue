@@ -447,24 +447,14 @@
 </template>
 
 <script>
-import { ref, computed, nextTick, onMounted } from 'vue';
+import { ref, computed, nextTick, onMounted, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { useUserStore } from '@/store/user';
 import { useLocalConnectionsStore } from '@/store/localConnections';
 import { useTabStore } from '@/store/tab';
 import { useSessionStore } from '@/store/session';
 import { ElMessage, ElMessageBox } from 'element-plus';
-import {
-  Document,
-  CaretBottom,
-  ArrowUp,
-  Edit,
-  Delete,
-  Search,
-  Monitor,
-  Connection,
-  Top
-} from '@element-plus/icons-vue';
+import { Edit, Delete, Connection } from '@element-plus/icons-vue';
 import Modal from '@/components/common/Modal.vue';
 import AddButton from '@/components/common/AddButton.vue';
 import SearchInput from '@/components/common/SearchInput.vue';
@@ -474,19 +464,13 @@ import log from '@/services/log';
 export default {
   name: 'NewConnection',
   components: {
-    Document,
-    CaretBottom,
-    ArrowUp,
     Edit,
     Delete,
-    Search,
-    Monitor,
     Modal,
     AddButton,
     SearchInput,
     Checkbox,
-    Connection,
-    Top
+    Connection
   },
   setup() {
     const userStore = useUserStore();
@@ -494,6 +478,8 @@ export default {
     const tabStore = useTabStore();
     const sessionStore = useSessionStore();
     const router = useRouter();
+    // 当前连接会话ID（在连接流程中跨作用域使用）
+    let sessionId = '';
 
     // 获取显示名称的方法
     const getDisplayName = connection => {
@@ -508,55 +494,64 @@ export default {
       return userStore.isLoggedIn ? userStore.connections : localConnectionsStore.getAllConnections;
     });
 
-    // 获取收藏连接（智能按需加载）
+    // 获取收藏连接（纯计算）
     const favoriteConnections = computed(() => {
-      const connections = userStore.isLoggedIn
+      return userStore.isLoggedIn
         ? userStore.favoriteConnections
         : localConnectionsStore.getFavoriteConnections;
-
-      // 如果用户已登录且收藏数据为空且尚未加载，触发按需加载
-      if (
-        userStore.isLoggedIn &&
-        connections.length === 0 &&
-        !userStore.favoritesLoaded &&
-        !userStore.favoritesLoading
-      ) {
-        log.debug('检测到需要收藏数据，触发按需加载');
-        // 异步触发加载，不阻塞当前计算
-        setTimeout(() => {
-          userStore.loadFavoritesOnDemand().catch(error => {
-            log.warn('按需加载收藏数据失败:', error);
-          });
-        }, 100);
-      }
-
-      return connections;
     });
 
-    // 获取历史记录（智能按需加载）
+    // 获取历史记录（纯计算）
     const historyConnections = computed(() => {
-      const connections = userStore.isLoggedIn
+      return userStore.isLoggedIn
         ? userStore.historyConnections
         : localConnectionsStore.getHistory;
-
-      // 如果用户已登录且历史记录为空且尚未加载，触发按需加载
-      if (
-        userStore.isLoggedIn &&
-        connections.length === 0 &&
-        !userStore.historyLoaded &&
-        !userStore.historyLoading
-      ) {
-        log.debug('检测到需要历史记录，触发按需加载');
-        // 异步触发加载，不阻塞当前计算
-        setTimeout(() => {
-          userStore.loadHistoryOnDemand().catch(error => {
-            log.warn('按需加载历史记录失败:', error);
-          });
-        }, 100);
-      }
-
-      return connections;
     });
+
+    // 在计算属性之外处理按需加载（避免在computed中产生副作用）
+    let favoritesLoadTimer = null;
+    watch(
+      () => ({
+        loggedIn: userStore.isLoggedIn,
+        loaded: userStore.favoritesLoaded,
+        loading: userStore.favoritesLoading,
+        length: (userStore.favoriteConnections || []).length
+      }),
+      state => {
+        if (state.loggedIn && state.length === 0 && !state.loaded && !state.loading) {
+          if (favoritesLoadTimer) clearTimeout(favoritesLoadTimer);
+          log.debug('检测到需要收藏数据，触发按需加载');
+          favoritesLoadTimer = setTimeout(() => {
+            userStore.loadFavoritesOnDemand().catch(error => {
+              log.warn('按需加载收藏数据失败:', error);
+            });
+          }, 100);
+        }
+      },
+      { immediate: true }
+    );
+
+    let historyLoadTimer = null;
+    watch(
+      () => ({
+        loggedIn: userStore.isLoggedIn,
+        loaded: userStore.historyLoaded,
+        loading: userStore.historyLoading,
+        length: (userStore.historyConnections || []).length
+      }),
+      state => {
+        if (state.loggedIn && state.length === 0 && !state.loaded && !state.loading) {
+          if (historyLoadTimer) clearTimeout(historyLoadTimer);
+          log.debug('检测到需要历史记录，触发按需加载');
+          historyLoadTimer = setTimeout(() => {
+            userStore.loadHistoryOnDemand().catch(error => {
+              log.warn('按需加载历史记录失败:', error);
+            });
+          }, 100);
+        }
+      },
+      { immediate: true }
+    );
 
     // 搜索相关
     const searchQuery = ref('');
@@ -1033,7 +1028,7 @@ export default {
         let connectionId;
 
         // 生成新的会话ID，确保每次都是新会话
-        const sessionId = Date.now().toString();
+        sessionId = Date.now().toString();
 
         // 先保存连接 - 关键修复：始终使用用户当前输入的数据，而不是已有数据
         if (isEdit.value) {
@@ -1367,7 +1362,6 @@ export default {
       removeFromFavorites,
       isFavorite,
       isPinned,
-      Search,
       dialogVisible,
       isEdit,
       connectionForm,

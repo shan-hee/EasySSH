@@ -341,7 +341,7 @@ export class ProductionFormatter {
     const result = {};
 
     for (const [key, formatType] of Object.entries(formatMap)) {
-      if (data.hasOwnProperty(key)) {
+      if (Object.hasOwn(data, key)) {
         result[key] = this.smartFormat(data[key], formatType);
       }
     }

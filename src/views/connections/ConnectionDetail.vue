@@ -240,7 +240,6 @@
 import { ref, reactive, onMounted, onUnmounted, computed } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import {
-  Back,
   Connection,
   CircleClose,
   Edit,
@@ -254,7 +253,6 @@ import {
 export default {
   name: 'ConnectionDetail',
   components: {
-    Back,
     Connection,
     CircleClose,
     Edit,
@@ -265,7 +263,7 @@ export default {
     ArrowLeft
   },
   setup() {
-    const route = useRoute();
+    const _route = useRoute();
     const router = useRouter();
     const terminalElement = ref(null);
 
@@ -410,7 +408,6 @@ export default {
 
     onMounted(() => {
       // 根据路由参数加载连接信息
-      const connectionId = route.params.id;
 
       // 这里应该有加载连接详情的代码
       // 以及初始化终端的代码

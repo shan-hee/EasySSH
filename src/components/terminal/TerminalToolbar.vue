@@ -1037,7 +1037,7 @@ export default defineComponent({
     };
 
     // 立即检查当前会话的状态（在mounted中调用）
-    const checkCurrentSessionStatus = () => {
+    const _checkCurrentSessionStatus = () => {
       const currentSessionId = props.activeSessionId;
       if (!currentSessionId) {
         // 如果没有会话ID，确保不显示网络图标
@@ -1497,8 +1497,8 @@ export default defineComponent({
 
     // 在onMounted中添加事件监听
     onMounted(() => {
-      const instanceCount = window.terminalToolbarInstances.size;
-      const allInstances = Array.from(window.terminalToolbarInstances.entries())
+      const _instanceCount = window.terminalToolbarInstances.size;
+      const _allInstances = Array.from(window.terminalToolbarInstances.entries())
         .map(([id, info]) => `${id.split('_')[1]}(${info.activeSessionId})`)
         .join(', ');
 

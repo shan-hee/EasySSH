@@ -3,7 +3,6 @@
  * 前端AI功能的核心服务类
  */
 
-import { ElMessage } from 'element-plus';
 import log from '../log';
 import AIClient from './ai-client';
 import AICache from './ai-cache';
@@ -108,7 +107,7 @@ class AIService {
    * @param {Object} options 选项
    * @returns {Promise<Object>} 对话结果
    */
-  async requestChat(context, options = {}) {
+  async requestChat(context, _options = {}) {
     if (!this.isEnabled) {
       throw new Error('AI服务未启用');
     }
@@ -165,7 +164,7 @@ class AIService {
    * @param {Object} options 选项
    * @returns {Promise<Object>} 分析结果
    */
-  async requestAgent(context, options = {}) {
+  async requestAgent(context, _options = {}) {
     if (!this.isEnabled) {
       throw new Error('AI服务未启用');
     }
@@ -223,9 +222,9 @@ class AIService {
    * @param {Object} options 选项
    * @returns {Promise<Object>} 交互结果
    */
-  async requestInteraction(context, options = {}) {
+  async requestInteraction(context, _options = {}) {
     log.debug('使用兼容方法requestInteraction，路由到Chat模式');
-    return await this.requestChat(context, options);
+    return await this.requestChat(context, _options);
   }
 
   /**
@@ -234,13 +233,13 @@ class AIService {
    * @param {Object} options 选项
    * @returns {Promise<Object>} 解释结果
    */
-  async requestExplanation(context, options = {}) {
+  async requestExplanation(context, _options = {}) {
     log.debug('使用兼容方法requestExplanation，路由到Agent模式');
     const agentContext = {
       ...context,
       operationType: 'explanation'
     };
-    return await this.requestAgent(agentContext, options);
+    return await this.requestAgent(agentContext, _options);
   }
 
   /**
@@ -249,14 +248,14 @@ class AIService {
    * @param {Object} options 选项
    * @returns {Promise<Object>} 修复建议
    */
-  async requestFix(context, options = {}) {
+  async requestFix(context, _options = {}) {
     log.debug('使用兼容方法requestFix，路由到Agent模式');
     const agentContext = {
       ...context,
       operationType: 'fix',
       errorDetected: true
     };
-    return await this.requestAgent(agentContext, options);
+    return await this.requestAgent(agentContext, _options);
   }
 
   /**
@@ -265,13 +264,13 @@ class AIService {
    * @param {Object} options 选项
    * @returns {Promise<Object>} 生成的脚本
    */
-  async requestGeneration(context, options = {}) {
+  async requestGeneration(context, _options = {}) {
     log.debug('使用兼容方法requestGeneration，路由到Agent模式');
     const agentContext = {
       ...context,
       operationType: 'generation'
     };
-    return await this.requestAgent(agentContext, options);
+    return await this.requestAgent(agentContext, _options);
   }
 
   /**
@@ -307,7 +306,7 @@ class AIService {
    * 取消所有活跃请求
    */
   cancelAllRequests() {
-    for (const [requestId, controller] of this.activeRequests.entries()) {
+    for (const [_requestId, controller] of this.activeRequests.entries()) {
       controller.abort();
     }
     this.activeRequests.clear();

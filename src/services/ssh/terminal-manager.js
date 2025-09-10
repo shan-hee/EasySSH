@@ -1,6 +1,4 @@
-import { Terminal } from '@xterm/xterm';
-import { FitAddon } from '@xterm/addon-fit';
-import { WebLinksAddon } from '@xterm/addon-web-links';
+// Terminal addons are handled in terminal service
 import { ClipboardAddon } from '@xterm/addon-clipboard';
 import log from '../log';
 import { WS_CONSTANTS } from '../constants';
@@ -55,7 +53,7 @@ class TerminalManager {
 
     // 终端服务已经处理了FitAddon和WebLinksAddon，这里获取引用
     const fitAddon = terminalInstance.addons.fit;
-    const webLinksAddon = terminalInstance.addons.webLinks;
+    // const webLinksAddon = terminalInstance.addons.webLinks; // 已由终端服务管理
 
     // 添加ClipboardAddon以支持复制粘贴
     const clipboardAddon = new ClipboardAddon();
@@ -285,7 +283,7 @@ class TerminalManager {
   _setupResizeObserver(terminal, fitAddon, sessionId, container) {
     try {
       // 创建ResizeObserver监听容器大小变化
-      const resizeObserver = new ResizeObserver(entries => {
+      const resizeObserver = new ResizeObserver(_entries => {
         // 使用防抖避免频繁调整
         this._handleTerminalResize(terminal, fitAddon, sessionId);
       });

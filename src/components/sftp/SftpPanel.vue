@@ -1302,7 +1302,7 @@ export default defineComponent({
     };
 
     // 上传文件到服务器
-    const uploadFileToServer = async (file, customRemotePath, isBatchUpload = false) => {
+    const _uploadFileToServer = async (file, customRemotePath, isBatchUpload = false) => {
       try {
         // 仅当不是批量上传的一部分时才重置传输状态
         if (!isBatchUpload) {
@@ -1733,7 +1733,7 @@ export default defineComponent({
                   <span class="sftp-progress-phase">${phaseText || '准备中'}</span>
                   <span class="sftp-progress-sep"> | </span>
                   <span class="sftp-progress-pct">进度: ${Math.floor(progress)}%</span>
-                  <span class=\"sftp-progress-speed\">(${speedText || ''})</span>
+                  <span class="sftp-progress-speed">(${speedText || ''})</span>
                 </div>
                 <div class="sftp-progress-bar">
                   <div class="sftp-progress-fill" style="width: ${progress}%;"></div>
@@ -1755,10 +1755,10 @@ export default defineComponent({
 
           if (textEl) {
             textEl.innerHTML = `
-              <span class=\"sftp-progress-phase\">${phaseText || '准备中'}</span>
-              <span class=\"sftp-progress-sep\"> | </span>
-              <span class=\"sftp-progress-pct\">进度: ${Math.floor(progress)}%</span>
-              <span class=\"sftp-progress-speed\">(${speedText || ''})</span>
+              <span class="sftp-progress-phase">${phaseText || '准备中'}</span>
+              <span class="sftp-progress-sep"> | </span>
+              <span class="sftp-progress-pct">进度: ${Math.floor(progress)}%</span>
+              <span class="sftp-progress-speed">(${speedText || ''})</span>
             `;
           }
           if (fillEl) {
@@ -2251,9 +2251,9 @@ export default defineComponent({
 
       // 用于追踪文件总数和已处理文件数
       let totalFiles = 0;
-      let processedFiles = 0;
+      let _processedFiles = 0;
       let totalBytes = 0;
-      const uploadedBytes = 0;
+      // const uploadedBytes = 0; // 未使用，保留注释以便后续统计扩展
       let currentFileBytes = 0; // 当前文件已上传字节数
 
       // 提前计算文件总数和总大小
@@ -2393,10 +2393,10 @@ export default defineComponent({
           if (entry.isFile) {
             currentFileIndex++; // 增加当前文件索引
             // 处理文件
-            const result = await processFileEntry(entry, '', (file, bytesUploaded, isPartial) => {
+            await processFileEntry(entry, '', (file, bytesUploaded, isPartial) => {
               if (!isPartial) {
                 // 文件完成时
-                processedFiles++;
+                _processedFiles++;
                 actualUploadedFiles++;
                 actualUploadedBytes += file.size; // 使用完整文件大小
                 currentFileBytes = 0; // 重置当前文件字节
@@ -2433,7 +2433,7 @@ export default defineComponent({
             await processDirectoryEntry(entry, '', (file, bytesUploaded, isPartial) => {
               if (!isPartial) {
                 // 文件完成时
-                processedFiles++;
+                _processedFiles++;
                 actualUploadedFiles++;
                 actualUploadedBytes += file.size; // 使用完整文件大小
                 currentFileIndex++; // 目录中的文件也要增加索引
@@ -2524,7 +2524,7 @@ export default defineComponent({
         return;
       }
 
-      return new Promise((resolve, reject) => {
+      return new Promise((resolve, _reject) => {
         fileEntry.file(
           async file => {
             try {
@@ -2554,7 +2554,7 @@ export default defineComponent({
 
                 // 实时更新进度 - 每个百分比都更新
                 // 为部分进度计算部分上传的字节
-                const partialBytes = (file.size * progress) / 100;
+                const _partialBytes = (file.size * progress) / 100;
 
                 // 当达到100%时回调上传完成
                 if (progress >= 100 && typeof onProgress === 'function') {
@@ -2595,7 +2595,7 @@ export default defineComponent({
 
             // 调用进度回调，即使失败也计入进度
             if (typeof onProgress === 'function') {
-              onProgress(file, 0);
+              onProgress(fileEntry, 0);
             }
 
             resolve(); // 即使失败也继续下一个
@@ -2638,7 +2638,7 @@ export default defineComponent({
 
         // 使用递归读取所有的文件和子目录
         const readEntries = async () => {
-          return new Promise((resolve, reject) => {
+          return new Promise((resolve, _reject) => {
             dirReader.readEntries(
               async entries => {
                 try {
@@ -2901,7 +2901,7 @@ export default defineComponent({
         log.debug(`初始化SFTP会话: ${props.sessionId}`);
 
         // 创建SFTP会话
-        const result = await sftpService.createSftpSession(props.sessionId);
+        await sftpService.createSftpSession(props.sessionId);
 
         // 获取初始路径
         let initialPath = '/root';

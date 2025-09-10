@@ -180,7 +180,7 @@ export function extractCommands(content) {
       }
 
       // 跳过明显的输出行（以$、>、%等开头的提示符）
-      if (/^[\$>%#]\s/.test(trimmedLine)) {
+      if (/^[$>%#]\s/.test(trimmedLine)) {
         continue;
       }
 
@@ -206,7 +206,7 @@ export function cleanCommand(command) {
   let cleaned = command.trim();
 
   // 移除常见的提示符
-  cleaned = cleaned.replace(/^[\$>%#]\s*/, '');
+  cleaned = cleaned.replace(/^[$>%#]\s*/, '');
 
   // 移除行尾的注释
   cleaned = cleaned.replace(/\s*#.*$/, '');
@@ -261,7 +261,7 @@ export function validateCommand(command) {
 
   // 检查是否包含潜在危险的模式
   const dangerousPatterns = [
-    /rm\s+-rf\s+[\/~]/, // rm -rf / 或 rm -rf ~
+    /rm\s+-rf\s+[/~]/, // rm -rf / 或 rm -rf ~
     /dd\s+if=\/dev\/zero/, // dd if=/dev/zero
     />\s*\/dev\/sd[a-z]/, // 写入磁盘设备
     /curl.*\|\s*sh/, // curl | sh
@@ -288,7 +288,7 @@ export function validateCommand(command) {
  * @returns {string} 格式化后的命令
  */
 export function formatCommandForDisplay(command, options = {}) {
-  const { highlightSyntax = false, showLineNumbers = false, maxLength = 100 } = options;
+  const { highlightSyntax = false, showLineNumbers: _showLineNumbers = false, maxLength = 100 } = options;
 
   let formatted = cleanCommand(command);
 

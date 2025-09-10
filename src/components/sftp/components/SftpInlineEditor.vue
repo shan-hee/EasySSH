@@ -166,7 +166,7 @@ export default defineComponent({
     });
 
     // 文件名验证规则
-    const fileNamePattern = /^[^\\/:\*\?"<>\|]+$/;
+    const fileNamePattern = /^[^\\/:*?"<>|]+$/;
     const maxFileNameLength = 255;
 
     // 验证文件名

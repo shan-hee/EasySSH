@@ -698,7 +698,7 @@ export function getDiskChartConfig() {
           xAlign: 'center',
           yAlign: 'top', // 显示在图表上方
           caretPadding: 10,
-          filter (tooltipItem) {
+          filter (_tooltipItem) {
             // 只显示当前鼠标悬浮的数据集，避免显示多个tooltip项
             return true;
           },
@@ -721,7 +721,7 @@ export function getDiskChartConfig() {
 
               return null;
             },
-            afterBody (context) {
+            afterBody (_context) {
               // 这里会在组件中动态更新，显示实际的空间大小
               // 返回空数组，因为容量信息会在组件中通过动态更新tooltip来显示
               return [];

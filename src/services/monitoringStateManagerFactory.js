@@ -76,7 +76,7 @@ class MonitoringStateManagerFactory {
 
     // 如果提供了hostId，设置终端和主机信息
     if (hostId) {
-      instance.setTerminal(terminalId, hostId);
+      instance.bindTerminal(terminalId, hostId);
     }
 
     // 存储实例和相关信息

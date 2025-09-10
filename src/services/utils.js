@@ -2,7 +2,6 @@
  * 工具函数服务模块，提供各种通用工具方法
  */
 import { ElMessage } from 'element-plus';
-import CryptoJS from 'crypto-js';
 
 /**
  * 格式化日期时间

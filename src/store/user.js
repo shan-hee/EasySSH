@@ -1,7 +1,6 @@
 import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
 import { ElMessage } from 'element-plus';
-import router from '../router';
 import apiService from '../services/api';
 import log from '../services/log';
 import scriptLibraryService from '../services/scriptLibrary';
@@ -23,23 +22,6 @@ function encryptCredentials(username, password) {
   );
 }
 
-// 解密凭据函数
-function decryptCredentials() {
-  try {
-    const encrypted = storageService.getItem(CREDENTIALS_KEY);
-    if (!encrypted) return null;
-
-    const decoded = JSON.parse(atob(encrypted));
-    return {
-      username: decoded.u,
-      password: decoded.p,
-      timestamp: decoded.t
-    };
-  } catch (error) {
-    log.error('解密凭据失败', error);
-    return null;
-  }
-}
 
 export const useUserStore = defineStore(
   'user',

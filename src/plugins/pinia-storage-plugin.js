@@ -74,7 +74,7 @@ function restoreState(store, config) {
       // 如果指定了paths，只恢复指定的路径
       if (config.paths && Array.isArray(config.paths)) {
         config.paths.forEach(path => {
-          if (data.hasOwnProperty(path)) {
+          if (Object.hasOwn(data, path)) {
             store.$patch({ [path]: data[path] });
           }
         });
@@ -107,7 +107,7 @@ function persistState(store, state, config) {
     if (config.paths && Array.isArray(config.paths)) {
       dataToSave = {};
       config.paths.forEach(path => {
-        if (state.hasOwnProperty(path)) {
+        if (Object.hasOwn(state, path)) {
           dataToSave[path] = state[path];
         }
       });

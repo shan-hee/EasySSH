@@ -5,7 +5,6 @@
 import { reactive, watch } from 'vue';
 import { userSettingsDefaults } from '../config/app-config.js';
 import storageUtils from '../utils/storage.js';
-import storageAdapter from './storage-adapter';
 import log from './log';
 
 const SETTINGS_STORAGE_KEY = 'user_settings';
@@ -218,7 +217,7 @@ class SettingsService {
    */
   _mergeSettings(target, source) {
     for (const key in source) {
-      if (source.hasOwnProperty(key)) {
+      if (Object.hasOwn(source, key)) {
         if (target[key] && typeof target[key] === 'object' && typeof source[key] === 'object') {
           this._mergeSettings(target[key], source[key]);
         } else {

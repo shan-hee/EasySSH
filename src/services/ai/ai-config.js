@@ -286,7 +286,7 @@ class AIConfig {
     const result = { ...target };
 
     for (const key in source) {
-      if (source.hasOwnProperty(key)) {
+      if (Object.hasOwn(source, key)) {
         if (source[key] && typeof source[key] === 'object' && !Array.isArray(source[key])) {
           result[key] = this.mergeConfig(result[key] || {}, source[key]);
         } else {

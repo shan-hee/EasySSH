@@ -316,9 +316,9 @@ class ClipboardManager {
    * @param {Object} options - 选项
    * @returns {Promise<boolean>} - 是否复制成功
    */
-  async copyText(text, options = {}) {
+  async copyText(text, _options = {}) {
     const result = await this.copyToClipboard(text);
-    if (result && !options.silent) {
+    if (result && !_options.silent) {
       // 可以在这里添加复制成功的提示
     }
     return result;
@@ -606,7 +606,7 @@ class EnhancedClipboardManager extends ClipboardManager {
   /**
    * 兼容terminal.js的复制方法
    */
-  async copyText(text, options = {}) {
+  async copyText(text, _options = {}) {
     try {
       return await this.copyToClipboard(text);
     } catch (error) {

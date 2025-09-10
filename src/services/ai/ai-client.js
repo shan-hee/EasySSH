@@ -232,7 +232,7 @@ class AIClient {
     log.info('AI WebSocket连接已关闭', { code: event.code, reason: event.reason });
 
     // 清理所有消息处理器
-    for (const [requestId, handler] of this.messageHandlers.entries()) {
+    for (const [_requestId, handler] of this.messageHandlers.entries()) {
       handler.onCancel?.();
     }
     this.messageHandlers.clear();

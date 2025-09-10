@@ -7,9 +7,7 @@ import {
   WS_CONSTANTS,
   MESSAGE_TYPES,
   BINARY_MESSAGE_TYPES,
-  CONNECTION_STATUS,
   LATENCY_EVENTS,
-  LATENCY_CONFIG,
   getDynamicConstants
 } from '../constants';
 
@@ -115,31 +113,31 @@ class SSHService {
   _setupBinaryHandlers() {
     try {
       // 注册新的控制消息处理器
-      this.binaryHandler.registerHandler(BINARY_MESSAGE_TYPES.PING, (headerData, payloadData) => {
+      this.binaryHandler.registerHandler(BINARY_MESSAGE_TYPES.PING, (headerData, _payloadData) => {
         this._handleBinaryPing(headerData);
       });
 
-      this.binaryHandler.registerHandler(BINARY_MESSAGE_TYPES.PONG, (headerData, payloadData) => {
+      this.binaryHandler.registerHandler(BINARY_MESSAGE_TYPES.PONG, (headerData, _payloadData) => {
         this._handleBinaryPong(headerData);
       });
 
       this.binaryHandler.registerHandler(
         BINARY_MESSAGE_TYPES.CONNECTION_REGISTERED,
-        (headerData, payloadData) => {
+        (headerData, _payloadData) => {
           this._handleBinaryConnectionRegistered(headerData);
         }
       );
 
       this.binaryHandler.registerHandler(
         BINARY_MESSAGE_TYPES.CONNECTED,
-        (headerData, payloadData) => {
+        (headerData, _payloadData) => {
           this._handleBinaryConnected(headerData);
         }
       );
 
       this.binaryHandler.registerHandler(
         BINARY_MESSAGE_TYPES.NETWORK_LATENCY,
-        (headerData, payloadData) => {
+        (headerData, _payloadData) => {
           this._handleBinaryNetworkLatency(headerData);
         }
       );
@@ -155,7 +153,7 @@ class SSHService {
       // 注册SSH数据确认处理器
       this.binaryHandler.registerHandler(
         BINARY_MESSAGE_TYPES.SSH_DATA_ACK,
-        (headerData, payloadData) => {
+        (headerData, _payloadData) => {
           this._handleSSHDataAck(headerData);
         }
       );
@@ -932,7 +930,9 @@ class SSHService {
                   })
                 );
               }
-            } catch (e) {}
+            } catch (e) {
+              /* no-op */
+            }
             break;
 
             // 处理保活响应
@@ -943,13 +943,15 @@ class SSHService {
                 const session = this.sessions.get(sessionId);
                 session.lastActivity = new Date();
               }
-            } catch (e) {}
+            } catch (e) {
+              /* no-op */
+            }
             break;
 
             // SFTP消息已迁移到二进制协议处理
 
             // 处理其他消息类型
-          default:
+          default: {
             const ignoredTypes = [
               MESSAGE_TYPES.PING,
               'keepalive',
@@ -978,6 +980,8 @@ class SSHService {
                 log.debug(`收到未知消息类型: ${message.type}`, { sessionId });
               }
             }
+            break;
+          }
           }
 
           // SFTP消息已全部迁移到二进制协议，不再需要JSON处理
@@ -1236,7 +1240,7 @@ class SSHService {
    * @param {Object} connection 连接信息
    * @returns {string} 安全的连接ID
    */
-  _generateSecureConnectionId(connection) {
+  _generateSecureConnectionId(_connection) {
     // 生成随机ID
     const randomPart = Math.random().toString(36).substring(2, 10);
     // 使用时间戳确保唯一性
@@ -1801,7 +1805,7 @@ class SSHService {
    * @param {Object} headerData 头部数据
    */
   _handleBinaryConnected(headerData) {
-    const { sessionId, connectionId, status, serverInfo } = headerData;
+    const { sessionId, connectionId, status: _status, serverInfo } = headerData;
     log.info('收到二进制连接完成消息', { sessionId, connectionId });
 
     if (!sessionId || !this.sessions.has(sessionId)) {

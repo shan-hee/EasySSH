@@ -54,6 +54,15 @@ module.exports = {
       env: {
         jest: true
       }
+    },
+    {
+      files: ['src/views/**/*.vue', 'src/components/**/*.vue'],
+      rules: {
+        'vue/no-async-in-computed-properties': 'warn',
+        'vue/no-side-effects-in-computed-properties': 'warn',
+        'no-unused-vars': ['warn', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }],
+        'no-empty': ['warn', { allowEmptyCatch: true }]
+      }
     }
   ],
   ignorePatterns: [

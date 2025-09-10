@@ -66,7 +66,7 @@ export const useSessionStore = defineStore('session', () => {
     if (!path || typeof path !== 'string') return null;
 
     // 匹配 /terminal/xxx 格式的路径
-    const match = path.match(/\/terminal\/([^\/]+)/);
+    const match = path.match(/\/terminal\/([^/]+)/);
     if (match && match[1]) {
       return match[1];
     }

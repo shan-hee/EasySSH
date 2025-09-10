@@ -254,7 +254,7 @@ class TerminalService {
 
       // 优化大数据量渲染性能
       termOptions.windowsMode = false; // 禁用Windows模式改善性能
-      if (!termOptions.hasOwnProperty('logLevel')) {
+      if (!Object.hasOwn(termOptions, 'logLevel')) {
         termOptions.logLevel = 'off'; // 关闭xterm内部日志
       }
 
@@ -927,7 +927,7 @@ class TerminalService {
               // 优先销毁 WebGL 渲染器，避免其持有的 GPU 资源在后续阶段访问
               const webglEntryIndex = addonEntries.findIndex(([name]) => name === 'webgl');
               if (webglEntryIndex >= 0) {
-                const [name, addon] = addonEntries.splice(webglEntryIndex, 1)[0];
+                const [_name, addon] = addonEntries.splice(webglEntryIndex, 1)[0];
                 try {
                   if (addon && typeof addon.dispose === 'function') {
                     const originalDispose = addon.dispose;

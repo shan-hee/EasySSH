@@ -408,58 +408,9 @@ export default {
     };
 
     // 火箭动画阶段（用于过渡显示）
-    const rocketAnimationPhase = ref('connecting');
+    // 由每个终端的动画控制逻辑管理
 
-    // 计算属性：是否应该显示火箭加载动画
-    const shouldShowConnectingAnimation = computed(() => {
-      const activeId = activeConnectionId.value;
-      if (!activeId) {
-        if (rocketAnimationPhase.value !== 'connecting') {
-          rocketAnimationPhase.value = 'connecting';
-        }
-        return true; // 如果没有活动连接ID，则显示加载动画
-      }
-
-      // 检查活动终端是否正在连接中
-      if (terminalConnectingStates.value[activeId]) {
-        if (rocketAnimationPhase.value !== 'connecting') {
-          rocketAnimationPhase.value = 'connecting';
-        }
-        return true;
-      }
-
-      // 检查活动终端是否在初始化中
-      if (terminalInitializingStates.value[activeId]) {
-        if (rocketAnimationPhase.value !== 'connecting') {
-          rocketAnimationPhase.value = 'connecting';
-        }
-        return true;
-      }
-
-      // 检查活动终端是否已初始化
-      if (!terminalInitialized.value[activeId]) {
-        if (rocketAnimationPhase.value !== 'connecting') {
-          rocketAnimationPhase.value = 'connecting';
-        }
-        return true;
-      }
-
-      // 如果终端已经初始化，开始完成阶段动画
-      if (terminalInitialized.value[activeId] && rocketAnimationPhase.value === 'connecting') {
-        rocketAnimationPhase.value = 'connected';
-        // 立即开始完成动画
-        setTimeout(() => {
-          if (rocketAnimationPhase.value === 'connected') {
-            rocketAnimationPhase.value = 'completing';
-          }
-        }, 100); // 很短的延迟，只是为了确保状态更新
-        return true;
-      }
-
-      return (
-        rocketAnimationPhase.value === 'connected' || rocketAnimationPhase.value === 'completing'
-      );
-    });
+    // 连接动画显示逻辑已由每个终端独立方法处理（shouldShowTerminalConnectingAnimation）
 
     // 计算终端背景样式
     const terminalBgStyle = computed(() => {
@@ -527,7 +478,7 @@ export default {
     };
 
     // 获取终端样式，控制显示/隐藏
-    const getTerminalStyle = termId => {
+    const getTerminalStyle = _termId => {
       // 不再通过内联样式控制可见性，改为通过CSS类控制
       // 返回空对象，让CSS类处理所有样式变化
       return {};
@@ -597,124 +548,7 @@ export default {
       }
     };
 
-    // 应用终端设置
-    const applyTerminalSettings = termId => {
-      try {
-        // 获取终端实例
-        const terminalInstance = terminalStore.getTerminal(termId);
-
-        if (!terminalStore.hasTerminalSession(termId)) {
-          log.warn(`跳过应用设置：终端 ${termId} 不存在`);
-          return false;
-        }
-
-        if (!terminalInstance) {
-          log.warn(`跳过应用设置：无法获取终端 ${termId} 实例`);
-          return false;
-        }
-
-        // 根据终端store的实现，存储的是直接的xterm.js实例
-        const terminal = terminalInstance;
-        const settings = settingsService.getTerminalSettings();
-        let hasChanges = false;
-
-        // 应用字体大小
-        if (settings.fontSize && terminal.options.fontSize !== settings.fontSize) {
-          log.debug(
-            `终端 ${termId}: 更新字体大小 ${terminal.options.fontSize} -> ${settings.fontSize}`
-          );
-          terminal.options.fontSize = settings.fontSize;
-          hasChanges = true;
-        }
-
-        // 应用字体系列
-        if (settings.fontFamily && terminal.options.fontFamily !== settings.fontFamily) {
-          log.debug(
-            `终端 ${termId}: 更新字体系列 ${terminal.options.fontFamily} -> ${settings.fontFamily}`
-          );
-          terminal.options.fontFamily = settings.fontFamily;
-          hasChanges = true;
-        }
-
-        // 应用光标样式
-        if (settings.cursorStyle && terminal.options.cursorStyle !== settings.cursorStyle) {
-          log.debug(
-            `终端 ${termId}: 更新光标样式 ${terminal.options.cursorStyle} -> ${settings.cursorStyle}`
-          );
-          terminal.options.cursorStyle = settings.cursorStyle;
-
-          // 立即应用光标样式到终端实例
-          if (terminal.setOption) {
-            terminal.setOption('cursorStyle', settings.cursorStyle);
-          }
-          hasChanges = true;
-        }
-
-        // 应用光标闪烁
-        if (
-          settings.cursorBlink !== undefined &&
-          terminal.options.cursorBlink !== settings.cursorBlink
-        ) {
-          log.debug(
-            `终端 ${termId}: 更新光标闪烁 ${terminal.options.cursorBlink} -> ${settings.cursorBlink}`
-          );
-          terminal.options.cursorBlink = settings.cursorBlink;
-
-          // 立即应用光标闪烁到终端实例
-          if (terminal.setOption) {
-            terminal.setOption('cursorBlink', settings.cursorBlink);
-          }
-          hasChanges = true;
-        }
-
-        // 应用其他可配置项...
-
-        // 应用主题设置
-        try {
-          if (settings.theme) {
-            const themeConfig = settingsService.getTerminalTheme(settings.theme);
-
-            // 比较当前主题和新主题
-            const currentBg = terminal.options.theme?.background;
-            const newBg = themeConfig.background;
-
-            if (currentBg !== newBg) {
-              log.debug(`终端 ${termId}: 更新主题 ${currentBg} -> ${newBg}`);
-
-              // 应用新主题到xterm.js实例
-              terminal.options.theme = themeConfig;
-
-              // 使用setOption方法立即应用主题
-              if (terminal.setOption) {
-                terminal.setOption('theme', themeConfig);
-              }
-
-              hasChanges = true;
-            }
-          }
-        } catch (error) {
-          log.error(`应用终端 ${termId} 主题失败:`, error);
-        }
-
-        // 应用调整大小
-        try {
-          terminal.fit();
-        } catch (e) {
-          log.warn(`调整终端 ${termId} 大小失败:`, e);
-        }
-
-        if (hasChanges) {
-          log.debug(`终端 ${termId}: 设置已成功应用`);
-        } else {
-          log.debug(`终端 ${termId}: 没有需要应用的设置变更`);
-        }
-
-        return true;
-      } catch (error) {
-        log.error(`应用终端 ${termId} 设置失败:`, error);
-        return false;
-      }
-    };
+    // 应用终端设置的逻辑已集中到 terminalStore.applySettingsToAllTerminals 中
 
     // 加载终端背景设置
     const loadTerminalBgSettings = () => {
@@ -1310,39 +1144,7 @@ export default {
     };
 
     // 处理SSH错误
-    const handleSSHError = event => {
-      if (event.detail && activeConnectionId.value) {
-        const sessionId = terminalStore.sessions[activeConnectionId.value];
-        if (sessionId && event.detail.sessionId === sessionId) {
-          ElMessage.error(`连接失败: ${event.detail.message || '服务器无响应'}`);
-          status.value = '连接错误';
-
-          // 直接清理本地状态，避免断开时找不到会话ID的问题
-          delete terminalInitialized.value[activeConnectionId.value];
-          delete terminalInitializingStates.value[activeConnectionId.value];
-          delete terminalConnectingStates.value[activeConnectionId.value];
-
-          // 从终端ID列表中移除
-          terminalIds.value = terminalIds.value.filter(id => id !== activeConnectionId.value);
-
-          // 清理会话存储中的状态
-          if (sessionStore.getSession(activeConnectionId.value)) {
-            sessionStore.setActiveSession(null);
-          }
-
-          // 仅在会话实际存在的情况下尝试断开连接
-          if (terminalStore.hasTerminalSession(activeConnectionId.value)) {
-            terminalStore.disconnectTerminal(activeConnectionId.value).finally(() => {
-              // 导航回连接配置界面
-              router.push('/connections/new');
-            });
-          } else {
-            // 如果会话不存在，直接返回连接配置界面
-            router.push('/connections/new');
-          }
-        }
-      }
-    };
+    // SSH错误处理已通过全局事件处理（setupSSHFailureHandler）集中处理
 
     // 断开当前活动终端连接
     const disconnectTerminal = async () => {
@@ -1396,29 +1198,7 @@ export default {
     };
 
     // 创建全局的窗口大小变化处理函数，防止多个匿名函数导致无法正确移除
-    let windowResizeTimer = null;
-    const handleWindowResize = () => {
-      // 使用定时器防抖
-      if (windowResizeTimer) {
-        clearTimeout(windowResizeTimer);
-      }
-
-      windowResizeTimer = setTimeout(() => {
-        log.debug('窗口大小变化，重置所有终端尺寸状态');
-        // 清空已调整标记，让所有终端都能重新调整
-        terminalSized.value = {};
-        // 调整所有终端大小
-        resizeTerminal();
-
-        // 处理监控面板响应式状态
-        handleMonitoringPanelResize();
-
-        // 若补全框可见，更新其位置
-        updateAutocompletePosition();
-
-        windowResizeTimer = null;
-      }, 100); // 100ms防抖
-    };
+    // 窗口大小变化已由 ResizeObserver 处理
 
     // 在变量声明部分添加sftpPanelWidth
     const sftpPanelWidth = ref(600); // 默认SFTP面板宽度
@@ -1684,6 +1464,13 @@ export default {
       // 设置自动完成回调
       setupAutocompleteCallbacks();
 
+      // 加载并监听终端背景设置
+      loadTerminalBgSettings();
+      listenForBgChanges();
+
+      // 监听工具栏事件
+      setupToolbarListeners();
+
       // 添加全局键盘事件监听
       document.addEventListener('keydown', handleGlobalKeydown, true);
 
@@ -1708,6 +1495,8 @@ export default {
                 ) {
                   terminalStore.fitTerminal(activeConnectionId.value);
                 }
+                // 处理监控面板响应式状态
+                handleMonitoringPanelResize();
               }, 120);
               return;
             }
@@ -1715,6 +1504,8 @@ export default {
             if (activeConnectionId.value && terminalStore.hasTerminal(activeConnectionId.value)) {
               terminalStore.fitTerminal(activeConnectionId.value);
             }
+            // 处理监控面板响应式状态
+            handleMonitoringPanelResize();
           });
           resizeObserver.observe(terminalContainer);
         }
@@ -1900,6 +1691,13 @@ export default {
         clearTimeout(resizeAfterAnimationTimer);
         resizeAfterAnimationTimer = null;
       }
+      // 清理背景设置监听器
+      if (bgChangeHandler) {
+        window.removeEventListener('terminal-bg-changed', bgChangeHandler);
+        bgChangeHandler = null;
+      }
+      // 清理工具栏事件监听
+      removeToolbarListeners();
       window.removeEventListener('terminal-command', handleTerminalEvent);
       window.removeEventListener('terminal:session-change', handleSessionChange);
       window.removeEventListener('terminal-theme-update', handleTerminalThemeUpdate);
@@ -1912,58 +1710,7 @@ export default {
     // 移除重复的事件处理函数 - 统一使用 terminal-status-update 事件系统
     // 原 handleTerminalRefreshStatus 函数已删除，避免与 terminal-status-update 事件重复处理
 
-    // 添加处理新会话事件的函数
-    const handleNewSession = event => {
-      if (!event.detail || !event.detail.sessionId) return;
-
-      const { sessionId, isNewCreation } = event.detail;
-      log.debug(`收到新会话事件: ${sessionId}, 是否新创建: ${isNewCreation}`);
-
-      if (isNewCreation) {
-        // 检查是否已经有正在创建中的SSH会话或已存在的会话
-        const hasExistingSession = terminalStore.hasTerminalSession(sessionId);
-        const isCreating = terminalStore.isSessionCreating(sessionId);
-
-        if (hasExistingSession || isCreating) {
-          log.debug(`终端${sessionId}已有会话或正在创建中，跳过重复初始化`);
-          return;
-        }
-
-        // 确保清理旧的状态
-        // 从终端ID列表中移除重复的ID
-        terminalIds.value = terminalIds.value.filter(id => id !== sessionId);
-
-        // 清理所有状态
-        delete terminalInitialized.value[sessionId];
-        delete terminalInitializingStates.value[sessionId];
-        delete terminalConnectingStates.value[sessionId];
-        delete terminalSized.value[sessionId];
-
-        // 清理引用
-        if (terminalRefs.value[sessionId]) {
-          terminalRefs.value[sessionId] = null;
-          delete terminalRefs.value[sessionId];
-        }
-
-        // 清理定时器
-        if (resizeDebounceTimers.value[sessionId]) {
-          clearTimeout(resizeDebounceTimers.value[sessionId]);
-          delete resizeDebounceTimers.value[sessionId];
-        }
-
-        // 清理终端存储中的连接（如果有）
-        if (terminalStore.hasTerminal(sessionId)) {
-          log.debug(`检测到新创建的终端[${sessionId}]但存在旧终端，断开旧连接`);
-          terminalStore
-            .disconnectTerminal(sessionId)
-            .catch(error => log.error(`清理旧终端连接失败: ${error.message}`));
-        }
-
-        // 添加到终端ID列表，确保初始化
-        terminalIds.value.push(sessionId);
-        log.debug(`为新会话[${sessionId}]重置状态，准备初始化`);
-      }
-    };
+    // 新会话事件的处理逻辑已由更上层的会话管理统一处理
 
     // SSH连接成功事件处理已移至 TerminalToolbar.vue 组件中统一管理
     // 这里移除了重复的死代码，避免混淆和潜在的冲突
@@ -2569,57 +2316,7 @@ export default {
       }
     };
 
-    /**
-     * 在终端中显示AI响应
-     * @param {Object} response AI响应数据
-     */
-    const displayAIResponseInTerminal = response => {
-      try {
-        const terminalId = activeConnectionId.value;
-        if (!terminalId) return;
-
-        const terminal = terminalStore.getTerminal(terminalId);
-        if (!terminal) return;
-
-        // 获取模式图标和标题
-        const modeIcons = {
-          chat: '💡',
-          agent: '🤖',
-          error: '❌'
-        };
-        const modeTitles = {
-          chat: 'AI回答',
-          agent: 'Agent分析',
-          error: '错误'
-        };
-
-        const icon = modeIcons[response.mode] || '💡';
-        const title = modeTitles[response.mode] || 'AI响应';
-
-        // 在终端中显示响应
-        terminal.writeln('\r\n');
-
-        // 处理响应内容，提取命令并添加运行提示
-        const { content: processedContent, commands } = processAIResponseContent(
-          response.content,
-          terminalId
-        );
-
-        // 分行显示内容
-        const lines = processedContent.split('\n');
-        lines.forEach(line => {
-          if (line.trim()) {
-            terminal.writeln(line);
-          } else {
-            terminal.writeln('');
-          }
-        });
-
-        terminal.writeln('\r\n');
-      } catch (error) {
-        log.error('在终端显示AI响应失败', { error: error.message });
-      }
-    };
+    // 在终端显示AI响应的逻辑已迁移到面板集成中
 
     /**
      * 处理AI响应内容，为命令添加可执行的按钮
@@ -2627,102 +2324,7 @@ export default {
      * @param {string} terminalId 终端ID
      * @returns {Object} {content: 处理后的内容, commands: 找到的命令列表}
      */
-    const processAIResponseContent = (content, terminalId) => {
-      try {
-        // 匹配代码块中的命令 (```bash 或 ``` 包围的内容)
-        const codeBlockRegex = /```(?:bash|shell|sh)?\n?([\s\S]*?)```/g;
-        // 匹配行内代码 (`command`)
-        const inlineCodeRegex = /`([^`\n]+)`/g;
-
-        let processedContent = content;
-        const commandsFound = [];
-        let commandIndex = 0;
-
-        // 处理代码块
-        processedContent = processedContent.replace(codeBlockRegex, (_, code) => {
-          const commands = code
-            .trim()
-            .split('\n')
-            .filter(line => line.trim());
-          const processedCommands = commands
-            .map(cmd => {
-              const cleanCmd = cmd.trim();
-              if (cleanCmd && !cleanCmd.startsWith('#') && !cleanCmd.startsWith('//')) {
-                const cmdId = `ai_cmd_${terminalId}_${commandIndex++}`;
-                commandsFound.push({ id: cmdId, command: cleanCmd });
-                return `${cleanCmd} [执行:${cmdId}]`;
-              }
-              return cleanCmd;
-            })
-            .join('\n');
-
-          return `\n${processedCommands}\n`;
-        });
-
-        // 处理行内代码（简单命令）
-        processedContent = processedContent.replace(inlineCodeRegex, (match, code) => {
-          const cleanCmd = code.trim();
-          // 判断是否是命令（包含常见命令关键词）
-          const commandKeywords = [
-            'ls',
-            'cd',
-            'mkdir',
-            'rm',
-            'cp',
-            'mv',
-            'cat',
-            'grep',
-            'find',
-            'ps',
-            'top',
-            'docker',
-            'git',
-            'npm',
-            'yarn',
-            'sudo',
-            'chmod',
-            'chown',
-            'systemctl',
-            'service',
-            'wget',
-            'curl',
-            'apt',
-            'yum',
-            'pip',
-            'node'
-          ];
-          const isCommand = commandKeywords.some(keyword => cleanCmd.startsWith(keyword));
-
-          if (isCommand) {
-            const cmdId = `ai_cmd_${terminalId}_${commandIndex++}`;
-            commandsFound.push({ id: cmdId, command: cleanCmd });
-            return `${cleanCmd} [执行:${cmdId}]`;
-          }
-          return match;
-        });
-
-        // 存储命令映射，用于后续点击处理
-        if (commandsFound.length > 0) {
-          if (!window.aiCommandMap) {
-            window.aiCommandMap = new Map();
-          }
-          commandsFound.forEach(({ id, command }) => {
-            window.aiCommandMap.set(id, { command, terminalId });
-          });
-        }
-
-        return {
-          content: processedContent,
-          commands: commandsFound
-        };
-      } catch (error) {
-        log.error('处理AI响应内容失败', { error: error.message });
-        return {
-          content,
-          commands: []
-        };
-      }
-    };
+    // 处理AI响应内容的方法已不再需要（面板负责渲染和交互）
 
     /**
      * 处理AI模式变化
@@ -2806,24 +2408,7 @@ export default {
     };
     // ===== AI交互面板相关方法 =====
 
-    /**
-     * 检查是否应该显示AI面板
-     * @param {string} termId 终端ID
-     * @returns {boolean} 是否显示AI面板
-     */
-    const shouldShowAIPanel = termId => {
-      if (!termId) return false;
-
-      // 检查AI服务是否可用
-      const aiService = getAIService();
-      if (!aiService || !aiService.isEnabled) return false;
-
-      // 检查终端是否已连接
-      if (!terminalStore.hasTerminal(termId)) return false;
-
-      // 默认显示AI面板
-      return true;
-    };
+    // 旧的AI面板显示逻辑已被合并面板取代
 
     /**
      * 获取AI消息历史
@@ -3002,7 +2587,6 @@ export default {
       terminalHasBackground,
       sftpPanelWidth,
       updateTerminalIds,
-      shouldShowConnectingAnimation,
       toggleSftpPanel,
       toggleMonitoringPanel,
       handleAIInputToggle,

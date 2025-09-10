@@ -96,7 +96,6 @@ class ConfigManager {
       // 重置指定路径
       const keys = path.split('.');
       let defaultValue = this.defaultConfig;
-      const target = this.runtimeConfig;
 
       // 获取默认值
       for (const key of keys) {

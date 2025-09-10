@@ -10,7 +10,6 @@ const NewConnection = () => import('../views/connections/NewConnection.vue');
 // 创建一个空组件替代原Terminal组件
 const EmptyTerminal = { render: () => null };
 
-const NotFound = () => import('../views/errors/NotFound.vue');
 const ScriptLibrary = () => import('../views/scripts/ScriptLibrary.vue');
 
 // 定义路由

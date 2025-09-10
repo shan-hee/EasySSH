@@ -241,13 +241,13 @@ class LanguageDetector {
         result = result.replace(new RegExp(chinese, 'g'), english);
       }
 
-      // 移除剩余的非ASCII字符，用问号替代
-      result = result.replace(/[^\x00-\x7F]/g, '?');
+      // 移除剩余的非ASCII字符，用问号替代（避免使用控制字符的正则范围）
+      result = result.replace(/[\s\S]/g, ch => (ch.charCodeAt(0) <= 0x7f ? ch : '?'));
 
       return result;
     } catch (error) {
       log.error('ASCII转换失败', error);
-      return text.replace(/[^\x00-\x7F]/g, '?');
+      return Array.from(text).map(ch => (ch.charCodeAt(0) <= 0x7f ? ch : '?')).join('');
     }
   }
 }

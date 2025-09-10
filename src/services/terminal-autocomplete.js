@@ -152,7 +152,9 @@ class TerminalAutocompleteService {
             } else {
               // 无有效位置，跳过此次发射
             }
-          } catch (_) {}
+          } catch (_) {
+            /* no-op */
+          }
         });
         return;
       }
@@ -175,7 +177,9 @@ class TerminalAutocompleteService {
       // 降级：直接调用原回调，避免丢失
       try {
         this.callbacks.onSuggestionsUpdate(suggestions, position || { x: 0, y: 0 }, selectedIndex);
-      } catch (_) {}
+      } catch (_) {
+        /* no-op */
+      }
     }
   }
 
@@ -296,7 +300,7 @@ class TerminalAutocompleteService {
 
     switch (charCode) {
     case 8: // Backspace
-    case 127: // DEL
+    case 127: { // DEL
       const needsUpdate = this.handleBackspace();
 
       // 优化：如果不需要更新建议，直接返回，避免不必要的处理
@@ -312,14 +316,16 @@ class TerminalAutocompleteService {
         this.debouncedUpdateHighPriority(currentWord, terminal);
       }
       break;
+    }
 
-    case 13: // Enter
+    case 13: { // Enter
       const handled = this.handleEnter(terminal);
       if (handled) {
         // 如果自动完成处理了回车，阻止默认行为
         return true;
       }
       break;
+    }
 
     case 9: // Tab
       // Tab键可能用于自动完成确认
@@ -1124,7 +1130,9 @@ class TerminalAutocompleteService {
     if (this._pendingRaf) {
       try {
         cancelAnimationFrame(this._pendingRaf);
-      } catch (_) {}
+      } catch (_) {
+        /* no-op */
+      }
       this._pendingRaf = null;
     }
     if (this.callbacks.onSuggestionsUpdate) {
@@ -1309,7 +1317,9 @@ class TerminalAutocompleteService {
     if (this._pendingRaf) {
       try {
         cancelAnimationFrame(this._pendingRaf);
-      } catch (_) {}
+      } catch (_) {
+        /* no-op */
+      }
       this._pendingRaf = null;
     }
   }
@@ -1365,7 +1375,9 @@ class TerminalAutocompleteService {
             this._decoration.updateOptions({ x: cursorX });
             return;
           }
-        } catch (_) {}
+        } catch (_) {
+          /* no-op */
+        }
         this._disposeDecoration();
       }
 
@@ -1375,7 +1387,9 @@ class TerminalAutocompleteService {
         if (typeof terminal.registerMarker === 'function') {
           marker = terminal.registerMarker(0);
         }
-      } catch (_) {}
+      } catch (_) {
+        /* no-op */
+      }
 
       // 注册装饰器
       try {
@@ -1430,14 +1444,18 @@ class TerminalAutocompleteService {
                     );
                   }
                 });
-              } catch (_) {}
+              } catch (_) {
+                /* no-op */
+              }
             });
           }
         }
       } catch (e) {
         this._decorationSupported = false;
       }
-    } catch (_) {}
+    } catch (_) {
+      /* no-op */
+    }
   }
 
   /**
@@ -1462,7 +1480,9 @@ class TerminalAutocompleteService {
       if (this._decoration && typeof this._decoration.dispose === 'function') {
         this._decoration.dispose();
       }
-    } catch (_) {}
+    } catch (_) {
+      /* no-op */
+    }
     this._decoration = null;
     this._marker = null;
     this._anchorElement = null;

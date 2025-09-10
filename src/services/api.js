@@ -59,14 +59,7 @@ class ApiService {
             this._lastTokenExists = currentTokenExists;
           }
 
-          // 判断是否为不需要认证的请求路径
-          const noAuthRequiredPaths = [
-            '/users/login',
-            '/users/register',
-            '/users/refresh',
-            '/users/verify-mfa'
-          ];
-          const isAuthExemptPath = noAuthRequiredPaths.some(path => config.url.includes(path));
+          // 判断是否为不需要认证的请求路径（如需在此处跳过可配置白名单）
 
           if (token) {
             // 验证token格式有效性
@@ -131,7 +124,7 @@ class ApiService {
       case 400:
         message = data.message || '请求参数错误';
         break;
-      case 401:
+      case 401: {
         message = data.message || '身份验证失败';
         // 401错误统一处理，仅在确实是认证问题时触发登录过期逻辑
         // 排除登录、注册、刷新token等不需要触发认证过期的路径
@@ -142,19 +135,19 @@ class ApiService {
           '/users/verify-mfa'
         ];
         const isAuthRequiredPath =
-            error.config && !noAuthRequiredPaths.some(path => error.config.url.includes(path));
+          error.config && !noAuthRequiredPaths.some(path => error.config.url.includes(path));
 
         if (isAuthRequiredPath) {
           log.warn('检测到401认证失败，开始处理身份验证失败流程', {
             url: error.config.url,
             isRemoteLogout:
-                data && (data.error === 'remote-logout' || data.message === 'remote-logout')
+              data && (data.error === 'remote-logout' || data.message === 'remote-logout')
           });
 
           // 判断是否为远程注销情况
           const isRemoteLogout =
-              (data && data.error === 'remote-logout') ||
-              (data && data.message === 'remote-logout');
+            (data && data.error === 'remote-logout') ||
+            (data && data.message === 'remote-logout');
 
           if (isRemoteLogout) {
             log.warn('检测到远程注销，执行完整清理流程');
@@ -169,6 +162,7 @@ class ApiService {
           }
         }
         break;
+      }
       case 403:
         message = '没有权限进行此操作';
         break;
@@ -282,21 +276,17 @@ class ApiService {
       }
     }
 
-    try {
-      const response = await this.axios.get(url, { params, ...config });
+    const response = await this.axios.get(url, { params, ...config });
 
-      // 缓存GET请求响应
-      if (config.useCache !== false) {
-        this.requestCache.set(cacheKey, {
-          data: response.data,
-          timestamp: Date.now()
-        });
-      }
-
-      return response.data;
-    } catch (error) {
-      throw error;
+    // 缓存GET请求响应
+    if (config.useCache !== false) {
+      this.requestCache.set(cacheKey, {
+        data: response.data,
+        timestamp: Date.now()
+      });
     }
+
+    return response.data;
   }
 
   /**
@@ -311,12 +301,8 @@ class ApiService {
       await this.init();
     }
 
-    try {
-      const response = await this.axios.post(url, data, config);
-      return response.data;
-    } catch (error) {
-      throw error;
-    }
+    const response = await this.axios.post(url, data, config);
+    return response.data;
   }
 
   /**
@@ -334,12 +320,8 @@ class ApiService {
     // 清除相关缓存
     this.clearRelatedCache(url);
 
-    try {
-      const response = await this.axios.put(url, data, config);
-      return response.data;
-    } catch (error) {
-      throw error;
-    }
+    const response = await this.axios.put(url, data, config);
+    return response.data;
   }
 
   /**
@@ -356,12 +338,8 @@ class ApiService {
     // 清除相关缓存
     this.clearRelatedCache(url);
 
-    try {
-      const response = await this.axios.delete(url, config);
-      return response.data;
-    } catch (error) {
-      throw error;
-    }
+    const response = await this.axios.delete(url, config);
+    return response.data;
   }
 
   /**
@@ -398,12 +376,8 @@ class ApiService {
       await this.init();
     }
 
-    try {
-      const response = await this.axios.patch(url, data, config);
-      return response.data;
-    } catch (error) {
-      throw error;
-    }
+    const response = await this.axios.patch(url, data, config);
+    return response.data;
   }
 
   /**
@@ -418,19 +392,15 @@ class ApiService {
       await this.init();
     }
 
-    try {
-      const uploadConfig = {
-        headers: {
-          'Content-Type': 'multipart/form-data'
-        },
-        ...config
-      };
+    const uploadConfig = {
+      headers: {
+        'Content-Type': 'multipart/form-data'
+      },
+      ...config
+    };
 
-      const response = await this.axios.post(url, formData, uploadConfig);
-      return response.data;
-    } catch (error) {
-      throw error;
-    }
+    const response = await this.axios.post(url, formData, uploadConfig);
+    return response.data;
   }
 
   /**

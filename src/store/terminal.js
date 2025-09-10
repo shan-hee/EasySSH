@@ -1,6 +1,5 @@
 import { defineStore } from 'pinia';
-import { ref, reactive, toRefs } from 'vue';
-import { ElMessage } from 'element-plus';
+import { reactive, toRefs } from 'vue';
 import sshService from '../services/ssh/index';
 import log from '../services/log';
 import { useUserStore } from './user';
@@ -558,7 +557,7 @@ export const useTerminalStore = defineStore('terminal', () => {
 
         // 触发终端的resize事件
         if (terminal.terminal._core && resizeSuccess) {
-          const event = {
+          const _event = {
             cols: terminal.terminal.cols,
             rows: terminal.terminal.rows
           };
@@ -704,7 +703,7 @@ export const useTerminalStore = defineStore('terminal', () => {
    * @param {string} connectionId - 连接ID
    * @param {string} testCommand - 测试命令，默认为 'echo "test"'
    */
-  const sendTestCommand = (connectionId, testCommand = 'echo "test"') => {
+  const _sendTestCommand = (connectionId, testCommand = 'echo "test"') => {
     log.info(`发送测试命令: ${testCommand}`);
     return sendCommand(connectionId, testCommand, { clearLine: true, execute: true });
   };

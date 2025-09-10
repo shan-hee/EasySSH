@@ -326,7 +326,7 @@ class MfaService {
    * @param {string} userId - 用户ID
    * @returns {Promise<Object>} - 验证结果
    */
-  async verifyMfa(code, userId) {
+  async verifyMfa(code, _userId) {
     try {
       // 使用全局存储的auth_token，不再依赖currentUser
       const token = localStorage.getItem('auth_token');

@@ -923,7 +923,7 @@ export default defineComponent({
     );
 
     // 监听设置变化 - 只处理非主题相关的设置（如语言）
-    settingsService.addChangeListener(settings => {
+    settingsService.addChangeListener(_settings => {
       // 只处理语言设置变化，主题变化由 theme-changed 事件处理
       if (editorView.value) {
         // 获取最新的语言短语设置

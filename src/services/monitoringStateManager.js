@@ -228,7 +228,7 @@ class MonitoringStateManager {
     if (!data) return;
 
     // 防止重复处理相同的数据（排除时间戳字段，基于实际监控数据内容）
-    const { timestamp, ...dataWithoutTimestamp } = data;
+    const { timestamp: _timestamp, ...dataWithoutTimestamp } = data;
     const dataHash = JSON.stringify(dataWithoutTimestamp);
 
     if (this._lastDataHash === dataHash) {
@@ -468,7 +468,7 @@ class MonitoringStateManager {
    * @param {string} terminalId - 终端ID
    * @param {string} hostId - 主机ID（可选）
    */
-  setTerminal(terminalId, hostId = null) {
+  bindTerminal(terminalId, hostId = null) {
     // 避免重复绑定相同的终端
     if (this.boundTerminalId === terminalId && this.boundHostId === hostId) {
       return;

@@ -67,6 +67,7 @@
       <!-- 消息内容 -->
       <div class="ai-message-content">
         <!-- 纯文本消息 -->
+        <!-- eslint-disable-next-line vue/no-v-html -->
         <div
           v-if="!hasCodeBlocks"
           class="ai-message-text"
@@ -84,6 +85,7 @@
             class="ai-content-part"
           >
             <!-- 文本部分 -->
+            <!-- eslint-disable-next-line vue/no-v-html -->
             <div
               v-if="part.type === 'text'"
               class="ai-message-text"

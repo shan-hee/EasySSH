@@ -7,7 +7,7 @@ import { useUserStore } from '@/store/user';
 import log from './log';
 import apiService from './api.js';
 import { getFromStorage, saveToStorage } from '../utils/storage.js';
-import { autocompleteConfig, environment } from '@/config/app-config';
+import { environment } from '@/config/app-config';
 
 // 本地存储键
 const STORAGE_KEYS = {

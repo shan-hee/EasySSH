@@ -504,7 +504,9 @@ class SFTPService {
             if (typeof progressCallback === 'function') {
               try {
                 progressCallback(progress, operationId);
-              } catch (e) {}
+              } catch (e) {
+                /* no-op */
+              }
             }
           },
           type: 'upload_binary'
@@ -580,7 +582,7 @@ class SFTPService {
    * 分块上传文件
    * @private
    */
-  async _uploadFileInChunks(session, baseMetadata, fileBuffer, progressCallback) {
+  async _uploadFileInChunks(session, baseMetadata, fileBuffer, _progressCallback) {
     const totalChunks = Math.ceil(fileBuffer.byteLength / this.chunkSize);
 
     for (let chunkIndex = 0; chunkIndex < totalChunks; chunkIndex++) {
@@ -847,7 +849,9 @@ class SFTPService {
             if (typeof progressCallback === 'function') {
               try {
                 progressCallback(progress, meta);
-              } catch (_) {}
+              } catch (_) {
+                /* no-op */
+              }
             }
           },
           type: 'download_folder_binary',
@@ -1631,7 +1635,9 @@ class SFTPService {
       this._progressState.set(operationId, { lastProgress: safeProgress });
 
       headerData.progress = safeProgress; // 回写用于后续日志
-    } catch (_) {}
+    } catch (_) {
+      /* no-op */
+    }
 
     const operation = this.fileOperations.get(operationId);
 

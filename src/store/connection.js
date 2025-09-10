@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia';
-import { ref, reactive, computed } from 'vue';
+import { ref, computed } from 'vue';
 import { ElMessage } from 'element-plus';
 import passwordManager from '../services/password-manager.js';
 import log from '../services/log.js';

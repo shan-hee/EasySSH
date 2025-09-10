@@ -111,7 +111,7 @@ class LogService {
    * @private
    */
   _isValidLogLevel(level) {
-    return typeof level === 'string' && this.logLevels.hasOwnProperty(level);
+    return typeof level === 'string' && Object.hasOwn(this.logLevels, level);
   }
 
   /**

@@ -250,7 +250,7 @@ export default defineComponent({
     const validationErrorMessage = ref('');
 
     // 文件名验证正则表达式和规则
-    const fileNamePattern = /^[^\\/:\*\?"<>\|]+$/;
+    const fileNamePattern = /^[^\\/:*?"<>|]+$/;
     const maxFileNameLength = 255;
 
     // 验证文件名

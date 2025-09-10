@@ -138,19 +138,7 @@ export default defineComponent({
       return sessionStore.getActiveSession();
     };
 
-    // 终端操作方法
-    const sendTerminalCommand = () => {
-      // 使用事件总线发送事件给终端组件
-      window.dispatchEvent(new CustomEvent('terminal:send-command'));
-    };
-
-    const clearTerminal = () => {
-      window.dispatchEvent(new CustomEvent('terminal:clear'));
-    };
-
-    const disconnectTerminal = () => {
-      window.dispatchEvent(new CustomEvent('terminal:disconnect'));
-    };
+    // 终端操作方法（如需在此组件中触发，可在使用处实现）
 
     // 监听终端标题变化
     window.addEventListener('terminal:title-change', event => {

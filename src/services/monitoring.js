@@ -195,10 +195,11 @@ class MonitoringInstance {
       case 'pong':
         // 确认消息和心跳响应，无需处理
         break;
-      case 'error':
+      case 'error': {
         const errorMsg = message.message || message.data?.message || message.error || '未知错误';
         log.error(`[监控] 服务器错误: ${errorMsg}`);
         break;
+      }
       default:
         log.warn(`[监控] 未知消息类型: ${message.type}`);
         break;
@@ -225,13 +226,14 @@ class MonitoringInstance {
         case 'monitoring_data':
           this._handleMonitoringData(item.data);
           break;
-        case 'system_stats':
+        case 'system_stats': {
           // 处理新的差量格式
           const payload = item.payload || item.delta?.payload || item.delta;
           if (payload) {
             this._handleMonitoringData(payload);
           }
           break;
+        }
         case 'monitoring_status':
           this._handleMonitoringStatus(item);
           break;
@@ -303,7 +305,7 @@ class MonitoringInstance {
 
     if (data && this._isValidMonitoringData(data)) {
       // 防止重复处理相同的数据（排除时间戳字段）
-      const { timestamp, ...dataWithoutTimestamp } = data;
+      const { timestamp: _timestamp, ...dataWithoutTimestamp } = data;
       const dataHash = JSON.stringify(dataWithoutTimestamp);
       if (this._lastDataHash === dataHash) {
         log.debug('[监控] 跳过重复数据');

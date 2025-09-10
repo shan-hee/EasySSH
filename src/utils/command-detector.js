@@ -233,9 +233,9 @@ function looksLikeCommand(text) {
 function isOutputLine(line) {
   // 常见的提示符模式
   const promptPatterns = [
-    /^[\$>%#]\s/, // $ > % # 提示符
+    /^[$>%#]\s/, // $ > % # 提示符
     /^\w+@\w+:.*\$\s/, // user@host:path$ 提示符
-    /^\[.*\]\s*[\$>%#]\s/ // [info] $ 提示符
+    /^\[.*\]\s*[$>%#]\s/ // [info] $ 提示符
   ];
 
   for (const pattern of promptPatterns) {
@@ -273,9 +273,9 @@ function cleanCommand(command) {
   let cleaned = command.trim();
 
   // 移除提示符
-  cleaned = cleaned.replace(/^[\$>%#]\s*/, '');
+  cleaned = cleaned.replace(/^[$>%#]\s*/, '');
   cleaned = cleaned.replace(/^\w+@\w+:.*\$\s*/, '');
-  cleaned = cleaned.replace(/^\[.*\]\s*[\$>%#]\s*/, '');
+  cleaned = cleaned.replace(/^\[.*\]\s*[$>%#]\s*/, '');
 
   // 移除行尾注释
   cleaned = cleaned.replace(/\s*#.*$/, '');
@@ -332,7 +332,7 @@ function calculateCommandConfidence(command) {
   }
 
   // 路径特征加分
-  if (/[\/\\]/.test(cleaned)) {
+  if (/[/\\]/.test(cleaned)) {
     confidence += 0.1;
   }
 
