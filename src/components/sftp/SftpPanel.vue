@@ -195,7 +195,8 @@ import SftpFileItem from './components/SftpFileItem.vue';
 import SftpInlineEditor from './components/SftpInlineEditor.vue';
 import SftpToolbar from './components/SftpToolbar.vue';
 import SftpPathNavigator from './components/SftpPathNavigator.vue';
-import SftpEditor from './components/SftpEditor.vue';
+import { defineAsyncComponent } from 'vue';
+const SftpEditor = defineAsyncComponent(() => import('./components/SftpEditor.vue'));
 import SftpPermissionsDialog from './components/SftpPermissionsDialog.vue';
 
 // 导入可复用逻辑

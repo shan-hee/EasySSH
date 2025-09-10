@@ -6,11 +6,6 @@ import App from './App.vue';
 import router from './router';
 // 导入状态管理
 import pinia from './store';
-// 导入Element Plus样式
-import 'element-plus/dist/index.css';
-import ElementPlus from 'element-plus';
-// 导入xterm样式
-import '@xterm/xterm/css/xterm.css';
 import './assets/styles/main.css';
 import './components/sftp/styles/sftp-panel.css';
 
@@ -32,6 +27,10 @@ import { Icon } from '@iconify/vue';
 // 右键粘贴：全局处理终端自定义事件
 import settingsService from './services/settings';
 import clipboard from './services/clipboard';
+import authService from './services/auth.js';
+import scriptLibraryService from './services/scriptLibrary.js';
+import { useUserStore } from './store/user';
+import monitoringService from './services/monitoring.js';
 
 // 主题初始化现在由settingsService统一处理
 
@@ -89,7 +88,6 @@ const app = createApp(App);
 // 使用插件
 app.use(router);
 app.use(pinia);
-app.use(ElementPlus);
 
 // 注册Iconify全局组件
 app.component('Icon', Icon);
@@ -99,11 +97,25 @@ Object.keys(directives).forEach(key => {
   app.directive(key, directives[key]);
 });
 
-// 挂载应用并初始化服务
-app.mount('#app');
+// 运行时回退：若未启用按需自动导入，则在此动态注册 Element Plus 并加载其样式
+const ensureElementPlusReady = async () => {
+  try {
+    if (!__EP_AUTO_ENABLED__) {
+      const { default: ElementPlus } = await import('element-plus');
+      await import('element-plus/dist/index.css');
+      app.use(ElementPlus);
+    }
+  } catch (e) {
+    // 忽略回退失败，继续挂载，避免阻塞应用
+  }
+};
+
+ensureElementPlusReady().then(() => {
+  // 挂载应用并初始化服务
+  app.mount('#app');
+});
 
 // 导入用户状态管理，并初始化用户状态
-import { useUserStore } from './store/user';
 
 // 应用初始化时强制同步token状态，并主动验证和刷新数据
 const userStore = useUserStore();
@@ -169,8 +181,6 @@ async function refreshUserData() {
     const userStore = useUserStore();
 
     // 1. 刷新用户基本信息（优先级最高）
-    const authModule = await import('./services/auth.js');
-    const authService = authModule.default;
     await authService.refreshUserInfo();
 
     if (userStore.isLoggedIn) {
@@ -267,8 +277,6 @@ async function smartDataRefresh(userStore) {
 // 脚本库是共享资源，需要同步到本地存储并支持增量更新
 async function refreshScriptLibrary() {
   try {
-    const scriptLibraryModule = await import('./services/scriptLibrary.js');
-    const scriptLibraryService = scriptLibraryModule.default;
     await scriptLibraryService.smartSync();
     log.debug('脚本库数据智能同步完成');
   } catch (error) {
@@ -354,7 +362,6 @@ window.addEventListener('auth:complete-logout', async () => {
 
   try {
     // 1. 清理用户Store状态
-    const { useUserStore } = await import('./store/user');
     const userStore = useUserStore();
     await userStore.performCompleteCleanup();
 
@@ -424,9 +431,6 @@ window.addEventListener('ssh-connecting', async event => {
 
   if (host && terminalId) {
     try {
-      // 动态导入监控服务
-      const { default: monitoringService } = await import('./services/monitoring.js');
-
       // 立即开始监控连接，与SSH连接并行
       try {
         const connected = await monitoringService.connect(terminalId, host);

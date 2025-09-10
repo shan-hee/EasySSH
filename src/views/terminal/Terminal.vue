@@ -383,26 +383,33 @@ export default {
     // 自动完成位置更新相关
     const autocompleteEventDisposers = ref([]);
 
+    // 使用 rAF 节流位置更新，避免频繁事件导致的闪烁
+    let autocompleteRaf = 0;
     const updateAutocompletePosition = () => {
-      try {
-        const id = activeConnectionId.value;
-        if (!id || !autocomplete.value.visible) return;
-        if (!terminalStore.hasTerminal(id)) return;
-        const terminal = terminalStore.getTerminal(id);
-        if (!terminal) return;
-        const position = terminalAutocompleteService.calculatePosition(terminal);
-        // 位置保护：仅在有效时覆盖，避免用无效位置顶掉有效位置
-        const isValid = position && position.x > 4 && position.y > 4;
-        if (
-          isValid ||
-          !autocomplete.value.position ||
-          !(autocomplete.value.position.x > 4 && autocomplete.value.position.y > 4)
-        ) {
-          autocomplete.value.position = position;
+      if (autocompleteRaf) return; // 已有调度
+      autocompleteRaf = requestAnimationFrame(() => {
+        try {
+          const id = activeConnectionId.value;
+          if (!id || !autocomplete.value.visible) return;
+          if (!terminalStore.hasTerminal(id)) return;
+          const terminal = terminalStore.getTerminal(id);
+          if (!terminal) return;
+          const position = terminalAutocompleteService.calculatePosition(terminal);
+          // 位置保护：仅在有效时覆盖，避免用无效位置顶掉有效位置
+          const isValid = position && position.x > 4 && position.y > 4;
+          if (
+            isValid ||
+            !autocomplete.value.position ||
+            !(autocomplete.value.position.x > 4 && autocomplete.value.position.y > 4)
+          ) {
+            autocomplete.value.position = position;
+          }
+        } catch (_) {
+          // 忽略位置计算错误，避免打断输入
+        } finally {
+          autocompleteRaf = 0;
         }
-      } catch (error) {
-        // 忽略位置计算错误，避免打断输入
-      }
+      });
     };
 
     // 火箭动画阶段（用于过渡显示）
@@ -1994,9 +2001,25 @@ export default {
     const setupAutocompleteCallbacks = () => {
       terminalAutocompleteService.setCallbacks({
         onSuggestionsUpdate: (suggestions, position) => {
+          // 更新建议
           autocomplete.value.suggestions = suggestions;
-          autocomplete.value.position = position;
+
+          // 仅在位置有效时更新，避免被(0,0)等无效位置覆盖
+          if (position && position.x > 4 && position.y > 4) {
+            autocomplete.value.position = position;
+          }
+
+          // 控制可见性
           autocomplete.value.visible = suggestions.length > 0;
+
+          // 位置保护：如果可见但当前位置无效，尝试立即纠正
+          if (
+            autocomplete.value.visible &&
+            (!autocomplete.value.position ||
+              !(autocomplete.value.position.x > 4 && autocomplete.value.position.y > 4))
+          ) {
+            updateAutocompletePosition();
+          }
         }
       });
     };
@@ -2951,6 +2974,14 @@ export default {
 :deep(.xterm-screen) {
   width: 100%;
   height: 100%;
+  position: relative; /* 保障子 canvas 绝对定位的参照 */
+}
+
+/* 保障 xterm 的多层 canvas 重叠而非竖向堆叠（应对外部样式/构建偶发覆盖） */
+:deep(.xterm-screen canvas) {
+  position: absolute !important;
+  left: 0 !important;
+  top: 0 !important;
 }
 
 /* 确保光标样式立即生效，避免闪烁 */

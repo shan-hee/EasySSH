@@ -78,11 +78,9 @@ class SSHService {
       log.debug('正在初始化SSH服务...');
       this.isInitializing = true;
 
-      // 更新动态配置 - 移到这里，确保settings服务已完全初始化
+      // 更新动态配置 - 使用全局设置服务实例
       try {
-        // 使用全局设置服务实例而不是创建新实例
-        const { settings } = await import('../index.js');
-        this.dynamicConfig = getDynamicConstants(settings);
+        this.dynamicConfig = getDynamicConstants(settingsService);
         // 更新超时和重连配置
         if (this.dynamicConfig && this.dynamicConfig.SSH_CONSTANTS) {
           this.connectionTimeout =

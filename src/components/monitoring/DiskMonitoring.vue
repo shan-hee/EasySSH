@@ -38,7 +38,6 @@
 
 <script setup>
 import { ref, computed, watch, onMounted, onUnmounted, nextTick, markRaw } from 'vue';
-import { Chart, registerables } from 'chart.js';
 import { formatBytes, formatPercentage } from '@/utils/productionFormatters';
 import {
   getDiskChartConfig,
@@ -50,8 +49,16 @@ import MonitoringIcon from './MonitoringIcon.vue';
 import MonitoringLoader from '../common/MonitoringLoader.vue';
 import monitoringStateManager, { MonitoringComponent } from '@/services/monitoringStateManager';
 
-// 注册Chart.js组件
-Chart.register(...registerables);
+// 按需加载 Chart.js，避免初始包体积过大
+let Chart = null;
+let registerables = null;
+const ensureChart = async () => {
+  if (Chart) return;
+  const mod = await import('chart.js');
+  Chart = mod.Chart;
+  registerables = mod.registerables;
+  Chart.register(...registerables);
+};
 
 // Props
 const props = defineProps({
@@ -116,6 +123,7 @@ const getUsageStatusClass = usage => {
 
 // 初始化硬盘图表 - 堆叠柱形图版本
 const initChart = async () => {
+  await ensureChart();
   await nextTick();
 
   if (!diskChartRef.value) return;

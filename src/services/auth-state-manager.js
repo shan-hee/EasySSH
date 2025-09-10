@@ -5,6 +5,7 @@
 
 import log from './log';
 import storageAdapter from './storage-adapter';
+import { useUserStore } from '../store/user';
 
 class AuthStateManager {
   constructor() {
@@ -169,8 +170,6 @@ class AuthStateManager {
    */
   async refreshLoginStatus() {
     try {
-      // 动态导入用户store以避免循环依赖
-      const { useUserStore } = await import('../store/user');
       const userStore = useUserStore();
 
       const wasLoggedIn = this.isLoggedIn;

@@ -713,8 +713,16 @@ export const useTerminalStore = defineStore('terminal', () => {
    * @param {string} connectionId - 连接ID
    * @returns {Promise<boolean>} - 是否成功断开
    */
+  // 断开中的连接集合，防止重复触发
+  const disconnectingIds = new Set();
+
   const disconnectTerminal = async connectionId => {
     try {
+      if (disconnectingIds.has(connectionId)) {
+        log.debug(`忽略重复的断开请求: ${connectionId}`);
+        return true;
+      }
+      disconnectingIds.add(connectionId);
       log.info(`准备断开终端连接: ${connectionId}`);
 
       // 获取会话ID
@@ -727,7 +735,8 @@ export const useTerminalStore = defineStore('terminal', () => {
       // 关闭SSH会话
       try {
         await sshService.closeSession(sessionId);
-        log.info(`SSH会话已关闭: ${sessionId}`);
+        // 避免与 sshService.closeSession 内部相同日志重复
+        log.debug(`SSH会话关闭完成(由store确认): ${sessionId}`);
       } catch (closeError) {
         log.error(`关闭SSH会话失败: ${sessionId}`, closeError);
         // 即使关闭会话失败，也继续清理资源
@@ -1017,6 +1026,9 @@ export const useTerminalStore = defineStore('terminal', () => {
       }
 
       return false;
+    }
+    finally {
+      disconnectingIds.delete(connectionId);
     }
   };
 

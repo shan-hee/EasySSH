@@ -64,20 +64,61 @@ import { sftpService } from '@/services/ssh/index';
 import settingsService from '@/services/settings';
 import log from '@/services/log';
 
-// CodeMirror 6 Imports
-import { EditorState, Compartment } from '@codemirror/state';
-import { EditorView, keymap, lineNumbers, highlightActiveLine } from '@codemirror/view';
-import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands';
-import { searchKeymap } from '@codemirror/search';
-import {
+// CodeMirror 动态按需加载以减小首屏包体积
+let EditorState,
+  Compartment,
+  EditorView,
+  keymap,
+  lineNumbers,
+  highlightActiveLine,
+  defaultKeymap,
+  history,
+  historyKeymap,
+  indentWithTab,
+  searchKeymap,
   foldGutter,
   bracketMatching,
   syntaxHighlighting,
   HighlightStyle,
-  indentOnInput
-} from '@codemirror/language';
-import { javascript } from '@codemirror/lang-javascript';
-import { tags } from '@lezer/highlight';
+  indentOnInput,
+  StreamLanguage,
+  tags;
+
+const ensureCodeMirror = async () => {
+  if (EditorState) return; // 已加载
+  const [stateMod, viewMod, cmdMod, searchMod, langCoreMod, lezerMod] = await Promise.all([
+    import('@codemirror/state'),
+    import('@codemirror/view'),
+    import('@codemirror/commands'),
+    import('@codemirror/search'),
+    import('@codemirror/language'),
+    import('@lezer/highlight')
+  ]);
+
+  EditorState = stateMod.EditorState;
+  Compartment = stateMod.Compartment;
+
+  EditorView = viewMod.EditorView;
+  keymap = viewMod.keymap;
+  lineNumbers = viewMod.lineNumbers;
+  highlightActiveLine = viewMod.highlightActiveLine;
+
+  defaultKeymap = cmdMod.defaultKeymap;
+  history = cmdMod.history;
+  historyKeymap = cmdMod.historyKeymap;
+  indentWithTab = cmdMod.indentWithTab;
+
+  searchKeymap = searchMod.searchKeymap;
+
+  foldGutter = langCoreMod.foldGutter;
+  bracketMatching = langCoreMod.bracketMatching;
+  syntaxHighlighting = langCoreMod.syntaxHighlighting;
+  HighlightStyle = langCoreMod.HighlightStyle;
+  indentOnInput = langCoreMod.indentOnInput;
+  StreamLanguage = langCoreMod.StreamLanguage;
+
+  tags = lezerMod.tags;
+};
 
 export default defineComponent({
   name: 'SftpEditor',
@@ -218,18 +259,121 @@ export default defineComponent({
       return fileTypeMap[fileExt] || 'Plain Text';
     };
 
-    // 获取文件对应的语言模式
-    const getLanguageSupport = () => {
-      const fileExt = fileName.value.split('.').pop().toLowerCase();
-      const langMap = {
-        js: javascript(),
-        jsx: javascript({ jsx: true }),
-        ts: javascript({ typescript: true }),
-        tsx: javascript({ jsx: true, typescript: true })
-        // 其他语言可根据需要添加
-      };
-
-      return langMap[fileExt] || javascript();
+    // 获取文件对应的语言模式（动态加载）
+    const getLanguageSupport = async () => {
+      const ext = (fileName.value.split('.').pop() || '').toLowerCase();
+      try {
+        switch (ext) {
+          case 'js': {
+            const mod = await import('@codemirror/lang-javascript');
+            return mod.javascript();
+          }
+          case 'jsx': {
+            const mod = await import('@codemirror/lang-javascript');
+            return mod.javascript({ jsx: true });
+          }
+          case 'ts': {
+            const mod = await import('@codemirror/lang-javascript');
+            return mod.javascript({ typescript: true });
+          }
+          case 'tsx': {
+            const mod = await import('@codemirror/lang-javascript');
+            return mod.javascript({ jsx: true, typescript: true });
+          }
+          case 'json': {
+            const mod = await import('@codemirror/lang-json');
+            return mod.json();
+          }
+          case 'yml':
+          case 'yaml': {
+            try {
+              const mod = await import('@codemirror/lang-yaml');
+              return mod.yaml();
+            } catch (_) {
+              const { yaml } = await import('@codemirror/legacy-modes/mode/yaml');
+              return StreamLanguage.define(yaml);
+            }
+          }
+          case 'xml': {
+            const mod = await import('@codemirror/lang-xml');
+            return mod.xml();
+          }
+          case 'md':
+          case 'markdown': {
+            const mod = await import('@codemirror/lang-markdown');
+            return mod.markdown();
+          }
+          case 'html': {
+            const mod = await import('@codemirror/lang-html');
+            return mod.html();
+          }
+          case 'sh':
+          case 'bash':
+          case 'zsh':
+          case 'shell': {
+            const { shell } = await import('@codemirror/legacy-modes/mode/shell');
+            return StreamLanguage.define(shell);
+          }
+          case 'css':
+          case 'scss':
+          case 'less': {
+            const mod = await import('@codemirror/lang-css');
+            return mod.css();
+          }
+          case 'toml': {
+            try {
+              const { toml } = await import('@codemirror/legacy-modes/mode/toml');
+              return StreamLanguage.define(toml);
+            } catch (_) {
+              const { yaml } = await import('@codemirror/legacy-modes/mode/yaml');
+              return StreamLanguage.define(yaml);
+            }
+          }
+          case 'ini':
+          case 'properties':
+          case 'conf': {
+            const { properties } = await import('@codemirror/legacy-modes/mode/properties');
+            return StreamLanguage.define(properties);
+          }
+          case 'dockerfile': {
+            try {
+              const { dockerFile } = await import('@codemirror/legacy-modes/mode/dockerfile');
+              return StreamLanguage.define(dockerFile);
+            } catch (_) {
+              const { properties } = await import('@codemirror/legacy-modes/mode/properties');
+              return StreamLanguage.define(properties);
+            }
+          }
+          case 'nginx': {
+            try {
+              const { nginx } = await import('@codemirror/legacy-modes/mode/nginx');
+              return StreamLanguage.define(nginx);
+            } catch (_) {
+              const { properties } = await import('@codemirror/legacy-modes/mode/properties');
+              return StreamLanguage.define(properties);
+            }
+          }
+          case 'py':
+          case 'python': {
+            const mod = await import('@codemirror/lang-python');
+            return mod.python();
+          }
+          case 'c':
+          case 'h':
+          case 'cpp':
+          case 'hpp': {
+            const mod = await import('@codemirror/lang-cpp');
+            return mod.cpp();
+          }
+          default: {
+            const mod = await import('@codemirror/lang-javascript');
+            return mod.javascript();
+          }
+        }
+      } catch (e) {
+        const mod = await import('@codemirror/lang-javascript');
+        return mod.javascript();
+      }
     };
 
     // 自定义语法高亮样式
@@ -353,20 +497,12 @@ export default defineComponent({
       fontSettings.value.fontFamily || "'JetBrains Mono', 'Courier New', monospace";
     const fontSize = 14; //不使用 fontSettings.value.fontSize
 
-    // 动态创建自定义主题
-    const customTheme = createCustomTheme();
-
-    // 动态创建自定义语法高亮样式
-    const customHighlightStyle = createHighlightStyle();
-
-    // 语言配置模块，可以动态更新
-    const languageConf = new Compartment();
-
-    // 主题配置模块，可以动态更新
-    const themeConf = new Compartment();
-
-    // 语法高亮配置模块，可以动态更新
-    const highlightConf = new Compartment();
+    // 运行时创建（在加载 CodeMirror 后赋值）
+    let customTheme = null;
+    let customHighlightStyle = null;
+    let languageConf = null;
+    let themeConf = null;
+    let highlightConf = null;
 
     // 定义中文搜索面板词组
     const chinesePhrases = {
@@ -438,8 +574,8 @@ export default defineComponent({
     };
 
     // 创建编辑器状态
-    const createEditorState = content => {
-      const languageSupport = getLanguageSupport();
+    const createEditorState = async content => {
+      const languageSupport = await getLanguageSupport();
 
       // 获取UI语言设置的词组
       const phrases = getLanguagePhrases();
@@ -535,12 +671,21 @@ export default defineComponent({
     };
 
     // 初始化编辑器
-    const initEditor = () => {
+    const initEditor = async () => {
       if (!editorContainer.value || !isComponentMounted.value) return;
 
       try {
+        if (!EditorState) return;
+        if (!languageConf) {
+          languageConf = new Compartment();
+          themeConf = new Compartment();
+          highlightConf = new Compartment();
+        }
+        if (!customTheme) customTheme = createCustomTheme();
+        if (!customHighlightStyle) customHighlightStyle = createHighlightStyle();
+
         // 创建编辑器状态
-        const state = createEditorState(originalContent.value);
+        const state = await createEditorState(originalContent.value);
 
         // 创建编辑器视图
         editorView.value = new EditorView({
@@ -701,7 +846,6 @@ export default defineComponent({
           // 同步重新配置主题和高亮
           editorView.value.dispatch({
             effects: [
-              languageConf.reconfigure(getLanguageSupport()),
               themeConf.reconfigure(newCustomTheme),
               highlightConf.reconfigure(
                 syntaxHighlighting(newCustomHighlightStyle, { fallback: true })
@@ -819,7 +963,6 @@ export default defineComponent({
             // 第3步：应用新主题到编辑器
             editorView.value.dispatch({
               effects: [
-                languageConf.reconfigure(getLanguageSupport()),
                 themeConf.reconfigure(newCustomTheme),
                 highlightConf.reconfigure(
                   syntaxHighlighting(newCustomHighlightStyle, { fallback: true })
@@ -842,15 +985,15 @@ export default defineComponent({
     };
 
     // 生命周期钩子
-    onMounted(() => {
+    onMounted(async () => {
       window.addEventListener('keydown', handleGlobalKeyDown);
       window.addEventListener('resize', handleWindowResize);
       // 添加主题变化事件监听
       window.addEventListener('theme-changed', handleThemeChange);
       isComponentMounted.value = true;
-      nextTick(() => {
-        initEditor();
-      });
+      await ensureCodeMirror();
+      await nextTick();
+      initEditor();
     });
 
     onBeforeUnmount(() => {

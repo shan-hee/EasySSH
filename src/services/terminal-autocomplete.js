@@ -1436,14 +1436,17 @@ class TerminalAutocompleteService {
                       y: Math.round(rect.top + charHeight + verticalOffset),
                       cellHeight: charHeight
                     };
-                    this.lastPosition = pos;
-                    // 使用统一发射器，避免无效位置闪烁
-                    this._emitSuggestionsUpdate(
-                      this.suggestions,
-                      pos,
-                      this.selectedIndex,
-                      terminal
-                    );
+                    // 位置有效性保护：避免(0,0)或过小坐标覆盖正确位置
+                    if (pos.x > 4 && pos.y > 4) {
+                      this.lastPosition = pos;
+                      // 使用统一发射器，避免无效位置闪烁
+                      this._emitSuggestionsUpdate(
+                        this.suggestions,
+                        pos,
+                        this.selectedIndex,
+                        terminal
+                      );
+                    }
                   }
                 });
               } catch (_) {

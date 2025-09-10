@@ -38,8 +38,12 @@ class LogService {
     // 配置常量
     this.CONFIG_KEYS = Object.freeze({
       LOG_LEVEL: 'easyssh_log_level',
-      ENABLE_CONSOLE: 'easyssh_enable_console'
+      ENABLE_CONSOLE: 'easyssh_enable_console',
+      COMPACT_DOM: 'easyssh_compact_dom'
     });
+
+    // 是否压缩 DOM/HTML 输出，避免打印整段标记
+    this.compactDom = true;
   }
 
   /**
@@ -91,6 +95,14 @@ class LogService {
     const enableConsole = this._getStorageItem(this.CONFIG_KEYS.ENABLE_CONSOLE);
     if (enableConsole !== null) {
       this.enableConsole = enableConsole === 'true';
+    }
+
+    // DOM 压缩配置
+    const compactDom = this._getStorageItem(this.CONFIG_KEYS.COMPACT_DOM);
+    if (compactDom !== null) {
+      this.compactDom = compactDom === 'true';
+    } else if (typeof import.meta.env.VITE_LOG_COMPACT_DOM !== 'undefined') {
+      this.compactDom = String(import.meta.env.VITE_LOG_COMPACT_DOM) !== 'false';
     }
   }
 
@@ -370,11 +382,21 @@ class LogService {
    * @private
    */
   _outputToConsole(level, timestamp, message, data) {
-    // 格式化数据
+    // 格式化数据（避免输出大段 HTML/DOM）
     let formattedData = '';
+    const MAX_PRINT_LEN = 1200;
+
+    // 消息本身若是超长 HTML，也做简化
+    let finalMessage = String(message);
+    if (this.compactDom && this._looksLikeHtml(finalMessage) && finalMessage.length > MAX_PRINT_LEN) {
+      finalMessage = this._summarizeHtmlString(finalMessage, MAX_PRINT_LEN);
+    }
     if (data !== undefined) {
       try {
-        if (typeof data === 'object' && data !== null) {
+        // DOM 节点输出精简信息
+        if (this.compactDom && this._isDomNode(data)) {
+          formattedData = JSON.stringify(this._summarizeDomNode(data));
+        } else if (typeof data === 'object' && data !== null) {
           const simpleObj = this._simplifyObject(data);
           if (Object.keys(simpleObj).length > 0) {
             formattedData = JSON.stringify(simpleObj, null, 2);
@@ -387,8 +409,14 @@ class LogService {
       }
     }
 
+    // 超长字符串截断，避免刷屏
+    if (formattedData && formattedData.length > MAX_PRINT_LEN) {
+      const omitted = formattedData.length - MAX_PRINT_LEN;
+      formattedData = `${formattedData.slice(0, MAX_PRINT_LEN)}... [已截断 ${omitted} 字符]`;
+    }
+
     // 构建日志消息
-    const logMessage = formattedData ? `${message}\n${formattedData}` : message;
+    const logMessage = formattedData ? `${finalMessage}\n${formattedData}` : finalMessage;
 
     // 使用对应的控制台方法
     const consoleMethod = console[level] || console.log;
@@ -429,6 +457,11 @@ class LogService {
       return obj;
     }
 
+    // DOM 节点：返回摘要而非完整结构/HTML
+    if (this.compactDom && this._isDomNode(obj)) {
+      return this._summarizeDomNode(obj);
+    }
+
     // 处理数组
     if (Array.isArray(obj)) {
       return obj.map(item => this._sanitizeData(item));
@@ -454,6 +487,60 @@ class LogService {
       }
     }
     return result;
+  }
+
+  /**
+   * 判断是否为 DOM 节点
+   * @param {any} v
+   * @returns {boolean}
+   * @private
+   */
+  _isDomNode(v) {
+    return !!(v && typeof v === 'object' && v.nodeType === 1 && typeof v.tagName === 'string');
+  }
+
+  /**
+   * 精简输出 DOM 节点信息，避免打印 outerHTML
+   * @param {HTMLElement} el
+   * @returns {Object}
+   * @private
+   */
+  _summarizeDomNode(el) {
+    try {
+      const attrs = Array.from(el.attributes || [])
+        .slice(0, 6)
+        .map(a => `${a.name}="${a.value}"`);
+      const childCanvas = el.querySelectorAll ? el.querySelectorAll('canvas').length : undefined;
+      return {
+        node: 'HTMLElement',
+        tag: el.tagName,
+        id: el.id || undefined,
+        class: el.className || undefined,
+        dataset: el.dataset ? { ...el.dataset } : undefined,
+        attrs,
+        childCanvas
+      };
+    } catch (_) {
+      return { node: 'HTMLElement' };
+    }
+  }
+
+  /**
+   * 侦测字符串是否像 HTML
+   */
+  _looksLikeHtml(str) {
+    return /<\w+[\s>]/.test(str) && /<\/.+>/.test(str);
+  }
+
+  /**
+   * 压缩 HTML 字符串为摘要输出
+   */
+  _summarizeHtmlString(str, maxLen) {
+    const head = str.slice(0, maxLen);
+    const tagMatch = head.match(/<([a-zA-Z0-9-]+)(\s|>)/);
+    const tag = tagMatch ? tagMatch[1] : 'HTML';
+    const omitted = str.length - head.length;
+    return `[${tag}] ${head}... [已截断 ${omitted} 字符]`;
   }
 
   /**

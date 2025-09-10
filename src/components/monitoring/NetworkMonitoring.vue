@@ -37,15 +37,22 @@
 
 <script setup>
 import { ref, onMounted, onUnmounted, watch, computed, nextTick, markRaw } from 'vue';
-import { Chart, registerables } from 'chart.js';
 import { formatNetworkSpeed } from '@/utils/productionFormatters';
 import { getNetworkChartConfig, limitDataPoints, watchThemeChange } from '@/utils/chartConfig';
 import MonitoringIcon from './MonitoringIcon.vue';
 import MonitoringLoader from '../common/MonitoringLoader.vue';
 import monitoringStateManager, { MonitoringComponent } from '@/services/monitoringStateManager';
 
-// 注册Chart.js组件
-Chart.register(...registerables);
+// 按需加载 Chart.js，避免初始包体积过大
+let Chart = null;
+let registerables = null;
+const ensureChart = async () => {
+  if (Chart) return;
+  const mod = await import('chart.js');
+  Chart = mod.Chart;
+  registerables = mod.registerables;
+  Chart.register(...registerables);
+};
 
 // Props
 const props = defineProps({
@@ -111,6 +118,7 @@ const handleRetry = () => {
 
 // 初始化图表
 const initChart = async () => {
+  await ensureChart();
   await nextTick();
 
   if (!networkChartRef.value) return;

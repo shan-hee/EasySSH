@@ -25,6 +25,8 @@ const clickOutside = {
   }
 };
 
+import clipboardService from '../services/clipboard.js';
+
 // v-copy：点击复制内容 - 使用统一的剪贴板服务
 const copy = {
   beforeMount: (el, binding) => {
@@ -32,8 +34,7 @@ const copy = {
       try {
         const value = typeof binding.value === 'function' ? binding.value() : binding.value;
 
-        // 使用统一的剪贴板服务
-        const { default: clipboardService } = await import('../services/clipboard.js');
+        // 使用统一的剪贴板服务（静态导入）
         const success = await clipboardService.copyToClipboard(value);
 
         if (success) {

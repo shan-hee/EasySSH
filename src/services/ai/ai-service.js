@@ -8,6 +8,7 @@ import AIClient from './ai-client';
 import AICache from './ai-cache';
 import AIConfig from './ai-config';
 import aiApiService from './ai-api';
+import { useAIPanelStore } from '../../store/ai-panel.js';
 
 class AIService {
   constructor() {
@@ -488,8 +489,6 @@ class AIService {
    */
   async sendToPanel(terminalId, message) {
     try {
-      // 使用异步导入但等待完成
-      const { useAIPanelStore } = await import('../../store/ai-panel.js');
       const aiPanelStore = useAIPanelStore();
       aiPanelStore.addMessage(terminalId, message);
 
@@ -553,10 +552,8 @@ class AIService {
    */
   clearPanelHistory(terminalId) {
     try {
-      import('../../store/ai-panel.js').then(({ useAIPanelStore }) => {
-        const aiPanelStore = useAIPanelStore();
-        aiPanelStore.clearMessages(terminalId);
-      });
+      const aiPanelStore = useAIPanelStore();
+      aiPanelStore.clearMessages(terminalId);
     } catch (error) {
       log.error('清空AI面板历史失败', { error: error.message, terminalId });
     }
@@ -569,7 +566,6 @@ class AIService {
    */
   async getPanelStatus(terminalId) {
     try {
-      const { useAIPanelStore } = await import('../../store/ai-panel.js');
       const aiPanelStore = useAIPanelStore();
 
       return {

@@ -2,6 +2,7 @@ import { ref } from 'vue';
 import { ElMessage } from 'element-plus';
 import apiService from './api';
 import log from './log';
+import scriptLibraryService from './scriptLibrary.js';
 import { useUserStore } from '../store/user';
 import router from '../router';
 
@@ -682,9 +683,7 @@ class AuthService {
           // 更新同步时间
           localStorage.setItem('last_script_sync', now.toString());
 
-          // 动态导入脚本库服务
-          const scriptLibraryModule = await import('./scriptLibrary.js');
-          const scriptLibraryService = scriptLibraryModule.default;
+          // 同步脚本库数据（静态导入，避免重复分块）
           await scriptLibraryService.syncFromServer();
           log.debug('脚本库数据后台同步完成');
         } catch (error) {

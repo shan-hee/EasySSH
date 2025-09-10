@@ -1,18 +1,14 @@
 /**
  * 终端服务模块，负责创建和管理终端实例
+ *
+ * 体积优化：按需动态加载 xterm.js 及其附加组件与样式，
+ * 避免在非终端页面也打包这些较大的依赖。
  */
-import { Terminal } from '@xterm/xterm';
-import { FitAddon } from '@xterm/addon-fit';
-import { WebLinksAddon } from '@xterm/addon-web-links';
-import { SearchAddon } from '@xterm/addon-search';
-import { CanvasAddon } from '@xterm/addon-canvas';
-import { WebglAddon } from '@xterm/addon-webgl';
-import { Unicode11Addon } from '@xterm/addon-unicode11';
-// LigaturesAddon 已移除 - 连字功能可选，避免导入问题
 import { ref } from 'vue';
 import { ElMessage } from 'element-plus';
 import settingsService from './settings';
 import log from './log';
+import monitoringService from './monitoring.js';
 import clipboard from './clipboard';
 
 class TerminalService {
@@ -22,6 +18,9 @@ class TerminalService {
 
     // 终端实例映射 Map<string, TerminalInstance>
     this.terminals = new Map();
+
+    // 动态导入的 xterm 相关构造函数
+    this.xtermModules = null;
 
     // 终端主题配置
     this.themes = {
@@ -166,6 +165,38 @@ class TerminalService {
     this.eventListeners = {};
   }
 
+  // 动态加载 xterm 相关依赖（JS + CSS）
+  async _ensureXtermLoaded() {
+    if (this.xtermModules) return this.xtermModules;
+
+    try {
+      const [xtermCore, fit, webLinks, search, unicode11] = await Promise.all([
+        import('@xterm/xterm'),
+        import('@xterm/addon-fit'),
+        import('@xterm/addon-web-links'),
+        import('@xterm/addon-search'),
+        import('@xterm/addon-unicode11'),
+      ]);
+
+      // 按需加载样式，确保只在需要时注入
+      await import('@xterm/xterm/css/xterm.css');
+
+      this.xtermModules = {
+        Terminal: xtermCore.Terminal,
+        FitAddon: fit.FitAddon,
+        WebLinksAddon: webLinks.WebLinksAddon,
+        SearchAddon: search.SearchAddon,
+        // Canvas/WebGL 在选择渲染器时再行动态加载，避免多余体积
+        Unicode11Addon: unicode11.Unicode11Addon,
+      };
+
+      return this.xtermModules;
+    } catch (e) {
+      log.error('加载 xterm 依赖失败', e);
+      throw e;
+    }
+  }
+
   /**
    * 初始化终端服务
    * @returns {Promise<boolean>} - 是否初始化成功
@@ -212,12 +243,8 @@ class TerminalService {
       }
     }
 
-    // 异步连接监控服务
-    import('./monitoring.js')
-      .then(({ default: monitoringService }) => {
-        monitoringService.connect(sshSessionId, host).catch(() => {});
-      })
-      .catch(() => {});
+    // 连接监控服务
+    monitoringService.connect(sshSessionId, host).catch(() => {});
   }
 
   /**
@@ -271,6 +298,17 @@ class TerminalService {
 
       termOptions.scrollback = Math.min(termOptions.scrollback || 3000, 5000); // 限制滚动缓冲区大小
 
+      // 确保按需加载 xterm 依赖
+      const {
+        Terminal,
+        FitAddon,
+        WebLinksAddon,
+        SearchAddon,
+        CanvasAddon,
+        WebglAddon,
+        Unicode11Addon,
+      } = await this._ensureXtermLoaded();
+
       // 创建xterm实例
       const terminal = new Terminal(termOptions);
 
@@ -320,36 +358,62 @@ class TerminalService {
       const tryCanvas = desired === 'auto' || desired === 'canvas' || desired === 'webgl';
 
       try {
-        // 1) WebGL 优先
+        // 1) WebGL 优先（仅在需要时动态加载）
         if (tryWebGL && this._checkWebGLSupport()) {
           try {
-            const webglAddon = new WebglAddon();
-            const compatibility = this._checkRendererAddonCompatibility(
-              webglAddon,
-              'webgl',
-              terminal
-            );
-            if (compatibility) {
+            const mod = await import('@xterm/addon-webgl');
+            const WebglCtor =
+              (typeof mod?.WebglAddon === 'function' && mod.WebglAddon) ||
+              (typeof mod?.default?.WebglAddon === 'function' && mod.default.WebglAddon) ||
+              (typeof mod?.default === 'function' && mod.default) ||
+              (typeof mod === 'function' && mod) ||
+              null;
+            if (!WebglCtor) {
+              throw new TypeError(`未找到 WebglAddon 构造函数，模块键: ${Object.keys(mod || {})}`);
+            }
+            const webglAddon = new WebglCtor();
+            const supported = this._checkRendererAddonCompatibility(webglAddon, 'webgl', terminal);
+            if (supported) {
               terminal.loadAddon(webglAddon);
               addons.webgl = webglAddon;
               renderingMode = 'webgl';
               log.info(`终端 ${id} WebGL渲染器已启用`);
             }
           } catch (webglErr) {
-            log.warn(`终端 ${id} WebGL渲染器加载失败，回退到Canvas`, webglErr);
+            // 在多数环境中WebGL不可用属于正常回退，不提升为警告
+            log.debug(`终端 ${id} WebGL渲染器加载失败，回退到Canvas`, {
+              name: webglErr?.name,
+              message: webglErr?.message,
+              stack: webglErr?.stack
+            });
           }
         }
 
-        // 2) Canvas 其次
+        // 2) Canvas 其次（仅在需要时动态加载）
         if (renderingMode !== 'webgl' && tryCanvas && this._checkCanvasSupport()) {
           try {
-            const canvasAddon = new CanvasAddon();
+            const mod = await import('@xterm/addon-canvas');
+            const CanvasCtor =
+              (typeof mod?.CanvasAddon === 'function' && mod.CanvasAddon) ||
+              (typeof mod?.default?.CanvasAddon === 'function' && mod.default.CanvasAddon) ||
+              (typeof mod?.default === 'function' && mod.default) ||
+              (typeof mod === 'function' && mod) ||
+              null;
+            if (!CanvasCtor) {
+              throw new TypeError(`未找到 CanvasAddon 构造函数，模块键: ${Object.keys(mod || {})}`);
+            }
+            const canvasAddon = new CanvasCtor();
             terminal.loadAddon(canvasAddon);
             addons.canvas = canvasAddon;
             renderingMode = 'canvas';
             log.info(`终端 ${id} Canvas渲染器已启用`);
           } catch (canvasErr) {
-            log.warn(`终端 ${id} Canvas渲染器加载失败，使用DOM渲染`, canvasErr);
+            // Canvas加载失败时使用DOM渲染，属于可接受回退，降低为调试级别
+            log.debug(`终端 ${id} Canvas渲染器加载失败，使用DOM渲染`, {
+              name: canvasErr?.name,
+              message: canvasErr?.message,
+              stack: canvasErr?.stack
+            });
             renderingMode = 'dom';
           }
         }
@@ -1277,12 +1341,9 @@ class TerminalService {
       if (actualRenderer === 'canvas') {
         // Canvas渲染器字体优化
         this._optimizeCanvasFontRendering(terminal, id);
-      } else if (actualRenderer === 'webgl') {
-        // WebGL渲染器优化（目前主要依赖插件内部实现）
-        this._applyCommonFontOptimizations(terminal, id);
       }
 
-      // 通用字体优化
+      // 通用字体优化（统一只调用一次，避免重复日志）
       this._applyCommonFontOptimizations(terminal, id);
     } catch (error) {
       log.warn(`终端 ${id} 应用字体优化失败:`, error);

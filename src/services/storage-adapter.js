@@ -6,6 +6,8 @@
 import log from './log';
 import storageService from './storage';
 import apiService from './api';
+import { useUserStore } from '../store/user';
+import settingsService from './settings.js';
 
 class StorageAdapter {
   constructor() {
@@ -20,8 +22,7 @@ class StorageAdapter {
     if (this.initialized) return true;
 
     try {
-      // 动态导入用户store以避免循环依赖
-      const { useUserStore } = await import('../store/user');
+      // 静态导入用户store
       this.userStore = useUserStore();
 
       // 初始化本地存储服务
@@ -104,17 +105,13 @@ class StorageAdapter {
 
           // 同步更新设置服务中的设置（但不包括UI设置，UI设置保持本地化）
           try {
-            if (category !== 'ui') {
-              // UI设置不从服务器同步回设置服务
-              const settingsService = await import('./settings.js').then(m => m.default);
-              if (settingsService.isInitialized) {
-                Object.keys(data).forEach(key => {
-                  if (data[key] !== undefined) {
-                    settingsService.set(`${category}.${key}`, data[key]);
-                  }
-                });
-                log.debug(`设置服务已同步更新 [${category}]`);
-              }
+            if (category !== 'ui' && settingsService.isInitialized) {
+              Object.keys(data).forEach(key => {
+                if (data[key] !== undefined) {
+                  settingsService.set(`${category}.${key}`, data[key]);
+                }
+              });
+              log.debug(`设置服务已同步更新 [${category}]`);
             }
           } catch (error) {
             log.warn(`同步设置服务失败 [${category}]:`, error);
@@ -131,7 +128,6 @@ class StorageAdapter {
         if (success) {
           // 同步更新设置服务中的设置
           try {
-            const settingsService = await import('./settings.js').then(m => m.default);
             if (settingsService.isInitialized) {
               Object.keys(data).forEach(key => {
                 if (data[key] !== undefined) {

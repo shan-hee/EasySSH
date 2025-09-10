@@ -1,4 +1,4 @@
-import { defineConfig, loadEnv } from 'vite';
+import { defineConfig, loadEnv, splitVendorChunkPlugin } from 'vite';
 import vue from '@vitejs/plugin-vue';
 import { resolve } from 'path';
 import viteCompression from 'vite-plugin-compression';
@@ -75,7 +75,7 @@ const customLogger = () => {
 };
 
 // https://vitejs.dev/config/
-export default defineConfig(({ mode }) => {
+export default defineConfig(async ({ mode }) => {
   // 加载环境变量
   const env = loadEnv(mode, process.cwd());
   const isDev = mode === 'development';
@@ -85,15 +85,52 @@ export default defineConfig(({ mode }) => {
   const packageJson = JSON.parse(readFileSync(resolve(__dirname, 'package.json'), 'utf-8'));
   const appVersion = packageJson.version;
 
+  // 可选加载 Element Plus 按需插件（未安装时优雅降级）
+  let epAutoEnabled = false;
+  let autoImportPlugin = null;
+  let componentsPlugin = null;
+  try {
+    const [{ default: AutoImport }, { default: Components }, { ElementPlusResolver }] = await Promise.all([
+      import('unplugin-auto-import/vite'),
+      import('unplugin-vue-components/vite'),
+      import('unplugin-vue-components/resolvers')
+    ]);
+
+    autoImportPlugin = AutoImport({
+      imports: ['vue', 'vue-router'],
+      resolvers: [ElementPlusResolver()],
+      dts: false
+    });
+    componentsPlugin = Components({
+      resolvers: [ElementPlusResolver({ importStyle: 'sass' })],
+      dts: false
+    });
+    epAutoEnabled = true;
+  } catch (e) {
+    // 插件未安装时忽略，使用运行时回退
+    epAutoEnabled = false;
+  }
+
   return {
     plugins: [
       vue(),
+      // 自动拆分第三方依赖，配合手动分包更稳健
+      splitVendorChunkPlugin(),
+      autoImportPlugin,
+      componentsPlugin,
       viteCompression({
         // 生产环境下启用gzip压缩
         disable: isDev,
         threshold: 10240, // 10kb以上文件进行压缩
         algorithm: 'gzip',
         ext: '.gz'
+      }),
+      // 额外生成 brotli 压缩包，提升线上传输效率（由 Nginx/网关按需选择）
+      viteCompression({
+        disable: isDev,
+        threshold: 10240,
+        algorithm: 'brotliCompress',
+        ext: '.br'
       }),
       // 构建分析插件
       isAnalyze && visualizer({
@@ -164,6 +201,7 @@ export default defineConfig(({ mode }) => {
     // 构建配置
     build: {
       target: 'es2020',
+      modulePreload: { polyfill: false },
       outDir: 'dist',
       assetsDir: 'assets',
       assetsInlineLimit: 4096, // 4kb以下的资源内联为base64
@@ -189,59 +227,37 @@ export default defineConfig(({ mode }) => {
       },
       rollupOptions: {
         output: {
-          // 优化的分包策略，解决模块初始化顺序问题
+          // 精细化第三方库分包；保留应用代码的路由级拆分
           manualChunks: (id) => {
-            // 第三方库分包
             if (id.includes('node_modules')) {
-              // Vue 核心库单独分包，避免循环依赖
-              if (id.includes('vue/') && !id.includes('vue-router') && !id.includes('@vue')) {
-                return 'vue-core';
-              }
+              // Vue 相关
+              if (id.includes('/vue-router')) return 'vue-router';
+              if (id.includes('/pinia')) return 'pinia';
+              if (id.includes('/vue') || id.includes('@vue')) return 'vue-core';
 
-              // Vue 路由单独分包
-              if (id.includes('vue-router')) {
-                return 'vue-router';
-              }
+              // UI & 可视化
+              if (id.includes('element-plus')) return 'element-plus';
+              if (id.includes('chart.js')) return 'chartjs';
 
-              // Pinia 状态管理单独分包
-              if (id.includes('pinia')) {
-                return 'pinia';
-              }
+              // 终端相关
+              if (id.includes('@xterm')) return 'xterm';
 
-              // Vue 编译器和其他 Vue 生态
-              if (id.includes('@vue')) {
-                return 'vue-utils';
+              // 编辑器相关（CodeMirror 核心与语言模块按需拆分）
+              if (id.includes('@codemirror/lang-')) {
+                const m = id.match(/@codemirror\/lang-([^/]+)/);
+                return m ? `cm-lang-${m[1]}` : 'cm-lang';
               }
+              if (id.includes('@codemirror/')) return 'cm-core';
+              if (id.includes('/@lezer/')) return 'cm-core';
 
-              // Element Plus UI库
-              if (id.includes('element-plus')) {
-                return 'element-plus';
-              }
+              // 其他常用工具
+              if (id.includes('/axios/')) return 'axios';
 
-              // 终端相关库
-              if (id.includes('@xterm')) {
-                return 'xterm-addons';
-              }
-
-              // 图表库
-              if (id.includes('echarts')) {
-                return 'echarts';
-              }
-
-              // 工具库
-              if (id.includes('axios') || id.includes('lodash') || id.includes('dayjs')) {
-                return 'utils';
-              }
-
-              // 其他第三方库
+              // 兜底第三方包
               return 'vendor';
             }
-
-            // 应用代码分包 - 最简化策略，将所有应用代码打包到一个文件中
-            // 只保留最基础的分包，避免所有循环依赖问题
-            if (id.includes('/src/')) {
-              return 'app-bundle';
-            }
+            // 让 Rollup/Vite 根据动态 import 做应用代码拆分
+            return undefined;
           },
 
           // 自定义chunk文件名
@@ -292,12 +308,12 @@ export default defineConfig(({ mode }) => {
         '@xterm/addon-fit',
         '@xterm/addon-web-links',
         '@xterm/addon-search',
-        '@xterm/addon-webgl',
         '@xterm/addon-unicode11',
+        // 预打包 WebGL/Canvas 渲染器，避免 dev 环境动态导入解析异常
+        '@xterm/addon-webgl',
+        '@xterm/addon-canvas',
         'axios',
-        'echarts/core',
-        'echarts/charts',
-        'echarts/components'
+        'chart.js'
       ],
       // 排除一些不需要预构建的模块
       exclude: [
@@ -316,7 +332,9 @@ export default defineConfig(({ mode }) => {
       // 定义Node.js环境变量
       'process.env.NODE_ENV': JSON.stringify(isDev ? 'development' : 'production'),
       // 注入应用版本号
-      'import.meta.env.VITE_APP_VERSION': JSON.stringify(appVersion)
+      'import.meta.env.VITE_APP_VERSION': JSON.stringify(appVersion),
+      // 注入 Element Plus 按需插件启用状态，供运行时回退判断
+      __EP_AUTO_ENABLED__: JSON.stringify(epAutoEnabled)
     }
   };
 });

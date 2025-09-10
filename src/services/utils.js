@@ -2,6 +2,7 @@
  * 工具函数服务模块，提供各种通用工具方法
  */
 import { ElMessage } from 'element-plus';
+import clipboardService from './clipboard.js';
 
 /**
  * 格式化日期时间
@@ -187,9 +188,6 @@ export function formatFileSize(bytes, decimals = 2) {
  */
 export async function copyToClipboard(text, showMessage = true) {
   try {
-    // 动态导入剪贴板服务，避免循环依赖
-    const { default: clipboardService } = await import('./clipboard.js');
-
     const success = await clipboardService.copyToClipboard(text);
 
     if (success && showMessage) {

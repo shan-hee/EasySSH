@@ -6,6 +6,9 @@ import { reactive, watch } from 'vue';
 import { userSettingsDefaults } from '../config/app-config.js';
 import storageUtils from '../utils/storage.js';
 import log from './log';
+import { useUserStore } from '../store/user.js';
+import storageAdapter from './storage-adapter.js';
+import { useTerminalStore } from '../store/terminal';
 
 const SETTINGS_STORAGE_KEY = 'user_settings';
 
@@ -93,14 +96,13 @@ class SettingsService {
   async loadSettings() {
     try {
       // 检查是否已登录，如果已登录则从服务器加载设置
-      const userStore = await import('../store/user.js').then(m => m.useUserStore());
+      const userStore = useUserStore();
 
       if (userStore.isLoggedIn) {
         // 登录状态：从服务器加载设置
         try {
-          const storageAdapter = await import('./storage-adapter.js').then(m => m.default);
-
           // 加载各个分类的设置（UI设置保持本地化，不从服务器同步）
+          // 使用静态导入的存储适配器
           const categories = ['terminal', 'connection', 'editor', 'advanced'];
           const serverSettings = {};
 
@@ -178,10 +180,10 @@ class SettingsService {
 
       // 检查是否已登录，如果已登录则同时保存到服务器
       try {
-        const userStore = await import('../store/user.js').then(m => m.useUserStore());
+        const userStore = useUserStore();
 
         if (userStore.isLoggedIn) {
-          const storageAdapter = await import('./storage-adapter.js').then(m => m.default);
+          // 使用静态导入的存储适配器
 
           // 分别保存各个分类的设置到服务器（UI设置保持本地化，不同步到服务器）
           const categories = ['terminal', 'connection', 'editor', 'advanced'];
@@ -461,8 +463,6 @@ class SettingsService {
    */
   async _applyTerminalSettingsToAllTerminals() {
     try {
-      // 动态导入终端store以避免循环依赖
-      const { useTerminalStore } = await import('../store/terminal');
       const terminalStore = useTerminalStore();
 
       if (terminalStore && terminalStore.applySettingsToAllTerminals) {
