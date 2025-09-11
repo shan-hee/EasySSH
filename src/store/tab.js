@@ -454,6 +454,17 @@ export const useTabStore = defineStore(
             const sessionStore = useSessionStore();
             sessionStore.setActiveSession(newActiveTab.data.connectionId);
 
+            // 通知终端进行无动画的标签切换（与switchTab行为一致）
+            window.dispatchEvent(
+              new CustomEvent('terminal:session-change', {
+                detail: {
+                  sessionId: newActiveTab.data.connectionId,
+                  isTabSwitch: true,
+                  isNewSession: false
+                }
+              })
+            );
+
             // 导航到不带参数的终端路径
             router.push('/terminal');
           } else {

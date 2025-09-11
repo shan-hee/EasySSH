@@ -39,7 +39,7 @@
         <!-- 终端主体区域：监控面板 + 终端内容 + AI输入栏 -->
         <div class="terminal-main-area">
           <!-- 桌面端监控面板 - 左侧 -->
-          <transition name="monitoring-toggle" appear>
+          <transition name="monitoring-toggle" appear :css="!isTabSwitching">
             <div
               v-show="shouldShowDesktopMonitoringPanel(termId) && isActiveTerminal(termId)"
               class="terminal-monitoring-panel theme-transition"
@@ -231,6 +231,9 @@ export default {
     const aiPanelStore = useAIPanelStore(); // AI面板状态管理
     const aiCombinedPanelRefs = ref({}); // AI合并面板组件引用
     const aiStreamingStates = ref({}); // 每个终端的AI流式输出状态
+
+    // 标签切换状态 - 用于在切换页签时禁用监控面板动画
+    const isTabSwitching = ref(false);
 
     // 监控面板动画/尺寸调整状态，避免动画期间频繁 fit 导致闪烁
     const isMonitoringPanelAnimating = ref(false);
@@ -910,6 +913,11 @@ export default {
 
       const { sessionId, isTabSwitch } = event.detail;
 
+      // 如果是标签切换，临时禁用监控面板动画
+      if (isTabSwitch) {
+        isTabSwitching.value = true;
+      }
+
       // 如果终端ID不在列表中，添加到列表
       if (!terminalIds.value.includes(sessionId)) {
         terminalIds.value.push(sessionId);
@@ -965,6 +973,15 @@ export default {
         switchToTerminal(sessionId);
         if (terminalStore.hasTerminal(sessionId)) {
           forceCursorStyle(sessionId);
+        }
+        // 如果是标签切换，切换完成后尽快恢复动画
+        if (isTabSwitch) {
+          // 使用nextTick + rAF确保DOM更新并完成一次渲染
+          nextTick(() => {
+            requestAnimationFrame(() => {
+              isTabSwitching.value = false;
+            });
+          });
         }
       }, 100);
     };
@@ -2611,6 +2628,8 @@ export default {
       toggleSftpPanel,
       toggleMonitoringPanel,
       handleAIInputToggle,
+      // 标签切换动画控制
+      isTabSwitching,
       // 监控面板相关方法
       shouldShowMonitoringPanel,
       shouldShowDesktopMonitoringPanel,
