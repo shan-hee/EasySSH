@@ -4,7 +4,7 @@
       <div class="terminal-tools__left">
         <div
           ref="sftpButtonRef"
-          class="icon-button"
+          class="icon-button sftp-button"
           :class="{ 'icon-available': isSshConnected }"
           @click="handleSftpClick"
         >
@@ -55,7 +55,7 @@
 
         <div
           ref="monitorButtonRef"
-          class="icon-button"
+          class="icon-button monitor-button"
           :class="{ 'icon-available': monitoringServiceInstalled }"
           @click.stop="handleMonitoringClick()"
         >
@@ -64,11 +64,12 @@
 
         <div
           ref="aiButtonRef"
-          class="icon-button"
+          class="icon-button ai-button"
           :class="{ 'icon-available': isAiServiceEnabled }"
           @click.stop="handleAiClick()"
         >
-          <toolbar-icon name="ai" :class="{ 'icon-active': showAiInput }" />
+          <!-- 图标激活态取决于AI功能是否启用，而非面板是否打开 -->
+          <toolbar-icon name="ai" :class="{ 'icon-active': isAiServiceEnabled }" />
         </div>
 
         <!-- 工具栏监控显示已移除，监控数据现在通过专用的监控面板显示 -->
@@ -236,7 +237,9 @@ export default defineComponent({
     const showSftpTooltip = ref(false);
     const sftpButtonRef = ref(null);
     const networkIconRef = ref(null);
-    const showAiInput = ref(true); // 默认显示AI输入框
+    // AI面板显示状态（仅控制面板开关，不影响图标激活色）
+    // 默认关闭；图标激活色由 isAiServiceEnabled 决定
+    const showAiInput = ref(false);
     const isAiServiceEnabled = ref(false); // AI服务是否启用
     const aiButtonRef = ref(null);
     const showAiTooltip = ref(false);
@@ -855,6 +858,11 @@ export default defineComponent({
 
       const { status, isEnabled } = event.detail;
       isAiServiceEnabled.value = isEnabled;
+
+      // 当AI服务被禁用时，强制关闭AI面板（图标显示未激活）
+      if (!isEnabled) {
+        showAiInput.value = false;
+      }
 
       log.debug(`[${componentInstanceId}] AI服务状态变更: ${status}, enabled: ${isEnabled}`);
     };
@@ -1731,6 +1739,143 @@ export default defineComponent({
     background-color var(--theme-transition-duration) var(--theme-transition-timing),
     color var(--theme-transition-duration) var(--theme-transition-timing),
     transform var(--transition-fast);
+}
+
+/* 仅对AI按钮移除移动端点击高亮 */
+.ai-button {
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* 仅对监控按钮移除移动端点击高亮 */
+.monitor-button {
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* 仅对SFTP按钮移除移动端点击高亮 */
+.sftp-button {
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* 移除AI图标点击/悬停/聚焦时的变色（使用深度选择器作用到子组件） */
+.ai-button:active :deep(.toolbar-icon--ai),
+.ai-button:hover :deep(.toolbar-icon--ai),
+.ai-button:focus :deep(.toolbar-icon--ai) {
+  /* 不改变颜色与不透明度，避免点击时变暗/变亮的视觉效果 */
+  filter: none;
+  opacity: 1;
+}
+
+/* 网络图标在点击/悬停/聚焦时不变色 */
+.network-monitor:active :deep(.toolbar-icon--network),
+.network-monitor:hover :deep(.toolbar-icon--network),
+.network-monitor:focus :deep(.toolbar-icon--network) {
+  filter: none;
+  opacity: 1;
+}
+
+/* 统一去除四个图标容器的悬停背景变化 */
+.ai-button:hover,
+.monitor-button:hover,
+.sftp-button:hover,
+.network-monitor:hover {
+  background-color: transparent;
+}
+
+/* 监控图标在点击/悬停/聚焦时不变色 */
+.monitor-button:active :deep(.toolbar-icon--monitoring),
+.monitor-button:hover :deep(.toolbar-icon--monitoring),
+.monitor-button:focus :deep(.toolbar-icon--monitoring) {
+  filter: none;
+  opacity: 1;
+}
+
+/* SFTP图标在点击/悬停/聚焦时不变色 */
+.sftp-button:active :deep(.toolbar-icon--file-manager),
+.sftp-button:hover :deep(.toolbar-icon--file-manager),
+.sftp-button:focus :deep(.toolbar-icon--file-manager) {
+  filter: none;
+  opacity: 1;
+}
+
+/* 同时确保AI容器在点击时不产生位移或背景变化 */
+.ai-button:active {
+  transform: none;
+  background-color: transparent;
+  opacity: 1;
+}
+
+/* 监控按钮在按下时不位移/不变背景/不变暗 */
+.monitor-button:active {
+  transform: none;
+  background-color: transparent;
+  opacity: 1;
+}
+
+/* SFTP按钮在按下时不位移/不变背景/不变暗 */
+.sftp-button:active {
+  transform: none;
+  background-color: transparent;
+  opacity: 1;
+}
+
+/* 网络状态模块按下时不位移/不变背景/不变暗 */
+.network-monitor:active {
+  transform: none;
+  background-color: transparent;
+  opacity: 1;
+}
+
+/* 固定AI图标的颜色映射，避免受父级:active/:hover影响 */
+/* 未激活（暗色，随主题） */
+.ai-button :deep(.toolbar-icon--ai) {
+  color: var(--sidebar-nav-color) !important;
+}
+
+:root[data-theme='light'] .ai-button :deep(.toolbar-icon--ai) {
+  color: var(--color-text-secondary) !important;
+}
+
+/* 激活态（亮色，随主题） */
+:root[data-theme='dark'] .ai-button :deep(.toolbar-icon--ai).icon-active {
+  color: #ffffff !important;
+}
+
+:root[data-theme='light'] .ai-button :deep(.toolbar-icon--ai).icon-active {
+  color: #303133 !important;
+}
+
+/* 监控图标颜色映射，避免受父级状态影响 */
+.monitor-button :deep(.toolbar-icon--monitoring) {
+  color: var(--sidebar-nav-color) !important;
+}
+
+:root[data-theme='light'] .monitor-button :deep(.toolbar-icon--monitoring) {
+  color: var(--color-text-secondary) !important;
+}
+
+:root[data-theme='dark'] .monitor-button :deep(.toolbar-icon--monitoring).icon-active {
+  color: #ffffff !important;
+}
+
+:root[data-theme='light'] .monitor-button :deep(.toolbar-icon--monitoring).icon-active {
+  color: #303133 !important;
+}
+
+/* SFTP图标颜色映射，避免受父级状态影响 */
+.sftp-button :deep(.toolbar-icon--file-manager) {
+  color: var(--sidebar-nav-color) !important;
+}
+
+:root[data-theme='light'] .sftp-button :deep(.toolbar-icon--file-manager) {
+  color: var(--color-text-secondary) !important;
+}
+
+:root[data-theme='dark'] .sftp-button :deep(.toolbar-icon--file-manager).icon-active {
+  color: #ffffff !important;
+}
+
+:root[data-theme='light'] .sftp-button :deep(.toolbar-icon--file-manager).icon-active {
+  color: #303133 !important;
 }
 
 /* 图标按钮禁用状态 */

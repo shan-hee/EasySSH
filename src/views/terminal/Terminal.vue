@@ -2237,8 +2237,8 @@ export default {
       // 检查终端是否已连接
       if (!terminalStore.hasTerminal(termId)) return false;
 
-      // 检查用户设置（可以添加开关控制）
-      return aiCombinedPanelStates.value[termId] !== false; // 默认显示
+      // 仅在显式开启时显示（默认关闭，点击开启）
+      return aiCombinedPanelStates.value[termId] === true;
     };
 
     /**
