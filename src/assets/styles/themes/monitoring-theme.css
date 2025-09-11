@@ -143,6 +143,8 @@
   --monitor-spacing-md: 12px;
   --monitor-spacing-lg: 16px;
   --monitor-spacing-xl: 24px;
+  /* 标题/头部间距（统一监控面标题） */
+  --monitor-header-spacing: 10px;
 
   /* 圆角配置 */
   --monitor-radius-sm: 4px;
@@ -178,7 +180,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: var(--monitor-spacing-md);
+  margin-bottom: var(--monitor-header-spacing);
   flex-shrink: 0;
 }
 

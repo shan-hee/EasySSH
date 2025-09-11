@@ -1,8 +1,8 @@
 <template>
   <div class="system-info-section">
     <!-- 系统信息标题 -->
-    <div class="section-header">
-      <div class="section-title">
+    <div class="monitor-header">
+      <div class="monitor-title">
         <monitoring-icon name="system-info" :size="16" class="system-icon" />
         <span>系统信息</span>
       </div>
@@ -21,49 +21,127 @@
     <div v-show="componentState.hasData" class="info-grid">
       <div v-if="systemInfo.os" class="info-item">
         <span class="info-label">系统类型</span>
-        <span class="info-value">{{ systemInfo.os }}</span>
+        <span class="info-value" :title="systemInfo.os">{{ systemInfo.os }}</span>
+        <button
+          class="copy-btn"
+          :aria-label="`复制系统类型`"
+          title="复制"
+          @click="onCopy(systemInfo.os, '系统类型')"
+        >
+          <icon icon="mynaui:copy-solid" width="14" height="14" />
+        </button>
       </div>
 
       <div v-if="systemInfo.hostname" class="info-item">
         <span class="info-label">主机名</span>
-        <span class="info-value">{{ systemInfo.hostname }}</span>
+        <span class="info-value" :title="systemInfo.hostname">{{ systemInfo.hostname }}</span>
+        <button
+          class="copy-btn"
+          :aria-label="`复制主机名`"
+          title="复制"
+          @click="onCopy(systemInfo.hostname, '主机名')"
+        >
+          <icon icon="mynaui:copy-solid" width="14" height="14" />
+        </button>
       </div>
 
       <div v-if="systemInfo.cpuModel" class="info-item">
         <span class="info-label">CPU型号</span>
-        <span class="info-value">{{ systemInfo.cpuModel }}</span>
+        <span class="info-value" :title="systemInfo.cpuModel">{{ systemInfo.cpuModel }}</span>
+        <button
+          class="copy-btn"
+          :aria-label="`复制CPU型号`"
+          title="复制"
+          @click="onCopy(systemInfo.cpuModel, 'CPU型号')"
+        >
+          <icon icon="mynaui:copy-solid" width="14" height="14" />
+        </button>
       </div>
 
       <div v-if="systemInfo.architecture" class="info-item">
         <span class="info-label">系统架构</span>
-        <span class="info-value">{{ systemInfo.architecture }}</span>
+        <span class="info-value" :title="systemInfo.architecture">{{ systemInfo.architecture }}</span>
+        <button
+          class="copy-btn"
+          :aria-label="`复制系统架构`"
+          title="复制"
+          @click="onCopy(systemInfo.architecture, '系统架构')"
+        >
+          <icon icon="mynaui:copy-solid" width="14" height="14" />
+        </button>
       </div>
 
       <!-- CPU核心信息已隐藏 -->
 
       <div v-if="systemInfo.loadAverage" class="info-item">
         <span class="info-label">系统负载</span>
-        <span class="info-value">{{ formatLoadAverage(systemInfo.loadAverage) }}</span>
+        <span class="info-value" :title="formatLoadAverage(systemInfo.loadAverage)">{{
+          formatLoadAverage(systemInfo.loadAverage)
+        }}</span>
+        <button
+          class="copy-btn"
+          :aria-label="`复制系统负载`"
+          title="复制"
+          @click="onCopy(formatLoadAverage(systemInfo.loadAverage), '系统负载')"
+        >
+          <icon icon="mynaui:copy-solid" width="14" height="14" />
+        </button>
       </div>
 
       <div v-if="systemInfo.uptime" class="info-item">
         <span class="info-label">运行时间</span>
-        <span class="info-value">{{ formatUptime(systemInfo.uptime) }}</span>
+        <span class="info-value" :title="formatUptime(systemInfo.uptime)">{{
+          formatUptime(systemInfo.uptime)
+        }}</span>
+        <button
+          class="copy-btn"
+          :aria-label="`复制运行时间`"
+          title="复制"
+          @click="onCopy(formatUptime(systemInfo.uptime), '运行时间')"
+        >
+          <icon icon="mynaui:copy-solid" width="14" height="14" />
+        </button>
       </div>
 
       <div v-if="systemInfo.bootTime" class="info-item">
         <span class="info-label">启动时间</span>
-        <span class="info-value">{{ formatDateTime(systemInfo.bootTime) }}</span>
+        <span class="info-value" :title="formatDateTime(systemInfo.bootTime)">{{
+          formatDateTime(systemInfo.bootTime)
+        }}</span>
+        <button
+          class="copy-btn"
+          :aria-label="`复制启动时间`"
+          title="复制"
+          @click="onCopy(formatDateTime(systemInfo.bootTime), '启动时间')"
+        >
+          <icon icon="mynaui:copy-solid" width="14" height="14" />
+        </button>
       </div>
 
       <div v-if="systemInfo.internalIp" class="info-item">
         <span class="info-label">内网IP</span>
-        <span class="info-value">{{ systemInfo.internalIp }}</span>
+        <span class="info-value" :title="systemInfo.internalIp">{{ systemInfo.internalIp }}</span>
+        <button
+          class="copy-btn"
+          :aria-label="`复制内网IP`"
+          title="复制"
+          @click="onCopy(systemInfo.internalIp, '内网IP')"
+        >
+          <icon icon="mynaui:copy-solid" width="14" height="14" />
+        </button>
       </div>
 
       <div v-if="systemInfo.publicIp" class="info-item">
         <span class="info-label">公网IP</span>
-        <span class="info-value">{{ systemInfo.publicIp }}</span>
+        <span class="info-value" :title="systemInfo.publicIp">{{ systemInfo.publicIp }}</span>
+        <button
+          class="copy-btn"
+          :aria-label="`复制公网IP`"
+          title="复制"
+          @click="onCopy(systemInfo.publicIp, '公网IP')"
+        >
+          <icon icon="mynaui:copy-solid" width="14" height="14" />
+        </button>
       </div>
     </div>
   </div>
@@ -71,9 +149,11 @@
 
 <script setup>
 import { computed } from 'vue';
+import { Icon } from '@iconify/vue';
 import MonitoringIcon from './MonitoringIcon.vue';
 import MonitoringLoader from '../common/MonitoringLoader.vue';
 import monitoringStateManager, { MonitoringComponent } from '@/services/monitoringStateManager';
+import { copyToClipboard } from '@/services/utils.js';
 
 // Props
 const props = defineProps({
@@ -99,6 +179,17 @@ const componentState = computed(() => {
 const handleRetry = () => {
   currentStateManager.value.retry();
 };
+
+// 复制功能
+const onCopy = (value, _label = '') => {
+  if (value === undefined || value === null) return;
+  try {
+    copyToClipboard(String(value), true);
+  } catch (e) {
+    // 忽略异常，copyToClipboard 内部已处理提示
+  }
+};
+
 
 // 系统信息数据
 const systemInfo = computed(() => {
@@ -198,6 +289,8 @@ const formatDateTime = timestamp => {
 </script>
 
 <style scoped>
+/* 导入监控主题样式，确保主题变量可用 */
+@import '@/assets/styles/themes/monitoring-theme.css';
 .system-info-section {
   /* 移除装饰样式，保持简洁 */
   background: transparent;
@@ -216,15 +309,15 @@ const formatDateTime = timestamp => {
   margin-bottom: 0;
 }
 
-.section-header {
+.monitor-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 8px; /* 减小底部间距 */
+  margin-bottom: var(--monitor-header-spacing, 10px); /* 统一使用主题变量 */
   flex-shrink: 0;
 }
 
-.section-title {
+.monitor-title {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -248,7 +341,7 @@ const formatDateTime = timestamp => {
 .info-item {
   display: flex;
   justify-content: flex-start;
-  align-items: flex-start;
+  align-items: center;
   border-radius: 0; /* 移除圆角 */
   flex-shrink: 0;
   min-height: 20px; /* 减小最小高度 */
@@ -271,11 +364,40 @@ const formatDateTime = timestamp => {
   color: var(--monitor-text-primary, var(--color-text-primary, #e5e5e5));
   text-align: left;
   flex: 1;
-  word-wrap: break-word;
-  word-break: break-all;
+  min-width: 0; /* 使省略号在flex子项中生效 */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap; /* 不换行，超出显示省略号 */
   line-height: 1.4;
   font-weight: 400;
 }
+
+.copy-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  margin-left: 6px;
+  color: var(--monitor-text-secondary, #b0b0b0);
+  background: transparent;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: color var(--monitor-transition-fast), background var(--monitor-transition-fast);
+}
+
+.copy-btn:hover {
+  color: var(--monitor-text-primary, #e5e5e5);
+  background: var(--monitor-bg-secondary, transparent);
+}
+
+.copy-btn:active {
+  transform: translateY(0.5px);
+}
+
+/* 悬浮提示恢复为原生 title，无需组件内样式 */
 
 /* 移除所有响应式样式，保持桌面端布局 */
 
