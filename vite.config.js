@@ -45,9 +45,15 @@ const customLogger = () => {
             const host = 'localhost';
             const port = server.config.server.port;
             const networkUrl = `${protocol}://${host}:${port}`;
-
             const projectName = 'EasySSH';
-            const version = 'v1.0.0';
+            // 从 package.json 读取版本号，保持横幅与实际版本一致
+            let version = 'v0.0.0';
+            try {
+              const pkg = JSON.parse(readFileSync(resolve(__dirname, 'package.json'), 'utf-8'));
+              if (pkg?.version) version = `v${pkg.version}`;
+            } catch (_) {
+              // 读取失败时使用默认版本占位
+            }
             const mode = server.config.mode;
 
             console.log(`\n${colors.bright}${colors.cyan}${projectName} ${colors.white}${version} ${colors.yellow}前端开发服务${colors.reset}\n`);
@@ -296,6 +302,11 @@ export default defineConfig(async ({ mode }) => {
         'pinia',
         'element-plus',
         'element-plus/es',
+        // 预打包常用 Element Plus 样式依赖，避免二次优化触发刷新
+        'element-plus/es/components/icon/style/index',
+        'element-plus/es/components/pagination/style/index',
+        'element-plus/es/components/select/style/index',
+        'element-plus/es/components/option/style/index',
         '@xterm/xterm',
         '@xterm/addon-fit',
         '@xterm/addon-web-links',

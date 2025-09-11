@@ -398,6 +398,38 @@
   --el-message-color: var(--color-text-regular);
   --el-message-icon-color: #606266;
 
+  /* Element Plus 变量覆盖 - 浅色主题（从 @layer theme-overrides 迁移至此，避免层级差异） */
+  /* 主色系 */
+  --el-color-primary: var(--color-primary);
+  --el-color-primary-light-3: var(--color-primary-hover);
+  --el-color-primary-light-5: var(--color-primary-light);
+  --el-color-primary-light-7: var(--color-primary-lighter);
+  --el-color-primary-light-8: var(--color-primary-lightest);
+  --el-color-primary-light-9: var(--color-primary-lightest);
+
+  /* 背景色系 */
+  --el-bg-color: var(--color-bg-container);
+  --el-bg-color-overlay: var(--color-bg-overlay);
+  --el-fill-color-blank: var(--color-bg-container);
+  --el-fill-color-light: var(--color-bg-muted);
+  --el-color-white: var(--color-bg-container);
+
+  /* 文本色系 */
+  --el-text-color-primary: var(--color-text-primary);
+  --el-text-color-regular: var(--color-text-regular);
+  --el-text-color-secondary: var(--color-text-secondary);
+  --el-text-color-placeholder: var(--color-text-placeholder);
+
+  /* 边框色系 */
+  --el-border-color: var(--color-border-default);
+  --el-border-color-light: var(--color-border-light);
+
+  /* 交互组件 */
+  --el-dropdown-menuItem-hover-fill: var(--color-hover-bg);
+  --el-dropdown-menuItem-hover-color: var(--color-primary);
+  --el-select-dropdown-bg-color: var(--color-bg-container);
+  --el-select-option-hover-background: var(--color-hover-bg);
+
   /* 登录面板 */
   /* 移除未使用的变量: --login-panel-bg */
   --login-panel-title-color: #303133;
@@ -1145,6 +1177,13 @@
   z-index: var(--z-message);
 }
 
+/* 全局修复：Element Plus 分页组件在 `.is-background` 模式下按钮背景可能回退为白色
+   在此模式下显式设置所用变量，确保与主题色一致（避免构建顺序差异带来的覆盖） */
+.el-pagination.is-background {
+  --el-pagination-button-bg-color: var(--color-bg-muted);
+  --el-pagination-button-disabled-bg-color: var(--color-bg-subtle);
+}
+
 /* 统一控制Element Plus遮罩层层级，使用主题变量 */
 .el-overlay {
   z-index: var(--z-overlay) !important;
@@ -1435,43 +1474,4 @@ textarea,
   animation: none !important;
 }
 
-/* ===== Element Plus 主题变量覆盖层级 ===== */
-/* 使用CSS层级确保主题变量优先级，避免使用!important */
-@layer theme-overrides {
-  /* 浅色主题 Element Plus 变量覆盖 */
-  :root[data-theme='light'],
-  .light-theme {
-    /* 主色系 */
-    --el-color-primary: var(--color-primary);
-    --el-color-primary-light-3: var(--color-primary-hover);
-    --el-color-primary-light-5: var(--color-primary-light);
-    --el-color-primary-light-7: var(--color-primary-lighter);
-    --el-color-primary-light-8: var(--color-primary-lightest);
-    --el-color-primary-light-9: var(--color-primary-lightest);
-
-    /* 背景色系 */
-    --el-bg-color: var(--color-bg-container);
-    --el-bg-color-overlay: var(--color-bg-overlay);
-    --el-fill-color-blank: var(--color-bg-container);
-    --el-fill-color-light: var(--color-bg-muted);
-    --el-color-white: var(--color-bg-container);
-
-    /* 文本色系 */
-    --el-text-color-primary: var(--color-text-primary);
-    --el-text-color-regular: var(--color-text-regular);
-    --el-text-color-secondary: var(--color-text-secondary);
-    --el-text-color-placeholder: var(--color-text-placeholder);
-
-    /* 边框色系 */
-    --el-border-color: var(--color-border-default);
-    --el-border-color-light: var(--color-border-light);
-
-    /* 交互组件 */
-    --el-dropdown-menuItem-hover-fill: var(--color-hover-bg);
-    --el-dropdown-menuItem-hover-color: var(--color-primary);
-    --el-select-dropdown-bg-color: var(--color-bg-container);
-    --el-select-option-hover-background: var(--color-hover-bg);
-  }
-
-  /* 深色主题 Element Plus 变量覆盖已合并到上面的深色主题定义中 */
-}
+/* 移除 @layer theme-overrides（浅色主题 Element Plus 变量覆盖已迁移至浅色主题主块） */

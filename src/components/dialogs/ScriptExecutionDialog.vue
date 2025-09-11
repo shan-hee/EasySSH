@@ -571,35 +571,24 @@ export default defineComponent({
 
 /* Element Plus 组件样式覆盖 */
 .script-execution-dialog :deep(.el-button) {
-  background-color: var(--color-bg-muted);
-  border-color: var(--color-border-default);
-  color: var(--color-text-primary);
-}
-
-.script-execution-dialog :deep(.el-button:hover) {
-  background-color: var(--color-hover-bg);
-  border-color: var(--color-border-dark);
+  /* 使用按钮CSS变量，避免与库样式竞争顺序 */
+  --el-button-bg-color: var(--color-bg-muted);
+  --el-button-border-color: var(--color-border-default);
+  --el-button-text-color: var(--color-text-primary);
+  --el-button-hover-bg-color: var(--color-hover-bg);
+  --el-button-hover-border-color: var(--color-border-dark);
+  --el-button-hover-text-color: var(--color-text-primary);
+  --el-button-disabled-bg-color: var(--btn-disabled-bg);
+  --el-button-disabled-text-color: var(--btn-disabled-color);
+  --el-button-disabled-border-color: var(--color-border-default);
 }
 
 .script-execution-dialog :deep(.el-button--primary) {
-  background-color: var(--btn-primary-bg);
-  border-color: var(--btn-primary-bg);
-  color: var(--btn-primary-text);
-}
-
-.script-execution-dialog :deep(.el-button--primary:hover) {
-  background-color: var(--btn-primary-hover-bg);
-  border-color: var(--btn-primary-hover-bg);
-}
-
-.script-execution-dialog :deep(.el-button--primary:hover) {
-  background-color: var(--color-primary-hover);
-  border-color: var(--color-primary-hover);
-}
-
-.script-execution-dialog :deep(.el-button:disabled) {
-  background-color: var(--btn-disabled-bg);
-  border-color: var(--color-border-default);
-  color: var(--btn-disabled-color);
+  --el-button-bg-color: var(--btn-primary-bg);
+  --el-button-border-color: var(--btn-primary-bg);
+  --el-button-text-color: var(--btn-primary-text);
+  --el-button-hover-bg-color: var(--btn-primary-hover-bg);
+  --el-button-hover-border-color: var(--btn-primary-hover-bg);
+  --el-button-hover-text-color: var(--btn-primary-text);
 }
 </style>

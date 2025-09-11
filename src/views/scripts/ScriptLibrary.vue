@@ -1769,6 +1769,13 @@ export default defineComponent({
   --el-pagination-hover-color: var(--color-primary);
 }
 
+/* 修正生产环境下 Element Plus `.is-background` 规则覆盖导致按钮背景变白的问题
+   在 `.is-background` 下显式设置组件使用的变量，提升特异性，避免被默认样式覆盖 */
+:deep(.el-pagination.is-background) {
+  --el-pagination-button-bg-color: var(--color-bg-muted) !important;
+  --el-pagination-button-disabled-bg-color: var(--color-bg-subtle) !important;
+}
+
 :deep(.el-pagination .el-pager li) {
   background-color: var(--color-bg-muted);
   color: var(--color-text-secondary);

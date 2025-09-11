@@ -458,29 +458,24 @@ export default defineComponent({
 }
 
 .server-selection-dialog :deep(.el-button) {
-  background-color: var(--color-bg-muted);
-  border-color: var(--color-border-default);
-  color: var(--color-text-primary);
-}
-
-.server-selection-dialog :deep(.el-button:hover) {
-  background-color: var(--color-hover-bg);
-  border-color: var(--color-border-dark);
+  /* 使用 Element Plus 提供的按钮CSS变量，避免与库样式竞争顺序 */
+  --el-button-bg-color: var(--color-bg-muted);
+  --el-button-border-color: var(--color-border-default);
+  --el-button-text-color: var(--color-text-primary);
+  --el-button-hover-bg-color: var(--color-hover-bg);
+  --el-button-hover-border-color: var(--color-border-dark);
+  --el-button-hover-text-color: var(--color-text-primary);
+  --el-button-disabled-bg-color: var(--btn-disabled-bg);
+  --el-button-disabled-text-color: var(--btn-disabled-color);
+  --el-button-disabled-border-color: var(--color-border-default);
 }
 
 .server-selection-dialog :deep(.el-button--primary) {
-  background-color: var(--btn-primary-bg);
-  border-color: var(--btn-primary-bg);
-  color: var(--btn-primary-text);
-}
-
-.server-selection-dialog :deep(.el-button--primary:hover) {
-  background-color: var(--btn-primary-hover-bg);
-  border-color: var(--btn-primary-hover-bg);
-}
-
-.server-selection-dialog :deep(.el-button--primary:hover) {
-  background-color: var(--color-primary-hover);
-  border-color: var(--color-primary-hover);
+  --el-button-bg-color: var(--btn-primary-bg);
+  --el-button-border-color: var(--btn-primary-bg);
+  --el-button-text-color: var(--btn-primary-text);
+  --el-button-hover-bg-color: var(--btn-primary-hover-bg);
+  --el-button-hover-border-color: var(--btn-primary-hover-bg);
+  --el-button-hover-text-color: var(--btn-primary-text);
 }
 </style>
