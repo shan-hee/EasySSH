@@ -21,11 +21,16 @@
     <div v-show="componentState.hasData" class="info-grid">
       <div v-if="systemInfo.os" class="info-item">
         <span class="info-label">系统类型</span>
-        <span class="info-value" :title="systemInfo.os">{{ systemInfo.os }}</span>
+        <span
+          class="info-value"
+          @mouseenter="onValueMouseEnter($event, systemInfo.os)"
+          @mouseleave="onValueMouseLeave"
+        >
+          {{ systemInfo.os }}
+        </span>
         <button
           class="copy-btn"
           :aria-label="`复制系统类型`"
-          title="复制"
           @click="onCopy(systemInfo.os, '系统类型')"
         >
           <icon icon="mynaui:copy-solid" width="14" height="14" />
@@ -34,11 +39,16 @@
 
       <div v-if="systemInfo.hostname" class="info-item">
         <span class="info-label">主机名</span>
-        <span class="info-value" :title="systemInfo.hostname">{{ systemInfo.hostname }}</span>
+        <span
+          class="info-value"
+          @mouseenter="onValueMouseEnter($event, systemInfo.hostname)"
+          @mouseleave="onValueMouseLeave"
+        >
+          {{ systemInfo.hostname }}
+        </span>
         <button
           class="copy-btn"
           :aria-label="`复制主机名`"
-          title="复制"
           @click="onCopy(systemInfo.hostname, '主机名')"
         >
           <icon icon="mynaui:copy-solid" width="14" height="14" />
@@ -47,11 +57,16 @@
 
       <div v-if="systemInfo.cpuModel" class="info-item">
         <span class="info-label">CPU型号</span>
-        <span class="info-value" :title="systemInfo.cpuModel">{{ systemInfo.cpuModel }}</span>
+        <span
+          class="info-value"
+          @mouseenter="onValueMouseEnter($event, systemInfo.cpuModel)"
+          @mouseleave="onValueMouseLeave"
+        >
+          {{ systemInfo.cpuModel }}
+        </span>
         <button
           class="copy-btn"
           :aria-label="`复制CPU型号`"
-          title="复制"
           @click="onCopy(systemInfo.cpuModel, 'CPU型号')"
         >
           <icon icon="mynaui:copy-solid" width="14" height="14" />
@@ -60,11 +75,16 @@
 
       <div v-if="systemInfo.architecture" class="info-item">
         <span class="info-label">系统架构</span>
-        <span class="info-value" :title="systemInfo.architecture">{{ systemInfo.architecture }}</span>
+        <span
+          class="info-value"
+          @mouseenter="onValueMouseEnter($event, systemInfo.architecture)"
+          @mouseleave="onValueMouseLeave"
+        >
+          {{ systemInfo.architecture }}
+        </span>
         <button
           class="copy-btn"
           :aria-label="`复制系统架构`"
-          title="复制"
           @click="onCopy(systemInfo.architecture, '系统架构')"
         >
           <icon icon="mynaui:copy-solid" width="14" height="14" />
@@ -75,13 +95,16 @@
 
       <div v-if="systemInfo.loadAverage" class="info-item">
         <span class="info-label">系统负载</span>
-        <span class="info-value" :title="formatLoadAverage(systemInfo.loadAverage)">{{
-          formatLoadAverage(systemInfo.loadAverage)
-        }}</span>
+        <span
+          class="info-value"
+          @mouseenter="onValueMouseEnter($event, formatLoadAverage(systemInfo.loadAverage))"
+          @mouseleave="onValueMouseLeave"
+        >
+          {{ formatLoadAverage(systemInfo.loadAverage) }}
+        </span>
         <button
           class="copy-btn"
           :aria-label="`复制系统负载`"
-          title="复制"
           @click="onCopy(formatLoadAverage(systemInfo.loadAverage), '系统负载')"
         >
           <icon icon="mynaui:copy-solid" width="14" height="14" />
@@ -90,13 +113,16 @@
 
       <div v-if="systemInfo.uptime" class="info-item">
         <span class="info-label">运行时间</span>
-        <span class="info-value" :title="formatUptime(systemInfo.uptime)">{{
-          formatUptime(systemInfo.uptime)
-        }}</span>
+        <span
+          class="info-value"
+          @mouseenter="onValueMouseEnter($event, formatUptime(systemInfo.uptime))"
+          @mouseleave="onValueMouseLeave"
+        >
+          {{ formatUptime(systemInfo.uptime) }}
+        </span>
         <button
           class="copy-btn"
           :aria-label="`复制运行时间`"
-          title="复制"
           @click="onCopy(formatUptime(systemInfo.uptime), '运行时间')"
         >
           <icon icon="mynaui:copy-solid" width="14" height="14" />
@@ -105,13 +131,16 @@
 
       <div v-if="systemInfo.bootTime" class="info-item">
         <span class="info-label">启动时间</span>
-        <span class="info-value" :title="formatDateTime(systemInfo.bootTime)">{{
-          formatDateTime(systemInfo.bootTime)
-        }}</span>
+        <span
+          class="info-value"
+          @mouseenter="onValueMouseEnter($event, formatDateTime(systemInfo.bootTime))"
+          @mouseleave="onValueMouseLeave"
+        >
+          {{ formatDateTime(systemInfo.bootTime) }}
+        </span>
         <button
           class="copy-btn"
           :aria-label="`复制启动时间`"
-          title="复制"
           @click="onCopy(formatDateTime(systemInfo.bootTime), '启动时间')"
         >
           <icon icon="mynaui:copy-solid" width="14" height="14" />
@@ -120,11 +149,16 @@
 
       <div v-if="systemInfo.internalIp" class="info-item">
         <span class="info-label">内网IP</span>
-        <span class="info-value" :title="systemInfo.internalIp">{{ systemInfo.internalIp }}</span>
+        <span
+          class="info-value"
+          @mouseenter="onValueMouseEnter($event, systemInfo.internalIp)"
+          @mouseleave="onValueMouseLeave"
+        >
+          {{ systemInfo.internalIp }}
+        </span>
         <button
           class="copy-btn"
           :aria-label="`复制内网IP`"
-          title="复制"
           @click="onCopy(systemInfo.internalIp, '内网IP')"
         >
           <icon icon="mynaui:copy-solid" width="14" height="14" />
@@ -133,22 +167,42 @@
 
       <div v-if="systemInfo.publicIp" class="info-item">
         <span class="info-label">公网IP</span>
-        <span class="info-value" :title="systemInfo.publicIp">{{ systemInfo.publicIp }}</span>
+        <span
+          class="info-value"
+          @mouseenter="onValueMouseEnter($event, systemInfo.publicIp)"
+          @mouseleave="onValueMouseLeave"
+        >
+          {{ systemInfo.publicIp }}
+        </span>
         <button
           class="copy-btn"
           :aria-label="`复制公网IP`"
-          title="复制"
           @click="onCopy(systemInfo.publicIp, '公网IP')"
         >
           <icon icon="mynaui:copy-solid" width="14" height="14" />
         </button>
       </div>
     </div>
+
+    <!-- 自定义信息悬浮提示：与工具栏风格一致，按需显示 -->
+    <teleport to="body">
+      <div
+        v-if="showInfoTooltip"
+        ref="infoTooltipRef"
+        class="info-tooltip"
+        :class="infoTooltipPlacement === 'top' ? 'info-tooltip--top' : 'info-tooltip--bottom'"
+        :style="infoTooltipStyle"
+        @mouseenter="onTooltipMouseEnter"
+        @mouseleave="onTooltipMouseLeave"
+      >
+        {{ infoTooltipText }}
+      </div>
+    </teleport>
   </div>
 </template>
 
 <script setup>
-import { computed } from 'vue';
+import { computed, ref, onMounted, onUnmounted, nextTick } from 'vue';
 import { Icon } from '@iconify/vue';
 import MonitoringIcon from './MonitoringIcon.vue';
 import MonitoringLoader from '../common/MonitoringLoader.vue';
@@ -189,6 +243,153 @@ const onCopy = (value, _label = '') => {
     // 忽略异常，copyToClipboard 内部已处理提示
   }
 };
+
+
+// 自定义信息悬浮提示（替代原生title）
+const showInfoTooltip = ref(false);
+const infoTooltipHover = ref(false);
+const infoTooltipText = ref('');
+const infoTooltipRef = ref(null);
+const infoTooltipPlacement = ref('top'); // 固定上方展示
+const infoTooltipStyle = ref({
+  position: 'fixed',
+  zIndex: 10000,
+  top: '0px',
+  left: '0px',
+  display: 'none'
+});
+let hideTimer = null;
+
+const updateInfoTooltipPosition = targetEl => {
+  if (!targetEl) return;
+  const rect = targetEl.getBoundingClientRect();
+  const tooltipOffsetStr =
+    getComputedStyle(document.documentElement).getPropertyValue('--tooltip-offset').trim() ||
+    '10px';
+  const arrowSizeStr =
+    getComputedStyle(document.documentElement).getPropertyValue('--tooltip-arrow-size').trim() ||
+    '5px';
+  const offset = parseInt(tooltipOffsetStr) || 10;
+  const arrowSize = parseInt(arrowSizeStr) || 5;
+
+  // 初始：固定在目标元素上方（下一帧用实际尺寸校正）
+  infoTooltipPlacement.value = 'top';
+  infoTooltipStyle.value = {
+    position: 'fixed',
+    zIndex: 10000,
+    backgroundColor: 'var(--tooltip-bg)',
+    color: 'var(--tooltip-color)',
+    padding: 'var(--tooltip-padding-vertical) var(--tooltip-padding-horizontal)',
+    borderRadius: 'var(--tooltip-border-radius)',
+    fontFamily: 'var(--tooltip-font-family)',
+    fontSize: 'var(--tooltip-font-size)',
+    fontWeight: 'var(--tooltip-font-weight)',
+    lineHeight: 'var(--tooltip-line-height)',
+    whiteSpace: 'nowrap',
+    maxWidth: 'var(--tooltip-max-width)',
+    boxShadow: 'var(--tooltip-shadow)',
+    top: `${rect.top - arrowSize}px`,
+    left: `${rect.left + rect.width / 2}px`,
+    transform: 'none'
+  };
+
+  // 下一帧测量尺寸并修正（保持在上方）
+  nextTick(() => {
+    const el = infoTooltipRef.value;
+    if (!el) return;
+    const ttRect = el.getBoundingClientRect();
+    const viewportW = window.innerWidth || document.documentElement.clientWidth;
+    const margin = 8; // 左右留白
+
+    // 让箭头尖端贴近文本顶边，避免产生可见空隙
+    let top = rect.top - ttRect.height - arrowSize;
+    if (top < margin) top = margin; // 若越界，贴近上边缘
+
+    // 水平居中并做边界裁剪
+    let left = rect.left + rect.width / 2 - ttRect.width / 2;
+    if (left < margin) left = margin;
+    if (left + ttRect.width > viewportW - margin) left = viewportW - margin - ttRect.width;
+
+    infoTooltipStyle.value = {
+      ...infoTooltipStyle.value,
+      top: `${top}px`,
+      left: `${left}px`,
+      transform: 'none'
+    };
+  });
+};
+
+// 仅当元素真正被 CSS 省略号截断时显示（系统加的 ...）
+const shouldShowTooltip = (el /*, text */) => {
+  if (!el) return false;
+  try {
+    const style = window.getComputedStyle(el);
+    const usesEllipsis = (style.textOverflow || '').includes('ellipsis');
+    const noWrap = (style.whiteSpace || '').includes('nowrap');
+    const hiddenOverflow = (style.overflow || '').includes('hidden') ||
+      (style.overflowX || '').includes('hidden');
+    const truncated = el.scrollWidth - el.clientWidth > 1; // 容差1px
+    return usesEllipsis && noWrap && hiddenOverflow && truncated;
+  } catch {
+    return false;
+  }
+};
+
+const onValueMouseEnter = (evt, text) => {
+  const target = evt.currentTarget;
+  // 仅在需要时显示
+  if (!shouldShowTooltip(target, text)) return;
+  infoTooltipText.value = String(text ?? '');
+  // 清除潜在隐藏定时器，避免闪烁
+  if (hideTimer) {
+    clearTimeout(hideTimer);
+    hideTimer = null;
+  }
+  showInfoTooltip.value = true;
+  updateInfoTooltipPosition(target);
+};
+
+const scheduleHide = () => {
+  if (hideTimer) clearTimeout(hideTimer);
+  if (!infoTooltipHover.value) {
+    showInfoTooltip.value = false;
+  }
+};
+
+const onValueMouseLeave = evt => {
+  const nextEl = evt?.relatedTarget;
+  if (infoTooltipRef.value && nextEl && infoTooltipRef.value.contains(nextEl)) {
+    return; // 移入提示框时不隐藏
+  }
+  showInfoTooltip.value = false;
+};
+
+const onTooltipMouseEnter = () => {
+  if (hideTimer) {
+    clearTimeout(hideTimer);
+    hideTimer = null;
+  }
+  infoTooltipHover.value = true;
+};
+
+const onTooltipMouseLeave = () => {
+  infoTooltipHover.value = false;
+  showInfoTooltip.value = false; // 立即隐藏
+};
+
+// 窗口尺寸变化时更新位置（简单处理：隐藏，避免误位移）
+const handleResize = () => {
+  showInfoTooltip.value = false;
+};
+
+onMounted(() => {
+  window.addEventListener('resize', handleResize);
+});
+
+onUnmounted(() => {
+  window.removeEventListener('resize', handleResize);
+  if (hideTimer) clearTimeout(hideTimer);
+});
 
 
 // 系统信息数据
@@ -397,7 +598,47 @@ const formatDateTime = timestamp => {
   transform: translateY(0.5px);
 }
 
-/* 悬浮提示恢复为原生 title，无需组件内样式 */
+/* 信息悬浮提示 - 与工具栏风格一致 */
+.info-tooltip {
+  position: fixed;
+  z-index: var(--z-tooltip);
+  background-color: var(--tooltip-bg);
+  color: var(--tooltip-color);
+  padding: var(--tooltip-padding-vertical) var(--tooltip-padding-horizontal);
+  border-radius: var(--tooltip-border-radius);
+  font-family: var(--tooltip-font-family);
+  font-size: var(--tooltip-font-size);
+  font-weight: var(--tooltip-font-weight);
+  line-height: var(--tooltip-line-height);
+  white-space: nowrap;
+  max-width: var(--tooltip-max-width);
+  box-shadow: var(--tooltip-shadow);
+  pointer-events: auto;
+}
+
+/* 底部箭头（tooltip 在目标元素下方） */
+.info-tooltip--bottom:after {
+  content: '';
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border-width: var(--tooltip-arrow-size);
+  border-style: solid;
+  border-color: transparent transparent var(--tooltip-arrow-color) transparent;
+}
+
+/* 顶部箭头（tooltip 在目标元素上方） */
+.info-tooltip--top:after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border-width: var(--tooltip-arrow-size);
+  border-style: solid;
+  border-color: var(--tooltip-arrow-color) transparent transparent transparent;
+}
 
 /* 移除所有响应式样式，保持桌面端布局 */
 
