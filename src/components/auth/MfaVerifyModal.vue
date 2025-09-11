@@ -4,6 +4,8 @@
     title="验证身份"
     custom-class="mfa-verify-modal"
     :hide-footer="true"
+    :width="500"
+    :max-width="'90vw'"
     @close="handleClose"
   >
     <div class="mfa-verify-container">
@@ -392,7 +394,6 @@ export default defineComponent({
 
 /* 修改弹窗样式 */
 :deep(.mfa-verify-modal) {
-  width: 500px !important;
   border-radius: 12px !important;
   overflow: hidden !important;
 }

@@ -4,6 +4,8 @@
     title="设置两步验证"
     custom-class="mfa-modal"
     :hide-footer="true"
+    :width="500"
+    :max-width="'90vw'"
     @close="handleClose"
   >
     <div class="mfa-setup-container">
@@ -855,7 +857,6 @@ export default defineComponent({
 
 /* 修改弹窗样式 */
 :deep(.mfa-modal) {
-  width: 500px !important;
   border-radius: 12px !important;
   overflow: hidden !important;
 }

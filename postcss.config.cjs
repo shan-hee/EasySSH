@@ -43,7 +43,14 @@ module.exports = {
           /^icon/,
           /^tooltip/,
           /^popper/,
-          /^message/
+          /^message/,
+          // 设置面板 & 其他自定义 Modal 类名
+          'user-settings-modal',
+          'mfa-verify-modal',
+          'mfa-disable-modal',
+          'logout-devices-modal',
+          'mfa-modal',
+          'connection-modal'
         ]
       })
   ].filter(Boolean)

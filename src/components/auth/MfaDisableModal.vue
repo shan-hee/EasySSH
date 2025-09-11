@@ -4,6 +4,8 @@
     title="禁用两步验证"
     custom-class="mfa-disable-modal"
     :hide-footer="true"
+    :width="500"
+    :max-width="'90vw'"
     @close="handleClose"
   >
     <div class="mfa-disable-container">
@@ -432,7 +434,6 @@ export default defineComponent({
 
 /* 修改弹窗样式 */
 :deep(.mfa-disable-modal) {
-  width: 500px !important;
   border-radius: 12px !important;
   overflow: hidden !important;
 }

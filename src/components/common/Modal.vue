@@ -1,7 +1,7 @@
 <template>
   <transition name="modal-fade">
     <div v-if="visible" class="modal-overlay" @click="handleOverlayClick">
-      <div class="modal-container" :class="customClass" @click.stop>
+      <div class="modal-container" :class="customClass" :style="modalStyle" @click.stop>
         <div class="modal-header">
           <span>{{ title }}</span>
           <span class="close-btn" @click="handleClose">&times;</span>
@@ -73,11 +73,48 @@ export default defineComponent({
     hideFooter: {
       type: Boolean,
       default: false
+    },
+    // 可选：通过内联样式精确控制尺寸，避免被外部样式覆盖
+    width: {
+      type: [Number, String],
+      default: null
+    },
+    maxWidth: {
+      type: [Number, String],
+      default: null
+    },
+    height: {
+      type: [Number, String],
+      default: null
+    },
+    maxHeight: {
+      type: [Number, String],
+      default: null
     }
   },
   emits: ['update:visible', 'close', 'confirm'],
   setup(props, { emit }) {
     const activeTab = ref(0);
+
+    const toSize = v => {
+      if (v === null || v === undefined || v === '') return undefined;
+      return typeof v === 'number' ? `${v}px` : String(v);
+    };
+
+    const modalStyle = {
+      get width() {
+        return toSize(props.width);
+      },
+      get maxWidth() {
+        return toSize(props.maxWidth);
+      },
+      get height() {
+        return toSize(props.height);
+      },
+      get maxHeight() {
+        return toSize(props.maxHeight);
+      }
+    };
 
     const handleClose = () => {
       emit('update:visible', false);
@@ -97,7 +134,8 @@ export default defineComponent({
       activeTab,
       handleClose,
       handleConfirm,
-      handleOverlayClick
+      handleOverlayClick,
+      modalStyle
     };
   }
 });

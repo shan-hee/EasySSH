@@ -4,6 +4,10 @@
     title="设置"
     custom-class="user-settings-modal"
     :hide-footer="true"
+    :width="800"
+    :max-width="'90vw'"
+    :height="600"
+    :max-height="'80vh'"
     @close="handleClose"
   >
     <div class="user-settings-container">
@@ -2088,13 +2092,7 @@ export default defineComponent({
 </script>
 
 <style scoped>
-/* 弹窗容器 */
-:deep(.user-settings-modal) {
-  width: 800px !important;
-  max-width: 90vw !important;
-  height: 600px !important;
-  max-height: 80vh !important;
-}
+/* 弹窗容器基础尺寸通过 Modal 组件的 props 控制，此处仅保留其他样式覆盖 */
 
 /* 弹窗标题样式覆盖 */
 :deep(.user-settings-modal .modal-header) {

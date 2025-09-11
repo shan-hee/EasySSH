@@ -4,6 +4,8 @@
     title="注销所有设备"
     custom-class="logout-devices-modal"
     :hide-footer="true"
+    :width="550"
+    :max-width="'90vw'"
     @close="handleClose"
   >
     <div class="logout-devices-container">

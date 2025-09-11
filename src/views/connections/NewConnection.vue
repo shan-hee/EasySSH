@@ -263,6 +263,8 @@
       :title="isEdit ? '编辑连接' : '新建连接'"
       :tabs="['云服务器']"
       custom-class="connection-modal"
+      :width="550"
+      :max-width="'95vw'"
       :buttons="[
         { text: '取消', type: 'cancel', onClick: resetConnectionForm },
         { text: '保存', type: 'confirm', onClick: saveConnection },
