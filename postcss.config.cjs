@@ -28,6 +28,14 @@ module.exports = {
           // 主题切换相关
           /^dark-theme$/,
           /^light-theme$/,
+          // 火箭加载器动态阶段类（在模板中通过计算属性生成）
+          /^phase-/,
+          // 动态图标与徽章类（基于 name/type 拼接）
+          /^toolbar-icon--/,
+          /^monitoring-icon--/,
+          /^autocomplete-type--/,
+          // 监控加载器动态状态与尺寸类
+          /^loader-/,
           // 第三方库前缀
           /^xterm/,
           /^cm-/,
