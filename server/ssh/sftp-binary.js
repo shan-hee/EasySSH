@@ -6,6 +6,8 @@
 const path = require('path');
 const archiver = require('archiver');
 const logger = require('../utils/logger');
+const VERBOSE_BINARY_LOG = process.env.LOG_VERBOSE_BINARY === 'true';
+const CHUNK_LOG_STEP = parseInt(process.env.LOG_CHUNK_STEP || '10', 10);
 
 // 导入工具模块
 const {
@@ -55,12 +57,15 @@ async function handleBinaryMessage(ws, messageBuffer, sshSessions) {
     const message = BinaryMessageDecoder.decode(messageBuffer);
     const { messageType, headerData, payloadData } = message;
 
-    logger.debug('收到二进制消息', {
-      type: messageType,
-      sessionId: headerData.sessionId,
-      operationId: headerData.operationId,
-      payloadSize: payloadData ? payloadData.length : 0
-    });
+    // 降噪：默认不逐条打印二进制消息，仅在开启详尽日志时输出
+    if (VERBOSE_BINARY_LOG) {
+      logger.debug('收到二进制消息', {
+        type: messageType,
+        sessionId: headerData.sessionId,
+        operationId: headerData.operationId,
+        payloadSize: payloadData ? payloadData.length : 0
+      });
+    }
 
     // 根据消息类型分发处理
     switch (messageType) {
@@ -158,7 +163,15 @@ async function handleBinaryUpload(ws, headerData, payloadData, sshSessions) {
     if (totalChunks && totalChunks > 1) {
       // 对于分块传输，确保payloadData不为null
       const chunkData = payloadData || Buffer.alloc(0);
-      logger.debug(`接收分块 ${chunkIndex + 1}/${totalChunks}`, { operationId, size: chunkData.length });
+      // 降噪：仅记录首块、每N块、最后一块 或 详尽日志模式
+      if (
+        VERBOSE_BINARY_LOG ||
+        chunkIndex === 0 ||
+        (typeof CHUNK_LOG_STEP === 'number' && CHUNK_LOG_STEP > 0 && ((chunkIndex + 1) % CHUNK_LOG_STEP === 0)) ||
+        chunkIndex + 1 === totalChunks
+      ) {
+        logger.debug(`接收分块 ${chunkIndex + 1}/${totalChunks}`, { operationId, size: chunkData.length });
+      }
 
       // 添加分块到重组器
       fileBuffer = chunkReassembler.addChunk(operationId, chunkIndex, totalChunks, chunkData);
@@ -178,6 +191,8 @@ async function handleBinaryUpload(ws, headerData, payloadData, sshSessions) {
       }
 
       logger.info('分块重组完成', { operationId, totalSize: fileBuffer.length });
+
+      
     }
 
     // 验证校验和
@@ -211,7 +226,8 @@ async function handleBinaryUpload(ws, headerData, payloadData, sshSessions) {
         const uploadEndTime = Date.now();
         const uploadDuration = uploadEndTime - uploadStartTime;
 
-        logger.info('空文件创建完成', {
+      logger.info('空文件创建完成', {
+          operationId,
           remotePath,
           duration: uploadDuration
         });
@@ -244,6 +260,7 @@ async function handleBinaryUpload(ws, headerData, payloadData, sshSessions) {
       const uploadDuration = uploadEndTime - uploadStartTime;
 
       logger.info('二进制文件上传完成', {
+        operationId,
         remotePath,
         totalSize: fileBuffer.length,
         duration: uploadDuration,
@@ -1324,6 +1341,8 @@ async function handleBinarySftpCancel(ws, headerData) {
       activeTransfers.delete(operationId);
       logger.info('SFTP操作已取消', { operationId, type: entry.type });
     }
+
+    // 不再显式丢弃分块缓存（回滚到此前行为）
 
     sendBinarySftpSuccess(ws, sessionId, operationId, { message: '操作已取消' });
   } catch (error) {

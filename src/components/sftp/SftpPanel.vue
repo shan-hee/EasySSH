@@ -180,6 +180,7 @@
       :file="selectedFileForPermissions"
       @save="handlePermissionsSave"
     />
+
   </div>
 </template>
 
@@ -277,6 +278,8 @@ export default defineComponent({
     const currentUploadingFile = ref('');
     // 添加当前上传操作ID
     const currentUploadId = ref(null);
+    // 添加当前上传文件的远程完整路径（用于取消时删除）
+    const currentUploadingRemotePath = ref('');
 
     // 上传通知引用，需要在组件级别定义以便取消函数访问
     let currentUploadNotification = null;
@@ -288,6 +291,8 @@ export default defineComponent({
 
     // 从可复用逻辑中获取工具函数
     const { formatFileSize, formatDate } = useFileUtils();
+
+    // （已移除）自定义上传确认弹窗：遵循用户偏好使用顶部气泡提示
 
     // 判断是否是文本文件
     const isTextFile = filename => {
@@ -809,26 +814,15 @@ export default defineComponent({
         }
       }
 
-      // 如果有无效文件，显示错误信息
+      // 如果有无效文件，提示后直接跳过继续上传有效文件（不再二次确认）
       if (invalidFiles.length > 0) {
         if (validFiles.length === 0) {
           // 所有文件都无效，直接返回
+          ElMessage.error(`${invalidFiles.length} 个文件超过大小限制，未上传任何文件`);
           return;
         } else {
-          // 部分文件无效，询问是否继续上传有效文件
-          try {
-            await ElMessageBox.confirm(
-              `${invalidFiles.length} 个文件超过大小限制将被跳过，是否继续上传其余 ${validFiles.length} 个文件？`,
-              '文件大小限制',
-              {
-                confirmButtonText: '继续上传',
-                cancelButtonText: '取消',
-                type: 'warning'
-              }
-            );
-          } catch (e) {
-            return; // 用户取消了上传
-          }
+          // 部分文件无效，直接提示并继续
+          ElMessage.warning(`${invalidFiles.length} 个文件超过大小限制已被跳过，继续上传其余 ${validFiles.length} 个文件`);
         }
       }
 
@@ -840,28 +834,16 @@ export default defineComponent({
         file => file.webkitRelativePath && file.webkitRelativePath.includes('/')
       );
 
-      if (hasDirectories) {
-        // 如果包含文件夹，使用文件夹上传处理（文件夹上传有自己的进度通知）
-        await uploadFileToDirectoryBatch(filesToUpload);
-        return;
-      }
+      // 采用顶部气泡提示：多文件/包含文件夹时不再二次确认
 
-      // 对于大于10个文件的上传，先确认
-      if (filesToUpload.length > 10) {
-        try {
-          await ElMessageBox.confirm(
-            `您选择了${filesToUpload.length}个文件，确定要全部上传吗？`,
-            '批量上传确认',
-            {
-              confirmButtonText: '全部上传',
-              cancelButtonText: '取消',
-              type: 'warning'
-            }
-          );
-        } catch (e) {
-          return; // 用户取消了上传
-        }
-      }
+      // 注意：即使包含文件夹（通过 webkitRelativePath 标识），
+      // 也走下面的通用批量上传流程：
+      // - 预创建所有子目录
+      // - 逐个文件按 webkitRelativePath 计算 remotePath 上传
+      // 之前这里误调用了 uploadFileToDirectoryBatch(filesToUpload)，
+      // 传入了数组而非 File，导致 FileReader.readAsArrayBuffer 抛错。
+
+      // 移除批量数量二次确认，直接开始上传（系统文件选择器已确认过）
 
       // 显示上传开始的消息通知
       let uploadCancelled = false; // 标记是否被用户取消
@@ -891,6 +873,11 @@ export default defineComponent({
                 <div class="sftp-progress-fill" style="width: ${progress}%;"></div>
               </div>
             </div>
+            <button class="sftp-progress-cancel-btn upload-cancel-btn" title="取消">
+              <svg viewBox="0 0 16 16" width="16" height="16">
+                <path d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708z" fill="currentColor"/>
+              </svg>
+            </button>
           </div>
         `;
       };
@@ -900,17 +887,11 @@ export default defineComponent({
         const notification = ElMessage.info({
           message,
           duration: 0, // 不自动关闭
-          showClose: true,
+          showClose: isProgressNotification ? false : true, // 进度通知不显示右上角X，仅保留圆形X按钮
           dangerouslyUseHTMLString: isProgressNotification,
           customClass: isProgressNotification ? 'upload-progress-notification' : '',
-          onClose: () => {
-            // 用户点击关闭按钮时触发取消上传
-            if (!uploadCancelled && isUploading.value) {
-              uploadCancelled = true;
-              // 直接调用取消上传，不需要额外的日志，因为cancelUpload函数内部已经有了
-              cancelUpload();
-            }
-          }
+          // 仅关闭提示，不触发取消。真正取消需点击“取消上传”按钮。
+          onClose: () => {}
         });
         return notification;
       };
@@ -924,6 +905,19 @@ export default defineComponent({
         ''
       );
       currentUploadNotification = createUploadNotification(initialProgress, true);
+      // 绑定取消上传（初始状态）
+      setTimeout(() => {
+        const notificationEl = document.querySelector('.upload-progress-notification .el-message__content');
+        if (notificationEl) {
+          const cancelBtn = notificationEl.querySelector('.upload-cancel-btn');
+          if (cancelBtn && !cancelBtn._bound) {
+            cancelBtn._bound = true;
+            cancelBtn.addEventListener('click', () => {
+              cancelUpload();
+            });
+          }
+        }
+      });
 
       // 重置上传状态（保留原有逻辑以防其他地方依赖）
       isUploading.value = true;
@@ -954,15 +948,14 @@ export default defineComponent({
           pathParts.pop(); // 移除文件名，只保留路径部分
 
           if (pathParts.length > 0) {
-            const currentDirPath = currentPath.value === '/' ? '/' : `${currentPath.value}/`;
+            const currentDirPath = currentPath.value === '/' ? '/' : `${currentPath.value}`;
             let partialPath = '';
 
             for (const part of pathParts) {
               partialPath += (partialPath ? '/' : '') + part;
-              const dirPath =
-                currentDirPath === '/'
-                  ? currentDirPath + partialPath
-                  : `${currentDirPath}/${partialPath}`;
+              const dirPath = currentDirPath === '/'
+                ? `/${partialPath}`
+                : `${currentDirPath}/${partialPath}`;
 
               dirsToCreate.add(dirPath);
             }
@@ -1018,6 +1011,14 @@ export default defineComponent({
           );
           if (notificationEl) {
             notificationEl.innerHTML = progressHTML;
+            // 绑定取消上传按钮
+            const cancelBtn = notificationEl.querySelector('.upload-cancel-btn');
+            if (cancelBtn && !cancelBtn._bound) {
+              cancelBtn._bound = true;
+              cancelBtn.addEventListener('click', () => {
+                cancelUpload();
+              });
+            }
           }
         }
       };
@@ -1069,10 +1070,14 @@ export default defineComponent({
             props.sessionId,
             file,
             remotePath,
-            (progress, operationId) => {
-              // 保存操作ID用于取消
-              if (operationId && !currentUploadId.value) {
-                currentUploadId.value = operationId;
+            (progress, metaOrOpId) => {
+              // 保存操作ID用于取消（兼容：可能传对象meta或直接传operationId）
+              const opId =
+                metaOrOpId && typeof metaOrOpId === 'object'
+                  ? metaOrOpId.operationId
+                  : metaOrOpId;
+              if (opId && !currentUploadId.value) {
+                currentUploadId.value = opId;
               }
 
               // 更新整体进度 - 每次进度回调都实时更新
@@ -1182,6 +1187,7 @@ export default defineComponent({
       // 立即显示取消确认消息
       ElMessage.info('上传已取消');
 
+      // 取消当前操作ID
       if (currentUploadId.value) {
         try {
           await sftpService.cancelUpload(props.sessionId, currentUploadId.value);
@@ -1197,14 +1203,21 @@ export default defineComponent({
       }
 
       // 临时删除已部分上传的文件
-      if (isUploading.value && currentUploadingFile.value) {
-        const remotePath = `${currentPath.value === '/' ? '' : currentPath.value}/${currentUploadingFile.value}`;
+      if (isUploading.value) {
+        const remotePath = currentUploadingRemotePath.value
+          || (currentUploadingFile.value
+            ? `${currentPath.value === '/' ? '' : currentPath.value}/${currentUploadingFile.value}`
+            : '');
+        if (!remotePath) {
+          // 无有效路径，无需尝试删除
+        } else {
         try {
           await sftpService.deleteFile(props.sessionId, remotePath);
           log.debug('已删除文件:', remotePath);
         } catch (error) {
-          // 忽略文件不存在的情况
-          log.warn('删除文件失败:', error);
+          // 取消与流写入存在竞争，文件可能尚未创建或已完成；降级为debug
+          log.debug('删除文件失败（可忽略）:', { path: remotePath, error: error?.message || String(error) });
+        }
         }
       }
 
@@ -1212,6 +1225,7 @@ export default defineComponent({
       isUploading.value = false;
       uploadProgress.value = 0;
       currentUploadingFile.value = '';
+      currentUploadingRemotePath.value = '';
 
       // 手动取消事件处理
       try {
@@ -1261,13 +1275,20 @@ export default defineComponent({
           (currentPath.value === '/'
             ? currentPath.value + file.name
             : `${currentPath.value}/${file.name}`);
+        // 记录当前上传远程路径（单文件/批量单文件场景）
+        currentUploadingRemotePath.value = remotePath;
 
-        // 定义进度回调函数
-        const progressCallback = (progress, operationId) => {
+        // 定义进度回调函数（兼容元数据或仅传opId）
+        const progressCallback = (progress, metaOrOpId) => {
           // 保存操作ID用于取消上传
-          if (operationId && !currentUploadId.value) {
-            currentUploadId.value = operationId;
+          const opId =
+            metaOrOpId && typeof metaOrOpId === 'object'
+              ? metaOrOpId.operationId
+              : metaOrOpId;
+          if (opId && !currentUploadId.value) {
+            currentUploadId.value = opId;
           }
+          
 
           // 如果是批量上传的一部分，不更新总进度
           if (isBatchUpload) return;
@@ -1306,6 +1327,7 @@ export default defineComponent({
             setTimeout(() => {
               isUploading.value = false;
               currentUploadId.value = null; // 清除操作ID
+              currentUploadingRemotePath.value = '';
 
               // 清除计时器
               if (transferInterval.value) {
@@ -2127,23 +2149,7 @@ export default defineComponent({
 
     // 处理文件系统条目（可能是文件或文件夹）
     const processEntries = async entries => {
-      // 确认批量上传
-      if (entries.length > 1) {
-        try {
-          await ElMessageBox.confirm(
-            `您选择了${entries.length}个项目，确定要全部上传吗？`,
-            '批量上传确认',
-            {
-              confirmButtonText: '全部上传',
-              cancelButtonText: '取消',
-              type: 'warning'
-            }
-          );
-        } catch (e) {
-          isUploading.value = false; // 用户取消，重置上传状态
-          return; // 用户取消了上传
-        }
-      }
+      // 不再进行“批量上传确认”二次弹窗，直接处理上传
 
       // 用于追踪文件总数和已处理文件数
       let totalFiles = 0;
@@ -2211,37 +2217,57 @@ export default defineComponent({
         currentFile,
         processedFiles,
         totalFiles,
-        speedText
+        speedText,
+        currentFilePct
       ) => {
         const progressText = `上传进度: ${Math.floor(progress)}%${speedText ? ` (${speedText})` : ''}(${processedFiles}/${totalFiles})`;
         const fileName =
           currentFile.length > 30 ? `${currentFile.substring(0, 27)}...` : currentFile;
+        const currentFileText =
+          typeof currentFilePct === 'number'
+            ? `${fileName}（当前文件: ${Math.max(0, Math.min(100, Math.floor(currentFilePct)))}%）`
+            : fileName;
 
         return `
           <div class="sftp-progress-container sftp-upload-progress">
             <div class="sftp-progress-content">
               <div class="sftp-progress-text">${progressText}</div>
-              <div class="sftp-progress-file">${fileName}</div>
+              <div class="sftp-progress-file">${currentFileText}</div>
               <div class="sftp-progress-bar">
                 <div class="sftp-progress-fill" style="width: ${progress}%;"></div>
               </div>
             </div>
+            <button class="sftp-progress-cancel-btn upload-cancel-btn" title="取消">
+              <svg viewBox="0 0 16 16" width="16" height="16">
+                <path d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708z" fill="currentColor"/>
+              </svg>
+            </button>
           </div>
         `;
       };
 
       // 创建文件夹上传进度通知
       const folderUploadNotification = ElMessage({
-        message: createFolderUploadProgressHTML(0, '准备上传...', 0, totalFiles, ''),
+        message: createFolderUploadProgressHTML(0, '准备上传...', 0, totalFiles, '', undefined),
         type: 'info',
         duration: 0, // 不自动关闭
-        showClose: true,
+        showClose: false, // 不显示右上角X，仅保留圆形X按钮
         dangerouslyUseHTMLString: true,
         customClass: 'upload-progress-notification',
-        onClose: () => {
-          // 用户点击关闭按钮时触发取消上传
-          if (isUploading.value) {
-            cancelUpload();
+        // 仅关闭提示，不触发取消
+        onClose: () => {}
+      });
+
+      // 绑定取消上传（初始状态）
+      setTimeout(() => {
+        const notificationEl = document.querySelector('.upload-progress-notification .el-message__content');
+        if (notificationEl) {
+          const cancelBtn = notificationEl.querySelector('.upload-cancel-btn');
+          if (cancelBtn && !cancelBtn._bound) {
+            cancelBtn._bound = true;
+            cancelBtn.addEventListener('click', () => {
+              cancelUpload();
+            });
           }
         }
       });
@@ -2249,6 +2275,10 @@ export default defineComponent({
       // 开始定期更新速度
       let lastUpdateTime = Date.now();
       let lastUploadedBytes = 0;
+      // 跟踪并发文件的分片累计字节：remotePath -> bytesUploaded
+      const partialUploads = new Map();
+      // 记录上一次渲染的整体进度，保证单调不减
+      let lastOverallProgress = 0;
 
       // 清除之前的计时器
       if (transferInterval.value) {
@@ -2261,7 +2291,10 @@ export default defineComponent({
         const now = Date.now();
         const timeDelta = (now - lastUpdateTime) / 1000;
         if (timeDelta > 0) {
-          const currentTotalBytes = actualUploadedBytes + currentFileBytes;
+          // 汇总所有正在进行中的文件分片字节
+          let partialSum = 0;
+          for (const v of partialUploads.values()) partialSum += v || 0;
+          const currentTotalBytes = actualUploadedBytes + partialSum;
           const bytesDelta = currentTotalBytes - lastUploadedBytes;
           if (bytesDelta > 0) {
             const currentSpeed = bytesDelta / timeDelta;
@@ -2282,6 +2315,9 @@ export default defineComponent({
       let actualUploadedFiles = 0;
       let actualUploadedBytes = 0;
       let currentFileIndex = 0; // 当前正在处理的文件索引
+      // 渲染节流，避免频繁DOM更新导致跳动
+      let lastRenderProgress = 0;
+      let lastRenderTs = 0;
 
       try {
         // 处理每一个条目
@@ -2289,77 +2325,117 @@ export default defineComponent({
           if (entry.isFile) {
             currentFileIndex++; // 增加当前文件索引
             // 处理文件
-            await processFileEntry(entry, '', (file, bytesUploaded, isPartial) => {
+            await processFileEntry(entry, '', (file, bytesUploaded, isPartial, remotePath) => {
               if (!isPartial) {
                 // 文件完成时
                 _processedFiles++;
                 actualUploadedFiles++;
                 actualUploadedBytes += file.size; // 使用完整文件大小
-                currentFileBytes = 0; // 重置当前文件字节
+                // 移除并发分片记录
+                partialUploads.delete(remotePath);
               } else {
                 // 部分进度时，更新当前文件的已上传字节
-                currentFileBytes = bytesUploaded;
+                partialUploads.set(remotePath, bytesUploaded);
               }
 
-              // 计算总进度：已完成文件的字节 + 当前文件的部分字节
-              const totalUploadedBytes = actualUploadedBytes + currentFileBytes;
-              const progress = Math.min(100, Math.floor((totalUploadedBytes / totalBytes) * 100));
+              // 计算总进度：已完成文件的字节 + 所有并发文件的部分字节
+              let partialSum = 0;
+              for (const v of partialUploads.values()) partialSum += v || 0;
+              const totalUploadedBytes = actualUploadedBytes + partialSum;
+              let progress = Math.floor((totalUploadedBytes / totalBytes) * 100);
+              if (progress < lastOverallProgress) progress = lastOverallProgress; // 保证单调不减
+              progress = Math.min(100, progress);
+              lastOverallProgress = progress;
 
               currentUploadingFile.value = file.name;
               uploadProgress.value = progress;
 
               // 更新文件夹上传进度通知
               const speedText = formatTransferSpeed(transferSpeed.value);
+              // 对于目录中的文件，currentFileIndex 在文件完成时才递增，
+              // 为了在上传中的第一个文件也能显示为 1/total，这里在部分进度时至少显示为1
+              const displayIndex = bytesUploaded > 0 ? Math.max(1, currentFileIndex) : currentFileIndex;
+              const currentFilePct = file.size > 0 ? (bytesUploaded / file.size) * 100 : 100;
               const progressHTML = createFolderUploadProgressHTML(
                 progress,
                 file.name,
-                currentFileIndex,
+                displayIndex,
                 totalFiles,
-                speedText
+                speedText,
+                currentFilePct
               );
-              const notificationEl = document.querySelector(
-                '.upload-progress-notification .el-message__content'
-              );
+              const nowTs = Date.now();
+              const shouldRender = progress - lastRenderProgress >= 0.5 || nowTs - lastRenderTs >= 200;
+              if (shouldRender) {
+                const notificationEl = document.querySelector(
+                  '.upload-progress-notification .el-message__content'
+                );
               if (notificationEl) {
                 notificationEl.innerHTML = progressHTML;
+                // 绑定取消上传按钮（文件夹上传）
+                const cancelBtn = notificationEl.querySelector('.upload-cancel-btn');
+                if (cancelBtn && !cancelBtn._bound) {
+                  cancelBtn._bound = true;
+                  cancelBtn.addEventListener('click', () => {
+                    cancelUpload();
+                  });
+                }
+              }
+                lastRenderProgress = progress;
+                lastRenderTs = nowTs;
               }
             });
           } else if (entry.isDirectory) {
             // 处理目录
-            await processDirectoryEntry(entry, '', (file, bytesUploaded, isPartial) => {
+            await processDirectoryEntry(entry, '', (file, bytesUploaded, isPartial, remotePath) => {
               if (!isPartial) {
                 // 文件完成时
                 _processedFiles++;
                 actualUploadedFiles++;
                 actualUploadedBytes += file.size; // 使用完整文件大小
                 currentFileIndex++; // 目录中的文件也要增加索引
-                currentFileBytes = 0; // 重置当前文件字节
+                partialUploads.delete(remotePath);
               } else {
                 // 部分进度时，更新当前文件的已上传字节
-                currentFileBytes = bytesUploaded;
+                partialUploads.set(remotePath, bytesUploaded);
               }
 
-              // 计算总进度：已完成文件的字节 + 当前文件的部分字节
-              const totalUploadedBytes = actualUploadedBytes + currentFileBytes;
-              const progress = Math.min(100, Math.floor((totalUploadedBytes / totalBytes) * 100));
+              // 计算总进度：已完成文件的字节 + 所有并发文件的部分字节
+              let partialSum = 0;
+              for (const v of partialUploads.values()) partialSum += v || 0;
+              const totalUploadedBytes = actualUploadedBytes + partialSum;
+              let progress = Math.floor((totalUploadedBytes / totalBytes) * 100);
+              if (progress < lastOverallProgress) progress = lastOverallProgress;
+              progress = Math.min(100, progress);
+              lastOverallProgress = progress;
 
               currentUploadingFile.value = file.name;
               uploadProgress.value = progress;
 
               // 更新文件夹上传进度通知
               const speedText = formatTransferSpeed(transferSpeed.value);
+              // 同上：在部分进度时保证至少显示为 1/total
+              const displayIndex2 = bytesUploaded > 0 ? Math.max(1, currentFileIndex) : currentFileIndex;
+              const currentFilePct2 = file.size > 0 ? (bytesUploaded / file.size) * 100 : 100;
               const progressHTML = createFolderUploadProgressHTML(
                 progress,
                 file.name,
-                currentFileIndex,
+                displayIndex2,
                 totalFiles,
-                speedText
+                speedText,
+                currentFilePct2
               );
-              const notificationEl = document.querySelector(
-                '.upload-progress-notification .el-message__content'
-              );
-              if (notificationEl) {
-                notificationEl.innerHTML = progressHTML;
+              const nowTs2 = Date.now();
+              const shouldRender2 = progress - lastRenderProgress >= 0.5 || nowTs2 - lastRenderTs >= 200;
+              if (shouldRender2) {
+                const notificationEl = document.querySelector(
+                  '.upload-progress-notification .el-message__content'
+                );
+                if (notificationEl) {
+                  notificationEl.innerHTML = progressHTML;
+                }
+                lastRenderProgress = progress;
+                lastRenderTs = nowTs2;
               }
             });
           }
@@ -2416,7 +2492,7 @@ export default defineComponent({
     // 处理文件条目
     const processFileEntry = async (fileEntry, path, onProgress) => {
       // 如果上传被取消，停止处理
-      if (!isUploading.value && path !== '') {
+      if (!isUploading.value) {
         return;
       }
 
@@ -2424,6 +2500,7 @@ export default defineComponent({
         fileEntry.file(
           async file => {
             try {
+              if (!isUploading.value) { resolve(); return; }
               // 设置当前上传文件名以便在进度条中显示（移除百分比显示）
               currentUploadingFile.value = path ? `${path}/${file.name}` : file.name;
 
@@ -2437,6 +2514,8 @@ export default defineComponent({
                   : `${currentPath.value}/${file.name}`;
 
               log.debug(`上传文件: ${remotePath} (${formatFileSize(file.size)})`);
+              // 记录当前文件的远程路径（目录批量场景）
+              currentUploadingRemotePath.value = remotePath;
 
               // 跟踪上传的进度以避免重复计算
               let lastProgress = 0;
@@ -2447,28 +2526,25 @@ export default defineComponent({
                 if (opId && !currentUploadId.value) {
                   currentUploadId.value = opId;
                 }
+                
 
                 // 实时更新进度 - 每个百分比都更新
-                // 为部分进度计算部分上传的字节
+                // 计算当前文件已上传的累计字节（而非增量）
                 const _partialBytes = (file.size * progress) / 100;
 
                 // 当达到100%时回调上传完成
                 if (progress >= 100 && typeof onProgress === 'function') {
                   // 防止重复调用完成回调
                   if (lastProgress < 100) {
-                    onProgress(file, file.size);
+                    onProgress(file, file.size, false, remotePath);
                     lastProgress = 100;
                   }
                 }
                 // 实时更新部分进度
                 else if (typeof onProgress === 'function' && progress > 0) {
-                  // 只计算增量进度，避免重复计算
-                  const progressDiff = progress - lastProgress;
-                  if (progressDiff > 0) {
-                    const incrementalBytes = (file.size * progressDiff) / 100;
-                    onProgress(file, incrementalBytes, true);
-                    lastProgress = progress;
-                  }
+                  // 传递累计已上传字节，避免进度始终接近0%
+                  onProgress(file, _partialBytes, true, remotePath);
+                  lastProgress = progress;
                 }
               });
 
@@ -2479,7 +2555,7 @@ export default defineComponent({
 
               // 调用进度回调，即使失败也计入进度
               if (typeof onProgress === 'function') {
-                onProgress(file, 0); // 失败时传0字节
+                onProgress(file, 0, false, remotePath); // 失败时传0字节
               }
 
               resolve(); // 即使失败也继续下一个
@@ -2491,7 +2567,14 @@ export default defineComponent({
 
             // 调用进度回调，即使失败也计入进度
             if (typeof onProgress === 'function') {
-              onProgress(fileEntry, 0);
+              const failedPath = path
+                ? currentPath.value === '/'
+                  ? `${currentPath.value + path}/${fileEntry.name}`
+                  : `${currentPath.value}/${path}/${fileEntry.name}`
+                : currentPath.value === '/'
+                  ? currentPath.value + fileEntry.name
+                  : `${currentPath.value}/${fileEntry.name}`;
+              onProgress(fileEntry, 0, false, failedPath);
             }
 
             resolve(); // 即使失败也继续下一个
@@ -2538,6 +2621,7 @@ export default defineComponent({
             dirReader.readEntries(
               async entries => {
                 try {
+                  if (!isUploading.value) { resolve(); return; }
                   // 如果还有条目，处理并继续读取
                   if (entries.length > 0) {
                     const promises = [];
@@ -2581,27 +2665,54 @@ export default defineComponent({
     const uploadFileToDirectoryBatch = async (file, remotePath, progressCallback) => {
       return new Promise((resolve, reject) => {
         let fileCompleted = false; // 防止重复记录和解析
+        let lastOpId = null; // 记录最近的operationId用于补发100%
 
         try {
           // 调用SFTP服务上传文件
           sftpService
-            .uploadFile(props.sessionId, file, remotePath, (progress, operationId) => {
+            .uploadFile(props.sessionId, file, remotePath, (progress, metaOrOpId) => {
               // 先调用原始回调 - 每次进度回调都实时更新
+              const opId =
+                metaOrOpId && typeof metaOrOpId === 'object'
+                  ? metaOrOpId.operationId
+                  : metaOrOpId;
+              if (opId) lastOpId = opId;
+
               if (typeof progressCallback === 'function') {
-                progressCallback(progress, operationId);
+                progressCallback(progress, opId);
               }
 
               // 当单个文件上传完成时，只处理一次
               if (progress >= 100 && !fileCompleted) {
                 fileCompleted = true;
-                // 只记录文件完成上传，不刷新目录
-                log.debug(`文件完成上传: ${remotePath}`);
-                // 上传完成时解析Promise
+                if (String(import.meta.env.VITE_SFTP_VERBOSE_BINARY) === 'true') {
+                  log.debug(`文件完成上传: ${remotePath}`);
+                }
+                resolve();
+              }
+            })
+            .then(() => {
+              // 若服务器完成但未收到100%进度（例如最后一块不推进度），补发一次100%
+              if (!fileCompleted) {
+                try {
+                  if (typeof progressCallback === 'function') {
+                    progressCallback(100, lastOpId);
+                  }
+                } catch (_) {}
+                fileCompleted = true;
+                if (String(import.meta.env.VITE_SFTP_VERBOSE_BINARY) === 'true') {
+                  log.debug(`文件完成上传(服务端成功): ${remotePath}`);
+                }
                 resolve();
               }
             })
             .catch(error => {
               if (!fileCompleted) {
+                // 用户取消不视为错误
+                if (String(error?.message || '').includes('取消')) {
+                  resolve();
+                  return;
+                }
                 log.error(`上传文件失败: ${remotePath}`, error);
                 reject(error);
               }

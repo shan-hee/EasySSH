@@ -498,19 +498,29 @@ class SFTPService {
             if (timeout) clearTimeout(timeout);
             reject(error);
           },
-          progress: progress => {
-            // 进度回调扩展：附带operationId，且滑动重置超时
+          progress: (progress, headerData) => {
+            // 进度回调扩展：附带元数据（operationId/bytesTransferred/totalBytes），且滑动重置超时
             resetTimeout();
             if (typeof progressCallback === 'function') {
               try {
-                progressCallback(progress, operationId);
+                const meta = headerData && typeof headerData === 'object' ? { ...headerData } : {};
+                if (!meta.operationId) meta.operationId = operationId;
+                progressCallback(progress, meta);
               } catch (e) {
                 /* no-op */
               }
             }
           },
-          type: 'upload_binary'
+          type: 'upload_binary',
+          meta: { filename: file.name, remotePath }
         });
+
+        // 提前一拍将 operationId 暴露给调用方，便于用户立即取消
+        try {
+          if (typeof progressCallback === 'function') {
+            progressCallback(0, { operationId });
+          }
+        } catch (_) {}
 
         // 读取文件为ArrayBuffer
         const reader = new FileReader();
@@ -703,6 +713,7 @@ class SFTPService {
           },
           progress: progressCallback,
           type: 'download_binary',
+          meta: { remotePath },
           sshSessionId
         });
 
@@ -1477,8 +1488,9 @@ class SFTPService {
     try {
       const { messageType, headerData, payloadData } = messageDetail;
 
-      // 降低日志噪音：对进度消息不逐条打印debug，其他类型正常记录
-      if (messageType !== BINARY_MSG_TYPE.SFTP_PROGRESS) {
+      // 降低日志噪音：仅在开启详细模式时记录非进度类二进制消息
+      const VERBOSE_BINARY = String(import.meta.env.VITE_SFTP_VERBOSE_BINARY) === 'true';
+      if (VERBOSE_BINARY && messageType !== BINARY_MSG_TYPE.SFTP_PROGRESS) {
         log.debug('收到二进制SFTP消息', {
           type: messageType.toString ? messageType.toString(16) : messageType,
           sessionId: headerData.sessionId,
@@ -1507,7 +1519,7 @@ class SFTPService {
 
         case BINARY_MSG_TYPE.SFTP_PROGRESS:
           this._handleBinaryProgress(headerData);
-          // 节流记录关键进度（每1秒或提升>=10% 或达到100%）
+          // 节流记录关键进度（默认每2秒或提升>=15% 或达到100%），并标注方向
           try {
             const { operationId, progress, bytesTransferred, totalBytes } = headerData;
             const now = Date.now();
@@ -1515,13 +1527,17 @@ class SFTPService {
               lastProgress: -1,
               lastTs: 0
             };
+
+            const LOG_INTERVAL = parseInt(import.meta.env.VITE_SFTP_PROGRESS_LOG_INTERVAL_MS) || 2000;
+            const LOG_STEP = parseInt(import.meta.env.VITE_SFTP_PROGRESS_LOG_STEP) || 15;
+
             const progressedEnough =
               state.lastProgress < 0 ||
               (typeof progress === 'number' && progress >= 100) ||
               (typeof progress === 'number' &&
                 state.lastProgress >= 0 &&
-                progress - state.lastProgress >= 10);
-            const timeEnough = now - state.lastTs >= 1000;
+                progress - state.lastProgress >= LOG_STEP);
+            const timeEnough = now - state.lastTs >= LOG_INTERVAL;
             if (progressedEnough || timeEnough) {
               // 友好格式化字节
               const fmt = n => {
@@ -1531,19 +1547,38 @@ class SFTPService {
                 if (n >= 1024) return `${(n / 1024).toFixed(0)}KB`;
                 return `${n}B`;
               };
+
+              let direction = '传输';
+              let name;
+              let path;
+              try {
+                const op = this.fileOperations.get(operationId);
+                if (op && op.type) {
+                  direction = op.type.includes('upload') ? '上传' : (op.type.includes('download') ? '下载' : '传输');
+                  if (op.meta) {
+                    name = op.meta.filename;
+                    path = op.meta.remotePath;
+                  }
+                }
+              } catch (_) {}
+
               const detail = {
+                direction,
+                operationId,
                 progress,
                 transferred: fmt(bytesTransferred),
-                total: fmt(totalBytes)
+                total: fmt(totalBytes),
+                filename: name,
+                remotePath: path
               };
-              log.info('SFTP下载进度', detail);
+              log.info('SFTP传输进度', detail);
               this._progressLogState.set(operationId, {
                 lastProgress: typeof progress === 'number' ? progress : state.lastProgress,
                 lastTs: now
               });
             }
           } catch (e) {
-            // 忽略进度日志错误
+            // 忾略进度日志错误
           }
           break;
 
