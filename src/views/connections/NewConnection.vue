@@ -78,6 +78,7 @@
                   </el-button>
                   <el-button
                     class="action-btn"
+                    :class="{ pinned: isPinned(connection.id) }"
                     circle
                     size="small"
                     link
@@ -490,14 +491,44 @@ export default {
     const dragIndex = ref('');
     const enterIndex = ref('');
 
-    // 过滤后的连接列表
+    // 过滤后的连接列表（置顶优先，置顶内按时间倒序，保持稳定排序）
     const filteredConnections = computed(() => {
+      const baseList = connections.value || [];
+      const indexMap = new Map(baseList.map((item, idx) => [item.id, idx]));
+
+      const pinTimeOf = id => {
+        if (userStore.isLoggedIn) {
+          if (typeof userStore.getPinTime === 'function') return userStore.getPinTime(id);
+          const val = userStore.pinnedConnections?.[id];
+          return typeof val === 'number' ? val : 0;
+        }
+        if (typeof localConnectionsStore.getPinTime === 'function')
+          return localConnectionsStore.getPinTime(id);
+        const val = localConnectionsStore.pinnedConnections?.[id];
+        return typeof val === 'number' ? val : 0;
+      };
+
+      const sortByPinnedAndTime = list => {
+        return [...list].sort((a, b) => {
+          const aPinned = !!isPinned(a.id);
+          const bPinned = !!isPinned(b.id);
+          if (aPinned && !bPinned) return -1;
+          if (!aPinned && bPinned) return 1;
+          if (aPinned && bPinned) {
+            const diff = pinTimeOf(b.id) - pinTimeOf(a.id); // 新置顶在前
+            if (diff !== 0) return diff;
+          }
+          // 保持稳定排序
+          return (indexMap.get(a.id) ?? 0) - (indexMap.get(b.id) ?? 0);
+        });
+      };
+
       if (!searchQuery.value || !searchQuery.value.trim()) {
-        return connections.value;
+        return sortByPinnedAndTime(baseList);
       }
 
       const query = searchQuery.value.toLowerCase().trim();
-      return connections.value.filter(connection => {
+      const filtered = baseList.filter(connection => {
         const displayName = getDisplayName(connection).toLowerCase();
         const host = connection.host.toLowerCase();
         const username = connection.username.toLowerCase();
@@ -510,6 +541,8 @@ export default {
           description.includes(query)
         );
       });
+
+      return sortByPinnedAndTime(filtered);
     });
 
     // 过滤后的历史连接列表
@@ -1898,12 +1931,16 @@ h2 {
 
 /* 添加置顶项的样式 */
 .row-item[data-pinned='true'] {
-  background-color: var(--color-primary-lightest);
-  border-color: var(--color-primary-light);
+  background-color: var(--btn-primary-bg);
 }
 
 .row-item[data-pinned='true']:hover {
-  background-color: var(--color-primary-light);
+  background-color: var(--btn-primary-hover-bg);
+}
+
+/* 置顶按钮高亮 */
+.action-btn.pinned {
+  color: var(--color-primary);
 }
 
 .action-btn .pinned {

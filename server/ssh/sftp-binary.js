@@ -152,6 +152,12 @@ async function handleBinaryUpload(ws, headerData, payloadData, sshSessions) {
     const sftp = sftpSession.sftp;
 
     let fileBuffer = payloadData;
+    // 若已取消，忽略后续数据
+    if (canceledOperations.has(operationId)) {
+      try { chunkReassembler.discard(operationId); } catch (_) {}
+      logger.info('收到已取消操作的数据，忽略', { operationId, stage: 'pre-handle' });
+      return;
+    }
 
     // 处理空文件情况
     if (!fileBuffer || fileBuffer.length === 0) {
@@ -173,6 +179,11 @@ async function handleBinaryUpload(ws, headerData, payloadData, sshSessions) {
         logger.debug(`接收分块 ${chunkIndex + 1}/${totalChunks}`, { operationId, size: chunkData.length });
       }
 
+      // 若取消，丢弃分块并返回
+      if (canceledOperations.has(operationId)) {
+        try { chunkReassembler.discard(operationId); } catch (_) {}
+        return;
+      }
       // 添加分块到重组器
       fileBuffer = chunkReassembler.addChunk(operationId, chunkIndex, totalChunks, chunkData);
 
@@ -191,8 +202,11 @@ async function handleBinaryUpload(ws, headerData, payloadData, sshSessions) {
       }
 
       logger.info('分块重组完成', { operationId, totalSize: fileBuffer.length });
-
-      
+      // 重组完成后再次检查取消
+      if (canceledOperations.has(operationId)) {
+        logger.info('上传已取消（在重组完成后）', { operationId });
+        return;
+      }
     }
 
     // 验证校验和
@@ -248,7 +262,7 @@ async function handleBinaryUpload(ws, headerData, payloadData, sshSessions) {
 
     // 对于非空文件，使用流处理
     const writeStream = sftp.createWriteStream(remotePath);
-    activeTransfers.set(operationId, { type: 'upload', stream: writeStream });
+    activeTransfers.set(operationId, { type: 'upload', stream: writeStream, remotePath, sessionId });
 
     let uploadNotified = false;
 
@@ -286,8 +300,22 @@ async function handleBinaryUpload(ws, headerData, payloadData, sshSessions) {
     });
 
     // 某些环境只触发close，不触发finish，这里都监听并只发送一次成功
-    writeStream.on('finish', () => { activeTransfers.delete(operationId); notifySuccess(); });
-    writeStream.on('close', () => { activeTransfers.delete(operationId); notifySuccess(); });
+    writeStream.on('finish', () => {
+      activeTransfers.delete(operationId);
+      if (canceledOperations.has(operationId)) {
+        logger.info('上传流已结束（已取消，不发送成功）', { operationId });
+        return;
+      }
+      notifySuccess();
+    });
+    writeStream.on('close', () => {
+      activeTransfers.delete(operationId);
+      if (canceledOperations.has(operationId)) {
+        logger.info('上传流已关闭（已取消，不发送成功）', { operationId });
+        return;
+      }
+      notifySuccess();
+    });
 
     // 写入完整文件数据
     writeStream.end(fileBuffer);
@@ -1336,13 +1364,29 @@ async function handleBinarySftpCancel(ws, headerData) {
         try { if (typeof entry.archive.destroy === 'function') entry.archive.destroy(); } catch (e) {}
       } else if (entry.type === 'upload' && entry.stream) {
         try { entry.stream.destroy(); } catch (e) {}
+        // 尝试删除已创建但未完成的远端文件
+        try {
+          if (entry.remotePath && sftpSessions && sftpSessions.has(sessionId)) {
+            const sftp = sftpSessions.get(sessionId).sftp;
+            sftp.unlink(entry.remotePath, (err) => {
+              if (err && err.message && !/No such file|not exist/i.test(err.message)) {
+                logger.warn('取消时删除远端文件失败', { operationId, remotePath: entry.remotePath, error: err.message });
+              } else if (!err) {
+                logger.info('已删除取消的远端文件', { operationId, remotePath: entry.remotePath });
+              }
+            });
+          }
+        } catch (e) {
+          logger.warn('取消时尝试删除远端文件异常', { operationId, error: e.message });
+        }
       }
 
       activeTransfers.delete(operationId);
       logger.info('SFTP操作已取消', { operationId, type: entry.type });
     }
 
-    // 不再显式丢弃分块缓存（回滚到此前行为）
+    // 丢弃未完成分块缓存
+    try { chunkReassembler.discard(operationId); } catch (_) {}
 
     sendBinarySftpSuccess(ws, sessionId, operationId, { message: '操作已取消' });
   } catch (error) {

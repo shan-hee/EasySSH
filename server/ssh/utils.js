@@ -498,10 +498,20 @@ class ChunkReassembler {
   cleanupTimeouts(timeoutMs = 300000) { // 5分钟
     const now = Date.now();
     for (const [operationId, transfer] of this.chunks.entries()) {
-      if (now - transfer.startTime > timeoutMs) {
+      if (transfer && transfer.startTime && (now - transfer.startTime > timeoutMs)) {
         this.chunks.delete(operationId);
         logger.warn(`清理超时的分块传输: ${operationId}`);
       }
+    }
+  }
+
+  /**
+   * 丢弃指定操作ID的分块缓存
+   * @param {string} operationId
+   */
+  discard(operationId) {
+    if (this.chunks.has(operationId)) {
+      this.chunks.delete(operationId);
     }
   }
 }

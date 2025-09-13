@@ -280,9 +280,14 @@ export default defineComponent({
     const currentUploadId = ref(null);
     // 添加当前上传文件的远程完整路径（用于取消时删除）
     const currentUploadingRemotePath = ref('');
+    // 如果用户在operationId尚未返回前点击了取消，则记录待取消标记
+    const pendingCancel = ref(false);
 
     // 上传通知引用，需要在组件级别定义以便取消函数访问
     let currentUploadNotification = null;
+    let currentFolderUploadNotification = null;
+    // 跟踪所有已启动的上传操作ID，便于取消时一次性终止
+    const activeUploadOperationIds = new Set();
 
     // 添加编辑器相关状态
     const isEditing = ref(false);
@@ -997,28 +1002,26 @@ export default defineComponent({
           speedText = formatTransferSpeed(transferSpeed.value);
         }
 
-        // 更新进度通知
+        // 更新进度通知（只更新内容，避免闪烁与事件丢失）
         if (currentUploadNotification && !uploadCancelled) {
-          const progressHTML = createUploadProgressHTML(
-            totalProgress,
-            currentFileName,
-            fileIndex,
-            filesToUpload.length,
-            speedText
-          );
           const notificationEl = document.querySelector(
             '.upload-progress-notification .el-message__content'
           );
           if (notificationEl) {
-            notificationEl.innerHTML = progressHTML;
-            // 绑定取消上传按钮
-            const cancelBtn = notificationEl.querySelector('.upload-cancel-btn');
-            if (cancelBtn && !cancelBtn._bound) {
-              cancelBtn._bound = true;
-              cancelBtn.addEventListener('click', () => {
-                cancelUpload();
-              });
-            }
+            const textEl = notificationEl.querySelector('.sftp-progress-text');
+            const fileEl = notificationEl.querySelector('.sftp-progress-file');
+            const fillEl = notificationEl.querySelector('.sftp-progress-fill');
+            const progressText =
+              filesToUpload.length > 1
+                ? `上传进度: ${Math.floor(totalProgress)}%${speedText ? ` (${speedText})` : ''}(${fileIndex}/${filesToUpload.length})`
+                : `上传进度: ${Math.floor(totalProgress)}%${speedText ? ` (${speedText})` : ''}`;
+            if (textEl) textEl.textContent = progressText;
+            if (fileEl)
+              fileEl.textContent =
+                currentFileName.length > 30
+                  ? `${currentFileName.substring(0, 27)}...`
+                  : currentFileName;
+            if (fillEl) fillEl.style.width = `${totalProgress}%`;
           }
         }
       };
@@ -1195,12 +1198,28 @@ export default defineComponent({
         } catch (error) {
           log.warn('取消上传操作失败:', error);
         }
+      } else {
+        // operationId 尚未返回，标记待取消
+        pendingCancel.value = true;
+      }
+      // 同时尝试取消所有已记录的上传操作
+      try {
+        for (const id of Array.from(activeUploadOperationIds)) {
+          try {
+            await sftpService.cancelUpload(props.sessionId, id);
+          } catch (_) {
+            try { sftpService.cancelOperation(id); } catch (_) {}
+          }
+        }
+      } catch (e) {
+        // 忽略批量取消异常
+      } finally {
+        activeUploadOperationIds.clear();
       }
 
       // 关闭上传通知
-      if (currentUploadNotification) {
-        currentUploadNotification.close();
-      }
+      if (currentUploadNotification) { try { currentUploadNotification.close(); } catch (_) {} currentUploadNotification = null; }
+      if (currentFolderUploadNotification) { try { currentFolderUploadNotification.close(); } catch (_) {} currentFolderUploadNotification = null; }
 
       // 临时删除已部分上传的文件
       if (isUploading.value) {
@@ -1227,7 +1246,7 @@ export default defineComponent({
       currentUploadingFile.value = '';
       currentUploadingRemotePath.value = '';
 
-      // 手动取消事件处理
+      // 手动取消事件处理（兜底）
       try {
         if (currentUploadId.value) {
           await sftpService.cancelUpload(props.sessionId, currentUploadId.value);
@@ -1287,6 +1306,14 @@ export default defineComponent({
               : metaOrOpId;
           if (opId && !currentUploadId.value) {
             currentUploadId.value = opId;
+          }
+          if (opId) activeUploadOperationIds.add(opId);
+          // 若用户在opId返回前点击了取消，这里立即执行取消
+          if (pendingCancel.value && opId) {
+            pendingCancel.value = false;
+            sftpService
+              .cancelUpload(props.sessionId, opId)
+              .catch(() => { try { sftpService.cancelOperation(opId); } catch (_) {} });
           }
           
 
@@ -2247,7 +2274,7 @@ export default defineComponent({
       };
 
       // 创建文件夹上传进度通知
-      const folderUploadNotification = ElMessage({
+      currentFolderUploadNotification = ElMessage({
         message: createFolderUploadProgressHTML(0, '准备上传...', 0, totalFiles, '', undefined),
         type: 'info',
         duration: 0, // 不自动关闭
@@ -2356,31 +2383,22 @@ export default defineComponent({
               // 为了在上传中的第一个文件也能显示为 1/total，这里在部分进度时至少显示为1
               const displayIndex = bytesUploaded > 0 ? Math.max(1, currentFileIndex) : currentFileIndex;
               const currentFilePct = file.size > 0 ? (bytesUploaded / file.size) * 100 : 100;
-              const progressHTML = createFolderUploadProgressHTML(
-                progress,
-                file.name,
-                displayIndex,
-                totalFiles,
-                speedText,
-                currentFilePct
-              );
               const nowTs = Date.now();
               const shouldRender = progress - lastRenderProgress >= 0.5 || nowTs - lastRenderTs >= 200;
               if (shouldRender) {
                 const notificationEl = document.querySelector(
                   '.upload-progress-notification .el-message__content'
                 );
-              if (notificationEl) {
-                notificationEl.innerHTML = progressHTML;
-                // 绑定取消上传按钮（文件夹上传）
-                const cancelBtn = notificationEl.querySelector('.upload-cancel-btn');
-                if (cancelBtn && !cancelBtn._bound) {
-                  cancelBtn._bound = true;
-                  cancelBtn.addEventListener('click', () => {
-                    cancelUpload();
-                  });
+                if (notificationEl) {
+                  const textEl = notificationEl.querySelector('.sftp-progress-text');
+                  const fileEl = notificationEl.querySelector('.sftp-progress-file');
+                  const fillEl = notificationEl.querySelector('.sftp-progress-fill');
+                  if (textEl)
+                    textEl.textContent = `上传进度: ${Math.floor(progress)}%${speedText ? ` (${speedText})` : ''}(${displayIndex}/${totalFiles})`;
+                  if (fileEl)
+                    fileEl.textContent = file.name.length > 30 ? `${file.name.substring(0, 27)}...` : file.name;
+                  if (fillEl) fillEl.style.width = `${progress}%`;
                 }
-              }
                 lastRenderProgress = progress;
                 lastRenderTs = nowTs;
               }
@@ -2417,14 +2435,6 @@ export default defineComponent({
               // 同上：在部分进度时保证至少显示为 1/total
               const displayIndex2 = bytesUploaded > 0 ? Math.max(1, currentFileIndex) : currentFileIndex;
               const currentFilePct2 = file.size > 0 ? (bytesUploaded / file.size) * 100 : 100;
-              const progressHTML = createFolderUploadProgressHTML(
-                progress,
-                file.name,
-                displayIndex2,
-                totalFiles,
-                speedText,
-                currentFilePct2
-              );
               const nowTs2 = Date.now();
               const shouldRender2 = progress - lastRenderProgress >= 0.5 || nowTs2 - lastRenderTs >= 200;
               if (shouldRender2) {
@@ -2432,7 +2442,14 @@ export default defineComponent({
                   '.upload-progress-notification .el-message__content'
                 );
                 if (notificationEl) {
-                  notificationEl.innerHTML = progressHTML;
+                  const textEl = notificationEl.querySelector('.sftp-progress-text');
+                  const fileEl = notificationEl.querySelector('.sftp-progress-file');
+                  const fillEl = notificationEl.querySelector('.sftp-progress-fill');
+                  if (textEl)
+                    textEl.textContent = `上传进度: ${Math.floor(progress)}%${speedText ? ` (${speedText})` : ''}(${displayIndex2}/${totalFiles})`;
+                  if (fileEl)
+                    fileEl.textContent = file.name.length > 30 ? `${file.name.substring(0, 27)}...` : file.name;
+                  if (fillEl) fillEl.style.width = `${progress}%`;
                 }
                 lastRenderProgress = progress;
                 lastRenderTs = nowTs2;
@@ -2445,9 +2462,7 @@ export default defineComponent({
         uploadProgress.value = 100;
 
         // 关闭文件夹上传进度通知
-        if (folderUploadNotification) {
-          folderUploadNotification.close();
-        }
+        if (currentFolderUploadNotification) { currentFolderUploadNotification.close(); currentFolderUploadNotification = null; }
 
         // 显示完成消息 - 使用实际上传成功的文件数量和大小
         ElMessage.success(
@@ -2469,9 +2484,7 @@ export default defineComponent({
         log.error('上传过程中发生错误:', error);
 
         // 关闭文件夹上传进度通知
-        if (folderUploadNotification) {
-          folderUploadNotification.close();
-        }
+        if (currentFolderUploadNotification) { currentFolderUploadNotification.close(); currentFolderUploadNotification = null; }
 
         ElMessage.error(`上传过程中发生错误: ${error.message}`);
 
@@ -2585,8 +2598,8 @@ export default defineComponent({
 
     // 处理目录条目
     const processDirectoryEntry = async (directoryEntry, path, onProgress) => {
-      // 如果上传被取消，停止处理
-      if (!isUploading.value && path !== '') {
+      // 如果上传被取消，停止处理（无条件）
+      if (!isUploading.value) {
         return;
       }
 
@@ -2668,6 +2681,8 @@ export default defineComponent({
         let lastOpId = null; // 记录最近的operationId用于补发100%
 
         try {
+          // 若用户已取消，直接跳过
+          if (!isUploading.value) { resolve(); return; }
           // 调用SFTP服务上传文件
           sftpService
             .uploadFile(props.sessionId, file, remotePath, (progress, metaOrOpId) => {
@@ -2677,9 +2692,18 @@ export default defineComponent({
                   ? metaOrOpId.operationId
                   : metaOrOpId;
               if (opId) lastOpId = opId;
+              if (opId) activeUploadOperationIds.add(opId);
 
               if (typeof progressCallback === 'function') {
                 progressCallback(progress, opId);
+              }
+
+              // 若用户在opId返回前点击了取消，这里立即执行取消
+              if (pendingCancel.value && opId) {
+                pendingCancel.value = false;
+                sftpService
+                  .cancelUpload(props.sessionId, opId)
+                  .catch(() => { try { sftpService.cancelOperation(opId); } catch (_) {} });
               }
 
               // 当单个文件上传完成时，只处理一次

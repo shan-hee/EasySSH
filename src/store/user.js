@@ -565,7 +565,7 @@ export const useUserStore = defineStore(
       return wasAdding; // 返回当前是否为收藏状态
     }
 
-    // 置顶连接
+    // 置顶连接（使用时间戳记录置顶时间，便于排序）
     async function togglePin(id) {
       const wasPinned = !!pinnedConnections.value[id];
 
@@ -576,15 +576,20 @@ export const useUserStore = defineStore(
         // 取消置顶
         delete pinnedConnections.value[id];
       } else {
-        // 添加置顶
-        pinnedConnections.value[id] = true;
+        // 添加置顶并记录时间戳
+        pinnedConnections.value[id] = Date.now();
       }
 
-      // 同步到服务器
+      // 同步到服务器（为兼容后端，发送布尔映射，避免类型不匹配）
       if (isLoggedIn.value) {
         try {
+          const normalizedPinned = Object.keys(pinnedConnections.value).reduce((acc, key) => {
+            acc[key] = true;
+            return acc;
+          }, {});
+
           const response = await apiService.post('/connections/pinned', {
-            pinned: pinnedConnections.value
+            pinned: normalizedPinned
           });
 
           if (response && response.success) {
@@ -614,6 +619,12 @@ export const useUserStore = defineStore(
     // 检查是否置顶
     function isPinned(id) {
       return !!pinnedConnections.value[id];
+    }
+
+    // 获取置顶时间（无时间戳则返回0）
+    function getPinTime(id) {
+      const val = pinnedConnections.value[id];
+      return typeof val === 'number' ? val : 0;
     }
 
     // 登录
@@ -1218,6 +1229,7 @@ export const useUserStore = defineStore(
       updateHistoryOrder,
       toggleFavorite,
       togglePin,
+      getPinTime,
       isFavorite,
       isPinned,
       syncConnectionsToServer,

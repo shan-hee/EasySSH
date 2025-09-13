@@ -17,6 +17,8 @@ class SFTPService {
     this.activeSftpSessions = new Map(); // 存储活动的SFTP会话
     this.fileOperations = new Map(); // 存储文件操作任务
     this.operationId = 0; // 操作ID计数器
+    // 记录已请求取消的操作ID，阻止继续发送后续分块
+    this._canceledOps = new Set();
 
     // 从环境变量读取传输配置
     this.chunkSize = parseInt(import.meta.env.VITE_SFTP_CHUNK_SIZE) || 1024 * 1024; // 默认1MB
@@ -554,10 +556,14 @@ class SFTPService {
               // 分块传输
               await this._uploadFileInChunks(session, metadata, fileBuffer, progressCallback);
             } else {
-              // 单块传输
+              // 单块传输（发送前检查是否已被取消）
               metadata.chunkIndex = 0;
               metadata.totalChunks = 1;
               metadata.isChunked = false;
+
+              if (this._canceledOps && this._canceledOps.has(operationId)) {
+                throw new Error('操作已取消');
+              }
 
               const messageBuffer = SFTPService._encodeBinaryMessage(
                 BINARY_MSG_TYPE.SFTP_UPLOAD,
@@ -596,6 +602,10 @@ class SFTPService {
     const totalChunks = Math.ceil(fileBuffer.byteLength / this.chunkSize);
 
     for (let chunkIndex = 0; chunkIndex < totalChunks; chunkIndex++) {
+      // 若用户已取消该operation，停止继续发送分块
+      if (this._canceledOps && this._canceledOps.has(baseMetadata.operationId)) {
+        break;
+      }
       const start = chunkIndex * this.chunkSize;
       const end = Math.min(start + this.chunkSize, fileBuffer.byteLength);
       const chunkData = fileBuffer.slice(start, end);
@@ -918,6 +928,8 @@ class SFTPService {
   cancelOperation(operationId) {
     const op = this.fileOperations.get(operationId);
     if (!op) return;
+    // 本地标记取消，阻止继续发送分块
+    try { this._canceledOps.add(operationId); } catch (_) {}
     try {
       // 尝试发送取消消息给后端
       const { sshSessionId } = op;
@@ -1396,6 +1408,9 @@ class SFTPService {
           });
           session.socket.send(cancelMessage);
 
+          // 本地标记取消，阻止继续发送后续分块
+          try { this._canceledOps.add(operationId); } catch (_) {}
+
           // 清理本地操作记录
           if (this.fileOperations.has(operationId)) {
             this.fileOperations.delete(operationId);
@@ -1606,7 +1621,16 @@ class SFTPService {
     const { operationId } = headerData;
     const operation = this.fileOperations.get(operationId);
 
-    if (operation && operation.resolve) {
+    if (!operation) return;
+
+    // 若服务端返回取消成功，不当作正常成功，改为reject以中断上层流程
+    if (headerData && (headerData.message === '操作已取消' || headerData.canceled === true)) {
+      if (operation.reject) operation.reject(new Error('操作已取消'));
+      this.fileOperations.delete(operationId);
+      return;
+    }
+
+    if (operation.resolve) {
       operation.resolve({ headerData, payloadData });
       this.fileOperations.delete(operationId);
     }
