@@ -2,9 +2,11 @@
  * WebSocket消息Schema验证器
  * 使用AJV进行JSON Schema验证，确保消息格式正确
  */
-
-const Ajv = require('ajv');
+const AjvLib = require('ajv');
 const logger = require('./logger');
+
+// 兼容 Ajv v6/v8 的导入方式
+const Ajv = AjvLib && AjvLib.default ? AjvLib.default : AjvLib;
 
 // 创建AJV实例
 const ajv = new Ajv({
@@ -14,13 +16,7 @@ const ajv = new Ajv({
   coerceTypes: true       // 类型强制转换
 });
 
-// 尝试添加格式支持
-try {
-  const addFormats = require('ajv-formats');
-  addFormats(ajv);
-} catch (error) {
-  logger.warn('ajv-formats加载失败，使用基础验证', { error: error.message });
-}
+// 本项目未使用 JSON Schema 的 `format` 关键字，移除 ajv-formats 依赖与加载以降低噪音
 
 // 统一错误码定义
 const ERROR_CODES = {

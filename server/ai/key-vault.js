@@ -347,9 +347,15 @@ class KeyVault {
   _getEncryptionKey() {
     // 优先使用环境变量
     const keySource = process.env.AI_ENCRYPTION_KEY || 'easyssh-ai-default-key-change-in-production';
+    const isProd = process.env.NODE_ENV === 'production';
 
     if (keySource === 'easyssh-ai-default-key-change-in-production') {
-      logger.warn('使用默认加密密钥，生产环境请设置AI_ENCRYPTION_KEY环境变量');
+      if (isProd) {
+        logger.warn('使用默认加密密钥，生产环境请设置AI_ENCRYPTION_KEY环境变量');
+      } else {
+        // 开发/测试环境降低告警级别，避免噪音
+        logger.info('使用默认AI加密密钥（开发/测试模式）', { NODE_ENV: process.env.NODE_ENV || 'development' });
+      }
     }
 
     return crypto.scryptSync(keySource, 'easyssh-salt', this.keyLength);
