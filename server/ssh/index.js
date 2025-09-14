@@ -728,6 +728,10 @@ async function handleUnifiedBinaryMessage(ws, buffer, currentSessionId) {
       await handleBinaryPing(ws, headerData);
       break;
 
+    case BINARY_MSG_TYPE.DISCONNECT:
+      await handleBinaryDisconnect(ws, headerData);
+      break;
+
       // SSH终端数据消息
     case BINARY_MSG_TYPE.SSH_DATA:
       await handleSSHBinaryData(ws, headerData, payloadData);
@@ -882,6 +886,38 @@ async function handleSSHCommand(ws, headerData, payloadData) {
 
   // 委托给SSH模块处理
   ssh.handleSshExec(ws, { sessionId, command });
+}
+
+/**
+ * 处理二进制断开请求
+ * @param {WebSocket} ws WebSocket连接
+ * @param {Object} headerData 头部数据 { sessionId, reason? }
+ */
+async function handleBinaryDisconnect(ws, headerData) {
+  try {
+    const { sessionId } = headerData || {};
+    if (!sessionId) {
+      BinaryMessageSender.send(ws, BINARY_MSG_TYPE.ERROR, {
+        errorMessage: '断开请求缺少sessionId',
+        errorCode: 'INVALID_SESSION_ID'
+      });
+      return;
+    }
+
+    // 复用现有断开逻辑（会清理会话并通过JSON发出disconnected提示）
+    ssh.handleDisconnect(ws, { sessionId });
+  } catch (error) {
+    logger.error('处理二进制断开请求失败', { error: error.message, headerData });
+    try {
+      BinaryMessageSender.send(ws, BINARY_MSG_TYPE.ERROR, {
+        sessionId: headerData?.sessionId,
+        errorMessage: `处理断开失败: ${error.message}`,
+        errorCode: 'DISCONNECT_FAILED'
+      });
+    } catch (e) {
+      // 忽略发送错误
+    }
+  }
 }
 
 /**

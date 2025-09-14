@@ -599,20 +599,51 @@ class SSHService {
         reject(new Error('WebSocket连接错误'));
       };
 
-      // 连接关闭时
-      socket.onclose = event => {
-        clearTimeout(timeout);
+  // 连接关闭时
+  socket.onclose = event => {
+    clearTimeout(timeout);
 
-        const reason = this._getCloseReasonText(event.code, event.reason);
-        log.info(`WebSocket连接关闭: ${reason}`);
+    const reason = this._getCloseReasonText(event.code, event.reason);
+    log.info(`WebSocket连接关闭: ${reason}`);
 
-        // 如果是正常关闭且处于已连接状态，则不触发错误
-        if (event.code === 1000 && connectionState.status === 'connected') {
-          connectionState.status = 'closed';
-          connectionState.message = '连接已关闭';
-          resolve(sessionId);
-          return;
+    // 获取会话，判断是否为用户主动关闭
+    let sessionRef = null;
+    if (this.sessions.has(sessionId)) {
+      sessionRef = this.sessions.get(sessionId);
+    }
+    const userInitiated = !!(sessionRef && sessionRef.userInitiatedClose);
+    const wasConnected =
+      connectionState.status === 'connected' ||
+      (sessionRef && sessionRef.connectionState && sessionRef.connectionState.status === 'connected');
+
+    const notifyTerminalDisconnected = () => {
+      try {
+        const term = sessionRef && sessionRef.terminal ? sessionRef.terminal : null;
+        const msg = '\r\n连接已断开\r\n';
+        if (term && typeof term.write === 'function') {
+          term.write(msg);
+        } else if (sessionRef) {
+          // 如果终端实例不可用，写入缓冲区
+          sessionRef.buffer = (sessionRef.buffer || '') + msg;
         }
+        if (sessionRef) {
+          sessionRef.disconnectNotified = true;
+        }
+      } catch (_e) {
+        // 忽略通知错误
+      }
+    };
+
+    // 如果是正常关闭且处于已连接状态，则不触发错误
+    if (event.code === 1000 && connectionState.status === 'connected') {
+      connectionState.status = 'closed';
+      connectionState.message = '连接已关闭';
+      if (!userInitiated && wasConnected) {
+        notifyTerminalDisconnected();
+      }
+      resolve(sessionId);
+      return;
+    }
 
         // 处理认证失败
         if (event.code === 4401) {
@@ -628,12 +659,16 @@ class SSHService {
         connectionState.status = 'error';
         connectionState.message = `连接关闭: ${reason}`;
 
-        if (!connectionState.error) {
-          connectionState.error = reason;
-        }
+    if (!connectionState.error) {
+      connectionState.error = reason;
+    }
 
-        reject(new Error(reason));
-      };
+    if (!userInitiated && wasConnected) {
+      notifyTerminalDisconnected();
+    }
+
+    reject(new Error(reason));
+  };
 
       // 接收消息时 - 支持二进制和JSON消息
       socket.onmessage = event => {
@@ -819,18 +854,34 @@ class SSHService {
               reject(new Error(connectionState.message));
               break;
 
-            case MESSAGE_TYPES.CLOSED:
-              connectionState.status = 'closed';
-              connectionState.message = '连接已关闭';
-              log.info(`SSH连接已关闭: ${sessionId}`);
+        case MESSAGE_TYPES.CLOSED:
+          connectionState.status = 'closed';
+          connectionState.message = '连接已关闭';
+          log.info(`SSH连接已关闭: ${sessionId}`);
 
-              if (this.sessions.has(sessionId)) {
-                const session = this.sessions.get(sessionId);
-                if (session.onClose) {
-                  session.onClose();
+          if (this.sessions.has(sessionId)) {
+            const session = this.sessions.get(sessionId);
+            // 非用户主动断开时，输出提示到终端
+            if (!session.userInitiatedClose && !session.disconnectNotified) {
+              try {
+                const term = session.terminal;
+                const msg = '\r\n连接已断开\r\n';
+                if (term && typeof term.write === 'function') {
+                  term.write(msg);
+                } else {
+                  session.buffer = (session.buffer || '') + msg;
                 }
+              } catch (_e) {
+                /* no-op */
               }
-              break;
+              session.disconnectNotified = true;
+            }
+
+            if (session.onClose) {
+              session.onClose();
+            }
+          }
+          break;
 
             case MESSAGE_TYPES.DATA:
               if (this.sessions.has(sessionId)) {
@@ -1334,16 +1385,27 @@ class SSHService {
       this._clearKeepAlive(sessionId);
       this._clearLatencyTimer(sessionId);
 
+      // 标记为用户主动关闭，便于onclose判断
+      session.userInitiatedClose = true;
+
       if (session.socket) {
         if (session.socket.readyState === WS_CONSTANTS.OPEN) {
+          // 优先使用统一二进制协议发送断开请求
           try {
-            log.debug(`向服务器发送断开请求: ${sessionId}`);
-            const disconnectMessage = this._createStandardMessage('disconnect', {
-              sessionId
+            log.debug(`向服务器发送二进制断开请求: ${sessionId}`);
+            const binaryDisconnect = BinaryMessageUtils.createDisconnectMessage({
+              sessionId,
+              reason: 'user_close'
             });
-            session.socket.send(JSON.stringify(disconnectMessage));
-          } catch (sendError) {
-            log.debug(`发送断开请求失败: ${sessionId}`, sendError);
+            session.socket.send(binaryDisconnect);
+          } catch (sendBinaryError) {
+            log.debug(`二进制断开请求失败，回退JSON: ${sessionId}`, sendBinaryError);
+            try {
+              const disconnectMessage = this._createStandardMessage('disconnect', { sessionId });
+              session.socket.send(JSON.stringify(disconnectMessage));
+            } catch (sendJsonError) {
+              log.debug(`发送JSON断开请求失败: ${sessionId}`, sendJsonError);
+            }
           }
         }
 

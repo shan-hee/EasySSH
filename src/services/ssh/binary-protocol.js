@@ -17,6 +17,7 @@ export const BINARY_MSG_TYPE = {
   HANDSHAKE: 0x00,
   HEARTBEAT: 0x01,
   ERROR: 0x02,
+  DISCONNECT: 0x07,
 
   // SSH终端数据 (0x10-0x1F)
   SSH_DATA: 0x10, // SSH终端数据传输

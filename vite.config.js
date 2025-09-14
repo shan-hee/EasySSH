@@ -162,6 +162,7 @@ export default defineConfig(async ({ mode }) => {
       port: parseInt(env.VITE_PORT || '8520'), // 从环境变量读取前端端口
       open: true, // 自动打开浏览器
       cors: true, // 启用CORS
+      
       proxy: {
         // 开发环境API代理配置
         '/api': {

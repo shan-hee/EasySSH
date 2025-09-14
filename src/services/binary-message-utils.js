@@ -243,6 +243,23 @@ export class BinaryMessageUtils {
   }
 
   /**
+   * 创建断开连接消息
+   * @param {Object} options 断开选项
+   * @param {string} options.sessionId 会话ID
+   * @param {string} [options.reason] 断开原因
+   * @returns {ArrayBuffer}
+   */
+  static createDisconnectMessage(options = {}) {
+    const headerData = {
+      sessionId: options.sessionId,
+      reason: options.reason || 'client_request',
+      timestamp: Date.now()
+    };
+
+    return BinaryMessageEncoder.encode(BINARY_MESSAGE_TYPES.DISCONNECT, headerData);
+  }
+
+  /**
    * 解码连接状态
    * @param {number} statusCode 状态代码
    * @returns {string}
