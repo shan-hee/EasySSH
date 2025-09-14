@@ -384,7 +384,7 @@ export const useUserStore = defineStore(
         const requestOptions = forceRefresh
           ? {
               headers: { 'Cache-Control': 'no-cache' },
-              timestamp: Date.now() // 添加时间戳防止缓存
+              useCache: false
             }
           : {};
 
@@ -580,11 +580,12 @@ export const useUserStore = defineStore(
         pinnedConnections.value[id] = Date.now();
       }
 
-      // 同步到服务器（为兼容后端，发送布尔映射，避免类型不匹配）
+      // 同步到服务器（发送时间戳映射，后端将据此持久化排序）
       if (isLoggedIn.value) {
         try {
           const normalizedPinned = Object.keys(pinnedConnections.value).reduce((acc, key) => {
-            acc[key] = true;
+            const val = pinnedConnections.value[key];
+            acc[key] = typeof val === 'number' ? val : Date.now();
             return acc;
           }, {});
 
@@ -910,7 +911,7 @@ export const useUserStore = defineStore(
     const connectionsLoading = ref(false);
     const connectionsLoaded = ref(false);
 
-    // 按需加载连接数据（仅加载连接配置，带重试机制）
+    // 按需加载连接数据（加载连接配置 + 置顶信息，带重试机制）
     async function loadConnectionsOnDemand() {
       if (!isLoggedIn.value) {
         log.debug('用户未登录，跳过连接数据加载');
@@ -939,6 +940,20 @@ export const useUserStore = defineStore(
         );
 
         connectionsLoaded.value = true;
+        // 连接配置加载成功后，尝试按需获取置顶信息（轻量请求，不影响主流程）
+        try {
+          const pinnedResp = await apiService.get('/connections/pinned');
+          if (pinnedResp && pinnedResp.success) {
+            pinnedConnections.value = pinnedResp.pinned || {};
+            log.debug('置顶信息按需加载成功');
+          } else {
+            log.warn('置顶信息API响应无效');
+          }
+        } catch (pinErr) {
+          // 不阻塞整体加载，记录日志即可
+          log.warn('按需请求置顶信息失败:', pinErr);
+        }
+
         log.info('连接配置按需加载成功');
         return result;
       } catch (error) {

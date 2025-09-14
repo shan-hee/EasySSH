@@ -557,15 +557,15 @@ const getPinned = async (req, res) => {
   try {
     const userId = req.user.id;
 
-    // 获取置顶连接
+    // 获取置顶连接（含时间戳）
     const pinned = db.prepare(
-      'SELECT connection_id FROM connection_pinned WHERE user_id = ?'
+      'SELECT connection_id, pinned_at FROM connection_pinned WHERE user_id = ?'
     ).all(userId);
 
-    // 转换为对象格式
+    // 转换为对象格式：id -> 时间戳（统一返回数值，无兼容逻辑）
     const pinnedObj = {};
     pinned.forEach(pin => {
-      pinnedObj[pin.connection_id] = true;
+      pinnedObj[pin.connection_id] = pin.pinned_at;
     });
 
     res.json({
@@ -606,14 +606,15 @@ const updatePinned = async (req, res) => {
         'DELETE FROM connection_pinned WHERE user_id = ?'
       ).run(userId);
 
-      // 添加新置顶
+      // 添加新置顶（带时间戳）
       const insertStmt = db.prepare(
-        'INSERT INTO connection_pinned (user_id, connection_id) VALUES (?, ?)'
+        'INSERT INTO connection_pinned (user_id, connection_id, pinned_at) VALUES (?, ?, ?)'
       );
 
       for (const connectionId in pinned) {
         if (pinned[connectionId]) {
-          insertStmt.run(userId, connectionId);
+          const pinnedAt = typeof pinned[connectionId] === 'number' ? pinned[connectionId] : Date.now();
+          insertStmt.run(userId, connectionId, pinnedAt);
         }
       }
 
@@ -788,16 +789,17 @@ const syncConnections = async (req, res) => {
         }
       }
 
-      // 同步置顶
+      // 同步置顶（带时间戳）
       db.prepare('DELETE FROM connection_pinned WHERE user_id = ?').run(userId);
 
       const insertPinnedStmt = db.prepare(
-        'INSERT INTO connection_pinned (user_id, connection_id) VALUES (?, ?)'
+        'INSERT INTO connection_pinned (user_id, connection_id, pinned_at) VALUES (?, ?, ?)'
       );
 
       for (const connectionId in pinned) {
         if (pinned[connectionId]) {
-          insertPinnedStmt.run(userId, connectionId);
+          const pinnedAt = typeof pinned[connectionId] === 'number' ? pinned[connectionId] : Date.now();
+          insertPinnedStmt.run(userId, connectionId, pinnedAt);
         }
       }
 

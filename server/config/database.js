@@ -121,11 +121,12 @@ const connectDatabase = () => {
       )
     `);
 
-    // 创建连接置顶表
+    // 创建连接置顶表（带置顶时间戳，不做兼容迁移，需重建库时直接生效）
     db.exec(`
       CREATE TABLE IF NOT EXISTS connection_pinned (
         user_id INTEGER NOT NULL,
         connection_id TEXT NOT NULL,
+        pinned_at INTEGER NOT NULL, -- Epoch毫秒，用于排序
         PRIMARY KEY (user_id, connection_id),
         FOREIGN KEY (user_id) REFERENCES users (id),
         FOREIGN KEY (connection_id) REFERENCES connections (id) ON DELETE CASCADE
