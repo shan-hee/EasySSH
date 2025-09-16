@@ -2803,6 +2803,7 @@ export default {
 }
 
 /* 终端内容填充区域 */
+
 .terminal-content-padding {
   flex: 1;
   box-sizing: border-box;

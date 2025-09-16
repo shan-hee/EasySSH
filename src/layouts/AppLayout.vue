@@ -602,6 +602,7 @@ export default defineComponent({
 .app-container {
   display: flex;
   height: 100vh;
+  min-height: 100vh;
   overflow: hidden;
   background-color: var(--color-bg-page);
 }
@@ -611,6 +612,7 @@ export default defineComponent({
   flex-direction: column;
   flex: 1;
   overflow: hidden;
+  min-height: 0;
 }
 
 .content {
@@ -618,6 +620,8 @@ export default defineComponent({
   overflow-y: auto;
   background-color: var(--color-bg-page);
   border-top: none;
+  min-height: 0;
+  -webkit-overflow-scrolling: touch;
 }
 
 /* 系统监控面板容器 */
@@ -638,7 +642,7 @@ export default defineComponent({
   left: var(--layout-sidebar-width); /* 使用侧边栏宽度令牌 */
   right: 0;
   bottom: 0;
-  z-index: 1; /* 确保在内容下方 */
+  z-index: -1; /* 确保在内容下方 */
   background-image: var(--terminal-bg-image, none);
   background-size: var(--terminal-bg-size, cover);
   background-position: center;
@@ -650,6 +654,18 @@ export default defineComponent({
 @media (max-width: 768px) {
   .terminal-background {
     left: 0; /* 在移动设备上占满整个宽度 */
+  }
+}
+
+@media (max-width: 768px) {
+  .app-container {
+    height: 100vh;
+    min-height: 100vh;
+    flex-direction: column;
+  }
+
+  .main-content {
+    min-height: 0;
   }
 }
 

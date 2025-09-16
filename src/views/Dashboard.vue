@@ -6,8 +6,8 @@
         <span class="last-update"> 最后更新: {{ lastUpdateTime || '未更新' }} </span>
       </div>
     </div>
-    <div class="row" style="display: flex; gap: 20px; margin-bottom: 20px">
-      <div class="dashboard-card" style="flex: 1">
+    <div class="dashboard-grid dashboard-grid--summary">
+      <div class="dashboard-card">
         <div class="card-header dashboard-card-header">
           <span>连接状态</span>
           <button class="btn btn-text" @click="handleViewAllConnections">查看全部</button>
@@ -34,7 +34,7 @@
         </div>
       </div>
 
-      <div class="dashboard-card" style="flex: 1">
+      <div class="dashboard-card">
         <div class="card-header dashboard-card-header">
           <span>快速操作</span>
         </div>
@@ -57,7 +57,7 @@
         </div>
       </div>
 
-      <div class="dashboard-card" style="flex: 1">
+      <div class="dashboard-card">
         <div class="card-header dashboard-card-header">
           <span>系统信息</span>
         </div>
@@ -82,8 +82,8 @@
       </div>
     </div>
 
-    <div class="row" style="display: flex; gap: 20px">
-      <div class="dashboard-card" style="flex: 2">
+    <div class="dashboard-grid dashboard-grid--detail">
+      <div class="dashboard-card">
         <div class="card-header dashboard-card-header">
           <span>最近连接</span>
           <button class="btn btn-text" @click="handleViewAllRecentConnections">查看全部</button>
@@ -111,10 +111,10 @@
             </thead>
             <tbody>
               <tr v-for="(conn, index) in recentConnections" :key="index">
-                <td>{{ conn.name }}</td>
-                <td>{{ conn.host }}</td>
-                <td>{{ conn.lastConnected }}</td>
-                <td>
+                <td data-label="名称">{{ conn.name }}</td>
+                <td data-label="主机">{{ conn.host }}</td>
+                <td data-label="最后连接时间">{{ conn.lastConnected }}</td>
+                <td data-label="操作">
                   <button class="btn btn-text" @click="handleConnectToServer(conn)">连接</button>
                   <button class="btn btn-text" @click="handleEditConnection(conn)">编辑</button>
                 </td>
@@ -124,7 +124,7 @@
         </div>
       </div>
 
-      <div class="dashboard-card" style="flex: 1">
+      <div class="dashboard-card">
         <div class="card-header dashboard-card-header">
           <span>活动日志</span>
           <button class="btn btn-text" @click="handleClearActivityLog">清除</button>
@@ -396,6 +396,20 @@ export default {
   gap: var(--spacing-md);
 }
 
+.dashboard-grid {
+  display: grid;
+  gap: var(--spacing-lg);
+  margin-bottom: var(--spacing-lg);
+}
+
+.dashboard-grid--summary {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.dashboard-grid--detail {
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+}
+
 .last-update {
   font-size: var(--font-size-xs);
   color: var(--color-text-secondary);
@@ -494,6 +508,7 @@ export default {
 .connection-table {
   width: 100%;
   border-collapse: collapse;
+  min-width: 560px;
 }
 
 .connection-table th,
@@ -519,6 +534,7 @@ export default {
   color: var(--dashboard-card-text);
   border-radius: 0 0 var(--radius-lg) var(--radius-lg);
   overflow: hidden;
+  overflow-x: auto;
 }
 
 /* 表格内容继承容器的背景色和文字颜色 */
@@ -604,5 +620,99 @@ export default {
 
 .icon {
   margin-right: 5px;
+}
+
+@media (max-width: 1024px) {
+  .dashboard-grid--summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .dashboard-grid--detail {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 768px) {
+  .dashboard-container {
+    padding: var(--spacing-md);
+  }
+
+  .dashboard-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--spacing-sm);
+  }
+
+  .dashboard-actions {
+    width: 100%;
+    justify-content: flex-start;
+    flex-wrap: wrap;
+    row-gap: var(--spacing-sm);
+  }
+
+  .dashboard-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .dashboard-grid--summary,
+  .dashboard-grid--detail {
+    grid-template-columns: 1fr;
+  }
+
+  .status-item {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--spacing-xs);
+  }
+}
+
+@media (max-width: 640px) {
+  .dashboard-container {
+    padding: var(--spacing-md) var(--spacing-sm);
+  }
+
+  .dashboard-grid--detail {
+    grid-template-columns: 1fr;
+  }
+
+  .connection-table {
+    min-width: 100%;
+  }
+
+  .connection-table thead {
+    display: none;
+  }
+
+  .connection-table tr {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    padding: var(--spacing-sm) 0;
+    border-bottom: 1px solid var(--color-border-default);
+  }
+
+  .connection-table td {
+    width: 100%;
+    padding: var(--spacing-xs) 0;
+    display: flex;
+    justify-content: space-between;
+    gap: var(--spacing-sm);
+  }
+
+  .connection-table td::before {
+    content: attr(data-label);
+    font-weight: 500;
+    color: var(--color-text-secondary);
+  }
+
+  .connection-table td[data-label='操作'] {
+    justify-content: flex-start;
+    flex-wrap: wrap;
+    gap: var(--spacing-sm);
+  }
+
+  .recent-connections .btn {
+    min-height: 36px;
+  }
 }
 </style>

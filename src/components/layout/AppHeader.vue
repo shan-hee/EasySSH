@@ -708,8 +708,60 @@ export default defineComponent({
     transform: none; /* 移除任何变换效果 */
   }
 
+  .tab-item {
+    min-width: 68px;
+    padding: 0 10px;
+  }
+
+  .tab-title {
+    font-size: var(--font-size-sm);
+  }
+
+  .tab-item.active .tab-close {
+    opacity: 1;
+    visibility: visible;
+    position: static;
+    margin-left: 6px;
+    background: none;
+    box-shadow: none;
+    width: 24px;
+    height: 24px;
+    transform: none;
+  }
+
+  .tab-item.active .tab-close:hover {
+    background: none;
+    box-shadow: none;
+  }
+
+  .header-actions {
+    gap: 6px;
+    margin-right: var(--spacing-sm);
+  }
+
   .tab-container {
     margin-left: 0;
+  }
+}
+
+@media screen and (max-width: 480px) {
+  .tab-container {
+    padding-right: var(--spacing-sm);
+  }
+
+  .tab-item {
+    min-width: 60px;
+    padding: 0 8px;
+  }
+
+  .tab-title {
+    font-size: var(--font-size-xs);
+    margin-left: 4px;
+  }
+
+  .btn-icon {
+    width: 36px;
+    height: 36px;
   }
 }
 </style>

@@ -350,7 +350,8 @@ export default {
 .connection-detail-container {
   display: flex;
   flex-direction: column;
-  height: 100vh;
+  height: 100%;
+  min-height: 100vh;
 }
 
 .connection-header {
@@ -459,5 +460,53 @@ export default {
 .item-label {
   color: var(--el-text-color-secondary);
   margin-right: 5px;
+}
+
+@media (max-width: 768px) {
+  .connection-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--spacing-sm);
+  }
+
+  .connection-actions {
+    width: 100%;
+    justify-content: flex-start;
+    flex-wrap: wrap;
+    gap: var(--spacing-sm);
+  }
+
+  .terminal-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--spacing-sm);
+  }
+
+  .terminal-tabs {
+    max-width: 100%;
+  }
+
+  .terminal-controls {
+    padding: var(--spacing-sm) 0;
+  }
+
+  .terminal-content {
+    padding: var(--spacing-md);
+  }
+
+  .connection-footer {
+    flex-direction: column;
+    gap: var(--spacing-xs);
+  }
+}
+
+@media (max-width: 480px) {
+  .terminal-content {
+    padding: var(--spacing-sm);
+  }
+
+  .connection-footer {
+    font-size: var(--font-size-xs);
+  }
 }
 </style>

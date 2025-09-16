@@ -1284,6 +1284,8 @@ export default defineComponent({
   justify-content: space-between;
   align-items: center;
   margin-bottom: 24px;
+  gap: var(--spacing-sm);
+  flex-wrap: wrap;
 }
 
 .page-header h1 {
@@ -1297,6 +1299,7 @@ export default defineComponent({
   display: flex;
   gap: 12px;
   align-items: center;
+  flex-wrap: wrap;
 }
 
 /* 通用按钮基础样式 */
@@ -1462,6 +1465,7 @@ export default defineComponent({
   display: flex;
   flex-direction: column;
   overflow: hidden; /* 默认隐藏，通过JS动态控制 */
+  overflow-x: auto;
 }
 
 .scripts-table {
@@ -1469,6 +1473,7 @@ export default defineComponent({
   border-collapse: collapse;
   color: var(--color-text-primary);
   table-layout: fixed;
+  min-width: 720px;
 }
 
 .scripts-table th {
@@ -2015,5 +2020,87 @@ export default defineComponent({
   margin: 0;
   position: relative;
   transform: none;
+}
+
+@media (max-width: 1024px) {
+  .header-actions {
+    justify-content: flex-start;
+  }
+}
+
+@media (max-width: 768px) {
+  .script-library-container {
+    padding: var(--spacing-lg) var(--spacing-md);
+  }
+
+  .page-header {
+    align-items: flex-start;
+  }
+
+  .header-actions {
+    width: 100%;
+    justify-content: stretch;
+  }
+
+  .header-actions .btn-primary,
+  .header-actions .btn-secondary {
+    flex: 1 1 calc(50% - var(--spacing-sm));
+  }
+
+  .scripts-panel {
+    padding: 12px;
+  }
+
+  .search-bar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--spacing-sm);
+  }
+
+  .btn-filter {
+    width: 100%;
+    margin-left: 0;
+  }
+
+  .filter-dropdown {
+    position: static;
+    width: 100%;
+    margin-top: 0;
+  }
+
+  .script-command {
+    white-space: normal;
+    word-break: break-word;
+  }
+}
+
+@media (max-width: 640px) {
+  .script-library-container {
+    padding: var(--spacing-md) var(--spacing-sm);
+  }
+
+  .header-actions .btn-primary,
+  .header-actions .btn-secondary {
+    flex: 1 1 100%;
+  }
+
+  .tag-bubble {
+    padding: 6px 10px;
+  }
+
+  .scripts-table {
+    min-width: 640px;
+  }
+}
+
+@media (max-width: 480px) {
+  .scripts-panel {
+    padding: 12px 10px;
+  }
+
+  .search-input,
+  .btn-filter {
+    font-size: var(--font-size-sm);
+  }
 }
 </style>

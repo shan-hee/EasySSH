@@ -223,4 +223,83 @@ export default {
   color: var(--color-text-secondary);
   line-height: 1.6;
 }
+
+@media (max-width: 1024px) {
+  .hero-section {
+    padding: var(--spacing-xl) var(--spacing-lg);
+  }
+
+  .hero-content {
+    padding: var(--spacing-xl) var(--spacing-lg);
+  }
+}
+
+@media (max-width: 768px) {
+  .hero-section {
+    min-height: 60vh;
+    padding: var(--spacing-xl) var(--spacing-md);
+  }
+
+  .hero-content {
+    padding: var(--spacing-xl) var(--spacing-md);
+  }
+
+  .title {
+    font-size: 2.5rem;
+  }
+
+  .subtitle {
+    font-size: var(--font-size-base);
+    max-width: 100%;
+  }
+
+  .action-buttons {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .action-buttons .btn {
+    width: 100%;
+  }
+
+  .features-section {
+    padding: var(--spacing-xl) var(--spacing-md);
+  }
+
+  .feature-grid {
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: var(--spacing-lg);
+  }
+}
+
+@media (max-width: 480px) {
+  .hero-section {
+    padding: var(--spacing-lg) var(--spacing-sm);
+  }
+
+  .hero-content {
+    padding: var(--spacing-lg) var(--spacing-sm);
+  }
+
+  .title {
+    font-size: 2rem;
+  }
+
+  .subtitle {
+    font-size: var(--font-size-sm);
+  }
+
+  .features-section {
+    padding: var(--spacing-lg) var(--spacing-sm);
+  }
+
+  .feature-grid {
+    grid-template-columns: 1fr;
+    gap: var(--spacing-md);
+  }
+
+  .feature-card {
+    padding: var(--spacing-lg);
+  }
+}
 </style>

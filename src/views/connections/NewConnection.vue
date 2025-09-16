@@ -1387,6 +1387,7 @@ export default {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: var(--spacing-sm);
 }
 
 .connection-header h1 {
@@ -1400,6 +1401,7 @@ export default {
   justify-content: space-between;
   align-items: center;
   margin-bottom: 20px;
+  gap: var(--spacing-md);
 }
 
 .search-container {
@@ -2236,5 +2238,94 @@ h2 {
   color: var(--color-text-secondary);
   font-size: 12px;
   margin-left: 8px;
+}
+
+@media (max-width: 1024px) {
+  .new-connection-container {
+    padding: var(--spacing-lg);
+  }
+
+  .connection-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 768px) {
+  .new-connection-container {
+    padding: var(--spacing-md);
+    max-width: 100%;
+  }
+
+  .connection-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--spacing-sm);
+  }
+
+  .control-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .search-container {
+    width: 100%;
+  }
+
+  .connection-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .row-item {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--spacing-sm);
+  }
+
+  .row-item-left,
+  .row-item-right {
+    width: 100%;
+  }
+
+  .row-item-right {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--spacing-sm);
+  }
+
+  .address-cell {
+    position: static;
+    transform: none;
+    width: 100%;
+    margin-top: var(--spacing-xs);
+    text-align: left;
+  }
+
+  .actions-cell {
+    margin-left: auto;
+    width: auto;
+    justify-content: flex-start;
+    flex-wrap: nowrap;
+    gap: var(--spacing-sm);
+  }
+
+  .action-btn {
+    width: 32px;
+    height: 32px;
+  }
+}
+
+@media (max-width: 480px) {
+  .new-connection-container {
+    padding: var(--spacing-md) var(--spacing-sm);
+  }
+
+  .connection-header h1 {
+    font-size: var(--font-size-lg);
+  }
+
+  .action-btn {
+    width: 36px;
+    height: 36px;
+  }
 }
 </style>
