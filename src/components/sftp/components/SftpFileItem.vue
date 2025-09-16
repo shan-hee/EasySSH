@@ -113,22 +113,33 @@
         </div>
       </div>
 
-      <!-- 显示模式：显示文件名（非文本文件点击时弹出下载确认） -->
-      <el-popconfirm
-        v-else
-        v-model:visible="showDownloadConfirm"
-        :title="getDownloadTitle(file)"
-        confirm-button-text="下载"
-        cancel-button-text="取消"
-        :width="320"
-        popper-class="sftp-popconfirm"
-        placement="right"
-        @confirm="$emit('download', file)"
-      >
-        <template #reference>
-          <span @click.stop="onFileNameClick">{{ file.name }}</span>
-        </template>
-      </el-popconfirm>
+      <!-- 显示模式：预览类文件直接打开，其他文件弹出下载确认 -->
+      <template v-else>
+        <span
+          v-if="isPreviewable"
+          class="sftp-file-name-text"
+          @click.stop="onFileNameClick"
+        >
+          {{ file.name }}
+        </span>
+        <el-popconfirm
+          v-else
+          v-model:visible="showDownloadConfirm"
+          trigger="manual"
+          :title="getDownloadTitle(file)"
+          confirm-button-text="下载"
+          cancel-button-text="取消"
+          :width="320"
+          popper-class="sftp-popconfirm"
+          placement="right"
+          @confirm="handleDownloadConfirm"
+          @cancel="hideDownloadConfirm"
+        >
+          <template #reference>
+            <span @click.stop="onFileNameClick">{{ file.name }}</span>
+          </template>
+        </el-popconfirm>
+      </template>
     </div>
     <div class="sftp-file-size">
       {{ formatFileSize(file.size, file.isDirectory) }}
@@ -206,7 +217,7 @@
 </template>
 
 <script>
-import { defineComponent, ref, nextTick } from 'vue';
+import { defineComponent, ref, nextTick, computed } from 'vue';
 import { useFileUtils } from '../composables/useFileUtils';
 import { ElMessage } from 'element-plus';
 import sftpService from '@/services/ssh/sftp-service';
@@ -310,14 +321,17 @@ export default defineComponent({
 
     // 处理文件项点击：目录或文本文件直接交由父组件；二进制文件触发就地下载确认
     const showDownloadConfirm = ref(false);
+    const isPreviewable = computed(() => {
+      const f = props.file;
+      if (!f) return false;
+      return f.isDirectory || isTextFile(f.name);
+    });
+
     const handleItemClick = () => {
       if (isEditing.value) return;
       const f = props.file;
-      if (f.isDirectory) {
-        emit('item-click', f);
-        return;
-      }
-      if (isTextFile(f.name)) {
+      if (isPreviewable.value) {
+        showDownloadConfirm.value = false;
         emit('item-click', f);
       } else {
         showDownloadConfirm.value = true; // 在文件名单元格右侧弹出确认
@@ -325,12 +339,21 @@ export default defineComponent({
     };
 
     const onFileNameClick = () => {
-      const f = props.file;
-      if (f.isDirectory || isTextFile(f.name)) {
-        emit('item-click', f);
+      if (isPreviewable.value) {
+        showDownloadConfirm.value = false;
+        emit('item-click', props.file);
       } else {
         showDownloadConfirm.value = true;
       }
+    };
+
+    const hideDownloadConfirm = () => {
+      showDownloadConfirm.value = false;
+    };
+
+    const handleDownloadConfirm = () => {
+      emit('download', props.file);
+      hideDownloadConfirm();
     };
 
     // 开始重命名
@@ -512,10 +535,13 @@ export default defineComponent({
       formatDate,
       showDownloadConfirm,
       onFileNameClick,
+      hideDownloadConfirm,
+      handleDownloadConfirm,
       getDeleteTitle,
       getDownloadTitle,
       getDownloadFolderTitle,
       isTextFile,
+      isPreviewable,
       isEditing,
       editingName,
       editInput,
