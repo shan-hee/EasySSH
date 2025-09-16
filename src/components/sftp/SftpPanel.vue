@@ -288,6 +288,8 @@ export default defineComponent({
     let currentFolderUploadNotification = null;
     // 跟踪所有已启动的上传操作ID，便于取消时一次性终止
     const activeUploadOperationIds = new Set();
+    // 记录本次上传过程中新建的远程目录，取消上传时用于清理
+    const createdDirectoriesForCurrentUpload = new Set();
 
     // 添加编辑器相关状态
     const isEditing = ref(false);
@@ -834,6 +836,8 @@ export default defineComponent({
       // 使用有效文件继续上传流程
       const filesToUpload = validFiles;
 
+      createdDirectoriesForCurrentUpload.clear();
+
       // 检查是否包含文件夹（通过检查文件的webkitRelativePath属性）
       const hasDirectories = Array.from(filesToUpload).some(
         file => file.webkitRelativePath && file.webkitRelativePath.includes('/')
@@ -970,14 +974,19 @@ export default defineComponent({
 
       // 创建所有目录
       for (const dirPath of dirsToCreate) {
+        let createdDir = false;
         try {
           console.log(`创建目录: ${dirPath}`);
           await sftpService.createDirectory(props.sessionId, dirPath);
+          createdDir = true;
         } catch (dirError) {
           // 忽略目录已存在的错误
           if (!dirError.message.includes('已存在')) {
             console.warn(`创建目录失败: ${dirPath}`, dirError);
           }
+        }
+        if (createdDir) {
+          createdDirectoriesForCurrentUpload.add(dirPath);
         }
       }
 
@@ -1227,18 +1236,29 @@ export default defineComponent({
           || (currentUploadingFile.value
             ? `${currentPath.value === '/' ? '' : currentPath.value}/${currentUploadingFile.value}`
             : '');
-        if (!remotePath) {
-          // 无有效路径，无需尝试删除
-        } else {
-        try {
-          await sftpService.deleteFile(props.sessionId, remotePath);
-          log.debug('已删除文件:', remotePath);
-        } catch (error) {
-          // 取消与流写入存在竞争，文件可能尚未创建或已完成；降级为debug
-          log.debug('删除文件失败（可忽略）:', { path: remotePath, error: error?.message || String(error) });
+        if (remotePath) {
+          try {
+            await sftpService.deleteFile(props.sessionId, remotePath);
+            log.debug('已删除文件:', remotePath);
+          } catch (error) {
+            // 取消与流写入存在竞争，文件可能尚未创建或已完成；降级为debug
+            log.debug('删除文件失败（可忽略）:', { path: remotePath, error: error?.message || String(error) });
+          }
         }
+
+        if (createdDirectoriesForCurrentUpload.size > 0) {
+          const dirsToRemove = Array.from(createdDirectoriesForCurrentUpload).sort((a, b) => b.length - a.length);
+          for (const dirPath of dirsToRemove) {
+            try {
+              await sftpService.delete(props.sessionId, dirPath, true);
+              log.debug('已清理上传目录:', dirPath);
+            } catch (dirError) {
+              log.debug('清理上传目录失败（可忽略）:', { path: dirPath, error: dirError?.message || String(dirError) });
+            }
+          }
         }
       }
+      createdDirectoriesForCurrentUpload.clear();
 
       // 重置状态
       isUploading.value = false;
@@ -2126,6 +2146,7 @@ export default defineComponent({
 
       // 获取拖拽的文件
       const files = event.dataTransfer.files;
+      createdDirectoriesForCurrentUpload.clear();
       if (files && files.length > 0) {
         try {
           // 处理所有文件，可能包括文件夹
@@ -2480,6 +2501,7 @@ export default defineComponent({
 
         // 最后只刷新一次
         refreshCurrentDirectory();
+        createdDirectoriesForCurrentUpload.clear();
       } catch (error) {
         log.error('上传过程中发生错误:', error);
 
@@ -2499,6 +2521,7 @@ export default defineComponent({
 
         // 出错时也刷新一次
         refreshCurrentDirectory();
+        createdDirectoriesForCurrentUpload.clear();
       }
     };
 
@@ -2615,14 +2638,19 @@ export default defineComponent({
 
         log.debug(`创建目录: ${remoteDirPath}`);
 
+        let createdDir = false;
         try {
           // 创建远程目录
           await sftpService.createDirectory(props.sessionId, remoteDirPath);
+          createdDir = true;
         } catch (error) {
           // 忽略目录已存在的错误
           if (!error.message.includes('已存在')) {
             console.warn(`创建目录失败: ${remoteDirPath}`, error);
           }
+        }
+        if (createdDir) {
+          createdDirectoriesForCurrentUpload.add(remoteDirPath);
         }
 
         // 读取目录内容

@@ -12,6 +12,93 @@ const { sendBinarySftpSuccess, sendBinarySftpError } = require('./utils');
 // 存储SFTP会话
 const sftpSessions = new Map();
 
+function isNotFoundError(err) {
+  if (!err) return false;
+  if (err.code === 2 || err.code === 'ENOENT') return true;
+  const message = typeof err.message === 'string' ? err.message.toLowerCase() : '';
+  return message.includes('no such file') || message.includes('no such path');
+}
+
+// 通用递归删除实现，允许目标在删除过程中被其他操作清理
+function recursiveDeletePath(sftp, targetPath, callback) {
+  sftp.stat(targetPath, (err, stats) => {
+    if (err) {
+      if (isNotFoundError(err)) {
+        return callback(null);
+      }
+      err.path = err.path || targetPath;
+      return callback(err);
+    }
+
+    if (stats.isDirectory()) {
+      sftp.readdir(targetPath, (err, list) => {
+        if (err) {
+          if (isNotFoundError(err)) {
+            return callback(null);
+          }
+          err.path = err.path || targetPath;
+          return callback(err);
+        }
+
+        const entries = list.filter(item => item && item.filename && item.filename !== '.' && item.filename !== '..');
+
+        if (entries.length === 0) {
+          return sftp.rmdir(targetPath, (rmdirErr) => {
+            if (rmdirErr && !isNotFoundError(rmdirErr)) {
+              rmdirErr.path = rmdirErr.path || targetPath;
+              return callback(rmdirErr);
+            }
+            logger.debug('SFTP目录已删除', { path: targetPath });
+            callback(null);
+          });
+        }
+
+        let completed = 0;
+        let hasError = false;
+
+        entries.forEach(item => {
+          const itemPath = `${targetPath}/${item.filename}`;
+          recursiveDeletePath(sftp, itemPath, (childErr) => {
+            if (childErr) {
+              if (!hasError) {
+                hasError = true;
+                childErr.path = childErr.path || itemPath;
+                callback(childErr);
+              }
+              return;
+            }
+
+            if (hasError) {
+              return;
+            }
+
+            completed++;
+            if (completed === entries.length) {
+              sftp.rmdir(targetPath, (rmdirErr) => {
+                if (rmdirErr && !isNotFoundError(rmdirErr)) {
+                  rmdirErr.path = rmdirErr.path || targetPath;
+                  return callback(rmdirErr);
+                }
+                logger.debug('SFTP目录已删除', { path: targetPath });
+                callback(null);
+              });
+            }
+          });
+        });
+      });
+    } else {
+      sftp.unlink(targetPath, (unlinkErr) => {
+        if (unlinkErr && !isNotFoundError(unlinkErr)) {
+          unlinkErr.path = unlinkErr.path || targetPath;
+          return callback(unlinkErr);
+        }
+        logger.debug('SFTP文件已删除', { path: targetPath });
+        callback(null);
+      });
+    }
+  });
+}
+
 /**
  * 获取文件MIME类型
  */
@@ -185,55 +272,12 @@ function handleSftpDelete(ws, data) {
 
     const sftp = sftpSession.sftp;
 
-    // 递归删除函数
-    function recursiveDelete(path, callback) {
-      sftp.stat(path, (err, stats) => {
-        if (err) {
-          return callback(err);
-        }
+    logger.debug('SFTP删除请求', { sessionId, path: remotePath, isDirectory: !!data.isDirectory });
 
-        if (stats.isDirectory()) {
-          sftp.readdir(path, (err, list) => {
-            if (err) {
-              return callback(err);
-            }
-
-            if (list.length === 0) {
-              // 空目录，直接删除
-              sftp.rmdir(path, callback);
-            } else {
-              // 先删除所有子项
-              let completed = 0;
-              let hasError = false;
-
-              list.forEach(item => {
-                const itemPath = `${path}/${item.filename}`;
-                recursiveDelete(itemPath, (err) => {
-                  if (err && !hasError) {
-                    hasError = true;
-                    return callback(err);
-                  }
-
-                  completed++;
-                  if (completed === list.length && !hasError) {
-                    // 所有子项删除完成，删除目录
-                    sftp.rmdir(path, callback);
-                  }
-                });
-              });
-            }
-          });
-        } else {
-          // 删除文件
-          sftp.unlink(path, callback);
-        }
-      });
-    }
-
-    // 使用递归删除
-    recursiveDelete(remotePath, (err) => {
+    // 使用通用递归删除逻辑
+    recursiveDeletePath(sftp, remotePath, (err) => {
       if (err) {
-        logger.error('SFTP删除失败', { sessionId, path: remotePath, error: err.message });
+        logger.error('SFTP删除失败', { sessionId, path: remotePath, errorPath: err.path || remotePath, error: err.message });
         sendBinarySftpError(ws, sessionId, operationId, `删除失败: ${err.message}`, 'SFTP_DELETE_ERROR');
         return;
       }
@@ -264,54 +308,11 @@ function handleSftpFastDelete(ws, data) {
 
     const sftp = sftpSession.sftp;
 
-    // 递归删除函数
-    function recursiveDelete(path, callback) {
-      sftp.stat(path, (err, stats) => {
-        if (err) {
-          return callback(err);
-        }
+    logger.debug('SFTP快速删除请求', { sessionId, path: remotePath });
 
-        if (stats.isDirectory()) {
-          sftp.readdir(path, (err, list) => {
-            if (err) {
-              return callback(err);
-            }
-
-            if (list.length === 0) {
-              // 空目录，直接删除
-              sftp.rmdir(path, callback);
-            } else {
-              // 先删除所有子项
-              let completed = 0;
-              let hasError = false;
-
-              list.forEach(item => {
-                const itemPath = `${path}/${item.filename}`;
-                recursiveDelete(itemPath, (err) => {
-                  if (err && !hasError) {
-                    hasError = true;
-                    return callback(err);
-                  }
-
-                  completed++;
-                  if (completed === list.length && !hasError) {
-                    // 所有子项删除完成，删除目录
-                    sftp.rmdir(path, callback);
-                  }
-                });
-              });
-            }
-          });
-        } else {
-          // 删除文件
-          sftp.unlink(path, callback);
-        }
-      });
-    }
-
-    recursiveDelete(remotePath, (err) => {
+    recursiveDeletePath(sftp, remotePath, (err) => {
       if (err) {
-        logger.error('SFTP快速删除失败', { sessionId, path: remotePath, error: err.message });
+        logger.error('SFTP快速删除失败', { sessionId, path: remotePath, errorPath: err.path || remotePath, error: err.message });
         sendBinarySftpError(ws, sessionId, operationId, `快速删除失败: ${err.message}`, 'SFTP_FAST_DELETE_ERROR');
         return;
       }
