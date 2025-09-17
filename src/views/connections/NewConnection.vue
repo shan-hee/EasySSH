@@ -2287,25 +2287,33 @@ h2 {
   }
 
   .row-item-right {
-    flex-direction: column;
-    align-items: flex-start;
+    /* 保持IP与操作按钮同一行，形成两行布局 */
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
     gap: var(--spacing-sm);
   }
 
   .address-cell {
     position: static;
     transform: none;
-    width: 100%;
-    margin-top: var(--spacing-xs);
+    flex: 1;
+    width: auto;
+    margin-top: 0;
     text-align: left;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   .actions-cell {
     margin-left: auto;
     width: auto;
-    justify-content: flex-start;
+    justify-content: flex-end;
     flex-wrap: nowrap;
     gap: var(--spacing-sm);
+    flex-shrink: 0;
   }
 
   .action-btn {
