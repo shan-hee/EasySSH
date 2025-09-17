@@ -3,7 +3,7 @@
     <div v-if="visible" class="modal-overlay" @click="handleOverlayClick">
       <div class="modal-container" :class="customClass" :style="modalStyle" @click.stop>
         <div class="modal-header">
-          <span>{{ title }}</span>
+          <span class="modal-title">{{ title }}</span>
           <span class="close-btn" @click="handleClose">&times;</span>
         </div>
 
@@ -161,6 +161,11 @@ export default defineComponent({
   border-radius: 8px;
   overflow: hidden;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+  /* 使内容区域可在内部滚动 */
+  display: flex;
+  flex-direction: column;
+  /* 默认限制高度，防止超出可视区 */
+  max-height: 90vh;
 }
 
 .modal-header {
@@ -175,6 +180,15 @@ export default defineComponent({
   font-weight: bold;
 }
 
+/* 标题在移动端过长时单行省略 */
+.modal-header .modal-title {
+  flex: 1 1 auto;
+  min-width: 0; /* 允许收缩以触发省略号 */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .close-btn {
   cursor: pointer;
   font-size: 20px;
@@ -183,6 +197,8 @@ export default defineComponent({
 
 .modal-tab {
   display: flex;
+  gap: 8px;
+  overflow-x: auto;
 }
 
 .tab-item {
@@ -192,6 +208,7 @@ export default defineComponent({
   cursor: pointer;
   position: relative;
   text-align: center;
+  flex: 0 0 auto;
 }
 
 .tab-item.active {
@@ -209,8 +226,13 @@ export default defineComponent({
 }
 
 .modal-body {
-  margin-top: 20px;
+  margin-top: 10px;
   background-color: var(--color-bg-page);
+  /* 关键：内容区域滚动 */
+  overflow: auto;
+  flex: 1 1 auto;
+  min-height: 0; /* 防止子元素撑破容器，允许滚动 */
+  -webkit-overflow-scrolling: touch; /* iOS 平滑滚动 */
 }
 
 .modal-footer {
@@ -218,6 +240,7 @@ export default defineComponent({
   justify-content: flex-end;
   gap: 10px;
   padding: 15px;
+  flex: 0 0 auto;
 }
 
 .modal-btn {
@@ -349,5 +372,26 @@ export default defineComponent({
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 15px;
+}
+
+/* 移动端优化 */
+@media (max-width: 768px) {
+  .modal-overlay {
+    padding: 12px; /* 给容器留出边距，避免贴边 */
+  }
+
+  .modal-container {
+    width: 95vw;
+    max-height: 92vh; /* 多留一点高度以适配设备栏 */
+  }
+
+  .modal-header {
+    padding: 12px 12px;
+  }
+
+  .modal-body {
+    /* 防止滚动时穿透页面 */
+    overscroll-behavior: contain;
+  }
 }
 </style>

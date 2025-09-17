@@ -2094,9 +2094,20 @@ export default defineComponent({
 <style scoped>
 /* 弹窗容器基础尺寸通过 Modal 组件的 props 控制，此处仅保留其他样式覆盖 */
 
-/* 弹窗标题样式覆盖 */
+/* 统一整面板内边距：对 modal 容器设置 20px 内边距 */
+:deep(.user-settings-modal.modal-container) {
+  --settings-panel-padding: 20px;
+  padding: var(--settings-panel-padding);
+}
+
+/* 弹窗标题样式覆盖（由容器统一留白，这里不再额外留边距） */
 :deep(.user-settings-modal .modal-header) {
-  padding: 20px 15px 0px 20px !important;
+  padding: 0 !important;
+}
+
+/* 避免外层与内层同时滚动，统一在内部滚动 */
+:deep(.user-settings-modal .modal-body) {
+  overflow: hidden;
 }
 
 :deep(.user-settings-modal .modal-header > span) {
@@ -2111,7 +2122,8 @@ export default defineComponent({
 
 .user-settings-container {
   display: flex;
-  height: 530px;
+  height: 100%;
+  min-height: 0; /* 允许子容器基于flex正确收缩，避免双滚动条 */
   background-color: var(--color-bg-page);
 }
 
@@ -2120,18 +2132,20 @@ export default defineComponent({
   width: 200px;
   background-color: var(--color-bg-page);
   padding: 0px 0 20px 0;
+  border: none; /* 有了全局内边距后，侧栏不再需要分隔线 */
 }
 
 .menu-list {
   display: flex;
   flex-direction: column;
   gap: 4px;
+  border-left: none; /* 取消左边框 */
 }
 
 .menu-item {
   display: flex;
   align-items: center;
-  padding: 12px 20px;
+  padding: 20px 20px 0 0;
   cursor: pointer;
   transition: all 0.2s ease;
   color: var(--color-text-secondary);
@@ -2162,8 +2176,7 @@ export default defineComponent({
 .settings-content {
   flex: 1;
   padding: 0;
-  overflow-y: auto;
-  padding: 0px 20px 20px 0px;
+  overflow: hidden; /* 统一由 .panel-body 管理滚动 */
 }
 
 .content-panel {
@@ -2175,7 +2188,8 @@ export default defineComponent({
 /* 面板主体 */
 .panel-body {
   flex: 1;
-  /* padding: 12px 32px 52px 32px; */
+  /* 由外层面板容器统一控制留白，这里不再重复设置 */
+  padding: 0;
   overflow-y: auto;
 }
 
@@ -2332,6 +2346,8 @@ export default defineComponent({
 .panel-footer {
   display: flex;
   justify-content: flex-end;
+  /* 由外层面板容器统一控制留白，这里不再重复设置 */
+  padding: 0;
 }
 
 /* 按钮样式 */
@@ -2412,9 +2428,32 @@ export default defineComponent({
     height: 90vh !important;
   }
 
+  /* 移动端仍由内部面板滚动，外层保持隐藏，避免嵌套滚动冲突 */
+  :deep(.user-settings-modal .modal-body) {
+    overflow: hidden;
+  }
+
   .user-settings-container {
     flex-direction: column;
-    height: auto;
+    height: 100%; /* 让内部面板撑满，便于面板体滚动 */
+    min-height: 0;
+  }
+
+  .content-panel {
+    height: 100%; /* 让内容面板占满剩余空间 */
+  }
+
+  .settings-content {
+    overflow: hidden; /* 将滚动权交给 .panel-body */
+    flex: 1 1 auto; /* 在列布局下占满可用空间 */
+    min-height: 0;  /* 防止子元素撑破，确保滚动生效 */
+  }
+
+  /* 在移动端由面板体滚动，并启用惯性滚动 */
+  .panel-body {
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    min-height: 0;
   }
 
   .settings-sidebar {
@@ -2436,7 +2475,25 @@ export default defineComponent({
 
   .menu-item.active {
     border-right: none;
-    border-bottom: 3px solid var(--color-primary);
+    /* border-bottom: 3px solid var(--color-primary); */
+  }
+
+  /* 设置项在移动端改为纵向排列，避免拥挤导致溢出 */
+  .security-item {
+    flex-direction: column;
+    gap: 10px;
+    align-items: stretch;
+  }
+
+  .security-action {
+    width: 100%;
+  }
+
+  .security-action .form-select,
+  .security-action .slider-container,
+  .security-action .number-input-with-controls {
+    width: 100%;
+    min-width: 0;
   }
 }
 
