@@ -633,8 +633,8 @@ export default defineComponent({
 /* 登录面板容器 */
 .login-panel-container {
   position: absolute;
-  top: 45px;
-  left: 40px;
+  top: var(--layout-header-height);
+  left: 0;
   right: 0;
   bottom: 0;
   display: flex;
@@ -675,6 +675,14 @@ export default defineComponent({
 /* 登录面板容器背景 - 使用主题变量 */
 .login-panel-container {
   background: var(--login-panel-container-bg);
+}
+
+/* 移动端优化：确保登录面板左右居中（去掉左侧偏移） */
+@media screen and (max-width: 768px) {
+  .login-panel-container {
+    left: 0;
+    right: 0;
+  }
 }
 
 /* 移动端Logo样式 */
