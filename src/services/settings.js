@@ -24,6 +24,9 @@ export const TERMINAL_THEMES = {
 
 export const VALID_THEMES = Object.values(TERMINAL_THEMES);
 
+// 可同步到服务器的设置分类（UI始终只在本地保存）
+const SERVER_SAVE_CATEGORIES = new Set(['terminal', 'connection', 'editor', 'advanced', 'monitoring']);
+
 class SettingsService {
   constructor() {
     this.isInitialized = false;
@@ -39,6 +42,12 @@ class SettingsService {
 
     // 添加主题缓存，避免重复计算
     this._themeCache = new Map();
+
+    // 仅保存发生变更的分类，减少不必要的请求
+    this._dirtyCategories = new Set();
+
+    // 批量更新时可暂时暂停自动保存，避免重复提交
+    this._autoSavePaused = false;
   }
 
   /**
@@ -178,27 +187,35 @@ class SettingsService {
         fullSettings: this.settings
       });
 
-      // 检查是否已登录，如果已登录则同时保存到服务器
+      // 检查是否已登录，如果已登录则仅保存变更过的分类到服务器
       try {
         const userStore = useUserStore();
 
         if (userStore.isLoggedIn) {
-          // 使用静态导入的存储适配器
+          const categoriesToSave = Array.from(this._dirtyCategories).filter(c =>
+            SERVER_SAVE_CATEGORIES.has(c)
+          );
 
-          // 分别保存各个分类的设置到服务器（UI设置保持本地化，不同步到服务器）
-          const categories = ['terminal', 'connection', 'editor', 'advanced'];
-          const savePromises = categories.map(async category => {
-            if (this.settings[category]) {
-              try {
-                await storageAdapter.set(category, this.settings[category]);
-              } catch (error) {
-                log.warn(`保存${category}设置到服务器失败:`, error);
+          if (categoriesToSave.length > 0) {
+            const savePromises = categoriesToSave.map(async category => {
+              if (this.settings[category]) {
+                try {
+                  await storageAdapter.set(category, this.settings[category]);
+                } catch (error) {
+                  log.warn(`保存${category}设置到服务器失败:`, error);
+                }
               }
-            }
-          });
+            });
 
-          await Promise.allSettled(savePromises);
-          log.debug('设置已保存到本地存储和服务器');
+            await Promise.allSettled(savePromises);
+            log.debug('设置已保存到服务器的分类:', categoriesToSave);
+          } else {
+            // 只有本地设置（如UI）变更，不触发服务器保存
+            log.debug('无服务器需保存的设置分类');
+          }
+
+          // 清空脏分类标记
+          this._dirtyCategories.clear();
         } else {
           log.debug('设置已保存到本地存储');
         }
@@ -238,6 +255,7 @@ class SettingsService {
     watch(
       () => this.settings,
       () => {
+        if (this._autoSavePaused) return;
         this.saveSettings();
         this._notifyListeners();
       },
@@ -303,6 +321,47 @@ class SettingsService {
     target[lastKey] = value;
 
     log.debug(`设置已更新: ${path} = ${JSON.stringify(value)}`);
+
+    // 标记顶级分类为已变更（仅服务器支持的分类会被同步）
+    const topCategory = keys[0];
+    if (SERVER_SAVE_CATEGORIES.has(topCategory)) {
+      this._dirtyCategories.add(topCategory);
+    }
+  }
+
+  /**
+   * 暂停自动保存（在批量或受控保存场景下使用）
+   */
+  pauseAutoSave() {
+    this._autoSavePaused = true;
+  }
+
+  /**
+   * 恢复自动保存
+   */
+  resumeAutoSave() {
+    this._autoSavePaused = false;
+  }
+
+  /**
+   * 仅保存指定分类到服务器
+   * @param {string} category
+   * @returns {Promise<boolean>}
+   */
+  async saveCategory(category) {
+    if (!SERVER_SAVE_CATEGORIES.has(category)) return false;
+    try {
+      this._autoSavePaused = true;
+      await storageAdapter.set(category, this.settings[category]);
+      this._dirtyCategories.delete(category);
+      log.debug(`分类已保存到服务器: ${category}`);
+      return true;
+    } catch (error) {
+      log.error(`保存分类失败: ${category}`, error);
+      return false;
+    } finally {
+      this._autoSavePaused = false;
+    }
   }
 
   /**
@@ -451,6 +510,9 @@ class SettingsService {
     log.debug('终端设置已更新:', updates);
     log.debug('更新后的完整终端设置:', this.settings.terminal);
 
+    // 标记终端设置为脏
+    this._dirtyCategories.add('terminal');
+
     // 如果需要立即应用到终端，触发应用逻辑
     if (applyToTerminals) {
       this._applyTerminalSettingsToAllTerminals();
@@ -480,6 +542,7 @@ class SettingsService {
    */
   updateConnectionSettings(updates) {
     Object.assign(this.settings.connection, updates);
+    this._dirtyCategories.add('connection');
   }
 
   /**
@@ -488,6 +551,7 @@ class SettingsService {
    */
   updateMonitoringSettings(updates) {
     Object.assign(this.settings.monitoring, updates);
+    this._dirtyCategories.add('monitoring');
   }
 
   /**

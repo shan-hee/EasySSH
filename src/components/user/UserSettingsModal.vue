@@ -323,7 +323,8 @@
                     max="24"
                     step="1"
                     class="form-slider"
-                    @input="saveTerminalSettings"
+                    @input="previewTerminalFontSize"
+                    @change="saveTerminalSettings"
                   />
                   <span class="slider-value">{{ terminalSettings.fontSize }}px</span>
                 </div>
@@ -452,7 +453,8 @@
                       max="1"
                       step="0.05"
                       class="form-slider"
-                      @input="updateTerminalBg"
+                      @input="previewTerminalBg"
+                      @change="updateTerminalBg"
                     />
                     <span class="slider-value"
                       >{{ Math.round(terminalBgSettings.opacity * 100) }}%</span
@@ -1302,20 +1304,9 @@ export default defineComponent({
       try {
         terminalSettings.initialized = true;
 
-        // 使用storageAdapter保存到服务器（登录时）或本地（未登录时）
-        const success = await storageAdapter.set('terminal', {
-          fontSize: terminalSettings.fontSize,
-          fontFamily: terminalSettings.fontFamily,
-          theme: terminalSettings.theme,
-          cursorStyle: terminalSettings.cursorStyle,
-          cursorBlink: terminalSettings.cursorBlink,
-          copyOnSelect: terminalSettings.copyOnSelect,
-          rightClickSelectsWord: terminalSettings.rightClickSelectsWord,
-          rendererType: terminalSettings.rendererType || 'auto'
-        });
-
-        // 同步到运行时设置服务，并应用到已打开的终端
+        // 先更新运行时设置并应用到所有终端
         try {
+          settingsService.pauseAutoSave?.();
           settingsService.updateTerminalSettings(
             {
               fontSize: terminalSettings.fontSize,
@@ -1332,27 +1323,32 @@ export default defineComponent({
         } catch (e) {
           // 同步运行时设置失败不影响保存
           log.debug('同步运行时终端设置失败（已忽略）:', e?.message);
+        } finally {
+          // 单分类保存以避免多次请求
+          await settingsService.saveCategory?.('terminal');
+          settingsService.resumeAutoSave?.();
         }
 
-        if (success) {
-          // 发送全局事件，通知所有终端设置已更新
-          window.dispatchEvent(
-            new CustomEvent('terminal-settings-updated', {
-              detail: { settings: terminalSettings }
-            })
-          );
-
-          log.info('终端设置已保存到服务器:', terminalSettings);
-          ElMessage.success('终端设置已保存');
-        } else {
-          throw new Error('保存失败');
-        }
+        log.info('终端设置已保存到服务器:', terminalSettings);
+        ElMessage.success('终端设置已保存');
       } catch (error) {
         log.error('保存终端设置失败', error);
         ElMessage.error('保存终端设置失败');
       } finally {
         // 设置保存后更新一次当前渲染器显示
         detectCurrentRenderer();
+      }
+    };
+
+    // 预览终端字体大小（不保存，只应用到当前打开的终端）
+    const previewTerminalFontSize = () => {
+      try {
+        settingsService.pauseAutoSave?.();
+        settingsService.updateTerminalSettings({ fontSize: terminalSettings.fontSize }, true);
+      } catch (_) {
+        // 仅预览失败忽略
+      } finally {
+        settingsService.resumeAutoSave?.();
       }
     };
 
@@ -1368,13 +1364,17 @@ export default defineComponent({
       window.removeEventListener('terminal:new-session', detectCurrentRenderer);
     });
 
-    // 保存连接设置
-    const saveConnectionSettings = async () => {
+    // 保存连接设置（仅保存到服务器一次，避免重复请求）
+    let connectionSaveTimer = null;
+    const saveConnectionSettings = async (debounced = false) => {
       try {
         connectionSettings.initialized = true;
 
-        // 使用storageAdapter保存到服务器（登录时）或本地（未登录时）
-        const success = await storageAdapter.set('connection', {
+        // 暂停自动保存，避免重复请求
+        settingsService.pauseAutoSave?.();
+
+        // 同步到运行时设置服务
+        settingsService.updateConnectionSettings({
           autoReconnect: connectionSettings.autoReconnect,
           reconnectInterval: connectionSettings.reconnectInterval,
           connectionTimeout: connectionSettings.connectionTimeout,
@@ -1382,11 +1382,21 @@ export default defineComponent({
           keepAliveInterval: connectionSettings.keepAliveInterval
         });
 
-        if (success) {
-          log.info('连接设置已保存到服务器:', connectionSettings);
-          ElMessage.success('连接设置已保存');
+        const doSave = async () => {
+          try {
+            await settingsService.saveCategory?.('connection');
+            log.info('连接设置已保存到服务器:', connectionSettings);
+            ElMessage.success('连接设置已保存');
+          } finally {
+            settingsService.resumeAutoSave?.();
+          }
+        };
+
+        if (debounced) {
+          clearTimeout(connectionSaveTimer);
+          connectionSaveTimer = setTimeout(doSave, 300);
         } else {
-          throw new Error('保存失败');
+          await doSave();
         }
       } catch (error) {
         log.error('保存连接设置失败', error);
@@ -1394,27 +1404,42 @@ export default defineComponent({
       }
     };
 
-    // 保存监控设置
-    const saveMonitoringSettings = async () => {
+    // 保存监控设置（防抖减少请求）
+    let monitoringSaveTimer = null;
+    const saveMonitoringSettings = async (debounced = false) => {
       try {
         monitoringSettings.initialized = true;
 
-        // 使用storageAdapter保存到服务器（登录时）或本地（未登录时）
-        const success = await storageAdapter.set('monitoring', {
+        // 暂停自动保存，避免重复请求
+        settingsService.pauseAutoSave?.();
+
+        // 更新运行时设置服务
+        settingsService.updateMonitoringSettings({
           updateInterval: monitoringSettings.updateInterval
         });
 
-        if (success) {
-          // 触发监控配置更新事件
-          const event = new CustomEvent('monitoring-config-changed', {
-            detail: { ...monitoringSettings }
-          });
-          window.dispatchEvent(event);
+        const doSave = async () => {
+          try {
+            await settingsService.saveCategory?.('monitoring');
 
-          log.info('监控设置已保存到服务器:', monitoringSettings);
-          ElMessage.success('监控设置已保存');
+            // 触发监控配置更新事件
+            const event = new CustomEvent('monitoring-config-changed', {
+              detail: { ...monitoringSettings }
+            });
+            window.dispatchEvent(event);
+
+            log.info('监控设置已保存到服务器:', monitoringSettings);
+            ElMessage.success('监控设置已保存');
+          } finally {
+            settingsService.resumeAutoSave?.();
+          }
+        };
+
+        if (debounced) {
+          clearTimeout(monitoringSaveTimer);
+          monitoringSaveTimer = setTimeout(doSave, 300);
         } else {
-          throw new Error('保存失败');
+          await doSave();
         }
       } catch (error) {
         log.error('保存监控设置失败', error);
@@ -1439,7 +1464,7 @@ export default defineComponent({
         } else {
           monitoringSettings.updateInterval += 1000; // 秒级增量
         }
-        saveMonitoringSettings();
+        saveMonitoringSettings(true);
       }
     };
 
@@ -1451,7 +1476,7 @@ export default defineComponent({
         } else {
           monitoringSettings.updateInterval -= 1000; // 秒级减量
         }
-        saveMonitoringSettings();
+        saveMonitoringSettings(true);
       }
     };
 
@@ -1619,6 +1644,28 @@ export default defineComponent({
       } catch (error) {
         log.error('保存终端背景设置失败', error);
         ElMessage.error('保存终端背景设置失败');
+      }
+    };
+
+    // 仅预览终端背景（不持久化），用于滑块拖动时减少请求
+    const previewTerminalBg = () => {
+      try {
+        // 仅应用到CSS变量和事件，不进行存储
+        updateCssVariables();
+
+        const event = new CustomEvent('terminal-bg-changed', { detail: terminalBgSettings });
+        window.dispatchEvent(event);
+
+        window.dispatchEvent(
+          new CustomEvent('terminal-bg-status', {
+            detail: {
+              enabled: terminalBgSettings.enabled,
+              bgSettings: terminalBgSettings
+            }
+          })
+        );
+      } catch (_) {
+        // 忽略预览错误
       }
     };
 
@@ -1796,42 +1843,42 @@ export default defineComponent({
     const incrementReconnectInterval = () => {
       if (connectionSettings.reconnectInterval < 60) {
         connectionSettings.reconnectInterval += 1;
-        saveConnectionSettings();
+        saveConnectionSettings(true);
       }
     };
 
     const decrementReconnectInterval = () => {
       if (connectionSettings.reconnectInterval > 1) {
         connectionSettings.reconnectInterval -= 1;
-        saveConnectionSettings();
+        saveConnectionSettings(true);
       }
     };
 
     const incrementConnectionTimeout = () => {
       if (connectionSettings.connectionTimeout < 120) {
         connectionSettings.connectionTimeout += 1;
-        saveConnectionSettings();
+        saveConnectionSettings(true);
       }
     };
 
     const decrementConnectionTimeout = () => {
       if (connectionSettings.connectionTimeout > 5) {
         connectionSettings.connectionTimeout -= 1;
-        saveConnectionSettings();
+        saveConnectionSettings(true);
       }
     };
 
     const incrementKeepAliveInterval = () => {
       if (connectionSettings.keepAliveInterval < 300) {
         connectionSettings.keepAliveInterval += 1;
-        saveConnectionSettings();
+        saveConnectionSettings(true);
       }
     };
 
     const decrementKeepAliveInterval = () => {
       if (connectionSettings.keepAliveInterval > 30) {
         connectionSettings.keepAliveInterval -= 1;
-        saveConnectionSettings();
+        saveConnectionSettings(true);
       }
     };
 
@@ -2057,10 +2104,12 @@ export default defineComponent({
       saveTerminalSettings,
       saveConnectionSettings,
       saveMonitoringSettings,
+      previewTerminalFontSize,
       formatMonitoringInterval,
       incrementMonitoringInterval,
       decrementMonitoringInterval,
       updateTerminalBg,
+      previewTerminalBg,
       updateShortcut,
       resetAllShortcuts,
       loadShortcuts,
@@ -2588,6 +2637,22 @@ export default defineComponent({
   outline: none;
   -webkit-appearance: none;
   appearance: none;
+  padding: 0;             /* 避免两端留白 */
+  box-sizing: border-box; /* 保证轨道占满宽度 */
+}
+
+.form-slider::-webkit-slider-runnable-track {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--color-border-muted);
+  border: none;
+}
+
+.form-slider::-moz-range-track {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--color-border-muted);
+  border: none;
 }
 
 .form-slider::-webkit-slider-thumb {
@@ -2600,6 +2665,8 @@ export default defineComponent({
   cursor: pointer;
   border: 2px solid white;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+  /* 使滑块垂直居中到轨道上，并避免端点错位的视觉空隙 */
+  margin-top: -6px; /* (轨道6 - 滑块18)/2 = -6 */
 }
 
 .form-slider::-moz-range-thumb {
