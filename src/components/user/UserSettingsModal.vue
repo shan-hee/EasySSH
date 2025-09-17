@@ -2143,21 +2143,7 @@ export default defineComponent({
 <style scoped>
 /* 弹窗容器基础尺寸通过 Modal 组件的 props 控制，此处仅保留其他样式覆盖 */
 
-/* 统一整面板内边距：对 modal 容器设置 20px 内边距 */
-:deep(.user-settings-modal.modal-container) {
-  --settings-panel-padding: 20px;
-  padding: var(--settings-panel-padding);
-}
-
-/* 弹窗标题样式覆盖（由容器统一留白，这里不再额外留边距） */
-:deep(.user-settings-modal .modal-header) {
-  padding: 0 !important;
-}
-
-/* 避免外层与内层同时滚动，统一在内部滚动 */
-:deep(.user-settings-modal .modal-body) {
-  overflow: hidden;
-}
+/* 统一整面板内边距与头部/主体滚动覆盖已迁移至 Modal.vue 内进行通用控制 */
 
 :deep(.user-settings-modal .modal-header > span) {
   font-size: 16px !important;

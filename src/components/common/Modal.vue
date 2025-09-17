@@ -394,4 +394,19 @@ export default defineComponent({
     overscroll-behavior: contain;
   }
 }
+
+/* 组件内通用覆盖（通过自定义类名精确作用） */
+/* 用户设置弹窗：统一容器内边距与局部覆盖，避免在子组件中重复注入样式 */
+.user-settings-modal.modal-container {
+  --settings-panel-padding: 20px;
+  padding: var(--settings-panel-padding);
+}
+
+.user-settings-modal .modal-header {
+  padding: 0 !important;
+}
+
+.user-settings-modal .modal-body {
+  overflow: hidden;
+}
 </style>
