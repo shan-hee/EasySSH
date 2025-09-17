@@ -1,5 +1,4 @@
 // import { WebSocket } from 'ws';
-import { ElMessage } from 'element-plus';
 import log from '../log';
 import settingsService from '../settings';
 import { wsServerConfig } from '../../config/app-config';
@@ -393,8 +392,6 @@ class SSHService {
             })
           );
         }
-
-        ElMessage.error(`连接失败: ${connectionError.message || '服务器无响应'}`);
         throw connectionError;
       }
     } catch (error) {

@@ -223,6 +223,19 @@
         }
         .el-message .el-message__icon { margin-right: 8px; }
         
+        /* 错误/警告消息：允许多行显示完整内容（不截断） */
+        .el-message--error,
+        .el-message--warning {
+          white-space: normal;
+        }
+        .el-message--error .el-message__content,
+        .el-message--warning .el-message__content {
+          white-space: normal;
+          overflow: visible;
+          text-overflow: initial;
+          word-break: break-word;
+        }
+        
         /* 确保自定义类也应用相同规则 */
         .custom-el-message {
           left: 50%;

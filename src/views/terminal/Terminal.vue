@@ -1914,8 +1914,7 @@ export default {
               }
             }
 
-            // 显示优化后的错误消息
-            ElMessage.error(`连接失败: ${errorMessage}`);
+            // 错误消息由全局 ssh-connection-failed 事件处理统一弹出
 
             // 调用页签回滚逻辑
             if (tabStore.connectionFailed) {
