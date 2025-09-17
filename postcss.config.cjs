@@ -53,12 +53,15 @@ module.exports = {
           /^popper/,
           /^message/,
           // 设置面板 & 其他自定义 Modal 类名
-          'user-settings-modal',
-          'mfa-verify-modal',
-          'mfa-disable-modal',
-          'logout-devices-modal',
-          'mfa-modal',
-          'connection-modal'
+          // 使用正则，保证组合选择器（如 .user-settings-modal.modal-container）不会被误删
+          /user-settings-modal/,
+          /mfa-verify-modal/,
+          /mfa-disable-modal/,
+          /logout-devices-modal/,
+          /mfa-modal/,
+          /connection-modal/,
+          // 常见的容器类，防止与自定义类组合时被清理
+          /modal-container/
         ]
       })
   ].filter(Boolean)
