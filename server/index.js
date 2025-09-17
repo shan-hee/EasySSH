@@ -15,7 +15,6 @@ const { initWebSocketServer } = require('./ssh');
 const { initMonitoringWebSocketServer } = require('./monitoring');
 const { initAIWebSocketServer } = require('./ai');
 const { connectDatabase, getDatabaseStatus, closeDatabase } = require('./config/database');
-const setupAdmin = require('./scripts/setupAdmin');
 const { initializeScripts } = require('./scripts/initScripts');
 
 // 导入路由
@@ -128,8 +127,7 @@ const startApp = async () => {
     process.exit(1);
   }
 
-  // 初始化管理员账户
-  await setupAdmin();
+  // 移除自动创建管理员账号，改为首次登录时由用户创建
 
   // 初始化默认脚本库
   try {

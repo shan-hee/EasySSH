@@ -85,7 +85,6 @@ class User {
     // 其他用户属性
     this.isAdmin = data.isAdmin || false;
     this.status = data.status || 'active';
-    this.isDefaultPassword = data.isDefaultPassword || false;
     this.lastLogin = data.lastLogin;
     this.createdAt = data.createdAt || new Date().toISOString();
     this.updatedAt = data.updatedAt || new Date().toISOString();
@@ -115,7 +114,7 @@ class User {
           username = ?, email = ?, password = ?, 
           displayName = ?, avatar = ?, mfaEnabled = ?, mfaSecret = ?,
           theme = ?, fontSize = ?, profileJson = ?, settingsJson = ?,
-          isAdmin = ?, status = ?, isDefaultPassword = ?, lastLogin = ?,
+          isAdmin = ?, status = ?, lastLogin = ?,
           updatedAt = ?
         WHERE id = ?
       `);
@@ -134,7 +133,6 @@ class User {
         settingsJson,
         this.isAdmin ? 1 : 0,
         this.status,
-        this.isDefaultPassword ? 1 : 0,
         this.lastLogin,
         now,
         this.id
@@ -148,9 +146,9 @@ class User {
           username, email, password, 
           displayName, avatar, mfaEnabled, mfaSecret,
           theme, fontSize, profileJson, settingsJson,
-          isAdmin, status, isDefaultPassword, lastLogin, 
+          isAdmin, status, lastLogin, 
           createdAt, updatedAt
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
 
       const info = stmt.run(
@@ -167,7 +165,6 @@ class User {
         settingsJson,
         this.isAdmin ? 1 : 0,
         this.status,
-        this.isDefaultPassword ? 1 : 0,
         this.lastLogin,
         now,
         now
@@ -197,6 +194,7 @@ class User {
     delete userObj.password;
     delete userObj._passwordModified;
     delete userObj.mfaSecret; // 移除敏感的MFA密钥
+    // 移除不必要的内部字段
 
     // 删除profileData和settingsData，不再创建重复的子对象
     delete userObj.profileData;
@@ -323,6 +321,13 @@ class User {
     }
 
     return user;
+  }
+
+  // 检查是否存在管理员账户
+  static countAdmins() {
+    const db = connectDatabase();
+    const row = db.prepare('SELECT COUNT(*) AS count FROM users WHERE isAdmin = 1').get();
+    return row ? row.count : 0;
   }
 }
 

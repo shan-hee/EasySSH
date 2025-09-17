@@ -1,7 +1,7 @@
 <template>
   <div class="login-panel">
     <div class="login-panel-content">
-      <h2>EasySSH 登录</h2>
+      <h2>{{ formTitle }}</h2>
       <form @submit.prevent="handleLogin">
         <div class="form-group">
           <input
@@ -28,11 +28,11 @@
           <a href="#" class="forgot-password" @click.prevent="forgotPassword">无法登录？</a>
         </div>
         <button type="submit" class="login-submit-btn" :disabled="loginLoading">
-          <span v-if="!loginLoading">登录</span>
+          <span v-if="!loginLoading">{{ submitButtonText }}</span>
           <span v-else class="loading-spinner" />
         </button>
       </form>
-      <div class="login-footer">
+      <div class="login-footer" v-if="!isFirstAdminMode">
         <p>
           还没有账户？
           <a href="#" @click.prevent="goToRegister">立即注册</a>
@@ -52,7 +52,7 @@
 </template>
 
 <script>
-import { defineComponent, reactive, ref, onMounted } from 'vue';
+import { defineComponent, reactive, ref, onMounted, computed } from 'vue';
 import { useUserStore } from '@/store/user';
 import { ElMessage } from 'element-plus';
 import Checkbox from '@/components/common/Checkbox.vue';
@@ -60,6 +60,8 @@ import MfaVerifyModal from '@/components/auth/MfaVerifyModal.vue';
 import { useRouter } from 'vue-router';
 import log from '@/services/log';
 import storageService from '@/services/storage';
+import apiService from '@/services/api';
+import authStateManager from '@/services/auth-state-manager';
 
 // 从统一存储获取保存的凭据函数
 function getSavedCredentials() {
@@ -96,6 +98,7 @@ export default defineComponent({
     const router = useRouter();
     const showMfaModal = ref(false);
     const tempUserInfo = ref(null);
+    const isFirstAdminMode = ref(false);
 
     // 在初始化阶段获取保存的凭据
     const savedCreds = getSavedCredentials();
@@ -110,7 +113,7 @@ export default defineComponent({
     const rememberMe = ref(savedCreds.hasCredentials);
 
     // 移除自动登录代码，用户需要手动点击登录按钮
-    onMounted(() => {
+    onMounted(async () => {
       if (!window._loginPanelMounted) {
         log.info('登录页面初始化，需要用户手动点击登录按钮');
         window._loginPanelMounted = true;
@@ -118,6 +121,22 @@ export default defineComponent({
 
       // 检查各种登出场景并显示相应提示
       checkLogoutScenarios();
+
+      // 检测是否存在管理员账户，用于首次引导创建管理员
+      try {
+        await apiService.init();
+        // 使用默认缓存策略获取管理员存在性
+        const resp = await apiService.get('/users/admin-exists');
+        if (resp && resp.success) {
+          isFirstAdminMode.value = !resp.adminExists;
+          if (isFirstAdminMode.value) {
+            log.info('未检测到管理员账户，启用首次管理员创建模式');
+          }
+        }
+      } catch (e) {
+        // 静默失败：保持默认登录模式
+        log.warn('检查管理员存在性失败，按普通登录处理', e);
+      }
     });
 
     // 检查登出场景并显示相应提示
@@ -213,32 +232,88 @@ export default defineComponent({
       try {
         loginLoading.value = true;
 
-        // 记录登录选项（合并到登录流程日志中）
-        log.info('开始登录流程', {
-          username: loginForm.username,
-          remember: rememberMe.value
-        });
+        if (isFirstAdminMode.value) {
+          // 首次启动：注册管理员并登录
+          log.info('首次模式：创建管理员并登录', { username: loginForm.username });
+          const resp = await apiService.post('/users/register', {
+            username: loginForm.username,
+            password: loginForm.password,
+            // 后端会在无管理员时自动授予管理员权限
+            // isAdmin: true // 可不传，由后端判定
+          });
 
-        // 调用登录方法
-        const result = await userStore.login({
-          username: loginForm.username,
-          password: loginForm.password,
-          remember: rememberMe.value
-        });
+          if (resp && resp.success && resp.token && resp.user) {
+            // 记住密码选项
+            if (rememberMe.value) {
+              userStore.saveUserCredentials(loginForm.username, loginForm.password);
+            } else {
+              userStore.clearUserCredentials();
+            }
 
-        if (result.success) {
-          // 检查是否需要MFA验证
+            // 设置登录状态
+            userStore.setToken(resp.token);
+            userStore.setUserInfo(resp.user);
+
+            // 已成功创建管理员，关闭引导模式
+            isFirstAdminMode.value = false;
+
+            // 更新 /users/admin-exists 的缓存为存在管理员（60秒TTL）
+            try {
+              apiService.setGetCache('/users/admin-exists', {}, { success: true, adminExists: true }, 60000);
+            } catch (e) {
+              log.warn('更新管理员存在性缓存失败', e);
+            }
+
+            const createdIsAdmin = !!(resp.user && resp.user.isAdmin);
+            ElMessage({
+              message: createdIsAdmin ? '管理员账户已创建并已登录' : '账户已创建并已登录',
+              type: 'success',
+              offset: 3,
+              zIndex: 9999
+            });
+
+            // 通知登录状态管理器
+            try {
+              await authStateManager.onUserLogin(resp.user);
+            } catch (e) {
+              log.warn('通知登录状态管理器失败', e);
+            }
+
+            // 跳转主页
+            router.push('/');
+            emit('login-success');
+            return;
+          } else {
+            throw new Error(resp?.message || '创建管理员失败');
+          }
+        } else {
+          // 常规登录
+          // 记录登录选项（合并到登录流程日志中）
+          log.info('开始登录流程', {
+            username: loginForm.username,
+            remember: rememberMe.value
+          });
+
+          // 调用登录方法
+          const result = await userStore.login({
+            username: loginForm.username,
+            password: loginForm.password,
+            remember: rememberMe.value
+          });
+
+          if (result.success) {
+            // 检查是否需要MFA验证
           if (result.requireMfa) {
             // 保存临时用户信息
             tempUserInfo.value = result.user;
-            tempUserInfo.value.isDefaultPassword = result.isDefaultPassword;
             // 显示MFA验证弹窗
             showMfaModal.value = true;
             return;
           }
 
           // 不需要MFA，直接完成登录流程
-          completeLogin(result.silent, result.isDefaultPassword);
+          completeLogin(result.silent);
+        }
         }
       } catch (error) {
         console.error('登录失败:', error);
@@ -259,11 +334,8 @@ export default defineComponent({
       try {
         loginLoading.value = true;
 
-        // 获取是否使用默认密码的状态
-        const isDefaultPassword = tempUserInfo.value?.isDefaultPassword || false;
-
         // 完成登录流程
-        completeLogin(false, isDefaultPassword);
+        completeLogin(false);
       } catch (error) {
         console.error('MFA验证后登录失败:', error);
         ElMessage({
@@ -278,7 +350,7 @@ export default defineComponent({
     };
 
     // 完成登录流程
-    const completeLogin = (silent = false, isDefaultPassword = false) => {
+    const completeLogin = (silent = false) => {
       // 清空表单(密码字段)
       loginForm.password = '';
       tempUserInfo.value = null;
@@ -288,32 +360,6 @@ export default defineComponent({
 
       // 发出清空页签的全局事件
       window.dispatchEvent(new CustomEvent('auth:login-success-clear-tabs'));
-
-      // 如果使用默认密码，显示安全提示并自动打开用户设置
-      if (isDefaultPassword) {
-        ElMessage({
-          message:
-            '您当前使用的是系统初始密码，存在严重安全风险。为了保障您的账户安全，请立即修改密码。',
-          type: 'warning',
-          offset: 3,
-          zIndex: 9999,
-          duration: 5000
-        });
-
-        // 先导航到主页
-        router.push('/');
-
-        // 延迟一下再打开用户设置，确保页面已加载
-        setTimeout(() => {
-          // 发送打开用户设置的全局事件
-          window.dispatchEvent(
-            new CustomEvent('auth:open-user-settings', {
-              detail: { activeTab: 'account' }
-            })
-          );
-        }, 500);
-        return;
-      }
 
       // 显示登录成功消息(如果不是静默模式)
       if (!silent) {
@@ -354,6 +400,16 @@ export default defineComponent({
       });
     };
 
+    const formTitle = computed(() =>
+      isFirstAdminMode.value
+        ? '欢迎使用EasySSH'
+        : 'EasySSH 登录'
+    );
+
+    const submitButtonText = computed(() =>
+      isFirstAdminMode.value ? '登录并创建管理员账户' : '登录'
+    );
+
     return {
       loginForm,
       loginLoading,
@@ -364,7 +420,10 @@ export default defineComponent({
       showMfaModal,
       handleMfaVerifySuccess,
       handleMfaVerifyCancel,
-      tempUserInfo
+      tempUserInfo,
+      isFirstAdminMode,
+      formTitle,
+      submitButtonText
     };
   }
 });

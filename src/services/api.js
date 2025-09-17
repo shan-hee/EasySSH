@@ -18,8 +18,9 @@ class ApiService {
     this._lastTokenExists = null; // 用于跟踪token状态变化
 
     // 请求缓存（用于GET请求）
+    // 结构：key -> { data, timestamp, ttl }
     this.requestCache = new Map();
-    this.cacheTimeout = 5 * 60 * 1000; // 5分钟缓存
+    this.cacheTimeout = 5 * 60 * 1000; // 全局默认缓存TTL：5分钟
   }
 
   /**
@@ -264,11 +265,13 @@ class ApiService {
 
     // 生成缓存键
     const cacheKey = `GET:${url}:${JSON.stringify(params)}`;
+    const ttlMs = typeof config.cacheTtlMs === 'number' ? config.cacheTtlMs : this.cacheTimeout;
 
     // 检查缓存
     if (config.useCache !== false && this.requestCache.has(cacheKey)) {
       const cached = this.requestCache.get(cacheKey);
-      if (Date.now() - cached.timestamp < this.cacheTimeout) {
+      const effectiveTtl = typeof cached.ttl === 'number' ? cached.ttl : this.cacheTimeout;
+      if (Date.now() - cached.timestamp < effectiveTtl) {
         log.debug('使用缓存响应', { url, params });
         return cached.data;
       } else {
@@ -276,13 +279,15 @@ class ApiService {
       }
     }
 
-    const response = await this.axios.get(url, { params, ...config });
+    const { cacheTtlMs: _ttlIgnored, useCache: _useCacheIgnored, ...axiosConfig } = config || {};
+    const response = await this.axios.get(url, { params, ...axiosConfig });
 
     // 缓存GET请求响应
     if (config.useCache !== false) {
       this.requestCache.set(cacheKey, {
         data: response.data,
-        timestamp: Date.now()
+        timestamp: Date.now(),
+        ttl: ttlMs
       });
     }
 
@@ -354,6 +359,21 @@ class ApiService {
       }
     }
     keysToDelete.forEach(key => this.requestCache.delete(key));
+  }
+
+  /**
+   * 直接写入GET请求缓存（用于在状态变化后手动更新缓存）
+   * @param {string} url - GET路径
+   * @param {Object} params - 查询参数
+   * @param {Object} data - 要缓存的数据（与真实响应data结构一致）
+   */
+  setGetCache(url, params = {}, data, ttlMs = this.cacheTimeout) {
+    const cacheKey = `GET:${url}:${JSON.stringify(params)}`;
+    this.requestCache.set(cacheKey, {
+      data,
+      timestamp: Date.now(),
+      ttl: ttlMs
+    });
   }
 
   /**

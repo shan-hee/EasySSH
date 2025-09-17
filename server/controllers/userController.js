@@ -20,8 +20,8 @@ exports.register = async (req, res) => {
       });
     }
 
-    // 调用用户服务完成注册
-    const result = await userService.registerUser({
+    // 使用原子化注册，避免并发条件下出现多个首任管理员
+    const result = await userService.registerUserFirstAdminAtomic({
       username,
       email: req.body.email || null,
       password,
@@ -40,6 +40,17 @@ exports.register = async (req, res) => {
       success: false,
       message: '服务器错误，请稍后重试'
     });
+  }
+};
+
+// 检查是否存在管理员
+exports.adminExists = async (req, res) => {
+  try {
+    const count = User.countAdmins();
+    return res.json({ success: true, adminExists: count > 0 });
+  } catch (error) {
+    console.error('检查管理员存在性错误:', error);
+    return res.status(500).json({ success: false, message: '服务器错误，请稍后重试' });
   }
 };
 
@@ -122,10 +133,7 @@ exports.login = async (req, res) => {
       return res.status(401).json(result);
     }
 
-    // 确保isDefaultPassword包含在响应中
-    if (result.isDefaultPassword === undefined) {
-      result.isDefaultPassword = false;
-    }
+    // 返回登录结果
 
     res.json(result);
   } catch (error) {

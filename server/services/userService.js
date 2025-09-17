@@ -91,6 +91,70 @@ class UserService {
   }
 
   /**
+   * 原子化注册：在同一事务中判断是否存在管理员，并创建首个管理员
+   * 避免并发条件下出现多个管理员被自动授予的情况
+   */
+  async registerUserFirstAdminAtomic(userData) {
+    const db = connectDatabase();
+    try {
+      // 开启写事务以避免并发竞态
+      db.exec('BEGIN IMMEDIATE');
+
+      // 用户名唯一性检查（在事务内，尽量早失败）
+      const existingUsername = await User.findOne({ username: userData.username });
+      if (existingUsername) {
+        db.exec('ROLLBACK');
+        return { success: false, message: '用户名已被使用' };
+      }
+
+      // 邮箱唯一性检查
+      if (userData.email) {
+        const existingEmail = await User.findOne({ email: userData.email });
+        if (existingEmail) {
+          db.exec('ROLLBACK');
+          return { success: false, message: '邮箱已被注册' };
+        }
+      }
+
+      // 原子判断是否存在管理员
+      const adminCountRow = db.prepare('SELECT COUNT(*) AS count FROM users WHERE isAdmin = 1').get();
+      const isFirstAdmin = (adminCountRow && adminCountRow.count === 0);
+
+      // 创建用户
+      const user = new User({
+        username: userData.username,
+        email: userData.email || null,
+        password: userData.password,
+        profileData: userData.profile || {},
+        settingsData: userData.settings || {},
+        isAdmin: isFirstAdmin ? true : false,
+        status: 'active'
+      });
+
+      user.setPassword(userData.password);
+      await user.save();
+
+      // 提交事务
+      db.exec('COMMIT');
+
+      // 生成令牌与会话（事务外）
+      const token = await this.generateToken(user.id);
+      await this.createUserSession(user.id.toString(), token);
+
+      return {
+        success: true,
+        message: '注册成功',
+        user: user.toSafeObject(),
+        token
+      };
+    } catch (error) {
+      try { db.exec('ROLLBACK'); } catch (_) {}
+      logger.error('原子化用户注册失败', error);
+      return { success: false, message: `注册失败: ${error.message}` };
+    }
+  }
+
+  /**
    * 用户登录
    */
   async loginUser(username, password) {
@@ -153,13 +217,9 @@ class UserService {
 
       // 检查用户是否设置了多因素认证
       const needMfa = user.mfaEnabled;
-
-      // 检查是否使用默认密码
-      const isDefaultPassword = user.isDefaultPassword || false;
       logger.info('用户登录信息', {
         userId: user.id,
         username: user.username,
-        isDefaultPassword,
         needMfa
       });
 
@@ -167,8 +227,7 @@ class UserService {
         success: true,
         message: '登录成功',
         user: user.toSafeObject(),
-        token,
-        isDefaultPassword
+        token
       };
     } catch (error) {
       logger.error('用户登录失败', error);
@@ -539,8 +598,7 @@ class UserService {
       // 设置新密码
       user.setPassword(newPassword);
 
-      // 如果密码被修改，将不再是默认密码
-      user.isDefaultPassword = false;
+      // 设置新密码并保存
 
       await user.save();
 
@@ -618,17 +676,13 @@ class UserService {
       const token = this.generateToken(user.id);
       await this.createUserSession(user.id.toString(), token);
 
-      // 检查是否使用默认密码
-      const isDefaultPassword = user.isDefaultPassword || false;
-
       logger.info('MFA验证成功', { userId: user.id, username });
 
       return {
         success: true,
         message: '验证成功',
         user: user.toSafeObject(),
-        token,
-        isDefaultPassword
+        token
       };
     } catch (error) {
       logger.error('MFA验证失败', error);

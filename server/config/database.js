@@ -62,7 +62,6 @@ const connectDatabase = () => {
         
         isAdmin INTEGER DEFAULT 0,
         status TEXT DEFAULT 'active',
-        isDefaultPassword INTEGER DEFAULT 1,
         lastLogin TEXT,
         createdAt TEXT NOT NULL,
         updatedAt TEXT NOT NULL

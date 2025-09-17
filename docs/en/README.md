@@ -121,7 +121,7 @@ npm run dev
 ### Usage
 
 1. Visit http://localhost:8520
-2. Register an account or login with default admin account
+2. First use: if no admin exists, the login page will guide you to "Log in and create admin account"; otherwise, just log in
 3. Add your first server
 4. Click connect button and start remote management!
 

@@ -648,8 +648,7 @@ export const useUserStore = defineStore(
             token: response.token ? `${response.token.substring(0, 15)}...` : 'undefined',
             hasToken: !!response.token,
             tokenLength: response.token ? response.token.length : 0,
-            user: response.user ? response.user.username : null,
-            isDefaultPassword: response.isDefaultPassword || false
+            user: response.user ? response.user.username : null
           });
 
           // 处理记住密码功能
@@ -666,8 +665,7 @@ export const useUserStore = defineStore(
             return {
               success: true,
               requireMfa: true,
-              user: response.user,
-              isDefaultPassword: response.isDefaultPassword || false
+              user: response.user
             };
           }
 
@@ -715,8 +713,7 @@ export const useUserStore = defineStore(
 
           return {
             success: true,
-            silent: credentials.silent,
-            isDefaultPassword: response.isDefaultPassword || false
+            silent: credentials.silent
           };
         } else {
           // 登录失败
