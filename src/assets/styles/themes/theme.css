@@ -11,7 +11,9 @@
  */
 
 /* CSS层级定义 - 确保主题变量优先级 */
-@layer element-plus, theme-overrides;
+@layer element-plus, theme, theme-overrides;
+
+@layer theme {
 
 /* ===== 基础设计令牌 ===== */
 :root {
@@ -225,6 +227,43 @@
   --terminal-bg-size: cover;
   --terminal-bg-repeat: no-repeat;
   --terminal-bg-opacity: 0.5;
+
+  /* 分割线（侧栏与内容之间） */
+  --divider-color: var(--sidebar-border);
+  --divider-width: 1px;
+  --divider-transition: background-color var(--theme-transition-duration) var(--theme-transition-timing);
+
+  /* Monitoring tokens (shared across monitoring components) */
+  --monitor-breakpoint-xs: 480px;
+  --monitor-breakpoint-sm: 640px;
+  --monitor-breakpoint-md: 768px;
+  --monitor-breakpoint-lg: 1024px;
+  --monitor-breakpoint-xl: 1280px;
+
+  /* Monitoring component sizes */
+  --monitor-component-height-xs: 100px;
+  --monitor-component-height-sm: 130px;
+  --monitor-component-height-md: 160px;
+  --monitor-component-height-lg: 180px;
+
+  /* Monitoring chart sizes */
+  --monitor-chart-height-xs: 60px;
+  --monitor-chart-height-sm: 80px;
+  --monitor-chart-height-md: 100px;
+  --monitor-chart-height-lg: 120px;
+
+  /* Monitoring spacing and radii */
+  --monitor-spacing-xs: 4px;
+  --monitor-spacing-sm: 8px;
+  --monitor-spacing-md: 12px;
+  --monitor-spacing-lg: 16px;
+  --monitor-spacing-xl: 24px;
+  --monitor-header-spacing: 10px;
+
+  --monitor-radius-sm: 4px;
+  --monitor-radius-md: 6px;
+  --monitor-radius-lg: 8px;
+  --monitor-radius-xl: 12px;
 
   /* 其它局部用到的别名变量 */
   --primary-color: var(--color-primary);
@@ -1139,6 +1178,8 @@
   --ai-empty-icon-color: var(--color-text-tertiary);
   --ai-empty-text-color: var(--color-text-secondary);
 }
+
+} /* end @layer theme */
 
 /* ===== Element Plus 组件主题变量已整合到各主题定义中 ===== */
 

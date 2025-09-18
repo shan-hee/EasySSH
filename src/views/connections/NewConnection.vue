@@ -1558,6 +1558,8 @@ h2 {
   display: flex;
   align-items: center;
   justify-content: center;
+  /* 与侧边栏一致：默认使用侧边栏图标颜色 */
+  color: var(--sidebar-nav-color);
 }
 
 .action-btn svg,
@@ -1565,15 +1567,57 @@ h2 {
   width: 16px;
   height: 16px;
   font-size: 16px;
+  color: inherit; /* 让 el-icon 继承容器颜色 */
 }
 
-.action-btn:hover svg path {
-  fill: var(--color-primary);
+.action-btn svg path {
+  fill: currentColor; /* 与文字颜色保持一致 */
+  transition: fill var(--theme-transition-duration) var(--theme-transition-timing);
+}
+
+.action-btn:hover {
+  /* 悬浮仅改变图标颜色，不改背景 */
+  color: var(--color-text-white);
 }
 
 .action-btn .pinned {
   color: var(--color-primary);
   font-weight: bold;
+}
+
+/* 保持已置顶按钮在悬浮时仍使用主题主色 */
+.action-btn.pinned:hover {
+  color: var(--color-primary);
+}
+
+/* 浅色主题适配：默认使用主题主文本色，hover 仍为主色 */
+:root[data-theme='light'] .action-btn {
+  /* 浅色主题：默认同侧边栏颜色 */
+  color: var(--sidebar-nav-color);
+}
+:root[data-theme='light'] .action-btn:hover {
+  /* 悬浮使用之前的默认颜色（主文本），不改背景 */
+  color: var(--color-text-primary);
+}
+
+/* 浅色主题下：置顶按钮在悬浮时仍保持主题主色，避免“变浅”错觉 */
+:root[data-theme='light'] .action-btn.pinned:hover {
+  color: var(--color-primary);
+}
+
+/* 置顶图标（未置顶时空心，悬浮变实心） */
+/* 未置顶：.ruyi-icon-ot-backtop 的箭头路径是 stroke 轮廓，保持空心 */
+.action-btn .ruyi-icon-ot-backtop path[stroke] {
+  fill: none;
+  transition:
+    fill var(--theme-transition-duration) var(--theme-transition-timing),
+    stroke var(--theme-transition-duration) var(--theme-transition-timing);
+}
+
+/* 悬浮：为箭头路径填充 currentColor，视觉上变为实心 */
+.action-btn:hover .ruyi-icon-ot-backtop path[stroke] {
+  fill: currentColor;
+  stroke: currentColor;
 }
 
 /* 模态框样式由通用 Modal 组件提供，这里不再重复定义 overlay */

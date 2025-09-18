@@ -1,7 +1,9 @@
 /**
- * 布局样式文件
+ * 布局样式文件（归于 @layer layout）
  * 包含网格系统、容器、行列布局等基础布局样式
  */
+
+@layer layout {
 
 /* 容器 */
 .container {
@@ -69,16 +71,7 @@
   padding: 0px;
 }
 
-/* 侧边栏 */
-.sidebar {
-  width: 250px;
-  height: 100%;
-  background-color: var(--bg-sidebar);
-  transition:
-    width var(--theme-transition-duration) var(--theme-transition-timing),
-    background-color var(--theme-transition-duration) var(--theme-transition-timing);
-  position: relative;
-}
+/* 侧边栏样式在组件内维护，避免全局覆盖 */
 
 /* .sidebar--collapsed 样式已移至 layouts/layout-base.css */
 
@@ -88,3 +81,5 @@
 /* Flexbox工具类已移至 base/utilities.css */
 
 /* 间距工具类已移至 base/utilities.css */
+
+} /* end @layer layout */

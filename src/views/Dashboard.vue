@@ -458,10 +458,13 @@ export default {
 }
 
 .quick-action-btn {
-  display: block;
+  display: inline-flex;
   width: 100%;
   margin-bottom: 10px;
-  text-align: left;
+  justify-content: center; /* 水平居中图标与文字 */
+  align-items: center;      /* 垂直居中 */
+  gap: 8px;                 /* 图标与文字间距 */
+  text-align: center;
 }
 
 /* 统一的主要按钮样式 */

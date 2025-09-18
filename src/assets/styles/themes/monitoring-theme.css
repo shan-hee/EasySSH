@@ -4,6 +4,8 @@
  * 支持深浅主题切换，提供统一的视觉语言
  */
 
+@layer theme {
+
 /* ===== 监控组件颜色系统 ===== */
 :root {
   /* CPU监控 - 蓝绿渐变色系 */
@@ -52,13 +54,6 @@
   --monitor-text-secondary: #b0b0b0;
   --monitor-text-muted: #6b7280;
 
-  /* 图表配置 - 深色主题 */
-  --monitor-chart-grid: rgba(255, 255, 255, 0.1);
-  --monitor-chart-axis: rgba(255, 255, 255, 0.4);
-  --monitor-chart-tooltip-bg: rgba(0, 0, 0, 0.9);
-  --monitor-chart-tooltip-border: rgba(255, 255, 255, 0.2);
-  --monitor-chart-tooltip-text: #e5e5e5;
-
   /* 阴影效果 */
   --monitor-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.1);
   --monitor-shadow-md: 0 4px 6px rgba(0, 0, 0, 0.1);
@@ -69,7 +64,7 @@
   --monitor-transition-normal: 0.3s ease-out;
   --monitor-transition-slow: 0.5s ease-out;
 
-  /* 图表配置 */
+  /* 图表配置（深色主题） */
   --monitor-chart-grid: rgba(255, 255, 255, 0.1);
   --monitor-chart-axis: rgba(255, 255, 255, 0.3);
   --monitor-chart-tooltip-bg: rgba(0, 0, 0, 0.8);
@@ -116,42 +111,7 @@
   --monitor-chart-tooltip-text: #303133;
 }
 
-/* ===== 响应式断点配置 ===== */
-:root {
-  /* 监控组件专用断点 */
-  --monitor-breakpoint-xs: 480px;
-  --monitor-breakpoint-sm: 640px;
-  --monitor-breakpoint-md: 768px;
-  --monitor-breakpoint-lg: 1024px;
-  --monitor-breakpoint-xl: 1280px;
-
-  /* 组件尺寸配置 */
-  --monitor-component-height-xs: 100px;
-  --monitor-component-height-sm: 130px;
-  --monitor-component-height-md: 160px;
-  --monitor-component-height-lg: 180px;
-
-  /* 图表尺寸配置 */
-  --monitor-chart-height-xs: 60px;
-  --monitor-chart-height-sm: 80px;
-  --monitor-chart-height-md: 100px;
-  --monitor-chart-height-lg: 120px;
-
-  /* 间距配置 */
-  --monitor-spacing-xs: 4px;
-  --monitor-spacing-sm: 8px;
-  --monitor-spacing-md: 12px;
-  --monitor-spacing-lg: 16px;
-  --monitor-spacing-xl: 24px;
-  /* 标题/头部间距（统一监控面标题） */
-  --monitor-header-spacing: 10px;
-
-  /* 圆角配置 */
-  --monitor-radius-sm: 4px;
-  --monitor-radius-md: 6px;
-  --monitor-radius-lg: 8px;
-  --monitor-radius-xl: 12px;
-}
+/* ===== 响应式断点与尺寸等基础令牌已迁移至 theme.css 的 :root 中（Monitoring tokens） ===== */
 
 /* ===== 通用监控组件样式类 ===== */
 .monitor-section {
@@ -208,16 +168,7 @@
   overflow: hidden;
 }
 
-.monitor-no-data {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  height: 100%;
-  color: var(--monitor-text-muted);
-  font-size: 12px;
-  gap: var(--monitor-spacing-sm);
-}
+/* 移除未使用：monitor-no-data */
 
 /* ===== 状态指示器样式 ===== */
 .monitor-status-normal {
@@ -230,15 +181,8 @@
   color: var(--monitor-error);
 }
 
-.monitor-value-display {
-  display: flex;
-  align-items: center;
-  gap: var(--monitor-spacing-xs);
-  padding: var(--monitor-spacing-xs) var(--monitor-spacing-sm);
-  background: transparent; /* 移除背景 */
-  border-radius: 0; /* 移除圆角 */
-  font-size: 12px;
-  font-weight: 500;
-}
+/* 移除未使用：monitor-value-display */
 
 /* 移除所有响应式适配，保持桌面端样式 */
+
+} /* end @layer theme */

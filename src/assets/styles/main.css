@@ -3,6 +3,9 @@
  * 用于导入所有样式模块，优化加载策略
  */
 
+/* 分层顺序：reset < theme < layout < components < utilities */
+@layer reset, theme, layout, components, utilities;
+
 /* 主题样式 - 优先加载，确保CSS变量可用 */
 @import './themes/theme.css';
 @import './themes/monitoring-theme.css';
@@ -19,17 +22,13 @@
 @import './layout-main.css';
 
 /* 组件样式 */
-@import './components/header.css';
-@import './components/menu.css';
 @import './components/cards.css';
 @import './components/forms.css';
-@import './components/critical-components.css';
 @import './components/accessibility.css';
-@import './components/ai-panel.css';
-@import './components/ai-message.css';
 
 /* 打印样式 - 仅在打印时使用 */
 @media print {
+  @layer utilities {
   /* 基础打印样式 */
   * {
     background: white !important;
@@ -57,6 +56,7 @@
     width: 100% !important;
     margin: 0 !important;
     padding: 0 !important;
+  }
   }
 }
 

@@ -1,7 +1,9 @@
 /*
- * critical-layout.css - 首屏渲染必需的布局样式
+ * critical-layout.css - 首屏渲染必需的布局样式（归于 @layer layout）
  * 这些样式确保页面基本布局结构在初始加载时不会发生跳动
  */
+
+@layer layout {
 
 /* 网格系统 - 首屏布局必需 */
 .container {
@@ -18,77 +20,6 @@
   margin-left: -15px;
 }
 
-/* 基础列定义 - 仅包含首屏需要的部分 */
-.col-12 {
-  flex: 0 0 100%;
-  max-width: 100%;
-  padding: 0 15px;
-  margin-bottom: 20px;
-}
+/* 已移除未使用：列/卡片/标题/间距辅助等（见扫描报告） */
 
-/* 移动优先的基本响应式样式 */
-@media (min-width: 768px) {
-  .col-md-4 {
-    flex: 0 0 33.333333%;
-    max-width: 33.333333%;
-  }
-
-  .col-sm-6 {
-    flex: 0 0 50%;
-    max-width: 50%;
-  }
-}
-
-/* 卡片布局 - 首屏必需 */
-.card {
-  background-color: #fff;
-  border-radius: 4px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-  margin-bottom: 20px;
-  overflow: hidden;
-}
-
-.card__header {
-  padding: 15px 20px;
-  border-bottom: 1px solid #eee;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.card__body {
-  padding: 20px;
-}
-
-/* 首屏标题区域样式 */
-.header-content {
-  margin-bottom: 25px;
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.title-area {
-  margin-bottom: 15px;
-}
-
-/* 基本间距系统 - 首屏必需 */
-/* .mb-0 已移至 base/utilities.css */
-.mb-10 {
-  margin-bottom: 10px;
-}
-.mb-20 {
-  margin-bottom: 20px;
-}
-.mt-10 {
-  margin-top: 10px;
-}
-.mt-20 {
-  margin-top: 20px;
-}
-
-/* 居中容器 - 首屏必需 */
-.text-center {
-  text-align: center;
-}
+} /* end @layer layout */

@@ -266,10 +266,12 @@ export default defineComponent({
     width var(--theme-transition-duration) var(--theme-transition-timing),
     background-color var(--theme-transition-duration) var(--theme-transition-timing),
     border-color var(--theme-transition-duration) var(--theme-transition-timing);
-  overflow: visible;
+  overflow-x: visible; /* 允许tooltip水平溢出 */
+  overflow-y: auto;   /* 垂直方向可滚动，避免底部按钮被顶出 */
   border-right: none; /* 由主内容容器绘制统一分割线 */
   box-sizing: border-box;
   z-index: var(--z-sticky);
+  position: relative; /* 让绝对定位的底部按钮以侧栏为参照 */
 }
 
 .logo {
@@ -323,6 +325,8 @@ export default defineComponent({
   flex-direction: column;
   align-items: center;
   width: 100%;
+  /* 为底部两个按钮预留空间，避免内容与之重叠 */
+  padding-bottom: calc(var(--layout-sidebar-width) * 2 + 8px);
 }
 
 .nav-item {
@@ -434,6 +438,7 @@ export default defineComponent({
   display: flex;
   flex-direction: column;
   align-items: center;
+  gap: 4px; /* 两个按钮之间留一点间距，防止视觉拥挤 */
 }
 
 /* 移动端适配样式 */

@@ -1,7 +1,8 @@
 /**
- * 无障碍样式组件
+ * 无障碍样式组件（归于 @layer components）
  * 提供辅助功能相关的样式定义
  */
+@layer components {
 
 /* 屏幕阅读器专用 - 视觉隐藏，但保持无障碍可读 */
 .sr-only {
@@ -198,6 +199,8 @@
   margin-right: 1rem;
   text-align: right;
 }
+
+} /* end @layer components */
 
 /* 字体大小基础设置 */
 html {

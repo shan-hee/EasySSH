@@ -3,8 +3,8 @@
  * 用于定义所有字体及其变体
  */
 
-/* 移除外部Google字体导入，使用本地文件以提高加载性能 */
-/* @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap'); */
+/* 移除外部 Google Fonts 导入（使用本地文件提高加载性能） */
+/* Google Fonts import removed */
 
 /* JetBrains Mono 字体定义 */
 @font-face {

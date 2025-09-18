@@ -1,7 +1,8 @@
 /* 
- * base.css - 基础样式
+ * base.css - 基础样式（归于 @layer reset）
  * 包含样式重置、基础变量和通用样式
  */
+@layer reset {
 
 /* 导入字体定义 */
 @import './fonts.css';
@@ -62,31 +63,7 @@ ol {
 
 /* 辅助类已移至 base/utilities.css */
 
-.visually-hidden {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-  white-space: nowrap;
-  border: 0;
-}
-
-.clearfix::after {
-  content: '';
-  display: table;
-  clear: both;
-}
-
-/* 文本对齐工具类已移至utilities.css */
-
-.text-truncate {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
+/* 已移除未使用的遗留辅助类：visually-hidden/clearfix/text-truncate */
 
 /* 滚动条样式 */
 ::-webkit-scrollbar {
@@ -106,3 +83,5 @@ ol {
 ::-webkit-scrollbar-thumb:hover {
   background: transparent;
 }
+
+} /* end @layer reset */

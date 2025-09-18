@@ -401,6 +401,8 @@ export default defineComponent({
   position: relative;
 }
 
+/* 顶部栏不再绘制分割线，统一由主内容容器负责 */
+
 /* 标签容器样式 */
 .tab-container {
   display: flex;

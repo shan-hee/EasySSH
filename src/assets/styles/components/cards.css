@@ -1,7 +1,8 @@
 /*
- * cards.css - 卡片组件样式
+ * cards.css - 卡片组件样式（归于 @layer components）
  * 使用BEM命名规范
  */
+@layer components {
 
 /* 连接卡片组件 */
 .connection-card {
@@ -25,71 +26,7 @@
   box-shadow: var(--shadow-md);
 }
 
-.connection-card__header {
-  display: flex;
-  align-items: center;
-  margin-bottom: var(--spacing-sm);
-}
-
-.connection-card__icon {
-  width: 32px;
-  height: 32px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background-color: var(--color-primary-light);
-  color: var(--color-bg-container);
-  border-radius: var(--radius-md);
-  margin-right: var(--spacing-sm);
-  font-size: var(--font-size-sm);
-}
-
-.connection-card__name {
-  font-weight: 600;
-  color: var(--gray-800);
-  font-size: var(--font-size-md);
-  flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.connection-card__host {
-  font-size: var(--font-size-sm);
-  color: var(--gray-600);
-  margin-bottom: var(--spacing-sm);
-}
-
-.connection-card__time {
-  font-size: var(--font-size-xs);
-  color: var(--gray-500);
-  margin-bottom: var(--spacing-md);
-}
-
-.connection-card__footer {
-  margin-top: auto;
-  display: flex;
-  justify-content: flex-end;
-}
-
-.connection-card__connect-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  background-color: var(--color-primary);
-  color: var(--color-bg-container);
-  border-radius: var(--radius-md);
-  padding: var(--spacing-xs) var(--spacing-md);
-  font-size: var(--font-size-sm);
-  font-weight: 500;
-  border: none;
-  cursor: pointer;
-  transition: background-color var(--transition-fast);
-}
-
-.connection-card__connect-btn:hover {
-  background-color: var(--primary-dark);
-}
+/* 移除未使用的 connection-card BEM 子元素样式 */
 
 /* 功能卡片组件 */
 .feature-card {
@@ -107,54 +44,9 @@
   box-shadow: var(--shadow-md);
 }
 
-.feature-card__icon {
-  width: 48px;
-  height: 48px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: var(--radius-md);
-  margin-right: var(--spacing-md);
-  color: var(--color-bg-container);
-  font-size: var(--font-size-xl);
-}
-
-.feature-card--security .feature-card__icon {
-  background-color: var(--color-success);
-}
-
-.feature-card--performance .feature-card__icon {
-  background-color: var(--primary-color);
-}
-
-.feature-card--tools .feature-card__icon {
-  background-color: var(--warning-color);
-}
-
-.feature-card__content {
-  flex: 1;
-}
-
-.feature-card__title {
-  font-size: var(--font-size-md);
-  font-weight: 600;
-  color: var(--gray-800);
-  margin-bottom: var(--spacing-xs);
-}
-
-.feature-card__description {
-  font-size: var(--font-size-sm);
-  color: var(--gray-600);
-  line-height: 1.5;
-}
+/* 移除未使用的 feature-card BEM 子元素与修饰符样式 */
 
 /* 无连接提示 */
-.no-connections {
-  padding: var(--spacing-lg);
-  text-align: center;
-  color: var(--gray-500);
-  font-size: var(--font-size-md);
-  background-color: var(--gray-100);
-  border-radius: var(--border-radius-lg);
-  margin-bottom: var(--spacing-md);
-}
+/* 移除未使用的 no-connections 样式 */
+
+} /* end @layer components */

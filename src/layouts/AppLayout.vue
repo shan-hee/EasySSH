@@ -605,6 +605,21 @@ export default defineComponent({
   min-height: 100vh;
   overflow: hidden;
   background-color: var(--color-bg-page);
+  position: relative; /* 让贯穿分割线基于容器定位 */
+}
+
+/* 贯穿顶部到底部的分割线（无阴影），定位在侧边栏右侧 */
+.app-container::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: var(--layout-sidebar-width);
+  width: var(--divider-width);
+  background-color: var(--divider-color);
+  transition: var(--divider-transition);
+  pointer-events: none;
+  z-index: var(--z-fixed);
 }
 
 
@@ -614,8 +629,8 @@ export default defineComponent({
   flex: 1;
   overflow: hidden;
   min-height: 0;
-  /* 让分割线贯穿到顶部：将分割线画在主内容容器左侧 */
-  border-left: 1px solid var(--sidebar-border);
+  /* 主内容无需再绘制分割线 */
+  position: relative;
 }
 
 .content {
@@ -669,9 +684,9 @@ export default defineComponent({
 
   .main-content {
     min-height: 0;
-    /* 移动端侧边栏为覆盖式，主内容不需要分割线 */
-    border-left: none;
   }
+  /* 移动端侧边栏为覆盖式，隐藏分割线 */
+  .app-container::before { content: none; }
 }
 
 /* 移动端遮罩层样式 */

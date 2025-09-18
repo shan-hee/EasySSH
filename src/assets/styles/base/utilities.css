@@ -1,7 +1,8 @@
 /*
- * utilities.css - 通用工具类
+ * utilities.css - 通用工具类（归于 @layer utilities）
  * 提供可复用的样式工具类，减少重复代码
  */
+@layer utilities {
 
 /* ===== 布局工具类 ===== */
 .flex {
@@ -844,3 +845,5 @@
     transform: rotate(360deg);
   }
 }
+
+} /* end @layer utilities */
