@@ -138,14 +138,13 @@ export default defineComponent({
   justify-content: center;
   font-size: 18px;
   font-weight: bold;
-  width: var(--layout-sidebar-width); /* 使用侧边栏宽度设计令牌 */
-  height: 54px;
+  width: auto;
+  height: auto;
   margin: 0;
-  background-color: var(--sidebar-logo-bg);
+  background-color: transparent;
   box-sizing: border-box;
   z-index: 1;
-  border-right: 1px solid var(--sidebar-border);
-  border: none; /* 移除默认边框，由父容器控制 */
+  border: none; /* 容器样式由父级控制 */
 }
 
 .logo svg {
@@ -155,17 +154,13 @@ export default defineComponent({
 .rainbow-logo {
   position: relative;
   z-index: 10;
-  background-color: var(--sidebar-logo-bg);
+  background-color: transparent;
 }
 
 .rainbow-logo svg {
   position: relative;
   z-index: 5;
   filter: drop-shadow(0 2px 5px rgba(0, 0, 0, 0.7));
-}
-
-.rainbow-logo path {
-  fill: url(#rainbow-gradient) !important;
 }
 
 .logo--clickable {

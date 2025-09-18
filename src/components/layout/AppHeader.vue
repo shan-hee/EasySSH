@@ -698,7 +698,6 @@ export default defineComponent({
     width: var(--layout-sidebar-width); /* 使用侧边栏宽度设计令牌 */
     height: var(--layout-header-height); /* 使用应用头部高度令牌 */
     background-color: var(--header-bg); /* 使用与AppHeader相同的背景色 */
-    border-right: none; /* 移除移动端logo右边框 */
     flex-shrink: 0;
     -webkit-tap-highlight-color: transparent; /* 移除移动端点击高亮 */
     -webkit-touch-callout: none; /* 移除长按菜单 */

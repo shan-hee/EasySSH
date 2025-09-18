@@ -607,12 +607,15 @@ export default defineComponent({
   background-color: var(--color-bg-page);
 }
 
+
 .main-content {
   display: flex;
   flex-direction: column;
   flex: 1;
   overflow: hidden;
   min-height: 0;
+  /* 让分割线贯穿到顶部：将分割线画在主内容容器左侧 */
+  border-left: 1px solid var(--sidebar-border);
 }
 
 .content {
@@ -666,6 +669,8 @@ export default defineComponent({
 
   .main-content {
     min-height: 0;
+    /* 移动端侧边栏为覆盖式，主内容不需要分割线 */
+    border-left: none;
   }
 }
 

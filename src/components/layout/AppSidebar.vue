@@ -267,7 +267,7 @@ export default defineComponent({
     background-color var(--theme-transition-duration) var(--theme-transition-timing),
     border-color var(--theme-transition-duration) var(--theme-transition-timing);
   overflow: visible;
-  border-right: 1px solid var(--sidebar-border);
+  border-right: none; /* 由主内容容器绘制统一分割线 */
   box-sizing: border-box;
   z-index: var(--z-sticky);
 }
@@ -284,7 +284,6 @@ export default defineComponent({
   background-color: var(--sidebar-logo-bg);
   box-sizing: border-box;
   z-index: 1;
-  border-right: 1px solid var(--sidebar-border);
 }
 
 .logo svg {
@@ -451,7 +450,6 @@ export default defineComponent({
     overflow-y: auto;
     overflow-x: hidden;
     box-shadow: 2px 0 8px rgba(0, 0, 0, 0.15);
-    border-right: none; /* 移除右边框 */
     -webkit-tap-highlight-color: transparent; /* 移除移动端点击高亮 */
   }
 
@@ -466,7 +464,6 @@ export default defineComponent({
     width: var(--layout-sidebar-width); /* 使用侧边栏宽度设计令牌 */
     height: var(--layout-header-height); /* 使用应用头部高度设计令牌 */
     cursor: pointer;
-    border-right: none; /* 移除右边框 */
     border-bottom: none;
     transition: background-color 0.2s ease;
     z-index: 1;
