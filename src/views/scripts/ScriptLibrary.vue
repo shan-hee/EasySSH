@@ -214,6 +214,9 @@
                   allow-create
                   default-first-option
                   placeholder="输入或选择"
+                  placement="bottom-start"
+                  :fallback-placements="[]"
+                  :popper-options="{ strategy: 'fixed', modifiers: [{ name: 'flip', options: { fallbackPlacements: [] } }] }"
                   @change="handlePageSizeChange"
                 >
                   <el-option
@@ -293,6 +296,10 @@
                 default-first-option
                 placeholder="请选择或输入标签"
                 class="script-tags-select"
+                placement="bottom-start"
+                :fallback-placements="[]"
+                :popper-options="{ strategy: 'fixed', modifiers: [{ name: 'flip', options: { fallbackPlacements: [] } }] }"
+                :teleported="false"
               >
                 <el-option v-for="tag in availableTags" :key="tag" :label="tag" :value="tag" />
               </el-select>
@@ -1437,7 +1444,7 @@ export default defineComponent({
   border: 1px solid var(--color-border-default);
   border-radius: 4px;
   padding: 8px;
-  z-index: 100;
+  z-index: var(--z-dropdown);
   margin-top: 4px;
   min-width: 180px;
   box-shadow: var(--shadow-md);
@@ -2020,6 +2027,11 @@ export default defineComponent({
   margin: 0;
   position: relative;
   transform: none;
+}
+
+/* 确保弹出层在对话框内不被裁剪（配合 teleported=false 使用） */
+.script-dialog :deep(.el-dialog__body) {
+  overflow: visible;
 }
 
 @media (max-width: 1024px) {

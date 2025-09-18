@@ -106,7 +106,7 @@ export default {
   display: flex;
   justify-content: center;
   align-items: center;
-  z-index: 1000;
+  z-index: var(--z-overlay);
   transition: opacity 0.5s ease-out;
 }
 

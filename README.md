@@ -200,6 +200,12 @@ npm run dev
   </tr>
 </table>
 
+### 样式与变量
+
+- 主题令牌：所有通用颜色/间距/字号等变量集中在 `src/assets/styles/themes/theme.css`（文件顶部含简要说明）。
+- Modal 变量：所有可调的 Modal 变量（容器/遮罩/标题/内容/页脚/标签栏）已内嵌注释于 `src/components/common/Modal.vue` 的样式块中。
+  在具体弹窗的容器类（如 `.user-settings-modal.modal-container`、`.connection-modal.modal-container`）上覆盖相应变量，即可实现差异化样式而不影响其他弹窗。
+
 ### 性能优势
 
 - **实时通信**: WebSocket建立持久连接，确保命令执行响应迅速

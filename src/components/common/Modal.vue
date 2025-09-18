@@ -28,15 +28,15 @@
             <button
               v-for="button in buttons"
               :key="button.text"
-              :class="['modal-btn', `btn-${button.type}`]"
+              :class="['btn', 'modal-btn', `btn-${button.type}`]"
               @click="button.onClick"
             >
               {{ button.text }}
             </button>
           </template>
           <template v-else>
-            <button class="modal-btn btn-cancel" @click="handleClose">取消</button>
-            <button class="modal-btn btn-confirm" @click="handleConfirm">确定</button>
+            <button class="btn modal-btn btn-cancel" @click="handleClose">取消</button>
+            <button class="btn modal-btn btn-confirm" @click="handleConfirm">确定</button>
           </template>
         </div>
       </div>
@@ -142,42 +142,101 @@ export default defineComponent({
 </script>
 
 <style scoped>
+/*
+  Modal 样式变量参考（就地说明）
+
+  容器（.modal-container）
+  - --modal-width               默认 550px
+  - --modal-bg                  默认 var(--color-bg-page)
+  - --modal-radius              默认 8px
+  - --modal-shadow              默认 0 4px 12px rgba(0,0,0,.5)
+  - --modal-max-height          默认 90vh
+
+  遮罩层（.modal-overlay）
+  - --dialog-overlay-bg         默认 rgba(0,0,0,.5)
+  - --z-overlay                 默认 9990
+
+  标题（.modal-header / .modal-title / .close-btn）
+  - --modal-header-padding      默认 var(--spacing-sm) var(--spacing-md)
+  - --modal-title-size          默认 var(--font-size-lg)
+  - --modal-title-weight        默认 600
+  - --modal-title-color         默认 var(--color-text-primary)
+  - --modal-close-size          默认 20px
+  - --modal-close-color         默认 var(--color-text-regular)
+  - --modal-close-hover-color   默认 var(--color-text-primary)
+
+  内容（.modal-body）
+  - --modal-body-gap            默认 var(--spacing-sm)
+  - --modal-body-bg             默认 var(--color-bg-page)
+
+  页脚（.modal-footer）
+  - --modal-footer-gap          默认 var(--spacing-sm)
+  - --modal-footer-padding      默认 var(--spacing-sm) var(--spacing-md)
+
+  标签栏（.modal-tab / .tab-item）
+  - --modal-tab-gap             默认 var(--spacing-sm)
+  - --modal-tab-padding-x       默认 var(--spacing-md)
+  - --modal-tab-item-padding-y  默认 10px
+  - --modal-tab-item-padding-x  默认 15px
+  - --modal-tab-font-size       默认 var(--font-size-sm)
+  - --modal-tab-font-weight     默认 600
+  - --modal-tab-color           默认 var(--color-text-primary)
+  - --modal-tab-indicator-height 默认 2px
+  - --modal-tab-indicator-color  默认 var(--color-primary)
+
+  20px 包围弹窗（.user-settings-modal / .connection-modal / .mfa-* /.logout-devices-modal）
+  - 上述类在 .modal-container 上有 padding: 20px；为避免与容器叠加：
+    .modal-header/.modal-footer 已在此文件归零 padding；.modal-body 的 margin-top 也归零。
+  - 如需恢复单独留白，可在具体弹窗覆盖对应 padding/margin 或变量。
+
+  常用覆盖示例（写在具体弹窗容器类上，如 .user-settings-modal.modal-container）
+  - 小标题 + 透明内容 + 紧凑页脚：
+      --modal-title-size: 14px;
+      --modal-title-weight: 500;
+      --modal-title-color: var(--color-text-secondary);
+      --modal-body-bg: transparent;
+      --modal-footer-gap: var(--spacing-xs);
+  - 连接弹窗更宽更高 + 紧凑标签：
+      --modal-width: 640px; --modal-max-height: 92vh;
+      --modal-tab-gap: var(--spacing-xs);
+      --modal-tab-item-padding-y: 8px; --modal-tab-item-padding-x: 12px;
+      --modal-tab-font-size: 13px; --modal-tab-indicator-height: 2px;
+*/
 .modal-overlay {
   position: fixed;
   top: 0;
   left: 0;
   right: 0;
   bottom: 0;
-  background-color: rgba(0, 0, 0, 0.5);
+  background-color: var(--dialog-overlay-bg, rgba(0, 0, 0, 0.5));
   display: flex;
   justify-content: center;
   align-items: center;
-  z-index: 9999;
+  z-index: var(--z-overlay, 9990);
 }
 
 .modal-container {
-  width: 550px;
-  background-color: var(--color-bg-page);
-  border-radius: 8px;
+  width: var(--modal-width, 550px);
+  background-color: var(--modal-bg, var(--color-bg-page));
+  border-radius: var(--modal-radius, 8px);
   overflow: hidden;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+  box-shadow: var(--modal-shadow, 0 4px 12px rgba(0, 0, 0, 0.5));
   /* 使内容区域可在内部滚动 */
   display: flex;
   flex-direction: column;
   /* 默认限制高度，防止超出可视区 */
-  max-height: 90vh;
+  max-height: var(--modal-max-height, 90vh);
 }
 
 .modal-header {
-  padding: 12px 15px;
   display: flex;
   justify-content: space-between;
   align-items: center;
+  padding: var(--modal-header-padding, var(--spacing-sm) var(--spacing-md));
 }
 
 .modal-header span {
   color: var(--color-text-primary);
-  font-weight: bold;
 }
 
 /* 标题在移动端过长时单行省略 */
@@ -187,24 +246,33 @@ export default defineComponent({
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  /* 统一标题视觉：可通过变量覆盖 */
+  font-size: var(--modal-title-size, var(--font-size-lg));
+  font-weight: var(--modal-title-weight, 600);
+  color: var(--modal-title-color, var(--color-text-primary));
 }
 
 .close-btn {
   cursor: pointer;
-  font-size: 20px;
-  color: var(--color-text-regular);
+  font-size: var(--modal-close-size, 20px);
+  color: var(--modal-close-color, var(--color-text-regular));
+}
+.close-btn:hover {
+  color: var(--modal-close-hover-color, var(--color-text-primary));
 }
 
 .modal-tab {
   display: flex;
-  gap: 8px;
+  gap: var(--modal-tab-gap, var(--spacing-sm));
+  padding: 0 ;
   overflow-x: auto;
 }
 
 .tab-item {
-  padding: 10px 15px;
-  color: var(--color-text-primary);
-  font-weight: bold;
+  padding: var(--modal-tab-item-padding-y, 10px) var(--modal-tab-item-padding-x, 15px);
+  color: var(--modal-tab-color, var(--color-text-primary));
+  font-weight: var(--modal-tab-font-weight, 600);
+  font-size: var(--modal-tab-font-size, var(--font-size-sm));
   cursor: pointer;
   position: relative;
   text-align: center;
@@ -221,13 +289,13 @@ export default defineComponent({
   bottom: -1px;
   left: 0;
   width: 100%;
-  height: 2px;
-  background-color: var(--color-primary);
+  height: var(--modal-tab-indicator-height, 2px);
+  background-color: var(--modal-tab-indicator-color, var(--color-primary));
 }
 
 .modal-body {
-  margin-top: 10px;
-  background-color: var(--color-bg-page);
+  margin-top: var(--modal-body-gap, var(--spacing-sm));
+  background-color: var(--modal-body-bg, var(--color-bg-page));
   /* 关键：内容区域滚动 */
   overflow: auto;
   flex: 1 1 auto;
@@ -238,45 +306,13 @@ export default defineComponent({
 .modal-footer {
   display: flex;
   justify-content: flex-end;
-  gap: 10px;
-  padding: 15px;
+  gap: var(--modal-footer-gap, var(--spacing-sm));
+  padding: var(--modal-footer-padding, var(--spacing-sm) var(--spacing-md));
   flex: 0 0 auto;
 }
 
 .modal-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 8px 20px;
-  border: none;
-  border-radius: 4px;
-  color: var(--color-text-white);
-  cursor: pointer;
-  font-weight: bold;
-  min-width: 80px;
-  height: 36px;
-  font-size: 14px;
-}
-
-.btn-cancel {
-  background-color: var(--color-bg-muted);
-  border: 1px solid var(--color-border-default);
-  color: var(--color-text-primary);
-}
-
-.btn-confirm {
-  background-color: var(--color-bg-muted);
-  border: 1px solid var(--color-border-default);
-  color: var(--color-text-primary);
-}
-
-.btn-primary {
-  background-color: var(--btn-primary-bg);
-  color: var(--btn-primary-text);
-}
-
-.btn-primary:hover {
-  background-color: var(--btn-primary-hover-bg);
+  min-width: 80px; /* 保留最小宽度，其余视觉由全局 .btn 控制 */
 }
 
 /* 动画相关样式 */
@@ -320,28 +356,85 @@ export default defineComponent({
   }
 }
 
-/* 添加通用输入框样式 */
-:deep(input),
-:deep(textarea),
-:deep(select) {
+/* 添加通用输入框样式（精确匹配文本类输入，避免影响复选、单选、滑块等） */
+:deep(input[type='text']:not(.code-input):not(.form-input)),
+:deep(input[type='password']:not(.code-input):not(.form-input)),
+:deep(input[type='email']:not(.code-input):not(.form-input)),
+:deep(input[type='number']:not(.code-input):not(.form-input)),
+:deep(input[type='search']:not(.code-input):not(.form-input)),
+:deep(input[type='tel']:not(.code-input):not(.form-input)),
+:deep(input[type='url']:not(.code-input):not(.form-input)) {
   width: 100%;
-  height: 36px;
-  background-color: var(--color-bg-container);
+  height: var(--form-control-height, 36px);
+  line-height: var(--form-control-height, 36px);
+  background-color: transparent;
   border: 1px solid var(--color-border-default);
   border-radius: 6px;
   color: var(--color-text-primary);
-  padding: 0 20px;
+  padding: 0 var(--form-control-padding-x, 20px);
   box-sizing: border-box;
   outline: none;
   font-weight: normal;
   transition: border-color 0.3s;
 }
 
-:deep(input:focus),
-:deep(textarea:focus),
-:deep(select:focus) {
+/* 下拉选择框与文本类输入保持一致高度与内边距 */
+:deep(select:not(.form-select)) {
+  width: 100%;
+  height: var(--form-control-height, 36px);
+  line-height: var(--form-control-height, 36px);
+  background-color: var(--color-bg-container);
+  border: 1px solid var(--color-border-default);
+  border-radius: 6px;
+  color: var(--color-text-primary);
+  padding: 0 var(--form-control-padding-x, 20px);
+  box-sizing: border-box;
+  outline: none;
+  font-weight: normal;
+  transition: border-color 0.3s;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+}
+
+/* number 类型输入：隐藏浏览器默认微调箭头，保证高度与布局一致 */
+:deep(input[type='number']) {
+  -moz-appearance: textfield;
+}
+:deep(input[type='number']::-webkit-outer-spin-button),
+:deep(input[type='number']::-webkit-inner-spin-button) {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+/* 文本域不强制固定高度，使用最小高度并单独的内边距 */
+:deep(textarea) {
+  width: 100%;
+  min-height: var(--textarea-min-height, 100px);
+  background-color: var(--color-bg-container);
+  border: 1px solid var(--color-border-default);
+  border-radius: 6px;
+  color: var(--color-text-primary);
+  padding: 12px var(--form-control-padding-x, 20px);
+  box-sizing: border-box;
+  outline: none;
+  font-weight: normal;
+  transition: border-color 0.3s;
+}
+
+:deep(input:not(.form-input):not(.code-input):focus),
+:deep(textarea:not(.form-input):focus),
+:deep(select:not(.form-select):focus) {
   border-color: var(--color-primary);
   box-shadow: none;
+}
+
+/* 禁用态统一样式 */
+:deep(input:disabled),
+:deep(textarea:disabled),
+:deep(select:disabled) {
+  opacity: 0.6;
+  cursor: not-allowed;
+  background-color: var(--color-disabled-bg, var(--color-bg-muted));
 }
 
 :deep(input::placeholder),
@@ -350,8 +443,6 @@ export default defineComponent({
 }
 
 :deep(textarea) {
-  min-height: 100px;
-  padding: 12px 20px;
   resize: vertical;
 }
 
@@ -385,10 +476,6 @@ export default defineComponent({
     max-height: 92vh; /* 多留一点高度以适配设备栏 */
   }
 
-  .modal-header {
-    padding: 12px 12px;
-  }
-
   .modal-body {
     /* 防止滚动时穿透页面 */
     overscroll-behavior: contain;
@@ -408,5 +495,69 @@ export default defineComponent({
 
 .user-settings-modal .modal-body {
   overflow: hidden;
+}
+
+/* MFA 系列弹窗：统一圆角与标题分隔线 */
+.mfa-modal.modal-container,
+.mfa-verify-modal.modal-container,
+.mfa-disable-modal.modal-container {
+  --settings-panel-padding: 20px;
+  padding: var(--settings-panel-padding);
+}
+
+/* 连接弹窗：统一容器包围内边距 */
+.connection-modal.modal-container {
+  --settings-panel-padding: 20px;
+  padding: var(--settings-panel-padding);
+}
+
+/* 注销所有设备弹窗：统一容器包围内边距 */
+.logout-devices-modal.modal-container {
+  --settings-panel-padding: 20px;
+  padding: var(--settings-panel-padding);
+}
+
+.mfa-modal,
+.mfa-verify-modal,
+.mfa-disable-modal {
+  border-radius: 12px !important;
+  overflow: hidden !important;
+}
+
+.mfa-modal .modal-header,
+.mfa-verify-modal .modal-header,
+.mfa-disable-modal .modal-header {
+  padding: 0 !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05) !important;
+}
+
+/* 这类统一包围的弹窗，页脚不再额外内边距，避免双重留白 */
+.user-settings-modal .modal-footer,
+.connection-modal .modal-footer,
+.mfa-modal .modal-footer,
+.mfa-verify-modal .modal-footer,
+.mfa-disable-modal .modal-footer,
+.logout-devices-modal .modal-footer {
+  padding: 0;
+}
+
+/* 统一包围的弹窗：内容区域与标题直接衔接，不额外间距 */
+.user-settings-modal .modal-body,
+.connection-modal .modal-body,
+.mfa-modal .modal-body,
+.mfa-verify-modal .modal-body,
+.mfa-disable-modal .modal-body,
+.logout-devices-modal .modal-body {
+  margin-top: 0;
+}
+
+/* 统一包围弹窗的标题内边距归零，避免与容器 20px 叠加 */
+.logout-devices-modal .modal-header {
+  padding: 0 !important;
+}
+
+/* 连接弹窗：标题与设置弹窗一致，去掉额外内边距 */
+.connection-modal .modal-header {
+  padding: 0 !important;
 }
 </style>

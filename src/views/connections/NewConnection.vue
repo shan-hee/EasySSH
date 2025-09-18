@@ -1576,54 +1576,17 @@ h2 {
   font-weight: bold;
 }
 
-/* 模态框样式 */
-.modal-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background-color: rgba(0, 0, 0, 0.5);
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  z-index: 9999;
-}
+/* 模态框样式由通用 Modal 组件提供，这里不再重复定义 overlay */
 
-.modal-container {
-  width: 500px;
-  background-color: var(--color-bg-page);
-  border: 1px solid var(--color-border-default);
-  border-radius: 4px;
-  overflow: hidden;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
-}
+/* 容器样式使用通用 Modal 组件定义 */
 
-.modal-header {
-  padding: 12px 15px;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  background-color: var(--color-bg-muted);
-}
+/* 标题区域样式使用通用 Modal，局部覆盖请使用 :deep(.connection-modal .modal-header) */
 
-.modal-header span {
-  color: var(--color-text-primary);
-  font-size: 16px;
-  font-weight: bold;
-}
+/* 标题文本样式交由子组件自身控制 */
 
-.close-btn {
-  cursor: pointer;
-  font-size: 20px;
-  color: var(--color-text-regular);
-}
+/* 关闭按钮样式交由通用 Modal 控制 */
 
-.modal-tab {
-  display: flex;
-  border-bottom: none;
-  padding: 0 15px;
-}
+/* 标签区域样式在下方 :deep(.connection-modal .modal-tab) 中覆盖 */
 
 .tab-item {
   padding: 10px 15px;
@@ -1642,10 +1605,7 @@ h2 {
   background-color: var(--color-primary);
 }
 
-.modal-body {
-  padding: 15px;
-  background-color: var(--color-bg-page);
-}
+/* 内容区域样式由通用 Modal 控制 */
 
 .form-row {
   margin-bottom: 16px;
@@ -1655,12 +1615,11 @@ h2 {
 .form-row-two-columns {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 15px;
+  gap: 40px;
 }
 
 .form-item {
   width: 100%;
-  padding: 0 20px;
 }
 
 .form-item label {
@@ -1722,74 +1681,11 @@ h2 {
   color: var(--btn-primary-text);
 }
 
-.modal-footer {
-  display: flex;
-  justify-content: flex-end;
-  gap: 10px;
-  padding: 15px;
-  background-color: var(--color-bg-muted);
-}
+/* 底部区域样式在下方 :deep(.connection-modal .modal-footer) 局部覆盖 */
 
-.btn-cancel {
-  padding: 8px 20px;
-  background-color: var(--color-bg-muted);
-  border: 1px solid var(--color-border-default);
-  border-radius: 4px;
-  color: var(--color-text-primary);
-  cursor: pointer;
-  font-weight: bold;
-}
+/* 连接弹窗按钮风格统一由全局 forms.css (.btn-*) 控制 */
 
-.btn-confirm {
-  padding: 8px 20px;
-  background-color: var(--btn-primary-bg);
-  border: none;
-  border-radius: 4px;
-  color: var(--btn-primary-text);
-  cursor: pointer;
-  font-weight: bold;
-}
-
-/* 动画相关样式 */
-.modal-fade-enter-active,
-.modal-fade-leave-active {
-  transition: opacity 0.4s ease;
-}
-
-.modal-fade-enter-active .modal-container {
-  animation: slideDown 0.4s ease;
-}
-
-.modal-fade-leave-active .modal-container {
-  animation: slideUp 0.4s ease;
-}
-
-.modal-fade-enter-from,
-.modal-fade-leave-to {
-  opacity: 0;
-}
-
-@keyframes slideDown {
-  from {
-    transform: translateY(-50px);
-    opacity: 0;
-  }
-  to {
-    transform: translateY(0);
-    opacity: 1;
-  }
-}
-
-@keyframes slideUp {
-  from {
-    transform: translateY(0);
-    opacity: 1;
-  }
-  to {
-    transform: translateY(-50px);
-    opacity: 0;
-  }
-}
+/* 动画样式使用通用 Modal 的动画定义，这里移除重复定义 */
 
 /* 新的表单样式 */
 .connection-form {
@@ -1806,7 +1702,6 @@ h2 {
 }
 
 :deep(.connection-modal .modal-tab) {
-  padding: 0 15px;
   margin-bottom: 10px;
   border-bottom: 1px solid var(--color-border-default);
 }
@@ -2067,7 +1962,7 @@ h2 {
   opacity: 0.8;
   transform: scale(1.02) !important;
   box-shadow: var(--shadow-lg) !important;
-  z-index: 1000;
+  z-index: var(--z-fixed);
   background-color: var(--color-primary-lightest) !important;
   transition: none !important;
 }

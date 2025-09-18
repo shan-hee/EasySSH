@@ -630,7 +630,7 @@ export default defineComponent({
   top: var(--layout-header-height); /* 使用应用头部高度令牌 */
   right: 0;
   bottom: 0;
-  z-index: 1000;
+  z-index: var(--z-fixed);
   pointer-events: auto;
   overflow: visible;
 }
@@ -677,7 +677,7 @@ export default defineComponent({
   right: 0;
   bottom: 0;
   background-color: rgba(0, 0, 0, 0.5);
-  z-index: 15000;
+  z-index: var(--z-overlay);
   opacity: 0;
   animation: fadeIn 0.3s ease-in-out forwards;
 }

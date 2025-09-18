@@ -77,15 +77,15 @@ const onClose = () => emit('close');
 /* 左侧抽屉样式 - 从工具栏下方开始 */
 .mobile-monitoring-drawer {
   position: fixed;
-  top: 45px;
+  top: var(--layout-header-height);
   left: 0;
-  width: 80vw;
-  max-width: 400px;
-  height: calc(100vh - 45px);
-  background: rgba(0, 0, 0, 0.95);
-  border-right: 1px solid rgba(255, 255, 255, 0.1);
-  box-shadow: 4px 0 20px rgba(0, 0, 0, 0.3);
-  z-index: 9999;
+  width: var(--monitoring-drawer-width, 80vw);
+  max-width: var(--monitoring-drawer-max-width, 400px);
+  height: calc(100vh - var(--layout-header-height));
+  background: var(--monitoring-drawer-bg, rgba(0, 0, 0, 0.95));
+  border-right: 1px solid var(--monitoring-drawer-border, rgba(255, 255, 255, 0.1));
+  box-shadow: var(--monitoring-drawer-shadow, 4px 0 20px rgba(0, 0, 0, 0.3));
+  z-index: var(--z-overlay);
   overflow: hidden;
   transform: translateZ(0);
   -webkit-overflow-scrolling: touch;

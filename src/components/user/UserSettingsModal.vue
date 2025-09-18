@@ -323,6 +323,7 @@
                     max="24"
                     step="1"
                     class="form-slider"
+                    :style="{ '--progress': ((terminalSettings.fontSize - 8) / (24 - 8) * 100) + '%' }"
                     @input="previewTerminalFontSize"
                     @change="saveTerminalSettings"
                   />
@@ -453,6 +454,7 @@
                       max="1"
                       step="0.05"
                       class="form-slider"
+                      :style="{ '--progress': ((terminalBgSettings.opacity - 0.1) / (1 - 0.1) * 100) + '%' }"
                       @input="previewTerminalBg"
                       @change="updateTerminalBg"
                     />
@@ -2260,7 +2262,7 @@ export default defineComponent({
 .form-group label {
   display: block;
   margin-bottom: 8px;
-  font-size: 12px;
+  font-size: 14px; /* 统一与设计：用户名等字段标题为14px */
   font-weight: 500;
   color: var(--color-text-primary);
 }
@@ -2288,24 +2290,6 @@ export default defineComponent({
 
 .input-group {
   position: relative;
-}
-
-.form-input {
-  width: 100%;
-  padding: 12px 16px;
-  border: 1px solid var(--color-border-default);
-  border-radius: 6px;
-  background-color: var(--color-bg-container);
-  color: var(--color-text-primary);
-  font-size: 12px;
-  transition: all 0.2s ease;
-  box-sizing: border-box;
-}
-
-.form-input:focus {
-  outline: none;
-  border-color: var(--color-primary);
-  box-shadow: 0 0 0 2px var(--color-primary-lightest);
 }
 
 .form-input::placeholder {
@@ -2383,77 +2367,6 @@ export default defineComponent({
   justify-content: flex-end;
   /* 由外层面板容器统一控制留白，这里不再重复设置 */
   padding: 0;
-}
-
-/* 按钮样式 */
-.btn {
-  padding: 10px 20px;
-  border-radius: 6px;
-  font-size: 12px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  border: 1px solid transparent;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-}
-
-.btn:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.btn-primary {
-  background-color: var(--btn-primary-bg);
-  color: var(--btn-primary-text);
-  border-color: var(--btn-primary-bg);
-}
-
-.btn-primary:hover:not(:disabled) {
-  background-color: var(--btn-primary-hover-bg);
-}
-
-.btn-outline {
-  background-color: transparent;
-  color: var(--color-text-primary);
-  border-color: var(--color-border-default);
-}
-
-.btn-outline:hover:not(:disabled) {
-  background-color: var(--color-hover-bg);
-  border-color: var(--color-primary);
-  color: var(--color-primary);
-}
-
-.btn-danger {
-  background-color: var(--color-error);
-  color: white;
-  border-color: var(--color-error);
-}
-
-.btn-danger:hover:not(:disabled) {
-  background-color: var(--color-error-hover);
-}
-
-/* 加载动画 */
-.btn-loading {
-  width: 14px;
-  height: 14px;
-  border: 2px solid transparent;
-  border-top: 2px solid currentColor;
-  border-radius: 50%;
-  animation: spin 1s linear infinite;
-}
-
-@keyframes spin {
-  0% {
-    transform: rotate(0deg);
-  }
-  100% {
-    transform: rotate(360deg);
-  }
 }
 
 /* 响应式设计 */
@@ -2580,21 +2493,9 @@ export default defineComponent({
 }
 
 /* 表单选择框 */
-.form-select {
-  width: 100%;
-  padding: 7px 12px;
-  border: 1px solid var(--color-border-default);
-  border-radius: 6px;
-  background-color: var(--color-bg-container);
-  color: var(--color-text-primary);
-  font-size: 12px;
-  transition: all 0.2s ease;
-}
-
 .form-select:focus {
   outline: none;
   border-color: var(--color-primary);
-  box-shadow: 0 0 0 2px var(--color-primary-lightest);
 }
 
 /* 在安全设置项中的选择框样式 */
@@ -2603,66 +2504,9 @@ export default defineComponent({
   width: auto;
 }
 
-/* 滑块容器 */
-.slider-container {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
 /* 在安全设置项中的滑块容器样式 */
 .security-action .slider-container {
   min-width: 160px;
-}
-
-.form-slider {
-  flex: 1;
-  height: 6px;
-  border-radius: 3px;
-  background: var(--color-border-muted);
-  outline: none;
-  -webkit-appearance: none;
-  appearance: none;
-  padding: 0;             /* 避免两端留白 */
-  box-sizing: border-box; /* 保证轨道占满宽度 */
-}
-
-.form-slider::-webkit-slider-runnable-track {
-  height: 6px;
-  border-radius: 3px;
-  background: var(--color-border-muted);
-  border: none;
-}
-
-.form-slider::-moz-range-track {
-  height: 6px;
-  border-radius: 3px;
-  background: var(--color-border-muted);
-  border: none;
-}
-
-.form-slider::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  appearance: none;
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
-  background: var(--color-primary);
-  cursor: pointer;
-  border: 2px solid white;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
-  /* 使滑块垂直居中到轨道上，并避免端点错位的视觉空隙 */
-  margin-top: -6px; /* (轨道6 - 滑块18)/2 = -6 */
-}
-
-.form-slider::-moz-range-thumb {
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
-  background: var(--color-primary);
-  cursor: pointer;
-  border: 2px solid white;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
 }
 
 .slider-value {

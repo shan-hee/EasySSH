@@ -5,7 +5,7 @@
   bottom: 0;
   background-color: var(--sftp-panel-bg);
   box-shadow: -2px 0 5px rgba(0, 0, 0, 0.3);
-  z-index: 900;
+  z-index: var(--z-fixed);
   overflow: hidden;
   animation: sftp-slide-in 0.3s ease-out forwards;
   display: flex;

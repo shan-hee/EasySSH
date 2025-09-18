@@ -231,7 +231,7 @@ html {
   background: var(--color-bg-container);
   color: var(--color-text-primary);
   padding: 8px;
-  z-index: 100;
+  z-index: var(--z-sticky);
   transition: top var(--theme-transition-duration) var(--theme-transition-timing);
 }
 

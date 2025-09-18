@@ -269,7 +269,7 @@ export default defineComponent({
   overflow: visible;
   border-right: 1px solid var(--sidebar-border);
   box-sizing: border-box;
-  z-index: 10000;
+  z-index: var(--z-sticky);
 }
 
 .logo {
@@ -445,7 +445,7 @@ export default defineComponent({
     top: 0;
     width: 250px;
     height: 100vh;
-    z-index: 20000;
+    z-index: var(--z-tooltip);
     transform: translateX(-100%);
     transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     overflow-y: auto;

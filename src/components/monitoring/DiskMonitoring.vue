@@ -337,7 +337,7 @@ onUnmounted(() => {
 
 /* 确保Chart.js tooltip显示在最上层 */
 :deep(.chartjs-tooltip) {
-  z-index: 10000 !important;
+  z-index: var(--z-tooltip) !important;
   position: absolute !important;
 }
 

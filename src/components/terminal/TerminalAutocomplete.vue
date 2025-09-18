@@ -380,7 +380,7 @@ export default {
 <style scoped>
 .terminal-autocomplete {
   position: absolute;
-  z-index: 9999;
+  z-index: var(--z-tooltip);
   background: var(--color-bg-container);
   border: 1px solid var(--color-border-default);
   border-radius: 6px;

@@ -33,7 +33,7 @@
   justify-content: center;
   font-size: var(--font-size-xs);
   cursor: pointer;
-  z-index: 10;
+  z-index: var(--z-sticky);
   box-shadow: var(--shadow-base);
   transition: transform var(--transition-base) ease;
 }

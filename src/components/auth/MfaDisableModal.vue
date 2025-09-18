@@ -303,7 +303,7 @@ export default defineComponent({
 
 <style scoped>
 .mfa-disable-container {
-  padding: 0 20px 20px;
+  padding: 0; /* 统一由外层 modal-container 提供 20px 内边距 */
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -394,32 +394,7 @@ export default defineComponent({
   margin: 30px 0;
 }
 
-.code-inputs {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  width: 100%;
-  margin: 0 auto;
-}
-
-.code-input {
-  width: 45px;
-  height: 55px;
-  background-color: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 8px;
-  color: var(--color-text-primary);
-  font-size: 24px;
-  font-weight: 500;
-  text-align: center;
-  outline: none;
-  transition: all 0.3s ease;
-  padding: 0;
-  margin: 0;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-}
-
-/* .code-input:focus 样式已移至 components/forms.css 统一管理 */
+/* .code-input 与容器样式已统一到 src/assets/styles/components/forms.css */
 
 .code-separator {
   width: 8px;
@@ -432,13 +407,5 @@ export default defineComponent({
   font-size: 14px;
 }
 
-/* 修改弹窗样式 */
-:deep(.mfa-disable-modal) {
-  border-radius: 12px !important;
-  overflow: hidden !important;
-}
-
-:deep(.mfa-disable-modal .modal-header) {
-  border-bottom: 1px solid rgba(255, 255, 255, 0.05) !important;
-}
+/* 弹窗圆角与标题分隔线统一在 Modal.vue 控制 */
 </style>

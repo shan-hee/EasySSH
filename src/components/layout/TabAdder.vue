@@ -72,7 +72,7 @@ export default defineComponent({
 .tab-adder {
   position: relative;
   margin-left: 8px;
-  z-index: 50;
+  z-index: var(--z-dropdown);
 }
 
 .tab-adder-dropdown-trigger {

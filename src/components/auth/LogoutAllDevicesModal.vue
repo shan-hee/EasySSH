@@ -96,7 +96,7 @@ export default defineComponent({
 
 <style scoped>
 .logout-devices-container {
-  padding: 20px;
+  padding: 0; /* 统一由外层 modal-container 提供 20px 内边距 */
   display: flex;
   flex-direction: column;
   align-items: center;

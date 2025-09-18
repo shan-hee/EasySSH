@@ -112,19 +112,60 @@ textarea.form__control {
   margin-top: var(--spacing-lg);
 }
 
+/* 通用表单控件（类选择器，供各弹窗与表单统一使用） */
+.form-input {
+  width: 100%;
+  height: var(--form-control-height, 36px);
+  line-height: var(--form-control-height, 36px);
+  padding: 0 var(--form-control-padding-x, 16px);
+  border: 1px solid var(--form-control-border, var(--color-border-default));
+  border-radius: 6px;
+  background-color: var(--form-control-bg, transparent);
+  color: var(--form-control-color, var(--color-text-primary));
+  font-size: 12px;
+  transition: border-color 0.2s ease;
+  box-sizing: border-box;
+}
+
+.form-input:focus {
+  outline: none;
+  border-color: var(--form-control-focus-border, var(--color-primary));
+  box-shadow: 0 0 0 0 var(--form-control-focus-ring, transparent);
+}
+
+.form-select {
+  width: 100%;
+  height: var(--form-control-height, 36px);
+  line-height: var(--form-control-height, 36px);
+  padding: 0 var(--form-control-padding-x, 12px);
+  border: 1px solid var(--form-control-border, var(--color-border-default));
+  border-radius: 6px;
+  background-color: var(--form-control-bg, var(--color-bg-container));
+  color: var(--form-control-color, var(--color-text-primary));
+  font-size: 12px;
+  transition: border-color 0.2s ease;
+  box-sizing: border-box;
+}
+
+.form-select:focus {
+  outline: none;
+  border-color: var(--form-control-focus-border, var(--color-primary));
+  box-shadow: 0 0 0 0 var(--form-control-focus-ring, transparent);
+}
+
 /* 按钮 */
 .btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: var(--spacing-sm) var(--spacing-md);
+  padding: var(--btn-padding-y, var(--spacing-sm)) var(--btn-padding-x, var(--spacing-md));
   font-size: var(--font-size-sm);
   font-weight: 500;
-  border-radius: var(--border-radius-md);
+  border-radius: var(--btn-radius, var(--border-radius-md));
   transition: all var(--transition-fast);
   cursor: pointer;
   border: none;
-  min-height: 40px;
+  min-height: var(--btn-height, 36px);
 }
 
 /* 主要按钮 */
@@ -165,6 +206,74 @@ textarea.form__control {
 
 .btn--danger:hover {
   background-color: var(--color-error-light);
+}
+
+/* 非 BEM 按钮映射（兼容现有 class） */
+.btn-primary {
+  background-color: var(--btn-primary-bg);
+  color: var(--btn-primary-text);
+  border: 1px solid var(--btn-primary-bg);
+}
+
+.btn-primary:hover:not(:disabled) {
+  background-color: var(--btn-primary-hover-bg);
+}
+
+.btn-outline {
+  background-color: transparent;
+  color: var(--btn-outline-color, var(--color-text-primary));
+  border: 1px solid var(--btn-outline-border, var(--color-border-default));
+}
+
+.btn-outline:hover:not(:disabled) {
+  background-color: var(--btn-outline-hover-bg, var(--color-hover-bg));
+  border-color: var(--btn-outline-hover-border, var(--color-primary));
+  color: var(--btn-outline-hover-color, var(--color-primary));
+}
+
+.btn-danger {
+  background-color: var(--color-error);
+  color: #fff;
+  border: 1px solid var(--color-error);
+}
+
+.btn-danger:hover:not(:disabled) {
+  /* 修复未定义的变量导致悬浮态背景消失的问题，并确保边框始终可见 */
+  background-color: var(--color-error-light);
+  border-color: var(--color-error);
+  color: #fff;
+}
+
+.btn-cancel,
+.btn-confirm {
+  background-color: var(--color-bg-muted);
+  color: var(--color-text-primary);
+  border: 1px solid var(--color-border-default);
+}
+
+.btn:disabled,
+.btn-primary:disabled,
+.btn-outline:disabled,
+.btn-danger:disabled,
+.btn-cancel:disabled,
+.btn-confirm:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* 按钮内小型加载动画 */
+.btn-loading {
+  width: 14px;
+  height: 14px;
+  border: 2px solid transparent;
+  border-top: 2px solid currentColor;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
 }
 
 /* 警告按钮 */
@@ -309,12 +418,115 @@ textarea.form__control {
   opacity: 1;
 }
 
+/* MFA验证码输入区域样式 - 统一管理 */
+.verify-input-container {
+  width: 100%;
+  margin: 30px 0;
+}
+
+.code-inputs {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  width: 100%;
+  margin: 0 auto;
+}
+
+/* MFA验证码输入框 - 基础样式 */
+.code-input {
+  width: 45px;
+  height: 55px;
+  background-color: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  color: var(--color-text-primary);
+  font-size: 24px;
+  font-weight: 500;
+  text-align: center;
+  outline: none;
+  transition: all 0.3s ease;
+  padding: 0;
+  margin: 0;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
 /* MFA验证码输入框样式 - 统一管理 */
 .code-input:focus {
   border-color: var(--color-primary);
   background-color: var(--color-hover-bg);
   box-shadow: 0 0 0 2px var(--color-focus-ring);
   transform: translateY(-2px);
+}
+
+/* Range 滑块 - 统一样式（支持主题进度色） */
+.slider-container {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.form-slider {
+  flex: 1;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--color-border-muted);
+  outline: none;
+  -webkit-appearance: none;
+  appearance: none;
+  padding: 0;
+  box-sizing: border-box;
+  accent-color: var(--color-primary);
+}
+
+.form-slider::-webkit-slider-runnable-track {
+  height: 6px;
+  border-radius: 3px;
+  background:
+    linear-gradient(var(--color-primary), var(--color-primary)) 0/ var(--progress, 0%) 100% no-repeat,
+    var(--color-border-muted);
+  border: none;
+}
+
+.form-slider::-moz-range-track {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--color-border-muted);
+  border: none;
+}
+
+.form-slider::-moz-range-progress {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--color-primary);
+  border: none;
+}
+
+.form-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--color-primary);
+  cursor: pointer;
+  border: 2px solid white;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+  margin-top: -6px;
+}
+
+.form-slider::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--color-primary);
+  cursor: pointer;
+  border: 2px solid white;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.slider-container:focus-within .form-slider {
+  box-shadow: 0 0 0 2px var(--color-focus-ring);
+  border-radius: 6px;
 }
 
 @media (max-width: 640px) {

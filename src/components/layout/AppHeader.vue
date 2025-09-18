@@ -577,14 +577,14 @@ export default defineComponent({
 
 .user-dropdown {
   position: absolute;
-  top: 45px;
+  top: var(--layout-header-height);
   right: 0;
   background-color: var(--color-bg-container);
   box-shadow: var(--shadow-lg);
   border: 1px solid var(--color-border-default);
   border-radius: 4px;
   width: 150px;
-  z-index: 1000;
+  z-index: var(--z-dropdown);
   overflow: hidden;
   opacity: 0;
   visibility: hidden;
@@ -640,7 +640,7 @@ export default defineComponent({
   display: flex;
   justify-content: center;
   align-items: center;
-  z-index: 1000;
+  z-index: var(--z-overlay);
   background: radial-gradient(
     circle at center,
     #161616 0%,

@@ -13,7 +13,7 @@
   justify-content: space-between;
   padding: 0 var(--spacing-lg);
   position: relative;
-  z-index: 100;
+  z-index: var(--z-sticky);
 }
 
 /* 页眉左侧区域 */
@@ -54,7 +54,7 @@
   visibility: hidden;
   transform: translateY(10px);
   transition: all var(--theme-transition-duration) var(--theme-transition-timing);
-  z-index: 1000;
+  z-index: var(--z-dropdown);
 }
 
 .app-header__left:hover .app-header__menu {

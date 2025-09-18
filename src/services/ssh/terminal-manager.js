@@ -365,7 +365,7 @@ class TerminalManager {
         padding: 8px 12px;
         border-radius: 4px;
         font-size: 12px;
-        z-index: 1000;
+        z-index: var(--z-tooltip);
         pointer-events: none;
       `;
       errorDiv.textContent = message;
