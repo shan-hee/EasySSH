@@ -48,6 +48,158 @@
   }
 }
 
+/* Global overrides to unify Element Plus Dialog style with system tokens */
+/* Not wrapped in @layer to ensure higher precedence over library CSS */
+/* Dialog container */
+.el-overlay .el-dialog {
+  background-color: var(--dialog-bg) !important;
+  color: var(--color-text-primary);
+  border: 1px solid var(--dialog-border) !important;
+  border-radius: var(--modal-radius, 8px);
+  box-shadow: var(--modal-shadow) !important;
+  overflow: hidden; /* clip header/background to rounded corners */
+}
+
+.el-overlay .el-dialog__header {
+  background-color: var(--dialog-header-bg);
+  padding: var(--modal-header-padding, 12px 16px);
+}
+
+.el-overlay .el-dialog__title {
+  color: var(--dialog-title-color);
+  font-size: var(--modal-title-size, 16px);
+  font-weight: var(--modal-title-weight, 600);
+}
+
+.el-overlay .el-dialog__body {
+  background-color: var(--dialog-body-bg, var(--dialog-bg));
+  color: var(--color-text-primary);
+}
+
+.el-overlay .el-dialog__footer {
+  border-top: 1px solid var(--dialog-border);
+  padding: var(--modal-footer-padding, 12px 16px);
+}
+
+/* Dialog footer buttons use system button tokens via Element Plus vars */
+.el-overlay .el-dialog .el-button {
+  --el-button-bg-color: var(--color-bg-muted);
+  --el-button-border-color: var(--color-border-default);
+  --el-button-text-color: var(--color-text-primary);
+  --el-button-hover-bg-color: var(--color-hover-bg);
+  --el-button-hover-border-color: var(--color-border-dark);
+  --el-button-hover-text-color: var(--color-text-primary);
+  --el-button-disabled-bg-color: var(--color-bg-muted);
+  --el-button-disabled-border-color: var(--color-border-default);
+  --el-button-disabled-text-color: var(--color-text-disabled);
+}
+
+.el-overlay .el-dialog .el-button--primary {
+  --el-button-bg-color: var(--btn-primary-bg);
+  --el-button-border-color: var(--btn-primary-bg);
+  --el-button-text-color: var(--btn-primary-text);
+  --el-button-hover-bg-color: var(--btn-primary-hover-bg);
+  --el-button-hover-border-color: var(--btn-primary-hover-bg);
+  --el-button-hover-text-color: var(--btn-primary-text);
+}
+
+/* Checkbox colors inside dialogs – use system tokens instead of library blue */
+.el-overlay .el-dialog .el-checkbox__inner {
+  background-color: var(--color-bg-container);
+  border-color: var(--color-border-default);
+}
+
+.el-overlay .el-dialog .el-checkbox__input.is-focus .el-checkbox__inner,
+.el-overlay .el-dialog .el-checkbox__inner:hover {
+  border-color: var(--color-primary);
+}
+
+.el-overlay .el-dialog .el-checkbox__input.is-checked .el-checkbox__inner,
+.el-overlay .el-dialog .el-checkbox__input.is-indeterminate .el-checkbox__inner {
+  background-color: var(--color-primary) !important;
+  border-color: var(--color-primary) !important;
+}
+
+/* Dialog close (X) icon uses system text colors, not library blue */
+.el-overlay .el-dialog__headerbtn,
+.el-overlay .el-dialog__headerbtn .el-dialog__close {
+  color: var(--color-text-secondary);
+}
+
+.el-overlay .el-dialog__headerbtn:hover,
+.el-overlay .el-dialog__headerbtn:focus {
+  color: var(--color-text-primary);
+}
+
+/* Also align MessageBox close icon, in case it's used elsewhere */
+.el-overlay .el-message-box__headerbtn,
+.el-overlay .el-message-box__headerbtn .el-message-box__close {
+  color: var(--color-text-secondary);
+}
+
+.el-overlay .el-message-box__headerbtn:hover,
+.el-overlay .el-message-box__headerbtn:focus {
+  color: var(--color-text-primary);
+}
+
+/* Inputs/Selects inside dialogs: always show a real border (not only on focus) */
+.el-overlay .el-dialog .el-input__wrapper,
+.el-overlay .el-dialog .el-select .el-select__wrapper {
+  background-color: var(--color-bg-muted);
+  border: 1px solid var(--color-border-default);
+  border-radius: 6px;
+  box-shadow: none;
+}
+
+.el-overlay .el-dialog .el-input__wrapper:hover,
+.el-overlay .el-dialog .el-select .el-select__wrapper:hover,
+.el-overlay .el-dialog .el-input__wrapper.is-focus,
+.el-overlay .el-dialog .el-select .el-select__wrapper.is-focused {
+  border-color: var(--color-primary);
+  box-shadow: none;
+}
+
+
+/* Global Select popper styling (applies to dialogs and forms) */
+/* Select popper: put border on popper wrapper to avoid clipping one side */
+.el-overlay .el-select__popper,
+.script-dialog .el-select__popper,
+.el-select__popper {
+  background-color: var(--color-bg-container) !important;
+  border: 1px solid var(--color-border-default) !important;
+  border-radius: 6px !important;
+  box-shadow: none !important;
+  overflow: hidden !important; /* ensure 4 corners are complete */
+}
+
+.el-overlay .el-select__popper .el-select-dropdown,
+.script-dialog .el-select__popper .el-select-dropdown,
+.el-select__popper .el-select-dropdown {
+  background-color: var(--color-bg-container) !important;
+  border: none !important; /* avoid double border and clipping */
+  box-shadow: none !important;
+}
+
+/* 移除下拉三角箭头，避免边框出现断点 */
+.el-overlay .el-select__popper .el-popper__arrow,
+.script-dialog .el-select__popper .el-popper__arrow,
+.el-select__popper .el-popper__arrow { display: none; }
+
+.el-overlay .el-select-dropdown__item.is-selected {
+  color: var(--color-primary);
+}
+
+/* Ensure checkbox label text does not turn library blue when checked */
+.el-overlay .el-dialog .el-checkbox__label {
+  color: var(--color-text-primary);
+}
+
+.el-overlay .el-dialog .el-checkbox__input.is-checked + .el-checkbox__label,
+.el-overlay .el-dialog .el-checkbox__input.is-indeterminate + .el-checkbox__label,
+.el-overlay .el-dialog .el-checkbox.is-checked > .el-checkbox__label {
+  color: var(--color-text-primary) !important;
+}
+
 /* 打印样式 - 仅在打印时使用 */
 @media print {
   @layer utilities {

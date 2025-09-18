@@ -294,7 +294,7 @@ export default defineComponent({
   margin-bottom: 24px;
   padding: 16px;
   background-color: var(--color-bg-muted);
-  border-radius: 6px;
+  border-radius: var(--radius-lg, 6px);
   border: 1px solid var(--color-border-default);
 }
 
@@ -359,7 +359,7 @@ export default defineComponent({
 .server-item {
   padding: 12px;
   border: 1px solid var(--color-border-default);
-  border-radius: 6px;
+  border-radius: var(--radius-md, 6px);
   transition: all var(--theme-transition-duration) var(--theme-transition-timing);
   background-color: var(--color-bg-muted);
 }
@@ -430,7 +430,7 @@ export default defineComponent({
 }
 
 .server-selection-dialog :deep(.el-checkbox__inner) {
-  background-color: var(--color-bg-muted);
+  background-color: var(--color-bg-container);
   border-color: var(--color-border-default);
 }
 
