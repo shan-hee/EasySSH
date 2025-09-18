@@ -19,11 +19,11 @@
         <!-- 左侧：服务器列表 -->
         <div class="server-list-panel">
           <div class="panel-header">
-            <h4>执行服务器 ({{ executionResults.length }})</h4>
+            <h4>执行服务器 (<span class="tabular-nums">{{ executionResults.length }}</span>)</h4>
             <div class="status-summary">
-              <span class="success-count">成功: {{ successCount }}</span>
-              <span class="failed-count">失败: {{ failedCount }}</span>
-              <span v-if="runningCount > 0" class="running-count">执行中: {{ runningCount }}</span>
+              <span class="success-count tabular-nums">成功: {{ successCount }}</span>
+              <span class="failed-count tabular-nums">失败: {{ failedCount }}</span>
+              <span v-if="runningCount > 0" class="running-count tabular-nums">执行中: {{ runningCount }}</span>
             </div>
           </div>
 
@@ -83,11 +83,11 @@
               </div>
               <div v-if="selectedResult.executedAt" class="meta-item">
                 <span class="label">执行时间:</span>
-                <span class="value">{{ formatTime(selectedResult.executedAt) }}</span>
+                <span class="value tabular-nums">{{ formatTime(selectedResult.executedAt) }}</span>
               </div>
               <div v-if="selectedResult.duration" class="meta-item">
                 <span class="label">耗时:</span>
-                <span class="value">{{ selectedResult.duration }}ms</span>
+                <span class="value tabular-nums">{{ selectedResult.duration }}ms</span>
               </div>
             </div>
 
@@ -306,7 +306,8 @@ export default defineComponent({
   background-color: var(--color-bg-muted);
   padding: 8px 12px;
   border-radius: 4px;
-  font-family: 'Consolas', 'Monaco', monospace;
+  /* 统一等宽字体变量 */
+  font-family: var(--font-family-mono);
   font-size: 13px;
   color: var(--color-text-primary);
   display: block;
@@ -411,7 +412,8 @@ export default defineComponent({
 .server-host {
   font-size: 12px;
   color: var(--color-text-secondary);
-  font-family: 'Consolas', 'Monaco', monospace;
+  /* 统一等宽字体变量 */
+  font-family: var(--font-family-mono);
 }
 
 .status-icon {
@@ -501,7 +503,8 @@ export default defineComponent({
   border: 1px solid var(--color-border-default);
   border-radius: 4px;
   padding: 12px;
-  font-family: 'Consolas', 'Monaco', monospace;
+  /* 统一等宽字体变量 */
+  font-family: var(--font-family-mono);
   font-size: 13px;
   line-height: 1.4;
   white-space: pre-wrap;

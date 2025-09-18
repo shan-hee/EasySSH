@@ -141,10 +141,10 @@
         </el-popconfirm>
       </template>
     </div>
-    <div class="sftp-file-size">
+    <div class="sftp-file-size tabular-nums">
       {{ formatFileSize(file.size, file.isDirectory) }}
     </div>
-    <div class="sftp-file-date">
+    <div class="sftp-file-date tabular-nums">
       {{ formatDate(file.modifiedTime) }}
     </div>
     <div class="sftp-file-actions">

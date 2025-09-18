@@ -20,10 +20,10 @@
             <div class="info-indicator memory-indicator" />
             <div class="info-content">
               <div class="info-label">物理内存</div>
-              <div class="info-value">
+              <div class="info-value tabular-nums">
                 {{ formatPercentage(memoryUsage) }}
               </div>
-              <div class="info-detail">
+              <div class="info-detail tabular-nums">
                 {{ formatBytes(memoryInfo.used) }} / {{ formatBytes(memoryInfo.total) }}
               </div>
             </div>
@@ -33,10 +33,10 @@
             <div class="info-indicator swap-indicator" />
             <div class="info-content">
               <div class="info-label">交换分区</div>
-              <div class="info-value">
+              <div class="info-value tabular-nums">
                 {{ formatPercentage(swapUsage) }}
               </div>
-              <div class="info-detail">
+              <div class="info-detail tabular-nums">
                 {{ formatBytes(swapInfo.used) }} / {{ formatBytes(swapInfo.total) }}
               </div>
             </div>
@@ -488,16 +488,22 @@ onUnmounted(() => {
   font-size: 14px; /* 缩小字体 */
   font-weight: 700;
   color: var(--monitor-text-primary);
-  font-family: 'JetBrains Mono', 'Courier New', monospace;
+  /* 使用全局基础字体栈，保持与全局一致 */
+  font-family: var(--font-family-base);
   margin-bottom: 1px;
   line-height: 1.2; /* 紧凑行高 */
+  /* 数字对齐，避免抖动 */
+  font-variant-numeric: tabular-nums;
 }
 
 .info-detail {
   font-size: 9px; /* 缩小字体 */
   color: var(--monitor-text-secondary);
-  font-family: 'JetBrains Mono', 'Courier New', monospace;
+  /* 使用全局基础字体栈，保持与全局一致 */
+  font-family: var(--font-family-base);
   line-height: 1.2; /* 紧凑行高 */
+  /* 数字对齐，避免抖动 */
+  font-variant-numeric: tabular-nums;
 }
 
 /* 内存监控组件固定高度适配 */

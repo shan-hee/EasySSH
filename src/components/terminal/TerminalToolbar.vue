@@ -45,7 +45,7 @@
               <toolbar-icon name="network" class="icon-active" />
             </div>
             <div class="network-stats">
-              <div class="network-stats-value" :class="rttStatusClass">
+              <div class="network-stats-value tabular-nums" :class="rttStatusClass">
                 {{ rttValue }}
               </div>
               <div class="network-stats-label">RTT</div>
@@ -136,7 +136,7 @@
         @keydown.esc="handleEscapeKey"
       >
         <div class="network-popup-header">
-          <span>网络延迟: {{ totalRtt }} ms</span>
+          <span>网络延迟: <span class="tabular-nums">{{ totalRtt }} ms</span></span>
         </div>
         <div class="network-popup-content">
           <div class="network-nodes">
@@ -147,7 +147,7 @@
 
             <div class="network-path">
               <div class="network-path-line" />
-              <div class="network-path-value" :class="getDelayClass(clientDelay)">
+              <div class="network-path-value tabular-nums" :class="getDelayClass(clientDelay)">
                 ~ {{ clientDelay }} ms
               </div>
             </div>
@@ -159,7 +159,7 @@
 
             <div class="network-path">
               <div class="network-path-line" />
-              <div class="network-path-value" :class="getDelayClass(serverDelay)">
+              <div class="network-path-value tabular-nums" :class="getDelayClass(serverDelay)">
                 ~ {{ serverDelay }} ms
               </div>
             </div>

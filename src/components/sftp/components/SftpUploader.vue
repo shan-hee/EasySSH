@@ -17,7 +17,7 @@
           <span class="sftp-upload-button" @click="triggerFileInput">选择文件</span>
         </p>
         <p v-if="currentUploads.length > 0" class="sftp-upload-status">
-          正在上传: {{ currentUploads.length }} 个文件
+          正在上传: <span class="tabular-nums">{{ currentUploads.length }}</span> 个文件
         </p>
       </div>
 
@@ -34,7 +34,7 @@
       <div v-for="(file, index) in currentUploads" :key="index" class="sftp-upload-item">
         <div class="sftp-upload-item-info">
           <span class="sftp-upload-item-name">{{ file.name }}</span>
-          <span class="sftp-upload-item-progress">{{ file.progress }}%</span>
+          <span class="sftp-upload-item-progress tabular-nums">{{ file.progress }}%</span>
         </div>
         <div class="sftp-upload-progress-bar">
           <div class="sftp-upload-progress-fill" :style="{ width: `${file.progress}%` }" />

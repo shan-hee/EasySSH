@@ -26,7 +26,7 @@
     <!-- 系统健康状态 -->
     <div class="health-status">
       <div class="health-card" :class="healthStatus.status">
-        <div class="health-score">
+        <div class="health-score tabular-nums">
           {{ healthStatus.score }}
         </div>
         <div class="health-label">系统健康分数</div>
@@ -39,7 +39,7 @@
     <!-- 实时指标 -->
     <div class="metrics-grid">
       <div class="metric-card">
-        <div class="metric-value">
+        <div class="metric-value tabular-nums">
           {{ metrics.transferSpeeds.upload.recent.toFixed(2) }}
         </div>
         <div class="metric-label">上传速度 (MB/s)</div>
@@ -50,7 +50,7 @@
       </div>
 
       <div class="metric-card">
-        <div class="metric-value">
+        <div class="metric-value tabular-nums">
           {{ metrics.transferSpeeds.download.recent.toFixed(2) }}
         </div>
         <div class="metric-label">下载速度 (MB/s)</div>
@@ -60,25 +60,25 @@
         </div>
       </div>
 
-      <div class="metric-card">
-        <div class="metric-value">{{ metrics.reliability.successRate.toFixed(1) }}%</div>
-        <div class="metric-label">成功率</div>
-        <div class="metric-trend" :class="getSuccessRateTrend()">
-          <i :class="getSuccessRateTrendIcon()" />
-          {{ getSuccessRateTrendText() }}
+        <div class="metric-card">
+          <div class="metric-value tabular-nums">{{ metrics.reliability.successRate.toFixed(1) }}%</div>
+          <div class="metric-label">成功率</div>
+          <div class="metric-trend" :class="getSuccessRateTrend()">
+            <i :class="getSuccessRateTrendIcon()" />
+            {{ getSuccessRateTrendText() }}
+          </div>
         </div>
-      </div>
 
-      <div class="metric-card">
-        <div class="metric-value">
-          {{ metrics.reliability.concurrentOperations }}
+        <div class="metric-card">
+          <div class="metric-value tabular-nums">
+            {{ metrics.reliability.concurrentOperations }}
+          </div>
+          <div class="metric-label">并发操作</div>
+          <div class="metric-trend" :class="getConcurrencyTrend()">
+            <i :class="getConcurrencyTrendIcon()" />
+            {{ getConcurrencyTrendText() }}
+          </div>
         </div>
-        <div class="metric-label">并发操作</div>
-        <div class="metric-trend" :class="getConcurrencyTrend()">
-          <i :class="getConcurrencyTrendIcon()" />
-          {{ getConcurrencyTrendText() }}
-        </div>
-      </div>
     </div>
 
     <!-- 性能图表 -->
@@ -119,7 +119,7 @@
         >
           <span class="error-operation">{{ error.operation }}</span>
           <span class="error-type">{{ error.errorType }}</span>
-          <span class="error-count">{{ error.count }}</span>
+          <span class="error-count tabular-nums">{{ error.count }}</span>
         </div>
       </div>
     </div>

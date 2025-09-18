@@ -8,7 +8,7 @@
     >
       <div class="autocomplete-header">
         <span class="autocomplete-title">命令建议</span>
-        <span class="autocomplete-count">{{ suggestions.length }}</span>
+        <span class="autocomplete-count tabular-nums">{{ suggestions.length }}</span>
       </div>
       <div ref="listRef" class="autocomplete-list">
         <div
@@ -388,7 +388,8 @@ export default {
   min-width: 350px;
   max-width: 700px;
   max-height: 350px;
-  font-family: 'JetBrains Mono', 'Consolas', monospace;
+  /* 终端相关组件使用统一的等宽字体变量 */
+  font-family: var(--font-family-mono);
   font-size: 12px;
   overflow: hidden;
   /* 确保在屏幕边缘时自动调整位置 */

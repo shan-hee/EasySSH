@@ -30,8 +30,14 @@
   --breakpoint-lg: 1024px;
 
   /* 字体系统 */
-  --font-family-base: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  /* 简洁通用版系统字体栈（平台优先 + CJK 回退） */
+  --font-family-base: system-ui, -apple-system, "Segoe UI Variable", "Segoe UI", Roboto, "Helvetica Neue", Arial, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei UI", "Microsoft YaHei", "Noto Sans CJK SC", "Source Han Sans SC", sans-serif;
   --font-family-mono: 'JetBrains Mono', 'Menlo', Monaco, Consolas, monospace;
+  /* 中文界面优先的字体栈（在 zh 语言环境下提升 CJK 字体优先级）*/
+  --font-family-zh: system-ui, -apple-system, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei UI", "Microsoft YaHei", "Noto Sans CJK SC", "Source Han Sans SC", sans-serif;
+  
+  /* Element Plus 字体对齐全局基准 */
+  --el-font-family: var(--font-family-base);
 
   /* 字号系统 (rem单位，基于16px) */
   --font-size-xs: 0.75rem; /* 12px */
@@ -273,6 +279,18 @@
   --text-secondary: var(--color-text-secondary);
   --current-height: 200px;
   --target-height: 200px;
+}
+
+/* 语言感知：当页面语言为中文时，提升中文字体优先级 */
+html:lang(zh),
+html:lang(zh-CN),
+html:lang(zh-SG),
+html:lang(zh-Hans),
+html:lang(zh-TW),
+html:lang(zh-HK),
+html:lang(zh-Hant) {
+  /* 通过变量覆盖，保持 body 使用 var(--font-family-base) 的写法不变 */
+  --font-family-base: var(--font-family-zh);
 }
 
 /* 无障碍：减少动效支持 */

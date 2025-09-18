@@ -116,7 +116,8 @@ export default {
 
 h1 {
   position: absolute;
-  font-family: 'Open Sans', sans-serif;
+  /* 使用全局基础字体栈 */
+  font-family: var(--font-family-base);
   font-weight: 600;
   font-size: 12px;
   text-transform: uppercase;

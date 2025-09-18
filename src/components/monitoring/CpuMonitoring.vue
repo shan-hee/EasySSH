@@ -7,8 +7,8 @@
       </div>
       <div class="monitor-info">
         <div class="cpu-stats">
-          <span class="usage-value">{{ formatPercentage(currentUsage) }}</span>
-          <span v-if="cpuCores > 0" class="cores-info">{{ cpuCores }}核</span>
+          <span class="usage-value tabular-nums">{{ formatPercentage(currentUsage) }}</span>
+          <span v-if="cpuCores > 0" class="cores-info tabular-nums">{{ cpuCores }}核</span>
         </div>
       </div>
     </div>

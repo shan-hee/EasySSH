@@ -437,7 +437,7 @@ export default defineComponent({
   overflow: hidden;
 
   /* 统一字体设置，避免在每个子元素中重复使用!important */
-  font-family: 'Microsoft YaHei', sans-serif;
+  font-family: var(--font-family-base);
 
   /* 确保所有子元素继承字体 */
   * {

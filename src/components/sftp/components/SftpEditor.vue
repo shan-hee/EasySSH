@@ -51,7 +51,7 @@
     <div class="sftp-editor-footer">
       <div class="sftp-editor-status-bar">
         <span>{{ getFileType() }}</span>
-        <span>{{ cursor.line }}:{{ cursor.ch }}</span>
+        <span class="tabular-nums">{{ cursor.line }}:{{ cursor.ch }}</span>
       </div>
     </div>
   </div>
@@ -212,7 +212,8 @@ export default defineComponent({
       const termSettings = settingsService.getTerminalSettings();
       return {
         fontSize: termSettings.fontSize || 14,
-        fontFamily: termSettings.fontFamily || "'JetBrains Mono', 'Courier New', monospace"
+        // 使用主题等宽字体变量作为默认
+        fontFamily: termSettings.fontFamily || "var(--font-family-mono)"
       };
     };
 
@@ -494,7 +495,7 @@ export default defineComponent({
 
     // 获取字体设置，确保与终端一致
     const fontFamily =
-      fontSettings.value.fontFamily || "'JetBrains Mono', 'Courier New', monospace";
+      fontSettings.value.fontFamily || "var(--font-family-mono)";
     const fontSize = 14; //不使用 fontSettings.value.fontSize
 
     // 运行时创建（在加载 CodeMirror 后赋值）
@@ -1240,7 +1241,8 @@ export default defineComponent({
 /* CodeMirror 自定义样式 */
 .cm-editor {
   height: 100%;
-  font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
+  /* 统一等宽字体变量 */
+  font-family: var(--font-family-mono);
   /* 确保编辑器背景色有过渡效果 */
   transition: background-color var(--theme-transition-duration) var(--theme-transition-timing);
 }
@@ -1255,7 +1257,8 @@ export default defineComponent({
   background-color: var(--sftp-panel-header-bg);
   border-right: 1px solid var(--color-border-default);
   color: var(--color-text-secondary);
-  font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
+  /* 统一等宽字体变量 */
+  font-family: var(--font-family-mono);
   /* 确保行号区域背景色有过渡效果 */
   transition: background-color var(--theme-transition-duration) var(--theme-transition-timing);
 }
@@ -1265,7 +1268,8 @@ export default defineComponent({
 }
 
 .cm-content {
-  font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
+  /* 统一等宽字体变量 */
+  font-family: var(--font-family-mono);
   padding: 4px 0;
 }
 

@@ -184,7 +184,8 @@ export default {
 
 .shortcut-key,
 .editing-text {
-  font-family: monospace;
+  /* 统一等宽字体变量 */
+  font-family: var(--font-family-mono);
   font-size: 13px;
   color: #e0e0e0;
 }

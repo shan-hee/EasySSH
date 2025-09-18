@@ -414,7 +414,8 @@ export default defineComponent({
 }
 
 .permission-display {
-  font-family: monospace;
+  /* 统一等宽字体变量 */
+  font-family: var(--font-family-mono);
   font-size: 14px;
   color: var(--color-text-secondary);
   background-color: var(--color-bg-container);

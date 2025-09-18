@@ -9,11 +9,11 @@
         <div v-if="hasData" class="network-speed-info">
           <div class="speed-indicator upload">
             <span class="speed-icon">↑</span>
-            <span class="speed-value">{{ formatNetworkSpeed(currentSpeed.upload) }}</span>
+            <span class="speed-value tabular-nums">{{ formatNetworkSpeed(currentSpeed.upload) }}</span>
           </div>
           <div class="speed-indicator download">
             <span class="speed-icon">↓</span>
-            <span class="speed-value">{{ formatNetworkSpeed(currentSpeed.download) }}</span>
+            <span class="speed-value tabular-nums">{{ formatNetworkSpeed(currentSpeed.download) }}</span>
           </div>
         </div>
       </div>
@@ -305,9 +305,12 @@ onUnmounted(() => {
 }
 
 .speed-value {
-  font-family: 'JetBrains Mono', 'Courier New', monospace;
+  /* 与全局字体保持一致 */
+  font-family: var(--font-family-base);
   font-weight: 500;
   color: var(--monitor-text-primary);
+  /* 数字对齐，避免抖动 */
+  font-variant-numeric: tabular-nums;
 }
 
 .network-chart {

@@ -7,10 +7,10 @@
       </div>
       <div class="monitor-info">
         <div v-if="diskInfo.total" class="disk-usage-info">
-          <span class="usage-percentage" :class="getUsageStatusClass(diskUsage)">{{
+          <span class="usage-percentage tabular-nums" :class="getUsageStatusClass(diskUsage)">{{
             formatPercentage(diskUsage)
           }}</span>
-          <span class="usage-text"
+          <span class="usage-text tabular-nums"
             >{{ formatBytes(diskInfo.used) }}/{{ formatBytes(diskInfo.total) }}</span
           >
         </div>
@@ -305,14 +305,20 @@ onUnmounted(() => {
 .usage-text {
   font-size: 11px;
   color: var(--monitor-text-secondary);
-  font-family: 'JetBrains Mono', 'Courier New', monospace;
+  /* 与全局字体保持一致 */
+  font-family: var(--font-family-base);
+  /* 数字对齐，避免抖动 */
+  font-variant-numeric: tabular-nums;
 }
 
 .usage-percentage {
   font-size: 14px;
   font-weight: 700;
   color: var(--monitor-disk-primary);
-  font-family: 'JetBrains Mono', 'Courier New', monospace;
+  /* 与全局字体保持一致 */
+  font-family: var(--font-family-base);
+  /* 数字对齐，避免抖动 */
+  font-variant-numeric: tabular-nums;
 }
 
 .usage-percentage.monitor-status-warning {

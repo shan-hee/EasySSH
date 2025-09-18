@@ -24,7 +24,7 @@
       </div>
 
       <div class="server-selection">
-        <h4>选择服务器 ({{ selectedServers.length }}/{{ servers.length }})</h4>
+        <h4>选择服务器 (<span class="tabular-nums">{{ selectedServers.length }}</span>/<span class="tabular-nums">{{ servers.length }}</span>)</h4>
         <div class="server-list">
           <div class="select-all-row">
             <el-checkbox
@@ -80,7 +80,8 @@
           :loading="executing"
           @click="handleExecute"
         >
-          {{ executing ? '执行中...' : `全部运行 (${selectedServers.length})` }}
+          <template v-if="executing">执行中...</template>
+          <template v-else>全部运行 (<span class="tabular-nums">{{ selectedServers.length }}</span>)</template>
         </el-button>
       </div>
     </template>
@@ -330,7 +331,8 @@ export default defineComponent({
   background-color: var(--color-bg-muted);
   padding: 2px 6px;
   border-radius: 3px;
-  font-family: 'Consolas', 'Monaco', monospace;
+  /* 统一等宽字体变量 */
+  font-family: var(--font-family-mono);
   font-size: 13px;
   color: var(--color-text-primary);
 }
@@ -390,7 +392,8 @@ export default defineComponent({
 }
 
 .server-details .host {
-  font-family: 'Consolas', 'Monaco', monospace;
+  /* 统一等宽字体变量 */
+  font-family: var(--font-family-mono);
 }
 
 .server-details .group {

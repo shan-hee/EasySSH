@@ -458,7 +458,7 @@
                       @input="previewTerminalBg"
                       @change="updateTerminalBg"
                     />
-                    <span class="slider-value"
+                    <span class="slider-value tabular-nums"
                       >{{ Math.round(terminalBgSettings.opacity * 100) }}%</span
                     >
                   </div>
@@ -2635,7 +2635,8 @@ export default defineComponent({
 }
 
 .shortcut-input {
-  font-family: monospace;
+  /* 统一等宽字体变量 */
+  font-family: var(--font-family-mono);
   font-size: 11px;
   background-color: var(--color-bg-muted);
   padding: 4px 8px;
@@ -2663,7 +2664,8 @@ export default defineComponent({
   border-color: var(--color-primary);
   background-color: var(--color-primary-bg);
   color: var(--color-primary);
-  font-family: monospace;
+  /* 统一等宽字体变量 */
+  font-family: var(--font-family-mono);
   font-style: normal;
   font-size: 13px;
 }

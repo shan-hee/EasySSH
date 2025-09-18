@@ -48,6 +48,14 @@ button {
   font-family: inherit;
 }
 
+/* 代码/预格式文本统一等宽字体 */
+code,
+pre,
+kbd,
+samp {
+  font-family: var(--font-family-mono);
+}
+
 input,
 textarea,
 select,

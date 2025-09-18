@@ -202,7 +202,7 @@
           <div v-if="shouldShowPagination" class="pagination-container">
             <div class="custom-pagination">
               <!-- 总数显示 -->
-              <span class="pagination-total">共 {{ allFilteredScripts.length }} 条</span>
+              <span class="pagination-total">共 <span class="tabular-nums">{{ allFilteredScripts.length }}</span> 条</span>
 
               <!-- 每页显示数量选择器 -->
               <div class="page-size-selector">
@@ -215,8 +215,14 @@
                   default-first-option
                   placeholder="输入或选择"
                   placement="bottom-start"
-                  :fallback-placements="[]"
-                  :popper-options="{ strategy: 'fixed', modifiers: [{ name: 'flip', options: { fallbackPlacements: [] } }] }"
+                  :fallback-placements="['top-start','bottom-start']"
+                  :popper-options="{
+                    strategy: 'absolute',
+                    modifiers: [
+                      { name: 'flip', options: { fallbackPlacements: ['top-start','bottom-start','top-end'] } },
+                      { name: 'preventOverflow', options: { padding: 8, altBoundary: true } }
+                    ]
+                  }"
                   @change="handlePageSizeChange"
                 >
                   <el-option
@@ -1717,6 +1723,81 @@ export default defineComponent({
   gap: 16px;
   flex-wrap: wrap;
   justify-content: center;
+}
+
+/* 使用系统主题令牌统一分页与选择器的外观 */
+.custom-pagination :deep(.el-pagination.is-background .el-pager li),
+.custom-pagination :deep(.el-pagination.is-background .btn-prev),
+.custom-pagination :deep(.el-pagination.is-background .btn-next) {
+  background-color: var(--color-bg-container);
+  color: var(--color-text-primary);
+  border: 1px solid var(--color-border-default);
+  border-radius: 4px;
+  transition: all var(--theme-transition-duration) var(--theme-transition-timing);
+}
+
+.custom-pagination :deep(.el-pagination.is-background .el-pager li:hover),
+.custom-pagination :deep(.el-pagination.is-background .btn-prev:hover),
+.custom-pagination :deep(.el-pagination.is-background .btn-next:hover) {
+  background-color: var(--color-hover-bg);
+  border-color: var(--color-border-dark);
+  color: var(--color-text-primary);
+}
+
+.custom-pagination :deep(.el-pagination.is-background .el-pager li.is-active) {
+  background-color: var(--color-primary);
+  border-color: var(--color-primary);
+  color: var(--color-bg-container);
+}
+
+.custom-pagination :deep(.el-pagination .el-pagination__editor .el-input__wrapper) {
+  background-color: var(--color-bg-muted);
+  color: var(--color-text-primary);
+  border: 1px solid var(--color-border-default);
+  border-radius: 4px;
+  box-shadow: none;
+}
+
+.custom-pagination :deep(.el-pagination .el-pagination__editor .el-input__wrapper:hover),
+.custom-pagination :deep(.el-pagination .el-pagination__editor .el-input__wrapper.is-focus) {
+  border-color: var(--color-primary);
+  box-shadow: none;
+}
+
+.custom-pagination :deep(.el-pagination .el-input__inner::placeholder) {
+  color: var(--color-text-placeholder);
+}
+
+/* 每页选择器使用系统主题令牌 */
+.custom-pagination .page-size-select :deep(.el-select__wrapper) {
+  background-color: var(--color-bg-muted);
+  color: var(--color-text-primary);
+  border: 1px solid var(--color-border-default);
+  border-radius: 4px;
+  min-height: 30px;
+  box-shadow: none;
+}
+
+.custom-pagination .page-size-select :deep(.el-select__wrapper:hover),
+.custom-pagination .page-size-select :deep(.el-select__wrapper.is-focused) {
+  border-color: var(--color-primary);
+  box-shadow: none;
+}
+
+.custom-pagination .page-size-select :deep(.el-select__placeholder) {
+  color: var(--color-text-placeholder);
+}
+
+.custom-pagination .page-size-select :deep(.el-select__popper .el-select-dropdown) {
+  background-color: var(--color-bg-container);
+  border: 1px solid var(--color-border-default);
+  /* 限制下拉高度，超出滚动，避免超出屏幕 */
+  max-height: min(40vh, 260px);
+  overflow: auto;
+}
+
+.custom-pagination .page-size-select :deep(.el-select-dropdown__item.is-selected) {
+  color: var(--color-primary);
 }
 
 .pagination-total {

@@ -18,6 +18,10 @@ body {
   color: var(--color-text-primary);
   background-color: var(--color-bg-page);
   overflow-x: hidden;
+  /* 字体渲染优化（跨平台） */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
   /* 主题切换过渡动画 - 使用优化后的变量 */
   transition:
     background-color var(--theme-transition-duration) var(--theme-transition-timing),

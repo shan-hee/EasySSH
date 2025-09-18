@@ -337,6 +337,20 @@
   font-weight: 700;
 }
 
+/* 数字等宽对齐：用于动态数值避免跳动 */
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+  /* Fallback for fonts supporting OpenType features */
+  font-feature-settings: "tnum" 1, "lnum" 1;
+}
+
+/* 数字右对齐 + 等宽数字的便捷类 */
+.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1, "lnum" 1;
+}
+
 .truncate {
   overflow: hidden;
   text-overflow: ellipsis;

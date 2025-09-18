@@ -633,7 +633,8 @@ export default defineComponent({
 }
 
 .secret-code {
-  font-family: monospace;
+  /* 统一等宽字体变量 */
+  font-family: var(--font-family-mono);
   font-size: 16px;
   color: var(--color-text-primary);
   letter-spacing: 1px;

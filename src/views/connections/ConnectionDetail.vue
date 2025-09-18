@@ -67,7 +67,7 @@
       </div>
       <div class="footer-item">
         <span class="item-label">端口:</span>
-        <span>{{ connection?.port }}</span>
+        <span class="tabular-nums">{{ connection?.port }}</span>
       </div>
       <div class="footer-item">
         <span class="item-label">用户:</span>
@@ -75,11 +75,11 @@
       </div>
       <div class="footer-item">
         <span class="item-label">延迟:</span>
-        <span>{{ latency }}ms</span>
+        <span class="tabular-nums">{{ latency }}ms</span>
       </div>
       <div class="footer-item">
         <span class="item-label">上线时间:</span>
-        <span>{{ uptime }}</span>
+        <span class="tabular-nums">{{ uptime }}</span>
       </div>
     </div>
 

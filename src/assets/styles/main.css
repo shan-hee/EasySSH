@@ -3,8 +3,9 @@
  * 用于导入所有样式模块，优化加载策略
  */
 
-/* 分层顺序：reset < theme < layout < components < utilities */
-@layer reset, theme, layout, components, utilities;
+/* 分层顺序（统一命名，包含第三方与别名）：
+   element-plus < reset < base < theme/themes < layout/layouts < components < utilities < overrides */
+@layer element-plus, reset, base, theme, themes, layout, layouts, components, utilities, overrides, theme-overrides;
 
 /* 主题样式 - 优先加载，确保CSS变量可用 */
 @import './themes/theme.css';
@@ -25,6 +26,27 @@
 @import './components/cards.css';
 @import './components/forms.css';
 @import './components/accessibility.css';
+
+/* Element Plus 数字类控件的等宽数字优化 */
+@layer utilities {
+  /* 统计数值、分页数字、徽标、进度文本、数字输入等 */
+  .el-statistic__number,
+  .el-pagination .el-pager li,
+  .el-badge__content,
+  .el-progress__text,
+  .el-input-number .el-input__inner,
+  .el-descriptions__content {
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* 表格单元格默认启用等宽数字（更稳的列对齐） */
+  .el-table .cell,
+  .el-table th > .cell,
+  .el-table td {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum" 1, "lnum" 1;
+  }
+}
 
 /* 打印样式 - 仅在打印时使用 */
 @media print {

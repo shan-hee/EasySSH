@@ -22,7 +22,7 @@
       <div v-if="systemInfo.os" class="info-item">
         <span class="info-label">系统类型</span>
         <span
-          class="info-value"
+          class="info-value tabular-nums"
           @mouseenter="onValueMouseEnter($event, systemInfo.os)"
           @mouseleave="onValueMouseLeave"
         >
@@ -40,7 +40,7 @@
       <div v-if="systemInfo.hostname" class="info-item">
         <span class="info-label">主机名</span>
         <span
-          class="info-value"
+          class="info-value tabular-nums"
           @mouseenter="onValueMouseEnter($event, systemInfo.hostname)"
           @mouseleave="onValueMouseLeave"
         >
@@ -58,7 +58,7 @@
       <div v-if="systemInfo.cpuModel" class="info-item">
         <span class="info-label">CPU型号</span>
         <span
-          class="info-value"
+          class="info-value tabular-nums"
           @mouseenter="onValueMouseEnter($event, systemInfo.cpuModel)"
           @mouseleave="onValueMouseLeave"
         >
@@ -76,7 +76,7 @@
       <div v-if="systemInfo.architecture" class="info-item">
         <span class="info-label">系统架构</span>
         <span
-          class="info-value"
+          class="info-value tabular-nums"
           @mouseenter="onValueMouseEnter($event, systemInfo.architecture)"
           @mouseleave="onValueMouseLeave"
         >
@@ -96,7 +96,7 @@
       <div v-if="systemInfo.loadAverage" class="info-item">
         <span class="info-label">系统负载</span>
         <span
-          class="info-value"
+          class="info-value tabular-nums"
           @mouseenter="onValueMouseEnter($event, formatLoadAverage(systemInfo.loadAverage))"
           @mouseleave="onValueMouseLeave"
         >
@@ -114,7 +114,7 @@
       <div v-if="systemInfo.uptime" class="info-item">
         <span class="info-label">运行时间</span>
         <span
-          class="info-value"
+          class="info-value tabular-nums"
           @mouseenter="onValueMouseEnter($event, formatUptime(systemInfo.uptime))"
           @mouseleave="onValueMouseLeave"
         >
@@ -132,7 +132,7 @@
       <div v-if="systemInfo.bootTime" class="info-item">
         <span class="info-label">启动时间</span>
         <span
-          class="info-value"
+          class="info-value tabular-nums"
           @mouseenter="onValueMouseEnter($event, formatDateTime(systemInfo.bootTime))"
           @mouseleave="onValueMouseLeave"
         >
@@ -150,7 +150,7 @@
       <div v-if="systemInfo.internalIp" class="info-item">
         <span class="info-label">内网IP</span>
         <span
-          class="info-value"
+          class="info-value tabular-nums"
           @mouseenter="onValueMouseEnter($event, systemInfo.internalIp)"
           @mouseleave="onValueMouseLeave"
         >
@@ -168,7 +168,7 @@
       <div v-if="systemInfo.publicIp" class="info-item">
         <span class="info-label">公网IP</span>
         <span
-          class="info-value"
+          class="info-value tabular-nums"
           @mouseenter="onValueMouseEnter($event, systemInfo.publicIp)"
           @mouseleave="onValueMouseLeave"
         >
@@ -571,6 +571,8 @@ const formatDateTime = timestamp => {
   white-space: nowrap; /* 不换行，超出显示省略号 */
   line-height: 1.4;
   font-weight: 400;
+  /* 数字对齐，避免抖动 */
+  font-variant-numeric: tabular-nums;
 }
 
 .copy-btn {
