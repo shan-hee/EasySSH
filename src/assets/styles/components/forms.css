@@ -120,11 +120,16 @@ textarea.form__control {
   padding: 0 var(--form-control-padding-x, 16px);
   border: 1px solid var(--form-control-border, var(--color-border-default));
   border-radius: 6px;
-  background-color: var(--form-control-bg, transparent);
+  background-color: transparent;
   color: var(--form-control-color, var(--color-text-primary));
   font-size: 12px;
   transition: border-color 0.2s ease;
   box-sizing: border-box;
+}
+
+/* 占位符颜色统一 */
+.form-input::placeholder {
+  color: var(--color-text-placeholder);
 }
 
 .form-input:focus {
@@ -140,7 +145,7 @@ textarea.form__control {
   padding: 0 var(--form-control-padding-x, 12px);
   border: 1px solid var(--form-control-border, var(--color-border-default));
   border-radius: 6px;
-  background-color: var(--form-control-bg, var(--color-bg-container));
+  background-color: transparent;
   color: var(--form-control-color, var(--color-text-primary));
   font-size: 12px;
   transition: border-color 0.2s ease;
@@ -151,6 +156,14 @@ textarea.form__control {
   outline: none;
   border-color: var(--form-control-focus-border, var(--color-primary));
   box-shadow: 0 0 0 0 var(--form-control-focus-ring, transparent);
+}
+
+/* 禁用状态统一样式 */
+.form-input:disabled,
+.form-select:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  background-color: var(--color-bg-muted);
 }
 
 /* 按钮 */

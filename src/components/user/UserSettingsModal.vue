@@ -2288,13 +2288,9 @@ export default defineComponent({
   max-width: 200px;
 }
 
-.input-group {
-  position: relative;
-}
-
-.form-input::placeholder {
-  color: var(--color-text-placeholder);
-}
+  .input-group {
+    position: relative;
+  }
 
 /* 安全设置项 */
 .security-item {
@@ -2492,11 +2488,7 @@ export default defineComponent({
   min-width: 0;
 }
 
-/* 表单选择框 */
-.form-select:focus {
-  outline: none;
-  border-color: var(--color-primary);
-}
+  /* 表单选择框（焦点样式使用全局 forms.css 统一定义） */
 
 /* 在安全设置项中的选择框样式 */
 .security-action .form-select {
@@ -2564,67 +2556,11 @@ export default defineComponent({
   transform: translateX(20px);
 }
 
-/* 数字输入控件 */
-.number-input-with-controls {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  justify-content: flex-start;
-  width: 100%;
-}
-
-.number-display {
-  font-size: 12px;
-  color: var(--color-text-primary);
-  min-width: 20px;
-  text-align: center;
-  font-weight: 500;
-}
-
-.control-btn {
-  background-color: transparent;
-  border: 1px solid var(--color-border-default);
-  color: var(--color-text-primary);
-  font-size: 12px;
-  cursor: pointer;
-  width: 28px;
-  height: 28px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0;
-  border-radius: 4px;
-  transition: all 0.2s ease;
-}
-
-.control-btn:hover:not(:disabled) {
-  background-color: var(--color-bg-muted);
-  border-color: var(--color-primary);
-}
-
-.control-btn:active:not(:disabled) {
-  background-color: var(--color-primary-lightest);
-}
-
-.control-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.number-input-with-controls.disabled {
-  opacity: 0.6;
-}
-
-.number-input-with-controls.disabled .control-btn {
-  cursor: not-allowed;
-  opacity: 0.5;
-}
-
-/* 终端背景预览 */
-.terminal-bg-preview {
-  width: 100%;
-  height: 120px;
-  margin-top: 10px;
+  /* 终端背景预览 */
+  .terminal-bg-preview {
+    width: 100%;
+    height: 120px;
+    margin-top: 10px;
   border-radius: 6px;
   position: relative;
   overflow: hidden;
@@ -2661,16 +2597,7 @@ export default defineComponent({
   border-bottom: none;
 }
 
-.btn-outline {
-  background-color: transparent;
-  border: 1px solid var(--color-border-default);
-  color: var(--color-text-primary);
-}
-
-.btn-outline:hover:not(:disabled) {
-  background-color: var(--color-bg-muted);
-  border-color: var(--color-primary);
-}
+  /* .btn-outline 使用全局样式（forms.css）以保持一致 */
 
 .btn-sm {
   padding: 6px 12px;
@@ -2741,15 +2668,13 @@ export default defineComponent({
   font-size: 13px;
 }
 
-/* 禁用状态样式 */
-.form-select:disabled,
-.form-input:disabled,
-.form-slider:disabled,
-.shortcut-input:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-  background-color: var(--color-bg-muted);
-}
+  /* 禁用状态样式（表单输入/选择在全局 forms.css 统一处理） */
+  .form-slider:disabled,
+  .shortcut-input:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    background-color: var(--color-bg-muted);
+  }
 
 .switch input:disabled + .switch-slider {
   opacity: 0.6;
@@ -2761,17 +2686,16 @@ export default defineComponent({
   display: flex;
   align-items: center;
   gap: 0;
-  border: 1px solid var(--color-border);
   border-radius: 6px;
   overflow: hidden;
-  background: var(--color-bg-secondary);
+  background: transparent;
 }
 
 .control-btn {
   width: 32px;
   height: 32px;
   border: none;
-  background: var(--color-bg-secondary);
+  background: transparent;
   color: var(--color-text-secondary);
   font-size: 14px;
   font-weight: bold;
@@ -2800,9 +2724,7 @@ export default defineComponent({
   font-size: 13px;
   font-weight: 500;
   color: var(--color-text-primary);
-  background: var(--color-bg-primary);
-  border-left: 1px solid var(--color-border);
-  border-right: 1px solid var(--color-border);
+  background: transparent;
 }
 
 /* AI设置输入框布局样式 */
