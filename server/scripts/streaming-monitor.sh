@@ -65,19 +65,17 @@ get_primary_interface() {
 get_now_ms() {
     if command -v date >/dev/null 2>&1; then
         NOW_MS=$(date +%s%3N 2>/dev/null)
-        case "$NOW_MS" in
-            ''|*[^0-9]*) NOW_MS="" ;;
-        esac
-        if [ -n "$NOW_MS" ]; then
+        # 检查是否是纯数字
+        if [ -n "$NOW_MS" ] && printf '%s' "$NOW_MS" | grep -q '^[0-9][0-9]*$'; then
             echo "$NOW_MS"
             return
         fi
         NOW_S=$(date +%s 2>/dev/null)
-        case "$NOW_S" in
-            ''|*[^0-9]*) NOW_S=0 ;;
-        esac
-        echo $((NOW_S * 1000))
-        return
+        # 检查是否是纯数字
+        if [ -n "$NOW_S" ] && printf '%s' "$NOW_S" | grep -q '^[0-9][0-9]*$'; then
+            echo $((NOW_S * 1000))
+            return
+        fi
     fi
     echo 0
 }

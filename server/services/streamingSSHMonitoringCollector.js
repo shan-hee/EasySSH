@@ -200,7 +200,7 @@ class StreamingSSHMonitoringCollector extends EventEmitter {
       const data = JSON.parse(jsonLine);
 
       // 验证数据格式
-      if (!data.timestamp) {
+      if (!data.hasOwnProperty('timestamp') || typeof data.timestamp !== 'number') {
         logger.debug('无效的监控数据格式', { hostId: this.hostId });
         return;
       }
