@@ -213,16 +213,27 @@
                   filterable
                   allow-create
                   default-first-option
-                  placeholder="输入或选择"
+                  placeholder="请选择或输入"
                   placement="bottom-start"
-                  :fallback-placements="['top-start','bottom-start']"
+                  :fallback-placements="['top-start','bottom-start','top-end']"
                   :popper-options="{
-                    strategy: 'absolute',
+                    strategy: 'fixed',
                     modifiers: [
-                      { name: 'flip', options: { fallbackPlacements: ['top-start','bottom-start','top-end'] } },
-                      { name: 'preventOverflow', options: { padding: 8, altBoundary: true } }
+                      {
+                        name: 'flip',
+                        options: {
+                          fallbackPlacements: ['top-start','bottom-start','top-end'],
+                          boundary: 'clippingParents',
+                          padding: 8
+                        }
+                      },
+                      {
+                        name: 'preventOverflow',
+                        options: { boundary: 'clippingParents', altBoundary: true, tether: true, padding: 8 }
+                      }
                     ]
                   }"
+                  :teleported="false"
                   @change="handlePageSizeChange"
                 >
                   <el-option
@@ -1769,26 +1780,29 @@ export default defineComponent({
 }
 
 /* 每页选择器使用系统主题令牌 */
+/* 统一与“新建脚本”标签下拉的外观 */
 .custom-pagination .page-size-select :deep(.el-select__wrapper) {
-  background-color: var(--color-bg-muted);
+  background-color: transparent;
   color: var(--color-text-primary);
   border: 1px solid var(--color-border-default);
-  border-radius: 4px;
-  min-height: 30px;
+  border-radius: 6px;
+  min-height: 36px;
+  padding: 0 10px;
+  transition: border-color 0.3s;
   box-shadow: none;
 }
 
 .custom-pagination .page-size-select :deep(.el-select__wrapper:hover),
 .custom-pagination .page-size-select :deep(.el-select__wrapper.is-focused) {
   border-color: var(--color-primary);
-  box-shadow: none;
+  box-shadow: 0 0 0 1px var(--color-focus-ring);
 }
 
 .custom-pagination .page-size-select :deep(.el-select__placeholder) {
   color: var(--color-text-placeholder);
 }
 
-.custom-pagination .page-size-select :deep(.el-select__popper .el-select-dropdown) {
+.custom-pagination :deep(.el-select__popper .el-select-dropdown) {
   background-color: var(--color-bg-container);
   border: 1px solid var(--color-border-default);
   /* 限制下拉高度，超出滚动，避免超出屏幕 */
@@ -1796,8 +1810,9 @@ export default defineComponent({
   overflow: auto;
 }
 
-.custom-pagination .page-size-select :deep(.el-select-dropdown__item.is-selected) {
-  color: var(--color-primary);
+.custom-pagination :deep(.el-select-dropdown__item.is-selected) {
+  background-color: var(--color-primary);
+  color: var(--color-bg-container);
 }
 
 .pagination-total {
