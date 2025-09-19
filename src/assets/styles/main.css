@@ -142,6 +142,63 @@
   color: var(--color-text-primary);
 }
 
+/* MessageBox container */
+.el-overlay .el-message-box {
+  background-color: var(--dialog-bg) !important;
+  color: var(--color-text-primary);
+  border: 1px solid var(--dialog-border) !important;
+  border-radius: var(--modal-radius, 8px);
+  box-shadow: var(--modal-shadow) !important;
+  overflow: hidden; /* keep rounded corners consistent */
+}
+
+/* MessageBox header */
+.el-overlay .el-message-box__header {
+  background-color: var(--dialog-header-bg);
+  padding: var(--modal-header-padding, 12px 16px);
+}
+
+.el-overlay .el-message-box__title {
+  color: var(--dialog-title-color);
+  font-size: var(--modal-title-size, 16px);
+  font-weight: var(--modal-title-weight, 600);
+}
+
+/* Message content */
+.el-overlay .el-message-box__content {
+  background-color: var(--dialog-body-bg, var(--dialog-bg));
+  color: var(--color-text-primary);
+}
+.el-overlay .el-message-box__message,
+.el-overlay .el-message-box__message p {
+  color: var(--color-text-primary);
+}
+
+/* MessageBox footer */
+.el-overlay .el-message-box__btns {
+  border-top: 1px solid var(--dialog-border);
+  padding: var(--modal-footer-padding, 12px 16px);
+}
+
+/* MessageBox buttons follow system tokens */
+.el-overlay .el-message-box .el-button {
+  --el-button-bg-color: var(--color-bg-muted);
+  --el-button-border-color: var(--color-border-default);
+  --el-button-text-color: var(--color-text-primary);
+  --el-button-hover-bg-color: var(--color-hover-bg);
+  --el-button-hover-border-color: var(--color-border-dark);
+  --el-button-hover-text-color: var(--color-text-primary);
+}
+
+.el-overlay .el-message-box .el-button--primary {
+  --el-button-bg-color: var(--btn-primary-bg);
+  --el-button-border-color: var(--btn-primary-bg);
+  --el-button-text-color: var(--btn-primary-text);
+  --el-button-hover-bg-color: var(--btn-primary-hover-bg);
+  --el-button-hover-border-color: var(--btn-primary-hover-bg);
+  --el-button-hover-text-color: var(--btn-primary-text);
+}
+
 /* Inputs/Selects inside dialogs: always show a real border (not only on focus) */
 .el-overlay .el-dialog .el-input__wrapper,
 .el-overlay .el-dialog .el-select .el-select__wrapper {

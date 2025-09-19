@@ -263,12 +263,51 @@
 
 /* Popconfirm: 单行省略，避免长文件名导致弹窗变形 */
 .sftp-popconfirm {
+  /* 统一外观：跟随主题变量，适配深/浅色 */
+  background-color: var(--color-bg-container);
+  color: var(--color-text-primary);
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  /* 保持紧凑，防止过宽 */
   white-space: nowrap;
   max-width: 360px;
 }
 .sftp-popconfirm .el-popconfirm__main,
 .sftp-popconfirm .el-popconfirm__main * {
   white-space: nowrap;
+}
+.sftp-popconfirm .el-popconfirm__main {
+  color: var(--color-text-primary);
+}
+.sftp-popconfirm .el-popconfirm__icon {
+  color: var(--color-warning);
+}
+.sftp-popconfirm .el-popconfirm__action {
+  margin-top: 6px;
+}
+.sftp-popconfirm .el-button + .el-button {
+  margin-left: 8px;
+}
+.sftp-popconfirm .el-button {
+  --el-button-bg-color: var(--color-bg-muted);
+  --el-button-border-color: var(--color-border-default);
+  --el-button-text-color: var(--color-text-primary);
+  --el-button-hover-bg-color: var(--color-hover-bg);
+  --el-button-hover-border-color: var(--color-border-dark);
+  --el-button-hover-text-color: var(--color-text-primary);
+}
+.sftp-popconfirm .el-button--primary {
+  --el-button-bg-color: var(--btn-primary-bg);
+  --el-button-border-color: var(--btn-primary-bg);
+  --el-button-text-color: var(--btn-primary-text);
+  --el-button-hover-bg-color: var(--btn-primary-hover-bg);
+  --el-button-hover-border-color: var(--btn-primary-hover-bg);
+  --el-button-hover-text-color: var(--btn-primary-text);
+}
+.sftp-popconfirm .el-popper__arrow::before {
+  background-color: var(--color-bg-container);
+  border-color: var(--color-bg-container);
 }
 .sftp-popconfirm .el-popconfirm__main { display: flex; align-items: center; }
 .sftp-popconfirm .el-popconfirm__main .el-popconfirm__main__title,
