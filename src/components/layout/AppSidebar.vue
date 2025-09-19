@@ -66,6 +66,8 @@
         class="nav-item"
         :class="{ active: currentRoute === '/' }"
         data-tooltip="控制台"
+        @mouseenter="onNavMouseEnter"
+        @mouseleave="onNavMouseLeave"
         @click="handleNavigation('/')"
       >
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="20" height="20">
@@ -82,6 +84,8 @@
         class="nav-item"
         :class="{ active: currentRoute === '/scripts' }"
         data-tooltip="脚本库"
+        @mouseenter="onNavMouseEnter"
+        @mouseleave="onNavMouseLeave"
         @click="handleNavigation('/scripts')"
       >
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="20" height="20">
@@ -96,7 +100,13 @@
     <!-- 底部按钮组 -->
     <div class="bottom-buttons">
       <!-- GitHub 按钮 -->
-      <div class="nav-item" data-tooltip="访问 GitHub 仓库" @click="openGitHub">
+      <div
+        class="nav-item"
+        data-tooltip="访问 GitHub 仓库"
+        @mouseenter="onNavMouseEnter"
+        @mouseleave="onNavMouseLeave"
+        @click="openGitHub"
+      >
         <!-- GitHub 图标 -->
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="20" height="20">
           <path
@@ -110,6 +120,8 @@
       <div
         class="nav-item"
         :data-tooltip="currentTheme === 'dark' ? '切换到浅色主题' : '切换到深色主题'"
+        @mouseenter="onNavMouseEnter"
+        @mouseleave="onNavMouseLeave"
         @click="toggleTheme"
       >
         <!-- 太阳图标 (浅色主题) -->
@@ -135,6 +147,13 @@
       </div>
     </div>
   </aside>
+
+  <!-- 使用 Teleport 将侧边栏 tooltip 传送到 body，避免层级问题 -->
+  <teleport to="body">
+    <div v-if="sidebarTooltipVisible" class="sftp-tooltip" :style="sidebarTooltipStyle">
+      {{ sidebarTooltipText }}
+    </div>
+  </teleport>
 </template>
 
 <script>
@@ -232,6 +251,41 @@ export default defineComponent({
       settingsService.updateUISettings({ theme: newTheme });
     };
 
+    // 侧边栏悬浮提示（通过 Teleport 渲染到 body，样式与终端工具栏一致）
+    const sidebarTooltipVisible = ref(false);
+    const sidebarTooltipText = ref('');
+    const sidebarTooltipStyle = ref({});
+
+    const updateSidebarTooltipPosition = target => {
+      if (!target) return;
+      const rect = target.getBoundingClientRect();
+      const tooltipOffset =
+        getComputedStyle(document.documentElement)
+          .getPropertyValue('--tooltip-offset')
+          .trim() || '10px';
+      const offset = parseInt(tooltipOffset, 10) || 10;
+
+      sidebarTooltipStyle.value = {
+        position: 'fixed',
+        top: `${rect.top + rect.height / 2}px`,
+        left: `${rect.right + offset}px`,
+        transform: 'translateY(-50%)'
+      };
+    };
+
+    const onNavMouseEnter = event => {
+      const target = event.currentTarget;
+      const text = target?.getAttribute('data-tooltip') || '';
+      if (!text) return;
+      sidebarTooltipText.value = text;
+      updateSidebarTooltipPosition(target);
+      sidebarTooltipVisible.value = true;
+    };
+
+    const onNavMouseLeave = () => {
+      sidebarTooltipVisible.value = false;
+    };
+
     // GitHub 链接跳转函数
     const openGitHub = () => {
       window.open('https://github.com/shan-hee/EasySSH', '_blank');
@@ -251,7 +305,13 @@ export default defineComponent({
       toggleTheme,
       openGitHub,
       handleLogoClick,
-      userStore
+      userStore,
+      // sidebar tooltip
+      sidebarTooltipVisible,
+      sidebarTooltipText,
+      sidebarTooltipStyle,
+      onNavMouseEnter,
+      onNavMouseLeave
     };
   }
 });
@@ -270,7 +330,8 @@ export default defineComponent({
   overflow-y: auto;   /* 垂直方向可滚动，避免底部按钮被顶出 */
   border-right: none; /* 由主内容容器绘制统一分割线 */
   box-sizing: border-box;
-  z-index: var(--z-sticky);
+  /* 提升层级，确保悬浮提示在分割线与主内容之上显示 */
+  z-index: var(--z-modal);
   position: relative; /* 让绝对定位的底部按钮以侧栏为参照 */
 }
 
@@ -391,12 +452,10 @@ export default defineComponent({
   color: var(--sidebar-nav-color);
 }
 
-.nav-item:hover::after {
-  content: attr(data-tooltip);
-  position: absolute;
-  left: calc(100% + var(--tooltip-offset));
-  top: 50%;
-  transform: translateY(-50%);
+/* 统一的 Tooltip 样式（与终端工具栏一致） */
+.sftp-tooltip {
+  position: fixed;
+  z-index: var(--z-tooltip);
   background-color: var(--tooltip-bg);
   color: var(--tooltip-color);
   padding: var(--tooltip-padding-vertical) var(--tooltip-padding-horizontal);
@@ -407,26 +466,21 @@ export default defineComponent({
   line-height: var(--tooltip-line-height);
   white-space: nowrap;
   max-width: var(--tooltip-max-width);
-  z-index: var(--z-tooltip);
   box-shadow: var(--tooltip-shadow);
-  display: block;
-  pointer-events: none;
   transition: var(--tooltip-transition);
+  pointer-events: none; /* 文本提示不拦截鼠标事件 */
 }
 
-.nav-item:hover::before {
+/* 左侧箭头，指向侧边栏导航项 */
+.sftp-tooltip:after {
   content: '';
   position: absolute;
-  right: calc(-1 * var(--tooltip-offset));
+  left: 0;
   top: 50%;
-  transform: translateY(-50%);
-  width: 0;
-  height: 0;
-  border-top: var(--tooltip-arrow-size) solid transparent;
-  border-bottom: var(--tooltip-arrow-size) solid transparent;
-  border-right: var(--tooltip-arrow-size) solid var(--tooltip-arrow-color);
-  z-index: calc(var(--z-tooltip) + 1);
-  pointer-events: none;
+  transform: translate(-100%, -50%);
+  border-width: var(--tooltip-arrow-size);
+  border-style: solid;
+  border-color: transparent var(--tooltip-arrow-color) transparent transparent;
 }
 
 /* 底部按钮组样式 */
