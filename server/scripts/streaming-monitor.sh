@@ -24,6 +24,15 @@ PREV_DISK_READ=0
 PREV_DISK_WRITE=0
 PREV_TIMESTAMP=0
 
+# 每轮循环复用的主网卡接口（避免重复探测）
+PRIMARY_IFACE=""
+
+# 磁盘信息缓存（降低 df 调用频率）
+DISK_CACHE_TS=0
+DISK_CACHE_JSON=""
+# 磁盘采样间隔（秒），可通过环境变量覆盖，默认15秒
+DISK_SAMPLE_INTERVAL=${DISK_SAMPLE_INTERVAL:-15}
+
 # 当前网络速度（全局变量）
 CURRENT_RX_SPEED=0
 CURRENT_TX_SPEED=0
@@ -31,6 +40,15 @@ CURRENT_TX_SPEED=0
 # 静态信息缓存
 STATIC_INFO_CACHED=0
 STATIC_INFO=""
+
+# PSI/容器信息缓存与采样间隔（秒）
+PSI_CACHE_TS=0
+PSI_CACHE_JSON=""
+PSI_SAMPLE_INTERVAL=${PSI_SAMPLE_INTERVAL:-10}
+
+CONTAINER_CACHE_TS=0
+CONTAINER_CACHE_JSON=""
+CONTAINER_SAMPLE_INTERVAL=${CONTAINER_SAMPLE_INTERVAL:-10}
 
 # 获取主网卡接口
 get_primary_interface() {
@@ -43,16 +61,29 @@ get_primary_interface() {
     echo "${GET_IFACE_result:-eth0}"
 }
 
-# 获取主磁盘设备
-get_primary_disk() {
-    # 获取根分区对应的磁盘设备
-    GET_DISK_result=$(df / | tail -1 | awk '{print $1}' | sed 's/[0-9]*$//' | sed 's|/dev/||')
-    if [ -z "$GET_DISK_result" ]; then
-        # 降级方案
-        GET_DISK_result=$(ls /sys/block/ | grep -E '^(sd|nvme|vd)' | head -1)
+# 获取当前时间戳（毫秒），兼容 busybox 无毫秒情况
+get_now_ms() {
+    if command -v date >/dev/null 2>&1; then
+        NOW_MS=$(date +%s%3N 2>/dev/null)
+        case "$NOW_MS" in
+            ''|*[^0-9]*) NOW_MS="" ;;
+        esac
+        if [ -n "$NOW_MS" ]; then
+            echo "$NOW_MS"
+            return
+        fi
+        NOW_S=$(date +%s 2>/dev/null)
+        case "$NOW_S" in
+            ''|*[^0-9]*) NOW_S=0 ;;
+        esac
+        echo $((NOW_S * 1000))
+        return
     fi
-    echo "${GET_DISK_result:-sda}"
+    echo 0
 }
+
+# 获取主磁盘设备
+get_primary_disk() { :; } # 未使用，占位以避免死代码
 
 # 获取CPU信息（POSIX兼容版差分算法）
 get_cpu_info() {
@@ -71,11 +102,9 @@ get_cpu_info() {
         CPU_irq=${6:-0}
         CPU_softirq=${7:-0}
         CPU_steal=${8:-0}
-        CPU_guest=${9:-0}
-        CPU_guest_nice=${10:-0}
 
-        # 计算总时间和空闲时间（包含guest时间）
-        CPU_total=$((CPU_user + CPU_nice + CPU_system + CPU_idle + CPU_iowait + CPU_irq + CPU_softirq + CPU_steal + CPU_guest + CPU_guest_nice))
+        # 计算总时间（不含guest/guest_nice，避免双计入）和空闲时间
+        CPU_total=$((CPU_user + CPU_nice + CPU_system + CPU_idle + CPU_iowait + CPU_irq + CPU_softirq + CPU_steal))
         CPU_idle_total=$((CPU_idle + CPU_iowait))
         CPU_usage=0
 
@@ -95,48 +124,9 @@ get_cpu_info() {
             # 第一次运行时，尝试多种方法获取即时CPU使用率
             CPU_usage=0
 
-            # 方法1: 尝试vmstat
-            if command -v vmstat >/dev/null 2>&1; then
-                CPU_vmstat_output=$(vmstat 1 2 2>/dev/null | tail -1)
-                [ $DEBUG -eq 1 ] && echo "# CPU DEBUG: vmstat输出: $CPU_vmstat_output" >&2
-                CPU_vmstat_usage=$(echo "$CPU_vmstat_output" | awk '{print 100 - $15}' 2>/dev/null || echo "")
-                if [ -n "$CPU_vmstat_usage" ] && [ "$CPU_vmstat_usage" != "0" ]; then
-                    CPU_usage=$(awk "BEGIN {printf \"%.0f\", $CPU_vmstat_usage}" 2>/dev/null || echo "0")
-                    [ $DEBUG -eq 1 ] && echo "# CPU DEBUG: vmstat方法成功 - usage=$CPU_usage%" >&2
-                else
-                    [ $DEBUG -eq 1 ] && echo "# CPU DEBUG: vmstat方法失败 - 输出为空或0" >&2
-                fi
-            else
-                [ $DEBUG -eq 1 ] && echo "# CPU DEBUG: vmstat命令不可用" >&2
-            fi
+            # 方法1/2: vmstat/top 回退已禁用以降低开销
 
-            # 方法2: 如果vmstat失败，尝试top命令
-            if [ "$CPU_usage" = "0" ] && command -v top >/dev/null 2>&1; then
-                CPU_top_output=$(top -bn1 2>/dev/null | grep -i "cpu" | head -1)
-                [ $DEBUG -eq 1 ] && echo "# CPU DEBUG: top输出: $CPU_top_output" >&2
-
-                # 尝试多种top输出格式
-                CPU_top_idle=""
-                # 格式1: %Cpu(s): 1.0 us, 1.0 sy, 0.0 ni, 97.0 id
-                if [ -z "$CPU_top_idle" ]; then
-                    CPU_top_idle=$(echo "$CPU_top_output" | awk '{for(i=1;i<=NF;i++) if($i ~ /id/) print $(i-1)}' | sed 's/%//g' 2>/dev/null || echo "")
-                fi
-                # 格式2: CPU: 3% usr 0% sys 0% nic 97% idle
-                if [ -z "$CPU_top_idle" ]; then
-                    CPU_top_idle=$(echo "$CPU_top_output" | awk '{for(i=1;i<=NF;i++) if($i ~ /idle/) print $(i-1)}' | sed 's/%//g' 2>/dev/null || echo "")
-                fi
-
-                if [ -n "$CPU_top_idle" ] && [ "$CPU_top_idle" != "0" ]; then
-                    CPU_usage=$(awk "BEGIN {printf \"%.0f\", 100 - $CPU_top_idle}" 2>/dev/null || echo "0")
-                    [ $DEBUG -eq 1 ] && echo "# CPU DEBUG: top方法成功 - idle=$CPU_top_idle%, usage=$CPU_usage%" >&2
-                else
-                    [ $DEBUG -eq 1 ] && echo "# CPU DEBUG: top方法失败 - 无法解析idle值" >&2
-                fi
-            else
-                [ $DEBUG -eq 1 ] && echo "# CPU DEBUG: top命令不可用或CPU已有值" >&2
-            fi
-
-            # 方法3: 如果都失败，尝试直接计算/proc/stat的即时使用率
+            # 方法3: 直接计算 /proc/stat 的即时使用率
             if [ "$CPU_usage" = "0" ] && [ -f /proc/stat ]; then
                 # 读取两次/proc/stat，间隔短时间计算差值
                 CPU_stat1=$(head -1 /proc/stat)
@@ -149,13 +139,13 @@ get_cpu_info() {
                 # 解析第一次数据
                 set -- $CPU_stat1
                 shift
-                CPU_total1=$((${1:-0} + ${2:-0} + ${3:-0} + ${4:-0} + ${5:-0} + ${6:-0} + ${7:-0}))
+                CPU_total1=$((${1:-0} + ${2:-0} + ${3:-0} + ${4:-0} + ${5:-0} + ${6:-0} + ${7:-0} + ${8:-0}))
                 CPU_idle1=${4:-0}
 
                 # 解析第二次数据
                 set -- $CPU_stat2
                 shift
-                CPU_total2=$((${1:-0} + ${2:-0} + ${3:-0} + ${4:-0} + ${5:-0} + ${6:-0} + ${7:-0}))
+                CPU_total2=$((${1:-0} + ${2:-0} + ${3:-0} + ${4:-0} + ${5:-0} + ${6:-0} + ${7:-0} + ${8:-0}))
                 CPU_idle2=${4:-0}
 
                 # 计算差值
@@ -170,7 +160,7 @@ get_cpu_info() {
                 fi
             fi
 
-            # 方法4: 如果都失败，基于负载平均值估算
+            # 方法4: 如果仍失败，基于负载平均值估算
             if [ "$CPU_usage" = "0" ] && [ -f /proc/loadavg ]; then
                 CPU_load1=$(awk '{print $1}' /proc/loadavg 2>/dev/null || echo "0")
                 CPU_cores_for_calc=${CPU_cores:-1}
@@ -210,7 +200,10 @@ get_cpu_info() {
         CPU_MODEL_CACHED=${CPU_MODEL_CACHED:-"Unknown"}
         CPU_load_avg=${CPU_load_avg:-"\"load1\":0,\"load5\":0,\"load15\":0"}
 
-        echo "\"cpu\":{\"usage\":$CPU_usage,\"cores\":$CPU_cores,\"model\":\"$CPU_MODEL_CACHED\",\"loadAverage\":{$CPU_load_avg}}"
+        # 对CPU型号进行JSON转义
+        CPU_MODEL_ESCAPED=$(printf "%s" "$CPU_MODEL_CACHED" | sed 's/\\/\\\\/g; s/"/\\"/g')
+
+        echo "\"cpu\":{\"usage\":$CPU_usage,\"cores\":$CPU_cores,\"model\":\"$CPU_MODEL_ESCAPED\",\"loadAverage\":{$CPU_load_avg}}"
     else
         echo "\"cpu\":{\"usage\":0,\"cores\":1,\"model\":\"Unknown\",\"loadAverage\":{\"load1\":0,\"load5\":0,\"load15\":0}}"
     fi
@@ -290,6 +283,13 @@ get_swap_info() {
 
 # 获取磁盘信息
 get_disk_info() {
+    # 缓存：避免每秒调用 df，默认15秒更新一次
+    NOW_TS=$(date +%s)
+    if [ $DISK_CACHE_TS -gt 0 ] && [ $((NOW_TS - DISK_CACHE_TS)) -lt $DISK_SAMPLE_INTERVAL ]; then
+        echo "$DISK_CACHE_JSON"
+        return
+    fi
+
     # 尝试多种方法获取磁盘信息
     DISK_total=0
     DISK_used=0
@@ -343,13 +343,17 @@ get_disk_info() {
     DISK_available=${DISK_available:-0}
     DISK_usage_pct=${DISK_usage_pct:-0}
 
-    [ $DEBUG -eq 1 ] && echo "# DISK DEBUG: 最终结果 - total=$DISK_total, used=$DISK_used, available=$DISK_available, usage=$DISK_usage_pct%" >&2
-    echo "\"disk\":{\"total\":$DISK_total,\"used\":$DISK_used,\"free\":$DISK_available,\"usedPercentage\":$DISK_usage_pct}"
+    [ $DEBUG -eq 1 ] && echo "# DISK DEBUG: 最终结果 - total=$DISK_total, used=$DISK_used, available=$DISK_available, usage=$DISK_usage_pct% (cached update)" >&2
+
+    DISK_CACHE_JSON="\"disk\":{\"total\":$DISK_total,\"used\":$DISK_used,\"free\":$DISK_available,\"usedPercentage\":$DISK_usage_pct}"
+    DISK_CACHE_TS=$NOW_TS
+
+    echo "$DISK_CACHE_JSON"
 }
 
 # 更新网络缓存（在主shell中执行）
 update_network_cache() {
-    NET_iface=$(get_primary_interface)
+    NET_iface=${PRIMARY_IFACE:-$(get_primary_interface)}
     NET_rx_bytes=0
     NET_tx_bytes=0
 
@@ -360,13 +364,7 @@ update_network_cache() {
     fi
 
     # 使用高精度时间戳（毫秒）- 兼容性改进
-    NET_current_time_ms=""
-    if command -v date >/dev/null 2>&1 && date +%s%3N >/dev/null 2>&1; then
-        NET_current_time_ms=$(date +%s%3N)
-    else
-        # 降级到秒级精度
-        NET_current_time_ms=$(($(date +%s) * 1000))
-    fi
+    NET_current_time_ms=$(get_now_ms)
 
     # 精确的网络速率计算
     [ $DEBUG -eq 1 ] && echo "# NET DEBUG: Checking PREV_TIMESTAMP=$PREV_TIMESTAMP" >&2
@@ -374,6 +372,25 @@ update_network_cache() {
         NET_time_diff_ms=$((NET_current_time_ms - PREV_TIMESTAMP))
         NET_rx_diff=$((NET_rx_bytes - PREV_NET_RX))
         NET_tx_diff=$((NET_tx_bytes - PREV_NET_TX))
+
+        # 处理计数器回卷或设备重置（负差值）
+        if [ "$NET_rx_diff" -lt 0 ] 2>/dev/null; then
+            # 当历史值接近32位上限时，尝试按32位回卷补偿；否则视为重置
+            PREV_LEN=$(printf "%s" "$PREV_NET_RX" | awk '{print length($0)}')
+            if [ "${PREV_LEN:-0}" -ge 10 ]; then
+                NET_rx_diff=$(awk -v prev="$PREV_NET_RX" -v curr="$NET_rx_bytes" 'BEGIN{printf "%d", (4294967296 - prev + curr)}' 2>/dev/null || echo 0)
+            else
+                NET_rx_diff=0
+            fi
+        fi
+        if [ "$NET_tx_diff" -lt 0 ] 2>/dev/null; then
+            PREV_LEN_TX=$(printf "%s" "$PREV_NET_TX" | awk '{print length($0)}')
+            if [ "${PREV_LEN_TX:-0}" -ge 10 ]; then
+                NET_tx_diff=$(awk -v prev="$PREV_NET_TX" -v curr="$NET_tx_bytes" 'BEGIN{printf "%d", (4294967296 - prev + curr)}' 2>/dev/null || echo 0)
+            else
+                NET_tx_diff=0
+            fi
+        fi
 
         if [ $NET_time_diff_ms -gt 0 ]; then
             # 计算字节/秒，使用毫秒精度
@@ -408,7 +425,7 @@ update_network_cache() {
 
 # 获取网络信息JSON（使用缓存的速度值）
 get_network_info_json() {
-    NET_JSON_iface=$(get_primary_interface)
+    NET_JSON_iface=${PRIMARY_IFACE:-$(get_primary_interface)}
     NET_JSON_rx_packets=0
     NET_JSON_tx_packets=0
 
@@ -425,6 +442,10 @@ get_network_info_json() {
         NET_JSON_link_speed=$(cat "/sys/class/net/$NET_JSON_iface/speed" 2>/dev/null || echo "0")
         # 转换为bps
         NET_JSON_link_speed=$((NET_JSON_link_speed * 1000000))
+        # 负值（未知速率）钳为0
+        if [ "$NET_JSON_link_speed" -lt 0 ] 2>/dev/null; then
+            NET_JSON_link_speed=0
+        fi
     fi
 
     if [ -f "/sys/class/net/$NET_JSON_iface/operstate" ]; then
@@ -436,7 +457,7 @@ get_network_info_json() {
 
 # 获取网络信息（精确速率计算）- 保留原函数以防兼容性问题
 get_network_info() {
-    local iface=$(get_primary_interface)
+    local iface=${PRIMARY_IFACE:-$(get_primary_interface)}
     local rx_bytes=0
     local tx_bytes=0
     local rx_packets=0
@@ -452,12 +473,7 @@ get_network_info() {
 
     # 使用高精度时间戳（毫秒）- 兼容性改进
     local current_time_ms
-    if command -v date >/dev/null 2>&1 && date +%s%3N >/dev/null 2>&1; then
-        current_time_ms=$(date +%s%3N)
-    else
-        # 降级到秒级精度
-        current_time_ms=$(($(date +%s) * 1000))
-    fi
+    current_time_ms=$(get_now_ms)
     local rx_speed=0
     local tx_speed=0
 
@@ -467,6 +483,26 @@ get_network_info() {
         local time_diff_ms=$((current_time_ms - PREV_TIMESTAMP))
         local rx_diff=$((rx_bytes - PREV_NET_RX))
         local tx_diff=$((tx_bytes - PREV_NET_TX))
+
+        # 处理计数器回卷或设备重置（负差值）
+        if [ "$rx_diff" -lt 0 ] 2>/dev/null; then
+            local prev_len
+            prev_len=$(printf "%s" "$PREV_NET_RX" | awk '{print length($0)}')
+            if [ "${prev_len:-0}" -ge 10 ]; then
+                rx_diff=$(awk -v prev="$PREV_NET_RX" -v curr="$rx_bytes" 'BEGIN{printf "%d", (4294967296 - prev + curr)}' 2>/dev/null || echo 0)
+            else
+                rx_diff=0
+            fi
+        fi
+        if [ "$tx_diff" -lt 0 ] 2>/dev/null; then
+            local prev_len_tx
+            prev_len_tx=$(printf "%s" "$PREV_NET_TX" | awk '{print length($0)}')
+            if [ "${prev_len_tx:-0}" -ge 10 ]; then
+                tx_diff=$(awk -v prev="$PREV_NET_TX" -v curr="$tx_bytes" 'BEGIN{printf "%d", (4294967296 - prev + curr)}' 2>/dev/null || echo 0)
+            else
+                tx_diff=0
+            fi
+        fi
 
         if [ $time_diff_ms -gt 0 ]; then
             # 计算字节/秒，使用毫秒精度
@@ -505,6 +541,10 @@ get_network_info() {
         link_speed=$(cat "/sys/class/net/$iface/speed" 2>/dev/null || echo "0")
         # 转换为bps
         link_speed=$((link_speed * 1000000))
+        # 负值（未知速率）钳为0
+        if [ "$link_speed" -lt 0 ] 2>/dev/null; then
+            link_speed=0
+        fi
     fi
 
     if [ -f "/sys/class/net/$iface/operstate" ]; then
@@ -550,7 +590,13 @@ get_static_info() {
         STATIC_internal_ip=$(hostname -I 2>/dev/null | awk '{print $1}')
     fi
 
-    STATIC_INFO="\"os\":{\"hostname\":\"$STATIC_hostname\",\"platform\":\"Linux\",\"release\":\"$STATIC_os_name\",\"arch\":\"$STATIC_arch\",\"uptime\":$STATIC_uptime},\"ip\":{\"internal\":\"${STATIC_internal_ip:-unknown}\"}"
+    # 转义可能包含的特殊字符，确保合法JSON
+    STATIC_hostname_esc=$(printf "%s" "$STATIC_hostname" | sed 's/\\/\\\\/g; s/"/\\"/g')
+    STATIC_os_name_esc=$(printf "%s" "$STATIC_os_name" | sed 's/\\/\\\\/g; s/"/\\"/g')
+    STATIC_arch_esc=$(printf "%s" "$STATIC_arch" | sed 's/\\/\\\\/g; s/"/\\"/g')
+    STATIC_internal_ip_esc=$(printf "%s" "${STATIC_internal_ip:-unknown}" | sed 's/\\/\\\\/g; s/"/\\"/g')
+
+    STATIC_INFO="\"os\":{\"hostname\":\"$STATIC_hostname_esc\",\"platform\":\"Linux\",\"release\":\"$STATIC_os_name_esc\",\"arch\":\"$STATIC_arch_esc\",\"uptime\":$STATIC_uptime},\"ip\":{\"internal\":\"$STATIC_internal_ip_esc\"}"
     STATIC_INFO_CACHED=$STATIC_current_time
 
     echo "$STATIC_INFO"
@@ -558,6 +604,13 @@ get_static_info() {
 
 # 获取PSI压力信息（如果支持）
 get_psi_info() {
+    # 缓存命中则直接返回
+    NOW_TS=$(date +%s)
+    if [ $PSI_CACHE_TS -gt 0 ] && [ $((NOW_TS - PSI_CACHE_TS)) -lt $PSI_SAMPLE_INTERVAL ]; then
+        [ -n "$PSI_CACHE_JSON" ] && echo "$PSI_CACHE_JSON"
+        return
+    fi
+
     PSI_data=""
 
     if [ -f /proc/pressure/cpu ]; then
@@ -587,12 +640,24 @@ get_psi_info() {
     fi
 
     if [ -n "$PSI_data" ]; then
-        echo ",\"psi\":{$PSI_data}"
+        PSI_CACHE_JSON=",\"psi\":{$PSI_data}"
+    else
+        PSI_CACHE_JSON=""
     fi
+    PSI_CACHE_TS=$NOW_TS
+
+    [ -n "$PSI_CACHE_JSON" ] && echo "$PSI_CACHE_JSON"
 }
 
 # 获取容器信息（如果在容器中运行）
 get_container_info() {
+    # 缓存命中则直接返回
+    NOW_TS=$(date +%s)
+    if [ $CONTAINER_CACHE_TS -gt 0 ] && [ $((NOW_TS - CONTAINER_CACHE_TS)) -lt $CONTAINER_SAMPLE_INTERVAL ]; then
+        echo "$CONTAINER_CACHE_JSON"
+        return
+    fi
+
     CONTAINER_data=""
 
     # 检查是否在容器中
@@ -616,7 +681,12 @@ get_container_info() {
 
         # 内存限制 (cgroup v2)
         if [ -f /sys/fs/cgroup/memory.max ]; then
-            CONTAINER_memory_limit=$(cat /sys/fs/cgroup/memory.max 2>/dev/null || echo "0")
+            _memmax=$(cat /sys/fs/cgroup/memory.max 2>/dev/null || echo "0")
+            if [ "$_memmax" = "max" ]; then
+                CONTAINER_memory_limit=0
+            else
+                CONTAINER_memory_limit=$_memmax
+            fi
             CONTAINER_memory_usage=$(cat /sys/fs/cgroup/memory.current 2>/dev/null || echo "0")
         fi
 
@@ -645,14 +715,20 @@ get_container_info() {
             CONTAINER_memory_limit=0
         fi
 
-        CONTAINER_data="\"container\":{\"detected\":true,\"memory_limit\":$CONTAINER_memory_limit,\"memory_usage\":$CONTAINER_memory_usage,\"cpu_quota\":$CONTAINER_cpu_quota,\"cpu_period\":$CONTAINER_cpu_period,\"cpu_limit_cores\":\"$CONTAINER_cpu_limit_cores\"}"
+        CONTAINER_data="\"container\":{\"detected\":true,\"memory_limit\":$CONTAINER_memory_limit,\"memory_usage\":$CONTAINER_memory_usage,\"cpu_quota\":$CONTAINER_cpu_quota,\"cpu_period\":$CONTAINER_cpu_period,\"cpu_limit_cores\":$CONTAINER_cpu_limit_cores}"
     else
         CONTAINER_data="\"container\":{\"detected\":false}"
     fi
 
     if [ -n "$CONTAINER_data" ]; then
-        echo ",$CONTAINER_data"
+        CONTAINER_CACHE_JSON=",$CONTAINER_data"
+    else
+        # 理论上不会为空，这里兜底
+        CONTAINER_CACHE_JSON=",\"container\":{\"detected\":false}"
     fi
+    CONTAINER_CACHE_TS=$NOW_TS
+
+    echo "$CONTAINER_CACHE_JSON"
 }
 
 # 主循环
@@ -664,12 +740,10 @@ main() {
     
     while true; do
         # 使用与网络函数一致的毫秒时间戳
-        MAIN_timestamp=""
-        if command -v date >/dev/null 2>&1 && date +%s%3N >/dev/null 2>&1; then
-            MAIN_timestamp=$(date +%s%3N)
-        else
-            MAIN_timestamp=$(($(date +%s) * 1000))
-        fi
+        MAIN_timestamp=$(get_now_ms)
+
+        # 本轮检测主网卡（用于该轮所有网络相关函数）
+        PRIMARY_IFACE=$(get_primary_interface)
 
         # 先更新网络缓存（在主shell中执行）
         update_network_cache
@@ -688,9 +762,6 @@ main() {
 
         # 输出完整的JSON行
         echo "$MAIN_json_output"
-        
-        # 刷新输出缓冲区
-        exec 1>&1
         
         sleep $INTERVAL
     done
