@@ -184,18 +184,8 @@ class WordCompletionService {
         'ansible'
       ],
 
-      // AI助手命令
-      ai: [
-        '/ai',
-        '/explain',
-        '/fix',
-        '/gen',
-        '/ai help',
-        '/ai explain',
-        '/ai fix',
-        '/ai gen',
-        '/ai generate'
-      ],
+      // AI助手命令（已废弃，不再提供补全）
+      ai: [],
 
       // 常用选项
       options: [
