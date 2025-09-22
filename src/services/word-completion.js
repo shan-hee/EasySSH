@@ -184,9 +184,6 @@ class WordCompletionService {
         'ansible'
       ],
 
-      // AI助手命令（已废弃，不再提供补全）
-      ai: [],
-
       // 常用选项
       options: [
         '-l',
