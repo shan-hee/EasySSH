@@ -421,7 +421,7 @@ export default {
 }
 
 .autocomplete-item {
-  padding: 10px 14px;
+  padding: 5px 7px;
   cursor: pointer;
   border-bottom: 1px solid var(--color-border-light);
   transition: background-color 0.15s ease;
