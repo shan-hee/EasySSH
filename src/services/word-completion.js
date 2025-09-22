@@ -5,6 +5,7 @@
 
 import log from './log';
 import { autocompleteConfig } from '../config/app-config';
+import linuxCommands from '../assets/data/linux-commands.json';
 
 class WordCompletionService {
   constructor() {
@@ -262,6 +263,76 @@ class WordCompletionService {
 
     // 配置
     this.config = autocompleteConfig;
+
+    // 命令 → 常见选项 映射（用于上下文感知）
+    this.commandOptions = new Map();
+
+    // 短句（多词）补全库（可按需扩充）
+    this.phraseLibrary = [
+      { text: 'ls -lah', description: '以详细、易读方式列出文件' },
+      { text: 'du -sh', description: '以总计大小显示目录容量' },
+      { text: 'df -h', description: '以人类可读方式显示磁盘空间' },
+      { text: 'tail -f', description: '实时跟踪文件末尾输出' },
+      { text: 'grep -r', description: '递归搜索目录中文本' },
+      { text: 'grep -rn', description: '递归搜索并显示行号' },
+      { text: 'find . -name', description: '在当前目录按名称查找' },
+      { text: 'tar -czvf', description: '创建 gzip 压缩包' },
+      { text: 'tar -xzvf', description: '解压 gzip 压缩包' },
+      { text: 'ssh -i', description: '使用私钥文件连接主机' },
+      { text: 'scp -i', description: '使用私钥进行安全复制' },
+      { text: 'rsync -avz', description: '压缩传输并保留属性' },
+      { text: 'curl -I', description: '仅请求响应头' },
+      { text: 'curl -L', description: '跟随重定向' },
+      { text: 'wget -c', description: '断点续传下载' },
+      { text: 'systemctl restart', description: '重启 systemd 服务' },
+      { text: 'systemctl status', description: '查看 systemd 服务状态' },
+      { text: 'journalctl -u', description: '查看指定服务日志' },
+      { text: 'docker ps -a', description: '列出所有容器' },
+      { text: 'docker images', description: '列出镜像' },
+      { text: 'docker logs -f', description: '实时查看容器日志' },
+      { text: 'docker exec -it', description: '进入容器交互式终端' },
+      { text: 'docker build -t', description: '构建镜像并命名标签' },
+      { text: 'docker run -d --name', description: '后台运行并命名容器' },
+      { text: 'docker rm -f', description: '强制删除容器' },
+      { text: 'docker rmi', description: '删除镜像' },
+      { text: 'docker compose up -d', description: '后台启动 Compose 服务' },
+      { text: 'docker compose logs -f', description: '实时查看 Compose 日志' },
+      { text: 'docker system prune -f', description: '清理无用数据' },
+      { text: 'kubectl get pods -A', description: '列出所有命名空间的 Pods' },
+      { text: 'kubectl describe pod', description: '查看 Pod 详情' },
+      { text: 'kubectl logs -f', description: '实时查看 Pod 日志' },
+      { text: 'kubectl exec -it', description: '进入 Pod 容器交互式终端' },
+      { text: 'kubectl apply -f', description: '应用 YAML 清单' },
+      { text: 'kubectl delete -f', description: '删除 YAML 清单资源' },
+      { text: 'kubectl config set-context', description: '切换/设置上下文' },
+      { text: 'nginx -t && systemctl reload nginx', description: '测试配置并热加载' },
+      { text: 'journalctl -u nginx -f', description: '实时查看 Nginx 日志' },
+      { text: 'firewall-cmd --permanent --add-port=80/tcp', description: '开放 80 端口 (firewalld)' },
+      { text: 'firewall-cmd --reload', description: '重载防火墙配置 (firewalld)' },
+      { text: 'ufw allow 80/tcp', description: 'UFW 开放 80 端口' },
+      { text: 'ufw status', description: '查看 UFW 状态' },
+      { text: 'git checkout -b', description: '创建并切换到新分支' },
+      { text: 'git pull', description: '拉取远程更新' },
+      { text: 'git push', description: '推送提交到远程' }
+    ];
+
+    // 将精简 Linux 命令数据并入本地词库
+    try {
+      if (Array.isArray(linuxCommands)) {
+        const names = new Set(this.wordLibrary.commands);
+        linuxCommands.forEach(cmd => {
+          if (cmd?.name && !names.has(cmd.name)) {
+            this.wordLibrary.commands.push(cmd.name);
+            names.add(cmd.name);
+          }
+          if (cmd?.name && Array.isArray(cmd.options)) {
+            this.commandOptions.set(cmd.name, cmd.options);
+          }
+        });
+      }
+    } catch (e) {
+      log.warn('合并 Linux 命令词库失败:', e);
+    }
   }
 
   /**
@@ -277,7 +348,22 @@ class WordCompletionService {
     }
 
     try {
-      return this.computeWordSuggestions(input.trim(), limit, context);
+      const wordSuggs = this.computeWordSuggestions(input.trim(), limit, context);
+      const phraseSuggs = this.getPhraseSuggestions(input.trim(), Math.max(2, Math.floor(limit / 2)), context);
+
+      // 合并后按分数排序，去重（按 text）
+      const merged = [...wordSuggs, ...phraseSuggs];
+      const uniq = [];
+      const seen = new Set();
+      for (const s of merged) {
+        if (!seen.has(s.text)) {
+          seen.add(s.text);
+          uniq.push(s);
+        }
+      }
+
+      uniq.sort((a, b) => b.score - a.score || a.text.localeCompare(b.text));
+      return uniq.slice(0, limit);
     } catch (error) {
       log.error('获取单词补全建议失败:', error);
       return [];
@@ -328,6 +414,68 @@ class WordCompletionService {
     });
 
     return suggestions.slice(0, limit);
+  }
+
+  /**
+   * 获取短句（多词）补全建议
+   * 基于整行上下文进行前缀/包含匹配，并优先命令相关短句
+   */
+  getPhraseSuggestions(input, limit = 4, context = {}) {
+    if (!limit) return [];
+
+    const suggestions = [];
+    try {
+      const cmdline = (context.commandLine || '').trim();
+      const key = (cmdline || input).toLowerCase();
+      if (!key) return [];
+
+      // 生成候选集：内置短句 + 按当前命令扩展的常见选项短句
+      const candidates = [...this.phraseLibrary];
+
+      // 如果处于参数位置，则尝试基于首个命令补充“命令 + 常见选项”短句
+      const firstToken = (cmdline || input).trim().split(/\s+/)[0] || '';
+      if (firstToken && this.commandOptions.has(firstToken)) {
+        const opts = this.commandOptions.get(firstToken).slice(0, 6);
+        opts.forEach(opt => {
+          const phrase = `${firstToken} ${opt}`;
+          candidates.push({ text: phrase, description: '常用选项组合' });
+        });
+      }
+
+      // 匹配与计分：前缀优先，其次包含；命令名称相符加权
+      for (const item of candidates) {
+        const t = item.text.toLowerCase();
+        let score = 0;
+        if (t.startsWith(key)) score += 120;
+        else if (t.includes(key)) score += 60;
+
+        // 语境加分：短句首词与当前首个命令匹配
+        const phraseHead = item.text.split(/\s+/)[0].toLowerCase();
+        if (firstToken && phraseHead === firstToken.toLowerCase()) score += 40;
+
+        // 长度贴合度微调（更接近的多给分）
+        const lenDiff = Math.abs(item.text.length - (cmdline || input).length);
+        score += Math.max(0, 20 - Math.min(20, lenDiff));
+
+        if (score > 0) {
+          suggestions.push({
+            id: `phrase_${item.text}`,
+            text: item.text,
+            description: item.description || '常用短句',
+            type: 'commands', // 在排序中优先于普通 word
+            category: 'commands',
+            score
+          });
+        }
+      }
+
+      // 排序并裁剪
+      suggestions.sort((a, b) => b.score - a.score || a.text.localeCompare(b.text));
+      return suggestions.slice(0, limit);
+    } catch (e) {
+      log.warn('获取短句补全建议失败:', e);
+      return [];
+    }
   }
 
   /**

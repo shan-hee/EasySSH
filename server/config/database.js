@@ -153,6 +153,38 @@ const connectDatabase = () => {
       )
     `);
 
+    // 如脚本表为空，则插入一条系统默认脚本（在建库阶段完成）
+    try {
+      const row = db.prepare('SELECT COUNT(1) AS c FROM scripts').get();
+      if (!row || row.c === 0) {
+        const now = new Date().toISOString();
+        const insert = db.prepare(`
+          INSERT INTO scripts (
+            name, description, command, author, tags, keywords,
+            category, is_public, is_system, usage_count, created_by,
+            created_at, updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `);
+        insert.run(
+          '系统信息',
+          '收集服务器系统信息：内存、磁盘、CPU基本信息',
+          'free -h && df -h && cat /proc/cpuinfo | grep "model name" | head -1',
+          '系统管理员',
+          JSON.stringify(['系统', '监控']),
+          JSON.stringify(['系统', '信息', '内存', '磁盘', 'cpu', 'free', 'df']),
+          '系统监控',
+          1, // is_public
+          1, // is_system
+          0, // usage_count
+          null, // created_by
+          now,
+          now
+        );
+      }
+    } catch (e) {
+      console.warn('默认脚本插入失败（不影响启动）:', e?.message || e);
+    }
+
     // 创建用户脚本收藏表
     db.exec(`
       CREATE TABLE IF NOT EXISTS user_script_favorites (

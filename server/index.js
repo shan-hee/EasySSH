@@ -15,7 +15,6 @@ const { initWebSocketServer } = require('./ssh');
 const { initMonitoringWebSocketServer } = require('./monitoring');
 const { initAIWebSocketServer } = require('./ai');
 const { connectDatabase, getDatabaseStatus, closeDatabase } = require('./config/database');
-const { initializeScripts } = require('./scripts/initScripts');
 
 // 导入路由
 const userRoutes = require('./routes/userRoutes');
@@ -129,12 +128,7 @@ const startApp = async () => {
 
   // 移除自动创建管理员账号，改为首次登录时由用户创建
 
-  // 初始化默认脚本库
-  try {
-    await initializeScripts();
-  } catch (error) {
-    logger.warn('初始化脚本库失败，但不影响应用启动:', error.message);
-  }
+  // 默认脚本在建库时已自动插入，无需单独初始化
 
   // 启动服务器
   const host = '::'; // 监听 IPv6，可兼容 IPv4
