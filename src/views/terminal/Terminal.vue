@@ -173,6 +173,7 @@ import monitoringStateManager from '../../services/monitoringStateManager';
 import monitoringStateManagerFactory from '../../services/monitoringStateManagerFactory';
 // 导入AI服务
 import aiService from '../../services/ai/ai-service.js';
+import scriptLibraryService from '../../services/scriptLibrary';
 
 export default {
   name: 'Terminal',
@@ -1763,6 +1764,8 @@ export default {
           terminalInitialized.value[terminalId] = true;
           terminalInitializingStates.value[terminalId] = false;
           terminalConnectingStates.value[terminalId] = false;
+
+          // 脚本库同步不再在连接就绪时触发（保留认证成功触发）
 
           // 初始化AI面板状态
           aiPanelStore.initializeTerminal(terminalId);

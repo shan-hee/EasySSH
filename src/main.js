@@ -281,12 +281,7 @@ async function smartDataRefresh(userStore) {
     // 启动数据刷新任务（仅脚本库主动刷新，其他数据按需加载）
     const refreshTasks = [];
 
-    // 1. 脚本库数据刷新（需要同步缓存，优先级高）
-    refreshTasks.push(
-      refreshScriptLibrary().catch(error => {
-        log.warn('脚本库数据同步失败', error);
-      })
-    );
+    // 不再主动刷新脚本库：改为连接就绪/脚本变更时触发
 
     // 2. 其他数据改为按需加载模式，仅在已加载且用户正在使用时才刷新
     // 连接数据 - 仅在已缓存且页面正在显示连接相关内容时刷新
@@ -333,17 +328,7 @@ async function smartDataRefresh(userStore) {
   }
 }
 
-// 刷新脚本库数据（同步缓存策略）
-// 脚本库是共享资源，需要同步到本地存储并支持增量更新
-async function refreshScriptLibrary() {
-  try {
-    await scriptLibraryService.smartSync();
-    log.debug('脚本库数据智能同步完成');
-  } catch (error) {
-    log.warn('脚本库数据同步失败', error);
-    throw error;
-  }
-}
+// 已移除：脚本库主动刷新函数（连接/变更事件驱动）
 
 // 刷新连接数据（按需请求+内存缓存策略）
 // 连接数据是用户个人数据，按需请求并缓存在内存中

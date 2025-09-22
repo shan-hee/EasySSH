@@ -697,19 +697,7 @@ export const useUserStore = defineStore(
             log.warn('通知登录状态管理器失败', error);
           }
 
-          // 登录成功后，仅启动脚本库数据的异步同步（不阻塞登录流程）
-          // 其他数据（连接列表、历史记录、收藏等）改为按需加载模式
-          // 使用 setTimeout 确保登录响应优先完成
-          setTimeout(() => {
-            try {
-              scriptLibraryService.syncFromServer().catch(() => {
-                log.warn('后台同步脚本库数据失败，将使用本地数据');
-              });
-              log.info('登录后数据同步策略：脚本库后台同步，其他数据按需加载');
-            } catch (error) {
-              log.warn('启动脚本库后台同步失败:', error);
-            }
-          }, 1500); // 减少延迟时间，提升响应速度
+          // 不在登录后主动同步脚本库：改为连接就绪/脚本变更时触发
 
           return {
             success: true,

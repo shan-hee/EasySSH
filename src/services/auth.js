@@ -661,7 +661,7 @@ class AuthService {
         return;
       }
 
-      log.debug('开始触发认证后脚本库同步（其他数据按需加载）');
+      // 认证成功后触发一次脚本库同步（其余触发点已移除）
 
       // 检查是否需要启动脚本库同步（避免重复同步）
       const lastSyncTime = localStorage.getItem('last_script_sync');
@@ -677,24 +677,20 @@ class AuthService {
       // 标记正在刷新
       this._isRefreshing = true;
 
-      // 延迟启动脚本库数据的后台同步，不阻塞认证流程
+      // 异步启动脚本库同步，不阻塞认证流程
       setTimeout(async () => {
         try {
-          // 更新同步时间
-          localStorage.setItem('last_script_sync', now.toString());
-
-          // 同步脚本库数据（静态导入，避免重复分块）
-          await scriptLibraryService.syncFromServer();
-          log.debug('脚本库数据后台同步完成');
+          // 记录本次尝试时间，避免短时间重复
+          localStorage.setItem('last_script_sync', Date.now().toString());
+          await scriptLibraryService.smartSync();
+          log.debug('认证后脚本库同步完成');
         } catch (error) {
-          log.warn('后台同步脚本库数据失败', error);
+          log.warn('认证后脚本库同步失败', error);
         } finally {
-          // 重置刷新标记
           this._isRefreshing = false;
         }
-      }, 2000); // 减少延迟时间，提升响应速度
-
-      log.info('认证后数据刷新策略已启动：仅脚本库同步，其他数据按需加载');
+      }, 1000);
+      log.info('认证后：已安排脚本库同步任务');
     } catch (error) {
       log.error('触发数据刷新失败', error);
       this._isRefreshing = false;

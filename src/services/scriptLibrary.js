@@ -28,12 +28,8 @@ class ScriptLibraryService {
     this.favorites = ref([]);
     this.lastSync = ref(null);
 
-    // 后台同步定时器
-    this.backgroundSyncTimer = null;
-
     // 加载本地数据
     this.loadFromLocal();
-    this.setupBackgroundSync();
 
     // 搜索历史
     this.searchHistory = ref([]);
@@ -103,53 +99,7 @@ class ScriptLibraryService {
     }
   }
 
-  /**
-   * 设置后台同步
-   */
-  setupBackgroundSync() {
-    // 清除现有定时器
-    if (this.backgroundSyncTimer) {
-      clearInterval(this.backgroundSyncTimer);
-    }
-
-    // 设置后台同步定时器 - 每5分钟同步一次
-    this.backgroundSyncTimer = setInterval(
-      () => {
-        if (this.isUserLoggedIn()) {
-          this.backgroundSync();
-        }
-      },
-      5 * 60 * 1000
-    ); // 5分钟
-
-    // 开发环境调试
-    if (environment.isDevelopment) {
-      log.debug('后台同步已设置', {
-        interval: '5分钟'
-      });
-    }
-  }
-
-  /**
-   * 后台同步
-   */
-  async backgroundSync() {
-    try {
-      // 检查是否需要同步
-      if (this.shouldSkipSync()) {
-        // 优化：后台同步跳过时不记录日志，减少噪音
-        return;
-      }
-
-      // 执行同步
-      const success = await this.syncFromServer(false);
-      if (success) {
-        log.debug('脚本库后台同步完成');
-      }
-    } catch (error) {
-      log.warn('后台同步失败:', error);
-    }
-  }
+  // 已移除：后台定时同步（由连接建立/脚本变更事件触发同步）
 
   /**
    * 智能同步策略
@@ -279,7 +229,19 @@ class ScriptLibraryService {
         // 保存到本地存储
         this.saveToLocal();
 
-        log.info('脚本库增量同步成功');
+        // 根据是否有实际变更决定日志级别
+        const updatedCount = (updates && updates.length) || 0;
+        const deletedCount = (deletes && deletes.length) || 0;
+        const favoritesChanged = favorites !== undefined; // 控制器在有变更时才返回
+        if (updatedCount > 0 || deletedCount > 0 || favoritesChanged) {
+          log.info('脚本库增量同步成功', {
+            updated: updatedCount,
+            deleted: deletedCount,
+            favoritesChanged
+          });
+        } else {
+          log.debug('脚本库增量同步完成（无变更）');
+        }
         return true;
       }
 
@@ -478,16 +440,7 @@ class ScriptLibraryService {
       ...this.userScripts.value.map(script => ({ ...script, source: 'user' }))
     ];
 
-    // 如果没有数据且用户已登录，触发后台同步
-    if (allScripts.length === 0 && this.isUserLoggedIn() && !this.lastSync.value) {
-      log.debug('检测到无脚本数据，触发后台同步');
-      // 异步触发同步，不阻塞当前调用
-      setTimeout(() => {
-        this.smartSync().catch(error => {
-          log.warn('后台智能同步失败:', error);
-        });
-      }, 100);
-    }
+    // 不再在读取时隐式触发同步：改为连接/变更事件驱动
 
     // 按使用次数和更新时间排序
     return allScripts.sort((a, b) => {
@@ -770,12 +723,6 @@ class ScriptLibraryService {
    * 销毁服务
    */
   destroy() {
-    // 清理定时器
-    if (this.backgroundSyncTimer) {
-      clearInterval(this.backgroundSyncTimer);
-      this.backgroundSyncTimer = null;
-    }
-
     log.debug('脚本库服务已销毁');
   }
 
@@ -889,6 +836,7 @@ class ScriptLibraryService {
     };
 
     this.scripts.value.push(newScript);
+    this.saveToLocal();
     return newScript;
   }
 
@@ -986,6 +934,8 @@ class ScriptLibraryService {
         updatedAt: new Date(),
         keywords: this.generateKeywords({ ...this.scripts.value[index], ...updates })
       };
+      // 本地保存更新
+      this.saveToLocal();
       return this.scripts.value[index];
     }
     return null;
@@ -999,6 +949,7 @@ class ScriptLibraryService {
     const index = this.scripts.value.findIndex(script => script.id === id);
     if (index !== -1) {
       const deleted = this.scripts.value.splice(index, 1)[0];
+      this.saveToLocal();
       return deleted;
     }
     return null;
