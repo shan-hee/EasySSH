@@ -147,8 +147,7 @@ const startApp = async () => {
     const timeStr = now.toLocaleTimeString();
     const dateStr = now.toLocaleDateString();
 
-    // 清除控制台
-    console.clear();
+    // 不再清屏，保留之前的初始化日志
 
     console.log(`\n${colors.bright}${colors.cyan}SSH WebSocket代理服务器已启动${colors.reset}\n`);
 

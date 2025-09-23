@@ -18,12 +18,9 @@ const colors = {
   white: '\x1b[37m'
 };
 
-// 清除终端
-const clearConsole = () => {
-  process.stdout.write(process.platform === 'win32' ? '\x1Bc' : '\x1B[2J\x1B[3J\x1B[H');
-};
+// 不再清屏，保留之前的启动日志
 
-// 自定义日志输出
+// 自定义日志输出（不清屏）
 const customLogger = () => {
   return {
     name: 'custom-logger',
@@ -39,7 +36,7 @@ const customLogger = () => {
           args[args.length - 1] = () => {
             callback();
 
-            clearConsole();
+            // 不清屏，直接输出横幅
 
             const protocol = server.config.server.https ? 'https' : 'http';
             const host = 'localhost';
@@ -146,6 +143,7 @@ export default defineConfig(async ({ mode }) => {
         brotliSize: true,
         template: 'treemap' // 可选: sunburst, treemap, network
       }),
+      // 前端启动时不清屏
       customLogger() // 添加自定义日志插件
     ].filter(Boolean),
     resolve: {
