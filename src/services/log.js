@@ -34,6 +34,7 @@ class LogService {
 
     // 性能优化：使用循环缓冲区
     this.logIndex = 0;
+    this.overwrites = 0; // 环形缓冲覆盖计数
 
     // 配置常量
     this.CONFIG_KEYS = Object.freeze({
@@ -44,6 +45,9 @@ class LogService {
 
     // 是否压缩 DOM/HTML 输出，避免打印整段标记
     this.compactDom = true;
+    // 全局错误钩子与跨标签同步注册标记
+    this.globalErrorHandlersRegistered = false;
+    this.storageSyncRegistered = false;
   }
 
   /**
@@ -63,15 +67,154 @@ class LogService {
       this._initializeLogStorage();
 
       this.isInitialized = true;
+      // 在全局环境暴露导出日志方法，方便在控制台直接调用
+      this._exposeGlobalExport();
+      // 注册全局错误/未处理Promise钩子
+      this._registerGlobalErrorHandlers();
+      // 注册跨标签 storage 同步
+      this._registerStorageSync();
       this.info('日志服务初始化完成', {
         level: this.logLevel,
         console: this.enableConsole,
-        maxLogs: this.maxLogs
+        maxLogs: this.maxLogs,
+        exportMethod: '执行 EasySSH.exportLogs() 将下载easyssh.logs'
       });
       return true;
     } catch (error) {
       console.error('日志服务初始化失败', error);
       return false;
+    }
+  }
+
+  /**
+   * 在全局作用域暴露导出日志方法（仅浏览器环境）
+   * @private
+   */
+  _exposeGlobalExport() {
+    try {
+      const g = typeof window !== 'undefined' ? window : typeof globalThis !== 'undefined' ? globalThis : null;
+      if (!g) return;
+      g.EasySSH = g.EasySSH || {};
+      if (typeof g.EasySSH.exportLogs !== 'function') {
+        g.EasySSH.exportLogs = () => {
+          try {
+            // 生成导出内容（基于当前日志级别）
+            const json = this.exportLogs();
+            const blob = new Blob([json], { type: 'application/json;charset=utf-8' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'easyssh.logs';
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            URL.revokeObjectURL(url);
+            console.log('日志已导出为 easyssh.logs');
+            return true;
+          } catch (e) {
+            console.error('导出日志失败', e);
+            return false;
+          }
+        };
+      }
+    } catch (_) {
+      // 忽略暴露失败，避免影响应用
+    }
+  }
+
+  /**
+   * 注册全局错误与未处理Promise拒绝钩子（浏览器环境）
+   * @private
+   */
+  _registerGlobalErrorHandlers() {
+    if (this.globalErrorHandlersRegistered) return;
+    try {
+      const g = typeof window !== 'undefined' ? window : null;
+      if (!g || typeof g.addEventListener !== 'function') return;
+
+      g.addEventListener('error', e => {
+        try {
+          const msg = e?.message || '未知全局错误';
+          const src = e?.filename || (e?.target && (e.target.src || e.target.href)) || '';
+          const info = {
+            type: 'UncaughtError',
+            source: src,
+            line: e?.lineno,
+            column: e?.colno,
+            error: e?.error ? { name: e.error.name, message: e.error.message, stack: e.error.stack } : undefined
+          };
+          this.error(`未捕获错误: ${msg}`, info);
+        } catch (_) {
+          // 忽略
+        }
+      });
+
+      g.addEventListener('unhandledrejection', e => {
+        try {
+          const reason = e?.reason;
+          let msg = '未处理的Promise拒绝';
+          let details;
+          if (reason instanceof Error) {
+            msg = `未处理的Promise拒绝: ${reason.message}`;
+            details = { name: reason.name, message: reason.message, stack: reason.stack };
+          } else {
+            details = { reason };
+          }
+          this.error(msg, { type: 'UnhandledRejection', ...details });
+        } catch (_) {
+          // 忽略
+        }
+      });
+
+      this.globalErrorHandlersRegistered = true;
+    } catch (_) {
+      // 忽略注册失败
+    }
+  }
+
+  /**
+   * 跨标签页同步日志设置（logLevel/enableConsole/compactDom）
+   * @private
+   */
+  _registerStorageSync() {
+    if (this.storageSyncRegistered) return;
+    try {
+      const g = typeof window !== 'undefined' ? window : null;
+      if (!g || typeof g.addEventListener !== 'function') return;
+
+      g.addEventListener('storage', e => {
+        try {
+          if (!e || typeof e.key !== 'string') return;
+          if (e.key === this.CONFIG_KEYS.LOG_LEVEL) {
+            const nv = e.newValue;
+            if (nv && this._isValidLogLevel(nv) && nv !== this.logLevel) {
+              const old = this.logLevel;
+              this.logLevel = nv;
+              this.info(`检测到跨标签同步：日志级别 ${old} -> ${nv}`);
+            }
+          } else if (e.key === this.CONFIG_KEYS.ENABLE_CONSOLE) {
+            const nv = e.newValue === 'true';
+            if (nv !== this.enableConsole) {
+              const old = this.enableConsole;
+              this.enableConsole = nv;
+              this.info(`检测到跨标签同步：控制台日志 ${old ? '启用' : '禁用'} -> ${nv ? '启用' : '禁用'}`);
+            }
+          } else if (e.key === this.CONFIG_KEYS.COMPACT_DOM) {
+            const nv = e.newValue === 'true';
+            if (nv !== this.compactDom) {
+              const old = this.compactDom;
+              this.compactDom = nv;
+              this.info(`检测到跨标签同步：DOM压缩 ${old ? '开启' : '关闭'} -> ${nv ? '开启' : '关闭'}`);
+            }
+          }
+        } catch (_) {
+          // 忽略同步处理中的异常
+        }
+      });
+
+      this.storageSyncRegistered = true;
+    } catch (_) {
+      // 忽略注册失败，避免影响应用
     }
   }
 
@@ -114,6 +257,7 @@ class LogService {
     // 预分配数组空间以提高性能
     this.logs = new Array(this.maxLogs);
     this.logIndex = 0;
+    this.overwrites = 0;
   }
 
   /**
@@ -296,6 +440,7 @@ class LogService {
   clearLogs(clearConsole = true) {
     this.logs.fill(undefined);
     this.logIndex = 0;
+    this.overwrites = 0;
     this.errorCounts.clear();
     this.lastErrorMessage = '';
     this.lastErrorTimestamp = 0;
@@ -318,7 +463,9 @@ class LogService {
       byLevel: {},
       errorCounts: Object.fromEntries(this.errorCounts),
       oldestLog: null,
-      newestLog: null
+      newestLog: null,
+      overwrites: this.overwrites,
+      bufferSize: this.maxLogs
     };
 
     // 按级别统计
@@ -354,7 +501,8 @@ class LogService {
       return;
     }
 
-    const timestamp = new Date().toISOString();
+    const now = new Date();
+    const timestamp = now.toISOString();
     const logEntry = {
       timestamp,
       level,
@@ -364,12 +512,16 @@ class LogService {
     };
 
     // 使用循环缓冲区提高性能
+    if (this.logs[this.logIndex] !== undefined) {
+      this.overwrites++;
+    }
     this.logs[this.logIndex] = logEntry;
     this.logIndex = (this.logIndex + 1) % this.maxLogs;
 
     // 输出到控制台
     if (this.enableConsole) {
-      this._outputToConsole(level, timestamp, message, data);
+      const localTimestamp = this._formatLocalTime(now);
+      this._outputToConsole(level, localTimestamp, message, data);
     }
   }
 
@@ -387,7 +539,7 @@ class LogService {
     const MAX_PRINT_LEN = 1200;
 
     // 消息本身若是超长 HTML，也做简化
-    let finalMessage = String(message);
+    let finalMessage = this._redactSensitiveInString(String(message));
     if (this.compactDom && this._looksLikeHtml(finalMessage) && finalMessage.length > MAX_PRINT_LEN) {
       finalMessage = this._summarizeHtmlString(finalMessage, MAX_PRINT_LEN);
     }
@@ -402,7 +554,7 @@ class LogService {
             formattedData = JSON.stringify(simpleObj, null, 2);
           }
         } else {
-          formattedData = String(data);
+          formattedData = this._redactSensitiveInString(String(data));
         }
       } catch (err) {
         formattedData = '[无法序列化的数据]';
@@ -433,6 +585,63 @@ class LogService {
   }
 
   /**
+   * 将日期格式化为本地时区的易读字符串
+   * 形如：2025-09-23 20:15:30.123 GMT+08:00
+   * @param {Date} date
+   * @returns {string}
+   * @private
+   */
+  _formatLocalTime(date) {
+    try {
+      const pad = (n, w = 2) => String(n).padStart(w, '0');
+      const Y = date.getFullYear();
+      const M = pad(date.getMonth() + 1);
+      const D = pad(date.getDate());
+      const h = pad(date.getHours());
+      const m = pad(date.getMinutes());
+      const s = pad(date.getSeconds());
+      const ms = pad(date.getMilliseconds(), 3);
+      const tzMin = -date.getTimezoneOffset();
+      const sign = tzMin >= 0 ? '+' : '-';
+      const tzH = pad(Math.floor(Math.abs(tzMin) / 60));
+      const tzM = pad(Math.abs(tzMin) % 60);
+      return `${Y}-${M}-${D} ${h}:${m}:${s}.${ms} GMT${sign}${tzH}:${tzM}`;
+    } catch (_) {
+      // 兜底：若格式化出错则退回浏览器本地格式
+      return date.toLocaleString();
+    }
+  }
+
+  /**
+   * 在字符串内容中按模式打码敏感信息（值级脱敏）
+   * @param {string} str
+   * @returns {string}
+   * @private
+   */
+  _redactSensitiveInString(str) {
+    try {
+      let s = String(str);
+      // Bearer Token
+      s = s.replace(/Bearer\s+[A-Za-z0-9._-]{20,}/gi, 'Bearer [REDACTED]');
+      // JWT（三段式，至少每段8个字符）
+      s = s.replace(/\b([A-Za-z0-9_-]{8,})\.([A-Za-z0-9_-]{8,})\.([A-Za-z0-9_-]{8,})\b/g, '***.***.***');
+      // OpenAI/其他 sk- 开头的密钥
+      s = s.replace(/\bsk-[A-Za-z0-9]{16,}\b/g, 'sk-[REDACTED]');
+      // AWS 访问密钥（简单掩码）
+      s = s.replace(/\bAKIA[0-9A-Z]{16}\b/g, 'AKIA[REDACTED]');
+      // 长 Hex 字符串（32~64位）
+      s = s.replace(/\b[0-9a-fA-F]{32,64}\b/g, '[HEX_REDACTED]');
+      // Base64 长块
+      s = s.replace(/\b[A-Za-z0-9+/]{100,}={0,2}\b/g, '[BASE64_REDACTED]');
+      // Basic xxx（凭证）
+      s = s.replace(/Basic\s+[A-Za-z0-9+/=]{10,}/gi, 'Basic [REDACTED]');
+      return s;
+    } catch (_) {
+      return String(str);
+    }
+  }
+
+  /**
    * 处理敏感信息，截断长字符串
    * @param {string} value - 要处理的字符串
    * @param {number} maxLength - 最大长度
@@ -454,6 +663,8 @@ class LogService {
    */
   _sanitizeData(obj) {
     if (!obj || typeof obj !== 'object') {
+      // 非对象：如为字符串也做值级脱敏
+      if (typeof obj === 'string') return this._redactSensitiveInString(obj);
       return obj;
     }
 
@@ -474,7 +685,7 @@ class LogService {
         // 检查是否是敏感字段名
         if (/token|password|secret|key|auth|jwt|authorization/i.test(key)) {
           if (typeof obj[key] === 'string') {
-            result[key] = this._truncateSensitive(obj[key]);
+            result[key] = this._truncateSensitive(this._redactSensitiveInString(obj[key]));
           } else {
             result[key] = obj[key];
           }
@@ -482,7 +693,7 @@ class LogService {
           // 递归处理嵌套对象
           result[key] = this._sanitizeData(obj[key]);
         } else {
-          result[key] = obj[key];
+          result[key] = typeof obj[key] === 'string' ? this._redactSensitiveInString(obj[key]) : obj[key];
         }
       }
     }
@@ -630,11 +841,30 @@ class LogService {
    * @returns {string} JSON字符串
    */
   exportLogs(options = {}) {
-    const logs = this.getLogs(options);
+    // 忽略传入的 level，导出“当前日志级别及以上”的日志
+    const { level: _ignored, ...rest } = options || {};
+    const logsRaw = this.getLogs({ level: this.logLevel, ...rest });
+
+    // 将时间统一转换为本地时区字符串
+    const logs = logsRaw.map(item => ({
+      ...item,
+      // 导出时对消息做值级脱敏
+      message: typeof item.message === 'string' ? this._redactSensitiveInString(item.message) : item.message,
+      // 本地可读时间
+      timestamp: this._formatLocalTime(new Date(item.timestamp)),
+      // 机器可解析的 ISO 时间
+      timestampISO: item.timestamp
+    }));
+
+    // 统计信息也统一转为本地时间
+    const stats = this.getLogStats();
+    if (stats && stats.oldestLog) stats.oldestLog = this._formatLocalTime(new Date(stats.oldestLog));
+    if (stats && stats.newestLog) stats.newestLog = this._formatLocalTime(new Date(stats.newestLog));
+
     const exportData = {
-      exportTime: new Date().toISOString(),
+      exportTime: this._formatLocalTime(new Date()),
       logCount: logs.length,
-      stats: this.getLogStats(),
+      stats,
       logs
     };
     return JSON.stringify(exportData, null, 2);
