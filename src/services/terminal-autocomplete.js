@@ -1175,6 +1175,9 @@ class TerminalAutocompleteService {
       if (suggestion.type === 'script') {
         // 脚本类型：覆盖整个输入行
         this.handleScriptSelection(suggestion, terminal);
+      } else if (suggestion.type === 'commands' && typeof suggestion.text === 'string' && suggestion.text.includes(' ')) {
+        // 短句型命令（多词短语）：覆盖当前整行，避免重复前缀（如 "docker docker ..."）
+        this.handleScriptSelection(suggestion, terminal);
       } else {
         // 系统命令类型：只补全当前单词
         this.handleWordCompletion(suggestion, terminal);
