@@ -278,93 +278,25 @@ async function smartDataRefresh(userStore) {
     // 更新刷新时间
     localStorage.setItem('last_data_refresh', now.toString());
 
-    // 启动数据刷新任务（仅脚本库主动刷新，其他数据按需加载）
-    const refreshTasks = [];
+    // 统一并发刷新：若任一类别需要刷新，则一次性强制并发刷新全部关联数据
+    const needConnections = userStore.connectionsLoaded && isConnectionPageActive();
+    const needHistory = userStore.historyLoaded && isHistoryPageActive();
+    const needFavorites = userStore.favoritesLoaded && isFavoritesPageActive();
 
-    // 不再主动刷新脚本库：改为连接就绪/脚本变更时触发
-
-    // 2. 其他数据改为按需加载模式，仅在已加载且用户正在使用时才刷新
-    // 连接数据 - 仅在已缓存且页面正在显示连接相关内容时刷新
-    if (userStore.connectionsLoaded && isConnectionPageActive()) {
-      refreshTasks.push(
-        refreshConnectionsData(userStore).catch(error => {
-          log.warn('连接数据刷新失败', error);
-        })
-      );
+    if (needConnections || needHistory || needFavorites) {
+      try {
+        await userStore.ensureConnectionsData(true);
+        log.info('智能数据刷新完成（统一并发刷新）');
+      } catch (error) {
+        log.warn('智能数据刷新失败（统一并发刷新）', error);
+      }
     }
-
-    // 历史记录 - 仅在已缓存且页面正在显示历史记录时刷新
-    if (userStore.historyLoaded && isHistoryPageActive()) {
-      refreshTasks.push(
-        refreshHistoryData(userStore).catch(error => {
-          log.warn('历史记录刷新失败', error);
-        })
-      );
-    }
-
-    // 收藏数据 - 仅在已缓存且页面正在显示收藏内容时刷新
-    if (userStore.favoritesLoaded && isFavoritesPageActive()) {
-      refreshTasks.push(
-        refreshFavoritesData(userStore).catch(error => {
-          log.warn('收藏数据刷新失败', error);
-        })
-      );
-    }
-
-    // 等待所有刷新任务完成（但不阻塞主流程）
-    Promise.allSettled(refreshTasks).then(results => {
-      const successCount = results.filter(r => r.status === 'fulfilled').length;
-      const failureCount = results.filter(r => r.status === 'rejected').length;
-      log.debug('数据刷新任务完成', {
-        total: results.length,
-        success: successCount,
-        failure: failureCount
-      });
-    });
-
-    log.info('智能数据刷新任务已启动（按需加载模式）');
   } catch (error) {
     log.error('智能数据刷新失败', error);
   }
 }
 
 // 已移除：脚本库主动刷新函数（连接/变更事件驱动）
-
-// 刷新连接数据（按需请求+内存缓存策略）
-// 连接数据是用户个人数据，按需请求并缓存在内存中
-async function refreshConnectionsData(userStore) {
-  try {
-    await userStore.forceRefreshConnections();
-    log.debug('连接数据按需刷新完成');
-  } catch (error) {
-    log.warn('连接数据刷新失败', error);
-    throw error;
-  }
-}
-
-// 刷新历史记录数据（按需请求+内存缓存策略）
-// 历史记录是动态数据，按需请求并缓存在内存中
-async function refreshHistoryData(userStore) {
-  try {
-    await userStore.forceRefreshHistory();
-    log.debug('历史记录数据按需刷新完成');
-  } catch (error) {
-    log.warn('历史记录数据刷新失败', error);
-    throw error;
-  }
-}
-
-// 刷新收藏数据（按需请求+内存缓存策略）
-// 收藏数据是用户偏好数据，按需请求并缓存在内存中
-async function refreshFavoritesData(userStore) {
-  try {
-    await userStore.forceRefreshFavorites();
-    log.debug('收藏数据按需刷新完成');
-  } catch (error) {
-    log.warn('收藏数据刷新失败', error);
-    throw error;
-  }
-}
 
 // 页面活跃状态检测函数（用于智能数据刷新）
 function isConnectionPageActive() {

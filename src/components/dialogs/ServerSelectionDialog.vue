@@ -92,7 +92,7 @@
 import { defineComponent, ref, computed, watch } from 'vue';
 import { ElMessage } from 'element-plus';
 import { useUserStore } from '@/store/user';
-import apiService from '@/services/api.js';
+import { useLocalConnectionsStore } from '@/store/localConnections';
 import log from '@/services/log.js';
 
 export default defineComponent({
@@ -127,26 +127,20 @@ export default defineComponent({
       try {
         loading.value = true;
 
-        // 优先从用户store获取已缓存的连接数据
         const userStore = useUserStore();
-        if (
-          userStore.isLoggedIn &&
-          userStore.connectionsLoaded &&
-          userStore.connections.length > 0
-        ) {
-          servers.value = userStore.connections;
-          log.info('从缓存加载服务器列表成功', { count: servers.value.length });
+
+        if (userStore.isLoggedIn) {
+          // 并发确保连接相关数据已加载，然后直接读 store
+          await userStore.ensureConnectionsData();
+          servers.value = userStore.connections || [];
+          log.info('从Store加载服务器列表成功', { count: servers.value.length });
           return;
         }
 
-        // 如果没有缓存数据，则请求API
-        const response = await apiService.get('/connections');
-        if (response && response.success) {
-          servers.value = response.connections || [];
-          log.info('从API加载服务器列表成功', { count: servers.value.length });
-        } else {
-          throw new Error(response?.message || '获取服务器列表失败');
-        }
+        // 未登录场景：使用本地连接存储
+        const localStore = useLocalConnectionsStore();
+        servers.value = localStore.getAllConnections || [];
+        log.info('未登录：从本地连接存储加载服务器列表成功', { count: servers.value.length });
       } catch (error) {
         log.error('加载服务器列表失败', error);
         ElMessage.error(`加载服务器列表失败: ${error.message}`);

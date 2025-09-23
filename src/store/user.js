@@ -54,6 +54,9 @@ export const useUserStore = defineStore(
     const history = ref([]);
     const pinnedConnections = ref({});
 
+    // 统一数据加载中的共享Promise，避免多处并发重复请求
+    let connectionsDataInflight = null;
+
     // 计算属性
     const isLoggedIn = computed(() => !!token.value);
     const isAdmin = computed(() => userInfo.value.role === 'admin');
@@ -892,11 +895,11 @@ export const useUserStore = defineStore(
       }
     }
 
-    // 按需加载连接数据的状态管理
+    // 连接数据的加载状态管理
     const connectionsLoading = ref(false);
     const connectionsLoaded = ref(false);
 
-    // 按需加载连接数据（加载连接配置 + 置顶信息，带重试机制）
+    // 加载连接数据（带重试机制）
     async function loadConnectionsOnDemand() {
       if (!isLoggedIn.value) {
         log.debug('用户未登录，跳过连接数据加载');
@@ -910,7 +913,7 @@ export const useUserStore = defineStore(
 
       try {
         connectionsLoading.value = true;
-        log.info('开始按需加载连接配置...');
+        log.info('开始加载连接配置...');
 
         const result = await retryWithBackoff(
           async () => {
@@ -925,49 +928,36 @@ export const useUserStore = defineStore(
         );
 
         connectionsLoaded.value = true;
-        // 连接配置加载成功后，尝试按需获取置顶信息（轻量请求，不影响主流程）
-        try {
-          const pinnedResp = await apiService.get('/connections/pinned');
-          if (pinnedResp && pinnedResp.success) {
-            pinnedConnections.value = pinnedResp.pinned || {};
-            log.debug('置顶信息按需加载成功');
-          } else {
-            log.warn('置顶信息API响应无效');
-          }
-        } catch (pinErr) {
-          // 不阻塞整体加载，记录日志即可
-          log.warn('按需请求置顶信息失败:', pinErr);
-        }
-
-        log.info('连接配置按需加载成功');
+        // 置顶信息获取在 ensureConnectionsData 中并发处理
+        log.info('连接配置加载完成');
         return result;
       } catch (error) {
-        log.error('按需加载连接配置失败（所有重试都失败）:', error);
+        log.error('加载连接配置失败（重试已用尽）:', error);
         return false;
       } finally {
         connectionsLoading.value = false;
       }
     }
 
-    // 按需请求连接配置（不依赖本地存储同步）
+    // 请求连接配置（不依赖本地存储同步）
     async function loadConnectionsOnly() {
       if (!isLoggedIn.value) return false;
 
       try {
-        log.debug('开始按需请求连接配置...');
+        log.debug('开始请求连接配置...');
 
         // 直接请求连接数据，不检查API可用性
         const connectionsResponse = await apiService.get('/connections');
         if (connectionsResponse && connectionsResponse.success) {
           connections.value = connectionsResponse.connections || [];
-          log.debug('连接配置按需加载成功', { count: connections.value.length });
+          log.debug('连接配置请求成功', { count: connections.value.length });
           return true;
         } else {
           log.warn('连接配置API响应无效');
           return false;
         }
       } catch (error) {
-        log.warn('按需请求连接配置失败:', error);
+        log.warn('请求连接配置失败:', error);
         return false;
       }
     }
@@ -1077,7 +1067,7 @@ export const useUserStore = defineStore(
       return await loadConnectionsOnDemand();
     }
 
-    // 按需请求历史记录（简化版，内存缓存）
+    // 请求历史记录（简化版，内存缓存）
     async function loadHistoryOnDemand() {
       if (!isLoggedIn.value) {
         log.debug('用户未登录，跳过历史记录加载');
@@ -1091,7 +1081,7 @@ export const useUserStore = defineStore(
 
       try {
         historyLoading.value = true;
-        log.debug('开始按需请求历史记录...');
+        log.debug('开始请求历史记录...');
 
         const result = await retryWithBackoff(
           async () => {
@@ -1107,17 +1097,17 @@ export const useUserStore = defineStore(
 
         history.value = result;
         historyLoaded.value = true;
-        log.debug('历史记录按需请求成功', { count: result.length });
+        log.debug('历史记录请求成功', { count: result.length });
         return true;
       } catch (error) {
-        log.error('按需请求历史记录失败:', error);
+        log.error('请求历史记录失败:', error);
         return false;
       } finally {
         historyLoading.value = false;
       }
     }
 
-    // 按需请求收藏数据（简化版，内存缓存）
+    // 请求收藏数据（简化版，内存缓存）
     async function loadFavoritesOnDemand() {
       if (!isLoggedIn.value) {
         log.debug('用户未登录，跳过收藏数据加载');
@@ -1131,7 +1121,7 @@ export const useUserStore = defineStore(
 
       try {
         favoritesLoading.value = true;
-        log.debug('开始按需请求收藏数据...');
+        log.debug('开始请求收藏数据...');
 
         const result = await retryWithBackoff(
           async () => {
@@ -1147,10 +1137,10 @@ export const useUserStore = defineStore(
 
         favorites.value = result;
         favoritesLoaded.value = true;
-        log.debug('收藏数据按需请求成功', { count: result.length });
+        log.debug('收藏数据请求成功', { count: result.length });
         return true;
       } catch (error) {
-        log.error('按需请求收藏数据失败:', error);
+        log.error('请求收藏数据失败:', error);
         return false;
       } finally {
         favoritesLoading.value = false;
@@ -1235,6 +1225,116 @@ export const useUserStore = defineStore(
       syncConnectionsToServer,
       loadConnectionsFromServer,
       loadConnectionsOnDemand,
+      // 新增：统一并发加载接口，供页面调用
+      async ensureConnectionsData(force = false) {
+        if (!isLoggedIn.value) {
+          log.debug('用户未登录，跳过连接数据聚合加载');
+          return false;
+        }
+
+        if (connectionsDataInflight && !force) {
+          return connectionsDataInflight;
+        }
+
+        // 构建并发任务：连接、收藏、历史、置顶
+        const run = async () => {
+          // 优先尝试汇总接口（非强制刷新时）
+          if (!force) {
+            try {
+              const overview = await apiService.get('/connections/overview');
+              if (overview && overview.success) {
+                if (Array.isArray(overview.connections)) {
+                  connections.value = overview.connections;
+                  connectionsLoaded.value = true;
+                }
+                if (Array.isArray(overview.favorites)) {
+                  favorites.value = overview.favorites;
+                  favoritesLoaded.value = true;
+                }
+                if (Array.isArray(overview.history)) {
+                  history.value = overview.history;
+                  historyLoaded.value = true;
+                }
+                if (overview.pinned && typeof overview.pinned === 'object') {
+                  pinnedConnections.value = overview.pinned;
+                }
+                log.info('连接相关数据通过汇总接口加载完成');
+                return true;
+              }
+            } catch (e) {
+              log.debug('汇总接口不可用或返回无效，回退到并发加载');
+            }
+          }
+
+          const tasks = [];
+
+          // 连接配置（force 时强制刷新，否则按需加载）
+          tasks.push(
+            (async () => {
+              try {
+                if (force) {
+                  const ok = await loadConnectionsFromServer(true);
+                  if (ok) connectionsLoaded.value = true;
+                } else {
+                  await loadConnectionsOnDemand();
+                }
+              } catch (_) {}
+            })()
+          );
+
+          // 收藏（force 时强制刷新）
+          tasks.push(
+            (async () => {
+              try {
+                if (force) {
+                  await forceRefreshFavorites();
+                } else {
+                  await loadFavoritesOnDemand();
+                }
+              } catch (_) {}
+            })()
+          );
+
+          // 历史（force 时强制刷新）
+          tasks.push(
+            (async () => {
+              try {
+                if (force) {
+                  await forceRefreshHistory();
+                } else {
+                  await loadHistoryOnDemand();
+                }
+              } catch (_) {}
+            })()
+          );
+
+          // 置顶信息（轻量请求）
+          tasks.push(
+            (async () => {
+              try {
+                const pinnedResp = await apiService.get('/connections/pinned');
+                if (pinnedResp && pinnedResp.success) {
+                  pinnedConnections.value = pinnedResp.pinned || {};
+                  log.debug('置顶信息加载完成');
+                } else {
+                  log.warn('置顶信息API响应无效');
+                }
+              } catch (pinErr) {
+                log.warn('请求置顶信息失败:', pinErr);
+              }
+            })()
+          );
+
+          await Promise.allSettled(tasks);
+          return true;
+        };
+
+        connectionsDataInflight = run().finally(() => {
+          connectionsDataInflight = null;
+        });
+
+        return connectionsDataInflight;
+      },
       loadConnectionsOnly,
       loadHistoryOnDemand,
       loadFavoritesOnDemand,

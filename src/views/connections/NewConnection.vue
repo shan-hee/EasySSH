@@ -379,7 +379,7 @@
 </template>
 
 <script>
-import { ref, computed, nextTick, onMounted, watch } from 'vue';
+import { ref, computed, nextTick, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { useUserStore } from '@/store/user';
 import { useLocalConnectionsStore } from '@/store/localConnections';
@@ -438,50 +438,7 @@ export default {
       return userStore.isLoggedIn ? userStore.historyConnections : localConnectionsStore.getHistory;
     });
 
-    // 在计算属性之外处理按需加载（避免在computed中产生副作用）
-    let favoritesLoadTimer = null;
-    watch(
-      () => ({
-        loggedIn: userStore.isLoggedIn,
-        loaded: userStore.favoritesLoaded,
-        loading: userStore.favoritesLoading,
-        length: (userStore.favoriteConnections || []).length
-      }),
-      state => {
-        if (state.loggedIn && state.length === 0 && !state.loaded && !state.loading) {
-          if (favoritesLoadTimer) clearTimeout(favoritesLoadTimer);
-          log.debug('检测到需要收藏数据，触发按需加载');
-          favoritesLoadTimer = setTimeout(() => {
-            userStore.loadFavoritesOnDemand().catch(error => {
-              log.warn('按需加载收藏数据失败:', error);
-            });
-          }, 100);
-        }
-      },
-      { immediate: true }
-    );
-
-    let historyLoadTimer = null;
-    watch(
-      () => ({
-        loggedIn: userStore.isLoggedIn,
-        loaded: userStore.historyLoaded,
-        loading: userStore.historyLoading,
-        length: (userStore.historyConnections || []).length
-      }),
-      state => {
-        if (state.loggedIn && state.length === 0 && !state.loaded && !state.loading) {
-          if (historyLoadTimer) clearTimeout(historyLoadTimer);
-          log.debug('检测到需要历史记录，触发按需加载');
-          historyLoadTimer = setTimeout(() => {
-            userStore.loadHistoryOnDemand().catch(error => {
-              log.warn('按需加载历史记录失败:', error);
-            });
-          }, 100);
-        }
-      },
-      { immediate: true }
-    );
+    // 统一数据加载入口由 store 并发处理，避免多处watch触发重复请求
 
     // 搜索相关
     const searchQuery = ref('');
@@ -1269,8 +1226,8 @@ export default {
     const retryLoadConnections = async () => {
       try {
         userStore.clearError('connections');
-        await userStore.loadConnectionsOnDemand();
-        log.debug('连接数据重试加载成功');
+        await userStore.ensureConnectionsData();
+        log.debug('连接数据重试加载成功（并发加载）');
       } catch (error) {
         log.warn('连接数据重试加载失败', error);
       }
@@ -1280,8 +1237,8 @@ export default {
     const retryLoadHistory = async () => {
       try {
         userStore.clearError('history');
-        await userStore.loadHistoryOnDemand();
-        log.debug('历史记录重试加载成功');
+        await userStore.ensureConnectionsData();
+        log.debug('历史记录重试加载成功（并发加载）');
       } catch (error) {
         log.warn('历史记录重试加载失败', error);
       }
@@ -1291,21 +1248,21 @@ export default {
     const retryLoadFavorites = async () => {
       try {
         userStore.clearError('favorites');
-        await userStore.loadFavoritesOnDemand();
-        log.debug('收藏数据重试加载成功');
+        await userStore.ensureConnectionsData();
+        log.debug('收藏数据重试加载成功（并发加载）');
       } catch (error) {
         log.warn('收藏数据重试加载失败', error);
       }
     };
 
-    // 组件挂载时按需加载连接数据
+    // 组件挂载时并发加载连接/收藏/历史/置顶
     onMounted(async () => {
       if (userStore.isLoggedIn) {
         try {
-          await userStore.loadConnectionsOnDemand();
-          log.debug('连接管理页面：连接数据按需加载完成');
+          await userStore.ensureConnectionsData();
+          log.debug('连接管理页面：连接相关数据并发加载完成');
         } catch (error) {
-          log.warn('连接管理页面：按需加载连接数据失败', error);
+          log.warn('连接管理页面：并发加载连接相关数据失败', error);
         }
       }
     });

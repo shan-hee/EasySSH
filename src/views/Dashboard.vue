@@ -218,14 +218,10 @@ export default {
     const refreshDashboardData = async () => {
       try {
         isLoading.value = true;
-        log.debug('开始刷新Dashboard数据（按需加载模式）');
+        log.debug('开始刷新Dashboard数据（并发刷新）');
 
-        // 按需加载连接数据，如果已有数据则强制刷新
-        if (userStore.connectionsLoaded) {
-          await userStore.loadConnectionsFromServer(true);
-        } else {
-          await userStore.loadConnectionsOnDemand();
-        }
+        // 刷新逻辑：统一并发强制刷新全部关联数据
+        await userStore.ensureConnectionsData(true);
 
         lastUpdateTime.value = new Date().toLocaleString('zh-CN');
         log.info('Dashboard数据刷新完成');
@@ -328,15 +324,15 @@ export default {
       // 设置初始更新时间
       lastUpdateTime.value = new Date().toLocaleString('zh-CN');
 
-      // 如果用户已登录但数据为空，则按需加载数据
+      // 如果用户已登录但数据为空，则并发加载数据
       if (
         userStore.isLoggedIn &&
         userStore.connections.length === 0 &&
         !userStore.connectionsLoaded
       ) {
-        log.debug('Dashboard检测到需要连接数据，触发按需加载');
-        userStore.loadConnectionsOnDemand().catch(error => {
-          log.warn('Dashboard按需加载连接数据失败', error);
+        log.debug('Dashboard检测到需要连接数据，触发并发加载');
+        userStore.ensureConnectionsData().catch(error => {
+          log.warn('Dashboard并发加载连接相关数据失败', error);
         });
       }
 

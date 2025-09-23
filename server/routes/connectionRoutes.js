@@ -17,6 +17,7 @@ router.get('/check', (req, res) => {
 
 // 连接管理
 router.get('/', connectionController.getUserConnections);
+router.get('/overview', connectionController.getOverview);
 router.post('/', connectionController.addConnection);
 router.put('/:id', connectionController.updateConnection);
 router.delete('/:id', connectionController.deleteConnection);

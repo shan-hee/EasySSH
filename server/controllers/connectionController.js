@@ -583,6 +583,102 @@ const getPinned = async (req, res) => {
 };
 
 /**
+ * 汇总获取 connections/favorites/history/pinned（减少首屏往返）
+ */
+const getOverview = async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    // 1) 连接列表（与 getUserConnections 一致的字段与解密逻辑）
+    const rows = db.prepare(
+      'SELECT * FROM connections WHERE user_id = ? ORDER BY updated_at DESC'
+    ).all(userId);
+
+    const connections = rows
+      .map(conn => {
+        try {
+          if (conn.config) {
+            conn.config = JSON.parse(conn.config);
+          }
+          const decrypted = { ...conn };
+          if (decrypted.password && decrypted.remember_password) {
+            decrypted.password = decryptPassword(decrypted.password);
+          }
+          if (decrypted.privateKey) {
+            decrypted.privateKey = decryptPrivateKey(decrypted.privateKey);
+          }
+          if (decrypted.passphrase) {
+            decrypted.passphrase = decryptPassword(decrypted.passphrase);
+          }
+          return {
+            id: decrypted.id,
+            name: decrypted.name,
+            host: decrypted.host,
+            port: decrypted.port,
+            username: decrypted.username,
+            password: decrypted.remember_password ? decrypted.password : '',
+            rememberPassword: !!decrypted.remember_password,
+            privateKey: decrypted.privateKey || '',
+            passphrase: decrypted.passphrase || '',
+            authType: decrypted.auth_type || 'password',
+            description: decrypted.description || '',
+            group: decrypted.group_name || '默认分组',
+            config: decrypted.config || {},
+            createdAt: decrypted.created_at,
+            updatedAt: decrypted.updated_at
+          };
+        } catch (e) {
+          logger.error(`处理连接数据错误：${e.message}`, { connectionId: conn.id });
+          return null;
+        }
+      })
+      .filter(Boolean);
+
+    // 2) 收藏（ID数组）
+    const favRows = db
+      .prepare('SELECT connection_id FROM connection_favorites WHERE user_id = ?')
+      .all(userId);
+    const favorites = favRows.map(r => r.connection_id);
+
+    // 3) 历史记录（最近20条）
+    const histRows = db
+      .prepare(
+        `SELECT connection_id, name, host, port, username, description, group_name, auth_type, timestamp
+         FROM connection_history
+         WHERE user_id = ?
+         ORDER BY timestamp DESC
+         LIMIT 20`
+      )
+      .all(userId);
+    const history = histRows.map(item => ({
+      id: item.connection_id,
+      name: item.name,
+      host: item.host,
+      port: item.port,
+      username: item.username,
+      description: item.description || '',
+      group: item.group_name || '默认分组',
+      authType: item.auth_type || 'password',
+      timestamp: item.timestamp
+    }));
+
+    // 4) 置顶（对象映射）
+    const pinRows = db
+      .prepare('SELECT connection_id, pinned_at FROM connection_pinned WHERE user_id = ?')
+      .all(userId);
+    const pinned = {};
+    pinRows.forEach(pin => {
+      pinned[pin.connection_id] = pin.pinned_at;
+    });
+
+    return res.json({ success: true, connections, favorites, history, pinned });
+  } catch (error) {
+    logger.error('获取连接汇总数据失败', error);
+    return res.status(500).json({ success: false, message: '获取连接汇总数据失败', error: error.message });
+  }
+};
+
+/**
  * 更新置顶连接
  */
 const updatePinned = async (req, res) => {
@@ -836,6 +932,7 @@ module.exports = {
   addToHistory,
   removeFromHistory,
   getPinned,
+  getOverview,
   updatePinned,
   syncConnections
 };
