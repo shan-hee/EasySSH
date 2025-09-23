@@ -537,29 +537,8 @@ const initializeApp = async () => {
 
     servicesManager.log.info('应用服务初始化流程完成');
 
-    // 触发应用初始化完成事件
+    // 触发应用初始化完成事件（不再在此处触发数据刷新）
     window.dispatchEvent(new CustomEvent('app:initialized'));
-
-    // 应用初始化完成后，检查是否需要进行页面刷新后的数据刷新
-    const userStore = useUserStore();
-    if (userStore.isLoggedIn) {
-      log.info('应用初始化完成，用户已登录，检查是否需要刷新数据');
-
-      // 检查距离上次刷新的时间
-      const lastRefreshTime = localStorage.getItem('last_data_refresh');
-      const now = Date.now();
-      const timeSinceLastRefresh = lastRefreshTime ? now - parseInt(lastRefreshTime) : Infinity;
-
-      // 如果距离上次刷新超过5分钟，或者是首次加载，进行数据刷新
-      if (timeSinceLastRefresh > 5 * 60 * 1000) {
-        log.info('距离上次刷新时间较长，启动页面刷新后的数据刷新');
-        refreshUserData().catch(error => {
-          log.warn('页面刷新后数据刷新失败', error);
-        });
-      } else {
-        log.debug('距离上次刷新时间较短，跳过页面刷新后的数据刷新');
-      }
-    }
   } catch (error) {
     servicesManager.log.error('应用服务初始化失败', error);
   }
@@ -570,7 +549,6 @@ initializeApp();
 
 // 智能页面状态管理
 let lastVisibilityChange = Date.now();
-let lastFocusTime = Date.now();
 let isRefreshing = false;
 
 // 智能刷新触发器
@@ -606,17 +584,6 @@ document.addEventListener('visibilitychange', () => {
     if (hiddenDuration > 5 * 60 * 1000) {
       // 5分钟
       triggerSmartRefresh('页面重新激活');
-    } else if (hiddenDuration > 2 * 60 * 1000) {
-      // 2分钟
-      // 只刷新脚本库数据
-      setTimeout(async () => {
-        try {
-          await refreshScriptLibrary();
-          log.debug('页面激活后脚本库数据刷新完成');
-        } catch (error) {
-          log.warn('页面激活后脚本库数据刷新失败', error);
-        }
-      }, 1000);
     }
 
     lastVisibilityChange = now;
@@ -625,30 +592,7 @@ document.addEventListener('visibilitychange', () => {
   }
 });
 
-// 窗口焦点事件监听 - 窗口重新获得焦点时智能检查数据
-window.addEventListener('focus', () => {
-  const now = Date.now();
-  const blurDuration = now - lastFocusTime;
-
-  // 如果失去焦点超过10分钟，则全面刷新数据
-  if (blurDuration > 10 * 60 * 1000) {
-    triggerSmartRefresh('窗口重新获得焦点');
-  } else if (blurDuration > 5 * 60 * 1000) {
-    // 只刷新关键数据
-    setTimeout(async () => {
-      try {
-        await refreshScriptLibrary();
-        log.debug('窗口焦点后关键数据刷新完成');
-      } catch (error) {
-        log.warn('窗口焦点后关键数据刷新失败', error);
-      }
-    }, 500);
-  }
-});
-
-window.addEventListener('blur', () => {
-  lastFocusTime = Date.now();
-});
+// 已移除：基于窗口焦点的刷新（简化逻辑，避免重复触发）
 
 // 网络状态变化监听
 window.addEventListener('online', () => {

@@ -58,6 +58,9 @@ class AuthService {
    */
   async checkAuthStatus() {
     try {
+      // 与本地存储同步token，避免因实例字段未更新导致误判
+      this.token = this.getToken();
+
       if (!this.token) {
         this.isAuthenticated.value = false;
         this.currentUser.value = null;
@@ -449,11 +452,14 @@ class AuthService {
    */
   async loadUserInfo() {
     try {
-      // 检查是否已认证
-      if (!this.token) {
-        log.warn('加载用户信息失败：未登录状态');
+      // 检查是否已认证（统一从本地存储读取，避免状态不同步）
+      const token = this.getToken();
+      if (!token) {
+        log.debug('加载用户信息跳过：未登录状态');
         return { success: false, message: '未登录' };
       }
+      // 同步到实例字段，保证后续流程一致
+      this.token = token;
 
       // 获取用户存储
       if (!this.userStore) {
@@ -704,11 +710,14 @@ class AuthService {
    */
   async refreshUserInfo() {
     try {
-      // 检查是否已认证
-      if (!this.token) {
-        log.warn('刷新用户信息失败：未登录状态');
+      // 检查是否已认证（统一从本地存储读取，避免状态不同步）
+      const token = this.getToken();
+      if (!token) {
+        log.debug('刷新用户信息跳过：未登录状态');
         return { success: false, message: '未登录' };
       }
+      // 同步到实例字段，保证后续流程一致
+      this.token = token;
 
       // 获取用户存储
       if (!this.userStore) {
