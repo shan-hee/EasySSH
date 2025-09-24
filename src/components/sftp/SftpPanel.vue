@@ -705,7 +705,7 @@ export default defineComponent({
           inlineEditor.value.resetCreating();
         }
 
-        console.error(`创建${type === 'folder' ? '文件夹' : '文件'}失败:`, error);
+        log.error(`创建${type === 'folder' ? '文件夹' : '文件'}失败`, error);
         showError(`创建${type === 'folder' ? '文件夹' : '文件'}失败: ${error.message}`);
       }
     };
@@ -976,13 +976,13 @@ export default defineComponent({
       for (const dirPath of dirsToCreate) {
         let createdDir = false;
         try {
-          console.log(`创建目录: ${dirPath}`);
+          log.debug(`创建目录: ${dirPath}`);
           await sftpService.createDirectory(props.sessionId, dirPath);
           createdDir = true;
         } catch (dirError) {
           // 忽略目录已存在的错误
           if (!dirError.message.includes('已存在')) {
-            console.warn(`创建目录失败: ${dirPath}`, dirError);
+            log.warn(`创建目录失败: ${dirPath}`, dirError);
           }
         }
         if (createdDir) {
@@ -2646,7 +2646,7 @@ export default defineComponent({
         } catch (error) {
           // 忽略目录已存在的错误
           if (!error.message.includes('已存在')) {
-            console.warn(`创建目录失败: ${remoteDirPath}`, error);
+            log.warn(`创建目录失败: ${remoteDirPath}`, error);
           }
         }
         if (createdDir) {

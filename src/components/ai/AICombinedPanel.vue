@@ -195,6 +195,7 @@ import settingsService from '../../services/settings';
 import AIMessageItem from './AIMessageItem.vue';
 import { aiPerformanceMonitor, debounce } from '../../utils/ai-panel-performance.js';
 import { withErrorHandling, ErrorSeverity } from '../../utils/ai-panel-error-handler.js';
+import log from '@/services/log';
 
 // Props
 const props = defineProps({
@@ -461,7 +462,7 @@ const handleSend = async () => {
       }
     }
   } catch (error) {
-    console.error('AI请求失败:', error);
+    log.error('AI请求失败', error);
 
     // 发送错误响应事件
     emit('ai-response', {
@@ -491,7 +492,7 @@ const executeCommand = async command => {
       content: `命令已执行: ${command}`
     };
   } catch (error) {
-    console.error('执行命令失败:', error);
+    log.error('执行命令失败', error);
     return {
       success: false,
       content: `执行失败: ${error.message}`
@@ -647,7 +648,7 @@ const buildTerminalContext = () => {
       errorDetected
     };
   } catch (error) {
-    console.error('构建终端上下文失败:', error);
+    log.error('构建终端上下文失败', error);
     return {
       terminalOutput: '',
       osHint: 'unknown',

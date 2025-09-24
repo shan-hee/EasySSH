@@ -694,7 +694,7 @@ export default defineComponent({
           parent: editorContainer.value
         });
       } catch (error) {
-        console.error('初始化编辑器失败:', error);
+        log.error('初始化编辑器失败', { error, path: props.filePath });
         ElMessage.error('初始化编辑器失败，请刷新页面重试');
       }
     };
@@ -713,7 +713,7 @@ export default defineComponent({
       let loading = null;
 
       try {
-        console.log('[SftpEditor] 开始保存:', props.filePath);
+        log.debug('[SftpEditor] 开始保存', { path: props.filePath });
         const content = getEditorContent();
 
         loading = ElLoading.service({
@@ -724,11 +724,16 @@ export default defineComponent({
 
         // 上传文件：依赖SFTP服务自身的完成/超时机制
         const tempFile = new File([content], fileName.value, { type: 'text/plain' });
-        await sftpService.uploadFile(props.sessionId, tempFile, props.filePath, progress => {
-          if (progress === 100) {
-            console.log('[SftpEditor] 上传完成(100%)');
+        await sftpService.uploadFile(
+          props.sessionId,
+          tempFile,
+          props.filePath,
+          progress => {
+            if (progress === 100) {
+              log.debug('[SftpEditor] 上传完成', { progress });
+            }
           }
-        });
+        );
 
         // 关闭加载指示器
         if (loading) {
@@ -745,7 +750,7 @@ export default defineComponent({
         // 触发保存事件
         emit('save');
       } catch (error) {
-        console.error('[SftpEditor] 保存失败:', error.message);
+        log.error('[SftpEditor] 保存失败', { error, path: props.filePath });
 
         if (loading) {
           loading.close();
@@ -825,7 +830,7 @@ export default defineComponent({
           });
         });
       } catch (e) {
-        console.warn('应用编辑器样式时出错:', e);
+        log.warn('应用编辑器样式时出错', { error: e?.message, path: props.filePath });
       }
     };
 

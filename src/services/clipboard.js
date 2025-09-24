@@ -47,7 +47,7 @@ class PermissionManager {
       // 如果不支持Permissions API，假设有权限
       return true;
     } catch (error) {
-      console.error(`权限检查失败: ${error.message}`);
+      log.error('权限检查失败', { error: error.message });
       return true; // 默认假设有权限，让用户操作决定
     }
   }
@@ -61,7 +61,7 @@ class PermissionManager {
     try {
       return await this.checkPermission(type);
     } catch (error) {
-      console.error(`权限请求失败: ${error.message}`);
+      log.error('权限请求失败', { error: error.message });
       return false;
     }
   }
@@ -84,7 +84,7 @@ class HistoryManager {
     try {
       return JSON.parse(localStorage.getItem(this.key)) || [];
     } catch (error) {
-      console.error(`读取历史记录失败: ${error.message}`);
+      log.error('读取历史记录失败', { error: error.message });
       return [];
     }
   }
@@ -106,7 +106,7 @@ class HistoryManager {
       history = history.slice(0, this.maxItems);
       localStorage.setItem(this.key, JSON.stringify(history));
     } catch (error) {
-      console.error(`添加历史记录失败: ${error.message}`);
+      log.error('添加历史记录失败', { error: error.message });
     }
   }
 
@@ -117,7 +117,7 @@ class HistoryManager {
     try {
       localStorage.removeItem(this.key);
     } catch (error) {
-      console.error(`清除历史记录失败: ${error.message}`);
+      log.error('清除历史记录失败', { error: error.message });
     }
   }
 }
@@ -251,7 +251,7 @@ class ClipboardManager {
       }
       return null;
     } catch (error) {
-      console.error(`粘贴处理失败: ${error.message}`);
+      log.error('粘贴处理失败', { error: error.message });
       return null;
     }
   }
@@ -305,7 +305,7 @@ class ClipboardManager {
 
       return result;
     } catch (error) {
-      console.error(`复制操作失败: ${error.message}`);
+      log.error('复制操作失败', { error: error.message });
       return false;
     }
   }
@@ -335,7 +335,7 @@ class ClipboardManager {
       }
       throw new Error('不支持的操作');
     } catch (error) {
-      console.error(`读取操作失败: ${error.message}`);
+      log.error('读取操作失败', { error: error.message });
       return '';
     }
   }
@@ -493,7 +493,7 @@ class EnhancedClipboardManager extends ClipboardManager {
         return null;
       }
     } catch (error) {
-      console.error('粘贴操作失败:', error);
+      log.error('粘贴操作失败', error);
       this.handleError(error);
       return null;
     }
@@ -562,7 +562,7 @@ class EnhancedClipboardManager extends ClipboardManager {
       const historyArray = Array.from(this.history.entries());
       localStorage.setItem('easyssh_clipboard_history', JSON.stringify(historyArray));
     } catch (error) {
-      console.error('持久化历史记录失败:', error);
+      log.error('持久化历史记录失败', error);
     }
   }
 
@@ -576,7 +576,7 @@ class EnhancedClipboardManager extends ClipboardManager {
         this.history = new Map(JSON.parse(savedHistory));
       }
     } catch (error) {
-      console.error('加载历史记录失败:', error);
+      log.error('加载历史记录失败', error);
     }
   }
 
@@ -585,13 +585,13 @@ class EnhancedClipboardManager extends ClipboardManager {
    */
   handleError(error) {
     // 记录错误
-    console.error('剪贴板操作错误:', error);
+    log.error('剪贴板操作错误', error);
 
     // 通知用户
     if (error.message === '操作过于频繁，请稍后再试') {
-      console.warn('剪贴板操作过于频繁，请稍后再试');
+      log.warn('剪贴板操作过于频繁，请稍后再试');
     } else if (error.message === '内容大小超出限制') {
-      console.warn('内容过大，无法复制');
+      log.warn('内容过大，无法复制');
     }
   }
 
@@ -610,7 +610,7 @@ class EnhancedClipboardManager extends ClipboardManager {
     try {
       return await this.copyToClipboard(text);
     } catch (error) {
-      console.error('复制文本失败:', error);
+      log.error('复制文本失败', error);
       return false;
     }
   }
@@ -627,7 +627,7 @@ class EnhancedClipboardManager extends ClipboardManager {
         throw new Error('不支持的操作');
       }
     } catch (error) {
-      console.error(`读取操作失败: ${error.message}`);
+      log.error('读取操作失败', { error: error.message });
       this.handleError(error);
       return '';
     }
@@ -654,7 +654,7 @@ class EnhancedClipboardManager extends ClipboardManager {
       }
       return false;
     } catch (error) {
-      console.error('终端粘贴失败:', error);
+      log.error('终端粘贴失败', error);
       return false;
     }
   }

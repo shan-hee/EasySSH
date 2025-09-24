@@ -46,7 +46,7 @@ const copy = {
       } catch (err) {
         // 触发自定义事件
         el.dispatchEvent(new CustomEvent('copy-error', { detail: err }));
-        console.error('复制失败:', err);
+        import('@/services/log').then(m => m.default.error('复制失败', err));
       }
     };
     el.addEventListener('click', el._copyHandler);

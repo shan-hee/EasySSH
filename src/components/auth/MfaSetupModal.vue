@@ -124,6 +124,7 @@
 
 <script>
 import { defineComponent, ref, watch, computed, nextTick } from 'vue';
+import log from '@/services/log';
 import Modal from '@/components/common/Modal.vue';
 import mfaService from '@/services/mfa';
 import { useUserStore } from '@/store/user';
@@ -211,12 +212,12 @@ export default defineComponent({
           isLoading.value = false;
         };
         img.onerror = () => {
-          console.error('二维码加载失败');
+          log.error('二维码加载失败');
           isLoading.value = false;
         };
         img.src = qrCodeUrl.value;
       } catch (error) {
-        console.error('生成QR码失败:', error);
+        log.error('生成QR码失败', error);
         isLoading.value = false;
       }
     };
@@ -371,7 +372,7 @@ export default defineComponent({
           });
         }
       } catch (error) {
-        console.error('MFA验证失败:', error);
+        log.error('MFA验证失败', error);
         verifyError.value = '验证失败，请重试';
         // 新增：失败时聚焦最后一个输入框
         nextTick(() => {
@@ -408,7 +409,7 @@ export default defineComponent({
         }
       } catch (error) {
         ElMessage.error('复制失败，请手动复制');
-        console.error('复制失败:', error);
+        log.error('复制失败', error);
       }
     };
 

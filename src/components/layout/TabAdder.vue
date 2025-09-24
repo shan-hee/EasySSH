@@ -12,6 +12,7 @@
 
 <script>
 import { defineComponent, ref } from 'vue';
+import log from '@/services/log';
 import { useTabStore } from '@/store/tab';
 
 export default defineComponent({
@@ -40,7 +41,9 @@ export default defineComponent({
     const addTerminalTab = () => {
       closeLoginPanel();
       const tabIndex = tabStore.addTerminal();
-      console.log('添加了新的终端标签页，索引:', tabIndex);
+      if (process.env.NODE_ENV === 'development') {
+        log.debug('添加了新的终端标签页', { index: tabIndex });
+      }
       showPopover.value = false;
     };
 

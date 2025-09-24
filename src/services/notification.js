@@ -1,4 +1,5 @@
 import { ElNotification } from 'element-plus';
+import log from './log';
 
 /**
  * 通知服务模块，提供应用内和系统通知功能
@@ -21,7 +22,7 @@ class NotificationService {
 
     // 初始化完成
     this.isReady = true;
-    console.log('通知服务初始化完成');
+    log.debug('通知服务初始化完成');
   }
 
   /**
@@ -31,7 +32,7 @@ class NotificationService {
   checkNotificationSupport() {
     // 检查是否支持Notification API
     if (!('Notification' in window)) {
-      console.warn('该浏览器不支持系统通知功能');
+      log.warn('该浏览器不支持系统通知功能');
       this.hasPermission = false;
       return false;
     }
@@ -67,7 +68,7 @@ class NotificationService {
 
       return permission;
     } catch (error) {
-      console.error('请求通知权限失败:', error);
+      log.error('请求通知权限失败', error);
       return 'denied';
     }
   }
@@ -148,7 +149,7 @@ class NotificationService {
    */
   sendSystemNotification(options) {
     if (!this.hasPermission) {
-      console.warn('没有系统通知权限，将使用应用内通知替代');
+      log.warn('没有系统通知权限，将使用应用内通知替代');
 
       // 降级使用应用内通知
       return this.notify({
@@ -206,7 +207,7 @@ class NotificationService {
 
       return notification;
     } catch (error) {
-      console.error('发送系统通知失败:', error);
+      log.error('发送系统通知失败', error);
 
       // 降级使用应用内通知
       return this.notify({
@@ -380,7 +381,7 @@ class NotificationService {
         try {
           listener.callback(data);
         } catch (error) {
-          console.error('通知事件监听器执行出错:', error);
+          log.error('通知事件监听器执行出错', error);
         }
       });
   }

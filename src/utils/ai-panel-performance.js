@@ -22,7 +22,6 @@ export class AIPerformanceMonitor {
    */
   startMonitoring() {
     this.isMonitoring = true;
-    console.log('🔍 AI面板性能监控已启动');
 
     // 定期收集内存使用情况
     this.memoryInterval = setInterval(() => {
@@ -380,8 +379,7 @@ if (process.env.NODE_ENV === 'development') {
   // 添加到全局对象以便调试
   if (typeof window !== 'undefined') {
     window.aiPerformanceMonitor = aiPerformanceMonitor;
-    console.log('🔍 AI面板性能监控器已启动（开发模式）');
-    console.log('使用 window.aiPerformanceMonitor.printReport() 查看性能报告');
+    console.log('🔍 AI面板性能监控器已启动（开发模式）｜使用 window.aiPerformanceMonitor.printReport() 查看报告');
   }
 }
 

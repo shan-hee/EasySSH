@@ -98,7 +98,6 @@ async function initServices() {
     // 初始化AI服务
     await aiService.init();
     servicesStatus.ai = true;
-    log.debug('AI服务初始化完成');
 
     // 将服务实例挂载到全局对象，供终端等组件动态访问
     if (typeof window !== 'undefined') {

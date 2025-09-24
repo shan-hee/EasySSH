@@ -34,6 +34,7 @@ import Modal from '@/components/common/Modal.vue';
 import { useUserStore } from '@/store/user';
 import { ElMessage } from 'element-plus';
 import { useRouter } from 'vue-router';
+import log from '@/services/log';
 
 export default defineComponent({
   name: 'LogoutAllDevicesModal',
@@ -71,7 +72,7 @@ export default defineComponent({
         handleClose();
         router.push('/');
       } catch (error) {
-        console.error('注销所有设备失败:', error);
+        log.error('注销所有设备失败', error);
         ElMessage.error('注销所有设备时发生错误');
       } finally {
         isLoggingOut.value = false;

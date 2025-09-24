@@ -52,11 +52,7 @@ class ApiService {
           // 减少重复的token状态日志，只在token状态变化时记录
           const currentTokenExists = !!token;
           if (this._lastTokenExists !== currentTokenExists) {
-            log.debug('请求拦截器 - token状态变化', {
-              exists: currentTokenExists,
-              length: token ? token.length : 0,
-              preview: token ? `${token.substring(0, 15)}...` : 'null'
-            });
+            log.debug('请求拦截器 - token状态变化', { exists: currentTokenExists });
             this._lastTokenExists = currentTokenExists;
           }
 
@@ -65,7 +61,7 @@ class ApiService {
           if (token) {
             // 验证token格式有效性
             if (token.split('.').length !== 3) {
-              log.warn('无效的JWT格式', { token: `${token.substring(0, 15)}...` });
+              log.warn('无效的JWT格式');
               // 清除无效token并触发认证失败事件
               localStorage.removeItem('auth_token');
               this._handleAuthError();

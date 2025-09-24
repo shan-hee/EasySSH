@@ -28,7 +28,8 @@ module.exports = {
     'vue/v-on-event-hyphenation': ['error', 'always'],
     
     // JavaScript规则
-    'no-console': process.env.NODE_ENV === 'production' ? 'warn' : 'off',
+    // 禁止直接使用 console，统一通过日志服务输出
+    'no-console': ['error', { allow: [] }],
     'no-debugger': process.env.NODE_ENV === 'production' ? 'warn' : 'off',
     'no-unused-vars': ['error', { 
       argsIgnorePattern: '^_',
@@ -62,6 +63,12 @@ module.exports = {
         'vue/no-side-effects-in-computed-properties': 'warn',
         'no-unused-vars': ['warn', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }],
         'no-empty': ['warn', { allowEmptyCatch: true }]
+      }
+    },
+    {
+      files: ['src/services/log.js', 'src/utils/ai-panel-performance.js'],
+      rules: {
+        'no-console': 'off'
       }
     }
   ],

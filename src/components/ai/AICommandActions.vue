@@ -59,6 +59,7 @@ import { computed } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import scriptLibraryService from '../../services/scriptLibrary.js';
 import { validateCommand } from '../../services/ai/ai-message-parser.js';
+import log from '@/services/log';
 
 // Props
 const props = defineProps({
@@ -221,7 +222,7 @@ const handleAddToScripts = async () => {
   } catch (error) {
     if (error !== 'cancel') {
       ElMessage.error('添加脚本时发生错误');
-      console.error('添加脚本错误:', error);
+      log.error('添加脚本错误', error);
     }
   }
 };

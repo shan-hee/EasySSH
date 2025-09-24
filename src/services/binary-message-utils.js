@@ -4,6 +4,7 @@
  */
 
 import { BINARY_MESSAGE_TYPES, BINARY_PROTOCOL, CONNECTION_STATUS } from './constants.js';
+import log from './log';
 
 /**
  * 二进制消息编码器
@@ -65,7 +66,7 @@ export class BinaryMessageEncoder {
 
       return messageBuffer;
     } catch (error) {
-      console.error('二进制消息编码失败:', error);
+      log.error('二进制消息编码失败', error);
       throw new Error(`消息编码失败: ${error.message}`);
     }
   }
@@ -135,7 +136,7 @@ export class BinaryMessageDecoder {
         payloadData
       };
     } catch (error) {
-      console.error('二进制消息解码失败:', error);
+      log.error('二进制消息解码失败', error);
       throw new Error(`消息解码失败: ${error.message}`);
     }
   }

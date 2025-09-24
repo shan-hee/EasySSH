@@ -1053,14 +1053,14 @@ class MonitoringService {
           log.debug('[监控] 页面卸载，清理所有监控连接');
           this.disconnectAll();
         } catch (error) {
-          console.error('[监控] 页面卸载清理失败:', error);
+          log.error('[监控] 页面卸载清理失败', error);
         }
       });
 
       // 持续监控模式：移除页面隐藏时的连接断开逻辑
       // 监控连接将始终保持活跃，直到页面真正卸载
     } catch (error) {
-      console.error('[监控] 初始化页面卸载清理逻辑失败:', error);
+      log.error('[监控] 初始化页面卸载清理逻辑失败', error);
     }
   }
 }

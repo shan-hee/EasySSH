@@ -202,7 +202,7 @@ export const getDynamicConstants = settings => {
         connectionSettings = settings.getConnectionSettings() || {};
       }
     } catch (error) {
-      console.warn('获取连接设置失败，使用默认值', error);
+      log.warn('获取连接设置失败，使用默认值', error);
     }
 
     // 安全获取终端设置
@@ -212,7 +212,7 @@ export const getDynamicConstants = settings => {
         terminalSettings = settings.getTerminalOptions() || {};
       }
     } catch (error) {
-      console.warn('获取终端设置失败，使用默认值', error);
+      log.warn('获取终端设置失败，使用默认值', error);
     }
 
     // 动态延迟配置 - 延迟测量间隔独立于保活间隔
@@ -244,7 +244,7 @@ export const getDynamicConstants = settings => {
       SFTP_CONSTANTS
     };
   } catch (error) {
-    console.warn('获取动态常量失败，使用默认值', error);
+    log.warn('获取动态常量失败，使用默认值', error);
     return {
       LATENCY_CONFIG,
       TERMINAL_CONSTANTS,
@@ -268,3 +268,4 @@ export default {
   SFTP_CONSTANTS,
   getDynamicConstants
 };
+import log from './log';

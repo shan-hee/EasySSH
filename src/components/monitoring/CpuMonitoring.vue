@@ -31,6 +31,7 @@
 
 <script setup>
 import { ref, onMounted, onUnmounted, computed, nextTick, markRaw, watch } from 'vue';
+import log from '@/services/log';
 import { formatPercentage } from '@/utils/productionFormatters';
 import { getCpuChartConfig, getMonitoringColors, watchThemeChange } from '@/utils/chartConfig';
 import MonitoringIcon from './MonitoringIcon.vue';
@@ -188,7 +189,7 @@ const initChart = async () => {
     // 保存观察器引用以便清理
     chartInstance.value._themeObserver = themeObserver;
   } catch (error) {
-    console.error('[CPU监控] 初始化图表失败:', error);
+    log.error('[CPU监控] 初始化图表失败', error);
   }
 };
 
@@ -269,7 +270,7 @@ const updateChartData = () => {
     // 更新上次使用率
     lastCpuUsage = currentCpuUsage;
   } catch (error) {
-    console.error('[CPU监控] 增量更新图表失败:', error);
+    log.error('[CPU监控] 增量更新图表失败', error);
   }
 };
 
@@ -287,7 +288,7 @@ const startPeriodicUpdate = () => {
         // 使用增量更新而不是重新初始化
         updateChartData();
       } catch (error) {
-        console.error('[CPU监控] 定时更新图表失败:', error);
+        log.error('[CPU监控] 定时更新图表失败', error);
       }
     }
   }, currentUpdateInterval.value); // 使用动态配置的更新间隔
@@ -320,7 +321,7 @@ const initMonitoringConfig = async () => {
 
       // 如果间隔发生变化，重新启动定期更新
       if (oldInterval !== newConfig.updateInterval) {
-        console.log(`[CPU监控] 更新间隔变更: ${oldInterval}ms → ${newConfig.updateInterval}ms`);
+        log.debug('[CPU监控] 更新间隔变更', { from: oldInterval, to: newConfig.updateInterval });
 
         // 清空历史数据，重新初始化图表以适应新的时间间隔
         historyData = [];
@@ -338,7 +339,7 @@ const initMonitoringConfig = async () => {
 
     monitoringConfigManager.addListener(configListener);
   } catch (error) {
-    console.error('[CPU监控] 初始化监控配置失败:', error);
+    log.error('[CPU监控] 初始化监控配置失败', error);
     // 使用默认值
     currentUpdateInterval.value = 1000;
   }

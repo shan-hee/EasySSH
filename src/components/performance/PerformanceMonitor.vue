@@ -128,6 +128,7 @@
 
 <script>
 import axios from 'axios';
+import log from '@/services/log';
 
 export default {
   name: 'PerformanceMonitor',
@@ -222,7 +223,7 @@ export default {
         // 更新图表
         this.updateCharts();
       } catch (error) {
-        console.error('获取性能数据失败:', error);
+        log.error('获取性能数据失败', error);
         this.$message.error('获取性能数据失败');
       } finally {
         this.loading = false;
@@ -243,14 +244,14 @@ export default {
         this.speedHistory.upload = uploadResponse.data.data.records;
         this.speedHistory.download = downloadResponse.data.data.records;
       } catch (error) {
-        console.error('获取速度历史失败:', error);
+        log.error('获取速度历史失败', error);
       }
     },
 
     updateCharts() {
       // 这里可以集成图表库如 ECharts 或 Chart.js
       // 由于篇幅限制，这里只是占位符
-      console.log('更新图表:', this.speedHistory);
+      log.debug('更新图表', { speedHistory: this.speedHistory });
     },
 
     startAutoRefresh() {

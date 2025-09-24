@@ -31,7 +31,7 @@ export function debounce(fn, delay = 300) {
  */
 export function createResizeObserver(element, callback, options = {}) {
   if (!element || typeof callback !== 'function') {
-    console.warn('无效的元素或回调函数');
+  import('@/services/log').then(m => m.default.warn('无效的元素或回调函数'));
     return null;
   }
 
@@ -63,7 +63,7 @@ export function createResizeObserver(element, callback, options = {}) {
 
     return observer;
   } catch (error) {
-    console.error('创建ResizeObserver失败:', error);
+    import('@/services/log').then(m => m.default.error('创建ResizeObserver失败', error));
     return null;
   }
 }
@@ -83,7 +83,7 @@ export function disconnectResizeObserver(observer, element) {
       observer.disconnect();
     }
   } catch (error) {
-    console.error('取消ResizeObserver监听失败:', error);
+    import('@/services/log').then(m => m.default.error('取消ResizeObserver监听失败', error));
   }
 }
 

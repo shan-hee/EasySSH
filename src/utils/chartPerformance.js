@@ -68,10 +68,10 @@ class ChartPerformanceMonitor {
 
       // 性能警告
       if (renderTime > this.maxRenderTime) {
-        console.warn(`图表 ${id} 渲染时间过长: ${renderTime.toFixed(2)}ms`);
+        import('@/services/log').then(m => m.default.warn(`图表 ${id} 渲染时间过长`, { renderTimeMs: Number(renderTime.toFixed(2)) }));
       }
     } catch (error) {
-      console.error(`图表 ${id} 渲染错误:`, error);
+      import('@/services/log').then(m => m.default.error(`图表 ${id} 渲染错误`, error));
     }
   }
 
@@ -152,7 +152,7 @@ export async function batchUpdateCharts(updates) {
   try {
     await Promise.all(promises);
   } catch (error) {
-    console.error('批量更新图表失败:', error);
+    import('@/services/log').then(m => m.default.error('批量更新图表失败', error));
   }
 }
 
@@ -221,7 +221,7 @@ export class ChartLazyLoader {
       this.loadedCharts.add(chartId);
       this.pendingCharts.delete(chartId);
     } catch (error) {
-      console.error(`懒加载图表 ${chartId} 失败:`, error);
+      import('@/services/log').then(m => m.default.error(`懒加载图表 ${chartId} 失败`, error));
     }
   }
 
@@ -249,13 +249,13 @@ export function withChartErrorBoundary(chartFn, fallbackFn = null) {
     try {
       return await chartFn.apply(this, args);
     } catch (error) {
-      console.error('图表渲染错误:', error);
+      import('@/services/log').then(m => m.default.error('图表渲染错误', error));
 
       if (fallbackFn) {
         try {
           return await fallbackFn.apply(this, args);
         } catch (fallbackError) {
-          console.error('降级渲染也失败:', fallbackError);
+          import('@/services/log').then(m => m.default.error('降级渲染也失败', fallbackError));
         }
       }
 
@@ -321,7 +321,7 @@ export function cleanupChart(chart) {
     try {
       chart.destroy();
     } catch (error) {
-      console.warn('清理图表资源时出错:', error);
+      import('@/services/log').then(m => m.default.warn('清理图表资源时出错', error));
     }
   }
 }

@@ -71,6 +71,7 @@
 
 <script>
 import { defineComponent, ref } from 'vue';
+import log from '@/services/log';
 
 export default defineComponent({
   name: 'SftpToolbar',
@@ -95,7 +96,9 @@ export default defineComponent({
 
       // 设置新的定时器，延迟300ms执行搜索
       searchTimeout.value = setTimeout(() => {
-        console.log('执行搜索:', searchQuery.value);
+        if (process.env.NODE_ENV === 'development') {
+          log.debug('SFTP 搜索', { query: searchQuery.value });
+        }
         emit('search', searchQuery.value);
         searchTimeout.value = null;
       }, 300);

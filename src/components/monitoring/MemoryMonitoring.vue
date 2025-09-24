@@ -59,6 +59,7 @@
 
 <script setup>
 import { ref, onMounted, onUnmounted, watch, computed, nextTick, markRaw } from 'vue';
+import log from '@/services/log';
 import { formatBytes, formatPercentage } from '@/utils/productionFormatters';
 import { getCSSVar, watchThemeChange, getThemeBackgroundColor } from '@/utils/chartConfig';
 import MonitoringIcon from './MonitoringIcon.vue';
@@ -282,7 +283,7 @@ const updateCharts = () => {
     if (memoryChartInstance.value && hasData.value) {
       // 检查图表实例是否有效
       if (!memoryChartInstance.value.data || !memoryChartInstance.value.data.datasets) {
-        console.warn('[内存监控] 图表数据结构无效');
+        log.warn('[内存监控] 图表数据结构无效');
         return;
       }
 
@@ -328,7 +329,7 @@ const updateCharts = () => {
       memoryChartInstance.value.update('none');
     }
   } catch (error) {
-    console.error('[内存监控] 更新图表失败:', error);
+    log.error('[内存监控] 更新图表失败', error);
   }
 };
 

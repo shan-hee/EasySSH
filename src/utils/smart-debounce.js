@@ -82,7 +82,7 @@ export class SmartDebounce {
 
       return result;
     } catch (error) {
-      console.error('SmartDebounce execution error:', error);
+      import('@/services/log').then(m => m.default.error('SmartDebounce execution error', error));
       this.timers.delete(key);
       this.priorities.delete(key);
       throw error;

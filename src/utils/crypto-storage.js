@@ -3,6 +3,8 @@
  * 使用AES-GCM加密算法和PBKDF2密钥派生
  */
 
+import log from '@/services/log';
+
 class CryptoStorage {
   constructor() {
     this.algorithm = 'AES-GCM';
@@ -139,7 +141,7 @@ class CryptoStorage {
       console.debug(`数据已安全存储: ${key}`);
       return true;
     } catch (error) {
-      console.error('安全存储失败:', error);
+      log.error('安全存储失败', error);
       return false;
     }
   }
@@ -165,7 +167,7 @@ class CryptoStorage {
       console.debug(`数据已安全读取: ${key}`);
       return decrypted;
     } catch (error) {
-      console.error('安全读取失败:', error);
+      log.error('安全读取失败', error);
       return null;
     }
   }
@@ -182,7 +184,7 @@ class CryptoStorage {
       console.debug(`安全数据已删除: ${key}`);
       return true;
     } catch (error) {
-      console.error('删除安全数据失败:', error);
+      log.error('删除安全数据失败', error);
       return false;
     }
   }
@@ -216,7 +218,7 @@ class CryptoStorage {
       }
     });
 
-    console.info(`已清理 ${cleared} 个加密存储项目`);
+    log.info(`已清理 ${cleared} 个加密存储项目`);
     return cleared;
   }
 

@@ -1,6 +1,8 @@
 /**
  * 提供文件相关的工具函数
  */
+import log from '@/services/log';
+
 export function useFileUtils() {
   /**
    * 格式化文件大小
@@ -34,7 +36,7 @@ export function useFileUtils() {
 
       return `${size.toFixed(1)} ${units[i]}`;
     } catch (error) {
-      console.error('格式化文件大小出错:', error, 'bytes值:', bytes);
+      log.warn('格式化文件大小出错', { error: error?.message, bytes });
       return '-';
     }
   };
@@ -62,7 +64,7 @@ export function useFileUtils() {
 
       return `${year}-${month}-${day} ${hours}:${minutes}`;
     } catch (error) {
-      console.error('格式化日期出错:', error, '日期值:', date);
+      log.warn('格式化日期出错', { error: error?.message, date });
       return '-';
     }
   };

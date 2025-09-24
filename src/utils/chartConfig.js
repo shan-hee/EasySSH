@@ -911,7 +911,7 @@ export function forceHideDataPoints(chartInstance) {
     // 3. 强制更新
     chartInstance.update('none');
   } catch (error) {
-    console.warn('强制隐藏数据点失败:', error);
+    log.warn('强制隐藏数据点失败', error);
   }
 }
 
@@ -949,3 +949,4 @@ export function throttle(func, limit = 16) {
     }
   };
 }
+import log from '@/services/log';

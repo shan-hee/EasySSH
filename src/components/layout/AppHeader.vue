@@ -130,6 +130,7 @@
 
   <!-- 用户设置弹窗 -->
   <user-settings-modal
+    v-if="isUserSettingsVisible"
     :visible="isUserSettingsVisible"
     @update:visible="isUserSettingsVisible = $event"
     @close="closeUserSettings"
@@ -202,13 +203,15 @@ export default defineComponent({
       window.addEventListener('open-user-settings', handleOpenUserSettings);
     });
 
-    // 添加对标签状态的监听
+    // 添加对标签状态的监听（仅开发环境打印，且不在初始化时触发）
     watch(
       () => tabStore.tabs,
       newTabs => {
-        log.debug('标签数组已更新', { count: newTabs.length });
+        if (process.env.NODE_ENV === 'development') {
+          log.debug('标签数组已更新', { count: newTabs.length });
+        }
       },
-      { deep: true, immediate: true }
+      { deep: true, immediate: false }
     );
 
     // 登录面板控制

@@ -121,6 +121,7 @@
 <script>
 import { defineComponent, ref, nextTick, computed } from 'vue';
 import { ElMessage } from 'element-plus';
+import log from '@/services/log';
 
 export default defineComponent({
   name: 'SftpInlineEditor',
@@ -241,7 +242,7 @@ export default defineComponent({
 
         // 注意：不在这里重置状态，等待父组件调用 resetCreating()
       } catch (error) {
-        console.error('创建失败:', error);
+        log.error('创建失败', error);
         ElMessage.error(`创建${props.type === 'folder' ? '文件夹' : '文件'}失败: ${error.message}`);
         isCreating.value = false;
       }

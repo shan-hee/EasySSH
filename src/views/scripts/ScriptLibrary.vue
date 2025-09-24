@@ -350,6 +350,7 @@
 </template>
 
 <script>
+import log from '@/services/log';
 import { defineComponent, ref, computed, watch, onMounted, nextTick } from 'vue';
 import { Edit, Delete, CaretRight } from '@element-plus/icons-vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
@@ -357,7 +358,6 @@ import scriptLibraryService from '@/services/scriptLibrary.js';
 import ServerSelectionDialog from '@/components/dialogs/ServerSelectionDialog.vue';
 import ScriptExecutionDialog from '@/components/dialogs/ScriptExecutionDialog.vue';
 import apiService from '@/services/api.js';
-import log from '@/services/log.js';
 
 export default defineComponent({
   name: 'ScriptLibrary',
@@ -1192,7 +1192,7 @@ export default defineComponent({
         ElMessage.success(`成功导出 ${scripts.value.length} 个脚本`);
       } catch (error) {
         ElMessage.error('导出失败，请重试');
-        console.error('Export error:', error);
+        log.error('Export error', error);
       }
     };
 

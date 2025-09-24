@@ -434,7 +434,7 @@ class SFTPService {
 
             resolve(files);
           } catch (parseError) {
-            console.error('解析SFTP目录数据失败:', parseError);
+          log.error('解析SFTP目录数据失败', parseError);
             reject(new Error(`解析目录数据失败: ${parseError.message}`));
           }
         },

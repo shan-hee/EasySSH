@@ -82,7 +82,7 @@ class SSHSessionManager {
       }
       localStorage.setItem('ssh_terminal_mappings', JSON.stringify(mappings));
     } catch (e) {
-      console.warn('保存会话映射失败', e);
+      log.warn('保存会话映射失败', e);
     }
   }
 
@@ -101,7 +101,7 @@ class SSHSessionManager {
         log.info(`已从本地存储加载 ${Object.keys(mappings).length} 个会话映射`);
       }
     } catch (e) {
-      console.warn('加载会话映射失败', e);
+      log.warn('加载会话映射失败', e);
     }
   }
 
@@ -114,7 +114,7 @@ class SSHSessionManager {
     try {
       localStorage.removeItem('ssh_terminal_mappings');
     } catch (e) {
-      console.warn('清除会话映射失败', e);
+      log.warn('清除会话映射失败', e);
     }
     log.info('已清除所有会话映射');
   }

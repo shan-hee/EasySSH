@@ -379,6 +379,7 @@
 </template>
 
 <script>
+import log from '@/services/log';
 import { ref, computed, nextTick, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { useUserStore } from '@/store/user';
@@ -1147,7 +1148,7 @@ export default {
           router.push(`/terminal/${sessionId}`);
         }
       } catch (error) {
-        console.error('连接创建失败:', error);
+        log.error('连接创建失败', error);
         ElMessage.error('连接创建失败，请重试');
 
         // 如果连接失败，执行回滚操作

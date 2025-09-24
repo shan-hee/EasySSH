@@ -1,4 +1,5 @@
 import { createRouter, createWebHashHistory } from 'vue-router';
+import log from '@/services/log';
 
 // 直接导入Dashboard组件
 import Dashboard from '../views/Dashboard.vue';
@@ -152,7 +153,7 @@ router.beforeEach((to, from, next) => {
 
 // 路由错误处理
 router.onError(error => {
-  console.error('路由错误:', error);
+  log.error('路由错误', error);
   // 可以在这里添加更高级的错误处理逻辑，如上报错误或显示错误通知
 });
 

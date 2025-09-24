@@ -866,7 +866,6 @@ import storageAdapter from '@/services/storage-adapter';
 import log from '@/services/log';
 import { localKeyboardManager } from '@/utils/keyboard';
 import aiService from '@/services/ai/ai-service';
-import AIConfig from '@/services/ai/ai-config';
 import settingsService from '@/services/settings';
 import terminalService from '@/services/terminal';
 
@@ -992,8 +991,8 @@ export default defineComponent({
       initialized: false
     });
 
-    // AI设置数据 - 简化版本
-    const aiConfigManager = new AIConfig();
+    // AI设置数据 - 简化版本（复用全局 AI 配置实例，避免重复初始化）
+    const aiConfigManager = aiService.config;
     const aiSettings = reactive({
       enabled: false,
       provider: 'openai', // 固定为OpenAI兼容格式
@@ -1247,7 +1246,7 @@ export default defineComponent({
         accountForm.value.oldPassword = '';
         accountForm.value.newPassword = '';
       } catch (error) {
-        console.error('更新账户信息失败:', error);
+        log.error('更新账户信息失败', error);
         ElMessage.error(error.message || '更新失败，请重试');
       } finally {
         isLoading.value = false;

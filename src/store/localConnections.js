@@ -1,4 +1,5 @@
 import { defineStore } from 'pinia';
+import log from '@/services/log';
 
 export const useLocalConnectionsStore = defineStore('localConnections', {
   state: () => ({
@@ -27,7 +28,7 @@ export const useLocalConnectionsStore = defineStore('localConnections', {
       if (existingConnection) {
         // 如果连接已存在，更新现有连接信息
         Object.assign(existingConnection, connection, { id: existingConnection.id });
-        console.log('连接已存在，已更新连接信息');
+        log.debug('连接已存在，已更新连接信息');
         return existingConnection.id;
       }
 

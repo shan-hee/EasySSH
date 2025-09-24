@@ -38,7 +38,7 @@ export function getAllShortcuts() {
 
     return shortcuts;
   } catch (error) {
-    console.error('获取快捷键设置失败:', error);
+    import('@/services/log').then(m => m.default.error('获取快捷键设置失败', error));
     return { ...DEFAULT_SHORTCUTS };
   }
 }
@@ -122,7 +122,7 @@ export function setShortcut(action, key) {
 
     return true;
   } catch (error) {
-    console.error('设置快捷键失败:', error);
+    import('@/services/log').then(m => m.default.error('设置快捷键失败', error));
     throw error;
   }
 }
@@ -153,7 +153,7 @@ export function resetShortcuts(action) {
 
     return true;
   } catch (error) {
-    console.error('重置快捷键失败:', error);
+    import('@/services/log').then(m => m.default.error('重置快捷键失败', error));
     return false;
   }
 }

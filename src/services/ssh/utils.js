@@ -1,6 +1,7 @@
 /**
  * SSH服务工具函数模块
  */
+import log from '../log';
 
 /**
  * 解码Base64数据为字符串
@@ -24,7 +25,7 @@ export function decodeBase64(base64) {
       return atob(base64);
     }
   } catch (e) {
-    console.warn('Base64解码失败:', e);
+    log.warn('Base64解码失败', e);
     return base64; // 解码失败时返回原始数据
   }
 }

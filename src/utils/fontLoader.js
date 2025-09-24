@@ -27,7 +27,8 @@ export const preloadFonts = () => {
   // 创建字体加载Promise
   fontState.loadingPromise = (async () => {
     try {
-      log.debug('开始预加载终端字体...');
+      const start = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+      let usedNativeAPI = false;
 
       // 创建一个包含预加载字体的隐藏元素
       const preloadDiv = document.createElement('div');
@@ -62,7 +63,7 @@ export const preloadFonts = () => {
       if (document.fonts && typeof document.fonts.ready === 'object') {
         try {
           await document.fonts.ready;
-          log.info('使用浏览器原生字体加载API加载完成');
+          usedNativeAPI = true;
         } catch (e) {
           log.warn('浏览器字体加载API失败，使用备用方法', e);
         }
@@ -98,7 +99,7 @@ export const preloadFonts = () => {
         // 兼容旧版格式
         window.TERMINAL_FONTS_LOADED = true;
 
-        log.info('字体加载完成事件已触发');
+        // 事件触发成功
       } catch (e) {
         log.error(`触发字体加载事件出错: ${e.message}`);
       }
@@ -117,7 +118,9 @@ export const preloadFonts = () => {
         }
       }, 500);
 
-      log.info('终端字体预加载完成');
+      const end = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+      const durationMs = Math.round(end - start);
+      log.info('字体预加载完成', { method: usedNativeAPI ? 'native' : 'fallback', durationMs });
       return true;
     } catch (error) {
       log.error(`预加载字体出错: ${error.message}`);

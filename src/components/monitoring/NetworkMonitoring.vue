@@ -37,6 +37,7 @@
 
 <script setup>
 import { ref, onMounted, onUnmounted, watch, computed, nextTick, markRaw } from 'vue';
+import log from '@/services/log';
 import { formatNetworkSpeed } from '@/utils/productionFormatters';
 import { getNetworkChartConfig, limitDataPoints, watchThemeChange } from '@/utils/chartConfig';
 import MonitoringIcon from './MonitoringIcon.vue';
@@ -168,7 +169,7 @@ const updateChart = () => {
       !chartInstance.value.data.datasets ||
       chartInstance.value.data.datasets.length < 2
     ) {
-      console.warn('[网络监控] 图表数据结构无效');
+      log.warn('[网络监控] 图表数据结构无效');
       return;
     }
 
@@ -212,7 +213,7 @@ const updateChart = () => {
       }, 400); // 与动画时长一致
     }
   } catch (error) {
-    console.error('[网络监控] 更新图表失败:', error);
+    log.error('[网络监控] 更新图表失败', error);
   }
 };
 
@@ -234,7 +235,7 @@ watch(
         try {
           updateChart();
         } catch (error) {
-          console.error('[网络监控] 更新图表失败:', error);
+          log.error('[网络监控] 更新图表失败', error);
         }
       }
       updateTimer = null;

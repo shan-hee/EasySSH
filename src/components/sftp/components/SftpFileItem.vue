@@ -218,6 +218,7 @@
 
 <script>
 import { defineComponent, ref, nextTick, computed } from 'vue';
+import log from '@/services/log';
 import { useFileUtils } from '../composables/useFileUtils';
 import { ElMessage } from 'element-plus';
 import sftpService from '@/services/ssh/sftp-service';
@@ -449,7 +450,7 @@ export default defineComponent({
         // 通知父组件刷新
         emit('refresh');
       } catch (error) {
-        console.error('重命名失败:', error);
+        log.error('重命名失败', error);
         ElMessage.error(`重命名失败: ${error.message}`);
       } finally {
         isRenaming.value = false;

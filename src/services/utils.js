@@ -3,6 +3,7 @@
  */
 import { ElMessage } from 'element-plus';
 import clipboardService from './clipboard.js';
+import log from './log';
 
 /**
  * 格式化日期时间
@@ -198,7 +199,7 @@ export async function copyToClipboard(text, showMessage = true) {
 
     return success;
   } catch (error) {
-    console.error('复制文本失败:', error);
+    log.error('复制文本失败', error);
     if (showMessage) ElMessage.error('复制失败');
     return false;
   }

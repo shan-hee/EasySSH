@@ -34,17 +34,13 @@ import monitoringService from './services/monitoring.js';
 
 // 主题初始化现在由settingsService统一处理
 
-// 修改预加载字体函数
+// 修改预加载字体函数（精简日志：仅在异常时提示）
 const preloadFonts = () => {
-  log.debug('启动字体预加载...');
-
   // 开始字体预加载，不等待结果
   fontLoader
     .preloadFonts()
     .then(success => {
-      if (success) {
-        log.debug('字体预加载成功');
-      } else {
+      if (!success) {
         log.warn('字体预加载未完全成功，但应用将继续运行');
       }
     })

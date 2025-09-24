@@ -38,6 +38,7 @@
 
 <script setup>
 import { ref, computed, watch, onMounted, onUnmounted, nextTick, markRaw } from 'vue';
+import log from '@/services/log';
 import { formatBytes, formatPercentage } from '@/utils/productionFormatters';
 import {
   getDiskChartConfig,
@@ -210,7 +211,7 @@ const updateChart = () => {
       !chartInstance.value.data.datasets ||
       chartInstance.value.data.datasets.length < 2
     ) {
-      console.warn('[硬盘监控] 图表数据结构无效');
+      log.warn('[硬盘监控] 图表数据结构无效');
       return;
     }
 
@@ -249,7 +250,7 @@ const updateChart = () => {
     // 使用自定义transition模式保持动画
     chartInstance.value.update('dataUpdate');
   } catch (error) {
-    console.error('[硬盘监控] 更新图表失败:', error);
+    log.error('[硬盘监控] 更新图表失败', error);
   }
 };
 
@@ -261,7 +262,7 @@ watch(
       try {
         updateChart();
       } catch (error) {
-        console.error('[硬盘监控] 更新图表失败:', error);
+        log.error('[硬盘监控] 更新图表失败', error);
       }
     }
   },

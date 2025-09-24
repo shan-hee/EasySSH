@@ -2268,7 +2268,7 @@ export default {
       try {
         return aiService;
       } catch (error) {
-        console.error('获取AI服务失败:', error);
+        log.error('获取AI服务失败', error);
         return null;
       }
     };

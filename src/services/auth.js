@@ -562,7 +562,7 @@ class AuthService {
       ElMessage.success('密码更新成功');
       return response;
     } catch (error) {
-      console.error('密码更新失败:', error);
+      log.error('密码更新失败', error);
       throw error;
     }
   }
@@ -644,7 +644,7 @@ class AuthService {
         try {
           listener.callback(data);
         } catch (error) {
-          console.error('执行认证事件监听器出错:', error);
+          log.error('执行认证事件监听器出错', error);
         }
       });
   }

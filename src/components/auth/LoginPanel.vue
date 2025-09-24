@@ -316,7 +316,7 @@ export default defineComponent({
         }
         }
       } catch (error) {
-        console.error('登录失败:', error);
+        log.error('登录失败', error);
 
         ElMessage({
           message: `登录失败: ${error.message || '未知错误'}`,
@@ -337,7 +337,7 @@ export default defineComponent({
         // 完成登录流程
         completeLogin(false);
       } catch (error) {
-        console.error('MFA验证后登录失败:', error);
+        log.error('MFA验证后登录失败', error);
         ElMessage({
           message: `登录失败: ${error.message || '未知错误'}`,
           type: 'error',

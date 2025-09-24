@@ -202,7 +202,7 @@ export const useConnectionStore = defineStore('connection', () => {
     try {
       return connections.value.find(conn => conn.id === id) || null;
     } catch (error) {
-      console.error('获取连接信息失败', error);
+      log.error('获取连接信息失败', error);
       return null;
     }
   };
@@ -252,7 +252,7 @@ export const useConnectionStore = defineStore('connection', () => {
       groups.value.push(groupName);
       return true;
     } catch (error) {
-      console.error('添加分组失败', error);
+      log.error('添加分组失败', error);
       return false;
     }
   };
@@ -281,7 +281,7 @@ export const useConnectionStore = defineStore('connection', () => {
 
       return true;
     } catch (error) {
-      console.error('重命名分组失败', error);
+      log.error('重命名分组失败', error);
       return false;
     }
   };
@@ -310,7 +310,7 @@ export const useConnectionStore = defineStore('connection', () => {
 
       return true;
     } catch (error) {
-      console.error('删除分组失败', error);
+      log.error('删除分组失败', error);
       return false;
     }
   };
