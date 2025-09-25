@@ -225,7 +225,7 @@ const connectDatabase = () => {
   
   try {
     db = new Database(DB_PATH);
-    db.pragma('journal_mode = WAL'); // 使用WAL模式提高性能
+    db.pragma('journal_mode = DELETE'); // 直接写入主库（不使用WAL）
     dbConnected = true;
     
     // 创建表结构...
@@ -346,7 +346,7 @@ WebSocket服务器处理SSH终端连接请求：
 
 - **预备语句**: 使用预备语句减少解析开销
 - **事务处理**: 批量操作使用事务提高性能
-- **WAL模式**: 使用WAL模式提高并发性能
+- **日志模式**: 使用DELETE模式直接写入主库
 
 ### node-cache优化
 

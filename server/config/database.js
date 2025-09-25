@@ -35,7 +35,8 @@ const connectDatabase = () => {
 
   try {
     db = new Database(DB_PATH);
-    db.pragma('journal_mode = WAL'); // 使用WAL模式提高性能
+    // 不使用WAL，改为直接写入主库（DELETE 日志模式）
+    db.pragma("journal_mode = DELETE");
     dbConnected = true;
 
     // 创建用户表
