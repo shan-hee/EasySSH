@@ -395,7 +395,7 @@ const getHistory = async (req, res) => {
 
     // 直接从历史记录表获取所有信息，不依赖connections表
     const history = db.prepare(
-      `SELECT connection_id, name, host, port, username, description, group_name, auth_type, timestamp
+      `SELECT id AS entry_id, connection_id, name, host, port, username, description, group_name, auth_type, timestamp
        FROM connection_history
        WHERE user_id = ?
        ORDER BY timestamp DESC
@@ -403,6 +403,7 @@ const getHistory = async (req, res) => {
     ).all(userId);
 
     const formattedHistory = history.map(item => ({
+      entryId: item.entry_id,
       id: item.connection_id,
       name: item.name,
       host: item.host,
@@ -414,7 +415,7 @@ const getHistory = async (req, res) => {
       timestamp: item.timestamp
     }));
 
-    res.json({
+  res.json({
       success: true,
       history: formattedHistory
     });
@@ -458,7 +459,7 @@ const addToHistory = async (req, res) => {
     db.prepare('BEGIN TRANSACTION').run();
 
     try {
-      // 存储完整的连接信息到历史记录
+      // 存储完整的连接信息到历史记录（无条件新增一条记录）
       const timestamp = connection.timestamp || Date.now();
       const name = connection.name || `${connection.username}@${connection.host}`;
       const description = connection.description || '';
@@ -466,29 +467,23 @@ const addToHistory = async (req, res) => {
       const authType = connection.authType || 'password';
       const port = connection.port || 22;
 
-      // 检查是否已存在相同的历史记录
-      const existingHistory = db.prepare(
-        'SELECT id FROM connection_history WHERE user_id = ? AND connection_id = ?'
-      ).get(userId, connection.id);
-
-      if (existingHistory) {
-        // 更新现有历史记录的时间戳
-        db.prepare(
-          `UPDATE connection_history SET
-           name = ?, host = ?, port = ?, username = ?, description = ?,
-           group_name = ?, auth_type = ?, timestamp = ?
-           WHERE user_id = ? AND connection_id = ?`
-        ).run(name, connection.host, port, connection.username, description,
-          groupName, authType, timestamp, userId, connection.id);
-      } else {
-        // 添加新的历史记录
-        db.prepare(
-          `INSERT INTO connection_history
-           (user_id, connection_id, name, host, port, username, description, group_name, auth_type, timestamp)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-        ).run(userId, connection.id, name, connection.host, port, connection.username,
-          description, groupName, authType, timestamp);
-      }
+      // 无条件插入历史记录
+      const insertInfo = db.prepare(
+        `INSERT INTO connection_history
+         (user_id, connection_id, name, host, port, username, description, group_name, auth_type, timestamp)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      ).run(
+        userId,
+        connection.id,
+        name,
+        connection.host,
+        port,
+        connection.username,
+        description,
+        groupName,
+        authType,
+        timestamp
+      );
 
       // 限制历史记录数量为20条
       db.prepare(
@@ -504,9 +499,15 @@ const addToHistory = async (req, res) => {
       // 提交事务
       db.prepare('COMMIT').run();
 
+      const entryId =
+        insertInfo && typeof insertInfo.lastInsertRowid !== 'undefined'
+          ? Number(insertInfo.lastInsertRowid)
+          : null;
+
       res.json({
         success: true,
-        message: '已添加到历史记录'
+        message: '已添加到历史记录',
+        entryId
       });
     } catch (error) {
       // 回滚事务
@@ -523,28 +524,59 @@ const addToHistory = async (req, res) => {
   }
 };
 
+
 /**
- * 从历史记录中删除
+ * 按单条记录删除历史（根据自增ID）
  */
-const removeFromHistory = async (req, res) => {
+const removeHistoryEntry = async (req, res) => {
   try {
     const userId = req.user.id;
-    const connectionId = req.params.id;
+    const entryId = parseInt(req.params.entryId, 10);
 
-    // 从历史记录中删除
-    db.prepare(
-      'DELETE FROM connection_history WHERE connection_id = ? AND user_id = ?'
-    ).run(connectionId, userId);
+    if (!Number.isInteger(entryId) || entryId <= 0) {
+      return res.status(400).json({ success: false, message: '无效的历史记录ID' });
+    }
+
+    const result = db
+      .prepare('DELETE FROM connection_history WHERE id = ? AND user_id = ?')
+      .run(entryId, userId);
 
     res.json({
       success: true,
-      message: '已从历史记录中删除'
+      message: '已删除历史记录',
+      deleted: result.changes || 0
     });
   } catch (error) {
-    logger.error('删除历史记录失败', error);
+    logger.error('按条删除历史记录失败', error);
     res.status(500).json({
       success: false,
-      message: '从历史记录中删除失败',
+      message: '按条删除历史记录失败',
+      error: error.message
+    });
+  }
+};
+
+/**
+ * 清空当前用户的所有历史记录
+ */
+const clearHistory = async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    const result = db
+      .prepare('DELETE FROM connection_history WHERE user_id = ?')
+      .run(userId);
+
+    res.json({
+      success: true,
+      message: '历史记录已清空',
+      deleted: result.changes || 0
+    });
+  } catch (error) {
+    logger.error('清空历史记录失败', error);
+    res.status(500).json({
+      success: false,
+      message: '清空历史记录失败',
       error: error.message
     });
   }
@@ -643,7 +675,7 @@ const getOverview = async (req, res) => {
     // 3) 历史记录（最近20条）
     const histRows = db
       .prepare(
-        `SELECT connection_id, name, host, port, username, description, group_name, auth_type, timestamp
+        `SELECT id AS entry_id, connection_id, name, host, port, username, description, group_name, auth_type, timestamp
          FROM connection_history
          WHERE user_id = ?
          ORDER BY timestamp DESC
@@ -651,6 +683,7 @@ const getOverview = async (req, res) => {
       )
       .all(userId);
     const history = histRows.map(item => ({
+      entryId: item.entry_id,
       id: item.connection_id,
       name: item.name,
       host: item.host,
@@ -930,7 +963,8 @@ module.exports = {
   updateFavorites,
   getHistory,
   addToHistory,
-  removeFromHistory,
+  removeHistoryEntry,
+  clearHistory,
   getPinned,
   getOverview,
   updatePinned,

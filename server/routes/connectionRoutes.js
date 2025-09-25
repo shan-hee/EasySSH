@@ -29,7 +29,10 @@ router.post('/favorites', connectionController.updateFavorites);
 // 历史记录
 router.get('/history', connectionController.getHistory);
 router.post('/history', connectionController.addToHistory);
-router.delete('/history/:id', connectionController.removeFromHistory);
+// 按单条记录删除历史（基于历史记录自增ID）
+router.delete('/history/entry/:entryId', connectionController.removeHistoryEntry);
+// 清空当前用户的所有历史
+router.delete('/history', connectionController.clearHistory);
 
 // 置顶连接
 router.get('/pinned', connectionController.getPinned);

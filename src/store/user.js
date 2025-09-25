@@ -441,9 +441,9 @@ export const useUserStore = defineStore(
     }
 
     // 添加到历史记录
-    function addToHistory(connection) {
-      // 直接添加到历史记录开头，不去重
-      history.value.unshift({
+    async function addToHistory(connection) {
+      // 构造新增的历史项（本地先行）
+      const newEntry = {
         id: connection.id,
         name: connection.name,
         host: connection.host,
@@ -451,56 +451,69 @@ export const useUserStore = defineStore(
         port: connection.port,
         description: connection.description,
         timestamp: Date.now()
-      });
+      };
+
+      // 直接添加到历史记录开头
+      history.value.unshift(newEntry);
 
       // 限制历史记录数量为20条
       if (history.value.length > 20) {
         history.value.pop();
       }
 
-      // 同步到服务器
+      // 同步到服务器（仅发送当前新增的一条，服务端会返回entryId）
       if (isLoggedIn.value) {
-        // 确保连接已创建成功后再同步历史记录
-        apiService.post('/connections/history', { history: history.value }).catch(error => {
+        try {
+          const payload = {
+            history: [
+              {
+                id: newEntry.id,
+                name: newEntry.name,
+                host: newEntry.host,
+                port: newEntry.port,
+                username: newEntry.username,
+                description: newEntry.description,
+                timestamp: newEntry.timestamp
+              }
+            ]
+          };
+
+          const response = await apiService.post('/connections/history', payload);
+          if (response && response.success && response.entryId) {
+            // 将服务端返回的 entryId 赋给刚插入的本地项
+            if (history.value.length && history.value[0].timestamp === newEntry.timestamp) {
+              history.value[0].entryId = response.entryId;
+            }
+          }
+        } catch (error) {
           log.error('同步历史记录到服务器失败', error);
-          // 添加重试机制
-          setTimeout(() => {
-            apiService
-              .post('/connections/history', { history: history.value })
-              .catch(retryError => log.error('重试同步历史记录失败', retryError));
-          }, 1000);
-        });
+          // 不回滚本地，允许后续刷新/重试获取entryId
+        }
       }
     }
 
-    // 从历史记录中删除指定连接
-    async function removeFromHistory(connectionId, timestamp) {
+    // 按单条记录删除历史（基于服务端返回的 entryId）
+    async function removeHistoryEntry(entryId) {
+      if (!entryId) return false;
+
       // 保存原始数据用于回滚
       const originalHistory = [...history.value];
 
-      // 删除指定的历史记录
-      history.value = history.value.filter(
-        h => !(h.id === connectionId && h.timestamp === timestamp)
-      );
+      // 本地先行删除（乐观更新）
+      history.value = history.value.filter(h => h.entryId !== entryId);
 
-      // 同步到服务器
       if (isLoggedIn.value) {
         try {
-          const response = await apiService.post('/connections/history', {
-            history: history.value
-          });
-
+          const response = await apiService.delete(`/connections/history/entry/${entryId}`);
           if (response && response.success) {
-            log.info('历史记录删除已同步到服务器');
+            log.info('按条历史记录删除已同步到服务器');
           } else {
             throw new Error(response?.message || '服务器同步失败');
           }
         } catch (error) {
-          log.error('同步历史记录删除到服务器失败', error);
-
+          log.error('按条删除历史记录同步到服务器失败', error);
           // 回滚本地更改
           history.value = originalHistory;
-
           ElMessage.error(`删除历史记录失败，已回滚更改：${error.message || '网络错误'}`);
           return false;
         }
@@ -509,16 +522,31 @@ export const useUserStore = defineStore(
       return true;
     }
 
+    // 清空历史记录
+    async function clearHistory() {
+      const originalHistory = [...history.value];
+      history.value = [];
+
+      if (isLoggedIn.value) {
+        try {
+          const response = await apiService.delete('/connections/history');
+          if (!response || !response.success) {
+            throw new Error(response?.message || '服务器清空失败');
+          }
+        } catch (error) {
+          log.error('清空历史记录失败', error);
+          history.value = originalHistory; // 回滚
+          return false;
+        }
+      }
+      return true;
+    }
+
     // 重新排序历史连接
     function reorderHistoryConnections(newOrder) {
       history.value = [...newOrder];
 
-      // 同步到服务器
-      if (isLoggedIn.value) {
-        apiService
-          .post('/connections/history', { history: history.value })
-          .catch(error => log.error('同步历史记录排序到服务器失败', error));
-      }
+      // 不再同步到服务器：后端以时间戳排序，前端仅临时展示排序
     }
 
     // 更新历史连接顺序（用于乐观更新）
@@ -1214,7 +1242,8 @@ export const useUserStore = defineStore(
       updateConnection,
       deleteConnection,
       addToHistory,
-      removeFromHistory,
+      removeHistoryEntry,
+      clearHistory,
       reorderHistoryConnections,
       updateHistoryOrder,
       toggleFavorite,

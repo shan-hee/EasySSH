@@ -734,7 +734,7 @@ export default {
 
         let result;
         if (userStore.isLoggedIn) {
-          result = await userStore.removeFromHistory(connection.id, connection.timestamp);
+          result = await userStore.removeHistoryEntry(connection.entryId);
         } else {
           result = localConnectionsStore.removeFromHistory(connection.id, connection.timestamp);
         }

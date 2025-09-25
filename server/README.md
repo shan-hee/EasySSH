@@ -238,6 +238,73 @@ const connectDatabase = () => {
 };
 ```
 
+## Connections API（连接管理接口）
+
+以下为与“我的连接/收藏/历史/置顶”相关的主要接口说明（全部需登录鉴权）。
+
+- GET `/api/connections`
+  - 返回当前用户的连接配置列表。
+
+- POST `/api/connections`
+  - 新建连接配置。
+
+- PUT `/api/connections/:id`
+  - 更新连接配置。
+
+- DELETE `/api/connections/:id`
+  - 删除连接配置（同时清理关联的收藏、历史、置顶）。
+
+- GET `/api/connections/favorites`
+  - 返回收藏连接的 ID 列表。
+
+- POST `/api/connections/favorites`
+  - 全量更新收藏列表（传入 ID 数组）。
+
+- GET `/api/connections/history`
+  - 返回最近 20 条历史连接，按时间倒序。
+  - 字段：
+    - `entryId` 历史记录自增 ID（用于单条删除）
+    - `id` 连接配置 ID（connection_id）
+    - `name`、`host`、`port`、`username`、`description`、`group`、`authType`、`timestamp`
+
+- POST `/api/connections/history`
+  - 新增历史记录。请求体仅需携带一条最近新增的历史（数组第 1 项被处理）：
+  
+  ```json
+  {
+    "history": [
+      { "id": "<connection_id>", "host": "...", "username": "...", "port": 22, "name": "...", "description": "...", "timestamp": 1710000000000 }
+    ]
+  }
+  ```
+  
+  - 服务器无条件 `INSERT` 一条新历史，并仅保留最近 20 条。
+  - 响应包含新记录的 `entryId`：
+  
+  ```json
+  { "success": true, "message": "已添加到历史记录", "entryId": 123 }
+  ```
+
+- DELETE `/api/connections/history/entry/:entryId`
+  - 按单条历史记录自增 ID 删除（推荐）。
+
+- DELETE `/api/connections/history`
+  - 清空当前用户的所有历史记录。
+
+- GET `/api/connections/pinned`
+  - 返回置顶映射 `{ [connectionId]: pinnedAt }`。
+
+- POST `/api/connections/pinned`
+  - 全量更新置顶映射（pinnedAt 为毫秒时间戳）。
+
+- GET `/api/connections/overview`
+  - 汇总返回 connections/favorites/history/pinned 四类数据，用于减少首屏往返；`history` 条目同样包含 `entryId`。
+
+变更记录（历史逻辑）
+- 历史记录改为“无条件新增”模式：每次发起连接都会插入一条；仅保留最近 20 条。
+- 历史查询新增 `entryId` 字段；新增按条删除接口 `DELETE /api/connections/history/entry/:entryId`。
+- 旧的 `DELETE /api/connections/history/:id`（按 connection_id 删除全部历史）已移除。
+
 ## 服务层实现
 
 ### 用户服务

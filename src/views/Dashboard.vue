@@ -289,8 +289,8 @@ export default {
       const connections = userStore.connections || [];
 
       return history.slice(0, 4).map(item => {
-        const connection = connections.find(conn => conn.id === item.connectionId);
-        const timeAgo = getTimeAgo(new Date(item.connectedAt || item.timestamp));
+        const connection = connections.find(conn => conn.id === item.id);
+        const timeAgo = getTimeAgo(new Date(item.timestamp));
 
         return {
           content: `连接到服务器 ${connection?.name || item.name || '未知服务器'}`,
