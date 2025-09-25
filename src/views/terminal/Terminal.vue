@@ -174,6 +174,7 @@ import monitoringStateManagerFactory from '../../services/monitoringStateManager
 // 导入AI服务
 import aiService from '../../services/ai/ai-service.js';
 import scriptLibraryService from '../../services/scriptLibrary';
+import personalizationService from '../../services/personalization';
 
 export default {
   name: 'Terminal',
@@ -2003,6 +2004,16 @@ export default {
         const terminal = terminalStore.getTerminal(activeId);
         if (!terminal) return;
 
+        // 个性化：记录选择（带主机上下文）
+        try {
+          const sess = sessionStore.getSession(activeId) || {};
+          personalizationService.onSelect(suggestion, {
+            host: sess.host,
+            username: sess.username,
+            connectionId: activeId
+          });
+        } catch (_) {}
+
         terminalAutocompleteService.selectSuggestion(suggestion, terminal);
         autocomplete.value.visible = false;
 
@@ -2030,6 +2041,17 @@ export default {
 
           // 控制可见性
           autocomplete.value.visible = suggestions.length > 0;
+
+          // 个性化：记录曝光（带主机上下文）
+          try {
+            const activeId = activeConnectionId.value;
+            const sess = activeId ? sessionStore.getSession(activeId) || {} : {};
+            personalizationService.onShow(suggestions, {
+              host: sess.host,
+              username: sess.username,
+              connectionId: activeId
+            });
+          } catch (_) {}
 
           // 位置保护：如果可见但当前位置无效，尝试立即纠正
           if (

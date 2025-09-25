@@ -8,6 +8,7 @@ import log from './log';
 import { useUserStore } from '@/store/user';
 import { autocompleteConfig } from '@/config/app-config';
 import { SmartDebounce } from '@/utils/smart-debounce';
+import personalizationService from './personalization';
 
 class TerminalAutocompleteService {
   constructor() {
@@ -672,7 +673,11 @@ class TerminalAutocompleteService {
 
     // 合并、去重和排序
     const mergedSuggestions = this.mergeSuggestions(allSuggestions, input, context);
-    const finalSuggestions = mergedSuggestions.slice(0, this.config.maxSuggestions);
+
+    // 个性化重排（稳定、温和）
+    const reranked = personalizationService.rerank(mergedSuggestions, this._buildHostContext(terminal), input);
+
+    const finalSuggestions = reranked.slice(0, this.config.maxSuggestions);
 
     return finalSuggestions;
   }
@@ -717,6 +722,13 @@ class TerminalAutocompleteService {
     }
 
     return context;
+  }
+
+  /**
+   * 从终端构建主机上下文占位（真实host在视图层补充）
+   */
+  _buildHostContext(_terminal) {
+    return {};
   }
 
   /**

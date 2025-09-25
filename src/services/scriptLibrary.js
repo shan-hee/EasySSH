@@ -585,7 +585,8 @@ class ScriptLibraryService {
         text: script.command,
         description: script.name,
         fullCommand: script.command,
-        score: script.score
+        score: script.score,
+        source: script.source || 'public'
       }))
       .slice(0, limit);
   }
@@ -607,7 +608,8 @@ class ScriptLibraryService {
         text: script.command,
         description: script.name,
         fullCommand: script.command,
-        score: script.score
+        score: script.score,
+        source: script.source || 'public'
       }))
       .slice(0, limit);
   }
