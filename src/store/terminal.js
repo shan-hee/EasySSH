@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia';
-import { reactive, toRefs } from 'vue';
+import { reactive, toRefs, computed } from 'vue';
 import sshService from '../services/ssh/index';
 import log from '../services/log';
 import { useUserStore } from './user';
@@ -7,7 +7,6 @@ import { useConnectionStore } from './connection';
 import { useLocalConnectionsStore } from './localConnections';
 import { FitAddon } from '@xterm/addon-fit';
 
-import { computed } from 'vue';
 import { useSessionStore } from './session';
 import { waitForFontsLoaded } from '../utils/fontLoader';
 import settingsService from '../services/settings';

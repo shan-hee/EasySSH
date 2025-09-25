@@ -379,7 +379,6 @@
 </template>
 
 <script>
-import log from '@/services/log';
 import { ref, computed, nextTick, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { useUserStore } from '@/store/user';

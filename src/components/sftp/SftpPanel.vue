@@ -185,7 +185,16 @@
 </template>
 
 <script>
-import { defineComponent, ref, nextTick, onMounted, onUnmounted, watch, computed } from 'vue';
+import {
+  defineComponent,
+  ref,
+  nextTick,
+  onMounted,
+  onUnmounted,
+  watch,
+  computed,
+  defineAsyncComponent
+} from 'vue';
 import { ElMessageBox, ElMessage } from 'element-plus';
 import { sftpService } from '@/services/ssh';
 import log from '@/services/log';
@@ -196,7 +205,6 @@ import SftpFileItem from './components/SftpFileItem.vue';
 import SftpInlineEditor from './components/SftpInlineEditor.vue';
 import SftpToolbar from './components/SftpToolbar.vue';
 import SftpPathNavigator from './components/SftpPathNavigator.vue';
-import { defineAsyncComponent } from 'vue';
 const SftpEditor = defineAsyncComponent(() => import('./components/SftpEditor.vue'));
 import SftpPermissionsDialog from './components/SftpPermissionsDialog.vue';
 
