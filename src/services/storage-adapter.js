@@ -53,18 +53,22 @@ class StorageAdapter {
   async get(category, defaultValue = null) {
     try {
       if (this.isLoggedIn()) {
-        // 登录状态：若设置服务已聚合加载且包含该分类，直接返回聚合结果，避免重复请求
+        // 登录状态：只有当设置服务已从服务器成功加载该分类时，才使用聚合结果
         try {
-          if (settingsService?.isInitialized) {
+          if (settingsService?.isInitialized && 
+              settingsService?.hasServerSettings && 
+              settingsService?.isCategoryLoaded?.(category)) {
             const aggregated = settingsService.settings?.[category];
             if (aggregated !== undefined) {
+              log.debug(`从设置服务聚合结果获取 [${category}]`);
               return aggregated;
             }
           }
         } catch (_) {}
 
-        // 否则从服务器获取
+        // 从服务器获取
         // 禁用缓存，确保登录后拉取的是最新的用户配置
+        log.debug(`从服务器获取设置 [${category}]`);
         const response = await apiService.get(
           `/users/settings?category=${category}`,
           {},
