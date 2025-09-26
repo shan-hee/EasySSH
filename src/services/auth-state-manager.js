@@ -5,6 +5,9 @@
 
 import log from './log';
 import storageAdapter from './storage-adapter';
+import apiService from './api';
+import storageService from './storage';
+import settingsService from './settings.js';
 import { useUserStore } from '../store/user';
 
 class AuthStateManager {
@@ -45,6 +48,13 @@ class AuthStateManager {
       this.currentUser = user;
       this.isLoggedIn = true;
 
+      // 登录前清理与用户设置相关的请求缓存，避免跨用户命中
+      try {
+        if (typeof apiService.clearRelatedCache === 'function') {
+          apiService.clearRelatedCache('/users/settings');
+        }
+      } catch (_) {}
+
       // 通知存储适配器用户状态变化
       await this.notifyStorageModeChange('server');
 
@@ -71,6 +81,28 @@ class AuthStateManager {
 
       // 通知存储适配器用户状态变化
       await this.notifyStorageModeChange('local');
+
+      // 重置设置服务初始化状态，确保再次登录会重新拉取
+      try {
+        settingsService.isInitialized = false;
+      } catch (_) {}
+
+      // 清理与用户设置相关的API缓存
+      try {
+        if (typeof apiService.clearRelatedCache === 'function') {
+          apiService.clearRelatedCache('/users/settings');
+        }
+      } catch (_) {}
+
+      // 清理本地缓存的服务器设置副本（cache.settings.*），仅清理缓存，不动UI设置
+      try {
+        const keys = typeof storageService.keys === 'function' ? storageService.keys() : [];
+        keys
+          .filter(k => typeof k === 'string' && k.startsWith('cache.settings.'))
+          .forEach(k => {
+            try { storageService.removeItem(k); } catch (_) {}
+          });
+      } catch (_) {}
 
       // 通知所有监听器
       this.notifyListeners('logout', previousUser);

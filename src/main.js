@@ -231,6 +231,8 @@ document.addEventListener(
   true // 捕获阶段，确保能够监听到非冒泡的自定义事件
 );
 
+// 登录后加载用户配置的统一入口在 auth-state-manager 中执行，避免重复拉取
+
 // 刷新用户数据的统一方法（智能缓存优先策略）
 async function refreshUserData() {
   try {
@@ -364,7 +366,8 @@ window.addEventListener('auth:complete-logout', async () => {
     // 3. 强制刷新页面并跳转到登录页，确保完全重置应用状态
     log.info('执行强制页面刷新，确保完全退出系统');
     // 设置一个标志表示这是完全登出，供登录页面检测
-    sessionStorage.setItem('auth_complete_logout', 'true');
+  sessionStorage.setItem('auth_complete_logout', 'true');
+    // 设置缓存清理已移动至 auth-state-manager，避免重复
     window.location.href = '/login';
   } catch (error) {
     log.error('执行完全登出流程时出现错误', error);

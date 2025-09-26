@@ -386,6 +386,8 @@ import { useLocalConnectionsStore } from '@/store/localConnections';
 import { useTabStore } from '@/store/tab';
 import { useSessionStore } from '@/store/session';
 import { ElMessage, ElMessageBox } from 'element-plus';
+import settingsService from '@/services/settings';
+import storageAdapter from '@/services/storage-adapter';
 import { Edit, Delete, Connection } from '@element-plus/icons-vue';
 import Modal from '@/components/common/Modal.vue';
 import AddButton from '@/components/common/AddButton.vue';
@@ -1090,7 +1092,7 @@ export default {
 
         // 添加到历史记录
         if (userStore.isLoggedIn) {
-          await userStore.addToHistory(connection);
+          userStore.addToHistory(connection);
         } else {
           localConnectionsStore.addToHistory(connection);
         }
@@ -1264,6 +1266,15 @@ export default {
         } catch (error) {
           log.warn('连接管理页面：并发加载连接相关数据失败', error);
         }
+
+        // 打开“连接配置”页面时，若尚未加载服务器设置，则聚合拉取一次，为SSH登录准备配置
+        try {
+          if (!settingsService.hasServerSettings) {
+            try { await storageAdapter.init(); } catch (_) {}
+            await settingsService.init(true);
+            log.debug('连接配置页面：已按需聚合拉取服务器设置');
+          }
+        } catch (_) {}
       }
     });
 

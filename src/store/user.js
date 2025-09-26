@@ -728,12 +728,21 @@ export const useUserStore = defineStore(
             log.warn('通知登录状态管理器失败', error);
           }
 
+          // 额外广播登录成功事件（供全局监听执行后续初始化）
+          try {
+            window.dispatchEvent(
+              new CustomEvent('auth:login-success', {
+                detail: { user: response.user }
+              })
+            );
+          } catch (_) {}
+
           // 不在登录后主动同步脚本库：改为连接就绪/脚本变更时触发
 
-          return {
-            success: true,
-            silent: credentials.silent
-          };
+        return {
+          success: true,
+          silent: credentials.silent
+        };
         } else {
           // 登录失败
           const errorMsg = response?.message || '登录失败';
@@ -764,6 +773,20 @@ export const useUserStore = defineStore(
           // 验证成功，设置token和用户信息
           setToken(response.token);
           setUserInfo(response.user || tempUserInfo);
+          // 通知状态管理器用户已登录
+          try {
+            await authStateManager.onUserLogin(response.user || tempUserInfo);
+          } catch (error) {
+            log.warn('MFA验证后通知登录状态管理器失败', error);
+          }
+          // 广播登录成功事件
+          try {
+            window.dispatchEvent(
+              new CustomEvent('auth:login-success', {
+                detail: { user: response.user || tempUserInfo }
+              })
+            );
+          } catch (_) {}
           return { success: true };
         } else {
           return { success: false, error: response?.message || '验证码不正确' };

@@ -53,8 +53,23 @@ class StorageAdapter {
   async get(category, defaultValue = null) {
     try {
       if (this.isLoggedIn()) {
-        // 登录状态：从服务器获取
-        const response = await apiService.get(`/users/settings?category=${category}`);
+        // 登录状态：若设置服务已聚合加载且包含该分类，直接返回聚合结果，避免重复请求
+        try {
+          if (settingsService?.isInitialized) {
+            const aggregated = settingsService.settings?.[category];
+            if (aggregated !== undefined) {
+              return aggregated;
+            }
+          }
+        } catch (_) {}
+
+        // 否则从服务器获取
+        // 禁用缓存，确保登录后拉取的是最新的用户配置
+        const response = await apiService.get(
+          `/users/settings?category=${category}`,
+          {},
+          { useCache: false }
+        );
 
         if (response.success && response.data[category]) {
           return response.data[category].data;
@@ -62,8 +77,11 @@ class StorageAdapter {
 
         return defaultValue;
       } else {
-        // 未登录状态：从本地存储获取
-        return storageService.getItem(`settings.${category}`, defaultValue);
+        // 未登录状态：遵循设计，只使用默认配置；仅UI从本地读取
+        if (category === 'ui') {
+          return storageService.getItem(`settings.${category}`, defaultValue);
+        }
+        return defaultValue;
       }
     } catch (error) {
       log.error(`获取设置失败 [${category}]:`, error);

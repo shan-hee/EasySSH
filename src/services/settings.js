@@ -30,6 +30,8 @@ const SERVER_SAVE_CATEGORIES = new Set(['terminal', 'connection', 'editor', 'adv
 class SettingsService {
   constructor() {
     this.isInitialized = false;
+    this.hasServerSettings = false; // 是否已加载过服务器侧设置
+    this._loading = null; // 并发保护：正在加载的Promise
 
     // 响应式设置对象
     this.settings = reactive({ ...userSettingsDefaults });
@@ -54,48 +56,58 @@ class SettingsService {
    * 初始化设置服务
    * @returns {Promise<boolean>} 是否初始化成功
    */
-  async init() {
-    if (this.isInitialized) {
+  async init(force = false) {
+    // 已初始化且不强制，直接返回
+    if (this.isInitialized && !force) {
       return true;
     }
 
-    try {
-      // 从存储加载设置
-      await this.loadSettings();
-
-      // 应用初始主题（检查是否已经由防闪烁脚本正确应用）
-      const currentTheme = document.documentElement.getAttribute('data-theme');
-      const expectedTheme =
-        this.settings.ui.theme === 'system'
-          ? window.matchMedia('(prefers-color-scheme: dark)').matches
-            ? 'dark'
-            : 'light'
-          : this.settings.ui.theme;
-
-      // 主题状态检查
-      log.debug('主题状态检查', { currentTheme, expectedTheme });
-
-      if (currentTheme !== expectedTheme) {
-        // 只有当主题不匹配时才应用主题
-        log.debug('主题不匹配，需要应用主题', { current: currentTheme, expected: expectedTheme });
-        this.applyTheme(this.settings.ui.theme);
-      } else {
-        log.debug('主题已正确应用，跳过重复操作', { theme: expectedTheme });
+    if (this._loading) {
+      try {
+        await this._loading;
+        return true;
+      } catch (_) {
+        return false;
       }
-
-      // 设置系统主题变化监听器
-      this._setupSystemThemeListener();
-
-      // 在主题应用完成后再设置监听器，避免初始化时触发不必要的保存
-      this._setupAutoSave();
-
-      this.isInitialized = true;
-      log.debug('设置服务初始化完成');
-      return true;
-    } catch (error) {
-      log.error('设置服务初始化失败', error);
-      return false;
     }
+
+    this._loading = (async () => {
+      try {
+        // 从存储加载设置（登录态下会从服务器获取分类设置）
+        await this.loadSettings();
+
+        // 应用/校验主题（仅当不一致时应用）
+        try {
+          const currentTheme = document.documentElement.getAttribute('data-theme');
+          const expectedTheme =
+            this.settings.ui.theme === 'system'
+              ? window.matchMedia('(prefers-color-scheme: dark)').matches
+                ? 'dark'
+                : 'light'
+              : this.settings.ui.theme;
+
+          if (currentTheme !== expectedTheme) {
+            this.applyTheme(this.settings.ui.theme);
+          }
+        } catch (_) {}
+
+        // 首次初始化时设置监听与自动保存
+        if (!this.isInitialized) {
+          this._setupSystemThemeListener();
+          this._setupAutoSave();
+        }
+
+        this.isInitialized = true;
+        return true;
+      } catch (error) {
+        log.error('设置服务初始化失败', error);
+        return false;
+      } finally {
+        this._loading = null;
+      }
+    })();
+
+    return this._loading;
   }
 
   /**
@@ -104,29 +116,59 @@ class SettingsService {
    */
   async loadSettings() {
     try {
+      // 确保存储适配器已就绪（避免在未初始化时误判登录态）
+      try {
+        if (!storageAdapter.initialized && typeof storageAdapter.init === 'function') {
+          await storageAdapter.init();
+        }
+      } catch (_) {
+        // 初始化失败不阻塞后续逻辑，按原有回退策略处理
+      }
+
       // 检查是否已登录，如果已登录则从服务器加载设置
       const userStore = useUserStore();
 
       if (userStore.isLoggedIn) {
-        // 登录状态：从服务器加载设置
+        // 登录状态：优先尝试聚合拉取，失败再回退逐类拉取
         try {
-          // 加载各个分类的设置（UI设置保持本地化，不从服务器同步）
-          // 使用静态导入的存储适配器
-          const categories = ['terminal', 'connection', 'editor', 'advanced'];
-          const serverSettings = {};
+          let serverSettings = {};
 
-          for (const category of categories) {
-            try {
-              const categoryData = await storageAdapter.get(category, null);
-              if (categoryData) {
-                serverSettings[category] = categoryData;
+          try {
+            if (typeof storageAdapter.getAll === 'function') {
+              const all = await storageAdapter.getAll();
+              if (all && typeof all === 'object') {
+                // 过滤掉UI（UI始终只在本地保存）
+                const { ui: _ignoredUI, ...rest } = all;
+                serverSettings = rest;
               }
-            } catch (error) {
-              log.warn(`从服务器加载${category}设置失败:`, error);
+            }
+          } catch (e) {
+            // 聚合接口不可用时回退
+          }
+
+          if (!serverSettings || Object.keys(serverSettings).length === 0) {
+            // 回退：按分类逐个获取
+            const categories = [
+              'terminal',
+              'connection',
+              'editor',
+              'advanced',
+              'monitoring',
+              'ai-config' // 一并纳入，避免AI配置单独再发一次
+            ];
+            for (const category of categories) {
+              try {
+                const categoryData = await storageAdapter.get(category, null);
+                if (categoryData) {
+                  serverSettings[category] = categoryData;
+                }
+              } catch (error) {
+                log.warn(`从服务器加载${category}设置失败:`, error);
+              }
             }
           }
 
-          if (Object.keys(serverSettings).length > 0) {
+          if (serverSettings && Object.keys(serverSettings).length > 0) {
             log.debug('设置已从服务器加载', {
               loadedCategories: Object.keys(serverSettings),
               hasTerminalSettings: !!serverSettings.terminal,
@@ -135,40 +177,108 @@ class SettingsService {
 
             // 深度合并服务器设置，保留默认值
             this._mergeSettings(this.settings, serverSettings);
+            this.hasServerSettings = true;
+            // 标记已加载的分类
+            try {
+              if (!this.loadedCategories) this.loadedCategories = new Set();
+              Object.keys(serverSettings).forEach(c => this.loadedCategories.add(c));
+            } catch (_) {}
           }
         } catch (error) {
           log.warn('从服务器加载设置失败，回退到本地存储:', error);
+          this.hasServerSettings = false;
         }
       }
 
       // 无论登录状态如何，UI设置始终从本地存储加载（保持设备相关的偏好设置）
       const storedSettings = this.storage.get(SETTINGS_STORAGE_KEY, {});
 
-      // 如果已登录，只合并UI设置；如果未登录，合并所有设置
-      let settingsToMerge = storedSettings;
-
-      if (userStore.isLoggedIn && storedSettings.ui) {
-        // 登录状态：只合并UI设置，其他设置已从服务器加载
-        settingsToMerge = { ui: storedSettings.ui };
-        log.debug('UI设置已从本地存储加载', {
-          theme: storedSettings.ui?.theme
-        });
-      } else {
-        // 未登录状态：合并所有本地设置
-        const settingsKeys = Object.keys(storedSettings);
-        log.debug('设置已从本地存储加载', {
-          storedKeys: settingsKeys,
-          hasTerminalSettings: !!storedSettings.terminal,
-          hasUISettings: !!storedSettings.ui,
-          hasConnectionSettings: !!storedSettings.connection
-        });
+      // 设计约束：
+      // - 登录后：服务器设置 + 本地 UI 设置
+      // - 未登录：仅本地 UI 设置，其余使用默认值（不合并本地的 terminal/connection 等）
+      let settingsToMerge = {};
+      if (storedSettings && storedSettings.ui) {
+        settingsToMerge.ui = storedSettings.ui;
+        log.debug('UI设置已从本地存储加载', { theme: storedSettings.ui?.theme });
       }
 
-      // 深度合并设置，保留默认值
-      this._mergeSettings(this.settings, settingsToMerge);
+      // 深度合并设置（仅包含UI部分；非UI分类已在上方按登录状态处理或保持默认）
+      if (Object.keys(settingsToMerge).length > 0) {
+        this._mergeSettings(this.settings, settingsToMerge);
+      }
     } catch (error) {
       log.warn('加载设置失败，使用默认设置', error);
     }
+  }
+
+  /**
+   * 仅本地初始化（只加载并应用UI设置，不从服务器拉取）
+   */
+  async initLocalOnly() {
+    try {
+      // 读取本地 UI 设置
+      const storedSettings = this.storage.get(SETTINGS_STORAGE_KEY, {});
+      if (storedSettings && storedSettings.ui) {
+        this._mergeSettings(this.settings, { ui: storedSettings.ui });
+      }
+
+      // 应用/校验主题
+      try {
+        const currentTheme = document.documentElement.getAttribute('data-theme');
+        const expectedTheme =
+          this.settings.ui.theme === 'system'
+            ? window.matchMedia('(prefers-color-scheme: dark)').matches
+              ? 'dark'
+              : 'light'
+            : this.settings.ui.theme;
+        if (currentTheme !== expectedTheme) {
+          this.applyTheme(this.settings.ui.theme);
+        }
+      } catch (_) {}
+
+      if (!this.isInitialized) {
+        this._setupSystemThemeListener();
+        this._setupAutoSave();
+      }
+      this.isInitialized = true;
+      this.hasServerSettings = false;
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  /** 返回设置快照（可选按分类） */
+  getSnapshot(categories = null) {
+    if (!categories || categories.length === 0) {
+      return { ...this.settings };
+    }
+    const out = {};
+    categories.forEach(c => {
+      if (this.settings[c] !== undefined) out[c] = { ...this.settings[c] };
+    });
+    return out;
+  }
+
+  /** 将当前设置应用到提供的目标对象（按分类） */
+  applyToTargets(targets = {}) {
+    if (!targets || typeof targets !== 'object') return;
+    const applyOne = (cat, obj) => {
+      if (!obj) return;
+      const src = this.settings?.[cat];
+      if (src === undefined) return;
+      try {
+        Object.assign(obj, src);
+        if (Object.prototype.hasOwnProperty.call(obj, 'initialized')) obj.initialized = true;
+        if (cat === 'terminal' && !obj.rendererType) obj.rendererType = 'auto';
+      } catch (_) {}
+    };
+    Object.keys(targets).forEach(cat => applyOne(cat, targets[cat]));
+  }
+
+  /** 指定分类是否已从服务器加载 */
+  isCategoryLoaded(category) {
+    return !!this.loadedCategories && this.loadedCategories.has(category);
   }
 
   /**

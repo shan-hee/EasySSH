@@ -1082,31 +1082,36 @@ export default defineComponent({
       };
     });
 
-    // 初始化数据
+    // 初始化数据（仅本地/UI与默认；服务器侧设置延后至连接页签打开时再加载）
     const initializeData = async () => {
       accountForm.value.username = userStore.username || '';
       securityForm.value.mfaEnabled = userStore.userInfo.mfaEnabled || false;
 
-      // 初始化所有设置 - 统一使用storageAdapter从服务器获取
+      // 初始化所有设置 - 仅在已加载服务器设置时才读取服务器，否则保持默认/本地
       try {
+        const canReadServer = userStore.isLoggedIn && settingsService.hasServerSettings === true;
+        // 终端/连接/监控/背景 等服务器侧设置默认不在此时读取，避免登录或刷新时发请求
+
         // 初始化终端设置 - 从服务器获取
         try {
-          const savedTerminalSettings = await storageAdapter.get('terminal', {
-            fontSize: 16,
-            fontFamily: "'JetBrains Mono'",
-            theme: 'dark',
-            cursorStyle: 'block',
-            cursorBlink: true,
-            copyOnSelect: false,
-            rightClickSelectsWord: false,
-            rendererType: 'auto'
-          });
+          if (canReadServer) {
+            const savedTerminalSettings = await storageAdapter.get('terminal', {
+              fontSize: 16,
+              fontFamily: "'JetBrains Mono'",
+              theme: 'dark',
+              cursorStyle: 'block',
+              cursorBlink: true,
+              copyOnSelect: false,
+              rightClickSelectsWord: false,
+              rendererType: 'auto'
+            });
 
-          if (savedTerminalSettings) {
-            Object.assign(terminalSettings, savedTerminalSettings);
-            if (!terminalSettings.rendererType) terminalSettings.rendererType = 'auto';
-            terminalSettings.initialized = true;
-            log.debug('终端设置已从服务器加载');
+            if (savedTerminalSettings) {
+              Object.assign(terminalSettings, savedTerminalSettings);
+              if (!terminalSettings.rendererType) terminalSettings.rendererType = 'auto';
+              terminalSettings.initialized = true;
+              log.debug('终端设置已从服务器加载');
+            }
           }
         } catch (error) {
           log.error('加载终端设置失败:', error);
@@ -1114,18 +1119,20 @@ export default defineComponent({
 
         // 初始化连接设置 - 从服务器获取
         try {
-          const savedConnectionSettings = await storageAdapter.get('connection', {
-            autoReconnect: true,
-            reconnectInterval: 3,
-            connectionTimeout: 10,
-            keepAlive: true,
-            keepAliveInterval: 30
-          });
+          if (canReadServer) {
+            const savedConnectionSettings = await storageAdapter.get('connection', {
+              autoReconnect: true,
+              reconnectInterval: 3,
+              connectionTimeout: 10,
+              keepAlive: true,
+              keepAliveInterval: 30
+            });
 
-          if (savedConnectionSettings) {
-            Object.assign(connectionSettings, savedConnectionSettings);
-            connectionSettings.initialized = true;
-            log.debug('连接设置已从服务器加载');
+            if (savedConnectionSettings) {
+              Object.assign(connectionSettings, savedConnectionSettings);
+              connectionSettings.initialized = true;
+              log.debug('连接设置已从服务器加载');
+            }
           }
         } catch (error) {
           log.error('加载连接设置失败:', error);
@@ -1133,14 +1140,16 @@ export default defineComponent({
 
         // 初始化监控设置 - 从服务器获取
         try {
-          const savedMonitoringSettings = await storageAdapter.get('monitoring', {
-            updateInterval: 1000
-          });
+          if (canReadServer) {
+            const savedMonitoringSettings = await storageAdapter.get('monitoring', {
+              updateInterval: 1000
+            });
 
-          if (savedMonitoringSettings) {
-            Object.assign(monitoringSettings, savedMonitoringSettings);
-            monitoringSettings.initialized = true;
-            log.debug('监控设置已从服务器加载');
+            if (savedMonitoringSettings) {
+              Object.assign(monitoringSettings, savedMonitoringSettings);
+              monitoringSettings.initialized = true;
+              log.debug('监控设置已从服务器加载');
+            }
           }
         } catch (error) {
           log.error('加载监控设置失败:', error);
@@ -1162,17 +1171,19 @@ export default defineComponent({
           }
 
           // 加载设置
-          const savedBgSettings = await storageAdapter.get('terminal.background', {
-            enabled: false,
-            url: '',
-            opacity: 0.5,
-            mode: 'cover'
-          });
+          if (canReadServer) {
+            const savedBgSettings = await storageAdapter.get('terminal.background', {
+              enabled: false,
+              url: '',
+              opacity: 0.5,
+              mode: 'cover'
+            });
 
-          if (savedBgSettings) {
-            Object.assign(terminalBgSettings, savedBgSettings);
-            terminalBgSettings.initialized = true;
-            log.debug('终端背景设置已从服务器加载');
+            if (savedBgSettings) {
+              Object.assign(terminalBgSettings, savedBgSettings);
+              terminalBgSettings.initialized = true;
+              log.debug('终端背景设置已从服务器加载');
+            }
           }
         } catch (error) {
           log.error('加载终端背景设置失败:', error);
@@ -1182,13 +1193,15 @@ export default defineComponent({
         loadShortcuts();
 
         // 初始化AI设置 - 从存储中加载已保存的配置
+        // AI配置：由聚合读取，若未加载服务器设置则保持默认
         try {
-          // 调用load方法从存储中加载配置
-          const loadedConfig = await aiConfigManager.load();
-          if (loadedConfig) {
-            Object.assign(aiSettings, loadedConfig);
-            aiSettings.initialized = true;
-            log.debug('AI设置已从存储加载');
+          if (settingsService.hasServerSettings) {
+            const loadedConfig = await aiConfigManager.load();
+            if (loadedConfig) {
+              Object.assign(aiSettings, loadedConfig);
+              aiSettings.initialized = true;
+              log.debug('AI设置已从聚合加载');
+            }
           }
         } catch (error) {
           log.error('初始化AI设置失败:', error);
@@ -2051,8 +2064,24 @@ export default defineComponent({
     // 监听弹窗显示状态，初始化数据
     watch(
       () => props.visible,
-      newVal => {
+      async newVal => {
         if (newVal) {
+          // 打开设置弹窗时，若已登录且尚未加载服务器设置，则聚合拉取一次
+          if (userStore.isLoggedIn && !settingsService.hasServerSettings) {
+            try { await storageAdapter.init(); } catch (_) {}
+            try {
+              await settingsService.init(true);
+              // 统一应用到各目标对象
+              settingsService.applyToTargets({
+                connection: connectionSettings,
+                terminal: terminalSettings,
+                monitoring: monitoringSettings,
+                'ai-config': aiSettings
+              });
+              detectCurrentRenderer();
+            } catch (_) {}
+          }
+
           initializeData();
           activeMenu.value = 'account'; // 默认显示账户设置
         }

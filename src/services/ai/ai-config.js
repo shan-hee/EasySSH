@@ -5,6 +5,8 @@
 
 import log from '../log';
 import storageAdapter from '../storage-adapter';
+import settingsService from '../settings';
+import { useUserStore } from '../../store/user';
 
 class AIConfig {
   constructor() {
@@ -60,14 +62,27 @@ class AIConfig {
       // 确保存储服务已初始化
       await this.initStorage();
 
-      const saved = await storageAdapter.get(this.storageKey);
-      if (saved) {
-        // 合并默认配置和保存的配置
-        this.config = this.mergeConfig(this.getDefaultConfig(), saved);
+      const userStore = useUserStore();
 
-        log.debug('AI配置已加载');
+      // 登录态：只在 settingsService 已有服务器设置时读取聚合；否则采用默认，不触发任何网络请求
+      if (userStore?.isLoggedIn) {
+        try {
+          if (settingsService?.hasServerSettings) {
+            const aggregated = settingsService.settings?.['ai-config'];
+            if (aggregated && typeof aggregated === 'object') {
+              this.config = this.mergeConfig(this.getDefaultConfig(), aggregated);
+              log.debug('AI配置已从聚合设置加载');
+              return this.config;
+            }
+          }
+        } catch (_) {}
+
+        this.config = this.getDefaultConfig();
+        return this.config;
       }
 
+      // 未登录：遵循设计，使用默认配置（不读取本地）
+      this.config = this.getDefaultConfig();
       return this.config;
     } catch (error) {
       log.error('加载AI配置失败', error);
