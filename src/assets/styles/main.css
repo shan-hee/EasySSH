@@ -21,6 +21,7 @@
 @import './layouts/layout.css';
 @import './layouts/critical-layout.css';
 @import './layout-main.css';
+@import './views/dashboard.css';
 
 /* 组件样式 */
 @import './components/cards.css';
