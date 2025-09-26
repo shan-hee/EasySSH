@@ -589,7 +589,7 @@ export default {
 
 .btn {
   padding: 8px 16px;
-  border-radius: 4px;
+  border-radius: 6px;
   cursor: pointer;
   font-size: 14px;
   transition: all 0.3s ease;
