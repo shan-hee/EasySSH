@@ -12,6 +12,7 @@ class MonitoringBridge {
     this.monitoringService = null;
     this.cleanupTaskStarted = false; // 标记清理任务是否已启动，避免重复日志
     this.cleanupTimer = null; // 确保定时器引用被初始化
+    this.abortCleanups = new Map(); // sessionId -> () => void
 
     // 启动定期清理任务
     this.startCleanupTask();
@@ -31,7 +32,16 @@ class MonitoringBridge {
    * @param {Object} sshConnection SSH连接实例
    * @param {Object} hostInfo 主机信息 { address, port, username }
    */
-  startMonitoring(sessionId, sshConnection, hostInfo) {
+  startMonitoring(sessionId, sshConnection, hostInfo, options = {}) {
+    const { signal } = options;
+
+    if (signal?.aborted) {
+      logger.debug('取消信号已触发，跳过监控启动', {
+        sessionId,
+        host: `${hostInfo.username || 'unknown'}@${hostInfo.address || 'unknown'}:${hostInfo.port || 22}`
+      });
+      return;
+    }
     // 检查当前状态
     const currentState = this.collectorStates.get(sessionId);
     if (currentState === 'starting' || currentState === 'running') {
@@ -85,7 +95,7 @@ class MonitoringBridge {
       });
 
       collector.on('stopped', () => {
-        logger.info('监控收集器已停止', {
+        logger.debug('监控收集器已停止', {
           sessionId,
           hostId: collector.hostId
         });
@@ -103,11 +113,28 @@ class MonitoringBridge {
       // 更新状态为运行中
       this.collectorStates.set(sessionId, 'running');
 
-      logger.info('SSH监控数据收集已启动', {
+      logger.debug('SSH监控数据收集已启动', {
         sessionId,
         host: `${hostInfo.username || 'unknown'}@${hostInfo.address || 'unknown'}:${hostInfo.port || 22}`,
         collectorCount: this.collectors.size
       });
+
+      if (signal) {
+        const abortHandler = () => {
+          const abortReason = signal.reason || 'aborted';
+          logger.debug('收到会话取消信号，停止监控收集器', {
+            sessionId,
+            host: collector.hostId,
+            reason: abortReason
+          });
+          this.stopMonitoring(sessionId, abortReason);
+        };
+
+        signal.addEventListener('abort', abortHandler, { once: true });
+        this.abortCleanups.set(sessionId, () => {
+          signal.removeEventListener('abort', abortHandler);
+        });
+      }
 
     } catch (error) {
       // 启动失败，重置状态
@@ -151,7 +178,7 @@ class MonitoringBridge {
         this.collectorStates.set(sessionId, 'stopped');
 
         // 记录停止信息
-        logger.info('SSH监控数据收集已停止', {
+        logger.debug('SSH监控数据收集已停止', {
           sessionId,
           hostId: collector.hostId,
           reason
@@ -189,6 +216,19 @@ class MonitoringBridge {
         });
       }
       return false;
+    }
+
+    const abortCleanup = this.abortCleanups.get(sessionId);
+    if (abortCleanup) {
+      try {
+        abortCleanup();
+      } catch (error) {
+        logger.warn('移除监控取消监听失败', {
+          sessionId,
+          error: error.message
+        });
+      }
+      this.abortCleanups.delete(sessionId);
     }
   }
 

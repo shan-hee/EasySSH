@@ -23,13 +23,10 @@ const {
 // 导入监控处理模块
 const monitoring = require('../monitoring');
 const aiService = require('../ai');
+const sessionLifecycle = require('../services/sessionLifecycleService');
 
 // 导入消息验证器
 const { validateMessage, createErrorResponse, formatValidationErrors, ERROR_CODES } = require('../utils/message-validator');
-
-// WebSocket到会话的映射，用于在连接早期关闭时清理
-const wsToSessionMap = new Map();
-
 
 // 存储临时连接配置的映射
 const pendingConnections = new Map();
@@ -224,7 +221,7 @@ function initWebSocketServer(server) {
     const clientIP = getClientIP(request);
     ws.clientIP = clientIP; // 保存到WebSocket对象，供后续使用
 
-    logger.info('新的SSH WebSocket连接已建立', {
+    logger.debug('新的SSH WebSocket连接已建立', {
       clientIP: clientIP || '未知',
       userAgent: request.headers['user-agent'],
       remoteAddress: request.connection?.remoteAddress,
@@ -336,6 +333,10 @@ function initWebSocketServer(server) {
             } else {
               // 传统模式：直接包含所有连接信息
               sessionId = await ssh.handleConnect(ws, data);
+              if (sessionId) {
+                ws.sessionId = sessionId;
+                ws.pendingSessionId = null;
+              }
             }
           }
           break;
@@ -383,7 +384,7 @@ function initWebSocketServer(server) {
                   }
 
                   // 记录安全日志，不包含敏感信息
-                  logger.info('SSH连接请求（安全模式）', {
+                  logger.debug('SSH连接请求（安全模式）', {
                     username: connectionConfig.username,
                     address: connectionConfig.address,
                     port: connectionConfig.port,
@@ -393,6 +394,10 @@ function initWebSocketServer(server) {
 
                   // 建立SSH连接
                   sessionId = await ssh.handleConnect(ws, connectionConfig);
+                  if (sessionId) {
+                    ws.sessionId = sessionId;
+                    ws.pendingSessionId = null;
+                  }
 
                   // 连接成功后删除临时连接ID
                   pendingConnections.delete(data.connectionId);
@@ -489,94 +494,33 @@ function initWebSocketServer(server) {
       }
     });
 
-    ws.on('close', () => {
-      // 立即标记WebSocket为已关闭
+    ws.on('close', (code, reasonBuffer) => {
       ws.isClosed = true;
-      
-      logger.info('SSH WebSocket连接已关闭', { sessionId });
+      const closedSessionId = ws.sessionId || sessionId || ws.pendingSessionId;
+      const reasonText = reasonBuffer ? reasonBuffer.toString() : '';
 
-      const monitoringBridge = require('../services/monitoringBridge');
-      
-      if (sessionId) {
-        // 正常情况：有sessionId，直接停止监控
-        try {
-          const stopped = monitoringBridge.stopMonitoring(sessionId, 'websocket_close');
-          if (stopped) {
-            logger.debug('SSH WebSocket断开，监控数据收集已停止', { sessionId });
-          }
-        } catch (error) {
-          logger.warn('停止监控数据收集失败', {
-            sessionId,
-            error: error.message
-          });
-        }
-      } else {
-        // 特殊情况：sessionId为null，强制清理所有活跃的监控收集器
-        logger.warn('SSH WebSocket断开但sessionId为null，执行全局监控清理');
-        
-        try {
-          const stats = monitoringBridge.getStats();
-          const activeCollectors = Object.keys(stats.collectors || {});
-          
-          if (activeCollectors.length > 0) {
-            logger.info('检测到活跃监控收集器，执行强制清理', { 
-              count: activeCollectors.length,
-              collectors: activeCollectors.slice(0, 5) // 只显示前5个
-            });
-            
-            // 停止所有活跃的收集器
-            activeCollectors.forEach(sessionId => {
-              try {
-                const stopped = monitoringBridge.stopMonitoring(sessionId, 'websocket_close_force_cleanup');
-                if (stopped) {
-                  logger.debug('已强制清理监控收集器', { sessionId });
-                }
-              } catch (error) {
-                logger.debug('强制清理监控收集器失败', { 
-                  sessionId, 
-                  error: error.message 
-                });
-              }
-            });
-          } else {
-            logger.debug('未检测到需要清理的活跃监控收集器');
-          }
-        } catch (error) {
-          logger.warn('执行全局监控清理失败', { error: error.message });
-        }
-      }
+      logger.info('SSH WebSocket连接已关闭', {
+        sessionId: closedSessionId,
+        code,
+        reason: reasonText
+      });
 
-      // 清理资源
-      if (sessionId && ssh.sessions.has(sessionId)) {
-        const session = ssh.sessions.get(sessionId);
-        session.ws = null;
-
-        // 如果客户端意外断开，先保留SSH连接一段时间
-        // 允许客户端重新连接，延长保留时间到24小时
-        clearTimeout(session.cleanupTimeout);
-        session.cleanupTimeout = setTimeout(() => {
-          if (ssh.sessions.has(sessionId) && !ssh.sessions.get(sessionId).ws) {
-            ssh.cleanupSession(sessionId);
-          }
-        }, 24 * 60 * 60 * 1000); // 24小时后清理，实际上几乎相当于永久保留
+      if (closedSessionId) {
+        sessionLifecycle.abort(closedSessionId, 'websocket_closed', {
+          notifyClient: false,
+          closeCode: code,
+          closeReason: reasonText
+        });
       }
     });
 
     ws.on('error', (err) => {
       logger.error('SSH WebSocket错误', { sessionId, error: err.message });
-
-      // WebSocket错误时也停止监控数据收集
-      if (sessionId) {
-        try {
-          const monitoringBridge = require('../services/monitoringBridge');
-          monitoringBridge.stopMonitoring(sessionId);
-          logger.debug('SSH WebSocket错误，监控数据收集已停止', { sessionId });
-        } catch (error) {
-          logger.warn('停止监控数据收集失败', {
-            sessionId,
-            error: error.message
-          });
-        }
+      const erroredSessionId = ws.sessionId || sessionId || ws.pendingSessionId;
+      if (erroredSessionId) {
+        sessionLifecycle.abort(erroredSessionId, 'websocket_error', {
+          notifyClient: false
+        });
       }
     });
   });
@@ -1156,7 +1100,7 @@ async function handleBinaryAuthenticate(ws, headerData, payloadData) {
           }
 
           // 记录安全日志，不包含敏感信息
-          logger.info('SSH连接请求（二进制安全模式）', {
+          logger.debug('SSH连接请求（二进制安全模式）', {
             username: connectionConfig.username,
             address: connectionConfig.address,
             port: connectionConfig.port,

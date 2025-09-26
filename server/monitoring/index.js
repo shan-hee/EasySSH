@@ -7,6 +7,9 @@ const WebSocket = require('ws');
 const logger = require('../utils/logger');
 const monitoringConfig = require('../config/monitoring');
 const { handleWebSocketError } = require('../utils/errorHandler');
+const monitoringBridge = require('../services/monitoringBridge');
+const sessionLifecycle = require('../services/sessionLifecycleService');
+const ssh = require('../ssh/ssh');
 
 // 存储前端监控会话（浏览器连接）
 const frontendSessions = new Map();
@@ -16,6 +19,146 @@ const serverSubscriptions = new Map();
 const monitoringDataCache = new Map();
 // 存储IP到组合标识符的映射：ipAddress -> hostId (hostname@ip)
 const ipToHostIdMap = new Map();
+
+function toHostDescriptor(value) {
+  if (value === undefined || value === null) {
+    return null;
+  }
+
+  const raw = String(value).trim();
+  if (!raw) {
+    return null;
+  }
+
+  const withoutProtocol = raw.replace(/^(ssh|ws|wss|http|https):\/\//i, '');
+  const withoutCredentials = withoutProtocol.includes('@') ? withoutProtocol.split('@').pop() : withoutProtocol;
+  const hostPart = withoutCredentials.split(/[/?#]/)[0];
+
+  if (!hostPart) {
+    return null;
+  }
+
+  const [hostname, port] = hostPart.split(':');
+
+  return {
+    raw,
+    value: withoutCredentials,
+    host: hostPart,
+    hostname,
+    port: port || null
+  };
+}
+
+function descriptorsMatch(target, candidate) {
+  if (!target || !candidate) {
+    return false;
+  }
+
+  if (candidate.value === target.value) {
+    return true;
+  }
+
+  if (candidate.host === target.host) {
+    return true;
+  }
+
+  if (candidate.hostname && target.hostname && candidate.hostname === target.hostname) {
+    return true;
+  }
+
+  if (candidate.hostname && target.value.includes(candidate.hostname)) {
+    return true;
+  }
+
+  if (target.hostname && candidate.value.includes(target.hostname)) {
+    return true;
+  }
+
+  return false;
+}
+
+function collectSessionDescriptors(context) {
+  const descriptors = [];
+  const metadata = context?.metadata || {};
+  const values = new Set();
+
+  const push = (value) => {
+    if (value) {
+      values.add(String(value));
+    }
+  };
+
+  push(metadata.address);
+  push(metadata.host);
+  push(metadata.hostname);
+  push(metadata.hostId);
+  push(metadata.serverId);
+  push(metadata.target);
+  push(metadata.remoteAddress);
+  push(metadata.clientIP);
+
+  if (metadata.username && metadata.address) {
+    push(`${metadata.username}@${metadata.address}`);
+    if (metadata.port) {
+      push(`${metadata.username}@${metadata.address}:${metadata.port}`);
+    }
+  }
+
+  if (metadata.address && metadata.port) {
+    push(`${metadata.address}:${metadata.port}`);
+  }
+
+  if (context?.connectionId) {
+    push(context.connectionId);
+  }
+
+  if (metadata.hostId && metadata.port) {
+    push(`${metadata.hostId}:${metadata.port}`);
+  }
+
+  if (metadata.identifier) {
+    push(metadata.identifier);
+  }
+
+  if (metadata.serverIdentifier) {
+    push(metadata.serverIdentifier);
+  }
+
+  values.forEach((value) => {
+    const descriptor = toHostDescriptor(value);
+    if (descriptor) {
+      descriptors.push(descriptor);
+    }
+  });
+
+  return descriptors;
+}
+
+function findSessionsByServerId(serverId) {
+  const targetDescriptor = toHostDescriptor(serverId);
+
+  if (!targetDescriptor) {
+    return [];
+  }
+
+  // 同时支持通过 IP 到 hostId 的映射进行匹配
+  const implicitHostId = ipToHostIdMap.get(serverId);
+  const implicitDescriptor = implicitHostId ? toHostDescriptor(implicitHostId) : null;
+
+  return sessionLifecycle.listActive().filter((context) => {
+    const descriptors = collectSessionDescriptors(context);
+
+    if (descriptors.some((candidate) => descriptorsMatch(targetDescriptor, candidate))) {
+      return true;
+    }
+
+    if (implicitDescriptor) {
+      return descriptors.some((candidate) => descriptorsMatch(implicitDescriptor, candidate));
+    }
+
+    return false;
+  });
+}
 
 /**
  * 简化的消息发送函数
@@ -80,7 +223,7 @@ function initMonitoringWebSocketServer(server) {
     const sessionId = generateSessionId();
     const clientIp = getClientIP(req);
 
-    logger.info('前端监控WebSocket连接已建立', { subscribeServer, clientIp });
+    logger.debug('前端监控WebSocket连接已建立', { subscribeServer, clientIp });
     handleFrontendConnection(ws, sessionId, clientIp, subscribeServer);
   });
 
@@ -92,7 +235,7 @@ function initMonitoringWebSocketServer(server) {
     frontendSessions.forEach((session, id) => {
       // 检查WebSocket连接状态
       if (session.ws && session.ws.readyState !== WebSocket.OPEN) {
-        logger.info('清理已断开的前端监控会话', {
+        logger.debug('清理已断开的前端监控会话', {
           sessionId: id,
           readyState: session.ws.readyState
         });
@@ -102,7 +245,7 @@ function initMonitoringWebSocketServer(server) {
 
       // 超过30分钟不活跃则清理
       if (now - session.lastActivity > 30 * 60 * 1000) {
-        logger.info('清理不活跃的前端监控会话', {
+        logger.debug('清理不活跃的前端监控会话', {
           sessionId: id,
           inactiveTime: Math.round((now - session.lastActivity) / 1000) + 's'
         });
@@ -149,7 +292,7 @@ function handleFrontendConnection(ws, sessionId, clientIp, subscribeServer) {
     subscribedServers: new Set() // 订阅的服务器列表
   });
 
-  logger.info('前端会话已创建', { sessionId, clientIp });
+  logger.debug('前端会话已创建', { sessionId, clientIp });
 
   // 发送会话确认
   sendMessage(ws, {
@@ -326,7 +469,7 @@ function subscribeToServer(frontendSessionId, serverId) {
   }
   serverSubscriptions.get(serverId).add(frontendSessionId);
 
-  logger.info('前端会话已订阅服务器', { frontendSessionId, serverId });
+  logger.debug('前端会话已订阅服务器', { frontendSessionId, serverId });
 
   // 发送订阅确认
   sendMessage(frontendSession.ws, {
@@ -360,57 +503,104 @@ function unsubscribeFromServer(frontendSessionId, serverId) {
     if (subscribedSessions.size === 0) {
       serverSubscriptions.delete(serverId);
 
-      // 通知SSH监控停止收集该服务器的数据
-      try {
-        const monitoringBridge = require('../services/monitoringBridge');
-        const activeCollectors = monitoringBridge.getAllCollectorStatus();
+      const matchingSessions = findSessionsByServerId(serverId);
+      const targetDescriptor = toHostDescriptor(serverId);
 
-        // 查找对应服务器的SSH会话并停止监控
-        for (const collector of activeCollectors) {
-          let shouldStop = false;
+      if (matchingSessions.length === 0) {
+        logger.debug('前端订阅已清空，但未找到对应的活跃SSH会话', {
+          serverId
+        });
 
-          // 多种匹配方式确保能找到对应的收集器
-          if (collector.hostInfo) {
-            // 1. 直接匹配IP地址
-            if (collector.hostInfo.address === serverId) {
-              shouldStop = true;
+        try {
+          const collectors = monitoringBridge.getAllCollectorStatus();
+
+          collectors.forEach((collector) => {
+            const collectorDescriptors = [];
+
+            if (collector.hostId) {
+              const descriptor = toHostDescriptor(collector.hostId);
+              if (descriptor) {
+                collectorDescriptors.push(descriptor);
+              }
             }
-            // 2. 匹配主机ID
-            else if (collector.hostId === serverId) {
-              shouldStop = true;
+
+            if (collector.hostInfo) {
+              const hostDescriptor = toHostDescriptor(collector.hostInfo.address);
+              if (hostDescriptor) {
+                collectorDescriptors.push(hostDescriptor);
+              }
+
+              const combinedDescriptor = toHostDescriptor(`${collector.hostInfo.username || ''}@${collector.hostInfo.address}:${collector.hostInfo.port || ''}`);
+              if (combinedDescriptor) {
+                collectorDescriptors.push(combinedDescriptor);
+              }
             }
-            // 3. 主机ID包含服务器ID（如 "hostname@ip" 包含 "ip"）
-            else if (collector.hostId && collector.hostId.includes(serverId)) {
-              shouldStop = true;
+
+            if (targetDescriptor && collectorDescriptors.some((candidate) => descriptorsMatch(targetDescriptor, candidate))) {
+              logger.info('通过监控收集器匹配到遗留SSH会话，准备停止', {
+                serverId,
+                sessionId: collector.sessionId,
+                hostId: collector.hostId
+              });
+
+              const aborted = sessionLifecycle.abort(collector.sessionId, 'frontend_monitor_unsubscribed', {
+                notifyClient: false,
+                closeWebSocket: true,
+                closeCode: 1000,
+                closeReason: 'frontend_monitor_unsubscribed',
+                source: 'monitoring_unsubscribe_fallback'
+              });
+
+              if (!aborted) {
+                monitoringBridge.stopMonitoring(collector.sessionId, 'frontend_monitor_unsubscribed');
+
+                if (ssh.sessions && typeof ssh.sessions.has === 'function' && ssh.sessions.has(collector.sessionId)) {
+                  ssh.cleanupSession(collector.sessionId, 'frontend_monitor_unsubscribed');
+                }
+              }
             }
-            // 4. 服务器ID包含主机IP（处理端口情况）
-            else if (serverId.includes(collector.hostInfo.address)) {
-              shouldStop = true;
-            }
+          });
+        } catch (error) {
+          logger.error('通过监控收集器匹配遗留会话失败', {
+            serverId,
+            error: error.message
+          });
+        }
+      }
+
+      matchingSessions.forEach((context) => {
+        logger.info('前端订阅已清空，触发会话取消', {
+          serverId,
+          sessionId: context.sessionId
+        });
+
+        const abortDetail = {
+          notifyClient: false,
+          closeWebSocket: true,
+          closeCode: 1000,
+          closeReason: 'frontend_monitor_unsubscribed',
+          source: 'monitoring_unsubscribe'
+        };
+
+        const aborted = sessionLifecycle.abort(context.sessionId, 'frontend_monitor_unsubscribed', abortDetail);
+
+        if (!aborted) {
+          let handled = false;
+
+          if (ssh.sessions && typeof ssh.sessions.has === 'function' && ssh.sessions.has(context.sessionId)) {
+            ssh.cleanupSession(context.sessionId, 'frontend_monitor_unsubscribed');
+            handled = true;
           }
 
-          if (shouldStop) {
-            logger.info('前端订阅已清空，停止SSH监控数据收集', {
-              serverId,
-              sessionId: collector.sessionId,
-              hostId: collector.hostId,
-              hostAddress: collector.hostInfo?.address
-            });
-            monitoringBridge.stopMonitoring(collector.sessionId);
-            break;
+          if (!handled) {
+            monitoringBridge.stopMonitoring(context.sessionId, 'frontend_monitor_unsubscribed');
           }
         }
-      } catch (error) {
-        logger.error('停止SSH监控数据收集失败', {
-          serverId,
-          error: error.message,
-          stack: error.stack
-        });
-      }
+      });
     }
   }
 
-  logger.info('前端会话已取消订阅服务器', {
+  logger.debug('前端会话已取消订阅服务器', {
     frontendSessionId,
     serverId,
     remainingSubscribers: serverSubscriptions.get(serverId)?.size || 0
@@ -468,7 +658,7 @@ function handleUnsubscribeServer(ws, sessionId, payload) {
 function cleanupFrontendSession(sessionId) {
   const session = frontendSessions.get(sessionId);
   if (session) {
-    logger.info('清理前端监控会话', {
+    logger.debug('清理前端监控会话', {
       sessionId,
       clientIp: session.clientIp,
       subscribedServers: session.subscribedServers?.size || 0,
@@ -972,7 +1162,7 @@ function getSessionByHostname(hostname) {
  * @param {Object} request HTTP请求对象
  */
 function handleConnection(ws, request) {
-  logger.info('新的前端监控连接已建立');
+  logger.debug('新的前端监控连接已建立');
 
   // 生成唯一的会话ID
   const sessionId = generateSessionId();

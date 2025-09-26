@@ -65,7 +65,7 @@ class StreamingSSHMonitoringCollector extends EventEmitter {
     this.dataCallback = dataCallback;
     this.interval = interval;
 
-    logger.info('开始流式SSH监控数据收集', {
+    logger.debug('开始流式SSH监控数据收集', {
       hostId: this.hostId,
       interval: `${interval}ms`,
       host: `${this.hostInfo.username}@${this.hostInfo.address}:${this.hostInfo.port}`
@@ -158,7 +158,7 @@ class StreamingSSHMonitoringCollector extends EventEmitter {
       if (errorMsg && !errorMsg.includes('warning')) {
         // 显示调试信息
         if (errorMsg.includes('NET DEBUG') || errorMsg.includes('流式监控开始')) {
-          logger.info('监控脚本调试信息', { hostId: this.hostId, debug: errorMsg });
+          logger.debug('监控脚本调试信息', { hostId: this.hostId, debug: errorMsg });
         } else {
           logger.debug('SSH流错误输出', {
             hostId: this.hostId,
@@ -170,7 +170,7 @@ class StreamingSSHMonitoringCollector extends EventEmitter {
 
     // 流关闭处理
     this.stream.on('close', (code, signal) => {
-      logger.info('SSH流已关闭', {
+      logger.debug('SSH流已关闭', {
         hostId: this.hostId,
         code,
         signal,
@@ -244,7 +244,7 @@ class StreamingSSHMonitoringCollector extends EventEmitter {
         // 尝试重连
         const retryDelay = Math.min(5000, 1000 * Math.pow(2, this.errorStats.consecutiveErrors));
 
-        logger.info('SSH流意外关闭，准备重连', {
+        logger.warn('SSH流意外关闭，准备重连', {
           hostId: this.hostId,
           code,
           retryDelay,
@@ -320,7 +320,7 @@ class StreamingSSHMonitoringCollector extends EventEmitter {
     this.sshConnection = null;
     this.dataCallback = null;
 
-    logger.info('停止流式SSH监控数据收集', {
+    logger.debug('停止流式SSH监控数据收集', {
       hostId: this.hostId
     });
 

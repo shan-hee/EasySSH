@@ -27,9 +27,97 @@ const {
 
 // 导入监控桥接服务
 const monitoringBridge = require('../services/monitoringBridge');
+const sessionLifecycle = require('../services/sessionLifecycleService');
 
 // 存储活动的SSH连接
 const sessions = new Map();
+
+function toAbortError(reason, fallback = '操作已取消') {
+  if (reason instanceof Error) {
+    if (reason.name !== 'AbortError') {
+      reason.name = 'AbortError';
+    }
+    return reason;
+  }
+
+  const message = typeof reason === 'string' && reason.trim() ? reason : fallback;
+  const error = new Error(message);
+  error.name = 'AbortError';
+  error.reason = reason;
+  error.code = 'ABORT_ERR';
+  return error;
+}
+
+function throwIfAborted(signal, fallbackMessage = '操作已取消') {
+  if (signal?.aborted) {
+    throw toAbortError(signal.reason, fallbackMessage);
+  }
+}
+
+function notifyClientOnAbort(session, reason, detail = {}) {
+  if (!session || !session.ws) {
+    return;
+  }
+
+  const ws = session.ws;
+  if (ws.readyState !== WebSocket.OPEN) {
+    return;
+  }
+
+  if (detail.notifyClient === false) {
+    if (detail.closeWebSocket) {
+      try {
+        ws.close(detail.closeCode || 1000);
+      } catch (error) {
+        logger.debug('关闭WebSocket失败', {
+          sessionId: session.id,
+          reason,
+          error: error.message
+        });
+      }
+    }
+    return;
+  }
+
+  try {
+    const notification = detail.notification;
+
+    if (notification?.kind === 'error') {
+      sendError(ws, notification.message || String(reason || '发生未知错误'), session.id);
+    } else if (notification?.kind === 'message') {
+      const payload = {
+        sessionId: session.id,
+        reason,
+        ...(notification.data || {})
+      };
+      const type = notification.type || MSG_TYPE.DISCONNECTED;
+      sendMessage(ws, type, payload);
+    } else {
+      sendMessage(ws, MSG_TYPE.DISCONNECTED, {
+        sessionId: session.id,
+        reason
+      });
+    }
+  } catch (error) {
+    logger.warn('发送取消通知失败', {
+      sessionId: session.id,
+      reason,
+      error: error.message
+    });
+  }
+
+  if (detail.closeWebSocket) {
+    try {
+      ws.close(detail.closeCode || 1000);
+    } catch (error) {
+      logger.debug('关闭WebSocket失败', {
+        sessionId: session.id,
+        reason,
+        error: error.message
+      });
+    }
+  }
+}
 
 /**
  * 生成唯一的会话ID
@@ -44,19 +132,70 @@ function generateSessionId() {
  * @param {Object} config SSH连接配置
  * @returns {Promise<Object>} SSH连接对象
  */
-function createSSHConnection(config) {
+function createSSHConnection(config, options = {}) {
+  const { signal } = options;
+
   return new Promise((resolve, reject) => {
     const conn = new ssh2.Client();
+    let completed = false;
+
+    const handleAbort = () => {
+      if (completed) {
+        return;
+      }
+      completed = true;
+      const abortError = toAbortError(signal?.reason || 'SSH连接已取消');
+      try {
+        conn.end();
+      } catch (error) {
+        logger.debug('Abort关闭SSH连接失败', {
+          error: error.message
+        });
+      }
+      cleanup();
+      reject(abortError);
+    };
 
     // 连接超时设置 - 与readyTimeout保持一致
     const timeout = setTimeout(() => {
-      conn.end();
+      if (completed) {
+        return;
+      }
+      completed = true;
+      try {
+        conn.end();
+      } catch (error) {
+        logger.debug('连接超时关闭SSH失败', { error: error.message });
+      }
+      cleanup();
       reject(new Error('连接超时'));
     }, 25000); // 比readyTimeout多5秒，确保SSH2库的超时先触发
 
-    conn.on('ready', () => {
+    const cleanup = () => {
       clearTimeout(timeout);
-      logger.info('SSH连接成功', {
+      if (signal && typeof signal.removeEventListener === 'function' && abortListener) {
+        signal.removeEventListener('abort', abortListener);
+      }
+    };
+
+    let abortListener = null;
+    if (signal) {
+      if (signal.aborted) {
+        handleAbort();
+        return;
+      }
+
+      abortListener = handleAbort;
+      signal.addEventListener('abort', abortListener, { once: true });
+    }
+
+    conn.on('ready', () => {
+      if (completed) {
+        return;
+      }
+      completed = true;
+      cleanup();
+      logger.debug('SSH连接成功', {
         address: config.address,
         port: config.port,
         username: config.username
@@ -65,7 +204,11 @@ function createSSHConnection(config) {
     });
 
     conn.on('error', (err) => {
-      clearTimeout(timeout);
+      if (completed) {
+        return;
+      }
+      completed = true;
+      cleanup();
 
       // 分类处理SSH连接错误
       let errorType = 'unknown';
@@ -133,7 +276,7 @@ function createSSHConnection(config) {
     };
 
     // 记录安全的连接日志
-    logger.info('尝试SSH连接', {
+    logger.debug('尝试SSH连接', {
       host: sshConfig.host,
       port: sshConfig.port,
       username: sshConfig.username,
@@ -471,62 +614,70 @@ function sendCombinedLatencyResult(ws, sessionId, webSocketLatency, serverLatenc
  * 清理SSH会话
  * @param {string} sessionId 会话ID
  */
-function cleanupSession(sessionId) {
+function cleanupSession(sessionId, reason = 'unknown') {
   if (!sessions.has(sessionId)) {
+    sessionLifecycle.finalize(sessionId);
     return;
   }
 
-  logger.info('清理SSH会话', { sessionId });
-
   const session = sessions.get(sessionId);
 
-  // 定期延迟检查已移除，现在使用保活机制
+  if (session.cleaned) {
+    sessionLifecycle.finalize(sessionId);
+    return;
+  }
 
-  // 清理清理超时
+  session.cleaned = true;
+
+  logger.info('清理SSH会话', { sessionId, reason });
+
   if (session.cleanupTimeout) {
     clearTimeout(session.cleanupTimeout);
     session.cleanupTimeout = null;
   }
 
-  // 关闭SSH流
   if (session.stream) {
     try {
       session.stream.end();
-      session.stream = null;
     } catch (err) {
       logger.error('关闭SSH流错误', { sessionId, error: err.message });
     }
+    session.stream = null;
   }
 
-  // 关闭SSH连接
   if (session.conn) {
     try {
       session.conn.end();
-      session.conn = null;
     } catch (err) {
       logger.error('关闭SSH连接错误', { sessionId, error: err.message });
     }
+    session.conn = null;
   }
 
-  // 确保监控数据收集已停止（防止重复调用）
   try {
-    const stopped = monitoringBridge.stopMonitoring(sessionId, 'session_cleanup');
-    // 只在实际停止时记录日志，避免重复日志
+    const stopped = monitoringBridge.stopMonitoring(sessionId, reason || 'session_cleanup');
     if (stopped) {
-      logger.debug('SSH会话清理，监控数据收集已停止', { sessionId });
+      logger.debug('SSH会话清理，监控数据收集已停止', { sessionId, reason });
     }
   } catch (error) {
     logger.error('SSH会话清理时停止监控数据收集失败', {
       sessionId,
+      reason,
       error: error.message,
       stack: error.stack
     });
   }
 
-  // 从会话映射中移除
-  sessions.delete(sessionId);
+  if (session.ws) {
+    session.ws.sessionId = null;
+    session.ws.pendingSessionId = null;
+    session.ws = null;
+  }
 
-  logger.info('SSH会话已清理', { sessionId });
+  sessions.delete(sessionId);
+  sessionLifecycle.finalize(sessionId);
+
+  logger.info('SSH会话已清理', { sessionId, reason });
 }
 
 /**
@@ -537,315 +688,261 @@ function cleanupSession(sessionId) {
 async function handleConnect(ws, data) {
   return await safeExec(async () => {
     const sessionId = data.sessionId || generateSessionId();
+    const connectionId = data.connectionId || sessionId;
 
-    // 检查是否是重新连接到现有会话
-    if (sessions.has(sessionId)) {
+    ws.pendingSessionId = sessionId;
+
+    const lifecycleContext = sessionLifecycle.register(sessionId, {
+      connectionId,
+      metadata: {
+        address: data.address,
+        port: data.port || 22,
+        username: data.username,
+        clientIP: data.clientIP,
+        protocolVersion: data.protocolVersion || '2.0'
+      }
+    });
+
+    const { signal } = lifecycleContext;
+    const isReconnect = sessions.has(sessionId);
+    let pendingAbort = null;
+
+    const abortHandler = (reason, detail) => {
       const session = sessions.get(sessionId);
-
-      // 更新WebSocket连接
-      session.ws = ws;
-      clearTimeout(session.cleanupTimeout);
-
-      // 通知客户端连接成功 - 使用二进制协议
-      sendBinaryConnected(ws, {
-        sessionId,
-        connectionId: session.connectionInfo.connectionId,
-        serverInfo: {
-          host: session.connectionInfo.host,
-          port: session.connectionInfo.port,
-          username: session.connectionInfo.username
+      if (!session) {
+        pendingAbort = { reason, detail };
+        if (detail?.closeWebSocket && ws && ws.readyState === WebSocket.OPEN && ws.isClosed !== true) {
+          try {
+            ws.close(detail.closeCode ?? 1000, detail.closeReason || '');
+            ws.isClosed = true;
+          } catch (error) {
+            logger.debug('Abort阶段关闭WebSocket失败', {
+              sessionId,
+              error: error.message
+            });
+          }
         }
-      });
-
-      // SSH重连成功后检查WebSocket状态，只有在WebSocket仍然活跃时才重新启动监控数据收集
-      try {
-        // 检查WebSocket连接是否仍然有效
-        if (!ws || ws.readyState !== WebSocket.OPEN || ws.isClosed === true) {
-          logger.info('SSH重连成功但WebSocket已断开，跳过监控数据收集重新启动', {
-            sessionId,
-            wsReadyState: ws ? ws.readyState : 'null',
-            wsIsClosed: ws ? ws.isClosed : 'unknown',
-            host: `${session.connectionInfo.username}@${session.connectionInfo.host}:${session.connectionInfo.port}`
-          });
-          
-          // 既然WebSocket已断开，SSH连接也应该关闭以释放资源
-          logger.info('WebSocket已断开，关闭SSH重连以释放资源', { sessionId });
-          session.conn.end();
-          cleanupSession(sessionId);
-          return sessionId;
-        }
-
-        const hostInfo = {
-          address: session.connectionInfo.host,  // 这里已经是正确的
-          port: session.connectionInfo.port,
-          username: session.connectionInfo.username
-        };
-
-        monitoringBridge.startMonitoring(sessionId, session.conn, hostInfo);
-        logger.info('SSH重连成功，监控数据收集已重新启动', {
-          sessionId,
-          host: `${hostInfo.username || 'unknown'}@${hostInfo.address || 'unknown'}:${hostInfo.port || 22}`
-        });
-      } catch (error) {
-        logger.error('SSH重连成功但重新启动监控数据收集失败', {
-          sessionId,
-          error: error.message
-        });
+        return;
       }
 
-      logger.info('重新连接到SSH会话', { sessionId });
+      notifyClientOnAbort(session, reason, detail);
+      cleanupSession(sessionId, reason || 'aborted');
+    };
 
-      // 延迟测量现在通过保活机制触发，无需在此处执行
+    if (!isReconnect) {
+      sessionLifecycle.addAbortHandler(sessionId, abortHandler, { runIfAborted: true });
+    }
+
+    const ensureNotCancelled = (message) => {
+      if (signal?.aborted) {
+        pendingAbort = pendingAbort || { reason: signal.reason };
+      }
+      if (pendingAbort) {
+        const reason = pendingAbort.reason || 'aborted';
+        pendingAbort = null;
+        throw toAbortError(reason, message);
+      }
+      throwIfAborted(signal, message);
+    };
+
+    const ensureWebSocketOpen = (message) => {
+      if (!ws || ws.readyState !== WebSocket.OPEN || ws.isClosed === true) {
+        throw toAbortError('WebSocket连接已断开', message || 'WebSocket连接已断开');
+      }
+    };
+
+    try {
+      ensureNotCancelled('SSH连接请求已取消');
+
+      if (isReconnect) {
+        const session = sessions.get(sessionId);
+        session.ws = ws;
+        session.clientIP = data.clientIP || session.clientIP;
+        session.protocolVersion = data.protocolVersion || session.protocolVersion;
+
+        if (session.cleanupTimeout) {
+          clearTimeout(session.cleanupTimeout);
+          session.cleanupTimeout = null;
+        }
+
+        ws.sessionId = sessionId;
+        ws.pendingSessionId = null;
+
+        sendBinaryConnected(ws, {
+          sessionId,
+          connectionId: session.connectionInfo.connectionId,
+          serverInfo: {
+            host: session.connectionInfo.host,
+            port: session.connectionInfo.port,
+            username: session.connectionInfo.username
+          }
+        });
+
+        ensureNotCancelled('SSH连接请求已取消');
+
+        try {
+          const hostInfo = {
+            address: session.connectionInfo.host,
+            port: session.connectionInfo.port,
+            username: session.connectionInfo.username
+          };
+
+          monitoringBridge.startMonitoring(sessionId, session.conn, hostInfo, { signal });
+          logger.debug('SSH重连成功，监控数据收集已重新启动', {
+            sessionId,
+            host: `${hostInfo.username || 'unknown'}@${hostInfo.address || 'unknown'}:${hostInfo.port || 22}`
+          });
+        } catch (error) {
+          logger.error('SSH重连成功但重新启动监控数据收集失败', {
+            sessionId,
+            error: error.message
+          });
+        }
+
+        logger.debug('重新连接到SSH会话', { sessionId });
+        return sessionId;
+      }
+
+      ensureWebSocketOpen('WebSocket连接已断开，SSH连接已取消');
+      logger.debug('开始创建SSH连接', {
+        sessionId,
+        wsReadyState: ws.readyState,
+        host: `${data.username}@${data.address}:${data.port || 22}`
+      });
+
+      const conn = await createSSHConnection(data, { signal });
+
+      ensureNotCancelled('SSH连接请求已取消');
+      ensureWebSocketOpen('WebSocket连接已断开，SSH连接已关闭');
+
+      const connectionInfo = {
+        host: data.address,
+        port: data.port || 22,
+        username: data.username,
+        connectionId
+      };
+
+      const session = {
+        id: sessionId,
+        conn,
+        ws,
+        stream: null,
+        createdAt: new Date(),
+        lastActivity: new Date(),
+        cleanupTimeout: null,
+        connectionInfo,
+        clientIP: data.clientIP,
+        protocolVersion: data.protocolVersion || '2.0',
+        cleaned: false
+      };
+
+      sessions.set(sessionId, session);
+      ws.sessionId = sessionId;
+      ws.pendingSessionId = null;
+
+      ensureNotCancelled('SSH连接请求已取消');
+
+      conn.on('close', () => {
+        logger.info('SSH连接已断开', { sessionId });
+        sessionLifecycle.abort(sessionId, 'ssh_connection_closed', {
+          notification: { kind: 'message', type: MSG_TYPE.DISCONNECTED }
+        });
+      });
+
+      conn.on('error', (err) => {
+        logger.error('SSH连接错误', { sessionId, error: err.message });
+        sessionLifecycle.abort(sessionId, 'ssh_connection_error', {
+          notification: { kind: 'error', message: `SSH连接错误: ${err.message}` }
+        });
+      });
+
+      conn.shell({ term: 'xterm-color' }, (err, stream) => {
+        if (err) {
+          sessionLifecycle.abort(sessionId, 'shell_open_failed', {
+            notification: { kind: 'error', message: `创建Shell失败: ${err.message}` }
+          });
+          return;
+        }
+
+        if (signal?.aborted || ws.isClosed === true) {
+          try {
+            if (typeof stream.close === 'function') {
+              stream.close();
+            } else {
+              stream.end();
+            }
+          } catch (error) {
+            logger.debug('取消时关闭Shell失败', {
+              sessionId,
+              error: error.message
+            });
+          }
+
+          sessionLifecycle.abort(sessionId, 'shell_aborted', { notifyClient: false });
+          return;
+        }
+
+        session.stream = stream;
+
+        setupStreamWithBackpressure(session, stream, ws, sessionId);
+
+        stream.on('error', (streamErr) => {
+          logger.error('SSH Shell错误', { sessionId, error: streamErr.message });
+          sessionLifecycle.abort(sessionId, 'shell_error', {
+            notification: { kind: 'error', message: `Shell错误: ${streamErr.message}` }
+          });
+        });
+
+        stream.on('close', () => {
+          logger.debug('SSH Shell会话已关闭', { sessionId });
+          sessionLifecycle.abort(sessionId, 'shell_closed', {
+            notification: { kind: 'message', type: MSG_TYPE.CLOSED }
+          });
+        });
+
+        sendBinaryConnected(ws, {
+          sessionId,
+          connectionId: connectionInfo.connectionId,
+          serverInfo: {
+            host: connectionInfo.host,
+            port: connectionInfo.port,
+            username: connectionInfo.username
+          }
+        });
+
+        try {
+          const hostInfo = {
+            address: connectionInfo.host,
+            port: connectionInfo.port,
+            username: connectionInfo.username
+          };
+          monitoringBridge.startMonitoring(sessionId, conn, hostInfo, { signal });
+          logger.info('SSH连接成功，监控数据收集已启动', {
+            sessionId,
+            host: `${hostInfo.username || 'unknown'}@${hostInfo.address || 'unknown'}:${hostInfo.port || 22}`
+          });
+        } catch (error) {
+          logger.error('SSH连接成功但启动监控数据收集失败', {
+            sessionId,
+            host: `${connectionInfo.username}@${connectionInfo.address}:${connectionInfo.port}`,
+            error: error.message
+          });
+        }
+
+        logger.debug('新SSH会话已创建', { sessionId });
+      });
 
       return sessionId;
+    } catch (error) {
+      if (error && error.name === 'AbortError') {
+        logger.info('SSH连接请求已取消', {
+          sessionId,
+          reason: error.message
+        });
+        return sessionId;
+      }
+      throw error;
     }
-
-    // 在创建SSH连接之前检查WebSocket是否仍然有效
-    if (!ws || ws.readyState !== WebSocket.OPEN || ws.isClosed === true) {
-      logger.info('准备SSH连接时检测到WebSocket已断开，取消连接', {
-        sessionId,
-        wsReadyState: ws ? ws.readyState : 'null',
-        wsExists: !!ws,
-        wsIsClosed: ws ? ws.isClosed : 'unknown',
-        host: `${data.username}@${data.address}:${data.port || 22}`
-      });
-      throw new Error('WebSocket连接已断开，SSH连接已取消');
-    }
-
-    logger.debug('开始创建SSH连接', {
-      sessionId,
-      wsReadyState: ws.readyState,
-      host: `${data.username}@${data.address}:${data.port || 22}`
-    });
-
-    // 创建新的SSH连接
-    const conn = await createSSHConnection(data);
-
-    logger.debug('SSH连接已建立，检查WebSocket状态', {
-      sessionId,
-      wsReadyState: ws ? ws.readyState : 'null',
-      wsExists: !!ws,
-      wsIsClosed: ws ? ws.isClosed : 'unknown',
-      host: `${data.username}@${data.address}:${data.port || 22}`
-    });
-
-    // SSH连接建立后立即检查WebSocket状态，防止在长时间连接过程中WebSocket已断开
-    if (!ws || ws.readyState !== WebSocket.OPEN || ws.isClosed === true) {
-      logger.info('SSH连接建立后检测到WebSocket已断开，关闭SSH连接', {
-        sessionId,
-        wsReadyState: ws ? ws.readyState : 'null',
-        wsExists: !!ws,
-        wsIsClosed: ws ? ws.isClosed : 'unknown',
-        host: `${data.username}@${data.address}:${data.port || 22}`
-      });
-      
-      // 关闭刚建立的SSH连接并抛出错误
-      conn.end();
-      throw new Error('WebSocket连接已断开，SSH连接已关闭');
-    }
-
-    // 保存连接信息
-    const connectionInfo = {
-      host: data.address,
-      port: data.port || 22,
-      username: data.username,
-      connectionId: data.connectionId  // 保存connectionId
-    };
-
-    // 创建新的会话
-    const session = {
-      id: sessionId,
-      conn,
-      ws,
-      stream: null,
-      createdAt: new Date(),
-      lastActivity: new Date(),
-      cleanupTimeout: null,
-      connectionInfo, // 保存连接信息
-      clientIP: data.clientIP, // 保存客户端IP地址
-      protocolVersion: data.protocolVersion || '2.0' // 统一使用协议版本2.0
-    };
-
-    sessions.set(sessionId, session);
-
-    // 处理SSH连接断开
-    conn.on('close', () => {
-      logger.info('SSH连接已断开', { sessionId });
-
-      // SSH连接断开时立即停止监控数据收集
-      try {
-        const stopped = monitoringBridge.stopMonitoring(sessionId, 'connection_close');
-        if (stopped) {
-          logger.info('SSH连接断开，监控数据收集已停止', { sessionId });
-        }
-      } catch (error) {
-        logger.warn('停止监控数据收集失败', {
-          sessionId,
-          error: error.message
-        });
-      }
-
-      // 通知客户端连接断开
-      if (ws && ws.readyState === WebSocket.OPEN) {
-        sendMessage(ws, MSG_TYPE.DISCONNECTED, { sessionId });
-      }
-
-      // 清理会话
-      cleanupSession(sessionId);
-    });
-
-    // 处理SSH连接错误
-    conn.on('error', (err) => {
-      logger.error('SSH连接错误', { sessionId, error: err.message });
-
-      // SSH连接错误时立即停止监控数据收集
-      try {
-        const stopped = monitoringBridge.stopMonitoring(sessionId, 'connection_error');
-        if (stopped) {
-          logger.info('SSH连接错误，监控数据收集已停止', { sessionId });
-        }
-      } catch (error) {
-        logger.warn('停止监控数据收集失败', {
-          sessionId,
-          error: error.message
-        });
-      }
-
-      // 通知客户端连接错误
-      if (ws && ws.readyState === WebSocket.OPEN) {
-        sendError(ws, `SSH连接错误: ${err.message}`, sessionId);
-      }
-
-      // 清理会话
-      cleanupSession(sessionId);
-    });
-
-    // 创建SSH Shell
-    conn.shell({ term: 'xterm-color' }, (err, stream) => {
-      if (err) {
-        cleanupSession(sessionId);
-        sendError(ws, `创建Shell失败: ${err.message}`, sessionId);
-        return;
-      }
-
-      // 在Shell创建成功后再次检查WebSocket状态（防止长时间SSH连接过程中WebSocket断开）
-      if (!ws || ws.readyState !== WebSocket.OPEN || ws.isClosed === true) {
-        logger.info('SSH Shell创建成功但WebSocket已断开，关闭SSH连接', {
-          sessionId,
-          wsReadyState: ws ? ws.readyState : 'null',
-          wsIsClosed: ws ? ws.isClosed : 'unknown',
-          host: `${connectionInfo.username}@${connectionInfo.host}:${connectionInfo.port}`
-        });
-        
-        // 关闭SSH连接和清理会话
-        conn.end();
-        cleanupSession(sessionId);
-        return;
-      }
-
-      // 设置会话流
-      session.stream = stream;
-
-      // 转发SSH数据到WebSocket - 支持二进制传输和背压控制
-      setupStreamWithBackpressure(session, stream, ws, sessionId);
-
-      // 处理SSH错误
-      stream.on('error', (err) => {
-        logger.error('SSH Shell错误', { sessionId, error: err.message });
-
-        // SSH Shell错误时立即停止监控数据收集
-        try {
-          const stopped = monitoringBridge.stopMonitoring(sessionId, 'shell_error');
-          if (stopped) {
-            logger.info('SSH Shell错误，监控数据收集已停止', { sessionId });
-          }
-        } catch (error) {
-          logger.warn('停止监控数据收集失败', {
-            sessionId,
-            error: error.message
-          });
-        }
-
-        sendError(ws, `Shell错误: ${err.message}`, sessionId);
-      });
-
-      // 处理SSH关闭
-      stream.on('close', () => {
-        logger.info('SSH Shell会话已关闭', { sessionId });
-
-        // SSH Shell关闭时立即停止监控数据收集
-        try {
-          const stopped = monitoringBridge.stopMonitoring(sessionId, 'shell_close');
-          // 只在实际停止时记录日志，避免重复日志
-          if (stopped) {
-            logger.debug('SSH Shell关闭，监控数据收集已停止', { sessionId });
-          }
-        } catch (error) {
-          logger.warn('停止监控数据收集失败', {
-            sessionId,
-            error: error.message
-          });
-        }
-
-        sendMessage(ws, MSG_TYPE.CLOSED, { sessionId });
-
-        cleanupSession(sessionId);
-      });
-
-      // 通知客户端连接成功 - 使用二进制协议
-      sendBinaryConnected(ws, {
-        sessionId,
-        connectionId: session.connectionInfo.connectionId,
-        serverInfo: {
-          host: session.connectionInfo.host,
-          port: session.connectionInfo.port,
-          username: session.connectionInfo.username
-        }
-      });
-
-      // SSH连接成功后检查WebSocket状态，只有在WebSocket仍然活跃时才启动监控数据收集
-      try {
-        // 检查WebSocket连接是否仍然有效
-        if (!ws || ws.readyState !== WebSocket.OPEN || ws.isClosed === true) {
-          logger.info('SSH连接成功但WebSocket已断开，跳过监控数据收集启动', {
-            sessionId,
-            wsReadyState: ws ? ws.readyState : 'null',
-            wsIsClosed: ws ? ws.isClosed : 'unknown',
-            host: `${connectionInfo.username}@${connectionInfo.host}:${connectionInfo.port}`
-          });
-          
-          // 既然WebSocket已断开，SSH连接也应该关闭以释放资源
-          logger.info('WebSocket已断开，关闭SSH连接以释放资源', { sessionId });
-          conn.end();
-          cleanupSession(sessionId);
-          return sessionId;
-        }
-
-        const hostInfo = {
-          address: connectionInfo.host,  // 修复：使用 host 而不是 address
-          port: connectionInfo.port,
-          username: connectionInfo.username
-        };
-
-        monitoringBridge.startMonitoring(sessionId, conn, hostInfo);
-        logger.info('SSH连接成功，监控数据收集已启动', {
-          sessionId,
-          host: `${hostInfo.username || 'unknown'}@${hostInfo.address || 'unknown'}:${hostInfo.port || 22}`
-        });
-      } catch (error) {
-        logger.error('SSH连接成功但启动监控数据收集失败', {
-          sessionId,
-          host: `${connectionInfo.username}@${connectionInfo.address}:${connectionInfo.port}`,
-          error: error.message
-        });
-      }
-
-      logger.info('新SSH会话已创建', { sessionId });
-
-      // 延迟测量现在通过保活机制触发，无需在此处执行
-    });
-
-    return sessionId;
   }, ws, 'SSH连接失败', data.sessionId, null, false);
 }
 
@@ -910,9 +1007,10 @@ function handleDisconnect(ws, data) {
     return;
   }
 
-  cleanupSession(sessionId);
-
-  sendMessage(ws, MSG_TYPE.DISCONNECTED, { sessionId });
+  sessionLifecycle.abort(sessionId, 'client_disconnect', {
+    notification: { kind: 'message', type: MSG_TYPE.DISCONNECTED },
+    closeWebSocket: false
+  });
 }
 
 /**
@@ -998,7 +1096,7 @@ async function handleSshExec(ws, data) {
       });
 
       stream.on('close', (code) => {
-        logger.info('SSH命令执行完成', { command, exitCode: code });
+        logger.debug('SSH命令执行完成', { command, exitCode: code });
 
         // 发送执行结果
         utils.sendSftpSuccess(ws, sessionId, operationId, {
