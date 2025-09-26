@@ -8,9 +8,9 @@
     :max-width="'90vw'"
     @close="handleClose"
   >
-    <div class="mfa-disable-container">
+    <div class="mfa-disable-container mfa-dialog">
       <template v-if="currentStep === 'confirm'">
-        <div class="warning-icon">
+        <div class="warning-icon mfa-dialog__icon">
           <svg viewBox="0 0 24 24" width="50" height="50">
             <path
               fill="currentColor"
@@ -18,8 +18,8 @@
             />
           </svg>
         </div>
-        <div class="disable-title">确定要禁用两步验证吗？</div>
-        <div class="disable-description">
+        <div class="mfa-dialog__title">确定要禁用两步验证吗？</div>
+        <div class="mfa-dialog__subtitle">
           禁用两步验证将降低您账户的安全性。禁用后，您只需要使用用户名和密码即可登录系统。
         </div>
         <div class="btn-container">
@@ -29,7 +29,7 @@
       </template>
 
       <template v-else-if="currentStep === 'verify'">
-        <div class="verify-icon">
+        <div class="verify-icon mfa-dialog__icon">
           <svg viewBox="0 0 24 24" width="50" height="50">
             <path
               fill="currentColor"
@@ -37,8 +37,8 @@
             />
           </svg>
         </div>
-        <div class="verify-title">验证身份</div>
-        <div class="verify-subtitle">请输入身份验证器应用中的 6 位验证码</div>
+        <div class="mfa-dialog__title">验证身份</div>
+        <div class="mfa-dialog__subtitle">请输入身份验证器应用中的 6 位验证码</div>
         <div class="verify-input-container">
           <div class="code-inputs">
             <template v-for="(digit, index) in 6" :key="index">
@@ -58,13 +58,13 @@
             </template>
           </div>
         </div>
-        <div v-if="verifyError" class="verify-error">
+        <div v-if="verifyError" class="mfa-dialog__error">
           {{ verifyError }}
         </div>
         <div class="btn-container">
-          <button class="btn btn-back" @click="currentStep = 'confirm'">返回</button>
+          <button class="btn btn-cancel" @click="currentStep = 'confirm'">返回</button>
           <button
-            class="btn btn-disable"
+            class="btn btn-danger"
             :disabled="verificationCode.length !== 6 || isVerifying"
             @click="disableMfa"
           >
@@ -302,43 +302,12 @@ export default defineComponent({
 </script>
 
 <style scoped>
-.mfa-disable-container {
-  padding: 0; /* 统一由外层 modal-container 提供 20px 内边距 */
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-}
-
-.warning-icon,
-.verify-icon {
-  margin-bottom: 20px;
-}
-
 .warning-icon svg {
   color: var(--color-warning);
 }
 
 .verify-icon svg {
   color: var(--color-info);
-}
-
-.disable-title,
-.verify-title {
-  font-size: 20px;
-  font-weight: bold;
-  color: var(--color-text-primary);
-  margin-bottom: 15px;
-  text-align: center;
-}
-
-.disable-description,
-.verify-subtitle {
-  font-size: 14px;
-  color: var(--color-text-secondary);
-  text-align: center;
-  margin-bottom: 30px;
-  line-height: 1.5;
-  max-width: 450px;
 }
 
 .btn-container {
@@ -348,63 +317,14 @@ export default defineComponent({
   margin-top: 20px;
 }
 
-.btn {
-  padding: 8px 20px;
-  border: none;
-  border-radius: 4px;
-  font-weight: bold;
-  cursor: pointer;
-  min-width: 100px;
+.btn-container .btn {
+  min-width: 110px;
   height: 40px;
-  font-size: 14px;
-  transition: all 0.3s;
+  font-weight: 600;
 }
 
-.btn-cancel {
-  background-color: var(--color-bg-muted);
-  border: 1px solid var(--color-border-default);
-  color: var(--color-text-primary);
-}
-
-.btn-danger,
-.btn-disable {
-  background-color: var(--color-error);
-  color: var(--color-bg-container);
-}
-
-.btn-back {
-  background-color: var(--color-bg-muted);
-  border: 1px solid var(--color-border-default);
-  color: var(--color-text-primary);
-}
-
-.btn:hover {
-  opacity: 0.9;
-}
-
-.btn:disabled {
-  background-color: var(--color-disabled-bg);
-  cursor: not-allowed;
-  opacity: 0.7;
-}
-
-/* 验证码输入样式 */
-.verify-input-container {
-  width: 100%;
-  margin: 30px 0;
-}
-
-/* .code-input 与容器样式已统一到 src/assets/styles/components/forms.css */
-
-.code-separator {
-  width: 8px;
-}
-
-.verify-error {
-  color: var(--color-error);
-  margin-top: 15px;
-  text-align: center;
-  font-size: 14px;
+.btn-container .btn:disabled {
+  background-color: var(--color-disabled-bg, var(--color-bg-muted));
 }
 
 /* 弹窗圆角与标题分隔线统一在 Modal.vue 控制 */

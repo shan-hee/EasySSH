@@ -142,33 +142,10 @@ export default {
   flex-wrap: wrap;
 }
 
-.btn {
+.action-buttons .btn {
   padding: 12px 24px;
   font-size: 16px;
-  border-radius: 4px;
-  cursor: pointer;
   font-weight: bold;
-  border: none;
-  transition: all 0.3s ease;
-}
-
-.btn-primary {
-  background-color: var(--color-primary);
-  color: var(--color-bg-container);
-}
-
-.btn-primary:hover {
-  background-color: var(--color-primary-hover);
-}
-
-.btn-secondary {
-  background-color: white;
-  color: #333;
-  border: 1px solid #ddd;
-}
-
-.btn-secondary:hover {
-  background-color: #f5f5f5;
 }
 
 .icon {

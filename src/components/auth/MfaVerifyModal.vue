@@ -8,8 +8,8 @@
     :max-width="'90vw'"
     @close="handleClose"
   >
-    <div class="mfa-verify-container">
-      <div class="verify-icon">
+    <div class="mfa-verify-container mfa-dialog">
+      <div class="verify-icon mfa-dialog__icon">
         <svg viewBox="0 0 24 24" width="50" height="50" class="security-icon">
           <path
             fill="currentColor"
@@ -17,8 +17,8 @@
           />
         </svg>
       </div>
-      <div class="verify-title">双因素身份验证</div>
-      <div class="verify-subtitle">请输入身份验证器应用中的 6 位验证码</div>
+      <div class="mfa-dialog__title">双因素身份验证</div>
+      <div class="mfa-dialog__subtitle">请输入身份验证器应用中的 6 位验证码</div>
       <div class="verify-input-container">
         <div class="code-inputs">
           <template v-for="(digit, index) in 6" :key="index">
@@ -38,13 +38,13 @@
           </template>
         </div>
       </div>
-      <div v-if="verifyError" class="verify-error">
+      <div v-if="verifyError" class="mfa-dialog__error">
         {{ verifyError }}
       </div>
       <div class="mfa-btn-container">
-        <button class="mfa-btn btn-cancel" @click="handleClose">取消</button>
+        <button class="btn btn-cancel" @click="handleClose">取消</button>
         <button
-          class="mfa-btn btn-verify"
+          class="btn btn-verify"
           :disabled="verificationCode.length !== 6 || isVerifying"
           @click="verifyCode"
         >
@@ -274,49 +274,8 @@ export default defineComponent({
 </script>
 
 <style scoped>
-.mfa-verify-container {
-  padding: 0; /* 容器内边距统一由 Modal.vue 的 .mfa-*-modal.modal-container 控制 */
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-}
-
-.verify-icon {
-  margin-bottom: 20px;
-}
-
 .security-icon {
   color: var(--color-info);
-}
-
-.verify-title {
-  font-size: 20px;
-  font-weight: bold;
-  color: var(--color-text-primary);
-  margin-bottom: 15px;
-  text-align: center;
-}
-
-.verify-subtitle {
-  font-size: 14px;
-  color: var(--color-text-secondary);
-  text-align: center;
-  margin-bottom: 30px;
-  line-height: 1.5;
-  max-width: 450px;
-}
-
-/* .code-input 与容器样式已统一到 src/assets/styles/components/forms.css */
-
-.code-separator {
-  width: 8px;
-}
-
-.verify-error {
-  color: var(--color-error);
-  margin-top: 15px;
-  text-align: center;
-  font-size: 14px;
 }
 
 .mfa-btn-container {
@@ -327,13 +286,9 @@ export default defineComponent({
   margin-top: 10px;
 }
 
-.mfa-btn {
-  padding: 8px 16px;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-  font-weight: bold;
-  min-width: 80px;
+.mfa-btn-container .btn {
+  min-width: 96px;
+  font-weight: 600;
 }
 
 /* MFA验证按钮样式 - 使用主题变量 */
@@ -349,12 +304,6 @@ export default defineComponent({
 :root[data-theme='dark'] .btn-verify:hover,
 .dark-theme .btn-verify:hover {
   background-color: #555 !important;
-}
-
-.btn-cancel {
-  background-color: var(--color-bg-muted);
-  color: var(--color-text-primary);
-  border: 1px solid var(--color-border-default);
 }
 
 .btn-verify:disabled {

@@ -73,7 +73,7 @@
               </div>
             </div>
             <div class="mfa-btn-container">
-              <button class="mfa-btn btn-next" @click="goToVerifyStep">下一步</button>
+              <button class="btn btn-primary" @click="goToVerifyStep">下一步</button>
             </div>
           </div>
         </div>
@@ -101,14 +101,14 @@
               </template>
             </div>
           </div>
-          <div v-if="verifyError" class="verify-error">
+          <div v-if="verifyError" class="verify-error mfa-dialog__error">
             <i class="error-icon" />
             {{ verifyError }}
           </div>
           <div class="mfa-btn-container">
-            <button class="mfa-btn btn-back" @click="currentStep = 1">返回</button>
+            <button class="btn btn-cancel" @click="currentStep = 1">返回</button>
             <button
-              class="mfa-btn btn-verify"
+              class="btn btn-primary"
               :disabled="verificationCode.length !== 6 || isVerifying"
               @click="verifyAndEnableMfa"
             >
@@ -694,12 +694,6 @@ export default defineComponent({
   line-height: 1.5;
 }
 
-/* .code-input 与容器样式已统一到 src/assets/styles/components/forms.css */
-
-.code-separator {
-  width: 8px;
-}
-
 .verify-error {
   display: flex;
   align-items: center;
@@ -739,6 +733,7 @@ export default defineComponent({
   font-size: 12px;
 }
 
+
 .mfa-btn-container {
   display: flex;
   justify-content: flex-end;
@@ -747,72 +742,13 @@ export default defineComponent({
   margin-top: 15px;
 }
 
-.mfa-btn {
-  padding: 10px 18px;
-  border: none;
-  border-radius: 6px;
-  cursor: pointer;
-  font-weight: 500;
-  min-width: 100px;
-  transition: all var(--theme-transition-duration) var(--theme-transition-timing);
-  position: relative;
-  overflow: hidden;
+.mfa-btn-container .btn {
+  min-width: 110px;
+  font-weight: 600;
 }
 
-/* 浅色主题下的按钮样式 - 默认蓝色 */
-.btn-next,
-.btn-verify,
-:root[data-theme='light'] .btn-next,
-:root[data-theme='light'] .btn-verify,
-.light-theme .btn-next,
-.light-theme .btn-verify {
-  background-color: #1890ff !important;
-  color: #ffffff !important;
-  box-shadow: var(--shadow-base);
-}
-
-.btn-next:hover,
-.btn-verify:hover,
-:root[data-theme='light'] .btn-next:hover,
-:root[data-theme='light'] .btn-verify:hover,
-.light-theme .btn-next:hover,
-.light-theme .btn-verify:hover {
-  background-color: #1890ff !important;
-  box-shadow: var(--shadow-base) !important;
-}
-
-/* 深色主题下的按钮样式 */
-:root[data-theme='dark'] .btn-next,
-:root[data-theme='dark'] .btn-verify,
-.dark-theme .btn-next,
-.dark-theme .btn-verify {
-  background-color: #555 !important;
-  color: var(--color-text-primary) !important;
-}
-
-:root[data-theme='dark'] .btn-next:hover,
-:root[data-theme='dark'] .btn-verify:hover,
-.dark-theme .btn-next:hover,
-.dark-theme .btn-verify:hover {
-  background-color: #555 !important;
-  box-shadow: var(--shadow-base) !important;
-}
-
-.btn-back {
-  background-color: var(--color-bg-muted);
-  color: var(--color-text-primary);
-  box-shadow: var(--shadow-base);
-  border: 1px solid var(--color-border-default);
-}
-
-.btn-back:hover {
-  background-color: var(--color-hover-bg);
-}
-
-.btn-verify:disabled {
-  background-color: var(--color-disabled-bg);
+.mfa-btn-container .btn:disabled {
   cursor: not-allowed;
-  box-shadow: none;
 }
 
 .btn-loading {

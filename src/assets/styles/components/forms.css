@@ -105,6 +105,18 @@
   color: var(--btn-outline-hover-color, var(--color-primary));
 }
 
+.btn-secondary {
+  background-color: var(--btn-secondary-bg);
+  color: var(--btn-secondary-color);
+  border: 1px solid var(--btn-secondary-border);
+}
+
+.btn-secondary:hover:not(:disabled) {
+  background-color: var(--btn-secondary-hover);
+  border-color: var(--btn-secondary-border-hover, var(--btn-secondary-border));
+  color: var(--btn-secondary-hover-color, var(--btn-secondary-color));
+}
+
 .btn-danger {
   background-color: var(--color-error);
   color: #fff;
@@ -125,10 +137,16 @@
   border: 1px solid var(--color-border-default);
 }
 
+.btn-cancel:hover:not(:disabled),
+.btn-confirm:hover:not(:disabled) {
+  background-color: var(--color-hover-bg);
+}
+
 .btn:disabled,
 .btn-primary:disabled,
 .btn-outline:disabled,
 .btn-danger:disabled,
+.btn-secondary:disabled,
 .btn-cancel:disabled,
 .btn-confirm:disabled {
   opacity: 0.6;

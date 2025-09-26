@@ -3,7 +3,7 @@
     <div class="page-header">
       <h1>脚本库</h1>
       <div class="header-actions">
-        <button class="btn-secondary" @click="importScripts">
+        <button class="btn btn-secondary" @click="importScripts">
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16">
             <path
               fill="currentColor"
@@ -13,7 +13,7 @@
           </svg>
           导入脚本
         </button>
-        <button class="btn-secondary" @click="exportScripts">
+        <button class="btn btn-secondary" @click="exportScripts">
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16">
             <path
               fill="currentColor"
@@ -23,7 +23,7 @@
           </svg>
           导出脚本
         </button>
-        <button class="btn-primary" @click="createNewScript">
+        <button class="btn btn-primary" @click="createNewScript">
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16">
             <path fill="currentColor" d="M19,13H13V19H11V13H5V11H11V5H13V11H19V13Z" />
           </svg>
@@ -93,7 +93,7 @@
             <path fill="var(--color-text-placeholder)" d="M11,7H13V9H11V7M11,11H13V17H11V11Z" />
           </svg>
           <p>{{ noScriptsMessage }}</p>
-          <button class="btn-secondary" @click="createNewScript">创建第一个脚本</button>
+          <button class="btn btn-secondary" @click="createNewScript">创建第一个脚本</button>
         </div>
 
         <div v-else class="table-with-pagination">
@@ -1326,43 +1326,12 @@ export default defineComponent({
   flex-wrap: wrap;
 }
 
-/* 通用按钮基础样式 */
-.btn-primary,
-.btn-secondary {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border: none;
-  border-radius: 4px;
-  padding: 8px 16px;
-  font-size: 14px;
-  cursor: pointer;
-  transition: background-color var(--theme-transition-duration) var(--theme-transition-timing);
+.header-actions .btn {
+  gap: 8px;
 }
 
-/* 主要按钮样式 */
-.btn-primary {
-  background-color: var(--btn-primary-bg);
-  color: var(--btn-primary-text);
-}
-
-.btn-primary:hover {
-  background-color: var(--btn-primary-hover-bg);
-}
-
-/* 次要按钮样式 */
-.btn-secondary {
-  background-color: var(--color-bg-muted);
-  color: var(--color-text-primary);
-}
-
-.btn-secondary:hover {
-  background-color: var(--color-hover-bg);
-}
-
-/* 按钮图标样式 */
-.btn-primary svg,
-.btn-secondary svg {
+.header-actions .btn svg {
+  flex-shrink: 0;
   margin-right: 8px;
 }
 
@@ -1630,8 +1599,6 @@ export default defineComponent({
   color: var(--color-text-secondary);
   font-size: 16px;
 }
-
-/* 重复的btn-secondary样式已移至上方统一定义 */
 
 /* 滚动条样式 - 限制在脚本库容器内 */
 .script-library-container ::-webkit-scrollbar {

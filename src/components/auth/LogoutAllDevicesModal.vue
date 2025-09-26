@@ -134,37 +134,9 @@ export default defineComponent({
   width: 100%;
 }
 
-.btn {
-  padding: 8px 20px;
-  border: none;
-  border-radius: 4px;
-  font-weight: bold;
-  cursor: pointer;
-  min-width: 100px;
+.btn-container .btn {
+  min-width: 110px;
   height: 36px;
-}
-
-.btn-cancel {
-  background-color: var(--color-bg-muted);
-  border: 1px solid var(--color-border-default);
-  color: var(--color-text-primary);
-}
-
-.btn-danger {
-  background-color: var(--color-error);
-  color: var(--color-bg-container);
-}
-
-.btn-danger:hover {
-  background-color: var(--color-error-light);
-}
-
-.btn-cancel:hover {
-  background-color: var(--color-hover-bg);
-}
-
-.btn:disabled {
-  opacity: 0.7;
-  cursor: not-allowed;
+  font-weight: 600;
 }
 </style>

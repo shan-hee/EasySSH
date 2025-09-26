@@ -27,6 +27,7 @@
 @import './components/cards.css';
 @import './components/forms.css';
 @import './components/accessibility.css';
+@import './components/mfa-modals.css';
 
 /* Element Plus 数字类控件的等宽数字优化 */
 @layer utilities {

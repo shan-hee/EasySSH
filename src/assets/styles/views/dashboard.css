@@ -53,7 +53,7 @@
     border: 1px solid var(--color-border-default);
   }
 
-  .card-header {
+  .dashboard-card .card-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
@@ -63,7 +63,7 @@
     background-color: var(--color-bg-muted);
   }
 
-  .card-content {
+  .dashboard-card .card-content {
     padding: var(--spacing-md);
   }
 
