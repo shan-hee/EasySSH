@@ -557,8 +557,24 @@ async function handleConnect(ws, data) {
         }
       });
 
-      // SSH重连成功后重新启动监控数据收集
+      // SSH重连成功后检查WebSocket状态，只有在WebSocket仍然活跃时才重新启动监控数据收集
       try {
+        // 检查WebSocket连接是否仍然有效
+        if (!ws || ws.readyState !== WebSocket.OPEN || ws.isClosed === true) {
+          logger.info('SSH重连成功但WebSocket已断开，跳过监控数据收集重新启动', {
+            sessionId,
+            wsReadyState: ws ? ws.readyState : 'null',
+            wsIsClosed: ws ? ws.isClosed : 'unknown',
+            host: `${session.connectionInfo.username}@${session.connectionInfo.host}:${session.connectionInfo.port}`
+          });
+          
+          // 既然WebSocket已断开，SSH连接也应该关闭以释放资源
+          logger.info('WebSocket已断开，关闭SSH重连以释放资源', { sessionId });
+          session.conn.end();
+          cleanupSession(sessionId);
+          return sessionId;
+        }
+
         const hostInfo = {
           address: session.connectionInfo.host,  // 这里已经是正确的
           port: session.connectionInfo.port,
@@ -584,8 +600,49 @@ async function handleConnect(ws, data) {
       return sessionId;
     }
 
+    // 在创建SSH连接之前检查WebSocket是否仍然有效
+    if (!ws || ws.readyState !== WebSocket.OPEN || ws.isClosed === true) {
+      logger.info('准备SSH连接时检测到WebSocket已断开，取消连接', {
+        sessionId,
+        wsReadyState: ws ? ws.readyState : 'null',
+        wsExists: !!ws,
+        wsIsClosed: ws ? ws.isClosed : 'unknown',
+        host: `${data.username}@${data.address}:${data.port || 22}`
+      });
+      throw new Error('WebSocket连接已断开，SSH连接已取消');
+    }
+
+    logger.debug('开始创建SSH连接', {
+      sessionId,
+      wsReadyState: ws.readyState,
+      host: `${data.username}@${data.address}:${data.port || 22}`
+    });
+
     // 创建新的SSH连接
     const conn = await createSSHConnection(data);
+
+    logger.debug('SSH连接已建立，检查WebSocket状态', {
+      sessionId,
+      wsReadyState: ws ? ws.readyState : 'null',
+      wsExists: !!ws,
+      wsIsClosed: ws ? ws.isClosed : 'unknown',
+      host: `${data.username}@${data.address}:${data.port || 22}`
+    });
+
+    // SSH连接建立后立即检查WebSocket状态，防止在长时间连接过程中WebSocket已断开
+    if (!ws || ws.readyState !== WebSocket.OPEN || ws.isClosed === true) {
+      logger.info('SSH连接建立后检测到WebSocket已断开，关闭SSH连接', {
+        sessionId,
+        wsReadyState: ws ? ws.readyState : 'null',
+        wsExists: !!ws,
+        wsIsClosed: ws ? ws.isClosed : 'unknown',
+        host: `${data.username}@${data.address}:${data.port || 22}`
+      });
+      
+      // 关闭刚建立的SSH连接并抛出错误
+      conn.end();
+      throw new Error('WebSocket连接已断开，SSH连接已关闭');
+    }
 
     // 保存连接信息
     const connectionInfo = {
@@ -671,6 +728,21 @@ async function handleConnect(ws, data) {
         return;
       }
 
+      // 在Shell创建成功后再次检查WebSocket状态（防止长时间SSH连接过程中WebSocket断开）
+      if (!ws || ws.readyState !== WebSocket.OPEN || ws.isClosed === true) {
+        logger.info('SSH Shell创建成功但WebSocket已断开，关闭SSH连接', {
+          sessionId,
+          wsReadyState: ws ? ws.readyState : 'null',
+          wsIsClosed: ws ? ws.isClosed : 'unknown',
+          host: `${connectionInfo.username}@${connectionInfo.host}:${connectionInfo.port}`
+        });
+        
+        // 关闭SSH连接和清理会话
+        conn.end();
+        cleanupSession(sessionId);
+        return;
+      }
+
       // 设置会话流
       session.stream = stream;
 
@@ -731,8 +803,24 @@ async function handleConnect(ws, data) {
         }
       });
 
-      // SSH连接成功后立即启动监控数据收集
+      // SSH连接成功后检查WebSocket状态，只有在WebSocket仍然活跃时才启动监控数据收集
       try {
+        // 检查WebSocket连接是否仍然有效
+        if (!ws || ws.readyState !== WebSocket.OPEN || ws.isClosed === true) {
+          logger.info('SSH连接成功但WebSocket已断开，跳过监控数据收集启动', {
+            sessionId,
+            wsReadyState: ws ? ws.readyState : 'null',
+            wsIsClosed: ws ? ws.isClosed : 'unknown',
+            host: `${connectionInfo.username}@${connectionInfo.host}:${connectionInfo.port}`
+          });
+          
+          // 既然WebSocket已断开，SSH连接也应该关闭以释放资源
+          logger.info('WebSocket已断开，关闭SSH连接以释放资源', { sessionId });
+          conn.end();
+          cleanupSession(sessionId);
+          return sessionId;
+        }
+
         const hostInfo = {
           address: connectionInfo.host,  // 修复：使用 host 而不是 address
           port: connectionInfo.port,

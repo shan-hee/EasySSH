@@ -33,7 +33,29 @@ class MonitoringStateManagerFactory {
     // 启动清理定时器
     this._startCleanupTimer();
 
+    // 监听终端销毁事件，立即清理对应的监控状态管理器实例
+    this._setupTerminalDestroyListener();
+
     log.debug('[监控状态管理器工厂] 已初始化');
+  }
+
+  /**
+   * 设置终端销毁事件监听器
+   * @private
+   */
+  _setupTerminalDestroyListener() {
+    const terminalDestroyHandler = (event) => {
+      const { terminalId } = event.detail || {};
+      if (terminalId && this.hasInstance(terminalId)) {
+        log.info(`[监控状态管理器工厂] 响应终端销毁事件，立即清理实例: ${terminalId}`);
+        this.destroyInstance(terminalId);
+      }
+    };
+
+    window.addEventListener('terminal:destroyed', terminalDestroyHandler);
+    
+    // 保存事件监听器引用，便于清理时移除
+    this._terminalDestroyHandler = terminalDestroyHandler;
   }
 
   /**
@@ -237,6 +259,12 @@ class MonitoringStateManagerFactory {
     if (this.cleanupTimer) {
       clearInterval(this.cleanupTimer);
       this.cleanupTimer = null;
+    }
+
+    // 移除终端销毁事件监听器
+    if (this._terminalDestroyHandler) {
+      window.removeEventListener('terminal:destroyed', this._terminalDestroyHandler);
+      this._terminalDestroyHandler = null;
     }
 
     // 销毁所有实例

@@ -47,6 +47,7 @@ class MonitoringInstance {
     this._lastStatusHash = null; // 防重复处理的状态哈希
     this._staticDataCache = null; // 静态数据缓存（用于差量更新）
     this.reconnectDelay = 2000;
+    this._manualDisconnect = false; // 标记是否为主动断开
   }
 
   /**
@@ -62,6 +63,7 @@ class MonitoringInstance {
     this.state.connecting = true;
     this.state.targetHost = host;
     this.state.error = null;
+    this._manualDisconnect = false; // 重置主动断开标志
 
     try {
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -98,8 +100,12 @@ class MonitoringInstance {
           host
         });
 
-        // 尝试重连
-        this._attemptReconnect();
+        // 只有在非主动断开时才尝试重连
+        if (!this._manualDisconnect) {
+          this._attemptReconnect();
+        } else {
+          log.debug(`[监控] 主动断开连接，不进行重连: ${host}`);
+        }
       };
 
       this.websocket.onerror = error => {
@@ -133,6 +139,8 @@ class MonitoringInstance {
    * 断开连接
    */
   disconnect() {
+    this._manualDisconnect = true; // 标记为主动断开
+    
     if (this.websocket) {
       this.websocket.close();
       this.websocket = null;
@@ -140,6 +148,8 @@ class MonitoringInstance {
     this.state.connected = false;
     this.state.connecting = false;
     this.reconnectAttempts = 0;
+    
+    log.debug(`[监控] 主动断开连接: ${this.state.targetHost}`);
   }
 
   /**
@@ -595,6 +605,9 @@ class MonitoringService {
       }
     };
 
+    // 跟踪所有尝试连接的终端，用于强制清理
+    this.attemptedConnections = new Set();
+
     this.initialized = false;
   }
 
@@ -623,8 +636,71 @@ class MonitoringService {
     // 移除所有全局事件监听器，现在由监控状态管理器统一处理
     // 这避免了重复的事件处理和日志输出
 
+    // 监听终端销毁事件，立即断开对应的监控连接
+    this._setupTerminalDestroyListener();
+
     // 添加页面卸载时的清理逻辑
     this._initPageUnloadCleanup();
+  }
+
+  /**
+   * 设置终端销毁事件监听器
+   * @private
+   */
+  _setupTerminalDestroyListener() {
+    const terminalDestroyHandler = (event) => {
+      const { terminalId } = event.detail || {};
+      if (terminalId) {
+        // 强制断开该终端的监控连接，无论SSH是否成功建立
+        log.info(`[监控服务] 响应终端销毁事件，强制断开监控连接: ${terminalId}`);
+        
+        // 从尝试连接的跟踪集合中移除（如果存在）
+        const wasAttempted = this.attemptedConnections.has(terminalId);
+        if (wasAttempted) {
+          this.attemptedConnections.delete(terminalId);
+          log.debug(`[监控服务] 从尝试连接跟踪中移除: ${terminalId}`);
+        }
+        
+        // 直接查找并断开该终端的实例，不依赖SSH连接状态
+        const instance = this.instances.get(terminalId);
+        if (instance) {
+          // 找到实例，直接断开
+          instance.disconnect();
+          this.instances.delete(terminalId);
+          
+          // 从主机映射中移除
+          this._removeTerminalFromHost(terminalId);
+          
+          // 清理主机连接记录
+          const host = instance.state.targetHost;
+          if (host && this.hostConnections.get(host) === instance) {
+            this.hostConnections.delete(host);
+            
+            // 查找该主机的其他终端，选择新的主连接记录
+            const terminals = this.hostToTerminals.get(host);
+            if (terminals && terminals.length > 0) {
+              const newMasterTerminal = terminals[0];
+              const newMasterInstance = this.instances.get(newMasterTerminal);
+              if (newMasterInstance && newMasterInstance.state.connected) {
+                this.hostConnections.set(host, newMasterInstance);
+                log.debug(`[监控服务] 选择新的主连接记录: 终端 ${newMasterTerminal} -> ${host}`);
+              }
+            }
+          }
+          
+          log.info(`[监控服务] 已强制断开并清理监控实例: ${terminalId}`);
+        } else if (wasAttempted) {
+          log.info(`[监控服务] 终端 ${terminalId} 曾尝试连接但无实例，已从跟踪中清理`);
+        } else {
+          log.debug(`[监控服务] 终端 ${terminalId} 没有对应的监控实例或连接记录，无需清理`);
+        }
+      }
+    };
+
+    window.addEventListener('terminal:destroyed', terminalDestroyHandler);
+    
+    // 保存事件监听器引用，便于清理时移除
+    this._terminalDestroyHandler = terminalDestroyHandler;
   }
 
   /**
@@ -655,6 +731,9 @@ class MonitoringService {
     if (!terminalId || !host) {
       return false;
     }
+
+    // 立即添加到尝试连接的跟踪集合中，用于后续强制清理
+    this.attemptedConnections.add(terminalId);
 
     // 获取或创建监控实例
     const instance = this.getInstance(terminalId);
@@ -739,6 +818,13 @@ class MonitoringService {
     this.hostConnections.clear();
     this.terminalToHost.clear();
     this.hostToTerminals.clear();
+    this.attemptedConnections.clear(); // 清理尝试连接的跟踪
+
+    // 移除终端销毁事件监听器
+    if (this._terminalDestroyHandler) {
+      window.removeEventListener('terminal:destroyed', this._terminalDestroyHandler);
+      this._terminalDestroyHandler = null;
+    }
   }
 
   /**

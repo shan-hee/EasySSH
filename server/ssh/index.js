@@ -27,6 +27,9 @@ const aiService = require('../ai');
 // 导入消息验证器
 const { validateMessage, createErrorResponse, formatValidationErrors, ERROR_CODES } = require('../utils/message-validator');
 
+// WebSocket到会话的映射，用于在连接早期关闭时清理
+const wsToSessionMap = new Map();
+
 
 // 存储临时连接配置的映射
 const pendingConnections = new Map();
@@ -235,6 +238,7 @@ function initWebSocketServer(server) {
     ws.isAlive = true;
     ws.connectionTime = Date.now();
     ws.lastPing = 0;
+    ws.isClosed = false; // 添加自定义关闭标志
 
     ws.on('pong', () => {
       ws.isAlive = true;
@@ -486,14 +490,17 @@ function initWebSocketServer(server) {
     });
 
     ws.on('close', () => {
+      // 立即标记WebSocket为已关闭
+      ws.isClosed = true;
+      
       logger.info('SSH WebSocket连接已关闭', { sessionId });
 
-      // 立即停止监控数据收集
+      const monitoringBridge = require('../services/monitoringBridge');
+      
       if (sessionId) {
+        // 正常情况：有sessionId，直接停止监控
         try {
-          const monitoringBridge = require('../services/monitoringBridge');
           const stopped = monitoringBridge.stopMonitoring(sessionId, 'websocket_close');
-          // 只在实际停止时记录日志，避免重复日志
           if (stopped) {
             logger.debug('SSH WebSocket断开，监控数据收集已停止', { sessionId });
           }
@@ -502,6 +509,40 @@ function initWebSocketServer(server) {
             sessionId,
             error: error.message
           });
+        }
+      } else {
+        // 特殊情况：sessionId为null，强制清理所有活跃的监控收集器
+        logger.warn('SSH WebSocket断开但sessionId为null，执行全局监控清理');
+        
+        try {
+          const stats = monitoringBridge.getStats();
+          const activeCollectors = Object.keys(stats.collectors || {});
+          
+          if (activeCollectors.length > 0) {
+            logger.info('检测到活跃监控收集器，执行强制清理', { 
+              count: activeCollectors.length,
+              collectors: activeCollectors.slice(0, 5) // 只显示前5个
+            });
+            
+            // 停止所有活跃的收集器
+            activeCollectors.forEach(sessionId => {
+              try {
+                const stopped = monitoringBridge.stopMonitoring(sessionId, 'websocket_close_force_cleanup');
+                if (stopped) {
+                  logger.debug('已强制清理监控收集器', { sessionId });
+                }
+              } catch (error) {
+                logger.debug('强制清理监控收集器失败', { 
+                  sessionId, 
+                  error: error.message 
+                });
+              }
+            });
+          } else {
+            logger.debug('未检测到需要清理的活跃监控收集器');
+          }
+        } catch (error) {
+          logger.warn('执行全局监控清理失败', { error: error.message });
         }
       }
 

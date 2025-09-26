@@ -11,6 +11,7 @@ class MonitoringBridge {
     this.collectorStates = new Map(); // sessionId -> state (starting, running, stopping, stopped)
     this.monitoringService = null;
     this.cleanupTaskStarted = false; // 标记清理任务是否已启动，避免重复日志
+    this.cleanupTimer = null; // 确保定时器引用被初始化
 
     // 启动定期清理任务
     this.startCleanupTask();
@@ -298,6 +299,12 @@ class MonitoringBridge {
    * 启动定期清理任务
    */
   startCleanupTask() {
+    // 如果定时器已存在，先清理
+    if (this.cleanupTimer) {
+      clearInterval(this.cleanupTimer);
+      logger.warn('清理旧的定期任务定时器');
+    }
+
     // 每5分钟执行一次清理
     this.cleanupTimer = setInterval(() => {
       this.cleanupStaleStates();
@@ -347,6 +354,35 @@ class MonitoringBridge {
 
     this.collectors.clear();
     this.collectorStates.clear();
+  }
+
+  /**
+   * 获取收集器统计信息
+   * @returns {Object} 统计信息
+   */
+  getStats() {
+    const stats = {
+      totalCollectors: this.collectors.size,
+      collectors: {},
+      states: {}
+    };
+
+    // 收集器信息
+    for (const [sessionId, collector] of this.collectors) {
+      stats.collectors[sessionId] = {
+        hostId: collector.hostId,
+        isCollecting: collector.isCollecting,
+        targetHost: collector.hostInfo?.address || 'unknown',
+        startTime: collector.creationTime || Date.now() // 假设有创建时间
+      };
+    }
+
+    // 状态信息
+    for (const [sessionId, state] of this.collectorStates) {
+      stats.states[sessionId] = state;
+    }
+
+    return stats;
   }
 }
 

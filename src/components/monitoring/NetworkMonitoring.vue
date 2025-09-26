@@ -160,7 +160,10 @@ const initChart = async () => {
 
 // 更新图表数据
 const updateChart = () => {
-  if (!chartInstance.value) return;
+  if (!chartInstance.value) {
+    log.warn('[网络监控] 图表实例不存在，跳过更新');
+    return;
+  }
 
   try {
     // 检查图表实例是否有效
@@ -170,6 +173,12 @@ const updateChart = () => {
       chartInstance.value.data.datasets.length < 2
     ) {
       log.warn('[网络监控] 图表数据结构无效');
+      return;
+    }
+
+    // 检查组件是否仍然激活（防止在组件销毁后更新）
+    if (!currentStateManager.value || !componentState.value.hasData) {
+      log.debug('[网络监控] 组件状态管理器不可用或无数据，跳过图表更新');
       return;
     }
 

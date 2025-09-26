@@ -173,12 +173,25 @@ startApp().catch(err => {
 });
 
 // 处理进程退出
-process.on('SIGINT', () => {
-  logger.info('正在关闭服务器...');
+const gracefulShutdown = (signal) => {
+  logger.info(`接收到${signal}信号，正在关闭服务器...`);
+  
+  // 清理监控服务
+  try {
+    const monitoringBridge = require('./services/monitoringBridge');
+    monitoringBridge.cleanup();
+    logger.info('监控服务已清理');
+  } catch (error) {
+    logger.error('清理监控服务失败', { error: error.message });
+  }
+  
   server.close(() => {
     // 关闭数据库连接
     closeDatabase();
     logger.info('服务器已安全关闭');
     process.exit(0);
   });
-});
+};
+
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
