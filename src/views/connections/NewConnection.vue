@@ -203,28 +203,28 @@
             </div>
           </div>
           <!-- 历史记录列表 -->
-          <transition-group
+          <div
             v-else
-            name="drag"
             class="connection-grid"
             :class="{ 'edit-mode': isEditMode }"
-            tag="div"
+            v-drag-list="{
+              list: isEditMode ? draggableHistoryConnections : filteredHistoryConnections,
+              canDrag: isEditMode,
+              dragItemClass: 'connection-card',
+            }"
+            @drag-mode-end="handleHistoryDragEnd"
+            @drag-mode-start="handleHistoryDragStart"
           >
             <div
-              v-for="(connection, index) in filteredHistoryConnections"
+              v-for="(connection, index) in (isEditMode ? draggableHistoryConnections : filteredHistoryConnections)"
               :key="`${connection.id}-${connection.timestamp}`"
+              :data-id="isEditMode ? connection.id : `${connection.id}-${connection.timestamp}`"
               class="connection-card"
               :class="{
                 floating: isEditMode,
-                swinging: isEditMode,
-                'being-dragged': isEditMode && dragIndex === index
+                swinging: isEditMode && !isDragging
               }"
-              :draggable="isEditMode"
               @click="!isEditMode && handleLogin(connection)"
-              @dragstart="handleDragStart(index)"
-              @dragover="handleDragOver($event)"
-              @dragenter="handleDragEnter($event, index)"
-              @dragend="handleDragEnd"
             >
               <div class="card-content">
                 <div class="connection-icon">
@@ -264,7 +264,7 @@
                 </svg>
               </div>
             </div>
-          </transition-group>
+          </div>
         </div>
       </div>
     </div>
@@ -404,6 +404,7 @@ import Modal from '@/components/common/Modal.vue';
 import AddButton from '@/components/common/AddButton.vue';
 import SearchInput from '@/components/common/SearchInput.vue';
 import Checkbox from '@/components/common/Checkbox.vue';
+import { vDragList } from 'vue3-drag-directive';
 import log from '@/services/log';
 
 export default {
@@ -462,8 +463,10 @@ export default {
 
     // 编辑模式相关
     const isEditMode = ref(false);
-    const dragIndex = ref('');
-    const enterIndex = ref('');
+    const isDragging = ref(false);
+    
+    // 专门用于拖拽的历史连接数组
+    const draggableHistoryConnections = ref([]);
 
     // 我的连接拖拽排序相关状态
     const connectionPreviewList = ref(null);
@@ -583,6 +586,60 @@ export default {
         }
         log.debug('防抖后同步历史连接排序到服务器');
       }, 500);
+    };
+
+    // 历史连接拖拽事件处理
+    const handleHistoryDragStart = () => {
+      isDragging.value = true;
+      log.debug('历史连接拖拽开始');
+    };
+
+    const handleHistoryDragEnd = (event) => {
+      isDragging.value = false;
+      const { draggedItemData, updatedData } = event.detail;
+      
+      log.debug('历史连接拖拽完成', {
+        draggedItem: draggedItemData,
+        newOrder: updatedData.length,
+        updatedData: updatedData
+      });
+
+      // 检查数据是否有效
+      if (!Array.isArray(updatedData) || updatedData.length === 0) {
+        log.error('拖拽结束后数据无效', { updatedData });
+        return;
+      }
+
+      try {
+        // 1. 更新拖拽专用数组
+        draggableHistoryConnections.value = [...updatedData];
+        
+        // 2. 将拖拽数据转换回原始格式
+        const originalFormatData = updatedData.map(item => {
+          const { originalId, ...restConnection } = item;
+          return {
+            ...restConnection,
+            // 恢复原始id
+            id: originalId || item.id
+          };
+        });
+        
+        // 3. 更新store中的历史连接顺序
+        if (userStore.isLoggedIn) {
+          userStore.updateHistoryOrder(originalFormatData);
+        } else {
+          localConnectionsStore.updateHistoryOrder(originalFormatData);
+        }
+        
+        log.debug('历史连接顺序更新成功', { originalCount: originalFormatData.length });
+        
+        // 4. 使用防抖函数延迟API请求
+        nextTick(() => {
+          debouncedReorderHistory(originalFormatData);
+        });
+      } catch (error) {
+        log.error('更新历史连接顺序失败', error);
+      }
     };
 
     // 添加新连接
@@ -711,7 +768,7 @@ export default {
       }
     };
 
-    const handleConnectionDragLeave = (event, connection) => {
+    const handleConnectionDragLeave = (_, connection) => {
       if (!draggedConnectionId.value) return;
       if (dragHoverConnectionId.value === connection.id) {
         dragHoverConnectionId.value = null;
@@ -761,113 +818,32 @@ export default {
     // 编辑模式相关方法
     const toggleEditMode = () => {
       isEditMode.value = !isEditMode.value;
-      log.debug('切换编辑模式', { isEditMode: isEditMode.value });
-    };
-
-    // 简化的拖拽相关方法 - 基于参考代码重新实现
-    const handleDragStart = index => {
-      dragIndex.value = index;
-      log.debug('开始拖拽', { index });
-
-      // 添加一个小延迟确保拖拽状态正确应用
-      nextTick(() => {
-        const draggedCard = document.querySelector('.connection-card.being-dragged');
-        if (draggedCard) {
-          draggedCard.style.transform = 'scale(1.02)';
-        }
-      });
-    };
-
-    const handleDragEnter = (e, index) => {
-      e.preventDefault();
-      if (dragIndex.value !== index && dragIndex.value !== '') {
-        // 直接操作过滤后的历史连接数组，参考示例代码的简洁实现
-        const currentList = [...filteredHistoryConnections.value];
-
-        // 执行拖拽移动操作
-        const moving = currentList[dragIndex.value];
-        currentList.splice(dragIndex.value, 1);
-        currentList.splice(index, 0, moving);
-
-        // 更新拖拽索引到新位置
-        dragIndex.value = index;
-
-        // 如果当前没有搜索过滤，直接更新原始数组
-        if (!searchQuery.value || !searchQuery.value.trim()) {
-          // 直接更新本地状态
-          if (userStore.isLoggedIn) {
-            userStore.updateHistoryOrder(currentList);
-          } else {
-            localConnectionsStore.updateHistoryOrder(currentList);
-          }
-
-          // 使用防抖函数延迟API请求
-          nextTick(() => {
-            debouncedReorderHistory(currentList);
-          });
-        } else {
-          // 如果有搜索过滤，需要重新构建完整的历史数组
-          const fullHistory = userStore.isLoggedIn
-            ? [...userStore.historyConnections]
-            : [...localConnectionsStore.getHistory];
-
-          // 创建一个新的完整历史数组，保持过滤项的新顺序，未过滤项保持原位置
-          const reorderedHistory = [];
-          const filteredItems = new Set(currentList.map(item => `${item.id}-${item.timestamp}`));
-
-          // 先添加重新排序后的过滤项
-          currentList.forEach(item => {
-            reorderedHistory.push(item);
-          });
-
-          // 再添加未被过滤的项，保持它们的相对位置
-          fullHistory.forEach(item => {
-            const itemKey = `${item.id}-${item.timestamp}`;
-            if (!filteredItems.has(itemKey)) {
-              reorderedHistory.push(item);
-            }
-          });
-
-          // 更新本地状态
-          if (userStore.isLoggedIn) {
-            userStore.updateHistoryOrder(reorderedHistory);
-          } else {
-            localConnectionsStore.updateHistoryOrder(reorderedHistory);
-          }
-
-          // 使用防抖函数延迟API请求
-          nextTick(() => {
-            debouncedReorderHistory(reorderedHistory);
-          });
-        }
-
-        log.debug('拖拽移动', {
-          from: dragIndex.value,
-          to: index,
-          hasFilter: !!(searchQuery.value && searchQuery.value.trim())
+      
+      if (isEditMode.value) {
+        // 进入编辑模式时，同步数据到拖拽数组
+        // 确保每个连接对象都有唯一的id属性供vue3-drag-directive使用
+        // 为了避免覆盖原始id，我们使用原始对象但确保id唯一
+        draggableHistoryConnections.value = filteredHistoryConnections.value.map((connection, index) => {
+          // 如果连接已经有唯一的id，直接使用；否则生成一个
+          const uniqueId = connection.id && connection.timestamp 
+            ? `${connection.id}-${connection.timestamp}` 
+            : `history-${index}`;
+          
+          return {
+            ...connection,
+            // 保留原始id字段，添加uniqueId用于拖拽
+            originalId: connection.id,
+            id: uniqueId
+          };
+        });
+        
+        log.debug('拖拽数据已准备', { 
+          count: draggableHistoryConnections.value.length,
+          items: draggableHistoryConnections.value.map(item => ({ id: item.id, originalId: item.originalId }))
         });
       }
-    };
-
-    const handleDragOver = e => {
-      e.preventDefault();
-    };
-
-    const handleDragEnd = () => {
-      // 清理状态
-      const previousDragIndex = dragIndex.value;
-      dragIndex.value = '';
-      enterIndex.value = '';
-
-      // 确保所有卡片的样式都被重置
-      nextTick(() => {
-        const allCards = document.querySelectorAll('.connection-card');
-        allCards.forEach(card => {
-          card.style.transform = '';
-        });
-      });
-
-      log.debug('拖拽结束', { previousDragIndex });
+      
+      log.debug('切换编辑模式', { isEditMode: isEditMode.value });
     };
 
     // 删除历史连接
@@ -1457,6 +1433,7 @@ export default {
       filteredConnections,
       displayedConnections,
       filteredHistoryConnections,
+      draggableHistoryConnections,
       getDisplayName,
       addConnection,
       updateConnection,
@@ -1489,13 +1466,10 @@ export default {
       handleDelete,
       // 编辑模式相关
       isEditMode,
-      dragIndex,
-      enterIndex,
+      isDragging,
       toggleEditMode,
-      handleDragStart,
-      handleDragOver,
-      handleDragEnter,
-      handleDragEnd,
+      handleHistoryDragStart,
+      handleHistoryDragEnd,
       handleDeleteHistory,
       // 按需加载状态
       connectionsLoading: computed(() => userStore.connectionsLoading),
@@ -1643,21 +1617,6 @@ h2 {
   display: flex;
   flex-direction: column;
   gap: 8px;
-}
-
-.drag-move {
-  transition: transform 0.15s ease, opacity 0.1s ease;
-}
-
-.drag-enter-active,
-.drag-leave-active {
-  transition: all 0.1s ease;
-}
-
-.drag-enter-from,
-.drag-leave-to {
-  opacity: 0;
-  transform: translateY(6px);
 }
 
 .row-item {
@@ -2142,26 +2101,9 @@ h2 {
   color: var(--color-danger);
 }
 
-/* 优化的拖拽样式 - 基于参考代码简化 */
+/* 优化的拖拽样式 - 使用vue3-drag-directive */
 .connection-grid {
   list-style: none;
-}
-
-/* Vue transition-group 拖拽移动动画 - 参考示例代码 */
-.drag-move {
-  transition: transform 0.3s ease;
-}
-
-/* Vue transition-group 进入和离开动画 */
-.drag-enter-active,
-.drag-leave-active {
-  transition: all 0.3s ease;
-}
-
-.drag-enter-from,
-.drag-leave-to {
-  opacity: 0;
-  transform: translateY(10px);
 }
 
 .connection-card {
@@ -2176,7 +2118,7 @@ h2 {
   background-color: var(--card-hover-bg);
 }
 
-/* 编辑模式下的拖拽样式 */
+/* 编辑模式下的拖拽样式 - 使用vue3-drag-directive */
 .connection-grid.edit-mode .connection-card {
   cursor: move;
   transition:
@@ -2185,25 +2127,10 @@ h2 {
     background-color var(--theme-transition-duration) var(--theme-transition-timing);
 }
 
-.connection-grid.edit-mode .connection-card:hover:not(.being-dragged) {
+.connection-grid.edit-mode .connection-card:hover:not([data-is-dragging="true"]) {
   background-color: var(--card-hover-bg);
   transform: translateY(-2px);
   box-shadow: var(--shadow-md);
-}
-
-/* 正在被拖拽的卡片样式 */
-.connection-card.being-dragged {
-  opacity: 0.8;
-  transform: scale(1.02) !important;
-  box-shadow: var(--shadow-lg) !important;
-  z-index: var(--z-fixed);
-  background-color: var(--color-primary-lightest) !important;
-  transition: none !important;
-}
-
-/* 确保非拖拽状态下的卡片保持正常 */
-.connection-card:not(.being-dragged) {
-  transform: none;
 }
 
 /* 风铃摆动效果 - 连续流畅摆动，不在0度停留 */
@@ -2287,10 +2214,15 @@ h2 {
   animation-duration: 0.45s !important;
 }
 
-/* 当卡片被拖拽时，暂停摆动动画并应用拖拽样式 */
-.connection-card.swinging.being-dragged {
+/* vue3-drag-directive 拖拽状态样式 */
+.connection-card[data-is-dragging="true"] {
   animation: none !important;
   transform: scale(1.02) !important;
+  opacity: 0.8;
+  box-shadow: var(--shadow-lg) !important;
+  z-index: var(--z-fixed);
+  background-color: var(--color-primary-lightest) !important;
+  transition: none !important;
 }
 
 /* 加载指示器样式 */
