@@ -5,6 +5,7 @@ import log from '../services/log';
 import { useUserStore } from './user';
 import { useConnectionStore } from './connection';
 import { useLocalConnectionsStore } from './localConnections';
+import { useTabStore } from './tab';
 import { FitAddon } from '@xterm/addon-fit';
 
 import { useSessionStore } from './session';
@@ -12,6 +13,7 @@ import { waitForFontsLoaded } from '../utils/fontLoader';
 import settingsService from '../services/settings';
 
 export const useTerminalStore = defineStore('terminal', () => {
+  const tabStore = useTabStore();
   // 使用reactive管理状态
   const state = reactive({
     // 存储所有终端实例，键为终端ID（通常是连接ID）
@@ -63,6 +65,11 @@ export const useTerminalStore = defineStore('terminal', () => {
 
       // 获取当前终端状态或初始化
       const currentState = state.terminalStates[connectionId] || 'not_initialized';
+
+      if (currentState === 'cancelled') {
+        log.debug(`终端 ${connectionId} 初始化已标记为取消，跳过重新初始化`);
+        return false;
+      }
 
       // 检查终端是否已在初始化中，使用锁机制防止并发初始化
       if (state.terminalInitLocks[connectionId]) {
@@ -301,9 +308,37 @@ export const useTerminalStore = defineStore('terminal', () => {
 
         return true;
       } catch (error) {
-        log.error(`终端 ${connectionId} 初始化失败:`, error);
-        state.connectionStatus[connectionId] = 'error';
-        state.terminalStates[connectionId] = 'error';
+        const errorMessage =
+          typeof error === 'string' ? error : error?.message || '';
+        const normalizedMessage = errorMessage.toLowerCase();
+        const isCancelled =
+          (error && error.name === 'AbortError') ||
+          normalizedMessage.includes('已取消') ||
+          normalizedMessage.includes('cancelled') ||
+          normalizedMessage.includes('超时') ||
+          normalizedMessage.includes('timeout');
+
+        if (isCancelled) {
+          log.debug(`终端 ${connectionId} 初始化已取消`);
+
+          state.connectionStatus[connectionId] = 'cancelled';
+          state.terminalStates[connectionId] = 'cancelled';
+
+          window.dispatchEvent(
+            new CustomEvent('terminal-status-update', {
+              detail: {
+                terminalId: connectionId,
+                status: 'cancelled'
+              }
+            })
+          );
+
+        tabStore.connectionFailed?.(connectionId, '连接已取消', { status: 'cancelled' });
+        } else {
+          log.error(`终端 ${connectionId} 初始化失败:`, error);
+          state.connectionStatus[connectionId] = 'error';
+          state.terminalStates[connectionId] = 'error';
+        }
 
         // 从创建中列表移除
         const index = state.creatingSessionIds.indexOf(connectionId);
@@ -314,27 +349,47 @@ export const useTerminalStore = defineStore('terminal', () => {
         // 解锁初始化
         state.terminalInitLocks[connectionId] = false;
 
-        // 发布错误状态事件
-        window.dispatchEvent(
-          new CustomEvent('terminal-status-update', {
-            detail: {
-              terminalId: connectionId,
-              status: 'error',
-              error: error.message || '初始化失败'
-            }
-          })
-        );
+        if (!isCancelled) {
+          // 发布错误状态事件
+          window.dispatchEvent(
+            new CustomEvent('terminal-status-update', {
+              detail: {
+                terminalId: connectionId,
+                status: 'error',
+                error: error.message || '初始化失败'
+              }
+            })
+          );
+        }
 
         return false;
       }
     } catch (error) {
-      log.error('终端初始化发生意外错误:', error);
+      const message = typeof error === 'string' ? error : error?.message || '';
+      const normalized = message.toLowerCase();
+      const priorState = state.terminalStates[connectionId];
+      const expectedCancellation =
+        priorState === 'cancelled' ||
+        (error && typeof error === 'object' && error.expectedCancellation === true) ||
+        normalized.includes('已取消') ||
+        normalized.includes('cancelled') ||
+        normalized.includes('超时') ||
+        normalized.includes('timeout');
 
-      // 确保释放锁和更新状态
-      state.terminalStates[connectionId] = 'error';
+      if (expectedCancellation) {
+        log.debug(`终端 ${connectionId} 初始化流程已终止`, {
+          reason: message || '连接已取消'
+        });
+
+        state.connectionStatus[connectionId] = 'cancelled';
+        state.terminalStates[connectionId] = 'cancelled';
+      } else {
+        log.error('终端初始化发生意外错误:', error);
+        state.terminalStates[connectionId] = 'error';
+      }
+
       state.terminalInitLocks[connectionId] = false;
 
-      // 从创建中列表移除
       const index = state.creatingSessionIds.indexOf(connectionId);
       if (index !== -1) {
         state.creatingSessionIds.splice(index, 1);
@@ -728,7 +783,39 @@ export const useTerminalStore = defineStore('terminal', () => {
       const sessionId = state.sessions[connectionId];
       if (!sessionId) {
         log.debug(`断开终端连接: 找不到会话ID，连接ID=${connectionId}`);
-        return false;
+
+        try {
+          await sshService.cancelConnectionByTerminal(connectionId, 'frontend_monitor_unsubscribed');
+        } finally {
+          disconnectingIds.delete(connectionId);
+        }
+
+        delete state.terminals[connectionId];
+        delete state.sessions[connectionId];
+
+        if (state.fitAddons && state.fitAddons[connectionId]) {
+          delete state.fitAddons[connectionId];
+        }
+
+        const creatingIdx = state.creatingSessionIds.indexOf(connectionId);
+        if (creatingIdx !== -1) {
+          state.creatingSessionIds.splice(creatingIdx, 1);
+        }
+
+        window.dispatchEvent(
+          new CustomEvent('terminal-status-update', {
+            detail: {
+              terminalId: connectionId,
+              status: 'cancelled'
+            }
+          })
+        );
+
+        delete state.connectionStatus[connectionId];
+        delete state.terminalStates[connectionId];
+
+        triggerGarbageCollection();
+        return true;
       }
 
       // 关闭SSH会话

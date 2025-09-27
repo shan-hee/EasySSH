@@ -379,7 +379,7 @@
 </template>
 
 <script>
-import { ref, computed, nextTick, onMounted } from 'vue';
+import { ref, computed, nextTick, onMounted, toRaw } from 'vue';
 import { useRouter } from 'vue-router';
 import { useUserStore } from '@/store/user';
 import { useLocalConnectionsStore } from '@/store/localConnections';
@@ -1033,12 +1033,25 @@ export default {
           currentTab &&
           (currentTab.type === 'newConnection' || currentTab.path.includes('/connections'))
         ) {
+          const rawCurrentTab = toRaw(currentTab) || currentTab;
+          const originalTabData = rawCurrentTab
+            ? {
+                title: rawCurrentTab.title,
+                type: rawCurrentTab.type,
+                path: rawCurrentTab.path,
+                data: rawCurrentTab.data ? JSON.parse(JSON.stringify(rawCurrentTab.data)) : {}
+              }
+            : null;
+
           // 更新标签的路径、类型和数据
           tabStore.updateTab(currentTabIndex, {
             title: connectionDataForSession.title,
             type: 'terminal',
             path: `/terminal/${sessionId}`,
-            data: { connectionId: sessionId }
+            data: {
+              connectionId: sessionId,
+              originalTabData
+            }
           });
 
           // 在会话存储中注册会话，使用用户输入的连接数据
@@ -1115,12 +1128,15 @@ export default {
           (currentTab.type === 'newConnection' || currentTab.path.includes('/connections'))
         ) {
           // 保存原始标签数据用于回滚
-          const originalTabData = {
-            title: currentTab.title,
-            type: currentTab.type,
-            path: currentTab.path,
-            data: currentTab.data
-          };
+          const rawCurrentTab = toRaw(currentTab) || currentTab;
+          const originalTabData = rawCurrentTab
+            ? {
+                title: rawCurrentTab.title,
+                type: rawCurrentTab.type,
+                path: rawCurrentTab.path,
+                data: rawCurrentTab.data ? JSON.parse(JSON.stringify(rawCurrentTab.data)) : {}
+              }
+            : null;
 
           // 更新标签的路径、类型和数据
           tabStore.updateTab(currentTabIndex, {
@@ -1155,7 +1171,7 @@ export default {
         // 如果连接失败，执行回滚操作
         if (sessionId) {
           // 调用页签回滚逻辑
-          tabStore.connectionFailed(sessionId, error.message || '连接失败');
+          tabStore.connectionFailed(sessionId, error.message || '连接失败', { status: 'failed' });
 
           // 清理会话存储
           if (sessionStore.removeSession) {

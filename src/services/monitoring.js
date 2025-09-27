@@ -140,15 +140,41 @@ class MonitoringInstance {
    */
   disconnect() {
     this._manualDisconnect = true; // 标记为主动断开
-    
+
     if (this.websocket) {
-      this.websocket.close();
+      const ws = this.websocket;
       this.websocket = null;
+
+      try {
+        const noop = () => {};
+        const readyState = ws.readyState;
+
+        ws.addEventListener('error', noop, { once: true });
+        ws.addEventListener('close', noop, { once: true });
+
+        if (readyState === WebSocket.OPEN || readyState === WebSocket.CLOSING) {
+          ws.close(1000, 'client_close');
+        } else if (readyState === WebSocket.CONNECTING) {
+          ws.addEventListener(
+            'open',
+            () => {
+              try {
+                ws.close(1000, 'client_close');
+              } catch (closeError) {
+                log.debug('[监控] 延迟关闭WebSocket失败', closeError);
+              }
+            },
+            { once: true }
+          );
+        }
+      } catch (error) {
+        log.debug('[监控] 关闭WebSocket失败', error);
+      }
     }
     this.state.connected = false;
     this.state.connecting = false;
     this.reconnectAttempts = 0;
-    
+
     log.debug(`[监控] 主动断开连接: ${this.state.targetHost}`);
   }
 
@@ -757,7 +783,20 @@ class MonitoringService {
         log.debug(`[监控] 设置主连接记录: 终端 ${terminalId} -> ${host}`);
       }
     } else {
-      log.warn(`[监控] 终端 ${terminalId} 连接失败: ${host}`);
+      const manualClose = instance._manualDisconnect === true;
+      const errorMessage = instance.state?.error?.message || instance.state?.error || '';
+      const normalizedError = typeof errorMessage === 'string' ? errorMessage.toLowerCase() : '';
+      const expectedCancel =
+        manualClose ||
+        normalizedError.includes('cancelled') ||
+        normalizedError.includes('已取消') ||
+        normalizedError.includes('frontend_monitor_unsubscribed');
+
+      if (expectedCancel) {
+        log.debug(`[监控] 终端 ${terminalId} 取消监控连接: ${host}`);
+      } else {
+        log.warn(`[监控] 终端 ${terminalId} 连接失败: ${host}`);
+      }
     }
 
     return connected;

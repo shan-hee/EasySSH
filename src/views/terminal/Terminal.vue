@@ -201,6 +201,12 @@ export default {
     const userStore = useUserStore();
     const tabStore = useTabStore();
     const terminalStore = useTerminalStore();
+    const VERBOSE_TERMINAL_LOG = false;
+    const debugLog = (...args) => {
+      if (VERBOSE_TERMINAL_LOG) {
+        log.debug(...args);
+      }
+    };
 
     const sessionStore = useSessionStore(); // 添加会话存储
 
@@ -476,7 +482,7 @@ export default {
           // 设置状态管理器的当前终端
           monitoringStateManager.setTerminal(newTerminalId, hostId);
 
-          log.debug(`[终端] 状态管理器已切换到终端: ${newTerminalId}`);
+          debugLog(`[终端] 状态管理器已切换到终端: ${newTerminalId}`);
         }
       },
       { immediate: true }
@@ -678,7 +684,7 @@ export default {
         const idsToRemove = terminalIds.value.filter(id => !newIds.includes(id));
 
         if (idsToRemove.length > 0) {
-          log.debug(`发现${idsToRemove.length}个不在标签页中的终端ID，准备移除:`, idsToRemove);
+          debugLog(`发现${idsToRemove.length}个不在标签页中的终端ID，准备移除:`, idsToRemove);
 
           // 清理不在标签页中的终端ID及其相关状态
           for (const idToRemove of idsToRemove) {
@@ -712,7 +718,7 @@ export default {
         if (hasChanged) {
           // 更新ID列表
           terminalIds.value = newIds;
-          log.debug('更新终端ID列表:', terminalIds.value);
+          debugLog('更新终端ID列表:', terminalIds.value);
         }
 
         updateIdListDebounceTimer.value = null;
@@ -757,7 +763,7 @@ export default {
         if (!terminalSized.value[termId]) {
           debouncedResize(termId);
         } else {
-          log.debug(`终端 ${termId} 已调整过大小，跳过调整`);
+          debugLog(`终端 ${termId} 已调整过大小，跳过调整`);
         }
         return;
       }
@@ -879,7 +885,7 @@ export default {
           if (closedTabs.length > 0) {
             for (const closedTab of closedTabs) {
               const closedId = closedTab.data.connectionId;
-              log.debug(`检测到标签页关闭，移除终端ID: ${closedId}`);
+              debugLog(`检测到标签页关闭，移除终端ID: ${closedId}`);
 
               // 从终端ID列表中移除
               terminalIds.value = terminalIds.value.filter(id => id !== closedId);
@@ -928,7 +934,7 @@ export default {
       // 为新终端初始化监控面板默认状态
       if (monitoringPanelStates.value[sessionId] === undefined) {
         monitoringPanelStates.value[sessionId] = isDesktop(); // 桌面端默认显示
-        log.debug(`[终端] 新终端监控面板默认状态: ${sessionId}, 显示: ${isDesktop()}`);
+        debugLog(`[终端] 新终端监控面板默认状态: ${sessionId}, 显示: ${isDesktop()}`);
       }
 
       // 为新终端创建状态管理器实例
@@ -1000,7 +1006,7 @@ export default {
         ) {
           const currentSessionId = sessionStore.getActiveSession();
           if (currentSessionId) {
-            log.debug(`检测到终端路径变更，使用会话存储ID: ${currentSessionId}`);
+            debugLog(`检测到终端路径变更，使用会话存储ID: ${currentSessionId}`);
             updateTerminalIds();
           }
         }
@@ -1058,7 +1064,7 @@ export default {
                 settingsService.set(`terminal.${key}`, newSettings[key]);
               }
             });
-            log.debug('设置服务中的终端设置已同步更新');
+            debugLog('设置服务中的终端设置已同步更新');
           }
         } catch (error) {
           log.error('同步设置服务失败:', error);
@@ -1160,7 +1166,7 @@ export default {
             terminalStore.sendCommand(id, event.detail.command);
           }, 100);
 
-          log.debug(`执行命令到终端 ${id}: ${event.detail.command}`);
+          debugLog(`执行命令到终端 ${id}: ${event.detail.command}`);
         } else {
           log.error('无法执行命令：终端不存在或无效');
         }
@@ -1281,7 +1287,7 @@ export default {
         aiCombinedPanelStates.value[termId] = false;
       }
 
-      log.debug(`[终端] AI输入栏状态已切换: ${termId} -> ${visible}`);
+      debugLog(`[终端] AI输入栏状态已切换: ${termId} -> ${visible}`);
     };
 
     // 检测是否为桌面端
@@ -1341,7 +1347,7 @@ export default {
       const stateManager = monitoringStateManagerFactory.getInstance(termId, hostId);
       if (stateManager) {
         terminalStateManagers.value[termId] = stateManager;
-        log.debug(`[终端] 已创建状态管理器实例: ${termId} (主机: ${hostId})`);
+        debugLog(`[终端] 已创建状态管理器实例: ${termId} (主机: ${hostId})`);
       }
 
       return stateManager;
@@ -1353,7 +1359,7 @@ export default {
         // 通过工厂销毁实例
         monitoringStateManagerFactory.destroyInstance(termId);
         delete terminalStateManagers.value[termId];
-        log.debug(`[终端] 已清理状态管理器实例: ${termId}`);
+        debugLog(`[终端] 已清理状态管理器实例: ${termId}`);
       }
     };
 
@@ -1438,7 +1444,7 @@ export default {
       currentTerminals.forEach(termId => {
         if (monitoringPanelStates.value[termId] === undefined) {
           monitoringPanelStates.value[termId] = isDesktop(); // 桌面端默认显示
-          log.debug(`[终端] 初始化监控面板默认状态: ${termId}, 显示: ${isDesktop()}`);
+          debugLog(`[终端] 初始化监控面板默认状态: ${termId}, 显示: ${isDesktop()}`);
         }
       });
 
@@ -1448,7 +1454,7 @@ export default {
         monitoringPanelStates.value[activeConnectionId.value] === undefined
       ) {
         monitoringPanelStates.value[activeConnectionId.value] = isDesktop();
-        log.debug(
+        debugLog(
           `[终端] 初始化活动终端监控面板状态: ${activeConnectionId.value}, 显示: ${isDesktop()}`
         );
       }
@@ -1466,13 +1472,13 @@ export default {
           const userPreference = localStorage.getItem(`monitoring-panel-user-hidden-${termId}`);
           if (!userPreference) {
             monitoringPanelStates.value[termId] = true;
-            log.debug(`[终端] 窗口切换到桌面端，自动显示监控面板: ${termId}`);
+            debugLog(`[终端] 窗口切换到桌面端，自动显示监控面板: ${termId}`);
           }
         }
 
         // 移动端逻辑：当从桌面端切换到移动端时，如果面板是显示的，保持状态但切换为抽屉模式
         if (currentIsMobile && monitoringPanelStates.value[termId]) {
-          log.debug(`[终端] 窗口切换到移动端，监控面板切换为抽屉模式: ${termId}`);
+          debugLog(`[终端] 窗口切换到移动端，监控面板切换为抽屉模式: ${termId}`);
           // 状态保持不变，只是显示方式从侧边面板切换为抽屉
         }
       });
@@ -1615,11 +1621,11 @@ export default {
       if (activeConnectionId.value) {
         if (!terminalIds.value.includes(activeConnectionId.value)) {
           terminalIds.value.push(activeConnectionId.value);
-          log.debug(`更新终端ID列表: ${JSON.stringify(terminalIds.value)}`);
+          debugLog(`更新终端ID列表: ${JSON.stringify(terminalIds.value)}`);
         }
 
         // 记录终端切换
-        log.debug(`终端切换: undefined -> ${activeConnectionId.value}`);
+        debugLog(`终端切换: undefined -> ${activeConnectionId.value}`);
 
         // 如果有DOM元素引用，尝试初始化终端
         if (terminalRefs.value[activeConnectionId.value]) {
@@ -1629,7 +1635,7 @@ export default {
         // 延迟聚焦当前活动终端（组件挂载时）
         setTimeout(() => {
           if (terminalStore.hasTerminal(activeConnectionId.value)) {
-            log.debug(`组件挂载后聚焦终端: ${activeConnectionId.value}`);
+            debugLog(`组件挂载后聚焦终端: ${activeConnectionId.value}`);
             focusTerminal(activeConnectionId.value);
           }
         }, 300);
@@ -1647,18 +1653,18 @@ export default {
     });
 
     onActivated(() => {
-      log.debug('终端视图已激活');
+      debugLog('终端视图已激活');
       // 当组件激活时，自动聚焦当前活动终端
       if (activeConnectionId.value && terminalStore.hasTerminal(activeConnectionId.value)) {
         setTimeout(() => {
-          log.debug(`组件激活后聚焦终端: ${activeConnectionId.value}`);
+          debugLog(`组件激活后聚焦终端: ${activeConnectionId.value}`);
           focusTerminal(activeConnectionId.value);
         }, 100);
       }
     });
 
     onDeactivated(() => {
-      log.debug('终端视图已失活');
+      debugLog('终端视图已失活');
       // 可以在这里添加失活时的处理逻辑
     });
 
@@ -1688,7 +1694,7 @@ export default {
 
     // 在组件卸载时清理
     onBeforeUnmount(() => {
-      log.debug('离开终端路由，隐藏终端');
+      debugLog('离开终端路由，隐藏终端');
 
       // 1. 首先停止所有键盘事件监听，防止在销毁过程中触发新的操作
       document.removeEventListener('keydown', handleGlobalKeydown, true);
@@ -1728,7 +1734,7 @@ export default {
       window.removeEventListener('terminal-settings-updated', handleTerminalSettingsUpdate);
 
       // 保持会话不关闭，但停止特定组件的监听
-      log.debug('终端组件卸载，保留会话');
+      debugLog('终端组件卸载，保留会话');
     });
 
     // 移除重复的事件处理函数 - 统一使用 terminal-status-update 事件系统
@@ -1747,7 +1753,7 @@ export default {
 
         // 优化：只在关键状态变化时记录日志，减少噪音
         if (status === 'ready' || status === 'error') {
-          log.debug(`收到终端状态刷新事件: ${terminalId}, ${status}, 新创建=${isNew || false}`);
+          debugLog(`收到终端状态刷新事件: ${terminalId}, ${status}, 新创建=${isNew || false}`);
         }
 
         // 根据状态更新UI
@@ -1758,7 +1764,7 @@ export default {
           // 如果是新会话，确保添加到终端ID列表
           if (isNew && !terminalIds.value.includes(terminalId)) {
             terminalIds.value.push(terminalId);
-            log.debug(`更新终端ID列表: ${JSON.stringify(terminalIds.value)}`);
+            debugLog(`更新终端ID列表: ${JSON.stringify(terminalIds.value)}`);
           }
         } else if (status === 'ready') {
           // 终端已就绪
@@ -1773,10 +1779,10 @@ export default {
 
           // 确保终端显示独立状态
           // 降低日志频率 - 状态独立确保是常规操作
-          // log.debug(`正在确保终端[${terminalId}]的状态独立`)
+          // debugLog(`正在确保终端[${terminalId}]的状态独立`)
 
           if (isNew) {
-            log.debug(`强制显示终端: ${terminalId}`);
+            debugLog(`强制显示终端: ${terminalId}`);
           }
 
           // 终端就绪后，尝试聚焦终端
@@ -1784,7 +1790,7 @@ export default {
             // 如果这是当前活动的终端，自动聚焦
             if (isActiveTerminal(terminalId)) {
               // 降低日志级别 - 聚焦是常规操作
-              log.debug(`终端 ${terminalId} 就绪，自动聚焦`);
+              debugLog(`终端 ${terminalId} 就绪，自动聚焦`);
 
               // 先强制应用光标样式
               forceCursorStyle(terminalId);
@@ -1819,7 +1825,7 @@ export default {
 
               // 通知会话存储这是当前活动会话
               sessionStore.setActiveSession(terminalId);
-              log.debug(`当前活动会话ID已更新: ${terminalId}`);
+              debugLog(`当前活动会话ID已更新: ${terminalId}`);
             }
           }
         } else if (status === 'error') {
@@ -1849,6 +1855,29 @@ export default {
             // 如果会话不存在，直接返回连接配置界面
             router.push('/connections/new');
           }
+        } else if (status === 'cancelled') {
+          terminalInitializingStates.value[terminalId] = false;
+          terminalConnectingStates.value[terminalId] = false;
+          terminalInitialized.value[terminalId] = false;
+
+          delete terminalRefs.value[terminalId];
+          terminalIds.value = terminalIds.value.filter(id => id !== terminalId);
+
+          if (sessionStore.getSession(terminalId)) {
+            sessionStore.setActiveSession(null);
+          }
+
+          if (tabStore.connectionFailed) {
+            tabStore.connectionFailed(terminalId, '连接已取消', { status: 'cancelled' });
+          }
+
+          if (terminalId === activeConnectionId.value) {
+            setTimeout(() => {
+              if (router.currentRoute.value.path.includes('/terminal/')) {
+                router.push('/connections/new');
+              }
+            }, 50);
+          }
         }
       };
 
@@ -1856,9 +1885,9 @@ export default {
       const handleSessionCreationFailed = event => {
         if (!event.detail) return;
 
-        const { sessionId, terminalId, error } = event.detail;
-        log.debug(
-          `收到SSH会话创建失败事件: 会话ID=${sessionId}, 终端ID=${terminalId || '未知'}, 错误=${error}`
+        const { sessionId, terminalId, error, reason, status } = event.detail;
+        debugLog(
+          `收到SSH会话创建失败事件: 会话ID=${sessionId}, 终端ID=${terminalId || '未知'}, 错误=${error}, 状态=${status}`
         );
 
         // 如果有终端ID，清理相关状态
@@ -1918,11 +1947,22 @@ export default {
               }
             }
 
+            const normalizedStatus = (status || '').toLowerCase();
+            const suppressedPatterns = ['正常关闭', 'frontend_monitor_unsubscribed', 'user_close', '连接已关闭', '终端关闭'];
+            const combinedReason = `${errorMessage} ${(reason || '').toLowerCase()}`;
+            const matchesSuppression = suppressedPatterns.some(pattern =>
+              combinedReason.toLowerCase().includes(pattern.toLowerCase())
+            );
+            const isExpectedClosure = normalizedStatus === 'cancelled' || matchesSuppression;
+            const finalErrorMessage = isExpectedClosure ? '连接已取消' : errorMessage;
+
             // 错误消息由全局 ssh-connection-failed 事件处理统一弹出
 
             // 调用页签回滚逻辑
             if (tabStore.connectionFailed) {
-              tabStore.connectionFailed(terminalId, errorMessage);
+              tabStore.connectionFailed(terminalId, finalErrorMessage, {
+                status: isExpectedClosure ? 'cancelled' : normalizedStatus || 'failed'
+              });
             }
 
             // 发送自定义事件，通知终端清理完成
@@ -1970,12 +2010,12 @@ export default {
         const routeId = newId || sessionStore.getActiveSession();
 
         if (routeId && routeId !== currentId) {
-          log.debug(`[Terminal] 会话切换: ${currentId} -> ${routeId}`);
+          debugLog(`[Terminal] 会话切换: ${currentId} -> ${routeId}`);
 
           // 如果终端ID不在列表中，则添加
           if (!terminalIds.value.includes(routeId)) {
             terminalIds.value.push(routeId);
-            log.debug(`[Terminal] 终端列表更新: ${terminalIds.value.length}个终端`);
+            debugLog(`[Terminal] 终端列表更新: ${terminalIds.value.length}个终端`);
           }
 
           // 通知会话存储更新活动会话
@@ -1983,10 +2023,10 @@ export default {
 
           // 如果已有终端引用，尝试初始化
           if (terminalRefs.value[routeId]) {
-            log.debug(`切换到终端: ${routeId}`);
+            debugLog(`切换到终端: ${routeId}`);
             // 这里不需要再重复整个初始化流程，只需检查并确保显示
             if (!terminalInitialized.value[routeId]) {
-              log.debug(`终端 ${routeId} 不存在，等待初始化完成`);
+              debugLog(`终端 ${routeId} 不存在，等待初始化完成`);
               initTerminal(routeId, terminalRefs.value[routeId]);
             }
           }
@@ -2017,7 +2057,7 @@ export default {
         terminalAutocompleteService.selectSuggestion(suggestion, terminal);
         autocomplete.value.visible = false;
 
-        log.debug('选择自动完成建议:', suggestion.text);
+        debugLog('选择自动完成建议:', suggestion.text);
       } catch (error) {
         log.error('处理自动完成选择失败:', error);
       }
@@ -2108,12 +2148,12 @@ export default {
       (newLoginStatus, oldLoginStatus) => {
         // 优化：只在有意义的状态变化时记录日志，避免初始化期间的噪音
         if (oldLoginStatus !== undefined && oldLoginStatus !== newLoginStatus) {
-          log.debug(`用户登录状态变化: ${oldLoginStatus} -> ${newLoginStatus}`);
+          debugLog(`用户登录状态变化: ${oldLoginStatus} -> ${newLoginStatus}`);
         }
 
         // 如果用户登出，立即隐藏自动补全建议
         if (oldLoginStatus && !newLoginStatus) {
-          log.debug('用户登出，隐藏自动补全建议');
+          debugLog('用户登出，隐藏自动补全建议');
           autocomplete.value.visible = false;
           autocomplete.value.suggestions = [];
           // 重置自动补全服务状态
@@ -2122,7 +2162,7 @@ export default {
 
         // 如果用户登录，可以在这里做一些初始化工作
         if (!oldLoginStatus && newLoginStatus) {
-          log.debug('用户登录，自动补全功能已启用');
+          debugLog('用户登录，自动补全功能已启用');
         }
       },
       { immediate: false } // 不需要立即执行，只监听变化
@@ -2172,8 +2212,8 @@ export default {
       const handleSSHConnectionFailed = event => {
         if (!event.detail) return;
 
-        const { connectionId, error, message } = event.detail;
-        log.debug(`收到全局SSH连接失败事件: ${connectionId}, 错误: ${error}`);
+        const { connectionId, error, message, reason, status } = event.detail;
+        debugLog(`收到全局SSH连接失败事件: ${connectionId}, 错误: ${error}, 状态: ${status}`);
 
         if (!connectionId) return;
 
@@ -2224,8 +2264,24 @@ export default {
           }
         }
 
-        // 显示优化后的错误消息
-        ElMessage.error(`连接失败: ${errorMessage}`);
+        const normalizedStatus = (status || '').toLowerCase();
+        const baseForSuppression = `${errorMessage} ${(reason || '').toLowerCase()}`;
+        const suppressedPatterns = ['正常关闭', 'frontend_monitor_unsubscribed', 'user_close', '连接已关闭', '终端关闭'];
+        const matchesSuppression = suppressedPatterns.some(pattern =>
+          baseForSuppression.toLowerCase().includes(pattern.toLowerCase())
+        );
+        const isExpectedClosure = normalizedStatus === 'cancelled' || matchesSuppression;
+
+        const finalErrorMessage = isExpectedClosure ? '连接已取消' : errorMessage;
+
+        if (!isExpectedClosure) {
+          ElMessage.error(`连接失败: ${finalErrorMessage}`);
+        } else {
+          debugLog('连接已取消，跳过错误提示', {
+            connectionId,
+            reason: reason || errorMessage
+          });
+        }
 
         // 从终端ID列表中移除
         terminalIds.value = terminalIds.value.filter(id => id !== connectionId);
@@ -2237,7 +2293,9 @@ export default {
 
         // 调用页签回滚逻辑
         if (tabStore.connectionFailed) {
-          tabStore.connectionFailed(connectionId, errorMessage);
+          tabStore.connectionFailed(connectionId, finalErrorMessage, {
+            status: isExpectedClosure ? 'cancelled' : normalizedStatus || 'failed'
+          });
         }
 
         // 导航回连接配置界面（如果页签回滚没有处理导航）
@@ -2348,7 +2406,7 @@ export default {
           }
         }
 
-        log.debug('AI流式输出处理', { termId, isStreaming, contentLength: partialContent?.length });
+        debugLog('AI流式输出处理', { termId, isStreaming, contentLength: partialContent?.length });
       } catch (error) {
         log.error('处理AI流式输出失败', { error: error.message });
       }
@@ -2394,7 +2452,7 @@ export default {
      */
     const handleAIModeChange = mode => {
       try {
-        log.debug('AI模式切换', { mode });
+        debugLog('AI模式切换', { mode });
       } catch (error) {
         log.error('处理AI模式变化失败', { error: error.message });
       }
@@ -2405,7 +2463,7 @@ export default {
      */
     const handleAIInputFocus = () => {
       try {
-        log.debug('AI输入框获得焦点');
+        debugLog('AI输入框获得焦点');
         // 可以在这里添加焦点处理逻辑
       } catch (error) {
         log.error('处理AI输入框焦点失败', { error: error.message });
@@ -2417,7 +2475,7 @@ export default {
      */
     const handleAIInputBlur = () => {
       try {
-        log.debug('AI输入框失去焦点');
+        debugLog('AI输入框失去焦点');
         // 可以在这里添加失焦处理逻辑
       } catch (error) {
         log.error('处理AI输入框失焦失败', { error: error.message });
@@ -2432,7 +2490,7 @@ export default {
       try {
         const { terminalId, command } = data;
 
-        log.debug('执行命令', { terminalId, command });
+        debugLog('执行命令', { terminalId, command });
 
         // 获取SSH会话ID
         const sessionId = terminalStore.sessions[terminalId];
@@ -2523,7 +2581,7 @@ export default {
         } else {
           aiPanelStore.hidePanel(termId);
         }
-        log.debug(`AI面板${visible ? '显示' : '隐藏'}`, { termId });
+        debugLog(`AI面板${visible ? '显示' : '隐藏'}`, { termId });
       }
     };
 
@@ -2534,7 +2592,7 @@ export default {
       const termId = activeConnectionId.value;
       if (termId) {
         aiPanelStore.clearMessages(termId);
-        log.debug('AI历史已清空', { termId });
+        debugLog('AI历史已清空', { termId });
       }
     };
 
@@ -2567,7 +2625,7 @@ export default {
         timestamp: Date.now()
       });
 
-      log.debug('命令已编辑并添加到AI面板', { command, termId });
+      debugLog('命令已编辑并添加到AI面板', { command, termId });
     };
 
     /**

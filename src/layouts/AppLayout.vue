@@ -142,7 +142,7 @@ export default defineComponent({
     window.addEventListener('terminal:session-change', event => {
       if (event.detail && event.detail.sessionId) {
         activeSessionId.value = event.detail.sessionId;
-        log.debug(`当前活动会话ID已更新: ${activeSessionId.value}`);
+        debugTerminalLog(`当前活动会话ID已更新: ${activeSessionId.value}`);
       }
     });
 
@@ -151,7 +151,7 @@ export default defineComponent({
       // 更新最新的SSH会话ID
       if (event.detail && event.detail.sessionId) {
         // 可以保留这个SSH ID以便于工具栏显示网络延迟信息
-        log.debug(`SSH会话已创建: ${event.detail.sessionId}`);
+        debugTerminalLog(`SSH会话已创建: ${event.detail.sessionId}`);
       }
     });
 
@@ -191,6 +191,9 @@ export default defineComponent({
     };
 
     // 监听路由变化，当切换到终端路由时触发刷新
+    const VERBOSE_TERMINAL_LOG = false;
+    const debugTerminalLog = VERBOSE_TERMINAL_LOG ? (...args) => log.debug(...args) : () => {};
+
     watch(
       () => route.path,
       (newPath, oldPath) => {
@@ -252,7 +255,9 @@ export default defineComponent({
         // 如果是从终端路由切换到不同的路径，不需要特殊处理
         // v-show已经处理了终端的显示/隐藏
         if (oldPath.startsWith('/terminal') && !newPath.startsWith('/terminal')) {
-          log.debug('离开终端路由，隐藏终端');
+          if (VERBOSE_TERMINAL_LOG) {
+            debugTerminalLog('离开终端路由，隐藏终端');
+          }
           // 移除原来的terminal:deactivate事件
         }
       }
@@ -273,8 +278,8 @@ export default defineComponent({
         // 如果当前有SSH会话，确保可以接收网络延迟更新
         try {
           // 查找使用中的网络连接
-          if (isTerminalRoute.value && activeSessionId.value) {
-            log.debug(`当前活动终端ID: ${activeSessionId.value}，确保延迟更新可正常显示`);
+          if (isTerminalRoute.value && activeSessionId.value && VERBOSE_TERMINAL_LOG) {
+            debugTerminalLog(`当前活动终端ID: ${activeSessionId.value}，确保延迟更新可正常显示`);
           }
         } catch (error) {
           log.error('初始化SSH会话状态失败:', error);
@@ -326,7 +331,7 @@ export default defineComponent({
             }
           }
 
-          log.debug('终端背景状态已更新:', event.detail.enabled);
+          debugTerminalLog('终端背景状态已更新:', event.detail.enabled);
         }
       });
 
@@ -344,7 +349,7 @@ export default defineComponent({
           // 立即更新CSS变量
           updateCssVariables(bgSettings);
 
-          log.debug('初始化时读取终端背景状态', { enabled: bgSettings.enabled });
+          debugTerminalLog('初始化时读取终端背景状态', { enabled: bgSettings.enabled });
         }
       } catch (error) {
         log.error('初始化读取终端背景设置失败:', error);
@@ -537,7 +542,7 @@ export default defineComponent({
 
       // 在关闭面板前确保关闭SFTP会话
       if (activeSessionId.value) {
-        log.debug(`关闭SFTP面板，清理会话: ${activeSessionId.value}`);
+        debugTerminalLog(`关闭SFTP面板，清理会话: ${activeSessionId.value}`);
         // 检查会话是否仍然存在
         if (
           sftpService.activeSftpSessions &&
@@ -547,7 +552,7 @@ export default defineComponent({
             log.error(`关闭SFTP会话失败: ${error.message || '未知错误'}`, error);
           });
         } else {
-          log.debug(`SFTP会话 ${activeSessionId.value} 已经关闭，跳过`);
+          debugTerminalLog(`SFTP会话 ${activeSessionId.value} 已经关闭，跳过`);
         }
       }
 
@@ -555,7 +560,7 @@ export default defineComponent({
       setTimeout(() => {
         showSftpPanel.value = false;
         isSftpPanelClosing.value = false;
-        log.debug('关闭SFTP面板');
+        debugTerminalLog('关闭SFTP面板');
       }, 300); // 与动画持续时间一致
     };
 
@@ -565,7 +570,7 @@ export default defineComponent({
       (newPath, oldPath) => {
         // 只有在实际路由变化时关闭SFTP面板
         if (newPath !== oldPath && showSftpPanel.value) {
-          log.debug('路由变化，关闭SFTP面板:', oldPath, '->', newPath);
+          debugTerminalLog('路由变化，关闭SFTP面板:', oldPath, '->', newPath);
           closeSftpPanel();
         }
       }

@@ -205,7 +205,7 @@ class SFTPService {
       for (const [id, session] of this.sshService.sessions.entries()) {
         if (session.terminalId && session.terminalId === sessionId) {
           sshSessionId = id;
-          log.info(`找到终端ID ${sessionId} 对应的SSH会话ID: ${sshSessionId}`);
+          log.debug(`找到终端ID ${sessionId} 对应的SSH会话ID: ${sshSessionId}`);
           break;
         }
       }
@@ -214,7 +214,7 @@ class SFTPService {
       if (sshSessionId === sessionId) {
         if (this.sshService.sessions.size === 1) {
           sshSessionId = Array.from(this.sshService.sessions.keys())[0];
-          log.info(`未找到终端ID ${sessionId} 的映射，但只有一个SSH会话，使用: ${sshSessionId}`);
+          log.debug(`未找到终端ID ${sessionId} 的映射，但只有一个SSH会话，使用: ${sshSessionId}`);
         } else {
           log.error(`找不到终端ID ${sessionId} 对应的SSH会话ID`);
         }
@@ -224,13 +224,13 @@ class SFTPService {
     // 检查SSH会话是否存在
     if (!this.sshService.sessions.has(sshSessionId)) {
       log.error(`创建SFTP会话失败: SSH会话 ${sshSessionId} 不存在`);
-      log.info('可用的SSH会话:', Array.from(this.sshService.sessions.keys()));
+      log.debug('可用的SSH会话:', Array.from(this.sshService.sessions.keys()));
       throw new Error(`创建SFTP会话失败: SSH会话 ${sshSessionId} 不存在`);
     }
 
     // 检查是否已存在SFTP会话
     if (this.activeSftpSessions.has(sessionId)) {
-      log.info(`SFTP会话 ${sessionId} 已存在，重用现有会话`);
+      log.debug(`SFTP会话 ${sessionId} 已存在，重用现有会话`);
       return sessionId;
     }
 
@@ -278,7 +278,7 @@ class SFTPService {
                   port: connectionInfo.port
                 });
 
-                log.info(`SFTP会话 ${sessionId} 创建成功`);
+                log.debug(`SFTP会话 ${sessionId} 创建成功`);
                 resolve(sessionId);
               } else if (
                 headerData &&
@@ -298,7 +298,7 @@ class SFTPService {
 
           // 发送SFTP初始化请求
           const operationId = this._nextOperationId();
-          log.info(`发送SFTP初始化请求: ${sshSessionId}`);
+          log.debug(`发送SFTP初始化请求: ${sshSessionId}`);
           const initMessage = BinaryMessageUtils.createSftpInitMessage({
             sessionId: sshSessionId,
             operationId
@@ -358,7 +358,7 @@ class SFTPService {
 
       // 无论服务器是否响应，都清理本地会话
       this.activeSftpSessions.delete(sessionId);
-      log.info(`SFTP会话 ${sessionId} 已关闭`);
+      log.debug(`SFTP会话 ${sessionId} 已关闭`);
 
       return true;
     } catch (error) {
@@ -1586,7 +1586,7 @@ class SFTPService {
                 filename: name,
                 remotePath: path
               };
-              log.info('SFTP传输进度', detail);
+              log.debug('SFTP传输进度', detail);
               this._progressLogState.set(operationId, {
                 lastProgress: typeof progress === 'number' ? progress : state.lastProgress,
                 lastTs: now

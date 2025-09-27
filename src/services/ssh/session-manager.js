@@ -68,7 +68,7 @@ class SSHSessionManager {
     }
 
     this.saveMappings();
-    log.info(`已移除会话映射: 终端 ${terminalId} <=> SSH ${sshSessionId}`);
+    log.debug(`已移除会话映射: 终端 ${terminalId} <=> SSH ${sshSessionId}`);
   }
 
   /**
@@ -98,7 +98,7 @@ class SSHSessionManager {
           this.terminalToSSH.set(termId, sshId);
           this.sshToTerminal.set(sshId, termId);
         }
-        log.info(`已从本地存储加载 ${Object.keys(mappings).length} 个会话映射`);
+        log.debug(`已从本地存储加载 ${Object.keys(mappings).length} 个会话映射`);
       }
     } catch (e) {
       log.warn('加载会话映射失败', e);
@@ -116,7 +116,7 @@ class SSHSessionManager {
     } catch (e) {
       log.warn('清除会话映射失败', e);
     }
-    log.info('已清除所有会话映射');
+    log.debug('已清除所有会话映射');
   }
 
   /**

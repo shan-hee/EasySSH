@@ -710,7 +710,7 @@ export const useTabStore = defineStore(
     };
 
     // 连接失败处理
-    const connectionFailed = (tabId, error) => {
+    const connectionFailed = (tabId, error, options = {}) => {
       if (!tabId) return false;
 
       const tabIndex = state.tabs.findIndex(
@@ -719,28 +719,111 @@ export const useTabStore = defineStore(
 
       if (tabIndex !== -1) {
         const tab = state.tabs[tabIndex];
+        const connectionState = options.status || 'failed';
 
         // 如果是终端标签，回滚到连接配置页面
         if (tab.type === 'terminal') {
           log.info(`连接失败，回滚标签页: ${tabId}`);
 
-          // 更新标签页为连接配置类型
-          state.tabs[tabIndex] = {
+          const originalTabData = tab.data && tab.data.originalTabData ? { ...tab.data.originalTabData } : null;
+
+          const fallbackTitle = tab.title && tab.title !== '终端' ? tab.title : '连接配置';
+          const restoredData = originalTabData && originalTabData.data
+            ? { ...originalTabData.data }
+            : {};
+
+          const restoredTab = {
             ...tab,
-            title: '连接配置',
-            type: 'newConnection',
-            path: '/connections/new',
+            title: originalTabData?.title || fallbackTitle,
+            type: originalTabData?.type || 'newConnection',
+            path: originalTabData?.path || '/connections/new',
             data: {
-              ...tab.data,
-              connectionState: 'failed',
+              ...restoredData,
+              connectionState,
               error
             }
           };
 
-          // 导航回连接配置页面
-          router.push('/connections/new');
+          // 清理仅用于终端阶段的字段
+          delete restoredTab.data?.connectionId;
+          delete restoredTab.data?.originalTabData;
+
+          state.tabs[tabIndex] = restoredTab;
+          state.activeTabIndex = tabIndex;
+
+          // 导航回相应页面（默认连接配置）
+          router.push(restoredTab.path || '/connections/new');
           return true;
         }
+      }
+
+      // 无直接匹配的标签页，尝试根据会话信息降级恢复
+      try {
+        const sessionStore = useSessionStore();
+        const fallbackSession = sessionStore.getSession(tabId);
+
+        if (fallbackSession) {
+          const connectionState = options.status || 'failed';
+          const fallbackTitle = '连接配置';
+
+          const restoredData = {
+            name: fallbackSession.name || '',
+            host: fallbackSession.host || '',
+            port: fallbackSession.port || 22,
+            username: fallbackSession.username || '',
+            password: fallbackSession.password || '',
+            privateKey: fallbackSession.privateKey || '',
+            passphrase: fallbackSession.passphrase || '',
+            authType: fallbackSession.authType || 'password',
+            rememberPassword: fallbackSession.rememberPassword ?? false,
+            savePassword: fallbackSession.savePassword ?? false,
+            connectionState,
+            error
+          };
+
+          delete restoredData.connectionId;
+          const fallbackTab = {
+            title: fallbackTitle,
+            type: 'newConnection',
+            path: '/connections/new',
+            data: restoredData
+          };
+
+          let targetIndex = state.tabs.findIndex(tab => tab.type === 'newConnection');
+
+          if (targetIndex === -1) {
+            targetIndex = state.activeTabIndex;
+          }
+
+          if (targetIndex >= 0 && targetIndex < state.tabs.length) {
+            const newTabs = [...state.tabs];
+            newTabs[targetIndex] = {
+              ...fallbackTab,
+              data: { ...fallbackTab.data }
+            };
+
+            state.tabs = newTabs;
+            state.activeTabIndex = targetIndex;
+          } else {
+            const newTabs = [...state.tabs, { ...fallbackTab, data: { ...fallbackTab.data } }];
+            state.tabs = newTabs;
+            state.activeTabIndex = newTabs.length - 1;
+          }
+
+          router.push('/connections/new');
+          log.info(`连接失败，已通过会话数据恢复标签页: ${tabId}`);
+
+          // 回滚后清理会话映射，避免残留
+          sessionStore.removeSession(tabId);
+          return true;
+        }
+      } catch (fallbackError) {
+        log.debug('连接失败降级恢复时出现异常', fallbackError);
+      }
+
+      if (options.status === 'cancelled') {
+        log.debug(`取消场景未找到ID为 ${tabId} 的标签页，已忽略`);
+        return false;
       }
 
       log.warn(`未找到ID为 ${tabId} 的标签页进行失败处理`);

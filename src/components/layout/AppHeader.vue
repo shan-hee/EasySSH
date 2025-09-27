@@ -204,10 +204,12 @@ export default defineComponent({
     });
 
     // 添加对标签状态的监听（仅开发环境打印，且不在初始化时触发）
+    const VERBOSE_TAB_DEBUG = false;
+
     watch(
       () => tabStore.tabs,
       newTabs => {
-        if (process.env.NODE_ENV === 'development') {
+        if (VERBOSE_TAB_DEBUG) {
           log.debug('标签数组已更新', { count: newTabs.length });
         }
       },
