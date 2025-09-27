@@ -33,15 +33,25 @@
                 <span class="error-message">连接数据加载失败</span>
                 <button class="retry-btn" @click="retryLoadConnections">重试</button>
               </div>
-            </div>
-            <!-- 连接列表 -->
+          </div>
+          <!-- 连接列表 -->
+          <transition-group v-else name="drag" tag="div" class="connection-rows-list">
             <div
-              v-for="connection in filteredConnections"
-              v-else
+              v-for="connection in displayedConnections"
               :key="connection.id"
               class="row-item"
+              :class="{
+                'is-dragging': draggedConnectionId === connection.id,
+                'drag-hover': dragHoverConnectionId === connection.id && !isPinned(connection.id)
+              }"
               :data-pinned="isPinned(connection.id)"
-              @click="handleLogin(connection)"
+              :draggable="!isPinned(connection.id)"
+              @click="handleConnectionRowClick(connection)"
+              @dragstart="handleConnectionDragStart($event, connection)"
+              @dragenter="handleConnectionDragEnter($event, connection)"
+              @dragover="handleConnectionDragOver"
+              @dragleave="handleConnectionDragLeave($event, connection)"
+              @dragend="handleConnectionDragEnd"
             >
               <div class="row-item-left">
                 <div class="icon-cell">
@@ -155,7 +165,8 @@
                 </div>
               </div>
             </div>
-          </div>
+          </transition-group>
+        </div>
         </div>
 
         <div class="connection-section">
@@ -444,25 +455,6 @@ export default {
       return userStore.isLoggedIn ? userStore.isPinned(id) : localConnectionsStore.isPinned(id);
     };
 
-    const getCreationTimestamp = connection => {
-      if (!connection) return 0;
-
-      const source = connection.createdAt ?? connection.created_at;
-      if (!source) return 0;
-
-      if (typeof source === 'number' && !Number.isNaN(source)) {
-        return source;
-      }
-
-      if (source instanceof Date) {
-        const time = source.getTime();
-        return Number.isNaN(time) ? 0 : time;
-      }
-
-      const parsed = Date.parse(source);
-      return Number.isNaN(parsed) ? 0 : parsed;
-    };
-
     // 统一数据加载入口由 store 并发处理，避免多处watch触发重复请求
 
     // 搜索相关
@@ -473,7 +465,15 @@ export default {
     const dragIndex = ref('');
     const enterIndex = ref('');
 
-    // 过滤后的连接列表（置顶优先，非置顶按创建时间升序，保持稳定排序）
+    // 我的连接拖拽排序相关状态
+    const connectionPreviewList = ref(null);
+    const pinnedPreview = ref([]);
+    const regularPreview = ref([]);
+    const draggedConnectionId = ref(null);
+    const dragHoverConnectionId = ref(null);
+    const connectionOrderChanged = ref(false);
+
+    // 过滤后的连接列表（置顶优先，非置顶按排序字段升序，保持稳定排序）
     const filteredConnections = computed(() => {
       const baseList = connections.value || [];
       const indexMap = new Map(baseList.map((item, idx) => [item.id, idx]));
@@ -490,7 +490,7 @@ export default {
         return typeof val === 'number' ? val : 0;
       };
 
-      const sortByPinnedAndTime = list => {
+      const sortByPinnedAndOrder = list => {
         const pinnedList = [];
         const regularList = [];
 
@@ -509,8 +509,9 @@ export default {
         });
 
         regularList.sort((a, b) => {
-          const diff = getCreationTimestamp(a) - getCreationTimestamp(b);
-          if (diff !== 0) return diff;
+          const orderA = typeof a.sortOrder === 'number' ? a.sortOrder : 0;
+          const orderB = typeof b.sortOrder === 'number' ? b.sortOrder : 0;
+          if (orderA !== orderB) return orderA - orderB;
           return (indexMap.get(a.id) ?? 0) - (indexMap.get(b.id) ?? 0);
         });
 
@@ -518,7 +519,7 @@ export default {
       };
 
       if (!searchQuery.value || !searchQuery.value.trim()) {
-        return sortByPinnedAndTime(baseList);
+        return sortByPinnedAndOrder(baseList);
       }
 
       const query = searchQuery.value.toLowerCase().trim();
@@ -536,7 +537,11 @@ export default {
         );
       });
 
-      return sortByPinnedAndTime(filtered);
+      return sortByPinnedAndOrder(filtered);
+    });
+
+    const displayedConnections = computed(() => {
+      return connectionPreviewList.value ?? filteredConnections.value;
     });
 
     // 过滤后的历史连接列表
@@ -628,6 +633,120 @@ export default {
     // 检查是否已收藏
     const isFavorite = id => {
       return userStore.isLoggedIn ? userStore.isFavorite(id) : localConnectionsStore.isFavorite(id);
+    };
+
+    const resetConnectionDragState = () => {
+      connectionPreviewList.value = null;
+      pinnedPreview.value = [];
+      regularPreview.value = [];
+      draggedConnectionId.value = null;
+      dragHoverConnectionId.value = null;
+      connectionOrderChanged.value = false;
+    };
+
+    const initializeConnectionPreview = () => {
+      const currentList = filteredConnections.value;
+      pinnedPreview.value = currentList.filter(item => isPinned(item.id));
+      regularPreview.value = currentList.filter(item => !isPinned(item.id));
+      connectionPreviewList.value = [...pinnedPreview.value, ...regularPreview.value];
+    };
+
+    const handleConnectionDragStart = (event, connection) => {
+      if (isPinned(connection.id)) {
+        event.preventDefault();
+        return;
+      }
+
+      draggedConnectionId.value = connection.id;
+      connectionOrderChanged.value = false;
+      dragHoverConnectionId.value = connection.id;
+      initializeConnectionPreview();
+
+      if (event?.dataTransfer) {
+        event.dataTransfer.effectAllowed = 'move';
+        try {
+          event.dataTransfer.setData('text/plain', connection.id);
+        } catch (_) {}
+      }
+
+      log.debug('开始拖拽连接排序', { connection: getDisplayName(connection), id: connection.id });
+    };
+
+    const applyPreviewOrder = () => {
+      connectionPreviewList.value = [...pinnedPreview.value, ...regularPreview.value];
+    };
+
+    const handleConnectionDragEnter = (event, connection) => {
+      if (!draggedConnectionId.value || isPinned(connection.id)) {
+        return;
+      }
+
+      event.preventDefault();
+      if (event?.dataTransfer) {
+        event.dataTransfer.dropEffect = 'move';
+      }
+
+      const currentList = [...regularPreview.value];
+      const fromIndex = currentList.findIndex(item => item.id === draggedConnectionId.value);
+      const toIndex = currentList.findIndex(item => item.id === connection.id);
+
+      if (fromIndex === -1 || toIndex === -1 || fromIndex === toIndex) {
+        dragHoverConnectionId.value = connection.id;
+        return;
+      }
+
+      const [moved] = currentList.splice(fromIndex, 1);
+      currentList.splice(toIndex, 0, moved);
+      regularPreview.value = currentList;
+      dragHoverConnectionId.value = connection.id;
+      connectionOrderChanged.value = true;
+      applyPreviewOrder();
+    };
+
+    const handleConnectionDragOver = event => {
+      if (!draggedConnectionId.value) return;
+      event.preventDefault();
+      if (event?.dataTransfer) {
+        event.dataTransfer.dropEffect = 'move';
+      }
+    };
+
+    const handleConnectionDragLeave = (event, connection) => {
+      if (!draggedConnectionId.value) return;
+      if (dragHoverConnectionId.value === connection.id) {
+        dragHoverConnectionId.value = null;
+      }
+    };
+
+    const finalizeConnectionOrder = async () => {
+      if (!connectionOrderChanged.value || !Array.isArray(connectionPreviewList.value)) {
+        resetConnectionDragState();
+        return;
+      }
+
+      const finalOrder = connectionPreviewList.value;
+
+      try {
+        if (userStore.isLoggedIn) {
+          await userStore.reorderConnections(finalOrder, { persist: true });
+        } else {
+          localConnectionsStore.reorderConnections(finalOrder);
+        }
+        ElMessage.success('连接顺序已更新');
+        log.debug('连接顺序已更新', { count: finalOrder.length });
+      } catch (error) {
+        log.error('更新连接顺序失败', error);
+        ElMessage.error(`更新连接顺序失败：${error.message || '网络错误'}`);
+      } finally {
+        resetConnectionDragState();
+      }
+    };
+
+    const handleConnectionDragEnd = async event => {
+      if (event?.preventDefault) {
+        event.preventDefault();
+      }
+      await finalizeConnectionOrder();
     };
 
     // 搜索处理函数
@@ -1211,6 +1330,13 @@ export default {
       }
     };
 
+    const handleConnectionRowClick = connection => {
+      if (draggedConnectionId.value) {
+        return;
+      }
+      handleLogin(connection);
+    };
+
     // 处理置顶
     const handleTop = async connection => {
       try {
@@ -1329,6 +1455,7 @@ export default {
       favoriteConnections,
       historyConnections,
       filteredConnections,
+      displayedConnections,
       filteredHistoryConnections,
       getDisplayName,
       addConnection,
@@ -1348,6 +1475,14 @@ export default {
       selectKeyFile,
       searchQuery,
       handleSearch,
+      draggedConnectionId,
+      dragHoverConnectionId,
+      handleConnectionDragStart,
+      handleConnectionDragEnter,
+      handleConnectionDragOver,
+      handleConnectionDragLeave,
+      handleConnectionDragEnd,
+      handleConnectionRowClick,
       handleLogin,
       handleTop,
       handleEdit,
@@ -1504,6 +1639,27 @@ h2 {
   gap: 8px;
 }
 
+.connection-rows-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.drag-move {
+  transition: transform 0.15s ease, opacity 0.1s ease;
+}
+
+.drag-enter-active,
+.drag-leave-active {
+  transition: all 0.1s ease;
+}
+
+.drag-enter-from,
+.drag-leave-to {
+  opacity: 0;
+  transform: translateY(6px);
+}
+
 .row-item {
   display: flex;
   align-items: center;
@@ -1513,11 +1669,31 @@ h2 {
   border-radius: 4px;
   position: relative;
   cursor: pointer;
+  transition: box-shadow 0.15s ease, background-color 0.15s ease;
+}
+
+.row-item[data-pinned='false'] {
+  cursor: grab;
+}
+
+.row-item[data-pinned='false']:active {
+  cursor: grabbing;
+}
+
+.row-item.is-dragging {
+  opacity: 0.6;
+  cursor: grabbing;
+  box-shadow: inset 0 0 0 1px var(--color-border-strong);
+}
+
+.row-item.drag-hover {
+  background-color: var(--card-hover-bg);
+  box-shadow: none;
 }
 
 .row-item:hover {
   background-color: var(--card-hover-bg);
-  border-color: var(--color-border-default);
+  box-shadow: none;
 }
 
 .row-item-left {

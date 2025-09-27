@@ -15,6 +15,17 @@ export const useLocalConnectionsStore = defineStore('localConnections', {
   },
 
   actions: {
+    getNextSortOrder() {
+      if (!this.connections.length) {
+        return 1;
+      }
+      const maxSortOrder = this.connections.reduce((max, conn) => {
+        const current = typeof conn.sortOrder === 'number' ? conn.sortOrder : 0;
+        return current > max ? current : max;
+      }, 0);
+      return maxSortOrder + 1;
+    },
+
     // 添加新连接到我的连接配置
     addConnection(connection) {
       // 检查是否已存在相同的连接（去重）
@@ -34,6 +45,10 @@ export const useLocalConnectionsStore = defineStore('localConnections', {
 
       // 生成唯一ID
       connection.id = Date.now().toString();
+      // 默认排序值追加到末尾
+      if (typeof connection.sortOrder !== 'number') {
+        connection.sortOrder = this.getNextSortOrder();
+      }
       this.connections.push(connection);
       return connection.id;
     },
@@ -42,7 +57,10 @@ export const useLocalConnectionsStore = defineStore('localConnections', {
     updateConnection(id, connection) {
       const index = this.connections.findIndex(c => c.id === id);
       if (index !== -1) {
-        this.connections[index] = { ...this.connections[index], ...connection };
+        const current = this.connections[index];
+        const nextSortOrder =
+          typeof connection.sortOrder === 'number' ? connection.sortOrder : current.sortOrder;
+        this.connections[index] = { ...current, ...connection, sortOrder: nextSortOrder };
       }
     },
 
@@ -118,22 +136,49 @@ export const useLocalConnectionsStore = defineStore('localConnections', {
     // 更新历史连接顺序（用于乐观更新）
     updateHistoryOrder(newOrder) {
       this.history = [...newOrder];
+    },
+
+    // 重排当前连接顺序（用于拖拽）
+    reorderConnections(newOrder) {
+      this.connections = newOrder.map((connection, index) => ({
+        ...connection,
+        sortOrder: index + 1
+      }));
     }
   },
 
   getters: {
     // 获取所有连接（包含置顶排序）
     getAllConnections: state => {
-      return [...state.connections].sort((a, b) => {
-        const pinTimeA = state.pinnedConnections[a.id] || 0;
-        const pinTimeB = state.pinnedConnections[b.id] || 0;
-        if (pinTimeA && pinTimeB) {
-          return pinTimeB - pinTimeA; // 都置顶时按时间倒序
+      const pinnedList = [];
+      const regularList = [];
+
+      state.connections.forEach(connection => {
+        if (state.pinnedConnections[connection.id]) {
+          pinnedList.push(connection);
+        } else {
+          regularList.push(connection);
         }
-        if (pinTimeA) return -1; // a 置顶
-        if (pinTimeB) return 1; // b 置顶
-        return 0; // 都未置顶保持原顺序
       });
+
+      pinnedList.sort((a, b) => {
+        const timeA = state.pinnedConnections[a.id] || 0;
+        const timeB = state.pinnedConnections[b.id] || 0;
+        return timeB - timeA;
+      });
+
+      regularList.sort((a, b) => {
+        const orderA = typeof a.sortOrder === 'number' ? a.sortOrder : 0;
+        const orderB = typeof b.sortOrder === 'number' ? b.sortOrder : 0;
+        if (orderA !== orderB) {
+          return orderA - orderB;
+        }
+        const timeA = a.createdAt || 0;
+        const timeB = b.createdAt || 0;
+        return timeA > timeB ? 1 : timeA < timeB ? -1 : 0;
+      });
+
+      return [...pinnedList, ...regularList];
     },
 
     // 获取收藏的连接

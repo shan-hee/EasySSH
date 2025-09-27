@@ -38,6 +38,9 @@ router.delete('/history', connectionController.clearHistory);
 router.get('/pinned', connectionController.getPinned);
 router.post('/pinned', connectionController.updatePinned);
 
+// 排序
+router.post('/order', connectionController.updateConnectionOrder);
+
 // 批量同步
 router.post('/sync', connectionController.syncConnections);
 

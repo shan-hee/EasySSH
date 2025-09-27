@@ -8,6 +8,18 @@ const db = require('../config/database').getDb();
 const { validateConnection } = require('../utils/validators');
 const { processConnectionSensitiveData, decryptPassword, decryptPrivateKey } = require('../utils/encryption');
 
+const getNextSortOrderForUser = userId => {
+  try {
+    const result = db
+      .prepare('SELECT COALESCE(MAX(sort_order), 0) + 1 AS nextOrder FROM connections WHERE user_id = ?')
+      .get(userId);
+    return result?.nextOrder || 1;
+  } catch (error) {
+    logger.warn('计算下一个连接排序值失败，使用默认值1', error);
+    return 1;
+  }
+};
+
 /**
  * 获取用户的所有连接
  */
@@ -17,7 +29,7 @@ const getUserConnections = async (req, res) => {
 
     // 从数据库获取用户连接
     const connections = db.prepare(
-      'SELECT * FROM connections WHERE user_id = ? ORDER BY updated_at DESC'
+      'SELECT * FROM connections WHERE user_id = ? ORDER BY sort_order ASC, created_at ASC'
     ).all(userId);
 
     // 处理连接数据，将存储的JSON字符串转为对象，并解密敏感信息
@@ -54,6 +66,7 @@ const getUserConnections = async (req, res) => {
           description: decryptedConn.description || '',
           group: decryptedConn.group_name || '默认分组',
           config: decryptedConn.config || {},
+          sortOrder: typeof decryptedConn.sort_order === 'number' ? decryptedConn.sort_order : 0,
           createdAt: decryptedConn.created_at,
           updatedAt: decryptedConn.updated_at
         };
@@ -111,6 +124,8 @@ const addConnection = async (req, res) => {
 
     // 准备要插入的数据
     const now = new Date().toISOString();
+    const sortOrder =
+      typeof connection.sortOrder === 'number' ? connection.sortOrder : getNextSortOrderForUser(userId);
 
     // 开始事务
     db.prepare('BEGIN TRANSACTION').run();
@@ -124,8 +139,8 @@ const addConnection = async (req, res) => {
         `INSERT INTO connections (
         id, user_id, name, host, port, username, password,
         remember_password, privateKey, passphrase, auth_type,
-        description, group_name, config, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        description, group_name, config, sort_order, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       ).run(
         connectionId,
         userId,
@@ -141,6 +156,7 @@ const addConnection = async (req, res) => {
         encryptedConnection.description || '',
         encryptedConnection.group || '默认分组',
         JSON.stringify(encryptedConnection.config || {}),
+        sortOrder,
         now,
         now
       );
@@ -187,7 +203,7 @@ const updateConnection = async (req, res) => {
 
     // 检查连接是否存在并属于当前用户
     const existingConnection = db.prepare(
-      'SELECT id FROM connections WHERE id = ? AND user_id = ?'
+      'SELECT id, sort_order FROM connections WHERE id = ? AND user_id = ?'
     ).get(connectionId, userId);
 
     if (!existingConnection) {
@@ -202,6 +218,12 @@ const updateConnection = async (req, res) => {
 
     // 加密敏感数据
     const encryptedConnection = processConnectionSensitiveData(connection, true);
+    const sortOrder =
+      typeof connection.sortOrder === 'number'
+        ? connection.sortOrder
+        : typeof existingConnection.sort_order === 'number'
+          ? existingConnection.sort_order
+          : getNextSortOrderForUser(userId);
 
     db.prepare(
       `UPDATE connections SET
@@ -217,6 +239,7 @@ const updateConnection = async (req, res) => {
         description = ?,
         group_name = ?,
         config = ?,
+        sort_order = ?,
         updated_at = ?
       WHERE id = ? AND user_id = ?`
     ).run(
@@ -232,6 +255,7 @@ const updateConnection = async (req, res) => {
       encryptedConnection.description || '',
       encryptedConnection.group || '默认分组',
       JSON.stringify(connection.config || {}),
+      sortOrder,
       now,
       connectionId,
       userId
@@ -623,7 +647,7 @@ const getOverview = async (req, res) => {
 
     // 1) 连接列表（与 getUserConnections 一致的字段与解密逻辑）
     const rows = db.prepare(
-      'SELECT * FROM connections WHERE user_id = ? ORDER BY updated_at DESC'
+      'SELECT * FROM connections WHERE user_id = ? ORDER BY sort_order ASC, created_at ASC'
     ).all(userId);
 
     const connections = rows
@@ -653,12 +677,13 @@ const getOverview = async (req, res) => {
             privateKey: decrypted.privateKey || '',
             passphrase: decrypted.passphrase || '',
             authType: decrypted.auth_type || 'password',
-            description: decrypted.description || '',
-            group: decrypted.group_name || '默认分组',
-            config: decrypted.config || {},
-            createdAt: decrypted.created_at,
-            updatedAt: decrypted.updated_at
-          };
+          description: decrypted.description || '',
+          group: decrypted.group_name || '默认分组',
+          config: decrypted.config || {},
+          sortOrder: typeof decrypted.sort_order === 'number' ? decrypted.sort_order : 0,
+          createdAt: decrypted.created_at,
+          updatedAt: decrypted.updated_at
+        };
         } catch (e) {
           logger.error(`处理连接数据错误：${e.message}`, { connectionId: conn.id });
           return null;
@@ -770,8 +795,50 @@ const updatePinned = async (req, res) => {
 };
 
 /**
- * 批量同步连接数据
+ * 更新连接排序
  */
+const updateConnectionOrder = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { order } = req.body;
+
+    if (!Array.isArray(order)) {
+      return res.status(400).json({
+        success: false,
+        message: '排序数据格式不正确，应为数组'
+      });
+    }
+
+    const updateStmt = db.prepare(
+      'UPDATE connections SET sort_order = ?, updated_at = ? WHERE id = ? AND user_id = ?'
+    );
+    const now = new Date().toISOString();
+
+    db.prepare('BEGIN TRANSACTION').run();
+    try {
+      order.forEach((item, index) => {
+        const id = typeof item === 'string' ? item : item?.id;
+        if (!id) return;
+        const sortOrder =
+          typeof item?.sortOrder === 'number' ? item.sortOrder : index + 1;
+        updateStmt.run(sortOrder, now, id, userId);
+      });
+      db.prepare('COMMIT').run();
+      return res.json({ success: true });
+    } catch (error) {
+      db.prepare('ROLLBACK').run();
+      throw error;
+    }
+  } catch (error) {
+    logger.error('更新连接排序失败', error);
+    return res.status(500).json({
+      success: false,
+      message: '更新连接排序失败',
+      error: error.message
+    });
+  }
+};
+
 const syncConnections = async (req, res) => {
   try {
     const userId = req.user.id;
@@ -814,6 +881,7 @@ const syncConnections = async (req, res) => {
           description = ?,
           group_name = ?,
           config = ?,
+          sort_order = ?,
           updated_at = ?
         WHERE id = ? AND user_id = ?`
       );
@@ -822,14 +890,17 @@ const syncConnections = async (req, res) => {
         `INSERT INTO connections (
           id, user_id, name, host, port, username, password, 
           remember_password, private_key, passphrase, auth_type, 
-          description, group_name, config, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+          description, group_name, config, sort_order, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       );
 
       // 更新或新增连接
-      for (const connection of connections) {
+      for (let index = 0; index < connections.length; index += 1) {
+        const connection = connections[index];
         // 加密敏感数据
         const encryptedConnection = processConnectionSensitiveData(connection, true);
+        const sortOrder =
+          typeof connection.sortOrder === 'number' ? connection.sortOrder : index + 1;
 
         if (existingIds.has(connection.id)) {
           // 更新现有连接
@@ -846,6 +917,7 @@ const syncConnections = async (req, res) => {
             encryptedConnection.description || '',
             encryptedConnection.group || '默认分组',
             JSON.stringify(encryptedConnection.config || {}),
+            sortOrder,
             now,
             connection.id,
             userId
@@ -867,6 +939,7 @@ const syncConnections = async (req, res) => {
             encryptedConnection.description || '',
             encryptedConnection.group || '默认分组',
             JSON.stringify(encryptedConnection.config || {}),
+            sortOrder,
             now,
             now
           );
@@ -968,5 +1041,6 @@ module.exports = {
   getPinned,
   getOverview,
   updatePinned,
+  updateConnectionOrder,
   syncConnections
 };

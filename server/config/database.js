@@ -86,6 +86,7 @@ const connectDatabase = () => {
         description TEXT,
         group_name TEXT DEFAULT '默认分组',
         config TEXT,
+        sort_order INTEGER DEFAULT 0,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL,
         FOREIGN KEY (user_id) REFERENCES users (id)

@@ -119,6 +119,40 @@ export const useUserStore = defineStore(
     // 添加连接的请求状态跟踪
     const addingConnections = new Set();
 
+    const getNextSortOrder = () => {
+      if (!connections.value.length) {
+        return 1;
+      }
+      const maxOrder = connections.value.reduce((max, conn) => {
+        const current = typeof conn.sortOrder === 'number' ? conn.sortOrder : 0;
+        return current > max ? current : max;
+      }, 0);
+      return maxOrder + 1;
+    };
+
+    const normalizeConnection = (connection, index = 0) => {
+      if (!connection || typeof connection !== 'object') {
+        return connection;
+      }
+
+      const sortOrderSource =
+        typeof connection.sortOrder === 'number' ? connection.sortOrder : index + 1;
+
+      return {
+        ...connection,
+        sortOrder: sortOrderSource,
+        createdAt: connection.createdAt ?? null,
+        updatedAt: connection.updatedAt ?? null
+      };
+    };
+
+    const applyConnectionsOrder = newOrder => {
+      connections.value = newOrder.map((connection, index) => ({
+        ...connection,
+        sortOrder: index + 1
+      }));
+    };
+
     // 添加新连接
     async function addConnection(connection) {
       try {
@@ -131,14 +165,19 @@ export const useUserStore = defineStore(
         );
 
         if (existingConnection) {
-          // 如果连接已存在，更新现有连接信息
+          // 如果连接已存在，更新现有连接信息，保持原有排序值
+          const originalSortOrder = existingConnection.sortOrder;
           Object.assign(existingConnection, connection, { id: existingConnection.id });
+          existingConnection.sortOrder = originalSortOrder ?? existingConnection.sortOrder ?? getNextSortOrder();
           log.info('连接已存在，已更新连接信息');
           return existingConnection.id;
         }
 
         // 生成唯一ID
         connection.id = Date.now().toString();
+        if (typeof connection.sortOrder !== 'number') {
+          connection.sortOrder = getNextSortOrder();
+        }
 
         // 防重复提交检查
         const connectionKey = `${connection.host}:${connection.port}:${connection.username}`;
@@ -159,12 +198,12 @@ export const useUserStore = defineStore(
             if (response && response.success) {
               // 服务器保存成功，使用服务器返回的ID
               connection.id = response.connectionId || connection.id;
-              connections.value.push(connection);
+              connections.value.push(normalizeConnection(connection, connections.value.length));
               log.info('连接已成功保存到服务器和本地');
             } else if (response && !response.success && response.existingConnectionId) {
               // 服务器返回连接已存在，使用现有连接ID
               connection.id = response.existingConnectionId;
-              connections.value.push(connection);
+              connections.value.push(normalizeConnection(connection, connections.value.length));
               log.info('服务器检测到重复连接，已更新本地ID');
             } else {
               throw new Error(response?.message || '服务器保存失败');
@@ -179,7 +218,7 @@ export const useUserStore = defineStore(
           }
         } else {
           // 用户未登录，仅保存到本地
-          connections.value.push(connection);
+          connections.value.push(normalizeConnection(connection, connections.value.length));
           log.info('连接已保存到本地（用户未登录）');
         }
 
@@ -203,7 +242,16 @@ export const useUserStore = defineStore(
         const originalConnection = { ...connections.value[index] };
 
         // 更新连接信息
-        connections.value[index] = { ...connections.value[index], ...updatedConnection };
+        const currentConnection = connections.value[index];
+        const nextSortOrder =
+          typeof updatedConnection.sortOrder === 'number'
+            ? updatedConnection.sortOrder
+            : currentConnection.sortOrder;
+        connections.value[index] = {
+          ...currentConnection,
+          ...updatedConnection,
+          sortOrder: nextSortOrder
+        };
 
         // 同步到服务器
         if (isLoggedIn.value) {
@@ -394,7 +442,8 @@ export const useUserStore = defineStore(
         // 获取用户连接列表
         const connectionsResponse = await apiService.get('/connections', {}, requestOptions);
         if (connectionsResponse && connectionsResponse.success) {
-          connections.value = connectionsResponse.connections || [];
+          const list = connectionsResponse.connections || [];
+          connections.value = list.map((connection, index) => normalizeConnection(connection, index));
           log.debug('连接列表已更新', { count: connections.value.length });
         }
 
@@ -641,6 +690,33 @@ export const useUserStore = defineStore(
       }
 
       return !!pinnedConnections.value[id]; // 返回当前是否为置顶状态
+    }
+
+    async function reorderConnections(newOrder, options = {}) {
+      const { persist = true } = options;
+      const currentSnapshot = connections.value.map(connection => ({ ...connection }));
+      applyConnectionsOrder(newOrder);
+
+      if (persist && isLoggedIn.value) {
+        try {
+          const payload = connections.value.map(connection => ({
+            id: connection.id,
+            sortOrder: connection.sortOrder
+          }));
+          const response = await apiService.post('/connections/order', {
+            order: payload
+          });
+
+          if (!response || !response.success) {
+            throw new Error(response?.message || '服务器同步失败');
+          }
+        } catch (error) {
+          connections.value = currentSnapshot;
+          throw error;
+        }
+      }
+
+      return true;
     }
 
     // 检查是否收藏
@@ -1000,7 +1076,8 @@ export const useUserStore = defineStore(
         // 直接请求连接数据，不检查API可用性
         const connectionsResponse = await apiService.get('/connections');
         if (connectionsResponse && connectionsResponse.success) {
-          connections.value = connectionsResponse.connections || [];
+          const list = connectionsResponse.connections || [];
+          connections.value = list.map((connection, index) => normalizeConnection(connection, index));
           log.debug('连接配置请求成功', { count: connections.value.length });
           return true;
         } else {
@@ -1264,6 +1341,7 @@ export const useUserStore = defineStore(
       addConnection,
       updateConnection,
       deleteConnection,
+      reorderConnections,
       addToHistory,
       removeHistoryEntry,
       clearHistory,
@@ -1296,7 +1374,9 @@ export const useUserStore = defineStore(
               const overview = await apiService.get('/connections/overview');
               if (overview && overview.success) {
                 if (Array.isArray(overview.connections)) {
-                  connections.value = overview.connections;
+                  connections.value = overview.connections.map((connection, index) =>
+                    normalizeConnection(connection, index)
+                  );
                   connectionsLoaded.value = true;
                 }
                 if (Array.isArray(overview.favorites)) {
