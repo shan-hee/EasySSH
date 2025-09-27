@@ -22,8 +22,6 @@ import configManager from './utils/config-manager';
 import storageService from './services/storage';
 // 导入自定义指令
 import directives from './directives';
-// 导入vue3-drag-directive
-import DragListPlugin from 'vue3-drag-directive';
 // 导入Iconify Vue组件
 import { Icon } from '@iconify/vue';
 // 右键粘贴：全局处理终端自定义事件
@@ -86,7 +84,6 @@ const app = createApp(App);
 // 使用插件
 app.use(router);
 app.use(pinia);
-app.use(DragListPlugin);
 
 // 注册Iconify全局组件
 app.component('Icon', Icon);
