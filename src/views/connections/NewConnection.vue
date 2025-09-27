@@ -440,6 +440,29 @@ export default {
       return userStore.isLoggedIn ? userStore.historyConnections : localConnectionsStore.getHistory;
     });
 
+    const isPinned = id => {
+      return userStore.isLoggedIn ? userStore.isPinned(id) : localConnectionsStore.isPinned(id);
+    };
+
+    const getCreationTimestamp = connection => {
+      if (!connection) return 0;
+
+      const source = connection.createdAt ?? connection.created_at;
+      if (!source) return 0;
+
+      if (typeof source === 'number' && !Number.isNaN(source)) {
+        return source;
+      }
+
+      if (source instanceof Date) {
+        const time = source.getTime();
+        return Number.isNaN(time) ? 0 : time;
+      }
+
+      const parsed = Date.parse(source);
+      return Number.isNaN(parsed) ? 0 : parsed;
+    };
+
     // 统一数据加载入口由 store 并发处理，避免多处watch触发重复请求
 
     // 搜索相关
@@ -450,7 +473,7 @@ export default {
     const dragIndex = ref('');
     const enterIndex = ref('');
 
-    // 过滤后的连接列表（置顶优先，置顶内按时间倒序，保持稳定排序）
+    // 过滤后的连接列表（置顶优先，非置顶按创建时间升序，保持稳定排序）
     const filteredConnections = computed(() => {
       const baseList = connections.value || [];
       const indexMap = new Map(baseList.map((item, idx) => [item.id, idx]));
@@ -468,18 +491,30 @@ export default {
       };
 
       const sortByPinnedAndTime = list => {
-        return [...list].sort((a, b) => {
-          const aPinned = !!isPinned(a.id);
-          const bPinned = !!isPinned(b.id);
-          if (aPinned && !bPinned) return -1;
-          if (!aPinned && bPinned) return 1;
-          if (aPinned && bPinned) {
-            const diff = pinTimeOf(b.id) - pinTimeOf(a.id); // 新置顶在前
-            if (diff !== 0) return diff;
+        const pinnedList = [];
+        const regularList = [];
+
+        list.forEach(item => {
+          if (isPinned(item.id)) {
+            pinnedList.push(item);
+          } else {
+            regularList.push(item);
           }
-          // 保持稳定排序
+        });
+
+        pinnedList.sort((a, b) => {
+          const diff = pinTimeOf(b.id) - pinTimeOf(a.id); // 新置顶在前
+          if (diff !== 0) return diff;
           return (indexMap.get(a.id) ?? 0) - (indexMap.get(b.id) ?? 0);
         });
+
+        regularList.sort((a, b) => {
+          const diff = getCreationTimestamp(a) - getCreationTimestamp(b);
+          if (diff !== 0) return diff;
+          return (indexMap.get(a.id) ?? 0) - (indexMap.get(b.id) ?? 0);
+        });
+
+        return [...pinnedList, ...regularList];
       };
 
       if (!searchQuery.value || !searchQuery.value.trim()) {
@@ -593,11 +628,6 @@ export default {
     // 检查是否已收藏
     const isFavorite = id => {
       return userStore.isLoggedIn ? userStore.isFavorite(id) : localConnectionsStore.isFavorite(id);
-    };
-
-    // 检查是否已置顶
-    const isPinned = id => {
-      return userStore.isLoggedIn ? userStore.isPinned(id) : localConnectionsStore.isPinned(id);
     };
 
     // 搜索处理函数
