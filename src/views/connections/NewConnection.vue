@@ -207,24 +207,14 @@
             v-else
             name="drag"
             class="connection-grid"
-            :class="{ 'edit-mode': isEditMode }"
             tag="div"
           >
             <div
               v-for="(connection, index) in filteredHistoryConnections"
               :key="`${connection.id}-${connection.timestamp}`"
               class="connection-card"
-              :class="{
-                floating: isEditMode,
-                swinging: isEditMode,
-                'being-dragged': isEditMode && dragIndex === index
-              }"
-              :draggable="isEditMode"
+              :class="{ 'edit-mode-card': isEditMode, swinging: isEditMode }"
               @click="!isEditMode && handleLogin(connection)"
-              @dragstart="handleDragStart(index)"
-              @dragover="handleDragOver($event)"
-              @dragenter="handleDragEnter($event, index)"
-              @dragend="handleDragEnd"
             >
               <div class="card-content">
                 <div class="connection-icon">
@@ -390,7 +380,7 @@
 </template>
 
 <script>
-import { ref, computed, nextTick, onMounted, toRaw } from 'vue';
+import { ref, computed, onMounted, toRaw } from 'vue';
 import { useRouter } from 'vue-router';
 import { useUserStore } from '@/store/user';
 import { useLocalConnectionsStore } from '@/store/localConnections';
@@ -462,8 +452,6 @@ export default {
 
     // 编辑模式相关
     const isEditMode = ref(false);
-    const dragIndex = ref('');
-    const enterIndex = ref('');
 
     // 我的连接拖拽排序相关状态
     const connectionPreviewList = ref(null);
@@ -565,25 +553,6 @@ export default {
         );
       });
     });
-
-    // 防抖函数用于优化API请求
-    let reorderTimeout = null;
-    const debouncedReorderHistory = newOrder => {
-      // 清除之前的定时器
-      if (reorderTimeout) {
-        clearTimeout(reorderTimeout);
-      }
-
-      // 设置新的定时器，延迟500ms后执行API请求
-      reorderTimeout = setTimeout(() => {
-        if (userStore.isLoggedIn) {
-          userStore.reorderHistoryConnections(newOrder);
-        } else {
-          localConnectionsStore.reorderHistoryConnections(newOrder);
-        }
-        log.debug('防抖后同步历史连接排序到服务器');
-      }, 500);
-    };
 
     // 添加新连接
     const addConnection = connection => {
@@ -762,112 +731,6 @@ export default {
     const toggleEditMode = () => {
       isEditMode.value = !isEditMode.value;
       log.debug('切换编辑模式', { isEditMode: isEditMode.value });
-    };
-
-    // 简化的拖拽相关方法 - 基于参考代码重新实现
-    const handleDragStart = index => {
-      dragIndex.value = index;
-      log.debug('开始拖拽', { index });
-
-      // 添加一个小延迟确保拖拽状态正确应用
-      nextTick(() => {
-        const draggedCard = document.querySelector('.connection-card.being-dragged');
-        if (draggedCard) {
-          draggedCard.style.transform = 'scale(1.02)';
-        }
-      });
-    };
-
-    const handleDragEnter = (e, index) => {
-      e.preventDefault();
-      if (dragIndex.value !== index && dragIndex.value !== '') {
-        // 直接操作过滤后的历史连接数组，参考示例代码的简洁实现
-        const currentList = [...filteredHistoryConnections.value];
-
-        // 执行拖拽移动操作
-        const moving = currentList[dragIndex.value];
-        currentList.splice(dragIndex.value, 1);
-        currentList.splice(index, 0, moving);
-
-        // 更新拖拽索引到新位置
-        dragIndex.value = index;
-
-        // 如果当前没有搜索过滤，直接更新原始数组
-        if (!searchQuery.value || !searchQuery.value.trim()) {
-          // 直接更新本地状态
-          if (userStore.isLoggedIn) {
-            userStore.updateHistoryOrder(currentList);
-          } else {
-            localConnectionsStore.updateHistoryOrder(currentList);
-          }
-
-          // 使用防抖函数延迟API请求
-          nextTick(() => {
-            debouncedReorderHistory(currentList);
-          });
-        } else {
-          // 如果有搜索过滤，需要重新构建完整的历史数组
-          const fullHistory = userStore.isLoggedIn
-            ? [...userStore.historyConnections]
-            : [...localConnectionsStore.getHistory];
-
-          // 创建一个新的完整历史数组，保持过滤项的新顺序，未过滤项保持原位置
-          const reorderedHistory = [];
-          const filteredItems = new Set(currentList.map(item => `${item.id}-${item.timestamp}`));
-
-          // 先添加重新排序后的过滤项
-          currentList.forEach(item => {
-            reorderedHistory.push(item);
-          });
-
-          // 再添加未被过滤的项，保持它们的相对位置
-          fullHistory.forEach(item => {
-            const itemKey = `${item.id}-${item.timestamp}`;
-            if (!filteredItems.has(itemKey)) {
-              reorderedHistory.push(item);
-            }
-          });
-
-          // 更新本地状态
-          if (userStore.isLoggedIn) {
-            userStore.updateHistoryOrder(reorderedHistory);
-          } else {
-            localConnectionsStore.updateHistoryOrder(reorderedHistory);
-          }
-
-          // 使用防抖函数延迟API请求
-          nextTick(() => {
-            debouncedReorderHistory(reorderedHistory);
-          });
-        }
-
-        log.debug('拖拽移动', {
-          from: dragIndex.value,
-          to: index,
-          hasFilter: !!(searchQuery.value && searchQuery.value.trim())
-        });
-      }
-    };
-
-    const handleDragOver = e => {
-      e.preventDefault();
-    };
-
-    const handleDragEnd = () => {
-      // 清理状态
-      const previousDragIndex = dragIndex.value;
-      dragIndex.value = '';
-      enterIndex.value = '';
-
-      // 确保所有卡片的样式都被重置
-      nextTick(() => {
-        const allCards = document.querySelectorAll('.connection-card');
-        allCards.forEach(card => {
-          card.style.transform = '';
-        });
-      });
-
-      log.debug('拖拽结束', { previousDragIndex });
     };
 
     // 删除历史连接
@@ -1489,13 +1352,7 @@ export default {
       handleDelete,
       // 编辑模式相关
       isEditMode,
-      dragIndex,
-      enterIndex,
       toggleEditMode,
-      handleDragStart,
-      handleDragOver,
-      handleDragEnter,
-      handleDragEnd,
       handleDeleteHistory,
       // 按需加载状态
       connectionsLoading: computed(() => userStore.connectionsLoading),
@@ -2176,37 +2033,16 @@ h2 {
   background-color: var(--card-hover-bg);
 }
 
-/* 编辑模式下的拖拽样式 */
-.connection-grid.edit-mode .connection-card {
-  cursor: move;
-  transition:
-    transform var(--theme-transition-duration) var(--theme-transition-timing),
-    box-shadow var(--theme-transition-duration) var(--theme-transition-timing),
-    background-color var(--theme-transition-duration) var(--theme-transition-timing);
+/* 编辑模式下的卡片样式（仅用于删除操作，不可拖拽） */
+.connection-card.edit-mode-card {
+  cursor: default;
 }
 
-.connection-grid.edit-mode .connection-card:hover:not(.being-dragged) {
+.connection-card.edit-mode-card:hover {
   background-color: var(--card-hover-bg);
-  transform: translateY(-2px);
-  box-shadow: var(--shadow-md);
 }
 
-/* 正在被拖拽的卡片样式 */
-.connection-card.being-dragged {
-  opacity: 0.8;
-  transform: scale(1.02) !important;
-  box-shadow: var(--shadow-lg) !important;
-  z-index: var(--z-fixed);
-  background-color: var(--color-primary-lightest) !important;
-  transition: none !important;
-}
-
-/* 确保非拖拽状态下的卡片保持正常 */
-.connection-card:not(.being-dragged) {
-  transform: none;
-}
-
-/* 风铃摆动效果 - 连续流畅摆动，不在0度停留 */
+/* 风铃摆动效果 */
 @keyframes windChimeSwing {
   0% {
     transform: rotate(0deg);
@@ -2237,26 +2073,6 @@ h2 {
   }
 }
 
-/* 测试动画 - 更明显的效果 */
-@keyframes testSwing {
-  0% {
-    transform: rotate(0deg) scale(1);
-  }
-  25% {
-    transform: rotate(10deg) scale(1.05);
-  }
-  50% {
-    transform: rotate(0deg) scale(1);
-  }
-  75% {
-    transform: rotate(-10deg) scale(1.05);
-  }
-  100% {
-    transform: rotate(0deg) scale(1);
-  }
-}
-
-/* 为不同的卡片添加不同的延迟，创造更自然的摆动效果 */
 .connection-card.swinging {
   animation: windChimeSwing 0.3s linear infinite !important;
   transform-origin: top center !important;
@@ -2285,12 +2101,6 @@ h2 {
 .connection-card.swinging:nth-child(6n) {
   animation-delay: 0.1s !important;
   animation-duration: 0.45s !important;
-}
-
-/* 当卡片被拖拽时，暂停摆动动画并应用拖拽样式 */
-.connection-card.swinging.being-dragged {
-  animation: none !important;
-  transform: scale(1.02) !important;
 }
 
 /* 加载指示器样式 */
