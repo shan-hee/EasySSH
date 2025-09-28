@@ -146,6 +146,7 @@ class TerminalManager {
     // 将终端与会话绑定
     session.terminal = terminal;
     this.terminals.set(sessionId, terminal);
+    // 不再显式发送 SSH_ATTACH；由“首次 RESIZE” 作为隐式附着信号触发后端启动 Shell
 
     // 启用智能补全
     terminalAutocompleteService.enable();
@@ -157,6 +158,31 @@ class TerminalManager {
       session.buffer = '';
       log.debug(`缓冲数据已写入终端: ${sessionId}`);
     }
+
+    // 稳定终端尺寸：在终端完全可见后多次适配，并显式同步尺寸到服务器
+    const scheduleStabilizeSize = () => {
+      const ws = session.ws || session.socket || this.sshService.sessions.get(sessionId)?.ws || this.sshService.sessions.get(sessionId)?.socket;
+      const safeResize = () => {
+        try {
+          if (addons.fit && typeof addons.fit.fit === 'function') {
+            addons.fit.fit();
+          }
+        } catch (_) { /* ignore */ }
+        try {
+          if (ws && ws.readyState === WS_CONSTANTS.OPEN) {
+            const cols = terminal.cols;
+            const rows = terminal.rows;
+            BinaryMessageSender.sendSSHResize(ws, sessionId, cols, rows);
+            log.debug(`显式同步终端尺寸: ${sessionId} -> ${cols}x${rows}`);
+          }
+        } catch (_) { /* ignore */ }
+      };
+      // 多次尝试，覆盖字体/布局异步变化
+      requestAnimationFrame(() => safeResize());
+      setTimeout(() => safeResize(), 120);
+      setTimeout(() => safeResize(), 360);
+    };
+    scheduleStabilizeSize();
 
     // 添加销毁处理
     const destroy = () => {

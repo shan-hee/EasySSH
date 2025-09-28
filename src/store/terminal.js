@@ -9,6 +9,7 @@ import { useTabStore } from './tab';
 import { FitAddon } from '@xterm/addon-fit';
 
 import { useSessionStore } from './session';
+import terminalService from '../services/terminal';
 import { waitForFontsLoaded } from '../utils/fontLoader';
 import settingsService from '../services/settings';
 
@@ -233,6 +234,10 @@ export const useTerminalStore = defineStore('terminal', () => {
         })
       );
 
+      // 在并行阶段预加载 xterm 依赖，减少首帧等待
+      // 不等待，和会话创建并行
+      const xtermPreloadPromise = terminalService.preload().catch(() => false);
+
       // 创建SSH会话（原有逻辑）
       try {
         const sessionId = await sshService.createSession({
@@ -245,6 +250,9 @@ export const useTerminalStore = defineStore('terminal', () => {
 
         // 获取终端设置（保留原有逻辑）
         const terminalOptions = await _getTerminalOptions();
+
+        // 确保 xterm 依赖已加载（若仍在加载，则等待）
+        try { await xtermPreloadPromise; } catch (_) { /* ignore */ }
 
         // 创建终端
         const terminal = await sshService.createTerminal(sessionId, container, terminalOptions);
@@ -818,19 +826,10 @@ export const useTerminalStore = defineStore('terminal', () => {
         return true;
       }
 
-      // 关闭/中断 SSH 会话
+      // 关闭 SSH 会话：统一由服务层决定是否执行 abort/close，避免重复调用
       try {
-        const aborted = sshService.abortSession(sessionId, 'user_close', {
-          source: 'store.disconnectTerminal',
-          terminalId: connectionId
-        });
-
-        if (!aborted) {
-          await sshService.closeSession(sessionId);
-          log.debug(`SSH会话关闭完成(由store确认): ${sessionId}`);
-        } else {
-          log.debug(`SSH会话已通过 abort 请求关闭: ${sessionId}`);
-        }
+        await sshService.closeSession(sessionId);
+        log.debug(`SSH会话关闭完成(由store确认): ${sessionId}`);
       } catch (closeError) {
         log.error(`关闭SSH会话失败: ${sessionId}`, closeError);
         // 即使关闭会话失败，也继续清理资源
@@ -1061,12 +1060,7 @@ export const useTerminalStore = defineStore('terminal', () => {
       delete state.sessions[connectionId];
       delete state.connectionStatus[connectionId];
 
-      // 通知SSH服务释放资源
-      try {
-        await sshService.releaseResources(sessionId);
-      } catch (error) {
-        log.warn(`通知SSH服务释放资源失败: ${sessionId}`, error);
-      }
+      // 资源释放由 sshService.closeSession 的 finally 统一处理，避免重复调用
 
       // 确认资源已释放
       const resourceCheck = {

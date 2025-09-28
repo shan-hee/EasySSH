@@ -747,6 +747,7 @@ async function handleUnifiedBinaryMessage(ws, buffer, currentSessionId) {
       await handleSSHCommand(ws, headerData, payloadData);
       break;
 
+
       // SFTP操作消息 - 委托给SFTP处理器
     case BINARY_MSG_TYPE.SFTP_INIT:
     case BINARY_MSG_TYPE.SFTP_UPLOAD:
@@ -874,6 +875,8 @@ async function handleSSHResize(ws, headerData) {
 
   // 调用原有的resize处理函数
   ssh.handleResize(ws, { sessionId, cols, rows });
+
+  // 切换为仅设置附着意愿，由 ssh.js 的数据通道在收到首个数据块时统一刷新，避免过早flush
 }
 
 /**
@@ -889,6 +892,7 @@ async function handleSSHCommand(ws, headerData, payloadData) {
   // 委托给SSH模块处理
   ssh.handleSshExec(ws, { sessionId, command });
 }
+
 
 /**
  * 处理二进制断开请求

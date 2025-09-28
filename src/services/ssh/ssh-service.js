@@ -33,6 +33,15 @@ class SSHService {
     this._pendingQuietCloses = new WeakMap();
     this.connectionTimeoutHandles = new Map();
 
+    // 详细日志开关：用于控制可能高频但关键的日志输出
+    // 可通过实例方法进行配置
+    // 使用方法 sshService.setVerboseLogging({ wsData: true })
+    this.verboseLogging = {
+      buffer: false, // 是否逐块记录终端未就绪时的缓存数据日志
+      abort: false, // 是否记录占位实现的 abort 请求日志
+      wsData: false // 是否将 SSH WS 返回数据直接输出到控制台（生产默认关闭）
+    };
+
     // 初始化统一二进制处理器
     this.binaryHandler = new UnifiedBinaryHandler();
     this._setupBinaryHandlers();
@@ -238,23 +247,36 @@ class SSHService {
     }
 
     if (!session.terminal) {
-      // 如果终端还没准备好，缓存数据
+      // 终端未就绪：缓存数据并仅在首次缓存时提示一次
       if (!session.buffer) {
         session.buffer = '';
       }
-      // 将二进制数据转换为字符串缓存
-      const data = new TextDecoder('utf-8', { fatal: false }).decode(payloadData);
-      session.buffer += data;
-      log.debug(`缓存SSH数据，等待终端就绪: ${sessionId}`);
+      const dataStr = new TextDecoder('utf-8', { fatal: false }).decode(payloadData);
+      session.buffer += dataStr;
+
+      if (!session._bufferingNotified) {
+        session._bufferingNotified = true;
+        log.debug(`开始缓存SSH数据，等待终端就绪: ${sessionId}`);
+      } else if (this.verboseLogging.buffer) {
+        // 仅在启用详细日志时记录持续缓存
+        log.debug('继续缓存SSH数据', { sessionId, chunkBytes: payloadData.byteLength });
+      }
+      if (this.verboseLogging.wsData) {
+        try { console.log(`[WS][SSH_DATA][buffering] ${sessionId} len=${payloadData.byteLength}\n${dataStr}`); } catch (_) {}
+      }
       return;
     }
 
     try {
       // 解码二进制数据为字符串
-      const data = new TextDecoder('utf-8', { fatal: false }).decode(payloadData);
+      const dataStr = new TextDecoder('utf-8', { fatal: false }).decode(payloadData);
+
+      if (this.verboseLogging.wsData) {
+        try { console.log(`[WS][SSH_DATA] ${sessionId} len=${payloadData.byteLength}\n${dataStr}`); } catch (_) {}
+      }
 
       // 写入终端
-      session.terminal.write(data);
+      session.terminal.write(dataStr);
 
       // 记录活动时间
       this._recordSessionActivity(session);
@@ -1490,8 +1512,21 @@ class SSHService {
       return false;
     }
 
-    log.debug('Abort 会话请求 (占位实现)', { sessionId, reason, detail });
+    if (this.verboseLogging.abort) {
+      log.debug('Abort 会话请求 (占位实现)', { sessionId, reason, detail });
+    }
     return false;
+  }
+
+  /**
+   * 启用/关闭详细日志
+   * @param {Object} options
+   * @param {boolean} [options.buffer]
+   * @param {boolean} [options.abort]
+   */
+  setVerboseLogging(options = {}) {
+    if (typeof options.buffer === 'boolean') this.verboseLogging.buffer = options.buffer;
+    if (typeof options.abort === 'boolean') this.verboseLogging.abort = options.abort;
   }
 
   /**

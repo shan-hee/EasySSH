@@ -629,6 +629,7 @@ function cleanupSession(sessionId, reason = 'unknown') {
 
   session.cleaned = true;
 
+
   logger.info('清理SSH会话', { sessionId, reason });
 
   if (session.cleanupTimeout) {
@@ -878,7 +879,7 @@ async function handleConnect(ws, data) {
             });
           }
 
-          sessionLifecycle.abort(sessionId, 'shell_aborted', { notifyClient: false });
+        sessionLifecycle.abort(sessionId, 'shell_aborted', { notifyClient: false });
           return;
         }
 
@@ -931,7 +932,7 @@ async function handleConnect(ws, data) {
 
         logger.debug('新SSH会话已创建', { sessionId });
       });
-
+      
       return sessionId;
     } catch (error) {
       if (error && error.name === 'AbortError') {
@@ -990,7 +991,6 @@ function handleResize(ws, data) {
     return;
   }
 
-  // 调整终端大小
   session.stream.setWindow(rows, cols);
   recordActivity(session);
 }

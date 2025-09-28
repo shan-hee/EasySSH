@@ -276,6 +276,7 @@ export class BinaryMessageSender {
     const payloadData = new TextEncoder().encode(command);
     this.send(ws, BINARY_MSG_TYPE.SSH_COMMAND, headerData, payloadData);
   }
+
 }
 
 /**

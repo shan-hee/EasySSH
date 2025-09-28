@@ -387,27 +387,14 @@ export const useTabStore = defineStore(
             // 尝试正常断开连接
             terminalStore
               .disconnectTerminal(closingTab.data.connectionId)
-              .then(success => {
+              .then(() => {
                 clearTimeout(disconnectTimeout); // 清除超时
-                log.info(`终端 ${closingTab.data.connectionId} 断开${success ? '成功' : '失败'}`);
-
-                // 主动触发终端销毁事件，确保监控工厂断开连接
-                window.dispatchEvent(
-                  new CustomEvent('terminal:destroyed', {
-                    detail: { terminalId: closingTab.data.connectionId }
-                  })
-                );
+                // 断开结果与销毁事件由 terminal store 统一日志与派发，避免重复
               })
               .catch(error => {
                 clearTimeout(disconnectTimeout); // 清除超时
                 log.error('关闭终端连接失败:', error);
-
-                // 即使终端断开失败，仍然触发终端销毁事件，确保监控工厂断开连接
-                window.dispatchEvent(
-                  new CustomEvent('terminal:destroyed', {
-                    detail: { terminalId: closingTab.data.connectionId }
-                  })
-                );
+                // 失败时的销毁事件亦由 terminal store 负责派发
               });
           } else {
             log.info(

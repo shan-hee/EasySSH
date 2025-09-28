@@ -230,6 +230,20 @@ class TerminalService {
   }
 
   /**
+   * 预加载 xterm 依赖（与会话创建并行），减少首帧等待
+   * @returns {Promise<boolean>}
+   */
+  async preload() {
+    try {
+      await this._ensureXtermLoaded();
+      return true;
+    } catch (e) {
+      log.warn('预加载 xterm 失败（将按需加载）', e?.message || e);
+      return false;
+    }
+  }
+
+  /**
    * 初始化SSH终端并连接监控服务
    * @param {String} sshSessionId SSH会话ID
    * @param {String} host 主机地址
