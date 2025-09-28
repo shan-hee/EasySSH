@@ -1,3 +1,5 @@
+import log from './log';
+
 /**
  * WebSocket常量，兼容浏览器和Node.js环境
  */
@@ -16,7 +18,6 @@ export const MESSAGE_TYPES = {
   CONNECTED: 'connected',
   DISCONNECT: 'disconnect',
   DISCONNECTED: 'disconnected',
-  ABORT: 'abort',
   DATA: 'data',
   ERROR: 'error',
   PING: 'ping',
@@ -25,21 +26,7 @@ export const MESSAGE_TYPES = {
   EXEC: 'exec',
   EXIT: 'exit',
   CONNECTION_REGISTERED: 'connection_id_registered',
-  SFTP_REQUEST: 'sftp_request',
-  SFTP_RESPONSE: 'sftp_response',
-  SFTP_ERROR: 'sftp_error',
-  SFTP_SUCCESS: 'sftp_success',
-  SFTP_PROGRESS: 'sftp_progress',
-  SFTP_READY: 'sftp_ready',
-  SFTP_FILE: 'sftp_file',
-  SFTP_LIST: 'sftp_list',
-  SFTP_MKDIR: 'sftp_mkdir',
-  SFTP_RENAME: 'sftp_rename',
-  SFTP_REMOVE: 'sftp_remove',
-  SFTP_MKDIR_ERROR: 'sftp_mkdir_error',
-  SFTP_RENAME_ERROR: 'sftp_rename_error',
-  SFTP_REMOVE_ERROR: 'sftp_remove_error',
-  SFTP_CONFIRM: 'sftp_confirm',
+  CLOSED: 'closed',
   NETWORK_LATENCY: 'network_latency',
   HEARTBEAT: 'heartbeat',
   STATS: 'stats'
@@ -62,7 +49,6 @@ export const BINARY_MESSAGE_TYPES = {
   CONNECTED: 0x09,
   NETWORK_LATENCY: 0x0a,
   STATUS_UPDATE: 0x0b,
-  ABORT: 0x0c,
 
   // SSH终端数据 (0x10-0x1F)
   SSH_DATA: 0x10, // SSH终端数据传输
@@ -270,4 +256,3 @@ export default {
   SFTP_CONSTANTS,
   getDynamicConstants
 };
-import log from './log';
