@@ -2111,7 +2111,9 @@ export default defineComponent({
     );
 
     onMounted(() => {
-      initializeData();
+      if (props.visible) {
+        initializeData();
+      }
 
       // 监听设置激活标签页的事件
       const handleSetActiveTab = event => {

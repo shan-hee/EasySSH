@@ -130,7 +130,6 @@
 
   <!-- 用户设置弹窗 -->
   <user-settings-modal
-    v-if="isUserSettingsVisible"
     :visible="isUserSettingsVisible"
     @update:visible="isUserSettingsVisible = $event"
     @close="closeUserSettings"
