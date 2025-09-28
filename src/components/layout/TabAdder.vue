@@ -1,6 +1,10 @@
 <template>
   <div class="tab-adder">
-    <div class="tab-adder-dropdown-trigger" @click="addConnectionTab">
+    <div
+      class="tab-adder-dropdown-trigger"
+      @click="addConnectionTab"
+      @mouseenter="handleTabAdderHover"
+    >
       <div class="tab-adder-icon">
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="20" height="20">
           <path fill="currentColor" d="M19,13H13V19H11V13H5V11H11V5H13V11H19V13Z" />
@@ -11,10 +15,26 @@
 </template>
 
 <script>
-import { defineComponent, ref } from 'vue';
+import { defineComponent, ref, onMounted } from 'vue';
 import log from '@/services/log';
 import { useTabStore } from '@/store/tab';
 import { useUserStore } from '@/store/user';
+
+let newConnectionChunkPromise = null;
+
+const preloadNewConnectionView = () => {
+  if (!newConnectionChunkPromise) {
+    newConnectionChunkPromise = import('@/views/connections/NewConnection.vue').catch(error => {
+      log.debug('预加载连接配置页面失败', error);
+      newConnectionChunkPromise = null;
+      throw error;
+    });
+  }
+
+  return newConnectionChunkPromise;
+};
+
+let connectionDataPrefetchPromise = null;
 
 export default defineComponent({
   name: 'TabAdder',
@@ -22,6 +42,35 @@ export default defineComponent({
     const tabStore = useTabStore();
     const userStore = useUserStore();
     const showPopover = ref(false);
+
+    const ensureConnectionResources = () => {
+      preloadNewConnectionView().catch(() => {});
+
+      if (!userStore.isLoggedIn) {
+        return;
+      }
+
+      if (!connectionDataPrefetchPromise) {
+        connectionDataPrefetchPromise = userStore.ensureConnectionsData().catch(error => {
+          log.debug('预加载连接相关数据失败', error);
+          connectionDataPrefetchPromise = null;
+        });
+      }
+    };
+
+    const schedulePrefetch = () => {
+      const run = () => ensureConnectionResources();
+
+      if (typeof window !== 'undefined' && typeof window.requestIdleCallback === 'function') {
+        window.requestIdleCallback(run, { timeout: 1000 });
+      } else {
+        setTimeout(run, 300);
+      }
+    };
+
+    const handleTabAdderHover = () => {
+      ensureConnectionResources();
+    };
 
     // 关闭登录面板事件
     const closeLoginPanel = () => {
@@ -34,6 +83,7 @@ export default defineComponent({
 
     // 添加连接标签
     const addConnectionTab = async () => {
+      ensureConnectionResources();
       closeLoginPanel();
 
       tabStore.addNewConnection();
@@ -64,11 +114,16 @@ export default defineComponent({
       showPopover.value = false;
     };
 
+    onMounted(() => {
+      schedulePrefetch();
+    });
+
     return {
       addConnectionTab,
       addTerminalTab,
       addSftpTab,
-      addSettingsTab
+      addSettingsTab,
+      handleTabAdderHover
     };
   }
 });
