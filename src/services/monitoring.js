@@ -152,20 +152,41 @@ class MonitoringInstance {
         ws.addEventListener('error', noop, { once: true });
         ws.addEventListener('close', noop, { once: true });
 
-        if (readyState === WebSocket.OPEN || readyState === WebSocket.CLOSING) {
-          ws.close(1000, 'client_close');
+        // 尝试通过JSON abort请求优雅取消订阅并让服务端停止对应采集
+        const sendAbort = () => {
+          try {
+            const serverId = this.state?.targetHost || null;
+            if (serverId && ws.readyState === WebSocket.OPEN) {
+              ws.send(
+                JSON.stringify({
+                  type: 'abort',
+                  payload: { serverId, terminalId: this.terminalId }
+                })
+              );
+            }
+          } catch (e) {
+            /* no-op */
+          }
+        };
+
+        if (readyState === WebSocket.OPEN) {
+          sendAbort();
+          // 轻微延迟后关闭，给服务器处理时间
+          setTimeout(() => {
+            try { ws.close(1000, 'client_close'); } catch (_) {}
+          }, 50);
         } else if (readyState === WebSocket.CONNECTING) {
           ws.addEventListener(
             'open',
             () => {
-              try {
-                ws.close(1000, 'client_close');
-              } catch (closeError) {
-                log.debug('[监控] 延迟关闭WebSocket失败', closeError);
-              }
+              sendAbort();
+              try { ws.close(1000, 'client_close'); } catch (closeError) { log.debug('[监控] 延迟关闭WebSocket失败', closeError); }
             },
             { once: true }
           );
+        } else {
+          // CLOSING/CLOSED 直接吞掉
+          try { ws.close(1000, 'client_close'); } catch (_) {}
         }
       } catch (error) {
         log.debug('[监控] 关闭WebSocket失败', error);

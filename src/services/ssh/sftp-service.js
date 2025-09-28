@@ -469,7 +469,7 @@ class SFTPService {
    * @param {function} progressCallback - 进度回调
    * @returns {Promise<Object>} - 上传结果
    */
-  async uploadFileBinary(sessionId, file, remotePath, progressCallback) {
+  async uploadFileBinary(sessionId, file, remotePath, progressCallback, options = {}) {
     await this._ensureSftpSession(sessionId);
 
     return new Promise((resolve, reject) => {
@@ -517,6 +517,20 @@ class SFTPService {
           meta: { filename: file.name, remotePath }
         });
 
+        // 绑定可选的AbortController信号用于取消
+        const { signal } = options || {};
+        if (signal) {
+          if (signal.aborted) {
+            try { this._canceledOps.add(operationId); } catch (_) {}
+          } else {
+            const onAbort = () => {
+              try { this._canceledOps.add(operationId); } catch (_) {}
+              try { this.cancelOperation(operationId); } catch (_) {}
+            };
+            try { signal.addEventListener('abort', onAbort, { once: true }); } catch (_) {}
+          }
+        }
+
         // 提前一拍将 operationId 暴露给调用方，便于用户立即取消
         try {
           if (typeof progressCallback === 'function') {
@@ -554,14 +568,14 @@ class SFTPService {
             // 检查是否需要分块传输
             if (file.size > this.chunkSize) {
               // 分块传输
-              await this._uploadFileInChunks(session, metadata, fileBuffer, progressCallback);
+              await this._uploadFileInChunks(session, metadata, fileBuffer, progressCallback, options?.signal);
             } else {
               // 单块传输（发送前检查是否已被取消）
               metadata.chunkIndex = 0;
               metadata.totalChunks = 1;
               metadata.isChunked = false;
 
-              if (this._canceledOps && this._canceledOps.has(operationId)) {
+              if ((options?.signal && options.signal.aborted) || (this._canceledOps && this._canceledOps.has(operationId))) {
                 throw new Error('操作已取消');
               }
 
@@ -598,12 +612,12 @@ class SFTPService {
    * 分块上传文件
    * @private
    */
-  async _uploadFileInChunks(session, baseMetadata, fileBuffer, _progressCallback) {
+  async _uploadFileInChunks(session, baseMetadata, fileBuffer, _progressCallback, signal) {
     const totalChunks = Math.ceil(fileBuffer.byteLength / this.chunkSize);
 
     for (let chunkIndex = 0; chunkIndex < totalChunks; chunkIndex++) {
-      // 若用户已取消该operation，停止继续发送分块
-      if (this._canceledOps && this._canceledOps.has(baseMetadata.operationId)) {
+      // 若外部abort信号或本地取消，停止继续发送分块
+      if ((signal && signal.aborted) || (this._canceledOps && this._canceledOps.has(baseMetadata.operationId))) {
         break;
       }
       const start = chunkIndex * this.chunkSize;
@@ -640,8 +654,8 @@ class SFTPService {
    * @param {function} progressCallback - 进度回调
    * @returns {Promise<Object>} - 上传结果
    */
-  async uploadFile(sessionId, file, remotePath, progressCallback) {
-    return this.uploadFileBinary(sessionId, file, remotePath, progressCallback);
+  async uploadFile(sessionId, file, remotePath, progressCallback, options = {}) {
+    return this.uploadFileBinary(sessionId, file, remotePath, progressCallback, options);
   }
 
   /**
@@ -651,7 +665,7 @@ class SFTPService {
    * @param {function} progressCallback - 进度回调函数
    * @returns {Promise<Blob>} - 文件Blob对象
    */
-  async downloadFileBinary(sessionId, remotePath, progressCallback) {
+  async downloadFileBinary(sessionId, remotePath, progressCallback, options = {}) {
     await this._ensureSftpSession(sessionId);
 
     const operationId = this._nextOperationId();
@@ -726,6 +740,17 @@ class SFTPService {
           meta: { remotePath },
           sshSessionId
         });
+
+        // 绑定AbortController用于取消
+        const { signal } = options || {};
+        if (signal) {
+          if (signal.aborted) {
+            try { this.cancelOperation(operationId); } catch (_) {}
+          } else {
+            const onAbort = () => { try { this.cancelOperation(operationId); } catch (_) {} };
+            try { signal.addEventListener('abort', onAbort, { once: true }); } catch (_) {}
+          }
+        }
 
         // 创建下载请求元数据
         const metadata = {
@@ -834,7 +859,7 @@ class SFTPService {
    * @param {function} progressCallback - 进度回调函数
    * @returns {Promise<Object>} - 下载结果对象
    */
-  async downloadFolderBinary(sessionId, remotePath, progressCallback) {
+  async downloadFolderBinary(sessionId, remotePath, progressCallback, options = {}) {
     await this._ensureSftpSession(sessionId);
 
     const operationId = this._nextOperationId();
@@ -879,6 +904,17 @@ class SFTPService {
           sshSessionId
         });
 
+        // 绑定AbortController用于取消
+        const { signal } = options || {};
+        if (signal) {
+          if (signal.aborted) {
+            try { this.cancelOperation(operationId); } catch (_) {}
+          } else {
+            const onAbort = () => { try { this.cancelOperation(operationId); } catch (_) {} };
+            try { signal.addEventListener('abort', onAbort, { once: true }); } catch (_) {}
+          }
+        }
+
         // 创建下载请求元数据
         const metadata = {
           sessionId: sshSessionId,
@@ -916,8 +952,8 @@ class SFTPService {
    * @param {function} progressCallback - 进度回调函数
    * @returns {Promise<Object>} - 下载结果对象，包含blob属性
    */
-  async downloadFolder(sessionId, remotePath, progressCallback) {
-    const result = await this.downloadFolderBinary(sessionId, remotePath, progressCallback);
+  async downloadFolder(sessionId, remotePath, progressCallback, options = {}) {
+    const result = await this.downloadFolderBinary(sessionId, remotePath, progressCallback, options);
     return result; // 返回完整的result对象，包含blob属性
   }
 

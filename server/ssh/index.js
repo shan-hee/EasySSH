@@ -426,6 +426,11 @@ function initWebSocketServer(server) {
           ssh.handleResize(ws, data);
           break;
 
+        case 'abort':
+          // 处理取消/中断请求（统一入口）
+          ssh.handleAbort(ws, data);
+          break;
+
         case 'disconnect':
           // 处理断开连接
           ssh.handleDisconnect(ws, data);
@@ -716,6 +721,18 @@ async function handleUnifiedBinaryMessage(ws, buffer, currentSessionId) {
     case BINARY_MSG_TYPE.DISCONNECT:
       await handleBinaryDisconnect(ws, headerData);
       break;
+    case BINARY_MSG_TYPE.ABORT:
+      // 统一二进制取消
+      try {
+        ssh.handleAbort(ws, headerData);
+      } catch (e) {
+        BinaryMessageSender.send(ws, BINARY_MSG_TYPE.ERROR, {
+          sessionId: headerData.sessionId,
+          errorMessage: `处理取消请求失败: ${e.message}`,
+          errorCode: 'ABORT_FAILED'
+        });
+      }
+      break;
 
       // SSH终端数据消息
     case BINARY_MSG_TYPE.SSH_DATA:
@@ -889,8 +906,8 @@ async function handleBinaryDisconnect(ws, headerData) {
       return;
     }
 
-    // 复用现有断开逻辑（会清理会话并通过JSON发出disconnected提示）
-    ssh.handleDisconnect(ws, { sessionId });
+    // 统一走Abort路径
+    ssh.handleAbort(ws, { sessionId, reason: 'client_disconnect' });
   } catch (error) {
     logger.error('处理二进制断开请求失败', { error: error.message, headerData });
     try {

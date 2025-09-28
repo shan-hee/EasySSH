@@ -1478,6 +1478,23 @@ class SSHService {
   }
 
   /**
+   * 统一的会话中断接口（占位实现）
+   * @param {string} sessionId
+   * @param {string} [reason='user_abort']
+   * @param {Object} [detail={}]
+   * @returns {boolean} 是否成功触发中断
+   */
+  abortSession(sessionId, reason = 'user_abort', detail = {}) {
+    if (!sessionId) {
+      log.warn('Abort 会话失败: 未提供会话ID', { reason, detail });
+      return false;
+    }
+
+    log.debug('Abort 会话请求 (占位实现)', { sessionId, reason, detail });
+    return false;
+  }
+
+  /**
    * 关闭会话
    */
   async cancelConnectionByTerminal(terminalId, reason = 'frontend_monitor_unsubscribed') {
@@ -1490,11 +1507,20 @@ class SSHService {
 
     let handled = false;
 
-    // 若已有会话映射，直接关闭
+    // 若已有会话映射，优先尝试触发统一 abort
     if (this.terminalSessionMap.has(terminalId)) {
       const sessionId = this.terminalSessionMap.get(terminalId);
       this.pendingTerminalCancels.delete(terminalId);
-      await this.closeSession(sessionId, { reason });
+      const abortDetail = {
+        source: 'cancelConnectionByTerminal',
+        terminalId,
+        requestedAt: Date.now()
+      };
+
+      const aborted = this.abortSession(sessionId, reason, abortDetail);
+      if (!aborted) {
+        await this.closeSession(sessionId, { reason });
+      }
       handled = true;
     }
 
@@ -1589,32 +1615,42 @@ class SSHService {
     let closeSuccess = false;
 
     try {
+      const abortDetail = {
+        source: 'closeSession',
+        requestedAt: Date.now(),
+        ...options.detail
+      };
+
+      const aborted = this.abortSession(sessionId, reason, abortDetail);
+
+      // 如果 abort 已经执行，则视为关闭成功
+      if (aborted) {
+        this._clearConnectionTimeout(sessionId);
+        this._clearKeepAlive(sessionId);
+        this._clearLatencyTimer(sessionId);
+        closeSuccess = true;
+        return true;
+      }
+
+      // 否则走旧流程作为兜底
       this._clearConnectionTimeout(sessionId);
       log.debug(`清除会话 ${sessionId} 的保活定时器`);
       this._clearKeepAlive(sessionId);
       this._clearLatencyTimer(sessionId);
 
-      // 标记为用户主动关闭，便于onclose判断
       session.userInitiatedClose = true;
       session.userCloseReason = reason;
 
       if (session.socket) {
         if (session.socket.readyState === WS_CONSTANTS.OPEN) {
-          // 优先使用统一二进制协议发送断开请求
           try {
             log.debug(`向服务器发送二进制断开请求: ${sessionId}`);
-            const binaryDisconnect = BinaryMessageUtils.createDisconnectMessage({
-              sessionId,
-              reason
-            });
+            const binaryDisconnect = BinaryMessageUtils.createDisconnectMessage({ sessionId, reason });
             session.socket.send(binaryDisconnect);
           } catch (sendBinaryError) {
             log.debug(`二进制断开请求失败，回退JSON: ${sessionId}`, sendBinaryError);
             try {
-              const disconnectMessage = this._createStandardMessage('disconnect', {
-                sessionId,
-                reason
-              });
+              const disconnectMessage = this._createStandardMessage('disconnect', { sessionId, reason });
               session.socket.send(JSON.stringify(disconnectMessage));
             } catch (sendJsonError) {
               log.debug(`发送JSON断开请求失败: ${sessionId}`, sendJsonError);

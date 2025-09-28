@@ -410,6 +410,18 @@ function handleFrontendMessage(ws, sessionId, data) {
       handleMonitoringDataUpdate(ws, sessionId, data);
       break;
 
+    case 'abort': {
+      // 新语义：仅确认客户端的前端断开请求，不停止服务器端收集器/SSH
+      try {
+        const serverId = data?.payload?.serverId || data?.serverId || data?.hostId || 'unknown';
+        sendMessage(ws, { type: 'abort_ack', data: { serverId, count: 0 } });
+      } catch (error) {
+        handleWebSocketError(error, { sessionId, operation: '处理abort请求' });
+        sendError(ws, '处理取消请求失败', sessionId);
+      }
+      break;
+    }
+
     case 'ping':
       // 处理心跳消息
       sendMessage(ws, {
@@ -501,102 +513,8 @@ function unsubscribeFromServer(frontendSessionId, serverId) {
 
     // 如果没有订阅者了，删除服务器映射并停止SSH监控
     if (subscribedSessions.size === 0) {
+      // 无前端订阅者：仅清理订阅映射，不停止收集器，保持其伴随SSH会话生命周期
       serverSubscriptions.delete(serverId);
-
-      const matchingSessions = findSessionsByServerId(serverId);
-      const targetDescriptor = toHostDescriptor(serverId);
-
-      if (matchingSessions.length === 0) {
-        logger.debug('前端订阅已清空，但未找到对应的活跃SSH会话', {
-          serverId
-        });
-
-        try {
-          const collectors = monitoringBridge.getAllCollectorStatus();
-
-          collectors.forEach((collector) => {
-            const collectorDescriptors = [];
-
-            if (collector.hostId) {
-              const descriptor = toHostDescriptor(collector.hostId);
-              if (descriptor) {
-                collectorDescriptors.push(descriptor);
-              }
-            }
-
-            if (collector.hostInfo) {
-              const hostDescriptor = toHostDescriptor(collector.hostInfo.address);
-              if (hostDescriptor) {
-                collectorDescriptors.push(hostDescriptor);
-              }
-
-              const combinedDescriptor = toHostDescriptor(`${collector.hostInfo.username || ''}@${collector.hostInfo.address}:${collector.hostInfo.port || ''}`);
-              if (combinedDescriptor) {
-                collectorDescriptors.push(combinedDescriptor);
-              }
-            }
-
-            if (targetDescriptor && collectorDescriptors.some((candidate) => descriptorsMatch(targetDescriptor, candidate))) {
-              logger.info('通过监控收集器匹配到遗留SSH会话，准备停止', {
-                serverId,
-                sessionId: collector.sessionId,
-                hostId: collector.hostId
-              });
-
-              const aborted = sessionLifecycle.abort(collector.sessionId, 'frontend_monitor_unsubscribed', {
-                notifyClient: false,
-                closeWebSocket: true,
-                closeCode: 1000,
-                closeReason: 'frontend_monitor_unsubscribed',
-                source: 'monitoring_unsubscribe_fallback'
-              });
-
-              if (!aborted) {
-                monitoringBridge.stopMonitoring(collector.sessionId, 'frontend_monitor_unsubscribed');
-
-                if (ssh.sessions && typeof ssh.sessions.has === 'function' && ssh.sessions.has(collector.sessionId)) {
-                  ssh.cleanupSession(collector.sessionId, 'frontend_monitor_unsubscribed');
-                }
-              }
-            }
-          });
-        } catch (error) {
-          logger.error('通过监控收集器匹配遗留会话失败', {
-            serverId,
-            error: error.message
-          });
-        }
-      }
-
-      matchingSessions.forEach((context) => {
-        logger.info('前端订阅已清空，触发会话取消', {
-          serverId,
-          sessionId: context.sessionId
-        });
-
-        const abortDetail = {
-          notifyClient: false,
-          closeWebSocket: true,
-          closeCode: 1000,
-          closeReason: 'frontend_monitor_unsubscribed',
-          source: 'monitoring_unsubscribe'
-        };
-
-        const aborted = sessionLifecycle.abort(context.sessionId, 'frontend_monitor_unsubscribed', abortDetail);
-
-        if (!aborted) {
-          let handled = false;
-
-          if (ssh.sessions && typeof ssh.sessions.has === 'function' && ssh.sessions.has(context.sessionId)) {
-            ssh.cleanupSession(context.sessionId, 'frontend_monitor_unsubscribed');
-            handled = true;
-          }
-
-          if (!handled) {
-            monitoringBridge.stopMonitoring(context.sessionId, 'frontend_monitor_unsubscribed');
-          }
-        }
-      });
     }
   }
 

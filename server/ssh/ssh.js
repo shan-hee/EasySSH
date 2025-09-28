@@ -1001,16 +1001,38 @@ function handleResize(ws, data) {
  * @param {Object} data 数据
  */
 function handleDisconnect(ws, data) {
-  const { sessionId } = data;
+  // 与Abort语义统一：断开即为abort的一种
+  try {
+    handleAbort(ws, { sessionId: data?.sessionId, reason: 'client_disconnect' });
+  } catch (_) { /* no-op */ }
+}
 
-  if (!sessionId) {
-    return;
-  }
+/**
+ * 处理会话取消/中断
+ * @param {WebSocket} _ws WebSocket连接
+ * @param {Object} data 数据 { sessionId, reason, detail }
+ */
+function handleAbort(_ws, data = {}) {
+  const { sessionId, reason = 'client_abort', detail = {} } = data || {};
+  if (!sessionId) return;
 
-  sessionLifecycle.abort(sessionId, 'client_disconnect', {
+  sessionLifecycle.abort(sessionId, reason, {
     notification: { kind: 'message', type: MSG_TYPE.DISCONNECTED },
-    closeWebSocket: false
+    closeWebSocket: false,
+    ...detail
   });
+}
+
+/**
+ * 统一对外的会话中断入口
+ * @param {string} sessionId
+ * @param {string} reason
+ * @param {Object} detail
+ * @returns {boolean}
+ */
+function abortSession(sessionId, reason = 'server_abort', detail = {}) {
+  if (!sessionId) return false;
+  return sessionLifecycle.abort(sessionId, reason, detail);
 }
 
 /**
@@ -1295,11 +1317,13 @@ module.exports = {
   createSSHConnection,
   sendError,
   cleanupSession,
+  abortSession,
   handleConnect,
   handleData,
   handleDataBinary,
   handleResize,
   handleDisconnect,
+  handleAbort,
   handlePing,
   handleSshExec,
   sendBinaryDataWithStats, // 使用统一的二进制数据发送方法

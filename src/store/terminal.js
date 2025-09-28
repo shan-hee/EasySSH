@@ -818,11 +818,19 @@ export const useTerminalStore = defineStore('terminal', () => {
         return true;
       }
 
-      // 关闭SSH会话
+      // 关闭/中断 SSH 会话
       try {
-        await sshService.closeSession(sessionId);
-        // 避免与 sshService.closeSession 内部相同日志重复
-        log.debug(`SSH会话关闭完成(由store确认): ${sessionId}`);
+        const aborted = sshService.abortSession(sessionId, 'user_close', {
+          source: 'store.disconnectTerminal',
+          terminalId: connectionId
+        });
+
+        if (!aborted) {
+          await sshService.closeSession(sessionId);
+          log.debug(`SSH会话关闭完成(由store确认): ${sessionId}`);
+        } else {
+          log.debug(`SSH会话已通过 abort 请求关闭: ${sessionId}`);
+        }
       } catch (closeError) {
         log.error(`关闭SSH会话失败: ${sessionId}`, closeError);
         // 即使关闭会话失败，也继续清理资源

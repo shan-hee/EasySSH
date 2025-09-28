@@ -26,6 +26,7 @@ const MSG_TYPE = {
   CONNECTED: 'connected',
   CLOSED: 'closed',
   DISCONNECTED: 'disconnected',
+  ABORT: 'abort',
   DATA: 'data',
   PONG: 'pong',
   NETWORK_LATENCY: 'network_latency',
@@ -49,6 +50,7 @@ const BINARY_MSG_TYPE = {
   CONNECTED: 0x09,
   NETWORK_LATENCY: 0x0A,
   STATUS_UPDATE: 0x0B,
+  ABORT: 0x0C,
 
   // SSH终端数据 (0x10-0x1F)
   SSH_DATA: 0x10,           // SSH终端数据传输

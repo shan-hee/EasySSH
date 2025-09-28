@@ -16,6 +16,7 @@ export const MESSAGE_TYPES = {
   CONNECTED: 'connected',
   DISCONNECT: 'disconnect',
   DISCONNECTED: 'disconnected',
+  ABORT: 'abort',
   DATA: 'data',
   ERROR: 'error',
   PING: 'ping',
@@ -61,6 +62,7 @@ export const BINARY_MESSAGE_TYPES = {
   CONNECTED: 0x09,
   NETWORK_LATENCY: 0x0a,
   STATUS_UPDATE: 0x0b,
+  ABORT: 0x0c,
 
   // SSH终端数据 (0x10-0x1F)
   SSH_DATA: 0x10, // SSH终端数据传输
