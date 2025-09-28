@@ -3,7 +3,6 @@
     <div class="connection-header">
       <h1>连接配置</h1>
     </div>
-
     <div class="connection-content">
       <div class="connection-form-container">
         <div class="control-row">
@@ -18,22 +17,17 @@
         <div class="connection-section">
           <h2>我的连接配置</h2>
           <div class="connection-rows">
-            <!-- 加载状态指示器 -->
-            <div v-if="connectionsLoading && !connectionsLoaded" class="loading-indicator">
+            <div v-if="!connectionsLoaded && !connectionsError" class="loading-indicator">
               <div class="loading-spinner" />
-              <span>正在加载连接数据...</span>
-              <span v-if="connectionsRetryCount > 0" class="retry-info">
-                (重试 {{ connectionsRetryCount }}/3)
-              </span>
+              <span>{{ connectionsLoadingMessage }}</span>
             </div>
-            <!-- 错误状态指示器 -->
             <div v-else-if="connectionsError && !connectionsLoaded" class="error-indicator">
               <div class="error-icon">⚠️</div>
               <div class="error-content">
-                <span class="error-message">连接数据加载失败</span>
+                <span class="error-message">{{ connectionsErrorMessage }}</span>
                 <button class="retry-btn" @click="retryLoadConnections">重试</button>
               </div>
-          </div>
+            </div>
           <!-- 连接列表 -->
           <transition-group v-else name="drag" tag="div" class="connection-rows-list">
             <div
@@ -186,19 +180,14 @@
               </svg>
             </button>
           </div>
-          <!-- 历史记录加载状态指示器 -->
-          <div v-if="historyLoading && !historyLoaded" class="loading-indicator">
+          <div v-if="!historyLoaded && !historyError" class="loading-indicator">
             <div class="loading-spinner" />
-            <span>正在加载历史记录...</span>
-            <span v-if="historyRetryCount > 0" class="retry-info">
-              (重试 {{ historyRetryCount }}/3)
-            </span>
+            <span>{{ historyLoadingMessage }}</span>
           </div>
-          <!-- 历史记录错误状态指示器 -->
           <div v-else-if="historyError && !historyLoaded" class="error-indicator">
             <div class="error-icon">⚠️</div>
             <div class="error-content">
-              <span class="error-message">历史记录加载失败</span>
+              <span class="error-message">{{ historyErrorMessage }}</span>
               <button class="retry-btn" @click="retryLoadHistory">重试</button>
             </div>
           </div>
@@ -389,6 +378,8 @@ import { useSessionStore } from '@/store/session';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import settingsService from '@/services/settings';
 import storageAdapter from '@/services/storage-adapter';
+
+let serverSettingsInitialized = false;
 import { Edit, Delete, Connection } from '@element-plus/icons-vue';
 import Modal from '@/components/common/Modal.vue';
 import AddButton from '@/components/common/AddButton.vue';
@@ -439,6 +430,34 @@ export default {
     // 获取历史记录（纯计算）
     const historyConnections = computed(() => {
       return userStore.isLoggedIn ? userStore.historyConnections : localConnectionsStore.getHistory;
+    });
+
+    const connectionsLoadingMessage = computed(() => {
+      const retryCount = userStore.connectionsRetryCount ?? 0;
+      return retryCount > 0
+        ? `正在加载连接数据... (重试 ${retryCount}/3)`
+        : '正在加载连接数据...';
+    });
+
+    const historyLoadingMessage = computed(() => {
+      const retryCount = userStore.historyRetryCount ?? 0;
+      return retryCount > 0
+        ? `正在加载历史记录... (重试 ${retryCount}/3)`
+        : '正在加载历史记录...';
+    });
+
+    const connectionsErrorMessage = computed(() => {
+      const error = userStore.connectionsError;
+      if (!error) return '连接数据加载失败';
+      if (typeof error === 'string') return error;
+      return error.message || '连接数据加载失败';
+    });
+
+    const historyErrorMessage = computed(() => {
+      const error = userStore.historyError;
+      if (!error) return '历史记录加载失败';
+      if (typeof error === 'string') return error;
+      return error.message || '历史记录加载失败';
     });
 
     const isPinned = id => {
@@ -1292,25 +1311,43 @@ export default {
       }
     };
 
+    const initializeServerSettings = async () => {
+      if (serverSettingsInitialized) {
+        return;
+      }
+
+      try {
+        if (!storageAdapter.initialized) {
+          await storageAdapter.init();
+        }
+      } catch (_) {}
+
+      try {
+        serverSettingsInitialized = true;
+        const initialized = await settingsService.init(true);
+        if (initialized && settingsService.hasServerSettings) {
+          log.debug('连接配置页面：已按需聚合拉取服务器设置');
+        }
+      } catch (error) {
+        serverSettingsInitialized = false;
+        log.debug('连接配置页面：服务器设置初始化失败，非阻塞', error);
+      }
+    };
+
     // 组件挂载时并发加载连接/收藏/历史/置顶
     onMounted(async () => {
-      if (userStore.isLoggedIn) {
-        try {
-          await userStore.ensureConnectionsData();
-          log.debug('连接管理页面：连接相关数据并发加载完成');
-        } catch (error) {
-          log.warn('连接管理页面：并发加载连接相关数据失败', error);
-        }
-
-        // 打开“连接配置”页面时，若尚未加载服务器设置，则聚合拉取一次，为SSH登录准备配置
-        try {
-          if (!settingsService.hasServerSettings) {
-            try { await storageAdapter.init(); } catch (_) {}
-            await settingsService.init(true);
-            log.debug('连接配置页面：已按需聚合拉取服务器设置');
-          }
-        } catch (_) {}
+      if (!userStore.isLoggedIn) {
+        return;
       }
+
+      try {
+        await userStore.ensureConnectionsData();
+        log.debug('连接管理页面：连接相关数据并发加载完成');
+      } catch (error) {
+        log.warn('连接管理页面：并发加载连接相关数据失败', error);
+      }
+
+      initializeServerSettings();
     });
 
     return {
@@ -1354,6 +1391,10 @@ export default {
       isEditMode,
       toggleEditMode,
       handleDeleteHistory,
+      connectionsLoadingMessage,
+      historyLoadingMessage,
+      connectionsErrorMessage,
+      historyErrorMessage,
       // 按需加载状态
       connectionsLoading: computed(() => userStore.connectionsLoading),
       connectionsLoaded: computed(() => userStore.connectionsLoaded),
@@ -2103,24 +2144,23 @@ h2 {
   animation-duration: 0.45s !important;
 }
 
-/* 加载指示器样式 */
 .loading-indicator {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 40px 20px;
+  padding: 32px 16px;
+  gap: 12px;
   color: var(--color-text-secondary);
   font-size: 14px;
-  gap: 12px;
 }
 
 .loading-spinner {
   width: 20px;
   height: 20px;
-  border: 2px solid var(--color-border-lighter);
-  border-top: 2px solid var(--color-primary);
   border-radius: 50%;
-  animation: spin 1s linear infinite;
+  border: 2px solid var(--color-border-lighter);
+  border-top-color: var(--color-primary);
+  animation: spin 0.8s linear infinite;
 }
 
 @keyframes spin {
@@ -2132,15 +2172,13 @@ h2 {
   }
 }
 
-/* 错误指示器样式 */
 .error-indicator {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 40px 20px;
-  color: var(--color-danger);
-  font-size: 14px;
+  padding: 32px 16px;
   gap: 12px;
+  color: var(--color-danger);
 }
 
 .error-icon {
@@ -2156,27 +2194,22 @@ h2 {
 
 .error-message {
   color: var(--color-danger);
+  font-size: 14px;
 }
 
 .retry-btn {
   padding: 6px 12px;
-  background-color: var(--color-primary);
-  border: none;
   border-radius: 4px;
-  color: var(--color-text-white);
+  border: none;
   cursor: pointer;
   font-size: 12px;
+  background-color: var(--color-primary);
+  color: var(--color-text-white);
   transition: background-color var(--theme-transition-duration) var(--theme-transition-timing);
 }
 
 .retry-btn:hover {
   background-color: var(--color-primary-hover);
-}
-
-.retry-info {
-  color: var(--color-text-secondary);
-  font-size: 12px;
-  margin-left: 8px;
 }
 
 @media (max-width: 1024px) {

@@ -15,8 +15,6 @@ import { defineComponent, ref } from 'vue';
 import log from '@/services/log';
 import { useTabStore } from '@/store/tab';
 import { useUserStore } from '@/store/user';
-import settingsService from '@/services/settings';
-import storageAdapter from '@/services/storage-adapter';
 
 export default defineComponent({
   name: 'TabAdder',
@@ -37,21 +35,6 @@ export default defineComponent({
     // 添加连接标签
     const addConnectionTab = async () => {
       closeLoginPanel();
-
-      // 打开“连接配置”前获取一次聚合配置，为创建SSH登录做准备
-      if (userStore.isLoggedIn) {
-        try {
-          await storageAdapter.init();
-        } catch (_) {}
-        try {
-          if (!settingsService.hasServerSettings) {
-            await settingsService.init(true);
-            log.debug('已在连接配置入口加载用户配置');
-          }
-        } catch (e) {
-          log.debug('连接配置入口加载配置失败（已忽略）', e?.message || e);
-        }
-      }
 
       tabStore.addNewConnection();
       showPopover.value = false;
