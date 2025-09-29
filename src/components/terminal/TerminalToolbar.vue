@@ -458,14 +458,43 @@ export default defineComponent({
         isAiServiceEnabled.value = !!status.enabled;
         isAiConfigured.value = !!status.hasConfig;
 
+        // 1) 运行态已启用：直接切换面板
         if (isAiServiceEnabled.value) {
-          // 已启用：切换面板
           showAiInput.value = !showAiInput.value;
           emit('toggle-ai-input', showAiInput.value);
           return;
         }
 
-        // 未启用：不再自动启用，提示用户先去设置开启
+        // 2) 运行态未启用但设置标记为启用：
+        //    按需尝试后台初始化；无论初始化是否立即成功，先打开输入面板以符合“已启用可点击弹出”的预期
+        if (aiEnabledSetting.value) {
+          // 先打开面板
+          showAiInput.value = !showAiInput.value;
+          emit('toggle-ai-input', showAiInput.value);
+
+          // 后台尝试启用：优先使用完整前端配置，否则走后端托管配置
+          try {
+            aiInitInProgress.value = true;
+            const cfg = aiService.config?.config || {};
+            const hasEssential = !!(cfg && cfg.apiKey && cfg.model && cfg.baseUrl);
+            if (hasEssential && cfg.enabled !== false) {
+              await aiService.enable(cfg);
+              isAiServiceEnabled.value = true;
+            } else {
+              // 无完整配置时不再拉取 /users/settings?category=ai-config
+              await aiService.enableBackendManaged();
+              isAiServiceEnabled.value = true;
+            }
+          } catch (e) {
+            // 初始化失败时不打断已打开的输入面板，仅提示信息
+            try { ElMessage && ElMessage.info('AI已启用（尚未连接）'); } catch (_) {}
+          } finally {
+            aiInitInProgress.value = false;
+          }
+          return;
+        }
+
+        // 3) 未启用且未配置：提示用户前往连接配置
         showAiTooltip.value = true;
         updateAiTooltipPosition();
         setTimeout(() => {

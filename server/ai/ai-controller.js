@@ -174,7 +174,7 @@ class AIController {
         }
       );
 
-      // 创建OpenAI适配器
+      // 创建OpenAI适配器（后端作为唯一真源：模型/密钥/地址）
       const openaiAdapter = new OpenAIAdapter(apiConfig);
 
       // 创建取消控制器
@@ -186,6 +186,9 @@ class AIController {
       });
 
       // 发送AI请求
+      // 仅允许白名单推理参数从前端透传（允许 model；不允许 baseUrl/apiKey）
+      const safeSettings = this._sanitizeClientSettings(settings);
+
       await this.processAIRequest(
         connectionId,
         requestId,
@@ -193,7 +196,7 @@ class AIController {
         mode,
         processedContext,
         input,
-        settings,
+        safeSettings,
         abortController.signal
       );
 
@@ -204,6 +207,37 @@ class AIController {
       // 清理请求记录
       this.activeRequests.delete(requestId);
     }
+  }
+
+  /**
+   * 过滤客户端设置，仅保留允许的推理参数
+   * - 允许前端提供模型 model
+   * - 禁止覆盖后端 baseUrl/apiKey
+   * - 对传入值做基本范围约束
+   */
+  _sanitizeClientSettings(settings) {
+    const out = { stream: true };
+    if (!settings || typeof settings !== 'object') return out;
+
+    const clamp = (v, min, max) => {
+      if (typeof v !== 'number' || Number.isNaN(v)) return undefined;
+      return Math.min(Math.max(v, min), max);
+    };
+
+    const t = clamp(settings.temperature, 0, 2);
+    if (t !== undefined) out.temperature = t;
+
+    const mt = clamp(settings.maxTokens, 1, 4096);
+    if (mt !== undefined) out.maxTokens = mt;
+
+    // 模型名称（基础校验）
+    if (typeof settings.model === 'string') {
+      const m = settings.model.trim();
+      if (m.length >= 2 && m.length <= 120) out.model = m;
+    }
+
+    // 其余字段忽略（尤其是 baseUrl/apiKey）
+    return out;
   }
 
   /**
@@ -445,14 +479,14 @@ class AIController {
         } else if (chunk.type === 'done') {
           // 请求完成
           tokenUsage = chunk.metadata?.tokens || tokenUsage;
-
+          const modelUsed = (settings && settings.model) ? settings.model : openaiAdapter.model;
           this.sendMessage(connectionId, {
             type: 'ai_done',
             requestId,
             metadata: {
               tokens: tokenUsage,
-              cost: this._estimateCost(tokenUsage, settings.model),
-              model: settings.model || 'gpt-4o-mini',
+              cost: this._estimateCost(tokenUsage, modelUsed),
+              model: modelUsed || 'gpt-4o-mini',
               duration: Date.now() - this.activeRequests.get(requestId)?.startTime || 0,
               contentLength: totalContent.length
             },
@@ -464,7 +498,7 @@ class AIController {
           if (connection) {
             await this.keyVault.updateApiUsageStats(connection.userId, {
               tokens: tokenUsage,
-              cost: this._estimateCost(tokenUsage, settings.model)
+              cost: this._estimateCost(tokenUsage, modelUsed)
             });
           }
 

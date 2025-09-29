@@ -85,6 +85,23 @@ class AIService {
   }
 
   /**
+   * 启用AI服务（后端托管配置模式）
+   * 不校验或下发前端配置，仅建立WS连接并依靠后端KeyVault配置。
+   */
+  async enableBackendManaged() {
+    try {
+      await this.client.connect({});
+      this.isEnabled = true;
+      log.info('AI服务已启用（后端托管配置）');
+      this._notifyStatusChange('enabled');
+      return { success: true };
+    } catch (error) {
+      log.error('启用AI服务失败（后端托管配置）', error);
+      throw error;
+    }
+  }
+
+  /**
    * 禁用AI服务
    */
   async disable() {
@@ -125,6 +142,14 @@ class AIService {
       this.activeRequests.set(requestId, controller);
 
       try {
+        const chatSettings = {
+          temperature: 0.7, // 较高温度，更有创造性
+          maxTokens: 1024, // 较多token，支持详细回答
+          stream: true
+        };
+        const cfgModel = this.config.get('model');
+        if (cfgModel) chatSettings.model = cfgModel;
+
         const result = await this.client.sendRequest(
           {
             type: 'ai_request',
@@ -140,12 +165,7 @@ class AIService {
               osHint: context.osHint || 'unknown',
               shellHint: context.shellHint || 'unknown'
             },
-            settings: {
-              model: this.config.get('model'),
-              temperature: 0.7, // 较高温度，更有创造性
-              maxTokens: 1024, // 较多token，支持详细回答
-              stream: true
-            }
+            settings: chatSettings
           },
           controller.signal
         );
@@ -182,6 +202,14 @@ class AIService {
       this.activeRequests.set(requestId, controller);
 
       try {
+        const agentSettings = {
+          temperature: 0.3, // 较低温度，更准确
+          maxTokens: 512, // 适中token，专注于具体建议
+          stream: true
+        };
+        const cfgModel2 = this.config.get('model');
+        if (cfgModel2) agentSettings.model = cfgModel2;
+
         const result = await this.client.sendRequest(
           {
             type: 'ai_request',
@@ -198,12 +226,7 @@ class AIService {
               shellHint: context.shellHint || 'unknown',
               errorDetected: context.errorDetected || false
             },
-            settings: {
-              model: this.config.get('model'),
-              temperature: 0.3, // 较低温度，更准确
-              maxTokens: 512, // 适中token，专注于具体建议
-              stream: true
-            }
+            settings: agentSettings
           },
           controller.signal
         );

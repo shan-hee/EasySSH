@@ -192,17 +192,21 @@ class SettingsService {
 
           if (resp && resp.success) {
             const minimalTerminal = resp.data?.terminal || {};
-            const aiEnabled = !!(resp.data?.ai && resp.data.ai.enabled);
+            const ai = resp.data?.ai || {};
+            const aiEnabled = !!ai.enabled;
 
             // 合并终端最小配置
             if (Object.keys(minimalTerminal).length > 0) {
               this._mergeSettings(this.settings, { terminal: minimalTerminal });
             }
 
-            // 写入AI启用状态（不引入敏感信息）
+            // 写入AI最小配置（启用位与模型，避免泄露敏感字段）
             try {
               this.settings['ai-config'] = this.settings['ai-config'] || {};
               this.settings['ai-config'].enabled = aiEnabled;
+              if (typeof ai.model === 'string' && ai.model) {
+                this.settings['ai-config'].model = ai.model;
+              }
             } catch (_) {}
 
             this.hasServerSettings = true;
@@ -214,7 +218,8 @@ class SettingsService {
 
             log.debug('最小化设置已从服务器加载', {
               hasTerminalSettings: Object.keys(minimalTerminal).length > 0,
-              aiEnabled
+              aiEnabled,
+              aiHasModel: !!ai.model
             });
           } else {
             throw new Error('最小化接口返回无效');

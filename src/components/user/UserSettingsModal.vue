@@ -1343,7 +1343,7 @@ export default defineComponent({
         loadingFlags.ai = true;
         if (userStore.isLoggedIn) {
           log.debug('按需加载AI设置...');
-          const loadedAi = await aiConfigManager.load();
+          const loadedAi = await aiConfigManager.load({ forceServer: true });
           if (loadedAi && typeof loadedAi === 'object') {
             Object.assign(aiSettings, loadedAi);
             aiSettings.initialized = true;

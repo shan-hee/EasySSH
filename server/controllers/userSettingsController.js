@@ -39,6 +39,7 @@ class UserSettingsController {
 
       let minimalTerminal = {};
       let aiEnabled = false;
+      let aiModel = '';
       // 不附带多余元信息，保持最小化
 
       if (row) {
@@ -57,7 +58,7 @@ class UserSettingsController {
         }
       }
 
-      // 读取AI启用状态（仅返回启用/禁用，不返回其他敏感配置）
+      // 读取AI启用状态与模型（仅返回非敏感字段；不返回baseUrl/apiKey）
       try {
         const aiRow = db
           .prepare(
@@ -67,14 +68,21 @@ class UserSettingsController {
         if (aiRow && aiRow.settings_data) {
           const aiData = JSON.parse(aiRow.settings_data);
           aiEnabled = !!aiData.enabled;
+          if (typeof aiData.model === 'string') aiModel = aiData.model;
         }
       } catch (e) {
         // 出错时默认禁用
         aiEnabled = false;
       }
 
-      // 返回严格受控的数据集
-      return res.json({ success: true, data: { terminal: minimalTerminal, ai: { enabled: aiEnabled } } });
+      // 返回严格受控的数据集（仅启用位与模型名称）
+      return res.json({
+        success: true,
+        data: {
+          terminal: minimalTerminal,
+          ai: { enabled: aiEnabled, model: aiModel }
+        }
+      });
     } catch (error) {
       log.error('获取终端最小设置失败:', error);
       return res.status(500).json({

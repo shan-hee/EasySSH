@@ -14,6 +14,15 @@ class OpenAIAdapter {
     this.apiKey = config.apiKey;
     this.model = config.model; // 移除默认值，要求用户必须提供
     this.timeout = config.timeout || 30000;
+    // 从后端配置提供的默认推理参数
+    this.defaultTemperature =
+      config.temperature === 0 || typeof config.temperature === 'number'
+        ? config.temperature
+        : 0.2;
+    this.defaultMaxTokens =
+      typeof config.maxTokens === 'number' && config.maxTokens > 0
+        ? config.maxTokens
+        : 512;
 
     // 验证必要参数
     if (!this.model) {
@@ -40,13 +49,19 @@ class OpenAIAdapter {
   async *streamChatCompletion(messages, options = {}, signal = null) {
     const url = `${this.baseUrl}/v1/chat/completions`;
 
+    // 不允许外部选项覆盖后端配置的模型，确保使用后端存储的模型
+    const { model: _ignoreModel, ...safeOptions } = options || {};
+
     const requestBody = {
       model: this.model,
       messages,
       stream: true,
-      temperature: options.temperature || 0.2,
-      max_tokens: options.maxTokens || 512,
-      ...options
+      // 使用后端默认值作为兜底，不用 ||，避免 0 被当作 falsy
+      temperature:
+        safeOptions.temperature ?? this.defaultTemperature,
+      max_tokens:
+        safeOptions.maxTokens ?? this.defaultMaxTokens,
+      ...safeOptions
     };
 
     logger.debug('发送OpenAI请求', {

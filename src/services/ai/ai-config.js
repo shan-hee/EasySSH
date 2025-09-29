@@ -57,35 +57,39 @@ class AIConfig {
    * 加载配置
    * @returns {Promise<Object>} 配置对象
    */
-  async load() {
+  async load(options = {}) {
     try {
       // 确保存储服务已初始化
       await this.initStorage();
 
       const userStore = useUserStore();
 
-      // 登录态：优先使用 settingsService 的聚合结果；
-      // 若聚合仅包含最小化状态（如 enabled），则从服务器拉取完整配置
+      // 登录态：设置页可强制从服务器获取完整配置
+      // 非强制场景：先用聚合结果，不完整再按需取服务器
       if (userStore?.isLoggedIn) {
-        try {
-          if (settingsService?.hasServerSettings) {
-            const aggregated = settingsService.settings?.['ai-config'];
-            const hasMinimalOnly =
-              aggregated &&
-              typeof aggregated === 'object' &&
-              !aggregated.apiKey &&
-              !aggregated.model &&
-              !aggregated.baseUrl;
+        const forceServer = options?.forceServer === true;
 
-            if (aggregated && typeof aggregated === 'object' && !hasMinimalOnly) {
-              this.config = this.mergeConfig(this.getDefaultConfig(), aggregated);
-              log.debug('AI配置已从聚合设置加载（完整）');
-              return this.config;
+        if (!forceServer) {
+          try {
+            if (settingsService?.hasServerSettings) {
+              const aggregated = settingsService.settings?.['ai-config'];
+              const hasMinimalOnly =
+                aggregated &&
+                typeof aggregated === 'object' &&
+                !aggregated.apiKey &&
+                !aggregated.model &&
+                !aggregated.baseUrl;
+
+              if (aggregated && typeof aggregated === 'object' && !hasMinimalOnly) {
+                this.config = this.mergeConfig(this.getDefaultConfig(), aggregated);
+                log.debug('AI配置已从聚合设置加载（完整）');
+                return this.config;
+              }
             }
-          }
-        } catch (_) {}
+          } catch (_) {}
+        }
 
-        // 聚合中未提供：按需从服务器获取该分类
+        // 从服务器获取该分类（强制或聚合不完整时）
         try {
           const serverConfig = await storageAdapter.get('ai-config', null);
           if (serverConfig && typeof serverConfig === 'object') {

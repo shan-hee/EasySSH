@@ -4,7 +4,7 @@
  */
 
 const crypto = require('crypto');
-const { getCache } = require('../config/database');
+const { getCache, getDb } = require('../config/database');
 const logger = require('../utils/logger');
 const OpenAIAdapter = require('./openai-adapter');
 
@@ -80,6 +80,49 @@ class KeyVault {
       const stored = this.cache.get(storageKey);
 
       if (!stored) {
+        // 尝试从持久化设置中回退读取（user_settings.ai-config）
+        try {
+          const db = getDb();
+          const row = db
+            .prepare(
+              `SELECT settings_data FROM user_settings WHERE user_id = ? AND category = 'ai-config'`
+            )
+            .get(userId);
+
+          if (row && row.settings_data) {
+            try {
+              const raw = JSON.parse(row.settings_data);
+              // 规范化配置结构，并提供必要的默认值（不覆盖已有字段）
+              const normalized = {
+                provider: raw.provider || 'openai',
+                baseUrl: (raw.baseUrl || 'https://api.openai.com').replace(/\/$/, ''),
+                model: raw.model || 'gpt-4o-mini',
+                temperature: raw.temperature || 0.2,
+                maxTokens: raw.maxTokens || 512,
+                timeout: raw.timeout || 30000,
+                apiKey: raw.apiKey
+              };
+
+              // 验证配置格式
+              if (this._validateApiConfig(normalized)) {
+                // 回写到缓存，提升后续读取性能
+                this.cache.set(storageKey, normalized, 3600);
+                logger.info('已从持久化设置回退加载AI配置', {
+                  userId,
+                  provider: normalized.provider
+                });
+                return normalized;
+              } else {
+                logger.warn('持久化AI配置格式无效，忽略', { userId });
+              }
+            } catch (e) {
+              logger.warn('解析持久化AI配置失败', { userId, error: e.message });
+            }
+          }
+        } catch (e) {
+          logger.warn('回退读取持久化AI配置失败', { userId, error: e.message });
+        }
+
         logger.debug('未找到API配置', { userId });
         return null;
       }

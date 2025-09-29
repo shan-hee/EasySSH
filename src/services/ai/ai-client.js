@@ -4,6 +4,7 @@
  */
 
 import log from '../log';
+import storageService from '../storage';
 
 class AIClient {
   constructor() {
@@ -348,9 +349,22 @@ class AIClient {
    * @returns {string} 用户ID
    */
   getUserId() {
-    // 从localStorage或其他地方获取用户ID
-    const userInfo = JSON.parse(localStorage.getItem('user') || '{}');
-    return userInfo.id || 'anonymous';
+    try {
+      // 优先从统一存储中获取（由 userStore.setUserInfo 写入）
+      const currentUserRaw = storageService.getItem('currentUser', null);
+      if (currentUserRaw) {
+        const u = typeof currentUserRaw === 'string' ? JSON.parse(currentUserRaw) : currentUserRaw;
+        if (u && (u.id || u.userId)) return String(u.id || u.userId);
+      }
+    } catch (_) {}
+
+    try {
+      // 退化读取 localStorage 兼容字段
+      const userInfo = JSON.parse(localStorage.getItem('user') || '{}');
+      if (userInfo && userInfo.id) return String(userInfo.id);
+    } catch (_) {}
+
+    return 'anonymous';
   }
 
   /**
@@ -395,6 +409,11 @@ class AIClient {
     if (!this.connected || !this.config) {
       return;
     }
+
+    // 仅当前端持有完整且有效的配置时才同步到后端，避免用空值覆盖后端已存储的配置
+    const hasFullConfig =
+      this.config.apiKey && this.config.baseUrl && this.config.model;
+    if (!hasFullConfig) return;
 
     try {
       // 发送配置到后端，让后端存储用户的API配置
