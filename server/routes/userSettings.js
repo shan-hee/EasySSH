@@ -13,6 +13,9 @@ router.use(authMiddleware);
 // 获取用户设置
 router.get('/', userSettingsController.getSettings);
 
+// 获取终端初始化所需的最小设置集（严格最小化返回）
+router.get('/terminal/minimal', userSettingsController.getTerminalMinimal);
+
 // 更新用户设置
 router.put('/', userSettingsController.updateSettings);
 

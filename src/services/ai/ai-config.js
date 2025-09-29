@@ -64,14 +64,22 @@ class AIConfig {
 
       const userStore = useUserStore();
 
-      // 登录态：优先使用 settingsService 的聚合结果；若未加载则按需单类拉取（仅在调用时触发）
+      // 登录态：优先使用 settingsService 的聚合结果；
+      // 若聚合仅包含最小化状态（如 enabled），则从服务器拉取完整配置
       if (userStore?.isLoggedIn) {
         try {
           if (settingsService?.hasServerSettings) {
             const aggregated = settingsService.settings?.['ai-config'];
-            if (aggregated && typeof aggregated === 'object') {
+            const hasMinimalOnly =
+              aggregated &&
+              typeof aggregated === 'object' &&
+              !aggregated.apiKey &&
+              !aggregated.model &&
+              !aggregated.baseUrl;
+
+            if (aggregated && typeof aggregated === 'object' && !hasMinimalOnly) {
               this.config = this.mergeConfig(this.getDefaultConfig(), aggregated);
-              log.debug('AI配置已从聚合设置加载');
+              log.debug('AI配置已从聚合设置加载（完整）');
               return this.config;
             }
           }
@@ -89,8 +97,14 @@ class AIConfig {
           log.debug('按需加载AI配置失败，使用默认配置', e?.message);
         }
 
-        // 回退默认
+        // 回退默认，并合并聚合中的最小化字段（如 enabled）
         this.config = this.getDefaultConfig();
+        try {
+          const aggregated = settingsService.settings?.['ai-config'];
+          if (aggregated && typeof aggregated === 'object') {
+            this.config = this.mergeConfig(this.config, aggregated);
+          }
+        } catch (_) {}
         return this.config;
       }
 

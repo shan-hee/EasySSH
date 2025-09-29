@@ -9,6 +9,7 @@ import log from './log';
 import { useUserStore } from '../store/user.js';
 import storageAdapter from './storage-adapter.js';
 import { useTerminalStore } from '../store/terminal';
+import apiService from './api';
 
 const SETTINGS_STORAGE_KEY = 'user_settings';
 
@@ -54,6 +55,9 @@ class SettingsService {
     // 日志脱敏配置
     this._sensitiveCategories = new Set(['ai-config']);
     this._sensitiveFields = new Set(['apiKey']);
+
+    // 登录/存储模式事件监听标志
+    this._authListenersSetup = false;
   }
 
   /**
@@ -99,6 +103,7 @@ class SettingsService {
         if (!this.isInitialized) {
           this._setupSystemThemeListener();
           this._setupAutoSave();
+          this._setupAuthListeners();
         }
 
         this.isInitialized = true;
@@ -130,6 +135,35 @@ class SettingsService {
   }
 
   /**
+   * 监听登录与存储模式变化，在登录完成后拉取最小化终端设置
+   * @private
+   */
+  _setupAuthListeners() {
+    if (this._authListenersSetup) return;
+    try {
+      // 登录成功后，强制重新初始化以触发最小化接口拉取
+      window.addEventListener('auth:login-success', async () => {
+        try {
+          await this.init(true);
+        } catch (_) {}
+      });
+
+      // 存储模式切换为 server 时也刷新一次
+      window.addEventListener('storage-mode-changed', async (e) => {
+        try {
+          const mode = e?.detail?.mode;
+          if (mode === 'server') {
+            await this.init(true);
+          }
+        } catch (_) {}
+      });
+      this._authListenersSetup = true;
+    } catch (_) {
+      // 忽略监听器设置失败
+    }
+  }
+
+  /**
    * 从存储加载设置
    * @private
    */
@@ -148,48 +182,71 @@ class SettingsService {
       const userStore = useUserStore();
 
       if (userStore.isLoggedIn) {
-        // 登录状态：按分类逐个获取（显式排除 ai-config，避免首屏拉取敏感配置）
+        // 登录状态：使用最小化接口，避免多拿数据
         try {
-          let serverSettings = {};
+          const resp = await apiService.get(
+            '/users/settings/terminal/minimal',
+            {},
+            { useCache: false }
+          );
 
-          const categories = [
-            'terminal',
-            'connection',
-            'editor',
-            'advanced',
-            'monitoring'
-            // 注意：不在应用启动阶段加载 'ai-config'，改为在连接配置页按需加载
-          ];
-          for (const category of categories) {
-            try {
-              const categoryData = await storageAdapter.get(category, null);
-              if (categoryData) {
-                serverSettings[category] = categoryData;
-              }
-            } catch (error) {
-              log.warn(`从服务器加载${category}设置失败:`, error);
+          if (resp && resp.success) {
+            const minimalTerminal = resp.data?.terminal || {};
+            const aiEnabled = !!(resp.data?.ai && resp.data.ai.enabled);
+
+            // 合并终端最小配置
+            if (Object.keys(minimalTerminal).length > 0) {
+              this._mergeSettings(this.settings, { terminal: minimalTerminal });
             }
-          }
 
-          if (serverSettings && Object.keys(serverSettings).length > 0) {
-            log.debug('设置已从服务器加载', {
-              loadedCategories: Object.keys(serverSettings),
-              hasTerminalSettings: !!serverSettings.terminal,
-              hasConnectionSettings: !!serverSettings.connection
-            });
+            // 写入AI启用状态（不引入敏感信息）
+            try {
+              this.settings['ai-config'] = this.settings['ai-config'] || {};
+              this.settings['ai-config'].enabled = aiEnabled;
+            } catch (_) {}
 
-            // 深度合并服务器设置，保留默认值
-            this._mergeSettings(this.settings, serverSettings);
             this.hasServerSettings = true;
-            // 标记已加载的分类
+            // 标记已加载的分类（仅标记terminal，ai-config不标记为完整加载）
             try {
               if (!this.loadedCategories) this.loadedCategories = new Set();
-              Object.keys(serverSettings).forEach(c => this.loadedCategories.add(c));
+              this.loadedCategories.add('terminal');
             } catch (_) {}
+
+            log.debug('最小化设置已从服务器加载', {
+              hasTerminalSettings: Object.keys(minimalTerminal).length > 0,
+              aiEnabled
+            });
+          } else {
+            throw new Error('最小化接口返回无效');
           }
         } catch (error) {
-          log.warn('从服务器加载设置失败，回退到本地存储:', error);
-          this.hasServerSettings = false;
+          // 回退：如最小化接口异常，仍按旧逻辑尝试分类拉取
+          log.warn('最小化设置接口失败，回退到分类加载：', error);
+          try {
+            let serverSettings = {};
+            const categories = ['terminal', 'connection', 'editor', 'advanced', 'monitoring'];
+            for (const category of categories) {
+              try {
+                const categoryData = await storageAdapter.get(category, null);
+                if (categoryData) {
+                  serverSettings[category] = categoryData;
+                }
+              } catch (e) {
+                log.warn(`从服务器加载${category}设置失败:`, e);
+              }
+            }
+            if (serverSettings && Object.keys(serverSettings).length > 0) {
+              this._mergeSettings(this.settings, serverSettings);
+              this.hasServerSettings = true;
+              try {
+                if (!this.loadedCategories) this.loadedCategories = new Set();
+                Object.keys(serverSettings).forEach(c => this.loadedCategories.add(c));
+              } catch (_) {}
+            }
+          } catch (e) {
+            log.warn('从服务器加载设置失败，回退到本地存储:', e);
+            this.hasServerSettings = false;
+          }
         }
       }
 

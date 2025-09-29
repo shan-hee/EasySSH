@@ -63,10 +63,10 @@
         <div
           ref="aiButtonRef"
           class="icon-button ai-button"
-          :class="{ 'icon-available': isAiServiceEnabled || isAiConfigured }"
+          :class="{ 'icon-available': isAiServiceEnabled || isAiConfigured || aiEnabledSetting }"
           @click.stop="handleAiClick()"
         >
-          <toolbar-icon name="ai" :class="{ 'icon-active': isAiServiceEnabled }" />
+          <toolbar-icon name="ai" :class="{ 'icon-active': isAiActive }" />
         </div>
 
         
@@ -176,6 +176,7 @@ import { useTerminalStore } from '../../store/terminal';
 import { LATENCY_EVENTS } from '../../services/constants';
 import log from '../../services/log';
 import aiService from '../../services/ai/ai-service.js';
+import settingsService from '../../services/settings';
 
 // ToolbarMonitoring 组件已移除，监控数据现在通过专用的监控面板显示
 
@@ -230,7 +231,8 @@ export default defineComponent({
     // AI面板显示状态（仅控制面板开关，不影响图标激活色）
     // 默认关闭；图标激活色由 isAiServiceEnabled 决定
     const showAiInput = ref(false);
-    const isAiServiceEnabled = ref(false); // AI服务是否启用
+    const isAiServiceEnabled = ref(false); // AI服务是否启用（运行态）
+    const aiEnabledSetting = ref(false); // 来自最小化设置接口的启用标志
     const isAiConfigured = ref(false); // 是否存在有效AI配置
     const aiInitInProgress = ref(false); // AI服务是否正在按需初始化
     const aiButtonRef = ref(null);
@@ -449,6 +451,8 @@ export default defineComponent({
     // 切换AI输入框显示状态
     const handleAiClick = async () => {
       try {
+        // 每次点击前同步一次最小化启用标志，避免状态陈旧
+        syncAiEnabledFromSettings();
         // 使用现有状态（已在 onMounted 中 soft 初始化）
         const status = aiService.getStatus?.() || {};
         isAiServiceEnabled.value = !!status.enabled;
@@ -478,10 +482,25 @@ export default defineComponent({
     // 获取AI助手tooltip文本
     const getAiTooltipText = () => {
       if (aiInitInProgress.value) return '正在初始化AI...';
+      // 如果运行态未启用，但设置标记启用，则提示已启用但未连接
+      if (!isAiServiceEnabled.value && aiEnabledSetting.value) return 'AI已启用（尚未连接）';
       if (!isAiServiceEnabled.value)
         return isAiConfigured.value ? 'AI已配置未启用，请在连接配置开启' : '未配置AI助手';
       return 'AI助手';
     };
+
+    // 由设置服务同步AI启用标志（最小化接口回填）
+    const syncAiEnabledFromSettings = () => {
+      try {
+        const flag = settingsService?.get('ai-config.enabled', false);
+        aiEnabledSetting.value = !!flag;
+      } catch (_) {
+        aiEnabledSetting.value = false;
+      }
+    };
+
+    // 计算图标激活状态：运行态启用 或 设置标记启用
+    const isAiActive = computed(() => !!(isAiServiceEnabled.value || aiEnabledSetting.value));
 
     // 切换监控面板
     const toggleMonitoringPanel = () => {
@@ -1470,6 +1489,9 @@ export default defineComponent({
       window.removeEventListener('resize', updateSftpTooltipPosition);
       window.removeEventListener('resize', handleResize);
 
+      // 移除设置就绪事件监听
+      try { window.removeEventListener('settings:ready', syncAiEnabledFromSettings); } catch (_) {}
+
       // 移除新会话事件监听
       window.removeEventListener('terminal:new-session', handleNewSession);
 
@@ -1493,12 +1515,14 @@ export default defineComponent({
 
     // 在onMounted中添加事件监听
     onMounted(async () => {
-      // 预读取AI配置：若配置为启用状态且配置完整，自动对齐运行态（连接后端），确保图标激活
+      // 预读取AI配置（软加载）：避免在创建连接时发起服务器请求
+      // 仅使用已聚合到 settingsService 的最小化/已加载数据
       let cfg = null;
       try {
         if (!window._aiConfigPrefetched) {
           await aiService.config?.initStorage?.();
-          cfg = await aiService.config?.load?.();
+          // 使用软加载：不触发服务器拉取完整 ai-config
+          cfg = await aiService.config?.loadSoft?.();
           window._aiConfigPrefetched = true;
         } else {
           cfg = aiService.config?.config || {};
@@ -1554,6 +1578,13 @@ export default defineComponent({
       checkMonitoringServiceStatus();
       // 立即检查AI服务状态
       checkAiServiceStatus();
+      // 从设置服务同步AI启用标志（最小化接口结果）
+      syncAiEnabledFromSettings();
+
+      // 监听设置服务就绪事件（登录后会触发），再次同步一次
+      try {
+        window.addEventListener('settings:ready', syncAiEnabledFromSettings);
+      } catch (_) {}
 
       // 确保工具栏状态严格隔离，避免状态意外共享
       applyInitialStatus();
@@ -1703,6 +1734,9 @@ export default defineComponent({
       handleAiClick,
       getAiTooltipText,
         isAiServiceEnabled,
+        isAiActive,
+        aiEnabledSetting,
+        isAiConfigured,
         aiInitInProgress,
         aiButtonRef,
         showAiTooltip,

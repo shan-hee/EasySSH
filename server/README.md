@@ -307,6 +307,34 @@ const connectDatabase = () => {
 
 ## 服务层实现
 
+## User Settings API（用户设置接口）
+
+为满足“最小化数据获取”的要求，新增了一个仅用于终端初始化场景的最小设置接口：
+
+- GET `/api/users/settings/terminal/minimal`
+  - 说明：仅返回创建终端会话必需的用户终端设置字段，并包含 AI 启用状态；避免多拿数据。
+  - 鉴权：需要登录（与其它设置接口一致）。
+  - 返回结构：
+    - `data.terminal`: 严格白名单的终端字段：`fontFamily`, `fontSize`, `lineHeight`, `cursorStyle`, `cursorBlink`, `scrollback`, `rendererType`, `fallbackRenderer`, `copyOnSelect`, `rightClickSelectsWord`, `theme`
+    - `data.ai.enabled`: 布尔值，仅表示 AI 启用/禁用（无敏感字段）
+  - 响应示例：
+  ```json
+  {
+    "success": true,
+    "data": {
+      "terminal": {
+        "fontFamily": "'JetBrains Mono'",
+        "fontSize": 16,
+        "cursorStyle": "block",
+        "cursorBlink": true,
+        "theme": "dark"
+      },
+      "ai": { "enabled": false }
+    }
+  }
+  ```
+
+
 ### 用户服务
 
 ```javascript

@@ -8,6 +8,83 @@ const log = require('../utils/logger');
 
 class UserSettingsController {
   /**
+   * 获取用于终端初始化的最小设置集
+   * 仅返回创建终端会话所需字段，避免多拿数据
+   * GET /api/users/settings/terminal/minimal
+   */
+  async getTerminalMinimal(req, res) {
+    try {
+      const userId = req.user.id;
+      const db = getDb();
+
+      // 允许返回的白名单字段（严格控制）
+      const ALLOWED_KEYS = new Set([
+        'fontFamily',
+        'fontSize',
+        'lineHeight',
+        'cursorStyle',
+        'cursorBlink',
+        'scrollback',
+        'rendererType',
+        'fallbackRenderer',
+        'copyOnSelect',
+        'rightClickSelectsWord',
+        'theme'
+      ]);
+
+      const row = db.prepare(
+        `SELECT settings_data, version, server_timestamp, updated_at
+         FROM user_settings WHERE user_id = ? AND category = 'terminal'`
+      ).get(userId);
+
+      let minimalTerminal = {};
+      let aiEnabled = false;
+      // 不附带多余元信息，保持最小化
+
+      if (row) {
+        try {
+          const data = JSON.parse(row.settings_data || '{}');
+          // 仅挑选白名单字段
+          for (const key of Object.keys(data)) {
+            if (ALLOWED_KEYS.has(key)) {
+              minimalTerminal[key] = data[key];
+            }
+          }
+          // 忽略版本与时间戳等元数据
+        } catch (e) {
+          // 数据不合法时返回空对象，由前端使用默认值
+          log.warn('解析终端设置失败，返回默认空对象');
+        }
+      }
+
+      // 读取AI启用状态（仅返回启用/禁用，不返回其他敏感配置）
+      try {
+        const aiRow = db
+          .prepare(
+            `SELECT settings_data FROM user_settings WHERE user_id = ? AND category = 'ai-config'`
+          )
+          .get(userId);
+        if (aiRow && aiRow.settings_data) {
+          const aiData = JSON.parse(aiRow.settings_data);
+          aiEnabled = !!aiData.enabled;
+        }
+      } catch (e) {
+        // 出错时默认禁用
+        aiEnabled = false;
+      }
+
+      // 返回严格受控的数据集
+      return res.json({ success: true, data: { terminal: minimalTerminal, ai: { enabled: aiEnabled } } });
+    } catch (error) {
+      log.error('获取终端最小设置失败:', error);
+      return res.status(500).json({
+        success: false,
+        message: '获取终端设置失败',
+        error: error.message
+      });
+    }
+  }
+  /**
    * 获取用户设置
    * GET /api/users/settings
    */
