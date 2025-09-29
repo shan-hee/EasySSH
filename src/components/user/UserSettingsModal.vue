@@ -114,6 +114,15 @@
 
       <!-- 右侧内容区域 -->
       <div class="settings-content">
+        <!-- 通用加载指示器：仅当当前面板处于加载中时展示 -->
+        <div v-if="isPanelLoading" class="content-panel">
+          <div class="panel-body" style="display:flex;align-items:center;justify-content:center;min-height:200px;">
+            <div class="loading-indicator" style="display:flex;align-items:center;gap:8px;">
+              <span class="btn-loading" />
+              <span>加载中...</span>
+            </div>
+          </div>
+        </div>
         <!-- 账户设置面板 -->
         <div v-if="activeMenu === 'account'" class="content-panel">
           <div class="panel-body">
@@ -214,7 +223,7 @@
         </div>
 
         <!-- 终端设置面板 -->
-        <div v-if="activeMenu === 'terminal'" class="content-panel">
+        <div v-if="activeMenu === 'terminal' && !isPanelLoading" class="content-panel">
           <div class="panel-body">
             <!-- 渲染器类型 -->
             <div class="security-item">
@@ -531,7 +540,7 @@
         </div>
 
         <!-- 连接设置面板 -->
-        <div v-if="activeMenu === 'connection'" class="content-panel">
+        <div v-if="activeMenu === 'connection' && !isPanelLoading" class="content-panel">
           <div class="panel-body">
             <div class="settings-section">
               <!-- 自动重连 -->
@@ -656,7 +665,7 @@
         </div>
 
         <!-- 监控设置面板 -->
-        <div v-if="activeMenu === 'monitoring'" class="content-panel">
+        <div v-if="activeMenu === 'monitoring' && !isPanelLoading" class="content-panel">
           <div class="panel-body">
             <div class="settings-section">
               <!-- 更新间隔 -->
@@ -682,7 +691,7 @@
         </div>
 
         <!-- AI智能助手设置面板 -->
-        <div v-if="activeMenu === 'ai'" class="content-panel">
+        <div v-if="activeMenu === 'ai' && !isPanelLoading" class="content-panel">
           <div class="panel-body">
             <div class="settings-section">
               <!-- AI功能总开关 -->
@@ -1082,43 +1091,18 @@ export default defineComponent({
       };
     });
 
-    // 初始化数据（已登录时从服务器加载设置）
+    // 初始化数据（延迟加载：仅在点击对应菜单时拉取该分类）
     const initializeData = async () => {
       accountForm.value.username = userStore.username || '';
       securityForm.value.mfaEnabled = userStore.userInfo.mfaEnabled || false;
 
-      // 如果已登录，先确保服务器设置已加载
+      // 仅初始化存储与本地UI，不预拉取服务器设置
       if (userStore.isLoggedIn) {
-        try { 
-          await storageAdapter.init(); 
-        } catch (_) {}
+        try { await storageAdapter.init(); } catch (_) {}
         try {
-          // 无条件初始化设置服务，确保首次打开时也能加载设置
-          await settingsService.init(true);
-          // 统一应用到各目标对象
-          settingsService.applyToTargets({
-            connection: connectionSettings,
-            terminal: terminalSettings,
-            monitoring: monitoringSettings,
-            'ai-config': aiSettings
-          });
-          // 显式按需加载 AI 配置，确保设置面板显示真实配置（包括 apiKey 值）
-          try {
-            const loadedAi = await aiConfigManager.load();
-            if (loadedAi && typeof loadedAi === 'object') {
-              Object.assign(aiSettings, loadedAi);
-              aiSettings.initialized = true;
-              log.debug('AI配置已按需加载到设置面板（仅用于编辑显示）', {
-                hasApiKey: !!aiSettings.apiKey,
-                baseUrl: aiSettings.baseUrl,
-                model: aiSettings.model
-              });
-            }
-          } catch (e) {
-            // 加载失败不阻塞其他设置的展示
-            log.warn('按需加载AI配置失败（设置面板）', e);
+          if (!settingsService.isInitialized) {
+            await settingsService.initLocalOnly();
           }
-          detectCurrentRenderer();
         } catch (_) {}
       }
 
@@ -1130,142 +1114,254 @@ export default defineComponent({
           canReadServer,
           hasServerSettings: settingsService.hasServerSettings 
         });
-
-        // 初始化终端设置 - 从服务器获取
-        try {
-          if (canReadServer) {
-            log.debug('开始加载终端设置...');
-            const savedTerminalSettings = await storageAdapter.get('terminal', {
-              fontSize: 16,
-              fontFamily: "'JetBrains Mono'",
-              theme: 'dark',
-              cursorStyle: 'block',
-              cursorBlink: true,
-              copyOnSelect: false,
-              rightClickSelectsWord: false,
-              rendererType: 'auto'
-            });
-
-            if (savedTerminalSettings) {
-              Object.assign(terminalSettings, savedTerminalSettings);
-              if (!terminalSettings.rendererType) terminalSettings.rendererType = 'auto';
-              terminalSettings.initialized = true;
-              log.debug('终端设置已从服务器加载');
-            }
-          } else {
-            log.debug('未登录，使用默认终端设置');
-          }
-        } catch (error) {
-          log.error('加载终端设置失败:', error);
-        }
-
-        // 初始化连接设置 - 从服务器获取
-        try {
-          if (canReadServer) {
-            log.debug('开始加载连接设置...');
-            const savedConnectionSettings = await storageAdapter.get('connection', {
-              autoReconnect: true,
-              reconnectInterval: 3,
-              connectionTimeout: 10,
-              keepAlive: true,
-              keepAliveInterval: 30
-            });
-
-            if (savedConnectionSettings) {
-              Object.assign(connectionSettings, savedConnectionSettings);
-              connectionSettings.initialized = true;
-              log.debug('连接设置已从服务器加载');
-            }
-          } else {
-            log.debug('未登录，使用默认连接设置');
-          }
-        } catch (error) {
-          log.error('加载连接设置失败:', error);
-        }
-
-        // 初始化监控设置 - 从服务器获取
-        try {
-          if (canReadServer) {
-            log.debug('开始加载监控设置...');
-            const savedMonitoringSettings = await storageAdapter.get('monitoring', {
-              updateInterval: 1000
-            });
-
-            if (savedMonitoringSettings) {
-              Object.assign(monitoringSettings, savedMonitoringSettings);
-              monitoringSettings.initialized = true;
-              log.debug('监控设置已从服务器加载');
-            }
-          } else {
-            log.debug('未登录，使用默认监控设置');
-          }
-        } catch (error) {
-          log.error('加载监控设置失败:', error);
-        }
-        // 初始化终端背景设置 - 从服务器获取
-        try {
-          // 先尝试迁移旧数据
-          const oldBgSettings = localStorage.getItem('easyssh_terminal_bg');
-          if (oldBgSettings) {
-            try {
-              const parsedOldSettings = JSON.parse(oldBgSettings);
-              await storageAdapter.set('terminal.background', parsedOldSettings);
-              localStorage.removeItem('easyssh_terminal_bg');
-              log.info('终端背景设置已迁移到统一存储服务');
-            } catch (e) {
-              log.warn('迁移终端背景设置失败:', e);
-            }
-          }
-
-          // 加载设置
-          if (canReadServer) {
-            log.debug('开始加载终端背景设置...');
-            const savedBgSettings = await storageAdapter.get('terminal.background', {
-              enabled: false,
-              url: '',
-              opacity: 0.5,
-              mode: 'cover'
-            });
-
-            if (savedBgSettings) {
-              Object.assign(terminalBgSettings, savedBgSettings);
-              terminalBgSettings.initialized = true;
-              log.debug('终端背景设置已从服务器加载');
-            }
-          } else {
-            log.debug('未登录，使用默认终端背景设置');
-          }
-        } catch (error) {
-          log.error('加载终端背景设置失败:', error);
-        }
-
-        // 初始化快捷键设置
-        loadShortcuts();
-
-        // 初始化AI设置 - 从存储中加载已保存的配置
-        try {
-          if (canReadServer) {
-            log.debug('开始加载AI设置...');
-            if (settingsService.hasServerSettings) {
-              const loadedConfig = await aiConfigManager.load();
-              if (loadedConfig) {
-                Object.assign(aiSettings, loadedConfig);
-                aiSettings.initialized = true;
-                log.debug('AI设置已从聚合加载');
-              }
-            }
-          } else {
-            log.debug('未登录，使用默认AI设置');
-          }
-        } catch (error) {
-          log.error('初始化AI设置失败:', error);
-        }
+        // 延迟加载：此处不加载任何分类，等用户点击对应菜单后再按需加载
       } catch (error) {
         log.error('初始化设置失败:', error);
       }
 
       // 初始化时检测当前渲染器
       detectCurrentRenderer();
+    };
+
+    // 延迟加载标记
+    const loadedFlags = reactive({
+      terminal: false,
+      connection: false,
+      monitoring: false,
+      terminalBg: false,
+      ai: false
+    });
+
+    // 通用加载指示器状态
+    const loadingFlags = reactive({
+      terminal: false,
+      terminalBg: false,
+      connection: false,
+      monitoring: false,
+      ai: false
+    });
+
+    const isPanelLoading = computed(() => {
+      switch (activeMenu.value) {
+        case 'terminal':
+          return (
+            loadingFlags.terminal ||
+            loadingFlags.terminalBg ||
+            !loadedFlags.terminal ||
+            !loadedFlags.terminalBg
+          );
+        case 'connection':
+          return loadingFlags.connection || !loadedFlags.connection;
+        case 'monitoring':
+          return loadingFlags.monitoring || !loadedFlags.monitoring;
+        case 'ai':
+          return loadingFlags.ai || !loadedFlags.ai;
+        default:
+          return false;
+      }
+    });
+
+    // 按需加载：终端设置
+    const ensureTerminalLoaded = async () => {
+      if (loadedFlags.terminal) return;
+      try {
+        loadingFlags.terminal = true;
+        if (userStore.isLoggedIn) {
+          if (settingsService.hasServerSettings && settingsService.isCategoryLoaded?.('terminal')) {
+            settingsService.applyToTargets({ terminal: terminalSettings });
+            terminalSettings.initialized = true;
+            log.debug('终端设置已从聚合应用（按需加载）');
+          } else {
+            log.debug('按需加载终端设置...');
+            // 完全使用返回的数据：不在返回前填充默认值
+            const data = await storageAdapter.get('terminal', null);
+            settingsService.pauseAutoSave?.();
+            try {
+              if (data && typeof data === 'object') {
+                Object.assign(settingsService.settings.terminal, data);
+              }
+              // 标记分类已加载
+              try {
+                if (!settingsService.loadedCategories) settingsService.loadedCategories = new Set();
+                settingsService.loadedCategories.add('terminal');
+                settingsService.hasServerSettings = true;
+              } catch (_) {}
+            } finally {
+              settingsService.resumeAutoSave?.();
+            }
+            if (data && typeof data === 'object') {
+              Object.assign(terminalSettings, settingsService.settings.terminal);
+            }
+            terminalSettings.initialized = true;
+            log.debug('终端设置按需加载完成');
+          }
+        } else {
+          log.debug('未登录，使用默认终端设置');
+          terminalSettings.initialized = true;
+        }
+      } catch (e) {
+        log.error('按需加载终端设置失败:', e);
+      } finally {
+        loadedFlags.terminal = true;
+        loadingFlags.terminal = false;
+        // 更新渲染器展示
+        detectCurrentRenderer();
+      }
+    };
+
+    // 按需加载：终端背景
+    const ensureTerminalBgLoaded = async () => {
+      if (loadedFlags.terminalBg) return;
+      try {
+        loadingFlags.terminalBg = true;
+        // 迁移旧数据（若存在）
+        const oldBgSettings = localStorage.getItem('easyssh_terminal_bg');
+        if (oldBgSettings) {
+          try {
+            const parsedOldSettings = JSON.parse(oldBgSettings);
+            await storageAdapter.set('terminal.background', parsedOldSettings);
+            localStorage.removeItem('easyssh_terminal_bg');
+            log.info('终端背景设置已迁移到统一存储服务');
+          } catch (e) {
+            log.warn('迁移终端背景设置失败:', e);
+          }
+        }
+
+        if (userStore.isLoggedIn) {
+          log.debug('按需加载终端背景设置...');
+          const bg = await storageAdapter.get('terminal.background', null);
+          if (bg && typeof bg === 'object') {
+            Object.assign(terminalBgSettings, bg);
+            terminalBgSettings.initialized = true;
+            updateCssVariables();
+            log.debug('终端背景设置按需加载完成');
+          }
+        } else {
+          log.debug('未登录，使用默认终端背景设置');
+        }
+      } catch (e) {
+        log.error('按需加载终端背景设置失败:', e);
+      } finally {
+        loadedFlags.terminalBg = true;
+        loadingFlags.terminalBg = false;
+      }
+    };
+
+    // 按需加载：连接设置
+    const ensureConnectionLoaded = async () => {
+      if (loadedFlags.connection) return;
+      try {
+        loadingFlags.connection = true;
+        if (userStore.isLoggedIn) {
+          if (settingsService.hasServerSettings && settingsService.isCategoryLoaded?.('connection')) {
+            settingsService.applyToTargets({ connection: connectionSettings });
+            connectionSettings.initialized = true;
+            log.debug('连接设置已从聚合应用（按需加载）');
+          } else {
+            log.debug('按需加载连接设置...');
+            // 完全使用返回的数据
+            const data = await storageAdapter.get('connection', null);
+            settingsService.pauseAutoSave?.();
+            try {
+              if (data && typeof data === 'object') {
+                Object.assign(settingsService.settings.connection, data);
+              }
+              try {
+                if (!settingsService.loadedCategories) settingsService.loadedCategories = new Set();
+                settingsService.loadedCategories.add('connection');
+                settingsService.hasServerSettings = true;
+              } catch (_) {}
+            } finally {
+              settingsService.resumeAutoSave?.();
+            }
+            if (data && typeof data === 'object') {
+              Object.assign(connectionSettings, settingsService.settings.connection);
+            }
+            connectionSettings.initialized = true;
+            log.debug('连接设置按需加载完成');
+          }
+        } else {
+          log.debug('未登录，使用默认连接设置');
+          connectionSettings.initialized = true;
+        }
+      } catch (e) {
+        log.error('按需加载连接设置失败:', e);
+      } finally {
+        loadedFlags.connection = true;
+        loadingFlags.connection = false;
+      }
+    };
+
+    // 按需加载：监控设置
+    const ensureMonitoringLoaded = async () => {
+      if (loadedFlags.monitoring) return;
+      try {
+        loadingFlags.monitoring = true;
+        if (userStore.isLoggedIn) {
+          if (settingsService.hasServerSettings && settingsService.isCategoryLoaded?.('monitoring')) {
+            settingsService.applyToTargets({ monitoring: monitoringSettings });
+            monitoringSettings.initialized = true;
+            log.debug('监控设置已从聚合应用（按需加载）');
+          } else {
+            log.debug('按需加载监控设置...');
+            const data = await storageAdapter.get('monitoring', null);
+            settingsService.pauseAutoSave?.();
+            try {
+              if (data && typeof data === 'object') {
+                Object.assign(settingsService.settings.monitoring, data);
+              }
+              try {
+                if (!settingsService.loadedCategories) settingsService.loadedCategories = new Set();
+                settingsService.loadedCategories.add('monitoring');
+                settingsService.hasServerSettings = true;
+              } catch (_) {}
+            } finally {
+              settingsService.resumeAutoSave?.();
+            }
+            if (data && typeof data === 'object') {
+              Object.assign(monitoringSettings, settingsService.settings.monitoring);
+            }
+            monitoringSettings.initialized = true;
+            log.debug('监控设置按需加载完成');
+          }
+        } else {
+          log.debug('未登录，使用默认监控设置');
+          monitoringSettings.initialized = true;
+        }
+      } catch (e) {
+        log.error('按需加载监控设置失败:', e);
+      } finally {
+        loadedFlags.monitoring = true;
+        loadingFlags.monitoring = false;
+      }
+    };
+
+    // 按需加载：AI 设置
+    const ensureAiLoaded = async () => {
+      if (loadedFlags.ai) return;
+      try {
+        loadingFlags.ai = true;
+        if (userStore.isLoggedIn) {
+          log.debug('按需加载AI设置...');
+          const loadedAi = await aiConfigManager.load();
+          if (loadedAi && typeof loadedAi === 'object') {
+            Object.assign(aiSettings, loadedAi);
+            aiSettings.initialized = true;
+            log.debug('AI设置按需加载完成', {
+              hasApiKey: !!aiSettings.apiKey,
+              baseUrl: aiSettings.baseUrl,
+              model: aiSettings.model
+            });
+          }
+        } else {
+          log.debug('未登录，使用默认AI设置');
+        }
+      } catch (e) {
+        log.error('按需加载AI设置失败:', e);
+      } finally {
+        loadedFlags.ai = true;
+        loadingFlags.ai = false;
+      }
     };
 
     // 更新账户信息
@@ -2122,6 +2218,7 @@ export default defineComponent({
         if (newVal) {
           initializeData();
           activeMenu.value = 'account'; // 默认显示账户设置
+          // 不预拉取任何设置，等待用户点击具体菜单
         }
       }
     );
@@ -2146,9 +2243,40 @@ export default defineComponent({
       });
     });
 
+    // 监听菜单切换，按需加载对应分类
+    watch(
+      () => activeMenu.value,
+      async newVal => {
+        if (!isVisible.value) return;
+        try {
+          switch (newVal) {
+            case 'terminal':
+              await ensureTerminalLoaded();
+              await ensureTerminalBgLoaded();
+              loadShortcuts();
+              break;
+            case 'connection':
+              await ensureConnectionLoaded();
+              break;
+            case 'monitoring':
+              await ensureMonitoringLoaded();
+              break;
+            case 'ai':
+              await ensureAiLoaded();
+              break;
+            default:
+              break;
+          }
+        } catch (e) {
+          log.error('按需加载分类失败:', e);
+        }
+      }
+    );
+
     return {
       isVisible,
       activeMenu,
+      isPanelLoading,
       isLoading,
       userStore,
       accountForm,
