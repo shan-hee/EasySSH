@@ -11,7 +11,6 @@
           <toolbar-icon name="file-manager" :class="{ 'icon-active': isSshConnected }" />
         </div>
 
-        <!-- 使用teleport将tooltip内容传送到body中 -->
         <teleport to="body">
           <div
             v-if="!isSshConnected && showSftpTooltip"
@@ -22,7 +21,6 @@
           >
             SSH连接后才能使用
           </div>
-          <!-- 添加已连接状态的tooltip -->
           <div
             v-if="isSshConnected && showConnectedSftpTooltip"
             class="sftp-tooltip"
@@ -68,15 +66,11 @@
           :class="{ 'icon-available': isAiServiceEnabled }"
           @click.stop="handleAiClick()"
         >
-          <!-- 图标激活态取决于AI功能是否启用，而非面板是否打开 -->
           <toolbar-icon name="ai" :class="{ 'icon-active': isAiServiceEnabled }" />
         </div>
 
-        <!-- 工具栏监控显示已移除，监控数据现在通过专用的监控面板显示 -->
-
-        <!-- 使用teleport将监控工具提示内容传送到body中 -->
+        
         <teleport to="body">
-          <!-- 未登录状态提示 -->
           <div
             v-if="!isLoggedIn && showMonitorTooltip"
             class="sftp-tooltip"
@@ -87,7 +81,6 @@
             登录后启用
           </div>
 
-          <!-- 已登录且已安装监控服务提示 -->
           <div
             v-else-if="isLoggedIn && monitoringServiceInstalled && showMonitorTooltip"
             class="sftp-tooltip"
@@ -98,7 +91,6 @@
             查看系统监控
           </div>
 
-          <!-- 已登录但监控服务未连接提示 - SSH集成版 -->
           <div
             v-else-if="isLoggedIn && !monitoringServiceInstalled && showMonitorTooltip"
             class="sftp-tooltip"
@@ -110,7 +102,6 @@
           </div>
         </teleport>
 
-        <!-- AI助手tooltip -->
         <teleport to="body">
           <div
             v-if="showAiTooltip"
@@ -125,7 +116,6 @@
       </div>
     </div>
 
-    <!-- 网络状态弹窗 -->
     <teleport to="body">
       <div
         v-if="showNetworkPopup"

@@ -1,13 +1,14 @@
 <template>
-  <transition name="modal-fade">
-    <div v-if="visible" class="modal-overlay" @click="handleOverlayClick">
-      <div class="modal-container" :class="customClass" :style="modalStyle" @click.stop>
-        <div class="modal-header">
+  <teleport to="body">
+    <transition name="modal-fade">
+      <div v-if="visible" class="modal-overlay" @click="handleOverlayClick">
+        <div class="modal-container" :class="customClass" :style="modalStyle" @click.stop>
+          <div class="modal-header">
           <span class="modal-title">{{ title }}</span>
           <span class="close-btn" @click="handleClose">&times;</span>
-        </div>
+          </div>
 
-        <div v-if="tabs && tabs.length" class="modal-tab">
+          <div v-if="tabs && tabs.length" class="modal-tab">
           <div
             v-for="tab in tabs"
             :key="tab"
@@ -17,13 +18,13 @@
           >
             {{ tab }}
           </div>
-        </div>
+          </div>
 
-        <div class="modal-body">
+          <div class="modal-body">
           <slot />
-        </div>
+          </div>
 
-        <div v-if="!hideFooter" class="modal-footer">
+          <div v-if="!hideFooter" class="modal-footer">
           <template v-if="buttons">
             <button
               v-for="button in buttons"
@@ -38,10 +39,11 @@
             <button class="btn modal-btn btn-cancel" @click="handleClose">取消</button>
             <button class="btn modal-btn btn-confirm" @click="handleConfirm">确定</button>
           </template>
+          </div>
         </div>
       </div>
-    </div>
-  </transition>
+    </transition>
+  </teleport>
 </template>
 
 <script>
@@ -212,7 +214,7 @@ export default defineComponent({
   display: flex;
   justify-content: center;
   align-items: center;
-  z-index: var(--z-overlay, 9990);
+  z-index: 10050; /* 高于全局消息，避免被遮挡 */
 }
 
 .modal-container {
@@ -226,6 +228,18 @@ export default defineComponent({
   flex-direction: column;
   /* 默认限制高度，防止超出可视区 */
   max-height: var(--modal-max-height, 90vh);
+}
+
+/* 统一系统风格：20px 包围弹窗（与连接/脚本等保持一致） */
+.modal-container.ai-modal {
+  padding: 20px;
+}
+.modal-container.ai-modal .modal-header,
+.modal-container.ai-modal .modal-footer {
+  padding: 0;
+}
+.modal-container.ai-modal .modal-body {
+  margin-top: 0;
 }
 
 .modal-header {

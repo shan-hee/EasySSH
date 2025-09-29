@@ -20,7 +20,7 @@
     </button>
 
     <!-- 编辑按钮 -->
-    <button class="ai-action-btn ai-action-edit" title="编辑命令" @click="handleEdit">
+    <button class="ai-action-btn ai-action-edit" title="编辑命令" @click="openEditModal">
       <svg viewBox="0 0 24 24" width="14" height="14">
         <path
           fill="currentColor"
@@ -31,7 +31,7 @@
     </button>
 
     <!-- 添加到脚本库按钮 -->
-    <button class="ai-action-btn ai-action-save" title="添加到脚本库" @click="handleAddToScripts">
+    <button class="ai-action-btn ai-action-save" title="添加到脚本库" @click="openSaveModal">
       <svg viewBox="0 0 24 24" width="14" height="14">
         <path
           fill="currentColor"
@@ -52,14 +52,67 @@
       <span v-if="!isMobile">复制</span>
     </button>
   </div>
-</template>
+
+  <!-- 编辑命令弹窗（统一Modal风格） -->
+  <Modal
+    :visible="showEditModal"
+    title="命令编辑器"
+    :width="640"
+    :maxWidth="'92vw'"
+    :maxHeight="'85vh'"
+    customClass="ai-modal"
+    @update:visible="val => (showEditModal = val)"
+  >
+    <div>
+      <label class="ai-save-label" for="ai-edit-input">命令内容：</label>
+      <textarea
+        id="ai-edit-input"
+        class="ai-save-textarea"
+        v-model="editValue"
+        rows="10"
+        placeholder="请输入命令..."
+      />
+    </div>
+
+    <template #footer>
+      <button class="btn modal-btn btn-cancel" @click="showEditModal = false">取消</button>
+      <button class="btn modal-btn btn-confirm" @click="confirmEdit">确定</button>
+    </template>
+  </Modal>
+
+  <!-- 保存到脚本库弹窗（统一Modal风格） -->
+  <Modal
+    :visible="showSaveModal"
+    title="添加到脚本库"
+    :width="640"
+    :maxWidth="'92vw'"
+    :maxHeight="'80vh'"
+    customClass="ai-modal"
+    @update:visible="val => (showSaveModal = val)"
+  >
+    <div class="ai-save-dialog">
+      <label class="ai-save-label" for="save-name">脚本名称：</label>
+      <input id="save-name" v-model="saveName" class="ai-save-input" type="text" />
+      <label class="ai-save-label" for="save-desc">脚本描述：</label>
+      <textarea id="save-desc" v-model="saveDescription" class="ai-save-textarea" rows="4" />
+      <label class="ai-save-label" for="save-tags">标签（逗号分隔）：</label>
+      <input id="save-tags" v-model="saveTags" class="ai-save-input" type="text" placeholder="例：ssh, network, deploy" />
+    </div>
+
+    <template #footer>
+      <button class="btn modal-btn btn-cancel" @click="showSaveModal = false">取消</button>
+      <button class="btn modal-btn btn-confirm" @click="confirmSave">添加</button>
+    </template>
+  </Modal>
+  </template>
 
 <script setup>
-import { computed } from 'vue';
-import { ElMessage, ElMessageBox } from 'element-plus';
+import { computed, ref } from 'vue';
+import { ElMessage } from 'element-plus';
 import scriptLibraryService from '../../services/scriptLibrary.js';
 import { validateCommand } from '../../services/ai/ai-message-parser.js';
 import log from '@/services/log';
+import Modal from '@/components/common/Modal.vue';
 
 // Props
 const props = defineProps({
@@ -130,100 +183,74 @@ const handleExecute = async () => {
   ElMessage.success('命令已发送到终端');
 };
 
-const handleEdit = async () => {
-  try {
-    const { value: editedCommand } = await ElMessageBox.prompt('编辑命令：', '命令编辑器', {
-      confirmButtonText: '确定',
-      cancelButtonText: '取消',
-      inputValue: props.command,
-      inputType: 'textarea',
-      inputPlaceholder: '请输入命令...',
-      inputValidator: value => {
-        if (!value || !value.trim()) {
-          return '命令不能为空';
-        }
-        return true;
-      }
-    });
+// 保存弹窗 + 标签输入；编辑弹窗使用自定义 Modal
+const showSaveModal = ref(false);
+const showEditModal = ref(false);
+const saveName = ref('');
+const saveDescription = ref('');
+const saveTags = ref('');
+const editValue = ref('');
 
-    if (editedCommand && editedCommand.trim() !== props.command) {
-      emit('edit', editedCommand.trim());
-      ElMessage.success('命令已更新');
-    }
-  } catch {
-    // 用户取消编辑
-  }
+const openEditModal = () => {
+  editValue.value = props.command;
+  showEditModal.value = true;
 };
 
-const handleAddToScripts = async () => {
-  try {
-    // 生成默认脚本名称和描述
-    const defaultName = generateScriptName();
-    const defaultDescription = `从AI助手添加的${props.language}脚本`;
+const confirmEdit = () => {
+  const value = (editValue.value || '').trim();
+  if (!value) {
+    ElMessage.error('命令不能为空');
+    return;
+  }
+  if (value !== props.command) {
+    emit('edit', value);
+    ElMessage.success('命令已更新');
+  }
+  showEditModal.value = false;
+};
 
-    // 弹出对话框让用户输入脚本信息
-    const { value: scriptInfo } = await ElMessageBox.prompt(
-      `
-        <div style="text-align: left;">
-          <p><strong>脚本名称：</strong></p>
-          <input type="text" id="script-name" value="${defaultName}" style="width: 100%; margin-bottom: 10px; padding: 5px; border: 1px solid #ddd; border-radius: 4px;" />
-          <p><strong>脚本描述：</strong></p>
-          <textarea id="script-description" style="width: 100%; height: 60px; padding: 5px; border: 1px solid #ddd; border-radius: 4px; resize: vertical;">${defaultDescription}</textarea>
-        </div>
-      `,
-      '添加到脚本库',
-      {
-        confirmButtonText: '添加',
-        cancelButtonText: '取消',
-        dangerouslyUseHTMLString: true,
-        beforeClose: (action, instance, done) => {
-          if (action === 'confirm') {
-            const name = document.getElementById('script-name')?.value?.trim();
-            const description = document.getElementById('script-description')?.value?.trim();
+const openSaveModal = () => {
+  saveName.value = generateScriptName();
+  saveDescription.value = `从AI助手添加的${props.language}脚本`;
+  saveTags.value = `ai, ${props.language}`;
+  showSaveModal.value = true;
+};
 
-            if (!name) {
-              ElMessage.error('脚本名称不能为空');
-              return;
-            }
+const confirmSave = () => {
+  const name = (saveName.value || '').trim();
+  const description = (saveDescription.value || '').trim();
+  if (!name) {
+    ElMessage.error('脚本名称不能为空');
+    return;
+  }
 
-            instance.inputValue = { name, description };
-          }
-          done();
-        }
-      }
-    );
+  // 解析标签（逗号/中文逗号分隔），与默认标签去重合并
+  const parsedTags = (saveTags.value || '')
+    .split(/[,，]/)
+    .map(s => s.trim())
+    .filter(Boolean);
+  const defaultTags = ['ai', props.language].filter(Boolean);
+  const tags = Array.from(new Set([...defaultTags, ...parsedTags]));
 
-    if (scriptInfo) {
-      const { name, description } = scriptInfo;
+  const scriptData = {
+    name,
+    description,
+    command: props.command,
+    language: props.language,
+    category: 'ai-generated',
+    tags,
+    source: 'ai-assistant',
+    createdAt: new Date(),
+    updatedAt: new Date()
+  };
 
-      // 创建脚本数据
-      const scriptData = {
-        name: name || defaultName,
-        description: description || defaultDescription,
-        command: props.command,
-        language: props.language,
-        category: 'ai-generated',
-        tags: ['ai', props.language],
-        source: 'ai-assistant',
-        createdAt: new Date(),
-        updatedAt: new Date()
-      };
-
-      // 添加到脚本库
-      const newScript = scriptLibraryService.addUserScript(scriptData);
-
-      if (newScript) {
-        emit('add-to-scripts', scriptData);
-        ElMessage.success(`脚本 "${name}" 已添加到脚本库`);
-      } else {
-        ElMessage.error('添加脚本失败');
-      }
-    }
-  } catch (error) {
-    if (error !== 'cancel') {
-      ElMessage.error('添加脚本时发生错误');
-      log.error('添加脚本错误', error);
-    }
+  const newScript = scriptLibraryService.addUserScript(scriptData);
+  if (newScript) {
+    emit('add-to-scripts', scriptData);
+    ElMessage.success(`脚本 "${name}" 已添加到脚本库`);
+    showSaveModal.value = false;
+  } else {
+    ElMessage.error('添加脚本失败');
   }
 };
 
@@ -395,5 +422,31 @@ const generateScriptName = () => {
   background: var(--color-bg-hover-dark);
   color: var(--color-text-primary-dark);
   border-color: var(--color-border-hover-dark);
+}
+
+/* 统一风格的表单控件（在自定义 Modal 内） */
+.ai-save-label {
+  display: block;
+  margin: 8px 0 6px;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-regular);
+}
+
+.ai-save-input,
+.ai-save-textarea {
+  width: 100%;
+  padding: 8px 10px;
+  background-color: var(--color-bg-muted);
+  border: 1px solid var(--color-border-default);
+  border-radius: 6px;
+  color: var(--color-text-primary);
+  outline: none;
+}
+
+.ai-save-input:hover,
+.ai-save-textarea:hover,
+.ai-save-input:focus,
+.ai-save-textarea:focus {
+  border-color: var(--color-primary);
 }
 </style>

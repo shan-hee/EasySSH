@@ -28,6 +28,8 @@
 @import './components/forms.css';
 @import './components/accessibility.css';
 @import './components/mfa-modals.css';
+@import './components/ai-panel.css';
+@import './components/ai-message.css';
 
 /* Element Plus 数字类控件的等宽数字优化 */
 @layer utilities {
@@ -199,6 +201,55 @@
   --el-button-hover-bg-color: var(--btn-primary-hover-bg);
   --el-button-hover-border-color: var(--btn-primary-hover-bg);
   --el-button-hover-text-color: var(--btn-primary-text);
+}
+
+/* MessageBox input styles (prompt) */
+.el-overlay .el-message-box__input .el-input__wrapper,
+.el-overlay .el-message-box__input .el-textarea__inner {
+  background-color: var(--color-bg-muted);
+  border: 1px solid var(--color-border-default);
+  border-radius: 6px;
+  box-shadow: none !important;
+  color: var(--color-text-primary);
+}
+
+.el-overlay .el-message-box__input .el-input__wrapper.is-focus,
+.el-overlay .el-message-box__input .el-input__wrapper:hover,
+.el-overlay .el-message-box__input .el-textarea__inner:focus {
+  border-color: var(--color-primary);
+  box-shadow: none !important;
+}
+
+/* Custom AI save dialog fields (inside MessageBox) */
+.el-overlay .el-message-box .ai-save-dialog {
+  text-align: left;
+}
+.el-overlay .el-message-box .ai-save-label {
+  display: block;
+  margin: 8px 0 6px;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-regular);
+}
+.el-overlay .el-message-box .ai-save-input,
+.el-overlay .el-message-box .ai-save-textarea {
+  width: 100%;
+  padding: 8px 10px;
+  background-color: var(--color-bg-muted);
+  border: 1px solid var(--color-border-default);
+  border-radius: 6px;
+  color: var(--color-text-primary);
+  outline: none;
+  box-shadow: none;
+}
+.el-overlay .el-message-box .ai-save-textarea {
+  min-height: 72px;
+  resize: vertical;
+}
+.el-overlay .el-message-box .ai-save-input:hover,
+.el-overlay .el-message-box .ai-save-textarea:hover,
+.el-overlay .el-message-box .ai-save-input:focus,
+.el-overlay .el-message-box .ai-save-textarea:focus {
+  border-color: var(--color-primary);
 }
 
 /* Inputs/Selects inside dialogs: always show a real border (not only on focus) */

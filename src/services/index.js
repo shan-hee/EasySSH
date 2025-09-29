@@ -56,12 +56,8 @@ async function initServices() {
         servicesStatus.storage = true;
       })(),
       (async () => {
-        // 仅本地初始化UI设置，不触发服务器请求
-        if (typeof settings.initLocalOnly === 'function') {
-          await settings.initLocalOnly();
-        } else {
-          await settings.init();
-        }
+        // 加载服务器侧设置（含 ai-config 聚合），确保 AI 状态及时同步
+        await settings.init();
         servicesStatus.settings = true;
       })()
     ];

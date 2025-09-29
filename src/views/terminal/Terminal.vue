@@ -1,8 +1,6 @@
 <template>
   <div class="terminal-container theme-transition">
-    <!-- 多终端容器 - 每个终端都有自己的容器，通过z-index和opacity控制显示/隐藏 -->
     <div class="terminals-wrapper theme-transition">
-      <!-- 为每个终端创建独立容器 -->
       <div
         v-for="termId in terminalIds"
         :key="termId"
@@ -13,7 +11,6 @@
         }"
         :style="getTerminalStyle(termId)"
       >
-        <!-- 为每个终端添加独立的加载动画 -->
         <div
           v-show="shouldShowTerminalConnectingAnimation(termId)"
           class="connecting-overlay"
@@ -25,7 +22,6 @@
           />
         </div>
 
-        <!-- 为每个终端添加独立的工具栏 -->
         <div class="terminal-individual-toolbar">
           <terminal-toolbar
             :has-background="terminalHasBackground"
@@ -36,9 +32,7 @@
           />
         </div>
 
-        <!-- 终端主体区域：监控面板 + 终端内容 + AI输入栏 -->
         <div class="terminal-main-area">
-          <!-- 桌面端监控面板 - 左侧 -->
           <transition name="monitoring-toggle" appear :css="!isTabSwitching">
             <div
               v-show="shouldShowDesktopMonitoringPanel(termId) && isActiveTerminal(termId)"
@@ -53,12 +47,10 @@
             </div>
           </transition>
 
-          <!-- 右侧内容区域：终端 + AI面板 + AI输入栏 -->
           <div
             class="terminal-right-area"
             :class="{ 'with-monitoring-panel': shouldShowDesktopMonitoringPanel(termId) }"
           >
-            <!-- 终端内容区域 -->
             <div class="terminal-content-padding theme-transition">
               <div
                 :ref="el => setTerminalRef(el, termId)"
@@ -67,8 +59,7 @@
               />
             </div>
 
-            <!-- AI合并面板 - 包含交互面板和输入栏 -->
-            <transition name="ai-combined-toggle" appear>
+            <transition name="ai-combined-toggle" appear :css="!isTabSwitching">
               <div
                 v-if="shouldShowAICombinedPanel(termId) && isActiveTerminal(termId)"
                 class="terminal-ai-combined-area theme-transition"
@@ -80,6 +71,7 @@
                   :max-height="getAIPanelMaxHeight()"
                   :is-mobile="isMobile()"
                   :is-streaming="getAIStreamingState(termId)"
+                  :disable-animation="isTabSwitching"
                   :ai-service="getAIService()"
                   @ai-response="handleAIResponse"
                   @ai-streaming="handleAIStreaming"
@@ -99,7 +91,6 @@
           </div>
         </div>
 
-        <!-- 移动端监控抽屉 -->
         <mobile-monitoring-drawer
           :visible="shouldShowMobileMonitoringDrawer(termId) && isActiveTerminal(termId)"
           :monitoring-data="getMonitoringData(termId)"
@@ -110,7 +101,6 @@
       </div>
     </div>
 
-    <!-- 终端自动完成组件 -->
     <terminal-autocomplete
       ref="autocompleteRef"
       :visible="autocomplete.visible"

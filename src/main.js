@@ -11,7 +11,7 @@ import './components/sftp/styles/sftp-panel.css';
 
 // 导入服务初始化模块
 import { initializeServices } from '../scripts/services';
-import servicesManager from './services';
+import servicesManager, { initServices as initCoreServices } from './services';
 // 导入日志服务
 import log from './services/log';
 // 导入字体加载器
@@ -168,6 +168,19 @@ ensureElementPlusReady().then(() => {
     observer.observe(document.body, { childList: true, subtree: true });
   } catch (_) {
     // 忽略消息限制设置失败，避免影响应用
+  }
+  // 启动UI服务（键盘、无障碍等）
+  try {
+    initializeServices();
+  } catch (e) {
+    log.warn('初始化UI服务失败（可忽略）', e);
+  }
+
+  // 启动核心服务（含AI服务、设置聚合等）
+  try {
+    initCoreServices();
+  } catch (e) {
+    log.error('初始化核心服务失败', e);
   }
 });
 

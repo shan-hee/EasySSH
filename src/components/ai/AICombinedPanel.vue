@@ -113,7 +113,8 @@
         'ai-panel-visible': isPanelExpanded,
         'ai-panel-expanded': isPanelExpanded,
         'ai-panel-dark': isDarkTheme,
-        'ai-panel-streaming': isStreaming
+        'ai-panel-streaming': isStreaming,
+        'ai-no-anim': disableAnimation
       }"
       :style="panelStyle"
     >
@@ -216,6 +217,10 @@ const props = defineProps({
     default: false
   },
   isStreaming: {
+    type: Boolean,
+    default: false
+  },
+  disableAnimation: {
     type: Boolean,
     default: false
   },
@@ -780,7 +785,7 @@ defineExpose({
   display: flex;
   flex-direction: column;
   background: transparent;
-  border-top: 1px solid var(--color-border-default);
+  border-top: none; /* 避免与外层 .terminal-ai-combined-area 的顶边框重复 */
   border-radius: 8px 8px 0 0;
   transition:
     border-color 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94),
@@ -989,18 +994,26 @@ defineExpose({
   order: 1; /* 交互面板在上方 */
   height: 0;
   opacity: 0;
+  transform: translateY(12px);
   transition:
     background-color 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94),
     border-color 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94),
     color 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94),
     box-shadow 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94),
-    opacity 0.3s ease,
-    height 0.3s ease;
+    opacity var(--transition-slow),
+    height var(--transition-slow),
+    transform var(--transition-slow);
 }
 
 .ai-interaction-section.ai-panel-expanded {
   opacity: 1;
   height: auto;
+  transform: translateY(0);
+}
+
+/* 禁用动画（与监控面板在切换页签时的行为一致） */
+.ai-interaction-section.ai-no-anim {
+  transition: none !important;
 }
 
 /* 面板头部和控制按钮样式已在全局ai-panel.css中定义 */
