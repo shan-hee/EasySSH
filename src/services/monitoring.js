@@ -247,6 +247,8 @@ class MonitoringInstance {
           break;
         case 'session_created':
         case 'subscribe_ack':
+        case 'abort_ack':
+        case 'unsubscribe_ack':
         case 'monitoring_data_updated':
         case 'ping':
         case 'pong':
