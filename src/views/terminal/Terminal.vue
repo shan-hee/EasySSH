@@ -1088,16 +1088,16 @@ export default {
         window.services.keyboardManager.on('action', handleKeyboardAction);
       }
 
-      // 监听服务就绪事件，以便在服务加载后绑定
-      window.addEventListener(
-        'services:ready',
-        () => {
-          if (window.services?.keyboardManager) {
-            window.services.keyboardManager.on('action', handleKeyboardAction);
-          }
-        },
-        { once: true }
-      );
+      // 监听 UI 服务就绪事件，以便在服务加载后绑定（优先 ui-services:ready，回退 services:ready）
+      const bindKeyboardOnReady = () => {
+        if (window.services?.keyboardManager) {
+          window.services.keyboardManager.on('action', handleKeyboardAction);
+          window.removeEventListener('ui-services:ready', bindKeyboardOnReady, { capture: false });
+          window.removeEventListener('services:ready', bindKeyboardOnReady, { capture: false });
+        }
+      };
+      window.addEventListener('ui-services:ready', bindKeyboardOnReady, { once: true });
+      window.addEventListener('services:ready', bindKeyboardOnReady, { once: true });
     };
 
     // 移除外部工具栏事件监听

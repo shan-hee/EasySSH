@@ -386,6 +386,7 @@ import AddButton from '@/components/common/AddButton.vue';
 import SearchInput from '@/components/common/SearchInput.vue';
 import Checkbox from '@/components/common/Checkbox.vue';
 import log from '@/services/log';
+import aiService from '@/services/ai/ai-service';
 
 export default {
   name: 'NewConnection',
@@ -1312,9 +1313,7 @@ export default {
     };
 
     const initializeServerSettings = async () => {
-      if (serverSettingsInitialized) {
-        return;
-      }
+      if (serverSettingsInitialized) return;
 
       try {
         if (!storageAdapter.initialized) {
@@ -1324,9 +1323,14 @@ export default {
 
       try {
         serverSettingsInitialized = true;
-        const initialized = await settingsService.init(true);
-        if (initialized && settingsService.hasServerSettings) {
-          log.debug('连接配置页面：已按需聚合拉取服务器设置');
+        // 避免重复请求：若启动阶段已初始化，则不再强制刷新
+        if (!settingsService.isInitialized) {
+          const initialized = await settingsService.init();
+          if (initialized && settingsService.hasServerSettings) {
+            log.debug('连接配置页面：已加载服务器设置');
+          }
+        } else {
+          log.debug('连接配置页面：复用已初始化的设置，不再二次请求');
         }
       } catch (error) {
         serverSettingsInitialized = false;

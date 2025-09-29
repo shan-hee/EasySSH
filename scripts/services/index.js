@@ -63,10 +63,10 @@ async function initializeServices() {
     // 注册到全局对象
     window.services = services;
 
-    // 发布services就绪事件，包含初始化状态
-    window.dispatchEvent(new CustomEvent('services:ready', {
-      detail: { status: { ...servicesState } }
-    }));
+    // 发布 UI 服务就绪事件（更加语义化），并保留原 services:ready 兼容
+    const detail = { status: { ...servicesState } };
+    window.dispatchEvent(new CustomEvent('ui-services:ready', { detail }));
+    window.dispatchEvent(new CustomEvent('services:ready', { detail }));
 
     log.debug('UI服务初始化完成');
     return Object.values(servicesState).every(status => status === true);

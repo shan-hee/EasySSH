@@ -26,11 +26,17 @@ class AIService {
 
   /**
    * 初始化AI服务
+   * @param {Object} options 可选项 { soft?: boolean }
    */
-  async init() {
+  async init(options = {}) {
     try {
-      // 只在这里加载配置，避免重复请求
-      await this.loadConfig();
+      const soft = options?.soft === true;
+      // 只在这里加载配置，避免重复请求；soft模式下不连接后端
+      if (soft) {
+        await this.loadConfigSoft();
+      } else {
+        await this.loadConfig();
+      }
 
       // 添加存储模式变化监听器
       this.setupStorageModeListener();
@@ -373,6 +379,27 @@ class AIService {
   }
 
   /**
+   * 软加载配置：不进行任何网络连接到AI后端，不自动启用
+   */
+  async loadConfigSoft() {
+    try {
+      await this.config.initStorage();
+      if (typeof this.config.loadSoft === 'function') {
+        await this.config.loadSoft();
+      } else {
+        // 回退：正常load但不自动enable（避免启用）
+        const cfg = await this.config.load();
+        // 显式不自动开启
+        if (cfg && cfg.enabled) {
+          log.debug('软加载模式：检测到已启用配置，但不自动连接');
+        }
+      }
+    } catch (error) {
+      log.warn('软加载AI配置失败', error);
+    }
+  }
+
+  /**
    * 设置存储模式变化监听器
    */
   setupStorageModeListener() {
@@ -458,6 +485,7 @@ class AIService {
       enabled: this.isEnabled,
       connected: this.client.isConnected(),
       activeRequests: this.activeRequests.size,
+      hasConfig: this.hasValidConfig(),
       config: this.config.getSafeConfig() // 不包含敏感信息的配置
     };
   }
@@ -477,6 +505,40 @@ class AIService {
       log.debug('AI服务状态变化通知已发送', { status });
     } catch (error) {
       log.error('发送AI服务状态变化通知失败', error);
+    }
+  }
+
+  /**
+   * 是否存在有效配置（不泄露敏感信息，仅做基本校验）
+   */
+  hasValidConfig() {
+    try {
+      const cfg = this.config?.config || {};
+      if (!cfg.baseUrl || !cfg.apiKey || !cfg.model) return false;
+      try {
+        new URL(cfg.baseUrl);
+      } catch {
+        return false;
+      }
+      if (typeof cfg.apiKey !== 'string' || cfg.apiKey.length < 10) return false;
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /**
+   * 确保已连接到AI后端（在已启用前提下）
+   */
+  async ensureConnected() {
+    if (!this.isEnabled) return false;
+    if (this.client.isConnected()) return true;
+    try {
+      await this.client.connect(this.config.config);
+      return true;
+    } catch (e) {
+      log.warn('确保AI连接失败', e);
+      return false;
     }
   }
 

@@ -63,7 +63,7 @@
         <div
           ref="aiButtonRef"
           class="icon-button ai-button"
-          :class="{ 'icon-available': isAiServiceEnabled }"
+          :class="{ 'icon-available': isAiServiceEnabled || isAiConfigured }"
           @click.stop="handleAiClick()"
         >
           <toolbar-icon name="ai" :class="{ 'icon-active': isAiServiceEnabled }" />
@@ -231,6 +231,8 @@ export default defineComponent({
     // 默认关闭；图标激活色由 isAiServiceEnabled 决定
     const showAiInput = ref(false);
     const isAiServiceEnabled = ref(false); // AI服务是否启用
+    const isAiConfigured = ref(false); // 是否存在有效AI配置
+    const aiInitInProgress = ref(false); // AI服务是否正在按需初始化
     const aiButtonRef = ref(null);
     const showAiTooltip = ref(false);
     const aiTooltipHover = ref(false);
@@ -445,16 +447,39 @@ export default defineComponent({
     };
 
     // 切换AI输入框显示状态
-    const handleAiClick = () => {
-      showAiInput.value = !showAiInput.value;
-      emit('toggle-ai-input', showAiInput.value);
+    const handleAiClick = async () => {
+      try {
+        // 使用现有状态（已在 onMounted 中 soft 初始化）
+        const status = aiService.getStatus?.() || {};
+        isAiServiceEnabled.value = !!status.enabled;
+        isAiConfigured.value = !!status.hasConfig;
+
+        if (isAiServiceEnabled.value) {
+          // 已启用：切换面板
+          showAiInput.value = !showAiInput.value;
+          emit('toggle-ai-input', showAiInput.value);
+          return;
+        }
+
+        // 未启用：不再自动启用，提示用户先去设置开启
+        showAiTooltip.value = true;
+        updateAiTooltipPosition();
+        setTimeout(() => {
+          if (!aiTooltipHover.value) showAiTooltip.value = false;
+        }, 1200);
+
+        const text = isAiConfigured.value
+          ? 'AI已配置但未启用，请在连接配置中开启'
+          : '未配置AI助手，请在连接配置中进行设置';
+        ElMessage && ElMessage.info(text);
+      } catch (_) {}
     };
 
     // 获取AI助手tooltip文本
     const getAiTooltipText = () => {
-      if (!isAiServiceEnabled.value) {
-        return '未启用AI助手';
-      }
+      if (aiInitInProgress.value) return '正在初始化AI...';
+      if (!isAiServiceEnabled.value)
+        return isAiConfigured.value ? 'AI已配置未启用，请在连接配置开启' : '未配置AI助手';
       return 'AI助手';
     };
 
@@ -860,11 +885,16 @@ export default defineComponent({
     // 检查AI服务状态
     const checkAiServiceStatus = () => {
       try {
-        isAiServiceEnabled.value = aiService.isEnabled || false;
-        log.debug(`[${componentInstanceId}] AI服务状态检查: ${isAiServiceEnabled.value}`);
+        const status = aiService.getStatus?.() || { enabled: aiService.isEnabled };
+        isAiServiceEnabled.value = !!status.enabled;
+        isAiConfigured.value = !!status.hasConfig;
+        log.debug(
+          `[${componentInstanceId}] AI服务状态检查: enabled=${isAiServiceEnabled.value}, configured=${isAiConfigured.value}`
+        );
       } catch (error) {
         log.warn('检查AI服务状态失败:', error);
         isAiServiceEnabled.value = false;
+        isAiConfigured.value = false;
       }
     };
 
@@ -1462,7 +1492,37 @@ export default defineComponent({
     });
 
     // 在onMounted中添加事件监听
-    onMounted(() => {
+    onMounted(async () => {
+      // 预读取AI配置：若配置为启用状态且配置完整，自动对齐运行态（连接后端），确保图标激活
+      let cfg = null;
+      try {
+        if (!window._aiConfigPrefetched) {
+          await aiService.config?.initStorage?.();
+          cfg = await aiService.config?.load?.();
+          window._aiConfigPrefetched = true;
+        } else {
+          cfg = aiService.config?.config || {};
+        }
+        isAiConfigured.value = !!(cfg && cfg.apiKey && cfg.model);
+      } catch (_) {
+        // 忽略配置预取失败，保持默认状态
+      }
+
+      // 若配置标记已启用且运行态尚未启用，则按配置启用（会建立AI连接）
+      try {
+        if (cfg && cfg.enabled && !aiService.isEnabled && isAiConfigured.value) {
+          await aiService.enable(cfg);
+        }
+      } catch (e) {
+        // 启用失败不阻塞工具栏，其状态仍依据 getStatus 返回
+        log.warn('按配置启用AI失败（已忽略）', e?.message || e);
+      }
+
+      // 同步启用状态（如已启用则高亮）
+      try {
+        const status = aiService.getStatus?.() || {};
+        isAiServiceEnabled.value = !!status.enabled;
+      } catch (_) {}
       const _instanceCount = window.terminalToolbarInstances.size;
       const _allInstances = Array.from(window.terminalToolbarInstances.entries())
         .map(([id, info]) => `${id.split('_')[1]}(${info.activeSessionId})`)
@@ -1602,7 +1662,7 @@ export default defineComponent({
       window.addEventListener('terminal:new-session', handleNewSession);
     });
 
-    return {
+      return {
       rttValue,
       showNetworkPopup,
       clientDelay,
@@ -1642,10 +1702,11 @@ export default defineComponent({
       showAiInput,
       handleAiClick,
       getAiTooltipText,
-      isAiServiceEnabled,
-      aiButtonRef,
-      showAiTooltip,
-      aiTooltipStyle,
+        isAiServiceEnabled,
+        aiInitInProgress,
+        aiButtonRef,
+        showAiTooltip,
+        aiTooltipStyle,
       onAiTooltipMouseEnter,
       onAiTooltipMouseLeave,
       // 用户状态

@@ -1102,6 +1102,22 @@ export default defineComponent({
             monitoring: monitoringSettings,
             'ai-config': aiSettings
           });
+          // 显式按需加载 AI 配置，确保设置面板显示真实配置（包括 apiKey 值）
+          try {
+            const loadedAi = await aiConfigManager.load();
+            if (loadedAi && typeof loadedAi === 'object') {
+              Object.assign(aiSettings, loadedAi);
+              aiSettings.initialized = true;
+              log.debug('AI配置已按需加载到设置面板（仅用于编辑显示）', {
+                hasApiKey: !!aiSettings.apiKey,
+                baseUrl: aiSettings.baseUrl,
+                model: aiSettings.model
+              });
+            }
+          } catch (e) {
+            // 加载失败不阻塞其他设置的展示
+            log.warn('按需加载AI配置失败（设置面板）', e);
+          }
           detectCurrentRenderer();
         } catch (_) {}
       }

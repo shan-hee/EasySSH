@@ -32,14 +32,21 @@ class MonitoringConfigManager {
       // 监听配置变更事件
       this.setupEventListeners();
 
-      // 如果设置服务尚未初始化，监听其初始化完成事件
+      // 如果设置服务尚未初始化，监听其初始化完成事件（优先 settings:ready，回退 services:ready）
       if (!settingsService.isInitialized) {
         const handleSettingsReady = () => {
-          this.loadFromSettings().catch(error => {
-            log.error('设置服务就绪后加载监控配置失败', error);
-          });
-          window.removeEventListener('services:ready', handleSettingsReady);
+          if (!settingsService.isInitialized) return; // 等待真正就绪
+          try {
+            this.loadFromSettings().catch(error => {
+              log.error('设置服务就绪后加载监控配置失败', error);
+            });
+          } finally {
+            window.removeEventListener('settings:ready', handleSettingsReady);
+            window.removeEventListener('services:ready', handleSettingsReady);
+          }
         };
+        window.addEventListener('settings:ready', handleSettingsReady);
+        // 兼容旧流程：某些情况下仅有 services:ready（核心服务触发）
         window.addEventListener('services:ready', handleSettingsReady);
       }
 

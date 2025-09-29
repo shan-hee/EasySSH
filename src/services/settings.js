@@ -50,6 +50,10 @@ class SettingsService {
 
     // 批量更新时可暂时暂停自动保存，避免重复提交
     this._autoSavePaused = false;
+
+    // 日志脱敏配置
+    this._sensitiveCategories = new Set(['ai-config']);
+    this._sensitiveFields = new Set(['apiKey']);
   }
 
   /**
@@ -98,6 +102,21 @@ class SettingsService {
         }
 
         this.isInitialized = true;
+
+        // 广播设置服务就绪事件，供依赖方感知（避免混用 services:ready 带来的歧义）
+        try {
+          const categories = this.loadedCategories
+            ? Array.from(this.loadedCategories)
+            : [];
+          window.dispatchEvent(
+            new CustomEvent('settings:ready', {
+              detail: {
+                categoriesLoaded: categories,
+                hasServerSettings: this.hasServerSettings === true
+              }
+            })
+          );
+        } catch (_) {}
         return true;
       } catch (error) {
         log.error('设置服务初始化失败', error);
@@ -129,42 +148,26 @@ class SettingsService {
       const userStore = useUserStore();
 
       if (userStore.isLoggedIn) {
-        // 登录状态：优先尝试聚合拉取，失败再回退逐类拉取
+        // 登录状态：按分类逐个获取（显式排除 ai-config，避免首屏拉取敏感配置）
         try {
           let serverSettings = {};
 
-          try {
-            if (typeof storageAdapter.getAll === 'function') {
-              const all = await storageAdapter.getAll();
-              if (all && typeof all === 'object') {
-                // 过滤掉UI（UI始终只在本地保存）
-                const { ui: _ignoredUI, ...rest } = all;
-                serverSettings = rest;
+          const categories = [
+            'terminal',
+            'connection',
+            'editor',
+            'advanced',
+            'monitoring'
+            // 注意：不在应用启动阶段加载 'ai-config'，改为在连接配置页按需加载
+          ];
+          for (const category of categories) {
+            try {
+              const categoryData = await storageAdapter.get(category, null);
+              if (categoryData) {
+                serverSettings[category] = categoryData;
               }
-            }
-          } catch (e) {
-            // 聚合接口不可用时回退
-          }
-
-          if (!serverSettings || Object.keys(serverSettings).length === 0) {
-            // 回退：按分类逐个获取
-            const categories = [
-              'terminal',
-              'connection',
-              'editor',
-              'advanced',
-              'monitoring',
-              'ai-config' // 一并纳入，避免AI配置单独再发一次
-            ];
-            for (const category of categories) {
-              try {
-                const categoryData = await storageAdapter.get(category, null);
-                if (categoryData) {
-                  serverSettings[category] = categoryData;
-                }
-              } catch (error) {
-                log.warn(`从服务器加载${category}设置失败:`, error);
-              }
+            } catch (error) {
+              log.warn(`从服务器加载${category}设置失败:`, error);
             }
           }
 
@@ -241,6 +244,14 @@ class SettingsService {
         this._setupAutoSave();
       }
       this.isInitialized = true;
+      // 本地就绪同样广播事件，方便监听方统一处理
+      try {
+        window.dispatchEvent(
+          new CustomEvent('settings:ready', {
+            detail: { categoriesLoaded: ['ui'], hasServerSettings: false }
+          })
+        );
+      } catch (_) {}
       this.hasServerSettings = false;
       return true;
     } catch (e) {
@@ -290,12 +301,20 @@ class SettingsService {
       // 始终保存到本地存储作为备份
       this.storage.set(SETTINGS_STORAGE_KEY, this.settings);
 
-      // 调试信息：显示保存的数据
-      log.debug('设置已保存到本地存储', {
-        key: `easyssh:${SETTINGS_STORAGE_KEY}`,
-        uiTheme: this.settings.ui?.theme,
-        fullSettings: this.settings
-      });
+      // 调试信息：显示保存的数据（敏感信息脱敏）
+      try {
+        const masked = this._sanitizeForLogging(this.settings);
+        log.debug('设置已保存到本地存储', {
+          key: `easyssh:${SETTINGS_STORAGE_KEY}`,
+          uiTheme: this.settings.ui?.theme,
+          fullSettings: masked
+        });
+      } catch (_) {
+        log.debug('设置已保存到本地存储', {
+          key: `easyssh:${SETTINGS_STORAGE_KEY}`,
+          uiTheme: this.settings.ui?.theme
+        });
+      }
 
       // 检查是否已登录，如果已登录则仅保存变更过的分类到服务器
       try {
@@ -430,13 +449,64 @@ class SettingsService {
     const lastKey = keys[keys.length - 1];
     target[lastKey] = value;
 
-    log.debug(`设置已更新: ${path} = ${JSON.stringify(value)}`);
+    try {
+      // 针对敏感路径/字段进行脱敏
+      let toLog = value;
+      const lowerPath = path.toLowerCase();
+      if (lowerPath.startsWith('ai-config')) {
+        if (typeof value === 'object' && value !== null) {
+          const cloned = Array.isArray(value) ? [...value] : { ...value };
+          if (Object.prototype.hasOwnProperty.call(cloned, 'apiKey')) {
+            const v = String(cloned.apiKey || '');
+            cloned.apiKey = v ? `***${v.slice(-4)}` : '';
+          }
+          toLog = cloned;
+        } else if (lowerPath === 'ai-config.apikey') {
+          const v = String(value || '');
+          toLog = v ? `***${v.slice(-4)}` : '';
+        }
+      }
+      log.debug(`设置已更新: ${path} = ${JSON.stringify(toLog)}`);
+    } catch (_) {
+      // 忽略日志异常
+    }
 
     // 标记顶级分类为已变更（仅服务器支持的分类会被同步）
     const topCategory = keys[0];
     if (SERVER_SAVE_CATEGORIES.has(topCategory)) {
       this._dirtyCategories.add(topCategory);
     }
+  }
+
+  /**
+   * 生成用于日志输出的脱敏副本
+   * @param {Object} settings 设置对象
+   * @returns {Object} 脱敏后的对象
+   * @private
+   */
+  _sanitizeForLogging(settings) {
+    const cloneDeep = obj => {
+      if (obj === null || typeof obj !== 'object') return obj;
+      if (Array.isArray(obj)) return obj.map(cloneDeep);
+      const out = {};
+      for (const k of Object.keys(obj)) out[k] = cloneDeep(obj[k]);
+      return out;
+    };
+
+    const masked = cloneDeep(settings || {});
+
+    // 统一处理 ai-config 内的 apiKey
+    if (masked['ai-config']) {
+      const cfg = masked['ai-config'];
+      if (cfg && typeof cfg === 'object') {
+        if (Object.prototype.hasOwnProperty.call(cfg, 'apiKey')) {
+          const v = String(cfg.apiKey || '');
+          cfg.apiKey = v ? `***${v.slice(-4)}` : '';
+        }
+      }
+    }
+
+    return masked;
   }
 
   /**

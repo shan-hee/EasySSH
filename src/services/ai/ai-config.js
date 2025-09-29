@@ -64,7 +64,7 @@ class AIConfig {
 
       const userStore = useUserStore();
 
-      // 登录态：只在 settingsService 已有服务器设置时读取聚合；否则采用默认，不触发任何网络请求
+      // 登录态：优先使用 settingsService 的聚合结果；若未加载则按需单类拉取（仅在调用时触发）
       if (userStore?.isLoggedIn) {
         try {
           if (settingsService?.hasServerSettings) {
@@ -77,6 +77,19 @@ class AIConfig {
           }
         } catch (_) {}
 
+        // 聚合中未提供：按需从服务器获取该分类
+        try {
+          const serverConfig = await storageAdapter.get('ai-config', null);
+          if (serverConfig && typeof serverConfig === 'object') {
+            this.config = this.mergeConfig(this.getDefaultConfig(), serverConfig);
+            log.debug('AI配置已从服务器单类加载');
+            return this.config;
+          }
+        } catch (e) {
+          log.debug('按需加载AI配置失败，使用默认配置', e?.message);
+        }
+
+        // 回退默认
         this.config = this.getDefaultConfig();
         return this.config;
       }
@@ -86,6 +99,32 @@ class AIConfig {
       return this.config;
     } catch (error) {
       log.error('加载AI配置失败', error);
+      this.config = this.getDefaultConfig();
+      return this.config;
+    }
+  }
+
+  /**
+   * 软加载：不触发服务器请求，仅从已加载的聚合设置或默认值恢复
+   */
+  async loadSoft() {
+    try {
+      // 不做远程请求，仅依赖 settingsService 已有的聚合数据
+      const userStore = useUserStore();
+      if (userStore?.isLoggedIn && settingsService?.hasServerSettings) {
+        const aggregated = settingsService.settings?.['ai-config'];
+        if (aggregated && typeof aggregated === 'object') {
+          this.config = this.mergeConfig(this.getDefaultConfig(), aggregated);
+          log.debug('AI配置已软加载（来自聚合设置）');
+          return this.config;
+        }
+      }
+
+      // 回退默认
+      this.config = this.getDefaultConfig();
+      log.debug('AI配置软加载使用默认配置');
+      return this.config;
+    } catch (e) {
       this.config = this.getDefaultConfig();
       return this.config;
     }

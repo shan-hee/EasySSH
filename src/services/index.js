@@ -96,13 +96,15 @@ async function initServices() {
     servicesStatus.sftp = true;
     log.debug('SSH和SFTP服务初始化完成');
 
-    // 初始化AI服务
-    await aiService.init();
-    servicesStatus.ai = true;
+    // 延迟初始化AI服务：仅在使用场景（如“连接配置”页）中按需初始化
+    // 这里不主动初始化，以避免应用启动时就加载AI配置与建立连接
+    servicesStatus.ai = false;
 
     // 将服务实例挂载到全局对象，供终端等组件动态访问
     if (typeof window !== 'undefined') {
+      const existing = (typeof window !== 'undefined' && window.services) || {};
       window.services = {
+        ...existing,
         api: apiService,
         settings,
         log,
@@ -112,7 +114,8 @@ async function initServices() {
         storage,
         auth,
         terminal,
-        mfa: mfaService
+        mfa: mfaService,
+        ai: aiService
       };
       log.debug('服务实例已挂载到全局对象');
     }

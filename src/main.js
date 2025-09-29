@@ -169,19 +169,7 @@ ensureElementPlusReady().then(() => {
   } catch (_) {
     // 忽略消息限制设置失败，避免影响应用
   }
-  // 启动UI服务（键盘、无障碍等）
-  try {
-    initializeServices();
-  } catch (e) {
-    log.warn('初始化UI服务失败（可忽略）', e);
-  }
-
-  // 启动核心服务（含AI服务、设置聚合等）
-  try {
-    initCoreServices();
-  } catch (e) {
-    log.error('初始化核心服务失败', e);
-  }
+  // UI服务与核心服务的初始化统一放到 initializeApp 内，避免重复调用导致接口请求两次
 });
 
 // 导入用户状态管理，并初始化用户状态
