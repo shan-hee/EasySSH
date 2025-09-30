@@ -15,10 +15,9 @@
         @toggle-sidebar="toggleSidebar"
       />
 
-      <!-- 添加终端背景层，仅在终端界面显示 -->
-      <div v-if="isTerminalRoute && terminalHasBackground" class="terminal-background" />
+      <!-- 背景图改为在 .content 内部通过伪元素绘制，避免层级干扰与双重叠加 -->
 
-      <main class="content">
+      <main class="content" :class="{ 'terminal-bg-active': isTerminalRoute && terminalHasBackground }">
         <!-- 终端组件直接嵌入为常驻组件，使用v-show控制显示/隐藏 -->
         <keep-alive>
           <terminal
@@ -64,6 +63,8 @@ import { useSessionStore } from '@/store/session';
 import { useTerminalStore } from '@/store/terminal';
 // 导入日志服务
 import log from '@/services/log';
+import { applyTerminalBackgroundCss, clearTerminalBackgroundCss } from '@/utils/terminalBackgroundCss';
+import settingsService from '@/services/settings';
 
 export default defineComponent({
   name: 'AppLayout',
@@ -318,38 +319,20 @@ export default defineComponent({
           // 如果有完整的背景设置，更新CSS变量
           if (event.detail.bgSettings) {
             updateCssVariables(event.detail.bgSettings);
-          } else {
-            // 如果只有enabled状态，从localStorage读取完整设置
-            try {
-              const savedBgSettings = localStorage.getItem('easyssh_terminal_bg');
-              if (savedBgSettings) {
-                const bgSettings = JSON.parse(savedBgSettings);
-                updateCssVariables(bgSettings);
-              }
-            } catch (error) {
-              log.error('读取背景设置失败:', error);
-            }
           }
 
           debugTerminalLog('终端背景状态已更新:', event.detail.enabled);
         }
       });
 
-      // 初始化时直接读取终端背景设置
+      // 初始化时从设置服务快照读取一次背景设置
       try {
-        const savedBgSettings = localStorage.getItem('easyssh_terminal_bg');
-        if (savedBgSettings) {
-          const bgSettings = JSON.parse(savedBgSettings);
-          // 不要直接修改计算属性
-          // terminalHasBackground.value = bgSettings.enabled;
-          // 应该修改终端商店中的状态
+        const bg = settingsService.getTerminalBackground?.();
+        if (bg && typeof bg === 'object') {
           const terminalStore = useTerminalStore();
-          terminalStore.toggleBackgroundImage(bgSettings.enabled);
-
-          // 立即更新CSS变量
-          updateCssVariables(bgSettings);
-
-          debugTerminalLog('初始化时读取终端背景状态', { enabled: bgSettings.enabled });
+          terminalStore.toggleBackgroundImage(!!bg.enabled);
+          updateCssVariables(bg);
+          debugTerminalLog('初始化时应用终端背景状态', { enabled: !!bg.enabled });
         }
       } catch (error) {
         log.error('初始化读取终端背景设置失败:', error);
@@ -375,39 +358,13 @@ export default defineComponent({
 
     // 更新CSS变量以供AppLayout使用
     const updateCssVariables = bgSettings => {
-      if (bgSettings.enabled && bgSettings.url) {
-        document.documentElement.style.setProperty('--terminal-bg-image', `url(${bgSettings.url})`);
-        document.documentElement.style.setProperty(
-          '--terminal-bg-opacity',
-          bgSettings.opacity.toString()
-        );
-
-        // 设置背景尺寸
-        let backgroundSize = 'cover';
-        if (bgSettings.mode === 'contain') {
-          backgroundSize = 'contain';
-        } else if (bgSettings.mode === 'fill') {
-          backgroundSize = '100% 100%';
-        } else if (bgSettings.mode === 'none') {
-          backgroundSize = 'auto';
-        } else if (bgSettings.mode === 'repeat') {
-          backgroundSize = 'auto';
+      try {
+        if (bgSettings && bgSettings.enabled && bgSettings.url) {
+          applyTerminalBackgroundCss(bgSettings);
+        } else {
+          clearTerminalBackgroundCss();
         }
-        document.documentElement.style.setProperty('--terminal-bg-size', backgroundSize);
-
-        // 设置背景重复
-        const backgroundRepeat = bgSettings.mode === 'repeat' ? 'repeat' : 'no-repeat';
-        document.documentElement.style.setProperty('--terminal-bg-repeat', backgroundRepeat);
-
-        // AppLayout CSS变量已更新
-      } else {
-        document.documentElement.style.removeProperty('--terminal-bg-image');
-        document.documentElement.style.removeProperty('--terminal-bg-opacity');
-        document.documentElement.style.removeProperty('--terminal-bg-size');
-        document.documentElement.style.removeProperty('--terminal-bg-repeat');
-
-        // AppLayout CSS变量已清除
-      }
+      } catch (_) {}
     };
 
     // 在组件卸载时移除监听器
@@ -645,6 +602,8 @@ export default defineComponent({
   border-top: none;
   min-height: 0;
   -webkit-overflow-scrolling: touch;
+  position: relative; /* 参与堆叠，便于与背景层分层 */
+  z-index: 1; /* 位于背景层之上 */
 }
 
 /* 系统监控面板容器 */
@@ -658,27 +617,7 @@ export default defineComponent({
   overflow: visible;
 }
 
-/* 终端背景样式 */
-.terminal-background {
-  position: absolute;
-  top: var(--layout-header-height); /* 使用应用头部高度令牌 */
-  left: var(--layout-sidebar-width); /* 使用侧边栏宽度令牌 */
-  right: 0;
-  bottom: 0;
-  z-index: -1; /* 确保在内容下方 */
-  background-image: var(--terminal-bg-image, none);
-  background-size: var(--terminal-bg-size, cover);
-  background-position: center;
-  background-repeat: var(--terminal-bg-repeat, no-repeat);
-  opacity: var(--terminal-bg-opacity, 0.5);
-  pointer-events: none; /* 确保点击事件可以穿透背景 */
-}
-
-@media (max-width: 768px) {
-  .terminal-background {
-    left: 0; /* 在移动设备上占满整个宽度 */
-  }
-}
+/* 独立终端背景层已移除，改为在 .content 上通过 ::before 绘制，避免叠加与层级干扰 */
 
 @media (max-width: 768px) {
   .app-container {
@@ -692,6 +631,33 @@ export default defineComponent({
   }
   /* 移动端侧边栏为覆盖式，隐藏分割线 */
   .app-container::before { content: none; }
+}
+
+/* 当启用终端背景时，使内容区域透明，露出底层背景图 */
+.content.terminal-bg-active {
+  background-color: transparent;
+}
+
+/* 在内容容器内部绘制背景，避免与外部层级竞争 */
+.content.terminal-bg-active::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 0; /* 背景层，内容子元素天然在其上方绘制 */
+  pointer-events: none;
+  background-image: var(--terminal-bg-image, none);
+  background-size: var(--terminal-bg-size, cover);
+  background-position: center;
+  background-repeat: var(--terminal-bg-repeat, no-repeat);
+  opacity: var(--terminal-bg-opacity, 0.5);
+}
+
+/* 背景开启时，让终端容器自身变透明，避免覆盖伪元素背景 */
+.content.terminal-bg-active :deep(.terminal-container) {
+  background-color: transparent !important;
 }
 
 /* 移动端遮罩层样式 */

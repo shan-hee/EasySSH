@@ -875,6 +875,7 @@ import storageAdapter from '@/services/storage-adapter';
 import log from '@/services/log';
 import { localKeyboardManager } from '@/utils/keyboard';
 import aiService from '@/services/ai/ai-service';
+import { applyTerminalBackgroundCss, clearTerminalBackgroundCss } from '@/utils/terminalBackgroundCss';
 import settingsService from '@/services/settings';
 import terminalService from '@/services/terminal';
 
@@ -1214,19 +1215,6 @@ export default defineComponent({
       if (loadedFlags.terminalBg) return;
       try {
         loadingFlags.terminalBg = true;
-        // 迁移旧数据（若存在）
-        const oldBgSettings = localStorage.getItem('easyssh_terminal_bg');
-        if (oldBgSettings) {
-          try {
-            const parsedOldSettings = JSON.parse(oldBgSettings);
-            await storageAdapter.set('terminal.background', parsedOldSettings);
-            localStorage.removeItem('easyssh_terminal_bg');
-            log.info('终端背景设置已迁移到统一存储服务');
-          } catch (e) {
-            log.warn('迁移终端背景设置失败:', e);
-          }
-        }
-
         if (userStore.isLoggedIn) {
           log.debug('按需加载终端背景设置...');
           const bg = await storageAdapter.get('terminal.background', null);
@@ -1813,59 +1801,31 @@ export default defineComponent({
 
     // 仅预览终端背景（不持久化），用于滑块拖动时减少请求
     const previewTerminalBg = () => {
-      try {
-        // 仅应用到CSS变量和事件，不进行存储
-        updateCssVariables();
-
-        const event = new CustomEvent('terminal-bg-changed', { detail: terminalBgSettings });
-        window.dispatchEvent(event);
-
-        window.dispatchEvent(
-          new CustomEvent('terminal-bg-status', {
-            detail: {
-              enabled: terminalBgSettings.enabled,
-              bgSettings: terminalBgSettings
-            }
-          })
-        );
-      } catch (_) {
-        // 忽略预览错误
+      if (terminalBgSettings.enabled && terminalBgSettings.url) {
+        applyTerminalBackgroundCss(terminalBgSettings);
+      } else {
+        clearTerminalBackgroundCss();
       }
+
+      const event = new CustomEvent('terminal-bg-changed', { detail: terminalBgSettings });
+      window.dispatchEvent(event);
+
+      window.dispatchEvent(
+        new CustomEvent('terminal-bg-status', {
+          detail: {
+            enabled: terminalBgSettings.enabled,
+            bgSettings: terminalBgSettings
+          }
+        })
+      );
     };
 
-    // 更新CSS变量以供AppLayout使用
+    // 更新CSS变量以供AppLayout使用（统一工具）
     const updateCssVariables = () => {
       if (terminalBgSettings.enabled && terminalBgSettings.url) {
-        document.documentElement.style.setProperty(
-          '--terminal-bg-image',
-          `url(${terminalBgSettings.url})`
-        );
-        document.documentElement.style.setProperty(
-          '--terminal-bg-opacity',
-          terminalBgSettings.opacity.toString()
-        );
-
-        // 设置背景尺寸
-        let backgroundSize = 'cover';
-        if (terminalBgSettings.mode === 'contain') {
-          backgroundSize = 'contain';
-        } else if (terminalBgSettings.mode === 'fill') {
-          backgroundSize = '100% 100%';
-        } else if (terminalBgSettings.mode === 'none') {
-          backgroundSize = 'auto';
-        } else if (terminalBgSettings.mode === 'repeat') {
-          backgroundSize = 'auto';
-        }
-        document.documentElement.style.setProperty('--terminal-bg-size', backgroundSize);
-
-        // 设置背景重复
-        const backgroundRepeat = terminalBgSettings.mode === 'repeat' ? 'repeat' : 'no-repeat';
-        document.documentElement.style.setProperty('--terminal-bg-repeat', backgroundRepeat);
+        applyTerminalBackgroundCss(terminalBgSettings);
       } else {
-        document.documentElement.style.removeProperty('--terminal-bg-image');
-        document.documentElement.style.removeProperty('--terminal-bg-opacity');
-        document.documentElement.style.removeProperty('--terminal-bg-size');
-        document.documentElement.style.removeProperty('--terminal-bg-repeat');
+        clearTerminalBackgroundCss();
       }
     };
 

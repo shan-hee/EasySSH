@@ -312,10 +312,11 @@ const connectDatabase = () => {
 为满足“最小化数据获取”的要求，新增了一个仅用于终端初始化场景的最小设置接口：
 
 - GET `/api/users/settings/terminal/minimal`
-  - 说明：仅返回创建终端会话必需的用户终端设置字段，并包含 AI 启用状态；避免多拿数据。
+  - 说明：仅返回创建终端会话必需的用户终端设置字段，并包含 AI 启用状态与终端背景设置；避免多拿数据。
   - 鉴权：需要登录（与其它设置接口一致）。
   - 返回结构：
     - `data.terminal`: 严格白名单的终端字段：`fontFamily`, `fontSize`, `lineHeight`, `cursorStyle`, `cursorBlink`, `scrollback`, `rendererType`, `fallbackRenderer`, `copyOnSelect`, `rightClickSelectsWord`, `theme`
+    - `data.terminalBackground`: 终端背景设置（仅白名单字段）：`enabled`, `url`, `opacity`, `mode`
     - `data.ai.enabled`: 布尔值，仅表示 AI 启用/禁用（无敏感字段）
   - 响应示例：
   ```json
@@ -328,6 +329,12 @@ const connectDatabase = () => {
         "cursorStyle": "block",
         "cursorBlink": true,
         "theme": "dark"
+      },
+      "terminalBackground": {
+        "enabled": true,
+        "url": "https://example.com/wallpaper.jpg",
+        "opacity": 0.5,
+        "mode": "cover"
       },
       "ai": { "enabled": false }
     }

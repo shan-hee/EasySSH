@@ -58,6 +58,12 @@ class SettingsService {
 
     // 登录/存储模式事件监听标志
     this._authListenersSetup = false;
+
+    // 终端背景的当前快照（从最小接口加载）
+    this._terminalBackground = null;
+
+    // 背景事件监听只注册一次，保持快照与事件一致
+    this._bgListenersSetup = false;
   }
 
   /**
@@ -104,6 +110,7 @@ class SettingsService {
           this._setupSystemThemeListener();
           this._setupAutoSave();
           this._setupAuthListeners();
+          this._setupBackgroundListeners();
         }
 
         this.isInitialized = true;
@@ -132,6 +139,32 @@ class SettingsService {
     })();
 
     return this._loading;
+  }
+
+  /**
+   * 监听背景事件，保持内存快照与 UI 事件一致
+   * @private
+   */
+  _setupBackgroundListeners() {
+    if (this._bgListenersSetup) return;
+    try {
+      const updateBg = e => {
+        try {
+          const bg = e?.detail || e?.detail?.bgSettings;
+          if (bg && typeof bg === 'object') {
+            this._terminalBackground = { ...bg };
+          } else if (typeof e?.detail?.enabled === 'boolean' && this._terminalBackground) {
+            // 仅状态变化时更新 enabled
+            this._terminalBackground = { ...this._terminalBackground, enabled: !!e.detail.enabled };
+          }
+        } catch (_) {}
+      };
+      window.addEventListener('terminal-bg-changed', updateBg);
+      window.addEventListener('terminal-bg-status', updateBg);
+      this._bgListenersSetup = true;
+    } catch (_) {
+      // 忽略：非浏览器环境或事件注册失败
+    }
   }
 
   /**
@@ -208,6 +241,33 @@ class SettingsService {
                 this.settings['ai-config'].model = ai.model;
               }
             } catch (_) {}
+
+            // 处理终端背景设置（如果最小化接口提供）
+            try {
+              const bg = resp.data?.terminalBackground;
+              if (bg && typeof bg === 'object') {
+                // 标记分类加载（用于按需获取时跳过重复请求）
+                try {
+                  if (!this.loadedCategories) this.loadedCategories = new Set();
+                  this.loadedCategories.add('terminal.background');
+                } catch (_) {}
+
+                // 缓存当前背景配置，供组件按需读取
+                this._terminalBackground = { ...bg };
+
+                // 广播背景状态与变更事件，确保在创建连接时即时生效
+                try {
+                  window.dispatchEvent(
+                    new CustomEvent('terminal-bg-status', {
+                      detail: { enabled: !!bg.enabled, bgSettings: bg }
+                    })
+                  );
+                  window.dispatchEvent(new CustomEvent('terminal-bg-changed', { detail: bg }));
+                } catch (_) {}
+              }
+            } catch (e) {
+              // 忽略背景处理异常，不影响其他设置
+            }
 
             this.hasServerSettings = true;
             // 标记已加载的分类（仅标记terminal，ai-config不标记为完整加载）
@@ -331,6 +391,15 @@ class SettingsService {
       if (this.settings[c] !== undefined) out[c] = { ...this.settings[c] };
     });
     return out;
+  }
+
+  /** 获取已加载的终端背景（若有） */
+  getTerminalBackground() {
+    try {
+      return this._terminalBackground ? { ...this._terminalBackground } : null;
+    } catch (_) {
+      return null;
+    }
   }
 
   /** 将当前设置应用到提供的目标对象（按分类） */
@@ -1094,6 +1163,16 @@ class SettingsService {
       resolvedTheme.foreground = textColor;
       resolvedTheme.cursor = textColor;
     }
+
+    // 若启用了终端背景，使用完全透明背景以露出底层背景图
+    try {
+      const cssBgImage = computedStyle.getPropertyValue('--terminal-bg-image').trim();
+      const hasBgImage = cssBgImage && cssBgImage !== 'none';
+      if (hasBgImage) {
+        // xterm.js 对 'transparent' 的解析不稳定，使用 rgba(0,0,0,0)
+        resolvedTheme.background = 'rgba(0, 0, 0, 0)';
+      }
+    } catch (_) {}
 
     // 不缓存，确保每次都能获取到最新的CSS变量值
     return resolvedTheme;

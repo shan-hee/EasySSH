@@ -31,6 +31,8 @@ class UserSettingsController {
         'rightClickSelectsWord',
         'theme'
       ]);
+      // 终端背景设置允许字段
+      const ALLOWED_BG_KEYS = new Set(['enabled', 'url', 'opacity', 'mode']);
 
       const row = db.prepare(
         `SELECT settings_data, version, server_timestamp, updated_at
@@ -38,6 +40,7 @@ class UserSettingsController {
       ).get(userId);
 
       let minimalTerminal = {};
+      let terminalBackground = {};
       let aiEnabled = false;
       let aiModel = '';
       // 不附带多余元信息，保持最小化
@@ -56,6 +59,25 @@ class UserSettingsController {
           // 数据不合法时返回空对象，由前端使用默认值
           log.warn('解析终端设置失败，返回默认空对象');
         }
+      }
+
+      // 读取终端背景设置（独立分类：terminal.background）
+      try {
+        const bgRow = db
+          .prepare(
+            `SELECT settings_data FROM user_settings WHERE user_id = ? AND category = 'terminal.background'`
+          )
+          .get(userId);
+        if (bgRow && bgRow.settings_data) {
+          const bgData = JSON.parse(bgRow.settings_data || '{}');
+          const filtered = {};
+          for (const key of Object.keys(bgData)) {
+            if (ALLOWED_BG_KEYS.has(key)) filtered[key] = bgData[key];
+          }
+          terminalBackground = filtered;
+        }
+      } catch (e) {
+        // 背景设置读取失败时忽略
       }
 
       // 读取AI启用状态与模型（仅返回非敏感字段；不返回baseUrl/apiKey）
@@ -80,6 +102,7 @@ class UserSettingsController {
         success: true,
         data: {
           terminal: minimalTerminal,
+          terminalBackground: terminalBackground,
           ai: { enabled: aiEnabled, model: aiModel }
         }
       });

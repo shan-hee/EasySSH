@@ -165,6 +165,7 @@ import monitoringStateManagerFactory from '../../services/monitoringStateManager
 import aiService from '../../services/ai/ai-service.js';
 import scriptLibraryService from '../../services/scriptLibrary';
 import personalizationService from '../../services/personalization';
+import { applyTerminalBackgroundCss, clearTerminalBackgroundCss } from '@/utils/terminalBackgroundCss';
 
 export default {
   name: 'Terminal',
@@ -556,27 +557,13 @@ export default {
 
     // 应用终端设置的逻辑已集中到 terminalStore.applySettingsToAllTerminals 中
 
-    // 加载终端背景设置
+    // 加载终端背景设置（从设置服务快照读取）
     const loadTerminalBgSettings = () => {
       try {
-        const savedBgSettings = localStorage.getItem('easyssh_terminal_bg');
-        if (savedBgSettings) {
-          const parsedSettings = JSON.parse(savedBgSettings);
-          terminalBg.value = { ...parsedSettings };
-
-          // 更新本地背景状态
-          terminalHasBackground.value = parsedSettings.enabled;
-
-          // 发送背景图状态事件
-          window.dispatchEvent(
-            new CustomEvent('terminal-bg-status', {
-              detail: {
-                enabled: terminalBg.value.enabled,
-                bgSettings: terminalBg.value
-              }
-            })
-          );
-
+        const bg = settingsService.getTerminalBackground?.();
+        if (bg && typeof bg === 'object') {
+          terminalBg.value = { ...bg };
+          terminalHasBackground.value = !!bg.enabled;
           // 更新CSS变量以供AppLayout使用
           updateCssVariables();
         }
@@ -585,39 +572,13 @@ export default {
       }
     };
 
-    // 更新CSS变量以供AppLayout使用
+    // 更新CSS变量以供AppLayout使用（统一工具）
+    // 使用局部函数包装，便于调用
     const updateCssVariables = () => {
       if (terminalBg.value.enabled && terminalBg.value.url) {
-        document.documentElement.style.setProperty(
-          '--terminal-bg-image',
-          `url(${terminalBg.value.url})`
-        );
-        document.documentElement.style.setProperty(
-          '--terminal-bg-opacity',
-          terminalBg.value.opacity.toString()
-        );
-
-        // 设置背景尺寸
-        let backgroundSize = 'cover';
-        if (terminalBg.value.mode === 'contain') {
-          backgroundSize = 'contain';
-        } else if (terminalBg.value.mode === 'fill') {
-          backgroundSize = '100% 100%';
-        } else if (terminalBg.value.mode === 'none') {
-          backgroundSize = 'auto';
-        } else if (terminalBg.value.mode === 'repeat') {
-          backgroundSize = 'auto';
-        }
-        document.documentElement.style.setProperty('--terminal-bg-size', backgroundSize);
-
-        // 设置背景重复
-        const backgroundRepeat = terminalBg.value.mode === 'repeat' ? 'repeat' : 'no-repeat';
-        document.documentElement.style.setProperty('--terminal-bg-repeat', backgroundRepeat);
+        applyTerminalBackgroundCss(terminalBg.value);
       } else {
-        document.documentElement.style.removeProperty('--terminal-bg-image');
-        document.documentElement.style.removeProperty('--terminal-bg-opacity');
-        document.documentElement.style.removeProperty('--terminal-bg-size');
-        document.documentElement.style.removeProperty('--terminal-bg-repeat');
+        clearTerminalBackgroundCss();
       }
     };
 
@@ -643,7 +604,17 @@ export default {
           );
 
           // 更新CSS变量
-          updateCssVariables();
+          if (terminalBg.value.enabled && terminalBg.value.url) {
+            applyTerminalBackgroundCss(terminalBg.value);
+          } else {
+            clearTerminalBackgroundCss();
+          }
+
+          // 背景开关或参数变化后，刷新所有终端主题以应用/取消透明背景
+          try {
+            const currentTheme = settingsService.getTerminalSettings()?.theme || 'dark';
+            terminalStore.applySettingsToAllTerminals({ theme: currentTheme });
+          } catch (_) {}
         }
       };
 
@@ -3043,6 +3014,15 @@ export default {
 :deep(.xterm-viewport) {
   overflow-y: auto !important;
   overflow-x: hidden;
+}
+
+/* 统一让 xterm 容器/视口/屏幕/行背景透明，配合 allowTransparency 与主题透明展示底图 */
+:deep(.xterm),
+:deep(.xterm-viewport),
+:deep(.xterm-screen),
+:deep(.xterm-rows) {
+  background: transparent !important;
+  background-color: transparent !important;
 }
 
 /* XTerm 滚动条样式 - 使用系统设计令牌 */
