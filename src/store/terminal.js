@@ -1085,9 +1085,9 @@ export const useTerminalStore = defineStore('terminal', () => {
       // 触发垃圾回收
       triggerGarbageCollection();
 
-      // 触发终端销毁事件，通知监控工厂和其他组件
+      // 触发终端销毁事件，通知监控工厂和其他组件（常量化）
       window.dispatchEvent(
-        new CustomEvent('terminal:destroyed', {
+        new CustomEvent(EVENTS.TERMINAL_DESTROYED, {
           detail: { terminalId: connectionId }
         })
       );
@@ -1104,9 +1104,9 @@ export const useTerminalStore = defineStore('terminal', () => {
         delete state.connectionStatus[connectionId];
         delete state.fitAddons[connectionId];
 
-        // 即使出错也尝试触发终端销毁事件
+        // 即使出错也尝试触发终端销毁事件（常量化）
         window.dispatchEvent(
-          new CustomEvent('terminal:destroyed', {
+          new CustomEvent(EVENTS.TERMINAL_DESTROYED, {
             detail: { terminalId: connectionId }
           })
         );

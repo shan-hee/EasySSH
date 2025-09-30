@@ -5,6 +5,7 @@
 
 import { reactive } from 'vue';
 import log from '@/services/log';
+import { EVENTS } from '@/services/events';
 
 // 加载状态枚举
 export const LoadingState = {
@@ -131,17 +132,12 @@ class MonitoringStateManager {
       }
     };
 
-    // 注册事件监听器
-    window.addEventListener('monitoring-connected', connectionHandler);
-    window.addEventListener('monitoring-disconnected', disconnectionHandler);
-    window.addEventListener('monitoring-data-received', unifiedDataHandler);
-    window.addEventListener('monitoring-data-synced', unifiedDataHandler);
-    try {
-      const { EVENTS } = require('@/services/events');
-      window.addEventListener(EVENTS.MONITORING_STATUS_CHANGE, statusHandler);
-    } catch (_) {
-      window.addEventListener('monitoring-status-change', statusHandler);
-    }
+    // 注册事件监听器（常量化）
+    window.addEventListener(EVENTS.MONITORING_CONNECTED, connectionHandler);
+    window.addEventListener(EVENTS.MONITORING_DISCONNECTED, disconnectionHandler);
+    window.addEventListener(EVENTS.MONITORING_DATA_RECEIVED, unifiedDataHandler);
+    window.addEventListener(EVENTS.MONITORING_DATA_SYNCED, unifiedDataHandler);
+    window.addEventListener(EVENTS.MONITORING_STATUS_CHANGE, statusHandler);
 
     // 保存监听器引用以便清理
     this.eventListeners.set('connection', connectionHandler);
@@ -535,11 +531,11 @@ class MonitoringStateManager {
     // 移除事件监听器
     this.eventListeners.forEach((handler, eventType) => {
       const eventName = {
-        connection: 'monitoring-connected',
-        disconnection: 'monitoring-disconnected',
-        data: 'monitoring-data-received',
-        sync: 'monitoring-data-synced',
-        status: 'monitoring-status-change'
+        connection: EVENTS.MONITORING_CONNECTED,
+        disconnection: EVENTS.MONITORING_DISCONNECTED,
+        data: EVENTS.MONITORING_DATA_RECEIVED,
+        sync: EVENTS.MONITORING_DATA_SYNCED,
+        status: EVENTS.MONITORING_STATUS_CHANGE
       }[eventType];
 
       if (eventName) {

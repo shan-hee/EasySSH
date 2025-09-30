@@ -67,6 +67,16 @@
   --transition-base: 0.15s ease;
   --transition-slow: 0.3s ease;
 
+  /* 动作时长令牌（time-only，供 JS 读取）*/
+  --motion-tiny: 120ms;
+  --motion-fast: 160ms;
+  --motion-standard: 300ms;
+  --motion-slow: 500ms;
+
+  /* 终端相关时间窗口（time-only）*/
+  --terminal-tab-switch-window: 320ms;
+  --monitoring-anim-flag: 500ms;
+
   /* Z-index层级（使用语义化变量，统一管理） */
   --z-dropdown: 1000;
   --z-sticky: 1020;

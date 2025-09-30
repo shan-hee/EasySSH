@@ -5,6 +5,7 @@
 
 import { MonitoringStateManager } from './monitoringStateManager';
 import log from '@/services/log';
+import { EVENTS } from '@/services/events';
 
 class MonitoringStateManagerFactory {
   constructor() {
@@ -52,7 +53,7 @@ class MonitoringStateManagerFactory {
       }
     };
 
-    window.addEventListener('terminal:destroyed', terminalDestroyHandler);
+    window.addEventListener(EVENTS.TERMINAL_DESTROYED, terminalDestroyHandler);
     
     // 保存事件监听器引用，便于清理时移除
     this._terminalDestroyHandler = terminalDestroyHandler;
@@ -263,7 +264,7 @@ class MonitoringStateManagerFactory {
 
     // 移除终端销毁事件监听器
     if (this._terminalDestroyHandler) {
-      window.removeEventListener('terminal:destroyed', this._terminalDestroyHandler);
+      window.removeEventListener(EVENTS.TERMINAL_DESTROYED, this._terminalDestroyHandler);
       this._terminalDestroyHandler = null;
     }
 

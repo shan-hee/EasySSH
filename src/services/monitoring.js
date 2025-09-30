@@ -4,6 +4,7 @@
  */
 
 import log from './log';
+import { EVENTS } from '@/services/events';
 
 /**
  * 监控实例类
@@ -79,8 +80,8 @@ class MonitoringInstance {
         // 优化：移除此处的日志，由main.js统一记录终端特定的连接成功日志
         // log.info(`[监控] 连接成功: ${host}`);
 
-        // 触发连接成功事件
-        this._emitEvent('monitoring-connected', {
+        // 触发连接成功事件（常量化）
+        this._emitEvent(EVENTS.MONITORING_CONNECTED, {
           terminalId: this.terminalId,
           host
         });
@@ -94,8 +95,8 @@ class MonitoringInstance {
         this.state.connected = false;
         this.state.connecting = false;
 
-        // 触发断开连接事件
-        this._emitEvent('monitoring-disconnected', {
+        // 触发断开连接事件（常量化）
+        this._emitEvent(EVENTS.MONITORING_DISCONNECTED, {
           terminalId: this.terminalId,
           host
         });
@@ -379,8 +380,8 @@ class MonitoringInstance {
       // 更新历史数据（后台持续收集）
       this._updateHistoryData(data);
 
-      // 触发数据更新事件
-      this._emitEvent('monitoring-data-received', {
+      // 触发数据更新事件（常量化）
+      this._emitEvent(EVENTS.MONITORING_DATA_RECEIVED, {
         terminalId: this.terminalId,
         host: this.state.targetHost,
         data,
@@ -522,26 +523,14 @@ class MonitoringInstance {
     this._lastStatusHash = statusKey;
 
     // 触发状态变更事件（常量化）
-    try {
-      const { EVENTS } = require('@/services/events');
-      this._emitEvent(EVENTS.MONITORING_STATUS_CHANGE, {
-        terminalId: this.terminalId,
-        hostname: this.state.targetHost,
-        hostId,
-        installed,
-        available,
-        source: 'websocket'
-      });
-    } catch (_) {
-      this._emitEvent('monitoring-status-change', {
-        terminalId: this.terminalId,
-        hostname: this.state.targetHost,
-        hostId,
-        installed,
-        available,
-        source: 'websocket'
-      });
-    }
+    this._emitEvent(EVENTS.MONITORING_STATUS_CHANGE, {
+      terminalId: this.terminalId,
+      hostname: this.state.targetHost,
+      hostId,
+      installed,
+      available,
+      source: 'websocket'
+    });
   }
 
   /**
@@ -558,8 +547,8 @@ class MonitoringInstance {
       reason ? { reason } : {}
     );
 
-    // 触发断开连接事件
-    this._emitEvent('monitoring-disconnected', {
+    // 触发断开连接事件（常量化）
+    this._emitEvent(EVENTS.MONITORING_DISCONNECTED, {
       terminalId: this.terminalId,
       host: hostId || this.state.targetHost,
       reason: reason || '服务器断开连接'
@@ -758,7 +747,7 @@ class MonitoringService {
       }
     };
 
-    window.addEventListener('terminal:destroyed', terminalDestroyHandler);
+    window.addEventListener(EVENTS.TERMINAL_DESTROYED, terminalDestroyHandler);
     
     // 保存事件监听器引用，便于清理时移除
     this._terminalDestroyHandler = terminalDestroyHandler;
@@ -896,7 +885,7 @@ class MonitoringService {
 
     // 移除终端销毁事件监听器
     if (this._terminalDestroyHandler) {
-      window.removeEventListener('terminal:destroyed', this._terminalDestroyHandler);
+      window.removeEventListener(EVENTS.TERMINAL_DESTROYED, this._terminalDestroyHandler);
       this._terminalDestroyHandler = null;
     }
   }
@@ -1114,7 +1103,7 @@ class MonitoringService {
   _syncMonitoringStatusToTerminal(terminalId, host, masterInstance) {
     // 触发数据同步事件 - 使用不同的事件名称避免与实时数据重复处理
     window.dispatchEvent(
-      new CustomEvent('monitoring-data-synced', {
+      new CustomEvent(EVENTS.MONITORING_DATA_SYNCED, {
         detail: {
           terminalId,
           host,

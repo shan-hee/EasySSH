@@ -39,10 +39,18 @@ export const EVENTS = {
   TERMINAL_DISCONNECT: 'terminal:disconnect',
   TERMINAL_EXECUTE_COMMAND: 'terminal:execute-command',
   TERMINAL_COMMAND: 'terminal-command',
-  TERMINAL_REFRESH_STATUS: 'terminal:refresh-status'
-  ,
+  TERMINAL_REFRESH_STATUS: 'terminal:refresh-status',
   // Terminal monitoring controls
-  TERMINAL_MONITORING_HIDE: 'terminal:monitoring-hide'
+  TERMINAL_MONITORING_HIDE: 'terminal:monitoring-hide',
+
+  // Monitoring stream & sync
+  MONITORING_CONNECTED: 'monitoring-connected',
+  MONITORING_DISCONNECTED: 'monitoring-disconnected',
+  MONITORING_DATA_RECEIVED: 'monitoring-data-received',
+  MONITORING_DATA_SYNCED: 'monitoring-data-synced',
+
+  // Terminal lifecycle broadcast
+  TERMINAL_DESTROYED: 'terminal:destroyed'
 };
 
 export default EVENTS;
