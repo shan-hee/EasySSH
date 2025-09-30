@@ -205,7 +205,19 @@ export default defineComponent({
       () => route.path,
       (newPath, oldPath) => {
         if (newPath.startsWith('/terminal') && !oldPath.startsWith('/terminal')) {
-          // 切换到终端路由，触发终端刷新
+          // 切换到终端路由，提前置位“连接中”状态，保证覆盖层尽快出现
+          try {
+            const preId = route.params.id || getCurrentSessionId();
+            if (preId) {
+              window.dispatchEvent(
+                new CustomEvent('terminal:session-change', {
+                  detail: { sessionId: preId, isTabSwitch: false, isNewSession: true }
+                })
+              );
+            }
+          } catch (_) {}
+
+          // 然后再进行终端初始化/聚焦等后续流程
           nextTick(() => {
             if (terminalComponent.value) {
               // 获取当前会话ID
