@@ -268,8 +268,7 @@ export default {
     const monitoringAnimateFlags = ref({});
     let cleanupMonitoringListener = null; // 监控数据监听器清理函数
 
-    // AI合并面板相关状态
-    const aiCombinedPanelStates = ref({}); // 每个终端的AI合并面板显示状态
+    // AI合并面板相关状态（显示状态统一由全局 store 管理）
     const aiPanelStore = useAIPanelStore(); // AI面板状态管理
     const aiCombinedPanelRefs = ref({}); // AI合并面板组件引用
     const aiStreamingStates = ref({}); // 每个终端的AI流式输出状态
@@ -1274,22 +1273,21 @@ export default {
     };
 
     // 处理AI输入栏切换
-    const handleAIInputToggle = visible => {
-      const termId = activeConnectionId.value;
+    const handleAIInputToggle = payload => {
+      // 兼容旧布尔参数与新对象参数
+      const isObject = payload && typeof payload === 'object';
+      const visible = isObject ? !!payload.visible : !!payload;
+      const termId = (isObject && payload.terminalId) || activeConnectionId.value;
+
       if (!termId) {
-        log.warn('[终端] 无法切换AI输入栏：没有活动终端');
+        log.warn('[终端] 无法切换AI输入栏：没有有效终端');
         return;
       }
 
-      // 根据visible参数设置AI合并面板状态
-      // visible为true时显示，false时隐藏
-      if (visible) {
-        aiCombinedPanelStates.value[termId] = true;
-      } else {
-        aiCombinedPanelStates.value[termId] = false;
-      }
-
-      debugLog(`[终端] AI输入栏状态已切换: ${termId} -> ${visible}`);
+      const prev = aiPanelStore.isPanelVisible(termId);
+      if (visible) aiPanelStore.showPanel(termId);
+      else aiPanelStore.hidePanel(termId);
+      log.info(`[终端] AI输入栏状态切换`, { termId, prev, visible });
     };
 
     // 检测是否为桌面端
@@ -2339,15 +2337,9 @@ export default {
     const shouldShowAICombinedPanel = termId => {
       if (!termId) return false;
 
-      // 检查AI服务是否可用
-      const aiService = getAIService();
-      if (!aiService || !aiService.isEnabled) return false;
-
-      // 检查终端是否已连接
-      if (!terminalStore.hasTerminal(termId)) return false;
-
-      // 仅在显式开启时显示（默认关闭，点击开启）
-      return aiCombinedPanelStates.value[termId] === true;
+      // 允许在未启用AI服务或终端尚未就绪时也显示面板
+      // 仅要求：用户显式开启（从 store 读取）
+      return aiPanelStore.isPanelVisible(termId) === true;
     };
 
     /**

@@ -22,7 +22,7 @@
       </div>
 
       <transition name="ai-combined-toggle" :css="!tabSwitching">
-        <div v-if="showAI && isActive" class="terminal-ai-combined-area theme-transition">
+        <div v-show="showAi && isActive" class="terminal-ai-combined-area theme-transition">
           <slot name="ai" />
         </div>
       </transition>
@@ -38,7 +38,8 @@ export default {
     showMonitoring: { type: Boolean, default: false },
     animateMonitoring: { type: Boolean, default: false },
     withMonitoring: { type: Boolean, default: false },
-    showAI: { type: Boolean, default: false },
+    // 注意：父组件模板属性为 show-ai（kebab-case），在子组件中应使用 showAi（camelCase）
+    showAi: { type: Boolean, default: false },
     isActive: { type: Boolean, default: false },
     useGrid: { type: Boolean, default: false },
     setRightAreaRef: { type: Function, default: null },

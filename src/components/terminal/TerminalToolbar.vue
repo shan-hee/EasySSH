@@ -459,19 +459,17 @@ export default defineComponent({
         isAiServiceEnabled.value = !!status.enabled;
         isAiConfigured.value = !!status.hasConfig;
 
-        // 1) 运行态已启用：直接切换面板
+        // 始终先切换面板显示/隐藏，保证点击有可见反馈
+        showAiInput.value = !showAiInput.value;
+        emit('toggle-ai-input', { visible: showAiInput.value, terminalId: props.activeSessionId });
+
+        // 运行态已启用：无需额外处理
         if (isAiServiceEnabled.value) {
-          showAiInput.value = !showAiInput.value;
-          emit('toggle-ai-input', showAiInput.value);
           return;
         }
 
-        // 2) 运行态未启用但最小化标记为启用：按需后台初始化（后端托管）
-        if (aiEnabledSetting.value) {
-          // 先打开面板，提升可见性
-          showAiInput.value = !showAiInput.value;
-          emit('toggle-ai-input', showAiInput.value);
-
+        // 运行态未启用但最小化标记为启用：按需后台初始化（后端托管）
+        if (aiEnabledSetting.value && showAiInput.value) {
           try {
             aiInitInProgress.value = true;
             await aiService.enableBackendManaged();
@@ -484,7 +482,7 @@ export default defineComponent({
           return;
         }
 
-        // 3) 未启用且未配置：提示用户前往连接配置
+        // 未启用且未配置：展示提示，但面板已按用户操作显示/隐藏
         showAiTooltip.value = true;
         updateAiTooltipPosition();
         setTimeout(() => {
