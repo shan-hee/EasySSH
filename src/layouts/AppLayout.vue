@@ -662,6 +662,7 @@ export default defineComponent({
   opacity: var(--terminal-bg-opacity, 0.5);
 }
 
+
 /* 背景开启时，让终端容器自身变透明，避免覆盖伪元素背景 */
 .content.terminal-bg-active :deep(.terminal-container),
 .content.terminal-surface-transparent :deep(.terminal-container) {

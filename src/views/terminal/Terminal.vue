@@ -1005,6 +1005,25 @@ export default {
         const successCount = Object.values(results).filter(success => success).length;
         const totalCount = Object.keys(results).length;
         log.info(`主题更新结果: ${successCount}/${totalCount} 个终端更新成功`);
+
+        // 为 xterm 进行一次轻微淡入，形成过渡感（适用于Canvas/WebGL渲染）
+        try {
+          const nodes = document.querySelectorAll('.terminal-content-wrapper .xterm');
+          nodes.forEach(el => {
+            try {
+              const prev = el.style.transition || '';
+              el.style.transition = prev ? `${prev}, opacity 200ms ease` : 'opacity 200ms ease';
+              el.style.willChange = 'opacity';
+              el.style.opacity = '0.01';
+              requestAnimationFrame(() => {
+                el.style.opacity = '1';
+                setTimeout(() => {
+                  el.style.willChange = '';
+                }, 220);
+              });
+            } catch (_) {}
+          });
+        } catch (_) {}
       } catch (error) {
         log.error('批量更新终端主题失败:', error);
       }
@@ -2806,6 +2825,10 @@ export default {
   flex-shrink: 0;
   z-index: 10;
   height: var(--layout-toolbar-height); /* 使用终端工具栏专用高度令牌 */
+  color: var(--color-text-primary);
+  transition:
+    color var(--theme-transition-duration) var(--theme-transition-timing),
+    background-color var(--theme-transition-duration) var(--theme-transition-timing);
 }
 
 /* 终端主体区域 */
@@ -2826,8 +2849,11 @@ export default {
   height: 100%;
   overflow: hidden;
   border-right: 1px solid var(--color-border-default);
-  /* 使用系统主题过渡令牌 */
-  transition: border-color var(--theme-transition-duration) var(--theme-transition-timing);
+  color: var(--color-text-primary);
+  /* 使用系统主题过渡令牌（边框+文字颜色） */
+  transition:
+    border-color var(--theme-transition-duration) var(--theme-transition-timing),
+    color var(--theme-transition-duration) var(--theme-transition-timing);
 }
 
 /* 右侧内容区域：终端 + AI输入栏 */
@@ -2837,6 +2863,10 @@ export default {
   flex-direction: column;
   height: 100%;
   overflow: hidden;
+  color: var(--color-text-primary);
+  transition:
+    color var(--theme-transition-duration) var(--theme-transition-timing),
+    background-color var(--theme-transition-duration) var(--theme-transition-timing);
 }
 
 /* 有监控面板时的右侧区域 */

@@ -1698,8 +1698,11 @@ textarea,
 /* xterm元素允许背景色过渡，但禁用其他属性过渡 */
 .xterm,
 .xterm-viewport,
-.xterm-screen {
-  transition: background-color 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94) !important;
+.xterm-screen,
+.xterm-rows {
+  transition:
+    background-color 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94) !important,
+    color 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94) !important;
 }
 
 /* 为主题切换提供视觉反馈 */

@@ -24,6 +24,7 @@ export function applyTerminalBackgroundCss(bg) {
   const cfg = normalizeBg(bg);
   const root = document.documentElement;
 
+  // 不做过渡与交叉淡出：直接切换或清除
   if (!cfg.enabled || !cfg.url) {
     clearTerminalBackgroundCss();
     return;
@@ -47,8 +48,8 @@ export function applyTerminalBackgroundCss(bg) {
 
   const backgroundRepeat = cfg.mode === 'repeat' ? 'repeat' : 'no-repeat';
 
-  // 批量写入 CSS 变量
-  root.style.setProperty('--terminal-bg-image', `url(${cfg.url})`);
+  const newImage = `url(${cfg.url})`;
+  root.style.setProperty('--terminal-bg-image', newImage);
   root.style.setProperty('--terminal-bg-opacity', String(cfg.opacity));
   root.style.setProperty('--terminal-bg-size', backgroundSize);
   root.style.setProperty('--terminal-bg-repeat', backgroundRepeat);
@@ -67,4 +68,3 @@ export default {
   applyTerminalBackgroundCss,
   clearTerminalBackgroundCss
 };
-
