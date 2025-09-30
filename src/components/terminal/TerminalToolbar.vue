@@ -465,28 +465,17 @@ export default defineComponent({
           return;
         }
 
-        // 2) 运行态未启用但设置标记为启用：
-        //    按需尝试后台初始化；无论初始化是否立即成功，先打开输入面板以符合“已启用可点击弹出”的预期
+        // 2) 运行态未启用但最小化标记为启用：按需后台初始化（后端托管）
         if (aiEnabledSetting.value) {
-          // 先打开面板
+          // 先打开面板，提升可见性
           showAiInput.value = !showAiInput.value;
           emit('toggle-ai-input', showAiInput.value);
 
-          // 后台尝试启用：优先使用完整前端配置，否则走后端托管配置
           try {
             aiInitInProgress.value = true;
-            const cfg = aiService.config?.config || {};
-            const hasEssential = !!(cfg && cfg.apiKey && cfg.model && cfg.baseUrl);
-            if (hasEssential && cfg.enabled !== false) {
-              await aiService.enable(cfg);
-              isAiServiceEnabled.value = true;
-            } else {
-              // 无完整配置时不再拉取 /users/settings?category=ai-config
-              await aiService.enableBackendManaged();
-              isAiServiceEnabled.value = true;
-            }
+            await aiService.enableBackendManaged();
+            isAiServiceEnabled.value = true;
           } catch (e) {
-            // 初始化失败时不打断已打开的输入面板，仅提示信息
             try { ElMessage && ElMessage.info('AI已启用（尚未连接）'); } catch (_) {}
           } finally {
             aiInitInProgress.value = false;
@@ -1609,6 +1598,19 @@ export default defineComponent({
       checkAiServiceStatus();
       // 从设置服务同步AI启用标志（最小化接口结果）
       syncAiEnabledFromSettings();
+
+      // 若最小化标记已启用且运行态未启用，则自动建立AI连接（后端托管）
+      try {
+        if (aiEnabledSetting.value && !isAiServiceEnabled.value && !aiInitInProgress.value) {
+          aiInitInProgress.value = true;
+          await aiService.enableBackendManaged();
+          isAiServiceEnabled.value = true;
+        }
+      } catch (e) {
+        log.warn('自动连接AI失败（已忽略）', e?.message || e);
+      } finally {
+        aiInitInProgress.value = false;
+      }
 
       // 监听设置服务就绪事件（登录后会触发），再次同步一次
       try {

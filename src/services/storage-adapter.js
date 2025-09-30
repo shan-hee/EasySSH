@@ -216,40 +216,7 @@ class StorageAdapter {
    * 批量获取所有设置
    * @returns {Promise<Object>} 所有设置数据
    */
-  async getAll() {
-    try {
-      if (this.isLoggedIn()) {
-        // 登录状态：从服务器获取所有设置
-        const response = await apiService.get('/users/settings');
-
-        if (response.success) {
-          const settings = {};
-          for (const [category, settingData] of Object.entries(response.data)) {
-            settings[category] = settingData.data;
-          }
-          return settings;
-        }
-
-        return {};
-      } else {
-        // 未登录状态：从本地存储获取所有设置
-        const allKeys = storageService.keys();
-        const settings = {};
-
-        for (const key of allKeys) {
-          if (key.startsWith('settings.')) {
-            const category = key.replace('settings.', '');
-            settings[category] = storageService.getItem(key);
-          }
-        }
-
-        return settings;
-      }
-    } catch (error) {
-      log.error('获取所有设置失败:', error);
-      return {};
-    }
-  }
+  // 已移除聚合获取：避免调用未使用的聚合接口 /users/settings
 
   /**
    * 清除所有设置
@@ -258,12 +225,10 @@ class StorageAdapter {
   async clear() {
     try {
       if (this.isLoggedIn()) {
-        // 登录状态：清除服务器上的所有设置
-        const allSettings = await this.getAll();
-        const deletePromises = Object.keys(allSettings).map(category => this.remove(category));
-
-        const results = await Promise.all(deletePromises);
-        return results.every(result => result === true);
+        // 登录状态：逐类清除（避免使用聚合接口）
+        const categories = ['terminal', 'connection', 'editor', 'advanced', 'monitoring', 'ai-config'];
+        const results = await Promise.all(categories.map(category => this.remove(category)));
+        return results.every(Boolean);
       } else {
         // 未登录状态：清除本地存储中的所有设置
         const allKeys = storageService.keys();
