@@ -140,27 +140,43 @@ export default defineComponent({
 
     // 终端操作方法（如需在此组件中触发，可在使用处实现）
 
-    // 监听终端标题变化
-    window.addEventListener('terminal:title-change', event => {
+    // 规范事件处理器，便于移除监听避免泄漏
+    const handleTerminalTitleChange = event => {
       terminalTitle.value = event.detail;
-    });
+    };
 
-    // 监听会话变化
-    window.addEventListener('terminal:session-change', event => {
-      if (event.detail && event.detail.sessionId) {
+    const handleTerminalSessionChange = event => {
+      if (event?.detail?.sessionId) {
         activeSessionId.value = event.detail.sessionId;
         debugTerminalLog(`当前活动会话ID已更新: ${activeSessionId.value}`);
       }
-    });
+    };
 
-    // 监听SSH会话创建
-    window.addEventListener('ssh:session-created', event => {
-      // 更新最新的SSH会话ID
-      if (event.detail && event.detail.sessionId) {
-        // 可以保留这个SSH ID以便于工具栏显示网络延迟信息
+    const handleSSHSessionCreated = event => {
+      if (event?.detail?.sessionId) {
         debugTerminalLog(`SSH会话已创建: ${event.detail.sessionId}`);
       }
-    });
+    };
+
+    // 背景状态变更
+    const handleTerminalBgStatus = event => {
+      if (!event?.detail) return;
+      const terminalStore = useTerminalStore();
+      terminalStore.toggleBackgroundImage(!!event.detail.enabled);
+      if (event.detail.bgSettings) {
+        updateCssVariables(event.detail.bgSettings);
+      }
+      debugTerminalLog('终端背景状态已更新:', event.detail.enabled);
+    };
+
+    // SFTP 面板相关事件
+    const handleCloseSftpPanelEvent = () => closeSftpPanel();
+    const handleRequestToggleSftpPanel = event => {
+      if (event?.detail?.sessionId) {
+        activeSessionId.value = event.detail.sessionId;
+        toggleSftpPanel();
+      }
+    };
 
     // 获取当前活动的会话ID
     const getCurrentSessionId = () => {
@@ -217,54 +233,21 @@ export default defineComponent({
             }
           } catch (_) {}
 
-          // 然后再进行终端初始化/聚焦等后续流程
+          // 然后再进行终端聚焦等后续流程（初始化交由 Terminal.vue 负责）
           nextTick(() => {
             if (terminalComponent.value) {
               // 获取当前会话ID
               const currentId = getCurrentSessionId();
 
               if (currentId) {
-                // 路由切换到终端
-
-                // 检查终端是否已经存在，如果存在则不设置isNewCreation
-                const terminalStore = useTerminalStore();
-                const isSessionCreating = terminalStore.isSessionCreating(currentId);
-                const hasExistingTerminal = terminalStore.hasTerminal(currentId);
-                const hasTerminalSession = terminalStore.hasTerminalSession(currentId);
-
-                // 只有在会话不存在且未在创建中时才标记为新创建
-                const isNewCreation =
-                  !hasExistingTerminal && !hasTerminalSession && !isSessionCreating;
-
-                // 优化：只在新创建终端时记录详细状态，减少重复日志
-                if (isNewCreation) {
-                  // 新建终端
-                }
-
-                // 直接处理终端初始化，避免重复的事件触发
                 try {
                   const terminalStore = useTerminalStore();
-
-                  if (isNewCreation) {
-                    // 新创建的终端，需要初始化
-                    // 准备初始化新终端
-
-                    // 等待DOM更新后再初始化
-                    nextTick(async () => {
-                      const container = document.querySelector(`#terminal-container-${currentId}`);
-                      if (container) {
-                        await terminalStore.initializeTerminal(currentId, container);
-                      }
-                    });
-                  } else {
-                    // 已存在的终端，只需聚焦
-                    if (terminalStore.hasTerminal(currentId)) {
-                      // 聚焦已存在的终端
-                      terminalStore.focusTerminal(currentId);
-                    }
+                  // 已存在的终端，只需聚焦；不存在则由 Terminal.vue 完成初始化
+                  if (terminalStore.hasTerminal(currentId)) {
+                    terminalStore.focusTerminal(currentId);
                   }
                 } catch (error) {
-                  log.error('[AppLayout] 处理终端初始化失败:', error);
+                  log.error('[AppLayout] 处理终端聚焦失败:', error);
                 }
               }
             }
@@ -281,6 +264,17 @@ export default defineComponent({
         }
       }
     );
+
+    // 更新CSS变量以供AppLayout使用（提前定义，供事件处理与初始化调用）
+    const updateCssVariables = bgSettings => {
+      try {
+        if (bgSettings && bgSettings.enabled && bgSettings.url) {
+          applyTerminalBackgroundCss(bgSettings);
+        } else {
+          clearTerminalBackgroundCss();
+        }
+      } catch (_) {}
+    };
 
     // 初始化
     onMounted(() => {
@@ -325,23 +319,11 @@ export default defineComponent({
       // 添加窗口大小变化监听器
       window.addEventListener('resize', handleWindowResize);
 
-      // 监听终端背景状态
-      window.addEventListener('terminal-bg-status', event => {
-        if (event.detail) {
-          // 不要直接修改计算属性
-          // terminalHasBackground.value = event.detail.enabled;
-          // 应该修改终端商店中的状态
-          const terminalStore = useTerminalStore();
-          terminalStore.toggleBackgroundImage(event.detail.enabled);
-
-          // 如果有完整的背景设置，更新CSS变量
-          if (event.detail.bgSettings) {
-            updateCssVariables(event.detail.bgSettings);
-          }
-
-          debugTerminalLog('终端背景状态已更新:', event.detail.enabled);
-        }
-      });
+      // 绑定全局事件监听（具名处理器，便于卸载）
+      window.addEventListener('terminal:title-change', handleTerminalTitleChange);
+      window.addEventListener('terminal:session-change', handleTerminalSessionChange);
+      window.addEventListener('ssh:session-created', handleSSHSessionCreated);
+      window.addEventListener('terminal-bg-status', handleTerminalBgStatus);
 
       // 初始化时从设置服务快照读取一次背景设置
       try {
@@ -359,56 +341,34 @@ export default defineComponent({
       // 监听关闭监控面板和SFTP面板的事件
       const appContainer = document.querySelector('.app-container');
       if (appContainer) {
-        appContainer.addEventListener('close-sftp-panel', () => {
-          closeSftpPanel();
-        });
+        appContainer.addEventListener('close-sftp-panel', handleCloseSftpPanelEvent);
       }
 
       // 监听来自各个终端工具栏的SFTP面板切换请求
-      window.addEventListener('request-toggle-sftp-panel', event => {
-        if (event.detail && event.detail.sessionId) {
-          // 设置活动会话ID并切换SFTP面板
-          activeSessionId.value = event.detail.sessionId;
-          toggleSftpPanel();
-        }
-      });
+      window.addEventListener('request-toggle-sftp-panel', handleRequestToggleSftpPanel);
     });
 
-    // 更新CSS变量以供AppLayout使用
-    const updateCssVariables = bgSettings => {
-      try {
-        if (bgSettings && bgSettings.enabled && bgSettings.url) {
-          applyTerminalBackgroundCss(bgSettings);
-        } else {
-          clearTerminalBackgroundCss();
-        }
-      } catch (_) {}
-    };
+    
 
     // 在组件卸载时移除监听器
     onUnmounted(() => {
       window.removeEventListener('resize', handleResize);
       window.removeEventListener('resize', handleWindowResize);
 
-      // 移除会话相关监听器
-      window.removeEventListener('terminal:session-change', () => {});
-      window.removeEventListener('terminal-bg-status', () => {});
-      window.removeEventListener('ssh:session-created', () => {});
-      window.removeEventListener('toggle-monitoring-panel', () => {});
+      // 移除会话/标题/SSH相关监听器
+      window.removeEventListener('terminal:title-change', handleTerminalTitleChange);
+      window.removeEventListener('terminal:session-change', handleTerminalSessionChange);
+      window.removeEventListener('ssh:session-created', handleSSHSessionCreated);
+      window.removeEventListener('terminal-bg-status', handleTerminalBgStatus);
 
-      // 移除显示监控面板事件监听器
-      window.removeEventListener('show-monitoring-panel', () => {});
-
-      // 移除关闭面板事件监听器
+      // 移除关闭SFTP面板事件监听器
       const appContainer = document.querySelector('.app-container');
       if (appContainer) {
-        appContainer.removeEventListener('close-monitoring-panel', () => {});
-        appContainer.removeEventListener('close-sftp-panel', () => {});
+        appContainer.removeEventListener('close-sftp-panel', handleCloseSftpPanelEvent);
       }
 
-      // 移除事件监听器
-      window.removeEventListener('request-toggle-sftp-panel', () => {});
-      window.removeEventListener('request-toggle-monitoring-panel', () => {});
+      // 移除请求切换SFTP面板事件监听器
+      window.removeEventListener('request-toggle-sftp-panel', handleRequestToggleSftpPanel);
     });
 
     // 处理窗口大小变化
