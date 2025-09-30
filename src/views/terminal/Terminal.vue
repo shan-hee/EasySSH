@@ -1,5 +1,5 @@
 <template>
-  <div class="terminal-container theme-transition">
+  <div class="terminal-container theme-transition" ref="terminalContainerRef">
     <div class="terminals-wrapper theme-transition">
       <div
         v-for="termId in terminalIds"
@@ -39,6 +39,9 @@
           :with-monitoring="shouldShowDesktopMonitoringPanel(termId)"
           :show-ai="shouldShowAICombinedPanel(termId) && isActiveTerminal(termId)"
           :is-active="isActiveTerminal(termId)"
+          :use-grid="useGridExperiment"
+          :set-right-area-ref="el => setRightAreaRef(el, termId)"
+          :set-monitoring-ref="el => setMonitoringPanelRef(el, termId)"
         >
           <template #monitoring>
             <MonitoringPaneHost
@@ -161,6 +164,8 @@ import personalizationService from '../../services/personalization';
 import { applyTerminalBackgroundCss, clearTerminalBackgroundCss } from '@/utils/terminalBackgroundCss';
 import { EVENTS } from '@/services/events';
 import { getMsVar } from '@/utils/cssVars';
+import { createRefMap } from '@/composables/terminal/useRefsMap';
+import { getXtermElement, softRefitTerminalUtil, lockRightAreaAndRefit } from '@/composables/terminal/useTerminalDom';
 
 export default {
   name: 'Terminal',
@@ -196,6 +201,7 @@ export default {
     };
 
     const sessionStore = useSessionStore(); // 添加会话存储
+    const terminalContainerRef = ref(null);
 
     // 统一时长（从CSS变量读取，可根据主题动态调整）
     const durations = ref({
@@ -224,6 +230,17 @@ export default {
         durations.value.motionDebounceShort = getMsVar('--motion-debounce-short', 50);
       } catch (_) {}
     };
+
+    // Grid 实验开关：localStorage 优先，其次读取 CSS 变量，默认 false
+    const useGridExperiment = ref(false);
+    try {
+      const flag = localStorage.getItem('terminal.gridExperiment');
+      if (flag === '1' || flag === 'true') useGridExperiment.value = true;
+      else {
+        const cssFlag = (getComputedStyle(document.documentElement).getPropertyValue('--terminal-grid-experiment') || '').trim();
+        if (cssFlag === '1' || cssFlag === 'true') useGridExperiment.value = true;
+      }
+    } catch (_) {}
 
     // 终端引用映射，key为连接ID，value为DOM元素
     const terminalRefs = ref({});
@@ -267,49 +284,13 @@ export default {
     // 终端监控面板动画状态（避免动画期间频繁 fit 导致闪烁）
 
     // 终端柔性适配：在最终 fit 前后做一次轻微淡入，掩盖画布重绘造成的闪烁
-    const softRefitTerminal = termId => {
-      try {
-        const id = termId || activeConnectionId.value;
-        if (!id || !terminalStore.hasTerminal(id)) return;
+    const softRefitTerminal = termId => softRefitTerminalUtil(terminalStore, activeConnectionId, termId, durations.value);
 
-        // 选择 xterm 根元素（我们在创建时为元素打过 data-terminal-id 标识）
-        const el = document.querySelector(`.xterm[data-terminal-id="${id}"]`);
-        if (!el) {
-          terminalStore.fitTerminal(id);
-          return;
-        }
-
-        // 轻微淡出，下一帧执行 fit，再淡入
-        const transFrag = `opacity var(--motion-tiny) var(--theme-transition-timing)`;
-        el.style.transition = el.style.transition
-          ? `${el.style.transition}, ${transFrag}`
-          : transFrag;
-        el.style.willChange = 'opacity';
-        el.style.opacity = '0.01';
-
-        requestAnimationFrame(() => {
-          try {
-            terminalStore.fitTerminal(id);
-          } catch (_) {
-            void 0;
-          }
-          requestAnimationFrame(() => {
-            el.style.opacity = '1';
-            // 清理 will-change，避免长期占用合成层
-            setTimeout(() => {
-              el.style.willChange = ''; /* 保留过渡属性以复用 */
-            }, durations.value.motionFast);
-          });
-        });
-      } catch (_) {
-        // 兜底直接适配
-        try {
-          terminalStore.fitTerminal(termId || activeConnectionId.value);
-        } catch (_) {
-          void 0;
-        }
-      }
-    };
+    // 右侧区域/监控面板引用映射
+    const { mapRef: rightAreaRefs, makeSetter: makeRightAreaSetter } = createRefMap();
+    const { mapRef: monitoringPanelRefs, makeSetter: makeMonitoringSetter } = createRefMap();
+    const setRightAreaRef = (el, termId) => makeRightAreaSetter(termId)(el);
+    const setMonitoringPanelRef = (el, termId) => makeMonitoringSetter(termId)(el);
 
     // 每个终端的火箭动画阶段状态
     const terminalRocketPhases = ref({});
@@ -1041,22 +1022,24 @@ export default {
 
         // 为 xterm 进行一次轻微淡入，形成过渡感（适用于Canvas/WebGL渲染）
         try {
-          const nodes = document.querySelectorAll('.terminal-content-wrapper .xterm');
-              nodes.forEach(el => {
-                try {
-                  const prev = el.style.transition || '';
-                  const transFrag = `opacity var(--motion-quick) var(--theme-transition-timing)`;
-                  el.style.transition = prev ? `${prev}, ${transFrag}` : transFrag;
-                  el.style.willChange = 'opacity';
-                  el.style.opacity = '0.01';
-                  requestAnimationFrame(() => {
-                    el.style.opacity = '1';
-                    setTimeout(() => {
-                      el.style.willChange = '';
-                    }, durations.value.motionQuick);
-                  });
-                } catch (_) {}
+          const ids = Array.isArray(terminalIds.value) ? terminalIds.value : [];
+          ids.forEach(id => {
+            const el = getXtermElement(terminalStore, id);
+            if (!el) return;
+            try {
+              const prev = el.style.transition || '';
+              const transFrag = `opacity var(--motion-quick) var(--theme-transition-timing)`;
+              el.style.transition = prev ? `${prev}, ${transFrag}` : transFrag;
+              el.style.willChange = 'opacity';
+              el.style.opacity = '0.01';
+              requestAnimationFrame(() => {
+                el.style.opacity = '1';
+                setTimeout(() => {
+                  el.style.willChange = '';
+                }, durations.value.motionQuick);
               });
+            } catch (_) {}
+          });
         } catch (_) {}
       } catch (error) {
         log.error('批量更新终端主题失败:', error);
@@ -1550,7 +1533,7 @@ export default {
 
       // 初始化ResizeObserver - 在DOM挂载后安全地初始化
       nextTick(() => {
-        const terminalContainer = document.querySelector('.terminal-container');
+        const terminalContainer = terminalContainerRef.value;
         if (terminalContainer) {
           resizeObserver = new ResizeObserver(() => {
             // 在AI面板拖拽或监控面板过渡动画期间，不频繁触发 fit，改为动画结束/短延迟后统一触发一次
@@ -1618,26 +1601,13 @@ export default {
               // 在动画结束时做一次柔性适配，避免瞬时闪烁
               // 先将右侧区域宽度临时锁定为整数像素，避免亚像素导致的画布重采样
               try {
-                const rightArea = document.querySelector(
-                  '.terminal-content-wrapper.terminal-active .terminal-right-area'
-                );
-                if (rightArea) {
-                  const rect = rightArea.getBoundingClientRect();
-                  rightArea.style.width = `${Math.round(rect.width)}px`;
-                  requestAnimationFrame(() => {
-                    softRefitTerminal(activeConnectionId.value);
-                    setTimeout(() => {
-                      rightArea.style.width = '';
-                    }, durations.value.motionFast);
-                  });
-                } else {
-                  softRefitTerminal(activeConnectionId.value);
-                }
+                const rightArea = rightAreaRefs.value[activeConnectionId.value];
+                lockRightAreaAndRefit(rightArea, terminalStore, activeConnectionId, durations.value, softRefitTerminalUtil);
               } catch (_) {
                 softRefitTerminal(activeConnectionId.value);
               }
-            }
           }
+        }
         } catch (_) {}
       };
 
@@ -2797,7 +2767,12 @@ export default {
       handleAIPanelHeightChangeEnd,
       isMobile,
       // 自动完成 Teleport 目标
-      autocompleteTeleportEl
+      autocompleteTeleportEl,
+      // 布局/实验开关与区域引用
+      useGridExperiment,
+      setRightAreaRef,
+      setMonitoringPanelRef,
+      terminalContainerRef
     };
   }
 };
@@ -2899,6 +2874,19 @@ export default {
   flex-direction: row;
   height: calc(100% - var(--layout-toolbar-height)); /* 使用终端工具栏专用高度令牌 */
   overflow: hidden;
+}
+
+/* Grid 实验布局样式（behind flag）*/
+:deep(.terminal-main-area.grid-experiment) { display: grid; }
+:deep(.terminal-main-area.grid-experiment.with-monitoring) { grid-template-columns: minmax(0, 1fr) var(--monitoring-panel-width); }
+:deep(.terminal-main-area.grid-experiment:not(.with-monitoring)) { grid-template-columns: minmax(0, 1fr) 0; }
+
+:deep(.terminal-main-area.grid-experiment) > .terminal-right-area {
+  grid-column: 1;
+}
+
+:deep(.terminal-main-area.grid-experiment) > .terminal-monitoring-panel {
+  grid-column: 2;
 }
 
 /* 监控面板 */

@@ -85,6 +85,7 @@
   --monitoring-panel-width: 320px;
   --monitoring-enter-shift: 12px;
   --ai-enter-shift: 12px;
+  --terminal-grid-experiment: 0; /* 1 启用 Grid 实验，默认 0 */
 
   /* Z-index层级（使用语义化变量，统一管理） */
   --z-dropdown: 1000;
