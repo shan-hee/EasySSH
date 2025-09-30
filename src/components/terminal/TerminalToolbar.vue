@@ -517,6 +517,26 @@ export default defineComponent({
       }
     };
 
+    // 设置就绪时按需自动连接AI（enabled=true 且未连接）
+    const handleSettingsReadyForAI = () => {
+      try {
+        syncAiEnabledFromSettings();
+        if (aiEnabledSetting.value && !isAiServiceEnabled.value && !aiInitInProgress.value) {
+          aiInitInProgress.value = true;
+          aiService.enableBackendManaged?.()
+            .then(() => {
+              isAiServiceEnabled.value = true;
+            })
+            .catch(() => {
+              // 忽略自动连接失败
+            })
+            .finally(() => {
+              aiInitInProgress.value = false;
+            });
+        }
+      } catch (_) {}
+    };
+
     // 计算图标激活状态：运行态启用 或 设置标记启用
     const isAiActive = computed(() => !!(isAiServiceEnabled.value || aiEnabledSetting.value));
 
@@ -1509,6 +1529,7 @@ export default defineComponent({
 
       // 移除设置就绪事件监听
       try { window.removeEventListener('settings:ready', syncAiEnabledFromSettings); } catch (_) {}
+      try { window.removeEventListener('settings:ready', handleSettingsReadyForAI); } catch (_) {}
 
       // 移除新会话事件监听
       window.removeEventListener('terminal:new-session', handleNewSession);
@@ -1615,6 +1636,7 @@ export default defineComponent({
       // 监听设置服务就绪事件（登录后会触发），再次同步一次
       try {
         window.addEventListener('settings:ready', syncAiEnabledFromSettings);
+        window.addEventListener('settings:ready', handleSettingsReadyForAI);
       } catch (_) {}
 
       // 确保工具栏状态严格隔离，避免状态意外共享

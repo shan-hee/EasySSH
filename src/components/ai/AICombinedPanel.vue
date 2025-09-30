@@ -412,6 +412,15 @@ const handleSend = async () => {
     // 构建上下文信息
     const context = buildTerminalContext();
 
+    // 确保已连接到后端AI（在已启用前提下）
+    try {
+      if (props.aiService?.isEnabled && !props.aiService?.client?.isConnected?.()) {
+        await props.aiService.ensureConnected?.();
+      }
+    } catch (e) {
+      // 连接失败不阻塞UI，按原逻辑继续交由后端错误返回处理
+    }
+
     // 根据模式处理
     if (selectedMode.value === 'exec') {
       // 执行模式：直接执行命令，不显示响应
