@@ -78,6 +78,13 @@
   /* 终端相关时间窗口（time-only）*/
   --terminal-tab-switch-window: 320ms;
   --monitoring-anim-flag: 500ms;
+  --terminal-connecting-window: 1000ms; /* 连接动画可视窗口 */
+  --motion-debounce-short: 50ms; /* 短防抖/排队延迟 */
+
+  /* 终端布局尺寸令牌 */
+  --monitoring-panel-width: 320px;
+  --monitoring-enter-shift: 12px;
+  --ai-enter-shift: 12px;
 
   /* Z-index层级（使用语义化变量，统一管理） */
   --z-dropdown: 1000;

@@ -201,23 +201,27 @@ export default {
     const durations = ref({
       tabSwitchWindow: 320,
       monitoringAnimFlag: 500,
+      terminalConnectingWindow: 1000,
       motionMicro: 100,
       motionTiny: 120,
       motionFast: 160,
       motionQuick: 220,
       motionStandard: 300,
-      motionSlow: 500
+      motionSlow: 500,
+      motionDebounceShort: 50
     });
     const refreshDurations = () => {
       try {
         durations.value.tabSwitchWindow = getMsVar('--terminal-tab-switch-window', 320);
         durations.value.monitoringAnimFlag = getMsVar('--monitoring-anim-flag', 500);
+        durations.value.terminalConnectingWindow = getMsVar('--terminal-connecting-window', 1000);
         durations.value.motionMicro = getMsVar('--motion-micro', 100);
         durations.value.motionTiny = getMsVar('--motion-tiny', 120);
         durations.value.motionFast = getMsVar('--motion-fast', 160);
         durations.value.motionQuick = getMsVar('--motion-quick', 220);
         durations.value.motionStandard = getMsVar('--motion-standard', 300);
         durations.value.motionSlow = getMsVar('--motion-slow', 500);
+        durations.value.motionDebounceShort = getMsVar('--motion-debounce-short', 50);
       } catch (_) {}
     };
 
@@ -706,7 +710,7 @@ export default {
         }
 
         updateIdListDebounceTimer.value = null;
-      }, 50); // 50ms防抖延迟
+      }, durations.value.motionDebounceShort); // 短防抖延迟
     };
 
     // 添加防抖控制
@@ -738,7 +742,7 @@ export default {
           } catch (error) {
             log.error(`调整终端 ${id} 大小失败:`, error);
           }
-        }, 50); // 短延迟防抖
+        }, durations.value.motionDebounceShort); // 短延迟防抖
       };
 
       // 如果指定了ID，只调整该终端大小
@@ -951,7 +955,7 @@ export default {
         if (terminalStore.hasTerminal(sessionId)) {
           setTimeout(() => {
             terminalConnectingStates.value[sessionId] = false;
-          }, 1000);
+          }, durations.value.terminalConnectingWindow);
         }
       } else {
         // 标签切换，不显示连接动画
@@ -981,7 +985,7 @@ export default {
             isTabSwitching.value = false;
           }, durations.value.tabSwitchWindow);
         }
-      }, 100);
+      }, durations.value.motionMicro);
     };
 
     // 修改watch函数，添加连接中状态检查
@@ -1174,7 +1178,7 @@ export default {
           // 延迟一小段时间后再发送实际命令
           setTimeout(() => {
             terminalStore.sendCommand(id, event.detail.command);
-          }, 100);
+          }, durations.value.motionMicro);
 
           debugLog(`执行命令到终端 ${id}: ${event.detail.command}`);
         } else {
@@ -1597,7 +1601,7 @@ export default {
         try {
           if (
             e?.target?.classList?.contains('terminal-monitoring-panel') &&
-            (e.propertyName === 'width' || e.propertyName === 'transform')
+            (e.propertyName === 'transform')
           ) {
             isMonitoringPanelAnimating.value = true;
           }
@@ -1607,7 +1611,7 @@ export default {
         try {
           if (
             e?.target?.classList?.contains('terminal-monitoring-panel') &&
-            (e.propertyName === 'width' || e.propertyName === 'transform')
+            (e.propertyName === 'transform')
           ) {
             isMonitoringPanelAnimating.value = false;
             if (activeConnectionId.value && terminalStore.hasTerminal(activeConnectionId.value)) {
@@ -1839,7 +1843,7 @@ export default {
                 resizeTerminal(terminalId);
                 // 调整大小后再次确保光标样式正确
                 forceCursorStyle(terminalId);
-              }, 100);
+              }, durations.value.motionMicro);
             }
           });
 
@@ -1912,7 +1916,7 @@ export default {
               if (router.currentRoute.value.path.includes('/terminal/')) {
                 router.push('/connections/new');
               }
-            }, 50);
+            }, durations.value.motionDebounceShort);
           }
         }
       };
@@ -2014,7 +2018,7 @@ export default {
               if (router.currentRoute.value.path.includes('/terminal/')) {
                 router.push('/connections/new');
               }
-            }, 100);
+            }, durations.value.motionMicro);
           }
         }
       };
@@ -2342,7 +2346,7 @@ export default {
             if (router.currentRoute.value.path.includes('/terminal/')) {
               router.push('/connections/new');
             }
-          }, 100);
+          }, durations.value.motionMicro);
         }
       };
 
@@ -2901,7 +2905,7 @@ export default {
 :deep(.terminal-monitoring-panel) {
   flex-shrink: 0;
   z-index: 9;
-  width: 320px; /* 监控面板固定宽度 */
+  width: var(--monitoring-panel-width); /* 监控面板固定宽度 */
   max-width: 35vw; /* 响应式最大宽度 */
   height: 100%;
   overflow: hidden;
@@ -2928,7 +2932,7 @@ export default {
 
 /* 有监控面板时的右侧区域 */
 :deep(.terminal-right-area.with-monitoring-panel) {
-  width: calc(100% - 320px); /* 减去监控面板宽度（不再动画，降低重排） */
+  width: calc(100% - var(--monitoring-panel-width)); /* 减去监控面板宽度（不再动画，降低重排） */
 }
 
 /* 终端内容填充区域 */
@@ -2975,7 +2979,7 @@ export default {
 :deep(.monitoring-toggle-enter-from),
 :deep(.monitoring-toggle-leave-to) {
   opacity: 0;
-  transform: translateX(-12px);
+  transform: translateX(calc(-1 * var(--monitoring-enter-shift, 12px)));
 }
 
 :deep(.monitoring-toggle-enter-to),
@@ -2987,7 +2991,7 @@ export default {
 :deep(.ai-combined-toggle-enter-from),
 :deep(.ai-combined-toggle-leave-to) {
   opacity: 0;
-  transform: translateY(12px);
+  transform: translateY(var(--ai-enter-shift, 12px));
 }
 
 :deep(.ai-combined-toggle-enter-to),
