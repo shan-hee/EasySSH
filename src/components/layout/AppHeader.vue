@@ -683,11 +683,29 @@ export default defineComponent({
   background: var(--login-panel-container-bg);
 }
 
+/* 在登录面板覆盖层内绘制与主布局一致的侧边分割线 */
+.login-panel-container::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  /* 与主内容左边缘（即侧边栏右缘）对齐 */
+  left: 0;
+  width: var(--divider-width);
+  background-color: var(--divider-color);
+  transition: var(--divider-transition);
+  pointer-events: none;
+}
+
 /* 移动端优化：确保登录面板左右居中（去掉左侧偏移） */
 @media screen and (max-width: 768px) {
   .login-panel-container {
     left: 0;
     right: 0;
+  }
+  /* 移动端侧边栏为覆盖式，隐藏登录层内的分割线 */
+  .login-panel-container::before {
+    content: none;
   }
 }
 
