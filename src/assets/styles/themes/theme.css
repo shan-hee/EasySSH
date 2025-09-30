@@ -68,8 +68,10 @@
   --transition-slow: 0.3s ease;
 
   /* 动作时长令牌（time-only，供 JS 读取）*/
+  --motion-micro: 100ms;
   --motion-tiny: 120ms;
   --motion-fast: 160ms;
+  --motion-quick: 220ms;
   --motion-standard: 300ms;
   --motion-slow: 500ms;
 
@@ -310,6 +312,15 @@ html:lang(zh-Hant) {
     --transition-fast: 0s;
     --transition-base: 0s;
     --transition-slow: 0s;
+    /* 禁用所有动作令牌时间，确保JS逻辑窗口也收敛 */
+    --motion-micro: 0ms;
+    --motion-tiny: 0ms;
+    --motion-fast: 0ms;
+    --motion-quick: 0ms;
+    --motion-standard: 0ms;
+    --motion-slow: 0ms;
+    --terminal-tab-switch-window: 0ms;
+    --monitoring-anim-flag: 0ms;
   }
   * {
     animation-duration: 0.01ms !important;

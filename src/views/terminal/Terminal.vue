@@ -209,11 +209,26 @@ export default {
     const sessionStore = useSessionStore(); // 添加会话存储
 
     // 统一时长（从CSS变量读取，可根据主题动态调整）
-    const durations = ref({ tabSwitchWindow: 320, monitoringAnimFlag: 500 });
+    const durations = ref({
+      tabSwitchWindow: 320,
+      monitoringAnimFlag: 500,
+      motionMicro: 100,
+      motionTiny: 120,
+      motionFast: 160,
+      motionQuick: 220,
+      motionStandard: 300,
+      motionSlow: 500
+    });
     const refreshDurations = () => {
       try {
         durations.value.tabSwitchWindow = getMsVar('--terminal-tab-switch-window', 320);
         durations.value.monitoringAnimFlag = getMsVar('--monitoring-anim-flag', 500);
+        durations.value.motionMicro = getMsVar('--motion-micro', 100);
+        durations.value.motionTiny = getMsVar('--motion-tiny', 120);
+        durations.value.motionFast = getMsVar('--motion-fast', 160);
+        durations.value.motionQuick = getMsVar('--motion-quick', 220);
+        durations.value.motionStandard = getMsVar('--motion-standard', 300);
+        durations.value.motionSlow = getMsVar('--motion-slow', 500);
       } catch (_) {}
     };
 
@@ -272,9 +287,10 @@ export default {
         }
 
         // 轻微淡出，下一帧执行 fit，再淡入
+        const transFrag = `opacity var(--motion-tiny) var(--theme-transition-timing)`;
         el.style.transition = el.style.transition
-          ? `${el.style.transition}, opacity 120ms ease`
-          : 'opacity 120ms ease';
+          ? `${el.style.transition}, ${transFrag}`
+          : transFrag;
         el.style.willChange = 'opacity';
         el.style.opacity = '0.01';
 
@@ -289,7 +305,7 @@ export default {
             // 清理 will-change，避免长期占用合成层
             setTimeout(() => {
               el.style.willChange = ''; /* 保留过渡属性以复用 */
-            }, 160);
+            }, durations.value.motionFast);
           });
         });
       } catch (_) {
@@ -321,7 +337,7 @@ export default {
       // 重置火箭动画状态，为下次连接做准备
       setTimeout(() => {
         setTerminalRocketPhase(termId, 'connecting');
-      }, 200); // 缩短延迟时间，与新的动画时间保持一致
+      }, durations.value.motionQuick); // 与动画时长令牌保持一致
     };
 
     // 检查指定终端是否应该显示连接动画
@@ -360,7 +376,7 @@ export default {
           if (getTerminalRocketPhase(termId) === 'connected') {
             setTerminalRocketPhase(termId, 'completing');
           }
-        }, 100); // 很短的延迟，只是为了确保状态更新
+        }, durations.value.motionMicro); // 很短的延迟，只是为了确保状态更新
         return true;
       }
 
@@ -1033,20 +1049,21 @@ export default {
         // 为 xterm 进行一次轻微淡入，形成过渡感（适用于Canvas/WebGL渲染）
         try {
           const nodes = document.querySelectorAll('.terminal-content-wrapper .xterm');
-          nodes.forEach(el => {
-            try {
-              const prev = el.style.transition || '';
-              el.style.transition = prev ? `${prev}, opacity 200ms ease` : 'opacity 200ms ease';
-              el.style.willChange = 'opacity';
-              el.style.opacity = '0.01';
-              requestAnimationFrame(() => {
-                el.style.opacity = '1';
-                setTimeout(() => {
-                  el.style.willChange = '';
-                }, 220);
+              nodes.forEach(el => {
+                try {
+                  const prev = el.style.transition || '';
+                  const transFrag = `opacity var(--motion-quick) var(--theme-transition-timing)`;
+                  el.style.transition = prev ? `${prev}, ${transFrag}` : transFrag;
+                  el.style.willChange = 'opacity';
+                  el.style.opacity = '0.01';
+                  requestAnimationFrame(() => {
+                    el.style.opacity = '1';
+                    setTimeout(() => {
+                      el.style.willChange = '';
+                    }, durations.value.motionQuick);
+                  });
+                } catch (_) {}
               });
-            } catch (_) {}
-          });
         } catch (_) {}
       } catch (error) {
         log.error('批量更新终端主题失败:', error);
@@ -1555,7 +1572,7 @@ export default {
                 }
                 // 处理监控面板响应式状态
                 handleMonitoringPanelResize();
-              }, 120);
+              }, durations.value.motionTiny);
               return;
             }
 
@@ -1618,7 +1635,7 @@ export default {
                     softRefitTerminal(activeConnectionId.value);
                     setTimeout(() => {
                       rightArea.style.width = '';
-                    }, 160);
+                    }, durations.value.motionFast);
                   });
                 } else {
                   softRefitTerminal(activeConnectionId.value);
@@ -1667,7 +1684,7 @@ export default {
             debugLog(`组件挂载后聚焦终端: ${activeConnectionId.value}`);
             focusTerminal(activeConnectionId.value);
           }
-        }, 300);
+        }, durations.value.motionStandard);
 
         // 触发终端状态刷新事件，同步工具栏状态
         window.dispatchEvent(
@@ -1688,7 +1705,7 @@ export default {
         setTimeout(() => {
           debugLog(`组件激活后聚焦终端: ${activeConnectionId.value}`);
           focusTerminal(activeConnectionId.value);
-        }, 100);
+        }, durations.value.motionMicro);
       }
     });
 
@@ -2922,8 +2939,7 @@ export default {
 
 /* 有监控面板时的右侧区域 */
 .terminal-right-area.with-monitoring-panel {
-  width: calc(100% - 320px); /* 减去监控面板宽度 */
-  transition: width var(--transition-slow);
+  width: calc(100% - 320px); /* 减去监控面板宽度（不再动画，降低重排） */
 }
 
 /* 终端内容填充区域 */
@@ -2959,25 +2975,22 @@ export default {
     transform var(--transition-slow);
 }
 
-/* ===== 监控面板显隐过渡（含宽度） ===== */
+/* ===== 监控面板显隐过渡（transform-only，避免宽度动画） ===== */
 .monitoring-toggle-enter-active,
 .monitoring-toggle-leave-active {
   transition:
-    width var(--transition-slow),
     opacity var(--transition-slow),
     transform var(--transition-slow);
 }
 
 .monitoring-toggle-enter-from,
 .monitoring-toggle-leave-to {
-  width: 0;
   opacity: 0;
   transform: translateX(-12px);
 }
 
 .monitoring-toggle-enter-to,
 .monitoring-toggle-leave-from {
-  width: 320px;
   opacity: 1;
   transform: translateX(0);
 }
@@ -3102,7 +3115,7 @@ export default {
   font-display: swap;
 
   /* 柔性适配时的轻微淡入过渡，掩盖画布重绘 */
-  transition: opacity 120ms ease;
+  transition: opacity var(--motion-tiny) var(--theme-transition-timing);
 }
 
 /* XTerm 视口 */
