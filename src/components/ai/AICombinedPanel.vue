@@ -194,7 +194,7 @@ import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue';
 import { ElInput, ElMessage } from 'element-plus';
 import settingsService from '../../services/settings';
 import AIMessageItem from './AIMessageItem.vue';
-import { aiPerformanceMonitor, debounce } from '../../utils/ai-panel-performance.js';
+import { createSmartDebounce } from '../../utils/smart-debounce.js';
 import { withErrorHandling, ErrorSeverity } from '../../utils/ai-panel-error-handler.js';
 import log from '@/services/log';
 
@@ -319,15 +319,7 @@ const togglePanel = () => {
     nextTick(() => {
       adjustHeight();
       scrollToBottom();
-
-      // 记录性能指标
-      const duration = performance.now() - startTime;
-      aiPerformanceMonitor.recordPanelToggleTime(duration);
     });
-  } else {
-    // 记录性能指标
-    const duration = performance.now() - startTime;
-    aiPerformanceMonitor.recordPanelToggleTime(duration);
   }
 };
 
@@ -753,11 +745,11 @@ watch(
 );
 
 // 监听窗口大小变化（使用防抖优化性能）
-const handleResize = debounce(() => {
+const handleResize = createSmartDebounce(() => {
   if (isPanelExpanded.value) {
     adjustHeight();
   }
-}, 150);
+}, { delay: 150, adaptive: false });
 
 onMounted(() => {
   window.addEventListener('resize', handleResize);

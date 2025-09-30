@@ -2,6 +2,8 @@
  * 日志服务模块
  * 提供统一的日志记录、过滤、格式化和存储功能
  */
+import performanceService from './performance';
+
 class LogService {
   constructor() {
     this.isInitialized = false;
@@ -69,6 +71,12 @@ class LogService {
       this.isInitialized = true;
       // 在全局环境暴露导出日志方法，方便在控制台直接调用
       this._exposeGlobalExport();
+      // 启动性能检测（全面版），并提供查看方式
+      try {
+        performanceService.init();
+      } catch (_) {
+        // 忽略性能服务初始化异常，避免影响主流程
+      }
       // 注册全局错误/未处理Promise钩子
       this._registerGlobalErrorHandlers();
       // 注册跨标签 storage 同步
@@ -77,7 +85,8 @@ class LogService {
         level: this.logLevel,
         console: this.enableConsole,
         maxLogs: this.maxLogs,
-        exportMethod: '执行 EasySSH.exportLogs() 将下载easyssh.logs'
+        exportMethod: '执行 EasySSH.exportLogs() 将下载easyssh.logs',
+        performance: '执行 EasySSH.printPerformance() 查看系统性能报告'
       });
       return true;
     } catch (error) {

@@ -111,7 +111,6 @@
 import { computed, onMounted } from 'vue';
 import AICommandActions from './AICommandActions.vue';
 import { parseAIMessage } from '../../services/ai/ai-message-parser.js';
-import { aiPerformanceMonitor } from '../../utils/ai-panel-performance.js';
 import { sanitizeHtml } from '../../utils/sanitizeHtml.js';
 
 // Props
@@ -139,8 +138,7 @@ const messageParseResult = computed(() => {
   const result = parseAIMessage(props.message.content);
   const duration = performance.now() - startTime;
 
-  // 记录命令解析性能
-  aiPerformanceMonitor.recordCommandParseTime(duration);
+  // 性能统计移除：保留运算，但不再记录AI面板专属指标
 
   return result;
 });
@@ -223,8 +221,7 @@ const handleAddToScripts = command => {
 
 // 组件挂载时记录渲染性能
 onMounted(() => {
-  const renderTime = performance.now() - (window.messageRenderStart || performance.now());
-  aiPerformanceMonitor.recordMessageRenderTime(renderTime);
+  // 渲染性能统计移除
 });
 // 安全HTML渲染指令（基于白名单消毒）
 const vSafeHtml = {
