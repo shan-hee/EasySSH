@@ -1158,21 +1158,15 @@ class SettingsService {
     const textColor = computedStyle.getPropertyValue('--color-text-primary').trim();
 
     // 如果CSS变量有值，则使用界面主题的颜色
-    if (bgColor && textColor) {
-      resolvedTheme.background = bgColor;
+    if (textColor) {
+      // 前景与光标使用主题前景色
       resolvedTheme.foreground = textColor;
       resolvedTheme.cursor = textColor;
     }
 
-    // 若启用了终端背景，使用完全透明背景以露出底层背景图
-    try {
-      const cssBgImage = computedStyle.getPropertyValue('--terminal-bg-image').trim();
-      const hasBgImage = cssBgImage && cssBgImage !== 'none';
-      if (hasBgImage) {
-        // xterm.js 对 'transparent' 的解析不稳定，使用 rgba(0,0,0,0)
-        resolvedTheme.background = 'rgba(0, 0, 0, 0)';
-      }
-    } catch (_) {}
+    // 始终使终端背景透明，完全依赖底层页面主题背景色渲染
+    // 使用 rgba(0,0,0,0) 以确保 Canvas/WebGL 下的透明渲染稳定
+    resolvedTheme.background = 'rgba(0, 0, 0, 0)';
 
     // 不缓存，确保每次都能获取到最新的CSS变量值
     return resolvedTheme;

@@ -17,7 +17,13 @@
 
       <!-- 背景图改为在 .content 内部通过伪元素绘制，避免层级干扰与双重叠加 -->
 
-      <main class="content" :class="{ 'terminal-bg-active': isTerminalRoute && terminalHasBackground }">
+      <main
+        class="content"
+        :class="{
+          'terminal-bg-active': isTerminalRoute && terminalHasBackground,
+          'terminal-surface-transparent': isTerminalRoute
+        }"
+      >
         <!-- 终端组件直接嵌入为常驻组件，使用v-show控制显示/隐藏 -->
         <keep-alive>
           <terminal
@@ -634,7 +640,8 @@ export default defineComponent({
 }
 
 /* 当启用终端背景时，使内容区域透明，露出底层背景图 */
-.content.terminal-bg-active {
+.content.terminal-bg-active,
+.content.terminal-surface-transparent {
   background-color: transparent;
 }
 
@@ -656,8 +663,30 @@ export default defineComponent({
 }
 
 /* 背景开启时，让终端容器自身变透明，避免覆盖伪元素背景 */
-.content.terminal-bg-active :deep(.terminal-container) {
+.content.terminal-bg-active :deep(.terminal-container),
+.content.terminal-surface-transparent :deep(.terminal-container) {
   background-color: transparent !important;
+}
+
+/* 在使用背景图时，让终端区域内的主要容器背景透明，完全依赖底图与主题前景色 */
+.content.terminal-bg-active .terminal-individual-toolbar,
+.content.terminal-surface-transparent .terminal-individual-toolbar,
+.content.terminal-bg-active .terminal-ai-combined-area,
+.content.terminal-surface-transparent .terminal-ai-combined-area,
+.content.terminal-bg-active .terminal-monitoring-panel,
+.content.terminal-surface-transparent .terminal-monitoring-panel,
+.content.terminal-bg-active .terminal-right-area,
+.content.terminal-surface-transparent .terminal-right-area,
+.content.terminal-bg-active .terminal-content-padding,
+.content.terminal-surface-transparent .terminal-content-padding {
+  background: transparent !important;
+  background-color: transparent !important;
+}
+
+/* 监控面板边框在背景图模式下弱化，避免硬分割线影响观感 */
+.content.terminal-bg-active .terminal-monitoring-panel,
+.content.terminal-surface-transparent .terminal-monitoring-panel {
+  border-right-color: transparent !important;
 }
 
 /* 移动端遮罩层样式 */

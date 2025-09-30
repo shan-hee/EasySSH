@@ -1260,12 +1260,19 @@ export const useTerminalStore = defineStore('terminal', () => {
             const themeConfig = settingsService.getTerminalTheme(settings.theme);
             log.info(`终端 ${termId}: 获取到主题配置:`, themeConfig);
 
-            // 优化主题比较：只比较背景色来判断主题是否变化
+            // 比较关键颜色：背景 + 前景 + 光标
             const currentBg = terminal.options?.theme?.background;
             const newBg = themeConfig.background;
-            log.info(`终端 ${termId}: 主题比较 - 当前: ${currentBg}, 新: ${newBg}`);
+            const currentFg = terminal.options?.theme?.foreground;
+            const newFg = themeConfig.foreground;
+            const currentCursor = terminal.options?.theme?.cursor;
+            const newCursor = themeConfig.cursor;
+            const needUpdate = currentBg !== newBg || currentFg !== newFg || currentCursor !== newCursor;
+            log.info(
+              `终端 ${termId}: 主题比较 - 背景: ${currentBg} -> ${newBg}, 前景: ${currentFg} -> ${newFg}, 光标: ${currentCursor} -> ${newCursor}`
+            );
 
-            if (currentBg !== newBg) {
+            if (needUpdate) {
               log.info(`终端 ${termId}: 更新主题 ${currentBg} -> ${newBg}`);
               log.info(`终端 ${termId}: 终端对象结构:`, {
                 hasTerminal: !!terminal.terminal,
