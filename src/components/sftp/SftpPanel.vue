@@ -2997,7 +2997,12 @@ export default defineComponent({
 
     // 组件挂载时初始化SFTP会话
     onMounted(() => {
-      window.addEventListener('sftp:session-changed', handleSessionChanged);
+      try {
+        const { EVENTS } = require('@/services/events');
+        window.addEventListener(EVENTS.SFTP_SESSION_CHANGED, handleSessionChanged);
+      } catch (_) {
+        window.addEventListener('sftp:session-changed', handleSessionChanged);
+      }
 
       // 添加全局点击监听，用于清除创建状态
       document.addEventListener('click', handleGlobalClick, true);
@@ -3008,7 +3013,12 @@ export default defineComponent({
 
     // 组件卸载时清理资源
     onUnmounted(() => {
-      window.removeEventListener('sftp:session-changed', handleSessionChanged);
+      try {
+        const { EVENTS } = require('@/services/events');
+        window.removeEventListener(EVENTS.SFTP_SESSION_CHANGED, handleSessionChanged);
+      } catch (_) {
+        window.removeEventListener('sftp:session-changed', handleSessionChanged);
+      }
 
       // 移除全局点击监听
       document.removeEventListener('click', handleGlobalClick, true);

@@ -136,7 +136,12 @@ class MonitoringStateManager {
     window.addEventListener('monitoring-disconnected', disconnectionHandler);
     window.addEventListener('monitoring-data-received', unifiedDataHandler);
     window.addEventListener('monitoring-data-synced', unifiedDataHandler);
-    window.addEventListener('monitoring-status-change', statusHandler);
+    try {
+      const { EVENTS } = require('@/services/events');
+      window.addEventListener(EVENTS.MONITORING_STATUS_CHANGE, statusHandler);
+    } catch (_) {
+      window.addEventListener('monitoring-status-change', statusHandler);
+    }
 
     // 保存监听器引用以便清理
     this.eventListeners.set('connection', connectionHandler);

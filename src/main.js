@@ -403,28 +403,42 @@ window.addEventListener('auth:expired', () => {
 });
 
 // 添加SSH连接开始时同时触发监控连接的全局事件监听器
-window.addEventListener('ssh-connecting', async event => {
-  const { host, terminalId } = event.detail;
-
-  if (host && terminalId) {
-    try {
-      // 立即开始监控连接，与SSH连接并行
-      try {
-        const connected = await monitoringService.connect(terminalId, host);
-        // 只在连接成功时记录INFO日志，失败时使用DEBUG级别
-        if (connected) {
-          log.info(`[监控] 终端 ${terminalId} 连接到 ${host} 成功`);
-        } else {
-          log.debug(`[监控] 终端 ${terminalId} 连接到 ${host} 失败`);
+(async () => {
+  try {
+    const { EVENTS } = await import('@/services/events');
+    window.addEventListener(EVENTS.SSH_CONNECTING, async event => {
+      const { host, terminalId } = event.detail || {};
+      if (host && terminalId) {
+        try {
+          const connected = await monitoringService.connect(terminalId, host);
+          if (connected) {
+            log.info(`[监控] 终端 ${terminalId} 连接到 ${host} 成功`);
+          } else {
+            log.debug(`[监控] 终端 ${terminalId} 连接到 ${host} 失败`);
+          }
+        } catch (error) {
+          log.debug(`[监控] 终端 ${terminalId} 连接到 ${host} 出错:`, error);
         }
-      } catch (error) {
-        log.debug(`[监控] 终端 ${terminalId} 连接到 ${host} 出错:`, error);
       }
-    } catch (error) {
-      log.debug('[并行监控] 导入监控服务失败:', error);
-    }
+    });
+  } catch (_) {
+    window.addEventListener('ssh-connecting', async event => {
+      const { host, terminalId } = event.detail || {};
+      if (host && terminalId) {
+        try {
+          const connected = await monitoringService.connect(terminalId, host);
+          if (connected) {
+            log.info(`[监控] 终端 ${terminalId} 连接到 ${host} 成功`);
+          } else {
+            log.debug(`[监控] 终端 ${terminalId} 连接到 ${host} 失败`);
+          }
+        } catch (error) {
+          log.debug(`[监控] 终端 ${terminalId} 连接到 ${host} 出错:`, error);
+        }
+      }
+    });
   }
-});
+})();
 
 // 统一的服务初始化流程
 const initializeApp = async () => {

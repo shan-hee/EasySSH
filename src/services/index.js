@@ -121,11 +121,20 @@ async function initServices() {
     }
 
     // 触发服务初始化完成事件
-    window.dispatchEvent(
-      new CustomEvent('services:ready', {
-        detail: { status: { ...servicesStatus } }
-      })
-    );
+    try {
+      const { EVENTS } = await import('@/services/events');
+      window.dispatchEvent(
+        new CustomEvent(EVENTS.SERVICES_READY, {
+          detail: { status: { ...servicesStatus } }
+        })
+      );
+    } catch (_) {
+      window.dispatchEvent(
+        new CustomEvent('services:ready', {
+          detail: { status: { ...servicesStatus } }
+        })
+      );
+    }
 
     log.info('所有服务初始化完成');
     return true;

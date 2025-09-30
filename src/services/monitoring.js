@@ -521,15 +521,27 @@ class MonitoringInstance {
     }
     this._lastStatusHash = statusKey;
 
-    // 触发状态变更事件
-    this._emitEvent('monitoring-status-change', {
-      terminalId: this.terminalId,
-      hostname: this.state.targetHost,
-      hostId,
-      installed,
-      available,
-      source: 'websocket'
-    });
+    // 触发状态变更事件（常量化）
+    try {
+      const { EVENTS } = require('@/services/events');
+      this._emitEvent(EVENTS.MONITORING_STATUS_CHANGE, {
+        terminalId: this.terminalId,
+        hostname: this.state.targetHost,
+        hostId,
+        installed,
+        available,
+        source: 'websocket'
+      });
+    } catch (_) {
+      this._emitEvent('monitoring-status-change', {
+        terminalId: this.terminalId,
+        hostname: this.state.targetHost,
+        hostId,
+        installed,
+        available,
+        source: 'websocket'
+      });
+    }
   }
 
   /**

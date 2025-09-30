@@ -1,5 +1,6 @@
 // import { WebSocket } from 'ws';
 import log from '../log';
+import { EVENTS } from '@/services/events';
 import settingsService from '../settings';
 import { wsServerConfig } from '../../config/app-config';
 import {
@@ -421,7 +422,7 @@ class SSHService {
         );
 
         window.dispatchEvent(
-          new CustomEvent('ssh-session-creation-failed', {
+          new CustomEvent(EVENTS.SSH_SESSION_CREATION_FAILED, {
             detail: {
               sessionId,
               terminalId,
@@ -618,7 +619,7 @@ class SSHService {
             );
 
             window.dispatchEvent(
-              new CustomEvent('ssh-session-creation-failed', {
+              new CustomEvent(EVENTS.SSH_SESSION_CREATION_FAILED, {
                 detail: {
                   sessionId,
                   terminalId,
@@ -880,7 +881,7 @@ class SSHService {
                     session.terminalId = resolvedTerminalId;
                   }
 
-                  const sshConnectedEvent = new CustomEvent('ssh-connected', {
+          const sshConnectedEvent = new CustomEvent(EVENTS.SSH_CONNECTED, {
                     detail: {
                       sessionId,
                       host: connHost,
@@ -1613,7 +1614,7 @@ class SSHService {
       );
 
       window.dispatchEvent(
-        new CustomEvent('ssh-session-creation-failed', {
+        new CustomEvent(EVENTS.SSH_SESSION_CREATION_FAILED, {
           detail: {
             sessionId: null,
             terminalId,
@@ -2383,7 +2384,7 @@ class SSHService {
           session.terminalId = terminalId;
         }
 
-        const sshConnectedEvent = new CustomEvent('ssh-connected', {
+        const sshConnectedEvent = new CustomEvent(EVENTS.SSH_CONNECTED, {
           detail: {
             sessionId,
             host: connHost,

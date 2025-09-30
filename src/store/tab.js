@@ -7,6 +7,7 @@ import { useConnectionStore } from './connection';
 import { useLocalConnectionsStore } from './localConnections';
 // 导入日志服务
 import log from '../services/log';
+import { EVENTS } from '@/services/events';
 
 // 导入会话存储
 import { useSessionStore } from './session';
@@ -272,7 +273,7 @@ export const useTabStore = defineStore(
 
             // 触发终端切换事件
             window.dispatchEvent(
-              new CustomEvent('terminal:session-change', {
+              new CustomEvent(EVENTS.TERMINAL_SESSION_CHANGE, {
                 detail: {
                   sessionId: newSessionId,
                   isTabSwitch: true, // 添加标记表明这是标签切换操作
@@ -325,19 +326,19 @@ export const useTabStore = defineStore(
       const appLayoutElement = document.querySelector('.app-container');
       if (appLayoutElement) {
         // 检查监控面板是否打开
-        const monitoringPanelVisible = document.querySelector('.monitoring-panel-container');
-        if (monitoringPanelVisible) {
-          // 触发关闭监控面板事件
-          log.info('关闭标签页前先关闭监控面板');
-          appLayoutElement.dispatchEvent(new CustomEvent('close-monitoring-panel'));
-        }
+          const monitoringPanelVisible = document.querySelector('.monitoring-panel-container');
+          if (monitoringPanelVisible) {
+            // 触发关闭监控面板事件
+            log.info('关闭标签页前先关闭监控面板');
+            appLayoutElement.dispatchEvent(new CustomEvent(EVENTS.CLOSE_MONITORING_PANEL));
+          }
 
         // 检查SFTP面板是否打开
         const sftpPanelVisible = document.querySelector('.sftp-panel-container');
         if (sftpPanelVisible) {
           // 触发关闭SFTP面板事件
           log.info('关闭标签页前先关闭SFTP面板');
-          appLayoutElement.dispatchEvent(new CustomEvent('close-sftp-panel'));
+          appLayoutElement.dispatchEvent(new CustomEvent(EVENTS.CLOSE_SFTP_PANEL));
         }
       }
 
@@ -403,7 +404,7 @@ export const useTabStore = defineStore(
 
             // 在保留终端连接的同时，确保触发状态刷新事件
             window.dispatchEvent(
-              new CustomEvent('terminal:refresh-status', {
+              new CustomEvent(EVENTS.TERMINAL_REFRESH_STATUS, {
                 detail: { terminalId: closingTab.data.connectionId }
               })
             );
@@ -443,7 +444,7 @@ export const useTabStore = defineStore(
 
             // 通知终端进行无动画的标签切换（与switchTab行为一致）
             window.dispatchEvent(
-              new CustomEvent('terminal:session-change', {
+              new CustomEvent(EVENTS.TERMINAL_SESSION_CHANGE, {
                 detail: {
                   sessionId: newActiveTab.data.connectionId,
                   isTabSwitch: true,

@@ -10,6 +10,7 @@ import { useUserStore } from '../store/user.js';
 import storageAdapter from './storage-adapter.js';
 import { useTerminalStore } from '../store/terminal';
 import apiService from './api';
+import { EVENTS } from '@/services/events';
 
 const SETTINGS_STORAGE_KEY = 'user_settings';
 
@@ -121,7 +122,7 @@ class SettingsService {
             ? Array.from(this.loadedCategories)
             : [];
           window.dispatchEvent(
-            new CustomEvent('settings:ready', {
+            new CustomEvent(EVENTS.SETTINGS_READY, {
               detail: {
                 categoriesLoaded: categories,
                 hasServerSettings: this.hasServerSettings === true
@@ -159,8 +160,8 @@ class SettingsService {
           }
         } catch (_) {}
       };
-      window.addEventListener('terminal-bg-changed', updateBg);
-      window.addEventListener('terminal-bg-status', updateBg);
+      window.addEventListener(EVENTS.TERMINAL_BG_CHANGED, updateBg);
+      window.addEventListener(EVENTS.TERMINAL_BG_STATUS, updateBg);
       this._bgListenersSetup = true;
     } catch (_) {
       // 忽略：非浏览器环境或事件注册失败
@@ -258,11 +259,11 @@ class SettingsService {
                 // 广播背景状态与变更事件，确保在创建连接时即时生效
                 try {
                   window.dispatchEvent(
-                    new CustomEvent('terminal-bg-status', {
+                    new CustomEvent(EVENTS.TERMINAL_BG_STATUS, {
                       detail: { enabled: !!bg.enabled, bgSettings: bg }
                     })
                   );
-                  window.dispatchEvent(new CustomEvent('terminal-bg-changed', { detail: bg }));
+                  window.dispatchEvent(new CustomEvent(EVENTS.TERMINAL_BG_CHANGED, { detail: bg }));
                 } catch (_) {}
               }
             } catch (e) {
@@ -368,12 +369,21 @@ class SettingsService {
       this.isInitialized = true;
       // 本地就绪同样广播事件，方便监听方统一处理
       try {
+        const { EVENTS } = await import('@/services/events');
         window.dispatchEvent(
-          new CustomEvent('settings:ready', {
+          new CustomEvent(EVENTS.SETTINGS_READY, {
             detail: { categoriesLoaded: ['ui'], hasServerSettings: false }
           })
         );
-      } catch (_) {}
+      } catch (_) {
+        try {
+          window.dispatchEvent(
+            new CustomEvent('settings:ready', {
+              detail: { categoriesLoaded: ['ui'], hasServerSettings: false }
+            })
+          );
+        } catch (__) {}
+      }
       this.hasServerSettings = false;
       return true;
     } catch (e) {
@@ -975,7 +985,7 @@ class SettingsService {
         detail: { theme, actualTheme, previousTheme: currentTheme }
       });
 
-      const terminalThemeEvent = new CustomEvent('terminal-theme-update', {
+      const terminalThemeEvent = new CustomEvent(EVENTS.TERMINAL_THEME_UPDATE, {
         detail: { uiTheme: actualTheme }
       });
 

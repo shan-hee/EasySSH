@@ -878,6 +878,7 @@ import aiService from '@/services/ai/ai-service';
 import { applyTerminalBackgroundCss, clearTerminalBackgroundCss } from '@/utils/terminalBackgroundCss';
 import settingsService from '@/services/settings';
 import terminalService from '@/services/terminal';
+import { EVENTS } from '@/services/events';
 
 export default defineComponent({
   name: 'UserSettingsModal',
@@ -1506,14 +1507,14 @@ export default defineComponent({
 
     // 监听相关事件，更新当前渲染器标识
     onMounted(() => {
-      window.addEventListener('terminal-settings-updated', detectCurrentRenderer);
-      window.addEventListener('terminal-status-update', detectCurrentRenderer);
-      window.addEventListener('terminal:new-session', detectCurrentRenderer);
+      window.addEventListener(EVENTS.TERMINAL_SETTINGS_UPDATED, detectCurrentRenderer);
+      window.addEventListener(EVENTS.TERMINAL_STATUS_UPDATE, detectCurrentRenderer);
+      window.addEventListener(EVENTS.TERMINAL_NEW_SESSION, detectCurrentRenderer);
     });
     onUnmounted(() => {
-      window.removeEventListener('terminal-settings-updated', detectCurrentRenderer);
-      window.removeEventListener('terminal-status-update', detectCurrentRenderer);
-      window.removeEventListener('terminal:new-session', detectCurrentRenderer);
+      window.removeEventListener(EVENTS.TERMINAL_SETTINGS_UPDATED, detectCurrentRenderer);
+      window.removeEventListener(EVENTS.TERMINAL_STATUS_UPDATE, detectCurrentRenderer);
+      window.removeEventListener(EVENTS.TERMINAL_NEW_SESSION, detectCurrentRenderer);
     });
 
     // 保存连接设置（仅保存到服务器一次，避免重复请求）
@@ -1778,12 +1779,12 @@ export default defineComponent({
         updateCssVariables();
 
         // 创建自定义事件，通知终端组件更新背景
-        const event = new CustomEvent('terminal-bg-changed', { detail: terminalBgSettings });
+        const event = new CustomEvent(EVENTS.TERMINAL_BG_CHANGED, { detail: terminalBgSettings });
         window.dispatchEvent(event);
 
         // 立即触发状态更新事件
         window.dispatchEvent(
-          new CustomEvent('terminal-bg-status', {
+          new CustomEvent(EVENTS.TERMINAL_BG_STATUS, {
             detail: {
               enabled: terminalBgSettings.enabled,
               bgSettings: terminalBgSettings
@@ -1807,11 +1808,11 @@ export default defineComponent({
         clearTerminalBackgroundCss();
       }
 
-      const event = new CustomEvent('terminal-bg-changed', { detail: terminalBgSettings });
+      const event = new CustomEvent(EVENTS.TERMINAL_BG_CHANGED, { detail: terminalBgSettings });
       window.dispatchEvent(event);
 
       window.dispatchEvent(
-        new CustomEvent('terminal-bg-status', {
+        new CustomEvent(EVENTS.TERMINAL_BG_STATUS, {
           detail: {
             enabled: terminalBgSettings.enabled,
             bgSettings: terminalBgSettings

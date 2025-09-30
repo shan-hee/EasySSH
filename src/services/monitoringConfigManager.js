@@ -41,13 +41,25 @@ class MonitoringConfigManager {
               log.error('设置服务就绪后加载监控配置失败', error);
             });
           } finally {
-            window.removeEventListener('settings:ready', handleSettingsReady);
-            window.removeEventListener('services:ready', handleSettingsReady);
+            try {
+              const { EVENTS } = require('@/services/events');
+              window.removeEventListener(EVENTS.SETTINGS_READY, handleSettingsReady);
+              window.removeEventListener(EVENTS.SERVICES_READY, handleSettingsReady);
+            } catch (_) {
+              window.removeEventListener('settings:ready', handleSettingsReady);
+              window.removeEventListener('services:ready', handleSettingsReady);
+            }
           }
         };
-        window.addEventListener('settings:ready', handleSettingsReady);
-        // 兼容旧流程：某些情况下仅有 services:ready（核心服务触发）
-        window.addEventListener('services:ready', handleSettingsReady);
+        try {
+          const { EVENTS } = require('@/services/events');
+          window.addEventListener(EVENTS.SETTINGS_READY, handleSettingsReady);
+          // 兼容旧流程：某些情况下仅有 services:ready（核心服务触发）
+          window.addEventListener(EVENTS.SERVICES_READY, handleSettingsReady);
+        } catch (_) {
+          window.addEventListener('settings:ready', handleSettingsReady);
+          window.addEventListener('services:ready', handleSettingsReady);
+        }
       }
 
       this.initialized = true;

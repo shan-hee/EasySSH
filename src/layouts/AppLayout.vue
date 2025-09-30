@@ -70,6 +70,7 @@ import { useTerminalStore } from '@/store/terminal';
 // 导入日志服务
 import log from '@/services/log';
 import { applyTerminalBackgroundCss, clearTerminalBackgroundCss } from '@/utils/terminalBackgroundCss';
+import { EVENTS } from '@/services/events';
 import settingsService from '@/services/settings';
 
 export default defineComponent({
@@ -232,7 +233,7 @@ export default defineComponent({
                 !!terminalStore?.isTerminalConnected(preId);
 
               window.dispatchEvent(
-                new CustomEvent('terminal:session-change', {
+                new CustomEvent(EVENTS.TERMINAL_SESSION_CHANGE, {
                   detail: {
                     sessionId: preId,
                     // 已存在的终端视为“标签切换”，避免重置与连接动画
@@ -330,10 +331,10 @@ export default defineComponent({
       window.addEventListener('resize', handleWindowResize);
 
       // 绑定全局事件监听（具名处理器，便于卸载）
-      window.addEventListener('terminal:title-change', handleTerminalTitleChange);
-      window.addEventListener('terminal:session-change', handleTerminalSessionChange);
-      window.addEventListener('ssh:session-created', handleSSHSessionCreated);
-      window.addEventListener('terminal-bg-status', handleTerminalBgStatus);
+      window.addEventListener(EVENTS.TERMINAL_TITLE_CHANGE, handleTerminalTitleChange);
+      window.addEventListener(EVENTS.TERMINAL_SESSION_CHANGE, handleTerminalSessionChange);
+      window.addEventListener(EVENTS.SSH_SESSION_CREATED, handleSSHSessionCreated);
+      window.addEventListener(EVENTS.TERMINAL_BG_STATUS, handleTerminalBgStatus);
 
       // 初始化时从设置服务快照读取一次背景设置
       try {
@@ -351,11 +352,19 @@ export default defineComponent({
       // 监听关闭监控面板和SFTP面板的事件
       const appContainer = document.querySelector('.app-container');
       if (appContainer) {
-        appContainer.addEventListener('close-sftp-panel', handleCloseSftpPanelEvent);
+        appContainer.addEventListener(EVENTS.CLOSE_SFTP_PANEL, handleCloseSftpPanelEvent);
+        appContainer.addEventListener(EVENTS.CLOSE_MONITORING_PANEL, () => {
+          try {
+            const sessionId = getCurrentSessionId();
+            window.dispatchEvent(
+              new CustomEvent(EVENTS.TERMINAL_MONITORING_HIDE, { detail: { sessionId } })
+            );
+          } catch (_) {}
+        });
       }
 
       // 监听来自各个终端工具栏的SFTP面板切换请求
-      window.addEventListener('request-toggle-sftp-panel', handleRequestToggleSftpPanel);
+      window.addEventListener(EVENTS.REQUEST_TOGGLE_SFTP_PANEL, handleRequestToggleSftpPanel);
     });
 
     
@@ -366,19 +375,19 @@ export default defineComponent({
       window.removeEventListener('resize', handleWindowResize);
 
       // 移除会话/标题/SSH相关监听器
-      window.removeEventListener('terminal:title-change', handleTerminalTitleChange);
-      window.removeEventListener('terminal:session-change', handleTerminalSessionChange);
-      window.removeEventListener('ssh:session-created', handleSSHSessionCreated);
-      window.removeEventListener('terminal-bg-status', handleTerminalBgStatus);
+      window.removeEventListener(EVENTS.TERMINAL_TITLE_CHANGE, handleTerminalTitleChange);
+      window.removeEventListener(EVENTS.TERMINAL_SESSION_CHANGE, handleTerminalSessionChange);
+      window.removeEventListener(EVENTS.SSH_SESSION_CREATED, handleSSHSessionCreated);
+      window.removeEventListener(EVENTS.TERMINAL_BG_STATUS, handleTerminalBgStatus);
 
       // 移除关闭SFTP面板事件监听器
       const appContainer = document.querySelector('.app-container');
       if (appContainer) {
-        appContainer.removeEventListener('close-sftp-panel', handleCloseSftpPanelEvent);
+        appContainer.removeEventListener(EVENTS.CLOSE_SFTP_PANEL, handleCloseSftpPanelEvent);
       }
 
       // 移除请求切换SFTP面板事件监听器
-      window.removeEventListener('request-toggle-sftp-panel', handleRequestToggleSftpPanel);
+      window.removeEventListener(EVENTS.REQUEST_TOGGLE_SFTP_PANEL, handleRequestToggleSftpPanel);
     });
 
     // 处理窗口大小变化
@@ -471,9 +480,13 @@ export default defineComponent({
             // 用户确认切换
             activeSessionId.value = currentSessionId;
             // 触发SFTP面板刷新
-            window.dispatchEvent(
-              new CustomEvent('sftp:session-changed', { detail: currentSessionId })
-            );
+            try {
+              window.dispatchEvent(
+                new CustomEvent(EVENTS.SFTP_SESSION_CHANGED, { detail: currentSessionId })
+              );
+            } catch (_) {
+              window.dispatchEvent(new CustomEvent('sftp:session-changed', { detail: currentSessionId }));
+            }
           })
           .catch(() => {
             // 用户取消操作，保持当前SFTP会话

@@ -4,6 +4,7 @@
  */
 
 import log from '../log';
+import { EVENTS } from '@/services/events';
 import AIClient from './ai-client';
 import AICache from './ai-cache';
 import AIConfig from './ai-config';
@@ -519,9 +520,9 @@ class AIService {
    */
   _notifyStatusChange(status) {
     try {
-      // 发送自定义事件通知状态变化
+      // 发送自定义事件通知状态变化（使用常量）
       window.dispatchEvent(
-        new CustomEvent('ai-service-status-change', {
+        new CustomEvent(EVENTS.AI_SERVICE_STATUS_CHANGE, {
           detail: { status, isEnabled: this.isEnabled }
         })
       );

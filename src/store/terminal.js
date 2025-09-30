@@ -7,6 +7,7 @@ import { useConnectionStore } from './connection';
 import { useLocalConnectionsStore } from './localConnections';
 import { useTabStore } from './tab';
 import { FitAddon } from '@xterm/addon-fit';
+import { EVENTS } from '@/services/events';
 
 import { useSessionStore } from './session';
 import terminalService from '../services/terminal';
@@ -90,7 +91,7 @@ export const useTerminalStore = defineStore('terminal', () => {
 
         // 触发一次状态更新事件
         window.dispatchEvent(
-          new CustomEvent('terminal-status-update', {
+          new CustomEvent(EVENTS.TERMINAL_STATUS_UPDATE, {
             detail: { terminalId: connectionId, status: 'ready', isNew: false }
           })
         );
@@ -118,7 +119,7 @@ export const useTerminalStore = defineStore('terminal', () => {
 
       // 发布状态变更事件，通知UI终端开始初始化
       window.dispatchEvent(
-        new CustomEvent('terminal-status-update', {
+        new CustomEvent(EVENTS.TERMINAL_STATUS_UPDATE, {
           detail: { terminalId: connectionId, status: 'initializing', isNew: true }
         })
       );
@@ -215,7 +216,7 @@ export const useTerminalStore = defineStore('terminal', () => {
 
         // 发布错误状态事件
         window.dispatchEvent(
-          new CustomEvent('terminal-status-update', {
+          new CustomEvent(EVENTS.TERMINAL_STATUS_UPDATE, {
             detail: { terminalId: connectionId, status: 'error', error: '无法找到连接信息' }
           })
         );
@@ -225,7 +226,7 @@ export const useTerminalStore = defineStore('terminal', () => {
 
       // 触发SSH连接开始事件，用于并行启动监控连接
       window.dispatchEvent(
-        new CustomEvent('ssh-connecting', {
+        new CustomEvent(EVENTS.SSH_CONNECTING, {
           detail: {
             terminalId: connectionId,
             host: connection.host,
@@ -295,7 +296,7 @@ export const useTerminalStore = defineStore('terminal', () => {
         const duration = Math.round(endTime - startTime);
         log.info(`[Terminal] 终端 ${connectionId} 初始化成功 (耗时: ${duration}ms)`);
         window.dispatchEvent(
-          new CustomEvent('terminal-status-update', {
+          new CustomEvent(EVENTS.TERMINAL_STATUS_UPDATE, {
             detail: {
               terminalId: connectionId,
               status: 'ready',
@@ -333,7 +334,7 @@ export const useTerminalStore = defineStore('terminal', () => {
           state.terminalStates[connectionId] = 'cancelled';
 
           window.dispatchEvent(
-            new CustomEvent('terminal-status-update', {
+            new CustomEvent(EVENTS.TERMINAL_STATUS_UPDATE, {
               detail: {
                 terminalId: connectionId,
                 status: 'cancelled'
@@ -360,7 +361,7 @@ export const useTerminalStore = defineStore('terminal', () => {
         if (!isCancelled) {
           // 发布错误状态事件
           window.dispatchEvent(
-            new CustomEvent('terminal-status-update', {
+            new CustomEvent(EVENTS.TERMINAL_STATUS_UPDATE, {
               detail: {
                 terminalId: connectionId,
                 status: 'error',

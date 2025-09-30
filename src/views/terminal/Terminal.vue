@@ -65,7 +65,7 @@
               />
             </div>
 
-            <transition name="ai-combined-toggle" appear :css="!isTabSwitching">
+            <transition name="ai-combined-toggle" :css="!isTabSwitching">
               <div
                 v-if="shouldShowAICombinedPanel(termId) && isActiveTerminal(termId)"
                 class="terminal-ai-combined-area theme-transition"
@@ -171,6 +171,8 @@ import aiService from '../../services/ai/ai-service.js';
 import scriptLibraryService from '../../services/scriptLibrary';
 import personalizationService from '../../services/personalization';
 import { applyTerminalBackgroundCss, clearTerminalBackgroundCss } from '@/utils/terminalBackgroundCss';
+import { EVENTS } from '@/services/events';
+import { getMsVar } from '@/utils/cssVars';
 
 export default {
   name: 'Terminal',
@@ -205,6 +207,15 @@ export default {
     };
 
     const sessionStore = useSessionStore(); // 添加会话存储
+
+    // 统一时长（从CSS变量读取，可根据主题动态调整）
+    const durations = ref({ tabSwitchWindow: 320, monitoringAnimFlag: 500 });
+    const refreshDurations = () => {
+      try {
+        durations.value.tabSwitchWindow = getMsVar('--terminal-tab-switch-window', 320);
+        durations.value.monitoringAnimFlag = getMsVar('--monitoring-anim-flag', 500);
+      } catch (_) {}
+    };
 
     // 终端引用映射，key为连接ID，value为DOM元素
     const terminalRefs = ref({});
@@ -601,14 +612,14 @@ export default {
           terminalHasBackground.value = event.detail.enabled;
 
           // 发送背景图状态变更事件
-          window.dispatchEvent(
-            new CustomEvent('terminal-bg-status', {
-              detail: {
-                enabled: terminalBg.value.enabled,
-                bgSettings: terminalBg.value
-              }
-            })
-          );
+      window.dispatchEvent(
+        new CustomEvent(EVENTS.TERMINAL_BG_STATUS, {
+          detail: {
+            enabled: terminalBg.value.enabled,
+            bgSettings: terminalBg.value
+          }
+        })
+      );
 
           // 更新CSS变量
           if (terminalBg.value.enabled && terminalBg.value.url) {
@@ -626,7 +637,7 @@ export default {
       };
 
       // 使用命名函数添加监听器
-      window.addEventListener('terminal-bg-changed', bgChangeHandler);
+      window.addEventListener(EVENTS.TERMINAL_BG_CHANGED, bgChangeHandler);
     };
 
     // 添加防抖计时器
@@ -874,6 +885,11 @@ export default {
                 terminalRefs.value[closedId] = null;
                 delete terminalRefs.value[closedId];
               }
+
+              // 清理本地监控面板偏好缓存，避免长期堆积
+              try {
+                localStorage.removeItem(`monitoring-panel-user-hidden-${closedId}`);
+              } catch (_) {}
             }
           }
         }
@@ -921,7 +937,7 @@ export default {
 
         // 告知工具栏重置状态 - 发送工具栏状态重置事件
         window.dispatchEvent(
-          new CustomEvent('terminal:toolbar-reset', {
+          new CustomEvent(EVENTS.TERMINAL_TOOLBAR_RESET, {
             detail: { sessionId }
           })
         );
@@ -938,7 +954,7 @@ export default {
 
         // 发送工具栏同步事件
         window.dispatchEvent(
-          new CustomEvent('terminal:toolbar-sync', {
+          new CustomEvent(EVENTS.TERMINAL_TOOLBAR_SYNC, {
             detail: { sessionId }
           })
         );
@@ -958,7 +974,7 @@ export default {
           // nextTick+rAF 可能过早复位，改为短暂超时
           setTimeout(() => {
             isTabSwitching.value = false;
-          }, 320);
+          }, durations.value.tabSwitchWindow);
         }
       }, 100);
     };
@@ -1076,10 +1092,10 @@ export default {
 
     // 监听外部工具栏事件
     const setupToolbarListeners = () => {
-      window.addEventListener('terminal:send-command', sendTerminalCommand);
-      window.addEventListener('terminal:clear', clearTerminal);
-      window.addEventListener('terminal:disconnect', disconnectTerminal);
-      window.addEventListener('terminal:execute-command', executeTerminalCommand);
+      window.addEventListener(EVENTS.TERMINAL_SEND_COMMAND, sendTerminalCommand);
+      window.addEventListener(EVENTS.TERMINAL_CLEAR, clearTerminal);
+      window.addEventListener(EVENTS.TERMINAL_DISCONNECT, disconnectTerminal);
+      window.addEventListener(EVENTS.TERMINAL_EXECUTE_COMMAND, executeTerminalCommand);
 
       // 全局键盘管理器服务可用时绑定事件
       if (window.services?.keyboardManager) {
@@ -1094,16 +1110,16 @@ export default {
           window.removeEventListener('services:ready', bindKeyboardOnReady, { capture: false });
         }
       };
-      window.addEventListener('ui-services:ready', bindKeyboardOnReady, { once: true });
-      window.addEventListener('services:ready', bindKeyboardOnReady, { once: true });
+      window.addEventListener(EVENTS.UI_SERVICES_READY, bindKeyboardOnReady, { once: true });
+      window.addEventListener(EVENTS.SERVICES_READY, bindKeyboardOnReady, { once: true });
     };
 
     // 移除外部工具栏事件监听
     const removeToolbarListeners = () => {
-      window.removeEventListener('terminal:send-command', sendTerminalCommand);
-      window.removeEventListener('terminal:clear', clearTerminal);
-      window.removeEventListener('terminal:disconnect', disconnectTerminal);
-      window.removeEventListener('terminal:execute-command', executeTerminalCommand);
+      window.removeEventListener(EVENTS.TERMINAL_SEND_COMMAND, sendTerminalCommand);
+      window.removeEventListener(EVENTS.TERMINAL_CLEAR, clearTerminal);
+      window.removeEventListener(EVENTS.TERMINAL_DISCONNECT, disconnectTerminal);
+      window.removeEventListener(EVENTS.TERMINAL_EXECUTE_COMMAND, executeTerminalCommand);
 
       // 移除键盘快捷键事件监听
       if (window.services?.keyboardManager) {
@@ -1225,7 +1241,7 @@ export default {
     const toggleSftpPanel = () => {
       // 通过事件将当前终端ID传递给父组件
       window.dispatchEvent(
-        new CustomEvent('request-toggle-sftp-panel', {
+        new CustomEvent(EVENTS.REQUEST_TOGGLE_SFTP_PANEL, {
           detail: { sessionId: activeConnectionId.value }
         })
       );
@@ -1243,7 +1259,7 @@ export default {
         monitoringAnimateFlags.value[sessionId] = true;
         setTimeout(() => {
           monitoringAnimateFlags.value[sessionId] = false;
-        }, 500);
+        }, durations.value.monitoringAnimFlag);
         // 切换当前活动终端的监控面板显示状态
         const currentState = monitoringPanelStates.value[sessionId] || false;
         monitoringPanelStates.value[sessionId] = !currentState;
@@ -1385,6 +1401,18 @@ export default {
       log.info(`[终端] 移动端监控抽屉${visible ? '显示' : '隐藏'}: ${termId}`);
     };
 
+    // 监听关闭监控面板事件（来自 AppLayout 转发）
+    const handleCloseMonitoringPanel = event => {
+      try {
+        const sessionId = event?.detail?.sessionId || activeConnectionId.value;
+        if (sessionId) {
+          monitoringPanelStates.value[sessionId] = false;
+          // 记录用户手动隐藏的偏好
+          localStorage.setItem(`monitoring-panel-user-hidden-${sessionId}`, 'true');
+        }
+      } catch (_) {}
+    };
+
     // 设置监控数据监听器 - 监听每个终端的独立状态管理器
     const setupMonitoringDataListener = () => {
       // 监听所有终端状态管理器的数据变化
@@ -1484,6 +1512,8 @@ export default {
 
     // 组件挂载
     onMounted(() => {
+      // 从CSS变量刷新时长配置
+      try { refreshDurations(); } catch (_) {}
       // 初始化标签页标题
       if (tabStore.tabs.some(tab => tab.path === '/terminal')) {
         tabStore.updateTabTitle('/terminal', '终端');
@@ -1545,15 +1575,16 @@ export default {
       cleanupSSHFailureEvents = setupSSHFailureHandler();
 
       // 添加会话切换事件监听
-      window.addEventListener('terminal:session-change', handleSessionChange);
+      window.addEventListener(EVENTS.TERMINAL_SESSION_CHANGE, handleSessionChange);
+      window.addEventListener(EVENTS.TERMINAL_MONITORING_HIDE, handleCloseMonitoringPanel);
       // 移除重复的事件监听器 - 只保留 terminal-status-update 事件系统
       // window.addEventListener('terminal:refresh-status', handleTerminalRefreshStatus)
 
       // 添加终端主题更新监听器
-      window.addEventListener('terminal-theme-update', handleTerminalThemeUpdate);
+      window.addEventListener(EVENTS.TERMINAL_THEME_UPDATE, handleTerminalThemeUpdate);
 
       // 添加终端设置更新监听器
-      window.addEventListener('terminal-settings-updated', handleTerminalSettingsUpdate);
+      window.addEventListener(EVENTS.TERMINAL_SETTINGS_UPDATED, handleTerminalSettingsUpdate);
 
       // 监听监控面板的过渡动画，规避动画期间反复 fit 导致的闪烁
       const onMonitoringTransitionStart = e => {
@@ -1640,7 +1671,7 @@ export default {
 
         // 触发终端状态刷新事件，同步工具栏状态
         window.dispatchEvent(
-          new CustomEvent('terminal:refresh-status', {
+          new CustomEvent(EVENTS.TERMINAL_REFRESH_STATUS, {
             detail: {
               sessionId: activeConnectionId.value,
               forceShow: true
@@ -1688,7 +1719,7 @@ export default {
       }
     };
 
-    window.addEventListener('terminal-command', handleTerminalEvent);
+    window.addEventListener(EVENTS.TERMINAL_COMMAND, handleTerminalEvent);
 
     // 在组件卸载时清理
     onBeforeUnmount(() => {
@@ -1721,15 +1752,16 @@ export default {
       }
       // 清理背景设置监听器
       if (bgChangeHandler) {
-        window.removeEventListener('terminal-bg-changed', bgChangeHandler);
+        window.removeEventListener(EVENTS.TERMINAL_BG_CHANGED, bgChangeHandler);
         bgChangeHandler = null;
       }
       // 清理工具栏事件监听
       removeToolbarListeners();
-      window.removeEventListener('terminal-command', handleTerminalEvent);
-      window.removeEventListener('terminal:session-change', handleSessionChange);
-      window.removeEventListener('terminal-theme-update', handleTerminalThemeUpdate);
-      window.removeEventListener('terminal-settings-updated', handleTerminalSettingsUpdate);
+      window.removeEventListener(EVENTS.TERMINAL_COMMAND, handleTerminalEvent);
+        window.removeEventListener(EVENTS.TERMINAL_SESSION_CHANGE, handleSessionChange);
+        window.removeEventListener(EVENTS.TERMINAL_MONITORING_HIDE, handleCloseMonitoringPanel);
+      window.removeEventListener(EVENTS.TERMINAL_THEME_UPDATE, handleTerminalThemeUpdate);
+      window.removeEventListener(EVENTS.TERMINAL_SETTINGS_UPDATED, handleTerminalSettingsUpdate);
 
       // 保持会话不关闭，但停止特定组件的监听
       debugLog('终端组件卸载，保留会话');
@@ -1982,13 +2014,13 @@ export default {
       };
 
       // 添加事件监听
-      window.addEventListener('terminal-status-update', handleTerminalStatusUpdate);
-      window.addEventListener('ssh-session-creation-failed', handleSessionCreationFailed);
+      window.addEventListener(EVENTS.TERMINAL_STATUS_UPDATE, handleTerminalStatusUpdate);
+      window.addEventListener(EVENTS.SSH_SESSION_CREATION_FAILED, handleSessionCreationFailed);
 
       // 返回清理函数
       return () => {
-        window.removeEventListener('terminal-status-update', handleTerminalStatusUpdate);
-        window.removeEventListener('ssh-session-creation-failed', handleSessionCreationFailed);
+        window.removeEventListener(EVENTS.TERMINAL_STATUS_UPDATE, handleTerminalStatusUpdate);
+        window.removeEventListener(EVENTS.SSH_SESSION_CREATION_FAILED, handleSessionCreationFailed);
       };
     };
 
@@ -3014,6 +3046,20 @@ export default {
   margin: var(--spacing-md) 0 var(--spacing-md) var(--spacing-md); /* 使用系统间距令牌 */
   box-sizing: border-box;
   overflow: hidden;
+}
+
+/* Reduce motion: disable transitions and animations when user prefers reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  .monitoring-toggle-enter-active,
+  .monitoring-toggle-leave-active,
+  .ai-combined-toggle-enter-active,
+  .ai-combined-toggle-leave-active,
+  .terminal-right-area,
+  .terminal-monitoring-panel,
+  .connecting-overlay {
+    transition: none !important;
+    animation: none !important;
+  }
 }
 /* ===== 连接状态覆盖层 ===== */
 

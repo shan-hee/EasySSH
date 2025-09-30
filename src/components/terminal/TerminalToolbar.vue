@@ -167,6 +167,7 @@
 
 <script>
 import { defineComponent, computed, ref, onMounted, onUnmounted, watch, nextTick } from 'vue';
+import { EVENTS } from '@/services/events';
 import { useSessionStore } from '../../store/session';
 import { useUserStore } from '../../store/user';
 import sshService from '../../services/ssh/index';
@@ -1517,22 +1518,22 @@ export default defineComponent({
 
       // 移除所有事件监听器，使用常量替代硬编码字符串
       window.removeEventListener(LATENCY_EVENTS.TOOLBAR, handleNetworkLatencyUpdate);
-      window.removeEventListener('ssh-connected', handleSshConnected);
-      window.removeEventListener('monitoring-status-change', handleMonitoringStatusChange);
-      window.removeEventListener('ai-service-status-change', handleAiServiceStatusChange);
-      window.removeEventListener('terminal:toolbar-reset', handleToolbarReset);
-      window.removeEventListener('terminal:toolbar-sync', handleToolbarSync);
+      window.removeEventListener(EVENTS.SSH_CONNECTED, handleSshConnected);
+      window.removeEventListener(EVENTS.MONITORING_STATUS_CHANGE, handleMonitoringStatusChange);
+      window.removeEventListener(EVENTS.AI_SERVICE_STATUS_CHANGE, handleAiServiceStatusChange);
+      window.removeEventListener(EVENTS.TERMINAL_TOOLBAR_RESET, handleToolbarReset);
+      window.removeEventListener(EVENTS.TERMINAL_TOOLBAR_SYNC, handleToolbarSync);
       // window.removeEventListener('terminal:refresh-status', handleTerminalRefreshStatus);
       // 移除监控连接成功事件监听器（已废弃）
       window.removeEventListener('resize', updateSftpTooltipPosition);
       window.removeEventListener('resize', handleResize);
 
       // 移除设置就绪事件监听
-      try { window.removeEventListener('settings:ready', syncAiEnabledFromSettings); } catch (_) {}
-      try { window.removeEventListener('settings:ready', handleSettingsReadyForAI); } catch (_) {}
+      try { window.removeEventListener(EVENTS.SETTINGS_READY, syncAiEnabledFromSettings); } catch (_) {}
+      try { window.removeEventListener(EVENTS.SETTINGS_READY, handleSettingsReadyForAI); } catch (_) {}
 
       // 移除新会话事件监听
-      window.removeEventListener('terminal:new-session', handleNewSession);
+      window.removeEventListener(EVENTS.TERMINAL_NEW_SESSION, handleNewSession);
 
       // 监控数据事件监听器已移除，现在使用统一的监控状态管理器
 
@@ -1595,11 +1596,11 @@ export default defineComponent({
 
       // 添加全局事件监听器，使用常量替代硬编码字符串
       window.addEventListener(LATENCY_EVENTS.TOOLBAR, handleNetworkLatencyUpdate);
-      window.addEventListener('ssh-connected', handleSshConnected);
-      window.addEventListener('monitoring-status-change', handleMonitoringStatusChange);
-      window.addEventListener('ai-service-status-change', handleAiServiceStatusChange);
-      window.addEventListener('terminal:toolbar-reset', handleToolbarReset);
-      window.addEventListener('terminal:toolbar-sync', handleToolbarSync);
+      window.addEventListener(EVENTS.SSH_CONNECTED, handleSshConnected);
+      window.addEventListener(EVENTS.MONITORING_STATUS_CHANGE, handleMonitoringStatusChange);
+      window.addEventListener(EVENTS.AI_SERVICE_STATUS_CHANGE, handleAiServiceStatusChange);
+      window.addEventListener(EVENTS.TERMINAL_TOOLBAR_RESET, handleToolbarReset);
+      window.addEventListener(EVENTS.TERMINAL_TOOLBAR_SYNC, handleToolbarSync);
 
       // 立即开始监听监控数据，实现预加载
       // 监控数据监听器已移除，现在使用ResponsiveMonitoringPanel
@@ -1635,8 +1636,8 @@ export default defineComponent({
 
       // 监听设置服务就绪事件（登录后会触发），再次同步一次
       try {
-        window.addEventListener('settings:ready', syncAiEnabledFromSettings);
-        window.addEventListener('settings:ready', handleSettingsReadyForAI);
+        window.addEventListener(EVENTS.SETTINGS_READY, syncAiEnabledFromSettings);
+        window.addEventListener(EVENTS.SETTINGS_READY, handleSettingsReadyForAI);
       } catch (_) {}
 
       // 确保工具栏状态严格隔离，避免状态意外共享
@@ -1743,7 +1744,7 @@ export default defineComponent({
       );
 
       // 添加新会话事件监听
-      window.addEventListener('terminal:new-session', handleNewSession);
+      window.addEventListener(EVENTS.TERMINAL_NEW_SESSION, handleNewSession);
     });
 
       return {

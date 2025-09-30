@@ -1,5 +1,5 @@
 <template>
-  <transition name="panel-slide" appear :css="!disableAnimation">
+  <transition name="panel-slide" :css="!disableAnimation">
     <div
       v-show="visible"
       class="responsive-monitoring-panel"
@@ -225,6 +225,18 @@ watch(
   height: 100%;
   display: flex;
   flex-direction: column;
+}
+
+/* Respect prefers-reduced-motion: minimize animations globally */
+@media (prefers-reduced-motion: reduce) {
+  .responsive-monitoring-panel,
+  .panel-slide-enter-active,
+  .panel-slide-leave-active,
+  .monitoring-section,
+  .global-loader {
+    transition: none !important;
+    animation: none !important;
+  }
 }
 
 .panel-desktop {
