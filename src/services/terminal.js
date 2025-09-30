@@ -391,7 +391,7 @@ class TerminalService {
               terminal.loadAddon(webglAddon);
               addons.webgl = webglAddon;
               renderingMode = 'webgl';
-              log.info(`终端 ${id} WebGL渲染器已启用`);
+              // 不再单独记录启用过程，从结果日志统一呈现
             }
           } catch (webglErr) {
             // 在多数环境中WebGL不可用属于正常回退，不提升为警告
@@ -420,7 +420,7 @@ class TerminalService {
             terminal.loadAddon(canvasAddon);
             addons.canvas = canvasAddon;
             renderingMode = 'canvas';
-            log.info(`终端 ${id} Canvas渲染器已启用`);
+            // 不再单独记录启用过程，从结果日志统一呈现
           } catch (canvasErr) {
             // Canvas加载失败时使用DOM渲染，属于可接受回退，降低为调试级别
             log.debug(`终端 ${id} Canvas渲染器加载失败，使用DOM渲染`, {

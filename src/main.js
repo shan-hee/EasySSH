@@ -411,9 +411,7 @@ window.addEventListener('auth:expired', () => {
       if (host && terminalId) {
         try {
           const connected = await monitoringService.connect(terminalId, host);
-          if (connected) {
-            log.info(`[监控] 终端 ${terminalId} 连接到 ${host} 成功`);
-          } else {
+          if (!connected) {
             log.debug(`[监控] 终端 ${terminalId} 连接到 ${host} 失败`);
           }
         } catch (error) {
@@ -427,9 +425,7 @@ window.addEventListener('auth:expired', () => {
       if (host && terminalId) {
         try {
           const connected = await monitoringService.connect(terminalId, host);
-          if (connected) {
-            log.info(`[监控] 终端 ${terminalId} 连接到 ${host} 成功`);
-          } else {
+          if (!connected) {
             log.debug(`[监控] 终端 ${terminalId} 连接到 ${host} 失败`);
           }
         } catch (error) {

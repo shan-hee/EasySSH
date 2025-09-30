@@ -22,6 +22,8 @@ class TerminalManager {
     this.terminals = new Map(); // 存储终端实例
     this.resizeTimeouts = new Map(); // 存储大小调整防抖定时器
     this.resizeObservers = new Map(); // 存储大小监听器
+    this.lastSyncedSize = new Map(); // 记录每个会话最后一次同步到后端的尺寸，避免重复发送/重复日志
+    this.initialSizing = new Map(); // 记录每个会话是否处于初始化尺寸阶段
 
     log.debug('终端管理器初始化完成');
   }
@@ -84,14 +86,21 @@ class TerminalManager {
       this.sshService._processTerminalInput(session, data);
     });
 
+    // 标记进入初始化尺寸阶段
+    this.initialSizing.set(sessionId, true);
+
     // 处理终端大小变化
     terminal.onResize(({ cols, rows }) => {
       if (session.socket && session.socket.readyState === WS_CONSTANTS.OPEN) {
-        log.debug(`终端大小变化: ${sessionId} -> ${cols}x${rows}`);
+        if (!this.initialSizing.get(sessionId)) {
+          log.debug(`终端大小变化: ${sessionId} -> ${cols}x${rows}`);
+        }
 
         try {
           // 使用统一的二进制消息发送器
           BinaryMessageSender.sendSSHResize(session.socket, sessionId, cols, rows);
+          // 记录最后一次同步的尺寸
+          this.lastSyncedSize.set(sessionId, { cols, rows });
         } catch (error) {
           log.debug(`发送终端大小变化失败: ${sessionId}`, error.message);
         }
@@ -164,16 +173,22 @@ class TerminalManager {
       const ws = session.ws || session.socket || this.sshService.sessions.get(sessionId)?.ws || this.sshService.sessions.get(sessionId)?.socket;
       const safeResize = () => {
         try {
-          if (addons.fit && typeof addons.fit.fit === 'function') {
-            addons.fit.fit();
+          // 使用创建时的 fitAddon 引用；避免未定义的变量
+          if (fitAddon && typeof fitAddon.fit === 'function') {
+            fitAddon.fit();
           }
         } catch (_) { /* ignore */ }
         try {
           if (ws && ws.readyState === WS_CONSTANTS.OPEN) {
             const cols = terminal.cols;
             const rows = terminal.rows;
-            BinaryMessageSender.sendSSHResize(ws, sessionId, cols, rows);
-            log.debug(`显式同步终端尺寸: ${sessionId} -> ${cols}x${rows}`);
+            const last = this.lastSyncedSize.get(sessionId);
+            // 仅当与上次不同才发送与记录，避免重复
+            if (!last || last.cols !== cols || last.rows !== rows) {
+              BinaryMessageSender.sendSSHResize(ws, sessionId, cols, rows);
+              this.lastSyncedSize.set(sessionId, { cols, rows });
+              log.debug(`显式同步终端尺寸: ${sessionId} -> ${cols}x${rows}`);
+            }
           }
         } catch (_) { /* ignore */ }
       };
@@ -181,6 +196,10 @@ class TerminalManager {
       requestAnimationFrame(() => safeResize());
       setTimeout(() => safeResize(), 120);
       setTimeout(() => safeResize(), 360);
+      // 在稳定化尝试后，结束初始化尺寸阶段
+      setTimeout(() => {
+        this.initialSizing.set(sessionId, false);
+      }, 420);
     };
     scheduleStabilizeSize();
 
@@ -229,10 +248,8 @@ class TerminalManager {
         return;
       }
 
-      // 调整终端大小
+      // 调整终端大小（初始化阶段不记录日志）
       fitAddon.fit();
-
-      log.debug(`终端大小初始化完成: ${sessionId}`);
     } catch (error) {
       log.debug(`初始化终端大小失败: ${sessionId}`, error.message);
     }
@@ -361,7 +378,9 @@ class TerminalManager {
 
         // 调整终端大小
         fitAddon.fit();
-        log.debug(`终端大小已调整: ${sessionId}`);
+        if (!this.initialSizing.get(sessionId)) {
+          log.debug(`终端大小已调整: ${sessionId}`);
+        }
 
         // 清除定时器记录
         this.resizeTimeouts.delete(sessionId);

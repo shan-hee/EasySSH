@@ -158,11 +158,10 @@ const initChart = async () => {
   chartInstance.value._themeObserver = themeObserver;
 };
 
-// 更新图表数据
+// 更新图表数据（仅在 hasData=true 时被调用）
 const updateChart = () => {
   if (!chartInstance.value) {
-    log.warn('[网络监控] 图表实例不存在，跳过更新');
-    return;
+    return; // 初始化过程中的正常情况，不记录日志
   }
 
   try {
@@ -178,8 +177,7 @@ const updateChart = () => {
 
     // 检查组件是否仍然激活（防止在组件销毁后更新）
     if (!currentStateManager.value || !componentState.value.hasData) {
-      log.debug('[网络监控] 组件状态管理器不可用或无数据，跳过图表更新');
-      return;
+      return; // 无数据时不再打印提示，从根源避免噪声
     }
 
     const now = new Date();
@@ -230,39 +228,36 @@ const updateChart = () => {
 let updateTimer = null;
 // 动画状态标记，避免动画冲突
 let isAnimating = false;
+// 仅在状态变更与数据批次到达时更新，避免“无数据”期间的无意义尝试
 watch(
-  () => props.monitoringData,
-  (newData, oldData) => {
-    // 防抖处理，避免频繁更新
-    if (updateTimer) {
-      clearTimeout(updateTimer);
-    }
-
+  () => componentState.value.hasData,
+  has => {
+    if (!has) return;
+    if (updateTimer) clearTimeout(updateTimer);
     updateTimer = setTimeout(() => {
-      // 检查数据是否真的发生了变化
-      if (chartInstance.value && newData !== oldData) {
-        try {
-          updateChart();
-        } catch (error) {
-          log.error('[网络监控] 更新图表失败', error);
-        }
-      }
+      try { updateChart(); } catch (e) { log.error('[网络监控] 更新图表失败', e); }
       updateTimer = null;
-    }, 100); // 100ms防抖
+    }, 0);
   },
-  { deep: true }
+  { immediate: false }
+);
+
+watch(
+  () => componentState.value.lastUpdate,
+  () => {
+    if (!componentState.value.hasData) return;
+    if (updateTimer) clearTimeout(updateTimer);
+    updateTimer = setTimeout(() => {
+      try { updateChart(); } catch (e) { log.error('[网络监控] 更新图表失败', e); }
+      updateTimer = null;
+    }, 50);
+  }
 );
 
 // 生命周期
 onMounted(() => {
   initChart();
-
-  // 添加一个初始数据点来确保图表显示
-  setTimeout(() => {
-    if (chartInstance.value) {
-      updateChart();
-    }
-  }, 1000);
+  // 初始化阶段不再强制添加数据点，等待 hasData 与 lastUpdate 触发
 });
 
 onUnmounted(() => {
