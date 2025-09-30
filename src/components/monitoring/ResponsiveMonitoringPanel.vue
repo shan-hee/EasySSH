@@ -1,8 +1,9 @@
 <template>
-  <transition name="panel-slide" appear>
+  <transition name="panel-slide" appear :css="!disableAnimation">
     <div
       v-show="visible"
       class="responsive-monitoring-panel"
+      :style="disableAnimation ? { transition: 'none' } : null"
       :class="{
         'panel-mobile': isMobile,
         'panel-desktop': !isMobile
@@ -95,6 +96,11 @@ const props = defineProps({
   stateManager: {
     type: Object,
     default: null
+  },
+  // 当为 true 时，禁用过渡动画（例如页签切换场景）
+  disableAnimation: {
+    type: Boolean,
+    default: false
   }
 });
 

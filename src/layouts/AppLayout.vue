@@ -221,13 +221,24 @@ export default defineComponent({
       () => route.path,
       (newPath, oldPath) => {
         if (newPath.startsWith('/terminal') && !oldPath.startsWith('/terminal')) {
-          // 切换到终端路由，提前置位“连接中”状态，保证覆盖层尽快出现
+          // 切换到终端路由：根据是否已有终端决定是否作为“标签切换”（无动画/不重置）
           try {
             const preId = route.params.id || getCurrentSessionId();
             if (preId) {
+              const terminalStore = useTerminalStore();
+              const isExisting =
+                !!terminalStore?.hasTerminal(preId) ||
+                !!terminalStore?.hasTerminalSession(preId) ||
+                !!terminalStore?.isTerminalConnected(preId);
+
               window.dispatchEvent(
                 new CustomEvent('terminal:session-change', {
-                  detail: { sessionId: preId, isTabSwitch: false, isNewSession: true }
+                  detail: {
+                    sessionId: preId,
+                    // 已存在的终端视为“标签切换”，避免重置与连接动画
+                    isTabSwitch: isExisting,
+                    isNewSession: !isExisting
+                  }
                 })
               );
             }
@@ -236,7 +247,6 @@ export default defineComponent({
           // 然后再进行终端聚焦等后续流程（初始化交由 Terminal.vue 负责）
           nextTick(() => {
             if (terminalComponent.value) {
-              // 获取当前会话ID
               const currentId = getCurrentSessionId();
 
               if (currentId) {

@@ -33,16 +33,21 @@
         </div>
 
         <div class="terminal-main-area">
-          <transition name="monitoring-toggle" appear :css="!isTabSwitching">
+          <transition
+            name="monitoring-toggle"
+            :css="shouldAnimateMonitoring(termId)"
+          >
             <div
               v-show="shouldShowDesktopMonitoringPanel(termId) && isActiveTerminal(termId)"
               class="terminal-monitoring-panel theme-transition"
+              :style="isTabSwitching ? { transition: 'none' } : null"
             >
               <responsive-monitoring-panel
                 :visible="isMonitoringPanelVisible(termId)"
                 :monitoring-data="getMonitoringData(termId)"
                 :terminal-id="termId"
                 :state-manager="getTerminalStateManager(termId)"
+                :disable-animation="isTabSwitching"
               />
             </div>
           </transition>
@@ -50,6 +55,7 @@
           <div
             class="terminal-right-area"
             :class="{ 'with-monitoring-panel': shouldShowDesktopMonitoringPanel(termId) }"
+            :style="isTabSwitching ? { transition: 'none' } : null"
           >
             <div class="terminal-content-padding theme-transition">
               <div
@@ -71,7 +77,6 @@
                   :max-height="getAIPanelMaxHeight()"
                   :is-mobile="isMobile()"
                   :is-streaming="getAIStreamingState(termId)"
-                  :disable-animation="isTabSwitching"
                   :ai-service="getAIService()"
                   @ai-response="handleAIResponse"
                   @ai-streaming="handleAIStreaming"
@@ -223,6 +228,8 @@ export default {
     const monitoringPanelStates = ref({}); // 每个终端的监控面板显示状态
     const monitoringDataCache = ref({}); // 每个终端的监控数据缓存
     const terminalStateManagers = ref({}); // 每个终端的状态管理器实例映射
+    // 仅在用户主动切换监控面板时启用动画，其他场景（如页签切换/自动切换）不动画
+    const monitoringAnimateFlags = ref({});
     let cleanupMonitoringListener = null; // 监控数据监听器清理函数
 
     // AI合并面板相关状态
@@ -935,6 +942,8 @@ export default {
             detail: { sessionId }
           })
         );
+        // 强制关闭监控动画标记，避免出现滑入效果
+        monitoringAnimateFlags.value[sessionId] = false;
       }
 
       // 延迟切换以确保终端初始化完成
@@ -945,12 +954,11 @@ export default {
         }
         // 如果是标签切换，切换完成后尽快恢复动画
         if (isTabSwitch) {
-          // 使用nextTick + rAF确保DOM更新并完成一次渲染
-          nextTick(() => {
-            requestAnimationFrame(() => {
-              isTabSwitching.value = false;
-            });
-          });
+          // 延长禁用动画窗口，覆盖监控面板和布局过渡
+          // nextTick+rAF 可能过早复位，改为短暂超时
+          setTimeout(() => {
+            isTabSwitching.value = false;
+          }, 320);
         }
       }, 100);
     };
@@ -1231,6 +1239,11 @@ export default {
       }
 
       try {
+        // 标记本次切换为需要动画
+        monitoringAnimateFlags.value[sessionId] = true;
+        setTimeout(() => {
+          monitoringAnimateFlags.value[sessionId] = false;
+        }, 500);
         // 切换当前活动终端的监控面板显示状态
         const currentState = monitoringPanelStates.value[sessionId] || false;
         monitoringPanelStates.value[sessionId] = !currentState;
@@ -1287,6 +1300,11 @@ export default {
         monitoringPanelStates.value[termId] = isDesktop(); // 桌面端默认显示，移动端默认隐藏
       }
       return monitoringPanelStates.value[termId] || false;
+    };
+    
+    // 是否应为该终端的监控面板启用动画：仅当用户主动切换时
+    const shouldAnimateMonitoring = termId => {
+      return !!monitoringAnimateFlags.value[termId];
     };
 
     // 桌面端监控面板显示逻辑
@@ -2694,6 +2712,7 @@ export default {
       isTabSwitching,
       // 监控面板相关方法
       shouldShowMonitoringPanel,
+      shouldAnimateMonitoring,
       shouldShowDesktopMonitoringPanel,
       shouldShowMobileMonitoringDrawer,
       isMonitoringPanelVisible,
