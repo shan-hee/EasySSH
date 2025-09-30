@@ -32,69 +32,56 @@
           />
         </div>
 
-        <div class="terminal-main-area">
-          <transition
-            name="monitoring-toggle"
-            :css="shouldAnimateMonitoring(termId)"
-          >
+        <TerminalFrame
+          :tab-switching="isTabSwitching"
+          :show-monitoring="shouldShowDesktopMonitoringPanel(termId) && isActiveTerminal(termId)"
+          :animate-monitoring="shouldAnimateMonitoring(termId)"
+          :with-monitoring="shouldShowDesktopMonitoringPanel(termId)"
+          :show-ai="shouldShowAICombinedPanel(termId) && isActiveTerminal(termId)"
+          :is-active="isActiveTerminal(termId)"
+        >
+          <template #monitoring>
+            <MonitoringPaneHost
+              :visible="isMonitoringPanelVisible(termId)"
+              :monitoring-data="getMonitoringData(termId)"
+              :terminal-id="termId"
+              :state-manager="getTerminalStateManager(termId)"
+              :disable-animation="isTabSwitching"
+            />
+          </template>
+
+          <template #terminal>
             <div
-              v-show="shouldShowDesktopMonitoringPanel(termId) && isActiveTerminal(termId)"
-              class="terminal-monitoring-panel theme-transition"
-              :style="isTabSwitching ? { transition: 'none' } : null"
-            >
-              <responsive-monitoring-panel
-                :visible="isMonitoringPanelVisible(termId)"
-                :monitoring-data="getMonitoringData(termId)"
-                :terminal-id="termId"
-                :state-manager="getTerminalStateManager(termId)"
-                :disable-animation="isTabSwitching"
-              />
-            </div>
-          </transition>
+              :ref="el => setTerminalRef(el, termId)"
+              class="terminal-content theme-transition"
+              :data-terminal-id="termId"
+            />
+          </template>
 
-          <div
-            class="terminal-right-area"
-            :class="{ 'with-monitoring-panel': shouldShowDesktopMonitoringPanel(termId) }"
-            :style="isTabSwitching ? { transition: 'none' } : null"
-          >
-            <div class="terminal-content-padding theme-transition">
-              <div
-                :ref="el => setTerminalRef(el, termId)"
-                class="terminal-content theme-transition"
-                :data-terminal-id="termId"
-              />
-            </div>
-
-            <transition name="ai-combined-toggle" :css="!isTabSwitching">
-              <div
-                v-if="shouldShowAICombinedPanel(termId) && isActiveTerminal(termId)"
-                class="terminal-ai-combined-area theme-transition"
-              >
-                <a-i-combined-panel
-                  :ref="el => setAICombinedPanelRef(el, termId)"
-                  :terminal-id="termId"
-                  :messages="getAIMessages(termId)"
-                  :max-height="getAIPanelMaxHeight()"
-                  :is-mobile="isMobile()"
-                  :is-streaming="getAIStreamingState(termId)"
-                  :ai-service="getAIService()"
-                  @ai-response="handleAIResponse"
-                  @ai-streaming="handleAIStreaming"
-                  @mode-change="handleAIModeChange"
-                  @input-focus="handleAIInputFocus"
-                  @input-blur="handleAIInputBlur"
-                  @execute-command="handleExecuteCommand"
-                  @clear-history="handleAIClearHistory"
-                  @edit-command="handleAIEditCommand"
-                  @add-to-scripts="handleAIAddToScripts"
-                  @height-change="handleAIPanelHeightChange"
-                  @height-change-start="handleAIPanelHeightChangeStart"
-                  @height-change-end="handleAIPanelHeightChangeEnd"
-                />
-              </div>
-            </transition>
-          </div>
-        </div>
+          <template #ai>
+            <AICombinedHost
+              :terminal-id="termId"
+              :messages="getAIMessages(termId)"
+              :max-height="getAIPanelMaxHeight()"
+              :is-mobile="isMobile()"
+              :is-streaming="getAIStreamingState(termId)"
+              :ai-service="getAIService()"
+              :set-panel-ref="el => setAICombinedPanelRef(el, termId)"
+              @ai-response="handleAIResponse"
+              @ai-streaming="handleAIStreaming"
+              @mode-change="handleAIModeChange"
+              @input-focus="handleAIInputFocus"
+              @input-blur="handleAIInputBlur"
+              @execute-command="handleExecuteCommand"
+              @clear-history="handleAIClearHistory"
+              @edit-command="handleAIEditCommand"
+              @add-to-scripts="handleAIAddToScripts"
+              @height-change="handleAIPanelHeightChange"
+              @height-change-start="handleAIPanelHeightChangeStart"
+              @height-change-end="handleAIPanelHeightChangeEnd"
+            />
+          </template>
+        </TerminalFrame>
 
         <mobile-monitoring-drawer
           :visible="shouldShowMobileMonitoringDrawer(termId) && isActiveTerminal(termId)"
@@ -148,11 +135,12 @@ import terminalAutocompleteService from '../../services/terminal-autocomplete';
 // 导入日志服务
 import log from '../../services/log';
 // 导入响应式监控面板组件
-import ResponsiveMonitoringPanel from '../../components/monitoring/ResponsiveMonitoringPanel.vue';
 // 导入移动端监控抽屉组件
 import MobileMonitoringDrawer from '../../components/monitoring/MobileMonitoringDrawer.vue';
-// 导入AI合并面板组件
-import AICombinedPanel from '../../components/ai/AICombinedPanel.vue';
+// 拆分后的宿主组件
+import MonitoringPaneHost from './MonitoringPaneHost.vue';
+import AICombinedHost from './AICombinedHost.vue';
+import TerminalFrame from './TerminalFrame.vue';
 // 导入AI面板状态管理
 import { useAIPanelStore } from '../../store/ai-panel.js';
 
@@ -180,9 +168,10 @@ export default {
     RocketLoader,
     TerminalToolbar, // 注册工具栏组件
     TerminalAutocomplete, // 注册自动完成组件
-    ResponsiveMonitoringPanel, // 注册响应式监控面板组件
+    MonitoringPaneHost, // 监控面板宿主
     MobileMonitoringDrawer, // 注册移动端监控抽屉组件
-    AICombinedPanel // 注册AI合并面板组件
+    AICombinedHost, // AI合并面板宿主
+    TerminalFrame
   },
   props: {
     id: {
@@ -2900,7 +2889,7 @@ export default {
 }
 
 /* 终端主体区域 */
-.terminal-main-area {
+:deep(.terminal-main-area) {
   flex: 1;
   display: flex;
   flex-direction: row;
@@ -2909,7 +2898,7 @@ export default {
 }
 
 /* 监控面板 */
-.terminal-monitoring-panel {
+:deep(.terminal-monitoring-panel) {
   flex-shrink: 0;
   z-index: 9;
   width: 320px; /* 监控面板固定宽度 */
@@ -2925,7 +2914,7 @@ export default {
 }
 
 /* 右侧内容区域：终端 + AI输入栏 */
-.terminal-right-area {
+:deep(.terminal-right-area) {
   flex: 1;
   display: flex;
   flex-direction: column;
@@ -2938,13 +2927,13 @@ export default {
 }
 
 /* 有监控面板时的右侧区域 */
-.terminal-right-area.with-monitoring-panel {
+:deep(.terminal-right-area.with-monitoring-panel) {
   width: calc(100% - 320px); /* 减去监控面板宽度（不再动画，降低重排） */
 }
 
 /* 终端内容填充区域 */
 
-.terminal-content-padding {
+:deep(.terminal-content-padding) {
   flex: 1;
   box-sizing: border-box;
   width: 100%;
@@ -2955,7 +2944,7 @@ export default {
 }
 
 /* AI合并面板区域 */
-.terminal-ai-combined-area {
+:deep(.terminal-ai-combined-area) {
   flex-shrink: 0;
   height: auto;
   background: transparent;
@@ -2968,41 +2957,41 @@ export default {
 
 /* ===== AI合并面板显隐过渡 ===== */
 /* 入场/离场动画：轻微上滑 + 淡入淡出 */
-.ai-combined-toggle-enter-active,
-.ai-combined-toggle-leave-active {
+:deep(.ai-combined-toggle-enter-active),
+:deep(.ai-combined-toggle-leave-active) {
   transition:
     opacity var(--transition-slow),
     transform var(--transition-slow);
 }
 
 /* ===== 监控面板显隐过渡（transform-only，避免宽度动画） ===== */
-.monitoring-toggle-enter-active,
-.monitoring-toggle-leave-active {
+:deep(.monitoring-toggle-enter-active),
+:deep(.monitoring-toggle-leave-active) {
   transition:
     opacity var(--transition-slow),
     transform var(--transition-slow);
 }
 
-.monitoring-toggle-enter-from,
-.monitoring-toggle-leave-to {
+:deep(.monitoring-toggle-enter-from),
+:deep(.monitoring-toggle-leave-to) {
   opacity: 0;
   transform: translateX(-12px);
 }
 
-.monitoring-toggle-enter-to,
-.monitoring-toggle-leave-from {
+:deep(.monitoring-toggle-enter-to),
+:deep(.monitoring-toggle-leave-from) {
   opacity: 1;
   transform: translateX(0);
 }
 
-.ai-combined-toggle-enter-from,
-.ai-combined-toggle-leave-to {
+:deep(.ai-combined-toggle-enter-from),
+:deep(.ai-combined-toggle-leave-to) {
   opacity: 0;
   transform: translateY(12px);
 }
 
-.ai-combined-toggle-enter-to,
-.ai-combined-toggle-leave-from {
+:deep(.ai-combined-toggle-enter-to),
+:deep(.ai-combined-toggle-leave-from) {
   opacity: 1;
   transform: translateY(0);
 }
@@ -3011,40 +3000,40 @@ export default {
 
 /* 平板和移动端 */
 @media (max-width: 768px) {
-  .terminal-main-area {
+  :deep(.terminal-main-area) {
     flex-direction: row; /* 保持水平布局 */
   }
 
-  .terminal-monitoring-panel {
+  :deep(.terminal-monitoring-panel) {
     display: none; /* 移动端隐藏侧边监控面板，使用抽屉模式 */
   }
 
-  .terminal-right-area {
+  :deep(.terminal-right-area) {
     width: 100%; /* 移动端占满全宽 */
     height: 100%;
   }
 
-  .terminal-right-area.with-monitoring-panel {
+  :deep(.terminal-right-area.with-monitoring-panel) {
     width: 100%; /* 移动端抽屉模式，占满全宽 */
     height: 100%;
   }
 
-  .terminal-ai-combined-area {
+  :deep(.terminal-ai-combined-area) {
     margin: 0 var(--spacing-xs);
   }
 }
 
 /* 小屏幕手机 */
 @media (max-width: 480px) {
-  .terminal-monitoring-panel {
+  :deep(.terminal-monitoring-panel) {
     display: none; /* 小屏幕隐藏监控面板 */
   }
 
-  .terminal-right-area.with-monitoring-panel {
+  :deep(.terminal-right-area.with-monitoring-panel) {
     height: 100%; /* 小屏幕占满全高 */
   }
 
-  .terminal-ai-combined-area {
+  :deep(.terminal-ai-combined-area) {
     margin: 0;
   }
 }
