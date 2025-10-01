@@ -151,8 +151,6 @@ const loaderClasses = computed(() => ({
 </script>
 
 <style scoped>
-/* 导入监控主题样式 */
-@import '@/assets/styles/themes/monitoring-theme.css';
 
 .monitoring-loader {
   display: flex;

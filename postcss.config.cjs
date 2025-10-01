@@ -20,6 +20,9 @@ module.exports = {
         fontFace: false,
         keyframes: false,
         safelist: [
+          // 保留全局根选择器，避免清理监控主题的 CSS 变量
+          ':root',
+          /:root\[data-theme=.*\]/,
           // Element Plus & 运行态生成类
           /^el-/,
           /^is-/,

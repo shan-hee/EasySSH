@@ -286,8 +286,6 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
-/* 导入监控主题样式 */
-@import '@/assets/styles/themes/monitoring-theme.css';
 
 /* 硬盘监控组件继承通用监控组件样式 */
 

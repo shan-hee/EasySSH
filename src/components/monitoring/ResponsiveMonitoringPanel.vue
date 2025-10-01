@@ -209,8 +209,6 @@ watch(
 </script>
 
 <style scoped>
-/* 导入监控主题样式 */
-@import '@/assets/styles/themes/monitoring-theme.css';
 
 .responsive-monitoring-panel {
   /* 移除所有装饰样式，保持简洁 */

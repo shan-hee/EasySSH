@@ -490,8 +490,6 @@ const formatDateTime = timestamp => {
 </script>
 
 <style scoped>
-/* 导入监控主题样式，确保主题变量可用 */
-@import '@/assets/styles/themes/monitoring-theme.css';
 .system-info-section {
   /* 移除装饰样式，保持简洁 */
   background: transparent;
