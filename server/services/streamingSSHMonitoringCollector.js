@@ -280,8 +280,13 @@ class StreamingSSHMonitoringCollector extends EventEmitter {
       consecutiveErrors: this.errorStats.consecutiveErrors
     });
 
-    // 如果错误过多，停止收集
-    if (this.errorStats.consecutiveErrors >= this.errorStats.maxConsecutiveErrors) {
+    // 对致命错误（连接不可用/命令无法执行）立即停止，交由上层故障切换
+    const msg = (error?.message || '').toString();
+    const fatalHints = ['Not connected', 'Unable to exec', 'Connection closed', 'ECONNRESET', 'ETIMEDOUT'];
+    if (fatalHints.some(k => msg.includes(k))) {
+      logger.warn('检测到致命错误，立即停止流式监控收集以触发故障切换', { hostId: this.hostId, message: msg });
+      this.stopCollection();
+    } else if (this.errorStats.consecutiveErrors >= this.errorStats.maxConsecutiveErrors) {
       logger.warn('连续错误过多，停止流式监控收集', {
         hostId: this.hostId,
         consecutiveErrors: this.errorStats.consecutiveErrors

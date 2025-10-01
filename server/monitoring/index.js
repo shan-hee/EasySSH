@@ -20,6 +20,9 @@ const monitoringDataCache = new Map();
 // 存储IP到组合标识符的映射：ipAddress -> hostId (hostname@ip)
 const ipToHostIdMap = new Map();
 
+// 订阅即推缓存：允许的缓存时效（毫秒）
+const SUBSCRIBE_CACHE_TTL_MS = 60 * 1000; // 60秒内的缓存视为有效
+
 function toHostDescriptor(value) {
   if (value === undefined || value === null) {
     return null;
@@ -160,20 +163,7 @@ function findSessionsByServerId(serverId) {
   });
 }
 
-/**
- * 简化的消息发送函数
- * @param {WebSocket} ws WebSocket连接
- * @param {Object} data 要发送的数据
- */
-function sendMessage(ws, data) {
-  if (ws && ws.readyState === WebSocket.OPEN) {
-    try {
-      ws.send(JSON.stringify(data));
-    } catch (error) {
-      logger.error('发送消息失败', { error: error.message });
-    }
-  }
-}
+// 统一的消息发送函数在底部定义，避免重复定义
 
 /**
  * 初始化前端监控WebSocket服务器 - SSH集成版
@@ -289,7 +279,9 @@ function handleFrontendConnection(ws, sessionId, clientIp, subscribeServer) {
       messagesReceived: 0,
       messagesSent: 0
     },
-    subscribedServers: new Set() // 订阅的服务器列表
+    subscribedServers: new Set(), // 订阅的服务器列表
+    // 每个前端会话针对每个hostId的状态缓存，避免重复发送installed/available状态
+    statusByHost: new Map()
   });
 
   logger.debug('前端会话已创建', { sessionId, clientIp });
@@ -492,6 +484,38 @@ function subscribeToServer(frontendSessionId, serverId) {
       timestamp: Date.now()
     }
   });
+
+  // 订阅即推缓存：如命中缓存且未过期，立即推送一帧数据（含首次状态）
+  try {
+    const now = Date.now();
+    let actualHostId = serverId;
+    let cachedData = monitoringDataCache.get(actualHostId);
+
+    if (!cachedData && ipToHostIdMap.has(serverId)) {
+      actualHostId = ipToHostIdMap.get(serverId);
+      cachedData = monitoringDataCache.get(actualHostId);
+    }
+
+    if (cachedData && (now - (cachedData.lastUpdated || 0) <= SUBSCRIBE_CACHE_TTL_MS)) {
+      const sent = broadcastMonitoringData(frontendSessionId, actualHostId, cachedData);
+      const s = frontendSessions.get(frontendSessionId);
+      if (s) s.stats.messagesSent += sent;
+      logger.debug('订阅即推缓存命中', {
+        frontendSessionId,
+        serverId,
+        actualHostId,
+        ageMs: now - (cachedData.lastUpdated || 0)
+      });
+    } else {
+      logger.debug('订阅即推缓存未命中或过期', {
+        frontendSessionId,
+        serverId,
+        hasCache: !!cachedData
+      });
+    }
+  } catch (e) {
+    logger.debug('订阅即推缓存处理失败', { error: e.message, serverId });
+  }
 }
 
 /**
@@ -676,18 +700,23 @@ function handleSystemStatsRequest(ws, sessionId, data) {
     }
   }
 
+  const session = frontendSessions.get(sessionId);
   if (cachedData) {
-    // 发送监控数据可用状态（SSH方案）
-    sendMessage(ws, {
-      type: 'monitoring_status',
-      data: {
-        hostId: actualHostId,
-        status: 'installed',
-        available: true,
-        message: '监控数据可用（通过SSH收集）',
-        timestamp: Date.now()
-      }
-    });
+    // 仅在首次或状态变化时发送 installed
+    const last = session?.statusByHost?.get(actualHostId);
+    if (last !== 'installed') {
+      sendMessage(ws, {
+        type: 'monitoring_status',
+        data: {
+          hostId: actualHostId,
+          status: 'installed',
+          available: true,
+          message: '监控数据可用（通过SSH收集）',
+          timestamp: Date.now()
+        }
+      });
+      session?.statusByHost?.set(actualHostId, 'installed');
+    }
 
     // 发送缓存的监控数据
     sendMessage(ws, {
@@ -704,20 +733,25 @@ function handleSystemStatsRequest(ws, sessionId, data) {
       sessionId
     });
   } else {
-    // 发送监控数据不可用状态（SSH方案）
-    sendMessage(ws, {
-      type: 'monitoring_status',
-      data: {
-        hostId: requestedHostId || '未知',
-        status: 'not_installed',
-        available: false,
-        message: '监控数据不可用（需要SSH连接）',
-        timestamp: Date.now()
-      }
-    });
+    // 仅在首次或状态变化时发送 not_installed
+    const hostKey = requestedHostId || '未知';
+    const last = session?.statusByHost?.get(hostKey);
+    if (last !== 'not_installed') {
+      sendMessage(ws, {
+        type: 'monitoring_status',
+        data: {
+          hostId: hostKey,
+          status: 'not_installed',
+          available: false,
+          message: '监控数据不可用（需要SSH连接）',
+          timestamp: Date.now()
+        }
+      });
+      session?.statusByHost?.set(hostKey, 'not_installed');
+    }
 
     logger.debug('监控数据不可用', {
-      requestedHostId: requestedHostId || '未知',
+      requestedHostId: hostKey,
       sessionId
     });
   }
@@ -884,8 +918,8 @@ function processMonitoringData(sessionId, hostId, monitoringData, source) {
       if (!notifiedSessions.has(frontendSessionId)) {
         const targetSession = frontendSessions.get(frontendSessionId);
         if (targetSession && targetSession.ws && targetSession.ws.readyState === WebSocket.OPEN) {
-          broadcastMonitoringData(frontendSessionId, hostId, monitoringData);
-          targetSession.stats.messagesSent += 2;
+          const sentCount = broadcastMonitoringData(frontendSessionId, hostId, monitoringData);
+          targetSession.stats.messagesSent += sentCount;
           notifiedSessions.add(frontendSessionId);
         }
       }
@@ -901,8 +935,8 @@ function processMonitoringData(sessionId, hostId, monitoringData, source) {
         if (!notifiedSessions.has(frontendSessionId)) {
           const targetSession = frontendSessions.get(frontendSessionId);
           if (targetSession && targetSession.ws && targetSession.ws.readyState === WebSocket.OPEN) {
-            broadcastMonitoringData(frontendSessionId, hostId, monitoringData);
-            targetSession.stats.messagesSent += 2;
+            const sentCount = broadcastMonitoringData(frontendSessionId, hostId, monitoringData);
+            targetSession.stats.messagesSent += sentCount;
             notifiedSessions.add(frontendSessionId);
           }
         }
@@ -984,23 +1018,30 @@ function handleMonitoringDataUpdate(ws, sessionId, data) {
  * @param {string} hostId 主机标识符
  * @param {Object} monitoringData 监控数据
  */
-async function broadcastMonitoringData(sessionId, hostId, monitoringData) {
+function broadcastMonitoringData(sessionId, hostId, monitoringData) {
   const session = frontendSessions.get(sessionId);
   if (!session || !session.ws) {
-    return;
+    return 0;
   }
 
-  // 发送监控状态
-  sendMessage(session.ws, {
-    type: 'monitoring_status',
-    data: {
-      hostId: hostId,
-      status: 'installed',
-      available: true,
-      message: '监控服务已安装且数据可用',
-      timestamp: Date.now()
-    }
-  });
+  let sent = 0;
+
+  // 仅在首次（或状态变化时）发送“已安装且可用”状态，避免每次重复发送
+  const lastStatus = session.statusByHost?.get(hostId);
+  if (lastStatus !== 'installed') {
+    sendMessage(session.ws, {
+      type: 'monitoring_status',
+      data: {
+        hostId: hostId,
+        status: 'installed',
+        available: true,
+        message: '监控服务已安装且数据可用',
+        timestamp: Date.now()
+      }
+    });
+    session.statusByHost?.set(hostId, 'installed');
+    sent += 1;
+  }
 
   // 发送监控数据
   sendMessage(session.ws, {
@@ -1011,6 +1052,9 @@ async function broadcastMonitoringData(sessionId, hostId, monitoringData) {
       timestamp: Date.now()
     }
   });
+  sent += 1;
+
+  return sent;
 }
 
 /**

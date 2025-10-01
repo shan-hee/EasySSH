@@ -4,6 +4,7 @@
  */
 
 const logger = require('../utils/logger');
+const monitoringConfig = require('../config/monitoring');
 
 class MonitoringBridge {
   constructor() {
@@ -14,8 +15,37 @@ class MonitoringBridge {
     this.cleanupTimer = null; // 确保定时器引用被初始化
     this.abortCleanups = new Map(); // sessionId -> () => void
 
+    // host 级去重与共享采集
+    this.hostCollectors = new Map(); // hostId -> { collector, primarySessionId, refCount, sessions: Map<sessionId, { sshConnection, hostInfo }> }
+    this.sessionToHost = new Map(); // sessionId -> hostId
+    this.inFlightStarts = new Set(); // hostId 正在启动采集器
+    this.failoverHosts = new Set(); // hostId 正在进行主会话故障切换
+    this.primaryLastSwitchAt = new Map(); // hostId -> timestamp
+    this.lastFailoverAt = new Map(); // hostId -> timestamp
+    this.lastDataAtByHost = new Map(); // hostId -> timestamp
+
+    // 读取防抖配置
+    const election = monitoringConfig?.collector?.election || {};
+    this.holdDownMs = typeof election.primaryHoldDownMs === 'number' ? election.primaryHoldDownMs : 2500;
+    this.failoverCoolDownMs = typeof election.failoverCoolDownMs === 'number' ? election.failoverCoolDownMs : 500;
+    this.jitterMs = typeof election.jitterMs === 'number' ? election.jitterMs : 150;
+    this.noDataTimeoutMs = typeof election.noDataTimeoutMs === 'number' ? election.noDataTimeoutMs : 3000;
+
+    // 针对相同主机的去重：每个主机只选择一个会话作为“主”数据源
+    // hostId -> primarySessionId
+    this.primarySessionByHost = new Map();
+
     // 启动定期清理任务
     this.startCleanupTask();
+  }
+
+  /**
+   * 根据 hostInfo 生成标准 hostId
+   */
+  _getHostIdFromHostInfo(hostInfo = {}) {
+    const address = hostInfo.address || 'unknown';
+    const hostname = hostInfo.hostname || null;
+    return hostname ? `${hostname}@${address}` : address;
   }
 
   /**
@@ -53,25 +83,61 @@ class MonitoringBridge {
       return;
     }
 
+    // host 级共享采集：根据 hostId 做单飞
+    const hostId = this._getHostIdFromHostInfo(hostInfo);
+    const existingHostGroup = this.hostCollectors.get(hostId);
+
+    if (existingHostGroup) {
+      // 已有该主机的采集器：增加引用计数并复用
+      existingHostGroup.refCount = (existingHostGroup.refCount || 0) + 1;
+      existingHostGroup.sessions.set(sessionId, { sshConnection, hostInfo });
+      this.sessionToHost.set(sessionId, hostId);
+      this.collectorStates.set(sessionId, 'running');
+
+      // 绑定取消
+      if (signal) {
+        const abortHandler = () => {
+          const abortReason = signal.reason || 'aborted';
+          logger.debug('收到会话取消信号（共享采集）', { sessionId, host: hostId, reason: abortReason });
+          this.stopMonitoring(sessionId, abortReason);
+        };
+        signal.addEventListener('abort', abortHandler, { once: true });
+        this.abortCleanups.set(sessionId, () => {
+          signal.removeEventListener('abort', abortHandler);
+        });
+      }
+
+      logger.debug('复用现有主机采集器', {
+        sessionId,
+        host: `${hostInfo.username || 'unknown'}@${hostInfo.address || 'unknown'}:${hostInfo.port || 22}`,
+        hostId,
+        refCount: existingHostGroup.refCount
+      });
+      return;
+    }
+
+    // 防止并发重复启动
+    if (this.inFlightStarts.has(hostId)) {
+      logger.debug('主机采集器正在启动，跳过并发启动', { sessionId, hostId });
+      this.collectorStates.set(sessionId, 'starting');
+      // 记录会话，启动完成后将自动进入运行中
+      const placeholderGroup = this.hostCollectors.get(hostId) || { sessions: new Map(), refCount: 0 };
+      placeholderGroup.sessions.set(sessionId, { sshConnection, hostInfo });
+      placeholderGroup.refCount++;
+      this.hostCollectors.set(hostId, placeholderGroup);
+      this.sessionToHost.set(sessionId, hostId);
+
+      if (signal) {
+        const abortHandler = () => this.stopMonitoring(sessionId, signal.reason || 'aborted');
+        signal.addEventListener('abort', abortHandler, { once: true });
+        this.abortCleanups.set(sessionId, () => signal.removeEventListener('abort', abortHandler));
+      }
+      return;
+    }
+
     // 设置启动状态
     this.collectorStates.set(sessionId, 'starting');
-
-    // 检查是否已存在收集器
-    if (this.collectors.has(sessionId)) {
-      const existingCollector = this.collectors.get(sessionId);
-      if (existingCollector.isCollecting) {
-        logger.debug('监控收集器已在运行，跳过重复启动', {
-          sessionId,
-          host: hostInfo.address
-        });
-        this.collectorStates.set(sessionId, 'running');
-        return;
-      } else {
-        // 清理已停止的收集器
-        logger.debug('清理已停止的监控收集器', { sessionId });
-        this.collectors.delete(sessionId);
-      }
-    }
+    this.inFlightStarts.add(hostId);
 
     try {
       // 动态导入流式SSH监控收集器（优化版）
@@ -80,18 +146,42 @@ class MonitoringBridge {
       // 创建流式监控收集器实例
       const collector = new StreamingSSHMonitoringCollector(sshConnection, hostInfo);
 
-      // 设置数据回调函数
+      // 设置数据回调函数（带主/备筛选）
       const dataCallback = (monitoringData) => {
         this.handleMonitoringData(sessionId, monitoringData);
       };
 
       // 设置事件监听器
       collector.on('error', (error) => {
+        const hostIdOnError = collector.hostId;
+        const msg = error?.message || '';
         logger.warn('监控收集器错误', {
           sessionId,
-          hostId: collector.hostId,
-          error: error.message
+          hostId: hostIdOnError,
+          error: msg
         });
+
+        // 若当前主SSH连接已断导至 "Not connected" / "Connection closed" 等错误，且同主机还有其他连接，主动触发故障切换
+        const indicative = ['Not connected', 'Connection closed', 'ECONNRESET', 'ETIMEDOUT', 'Unable to exec'];
+        const shouldFailover = indicative.some(k => msg.includes(k));
+
+        if (shouldFailover) {
+          const group = this.hostCollectors.get(hostIdOnError);
+          if (group && group.sessions.size > 0) {
+            if (!this.failoverHosts.has(hostIdOnError)) {
+              this.failoverHosts.add(hostIdOnError);
+              logger.debug('检测到主连接错误，尝试主会话故障切换', { hostId: hostIdOnError, from: sessionId });
+              try {
+                // 主动停止当前采集器，进入 stopped 流程，由 stopped 中完成切换
+                if (collector.isCollecting) {
+                  collector.stopCollection();
+                }
+              } catch (e) {
+                logger.debug('触发故障切换时停止采集器失败(忽略)', { hostId: hostIdOnError, error: e.message });
+              }
+            }
+          }
+        }
       });
 
       collector.on('stopped', () => {
@@ -102,6 +192,96 @@ class MonitoringBridge {
         // 更新状态并从集合中移除
         this.collectorStates.set(sessionId, 'stopped');
         this.collectors.delete(sessionId);
+
+        // 如果该会话是该主机的主数据源，清理主映射，允许其他会话接管
+        try {
+          const currentPrimary = this.primarySessionByHost.get(collector.hostId);
+          if (currentPrimary === sessionId) {
+            this.primarySessionByHost.delete(collector.hostId);
+            logger.debug('主监控会话已停止，释放主映射', {
+              hostId: collector.hostId,
+              sessionId
+            });
+          }
+        } catch (e) {
+          // 静默
+        }
+
+        // host 级共享采集：尝试主会话故障切换
+        const group = this.hostCollectors.get(collector.hostId);
+        if (group) {
+          // 移除当前主会话映射（如果存在）
+          if (group.primarySessionId === sessionId) {
+            group.primarySessionId = null;
+          }
+
+          if (group.refCount > 0 && group.sessions.size > 0) {
+            const doSwitch = () => {
+              // 选择一个新的会话接管
+              const candidateEntry = Array.from(group.sessions.entries()).find(([sid]) => sid !== sessionId) || Array.from(group.sessions.entries())[0];
+              if (candidateEntry) {
+                const [newPrimaryId, meta] = candidateEntry;
+                try {
+                  const ReplacementCollector = require('./streamingSSHMonitoringCollector');
+                  const newCollector = new ReplacementCollector(meta.sshConnection, meta.hostInfo);
+
+                  const dataCallback = (monitoringData) => {
+                    this.handleMonitoringData(newPrimaryId, monitoringData);
+                  };
+
+                  newCollector.on('error', (error) => {
+                    logger.warn('监控收集器错误(切换后)', {
+                      sessionId: newPrimaryId,
+                      hostId: newCollector.hostId,
+                      error: error.message
+                    });
+                  });
+
+                  newCollector.on('stopped', () => {
+                    logger.debug('监控收集器已停止(切换后)', {
+                      sessionId: newPrimaryId,
+                      hostId: newCollector.hostId
+                    });
+                    this.collectorStates.set(newPrimaryId, 'stopped');
+                    this.collectors.delete(newPrimaryId);
+                  });
+
+                  newCollector.startCollection(dataCallback, 1000);
+                  this.collectors.set(newPrimaryId, newCollector);
+                  group.primarySessionId = newPrimaryId;
+                  group.collector = newCollector;
+                  this.primarySessionByHost.set(newCollector.hostId, newPrimaryId);
+                  const nowTs = Date.now();
+                  this.primaryLastSwitchAt.set(newCollector.hostId, nowTs);
+                  this.lastFailoverAt.set(newCollector.hostId, nowTs);
+                  logger.debug('主监控会话已切换', { hostId: newCollector.hostId, from: sessionId, to: newPrimaryId });
+                } catch (switchErr) {
+                  logger.error('主监控会话切换失败', { hostId: collector.hostId, error: switchErr.message });
+                }
+              }
+              // 释放锁
+              this.failoverHosts.delete(collector.hostId);
+            };
+
+            const now = Date.now();
+            const last = this.lastFailoverAt.get(collector.hostId) || 0;
+            const since = now - last;
+            const jitter = Math.floor(Math.random() * (this.jitterMs || 0));
+            if (since < this.failoverCoolDownMs) {
+              const delay = this.failoverCoolDownMs - since + jitter;
+              logger.debug('应用故障切换冷却期', { hostId: collector.hostId, delay });
+              setTimeout(doSwitch, Math.max(0, delay));
+            } else {
+              doSwitch();
+            }
+
+          } else {
+            // 无引用者，清理主机组
+            this.hostCollectors.delete(collector.hostId);
+            // 释放锁
+            this.failoverHosts.delete(collector.hostId);
+          }
+        }
       });
 
       // 开始数据收集（使用默认间隔1秒）
@@ -113,10 +293,28 @@ class MonitoringBridge {
       // 更新状态为运行中
       this.collectorStates.set(sessionId, 'running');
 
+      // host 级共享采集：建立主机组
+      const group = this.hostCollectors.get(hostId) || { sessions: new Map(), refCount: 0 };
+      group.collector = collector;
+      group.primarySessionId = sessionId;
+      group.refCount = (group.refCount || 0) + 1;
+      group.sessions.set(sessionId, { sshConnection, hostInfo });
+      this.hostCollectors.set(hostId, group);
+      this.sessionToHost.set(sessionId, hostId);
+
+      // 将该主机下的所有会话标记为运行中
+      try {
+        for (const [sid] of group.sessions) {
+          this.collectorStates.set(sid, 'running');
+        }
+      } catch (_) {}
+
       logger.debug('SSH监控数据收集已启动', {
         sessionId,
         host: `${hostInfo.username || 'unknown'}@${hostInfo.address || 'unknown'}:${hostInfo.port || 22}`,
-        collectorCount: this.collectors.size
+        collectorCount: this.collectors.size,
+        hostId,
+        hostRefCount: group.refCount
       });
 
       if (signal) {
@@ -139,11 +337,23 @@ class MonitoringBridge {
     } catch (error) {
       // 启动失败，重置状态
       this.collectorStates.set(sessionId, 'stopped');
+      this.inFlightStarts.delete(hostId);
       logger.error('启动SSH监控数据收集失败', {
         sessionId,
         host: `${hostInfo.username}@${hostInfo.address}:${hostInfo.port}`,
         error: error.message
       });
+      // 回滚占位
+      const placeholder = this.hostCollectors.get(hostId);
+      if (placeholder) {
+        placeholder.sessions.delete(sessionId);
+        placeholder.refCount = Math.max(0, (placeholder.refCount || 0) - 1);
+        if (placeholder.refCount === 0) {
+          this.hostCollectors.delete(hostId);
+        }
+      }
+    } finally {
+      this.inFlightStarts.delete(hostId);
     }
   }
 
@@ -153,82 +363,103 @@ class MonitoringBridge {
    * @param {string} reason 停止原因
    */
   stopMonitoring(sessionId, reason = 'unknown') {
-    // 检查当前状态，避免重复停止
-    const currentState = this.collectorStates.get(sessionId);
-    if (currentState === 'stopping' || currentState === 'stopped') {
-      // 静默跳过重复操作，不记录日志避免噪音
-      return false; // 返回false表示没有执行停止操作
-    }
+    try {
+      // 优先走 host 级共享采集的停止流程
+      const hostId = this.sessionToHost.get(sessionId);
+      if (hostId) {
+        const group = this.hostCollectors.get(hostId);
+        if (group) {
+          // 解除会话引用
+          if (group.sessions.has(sessionId)) group.sessions.delete(sessionId);
+          group.refCount = Math.max(0, (group.refCount || 0) - 1);
+          this.sessionToHost.delete(sessionId);
+          this.collectorStates.set(sessionId, 'stopped');
 
-    // 设置停止状态
-    this.collectorStates.set(sessionId, 'stopping');
+          logger.debug('释放主机采集器引用', { sessionId, hostId, refCount: group.refCount, reason });
 
-    const collector = this.collectors.get(sessionId);
-    if (collector) {
-      try {
-        // 检查收集器是否正在运行
-        if (collector.isCollecting) {
-          collector.stopCollection();
-        } else {
-          logger.debug('监控收集器已停止，直接清理', { sessionId, reason });
+          if (group.refCount === 0) {
+            // 无任何引用，停止并清理主采集器
+            const primaryId = group.primarySessionId;
+            const primaryCollector = [...this.collectors.entries()].find(([sid, c]) => sid === primaryId)?.[1] || group.collector;
+            try {
+              if (primaryCollector?.isCollecting) primaryCollector.stopCollection();
+            } catch (e) {
+              logger.debug('停止主机采集器失败(忽略)', { hostId, error: e.message });
+            }
+            this.hostCollectors.delete(hostId);
+            if (primaryId) this.collectors.delete(primaryId);
+          } else {
+            // 仍有其他会话引用：若当前 session 恰好是主会话，主动停止主采集器以便尽快切换
+            if (group.primarySessionId === sessionId) {
+              try {
+                if (group.collector?.isCollecting) group.collector.stopCollection();
+              } catch (_) {}
+            }
+          }
+
+          // 清理 abort 监听
+          const abortCleanup = this.abortCleanups.get(sessionId);
+          if (abortCleanup) {
+            try { abortCleanup(); } catch (_) {}
+            this.abortCleanups.delete(sessionId);
+          }
+
+          return true;
         }
+      }
 
-        // 清理收集器实例
-        this.collectors.delete(sessionId);
-        this.collectorStates.set(sessionId, 'stopped');
-
-        // 记录停止信息
-        logger.debug('SSH监控数据收集已停止', {
-          sessionId,
-          hostId: collector.hostId,
-          reason
-        });
-
-        return true; // 返回true表示成功执行停止操作
-
-      } catch (error) {
-        logger.error('停止SSH监控数据收集失败', {
-          sessionId,
-          reason,
-          error: error.message,
-          stack: error.stack
-        });
-
-        // 即使出错也要清理收集器实例
-        this.collectors.delete(sessionId);
-        this.collectorStates.set(sessionId, 'stopped');
+      // 退回到旧的按 session 的停止逻辑（兼容）
+      const currentState = this.collectorStates.get(sessionId);
+      if (currentState === 'stopping' || currentState === 'stopped') {
         return false;
       }
-    } else {
-      // 收集器不存在，但可能状态还在，需要清理状态
-      if (currentState && currentState !== 'stopped') {
-        logger.debug('清理不存在收集器的状态记录', {
-          sessionId,
-          previousState: currentState,
-          reason
-        });
-        this.collectorStates.set(sessionId, 'stopped');
-      } else {
-        logger.debug('监控收集器不存在且状态正常，跳过停止操作', {
-          sessionId,
-          activeCollectors: this.collectors.size,
-          reason
-        });
-      }
-      return false;
-    }
+      this.collectorStates.set(sessionId, 'stopping');
 
-    const abortCleanup = this.abortCleanups.get(sessionId);
-    if (abortCleanup) {
-      try {
-        abortCleanup();
-      } catch (error) {
-        logger.warn('移除监控取消监听失败', {
-          sessionId,
-          error: error.message
-        });
+      const collector = this.collectors.get(sessionId);
+      if (collector) {
+        try {
+          if (collector.isCollecting) {
+            collector.stopCollection();
+          }
+          this.collectors.delete(sessionId);
+          this.collectorStates.set(sessionId, 'stopped');
+
+          logger.debug('SSH监控数据收集已停止', {
+            sessionId,
+            hostId: collector.hostId,
+            reason
+          });
+          return true;
+        } catch (error) {
+          logger.error('停止SSH监控数据收集失败', { sessionId, reason, error: error.message });
+          this.collectors.delete(sessionId);
+          this.collectorStates.set(sessionId, 'stopped');
+          return false;
+        }
+      } else {
+        if (currentState && currentState !== 'stopped') {
+          this.collectorStates.set(sessionId, 'stopped');
+        }
+        return false;
       }
-      this.abortCleanups.delete(sessionId);
+    } finally {
+      // 清理 primarySessionByHost 映射（若指向该 session）
+      try {
+        const hostId = this.sessionToHost.get(sessionId);
+        if (hostId) {
+          const currentPrimary = this.primarySessionByHost.get(hostId);
+          if (currentPrimary === sessionId) {
+            this.primarySessionByHost.delete(hostId);
+          }
+        }
+      } catch (_) {}
+
+      // 清理 abort 监听（兜底）
+      const abortCleanup = this.abortCleanups.get(sessionId);
+      if (abortCleanup) {
+        try { abortCleanup(); } catch (_) {}
+        this.abortCleanups.delete(sessionId);
+      }
     }
   }
 
@@ -244,12 +475,44 @@ class MonitoringBridge {
     }
 
     try {
-      // 调用监控WebSocket服务的数据处理方法
-      // 模拟监控客户端发送数据的格式
-      if (typeof this.monitoringService.handleMonitoringDataFromSSH === 'function') {
-        this.monitoringService.handleMonitoringDataFromSSH(sessionId, monitoringData);
+      const hostId = monitoringData?.hostId;
+
+      // 如果无法判定主机，直接透传以免丢数据
+      if (!hostId) {
+        if (typeof this.monitoringService.handleMonitoringDataFromSSH === 'function') {
+          this.monitoringService.handleMonitoringDataFromSSH(sessionId, monitoringData);
+        }
+        return;
+      }
+
+      const currentPrimary = this.primarySessionByHost.get(hostId);
+      const currentCollector = this.collectors.get(currentPrimary || '');
+
+      // 记录最近一次收到该主机监控数据的时间
+      this.lastDataAtByHost.set(hostId, Date.now());
+
+      // 若当前无主会话，或主会话已不存在/已停止，则将当前会话设为主并透传
+      const shouldBecomePrimary = !currentPrimary || !currentCollector || currentCollector.isCollecting === false;
+
+      if (shouldBecomePrimary) {
+        if (currentPrimary && currentPrimary !== sessionId) {
+          logger.debug('主监控会话失效，切换主会话', { hostId, from: currentPrimary, to: sessionId });
+        }
+        this.primarySessionByHost.set(hostId, sessionId);
+        this.primaryLastSwitchAt.set(hostId, Date.now());
+      }
+
+      // 仅主会话的数据透传到监控服务，避免同一主机的重复推送
+      if (this.primarySessionByHost.get(hostId) === sessionId) {
+        if (typeof this.monitoringService.handleMonitoringDataFromSSH === 'function') {
+          this.monitoringService.handleMonitoringDataFromSSH(sessionId, monitoringData);
+        } else {
+          logger.warn('监控服务不支持SSH数据处理方法', { sessionId });
+        }
       } else {
-        logger.warn('监控服务不支持SSH数据处理方法', { sessionId });
+        // 抑制重复来源的数据
+        // 仅在首次发现重复时记录一次日志以避免噪音
+        // 这里不计数，保持轻量
       }
 
     } catch (error) {
@@ -394,6 +657,9 @@ class MonitoringBridge {
 
     this.collectors.clear();
     this.collectorStates.clear();
+    this.hostCollectors.clear();
+    this.sessionToHost.clear();
+    this.inFlightStarts.clear();
   }
 
   /**

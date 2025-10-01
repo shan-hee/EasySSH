@@ -41,6 +41,18 @@ const config = {
         'ENOTFOUND',
         'ETIMEDOUT'
       ]
+    },
+
+    // 主会话选举与切换防抖配置
+    election: {
+      // 设为主后，在此窗口内忽略非致命的主变更请求（毫秒）
+      primaryHoldDownMs: 2500,
+      // 故障切换后的一段冷却期（毫秒），避免连续抖动下过于频繁地切主
+      failoverCoolDownMs: 500,
+      // 故障切换的随机抖动（毫秒），用于打散并发
+      jitterMs: 150,
+      // 判定“无数据”作为不健康的超时阈值（毫秒），用于辅助健康判定
+      noDataTimeoutMs: 3000
     }
   },
 
