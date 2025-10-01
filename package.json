@@ -1,6 +1,6 @@
 {
   "name": "easyssh",
-  "version": "1.4.67",
+  "version": "1.4.68",
   "description": "一个现代化的SSH客户端，提供高效、安全、易用的远程服务器管理体验",
   "type": "module",
   "private": true,
