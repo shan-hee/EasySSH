@@ -23,3 +23,39 @@
 /* 已移除未使用：列/卡片/标题/间距辅助等（见扫描报告） */
 
 } /* end @layer layout */
+
+/*
+ * Terminal frame essential layout
+ * Ensure monitoring panel stays as a fixed-width left column in production.
+ * These are duplicated globally to avoid scoped-style edge cases.
+ */
+@layer layout {
+  .terminal-main-area {
+    display: flex;
+    flex-direction: row;
+    height: calc(100% - var(--layout-toolbar-height));
+    overflow: hidden;
+  }
+
+  .terminal-monitoring-panel {
+    flex-shrink: 0;
+    width: var(--monitoring-panel-width);
+    max-width: 35vw;
+    height: 100%;
+    overflow: hidden;
+    border-right: 1px solid var(--color-border-default);
+    color: var(--color-text-primary);
+  }
+
+  .terminal-right-area {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    overflow: hidden;
+  }
+
+  .terminal-right-area.with-monitoring-panel {
+    width: calc(100% - var(--monitoring-panel-width));
+  }
+}
