@@ -2,10 +2,10 @@
  * base.css - 基础样式（归于 @layer reset）
  * 包含样式重置、基础变量和通用样式
  */
-@layer reset {
-
-/* 导入字体定义 */
+/* 导入字体定义（需在顶层，便于构建时内联） */
 @import './fonts.css';
+
+@layer reset {
 
 /* 注意：主要的CSS变量现在在 themes/theme.css 中定义 */
 /* 这里只保留基础样式重置和通用样式 */

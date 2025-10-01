@@ -35,8 +35,8 @@ class MonitoringBridge {
     // hostId -> primarySessionId
     this.primarySessionByHost = new Map();
 
-    // 启动定期清理任务
-    this.startCleanupTask();
+    // 已改为事件驱动清理：不再启动定期清理任务
+    // this.startCleanupTask();
   }
 
   /**
@@ -189,8 +189,8 @@ class MonitoringBridge {
           sessionId,
           hostId: collector.hostId
         });
-        // 更新状态并从集合中移除
-        this.collectorStates.set(sessionId, 'stopped');
+        // 事件驱动清理：直接移除状态并从集合中移除
+        this.collectorStates.delete(sessionId);
         this.collectors.delete(sessionId);
 
         // 如果该会话是该主机的主数据源，清理主映射，允许其他会话接管
@@ -242,7 +242,8 @@ class MonitoringBridge {
                       sessionId: newPrimaryId,
                       hostId: newCollector.hostId
                     });
-                    this.collectorStates.set(newPrimaryId, 'stopped');
+                    // 事件驱动清理：直接移除状态
+                    this.collectorStates.delete(newPrimaryId);
                     this.collectors.delete(newPrimaryId);
                   });
 
@@ -335,8 +336,8 @@ class MonitoringBridge {
       }
 
     } catch (error) {
-      // 启动失败，重置状态
-      this.collectorStates.set(sessionId, 'stopped');
+      // 启动失败，事件驱动清理：移除残留状态
+      this.collectorStates.delete(sessionId);
       this.inFlightStarts.delete(hostId);
       logger.error('启动SSH监控数据收集失败', {
         sessionId,
@@ -373,7 +374,8 @@ class MonitoringBridge {
           if (group.sessions.has(sessionId)) group.sessions.delete(sessionId);
           group.refCount = Math.max(0, (group.refCount || 0) - 1);
           this.sessionToHost.delete(sessionId);
-          this.collectorStates.set(sessionId, 'stopped');
+          // 事件驱动清理：直接移除状态
+          this.collectorStates.delete(sessionId);
 
           logger.debug('释放主机采集器引用', { sessionId, hostId, refCount: group.refCount, reason });
 
@@ -422,7 +424,8 @@ class MonitoringBridge {
             collector.stopCollection();
           }
           this.collectors.delete(sessionId);
-          this.collectorStates.set(sessionId, 'stopped');
+          // 事件驱动清理：直接移除状态
+          this.collectorStates.delete(sessionId);
 
           logger.debug('SSH监控数据收集已停止', {
             sessionId,
@@ -433,13 +436,13 @@ class MonitoringBridge {
         } catch (error) {
           logger.error('停止SSH监控数据收集失败', { sessionId, reason, error: error.message });
           this.collectors.delete(sessionId);
-          this.collectorStates.set(sessionId, 'stopped');
+          // 事件驱动清理：直接移除状态
+          this.collectorStates.delete(sessionId);
           return false;
         }
       } else {
-        if (currentState && currentState !== 'stopped') {
-          this.collectorStates.set(sessionId, 'stopped');
-        }
+        // 无收集器实例：直接移除残留状态
+        this.collectorStates.delete(sessionId);
         return false;
       }
     } finally {

@@ -16,6 +16,9 @@ module.exports = {
           'scripts/**/*.{js,ts}'
         ],
         defaultExtractor: content => content.match(/[A-Za-z0-9-_:/.]+/g) || [],
+        // 保留 @font-face 与关键帧，避免被误删
+        fontFace: false,
+        keyframes: false,
         safelist: [
           // Element Plus & 运行态生成类
           /^el-/,
