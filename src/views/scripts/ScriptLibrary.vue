@@ -1295,7 +1295,8 @@ export default defineComponent({
 .script-library-container {
   padding: 20px;
   height: 100%;
-  overflow-y: auto;
+  /* 由父级 .content 统一管理滚动，避免页面出现双滚动条 */
+  overflow: visible;
   display: flex;
   flex-direction: column;
   background-color: var(--color-bg-page);

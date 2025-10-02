@@ -1425,7 +1425,8 @@ export default {
 .new-connection-container {
   padding: 20px;
   height: 100%;
-  overflow-y: auto;
+  /* 由父级 .content 统一负责滚动；此处不再创建内层滚动容器，避免双滚动条 */
+  overflow: visible;
   background-color: var(--color-bg-page);
   max-width: 850px;
   margin: 0 auto;

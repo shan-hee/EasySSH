@@ -21,7 +21,8 @@
         class="content"
         :class="{
           'terminal-bg-active': isTerminalRoute && terminalHasBackground,
-          'terminal-surface-transparent': isTerminalRoute
+          'terminal-surface-transparent': isTerminalRoute,
+          'hide-scrollbar': isConnectionsRoute
         }"
       >
         <!-- 终端组件直接嵌入为常驻组件，使用v-show控制显示/隐藏 -->
@@ -127,6 +128,11 @@ export default defineComponent({
     // 判断当前是否为终端路由
     const isTerminalRoute = computed(() => {
       return route.path === '/terminal' || route.path.startsWith('/terminal/');
+    });
+
+    // 连接配置相关路由：隐藏主内容滚动条
+    const isConnectionsRoute = computed(() => {
+      return route.path === '/connections' || route.path.startsWith('/connections/');
     });
 
     // 获取当前终端ID，优先使用路由参数
@@ -555,7 +561,8 @@ export default defineComponent({
       terminalHasBackground,
 
       getCurrentTerminalId,
-      terminalComponent
+      terminalComponent,
+      isConnectionsRoute
     };
   }
 });

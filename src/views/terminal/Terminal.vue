@@ -3080,13 +3080,15 @@ export default {
 
 /* XTerm 滚动条样式 - 使用系统设计令牌 */
 :deep(.xterm-viewport::-webkit-scrollbar) {
-  width: 5px; /* 细滚动条 */
+  width: var(--scrollbar-size, 8px); /* 统一滚动条宽度 */
   height: 0; /* 隐藏横向滚动条 */
 }
 
+:deep(.xterm-viewport::-webkit-scrollbar-track) { background: transparent; }
+
 :deep(.xterm-viewport::-webkit-scrollbar-thumb) {
   background-color: var(--color-border-default);
-  border-radius: var(--radius-lg); /* 使用系统圆角令牌 */
+  border-radius: var(--scrollbar-radius, var(--radius-lg)); /* 使用统一圆角 */
   border: none;
   transition: background-color var(--transition-fast); /* 使用系统过渡令牌 */
 }

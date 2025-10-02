@@ -72,23 +72,54 @@ ol {
 
 /* 已移除未使用的遗留辅助类：visually-hidden/clearfix/text-truncate */
 
-/* 滚动条样式 */
-::-webkit-scrollbar {
-  width: 0;
-  height: 0;
-}
+/* 滚动条样式（按需隐藏）
+ * 注意：不要全局隐藏滚动条，避免造成“可滚动但不可见”的问题。
+ * 若确需隐藏，请在具体容器上添加 .hide-scrollbar 类。
+ */
+.hide-scrollbar::-webkit-scrollbar { width: 0; height: 0; }
+.hide-scrollbar::-webkit-scrollbar-track { background: transparent; }
+.hide-scrollbar::-webkit-scrollbar-thumb { background: transparent; border-radius: 0; }
+.hide-scrollbar::-webkit-scrollbar-thumb:hover { background: transparent; }
+/* Firefox */
+.hide-scrollbar { scrollbar-width: none; }
 
-::-webkit-scrollbar-track {
-  background: transparent;
-}
+/* 更强定向隐藏：用于主内容容器（连接配置页） */
+.content.hide-scrollbar { scrollbar-width: none; -ms-overflow-style: none; }
+.content.hide-scrollbar::-webkit-scrollbar { display: none !important; width: 0 !important; height: 0 !important; }
 
-::-webkit-scrollbar-thumb {
-  background: transparent;
-  border-radius: 0;
-}
+/* 全局滚动条变量（可按主题覆盖） */
+:root { --scrollbar-size: 8px; --scrollbar-radius: 4px; }
 
-::-webkit-scrollbar-thumb:hover {
-  background: transparent;
+/* 优化主内容容器滚动条：轨道透明，与背景一致；仅对可见滚动条的页面生效 */
+@layer utilities {
+  .content:not(.hide-scrollbar)::-webkit-scrollbar { width: var(--scrollbar-size); height: var(--scrollbar-size); }
+  .content:not(.hide-scrollbar)::-webkit-scrollbar-track { background: transparent; }
+  .content:not(.hide-scrollbar)::-webkit-scrollbar-thumb {
+    background: var(--color-border-default);
+    border-radius: var(--scrollbar-radius);
+  }
+  .content:not(.hide-scrollbar)::-webkit-scrollbar-thumb:hover {
+    background: var(--color-border-dark);
+  }
+  /* Firefox */
+  .content:not(.hide-scrollbar) { scrollbar-width: thin; scrollbar-color: var(--color-border-default) transparent; }
+
+  /* 统一对话框内容区、xterm视口、AI面板的滚动条样式 */
+  .el-overlay .el-dialog__body,
+  .xterm-viewport,
+  .ai-panel-content { scrollbar-width: thin; scrollbar-color: var(--color-border-default) transparent; }
+  .el-overlay .el-dialog__body::-webkit-scrollbar,
+  .xterm-viewport::-webkit-scrollbar,
+  .ai-panel-content::-webkit-scrollbar { width: var(--scrollbar-size); height: var(--scrollbar-size); }
+  .el-overlay .el-dialog__body::-webkit-scrollbar-track,
+  .xterm-viewport::-webkit-scrollbar-track,
+  .ai-panel-content::-webkit-scrollbar-track { background: transparent; }
+  .el-overlay .el-dialog__body::-webkit-scrollbar-thumb,
+  .xterm-viewport::-webkit-scrollbar-thumb,
+  .ai-panel-content::-webkit-scrollbar-thumb { background: var(--color-border-default); border-radius: var(--scrollbar-radius); }
+  .el-overlay .el-dialog__body::-webkit-scrollbar-thumb:hover,
+  .xterm-viewport::-webkit-scrollbar-thumb:hover,
+  .ai-panel-content::-webkit-scrollbar-thumb:hover { background: var(--color-border-dark); }
 }
 
 } /* end @layer reset */
