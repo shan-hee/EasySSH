@@ -2888,7 +2888,6 @@ export default {
 /* 主题过渡保留 */
 :deep(.terminal-right-area) {
   color: var(--color-text-primary);
-  min-height: 0; /* 打通flex高度链，防止子元素被压缩到半高 */
   transition:
     color var(--theme-transition-duration) var(--theme-transition-timing),
     background-color var(--theme-transition-duration) var(--theme-transition-timing);
@@ -2898,17 +2897,7 @@ export default {
 
 /* 终端内容填充区域 */
 
-:deep(.terminal-content-padding) {
-  flex: 1;
-  display: flex;               /* 作为弹性容器，便于内部终端填满 */
-  flex-direction: column;
-  box-sizing: border-box;
-  width: 100%;
-  position: relative;
-  overflow: hidden;            /* 防止内部视口限制高度 */
-  padding: 0;
-  min-height: 0;               /* 允许flex收缩，避免子元素把父容器撑爆 */
-}
+/* 终端内容填充区域的核心布局已移至全局样式（critical-layout.css） */
 
 /* AI合并面板区域 */
 :deep(.terminal-ai-combined-area) {
@@ -3009,10 +2998,7 @@ export default {
 
 /* 终端内容容器 */
 .terminal-content {
-  /* 改为随父级flex填充，避免在不同环境下出现“半高” */
-  flex: 1 1 auto;
-  height: auto;
-  min-height: 0;
+  /* 核心高度/布局在全局样式中定义，这里仅保留局部视觉样式 */
   width: calc(100% - var(--spacing-md)); /* 减去右侧间距 */
   position: relative;
   margin: var(--spacing-md) 0 var(--spacing-md) var(--spacing-md);
@@ -3216,11 +3202,7 @@ export default {
   overflow: hidden;
 }
 
-.terminal-content-padding {
-  flex: 1;
-  overflow: hidden;
-  order: 1; /* 终端内容在最上方 */
-}
+.terminal-content-padding { order: 1; }
 
 /* 移动端AI合并面板适配 */
 @media (max-width: 768px) {
