@@ -1783,7 +1783,8 @@ h2 {
   font-weight: normal;
 }
 
-.form-item input:focus {
+.form-item input:focus,
+.form-item input:focus-visible {
   border-color: var(--color-primary);
 }
 
@@ -1925,12 +1926,14 @@ h2 {
   cursor: pointer;
 }
 
-.key-file-wrapper input:focus {
+.key-file-wrapper input:focus,
+.key-file-wrapper input:focus-visible {
   border-color: var(--color-primary);
   box-shadow: none;
 }
 
-.key-file-wrapper input:focus + .select-file-btn {
+.key-file-wrapper input:focus + .select-file-btn,
+.key-file-wrapper input:focus-visible + .select-file-btn {
   border-color: var(--color-primary);
   background-color: var(--color-bg-muted);
 }

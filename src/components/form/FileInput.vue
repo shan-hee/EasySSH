@@ -111,7 +111,8 @@ label {
   z-index: 1;
 }
 
-.file-input-wrapper input:focus {
+.file-input-wrapper input:focus,
+.file-input-wrapper input:focus-visible {
   border-color: #0083d3;
   box-shadow: none;
 }
@@ -120,7 +121,8 @@ label {
   color: #666;
 }
 
-.file-input-wrapper input:focus + .select-file-btn {
+.file-input-wrapper input:focus + .select-file-btn,
+.file-input-wrapper input:focus-visible + .select-file-btn {
   border-color: #0083d3;
 }
 

@@ -37,6 +37,13 @@
   box-shadow: 0 0 0 0 var(--form-control-focus-ring, transparent);
 }
 
+/* 与 :focus 保持一致的键盘可见焦点样式 */
+.form-input:focus-visible {
+  outline: none;
+  border-color: var(--form-control-focus-border, var(--color-primary));
+  box-shadow: 0 0 0 0 var(--form-control-focus-ring, transparent);
+}
+
 .form-select {
   width: 100%;
   height: var(--form-control-height, 36px);
@@ -52,6 +59,13 @@
 }
 
 .form-select:focus {
+  outline: none;
+  border-color: var(--form-control-focus-border, var(--color-primary));
+  box-shadow: 0 0 0 0 var(--form-control-focus-ring, transparent);
+}
+
+/* 与 :focus 保持一致的键盘可见焦点样式 */
+.form-select:focus-visible {
   outline: none;
   border-color: var(--form-control-focus-border, var(--color-primary));
   box-shadow: 0 0 0 0 var(--form-control-focus-ring, transparent);
@@ -262,7 +276,8 @@
 }
 
 /* MFA验证码输入框样式 - 统一管理 */
-.code-input:focus {
+.code-input:focus,
+.code-input:focus-visible {
   border-color: var(--color-primary);
   background-color: var(--color-hover-bg);
   box-shadow: 0 0 0 2px var(--color-focus-ring);

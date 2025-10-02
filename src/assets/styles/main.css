@@ -215,7 +215,8 @@
 
 .el-overlay .el-message-box__input .el-input__wrapper.is-focus,
 .el-overlay .el-message-box__input .el-input__wrapper:hover,
-.el-overlay .el-message-box__input .el-textarea__inner:focus {
+.el-overlay .el-message-box__input .el-textarea__inner:focus,
+.el-overlay .el-message-box__input .el-textarea__inner:focus-visible {
   border-color: var(--color-primary);
   box-shadow: none !important;
 }
@@ -248,7 +249,9 @@
 .el-overlay .el-message-box .ai-save-input:hover,
 .el-overlay .el-message-box .ai-save-textarea:hover,
 .el-overlay .el-message-box .ai-save-input:focus,
-.el-overlay .el-message-box .ai-save-textarea:focus {
+.el-overlay .el-message-box .ai-save-textarea:focus,
+.el-overlay .el-message-box .ai-save-input:focus-visible,
+.el-overlay .el-message-box .ai-save-textarea:focus-visible {
   border-color: var(--color-primary);
 }
 

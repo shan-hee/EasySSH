@@ -940,7 +940,8 @@ defineExpose({
   box-shadow: none !important;
 }
 
-.ai-input-field :deep(.el-textarea__inner):focus {
+.ai-input-field :deep(.el-textarea__inner):focus,
+.ai-input-field :deep(.el-textarea__inner):focus-visible {
   box-shadow: none !important;
   outline: none !important;
 }

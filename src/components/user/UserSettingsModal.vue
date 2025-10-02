@@ -2817,6 +2817,12 @@ export default defineComponent({
   box-shadow: 0 0 0 2px var(--color-primary-lightest);
 }
 
+.shortcut-input:focus-visible {
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 2px var(--color-primary-lightest);
+}
+
 .shortcut-input.capturing {
   border-color: var(--color-primary);
   background-color: var(--color-primary-bg);
@@ -2927,6 +2933,59 @@ export default defineComponent({
 
 .btn-refresh {
   flex-shrink: 0;
+}
+
+/* 原生 select 优化（不切换到 Element Plus 组件） */
+/* 仅作用于设置面板，避免影响全局其它表单 */
+.user-settings-modal .form-select {
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  background-color: var(--color-bg-container);
+  border-color: var(--color-border-default);
+  color: var(--color-text-primary);
+  padding-right: 32px; /* 为空心箭头预留空间 */
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  background-size: 12px 12px;
+}
+
+/* 浅色主题：自定义下拉箭头（保持原生交互） */
+:root[data-theme='light'] .user-settings-modal .form-select {
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23666' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><polyline points='6 9 12 15 18 9'/></svg>");
+}
+
+/* 深色主题：启用原生控件暗色外观，并调整可视样式 */
+:root[data-theme='dark'] .user-settings-modal {
+  color-scheme: dark;
+}
+
+:root[data-theme='dark'] .user-settings-modal .form-select {
+  background-color: var(--color-bg-elevated);
+  border-color: var(--color-border-default);
+  color: var(--color-text-primary);
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23bbb' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><polyline points='6 9 12 15 18 9'/></svg>");
+}
+
+/* 选项颜色（部分浏览器对下拉面板不生效，但不影响使用） */
+.user-settings-modal .form-select option {
+  background-color: var(--color-bg-container);
+  color: var(--color-text-primary);
+}
+
+:root[data-theme='dark'] .user-settings-modal .form-select option:checked {
+  background-color: var(--color-primary-lightest);
+  color: var(--color-text-primary);
+}
+
+/* 悬浮/聚焦可见性优化 */
+.user-settings-modal .form-select:hover {
+  border-color: var(--color-border-hover, var(--color-border-default));
+}
+
+/* 兼容旧版浏览器：隐藏 IE/Edge 旧引擎的默认箭头 */
+.user-settings-modal .form-select::-ms-expand {
+  display: none;
 }
 
 /* AI配置表单样式 */

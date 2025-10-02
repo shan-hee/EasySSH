@@ -228,7 +228,8 @@ export default defineComponent({
   background-color: var(--color-bg-hover);
 }
 
-.sftp-path-input:focus {
+.sftp-path-input:focus,
+.sftp-path-input:focus-visible {
   background-color: var(--color-bg-hover);
   box-shadow: 0 0 0 1px var(--color-border-light);
 }
@@ -398,7 +399,8 @@ export default defineComponent({
   background-color: var(--sftp-path-input-hover-bg);
 }
 
-.sftp-path-input:focus {
+.sftp-path-input:focus,
+.sftp-path-input:focus-visible {
   background-color: var(--sftp-path-input-focus-bg);
   border-color: var(--sftp-path-input-focus-border);
   box-shadow: 0 0 0 1px var(--sftp-path-input-focus-shadow);

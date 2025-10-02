@@ -805,7 +805,8 @@
     box-shadow var(--transition-fast);
 }
 
-.form-control-base:focus {
+.form-control-base:focus,
+.form-control-base:focus-visible {
   border-color: var(--color-primary);
   box-shadow: 0 0 0 3px var(--color-focus-ring);
   outline: none;

@@ -1399,7 +1399,8 @@ export default defineComponent({
   font-size: 14px;
 }
 
-.search-input:focus {
+.search-input:focus,
+.search-input:focus-visible {
   outline: none;
   border-color: var(--color-primary);
 }
@@ -2027,7 +2028,9 @@ export default defineComponent({
 }
 
 .script-form .form-item input:focus,
-.script-form .form-item textarea:focus {
+.script-form .form-item input:focus-visible,
+.script-form .form-item textarea:focus,
+.script-form .form-item textarea:focus-visible {
   border-color: var(--color-primary);
   box-shadow: 0 0 0 1px var(--color-focus-ring);
 }

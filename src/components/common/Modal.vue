@@ -437,9 +437,13 @@ export default defineComponent({
 
 :deep(input:not(.form-input):not(.code-input):focus),
 :deep(textarea:not(.form-input):focus),
-:deep(select:not(.form-select):focus) {
-  border-color: var(--color-primary);
-  box-shadow: none;
+:deep(select:not(.form-select):focus),
+:deep(input:not(.form-input):not(.code-input):focus-visible),
+:deep(textarea:not(.form-input):focus-visible),
+:deep(select:not(.form-select):focus-visible) {
+  outline: none;
+  border-color: var(--form-control-focus-border, var(--color-primary));
+  box-shadow: 0 0 0 0 var(--form-control-focus-ring, transparent);
 }
 
 /* 禁用态统一样式 */

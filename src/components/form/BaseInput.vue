@@ -125,7 +125,8 @@ input.with-suffix {
   padding-right: 40px;
 }
 
-input:focus {
+input:focus,
+input:focus-visible {
   border-color: #0083d3;
   box-shadow: 0 0 0 1px rgba(0, 131, 211, 0.2);
 }

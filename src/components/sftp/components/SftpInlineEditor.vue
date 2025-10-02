@@ -350,7 +350,8 @@ export default defineComponent({
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
 }
 
-.sftp-file-name-input:focus {
+.sftp-file-name-input:focus,
+.sftp-file-name-input:focus-visible {
   border-color: #64b5f6;
   box-shadow: 0 0 0 2px rgba(66, 165, 245, 0.2);
 }
@@ -360,7 +361,8 @@ export default defineComponent({
   background-color: rgba(245, 108, 108, 0.1);
 }
 
-.sftp-file-name-input.sftp-input-error:focus {
+.sftp-file-name-input.sftp-input-error:focus,
+.sftp-file-name-input.sftp-input-error:focus-visible {
   border-color: #f56c6c;
   box-shadow: 0 0 0 2px rgba(245, 108, 108, 0.2);
 }

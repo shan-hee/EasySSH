@@ -99,7 +99,8 @@ export default {
   font-weight: normal;
 }
 
-.custom-search-input:focus {
+.custom-search-input:focus,
+.custom-search-input:focus-visible {
   outline: none;
   border-color: var(--color-primary);
 }

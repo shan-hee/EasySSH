@@ -175,7 +175,8 @@ export default defineComponent({
     border-color var(--theme-transition-duration) var(--theme-transition-timing);
 }
 
-.sftp-search-input:focus {
+.sftp-search-input:focus,
+.sftp-search-input:focus-visible {
   background-color: var(--color-bg-hover);
   border: 1px solid var(--color-primary);
 }
@@ -228,7 +229,8 @@ export default defineComponent({
 /* 深色主题样式已迁移到主题变量 */
 
 /* 使用主题变量替代主题特定样式 */
-.sftp-search-input:focus {
+.sftp-search-input:focus,
+.sftp-search-input:focus-visible {
   background-color: var(--sftp-search-input-focus-bg);
   border: 1px solid var(--sftp-search-input-focus-border);
 }

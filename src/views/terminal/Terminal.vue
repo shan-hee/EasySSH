@@ -2859,14 +2859,10 @@ export default {
     background-color var(--theme-transition-duration) var(--theme-transition-timing);
 }
 
-/* 终端主体区域 */
-:deep(.terminal-main-area) {
-  flex: 1;
-  display: flex;
-  flex-direction: row;
-  height: calc(100% - var(--layout-toolbar-height)); /* 使用终端工具栏专用高度令牌 */
-  overflow: hidden;
-}
+/* 终端主体区域
+   注意：核心布局（flex 行布局、高度、溢出）已迁移到全局样式：
+   src/assets/styles/layouts/critical-layout.css
+   组件内不再重复定义，避免作用域/顺序造成生产与本地不一致。 */
 
 /* Grid 实验布局样式（behind flag）*/
 :deep(.terminal-main-area.grid-experiment) { display: grid; }
@@ -2881,39 +2877,20 @@ export default {
   grid-column: 2;
 }
 
-/* 监控面板 */
-:deep(.terminal-monitoring-panel) {
-  flex-shrink: 0;
-  z-index: 9;
-  width: var(--monitoring-panel-width); /* 监控面板固定宽度 */
-  max-width: 35vw; /* 响应式最大宽度 */
-  height: 100%;
-  overflow: hidden;
-  border-right: 1px solid var(--color-border-default);
-  color: var(--color-text-primary);
-  /* 使用系统主题过渡令牌（边框+文字颜色） */
-  transition:
-    border-color var(--theme-transition-duration) var(--theme-transition-timing),
-    color var(--theme-transition-duration) var(--theme-transition-timing);
-}
+/* 监控面板
+   核心宽度与定位由全局样式控制；此处保留动画/过渡在其它规则中设置。 */
 
-/* 右侧内容区域：终端 + AI输入栏 */
+/* 右侧内容区域：终端 + AI输入栏
+   核心尺寸与布局由全局样式控制；此处仅保留主题过渡。 */
+/* 主题过渡保留 */
 :deep(.terminal-right-area) {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  overflow: hidden;
   color: var(--color-text-primary);
   transition:
     color var(--theme-transition-duration) var(--theme-transition-timing),
     background-color var(--theme-transition-duration) var(--theme-transition-timing);
 }
 
-/* 有监控面板时的右侧区域 */
-:deep(.terminal-right-area.with-monitoring-panel) {
-  width: calc(100% - var(--monitoring-panel-width)); /* 减去监控面板宽度（不再动画，降低重排） */
-}
+/* 有监控面板时的右侧区域：宽度由全局样式负责 */
 
 /* 终端内容填充区域 */
 

@@ -481,7 +481,8 @@ export default defineComponent({
   /* font-family继承自父元素 */
 }
 
-.form-group input:focus {
+.form-group input:focus,
+.form-group input:focus-visible {
   background-color: rgba(50, 50, 50, 0.6);
   outline: none;
   box-shadow: 0 0 0 1px rgba(100, 100, 100, 0.3);
@@ -609,7 +610,10 @@ html[data-theme='light'] .form-group input::placeholder {
 
 :root[data-theme='light'] .form-group input:focus,
 .light-theme .form-group input:focus,
-html[data-theme='light'] .form-group input:focus {
+html[data-theme='light'] .form-group input:focus,
+:root[data-theme='light'] .form-group input:focus-visible,
+.light-theme .form-group input:focus-visible,
+html[data-theme='light'] .form-group input:focus-visible {
   background-color: rgba(236, 245, 255, 0.8);
   border-color: #aaaaaa;
   box-shadow: 0 0 0 2px rgba(170, 170, 170, 0.2);

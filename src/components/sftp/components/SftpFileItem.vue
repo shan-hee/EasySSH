@@ -647,7 +647,8 @@ export default defineComponent({
   box-shadow: 0 1px 3px var(--color-shadow-light);
 }
 
-.sftp-file-name-input:focus {
+.sftp-file-name-input:focus,
+.sftp-file-name-input:focus-visible {
   border-color: var(--color-primary-light);
   box-shadow: 0 0 0 2px var(--color-primary-lighter);
 }
@@ -657,7 +658,8 @@ export default defineComponent({
   background-color: var(--color-danger-light);
 }
 
-.sftp-file-name-input.sftp-input-error:focus {
+.sftp-file-name-input.sftp-input-error:focus,
+.sftp-file-name-input.sftp-input-error:focus-visible {
   border-color: var(--color-danger);
   box-shadow: 0 0 0 2px var(--color-danger-lighter);
 }
@@ -893,7 +895,8 @@ export default defineComponent({
   box-shadow: 0 1px 3px var(--sftp-file-name-input-shadow);
 }
 
-.sftp-file-name-input:focus {
+.sftp-file-name-input:focus,
+.sftp-file-name-input:focus-visible {
   border-color: var(--sftp-file-name-input-focus-border);
   box-shadow: 0 0 0 2px var(--sftp-file-name-input-focus-shadow);
 }
@@ -903,7 +906,8 @@ export default defineComponent({
   background-color: var(--sftp-file-name-input-error-bg);
 }
 
-.sftp-file-name-input.sftp-input-error:focus {
+.sftp-file-name-input.sftp-input-error:focus,
+.sftp-file-name-input.sftp-input-error:focus-visible {
   border-color: var(--sftp-file-name-input-error-border);
   box-shadow: 0 0 0 2px var(--sftp-file-name-input-error-shadow);
 }

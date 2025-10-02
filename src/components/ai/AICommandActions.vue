@@ -446,7 +446,9 @@ const generateScriptName = () => {
 .ai-save-input:hover,
 .ai-save-textarea:hover,
 .ai-save-input:focus,
-.ai-save-textarea:focus {
+.ai-save-textarea:focus,
+.ai-save-input:focus-visible,
+.ai-save-textarea:focus-visible {
   border-color: var(--color-primary);
 }
 </style>
