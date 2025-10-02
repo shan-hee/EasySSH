@@ -32,3 +32,37 @@
 }
 
 /* 其他字体可以在此处添加 */
+
+/* DejaVu Sans Mono 字体定义（打包本地文件，优先woff2/ttf） */
+@font-face {
+  font-family: 'DejaVu Sans Mono';
+  src: url('../../fonts/DejaVuSansMono/ttf/DejaVuSansMono.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'DejaVu Sans Mono';
+  src: url('../../fonts/DejaVuSansMono/ttf/DejaVuSansMono-Bold.ttf') format('truetype');
+  font-weight: bold;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* Ubuntu Mono 字体定义 */
+@font-face {
+  font-family: 'Ubuntu Mono';
+  src: url('../../fonts/UbuntuMono/ttf/UbuntuMono-Regular.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Ubuntu Mono';
+  src: url('../../fonts/UbuntuMono/ttf/UbuntuMono-Bold.ttf') format('truetype');
+  font-weight: bold;
+  font-style: normal;
+  font-display: swap;
+}

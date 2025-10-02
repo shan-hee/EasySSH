@@ -463,32 +463,54 @@ class TerminalService {
       // 记录终端创建的性能指标
       const createStartTime = performance.now();
 
-      // 等待字体加载完成后再打开终端，确保渲染一致性
-      this._waitForFontsAndOpen(terminal, container, termOptions, id)
-        .then(() => {
-          // 字体加载完成，终端已打开
-          log.debug(`终端 ${id} 字体加载完成并已打开`);
+      // 极简方案：直接打开终端，然后在字体就绪时“最佳努力”地自适配一次
+      terminal.open(container);
+      // 应用与字体相关的优化（无需等待）
+      this._applyRendererSpecificFontOptimizations(terminal, termOptions, id);
 
-          // 终端完全初始化后，调用fit方法
-          setTimeout(() => {
-            try {
-              if (addons.fit && terminal.element) {
-                const fitStartTime = performance.now();
-                addons.fit.fit();
-                const fitTime = performance.now() - fitStartTime;
-                if (fitTime > 20) {
-                  // 如果适配时间超过20ms，记录性能问题
-                  log.debug(`终端 ${id} 大小适配耗时: ${fitTime.toFixed(2)}ms`);
-                }
-              }
-            } catch (e) {
-              log.debug(`终端 ${id} 大小适应失败:`, e.message);
+      // 初次fit，保障默认字体下也有合理布局
+      setTimeout(() => {
+        try {
+          if (addons.fit && terminal.element) {
+            const fitStartTime = performance.now();
+            addons.fit.fit();
+            const fitTime = performance.now() - fitStartTime;
+            if (fitTime > 20) {
+              log.debug(`终端 ${id} 初次大小适配耗时: ${fitTime.toFixed(2)}ms`);
             }
-          }, 50); // 增加延迟确保终端完全就绪
-        })
-        .catch(error => {
-          log.warn(`终端 ${id} 字体加载失败，使用默认字体:`, error);
-        });
+          }
+        } catch (e) {
+          log.debug(`终端 ${id} 初次大小适配失败:`, e.message);
+        }
+      }, 50);
+
+      // 字体就绪后再fit一次（一次性回调），确保用户自定义字体最终生效
+      try {
+        const family = String(termOptions.fontFamily || "'JetBrains Mono'").replace(/["']/g, '');
+        const size = termOptions.fontSize || 16;
+        if (document.fonts) {
+          const targetLoad = document.fonts.load(`${size}px "${family}"`, ' ');
+          const boldLoad = document.fonts.load(`bold ${size}px "${family}"`, ' ');
+          Promise.race([Promise.allSettled([targetLoad, boldLoad]), document.fonts.ready])
+            .then(() => {
+              try {
+                if (terminal.setOption) {
+                  terminal.setOption('fontFamily', termOptions.fontFamily || "'JetBrains Mono'");
+                  terminal.setOption('fontSize', size);
+                }
+              } catch (_) {}
+              if (addons.fit && terminal.element) {
+                setTimeout(() => {
+                  try {
+                    addons.fit.fit();
+                    log.debug(`终端 ${id} 字体就绪后已自适配`);
+                  } catch (_) {}
+                }, 30);
+              }
+            })
+            .catch(() => {});
+        }
+      } catch (_) {}
 
       // 记录打开终端的时间
       const openTime = performance.now() - createStartTime;
@@ -1253,34 +1275,7 @@ class TerminalService {
     }
   }
 
-  /**
-   * 等待字体加载完成并打开终端
-   * @param {Terminal} terminal - 终端实例
-   * @param {HTMLElement} container - 容器元素
-   * @param {Object} termOptions - 终端选项
-   * @param {string} id - 终端ID
-   * @private
-   */
-  async _waitForFontsAndOpen(terminal, container, termOptions, id) {
-    try {
-      // 检查字体是否已加载
-      const fontFamily = termOptions.fontFamily || "'JetBrains Mono'";
-      const fontSize = termOptions.fontSize || 16;
-
-      // 等待字体加载
-      await this._waitForFontLoad(fontFamily, fontSize);
-
-      // 字体加载完成，打开终端
-      terminal.open(container);
-
-      // 根据渲染器类型应用特定的字体优化
-      this._applyRendererSpecificFontOptimizations(terminal, termOptions, id);
-    } catch (error) {
-      log.warn(`终端 ${id} 字体加载超时，直接打开终端:`, error);
-      // 即使字体加载失败，也要打开终端
-      terminal.open(container);
-    }
-  }
+  // 极简方案下，无需私有的字体等待方法
 
   /**
    * 等待字体加载
@@ -1288,58 +1283,132 @@ class TerminalService {
    * @param {number} fontSize - 字体大小
    * @private
    */
-  async _waitForFontLoad(fontFamily, fontSize) {
+  /* async _waitForFontLoad(fontFamily, fontSize) {
+    // 更激进地靠前等待：
+    // 1) 如全局预加载已完成则立即返回
+    if (typeof areFontsLoaded === 'function' && areFontsLoaded()) return;
+
     return new Promise((resolve, reject) => {
-      // 设置超时时间，避免无限等待
+      // 设置更长一些的超时时间，降低未生效概率
       const timeout = setTimeout(() => {
         reject(new Error('字体加载超时'));
-      }, 3000);
+      }, 5000);
 
-      // 如果浏览器支持FontFace API
-      if (document.fonts && document.fonts.ready) {
-        // 尝试检查特定字体是否可用
-        try {
-          const testFont = new FontFace('test', `local('${fontFamily.replace(/'/g, '')}')`);
-          testFont
-            .load()
-            .then(() => {
-              clearTimeout(timeout);
-              resolve();
-            })
+      const family = String(fontFamily || '').replace(/["']/g, '');
+      const cssFont = `${fontSize}px "${family || 'JetBrains Mono'}"`;
+
+      const done = () => {
+        clearTimeout(timeout);
+        resolve();
+      };
+      const fail = () => {
+        clearTimeout(timeout);
+        reject(new Error('字体加载失败'));
+      };
+
+      // 优先：使用浏览器Font Loading API针对具体字体进行加载与校验
+      try {
+        if (document.fonts && typeof document.fonts.load === 'function') {
+          // 并行等待常规与加粗字重，提升一次性就绪概率
+          Promise.all([
+            document.fonts.load(cssFont, ' '),
+            document.fonts.load(`bold ${cssFont}`, ' ')
+          ])
+            .then(() => done())
             .catch(() => {
-              // 字体检查失败，使用通用字体加载检测
-              document.fonts.ready
-                .then(() => {
-                  clearTimeout(timeout);
-                  resolve();
-                })
-                .catch(() => {
-                  clearTimeout(timeout);
-                  reject(new Error('字体加载失败'));
-                });
+              // 回退到整体就绪
+              if (document.fonts.ready && typeof document.fonts.ready.then === 'function') {
+                document.fonts.ready.then(() => done()).catch(() => fail());
+              } else {
+                // 最后回退：短暂等待
+                setTimeout(done, Math.min(600 + fontSize * 10, 2500));
+              }
             });
-        } catch (e) {
-          // FontFace构造失败，使用通用检测
-          document.fonts.ready
-            .then(() => {
-              clearTimeout(timeout);
-              resolve();
-            })
-            .catch(() => {
-              clearTimeout(timeout);
-              reject(new Error('字体加载失败'));
-            });
+          return;
         }
+      } catch (_) {
+        // 忽略，进入回退分支
+      }
+
+      // 回退：等待全局加载器（若存在）或基于时间的最小等待
+      if (typeof waitForFontsLoaded === 'function') {
+        waitForFontsLoaded(4000)
+          .then(() => done())
+          .catch(() => setTimeout(done, Math.min(600 + fontSize * 10, 2500)));
       } else {
-        // 降级方案：使用简单的延迟，考虑字体大小影响加载时间
-        const loadTime = Math.min(500 + fontSize * 10, 2000);
-        setTimeout(() => {
-          clearTimeout(timeout);
-          resolve();
-        }, loadTime);
+        setTimeout(done, Math.min(600 + fontSize * 10, 2500));
       }
     });
-  }
+  } */
+
+  /**
+   * 当字体在打开后才就绪时，触发一次重新测量与适配
+   * @param {Terminal} terminal
+   * @param {Object} addons
+   * @param {Object} termOptions
+   * @param {string} id
+   * @private
+   */
+  /* _scheduleReflowOnFontsReady(terminal, addons, termOptions, id) {
+    try {
+      const family = String(termOptions.fontFamily || "'JetBrains Mono'").replace(/["']/g, '');
+      const size = termOptions.fontSize || 16;
+
+      const isLoaded = () => {
+        try {
+          return (
+            !!(document.fonts && typeof document.fonts.check === 'function') &&
+            (document.fonts.check(`${size}px "${family}"`) ||
+              document.fonts.check(`bold ${size}px "${family}"`))
+          );
+        } catch (_) {
+          return false;
+        }
+      };
+
+      const apply = () => {
+        try {
+          if (terminal?.setOption) {
+            terminal.setOption('fontFamily', termOptions.fontFamily || "'JetBrains Mono'");
+            terminal.setOption('fontSize', size);
+          }
+          // 调整尺寸以匹配新字形测量
+          if (addons?.fit && terminal?.element) {
+            setTimeout(() => {
+              try {
+                addons.fit.fit();
+              } catch (e) {
+                // 忽略适配错误，避免打断流程
+              }
+            }, 30);
+          }
+          log.debug(`终端 ${id} 字体就绪后已重新测量并适配`);
+        } catch (e) {
+          log.debug(`终端 ${id} 字体就绪后适配失败: ${e.message}`);
+        }
+      };
+
+      if (isLoaded()) return; // 已加载则无需等待
+
+      // 监听自定义字体事件（fontLoader会在完成时派发）
+      const onceHandler = () => {
+        apply();
+        window.removeEventListener('terminal:fonts-loaded', onceHandler);
+      };
+      window.addEventListener('terminal:fonts-loaded', onceHandler, { once: true });
+
+      // 再附加浏览器原生整体就绪作为兜底
+      if (document.fonts && document.fonts.ready) {
+        document.fonts.ready
+          .then(() => {
+            if (isLoaded()) apply();
+          })
+          .catch(() => {});
+      }
+    } catch (e) {
+      log.debug(`终端 ${id} 字体就绪回流监听失败: ${e.message}`);
+    }
+  } */
 
   /**
    * 应用渲染器特定的字体优化

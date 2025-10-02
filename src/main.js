@@ -52,6 +52,7 @@ const preloadFonts = () => {
 // 立即开始预加载字体
 preloadFonts();
 
+
 // 开发环境存储版本检查
 if (process.env.NODE_ENV === 'development') {
   const storageVersion = 'v1.0';
