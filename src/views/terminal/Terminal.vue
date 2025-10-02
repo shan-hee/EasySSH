@@ -1529,7 +1529,7 @@ export default {
       // 初始化监控面板默认状态
       initializeMonitoringPanelDefaults();
 
-      // 初始化ResizeObserver - 在DOM挂载后安全地初始化
+    // 初始化ResizeObserver - 在DOM挂载后安全地初始化
       nextTick(() => {
         const terminalContainer = terminalContainerRef.value;
         if (terminalContainer) {
@@ -1557,6 +1557,7 @@ export default {
             handleMonitoringPanelResize();
           });
           resizeObserver.observe(terminalContainer);
+
         }
       });
 
@@ -2840,6 +2841,8 @@ export default {
   visibility: visible;
   pointer-events: auto;
   content-visibility: visible;
+  contain: none; /* 活动终端不隔离布局，避免百分比高度受限 */
+  contain-intrinsic-size: auto;
 }
 
 /* 非活动终端状态 */
@@ -2885,6 +2888,7 @@ export default {
 /* 主题过渡保留 */
 :deep(.terminal-right-area) {
   color: var(--color-text-primary);
+  min-height: 0; /* 打通flex高度链，防止子元素被压缩到半高 */
   transition:
     color var(--theme-transition-duration) var(--theme-transition-timing),
     background-color var(--theme-transition-duration) var(--theme-transition-timing);
@@ -2896,12 +2900,14 @@ export default {
 
 :deep(.terminal-content-padding) {
   flex: 1;
+  display: flex;               /* 作为弹性容器，便于内部终端填满 */
+  flex-direction: column;
   box-sizing: border-box;
   width: 100%;
   position: relative;
-  overflow: visible;
+  overflow: hidden;            /* 防止内部视口限制高度 */
   padding: 0;
-  min-height: 0; /* 允许flex收缩 */
+  min-height: 0;               /* 允许flex收缩，避免子元素把父容器撑爆 */
 }
 
 /* AI合并面板区域 */
@@ -3003,10 +3009,13 @@ export default {
 
 /* 终端内容容器 */
 .terminal-content {
-  height: calc(100% - var(--spacing-xl)); /* 减去底部间距 */
+  /* 改为随父级flex填充，避免在不同环境下出现“半高” */
+  flex: 1 1 auto;
+  height: auto;
+  min-height: 0;
   width: calc(100% - var(--spacing-md)); /* 减去右侧间距 */
   position: relative;
-  margin: var(--spacing-md) 0 var(--spacing-md) var(--spacing-md); /* 使用系统间距令牌 */
+  margin: var(--spacing-md) 0 var(--spacing-md) var(--spacing-md);
   box-sizing: border-box;
   overflow: hidden;
 }

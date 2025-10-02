@@ -65,7 +65,7 @@ class TerminalManager {
     terminal.open(container);
 
     // 异步初始化终端大小，不阻塞创建过程
-    this._initializeTerminalSize(terminal, fitAddon, sessionId);
+    this._initializeTerminalSize(terminal, fitAddon, sessionId, container);
 
     // 尝试聚焦终端
     try {
@@ -231,10 +231,10 @@ class TerminalManager {
    * 初始化终端大小
    * @private
    */
-  async _initializeTerminalSize(terminal, fitAddon, sessionId) {
+  async _initializeTerminalSize(terminal, fitAddon, sessionId, container) {
     try {
-      // 等待延迟确保DOM已准备就绪
-      await new Promise(resolve => setTimeout(resolve, 100));
+      // 等待容器尺寸稳定（避免在首帧半高时进行fit）
+      await this._awaitStableSize(container, { samples: 2, interval: 60, tolerance: 1 });
 
       // 检查fitAddon是否存在并且有fit方法
       if (!fitAddon || typeof fitAddon.fit !== 'function') {
@@ -252,6 +252,30 @@ class TerminalManager {
       fitAddon.fit();
     } catch (error) {
       log.debug(`初始化终端大小失败: ${sessionId}`, error.message);
+    }
+  }
+
+  /**
+   * 等待容器尺寸稳定
+   * @private
+   * @param {HTMLElement} el
+   * @param {{samples?:number, interval?:number, tolerance?:number}} options
+   */
+  async _awaitStableSize(el, { samples = 2, interval = 60, tolerance = 1 } = {}) {
+    if (!el || typeof el.getBoundingClientRect !== 'function') return;
+    const near = (a, b) => Math.abs(a - b) <= tolerance;
+    const rect = () => el.getBoundingClientRect();
+    let last = rect();
+    let stable = 0;
+    while (stable < samples) {
+      await new Promise(r => requestAnimationFrame(() => setTimeout(r, interval)));
+      const cur = rect();
+      if (near(cur.width, last.width) && near(cur.height, last.height)) {
+        stable++;
+      } else {
+        stable = 0;
+        last = cur;
+      }
     }
   }
 

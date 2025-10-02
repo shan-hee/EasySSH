@@ -468,21 +468,7 @@ class TerminalService {
       // 应用与字体相关的优化（无需等待）
       this._applyRendererSpecificFontOptimizations(terminal, termOptions, id);
 
-      // 初次fit，保障默认字体下也有合理布局
-      setTimeout(() => {
-        try {
-          if (addons.fit && terminal.element) {
-            const fitStartTime = performance.now();
-            addons.fit.fit();
-            const fitTime = performance.now() - fitStartTime;
-            if (fitTime > 20) {
-              log.debug(`终端 ${id} 初次大小适配耗时: ${fitTime.toFixed(2)}ms`);
-            }
-          }
-        } catch (e) {
-          log.debug(`终端 ${id} 初次大小适配失败:`, e.message);
-        }
-      }, 50);
+      // 初次fit改由终端管理器在容器尺寸稳定后触发，避免在首帧半高时适配
 
       // 字体就绪后再fit一次（一次性回调），确保用户自定义字体最终生效
       try {
