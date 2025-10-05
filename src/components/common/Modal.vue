@@ -214,7 +214,8 @@ export default defineComponent({
   display: flex;
   justify-content: center;
   align-items: center;
-  z-index: 10050; /* 高于全局消息，避免被遮挡 */
+  /* 采用主题令牌，避免与全局消息/弹层冲突 */
+  z-index: var(--z-overlay);
 }
 
 .modal-container {
