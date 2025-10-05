@@ -1,0 +1,12 @@
+{
+  "name": "kubeadm",
+  "description": "Kubernetes 集群引导工具",
+  "subcommands": [
+    { "name": "init", "description": "初始化控制平面" },
+    { "name": "join", "description": "加入集群" },
+    { "name": "reset", "description": "重置节点" },
+    { "name": "upgrade", "description": "升级集群" }
+  ],
+  "options": []
+}
+

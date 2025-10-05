@@ -1,0 +1,15 @@
+{
+  "name": "scp",
+  "description": "安全复制",
+  "subcommands": [],
+  "options": [
+    { "names": ["-P"], "description": "端口" },
+    { "name": "-i", "description": "私钥文件" },
+    { "name": "-r", "description": "递归复制" },
+    { "name": "-C", "description": "压缩" },
+    { "names": ["-v", "--verbose"], "description": "详细输出" },
+    { "names": ["-l"], "description": "限速" },
+    { "names": ["-o"], "description": "传递 ssh 选项" }
+  ]
+}
+

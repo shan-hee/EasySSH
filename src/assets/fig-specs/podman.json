@@ -1,0 +1,17 @@
+{
+  "name": "podman",
+  "description": "无守护进程容器工具",
+  "subcommands": [
+    { "name": "ps", "description": "列出容器" },
+    { "name": "images", "description": "列出镜像" },
+    { "name": "run", "description": "运行容器", "options": [
+      { "name": "-d", "description": "后台运行" },
+      { "name": "-it", "description": "交互式终端" }
+    ]},
+    { "name": "exec", "description": "在容器内执行命令" },
+    { "name": "logs", "description": "查看容器日志" },
+    { "name": "build", "description": "构建镜像" }
+  ],
+  "options": []
+}
+

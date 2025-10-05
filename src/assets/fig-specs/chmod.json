@@ -1,0 +1,13 @@
+{
+  "name": "chmod",
+  "description": "修改文件权限",
+  "subcommands": [],
+  "options": [
+    { "name": "-R", "description": "递归" },
+    { "name": "--reference", "description": "参考另一个文件" },
+    { "name": "--preserve-root", "description": "保护根目录" },
+    { "name": "-v", "description": "详细输出" },
+    { "name": "-c", "description": "仅改变时输出" }
+  ]
+}
+

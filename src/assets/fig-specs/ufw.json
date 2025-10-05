@@ -1,0 +1,14 @@
+{
+  "name": "ufw",
+  "description": "UFW 防火墙",
+  "subcommands": [
+    { "name": "allow", "description": "允许规则" },
+    { "name": "deny", "description": "拒绝规则" },
+    { "name": "delete", "description": "删除规则" },
+    { "name": "status", "description": "查看状态" },
+    { "name": "enable", "description": "启用" },
+    { "name": "disable", "description": "禁用" }
+  ],
+  "options": []
+}
+

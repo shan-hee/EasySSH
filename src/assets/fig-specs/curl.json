@@ -1,0 +1,15 @@
+{
+  "name": "curl",
+  "description": "数据传输工具",
+  "subcommands": [],
+  "options": [
+    { "name": "-I", "description": "仅请求响应头" },
+    { "name": "-L", "description": "跟随重定向" },
+    { "names": ["-o", "--output"], "description": "输出到文件" },
+    { "name": "-O", "description": "使用远程文件名保存" },
+    { "names": ["-d", "--data"], "description": "请求体数据" },
+    { "names": ["-H", "--header"], "description": "自定义头" },
+    { "name": "-u", "description": "用户名和密码" }
+  ]
+}
+

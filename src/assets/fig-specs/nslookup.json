@@ -1,0 +1,7 @@
+{
+  "name": "nslookup",
+  "description": "DNS 查询",
+  "subcommands": [],
+  "options": []
+}
+

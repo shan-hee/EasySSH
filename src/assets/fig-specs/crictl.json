@@ -1,0 +1,13 @@
+{
+  "name": "crictl",
+  "description": "CRI 容器运行时 CLI",
+  "subcommands": [
+    { "name": "ps", "description": "列出容器" },
+    { "name": "images", "description": "列出镜像" },
+    { "name": "pull", "description": "拉取镜像" },
+    { "name": "inspect", "description": "查看详情" },
+    { "name": "logs", "description": "查看日志" }
+  ],
+  "options": []
+}
+

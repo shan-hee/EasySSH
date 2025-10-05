@@ -1,0 +1,16 @@
+{
+  "name": "find",
+  "description": "查找文件",
+  "subcommands": [],
+  "options": [
+    { "name": "-name", "description": "按名称匹配" },
+    { "name": "-type", "description": "按类型匹配" },
+    { "name": "-mtime", "description": "按修改时间匹配" },
+    { "name": "-size", "description": "按大小匹配" },
+    { "name": "-maxdepth", "description": "最大递归深度" },
+    { "name": "-exec", "description": "匹配后执行命令" },
+    { "name": "-user", "description": "按属主匹配" },
+    { "name": "-group", "description": "按属组匹配" }
+  ]
+}
+

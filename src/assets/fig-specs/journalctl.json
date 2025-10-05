@@ -1,0 +1,14 @@
+{
+  "name": "journalctl",
+  "description": "查看 systemd 日志",
+  "subcommands": [],
+  "options": [
+    { "name": "-u", "description": "指定单元（服务名）" },
+    { "name": "-f", "description": "跟随输出" },
+    { "name": "-n", "description": "显示最近N行" },
+    { "name": "--since", "description": "起始时间" },
+    { "name": "--until", "description": "结束时间" },
+    { "name": "-p", "description": "优先级过滤" }
+  ]
+}
+

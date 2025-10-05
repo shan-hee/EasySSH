@@ -1,0 +1,24 @@
+{
+  "name": "helm",
+  "description": "Kubernetes 包管理器",
+  "subcommands": [
+    { "name": "repo", "description": "仓库管理", "subcommands": [
+      { "name": "add", "description": "添加仓库" },
+      { "name": "update", "description": "更新索引" },
+      { "name": "list", "description": "列出仓库" }
+    ]},
+    { "name": "install", "description": "安装图表", "options": [
+      { "names": ["-f", "--values"], "description": "指定 values.yaml" },
+      { "names": ["-n", "--namespace"], "description": "命名空间" },
+      { "name": "--set", "description": "内联设置" }
+    ]},
+    { "name": "upgrade", "description": "升级 release", "options": [
+      { "names": ["-f", "--values"], "description": "指定 values.yaml" },
+      { "name": "--install", "description": "不存在则安装" }
+    ]},
+    { "name": "uninstall", "description": "卸载 release" },
+    { "name": "list", "description": "列出 release" }
+  ],
+  "options": []
+}
+

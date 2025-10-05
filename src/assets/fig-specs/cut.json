@@ -1,0 +1,11 @@
+{
+  "name": "cut",
+  "description": "按列裁剪文本",
+  "subcommands": [],
+  "options": [
+    { "name": "-d", "description": "字段分隔符" },
+    { "name": "-f", "description": "字段列表" },
+    { "name": "-c", "description": "字符范围" }
+  ]
+}
+

@@ -1,0 +1,14 @@
+{
+  "name": "ls",
+  "description": "列出目录内容",
+  "subcommands": [],
+  "options": [
+    { "name": "-l", "description": "详细列表" },
+    { "name": "-a", "description": "包含隐藏文件" },
+    { "name": "-h", "description": "人类可读大小" },
+    { "name": "-R", "description": "递归" },
+    { "name": "-t", "description": "按时间排序" },
+    { "name": "--color", "description": "彩色输出" }
+  ]
+}
+

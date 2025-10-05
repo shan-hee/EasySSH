@@ -1,0 +1,17 @@
+{
+  "name": "npm",
+  "description": "Node 包管理器",
+  "subcommands": [
+    { "name": "init", "description": "初始化项目" },
+    { "name": "install", "description": "安装依赖" },
+    { "name": "run", "description": "运行脚本" },
+    { "name": "publish", "description": "发布包" },
+    { "name": "login", "description": "登录" }
+  ],
+  "options": [
+    { "names": ["-g", "--global"], "description": "全局安装" },
+    { "name": "--save-dev", "description": "保存为开发依赖" },
+    { "name": "--registry", "description": "指定 registry" }
+  ]
+}
+

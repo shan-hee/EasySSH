@@ -1,0 +1,11 @@
+{
+  "name": "df",
+  "description": "磁盘空间",
+  "subcommands": [],
+  "options": [
+    { "name": "-h", "description": "人类可读" },
+    { "name": "-T", "description": "显示文件系统类型" },
+    { "name": "-i", "description": "显示inode" }
+  ]
+}
+

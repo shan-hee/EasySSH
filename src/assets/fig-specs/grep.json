@@ -1,0 +1,15 @@
+{
+  "name": "grep",
+  "description": "文本模式搜索",
+  "subcommands": [],
+  "options": [
+    { "name": "-i", "description": "忽略大小写" },
+    { "name": "-r", "description": "递归搜索" },
+    { "name": "-n", "description": "显示行号" },
+    { "name": "-v", "description": "反向匹配" },
+    { "name": "-E", "description": "扩展正则" },
+    { "name": "-w", "description": "整词匹配" },
+    { "name": "--color", "description": "彩色高亮" }
+  ]
+}
+

@@ -1,0 +1,10 @@
+{
+  "name": "tee",
+  "description": "分流输出到文件和标准输出",
+  "subcommands": [],
+  "options": [
+    { "name": "-a", "description": "追加" },
+    { "name": "-i", "description": "忽略中断" }
+  ]
+}
+

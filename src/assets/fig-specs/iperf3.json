@@ -1,0 +1,13 @@
+{
+  "name": "iperf3",
+  "description": "网络性能测试",
+  "subcommands": [],
+  "options": [
+    { "name": "-c", "description": "客户端模式，指定服务器" },
+    { "name": "-s", "description": "服务器模式" },
+    { "name": "-p", "description": "端口" },
+    { "name": "-t", "description": "测试时长" },
+    { "name": "-u", "description": "UDP 模式" }
+  ]
+}
+

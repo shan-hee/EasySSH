@@ -1,0 +1,11 @@
+{
+  "name": "python",
+  "description": "Python 解释器",
+  "subcommands": [],
+  "options": [
+    { "name": "--version", "description": "版本" },
+    { "name": "-m", "description": "模块执行" },
+    { "name": "-c", "description": "执行代码" }
+  ]
+}
+

@@ -1,0 +1,19 @@
+{
+  "name": "systemctl",
+  "description": "systemd 服务管理",
+  "subcommands": [
+    { "name": "start", "description": "启动服务" },
+    { "name": "stop", "description": "停止服务" },
+    { "name": "restart", "description": "重启服务" },
+    { "name": "status", "description": "查看状态" },
+    { "name": "enable", "description": "开机自启" },
+    { "name": "disable", "description": "取消自启" },
+    { "name": "daemon-reload", "description": "重载配置" },
+    { "name": "is-active", "description": "是否运行中" }
+  ],
+  "options": [
+    { "name": "--user", "description": "用户模式" },
+    { "name": "--system", "description": "系统模式" }
+  ]
+}
+

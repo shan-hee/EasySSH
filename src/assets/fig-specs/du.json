@@ -1,0 +1,12 @@
+{
+  "name": "du",
+  "description": "目录/文件大小",
+  "subcommands": [],
+  "options": [
+    { "name": "-h", "description": "人类可读" },
+    { "name": "-s", "description": "总计大小" },
+    { "name": "-d", "description": "目录层级" },
+    { "name": "--max-depth", "description": "最大深度" }
+  ]
+}
+

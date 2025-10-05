@@ -1,0 +1,12 @@
+{
+  "name": "mv",
+  "description": "移动/重命名文件",
+  "subcommands": [],
+  "options": [
+    { "name": "-i", "description": "交互式确认" },
+    { "name": "-v", "description": "详细输出" },
+    { "name": "-n", "description": "不覆盖已存在" },
+    { "name": "-u", "description": "仅在源较新时覆盖" }
+  ]
+}
+

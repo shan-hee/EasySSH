@@ -1,0 +1,12 @@
+{
+  "name": "sed",
+  "description": "流编辑器",
+  "subcommands": [],
+  "options": [
+    { "name": "-n", "description": "只打印匹配" },
+    { "name": "-E", "description": "扩展正则" },
+    { "name": "-i", "description": "就地编辑" },
+    { "name": "-e", "description": "脚本表达式" }
+  ]
+}
+

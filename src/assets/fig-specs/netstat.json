@@ -1,0 +1,16 @@
+{
+  "name": "netstat",
+  "description": "网络状态",
+  "subcommands": [],
+  "options": [
+    { "name": "-t", "description": "TCP" },
+    { "name": "-u", "description": "UDP" },
+    { "name": "-l", "description": "监听端口" },
+    { "name": "-p", "description": "显示进程" },
+    { "name": "-n", "description": "数字地址" },
+    { "name": "-a", "description": "全部" },
+    { "name": "-s", "description": "统计信息" },
+    { "name": "-r", "description": "路由表" }
+  ]
+}
+

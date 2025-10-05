@@ -1,0 +1,11 @@
+{
+  "name": "awk",
+  "description": "文本处理语言",
+  "subcommands": [],
+  "options": [
+    { "name": "-F", "description": "字段分隔符" },
+    { "name": "-f", "description": "脚本文件" },
+    { "name": "-v", "description": "定义变量" }
+  ]
+}
+

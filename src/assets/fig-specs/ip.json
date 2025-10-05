@@ -1,0 +1,15 @@
+{
+  "name": "ip",
+  "description": "网络管理",
+  "subcommands": [
+    { "name": "addr", "description": "地址管理" },
+    { "name": "link", "description": "链路管理" },
+    { "name": "route", "description": "路由管理" },
+    { "name": "neigh", "description": "邻居表" },
+    { "name": "rule", "description": "规则管理" }
+  ],
+  "options": [
+    { "name": "-br", "description": "简洁输出" }
+  ]
+}
+

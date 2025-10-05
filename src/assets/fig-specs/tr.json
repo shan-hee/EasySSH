@@ -1,0 +1,10 @@
+{
+  "name": "tr",
+  "description": "替换/删除字符",
+  "subcommands": [],
+  "options": [
+    { "name": "-d", "description": "删除字符" },
+    { "name": "-s", "description": "压缩重复字符" }
+  ]
+}
+

@@ -1,0 +1,19 @@
+{
+  "name": "ctr",
+  "description": "containerd CLI",
+  "subcommands": [
+    { "name": "images", "description": "镜像管理", "subcommands": [
+      { "name": "list", "description": "列出镜像" },
+      { "name": "pull", "description": "拉取镜像" },
+      { "name": "remove", "description": "删除镜像" }
+    ]},
+    { "name": "containers", "description": "容器管理", "subcommands": [
+      { "name": "list", "description": "列出容器" },
+      { "name": "delete", "description": "删除容器" },
+      { "name": "start", "description": "启动容器" },
+      { "name": "stop", "description": "停止容器" }
+    ]}
+  ],
+  "options": []
+}
+

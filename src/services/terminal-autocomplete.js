@@ -9,6 +9,7 @@ import { useUserStore } from '@/store/user';
 import { autocompleteConfig } from '@/config/app-config';
 import { SmartDebounce } from '@/utils/smart-debounce';
 import personalizationService from './personalization';
+import providerRegistry from './autocomplete/provider-registry';
 
 class TerminalAutocompleteService {
   constructor() {
@@ -505,15 +506,9 @@ class TerminalAutocompleteService {
   updateInputBuffer(data) {
     // 只处理可打印字符
     if (data.length === 1 && data.charCodeAt(0) >= 32) {
-      // 检查是否需要重置输入缓冲区（补全完成后的第一次输入）
-      if (this._shouldResetOnNextInput) {
-        // 重置缓冲区，从新字符开始重新跟踪
-        this.inputBuffer = data;
-        this._shouldResetOnNextInput = false;
-      } else {
-        // 正常追加字符
-        this.inputBuffer += data;
-      }
+      // 若刚完成补全，不要清空缓冲，直接继续追加
+      if (this._shouldResetOnNextInput) this._shouldResetOnNextInput = false;
+      this.inputBuffer += data;
     }
   }
 
@@ -626,53 +621,57 @@ class TerminalAutocompleteService {
   getCombinedSuggestions(input, terminal) {
     // 获取输入上下文
     const context = this.getInputContext(input, terminal);
-    const allSuggestions = [];
 
-    // 获取脚本库建议
-    if (this.config.enableScriptCompletion) {
-      try {
-        const scriptSuggestions = scriptLibraryService.getSimpleCommandSuggestionsSync(
-          input,
-          this.config.maxWordsPerType
-        );
-
-        // 添加类型标识和调整分数
-        const typedScriptSuggestions = scriptSuggestions.map(suggestion => ({
-          ...suggestion,
-          type: 'script',
-          category: 'script',
-          score: (suggestion.score || 0) * this.config.scriptCompletionPriority
-        }));
-
-        allSuggestions.push(...typedScriptSuggestions);
-      } catch (error) {
-        log.warn('获取脚本建议失败:', error);
+    // 通过 Provider Registry 收集建议
+    let collected = [];
+    try {
+      providerRegistry.ensureInitialized();
+      collected = providerRegistry.collect(context, {
+        maxSuggestions: this.config.maxSuggestions,
+        enableWordCompletion: this.config.enableWordCompletion,
+        enableScriptCompletion: this.config.enableScriptCompletion
+      });
+    } catch (e) {
+      log.debug('Provider Registry 收集建议失败，回退到内置逻辑');
+      // 回退：沿用旧逻辑（以防止完全不可用）
+      const fallback = [];
+      if (this.config.enableScriptCompletion) {
+        try {
+          const ss = scriptLibraryService.getSimpleCommandSuggestionsSync(
+            input,
+            this.config.maxWordsPerType
+          );
+          fallback.push(
+            ...ss.map(s => ({ ...s, type: 'script', category: 'script' }))
+          );
+        } catch (_) {}
       }
+      if (this.config.enableWordCompletion) {
+        try {
+          const ws = wordCompletionService.getWordSuggestions(
+            input,
+            this.config.maxWordsPerType,
+            context
+          );
+          fallback.push(...ws);
+        } catch (_) {}
+      }
+      collected = fallback;
     }
 
-    // 获取单词补全建议
-    if (this.config.enableWordCompletion) {
-      try {
-        const wordSuggestions = wordCompletionService.getWordSuggestions(
-          input,
-          this.config.maxWordsPerType,
-          context
-        );
-
-        // 调整分数
-        const typedWordSuggestions = wordSuggestions.map(suggestion => ({
-          ...suggestion,
-          score: (suggestion.score || 0) * this.config.wordCompletionPriority
-        }));
-
-        allSuggestions.push(...typedWordSuggestions);
-      } catch (error) {
-        log.warn('获取单词建议失败:', error);
+    // 权重微调（保持与旧逻辑一致的偏好）
+    const weighted = collected.map(s => {
+      if (s.type === 'script') {
+        return { ...s, score: (s.score || 0) * this.config.scriptCompletionPriority };
       }
-    }
+      if (s.type === 'word' || s.type === 'options' || s.type === 'commands' || s.category === 'options') {
+        return { ...s, score: (s.score || 0) * this.config.wordCompletionPriority };
+      }
+      return s;
+    });
 
     // 合并、去重和排序
-    const mergedSuggestions = this.mergeSuggestions(allSuggestions, input, context);
+    const mergedSuggestions = this.mergeSuggestions(weighted, input, context);
 
     // 个性化重排（稳定、温和）
     const reranked = personalizationService.rerank(mergedSuggestions, this._buildHostContext(terminal), input);
@@ -840,7 +839,7 @@ class TerminalAutocompleteService {
     }
 
     // 根据类型调整分数
-    const typeMultiplier = { script: 1.2, commands: 1.1, word: 1.0 };
+    const typeMultiplier = { script: 1.2, commands: 1.1, options: 1.05, word: 1.0 };
     matchScore *= typeMultiplier[suggestion.type] || 1.0;
 
     return {
@@ -866,7 +865,7 @@ class TerminalAutocompleteService {
     key |= (matchWeight[matchType] || 0) << 16;
 
     // 建议类型权重 (中8位)
-    const typeWeight = { script: 3, commands: 2, word: 1 };
+    const typeWeight = { script: 3, commands: 2, options: 2, word: 1 };
     key |= (typeWeight[suggestionType] || 0) << 8;
 
     // 分数权重 (低8位，限制在0-255)
@@ -931,8 +930,8 @@ class TerminalAutocompleteService {
       if (textLower.includes(inputLower)) {
         return 'script_contains';
       }
-    } else if (suggestion.type === 'word') {
-      // 单词类型的匹配
+    } else if (suggestion.type === 'word' || suggestion.type === 'options') {
+      // 单词/选项类型的匹配
       return 'word_match';
     }
 
@@ -1006,8 +1005,8 @@ class TerminalAutocompleteService {
       }
     }
 
-    // 对于单词类型的精确匹配加分
-    if (suggestion.type === 'word') {
+    // 对于单词/选项类型的精确匹配加分
+    if (suggestion.type === 'word' || suggestion.type === 'options') {
       if (textLower === inputLower) {
         score += 500;
       } else if (textLower.startsWith(inputLower)) {

@@ -1,0 +1,13 @@
+{
+  "name": "sort",
+  "description": "排序文本行",
+  "subcommands": [],
+  "options": [
+    { "name": "-n", "description": "数字排序" },
+    { "name": "-r", "description": "逆序" },
+    { "name": "-k", "description": "按列排序" },
+    { "name": "-t", "description": "字段分隔符" },
+    { "name": "-u", "description": "去重" }
+  ]
+}
+

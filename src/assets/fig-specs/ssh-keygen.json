@@ -1,0 +1,12 @@
+{
+  "name": "ssh-keygen",
+  "description": "生成/管理 SSH 密钥",
+  "subcommands": [],
+  "options": [
+    { "name": "-t", "description": "密钥类型（rsa/ed25519 等）" },
+    { "name": "-b", "description": "位数" },
+    { "name": "-C", "description": "注释" },
+    { "name": "-f", "description": "文件路径" }
+  ]
+}
+

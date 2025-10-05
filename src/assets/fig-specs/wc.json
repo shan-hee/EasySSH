@@ -1,0 +1,11 @@
+{
+  "name": "wc",
+  "description": "统计字节/单词/行",
+  "subcommands": [],
+  "options": [
+    { "name": "-c", "description": "字节数" },
+    { "name": "-w", "description": "单词数" },
+    { "name": "-l", "description": "行数" }
+  ]
+}
+

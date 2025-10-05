@@ -1,0 +1,9 @@
+{
+  "name": "ssh-copy-id",
+  "description": "将公钥复制到远程主机",
+  "subcommands": [],
+  "options": [
+    { "name": "-i", "description": "指定公钥文件" }
+  ]
+}
+

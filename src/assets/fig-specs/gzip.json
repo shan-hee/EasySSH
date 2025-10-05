@@ -1,0 +1,13 @@
+{
+  "name": "gzip",
+  "description": "压缩文件",
+  "subcommands": [],
+  "options": [
+    { "name": "-d", "description": "解压" },
+    { "name": "-k", "description": "保留原文件" },
+    { "name": "-v", "description": "详细输出" },
+    { "name": "-l", "description": "列出信息" },
+    { "name": "-r", "description": "递归" }
+  ]
+}
+

@@ -1,0 +1,11 @@
+{
+  "name": "mtr",
+  "description": "综合路由跟踪和 ping",
+  "subcommands": [],
+  "options": [
+    { "name": "-r", "description": "报告模式" },
+    { "name": "-c", "description": "发送次数" },
+    { "name": "-n", "description": "不解析主机名" }
+  ]
+}
+

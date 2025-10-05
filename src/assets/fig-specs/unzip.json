@@ -1,0 +1,12 @@
+{
+  "name": "unzip",
+  "description": "解压 ZIP 文件",
+  "subcommands": [],
+  "options": [
+    { "name": "-d", "description": "目标目录" },
+    { "name": "-l", "description": "列出内容" },
+    { "name": "-o", "description": "覆盖现有文件" },
+    { "name": "-q", "description": "静默模式" }
+  ]
+}
+

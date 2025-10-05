@@ -1,0 +1,10 @@
+{
+  "name": "paste",
+  "description": "按列合并文件",
+  "subcommands": [],
+  "options": [
+    { "name": "-d", "description": "分隔符" },
+    { "name": "-s", "description": "串行合并" }
+  ]
+}
+

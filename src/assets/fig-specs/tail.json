@@ -1,0 +1,14 @@
+{
+  "name": "tail",
+  "description": "显示文件结尾",
+  "subcommands": [],
+  "options": [
+    { "name": "-f", "description": "持续跟随" },
+    { "name": "-n", "description": "行数" },
+    { "name": "-c", "description": "字节数" },
+    { "name": "-F", "description": "跟随（文件替换也可）" },
+    { "name": "-q", "description": "从不显示文件名" },
+    { "name": "-v", "description": "总是显示文件名" }
+  ]
+}
+

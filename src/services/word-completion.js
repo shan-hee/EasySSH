@@ -4,6 +4,7 @@
  */
 
 import log from './log';
+import phraseStore from './phrase-store';
 import { autocompleteConfig } from '../config/app-config';
 import linuxCommands from '../assets/data/linux-commands.json';
 
@@ -429,8 +430,19 @@ class WordCompletionService {
       const key = (cmdline || input).toLowerCase();
       if (!key) return [];
 
-      // 生成候选集：内置短句 + 按当前命令扩展的常见选项短句
-      const candidates = [...this.phraseLibrary];
+      // 生成候选集：持久化短句 + 内置短句 + 按当前命令扩展的常见选项短句
+      const persisted = (() => {
+        try { return phraseStore.getAll(); } catch (_) { return []; }
+      })();
+      const baseCandidates = [...persisted, ...this.phraseLibrary];
+      const candidates = [];
+      const seen = new Set();
+      for (const c of baseCandidates) {
+        const t = (c?.text || '').trim();
+        if (!t || seen.has(t)) continue;
+        seen.add(t);
+        candidates.push({ text: t, description: c?.description || '常用短句' });
+      }
 
       // 如果处于参数位置，则尝试基于首个命令补充“命令 + 常见选项”短句
       const firstToken = (cmdline || input).trim().split(/\s+/)[0] || '';
@@ -469,8 +481,19 @@ class WordCompletionService {
         }
       }
 
-      // 排序并裁剪
-      suggestions.sort((a, b) => b.score - a.score || a.text.localeCompare(b.text));
+      // 排序并裁剪（学习到的短句稍微优先：利用 uses/lastUsedAt 若可用）
+      const learnedMeta = new Map(
+        (persisted || []).map(p => [p.text, { uses: p.uses || 0, last: p.lastUsedAt || 0 }])
+      );
+      suggestions.sort((a, b) => {
+        const am = learnedMeta.get(a.text) || { uses: 0, last: 0 };
+        const bm = learnedMeta.get(b.text) || { uses: 0, last: 0 };
+        const dLearn = (bm.uses - am.uses) || (bm.last - am.last);
+        if (dLearn !== 0) return dLearn;
+        const dScore = b.score - a.score;
+        if (dScore !== 0) return dScore;
+        return a.text.localeCompare(b.text);
+      });
       return suggestions.slice(0, limit);
     } catch (e) {
       log.warn('获取短句补全建议失败:', e);
@@ -518,6 +541,16 @@ class WordCompletionService {
         'development',
         'system',
         'network',
+        'files',
+        'extensions'
+      ];
+    } else if (position > 0) {
+      // 非首个token（如: docker c），不建议顶级命令，优先选项/领域词
+      searchOrder = [
+        'options',
+        'development',
+        'network',
+        'system',
         'files',
         'extensions'
       ];

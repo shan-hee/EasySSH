@@ -1,0 +1,12 @@
+{
+  "name": "nc",
+  "description": "Netcat 网络工具",
+  "subcommands": [],
+  "options": [
+    { "name": "-l", "description": "监听模式" },
+    { "name": "-v", "description": "详细输出" },
+    { "name": "-z", "description": "扫描模式" },
+    { "name": "-u", "description": "UDP 模式" }
+  ]
+}
+

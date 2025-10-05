@@ -1,0 +1,15 @@
+{
+  "name": "ps",
+  "description": "查看进程",
+  "subcommands": [],
+  "options": [
+    { "name": "-e", "description": "所有进程" },
+    { "name": "-f", "description": "完整格式" },
+    { "name": "-u", "description": "用户格式" },
+    { "name": "-a", "description": "所有终端进程" },
+    { "name": "-x", "description": "无终端进程" },
+    { "name": "aux", "description": "BSD 格式" },
+    { "name": "-o", "description": "指定输出列" }
+  ]
+}
+

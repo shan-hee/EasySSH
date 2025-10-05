@@ -1,0 +1,15 @@
+{
+  "name": "yarn",
+  "description": "包管理器",
+  "subcommands": [
+    { "name": "init", "description": "初始化项目" },
+    { "name": "add", "description": "添加依赖" },
+    { "name": "remove", "description": "移除依赖" },
+    { "name": "run", "description": "运行脚本" }
+  ],
+  "options": [
+    { "name": "-D", "description": "开发依赖" },
+    { "name": "--registry", "description": "指定 registry" }
+  ]
+}
+

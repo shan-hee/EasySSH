@@ -1,0 +1,15 @@
+{
+  "name": "nerdctl",
+  "description": "containerd 的 Docker 兼容 CLI",
+  "subcommands": [
+    { "name": "ps", "description": "列出容器" },
+    { "name": "images", "description": "列出镜像" },
+    { "name": "run", "description": "运行容器" },
+    { "name": "exec", "description": "在容器内执行" },
+    { "name": "logs", "description": "查看日志" },
+    { "name": "pull", "description": "拉取镜像" },
+    { "name": "push", "description": "推送镜像" }
+  ],
+  "options": []
+}
+

@@ -1,0 +1,14 @@
+{
+  "name": "tcpdump",
+  "description": "抓包分析工具",
+  "subcommands": [],
+  "options": [
+    { "name": "-i", "description": "网卡" },
+    { "name": "-nn", "description": "不解析主机名和端口" },
+    { "name": "-vv", "description": "更详细输出" },
+    { "name": "-w", "description": "输出到文件" },
+    { "name": "-c", "description": "抓取包数量" },
+    { "name": "-s", "description": "抓取长度" }
+  ]
+}
+

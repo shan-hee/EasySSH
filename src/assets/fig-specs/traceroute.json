@@ -1,0 +1,11 @@
+{
+  "name": "traceroute",
+  "description": "路由跟踪",
+  "subcommands": [],
+  "options": [
+    { "name": "-n", "description": "不解析主机名" },
+    { "name": "-m", "description": "最大跃点数" },
+    { "name": "-p", "description": "目标端口（UDP）" }
+  ]
+}
+

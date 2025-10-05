@@ -1,0 +1,11 @@
+{
+  "name": "nginx",
+  "description": "Nginx 管理",
+  "subcommands": [],
+  "options": [
+    { "name": "-t", "description": "测试配置" },
+    { "name": "-s", "description": "发送信号（如 reload/stop）" },
+    { "name": "-g", "description": "覆盖配置指令" }
+  ]
+}
+

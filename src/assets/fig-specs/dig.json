@@ -1,0 +1,10 @@
+{
+  "name": "dig",
+  "description": "DNS 查询工具",
+  "subcommands": [],
+  "options": [
+    { "name": "+short", "description": "简短输出" },
+    { "name": "@server", "description": "指定 DNS 服务器（示例）" }
+  ]
+}
+

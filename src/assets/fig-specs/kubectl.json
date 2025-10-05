@@ -1,0 +1,37 @@
+{
+  "name": "kubectl",
+  "description": "Kubernetes 命令行工具",
+  "subcommands": [
+    { "name": "get", "description": "获取资源", "options": [
+      { "name": "-A", "description": "所有命名空间" },
+      { "names": ["-n", "--namespace"], "description": "命名空间" },
+      { "names": ["-o", "--output"], "description": "输出格式" }
+    ]},
+    { "name": "describe", "description": "查看资源详情", "options": [
+      { "names": ["-n", "--namespace"], "description": "命名空间" }
+    ]},
+    { "name": "logs", "description": "查看 Pod 日志", "options": [
+      { "name": "-f", "description": "持续跟随" },
+      { "names": ["-n", "--namespace"], "description": "命名空间" }
+    ]},
+    { "name": "exec", "description": "在容器内执行命令", "options": [
+      { "name": "-it", "description": "交互式终端" },
+      { "names": ["-n", "--namespace"], "description": "命名空间" }
+    ]},
+    { "name": "apply", "description": "应用配置", "options": [
+      { "names": ["-f", "--filename"], "description": "YAML 文件" },
+      { "names": ["-n", "--namespace"], "description": "命名空间" }
+    ]},
+    { "name": "delete", "description": "删除资源", "options": [
+      { "names": ["-f", "--filename"], "description": "YAML 文件" },
+      { "names": ["-n", "--namespace"], "description": "命名空间" }
+    ]},
+    { "name": "config", "description": "配置上下文/集群/用户" }
+  ],
+  "options": [
+    { "name": "-A", "description": "所有命名空间" },
+    { "names": ["-n", "--namespace"], "description": "命名空间" },
+    { "names": ["-v", "--v"], "description": "日志详细级别" }
+  ]
+}
+

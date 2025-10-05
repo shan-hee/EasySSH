@@ -1,0 +1,7 @@
+{
+  "name": "ifconfig",
+  "description": "网络接口配置",
+  "subcommands": [],
+  "options": []
+}
+

@@ -1,0 +1,20 @@
+{
+  "name": "iptables",
+  "description": "IPv4 防火墙",
+  "subcommands": [
+    { "name": "-L", "description": "列出规则" },
+    { "name": "-A", "description": "追加规则" },
+    { "name": "-D", "description": "删除规则" },
+    { "name": "-I", "description": "插入规则" }
+  ],
+  "options": [
+    { "name": "-t", "description": "指定表（filter/nat/mangle/raw）" },
+    { "name": "-p", "description": "协议（tcp/udp/icp）" },
+    { "name": "-s", "description": "源地址" },
+    { "name": "-d", "description": "目标地址" },
+    { "name": "--dport", "description": "目标端口" },
+    { "name": "--sport", "description": "源端口" },
+    { "name": "-j", "description": "动作（ACCEPT/DROP/REJECT）" }
+  ]
+}
+

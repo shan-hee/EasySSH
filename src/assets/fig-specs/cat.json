@@ -1,0 +1,12 @@
+{
+  "name": "cat",
+  "description": "输出文件内容",
+  "subcommands": [],
+  "options": [
+    { "name": "-n", "description": "显示行号" },
+    { "name": "-A", "description": "显示所有字符" },
+    { "name": "-E", "description": "显示行尾$" },
+    { "name": "-T", "description": "显示制表符为^I" }
+  ]
+}
+

@@ -1,0 +1,13 @@
+{
+  "name": "uname",
+  "description": "系统信息",
+  "subcommands": [],
+  "options": [
+    { "name": "-a", "description": "全部信息" },
+    { "name": "-r", "description": "内核版本" },
+    { "name": "-s", "description": "内核名称" },
+    { "name": "-m", "description": "硬件架构" },
+    { "name": "-n", "description": "节点名称" }
+  ]
+}
+

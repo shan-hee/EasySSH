@@ -1,0 +1,12 @@
+{
+  "name": "date",
+  "description": "日期时间",
+  "subcommands": [],
+  "options": [
+    { "name": "-u", "description": "UTC 时间" },
+    { "name": "-R", "description": "RFC 5322 格式" },
+    { "name": "+%Y-%m-%d", "description": "格式化输出（示例）" },
+    { "name": "+%T", "description": "格式化输出（示例）" }
+  ]
+}
+

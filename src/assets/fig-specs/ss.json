@@ -1,0 +1,15 @@
+{
+  "name": "ss",
+  "description": "查看套接字",
+  "subcommands": [],
+  "options": [
+    { "name": "-t", "description": "TCP" },
+    { "name": "-u", "description": "UDP" },
+    { "name": "-l", "description": "监听" },
+    { "name": "-p", "description": "进程" },
+    { "name": "-n", "description": "数字地址" },
+    { "name": "-a", "description": "全部" },
+    { "name": "-s", "description": "统计" }
+  ]
+}
+

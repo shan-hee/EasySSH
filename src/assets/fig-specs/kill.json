@@ -1,0 +1,13 @@
+{
+  "name": "kill",
+  "description": "终止进程",
+  "subcommands": [],
+  "options": [
+    { "name": "-9", "description": "KILL" },
+    { "name": "-15", "description": "TERM" },
+    { "name": "-HUP", "description": "挂起" },
+    { "name": "-TERM", "description": "结束" },
+    { "name": "-KILL", "description": "强制结束" }
+  ]
+}
+

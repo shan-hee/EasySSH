@@ -1,0 +1,9 @@
+{
+  "name": "which",
+  "description": "查找可执行文件路径",
+  "subcommands": [],
+  "options": [
+    { "name": "-a", "description": "显示所有匹配" }
+  ]
+}
+

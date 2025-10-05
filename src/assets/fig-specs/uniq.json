@@ -1,0 +1,11 @@
+{
+  "name": "uniq",
+  "description": "去除重复行",
+  "subcommands": [],
+  "options": [
+    { "name": "-c", "description": "统计次数" },
+    { "name": "-d", "description": "仅重复行" },
+    { "name": "-u", "description": "仅唯一行" }
+  ]
+}
+

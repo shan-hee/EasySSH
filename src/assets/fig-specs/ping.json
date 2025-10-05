@@ -1,0 +1,13 @@
+{
+  "name": "ping",
+  "description": "网络连通性测试",
+  "subcommands": [],
+  "options": [
+    { "name": "-c", "description": "包数量" },
+    { "name": "-i", "description": "间隔" },
+    { "name": "-W", "description": "超时" },
+    { "name": "-s", "description": "包大小" },
+    { "name": "-t", "description": "TTL" }
+  ]
+}
+

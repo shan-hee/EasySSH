@@ -1,0 +1,12 @@
+{
+  "name": "head",
+  "description": "显示文件开头",
+  "subcommands": [],
+  "options": [
+    { "name": "-n", "description": "行数" },
+    { "name": "-c", "description": "字节数" },
+    { "name": "-v", "description": "总是显示文件名" },
+    { "name": "-q", "description": "从不显示文件名" }
+  ]
+}
+

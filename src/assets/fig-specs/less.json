@@ -1,0 +1,12 @@
+{
+  "name": "less",
+  "description": "分页查看文件",
+  "subcommands": [],
+  "options": [
+    { "name": "-N", "description": "显示行号" },
+    { "name": "-S", "description": "截断长行" },
+    { "name": "-R", "description": "显示颜色控制" },
+    { "name": "-F", "description": "一屏时退出" }
+  ]
+}
+

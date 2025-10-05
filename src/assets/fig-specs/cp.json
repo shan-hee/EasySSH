@@ -1,0 +1,14 @@
+{
+  "name": "cp",
+  "description": "复制文件或目录",
+  "subcommands": [],
+  "options": [
+    { "name": "-r", "description": "递归复制" },
+    { "name": "-a", "description": "归档模式" },
+    { "name": "-v", "description": "详细输出" },
+    { "name": "-i", "description": "交互式确认" },
+    { "name": "-u", "description": "仅在源较新时覆盖" },
+    { "name": "--preserve", "description": "保留属性" }
+  ]
+}
+

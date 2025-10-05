@@ -1,0 +1,16 @@
+{
+  "name": "tar",
+  "description": "归档打包工具",
+  "subcommands": [],
+  "options": [
+    { "name": "-c", "description": "创建归档" },
+    { "name": "-x", "description": "解包归档" },
+    { "name": "-t", "description": "列出内容" },
+    { "name": "-v", "description": "详细输出" },
+    { "name": "-f", "description": "归档文件" },
+    { "name": "-z", "description": "gzip 压缩" },
+    { "name": "-j", "description": "bzip2 压缩" },
+    { "name": "--exclude", "description": "排除匹配" }
+  ]
+}
+

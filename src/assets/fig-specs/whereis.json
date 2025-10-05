@@ -1,0 +1,11 @@
+{
+  "name": "whereis",
+  "description": "查找命令/源码/手册路径",
+  "subcommands": [],
+  "options": [
+    { "name": "-b", "description": "仅二进制" },
+    { "name": "-m", "description": "仅手册" },
+    { "name": "-s", "description": "仅源码" }
+  ]
+}
+

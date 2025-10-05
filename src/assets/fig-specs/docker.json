@@ -1,0 +1,152 @@
+{
+  "name": "docker",
+  "description": "容器管理工具",
+  "subcommands": [
+    { "name": "ps", "description": "列出容器", "options": [
+      { "name": "-a", "description": "包含已退出容器" },
+      { "name": "--format", "description": "自定义格式" }
+    ]},
+    { "name": "images", "description": "列出镜像" },
+    { "name": "logs", "description": "查看容器日志", "options": [
+      { "name": "-f", "description": "持续跟随" },
+      { "name": "--tail", "description": "显示最后N行" }
+    ]},
+    { "name": "exec", "description": "在容器内执行命令", "options": [
+      { "name": "-it", "description": "交互模式" },
+      { "name": "-u", "description": "切换用户" }
+    ]},
+    { "name": "cp", "description": "容器与主机间复制文件" },
+    { "name": "create", "description": "创建但不启动容器" },
+    { "name": "commit", "description": "从容器创建新镜像" },
+    { "name": "build", "description": "构建镜像", "options": [
+      { "name": "-t", "description": "命名标签" },
+      { "name": "-f", "description": "Dockerfile 路径" }
+    ]},
+    { "name": "run", "description": "运行容器", "options": [
+      { "name": "-d", "description": "后台运行" },
+      { "name": "-it", "description": "交互式终端" },
+      { "name": "--name", "description": "容器名" },
+      { "name": "-p", "description": "端口映射" }
+    ]},
+    { "name": "pull", "description": "拉取镜像" },
+    { "name": "push", "description": "推送镜像" },
+    { "name": "image", "description": "镜像子命令", "subcommands": [
+      { "name": "ls", "description": "列出镜像", "options": [
+        { "name": "-a", "description": "包含中间层" }
+      ]},
+      { "name": "rm", "description": "删除镜像" },
+      { "name": "inspect", "description": "查看镜像详情" },
+      { "name": "prune", "description": "清理未使用镜像" }
+    ]},
+    { "name": "container", "description": "容器子命令", "subcommands": [
+      { "name": "ls", "description": "列出容器", "options": [
+        { "name": "-a", "description": "包含已退出容器" }
+      ]},
+      { "name": "inspect", "description": "查看容器详情" },
+      { "name": "rm", "description": "删除容器" },
+      { "name": "prune", "description": "清理未使用容器" }
+    ]},
+    { "name": "network", "description": "网络子命令", "subcommands": [
+      { "name": "ls", "description": "列出网络" },
+      { "name": "create", "description": "创建网络", "options": [
+        { "name": "-d", "description": "驱动 bridge/overlay 等" }
+      ]},
+      { "name": "inspect", "description": "查看网络详情" },
+      { "name": "rm", "description": "删除网络" }
+    ]},
+    { "name": "volume", "description": "数据卷子命令", "subcommands": [
+      { "name": "ls", "description": "列出数据卷" },
+      { "name": "create", "description": "创建数据卷" },
+      { "name": "inspect", "description": "查看数据卷详情" },
+      { "name": "prune", "description": "清理未使用数据卷" },
+      { "name": "rm", "description": "删除数据卷" }
+    ]},
+    { "name": "swarm", "description": "Swarm 管理", "subcommands": [
+      { "name": "init", "description": "初始化 Swarm" },
+      { "name": "join", "description": "加入 Swarm" },
+      { "name": "leave", "description": "离开 Swarm" }
+    ]},
+    { "name": "stack", "description": "Swarm Stack", "subcommands": [
+      { "name": "deploy", "description": "部署 Stack", "options": [
+        { "name": "-c", "description": "Compose 文件" }
+      ]},
+      { "name": "services", "description": "查看服务" },
+      { "name": "ps", "description": "任务列表" },
+      { "name": "rm", "description": "移除 Stack" }
+    ]},
+    { "name": "compose", "description": "Compose 子命令", "options": [
+      { "name": "--project-name", "description": "工程名" },
+      { "name": "--env-file", "description": "环境文件" }
+    ], "subcommands": [
+      { "name": "up", "description": "启动服务", "options": [
+        { "name": "-d", "description": "后台运行" },
+        { "name": "--build", "description": "启动前构建" },
+        { "name": "--remove-orphans", "description": "移除孤立容器" }
+      ]},
+      { "name": "down", "description": "停止并移除", "options": [
+        { "name": "-v", "description": "移除卷" },
+        { "name": "--rmi", "description": "移除镜像" }
+      ]},
+      { "name": "logs", "description": "查看服务日志", "options": [
+        { "name": "-f", "description": "持续跟随" },
+        { "name": "--tail", "description": "最后N行" }
+      ]},
+      { "name": "stop", "description": "停止服务", "options": [
+        { "name": "-t", "description": "超时时间（秒）" }
+      ]},
+      { "name": "start", "description": "启动已创建的服务", "options": [] },
+      { "name": "restart", "description": "重启服务", "options": [
+        { "name": "-t", "description": "停止超时时间（秒）" }
+      ]},
+      { "name": "pause", "description": "暂停服务", "options": [] },
+      { "name": "unpause", "description": "恢复服务", "options": [] },
+      { "name": "ps", "description": "查看服务容器", "options": [
+        { "name": "-a", "description": "显示所有容器" },
+        { "name": "--services", "description": "仅列出服务名" }
+      ]},
+      { "name": "rm", "description": "移除已停止的服务容器", "options": [
+        { "name": "-f", "description": "强制移除" },
+        { "name": "-s", "description": "移除匿名卷（与 v2 兼容项）" },
+        { "name": "-v", "description": "移除卷" }
+      ]},
+      { "name": "build", "description": "构建服务镜像", "options": [
+        { "name": "--no-cache", "description": "不使用缓存" },
+        { "name": "--pull", "description": "总是尝试拉取" },
+        { "name": "--parallel", "description": "并行构建" },
+        { "name": "--progress", "description": "进度输出 (auto/plain/tty)" },
+        { "name": "--build-arg", "description": "传递构建参数 (KEY=VAL)" }
+      ]},
+      { "name": "create", "description": "创建服务容器(不启动)", "options": [
+        { "name": "--force-recreate", "description": "总是重新创建" },
+        { "name": "--no-recreate", "description": "已存在则不重建" },
+        { "name": "--build", "description": "必要时先构建" },
+        { "name": "--remove-orphans", "description": "移除孤立容器" }
+      ]},
+      { "name": "config", "description": "验证/查看 Compose 配置", "options": [
+        { "name": "-q", "description": "仅验证且不输出" },
+        { "name": "--services", "description": "仅列出服务" },
+        { "name": "--volumes", "description": "仅列出卷" },
+        { "name": "--profiles", "description": "仅列出配置的 profiles" }
+      ]},
+      { "name": "run", "description": "运行一次性容器", "options": [
+        { "name": "-d", "description": "后台运行" },
+        { "name": "--name", "description": "容器名" },
+        { "name": "--rm", "description": "退出后删除容器" },
+        { "name": "--service-ports", "description": "映射服务端口" },
+        { "name": "-e", "description": "设置环境变量" },
+        { "name": "-v", "description": "挂载卷" }
+      ]},
+      { "name": "exec", "description": "在运行中的容器内执行", "options": [
+        { "name": "-it", "description": "交互式终端" },
+        { "name": "-u", "description": "切换用户" },
+        { "name": "-e", "description": "设置环境变量" }
+      ]}
+    ]}
+  ],
+  "options": [
+    { "name": "--config", "description": "配置目录" },
+    { "name": "--context", "description": "Docker 上下文" },
+    { "name": "--debug", "description": "调试模式" },
+    { "names": ["-H", "--host"], "description": "连接的主机" }
+  ]
+}

@@ -1,0 +1,11 @@
+{
+  "name": "mkdir",
+  "description": "创建目录",
+  "subcommands": [],
+  "options": [
+    { "name": "-p", "description": "创建父目录" },
+    { "name": "-m", "description": "设置权限" },
+    { "name": "-v", "description": "详细输出" }
+  ]
+}
+

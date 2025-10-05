@@ -1,0 +1,12 @@
+{
+  "name": "minikube",
+  "description": "本地 Kubernetes 集群",
+  "subcommands": [
+    { "name": "start", "description": "启动集群" },
+    { "name": "stop", "description": "停止集群" },
+    { "name": "status", "description": "查看状态" },
+    { "name": "dashboard", "description": "打开仪表盘" }
+  ],
+  "options": []
+}
+

@@ -1,0 +1,12 @@
+{
+  "name": "xargs",
+  "description": "构建参数并执行命令",
+  "subcommands": [],
+  "options": [
+    { "name": "-0", "description": "以 NUL 分隔" },
+    { "name": "-n", "description": "每次使用参数个数" },
+    { "name": "-P", "description": "并行数" },
+    { "name": "-I", "description": "替换字符串" }
+  ]
+}
+

@@ -1,0 +1,15 @@
+{
+  "name": "pip",
+  "description": "Python 包管理器",
+  "subcommands": [
+    { "name": "install", "description": "安装包" },
+    { "name": "uninstall", "description": "卸载包" },
+    { "name": "list", "description": "列出包" }
+  ],
+  "options": [
+    { "name": "-r", "description": "从文件安装" },
+    { "name": "-U", "description": "升级" },
+    { "name": "--user", "description": "安装到用户目录" }
+  ]
+}
+

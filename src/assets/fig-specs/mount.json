@@ -1,0 +1,12 @@
+{
+  "name": "mount",
+  "description": "挂载文件系统",
+  "subcommands": [],
+  "options": [
+    { "name": "-t", "description": "文件系统类型" },
+    { "name": "-o", "description": "挂载选项" },
+    { "name": "-a", "description": "挂载所有" },
+    { "name": "-r", "description": "只读挂载" }
+  ]
+}
+

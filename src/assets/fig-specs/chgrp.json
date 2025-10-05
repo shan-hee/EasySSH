@@ -1,0 +1,11 @@
+{
+  "name": "chgrp",
+  "description": "修改文件属组",
+  "subcommands": [],
+  "options": [
+    { "name": "-R", "description": "递归" },
+    { "name": "-v", "description": "详细输出" },
+    { "name": "-c", "description": "仅改变时输出" }
+  ]
+}
+

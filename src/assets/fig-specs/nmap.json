@@ -1,0 +1,13 @@
+{
+  "name": "nmap",
+  "description": "网络扫描器",
+  "subcommands": [],
+  "options": [
+    { "name": "-sS", "description": "SYN 扫描" },
+    { "name": "-sV", "description": "服务版本检测" },
+    { "name": "-O", "description": "操作系统检测" },
+    { "name": "-p", "description": "端口范围" },
+    { "name": "-A", "description": "综合扫描" }
+  ]
+}
+

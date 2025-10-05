@@ -1,0 +1,10 @@
+{
+  "name": "node",
+  "description": "Node.js 运行时",
+  "subcommands": [],
+  "options": [
+    { "name": "-v", "description": "版本" },
+    { "name": "-e", "description": "执行脚本片段" }
+  ]
+}
+

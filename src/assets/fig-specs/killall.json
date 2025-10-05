@@ -1,0 +1,11 @@
+{
+  "name": "killall",
+  "description": "按名称终止进程",
+  "subcommands": [],
+  "options": [
+    { "name": "-9", "description": "KILL" },
+    { "name": "-r", "description": "正则匹配" },
+    { "name": "-u", "description": "指定用户" }
+  ]
+}
+

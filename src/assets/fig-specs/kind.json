@@ -1,0 +1,18 @@
+{
+  "name": "kind",
+  "description": "Kubernetes in Docker",
+  "subcommands": [
+    { "name": "create", "description": "创建集群", "options": [
+      { "name": "cluster", "description": "创建操作" },
+      { "name": "--name", "description": "集群名" },
+      { "name": "--config", "description": "配置文件" }
+    ]},
+    { "name": "delete", "description": "删除集群", "options": [
+      { "name": "cluster", "description": "删除操作" },
+      { "name": "--name", "description": "集群名" }
+    ]},
+    { "name": "get", "description": "查看资源" }
+  ],
+  "options": []
+}
+

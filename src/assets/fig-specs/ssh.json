@@ -1,0 +1,13 @@
+{
+  "name": "ssh",
+  "description": "安全远程登录",
+  "subcommands": [],
+  "options": [
+    { "names": ["-p", "-P"], "description": "端口" },
+    { "name": "-i", "description": "私钥文件" },
+    { "name": "-L", "description": "本地端口转发" },
+    { "name": "-R", "description": "远程端口转发" },
+    { "name": "-N", "description": "不执行远程命令" }
+  ]
+}
+

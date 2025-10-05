@@ -1,0 +1,12 @@
+{
+  "name": "timedatectl",
+  "description": "时间/时区管理",
+  "subcommands": [
+    { "name": "status", "description": "查看状态" },
+    { "name": "set-time", "description": "设置时间" },
+    { "name": "set-timezone", "description": "设置时区" },
+    { "name": "list-timezones", "description": "列出时区" }
+  ],
+  "options": []
+}
+

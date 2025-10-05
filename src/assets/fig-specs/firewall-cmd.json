@@ -1,0 +1,14 @@
+{
+  "name": "firewall-cmd",
+  "description": "Firewalld 管理",
+  "subcommands": [
+    { "name": "--permanent", "description": "永久生效（与其他选项组合）" },
+    { "name": "--reload", "description": "重载配置" },
+    { "name": "--list-all", "description": "列出配置" }
+  ],
+  "options": [
+    { "name": "--add-port", "description": "开放端口（如 80/tcp）" },
+    { "name": "--remove-port", "description": "移除端口" }
+  ]
+}
+

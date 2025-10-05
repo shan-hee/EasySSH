@@ -1,0 +1,11 @@
+{
+  "name": "umount",
+  "description": "卸载文件系统",
+  "subcommands": [],
+  "options": [
+    { "name": "-l", "description": "延迟卸载" },
+    { "name": "-f", "description": "强制卸载" },
+    { "name": "-r", "description": "只读重挂载" }
+  ]
+}
+

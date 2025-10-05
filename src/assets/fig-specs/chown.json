@@ -1,0 +1,12 @@
+{
+  "name": "chown",
+  "description": "修改文件属主",
+  "subcommands": [],
+  "options": [
+    { "name": "-R", "description": "递归" },
+    { "name": "--from", "description": "仅当当前属主为指定值时修改" },
+    { "name": "-v", "description": "详细输出" },
+    { "name": "-c", "description": "仅改变时输出" }
+  ]
+}
+

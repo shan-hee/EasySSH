@@ -1,0 +1,13 @@
+{
+  "name": "rm",
+  "description": "删除文件或目录",
+  "subcommands": [],
+  "options": [
+    { "name": "-r", "description": "递归删除" },
+    { "name": "-f", "description": "强制删除" },
+    { "name": "-i", "description": "交互式确认" },
+    { "name": "-v", "description": "详细输出" },
+    { "name": "--one-file-system", "description": "限制在单一文件系统" }
+  ]
+}
+

@@ -133,6 +133,7 @@ import settingsService from '../../services/settings';
 import TerminalToolbar from '../../components/terminal/TerminalToolbar.vue';
 // 导入终端自动完成组件
 import TerminalAutocomplete from '../../components/terminal/TerminalAutocomplete.vue';
+import phraseStore from '@/services/phrase-store';
 // 导入终端自动完成服务
 import terminalAutocompleteService from '../../services/terminal-autocomplete';
 // 导入日志服务
@@ -2067,6 +2068,13 @@ export default {
         autocomplete.value.visible = false;
 
         debugLog('选择自动完成建议:', suggestion.text);
+
+        // 学习被选中的短句（仅当为多词短句/脚本时）
+        try {
+          if (suggestion && typeof suggestion.text === 'string') {
+            phraseStore.maybeLearnFromCommand(suggestion.text);
+          }
+        } catch (_) {}
       } catch (error) {
         log.error('处理自动完成选择失败:', error);
       }
@@ -2525,6 +2533,11 @@ export default {
         sshService._processTerminalInput(session, `${command}\r`);
 
         log.info('命令已发送到SSH会话', { terminalId, sessionId, command });
+
+        // 学习用户执行的短句（符合条件的多词命令）
+        try {
+          phraseStore.maybeLearnFromCommand(command);
+        } catch (_) {}
       } catch (error) {
         log.error('执行命令失败', { error: error.message });
       }
