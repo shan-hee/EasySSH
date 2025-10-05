@@ -157,11 +157,13 @@
                     v-for="(file, index) in sortedFileList"
                     :key="index"
                     :file="file"
+                    :existing-names="existingNames"
                     :session-id="sessionId"
                     :current-path="currentPath"
                     @item-click="handleItemClick"
                     @download="downloadFile"
                     @delete="deleteFile"
+                    @renamed="handleItemRenamed"
                     @refresh="refreshCurrentDirectory"
                     @permissions="handlePermissions"
                   />
@@ -248,8 +250,12 @@ export default defineComponent({
     // 排序功能
     const { toggleSort, sortFiles, getSortIndicator, isActiveSort } = useSortable();
 
-    // 原始文件列表（未排序）
+    // 文件列表
+    // rawFileList: 过滤后的（受“显示隐藏文件”开关影响）
+    // allFileList: 未过滤的（用于诸如重名校验等不受显示过滤影响的逻辑）
     const rawFileList = ref([]);
+    const allFileList = ref([]);
+    const existingNames = computed(() => allFileList.value.map(f => f.name));
 
     // 计算属性：排序后的文件列表
     const sortedFileList = computed(() => {
@@ -583,7 +589,8 @@ export default defineComponent({
           filteredFiles = processedFiles.filter(file => !file.name.startsWith('.'));
         }
 
-        // 更新原始文件列表和当前路径
+        // 更新列表和当前路径
+        allFileList.value = processedFiles;
         rawFileList.value = filteredFiles;
         currentPath.value = path;
         isLoadingSftp.value = false;
@@ -605,6 +612,46 @@ export default defineComponent({
       } catch (error) {
         log.error(`目录刷新失败: ${error.message}`);
         // 出错时不抛出异常，以避免中断流程
+      }
+    };
+
+    // 无刷新增量更新：处理子项重命名事件
+    const handleItemRenamed = payload => {
+      try {
+        const { oldName, newName, oldPath, newPath } = payload || {};
+        if (!newName) return;
+
+        const samePath = (p, name) => (currentPath.value === '/' ? `/${name}` : `${currentPath.value}/${name}`) === p;
+
+        const applyUpdate = list => {
+          if (!Array.isArray(list)) return;
+          // 优先通过完整路径匹配，其次按名称匹配
+          let idx = -1;
+          if (oldPath) {
+            idx = list.findIndex(f => samePath(oldPath, f.name));
+          }
+          if (idx === -1 && oldName) {
+            idx = list.findIndex(f => f.name === oldName);
+          }
+          if (idx !== -1) {
+            const f = list[idx];
+            const updated = { ...f, name: newName, modifiedTime: new Date() };
+            // 如果重命名后变为隐藏文件且当前不显示隐藏文件，则从可见列表移除
+            const shouldHide = !showHiddenFiles.value && typeof newName === 'string' && newName.startsWith('.');
+            if (list === rawFileList.value && shouldHide) {
+              list.splice(idx, 1);
+            } else {
+              list.splice(idx, 1, updated);
+            }
+          }
+        };
+
+        applyUpdate(allFileList.value);
+        applyUpdate(rawFileList.value);
+      } catch (e) {
+        log.warn('增量更新重命名失败，回退到刷新', e);
+        // 出现异常时，回退为刷新目录
+        refreshCurrentDirectory();
       }
     };
 
@@ -3056,6 +3103,8 @@ export default defineComponent({
       isLoadingSftp,
       currentPath,
       sortedFileList,
+      allFileList,
+      existingNames,
       uploadProgress,
       isUploading,
       downloadProgress,
@@ -3095,6 +3144,7 @@ export default defineComponent({
       downloadFolder,
       showDownloadReport,
       deleteFile,
+      handleItemRenamed,
       handleDragOver,
       handleDragLeave,
       handleDrop,

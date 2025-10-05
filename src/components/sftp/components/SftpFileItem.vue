@@ -111,6 +111,10 @@
             </svg>
           </div>
         </div>
+        <!-- 校验信息提示 -->
+        <div v-if="hasValidationError && validationErrorMessage" class="sftp-validation-error">
+          {{ validationErrorMessage }}
+        </div>
       </div>
 
       <!-- 显示模式：预览类文件直接打开，其他文件弹出下载确认 -->
@@ -221,7 +225,7 @@ import { defineComponent, ref, nextTick, computed } from 'vue';
 import log from '@/services/log';
 import { useFileUtils } from '../composables/useFileUtils';
 import { ElMessage } from 'element-plus';
-import sftpService from '@/services/ssh/sftp-service';
+import { sftpService } from '@/services/ssh';
 
 export default defineComponent({
   name: 'SftpFileItem',
@@ -229,6 +233,12 @@ export default defineComponent({
     file: {
       type: Object,
       required: true
+    },
+    // 当前目录下已有的文件/文件夹名称列表，用于重名校验
+    existingNames: {
+      type: Array,
+      required: false,
+      default: () => []
     },
     sessionId: {
       type: String,
@@ -239,7 +249,7 @@ export default defineComponent({
       required: true
     }
   },
-  emits: ['item-click', 'download', 'delete', 'refresh', 'permissions'],
+  emits: ['item-click', 'download', 'delete', 'refresh', 'permissions', 'renamed'],
   setup(props, { emit }) {
     // 从composable获取格式化方法
     const { formatFileSize, formatDate } = useFileUtils();
@@ -315,9 +325,26 @@ export default defineComponent({
 
     // 实时输入验证
     const validateInput = () => {
-      const validation = validateFileName(editingName.value);
+      const name = editingName.value;
+      const validation = validateFileName(name);
       hasValidationError.value = !validation.valid;
       validationErrorMessage.value = validation.message;
+
+      // 进一步校验：同目录下是否重名（排除与原名相同的情况）
+      if (!hasValidationError.value) {
+        try {
+          const trimmed = (name || '').trim();
+          if (trimmed && trimmed !== props.file.name) {
+            const names = Array.isArray(props.existingNames) ? props.existingNames : [];
+            if (names.some(n => n === trimmed)) {
+              hasValidationError.value = true;
+              validationErrorMessage.value = '已存在同名文件或文件夹';
+            }
+          }
+        } catch (_) {
+          // 忽略名单获取异常
+        }
+      }
     };
 
     // 处理文件项点击：目录或文本文件直接交由父组件；二进制文件触发就地下载确认
@@ -373,6 +400,16 @@ export default defineComponent({
       if (editInput.value) {
         editInput.value.focus();
         editInput.value.select();
+        // 智能选择：优先选中主文件名，保留扩展名未选中
+        try {
+          const name = String(props.file?.name || '');
+          if (!props.file?.isDirectory && name && !name.startsWith('.')) {
+            const lastDot = name.lastIndexOf('.');
+            if (lastDot > 0 && lastDot < name.length - 1) {
+              editInput.value.setSelectionRange(0, lastDot);
+            }
+          }
+        } catch (_) {}
       }
     };
 
@@ -403,6 +440,18 @@ export default defineComponent({
         return;
       }
 
+      // 检查是否与当前目录中的其他项目重名（排除自身）
+      try {
+        const names = Array.isArray(props.existingNames) ? props.existingNames : [];
+        const exists = names.some(n => n === newName);
+        if (exists) {
+          ElMessage.error('已存在同名文件或文件夹，请使用其他名称');
+          return;
+        }
+      } catch (_) {
+        // 忽略名单获取异常，继续走后端校验
+      }
+
       await performRename(newName);
     };
 
@@ -427,14 +476,16 @@ export default defineComponent({
 
       isRenaming.value = true;
 
+      let oldPath = '';
+      let newPath = '';
       try {
         // 构建原路径和新路径
-        const oldPath =
+        oldPath =
           props.currentPath === '/'
             ? props.currentPath + props.file.name
             : `${props.currentPath}/${props.file.name}`;
 
-        const newPath =
+        newPath =
           props.currentPath === '/'
             ? props.currentPath + newName
             : `${props.currentPath}/${newName}`;
@@ -444,14 +495,40 @@ export default defineComponent({
 
         ElMessage.success(`重命名成功: ${props.file.name} -> ${newName}`);
 
+        // 通知父组件进行无刷新增量更新
+        try {
+          emit('renamed', { oldName: props.file.name, newName, oldPath, newPath });
+        } catch (_) {}
+
         // 取消编辑状态
         cancelRename();
-
-        // 通知父组件刷新
-        emit('refresh');
       } catch (error) {
-        log.error('重命名失败', error);
-        ElMessage.error(`重命名失败: ${error.message}`);
+        try {
+          log.error('重命名失败', {
+            oldPath,
+            newPath,
+            error: error?.message || String(error)
+          });
+        } catch (_) {
+          log.error('重命名失败', error);
+        }
+        try {
+          const msg = (error && error.message) ? String(error.message) : '';
+          const lower = msg.toLowerCase();
+          if (msg.includes('已存在') || lower.includes('exist')) {
+            ElMessage.error('重命名失败：目标名称已存在');
+          } else if (lower.includes('permission') || msg.includes('权限')) {
+            ElMessage.error('重命名失败：权限不足');
+          } else if (lower.includes('no such file') || lower.includes('enoent')) {
+            ElMessage.error('重命名失败：目标路径不存在或已变更，请刷新后重试');
+          } else if (lower.includes('failure')) {
+            ElMessage.error('重命名失败：SFTP返回Failure，请检查是否重名或权限问题');
+          } else {
+            ElMessage.error(`重命名失败: ${msg || '未知错误'}`);
+          }
+        } catch (_) {
+          ElMessage.error('重命名失败');
+        }
       } finally {
         isRenaming.value = false;
       }
@@ -946,9 +1023,9 @@ export default defineComponent({
 }
 
 /* 所有主题特定样式已迁移到主题变量 */
+.sftp-validation-error {
+  margin-left: 8px;
+  color: var(--color-danger, #f56c6c);
+  font-size: 12px;
+}
 </style>
-    // 删除确认标题
-    const getDeleteTitle = file =>
-      file.isDirectory
-        ? `确定要删除文件夹 "${file.name}" 及其所有内容吗？`
-        : `确定要删除文件 "${file.name}" 吗？`;
