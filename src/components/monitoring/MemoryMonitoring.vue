@@ -240,14 +240,23 @@ const initMemoryChart = async () => {
 
   if (!memoryChartRef.value) return;
 
-  const ctx = memoryChartRef.value.getContext('2d');
+  const canvas = memoryChartRef.value;
+  const ctx = canvas && typeof canvas.getContext === 'function' ? canvas.getContext('2d') : null;
+  if (!ctx) return;
 
   if (memoryChartInstance.value) {
-    memoryChartInstance.value.destroy();
+    try { memoryChartInstance.value._themeObserver?.disconnect?.(); } catch (_) {}
+    try { memoryChartInstance.value.destroy(); } catch (_) {}
+    memoryChartInstance.value = null;
   }
 
   // 创建双圆环嵌套图表
   const config = createNestedDoughnutConfig();
+  // 高 DPI 优化
+  config.options = {
+    ...config.options,
+    devicePixelRatio: Math.min((typeof window !== 'undefined' ? (window.devicePixelRatio || 1) : 1), 2)
+  };
   memoryChartInstance.value = markRaw(new Chart(ctx, config));
 
   // 监听主题变化
@@ -364,6 +373,14 @@ watch(
 // 生命周期
 onMounted(() => {
   initMemoryChart();
+  const handleVisibility = () => {
+    // 内存图只在可见时更新
+    if (!document.hidden) updateCharts();
+  };
+  document.addEventListener('visibilitychange', handleVisibility);
+  onUnmounted(() => {
+    document.removeEventListener('visibilitychange', handleVisibility);
+  });
 });
 
 onUnmounted(() => {

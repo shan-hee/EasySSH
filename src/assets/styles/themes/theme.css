@@ -253,6 +253,13 @@
   --terminal-bg-size: cover;
   --terminal-bg-repeat: no-repeat;
   --terminal-bg-opacity: 0.5;
+  /* 终端主题背景（颜色图）默认关闭，作为背景图缺省的回退 */
+  --terminal-theme-bg-image: none;
+  /* 文本兜底（不依赖 UI 主题，用作JS回退） */
+  --fallback-text-on-light: #303133;
+  --fallback-text-on-dark: #e5e5e5;
+  --fallback-text-secondary-on-light: #606266;
+  --fallback-text-secondary-on-dark: #b0b0b0;
 
   /* 分割线（侧栏与内容之间） */
   --divider-color: var(--sidebar-border);

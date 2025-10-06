@@ -920,22 +920,42 @@ class SettingsService {
     const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
 
     const handleSystemThemeChange = e => {
-      // 只有当用户选择了"跟随系统"时才响应系统主题变化
+      const newTheme = e.matches ? 'dark' : 'light';
+      // 当 UI 选择了“跟随系统”时，更新 UI 主题
       if (this.settings.ui.theme === 'system') {
-        const newTheme = e.matches ? 'dark' : 'light';
-        log.debug('系统主题变化，自动切换主题', { newTheme });
+        log.debug('系统主题变化，自动切换UI主题', { newTheme });
         this.applyTheme('system');
+      }
+
+      // 当终端主题选择了 system 时，根据 UI 是否也为 system 决定事件来源：
+      // - UI=system: 由 applyTheme('system') 内统一分发 TERMINAL_THEME_UPDATE（避免重复）
+      // - UI≠system: 仅此处分发一次 TERMINAL_THEME_UPDATE
+      if (this.settings.terminal?.theme === 'system' && this.settings.ui.theme !== 'system') {
+        try {
+          window.dispatchEvent(
+            new CustomEvent(EVENTS.TERMINAL_THEME_UPDATE, { detail: { uiTheme: newTheme } })
+          );
+        } catch (_) {}
       }
     };
 
-    // 监听系统主题变化
-    mediaQuery.addEventListener('change', handleSystemThemeChange);
+    // 监听系统主题变化（兼容旧浏览器）
+    if (typeof mediaQuery.addEventListener === 'function') {
+      mediaQuery.addEventListener('change', handleSystemThemeChange);
+    } else if (typeof mediaQuery.addListener === 'function') {
+      mediaQuery.addListener(handleSystemThemeChange);
+    }
 
     // 保存监听器引用，用于清理
     this._systemThemeListener = {
       mediaQuery,
       handler: handleSystemThemeChange
     };
+
+    // 立即执行一次，确保在设置“终端主题=system”后立刻与系统一致
+    try {
+      handleSystemThemeChange(mediaQuery);
+    } catch (_) {}
   }
 
   /**
@@ -1026,16 +1046,43 @@ class SettingsService {
   }
 
   /**
+   * 解析当前“终端主题”的有效主题（考虑 system 与 UI 主题）
+   * @param {('light'|'dark')=} uiTheme 可选，传入当前UI主题可避免读取DOM
+   * @returns {string} 终端实际主题名（light|dark|dracula|vscode|material）
+   */
+  getEffectiveTerminalThemeForUi(uiTheme = null) {
+    try {
+      const t = this.settings?.terminal?.theme;
+      if (!t || t === TERMINAL_THEMES.DARK || t === TERMINAL_THEMES.LIGHT) return t || TERMINAL_THEMES.DARK;
+      if (t === TERMINAL_THEMES.SYSTEM) {
+        const ui = uiTheme || document?.documentElement?.getAttribute?.('data-theme');
+        if (ui === TERMINAL_THEMES.LIGHT || ui === TERMINAL_THEMES.DARK) return ui;
+        return window.matchMedia?.('(prefers-color-scheme: dark)').matches
+          ? TERMINAL_THEMES.DARK
+          : TERMINAL_THEMES.LIGHT;
+      }
+      // 自定义主题
+      return t;
+    } catch (_) {
+      return TERMINAL_THEMES.DARK;
+    }
+  }
+
+  /**
+   * 解析当前“终端主题”的有效主题，不依赖外部参数
+   */
+  getEffectiveTerminalTheme() {
+    return this.getEffectiveTerminalThemeForUi();
+  }
+
+  /**
    * 获取终端主题配置
    * @param {string} themeName - 主题名称 (light, dark, vscode, dracula, material, system)
    * @returns {Object} 终端主题配置
    * @private
    */
   _getTerminalTheme(themeName = TERMINAL_THEMES.DARK) {
-    // 检查缓存
-    if (this._themeCache.has(themeName)) {
-      return this._themeCache.get(themeName);
-    }
+    // 不使用缓存，确保能响应UI变量与背景状态的实时变化
     const themes = {
       light: {
         foreground: '#000000',
@@ -1149,34 +1196,80 @@ class SettingsService {
       }
     };
 
-    // 处理系统主题
+    // 处理系统主题：优先读取UI已应用的 data-theme，其次回退到系统偏好
     let actualTheme = themeName;
     if (themeName === TERMINAL_THEMES.SYSTEM) {
-      actualTheme = window.matchMedia('(prefers-color-scheme: dark)').matches
-        ? TERMINAL_THEMES.DARK
-        : TERMINAL_THEMES.LIGHT;
+      const applied = document?.documentElement?.getAttribute?.('data-theme');
+      if (applied === TERMINAL_THEMES.DARK || applied === TERMINAL_THEMES.LIGHT) {
+        actualTheme = applied;
+      } else {
+        actualTheme = window.matchMedia('(prefers-color-scheme: dark)').matches
+          ? TERMINAL_THEMES.DARK
+          : TERMINAL_THEMES.LIGHT;
+      }
     }
 
     const themeConfig = themes[actualTheme] || themes[TERMINAL_THEMES.DARK];
 
-    // 动态解析CSS变量，使终端主题与界面主题保持一致
     const resolvedTheme = { ...themeConfig };
 
     // 获取当前界面主题的CSS变量值
     const computedStyle = getComputedStyle(document.documentElement);
-    const bgColor = computedStyle.getPropertyValue('--color-bg-page').trim();
-    const textColor = computedStyle.getPropertyValue('--color-text-primary').trim();
+    const uiTextColor = computedStyle.getPropertyValue('--color-text-primary').trim();
+    const uiSecondaryColor = computedStyle.getPropertyValue('--color-text-secondary').trim();
+    const fbTextOnLight = computedStyle.getPropertyValue('--fallback-text-on-light').trim() || '#303133';
+    const fbTextOnDark = computedStyle.getPropertyValue('--fallback-text-on-dark').trim() || '#e5e5e5';
+    const fbSecOnLight =
+      computedStyle.getPropertyValue('--fallback-text-secondary-on-light').trim() || '#606266';
+    const fbSecOnDark =
+      computedStyle.getPropertyValue('--fallback-text-secondary-on-dark').trim() || '#b0b0b0';
 
-    // 如果CSS变量有值，则使用界面主题的颜色
-    if (textColor) {
-      // 前景与光标使用主题前景色
-      resolvedTheme.foreground = textColor;
-      resolvedTheme.cursor = textColor;
+    // 背景图片启用时：使用 UI 文本色以与整体界面统一；
+    // 未启用背景图片时：使用所选终端主题自带的前景/光标色，确保与“主题颜色背景图”形成正确对比。
+    const bgEnabled = !!(this._terminalBackground && this._terminalBackground.enabled);
+    if (bgEnabled) {
+      const fb = actualTheme === 'dark' ? fbTextOnDark : fbTextOnLight;
+      const applied = uiTextColor || fb;
+      resolvedTheme.foreground = applied;
+      resolvedTheme.cursor = applied;
+    } else {
+      const fb = actualTheme === 'dark' ? fbTextOnDark : fbTextOnLight;
+      resolvedTheme.foreground = themeConfig.foreground || resolvedTheme.foreground || fb;
+      resolvedTheme.cursor = themeConfig.cursor || resolvedTheme.cursor || fb;
     }
 
-    // 始终使终端背景透明，完全依赖底层页面主题背景色渲染
-    // 使用 rgba(0,0,0,0) 以确保 Canvas/WebGL 下的透明渲染稳定
+    // 始终使用透明背景，使终端区域与背景图片/页面底色一致
     resolvedTheme.background = 'rgba(0, 0, 0, 0)';
+
+    // 为“颜色图片”背景准备一个基于主题背景色的渐变，作为无背景图时的回退
+    try {
+      const surfaceColor = themeConfig?.background || '#121212';
+      const themeBgImage = `linear-gradient(0deg, ${surfaceColor}, ${surfaceColor})`;
+      document.documentElement.style.setProperty('--terminal-theme-bg-image', themeBgImage);
+      // 无背景图时，将不透明度设为 1，确保主题切换可见；有背景图时恢复默认
+      if (!bgEnabled) {
+        document.documentElement.style.setProperty('--terminal-bg-opacity', '1');
+      } else {
+        try { document.documentElement.style.removeProperty('--terminal-bg-opacity'); } catch (_) {}
+      }
+      // 宣告当前终端表面模式（供图表/监控读取）
+      const uiMode = document.documentElement.getAttribute('data-theme') || 'dark';
+      const surfaceMode = bgEnabled ? uiMode : actualTheme; // 背景图启用时随UI，其余随终端主题
+      document.documentElement.style.setProperty('--terminal-surface-mode', surfaceMode);
+      // 设置终端区域文字/边框颜色（供监控面板等复用）
+      const chosenTextColor = bgEnabled
+        ? (uiTextColor || (actualTheme === 'dark' ? fbTextOnDark : fbTextOnLight))
+        : (themeConfig.foreground || resolvedTheme.foreground || (actualTheme === 'dark' ? fbTextOnDark : fbTextOnLight));
+      const chosenSecondaryColor = bgEnabled
+        ? (uiSecondaryColor || (actualTheme === 'dark' ? fbSecOnDark : fbSecOnLight))
+        : (actualTheme === 'light' ? fbSecOnLight : fbSecOnDark);
+      const chosenBorderColor = actualTheme === 'light' ? 'rgba(0, 0, 0, 0.12)' : 'rgba(255, 255, 255, 0.12)';
+      document.documentElement.style.setProperty('--terminal-surface-text-color', chosenTextColor);
+      document.documentElement.style.setProperty('--terminal-surface-text-secondary', chosenSecondaryColor);
+      document.documentElement.style.setProperty('--terminal-surface-border-color', chosenBorderColor);
+    } catch (_) {
+      // 忽略DOM环境缺失或无效颜色
+    }
 
     // 不缓存，确保每次都能获取到最新的CSS变量值
     return resolvedTheme;

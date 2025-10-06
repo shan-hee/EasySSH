@@ -1206,6 +1206,8 @@ export const useTerminalStore = defineStore('terminal', () => {
     }
 
     const results = {};
+    const isProd = typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.PROD;
+    const infoVerbose = (msg, data) => (isProd ? log.debug(msg, data) : log.info(msg, data));
 
     // 获取所有终端ID
     const terminalIds = Object.keys(state.terminals);
@@ -1215,7 +1217,7 @@ export const useTerminalStore = defineStore('terminal', () => {
       return results;
     }
 
-    log.info(`正在将设置应用到 ${terminalIds.length} 个终端...`);
+    infoVerbose(`正在将设置应用到 ${terminalIds.length} 个终端...`);
 
     // 遍历所有终端并应用设置
     for (const termId of terminalIds) {
@@ -1258,8 +1260,16 @@ export const useTerminalStore = defineStore('terminal', () => {
         // 应用终端主题
         if (settings.theme) {
           try {
-            const themeConfig = settingsService.getTerminalTheme(settings.theme);
-            log.info(`终端 ${termId}: 获取到主题配置:`, themeConfig);
+            const effectiveThemeName =
+              settings.theme === 'system'
+                ? (settingsService.getEffectiveTerminalTheme?.() || 'dark')
+                : settings.theme;
+            const themeConfig = settingsService.getTerminalTheme(effectiveThemeName);
+            log.debug(`终端 ${termId}: 获取到主题配置`, {
+              fg: themeConfig?.foreground,
+              bg: themeConfig?.background,
+              cursor: themeConfig?.cursor
+            });
 
             // 比较关键颜色：背景 + 前景 + 光标
             const currentBg = terminal.options?.theme?.background;
@@ -1268,13 +1278,16 @@ export const useTerminalStore = defineStore('terminal', () => {
             const newFg = themeConfig.foreground;
             const currentCursor = terminal.options?.theme?.cursor;
             const newCursor = themeConfig.cursor;
-            const needUpdate = currentBg !== newBg || currentFg !== newFg || currentCursor !== newCursor;
-            log.info(
+            // 如果主题名变了，或者关键色变了，都需要更新
+            const prevThemeName = terminal.options?.__themeName || terminal.terminal?.options?.__themeName;
+            const themeNameChanged = prevThemeName !== effectiveThemeName;
+            const needUpdate = themeNameChanged || currentBg !== newBg || currentFg !== newFg || currentCursor !== newCursor;
+            log.debug(
               `终端 ${termId}: 主题比较 - 背景: ${currentBg} -> ${newBg}, 前景: ${currentFg} -> ${newFg}, 光标: ${currentCursor} -> ${newCursor}`
             );
 
             if (needUpdate) {
-              log.info(`终端 ${termId}: 更新主题 ${currentBg} -> ${newBg}`);
+              log.debug(`终端 ${termId}: 更新主题 ${currentBg} -> ${newBg}`);
               log.info(`终端 ${termId}: 终端对象结构:`, {
                 hasTerminal: !!terminal.terminal,
                 hasSetOption: !!(terminal.terminal?.setOption || terminal.setOption),
@@ -1287,7 +1300,9 @@ export const useTerminalStore = defineStore('terminal', () => {
                 // 方法1: 直接修改options属性（推荐方式）
                 if (terminal.options) {
                   terminal.options.theme = themeConfig;
-                  log.info(`终端 ${termId}: 主题已通过options属性应用`);
+                  // 记录当前主题名，便于下次对比
+                  try { terminal.options.__themeName = effectiveThemeName; } catch (_) {}
+                  log.debug(`终端 ${termId}: 主题已通过options属性应用`);
 
                   // 使用更轻量的刷新方式
                   setTimeout(() => {
@@ -1301,13 +1316,14 @@ export const useTerminalStore = defineStore('terminal', () => {
                 // 方法2: 尝试使用setOption（如果存在）
                 else if (typeof terminal.setOption === 'function') {
                   terminal.setOption('theme', themeConfig);
-                  log.info(`终端 ${termId}: 主题已通过setOption应用`);
+                  log.debug(`终端 ${termId}: 主题已通过setOption应用`);
                 }
                 // 方法3: 如果是终端实例对象
                 else if (terminal.terminal) {
                   if (terminal.terminal.options) {
                     terminal.terminal.options.theme = themeConfig;
-                    log.info(`终端 ${termId}: 主题已通过terminal.terminal.options应用`);
+                    try { terminal.terminal.options.__themeName = effectiveThemeName; } catch (_) {}
+                    log.debug(`终端 ${termId}: 主题已通过terminal.terminal.options应用`);
 
                     // 强制刷新
                     if (typeof terminal.terminal.refresh === 'function') {
@@ -1315,7 +1331,7 @@ export const useTerminalStore = defineStore('terminal', () => {
                     }
                   } else if (typeof terminal.terminal.setOption === 'function') {
                     terminal.terminal.setOption('theme', themeConfig);
-                    log.info(`终端 ${termId}: 主题已通过terminal.terminal.setOption应用`);
+                    log.debug(`终端 ${termId}: 主题已通过terminal.terminal.setOption应用`);
                   }
                 } else {
                   log.warn(`终端 ${termId}: 无法找到主题设置方法`, {
@@ -1332,7 +1348,7 @@ export const useTerminalStore = defineStore('terminal', () => {
 
               hasChanges = true;
             } else {
-              log.info(`终端 ${termId}: 主题无需更新`);
+              log.debug(`终端 ${termId}: 主题无需更新`);
             }
           } catch (error) {
             log.error(`应用终端 ${termId} 主题失败:`, error);
@@ -1363,14 +1379,14 @@ export const useTerminalStore = defineStore('terminal', () => {
             }, 50); // 减少延迟从100ms到50ms
 
             results[termId] = true;
-            log.info(`成功应用设置到终端 ${termId}`);
+            infoVerbose(`成功应用设置到终端 ${termId}`);
           } catch (error) {
             results[termId] = false;
             log.error(`应用设置到终端 ${termId} 失败:`, error);
           }
         } else {
           results[termId] = true;
-          log.info(`终端 ${termId} 无需更新设置`);
+          log.debug(`终端 ${termId} 无需更新设置`);
         }
       } catch (error) {
         results[termId] = false;

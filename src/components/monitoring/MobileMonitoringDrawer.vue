@@ -89,6 +89,12 @@ const onClose = () => emit('close');
   overflow: hidden;
   transform: translateZ(0);
   -webkit-overflow-scrolling: touch;
+  color: var(--terminal-surface-text-color, var(--color-text-primary));
+  /* 覆盖内部文字变量 */
+  --monitor-text-primary: var(--terminal-surface-text-color, var(--color-text-primary));
+  --monitor-text-secondary: var(--terminal-surface-text-secondary, var(--color-text-secondary));
+  --monitoring-text-primary: var(--terminal-surface-text-color, var(--color-text-primary));
+  --monitoring-text-secondary: var(--terminal-surface-text-secondary, var(--color-text-secondary));
 }
 
 .drawer-content {

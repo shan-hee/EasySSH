@@ -33,7 +33,7 @@
 import { ref, onMounted, onUnmounted, computed, nextTick, markRaw, watch } from 'vue';
 import log from '@/services/log';
 import { formatPercentage } from '@/utils/productionFormatters';
-import { getCpuChartConfig, getMonitoringColors, watchThemeChange } from '@/utils/chartConfig';
+import { getCpuChartConfig, getMonitoringColors, watchThemeChange, toRgba, getCSSVar } from '@/utils/chartConfig';
 import MonitoringIcon from './MonitoringIcon.vue';
 import MonitoringLoader from '../common/MonitoringLoader.vue';
 import monitoringConfigManager from '@/services/monitoringConfigManager';
@@ -94,6 +94,21 @@ const cpuCores = computed(() => {
   return cpu.cores || 0;
 });
 
+// 安全渐变生成（带缓存），避免非法颜色与重复创建
+const makeGradient = (ctx, baseColor, heightInput) => {
+  if (!ctx || typeof ctx.createLinearGradient !== 'function') return 'transparent';
+  const h = Math.max(50, Number(heightInput) || 200);
+  const base = baseColor || getCSSVar('--monitor-cpu-primary') || '#3b82f6';
+  const key = `${base}@${h}`;
+  if (ctx._cpuGradKey === key && ctx._cpuGrad) return ctx._cpuGrad;
+  const g = ctx.createLinearGradient(0, 0, 0, h);
+  g.addColorStop(0, toRgba(base, 0.5));
+  g.addColorStop(1, toRgba(base, 0.2));
+  ctx._cpuGradKey = key;
+  ctx._cpuGrad = g;
+  return g;
+};
+
 // 使用传入的状态管理器实例，如果没有则使用全局实例（向后兼容）
 const currentStateManager = computed(() => props.stateManager || monitoringStateManager);
 
@@ -112,7 +127,9 @@ const initChart = async () => {
   if (!cpuChartRef.value) return;
 
   try {
-    const ctx = cpuChartRef.value.getContext('2d');
+    const canvas = cpuChartRef.value;
+    const ctx = canvas && typeof canvas.getContext === 'function' ? canvas.getContext('2d') : null;
+    if (!ctx) { return; }
 
     // 销毁现有图表
     if (chartInstance.value) {
@@ -160,11 +177,18 @@ const initChart = async () => {
     config.data.datasets[0].pointHoverBorderColor = '#ffffff';
     config.data.datasets[0].pointHoverBorderWidth = 1;
 
-    // 创建渐变背景
-    const gradient = ctx.createLinearGradient(0, 0, 0, 200);
-    gradient.addColorStop(0, `${cpuColors.primary}CC`);
-    gradient.addColorStop(1, `${cpuColors.primary}33`);
+    // 创建渐变背景（安全）
+    const initialHeight = (canvas && canvas.height) || 200;
+    const gradient = makeGradient(ctx, cpuColors.primary, initialHeight);
     config.data.datasets[0].backgroundColor = gradient;
+    config.data.datasets[0].fill = true;
+
+    // 高 DPI 优化：限制 devicePixelRatio，平衡清晰度与性能
+    config.options = {
+      ...config.options,
+      devicePixelRatio:
+        Math.min((typeof window !== 'undefined' ? (window.devicePixelRatio || 1) : 1), 2)
+    };
 
     // 使用 markRaw 防止 Chart.js 实例被 Vue 响应式系统追踪
     chartInstance.value = markRaw(new Chart(ctx, config));
@@ -239,11 +263,15 @@ const updateChartData = () => {
     chartInstance.value.data.datasets[0].pointHoverBackgroundColor = cpuColors.primary;
 
     // 更新渐变背景
-    const ctx = cpuChartRef.value.getContext('2d');
-    const gradient = ctx.createLinearGradient(0, 0, 0, 200);
-    gradient.addColorStop(0, `${cpuColors.primary}CC`);
-    gradient.addColorStop(1, `${cpuColors.primary}33`);
-    chartInstance.value.data.datasets[0].backgroundColor = gradient;
+    const canvas = cpuChartRef.value;
+    const ctx = canvas && typeof canvas.getContext === 'function' ? canvas.getContext('2d') : null;
+    if (ctx) {
+      const area = chartInstance.value?.chartArea;
+      const height = area ? (area.bottom - area.top) : (canvas?.height || 200);
+      const gradient = makeGradient(ctx, cpuColors.primary, height);
+      chartInstance.value.data.datasets[0].backgroundColor = gradient;
+      chartInstance.value.data.datasets[0].fill = true;
+    }
 
     // 使用自定义transition模式：既有动画又隐藏数据点
     if (!isAnimating) {
@@ -374,6 +402,16 @@ onMounted(async () => {
   // 然后初始化图表和定期更新
   initChart();
   startPeriodicUpdate();
+
+  // 页面可见性控制：隐藏时暂停，显示时恢复
+  const handleVisibility = () => {
+    if (document.hidden) {
+      stopPeriodicUpdate();
+    } else {
+      startPeriodicUpdate();
+    }
+  };
+  document.addEventListener('visibilitychange', handleVisibility);
 });
 
 onUnmounted(() => {
@@ -398,6 +436,8 @@ onUnmounted(() => {
     }
     chartInstance.value.destroy();
   }
+
+  try { document.removeEventListener('visibilitychange', handleVisibility); } catch (_) {}
 });
 </script>
 

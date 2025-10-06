@@ -620,8 +620,8 @@ export default {
 
           // 背景开关或参数变化后，刷新所有终端主题以应用/取消透明背景
           try {
-            const currentTheme = settingsService.getTerminalSettings()?.theme || 'dark';
-            terminalStore.applySettingsToAllTerminals({ theme: currentTheme });
+            const effectiveTheme = settingsService.getEffectiveTerminalTheme?.() || 'dark';
+            terminalStore.applySettingsToAllTerminals({ theme: effectiveTheme });
           } catch (_) {}
         }
       };
@@ -998,27 +998,38 @@ export default {
 
     // 处理终端主题更新事件 - 优化为同步批量更新
     const handleTerminalThemeUpdate = async event => {
-      log.info('收到终端主题更新事件:', event.detail);
-      log.info('当前终端ID列表:', terminalIds.value);
+      // 事件路径收敛：当终端主题非 system 时，UI 主题变化不应触发终端主题更新
+      try {
+        const terminalThemeSetting =
+          settingsService.getTerminalSettings?.()?.theme || settingsService.settings?.terminal?.theme;
+        if (terminalThemeSetting && terminalThemeSetting !== 'system') {
+          log.debug('跳过主题事件：终端主题非 system，忽略 UI 主题变更');
+          return;
+        }
+      } catch (_) {}
+      log.infoVerbose('收到终端主题更新事件:', event.detail);
+      log.infoVerbose('当前终端ID列表:', terminalIds.value);
 
-      // 直接获取当前UI主题对应的终端主题
-      const uiTheme = event.detail?.uiTheme || 'dark';
-      const terminalThemeName = uiTheme === 'light' ? 'light' : 'dark';
-      const themeConfig = settingsService.getTerminalTheme(terminalThemeName);
-      log.info('获取到的新主题配置:', themeConfig);
+      // 终端主题解析统一交由 settingsService，保持一处真相
+      const effectiveTheme = settingsService.getEffectiveTerminalThemeForUi?.(
+        event.detail?.uiTheme
+      ) || 'dark';
+
+      const themeConfig = settingsService.getTerminalTheme(effectiveTheme);
+      log.infoVerbose('获取到的新主题配置:', themeConfig);
 
       // 使用applySettingsToAllTerminals方法批量更新所有终端的主题
       try {
-        log.info(`开始批量更新所有终端主题为: ${terminalThemeName}`);
+        log.infoVerbose(`开始批量更新所有终端主题为: ${effectiveTheme}`);
         const results = await terminalStore.applySettingsToAllTerminals({
-          theme: terminalThemeName
+          theme: effectiveTheme
         });
-        log.info('批量更新终端主题完成:', results);
+        log.infoVerbose('批量更新终端主题完成:', results);
 
         // 统计成功和失败的数量
         const successCount = Object.values(results).filter(success => success).length;
         const totalCount = Object.keys(results).length;
-        log.info(`主题更新结果: ${successCount}/${totalCount} 个终端更新成功`);
+        log.infoVerbose(`主题更新结果: ${successCount}/${totalCount} 个终端更新成功`);
 
         // 为 xterm 进行一次轻微淡入，形成过渡感（适用于Canvas/WebGL渲染）
         try {

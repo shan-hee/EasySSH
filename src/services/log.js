@@ -356,6 +356,25 @@ class LogService {
   }
 
   /**
+   * 在开发环境使用 info，在生产环境降级为 debug（用于降噪）
+   * @param {string} message
+   * @param {any} data
+   */
+  infoVerbose(message, data) {
+    try {
+      const isProd = typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.PROD;
+      if (isProd) {
+        this._log('debug', message, data);
+      } else {
+        this._log('info', message, data);
+      }
+    } catch (_) {
+      // 回退到 info
+      this._log('info', message, data);
+    }
+  }
+
+  /**
    * 记录警告日志
    * @param {string} message - 日志消息
    * @param {any} data - 相关数据

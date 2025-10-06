@@ -19,6 +19,10 @@ export function getCSSVar(varName) {
  * @returns {string} 'dark' | 'light'
  */
 export function getCurrentTheme() {
+  // 首先尊重终端表面模式（由设置服务写入），用于监控面板/终端区域的配色基准
+  const surfaceMode = getCSSVar('--terminal-surface-mode');
+  if (surfaceMode === 'dark' || surfaceMode === 'light') return surfaceMode;
+
   const theme = document.documentElement.getAttribute('data-theme');
   if (theme) return theme;
 
@@ -38,6 +42,43 @@ export function getCurrentTheme() {
  */
 export function getThemeColor(darkColor, lightColor) {
   return getCurrentTheme() === 'dark' ? darkColor : lightColor;
+}
+
+/**
+ * 将任意颜色转换为带透明度的 rgba 颜色
+ * 支持: #RGB, #RRGGBB, rgb(), rgba()
+ */
+export function toRgba(color, alpha = 1) {
+  if (!color) return `rgba(0,0,0,${alpha})`;
+  const c = color.trim();
+  if (c.startsWith('#')) {
+    let r, g, b;
+    if (c.length === 4) {
+      r = parseInt(c[1] + c[1], 16);
+      g = parseInt(c[2] + c[2], 16);
+      b = parseInt(c[3] + c[3], 16);
+    } else if (c.length === 7) {
+      r = parseInt(c.slice(1, 3), 16);
+      g = parseInt(c.slice(3, 5), 16);
+      b = parseInt(c.slice(5, 7), 16);
+    } else {
+      return `rgba(0,0,0,${alpha})`;
+    }
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+  }
+  if (c.startsWith('rgb')) {
+    // rgb or rgba
+    const nums = c
+      .replace(/rgba?\(/, '')
+      .replace(/\)/, '')
+      .split(',')
+      .map(v => v.trim());
+    const r = parseFloat(nums[0]) || 0;
+    const g = parseFloat(nums[1]) || 0;
+    const b = parseFloat(nums[2]) || 0;
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+  }
+  return `rgba(0,0,0,${alpha})`;
 }
 
 /**
@@ -173,7 +214,22 @@ export function getMonitoringColors(
  * @returns {Object} Chart.js配置对象
  */
 export function getThemeAwareChartOptions() {
-  const isDark = getCurrentTheme() === 'dark';
+  const themeMode = getCurrentTheme();
+  const isDark = themeMode === 'dark';
+  const textPrimary =
+    getCSSVar('--terminal-surface-text-color') ||
+    getCSSVar('--monitor-text-primary') ||
+    (isDark ? getCSSVar('--fallback-text-on-dark') : getCSSVar('--fallback-text-on-light')) ||
+    (isDark ? '#e5e5e5' : '#303133');
+  const textSecondary =
+    getCSSVar('--terminal-surface-text-secondary') ||
+    getCSSVar('--monitor-text-secondary') ||
+    (isDark
+      ? getCSSVar('--fallback-text-secondary-on-dark')
+      : getCSSVar('--fallback-text-secondary-on-light')) ||
+    (isDark ? '#b0b0b0' : '#606266');
+  const gridColor = toRgba(textPrimary, 0.14);
+  const tickColor = textSecondary || toRgba(textPrimary, 0.56);
 
   return {
     responsive: true,
@@ -185,13 +241,16 @@ export function getThemeAwareChartOptions() {
     },
     plugins: {
       legend: {
-        display: false
+        display: false,
+        labels: {
+          color: textSecondary
+        }
       },
       tooltip: {
         enabled: true,
         backgroundColor: isDark ? 'rgba(0, 0, 0, 0.9)' : 'rgba(255, 255, 255, 0.95)',
-        titleColor: isDark ? '#e5e5e5' : '#303133',
-        bodyColor: isDark ? '#e5e5e5' : '#303133',
+        titleColor: textPrimary,
+        bodyColor: textPrimary,
         borderColor: isDark ? 'rgba(255, 255, 255, 0.2)' : 'rgba(0, 0, 0, 0.1)',
         borderWidth: 1,
         cornerRadius: 6,
@@ -204,6 +263,10 @@ export function getThemeAwareChartOptions() {
         bodyFont: {
           size: 11
         }
+      },
+      title: {
+        display: false,
+        color: textPrimary
       }
     },
     scales: {
@@ -211,12 +274,12 @@ export function getThemeAwareChartOptions() {
         display: true,
         grid: {
           display: true,
-          color: isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)',
+          color: gridColor,
           lineWidth: 1
         },
         ticks: {
           display: true,
-          color: isDark ? 'rgba(255, 255, 255, 0.4)' : 'rgba(0, 0, 0, 0.4)',
+          color: tickColor,
           font: {
             size: 10
           },
@@ -230,12 +293,12 @@ export function getThemeAwareChartOptions() {
         display: true,
         grid: {
           display: true,
-          color: isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)',
+          color: gridColor,
           lineWidth: 1
         },
         ticks: {
           display: true,
-          color: isDark ? 'rgba(255, 255, 255, 0.4)' : 'rgba(0, 0, 0, 0.4)',
+          color: tickColor,
           font: {
             size: 10
           },
@@ -273,7 +336,20 @@ export const commonChartOptions = getThemeAwareChartOptions();
  * @returns {Object} Chart.js配置
  */
 export function getCpuChartConfig() {
-  const isDark = getCurrentTheme() === 'dark';
+  const themeMode = getCurrentTheme();
+  const isDark = themeMode === 'dark';
+  const textPrimary =
+    getCSSVar('--terminal-surface-text-color') ||
+    (isDark ? getCSSVar('--fallback-text-on-dark') : getCSSVar('--fallback-text-on-light')) ||
+    (isDark ? '#e5e5e5' : '#303133');
+  const textSecondary =
+    getCSSVar('--terminal-surface-text-secondary') ||
+    (isDark
+      ? getCSSVar('--fallback-text-secondary-on-dark')
+      : getCSSVar('--fallback-text-secondary-on-light')) ||
+    (isDark ? '#b0b0b0' : '#606266');
+  const tickColor = textSecondary || toRgba(textPrimary, 0.56);
+  const gridColor = toRgba(textPrimary, 0.14);
   const pointBorderColor = isDark ? '#ffffff' : '#000000';
 
   return {
@@ -311,8 +387,8 @@ export function getCpuChartConfig() {
         tooltip: {
           enabled: true,
           backgroundColor: isDark ? 'rgba(0, 0, 0, 0.9)' : 'rgba(255, 255, 255, 0.95)',
-          titleColor: isDark ? '#e5e5e5' : '#303133',
-          bodyColor: isDark ? '#e5e5e5' : '#303133',
+          titleColor: textPrimary,
+          bodyColor: textPrimary,
           borderColor: isDark ? 'rgba(255, 255, 255, 0.2)' : 'rgba(0, 0, 0, 0.1)',
           borderWidth: 1,
           cornerRadius: 6,
@@ -342,7 +418,7 @@ export function getCpuChartConfig() {
             display: false
           },
           ticks: {
-            color: isDark ? 'rgba(255, 255, 255, 0.5)' : 'rgba(0, 0, 0, 0.5)',
+            color: tickColor,
             font: {
               size: 10
             },
@@ -357,10 +433,10 @@ export function getCpuChartConfig() {
           min: 0,
           max: 100,
           grid: {
-            color: isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)'
+            color: gridColor
           },
           ticks: {
-            color: isDark ? 'rgba(255, 255, 255, 0.4)' : 'rgba(0, 0, 0, 0.4)',
+            color: tickColor,
             callback(value) {
               return `${value}%`;
             }
@@ -415,6 +491,12 @@ export function getCpuChartConfig() {
  * @returns {Object} Chart.js配置
  */
 export function getMemoryChartConfig() {
+  const themeMode = getCurrentTheme();
+  const isDark = themeMode === 'dark';
+  const textPrimary =
+    getCSSVar('--terminal-surface-text-color') ||
+    (isDark ? getCSSVar('--fallback-text-on-dark') : getCSSVar('--fallback-text-on-light')) ||
+    (isDark ? '#e5e5e5' : '#303133');
   return {
     type: 'doughnut',
     data: {
@@ -436,9 +518,9 @@ export function getMemoryChartConfig() {
           display: false
         },
         tooltip: {
-          backgroundColor: 'rgba(0, 0, 0, 0.8)',
-          titleColor: '#e5e5e5',
-          bodyColor: '#e5e5e5',
+          backgroundColor: isDark ? 'rgba(0, 0, 0, 0.9)' : 'rgba(255, 255, 255, 0.95)',
+          titleColor: textPrimary,
+          bodyColor: textPrimary,
           callbacks: {
             label(context) {
               const label = context.label || '';
@@ -460,7 +542,20 @@ export function getMemoryChartConfig() {
  * @returns {Object} Chart.js配置
  */
 export function getNetworkChartConfig() {
-  const isDark = getCurrentTheme() === 'dark';
+  const themeMode = getCurrentTheme();
+  const isDark = themeMode === 'dark';
+  const textPrimary =
+    getCSSVar('--terminal-surface-text-color') ||
+    (isDark ? getCSSVar('--fallback-text-on-dark') : getCSSVar('--fallback-text-on-light')) ||
+    (isDark ? '#e5e5e5' : '#303133');
+  const textSecondary =
+    getCSSVar('--terminal-surface-text-secondary') ||
+    (isDark
+      ? getCSSVar('--fallback-text-secondary-on-dark')
+      : getCSSVar('--fallback-text-secondary-on-light')) ||
+    (isDark ? '#b0b0b0' : '#606266');
+  const tickColor = textSecondary || toRgba(textPrimary, 0.56);
+  const gridColor = toRgba(textPrimary, 0.14);
   const pointBorderColor = isDark ? '#ffffff' : '#000000';
 
   return {
@@ -512,8 +607,8 @@ export function getNetworkChartConfig() {
         tooltip: {
           enabled: true,
           backgroundColor: isDark ? 'rgba(0, 0, 0, 0.9)' : 'rgba(255, 255, 255, 0.95)',
-          titleColor: isDark ? '#e5e5e5' : '#303133',
-          bodyColor: isDark ? '#e5e5e5' : '#303133',
+          titleColor: textPrimary,
+          bodyColor: textPrimary,
           borderColor: isDark ? 'rgba(255, 255, 255, 0.2)' : 'rgba(0, 0, 0, 0.1)',
           borderWidth: 1,
           cornerRadius: 6,
@@ -557,7 +652,7 @@ export function getNetworkChartConfig() {
             display: false
           },
           ticks: {
-            color: isDark ? 'rgba(255, 255, 255, 0.5)' : 'rgba(0, 0, 0, 0.5)',
+            color: tickColor,
             font: {
               size: 10
             },
@@ -570,10 +665,10 @@ export function getNetworkChartConfig() {
         y: {
           min: 0,
           grid: {
-            color: isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)'
+            color: gridColor
           },
           ticks: {
-            color: isDark ? 'rgba(255, 255, 255, 0.4)' : 'rgba(0, 0, 0, 0.4)',
+            color: tickColor,
             callback(value) {
               // 动态格式化Y轴标签
               if (value >= 1024 * 1024) {
@@ -635,7 +730,13 @@ export function getNetworkChartConfig() {
  * @returns {Object} Chart.js配置
  */
 export function getDiskChartConfig() {
-  const isDark = getCurrentTheme() === 'dark';
+  const themeMode = getCurrentTheme();
+  const isDark = themeMode === 'dark';
+  const textPrimary =
+    getCSSVar('--terminal-surface-text-color') ||
+    (isDark ? getCSSVar('--fallback-text-on-dark') : getCSSVar('--fallback-text-on-light')) ||
+    (isDark ? '#e5e5e5' : '#303133');
+  const tickColor = toRgba(textPrimary, 0.52);
 
   return {
     type: 'bar',
@@ -679,8 +780,8 @@ export function getDiskChartConfig() {
         tooltip: {
           enabled: true,
           backgroundColor: isDark ? 'rgba(0, 0, 0, 0.9)' : 'rgba(255, 255, 255, 0.95)',
-          titleColor: isDark ? '#e5e5e5' : '#303133',
-          bodyColor: isDark ? '#e5e5e5' : '#303133',
+          titleColor: textPrimary,
+          bodyColor: textPrimary,
           borderColor: isDark ? 'rgba(255, 255, 255, 0.2)' : 'rgba(0, 0, 0, 0.1)',
           borderWidth: 1,
           cornerRadius: 6,
@@ -740,7 +841,7 @@ export function getDiskChartConfig() {
           },
           ticks: {
             display: true,
-            color: isDark ? 'rgba(255, 255, 255, 0.5)' : 'rgba(0, 0, 0, 0.5)',
+            color: tickColor,
             font: {
               size: 10
             },
@@ -854,24 +955,23 @@ export function limitDataPoints(dataArray, maxPoints = 10) {
 export function watchThemeChange(chartInstance, updateCallback) {
   if (!chartInstance) return;
 
+  const handler = () => {
+    if (updateCallback) {
+      updateCallback();
+    } else {
+      const newOptions = getThemeAwareChartOptions();
+      chartInstance.options = { ...chartInstance.options, ...newOptions };
+      chartInstance.update('none');
+    }
+  };
+
   // 监听主题属性变化
   const observer = new MutationObserver(mutations => {
-    mutations.forEach(mutation => {
-      if (
-        mutation.type === 'attributes' &&
-        (mutation.attributeName === 'data-theme' || mutation.attributeName === 'class')
-      ) {
-        // 主题发生变化，更新图表配置
-        if (updateCallback) {
-          updateCallback();
-        } else {
-          // 默认更新图表选项
-          const newOptions = getThemeAwareChartOptions();
-          chartInstance.options = { ...chartInstance.options, ...newOptions };
-          chartInstance.update('none'); // 无动画更新
-        }
+    for (const mutation of mutations) {
+      if (mutation.type === 'attributes' && (mutation.attributeName === 'data-theme' || mutation.attributeName === 'class')) {
+        handler();
       }
-    });
+    }
   });
 
   observer.observe(document.documentElement, {
@@ -879,7 +979,33 @@ export function watchThemeChange(chartInstance, updateCallback) {
     attributeFilter: ['data-theme', 'class']
   });
 
-  return observer;
+  // 监听来自设置服务和终端视图的主题事件（UI/终端主题、终端设置变更）
+  const eventHandler = () => handler();
+  window.addEventListener('theme-changed', eventHandler);
+  // 动态导入事件常量，避免循环依赖（不阻塞返回）
+  import('@/services/events')
+    .then(({ EVENTS }) => {
+      try {
+        window.addEventListener(EVENTS.TERMINAL_THEME_UPDATE, eventHandler);
+        window.addEventListener(EVENTS.TERMINAL_SETTINGS_UPDATED, eventHandler);
+      } catch (_) {}
+    })
+    .catch(() => {});
+
+  return {
+    disconnect() {
+      try { observer.disconnect(); } catch (_) {}
+      window.removeEventListener('theme-changed', eventHandler);
+      import('@/services/events')
+        .then(({ EVENTS }) => {
+          try {
+            window.removeEventListener(EVENTS.TERMINAL_THEME_UPDATE, eventHandler);
+            window.removeEventListener(EVENTS.TERMINAL_SETTINGS_UPDATED, eventHandler);
+          } catch (_) {}
+        })
+        .catch(() => {});
+    }
+  };
 }
 
 /**

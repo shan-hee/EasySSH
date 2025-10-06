@@ -648,7 +648,8 @@ export default defineComponent({
 }
 
 /* 在内容容器内部绘制背景，避免与外部层级竞争 */
-.content.terminal-bg-active::before {
+.content.terminal-bg-active::before,
+.content.terminal-surface-transparent::before {
   content: '';
   position: absolute;
   top: 0;
@@ -657,7 +658,8 @@ export default defineComponent({
   bottom: 0;
   z-index: 0; /* 背景层，内容子元素天然在其上方绘制 */
   pointer-events: none;
-  background-image: var(--terminal-bg-image, none);
+  /* 多层背景：第一层为自定义图片（可能为 none），第二层为主题颜色图 */
+  background-image: var(--terminal-bg-image), var(--terminal-theme-bg-image);
   background-size: var(--terminal-bg-size, cover);
   background-position: center;
   background-repeat: var(--terminal-bg-repeat, no-repeat);
@@ -687,9 +689,86 @@ export default defineComponent({
 }
 
 /* 监控面板边框在背景图模式下弱化，避免硬分割线影响观感 */
-.content.terminal-bg-active .terminal-monitoring-panel,
-.content.terminal-surface-transparent .terminal-monitoring-panel {
-  border-right-color: transparent !important;
+.content.terminal-bg-active :deep(.terminal-monitoring-panel),
+.content.terminal-surface-transparent :deep(.terminal-monitoring-panel) {
+  /* 恢复右侧分割线，随“终端表面”模式自适应 */
+  border-right-width: 1px !important;
+  border-right-style: solid !important;
+  border-right-color: var(--terminal-surface-border-color, var(--monitoring-panel-border, var(--color-border-default))) !important;
+  /* 统一监控面板文字颜色，适配终端主题/背景 */
+  color: var(--terminal-surface-text-color, var(--color-text-primary));
+  /* 同步监控面板内部变量，覆盖组件内的 :root[data-theme] 默认值 */
+  --monitor-text-primary: var(--terminal-surface-text-color, var(--color-text-primary));
+  --monitor-text-secondary: var(--terminal-surface-text-secondary, var(--color-text-secondary));
+  --monitoring-text-primary: var(--terminal-surface-text-color, var(--color-text-primary));
+  --monitoring-text-secondary: var(--terminal-surface-text-secondary, var(--color-text-secondary));
+}
+
+/* 强化常见表头与信息区的文本颜色覆盖 */
+.content.terminal-bg-active .terminal-monitoring-panel :deep(.monitor-header),
+.content.terminal-surface-transparent .terminal-monitoring-panel :deep(.monitor-header) {
+  color: var(--terminal-surface-text-color, var(--color-text-primary)) !important;
+}
+
+.content.terminal-bg-active .terminal-monitoring-panel :deep(.monitor-title),
+.content.terminal-surface-transparent .terminal-monitoring-panel :deep(.monitor-title) {
+  color: var(--terminal-surface-text-color, var(--color-text-primary)) !important;
+}
+
+.content.terminal-bg-active .terminal-monitoring-panel :deep(.monitor-info),
+.content.terminal-surface-transparent .terminal-monitoring-panel :deep(.monitor-info) {
+  color: var(--terminal-surface-text-secondary, var(--color-text-secondary)) !important;
+}
+
+.content.terminal-bg-active .terminal-monitoring-panel :deep(.info-section),
+.content.terminal-surface-transparent .terminal-monitoring-panel :deep(.info-section) {
+  color: var(--terminal-surface-text-color, var(--color-text-primary)) !important;
+}
+
+.content.terminal-bg-active .terminal-monitoring-panel :deep(.info-label),
+.content.terminal-surface-transparent .terminal-monitoring-panel :deep(.info-label),
+.content.terminal-bg-active .terminal-monitoring-panel :deep(.info-detail),
+.content.terminal-surface-transparent .terminal-monitoring-panel :deep(.info-detail) {
+  color: var(--terminal-surface-text-secondary, var(--color-text-secondary)) !important;
+}
+
+.content.terminal-bg-active .terminal-monitoring-panel :deep(.info-value),
+.content.terminal-surface-transparent .terminal-monitoring-panel :deep(.info-value) {
+  color: var(--terminal-surface-text-color, var(--color-text-primary)) !important;
+}
+
+/* 各模块特定文本颜色统一覆盖为表面文字色/次文字色 */
+.content.terminal-bg-active .terminal-monitoring-panel :deep(.usage-value),
+.content.terminal-surface-transparent .terminal-monitoring-panel :deep(.usage-value) {
+  color: var(--terminal-surface-text-color, var(--color-text-primary)) !important;
+}
+
+.content.terminal-bg-active .terminal-monitoring-panel :deep(.cores-info),
+.content.terminal-surface-transparent .terminal-monitoring-panel :deep(.cores-info) {
+  color: var(--terminal-surface-text-secondary, var(--color-text-secondary)) !important;
+}
+
+.content.terminal-bg-active .terminal-monitoring-panel :deep(.speed-value),
+.content.terminal-surface-transparent .terminal-monitoring-panel :deep(.speed-value) {
+  color: var(--terminal-surface-text-color, var(--color-text-primary)) !important;
+}
+
+.content.terminal-bg-active .terminal-monitoring-panel :deep(.usage-percentage),
+.content.terminal-surface-transparent .terminal-monitoring-panel :deep(.usage-percentage) {
+  color: var(--terminal-surface-text-color, var(--color-text-primary)) !important;
+}
+
+.content.terminal-bg-active .terminal-monitoring-panel :deep(.usage-text),
+.content.terminal-surface-transparent .terminal-monitoring-panel :deep(.usage-text) {
+  color: var(--terminal-surface-text-secondary, var(--color-text-secondary)) !important;
+}
+
+/* 针对内置 SystemInfo 组件的强覆盖，避免其内部 :root[data-theme] 变量覆盖 */
+.content.terminal-bg-active :deep(.system-info-section),
+.content.terminal-surface-transparent :deep(.system-info-section) {
+  --monitor-text-primary: var(--terminal-surface-text-color, var(--color-text-primary)) !important;
+  --monitor-text-secondary: var(--terminal-surface-text-secondary, var(--color-text-secondary)) !important;
+  color: var(--terminal-surface-text-color, var(--color-text-primary)) !important;
 }
 
 /* 移动端遮罩层样式 */

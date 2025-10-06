@@ -124,7 +124,9 @@ const initChart = async () => {
 
   if (!networkChartRef.value) return;
 
-  const ctx = networkChartRef.value.getContext('2d');
+  const canvas = networkChartRef.value;
+  const ctx = canvas && typeof canvas.getContext === 'function' ? canvas.getContext('2d') : null;
+  if (!ctx) return;
 
   // 销毁现有图表
   if (chartInstance.value) {
@@ -133,6 +135,11 @@ const initChart = async () => {
 
   // 使用新的配置工具创建网络图表
   const config = getNetworkChartConfig();
+  // 高 DPI 优化
+  config.options = {
+    ...config.options,
+    devicePixelRatio: Math.min((typeof window !== 'undefined' ? (window.devicePixelRatio || 1) : 1), 2)
+  };
   chartInstance.value = markRaw(new Chart(ctx, config));
 
   // 监听主题变化
@@ -159,10 +166,12 @@ const initChart = async () => {
 };
 
 // 更新图表数据（仅在 hasData=true 时被调用）
+let pageVisible = true;
 const updateChart = () => {
   if (!chartInstance.value) {
     return; // 初始化过程中的正常情况，不记录日志
   }
+  if (!pageVisible) return; // 页面隐藏时不更新
 
   try {
     // 检查图表实例是否有效
@@ -258,6 +267,11 @@ watch(
 onMounted(() => {
   initChart();
   // 初始化阶段不再强制添加数据点，等待 hasData 与 lastUpdate 触发
+  const handleVisibility = () => { pageVisible = !document.hidden; };
+  document.addEventListener('visibilitychange', handleVisibility);
+  onUnmounted(() => {
+    document.removeEventListener('visibilitychange', handleVisibility);
+  });
 });
 
 onUnmounted(() => {

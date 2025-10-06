@@ -264,6 +264,7 @@
                   class="form-select"
                   @change="saveTerminalSettings"
                 >
+                  <option value="system">自动（跟随系统）</option>
                   <option value="dark">深色主题</option>
                   <option value="light">浅色主题</option>
                   <option value="dracula">Dracula</option>
