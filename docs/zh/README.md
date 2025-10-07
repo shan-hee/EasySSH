@@ -14,9 +14,9 @@
   </p>
   
   <p>
-    <img src="https://img.shields.io/badge/version-1.0.0-blue" alt="version" />
+    <img src="https://img.shields.io/github/package-json/v/shan-hee/EasySSH" alt="version" />
     <img src="https://img.shields.io/badge/license-Apache%202.0-blue" alt="license" />
-    <img src="https://img.shields.io/badge/node-%3E%3D16.0.0-brightgreen" alt="node" />
+    <img src="https://img.shields.io/badge/node-%3E%3D20.0.0-brightgreen" alt="node" />
   </p>
 
   <p>
@@ -74,6 +74,14 @@
     <td>🚀 <b>混合存储引擎</b></td>
     <td>SQLite + node-cache混合存储架构，平衡性能和可靠性</td>
   </tr>
+  <tr>
+    <td>🤖 <b>AI智能助手</b></td>
+    <td>内置AI助手，支持命令建议、错误分析与智能对话</td>
+  </tr>
+  <tr>
+    <td>🔧 <b>广泛兼容性</b></td>
+    <td>支持bash/ash/dash，多平台兼容OpenWrt/ImmortalWrt等嵌入式系统</td>
+  </tr>
 </table>
 
 ## 使用场景
@@ -114,8 +122,15 @@ npm install
 cp .env.example .env
 # 编辑.env文件设置必要参数
 
-# 启动开发服务器
+# 启动前端（Vite）
 npm run dev
+
+# 新开一个终端启动后端（Express）
+cd server
+npm install
+npm run dev
+
+# 前端会将 /api、/ssh、/monitor 代理到 http://localhost:8000
 ```
 
 ### 使用方法
@@ -208,7 +223,7 @@ flowchart LR
 mkdir easyssh && cd easyssh
 
 # 下载 docker-compose.yml
-wget https://raw.githubusercontent.com/shanheee/easyssh/main/docker-compose.yml
+wget https://raw.githubusercontent.com/shan-hee/EasySSH/main/docker-compose.yml
 
 # 配置环境变量（可选）
 # 创建 .env 文件设置 JWT_SECRET 和 ENCRYPTION_KEY
@@ -255,34 +270,26 @@ EasySSH支持一键部署到主流云平台:
 - [部署到Vercel](https://vercel.com/import/project?template=https://github.com/shan-hee/easyssh)
 - [部署到Heroku](https://heroku.com/deploy?template=https://github.com/shan-hee/easyssh)
 
-## 未来规划
+## 路线图
 
-<table>
-  <tr>
-    <td>📂 <b>文件管理器</b></td>
-    <td>集成SFTP功能，提供直观的文件上传下载和管理</td>
-  </tr>
-  <tr>
-    <td>👥 <b>团队协作</b></td>
-    <td>多用户权限管理和实时协作能力</td>
-  </tr>
-  <tr>
-    <td>📹 <b>会话录制</b></td>
-    <td>记录和回放终端会话，用于审计和培训</td>
-  </tr>
-  <tr>
-    <td>🔑 <b>WebAuthn支持</b></td>
-    <td>集成硬件安全密钥的无密码认证</td>
-  </tr>
-  <tr>
-    <td>📱 <b>移动应用</b></td>
-    <td>原生iOS和Android客户端</td>
-  </tr>
-  <tr>
-    <td>🔌 <b>协议扩展</b></td>
-    <td>支持更多协议如Telnet、RDP和VNC</td>
-  </tr>
-</table>
+### 已实现
+- 📂 文件管理器：SFTP 基础能力（列表/创建/删除/重命名/权限），二进制传输通道
+- 📡 系统监控：/monitor 与 /monitor-client，前端订阅 + 桥接缓存
+- 🤖 AI 智能助手：独立 /ai WebSocket 通道
+
+### 进行中
+- 🚀 批量执行与分组治理：并发/节流/失败回退，支持 dry-run
+- 🧷 端口转发与 SOCKS 代理：安全开关、会话绑定与日志
+- 🔔 告警与阈值：CPU/内存/磁盘/进程，Webhook/邮件通知
+
+### 规划中
+- 👥 团队协作与 RBAC：组织/角色/细粒度权限；会话共享（只读旁观/请求控制）
+- 📹 会话录制与审计：事件时间线、可导出；哈希链防篡改
+- 🔑 WebAuthn/Passkey 登录：设备绑定、备份码与强制 2FA 策略
+- 🔌 协议扩展：Telnet、RDP/VNC（经网关/插件化接入）
+- 📦 文件增强：断点续传、整目录打包下载、校验和、后台任务与进度上报
+- 📱 PWA 与多平台：离线、通知、安装到桌面
+- ⚙️ 配置即代码：导入/导出（敏感字段加密）与环境迁移
 
 ## 社区与支持
 

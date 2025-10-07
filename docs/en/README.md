@@ -14,9 +14,9 @@
   </p>
   
   <p>
-    <img src="https://img.shields.io/badge/version-1.0.0-blue" alt="version" />
+    <img src="https://img.shields.io/github/package-json/v/shan-hee/EasySSH" alt="version" />
     <img src="https://img.shields.io/badge/license-Apache%202.0-blue" alt="license" />
-    <img src="https://img.shields.io/badge/node-%3E%3D16.0.0-brightgreen" alt="node" />
+    <img src="https://img.shields.io/badge/node-%3E%3D20.0.0-brightgreen" alt="node" />
   </p>
 
   <p>
@@ -74,6 +74,14 @@
     <td>🚀 <b>Hybrid Storage Engine</b></td>
     <td>SQLite + node-cache hybrid storage architecture balancing performance and reliability</td>
   </tr>
+  <tr>
+    <td>🤖 <b>AI Assistant</b></td>
+    <td>Built-in AI assistant for command suggestions, error analysis, and smart conversations</td>
+  </tr>
+  <tr>
+    <td>🔧 <b>Broad Compatibility</b></td>
+    <td>Supports bash/ash/dash and embedded systems like OpenWrt/ImmortalWrt</td>
+  </tr>
 </table>
 
 ## Use Cases
@@ -114,8 +122,15 @@ npm install
 cp .env.example .env
 # Edit .env file to set necessary parameters
 
-# Start development server
+# Start frontend (Vite)
 npm run dev
+
+# In another terminal, start backend (Express)
+cd server
+npm install
+npm run dev
+
+# Frontend proxies /api, /ssh, /monitor to http://localhost:8000
 ```
 
 ### Usage
@@ -208,7 +223,7 @@ Recommended for production environment deployment, easy to manage and upgrade:
 mkdir easyssh && cd easyssh
 
 # Download docker-compose.yml
-wget https://raw.githubusercontent.com/shanheee/easyssh/main/docker-compose.yml
+wget https://raw.githubusercontent.com/shan-hee/EasySSH/main/docker-compose.yml
 
 # Configure environment variables (optional)
 # Create .env file to set JWT_SECRET and ENCRYPTION_KEY
@@ -256,34 +271,31 @@ EasySSH supports one-click deployment to mainstream cloud platforms:
 - [Deploy to Vercel](https://vercel.com/import/project?template=https://github.com/shan-hee/easyssh)
 - [Deploy to Heroku](https://heroku.com/deploy?template=https://github.com/shan-hee/easyssh)
 
-## Future Roadmap
+## Roadmap
 
-<table>
-  <tr>
-    <td>📂 <b>File Manager</b></td>
-    <td>Integrated SFTP functionality providing intuitive file upload, download, and management</td>
-  </tr>
-  <tr>
-    <td>👥 <b>Team Collaboration</b></td>
-    <td>Multi-user permission management and real-time collaboration capabilities</td>
-  </tr>
-  <tr>
-    <td>📹 <b>Session Recording</b></td>
-    <td>Record and replay terminal sessions for auditing and training purposes</td>
-  </tr>
-  <tr>
-    <td>🔑 <b>WebAuthn Support</b></td>
-    <td>Hardware security key integration for passwordless authentication</td>
-  </tr>
-  <tr>
-    <td>📱 <b>Mobile Applications</b></td>
-    <td>Native iOS and Android clients</td>
-  </tr>
-  <tr>
-    <td>🔌 <b>Protocol Extensions</b></td>
-    <td>Support for additional protocols like Telnet, RDP, and VNC</td>
-  </tr>
-</table>
+### Shipped
+- 📂 File Manager: SFTP basics (list/create/delete/rename/permissions), binary transfer channel
+- 📡 Monitoring: /monitor and /monitor-client with frontend subscription + bridge cache
+- 🤖 AI Assistant: dedicated /ai WebSocket channel
+
+### In Progress
+- 🚀 Batch execution and fleet control: concurrency/throttling/rollback, dry-run support
+- 🧷 Port forwarding and SOCKS proxy: secure toggles, session binding, logging
+- 🔔 Alerts and thresholds: CPU/memory/disk/process, Webhook/email notifications
+
+### Planned
+- 👥 Team collaboration and RBAC: org/roles/fine-grained perms; session sharing (view-only/request control)
+- 📹 Session recording and audit: timeline, export, tamper-evident hashing
+- 🔑 WebAuthn/Passkey login: device binding, recovery codes, enforceable 2FA
+- 🔌 Protocol extensions: Telnet, RDP/VNC via gateway/plugin
+- 📦 File enhancements: resumable transfers, directory archive download, checksums, background jobs with progress
+- 📱 PWA and multi-platform: offline, notifications, install to desktop
+- ⚙️ Config-as-code: import/export (encrypted secrets) and environment migration
+
+### Milestones
+- M1 (2–4 weeks): batch execution, alert thresholds, SFTP resumable transfers (MVP)
+- M2 (4–6 weeks): RBAC and session sharing, recording MVP
+- M3 (4–6 weeks): WebAuthn, protocol extension plugin API + samples
 
 ## Community & Support
 
