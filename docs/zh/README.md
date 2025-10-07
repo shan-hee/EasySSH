@@ -129,18 +129,30 @@ npm run dev
 
 ### 系统架构
 
-```
-┌─────────────┐       ┌─────────────────────┐
-│   客户端     │◄─────►│  SSH WebSocket代理  │
-│ (Vue.js SPA)│       │     (Node.js)       │
-└─────────────┘       └─────────┬───────────┘
-                                │
-                     ┌──────────┴──────────┐
-                     │                     │
-               ┌─────▼─────┐       ┌───────▼─────┐       ┌──────────────┐
-               │  SQLite   │       │ node-cache  │◄──────►│ SSH 服务器   │
-               │(持久化层) │       │(缓存层)    │       │(远程主机)    │
-               └───────────┘       └─────────────┘       └──────────────┘
+```mermaid
+flowchart LR
+    Client[客户端<br/>(Vue.js SPA)]
+    Proxy[SSH WebSocket代理<br/>(Node.js)]
+
+    subgraph WS[WebSocket 通道]
+      direction TB
+      WS1[SSH WS<br/>(/ssh)]
+      WS2[监控 WS<br/>(/monitor)]
+      WS3[监控客户端 WS<br/>(/monitor-client)]
+      WS4[AI WS<br/>(/ai)]
+    end
+
+    DB[(SQLite<br/>(持久化层))]
+    Cache[(node-cache<br/>(缓存层))]
+    SSH[SSH 服务器<br/>(远程主机)]
+    MCLI[监控客户端/采集器]
+
+    Client <--> Proxy
+    Proxy --> WS
+    Proxy --> DB
+    Proxy --> Cache
+    Proxy <--> SSH
+    MCLI <--> WS3
 ```
 
 ### 技术栈

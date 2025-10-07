@@ -49,6 +49,38 @@ EasySSH 系统监控采用基于SSH的零安装监控模式：
 - **性能优化**：并行数据收集、批量传输、错误重试等优化机制
 - **容错处理**：完善的错误处理和连接恢复机制
 
+### 监控数据流（Mermaid）
+
+```mermaid
+flowchart TB
+    subgraph Frontend[前端]
+      FE[浏览器 UI]
+    end
+
+    subgraph Server[后端（Express + ws）]
+      MON_WS[监控 WS (/monitor)]
+      MON_CLI_WS[监控客户端 WS (/monitor-client)]
+      BRIDGE[监控桥接服务]
+      CACHE[(监控数据缓存)]
+    end
+
+    subgraph Collectors[数据采集]
+      SSHC[SSH 收集器\n(复用现有 SSH 会话)]
+      EXT[外部监控客户端\n(可选)]
+    end
+
+    FE <--> MON_WS
+    SSHC --> BRIDGE
+    EXT <--> MON_CLI_WS
+    MON_CLI_WS --> BRIDGE
+    BRIDGE <--> CACHE
+    BRIDGE --> MON_WS
+```
+
+说明：
+- 默认模式下，后端通过已建立的 SSH 会话执行系统命令，BRIDGE 汇聚并推送数据到前端的 `/monitor` 订阅。
+- 如启用外部监控客户端，则客户端通过 `/monitor-client` 推送数据，同样经 BRIDGE 转发给前端并写入缓存。
+
 ### 监控数据说明
 
 监控服务收集的数据包括：

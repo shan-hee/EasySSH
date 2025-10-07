@@ -129,19 +129,30 @@ npm run dev
 
 ### System Architecture
 
-```
-┌─────────────┐       ┌─────────────────────┐
-│   Client    │◄─────►│  SSH WebSocket Proxy│
-│ (Vue.js SPA)│       │     (Node.js)       │
-└─────────────┘       └─────────┬───────────┘
-                                │
-                     ┌──────────┴──────────┐
-                     │                     │
-               ┌─────▼─────┐       ┌───────▼─────┐       ┌──────────────┐
-               │  SQLite   │       │ node-cache  │◄──────►│ SSH Server   │
-               │(Persistence│       │(Cache Layer)│       │(Remote Host) │
-               │   Layer)  │       │             │       │              │
-               └───────────┘       └─────────────┘       └──────────────┘
+```mermaid
+flowchart LR
+    Client[Client<br/>(Vue.js SPA)]
+    Proxy[SSH WebSocket Proxy<br/>(Node.js)]
+
+    subgraph WS[WebSocket Channels]
+      direction TB
+      WS1[SSH WS<br/>(/ssh)]
+      WS2[Monitor WS<br/>(/monitor)]
+      WS3[Monitor Client WS<br/>(/monitor-client)]
+      WS4[AI WS<br/>(/ai)]
+    end
+
+    DB[(SQLite<br/>(Persistence Layer))]
+    Cache[(node-cache<br/>(Cache Layer))]
+    SSH[SSH Server<br/>(Remote Host)]
+    MCLI[Monitoring Client/Collector]
+
+    Client <--> Proxy
+    Proxy --> WS
+    Proxy --> DB
+    Proxy --> Cache
+    Proxy <--> SSH
+    MCLI <--> WS3
 ```
 
 ### Technology Stack
