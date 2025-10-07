@@ -57,16 +57,16 @@ flowchart TB
       FE[浏览器 UI]
     end
 
-    subgraph 后端（Express + ws）
-      MON_WS[监控 WS (/monitor)]
-      MON_CLI_WS[监控客户端 WS (/monitor-client)]
+    subgraph 后端 Express+ws
+      MON_WS[监控 WS /monitor]
+      MON_CLI_WS[监控客户端 WS /monitor-client]
       BRIDGE[监控桥接服务]
       CACHE[(监控数据缓存)]
     end
 
     subgraph 数据采集
-      SSHC[SSH 收集器\n(复用现有 SSH 会话)]
-      EXT[外部监控客户端\n(可选)]
+      SSHC[SSH 收集器\n复用现有 SSH 会话]
+      EXT[外部监控客户端\n可选]
     end
 
     FE <--> MON_WS

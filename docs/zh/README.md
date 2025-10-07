@@ -131,20 +131,20 @@ npm run dev
 
 ```mermaid
 flowchart LR
-    Client[客户端 (Vue.js SPA)]
-    Proxy[SSH WebSocket代理 (Node.js)]
+    Client[客户端 Vue.js SPA]
+    Proxy[SSH WebSocket代理 Node.js]
 
     subgraph WebSocket 通道
       direction TB
-      WS1[SSH WS (/ssh)]
-      WS2[监控 WS (/monitor)]
-      WS3[监控客户端 WS (/monitor-client)]
-      WS4[AI WS (/ai)]
+      WS1[SSH WS /ssh]
+      WS2[监控 WS /monitor]
+      WS3[监控客户端 WS /monitor-client]
+      WS4[AI WS /ai]
     end
 
     DB[(SQLite 持久化层)]
     Cache[(node-cache 缓存层)]
-    SSH[SSH 服务器 (远程主机)]
+    SSH[SSH 服务器 远程主机]
     MCLI[监控客户端/采集器]
 
     Client <--> Proxy
