@@ -133,13 +133,10 @@ const startApp = async () => {
   // 启动服务器
   const host = '::'; // 监听 IPv6，可兼容 IPv4
   server.listen(PORT, host, () => {
-    // 获取服务器实际绑定的地址信息
-    const addr = server.address();
+    // 简化输出：不再尝试获取或推断本机地址，仅展示基于本机访问的示例
     const protocol = 'http';
     const wsProtocol = 'ws';
-    const displayHost = (addr.address === '::') ? 'localhost' : addr.address;
-    const ipv4Host = '127.0.0.1';
-    const ipv6Host = '[::1]';
+    const exampleHost = 'localhost';
 
     // 获取数据库状态
     const dbStatus = getDatabaseStatus();
@@ -151,9 +148,9 @@ const startApp = async () => {
 
     console.log(`\n${colors.bright}${colors.cyan}SSH WebSocket代理服务器已启动${colors.reset}\n`);
 
-    console.log(`${colors.white}HTTP服务${colors.reset}    : ${colors.yellow}${protocol}://${displayHost}:${PORT}${colors.reset}`);
-    console.log(`${colors.white}SSH WS${colors.reset}      : ${colors.yellow}${wsProtocol}://${displayHost}:${PORT}/ssh${colors.reset}`);
-    console.log(`${colors.white}监控 WS${colors.reset}     : ${colors.yellow}${wsProtocol}://${displayHost}:${PORT}/monitor${colors.reset}`);
+    console.log(`${colors.white}HTTP服务${colors.reset}    : ${colors.yellow}${protocol}://${exampleHost}:${PORT}${colors.reset}`);
+    console.log(`${colors.white}SSH WS${colors.reset}      : ${colors.yellow}${wsProtocol}://${exampleHost}:${PORT}/ssh${colors.reset}`);
+    console.log(`${colors.white}监控 WS${colors.reset}     : ${colors.yellow}${wsProtocol}://${exampleHost}:${PORT}/monitor${colors.reset}`);
     console.log(`${colors.white}启动时间${colors.reset}    : ${dateStr} ${timeStr}`);
     console.log(`${colors.white}运行环境${colors.reset}    : ${colors.green}${process.env.NODE_ENV || 'development'}${colors.reset}`);
 

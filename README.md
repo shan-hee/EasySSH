@@ -288,7 +288,6 @@ docker compose up -d
 - `NODE_ENV`: 运行环境（development/production）
 - `JWT_SECRET`: JWT令牌密钥（生产环境必须修改）
 - `ENCRYPTION_KEY`: 数据加密密钥（生产环境必须修改）
-- `SERVER_ADDRESS`: 服务器地址（可选，不配置则自动获取）
 
 > **💡 数据持久化说明**：所有相关文件都在 `easyssh` 目录中，便于统一管理、备份和迁移。
 
