@@ -131,24 +131,27 @@ npm run dev
 
 ```mermaid
 flowchart LR
-    Client[Client<br/>(Vue.js SPA)]
-    Proxy[SSH WebSocket Proxy<br/>(Node.js)]
+    Client[Client (Vue.js SPA)]
+    Proxy[SSH WebSocket Proxy (Node.js)]
 
-    subgraph WS[WebSocket Channels]
+    subgraph WebSocket Channels
       direction TB
-      WS1[SSH WS<br/>(/ssh)]
-      WS2[Monitor WS<br/>(/monitor)]
-      WS3[Monitor Client WS<br/>(/monitor-client)]
-      WS4[AI WS<br/>(/ai)]
+      WS1[SSH WS (/ssh)]
+      WS2[Monitor WS (/monitor)]
+      WS3[Monitor Client WS (/monitor-client)]
+      WS4[AI WS (/ai)]
     end
 
-    DB[(SQLite<br/>(Persistence Layer))]
-    Cache[(node-cache<br/>(Cache Layer))]
-    SSH[SSH Server<br/>(Remote Host)]
+    DB[(SQLite Persistence Layer)]
+    Cache[(node-cache Cache Layer)]
+    SSH[SSH Server (Remote Host)]
     MCLI[Monitoring Client/Collector]
 
     Client <--> Proxy
-    Proxy --> WS
+    Proxy --> WS1
+    Proxy --> WS2
+    Proxy --> WS3
+    Proxy --> WS4
     Proxy --> DB
     Proxy --> Cache
     Proxy <--> SSH
