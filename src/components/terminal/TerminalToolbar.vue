@@ -2277,6 +2277,11 @@ export default defineComponent({
   cursor: not-allowed;
 }
 
+/* 从源头阻止AI禁用态的点击与交互（不触发任何Pointer事件） */
+.ai-button:not(.icon-available) {
+  pointer-events: none;
+}
+
 /* ===== 统一的 Tooltip 样式 ===== */
 
 /* Tooltip 容器 - 使用系统设计令牌 */
