@@ -20,7 +20,9 @@ const {
   executeScript,
   getUserFavorites,
   updateUserFavorites,
-  toggleScriptFavorite
+  toggleScriptFavorite,
+  getExecutionHistory,
+  getExecutionDetail
 } = require('../controllers/scriptController');
 const { authMiddleware } = require('../middleware/auth');
 
@@ -50,6 +52,10 @@ router.post('/usage', recordScriptUsage);
 
 // 执行脚本
 router.post('/execute', executeScript);
+
+// 脚本执行历史
+router.get('/executions', getExecutionHistory);
+router.get('/executions/:id', getExecutionDetail);
 
 // 脚本收藏相关接口
 router.get('/favorites', getUserFavorites);

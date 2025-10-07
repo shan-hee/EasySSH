@@ -3,6 +3,12 @@
     <div class="page-header">
       <h1>脚本库</h1>
       <div class="header-actions">
+        <button class="btn btn-secondary" @click="openHistory">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16">
+            <path fill="currentColor" d="M13 3a9 9 0 1 0 8.95 10.05h-2.02A7 7 0 1 1 13 5v3l4-4-4-4v3z"/>
+          </svg>
+          执行历史
+        </button>
         <button class="btn btn-secondary" @click="importScripts">
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16">
             <path
@@ -181,6 +187,17 @@
                   >
                     <el-icon><caret-right /></el-icon>
                   </el-button>
+                  <!-- 查看历史按钮 -->
+                  <el-button
+                    class="action-btn"
+                    circle
+                    size="small"
+                    link
+                    title="查看历史"
+                    @click="openScriptHistory(script)"
+                  >
+                    <el-icon><clock /></el-icon>
+                  </el-button>
                   <!-- 只有用户脚本才显示删除按钮 -->
                   <el-button
                     v-if="script.source === 'user'"
@@ -346,17 +363,24 @@
       :execution-results="executionResults"
       @retry="handleRetryExecution"
     />
+
+    <!-- 脚本执行历史（支持按服务器筛选） -->
+    <script-execution-history-dialog
+      v-model:visible="historyVisible"
+      :script="historyScript"
+    />
   </div>
 </template>
 
 <script>
 import log from '@/services/log';
 import { defineComponent, ref, computed, watch, onMounted, nextTick } from 'vue';
-import { Edit, Delete, CaretRight } from '@element-plus/icons-vue';
+import { Edit, Delete, CaretRight, Clock } from '@element-plus/icons-vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import scriptLibraryService from '@/services/scriptLibrary.js';
 import ServerSelectionDialog from '@/components/dialogs/ServerSelectionDialog.vue';
 import ScriptExecutionDialog from '@/components/dialogs/ScriptExecutionDialog.vue';
+import ScriptExecutionHistoryDialog from '@/components/dialogs/ScriptExecutionHistoryDialog.vue';
 import apiService from '@/services/api.js';
 
 export default defineComponent({
@@ -365,8 +389,10 @@ export default defineComponent({
     Edit,
     Delete,
     CaretRight,
+    Clock,
     ServerSelectionDialog,
-    ScriptExecutionDialog
+    ScriptExecutionDialog,
+    ScriptExecutionHistoryDialog
   },
   setup() {
     const searchQuery = ref('');
@@ -385,6 +411,18 @@ export default defineComponent({
 
     // 导入导出相关
     const fileInput = ref(null);
+
+    // 执行历史对话框
+    const historyVisible = ref(false);
+    const historyScript = ref(null);
+    const openHistory = () => {
+      historyScript.value = null;
+      historyVisible.value = true;
+    };
+    const openScriptHistory = (script) => {
+      historyScript.value = script;
+      historyVisible.value = true;
+    };
 
     // 从脚本库服务获取数据
     const scripts = computed(() => scriptLibraryService.getAllScripts());
@@ -1285,7 +1323,11 @@ export default defineComponent({
       executionResultVisible,
       executingScript,
       executionResults,
-      handleRetryExecution
+      handleRetryExecution,
+      historyVisible,
+      historyScript,
+      openHistory,
+      openScriptHistory,
     };
   }
 });

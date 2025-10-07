@@ -608,7 +608,7 @@ const executeScript = async (req, res) => {
 
     const insertExecutionStmt = db.prepare(`
       INSERT INTO script_execution_history (
-        user_id, script_id, script_name, command, server_id, server_name,
+        user_id, script_id, script_name, command, connection_id, server_name,
         host, port, username, stdout, stderr, exit_code, executed_at
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
@@ -618,7 +618,7 @@ const executeScript = async (req, res) => {
       validScriptId,
       scriptName,
       command,
-      null, // 暂时不关联server_id，避免外键约束问题
+      connection.id, // 关联连接ID，便于追溯
       serverName,
       host,
       port || 22,
@@ -786,6 +786,103 @@ const toggleScriptFavorite = async (req, res) => {
   }
 };
 
+/**
+ * 获取脚本执行历史（可按 connection_id/scriptId 过滤）
+ */
+const getExecutionHistory = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { connectionId, scriptId, page = 1, limit = 20 } = req.query;
+
+    const db = getDb();
+
+    const safeLimit = Math.min(parseInt(limit) || 20, 100);
+    const currentPage = Math.max(parseInt(page) || 1, 1);
+    const offset = (currentPage - 1) * safeLimit;
+
+    // 动态条件
+    const whereClauses = ["user_id = ?"];
+    const params = [userId];
+
+    if (connectionId) {
+      whereClauses.push("connection_id = ?");
+      params.push(connectionId);
+    }
+    if (scriptId) {
+      whereClauses.push("script_id = ?");
+      params.push(parseInt(scriptId));
+    }
+
+    const whereSql = whereClauses.length ? `WHERE ${whereClauses.join(' AND ')}` : '';
+
+    // 统计总数
+    const countRow = db.prepare(`
+      SELECT COUNT(*) AS total
+      FROM script_execution_history
+      ${whereSql}
+    `).get(...params);
+    const total = countRow?.total || 0;
+
+    // 查询数据
+    const rows = db.prepare(`
+      SELECT id, user_id, script_id, script_name, command, connection_id, server_name,
+             host, port, username, stdout, stderr, exit_code, executed_at
+      FROM script_execution_history
+      ${whereSql}
+      ORDER BY datetime(executed_at) DESC, id DESC
+      LIMIT ? OFFSET ?
+    `).all(...params, safeLimit, offset);
+
+    res.json({
+      success: true,
+      history: rows,
+      pagination: {
+        page: currentPage,
+        limit: safeLimit,
+        total
+      }
+    });
+  } catch (error) {
+    log.error('获取脚本执行历史失败:', error);
+    res.status(500).json({
+      success: false,
+      message: '获取执行历史失败',
+      error: error.message
+    });
+  }
+};
+
+/**
+ * 获取单条执行历史详情
+ */
+const getExecutionDetail = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const id = parseInt(req.params.id);
+
+    if (!id) {
+      return res.status(400).json({ success: false, message: '无效的执行记录ID' });
+    }
+
+    const db = getDb();
+    const row = db.prepare(`
+      SELECT id, user_id, script_id, script_name, command, connection_id, server_name,
+             host, port, username, stdout, stderr, exit_code, executed_at
+      FROM script_execution_history
+      WHERE id = ? AND user_id = ?
+    `).get(id, userId);
+
+    if (!row) {
+      return res.status(404).json({ success: false, message: '记录不存在' });
+    }
+
+    res.json({ success: true, execution: row });
+  } catch (error) {
+    log.error('获取执行历史详情失败:', error);
+    res.status(500).json({ success: false, message: '获取详情失败', error: error.message });
+  }
+};
+
 module.exports = {
   getPublicScripts,
   getCategories,
@@ -801,5 +898,7 @@ module.exports = {
   executeScript,
   getUserFavorites,
   updateUserFavorites,
-  toggleScriptFavorite
+  toggleScriptFavorite,
+  getExecutionHistory,
+  getExecutionDetail
 };
