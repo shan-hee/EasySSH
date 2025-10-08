@@ -1561,7 +1561,7 @@ export default defineComponent({
   padding: 12px;
   border-bottom: 1px solid var(--color-border-default);
   vertical-align: middle;
-  background-color: var(--color-bg-page);
+  background-color: var(--color-bg-container);
   transition: background-color var(--theme-transition-duration) var(--theme-transition-timing);
 }
 
