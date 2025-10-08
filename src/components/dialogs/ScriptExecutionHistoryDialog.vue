@@ -41,53 +41,84 @@
     </div>
 
     <div class="history-card">
-      <table v-if="visible" class="scripts-table">
-        <thead>
-          <tr>
-            <th class="time-col">时间</th>
-            <th class="server-col">服务器</th>
-            <th class="host-col">主机</th>
-            <th class="code-col">退出码</th>
-          </tr>
-        </thead>
-        <tbody>
-          <template v-for="(row, idx) in history" :key="row.id || idx">
-            <tr class="script-row" @click="toggleExpand(idx)">
-              <td class="mono">
-                <span class="expander" :class="{ open: isExpanded(idx) }"></span>
-                {{ formatTime(row.executed_at) }}
-              </td>
-              <td>{{ row.server_name }}</td>
-              <td><span class="mono">{{ row.username }}@{{ row.host }}:{{ row.port }}</span></td>
-              <td>
-                <span class="tag" :class="row.exit_code === 0 ? 'tag-success' : 'tag-danger'">
-                  {{ row.exit_code === undefined || row.exit_code === null ? '-' : row.exit_code }}
-                </span>
-              </td>
-            </tr>
-            <tr class="expand-row">
-              <td colspan="4">
-                <div class="expand-content" v-show="isExpanded(idx)">
-                  <div class="detail">
-                    <div class="meta-row">
-                      <span>命令：</span>
-                      <code class="mono">{{ row.command }}</code>
-                    </div>
-                    <div class="output" v-if="row.stdout">
-                      <h5>stdout</h5>
-                      <pre>{{ row.stdout }}</pre>
-                    </div>
-                    <div class="output error" v-if="row.stderr">
-                      <h5>stderr</h5>
-                      <pre>{{ row.stderr }}</pre>
-                    </div>
-                  </div>
+      <!-- 加载中：使用与连接配置界面一致的通用样式 -->
+      <div v-if="loading" class="loading-indicator">
+        <div class="loading-spinner" />
+        <span>正在加载历史...</span>
+      </div>
+
+      <el-table
+        v-else-if="visible"
+        :data="tableRows"
+        row-key="__key"
+        :expand-row-keys="expandedRowKeys"
+        class="history-el-table"
+        :border="false"
+        :stripe="false"
+        style="width: 100%"
+        @row-click="onRowClick"
+        @expand-change="onExpandChange"
+      >
+        <!-- 展开列 -->
+        <el-table-column type="expand" width="40">
+          <template #default="{ row }">
+            <div class="expand-content">
+              <div class="detail">
+                <div class="meta-row">
+                  <span>命令：</span>
+                  <code class="mono">{{ row.command }}</code>
                 </div>
-              </td>
-            </tr>
+                <div class="output" v-if="row.stdout">
+                  <h5>stdout</h5>
+                  <pre>{{ row.stdout }}</pre>
+                </div>
+                <div class="output error" v-if="row.stderr">
+                  <h5>stderr</h5>
+                  <pre>{{ row.stderr }}</pre>
+                </div>
+              </div>
+            </div>
           </template>
-        </tbody>
-      </table>
+        </el-table-column>
+
+        <!-- 时间列 -->
+        <el-table-column label="时间" min-width="200" show-overflow-tooltip>
+          <template #default="{ row }">
+            <span class="mono">{{ formatTime(row.executed_at) }}</span>
+          </template>
+        </el-table-column>
+
+        <!-- 服务器列 -->
+        <el-table-column label="服务器" min-width="160" show-overflow-tooltip>
+          <template #default="{ row }">{{ row.server_name }}</template>
+        </el-table-column>
+
+        <!-- 主机列 -->
+        <el-table-column label="主机" min-width="220" show-overflow-tooltip>
+          <template #default="{ row }">
+            <span class="mono">{{ row.username }}@{{ row.host }}:{{ row.port }}</span>
+          </template>
+        </el-table-column>
+
+        <!-- 退出码列 -->
+        <el-table-column label="退出码" width="120" align="left">
+          <template #default="{ row }">
+            <template v-if="row.exit_code === undefined || row.exit_code === null">
+              -
+            </template>
+            <template v-else>
+              <el-tag size="small" :type="row.exit_code === 0 ? 'success' : 'danger'">
+                {{ row.exit_code }}
+              </el-tag>
+            </template>
+          </template>
+        </el-table-column>
+
+        <!-- 空状态（仅在非加载情况下显示） -->
+        <template #empty>
+          <LoadingIndicator :loading="false" :empty="true" :inline="true" :show-retry="false" empty-message="暂无数据" />
+        </template>
+      </el-table>
     </div>
 
     <div class="pagination-container">
@@ -154,6 +185,7 @@
 
 <script>
 import { defineComponent, ref, watch, onMounted, computed } from 'vue';
+import LoadingIndicator from '@/components/common/LoadingIndicator.vue';
 import { ElMessage } from 'element-plus';
 import { useUserStore } from '@/store/user';
 import apiService from '@/services/api';
@@ -161,6 +193,7 @@ import log from '@/services/log';
 
 export default defineComponent({
   name: 'ScriptExecutionHistoryDialog',
+  components: { LoadingIndicator },
   props: {
     visible: { type: Boolean, default: false },
     script: { type: Object, default: null }
@@ -217,18 +250,31 @@ export default defineComponent({
       }
     };
 
-    // 行展开（原生表格）
-    const expanded = ref(new Set());
-    const isExpanded = (idx) => expanded.value.has(idx);
-    const toggleExpand = (idx) => {
-      const next = new Set(expanded.value);
-      if (next.has(idx)) next.delete(idx); else next.add(idx);
-      expanded.value = next;
+    // Element Plus 表格数据与展开行
+    const tableRows = computed(() =>
+      (history.value || []).map((r, idx) => ({
+        ...r,
+        __key: r.id ?? `${idx}-${r.executed_at ?? ''}`
+      }))
+    );
+    const expandedRowKeys = ref([]);
+    const onRowClick = (row) => {
+      const key = row.__key;
+      const set = new Set(expandedRowKeys.value);
+      if (set.has(key)) set.delete(key); else set.add(key);
+      expandedRowKeys.value = Array.from(set);
+    };
+    const onExpandChange = (row, expandedRows) => {
+      try {
+        expandedRowKeys.value = (expandedRows || []).map(r => r.__key);
+      } catch (_) {
+        // 忽略
+      }
     };
 
     const reload = () => {
       page.value = 1;
-      expanded.value = new Set();
+      expandedRowKeys.value = [];
       fetchHistory();
     };
 
@@ -315,13 +361,15 @@ export default defineComponent({
       // 关闭后卸载内部内容已由 destroy-on-close 处理
       // 这里重置可能的瞬时状态，避免下次打开触发 ResizeObserver 循环
       loading.value = false;
-      expanded.value = new Set();
+      expandedRowKeys.value = [];
     };
 
     return {
       connections,
       loading,
       history,
+      tableRows,
+      expandedRowKeys,
       total,
       page,
       limit,
@@ -331,8 +379,8 @@ export default defineComponent({
       handlePageChange,
       handlePageSizeChange,
       formatTime,
-      isExpanded,
-      toggleExpand,
+      onRowClick,
+      onExpandChange,
       onClosed
     };
   }
@@ -380,6 +428,29 @@ export default defineComponent({
   border: 1px solid var(--color-border-default);
   border-radius: 8px;
   padding: 8px 12px;
+}
+
+/* 通用加载指示器（与连接配置界面保持一致） */
+.loading-indicator {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px 16px;
+  gap: 12px;
+  color: var(--color-text-secondary);
+  font-size: 14px;
+}
+.loading-spinner {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 2px solid var(--color-border-lighter);
+  border-top-color: var(--color-primary);
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
 }
 
 /* Select 外观与主题色一致 */
@@ -441,68 +512,58 @@ export default defineComponent({
 .history-table :deep(.el-table--striped .el-table__body tr.el-table__row--striped td) {
   background: var(--color-bg-subtle, #252525);
 }
-.history-table :deep(.cell) {
+.history-el-table :deep(.cell) {
   font-size: 14px; /* 与脚本库单元格字号一致 */
   line-height: 1.45;
 }
-.history-table :deep(.el-table__expanded-cell) {
+.history-el-table :deep(.el-table__expanded-cell) {
   background: var(--color-bg-subtle, #252525);
 }
 
 /* Tag 成功/失败配色更柔和 */
-.history-table :deep(.el-tag) {
+.history-el-table :deep(.el-tag) {
   border: 1px solid var(--color-border-default, #2a2a2a);
 }
-.history-table :deep(.el-tag.el-tag--success) {
+.history-el-table :deep(.el-tag.el-tag--success) {
   color: var(--color-success, #67c23a);
   background-color: color-mix(in srgb, var(--color-success, #67c23a) 12%, transparent);
   border-color: color-mix(in srgb, var(--color-success, #67c23a) 30%, transparent);
 }
-.history-table :deep(.el-tag.el-tag--danger) {
+.history-el-table :deep(.el-tag.el-tag--danger) {
   color: var(--color-error, #f56c6c);
   background-color: color-mix(in srgb, var(--color-error, #f56c6c) 12%, transparent);
   border-color: color-mix(in srgb, var(--color-error, #f56c6c) 30%, transparent);
 }
 
-/* 原生表格样式（与脚本库保持一致） */
-.scripts-table {
-  width: 100%;
-  border-collapse: collapse;
-  color: var(--color-text-primary);
-  table-layout: fixed;
+/* Element Plus 表格样式（与系统主题令牌对齐） */
+.history-el-table {
+  --el-table-bg-color: var(--color-bg-page);
+  --el-table-tr-bg-color: var(--color-bg-page);
+  --el-table-border-color: var(--color-border-default);
+  --el-table-header-bg-color: var(--color-bg-muted);
+  --el-table-header-text-color: var(--color-text-primary);
+  --el-table-row-hover-bg-color: var(--color-bg-hover);
+  --el-table-text-color: var(--color-text-primary);
+  background-color: var(--color-bg-page);
 }
-.scripts-table th {
+.history-el-table :deep(.el-table__header-wrapper thead th) {
   text-align: left;
   padding: 12px;
   background-color: var(--color-bg-muted);
   border-bottom: 2px solid var(--color-border-default);
   font-weight: 500;
   font-size: 14px;
+  color: var(--color-text-primary);
 }
-.scripts-table td {
+.history-el-table :deep(.el-table__body td) {
   padding: 12px;
   border-bottom: 1px solid var(--color-border-default);
   vertical-align: middle;
-  background: var(--color-bg-container);
+  background-color: var(--color-bg-page);
 }
-.script-row:hover td {
-  background-color: var(--color-hover-bg);
+.history-el-table :deep(.el-table__body tr.hover-row > td) {
+  background-color: var(--el-table-row-hover-bg-color) !important;
 }
-.expand-row td {
-  background: transparent;
-  padding: 0;
-  border-bottom: none;
-}
-.expander {
-  display: inline-block;
-  width: 0; height: 0;
-  border-top: 5px solid transparent;
-  border-bottom: 5px solid transparent;
-  border-left: 6px solid var(--color-text-secondary);
-  margin-right: 8px;
-  transition: transform var(--transition-base);
-}
-.expander.open { transform: rotate(90deg); }
 
 /* 展开动画容器 */
 .expand-content {

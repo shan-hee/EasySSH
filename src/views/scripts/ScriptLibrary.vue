@@ -103,55 +103,55 @@
         </div>
 
         <div v-else class="table-with-pagination">
-          <table class="scripts-table">
-            <thead>
-              <tr>
-                <th class="script-name-column">名称</th>
-                <th class="script-desc-column">备注</th>
-                <th class="script-tags-column">标签</th>
-                <th class="script-command-column">指令内容</th>
-                <th class="script-actions-column">操作</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr
-                v-for="script in filteredScripts"
-                :key="`${script.source || 'public'}-${script.id}`"
-                class="script-row"
-              >
-                <td class="script-name">
+          <el-table
+            class="scripts-el-table"
+            :data="filteredScripts"
+            :row-class-name="'script-row'"
+            :border="false"
+            :stripe="false"
+            style="width: 100%"
+          >
+            <!-- 名称列 -->
+            <el-table-column label="名称" min-width="200">
+              <template #default="{ row }">
+                <div class="script-name">
                   <div class="name-with-favorite">
-                    <button class="btn-icon favorite-icon" @click="toggleFavorite(script)">
-                      <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        viewBox="0 0 24 24"
-                        width="16"
-                        height="16"
-                      >
+                    <button class="btn-icon favorite-icon" @click="toggleFavorite(row)">
+                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16">
                         <path
                           fill="currentColor"
                           :d="
-                            scriptLibraryService.isFavorite(script.id)
+                            scriptLibraryService.isFavorite(row.id)
                               ? 'M12,17.27L18.18,21L16.54,13.97L22,9.24L14.81,8.62L12,2L9.19,8.62L2,9.24L7.45,13.97L5.82,21L12,17.27Z'
                               : 'M12,15.39L8.24,17.66L9.23,13.38L5.91,10.5L10.29,10.13L12,6.09L13.71,10.13L18.09,10.5L14.77,13.38L15.76,17.66M22,9.24L14.81,8.63L12,2L9.19,8.63L2,9.24L7.45,13.97L5.82,21L12,17.27L18.18,21L16.54,13.97L22,9.24Z'
                           "
                         />
                       </svg>
                     </button>
-                    {{ script.name }}
+                    {{ row.name }}
                   </div>
                   <div class="script-meta">
-                    <span>作者: {{ script.author }}</span> |
-                    <span>更新于: {{ formatDate(script.updatedAt) }}</span>
+                    <span>作者: {{ row.author }}</span> |
+                    <span>更新于: {{ formatDate(row.updatedAt) }}</span>
                   </div>
-                </td>
-                <td class="script-description">
-                  {{ script.description }}
-                </td>
-                <td class="script-tags">
+                </div>
+              </template>
+            </el-table-column>
+
+            <!-- 备注列 -->
+            <el-table-column label="备注" min-width="200">
+              <template #default="{ row }">
+                <div class="script-description">{{ row.description }}</div>
+              </template>
+            </el-table-column>
+
+            <!-- 标签列 -->
+            <el-table-column label="标签" min-width="160">
+              <template #default="{ row }">
+                <div class="script-tags">
                   <div class="tag-list">
                     <span
-                      v-for="tag in script.tags"
+                      v-for="tag in row.tags"
                       :key="tag"
                       class="script-tag"
                       @click="toggleTag(tag)"
@@ -159,61 +159,71 @@
                       {{ tag }}
                     </span>
                   </div>
-                </td>
-                <td class="script-command">
-                  <code>{{ script.command }}</code>
-                </td>
-                <td class="script-actions">
-                  <!-- 只有用户脚本才显示编辑按钮 -->
-                  <el-button
-                    v-if="script.source === 'user'"
-                    class="action-btn"
-                    circle
-                    size="small"
-                    link
-                    title="编辑"
-                    @click="editScript(script)"
-                  >
-                    <el-icon><edit /></el-icon>
-                  </el-button>
-                  <!-- 运行按钮对所有脚本都显示 -->
-                  <el-button
-                    class="action-btn"
-                    circle
-                    size="small"
-                    link
-                    title="运行"
-                    @click="runScript(script)"
-                  >
-                    <el-icon><caret-right /></el-icon>
-                  </el-button>
-                  <!-- 查看历史按钮 -->
-                  <el-button
-                    class="action-btn"
-                    circle
-                    size="small"
-                    link
-                    title="查看历史"
-                    @click="openScriptHistory(script)"
-                  >
-                    <el-icon><clock /></el-icon>
-                  </el-button>
-                  <!-- 只有用户脚本才显示删除按钮 -->
-                  <el-button
-                    v-if="script.source === 'user'"
-                    class="action-btn"
-                    circle
-                    size="small"
-                    link
-                    title="删除"
-                    @click="deleteScript(script)"
-                  >
-                    <el-icon><delete /></el-icon>
-                  </el-button>
-                </td>
-              </tr>
-            </tbody>
-          </table>
+                </div>
+              </template>
+            </el-table-column>
+
+            <!-- 指令内容列 -->
+            <el-table-column label="指令内容" min-width="320" show-overflow-tooltip>
+              <template #default="{ row }">
+                <div class="script-command">
+                  <code>{{ row.command }}</code>
+                </div>
+              </template>
+            </el-table-column>
+
+            <!-- 操作列（固定在右侧） -->
+            <el-table-column label="操作" width="180" fixed="right" align="left">
+              <template #default="{ row }">
+                <!-- 只有用户脚本才显示编辑按钮 -->
+                <el-button
+                  v-if="row.source === 'user'"
+                  class="action-btn"
+                  circle
+                  size="small"
+                  link
+                  title="编辑"
+                  @click="editScript(row)"
+                >
+                  <el-icon><edit /></el-icon>
+                </el-button>
+                <!-- 运行按钮对所有脚本都显示 -->
+                <el-button
+                  class="action-btn"
+                  circle
+                  size="small"
+                  link
+                  title="运行"
+                  @click="runScript(row)"
+                >
+                  <el-icon><caret-right /></el-icon>
+                </el-button>
+                <!-- 查看历史按钮 -->
+                <el-button
+                  class="action-btn"
+                  circle
+                  size="small"
+                  link
+                  title="查看历史"
+                  @click="openScriptHistory(row)"
+                >
+                  <el-icon><clock /></el-icon>
+                </el-button>
+                <!-- 只有用户脚本才显示删除按钮 -->
+                <el-button
+                  v-if="row.source === 'user'"
+                  class="action-btn"
+                  circle
+                  size="small"
+                  link
+                  title="删除"
+                  @click="deleteScript(row)"
+                >
+                  <el-icon><delete /></el-icon>
+                </el-button>
+              </template>
+            </el-table-column>
+          </el-table>
 
           <!-- 分页组件 -->
           <div v-if="shouldShowPagination" class="pagination-container">
@@ -623,9 +633,17 @@ export default defineComponent({
       nextTick(() => {
         const containerHeight = tableContainer.value.clientHeight;
 
-        // 查找实际的表头高度
-        const tableHeader = tableContainer.value.querySelector('.scripts-table thead');
-        const headerHeight = tableHeader ? tableHeader.offsetHeight : 50;
+        // 查找实际的表头高度（兼容原生表格与 Element Plus 表格）
+        let headerHeight = 50;
+        const nativeHeader = tableContainer.value.querySelector('.scripts-table thead');
+        if (nativeHeader) {
+          headerHeight = nativeHeader.offsetHeight;
+        } else {
+          const epHeaderWrapper = tableContainer.value.querySelector(
+            '.scripts-el-table .el-table__header-wrapper'
+          );
+          if (epHeaderWrapper) headerHeight = epHeaderWrapper.offsetHeight;
+        }
 
         // 查找实际的分页组件高度（如果存在）
         const paginationEl = tableContainer.value.querySelector('.pagination-container');
@@ -1513,23 +1531,125 @@ export default defineComponent({
   min-width: 720px;
 }
 
-.scripts-table th {
+/* Element Plus Table 样式（使用系统主题令牌） */
+.scripts-el-table {
+  width: 100%;
+  min-width: 720px;
+  /* 变量兜底，适配 Element Plus 默认变量名 */
+  --el-table-bg-color: var(--color-bg-page);
+  --el-table-tr-bg-color: var(--color-bg-page);
+  --el-table-border-color: var(--color-border-default);
+  --el-table-header-bg-color: var(--color-bg-muted);
+  --el-table-header-text-color: var(--color-text-primary);
+  /* 使用实体色，避免半透明在重叠区域产生色阶 */
+  --el-table-row-hover-bg-color: var(--color-bg-hover);
+  --el-table-text-color: var(--color-text-primary);
+  background-color: var(--color-bg-page);
+}
+
+.scripts-el-table :deep(.el-table__header-wrapper thead th) {
   text-align: left;
   padding: 12px;
   background-color: var(--color-bg-muted);
   border-bottom: 2px solid var(--color-border-default);
   font-weight: 500;
   font-size: 14px;
+  color: var(--color-text-primary);
 }
 
-.scripts-table td {
+.scripts-el-table :deep(.el-table__body td) {
   padding: 12px;
   border-bottom: 1px solid var(--color-border-default);
   vertical-align: middle;
+  background-color: var(--color-bg-page);
+  transition: background-color var(--theme-transition-duration) var(--theme-transition-timing);
 }
 
-.script-row:hover {
+/* 依赖 EP 的变量驱动 hover：--el-table-row-hover-bg-color
+   移除自定义 :hover 规则，避免与 EP 的 hover-row 机制叠加导致不一致 */
+.scripts-el-table :deep(.el-table__body tr.hover-row > td) {
+  background-color: var(--el-table-row-hover-bg-color) !important;
+}
+
+/* 表格顶部细线与边框使用系统边框色 */
+.scripts-el-table :deep(.el-table__inner-wrapper::before) {
+  background-color: var(--color-border-default);
+}
+
+/* 键盘可达性：行获得焦点时给予与悬浮一致的反馈 */
+.scripts-el-table :deep(.el-table__body tr.script-row:focus-within > td) {
   background-color: var(--color-hover-bg);
+}
+
+/* 兼容旧类名的回退（保持一致的变量） */
+:deep(.script-row:hover) {
+  background-color: var(--el-table-row-hover-bg-color);
+}
+
+/* 固定在右侧的操作列可视性与风格（防止被覆盖，增强分隔感） */
+.scripts-el-table :deep(.el-table__fixed),
+.scripts-el-table :deep(.el-table__fixed-right) {
+  z-index: 2;
+  border-left: 1px solid var(--color-border-default);
+  /* 避免固定层的阴影在深色主题下叠加变暗 */
+  box-shadow: none !important;
+  background-color: transparent !important;
+}
+
+.scripts-el-table :deep(.el-table__fixed::before),
+.scripts-el-table :deep(.el-table__fixed-right::before) {
+  /* 一些主题会用 ::before 叠加渐变/阴影，统一关闭 */
+  content: none !important;
+}
+
+.scripts-el-table :deep(.el-table__fixed .el-table__fixed-header-wrapper),
+.scripts-el-table :deep(.el-table__fixed-right .el-table__fixed-header-wrapper) {
+  background-color: transparent !important;
+}
+.scripts-el-table :deep(.el-table__fixed .el-table__fixed-header-wrapper th),
+.scripts-el-table :deep(.el-table__fixed-right .el-table__fixed-header-wrapper th) {
+  background-color: var(--color-bg-muted);
+  color: var(--color-text-primary);
+}
+
+.scripts-el-table :deep(.el-table__fixed .el-table__fixed-body-wrapper),
+.scripts-el-table :deep(.el-table__fixed-right .el-table__fixed-body-wrapper) {
+  background-color: var(--color-bg-page) !important;
+}
+.scripts-el-table :deep(.el-table__fixed .el-table__fixed-body-wrapper td),
+.scripts-el-table :deep(.el-table__fixed-right .el-table__fixed-body-wrapper td) {
+  /* 与主表默认行背景保持一致，避免重叠区域看到容器底色 */
+  background-color: var(--color-bg-page) !important;
+  color: var(--color-text-primary);
+}
+
+/* 修正 Element Plus 的右侧 patch（用于滚动条/固定列对齐）默认是白色背景，会叠加出不同色阶 */
+.scripts-el-table :deep(.el-table__fixed-right-patch) {
+  /* 与表头背景一致，避免右侧补丁出现色阶 */
+  background: var(--color-bg-muted) !important;
+  background-color: var(--color-bg-muted) !important;
+  pointer-events: none; /* 避免事件穿透干扰 hover 检测 */
+}
+
+/* 固定层上的单元格 hover-cell 也置为透明，避免与主表 hover 叠加 */
+.scripts-el-table :deep(.el-table__fixed .el-table__body td.hover-cell),
+.scripts-el-table :deep(.el-table__fixed-right .el-table__body td.hover-cell) {
+  background-color: var(--el-table-row-hover-bg-color) !important;
+}
+
+/* 避免固定列在悬浮/焦点时再次叠加半透明背景，保持统一效果 */
+.scripts-el-table :deep(.el-table__fixed .el-table__body tr.hover-row > td),
+.scripts-el-table :deep(.el-table__fixed-right .el-table__body tr.hover-row > td),
+.scripts-el-table :deep(.el-table__fixed .el-table__body tr.hover-fixed-row > td),
+.scripts-el-table :deep(.el-table__fixed-right .el-table__body tr.hover-fixed-row > td) {
+  /* 固定层与主表 hover 色一致，避免色阶 */
+  background-color: var(--el-table-row-hover-bg-color) !important;
+}
+.scripts-el-table :deep(.el-table__fixed .el-table__body tr.script-row:focus-within > td),
+.scripts-el-table :deep(.el-table__fixed-right .el-table__body tr.script-row:focus-within > td),
+.scripts-el-table :deep(.el-table__fixed .el-table__body tr.hover-fixed-row:focus-within > td),
+.scripts-el-table :deep(.el-table__fixed-right .el-table__body tr.hover-fixed-row:focus-within > td) {
+  background-color: var(--el-table-row-hover-bg-color) !important;
 }
 
 .script-name-column {
@@ -1585,7 +1705,8 @@ export default defineComponent({
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 0;
+  max-width: 100%;
+  display: block;
 }
 
 .script-command code {
