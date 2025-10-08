@@ -313,6 +313,65 @@ export default defineComponent({
     // 从可复用逻辑中获取工具函数
     const { formatFileSize, formatDate } = useFileUtils();
 
+    // —— 增量更新工具 ——
+    const isDirectChildOfCurrent = remotePath => {
+      try {
+        if (!remotePath || !currentPath.value) return false;
+        const parent = remotePath.substring(0, remotePath.lastIndexOf('/')) || '/';
+        return parent === currentPath.value;
+      } catch (_) {
+        return false;
+      }
+    };
+
+    const recomputeRawFromAll = () => {
+      const source = Array.isArray(allFileList.value) ? allFileList.value : [];
+      rawFileList.value = showHiddenFiles.value
+        ? [...source]
+        : source.filter(f => !(f?.name || '').startsWith('.'));
+    };
+
+    const addOrUpdateEntry = (name, { isDirectory = false, size, modifiedTime, permissions } = {}) => {
+      if (!name) return;
+
+      const apply = list => {
+        if (!Array.isArray(list)) return;
+        const idx = list.findIndex(f => f && f.name === name);
+        const base = idx !== -1 ? list[idx] : { name, isDirectory: !!isDirectory };
+        const updated = {
+          ...base,
+          name,
+          isDirectory: typeof isDirectory === 'boolean' ? isDirectory : !!base.isDirectory,
+          size: typeof size === 'number' ? size : base.size,
+          modifiedTime: modifiedTime || base.modifiedTime || new Date(),
+          permissions: typeof permissions !== 'undefined' ? permissions : base.permissions
+        };
+        if (idx !== -1) list.splice(idx, 1, updated);
+        else list.push(updated);
+      };
+
+      // 更新完整列表
+      apply(allFileList.value);
+      // 更新可见列表
+      const hidden = String(name || '').startsWith('.');
+      if (showHiddenFiles.value || !hidden) {
+        apply(rawFileList.value);
+      } else {
+        const idx = rawFileList.value.findIndex(f => f && f.name === name);
+        if (idx !== -1) rawFileList.value.splice(idx, 1);
+      }
+    };
+
+    const removeEntryByName = name => {
+      const removeFrom = list => {
+        if (!Array.isArray(list)) return;
+        const idx = list.findIndex(f => f && f.name === name);
+        if (idx !== -1) list.splice(idx, 1);
+      };
+      removeFrom(allFileList.value);
+      removeFrom(rawFileList.value);
+    };
+
     // （已移除）自定义上传确认弹窗：遵循用户偏好使用顶部气泡提示
 
     // 判断是否是文本文件
@@ -748,9 +807,12 @@ export default defineComponent({
           inlineEditor.value.resetCreating();
         }
 
-        // 刷新目录显示新创建的项目
-        log.debug(`${type === 'folder' ? '文件夹' : '文件'}创建成功，刷新目录显示: ${fullPath}`);
-        await refreshCurrentDirectory();
+        // 无刷新：直接把新建项加入列表
+        addOrUpdateEntry(name, {
+          isDirectory: type === 'folder',
+          size: 0,
+          modifiedTime: new Date()
+        });
       } catch (error) {
         // 立即重置创建状态，停止动画
         cancelCreate();
@@ -1221,16 +1283,7 @@ export default defineComponent({
           transferInterval.value = null;
         }
 
-        // 一次性刷新目录（仅在未被取消时刷新，因为取消时cancelUpload已经刷新了）
-        if (!uploadCancelled) {
-          try {
-            log.debug('开始刷新目录...');
-            await loadDirectoryContents(currentPath.value);
-            log.debug('目录刷新完成');
-          } catch (error) {
-            log.error('刷新目录失败:', error);
-          }
-        }
+        // 不再全局刷新：单文件与目录上传过程中已进行增量更新
       };
 
       // 立即调用完成函数
@@ -1332,14 +1385,23 @@ export default defineComponent({
         currentUploadId.value = null;
       }
 
-      // 立即刷新目录
+      // 无刷新：移除本次上传可能新增的直接子项
       try {
-        log.debug('开始刷新目录...');
-        await loadDirectoryContents(currentPath.value);
-        log.debug('目录刷新完成');
-      } catch (error) {
-        log.error('刷新目录失败:', error);
-      }
+        const pathToName = p => {
+          const idx = p.lastIndexOf('/');
+          return idx >= 0 ? p.substring(idx + 1) : p;
+        };
+        if (currentUploadingRemotePath.value && isDirectChildOfCurrent(currentUploadingRemotePath.value)) {
+          removeEntryByName(pathToName(currentUploadingRemotePath.value));
+        }
+        if (createdDirectoriesForCurrentUpload.size > 0) {
+          for (const dirPath of createdDirectoriesForCurrentUpload) {
+            if (isDirectChildOfCurrent(dirPath)) {
+              removeEntryByName(pathToName(dirPath));
+            }
+          }
+        }
+      } catch (_) {}
     };
 
     // 上传文件到服务器
@@ -1425,7 +1487,7 @@ export default defineComponent({
             const uploadEndTime = Date.now();
             const _totalTimeSeconds = ((uploadEndTime - transferStartTime.value) / 1000).toFixed(2);
 
-            // 延迟关闭上传状态并刷新目录
+            // 延迟关闭上传状态并进行增量更新
             setTimeout(() => {
               isUploading.value = false;
               currentUploadId.value = null; // 清除操作ID
@@ -1437,9 +1499,14 @@ export default defineComponent({
                 transferInterval.value = null;
               }
 
-              // 确保刷新当前目录
-              refreshCurrentDirectory();
-              log.debug('已刷新目录:', currentPath.value);
+              // 若上传到当前目录，增量更新该文件
+              if (isDirectChildOfCurrent(remotePath)) {
+                addOrUpdateEntry(file.name, {
+                  isDirectory: false,
+                  size: typeof file.size === 'number' ? file.size : undefined,
+                  modifiedTime: new Date()
+                });
+              }
             }, 1500);
           }
         };
@@ -1454,7 +1521,7 @@ export default defineComponent({
           // 如果回调没有触发100%的进度，在这里显示成功消息
           ElMessage.success(`文件 ${file.name} 上传成功`);
 
-          // 确保刷新目录
+          // 增量更新当前目录
           setTimeout(() => {
             isUploading.value = false;
             // 清除计时器
@@ -1462,13 +1529,24 @@ export default defineComponent({
               clearInterval(transferInterval.value);
               transferInterval.value = null;
             }
-            // 刷新当前目录
-            refreshCurrentDirectory();
-            log.debug('已刷新目录:', currentPath.value);
+            if (isDirectChildOfCurrent(remotePath)) {
+              addOrUpdateEntry(file.name, {
+                isDirectory: false,
+                size: typeof file.size === 'number' ? file.size : undefined,
+                modifiedTime: new Date()
+              });
+            }
           }, 1500);
         } else if (!isBatchUpload) {
           // 如果已经处理了100%进度，只显示成功消息
           ElMessage.success(`文件 ${file.name} 上传成功`);
+          if (isDirectChildOfCurrent(remotePath)) {
+            addOrUpdateEntry(file.name, {
+              isDirectory: false,
+              size: typeof file.size === 'number' ? file.size : undefined,
+              modifiedTime: new Date()
+            });
+          }
         }
       } catch (error) {
         log.error('上传文件失败:', error);
@@ -2170,8 +2248,16 @@ export default defineComponent({
 
         ElMessage.success(`${file.isDirectory ? '文件夹' : '文件'} ${file.name} 已删除`);
 
-        // 刷新目录以移除已删除文件
-        refreshCurrentDirectory();
+        // 无刷新增量更新：仅从当前内存列表中移除被删项，避免全局刷新
+        const removeFromList = list => {
+          if (!Array.isArray(list)) return;
+          const index = list.findIndex(f => f && f.name === file.name);
+          if (index !== -1) {
+            list.splice(index, 1);
+          }
+        };
+        removeFromList(allFileList.value);
+        removeFromList(rawFileList.value);
       } catch (error) {
         // 移除加载状态
         const loadingDiv = document.querySelector('.sftp-file-list-content .sftp-loading-files');
@@ -2554,8 +2640,7 @@ export default defineComponent({
           transferInterval.value = null;
         }
 
-        // 最后只刷新一次
-        refreshCurrentDirectory();
+        // 不再全局刷新：逐文件/目录已做增量更新
         createdDirectoriesForCurrentUpload.clear();
       } catch (error) {
         log.error('上传过程中发生错误:', error);
@@ -2574,8 +2659,7 @@ export default defineComponent({
           transferInterval.value = null;
         }
 
-        // 出错时也刷新一次
-        refreshCurrentDirectory();
+        // 出错时不强制刷新
         createdDirectoriesForCurrentUpload.clear();
       }
     };
@@ -2638,6 +2722,15 @@ export default defineComponent({
                   lastProgress = progress;
                 }
               });
+
+              // 增量更新：若文件上传到当前目录（而非子目录），更新/新增该文件项
+              if (!path && isDirectChildOfCurrent(remotePath)) {
+                addOrUpdateEntry(file.name, {
+                  isDirectory: false,
+                  size: typeof file.size === 'number' ? file.size : undefined,
+                  modifiedTime: new Date()
+                });
+              }
 
               resolve();
             } catch (error) {
@@ -2706,6 +2799,15 @@ export default defineComponent({
         }
         if (createdDir) {
           createdDirectoriesForCurrentUpload.add(remoteDirPath);
+        }
+
+        // 若是当前目录下的顶级新目录，增量加入列表（即path为空时）
+        if (!path && isDirectChildOfCurrent(remoteDirPath)) {
+          addOrUpdateEntry(directoryEntry.name, {
+            isDirectory: true,
+            size: 0,
+            modifiedTime: new Date()
+          });
         }
 
         // 读取目录内容
@@ -2860,10 +2962,10 @@ export default defineComponent({
     const handleSearch = query => {
       log.debug('接收到搜索查询:', query);
 
-      // 如果搜索查询为空，显示所有文件
+      // 如果搜索查询为空，回到原始文件列表（不触发远端刷新）
       if (!query || query.trim() === '') {
-        log.debug('搜索查询为空，刷新目录显示所有文件');
-        refreshCurrentDirectory();
+        log.debug('搜索查询为空，恢复完整列表');
+        recomputeRawFromAll();
         return;
       }
 
@@ -2888,7 +2990,7 @@ export default defineComponent({
     // 切换显示/隐藏隐藏文件
     const toggleHiddenFiles = value => {
       showHiddenFiles.value = value;
-      refreshCurrentDirectory();
+      recomputeRawFromAll();
     };
 
     // 处理权限编辑
@@ -2915,8 +3017,14 @@ export default defineComponent({
         // 调用SFTP服务的权限修改方法
         await sftpService.changePermissions(props.sessionId, fullPath, newPermissions);
 
-        // 刷新目录以更新权限显示
-        await refreshCurrentDirectory();
+        // 无刷新：更新本地列表中的权限信息
+        const applyPerm = list => {
+          if (!Array.isArray(list)) return;
+          const idx = list.findIndex(f => f && f.name === file.name);
+          if (idx !== -1) list[idx] = { ...list[idx], permissions: newPermissions };
+        };
+        applyPerm(allFileList.value);
+        applyPerm(rawFileList.value);
 
         ElMessage.success('权限修改成功');
       } catch (error) {
@@ -2993,8 +3101,14 @@ export default defineComponent({
 
     // 处理编辑器保存事件
     const handleEditorSave = () => {
-      // 刷新文件列表，以更新文件修改日期
-      refreshCurrentDirectory();
+      // 无刷新：更新当前编辑文件的修改时间
+      try {
+        const path = editingFilePath.value || '';
+        const name = path.split('/').pop();
+        if (name) {
+          addOrUpdateEntry(name, { isDirectory: false, modifiedTime: new Date() });
+        }
+      } catch (_) {}
     };
 
     // 初始化SFTP会话
