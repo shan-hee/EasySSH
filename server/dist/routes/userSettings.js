@@ -1,0 +1,14 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+const express_1 = require("express");
+const userSettingsController = require('../controllers/userSettingsController');
+const auth_1 = require("../middleware/auth");
+const router = (0, express_1.Router)();
+router.use(auth_1.authMiddleware);
+router.get('/', userSettingsController.getSettings);
+router.get('/terminal/minimal', userSettingsController.getTerminalMinimal);
+router.put('/', userSettingsController.updateSettings);
+router.put('/batch', userSettingsController.updateSettingsBatch);
+router.post('/sync', userSettingsController.syncSettings);
+router.delete('/:category', userSettingsController.deleteSettings);
+exports.default = router;

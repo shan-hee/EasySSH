@@ -7,6 +7,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "typecheck": "vue-tsc --noEmit",
     "build:report": "vite build && npx vite-bundle-analyzer dist",
     "build:optimize": "node scripts/build-optimize.js",
     "preview": "vite preview",
@@ -96,10 +97,12 @@
     "terser": "^5.41.0",
     "unplugin-auto-import": "^0.17.8",
     "unplugin-vue-components": "^0.27.5",
+    "typescript": "^5.6.3",
     "vite": "^5.2.8",
     "vite-bundle-analyzer": "^0.11.1",
     "vite-plugin-compression": "^0.5.1",
-    "vite-plugin-svg-icons": "^0.1.0"
+    "vite-plugin-svg-icons": "^0.1.0",
+    "vue-tsc": "^1.8.27"
   },
   "browserslist": [
     "> 1%",

@@ -11,6 +11,6 @@ services:
       - JWT_SECRET=${JWT_SECRET:-your-jwt-secret-key-please-change-in-production}
       - ENCRYPTION_KEY=${ENCRYPTION_KEY:-your-encryption-key-please-change-in-production}
     volumes:
-      - ./data:/app/server/data
-      - ./logs:/app/server/logs
+      - ./easyssh/data:/app/server/data
+      - ./easyssh/logs:/easyssh/logs
     restart: unless-stopped

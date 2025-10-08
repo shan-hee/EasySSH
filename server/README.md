@@ -1,8 +1,20 @@
-# EasySSH 服务器端文档
+# EasySSH 服务器端文档（TypeScript 版）
 
+## 快速开始
+
+服务器端已全面迁移为 TypeScript。
+
+- 开发运行（在 `server/` 下）
+  - `npm install`
+  - `npm run dev`（ts-node-dev 直接运行 TS 源码，预加载根目录 .env）
+
+- 构建与启动
+  - 构建：`npm run build`（编译至 `server/dist`）
+  - 启动：`npm run start`（从 `server/dist` 启动，预加载根目录 .env）
+  
 ## 混合存储架构详解 (SQLite + node-cache)
 
-EasySSH服务器端采用SQLite + node-cache混合存储架构，为用户数据管理提供高性能、高可靠性的解决方案。本文档详细说明混合存储的实现原理、数据流设计和关键组件。
+EasySSH 服务器端采用 SQLite + node-cache 混合存储架构，为用户数据管理提供高性能与可靠性。本文档说明混合存储的实现原理、数据流设计和关键组件。
 
 ### 架构概述
 
@@ -158,7 +170,7 @@ node-cache作为内存缓存系统，存储多种类型的临时数据：
 
 ## 数据库配置
 
-SQLite数据库在服务启动时自动创建和初始化。数据库文件存储在`server/data`目录中。
+SQLite 数据库在服务启动时自动创建和初始化。数据库文件统一存放在 `server/data` 目录（无论开发或编译运行）。
 
 ### 表结构
 
