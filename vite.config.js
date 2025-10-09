@@ -301,6 +301,15 @@ export default defineConfig(async ({ mode }) => {
         'pinia',
         'element-plus',
         'element-plus/es',
+        // 预打包 ScriptLibrary 路由首次进入会用到的 Element Plus 依赖，避免触发二次优化导致的整页刷新
+        '@element-plus/icons-vue',
+        'element-plus/es/components/table/style/index',
+        'element-plus/es/components/table-column/style/index',
+        'element-plus/es/components/tag/style/index',
+        'element-plus/es/components/dialog/style/index',
+        'element-plus/es/components/button/style/index',
+        'element-plus/es/components/message/style/index',
+        'element-plus/es/components/message-box/style/index',
         // 预打包常用 Element Plus 样式依赖，避免二次优化触发刷新
         'element-plus/es/components/icon/style/index',
         'element-plus/es/components/pagination/style/index',
