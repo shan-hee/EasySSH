@@ -1,0 +1,701 @@
+/**
+ * 剪贴板服务模块，提供跨浏览器的剪贴板操作功能
+ */
+
+// 导入日志服务
+import log from './log';
+
+export type ClipboardService = {
+  init(): Promise<boolean>;
+  setupEventListeners(): void;
+  handlePaste(event: ClipboardEvent): Promise<string | null>;
+  validateContent(content: string, type?: string): string | null;
+  copyToClipboard(text: string): Promise<boolean>;
+  copyText(text: string, options?: { silent?: boolean }): Promise<boolean>;
+  readText(): Promise<string>;
+  pasteToTerminal(targetElement: HTMLElement | null): Promise<boolean>;
+  clearHistory(): void;
+};
+
+function debounce<T extends (...args: any[]) => void>(func: T, wait: number): (...args: Parameters<T>) => void {
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  return function (...args: Parameters<T>) {
+    const later = () => {
+      if (timeout) clearTimeout(timeout);
+      func(...args);
+    };
+    if (timeout) clearTimeout(timeout);
+    timeout = setTimeout(later, wait);
+  };
+}
+
+/**
+ * 权限管理器，处理剪贴板权限
+ */
+class PermissionManager {
+  permissions: Map<string, string>;
+  constructor() {
+    this.permissions = new Map<string, string>();
+  }
+
+  /**
+   * 检查剪贴板权限
+   * @param {string} type - 权限类型（read/write）
+   * @returns {Promise<boolean>} - 是否拥有权限
+   */
+  async checkPermission(type: 'read' | 'write'): Promise<boolean> {
+    try {
+      // 尝试使用Permissions API查询权限
+      if (navigator.permissions && navigator.permissions.query) {
+        const permission: any = await navigator.permissions.query({ name: `clipboard-${type}` as any });
+        this.permissions.set(type, (permission.state as string) || 'prompt');
+        return (permission.state as string) === 'granted';
+      }
+      // 如果不支持Permissions API，假设有权限
+      return true;
+    } catch (error) {
+      log.error('权限检查失败', { error: (error as any)?.message });
+      return true; // 默认假设有权限，让用户操作决定
+    }
+  }
+
+  /**
+   * 请求剪贴板权限
+   * @param {string} type - 权限类型（read/write）
+   * @returns {Promise<boolean>} - 是否获得权限
+   */
+  async requestPermission(type: 'read' | 'write'): Promise<boolean> {
+    try {
+      return await this.checkPermission(type);
+    } catch (error) {
+      log.error('权限请求失败', { error: (error as any)?.message });
+      return false;
+    }
+  }
+}
+
+/**
+ * 历史记录管理器，处理剪贴板历史
+ */
+class HistoryManager {
+  maxItems: number;
+  key: string;
+  constructor(maxItems = 10) {
+    this.maxItems = maxItems;
+    this.key = 'easyssh_clipboard_history';
+  }
+
+  /**
+   * 获取历史记录
+   * @returns {Array} - 历史记录数组
+   */
+  getHistory(): string[] {
+    try {
+      const raw = localStorage.getItem(this.key);
+      return raw ? (JSON.parse(raw) as string[]) : [];
+    } catch (error) {
+      log.error('读取历史记录失败', { error: (error as any)?.message });
+      return [];
+    }
+  }
+
+  /**
+   * 添加内容到历史记录
+   * @param {string} content - 要添加的内容
+   */
+  addToHistory(content: string) {
+    try {
+      if (!content || content.trim().length === 0) return;
+
+      let history = this.getHistory();
+      // 删除重复项
+      history = history.filter(item => item !== content);
+      // 添加到开头
+      history.unshift(content);
+      // 限制长度
+      history = history.slice(0, this.maxItems);
+      localStorage.setItem(this.key, JSON.stringify(history));
+    } catch (error) {
+      log.error('添加历史记录失败', { error: (error as any)?.message });
+    }
+  }
+
+  /**
+   * 清除历史记录
+   */
+  clearHistory() {
+    try {
+      localStorage.removeItem(this.key);
+    } catch (error) {
+      log.error('清除历史记录失败', { error: (error as any)?.message });
+    }
+  }
+}
+
+/**
+ * 内容处理策略
+ */
+const ContentHandlers: Record<string, { validate: (content: string) => boolean; process: (content: string) => string }> = {
+  'text/plain': {
+    validate: content => typeof content === 'string' && content.length <= 1024 * 1024,
+    process: content => content.trim()
+  },
+  'text/html': {
+    validate: content => content.length <= 2 * 1024 * 1024,
+    process: content => {
+      const div = document.createElement('div');
+      div.innerHTML = content;
+      return div.innerText;
+    }
+  }
+};
+
+/**
+ * 基础剪贴板管理器
+ */
+class ClipboardManager {
+  permissionManager: PermissionManager;
+  historyManager: HistoryManager;
+  initialized: boolean;
+  useClipboardAPI?: boolean;
+  constructor() {
+    this.permissionManager = new PermissionManager();
+    this.historyManager = new HistoryManager();
+    this.initialized = false;
+  }
+
+  /**
+   * 初始化剪贴板服务
+   * @returns {Promise<boolean>} - 是否初始化成功
+   */
+  async init(): Promise<boolean> {
+    // 避免重复初始化
+    if (this.initialized) {
+      return Promise.resolve(true);
+    }
+
+    try {
+      // 确保在浏览器环境中运行
+      if (typeof navigator === 'undefined') {
+        log.warn('非浏览器环境，剪贴板服务将降级运行');
+        this.initialized = true;
+        return Promise.resolve(true);
+      }
+
+      // 检查是否支持 Clipboard API
+      this.useClipboardAPI = !!navigator.clipboard;
+
+      if (!this.useClipboardAPI) {
+        log.warn('浏览器不支持Clipboard API，使用备用方式');
+      }
+
+      // 监听粘贴事件 - 只在document存在的情况下添加
+      if (typeof document !== 'undefined') {
+        try {
+          document.addEventListener('paste', (event: ClipboardEvent) => {
+            // 简单的空函数，避免直接绑定到可能不存在的方法
+            if (typeof this._handlePaste === 'function') {
+              this._handlePaste(event);
+            } else {
+              // 降级处理
+              this.handlePaste(event);
+            }
+          });
+        } catch (e) {
+          log.warn('添加粘贴事件监听失败，将使用降级方法');
+        }
+      }
+
+      this.initialized = true;
+      return Promise.resolve(true);
+    } catch (error) {
+      log.error('剪贴板服务初始化失败', error);
+
+      // 即使失败也将服务标记为已初始化，以避免重复尝试
+      this.initialized = true;
+
+      // 降级支持，仍然返回成功
+      return Promise.resolve(true);
+    }
+  }
+
+  /**
+   * 处理粘贴事件
+   * @param {ClipboardEvent} event - 粘贴事件
+   */
+  _handlePaste(event: ClipboardEvent) {
+    // 简单实现，避免错误
+    try {
+      const clipboardData = event.clipboardData || (window as any).clipboardData;
+      if (clipboardData) {
+        const text = clipboardData.getData('text/plain');
+        if (text) {
+          log.debug('已处理粘贴事件', { length: text.length });
+        }
+      }
+    } catch (e: any) {
+      log.debug('处理粘贴事件出错', e);
+    }
+  }
+
+  /**
+   * 设置事件监听器
+   */
+  setupEventListeners() {
+    if (typeof document !== 'undefined') {
+      document.addEventListener('paste', debounce(this.handlePaste.bind(this), 300));
+    }
+  }
+
+  /**
+   * 处理粘贴事件
+   * @param {ClipboardEvent} event - 粘贴事件
+   * @returns {string|null} - 粘贴的内容
+   */
+  async handlePaste(event: ClipboardEvent): Promise<string | null> {
+    try {
+      // 权限检查放宽松，避免阻止用户操作
+      const clipboardData = event.clipboardData || (window as any).clipboardData;
+      if (!clipboardData) return null;
+
+      const content = clipboardData.getData('text/plain');
+      const processed = content ? this.validateContent(content) : null;
+      if (processed) {
+        this.historyManager.addToHistory(processed);
+        return processed;
+      }
+      return null;
+    } catch (error) {
+      log.error('粘贴处理失败', { error: (error as any)?.message });
+      return null;
+    }
+  }
+
+  /**
+   * 验证内容
+   * @param {string} content - 要验证的内容
+   * @param {string} type - 内容类型
+   * @returns {string|null} - 处理后的内容（无效返回null）
+   */
+  validateContent(content: string, type: string = 'text/plain'): string | null {
+    try {
+      const handler = ContentHandlers[type];
+      if (!handler) return null;
+      return handler.validate(content) ? handler.process(content) : null;
+    } catch (_err) {
+      return null;
+    }
+  }
+
+  /**
+   * 复制内容到剪贴板
+   * @param {string} text - 要复制的文本
+   * @returns {Promise<boolean>} - 是否复制成功
+   */
+  async copyToClipboard(text: string): Promise<boolean> {
+    if (!text) return false;
+
+    try {
+      // 使用现代Clipboard API
+      if (navigator.clipboard) {
+        await navigator.clipboard.writeText(text);
+        this.historyManager.addToHistory(text);
+        return true;
+      }
+
+      // 回退方案：使用document.execCommand
+      const textarea = document.createElement('textarea');
+      textarea.value = text;
+      textarea.style.position = 'fixed';
+      textarea.style.left = '-9999px';
+      document.body.appendChild(textarea);
+      textarea.select();
+
+      const result = document.execCommand('copy');
+      document.body.removeChild(textarea);
+
+      if (result) {
+        this.historyManager.addToHistory(text);
+      }
+
+      return result;
+    } catch (error: any) {
+      log.error('复制操作失败', { error: error?.message });
+      return false;
+    }
+  }
+
+  /**
+   * 兼容terminal.js的复制方法
+   * @param {string} text - 要复制的文本
+   * @param {Object} options - 选项
+   * @returns {Promise<boolean>} - 是否复制成功
+   */
+  async copyText(text: string, _options: { silent?: boolean } = {}): Promise<boolean> {
+    const result = await this.copyToClipboard(text);
+    if (result && !_options.silent) {
+      // 可以在这里添加复制成功的提示
+    }
+    return result;
+  }
+
+  /**
+   * 从剪贴板读取文本
+   * @returns {Promise<string>} - 读取的文本
+   */
+  async readText(): Promise<string> {
+    try {
+      if (navigator.clipboard && navigator.clipboard.readText) {
+        return await navigator.clipboard.readText();
+      }
+      throw new Error('不支持的操作');
+    } catch (error: any) {
+      log.error('读取操作失败', { error: error?.message });
+      return '';
+    }
+  }
+}
+
+/**
+ * 重试管理器
+ */
+class RetryManager {
+  maxRetries: number;
+  delay: number;
+  constructor(maxRetries = 3, delay = 1000) {
+    this.maxRetries = maxRetries;
+    this.delay = delay;
+  }
+
+  /**
+   * 重试操作
+   * @param {Function} operation - 要重试的操作
+   * @returns {Promise<any>} - 操作结果
+   */
+  async retry<T>(operation: () => Promise<T>): Promise<T> {
+    let lastError: any;
+    for (let attempt = 0; attempt < this.maxRetries; attempt++) {
+      try {
+        return await operation();
+      } catch (error) {
+        lastError = error;
+        await new Promise(resolve => setTimeout(resolve, this.delay));
+      }
+    }
+    throw lastError;
+  }
+}
+
+/**
+ * 速率限制器
+ */
+class RateLimiter {
+  limit: number;
+  interval: number;
+  tokens: number;
+  lastRefill: number;
+  constructor(limit = 5, interval = 1000) {
+    this.limit = limit;
+    this.interval = interval;
+    this.tokens = limit;
+    this.lastRefill = Date.now();
+  }
+
+  /**
+   * 检查是否超出限制
+   * @returns {Promise<boolean>} - 是否允许操作
+   */
+  async checkLimit(): Promise<boolean> {
+    this.refillTokens();
+    if (this.tokens <= 0) {
+      throw new Error('操作过于频繁，请稍后再试');
+    }
+    this.tokens--;
+    return true;
+  }
+
+  /**
+   * 重新填充令牌
+   */
+  refillTokens() {
+    const now = Date.now();
+    const timePassed = now - this.lastRefill;
+    const refillAmount = Math.floor(timePassed / this.interval) * this.limit;
+    this.tokens = Math.min(this.limit, this.tokens + refillAmount);
+    this.lastRefill = now;
+  }
+}
+
+/**
+ * 增强版剪贴板管理器，带安全和性能优化
+ */
+class EnhancedClipboardManager extends ClipboardManager {
+  retryManager: RetryManager;
+  rateLimiter: RateLimiter;
+  history: Map<number, string>;
+  maxHistorySize: number;
+  maxContentSize: number;
+  constructor() {
+    super();
+    this.retryManager = new RetryManager();
+    this.rateLimiter = new RateLimiter();
+    this.history = new Map<number, string>();
+    this.maxHistorySize = 50;
+    this.maxContentSize = 1024 * 1024; // 1MB
+  }
+
+  /**
+   * 初始化
+   */
+  async init(): Promise<boolean> {
+    if (this.initialized) {
+      return true;
+    }
+
+    // 调用父类初始化
+    await super.init();
+    this.loadHistory();
+
+    return true;
+  }
+
+  /**
+   * 设置事件监听器
+   */
+  setupEventListeners() {
+    if (typeof document !== 'undefined') {
+      document.addEventListener('paste', this.handlePaste.bind(this));
+      window.addEventListener('beforeunload', () => this.persistHistory());
+    }
+  }
+
+  /**
+   * 验证内容
+   * @param {string} content - 要验证的内容
+   * @param {string} type - 内容类型
+   * @returns {string} - 处理后的内容
+   */
+  validateContent(content: string, type: string = 'text/plain'): string {
+    if (!content) {
+      throw new Error('内容不能为空');
+    }
+
+    if (content.length > this.maxContentSize) {
+      throw new Error('内容大小超出限制');
+    }
+
+    // 内容类型验证
+    const allowedTypes = ['text/plain', 'text/html'];
+    if (!allowedTypes.includes(type)) {
+      throw new Error('不支持的内容类型');
+    }
+
+    // HTML内容的XSS保护
+    if (type === 'text/html') {
+      content = content.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
+    }
+
+    return content;
+  }
+
+  /**
+   * 处理粘贴事件
+   */
+  async handlePaste(event: ClipboardEvent): Promise<string | null> {
+    try {
+      await this.rateLimiter.checkLimit();
+
+      const clipboardData = event.clipboardData || (window as any).clipboardData;
+      if (!clipboardData) return null;
+
+      const content = clipboardData.getData('text/plain');
+
+      try {
+        const validatedContent = this.validateContent(content);
+        await this.addToHistory(validatedContent);
+        return validatedContent;
+      } catch (error) {
+        this.handleError(error);
+        return null;
+      }
+    } catch (error) {
+      log.error('粘贴操作失败', error);
+      this.handleError(error);
+      return null;
+    }
+  }
+
+  /**
+   * 复制到剪贴板
+   */
+  async copyToClipboard(text: string): Promise<boolean> {
+    return this.retryManager.retry(async () => {
+      await this.rateLimiter.checkLimit();
+
+      try {
+        const validatedContent = this.validateContent(text);
+
+        if (navigator.clipboard) {
+          await navigator.clipboard.writeText(validatedContent);
+        } else {
+          // 回退机制
+          const textarea = document.createElement('textarea');
+          textarea.value = validatedContent;
+          textarea.style.position = 'fixed';
+          textarea.style.opacity = '0';
+          document.body.appendChild(textarea);
+          textarea.select();
+
+          const success = document.execCommand('copy');
+          document.body.removeChild(textarea);
+
+          if (!success) {
+            throw new Error('复制失败');
+          }
+        }
+
+        await this.addToHistory(validatedContent);
+        return true;
+      } catch (error) {
+        this.handleError(error);
+        throw error;
+      }
+    });
+  }
+
+  /**
+   * 添加到历史记录
+   */
+  async addToHistory(content: string) {
+    const timestamp = Date.now();
+    this.history.set(timestamp, content);
+
+    // 维持历史记录大小限制
+    if (this.history.size > this.maxHistorySize) {
+      const oldestKey = Array.from(this.history.keys())[0];
+      this.history.delete(oldestKey);
+    }
+
+    // 持久化到localStorage
+    this.persistHistory();
+  }
+
+  /**
+   * 持久化历史记录
+   */
+  persistHistory() {
+    try {
+      const historyArray = Array.from(this.history.entries());
+      localStorage.setItem('easyssh_clipboard_history', JSON.stringify(historyArray));
+    } catch (error) {
+      log.error('持久化历史记录失败', error);
+    }
+  }
+
+  /**
+   * 加载历史记录
+   */
+  loadHistory() {
+    try {
+      const savedHistory = localStorage.getItem('easyssh_clipboard_history');
+      if (savedHistory) {
+        this.history = new Map(JSON.parse(savedHistory));
+      }
+    } catch (error) {
+      log.error('加载历史记录失败', error);
+    }
+  }
+
+  /**
+   * 处理错误
+   */
+  handleError(error: any) {
+    // 记录错误
+    log.error('剪贴板操作错误', error);
+
+    // 通知用户
+    if (error.message === '操作过于频繁，请稍后再试') {
+      log.warn('剪贴板操作过于频繁，请稍后再试');
+    } else if (error.message === '内容大小超出限制') {
+      log.warn('内容过大，无法复制');
+    }
+  }
+
+  /**
+   * 清除历史记录
+   */
+  clearHistory() {
+    this.history.clear();
+    localStorage.removeItem('easyssh_clipboard_history');
+  }
+
+  /**
+   * 兼容terminal.js的复制方法
+   */
+  async copyText(text: string, _options: { silent?: boolean } = {}) {
+    try {
+      return await this.copyToClipboard(text);
+    } catch (error) {
+      log.error('复制文本失败', error);
+      return false;
+    }
+  }
+
+  /**
+   * 兼容terminal.js的读取方法
+   */
+  async readText(): Promise<string> {
+    try {
+      await this.rateLimiter.checkLimit();
+      if (navigator.clipboard) {
+        return await navigator.clipboard.readText();
+      } else {
+        throw new Error('不支持的操作');
+      }
+    } catch (error: any) {
+      log.error('读取操作失败', { error: error?.message });
+      this.handleError(error);
+      return '';
+    }
+  }
+
+  /**
+   * 在终端中执行粘贴操作
+   * @param {HTMLElement} targetElement - 要粘贴到的目标元素
+   * @returns {Promise<boolean>} - 粘贴操作是否成功
+   */
+  async pasteToTerminal(targetElement: HTMLElement | null): Promise<boolean> {
+    try {
+      const text = await this.readText();
+      if (text) {
+        // 派发自定义事件，让终端组件处理粘贴
+        if (targetElement) {
+          const pasteEvent = new CustomEvent('terminal-paste', {
+            detail: { text },
+            bubbles: true
+          });
+          targetElement.dispatchEvent(pasteEvent);
+          return true;
+        }
+      }
+      return false;
+    } catch (error) {
+      log.error('终端粘贴失败', error);
+      return false;
+    }
+  }
+}
+
+// 创建单一实例 - 使用增强版本作为默认实例
+const clipboardManager: ClipboardService = new EnhancedClipboardManager();
+
+// 添加到window全局对象（用于调试）
+if (typeof window !== 'undefined') {
+  window.clipboardManager = clipboardManager;
+}
+
+// 导出增强版实例作为默认导出
+export default clipboardManager;
+
+// 为了向后兼容，也导出为enhancedClipboardManager
+export const enhancedClipboardManager = clipboardManager;

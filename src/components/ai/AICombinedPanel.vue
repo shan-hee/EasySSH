@@ -194,8 +194,8 @@ import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue';
 import { ElInput, ElMessage } from 'element-plus';
 import settingsService from '../../services/settings';
 import AIMessageItem from './AIMessageItem.vue';
-import { createSmartDebounce } from '../../utils/smart-debounce.js';
-import { withErrorHandling, ErrorSeverity } from '../../utils/ai-panel-error-handler.js';
+import { createSmartDebounce } from '../../utils/smart-debounce';
+import { withErrorHandling, ErrorSeverity } from '../../utils/ai-panel-error-handler';
 import log from '@/services/log';
 
 // Props

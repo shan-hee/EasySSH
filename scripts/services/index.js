@@ -4,7 +4,7 @@
 import keyboardManager from './ux/keyboardManager.js';
 import accessibilityService from './ux/accessibility.js';
 // 导入统一日志服务
-import log from '../../src/services/log.js';
+import log from '../../src/services/log';
 
 // 服务初始化状态
 const servicesState = {

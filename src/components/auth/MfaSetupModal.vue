@@ -399,7 +399,7 @@ export default defineComponent({
     const copySecretKey = async () => {
       try {
         // 使用统一的剪贴板服务
-        const { copyToClipboard } = await import('@/services/utils.js');
+        const { copyToClipboard } = await import('@/services/utils');
         const success = await copyToClipboard(secretKey.value, false);
 
         if (success) {

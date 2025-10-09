@@ -110,8 +110,8 @@
 <script setup>
 import { computed, onMounted } from 'vue';
 import AICommandActions from './AICommandActions.vue';
-import { parseAIMessage } from '../../services/ai/ai-message-parser.js';
-import { sanitizeHtml } from '../../utils/sanitizeHtml.js';
+import { parseAIMessage } from '../../services/ai/ai-message-parser';
+import { sanitizeHtml } from '../../utils/sanitizeHtml';
 
 // Props
 const props = defineProps({

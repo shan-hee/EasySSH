@@ -176,7 +176,7 @@ import { ElMessage } from 'element-plus';
 import { useTerminalStore } from '../../store/terminal';
 import { LATENCY_EVENTS } from '../../services/constants';
 import log from '../../services/log';
-import aiService from '../../services/ai/ai-service.js';
+import aiService from '../../services/ai/ai-service';
 import settingsService from '../../services/settings';
 
 // ToolbarMonitoring 组件已移除，监控数据现在通过专用的监控面板显示

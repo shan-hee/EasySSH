@@ -207,7 +207,7 @@ import { Icon } from '@iconify/vue';
 import MonitoringIcon from './MonitoringIcon.vue';
 import MonitoringLoader from '../common/MonitoringLoader.vue';
 import monitoringStateManager, { MonitoringComponent } from '@/services/monitoringStateManager';
-import { copyToClipboard } from '@/services/utils.js';
+import { copyToClipboard } from '@/services/utils';
 
 // Props
 const props = defineProps({

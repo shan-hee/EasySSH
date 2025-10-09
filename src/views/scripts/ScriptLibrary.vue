@@ -387,11 +387,11 @@ import log from '@/services/log';
 import { defineComponent, ref, computed, watch, onMounted, nextTick } from 'vue';
 import { Edit, Delete, CaretRight, Clock } from '@element-plus/icons-vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
-import scriptLibraryService from '@/services/scriptLibrary.js';
+import scriptLibraryService from '@/services/scriptLibrary';
 import ServerSelectionDialog from '@/components/dialogs/ServerSelectionDialog.vue';
 import ScriptExecutionDialog from '@/components/dialogs/ScriptExecutionDialog.vue';
 import ScriptExecutionHistoryDialog from '@/components/dialogs/ScriptExecutionHistoryDialog.vue';
-import apiService from '@/services/api.js';
+import apiService from '@/services/api';
 
 export default defineComponent({
   name: 'ScriptLibrary',

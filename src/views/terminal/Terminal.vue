@@ -146,7 +146,7 @@ import MonitoringPaneHost from './MonitoringPaneHost.vue';
 import AICombinedHost from './AICombinedHost.vue';
 import TerminalFrame from './TerminalFrame.vue';
 // 导入AI面板状态管理
-import { useAIPanelStore } from '../../store/ai-panel.js';
+import { useAIPanelStore } from '../../store/ai-panel';
 
 // 导入会话存储
 import { useSessionStore } from '../../store/session';
@@ -159,7 +159,7 @@ import monitoringStateManager from '../../services/monitoringStateManager';
 // 导入监控状态管理器工厂
 import monitoringStateManagerFactory from '../../services/monitoringStateManagerFactory';
 // 导入AI服务
-import aiService from '../../services/ai/ai-service.js';
+import aiService from '../../services/ai/ai-service';
 import scriptLibraryService from '../../services/scriptLibrary';
 import personalizationService from '../../services/personalization';
 import { applyTerminalBackgroundCss, clearTerminalBackgroundCss } from '@/utils/terminalBackgroundCss';

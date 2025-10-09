@@ -109,8 +109,8 @@
 <script setup>
 import { computed, ref } from 'vue';
 import { ElMessage } from 'element-plus';
-import scriptLibraryService from '../../services/scriptLibrary.js';
-import { validateCommand } from '../../services/ai/ai-message-parser.js';
+import scriptLibraryService from '../../services/scriptLibrary';
+import { validateCommand } from '../../services/ai/ai-message-parser';
 import log from '@/services/log';
 import Modal from '@/components/common/Modal.vue';
 

@@ -93,7 +93,7 @@ import { defineComponent, ref, computed, watch } from 'vue';
 import { ElMessage } from 'element-plus';
 import { useUserStore } from '@/store/user';
 import { useLocalConnectionsStore } from '@/store/localConnections';
-import log from '@/services/log.js';
+import log from '@/services/log';
 
 export default defineComponent({
   name: 'ServerSelectionDialog',
