@@ -10,7 +10,7 @@ const path = require('path');
 
 
 // 统一日志目录：
-// - Docker 环境默认 /easyssh/logs（保持与旧部署一致）
+// - Docker 环境默认 /easyssh/logs
 // - 非 Docker 环境默认 server/logs
 const maybeDist = path.resolve(__dirname, '..'); // e.g. server/dist/utils -> server/dist
 const BASE_DIR = path.basename(maybeDist) === 'dist' ? path.resolve(maybeDist, '..') : maybeDist; // server
@@ -26,7 +26,6 @@ const LOG_CONFIG = {
   maxBackupFiles: parseInt(process.env.LOG_MAX_BACKUP_FILES) || 5,           // 保留5个备份
   maxLogAge: parseInt(process.env.LOG_MAX_AGE_DAYS) || 7,                    // 保留7天
   logDirectory: (process.env.LOG_DIRECTORY || '').trim() || DEFAULT_LOG_DIR,
-  // 布尔环境变量采用原有严格判定策略：只有 === 'true' 才启用
   enableConsoleLog: process.env.LOG_ENABLE_CONSOLE !== 'false',              // 默认启用控制台
   // 生产环境默认启用文件日志（若未显式设置 LOG_ENABLE_FILE）
   enableFileLog: typeof process.env.LOG_ENABLE_FILE === 'string'
