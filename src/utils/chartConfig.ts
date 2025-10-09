@@ -435,8 +435,10 @@ export function getCpuChartConfig(): Record<string, unknown> {
             font: {
               size: 10
             },
-            maxTicksLimit: 5,
-            callback: (value: unknown) => String(value)
+            maxTicksLimit: 5
+            // Note: Do NOT override tick callback here.
+            // For a category scale, Chart.js will display the actual label by default.
+            // A custom callback returning the tick value shows the index (0..n), which caused numeric axes.
           }
         },
         y: {
@@ -666,8 +668,8 @@ export function getNetworkChartConfig(): Record<string, unknown> {
             font: {
               size: 10
             },
-            maxTicksLimit: 5,
-            callback: (value: unknown) => String(value)
+            maxTicksLimit: 5
+            // Note: keep default tick rendering so time labels (HH:mm:ss) appear correctly.
           }
         },
         y: {
