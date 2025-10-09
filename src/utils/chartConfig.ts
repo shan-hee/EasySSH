@@ -1,7 +1,8 @@
 type ThemeMode = 'dark' | 'light';
 type ColorSet = { primary: string; light: string; background: string };
-type ChartOptionsLike = Record<string, unknown>;
-type ChartInstanceLike = any;
+import type { Chart, ChartOptions } from 'chart.js';
+type ChartOptionsLike = ChartOptions; // generic Chart.js options
+type ChartInstanceLike = Chart;       // Chart.js instance type
 import log from '@/services/log';
 /**
  * chartConfig.js - Chart.js 统一配置工具
@@ -269,9 +270,9 @@ export function getThemeAwareChartOptions(): ChartOptionsLike {
         cornerRadius: 6,
         padding: 8,
         displayColors: false,
-        titleFont: {
+          titleFont: {
           size: 12,
-          weight: '600'
+          weight: 600
         },
         bodyFont: {
           size: 11
@@ -409,7 +410,7 @@ export function getCpuChartConfig(): Record<string, unknown> {
           displayColors: false,
           titleFont: {
             size: 12,
-            weight: '600'
+            weight: 600
           },
           bodyFont: {
             size: 11
@@ -628,7 +629,7 @@ export function getNetworkChartConfig(): Record<string, unknown> {
           displayColors: true,
           titleFont: {
             size: 12,
-            weight: '600'
+            weight: 600
           },
           bodyFont: {
             size: 11
@@ -800,7 +801,7 @@ export function getDiskChartConfig(): Record<string, unknown> {
           displayColors: true,
           titleFont: {
             size: 12,
-            weight: '600'
+            weight: 600
           },
           bodyFont: {
             size: 11
