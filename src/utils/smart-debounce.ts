@@ -21,6 +21,8 @@ export type CreateDebounceOptions = {
 
 type ExecutionRecord = { timestamp: number; executionTime: number };
 
+import log from '@/services/log';
+
 export class SmartDebounce {
   defaultDelay: number;
   minDelay: number;
@@ -118,7 +120,7 @@ export class SmartDebounce {
 
       return result;
     } catch (error: any) {
-      import('@/services/log').then(m => m.default.error('SmartDebounce execution error', error));
+      log.error('SmartDebounce execution error', error);
       this.timers.delete(key);
       this.priorities.delete(key);
       throw error;

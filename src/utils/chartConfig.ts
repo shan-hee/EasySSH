@@ -4,6 +4,7 @@ import type { Chart, ChartOptions } from 'chart.js';
 type ChartOptionsLike = ChartOptions; // generic Chart.js options
 type ChartInstanceLike = Chart;       // Chart.js instance type
 import log from '@/services/log';
+import { EVENTS } from '@/services/events';
 /**
  * chartConfig.js - Chart.js 统一配置工具
  * 现代极简风格监控图表配置
@@ -997,28 +998,19 @@ export function watchThemeChange(
   // 监听来自设置服务和终端视图的主题事件（UI/终端主题、终端设置变更）
   const eventHandler = () => handler();
   window.addEventListener('theme-changed', eventHandler);
-  // 动态导入事件常量，避免循环依赖（不阻塞返回）
-  import('@/services/events')
-    .then(({ EVENTS }) => {
-      try {
-        window.addEventListener(EVENTS.TERMINAL_THEME_UPDATE, eventHandler);
-        window.addEventListener(EVENTS.TERMINAL_SETTINGS_UPDATED, eventHandler);
-      } catch (_) {}
-    })
-    .catch(() => {});
+  try {
+    window.addEventListener(EVENTS.TERMINAL_THEME_UPDATE, eventHandler);
+    window.addEventListener(EVENTS.TERMINAL_SETTINGS_UPDATED, eventHandler);
+  } catch (_) {}
 
   return {
     disconnect() {
       try { observer.disconnect(); } catch (_) {}
       window.removeEventListener('theme-changed', eventHandler);
-      import('@/services/events')
-        .then(({ EVENTS }) => {
-          try {
-            window.removeEventListener(EVENTS.TERMINAL_THEME_UPDATE, eventHandler);
-            window.removeEventListener(EVENTS.TERMINAL_SETTINGS_UPDATED, eventHandler);
-          } catch (_) {}
-        })
-        .catch(() => {});
+      try {
+        window.removeEventListener(EVENTS.TERMINAL_THEME_UPDATE, eventHandler);
+        window.removeEventListener(EVENTS.TERMINAL_SETTINGS_UPDATED, eventHandler);
+      } catch (_) {}
     }
   } as { disconnect(): void };
 }

@@ -387,7 +387,6 @@ class SettingsService {
       this.isInitialized = true;
       // 本地就绪同样广播事件，方便监听方统一处理
       try {
-        const { EVENTS } = await import('@/services/events');
         window.dispatchEvent(
           new CustomEvent(EVENTS.SETTINGS_READY, {
             detail: { categoriesLoaded: ['ui'], hasServerSettings: false }

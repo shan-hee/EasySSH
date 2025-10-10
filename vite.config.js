@@ -222,6 +222,16 @@ export default defineConfig(async ({ mode }) => {
       },
       // 不再使用 terser，自然忽略 terserOptions 配置
       rollupOptions: {
+        onwarn(warning, defaultHandler) {
+          try {
+            const msg = String(warning && warning.message || '');
+            // 静默仅限“同一模块同时被动态与静态导入”的提示，不影响其他告警
+            if (msg.includes('is dynamically imported by') && msg.includes('but also statically imported by')) {
+              return;
+            }
+          } catch (_) {}
+          defaultHandler(warning);
+        },
         output: {
           // 精细化第三方库分包；保留应用代码的路由级拆分
           manualChunks: (id) => {

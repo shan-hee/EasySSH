@@ -3,6 +3,7 @@
  */
 import type { ObjectDirective, DirectiveBinding } from 'vue';
 import clipboardService from '../services/clipboard';
+import log from '@/services/log';
 
 // v-focus：自动聚焦指令
 const focus: ObjectDirective<HTMLElement> = {
@@ -42,8 +43,7 @@ const copy: ObjectDirective<HTMLElement, string | (() => string)> = {
         }
       } catch (err) {
         el.dispatchEvent(new CustomEvent('copy-error', { detail: err }));
-        const mod = await import('@/services/log');
-        mod.default.error('复制失败', err);
+        log.error('复制失败', err);
       }
     };
     el.addEventListener('click', el._copyHandler);

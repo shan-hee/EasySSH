@@ -1,4 +1,5 @@
 import { createApp } from 'vue';
+import { EVENTS } from '@/services/events';
 
 // 导入根组件
 import App from './App.vue';
@@ -397,38 +398,19 @@ window.addEventListener('auth:expired', () => {
 });
 
 // 添加SSH连接开始时同时触发监控连接的全局事件监听器
-(async () => {
-  try {
-    const { EVENTS } = await import('@/services/events');
-    window.addEventListener(EVENTS.SSH_CONNECTING as any, async (event: any) => {
-      const { host, terminalId } = event.detail || {};
-      if (host && terminalId) {
-        try {
-          const connected = await monitoringService.connect(terminalId, host);
-          if (!connected) {
-            log.debug(`[监控] 终端 ${terminalId} 连接到 ${host} 失败`);
-          }
-        } catch (error) {
-          log.debug(`[监控] 终端 ${terminalId} 连接到 ${host} 出错:`, error);
-        }
+window.addEventListener(EVENTS.SSH_CONNECTING as any, async (event: any) => {
+  const { host, terminalId } = event.detail || {};
+  if (host && terminalId) {
+    try {
+      const connected = await monitoringService.connect(terminalId, host);
+      if (!connected) {
+        log.debug(`[监控] 终端 ${terminalId} 连接到 ${host} 失败`);
       }
-    });
-  } catch (_) {
-    window.addEventListener('ssh-connecting', async (event: any) => {
-      const { host, terminalId } = event.detail || {};
-      if (host && terminalId) {
-        try {
-          const connected = await monitoringService.connect(terminalId, host);
-          if (!connected) {
-            log.debug(`[监控] 终端 ${terminalId} 连接到 ${host} 失败`);
-          }
-        } catch (error) {
-          log.debug(`[监控] 终端 ${terminalId} 连接到 ${host} 出错:`, error);
-        }
-      }
-    });
+    } catch (error) {
+      log.debug(`[监控] 终端 ${terminalId} 连接到 ${host} 出错:`, error);
+    }
   }
-})();
+});
 
 // 统一的服务初始化流程
 const initializeApp = async () => {

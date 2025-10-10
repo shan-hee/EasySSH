@@ -2,6 +2,7 @@
  * 本地键盘快捷键管理工具
  * 作为window.services.keyboardManager的替代方案
  */
+import log from '@/services/log';
 
 // 存储快捷键配置的键名
 const SHORTCUTS_STORAGE_KEY = 'easyssh_keyboard_shortcuts';
@@ -44,7 +45,7 @@ export function getAllShortcuts(): ShortcutMap {
 
     return shortcuts;
   } catch (error) {
-    import('@/services/log').then(m => m.default.error('获取快捷键设置失败', error));
+    log.error('获取快捷键设置失败', error);
     return { ...DEFAULT_SHORTCUTS };
   }
 }
@@ -121,7 +122,7 @@ export function setShortcut(action: string, key: string): boolean {
 
     return true;
   } catch (error) {
-    import('@/services/log').then(m => m.default.error('设置快捷键失败', error));
+    log.error('设置快捷键失败', error);
     throw error;
   }
 }
@@ -150,7 +151,7 @@ export function resetShortcuts(action?: string): boolean {
 
     return true;
   } catch (error) {
-    import('@/services/log').then(m => m.default.error('重置快捷键失败', error));
+    log.error('重置快捷键失败', error);
     return false;
   }
 }

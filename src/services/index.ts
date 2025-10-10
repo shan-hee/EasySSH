@@ -4,6 +4,7 @@
 import apiService from './api';
 import settingsService from './settings';
 import log from './log';
+import { EVENTS } from '@/services/events';
 // 移除不存在的模块导入
 // import themeService from './theme'
 // import telemetryService from './telemetry'
@@ -123,7 +124,6 @@ async function initServices() {
 
     // 触发服务初始化完成事件
     try {
-      const { EVENTS } = await import('@/services/events');
       window.dispatchEvent(
         new CustomEvent(EVENTS.SERVICES_READY, {
           detail: { status: { ...servicesStatus } }
