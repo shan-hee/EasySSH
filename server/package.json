@@ -3,7 +3,7 @@
   "version": "2.0.0",
   "description": "SSH WebSocket代理服务器",
   "main": "index.js",
-  "packageManager": "pnpm@9",
+  "packageManager": "pnpm@9.0.0",
   "scripts": {
     "start": "cross-env DOTENV_CONFIG_PATH=../.env node -r dotenv/config dist/index.js",
     "dev": "cross-env DOTENV_CONFIG_PATH=../.env ts-node-dev -r dotenv/config --respawn --transpile-only index.ts",

@@ -6,6 +6,8 @@
 
 const path = require('path');
 const logger = require('../utils/logger');
+// 引入SSH会话以便执行远端命令（用于Shell快速删除）
+const sshModule = require('./ssh');
 import type WebSocketType from 'ws';
 
 // 导入二进制SFTP工具函数
@@ -99,6 +101,87 @@ function recursiveDeletePath(sftp: any, targetPath: string, callback: (err: any)
       });
     }
   });
+}
+
+// 安全Shell参数包装（单引号转义）
+function shellQuote(arg: string): string {
+  if (typeof arg !== 'string') return "''";
+  // POSIX安全单引号：将 ' 替换为 '\''，再整体包裹单引号
+  return `'${arg.replace(/'/g, "'\\''")}'`;
+}
+
+// 最低限度的危险路径拦截：必须是绝对路径，且深度>=2，且不等于若干关键路径
+function isDangerousTargetPath(p: string): boolean {
+  if (!p || typeof p !== 'string') return true;
+  if (!p.startsWith('/')) return true; // 必须是绝对路径
+  // 规范化去掉连续斜杠和末尾斜杠（纯字符串处理，避免引入额外依赖）
+  const norm = (p.replace(/\/+/g, '/')).replace(/\/+$/,'') || '/';
+  const parts = norm.split('/').filter(Boolean);
+  const depth = parts.length; // 深度（不含根）
+  const dangerousExact = new Set([
+    '/', '/root', '/home', '/etc', '/usr', '/var', '/bin', '/sbin', '/lib', '/lib64', '/opt', '/srv', '/proc', '/sys', '/dev', '/boot', '/run', '/mnt', '/media', '/snap'
+  ]);
+  if (dangerousExact.has(norm as any)) return true;
+  if (depth < 2) return true; // 顶层目录（如 /etc、/var）直接删除过于危险
+  // 禁止明显可疑的模式
+  if (norm.includes('..') || /[\n\r\t]/.test(norm)) return true;
+  return false;
+}
+
+// 通过SSH执行远端命令（Promise封装）
+function execRemoteCommand(sessionId: string, command: string): Promise<{ code: number; stdout: string; stderr: string } | null> {
+  try {
+    const sessions: Map<string, any> = sshModule?.sessions;
+    if (!sessions || !sessions.has(sessionId)) {
+      return Promise.resolve(null);
+    }
+    const session = sessions.get(sessionId);
+    if (!session || !session.conn || typeof session.conn.exec !== 'function') {
+      return Promise.resolve(null);
+    }
+
+    return new Promise((resolve) => {
+      try {
+        session.conn.exec(command, (err: any, stream: any) => {
+          if (err) {
+            return resolve({ code: 127, stdout: '', stderr: err?.message || 'exec error' });
+          }
+          let stdout = '';
+          let stderr = '';
+          stream.on('data', (d: any) => { stdout += d?.toString?.() ?? ''; });
+          stream.stderr.on('data', (d: any) => { stderr += d?.toString?.() ?? ''; });
+          stream.on('close', (code: number) => {
+            resolve({ code: typeof code === 'number' ? code : 0, stdout, stderr });
+          });
+        });
+      } catch (error: any) {
+        resolve({ code: 126, stdout: '', stderr: error?.message || 'exec exception' });
+      }
+    });
+  } catch (e) {
+    return Promise.resolve(null);
+  }
+}
+
+// Shell快速删除实现：优先尝试 rm -rf，失败/不可用则返回 false 让上层回退到SFTP递归删除
+async function tryShellFastDelete(sessionId: string, remotePath: string): Promise<{ ok: boolean; detail?: any }> {
+  // 基础安全校验（不扩大限制，仅拦截明显危险路径）
+  if (isDangerousTargetPath(remotePath)) {
+    return { ok: false, detail: { reason: 'PATH_NOT_SAFE' } };
+  }
+
+  const quoted = shellQuote(remotePath);
+  // 使用绝对路径调用rm，避免alias；添加 -- 防止以 - 开头的名字被当作参数
+  const cmd = `/bin/rm -rf -- ${quoted}`;
+
+  const result = await execRemoteCommand(sessionId, cmd);
+  if (!result) {
+    return { ok: false, detail: { reason: 'NO_EXEC_CHANNEL' } };
+  }
+  if (result.code === 0) {
+    return { ok: true };
+  }
+  return { ok: false, detail: { reason: 'EXEC_FAILED', code: result.code, stderr: result.stderr } };
 }
 
 /**
@@ -263,7 +346,7 @@ function handleSftpMkdir(ws: WebSocketType, data: any): void {
 /**
  * 处理SFTP删除
  */
-function handleSftpDelete(ws: WebSocketType, data: any): void {
+async function handleSftpDelete(ws: WebSocketType, data: any): Promise<void> {
   const { sessionId, path: remotePath, operationId } = data;
 
   try {
@@ -276,7 +359,24 @@ function handleSftpDelete(ws: WebSocketType, data: any): void {
 
     logger.debug('SFTP删除请求', { sessionId, path: remotePath, isDirectory: !!data.isDirectory });
 
-    // 使用通用递归删除逻辑
+    // 先尝试 Shell 快速删除（rm -rf），失败或不可用再回退 SFTP 递归
+    try {
+      const tryShell = await tryShellFastDelete(sessionId, remotePath);
+      if (tryShell.ok) {
+        logger.info('Shell快速删除完成', { path: remotePath });
+        sendBinarySftpSuccess(ws, sessionId, operationId, {
+          message: '删除成功',
+          path: remotePath,
+          method: 'shell_rm_rf'
+        });
+        return;
+      }
+      logger.debug('Shell快速删除未使用/失败，回退SFTP递归删除', { path: remotePath, detail: tryShell.detail });
+    } catch (e: any) {
+      logger.warn('Shell快速删除异常，回退SFTP递归删除', { path: remotePath, error: e?.message });
+    }
+
+    // 回退：使用通用递归删除逻辑（保留原实现）
     recursiveDeletePath(sftp, remotePath, (err) => {
       if (err) {
         logger.error('SFTP删除失败', { sessionId, path: remotePath, errorPath: err.path || remotePath, error: err.message });
@@ -287,10 +387,11 @@ function handleSftpDelete(ws: WebSocketType, data: any): void {
       logger.info('SFTP删除成功', { path: remotePath });
       sendBinarySftpSuccess(ws, sessionId, operationId, {
         message: '删除成功',
-        path: remotePath
+        path: remotePath,
+        method: 'sftp_recursive'
       });
     });
-  } catch (error) {
+  } catch (error: any) {
     logger.error('SFTP删除错误', { sessionId, error: error.message });
     sendBinarySftpError(ws, sessionId, operationId, error.message, 'SFTP_DELETE_ERROR');
   }
@@ -299,7 +400,7 @@ function handleSftpDelete(ws: WebSocketType, data: any): void {
 /**
  * 处理SFTP快速删除（递归删除目录）
  */
-function handleSftpFastDelete(ws: WebSocketType, data: any): void {
+async function handleSftpFastDelete(ws: WebSocketType, data: any): Promise<void> {
   const { sessionId, path: remotePath, operationId } = data;
 
   try {
@@ -312,6 +413,24 @@ function handleSftpFastDelete(ws: WebSocketType, data: any): void {
 
     logger.debug('SFTP快速删除请求', { sessionId, path: remotePath });
 
+    // 优先使用 Shell 快速删除
+    try {
+      const tryShell = await tryShellFastDelete(sessionId, remotePath);
+      if (tryShell.ok) {
+        logger.info('Shell快速删除完成', { path: remotePath });
+        sendBinarySftpSuccess(ws, sessionId, operationId, {
+          message: '快速删除成功',
+          path: remotePath,
+          method: 'shell_rm_rf'
+        });
+        return;
+      }
+      logger.debug('Shell快速删除未使用/失败，回退SFTP递归删除', { path: remotePath, detail: tryShell.detail });
+    } catch (e: any) {
+      logger.warn('Shell快速删除异常，回退SFTP递归删除', { path: remotePath, error: e?.message });
+    }
+
+    // 回退：使用SFTP递归删除
     recursiveDeletePath(sftp, remotePath, (err) => {
       if (err) {
         logger.error('SFTP快速删除失败', { sessionId, path: remotePath, errorPath: err.path || remotePath, error: err.message });
@@ -322,10 +441,11 @@ function handleSftpFastDelete(ws: WebSocketType, data: any): void {
       logger.info('SFTP快速删除完成', { path: remotePath });
       sendBinarySftpSuccess(ws, sessionId, operationId, {
         message: '快速删除成功',
-        path: remotePath
+        path: remotePath,
+        method: 'sftp_recursive'
       });
     });
-  } catch (error) {
+  } catch (error: any) {
     logger.error('SFTP快速删除错误', { sessionId, error: error.message });
     sendBinarySftpError(ws, sessionId, operationId, error.message, 'SFTP_FAST_DELETE_ERROR');
   }
