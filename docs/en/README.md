@@ -112,10 +112,12 @@ docker run -d \
 
 ```bash
 # Clone repository
-git clone https://github.com/shan-hee/easyssh.git
-cd easyssh
+git clone https://github.com/shan-hee/EasySSH.git
+cd EasySSH
 
-# Install dependencies
+# Install dependencies (recommend pnpm)
+pnpm install
+# or
 npm install
 
 # Configure environment
@@ -123,12 +125,16 @@ cp .env.example .env
 # Edit .env file to set necessary parameters
 
 # Start frontend (Vite)
-npm run dev
+pnpm dev
+# or
+# npm run dev
 
 # In another terminal, start backend (Express)
 cd server
-npm install
-npm run dev
+pnpm install # or npm install
+pnpm dev
+# or
+# npm run dev
 
 # Frontend proxies /api, /ssh, /monitor to http://localhost:8000
 ```
@@ -199,7 +205,7 @@ flowchart LR
     <td>
       • SQLite<br/>
       • node-cache<br/>
-      • bcrypt<br/>
+      • bcryptjs<br/>
       • crypto-js
     </td>
   </tr>
@@ -209,7 +215,7 @@ flowchart LR
 
 - **Real-time Communication**: WebSocket establishes persistent connections ensuring rapid command execution response
 - **High-speed Caching**: node-cache reduces database queries by over 70%, decreasing average API response time by 150ms
-- **Security Assurance**: All sensitive data encrypted with AES-256, passwords stored with bcrypt hashing
+- **Security Assurance**: All sensitive data encrypted with AES-256, passwords stored with bcryptjs hashing
 - **Scalability**: Distributed architecture design supporting horizontal scaling
 
 ## Deployment Guide
@@ -255,13 +261,13 @@ docker compose up -d
 
 ```bash
 # Frontend build
-npm run build
+pnpm build
 # Deploy dist directory to web server
 
 # Backend deployment
 cd server
-npm install --production
-pm2 start index.js --name easyssh-server
+pnpm install --prod # or npm install --production
+pm2 start dist/index.js --name easyssh-server
 ```
 
 ### Cloud Platform Deployment

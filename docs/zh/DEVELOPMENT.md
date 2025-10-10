@@ -15,7 +15,7 @@ EasySSH 是一个现代化的 SSH 客户端，提供高效、安全、易用的�
 
 ## 运行环境要求
 
-- Node.js >= 16.0.0
+- Node.js >= 20.0.0（与仓库 engineStrict 保持一致）
 - SQLite >= 3.0.0
 - 支持现代浏览器 (Chrome, Firefox, Edge, Safari)
 - OpenSSH 客户端 (可选，用于一些高级功能)
@@ -27,8 +27,8 @@ EasySSH 是一个现代化的 SSH 客户端，提供高效、安全、易用的�
 ### 克隆仓库
 
 ```bash
-git clone https://github.com/yourusername/easyssh.git
-cd easyssh
+git clone https://github.com/shan-hee/EasySSH.git
+cd EasySSH
 ```
 
 ### 环境配置
@@ -41,20 +41,24 @@ cp .env.example .env
 
 2. 编辑 `.env` 文件，配置以下重要参数：
 
-- `PORT`: 服务器端口，默认为 3000
+- `VITE_PORT`: 前端开发端口，默认为 8520
+- `SERVER_PORT`: 后端服务端口，默认为 8000
+- `VITE_API_TARGET`: 前端代理目标（默认 `http://localhost:8000`）
 - `JWT_SECRET`: JWT 令牌密钥，用于用户认证
 - `ENCRYPTION_KEY`: 敏感数据加密密钥
-- `SQLITE_PATH`: SQLite 数据库路径，默认为 './server/data/easyssh.sqlite'
+- `SQLITE_PATH`: SQLite 数据库路径，默认为 `./server/data/easyssh.sqlite`
 
 ### 安装依赖
 
 ```bash
-# 安装前端依赖
+# 安装前端依赖（推荐 pnpm，也可 npm）
+pnpm install
+# 或
 npm install
 
 # 安装服务器依赖
 cd server
-npm install
+pnpm install # 或 npm install
 cd ..
 ```
 
@@ -66,14 +70,14 @@ SQLite 数据库会在首次启动时自动创建，无需额外配置。
 
 ```bash
 # 开发模式启动前端
-npm run dev
+pnpm dev
 
 # 另一个终端中启动服务器
 cd server
-npm run dev
+pnpm dev
 ```
 
-访问 `http://localhost:3000` 打开应用。
+访问 `http://localhost:8520` 打开应用（前端默认端口）。
 
 ## 开发流程
 
@@ -145,7 +149,9 @@ ENCRYPTION_KEY=your_secure_encryption_key
 
 2. 构建前端：
 ```bash
-npm run build
+pnpm build
+# 或
+# npm run build
 ```
 
 3. 配置反向代理 (Nginx 示例):
@@ -155,7 +161,7 @@ server {
     server_name yourdomain.com;
 
     location / {
-        proxy_pass http://localhost:3000;
+        proxy_pass http://localhost:8520;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection 'upgrade';
@@ -169,75 +175,79 @@ server {
 
 ```bash
 docker build -t easyssh .
-docker run -p 3000:3000 -v sqlite-data:/app/server/data easyssh
+docker run -p 8520:8520 -v sqlite-data:/app/server/data easyssh
 ```
 
 ## 🚀 使用指南
 
 ### 常用命令
 
+说明：以下命令均为 pnpm 形式；如使用 npm，请将 `pnpm <script>` 替换为 `npm run <script>`。
+
 ```bash
 # 开发环境
-npm run dev                    # 启动开发服务器
-npm run dev:debug             # 调试模式启动
+pnpm dev                       # 启动开发服务器
+pnpm dev:debug                 # 调试模式启动
 
 # 构建相关
-npm run build                 # 生产构建
-npm run build:analyze         # 构建分析
-npm run build:optimize        # 优化构建流程
-npm run preview               # 预览构建结果
+pnpm build                    # 生产构建
+pnpm build:report             # 构建分析
+pnpm build:optimize           # 优化构建流程
+pnpm preview                  # 预览构建结果
 
 # 代码质量
-npm run lint                  # 代码检查
-npm run lint:fix              # 自动修复
-npm run format                # 代码格式化
-npm run format:check          # 格式检查
+pnpm lint                     # 代码检查
+pnpm lint:fix                 # 自动修复
+pnpm format                   # 代码格式化
+pnpm format:check             # 格式检查
 
 # 依赖管理
-npm run deps:check            # 检查过时依赖
-npm run deps:update           # 更新依赖
-npm run deps:manage           # 依赖管理工具
-npm run deps:sync             # 同步前后端依赖
+pnpm deps:check               # 检查过时依赖
+pnpm deps:update              # 更新依赖
+pnpm deps:manage              # 依赖管理工具
+pnpm deps:sync                # 同步前后端依赖
 
 # 清理相关
-npm run clean                 # 清理缓存
-npm run clean:all             # 完全清理
-npm run reinstall             # 重新安装
+pnpm clean                    # 清理缓存
+pnpm clean:all                # 完全清理
+pnpm reinstall                # 重新安装
 ```
 
 ### 服务端命令
+
+说明：以下命令均为 pnpm 形式；如使用 npm，请将 `pnpm <script>` 替换为 `npm run <script>`。
 
 ```bash
 cd server
 
 # 开发环境
-npm run dev                   # 开发模式
-npm run dev:debug             # 调试模式
-npm run prod                  # 生产模式
+pnpm dev                      # 开发模式
+pnpm dev:debug                # 调试模式
+pnpm prod                     # 生产模式
 
 # 数据库管理
-npm run db:backup             # 备份数据库
-npm run db:restore            # 恢复数据库
+pnpm db:backup                # 备份数据库
+pnpm db:restore               # 恢复数据库
 
 # 代码质量
-npm run lint                  # 代码检查
-npm run lint:fix              # 自动修复
+pnpm lint                     # 代码检查
+pnpm lint:fix                 # 自动修复
 ```
 
 ## 📊 性能监控
 
 ### 构建分析
-- 运行 `npm run build:report` 查看包分析
+- 运行 `pnpm build:report` 查看包分析
 - 查看生成的分析报告了解包大小分布
 - 检查构建信息进行性能优化
 
 ### 包大小监控
-- 运行 `npm run size` 检查包大小
+- 运行 `pnpm size` 检查包大小
 - 配置在 `package.json` 的 `bundlesize` 字段
 - 自动检查是否超过阈值
 
 ### 依赖分析
-- 运行 `npm run deps:manage` 检查依赖状态
+- 运行 `pnpm deps:manage` 检查依赖状态
 - 自动检测版本不一致问题
 - 生成依赖报告
 
@@ -251,35 +261,35 @@ npm run lint:fix              # 自动修复
 - `vite.config.js` - 主要构建配置（包含性能优化和分析功能）
 
 ### 代码质量
-- `.eslintrc.js` - ESLint 规则
+- `.eslintrc.cjs` - ESLint 规则
 - `.prettierrc` - Prettier 配置
-- `server/.eslintrc.js` - 服务端 ESLint
+- `server/.eslintrc.cjs` - 服务端 ESLint
 
 ## 🎯 最佳实践
 
 ### 开发流程
-1. 使用 `npm run dev` 启动开发服务器
-2. 定期运行 `npm run lint:fix` 修复代码问题
-3. 提交前运行 `npm run format` 格式化代码
-4. 使用 `npm run test` 确保测试通过
+1. 使用 `pnpm dev` 启动开发服务器
+2. 定期运行 `pnpm lint:fix` 修复代码问题
+3. 提交前运行 `pnpm format` 格式化代码
+4. 使用 `pnpm test`（如已配置）确保测试通过
 
 ### 构建流程
-1. 运行 `npm run build:optimize` 进行优化构建
-2. 使用 `npm run build:report` 分析包大小
-3. 检查 `npm run size` 确保包大小合理
-4. 运行 `npm run preview` 预览构建结果
+1. 运行 `pnpm build:optimize` 进行优化构建
+2. 使用 `pnpm build:report` 分析包大小
+3. 检查 `pnpm size` 确保包大小合理
+4. 运行 `pnpm preview` 预览构建结果
 
 ### 依赖管理
-1. 定期运行 `npm run deps:check` 检查更新
-2. 使用 `npm run deps:manage` 管理依赖版本
-3. 重要更新前备份数据库 `npm run db:backup`
+1. 定期运行 `pnpm deps:check` 检查更新
+2. 使用 `pnpm deps:manage` 管理依赖版本
+3. 重要更新前备份数据库 `pnpm db:backup`
 
 ## 技术栈
 
-- 前端：Vue 3, Pinia, Vue Router, Element Plus
-- 后端：Node.js, Express, SQLite, node-cache
+- 前端：Vue 3, Pinia, Vue Router, Element Plus, TypeScript
+- 后端：Node.js, Express, SQLite, node-cache, TypeScript
 - SSH连接：ssh2, xterm.js
-- 加密：bcrypt, crypto-js, jsonwebtoken
+- 加密：bcryptjs, crypto-js, jsonwebtoken
 
 ## 贡献指南
 

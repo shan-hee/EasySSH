@@ -15,7 +15,7 @@ EasySSH is a modern SSH client that provides efficient, secure, and user-friendl
 
 ## System Requirements
 
-- Node.js >= 16.0.0
+- Node.js >= 20.0.0
 - SQLite >= 3.0.0
 - Modern browsers support (Chrome, Firefox, Edge, Safari)
 - OpenSSH client (optional, for some advanced features)
@@ -27,8 +27,8 @@ Follow these steps to set up and run the project:
 ### Clone Repository
 
 ```bash
-git clone https://github.com/yourusername/easyssh.git
-cd easyssh
+git clone https://github.com/shan-hee/EasySSH.git
+cd EasySSH
 ```
 
 ### Environment Configuration
@@ -41,20 +41,24 @@ cp .env.example .env
 
 2. Edit the `.env` file and configure the following important parameters:
 
-- `PORT`: Server port, default is 8520
+- `VITE_PORT`: Frontend dev server port (default 8520)
+- `SERVER_PORT`: Backend server port (default 8000)
+- `VITE_API_TARGET`: Frontend proxy target (default `http://localhost:8000`)
 - `JWT_SECRET`: JWT token secret key for user authentication
 - `ENCRYPTION_KEY`: Sensitive data encryption key
-- `SQLITE_PATH`: SQLite database path, default is './server/data/easyssh.sqlite'
+- `SQLITE_PATH`: SQLite database path (default `./server/data/easyssh.sqlite`)
 
 ### Install Dependencies
 
 ```bash
-# Install frontend dependencies
+# Install frontend dependencies (recommend pnpm)
+pnpm install
+# or
 npm install
 
 # Install server dependencies
 cd server
-npm install
+pnpm install # or npm install
 cd ..
 ```
 
@@ -66,14 +70,12 @@ The SQLite database will be automatically created on first startup, no additiona
 
 ```bash
 # Start frontend in development mode
-npm run dev
+pnpm dev
 
 # Start server in another terminal
 cd server
-npm run dev
+pnpm dev
 ```
-
-Visit `http://localhost:3000` to open the application.
 
 ## Development Workflow
 
@@ -145,7 +147,9 @@ ENCRYPTION_KEY=your_secure_encryption_key
 
 2. Build frontend:
 ```bash
-npm run build
+pnpm build
+# or
+# npm run build
 ```
 
 3. Configure reverse proxy (Nginx example):
@@ -176,111 +180,114 @@ docker run -p 8520:8520 -v sqlite-data:/app/server/data easyssh
 
 ### Common Commands
 
+Note: Commands use pnpm; if you prefer npm, replace `pnpm <script>` with `npm run <script>`.
+
 ```bash
 # Development environment
-npm run dev                    # Start development server
-npm run dev:debug             # Start in debug mode
+pnpm dev                       # Start development server
+pnpm dev:debug                 # Start in debug mode
 
 # Build related
-npm run build                 # Production build
-npm run build:analyze         # Build analysis
-npm run build:optimize        # Optimize build process
-npm run preview               # Preview build results
+pnpm build                    # Production build
+pnpm build:report             # Build analysis
+pnpm build:optimize           # Optimize build process
+pnpm preview                  # Preview build results
 
 # Code quality
-npm run lint                  # Code linting
-npm run lint:fix              # Auto fix
-npm run format                # Code formatting
-npm run format:check          # Format check
+pnpm lint                     # Code linting
+pnpm lint:fix                 # Auto fix
+pnpm format                   # Code formatting
+pnpm format:check             # Format check
 
 # Dependency management
-npm run deps:check            # Check outdated dependencies
-npm run deps:update           # Update dependencies
-npm run deps:manage           # Dependency management tool
-npm run deps:sync             # Sync frontend/backend dependencies
+pnpm deps:check               # Check outdated dependencies
+pnpm deps:update              # Update dependencies
+pnpm deps:manage              # Dependency management tool
+pnpm deps:sync                # Sync frontend/backend dependencies
 
 # Cleanup related
-npm run clean                 # Clean cache
-npm run clean:all             # Complete cleanup
-npm run reinstall             # Reinstall
+pnpm clean                    # Clean cache
+pnpm clean:all                # Complete cleanup
+pnpm reinstall                # Reinstall
 ```
 
 ### Server Commands
+
+Note: Commands use pnpm; if you prefer npm, replace `pnpm <script>` with `npm run <script>`.
 
 ```bash
 cd server
 
 # Development environment
-npm run dev                   # Development mode
-npm run dev:debug             # Debug mode
-npm run prod                  # Production mode
+pnpm dev                      # Development mode
+pnpm dev:debug                # Debug mode
+pnpm prod                     # Production mode
 
 # Database management
-npm run db:backup             # Backup database
-npm run db:restore            # Restore database
+pnpm db:backup                # Backup database
+pnpm db:restore               # Restore database
 
 # Code quality
-npm run lint                  # Code linting
-npm run lint:fix              # Auto fix
+pnpm lint                     # Code linting
+pnpm lint:fix                 # Auto fix
 ```
 
 ## 📊 Performance Monitoring
 
 ### Build Analysis
-- Run `npm run build:report` to view package analysis
+- Run `pnpm build:report` to view package analysis
 - Check generated analysis reports for package size distribution
 - Review build information for performance optimization
 
 ### Bundle Size Monitoring
-- Run `npm run size` to check bundle size
+- Run `pnpm size` to check bundle size
 - Configuration in `package.json` `bundlesize` field
 - Automatically check if threshold is exceeded
 
 ### Dependency Analysis
-- Run `npm run deps:manage` to check dependency status
+- Run `pnpm deps:manage` to check dependency status
 - Automatically detect version inconsistency issues
 - Generate dependency reports
 
 ## 🔧 Configuration Files
 
 ### Environment Configuration
-- `.env.development` - Development environment configuration
-- `.env.production` - Production environment configuration
 - `.env.example` - Configuration template
+- `.env` - Actual environment variables (copied from template)
 
 ### Build Configuration
 - `vite.config.js` - Main build configuration (includes performance optimization and analysis features)
 
 ### Code Quality
-- `.eslintrc.js` - ESLint rules
+- `.eslintrc.cjs` - ESLint rules
 - `.prettierrc` - Prettier configuration
-- `server/.eslintrc.js` - Server-side ESLint
+- `server/.eslintrc.cjs` - Server-side ESLint
 
 ## 🎯 Best Practices
 
 ### Development Workflow
-1. Use `npm run dev` to start development server
-2. Regularly run `npm run lint:fix` to fix code issues
-3. Run `npm run format` before committing to format code
-4. Use `npm run test` to ensure tests pass
+1. Use `pnpm dev` to start development server
+2. Regularly run `pnpm lint:fix` to fix code issues
+3. Run `pnpm format` before committing to format code
+4. Use `pnpm test` (if configured) to ensure tests pass
 
 ### Build Workflow
-1. Run `npm run build:optimize` for optimized build
-2. Use `npm run build:analyze` to analyze bundle size
-3. Check `npm run size` to ensure reasonable bundle size
-4. Run `npm run preview` to preview build results
+1. Run `pnpm build:optimize` for optimized build
+2. Use `pnpm build:report` to analyze bundle size
+3. Check `pnpm size` to ensure reasonable bundle size
+4. Run `pnpm preview` to preview build results
 
 ### Dependency Management
-1. Regularly run `npm run deps:check` to check for updates
-2. Use `npm run deps:manage` to manage dependency versions
-3. Backup database before important updates `npm run db:backup`
+1. Regularly run `pnpm deps:check` to check for updates
+2. Use `pnpm deps:manage` to manage dependency versions
+3. Backup database before important updates `pnpm db:backup`
 
 ## Technology Stack
 
 - Frontend: Vue 3, Pinia, Vue Router, Element Plus
 - Backend: Node.js, Express, SQLite, node-cache
 - SSH Connection: ssh2, xterm.js
-- Encryption: bcrypt, crypto-js, jsonwebtoken
+- Encryption: bcryptjs, crypto-js, jsonwebtoken
 
 ## Contributing Guidelines
 

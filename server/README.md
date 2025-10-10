@@ -5,12 +5,12 @@
 服务器端已全面迁移为 TypeScript。
 
 - 开发运行（在 `server/` 下）
-  - `npm install`
-  - `npm run dev`（ts-node-dev 直接运行 TS 源码，预加载根目录 .env）
+  - `pnpm install`（或 `npm install`）
+  - `pnpm dev`（ts-node-dev 直接运行 TS 源码，预加载根目录 .env）
 
 - 构建与启动
-  - 构建：`npm run build`（编译至 `server/dist`）
-  - 启动：`npm run start`（从 `server/dist` 启动，预加载根目录 .env）
+  - 构建：`pnpm build`（或 `npm run build`，编译至 `server/dist`）
+  - 启动：`pnpm start`（或 `npm start`，从 `server/dist` 启动，预加载根目录 .env）
   
 ## 混合存储架构详解 (SQLite + node-cache)
 
@@ -420,7 +420,7 @@ WebSocket服务器处理SSH终端连接请求：
 
 ### 数据安全
 
-- **密码存储**: 使用bcrypt进行密码哈希
+- **密码存储**: 使用bcryptjs进行密码哈希
 - **敏感信息加密**: 使用AES-256加密存储服务器密码和私钥
 - **令牌安全**: 短期JWT令牌，支持失效和刷新
 - **令牌信息存储在node-cache中，支持即时失效
@@ -482,35 +482,37 @@ WebSocket服务器处理SSH终端连接请求：
 
 ## 环境要求
 
-- Node.js >= 16.0.0
+- Node.js >= 16.0.0（推荐 >= 20.0.0）
 - SQLite >= 3.0.0
 
 ## 环境变量配置
 
 ```
-# 基本配置
+# 基本配置（从仓库根目录 .env 加载）
 NODE_ENV=development
-PORT=8520
+SERVER_PORT=8000
 
 # 安全配置
 JWT_SECRET=your_jwt_secret_key
 ENCRYPTION_KEY=your_encryption_key
 
-# SQLite配置
-SQLITE_PATH=./data/easyssh.sqlite
+# SQLite配置（相对仓库根目录）
+SQLITE_PATH=./server/data/easyssh.sqlite
 ```
 
 ## 安装与运行
 
 ```bash
-# 安装依赖
+# 安装依赖（也可使用 pnpm）
+pnpm install
+# 或
 npm install
 
 # 开发模式运行
-npm run dev
+pnpm dev
 
 # 生产模式运行
-npm start
+pnpm start
 ```
 
 ## 系统监控功能

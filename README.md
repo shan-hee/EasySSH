@@ -118,7 +118,9 @@ docker run -d \
 git clone https://github.com/shan-hee/EasySSH.git
 cd EasySSH
 
-# 安装依赖
+# 安装依赖（推荐 pnpm，也可使用 npm）
+pnpm install
+# 或
 npm install
 
 # 配置环境
@@ -126,14 +128,17 @@ cp .env.example .env
 # 编辑.env文件设置环境参数
 
 # 启动前端（Vite）
-npm run dev
+pnpm dev
+# 或
+# npm run dev
 
 # 新开一个终端启动后端（Express）
 cd server
-npm install
-npm run dev
+pnpm install # 或 npm install
+pnpm dev
+# 或
+# npm run dev
 
-# 前端会将 /api、/ssh、/monitor 代理到 http://localhost:8000
 ```
 
 ### 使用方法
@@ -213,7 +218,7 @@ flowchart LR
     <td>
       • SQLite<br/>
       • node-cache<br/>
-      • bcrypt<br/>
+      • bcryptjs<br/>
       • crypto-js
     </td>
   </tr>
@@ -229,7 +234,7 @@ flowchart LR
 
 - **实时通信**: WebSocket建立持久连接，确保命令执行响应迅速
 - **高速缓存**: node-cache减少了70%以上的数据库查询，平均API响应时间降低了150ms
-- **安全保障**: 所有敏感数据通过AES-256加密，密码使用bcrypt哈希存储
+- **安全保障**: 所有敏感数据通过AES-256加密，密码使用bcryptjs哈希存储
 - **可伸缩性**: 分布式架构设计，支持水平扩展
 
 ### 兼容性支持
