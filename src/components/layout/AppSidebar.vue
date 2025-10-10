@@ -122,7 +122,9 @@
         :data-tooltip="currentTheme === 'dark' ? '切换到浅色主题' : '切换到深色主题'"
         @mouseenter="onNavMouseEnter"
         @mouseleave="onNavMouseLeave"
-        @click="toggleTheme"
+        @mousedown.stop.prevent="onThemeMouseDown"
+        @touchstart.stop.prevent="onThemeTouchStart"
+        @click.stop="toggleTheme"
       >
         <!-- 太阳图标 (浅色主题) -->
         <svg
@@ -213,6 +215,22 @@ export default defineComponent({
       // 监听主题变化事件
       window.addEventListener('theme-changed', event => {
         currentTheme.value = event.detail.actualTheme;
+        // 点击不隐藏，仅在移出时隐藏。为避免 pointer-events: none 期间丢失 mouseleave，
+        // 在主题切换完成后监听一次移动，首次移动若不在悬停元素内则隐藏。
+        const onceMove = e => {
+          try {
+            const target = e?.target;
+            const hoveredEl = currentHoveredEl.value;
+            if (!hoveredEl || (target && !hoveredEl.contains(target))) {
+              sidebarTooltipVisible.value = false;
+              currentHoveredEl.value = null;
+            }
+          } catch (_) {}
+          window.removeEventListener('mousemove', onceMove, true);
+          window.removeEventListener('pointermove', onceMove, true);
+        };
+        window.addEventListener('mousemove', onceMove, true);
+        window.addEventListener('pointermove', onceMove, true);
       });
     });
 
@@ -234,6 +252,7 @@ export default defineComponent({
 
     // 主题切换函数
     const toggleTheme = () => {
+      // 点击不隐藏tooltip，仅在移出时隐藏
       // 获取当前设置的主题（不是显示的主题）
       const currentSettingTheme = settingsService.settings.ui.theme;
       let newTheme;
@@ -250,6 +269,10 @@ export default defineComponent({
       // 更新主题设置
       settingsService.updateUISettings({ theme: newTheme });
     };
+
+    // 主题按钮按下时保留焦点，不隐藏tooltip
+    const onThemeMouseDown = () => {};
+    const onThemeTouchStart = () => {};
 
     // 侧边栏悬浮提示（通过 Teleport 渲染到 body，样式与终端工具栏一致）
     const sidebarTooltipVisible = ref(false);
@@ -273,10 +296,14 @@ export default defineComponent({
       };
     };
 
+    // 当前悬停的元素（用于在主题切换后判断一次移动是否仍在该元素内）
+    const currentHoveredEl = ref(null);
+
     const onNavMouseEnter = event => {
       const target = event.currentTarget;
       const text = target?.getAttribute('data-tooltip') || '';
       if (!text) return;
+      currentHoveredEl.value = target;
       sidebarTooltipText.value = text;
       updateSidebarTooltipPosition(target);
       sidebarTooltipVisible.value = true;
@@ -284,6 +311,7 @@ export default defineComponent({
 
     const onNavMouseLeave = () => {
       sidebarTooltipVisible.value = false;
+      currentHoveredEl.value = null;
     };
 
     // GitHub 链接跳转函数
@@ -303,6 +331,8 @@ export default defineComponent({
       currentTheme,
       handleNavigation,
       toggleTheme,
+      onThemeMouseDown,
+      onThemeTouchStart,
       openGitHub,
       handleLogoClick,
       userStore,
