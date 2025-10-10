@@ -23,6 +23,7 @@
     "db:restore": "node scripts/restore-db.js"
   },
   "dependencies": {
+    "ajv-formats": "^3.0.1",
     "ajv": "^8.17.1",
     "@sinclair/typebox": "^0.33.9",
     "archiver": "^7.0.1",
