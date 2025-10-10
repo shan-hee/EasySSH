@@ -45,6 +45,29 @@ jobs:
     - name: Checkout repository
       uses: actions/checkout@v4
 
+    - name: Sanitize stray submodule entries
+      shell: bash
+      run: |
+        set -e
+        # 列出索引中的 gitlinks（疑似误加入的子模块）
+        GL=$(git ls-files -s | awk '$1==160000 {print $4}') || true
+        if [ -n "$GL" ]; then
+          echo "Found gitlink entries:"; echo "$GL"
+          for p in $GL; do
+            echo "Removing stray submodule index entry: $p"
+            git rm -f --cached -r "$p" || true
+            rm -rf "$p" || true
+          done
+        else
+          echo "No gitlink entries found"
+        fi
+
+        # 确保不存在损坏的 .gitmodules 造成的 foreach 报错
+        if [ -f .gitmodules ] && ! git config --file .gitmodules --get-regexp ^submodule 1>/dev/null 2>&1; then
+          echo "Empty .gitmodules detected; removing to avoid foreach error"
+          rm -f .gitmodules || true
+        fi
+
     - name: Setup pnpm
       uses: pnpm/action-setup@v4
       with:
