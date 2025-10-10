@@ -2,11 +2,13 @@ name: Production Docker Build and Push
 
 on:
   push:
-    branches: [ main ]
+    branches:
+      - main
+    tags:
+      - 'v*'
     paths:
       - 'package.json'
       - 'server/package.json'
-    tags: [ 'v*' ]
   workflow_dispatch:
     inputs:
       version_tag:
@@ -42,6 +44,22 @@ jobs:
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4
+
+    - name: Setup Node.js 20 + pnpm
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        cache: 'pnpm'
+        cache-dependency-path: |
+          pnpm-lock.yaml
+          server/pnpm-lock.yaml
+          package.json
+          server/package.json
+
+    - name: Enable corepack (pnpm)
+      run: |
+        corepack enable
+        pnpm -v
 
     - name: Extract version from package.json
       id: version
@@ -80,15 +98,17 @@ jobs:
           type=raw,value=latest,enable=${{ (github.ref == 'refs/heads/main' && github.event_name != 'workflow_dispatch') || (github.event_name == 'workflow_dispatch' && github.event.inputs.update_latest == 'true') }}
           type=raw,value=${{ steps.version.outputs.version }}
 
-    - name: Build frontend
+    - name: Build frontend (pnpm)
       run: |
-        npm ci
-        npm run build
+        pnpm install --no-frozen-lockfile
+        pnpm run build
 
     - name: Build and push Docker image
+      id: build
       uses: docker/build-push-action@v5
       with:
         context: .
+        file: ./Dockerfile
         platforms: ${{ github.event.inputs.platforms || 'linux/amd64,linux/arm64' }}
         push: true
         tags: ${{ steps.meta.outputs.tags }}
