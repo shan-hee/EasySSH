@@ -149,7 +149,6 @@ export default defineConfig(async ({ mode }) => {
     resolve: {
       alias: {
         '@': resolve(__dirname, 'src'), // src目录别名
-        'scripts': resolve(__dirname, 'scripts'), // 兼容现有目录结构
         'styles': resolve(__dirname, 'src/assets/styles'),
         'assets': resolve(__dirname, 'src/assets')
       }

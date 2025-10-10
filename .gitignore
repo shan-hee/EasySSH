@@ -9,6 +9,17 @@ node_modules
 # 生产环境构建文件
 /build
 /dist
+server/dist
+
+# Server 局部依赖与日志
+server/node_modules
+server/logs
+
+# 本地与IDE/缓存目录
+.claude
+.issues
+.log
+scripts/.cache
 
 # 杂项
 .DS_Store

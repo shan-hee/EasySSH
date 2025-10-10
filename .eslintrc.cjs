@@ -5,17 +5,19 @@ module.exports = {
     browser: true,
     es2022: true
   },
+  parser: 'vue-eslint-parser',
+  parserOptions: {
+    parser: '@typescript-eslint/parser',
+    ecmaVersion: 2022,
+    sourceType: 'module',
+    extraFileExtensions: ['.vue']
+  },
   extends: [
     'eslint:recommended',
-    'plugin:vue/vue3-essential',
-    'plugin:vue/vue3-strongly-recommended',
+    'plugin:@typescript-eslint/recommended',
     'plugin:vue/vue3-recommended'
   ],
-  parserOptions: {
-    ecmaVersion: 2022,
-    sourceType: 'module'
-  },
-  plugins: ['vue'],
+  plugins: ['vue', '@typescript-eslint'],
   rules: {
     // Vue相关规则
     'vue/multi-word-component-names': 'off',
@@ -31,7 +33,8 @@ module.exports = {
     // 禁止直接使用 console，统一通过日志服务输出
     'no-console': ['error', { allow: [] }],
     'no-debugger': process.env.NODE_ENV === 'production' ? 'warn' : 'off',
-    'no-unused-vars': ['error', { 
+    'no-unused-vars': ['off'],
+    '@typescript-eslint/no-unused-vars': ['error', {
       argsIgnorePattern: '^_',
       varsIgnorePattern: '^_'
     }],
@@ -61,12 +64,13 @@ module.exports = {
       rules: {
         'vue/no-async-in-computed-properties': 'warn',
         'vue/no-side-effects-in-computed-properties': 'warn',
-        'no-unused-vars': ['warn', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }],
+        'no-unused-vars': 'off',
+        '@typescript-eslint/no-unused-vars': ['warn', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }],
         'no-empty': ['warn', { allowEmptyCatch: true }]
       }
     },
     {
-      files: ['src/services/log.js', 'src/utils/ai-panel-performance.js'],
+      files: ['src/services/log.ts'],
       rules: {
         'no-console': 'off'
       }

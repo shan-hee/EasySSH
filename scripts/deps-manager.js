@@ -105,17 +105,17 @@ function checkSecurity() {
   // 检查前端
   log('检查前端依赖...', 'blue');
   try {
-    execSync('npm audit --audit-level=moderate', { stdio: 'inherit' });
+    execSync('pnpm audit --audit-level=moderate', { stdio: 'inherit' });
   } catch (error) {
-    log('⚠️  前端发现安全问题，建议运行: npm audit fix', 'yellow');
+    log('⚠️  前端发现安全问题，建议运行: pnpm audit fix', 'yellow');
   }
 
   // 检查后端
   log('\n检查后端依赖...', 'blue');
   try {
-    execSync('cd server && npm audit --audit-level=moderate', { stdio: 'inherit' });
+    execSync('cd server && pnpm audit --audit-level=moderate', { stdio: 'inherit' });
   } catch (error) {
-    log('⚠️  后端发现安全问题，建议运行: cd server && npm audit fix', 'yellow');
+    log('⚠️  后端发现安全问题，建议运行: cd server && pnpm audit fix', 'yellow');
   }
 }
 
@@ -128,7 +128,7 @@ function updateDependencies() {
   if (answer.toLowerCase() === 'y') {
     log('更新前端依赖...', 'blue');
     try {
-      execSync('npm update', { stdio: 'inherit' });
+      execSync('pnpm update -L', { stdio: 'inherit' });
       log('✅ 前端依赖更新完成', 'green');
     } catch (error) {
       log('❌ 前端依赖更新失败', 'red');
@@ -136,7 +136,7 @@ function updateDependencies() {
 
     log('更新后端依赖...', 'blue');
     try {
-      execSync('cd server && npm update', { stdio: 'inherit' });
+      execSync('cd server && pnpm update -L', { stdio: 'inherit' });
       log('✅ 后端依赖更新完成', 'green');
     } catch (error) {
       log('❌ 后端依赖更新失败', 'red');

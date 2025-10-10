@@ -10,7 +10,7 @@ import './assets/styles/main.css';
 import './components/sftp/styles/sftp-panel.css';
 
 // 导入服务初始化模块
-import { initializeServices } from '../scripts/services';
+import { initializeServices } from '@/services/ui';
 import servicesManager, { initServices as initCoreServices } from './services';
 // 导入日志服务
 import log from './services/log';
