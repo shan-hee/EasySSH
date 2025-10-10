@@ -1,4 +1,4 @@
-// @ts-nocheck
+// 移除 ts-nocheck：已补充必要的类型标注
 /**
  * 生产级数据传输管理器
  * 优化WebSocket数据传输，避免压缩冲突，提供高效可靠的数据传输
@@ -11,7 +11,8 @@
 import { EventEmitter } from 'events';
 import { gzip, gunzip } from 'zlib';
 import { promisify } from 'util';
-import logger from '../../utils/logger.js';
+import type { WebSocket } from 'ws';
+import logger from '../../utils/logger';
 
 const gzipAsync = promisify(gzip);
 const gunzipAsync = promisify(gunzip);
@@ -57,7 +58,14 @@ const TRANSPORT_CONFIG = {
  * 生产级数据传输管理器
  */
 export class ProductionDataTransport extends EventEmitter {
-  constructor(options = {}) {
+  config: any;
+  connections: Map<string, any>;
+  messageQueue: Map<string, any[]>;
+  batchTimers: Map<string, ReturnType<typeof setTimeout>>;
+  retryQueues: Map<string, any[]>;
+  metrics: any;
+
+  constructor(options: any = {}) {
     super();
 
     this.config = { ...TRANSPORT_CONFIG, ...options };
@@ -88,7 +96,7 @@ export class ProductionDataTransport extends EventEmitter {
   /**
    * 注册WebSocket连接
    */
-  registerConnection(connectionId, websocket, options = {}) {
+  registerConnection(connectionId: string, websocket: WebSocket, options: any = {}) {
     const connection = {
       id: connectionId,
       websocket,
@@ -119,14 +127,14 @@ export class ProductionDataTransport extends EventEmitter {
   /**
    * 设置WebSocket事件监听
    */
-  setupWebSocketEvents(connection) {
+  setupWebSocketEvents(connection: any) {
     const { websocket, id } = connection;
 
-    websocket.on('close', (code, reason) => {
+    websocket.on('close', (code: number, reason: Buffer) => {
       this.handleConnectionClose(id, code, reason);
     });
 
-    websocket.on('error', (error) => {
+    websocket.on('error', (error: Error) => {
       this.handleConnectionError(id, error);
     });
 
@@ -153,7 +161,7 @@ export class ProductionDataTransport extends EventEmitter {
   /**
    * 发送数据
    */
-  async sendData(connectionId, data, options = {}) {
+  async sendData(connectionId: string, data: any, options: any = {}) {
     const connection = this.connections.get(connectionId);
     if (!connection) {
       throw new Error(`连接不存在: ${connectionId}`);
@@ -192,7 +200,7 @@ export class ProductionDataTransport extends EventEmitter {
   /**
    * 添加到批量队列
    */
-  async addToBatch(message) {
+  async addToBatch(message: any) {
     const { connectionId } = message;
     const queue = this.messageQueue.get(connectionId);
 
@@ -218,7 +226,7 @@ export class ProductionDataTransport extends EventEmitter {
   /**
    * 调度批量发送
    */
-  scheduleBatchSend(connectionId) {
+  scheduleBatchSend(connectionId: string) {
     // 清除现有定时器
     const existingTimer = this.batchTimers.get(connectionId);
     if (existingTimer) {
@@ -240,7 +248,7 @@ export class ProductionDataTransport extends EventEmitter {
   /**
    * 发送批量消息
    */
-  async sendBatch(connectionId) {
+  async sendBatch(connectionId: string) {
     const queue = this.messageQueue.get(connectionId);
     if (!queue || queue.length === 0) {
       return;
@@ -287,7 +295,7 @@ export class ProductionDataTransport extends EventEmitter {
   /**
    * 发送单个消息
    */
-  async sendMessage(message) {
+  async sendMessage(message: any) {
     const connection = this.connections.get(message.connectionId);
     if (!connection) {
       throw new Error(`连接不存在: ${message.connectionId}`);
@@ -302,7 +310,7 @@ export class ProductionDataTransport extends EventEmitter {
       const startTime = Date.now();
 
       // 序列化数据
-      let payload = JSON.stringify(message.data);
+      let payload: string | Buffer = JSON.stringify(message.data);
       let compressed = false;
 
       // 应用层压缩（如果启用）
@@ -346,7 +354,7 @@ export class ProductionDataTransport extends EventEmitter {
   /**
    * 添加到重试队列
    */
-  async addToRetryQueue(message, error) {
+  async addToRetryQueue(message: any, error: any) {
     const { connectionId } = message;
 
     if (message.attempts >= this.config.retry.maxAttempts) {
@@ -380,7 +388,7 @@ export class ProductionDataTransport extends EventEmitter {
   /**
    * 处理重试队列
    */
-  async processRetryQueue(connectionId) {
+  async processRetryQueue(connectionId: string) {
     const retryQueue = this.retryQueues.get(connectionId);
     if (!retryQueue || retryQueue.length === 0) {
       return;
@@ -407,7 +415,7 @@ export class ProductionDataTransport extends EventEmitter {
   /**
    * 计算重试延迟
    */
-  calculateRetryDelay(attempts) {
+  calculateRetryDelay(attempts: number) {
     const delay = this.config.retry.baseDelay *
       Math.pow(this.config.retry.backoffFactor, attempts - 1);
     return Math.min(delay, this.config.retry.maxDelay);
@@ -416,7 +424,7 @@ export class ProductionDataTransport extends EventEmitter {
   /**
    * 计算队列大小
    */
-  calculateQueueSize(queue) {
+  calculateQueueSize(queue: any[]) {
     return queue.reduce((total, message) => {
       return total + JSON.stringify(message.data).length;
     }, 0);
@@ -425,7 +433,7 @@ export class ProductionDataTransport extends EventEmitter {
   /**
    * 更新性能指标
    */
-  updateMetrics(message, bytesSent, duration) {
+  updateMetrics(message: any, bytesSent: number, duration: number) {
     this.metrics.totalMessages++;
     this.metrics.totalBytes += bytesSent;
 
@@ -438,14 +446,14 @@ export class ProductionDataTransport extends EventEmitter {
   /**
    * 生成消息ID
    */
-  generateMessageId() {
+  generateMessageId(): string {
     return `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
   }
 
   /**
    * 处理连接关闭
    */
-  handleConnectionClose(connectionId, code, reason) {
+  handleConnectionClose(connectionId: string, code: number, reason: any) {
     const connection = this.connections.get(connectionId);
     if (!connection) return;
 
@@ -477,7 +485,7 @@ export class ProductionDataTransport extends EventEmitter {
   /**
    * 处理连接错误
    */
-  handleConnectionError(connectionId, error) {
+  handleConnectionError(connectionId: string, error: any) {
     logger.error('WebSocket连接错误', {
       connectionId,
       error: error.message
@@ -524,7 +532,7 @@ export class ProductionDataTransport extends EventEmitter {
   /**
    * 获取连接统计
    */
-  getConnectionStats(connectionId) {
+  getConnectionStats(connectionId: string) {
     const connection = this.connections.get(connectionId);
     if (!connection) return null;
 

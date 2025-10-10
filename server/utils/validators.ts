@@ -1,8 +1,21 @@
-// Bridge stub to source JS validators
-// @ts-nocheck
-const logger = require('./logger');
+// Bridge stub to source JS validators (typed)
+import logger from './logger';
 
-const validateUser = (userData) => {
+type UserData = {
+  username?: string;
+  password?: string;
+  email?: string;
+};
+
+type Connection = {
+  host?: string;
+  username?: string;
+  port?: number;
+  authType?: 'password' | 'key' | string;
+  privateKey?: string;
+};
+
+const validateUser = (userData: UserData): boolean => {
   try {
     if (!userData.username || !userData.password) return false;
     if (!/^[a-zA-Z0-9_]{3,20}$/.test(userData.username)) return false;
@@ -15,7 +28,7 @@ const validateUser = (userData) => {
   }
 };
 
-const validateConnection = (connection) => {
+const validateConnection = (connection: Connection): boolean => {
   try {
     if (!connection.host || !connection.username) return false;
     const hostRegex = /^(([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\-]*[a-zA-Z0-9])\.)*([A-Za-z0-9]|[A-Za-z0-9][A-Za-z0-9\-]*[A-Za-z0-9])$|^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])$|^localhost$/;
@@ -32,4 +45,6 @@ const validateConnection = (connection) => {
   }
 };
 
-module.exports = { validateUser, validateConnection };
+const api = { validateUser, validateConnection };
+module.exports = api;
+export default api;

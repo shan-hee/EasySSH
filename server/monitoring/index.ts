@@ -1,10 +1,20 @@
-// @ts-nocheck
+// 移除 ts-nocheck：补充必要的类型标注以通过严格类型检查
 /**
  * EasySSH监控WebSocket服务
  * 处理前端监控数据传输和监控客户端连接
  */
 
 const WebSocket = require('ws');
+import type WebSocketType from 'ws';
+import type { IncomingMessage } from 'http';
+
+type HostDescriptor = {
+  raw: string;
+  value: string;
+  host: string;
+  hostname: string;
+  port: string | null;
+};
 const logger = require('../utils/logger');
 const monitoringConfig = require('../config/monitoring');
 const { handleWebSocketError } = require('../utils/errorHandler');
@@ -24,7 +34,7 @@ const ipToHostIdMap = new Map();
 // 订阅即推缓存：允许的缓存时效（毫秒）
 const SUBSCRIBE_CACHE_TTL_MS = 60 * 1000; // 60秒内的缓存视为有效
 
-function toHostDescriptor(value) {
+function toHostDescriptor(value: unknown): HostDescriptor | null {
   if (value === undefined || value === null) {
     return null;
   }
@@ -35,7 +45,9 @@ function toHostDescriptor(value) {
   }
 
   const withoutProtocol = raw.replace(/^(ssh|ws|wss|http|https):\/\//i, '');
-  const withoutCredentials = withoutProtocol.includes('@') ? withoutProtocol.split('@').pop() : withoutProtocol;
+  const withoutCredentials = withoutProtocol.includes('@')
+    ? (withoutProtocol.split('@').pop() || '')
+    : withoutProtocol;
   const hostPart = withoutCredentials.split(/[/?#]/)[0];
 
   if (!hostPart) {
@@ -50,10 +62,10 @@ function toHostDescriptor(value) {
     host: hostPart,
     hostname,
     port: port || null
-  };
+  } as HostDescriptor;
 }
 
-function descriptorsMatch(target, candidate) {
+function descriptorsMatch(target: HostDescriptor | null, candidate: HostDescriptor | null): boolean {
   if (!target || !candidate) {
     return false;
   }
@@ -81,12 +93,12 @@ function descriptorsMatch(target, candidate) {
   return false;
 }
 
-function collectSessionDescriptors(context) {
-  const descriptors = [];
+function collectSessionDescriptors(context: any): HostDescriptor[] {
+  const descriptors: HostDescriptor[] = [];
   const metadata = context?.metadata || {};
   const values = new Set();
 
-  const push = (value) => {
+  const push = (value: unknown) => {
     if (value) {
       values.add(String(value));
     }
@@ -135,10 +147,10 @@ function collectSessionDescriptors(context) {
     }
   });
 
-  return descriptors;
+  return descriptors as HostDescriptor[];
 }
 
-function findSessionsByServerId(serverId) {
+function findSessionsByServerId(serverId: string) {
   const targetDescriptor = toHostDescriptor(serverId);
 
   if (!targetDescriptor) {
@@ -149,7 +161,7 @@ function findSessionsByServerId(serverId) {
   const implicitHostId = ipToHostIdMap.get(serverId);
   const implicitDescriptor = implicitHostId ? toHostDescriptor(implicitHostId) : null;
 
-  return sessionLifecycle.listActive().filter((context) => {
+  return sessionLifecycle.listActive().filter((context: any) => {
     const descriptors = collectSessionDescriptors(context);
 
     if (descriptors.some((candidate) => descriptorsMatch(targetDescriptor, candidate))) {
@@ -171,7 +183,7 @@ function findSessionsByServerId(serverId) {
  * 处理前端监控数据传输，数据来源为SSH收集器
  * @param {Object} server HTTP服务器实例，用于集成到主服务器
  */
-function initMonitoringWebSocketServer(server) {
+function initMonitoringWebSocketServer(server: any) {
   // 创建支持压缩的WebSocket服务器，集成到主HTTP服务器
   const wss = new WebSocket.Server({
     noServer: true,
@@ -191,23 +203,23 @@ function initMonitoringWebSocketServer(server) {
   logger.info('前端监控WebSocket服务器已初始化，等待前端连接到 /monitor 路径');
 
   // 监听HTTP服务器的upgrade事件
-  server.on('upgrade', (request, socket, head) => {
-    const url = new URL(request.url, `http://${request.headers.host}`);
+  server.on('upgrade', (request: IncomingMessage, socket: any, head: Buffer) => {
+    const url = new URL(request.url || '', `http://${request.headers.host}`);
     const pathname = url.pathname;
 
     // 只处理监控路径的WebSocket请求
     if (pathname === '/monitor') {
-      wss.handleUpgrade(request, socket, head, (ws) => {
+      wss.handleUpgrade(request, socket, head, (ws: WebSocketType) => {
         wss.emit('connection', ws, request);
       });
     }
   });
 
   // 监听连接事件 - 只处理前端连接，监控数据来源为SSH收集器
-  wss.on('connection', (ws, req) => {
+  wss.on('connection', (ws: WebSocketType, req: IncomingMessage) => {
     logger.debug('收到前端监控WebSocket连接请求', { url: req.url });
 
-    const url = new URL(req.url, `http://${req.headers.host}`);
+    const url = new URL(req.url || '', `http://${req.headers.host}`);
     const subscribeServer = url.searchParams.get('subscribe');
 
     // 生成唯一的会话ID
@@ -268,7 +280,12 @@ function initMonitoringWebSocketServer(server) {
  * @param {string} clientIp 客户端IP
  * @param {string} subscribeServer 要订阅的服务器
  */
-function handleFrontendConnection(ws, sessionId, clientIp, subscribeServer) {
+function handleFrontendConnection(
+  ws: WebSocketType,
+  sessionId: string,
+  clientIp: string | null,
+  subscribeServer?: string | null
+): void {
   // 存储前端会话信息
   frontendSessions.set(sessionId, {
     id: sessionId,
@@ -307,7 +324,7 @@ function handleFrontendConnection(ws, sessionId, clientIp, subscribeServer) {
   }
 
   // 处理接收到的消息
-  ws.on('message', (message) => {
+  ws.on('message', (message: any) => {
     try {
       const session = frontendSessions.get(sessionId);
       if (session) {
@@ -324,7 +341,7 @@ function handleFrontendConnection(ws, sessionId, clientIp, subscribeServer) {
   });
 
   // 处理连接关闭
-  ws.on('close', (code, reason) => {
+  ws.on('close', (code: number, reason: Buffer) => {
     logger.info('前端监控连接已关闭', {
       sessionId,
       code,
@@ -338,10 +355,10 @@ function handleFrontendConnection(ws, sessionId, clientIp, subscribeServer) {
     const session = frontendSessions.get(sessionId);
     if (session && session.subscribedServers) {
       // 通知其他订阅了相同服务器的会话
-      session.subscribedServers.forEach(serverId => {
+      session.subscribedServers.forEach((serverId: string) => {
         if (serverSubscriptions.has(serverId)) {
           const subscribedSessions = serverSubscriptions.get(serverId);
-          subscribedSessions.forEach(otherSessionId => {
+          subscribedSessions.forEach((otherSessionId: string) => {
             if (otherSessionId !== sessionId) {
               const otherSession = frontendSessions.get(otherSessionId);
               if (otherSession && otherSession.ws && otherSession.ws.readyState === WebSocket.OPEN) {
@@ -365,7 +382,7 @@ function handleFrontendConnection(ws, sessionId, clientIp, subscribeServer) {
   });
 
   // 处理错误
-  ws.on('error', (err) => {
+  ws.on('error', (err: Error) => {
     handleWebSocketError(err, { sessionId, operation: '前端WebSocket连接' });
     cleanupFrontendSession(sessionId);
   });
@@ -379,7 +396,7 @@ function handleFrontendConnection(ws, sessionId, clientIp, subscribeServer) {
  * @param {string} sessionId 会话ID
  * @param {Object} data 消息数据
  */
-function handleFrontendMessage(ws, sessionId, data) {
+function handleFrontendMessage(ws: WebSocketType, sessionId: string, data: any): void {
   const { type } = data;
 
   switch (type) {
@@ -452,7 +469,7 @@ function handleFrontendMessage(ws, sessionId, data) {
  * @param {string} frontendSessionId 前端会话ID
  * @param {string} serverId 服务器ID
  */
-function subscribeToServer(frontendSessionId, serverId) {
+function subscribeToServer(frontendSessionId: string, serverId: string): void {
   if (!serverId) {
     logger.warn('前端会话尝试订阅空的服务器ID', { frontendSessionId });
     return;
@@ -524,7 +541,7 @@ function subscribeToServer(frontendSessionId, serverId) {
  * @param {string} frontendSessionId 前端会话ID
  * @param {string} serverId 服务器ID
  */
-function unsubscribeFromServer(frontendSessionId, serverId) {
+function unsubscribeFromServer(frontendSessionId: string, serverId: string): void {
   // 获取前端会话
   const frontendSession = frontendSessions.get(frontendSessionId);
   if (frontendSession) {
@@ -556,7 +573,7 @@ function unsubscribeFromServer(frontendSessionId, serverId) {
  * @param {string} sessionId 会话ID
  * @param {Object} payload 消息载荷
  */
-function handleSubscribeServer(ws, sessionId, payload) {
+function handleSubscribeServer(ws: WebSocketType, sessionId: string, payload: any): void {
   if (!payload || !payload.serverId) {
     sendError(ws, '缺少服务器ID', sessionId);
     return;
@@ -571,7 +588,7 @@ function handleSubscribeServer(ws, sessionId, payload) {
  * @param {string} sessionId 会话ID
  * @param {Object} payload 消息载荷
  */
-function handleUnsubscribeServer(ws, sessionId, payload) {
+function handleUnsubscribeServer(ws: WebSocketType, sessionId: string, payload: any): void {
   if (!payload || !payload.serverId) {
     sendError(ws, '缺少服务器ID', sessionId);
     return;
@@ -598,7 +615,7 @@ function handleUnsubscribeServer(ws, sessionId, payload) {
  * 清理前端会话
  * @param {string} sessionId 会话ID
  */
-function cleanupFrontendSession(sessionId) {
+function cleanupFrontendSession(sessionId: string): void {
   const session = frontendSessions.get(sessionId);
   if (session) {
     logger.debug('清理前端监控会话', {
@@ -610,7 +627,7 @@ function cleanupFrontendSession(sessionId) {
 
     // 取消所有订阅
     if (session.subscribedServers) {
-      session.subscribedServers.forEach(serverId => {
+      session.subscribedServers.forEach((serverId: string) => {
         unsubscribeFromServer(sessionId, serverId);
         logger.debug('取消前端会话订阅', { sessionId, serverId });
       });
@@ -646,19 +663,21 @@ function cleanupFrontendSession(sessionId) {
  * @param {Object} req 请求对象
  * @returns {string} 客户端IP地址
  */
-function getClientIP(req) {
-  return req.headers['x-forwarded-for'] ||
-         req.headers['x-real-ip'] ||
-         req.socket.remoteAddress ||
-         req.connection.remoteAddress ||
-         '未知';
+function getClientIP(req: IncomingMessage): string {
+  const xff = req.headers['x-forwarded-for'];
+  const xri = req.headers['x-real-ip'];
+  const forwarded = Array.isArray(xff) ? xff[0] : xff;
+  const real = Array.isArray(xri) ? xri[0] : xri;
+  const remote = (req.socket as any)?.remoteAddress || (req as any).connection?.remoteAddress;
+  const ip = forwarded || real || remote || '未知';
+  return typeof ip === 'string' ? ip : '未知';
 }
 
 /**
  * 生成唯一的会话ID
  * @returns {string} 会话ID
  */
-function generateSessionId() {
+function generateSessionId(): string {
   return 'monitor_' + Date.now() + '_' + Math.random().toString(36).substring(2, 11);
 }
 
@@ -670,7 +689,7 @@ function generateSessionId() {
  * @param {string} sessionId 会话ID
  * @param {Object} data 请求数据
  */
-function handleSystemStatsRequest(ws, sessionId, data) {
+function handleSystemStatsRequest(ws: WebSocketType, sessionId: string, data: any): void {
   // 检查是否是前端会话
   const frontendSession = frontendSessions.get(sessionId);
   if (!frontendSession) {
@@ -764,7 +783,7 @@ function handleSystemStatsRequest(ws, sessionId, data) {
  * @param {string} sessionId 会话ID
  * @param {Object} data 监控数据
  */
-function handleMonitoringDataFromClient(_ws, sessionId, data) {
+function handleMonitoringDataFromClient(_ws: WebSocketType, sessionId: string, data: any): void {
   logger.debug('收到监控客户端数据', { sessionId, type: data.type });
 
   // 从payload中提取监控数据
@@ -803,7 +822,7 @@ function handleMonitoringDataFromClient(_ws, sessionId, data) {
  * @param {Object} rawData 原始监控数据
  * @returns {Object} 标准化后的监控数据
  */
-function standardizeMonitoringData(rawData) {
+function standardizeMonitoringData(rawData: any) {
   if (!rawData || typeof rawData !== 'object') {
     return rawData;
   }
@@ -811,8 +830,8 @@ function standardizeMonitoringData(rawData) {
   const standardized = { ...rawData };
 
   // 标准化数值字段的通用函数
-  const normalizeNumber = (value, min = 0, max = 100) => {
-    const num = parseFloat(value);
+  const normalizeNumber = (value: unknown, min = 0, max = 100) => {
+    const num = typeof value === 'number' ? value : parseFloat(String(value));
     return isNaN(num) ? 0 : Math.max(min, Math.min(max, num));
   };
 
@@ -861,7 +880,7 @@ function standardizeMonitoringData(rawData) {
  * @param {string} sessionId SSH会话ID
  * @param {Object} data 监控数据
  */
-function handleMonitoringDataFromSSH(sessionId, data) {
+function handleMonitoringDataFromSSH(sessionId: string, data: any): void {
   const rawMonitoringData = data.payload || data;
   const hostId = data.hostId || rawMonitoringData.hostId;
 
@@ -884,7 +903,7 @@ function handleMonitoringDataFromSSH(sessionId, data) {
  * @param {Object} monitoringData 监控数据
  * @param {string} source 数据来源
  */
-function processMonitoringData(sessionId, hostId, monitoringData, source) {
+function processMonitoringData(sessionId: string, hostId: string, monitoringData: any, source: string): void {
   // 如果是组合标识符，建立IP映射
   if (hostId.includes('@')) {
     const [hostname, ipAddress] = hostId.split('@');
@@ -915,7 +934,7 @@ function processMonitoringData(sessionId, hostId, monitoringData, source) {
   // 检查直接订阅（使用完整hostId）
   if (serverSubscriptions.has(hostId)) {
     const subscribedFrontends = serverSubscriptions.get(hostId);
-    subscribedFrontends.forEach(frontendSessionId => {
+    subscribedFrontends.forEach((frontendSessionId: string) => {
       if (!notifiedSessions.has(frontendSessionId)) {
         const targetSession = frontendSessions.get(frontendSessionId);
         if (targetSession && targetSession.ws && targetSession.ws.readyState === WebSocket.OPEN) {
@@ -932,7 +951,7 @@ function processMonitoringData(sessionId, hostId, monitoringData, source) {
     const [, ipAddress] = hostId.split('@');
     if (ipAddress && serverSubscriptions.has(ipAddress)) {
       const subscribedFrontends = serverSubscriptions.get(ipAddress);
-      subscribedFrontends.forEach(frontendSessionId => {
+      subscribedFrontends.forEach((frontendSessionId: string) => {
         if (!notifiedSessions.has(frontendSessionId)) {
           const targetSession = frontendSessions.get(frontendSessionId);
           if (targetSession && targetSession.ws && targetSession.ws.readyState === WebSocket.OPEN) {
@@ -952,7 +971,7 @@ function processMonitoringData(sessionId, hostId, monitoringData, source) {
  * @param {string} sessionId 会话ID
  * @param {Object} data 监控数据
  */
-function handleMonitoringDataUpdate(ws, sessionId, data) {
+function handleMonitoringDataUpdate(ws: WebSocketType, sessionId: string, data: any): void {
   // 检查是否是前端会话
   const frontendSession = frontendSessions.get(sessionId);
   if (!frontendSession) {
@@ -977,7 +996,7 @@ function handleMonitoringDataUpdate(ws, sessionId, data) {
   // 向订阅了该主机的所有前端会话广播数据
   if (serverSubscriptions.has(hostId)) {
     const subscribedFrontends = serverSubscriptions.get(hostId);
-    subscribedFrontends.forEach(frontendSessionId => {
+    subscribedFrontends.forEach((frontendSessionId: string) => {
       const targetSession = frontendSessions.get(frontendSessionId);
       if (targetSession && targetSession.ws && targetSession.ws.readyState === WebSocket.OPEN) {
         sendMessage(targetSession.ws, {
@@ -1019,7 +1038,7 @@ function handleMonitoringDataUpdate(ws, sessionId, data) {
  * @param {string} hostId 主机标识符
  * @param {Object} monitoringData 监控数据
  */
-function broadcastMonitoringData(sessionId, hostId, monitoringData) {
+function broadcastMonitoringData(sessionId: string, hostId: string, monitoringData: any): number {
   const session = frontendSessions.get(sessionId);
   if (!session || !session.ws) {
     return 0;
@@ -1063,7 +1082,7 @@ function broadcastMonitoringData(sessionId, hostId, monitoringData) {
  * @param {WebSocket} ws WebSocket连接
  * @param {Object} message 消息对象
  */
-function sendMessage(ws, message) {
+function sendMessage(ws: WebSocketType, message: any, _options?: { immediate?: boolean }): void {
   if (ws && ws.readyState === WebSocket.OPEN) {
     try {
       ws.send(JSON.stringify(message));
@@ -1079,7 +1098,7 @@ function sendMessage(ws, message) {
  * @param {string} message 错误消息
  * @param {string} sessionId 会话ID
  */
-function sendError(ws, message, sessionId) {
+function sendError(ws: WebSocketType, message: string, sessionId?: string): void {
   sendMessage(ws, {
     type: 'error',
     data: {
@@ -1094,8 +1113,8 @@ function sendError(ws, message, sessionId) {
  * 获取所有活跃前端会话 - 重构版
  * @returns {Array} 会话列表
  */
-function getAllSessions() {
-  const sessions = [];
+function getAllSessions(): any[] {
+  const sessions: any[] = [];
   frontendSessions.forEach((session) => {
     sessions.push({
       id: session.id,
@@ -1114,7 +1133,7 @@ function getAllSessions() {
  * @param {string} hostname 主机名或IP地址
  * @returns {Object|null} 监控数据或null
  */
-function getSessionByHostname(hostname) {
+function getSessionByHostname(hostname: string): any | null {
   // 返回缓存的监控数据
   return monitoringDataCache.get(hostname) || null;
 }
@@ -1124,7 +1143,7 @@ function getSessionByHostname(hostname) {
  * @param {WebSocket} ws WebSocket连接
  * @param {Object} request HTTP请求对象
  */
-function handleConnection(ws, request) {
+function handleConnection(ws: WebSocketType, request: IncomingMessage): void {
   logger.debug('新的前端监控连接已建立');
 
   // 生成唯一的会话ID

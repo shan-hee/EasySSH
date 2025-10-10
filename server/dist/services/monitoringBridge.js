@@ -1,11 +1,14 @@
 "use strict";
-// @ts-nocheck
 /**
- * 监控数据桥接服务
+ * 监控数据桥接服务（TypeScript）
  * 连接SSH监控数据收集器和监控WebSocket服务
  */
-const logger = require('../utils/logger');
-const monitoringConfig = require('../config/monitoring');
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+const logger_1 = __importDefault(require("../utils/logger"));
+const monitoring_1 = __importDefault(require("../config/monitoring"));
 class MonitoringBridge {
     constructor() {
         this.collectors = new Map(); // sessionId -> SSHMonitoringCollector
@@ -23,7 +26,7 @@ class MonitoringBridge {
         this.lastFailoverAt = new Map(); // hostId -> timestamp
         this.lastDataAtByHost = new Map(); // hostId -> timestamp
         // 读取防抖配置
-        const election = monitoringConfig?.collector?.election || {};
+        const election = monitoring_1.default?.collector?.election || {};
         this.holdDownMs = typeof election.primaryHoldDownMs === 'number' ? election.primaryHoldDownMs : 2500;
         this.failoverCoolDownMs = typeof election.failoverCoolDownMs === 'number' ? election.failoverCoolDownMs : 500;
         this.jitterMs = typeof election.jitterMs === 'number' ? election.jitterMs : 150;
@@ -58,7 +61,7 @@ class MonitoringBridge {
     startMonitoring(sessionId, sshConnection, hostInfo, options = {}) {
         const { signal } = options;
         if (signal?.aborted) {
-            logger.debug('取消信号已触发，跳过监控启动', {
+            logger_1.default.debug('取消信号已触发，跳过监控启动', {
                 sessionId,
                 host: `${hostInfo.username || 'unknown'}@${hostInfo.address || 'unknown'}:${hostInfo.port || 22}`
             });
@@ -67,7 +70,7 @@ class MonitoringBridge {
         // 检查当前状态
         const currentState = this.collectorStates.get(sessionId);
         if (currentState === 'starting' || currentState === 'running') {
-            logger.debug('监控收集器已在运行或启动中，跳过重复启动', {
+            logger_1.default.debug('监控收集器已在运行或启动中，跳过重复启动', {
                 sessionId,
                 currentState,
                 host: hostInfo.address
@@ -87,7 +90,7 @@ class MonitoringBridge {
             if (signal) {
                 const abortHandler = () => {
                     const abortReason = signal.reason || 'aborted';
-                    logger.debug('收到会话取消信号（共享采集）', { sessionId, host: hostId, reason: abortReason });
+                    logger_1.default.debug('收到会话取消信号（共享采集）', { sessionId, host: hostId, reason: abortReason });
                     this.stopMonitoring(sessionId, abortReason);
                 };
                 signal.addEventListener('abort', abortHandler, { once: true });
@@ -95,7 +98,7 @@ class MonitoringBridge {
                     signal.removeEventListener('abort', abortHandler);
                 });
             }
-            logger.debug('复用现有主机采集器', {
+            logger_1.default.debug('复用现有主机采集器', {
                 sessionId,
                 host: `${hostInfo.username || 'unknown'}@${hostInfo.address || 'unknown'}:${hostInfo.port || 22}`,
                 hostId,
@@ -105,7 +108,7 @@ class MonitoringBridge {
         }
         // 防止并发重复启动
         if (this.inFlightStarts.has(hostId)) {
-            logger.debug('主机采集器正在启动，跳过并发启动', { sessionId, hostId });
+            logger_1.default.debug('主机采集器正在启动，跳过并发启动', { sessionId, hostId });
             this.collectorStates.set(sessionId, 'starting');
             // 记录会话，启动完成后将自动进入运行中
             const placeholderGroup = this.hostCollectors.get(hostId) || { sessions: new Map(), refCount: 0 };
@@ -136,7 +139,7 @@ class MonitoringBridge {
             collector.on('error', (error) => {
                 const hostIdOnError = collector.hostId;
                 const msg = error?.message || '';
-                logger.warn('监控收集器错误', {
+                logger_1.default.warn('监控收集器错误', {
                     sessionId,
                     hostId: hostIdOnError,
                     error: msg
@@ -149,7 +152,7 @@ class MonitoringBridge {
                     if (group && group.sessions.size > 0) {
                         if (!this.failoverHosts.has(hostIdOnError)) {
                             this.failoverHosts.add(hostIdOnError);
-                            logger.debug('检测到主连接错误，尝试主会话故障切换', { hostId: hostIdOnError, from: sessionId });
+                            logger_1.default.debug('检测到主连接错误，尝试主会话故障切换', { hostId: hostIdOnError, from: sessionId });
                             try {
                                 // 主动停止当前采集器，进入 stopped 流程，由 stopped 中完成切换
                                 if (collector.isCollecting) {
@@ -157,14 +160,14 @@ class MonitoringBridge {
                                 }
                             }
                             catch (e) {
-                                logger.debug('触发故障切换时停止采集器失败(忽略)', { hostId: hostIdOnError, error: e.message });
+                                logger_1.default.debug('触发故障切换时停止采集器失败(忽略)', { hostId: hostIdOnError, error: e.message });
                             }
                         }
                     }
                 }
             });
             collector.on('stopped', () => {
-                logger.debug('监控收集器已停止', {
+                logger_1.default.debug('监控收集器已停止', {
                     sessionId,
                     hostId: collector.hostId
                 });
@@ -176,7 +179,7 @@ class MonitoringBridge {
                     const currentPrimary = this.primarySessionByHost.get(collector.hostId);
                     if (currentPrimary === sessionId) {
                         this.primarySessionByHost.delete(collector.hostId);
-                        logger.debug('主监控会话已停止，释放主映射', {
+                        logger_1.default.debug('主监控会话已停止，释放主映射', {
                             hostId: collector.hostId,
                             sessionId
                         });
@@ -195,7 +198,8 @@ class MonitoringBridge {
                     if (group.refCount > 0 && group.sessions.size > 0) {
                         const doSwitch = () => {
                             // 选择一个新的会话接管
-                            const candidateEntry = Array.from(group.sessions.entries()).find(([sid]) => sid !== sessionId) || Array.from(group.sessions.entries())[0];
+                            const entries = Array.from(group.sessions.entries());
+                            const candidateEntry = entries.find((entry) => entry[0] !== sessionId) || entries[0];
                             if (candidateEntry) {
                                 const [newPrimaryId, meta] = candidateEntry;
                                 try {
@@ -205,14 +209,14 @@ class MonitoringBridge {
                                         this.handleMonitoringData(newPrimaryId, monitoringData);
                                     };
                                     newCollector.on('error', (error) => {
-                                        logger.warn('监控收集器错误(切换后)', {
+                                        logger_1.default.warn('监控收集器错误(切换后)', {
                                             sessionId: newPrimaryId,
                                             hostId: newCollector.hostId,
                                             error: error.message
                                         });
                                     });
                                     newCollector.on('stopped', () => {
-                                        logger.debug('监控收集器已停止(切换后)', {
+                                        logger_1.default.debug('监控收集器已停止(切换后)', {
                                             sessionId: newPrimaryId,
                                             hostId: newCollector.hostId
                                         });
@@ -228,10 +232,10 @@ class MonitoringBridge {
                                     const nowTs = Date.now();
                                     this.primaryLastSwitchAt.set(newCollector.hostId, nowTs);
                                     this.lastFailoverAt.set(newCollector.hostId, nowTs);
-                                    logger.debug('主监控会话已切换', { hostId: newCollector.hostId, from: sessionId, to: newPrimaryId });
+                                    logger_1.default.debug('主监控会话已切换', { hostId: newCollector.hostId, from: sessionId, to: newPrimaryId });
                                 }
                                 catch (switchErr) {
-                                    logger.error('主监控会话切换失败', { hostId: collector.hostId, error: switchErr.message });
+                                    logger_1.default.error('主监控会话切换失败', { hostId: collector.hostId, error: switchErr.message });
                                 }
                             }
                             // 释放锁
@@ -243,7 +247,7 @@ class MonitoringBridge {
                         const jitter = Math.floor(Math.random() * (this.jitterMs || 0));
                         if (since < this.failoverCoolDownMs) {
                             const delay = this.failoverCoolDownMs - since + jitter;
-                            logger.debug('应用故障切换冷却期', { hostId: collector.hostId, delay });
+                            logger_1.default.debug('应用故障切换冷却期', { hostId: collector.hostId, delay });
                             setTimeout(doSwitch, Math.max(0, delay));
                         }
                         else {
@@ -279,7 +283,7 @@ class MonitoringBridge {
                 }
             }
             catch (_) { }
-            logger.debug('SSH监控数据收集已启动', {
+            logger_1.default.debug('SSH监控数据收集已启动', {
                 sessionId,
                 host: `${hostInfo.username || 'unknown'}@${hostInfo.address || 'unknown'}:${hostInfo.port || 22}`,
                 collectorCount: this.collectors.size,
@@ -289,7 +293,7 @@ class MonitoringBridge {
             if (signal) {
                 const abortHandler = () => {
                     const abortReason = signal.reason || 'aborted';
-                    logger.debug('收到会话取消信号，停止监控收集器', {
+                    logger_1.default.debug('收到会话取消信号，停止监控收集器', {
                         sessionId,
                         host: collector.hostId,
                         reason: abortReason
@@ -306,7 +310,7 @@ class MonitoringBridge {
             // 启动失败，事件驱动清理：移除残留状态
             this.collectorStates.delete(sessionId);
             this.inFlightStarts.delete(hostId);
-            logger.error('启动SSH监控数据收集失败', {
+            logger_1.default.error('启动SSH监控数据收集失败', {
                 sessionId,
                 host: `${hostInfo.username}@${hostInfo.address}:${hostInfo.port}`,
                 error: error.message
@@ -344,7 +348,7 @@ class MonitoringBridge {
                     this.sessionToHost.delete(sessionId);
                     // 事件驱动清理：直接移除状态
                     this.collectorStates.delete(sessionId);
-                    logger.debug('释放主机采集器引用', { sessionId, hostId, refCount: group.refCount, reason });
+                    logger_1.default.debug('释放主机采集器引用', { sessionId, hostId, refCount: group.refCount, reason });
                     if (group.refCount === 0) {
                         // 无任何引用，停止并清理主采集器
                         const primaryId = group.primarySessionId;
@@ -354,7 +358,7 @@ class MonitoringBridge {
                                 primaryCollector.stopCollection();
                         }
                         catch (e) {
-                            logger.debug('停止主机采集器失败(忽略)', { hostId, error: e.message });
+                            logger_1.default.debug('停止主机采集器失败(忽略)', { hostId, error: e.message });
                         }
                         this.hostCollectors.delete(hostId);
                         if (primaryId)
@@ -397,7 +401,7 @@ class MonitoringBridge {
                     this.collectors.delete(sessionId);
                     // 事件驱动清理：直接移除状态
                     this.collectorStates.delete(sessionId);
-                    logger.debug('SSH监控数据收集已停止', {
+                    logger_1.default.debug('SSH监控数据收集已停止', {
                         sessionId,
                         hostId: collector.hostId,
                         reason
@@ -405,7 +409,7 @@ class MonitoringBridge {
                     return true;
                 }
                 catch (error) {
-                    logger.error('停止SSH监控数据收集失败', { sessionId, reason, error: error.message });
+                    logger_1.default.error('停止SSH监控数据收集失败', { sessionId, reason, error: error.message });
                     this.collectors.delete(sessionId);
                     // 事件驱动清理：直接移除状态
                     this.collectorStates.delete(sessionId);
@@ -448,7 +452,7 @@ class MonitoringBridge {
      */
     handleMonitoringData(sessionId, monitoringData) {
         if (!this.monitoringService) {
-            logger.warn('监控WebSocket服务未设置', { sessionId });
+            logger_1.default.warn('监控WebSocket服务未设置', { sessionId });
             return;
         }
         try {
@@ -468,7 +472,7 @@ class MonitoringBridge {
             const shouldBecomePrimary = !currentPrimary || !currentCollector || currentCollector.isCollecting === false;
             if (shouldBecomePrimary) {
                 if (currentPrimary && currentPrimary !== sessionId) {
-                    logger.debug('主监控会话失效，切换主会话', { hostId, from: currentPrimary, to: sessionId });
+                    logger_1.default.debug('主监控会话失效，切换主会话', { hostId, from: currentPrimary, to: sessionId });
                 }
                 this.primarySessionByHost.set(hostId, sessionId);
                 this.primaryLastSwitchAt.set(hostId, Date.now());
@@ -479,7 +483,7 @@ class MonitoringBridge {
                     this.monitoringService.handleMonitoringDataFromSSH(sessionId, monitoringData);
                 }
                 else {
-                    logger.warn('监控服务不支持SSH数据处理方法', { sessionId });
+                    logger_1.default.warn('监控服务不支持SSH数据处理方法', { sessionId });
                 }
             }
             else {
@@ -489,7 +493,7 @@ class MonitoringBridge {
             }
         }
         catch (error) {
-            logger.error('处理监控数据失败', {
+            logger_1.default.error('处理监控数据失败', {
                 sessionId,
                 error: error.message
             });
@@ -548,7 +552,7 @@ class MonitoringBridge {
             }
         });
         if (cleanedCount > 0) {
-            logger.debug('清理过期状态记录', { cleanedCount });
+            logger_1.default.debug('清理过期状态记录', { cleanedCount });
         }
     }
     /**
@@ -566,7 +570,7 @@ class MonitoringBridge {
         // 如果定时器已存在，先清理
         if (this.cleanupTimer) {
             clearInterval(this.cleanupTimer);
-            logger.warn('清理旧的定期任务定时器');
+            logger_1.default.warn('清理旧的定期任务定时器');
         }
         // 每5分钟执行一次清理
         this.cleanupTimer = setInterval(() => {
@@ -575,7 +579,7 @@ class MonitoringBridge {
         }, 5 * 60 * 1000);
         // 只在首次启动时记录，避免重启时的重复日志
         if (!this.cleanupTaskStarted) {
-            logger.debug('监控桥接清理任务已启动');
+            logger_1.default.debug('监控桥接清理任务已启动');
             this.cleanupTaskStarted = true;
         }
     }
@@ -586,14 +590,14 @@ class MonitoringBridge {
         if (this.cleanupTimer) {
             clearInterval(this.cleanupTimer);
             this.cleanupTimer = null;
-            logger.debug('监控桥接清理任务已停止');
+            logger_1.default.debug('监控桥接清理任务已停止');
         }
     }
     /**
      * 清理所有监控收集器
      */
     cleanup() {
-        logger.info('清理所有监控收集器', {
+        logger_1.default.info('清理所有监控收集器', {
             count: this.collectors.size
         });
         // 停止清理任务
@@ -603,7 +607,7 @@ class MonitoringBridge {
                 collector.stopCollection();
             }
             catch (error) {
-                logger.error('清理监控收集器失败', {
+                logger_1.default.error('清理监控收集器失败', {
                     sessionId,
                     error: error.message
                 });
@@ -644,3 +648,4 @@ class MonitoringBridge {
 // 创建单例实例
 const monitoringBridge = new MonitoringBridge();
 module.exports = monitoringBridge;
+exports.default = monitoringBridge;

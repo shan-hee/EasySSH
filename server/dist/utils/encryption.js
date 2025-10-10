@@ -1,21 +1,27 @@
 "use strict";
-// Bridge stub for compiled dist to reach source JS implementation
-// @ts-nocheck
-const crypto = require('crypto-js');
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.encrypt = encrypt;
+exports.decrypt = decrypt;
+exports.processConnectionSensitiveData = processConnectionSensitiveData;
+// Bridge stub for compiled dist to reach source JS implementation (typed)
+const crypto_js_1 = __importDefault(require("crypto-js"));
 const getSecretKey = () => process.env.ENCRYPTION_KEY || 'default-secret-key';
 function encrypt(text) {
     if (!text)
         return '';
-    return crypto.AES.encrypt(text, getSecretKey()).toString();
+    return crypto_js_1.default.AES.encrypt(text, getSecretKey()).toString();
 }
 function decrypt(cipher) {
     if (!cipher)
         return '';
     try {
-        const bytes = crypto.AES.decrypt(cipher, getSecretKey());
-        return bytes.toString(crypto.enc.Utf8);
+        const bytes = crypto_js_1.default.AES.decrypt(cipher, getSecretKey());
+        return bytes.toString(crypto_js_1.default.enc.Utf8);
     }
-    catch (e) {
+    catch {
         return '';
     }
 }
@@ -39,10 +45,12 @@ function processConnectionSensitiveData(connection, toEncrypt = true) {
     }
     return c;
 }
-module.exports = {
+const api = {
     encrypt,
     decrypt,
     processConnectionSensitiveData,
     decryptPassword: decrypt,
     decryptPrivateKey: decrypt
 };
+module.exports = api;
+exports.default = api;

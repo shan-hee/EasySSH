@@ -1,9 +1,10 @@
 "use strict";
-// @ts-nocheck
+// 移除 ts-nocheck：为 SFTP 二进制传输补充类型标注
 /**
  * SFTP 二进制传输模块
  * 用于处理基于二进制协议的SFTP文件传输和操作
  */
+Object.defineProperty(exports, "__esModule", { value: true });
 const path = require('path');
 const archiver = require('archiver');
 const logger = require('../utils/logger');
@@ -14,7 +15,7 @@ const { BINARY_MSG_TYPE, sendBinaryMessage, sendBinarySftpSuccess, sendBinarySft
 // 导入SFTP操作处理器
 const sftpOperations = require('./sftp-operations');
 // 存储活动的SFTP会话 (复用原有的)
-let sftpSessions = null;
+let sftpSessions = new Map();
 // 分块重组器实例
 const chunkReassembler = new ChunkReassembler();
 // 活动传输映射：operationId -> { type: 'file'|'tar'|'zip', stream?, archive? }
@@ -116,7 +117,7 @@ async function handleBinaryUpload(ws, headerData, payloadData, sshSessions) {
     await safeExec(async () => {
         const sftpSession = sftpSessions.get(sessionId);
         const sftp = sftpSession.sftp;
-        let fileBuffer = payloadData;
+        let fileBuffer = (payloadData ?? Buffer.alloc(0));
         // 若已取消，忽略后续数据
         if (canceledOperations.has(operationId)) {
             try {
@@ -159,7 +160,7 @@ async function handleBinaryUpload(ws, headerData, payloadData, sshSessions) {
                     sessionId,
                     operationId,
                     progress,
-                    bytesTransferred: (chunkIndex + 1) * payloadData.length,
+                    bytesTransferred: (chunkIndex + 1) * ((payloadData?.length) || 0),
                     totalBytes: fileSize,
                     timestamp: Date.now()
                 });
@@ -181,7 +182,7 @@ async function handleBinaryUpload(ws, headerData, payloadData, sshSessions) {
             logger.debug('文件校验和验证通过', { operationId });
         }
         // 检查文件大小限制
-        const maxUploadSize = parseInt(process.env.MAX_UPLOAD_SIZE) || 104857600; // 默认100MB
+        const maxUploadSize = parseInt(process.env.MAX_UPLOAD_SIZE || '') || 104857600; // 默认100MB
         if (fileBuffer.length > maxUploadSize) {
             const fileSizeMB = (fileBuffer.length / (1024 * 1024)).toFixed(2);
             const maxSizeMB = (maxUploadSize / (1024 * 1024)).toFixed(0);
@@ -471,7 +472,7 @@ async function handleBinaryDownloadFolder(ws, headerData, sshSessions) {
             }
         }
         // 文件夹大小限制（与现有ZIP方案保持一致，默认500MB，可通过MAX_FOLDER_SIZE配置）
-        const maxFolderSize = parseInt(process.env.MAX_FOLDER_SIZE) || 524288000; // 500MB
+        const maxFolderSize = parseInt(process.env.MAX_FOLDER_SIZE || '') || 524288000; // 500MB
         if (totalBytes > maxFolderSize) {
             logger.warn('文件夹过大（远端tar预检查）', { remotePath, totalBytes, maxFolderSize });
             sendBinarySftpError(ws, sessionId, operationId, `文件夹太大 (${(totalBytes / (1024 * 1024)).toFixed(2)} MB)，超过限制 (${(maxFolderSize / (1024 * 1024)).toFixed(2)} MB)`, 'FOLDER_TOO_LARGE');
@@ -486,7 +487,7 @@ async function handleBinaryDownloadFolder(ws, headerData, sshSessions) {
             startBinaryFolderZipStream(ws, sessionId, operationId, sftpSession.sftp, remotePath);
             return;
         }
-        const folderName = path.basename(remotePath) || 'folder';
+        const folderName = path.basename(remotePath || '') || 'folder';
         const tgzFilename = `${folderName}.tar.gz`;
         // 构建tar命令（尽可能保留权限/ACL/xattrs），如失败再尝试简化参数
         const tarCmds = [
@@ -715,7 +716,7 @@ async function handleBinaryDownloadFolder(ws, headerData, sshSessions) {
  */
 function startBinaryFolderZipStream(ws, sessionId, operationId, sftp, remotePath) {
     // 从环境变量读取压缩级别配置
-    const compressionLevel = parseInt(process.env.SFTP_COMPRESSION_LEVEL) || 6;
+    const compressionLevel = parseInt(process.env.SFTP_COMPRESSION_LEVEL || '') || 6;
     // 创建ZIP压缩器
     const archive = archiver('zip', {
         zlib: { level: compressionLevel }, // 压缩级别：0-9，默认6是平衡点
@@ -763,7 +764,7 @@ function startBinaryFolderZipStream(ws, sessionId, operationId, sftp, remotePath
             const zipBuffer = Buffer.concat(zipChunks);
             const checksum = ChecksumValidator.calculateSHA256(zipBuffer);
             // 获取文件夹名称作为ZIP文件名
-            const folderName = path.basename(remotePath) || 'folder';
+            const folderName = path.basename(remotePath || '') || 'folder';
             const zipFilename = `${folderName}.zip`;
             // 发送最终进度（100%）
             sendBinaryMessage(ws, BINARY_MSG_TYPE.SFTP_PROGRESS, {
@@ -824,7 +825,7 @@ function startBinaryFolderZipStream(ws, sessionId, operationId, sftp, remotePath
         totalFiles = fileCount;
         totalSize = size;
         // 检查文件夹大小限制（默认500MB）
-        const maxFolderSize = parseInt(process.env.MAX_FOLDER_SIZE) || 524288000; // 500MB
+        const maxFolderSize = parseInt(process.env.MAX_FOLDER_SIZE || '') || 524288000; // 500MB
         if (totalSize > maxFolderSize) {
             logger.warn('文件夹过大', { remotePath, totalSize, maxFolderSize });
             sendBinarySftpError(ws, sessionId, operationId, `文件夹太大 (${(totalSize / (1024 * 1024)).toFixed(2)} MB)，超过限制 (${(maxFolderSize / (1024 * 1024)).toFixed(2)} MB)`, 'FOLDER_TOO_LARGE');
@@ -898,7 +899,7 @@ function addFolderToZipBinary(archive, sftp, remotePath, zipPath, skippedFiles, 
                 checkCompletion();
                 return;
             }
-            list.forEach(item => {
+            list.forEach((item) => {
                 try {
                     // 跳过隐藏文件和特殊目录
                     if (item.filename.startsWith('.') &&
@@ -1003,7 +1004,7 @@ function addFolderToZipBinary(archive, sftp, remotePath, zipPath, skippedFiles, 
 function addFileToZipBinary(archive, sftp, remotePath, zipPath, fileSize, skippedFiles, callback) {
     try {
         // 跳过过大的文件（默认100MB）
-        const maxFileSize = parseInt(process.env.MAX_FILE_SIZE) || 104857600; // 100MB
+        const maxFileSize = parseInt(process.env.MAX_FILE_SIZE || '') || 104857600; // 100MB
         if (fileSize > maxFileSize) {
             if (skippedFiles) {
                 skippedFiles.push({
@@ -1304,7 +1305,7 @@ function estimateFolderSizeViaSftp(sftp, rootPath) {
                     pending--;
                     return finish();
                 }
-                list.forEach(item => {
+                list.forEach((item) => {
                     const p = path.posix.join(dir, item.filename);
                     if (item.attrs && item.attrs.isDirectory()) {
                         walk(p);

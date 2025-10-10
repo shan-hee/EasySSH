@@ -1,4 +1,4 @@
-// @ts-nocheck
+// 移除 ts-nocheck：为 SFTP 基础操作补充类型
 /**
  * SFTP基础操作模块
  * 处理非传输相关的SFTP操作（列表、创建、删除、重命名等）
@@ -6,6 +6,7 @@
 
 const path = require('path');
 const logger = require('../utils/logger');
+import type WebSocketType from 'ws';
 
 // 导入二进制SFTP工具函数
 const { sendBinarySftpSuccess, sendBinarySftpError } = require('./utils');
@@ -13,7 +14,7 @@ const { sendBinarySftpSuccess, sendBinarySftpError } = require('./utils');
 // 存储SFTP会话
 const sftpSessions = new Map();
 
-function isNotFoundError(err) {
+function isNotFoundError(err: any): boolean {
   if (!err) return false;
   if (err.code === 2 || err.code === 'ENOENT') return true;
   const message = typeof err.message === 'string' ? err.message.toLowerCase() : '';
@@ -21,8 +22,8 @@ function isNotFoundError(err) {
 }
 
 // 通用递归删除实现，允许目标在删除过程中被其他操作清理
-function recursiveDeletePath(sftp, targetPath, callback) {
-  sftp.stat(targetPath, (err, stats) => {
+function recursiveDeletePath(sftp: any, targetPath: string, callback: (err: any) => void): void {
+  sftp.stat(targetPath, (err: any, stats: any) => {
     if (err) {
       if (isNotFoundError(err)) {
         return callback(null);
@@ -32,7 +33,7 @@ function recursiveDeletePath(sftp, targetPath, callback) {
     }
 
     if (stats.isDirectory()) {
-      sftp.readdir(targetPath, (err, list) => {
+      sftp.readdir(targetPath, (err: any, list: any[]) => {
         if (err) {
           if (isNotFoundError(err)) {
             return callback(null);
@@ -41,10 +42,10 @@ function recursiveDeletePath(sftp, targetPath, callback) {
           return callback(err);
         }
 
-        const entries = list.filter(item => item && item.filename && item.filename !== '.' && item.filename !== '..');
+        const entries = list.filter((item: any) => item && item.filename && item.filename !== '.' && item.filename !== '..');
 
         if (entries.length === 0) {
-          return sftp.rmdir(targetPath, (rmdirErr) => {
+          return sftp.rmdir(targetPath, (rmdirErr: any) => {
             if (rmdirErr && !isNotFoundError(rmdirErr)) {
               rmdirErr.path = rmdirErr.path || targetPath;
               return callback(rmdirErr);
@@ -57,9 +58,9 @@ function recursiveDeletePath(sftp, targetPath, callback) {
         let completed = 0;
         let hasError = false;
 
-        entries.forEach(item => {
+        entries.forEach((item: any) => {
           const itemPath = `${targetPath}/${item.filename}`;
-          recursiveDeletePath(sftp, itemPath, (childErr) => {
+          recursiveDeletePath(sftp, itemPath, (childErr: any) => {
             if (childErr) {
               if (!hasError) {
                 hasError = true;
@@ -75,7 +76,7 @@ function recursiveDeletePath(sftp, targetPath, callback) {
 
             completed++;
             if (completed === entries.length) {
-              sftp.rmdir(targetPath, (rmdirErr) => {
+              sftp.rmdir(targetPath, (rmdirErr: any) => {
                 if (rmdirErr && !isNotFoundError(rmdirErr)) {
                   rmdirErr.path = rmdirErr.path || targetPath;
                   return callback(rmdirErr);
@@ -88,7 +89,7 @@ function recursiveDeletePath(sftp, targetPath, callback) {
         });
       });
     } else {
-      sftp.unlink(targetPath, (unlinkErr) => {
+      sftp.unlink(targetPath, (unlinkErr: any) => {
         if (unlinkErr && !isNotFoundError(unlinkErr)) {
           unlinkErr.path = unlinkErr.path || targetPath;
           return callback(unlinkErr);
@@ -103,9 +104,9 @@ function recursiveDeletePath(sftp, targetPath, callback) {
 /**
  * 获取文件MIME类型
  */
-function getMimeType(filename) {
+function getMimeType(filename: string): string {
   const ext = path.extname(filename).toLowerCase();
-  const mimeTypes = {
+  const mimeTypes: Record<string, string> = {
     '.txt': 'text/plain',
     '.js': 'text/javascript',
     '.json': 'application/json',
@@ -127,7 +128,7 @@ function getMimeType(filename) {
 /**
  * 处理SFTP初始化
  */
-function handleSftpInit(ws, data, sshSessions) {
+function handleSftpInit(ws: WebSocketType, data: any, sshSessions: Map<string, any>): void {
   const { sessionId, operationId } = data;
 
   try {
@@ -156,7 +157,7 @@ function handleSftpInit(ws, data, sshSessions) {
 
     logger.debug('开始创建SFTP会话', { sessionId });
 
-    sshSession.conn.sftp((err, sftp) => {
+    sshSession.conn.sftp((err: any, sftp: any) => {
       if (err) {
         logger.error('SFTP初始化失败', { sessionId, error: err.message });
         sendBinarySftpError(ws, sessionId, operationId, `SFTP初始化失败: ${err.message}`, 'SFTP_INIT_ERROR');
@@ -182,7 +183,7 @@ function handleSftpInit(ws, data, sshSessions) {
 /**
  * 处理SFTP列表目录
  */
-function handleSftpList(ws, data) {
+function handleSftpList(ws: WebSocketType, data: any): void {
   const { sessionId, path: remotePath, operationId } = data;
 
   try {
@@ -193,7 +194,7 @@ function handleSftpList(ws, data) {
 
     const sftp = sftpSession.sftp;
 
-    sftp.readdir(remotePath, (err, list) => {
+    sftp.readdir(remotePath, (err: any, list: any[]) => {
       if (err) {
         logger.error('SFTP列表目录失败', { sessionId, path: remotePath, error: err.message });
         sendBinarySftpError(ws, sessionId, operationId, `列表目录失败: ${err.message}`, 'SFTP_LIST_ERROR');
@@ -201,7 +202,7 @@ function handleSftpList(ws, data) {
       }
 
       // 格式化文件列表
-      const formattedList = list.map(item => ({
+      const formattedList = list.map((item: any) => ({
         name: item.filename,
         isDirectory: item.attrs.isDirectory(),
         size: item.attrs.size,
@@ -229,7 +230,7 @@ function handleSftpList(ws, data) {
 /**
  * 处理SFTP创建目录
  */
-function handleSftpMkdir(ws, data) {
+function handleSftpMkdir(ws: WebSocketType, data: any): void {
   const { sessionId, path: remotePath, operationId } = data;
 
   try {
@@ -240,7 +241,7 @@ function handleSftpMkdir(ws, data) {
 
     const sftp = sftpSession.sftp;
 
-    sftp.mkdir(remotePath, (err) => {
+    sftp.mkdir(remotePath, (err: any) => {
       if (err) {
         logger.error('SFTP创建目录失败', { sessionId, path: remotePath, error: err.message });
         sendBinarySftpError(ws, sessionId, operationId, `创建目录失败: ${err.message}`, 'SFTP_MKDIR_ERROR');
@@ -262,7 +263,7 @@ function handleSftpMkdir(ws, data) {
 /**
  * 处理SFTP删除
  */
-function handleSftpDelete(ws, data) {
+function handleSftpDelete(ws: WebSocketType, data: any): void {
   const { sessionId, path: remotePath, operationId } = data;
 
   try {
@@ -298,7 +299,7 @@ function handleSftpDelete(ws, data) {
 /**
  * 处理SFTP快速删除（递归删除目录）
  */
-function handleSftpFastDelete(ws, data) {
+function handleSftpFastDelete(ws: WebSocketType, data: any): void {
   const { sessionId, path: remotePath, operationId } = data;
 
   try {
@@ -333,7 +334,7 @@ function handleSftpFastDelete(ws, data) {
 /**
  * 处理SFTP权限修改
  */
-function handleSftpChmod(ws, data) {
+function handleSftpChmod(ws: WebSocketType, data: any): void {
   const { sessionId, path: remotePath, mode, operationId } = data;
 
   try {
@@ -344,7 +345,7 @@ function handleSftpChmod(ws, data) {
 
     const sftp = sftpSession.sftp;
 
-    sftp.chmod(remotePath, mode, (err) => {
+    sftp.chmod(remotePath, mode, (err: any) => {
       if (err) {
         logger.error('SFTP权限修改失败', { sessionId, path: remotePath, mode, error: err.message });
         sendBinarySftpError(ws, sessionId, operationId, `权限修改失败: ${err.message}`, 'SFTP_CHMOD_ERROR');
@@ -367,7 +368,7 @@ function handleSftpChmod(ws, data) {
 /**
  * 处理SFTP重命名
  */
-function handleSftpRename(ws, data) {
+function handleSftpRename(ws: WebSocketType, data: any): void {
   const { sessionId, oldPath, newPath, operationId } = data;
 
   try {
@@ -378,7 +379,7 @@ function handleSftpRename(ws, data) {
 
     const sftp = sftpSession.sftp;
 
-    sftp.rename(oldPath, newPath, (err) => {
+    sftp.rename(oldPath, newPath, (err: any) => {
       if (err) {
         logger.error('SFTP重命名失败', { sessionId, oldPath, newPath, error: err.message });
         sendBinarySftpError(ws, sessionId, operationId, `重命名失败: ${err.message}`, 'SFTP_RENAME_ERROR');
@@ -401,7 +402,7 @@ function handleSftpRename(ws, data) {
 /**
  * 处理SFTP关闭
  */
-function handleSftpClose(ws, data) {
+function handleSftpClose(ws: WebSocketType, data: any): void {
   const { sessionId, operationId } = data;
 
   try {

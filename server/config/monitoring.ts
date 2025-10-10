@@ -1,9 +1,65 @@
-// @ts-nocheck
 /**
- * 监控系统配置
+ * 监控系统配置（TypeScript）
  */
 
-const config = {
+export type MonitoringConfig = {
+  collector: {
+    defaultInterval: number;
+    minInterval: number;
+    maxInterval: number;
+    commandTimeout: number;
+    streaming: {
+      enabled: boolean;
+      preferStreaming: boolean;
+      adaptiveInterval: {
+        enabled: boolean;
+        cpuHighWatermark: number;
+        scale: number[];
+      };
+      enablePSI: boolean;
+      containerAwareness: boolean;
+    };
+    errorHandling: {
+      maxRetries: number;
+      maxConsecutiveErrors: number;
+      connectionErrorPatterns: string[];
+    };
+    election: {
+      primaryHoldDownMs: number;
+      failoverCoolDownMs: number;
+      jitterMs: number;
+      noDataTimeoutMs: number;
+    };
+  };
+  transport: {
+    compressionThreshold: number;
+    batch: { enabled: boolean; size: number; timeout: number };
+    ws: {
+      perMessageDeflate: boolean;
+      binaryCodec: 'json' | 'msgpack';
+      backpressureBytes: number;
+      dropPolicy: 'oldest' | 'current';
+    };
+    delta: { enabled: boolean; staticFieldsTTL: number };
+  };
+  frontend: {
+    chartUpdateInterval: number;
+    dataPointsLimit: number;
+    panel: {
+      defaultWidth: number;
+      defaultHeight: number;
+      minWidth: number;
+      minHeight: number;
+      draggable: boolean;
+      resizable: boolean;
+    };
+  };
+  performance: {
+    enableCompression: boolean;
+  };
+};
+
+const config: MonitoringConfig = {
   // SSH监控收集器配置
   collector: {
     // 数据收集间隔（毫秒）- 默认1秒，可通过设置界面调整
@@ -110,3 +166,4 @@ const config = {
 };
 
 module.exports = config;
+export default config;

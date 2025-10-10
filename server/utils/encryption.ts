@@ -1,26 +1,32 @@
-// Bridge stub for compiled dist to reach source JS implementation
-// @ts-nocheck
-const crypto = require('crypto-js');
+// Bridge stub for compiled dist to reach source JS implementation (typed)
+import CryptoJS from 'crypto-js';
 
-const getSecretKey = () => process.env.ENCRYPTION_KEY || 'default-secret-key';
+const getSecretKey = (): string => process.env.ENCRYPTION_KEY || 'default-secret-key';
 
-function encrypt(text) {
+export function encrypt(text: string): string {
   if (!text) return '';
-  return crypto.AES.encrypt(text, getSecretKey()).toString();
+  return CryptoJS.AES.encrypt(text, getSecretKey()).toString();
 }
 
-function decrypt(cipher) {
+export function decrypt(cipher: string): string {
   if (!cipher) return '';
   try {
-    const bytes = crypto.AES.decrypt(cipher, getSecretKey());
-    return bytes.toString(crypto.enc.Utf8);
-  } catch (e) {
+    const bytes = CryptoJS.AES.decrypt(cipher, getSecretKey());
+    return bytes.toString(CryptoJS.enc.Utf8);
+  } catch {
     return '';
   }
 }
 
-function processConnectionSensitiveData(connection, toEncrypt = true) {
-  const c = { ...connection };
+type ConnectionLike = {
+  password?: string;
+  passphrase?: string;
+  privateKey?: string;
+  [key: string]: any;
+};
+
+export function processConnectionSensitiveData<T extends ConnectionLike>(connection: T, toEncrypt = true): T {
+  const c: T = { ...connection };
   if (toEncrypt) {
     if (c.password) c.password = encrypt(c.password);
     if (c.passphrase) c.passphrase = encrypt(c.passphrase);
@@ -33,10 +39,13 @@ function processConnectionSensitiveData(connection, toEncrypt = true) {
   return c;
 }
 
-module.exports = {
+const api = {
   encrypt,
   decrypt,
   processConnectionSensitiveData,
   decryptPassword: decrypt,
   decryptPrivateKey: decrypt
 };
+
+module.exports = api;
+export default api;

@@ -1,15 +1,11 @@
-// @ts-nocheck
 /**
- * WebSocket消息Schema验证器
- * 使用AJV进行JSON Schema验证，确保消息格式正确
+ * WebSocket消息Schema验证器（TypeScript）
+ * 使用 AJV 进行 JSON Schema 验证，确保消息格式正确
  */
-const AjvLib = require('ajv');
-const logger = require('./logger');
+import Ajv, { type ErrorObject, type ValidateFunction } from 'ajv';
+import logger from './logger';
 
-// 兼容 Ajv v6/v8 的导入方式
-const Ajv = AjvLib && AjvLib.default ? AjvLib.default : AjvLib;
-
-// 创建AJV实例
+// 创建 AJV 实例
 const ajv = new Ajv({
   allErrors: true,
   removeAdditional: true, // 移除额外属性
@@ -20,7 +16,7 @@ const ajv = new Ajv({
 // 本项目未使用 JSON Schema 的 `format` 关键字，移除 ajv-formats 依赖与加载以降低噪音
 
 // 统一错误码定义
-const ERROR_CODES = {
+export const ERROR_CODES = {
   // 验证错误 (1000-1999)
   INVALID_MESSAGE_FORMAT: 1001,
   MISSING_REQUIRED_FIELD: 1002,
@@ -45,7 +41,7 @@ const ERROR_CODES = {
   SERVICE_UNAVAILABLE: 4002,
   RATE_LIMIT_EXCEEDED: 4003,
   RESOURCE_NOT_FOUND: 4004
-};
+} as const;
 
 // 基础消息Schema
 const baseMessageSchema = {
@@ -615,7 +611,7 @@ const sftpCloseMessageSchema = {
 };
 
 // 编译所有Schema
-const validators = {
+const validators: Record<string, ValidateFunction> = {
   connect: ajv.compile(connectMessageSchema),
   auth: ajv.compile(authMessageSchema),
   authenticate: ajv.compile(authenticateMessageSchema),
@@ -648,8 +644,14 @@ const validators = {
  * @param {Object} message 要验证的消息
  * @returns {Object} 验证结果
  */
-function validateMessage(message) {
-  const result = {
+export function validateMessage(message: unknown) {
+  const result: {
+    isValid: boolean;
+    errorCode: number | null;
+    errorMessage: string | null;
+    errors: ErrorObject[];
+    sanitizedMessage: unknown;
+  } = {
     isValid: false,
     errorCode: null,
     errorMessage: null,
@@ -659,7 +661,7 @@ function validateMessage(message) {
 
   try {
     // 首先验证基础消息格式
-    const baseValid = validators.base(message);
+    const baseValid = validators.base(message as any);
     if (!baseValid) {
       result.errorCode = ERROR_CODES.INVALID_MESSAGE_FORMAT;
       result.errorMessage = '消息格式不正确';
@@ -668,7 +670,7 @@ function validateMessage(message) {
     }
 
     // 根据消息类型进行具体验证
-    const messageType = message.type;
+    const messageType = (message as any).type as string;
     const validator = validators[messageType];
 
     if (!validator) {
@@ -687,7 +689,7 @@ function validateMessage(message) {
     } else {
       result.errorCode = ERROR_CODES.INVALID_MESSAGE_FORMAT;
       result.errorMessage = `${messageType}消息验证失败`;
-      result.errors = validator.errors || [];
+      result.errors = (validator.errors || []) as ErrorObject[];
     }
 
     return result;
@@ -706,7 +708,7 @@ function validateMessage(message) {
  * @param {string} requestId 请求ID
  * @returns {Object} 错误响应对象
  */
-function createErrorResponse(errorCode, errorMessage, requestId = null) {
+export function createErrorResponse(errorCode: number, errorMessage: string, requestId: string | null = null) {
   return {
     type: 'error',
     data: {
@@ -724,21 +726,18 @@ function createErrorResponse(errorCode, errorMessage, requestId = null) {
  * @param {Array} errors AJV错误数组
  * @returns {string} 格式化的错误信息
  */
-function formatValidationErrors(errors) {
+export function formatValidationErrors(errors: readonly ErrorObject[] | null | undefined): string {
   if (!errors || errors.length === 0) {
     return '未知验证错误';
   }
 
   return errors.map(error => {
-    const path = error.instancePath || error.dataPath || '';
+    const path = (error as any).instancePath || (error as any).dataPath || '';
     const message = error.message || '验证失败';
     return path ? `${path}: ${message}` : message;
   }).join('; ');
 }
 
-module.exports = {
-  validateMessage,
-  createErrorResponse,
-  formatValidationErrors,
-  ERROR_CODES
-};
+const api = { validateMessage, createErrorResponse, formatValidationErrors, ERROR_CODES };
+module.exports = api;
+export default api;

@@ -1,7 +1,10 @@
 "use strict";
-// Bridge stub to source JS validators
-// @ts-nocheck
-const logger = require('./logger');
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+// Bridge stub to source JS validators (typed)
+const logger_1 = __importDefault(require("./logger"));
 const validateUser = (userData) => {
     try {
         if (!userData.username || !userData.password)
@@ -15,7 +18,7 @@ const validateUser = (userData) => {
         return true;
     }
     catch (error) {
-        logger.error('用户数据验证失败', error);
+        logger_1.default.error('用户数据验证失败', error);
         return false;
     }
 };
@@ -31,13 +34,15 @@ const validateConnection = (connection) => {
         if (connection.authType && !['password', 'key'].includes(connection.authType))
             return false;
         if (connection.authType === 'key' && !connection.privateKey) {
-            logger.warn('密钥认证缺少私钥', { host: connection.host, username: connection.username });
+            logger_1.default.warn('密钥认证缺少私钥', { host: connection.host, username: connection.username });
         }
         return true;
     }
     catch (error) {
-        logger.error('连接数据验证失败', error);
+        logger_1.default.error('连接数据验证失败', error);
         return false;
     }
 };
-module.exports = { validateUser, validateConnection };
+const api = { validateUser, validateConnection };
+module.exports = api;
+exports.default = api;

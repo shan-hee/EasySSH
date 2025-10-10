@@ -1,10 +1,21 @@
-// @ts-nocheck
+// 移除 ts-nocheck：逐步补充类型标注
 /**
  * SSH WebSocket服务
  * 用于处理SSH连接和WebSocket通信
  */
 
 const WebSocket = require('ws');
+import type WebSocketType from 'ws';
+import type { IncomingMessage } from 'http';
+type ExtWebSocket = WebSocketType & {
+  clientIP?: string | null;
+  isAlive?: boolean;
+  connectionTime?: number;
+  lastPing?: number;
+  isClosed?: boolean;
+  sessionId?: string;
+  pendingSessionId?: string;
+};
 const url = require('url');
 const logger = require('../utils/logger');
 
@@ -50,7 +61,7 @@ setInterval(() => {
  * @param {Object} request HTTP请求对象
  * @returns {string|null} 客户端IP地址或null
  */
-function getClientIP(request) {
+function getClientIP(request: any): string | null {
   if (!request) return null;
 
   try {
@@ -115,7 +126,7 @@ function getClientIP(request) {
  * @param {string} ip IP地址字符串
  * @returns {boolean} 是否为有效IP
  */
-function isValidIP(ip) {
+function isValidIP(ip: string): boolean {
   if (!ip || typeof ip !== 'string') return false;
 
   // IPv4正则表达式
@@ -135,9 +146,9 @@ function isValidIP(ip) {
  * 统一处理SSH和监控WebSocket连接
  * @param {Object} server HTTP服务器实例
  */
-function initWebSocketServer(server) {
+function initWebSocketServer(server: any) {
   // 获取WebSocket最大消息大小配置
-  const maxMessageSize = parseInt(process.env.WS_MAX_MESSAGE_SIZE) || 157286400; // 默认150MB
+  const maxMessageSize = parseInt(process.env.WS_MAX_MESSAGE_SIZE || '') || 157286400; // 默认150MB
   const logger = require('../utils/logger');
 
   // 记录WebSocket配置
@@ -162,17 +173,17 @@ function initWebSocketServer(server) {
   });
 
   // 统一处理HTTP服务器的upgrade事件
-  server.on('upgrade', (request, socket, head) => {
-    const pathname = url.parse(request.url).pathname;
+  server.on('upgrade', (request: IncomingMessage, socket: any, head: Buffer) => {
+    const pathname = url.parse(request.url || '').pathname;
 
     if (pathname === '/ssh') {
       // 处理SSH WebSocket连接
-      sshWss.handleUpgrade(request, socket, head, (ws) => {
+      sshWss.handleUpgrade(request, socket, head, (ws: ExtWebSocket) => {
         sshWss.emit('connection', ws, request);
       });
     } else if (pathname === '/monitor') {
       // 处理前端监控WebSocket连接 - 专用前端监控通道
-      const requestUrl = new URL(request.url, `http://${request.headers.host}`);
+      const requestUrl = new URL(request.url || '', `http://${request.headers.host}`);
       const subscribeServer = requestUrl.searchParams.get('subscribe');
 
       logger.debug('收到前端监控WebSocket连接请求', {
@@ -180,7 +191,7 @@ function initWebSocketServer(server) {
         subscribeServer
       });
 
-      monitorWss.handleUpgrade(request, socket, head, (ws) => {
+      monitorWss.handleUpgrade(request, socket, head, (ws: WebSocketType) => {
         // 生成会话ID并处理前端监控连接
         const sessionId = `monitor_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
         const clientIp = getClientIP(request);
@@ -195,7 +206,7 @@ function initWebSocketServer(server) {
         clientIp: getClientIP(request)
       });
 
-      monitorWss.handleUpgrade(request, socket, head, (ws) => {
+      monitorWss.handleUpgrade(request, socket, head, (ws: WebSocketType) => {
         // 生成会话ID并处理监控客户端连接
         const sessionId = `client_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
         const clientIp = getClientIP(request);
@@ -217,7 +228,7 @@ function initWebSocketServer(server) {
   });
 
   // 处理SSH WebSocket连接
-  sshWss.on('connection', (ws, request) => {
+  sshWss.on('connection', (ws: ExtWebSocket, request: IncomingMessage) => {
     // 获取客户端IP地址并保存到WebSocket对象
     const clientIP = getClientIP(request);
     ws.clientIP = clientIP; // 保存到WebSocket对象，供后续使用
@@ -230,7 +241,7 @@ function initWebSocketServer(server) {
       realIP: request.headers['x-real-ip']
     });
 
-    let sessionId = null;
+    let sessionId: string | null = null;
 
     // 设置原生WebSocket心跳
     ws.isAlive = true;
@@ -240,7 +251,7 @@ function initWebSocketServer(server) {
 
     ws.on('pong', () => {
       ws.isAlive = true;
-      const latency = Date.now() - ws.lastPing;
+      const latency = Date.now() - (ws.lastPing || 0);
 
       // 只在延迟异常时记录日志（超过500ms）
       if (latency > 500) {
@@ -252,7 +263,7 @@ function initWebSocketServer(server) {
       }
     });
 
-    ws.on('message', async (message, isBinary) => {
+    ws.on('message', async (message: any, isBinary: boolean) => {
       try {
         if (isBinary) {
           // 处理二进制消息
@@ -335,8 +346,8 @@ function initWebSocketServer(server) {
               // 传统模式：直接包含所有连接信息
               sessionId = await ssh.handleConnect(ws, data);
               if (sessionId) {
-                ws.sessionId = sessionId;
-                ws.pendingSessionId = null;
+                ws.sessionId = sessionId as string;
+                ws.pendingSessionId = undefined;
               }
             }
           }
@@ -352,7 +363,7 @@ function initWebSocketServer(server) {
               const pendingData = pendingConnections.get(data.connectionId);
 
               // 获取基本连接信息
-              let connectionConfig = {
+              let connectionConfig: any = {
                 sessionId: pendingData.sessionId || data.sessionId,
                 clientIP,
                 connectionId: data.connectionId  // 添加connectionId
@@ -362,8 +373,8 @@ function initWebSocketServer(server) {
               if (data.encryptedPayload && data.keyId) {
                 try {
                   // 解密完整认证载荷
-                  const decryptedPayloadString = decryptSensitiveData(data.encryptedPayload, data.keyId);
-                  const authPayload = JSON.parse(decryptedPayloadString);
+              const decryptedPayloadString = decryptSensitiveData(data.encryptedPayload as string, data.keyId as string);
+              const authPayload = JSON.parse(decryptedPayloadString);
 
                   // 将解密的载荷合并到连接配置中
                   connectionConfig = {
@@ -396,8 +407,8 @@ function initWebSocketServer(server) {
                   // 建立SSH连接
                   sessionId = await ssh.handleConnect(ws, connectionConfig);
                   if (sessionId) {
-                    ws.sessionId = sessionId;
-                    ws.pendingSessionId = null;
+                    ws.sessionId = sessionId as string;
+                    ws.pendingSessionId = undefined;
                   }
 
                   // 连接成功后删除临时连接ID
@@ -500,7 +511,7 @@ function initWebSocketServer(server) {
       }
     });
 
-    ws.on('close', (code, reasonBuffer) => {
+    ws.on('close', (code: number, reasonBuffer: Buffer) => {
       ws.isClosed = true;
       const closedSessionId = ws.sessionId || sessionId || ws.pendingSessionId;
       const reasonText = reasonBuffer ? reasonBuffer.toString() : '';
@@ -520,7 +531,7 @@ function initWebSocketServer(server) {
       }
     });
 
-    ws.on('error', (err) => {
+    ws.on('error', (err: Error) => {
       logger.error('SSH WebSocket错误', { sessionId, error: err.message });
       const erroredSessionId = ws.sessionId || sessionId || ws.pendingSessionId;
       if (erroredSessionId) {
@@ -546,7 +557,7 @@ function initWebSocketServer(server) {
  * @param {string} key 解密密钥
  * @returns {string} 解密后的数据
  */
-function decryptSensitiveData(encryptedData, key) {
+function decryptSensitiveData(encryptedData: string, key: string): string {
   try {
     if (!encryptedData) return '';
 
@@ -582,7 +593,7 @@ function decryptSensitiveData(encryptedData, key) {
  * 设置全局WebSocket心跳机制
  * @param {WebSocket.Server} wss WebSocket服务器
  */
-function setupGlobalHeartbeat(wss) {
+function setupGlobalHeartbeat(wss: any): NodeJS.Timeout {
   const HEARTBEAT_INTERVAL = 15000; // 15秒
   const HEARTBEAT_TIMEOUT = 45000;  // 45秒超时
 
@@ -596,7 +607,7 @@ function setupGlobalHeartbeat(wss) {
     let activeConnections = 0;
     let terminatedConnections = 0;
 
-    wss.clients.forEach((ws) => {
+    wss.clients.forEach((ws: any) => {
       // 检查连接是否超时
       const connectionAge = now - ws.connectionTime;
       const timeSinceLastPong = now - (ws.lastPing || ws.connectionTime);
@@ -655,7 +666,7 @@ function setupGlobalHeartbeat(wss) {
  * @param {Buffer} buffer 二进制数据
  * @param {string} sessionId 当前会话ID
  */
-function handleBinaryMessage(ws, buffer, sessionId) {
+function handleBinaryMessage(ws: WebSocketType, buffer: Buffer, sessionId: string | null): void {
   try {
     if (buffer.length < 2) {
       logger.warn('二进制消息长度不足', { length: buffer.length });
@@ -691,7 +702,7 @@ function handleBinaryMessage(ws, buffer, sessionId) {
  * @param {Buffer} buffer 消息缓冲区
  * @param {string} currentSessionId 当前会话ID
  */
-async function handleUnifiedBinaryMessage(ws, buffer, currentSessionId) {
+async function handleUnifiedBinaryMessage(ws: WebSocketType, buffer: Buffer, currentSessionId: string | null): Promise<void> {
   try {
     // 解码统一二进制消息
     const message = BinaryMessageDecoder.decode(buffer);
@@ -808,7 +819,7 @@ async function handleUnifiedBinaryMessage(ws, buffer, currentSessionId) {
  * @param {Object} headerData 头部数据
  * @param {Buffer} payloadData 终端数据
  */
-async function handleSSHBinaryData(ws, headerData, payloadData) {
+async function handleSSHBinaryData(ws: WebSocketType, headerData: any, payloadData: Buffer): Promise<void> {
   const { sessionId } = headerData;
 
   if (!ssh.sessions.has(sessionId)) {
@@ -842,8 +853,8 @@ async function handleSSHBinaryData(ws, headerData, payloadData) {
     }
 
     // 记录传输统计
-    if (global.metricsCollector) {
-      global.metricsCollector.recordDataTransfer('inbound', 'binary', payloadData.length);
+    if ((global as any).metricsCollector) {
+      (global as any).metricsCollector.recordDataTransfer('inbound', 'binary', payloadData.length);
     }
 
     // logger.debug('SSH二进制数据已处理', {
@@ -871,7 +882,7 @@ async function handleSSHBinaryData(ws, headerData, payloadData) {
  * @param {WebSocket} ws WebSocket连接
  * @param {Object} headerData 头部数据
  */
-async function handleSSHResize(ws, headerData) {
+async function handleSSHResize(ws: WebSocketType, headerData: any): Promise<void> {
   const { sessionId, cols, rows } = headerData;
 
   // 调用原有的resize处理函数
@@ -886,7 +897,7 @@ async function handleSSHResize(ws, headerData) {
  * @param {Object} headerData 头部数据
  * @param {Buffer} payloadData 命令数据
  */
-async function handleSSHCommand(ws, headerData, payloadData) {
+async function handleSSHCommand(ws: WebSocketType, headerData: any, payloadData: Buffer): Promise<void> {
   const { sessionId } = headerData;
   const command = payloadData.toString('utf8');
 
@@ -900,7 +911,7 @@ async function handleSSHCommand(ws, headerData, payloadData) {
  * @param {WebSocket} ws WebSocket连接
  * @param {Object} headerData 头部数据 { sessionId, reason? }
  */
-async function handleBinaryDisconnect(ws, headerData) {
+async function handleBinaryDisconnect(ws: WebSocketType, headerData: any): Promise<void> {
   try {
     const { sessionId } = headerData || {};
     if (!sessionId) {
@@ -933,7 +944,7 @@ async function handleBinaryDisconnect(ws, headerData) {
  * @param {Buffer} buffer 二进制数据
  * @param {string} sessionId 当前会话ID
  */
-async function handleSftpBinaryMessage(ws, buffer, sessionId) {
+async function handleSftpBinaryMessage(ws: WebSocketType, buffer: Buffer, sessionId: string | null): Promise<void> {
   try {
     // 设置SFTP会话引用
     sftpBinary.setSftpSessions(sftpOperations.sftpSessions);
@@ -956,7 +967,7 @@ async function handleSftpBinaryMessage(ws, buffer, sessionId) {
  * @param {Buffer} buffer 二进制数据
  * @param {string} sessionId 当前会话ID
  */
-function handleLegacyBinaryMessage(ws, buffer, sessionId) {
+function handleLegacyBinaryMessage(ws: WebSocketType, buffer: Buffer, sessionId: string | null): void {
   try {
     // 确保正确处理Buffer对象
     let arrayBuffer;
@@ -989,19 +1000,19 @@ function handleLegacyBinaryMessage(ws, buffer, sessionId) {
     const sessionIdBytes = new Uint8Array(arrayBuffer, 2, sessionIdLen);
     const extractedSessionId = new TextDecoder().decode(sessionIdBytes);
     const payloadBytes = new Uint8Array(arrayBuffer, 2 + sessionIdLen);
-    const payload = new TextDecoder().decode(payloadBytes);
+    const payloadString = new TextDecoder().decode(payloadBytes);
 
     switch (type) {
     case 0x01: // DATA类型 - 终端输入数据
       ssh.handleDataBinary(ws, {
         sessionId: extractedSessionId,
-        payload
+        payload: payloadString
       });
       break;
 
     case 0x03: // RESIZE类型 - 终端大小调整
-      if (payload.length >= 8) {
-        const resizeView = new DataView(payload.buffer || payload);
+      if (payloadBytes.length >= 8) {
+        const resizeView = new DataView(payloadBytes.buffer);
         const cols = resizeView.getUint32(0, true); // 小端序
         const rows = resizeView.getUint32(4, true);
 
@@ -1032,7 +1043,7 @@ function handleLegacyBinaryMessage(ws, buffer, sessionId) {
  * @param {WebSocket} ws WebSocket连接
  * @param {Object} headerData 头部数据
  */
-async function handleBinaryConnect(ws, headerData) {
+async function handleBinaryConnect(ws: WebSocketType, headerData: any): Promise<void> {
   const { sessionId, connectionId, protocolVersion } = headerData;
 
   logger.debug('处理二进制连接请求', { sessionId, connectionId, protocolVersion });
@@ -1070,7 +1081,7 @@ async function handleBinaryConnect(ws, headerData) {
  * @param {Object} headerData 头部数据
  * @param {Buffer} payloadData 载荷数据
  */
-async function handleBinaryAuthenticate(ws, headerData, payloadData) {
+async function handleBinaryAuthenticate(ws: ExtWebSocket, headerData: any, payloadData: Buffer): Promise<void> {
   try {
     const { connectionId, sessionId, encryptedPayload, keyId } = headerData;
     // 使用WebSocket连接时保存的客户端IP
@@ -1089,7 +1100,7 @@ async function handleBinaryAuthenticate(ws, headerData, payloadData) {
       const pendingData = pendingConnections.get(connectionId);
 
       // 获取基本连接信息
-      let connectionConfig = {
+      let connectionConfig: any = {
         sessionId: pendingData.sessionId || sessionId,
         clientIP,
         connectionId  // 添加connectionId
@@ -1099,7 +1110,7 @@ async function handleBinaryAuthenticate(ws, headerData, payloadData) {
       if (encryptedPayload && keyId) {
         try {
           // 解密完整认证载荷
-          const decryptedPayloadString = decryptSensitiveData(encryptedPayload, keyId);
+          const decryptedPayloadString = decryptSensitiveData(encryptedPayload as string, keyId as string);
           const authPayload = JSON.parse(decryptedPayloadString);
 
           // 将解密的载荷合并到连接配置中
@@ -1177,7 +1188,7 @@ async function handleBinaryAuthenticate(ws, headerData, payloadData) {
  * @param {WebSocket} ws WebSocket连接
  * @param {Object} headerData 头部数据
  */
-async function handleBinaryPing(ws, headerData) {
+async function handleBinaryPing(ws: WebSocketType, headerData: any): Promise<void> {
   try {
     const { sessionId, measureLatency, webSocketLatency, requestId } = headerData;
 

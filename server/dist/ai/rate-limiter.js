@@ -1,14 +1,17 @@
 "use strict";
-// @ts-nocheck
 /**
- * 速率限制器
+ * 速率限制器（TypeScript）
  * 控制用户AI请求的频率和配额
  */
-const { getCache } = require('../config/database');
-const logger = require('../utils/logger');
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+const database_1 = __importDefault(require("../config/database"));
+const logger_1 = __importDefault(require("../utils/logger"));
 class RateLimiter {
     constructor(options = {}) {
-        this.cache = getCache();
+        this.cache = database_1.default.getCache();
         // 默认配置
         this.config = {
             // 每分钟请求限制
@@ -24,7 +27,7 @@ class RateLimiter {
             cooldownPeriod: options.cooldownPeriod || 60, // 60秒
             ...options
         };
-        logger.debug('速率限制器已初始化', this.config);
+        logger_1.default.debug('速率限制器已初始化', this.config);
     }
     /**
      * 检查用户是否可以发起请求
@@ -46,7 +49,7 @@ class RateLimiter {
             for (const check of checks) {
                 const result = await check;
                 if (!result.allowed) {
-                    logger.debug('速率限制检查失败', {
+                    logger_1.default.debug('速率限制检查失败', {
                         userId,
                         reason: result.reason,
                         resetTime: result.resetTime
@@ -63,7 +66,7 @@ class RateLimiter {
             };
         }
         catch (error) {
-            logger.error('速率限制检查失败', { userId, error: error.message });
+            logger_1.default.error('速率限制检查失败', { userId, error: error.message });
             // 出错时采用保守策略，允许请求但记录错误
             return {
                 allowed: true,
@@ -85,7 +88,7 @@ class RateLimiter {
         // 获取突发窗口内的请求记录
         const burstRequests = this.cache.get(key) || [];
         // 清理过期的请求记录
-        const validRequests = burstRequests.filter(timestamp => timestamp > windowStart);
+        const validRequests = burstRequests.filter((timestamp) => timestamp > windowStart);
         if (validRequests.length >= this.config.burstLimit) {
             const oldestRequest = Math.min(...validRequests);
             const resetTime = Math.ceil((oldestRequest + this.config.burstWindow * 1000 - now) / 1000);
@@ -207,7 +210,7 @@ class RateLimiter {
             const burstKey = `burst:${userId}`;
             const burstRequests = this.cache.get(burstKey) || [];
             const windowStart = now - (this.config.burstWindow * 1000);
-            const validBurstRequests = burstRequests.filter(timestamp => timestamp > windowStart);
+            const validBurstRequests = burstRequests.filter((timestamp) => timestamp > windowStart);
             validBurstRequests.push(now);
             this.cache.set(burstKey, validBurstRequests, this.config.burstWindow);
             // 记录分钟请求
@@ -240,7 +243,7 @@ class RateLimiter {
             }
             dayData.count++;
             this.cache.set(dayKey, dayData, 86400);
-            logger.debug('请求已记录', {
+            logger_1.default.debug('请求已记录', {
                 userId,
                 minute: minuteData.count,
                 hour: hourData.count,
@@ -248,7 +251,7 @@ class RateLimiter {
             });
         }
         catch (error) {
-            logger.error('记录请求失败', { userId, error: error.message });
+            logger_1.default.error('记录请求失败', { userId, error: error.message });
         }
     }
     /**
@@ -272,7 +275,7 @@ class RateLimiter {
             };
         }
         catch (error) {
-            logger.error('获取剩余请求数失败', { userId, error: error.message });
+            logger_1.default.error('获取剩余请求数失败', { userId, error: error.message });
             return { minute: 0, hour: 0, day: 0 };
         }
     }
@@ -287,10 +290,10 @@ class RateLimiter {
             const cooldownEnd = Date.now() + (cooldownDuration * 1000);
             const key = `cooldown:${userId}`;
             this.cache.set(key, cooldownEnd, cooldownDuration);
-            logger.info('用户冷却时间已设置', { userId, duration: cooldownDuration });
+            logger_1.default.info('用户冷却时间已设置', { userId, duration: cooldownDuration });
         }
         catch (error) {
-            logger.error('设置冷却时间失败', { userId, error: error.message });
+            logger_1.default.error('设置冷却时间失败', { userId, error: error.message });
         }
     }
     /**
@@ -307,10 +310,10 @@ class RateLimiter {
                 `cooldown:${userId}`
             ];
             keys.forEach(key => this.cache.del(key));
-            logger.info('用户限制记录已清除', { userId });
+            logger_1.default.info('用户限制记录已清除', { userId });
         }
         catch (error) {
-            logger.error('清除用户限制记录失败', { userId, error: error.message });
+            logger_1.default.error('清除用户限制记录失败', { userId, error: error.message });
         }
     }
     /**
@@ -338,7 +341,7 @@ class RateLimiter {
             };
         }
         catch (error) {
-            logger.error('获取用户限制状态失败', { userId, error: error.message });
+            logger_1.default.error('获取用户限制状态失败', { userId, error: error.message });
             return null;
         }
     }
@@ -348,7 +351,7 @@ class RateLimiter {
      */
     updateConfig(newConfig) {
         this.config = { ...this.config, ...newConfig };
-        logger.info('速率限制配置已更新', this.config);
+        logger_1.default.info('速率限制配置已更新', this.config);
     }
 }
 module.exports = RateLimiter;

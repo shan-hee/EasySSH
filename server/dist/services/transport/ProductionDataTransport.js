@@ -1,5 +1,5 @@
 "use strict";
-// @ts-nocheck
+// 移除 ts-nocheck：已补充必要的类型标注
 /**
  * 生产级数据传输管理器
  * 优化WebSocket数据传输，避免压缩冲突，提供高效可靠的数据传输
@@ -16,7 +16,7 @@ exports.ProductionDataTransport = void 0;
 const events_1 = require("events");
 const zlib_1 = require("zlib");
 const util_1 = require("util");
-const logger_js_1 = __importDefault(require("../../utils/logger.js"));
+const logger_1 = __importDefault(require("../../utils/logger"));
 const gzipAsync = (0, util_1.promisify)(zlib_1.gzip);
 const gunzipAsync = (0, util_1.promisify)(zlib_1.gunzip);
 /**
@@ -99,7 +99,7 @@ class ProductionDataTransport extends events_1.EventEmitter {
         this.messageQueue.set(connectionId, []);
         // 设置WebSocket事件监听
         this.setupWebSocketEvents(connection);
-        logger_js_1.default.info('WebSocket连接已注册', {
+        logger_1.default.info('WebSocket连接已注册', {
             connectionId,
             totalConnections: this.connections.size
         });
@@ -124,7 +124,7 @@ class ProductionDataTransport extends events_1.EventEmitter {
         // 定期心跳检测
         const heartbeatInterval = setInterval(() => {
             if (!connection.isAlive) {
-                logger_js_1.default.warn('WebSocket连接心跳超时', { connectionId: id });
+                logger_1.default.warn('WebSocket连接心跳超时', { connectionId: id });
                 websocket.terminate();
                 return;
             }
@@ -158,7 +158,7 @@ class ProductionDataTransport extends events_1.EventEmitter {
             }
         }
         catch (error) {
-            logger_js_1.default.error('发送数据失败', {
+            logger_1.default.error('发送数据失败', {
                 connectionId,
                 messageId: message.id,
                 error: error.message
@@ -205,7 +205,7 @@ class ProductionDataTransport extends events_1.EventEmitter {
                 await this.sendBatch(connectionId);
             }
             catch (error) {
-                logger_js_1.default.error('批量发送失败', { connectionId, error: error.message });
+                logger_1.default.error('批量发送失败', { connectionId, error: error.message });
             }
         }, this.config.batching.maxBatchDelay);
         this.batchTimers.set(connectionId, timer);
@@ -291,7 +291,7 @@ class ProductionDataTransport extends events_1.EventEmitter {
             this.updateMetrics(message, payload.length, duration);
             connection.messageCount++;
             connection.bytesSent += payload.length;
-            logger_js_1.default.debug('消息发送成功', {
+            logger_1.default.debug('消息发送成功', {
                 connectionId: message.connectionId,
                 messageId: message.id,
                 size: payload.length,
@@ -310,7 +310,7 @@ class ProductionDataTransport extends events_1.EventEmitter {
     async addToRetryQueue(message, error) {
         const { connectionId } = message;
         if (message.attempts >= this.config.retry.maxAttempts) {
-            logger_js_1.default.error('消息重试次数超限', {
+            logger_1.default.error('消息重试次数超限', {
                 connectionId,
                 messageId: message.id,
                 attempts: message.attempts
@@ -409,7 +409,7 @@ class ProductionDataTransport extends events_1.EventEmitter {
         this.connections.delete(connectionId);
         this.messageQueue.delete(connectionId);
         this.retryQueues.delete(connectionId);
-        logger_js_1.default.info('WebSocket连接已关闭', {
+        logger_1.default.info('WebSocket连接已关闭', {
             connectionId,
             code,
             reason: reason?.toString(),
@@ -421,7 +421,7 @@ class ProductionDataTransport extends events_1.EventEmitter {
      * 处理连接错误
      */
     handleConnectionError(connectionId, error) {
-        logger_js_1.default.error('WebSocket连接错误', {
+        logger_1.default.error('WebSocket连接错误', {
             connectionId,
             error: error.message
         });
@@ -442,7 +442,7 @@ class ProductionDataTransport extends events_1.EventEmitter {
         const memoryUsage = process.memoryUsage();
         this.metrics.peakMemoryUsage = Math.max(this.metrics.peakMemoryUsage, memoryUsage.heapUsed);
         const uptime = Date.now() - this.metrics.startTime;
-        logger_js_1.default.info('数据传输性能指标', {
+        logger_1.default.info('数据传输性能指标', {
             ...this.metrics,
             uptime,
             memoryUsage: {
@@ -505,7 +505,7 @@ class ProductionDataTransport extends events_1.EventEmitter {
         this.connections.clear();
         this.messageQueue.clear();
         this.retryQueues.clear();
-        logger_js_1.default.info('数据传输管理器已清理');
+        logger_1.default.info('数据传输管理器已清理');
     }
 }
 exports.ProductionDataTransport = ProductionDataTransport;

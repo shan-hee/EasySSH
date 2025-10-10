@@ -1,8 +1,8 @@
 "use strict";
-// @ts-nocheck
 /**
- * 监控系统配置
+ * 监控系统配置（TypeScript）
  */
+Object.defineProperty(exports, "__esModule", { value: true });
 const config = {
     // SSH监控收集器配置
     collector: {
@@ -96,3 +96,4 @@ const config = {
     }
 };
 module.exports = config;
+exports.default = config;

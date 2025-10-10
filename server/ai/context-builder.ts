@@ -1,14 +1,17 @@
-// @ts-nocheck
 /**
- * 上下文构建器
+ * 上下文构建器（TypeScript）
  * 负责处理终端输出，构建AI请求上下文，并进行敏感信息脱敏
  */
 
-const crypto = require('crypto');
-const logger = require('../utils/logger');
+import crypto from 'node:crypto';
+import logger from '../utils/logger';
 
 class ContextBuilder {
-  constructor(options = {}) {
+  maxLines: number;
+  maxBytes: number;
+  strictRedaction: boolean;
+  sensitivePatterns: any[];
+  constructor(options: any = {}) {
     this.maxLines = options.maxLines || 200;
     this.maxBytes = options.maxBytes || 32 * 1024; // 32KB
     this.strictRedaction = options.strictRedaction !== false; // 默认启用严格脱敏
@@ -30,7 +33,7 @@ class ContextBuilder {
    * @param {Object} options 选项
    * @returns {Object} 处理后的上下文
    */
-  buildContext(terminalOutput, currentInput, options = {}) {
+  buildContext(terminalOutput: string, currentInput: string, options: any = {}) {
     const startTime = Date.now();
 
     try {
@@ -66,7 +69,7 @@ class ContextBuilder {
    * @param {string} output 原始终端输出
    * @returns {string} 处理后的输出
    */
-  _processTerminalOutput(output) {
+  _processTerminalOutput(output: string) {
     if (!output || typeof output !== 'string') {
       return '';
     }
@@ -90,7 +93,7 @@ class ContextBuilder {
    * @param {string} text 原始文本
    * @returns {string} 脱敏后的文本
    */
-  _redactSensitiveInfo(text) {
+  _redactSensitiveInfo(text: string) {
     if (!text) return text;
 
     let redacted = text;
@@ -168,8 +171,8 @@ class ContextBuilder {
    * @param {string} type 敏感信息类型
    * @returns {string} 替换文本
    */
-  _getDefaultReplacement(type) {
-    const replacements = {
+  _getDefaultReplacement(type: string) {
+    const replacements: Record<string, string> = {
       aws_key: '***AWS_ACCESS_KEY***',
       bearer_token: '***BEARER_TOKEN***',
       private_key: '***PRIVATE_KEY***',
@@ -179,7 +182,7 @@ class ContextBuilder {
       api_key: '***API_KEY***',
       db_connection: '***DATABASE_URL***'
     };
-    return replacements[type] || '***REDACTED***';
+    return (replacements as any)[type] || '***REDACTED***';
   }
 
   /**
@@ -188,7 +191,7 @@ class ContextBuilder {
    * @param {Object} options 选项
    * @returns {Object} 元数据
    */
-  _extractMetadata(output, options = {}) {
+  _extractMetadata(output: string, options: any = {}) {
     const metadata = {
       osHint: options.osHint || this._detectOS(output),
       shellHint: options.shellHint || this._detectShell(output),
@@ -208,7 +211,7 @@ class ContextBuilder {
    * @param {string} output 终端输出
    * @returns {string} 操作系统类型
    */
-  _detectOS(output) {
+  _detectOS(output: string) {
     if (!output) return 'unknown';
 
     const osPatterns = [
@@ -231,7 +234,7 @@ class ContextBuilder {
    * @param {string} output 终端输出
    * @returns {string} Shell类型
    */
-  _detectShell(output) {
+  _detectShell(output: string) {
     if (!output) return 'unknown';
 
     const shellPatterns = [
@@ -261,7 +264,7 @@ class ContextBuilder {
    * @param {string} output 终端输出
    * @returns {boolean} 是否检测到错误
    */
-  _detectError(output) {
+  _detectError(output: string) {
     if (!output) return false;
 
     const errorPatterns = [
@@ -283,7 +286,7 @@ class ContextBuilder {
    * @param {string} output 终端输出
    * @returns {string} 命令类型
    */
-  _detectCommandType(output) {
+  _detectCommandType(output: string) {
     if (!output) return 'unknown';
 
     const commandPatterns = [
@@ -310,7 +313,7 @@ class ContextBuilder {
    * @param {string} output 终端输出
    * @returns {string} 风险级别
    */
-  _assessRiskLevel(output) {
+  _assessRiskLevel(output: string) {
     if (!output) return 'low';
 
     const highRiskPatterns = [
@@ -348,7 +351,7 @@ class ContextBuilder {
    * @param {number} maxBytes 最大字节数
    * @returns {string} 截断后的文本
    */
-  _truncateToBytes(text, maxBytes) {
+  _truncateToBytes(text: string, maxBytes: number) {
     const buffer = Buffer.from(text, 'utf8');
     if (buffer.length <= maxBytes) {
       return text;
@@ -364,7 +367,7 @@ class ContextBuilder {
    * @param {string} input 用户输入
    * @returns {string} 清理后的输入
    */
-  _sanitizeInput(input) {
+  _sanitizeInput(input: any) {
     if (!input || typeof input !== 'string') {
       return '';
     }
@@ -376,7 +379,7 @@ class ContextBuilder {
    * @param {Object} context 上下文对象
    * @returns {Object} 过滤后的上下文
    */
-  _applySecurityFilters(context) {
+  _applySecurityFilters(context: any) {
     const filtered = { ...context };
 
     // 严格模式下的额外检查
@@ -408,7 +411,7 @@ class ContextBuilder {
    * @param {string} text 文本内容
    * @returns {boolean} 是否包含关键敏感信息
    */
-  _hasCriticalSecrets(text) {
+  _hasCriticalSecrets(text: any) {
     if (!text) return false;
 
     const criticalPatterns = [
@@ -425,7 +428,7 @@ class ContextBuilder {
    * @param {Object} context 上下文对象
    * @returns {string} 哈希值
    */
-  generateContextHash(context) {
+  generateContextHash(context: any) {
     const hashContent = JSON.stringify({
       terminalOutput: context.terminalOutput?.substring(0, 1000), // 只取前1000字符
       currentInput: context.currentInput,

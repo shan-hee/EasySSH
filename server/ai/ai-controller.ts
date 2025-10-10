@@ -1,18 +1,27 @@
-// @ts-nocheck
 /**
- * AI控制器
+ * AI控制器（TypeScript）
  * 处理AI WebSocket连接和消息路由
  */
 
-const WebSocket = require('ws');
-const logger = require('../utils/logger');
-const { handleWebSocketError } = require('../utils/errorHandler');
+import WebSocket from 'ws';
+import logger from '../utils/logger';
+import { handleWebSocketError } from '../utils/errorHandler';
+// eslint-disable-next-line @typescript-eslint/no-var-requires
 const OpenAIAdapter = require('./openai-adapter');
+// eslint-disable-next-line @typescript-eslint/no-var-requires
 const ContextBuilder = require('./context-builder');
+// eslint-disable-next-line @typescript-eslint/no-var-requires
 const KeyVault = require('./key-vault');
+// eslint-disable-next-line @typescript-eslint/no-var-requires
 const RateLimiter = require('./rate-limiter');
 
 class AIController {
+  connections: Map<string, any>;
+  activeRequests: Map<string, any>;
+  contextBuilder: any;
+  keyVault: any;
+  rateLimiter: any;
+  startTime?: number;
   constructor() {
     // 存储活跃的WebSocket连接
     this.connections = new Map();
@@ -32,7 +41,7 @@ class AIController {
    * @param {WebSocket} ws WebSocket连接
    * @param {Object} connectionInfo 连接信息
    */
-  handleConnection(ws, connectionInfo) {
+  handleConnection(ws: WebSocket, connectionInfo: any) {
     const { sessionId, userId } = connectionInfo;
     const connectionId = `${userId}_${sessionId}`;
 
@@ -52,18 +61,18 @@ class AIController {
     logger.info('AI连接已建立', { connectionId, userId, sessionId });
 
     // 设置消息处理器
-    ws.on('message', (message) => {
+    ws.on('message', (message: any) => {
       this.handleMessage(connectionId, message);
     });
 
     // 设置连接关闭处理器
-    ws.on('close', (code, reason) => {
+    ws.on('close', (code: number, reason: any) => {
       this.handleDisconnection(connectionId, code, reason);
     });
 
     // 设置错误处理器
-    ws.on('error', (error) => {
-      handleWebSocketError(error, { connectionId, operation: 'AI WebSocket连接' });
+    ws.on('error', (error: any) => {
+      handleWebSocketError(error, { operation: 'AI WebSocket连接' });
     });
 
     // 发送连接成功消息
@@ -78,7 +87,7 @@ class AIController {
    * @param {string} connectionId 连接ID
    * @param {Buffer} message 消息内容
    */
-  async handleMessage(connectionId, message) {
+  async handleMessage(connectionId: string, message: any) {
     const connection = this.connections.get(connectionId);
     if (!connection) {
       logger.warn('收到未知连接的消息', { connectionId });
@@ -121,7 +130,7 @@ class AIController {
    * @param {string} connectionId 连接ID
    * @param {Object} data 消息数据
    */
-  async routeMessage(connectionId, data) {
+  async routeMessage(connectionId: string, data: any) {
     const { type, requestId } = data;
 
     switch (type) {
@@ -152,7 +161,7 @@ class AIController {
    * @param {string} connectionId 连接ID
    * @param {Object} data 请求数据
    */
-  async handleAIRequest(connectionId, data) {
+  async handleAIRequest(connectionId: string, data: any) {
     const { requestId, mode, input, context, settings } = data;
     const connection = this.connections.get(connectionId);
 
@@ -216,11 +225,11 @@ class AIController {
    * - 禁止覆盖后端 baseUrl/apiKey
    * - 对传入值做基本范围约束
    */
-  _sanitizeClientSettings(settings) {
-    const out = { stream: true };
+  _sanitizeClientSettings(settings: any) {
+    const out: any = { stream: true };
     if (!settings || typeof settings !== 'object') return out;
 
-    const clamp = (v, min, max) => {
+    const clamp = (v: any, min: number, max: number) => {
       if (typeof v !== 'number' || Number.isNaN(v)) return undefined;
       return Math.min(Math.max(v, min), max);
     };
@@ -246,7 +255,7 @@ class AIController {
    * @param {string} connectionId 连接ID
    * @param {Object} data 取消数据
    */
-  async handleAICancel(connectionId, data) {
+  async handleAICancel(connectionId: string, data: any) {
     const { requestId } = data;
     const activeRequest = this.activeRequests.get(requestId);
 
@@ -270,7 +279,7 @@ class AIController {
    * @param {string} connectionId 连接ID
    * @param {Object} data 测试数据
    */
-  async handleConfigTest(connectionId, data) {
+  async handleConfigTest(connectionId: string, data: any) {
     const { requestId, config } = data;
 
     try {
@@ -301,7 +310,7 @@ class AIController {
    * @param {string} connectionId 连接ID
    * @param {Object} data 配置数据
    */
-  async handleConfigSync(connectionId, data) {
+  async handleConfigSync(connectionId: string, data: any) {
     const { config, userId } = data;
 
     try {
@@ -339,7 +348,7 @@ class AIController {
    * @param {Object} data 消息数据
    * @returns {boolean} 是否有效
    */
-  validateMessage(data) {
+  validateMessage(data: any) {
     if (!data || typeof data !== 'object') {
       return false;
     }
@@ -368,7 +377,7 @@ class AIController {
    * @param {string} connectionId 连接ID
    * @param {Object} message 消息对象
    */
-  sendMessage(connectionId, message) {
+  sendMessage(connectionId: string, message: any) {
     const connection = this.connections.get(connectionId);
     if (connection && connection.ws.readyState === WebSocket.OPEN) {
       connection.ws.send(JSON.stringify(message));
@@ -382,7 +391,7 @@ class AIController {
    * @param {string} message 错误消息
    * @param {string} requestId 请求ID（可选）
    */
-  sendError(connectionId, code, message, requestId = null) {
+  sendError(connectionId: string, code: string, message: string, requestId: string | null = null) {
     this.sendMessage(connectionId, {
       type: 'ai_error',
       requestId,
@@ -400,7 +409,7 @@ class AIController {
    * @param {number} code 关闭代码
    * @param {string} reason 关闭原因
    */
-  handleDisconnection(connectionId, code, reason) {
+  handleDisconnection(connectionId: string, code: number, reason: any) {
     logger.info('AI连接已断开', {
       connectionId,
       code,
@@ -442,7 +451,7 @@ class AIController {
    * @param {Object} settings 请求设置
    * @param {AbortSignal} signal 取消信号
    */
-  async processAIRequest(connectionId, requestId, openaiAdapter, mode, context, input, settings, signal) {
+  async processAIRequest(connectionId: string, requestId: string, openaiAdapter: any, mode: string, context: any, input: any, settings: any, signal: any) {
     try {
       // 构建聊天消息
       const messages = openaiAdapter.buildChatMessages(mode, context, input);
@@ -538,7 +547,7 @@ class AIController {
    * @param {string} model 模型名称
    * @returns {number} 估算成本（美元）
    */
-  _estimateCost(tokenUsage, model = 'gpt-4o-mini') {
+  _estimateCost(tokenUsage: { input: number; output: number }, model = 'gpt-4o-mini') {
     // 简化的成本估算，实际价格可能不同
     const pricing = {
       'gpt-4o-mini': { input: 0.00015, output: 0.0006 }, // 每1K tokens的价格
@@ -546,7 +555,7 @@ class AIController {
       'gpt-3.5-turbo': { input: 0.0015, output: 0.002 }
     };
 
-    const modelPricing = pricing[model] || pricing['gpt-4o-mini'];
+    const modelPricing = (pricing as any)[model] || pricing['gpt-4o-mini'];
     const inputCost = (tokenUsage.input / 1000) * modelPricing.input;
     const outputCost = (tokenUsage.output / 1000) * modelPricing.output;
 

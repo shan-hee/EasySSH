@@ -1,9 +1,10 @@
 "use strict";
-// @ts-nocheck
+// 移除 ts-nocheck：为 SSH/SFTP 工具补充类型标注
 /**
  * 通用工具模块
  * 用于提供SSH和SFTP共用的功能
  */
+Object.defineProperty(exports, "__esModule", { value: true });
 const logger = require('../utils/logger');
 const crypto = require('crypto');
 /**

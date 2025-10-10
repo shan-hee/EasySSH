@@ -1,17 +1,25 @@
-// @ts-nocheck
 /**
- * 密钥管理器
+ * 密钥管理器（TypeScript）
  * 负责安全存储和管理用户的AI API密钥
  */
 
+// 使用 require 保持对加密 API 的宽松类型，避免算法兼容性噪音
+// eslint-disable-next-line @typescript-eslint/no-var-requires
 const crypto = require('crypto');
-const { getCache, getDb } = require('../config/database');
-const logger = require('../utils/logger');
+import database from '../config/database';
+import logger from '../utils/logger';
+// eslint-disable-next-line @typescript-eslint/no-var-requires
 const OpenAIAdapter = require('./openai-adapter');
 
 class KeyVault {
+  cache: any;
+  algorithm: string;
+  keyLength: number;
+  ivLength: number;
+  tagLength: number;
+  encryptionKey: any;
   constructor() {
-    this.cache = getCache();
+    this.cache = database.getCache();
     this.algorithm = 'aes-256-gcm';
     this.keyLength = 32;
     this.ivLength = 16;
@@ -29,7 +37,7 @@ class KeyVault {
    * @param {Object} config API配置
    * @param {Object} options 存储选项
    */
-  async storeApiConfig(userId, config, options = {}) {
+  async storeApiConfig(userId: string, config: any, options: any = {}) {
     try {
       const storageKey = this._generateStorageKey(userId, 'api_config');
 
@@ -75,7 +83,7 @@ class KeyVault {
    * @param {string} userId 用户ID
    * @returns {Object|null} API配置或null
    */
-  async getApiConfig(userId) {
+  async getApiConfig(userId: string) {
     try {
       const storageKey = this._generateStorageKey(userId, 'api_config');
       const stored = this.cache.get(storageKey);
@@ -83,7 +91,7 @@ class KeyVault {
       if (!stored) {
         // 尝试从持久化设置中回退读取（user_settings.ai-config）
         try {
-          const db = getDb();
+          const db = database.getDb();
           const row = db
             .prepare(
               `SELECT settings_data FROM user_settings WHERE user_id = ? AND category = 'ai-config'`
@@ -150,7 +158,7 @@ class KeyVault {
    * 删除用户的API配置
    * @param {string} userId 用户ID
    */
-  async deleteApiConfig(userId) {
+  async deleteApiConfig(userId: string) {
     try {
       const storageKey = this._generateStorageKey(userId, 'api_config');
       this.cache.del(storageKey);
@@ -166,7 +174,7 @@ class KeyVault {
    * @param {Object} config API配置
    * @returns {Promise<Object>} 测试结果
    */
-  async testApiConfig(config) {
+  async testApiConfig(config: any) {
     try {
       logger.debug('开始测试API配置', {
         provider: config.provider,
@@ -216,7 +224,7 @@ class KeyVault {
    * @param {string} userId 用户ID
    * @returns {Object} 使用统计
    */
-  async getApiUsageStats(userId) {
+  async getApiUsageStats(userId: string) {
     try {
       const statsKey = this._generateStorageKey(userId, 'usage_stats');
       const stats = this.cache.get(statsKey) || {
@@ -239,7 +247,7 @@ class KeyVault {
    * @param {string} userId 用户ID
    * @param {Object} usage 使用数据
    */
-  async updateApiUsageStats(userId, usage) {
+  async updateApiUsageStats(userId: string, usage: any) {
     try {
       const statsKey = this._generateStorageKey(userId, 'usage_stats');
       const stats = await this.getApiUsageStats(userId);
@@ -286,7 +294,7 @@ class KeyVault {
    * @param {string} type 数据类型
    * @returns {string} 存储键
    */
-  _generateStorageKey(userId, type) {
+  _generateStorageKey(userId: string, type: string) {
     return `ai_${type}:${userId}`;
   }
 
@@ -295,7 +303,7 @@ class KeyVault {
    * @param {Object} config API配置
    * @returns {boolean} 是否有效
    */
-  _validateApiConfig(config) {
+  _validateApiConfig(config: any) {
     if (!config || typeof config !== 'object') {
       return false;
     }
@@ -328,7 +336,7 @@ class KeyVault {
    * @param {Object} config 配置对象
    * @returns {string} 加密后的字符串
    */
-  _encryptConfig(config) {
+  _encryptConfig(config: any) {
     try {
       const iv = crypto.randomBytes(this.ivLength);
       const cipher = crypto.createCipher(this.algorithm, this.encryptionKey, iv);
@@ -351,7 +359,7 @@ class KeyVault {
    * @param {string} encryptedData 加密的数据
    * @returns {Object} 解密后的配置
    */
-  _decryptConfig(encryptedData) {
+  _decryptConfig(encryptedData: string) {
     try {
       const parts = encryptedData.split(':');
       if (parts.length !== 4 || parts[0] !== 'encrypted') {
@@ -380,7 +388,7 @@ class KeyVault {
    * @param {*} data 数据
    * @returns {boolean} 是否为加密数据
    */
-  _isEncryptedData(data) {
+  _isEncryptedData(data: any) {
     return typeof data === 'string' && data.startsWith('encrypted:');
   }
 

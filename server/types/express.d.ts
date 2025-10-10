@@ -2,7 +2,7 @@ import 'express-serve-static-core';
 
 declare module 'express-serve-static-core' {
   interface Request {
-    user?: {
+    user: {
       id: string;
       username: string;
       role?: string;
@@ -10,4 +10,3 @@ declare module 'express-serve-static-core' {
     };
   }
 }
-

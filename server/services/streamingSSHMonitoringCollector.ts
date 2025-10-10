@@ -1,16 +1,25 @@
-// @ts-nocheck
 /**
- * 流式SSH监控收集器 - 优化版
+ * 流式SSH监控收集器 - 优化版（TypeScript）
  * 使用单会话长连接，直接读取 /proc 和 /sys，NDJSON流式输出
  */
 
-const EventEmitter = require('events');
-const path = require('path');
-const fs = require('fs');
-const logger = require('../utils/logger');
+import { EventEmitter } from 'node:events';
+import path from 'node:path';
+import fs from 'node:fs';
+import logger from '../utils/logger';
 
 class StreamingSSHMonitoringCollector extends EventEmitter {
-  constructor(sshConnection, hostInfo) {
+  sshConnection: any;
+  hostInfo: any;
+  isCollecting: boolean;
+  stream: any;
+  hostId: string | null;
+  dataCache: { lastData: any; staticInfo: any; lastStaticUpdate: number };
+  errorStats: { consecutiveErrors: number; maxConsecutiveErrors: number; lastErrorTime: number };
+  dataCallback: ((data: any) => void) | null = null;
+  interval?: number;
+
+  constructor(sshConnection: any, hostInfo: any) {
     super();
 
     this.sshConnection = sshConnection;
@@ -56,7 +65,7 @@ class StreamingSSHMonitoringCollector extends EventEmitter {
    * @param {Function} dataCallback 数据回调函数
    * @param {number} interval 收集间隔（毫秒）
    */
-  startCollection(dataCallback, interval = 1000) {
+  startCollection(dataCallback: (data: any) => void, interval = 1000) {
     if (this.isCollecting) {
       logger.warn('流式监控数据收集已在进行中', { hostId: this.hostId });
       return;
@@ -91,7 +100,7 @@ class StreamingSSHMonitoringCollector extends EventEmitter {
       const scriptContent = fs.readFileSync(scriptPath, 'utf8');
 
       // 计算间隔（转换为秒）
-      const intervalSeconds = Math.max(1, Math.floor(this.interval / 1000));
+      const intervalSeconds = Math.max(1, Math.floor(((this.interval as number) || 1000) / 1000));
 
       // 构建执行命令（通过标准输入传输脚本）- 使用sh以兼容ash/dash等shell
       const command = `sh -s ${intervalSeconds} 0`;
@@ -105,7 +114,7 @@ class StreamingSSHMonitoringCollector extends EventEmitter {
       });
 
       // 执行SSH命令
-      this.sshConnection.exec(command, (err, stream) => {
+      this.sshConnection.exec(command, (err: any, stream: any) => {
         if (err) {
           this.handleError(new Error(`SSH执行失败: ${err.message}`));
           return;
@@ -132,7 +141,8 @@ class StreamingSSHMonitoringCollector extends EventEmitter {
     let buffer = '';
 
     // 数据接收处理
-    this.stream.on('data', (data) => {
+    if (this.stream && this.stream.on) {
+    this.stream.on('data', (data: any) => {
       try {
         buffer += data.toString();
 
@@ -152,11 +162,13 @@ class StreamingSSHMonitoringCollector extends EventEmitter {
         });
       }
     });
+    }
 
     // 错误处理
-    this.stream.stderr.on('data', (data) => {
-      const errorMsg = data.toString().trim();
-      if (errorMsg && !errorMsg.includes('warning')) {
+    if (this.stream && this.stream.stderr && this.stream.stderr.on) {
+      this.stream.stderr.on('data', (data: any) => {
+        const errorMsg = data.toString().trim();
+        if (errorMsg && !errorMsg.includes('warning')) {
         // 显示调试信息
         if (errorMsg.includes('NET DEBUG') || errorMsg.includes('流式监控开始')) {
           logger.debug('监控脚本调试信息', { hostId: this.hostId, debug: errorMsg });
@@ -167,10 +179,11 @@ class StreamingSSHMonitoringCollector extends EventEmitter {
           });
         }
       }
-    });
+      });
+    }
 
     // 流关闭处理
-    this.stream.on('close', (code, signal) => {
+    this.stream.on('close', (code: any, signal: any) => {
       logger.debug('SSH流已关闭', {
         hostId: this.hostId,
         code,
@@ -185,7 +198,7 @@ class StreamingSSHMonitoringCollector extends EventEmitter {
     });
 
     // 流错误处理
-    this.stream.on('error', (error) => {
+    this.stream.on('error', (error: any) => {
       this.handleError(new Error(`SSH流错误: ${error.message}`));
     });
 
@@ -196,7 +209,7 @@ class StreamingSSHMonitoringCollector extends EventEmitter {
    * 处理流数据
    * @param {string} jsonLine NDJSON行数据
    */
-  processStreamData(jsonLine) {
+  processStreamData(jsonLine: string) {
     try {
       const data = JSON.parse(jsonLine);
 
@@ -237,7 +250,7 @@ class StreamingSSHMonitoringCollector extends EventEmitter {
    * 处理流关闭
    * @param {number} code 退出码
    */
-  handleStreamClose(code) {
+  handleStreamClose(code: number) {
     if (code !== 0 && this.isCollecting) {
       this.errorStats.consecutiveErrors++;
 
@@ -271,7 +284,7 @@ class StreamingSSHMonitoringCollector extends EventEmitter {
    * 处理错误
    * @param {Error} error 错误对象
    */
-  handleError(error) {
+  handleError(error: any) {
     this.errorStats.consecutiveErrors++;
     this.errorStats.lastErrorTime = Date.now();
 
@@ -352,3 +365,4 @@ class StreamingSSHMonitoringCollector extends EventEmitter {
 }
 
 module.exports = StreamingSSHMonitoringCollector;
+export default StreamingSSHMonitoringCollector;

@@ -1,22 +1,24 @@
-// @ts-nocheck
 /**
- * 系统监控控制器 - SSH集成版
+ * 系统监控控制器 - SSH集成版（TypeScript）
  * 处理基于SSH的监控状态检查API
  */
 
+import type { Request, Response } from 'express';
+// 运行时保持 CJS 载入，类型用 any 兜底
+// eslint-disable-next-line @typescript-eslint/no-var-requires
 const { getAllSessions, getSessionByHostname } = require('../monitoring');
 
 /**
  * 检查监控状态 - SSH集成版
  */
-exports.checkStatus = async (req, res) => {
+exports.checkStatus = async (req: Request, res: Response) => {
   try {
     const { hostname } = req.query;
 
     if (!hostname) {
       // 返回所有活跃前端会话的状态
       const sessions = getAllSessions();
-      const activeSessions = sessions.map(session => ({
+      const activeSessions = sessions.map((session: any) => ({
         sessionId: session.id,
         clientIp: session.clientIp,
         connectedAt: session.connectedAt,
@@ -59,7 +61,7 @@ exports.checkStatus = async (req, res) => {
       });
     }
 
-  } catch (error) {
+  } catch (error: any) {
     console.error('检查监控状态失败:', error);
     return res.status(500).json({
       success: false,
@@ -73,13 +75,13 @@ exports.checkStatus = async (req, res) => {
 /**
  * 获取所有活跃的前端监控会话 - SSH集成版
  */
-exports.getSessions = async (_req, res) => {
+exports.getSessions = async (_req: Request, res: Response) => {
   try {
     // 获取所有前端会话
     const sessions = getAllSessions();
 
     // 格式化会话信息
-    const formattedSessions = sessions.map(session => ({
+  const formattedSessions = sessions.map((session: any) => ({
       id: session.id,
       clientIp: session.clientIp,
       connectedAt: session.connectedAt,
@@ -95,7 +97,7 @@ exports.getSessions = async (_req, res) => {
       timestamp: Date.now(),
       message: '获取前端监控会话成功'
     });
-  } catch (error) {
+  } catch (error: any) {
     return res.status(500).json({
       success: false,
       message: '获取前端监控会话失败',

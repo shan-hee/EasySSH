@@ -4,15 +4,17 @@ var __classPrivateFieldGet = (this && this.__classPrivateFieldGet) || function (
     if (typeof state === "function" ? receiver !== state || !f : !state.has(receiver)) throw new TypeError("Cannot read private member from an object whose class did not declare it");
     return kind === "m" ? f : kind === "a" ? f.call(receiver) : f ? f.value : state.get(receiver);
 };
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
 var _SessionLifecycleService_instances, _SessionLifecycleService_cleanup;
-// @ts-nocheck
-const logger = require('../utils/logger');
+Object.defineProperty(exports, "__esModule", { value: true });
+const logger_1 = __importDefault(require("../utils/logger"));
 class SessionLifecycleService {
     constructor() {
         _SessionLifecycleService_instances.add(this);
         this.sessions = new Map();
     }
-    // @ts-nocheck
     /**
        * 注册或获取会话上下文
        * @param {string} sessionId
@@ -58,7 +60,7 @@ class SessionLifecycleService {
         };
         if (options.timeoutMs && Number.isFinite(options.timeoutMs) && options.timeoutMs > 0) {
             context.timeoutTimer = setTimeout(() => {
-                logger.warn('Session cancellation timeout reached', {
+                logger_1.default.warn('Session cancellation timeout reached', {
                     sessionId,
                     timeoutMs: options.timeoutMs
                 });
@@ -74,7 +76,7 @@ class SessionLifecycleService {
                     handler(reason, detail);
                 }
                 catch (error) {
-                    logger.error('Session abort handler failed', {
+                    logger_1.default.error('Session abort handler failed', {
                         sessionId,
                         error: error.message
                     });
@@ -109,7 +111,7 @@ class SessionLifecycleService {
                     handler(context.signal.reason || context.abortReason || 'aborted', context.abortDetail || {});
                 }
                 catch (error) {
-                    logger.error('Session abort handler failed (late registration)', {
+                    logger_1.default.error('Session abort handler failed (late registration)', {
                         sessionId,
                         error: error.message
                     });
@@ -144,7 +146,7 @@ class SessionLifecycleService {
             return true;
         }
         catch (error) {
-            logger.error('Session abort failed', {
+            logger_1.default.error('Session abort failed', {
                 sessionId,
                 error: error.message
             });

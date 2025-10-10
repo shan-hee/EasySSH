@@ -1,9 +1,10 @@
 "use strict";
-// @ts-nocheck
+// 移除 ts-nocheck：逐步补充类型标注
 /**
  * SSH WebSocket服务
  * 用于处理SSH连接和WebSocket通信
  */
+Object.defineProperty(exports, "__esModule", { value: true });
 const WebSocket = require('ws');
 const url = require('url');
 const logger = require('../utils/logger');
@@ -118,7 +119,7 @@ function isValidIP(ip) {
  */
 function initWebSocketServer(server) {
     // 获取WebSocket最大消息大小配置
-    const maxMessageSize = parseInt(process.env.WS_MAX_MESSAGE_SIZE) || 157286400; // 默认150MB
+    const maxMessageSize = parseInt(process.env.WS_MAX_MESSAGE_SIZE || '') || 157286400; // 默认150MB
     const logger = require('../utils/logger');
     // 记录WebSocket配置
     logger.info('WebSocket服务器配置', {
@@ -140,7 +141,7 @@ function initWebSocketServer(server) {
     });
     // 统一处理HTTP服务器的upgrade事件
     server.on('upgrade', (request, socket, head) => {
-        const pathname = url.parse(request.url).pathname;
+        const pathname = url.parse(request.url || '').pathname;
         if (pathname === '/ssh') {
             // 处理SSH WebSocket连接
             sshWss.handleUpgrade(request, socket, head, (ws) => {
@@ -149,7 +150,7 @@ function initWebSocketServer(server) {
         }
         else if (pathname === '/monitor') {
             // 处理前端监控WebSocket连接 - 专用前端监控通道
-            const requestUrl = new URL(request.url, `http://${request.headers.host}`);
+            const requestUrl = new URL(request.url || '', `http://${request.headers.host}`);
             const subscribeServer = requestUrl.searchParams.get('subscribe');
             logger.debug('收到前端监控WebSocket连接请求', {
                 url: request.url,
@@ -209,7 +210,7 @@ function initWebSocketServer(server) {
         ws.isClosed = false; // 添加自定义关闭标志
         ws.on('pong', () => {
             ws.isAlive = true;
-            const latency = Date.now() - ws.lastPing;
+            const latency = Date.now() - (ws.lastPing || 0);
             // 只在延迟异常时记录日志（超过500ms）
             if (latency > 500) {
                 logger.debug('收到WebSocket pong - 高延迟', {
@@ -290,7 +291,7 @@ function initWebSocketServer(server) {
                                 sessionId = await ssh.handleConnect(ws, data);
                                 if (sessionId) {
                                     ws.sessionId = sessionId;
-                                    ws.pendingSessionId = null;
+                                    ws.pendingSessionId = undefined;
                                 }
                             }
                         }
@@ -344,7 +345,7 @@ function initWebSocketServer(server) {
                                         sessionId = await ssh.handleConnect(ws, connectionConfig);
                                         if (sessionId) {
                                             ws.sessionId = sessionId;
-                                            ws.pendingSessionId = null;
+                                            ws.pendingSessionId = undefined;
                                         }
                                         // 连接成功后删除临时连接ID
                                         pendingConnections.delete(data.connectionId);
@@ -871,17 +872,17 @@ function handleLegacyBinaryMessage(ws, buffer, sessionId) {
         const sessionIdBytes = new Uint8Array(arrayBuffer, 2, sessionIdLen);
         const extractedSessionId = new TextDecoder().decode(sessionIdBytes);
         const payloadBytes = new Uint8Array(arrayBuffer, 2 + sessionIdLen);
-        const payload = new TextDecoder().decode(payloadBytes);
+        const payloadString = new TextDecoder().decode(payloadBytes);
         switch (type) {
             case 0x01: // DATA类型 - 终端输入数据
                 ssh.handleDataBinary(ws, {
                     sessionId: extractedSessionId,
-                    payload
+                    payload: payloadString
                 });
                 break;
             case 0x03: // RESIZE类型 - 终端大小调整
-                if (payload.length >= 8) {
-                    const resizeView = new DataView(payload.buffer || payload);
+                if (payloadBytes.length >= 8) {
+                    const resizeView = new DataView(payloadBytes.buffer);
                     const cols = resizeView.getUint32(0, true); // 小端序
                     const rows = resizeView.getUint32(4, true);
                     ssh.handleResize(ws, {

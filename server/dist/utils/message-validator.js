@@ -1,15 +1,20 @@
 "use strict";
-// @ts-nocheck
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.ERROR_CODES = void 0;
+exports.validateMessage = validateMessage;
+exports.createErrorResponse = createErrorResponse;
+exports.formatValidationErrors = formatValidationErrors;
 /**
- * WebSocket消息Schema验证器
- * 使用AJV进行JSON Schema验证，确保消息格式正确
+ * WebSocket消息Schema验证器（TypeScript）
+ * 使用 AJV 进行 JSON Schema 验证，确保消息格式正确
  */
-const AjvLib = require('ajv');
-const logger = require('./logger');
-// 兼容 Ajv v6/v8 的导入方式
-const Ajv = AjvLib && AjvLib.default ? AjvLib.default : AjvLib;
-// 创建AJV实例
-const ajv = new Ajv({
+const ajv_1 = __importDefault(require("ajv"));
+const logger_1 = __importDefault(require("./logger"));
+// 创建 AJV 实例
+const ajv = new ajv_1.default({
     allErrors: true,
     removeAdditional: true, // 移除额外属性
     useDefaults: true, // 使用默认值
@@ -17,7 +22,7 @@ const ajv = new Ajv({
 });
 // 本项目未使用 JSON Schema 的 `format` 关键字，移除 ajv-formats 依赖与加载以降低噪音
 // 统一错误码定义
-const ERROR_CODES = {
+exports.ERROR_CODES = {
     // 验证错误 (1000-1999)
     INVALID_MESSAGE_FORMAT: 1001,
     MISSING_REQUIRED_FIELD: 1002,
@@ -636,7 +641,7 @@ function validateMessage(message) {
         // 首先验证基础消息格式
         const baseValid = validators.base(message);
         if (!baseValid) {
-            result.errorCode = ERROR_CODES.INVALID_MESSAGE_FORMAT;
+            result.errorCode = exports.ERROR_CODES.INVALID_MESSAGE_FORMAT;
             result.errorMessage = '消息格式不正确';
             result.errors = validators.base.errors || [];
             return result;
@@ -645,7 +650,7 @@ function validateMessage(message) {
         const messageType = message.type;
         const validator = validators[messageType];
         if (!validator) {
-            result.errorCode = ERROR_CODES.INVALID_FIELD_VALUE;
+            result.errorCode = exports.ERROR_CODES.INVALID_FIELD_VALUE;
             result.errorMessage = `不支持的消息类型: ${messageType}`;
             return result;
         }
@@ -657,15 +662,15 @@ function validateMessage(message) {
             result.sanitizedMessage = messageCopy;
         }
         else {
-            result.errorCode = ERROR_CODES.INVALID_MESSAGE_FORMAT;
+            result.errorCode = exports.ERROR_CODES.INVALID_MESSAGE_FORMAT;
             result.errorMessage = `${messageType}消息验证失败`;
-            result.errors = validator.errors || [];
+            result.errors = (validator.errors || []);
         }
         return result;
     }
     catch (error) {
-        logger.error('消息验证异常:', error);
-        result.errorCode = ERROR_CODES.INTERNAL_ERROR;
+        logger_1.default.error('消息验证异常:', error);
+        result.errorCode = exports.ERROR_CODES.INTERNAL_ERROR;
         result.errorMessage = '消息验证时发生内部错误';
         return result;
     }
@@ -704,9 +709,6 @@ function formatValidationErrors(errors) {
         return path ? `${path}: ${message}` : message;
     }).join('; ');
 }
-module.exports = {
-    validateMessage,
-    createErrorResponse,
-    formatValidationErrors,
-    ERROR_CODES
-};
+const api = { validateMessage, createErrorResponse, formatValidationErrors, ERROR_CODES: exports.ERROR_CODES };
+module.exports = api;
+exports.default = api;

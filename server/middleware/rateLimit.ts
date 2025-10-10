@@ -1,14 +1,23 @@
-// Bridge stub for compiled dist to reach JS implementation
-// @ts-nocheck
-const buckets = new Map(); // key -> { count, resetAt }
+// Bridge stub for compiled dist to reach JS implementation (typed)
+import type { Request, Response, NextFunction, RequestHandler } from 'express';
 
-function rateLimit(options = {}) {
-  const windowMs = options.windowMs || 60 * 1000; // 时间窗口
-  const max = options.max || 60; // 窗口内最大请求数
-  const keyGenerator = options.keyGenerator || ((req) => req.ip);
-  const message = options.message || 'Too many requests, please try again later.';
+type Bucket = { count: number; resetAt: number };
+const buckets = new Map<string, Bucket>(); // key -> { count, resetAt }
 
-  return function (req, res, next) {
+type RateLimitOptions = {
+  windowMs?: number;
+  max?: number;
+  keyGenerator?: (req: Request) => string;
+  message?: string;
+};
+
+function rateLimit(options: RateLimitOptions = {}): RequestHandler {
+  const windowMs = options.windowMs ?? 60 * 1000; // 时间窗口
+  const max = options.max ?? 60; // 窗口内最大请求数
+  const keyGenerator = options.keyGenerator ?? ((req: Request) => req.ip || '');
+  const message = options.message ?? 'Too many requests, please try again later.';
+
+  return function (req: Request, res: Response, next: NextFunction) {
     try {
       const key = keyGenerator(req);
       const now = Date.now();
@@ -28,10 +37,12 @@ function rateLimit(options = {}) {
       }
 
       return next();
-    } catch (err) {
+    } catch {
       return next();
     }
   };
 }
 
-module.exports = { rateLimit };
+const api = { rateLimit };
+module.exports = api;
+export default api;

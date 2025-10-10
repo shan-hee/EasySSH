@@ -1,13 +1,30 @@
-// @ts-nocheck
 /**
- * 监控数据桥接服务
+ * 监控数据桥接服务（TypeScript）
  * 连接SSH监控数据收集器和监控WebSocket服务
  */
 
-const logger = require('../utils/logger');
-const monitoringConfig = require('../config/monitoring');
+import logger from '../utils/logger';
+import monitoringConfig from '../config/monitoring';
 
 class MonitoringBridge {
+  collectors: Map<string, any>;
+  collectorStates: Map<string, 'starting' | 'running' | 'stopping' | 'stopped' | 'unknown'>;
+  monitoringService: any;
+  cleanupTaskStarted: boolean;
+  cleanupTimer: ReturnType<typeof setInterval> | null;
+  abortCleanups: Map<string, () => void>;
+  hostCollectors: Map<string, any>;
+  sessionToHost: Map<string, string>;
+  inFlightStarts: Set<string>;
+  failoverHosts: Set<string>;
+  primaryLastSwitchAt: Map<string, number>;
+  lastFailoverAt: Map<string, number>;
+  lastDataAtByHost: Map<string, number>;
+  holdDownMs: number;
+  failoverCoolDownMs: number;
+  jitterMs: number;
+  noDataTimeoutMs: number;
+  primarySessionByHost: Map<string, string | undefined>;
   constructor() {
     this.collectors = new Map(); // sessionId -> SSHMonitoringCollector
     this.collectorStates = new Map(); // sessionId -> state (starting, running, stopping, stopped)
@@ -43,7 +60,7 @@ class MonitoringBridge {
   /**
    * 根据 hostInfo 生成标准 hostId
    */
-  _getHostIdFromHostInfo(hostInfo = {}) {
+  _getHostIdFromHostInfo(hostInfo: any = {}) {
     const address = hostInfo.address || 'unknown';
     const hostname = hostInfo.hostname || null;
     return hostname ? `${hostname}@${address}` : address;
@@ -53,7 +70,7 @@ class MonitoringBridge {
    * 设置监控WebSocket服务引用
    * @param {Object} monitoringService 监控WebSocket服务实例
    */
-  setMonitoringService(monitoringService) {
+  setMonitoringService(monitoringService: any) {
     this.monitoringService = monitoringService;
   }
 
@@ -63,7 +80,7 @@ class MonitoringBridge {
    * @param {Object} sshConnection SSH连接实例
    * @param {Object} hostInfo 主机信息 { address, port, username }
    */
-  startMonitoring(sessionId, sshConnection, hostInfo, options = {}) {
+  startMonitoring(sessionId: string, sshConnection: any, hostInfo: any, options: any = {}) {
     const { signal } = options;
 
     if (signal?.aborted) {
@@ -148,12 +165,12 @@ class MonitoringBridge {
       const collector = new StreamingSSHMonitoringCollector(sshConnection, hostInfo);
 
       // 设置数据回调函数（带主/备筛选）
-      const dataCallback = (monitoringData) => {
+      const dataCallback = (monitoringData: any) => {
         this.handleMonitoringData(sessionId, monitoringData);
       };
 
       // 设置事件监听器
-      collector.on('error', (error) => {
+      collector.on('error', (error: any) => {
         const hostIdOnError = collector.hostId;
         const msg = error?.message || '';
         logger.warn('监控收集器错误', {
@@ -219,18 +236,19 @@ class MonitoringBridge {
           if (group.refCount > 0 && group.sessions.size > 0) {
             const doSwitch = () => {
               // 选择一个新的会话接管
-              const candidateEntry = Array.from(group.sessions.entries()).find(([sid]) => sid !== sessionId) || Array.from(group.sessions.entries())[0];
+              const entries = Array.from(group.sessions.entries()) as any[];
+              const candidateEntry = entries.find((entry: any) => entry[0] !== sessionId) || entries[0];
               if (candidateEntry) {
                 const [newPrimaryId, meta] = candidateEntry;
                 try {
                   const ReplacementCollector = require('./streamingSSHMonitoringCollector');
                   const newCollector = new ReplacementCollector(meta.sshConnection, meta.hostInfo);
 
-                  const dataCallback = (monitoringData) => {
+                  const dataCallback = (monitoringData: any) => {
                     this.handleMonitoringData(newPrimaryId, monitoringData);
                   };
 
-                  newCollector.on('error', (error) => {
+                  newCollector.on('error', (error: any) => {
                     logger.warn('监控收集器错误(切换后)', {
                       sessionId: newPrimaryId,
                       hostId: newCollector.hostId,
@@ -364,7 +382,7 @@ class MonitoringBridge {
    * @param {string} sessionId SSH会话ID
    * @param {string} reason 停止原因
    */
-  stopMonitoring(sessionId, reason = 'unknown') {
+  stopMonitoring(sessionId: string, reason = 'unknown') {
     try {
       // 优先走 host 级共享采集的停止流程
       const hostId = this.sessionToHost.get(sessionId);
@@ -472,7 +490,7 @@ class MonitoringBridge {
    * @param {string} sessionId SSH会话ID
    * @param {Object} monitoringData 监控数据
    */
-  handleMonitoringData(sessionId, monitoringData) {
+  handleMonitoringData(sessionId: string, monitoringData: any) {
     if (!this.monitoringService) {
       logger.warn('监控WebSocket服务未设置', { sessionId });
       return;
@@ -541,7 +559,7 @@ class MonitoringBridge {
    * @param {string} sessionId SSH会话ID
    * @returns {Object|null} 收集器状态信息
    */
-  getCollectorStatus(sessionId) {
+  getCollectorStatus(sessionId: string) {
     const collector = this.collectors.get(sessionId);
     if (!collector) {
       return null;
@@ -597,7 +615,7 @@ class MonitoringBridge {
    * @param {string} sessionId SSH会话ID
    * @returns {string} 收集器状态
    */
-  getCollectorState(sessionId) {
+  getCollectorState(sessionId: string): 'starting' | 'running' | 'stopping' | 'stopped' | 'unknown' {
     return this.collectorStates.get(sessionId) || 'unknown';
   }
 
@@ -671,7 +689,7 @@ class MonitoringBridge {
    * @returns {Object} 统计信息
    */
   getStats() {
-    const stats = {
+    const stats: any = {
       totalCollectors: this.collectors.size,
       collectors: {},
       states: {}
@@ -698,5 +716,5 @@ class MonitoringBridge {
 
 // 创建单例实例
 const monitoringBridge = new MonitoringBridge();
-
 module.exports = monitoringBridge;
+export default monitoringBridge;

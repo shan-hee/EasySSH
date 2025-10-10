@@ -1,9 +1,10 @@
 "use strict";
-// @ts-nocheck
+// 移除 ts-nocheck：为二进制协议补充类型定义
 /**
  * 统一的二进制WebSocket协议
  * 用于SSH终端数据和SFTP文件传输的高性能二进制通信
  */
+Object.defineProperty(exports, "__esModule", { value: true });
 const logger = require('../utils/logger');
 // 协议魔数 "ESSH" - 0x45535348
 const PROTOCOL_MAGIC = 0x45535348;
@@ -74,7 +75,11 @@ class BinaryMessageEncoder {
             const headerBuffer = Buffer.from(headerString, 'utf8');
             const headerLength = headerBuffer.length;
             // 计算总长度
-            const payloadLength = payloadData ? Buffer.byteLength(payloadData) : 0;
+            const payloadLength = payloadData
+                ? (Buffer.isBuffer(payloadData)
+                    ? payloadData.length
+                    : Buffer.from(payloadData).length)
+                : 0;
             const totalLength = 10 + headerLength + payloadLength; // 10 = 4+1+1+4
             // 创建消息缓冲区
             const messageBuffer = Buffer.alloc(totalLength);
@@ -167,11 +172,25 @@ class BinaryMessageDecoder {
             };
         }
         catch (error) {
-            // 增强错误日志，提供更多调试信息
+            // 增强错误日志，提供更多调试信息（容错处理）
+            let bufferLength = 0;
+            let bufferPreview = '';
+            try {
+                const buf = Buffer.isBuffer(messageBuffer)
+                    ? messageBuffer
+                    : Buffer.from(messageBuffer);
+                bufferLength = buf.length;
+                bufferPreview = Array.from(buf.slice(0, Math.min(16, buf.length)))
+                    .map(b => `0x${b.toString(16).padStart(2, '0')}`)
+                    .join(' ');
+            }
+            catch {
+                // ignore secondary errors
+            }
             logger.error('二进制消息解码失败:', {
                 error: error.message,
-                bufferLength: buffer.length,
-                bufferPreview: Array.from(buffer.slice(0, Math.min(16, buffer.length))).map(b => `0x${b.toString(16).padStart(2, '0')}`).join(' ')
+                bufferLength,
+                bufferPreview
             });
             throw new Error(`消息解码失败: ${error.message}`);
         }
@@ -293,7 +312,7 @@ class BinaryMessageSender {
             totalBytes,
             timestamp: Date.now()
         };
-        this.send(ws, BINARY_MSG_TYPE.PROGRESS, headerData);
+        this.send(ws, BINARY_MSG_TYPE.SFTP_PROGRESS, headerData);
     }
 }
 /**

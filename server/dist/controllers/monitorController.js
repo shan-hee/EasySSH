@@ -1,9 +1,11 @@
 "use strict";
-// @ts-nocheck
 /**
- * 系统监控控制器 - SSH集成版
+ * 系统监控控制器 - SSH集成版（TypeScript）
  * 处理基于SSH的监控状态检查API
  */
+Object.defineProperty(exports, "__esModule", { value: true });
+// 运行时保持 CJS 载入，类型用 any 兜底
+// eslint-disable-next-line @typescript-eslint/no-var-requires
 const { getAllSessions, getSessionByHostname } = require('../monitoring');
 /**
  * 检查监控状态 - SSH集成版
@@ -14,7 +16,7 @@ exports.checkStatus = async (req, res) => {
         if (!hostname) {
             // 返回所有活跃前端会话的状态
             const sessions = getAllSessions();
-            const activeSessions = sessions.map(session => ({
+            const activeSessions = sessions.map((session) => ({
                 sessionId: session.id,
                 clientIp: session.clientIp,
                 connectedAt: session.connectedAt,
@@ -72,7 +74,7 @@ exports.getSessions = async (_req, res) => {
         // 获取所有前端会话
         const sessions = getAllSessions();
         // 格式化会话信息
-        const formattedSessions = sessions.map(session => ({
+        const formattedSessions = sessions.map((session) => ({
             id: session.id,
             clientIp: session.clientIp,
             connectedAt: session.connectedAt,

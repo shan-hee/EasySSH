@@ -1,12 +1,25 @@
-// @ts-nocheck
-const logger = require('../utils/logger');
+import logger from '../utils/logger';
+
+type AbortHandler = (reason: string | Error, detail: any) => void;
+type SessionContext = {
+  sessionId: string;
+  connectionId: string;
+  metadata: any;
+  controller: AbortController;
+  signal: AbortSignal;
+  createdAt: number;
+  status: 'active' | 'aborted';
+  abortHandlers: Set<AbortHandler>;
+  timeoutTimer: ReturnType<typeof setTimeout> | null;
+  abortReason: string | Error | null;
+  abortDetail: any;
+};
 
 class SessionLifecycleService {
+  private sessions: Map<string, SessionContext>;
   constructor() {
     this.sessions = new Map();
   }
-
-// @ts-nocheck
 /**
    * 注册或获取会话上下文
    * @param {string} sessionId
@@ -16,7 +29,7 @@ class SessionLifecycleService {
    * @param {number} [options.timeoutMs]
    * @returns {Object}
    */
-  register(sessionId, options = {}) {
+  register(sessionId: string, options: any = {}) {
     if (!sessionId) {
       throw new Error('sessionId is required to register session lifecycle context');
     }
@@ -40,7 +53,7 @@ class SessionLifecycleService {
     }
 
     const controller = new AbortController();
-    const context = {
+    const context: SessionContext = {
       sessionId,
       connectionId: options.connectionId || sessionId,
       metadata: options.metadata || {},
@@ -100,7 +113,7 @@ class SessionLifecycleService {
    * @param {boolean} [options.runIfAborted=true]
    * @returns {Function} 清理函数
    */
-  addAbortHandler(sessionId, handler, options = {}) {
+  addAbortHandler(sessionId: string, handler: AbortHandler, options: any = {}) {
     const context = this.sessions.get(sessionId);
     if (!context || typeof handler !== 'function') {
       return () => {};
@@ -135,7 +148,7 @@ class SessionLifecycleService {
    * @param {Object} [detail]
    * @returns {boolean} 是否触发了取消
    */
-  abort(sessionId, reason = 'manual', detail = {}) {
+  abort(sessionId: string, reason: string | Error = 'manual', detail: any = {}) {
     const context = this.sessions.get(sessionId);
     if (!context) {
       return false;
@@ -164,19 +177,19 @@ class SessionLifecycleService {
    * 结束并清理会话上下文（非取消路径）
    * @param {string} sessionId
    */
-  finalize(sessionId) {
+  finalize(sessionId: string) {
     this.#cleanup(sessionId);
   }
 
-  get(sessionId) {
+  get(sessionId: string): SessionContext | null {
     return this.sessions.get(sessionId) || null;
   }
 
-  has(sessionId) {
+  has(sessionId: string): boolean {
     return this.sessions.has(sessionId);
   }
 
-  isAborted(sessionId) {
+  isAborted(sessionId: string): boolean {
     const context = this.sessions.get(sessionId);
     return context ? context.signal.aborted : false;
   }
@@ -191,7 +204,7 @@ class SessionLifecycleService {
     }));
   }
 
-  #cleanup(sessionId) {
+  #cleanup(sessionId: string) {
     const context = this.sessions.get(sessionId);
     if (!context) {
       return;

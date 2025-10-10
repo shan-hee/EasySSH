@@ -1,15 +1,16 @@
-// @ts-nocheck
 /**
- * 速率限制器
+ * 速率限制器（TypeScript）
  * 控制用户AI请求的频率和配额
  */
 
-const { getCache } = require('../config/database');
-const logger = require('../utils/logger');
+import database from '../config/database';
+import logger from '../utils/logger';
 
 class RateLimiter {
-  constructor(options = {}) {
-    this.cache = getCache();
+  cache: any;
+  config: any;
+  constructor(options: any = {}) {
+    this.cache = database.getCache();
 
     // 默认配置
     this.config = {
@@ -36,7 +37,7 @@ class RateLimiter {
    * @param {Object} options 检查选项
    * @returns {Promise<Object>} 检查结果
    */
-  async checkLimit(userId, options = {}) {
+  async checkLimit(userId: string, options: any = {}) {
     try {
       const now = Date.now();
       const checks = [
@@ -87,7 +88,7 @@ class RateLimiter {
    * @param {number} now 当前时间戳
    * @returns {Promise<Object>} 检查结果
    */
-  async _checkBurstLimit(userId, now) {
+  async _checkBurstLimit(userId: string, now: number) {
     const key = `burst:${userId}`;
     const windowStart = now - (this.config.burstWindow * 1000);
 
@@ -95,7 +96,7 @@ class RateLimiter {
     const burstRequests = this.cache.get(key) || [];
 
     // 清理过期的请求记录
-    const validRequests = burstRequests.filter(timestamp => timestamp > windowStart);
+    const validRequests = burstRequests.filter((timestamp: number) => timestamp > windowStart);
 
     if (validRequests.length >= this.config.burstLimit) {
       const oldestRequest = Math.min(...validRequests);
@@ -118,7 +119,7 @@ class RateLimiter {
    * @param {number} now 当前时间戳
    * @returns {Promise<Object>} 检查结果
    */
-  async _checkMinuteLimit(userId, now) {
+  async _checkMinuteLimit(userId: string, now: number) {
     const key = `minute:${userId}`;
     const currentMinute = Math.floor(now / 60000);
     const minuteData = this.cache.get(key) || { minute: currentMinute, count: 0 };
@@ -149,7 +150,7 @@ class RateLimiter {
    * @param {number} now 当前时间戳
    * @returns {Promise<Object>} 检查结果
    */
-  async _checkHourLimit(userId, now) {
+  async _checkHourLimit(userId: string, now: number) {
     const key = `hour:${userId}`;
     const currentHour = Math.floor(now / 3600000);
     const hourData = this.cache.get(key) || { hour: currentHour, count: 0 };
@@ -180,7 +181,7 @@ class RateLimiter {
    * @param {number} now 当前时间戳
    * @returns {Promise<Object>} 检查结果
    */
-  async _checkDayLimit(userId, now) {
+  async _checkDayLimit(userId: string, now: number) {
     const key = `day:${userId}`;
     const currentDay = Math.floor(now / 86400000);
     const dayData = this.cache.get(key) || { day: currentDay, count: 0 };
@@ -211,7 +212,7 @@ class RateLimiter {
    * @param {number} now 当前时间戳
    * @returns {Promise<Object>} 检查结果
    */
-  async _checkCooldown(userId, now) {
+  async _checkCooldown(userId: string, now: number) {
     const key = `cooldown:${userId}`;
     const cooldownEnd = this.cache.get(key);
 
@@ -234,13 +235,13 @@ class RateLimiter {
    * @param {string} userId 用户ID
    * @param {number} now 当前时间戳
    */
-  async _recordRequest(userId, now) {
+  async _recordRequest(userId: string, now: number) {
     try {
       // 记录突发请求
       const burstKey = `burst:${userId}`;
       const burstRequests = this.cache.get(burstKey) || [];
       const windowStart = now - (this.config.burstWindow * 1000);
-      const validBurstRequests = burstRequests.filter(timestamp => timestamp > windowStart);
+      const validBurstRequests = burstRequests.filter((timestamp: number) => timestamp > windowStart);
       validBurstRequests.push(now);
       this.cache.set(burstKey, validBurstRequests, this.config.burstWindow);
 
@@ -295,7 +296,7 @@ class RateLimiter {
    * @param {number} now 当前时间戳
    * @returns {Promise<Object>} 剩余请求数
    */
-  async _getRemainingRequests(userId, now) {
+  async _getRemainingRequests(userId: string, now: number) {
     try {
       const minuteKey = `minute:${userId}`;
       const hourKey = `hour:${userId}`;
@@ -321,7 +322,7 @@ class RateLimiter {
    * @param {string} userId 用户ID
    * @param {number} duration 冷却时长（秒）
    */
-  async setCooldown(userId, duration = null) {
+  async setCooldown(userId: string, duration: number | null = null) {
     try {
       const cooldownDuration = duration || this.config.cooldownPeriod;
       const cooldownEnd = Date.now() + (cooldownDuration * 1000);
@@ -339,7 +340,7 @@ class RateLimiter {
    * 清除用户的所有限制记录
    * @param {string} userId 用户ID
    */
-  async clearUserLimits(userId) {
+  async clearUserLimits(userId: string) {
     try {
       const keys = [
         `burst:${userId}`,
@@ -362,7 +363,7 @@ class RateLimiter {
    * @param {string} userId 用户ID
    * @returns {Promise<Object>} 限制状态
    */
-  async getUserLimitStatus(userId) {
+  async getUserLimitStatus(userId: string) {
     try {
       const now = Date.now();
       const remaining = await this._getRemainingRequests(userId, now);
@@ -392,7 +393,7 @@ class RateLimiter {
    * 更新速率限制配置
    * @param {Object} newConfig 新配置
    */
-  updateConfig(newConfig) {
+  updateConfig(newConfig: any) {
     this.config = { ...this.config, ...newConfig };
     logger.info('速率限制配置已更新', this.config);
   }

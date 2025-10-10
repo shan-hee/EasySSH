@@ -160,14 +160,12 @@ class Server {
         if (!server)
             return null;
         if (update.$inc) {
-            Object.keys(update.$inc).forEach(key => {
-                // @ts-ignore
+            Object.keys(update.$inc).forEach((key) => {
                 server[key] = (server[key] || 0) + update.$inc[key];
             });
         }
         if (update.$set) {
-            Object.keys(update.$set).forEach(key => {
-                // @ts-ignore
+            Object.keys(update.$set).forEach((key) => {
                 server[key] = update.$set[key];
             });
         }

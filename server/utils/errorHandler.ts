@@ -1,20 +1,26 @@
-// @ts-nocheck
 /**
- * 统一错误处理工具
+ * 统一错误处理工具（TypeScript）
  */
 
-const logger = require('./logger');
+import logger from './logger';
 
 /**
  * 错误类型枚举
  */
-const ErrorTypes = {
+export type ErrorType =
+  | 'connection_error'
+  | 'validation_error'
+  | 'timeout_error'
+  | 'system_error'
+  | 'unknown_error';
+
+export const ErrorTypes = {
   CONNECTION_ERROR: 'connection_error',
   VALIDATION_ERROR: 'validation_error',
   TIMEOUT_ERROR: 'timeout_error',
   SYSTEM_ERROR: 'system_error',
   UNKNOWN_ERROR: 'unknown_error'
-};
+} as const;
 
 /**
  * 连接错误模式
@@ -34,35 +40,32 @@ const CONNECTION_ERROR_PATTERNS = [
 /**
  * 错误处理器类
  */
-class ErrorHandler {
+export class ErrorHandler {
+  private errorCounts: Map<string, number>; // 错误计数
+  private lastErrors: Map<string, number>; // 最后错误时间戳（ms）
+
   constructor() {
-    this.errorCounts = new Map(); // 错误计数
-    this.lastErrors = new Map(); // 最后错误时间
+    this.errorCounts = new Map();
+    this.lastErrors = new Map();
   }
 
   /**
    * 判断是否为连接错误
-   * @param {Error|string} error 错误对象或错误消息
-   * @returns {boolean} 是否为连接错误
    */
-  isConnectionError(error) {
-    const message = typeof error === 'string' ? error : error.message || '';
-    return CONNECTION_ERROR_PATTERNS.some(pattern =>
-      message.includes(pattern)
-    );
+  isConnectionError(error: unknown): boolean {
+    const message = typeof error === 'string' ? error : (error as Error)?.message || '';
+    return CONNECTION_ERROR_PATTERNS.some(pattern => message.includes(pattern));
   }
 
   /**
    * 获取错误类型
-   * @param {Error|string} error 错误对象或错误消息
-   * @returns {string} 错误类型
    */
-  getErrorType(error) {
+  getErrorType(error: unknown): ErrorType {
     if (this.isConnectionError(error)) {
       return ErrorTypes.CONNECTION_ERROR;
     }
 
-    const message = typeof error === 'string' ? error : error.message || '';
+    const message = typeof error === 'string' ? error : (error as Error)?.message || '';
 
     if (message.includes('timeout') || message.includes('ETIMEDOUT')) {
       return ErrorTypes.TIMEOUT_ERROR;
@@ -81,26 +84,18 @@ class ErrorHandler {
 
   /**
    * 处理错误
-   * @param {Error|string} error 错误对象或错误消息
-   * @param {Object} context 错误上下文
-   * @param {Object} options 处理选项
-   * @returns {Object} 处理结果
    */
-  handleError(error, context = {}, options = {}) {
-    const {
-      sessionId,
-      component = 'unknown',
-      operation = 'unknown'
-    } = context;
+  handleError(
+    error: unknown,
+    context: { sessionId?: string; component?: string; operation?: string } = {},
+    options: { maxRetries?: number; shouldStop?: boolean; logLevel?: 'error' | 'warn' } = {}
+  ) {
+    const { sessionId, component = 'unknown', operation = 'unknown' } = context;
 
-    const {
-      maxRetries = 3,
-      shouldStop = false,
-      logLevel = 'error'
-    } = options;
+    const { maxRetries = 3, shouldStop = false, logLevel = 'error' } = options;
 
     const errorType = this.getErrorType(error);
-    const errorMessage = typeof error === 'string' ? error : error.message || '未知错误';
+    const errorMessage = typeof error === 'string' ? error : (error as Error)?.message || '未知错误';
 
     // 更新错误计数
     const errorKey = `${component}:${sessionId || 'global'}`;
@@ -125,25 +120,21 @@ class ErrorHandler {
     }
 
     // 判断是否应该停止操作
-    const shouldStopOperation = shouldStop ||
-      this.isConnectionError(error) ||
-      (currentCount + 1) >= maxRetries;
+    const shouldStopOperation = shouldStop || this.isConnectionError(error) || currentCount + 1 >= maxRetries;
 
     return {
       errorType,
       errorCount: currentCount + 1,
       shouldStop: shouldStopOperation,
       isConnectionError: this.isConnectionError(error),
-      canRetry: !shouldStopOperation && (currentCount + 1) < maxRetries
+      canRetry: !shouldStopOperation && currentCount + 1 < maxRetries
     };
   }
 
   /**
    * 重置错误计数
-   * @param {string} component 组件名称
-   * @param {string} sessionId 会话ID
    */
-  resetErrorCount(component, sessionId = null) {
+  resetErrorCount(component: string, sessionId: string | null = null): void {
     const errorKey = `${component}:${sessionId || 'global'}`;
     this.errorCounts.delete(errorKey);
     this.lastErrors.delete(errorKey);
@@ -151,11 +142,8 @@ class ErrorHandler {
 
   /**
    * 获取错误统计
-   * @param {string} component 组件名称
-   * @param {string} sessionId 会话ID
-   * @returns {Object} 错误统计
    */
-  getErrorStats(component, sessionId = null) {
+  getErrorStats(component: string, sessionId: string | null = null) {
     const errorKey = `${component}:${sessionId || 'global'}`;
     return {
       errorCount: this.errorCounts.get(errorKey) || 0,
@@ -165,9 +153,8 @@ class ErrorHandler {
 
   /**
    * 清理过期的错误记录
-   * @param {number} maxAge 最大保留时间（毫秒）
    */
-  cleanup(maxAge = 24 * 60 * 60 * 1000) { // 默认24小时
+  cleanup(maxAge = 24 * 60 * 60 * 1000): void {
     const now = Date.now();
 
     for (const [key, timestamp] of this.lastErrors.entries()) {
@@ -180,7 +167,7 @@ class ErrorHandler {
 }
 
 // 创建全局错误处理器实例
-const globalErrorHandler = new ErrorHandler();
+export const globalErrorHandler = new ErrorHandler();
 
 // 启动定期清理任务
 setInterval(() => {
@@ -190,28 +177,31 @@ setInterval(() => {
 /**
  * 便捷的错误处理函数
  */
-function handleMonitoringError(error, context = {}, options = {}) {
-  return globalErrorHandler.handleError(error, {
-    component: 'monitoring',
-    ...context
-  }, options);
+export function handleMonitoringError(
+  error: unknown,
+  context: { sessionId?: string; operation?: string } = {},
+  options: { maxRetries?: number; shouldStop?: boolean; logLevel?: 'error' | 'warn' } = {}
+) {
+  return globalErrorHandler.handleError(error, { component: 'monitoring', ...context }, options);
 }
 
-function handleSSHError(error, context = {}, options = {}) {
-  return globalErrorHandler.handleError(error, {
-    component: 'ssh',
-    ...context
-  }, options);
+export function handleSSHError(
+  error: unknown,
+  context: { sessionId?: string; operation?: string } = {},
+  options: { maxRetries?: number; shouldStop?: boolean; logLevel?: 'error' | 'warn' } = {}
+) {
+  return globalErrorHandler.handleError(error, { component: 'ssh', ...context }, options);
 }
 
-function handleWebSocketError(error, context = {}, options = {}) {
-  return globalErrorHandler.handleError(error, {
-    component: 'websocket',
-    ...context
-  }, options);
+export function handleWebSocketError(
+  error: unknown,
+  context: { sessionId?: string; operation?: string } = {},
+  options: { maxRetries?: number; shouldStop?: boolean; logLevel?: 'error' | 'warn' } = {}
+) {
+  return globalErrorHandler.handleError(error, { component: 'websocket', ...context }, options);
 }
 
-module.exports = {
+const api = {
   ErrorHandler,
   ErrorTypes,
   globalErrorHandler,
@@ -219,3 +209,7 @@ module.exports = {
   handleSSHError,
   handleWebSocketError
 };
+
+// CommonJS 兼容导出
+module.exports = api;
+export default api;

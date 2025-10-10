@@ -1,4 +1,4 @@
-// @ts-nocheck
+// 移除 ts-nocheck：为 SFTP 二进制传输补充类型标注
 /**
  * SFTP 二进制传输模块
  * 用于处理基于二进制协议的SFTP文件传输和操作
@@ -7,6 +7,7 @@
 const path = require('path');
 const archiver = require('archiver');
 const logger = require('../utils/logger');
+import type WebSocketType from 'ws';
 const VERBOSE_BINARY_LOG = process.env.LOG_VERBOSE_BINARY === 'true';
 const CHUNK_LOG_STEP = parseInt(process.env.LOG_CHUNK_STEP || '10', 10);
 
@@ -28,7 +29,7 @@ const {
 const sftpOperations = require('./sftp-operations');
 
 // 存储活动的SFTP会话 (复用原有的)
-let sftpSessions = null;
+let sftpSessions: Map<string, any> = new Map();
 
 // 分块重组器实例
 const chunkReassembler = new ChunkReassembler();
@@ -42,7 +43,7 @@ const canceledOperations = new Set();
  * 设置SFTP会话引用
  * @param {Map} sessions SFTP会话Map
  */
-function setSftpSessions(sessions) {
+function setSftpSessions(sessions: Map<string, any>): void {
   sftpSessions = sessions;
 }
 
@@ -52,7 +53,7 @@ function setSftpSessions(sessions) {
  * @param {Buffer} messageBuffer 消息缓冲区
  * @param {Object} sshSessions SSH会话集合
  */
-async function handleBinaryMessage(ws, messageBuffer, sshSessions) {
+async function handleBinaryMessage(ws: WebSocketType, messageBuffer: Buffer, sshSessions: Map<string, any>): Promise<void> {
   try {
     // 解码消息
     const message = BinaryMessageDecoder.decode(messageBuffer);
@@ -139,7 +140,7 @@ async function handleBinaryMessage(ws, messageBuffer, sshSessions) {
  * @param {Buffer} payloadData 文件数据
  * @param {Object} sshSessions SSH会话集合
  */
-async function handleBinaryUpload(ws, headerData, payloadData, sshSessions) {
+async function handleBinaryUpload(ws: WebSocketType, headerData: any, payloadData: Buffer | null, sshSessions: Map<string, any>): Promise<void> {
   const { sessionId, operationId, filename, remotePath, fileSize, chunkIndex, totalChunks, checksum } = headerData;
 
   if (!validateSftpSession(ws, sessionId, sftpSessions, operationId)) {
@@ -152,7 +153,7 @@ async function handleBinaryUpload(ws, headerData, payloadData, sshSessions) {
     const sftpSession = sftpSessions.get(sessionId);
     const sftp = sftpSession.sftp;
 
-    let fileBuffer = payloadData;
+    let fileBuffer: Buffer = (payloadData ?? Buffer.alloc(0)) as Buffer;
     // 若已取消，忽略后续数据
     if (canceledOperations.has(operationId)) {
       try { chunkReassembler.discard(operationId); } catch (_) {}
@@ -195,7 +196,7 @@ async function handleBinaryUpload(ws, headerData, payloadData, sshSessions) {
           sessionId,
           operationId,
           progress,
-          bytesTransferred: (chunkIndex + 1) * payloadData.length,
+          bytesTransferred: (chunkIndex + 1) * ((payloadData?.length) || 0),
           totalBytes: fileSize,
           timestamp: Date.now()
         });
@@ -220,7 +221,7 @@ async function handleBinaryUpload(ws, headerData, payloadData, sshSessions) {
     }
 
     // 检查文件大小限制
-    const maxUploadSize = parseInt(process.env.MAX_UPLOAD_SIZE) || 104857600; // 默认100MB
+    const maxUploadSize = parseInt(process.env.MAX_UPLOAD_SIZE || '') || 104857600; // 默认100MB
     if (fileBuffer.length > maxUploadSize) {
       const fileSizeMB = (fileBuffer.length / (1024 * 1024)).toFixed(2);
       const maxSizeMB = (maxUploadSize / (1024 * 1024)).toFixed(0);
@@ -231,7 +232,7 @@ async function handleBinaryUpload(ws, headerData, payloadData, sshSessions) {
     if (fileBuffer.length === 0) {
       logger.debug('使用writeFile处理空文件', { operationId, remotePath });
 
-      sftp.writeFile(remotePath, fileBuffer, (err) => {
+      sftp.writeFile(remotePath, fileBuffer, (err: any) => {
         if (err) {
           logger.error('空文件创建错误', { remotePath, error: err.message });
           sendBinarySftpError(ws, sessionId, operationId, `文件创建错误: ${err.message}`, 'UPLOAD_ERROR');
@@ -293,7 +294,7 @@ async function handleBinaryUpload(ws, headerData, payloadData, sshSessions) {
       });
     };
 
-    writeStream.on('error', (err) => {
+    writeStream.on('error', (err: any) => {
       if (uploadNotified) return;
       logger.error('二进制文件上传错误', { remotePath, error: err.message });
       sendBinarySftpError(ws, sessionId, operationId, `文件上传错误: ${err.message}`, 'UPLOAD_ERROR');
@@ -330,7 +331,7 @@ async function handleBinaryUpload(ws, headerData, payloadData, sshSessions) {
  * @param {Object} headerData 头部数据
  * @param {Object} sshSessions SSH会话集合
  */
-async function handleBinaryDownload(ws, headerData, sshSessions) {
+async function handleBinaryDownload(ws: WebSocketType, headerData: any, sshSessions: Map<string, any>): Promise<void> {
   const { sessionId, operationId, remotePath } = headerData;
 
   if (!validateSftpSession(ws, sessionId, sftpSessions, operationId)) {
@@ -344,7 +345,7 @@ async function handleBinaryDownload(ws, headerData, sshSessions) {
     const sftp = sftpSession.sftp;
 
     // 获取文件信息
-    sftp.stat(remotePath, (err, stats) => {
+    sftp.stat(remotePath, (err: any, stats: any) => {
       if (err) {
         logger.error('获取文件信息失败', { remotePath, error: err.message });
         sendBinarySftpError(ws, sessionId, operationId, `获取文件信息失败: ${err.message}`, 'FILE_STAT_ERROR');
@@ -362,16 +363,16 @@ async function handleBinaryDownload(ws, headerData, sshSessions) {
       // 创建可读流
       const readStream = sftp.createReadStream(remotePath);
       activeTransfers.set(operationId, { type: 'file', stream: readStream });
-      const chunks = [];
+      const chunks: any[] = [];
       let downloaded = 0;
 
-      readStream.on('error', (err) => {
+      readStream.on('error', (err: any) => {
         logger.error('二进制文件下载错误', { remotePath, error: err.message });
         sendBinarySftpError(ws, sessionId, operationId, `文件下载错误: ${err.message}`, 'DOWNLOAD_ERROR');
         activeTransfers.delete(operationId);
       });
 
-      readStream.on('data', (chunk) => {
+      readStream.on('data', (chunk: any) => {
         // 检查操作是否已被取消
         if (canceledOperations.has(operationId)) {
           try {
@@ -452,7 +453,7 @@ async function handleBinaryDownload(ws, headerData, sshSessions) {
  * @param {Object} headerData 头部数据
  * @param {Object} sshSessions SSH会话集合
  */
-async function handleBinaryDownloadFolder(ws, headerData, sshSessions) {
+async function handleBinaryDownloadFolder(ws: WebSocketType, headerData: any, sshSessions: Map<string, any>): Promise<void> {
   const { sessionId, operationId, remotePath, archiveMethod } = headerData;
 
   // 不强制SFTP会话（主流方案走SSH远端tar），仅在回退ZIP时检查是否存在SFTP会话
@@ -472,23 +473,23 @@ async function handleBinaryDownloadFolder(ws, headerData, sshSessions) {
     const conn = sshSession.conn;
 
     // 远端路径安全转义（单引号安全）
-    const escapeSingleQuotes = (s) => String(s).replace(/'/g, '\'"\'"\'');
+    const escapeSingleQuotes = (s: any) => String(s).replace(/'/g, '\'"\'"\'');
     const remoteQuoted = `'${escapeSingleQuotes(remotePath)}'`;
 
     // 预检查：确认tar存在，并估算大小/文件数（用于进度与摘要）
     const preflightCmd = `sh -c "set -e; if ! command -v tar >/dev/null 2>&1; then echo __NO_TAR__; exit 127; fi; D=${remoteQuoted}; if [ ! -d \"$D\" ]; then echo __NOT_DIR__; exit 126; fi; BYTES=$(du -sb -- \"$D\" 2>/dev/null | awk '{print $1}'); if [ -z \"$BYTES\" ]; then BYTES=$(du -sk -- \"$D\" 2>/dev/null | awk '{print $1 * 1024}'); fi; FILES=$(find -- \"$D\" -type f 2>/dev/null | wc -l | tr -d ' '); echo $BYTES $FILES"`;
 
-    const execOnce = (command) => new Promise((resolve, reject) => {
-      conn.exec(command, (err, stream) => {
+    const execOnce = (command: any) => new Promise<any>((resolve, reject) => {
+      conn.exec(command, (err: any, stream: any) => {
         if (err) return reject(err);
         let stdout = Buffer.alloc(0);
         let stderr = Buffer.alloc(0);
-        stream.on('data', (d) => { stdout = Buffer.concat([stdout, Buffer.from(d)]); });
-        stream.stderr.on('data', (d) => { stderr = Buffer.concat([stderr, Buffer.from(d)]); });
-        stream.on('close', (code) => {
+        stream.on('data', (d: any) => { stdout = Buffer.concat([stdout, Buffer.from(d)]); });
+        stream.stderr.on('data', (d: any) => { stderr = Buffer.concat([stderr, Buffer.from(d)]); });
+        stream.on('close', (code: any) => {
           resolve({ code, stdout: stdout.toString('utf8').trim(), stderr: stderr.toString('utf8') });
         });
-        stream.on('error', reject);
+        stream.on('error', reject as any);
       });
     });
 
@@ -551,7 +552,7 @@ async function handleBinaryDownloadFolder(ws, headerData, sshSessions) {
     }
 
     // 文件夹大小限制（与现有ZIP方案保持一致，默认500MB，可通过MAX_FOLDER_SIZE配置）
-    const maxFolderSize = parseInt(process.env.MAX_FOLDER_SIZE) || 524288000; // 500MB
+    const maxFolderSize = parseInt(process.env.MAX_FOLDER_SIZE || '') || 524288000; // 500MB
     if (totalBytes > maxFolderSize) {
       logger.warn('文件夹过大（远端tar预检查）', { remotePath, totalBytes, maxFolderSize });
       sendBinarySftpError(ws, sessionId, operationId,
@@ -569,7 +570,7 @@ async function handleBinaryDownloadFolder(ws, headerData, sshSessions) {
       return;
     }
 
-    const folderName = path.basename(remotePath) || 'folder';
+  const folderName = path.basename(remotePath || '') || 'folder';
     const tgzFilename = `${folderName}.tar.gz`;
 
     // 构建tar命令（尽可能保留权限/ACL/xattrs），如失败再尝试简化参数
@@ -580,13 +581,13 @@ async function handleBinaryDownloadFolder(ws, headerData, sshSessions) {
 
     let tried = 0;
     let succeeded = false;
-    let lastErr = null;
+    let lastErr: any = null;
 
     while (tried < tarCmds.length && !succeeded) {
       const cmd = tarCmds[tried++];
       try {
-        await new Promise((resolve, reject) => {
-          conn.exec(cmd, (err, stream) => {
+        await new Promise<void>((resolve, reject) => {
+          conn.exec(cmd, (err: any, stream: any) => {
             if (err) return reject(err);
 
             // 改为边读边分块下发，避免一次性发送超大帧导致阻塞或断连
@@ -623,7 +624,7 @@ async function handleBinaryDownloadFolder(ws, headerData, sshSessions) {
               pendingBuf = Buffer.alloc(0);
             };
 
-            stream.on('data', (chunk) => {
+            stream.on('data', (chunk: any) => {
               // 检查操作是否已被取消，如果取消则立即终止数据传输
               if (canceledOperations.has(operationId)) {
                 try {
@@ -690,7 +691,7 @@ async function handleBinaryDownloadFolder(ws, headerData, sshSessions) {
               }
             });
 
-            stream.stderr.on('data', (d) => {
+            stream.stderr.on('data', (d: any) => {
               // 有些tar会把进度或警告写入stderr，必要时可记录
               const msg = d.toString('utf8');
               if (msg && msg.trim()) {
@@ -698,7 +699,7 @@ async function handleBinaryDownloadFolder(ws, headerData, sshSessions) {
               }
             });
 
-            stream.on('close', (code) => {
+            stream.on('close', (code: any) => {
               const wasCancelled = canceledOperations.has(operationId);
               canceledOperations.delete(operationId);
               activeTransfers.delete(operationId);
@@ -808,9 +809,9 @@ async function handleBinaryDownloadFolder(ws, headerData, sshSessions) {
  * @param {Object} sftp SFTP连接对象
  * @param {string} remotePath 远程文件夹路径
  */
-function startBinaryFolderZipStream(ws, sessionId, operationId, sftp, remotePath) {
+function startBinaryFolderZipStream(ws: WebSocketType, sessionId: string, operationId: string, sftp: any, remotePath: string): void {
   // 从环境变量读取压缩级别配置
-  const compressionLevel = parseInt(process.env.SFTP_COMPRESSION_LEVEL) || 6;
+  const compressionLevel = parseInt(process.env.SFTP_COMPRESSION_LEVEL || '') || 6;
 
   // 创建ZIP压缩器
   const archive = archiver('zip', {
@@ -820,18 +821,18 @@ function startBinaryFolderZipStream(ws, sessionId, operationId, sftp, remotePath
   });
 
   // 用于收集ZIP数据块
-  const zipChunks = [];
+  const zipChunks: any[] = [];
   let totalFiles = 0;
   let processedFiles = 0;
   let totalSize = 0;
   let processedSize = 0;
 
   // 收集跳过的文件信息
-  const skippedFiles = [];
-  const errorFiles = [];
+  const skippedFiles: any[] = [];
+  const errorFiles: any[] = [];
 
   // 监听ZIP数据事件
-  archive.on('data', (chunk) => {
+  archive.on('data', (chunk: any) => {
     zipChunks.push(chunk);
 
     // 实时发送ZIP压缩进度（基于已生成的ZIP数据大小）
@@ -866,7 +867,7 @@ function startBinaryFolderZipStream(ws, sessionId, operationId, sftp, remotePath
       const checksum = ChecksumValidator.calculateSHA256(zipBuffer);
 
       // 获取文件夹名称作为ZIP文件名
-      const folderName = path.basename(remotePath) || 'folder';
+  const folderName = path.basename(remotePath || '') || 'folder';
       const zipFilename = `${folderName}.zip`;
 
       // 发送最终进度（100%）
@@ -919,7 +920,7 @@ function startBinaryFolderZipStream(ws, sessionId, operationId, sftp, remotePath
   });
 
   // 监听ZIP错误事件
-  archive.on('error', (err) => {
+  archive.on('error', (err: any) => {
     logger.error('ZIP压缩错误', { remotePath, error: err.message });
     sendBinarySftpError(ws, sessionId, operationId, `ZIP压缩错误: ${err.message}`, 'ZIP_COMPRESSION_ERROR');
     activeTransfers.delete(operationId);
@@ -934,7 +935,7 @@ function startBinaryFolderZipStream(ws, sessionId, operationId, sftp, remotePath
     totalSize = size;
 
     // 检查文件夹大小限制（默认500MB）
-    const maxFolderSize = parseInt(process.env.MAX_FOLDER_SIZE) || 524288000; // 500MB
+    const maxFolderSize = parseInt(process.env.MAX_FOLDER_SIZE || '') || 524288000; // 500MB
     if (totalSize > maxFolderSize) {
       logger.warn('文件夹过大', { remotePath, totalSize, maxFolderSize });
       sendBinarySftpError(ws, sessionId, operationId,
@@ -989,7 +990,16 @@ function startBinaryFolderZipStream(ws, sessionId, operationId, sftp, remotePath
  * @param {Function} onComplete 完成回调 (fileCount, totalSize)
  * @param {Function} onProgress 进度回调 (error, size)
  */
-function addFolderToZipBinary(archive, sftp, remotePath, zipPath, skippedFiles, errorFiles, onComplete, onProgress) {
+function addFolderToZipBinary(
+  archive: any,
+  sftp: any,
+  remotePath: string,
+  zipPath: string,
+  skippedFiles: any[],
+  errorFiles: any[],
+  onComplete: (fileCount: number, size: number) => void,
+  onProgress: (error: any, size: number) => void
+): void {
   let fileCount = 0;
   let totalSize = 0;
   let pendingOperations = 0;
@@ -1002,10 +1012,10 @@ function addFolderToZipBinary(archive, sftp, remotePath, zipPath, skippedFiles, 
     }
   }
 
-  function processDirectory(dirPath, zipDirPath) {
+  function processDirectory(dirPath: string, zipDirPath: string) {
     pendingOperations++;
 
-    sftp.readdir(dirPath, (err, list) => {
+    sftp.readdir(dirPath, (err: any, list: any[]) => {
       if (err) {
         pendingOperations--;
         logger.warn('跳过无法读取的目录', { dirPath, error: err.message });
@@ -1021,7 +1031,7 @@ function addFolderToZipBinary(archive, sftp, remotePath, zipPath, skippedFiles, 
         return;
       }
 
-      list.forEach(item => {
+      list.forEach((item: any) => {
         try {
           // 跳过隐藏文件和特殊目录
           if (item.filename.startsWith('.') &&
@@ -1131,10 +1141,10 @@ function addFolderToZipBinary(archive, sftp, remotePath, zipPath, skippedFiles, 
  * @param {Array} skippedFiles 跳过文件列表
  * @param {Function} callback 完成回调 (error, size)
  */
-function addFileToZipBinary(archive, sftp, remotePath, zipPath, fileSize, skippedFiles, callback) {
+function addFileToZipBinary(archive: any, sftp: any, remotePath: string, zipPath: string, fileSize: number, skippedFiles: any[], callback: (err: any, size: number) => void): void {
   try {
     // 跳过过大的文件（默认100MB）
-    const maxFileSize = parseInt(process.env.MAX_FILE_SIZE) || 104857600; // 100MB
+    const maxFileSize = parseInt(process.env.MAX_FILE_SIZE || '') || 104857600; // 100MB
     if (fileSize > maxFileSize) {
       if (skippedFiles) {
         skippedFiles.push({
@@ -1162,7 +1172,7 @@ function addFileToZipBinary(archive, sftp, remotePath, zipPath, fileSize, skippe
       }
     }, 30000); // 30秒超时
 
-    readStream.on('error', (err) => {
+    readStream.on('error', (err: any) => {
       if (!hasErrored) {
         hasErrored = true;
         clearTimeout(timeout);
@@ -1198,9 +1208,9 @@ function addFileToZipBinary(archive, sftp, remotePath, zipPath, fileSize, skippe
  * @param {string} filepath 文件路径
  * @returns {string} MIME类型
  */
-function getMimeType(filepath) {
+function getMimeType(filepath: string): string {
   const ext = path.extname(filepath).toLowerCase();
-  const mimeTypes = {
+  const mimeTypes: Record<string, string> = {
     '.txt': 'text/plain',
     '.html': 'text/html',
     '.css': 'text/css',
@@ -1230,7 +1240,7 @@ function getMimeType(filepath) {
 /**
  * 处理二进制SFTP初始化
  */
-async function handleBinarySftpInit(ws, headerData, sshSessions) {
+async function handleBinarySftpInit(ws: WebSocketType, headerData: any, sshSessions: Map<string, any>): Promise<void> {
   const { sessionId, operationId } = headerData;
 
   // 转换为JSON格式调用现有处理器
@@ -1245,7 +1255,7 @@ async function handleBinarySftpInit(ws, headerData, sshSessions) {
 /**
  * 处理二进制SFTP列表
  */
-async function handleBinarySftpList(ws, headerData) {
+async function handleBinarySftpList(ws: WebSocketType, headerData: any): Promise<void> {
   const { sessionId, operationId, path } = headerData;
 
   // 转换为JSON格式调用现有处理器
@@ -1261,7 +1271,7 @@ async function handleBinarySftpList(ws, headerData) {
 /**
  * 处理二进制SFTP创建目录
  */
-async function handleBinarySftpMkdir(ws, headerData) {
+async function handleBinarySftpMkdir(ws: WebSocketType, headerData: any): Promise<void> {
   const { sessionId, operationId, path } = headerData;
 
   // 转换为JSON格式调用现有处理器
@@ -1277,7 +1287,7 @@ async function handleBinarySftpMkdir(ws, headerData) {
 /**
  * 处理二进制SFTP删除
  */
-async function handleBinarySftpDelete(ws, headerData) {
+async function handleBinarySftpDelete(ws: WebSocketType, headerData: any): Promise<void> {
   const { sessionId, operationId, path, isDirectory } = headerData;
 
   // 转换为JSON格式调用现有处理器
@@ -1294,7 +1304,7 @@ async function handleBinarySftpDelete(ws, headerData) {
 /**
  * 处理二进制SFTP重命名
  */
-async function handleBinarySftpRename(ws, headerData) {
+async function handleBinarySftpRename(ws: WebSocketType, headerData: any): Promise<void> {
   const { sessionId, operationId, oldPath, newPath } = headerData;
 
   // 转换为JSON格式调用现有处理器
@@ -1311,7 +1321,7 @@ async function handleBinarySftpRename(ws, headerData) {
 /**
  * 处理二进制SFTP权限修改
  */
-async function handleBinarySftpChmod(ws, headerData) {
+async function handleBinarySftpChmod(ws: WebSocketType, headerData: any): Promise<void> {
   const { sessionId, operationId, path, permissions } = headerData;
 
   // 转换为JSON格式调用现有处理器
@@ -1328,7 +1338,7 @@ async function handleBinarySftpChmod(ws, headerData) {
 /**
  * 处理二进制SFTP关闭
  */
-async function handleBinarySftpClose(ws, headerData) {
+async function handleBinarySftpClose(ws: WebSocketType, headerData: any): Promise<void> {
   const { sessionId, operationId } = headerData;
 
   // 转换为JSON格式调用现有处理器
@@ -1343,7 +1353,7 @@ async function handleBinarySftpClose(ws, headerData) {
 /**
  * 处理二进制SFTP取消操作
  */
-async function handleBinarySftpCancel(ws, headerData) {
+async function handleBinarySftpCancel(ws: WebSocketType, headerData: any): Promise<void> {
   const { sessionId, operationId } = headerData;
 
   try {
@@ -1369,7 +1379,7 @@ async function handleBinarySftpCancel(ws, headerData) {
         try {
           if (entry.remotePath && sftpSessions && sftpSessions.has(sessionId)) {
             const sftp = sftpSessions.get(sessionId).sftp;
-            sftp.unlink(entry.remotePath, (err) => {
+            sftp.unlink(entry.remotePath, (err: any) => {
               if (err && err.message && !/No such file|not exist/i.test(err.message)) {
                 logger.warn('取消时删除远端文件失败', { operationId, remotePath: entry.remotePath, error: err.message });
               } else if (!err) {
@@ -1418,8 +1428,8 @@ module.exports = {
 };
 
 // 估算目录大小（通过SFTP递归）
-function estimateFolderSizeViaSftp(sftp, rootPath) {
-  return new Promise((resolve) => {
+function estimateFolderSizeViaSftp(sftp: any, rootPath: string): Promise<number> {
+  return new Promise<number>((resolve) => {
     let total = 0;
     let pending = 0;
     let done = false;
@@ -1431,14 +1441,14 @@ function estimateFolderSizeViaSftp(sftp, rootPath) {
       }
     }
 
-    function walk(dir) {
+    function walk(dir: string) {
       pending++;
-      sftp.readdir(dir, (err, list) => {
+      sftp.readdir(dir, (err: any, list: any[]) => {
         if (err) {
           pending--;
           return finish();
         }
-        list.forEach(item => {
+        list.forEach((item: any) => {
           const p = path.posix.join(dir, item.filename);
           if (item.attrs && item.attrs.isDirectory()) {
             walk(p);

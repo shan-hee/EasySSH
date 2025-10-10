@@ -1,15 +1,22 @@
 "use strict";
-// @ts-nocheck
 /**
- * AI控制器
+ * AI控制器（TypeScript）
  * 处理AI WebSocket连接和消息路由
  */
-const WebSocket = require('ws');
-const logger = require('../utils/logger');
-const { handleWebSocketError } = require('../utils/errorHandler');
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+const ws_1 = __importDefault(require("ws"));
+const logger_1 = __importDefault(require("../utils/logger"));
+const errorHandler_1 = require("../utils/errorHandler");
+// eslint-disable-next-line @typescript-eslint/no-var-requires
 const OpenAIAdapter = require('./openai-adapter');
+// eslint-disable-next-line @typescript-eslint/no-var-requires
 const ContextBuilder = require('./context-builder');
+// eslint-disable-next-line @typescript-eslint/no-var-requires
 const KeyVault = require('./key-vault');
+// eslint-disable-next-line @typescript-eslint/no-var-requires
 const RateLimiter = require('./rate-limiter');
 class AIController {
     constructor() {
@@ -21,7 +28,7 @@ class AIController {
         this.contextBuilder = new ContextBuilder();
         this.keyVault = new KeyVault();
         this.rateLimiter = new RateLimiter();
-        logger.info('AI控制器已初始化');
+        logger_1.default.info('AI控制器已初始化');
     }
     /**
      * 处理新的WebSocket连接
@@ -42,7 +49,7 @@ class AIController {
             requestCount: 0
         };
         this.connections.set(connectionId, connection);
-        logger.info('AI连接已建立', { connectionId, userId, sessionId });
+        logger_1.default.info('AI连接已建立', { connectionId, userId, sessionId });
         // 设置消息处理器
         ws.on('message', (message) => {
             this.handleMessage(connectionId, message);
@@ -53,7 +60,7 @@ class AIController {
         });
         // 设置错误处理器
         ws.on('error', (error) => {
-            handleWebSocketError(error, { connectionId, operation: 'AI WebSocket连接' });
+            (0, errorHandler_1.handleWebSocketError)(error, { operation: 'AI WebSocket连接' });
         });
         // 发送连接成功消息
         this.sendMessage(connectionId, {
@@ -69,7 +76,7 @@ class AIController {
     async handleMessage(connectionId, message) {
         const connection = this.connections.get(connectionId);
         if (!connection) {
-            logger.warn('收到未知连接的消息', { connectionId });
+            logger_1.default.warn('收到未知连接的消息', { connectionId });
             return;
         }
         try {
@@ -78,7 +85,7 @@ class AIController {
             connection.requestCount++;
             // 解析消息
             const data = JSON.parse(message.toString());
-            logger.debug('收到AI消息', { connectionId, type: data.type, requestId: data.requestId });
+            logger_1.default.debug('收到AI消息', { connectionId, type: data.type, requestId: data.requestId });
             // 验证消息格式
             if (!this.validateMessage(data)) {
                 this.sendError(connectionId, 'INVALID_MESSAGE', '消息格式无效');
@@ -94,7 +101,7 @@ class AIController {
             await this.routeMessage(connectionId, data);
         }
         catch (error) {
-            logger.error('处理AI消息失败', { connectionId, error: error.message });
+            logger_1.default.error('处理AI消息失败', { connectionId, error: error.message });
             this.sendError(connectionId, 'MESSAGE_PROCESSING_ERROR', '消息处理失败');
         }
     }
@@ -119,7 +126,7 @@ class AIController {
                 await this.handleConfigSync(connectionId, data);
                 break;
             default:
-                logger.warn('未知的AI消息类型', { connectionId, type, requestId });
+                logger_1.default.warn('未知的AI消息类型', { connectionId, type, requestId });
                 this.sendError(connectionId, 'UNKNOWN_MESSAGE_TYPE', `未知的消息类型: ${type}`);
         }
     }
@@ -159,7 +166,7 @@ class AIController {
             await this.processAIRequest(connectionId, requestId, openaiAdapter, mode, processedContext, input, safeSettings, abortController.signal);
         }
         catch (error) {
-            logger.error('处理AI请求失败', { connectionId, requestId, error: error.message });
+            logger_1.default.error('处理AI请求失败', { connectionId, requestId, error: error.message });
             this.sendError(connectionId, 'AI_REQUEST_ERROR', error.message, requestId);
         }
         finally {
@@ -206,7 +213,7 @@ class AIController {
         const { requestId } = data;
         const activeRequest = this.activeRequests.get(requestId);
         if (activeRequest && activeRequest.connectionId === connectionId) {
-            logger.info('取消AI请求', { connectionId, requestId });
+            logger_1.default.info('取消AI请求', { connectionId, requestId });
             activeRequest.abortController.abort();
             this.activeRequests.delete(requestId);
             this.sendMessage(connectionId, {
@@ -216,7 +223,7 @@ class AIController {
             });
         }
         else {
-            logger.warn('尝试取消不存在的AI请求', { connectionId, requestId });
+            logger_1.default.warn('尝试取消不存在的AI请求', { connectionId, requestId });
         }
     }
     /**
@@ -237,7 +244,7 @@ class AIController {
             });
         }
         catch (error) {
-            logger.error('API配置测试失败', { connectionId, requestId, error: error.message });
+            logger_1.default.error('API配置测试失败', { connectionId, requestId, error: error.message });
             this.sendMessage(connectionId, {
                 type: 'ai_config_test_result',
                 requestId,
@@ -257,7 +264,7 @@ class AIController {
         try {
             // 存储用户的API配置到后端
             await this.keyVault.storeApiConfig(userId, config, { sessionOnly: true });
-            logger.info('AI配置已同步到后端', {
+            logger_1.default.info('AI配置已同步到后端', {
                 connectionId,
                 userId,
                 provider: config.provider,
@@ -272,7 +279,7 @@ class AIController {
             });
         }
         catch (error) {
-            logger.error('AI配置同步失败', { connectionId, userId, error: error.message });
+            logger_1.default.error('AI配置同步失败', { connectionId, userId, error: error.message });
             this.sendMessage(connectionId, {
                 type: 'ai_config_sync_result',
                 success: false,
@@ -314,7 +321,7 @@ class AIController {
      */
     sendMessage(connectionId, message) {
         const connection = this.connections.get(connectionId);
-        if (connection && connection.ws.readyState === WebSocket.OPEN) {
+        if (connection && connection.ws.readyState === ws_1.default.OPEN) {
             connection.ws.send(JSON.stringify(message));
         }
     }
@@ -343,7 +350,7 @@ class AIController {
      * @param {string} reason 关闭原因
      */
     handleDisconnection(connectionId, code, reason) {
-        logger.info('AI连接已断开', {
+        logger_1.default.info('AI连接已断开', {
             connectionId,
             code,
             reason: reason?.toString()
@@ -384,7 +391,7 @@ class AIController {
         try {
             // 构建聊天消息
             const messages = openaiAdapter.buildChatMessages(mode, context, input);
-            logger.debug('开始处理AI请求', {
+            logger_1.default.debug('开始处理AI请求', {
                 connectionId,
                 requestId,
                 mode,
@@ -397,7 +404,7 @@ class AIController {
             for await (const chunk of stream) {
                 // 检查是否已取消
                 if (signal && signal.aborted) {
-                    logger.info('AI请求已取消', { connectionId, requestId });
+                    logger_1.default.info('AI请求已取消', { connectionId, requestId });
                     return;
                 }
                 if (chunk.type === 'delta' && chunk.content) {
@@ -435,7 +442,7 @@ class AIController {
                             cost: this._estimateCost(tokenUsage, modelUsed)
                         });
                     }
-                    logger.info('AI请求处理完成', {
+                    logger_1.default.info('AI请求处理完成', {
                         connectionId,
                         requestId,
                         mode,
@@ -448,10 +455,10 @@ class AIController {
         }
         catch (error) {
             if (error.name === 'AbortError' || (signal && signal.aborted)) {
-                logger.info('AI请求已取消', { connectionId, requestId });
+                logger_1.default.info('AI请求已取消', { connectionId, requestId });
                 return;
             }
-            logger.error('AI请求处理失败', {
+            logger_1.default.error('AI请求处理失败', {
                 connectionId,
                 requestId,
                 mode,
@@ -490,12 +497,12 @@ class AIController {
         this.activeRequests.clear();
         // 关闭所有连接
         for (const [connectionId, connection] of this.connections.entries()) {
-            if (connection.ws.readyState === WebSocket.OPEN) {
+            if (connection.ws.readyState === ws_1.default.OPEN) {
                 connection.ws.close(1001, '服务器关闭');
             }
         }
         this.connections.clear();
-        logger.info('AI控制器已清理');
+        logger_1.default.info('AI控制器已清理');
     }
 }
 module.exports = AIController;

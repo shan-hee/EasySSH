@@ -1,14 +1,12 @@
-// Bridge stub for compiled dist to reach source JS implementation
-// @ts-nocheck
+// Bridge stub for compiled dist to reach source JS implementation (typed)
 /**
- * 数据库连接配置
- * 使用SQLite + node-cache实现存储和缓存
+ * 数据库连接配置 - SQLite + node-cache
  */
 
-const path = require('path');
-const fs = require('fs');
-const Database = require('better-sqlite3');
-const NodeCache = require('node-cache');
+import path from 'node:path';
+import fs from 'node:fs';
+import Database from 'better-sqlite3';
+import NodeCache from 'node-cache';
 
 // 创建缓存实例
 const cache = new NodeCache({
@@ -19,7 +17,7 @@ const cache = new NodeCache({
 
 // 数据库连接状态
 let dbConnected = false;
-let db = null;
+let db: any | null = null;
 
 // 数据库目录（无论开发/编译运行，统一指向 server/data）
 const maybeDist = path.resolve(__dirname, '..');
@@ -34,7 +32,7 @@ if (!fs.existsSync(DB_DIR)) {
 }
 
 // 连接SQLite数据库
-const connectDatabase = () => {
+const connectDatabase = (): any => {
   if (dbConnected && db) return db;
 
   try {
@@ -188,7 +186,8 @@ const connectDatabase = () => {
         );
       }
     } catch (e) {
-      console.warn('默认脚本插入失败（不影响启动）:', e?.message || e);
+      const emsg = (e as any)?.message ?? String(e);
+      console.warn('默认脚本插入失败（不影响启动）:', emsg);
     }
 
     // 创建用户脚本收藏表
@@ -284,7 +283,7 @@ const connectDatabase = () => {
 };
 
 // 关闭数据库连接
-const closeDatabase = () => {
+const closeDatabase = (): void => {
   if (db) {
     db.close();
     dbConnected = false;
@@ -293,11 +292,11 @@ const closeDatabase = () => {
 };
 
 // 获取数据库实例
-const getDb = () => {
+const getDb = (): any => {
   if (!db) {
     connectDatabase();
   }
-  return db;
+  return db!;
 };
 
 // 获取缓存实例
@@ -309,10 +308,6 @@ const getDatabaseStatus = () => ({
   cache: 'connected' // 内存缓存始终连接
 });
 
-module.exports = {
-  connectDatabase,
-  closeDatabase,
-  getCache,
-  getDatabaseStatus,
-  getDb
-};
+const api = { connectDatabase, closeDatabase, getCache, getDatabaseStatus, getDb };
+module.exports = api;
+export default api;

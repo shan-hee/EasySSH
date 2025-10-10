@@ -1,30 +1,56 @@
 // Bridge stub for compiled dist to reach source JS implementation
-// @ts-nocheck
 /**
- * 服务器端日志工具
- * 提供标准化的日志输出函数，支持文件轮转和自动清理
+ * 服务器端日志工具（TypeScript）
+ * - 标准化输出：debug/info/warn/error/table
+ * - 可选文件日志：大小轮转 + 按天清理
+ * - 生产/开发环境默认级别与行为
+ *
+ * 注意：保留 CommonJS 导出以兼容现有 `require('../utils/logger')` 调用。
  */
 
-const fs = require('fs');
-const path = require('path');
+import fs from 'node:fs';
+import path from 'node:path';
+
+type LogLevel = 'DEBUG' | 'INFO' | 'WARN' | 'ERROR';
+type LogConfig = {
+  maxFileSize: number; // 单个日志文件最大字节数
+  maxBackupFiles: number; // 保留备份文件个数
+  maxLogAge: number; // 保留天数
+  logDirectory: string; // 日志目录
+  enableConsoleLog: boolean; // 是否输出到控制台
+  enableFileLog: boolean; // 是否写入文件
+  logFileName: string; // 文件名
+  logLevel: string; // 当前阈值级别（小写）
+};
+
+type LoggerApi = {
+  debug: (message: string, data?: unknown) => void;
+  info: (message: string, data?: unknown) => void;
+  warn: (message: string, data?: unknown) => void;
+  error: (message: string, data?: unknown) => void;
+  table: (title: string, data: unknown) => void;
+  cleanupLogs: () => void;
+  getLogConfig: () => Readonly<LogConfig>;
+};
 
 
 // 统一日志目录：
 // - Docker 环境默认 /easyssh/logs
 // - 非 Docker 环境默认 server/logs
+// 推断运行根目录（支持 server/dist 以及 server/ 源码目录）
 const maybeDist = path.resolve(__dirname, '..'); // e.g. server/dist/utils -> server/dist
 const BASE_DIR = path.basename(maybeDist) === 'dist' ? path.resolve(maybeDist, '..') : maybeDist; // server
-const IN_DOCKER = (() => { try { return require('fs').existsSync('/.dockerenv'); } catch { return false; } })();
+const IN_DOCKER = (() => { try { return fs.existsSync('/.dockerenv'); } catch { return false; } })();
 const DEFAULT_LOG_DIR = IN_DOCKER ? '/easyssh/logs' : path.join(BASE_DIR, 'logs');
 
 // 日志配置
 const NODE_ENV = (process.env.NODE_ENV || 'development').toLowerCase();
 const DEFAULT_LOG_LEVEL = NODE_ENV === 'production' ? 'info' : 'debug';
 
-const LOG_CONFIG = {
-  maxFileSize: parseInt(process.env.LOG_MAX_FILE_SIZE) || 10 * 1024 * 1024, // 10MB
-  maxBackupFiles: parseInt(process.env.LOG_MAX_BACKUP_FILES) || 5,           // 保留5个备份
-  maxLogAge: parseInt(process.env.LOG_MAX_AGE_DAYS) || 7,                    // 保留7天
+const LOG_CONFIG: LogConfig = {
+  maxFileSize: parseInt(process.env.LOG_MAX_FILE_SIZE ?? '', 10) || 10 * 1024 * 1024, // 10MB
+  maxBackupFiles: parseInt(process.env.LOG_MAX_BACKUP_FILES ?? '', 10) || 5,           // 保留5个备份
+  maxLogAge: parseInt(process.env.LOG_MAX_AGE_DAYS ?? '', 10) || 7,                    // 保留7天
   logDirectory: (process.env.LOG_DIRECTORY || '').trim() || DEFAULT_LOG_DIR,
   enableConsoleLog: process.env.LOG_ENABLE_CONSOLE !== 'false',              // 默认启用控制台
   // 生产环境默认启用文件日志（若未显式设置 LOG_ENABLE_FILE）
@@ -35,13 +61,14 @@ const LOG_CONFIG = {
   logLevel: (process.env.LOG_LEVEL || DEFAULT_LOG_LEVEL).toString().trim().toLowerCase()
 };
 
-function ensureLogDirectory() {
+function ensureLogDirectory(): void {
   try {
     if (!fs.existsSync(LOG_CONFIG.logDirectory)) {
       fs.mkdirSync(LOG_CONFIG.logDirectory, { recursive: true });
     }
   } catch (error) {
-    console.error('创建日志目录失败:', error.message);
+    const msg = error instanceof Error ? error.message : String(error);
+    console.error('创建日志目录失败:', msg);
   }
 }
 
@@ -69,9 +96,9 @@ const colors = {
   bgMagenta: '\x1b[45m',
   bgCyan: '\x1b[46m',
   bgWhite: '\x1b[47m'
-};
+} as const;
 
-const levelColors = {
+const levelColors: Record<LogLevel, string> = {
   DEBUG: colors.cyan,
   INFO: colors.green,
   WARN: colors.yellow,
@@ -85,14 +112,14 @@ const levelOrder: Record<string, number> = {
   error: 40
 };
 
-function shouldLog(level: string) {
+function shouldLog(level: string): boolean {
   const cfg = (LOG_CONFIG.logLevel || DEFAULT_LOG_LEVEL).toLowerCase();
   const want = levelOrder[level.toLowerCase()] ?? 999;
   const threshold = levelOrder[cfg] ?? levelOrder[DEFAULT_LOG_LEVEL];
   return want >= threshold;
 }
 
-function checkAndRotateLog(logFilePath) {
+function checkAndRotateLog(logFilePath: string): void {
   try {
     if (!fs.existsSync(logFilePath)) {
       return;
@@ -117,12 +144,13 @@ function checkAndRotateLog(logFilePath) {
     }
   } catch (error) {
     if (LOG_CONFIG.enableConsoleLog) {
-      console.error('日志轮转失败:', error.message);
+      const msg = error instanceof Error ? error.message : String(error);
+      console.error('日志轮转失败:', msg);
     }
   }
 }
 
-function cleanupOldLogs() {
+function cleanupOldLogs(): void {
   try {
     const files = fs.readdirSync(LOG_CONFIG.logDirectory);
     const now = Date.now();
@@ -141,12 +169,13 @@ function cleanupOldLogs() {
     });
   } catch (error) {
     if (LOG_CONFIG.enableConsoleLog) {
-      console.error('清理过期日志失败:', error.message);
+      const msg = error instanceof Error ? error.message : String(error);
+      console.error('清理过期日志失败:', msg);
     }
   }
 }
 
-function writeToFile(logMessage) {
+function writeToFile(logMessage: string): void {
   if (!LOG_CONFIG.enableFileLog) return;
   try {
     ensureLogDirectory();
@@ -154,33 +183,37 @@ function writeToFile(logMessage) {
     checkAndRotateLog(logFilePath);
     fs.appendFile(logFilePath, `${logMessage}\n`, (error) => {
       if (error && LOG_CONFIG.enableConsoleLog) {
-        console.error('写入日志文件失败:', error.message);
+        const msg = error instanceof Error ? error.message : String(error);
+        console.error('写入日志文件失败:', msg);
       }
     });
   } catch (error) {
     if (LOG_CONFIG.enableConsoleLog) {
-      console.error('日志文件操作失败:', error.message);
+      const msg = error instanceof Error ? error.message : String(error);
+      console.error('日志文件操作失败:', msg);
     }
   }
 }
 
-function truncateSensitiveValue(value, maxLength = 20) {
+function truncateSensitiveValue(value: unknown, maxLength = 20): unknown {
   if (typeof value === 'string' && value.length > maxLength) {
     return `${value.substring(0, maxLength)}...`;
   }
   return value;
 }
 
-function sanitizeData(data) {
+function sanitizeData(data: unknown): unknown {
   if (data === null || data === undefined) return data;
   if (typeof data === 'object') {
     if (Array.isArray(data)) return data.map(item => sanitizeData(item));
-    const result = {};
-    for (const key in data) {
+    const input = data as Record<string, unknown>;
+    const result: Record<string, unknown> = {};
+    for (const key in input) {
       if (/token|password|secret|key|auth|jwt/i.test(key)) {
-        result[key] = typeof data[key] === 'string' ? truncateSensitiveValue(data[key]) : data[key];
+        const v = input[key];
+        result[key] = typeof v === 'string' ? truncateSensitiveValue(v) : v;
       } else {
-        result[key] = sanitizeData(data[key]);
+        result[key] = sanitizeData(input[key]);
       }
     }
     return result;
@@ -188,16 +221,18 @@ function sanitizeData(data) {
   return data;
 }
 
-function formatData(data) {
+function formatData(data: unknown): string {
   if (data === undefined || data === null) return '';
   const sanitizedData = sanitizeData(data);
   if (typeof sanitizedData === 'object') {
-    try { return JSON.stringify(sanitizedData); } catch (error) { return String(sanitizedData); }
+    try { return JSON.stringify(sanitizedData); } catch {
+      return String(sanitizedData);
+    }
   }
   return String(sanitizedData);
 }
 
-function log(level, message, data) {
+function log(level: LogLevel, message: string, data?: unknown): void {
   if (!shouldLog(level)) return;
   const timestamp = new Date().toISOString();
   const color = levelColors[level] || colors.white;
@@ -209,31 +244,32 @@ function log(level, message, data) {
   writeToFile(logMessage);
 }
 
-function debug(message, data) { log('DEBUG', message, data); }
-function info(message, data) { log('INFO', message, data); }
-function warn(message, data) { log('WARN', message, data); }
-function error(message, data) { log('ERROR', message, data); }
+function debug(message: string, data?: unknown): void { log('DEBUG', message, data); }
+function info(message: string, data?: unknown): void { log('INFO', message, data); }
+function warn(message: string, data?: unknown): void { log('WARN', message, data); }
+function error(message: string, data?: unknown): void { log('ERROR', message, data); }
 
-function table(title, data) {
+function table(title: string, data: unknown): void {
   const timestamp = new Date().toISOString();
   if (LOG_CONFIG.enableConsoleLog) {
     console.log(`${colors.bright}${colors.cyan}${title}${colors.reset}`);
-    console.table(data);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    console.table(data as any);
   }
   const tableMessage = `[${timestamp}] [TABLE] ${title} ${JSON.stringify(data, null, 2)}`;
   writeToFile(tableMessage);
 }
 
-function cleanupLogs() { cleanupOldLogs(); }
+function cleanupLogs(): void { cleanupOldLogs(); }
 
-function getLogConfig() { return { ...LOG_CONFIG }; }
+function getLogConfig(): Readonly<LogConfig> { return { ...LOG_CONFIG }; }
 
 if (LOG_CONFIG.enableFileLog) {
   setInterval(() => { cleanupOldLogs(); }, 24 * 60 * 60 * 1000);
   setTimeout(() => { cleanupOldLogs(); }, 5000);
 }
 
-module.exports = {
+const logger: LoggerApi = {
   debug,
   info,
   warn,
@@ -242,3 +278,9 @@ module.exports = {
   cleanupLogs,
   getLogConfig
 };
+
+// CommonJS 导出，保持对现有 require() 的兼容
+module.exports = logger;
+
+// 也支持 TS/ESM 默认导入（如：import logger from '../utils/logger.js'）
+export default logger;

@@ -243,15 +243,13 @@ export default class Server {
     if (!server) return null;
 
     if (update.$inc) {
-      Object.keys(update.$inc).forEach(key => {
-        // @ts-ignore
-        server[key] = ((server as any)[key] || 0) + update.$inc[key];
+      Object.keys(update.$inc).forEach((key) => {
+        (server as any)[key] = (((server as any)[key] || 0) as number) + (update.$inc as any)[key];
       });
     }
     if (update.$set) {
-      Object.keys(update.$set).forEach(key => {
-        // @ts-ignore
-        server[key] = update.$set[key];
+      Object.keys(update.$set).forEach((key) => {
+        (server as any)[key] = (update.$set as any)[key];
       });
     }
 

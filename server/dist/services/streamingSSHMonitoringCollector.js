@@ -1,16 +1,20 @@
 "use strict";
-// @ts-nocheck
 /**
- * 流式SSH监控收集器 - 优化版
+ * 流式SSH监控收集器 - 优化版（TypeScript）
  * 使用单会话长连接，直接读取 /proc 和 /sys，NDJSON流式输出
  */
-const EventEmitter = require('events');
-const path = require('path');
-const fs = require('fs');
-const logger = require('../utils/logger');
-class StreamingSSHMonitoringCollector extends EventEmitter {
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+const node_events_1 = require("node:events");
+const node_path_1 = __importDefault(require("node:path"));
+const node_fs_1 = __importDefault(require("node:fs"));
+const logger_1 = __importDefault(require("../utils/logger"));
+class StreamingSSHMonitoringCollector extends node_events_1.EventEmitter {
     constructor(sshConnection, hostInfo) {
         super();
+        this.dataCallback = null;
         this.sshConnection = sshConnection;
         this.hostInfo = hostInfo;
         this.isCollecting = false;
@@ -52,13 +56,13 @@ class StreamingSSHMonitoringCollector extends EventEmitter {
      */
     startCollection(dataCallback, interval = 1000) {
         if (this.isCollecting) {
-            logger.warn('流式监控数据收集已在进行中', { hostId: this.hostId });
+            logger_1.default.warn('流式监控数据收集已在进行中', { hostId: this.hostId });
             return;
         }
         this.isCollecting = true;
         this.dataCallback = dataCallback;
         this.interval = interval;
-        logger.debug('开始流式SSH监控数据收集', {
+        logger_1.default.debug('开始流式SSH监控数据收集', {
             hostId: this.hostId,
             interval: `${interval}ms`,
             host: `${this.hostInfo.username}@${this.hostInfo.address}:${this.hostInfo.port}`
@@ -71,17 +75,17 @@ class StreamingSSHMonitoringCollector extends EventEmitter {
     async startStreamingCollection() {
         try {
             // 读取监控脚本内容
-            const scriptPath = path.join(__dirname, '../scripts/streaming-monitor.sh');
-            const scriptExists = fs.existsSync(scriptPath);
+            const scriptPath = node_path_1.default.join(__dirname, '../scripts/streaming-monitor.sh');
+            const scriptExists = node_fs_1.default.existsSync(scriptPath);
             if (!scriptExists) {
                 throw new Error(`流式监控脚本不存在: ${scriptPath}`);
             }
-            const scriptContent = fs.readFileSync(scriptPath, 'utf8');
+            const scriptContent = node_fs_1.default.readFileSync(scriptPath, 'utf8');
             // 计算间隔（转换为秒）
-            const intervalSeconds = Math.max(1, Math.floor(this.interval / 1000));
+            const intervalSeconds = Math.max(1, Math.floor((this.interval || 1000) / 1000));
             // 构建执行命令（通过标准输入传输脚本）- 使用sh以兼容ash/dash等shell
             const command = `sh -s ${intervalSeconds} 0`;
-            logger.debug('执行流式监控命令', {
+            logger_1.default.debug('执行流式监控命令', {
                 hostId: this.hostId,
                 command,
                 interval: intervalSeconds,
@@ -111,44 +115,48 @@ class StreamingSSHMonitoringCollector extends EventEmitter {
     setupStreamHandlers() {
         let buffer = '';
         // 数据接收处理
-        this.stream.on('data', (data) => {
-            try {
-                buffer += data.toString();
-                // 按行处理NDJSON数据
-                const lines = buffer.split('\n');
-                buffer = lines.pop() || ''; // 保留不完整的行
-                for (const line of lines) {
-                    if (line.trim() && !line.startsWith('#')) {
-                        this.processStreamData(line.trim());
+        if (this.stream && this.stream.on) {
+            this.stream.on('data', (data) => {
+                try {
+                    buffer += data.toString();
+                    // 按行处理NDJSON数据
+                    const lines = buffer.split('\n');
+                    buffer = lines.pop() || ''; // 保留不完整的行
+                    for (const line of lines) {
+                        if (line.trim() && !line.startsWith('#')) {
+                            this.processStreamData(line.trim());
+                        }
                     }
                 }
-            }
-            catch (error) {
-                logger.debug('处理流数据失败', {
-                    hostId: this.hostId,
-                    error: error.message
-                });
-            }
-        });
-        // 错误处理
-        this.stream.stderr.on('data', (data) => {
-            const errorMsg = data.toString().trim();
-            if (errorMsg && !errorMsg.includes('warning')) {
-                // 显示调试信息
-                if (errorMsg.includes('NET DEBUG') || errorMsg.includes('流式监控开始')) {
-                    logger.debug('监控脚本调试信息', { hostId: this.hostId, debug: errorMsg });
-                }
-                else {
-                    logger.debug('SSH流错误输出', {
+                catch (error) {
+                    logger_1.default.debug('处理流数据失败', {
                         hostId: this.hostId,
-                        stderr: errorMsg
+                        error: error.message
                     });
                 }
-            }
-        });
+            });
+        }
+        // 错误处理
+        if (this.stream && this.stream.stderr && this.stream.stderr.on) {
+            this.stream.stderr.on('data', (data) => {
+                const errorMsg = data.toString().trim();
+                if (errorMsg && !errorMsg.includes('warning')) {
+                    // 显示调试信息
+                    if (errorMsg.includes('NET DEBUG') || errorMsg.includes('流式监控开始')) {
+                        logger_1.default.debug('监控脚本调试信息', { hostId: this.hostId, debug: errorMsg });
+                    }
+                    else {
+                        logger_1.default.debug('SSH流错误输出', {
+                            hostId: this.hostId,
+                            stderr: errorMsg
+                        });
+                    }
+                }
+            });
+        }
         // 流关闭处理
         this.stream.on('close', (code, signal) => {
-            logger.debug('SSH流已关闭', {
+            logger_1.default.debug('SSH流已关闭', {
                 hostId: this.hostId,
                 code,
                 signal,
@@ -163,7 +171,7 @@ class StreamingSSHMonitoringCollector extends EventEmitter {
         this.stream.on('error', (error) => {
             this.handleError(new Error(`SSH流错误: ${error.message}`));
         });
-        logger.debug('SSH流处理器已设置', { hostId: this.hostId });
+        logger_1.default.debug('SSH流处理器已设置', { hostId: this.hostId });
     }
     /**
      * 处理流数据
@@ -174,7 +182,7 @@ class StreamingSSHMonitoringCollector extends EventEmitter {
             const data = JSON.parse(jsonLine);
             // 验证数据格式
             if (!data.hasOwnProperty('timestamp') || typeof data.timestamp !== 'number') {
-                logger.debug('无效的监控数据格式', { hostId: this.hostId });
+                logger_1.default.debug('无效的监控数据格式', { hostId: this.hostId });
                 return;
             }
             // 添加主机标识符
@@ -208,7 +216,7 @@ class StreamingSSHMonitoringCollector extends EventEmitter {
             if (this.errorStats.consecutiveErrors < this.errorStats.maxConsecutiveErrors) {
                 // 尝试重连
                 const retryDelay = Math.min(5000, 1000 * Math.pow(2, this.errorStats.consecutiveErrors));
-                logger.warn('SSH流意外关闭，准备重连', {
+                logger_1.default.warn('SSH流意外关闭，准备重连', {
                     hostId: this.hostId,
                     code,
                     retryDelay,
@@ -221,7 +229,7 @@ class StreamingSSHMonitoringCollector extends EventEmitter {
                 }, retryDelay);
             }
             else {
-                logger.error('SSH流连续错误过多，停止收集', {
+                logger_1.default.error('SSH流连续错误过多，停止收集', {
                     hostId: this.hostId,
                     consecutiveErrors: this.errorStats.consecutiveErrors
                 });
@@ -236,7 +244,7 @@ class StreamingSSHMonitoringCollector extends EventEmitter {
     handleError(error) {
         this.errorStats.consecutiveErrors++;
         this.errorStats.lastErrorTime = Date.now();
-        logger.error('流式监控收集错误', {
+        logger_1.default.error('流式监控收集错误', {
             hostId: this.hostId,
             error: error.message,
             consecutiveErrors: this.errorStats.consecutiveErrors
@@ -245,11 +253,11 @@ class StreamingSSHMonitoringCollector extends EventEmitter {
         const msg = (error?.message || '').toString();
         const fatalHints = ['Not connected', 'Unable to exec', 'Connection closed', 'ECONNRESET', 'ETIMEDOUT'];
         if (fatalHints.some(k => msg.includes(k))) {
-            logger.warn('检测到致命错误，立即停止流式监控收集以触发故障切换', { hostId: this.hostId, message: msg });
+            logger_1.default.warn('检测到致命错误，立即停止流式监控收集以触发故障切换', { hostId: this.hostId, message: msg });
             this.stopCollection();
         }
         else if (this.errorStats.consecutiveErrors >= this.errorStats.maxConsecutiveErrors) {
-            logger.warn('连续错误过多，停止流式监控收集', {
+            logger_1.default.warn('连续错误过多，停止流式监控收集', {
                 hostId: this.hostId,
                 consecutiveErrors: this.errorStats.consecutiveErrors
             });
@@ -262,7 +270,7 @@ class StreamingSSHMonitoringCollector extends EventEmitter {
      */
     stopCollection() {
         if (!this.isCollecting) {
-            logger.debug('流式监控数据收集已停止，跳过重复停止', { hostId: this.hostId });
+            logger_1.default.debug('流式监控数据收集已停止，跳过重复停止', { hostId: this.hostId });
             return;
         }
         this.isCollecting = false;
@@ -273,7 +281,7 @@ class StreamingSSHMonitoringCollector extends EventEmitter {
                 this.stream = null;
             }
             catch (error) {
-                logger.debug('关闭SSH流失败', {
+                logger_1.default.debug('关闭SSH流失败', {
                     hostId: this.hostId,
                     error: error.message
                 });
@@ -282,7 +290,7 @@ class StreamingSSHMonitoringCollector extends EventEmitter {
         // 清理引用
         this.sshConnection = null;
         this.dataCallback = null;
-        logger.debug('停止流式SSH监控数据收集', {
+        logger_1.default.debug('停止流式SSH监控数据收集', {
             hostId: this.hostId
         });
         this.emit('stopped');
@@ -305,3 +313,4 @@ class StreamingSSHMonitoringCollector extends EventEmitter {
     }
 }
 module.exports = StreamingSSHMonitoringCollector;
+exports.default = StreamingSSHMonitoringCollector;

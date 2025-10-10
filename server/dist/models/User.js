@@ -1,11 +1,14 @@
 "use strict";
-// @ts-nocheck
 /**
- * 用户数据模型
+ * 用户数据模型（TypeScript）
  * 用于SQLite存储
  */
-const bcrypt = require('bcryptjs');
-const { connectDatabase } = require('../config/database');
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+const bcryptjs_1 = __importDefault(require("bcryptjs"));
+const database_1 = __importDefault(require("../config/database"));
 class User {
     constructor(data = {}) {
         this.id = data.id;
@@ -85,13 +88,13 @@ class User {
     }
     // 保存用户到数据库
     async save() {
-        const db = connectDatabase();
+        const db = database_1.default.connectDatabase();
         const now = new Date().toISOString();
         this.updatedAt = now;
         // 如果密码被修改，进行哈希处理
         if (this._passwordModified) {
-            const salt = await bcrypt.genSalt(10);
-            this.password = await bcrypt.hash(this.password, salt);
+            const salt = await bcryptjs_1.default.genSalt(10);
+            this.password = await bcryptjs_1.default.hash(this.password || '', salt);
             this._passwordModified = false;
         }
         // 准备JSON字段 - 仅包含非独立字段的数据
@@ -123,7 +126,7 @@ class User {
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
             const info = stmt.run(this.username, this.email, this.password, this.displayName, this.avatar, this.mfaEnabled ? 1 : 0, this.mfaSecret, this.theme, this.fontSize, profileJson, settingsJson, this.isAdmin ? 1 : 0, this.status, this.lastLogin, now, now);
-            this.id = info.lastInsertRowid;
+            this.id = Number(info.lastInsertRowid);
         }
         return this;
     }
@@ -134,7 +137,7 @@ class User {
     }
     // 比较密码
     async comparePassword(candidatePassword) {
-        return await bcrypt.compare(candidatePassword, this.password);
+        return await bcryptjs_1.default.compare(candidatePassword, this.password || '');
     }
     // 获取安全用户对象（不包含密码）
     toSafeObject() {
@@ -158,7 +161,7 @@ class User {
     // 静态方法
     // 通过ID查找用户
     static findById(id) {
-        const db = connectDatabase();
+        const db = database_1.default.connectDatabase();
         const stmt = db.prepare('SELECT * FROM users WHERE id = ?');
         const row = stmt.get(id);
         if (!row)
@@ -167,7 +170,7 @@ class User {
     }
     // 通过用户名查找用户
     static findByUsername(username) {
-        const db = connectDatabase();
+        const db = database_1.default.connectDatabase();
         const stmt = db.prepare('SELECT * FROM users WHERE username = ?');
         const row = stmt.get(username);
         if (!row)
@@ -176,7 +179,7 @@ class User {
     }
     // 通过邮箱查找用户
     static findByEmail(email) {
-        const db = connectDatabase();
+        const db = database_1.default.connectDatabase();
         const stmt = db.prepare('SELECT * FROM users WHERE email = ?');
         const row = stmt.get(email);
         if (!row)
@@ -185,7 +188,7 @@ class User {
     }
     // 查找一个符合条件的用户
     static findOne(conditions) {
-        const db = connectDatabase();
+        const db = database_1.default.connectDatabase();
         let query = 'SELECT * FROM users WHERE 1=1';
         const params = [];
         if (conditions._id) {
@@ -212,7 +215,7 @@ class User {
     }
     // 查找所有符合条件的用户
     static find(conditions = {}) {
-        const db = connectDatabase();
+        const db = database_1.default.connectDatabase();
         let query = 'SELECT * FROM users WHERE 1=1';
         const params = [];
         if (conditions.status) {
@@ -230,7 +233,7 @@ class User {
             return null;
         // 处理设置字段
         if (update.$set) {
-            Object.keys(update.$set).forEach(key => {
+            Object.keys(update.$set).forEach((key) => {
                 if (key === 'password') {
                     user.setPassword(update.$set[key]);
                 }
@@ -249,7 +252,7 @@ class User {
     }
     // 检查是否存在管理员账户
     static countAdmins() {
-        const db = connectDatabase();
+        const db = database_1.default.connectDatabase();
         const row = db.prepare('SELECT COUNT(*) AS count FROM users WHERE isAdmin = 1').get();
         return row ? row.count : 0;
     }

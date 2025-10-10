@@ -82,8 +82,7 @@ class ServerService {
             if (!server) {
                 return { success: false, message: '服务器不存在或无权限修改' };
             }
-            Object.keys(serverData).forEach(key => {
-                // @ts-ignore
+            Object.keys(serverData).forEach((key) => {
                 server[key] = serverData[key];
             });
             await server.save();

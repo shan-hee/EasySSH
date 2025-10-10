@@ -1,9 +1,10 @@
 "use strict";
-// @ts-nocheck
+// 移除 ts-nocheck：为 SFTP 基础操作补充类型
 /**
  * SFTP基础操作模块
  * 处理非传输相关的SFTP操作（列表、创建、删除、重命名等）
  */
+Object.defineProperty(exports, "__esModule", { value: true });
 const path = require('path');
 const logger = require('../utils/logger');
 // 导入二进制SFTP工具函数
@@ -37,7 +38,7 @@ function recursiveDeletePath(sftp, targetPath, callback) {
                     err.path = err.path || targetPath;
                     return callback(err);
                 }
-                const entries = list.filter(item => item && item.filename && item.filename !== '.' && item.filename !== '..');
+                const entries = list.filter((item) => item && item.filename && item.filename !== '.' && item.filename !== '..');
                 if (entries.length === 0) {
                     return sftp.rmdir(targetPath, (rmdirErr) => {
                         if (rmdirErr && !isNotFoundError(rmdirErr)) {
@@ -50,7 +51,7 @@ function recursiveDeletePath(sftp, targetPath, callback) {
                 }
                 let completed = 0;
                 let hasError = false;
-                entries.forEach(item => {
+                entries.forEach((item) => {
                     const itemPath = `${targetPath}/${item.filename}`;
                     recursiveDeletePath(sftp, itemPath, (childErr) => {
                         if (childErr) {
@@ -179,7 +180,7 @@ function handleSftpList(ws, data) {
                 return;
             }
             // 格式化文件列表
-            const formattedList = list.map(item => ({
+            const formattedList = list.map((item) => ({
                 name: item.filename,
                 isDirectory: item.attrs.isDirectory(),
                 size: item.attrs.size,

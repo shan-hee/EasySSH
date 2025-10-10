@@ -1,11 +1,14 @@
 "use strict";
-// @ts-nocheck
 /**
- * 上下文构建器
+ * 上下文构建器（TypeScript）
  * 负责处理终端输出，构建AI请求上下文，并进行敏感信息脱敏
  */
-const crypto = require('crypto');
-const logger = require('../utils/logger');
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+const node_crypto_1 = __importDefault(require("node:crypto"));
+const logger_1 = __importDefault(require("../utils/logger"));
 class ContextBuilder {
     constructor(options = {}) {
         this.maxLines = options.maxLines || 200;
@@ -13,7 +16,7 @@ class ContextBuilder {
         this.strictRedaction = options.strictRedaction !== false; // 默认启用严格脱敏
         // 敏感信息检测模式
         this.sensitivePatterns = this._initSensitivePatterns();
-        logger.debug('上下文构建器已初始化', {
+        logger_1.default.debug('上下文构建器已初始化', {
             maxLines: this.maxLines,
             maxBytes: this.maxBytes,
             strictRedaction: this.strictRedaction
@@ -39,7 +42,7 @@ class ContextBuilder {
             // 应用安全过滤器
             const secureContext = this._applySecurityFilters(context);
             secureContext.processingTime = Date.now() - startTime;
-            logger.debug('上下文构建完成', {
+            logger_1.default.debug('上下文构建完成', {
                 outputLength: secureContext.terminalOutput?.length || 0,
                 inputLength: secureContext.currentInput?.length || 0,
                 processingTime: secureContext.processingTime
@@ -47,7 +50,7 @@ class ContextBuilder {
             return secureContext;
         }
         catch (error) {
-            logger.error('上下文构建失败', { error: error.message });
+            logger_1.default.error('上下文构建失败', { error: error.message });
             throw new Error(`上下文构建失败: ${error.message}`);
         }
     }
@@ -345,7 +348,7 @@ class ContextBuilder {
             const hasHighRisk = context.metadata?.riskLevel === 'high';
             if (hasHighRisk) {
                 filtered.securityWarning = 'High-risk command detected';
-                logger.warn('检测到高风险命令', {
+                logger_1.default.warn('检测到高风险命令', {
                     riskLevel: context.metadata.riskLevel
                 });
             }
@@ -354,7 +357,7 @@ class ContextBuilder {
             if (hasCriticalSecrets) {
                 filtered.terminalOutput = '***CONTENT_BLOCKED_DUE_TO_SENSITIVE_DATA***';
                 filtered.securityWarning = 'Content blocked due to sensitive data';
-                logger.warn('由于敏感数据阻止内容传输');
+                logger_1.default.warn('由于敏感数据阻止内容传输');
             }
         }
         return filtered;
@@ -386,7 +389,7 @@ class ContextBuilder {
             osHint: context.metadata?.osHint,
             shellHint: context.metadata?.shellHint
         });
-        return crypto.createHash('md5').update(hashContent).digest('hex');
+        return node_crypto_1.default.createHash('md5').update(hashContent).digest('hex');
     }
 }
 module.exports = ContextBuilder;

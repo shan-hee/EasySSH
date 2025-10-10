@@ -1,15 +1,23 @@
-// @ts-nocheck
 /**
- * 连接控制器
+ * 连接控制器（TypeScript）
  * 处理连接相关的API请求
  */
 
-const logger = require('../utils/logger');
-const db = require('../config/database').getDb();
-const { validateConnection } = require('../utils/validators');
-const { processConnectionSensitiveData, decryptPassword, decryptPrivateKey } = require('../utils/encryption');
+import type { Request, Response } from 'express';
+import logger from '../utils/logger';
+import database from '../config/database';
+import validators from '../utils/validators';
+import encryption from '../utils/encryption';
 
-const getNextSortOrderForUser = userId => {
+const db: any = database.getDb();
+const { validateConnection } = validators as { validateConnection: (conn: any) => boolean };
+const { processConnectionSensitiveData, decryptPassword, decryptPrivateKey } = encryption as {
+  processConnectionSensitiveData: (c: any, toEncrypt?: boolean) => any;
+  decryptPassword: (s: string) => string;
+  decryptPrivateKey: (s: string) => string;
+};
+
+const getNextSortOrderForUser = (userId: number | string) => {
   try {
     const result = db
       .prepare('SELECT COALESCE(MAX(sort_order), 0) + 1 AS nextOrder FROM connections WHERE user_id = ?')
@@ -24,7 +32,7 @@ const getNextSortOrderForUser = userId => {
 /**
  * 获取用户的所有连接
  */
-const getUserConnections = async (req, res) => {
+const getUserConnections = async (req: Request, res: Response) => {
   try {
     const userId = req.user.id;
 
@@ -34,7 +42,7 @@ const getUserConnections = async (req, res) => {
     ).all(userId);
 
     // 处理连接数据，将存储的JSON字符串转为对象，并解密敏感信息
-    const formattedConnections = connections.map(conn => {
+    const formattedConnections = connections.map((conn: any) => {
       try {
         // 可能包含额外配置的JSON字段
         if (conn.config) {
@@ -71,17 +79,17 @@ const getUserConnections = async (req, res) => {
           createdAt: decryptedConn.created_at,
           updatedAt: decryptedConn.updated_at
         };
-      } catch (err) {
+      } catch (err: any) {
         logger.error(`处理连接数据错误：${err.message}`, { connectionId: conn.id });
         return null;
       }
-    }).filter(conn => conn !== null);
+    }).filter((conn: any) => conn !== null);
 
     res.json({
       success: true,
       connections: formattedConnections
     });
-  } catch (error) {
+  } catch (error: any) {
     logger.error('获取用户连接失败', error);
     res.status(500).json({
       success: false,
@@ -94,7 +102,7 @@ const getUserConnections = async (req, res) => {
 /**
  * 添加新连接
  */
-const addConnection = async (req, res) => {
+const addConnection = async (req: Request, res: Response) => {
   try {
     const userId = req.user.id;
     const connection = req.body.connection;
@@ -175,7 +183,7 @@ const addConnection = async (req, res) => {
       db.prepare('ROLLBACK').run();
       throw error;
     }
-  } catch (error) {
+  } catch (error: any) {
     logger.error('添加连接失败', error);
     res.status(500).json({
       success: false,
@@ -188,7 +196,7 @@ const addConnection = async (req, res) => {
 /**
  * 更新连接
  */
-const updateConnection = async (req, res) => {
+const updateConnection = async (req: Request, res: Response) => {
   try {
     const userId = req.user.id;
     const connectionId = req.params.id;
@@ -266,7 +274,7 @@ const updateConnection = async (req, res) => {
       success: true,
       message: '连接更新成功'
     });
-  } catch (error) {
+  } catch (error: any) {
     logger.error('更新连接失败', error);
     res.status(500).json({
       success: false,
@@ -279,7 +287,7 @@ const updateConnection = async (req, res) => {
 /**
  * 删除连接
  */
-const deleteConnection = async (req, res) => {
+const deleteConnection = async (req: Request, res: Response) => {
   try {
     const userId = req.user.id;
     const connectionId = req.params.id;
@@ -318,7 +326,7 @@ const deleteConnection = async (req, res) => {
       success: true,
       message: '连接删除成功'
     });
-  } catch (error) {
+  } catch (error: any) {
     logger.error('删除连接失败', error);
     res.status(500).json({
       success: false,
@@ -331,7 +339,7 @@ const deleteConnection = async (req, res) => {
 /**
  * 获取收藏连接
  */
-const getFavorites = async (req, res) => {
+const getFavorites = async (req: Request, res: Response) => {
   try {
     const userId = req.user.id;
 
@@ -340,13 +348,13 @@ const getFavorites = async (req, res) => {
       'SELECT connection_id FROM connection_favorites WHERE user_id = ?'
     ).all(userId);
 
-    const favoriteIds = favorites.map(fav => fav.connection_id);
+    const favoriteIds = favorites.map((fav: any) => fav.connection_id);
 
     res.json({
       success: true,
       favorites: favoriteIds
     });
-  } catch (error) {
+  } catch (error: any) {
     logger.error('获取收藏连接失败', error);
     res.status(500).json({
       success: false,
@@ -359,7 +367,7 @@ const getFavorites = async (req, res) => {
 /**
  * 更新收藏连接
  */
-const updateFavorites = async (req, res) => {
+const updateFavorites = async (req: Request, res: Response) => {
   try {
     const userId = req.user.id;
     const { favorites } = req.body;
@@ -414,7 +422,7 @@ const updateFavorites = async (req, res) => {
 /**
  * 获取历史记录
  */
-const getHistory = async (req, res) => {
+const getHistory = async (req: Request, res: Response) => {
   try {
     const userId = req.user.id;
 
@@ -427,7 +435,7 @@ const getHistory = async (req, res) => {
        LIMIT 20`
     ).all(userId);
 
-    const formattedHistory = history.map(item => ({
+    const formattedHistory = history.map((item: any) => ({
       entryId: item.entry_id,
       id: item.connection_id,
       name: item.name,
@@ -444,7 +452,7 @@ const getHistory = async (req, res) => {
       success: true,
       history: formattedHistory
     });
-  } catch (error) {
+  } catch (error: any) {
     logger.error('获取历史记录失败', error);
     res.status(500).json({
       success: false,
@@ -457,7 +465,7 @@ const getHistory = async (req, res) => {
 /**
  * 添加到历史记录
  */
-const addToHistory = async (req, res) => {
+const addToHistory = async (req: Request, res: Response) => {
   try {
     const userId = req.user.id;
     const history = req.body.history;
@@ -539,7 +547,7 @@ const addToHistory = async (req, res) => {
       db.prepare('ROLLBACK').run();
       throw error;
     }
-  } catch (error) {
+  } catch (error: any) {
     logger.error('添加历史记录失败', error);
     res.status(500).json({
       success: false,
@@ -553,7 +561,7 @@ const addToHistory = async (req, res) => {
 /**
  * 按单条记录删除历史（根据自增ID）
  */
-const removeHistoryEntry = async (req, res) => {
+const removeHistoryEntry = async (req: Request, res: Response) => {
   try {
     const userId = req.user.id;
     const entryId = parseInt(req.params.entryId, 10);
@@ -571,7 +579,7 @@ const removeHistoryEntry = async (req, res) => {
       message: '已删除历史记录',
       deleted: result.changes || 0
     });
-  } catch (error) {
+  } catch (error: any) {
     logger.error('按条删除历史记录失败', error);
     res.status(500).json({
       success: false,
@@ -584,7 +592,7 @@ const removeHistoryEntry = async (req, res) => {
 /**
  * 清空当前用户的所有历史记录
  */
-const clearHistory = async (req, res) => {
+const clearHistory = async (req: Request, res: Response) => {
   try {
     const userId = req.user.id;
 
@@ -597,7 +605,7 @@ const clearHistory = async (req, res) => {
       message: '历史记录已清空',
       deleted: result.changes || 0
     });
-  } catch (error) {
+  } catch (error: any) {
     logger.error('清空历史记录失败', error);
     res.status(500).json({
       success: false,
@@ -610,7 +618,7 @@ const clearHistory = async (req, res) => {
 /**
  * 获取置顶连接
  */
-const getPinned = async (req, res) => {
+const getPinned = async (req: Request, res: Response) => {
   try {
     const userId = req.user.id;
 
@@ -620,8 +628,8 @@ const getPinned = async (req, res) => {
     ).all(userId);
 
     // 转换为对象格式：id -> 时间戳（统一返回数值，无兼容逻辑）
-    const pinnedObj = {};
-    pinned.forEach(pin => {
+    const pinnedObj: Record<string, number> = {};
+    (pinned as any[]).forEach((pin: any) => {
       pinnedObj[pin.connection_id] = pin.pinned_at;
     });
 
@@ -642,7 +650,7 @@ const getPinned = async (req, res) => {
 /**
  * 汇总获取 connections/favorites/history/pinned（减少首屏往返）
  */
-const getOverview = async (req, res) => {
+const getOverview = async (req: Request, res: Response) => {
   try {
     const userId = req.user.id;
 
@@ -651,8 +659,8 @@ const getOverview = async (req, res) => {
       'SELECT * FROM connections WHERE user_id = ? ORDER BY sort_order ASC, created_at ASC'
     ).all(userId);
 
-    const connections = rows
-      .map(conn => {
+    const connections = (rows as any[])
+      .map((conn: any) => {
         try {
           if (conn.config) {
             conn.config = JSON.parse(conn.config);
@@ -696,7 +704,7 @@ const getOverview = async (req, res) => {
     const favRows = db
       .prepare('SELECT connection_id FROM connection_favorites WHERE user_id = ?')
       .all(userId);
-    const favorites = favRows.map(r => r.connection_id);
+    const favorites = (favRows as any[]).map((r: any) => r.connection_id);
 
     // 3) 历史记录（最近20条）
     const histRows = db
@@ -708,7 +716,7 @@ const getOverview = async (req, res) => {
          LIMIT 20`
       )
       .all(userId);
-    const history = histRows.map(item => ({
+    const history = (histRows as any[]).map((item: any) => ({
       entryId: item.entry_id,
       id: item.connection_id,
       name: item.name,
@@ -725,8 +733,8 @@ const getOverview = async (req, res) => {
     const pinRows = db
       .prepare('SELECT connection_id, pinned_at FROM connection_pinned WHERE user_id = ?')
       .all(userId);
-    const pinned = {};
-    pinRows.forEach(pin => {
+    const pinned: Record<string, number> = {};
+    pinRows.forEach((pin: any) => {
       pinned[pin.connection_id] = pin.pinned_at;
     });
 
@@ -740,7 +748,7 @@ const getOverview = async (req, res) => {
 /**
  * 更新置顶连接
  */
-const updatePinned = async (req, res) => {
+const updatePinned = async (req: Request, res: Response) => {
   try {
     const userId = req.user.id;
     const { pinned } = req.body;
@@ -766,9 +774,9 @@ const updatePinned = async (req, res) => {
         'INSERT INTO connection_pinned (user_id, connection_id, pinned_at) VALUES (?, ?, ?)'
       );
 
-      for (const connectionId in pinned) {
-        if (pinned[connectionId]) {
-          const pinnedAt = typeof pinned[connectionId] === 'number' ? pinned[connectionId] : Date.now();
+      for (const connectionId in pinned as any) {
+        if ((pinned as any)[connectionId]) {
+          const pinnedAt = typeof (pinned as any)[connectionId] === 'number' ? (pinned as any)[connectionId] : Date.now();
           insertStmt.run(userId, connectionId, pinnedAt);
         }
       }
@@ -798,7 +806,7 @@ const updatePinned = async (req, res) => {
 /**
  * 更新连接排序
  */
-const updateConnectionOrder = async (req, res) => {
+const updateConnectionOrder = async (req: Request, res: Response) => {
   try {
     const userId = req.user.id;
     const { order } = req.body;
@@ -817,7 +825,7 @@ const updateConnectionOrder = async (req, res) => {
 
     db.prepare('BEGIN TRANSACTION').run();
     try {
-      order.forEach((item, index) => {
+      order.forEach((item: any, index: number) => {
         const id = typeof item === 'string' ? item : item?.id;
         if (!id) return;
         const sortOrder =
@@ -840,7 +848,7 @@ const updateConnectionOrder = async (req, res) => {
   }
 };
 
-const syncConnections = async (req, res) => {
+const syncConnections = async (req: Request, res: Response) => {
   try {
     const userId = req.user.id;
     const { connections, favorites, history, pinned } = req.body;
@@ -864,7 +872,7 @@ const syncConnections = async (req, res) => {
         'SELECT id FROM connections WHERE user_id = ?'
       ).all(userId);
 
-      const existingIds = new Set(existingConnections.map(conn => conn.id));
+      const existingIds = new Set((existingConnections as any[]).map((conn: any) => conn.id));
       const now = new Date().toISOString();
 
       // 准备语句

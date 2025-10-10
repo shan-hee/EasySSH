@@ -1,9 +1,10 @@
 "use strict";
-// @ts-nocheck
+// 移除 ts-nocheck：补充必要的类型标注以通过严格类型检查
 /**
  * EasySSH监控WebSocket服务
  * 处理前端监控数据传输和监控客户端连接
  */
+Object.defineProperty(exports, "__esModule", { value: true });
 const WebSocket = require('ws');
 const logger = require('../utils/logger');
 const monitoringConfig = require('../config/monitoring');
@@ -30,7 +31,9 @@ function toHostDescriptor(value) {
         return null;
     }
     const withoutProtocol = raw.replace(/^(ssh|ws|wss|http|https):\/\//i, '');
-    const withoutCredentials = withoutProtocol.includes('@') ? withoutProtocol.split('@').pop() : withoutProtocol;
+    const withoutCredentials = withoutProtocol.includes('@')
+        ? (withoutProtocol.split('@').pop() || '')
+        : withoutProtocol;
     const hostPart = withoutCredentials.split(/[/?#]/)[0];
     if (!hostPart) {
         return null;
@@ -155,7 +158,7 @@ function initMonitoringWebSocketServer(server) {
     logger.info('前端监控WebSocket服务器已初始化，等待前端连接到 /monitor 路径');
     // 监听HTTP服务器的upgrade事件
     server.on('upgrade', (request, socket, head) => {
-        const url = new URL(request.url, `http://${request.headers.host}`);
+        const url = new URL(request.url || '', `http://${request.headers.host}`);
         const pathname = url.pathname;
         // 只处理监控路径的WebSocket请求
         if (pathname === '/monitor') {
@@ -167,7 +170,7 @@ function initMonitoringWebSocketServer(server) {
     // 监听连接事件 - 只处理前端连接，监控数据来源为SSH收集器
     wss.on('connection', (ws, req) => {
         logger.debug('收到前端监控WebSocket连接请求', { url: req.url });
-        const url = new URL(req.url, `http://${req.headers.host}`);
+        const url = new URL(req.url || '', `http://${req.headers.host}`);
         const subscribeServer = url.searchParams.get('subscribe');
         // 生成唯一的会话ID
         const sessionId = generateSessionId();
@@ -280,10 +283,10 @@ function handleFrontendConnection(ws, sessionId, clientIp, subscribeServer) {
         const session = frontendSessions.get(sessionId);
         if (session && session.subscribedServers) {
             // 通知其他订阅了相同服务器的会话
-            session.subscribedServers.forEach(serverId => {
+            session.subscribedServers.forEach((serverId) => {
                 if (serverSubscriptions.has(serverId)) {
                     const subscribedSessions = serverSubscriptions.get(serverId);
-                    subscribedSessions.forEach(otherSessionId => {
+                    subscribedSessions.forEach((otherSessionId) => {
                         if (otherSessionId !== sessionId) {
                             const otherSession = frontendSessions.get(otherSessionId);
                             if (otherSession && otherSession.ws && otherSession.ws.readyState === WebSocket.OPEN) {
@@ -517,7 +520,7 @@ function cleanupFrontendSession(sessionId) {
         });
         // 取消所有订阅
         if (session.subscribedServers) {
-            session.subscribedServers.forEach(serverId => {
+            session.subscribedServers.forEach((serverId) => {
                 unsubscribeFromServer(sessionId, serverId);
                 logger.debug('取消前端会话订阅', { sessionId, serverId });
             });
@@ -543,11 +546,13 @@ function cleanupFrontendSession(sessionId) {
  * @returns {string} 客户端IP地址
  */
 function getClientIP(req) {
-    return req.headers['x-forwarded-for'] ||
-        req.headers['x-real-ip'] ||
-        req.socket.remoteAddress ||
-        req.connection.remoteAddress ||
-        '未知';
+    const xff = req.headers['x-forwarded-for'];
+    const xri = req.headers['x-real-ip'];
+    const forwarded = Array.isArray(xff) ? xff[0] : xff;
+    const real = Array.isArray(xri) ? xri[0] : xri;
+    const remote = req.socket?.remoteAddress || req.connection?.remoteAddress;
+    const ip = forwarded || real || remote || '未知';
+    return typeof ip === 'string' ? ip : '未知';
 }
 /**
  * 生成唯一的会话ID
@@ -690,7 +695,7 @@ function standardizeMonitoringData(rawData) {
     const standardized = { ...rawData };
     // 标准化数值字段的通用函数
     const normalizeNumber = (value, min = 0, max = 100) => {
-        const num = parseFloat(value);
+        const num = typeof value === 'number' ? value : parseFloat(String(value));
         return isNaN(num) ? 0 : Math.max(min, Math.min(max, num));
     };
     // 标准化CPU数据
@@ -779,7 +784,7 @@ function processMonitoringData(sessionId, hostId, monitoringData, source) {
     // 检查直接订阅（使用完整hostId）
     if (serverSubscriptions.has(hostId)) {
         const subscribedFrontends = serverSubscriptions.get(hostId);
-        subscribedFrontends.forEach(frontendSessionId => {
+        subscribedFrontends.forEach((frontendSessionId) => {
             if (!notifiedSessions.has(frontendSessionId)) {
                 const targetSession = frontendSessions.get(frontendSessionId);
                 if (targetSession && targetSession.ws && targetSession.ws.readyState === WebSocket.OPEN) {
@@ -795,7 +800,7 @@ function processMonitoringData(sessionId, hostId, monitoringData, source) {
         const [, ipAddress] = hostId.split('@');
         if (ipAddress && serverSubscriptions.has(ipAddress)) {
             const subscribedFrontends = serverSubscriptions.get(ipAddress);
-            subscribedFrontends.forEach(frontendSessionId => {
+            subscribedFrontends.forEach((frontendSessionId) => {
                 if (!notifiedSessions.has(frontendSessionId)) {
                     const targetSession = frontendSessions.get(frontendSessionId);
                     if (targetSession && targetSession.ws && targetSession.ws.readyState === WebSocket.OPEN) {
@@ -836,7 +841,7 @@ function handleMonitoringDataUpdate(ws, sessionId, data) {
     // 向订阅了该主机的所有前端会话广播数据
     if (serverSubscriptions.has(hostId)) {
         const subscribedFrontends = serverSubscriptions.get(hostId);
-        subscribedFrontends.forEach(frontendSessionId => {
+        subscribedFrontends.forEach((frontendSessionId) => {
             const targetSession = frontendSessions.get(frontendSessionId);
             if (targetSession && targetSession.ws && targetSession.ws.readyState === WebSocket.OPEN) {
                 sendMessage(targetSession.ws, {
@@ -908,7 +913,7 @@ function broadcastMonitoringData(sessionId, hostId, monitoringData) {
  * @param {WebSocket} ws WebSocket连接
  * @param {Object} message 消息对象
  */
-function sendMessage(ws, message) {
+function sendMessage(ws, message, _options) {
     if (ws && ws.readyState === WebSocket.OPEN) {
         try {
             ws.send(JSON.stringify(message));

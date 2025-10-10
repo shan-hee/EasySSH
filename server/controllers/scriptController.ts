@@ -1,20 +1,23 @@
-// @ts-nocheck
 /**
- * 脚本库控制器
+ * 脚本库控制器（TypeScript）
  * 处理脚本相关的HTTP请求
  */
 
+import type { Request, Response } from 'express';
+// eslint-disable-next-line @typescript-eslint/no-var-requires
 const Script = require('../models/Script');
+// eslint-disable-next-line @typescript-eslint/no-var-requires
 const UserScript = require('../models/UserScript');
-const { getDb } = require('../config/database');
-const log = require('../utils/logger');
-const { Client } = require('ssh2');
-const { decryptPassword, decryptPrivateKey } = require('../utils/encryption');
+import database from '../config/database';
+import log from '../utils/logger';
+import { Client } from 'ssh2';
+import encryption from '../utils/encryption';
+const { decryptPassword, decryptPrivateKey } = encryption as { decryptPassword: (s: string) => string; decryptPrivateKey: (s: string) => string };
 
 /**
  * 执行SSH命令
  */
-async function executeSSHCommand({ host, port, username, password, privateKey, authType, command }) {
+async function executeSSHCommand({ host, port, username, password, privateKey, authType, command }: { host: string; port: number; username: string; password?: string; privateKey?: string; authType: 'password' | 'key' | string; command: string; }) {
   return new Promise((resolve, reject) => {
     const conn = new Client();
     const startTime = Date.now();
@@ -22,7 +25,7 @@ async function executeSSHCommand({ host, port, username, password, privateKey, a
     conn.on('ready', () => {
       log.info(`SSH连接已建立: ${username}@${host}:${port}`);
 
-      conn.exec(command, (err, stream) => {
+      conn.exec(command, (err: any, stream: any) => {
         if (err) {
           conn.end();
           return reject(new Error(`执行命令失败: ${err.message}`));
@@ -31,7 +34,7 @@ async function executeSSHCommand({ host, port, username, password, privateKey, a
         let stdout = '';
         let stderr = '';
 
-        stream.on('close', (code) => {
+        stream.on('close', (code: any) => {
           const duration = Date.now() - startTime;
           conn.end();
 
@@ -46,23 +49,23 @@ async function executeSSHCommand({ host, port, username, password, privateKey, a
           });
         });
 
-        stream.on('data', (data) => {
+        stream.on('data', (data: any) => {
           stdout += data.toString();
         });
 
-        stream.stderr.on('data', (data) => {
+        stream.stderr.on('data', (data: any) => {
           stderr += data.toString();
         });
       });
     });
 
-    conn.on('error', (err) => {
+    conn.on('error', (err: any) => {
       log.error(`SSH连接错误: ${err.message}`);
       reject(new Error(`SSH连接失败: ${err.message}`));
     });
 
     // 准备连接配置
-    const connectConfig = {
+    const connectConfig: any = {
       host,
       port,
       username,
@@ -86,24 +89,25 @@ async function executeSSHCommand({ host, port, username, password, privateKey, a
 /**
  * 获取公开脚本列表
  */
-const getPublicScripts = async (req, res) => {
+const getPublicScripts = async (req: Request, res: Response) => {
   try {
-    const { page = 1, limit = 20, category, search } = req.query;
-    const offset = (page - 1) * limit;
+    const pageNum = Number((req.query.page as any) ?? 1) || 1;
+    const limitNum = Number((req.query.limit as any) ?? 20) || 20;
+    const offset = (pageNum - 1) * limitNum;
 
     const scripts = await Script.findPublic({
-      limit: parseInt(limit),
-      offset: parseInt(offset),
-      category,
-      search
+      limit: limitNum,
+      offset,
+      category: (req.query.category as any) ?? undefined,
+      search: (req.query.search as any) ?? undefined
     });
 
     res.json({
       success: true,
-      scripts: scripts.map(script => script.toJSON()),
+      scripts: (scripts as any[]).map((script: any) => script.toJSON()),
       pagination: {
-        page: parseInt(page),
-        limit: parseInt(limit),
+        page: pageNum,
+        limit: limitNum,
         total: scripts.length
       }
     });
@@ -119,7 +123,7 @@ const getPublicScripts = async (req, res) => {
 /**
  * 获取脚本分类
  */
-const getCategories = async (req, res) => {
+const getCategories = async (_req: Request, res: Response) => {
   try {
     const categories = await Script.getCategories();
     res.json({
@@ -138,16 +142,16 @@ const getCategories = async (req, res) => {
 /**
  * 获取热门脚本
  */
-const getPopularScripts = async (req, res) => {
+const getPopularScripts = async (req: Request, res: Response) => {
   try {
-    const { limit = 10 } = req.query;
-    const scripts = await Script.getPopular(parseInt(limit));
+    const limitNum = Number((req.query.limit as any) ?? 10) || 10;
+    const scripts = await Script.getPopular(limitNum);
 
     res.json({
       success: true,
-      scripts: scripts.map(script => script.toJSON())
+      scripts: (scripts as any[]).map((script: any) => script.toJSON())
     });
-  } catch (error) {
+  } catch (error: any) {
     log.error('获取热门脚本失败:', error);
     res.status(500).json({
       success: false,
@@ -159,30 +163,32 @@ const getPopularScripts = async (req, res) => {
 /**
  * 搜索脚本
  */
-const searchScripts = async (req, res) => {
+const searchScripts = async (req: Request, res: Response) => {
   try {
-    const { q: query, page = 1, limit = 20 } = req.query;
+    const queryText = String((req.query.q as any) ?? '').trim();
+    const pageNum = Number((req.query.page as any) ?? 1) || 1;
+    const limitNum = Number((req.query.limit as any) ?? 20) || 20;
 
-    if (!query || query.trim().length === 0) {
+    if (!queryText) {
       return res.status(400).json({
         success: false,
         message: '搜索关键词不能为空'
       });
     }
 
-    const offset = (page - 1) * limit;
-    const scripts = await Script.search(query.trim(), {
-      limit: parseInt(limit),
-      offset: parseInt(offset)
+    const offset = (pageNum - 1) * limitNum;
+    const scripts = await Script.search(queryText, {
+      limit: limitNum,
+      offset
     });
 
     res.json({
       success: true,
-      scripts: scripts.map(script => script.toJSON()),
-      query: query.trim(),
+      scripts: (scripts as any[]).map((script: any) => script.toJSON()),
+      query: queryText,
       pagination: {
-        page: parseInt(page),
-        limit: parseInt(limit),
+        page: pageNum,
+        limit: limitNum,
         total: scripts.length
       }
     });
@@ -198,25 +204,26 @@ const searchScripts = async (req, res) => {
 /**
  * 获取用户脚本列表
  */
-const getUserScripts = async (req, res) => {
+const getUserScripts = async (req: Request, res: Response) => {
   try {
     const userId = req.user.id;
-    const { page = 1, limit = 20, category, search } = req.query;
-    const offset = (page - 1) * limit;
+    const pageNum = Number((req.query.page as any) ?? 1) || 1;
+    const limitNum = Number((req.query.limit as any) ?? 20) || 20;
+    const offset = (pageNum - 1) * limitNum;
 
     const scripts = await UserScript.findByUserId(userId, {
-      limit: parseInt(limit),
-      offset: parseInt(offset),
-      category,
-      search
+      limit: limitNum,
+      offset,
+      category: (req.query.category as any) ?? undefined,
+      search: (req.query.search as any) ?? undefined
     });
 
     res.json({
       success: true,
-      scripts: scripts.map(script => script.toJSON()),
+      scripts: (scripts as any[]).map((script: any) => script.toJSON()),
       pagination: {
-        page: parseInt(page),
-        limit: parseInt(limit),
+        page: pageNum,
+        limit: limitNum,
         total: scripts.length
       }
     });
@@ -232,7 +239,7 @@ const getUserScripts = async (req, res) => {
 /**
  * 创建用户脚本
  */
-const createUserScript = async (req, res) => {
+const createUserScript = async (req: Request, res: Response) => {
   try {
     const userId = req.user.id;
     const { name, description, command, tags, keywords, category } = req.body;
@@ -273,7 +280,7 @@ const createUserScript = async (req, res) => {
 /**
  * 更新用户脚本
  */
-const updateUserScript = async (req, res) => {
+const updateUserScript = async (req: Request, res: Response) => {
   try {
     const userId = req.user.id;
     const scriptId = req.params.id;
@@ -314,7 +321,7 @@ const updateUserScript = async (req, res) => {
 /**
  * 删除用户脚本
  */
-const deleteUserScript = async (req, res) => {
+const deleteUserScript = async (req: Request, res: Response) => {
   try {
     const userId = req.user.id;
     const scriptId = req.params.id;
@@ -345,24 +352,25 @@ const deleteUserScript = async (req, res) => {
 /**
  * 获取用户所有脚本（包括公开脚本和用户脚本）
  */
-const getAllUserScripts = async (req, res) => {
+const getAllUserScripts = async (req: Request, res: Response) => {
   try {
     const userId = req.user.id;
-    const { page = 1, limit = 100, search } = req.query;
-    const offset = (page - 1) * limit;
+    const pageNum = Number((req.query.page as any) ?? 1) || 1;
+    const limitNum = Number((req.query.limit as any) ?? 100) || 100;
+    const offset = (pageNum - 1) * limitNum;
 
     const scripts = await UserScript.getAllUserScripts(userId, {
-      limit: parseInt(limit),
-      offset: parseInt(offset),
-      search
+      limit: limitNum,
+      offset,
+      search: (req.query.search as any) ?? undefined
     });
 
     res.json({
       success: true,
       scripts,
       pagination: {
-        page: parseInt(page),
-        limit: parseInt(limit),
+        page: pageNum,
+        limit: limitNum,
         total: scripts.length
       }
     });
@@ -378,10 +386,10 @@ const getAllUserScripts = async (req, res) => {
 /**
  * 获取脚本增量更新
  */
-const getScriptsIncremental = async (req, res) => {
+const getScriptsIncremental = async (req: Request, res: Response) => {
   try {
     const userId = req.user.id;
-    const { since } = req.query;
+    const since = (req.query.since as any) ?? '';
 
     if (!since) {
       return res.status(400).json({
@@ -398,7 +406,7 @@ const getScriptsIncremental = async (req, res) => {
       });
     }
 
-    const db = getDb();
+    const db = database.getDb();
 
     // 获取更新的公开脚本
     const updatedPublicScriptsStmt = db.prepare(`
@@ -418,7 +426,7 @@ const getScriptsIncremental = async (req, res) => {
 
     // 合并所有更新的脚本
     const updates = [
-      ...updatedPublicScripts.map(script => ({
+      ...(updatedPublicScripts as any[]).map((script: any) => ({
         id: script.id,
         name: script.name,
         description: script.description,
@@ -432,7 +440,7 @@ const getScriptsIncremental = async (req, res) => {
         createdAt: script.created_at,
         updatedAt: script.updated_at
       })),
-      ...updatedUserScripts.map(script => ({
+      ...(updatedUserScripts as any[]).map((script: any) => ({
         id: script.id,
         name: script.name,
         description: script.description,
@@ -458,7 +466,7 @@ const getScriptsIncremental = async (req, res) => {
     const allFavoritesStmt = db.prepare(`
       SELECT script_id FROM user_script_favorites WHERE user_id = ?
     `);
-    const allFavorites = allFavoritesStmt.all(userId).map(row => row.script_id);
+    const allFavorites = (allFavoritesStmt.all(userId) as any[]).map((row: any) => row.script_id);
 
     res.json({
       success: true,
@@ -479,12 +487,12 @@ const getScriptsIncremental = async (req, res) => {
 /**
  * 记录脚本使用
  */
-const recordScriptUsage = async (req, res) => {
+const recordScriptUsage = async (req: Request, res: Response) => {
   try {
     const userId = req.user.id;
     const { scriptId, userScriptId, scriptName, command } = req.body;
 
-    const db = getDb();
+    const db = database.getDb();
 
     // 记录使用历史
     const insertHistoryStmt = db.prepare(`
@@ -531,7 +539,7 @@ const recordScriptUsage = async (req, res) => {
 /**
  * 执行脚本
  */
-const executeScript = async (req, res) => {
+const executeScript = async (req: Request, res: Response) => {
   try {
     const userId = req.user.id;
     const {
@@ -569,7 +577,7 @@ const executeScript = async (req, res) => {
     });
 
     // 获取连接配置信息
-    const db = getDb();
+    const db = database.getDb();
     const connectionStmt = db.prepare('SELECT * FROM connections WHERE host = ? AND username = ? AND user_id = ?');
     const connection = connectionStmt.get(host, username, userId);
 
@@ -585,7 +593,7 @@ const executeScript = async (req, res) => {
     const decryptedPrivateKey = connection.privateKey ? decryptPrivateKey(connection.privateKey) : '';
 
     // 执行SSH命令
-    const executionResult = await executeSSHCommand({
+    const executionResult: any = await executeSSHCommand({
       host,
       port: port || 22,
       username,
@@ -624,10 +632,10 @@ const executeScript = async (req, res) => {
       host,
       port || 22,
       username,
-      executionResult.stdout,
-      executionResult.stderr,
-      executionResult.exitCode,
-      executionResult.executedAt
+      (executionResult as any).stdout,
+      (executionResult as any).stderr,
+      (executionResult as any).exitCode,
+      (executionResult as any).executedAt
     );
 
     res.json({
@@ -636,7 +644,7 @@ const executeScript = async (req, res) => {
       message: '脚本执行成功'
     });
 
-  } catch (error) {
+  } catch (error: any) {
     log.error('执行脚本失败:', error);
     res.status(500).json({
       success: false,
@@ -648,23 +656,23 @@ const executeScript = async (req, res) => {
 /**
  * 获取用户收藏的脚本
  */
-const getUserFavorites = async (req, res) => {
+const getUserFavorites = async (req: Request, res: Response) => {
   try {
     const userId = req.user.id;
-    const db = getDb();
+    const db = database.getDb();
 
     // 获取用户收藏的脚本ID列表
     const favorites = db.prepare(
       'SELECT script_id FROM user_script_favorites WHERE user_id = ?'
     ).all(userId);
 
-    const favoriteIds = favorites.map(fav => fav.script_id);
+    const favoriteIds = (favorites as any[]).map((fav: any) => fav.script_id);
 
     res.json({
       success: true,
       favorites: favoriteIds
     });
-  } catch (error) {
+  } catch (error: any) {
     log.error('获取用户收藏脚本失败:', error);
     res.status(500).json({
       success: false,
@@ -677,7 +685,7 @@ const getUserFavorites = async (req, res) => {
 /**
  * 更新用户收藏的脚本
  */
-const updateUserFavorites = async (req, res) => {
+const updateUserFavorites = async (req: Request, res: Response) => {
   try {
     const userId = req.user.id;
     const { favorites } = req.body;
@@ -689,7 +697,7 @@ const updateUserFavorites = async (req, res) => {
       });
     }
 
-    const db = getDb();
+    const db = database.getDb();
 
     // 开始事务
     db.prepare('BEGIN TRANSACTION').run();
@@ -722,7 +730,7 @@ const updateUserFavorites = async (req, res) => {
       db.prepare('ROLLBACK').run();
       throw error;
     }
-  } catch (error) {
+  } catch (error: any) {
     log.error('更新用户收藏脚本失败:', error);
     res.status(500).json({
       success: false,
@@ -735,7 +743,7 @@ const updateUserFavorites = async (req, res) => {
 /**
  * 切换脚本收藏状态
  */
-const toggleScriptFavorite = async (req, res) => {
+const toggleScriptFavorite = async (req: Request, res: Response) => {
   try {
     const userId = req.user.id;
     const scriptId = parseInt(req.params.scriptId);
@@ -747,7 +755,7 @@ const toggleScriptFavorite = async (req, res) => {
       });
     }
 
-    const db = getDb();
+    const db = database.getDb();
 
     // 检查是否已收藏
     const existing = db.prepare(
@@ -777,7 +785,7 @@ const toggleScriptFavorite = async (req, res) => {
         message: '已添加到收藏'
       });
     }
-  } catch (error) {
+  } catch (error: any) {
     log.error('切换脚本收藏状态失败:', error);
     res.status(500).json({
       success: false,
@@ -790,20 +798,23 @@ const toggleScriptFavorite = async (req, res) => {
 /**
  * 获取脚本执行历史（可按 connection_id/scriptId 过滤）
  */
-const getExecutionHistory = async (req, res) => {
+const getExecutionHistory = async (req: Request, res: Response) => {
   try {
     const userId = req.user.id;
-    const { connectionId, scriptId, page = 1, limit = 20 } = req.query;
+    const connectionId = (req.query.connectionId as any) ?? undefined;
+    const scriptId = (req.query.scriptId as any) ?? undefined;
+    const pageNum = Number((req.query.page as any) ?? 1) || 1;
+    const limitNum = Number((req.query.limit as any) ?? 20) || 20;
 
-    const db = getDb();
+    const db = database.getDb();
 
-    const safeLimit = Math.min(parseInt(limit) || 20, 100);
-    const currentPage = Math.max(parseInt(page) || 1, 1);
+    const safeLimit = Math.min(limitNum, 100);
+    const currentPage = Math.max(pageNum, 1);
     const offset = (currentPage - 1) * safeLimit;
 
     // 动态条件
     const whereClauses = ["user_id = ?"];
-    const params = [userId];
+    const params: any[] = [userId];
 
     if (connectionId) {
       whereClauses.push("connection_id = ?");
@@ -811,7 +822,7 @@ const getExecutionHistory = async (req, res) => {
     }
     if (scriptId) {
       whereClauses.push("script_id = ?");
-      params.push(parseInt(scriptId));
+      params.push(parseInt(scriptId as any));
     }
 
     const whereSql = whereClauses.length ? `WHERE ${whereClauses.join(' AND ')}` : '';
@@ -856,7 +867,7 @@ const getExecutionHistory = async (req, res) => {
 /**
  * 获取单条执行历史详情
  */
-const getExecutionDetail = async (req, res) => {
+const getExecutionDetail = async (req: Request, res: Response) => {
   try {
     const userId = req.user.id;
     const id = parseInt(req.params.id);
@@ -865,7 +876,7 @@ const getExecutionDetail = async (req, res) => {
       return res.status(400).json({ success: false, message: '无效的执行记录ID' });
     }
 
-    const db = getDb();
+    const db = database.getDb();
     const row = db.prepare(`
       SELECT id, user_id, script_id, script_name, command, connection_id, server_name,
              host, port, username, stdout, stderr, exit_code, executed_at
@@ -878,7 +889,7 @@ const getExecutionDetail = async (req, res) => {
     }
 
     res.json({ success: true, execution: row });
-  } catch (error) {
+  } catch (error: any) {
     log.error('获取执行历史详情失败:', error);
     res.status(500).json({ success: false, message: '获取详情失败', error: error.message });
   }

@@ -1,11 +1,14 @@
 "use strict";
-// @ts-nocheck
 /**
- * 用户设置控制器
+ * 用户设置控制器（TypeScript）
  * 处理用户设置的存储、获取和同步
  */
-const { getDb } = require('../config/database');
-const log = require('../utils/logger');
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+const database_1 = __importDefault(require("../config/database"));
+const logger_1 = __importDefault(require("../utils/logger"));
 class UserSettingsController {
     /**
      * 获取用于终端初始化的最小设置集
@@ -15,7 +18,7 @@ class UserSettingsController {
     async getTerminalMinimal(req, res) {
         try {
             const userId = req.user.id;
-            const db = getDb();
+            const db = database_1.default.getDb();
             // 允许返回的白名单字段（严格控制）
             const ALLOWED_KEYS = new Set([
                 'fontFamily',
@@ -52,7 +55,7 @@ class UserSettingsController {
                 }
                 catch (e) {
                     // 数据不合法时返回空对象，由前端使用默认值
-                    log.warn('解析终端设置失败，返回默认空对象');
+                    logger_1.default.warn('解析终端设置失败，返回默认空对象');
                 }
             }
             // 读取终端背景设置（独立分类：terminal.background）
@@ -100,7 +103,7 @@ class UserSettingsController {
             });
         }
         catch (error) {
-            log.error('获取终端最小设置失败:', error);
+            logger_1.default.error('获取终端最小设置失败:', error);
             return res.status(500).json({
                 success: false,
                 message: '获取终端设置失败',
@@ -116,7 +119,7 @@ class UserSettingsController {
         try {
             const userId = req.user.id;
             const { category } = req.query; // 可选：获取特定分类的设置
-            const db = getDb();
+            const db = database_1.default.getDb();
             let query, params;
             if (category) {
                 // 获取特定分类的设置
@@ -139,7 +142,7 @@ class UserSettingsController {
             const rows = db.prepare(query).all(...params);
             // 将结果转换为对象格式
             const settings = {};
-            rows.forEach(row => {
+            rows.forEach((row) => {
                 try {
                     settings[row.category] = {
                         data: JSON.parse(row.settings_data),
@@ -150,7 +153,7 @@ class UserSettingsController {
                     };
                 }
                 catch (error) {
-                    log.error(`解析设置数据失败 [${row.category}]:`, error);
+                    logger_1.default.error(`解析设置数据失败 [${row.category}]:`, error);
                 }
             });
             res.json({
@@ -160,7 +163,7 @@ class UserSettingsController {
             });
         }
         catch (error) {
-            log.error('获取用户设置失败:', error);
+            logger_1.default.error('获取用户设置失败:', error);
             res.status(500).json({
                 success: false,
                 message: '获取设置失败',
@@ -182,7 +185,7 @@ class UserSettingsController {
                     message: '缺少必要参数：category 和 data'
                 });
             }
-            const db = getDb();
+            const db = database_1.default.getDb();
             const now = new Date().toISOString();
             // 检查是否存在冲突
             const existing = db.prepare(`
@@ -230,7 +233,7 @@ class UserSettingsController {
             });
         }
         catch (error) {
-            log.error('更新用户设置失败:', error);
+            logger_1.default.error('更新用户设置失败:', error);
             res.status(500).json({
                 success: false,
                 message: '更新设置失败',
@@ -252,7 +255,7 @@ class UserSettingsController {
                     message: '缺少必要参数：settings'
                 });
             }
-            const db = getDb();
+            const db = database_1.default.getDb();
             const now = new Date().toISOString();
             const results = {};
             const conflicts = {};
@@ -299,7 +302,7 @@ class UserSettingsController {
                         };
                     }
                     catch (error) {
-                        log.error(`更新设置失败 [${category}]:`, error);
+                        logger_1.default.error(`更新设置失败 [${category}]:`, error);
                         results[category] = {
                             status: 'error',
                             error: error.message
@@ -323,7 +326,7 @@ class UserSettingsController {
             res.json(response);
         }
         catch (error) {
-            log.error('批量更新用户设置失败:', error);
+            logger_1.default.error('批量更新用户设置失败:', error);
             res.status(500).json({
                 success: false,
                 message: '批量更新设置失败',
@@ -345,7 +348,7 @@ class UserSettingsController {
                     message: '缺少必要参数：localSettings'
                 });
             }
-            const db = getDb();
+            const db = database_1.default.getDb();
             const now = new Date().toISOString();
             const syncResults = {
                 uploaded: {},
@@ -365,7 +368,7 @@ class UserSettingsController {
         FROM user_settings
         WHERE user_id = ?
       `).all(userId);
-            serverRows.forEach(row => {
+            serverRows.forEach((row) => {
                 try {
                     serverSettings[row.category] = {
                         data: JSON.parse(row.settings_data),
@@ -374,7 +377,7 @@ class UserSettingsController {
                     };
                 }
                 catch (error) {
-                    log.error(`解析服务器设置失败 [${row.category}]:`, error);
+                    logger_1.default.error(`解析服务器设置失败 [${row.category}]:`, error);
                 }
             });
             // 开始事务处理同步
@@ -440,7 +443,7 @@ class UserSettingsController {
                         }
                     }
                     catch (error) {
-                        log.error(`同步设置失败 [${category}]:`, error);
+                        logger_1.default.error(`同步设置失败 [${category}]:`, error);
                         syncResults.errors[category] = {
                             status: 'error',
                             error: error.message
@@ -458,7 +461,7 @@ class UserSettingsController {
             });
         }
         catch (error) {
-            log.error('数据同步失败:', error);
+            logger_1.default.error('数据同步失败:', error);
             res.status(500).json({
                 success: false,
                 message: '数据同步失败',
@@ -474,7 +477,7 @@ class UserSettingsController {
         try {
             const userId = req.user.id;
             const { category } = req.params;
-            const db = getDb();
+            const db = database_1.default.getDb();
             const result = db.prepare(`
         DELETE FROM user_settings
         WHERE user_id = ? AND category = ?
@@ -491,7 +494,7 @@ class UserSettingsController {
             });
         }
         catch (error) {
-            log.error('删除用户设置失败:', error);
+            logger_1.default.error('删除用户设置失败:', error);
             res.status(500).json({
                 success: false,
                 message: '删除设置失败',

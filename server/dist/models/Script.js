@@ -1,11 +1,14 @@
 "use strict";
-// @ts-nocheck
 /**
- * 脚本库数据模型
+ * 脚本库数据模型（TypeScript）
  * 处理脚本的数据库操作
  */
-const { getDb } = require('../config/database');
-const log = require('../utils/logger');
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+const database_1 = __importDefault(require("../config/database"));
+const logger_1 = __importDefault(require("../utils/logger"));
 class Script {
     constructor(data = {}) {
         this.id = data.id || null;
@@ -27,7 +30,7 @@ class Script {
      * 保存脚本到数据库
      */
     async save() {
-        const db = getDb();
+        const db = database_1.default.getDb();
         const now = new Date().toISOString();
         try {
             if (this.id) {
@@ -41,7 +44,7 @@ class Script {
         `);
                 const result = stmt.run(this.name, this.description, this.command, this.author, JSON.stringify(this.tags), JSON.stringify(this.keywords), this.category, this.isPublic ? 1 : 0, this.isSystem ? 1 : 0, this.usageCount, now, this.id);
                 this.updatedAt = now;
-                return result.changes > 0;
+                return (result?.changes || 0) > 0;
             }
             else {
                 // 创建新脚本
@@ -53,14 +56,14 @@ class Script {
           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `);
                 const result = stmt.run(this.name, this.description, this.command, this.author, JSON.stringify(this.tags), JSON.stringify(this.keywords), this.category, this.isPublic ? 1 : 0, this.isSystem ? 1 : 0, this.usageCount, this.createdBy, now, now);
-                this.id = result.lastInsertRowid;
+                this.id = Number(result.lastInsertRowid);
                 this.createdAt = now;
                 this.updatedAt = now;
                 return true;
             }
         }
         catch (error) {
-            log.error('保存脚本失败:', error);
+            logger_1.default.error('保存脚本失败:', error);
             throw error;
         }
     }
@@ -71,14 +74,14 @@ class Script {
         if (!this.id) {
             throw new Error('无法删除未保存的脚本');
         }
-        const db = getDb();
+        const db = database_1.default.getDb();
         try {
             const stmt = db.prepare('DELETE FROM scripts WHERE id = ?');
             const result = stmt.run(this.id);
-            return result.changes > 0;
+            return (result?.changes || 0) > 0;
         }
         catch (error) {
-            log.error('删除脚本失败:', error);
+            logger_1.default.error('删除脚本失败:', error);
             throw error;
         }
     }
@@ -88,17 +91,17 @@ class Script {
     async incrementUsage() {
         if (!this.id)
             return false;
-        const db = getDb();
+        const db = database_1.default.getDb();
         try {
             const stmt = db.prepare('UPDATE scripts SET usage_count = usage_count + 1 WHERE id = ?');
             const result = stmt.run(this.id);
-            if (result.changes > 0) {
+            if ((result?.changes || 0) > 0) {
                 this.usageCount += 1;
             }
-            return result.changes > 0;
+            return (result?.changes || 0) > 0;
         }
         catch (error) {
-            log.error('更新脚本使用次数失败:', error);
+            logger_1.default.error('更新脚本使用次数失败:', error);
             return false;
         }
     }
@@ -127,14 +130,14 @@ class Script {
      * 根据ID查找脚本
      */
     static async findById(id) {
-        const db = getDb();
+        const db = database_1.default.getDb();
         try {
             const stmt = db.prepare('SELECT * FROM scripts WHERE id = ?');
             const row = stmt.get(id);
             return row ? new Script(row) : null;
         }
         catch (error) {
-            log.error('查找脚本失败:', error);
+            logger_1.default.error('查找脚本失败:', error);
             throw error;
         }
     }
@@ -142,8 +145,8 @@ class Script {
      * 查找所有公开脚本
      */
     static async findPublic(options = {}) {
-        const db = getDb();
-        const { limit = 100, offset = 0, category, search } = options;
+        const db = database_1.default.getDb();
+        const { limit = 100, offset = 0, category, search } = options || {};
         try {
             let sql = 'SELECT * FROM scripts WHERE is_public = 1';
             const params = [];
@@ -163,7 +166,7 @@ class Script {
             return rows.map(row => new Script(row));
         }
         catch (error) {
-            log.error('查找公开脚本失败:', error);
+            logger_1.default.error('查找公开脚本失败:', error);
             throw error;
         }
     }
@@ -171,14 +174,14 @@ class Script {
      * 获取所有分类
      */
     static async getCategories() {
-        const db = getDb();
+        const db = database_1.default.getDb();
         try {
             const stmt = db.prepare('SELECT DISTINCT category FROM scripts WHERE is_public = 1 ORDER BY category');
             const rows = stmt.all();
             return rows.map(row => row.category);
         }
         catch (error) {
-            log.error('获取脚本分类失败:', error);
+            logger_1.default.error('获取脚本分类失败:', error);
             throw error;
         }
     }
@@ -186,7 +189,7 @@ class Script {
      * 获取热门脚本
      */
     static async getPopular(limit = 10) {
-        const db = getDb();
+        const db = database_1.default.getDb();
         try {
             const stmt = db.prepare(`
         SELECT * FROM scripts 
@@ -198,7 +201,7 @@ class Script {
             return rows.map(row => new Script(row));
         }
         catch (error) {
-            log.error('获取热门脚本失败:', error);
+            logger_1.default.error('获取热门脚本失败:', error);
             throw error;
         }
     }
@@ -206,8 +209,8 @@ class Script {
      * 搜索脚本（支持关键词匹配）
      */
     static async search(query, options = {}) {
-        const db = getDb();
-        const { limit = 50, offset = 0 } = options;
+        const db = database_1.default.getDb();
+        const { limit = 50, offset = 0 } = options || {};
         try {
             const searchPattern = `%${query}%`;
             const stmt = db.prepare(`
@@ -233,9 +236,10 @@ class Script {
             return rows.map(row => new Script(row));
         }
         catch (error) {
-            log.error('搜索脚本失败:', error);
+            logger_1.default.error('搜索脚本失败:', error);
             throw error;
         }
     }
 }
 module.exports = Script;
+exports.default = Script;

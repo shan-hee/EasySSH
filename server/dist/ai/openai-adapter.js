@@ -1,13 +1,16 @@
 "use strict";
-// @ts-nocheck
 /**
- * OpenAI兼容适配器
+ * OpenAI兼容适配器（TypeScript）
  * 处理与OpenAI兼容API的通信
  */
-const https = require('https');
-const http = require('http');
-const { URL } = require('url');
-const logger = require('../utils/logger');
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+const node_https_1 = __importDefault(require("node:https"));
+const node_http_1 = __importDefault(require("node:http"));
+const node_url_1 = require("node:url");
+const logger_1 = __importDefault(require("../utils/logger"));
 class OpenAIAdapter {
     constructor(config) {
         this.baseUrl = config.baseUrl || 'https://api.openai.com';
@@ -29,7 +32,7 @@ class OpenAIAdapter {
         }
         // 确保baseUrl不以斜杠结尾
         this.baseUrl = this.baseUrl.replace(/\/$/, '');
-        logger.debug('OpenAI适配器已初始化', {
+        logger_1.default.debug('OpenAI适配器已初始化', {
             baseUrl: this.baseUrl,
             model: this.model,
             hasApiKey: !!this.apiKey
@@ -55,7 +58,7 @@ class OpenAIAdapter {
             max_tokens: safeOptions.maxTokens ?? this.defaultMaxTokens,
             ...safeOptions
         };
-        logger.debug('发送OpenAI请求', {
+        logger_1.default.debug('发送OpenAI请求', {
             url,
             model: this.model,
             messageCount: messages.length,
@@ -73,10 +76,10 @@ class OpenAIAdapter {
         }
         catch (error) {
             if (error.name === 'AbortError') {
-                logger.info('OpenAI请求已取消');
+                logger_1.default.info('OpenAI请求已取消');
                 return;
             }
-            logger.error('OpenAI请求失败', { error: error.message });
+            logger_1.default.error('OpenAI请求失败', { error: error.message });
             throw error;
         }
     }
@@ -109,7 +112,7 @@ class OpenAIAdapter {
             max_tokens: 10, // 少量token用于测试
             temperature: 0
         };
-        logger.debug('开始测试API配置', {
+        logger_1.default.debug('开始测试API配置', {
             baseUrl: config.baseUrl,
             model: config.model,
             hasApiKey: !!config.apiKey
@@ -124,7 +127,7 @@ class OpenAIAdapter {
                 if (data.choices && data.choices.length > 0) {
                     const content = data.choices[0].message?.content || '';
                     const finishReason = data.choices[0].finish_reason;
-                    logger.info('API配置测试成功', {
+                    logger_1.default.info('API配置测试成功', {
                         model: data.model,
                         usage: data.usage,
                         finishReason
@@ -185,7 +188,7 @@ class OpenAIAdapter {
                 catch (e) {
                     // 解析失败，使用状态码
                 }
-                logger.warn('API测试失败', {
+                logger_1.default.warn('API测试失败', {
                     status: response.status,
                     error: errorMsg,
                     model: config.model
@@ -198,7 +201,7 @@ class OpenAIAdapter {
             }
         }
         catch (error) {
-            logger.error('API连接测试异常', {
+            logger_1.default.error('API连接测试异常', {
                 error: error.message,
                 baseUrl: config.baseUrl,
                 model: config.model
@@ -230,9 +233,9 @@ class OpenAIAdapter {
      */
     _makeSimpleRequest(url, body, apiKey) {
         return new Promise((resolve, reject) => {
-            const parsedUrl = new URL(url);
+            const parsedUrl = new node_url_1.URL(url);
             const isHttps = parsedUrl.protocol === 'https:';
-            const httpModule = isHttps ? https : http;
+            const httpModule = isHttps ? node_https_1.default : node_http_1.default;
             const postData = JSON.stringify(body);
             const options = {
                 hostname: parsedUrl.hostname,
@@ -280,9 +283,9 @@ class OpenAIAdapter {
      */
     _makeRequest(url, body, signal) {
         return new Promise((resolve, reject) => {
-            const parsedUrl = new URL(url);
+            const parsedUrl = new node_url_1.URL(url);
             const isHttps = parsedUrl.protocol === 'https:';
-            const httpModule = isHttps ? https : http;
+            const httpModule = isHttps ? node_https_1.default : node_http_1.default;
             const postData = JSON.stringify(body);
             const options = {
                 hostname: parsedUrl.hostname,
@@ -341,7 +344,8 @@ class OpenAIAdapter {
                 if (signal && signal.aborted) {
                     return;
                 }
-                buffer += chunk.toString();
+                const c = chunk;
+                buffer += c.toString();
                 const lines = buffer.split('\n');
                 buffer = lines.pop() || ''; // 保留不完整的行
                 for (const line of lines) {
@@ -375,7 +379,7 @@ class OpenAIAdapter {
                             }
                         }
                         catch (parseError) {
-                            logger.warn('解析SSE数据失败', {
+                            logger_1.default.warn('解析SSE数据失败', {
                                 data: data.substring(0, 100),
                                 error: parseError.message
                             });
@@ -386,7 +390,7 @@ class OpenAIAdapter {
         }
         catch (error) {
             if (error.name === 'AbortError' || (signal && signal.aborted)) {
-                logger.info('SSE流解析已取消');
+                logger_1.default.info('SSE流解析已取消');
                 return;
             }
             throw error;
@@ -400,7 +404,8 @@ class OpenAIAdapter {
     async _readStream(response) {
         let content = '';
         for await (const chunk of response.body) {
-            content += chunk.toString();
+            const c = chunk;
+            content += c.toString();
         }
         return content;
     }

@@ -1,14 +1,32 @@
-// @ts-nocheck
 /**
- * 用户数据模型
+ * 用户数据模型（TypeScript）
  * 用于SQLite存储
  */
 
-const bcrypt = require('bcryptjs');
-const { connectDatabase } = require('../config/database');
+import bcrypt from 'bcryptjs';
+import database from '../config/database';
 
 class User {
-  constructor(data = {}) {
+  id?: number;
+  username?: string;
+  email?: string;
+  password?: string;
+  displayName: string;
+  avatar: string;
+  mfaEnabled: boolean;
+  mfaSecret: string;
+  theme: string;
+  fontSize: number;
+  profileData: Record<string, any>;
+  settingsData: Record<string, any>;
+  isAdmin: boolean;
+  status: string;
+  lastLogin?: string;
+  createdAt: string;
+  updatedAt: string;
+  _passwordModified?: boolean;
+
+  constructor(data: any = {}) {
     this.id = data.id;
     this.username = data.username;
     this.email = data.email;
@@ -23,8 +41,8 @@ class User {
     this.fontSize = data.fontSize || 14;
 
     // 解析其他配置JSON
-    let profileData = {};
-    let settingsData = {};
+    let profileData: any = {};
+    let settingsData: any = {};
 
     // 解析profileJson
     if (data.profileJson) {
@@ -92,15 +110,15 @@ class User {
   }
 
   // 保存用户到数据库
-  async save() {
-    const db = connectDatabase();
+  async save(): Promise<this> {
+    const db = database.connectDatabase();
     const now = new Date().toISOString();
     this.updatedAt = now;
 
     // 如果密码被修改，进行哈希处理
     if (this._passwordModified) {
       const salt = await bcrypt.genSalt(10);
-      this.password = await bcrypt.hash(this.password, salt);
+      this.password = await bcrypt.hash(this.password || '', salt);
       this._passwordModified = false;
     }
 
@@ -171,26 +189,26 @@ class User {
         now
       );
 
-      this.id = info.lastInsertRowid;
+      this.id = Number((info as any).lastInsertRowid);
     }
 
     return this;
   }
 
   // 设置密码（标记为已修改）
-  setPassword(password) {
+  setPassword(password: string) {
     this.password = password;
     this._passwordModified = true;
   }
 
   // 比较密码
-  async comparePassword(candidatePassword) {
-    return await bcrypt.compare(candidatePassword, this.password);
+  async comparePassword(candidatePassword: string): Promise<boolean> {
+    return await bcrypt.compare(candidatePassword, this.password || '');
   }
 
   // 获取安全用户对象（不包含密码）
-  toSafeObject() {
-    const userObj = { ...this };
+  toSafeObject(): any {
+    const userObj: any = { ...this };
     // 移除敏感信息
     delete userObj.password;
     delete userObj._passwordModified;
@@ -205,8 +223,8 @@ class User {
   }
 
   // 转换为普通对象
-  toObject() {
-    const obj = { ...this };
+  toObject(): any {
+    const obj: any = { ...this };
     delete obj._passwordModified;
     return obj;
   }
@@ -214,8 +232,8 @@ class User {
   // 静态方法
 
   // 通过ID查找用户
-  static findById(id) {
-    const db = connectDatabase();
+  static findById(id: number | string): User | null {
+    const db = database.connectDatabase();
     const stmt = db.prepare('SELECT * FROM users WHERE id = ?');
     const row = stmt.get(id);
 
@@ -225,8 +243,8 @@ class User {
   }
 
   // 通过用户名查找用户
-  static findByUsername(username) {
-    const db = connectDatabase();
+  static findByUsername(username: string): User | null {
+    const db = database.connectDatabase();
     const stmt = db.prepare('SELECT * FROM users WHERE username = ?');
     const row = stmt.get(username);
 
@@ -236,8 +254,8 @@ class User {
   }
 
   // 通过邮箱查找用户
-  static findByEmail(email) {
-    const db = connectDatabase();
+  static findByEmail(email: string): User | null {
+    const db = database.connectDatabase();
     const stmt = db.prepare('SELECT * FROM users WHERE email = ?');
     const row = stmt.get(email);
 
@@ -247,11 +265,11 @@ class User {
   }
 
   // 查找一个符合条件的用户
-  static findOne(conditions) {
-    const db = connectDatabase();
+  static findOne(conditions: any): User | null {
+    const db = database.connectDatabase();
 
     let query = 'SELECT * FROM users WHERE 1=1';
-    const params = [];
+    const params: any[] = [];
 
     if (conditions._id) {
       query += ' AND id = ?';
@@ -280,11 +298,11 @@ class User {
   }
 
   // 查找所有符合条件的用户
-  static find(conditions = {}) {
-    const db = connectDatabase();
+  static find(conditions: any = {}): User[] {
+    const db = database.connectDatabase();
 
     let query = 'SELECT * FROM users WHERE 1=1';
-    const params = [];
+    const params: any[] = [];
 
     if (conditions.status) {
       query += ' AND status = ?';
@@ -292,23 +310,23 @@ class User {
     }
 
     const stmt = db.prepare(query);
-    const rows = stmt.all(...params);
+    const rows = stmt.all(...params) as any[];
 
     return rows.map(row => new User(row));
   }
 
   // 查找并更新用户
-  static findByIdAndUpdate(id, update, options = {}) {
+  static findByIdAndUpdate(id: number | string, update: any, options: any = {}): User | null {
     const user = this.findById(id);
     if (!user) return null;
 
     // 处理设置字段
     if (update.$set) {
-      Object.keys(update.$set).forEach(key => {
+      Object.keys(update.$set).forEach((key: string) => {
         if (key === 'password') {
           user.setPassword(update.$set[key]);
         } else {
-          user[key] = update.$set[key];
+          (user as any)[key] = update.$set[key];
         }
       });
     }
@@ -325,8 +343,8 @@ class User {
   }
 
   // 检查是否存在管理员账户
-  static countAdmins() {
-    const db = connectDatabase();
+  static countAdmins(): number {
+    const db = database.connectDatabase();
     const row = db.prepare('SELECT COUNT(*) AS count FROM users WHERE isAdmin = 1').get();
     return row ? row.count : 0;
   }

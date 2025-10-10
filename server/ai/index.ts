@@ -1,26 +1,27 @@
-// @ts-nocheck
 /**
- * EasySSH AI服务模块入口
+ * EasySSH AI服务模块入口（TypeScript）
  * 处理AI相关的WebSocket连接和HTTP API
  */
 
-const WebSocket = require('ws');
-const logger = require('../utils/logger');
-const { handleWebSocketError } = require('../utils/errorHandler');
+import WebSocket from 'ws';
+import logger from '../utils/logger';
+import { handleWebSocketError } from '../utils/errorHandler';
+// eslint-disable-next-line @typescript-eslint/no-var-requires
 const AIController = require('./ai-controller');
+// eslint-disable-next-line @typescript-eslint/no-var-requires
 const { authMiddleware } = require('../middleware/auth');
 
 // AI WebSocket服务器实例
-let aiWss = null;
+let aiWss: WebSocket.Server | null = null;
 // AI控制器实例
-let aiController = null;
+let aiController: any | null = null;
 
 /**
  * 初始化AI WebSocket服务器
  * @param {http.Server} server HTTP服务器实例
  * @returns {WebSocket.Server} AI WebSocket服务器实例
  */
-function initAIWebSocketServer(server) {
+function initAIWebSocketServer(server: any) {
   // 创建AI WebSocket服务器
   aiWss = new WebSocket.Server({
     noServer: true,
@@ -33,7 +34,7 @@ function initAIWebSocketServer(server) {
   logger.info('AI WebSocket服务器已初始化，等待连接到 /ai 路径');
 
   // 监听连接事件
-  aiWss.on('connection', (ws, req) => {
+  aiWss.on('connection', (ws: WebSocket, req: any) => {
     logger.debug('收到AI WebSocket连接请求', { url: req.url });
 
     const url = new URL(req.url, `http://${req.headers.host}`);
@@ -51,8 +52,8 @@ function initAIWebSocketServer(server) {
   });
 
   // 监听错误事件
-  aiWss.on('error', (error) => {
-    handleWebSocketError(error, { service: 'AI WebSocket服务器' });
+  aiWss.on('error', (error: any) => {
+    handleWebSocketError(error, { operation: 'AI WebSocket服务器' });
   });
 
   return aiWss;
@@ -64,7 +65,7 @@ function initAIWebSocketServer(server) {
  * @param {net.Socket} socket
  * @param {Buffer} head
  */
-function handleUpgrade(request, socket, head) {
+function handleUpgrade(request: any, socket: any, head: any) {
   const url = new URL(request.url, `http://${request.headers.host}`);
   const pathname = url.pathname;
 
@@ -72,9 +73,9 @@ function handleUpgrade(request, socket, head) {
   if (pathname === '/ai') {
     // TODO: 在这里可以添加身份验证逻辑
     // 目前先允许所有连接，后续会添加JWT验证
-
-    aiWss.handleUpgrade(request, socket, head, (ws) => {
-      aiWss.emit('connection', ws, request);
+    if (!aiWss) return;
+    aiWss.handleUpgrade(request, socket, head, (ws: WebSocket) => {
+      aiWss!.emit('connection', ws, request);
     });
   }
 }

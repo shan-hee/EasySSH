@@ -1,12 +1,11 @@
 "use strict";
-// Bridge stub for compiled dist to reach JS implementation
-// @ts-nocheck
+Object.defineProperty(exports, "__esModule", { value: true });
 const buckets = new Map(); // key -> { count, resetAt }
 function rateLimit(options = {}) {
-    const windowMs = options.windowMs || 60 * 1000; // 时间窗口
-    const max = options.max || 60; // 窗口内最大请求数
-    const keyGenerator = options.keyGenerator || ((req) => req.ip);
-    const message = options.message || 'Too many requests, please try again later.';
+    const windowMs = options.windowMs ?? 60 * 1000; // 时间窗口
+    const max = options.max ?? 60; // 窗口内最大请求数
+    const keyGenerator = options.keyGenerator ?? ((req) => req.ip || '');
+    const message = options.message ?? 'Too many requests, please try again later.';
     return function (req, res, next) {
         try {
             const key = keyGenerator(req);
@@ -24,9 +23,11 @@ function rateLimit(options = {}) {
             }
             return next();
         }
-        catch (err) {
+        catch {
             return next();
         }
     };
 }
-module.exports = { rateLimit };
+const api = { rateLimit };
+module.exports = api;
+exports.default = api;

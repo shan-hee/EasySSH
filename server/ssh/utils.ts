@@ -1,4 +1,4 @@
-// @ts-nocheck
+// 移除 ts-nocheck：为 SSH/SFTP 工具补充类型标注
 /**
  * 通用工具模块
  * 用于提供SSH和SFTP共用的功能
@@ -6,6 +6,7 @@
 
 const logger = require('../utils/logger');
 const crypto = require('crypto');
+import type WebSocketType from 'ws';
 
 /**
  * WebSocket状态常量
@@ -86,7 +87,7 @@ const BINARY_MSG_TYPE = {
  * @param {string} type 消息类型
  * @param {Object} data 消息数据
  */
-function sendMessage(ws, type, data) {
+function sendMessage(ws: WebSocketType, type: string, data: any): void {
   if (ws && ws.readyState === WS_STATE.OPEN) {
     ws.send(JSON.stringify({
       type,
@@ -103,8 +104,14 @@ function sendMessage(ws, type, data) {
  * @param {string} [operationId] 操作ID
  * @param {string} [source] 错误源
  */
-function sendError(ws, message, sessionId = null, operationId = null, source = null) {
-  const data = { message };
+function sendError(
+  ws: WebSocketType,
+  message: string,
+  sessionId: string | null = null,
+  operationId: string | null = null,
+  source: string | null = null
+): void {
+  const data: any = { message };
 
   if (sessionId) data.sessionId = sessionId;
   if (operationId) data.operationId = operationId;
@@ -120,7 +127,7 @@ function sendError(ws, message, sessionId = null, operationId = null, source = n
  * @param {string} operationId 操作ID
  * @param {string} message 错误消息
  */
-function sendSftpError(ws, sessionId, operationId, message) {
+function sendSftpError(ws: WebSocketType, sessionId: string, operationId: string, message: string): void {
   sendMessage(ws, MSG_TYPE.ERROR_SFTP, {
     sessionId,
     operationId,
@@ -135,7 +142,7 @@ function sendSftpError(ws, sessionId, operationId, message) {
  * @param {string} operationId 操作ID
  * @param {Object} additionalData 附加数据
  */
-function sendSftpSuccess(ws, sessionId, operationId, additionalData = {}) {
+function sendSftpSuccess(ws: WebSocketType, sessionId: string, operationId: string, additionalData: any = {}): void {
   const data = {
     sessionId,
     operationId,
@@ -164,7 +171,14 @@ function sendSftpSuccess(ws, sessionId, operationId, additionalData = {}) {
  * @param {number} processed 已处理字节数
  * @param {number} total 总字节数
  */
-function sendSftpProgress(ws, sessionId, operationId, progress, processed, total) {
+function sendSftpProgress(
+  ws: WebSocketType,
+  sessionId: string,
+  operationId: string,
+  progress: number,
+  processed: number,
+  total: number
+): void {
   sendMessage(ws, MSG_TYPE.PROGRESS, {
     sessionId,
     operationId,
@@ -182,7 +196,12 @@ function sendSftpProgress(ws, sessionId, operationId, progress, processed, total
  * @param {string} [operationId] 操作ID
  * @returns {boolean} 会话是否有效
  */
-function validateSshSession(ws, sessionId, sessions, operationId = null) {
+function validateSshSession(
+  ws: WebSocketType,
+  sessionId: string,
+  sessions: Map<string, any>,
+  operationId: string | null = null
+): boolean {
   if (!sessionId) {
     sendError(ws, '会话ID不能为空', sessionId, operationId);
     return false;
@@ -204,7 +223,12 @@ function validateSshSession(ws, sessionId, sessions, operationId = null) {
  * @param {string} operationId 操作ID
  * @returns {boolean} 会话是否有效
  */
-function validateSftpSession(ws, sessionId, sftpSessions, operationId) {
+function validateSftpSession(
+  ws: WebSocketType,
+  sessionId: string,
+  sftpSessions: Map<string, any>,
+  operationId: string
+): boolean {
   if (!sessionId) {
     sendSftpError(ws, sessionId, operationId, '会话ID不能为空');
     return false;
@@ -227,7 +251,14 @@ function validateSftpSession(ws, sessionId, sftpSessions, operationId) {
  * @param {string} operationId 操作ID
  * @param {boolean} isSftp 是否是SFTP操作
  */
-async function safeExec(fn, ws, errorPrefix, sessionId, operationId, isSftp = true) {
+async function safeExec(
+  fn: () => Promise<any>,
+  ws: WebSocketType,
+  errorPrefix: string,
+  sessionId: string,
+  operationId: string,
+  isSftp = true
+): Promise<any> {
   try {
     return await fn();
   } catch (err) {
@@ -245,7 +276,7 @@ async function safeExec(fn, ws, errorPrefix, sessionId, operationId, isSftp = tr
  * 记录操作活动
  * @param {Object} session 会话对象
  */
-function recordActivity(session) {
+function recordActivity(session: any): void {
   if (session) {
     session.lastActivity = new Date();
   }
@@ -259,7 +290,7 @@ function recordActivity(session) {
  * @param {string} [details=''] 详细信息
  * @returns {string} 格式化的日志消息
  */
-function logMessage(action, target, result = '成功', details = '') {
+function logMessage(action: string, target: string, result = '成功', details = ''): string {
   return `${action} ${target} ${result}${details ? `: ${details}` : ''}`;
 }
 
@@ -277,7 +308,7 @@ class BinaryMessageEncoder {
    * @param {Buffer} payloadData 载荷数据
    * @returns {Buffer} 编码后的消息
    */
-  static encode(messageType, headerData, payloadData = null) {
+  static encode(messageType: number, headerData: any, payloadData: Buffer | null = null): Buffer {
     try {
       // 编码header为UTF-8
       const headerBuffer = Buffer.from(JSON.stringify(headerData), 'utf8');
@@ -333,7 +364,7 @@ class BinaryMessageDecoder {
    * @param {Buffer} messageBuffer 消息缓冲区
    * @returns {Object} 解码后的消息
    */
-  static decode(messageBuffer) {
+  static decode(messageBuffer: Buffer): { version: number; messageType: number; headerData: any; payloadData: Buffer | null } {
     try {
       if (messageBuffer.length < 10) {
         throw new Error('消息长度不足');
@@ -404,7 +435,7 @@ class ChunkedTransfer {
    * @param {number} fileSize 文件大小
    * @returns {Object} 分块参数
    */
-  static calculateChunks(fileSize) {
+  static calculateChunks(fileSize: number): { chunkSize: number; totalChunks: number } {
     const chunkSize = Math.max(
       this.CHUNK_SIZE,
       Math.ceil(fileSize / this.MAX_CHUNKS)
@@ -422,7 +453,7 @@ class ChunkedTransfer {
    * @param {number} chunkSize 分块大小
    * @returns {Object} 分块头部
    */
-  static createChunkHeader(baseHeader, chunkIndex, totalChunks, chunkSize) {
+  static createChunkHeader(baseHeader: any, chunkIndex: number, totalChunks: number, chunkSize: number): any {
     return {
       ...baseHeader,
       chunkIndex,
@@ -437,6 +468,7 @@ class ChunkedTransfer {
  * 分块重组器
  */
 class ChunkReassembler {
+  chunks: Map<string, any>;
   constructor() {
     this.chunks = new Map(); // operationId -> chunks
   }
@@ -449,7 +481,7 @@ class ChunkReassembler {
    * @param {Buffer} chunkData 分块数据
    * @returns {Buffer|null} 完整数据或null
    */
-  addChunk(operationId, chunkIndex, totalChunks, chunkData) {
+  addChunk(operationId: string, chunkIndex: number, totalChunks: number, chunkData: Buffer): Buffer | null {
     if (!this.chunks.has(operationId)) {
       this.chunks.set(operationId, {
         totalChunks,
@@ -475,7 +507,7 @@ class ChunkReassembler {
    * @param {string} operationId 操作ID
    * @returns {Buffer} 完整数据
    */
-  reassembleChunks(operationId) {
+  reassembleChunks(operationId: string): Buffer {
     const transfer = this.chunks.get(operationId);
     const chunks = [];
 
@@ -498,7 +530,7 @@ class ChunkReassembler {
    * 清理超时的传输
    * @param {number} timeoutMs 超时时间(毫秒)
    */
-  cleanupTimeouts(timeoutMs = 300000) { // 5分钟
+  cleanupTimeouts(timeoutMs = 300000): void { // 5分钟
     const now = Date.now();
     for (const [operationId, transfer] of this.chunks.entries()) {
       if (transfer && transfer.startTime && (now - transfer.startTime > timeoutMs)) {
@@ -512,7 +544,7 @@ class ChunkReassembler {
    * 丢弃指定操作ID的分块缓存
    * @param {string} operationId
    */
-  discard(operationId) {
+  discard(operationId: string): void {
     if (this.chunks.has(operationId)) {
       this.chunks.delete(operationId);
     }
@@ -528,7 +560,7 @@ class ChecksumValidator {
    * @param {Buffer} data 数据
    * @returns {string} 校验和
    */
-  static calculateSHA256(data) {
+  static calculateSHA256(data: Buffer): string {
     return crypto.createHash('sha256').update(data).digest('hex');
   }
 
@@ -538,7 +570,7 @@ class ChecksumValidator {
    * @param {string} expectedChecksum 期望的校验和
    * @returns {boolean} 是否匹配
    */
-  static validateChecksum(data, expectedChecksum) {
+  static validateChecksum(data: Buffer, expectedChecksum: string): boolean {
     const actualChecksum = this.calculateSHA256(data);
     return actualChecksum === expectedChecksum;
   }
@@ -551,7 +583,12 @@ class ChecksumValidator {
  * @param {Object} headerData 头部数据
  * @param {Buffer} payloadData 载荷数据
  */
-function sendBinaryMessage(ws, messageType, headerData, payloadData = null) {
+function sendBinaryMessage(
+  ws: WebSocketType,
+  messageType: number,
+  headerData: any,
+  payloadData: Buffer | null = null
+): void {
   if (ws && ws.readyState === WS_STATE.OPEN) {
     try {
       const messageBuffer = BinaryMessageEncoder.encode(messageType, headerData, payloadData);
@@ -570,7 +607,13 @@ function sendBinaryMessage(ws, messageType, headerData, payloadData = null) {
  * @param {Object} additionalData 附加数据
  * @param {Buffer} payloadData 载荷数据
  */
-function sendBinarySftpSuccess(ws, sessionId, operationId, additionalData = {}, payloadData = null) {
+function sendBinarySftpSuccess(
+  ws: WebSocketType,
+  sessionId: string,
+  operationId: string,
+  additionalData: any = {},
+  payloadData: Buffer | null = null
+): void {
   const headerData = {
     sessionId,
     operationId,
@@ -589,7 +632,13 @@ function sendBinarySftpSuccess(ws, sessionId, operationId, additionalData = {}, 
  * @param {string} errorMessage 错误消息
  * @param {string} errorCode 错误代码
  */
-function sendBinarySftpError(ws, sessionId, operationId, errorMessage, errorCode = 'UNKNOWN_ERROR') {
+function sendBinarySftpError(
+  ws: WebSocketType,
+  sessionId: string,
+  operationId: string,
+  errorMessage: string,
+  errorCode = 'UNKNOWN_ERROR'
+): void {
   const headerData = {
     sessionId,
     operationId,
@@ -606,7 +655,7 @@ function sendBinarySftpError(ws, sessionId, operationId, errorMessage, errorCode
  * @param {WebSocket} ws WebSocket连接
  * @param {Object} data PING数据
  */
-function sendBinaryPing(ws, data) {
+function sendBinaryPing(ws: WebSocketType, data: any): void {
   const headerData = {
     sessionId: data.sessionId,
     requestId: data.requestId || generateRequestId(),
@@ -625,7 +674,7 @@ function sendBinaryPing(ws, data) {
  * @param {WebSocket} ws WebSocket连接
  * @param {Object} data PONG数据
  */
-function sendBinaryPong(ws, data) {
+function sendBinaryPong(ws: WebSocketType, data: any): void {
   const headerData = {
     sessionId: data.sessionId,
     requestId: data.requestId,
@@ -646,7 +695,7 @@ function sendBinaryPong(ws, data) {
  * @param {WebSocket} ws WebSocket连接
  * @param {Object} data 连接数据
  */
-function sendBinaryConnectionRegistered(ws, data) {
+function sendBinaryConnectionRegistered(ws: WebSocketType, data: any): void {
   const headerData = {
     connectionId: data.connectionId,
     sessionId: data.sessionId,
@@ -663,7 +712,7 @@ function sendBinaryConnectionRegistered(ws, data) {
  * @param {WebSocket} ws WebSocket连接
  * @param {Object} data 连接数据
  */
-function sendBinaryConnected(ws, data) {
+function sendBinaryConnected(ws: WebSocketType, data: any): void {
   const headerData = {
     sessionId: data.sessionId,
     connectionId: data.connectionId,
@@ -680,7 +729,7 @@ function sendBinaryConnected(ws, data) {
  * @param {WebSocket} ws WebSocket连接
  * @param {Object} data 延迟数据
  */
-function sendBinaryNetworkLatency(ws, data) {
+function sendBinaryNetworkLatency(ws: WebSocketType, data: any): void {
   const headerData = {
     sessionId: data.sessionId,
     clientLatency: data.clientLatency || 0,
@@ -699,8 +748,8 @@ function sendBinaryNetworkLatency(ws, data) {
  * @param {string} status 状态字符串
  * @returns {number} 状态数字
  */
-function encodeConnectionStatus(status) {
-  const statusMap = {
+function encodeConnectionStatus(status: string): number {
+  const statusMap: Record<string, number> = {
     'connecting': 0,
     'connected': 1,
     'disconnecting': 2,
@@ -719,8 +768,8 @@ function encodeConnectionStatus(status) {
  * @param {number} statusCode 状态数字
  * @returns {string} 状态字符串
  */
-function decodeConnectionStatus(statusCode) {
-  const statusMap = {
+function decodeConnectionStatus(statusCode: number): string {
+  const statusMap: Record<number, string> = {
     0: 'connecting',
     1: 'connected',
     2: 'disconnecting',

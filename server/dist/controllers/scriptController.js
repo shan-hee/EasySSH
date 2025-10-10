@@ -1,24 +1,30 @@
 "use strict";
-// @ts-nocheck
 /**
- * 脚本库控制器
+ * 脚本库控制器（TypeScript）
  * 处理脚本相关的HTTP请求
  */
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+// eslint-disable-next-line @typescript-eslint/no-var-requires
 const Script = require('../models/Script');
+// eslint-disable-next-line @typescript-eslint/no-var-requires
 const UserScript = require('../models/UserScript');
-const { getDb } = require('../config/database');
-const log = require('../utils/logger');
-const { Client } = require('ssh2');
-const { decryptPassword, decryptPrivateKey } = require('../utils/encryption');
+const database_1 = __importDefault(require("../config/database"));
+const logger_1 = __importDefault(require("../utils/logger"));
+const ssh2_1 = require("ssh2");
+const encryption_1 = __importDefault(require("../utils/encryption"));
+const { decryptPassword, decryptPrivateKey } = encryption_1.default;
 /**
  * 执行SSH命令
  */
 async function executeSSHCommand({ host, port, username, password, privateKey, authType, command }) {
     return new Promise((resolve, reject) => {
-        const conn = new Client();
+        const conn = new ssh2_1.Client();
         const startTime = Date.now();
         conn.on('ready', () => {
-            log.info(`SSH连接已建立: ${username}@${host}:${port}`);
+            logger_1.default.info(`SSH连接已建立: ${username}@${host}:${port}`);
             conn.exec(command, (err, stream) => {
                 if (err) {
                     conn.end();
@@ -29,7 +35,7 @@ async function executeSSHCommand({ host, port, username, password, privateKey, a
                 stream.on('close', (code) => {
                     const duration = Date.now() - startTime;
                     conn.end();
-                    log.info(`命令执行完成: 退出码=${code}, 耗时=${duration}ms`);
+                    logger_1.default.info(`命令执行完成: 退出码=${code}, 耗时=${duration}ms`);
                     resolve({
                         stdout: stdout.trim(),
                         stderr: stderr.trim(),
@@ -47,7 +53,7 @@ async function executeSSHCommand({ host, port, username, password, privateKey, a
             });
         });
         conn.on('error', (err) => {
-            log.error(`SSH连接错误: ${err.message}`);
+            logger_1.default.error(`SSH连接错误: ${err.message}`);
             reject(new Error(`SSH连接失败: ${err.message}`));
         });
         // 准备连接配置
@@ -76,26 +82,27 @@ async function executeSSHCommand({ host, port, username, password, privateKey, a
  */
 const getPublicScripts = async (req, res) => {
     try {
-        const { page = 1, limit = 20, category, search } = req.query;
-        const offset = (page - 1) * limit;
+        const pageNum = Number(req.query.page ?? 1) || 1;
+        const limitNum = Number(req.query.limit ?? 20) || 20;
+        const offset = (pageNum - 1) * limitNum;
         const scripts = await Script.findPublic({
-            limit: parseInt(limit),
-            offset: parseInt(offset),
-            category,
-            search
+            limit: limitNum,
+            offset,
+            category: req.query.category ?? undefined,
+            search: req.query.search ?? undefined
         });
         res.json({
             success: true,
-            scripts: scripts.map(script => script.toJSON()),
+            scripts: scripts.map((script) => script.toJSON()),
             pagination: {
-                page: parseInt(page),
-                limit: parseInt(limit),
+                page: pageNum,
+                limit: limitNum,
                 total: scripts.length
             }
         });
     }
     catch (error) {
-        log.error('获取公开脚本失败:', error);
+        logger_1.default.error('获取公开脚本失败:', error);
         res.status(500).json({
             success: false,
             message: '获取脚本列表失败'
@@ -105,7 +112,7 @@ const getPublicScripts = async (req, res) => {
 /**
  * 获取脚本分类
  */
-const getCategories = async (req, res) => {
+const getCategories = async (_req, res) => {
     try {
         const categories = await Script.getCategories();
         res.json({
@@ -114,7 +121,7 @@ const getCategories = async (req, res) => {
         });
     }
     catch (error) {
-        log.error('获取脚本分类失败:', error);
+        logger_1.default.error('获取脚本分类失败:', error);
         res.status(500).json({
             success: false,
             message: '获取分类失败'
@@ -126,15 +133,15 @@ const getCategories = async (req, res) => {
  */
 const getPopularScripts = async (req, res) => {
     try {
-        const { limit = 10 } = req.query;
-        const scripts = await Script.getPopular(parseInt(limit));
+        const limitNum = Number(req.query.limit ?? 10) || 10;
+        const scripts = await Script.getPopular(limitNum);
         res.json({
             success: true,
-            scripts: scripts.map(script => script.toJSON())
+            scripts: scripts.map((script) => script.toJSON())
         });
     }
     catch (error) {
-        log.error('获取热门脚本失败:', error);
+        logger_1.default.error('获取热门脚本失败:', error);
         res.status(500).json({
             success: false,
             message: '获取热门脚本失败'
@@ -146,31 +153,33 @@ const getPopularScripts = async (req, res) => {
  */
 const searchScripts = async (req, res) => {
     try {
-        const { q: query, page = 1, limit = 20 } = req.query;
-        if (!query || query.trim().length === 0) {
+        const queryText = String(req.query.q ?? '').trim();
+        const pageNum = Number(req.query.page ?? 1) || 1;
+        const limitNum = Number(req.query.limit ?? 20) || 20;
+        if (!queryText) {
             return res.status(400).json({
                 success: false,
                 message: '搜索关键词不能为空'
             });
         }
-        const offset = (page - 1) * limit;
-        const scripts = await Script.search(query.trim(), {
-            limit: parseInt(limit),
-            offset: parseInt(offset)
+        const offset = (pageNum - 1) * limitNum;
+        const scripts = await Script.search(queryText, {
+            limit: limitNum,
+            offset
         });
         res.json({
             success: true,
-            scripts: scripts.map(script => script.toJSON()),
-            query: query.trim(),
+            scripts: scripts.map((script) => script.toJSON()),
+            query: queryText,
             pagination: {
-                page: parseInt(page),
-                limit: parseInt(limit),
+                page: pageNum,
+                limit: limitNum,
                 total: scripts.length
             }
         });
     }
     catch (error) {
-        log.error('搜索脚本失败:', error);
+        logger_1.default.error('搜索脚本失败:', error);
         res.status(500).json({
             success: false,
             message: '搜索失败'
@@ -183,26 +192,27 @@ const searchScripts = async (req, res) => {
 const getUserScripts = async (req, res) => {
     try {
         const userId = req.user.id;
-        const { page = 1, limit = 20, category, search } = req.query;
-        const offset = (page - 1) * limit;
+        const pageNum = Number(req.query.page ?? 1) || 1;
+        const limitNum = Number(req.query.limit ?? 20) || 20;
+        const offset = (pageNum - 1) * limitNum;
         const scripts = await UserScript.findByUserId(userId, {
-            limit: parseInt(limit),
-            offset: parseInt(offset),
-            category,
-            search
+            limit: limitNum,
+            offset,
+            category: req.query.category ?? undefined,
+            search: req.query.search ?? undefined
         });
         res.json({
             success: true,
-            scripts: scripts.map(script => script.toJSON()),
+            scripts: scripts.map((script) => script.toJSON()),
             pagination: {
-                page: parseInt(page),
-                limit: parseInt(limit),
+                page: pageNum,
+                limit: limitNum,
                 total: scripts.length
             }
         });
     }
     catch (error) {
-        log.error('获取用户脚本失败:', error);
+        logger_1.default.error('获取用户脚本失败:', error);
         res.status(500).json({
             success: false,
             message: '获取用户脚本失败'
@@ -239,7 +249,7 @@ const createUserScript = async (req, res) => {
         });
     }
     catch (error) {
-        log.error('创建用户脚本失败:', error);
+        logger_1.default.error('创建用户脚本失败:', error);
         res.status(500).json({
             success: false,
             message: '创建脚本失败'
@@ -282,7 +292,7 @@ const updateUserScript = async (req, res) => {
         });
     }
     catch (error) {
-        log.error('更新用户脚本失败:', error);
+        logger_1.default.error('更新用户脚本失败:', error);
         res.status(500).json({
             success: false,
             message: '更新脚本失败'
@@ -310,7 +320,7 @@ const deleteUserScript = async (req, res) => {
         });
     }
     catch (error) {
-        log.error('删除用户脚本失败:', error);
+        logger_1.default.error('删除用户脚本失败:', error);
         res.status(500).json({
             success: false,
             message: '删除脚本失败'
@@ -323,25 +333,26 @@ const deleteUserScript = async (req, res) => {
 const getAllUserScripts = async (req, res) => {
     try {
         const userId = req.user.id;
-        const { page = 1, limit = 100, search } = req.query;
-        const offset = (page - 1) * limit;
+        const pageNum = Number(req.query.page ?? 1) || 1;
+        const limitNum = Number(req.query.limit ?? 100) || 100;
+        const offset = (pageNum - 1) * limitNum;
         const scripts = await UserScript.getAllUserScripts(userId, {
-            limit: parseInt(limit),
-            offset: parseInt(offset),
-            search
+            limit: limitNum,
+            offset,
+            search: req.query.search ?? undefined
         });
         res.json({
             success: true,
             scripts,
             pagination: {
-                page: parseInt(page),
-                limit: parseInt(limit),
+                page: pageNum,
+                limit: limitNum,
                 total: scripts.length
             }
         });
     }
     catch (error) {
-        log.error('获取用户所有脚本失败:', error);
+        logger_1.default.error('获取用户所有脚本失败:', error);
         res.status(500).json({
             success: false,
             message: '获取脚本失败'
@@ -354,7 +365,7 @@ const getAllUserScripts = async (req, res) => {
 const getScriptsIncremental = async (req, res) => {
     try {
         const userId = req.user.id;
-        const { since } = req.query;
+        const since = req.query.since ?? '';
         if (!since) {
             return res.status(400).json({
                 success: false,
@@ -368,7 +379,7 @@ const getScriptsIncremental = async (req, res) => {
                 message: 'since参数格式无效'
             });
         }
-        const db = getDb();
+        const db = database_1.default.getDb();
         // 获取更新的公开脚本
         const updatedPublicScriptsStmt = db.prepare(`
       SELECT *, 'public' as source FROM scripts
@@ -385,7 +396,7 @@ const getScriptsIncremental = async (req, res) => {
         const updatedUserScripts = updatedUserScriptsStmt.all(userId, since);
         // 合并所有更新的脚本
         const updates = [
-            ...updatedPublicScripts.map(script => ({
+            ...updatedPublicScripts.map((script) => ({
                 id: script.id,
                 name: script.name,
                 description: script.description,
@@ -399,7 +410,7 @@ const getScriptsIncremental = async (req, res) => {
                 createdAt: script.created_at,
                 updatedAt: script.updated_at
             })),
-            ...updatedUserScripts.map(script => ({
+            ...updatedUserScripts.map((script) => ({
                 id: script.id,
                 name: script.name,
                 description: script.description,
@@ -423,7 +434,7 @@ const getScriptsIncremental = async (req, res) => {
         const allFavoritesStmt = db.prepare(`
       SELECT script_id FROM user_script_favorites WHERE user_id = ?
     `);
-        const allFavorites = allFavoritesStmt.all(userId).map(row => row.script_id);
+        const allFavorites = allFavoritesStmt.all(userId).map((row) => row.script_id);
         res.json({
             success: true,
             updates,
@@ -432,7 +443,7 @@ const getScriptsIncremental = async (req, res) => {
         });
     }
     catch (error) {
-        log.error('获取脚本增量更新失败:', error);
+        logger_1.default.error('获取脚本增量更新失败:', error);
         res.status(500).json({
             success: false,
             message: '获取增量更新失败'
@@ -446,7 +457,7 @@ const recordScriptUsage = async (req, res) => {
     try {
         const userId = req.user.id;
         const { scriptId, userScriptId, scriptName, command } = req.body;
-        const db = getDb();
+        const db = database_1.default.getDb();
         // 记录使用历史
         const insertHistoryStmt = db.prepare(`
       INSERT INTO script_usage_history (
@@ -473,7 +484,7 @@ const recordScriptUsage = async (req, res) => {
         });
     }
     catch (error) {
-        log.error('记录脚本使用失败:', error);
+        logger_1.default.error('记录脚本使用失败:', error);
         res.status(500).json({
             success: false,
             message: '记录使用失败'
@@ -499,7 +510,7 @@ const executeScript = async (req, res) => {
                 message: '服务器信息不完整'
             });
         }
-        log.info('开始执行脚本', {
+        logger_1.default.info('开始执行脚本', {
             userId,
             scriptId,
             scriptName,
@@ -508,7 +519,7 @@ const executeScript = async (req, res) => {
             host
         });
         // 获取连接配置信息
-        const db = getDb();
+        const db = database_1.default.getDb();
         const connectionStmt = db.prepare('SELECT * FROM connections WHERE host = ? AND username = ? AND user_id = ?');
         const connection = connectionStmt.get(host, username, userId);
         if (!connection) {
@@ -555,7 +566,7 @@ const executeScript = async (req, res) => {
         });
     }
     catch (error) {
-        log.error('执行脚本失败:', error);
+        logger_1.default.error('执行脚本失败:', error);
         res.status(500).json({
             success: false,
             message: `脚本执行失败: ${error.message}`
@@ -568,17 +579,17 @@ const executeScript = async (req, res) => {
 const getUserFavorites = async (req, res) => {
     try {
         const userId = req.user.id;
-        const db = getDb();
+        const db = database_1.default.getDb();
         // 获取用户收藏的脚本ID列表
         const favorites = db.prepare('SELECT script_id FROM user_script_favorites WHERE user_id = ?').all(userId);
-        const favoriteIds = favorites.map(fav => fav.script_id);
+        const favoriteIds = favorites.map((fav) => fav.script_id);
         res.json({
             success: true,
             favorites: favoriteIds
         });
     }
     catch (error) {
-        log.error('获取用户收藏脚本失败:', error);
+        logger_1.default.error('获取用户收藏脚本失败:', error);
         res.status(500).json({
             success: false,
             message: '获取收藏脚本失败',
@@ -599,7 +610,7 @@ const updateUserFavorites = async (req, res) => {
                 message: '收藏数据格式不正确，应为数组'
             });
         }
-        const db = getDb();
+        const db = database_1.default.getDb();
         // 开始事务
         db.prepare('BEGIN TRANSACTION').run();
         try {
@@ -625,7 +636,7 @@ const updateUserFavorites = async (req, res) => {
         }
     }
     catch (error) {
-        log.error('更新用户收藏脚本失败:', error);
+        logger_1.default.error('更新用户收藏脚本失败:', error);
         res.status(500).json({
             success: false,
             message: '更新收藏脚本失败',
@@ -646,7 +657,7 @@ const toggleScriptFavorite = async (req, res) => {
                 message: '脚本ID不能为空'
             });
         }
-        const db = getDb();
+        const db = database_1.default.getDb();
         // 检查是否已收藏
         const existing = db.prepare('SELECT 1 FROM user_script_favorites WHERE user_id = ? AND script_id = ?').get(userId, scriptId);
         if (existing) {
@@ -669,7 +680,7 @@ const toggleScriptFavorite = async (req, res) => {
         }
     }
     catch (error) {
-        log.error('切换脚本收藏状态失败:', error);
+        logger_1.default.error('切换脚本收藏状态失败:', error);
         res.status(500).json({
             success: false,
             message: '操作失败',
@@ -683,10 +694,13 @@ const toggleScriptFavorite = async (req, res) => {
 const getExecutionHistory = async (req, res) => {
     try {
         const userId = req.user.id;
-        const { connectionId, scriptId, page = 1, limit = 20 } = req.query;
-        const db = getDb();
-        const safeLimit = Math.min(parseInt(limit) || 20, 100);
-        const currentPage = Math.max(parseInt(page) || 1, 1);
+        const connectionId = req.query.connectionId ?? undefined;
+        const scriptId = req.query.scriptId ?? undefined;
+        const pageNum = Number(req.query.page ?? 1) || 1;
+        const limitNum = Number(req.query.limit ?? 20) || 20;
+        const db = database_1.default.getDb();
+        const safeLimit = Math.min(limitNum, 100);
+        const currentPage = Math.max(pageNum, 1);
         const offset = (currentPage - 1) * safeLimit;
         // 动态条件
         const whereClauses = ["user_id = ?"];
@@ -727,7 +741,7 @@ const getExecutionHistory = async (req, res) => {
         });
     }
     catch (error) {
-        log.error('获取脚本执行历史失败:', error);
+        logger_1.default.error('获取脚本执行历史失败:', error);
         res.status(500).json({
             success: false,
             message: '获取执行历史失败',
@@ -745,7 +759,7 @@ const getExecutionDetail = async (req, res) => {
         if (!id) {
             return res.status(400).json({ success: false, message: '无效的执行记录ID' });
         }
-        const db = getDb();
+        const db = database_1.default.getDb();
         const row = db.prepare(`
       SELECT id, user_id, script_id, script_name, command, connection_id, server_name,
              host, port, username, stdout, stderr, exit_code, executed_at
@@ -758,7 +772,7 @@ const getExecutionDetail = async (req, res) => {
         res.json({ success: true, execution: row });
     }
     catch (error) {
-        log.error('获取执行历史详情失败:', error);
+        logger_1.default.error('获取执行历史详情失败:', error);
         res.status(500).json({ success: false, message: '获取详情失败', error: error.message });
     }
 };

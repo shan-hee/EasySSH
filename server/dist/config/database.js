@@ -1,16 +1,18 @@
 "use strict";
-// Bridge stub for compiled dist to reach source JS implementation
-// @ts-nocheck
+// Bridge stub for compiled dist to reach source JS implementation (typed)
 /**
- * 数据库连接配置
- * 使用SQLite + node-cache实现存储和缓存
+ * 数据库连接配置 - SQLite + node-cache
  */
-const path = require('path');
-const fs = require('fs');
-const Database = require('better-sqlite3');
-const NodeCache = require('node-cache');
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+const node_path_1 = __importDefault(require("node:path"));
+const node_fs_1 = __importDefault(require("node:fs"));
+const better_sqlite3_1 = __importDefault(require("better-sqlite3"));
+const node_cache_1 = __importDefault(require("node-cache"));
 // 创建缓存实例
-const cache = new NodeCache({
+const cache = new node_cache_1.default({
     stdTTL: 3600, // 默认缓存1小时
     checkperiod: 600, // 每10分钟检查过期的条目
     useClones: false // 不使用对象克隆，提高性能
@@ -19,21 +21,21 @@ const cache = new NodeCache({
 let dbConnected = false;
 let db = null;
 // 数据库目录（无论开发/编译运行，统一指向 server/data）
-const maybeDist = path.resolve(__dirname, '..');
-const BASE_DIR = path.basename(maybeDist) === 'dist' ? path.resolve(maybeDist, '..') : maybeDist;
-const DB_DIR = path.join(BASE_DIR, 'data');
+const maybeDist = node_path_1.default.resolve(__dirname, '..');
+const BASE_DIR = node_path_1.default.basename(maybeDist) === 'dist' ? node_path_1.default.resolve(maybeDist, '..') : maybeDist;
+const DB_DIR = node_path_1.default.join(BASE_DIR, 'data');
 // 数据库文件路径
-const DB_PATH = path.join(DB_DIR, 'easyssh.sqlite');
+const DB_PATH = node_path_1.default.join(DB_DIR, 'easyssh.sqlite');
 // 确保数据目录存在
-if (!fs.existsSync(DB_DIR)) {
-    fs.mkdirSync(DB_DIR, { recursive: true });
+if (!node_fs_1.default.existsSync(DB_DIR)) {
+    node_fs_1.default.mkdirSync(DB_DIR, { recursive: true });
 }
 // 连接SQLite数据库
 const connectDatabase = () => {
     if (dbConnected && db)
         return db;
     try {
-        db = new Database(DB_PATH);
+        db = new better_sqlite3_1.default(DB_PATH);
         // 不使用WAL，改为直接写入主库（DELETE 日志模式）
         db.pragma("journal_mode = DELETE");
         dbConnected = true;
@@ -167,7 +169,8 @@ const connectDatabase = () => {
             }
         }
         catch (e) {
-            console.warn('默认脚本插入失败（不影响启动）:', e?.message || e);
+            const emsg = e?.message ?? String(e);
+            console.warn('默认脚本插入失败（不影响启动）:', emsg);
         }
         // 创建用户脚本收藏表
         db.exec(`
@@ -278,10 +281,6 @@ const getDatabaseStatus = () => ({
     sqlite: dbConnected ? 'connected' : 'disconnected',
     cache: 'connected' // 内存缓存始终连接
 });
-module.exports = {
-    connectDatabase,
-    closeDatabase,
-    getCache,
-    getDatabaseStatus,
-    getDb
-};
+const api = { connectDatabase, closeDatabase, getCache, getDatabaseStatus, getDb };
+module.exports = api;
+exports.default = api;

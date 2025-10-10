@@ -1,11 +1,14 @@
 "use strict";
-// @ts-nocheck
 /**
- * 用户脚本数据模型
+ * 用户脚本数据模型（TypeScript）
  * 处理用户自定义脚本的数据库操作
  */
-const { getDb } = require('../config/database');
-const log = require('../utils/logger');
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+const database_1 = __importDefault(require("../config/database"));
+const logger_1 = __importDefault(require("../utils/logger"));
 class UserScript {
     constructor(data = {}) {
         this.id = data.id || null;
@@ -24,7 +27,7 @@ class UserScript {
      * 保存用户脚本到数据库
      */
     async save() {
-        const db = getDb();
+        const db = database_1.default.getDb();
         const now = new Date().toISOString();
         try {
             if (this.id) {
@@ -37,7 +40,7 @@ class UserScript {
         `);
                 const result = stmt.run(this.name, this.description, this.command, JSON.stringify(this.tags), JSON.stringify(this.keywords), this.category, this.usageCount, now, this.id, this.userId);
                 this.updatedAt = now;
-                return result.changes > 0;
+                return (result?.changes || 0) > 0;
             }
             else {
                 // 创建新脚本
@@ -48,14 +51,14 @@ class UserScript {
           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `);
                 const result = stmt.run(this.userId, this.name, this.description, this.command, JSON.stringify(this.tags), JSON.stringify(this.keywords), this.category, this.usageCount, now, now);
-                this.id = result.lastInsertRowid;
+                this.id = Number(result.lastInsertRowid);
                 this.createdAt = now;
                 this.updatedAt = now;
                 return true;
             }
         }
         catch (error) {
-            log.error('保存用户脚本失败:', error);
+            logger_1.default.error('保存用户脚本失败:', error);
             throw error;
         }
     }
@@ -66,14 +69,14 @@ class UserScript {
         if (!this.id || !this.userId) {
             throw new Error('无法删除未保存的脚本');
         }
-        const db = getDb();
+        const db = database_1.default.getDb();
         try {
             const stmt = db.prepare('DELETE FROM user_scripts WHERE id = ? AND user_id = ?');
             const result = stmt.run(this.id, this.userId);
-            return result.changes > 0;
+            return (result?.changes || 0) > 0;
         }
         catch (error) {
-            log.error('删除用户脚本失败:', error);
+            logger_1.default.error('删除用户脚本失败:', error);
             throw error;
         }
     }
@@ -83,17 +86,17 @@ class UserScript {
     async incrementUsage() {
         if (!this.id)
             return false;
-        const db = getDb();
+        const db = database_1.default.getDb();
         try {
             const stmt = db.prepare('UPDATE user_scripts SET usage_count = usage_count + 1 WHERE id = ? AND user_id = ?');
             const result = stmt.run(this.id, this.userId);
-            if (result.changes > 0) {
+            if ((result?.changes || 0) > 0) {
                 this.usageCount += 1;
             }
-            return result.changes > 0;
+            return (result?.changes || 0) > 0;
         }
         catch (error) {
-            log.error('更新用户脚本使用次数失败:', error);
+            logger_1.default.error('更新用户脚本使用次数失败:', error);
             return false;
         }
     }
@@ -119,14 +122,14 @@ class UserScript {
      * 根据ID查找用户脚本
      */
     static async findById(id, userId) {
-        const db = getDb();
+        const db = database_1.default.getDb();
         try {
             const stmt = db.prepare('SELECT * FROM user_scripts WHERE id = ? AND user_id = ?');
             const row = stmt.get(id, userId);
             return row ? new UserScript(row) : null;
         }
         catch (error) {
-            log.error('查找用户脚本失败:', error);
+            logger_1.default.error('查找用户脚本失败:', error);
             throw error;
         }
     }
@@ -134,8 +137,8 @@ class UserScript {
      * 查找用户的所有脚本
      */
     static async findByUserId(userId, options = {}) {
-        const db = getDb();
-        const { limit = 100, offset = 0, category, search } = options;
+        const db = database_1.default.getDb();
+        const { limit = 100, offset = 0, category, search } = options || {};
         try {
             let sql = 'SELECT * FROM user_scripts WHERE user_id = ?';
             const params = [userId];
@@ -155,7 +158,7 @@ class UserScript {
             return rows.map(row => new UserScript(row));
         }
         catch (error) {
-            log.error('查找用户脚本失败:', error);
+            logger_1.default.error('查找用户脚本失败:', error);
             throw error;
         }
     }
@@ -163,14 +166,14 @@ class UserScript {
      * 获取用户脚本分类
      */
     static async getUserCategories(userId) {
-        const db = getDb();
+        const db = database_1.default.getDb();
         try {
             const stmt = db.prepare('SELECT DISTINCT category FROM user_scripts WHERE user_id = ? ORDER BY category');
             const rows = stmt.all(userId);
             return rows.map(row => row.category);
         }
         catch (error) {
-            log.error('获取用户脚本分类失败:', error);
+            logger_1.default.error('获取用户脚本分类失败:', error);
             throw error;
         }
     }
@@ -178,7 +181,7 @@ class UserScript {
      * 获取用户常用脚本
      */
     static async getUserPopular(userId, limit = 10) {
-        const db = getDb();
+        const db = database_1.default.getDb();
         try {
             const stmt = db.prepare(`
         SELECT * FROM user_scripts 
@@ -190,7 +193,7 @@ class UserScript {
             return rows.map(row => new UserScript(row));
         }
         catch (error) {
-            log.error('获取用户常用脚本失败:', error);
+            logger_1.default.error('获取用户常用脚本失败:', error);
             throw error;
         }
     }
@@ -198,8 +201,8 @@ class UserScript {
      * 搜索用户脚本
      */
     static async searchUserScripts(userId, query, options = {}) {
-        const db = getDb();
-        const { limit = 50, offset = 0 } = options;
+        const db = database_1.default.getDb();
+        const { limit = 50, offset = 0 } = options || {};
         try {
             const searchPattern = `%${query}%`;
             const stmt = db.prepare(`
@@ -225,7 +228,7 @@ class UserScript {
             return rows.map(row => new UserScript(row));
         }
         catch (error) {
-            log.error('搜索用户脚本失败:', error);
+            logger_1.default.error('搜索用户脚本失败:', error);
             throw error;
         }
     }
@@ -233,8 +236,8 @@ class UserScript {
      * 获取用户所有脚本（包括公开脚本和用户脚本）
      */
     static async getAllUserScripts(userId, options = {}) {
-        const db = getDb();
-        const { limit = 100, offset = 0, search } = options;
+        const db = database_1.default.getDb();
+        const { limit = 100, offset = 0, search } = options || {};
         try {
             let sql = `
         SELECT 
@@ -271,16 +274,17 @@ class UserScript {
             params.push(limit, offset);
             const stmt = db.prepare(sql);
             const rows = stmt.all(...params);
-            return rows.map(row => ({
+            return rows.map((row) => ({
                 ...row,
                 tags: row.tags ? JSON.parse(row.tags) : [],
                 keywords: row.keywords ? JSON.parse(row.keywords) : []
             }));
         }
         catch (error) {
-            log.error('获取用户所有脚本失败:', error);
+            logger_1.default.error('获取用户所有脚本失败:', error);
             throw error;
         }
     }
 }
 module.exports = UserScript;
+exports.default = UserScript;

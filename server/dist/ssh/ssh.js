@@ -1,9 +1,10 @@
 "use strict";
-// @ts-nocheck
+// 移除 ts-nocheck：逐步补充类型标注
 /**
  * SSH 模块
  * 用于处理SSH连接和WebSocket通信
  */
+Object.defineProperty(exports, "__esModule", { value: true });
 const ssh2 = require('ssh2');
 const WebSocket = require('ws');
 const crypto = require('crypto');
@@ -597,8 +598,8 @@ function cleanupSession(sessionId, reason = 'unknown') {
         });
     }
     if (session.ws) {
-        session.ws.sessionId = null;
-        session.ws.pendingSessionId = null;
+        session.ws.sessionId = undefined;
+        session.ws.pendingSessionId = undefined;
         session.ws = null;
     }
     sessions.delete(sessionId);
@@ -634,7 +635,7 @@ async function handleConnect(ws, data) {
                 pendingAbort = { reason, detail };
                 if (detail?.closeWebSocket && ws && ws.readyState === WebSocket.OPEN && ws.isClosed !== true) {
                     try {
-                        ws.close(detail.closeCode ?? 1000, detail.closeReason || '');
+                        ws.close((detail.closeCode ?? 1000), (detail.closeReason || ''));
                         ws.isClosed = true;
                     }
                     catch (error) {
@@ -680,7 +681,7 @@ async function handleConnect(ws, data) {
                     session.cleanupTimeout = null;
                 }
                 ws.sessionId = sessionId;
-                ws.pendingSessionId = null;
+                ws.pendingSessionId = undefined;
                 sendBinaryConnected(ws, {
                     sessionId,
                     connectionId: session.connectionInfo.connectionId,
@@ -742,7 +743,7 @@ async function handleConnect(ws, data) {
             };
             sessions.set(sessionId, session);
             ws.sessionId = sessionId;
-            ws.pendingSessionId = null;
+            ws.pendingSessionId = undefined;
             ensureNotCancelled('SSH连接请求已取消');
             conn.on('close', () => {
                 logger.info('SSH连接已断开', { sessionId });
@@ -819,7 +820,7 @@ async function handleConnect(ws, data) {
                 catch (error) {
                     logger.error('SSH连接成功但启动监控数据收集失败', {
                         sessionId,
-                        host: `${connectionInfo.username}@${connectionInfo.address}:${connectionInfo.port}`,
+                        host: `${connectionInfo.username}@${connectionInfo.host}:${connectionInfo.port}`,
                         error: error.message
                     });
                 }

@@ -1,16 +1,22 @@
-// @ts-nocheck
 /**
- * OpenAI兼容适配器
+ * OpenAI兼容适配器（TypeScript）
  * 处理与OpenAI兼容API的通信
  */
 
-const https = require('https');
-const http = require('http');
-const { URL } = require('url');
-const logger = require('../utils/logger');
+import https from 'node:https';
+import http from 'node:http';
+import { URL } from 'node:url';
+import logger from '../utils/logger';
 
 class OpenAIAdapter {
-  constructor(config) {
+  baseUrl: string;
+  apiKey: string;
+  model: string;
+  timeout: number;
+  defaultTemperature: number;
+  defaultMaxTokens: number;
+
+  constructor(config: any) {
     this.baseUrl = config.baseUrl || 'https://api.openai.com';
     this.apiKey = config.apiKey;
     this.model = config.model; // 移除默认值，要求用户必须提供
@@ -47,7 +53,7 @@ class OpenAIAdapter {
    * @param {AbortSignal} signal 取消信号
    * @returns {AsyncGenerator} 流式响应生成器
    */
-  async *streamChatCompletion(messages, options = {}, signal = null) {
+  async *streamChatCompletion(messages: any[], options: any = {}, signal: any = null): AsyncGenerator<any, any, any> {
     const url = `${this.baseUrl}/v1/chat/completions`;
 
     // 不允许外部选项覆盖后端配置的模型，确保使用后端存储的模型
@@ -74,7 +80,7 @@ class OpenAIAdapter {
     });
 
     try {
-      const response = await this._makeRequest(url, requestBody, signal);
+      const response: any = await this._makeRequest(url, requestBody, signal);
 
       if (!response.ok) {
         const errorText = await this._readStream(response);
@@ -100,7 +106,7 @@ class OpenAIAdapter {
    * @param {Object} testConfig 测试配置
    * @returns {Promise<Object>} 测试结果
    */
-  async testConnection(testConfig = null) {
+  async testConnection(testConfig: any = null): Promise<any> {
     const config = testConfig || {
       baseUrl: this.baseUrl,
       apiKey: this.apiKey,
@@ -135,7 +141,7 @@ class OpenAIAdapter {
 
 
     try {
-      const response = await this._makeSimpleRequest(url, requestBody, config.apiKey);
+      const response: any = await this._makeSimpleRequest(url, requestBody, config.apiKey);
 
       // 先检查HTTP状态码
       if (response.status === 200 || response.status === 201) {
@@ -252,7 +258,7 @@ class OpenAIAdapter {
    * @param {string} apiKey API密钥
    * @returns {Promise<Object>} 响应对象
    */
-  _makeSimpleRequest(url, body, apiKey) {
+  _makeSimpleRequest(url: string, body: any, apiKey: string) {
     return new Promise((resolve, reject) => {
       const parsedUrl = new URL(url);
       const isHttps = parsedUrl.protocol === 'https:';
@@ -274,10 +280,10 @@ class OpenAIAdapter {
         timeout: 10000  // 10秒超时，测试用
       };
 
-      const req = httpModule.request(options, (res) => {
+      const req = httpModule.request(options, (res: any) => {
         let data = '';
 
-        res.on('data', (chunk) => {
+        res.on('data', (chunk: any) => {
           data += chunk;
         });
 
@@ -311,7 +317,7 @@ class OpenAIAdapter {
    * @param {AbortSignal} signal 取消信号
    * @returns {Promise<Response>} 响应对象
    */
-  _makeRequest(url, body, signal) {
+  _makeRequest(url: string, body: any, signal: any) {
     return new Promise((resolve, reject) => {
       const parsedUrl = new URL(url);
       const isHttps = parsedUrl.protocol === 'https:';
@@ -333,7 +339,7 @@ class OpenAIAdapter {
         timeout: this.timeout
       };
 
-      const req = httpModule.request(options, (res) => {
+      const req = httpModule.request(options, (res: any) => {
         // 创建响应对象，模拟fetch API
         const response = {
           ok: res.statusCode >= 200 && res.statusCode < 300,
@@ -373,18 +379,19 @@ class OpenAIAdapter {
    * @param {AbortSignal} signal 取消信号
    * @returns {AsyncGenerator} 解析结果生成器
    */
-  async *_parseSSEStream(response, signal) {
+  async *_parseSSEStream(response: any, signal: any): AsyncGenerator<any, any, any> {
     let buffer = '';
     const totalTokens = { input: 0, output: 0 };
 
     try {
-      for await (const chunk of response.body) {
+      for await (const chunk of (response.body as AsyncIterable<unknown>)) {
         // 检查是否已取消
         if (signal && signal.aborted) {
           return;
         }
 
-        buffer += chunk.toString();
+        const c: any = chunk as any;
+        buffer += c.toString();
         const lines = buffer.split('\n');
         buffer = lines.pop() || ''; // 保留不完整的行
 
@@ -445,10 +452,11 @@ class OpenAIAdapter {
    * @param {Object} response 响应对象
    * @returns {Promise<string>} 流内容
    */
-  async _readStream(response) {
+  async _readStream(response: any) {
     let content = '';
-    for await (const chunk of response.body) {
-      content += chunk.toString();
+    for await (const chunk of (response.body as AsyncIterable<unknown>)) {
+      const c: any = chunk as any;
+      content += c.toString();
     }
     return content;
   }
@@ -458,7 +466,7 @@ class OpenAIAdapter {
    * @param {string} text 文本内容
    * @returns {number} 估算的token数量
    */
-  _estimateTokens(text) {
+  _estimateTokens(text: string) {
     // 简单的token估算：大约4个字符 = 1个token
     return Math.ceil(text.length / 4);
   }
@@ -470,7 +478,7 @@ class OpenAIAdapter {
    * @param {Object} input 用户输入
    * @returns {Array} 消息数组
    */
-  buildChatMessages(mode, context, input) {
+  buildChatMessages(mode: any, context: any, input: any) {
     const messages = [];
 
     // 系统提示词
@@ -492,10 +500,10 @@ class OpenAIAdapter {
    * @param {Object} context 上下文
    * @returns {string} 系统提示词
    */
-  _getSystemPrompt(mode, context) {
+  _getSystemPrompt(mode: any, context: any) {
     const basePrompt = 'You are an expert shell assistant embedded in a web terminal. Be concise and helpful. Never execute commands yourself; only suggest.';
 
-    const modePrompts = {
+    const modePrompts: any = {
       // 两种核心模式
       chat: `${basePrompt} You are in Chat mode - engage in natural conversation with the user about technical topics, shell commands, system administration, and programming. Be conversational, informative, and helpful. Answer questions thoroughly and provide examples when appropriate.`,
 
@@ -512,7 +520,7 @@ class OpenAIAdapter {
    * @param {Object} input 用户输入
    * @returns {string} 用户消息
    */
-  _buildUserMessage(mode, context, input) {
+  _buildUserMessage(mode: any, context: any, input: any) {
     const parts = [];
 
     // 添加系统信息
@@ -532,15 +540,15 @@ class OpenAIAdapter {
     }
 
     // 添加特定模式的指令
-    const modeInstructions = {
+    const modeInstructions: any = {
       // 两种核心模式
       chat: `User question: ${input.question || input.prompt || input.currentLine}`,
 
       agent: this._buildAgentInstruction(input, context)
     };
 
-    if (modeInstructions[mode]) {
-      parts.push(modeInstructions[mode]);
+    if ((modeInstructions as any)[mode]) {
+      parts.push((modeInstructions as any)[mode]);
     }
 
     return parts.join('\n\n');
@@ -552,7 +560,7 @@ class OpenAIAdapter {
    * @param {Object} context 上下文
    * @returns {string} Agent指令
    */
-  _buildAgentInstruction(input, context) {
+  _buildAgentInstruction(input: any, context: any) {
     const operationType = input.operationType || 'auto';
 
     if (operationType === 'auto') {
@@ -572,13 +580,13 @@ class OpenAIAdapter {
       return instruction;
     } else {
       // 指定操作类型
-      const typeInstructions = {
+      const typeInstructions: any = {
         explanation: 'Explain the terminal output and identify any issues.',
         fix: 'Analyze the error and provide specific commands to fix the problem.',
         generation: `Generate a shell script for: ${input.prompt || 'the requested task'}`
       };
 
-      return typeInstructions[operationType] || 'Provide assistance based on the terminal context.';
+      return (typeInstructions as any)[operationType] || 'Provide assistance based on the terminal context.';
     }
   }
 
@@ -587,7 +595,7 @@ class OpenAIAdapter {
    * @param {string} apiKey API密钥
    * @returns {string} 打码后的API密钥
    */
-  _maskApiKey(apiKey) {
+  _maskApiKey(apiKey: string) {
     if (!apiKey || typeof apiKey !== 'string') {
       return '[无效密钥]';
     }

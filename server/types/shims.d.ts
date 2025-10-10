@@ -14,3 +14,5 @@ declare module '../middleware/auth' {
   export const authMiddleware: RequestHandler;
 }
 
+declare module 'better-sqlite3';
+declare module 'ssh2';

@@ -1,10 +1,11 @@
-// @ts-nocheck
+// 移除 ts-nocheck：为二进制协议补充类型定义
 /**
  * 统一的二进制WebSocket协议
  * 用于SSH终端数据和SFTP文件传输的高性能二进制通信
  */
 
 const logger = require('../utils/logger');
+import type WebSocketType from 'ws';
 
 // 协议魔数 "ESSH" - 0x45535348
 const PROTOCOL_MAGIC = 0x45535348;
@@ -73,7 +74,11 @@ class BinaryMessageEncoder {
    * @param {Buffer|ArrayBuffer|null} payloadData - 载荷数据
    * @returns {Buffer} - 编码后的消息
    */
-  static encode(messageType, headerData, payloadData = null) {
+  static encode(
+    messageType: number,
+    headerData: any,
+    payloadData: Buffer | ArrayBuffer | null = null
+  ): Buffer {
     try {
       // 序列化头部数据为JSON字符串
       const headerString = JSON.stringify(headerData);
@@ -81,7 +86,11 @@ class BinaryMessageEncoder {
       const headerLength = headerBuffer.length;
 
       // 计算总长度
-      const payloadLength = payloadData ? Buffer.byteLength(payloadData) : 0;
+      const payloadLength = payloadData
+        ? (Buffer.isBuffer(payloadData)
+          ? payloadData.length
+          : Buffer.from(payloadData as ArrayBuffer).length)
+        : 0;
       const totalLength = 10 + headerLength + payloadLength; // 10 = 4+1+1+4
 
       // 创建消息缓冲区
@@ -112,7 +121,7 @@ class BinaryMessageEncoder {
       if (payloadData) {
         const payloadBuffer = Buffer.isBuffer(payloadData)
           ? payloadData
-          : Buffer.from(payloadData);
+          : Buffer.from(payloadData as ArrayBuffer);
         payloadBuffer.copy(messageBuffer, offset);
       }
 
@@ -133,12 +142,17 @@ class BinaryMessageDecoder {
    * @param {Buffer|ArrayBuffer} messageBuffer - 消息缓冲区
    * @returns {Object} - 解码后的消息 {version, messageType, headerData, payloadData}
    */
-  static decode(messageBuffer) {
+  static decode(messageBuffer: Buffer | ArrayBuffer): {
+    version: number;
+    messageType: number;
+    headerData: any;
+    payloadData: Buffer | null;
+  } {
     try {
       // 确保是Buffer类型
       const buffer = Buffer.isBuffer(messageBuffer)
         ? messageBuffer
-        : Buffer.from(messageBuffer);
+        : Buffer.from(messageBuffer as ArrayBuffer);
 
       if (buffer.length < 10) {
         throw new Error('消息长度不足');
@@ -191,13 +205,26 @@ class BinaryMessageDecoder {
         payloadData
       };
     } catch (error) {
-      // 增强错误日志，提供更多调试信息
+      // 增强错误日志，提供更多调试信息（容错处理）
+      let bufferLength = 0;
+      let bufferPreview = '';
+      try {
+        const buf = Buffer.isBuffer(messageBuffer)
+          ? (messageBuffer as Buffer)
+          : Buffer.from(messageBuffer as ArrayBuffer);
+        bufferLength = buf.length;
+        bufferPreview = Array.from(buf.slice(0, Math.min(16, buf.length)))
+          .map(b => `0x${b.toString(16).padStart(2, '0')}`)
+          .join(' ');
+      } catch {
+        // ignore secondary errors
+      }
       logger.error('二进制消息解码失败:', {
-        error: error.message,
-        bufferLength: buffer.length,
-        bufferPreview: Array.from(buffer.slice(0, Math.min(16, buffer.length))).map(b => `0x${b.toString(16).padStart(2, '0')}`).join(' ')
+        error: (error as Error).message,
+        bufferLength,
+        bufferPreview
       });
-      throw new Error(`消息解码失败: ${error.message}`);
+      throw new Error(`消息解码失败: ${(error as Error).message}`);
     }
   }
 }
@@ -213,7 +240,12 @@ class BinaryMessageSender {
    * @param {Object} headerData - 头部数据
    * @param {Buffer|ArrayBuffer|null} payloadData - 载荷数据
    */
-  static send(ws, messageType, headerData, payloadData = null) {
+  static send(
+    ws: WebSocketType,
+    messageType: number,
+    headerData: any,
+    payloadData: Buffer | ArrayBuffer | null = null
+  ): void {
     if (!ws || ws.readyState !== 1) { // WebSocket.OPEN
       throw new Error('WebSocket连接未就绪');
     }
@@ -223,8 +255,8 @@ class BinaryMessageSender {
       ws.send(messageBuffer, { binary: true });
 
       // 记录传输统计
-      if (global.metricsCollector) {
-        global.metricsCollector.recordDataTransfer('outbound', 'binary', messageBuffer.length);
+      if ((global as any).metricsCollector) {
+        (global as any).metricsCollector.recordDataTransfer('outbound', 'binary', messageBuffer.length);
       }
 
       // logger.debug('二进制消息已发送', {
@@ -244,7 +276,7 @@ class BinaryMessageSender {
    * @param {string} sessionId - 会话ID
    * @param {Buffer} data - 终端数据
    */
-  static sendSSHData(ws, sessionId, data) {
+  static sendSSHData(ws: WebSocketType, sessionId: string, data: Buffer): void {
     const headerData = {
       sessionId,
       timestamp: Date.now(),
@@ -261,7 +293,7 @@ class BinaryMessageSender {
    * @param {number} cols - 列数
    * @param {number} rows - 行数
    */
-  static sendSSHResize(ws, sessionId, cols, rows) {
+  static sendSSHResize(ws: WebSocketType, sessionId: string, cols: number, rows: number): void {
     const headerData = {
       sessionId,
       cols,
@@ -280,7 +312,13 @@ class BinaryMessageSender {
    * @param {Object} data - 附加数据
    * @param {Buffer|null} payloadData - 文件数据
    */
-  static sendSftpSuccess(ws, sessionId, operationId, data = {}, payloadData = null) {
+  static sendSftpSuccess(
+    ws: WebSocketType,
+    sessionId: string,
+    operationId: string,
+    data: any = {},
+    payloadData: Buffer | null = null
+  ): void {
     const headerData = {
       sessionId,
       operationId,
@@ -299,7 +337,13 @@ class BinaryMessageSender {
    * @param {string} message - 错误消息
    * @param {string} errorCode - 错误代码
    */
-  static sendSftpError(ws, sessionId, operationId, message, errorCode = 'UNKNOWN_ERROR') {
+  static sendSftpError(
+    ws: WebSocketType,
+    sessionId: string,
+    operationId: string,
+    message: string,
+    errorCode = 'UNKNOWN_ERROR'
+  ): void {
     const headerData = {
       sessionId,
       operationId,
@@ -320,7 +364,14 @@ class BinaryMessageSender {
    * @param {number} bytesTransferred - 已传输字节数
    * @param {number} totalBytes - 总字节数
    */
-  static sendProgress(ws, sessionId, operationId, progress, bytesTransferred, totalBytes) {
+  static sendProgress(
+    ws: WebSocketType,
+    sessionId: string,
+    operationId: string,
+    progress: number,
+    bytesTransferred: number,
+    totalBytes: number
+  ): void {
     const headerData = {
       sessionId,
       operationId,
@@ -330,7 +381,7 @@ class BinaryMessageSender {
       timestamp: Date.now()
     };
 
-    this.send(ws, BINARY_MSG_TYPE.PROGRESS, headerData);
+    this.send(ws, BINARY_MSG_TYPE.SFTP_PROGRESS, headerData);
   }
 }
 
@@ -342,7 +393,12 @@ class BinaryMessageSender {
  * @param {string} operationId - 操作ID
  * @returns {boolean} - 验证结果
  */
-function validateSession(ws, sessionId, sessions, operationId = null) {
+function validateSession(
+  ws: WebSocketType,
+  sessionId: string,
+  sessions: Map<string, any>,
+  operationId: string | null = null
+): boolean {
   if (!sessionId) {
     const errorMsg = '会话ID为空';
     logger.error(errorMsg, { operationId });
@@ -377,7 +433,14 @@ function validateSession(ws, sessionId, sessions, operationId = null) {
  * @param {string} operationId - 操作ID
  * @param {boolean} enableMetrics - 是否启用指标
  */
-async function safeExec(fn, ws, errorContext, sessionId, operationId, enableMetrics = true) {
+async function safeExec(
+  fn: () => Promise<void>,
+  ws: WebSocketType,
+  errorContext: string,
+  sessionId: string,
+  operationId: string,
+  enableMetrics = true
+): Promise<void> {
   const startTime = enableMetrics ? Date.now() : 0;
 
   try {

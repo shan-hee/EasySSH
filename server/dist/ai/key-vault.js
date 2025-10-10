@@ -1,23 +1,29 @@
 "use strict";
-// @ts-nocheck
 /**
- * 密钥管理器
+ * 密钥管理器（TypeScript）
  * 负责安全存储和管理用户的AI API密钥
  */
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+// 使用 require 保持对加密 API 的宽松类型，避免算法兼容性噪音
+// eslint-disable-next-line @typescript-eslint/no-var-requires
 const crypto = require('crypto');
-const { getCache, getDb } = require('../config/database');
-const logger = require('../utils/logger');
+const database_1 = __importDefault(require("../config/database"));
+const logger_1 = __importDefault(require("../utils/logger"));
+// eslint-disable-next-line @typescript-eslint/no-var-requires
 const OpenAIAdapter = require('./openai-adapter');
 class KeyVault {
     constructor() {
-        this.cache = getCache();
+        this.cache = database_1.default.getCache();
         this.algorithm = 'aes-256-gcm';
         this.keyLength = 32;
         this.ivLength = 16;
         this.tagLength = 16;
         // 获取加密密钥
         this.encryptionKey = this._getEncryptionKey();
-        logger.debug('密钥管理器已初始化');
+        logger_1.default.debug('密钥管理器已初始化');
     }
     /**
      * 存储用户的API配置
@@ -49,17 +55,17 @@ class KeyVault {
             if (options.sessionOnly) {
                 // 仅会话级存储，不加密
                 this.cache.set(storageKey, secureConfig, 3600); // 1小时过期
-                logger.info('API配置已存储（会话级）', { userId, provider: config.provider });
+                logger_1.default.info('API配置已存储（会话级）', { userId, provider: config.provider });
             }
             else {
                 // 加密后持久化存储
                 const encrypted = this._encryptConfig(secureConfig);
                 this.cache.set(storageKey, encrypted, 0); // 永不过期
-                logger.info('API配置已存储（持久化）', { userId, provider: config.provider });
+                logger_1.default.info('API配置已存储（持久化）', { userId, provider: config.provider });
             }
         }
         catch (error) {
-            logger.error('存储API配置失败', { userId, error: error.message });
+            logger_1.default.error('存储API配置失败', { userId, error: error.message });
             throw new Error(`存储API配置失败: ${error.message}`);
         }
     }
@@ -75,7 +81,7 @@ class KeyVault {
             if (!stored) {
                 // 尝试从持久化设置中回退读取（user_settings.ai-config）
                 try {
-                    const db = getDb();
+                    const db = database_1.default.getDb();
                     const row = db
                         .prepare(`SELECT settings_data FROM user_settings WHERE user_id = ? AND category = 'ai-config'`)
                         .get(userId);
@@ -96,42 +102,42 @@ class KeyVault {
                             if (this._validateApiConfig(normalized)) {
                                 // 回写到缓存，提升后续读取性能
                                 this.cache.set(storageKey, normalized, 3600);
-                                logger.info('已从持久化设置回退加载AI配置', {
+                                logger_1.default.info('已从持久化设置回退加载AI配置', {
                                     userId,
                                     provider: normalized.provider
                                 });
                                 return normalized;
                             }
                             else {
-                                logger.warn('持久化AI配置格式无效，忽略', { userId });
+                                logger_1.default.warn('持久化AI配置格式无效，忽略', { userId });
                             }
                         }
                         catch (e) {
-                            logger.warn('解析持久化AI配置失败', { userId, error: e.message });
+                            logger_1.default.warn('解析持久化AI配置失败', { userId, error: e.message });
                         }
                     }
                 }
                 catch (e) {
-                    logger.warn('回退读取持久化AI配置失败', { userId, error: e.message });
+                    logger_1.default.warn('回退读取持久化AI配置失败', { userId, error: e.message });
                 }
-                logger.debug('未找到API配置', { userId });
+                logger_1.default.debug('未找到API配置', { userId });
                 return null;
             }
             // 判断是否为加密数据
             if (this._isEncryptedData(stored)) {
                 // 解密持久化数据
                 const decrypted = this._decryptConfig(stored);
-                logger.debug('API配置已解密', { userId, provider: decrypted.provider });
+                logger_1.default.debug('API配置已解密', { userId, provider: decrypted.provider });
                 return decrypted;
             }
             else {
                 // 未加密的会话级数据
-                logger.debug('获取会话级API配置', { userId, provider: stored.provider });
+                logger_1.default.debug('获取会话级API配置', { userId, provider: stored.provider });
                 return stored;
             }
         }
         catch (error) {
-            logger.error('获取API配置失败', { userId, error: error.message });
+            logger_1.default.error('获取API配置失败', { userId, error: error.message });
             return null;
         }
     }
@@ -143,10 +149,10 @@ class KeyVault {
         try {
             const storageKey = this._generateStorageKey(userId, 'api_config');
             this.cache.del(storageKey);
-            logger.info('API配置已删除', { userId });
+            logger_1.default.info('API配置已删除', { userId });
         }
         catch (error) {
-            logger.error('删除API配置失败', { userId, error: error.message });
+            logger_1.default.error('删除API配置失败', { userId, error: error.message });
             throw new Error(`删除API配置失败: ${error.message}`);
         }
     }
@@ -157,7 +163,7 @@ class KeyVault {
      */
     async testApiConfig(config) {
         try {
-            logger.debug('开始测试API配置', {
+            logger_1.default.debug('开始测试API配置', {
                 provider: config.provider,
                 baseUrl: config.baseUrl,
                 model: config.model
@@ -174,13 +180,13 @@ class KeyVault {
             const adapter = new OpenAIAdapter(config);
             const result = await adapter.testConnection();
             if (result.valid) {
-                logger.info('API配置测试成功', {
+                logger_1.default.info('API配置测试成功', {
                     provider: config.provider,
                     model: config.model
                 });
             }
             else {
-                logger.warn('API配置测试失败', {
+                logger_1.default.warn('API配置测试失败', {
                     provider: config.provider,
                     error: result.error
                 });
@@ -188,7 +194,7 @@ class KeyVault {
             return result;
         }
         catch (error) {
-            logger.error('API配置测试异常', { error: error.message });
+            logger_1.default.error('API配置测试异常', { error: error.message });
             return {
                 valid: false,
                 error: error.message,
@@ -214,7 +220,7 @@ class KeyVault {
             return stats;
         }
         catch (error) {
-            logger.error('获取使用统计失败', { userId, error: error.message });
+            logger_1.default.error('获取使用统计失败', { userId, error: error.message });
             return null;
         }
     }
@@ -248,14 +254,14 @@ class KeyVault {
             stats.dailyStats[today].cost += usage.cost || 0;
             // 保存更新后的统计数据
             this.cache.set(statsKey, stats, 86400 * 30); // 30天过期
-            logger.debug('使用统计已更新', {
+            logger_1.default.debug('使用统计已更新', {
                 userId,
                 totalRequests: stats.totalRequests,
                 todayRequests: stats.dailyStats[today].requests
             });
         }
         catch (error) {
-            logger.error('更新使用统计失败', { userId, error: error.message });
+            logger_1.default.error('更新使用统计失败', { userId, error: error.message });
         }
     }
     /**
@@ -312,7 +318,7 @@ class KeyVault {
             return `encrypted:${iv.toString('hex')}:${tag.toString('hex')}:${encrypted}`;
         }
         catch (error) {
-            logger.error('配置加密失败', { error: error.message });
+            logger_1.default.error('配置加密失败', { error: error.message });
             throw new Error('配置加密失败');
         }
     }
@@ -337,7 +343,7 @@ class KeyVault {
             return JSON.parse(decrypted);
         }
         catch (error) {
-            logger.error('配置解密失败', { error: error.message });
+            logger_1.default.error('配置解密失败', { error: error.message });
             throw new Error('配置解密失败');
         }
     }
@@ -359,11 +365,11 @@ class KeyVault {
         const isProd = process.env.NODE_ENV === 'production';
         if (keySource === 'easyssh-ai-default-key-change-in-production') {
             if (isProd) {
-                logger.warn('使用默认加密密钥，生产环境请设置AI_ENCRYPTION_KEY环境变量');
+                logger_1.default.warn('使用默认加密密钥，生产环境请设置AI_ENCRYPTION_KEY环境变量');
             }
             else {
                 // 开发/测试环境降低告警级别，避免噪音
-                logger.info('使用默认AI加密密钥（开发/测试模式）', { NODE_ENV: process.env.NODE_ENV || 'development' });
+                logger_1.default.info('使用默认AI加密密钥（开发/测试模式）', { NODE_ENV: process.env.NODE_ENV || 'development' });
             }
         }
         return crypto.scryptSync(keySource, 'easyssh-salt', this.keyLength);
@@ -378,10 +384,10 @@ class KeyVault {
             cutoffDate.setDate(cutoffDate.getDate() - 30);
             const cutoffDateStr = cutoffDate.toISOString().split('T')[0];
             // 这里可以添加清理逻辑
-            logger.debug('清理过期数据完成', { cutoffDate: cutoffDateStr });
+            logger_1.default.debug('清理过期数据完成', { cutoffDate: cutoffDateStr });
         }
         catch (error) {
-            logger.error('清理过期数据失败', { error: error.message });
+            logger_1.default.error('清理过期数据失败', { error: error.message });
         }
     }
 }

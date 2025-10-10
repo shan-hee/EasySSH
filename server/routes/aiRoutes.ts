@@ -1,12 +1,24 @@
 // Bridge stub for compiled dist to reach source JS implementation
-// @ts-nocheck
-const express = require('express');
-const router = express.Router();
-const logger = require('../utils/logger');
-const { authMiddleware } = require('../middleware/auth');
-const OpenAIAdapter = require('../ai/openai-adapter');
+import express, { type Request, type Response } from 'express';
+import logger from '../utils/logger';
+import { authMiddleware } from '../middleware/auth';
 
-router.post('/test-connection', authMiddleware, async (req, res) => {
+// 以最小化类型定义引入 OpenAIAdapter，后续会对其进行完整类型化
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const OpenAIAdapter = require('../ai/openai-adapter') as unknown as {
+  new (config: { baseUrl: string; apiKey: string; model: string; timeout?: number }): {
+    testConnection: () => Promise<{
+      success?: boolean;
+      valid?: boolean;
+      message?: string;
+      data?: { model?: string } | null;
+    }>;
+  };
+};
+
+const router = express.Router();
+
+router.post('/test-connection', authMiddleware, async (req: Request, res: Response) => {
   try {
     const { baseUrl, apiKey, model } = req.body;
     if (!baseUrl || !apiKey || !model) {
@@ -14,9 +26,9 @@ router.post('/test-connection', authMiddleware, async (req, res) => {
     }
     const adapter = new OpenAIAdapter({ baseUrl: baseUrl.replace(/\/$/, ''), apiKey, model });
     const result = await adapter.testConnection();
-    let responseData;
+    let responseData: { success: boolean; valid?: boolean; message: string; data: any };
     if (result && typeof result === 'object' && 'success' in result) {
-      responseData = { success: result.success, valid: result.valid, message: result.message, data: result.data || null };
+      responseData = { success: !!(result as any).success, valid: (result as any).valid, message: (result as any).message ?? '', data: (result as any).data || null };
     } else if (result && typeof result === 'object' && 'model' in result) {
       responseData = { success: true, valid: true, message: 'API连接测试成功', data: result };
     } else {
@@ -29,12 +41,13 @@ router.post('/test-connection', authMiddleware, async (req, res) => {
     }
     res.json(responseData);
   } catch (error) {
-    logger.error('API连接测试异常', { userId: req.user?.id || 'anonymous', error: error.message, stack: error.stack });
-    res.status(500).json({ success: false, message: `测试失败: ${error.message}` });
+    const err = error as Error & { stack?: string };
+    logger.error('API连接测试异常', { userId: req.user?.id || 'anonymous', error: err.message, stack: err.stack });
+    res.status(500).json({ success: false, message: `测试失败: ${err.message}` });
   }
 });
 
-router.get('/status', authMiddleware, async (_req, res) => {
+router.get('/status', authMiddleware, async (_req: Request, res: Response) => {
   try {
     res.json({ success: true, data: { available: true, supportedModels: ['gpt-4o-mini','gpt-4o','gpt-4-turbo','gpt-3.5-turbo'], features: ['completion','explanation','fix','generation'] } });
   } catch (error) {
@@ -43,4 +56,4 @@ router.get('/status', authMiddleware, async (_req, res) => {
   }
 });
 
-module.exports = router;
+export default router;

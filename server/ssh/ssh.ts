@@ -1,4 +1,4 @@
-// @ts-nocheck
+// 移除 ts-nocheck：逐步补充类型标注
 /**
  * SSH 模块
  * 用于处理SSH连接和WebSocket通信
@@ -6,6 +6,7 @@
 
 const ssh2 = require('ssh2');
 const WebSocket = require('ws');
+import type WebSocketType from 'ws';
 const crypto = require('crypto');
 const os = require('os');
 const net = require('net');
@@ -33,7 +34,7 @@ const sessionLifecycle = require('../services/sessionLifecycleService');
 // 存储活动的SSH连接
 const sessions = new Map();
 
-function toAbortError(reason, fallback = '操作已取消') {
+function toAbortError(reason: unknown, fallback = '操作已取消') {
   if (reason instanceof Error) {
     if (reason.name !== 'AbortError') {
       reason.name = 'AbortError';
@@ -42,20 +43,20 @@ function toAbortError(reason, fallback = '操作已取消') {
   }
 
   const message = typeof reason === 'string' && reason.trim() ? reason : fallback;
-  const error = new Error(message);
+  const error: any = new Error(message);
   error.name = 'AbortError';
   error.reason = reason;
   error.code = 'ABORT_ERR';
-  return error;
+  return error as Error;
 }
 
-function throwIfAborted(signal, fallbackMessage = '操作已取消') {
+function throwIfAborted(signal: any, fallbackMessage = '操作已取消') {
   if (signal?.aborted) {
     throw toAbortError(signal.reason, fallbackMessage);
   }
 }
 
-function notifyClientOnAbort(session, reason, detail = {}) {
+function notifyClientOnAbort(session: any, reason: any, detail: any = {}) {
   if (!session || !session.ws) {
     return;
   }
@@ -65,10 +66,10 @@ function notifyClientOnAbort(session, reason, detail = {}) {
     return;
   }
 
-  if (detail.notifyClient === false) {
+  if ((detail as any).notifyClient === false) {
     if (detail.closeWebSocket) {
-      try {
-        ws.close(detail.closeCode || 1000);
+    try {
+      ws.close((detail as any).closeCode || 1000);
       } catch (error) {
         logger.debug('关闭WebSocket失败', {
           sessionId: session.id,
@@ -81,17 +82,17 @@ function notifyClientOnAbort(session, reason, detail = {}) {
   }
 
   try {
-    const notification = detail.notification;
+    const notification = (detail as any).notification;
 
-    if (notification?.kind === 'error') {
+    if ((notification as any)?.kind === 'error') {
       sendError(ws, notification.message || String(reason || '发生未知错误'), session.id);
-    } else if (notification?.kind === 'message') {
+    } else if ((notification as any)?.kind === 'message') {
       const payload = {
         sessionId: session.id,
         reason,
-        ...(notification.data || {})
+        ...((notification as any).data || {})
       };
-      const type = notification.type || MSG_TYPE.DISCONNECTED;
+      const type = (notification as any).type || MSG_TYPE.DISCONNECTED;
       sendMessage(ws, type, payload);
     } else {
       sendMessage(ws, MSG_TYPE.DISCONNECTED, {
@@ -107,9 +108,9 @@ function notifyClientOnAbort(session, reason, detail = {}) {
     });
   }
 
-  if (detail.closeWebSocket) {
+  if ((detail as any).closeWebSocket) {
     try {
-      ws.close(detail.closeCode || 1000);
+      ws.close((detail as any).closeCode || 1000);
     } catch (error) {
       logger.debug('关闭WebSocket失败', {
         sessionId: session.id,
@@ -124,7 +125,7 @@ function notifyClientOnAbort(session, reason, detail = {}) {
  * 生成唯一的会话ID
  * @returns {string} 会话ID
  */
-function generateSessionId() {
+function generateSessionId(): string {
   return crypto.randomBytes(16).toString('hex');
 }
 
@@ -133,7 +134,7 @@ function generateSessionId() {
  * @param {Object} config SSH连接配置
  * @returns {Promise<Object>} SSH连接对象
  */
-function createSSHConnection(config, options = {}) {
+function createSSHConnection(config: any, options: any = {}): Promise<any> {
   const { signal } = options;
 
   return new Promise((resolve, reject) => {
@@ -179,7 +180,7 @@ function createSSHConnection(config, options = {}) {
       }
     };
 
-    let abortListener = null;
+    let abortListener: (() => void) | null = null;
     if (signal) {
       if (signal.aborted) {
         handleAbort();
@@ -204,7 +205,7 @@ function createSSHConnection(config, options = {}) {
       resolve(conn);
     });
 
-    conn.on('error', (err) => {
+    conn.on('error', (err: any) => {
       if (completed) {
         return;
       }
@@ -239,14 +240,14 @@ function createSSHConnection(config, options = {}) {
       });
 
       // 创建增强的错误对象
-      const enhancedError = new Error(userMessage);
+      const enhancedError: any = new Error(userMessage);
       enhancedError.type = errorType;
       enhancedError.originalError = err;
 
-      reject(enhancedError);
+      reject(enhancedError as Error);
     });
 
-    const sshConfig = {
+    const sshConfig: any = {
       host: config.address,
       port: config.port || 22,
       username: config.username,
@@ -305,7 +306,7 @@ function createSSHConnection(config, options = {}) {
  * @param {number} port 目标端口
  * @returns {Promise<{method: string, latency: number}>}
  */
-async function smartLatencyMeasurement(host, port = 22) {
+async function smartLatencyMeasurement(host: string, port = 22): Promise<any> {
   // 优先级策略：
   // 1. 尝试系统ping（如果可用且有权限）
   // 2. 降级到TCP连接测试
@@ -332,12 +333,12 @@ async function smartLatencyMeasurement(host, port = 22) {
  * 检查ping命令可用性
  * @returns {Promise<boolean>}
  */
-function checkPingAvailability() {
+function checkPingAvailability(): Promise<boolean> {
   return new Promise((resolve) => {
     const isWindows = os.platform() === 'win32';
     const testCmd = isWindows ? 'ping -n 1 127.0.0.1' : 'ping -c 1 127.0.0.1';
 
-    exec(testCmd, { timeout: 2000 }, (error) => {
+    exec(testCmd, { timeout: 2000 }, (error: any) => {
       resolve(!error);
     });
   });
@@ -348,13 +349,13 @@ function checkPingAvailability() {
  * @param {string} host 目标主机IP
  * @returns {Promise<{method: string, latency: number}>}
  */
-function measureWithSystemPing(host) {
+function measureWithSystemPing(host: string): Promise<any> {
   return new Promise((resolve) => {
     const isWindows = os.platform() === 'win32';
     const pingCmd = isWindows ? `ping -n 1 ${host}` : `ping -c 1 ${host}`;
 
 
-    exec(pingCmd, { timeout: 5000 }, (error, stdout, stderr) => {
+    exec(pingCmd, { timeout: 5000 }, (error: any, stdout: string, stderr: string) => {
       if (error) {
         logger.debug(`ping失败: ${host}`, { error: error.message });
         resolve({ method: 'ping_failed', latency: 0 });
@@ -380,7 +381,7 @@ function measureWithSystemPing(host) {
  * @param {number} port 目标端口
  * @returns {Promise<{method: string, latency: number}>}
  */
-function measureWithTCP(host, port = 22) {
+function measureWithTCP(host: string, port = 22): Promise<any> {
   return new Promise((resolve) => {
     const startTime = Date.now();
     const socket = new net.Socket();
@@ -416,7 +417,7 @@ function measureWithTCP(host, port = 22) {
  * @param {string} stdout ping命令输出
  * @returns {number} 延迟时间（毫秒）
  */
-function parsePingOutput(stdout) {
+function parsePingOutput(stdout: string): number {
   if (!stdout) return 0;
 
   const patterns = [
@@ -458,7 +459,7 @@ function parsePingOutput(stdout) {
  * @param {string} sessionId 会话ID
  * @param {string} requestId ping请求ID
  */
-async function measureLatencyWithParallelPing(clientIP, sshHost, ws, sessionId, requestId) {
+async function measureLatencyWithParallelPing(clientIP: string, sshHost: string, ws: WebSocketType, sessionId: string, requestId: string): Promise<void> {
   try {
 
     // 验证输入参数
@@ -521,7 +522,7 @@ async function measureLatencyWithParallelPing(clientIP, sshHost, ws, sessionId, 
  * @param {Object} wsOrRequest WebSocket对象或HTTP请求对象
  * @returns {string} 客户端IP地址
  */
-function getClientIP(wsOrRequest) {
+function getClientIP(wsOrRequest: any): string | null {
   try {
     // 处理WebSocket对象
     if (wsOrRequest._socket) {
@@ -588,7 +589,7 @@ function getClientIP(wsOrRequest) {
  * @param {number} webSocketLatency WebSocket延迟（前端到EasySSH）
  * @param {number} serverLatency 服务器延迟（EasySSH到服务器）
  */
-function sendCombinedLatencyResult(ws, sessionId, webSocketLatency, serverLatency) {
+function sendCombinedLatencyResult(ws: WebSocketType, sessionId: string, webSocketLatency: number, serverLatency: number): void {
   // 计算总延迟
   const totalLatency = Math.round((webSocketLatency || 0) + (serverLatency || 0));
 
@@ -615,7 +616,7 @@ function sendCombinedLatencyResult(ws, sessionId, webSocketLatency, serverLatenc
  * 清理SSH会话
  * @param {string} sessionId 会话ID
  */
-function cleanupSession(sessionId, reason = 'unknown') {
+function cleanupSession(sessionId: string, reason = 'unknown'): void {
   if (!sessions.has(sessionId)) {
     sessionLifecycle.finalize(sessionId);
     return;
@@ -671,8 +672,8 @@ function cleanupSession(sessionId, reason = 'unknown') {
   }
 
   if (session.ws) {
-    session.ws.sessionId = null;
-    session.ws.pendingSessionId = null;
+    (session.ws as any).sessionId = undefined;
+    (session.ws as any).pendingSessionId = undefined;
     session.ws = null;
   }
 
@@ -687,12 +688,12 @@ function cleanupSession(sessionId, reason = 'unknown') {
  * @param {WebSocket} ws WebSocket连接
  * @param {Object} data 连接数据
  */
-async function handleConnect(ws, data) {
+async function handleConnect(ws: WebSocketType, data: any): Promise<string | null> {
   return await safeExec(async () => {
     const sessionId = data.sessionId || generateSessionId();
     const connectionId = data.connectionId || sessionId;
 
-    ws.pendingSessionId = sessionId;
+    (ws as any).pendingSessionId = sessionId as any;
 
     const lifecycleContext = sessionLifecycle.register(sessionId, {
       connectionId,
@@ -707,16 +708,16 @@ async function handleConnect(ws, data) {
 
     const { signal } = lifecycleContext;
     const isReconnect = sessions.has(sessionId);
-    let pendingAbort = null;
+    let pendingAbort: any = null;
 
-    const abortHandler = (reason, detail) => {
+    const abortHandler = (reason: any, detail: any) => {
       const session = sessions.get(sessionId);
       if (!session) {
         pendingAbort = { reason, detail };
-        if (detail?.closeWebSocket && ws && ws.readyState === WebSocket.OPEN && ws.isClosed !== true) {
+        if ((detail as any)?.closeWebSocket && ws && ws.readyState === WebSocket.OPEN && (ws as any).isClosed !== true) {
           try {
-            ws.close(detail.closeCode ?? 1000, detail.closeReason || '');
-            ws.isClosed = true;
+    ws.close(((detail as any).closeCode ?? 1000) as number, ((detail as any).closeReason || '') as any);
+            (ws as any).isClosed = true;
           } catch (error) {
             logger.debug('Abort阶段关闭WebSocket失败', {
               sessionId,
@@ -735,7 +736,7 @@ async function handleConnect(ws, data) {
       sessionLifecycle.addAbortHandler(sessionId, abortHandler, { runIfAborted: true });
     }
 
-    const ensureNotCancelled = (message) => {
+    const ensureNotCancelled = (message: any) => {
       if (signal?.aborted) {
         pendingAbort = pendingAbort || { reason: signal.reason };
       }
@@ -747,8 +748,8 @@ async function handleConnect(ws, data) {
       throwIfAborted(signal, message);
     };
 
-    const ensureWebSocketOpen = (message) => {
-      if (!ws || ws.readyState !== WebSocket.OPEN || ws.isClosed === true) {
+    const ensureWebSocketOpen = (message?: any) => {
+      if (!ws || ws.readyState !== WebSocket.OPEN || (ws as any).isClosed === true) {
         throw toAbortError('WebSocket连接已断开', message || 'WebSocket连接已断开');
       }
     };
@@ -767,8 +768,8 @@ async function handleConnect(ws, data) {
           session.cleanupTimeout = null;
         }
 
-        ws.sessionId = sessionId;
-        ws.pendingSessionId = null;
+        (ws as any).sessionId = sessionId;
+        (ws as any).pendingSessionId = undefined;
 
         sendBinaryConnected(ws, {
           sessionId,
@@ -839,8 +840,8 @@ async function handleConnect(ws, data) {
       };
 
       sessions.set(sessionId, session);
-      ws.sessionId = sessionId;
-      ws.pendingSessionId = null;
+      (ws as any).sessionId = sessionId;
+      (ws as any).pendingSessionId = undefined;
 
       ensureNotCancelled('SSH连接请求已取消');
 
@@ -851,14 +852,14 @@ async function handleConnect(ws, data) {
         });
       });
 
-      conn.on('error', (err) => {
+      conn.on('error', (err: any) => {
         logger.error('SSH连接错误', { sessionId, error: err.message });
         sessionLifecycle.abort(sessionId, 'ssh_connection_error', {
           notification: { kind: 'error', message: `SSH连接错误: ${err.message}` }
         });
       });
 
-      conn.shell({ term: 'xterm-color' }, (err, stream) => {
+      conn.shell({ term: 'xterm-color' }, (err: any, stream: any) => {
         if (err) {
           sessionLifecycle.abort(sessionId, 'shell_open_failed', {
             notification: { kind: 'error', message: `创建Shell失败: ${err.message}` }
@@ -866,7 +867,7 @@ async function handleConnect(ws, data) {
           return;
         }
 
-        if (signal?.aborted || ws.isClosed === true) {
+      if (signal?.aborted || (ws as any).isClosed === true) {
           try {
             if (typeof stream.close === 'function') {
               stream.close();
@@ -888,7 +889,7 @@ async function handleConnect(ws, data) {
 
         setupStreamWithBackpressure(session, stream, ws, sessionId);
 
-        stream.on('error', (streamErr) => {
+    stream.on('error', (streamErr: any) => {
           logger.error('SSH Shell错误', { sessionId, error: streamErr.message });
           sessionLifecycle.abort(sessionId, 'shell_error', {
             notification: { kind: 'error', message: `Shell错误: ${streamErr.message}` }
@@ -926,7 +927,7 @@ async function handleConnect(ws, data) {
         } catch (error) {
           logger.error('SSH连接成功但启动监控数据收集失败', {
             sessionId,
-            host: `${connectionInfo.username}@${connectionInfo.address}:${connectionInfo.port}`,
+            host: `${connectionInfo.username}@${connectionInfo.host}:${connectionInfo.port}`,
             error: error.message
           });
         }
@@ -953,7 +954,7 @@ async function handleConnect(ws, data) {
  * @param {WebSocket} ws WebSocket连接
  * @param {Object} data 数据
  */
-function handleData(ws, data) {
+function handleData(ws: WebSocketType, data: any): void {
   const { sessionId, data: sshData } = data;
 
   if (!validateSshSession(ws, sessionId, sessions)) {
@@ -978,7 +979,7 @@ function handleData(ws, data) {
  * @param {WebSocket} ws WebSocket连接
  * @param {Object} data 数据
  */
-function handleResize(ws, data) {
+function handleResize(ws: WebSocketType, data: any): void {
   const { sessionId, cols, rows } = data;
 
   if (!validateSshSession(ws, sessionId, sessions)) {
@@ -1001,7 +1002,7 @@ function handleResize(ws, data) {
  * @param {WebSocket} ws WebSocket连接
  * @param {Object} data 数据
  */
-function handleDisconnect(ws, data) {
+function handleDisconnect(ws: WebSocketType, data: any): void {
   // 与Abort语义统一：断开即为abort的一种
   try {
     handleAbort(ws, { sessionId: data?.sessionId, reason: 'client_disconnect' });
@@ -1013,7 +1014,7 @@ function handleDisconnect(ws, data) {
  * @param {WebSocket} _ws WebSocket连接
  * @param {Object} data 数据 { sessionId, reason, detail }
  */
-function handleAbort(_ws, data = {}) {
+function handleAbort(_ws: WebSocketType, data: any = {}): void {
   const { sessionId, reason = 'client_abort', detail = {} } = data || {};
   if (!sessionId) return;
 
@@ -1031,9 +1032,9 @@ function handleAbort(_ws, data = {}) {
  * @param {Object} detail
  * @returns {boolean}
  */
-function abortSession(sessionId, reason = 'server_abort', detail = {}) {
-  if (!sessionId) return false;
-  return sessionLifecycle.abort(sessionId, reason, detail);
+function abortSession(sessionId: string, reason = 'server_abort', detail: any = {}): boolean {
+  if (!sessionId) return false as any;
+  return sessionLifecycle.abort(sessionId, reason, detail) as any;
 }
 
 /**
@@ -1041,7 +1042,7 @@ function abortSession(sessionId, reason = 'server_abort', detail = {}) {
  * @param {WebSocket} ws WebSocket连接
  * @param {Object} data 数据
  */
-function handlePing(ws, data) {
+function handlePing(ws: WebSocketType, data: any): void {
   const { sessionId, webSocketLatency, measureLatency } = data;
 
   if (!sessionId || !sessions.has(sessionId)) {
@@ -1063,7 +1064,7 @@ function handlePing(ws, data) {
   // 如果这是来自_triggerImmediatePing的延迟测量请求
   if (measureLatency && webSocketLatency !== undefined && session.connectionInfo && session.connectionInfo.host) {
     // 优先使用会话中保存的客户端IP，然后是WebSocket对象上的IP，最后使用默认值
-    const clientIP = session.clientIP || ws.clientIP || '127.0.0.1';
+    const clientIP = session.clientIP || (ws as any).clientIP || '127.0.0.1';
     const sshHost = session.connectionInfo.host;
 
     // logger.info('触发延迟测量', {
@@ -1085,7 +1086,7 @@ function handlePing(ws, data) {
  * @param {WebSocket} ws WebSocket连接
  * @param {Object} data 请求数据
  */
-async function handleSshExec(ws, data) {
+async function handleSshExec(ws: WebSocketType, data: any): Promise<void> {
   const { sessionId, command, operationId } = data;
 
   if (!validateSshSession(ws, sessionId, sessions)) {
@@ -1100,7 +1101,7 @@ async function handleSshExec(ws, data) {
     }
 
     // 执行命令
-    session.conn.exec(command, (err, stream) => {
+  session.conn.exec(command, (err: any, stream: any) => {
       if (err) {
         logger.error('SSH执行命令失败', { command, error: err.message });
         utils.sendSftpError(ws, sessionId, operationId, `执行命令失败: ${err.message}`);
@@ -1110,15 +1111,15 @@ async function handleSshExec(ws, data) {
       let stdout = '';
       let stderr = '';
 
-      stream.on('data', (data) => {
+      stream.on('data', (data: any) => {
         stdout += data.toString();
       });
 
-      stream.stderr.on('data', (data) => {
+      stream.stderr.on('data', (data: any) => {
         stderr += data.toString();
       });
 
-      stream.on('close', (code) => {
+  stream.on('close', (code: any) => {
         logger.debug('SSH命令执行完成', { command, exitCode: code });
 
         // 发送执行结果
@@ -1139,7 +1140,7 @@ async function handleSshExec(ws, data) {
  * @param {WebSocket} ws WebSocket连接
  * @param {string} sessionId 会话ID
  */
-function setupStreamWithBackpressure(session, stream, ws, sessionId) {
+function setupStreamWithBackpressure(session: any, stream: any, ws: WebSocketType, sessionId: string): void {
   const BACKPRESSURE_THRESHOLD = 4 * 1024 * 1024; // 4MB
   const BACKPRESSURE_RESUME_THRESHOLD = 2 * 1024 * 1024; // 2MB
   let paused = false;
@@ -1154,7 +1155,7 @@ function setupStreamWithBackpressure(session, stream, ws, sessionId) {
     resumeCount: 0
   };
 
-  stream.on('data', (data) => {
+  stream.on('data', (data: any) => {
     if (ws.readyState !== utils.WS_STATE.OPEN) {
       return;
     }
@@ -1237,7 +1238,7 @@ function setupStreamWithBackpressure(session, stream, ws, sessionId) {
   });
 
   // 处理流错误
-  stream.on('error', (err) => {
+  stream.on('error', (err: any) => {
     logger.error('SSH流错误', { sessionId, error: err.message });
 
     if (paused) {
@@ -1254,14 +1255,14 @@ function setupStreamWithBackpressure(session, stream, ws, sessionId) {
  * @param {string} sessionId 会话ID
  * @param {Buffer} data 要发送的数据
  */
-function sendBinaryDataWithStats(ws, sessionId, data) {
+function sendBinaryDataWithStats(ws: WebSocketType, sessionId: string, data: Buffer): void {
   try {
     // 使用统一的二进制协议发送SSH终端数据
     BinaryMessageSender.sendSSHData(ws, sessionId, data);
 
     // 记录传输统计
-    if (global.metricsCollector) {
-      global.metricsCollector.recordDataTransfer('outbound', 'binary', data.length);
+    if ((global as any).metricsCollector) {
+      (global as any).metricsCollector.recordDataTransfer('outbound', 'binary', data.length);
     }
   } catch (error) {
     logger.error('发送SSH二进制数据失败', {
@@ -1278,7 +1279,7 @@ function sendBinaryDataWithStats(ws, sessionId, data) {
  * @param {WebSocket} ws WebSocket连接
  * @param {Object} data 包含sessionId和payload的对象
  */
-function handleDataBinary(ws, data) {
+function handleDataBinary(ws: WebSocketType, data: any): void {
   const { sessionId, payload } = data;
 
   if (!validateSshSession(ws, sessionId, sessions)) {
@@ -1298,8 +1299,8 @@ function handleDataBinary(ws, data) {
     recordActivity(session);
 
     // 记录传输统计
-    if (global.metricsCollector) {
-      global.metricsCollector.recordDataTransfer('inbound', 'binary', payload.length);
+    if ((global as any).metricsCollector) {
+      (global as any).metricsCollector.recordDataTransfer('inbound', 'binary', payload.length);
     }
   } catch (error) {
     logger.error('写入SSH流失败', {

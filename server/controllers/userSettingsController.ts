@@ -1,11 +1,11 @@
-// @ts-nocheck
 /**
- * 用户设置控制器
+ * 用户设置控制器（TypeScript）
  * 处理用户设置的存储、获取和同步
  */
 
-const { getDb } = require('../config/database');
-const log = require('../utils/logger');
+import type { Request, Response } from 'express';
+import database from '../config/database';
+import log from '../utils/logger';
 
 class UserSettingsController {
   /**
@@ -13,10 +13,10 @@ class UserSettingsController {
    * 仅返回创建终端会话所需字段，避免多拿数据
    * GET /api/users/settings/terminal/minimal
    */
-  async getTerminalMinimal(req, res) {
+  async getTerminalMinimal(req: Request, res: Response) {
     try {
       const userId = req.user.id;
-      const db = getDb();
+      const db = database.getDb();
 
       // 允许返回的白名单字段（严格控制）
       const ALLOWED_KEYS = new Set([
@@ -40,8 +40,8 @@ class UserSettingsController {
          FROM user_settings WHERE user_id = ? AND category = 'terminal'`
       ).get(userId);
 
-      let minimalTerminal = {};
-      let terminalBackground = {};
+      let minimalTerminal: Record<string, any> = {};
+      let terminalBackground: Record<string, any> = {};
       let aiEnabled = false;
       let aiModel = '';
       // 不附带多余元信息，保持最小化
@@ -71,7 +71,7 @@ class UserSettingsController {
           .get(userId);
         if (bgRow && bgRow.settings_data) {
           const bgData = JSON.parse(bgRow.settings_data || '{}');
-          const filtered = {};
+          const filtered: Record<string, any> = {};
           for (const key of Object.keys(bgData)) {
             if (ALLOWED_BG_KEYS.has(key)) filtered[key] = bgData[key];
           }
@@ -107,7 +107,7 @@ class UserSettingsController {
           ai: { enabled: aiEnabled, model: aiModel }
         }
       });
-    } catch (error) {
+    } catch (error: any) {
       log.error('获取终端最小设置失败:', error);
       return res.status(500).json({
         success: false,
@@ -120,12 +120,12 @@ class UserSettingsController {
    * 获取用户设置
    * GET /api/users/settings
    */
-  async getSettings(req, res) {
+  async getSettings(req: Request, res: Response) {
     try {
       const userId = req.user.id;
       const { category } = req.query; // 可选：获取特定分类的设置
 
-      const db = getDb();
+      const db = database.getDb();
       let query, params;
 
       if (category) {
@@ -149,8 +149,8 @@ class UserSettingsController {
       const rows = db.prepare(query).all(...params);
 
       // 将结果转换为对象格式
-      const settings = {};
-      rows.forEach(row => {
+      const settings: Record<string, any> = {};
+      (rows as any[]).forEach((row: any) => {
         try {
           settings[row.category] = {
             data: JSON.parse(row.settings_data),
@@ -159,7 +159,7 @@ class UserSettingsController {
             serverTimestamp: row.server_timestamp,
             updatedAt: row.updated_at
           };
-        } catch (error) {
+        } catch (error: any) {
           log.error(`解析设置数据失败 [${row.category}]:`, error);
         }
       });
@@ -170,7 +170,7 @@ class UserSettingsController {
         timestamp: new Date().toISOString()
       });
 
-    } catch (error) {
+    } catch (error: any) {
       log.error('获取用户设置失败:', error);
       res.status(500).json({
         success: false,
@@ -184,7 +184,7 @@ class UserSettingsController {
    * 更新用户设置
    * PUT /api/users/settings
    */
-  async updateSettings(req, res) {
+  async updateSettings(req: Request, res: Response) {
     try {
       const userId = req.user.id;
       const { category, data, version, clientTimestamp } = req.body;
@@ -196,7 +196,7 @@ class UserSettingsController {
         });
       }
 
-      const db = getDb();
+      const db = database.getDb();
       const now = new Date().toISOString();
 
       // 检查是否存在冲突
@@ -256,7 +256,7 @@ class UserSettingsController {
         message: '设置更新成功'
       });
 
-    } catch (error) {
+    } catch (error: any) {
       log.error('更新用户设置失败:', error);
       res.status(500).json({
         success: false,
@@ -270,7 +270,7 @@ class UserSettingsController {
    * 批量更新用户设置
    * PUT /api/users/settings/batch
    */
-  async updateSettingsBatch(req, res) {
+  async updateSettingsBatch(req: Request, res: Response) {
     try {
       const userId = req.user.id;
       const { settings, clientTimestamp } = req.body;
@@ -282,14 +282,14 @@ class UserSettingsController {
         });
       }
 
-      const db = getDb();
+      const db = database.getDb();
       const now = new Date().toISOString();
-      const results = {};
-      const conflicts = {};
+      const results: Record<string, any> = {};
+      const conflicts: Record<string, any> = {};
 
       // 开始事务
       const transaction = db.transaction(() => {
-        for (const [category, settingData] of Object.entries(settings)) {
+        for (const [category, settingData] of Object.entries(settings as Record<string, any>)) {
           try {
             // 检查现有版本
             const existing = db.prepare(`
@@ -301,10 +301,10 @@ class UserSettingsController {
             let newVersion = 1;
             if (existing) {
               // 检查版本冲突
-              if (settingData.version && existing.version > settingData.version) {
+              if ((settingData as any).version && existing.version > (settingData as any).version) {
                 conflicts[category] = {
                   serverVersion: existing.version,
-                  clientVersion: settingData.version,
+                  clientVersion: (settingData as any).version,
                   serverTimestamp: existing.server_timestamp
                 };
                 continue;
@@ -328,7 +328,7 @@ class UserSettingsController {
             db.prepare(upsertQuery).run(
               userId,
               category,
-              JSON.stringify(settingData.data || settingData),
+              JSON.stringify((settingData as any).data || settingData),
               newVersion,
               clientTimestamp || now,
               now,
@@ -341,7 +341,7 @@ class UserSettingsController {
               status: 'updated'
             };
 
-          } catch (error) {
+          } catch (error: any) {
             log.error(`更新设置失败 [${category}]:`, error);
             results[category] = {
               status: 'error',
@@ -353,7 +353,7 @@ class UserSettingsController {
 
       transaction();
 
-      const response = {
+      const response: any = {
         success: true,
         data: results,
         timestamp: now
@@ -368,7 +368,7 @@ class UserSettingsController {
 
       res.json(response);
 
-    } catch (error) {
+    } catch (error: any) {
       log.error('批量更新用户设置失败:', error);
       res.status(500).json({
         success: false,
@@ -382,7 +382,7 @@ class UserSettingsController {
    * 数据同步接口
    * POST /api/users/settings/sync
    */
-  async syncSettings(req, res) {
+  async syncSettings(req: Request, res: Response) {
     try {
       const userId = req.user.id;
       const { localSettings, strategy = 'merge' } = req.body;
@@ -394,9 +394,9 @@ class UserSettingsController {
         });
       }
 
-      const db = getDb();
+      const db = database.getDb();
       const now = new Date().toISOString();
-      const syncResults = {
+      const syncResults: any = {
         uploaded: {},
         conflicts: {},
         errors: {},
@@ -409,32 +409,32 @@ class UserSettingsController {
       };
 
       // 获取服务器上的所有设置
-      const serverSettings = {};
+      const serverSettings: Record<string, any> = {};
       const serverRows = db.prepare(`
         SELECT category, settings_data, version, server_timestamp
         FROM user_settings
         WHERE user_id = ?
       `).all(userId);
 
-      serverRows.forEach(row => {
+      (serverRows as any[]).forEach((row: any) => {
         try {
           serverSettings[row.category] = {
             data: JSON.parse(row.settings_data),
             version: row.version,
             timestamp: row.server_timestamp
           };
-        } catch (error) {
+        } catch (error: any) {
           log.error(`解析服务器设置失败 [${row.category}]:`, error);
         }
       });
 
       // 开始事务处理同步
       const transaction = db.transaction(() => {
-        for (const [category, localData] of Object.entries(localSettings)) {
+        for (const [category, localData] of Object.entries(localSettings as Record<string, any>)) {
           syncResults.summary.total++;
 
           try {
-            const serverData = serverSettings[category];
+            const serverData = (serverSettings as any)[category];
 
             if (!serverData) {
               // 服务器没有此设置，直接上传
@@ -511,7 +511,7 @@ class UserSettingsController {
               }
             }
 
-          } catch (error) {
+          } catch (error: any) {
             log.error(`同步设置失败 [${category}]:`, error);
             syncResults.errors[category] = {
               status: 'error',
@@ -531,7 +531,7 @@ class UserSettingsController {
         timestamp: now
       });
 
-    } catch (error) {
+    } catch (error: any) {
       log.error('数据同步失败:', error);
       res.status(500).json({
         success: false,
@@ -545,12 +545,12 @@ class UserSettingsController {
    * 删除用户设置
    * DELETE /api/users/settings/:category
    */
-  async deleteSettings(req, res) {
+  async deleteSettings(req: Request, res: Response) {
     try {
       const userId = req.user.id;
       const { category } = req.params;
 
-      const db = getDb();
+      const db = database.getDb();
       const result = db.prepare(`
         DELETE FROM user_settings
         WHERE user_id = ? AND category = ?
