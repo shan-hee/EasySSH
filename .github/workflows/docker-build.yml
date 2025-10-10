@@ -62,12 +62,6 @@ jobs:
           echo "No gitlink entries found"
         fi
 
-        # 确保不存在损坏的 .gitmodules 造成的 foreach 报错
-        if [ -f .gitmodules ] && ! git config --file .gitmodules --get-regexp ^submodule 1>/dev/null 2>&1; then
-          echo "Empty .gitmodules detected; removing to avoid foreach error"
-          rm -f .gitmodules || true
-        fi
-
     - name: Setup pnpm
       uses: pnpm/action-setup@v4
       with:
