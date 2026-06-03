@@ -1,0 +1,65 @@
+
+import {
+  Dialog as AlertDialog,
+  DialogContent as AlertDialogContent,
+  DialogDescription as AlertDialogDescription,
+  DialogFooter as AlertDialogFooter,
+  DialogHeader as AlertDialogHeader,
+  DialogTitle as AlertDialogTitle,
+} from "@/components/ui/dialog"
+import { Button } from "@/components/ui/button"
+import { useTranslation } from "react-i18next"
+
+interface ConfirmDialogProps {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  title: string
+  description: string
+  confirmText?: string
+  cancelText?: string
+  variant?: "default" | "destructive"
+  onConfirm: () => void
+}
+
+export function ConfirmDialog({
+  open,
+  onOpenChange,
+  title,
+  description,
+  confirmText,
+  cancelText,
+  variant = "default",
+  onConfirm,
+}: ConfirmDialogProps) {
+  const { t: tCommon } = useTranslation("common")
+
+  const effectiveCancelText = cancelText ?? tCommon("cancel")
+  const effectiveConfirmText = confirmText ?? tCommon("confirm")
+
+  const handleConfirm = () => {
+    onConfirm()
+    onOpenChange(false)
+  }
+
+  return (
+    <AlertDialog open={open} onOpenChange={onOpenChange}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>{title}</AlertDialogTitle>
+          <AlertDialogDescription>{description}</AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            {effectiveCancelText}
+          </Button>
+          <Button
+            variant={variant === "destructive" ? "destructive" : "default"}
+            onClick={handleConfirm}
+          >
+            {effectiveConfirmText}
+          </Button>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  )
+}

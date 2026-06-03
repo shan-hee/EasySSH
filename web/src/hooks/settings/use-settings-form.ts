@@ -1,0 +1,129 @@
+
+import { useEffect, useState } from "react"
+import {
+  useForm,
+  type DefaultValues,
+  type FieldValues,
+  type Resolver,
+  type UseFormReturn,
+} from "react-hook-form"
+import { zodResolver } from "@hookform/resolvers/zod"
+import type * as z4 from "zod/v4/core"
+import { toast } from "sonner"
+import { useAuthReady } from "@/hooks/use-auth-ready"
+import { useTranslation } from "react-i18next"
+
+interface UseSettingsFormOptions<T extends FieldValues> {
+  schema: z4.$ZodType<T, T>
+  loadFn: () => Promise<T>
+  saveFn: (data: T) => Promise<void>
+  onSuccess?: () => void
+  onError?: (error: Error) => void
+  defaultValues?: Partial<T>
+}
+
+interface UseSettingsFormReturn<T extends FieldValues> {
+  form: UseFormReturn<T>
+  isLoading: boolean
+  isSaving: boolean
+  handleSave: () => Promise<void>
+  reload: () => Promise<void>
+}
+
+/**
+ * 通用的设置表单Hook
+ *
+ * @param options 配置选项
+ * @returns 表单实例和相关状态
+ *
+ * @example
+ * const { form, isLoading, isSaving, handleSave } = useSettingsForm({
+ *   schema: systemConfigSchema,
+ *   loadFn: settingsApi.getSystemConfig,
+ *   saveFn: settingsApi.saveSystemConfig,
+ * })
+ */
+export function useSettingsForm<T extends FieldValues>({
+  schema,
+  loadFn,
+  saveFn,
+  onSuccess,
+  onError,
+  defaultValues,
+}: UseSettingsFormOptions<T>): UseSettingsFormReturn<T> {
+  const { ready } = useAuthReady()
+  const { t } = useTranslation("settingsCommon")
+  const [isLoading, setIsLoading] = useState(true)
+  const [isSaving, setIsSaving] = useState(false)
+  // 当前 zod / resolvers 的类型声明存在版本细节不兼容，
+  // 这里保留官方 zodResolver 运行时实现，仅隔离有问题的重载推断。
+  const createResolver = zodResolver as unknown as (schema: unknown) => Resolver<T>
+
+  const form = useForm<T>({
+    resolver: createResolver(schema),
+    defaultValues: defaultValues as DefaultValues<T> | undefined,
+  })
+
+  // 加载配置数据
+  const loadData = async () => {
+    try {
+      setIsLoading(true)
+      const data = await loadFn()
+      form.reset(data)
+    } catch (error) {
+      const err = error as Error
+      toast.error(
+        t("toastLoadFailed", {
+          message: err.message || t("errorUnknown"),
+        })
+      )
+      onError?.(err)
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  // 初始加载（仅在已认证且全局状态就绪时触发）
+  useEffect(() => {
+    if (!ready) return
+    loadData()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ready])
+
+  // 保存配置
+  const handleSave = async () => {
+    // 先进行表单验证
+    const isValid = await form.trigger()
+    if (!isValid) {
+      toast.error(t("toastFormInvalid"))
+      return
+    }
+
+    const data = form.getValues()
+    setIsSaving(true)
+
+    try {
+      await saveFn(data)
+      toast.success(t("toastSaveSuccess"))
+      onSuccess?.()
+    } catch (error) {
+      const err = error as Error
+      toast.error(
+        t("toastSaveFailed", {
+          message: err.message || t("errorUnknown"),
+        })
+      )
+      onError?.(err)
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  return {
+    form,
+    isLoading,
+    isSaving,
+    handleSave,
+    reload: loadData,
+  }
+}

@@ -1,0 +1,55 @@
+export interface PageMetadata {
+  title: string
+  description: string
+}
+
+/**
+ * 页面元数据配置
+ * 统一管理各页面的 SEO 元数据
+ */
+
+export const pageMetadata = {
+  dashboard: {
+    title: "仪表盘",
+    description: "查看服务器状态、连接统计和系统概览",
+  },
+  terminal: {
+    title: "终端",
+    description: "管理 SSH 服务器配置，并在浏览器中直接连接服务器",
+  },
+  terminalSessions: {
+    title: "终端会话",
+    description: "管理活跃的 SSH 终端会话",
+  },
+  transfers: {
+    title: "文件传输",
+    description: "SFTP 文件传输 - 上传下载服务器文件",
+  },
+  logs: {
+    title: "活动日志",
+    description: "查看系统活动日志、审计事件和用户行为记录",
+  },
+  operationLogs: {
+    title: "操作日志",
+    description: "查看连接、传输和执行等统一操作记录",
+  },
+  settings: {
+    title: "系统设置",
+    description: "配置系统参数、用户管理和安全设置",
+  },
+} as const
+
+/**
+ * 生成页面元数据
+ */
+export function generatePageMetadata(
+  key: keyof typeof pageMetadata,
+  overrides?: Partial<PageMetadata>
+): PageMetadata {
+  const config = pageMetadata[key]
+  return {
+    title: config.title,
+    description: config.description,
+    ...overrides,
+  }
+}

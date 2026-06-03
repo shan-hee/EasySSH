@@ -1,0 +1,153 @@
+name: Build EasySSH Docker Image
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'VERSION'                           # 版本号变化
+      - 'Dockerfile'                        # Dockerfile 变化
+      - '.github/workflows/docker-build.yml' # Workflow 自身变化
+
+  workflow_dispatch:
+    inputs:
+      version:
+        description: '版本号 (留空则使用 VERSION 文件)'
+        required: false
+        type: string
+      update-latest:
+        description: '是否更新 latest 标签'
+        required: true
+        type: boolean
+        default: true
+      platforms:
+        description: '构建平台'
+        required: true
+        type: choice
+        default: 'linux/amd64'
+        options:
+          - 'linux/amd64'
+          - 'linux/amd64,linux/arm64'
+          - 'linux/arm64'
+
+env:
+  DOCKER_IMAGE: shanhee/easyssh
+  PLATFORMS: linux/amd64
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      security-events: write
+      actions: read
+
+    steps:
+      - name: 📥 检出代码
+        uses: actions/checkout@v4
+
+      - name: 📖 读取/设置版本号
+        id: version
+        run: |
+          # 优先使用手动输入的版本号
+          if [ -n "${{ github.event.inputs.version }}" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+            echo "使用手动输入的版本号: $VERSION"
+          elif [ -f "VERSION" ]; then
+            VERSION=$(cat VERSION | tr -d '[:space:]')
+            echo "使用 VERSION 文件中的版本号: $VERSION"
+          else
+            VERSION="dev"
+            echo "未找到版本号,使用默认版本: dev"
+          fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: 🏷️ 提取 Docker 元数据
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.DOCKER_IMAGE }}
+          tags: |
+            # 手动触发 -> v版本号 + 可选的 latest
+            type=raw,value=latest,enable=${{ github.event_name == 'workflow_dispatch' && github.event.inputs.update-latest == 'true' }}
+            type=raw,value=v${{ steps.version.outputs.version }},enable=${{ github.event_name == 'workflow_dispatch' }}
+            # VERSION 文件变化触发 -> latest + v版本号
+            type=raw,value=latest,enable=${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+            type=raw,value=v${{ steps.version.outputs.version }},enable=${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+
+      - name: 🔧 设置 QEMU (多架构支持)
+        uses: docker/setup-qemu-action@v3
+
+      - name: 🔧 设置 Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          driver-opts: |
+            image=moby/buildkit:latest
+            network=host
+
+      - name: 🔐 登录 Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: shanhee
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: 🏗️ 构建并推送 EasySSH Docker 镜像
+        id: build
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: ${{ github.event.inputs.platforms || env.PLATFORMS }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            VERSION=${{ steps.version.outputs.version }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          provenance: false
+
+      - name: 🔍 运行 Trivy 安全扫描
+        continue-on-error: true
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ env.DOCKER_IMAGE }}:latest
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+          severity: 'CRITICAL,HIGH'
+
+      - name: 📤 上传 Trivy 扫描结果到 GitHub Security
+        continue-on-error: true
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: 'trivy-results.sarif'
+
+      - name: 📊 生成构建摘要
+        run: |
+          echo "## 🐳 EasySSH Docker 镜像构建成功" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**镜像标签:**" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          # 硬编码镜像名称以避免 GitHub Actions 自动脱敏
+          echo "shanhee/easyssh:latest" >> $GITHUB_STEP_SUMMARY
+          echo "shanhee/easyssh:v${{ steps.version.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**支持架构:** ${{ github.event.inputs.platforms || env.PLATFORMS }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**镜像摘要:** \`${{ steps.build.outputs.digest }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 🚀 快速启动" >> $GITHUB_STEP_SUMMARY
+          echo '```bash' >> $GITHUB_STEP_SUMMARY
+          echo "# 拉取镜像" >> $GITHUB_STEP_SUMMARY
+          echo "docker pull shanhee/easyssh:latest" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "# 使用 Docker Compose 启动" >> $GITHUB_STEP_SUMMARY
+          echo "cd EasySSH" >> $GITHUB_STEP_SUMMARY
+          echo "docker compose up -d" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 📦 镜像信息" >> $GITHUB_STEP_SUMMARY
+          echo "- **版本:** v${{ steps.version.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **包含:** Go 后端 + Next.js 前端静态文件" >> $GITHUB_STEP_SUMMARY
+          echo "- **架构:** ${{ github.event.inputs.platforms || env.PLATFORMS }}" >> $GITHUB_STEP_SUMMARY

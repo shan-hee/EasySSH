@@ -1,0 +1,78 @@
+
+import { useState, useCallback } from "react"
+import { toast } from "sonner"
+import { useTranslation } from "react-i18next"
+
+interface UseSettingsAPIOptions<T> {
+  onSuccess?: (data: T) => void
+  onError?: (error: Error) => void
+}
+
+interface UseSettingsAPIReturn<T> {
+  data: T | null
+  isLoading: boolean
+  error: Error | null
+  execute: (apiFn: () => Promise<T>) => Promise<T | null>
+  reset: () => void
+}
+
+/**
+ * 通用的设置API调用Hook
+ *
+ * @param options 配置选项
+ * @returns API调用方法和状态
+ *
+ * @example
+ * const { execute, isLoading } = useSettingsAPI({
+ *   onSuccess: (data) => console.log('Success:', data),
+ * })
+ *
+ * const testConnection = async () => {
+ *   await execute((token) => settingsApi.testSMTPConnection(token, config))
+ * }
+ */
+export function useSettingsAPI<T>(
+  options: UseSettingsAPIOptions<T> = {}
+): UseSettingsAPIReturn<T> {
+  const { t } = useTranslation("settingsCommon")
+
+  const [data, setData] = useState<T | null>(null)
+  const [isLoading, setIsLoading] = useState(false)
+  const [error, setError] = useState<Error | null>(null)
+
+  const execute = useCallback(
+    async (apiFn: () => Promise<T>): Promise<T | null> => {
+      try {
+        setIsLoading(true)
+        setError(null)
+        const result = await apiFn()
+        setData(result)
+        options.onSuccess?.(result)
+        return result
+      } catch (err) {
+        const error = err as Error
+        setError(error)
+        options.onError?.(error)
+        toast.error(error.message || t("toastActionFailed"))
+        return null
+      } finally {
+        setIsLoading(false)
+      }
+    },
+    [options, t]
+  )
+
+  const reset = useCallback(() => {
+    setData(null)
+    setError(null)
+    setIsLoading(false)
+  }, [])
+
+  return {
+    data,
+    isLoading,
+    error,
+    execute,
+    reset,
+  }
+}

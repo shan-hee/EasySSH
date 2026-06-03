@@ -1,0 +1,243 @@
+/**
+ * SFTP 上传进度 WebSocket Hook
+ * 用于实时跟踪 SFTP 上传进度（新版为 stream 阶段，旧版兼容 HTTP + SFTP 阶段）
+ */
+
+import { useEffect, useRef, useCallback, useState } from 'react';
+import { getWsUrl } from '@/lib/config';
+import { createAuthTicket } from '@/lib/auth-ticket';
+import {
+  closeTransferWebSocket,
+  createTransferProgressWebSocket,
+  isTransferWebSocketActive,
+  type TransferAuthTicketProvider,
+  type TransferWebSocketConstructor,
+  type TransferWebSocketUrlResolver,
+} from '@/lib/session/transfer-runtime';
+
+// 上传进度消息接口
+export interface UploadProgressMessage {
+  type: 'started' | 'progress' | 'complete' | 'cancelled' | 'error';
+  task_id: string;
+  loaded?: number;
+  total?: number;
+  stage?: 'http' | 'sftp' | 'stream';
+  speed_bps?: number;
+  message?: string;
+}
+
+// Hook 选项接口
+export interface UseSftpUploadWebSocketOptions {
+  taskId: string;
+  enabled?: boolean;
+  onProgress?: (loaded: number, total: number, stage: 'http' | 'sftp' | 'stream', speedBps: number) => void;
+  onComplete?: () => void;
+  onError?: (error: string) => void;
+  createTicket?: TransferAuthTicketProvider;
+  resolveWebSocketUrl?: TransferWebSocketUrlResolver;
+  WebSocketCtor?: TransferWebSocketConstructor;
+}
+
+// WebSocket 状态
+export enum WSStatus {
+  DISCONNECTED = 'disconnected',
+  CONNECTING = 'connecting',
+  CONNECTED = 'connected',
+  ERROR = 'error',
+}
+
+/**
+ * SFTP 上传进度 WebSocket Hook
+ *
+ * @example
+ * const { status, connect, disconnect } = useSftpUploadWebSocket({
+ *   taskId: 'upload-123',
+ *   onProgress: (loaded, total, stage, speed) => {
+ *     console.log(`${stage}: ${loaded}/${total} @ ${speed}Bps`);
+ *   },
+ *   onComplete: () => console.log('Upload completed'),
+ *   onError: (err) => console.error('Upload error:', err),
+ * });
+ */
+export function useSftpUploadWebSocket({
+  taskId,
+  enabled = false,
+  onProgress,
+  onComplete,
+  onError,
+  createTicket = createAuthTicket,
+  resolveWebSocketUrl = getWsUrl,
+  WebSocketCtor,
+}: UseSftpUploadWebSocketOptions) {
+  const [status, setStatus] = useState<WSStatus>(WSStatus.DISCONNECTED);
+  const wsRef = useRef<WebSocket | null>(null);
+  const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isMountedRef = useRef(false);
+  const enabledRef = useRef(enabled);
+  const reconnectConnectRef = useRef<() => void>(() => {});
+
+  // 更新 enabled 引用
+  useEffect(() => {
+    enabledRef.current = enabled;
+  }, [enabled]);
+
+  // 断开 WebSocket
+  const disconnect = useCallback(() => {
+    if (reconnectTimeoutRef.current) {
+      clearTimeout(reconnectTimeoutRef.current);
+      reconnectTimeoutRef.current = null;
+    }
+
+    if (wsRef.current) {
+      closeTransferWebSocket(wsRef.current, {
+        code: 1000,
+        reason: 'Client disconnecting',
+        includeConnecting: true,
+      });
+      wsRef.current = null;
+    }
+
+    setStatus(WSStatus.DISCONNECTED);
+  }, []);
+
+  // 连接 WebSocket
+  const connect = useCallback(() => {
+    // 如果已经连接或正在连接，直接返回
+    if (isTransferWebSocketActive(wsRef.current)) {
+      return;
+    }
+
+    // 清理旧连接
+    if (wsRef.current) {
+      closeTransferWebSocket(wsRef.current, { includeConnecting: true });
+      wsRef.current = null;
+    }
+
+    setStatus(WSStatus.CONNECTING);
+
+    void (async () => {
+      try {
+        const ws = await createTransferProgressWebSocket({
+          kind: 'upload',
+          taskId,
+          createTicket,
+          resolveWebSocketUrl,
+          WebSocketCtor,
+        });
+        if (!isMountedRef.current) {
+          closeTransferWebSocket(ws, { includeConnecting: true });
+          return;
+        }
+        wsRef.current = ws;
+
+        ws.onopen = () => {
+          if (!isMountedRef.current) return;
+          setStatus(WSStatus.CONNECTED);
+        };
+
+        ws.onmessage = (event) => {
+          if (!isMountedRef.current) return;
+
+          try {
+            const msg: UploadProgressMessage = JSON.parse(event.data);
+
+            if (msg.task_id !== taskId) {
+              console.warn('[SftpUploadWS] Task ID mismatch:', msg.task_id, 'expected:', taskId);
+              return;
+            }
+
+            switch (msg.type) {
+              case 'started':
+              case 'progress':
+                if (msg.loaded !== undefined && msg.total !== undefined && msg.stage && msg.speed_bps !== undefined) {
+                  onProgress?.(msg.loaded, msg.total, msg.stage, msg.speed_bps);
+                }
+                break;
+
+              case 'complete':
+                onComplete?.();
+                // 上传完成后自动断开
+                disconnect();
+                break;
+
+              case 'cancelled':
+                onError?.(msg.message || 'Upload cancelled');
+                disconnect();
+                break;
+
+              case 'error':
+                console.error('[SftpUploadWS] Upload error:', msg.message);
+                onError?.(msg.message || 'Unknown error');
+                disconnect();
+                break;
+            }
+          } catch (err) {
+            console.error('[SftpUploadWS] Failed to parse message:', err);
+          }
+        };
+
+        ws.onerror = (event) => {
+          if (!isMountedRef.current) return;
+          console.error('[SftpUploadWS] WebSocket error:', event);
+          setStatus(WSStatus.ERROR);
+        };
+
+        ws.onclose = (event) => {
+          if (!isMountedRef.current) return;
+          setStatus(WSStatus.DISCONNECTED);
+          wsRef.current = null;
+
+          // 如果是非正常关闭且仍然 enabled，尝试重连（最多1次）
+          if (event.code !== 1000 && enabledRef.current && !reconnectTimeoutRef.current) {
+            reconnectTimeoutRef.current = setTimeout(() => {
+              reconnectTimeoutRef.current = null;
+              if (enabledRef.current && isMountedRef.current) {
+                reconnectConnectRef.current();
+              }
+            }, 2000);
+          }
+        };
+      } catch (err) {
+        console.error('[SftpUploadWS] Failed to create WebSocket:', err);
+        setStatus(WSStatus.ERROR);
+        onError?.('Failed to create WebSocket connection');
+      }
+    })()
+  }, [taskId, onProgress, onComplete, onError, disconnect, createTicket, resolveWebSocketUrl, WebSocketCtor]);
+
+  useEffect(() => {
+    reconnectConnectRef.current = connect;
+  }, [connect]);
+
+  // 挂载和卸载处理
+  useEffect(() => {
+    isMountedRef.current = true;
+
+    return () => {
+      isMountedRef.current = false;
+      disconnect();
+    };
+  }, [disconnect]);
+
+  // 根据 enabled 自动连接/断开
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (enabled) {
+        connect();
+      } else {
+        disconnect();
+      }
+    }, 0);
+
+    return () => {
+      clearTimeout(timer);
+    };
+  }, [enabled, connect, disconnect]);
+
+  return {
+    status,
+    connect,
+    disconnect,
+    isConnected: status === WSStatus.CONNECTED,
+  };
+}

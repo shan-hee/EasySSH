@@ -1,0 +1,317 @@
+
+import React from 'react';
+import { useTranslation } from "react-i18next"
+import ReactECharts from "echarts-for-react";
+import type { EChartsOption } from "echarts";
+import type { NetworkData } from '../types/metrics';
+import {
+  ChartConfig,
+  ChartContainer,
+} from "@/components/ui/chart";
+import { useEchartsColors } from "@/lib/echarts-theme";
+import { MONITOR_COLORS } from "../constants/colors";
+import { useMonitorChartTheme } from "../hooks/useMonitorChartTheme";
+
+interface NetworkChartProps {
+  data: NetworkData[];
+  currentDownload: number;
+  currentUpload: number;
+}
+
+/**
+ * 格式化速率 (自动转换单位)
+ */
+function formatSpeed(kbps: number): string {
+  if (kbps >= 1024) {
+    return `${(kbps / 1024).toFixed(1)}MB/s`;
+  }
+  return `${kbps.toFixed(0)}KB/s`;
+}
+
+/**
+ * 图表配置（颜色由主题提供，标签使用 i18n）
+ */
+const chartConfig = {
+  download: {
+    label: "download",
+    color: MONITOR_COLORS.network.download,
+  },
+  upload: {
+    label: "upload",
+    color: MONITOR_COLORS.network.upload,
+  },
+} satisfies ChartConfig;
+
+/**
+ * 网络流量图表组件
+ * 使用 ECharts 双折线图显示上行和下行流量
+ * 固定高度 142px
+ */
+export const NetworkChart: React.FC<NetworkChartProps> = React.memo(({
+  data,
+  currentDownload,
+  currentUpload,
+}) => {
+  const { t } = useTranslation("terminalMonitor");
+  // 转换数据格式为图表需要的格式
+  const chartData = React.useMemo(
+    () =>
+      data.map((item) => ({
+        time: item.time.slice(3, 8), // 只显示时间部分
+        download: item.download,
+        upload: item.upload,
+      })),
+    [data]
+  );
+
+  const colors = useEchartsColors(chartConfig);
+  const chartTheme = useMonitorChartTheme();
+  const downloadColor = colors.download || chartTheme.download;
+  const uploadColor = colors.upload || chartTheme.upload;
+
+  // 计算Y轴的最大值用于显示刻度
+  // 找出实际数据的最大值
+  const dataMax = chartData.length > 0
+    ? Math.max(...chartData.map(d => Math.max(d.download, d.upload)))
+    : 0;
+
+  // 为 Y 轴添加一些上方留白（增加 20%），最小值为 1（避免除零）
+  const targetMaxValue = Math.max(Math.ceil(dataMax * 1.2), 1);
+  const [maxValue, setMaxValue] = React.useState(targetMaxValue);
+
+  // 让 Y 轴在峰值上升时快速跟随，下降时平滑回落，减少视觉抖动
+  React.useEffect(() => {
+    setMaxValue((prev) => {
+      if (targetMaxValue >= prev) return targetMaxValue;
+      const next = Math.max(
+        targetMaxValue,
+        prev - Math.max(1, Math.ceil((prev - targetMaxValue) * 0.25))
+      );
+      return next;
+    });
+  }, [targetMaxValue, data]);
+
+  const yAxisTicks = [
+    0,
+    Math.round(maxValue * 0.33),
+    Math.round(maxValue * 0.66),
+    Math.round(maxValue)
+  ];
+
+  // 格式化 Y 轴刻度标签
+  const formatYAxisTick = (value: number): string => {
+    if (value === 0) return '0';
+    if (value >= 1024) return `${(value / 1024).toFixed(0)}M`;
+    return `${value}K`;
+  };
+
+  const option: EChartsOption = React.useMemo(() => {
+    const times = chartData.map((item) => item.time);
+    const downloadValues = chartData.map((item) => item.download);
+    const uploadValues = chartData.map((item) => item.upload);
+
+    return {
+      color: [downloadColor, uploadColor],
+      animation: true,
+      animationDuration: 220,
+      animationEasing: "cubicOut",
+      // 快速变化数据使用更快的动画
+      animationDurationUpdate: 150,
+      animationEasingUpdate: "cubicOut",
+      grid: {
+        left: 28,
+        right: 8,
+        top: 8,
+        bottom: 16,
+      },
+      legend: {
+        show: false,
+      },
+      tooltip: {
+        trigger: "axis",
+        axisPointer: {
+          // 恢复为简单的直线指示，不使用十字准星
+          type: "line",
+        },
+        borderRadius: 6,
+        padding: 8,
+        backgroundColor: chartTheme.tooltipBackground,
+        borderColor: chartTheme.tooltipBorder,
+        borderWidth: 1,
+        textStyle: {
+          fontSize: 11,
+          color: chartTheme.tooltipText,
+        },
+        formatter: (params) => {
+          const list = (Array.isArray(params) ? params : [params]) as Array<{
+            axisValue?: string;
+            data?: number | { value?: number };
+            seriesName?: string;
+            color?: string;
+            value?: number;
+          }>;
+          const label = list[0]?.axisValue ?? "";
+          const lines = list
+            .map((p) => {
+              const value =
+                typeof p.data === "number"
+                  ? p.data
+                  : typeof p.value === "number"
+                  ? p.value
+                  : p.data?.value ?? 0;
+              const name =
+                p.seriesName === "download"
+                  ? t("downloadLabel")
+                  : t("uploadLabel");
+              const color = p.color || (p.seriesName === "download" ? downloadColor : uploadColor);
+              return `
+                <div style="display:flex;align-items:center;gap:6px;margin-top:2px;">
+                  <span style="display:inline-block;width:8px;height:8px;border-radius:9999px;background:${color};"></span>
+                  <span>${name}:</span>
+                  <span style="font-family:var(--font-jetbrains-mono),ui-monospace;font-weight:600;">
+                    ${formatSpeed(value)}
+                  </span>
+                </div>
+              `;
+            })
+            .join("");
+          return `
+            <div style="font-size:11px;color:${chartTheme.tooltipText};">
+              <div style="margin-bottom:4px;">${t("tooltipTimeLabel")}: ${label}</div>
+              ${lines}
+            </div>
+          `;
+        },
+      },
+      xAxis: {
+        type: "category",
+        boundaryGap: false,
+        data: times,
+        axisLine: { show: false },
+        axisTick: { show: false },
+        axisLabel: {
+          color: chartTheme.axisLabel,
+          fontSize: 10,
+        },
+      },
+      yAxis: {
+        type: "value",
+        min: 0,
+        max: maxValue,
+        axisLine: { show: false },
+        axisTick: { show: false },
+        axisLabel: { show: false },
+        splitLine: {
+          show: true,
+          lineStyle: {
+            color: chartTheme.gridLine,
+            type: "dashed",
+          },
+        },
+      },
+      series: [
+        {
+          name: t("downloadLabel"),
+          type: "line",
+          smooth: true,
+          smoothMonotone: "x",
+          showSymbol: false,
+          symbol: "circle",
+          symbolSize: 3,
+          lineStyle: {
+            width: 2.2,
+            color: downloadColor,
+          },
+          // 悬浮时仅在当前点显示小圆点，线条保持原有颜色
+          emphasis: {
+            focus: "none",
+            scale: false,
+            lineStyle: {
+              width: 2.2,
+              color: downloadColor,
+            },
+            itemStyle: {
+              borderWidth: 2,
+              borderColor: downloadColor,
+              // 填充用背景色，形成「空心圆」效果
+              color: chartTheme.pointFill,
+            },
+          },
+          data: downloadValues,
+        },
+        {
+          name: t("uploadLabel"),
+          type: "line",
+          smooth: true,
+          smoothMonotone: "x",
+          showSymbol: false,
+          symbol: "circle",
+          symbolSize: 3,
+          lineStyle: {
+            width: 2.2,
+            color: uploadColor,
+          },
+          emphasis: {
+            focus: "none",
+            scale: false,
+            lineStyle: {
+              width: 2.2,
+              color: uploadColor,
+            },
+            itemStyle: {
+              borderWidth: 2,
+              borderColor: uploadColor,
+              color: chartTheme.pointFill,
+            },
+          },
+          data: uploadValues,
+        },
+      ],
+    };
+  }, [chartData, downloadColor, uploadColor, maxValue, t, chartTheme]);
+
+  return (
+    <div className="space-y-1">
+      {/* 标题栏 - 高度 28px */}
+      <div className="flex justify-between items-center h-7">
+        <span className="text-xs font-semibold">{t("networkLabel")}</span>
+        <div className="text-xs font-mono font-semibold tabular-nums flex items-center gap-2">
+          <span style={{ color: downloadColor }}>↓ {formatSpeed(currentDownload)}</span>
+          <span style={{ color: uploadColor }}>↑ {formatSpeed(currentUpload)}</span>
+        </div>
+      </div>
+
+      {/* 图表区域 - 固定高度 106px */}
+      <div className="h-[106px] w-full relative">
+        {/* 内嵌 Y 轴标签 */}
+        <div className="absolute left-1 top-2 bottom-4 flex flex-col justify-between text-[9px] text-muted-foreground/70 pointer-events-none z-10">
+          {[...yAxisTicks].reverse().map((value, idx) => (
+            <span key={idx} className="leading-none">
+              {value === 0 ? '' : formatYAxisTick(value)}
+            </span>
+          ))}
+        </div>
+
+        {/* 当数据为空时显示提示 */}
+        {chartData.length === 0 ? (
+          <div className="h-full flex items-center justify-center text-xs text-muted-foreground">
+            {t("waitingData")}
+          </div>
+        ) : (
+          <ChartContainer config={chartConfig} className="h-full w-full aspect-auto">
+            {() => (
+              <ReactECharts
+                option={option}
+                style={{ width: "100%", height: "100%" }}
+                notMerge={false}
+                lazyUpdate={true}
+              />
+            )}
+          </ChartContainer>
+        )}
+      </div>
+    </div>
+  );
+});
+
+NetworkChart.displayName = 'NetworkChart';

@@ -1,0 +1,307 @@
+
+import { useState, useEffect, useRef, useCallback } from "react"
+import { createPortal } from "react-dom"
+import { X, GripVertical } from "lucide-react"
+import { cn } from "@/lib/utils"
+import { SftpManager } from "@/components/sftp/sftp-manager"
+import { useOptionalSshWorkspace } from "@/components/ssh-workspace/ssh-workspace"
+import type { SshWorkspacePreferenceAdapter, WorkspaceTransferTask } from "@/lib/session/workspace"
+import type { SftpFileItem } from "@/lib/sftp-file-utils"
+import type { BatchDeleteResult } from "@/lib/session/sftp-operations"
+
+const PANEL_ANIMATION_MS = 300
+const DEFAULT_PANEL_WIDTH = 600
+const MIN_PANEL_WIDTH = 400
+const PANEL_VIEWPORT_PADDING = 100
+const FILE_MANAGER_PANEL_WIDTH_PREFERENCE_KEY = "file-manager-panel-width"
+
+function readPanelWidthPreference(
+  preferences: SshWorkspacePreferenceAdapter | undefined,
+  key: string,
+  fallback: number,
+) {
+  let rawValue: string | null | undefined
+  try {
+    rawValue = preferences?.getString(key)
+  } catch {
+    rawValue = null
+  }
+
+  const parsedValue = rawValue ? Number.parseInt(rawValue, 10) : Number.NaN
+
+  return Number.isFinite(parsedValue)
+    ? Math.max(MIN_PANEL_WIDTH, parsedValue)
+    : fallback
+}
+
+export interface FileManagerPanelProps {
+  isOpen: boolean
+  onClose: () => void
+  // SFTP Manager props
+  serverId: string  // 修改为 string
+  serverName: string
+  host: string
+  username: string
+  isConnected: boolean
+  currentPath: string
+  files: SftpFileItem[]
+  sessionId: string
+  sessionLabel: string
+  isLoading?: boolean // 是否正在加载文件列表
+  onNavigate: (path: string) => void
+  onNavigateBack?: () => void | Promise<void>
+  canNavigateBack?: boolean
+  onInternalBackHandlerChange?: (
+    handler: { handle: () => boolean | Promise<boolean> } | null
+  ) => void
+  onUpload: (files: FileList, onProgress?: (fileName: string, loaded: number, total: number) => void) => void
+  onDownload: (fileName: string) => void
+  onDelete: (fileName: string) => void
+  onBatchDelete?: (fileNames: string[]) => Promise<BatchDeleteResult>
+  onBatchDownload?: (fileNames: string[], excludePatterns?: string[]) => Promise<void>
+  onCreateFolder: (name: string) => void
+  onCreateFile?: (name: string) => void
+  onRename: (oldName: string, newName: string) => void
+  onDisconnect: () => void
+  onRefresh: () => void
+  onReadFile?: (fileName: string) => Promise<string>
+  onSaveFile?: (fileName: string, content: string) => Promise<void>
+  // 传输任务管理
+  transferTasks?: WorkspaceTransferTask[]
+  onClearCompletedTransfers?: () => void
+  onCancelTransfer?: (taskId: string) => void
+  // 将文件管理器渲染到指定容器(例如终端内部),而非整个页面
+  mountContainer?: HTMLElement | null
+  // 面板顶部锚点(用于位于工具栏下方)
+  anchorTop?: number
+  widthPreferenceKey?: string
+  defaultWidth?: number
+}
+
+export function FileManagerPanel({
+  isOpen,
+  onClose,
+  mountContainer,
+  anchorTop,
+  transferTasks,
+  onClearCompletedTransfers,
+  onCancelTransfer,
+  widthPreferenceKey = FILE_MANAGER_PANEL_WIDTH_PREFERENCE_KEY,
+  defaultWidth = DEFAULT_PANEL_WIDTH,
+  ...sftpProps
+}: FileManagerPanelProps) {
+  const workspace = useOptionalSshWorkspace()
+  const preferences = workspace?.adapters.preferences
+  const [width, setWidth] = useState(() => readPanelWidthPreference(
+    preferences,
+    widthPreferenceKey,
+    defaultWidth,
+  ))
+  const [isResizing, setIsResizing] = useState(false)
+  const resizeStartX = useRef(0)
+  const resizeStartWidth = useRef(0)
+  const internalContainer = mountContainer || null
+  const portalContainer = internalContainer ?? (typeof document !== 'undefined' ? document.body : null)
+  const topOffset = anchorTop ?? 0
+  const [isPanelVisible, setIsPanelVisible] = useState(false)
+
+  useEffect(() => {
+    let frame = 0
+    if (isOpen) {
+      frame = window.requestAnimationFrame(() => {
+        setIsPanelVisible(true)
+      })
+    } else {
+      frame = window.requestAnimationFrame(() => {
+        setIsPanelVisible(false)
+      })
+    }
+
+    return () => window.cancelAnimationFrame(frame)
+  }, [isOpen])
+
+  // 保存宽度到 Workspace preferences
+  useEffect(() => {
+    if (isResizing) {
+      return
+    }
+
+    void preferences?.setString(widthPreferenceKey, width.toString())
+  }, [isResizing, preferences, width, widthPreferenceKey])
+
+  // 快捷键支持 (Ctrl/Cmd + E)
+  useEffect(() => {
+    if (!isOpen) return
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'e') {
+        e.preventDefault()
+        onClose()
+      }
+      // Esc 关闭
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        onClose()
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [isOpen, onClose])
+
+  // 调整大小处理
+  const handleResizeStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault()
+    setIsResizing(true)
+    resizeStartX.current = e.clientX
+    resizeStartWidth.current = width
+  }, [width])
+
+  const handleResizeMove = useCallback((e: MouseEvent) => {
+    if (!isResizing) return
+
+    const deltaX = resizeStartX.current - e.clientX
+    const maxWidth = Math.max(MIN_PANEL_WIDTH, window.innerWidth - PANEL_VIEWPORT_PADDING)
+    const newWidth = Math.min(
+      Math.max(MIN_PANEL_WIDTH, resizeStartWidth.current + deltaX),
+      maxWidth
+    )
+    setWidth(newWidth)
+  }, [isResizing])
+
+  const handleResizeEnd = useCallback(() => {
+    setIsResizing(false)
+  }, [])
+
+  useEffect(() => {
+    if (!isResizing) {
+      return
+    }
+
+    const previousCursor = document.body.style.cursor
+    const previousUserSelect = document.body.style.userSelect
+    document.body.style.cursor = 'col-resize'
+    document.body.style.userSelect = 'none'
+
+    return () => {
+      document.body.style.cursor = previousCursor
+      document.body.style.userSelect = previousUserSelect
+    }
+  }, [isResizing])
+
+  useEffect(() => {
+    if (isResizing) {
+      window.addEventListener('mousemove', handleResizeMove)
+      window.addEventListener('mouseup', handleResizeEnd)
+      return () => {
+        window.removeEventListener('mousemove', handleResizeMove)
+        window.removeEventListener('mouseup', handleResizeEnd)
+      }
+    }
+  }, [isResizing, handleResizeMove, handleResizeEnd])
+
+  // 响应式检测（仅在挂载到 body 时使用遮罩）；内部挂载一律悬浮且无遮罩
+  const [isMobile, setIsMobile] = useState(false)
+  useEffect(() => {
+    if (!internalContainer) {
+      const checkMobile = () => {
+        setIsMobile(window.innerWidth < 768)
+      }
+      checkMobile()
+      window.addEventListener('resize', checkMobile)
+      return () => window.removeEventListener('resize', checkMobile)
+    }
+  }, [internalContainer])
+
+  const panelContent = (
+    <>
+      {/* 面板 */}
+      <div
+        className={cn(
+          // 如果挂载到内部容器，则使用 absolute 并且位于工具栏下方
+          internalContainer
+            ? "absolute right-0 z-[200] flex overflow-hidden ease-out"
+            : "fixed top-0 right-0 h-full z-[999] flex overflow-hidden ease-out",
+          isResizing ? "transition-none" : "transition-[width,opacity,transform] duration-300",
+        )}
+        style={{
+          width: isPanelVisible ? `${width}px` : 0,
+          top: internalContainer ? `${topOffset}px` : 0,
+          height: internalContainer ? `calc(100% - ${topOffset}px)` : '100%',
+          opacity: isPanelVisible ? 1 : 0,
+          transform: isPanelVisible ? 'translateX(0)' : 'translateX(1rem)',
+          pointerEvents: isPanelVisible ? 'auto' : 'none',
+          willChange: isOpen ? 'width, opacity, transform' : 'auto',
+        }}
+      >
+        <div
+          className="flex h-full min-w-0 flex-shrink-0"
+          style={{ width: `${width}px` }}
+        >
+          {/* 调整大小手柄 - 仅桌面端，左侧圆角 */}
+          {(!isMobile || internalContainer) && (
+            <div
+              className={cn(
+                "w-1 cursor-col-resize group hover:bg-blue-500/50 transition-colors relative flex items-center justify-center bg-transparent rounded-l-xl",
+                isResizing && "bg-blue-500/50"
+              )}
+              onMouseDown={handleResizeStart}
+            >
+              <div
+                className={cn(
+                  "absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-muted p-1 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100",
+                  isResizing && "opacity-100"
+                )}
+              >
+                <GripVertical className="h-4 w-4" />
+              </div>
+            </div>
+          )}
+
+          {/* 主面板内容 */}
+          <div className={cn(
+            "flex-1 min-w-0 flex flex-col border-l border-border bg-card/95 text-card-foreground shadow-2xl backdrop-blur-xl",
+            !isMobile && "rounded-l-xl" // 桌面端添加左侧圆角
+          )}>
+            {/* SFTP 管理器内容 - 直接显示，无顶部工具栏 */}
+            <div className="flex-1 min-w-0 overflow-hidden">
+              {sftpProps.isConnected ? (
+                <SftpManager
+                  {...sftpProps}
+                  isFullscreen={false}
+                  viewModeStorageKey="easyssh:sftp:viewMode:terminal"
+                  defaultViewMode="list"
+                  onDisconnect={onClose}
+                  transferTasks={transferTasks}
+                  onClearCompletedTransfers={onClearCompletedTransfers}
+                  onCancelTransfer={onCancelTransfer}
+                />
+              ) : (
+                <div className="flex items-center justify-center h-full">
+                  <div className="text-center">
+                    <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-muted text-muted-foreground">
+                      <X className="h-8 w-8" />
+                    </div>
+                    <h3 className="mb-2 text-lg font-semibold text-foreground">
+                      未连接
+                    </h3>
+                    <p className="text-sm text-muted-foreground">
+                      等待连接到服务器...
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    </>
+  )
+
+  if (!portalContainer) {
+    return null
+  }
+  return createPortal(panelContent, portalContainer)
+}
+
+export { PANEL_ANIMATION_MS as FILE_MANAGER_PANEL_ANIMATION_MS }

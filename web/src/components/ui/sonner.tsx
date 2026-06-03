@@ -1,0 +1,26 @@
+
+import { useTheme } from "@/components/theme-provider"
+import { Toaster as Sonner, ToasterProps } from "sonner"
+// 统一对外导出 toast，避免在业务代码中直接依赖第三方库入口
+export { toast } from "sonner"
+
+const Toaster = ({ ...props }: ToasterProps) => {
+  const { theme = "system" } = useTheme()
+
+  return (
+    <Sonner
+      theme={theme as ToasterProps["theme"]}
+      className="toaster group"
+      style={
+        {
+          "--normal-bg": "var(--popover)",
+          "--normal-text": "var(--popover-foreground)",
+          "--normal-border": "var(--border)",
+        } as React.CSSProperties
+      }
+      {...props}
+    />
+  )
+}
+
+export { Toaster }
