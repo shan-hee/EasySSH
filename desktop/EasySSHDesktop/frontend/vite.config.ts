@@ -1,6 +1,13 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import wails from "@wailsio/runtime/plugins/vite";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const frontendRoot = dirname(fileURLToPath(import.meta.url));
+const repoRoot = resolve(frontendRoot, "../../..");
+const workspacePackage = resolve(repoRoot, "web/packages/ssh-workspace/src/desktop.ts");
+const webSourceRoot = `${resolve(repoRoot, "web/src")}/`;
 
 // https://vitejs.dev/config/
 export default defineConfig({
@@ -9,7 +16,7 @@ export default defineConfig({
     port: Number(process.env.WAILS_VITE_PORT) || 9245,
     strictPort: true,
     fs: {
-      allow: [new URL("../../..", import.meta.url).pathname],
+      allow: [repoRoot, frontendRoot],
     },
   },
   resolve: {
@@ -17,11 +24,11 @@ export default defineConfig({
     alias: [
       {
         find: /^@easyssh\/ssh-workspace\/desktop$/,
-        replacement: `${new URL("../../../web/packages/ssh-workspace/src/desktop.ts", import.meta.url).pathname}`,
+        replacement: workspacePackage,
       },
       {
         find: /^@\//,
-        replacement: `${new URL("../../../web/src/", import.meta.url).pathname}`,
+        replacement: webSourceRoot,
       },
     ],
   },
