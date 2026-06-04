@@ -37,6 +37,8 @@ export interface WorkspaceTerminalSession extends OptionalServerConnectionInfo {
 export interface SftpWorkspaceSession extends ServerConnectionInfo {
   id: string
   currentPath: string
+  pathBackStack?: string[]
+  pathForwardStack?: string[]
   files: SftpFileItem[]
   isConnected: boolean
   isLoading?: boolean

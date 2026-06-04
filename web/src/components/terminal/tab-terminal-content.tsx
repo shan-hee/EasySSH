@@ -561,6 +561,8 @@ export function TabTerminalContent({
             onNavigate={sftpSession.navigate}
             onNavigateBack={sftpSession.goBack}
             canNavigateBack={sftpSession.canGoBack}
+            onNavigateForward={sftpSession.goForward}
+            canNavigateForward={sftpSession.canGoForward}
             onInternalBackHandlerChange={setSftpInternalBackHandler}
             onRefresh={sftpSession.refresh}
             onUpload={sftpSession.uploadFiles}

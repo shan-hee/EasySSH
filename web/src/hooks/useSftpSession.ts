@@ -90,6 +90,7 @@ export function useSftpSession(
   const [currentPath, setCurrentPath] = useState(initialPath);
   const currentPathRef = useRef(initialPath);
   const [pathBackStack, setPathBackStack] = useState<string[]>([]);
+  const [pathForwardStack, setPathForwardStack] = useState<string[]>([]);
   const [files, setFiles] = useState<FileItem[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -150,6 +151,7 @@ export function useSftpSession(
 
       if (loadedPath && loadedPath !== previousPath) {
         setPathBackStack((prev) => [...prev, previousPath].slice(-50));
+        setPathForwardStack([]);
       }
     },
     [loadDirectory]
@@ -162,11 +164,32 @@ export function useSftpSession(
     const previousPath = pathBackStack[pathBackStack.length - 1];
     if (!previousPath) return;
 
+    const current = currentPathRef.current;
     const loadedPath = await loadDirectory(previousPath);
     if (!loadedPath) return;
 
     setPathBackStack((prev) => prev.slice(0, -1));
+    if (loadedPath !== current) {
+      setPathForwardStack((prev) => [...prev, current].slice(-50));
+    }
   }, [loadDirectory, pathBackStack]);
+
+  /**
+   * 前进到本会话内下一次访问的目录
+   */
+  const goForward = useCallback(async () => {
+    const nextPath = pathForwardStack[pathForwardStack.length - 1];
+    if (!nextPath) return;
+
+    const current = currentPathRef.current;
+    const loadedPath = await loadDirectory(nextPath);
+    if (!loadedPath) return;
+
+    setPathForwardStack((prev) => prev.slice(0, -1));
+    if (loadedPath !== current) {
+      setPathBackStack((prev) => [...prev, current].slice(-50));
+    }
+  }, [loadDirectory, pathForwardStack]);
 
   /**
    * 刷新当前目录
@@ -396,6 +419,7 @@ export function useSftpSession(
     currentPathRef.current = initialPath;
     setCurrentPath(initialPath);
     setPathBackStack([]);
+    setPathForwardStack([]);
   }, [serverId, initialPath]);
 
   // 页面卸载/切换 serverId 时，主动关闭连接以加速资源回收
@@ -416,10 +440,12 @@ export function useSftpSession(
     error,
     transferTasks: fileTransfer.tasks,
     canGoBack: pathBackStack.length > 0,
+    canGoForward: pathForwardStack.length > 0,
 
     // 操作
     navigate,
     goBack,
+    goForward,
     refresh,
     uploadFiles,
     downloadFile,

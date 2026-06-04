@@ -185,7 +185,7 @@ export function SftpFileBrowserPane({
       ref={dropZoneRef}
       className={cn(
         "flex-1 relative min-h-0",
-        viewMode === "grid" ? "overflow-auto scrollbar-custom" : "",
+        viewMode === "grid" ? "overflow-hidden" : "",
         isDragging && "bg-primary/10",
       )}
       onDragEnter={onDragEnter}

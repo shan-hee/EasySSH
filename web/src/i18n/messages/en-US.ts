@@ -788,6 +788,8 @@ const messages = {
     editorStatusModified: "• Modified",
     // Manager tooltips
     sessionEditTitle: "Double-click to edit session name",
+    historyBackTooltip: "Go back",
+    historyForwardTooltip: "Go forward",
     pathRootTooltip: "Root directory",
     pathInputPlaceholder: "Enter path...",
     pathClickToEdit: "Click to edit path",

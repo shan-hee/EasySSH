@@ -1,5 +1,5 @@
 
-import { useRef, useMemo, useCallback, type HTMLAttributes } from "react"
+import { useRef, useMemo, useCallback } from "react"
 import { createPortal } from "react-dom"
 import { SftpSessionProvider } from "@/contexts/sftp-session-context"
 import "@/components/Folder.css"
@@ -43,6 +43,8 @@ export interface SftpManagerProps {
   onNavigate: (path: string) => void
   onNavigateBack?: () => void | Promise<void>
   canNavigateBack?: boolean
+  onNavigateForward?: () => void | Promise<void>
+  canNavigateForward?: boolean
   onInternalBackHandlerChange?: (
     handler: { handle: () => boolean | Promise<boolean> } | null
   ) => void
@@ -60,8 +62,6 @@ export interface SftpManagerProps {
   onSaveFile?: (fileName: string, content: string) => Promise<void>
   onRenameSession?: (newLabel: string) => void
   onToggleFullscreen?: () => void
-  dragHandleListeners?: HTMLAttributes<HTMLDivElement>
-  dragHandleAttributes?: HTMLAttributes<HTMLDivElement>
   // 传输任务管理(从外部传入)
   transferTasks?: WorkspaceTransferTask[]
   onClearCompletedTransfers?: () => void
@@ -91,6 +91,8 @@ export function SftpManager(props: SftpManagerProps) {
     onNavigate,
     onNavigateBack,
     canNavigateBack,
+    onNavigateForward,
+    canNavigateForward,
     onInternalBackHandlerChange,
     onUpload,
     onDownload,
@@ -106,8 +108,6 @@ export function SftpManager(props: SftpManagerProps) {
     onSaveFile,
     onRenameSession,
     onToggleFullscreen,
-    dragHandleListeners,
-    dragHandleAttributes,
     transferTasks,
     onClearCompletedTransfers,
     onCancelTransfer,
@@ -234,19 +234,12 @@ export function SftpManager(props: SftpManagerProps) {
   })
 
   const {
-    editingSessionLabel,
-    tempSessionLabel,
-    setTempSessionLabel,
-    sessionLabelInputRef,
     pathInputValue,
     setPathInputValue,
     isEditingPath,
     setIsEditingPath,
     displayPath,
     pathSegments,
-    startEditSessionLabel,
-    finishEditSessionLabel,
-    cancelEditSessionLabel,
   } = useSftpWorkspaceHeaderController({
     sessionLabel,
     currentPath,
@@ -318,22 +311,11 @@ export function SftpManager(props: SftpManagerProps) {
       <SftpSessionProvider value={sessionContextValue}>
         <div
           className={cn(
-            "flex h-full min-w-0 flex-col overflow-hidden transition-colors bg-background",
-            isFullscreen ? "fixed inset-0 z-[9999] rounded-none border-0" : "rounded-xl border"
+            "flex h-full min-w-0 flex-col overflow-hidden rounded-none border-0 bg-background transition-colors",
+            isFullscreen && "fixed inset-0 z-[9999]"
           )}
         >
       <SftpWorkspaceToolbar
-        sessionLabel={sessionLabel}
-        sessionColor={sessionColor}
-        editingSessionLabel={editingSessionLabel}
-        tempSessionLabel={tempSessionLabel}
-        sessionLabelInputRef={sessionLabelInputRef}
-        dragHandleListeners={dragHandleListeners}
-        dragHandleAttributes={dragHandleAttributes}
-        onTempSessionLabelChange={setTempSessionLabel}
-        onStartEditSessionLabel={startEditSessionLabel}
-        onFinishEditSessionLabel={finishEditSessionLabel}
-        onCancelEditSessionLabel={cancelEditSessionLabel}
         displayPath={displayPath}
         pathInputValue={pathInputValue}
         pathSegments={pathSegments}
@@ -342,6 +324,10 @@ export function SftpManager(props: SftpManagerProps) {
         onPathInputValueChange={setPathInputValue}
         onEditingPathChange={setIsEditingPath}
         onNavigate={onNavigate}
+        onNavigateBack={onNavigateBack}
+        canNavigateBack={canNavigateBack}
+        onNavigateForward={onNavigateForward}
+        canNavigateForward={canNavigateForward}
         viewMode={viewMode}
         onViewModeChange={setViewMode}
         showTransferTasks={showTransferTasks}
@@ -367,15 +353,6 @@ export function SftpManager(props: SftpManagerProps) {
       ) : (
         <>
           <SftpFileToolbar
-            showBackButton={!!canNavigateBack || pathSegments.length > 0}
-            onBack={() => {
-              if (canNavigateBack && onNavigateBack) {
-                return onNavigateBack()
-              }
-
-              const parentPath = pathSegments.slice(0, -1).join("/")
-              onNavigate(parentPath ? `/${parentPath}` : "/")
-            }}
             searchTerm={searchTerm}
             onSearchTermChange={setSearchTerm}
             showHidden={showHidden}

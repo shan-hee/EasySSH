@@ -1,7 +1,10 @@
 
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react"
-import { Tabs, TabsContent } from "@/components/ui/tabs"
-import { SessionTabBar } from "@/components/tabs/session-tab-bar"
+import {
+  SessionTabBar,
+  type SessionTabDragEvent,
+  type SessionTabDropSide,
+} from "@/components/tabs/session-tab-bar"
 import type {
   TerminalSession,
   TerminalConnectionPhase,
@@ -11,6 +14,8 @@ import { cn } from "@/lib/utils"
 import { useTerminalStore } from "@/stores/terminal-store"
 import { PageHeader } from "@/components/page-header"
 import { ActivityLogPane } from "@/components/ssh-workspace/activity-log-pane"
+import { ServerConnectionConfigs } from "@/components/servers/server-connection-configs"
+import { SessionSplitDropOverlay } from "@/components/tabs/session-split-drop-overlay"
 import {
   TerminalSettingsDialog,
   type TerminalSettings,
@@ -118,6 +123,13 @@ const getAdjacentSessionId = (sessions: TerminalSession[], sessionId: string) =>
   return sessions[nextIndex]?.id
 }
 
+const getWorkspaceGridLayout = (count: number) => {
+  if (count <= 1) return "grid-cols-1"
+  if (count === 2) return "grid-cols-1 lg:grid-cols-2"
+  if (count === 3) return "grid-cols-1 lg:grid-cols-3"
+  return "grid-cols-1 lg:grid-cols-2"
+}
+
 interface TerminalComponentProps {
   sessions: TerminalSession[]
   // 返回新建会话的 id，便于自动激活
@@ -162,12 +174,16 @@ export function TerminalComponent({
     externalActiveSessionId || sessions[0]?.id || ""
   )
   const [isFullscreen, setIsFullscreen] = useState(false)
+  const [detachedSessionIds, setDetachedSessionIds] = useState<string[]>([])
+  const [tabDropSide, setTabDropSide] = useState<SessionTabDropSide | null>(null)
   const [loaderStates, dispatchLoaderStates] = useReducer(reduceLoaderStates, {})
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
   const [internalBackVersion, setInternalBackVersion] = useState(0)
   const [activeSessionHistoryVersion, setActiveSessionHistoryVersion] = useState(0)
   const activeSessionRef = useRef(activeSession)
+  const workspaceDropRef = useRef<HTMLDivElement>(null)
   const activeSessionHistoryRef = useRef<string[]>([])
+  const tabDragVisitedWorkspaceRef = useRef(false)
   const lastNotifiedActiveSessionRef = useRef(activeSession)
   const internalBackHandlersRef = useRef(new Map<string, InternalBackHandler>())
   const internalBackAvailabilityRef = useRef(new Map<string, boolean>())
@@ -183,7 +199,34 @@ export function TerminalComponent({
     () => new Set(sessions.map((session) => session.id)),
     [sessions]
   )
+  const terminalSessions = useMemo(
+    () => sessions.filter((session) => session.type !== "config"),
+    [sessions]
+  )
+  const terminalSessionIdSet = useMemo(
+    () => new Set(terminalSessions.map((session) => session.id)),
+    [terminalSessions]
+  )
   const active = sessions.find((s) => s.id === activeSession)
+  const activeConfigSession = active?.type === "config" ? active : null
+  const activeTerminalSession = active?.type !== "config" ? active : null
+  const visibleSessionIds = useMemo(() => {
+    if (activeConfigSession) {
+      return []
+    }
+
+    if (detachedSessionIds.length > 0) {
+      return detachedSessionIds.filter((id) => terminalSessionIdSet.has(id))
+    }
+
+    return activeTerminalSession
+      ? [activeTerminalSession.id]
+      : terminalSessions[0]?.id
+        ? [terminalSessions[0].id]
+        : []
+  }, [activeConfigSession, activeTerminalSession, detachedSessionIds, terminalSessionIdSet, terminalSessions])
+  const visibleSessionIdSet = useMemo(() => new Set(visibleSessionIds), [visibleSessionIds])
+  const isMultiSessionGrid = detachedSessionIds.length > 0 && visibleSessionIds.length > 0
   const canUseFullscreenCapability = workspace?.capabilities.fullscreen !== false
   const handleToggleFullscreen = useCallback(() => {
     setIsFullscreen((current) => !current)
@@ -206,6 +249,110 @@ export function TerminalComponent({
       return nextSessionId
     })
   }, [sessionIdSet])
+
+  const handleChangeActiveSession = useCallback((nextSessionId: string) => {
+    setActiveSessionFromUser(nextSessionId)
+    setDetachedSessionIds((current) => (
+      current.includes(nextSessionId) ? current : []
+    ))
+  }, [setActiveSessionFromUser])
+
+  const handleDetachSession = useCallback((sessionId: string) => {
+    if (!terminalSessionIdSet.has(sessionId)) return
+
+    setDetachedSessionIds((current) => {
+      const cleaned = current.filter((id) => terminalSessionIdSet.has(id))
+      if (cleaned.includes(sessionId)) {
+        return cleaned
+      }
+
+      const next = cleaned.length > 0
+        ? [...cleaned, sessionId]
+        : activeTerminalSession?.id && activeTerminalSession.id !== sessionId
+          ? [activeTerminalSession.id, sessionId]
+          : [sessionId]
+
+      return Array.from(new Set(next)).filter((id) => terminalSessionIdSet.has(id))
+    })
+    setActiveSessionFromUser(sessionId)
+  }, [activeTerminalSession?.id, setActiveSessionFromUser, terminalSessionIdSet])
+
+  const getTabDropSide = useCallback((event: SessionTabDragEvent) => {
+    const rect = workspaceDropRef.current?.getBoundingClientRect()
+    if (!rect) return null
+    if (event.clientX < rect.left || event.clientX > rect.right) return null
+    if (event.clientY < rect.top || event.clientY > rect.bottom) return null
+
+    return event.clientX < rect.left + rect.width / 2 ? "left" : "right"
+  }, [])
+
+  const getSplitSessionIds = useCallback((sessionId: string, side: SessionTabDropSide) => {
+    const current = detachedSessionIds.filter((id) => terminalSessionIdSet.has(id) && id !== sessionId)
+    const base = current.length > 0
+      ? current
+      : [activeTerminalSession?.id, terminalSessions.find((session) => session.id !== sessionId)?.id]
+        .filter((id): id is string => Boolean(id && id !== sessionId))
+
+    const next = side === "left" ? [sessionId, ...base] : [...base, sessionId]
+    return Array.from(new Set(next)).filter((id) => terminalSessionIdSet.has(id))
+  }, [activeTerminalSession?.id, detachedSessionIds, terminalSessionIdSet, terminalSessions])
+
+  const handleTabDragStart = useCallback(() => {
+    tabDragVisitedWorkspaceRef.current = false
+    setTabDropSide(null)
+  }, [])
+
+  const handleTabDragMove = useCallback((event: SessionTabDragEvent) => {
+    if (event.session.type === "config" || isFullscreen) {
+      setTabDropSide(null)
+      return
+    }
+
+    const side = getTabDropSide(event)
+    if (side) {
+      tabDragVisitedWorkspaceRef.current = true
+    }
+    setTabDropSide(side)
+  }, [getTabDropSide, isFullscreen])
+
+  const handleTabDragEnd = useCallback((event: SessionTabDragEvent) => {
+    const side = event.session.type === "config" || isFullscreen ? null : getTabDropSide(event)
+    const visitedWorkspace = tabDragVisitedWorkspaceRef.current
+    tabDragVisitedWorkspaceRef.current = false
+    setTabDropSide(null)
+
+    if (side) {
+      const next = getSplitSessionIds(event.sessionId, side)
+      if (next.length > 0) {
+        setDetachedSessionIds(next)
+        setActiveSessionFromUser(event.sessionId)
+        setIsFullscreen(false)
+      }
+      return true
+    }
+
+    if (detachedSessionIds.includes(event.sessionId) && visitedWorkspace && event.isOverTabBar) {
+      setDetachedSessionIds((current) => {
+        const next = current.filter((id) => id !== event.sessionId)
+        return next.length > 1 ? next : []
+      })
+      setActiveSessionFromUser(event.sessionId)
+      return true
+    }
+
+    return false
+  }, [
+    detachedSessionIds,
+    getSplitSessionIds,
+    getTabDropSide,
+    isFullscreen,
+    setActiveSessionFromUser,
+  ])
+
+  const handleTabDragCancel = useCallback(() => {
+    tabDragVisitedWorkspaceRef.current = false
+    setTabDropSide(null)
+  }, [])
 
   const setActiveSessionWithoutHistory = useCallback((nextSessionId: string) => {
     setActiveSession(nextSessionId)
@@ -246,6 +393,10 @@ export function TerminalComponent({
       return () => window.cancelAnimationFrame(frame)
     }
   }, [sessionIdSet])
+
+  useEffect(() => {
+    setDetachedSessionIds((current) => current.filter((id) => terminalSessionIdSet.has(id)))
+  }, [terminalSessionIdSet])
 
   const handleInternalBackHandlerChange = useCallback((
     sessionId: string,
@@ -509,7 +660,10 @@ export function TerminalComponent({
 
   const handleNewSessionClick = () => {
     const id = onNewSession()
-    if (id) setActiveSessionFromUser(String(id))
+    if (id) {
+      setDetachedSessionIds([])
+      setActiveSessionFromUser(String(id))
+    }
   }
 
   const cleanupSession = (sessionId: string) => {
@@ -546,9 +700,16 @@ export function TerminalComponent({
 
   // ==================== 页签关闭处理：先切换/导航，再清理终端资源，避免可见终端先被清空 ====================
   const handleCloseSession = (sessionId: string) => {
+    const onlySession = sessions[0]
     const willCloseTerminalPage = sessions.length <= 1
 
     if (willCloseTerminalPage) {
+      if (onlySession?.type === "config") {
+        setActiveSessionWithoutHistory(onlySession.id)
+        return
+      }
+
+      setDetachedSessionIds((current) => current.filter((id) => id !== sessionId))
       onCloseSession(sessionId)
       cleanupSessionsAfterNavigation([sessionId])
       return
@@ -574,6 +735,7 @@ export function TerminalComponent({
     // }
 
     // 1. 通知父组件更新会话列表，让 UI 先切走
+    setDetachedSessionIds((current) => current.filter((id) => id !== sessionId))
     onCloseSession(sessionId)
     // 2. 稍后再销毁终端实例和 WebSocket，避免可见页签先被清空
     cleanupSessionsAfterTabSwitch([sessionId])
@@ -599,14 +761,21 @@ export function TerminalComponent({
     //   destroyMonitorConnection(String(session.serverId))
     // }
     onCloseOthers(sessionId)
+    setDetachedSessionIds((current) => current.filter((id) => id === sessionId || sessions.some((session) => session.id === id && session.pinned)))
     cleanupSessionsAfterTabSwitch(removedSessionIds)
   }
 
   const handleCloseAll = () => {
+    if (sessions.length <= 1 && sessions[0]?.type === "config") {
+      setActiveSessionWithoutHistory(sessions[0].id)
+      return
+    }
+
     const pinnedSessions = sessions.filter((session) => session.pinned)
     const willCloseTerminalPage = pinnedSessions.length === 0
 
     if (willCloseTerminalPage) {
+      setDetachedSessionIds([])
       onCloseAll()
       cleanupSessionsAfterNavigation(sessions.map((session) => session.id))
       return
@@ -627,6 +796,7 @@ export function TerminalComponent({
     //   destroyMonitorConnection(String(session.serverId))
     // }
     onCloseAll()
+    setDetachedSessionIds((current) => current.filter((id) => pinnedSessions.some((session) => session.id === id)))
     cleanupSessionsAfterTabSwitch(removedSessionIds)
   }
 
@@ -634,16 +804,15 @@ export function TerminalComponent({
 	    dispatchLoaderStates({ type: "animation-complete", sessionId })
 	  }
 
-  const activeLoaderState = active ? loaderStates[active.id] : undefined
-  const effectiveIsLoading = !!(
-    active &&
-    (shouldShowConnectionLoader(active) || activeLoaderState)
-  )
-
 	  // Loader 只跟随连接 phase，不再依赖额外的 onLoadingChange 回调。
 	  useEffect(() => {
 	    dispatchLoaderStates({ type: "sync", sessions })
 	  }, [sessions])
+
+  const handleStartConnectionFromActiveConfig = useCallback((server: Server) => {
+    if (!activeConfigSession) return
+    onStartConnectionFromConfig(activeConfigSession.id, server)
+  }, [activeConfigSession, onStartConnectionFromConfig])
 
   // 键盘快捷键支持
   // AI 助手快捷键（Ctrl+K）已移至 TabTerminalContent 组件内部
@@ -666,7 +835,7 @@ export function TerminalComponent({
           <SessionTabBar
             sessions={sessions}
             activeId={activeSession}
-            onChangeActive={setActiveSessionFromUser}
+            onChangeActive={handleChangeActiveSession}
             onNewSession={handleNewSessionClick}
             onCloseSession={handleCloseSession}
             onDuplicateSession={onDuplicateSession}
@@ -678,39 +847,67 @@ export function TerminalComponent({
             onToggleFullscreen={canUseFullscreenCapability ? handleToggleFullscreen : undefined}
             onOpenSettings={() => setIsSettingsOpen(true)}
             hideBreadcrumb
+            onDetachSession={handleDetachSession}
+            canDetachSession={(session) => session.type !== "config"}
+            detachedSessionIds={detachedSessionIds}
+            onTabDragStart={handleTabDragStart}
+            onTabDragMove={handleTabDragMove}
+            onTabDragEnd={handleTabDragEnd}
+            onTabDragCancel={handleTabDragCancel}
           />
 
-          <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
+          <div ref={workspaceDropRef} className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
             {sessions.length === 0 ? (
               <div className="flex flex-1 items-center justify-center text-muted-foreground">
                 {tTerminal("emptySessionHint")}
               </div>
             ) : (
-              <Tabs value={active?.id || sessions[0]?.id || ''} className="flex min-h-0 flex-1 flex-col gap-0">
-                {/* ==================== 每个页签独立的 Provider 和内容 ==================== */}
-                {sessions.map((session) => {
-                  const isActive = session.id === activeSession
+              <div className={cn(
+                "relative min-h-0 flex-1 overflow-hidden",
+                isMultiSessionGrid && "grid gap-3 overflow-auto p-3",
+                isMultiSessionGrid && getWorkspaceGridLayout(visibleSessionIds.length)
+              )}>
+                <SessionSplitDropOverlay side={tabDropSide} />
+
+                {activeConfigSession && (
+                  <div className="absolute inset-0 z-20 min-h-0">
+                    <ServerConnectionConfigs
+                      onConnect={handleStartConnectionFromActiveConfig}
+                    />
+                  </div>
+                )}
+
+                {terminalSessions.map((session) => {
+                  const isVisible = visibleSessionIdSet.has(session.id)
+                  const isSessionActive = isVisible
+                  const sessionLoaderState = loaderStates[session.id]
+                  const sessionIsLoading = !!(
+                    isVisible &&
+                    (shouldShowConnectionLoader(session) || sessionLoaderState)
+                  )
 
                   return (
-                    <TabsContent
+                    <div
                       key={session.id}
-                      value={session.id}
-                      forceMount // 强制保持挂载
                       className={cn(
-                        "absolute inset-0 m-0 flex min-h-0 flex-1 flex-col transition-none"
+                        "min-h-0 flex flex-col transition-none",
+                        isVisible
+                          ? isMultiSessionGrid
+                            ? "relative overflow-hidden rounded-lg border border-border/60 bg-background/70"
+                            : "absolute inset-0"
+                          : "absolute inset-0 invisible pointer-events-none"
                       )}
                       style={{
-                        visibility: isActive ? 'visible' : 'hidden',
-                        zIndex: isActive ? 10 : 0,
-                        pointerEvents: isActive ? 'auto' : 'none',
+                        zIndex: isVisible ? 10 : 0,
+                        pointerEvents: isVisible ? 'auto' : 'none',
                       }}
                     >
                       <TabTerminalContent
                         session={session}
-                        isActive={isActive}
+                        isActive={isSessionActive}
                         settings={settings}
-                        effectiveIsLoading={effectiveIsLoading && isActive}
-                        loaderState={loaderStates[session.id] || "entering"}
+                        effectiveIsLoading={sessionIsLoading}
+                        loaderState={sessionLoaderState || "entering"}
                         onAnimationComplete={() => handleAnimationComplete(session.id)}
                         isFullscreen={isFullscreen}
                         onCommand={(command) => handleCommand(session.id, command)}
@@ -721,10 +918,10 @@ export function TerminalComponent({
                         onInternalBackHandlerChange={handleInternalBackHandlerChange}
                         onInternalBackAvailabilityChange={handleInternalBackAvailabilityChange}
                       />
-                    </TabsContent>
+                    </div>
                   )
                 })}
-              </Tabs>
+              </div>
             )}
           </div>
         </div>

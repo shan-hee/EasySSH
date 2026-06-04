@@ -2,19 +2,16 @@
 import React, { useState, useEffect, useRef, useCallback, startTransition } from "react"
 import { PageHeader } from "@/components/page-header"
 import { SshWorkspace } from "@easyssh/ssh-workspace"
+import {
+  SessionTabBar,
+  type SessionTabDragEvent,
+  type SessionTabDropSide,
+} from "@/components/tabs/session-tab-bar"
+import { SessionSplitDropOverlay } from "@/components/tabs/session-split-drop-overlay"
+import { ServerConnectionConfigs } from "@/components/servers/server-connection-configs"
 import { SftpSessionCard } from "@/components/sftp/sftp-session-card"
 import { DragPreviewToolbar, SortableSession, type CrossSessionDragData } from "@/components/sftp/sftp-session-sortable"
-import { FolderOpen, Server, Plus, ChevronDown, Loader2 } from "lucide-react"
-import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
-import {
- DropdownMenu,
- DropdownMenuContent,
- DropdownMenuItem,
- DropdownMenuTrigger,
- DropdownMenuSeparator,
- DropdownMenuLabel,
-} from "@/components/ui/dropdown-menu"
 import {
  DndContext,
  closestCenter,
@@ -33,7 +30,7 @@ import {
  rectSortingStrategy,
 } from '@dnd-kit/sortable'
 import { createPortal } from 'react-dom'
-import { operationRecordsApi, serversApi, sftpApi, type Server as ApiServer, type FileInfo } from "@/lib/api"
+import { operationRecordsApi, sftpApi, type Server as ApiServer, type FileInfo } from "@/lib/api"
 import { createAuthTicket } from "@/lib/auth-ticket"
 import { toast } from "@/components/ui/sonner"
 import { getErrorMessage } from "@/lib/error-utils"
@@ -46,7 +43,6 @@ import {
   performSaveFile,
   performBatchDelete,
 } from "@/lib/session/sftp-operations"
-import { useAuthReady } from "@/hooks/use-auth-ready"
 import { useClientAuth } from "@/components/client-auth-provider"
 import { useSystemConfig } from "@/hooks/use-system-config"
 import { getEffectiveLocale, getEffectiveTimezone } from "@/utils/datetime"
@@ -58,6 +54,7 @@ import type { SftpWorkspaceSession } from "@/lib/session/workspace"
 import { createBrowserWorkspacePreferenceAdapter, createWorkspaceAdapters, createWorkspaceAuthTicketProviderAdapter, createWorkspaceI18nAdapter, createWorkspaceNotifierAdapter, createWorkspaceSettingsAdapter, createWorkspaceTransferAuthTicketProviderAdapter, createWorkspaceTransferHistoryAdapter, createWorkspaceTransferManagerAdapter } from "@/lib/session/workspace-adapters"
 import { createSftpWorkspaceSessionControllerAdapter, createSftpWorkspaceSessionStoreAdapter, useSftpSessionStore } from "@/stores/sftp-session-store"
 import { createWorkspaceCapabilitiesFromRuntime, useRuntime } from "@/shell/runtime"
+import type { TerminalSession } from "@/components/terminal/types"
 
 type ComponentFile = SftpFileItem
 type SftpSession = SftpWorkspaceSession
@@ -72,8 +69,33 @@ const SESSION_COLORS = [
   "var(--chart-5)",
 ]
 
+const SFTP_CONFIG_TAB_ID = "sftp-config"
+
+const createSftpConfigTabId = () => (
+  `sftp-config-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+)
+
+const createSftpConfigTab = (id: string): TerminalSession => ({
+  id,
+  serverName: "sftp",
+  host: "",
+  username: "",
+  shouldConnect: false,
+  connectionPhase: "idle",
+  status: "disconnected",
+  lastActivity: 0,
+  type: "config",
+  pinned: false,
+})
+
+const getWorkspaceGridLayout = (count: number) => {
+ if (count <= 1) return "grid-cols-1"
+ if (count === 2) return "grid-cols-1 lg:grid-cols-2"
+ if (count === 3) return "grid-cols-1 lg:grid-cols-3"
+ return "grid-cols-1 lg:grid-cols-2"
+}
+
 export default function SftpPage() {
- const { ready } = useAuthReady()
  const { runtime } = useRuntime()
  const { user } = useClientAuth()
  const { data: systemConfig } = useSystemConfig()
@@ -93,8 +115,10 @@ export default function SftpPage() {
    [effectiveLocale, effectiveTimezone],
  )
  const sftpSessionApi = React.useMemo(() => createSftpSessionApi(sftpApi), [])
- const [servers, setServers] = useState<ApiServer[]>([])
- const [loading, setLoading] = useState(true)
+ const [configTabIds, setConfigTabIds] = useState<string[]>([SFTP_CONFIG_TAB_ID])
+ const [activeSessionId, setActiveSessionId] = useState(SFTP_CONFIG_TAB_ID)
+ const [detachedSessionIds, setDetachedSessionIds] = useState<string[]>([])
+ const [tabDropSide, setTabDropSide] = useState<SessionTabDropSide | null>(null)
  // 认证改为基于 HttpOnly Cookie，不再需要前端 token
 
  // SFTP 工作区会话状态进入 runtime store，页面只保留业务编排。
@@ -106,8 +130,9 @@ export default function SftpPage() {
  const setNextSessionId = useSftpSessionStore((state) => state.setNextSessionId)
  const setFullscreenSessionId = useSftpSessionStore((state) => state.setFullscreenSessionId)
  const setActiveId = useSftpSessionStore((state) => state.setActiveId)
- const parentRef = useRef<HTMLDivElement>(null)
  const sessionsRef = useRef<SftpSession[]>([])
+ const workspaceDropRef = useRef<HTMLDivElement>(null)
+ const tabDragVisitedWorkspaceRef = useRef(false)
 
  // 始终保持 ref 指向最新会话，便于稳定回调访问（避免 useEffect 的一帧滞后）
  sessionsRef.current = sessions
@@ -217,34 +242,199 @@ export default function SftpPage() {
    },
  }), [runtime])
 
- // 加载服务器列表
- const loadServers = useCallback(async () => {
- try {
- setLoading(true)
- const response = await serversApi.list({
- page: 1,
- limit: 100,
-})
+ const sessionIdSet = React.useMemo(
+   () => new Set(sessions.map((session) => session.id)),
+   [sessions]
+ )
+ const configTabIdSet = React.useMemo(() => new Set(configTabIds), [configTabIds])
+ const isActiveConfigTab = configTabIdSet.has(activeSessionId)
+ const tabSessions = React.useMemo<TerminalSession[]>(() => {
+   return [
+     ...sessions.map<TerminalSession>((session) => ({
+       id: session.id,
+       serverId: session.serverId,
+       serverName: session.label || session.serverName,
+       host: session.host,
+       username: session.username,
+       shouldConnect: true,
+       connectionPhase: session.isConnected ? "ready" : "ssh_connecting",
+       status: session.isConnected ? "connected" : "reconnecting",
+       lastActivity: Date.now(),
+       type: "terminal",
+       pinned: false,
+     })),
+     ...configTabIds.map(createSftpConfigTab),
+   ]
+ }, [configTabIds, sessions])
+ const visibleSessionIds = React.useMemo(() => {
+   if (isActiveConfigTab) {
+     return []
+   }
 
- // 防御性检查：处理apiFetch自动解包导致的数据结构不一致
- const serverList = Array.isArray(response)
- ? response
- : (response?.data || [])
+   if (detachedSessionIds.length > 0) {
+     return detachedSessionIds.filter((id) => sessionIdSet.has(id))
+   }
 
- setServers(serverList)
- } catch (error: unknown) {
- console.error("Failed to load servers:", error)
+   if (sessionIdSet.has(activeSessionId)) {
+     return [activeSessionId]
+   }
 
- toast.error(getErrorMessage(error, tTerminal("errorLoadServers")))
- } finally {
- setLoading(false)
- }
- }, [tTerminal])
+   return sessions[0]?.id ? [sessions[0].id] : []
+ }, [activeSessionId, detachedSessionIds, isActiveConfigTab, sessionIdSet, sessions])
+ const visibleSessionIdSet = React.useMemo(() => new Set(visibleSessionIds), [visibleSessionIds])
+ const isMultiSessionGrid = detachedSessionIds.length > 0 && visibleSessionIds.length > 0
 
  useEffect(() => {
-   if (!ready) return
-   loadServers()
- }, [loadServers, ready])
+   setDetachedSessionIds((current) => current.filter((id) => sessionIdSet.has(id)))
+   if (sessions.length === 0 && configTabIds.length === 0) {
+     setConfigTabIds([SFTP_CONFIG_TAB_ID])
+     setActiveSessionId(SFTP_CONFIG_TAB_ID)
+     return
+   }
+   if (sessions.length === 0) {
+     if (!configTabIdSet.has(activeSessionId)) {
+       setActiveSessionId(configTabIds[0] ?? SFTP_CONFIG_TAB_ID)
+     }
+     return
+   }
+   if (!sessionIdSet.has(activeSessionId) && !configTabIdSet.has(activeSessionId)) {
+     setActiveSessionId(sessions[0].id ?? configTabIds[0] ?? SFTP_CONFIG_TAB_ID)
+   }
+ }, [activeSessionId, configTabIds, configTabIdSet, sessionIdSet, sessions])
+
+ const handleChangeTab = useCallback((sessionId: string) => {
+   setActiveSessionId(sessionId)
+   setDetachedSessionIds((current) => (
+     current.includes(sessionId) ? current : []
+   ))
+   setFullscreenSessionId((current) => (
+     current && current !== sessionId ? null : current
+   ))
+ }, [setFullscreenSessionId])
+
+ const handleDetachTab = useCallback((sessionId: string) => {
+   if (!sessionIdSet.has(sessionId)) return
+
+   setDetachedSessionIds((current) => {
+     const cleaned = current.filter((id) => sessionIdSet.has(id))
+     if (cleaned.includes(sessionId)) {
+       return cleaned
+     }
+
+     const next = cleaned.length > 0
+       ? [...cleaned, sessionId]
+       : !configTabIdSet.has(activeSessionId) && activeSessionId !== sessionId && sessionIdSet.has(activeSessionId)
+         ? [activeSessionId, sessionId]
+         : [sessionId]
+
+     return Array.from(new Set(next)).filter((id) => sessionIdSet.has(id))
+   })
+   setActiveSessionId(sessionId)
+   setFullscreenSessionId(null)
+ }, [activeSessionId, configTabIdSet, sessionIdSet, setFullscreenSessionId])
+
+ const getTabDropSide = useCallback((event: SessionTabDragEvent) => {
+   const rect = workspaceDropRef.current?.getBoundingClientRect()
+   if (!rect) return null
+   if (event.clientX < rect.left || event.clientX > rect.right) return null
+   if (event.clientY < rect.top || event.clientY > rect.bottom) return null
+
+   return event.clientX < rect.left + rect.width / 2 ? "left" : "right"
+ }, [])
+
+ const getSplitSessionIds = useCallback((sessionId: string, side: SessionTabDropSide) => {
+   const current = detachedSessionIds.filter((id) => sessionIdSet.has(id) && id !== sessionId)
+   const base = current.length > 0
+     ? current
+     : [
+         sessionIdSet.has(activeSessionId) ? activeSessionId : undefined,
+         sessions.find((session) => session.id !== sessionId)?.id,
+       ].filter((id): id is string => Boolean(id && id !== sessionId))
+
+   const next = side === "left" ? [sessionId, ...base] : [...base, sessionId]
+   return Array.from(new Set(next)).filter((id) => sessionIdSet.has(id))
+ }, [activeSessionId, detachedSessionIds, sessionIdSet, sessions])
+
+ const handleTabDragStart = useCallback(() => {
+   tabDragVisitedWorkspaceRef.current = false
+   setTabDropSide(null)
+ }, [])
+
+ const handleTabDragMove = useCallback((event: SessionTabDragEvent) => {
+   if (event.session.type === "config" || fullscreenSessionId) {
+     setTabDropSide(null)
+     return
+   }
+
+   const side = getTabDropSide(event)
+   if (side) {
+     tabDragVisitedWorkspaceRef.current = true
+   }
+   setTabDropSide(side)
+ }, [fullscreenSessionId, getTabDropSide])
+
+ const handleTabDragEnd = useCallback((event: SessionTabDragEvent) => {
+   const side = event.session.type === "config" || fullscreenSessionId ? null : getTabDropSide(event)
+   const visitedWorkspace = tabDragVisitedWorkspaceRef.current
+   tabDragVisitedWorkspaceRef.current = false
+   setTabDropSide(null)
+
+   if (side) {
+     const next = getSplitSessionIds(event.sessionId, side)
+     if (next.length > 0) {
+       setDetachedSessionIds(next)
+       setActiveSessionId(event.sessionId)
+       setFullscreenSessionId(null)
+     }
+     return true
+   }
+
+   if (detachedSessionIds.includes(event.sessionId) && visitedWorkspace && event.isOverTabBar) {
+     setDetachedSessionIds((current) => {
+       const next = current.filter((id) => id !== event.sessionId)
+       return next.length > 1 ? next : []
+     })
+     setActiveSessionId(event.sessionId)
+     return true
+   }
+
+   return false
+ }, [detachedSessionIds, fullscreenSessionId, getSplitSessionIds, getTabDropSide, setFullscreenSessionId])
+
+ const handleTabDragCancel = useCallback(() => {
+   tabDragVisitedWorkspaceRef.current = false
+   setTabDropSide(null)
+ }, [])
+
+ const handleReorderTabs = useCallback((newOrderIds: string[]) => {
+   setSessions((current) => {
+     const map = new Map(current.map((session) => [session.id, session]))
+     const ordered = newOrderIds
+       .map((id) => map.get(id))
+       .filter((session): session is SftpSession => Boolean(session))
+     const orderedIds = new Set(ordered.map((session) => session.id))
+     const remaining = current.filter((session) => !orderedIds.has(session.id))
+
+     return [...ordered, ...remaining]
+   })
+   setConfigTabIds((current) => {
+     const ordered = newOrderIds.filter((id) => current.includes(id))
+     const orderedIds = new Set(ordered)
+     const remaining = current.filter((id) => !orderedIds.has(id))
+
+     return [...ordered, ...remaining]
+   })
+ }, [setSessions])
+
+ const handleNewTab = useCallback(() => {
+   const configTabId = createSftpConfigTabId()
+
+   setDetachedSessionIds([])
+   setConfigTabIds((current) => [...current, configTabId])
+   setActiveSessionId(configTabId)
+   setFullscreenSessionId(null)
+   setActiveId(null)
+ }, [setActiveId, setFullscreenSessionId])
 
  // 配置拖拽传感器 - 最小化激活约束
  const sensors = useSensors(
@@ -281,7 +471,7 @@ export default function SftpPage() {
  }, [setActiveId, setSessions])
 
  // 使用 useMemo 缓存当前拖拽的会话信息，避免重复查找
- const activeSession = React.useMemo(
+ const draggedSession = React.useMemo(
  () => activeId ? sessions.find(s => s.id === activeId) : null,
  [activeId, sessions]
  )
@@ -367,9 +557,9 @@ export default function SftpPage() {
  }, [tSftp, convertFileInfo, directTransfer, setSessions, sftpSessionApi])
 
  // 快速创建并连接到服务器
- const handleQuickConnect = async (serverId: string) => {
- const server = servers.find(s => s.id === serverId)
- if (!server) return
+ const handleQuickConnect = async (server: ApiServer) => {
+
+ const configTabIdToReplace = configTabIdSet.has(activeSessionId) ? activeSessionId : null
 
  // 不限制离线服务器的连接，让用户尝试连接
  // 连接失败时会显示错误信息
@@ -385,6 +575,8 @@ export default function SftpPage() {
  host: server.host,
  username: server.username,
  currentPath: initialPath,
+ pathBackStack: [],
+ pathForwardStack: [],
  files: [],
  isConnected: false,
  isLoading: true, // 初始加载状态
@@ -393,11 +585,17 @@ export default function SftpPage() {
  }
  setSessions(prev => [...prev, newSession])
  setNextSessionId(prev => prev + 1)
+ setDetachedSessionIds([])
+ if (configTabIdToReplace) {
+   setConfigTabIds(prev => prev.filter(id => id !== configTabIdToReplace))
+ }
+ setActiveSessionId(sessionId)
+ setFullscreenSessionId(null)
 
  // 连接并加载文件列表
  try {
  const directory = await loadSftpDirectory({
- serverId,
+ serverId: server.id,
  path: initialPath,
  convertFileInfo,
  withParentEntry: true,
@@ -407,7 +605,7 @@ export default function SftpPage() {
  setSessions(prev =>
  prev.map(s =>
  s.id === sessionId
- ? { ...s, isConnected: true, isLoading: false, files: directory.files }
+ ? { ...s, currentPath: directory.path, isConnected: true, isLoading: false, files: directory.files }
  : s
  )
  )
@@ -417,6 +615,12 @@ export default function SftpPage() {
 
  // 连接失败，移除会话
  setSessions(prev => prev.filter(s => s.id !== sessionId))
+ if (configTabIdToReplace) {
+   setConfigTabIds(prev => (
+     prev.includes(configTabIdToReplace) ? prev : [...prev, configTabIdToReplace]
+   ))
+ }
+ setActiveSessionId(prev => (prev === sessionId ? configTabIdToReplace ?? SFTP_CONFIG_TAB_ID : prev))
  }
  }
 
@@ -458,10 +662,51 @@ export default function SftpPage() {
 
  // 断开连接
  const handleDisconnect = useCallback((sessionId: string) => {
+   const remainingSessions = sessionsRef.current.filter(session => session.id !== sessionId)
+   setDetachedSessionIds(prev => prev.filter(id => id !== sessionId))
+   if (remainingSessions.length === 0) {
+     setConfigTabIds(prev => (prev.length > 0 ? prev : [SFTP_CONFIG_TAB_ID]))
+   }
+   setActiveSessionId(prev => (
+     prev === sessionId
+       ? remainingSessions[0]?.id ?? configTabIds[0] ?? SFTP_CONFIG_TAB_ID
+       : prev
+   ))
    setSessions(prev => prev.filter(session => session.id !== sessionId))
    setFullscreenSessionId(prev => (prev === sessionId ? null : prev))
    setActiveId(prev => (prev === sessionId ? null : prev))
- }, [setActiveId, setFullscreenSessionId, setSessions])
+ }, [configTabIds, setActiveId, setFullscreenSessionId, setSessions])
+
+ const handleCloseTab = useCallback((sessionId: string) => {
+   if (configTabIdSet.has(sessionId)) {
+     const remainingConfigTabIds = configTabIds.filter(id => id !== sessionId)
+     const nextSessionId = sessionsRef.current[0]?.id
+
+     if (configTabIds.length <= 1 && !nextSessionId) {
+       setActiveSessionId(sessionId)
+       return
+     }
+
+     setConfigTabIds(remainingConfigTabIds)
+     setDetachedSessionIds([])
+     setActiveSessionId(prev => {
+       if (prev !== sessionId) return prev
+
+       const currentIndex = configTabIds.findIndex(id => id === sessionId)
+       return (
+         remainingConfigTabIds[currentIndex] ??
+         remainingConfigTabIds[currentIndex - 1] ??
+         nextSessionId ??
+         SFTP_CONFIG_TAB_ID
+       )
+     })
+     setFullscreenSessionId(null)
+     setActiveId(null)
+     return
+   }
+
+   handleDisconnect(sessionId)
+ }, [configTabIds, configTabIdSet, handleDisconnect, setActiveId, setFullscreenSessionId])
 
  // 重命名会话标签
  const handleRenameSession = useCallback((sessionId: string, newLabel: string) => {
@@ -495,9 +740,22 @@ export default function SftpPage() {
  startTransition(() => {
    setSessions(prev =>
      prev.map(s =>
-       s.id === sessionId
-         ? { ...s, currentPath: path, isLoading: false, files: directory.files }
-         : s
+       {
+         if (s.id !== sessionId) return s
+
+         if (directory.path === s.currentPath) {
+           return { ...s, isLoading: false, files: directory.files }
+         }
+
+         return {
+           ...s,
+           currentPath: directory.path,
+           isLoading: false,
+           files: directory.files,
+           pathBackStack: [...(s.pathBackStack ?? []), s.currentPath].slice(-50),
+           pathForwardStack: [],
+         }
+       }
      )
    )
  })
@@ -508,6 +766,102 @@ export default function SftpPage() {
  )
  toast.error(getErrorMessage(error, tSftp("toastLoadDirectoryFailed")))
 }
+ }, [tSftp, convertFileInfo, setSessions, sftpSessionApi])
+
+ // 回到上一次访问的目录
+ const handleNavigateBack = useCallback(async (sessionId: string) => {
+ const session = sessionsRef.current.find(s => s.id === sessionId)
+ const previousPath = session?.pathBackStack?.[session.pathBackStack.length - 1]
+ if (!session || !session.isConnected || !previousPath) return
+
+ setSessions(prev =>
+ prev.map(s => (s.id === sessionId ? { ...s, isLoading: true } : s))
+ )
+
+ try {
+ const directory = await loadSftpDirectory({
+ serverId: session.serverId,
+ path: previousPath,
+ convertFileInfo,
+ withParentEntry: true,
+ api: sftpSessionApi,
+ })
+
+ startTransition(() => {
+   setSessions(prev =>
+     prev.map(s => {
+       if (s.id !== sessionId) return s
+
+       const nextForwardStack = directory.path === s.currentPath
+         ? (s.pathForwardStack ?? [])
+         : [...(s.pathForwardStack ?? []), s.currentPath].slice(-50)
+
+       return {
+         ...s,
+         currentPath: directory.path,
+         isLoading: false,
+         files: directory.files,
+         pathBackStack: (s.pathBackStack ?? []).slice(0, -1),
+         pathForwardStack: nextForwardStack,
+       }
+     })
+   )
+ })
+ } catch (error: unknown) {
+ console.error("Failed to navigate back:", error)
+ setSessions(prev =>
+ prev.map(s => (s.id === sessionId ? { ...s, isLoading: false } : s))
+ )
+ toast.error(getErrorMessage(error, tSftp("toastLoadDirectoryFailed")))
+ }
+ }, [tSftp, convertFileInfo, setSessions, sftpSessionApi])
+
+ // 前进到下一次访问的目录
+ const handleNavigateForward = useCallback(async (sessionId: string) => {
+ const session = sessionsRef.current.find(s => s.id === sessionId)
+ const nextPath = session?.pathForwardStack?.[session.pathForwardStack.length - 1]
+ if (!session || !session.isConnected || !nextPath) return
+
+ setSessions(prev =>
+ prev.map(s => (s.id === sessionId ? { ...s, isLoading: true } : s))
+ )
+
+ try {
+ const directory = await loadSftpDirectory({
+ serverId: session.serverId,
+ path: nextPath,
+ convertFileInfo,
+ withParentEntry: true,
+ api: sftpSessionApi,
+ })
+
+ startTransition(() => {
+   setSessions(prev =>
+     prev.map(s => {
+       if (s.id !== sessionId) return s
+
+       const nextBackStack = directory.path === s.currentPath
+         ? (s.pathBackStack ?? [])
+         : [...(s.pathBackStack ?? []), s.currentPath].slice(-50)
+
+       return {
+         ...s,
+         currentPath: directory.path,
+         isLoading: false,
+         files: directory.files,
+         pathBackStack: nextBackStack,
+         pathForwardStack: (s.pathForwardStack ?? []).slice(0, -1),
+       }
+     })
+   )
+ })
+ } catch (error: unknown) {
+ console.error("Failed to navigate forward:", error)
+ setSessions(prev =>
+ prev.map(s => (s.id === sessionId ? { ...s, isLoading: false } : s))
+ )
+ toast.error(getErrorMessage(error, tSftp("toastLoadDirectoryFailed")))
+ }
  }, [tSftp, convertFileInfo, setSessions, sftpSessionApi])
 
  // 上传文件（接入统一上传任务 UI）
@@ -753,210 +1107,14 @@ export default function SftpPage() {
    }
  }, [tSftp, sftpSessionApi])
 
- // 获取网格布局类名
- const getGridLayout = (count: number) => {
- if (count === 1) return "grid-cols-1"
- if (count === 2) return "grid-cols-2"
- if (count === 3) return "grid-cols-2 lg:grid-cols-3"
- return "grid-cols-2"
- }
-
-const onlineServers = servers.filter(s => s.status === "online")
-const offlineServers = servers.filter(s => s.status !== "online")
-
- // 加载状态 - 直接显示界面，服务器列表异步加载
- // 与快速连接界面保持一致，不使用骨架屏
-
- return (
- <SshWorkspace
-   adapters={workspaceAdapters}
-   capabilities={workspaceCapabilities}
-   layout="web"
- >
- <PageHeader title={tSftp("title")}>
- {/* 新建连接下拉菜单 - 仅在有会话时显示 */}
- {sessions.length > 0 && (
- <DropdownMenu>
- <DropdownMenuTrigger asChild>
- <Button size="sm" className="gap-2">
- <Plus className="h-4 w-4" />
- {tSftp("newConnection")}
- <ChevronDown className="h-3.5 w-3.5 opacity-50" />
- </Button>
- </DropdownMenuTrigger>
- <DropdownMenuContent align="end" className="w-56">
- {/* 在线服务器 */}
- {onlineServers.length > 0 && (
- <>
- <DropdownMenuLabel className="flex items-center gap-2 text-xs">
- <div className="w-2 h-2 rounded-full bg-status-connected" />
- {tSftp("onlineServers")}
- </DropdownMenuLabel>
- {onlineServers.map(server => (
- <DropdownMenuItem
- key={server.id}
- onClick={() => handleQuickConnect(server.id)}
- className="gap-2 cursor-pointer"
- >
- <Server className="h-4 w-4 text-status-connected" />
- <div className="flex-1 min-w-0">
- <div className="font-medium text-sm truncate">{server.name || server.host}</div>
- <div className="text-xs text-muted-foreground font-mono truncate">
- {server.host}
- </div>
- </div>
- </DropdownMenuItem>
- ))}
- </>
- )}
-
- {/* 离线服务器 */}
- {offlineServers.length > 0 && (
- <>
- {onlineServers.length > 0 && <DropdownMenuSeparator />}
- <DropdownMenuLabel className="flex items-center gap-2 text-xs">
- <div className="w-2 h-2 rounded-full bg-muted-foreground/60" />
- {tSftp("offlineServers")}
- </DropdownMenuLabel>
- {offlineServers.map(server => (
- <DropdownMenuItem
- key={server.id}
- onClick={() => handleQuickConnect(server.id)}
- className="gap-2 opacity-70 hover:opacity-100"
- >
- <Server className="h-4 w-4 text-muted-foreground" />
- <div className="flex-1 min-w-0">
- <div className="font-medium text-sm truncate">{server.name || server.host}</div>
- <div className="text-xs text-muted-foreground font-mono truncate">
- {server.host}
- </div>
- </div>
- </DropdownMenuItem>
- ))}
- </>
- )}
-
- {/* 无服务器提示 */}
- {onlineServers.length === 0 && offlineServers.length === 0 && (
- <div className="px-2 py-6 text-center text-sm text-muted-foreground">
- {tSftp("noServers")}
- </div>
- )}
- </DropdownMenuContent>
- </DropdownMenu>
- )}
- </PageHeader>
-
- <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-auto p-3 pt-0 sm:gap-4 sm:p-4 sm:pt-0 xl:overflow-hidden">
- {sessions.length === 0 ? (
- // 初始欢迎页 - 首次打开
- <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
- <div className="shrink-0 text-center py-8 space-y-4 xl:py-10">
- <div className="inline-flex items-center justify-center w-16 h-16 rounded-xl border border-border bg-muted">
- <FolderOpen className="h-8 w-8 text-primary" />
- </div>
- <div className="space-y-2">
- <h1 className="text-2xl font-semibold">{tSftp("title")}</h1>
- <p className="text-sm text-muted-foreground">
- {tSftp("emptyDescription")}
- </p>
- </div>
- </div>
-
- {/* 服务器列表 */}
- {loading ? (
- // 加载中 - 与快速连接界面一致的加载动画
- <div className="space-y-4">
-   <div className="h-px bg-border" />
-   <div className="flex flex-col items-center justify-center py-12 gap-4">
-     <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-     <p className="text-sm text-muted-foreground">
-       {tCommon("loading")}
-     </p>
-   </div>
- </div>
- ) : (onlineServers.length > 0 || offlineServers.length > 0) ? (
- <div className="flex-1 overflow-auto px-6 pb-6">
- <div className="max-w-4xl mx-auto space-y-6">
- {/* 在线服务器 */}
- {onlineServers.length > 0 && (
- <div className="space-y-3">
- <div className="flex items-center gap-2 px-2">
- <div className="w-2 h-2 rounded-full bg-status-connected" />
- <h2 className="text-sm font-medium text-muted-foreground">
- {tSftp("onlineServers")} ({onlineServers.length})
- </h2>
- </div>
- <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
- {onlineServers.map(server => (
- <div
- key={server.id}
- onClick={() => handleQuickConnect(server.id)}
- className="group rounded-lg border border-border bg-card cursor-pointer transition-all duration-200 p-4 flex flex-col items-center text-center space-y-2.5 hover:bg-accent hover:text-accent-foreground hover:border-primary/30"
- >
- <div className="w-12 h-12 rounded-lg flex items-center justify-center transition-all bg-muted">
- <Server className="h-6 w-6 transition-colors text-muted-foreground group-hover:text-status-connected" />
- </div>
- <div className="space-y-0.5 w-full">
- <h3 className="font-medium text-xs truncate transition-colors text-card-foreground group-hover:text-status-connected">
- {server.name || server.host}
- </h3>
- <p className="text-[10px] text-muted-foreground font-mono truncate">
- {server.host}
- </p>
- </div>
- </div>
- ))}
- </div>
- </div>
- )}
-
- {/* 离线服务器 */}
- {offlineServers.length > 0 && (
- <div className="space-y-3">
- <div className="flex items-center gap-2 px-2">
- <div className="w-2 h-2 rounded-full bg-muted-foreground/60" />
- <h2 className="text-sm font-medium text-muted-foreground">
- {tSftp("offlineServers")} ({offlineServers.length})
- </h2>
- </div>
- <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
- {offlineServers.map(server => (
- <div
- key={server.id}
- onClick={() => handleQuickConnect(server.id)}
- className="group rounded-lg border border-border bg-card p-4 flex flex-col items-center text-center space-y-2.5 opacity-70 hover:opacity-100 cursor-pointer transition-all hover:bg-accent hover:text-accent-foreground hover:border-primary/20"
- >
- <div className="w-12 h-12 rounded-lg flex items-center justify-center bg-muted">
- <Server className="h-6 w-6 text-muted-foreground" />
- </div>
- <div className="space-y-0.5 w-full">
- <h3 className="font-medium text-xs truncate text-muted-foreground group-hover:text-foreground">
- {server.name || server.host}
- </h3>
- <p className="text-[10px] text-muted-foreground font-mono truncate">
- {server.host}
- </p>
- </div>
- </div>
- ))}
- </div>
- </div>
- )}
- </div>
- </div>
- ) : null}
- </div>
- ) : fullscreenSessionId ? (
- // 全屏模式 - 只显示一个会话
- <div className="relative min-h-0 flex-1 overflow-hidden">
- {sessions.filter(s => s.id === fullscreenSessionId).map(session => (
- <div key={session.id} className="h-full min-h-0" data-session-id={session.id}>
+ const renderSftpSessionCard = (session: SftpSession, isFullscreenSession = false) => (
  <SftpSessionCard
    session={session}
-   isFullscreen={true}
+   isFullscreen={isFullscreenSession}
    connectingText={tSftp("connecting")}
    onNavigateSession={handleNavigate}
+   onNavigateBackSession={handleNavigateBack}
+   onNavigateForwardSession={handleNavigateForward}
    onUploadSession={handleUpload}
    onDownloadSession={handleDownload}
    onDeleteSession={handleDelete}
@@ -972,6 +1130,68 @@ const offlineServers = servers.filter(s => s.status !== "online")
    onRenameSessionLabel={handleRenameSession}
    onToggleFullscreen={toggleFullscreen}
  />
+ )
+
+ // 加载状态 - 直接显示界面，服务器列表异步加载
+ // 与快速连接界面保持一致，不使用骨架屏
+
+ return (
+ <SshWorkspace
+   adapters={workspaceAdapters}
+   capabilities={workspaceCapabilities}
+   layout="web"
+ >
+ <PageHeader title={tSftp("title")} />
+
+ <div className="flex min-h-0 flex-1 flex-col p-3 pt-0 sm:p-4 sm:pt-0">
+ <div className={cn(
+   "flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border shadow-2xl transition-colors",
+   "border-border/60 bg-background/70 text-foreground backdrop-blur-md"
+ )}>
+ <SessionTabBar
+   sessions={tabSessions}
+   activeId={activeSessionId}
+   onChangeActive={handleChangeTab}
+   onNewSession={handleNewTab}
+   onCloseSession={handleCloseTab}
+   onDuplicateSession={() => {}}
+   onCloseOthers={() => {}}
+   onCloseAll={() => {
+     setSessions([])
+     setDetachedSessionIds([])
+     setConfigTabIds([SFTP_CONFIG_TAB_ID])
+     setActiveSessionId(SFTP_CONFIG_TAB_ID)
+     setFullscreenSessionId(null)
+     setActiveId(null)
+   }}
+   onTogglePin={() => {}}
+   onReorder={handleReorderTabs}
+   isFullscreen={!!fullscreenSessionId}
+   onToggleFullscreen={fullscreenSessionId ? () => setFullscreenSessionId(null) : undefined}
+   hideBreadcrumb
+   onDetachSession={handleDetachTab}
+   canDetachSession={(session) => session.type !== "config"}
+   canCloseSession={() => true}
+   detachedSessionIds={detachedSessionIds}
+   showContextMenu={false}
+   onTabDragStart={handleTabDragStart}
+   onTabDragMove={handleTabDragMove}
+   onTabDragEnd={handleTabDragEnd}
+   onTabDragCancel={handleTabDragCancel}
+ />
+ <div ref={workspaceDropRef} className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
+ <SessionSplitDropOverlay side={tabDropSide} />
+ {isActiveConfigTab ? (
+ <ServerConnectionConfigs
+   defaultViewMode="grid"
+   onConnect={handleQuickConnect}
+ />
+ ) : fullscreenSessionId ? (
+ // 全屏模式 - 只显示一个会话
+ <div className="relative min-h-0 flex-1 overflow-hidden">
+ {sessions.filter(s => s.id === fullscreenSessionId).map(session => (
+ <div key={session.id} className="h-full min-h-0" data-session-id={session.id}>
+ {renderSftpSessionCard(session, true)}
  </div>
  ))}
  </div>
@@ -984,26 +1204,22 @@ const offlineServers = servers.filter(s => s.status !== "online")
  onDragEnd={handleDragEnd}
  >
  <SortableContext
- items={sessions.map(s => s.id)}
+ items={visibleSessionIds}
  strategy={rectSortingStrategy}
  >
  <div
- ref={parentRef}
  className={cn(
  "h-full min-h-0",
- sessions.length >= 5 ? "overflow-auto" : "overflow-hidden"
+ isMultiSessionGrid ? "overflow-auto p-3" : "overflow-hidden"
  )}
  >
  <div
  className={cn(
- "grid gap-4 h-full",
- sessions.length >= 5 ? "grid-cols-2 auto-rows-fr" : getGridLayout(sessions.length)
+ isMultiSessionGrid ? "grid gap-3 h-full" : "h-full",
+ isMultiSessionGrid && getWorkspaceGridLayout(visibleSessionIds.length)
  )}
- style={sessions.length >= 5 ? {
- gridAutoRows: 'minmax(500px, 1fr)'
- } : undefined}
  >
- {sessions.map(session => (
+ {sessions.filter(session => visibleSessionIdSet.has(session.id)).map(session => (
  <SortableSession
  key={session.id}
  session={session}
@@ -1013,26 +1229,7 @@ const offlineServers = servers.filter(s => s.status !== "online")
    description: tSftp("crossSessionDropDescription"),
  }}
  >
- <SftpSessionCard
-   session={session}
-   isFullscreen={false}
-   connectingText={tSftp("connecting")}
-   onNavigateSession={handleNavigate}
-   onUploadSession={handleUpload}
-   onDownloadSession={handleDownload}
-   onDeleteSession={handleDelete}
-   onBatchDeleteSession={handleBatchDelete}
-   onBatchDownloadSession={handleBatchDownload}
-   onCreateFolderSession={handleCreateFolder}
-   onCreateFileSession={handleCreateFile}
-   onRenameSessionFile={handleRename}
-   onDisconnectSession={handleDisconnect}
-   onRefreshSession={handleRefreshSession}
-   onReadFileSession={handleReadFile}
-   onSaveFileSession={handleSaveFile}
-   onRenameSessionLabel={handleRenameSession}
-   onToggleFullscreen={toggleFullscreen}
- />
+ {renderSftpSessionCard(session, false)}
  </SortableSession>
  ))}
  </div>
@@ -1042,11 +1239,11 @@ const offlineServers = servers.filter(s => s.status !== "online")
  {/* VSCode 风格的轻量级拖拽预览 - 只显示工具栏 */}
  {createPortal(
  <DragOverlay dropAnimation={null}>
- {activeSession ? (
+ {draggedSession ? (
  <DragPreviewToolbar
- sessionLabel={activeSession.label}
- sessionColor={activeSession.color}
- host={activeSession.host}
+ sessionLabel={draggedSession.label}
+ sessionColor={draggedSession.color}
+ host={draggedSession.host}
  />
  ) : null}
  </DragOverlay>,
@@ -1054,6 +1251,8 @@ const offlineServers = servers.filter(s => s.status !== "online")
  )}
  </DndContext>
  )}
+ </div>
+ </div>
  </div>
  </SshWorkspace>
  )

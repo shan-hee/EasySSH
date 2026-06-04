@@ -51,6 +51,8 @@ export interface FileManagerPanelProps {
   onNavigate: (path: string) => void
   onNavigateBack?: () => void | Promise<void>
   canNavigateBack?: boolean
+  onNavigateForward?: () => void | Promise<void>
+  canNavigateForward?: boolean
   onInternalBackHandlerChange?: (
     handler: { handle: () => boolean | Promise<boolean> } | null
   ) => void

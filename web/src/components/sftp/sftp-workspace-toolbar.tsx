@@ -1,6 +1,6 @@
 
-import React, { startTransition, type HTMLAttributes } from "react"
-import { GripVertical, Home, LayoutGrid, List, Maximize2, Minimize2, X } from "lucide-react"
+import { startTransition } from "react"
+import { ChevronLeft, ChevronRight, Home, LayoutGrid, List, Maximize2, Minimize2, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
@@ -10,18 +10,6 @@ import { useWorkspaceSftpTranslator } from "@/components/ssh-workspace/use-works
 import type { WorkspaceTransferTask } from "@/lib/session/workspace"
 
 export interface SftpWorkspaceToolbarProps {
-  sessionLabel: string
-  sessionColor?: string
-  editingSessionLabel: boolean
-  tempSessionLabel: string
-  sessionLabelInputRef: React.RefObject<HTMLInputElement | null>
-  dragHandleListeners?: HTMLAttributes<HTMLDivElement>
-  dragHandleAttributes?: HTMLAttributes<HTMLDivElement>
-  onTempSessionLabelChange: (value: string) => void
-  onStartEditSessionLabel: () => void
-  onFinishEditSessionLabel: () => void
-  onCancelEditSessionLabel: () => void
-
   displayPath: string
   pathInputValue: string
   pathSegments: string[]
@@ -30,6 +18,10 @@ export interface SftpWorkspaceToolbarProps {
   onPathInputValueChange: (value: string) => void
   onEditingPathChange: (value: boolean) => void
   onNavigate: (path: string) => void
+  onNavigateBack?: () => void | Promise<void>
+  canNavigateBack?: boolean
+  onNavigateForward?: () => void | Promise<void>
+  canNavigateForward?: boolean
 
   viewMode: "grid" | "list"
   onViewModeChange: (mode: "grid" | "list") => void
@@ -43,17 +35,6 @@ export interface SftpWorkspaceToolbarProps {
 }
 
 export function SftpWorkspaceToolbar({
-  sessionLabel,
-  sessionColor,
-  editingSessionLabel,
-  tempSessionLabel,
-  sessionLabelInputRef,
-  dragHandleListeners,
-  dragHandleAttributes,
-  onTempSessionLabelChange,
-  onStartEditSessionLabel,
-  onFinishEditSessionLabel,
-  onCancelEditSessionLabel,
   displayPath,
   pathInputValue,
   pathSegments,
@@ -62,6 +43,10 @@ export function SftpWorkspaceToolbar({
   onPathInputValueChange,
   onEditingPathChange,
   onNavigate,
+  onNavigateBack,
+  canNavigateBack,
+  onNavigateForward,
+  canNavigateForward,
   viewMode,
   onViewModeChange,
   showTransferTasks,
@@ -80,6 +65,26 @@ export function SftpWorkspaceToolbar({
     })
   }
 
+  const navigateBack = () => {
+    if (!canNavigateBack || !onNavigateBack) {
+      return
+    }
+
+    startTransition(() => {
+      void onNavigateBack()
+    })
+  }
+
+  const navigateForward = () => {
+    if (!canNavigateForward || !onNavigateForward) {
+      return
+    }
+
+    startTransition(() => {
+      void onNavigateForward()
+    })
+  }
+
   const finishPathEdit = (nextPath: string) => {
     onEditingPathChange(false)
     const normalized = nextPath.trim()
@@ -93,49 +98,30 @@ export function SftpWorkspaceToolbar({
   return (
     <div className="border-b text-sm flex items-center justify-between px-3 py-1.5">
       <div className="flex items-center gap-2 flex-1 min-w-0">
-        <div
-          className="flex items-center gap-2 cursor-grab active:cursor-grabbing hover:bg-muted/50 px-1.5 py-0.5 -ml-1.5 rounded transition-colors"
-          {...dragHandleListeners}
-          {...dragHandleAttributes}
-        >
-          <GripVertical className="h-4 w-4 text-muted-foreground/40 hover:text-muted-foreground transition-colors" />
-          {sessionColor && (
-            <div
-              className="w-1 h-5 rounded-full"
-              style={{ backgroundColor: sessionColor }}
-            />
-          )}
+        <div className="flex items-center gap-1 shrink-0">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7 rounded-md transition-all duration-200 text-muted-foreground hover:bg-accent hover:text-accent-foreground disabled:pointer-events-none disabled:opacity-40"
+            onClick={navigateBack}
+            disabled={!canNavigateBack || !onNavigateBack}
+            title={tSftp("historyBackTooltip")}
+          >
+            <ChevronLeft className="h-3.5 w-3.5" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7 rounded-md transition-all duration-200 text-muted-foreground hover:bg-accent hover:text-accent-foreground disabled:pointer-events-none disabled:opacity-40"
+            onClick={navigateForward}
+            disabled={!canNavigateForward || !onNavigateForward}
+            title={tSftp("historyForwardTooltip")}
+          >
+            <ChevronRight className="h-3.5 w-3.5" />
+          </Button>
         </div>
 
-        {editingSessionLabel ? (
-          <Input
-            ref={sessionLabelInputRef}
-            value={tempSessionLabel}
-            onChange={(event) => onTempSessionLabelChange(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter") {
-                onFinishEditSessionLabel()
-              } else if (event.key === "Escape") {
-                onCancelEditSessionLabel()
-              }
-            }}
-            onBlur={onFinishEditSessionLabel}
-            className="h-6 text-xs font-semibold px-2 max-w-[150px] bg-background text-foreground"
-          />
-        ) : (
-          <button
-            onClick={onStartEditSessionLabel}
-            onDoubleClick={onStartEditSessionLabel}
-            className="text-xs font-semibold px-2 py-1 rounded transition-colors text-foreground hover:bg-accent hover:text-accent-foreground"
-            title={tSftp("sessionEditTitle")}
-          >
-            {sessionLabel}
-          </button>
-        )}
-
-        <div className="h-4 w-px mx-1 bg-border" />
-
-        <div className="flex items-center gap-2 ml-2 flex-1 min-w-0">
+        <div className="flex items-center gap-2 flex-1 min-w-0">
           <div className="relative flex-1 min-w-0">
             {isEditingPath ? (
               <>

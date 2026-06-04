@@ -48,17 +48,20 @@ import { useTranslation } from "react-i18next"
 type ViewMode = "grid" | "list"
 type DragOverlaySize = { width: number; height: number } | null
 
+const SERVER_GRID_CLASSNAME = "grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6"
+
 interface ServerConnectionConfigsProps {
  onConnect?: (server: Server) => void
+ defaultViewMode?: ViewMode
 }
 
 function getServerItemClassName(viewMode: ViewMode, sortable = true) {
   return cn(
-    "group rounded-lg border bg-card text-card-foreground border-border hover:bg-accent/60 hover:border-primary/40 outline-none focus-visible:border-primary/50 focus-visible:ring-[3px] focus-visible:ring-primary/20 transition-colors duration-200",
+    "group relative rounded-lg border border-border bg-card text-card-foreground outline-none transition-all duration-200 hover:bg-accent hover:text-accent-foreground focus-visible:border-primary/50 focus-visible:ring-[3px] focus-visible:ring-primary/20",
     sortable && "cursor-grab active:cursor-grabbing",
     viewMode === "grid"
-      ? "flex h-full min-h-[168px] flex-col items-start gap-3 p-4"
-      : "grid grid-cols-[auto_minmax(0,1fr)] items-start gap-3 p-4 sm:flex sm:items-center"
+      ? "flex h-full min-h-[126px] flex-col items-center justify-center gap-2.5 p-4 text-center hover:border-primary/30"
+      : "grid grid-cols-[auto_minmax(0,1fr)] items-start gap-3 p-4 hover:bg-accent/60 hover:border-primary/40 sm:flex sm:items-center"
   )
 }
 
@@ -76,6 +79,68 @@ function ServerItemBody({
   onDelete?: (id: string) => void
 }) {
   const { t } = useTranslation("servers")
+  const isOnline = server.status === "online"
+
+  if (viewMode === "grid") {
+    return (
+      <>
+        <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-muted transition-colors">
+          <ServerIcon
+            className={cn(
+              "h-6 w-6 text-muted-foreground transition-colors",
+              isOnline ? "group-hover:text-status-connected" : "group-hover:text-foreground"
+            )}
+          />
+        </div>
+
+        <div className="w-full space-y-0.5">
+          <h3
+            className={cn(
+              "truncate text-xs font-medium transition-colors",
+              isOnline
+                ? "text-card-foreground group-hover:text-status-connected"
+                : "text-muted-foreground group-hover:text-foreground"
+            )}
+          >
+            {server.name || server.host}
+          </h3>
+          <p className="truncate font-mono text-[10px] text-muted-foreground">
+            {server.username}@{server.host}:{server.port}
+          </p>
+        </div>
+
+        {showActions && onEdit && onDelete && (
+          <div
+            className="absolute right-2 top-2 flex flex-col items-center gap-1 opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100 md:focus-within:opacity-100"
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={(e) => e.stopPropagation()}
+            onDoubleClick={(e) => e.stopPropagation()}
+          >
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 w-7 p-0 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+              onClick={() => onEdit(server)}
+              title={t("tooltipEdit")}
+              aria-label={t("tooltipEdit")}
+            >
+              <Edit className="h-3.5 w-3.5" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 w-7 p-0 text-destructive hover:bg-destructive/10 hover:text-destructive"
+              onClick={() => onDelete(server.id)}
+              title={t("tooltipDelete")}
+              aria-label={t("tooltipDelete")}
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+        )}
+      </>
+    )
+  }
 
   return (
     <>
@@ -269,6 +334,7 @@ function SortableServerItem({
 
 export function ServerConnectionConfigs({
  onConnect,
+ defaultViewMode = "list",
 }: ServerConnectionConfigsProps) {
  const { ready } = useAuthReady()
  const { t } = useTranslation("servers")
@@ -281,7 +347,7 @@ export function ServerConnectionConfigs({
  const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null)
  const [loading, setLoading] = useState(true)
  const [activeGroup, setActiveGroup] = useState<string>('all')
- const [viewMode, setViewMode] = useState<ViewMode>("list")
+ const [viewMode, setViewMode] = useState<ViewMode>(defaultViewMode)
  const [draggedServer, setDraggedServer] = useState<Server | null>(null)
  const [dragOverlaySize, setDragOverlaySize] = useState<DragOverlaySize>(null)
  const [isMounted, setIsMounted] = useState(false)
@@ -689,7 +755,7 @@ export function ServerConnectionConfigs({
  items={filteredServers.map(s => s.id)}
  strategy={viewMode === "grid" ? rectSortingStrategy : verticalListSortingStrategy}
  >
- <AnimatedList className={viewMode === "grid" ? "grid items-stretch gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4" : "space-y-2"}>
+ <AnimatedList className={viewMode === "grid" ? SERVER_GRID_CLASSNAME : "space-y-2"}>
  {filteredServers.map((server) => (
  <SortableServerItem
  key={server.id}
@@ -714,7 +780,7 @@ export function ServerConnectionConfigs({
  </DndContext>
  ) : (
  // 服务端渲染时的静态列表
- <AnimatedList className={viewMode === "grid" ? "grid items-stretch gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4" : "space-y-2"}>
+ <AnimatedList className={viewMode === "grid" ? SERVER_GRID_CLASSNAME : "space-y-2"}>
  {filteredServers.map((server) => (
  <ServerStaticItem key={server.id} server={server} viewMode={viewMode} onConnect={handleConnect} />
  ))}

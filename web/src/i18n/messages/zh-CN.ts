@@ -738,6 +738,8 @@ const messages = {
     editorStatusModified: "• 已修改",
     // 管理器工具提示
     sessionEditTitle: "双击编辑会话名称",
+    historyBackTooltip: "返回上一步",
+    historyForwardTooltip: "前进到下一步",
     pathRootTooltip: "根目录",
     pathInputPlaceholder: "输入路径...",
     pathClickToEdit: "点击编辑路径",

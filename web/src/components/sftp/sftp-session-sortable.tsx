@@ -43,11 +43,6 @@ export const DragPreviewToolbar = React.memo(function DragPreviewToolbar({
   )
 })
 
-interface DragHandleProps {
-  dragHandleListeners?: React.HTMLAttributes<HTMLDivElement>
-  dragHandleAttributes?: React.HTMLAttributes<HTMLDivElement>
-}
-
 export interface SortableSessionProps {
   session: SftpWorkspaceSession
   children: React.ReactNode
@@ -65,8 +60,6 @@ export const SortableSession = React.memo(function SortableSession({
   dropOverlayTexts,
 }: SortableSessionProps) {
   const {
-    attributes,
-    listeners,
     setNodeRef,
     transform,
     transition,
@@ -149,23 +142,6 @@ export const SortableSession = React.memo(function SortableSession({
     }
   }, [session.id, onCrossSessionDrop])
 
-  const { childElement, isDomChild } = React.useMemo(() => {
-    if (!React.isValidElement<DragHandleProps>(children)) {
-      return { childElement: children, isDomChild: false }
-    }
-
-    const isDom = typeof children.type === "string"
-    return {
-      childElement: isDom
-        ? children
-        : React.cloneElement(children, {
-            dragHandleListeners: listeners as React.HTMLAttributes<HTMLDivElement>,
-            dragHandleAttributes: attributes as React.HTMLAttributes<HTMLDivElement>,
-          }),
-      isDomChild: isDom,
-    }
-  }, [children, listeners, attributes])
-
   const isValidDropTarget = isDragOver && session.isConnected
 
   return (
@@ -173,17 +149,16 @@ export const SortableSession = React.memo(function SortableSession({
       ref={setNodeRef}
       style={style}
       className={cn(
-        "min-h-0 relative",
+        "relative h-full min-h-0",
         isDragging && "opacity-60",
       )}
       data-session-id={session.id}
-      {...(isDomChild ? { ...attributes, ...listeners } : {})}
       onDragEnter={handleDragEnter}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
     >
-      {childElement}
+      {children}
       {isValidDropTarget && (
         <div className="absolute inset-0 z-50 flex items-center justify-center bg-primary/10 backdrop-blur-[2px] border-2 border-dashed border-primary/60 m-1 rounded-lg pointer-events-none animate-in fade-in-0 duration-200">
           <div className="text-center">

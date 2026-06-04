@@ -18,6 +18,8 @@ import {
   DndContext,
   DragEndEvent,
   DragOverlay,
+  DragMoveEvent,
+  DragStartEvent,
   PointerSensor,
   useSensor,
   useSensors,
@@ -49,6 +51,27 @@ interface SessionTabBarProps {
   onToggleFullscreen?: () => void
   onOpenSettings?: () => void
   hideBreadcrumb?: boolean
+  onDetachSession?: (id: string) => void
+  canDetachSession?: (session: TerminalSession) => boolean
+  canCloseSession?: (session: TerminalSession) => boolean
+  detachedSessionIds?: string[]
+  showContextMenu?: boolean
+  onTabDragStart?: (event: SessionTabDragEvent) => void
+  onTabDragMove?: (event: SessionTabDragEvent) => void
+  onTabDragEnd?: (event: SessionTabDragEvent) => boolean | void
+  onTabDragCancel?: () => void
+}
+
+export type SessionTabDropSide = "left" | "right"
+
+export type SessionTabDragEvent = {
+  session: TerminalSession
+  sessionId: string
+  clientX: number
+  clientY: number
+  deltaX: number
+  deltaY: number
+  isOverTabBar: boolean
 }
 
 type MenuState = {
@@ -60,13 +83,49 @@ type MenuState = {
 
 // 标签色彩算法暂不需要，后续如需按分组着色可恢复
 
+const TAB_DETACH_THRESHOLD_Y = 44
+
+const getTabDragEvent = (
+  event: DragStartEvent | DragMoveEvent | DragEndEvent,
+  session: TerminalSession,
+  tabBarElement?: HTMLElement | null
+): SessionTabDragEvent => {
+  const initialRect = event.active.rect.current.initial
+  const translatedRect = event.active.rect.current.translated
+  const rect = translatedRect ?? initialRect
+  const delta = "delta" in event ? event.delta : { x: 0, y: 0 }
+  const offsetX = translatedRect ? 0 : delta.x
+  const offsetY = translatedRect ? 0 : delta.y
+  const clientX = rect ? rect.left + rect.width / 2 + offsetX : 0
+  const clientY = rect ? rect.top + rect.height / 2 + offsetY : 0
+  const tabBarRect = tabBarElement?.getBoundingClientRect()
+
+  return {
+    session,
+    sessionId: session.id,
+    clientX,
+    clientY,
+    deltaX: delta.x,
+    deltaY: delta.y,
+    isOverTabBar: !!(
+      tabBarRect &&
+      clientX >= tabBarRect.left &&
+      clientX <= tabBarRect.right &&
+      clientY >= tabBarRect.top &&
+      clientY <= tabBarRect.bottom
+    ),
+  }
+}
+
 // 可排序的页签子组件
 interface SortableTabProps {
   session: TerminalSession
   isActive: boolean
+  isDetached?: boolean
+  canClose: boolean
   onChangeActive: (id: string) => void
   onCloseSession: (id: string) => void
-  onContextMenu: (e: React.MouseEvent, id: string) => void
+  onContextMenu?: (e: React.MouseEvent, id: string) => void
   onAuxClick: (e: React.MouseEvent, id: string, pinned?: boolean) => void
   onDoubleClick: (id: string) => void
 }
@@ -74,6 +133,8 @@ interface SortableTabProps {
 function SortableTab({
   session: s,
   isActive: active,
+  isDetached = false,
+  canClose,
   onChangeActive,
   onCloseSession,
   onContextMenu,
@@ -111,15 +172,20 @@ function SortableTab({
       {...listeners}
       role="button"
       onClick={() => onChangeActive(s.id)}
-      onContextMenu={(e) => onContextMenu(e, s.id)}
+      onContextMenu={(e) => {
+        e.preventDefault()
+        onContextMenu?.(e, s.id)
+      }}
       onAuxClick={(e) => onAuxClick(e, s.id, s.pinned)}
       onDoubleClick={() => onDoubleClick(s.id)}
       className={cn(
-        "group relative flex items-center gap-2 h-8 pl-3 pr-8 transition-all duration-200 ease-out select-none rounded-lg border backdrop-blur-sm cursor-grab active:cursor-grabbing",
+        "group relative flex items-center gap-2 h-8 pl-3 transition-all duration-200 ease-out select-none rounded-lg border backdrop-blur-sm cursor-grab active:cursor-grabbing",
+        canClose || s.pinned ? "pr-8" : "pr-3",
         active
           ? "border-border bg-card/90 text-foreground shadow-sm"
           : "border-border/50 bg-card/35 text-muted-foreground opacity-75 hover:border-border hover:bg-card/65 hover:text-foreground hover:opacity-100",
         s.pinned && "ring-1 ring-blue-500/20",
+        isDetached && "ring-1 ring-primary/35",
         isDragging && "cursor-grabbing"
       )}
     >
@@ -138,7 +204,7 @@ function SortableTab({
         <div className="absolute top-1 right-1 w-1 h-1 rounded-full bg-blue-400" />
       )}
 
-      {!s.pinned && (
+      {canClose && (
         <button
           className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded p-0.5 hover:bg-red-500/20 hover:text-red-400 opacity-100 scale-100 pointer-events-auto transition-all duration-150 md:opacity-0 md:scale-90 md:pointer-events-none md:group-hover:opacity-100 md:group-hover:scale-100 md:group-hover:pointer-events-auto"
           onPointerDown={(e) => e.stopPropagation()}
@@ -168,6 +234,15 @@ export function SessionTabBar(props: SessionTabBarProps) {
     onToggleFullscreen,
     onOpenSettings,
     hideBreadcrumb = false,
+    onDetachSession,
+    canDetachSession,
+    canCloseSession,
+    detachedSessionIds = [],
+    showContextMenu = true,
+    onTabDragStart,
+    onTabDragMove,
+    onTabDragEnd,
+    onTabDragCancel,
   } = props
 
   const { config } = useSystemConfig()
@@ -190,6 +265,7 @@ export function SessionTabBar(props: SessionTabBarProps) {
 
   // 溢出检测：判断页签是否超出容器
   const [isOverflowing, setIsOverflowing] = useState(false)
+  const tabBarRef = useRef<HTMLDivElement>(null)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const tabsContainerRef = useRef<HTMLDivElement>(null)
 
@@ -257,6 +333,7 @@ export function SessionTabBar(props: SessionTabBarProps) {
 
   const onContextMenu = (e: React.MouseEvent, id: string) => {
     e.preventDefault()
+    if (!showContextMenu) return
     setMenu({ open: true, x: e.clientX, y: e.clientY, targetId: id })
   }
 
@@ -271,11 +348,30 @@ export function SessionTabBar(props: SessionTabBarProps) {
 
   // 拖拽活动状态
   const [draggedSession, setDraggedSession] = useState<TerminalSession | null>(null)
+  const detachedIdSet = new Set(detachedSessionIds)
 
   // 拖拽结束处理
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event
     setDraggedSession(null)
+
+    const activeSession = sessions.find((s) => s.id === String(active.id))
+    if (activeSession) {
+      const handled = onTabDragEnd?.(getTabDragEvent(event, activeSession, tabBarRef.current))
+      if (handled) {
+        return
+      }
+    }
+
+    if (
+      onDetachSession &&
+      activeSession &&
+      event.delta.y > TAB_DETACH_THRESHOLD_Y &&
+      (canDetachSession?.(activeSession) ?? true)
+    ) {
+      onDetachSession(String(active.id))
+      return
+    }
 
     if (!over || active.id === over.id) return
 
@@ -289,18 +385,33 @@ export function SessionTabBar(props: SessionTabBarProps) {
   }
 
   // 拖拽开始处理
-  const handleDragStart = (event: { active: { id: string | number } }) => {
+  const handleDragStart = (event: DragStartEvent) => {
     const session = sessions.find((s) => s.id === String(event.active.id))
     if (session) {
       setDraggedSession(session)
+      onTabDragStart?.(getTabDragEvent(event, session, tabBarRef.current))
     }
+  }
+
+  const handleDragMove = (event: DragMoveEvent) => {
+    const session = sessions.find((s) => s.id === String(event.active.id))
+    if (session) {
+      onTabDragMove?.(getTabDragEvent(event, session, tabBarRef.current))
+    }
+  }
+
+  const handleDragCancel = () => {
+    setDraggedSession(null)
+    onTabDragCancel?.()
   }
 
   // 去除状态图标，使用激活标签文字颜色表示状态
 
   const onAuxClick = (e: React.MouseEvent, id: string, pinned?: boolean) => {
     // 中键关闭
-    if (e.button === 1 && !pinned) {
+    const session = sessions.find((s) => s.id === id)
+    const canClose = session ? (canCloseSession?.(session) ?? !pinned) : !pinned
+    if (e.button === 1 && canClose) {
       e.preventDefault()
       onCloseSession(id)
     }
@@ -369,7 +480,7 @@ export function SessionTabBar(props: SessionTabBarProps) {
       )}
 
       {/* 页签栏（现代化设计） */}
-      <div className={
+      <div ref={tabBarRef} className={
         "w-full min-w-0 border-b border-border/60 bg-background/65 text-foreground backdrop-blur-md transition-colors"
       }>
         <div className="flex items-center h-10 gap-0 px-2 min-w-0 overflow-hidden">
@@ -381,8 +492,10 @@ export function SessionTabBar(props: SessionTabBarProps) {
                 sensors={sensors}
                 collisionDetection={closestCenter}
                 onDragStart={handleDragStart}
+                onDragMove={handleDragMove}
                 onDragEnd={handleDragEnd}
-                modifiers={[restrictToHorizontalAxis]}
+                onDragCancel={handleDragCancel}
+                modifiers={onDetachSession ? [] : [restrictToHorizontalAxis]}
               >
                 <SortableContext
                   items={sessions.map((s) => s.id)}
@@ -394,6 +507,8 @@ export function SessionTabBar(props: SessionTabBarProps) {
                         key={s.id}
                         session={s}
                         isActive={s.id === activeId}
+                        isDetached={detachedIdSet.has(s.id)}
+                        canClose={canCloseSession?.(s) ?? !s.pinned}
                         onChangeActive={onChangeActive}
                         onCloseSession={onCloseSession}
                         onContextMenu={onContextMenu}
@@ -466,11 +581,13 @@ export function SessionTabBar(props: SessionTabBarProps) {
                       onAuxClick={(e) => onAuxClick(e, s.id, s.pinned)}
                       onDoubleClick={() => onDoubleClick(s.id)}
                       className={cn(
-                        "group relative flex items-center gap-2 h-8 pl-3 pr-8 transition-all duration-200 ease-out select-none rounded-lg border backdrop-blur-sm",
+                        "group relative flex items-center gap-2 h-8 pl-3 transition-all duration-200 ease-out select-none rounded-lg border backdrop-blur-sm",
+                        (canCloseSession?.(s) ?? !s.pinned) || s.pinned ? "pr-8" : "pr-3",
                         active
                           ? "border-border bg-card/90 text-foreground shadow-sm"
                           : "border-border/50 bg-card/35 text-muted-foreground opacity-75 hover:border-border hover:bg-card/65 hover:text-foreground hover:opacity-100",
-                        s.pinned && "ring-1 ring-blue-500/20"
+                        s.pinned && "ring-1 ring-blue-500/20",
+                        detachedIdSet.has(s.id) && "ring-1 ring-primary/35"
                       )}
                     >
                       {/* 状态指示点 */}
@@ -488,7 +605,7 @@ export function SessionTabBar(props: SessionTabBarProps) {
                         <div className="absolute top-1 right-1 w-1 h-1 rounded-full bg-blue-400" />
                       )}
 
-                      {!s.pinned && (
+                      {(canCloseSession?.(s) ?? !s.pinned) && (
                         <button
                           className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded p-0.5 hover:bg-red-500/20 hover:text-red-400 opacity-100 scale-100 pointer-events-auto transition-all duration-150 md:opacity-0 md:scale-90 md:pointer-events-none md:group-hover:opacity-100 md:group-hover:scale-100 md:group-hover:pointer-events-auto"
                           onPointerDown={(e) => e.stopPropagation()}

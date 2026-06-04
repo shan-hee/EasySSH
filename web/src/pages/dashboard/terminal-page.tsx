@@ -380,6 +380,11 @@ function TerminalPageContent() {
 
   const handleCloseSession = useCallback((sessionId: string) => {
     if (sessions.length <= 1) {
+      if (sessions[0]?.type === "config") {
+        setActiveSessionId(sessions[0].id)
+        return
+      }
+
       resetToConfigSession()
       return
     }

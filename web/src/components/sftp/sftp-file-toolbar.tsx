@@ -1,14 +1,12 @@
 
 import { startTransition } from "react"
-import { ArrowLeft, Eye, EyeOff, RefreshCw, Search } from "lucide-react"
+import { Eye, EyeOff, RefreshCw, Search } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { useWorkspaceSftpTranslator } from "@/components/ssh-workspace/use-workspace-translator"
 import { cn } from "@/lib/utils"
 
 export interface SftpFileToolbarProps {
-  showBackButton: boolean
-  onBack: () => void | Promise<void>
   searchTerm: string
   onSearchTermChange: (value: string) => void
   showHidden: boolean
@@ -18,8 +16,6 @@ export interface SftpFileToolbarProps {
 }
 
 export function SftpFileToolbar({
-  showBackButton,
-  onBack,
   searchTerm,
   onSearchTermChange,
   showHidden,
@@ -31,24 +27,6 @@ export function SftpFileToolbar({
 
   return (
     <div className="px-3 py-2 border-b flex items-center gap-2">
-      {showBackButton && (
-        <Button
-          variant="ghost"
-          size="icon"
-          className={cn(
-            "h-7 w-7 rounded-md transition-all duration-200 text-muted-foreground hover:scale-105 hover:bg-accent hover:text-accent-foreground",
-          )}
-          onClick={() => {
-            startTransition(() => {
-              void onBack()
-            })
-          }}
-          title={tSftp("breadcrumbBack")}
-        >
-          <ArrowLeft className="h-3.5 w-3.5" />
-        </Button>
-      )}
-
       <div className="relative flex-1 max-w-xs">
         <Search className={cn(
           "absolute left-2.5 top-1/2 transform -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground",

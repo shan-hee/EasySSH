@@ -14,6 +14,8 @@ export interface SftpSessionCardProps {
   onClearCompletedTransfers?: () => void
   onCancelTransfer?: (taskId: string) => void
   onNavigateSession: (sessionId: string, path: string) => void
+  onNavigateBackSession: (sessionId: string) => void | Promise<void>
+  onNavigateForwardSession: (sessionId: string) => void | Promise<void>
   onUploadSession: (sessionId: string, files: FileList, onProgress?: (fileName: string, loaded: number, total: number) => void) => void
   onDownloadSession: (sessionId: string, fileName: string) => void
   onDeleteSession: (sessionId: string, fileName: string) => void
@@ -28,8 +30,6 @@ export interface SftpSessionCardProps {
   onSaveFileSession: (sessionId: string, fileName: string, content: string) => Promise<void>
   onRenameSessionLabel: (sessionId: string, newLabel: string) => void
   onToggleFullscreen: (sessionId: string) => void
-  dragHandleListeners?: React.HTMLAttributes<HTMLDivElement>
-  dragHandleAttributes?: React.HTMLAttributes<HTMLDivElement>
 }
 
 export const SftpSessionCard = React.memo(function SftpSessionCard({
@@ -40,6 +40,8 @@ export const SftpSessionCard = React.memo(function SftpSessionCard({
   onClearCompletedTransfers,
   onCancelTransfer,
   onNavigateSession,
+  onNavigateBackSession,
+  onNavigateForwardSession,
   onUploadSession,
   onDownloadSession,
   onDeleteSession,
@@ -54,10 +56,10 @@ export const SftpSessionCard = React.memo(function SftpSessionCard({
   onSaveFileSession,
   onRenameSessionLabel,
   onToggleFullscreen,
-  dragHandleListeners,
-  dragHandleAttributes,
 }: SftpSessionCardProps) {
   const onNavigate = React.useCallback((path: string) => onNavigateSession(session.id, path), [onNavigateSession, session.id])
+  const onNavigateBack = React.useCallback(() => onNavigateBackSession(session.id), [onNavigateBackSession, session.id])
+  const onNavigateForward = React.useCallback(() => onNavigateForwardSession(session.id), [onNavigateForwardSession, session.id])
   const onUpload = React.useCallback(
     (files: FileList, onProgress?: (fileName: string, loaded: number, total: number) => void) =>
       onUploadSession(session.id, files, onProgress),
@@ -86,7 +88,7 @@ export const SftpSessionCard = React.memo(function SftpSessionCard({
 
   if (!session.isConnected) {
     return (
-      <div className="h-full flex flex-col rounded-xl border bg-card overflow-hidden">
+      <div className="h-full flex flex-col rounded-none border-0 bg-background overflow-hidden">
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center space-y-3 py-8">
             <div className="inline-flex items-center justify-center w-12 h-12 rounded-lg border border-border bg-muted/60">
@@ -119,6 +121,10 @@ export const SftpSessionCard = React.memo(function SftpSessionCard({
       defaultViewMode="grid"
       isLoading={session.isLoading}
       onNavigate={onNavigate}
+      onNavigateBack={onNavigateBack}
+      canNavigateBack={(session.pathBackStack?.length ?? 0) > 0}
+      onNavigateForward={onNavigateForward}
+      canNavigateForward={(session.pathForwardStack?.length ?? 0) > 0}
       onUpload={onUpload}
       onDownload={onDownload}
       onDelete={onDelete}
@@ -133,8 +139,6 @@ export const SftpSessionCard = React.memo(function SftpSessionCard({
       onSaveFile={onSaveFile}
       onRenameSession={onRenameLabel}
       onToggleFullscreen={onToggleFullscreenBound}
-      dragHandleListeners={dragHandleListeners}
-      dragHandleAttributes={dragHandleAttributes}
       transferTasks={transferTasks}
       onClearCompletedTransfers={onClearCompletedTransfers}
       onCancelTransfer={onCancelTransfer}
