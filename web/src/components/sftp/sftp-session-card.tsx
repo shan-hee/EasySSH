@@ -2,6 +2,7 @@
 import React from "react"
 import { Server } from "lucide-react"
 import { SftpManager } from "@/components/sftp/sftp-manager"
+import { cn } from "@/lib/utils"
 import type { WorkspaceTransferTask } from "@/lib/session/workspace"
 import type { BatchDeleteResult } from "@/lib/session/sftp-operations"
 import type { SftpWorkspaceSession } from "@/lib/session/workspace"
@@ -9,6 +10,8 @@ import type { SftpWorkspaceSession } from "@/lib/session/workspace"
 export interface SftpSessionCardProps {
   session: SftpWorkspaceSession
   isFullscreen: boolean
+  chrome?: "full" | "toolbar" | "content"
+  surface?: "normal" | "transparent"
   connectingText: string
   transferTasks?: WorkspaceTransferTask[]
   onClearCompletedTransfers?: () => void
@@ -35,6 +38,8 @@ export interface SftpSessionCardProps {
 export const SftpSessionCard = React.memo(function SftpSessionCard({
   session,
   isFullscreen,
+  chrome = "full",
+  surface = "normal",
   connectingText,
   transferTasks,
   onClearCompletedTransfers,
@@ -87,11 +92,20 @@ export const SftpSessionCard = React.memo(function SftpSessionCard({
   const onToggleFullscreenBound = React.useCallback(() => onToggleFullscreen(session.id), [onToggleFullscreen, session.id])
 
   if (!session.isConnected) {
+    if (chrome === "toolbar") {
+      return null
+    }
+
     return (
-      <div className="h-full flex flex-col rounded-none border-0 bg-background overflow-hidden">
+      <div
+        className={cn(
+          "h-full flex flex-col rounded-none border-0 overflow-hidden",
+          (surface !== "transparent" || isFullscreen) && "bg-background"
+        )}
+      >
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center space-y-3 py-8">
-            <div className="inline-flex items-center justify-center w-12 h-12 rounded-lg border border-border bg-muted/60">
+            <div className="inline-flex items-center justify-center w-12 h-12 border border-border bg-muted/60">
               <Server className="h-6 w-6 text-primary animate-pulse" />
             </div>
             <div className="space-y-1">
@@ -117,6 +131,8 @@ export const SftpSessionCard = React.memo(function SftpSessionCard({
       sessionLabel={session.label}
       sessionColor={session.color}
       isFullscreen={isFullscreen}
+      chrome={chrome}
+      surface={surface}
       viewModeStorageKey="easyssh:sftp:viewMode:sftp"
       defaultViewMode="grid"
       isLoading={session.isLoading}

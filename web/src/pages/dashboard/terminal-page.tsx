@@ -406,6 +406,28 @@ function TerminalPageContent() {
     setSessions,
   ])
 
+  const handleCloseSessions = useCallback((sessionIds: string[]) => {
+    const sessionIdSet = new Set(sessionIds)
+    const remainingSessions = sessions.filter((session) => !sessionIdSet.has(session.id))
+
+    if (remainingSessions.length === 0) {
+      resetToConfigSession()
+      return
+    }
+
+    if (activeSessionId && sessionIdSet.has(activeSessionId)) {
+      setActiveSessionId(remainingSessions[0]?.id ?? null)
+    }
+
+    setSessions(remainingSessions)
+  }, [
+    activeSessionId,
+    resetToConfigSession,
+    sessions,
+    setActiveSessionId,
+    setSessions,
+  ])
+
   const handleDuplicateSession = (sessionId: string) => {
     const src = sessions.find((session) => session.id === sessionId)
     if (!src) return
@@ -536,6 +558,7 @@ function TerminalPageContent() {
           sessions={sessions}
           onNewSession={handleNewSession}
           onCloseSession={handleCloseSession}
+          onCloseSessions={handleCloseSessions}
           onSendCommand={handleSendCommand}
           onDuplicateSession={handleDuplicateSession}
           onCloseOthers={handleCloseOthers}

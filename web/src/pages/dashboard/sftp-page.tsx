@@ -1,13 +1,14 @@
 
-import React, { useState, useEffect, useRef, useCallback, startTransition } from "react"
+import React, { useEffect, useRef, useCallback, startTransition } from "react"
 import { PageHeader } from "@/components/page-header"
 import { SshWorkspace } from "@easyssh/ssh-workspace"
-import {
-  SessionTabBar,
-  type SessionTabDragEvent,
-  type SessionTabDropSide,
-} from "@/components/tabs/session-tab-bar"
+import { SessionTabBar } from "@/components/tabs/session-tab-bar"
 import { SessionSplitDropOverlay } from "@/components/tabs/session-split-drop-overlay"
+import {
+  SessionSplitPane,
+  type SessionSplitPaneHeaderBackground,
+} from "@/components/tabs/session-split-pane"
+import { SessionSplitView } from "@/components/tabs/session-split-view"
 import { ServerConnectionConfigs } from "@/components/servers/server-connection-configs"
 import { SftpSessionCard } from "@/components/sftp/sftp-session-card"
 import { DragPreviewToolbar, SortableSession, type CrossSessionDragData } from "@/components/sftp/sftp-session-sortable"
@@ -55,9 +56,20 @@ import { createBrowserWorkspacePreferenceAdapter, createWorkspaceAdapters, creat
 import { createSftpWorkspaceSessionControllerAdapter, createSftpWorkspaceSessionStoreAdapter, useSftpSessionStore } from "@/stores/sftp-session-store"
 import { createWorkspaceCapabilitiesFromRuntime, useRuntime } from "@/shell/runtime"
 import type { TerminalSession } from "@/components/terminal/types"
+import { useSessionSplitWorkspace } from "@/hooks/use-session-split-workspace"
+import { hasSplitPaneDragSession } from "@/lib/session/split-pane-drag"
 
 type ComponentFile = SftpFileItem
 type SftpSession = SftpWorkspaceSession
+
+const SFTP_SPLIT_PANE_BACKGROUND: SessionSplitPaneHeaderBackground = {
+  color: "var(--background)",
+}
+
+const getSessionConnectionSubtitle = (session: Pick<SftpSession, "username" | "host">) => {
+  if (session.username && session.host) return `${session.username}@${session.host}`
+  return session.username || session.host || undefined
+}
 
 // 会话标识颜色列表（常量）
 const SESSION_COLORS = [
@@ -70,6 +82,8 @@ const SESSION_COLORS = [
 ]
 
 const SFTP_CONFIG_TAB_ID = "sftp-config"
+const SFTP_WORKSPACE_TAB_ID = "__sftp-workspace__"
+const WORKSPACE_TAB_LABEL = "工作空间"
 
 const createSftpConfigTabId = () => (
   `sftp-config-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
@@ -87,13 +101,6 @@ const createSftpConfigTab = (id: string): TerminalSession => ({
   type: "config",
   pinned: false,
 })
-
-const getWorkspaceGridLayout = (count: number) => {
- if (count <= 1) return "grid-cols-1"
- if (count === 2) return "grid-cols-1 lg:grid-cols-2"
- if (count === 3) return "grid-cols-1 lg:grid-cols-3"
- return "grid-cols-1 lg:grid-cols-2"
-}
 
 export default function SftpPage() {
  const { runtime } = useRuntime()
@@ -115,24 +122,26 @@ export default function SftpPage() {
    [effectiveLocale, effectiveTimezone],
  )
  const sftpSessionApi = React.useMemo(() => createSftpSessionApi(sftpApi), [])
- const [configTabIds, setConfigTabIds] = useState<string[]>([SFTP_CONFIG_TAB_ID])
- const [activeSessionId, setActiveSessionId] = useState(SFTP_CONFIG_TAB_ID)
- const [detachedSessionIds, setDetachedSessionIds] = useState<string[]>([])
- const [tabDropSide, setTabDropSide] = useState<SessionTabDropSide | null>(null)
  // 认证改为基于 HttpOnly Cookie，不再需要前端 token
 
  // SFTP 工作区会话状态进入 runtime store，页面只保留业务编排。
  const sessions = useSftpSessionStore((state) => state.sessions)
+ const configTabIds = useSftpSessionStore((state) => state.configTabIds)
  const nextSessionId = useSftpSessionStore((state) => state.nextSessionId)
  const fullscreenSessionId = useSftpSessionStore((state) => state.fullscreenSessionId)
+ const storedActiveSessionId = useSftpSessionStore((state) => state.activeSessionId)
  const activeId = useSftpSessionStore((state) => state.activeId)
  const setSessions = useSftpSessionStore((state) => state.setSessions)
+ const setConfigTabIds = useSftpSessionStore((state) => state.setConfigTabIds)
  const setNextSessionId = useSftpSessionStore((state) => state.setNextSessionId)
  const setFullscreenSessionId = useSftpSessionStore((state) => state.setFullscreenSessionId)
+ const setStoredActiveSessionId = useSftpSessionStore((state) => state.setActiveSessionId)
  const setActiveId = useSftpSessionStore((state) => state.setActiveId)
+ const workspaceSplitLayout = useSftpSessionStore((state) => state.splitLayout)
+ const setWorkspaceSplitLayout = useSftpSessionStore((state) => state.setSplitLayout)
+ const activeSessionId = storedActiveSessionId ?? SFTP_CONFIG_TAB_ID
+ const setActiveSessionId = setStoredActiveSessionId
  const sessionsRef = useRef<SftpSession[]>([])
- const workspaceDropRef = useRef<HTMLDivElement>(null)
- const tabDragVisitedWorkspaceRef = useRef(false)
 
  // 始终保持 ref 指向最新会话，便于稳定回调访问（避免 useEffect 的一帧滞后）
  sessionsRef.current = sessions
@@ -248,44 +257,96 @@ export default function SftpPage() {
  )
  const configTabIdSet = React.useMemo(() => new Set(configTabIds), [configTabIds])
  const isActiveConfigTab = configTabIdSet.has(activeSessionId)
- const tabSessions = React.useMemo<TerminalSession[]>(() => {
-   return [
-     ...sessions.map<TerminalSession>((session) => ({
-       id: session.id,
-       serverId: session.serverId,
-       serverName: session.label || session.serverName,
-       host: session.host,
-       username: session.username,
-       shouldConnect: true,
-       connectionPhase: session.isConnected ? "ready" : "ssh_connecting",
-       status: session.isConnected ? "connected" : "reconnecting",
-       lastActivity: Date.now(),
-       type: "terminal",
-       pinned: false,
-     })),
-     ...configTabIds.map(createSftpConfigTab),
-   ]
- }, [configTabIds, sessions])
- const visibleSessionIds = React.useMemo(() => {
-   if (isActiveConfigTab) {
-     return []
-   }
+ const sessionTabItems = React.useMemo<TerminalSession[]>(() => (
+   sessions.map<TerminalSession>((session) => ({
+     id: session.id,
+     serverId: session.serverId,
+     serverName: session.label || session.serverName,
+     host: session.host,
+     username: session.username,
+     shouldConnect: true,
+     connectionPhase: session.isConnected ? "ready" : "ssh_connecting",
+     status: session.isConnected ? "connected" : "reconnecting",
+     lastActivity: Date.now(),
+     type: "terminal",
+     pinned: false,
+   }))
+ ), [sessions])
+ const setActiveSessionIdFromTab = useCallback((sessionId: string) => {
+   setActiveSessionId(sessionId)
+   setFullscreenSessionId((current) => (
+     current && current !== sessionId ? null : current
+   ))
+ }, [setFullscreenSessionId])
+ const {
+   splitLayout,
+   setSplitLayout,
+   tabDropSide,
+   tabDropTargetId,
+   draggingSplitSessionId,
+   hiddenSplitSessionId,
+   isSplitPanePreviewActive,
+   workspaceDropRef,
+   detachedSessionIds,
+   workspaceSessionIds,
+   visibleSessionIds,
+   visibleSessionIdSet,
+   isMultiSessionGrid,
+   tabSessions,
+   tabActiveId,
+   handleChangeActiveSession: handleChangeTab,
+   handleDetachSession: handleDetachTab,
+   handleTabDragStart,
+   handleTabDragMove,
+   handleTabDragEnd,
+   handleTabDragCancel,
+   handleSplitPaneDragStart,
+   handleWorkspaceNativeDragOver,
+   handleWorkspaceNativeDrop,
+   handleWorkspaceNativeDragLeave,
+   handleSplitPaneDragEnd,
+   handleSplitPaneDropToTab,
+   handleRestoreDetachedSession,
+   handleSplitResize,
+   syncSplitLayout,
+   removeSessionFromWorkspace,
+ } = useSessionSplitWorkspace({
+   sessions: sessionTabItems,
+   workspaceSessions: sessionTabItems,
+   activeSessionId,
+   splitLayout: workspaceSplitLayout,
+   setSplitLayout: setWorkspaceSplitLayout,
+   workspaceTab: {
+     id: SFTP_WORKSPACE_TAB_ID,
+     label: WORKSPACE_TAB_LABEL,
+   },
+   isActiveConfigSession: isActiveConfigTab,
+   isDisabled: !!fullscreenSessionId,
+   setActiveSessionId: setActiveSessionIdFromTab,
+   onWorkspaceSessionActivated: () => {
+     setFullscreenSessionId(null)
+   },
+   onSessionDroppedToWorkspace: () => {
+     setFullscreenSessionId(null)
+   },
+   buildTabSessions: ({ hasWorkspace, workspaceTabSession, workspaceSessionIds, sessions }) => {
+     const workspaceSessionIdSet = new Set(workspaceSessionIds)
+     const visibleTabs = hasWorkspace
+       ? [
+           workspaceTabSession,
+           ...sessions.filter((session) => !workspaceSessionIdSet.has(session.id)),
+         ]
+       : sessions
 
-   if (detachedSessionIds.length > 0) {
-     return detachedSessionIds.filter((id) => sessionIdSet.has(id))
-   }
-
-   if (sessionIdSet.has(activeSessionId)) {
-     return [activeSessionId]
-   }
-
-   return sessions[0]?.id ? [sessions[0].id] : []
- }, [activeSessionId, detachedSessionIds, isActiveConfigTab, sessionIdSet, sessions])
- const visibleSessionIdSet = React.useMemo(() => new Set(visibleSessionIds), [visibleSessionIds])
- const isMultiSessionGrid = detachedSessionIds.length > 0 && visibleSessionIds.length > 0
+     return [
+       ...visibleTabs,
+       ...configTabIds.map(createSftpConfigTab),
+     ]
+   },
+ })
 
  useEffect(() => {
-   setDetachedSessionIds((current) => current.filter((id) => sessionIdSet.has(id)))
+   syncSplitLayout(sessionIdSet)
    if (sessions.length === 0 && configTabIds.length === 0) {
      setConfigTabIds([SFTP_CONFIG_TAB_ID])
      setActiveSessionId(SFTP_CONFIG_TAB_ID)
@@ -300,111 +361,7 @@ export default function SftpPage() {
    if (!sessionIdSet.has(activeSessionId) && !configTabIdSet.has(activeSessionId)) {
      setActiveSessionId(sessions[0].id ?? configTabIds[0] ?? SFTP_CONFIG_TAB_ID)
    }
- }, [activeSessionId, configTabIds, configTabIdSet, sessionIdSet, sessions])
-
- const handleChangeTab = useCallback((sessionId: string) => {
-   setActiveSessionId(sessionId)
-   setDetachedSessionIds((current) => (
-     current.includes(sessionId) ? current : []
-   ))
-   setFullscreenSessionId((current) => (
-     current && current !== sessionId ? null : current
-   ))
- }, [setFullscreenSessionId])
-
- const handleDetachTab = useCallback((sessionId: string) => {
-   if (!sessionIdSet.has(sessionId)) return
-
-   setDetachedSessionIds((current) => {
-     const cleaned = current.filter((id) => sessionIdSet.has(id))
-     if (cleaned.includes(sessionId)) {
-       return cleaned
-     }
-
-     const next = cleaned.length > 0
-       ? [...cleaned, sessionId]
-       : !configTabIdSet.has(activeSessionId) && activeSessionId !== sessionId && sessionIdSet.has(activeSessionId)
-         ? [activeSessionId, sessionId]
-         : [sessionId]
-
-     return Array.from(new Set(next)).filter((id) => sessionIdSet.has(id))
-   })
-   setActiveSessionId(sessionId)
-   setFullscreenSessionId(null)
- }, [activeSessionId, configTabIdSet, sessionIdSet, setFullscreenSessionId])
-
- const getTabDropSide = useCallback((event: SessionTabDragEvent) => {
-   const rect = workspaceDropRef.current?.getBoundingClientRect()
-   if (!rect) return null
-   if (event.clientX < rect.left || event.clientX > rect.right) return null
-   if (event.clientY < rect.top || event.clientY > rect.bottom) return null
-
-   return event.clientX < rect.left + rect.width / 2 ? "left" : "right"
- }, [])
-
- const getSplitSessionIds = useCallback((sessionId: string, side: SessionTabDropSide) => {
-   const current = detachedSessionIds.filter((id) => sessionIdSet.has(id) && id !== sessionId)
-   const base = current.length > 0
-     ? current
-     : [
-         sessionIdSet.has(activeSessionId) ? activeSessionId : undefined,
-         sessions.find((session) => session.id !== sessionId)?.id,
-       ].filter((id): id is string => Boolean(id && id !== sessionId))
-
-   const next = side === "left" ? [sessionId, ...base] : [...base, sessionId]
-   return Array.from(new Set(next)).filter((id) => sessionIdSet.has(id))
- }, [activeSessionId, detachedSessionIds, sessionIdSet, sessions])
-
- const handleTabDragStart = useCallback(() => {
-   tabDragVisitedWorkspaceRef.current = false
-   setTabDropSide(null)
- }, [])
-
- const handleTabDragMove = useCallback((event: SessionTabDragEvent) => {
-   if (event.session.type === "config" || fullscreenSessionId) {
-     setTabDropSide(null)
-     return
-   }
-
-   const side = getTabDropSide(event)
-   if (side) {
-     tabDragVisitedWorkspaceRef.current = true
-   }
-   setTabDropSide(side)
- }, [fullscreenSessionId, getTabDropSide])
-
- const handleTabDragEnd = useCallback((event: SessionTabDragEvent) => {
-   const side = event.session.type === "config" || fullscreenSessionId ? null : getTabDropSide(event)
-   const visitedWorkspace = tabDragVisitedWorkspaceRef.current
-   tabDragVisitedWorkspaceRef.current = false
-   setTabDropSide(null)
-
-   if (side) {
-     const next = getSplitSessionIds(event.sessionId, side)
-     if (next.length > 0) {
-       setDetachedSessionIds(next)
-       setActiveSessionId(event.sessionId)
-       setFullscreenSessionId(null)
-     }
-     return true
-   }
-
-   if (detachedSessionIds.includes(event.sessionId) && visitedWorkspace && event.isOverTabBar) {
-     setDetachedSessionIds((current) => {
-       const next = current.filter((id) => id !== event.sessionId)
-       return next.length > 1 ? next : []
-     })
-     setActiveSessionId(event.sessionId)
-     return true
-   }
-
-   return false
- }, [detachedSessionIds, fullscreenSessionId, getSplitSessionIds, getTabDropSide, setFullscreenSessionId])
-
- const handleTabDragCancel = useCallback(() => {
-   tabDragVisitedWorkspaceRef.current = false
-   setTabDropSide(null)
- }, [])
+ }, [activeSessionId, configTabIds, configTabIdSet, sessionIdSet, sessions, syncSplitLayout])
 
  const handleReorderTabs = useCallback((newOrderIds: string[]) => {
    setSessions((current) => {
@@ -429,7 +386,6 @@ export default function SftpPage() {
  const handleNewTab = useCallback(() => {
    const configTabId = createSftpConfigTabId()
 
-   setDetachedSessionIds([])
    setConfigTabIds((current) => [...current, configTabId])
    setActiveSessionId(configTabId)
    setFullscreenSessionId(null)
@@ -585,7 +541,6 @@ export default function SftpPage() {
  }
  setSessions(prev => [...prev, newSession])
  setNextSessionId(prev => prev + 1)
- setDetachedSessionIds([])
  if (configTabIdToReplace) {
    setConfigTabIds(prev => prev.filter(id => id !== configTabIdToReplace))
  }
@@ -663,7 +618,7 @@ export default function SftpPage() {
  // 断开连接
  const handleDisconnect = useCallback((sessionId: string) => {
    const remainingSessions = sessionsRef.current.filter(session => session.id !== sessionId)
-   setDetachedSessionIds(prev => prev.filter(id => id !== sessionId))
+   removeSessionFromWorkspace(sessionId)
    if (remainingSessions.length === 0) {
      setConfigTabIds(prev => (prev.length > 0 ? prev : [SFTP_CONFIG_TAB_ID]))
    }
@@ -675,9 +630,37 @@ export default function SftpPage() {
    setSessions(prev => prev.filter(session => session.id !== sessionId))
    setFullscreenSessionId(prev => (prev === sessionId ? null : prev))
    setActiveId(prev => (prev === sessionId ? null : prev))
- }, [configTabIds, setActiveId, setFullscreenSessionId, setSessions])
+ }, [configTabIds, removeSessionFromWorkspace, setActiveId, setFullscreenSessionId, setSessions])
 
  const handleCloseTab = useCallback((sessionId: string) => {
+   if (sessionId === SFTP_WORKSPACE_TAB_ID) {
+     if (workspaceSessionIds.length === 0) {
+       setSplitLayout(null)
+       return
+     }
+
+     const workspaceSessionIdSet = new Set(workspaceSessionIds)
+     const remainingSessions = sessionsRef.current.filter((session) => !workspaceSessionIdSet.has(session.id))
+
+     setSplitLayout(null)
+     if (remainingSessions.length === 0) {
+       setConfigTabIds((current) => (current.length > 0 ? current : [SFTP_CONFIG_TAB_ID]))
+     }
+     setActiveSessionId((current) => (
+       workspaceSessionIdSet.has(current)
+         ? remainingSessions[0]?.id ?? configTabIds[0] ?? SFTP_CONFIG_TAB_ID
+         : current
+     ))
+     setSessions((current) => current.filter((session) => !workspaceSessionIdSet.has(session.id)))
+     setFullscreenSessionId((current) => (
+       current && workspaceSessionIdSet.has(current) ? null : current
+     ))
+     setActiveId((current) => (
+       current && workspaceSessionIdSet.has(current) ? null : current
+     ))
+     return
+   }
+
    if (configTabIdSet.has(sessionId)) {
      const remainingConfigTabIds = configTabIds.filter(id => id !== sessionId)
      const nextSessionId = sessionsRef.current[0]?.id
@@ -688,7 +671,6 @@ export default function SftpPage() {
      }
 
      setConfigTabIds(remainingConfigTabIds)
-     setDetachedSessionIds([])
      setActiveSessionId(prev => {
        if (prev !== sessionId) return prev
 
@@ -706,7 +688,16 @@ export default function SftpPage() {
    }
 
    handleDisconnect(sessionId)
- }, [configTabIds, configTabIdSet, handleDisconnect, setActiveId, setFullscreenSessionId])
+ }, [
+   configTabIds,
+   configTabIdSet,
+   handleDisconnect,
+   setActiveId,
+   setSplitLayout,
+   setFullscreenSessionId,
+   setSessions,
+   workspaceSessionIds,
+ ])
 
  // 重命名会话标签
  const handleRenameSession = useCallback((sessionId: string, newLabel: string) => {
@@ -1107,10 +1098,17 @@ export default function SftpPage() {
    }
  }, [tSftp, sftpSessionApi])
 
- const renderSftpSessionCard = (session: SftpSession, isFullscreenSession = false) => (
+ const renderSftpSessionCard = (
+   session: SftpSession,
+   isFullscreenSession = false,
+   chrome: "full" | "toolbar" | "content" = "full",
+   surface: "normal" | "transparent" = "normal"
+ ) => (
  <SftpSessionCard
    session={session}
    isFullscreen={isFullscreenSession}
+   chrome={chrome}
+   surface={surface}
    connectingText={tSftp("connecting")}
    onNavigateSession={handleNavigate}
    onNavigateBackSession={handleNavigateBack}
@@ -1132,6 +1130,75 @@ export default function SftpPage() {
  />
  )
 
+ const renderSplitLeaf = useCallback((sessionId: string): React.ReactNode => {
+   const session = sessions.find((item) => item.id === sessionId)
+   if (!session) return null
+
+   return (
+     <SortableSession
+       key={session.id}
+       session={session}
+       onCrossSessionDrop={handleCrossSessionDrop}
+       dropOverlayTexts={{
+         title: tSftp("crossSessionDropTitle"),
+         description: tSftp("crossSessionDropDescription"),
+       }}
+     >
+       <SessionSplitPane
+         sessionId={session.id}
+         title={session.label || session.serverName}
+         subtitle={getSessionConnectionSubtitle(session)}
+         status={session.isConnected ? "connected" : "reconnecting"}
+         isActive={activeSessionId === session.id}
+         background={SFTP_SPLIT_PANE_BACKGROUND}
+         onFocus={() => setActiveSessionId(session.id)}
+         onDragStart={() => handleSplitPaneDragStart(session.id)}
+         onDragEnd={handleSplitPaneDragEnd}
+         dropOverlay={<SessionSplitDropOverlay side={tabDropTargetId === session.id ? tabDropSide : null} />}
+       >
+         {renderSftpSessionCard(session, false, "content", "transparent")}
+       </SessionSplitPane>
+     </SortableSession>
+   )
+ }, [
+   activeSessionId,
+   handleSplitPaneDragEnd,
+   handleSplitPaneDragStart,
+   handleCrossSessionDrop,
+   renderSftpSessionCard,
+   sessions,
+   tSftp,
+   tabDropSide,
+   tabDropTargetId,
+ ])
+
+ const activeSftpSession = sessions.find((session) => session.id === activeSessionId) ?? null
+ const ignoredToolbarSessionId = isSplitPanePreviewActive ? draggingSplitSessionId : null
+ const workspaceToolbarSession = isMultiSessionGrid
+   ? sessions.find((session) => (
+       session.id === activeSessionId &&
+       session.id !== ignoredToolbarSessionId &&
+       visibleSessionIdSet.has(session.id)
+     ))
+     ?? sessions.find((session) => (
+       session.id !== ignoredToolbarSessionId && visibleSessionIdSet.has(session.id)
+     ))
+     ?? sessions.find((session) => visibleSessionIdSet.has(session.id))
+     ?? null
+   : null
+
+ const handleWorkspaceSplitDragOverCapture = useCallback((event: React.DragEvent<HTMLElement>) => {
+   if (!hasSplitPaneDragSession(event.dataTransfer)) return
+   handleWorkspaceNativeDragOver(event)
+   event.stopPropagation()
+ }, [handleWorkspaceNativeDragOver])
+
+ const handleWorkspaceSplitDropCapture = useCallback((event: React.DragEvent<HTMLElement>) => {
+   if (!hasSplitPaneDragSession(event.dataTransfer)) return
+   handleWorkspaceNativeDrop(event)
+   event.stopPropagation()
+ }, [handleWorkspaceNativeDrop])
+
  // 加载状态 - 直接显示界面，服务器列表异步加载
  // 与快速连接界面保持一致，不使用骨架屏
 
@@ -1150,7 +1217,7 @@ export default function SftpPage() {
  )}>
  <SessionTabBar
    sessions={tabSessions}
-   activeId={activeSessionId}
+   activeId={tabActiveId}
    onChangeActive={handleChangeTab}
    onNewSession={handleNewTab}
    onCloseSession={handleCloseTab}
@@ -1158,7 +1225,7 @@ export default function SftpPage() {
    onCloseOthers={() => {}}
    onCloseAll={() => {
      setSessions([])
-     setDetachedSessionIds([])
+     setSplitLayout(null)
      setConfigTabIds([SFTP_CONFIG_TAB_ID])
      setActiveSessionId(SFTP_CONFIG_TAB_ID)
      setFullscreenSessionId(null)
@@ -1170,7 +1237,7 @@ export default function SftpPage() {
    onToggleFullscreen={fullscreenSessionId ? () => setFullscreenSessionId(null) : undefined}
    hideBreadcrumb
    onDetachSession={handleDetachTab}
-   canDetachSession={(session) => session.type !== "config"}
+   canDetachSession={(session) => session.type !== "config" && session.id !== SFTP_WORKSPACE_TAB_ID}
    canCloseSession={() => true}
    detachedSessionIds={detachedSessionIds}
    showContextMenu={false}
@@ -1178,9 +1245,18 @@ export default function SftpPage() {
    onTabDragMove={handleTabDragMove}
    onTabDragEnd={handleTabDragEnd}
    onTabDragCancel={handleTabDragCancel}
+   onRestoreDetachedSession={handleRestoreDetachedSession}
+   onSplitPaneDropToTab={handleSplitPaneDropToTab}
  />
- <div ref={workspaceDropRef} className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
- <SessionSplitDropOverlay side={tabDropSide} />
+ <div
+   ref={workspaceDropRef}
+   className="relative flex min-h-0 flex-1 flex-col overflow-hidden"
+   onDragOverCapture={handleWorkspaceSplitDragOverCapture}
+   onDropCapture={handleWorkspaceSplitDropCapture}
+   onDragOver={handleWorkspaceNativeDragOver}
+   onDrop={handleWorkspaceNativeDrop}
+   onDragLeave={handleWorkspaceNativeDragLeave}
+ >
  {isActiveConfigTab ? (
  <ServerConnectionConfigs
    defaultViewMode="grid"
@@ -1196,7 +1272,6 @@ export default function SftpPage() {
  ))}
  </div>
  ) : (
- // 多会话网格布局
  <DndContext
  sensors={sensors}
  collisionDetection={closestCenter}
@@ -1207,33 +1282,42 @@ export default function SftpPage() {
  items={visibleSessionIds}
  strategy={rectSortingStrategy}
  >
- <div
- className={cn(
- "h-full min-h-0",
- isMultiSessionGrid ? "overflow-auto p-3" : "overflow-hidden"
- )}
- >
- <div
- className={cn(
- isMultiSessionGrid ? "grid gap-3 h-full" : "h-full",
- isMultiSessionGrid && getWorkspaceGridLayout(visibleSessionIds.length)
- )}
- >
- {sessions.filter(session => visibleSessionIdSet.has(session.id)).map(session => (
+ {isMultiSessionGrid && splitLayout ? (
+ <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
+ {workspaceToolbarSession && renderSftpSessionCard(workspaceToolbarSession, false, "toolbar")}
+ <div className="relative flex min-h-0 flex-1 overflow-auto p-2">
+ <SessionSplitView
+ node={splitLayout}
+ renderLeaf={renderSplitLeaf}
+ onResize={handleSplitResize}
+ hiddenSessionId={hiddenSplitSessionId}
+ />
+ </div>
+ </div>
+ ) : activeSftpSession ? (
  <SortableSession
- key={session.id}
- session={session}
+ key={activeSftpSession.id}
+ session={activeSftpSession}
  onCrossSessionDrop={handleCrossSessionDrop}
  dropOverlayTexts={{
    title: tSftp("crossSessionDropTitle"),
    description: tSftp("crossSessionDropDescription"),
  }}
  >
- {renderSftpSessionCard(session, false)}
+ <div
+ data-split-session-id={activeSftpSession.id}
+ className="relative h-full min-h-0 min-w-0 flex-1 overflow-hidden"
+ onMouseDown={() => setActiveSessionId(activeSftpSession.id)}
+ >
+ <SessionSplitDropOverlay
+ side={tabDropTargetId === activeSftpSession.id ? tabDropSide : null}
+ edgeInset="workspace"
+ topOffset={40}
+ />
+ {renderSftpSessionCard(activeSftpSession, false, "full")}
+ </div>
  </SortableSession>
- ))}
- </div>
- </div>
+ ) : null}
  </SortableContext>
 
  {/* VSCode 风格的轻量级拖拽预览 - 只显示工具栏 */}

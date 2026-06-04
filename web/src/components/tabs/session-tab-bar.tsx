@@ -1,5 +1,6 @@
 
 import { useEffect, useRef, useState } from "react"
+import { createPortal } from "react-dom"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import type { TerminalSession } from "@/components/terminal/types"
@@ -31,10 +32,14 @@ import {
   horizontalListSortingStrategy,
   arrayMove,
 } from "@dnd-kit/sortable"
-import { CSS } from "@dnd-kit/utilities"
-import { restrictToHorizontalAxis } from "@dnd-kit/modifiers"
+import { CSS, getEventCoordinates } from "@dnd-kit/utilities"
+import { restrictToHorizontalAxis, snapCenterToCursor } from "@dnd-kit/modifiers"
 import { useSystemConfig } from "@/contexts/system-config-context"
 import { useTranslation } from "react-i18next"
+import {
+  getSplitPaneDragSessionId,
+  hasSplitPaneDragSession,
+} from "@/lib/session/split-pane-drag"
 
 interface SessionTabBarProps {
   sessions: TerminalSession[]
@@ -60,9 +65,11 @@ interface SessionTabBarProps {
   onTabDragMove?: (event: SessionTabDragEvent) => void
   onTabDragEnd?: (event: SessionTabDragEvent) => boolean | void
   onTabDragCancel?: () => void
+  onRestoreDetachedSession?: (id: string) => void
+  onSplitPaneDropToTab?: (sessionId: string, targetSessionId: string, side: SessionTabDropSide) => boolean | void
 }
 
-export type SessionTabDropSide = "left" | "right"
+export type SessionTabDropSide = "top" | "right" | "bottom" | "left"
 
 export type SessionTabDragEvent = {
   session: TerminalSession
@@ -94,10 +101,17 @@ const getTabDragEvent = (
   const translatedRect = event.active.rect.current.translated
   const rect = translatedRect ?? initialRect
   const delta = "delta" in event ? event.delta : { x: 0, y: 0 }
-  const offsetX = translatedRect ? 0 : delta.x
-  const offsetY = translatedRect ? 0 : delta.y
-  const clientX = rect ? rect.left + rect.width / 2 + offsetX : 0
-  const clientY = rect ? rect.top + rect.height / 2 + offsetY : 0
+  const activatorCoordinates = getEventCoordinates(event.activatorEvent)
+  const clientX = activatorCoordinates
+    ? activatorCoordinates.x + delta.x
+    : rect
+      ? rect.left + rect.width / 2
+      : 0
+  const clientY = activatorCoordinates
+    ? activatorCoordinates.y + delta.y
+    : rect
+      ? rect.top + rect.height / 2
+      : 0
   const tabBarRect = tabBarElement?.getBoundingClientRect()
 
   return {
@@ -170,6 +184,7 @@ function SortableTab({
       style={style}
       {...attributes}
       {...listeners}
+      data-session-tab-id={s.id}
       role="button"
       onClick={() => onChangeActive(s.id)}
       onContextMenu={(e) => {
@@ -243,6 +258,8 @@ export function SessionTabBar(props: SessionTabBarProps) {
     onTabDragMove,
     onTabDragEnd,
     onTabDragCancel,
+    onRestoreDetachedSession,
+    onSplitPaneDropToTab,
   } = props
 
   const { config } = useSystemConfig()
@@ -364,6 +381,7 @@ export function SessionTabBar(props: SessionTabBarProps) {
     }
 
     if (
+      !onTabDragEnd &&
       onDetachSession &&
       activeSession &&
       event.delta.y > TAB_DETACH_THRESHOLD_Y &&
@@ -396,7 +414,8 @@ export function SessionTabBar(props: SessionTabBarProps) {
   const handleDragMove = (event: DragMoveEvent) => {
     const session = sessions.find((s) => s.id === String(event.active.id))
     if (session) {
-      onTabDragMove?.(getTabDragEvent(event, session, tabBarRef.current))
+      const tabDragEvent = getTabDragEvent(event, session, tabBarRef.current)
+      onTabDragMove?.(tabDragEvent)
     }
   }
 
@@ -423,6 +442,65 @@ export function SessionTabBar(props: SessionTabBarProps) {
   const fullscreenButtonLabel = isFullscreen
     ? tTerminal("titleExitFullscreen")
     : tTerminal("titleEnterFullscreen")
+  const tabDragOverlay = (
+    <DragOverlay dropAnimation={null} modifiers={[snapCenterToCursor]} zIndex={10000}>
+      {draggedSession ? (
+        <div className={cn(
+          "group relative flex h-8 items-center gap-2 rounded-lg border pl-3 pr-8 text-foreground shadow-2xl backdrop-blur-sm transition-all duration-200 ease-out select-none",
+          "border-border bg-card/90",
+          draggedSession.pinned && "ring-1 ring-blue-500/20"
+        )}>
+          <div className={cn(
+            "h-1.5 w-1.5 flex-shrink-0 rounded-full",
+            draggedSession.status === "connected"
+              ? "bg-green-500"
+              : draggedSession.status === "reconnecting"
+              ? "bg-yellow-500"
+              : "bg-red-500"
+          )} />
+          <span className="max-w-32 truncate text-xs font-medium text-foreground">
+            {draggedSession.serverName}
+          </span>
+          {draggedSession.pinned && (
+            <div className="absolute right-1 top-1 h-1 w-1 rounded-full bg-blue-400" />
+          )}
+        </div>
+      ) : null}
+    </DragOverlay>
+  )
+
+  const handleSplitPaneDragOver = (event: React.DragEvent<HTMLDivElement>) => {
+    if ((!onRestoreDetachedSession && !onSplitPaneDropToTab) || !hasSplitPaneDragSession(event.dataTransfer)) {
+      return
+    }
+
+    event.preventDefault()
+    event.dataTransfer.dropEffect = "move"
+  }
+
+  const handleSplitPaneDrop = (event: React.DragEvent<HTMLDivElement>) => {
+    if ((!onRestoreDetachedSession && !onSplitPaneDropToTab) || !hasSplitPaneDragSession(event.dataTransfer)) {
+      return
+    }
+
+    event.preventDefault()
+    event.stopPropagation()
+    const sessionId = getSplitPaneDragSessionId(event.dataTransfer)
+    if (sessionId) {
+      const targetElement = (event.target as HTMLElement | null)?.closest<HTMLElement>("[data-session-tab-id]")
+      const targetSessionId = targetElement?.dataset.sessionTabId
+      if (targetSessionId && targetSessionId !== sessionId) {
+        const targetSession = sessions.find((session) => session.id === targetSessionId)
+        if (targetSession && targetSession.type !== "config") {
+          const rect = targetElement.getBoundingClientRect()
+          const side: SessionTabDropSide = event.clientX < rect.left + rect.width / 2 ? "left" : "right"
+          const handled = onSplitPaneDropToTab?.(sessionId, targetSessionId, side)
+          if (handled) return
+        }
+      }
+      onRestoreDetachedSession?.(sessionId)
+    }
+  }
 
   return (
     <>
@@ -482,7 +560,7 @@ export function SessionTabBar(props: SessionTabBarProps) {
       {/* 页签栏（现代化设计） */}
       <div ref={tabBarRef} className={
         "w-full min-w-0 border-b border-border/60 bg-background/65 text-foreground backdrop-blur-md transition-colors"
-      }>
+      } onDragOver={handleSplitPaneDragOver} onDrop={handleSplitPaneDrop}>
         <div className="flex items-center h-10 gap-0 px-2 min-w-0 overflow-hidden">
           {/* Tabs 容器 */}
           <div ref={scrollContainerRef} className="flex-1 min-w-0 h-10 overflow-x-auto overflow-y-hidden scrollbar-custom pb-1">
@@ -534,31 +612,9 @@ export function SessionTabBar(props: SessionTabBarProps) {
                 </SortableContext>
 
                 {/* 拖动预览层 */}
-                <DragOverlay>
-                  {draggedSession ? (
-                    <div className={cn(
-                      "group relative flex items-center gap-2 h-8 pl-3 pr-8 transition-all duration-200 ease-out select-none rounded-lg border backdrop-blur-sm shadow-2xl",
-                      "border-border bg-card/90 text-foreground",
-                      draggedSession.pinned && "ring-1 ring-blue-500/20"
-                    )}>
-                      {/* 状态指示点 */}
-                      <div className={cn(
-                        "w-1.5 h-1.5 rounded-full flex-shrink-0",
-                        draggedSession.status === "connected"
-                          ? "bg-green-500"
-                          : draggedSession.status === "reconnecting"
-                          ? "bg-yellow-500"
-                          : "bg-red-500"
-                      )} />
-                      <span className="max-w-32 truncate text-xs font-medium text-foreground">
-                        {draggedSession.serverName}
-                      </span>
-                      {draggedSession.pinned && (
-                        <div className="absolute top-1 right-1 w-1 h-1 rounded-full bg-blue-400" />
-                      )}
-                    </div>
-                  ) : null}
-                </DragOverlay>
+                {typeof document === "undefined"
+                  ? tabDragOverlay
+                  : createPortal(tabDragOverlay, document.body)}
               </DndContext>
             ) : (
               // 服务端渲染：静态页签（无拖动功能）

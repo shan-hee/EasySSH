@@ -115,11 +115,19 @@ export const SortableSession = React.memo(function SortableSession({
   }, [session.id])
 
   const handleDragLeave = React.useCallback((event: React.DragEvent) => {
+    if (!event.dataTransfer.types.includes("application/json")) {
+      return
+    }
+
     event.preventDefault()
     event.stopPropagation()
   }, [])
 
   const handleDrop = React.useCallback((event: React.DragEvent) => {
+    if (!event.dataTransfer.types.includes("application/json")) {
+      return
+    }
+
     event.preventDefault()
     event.stopPropagation()
     setIsDragOver(false)
@@ -149,7 +157,7 @@ export const SortableSession = React.memo(function SortableSession({
       ref={setNodeRef}
       style={style}
       className={cn(
-        "relative h-full min-h-0",
+        "relative flex h-full min-h-0 min-w-0 flex-1",
         isDragging && "opacity-60",
       )}
       data-session-id={session.id}

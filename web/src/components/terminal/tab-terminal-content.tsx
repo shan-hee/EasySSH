@@ -77,6 +77,8 @@ interface TabTerminalContentProps {
   session: TerminalSession
   isActive: boolean
   settings: TerminalSettings
+  chrome?: "full" | "toolbar" | "content"
+  surface?: "normal" | "transparent"
   effectiveIsLoading: boolean
   loaderState: "entering" | "loading" | "exiting"
   onAnimationComplete: () => void
@@ -97,6 +99,8 @@ export function TabTerminalContent({
   session,
   isActive,
   settings,
+  chrome = "full",
+  surface = "normal",
   effectiveIsLoading,
   loaderState,
   onAnimationComplete,
@@ -158,18 +162,20 @@ export function TabTerminalContent({
 
   const isTerminalReady = session.connectionPhase === "ready"
   const hasReadyServer = session.type !== 'config' && isTerminalReady && !!session.serverId
-  const canUseHeavyPanels = isActive && hasReadyServer
+  const canRenderInlinePanels = chrome === "full"
+  const canUseHeavyPanels = canRenderInlinePanels && isActive && hasReadyServer
   const canUseFileManager = canUseSftpCapability && canUseHeavyPanels && isFileManagerOpen
   const shouldKeepFileManagerMounted = canUseSftpCapability && canUseHeavyPanels && shouldRenderFileManager
-  const canMountAi = canUseAiCapability && isActive && session.type !== 'config' && !effectiveIsLoading
+  const canMountAi = canRenderInlinePanels && canUseAiCapability && isActive && session.type !== 'config' && !effectiveIsLoading
   const canUseAi = canMountAi && isAiInputOpen
   const shouldReserveInlineMonitor =
+    canRenderInlinePanels &&
     canUseMonitorCapability &&
     isDesktopLayout &&
     hasReadyServer &&
     isDesktopMonitorOpen &&
     !!session.serverId
-  const canUseMobileMonitor = canUseMonitorCapability && canUseHeavyPanels && isMobileMonitorOpen && !isDesktopLayout
+  const canUseMobileMonitor = canRenderInlinePanels && canUseMonitorCapability && canUseHeavyPanels && isMobileMonitorOpen && !isDesktopLayout
   const fileManagerPaneConfig = workspace?.adapters.panes?.fileManager
   const shouldMountFileManagerInTerminal = fileManagerPaneConfig?.mountMode !== 'page'
   const fileManagerMountContainer = shouldMountFileManagerInTerminal
@@ -238,7 +244,7 @@ export function TabTerminalContent({
     hasReadyServer && session.serverId
       ? session.serverId
       : ''
-  const monitorEnabled = canUseMonitorCapability && hasReadyServer
+  const monitorEnabled = canRenderInlinePanels && canUseMonitorCapability && hasReadyServer
   const { t: tTerminal } = useTranslation("terminal")
   const { mode: effectiveAppTheme } = useEffectiveThemeMode()
   const shouldUseTerminalSurface = session.type !== 'config'
@@ -254,6 +260,9 @@ export function TabTerminalContent({
     session.username && session.host
       ? `${session.username}@${session.host}`
       : session.serverName || session.host || session.serverId
+  const shouldRenderToolbar = chrome !== "content" && session.type !== 'config' && !effectiveIsLoading
+  const shouldRenderBody = chrome !== "toolbar"
+  const shouldRenderSurface = surface !== "transparent"
 
   useEffect(() => {
     let frame = 0
@@ -358,14 +367,19 @@ export function TabTerminalContent({
       interval={settings.monitorInterval || 2}
       latencyIntervalMs={5000}
     >
-      <div className="flex-1 flex flex-col h-full relative overflow-hidden">
-        <div
-          aria-hidden="true"
-          className="absolute inset-0 pointer-events-none"
-          style={{ backgroundColor: pageBackgroundColor }}
-        />
+      <div className={cn(
+        "flex flex-col relative overflow-hidden",
+        shouldRenderBody ? "flex-1 h-full" : "shrink-0"
+      )}>
+        {shouldRenderBody && shouldRenderSurface && (
+          <div
+            aria-hidden="true"
+            className="absolute inset-0 pointer-events-none"
+            style={{ backgroundColor: pageBackgroundColor }}
+          />
+        )}
 
-        {hasBackgroundImage && (
+        {shouldRenderBody && shouldRenderSurface && hasBackgroundImage && (
           <div
             aria-hidden="true"
             className="absolute inset-0 pointer-events-none bg-cover bg-center bg-no-repeat"
@@ -377,7 +391,7 @@ export function TabTerminalContent({
         )}
 
         {/* 加载动画覆盖层 - 覆盖整个页签内容 */}
-        {effectiveIsLoading && session.type !== 'config' && (
+        {shouldRenderBody && effectiveIsLoading && session.type !== 'config' && (
           <div className="absolute inset-0 z-[60]">
             <ConnectionLoader
               serverName={connectionLoaderServerName}
@@ -389,8 +403,11 @@ export function TabTerminalContent({
           </div>
         )}
 
-        <div className="relative z-10 flex flex-1 min-h-0 flex-col">
-          {session.type !== 'config' && !effectiveIsLoading && (
+        <div className={cn(
+          "relative z-10 flex min-h-0 flex-col",
+          shouldRenderBody ? "flex-1" : "shrink-0"
+        )}>
+          {shouldRenderToolbar && (
             <div
               className={cn(
                 'border-b text-sm flex items-center px-3 py-1.5 backdrop-blur-md transition-colors',
@@ -457,6 +474,7 @@ export function TabTerminalContent({
           )}
 
           {/* 内容区域：监控面板 + 终端 */}
+          {shouldRenderBody && (
           <div className="flex-1 min-h-0 relative flex">
             {/* 监控面板 - 左侧固定 280px */}
             {session.type !== 'config' && isDesktopLayout && (
@@ -514,7 +532,7 @@ export function TabTerminalContent({
                   completionShowIcon={settings.completionShowIcon}
                   completionShowDescription={settings.completionShowDescription}
                   enableWebgl={enableTerminalWebgl}
-                  transparentBackground={hasBackgroundImage}
+                  transparentBackground={surface === "transparent" || hasBackgroundImage}
                   backgroundOpacity={settings.opacity / 100}
                 />
               )}
@@ -539,10 +557,11 @@ export function TabTerminalContent({
               </div>
             )}
           </div>
+          )}
         </div>
 
         {/* 文件管理器面板 - 渲染到 floatingPanelRootRef */}
-        {shouldKeepFileManagerMounted && (
+        {shouldRenderBody && shouldKeepFileManagerMounted && (
           <FileManagerPanel
             isOpen={canUseFileManager}
             onClose={() => setTabState(session.id, { isFileManagerOpen: false })}

@@ -1,4 +1,5 @@
 import { create } from "zustand"
+import type { SessionSplitLayoutNode } from "@/lib/session/split-layout"
 import type {
   SftpWorkspaceSession,
   SshWorkspaceSessionController,
@@ -10,17 +11,30 @@ import type {
 
 export type { SftpWorkspaceSession } from "@/lib/session/workspace"
 
+type SplitLayoutUpdater =
+  | SessionSplitLayoutNode
+  | null
+  | ((layout: SessionSplitLayoutNode | null) => SessionSplitLayoutNode | null)
+
+const DEFAULT_CONFIG_TAB_IDS = ["sftp-config"]
+
 interface SftpSessionStoreState {
   sessions: SftpWorkspaceSession[]
+  configTabIds: string[]
   nextSessionId: number
   fullscreenSessionId: string | null
+  activeSessionId: string | null
   activeId: string | null
+  splitLayout: SessionSplitLayoutNode | null
   sessionsById: Record<string, SftpWorkspaceSession>
 
   setSessions: (updater: SftpWorkspaceSession[] | ((sessions: SftpWorkspaceSession[]) => SftpWorkspaceSession[])) => void
+  setConfigTabIds: (updater: string[] | ((configTabIds: string[]) => string[])) => void
   setNextSessionId: (updater: number | ((value: number) => number)) => void
   setFullscreenSessionId: (sessionId: string | null | ((value: string | null) => string | null)) => void
+  setActiveSessionId: (sessionId: string | null | ((value: string | null) => string | null)) => void
   setActiveId: (sessionId: string | null | ((value: string | null) => string | null)) => void
+  setSplitLayout: (updater: SplitLayoutUpdater) => void
   resetWorkspaceState: () => void
 }
 
@@ -32,9 +46,12 @@ const toLookup = (sessions: SftpWorkspaceSession[]) =>
 
 export const useSftpSessionStore = create<SftpSessionStoreState>((set) => ({
   sessions: [],
+  configTabIds: DEFAULT_CONFIG_TAB_IDS,
   nextSessionId: 1,
   fullscreenSessionId: null,
+  activeSessionId: null,
   activeId: null,
+  splitLayout: null,
   sessionsById: {},
 
   setSessions: (updater) => {
@@ -45,6 +62,12 @@ export const useSftpSessionStore = create<SftpSessionStoreState>((set) => ({
         sessionsById: toLookup(sessions),
       }
     })
+  },
+
+  setConfigTabIds: (updater) => {
+    set((state) => ({
+      configTabIds: typeof updater === "function" ? updater(state.configTabIds) : updater,
+    }))
   },
 
   setNextSessionId: (updater) => {
@@ -59,18 +82,33 @@ export const useSftpSessionStore = create<SftpSessionStoreState>((set) => ({
     }))
   },
 
+  setActiveSessionId: (updater) => {
+    set((state) => ({
+      activeSessionId: typeof updater === "function" ? updater(state.activeSessionId) : updater,
+    }))
+  },
+
   setActiveId: (updater) => {
     set((state) => ({
       activeId: typeof updater === "function" ? updater(state.activeId) : updater,
     }))
   },
 
+  setSplitLayout: (updater) => {
+    set((state) => ({
+      splitLayout: typeof updater === "function" ? updater(state.splitLayout) : updater,
+    }))
+  },
+
   resetWorkspaceState: () => {
     set({
       sessions: [],
+      configTabIds: DEFAULT_CONFIG_TAB_IDS,
       nextSessionId: 1,
       fullscreenSessionId: null,
+      activeSessionId: null,
       activeId: null,
+      splitLayout: null,
       sessionsById: {},
     })
   },
@@ -86,7 +124,7 @@ export function createSftpWorkspaceSessionStoreAdapter(
         terminalSessions: [],
         sftpSessions: state.sessions,
         transferTasks: getTransferTasks(),
-        activeSessionId: state.activeId,
+        activeSessionId: state.activeSessionId,
       }
     },
     subscribe: (listener: (snapshot: WorkspaceSessionSnapshot) => void) => (
@@ -95,7 +133,7 @@ export function createSftpWorkspaceSessionStoreAdapter(
           terminalSessions: [],
           sftpSessions: state.sessions,
           transferTasks: getTransferTasks(),
-          activeSessionId: state.activeId,
+          activeSessionId: state.activeSessionId,
         })
       })
     ),
@@ -105,7 +143,7 @@ export function createSftpWorkspaceSessionStoreAdapter(
 export function createSftpWorkspaceSessionController(): SshWorkspaceSftpSessionController {
   return {
     getSessions: () => useSftpSessionStore.getState().sessions,
-    getActiveSessionId: () => useSftpSessionStore.getState().activeId,
+    getActiveSessionId: () => useSftpSessionStore.getState().activeSessionId,
     setSessions: (updater) => {
       useSftpSessionStore.getState().setSessions(updater)
     },
@@ -120,12 +158,12 @@ export function createSftpWorkspaceSessionController(): SshWorkspaceSftpSessionC
       )))
     },
     activateSession: (sessionId) => {
-      useSftpSessionStore.getState().setActiveId(sessionId)
+      useSftpSessionStore.getState().setActiveSessionId(sessionId)
     },
     closeSession: (sessionId) => {
       const state = useSftpSessionStore.getState()
       state.setSessions((sessions) => sessions.filter((session) => session.id !== sessionId))
-      state.setActiveId((activeId) => activeId === sessionId ? null : activeId)
+      state.setActiveSessionId((activeSessionId) => activeSessionId === sessionId ? null : activeSessionId)
       state.setFullscreenSessionId((fullscreenSessionId) => fullscreenSessionId === sessionId ? null : fullscreenSessionId)
     },
     setFullscreenSession: (sessionId) => {

@@ -37,6 +37,8 @@ export interface SftpManagerProps {
   sessionLabel: string
   sessionColor?: string
   isFullscreen?: boolean
+  chrome?: "full" | "toolbar" | "content"
+  surface?: "normal" | "transparent"
   viewModeStorageKey?: string
   defaultViewMode?: "grid" | "list"
   isLoading?: boolean // 是否正在加载文件列表
@@ -85,6 +87,8 @@ export function SftpManager(props: SftpManagerProps) {
     serverId,
     serverName,
     isFullscreen = false,
+    chrome = "full",
+    surface = "normal",
     viewModeStorageKey = "easyssh:sftp:viewMode:sftp",
     defaultViewMode = "grid",
     isLoading = false,
@@ -114,6 +118,9 @@ export function SftpManager(props: SftpManagerProps) {
     preferences,
   } = props
   const workspaceTransferManager = workspace?.adapters.transferManager
+  const shouldRenderWorkspaceToolbar = chrome !== "content"
+  const shouldRenderBody = chrome !== "toolbar"
+  const shouldRenderFileToolbar = chrome === "full"
   const effectiveTransferTasks = transferTasks ?? workspaceTransferManager?.tasks ?? []
   const effectiveClearCompletedTransfers = onClearCompletedTransfers ?? workspaceTransferManager?.clearCompleted
   const effectiveCancelTransfer = onCancelTransfer ?? workspaceTransferManager?.cancelTask
@@ -311,10 +318,13 @@ export function SftpManager(props: SftpManagerProps) {
       <SftpSessionProvider value={sessionContextValue}>
         <div
           className={cn(
-            "flex h-full min-w-0 flex-col overflow-hidden rounded-none border-0 bg-background transition-colors",
+            "flex min-w-0 flex-col overflow-hidden rounded-none border-0 transition-colors",
+            (surface !== "transparent" || isFullscreen) && "bg-background",
+            shouldRenderBody ? "h-full" : "shrink-0",
             isFullscreen && "fixed inset-0 z-[9999]"
           )}
         >
+      {shouldRenderWorkspaceToolbar && (
       <SftpWorkspaceToolbar
         displayPath={displayPath}
         pathInputValue={pathInputValue}
@@ -338,9 +348,10 @@ export function SftpManager(props: SftpManagerProps) {
         onToggleFullscreen={onToggleFullscreen}
         onDisconnect={onDisconnect}
       />
+      )}
 
       {/* 如果编辑器打开，只显示编辑器；否则显示搜索栏+文件列表 */}
-      {editorState.isOpen ? (
+      {shouldRenderBody && (editorState.isOpen ? (
         <SftpFileEditorPane
           fileName={editorState.fileName}
           filePath={editorState.filePath}
@@ -352,6 +363,7 @@ export function SftpManager(props: SftpManagerProps) {
         />
       ) : (
         <>
+          {shouldRenderFileToolbar && (
           <SftpFileToolbar
             searchTerm={searchTerm}
             onSearchTermChange={setSearchTerm}
@@ -360,6 +372,7 @@ export function SftpManager(props: SftpManagerProps) {
             selectedCount={selectedFiles.length}
             onRefresh={onRefresh}
           />
+          )}
 
           <SftpFileBrowserPane
             viewMode={viewMode}
@@ -405,9 +418,11 @@ export function SftpManager(props: SftpManagerProps) {
             onInputChange={handleInputChange}
           />
         </>
-      )}
+      ))}
 
       {/* 权限修改对话框 */}
+      {shouldRenderBody && (
+      <>
       <ChmodDialog
         open={chmodDialog.isOpen}
         onOpenChange={setChmodDialogOpen}
@@ -443,6 +458,8 @@ export function SftpManager(props: SftpManagerProps) {
         onRefresh={onRefresh}
         onClose={closeContextMenu}
       />
+      </>
+      )}
       </div>
     </SftpSessionProvider>
     </TooltipProvider>

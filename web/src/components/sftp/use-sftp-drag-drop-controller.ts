@@ -1,6 +1,7 @@
 
 import { useCallback, useState, type DragEvent, type RefObject } from "react"
 import { setDragSourceSessionId } from "@/lib/drag-state"
+import { hasSplitPaneDragSession } from "@/lib/session/split-pane-drag"
 
 export interface SftpDragDropFileItem {
   name: string
@@ -61,6 +62,10 @@ export function useSftpDragDropController({
     targetFileName: string,
     targetType: "file" | "directory",
   ) => {
+    if (hasSplitPaneDragSession(event.dataTransfer)) {
+      return
+    }
+
     event.preventDefault()
 
     const isFileFromOtherSession = event.dataTransfer.types.includes("application/json") && !draggedFileName
@@ -87,6 +92,10 @@ export function useSftpDragDropController({
     targetFileName: string,
     targetType: "file" | "directory",
   ) => {
+    if (hasSplitPaneDragSession(event.dataTransfer)) {
+      return
+    }
+
     event.preventDefault()
 
     try {
@@ -119,6 +128,10 @@ export function useSftpDragDropController({
   }, [draggedFileName, onRename, sessionId])
 
   const handleDragEnter = useCallback((event: DragEvent<HTMLDivElement>) => {
+    if (hasSplitPaneDragSession(event.dataTransfer)) {
+      return
+    }
+
     event.preventDefault()
     event.stopPropagation()
 
@@ -137,6 +150,10 @@ export function useSftpDragDropController({
   }, [draggedFileName])
 
   const handleDragLeave = useCallback((event: DragEvent<HTMLDivElement>) => {
+    if (hasSplitPaneDragSession(event.dataTransfer)) {
+      return
+    }
+
     event.preventDefault()
     event.stopPropagation()
 
@@ -150,6 +167,10 @@ export function useSftpDragDropController({
   }, [dropZoneRef])
 
   const handleDragOver = useCallback((event: DragEvent<HTMLDivElement>) => {
+    if (hasSplitPaneDragSession(event.dataTransfer)) {
+      return
+    }
+
     event.preventDefault()
 
     try {
@@ -164,6 +185,10 @@ export function useSftpDragDropController({
   }, [draggedFileName])
 
   const handleDrop = useCallback((event: DragEvent<HTMLDivElement>) => {
+    if (hasSplitPaneDragSession(event.dataTransfer)) {
+      return
+    }
+
     event.preventDefault()
     setIsDragging(false)
     setDragCounter(0)

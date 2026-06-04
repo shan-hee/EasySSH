@@ -8,6 +8,7 @@ import type { Terminal } from '@xterm/xterm'
 import type { FitAddon } from '@xterm/addon-fit'
 import { TerminalWebSocket } from '@/lib/websocket-terminal'
 import type { TerminalSession } from "@/components/terminal/types"
+import type { SessionSplitLayoutNode } from "@/lib/session/split-layout"
 import type {
   SshWorkspaceSessionController,
   SshWorkspaceSessionStoreAdapter,
@@ -25,6 +26,11 @@ type DisposableAddon = {
 type SessionUpdater =
   | TerminalSession[]
   | ((sessions: TerminalSession[]) => TerminalSession[])
+
+type SplitLayoutUpdater =
+  | SessionSplitLayoutNode
+  | null
+  | ((layout: SessionSplitLayoutNode | null) => SessionSplitLayoutNode | null)
 
 /**
  * 终端链路延迟数据
@@ -70,6 +76,7 @@ interface TerminalStoreState {
   // 终端页签状态。保持在内存中，用于路由切换后恢复当前浏览器页签内的终端。
   sessions: TerminalSession[]
   activeSessionId: string | null
+  splitLayout: SessionSplitLayoutNode | null
   lastActivityBySession: Map<string, number>
 
   // 获取终端实例
@@ -80,6 +87,9 @@ interface TerminalStoreState {
 
   // 设置当前激活页签
   setActiveSessionId: (sessionId: string | null) => void
+
+  // 设置终端工作空间分屏布局
+  setSplitLayout: (updater: SplitLayoutUpdater) => void
 
   // 更新/读取会话最后活动时间
   updateSessionActivity: (sessionId: string, timestamp?: number) => void
@@ -117,6 +127,7 @@ export const useTerminalStore = create<TerminalStoreState>((set, get) => ({
   terminals: new Map<string, TerminalInstanceState>(),
   sessions: [],
   activeSessionId: null,
+  splitLayout: null,
   lastActivityBySession: new Map<string, number>(),
 
   getTerminal: (sessionId: string) => {
@@ -136,6 +147,12 @@ export const useTerminalStore = create<TerminalStoreState>((set, get) => ({
     set({ activeSessionId: sessionId })
   },
 
+  setSplitLayout: (updater) => {
+    set((state) => ({
+      splitLayout: typeof updater === "function" ? updater(state.splitLayout) : updater,
+    }))
+  },
+
   updateSessionActivity: (sessionId: string, timestamp: number = Date.now()) => {
     set((state) => {
       const next = new Map(state.lastActivityBySession)
@@ -152,6 +169,7 @@ export const useTerminalStore = create<TerminalStoreState>((set, get) => ({
     set({
       sessions: [],
       activeSessionId: null,
+      splitLayout: null,
       lastActivityBySession: new Map<string, number>(),
     })
   },
@@ -286,6 +304,7 @@ export const useTerminalStore = create<TerminalStoreState>((set, get) => ({
       terminals: new Map<string, TerminalInstanceState>(),
       sessions: [],
       activeSessionId: null,
+      splitLayout: null,
       lastActivityBySession: new Map<string, number>(),
     })
   },
