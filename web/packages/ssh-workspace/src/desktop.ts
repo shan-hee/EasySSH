@@ -16,7 +16,6 @@ export { createBrowserWorkspacePreferenceAdapter, createWorkspaceAdapters, creat
 export { createWorkspaceCapabilitiesFromRuntime } from "../../../src/shell/runtime/runtime-workspace"
 export type { RuntimeWorkspaceCapabilitiesOptions } from "../../../src/shell/runtime/runtime-workspace"
 export { createTerminalWorkspaceSessionControllerAdapter, createTerminalWorkspaceSessionStoreAdapter, useTerminalStore } from "../../../src/stores/terminal-store"
-export { BrowserRouter } from "react-router-dom"
 export type { Server } from "../../../src/lib/api/servers"
 export type { TerminalWebSocketConstructor } from "../../../src/lib/websocket-terminal"
 export type { AppCapability, RuntimeInfo, RuntimePrincipal, RuntimeProfile } from "../../../src/shell/runtime/types"

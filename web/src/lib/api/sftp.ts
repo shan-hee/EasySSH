@@ -2,85 +2,30 @@ import { apiFetch } from "@/lib/api-client"
 import { getApiUrl } from "../config"
 import { getCurrentAccessToken } from "@/stores/auth-store"
 import { createAuthTicket } from "@/lib/auth-ticket"
+import type {
+  BatchDeleteResponse,
+  DirectTransferResponse,
+  DirectoryListResponse,
+  DiskUsageResponse,
+  FileInfo,
+  TransferResponse,
+  UploadTaskListResponse,
+  UploadTaskStatus,
+} from "@/lib/sftp-types"
 
-/**
- * 文件信息
- */
-export interface FileInfo {
-  name: string
-  path: string
-  size: number
-  mode: number  // os.FileMode 序列化为数字
-  mod_time: string
-  is_dir: boolean
-  is_link: boolean
-  link_target?: string
-  permission?: string  // 权限字符串，如 "drwxr-xr-x"
-}
-
-/**
- * 目录列表响应
- */
-export interface DirectoryListResponse {
-  path: string
-  files: FileInfo[]
-  parent?: string
-}
-
-/**
- * 磁盘使用响应
- */
-export interface DiskUsageResponse {
-  path: string
-  total: number
-  used: number
-  available: number
-  usage_percent: number
-}
-
-/**
- * 批量操作错误信息
- */
-export interface BatchOperationError {
-  path: string
-  error: string
-  message: string
-}
-
-/**
- * 批量删除响应
- */
-export interface BatchDeleteResponse {
-  success: string[]
-  failed: BatchOperationError[]
-  total: number
-}
-
-export type UploadProgressStage = "http" | "sftp" | "stream"
-
-export interface UploadTaskStatus {
-  id: string
-  file_name: string
-  file_size: number
-  server_id?: string
-  remote_path?: string
-  status: "pending" | "uploading" | "completed" | "failed" | "cancelled"
-  stage?: UploadProgressStage
-  progress: number
-  loaded: number
-  total: number
-  speed_bps: number
-  message?: string
-  error?: string
-  created_at: string
-  started_at?: string
-  updated_at: string
-  ended_at?: string
-}
-
-export interface UploadTaskListResponse {
-  tasks: UploadTaskStatus[]
-}
+export type {
+  BatchDeleteResponse,
+  BatchOperationError,
+  DirectTransferResponse,
+  DirectoryListResponse,
+  DiskUsageResponse,
+  FileInfo,
+  TransferProgressMessage,
+  TransferResponse,
+  UploadProgressStage,
+  UploadTaskListResponse,
+  UploadTaskStatus,
+} from "@/lib/sftp-types"
 
 /**
  * SFTP API 服务
@@ -615,41 +560,4 @@ export const sftpApi = {
     const wsUrl = apiUrl.replace(/^http/, "ws")
     return `${wsUrl}/sftp/transfer/ws/${taskId}`
   },
-}
-
-/**
- * 跨服务器传输响应
- */
-export interface TransferResponse {
-  success: boolean
-  message: string
-  bytes_copied: number
-  file_name: string
-}
-
-/**
- * 直连传输响应
- */
-export interface DirectTransferResponse {
-  success: boolean
-  task_id: string
-  message: string
-}
-
-/**
- * 传输进度消息（WebSocket）
- */
-export interface TransferProgressMessage {
-  type: "started" | "progress" | "complete" | "error" | "cancelled"
-  task_id: string
-  bytes_total: number
-  bytes_copied: number
-  progress: number  // 0-100
-  speed_bps: number
-  eta: string
-  current_file: string
-  files_total: number
-  files_completed: number
-  message: string
-  method: "rsync" | "scp" | "sftp"
 }

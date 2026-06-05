@@ -1,5 +1,6 @@
-import { sftpApi, type BatchDeleteResponse, type FileInfo } from "@/lib/api/sftp"
+import { sftpApi } from "@/lib/api/sftp"
 import { getErrorMessage } from "@/lib/error-utils"
+import type { BatchDeleteResponse, FileInfo } from "@/lib/sftp-types"
 
 export type TranslateFunction = (key: string, params?: Record<string, string | number>) => string
 export type SftpFileListUpdater<T> = (updater: T[] | ((files: T[]) => T[])) => void

@@ -48,6 +48,10 @@ export default defineConfig({
         replacement: resolve(webNodeModulesRoot, "react-dom/client.js"),
       },
       {
+        find: /^react-router-dom$/,
+        replacement: resolve(webNodeModulesRoot, "react-router-dom/dist/index.mjs"),
+      },
+      {
         find: /^@easyssh\/ssh-workspace\/desktop$/,
         replacement: workspacePackage,
       },

@@ -1,6 +1,6 @@
 import type { ReactNode } from "react"
+import { BrowserRouter } from "react-router-dom"
 import {
-  BrowserRouter,
   CompletionConfigProvider,
   DEFAULT_SYSTEM_CONFIG,
   SidebarProvider,

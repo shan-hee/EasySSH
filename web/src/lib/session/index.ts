@@ -27,7 +27,19 @@ export type {
 } from "@/lib/websocket-terminal"
 
 export { sftpApi } from "@/lib/api/sftp"
-export type { DirectoryListResponse, FileInfo } from "@/lib/api/sftp"
+export type {
+  BatchDeleteResponse,
+  BatchOperationError,
+  DirectTransferResponse,
+  DirectoryListResponse,
+  DiskUsageResponse,
+  FileInfo,
+  TransferProgressMessage,
+  TransferResponse,
+  UploadProgressStage,
+  UploadTaskListResponse,
+  UploadTaskStatus,
+} from "@/lib/sftp-types"
 
 export {
   convertSftpFileInfo,

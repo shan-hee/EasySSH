@@ -1,4 +1,4 @@
-import type { TransferProgressMessage, UploadTaskStatus } from "@/lib/api/sftp"
+import type { TransferProgressMessage, UploadTaskStatus } from "@/lib/sftp-types"
 import { formatBytesString, formatRemainingTime, formatSpeed } from "@/lib/format-utils"
 import type { WorkspaceTransferTask } from "./workspace"
 

@@ -1,4 +1,4 @@
-import type { BatchDeleteResponse, DirectoryListResponse, FileInfo } from "@/lib/api/sftp"
+import type { BatchDeleteResponse, DirectoryListResponse, FileInfo } from "@/lib/sftp-types"
 import type { SftpFileItem } from "@/lib/sftp-file-utils"
 import type { OptionalServerConnectionInfo, ServerConnectionInfo } from "./types"
 import type { TerminalConnectionPhase, TerminalWebSocketUrlResolver } from "@/lib/websocket-terminal"

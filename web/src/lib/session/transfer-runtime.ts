@@ -1,4 +1,4 @@
-import type { TransferProgressMessage } from "@/lib/api/sftp"
+import type { TransferProgressMessage } from "@/lib/sftp-types"
 import {
   mapTransferProgressMessageToTaskUpdate,
   mapUploadProgressMessageToTransferUpdate,

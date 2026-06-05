@@ -1,4 +1,5 @@
-import { sftpApi, type FileInfo } from "@/lib/api/sftp"
+import { sftpApi } from "@/lib/api/sftp"
+import type { FileInfo } from "@/lib/sftp-types"
 import {
   createServerTransferTask,
   createUploadTransferTask,

@@ -1,4 +1,5 @@
-import { sftpApi, type DirectoryListResponse, type FileInfo } from "@/lib/api/sftp"
+import { sftpApi } from "@/lib/api/sftp"
+import type { DirectoryListResponse, FileInfo } from "@/lib/sftp-types"
 import type { SftpFileItem } from "@/lib/sftp-file-utils"
 
 export type SftpDirectoryItemBase = Pick<
