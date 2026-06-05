@@ -26,7 +26,7 @@ import { useOptionalSshWorkspace } from '@/components/ssh-workspace/ssh-workspac
 import { createWorkspaceTransferAuthTicketProviderAdapter } from '@/lib/session/workspace-adapters'
 import type { TerminalConnectionPhase, TerminalSession } from './types'
 import type { TerminalSettings } from './terminal-settings-dialog'
-import type { Server } from "@/lib/api"
+import type { Server } from "@/lib/server-types"
 import { useTranslation } from "react-i18next"
 import { getTerminalTheme, withTerminalBackgroundOpacity } from './terminal-themes'
 import { useEffectiveThemeMode } from '@/hooks/use-effective-theme-mode'

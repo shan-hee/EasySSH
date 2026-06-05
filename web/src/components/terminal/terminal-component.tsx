@@ -5,7 +5,7 @@ import type {
   TerminalSession,
   TerminalConnectionPhase,
 } from "@/components/terminal/types"
-import type { Server } from "@/lib/api"
+import type { Server } from "@/lib/server-types"
 import { cn } from "@/lib/utils"
 import { useTerminalStore } from "@/stores/terminal-store"
 import { PageHeader } from "@/components/page-header"

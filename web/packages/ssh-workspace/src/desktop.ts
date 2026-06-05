@@ -18,7 +18,7 @@ export type { RuntimeWorkspaceCapabilitiesOptions } from "../../../src/shell/run
 export { WORKSPACE_CAPABILITY_PRESETS } from "../../../src/shell/runtime/workspace-capability-presets"
 export type { WorkspaceCapabilityPresetName } from "../../../src/shell/runtime/workspace-capability-presets"
 export { createTerminalWorkspaceSessionControllerAdapter, createTerminalWorkspaceSessionStoreAdapter, useTerminalStore } from "../../../src/stores/terminal-store"
-export type { Server } from "../../../src/lib/api/servers"
+export type { Server } from "../../../src/lib/server-types"
 export type { TerminalWebSocketConstructor } from "../../../src/lib/websocket-terminal"
 export type { AppCapability, RuntimeInfo, RuntimePrincipal, RuntimeProfile } from "../../../src/shell/runtime/types"
 export type {

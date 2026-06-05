@@ -1,98 +1,21 @@
 import { apiFetch } from "@/lib/api-client"
+import type {
+  CreateServerRequest,
+  Server,
+  ServerListResponse,
+  ServerStatisticsResponse,
+  UpdateServerRequest,
+} from "@/lib/server-types"
 
-/**
- * 服务器认证方式
- */
-export type AuthMethod = "password" | "key"
-
-/**
- * 服务器状态
- * online: 上次连接成功
- * offline: 从未连接或上次连接失败
- */
-export type ServerStatus = "online" | "offline"
-
-/**
- * 服务器信息
- */
-export interface Server {
-  id: string
-  user_id: string
-  name?: string
-  host: string
-  port: number
-  username: string
-  auth_method: AuthMethod
-  password?: string
-  private_key?: string
-  group?: string
-  tags?: string[]
-  status: ServerStatus
-  last_connected?: string
-  description?: string
-  os?: string
-  // 地理位置信息
-  country?: string
-  country_code?: string
-  region?: string
-  city?: string
-  created_at: string
-  updated_at: string
-}
-
-/**
- * 创建服务器请求
- */
-export interface CreateServerRequest {
-  name?: string
-  host: string
-  port: number
-  username: string
-  auth_method: AuthMethod
-  password?: string
-  private_key?: string
-  group?: string
-  tags?: string[]
-  description?: string
-}
-
-/**
- * 更新服务器请求
- */
-export interface UpdateServerRequest {
-  name?: string
-  host?: string
-  port?: number
-  username?: string
-  auth_method?: AuthMethod
-  password?: string
-  private_key?: string
-  group?: string
-  tags?: string[]
-  description?: string
-  verified_connection_credential?: boolean
-}
-
-/**
- * 服务器列表响应
- */
-export interface ServerListResponse {
-  data: Server[]
-  total: number
-  page: number
-  limit: number
-}
-
-/**
- * 服务器统计响应
- */
-export interface ServerStatisticsResponse {
-  total: number
-  online: number
-  offline: number
-  by_group: Record<string, number>
-  by_tag: Record<string, number>
-}
+export type {
+  AuthMethod,
+  CreateServerRequest,
+  Server,
+  ServerListResponse,
+  ServerStatisticsResponse,
+  ServerStatus,
+  UpdateServerRequest,
+} from "@/lib/server-types"
 
 /**
  * 服务器 API 服务
