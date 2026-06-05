@@ -54,7 +54,7 @@ import { createSftpSessionApi } from "@/lib/session/sftp-session-api"
 import type { SftpWorkspaceSession } from "@/lib/session/workspace"
 import { createBrowserWorkspacePreferenceAdapter, createWorkspaceAdapters, createWorkspaceAuthTicketProviderAdapter, createWorkspaceI18nAdapter, createWorkspaceNotifierAdapter, createWorkspaceSettingsAdapter, createWorkspaceTransferAuthTicketProviderAdapter, createWorkspaceTransferHistoryAdapter, createWorkspaceTransferManagerAdapter } from "@/lib/session/workspace-adapters"
 import { createSftpWorkspaceSessionControllerAdapter, createSftpWorkspaceSessionStoreAdapter, useSftpSessionStore } from "@/stores/sftp-session-store"
-import { createWorkspaceCapabilitiesFromRuntime, useRuntime } from "@/shell/runtime"
+import { WORKSPACE_CAPABILITY_PRESETS, createWorkspaceCapabilitiesFromRuntime, useRuntime } from "@/shell/runtime"
 import type { TerminalSession } from "@/components/terminal/types"
 import { useSessionSplitWorkspace } from "@/hooks/use-session-split-workspace"
 import { hasSplitPaneDragSession } from "@/lib/session/split-pane-drag"
@@ -238,18 +238,9 @@ export default function SftpPage() {
    workspaceSessionStore,
    workspaceTransferHistory,
  ])
- const workspaceCapabilities = React.useMemo(() => createWorkspaceCapabilitiesFromRuntime(runtime, {
-   defaults: {
-     sftp: true,
-     transfers: true,
-     activityLog: false,
-     fullscreen: true,
-     crossSessionDrag: true,
-   },
-   overrides: {
-     terminal: false,
-   },
- }), [runtime])
+ const workspaceCapabilities = React.useMemo(() => (
+   createWorkspaceCapabilitiesFromRuntime(runtime, WORKSPACE_CAPABILITY_PRESETS.webSftp)
+ ), [runtime])
 
  const sessionIdSet = React.useMemo(
    () => new Set(sessions.map((session) => session.id)),

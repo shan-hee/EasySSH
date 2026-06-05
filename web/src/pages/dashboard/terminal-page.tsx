@@ -17,7 +17,7 @@ import { createBrowserWorkspacePreferenceAdapter, createWorkspaceAdapters, creat
 import { useAuthReady } from "@/hooks/use-auth-ready"
 import { useTranslation } from "react-i18next"
 import { useSystemConfig } from "@/contexts/system-config-context"
-import { createWorkspaceCapabilitiesFromRuntime, useRuntime } from "@/shell/runtime"
+import { WORKSPACE_CAPABILITY_PRESETS, createWorkspaceCapabilitiesFromRuntime, useRuntime } from "@/shell/runtime"
 import { isViteDev } from "@/lib/vite-env"
 
 const statusFromConnectionPhase = (phase: TerminalConnectionPhase) => {
@@ -171,18 +171,9 @@ function TerminalPageContent() {
     sessionStore: workspaceSessionStore,
     sessionController: workspaceSessionController,
   }), [tCommon, t, tSftp, systemConfig?.download_exclude_patterns, sftpSessionApi, workspaceAuthTicketProvider, workspacePreferences, workspaceSessionController, workspaceSessionStore])
-  const workspaceCapabilities = useMemo(() => createWorkspaceCapabilitiesFromRuntime(runtime, {
-    defaults: {
-      terminal: true,
-      sftp: true,
-      transfers: true,
-      ai: true,
-      monitor: true,
-      docker: true,
-      activityLog: false,
-      fullscreen: true,
-    },
-  }), [runtime])
+  const workspaceCapabilities = useMemo(() => (
+    createWorkspaceCapabilitiesFromRuntime(runtime, WORKSPACE_CAPABILITY_PRESETS.webTerminal)
+  ), [runtime])
   const tabPolicyMaxTabs = systemConfig?.tab_session?.max_tabs ?? 50
   const tabPolicyInactiveMinutes = systemConfig?.tab_session?.inactive_minutes ?? 60
 

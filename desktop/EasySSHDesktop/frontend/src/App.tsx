@@ -3,6 +3,7 @@ import {
   DEFAULT_SYSTEM_CONFIG,
   SshWorkspace,
   TerminalComponent,
+  WORKSPACE_CAPABILITY_PRESETS,
   createBrowserWorkspacePreferenceAdapter,
   createTerminalWorkspaceSessionControllerAdapter,
   createTerminalWorkspaceSessionStoreAdapter,
@@ -118,19 +119,9 @@ function App() {
   const workspacePreferences = useMemo(() => createBrowserWorkspacePreferenceAdapter({ keyPrefix: "easyssh.desktop." }), [])
   const terminalSocket = useMemo(() => createDesktopTerminalSocket(), [])
   const runtimeInfo = useMemo(() => createDesktopRuntime(runtime), [runtime])
-  const capabilities = useMemo(() => createWorkspaceCapabilitiesFromRuntime(runtimeInfo, {
-    defaults: {
-      terminal: true,
-      sftp: false,
-      transfers: false,
-      ai: true,
-      monitor: false,
-      docker: false,
-      activityLog: true,
-      fullscreen: true,
-      crossSessionDrag: false,
-    },
-  }), [runtimeInfo])
+  const capabilities = useMemo(() => (
+    createWorkspaceCapabilitiesFromRuntime(runtimeInfo, WORKSPACE_CAPABILITY_PRESETS.desktop)
+  ), [runtimeInfo])
 
   const workspaceApi = useMemo<SshWorkspaceApiClient>(() => ({
     terminal: {

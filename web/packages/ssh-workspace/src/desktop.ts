@@ -15,6 +15,8 @@ export type { WorkspaceDownloadExcludePatternSource } from "../../../src/lib/ses
 export { createBrowserWorkspacePreferenceAdapter, createWorkspaceAdapters, createWorkspaceI18nAdapter, createWorkspaceSettingsAdapter } from "../../../src/lib/session/workspace-adapters"
 export { createWorkspaceCapabilitiesFromRuntime } from "../../../src/shell/runtime/runtime-workspace"
 export type { RuntimeWorkspaceCapabilitiesOptions } from "../../../src/shell/runtime/runtime-workspace"
+export { WORKSPACE_CAPABILITY_PRESETS } from "../../../src/shell/runtime/workspace-capability-presets"
+export type { WorkspaceCapabilityPresetName } from "../../../src/shell/runtime/workspace-capability-presets"
 export { createTerminalWorkspaceSessionControllerAdapter, createTerminalWorkspaceSessionStoreAdapter, useTerminalStore } from "../../../src/stores/terminal-store"
 export type { Server } from "../../../src/lib/api/servers"
 export type { TerminalWebSocketConstructor } from "../../../src/lib/websocket-terminal"
