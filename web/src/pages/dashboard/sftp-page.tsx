@@ -639,7 +639,7 @@ export default function SftpPage() {
        setConfigTabIds((current) => (current.length > 0 ? current : [SFTP_CONFIG_TAB_ID]))
      }
      setActiveSessionId((current) => (
-       workspaceSessionIdSet.has(current)
+       current && workspaceSessionIdSet.has(current)
          ? remainingSessions[0]?.id ?? configTabIds[0] ?? SFTP_CONFIG_TAB_ID
          : current
      ))

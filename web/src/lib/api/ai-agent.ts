@@ -1,96 +1,21 @@
 import { apiFetch } from "@/lib/api-client"
-import type { UIMessage } from "@ai-sdk/react"
+import type { AgentSessionScope, CreateSessionInput, CreateSessionResponse, ListSessionsResponse } from "@/lib/ai-agent-types"
 
-export type PermissionMode = "readonly" | "balanced" | "privileged"
-export type AgentSessionStatus = "idle" | "running" | "waiting_confirmation" | "closed"
-export type AgentTaskStatus = "queued" | "waiting_confirm" | "running" | "succeeded" | "failed" | "cancelled"
-export type AgentTransportType = "ai_sdk_ui" | "desktop_local"
-
-export interface ToolView {
-  name: string
-  display_name?: string
-  description: string
-  dangerous: boolean
-}
-
-export interface MessageView {
-  id: string
-  role: "user" | "assistant" | "system" | "tool"
-  content: string
-  created_at: string
-}
-
-export interface TaskView {
-  id: string
-  tool_call_id: string
-  tool_name: string
-  tool_display_name?: string
-  summary?: string
-  status: AgentTaskStatus
-  dangerous: boolean
-  requires_confirmation: boolean
-  arguments?: Record<string, unknown>
-  result?: string
-  error?: string
-  created_at: string
-  updated_at: string
-  custom_title?: boolean
-}
-
-export interface SessionListItem {
-  id: string
-  model: string
-  permission_mode: PermissionMode
-  status: AgentSessionStatus
-  title: string
-  custom_title: boolean
-  message_count: number
-  task_count: number
-  created_at: string
-  updated_at: string
-}
-
-export interface AgentSessionScope {
-  kind?: "global" | "terminal"
-  terminal_session_id?: string
-  server_id?: string
-  server_name?: string
-  host?: string
-  port?: number
-  username?: string
-}
-
-export interface SessionView {
-  id: string
-  model: string
-  permission_mode: PermissionMode
-  scope?: AgentSessionScope
-  status: AgentSessionStatus
-  created_at: string
-  updated_at: string
-  messages: MessageView[]
-  tasks: TaskView[]
-  ui_messages: UIMessage[]
-  available_tools: ToolView[]
-  default_transport: AgentTransportType
-}
-
-export interface CreateSessionInput {
-  model?: string
-  permission_mode?: PermissionMode
-  scope?: AgentSessionScope
-}
-
-export interface CreateSessionResponse {
-  session_id: string
-  session: SessionView
-  default_transport: AgentTransportType
-}
-
-export interface ListSessionsResponse {
-  items: SessionListItem[]
-  total: number
-}
+export type {
+  AgentSessionScope,
+  AgentSessionStatus,
+  AgentTaskStatus,
+  AgentTransportType,
+  CreateSessionInput,
+  CreateSessionResponse,
+  ListSessionsResponse,
+  MessageView,
+  PermissionMode,
+  SessionListItem,
+  SessionView,
+  TaskView,
+  ToolView,
+} from "@/lib/ai-agent-types"
 
 export async function listAISessions(input: {
   page?: number

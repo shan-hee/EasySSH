@@ -3,14 +3,15 @@
 
 import { Call as $Call, type CancellablePromise as $CancellablePromise } from "@wailsio/runtime"
 
-import type { AIConfigStatus } from "@/lib/api/ai-config"
 import type {
+  AIConfigStatus,
   AgentSessionScope,
   CreateSessionResponse,
   ListSessionsResponse,
   PermissionMode,
-} from "@/lib/api/ai-agent"
-import type { SaveUserAIConfigRequest, UserAIConfig } from "@/lib/api/settings"
+  SaveUserAIConfigRequest,
+  UserAIConfig,
+} from "@/lib/ai-agent-types"
 
 const service = "github.com/easyssh/easyssh-desktop.DesktopAIService"
 

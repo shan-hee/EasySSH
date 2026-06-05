@@ -4,9 +4,7 @@ This file tracks temporary Desktop frontend dependencies that are allowed while 
 
 ## Active Exceptions
 
-| Exception | Current Use | Why It Exists | Exit Condition |
-| --- | --- | --- | --- |
-| Web Dashboard AI page reuse | `shell/desktop-ai-assistant-view.tsx` wraps `@/pages/dashboard/ai-assistant-page` | Desktop AI shipped by adapting the existing Web page before a shared AI workspace view exists | Extract a shell-neutral AI workspace view with Web/Desktop adapters |
+No active exceptions.
 
 ## Rules
 

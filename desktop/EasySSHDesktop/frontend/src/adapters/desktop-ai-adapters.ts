@@ -1,12 +1,11 @@
-import type { AIAssistantPageAdapters } from "@/pages/dashboard/ai-assistant-page"
-import type { AgentSessionScope } from "@/lib/api/ai-agent"
-import type { SaveUserAIConfigRequest } from "@/lib/api/settings"
+import type { AIAssistantWorkspaceAdapters } from "@/components/ai-agent/ai-assistant-workspace-view"
+import type { AgentSessionScope, SaveUserAIConfigRequest } from "@/lib/ai-agent-types"
 import type { ServerConnectionConfigsApi } from "@easyssh/ssh-workspace/desktop"
 import * as DesktopAIService from "../../bindings/github.com/easyssh/easyssh-desktop/desktopaiservice"
 
 const desktopAiConfigQueryKey = ["desktopAiConfig"]
 
-export function createDesktopAIAssistantAdapters(serverApi: ServerConnectionConfigsApi): AIAssistantPageAdapters {
+export function createDesktopAIAssistantAdapters(serverApi: ServerConnectionConfigsApi): AIAssistantWorkspaceAdapters {
   return {
     aiConfig: {
       queryKey: desktopAiConfigQueryKey,

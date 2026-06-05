@@ -1,11 +1,11 @@
-import AIAssistantPage from "@/pages/dashboard/ai-assistant-page"
+import type { ComponentProps } from "react"
+import { AIAssistantWorkspaceView } from "@/components/ai-agent/ai-assistant-workspace-view"
 import { ClientAuthProvider } from "@/components/client-auth-provider"
 import { DashboardI18nProvider } from "@/providers/dashboard-i18n-provider"
 import { QueryProvider } from "@/providers/query-provider"
-import type { User } from "@/lib/api/auth"
 import type { DesktopAIAssistantAdapters } from "../adapters/desktop-ai-adapters"
 
-const desktopUser: User = {
+const desktopUser: NonNullable<ComponentProps<typeof ClientAuthProvider>["initialUser"]> = {
   id: "desktop-local-owner",
   username: "desktop",
   email: "desktop@easyssh.local",
@@ -28,7 +28,7 @@ export function DesktopAIAssistantView({
       <ClientAuthProvider initialUser={desktopUser}>
         <DashboardI18nProvider>
           <section className="easyssh-desktop-ai-view">
-            <AIAssistantPage
+            <AIAssistantWorkspaceView
               hidePageHeader
               customConfigOnly
               onReturnToTerminal={onReturnToTerminal}

@@ -1,4 +1,5 @@
 import { apiFetch } from "@/lib/api-client"
+import type { SaveUserAIConfigRequest, UserAIConfig } from "@/lib/ai-agent-types"
 
 /**
  * SMTP 配置
@@ -563,29 +564,7 @@ export const settingsApi = {
   },
 }
 
-/**
- * 用户AI配置
- */
-export interface UserAIConfig {
-  use_system_config: boolean
-  custom_enabled: boolean
-  custom_provider: string
-  custom_endpoint: string
-  custom_models: string
-  has_api_key: boolean
-}
-
-/**
- * 保存用户AI配置请求
- */
-export interface SaveUserAIConfigRequest {
-  use_system_config: boolean
-  custom_enabled: boolean
-  custom_provider: string
-  custom_api_key: string
-  custom_endpoint: string
-  custom_models: string
-}
+export type { SaveUserAIConfigRequest, UserAIConfig } from "@/lib/ai-agent-types"
 
 /**
  * 用户AI配置 API 服务
