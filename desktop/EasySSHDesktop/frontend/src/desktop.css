@@ -1,0 +1,223 @@
+html,
+body,
+#root {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  overflow: hidden;
+}
+
+.easyssh-desktop-home {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.easyssh-desktop-titlebar {
+  display: flex;
+  flex: 0 0 36px;
+  align-items: center;
+  justify-content: space-between;
+  min-width: 0;
+  border-bottom: 1px solid color-mix(in oklab, var(--border) 45%, transparent);
+  background: color-mix(in oklab, var(--background) 94%, transparent);
+  color: var(--foreground);
+  backdrop-filter: blur(12px);
+  --wails-draggable: drag;
+}
+
+.easyssh-desktop-titlebar-drag {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  height: 100%;
+  padding: 0 12px;
+  --wails-draggable: drag;
+}
+
+.easyssh-desktop-titlebar-icon {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+}
+
+.easyssh-desktop-titlebar-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  line-height: 1;
+}
+
+.easyssh-desktop-titlebar-actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 4px;
+  height: 100%;
+  min-width: 0;
+  padding-left: 8px;
+  --wails-draggable: no-drag;
+}
+
+.easyssh-desktop-titlebar-actions [data-slot="button"],
+.easyssh-desktop-titlebar-actions button,
+.easyssh-desktop-titlebar-actions a {
+  --wails-draggable: no-drag;
+}
+
+.easyssh-desktop-window-controls {
+  display: flex;
+  align-items: stretch;
+  height: 100%;
+  margin-left: 4px;
+  --wails-draggable: no-drag;
+}
+
+.easyssh-desktop-window-button {
+  display: inline-flex;
+  width: 46px;
+  height: 100%;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--foreground);
+  padding: 0;
+  outline: none;
+  transition: background-color 120ms ease, color 120ms ease;
+  --wails-draggable: no-drag;
+}
+
+.easyssh-desktop-window-button:hover {
+  background: color-mix(in oklab, var(--accent) 75%, transparent);
+}
+
+.easyssh-desktop-window-button:focus-visible {
+  background: color-mix(in oklab, var(--accent) 85%, transparent);
+  box-shadow: inset 0 0 0 1px var(--ring);
+}
+
+.easyssh-desktop-window-button-close:hover,
+.easyssh-desktop-window-button-close:focus-visible {
+  background: oklch(0.577 0.245 27.325);
+  color: white;
+}
+
+.easyssh-desktop-titlebar-actions [data-slot="button"] {
+  width: 30px;
+  height: 30px;
+}
+
+.easyssh-desktop-titlebar-menu-button {
+  flex: 0 0 auto;
+}
+
+.easyssh-desktop-titlebar-actions svg {
+  pointer-events: none;
+}
+
+.easyssh-desktop-titlebar-actions [data-radix-popper-content-wrapper] {
+  --wails-draggable: no-drag;
+}
+
+.easyssh-desktop-settings-menu {
+  width: 196px;
+  --wails-draggable: no-drag;
+}
+
+.easyssh-desktop-settings-menu [data-slot="dropdown-menu-item"] {
+  cursor: default;
+}
+
+.easyssh-desktop-activity-dialog,
+.easyssh-desktop-about-dialog {
+  --wails-draggable: no-drag;
+}
+
+.easyssh-desktop-activity-dialog {
+  width: min(680px, calc(100vw - 32px));
+  max-width: min(680px, calc(100vw - 32px));
+}
+
+.easyssh-desktop-activity-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: min(520px, calc(100vh - 220px));
+  min-height: 180px;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+
+.easyssh-desktop-empty-state {
+  display: flex;
+  min-height: 160px;
+  align-items: center;
+  justify-content: center;
+  border: 1px dashed color-mix(in oklab, var(--border) 80%, transparent);
+  border-radius: 8px;
+  color: var(--muted-foreground);
+  font-size: 13px;
+}
+
+.easyssh-desktop-activity-item {
+  min-width: 0;
+  border: 1px solid color-mix(in oklab, var(--border) 72%, transparent);
+  border-radius: 8px;
+  background: color-mix(in oklab, var(--card) 92%, transparent);
+  padding: 10px 12px;
+}
+
+.easyssh-desktop-status-badge {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  min-width: 42px;
+  height: 22px;
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--accent) 72%, transparent);
+  color: var(--accent-foreground);
+  font-size: 12px;
+  line-height: 1;
+}
+
+.easyssh-desktop-about-dialog {
+  width: min(520px, calc(100vw - 32px));
+  max-width: min(520px, calc(100vw - 32px));
+}
+
+.easyssh-desktop-about-row {
+  display: grid;
+  grid-template-columns: 86px minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+  min-width: 0;
+  border-bottom: 1px solid color-mix(in oklab, var(--border) 55%, transparent);
+  padding: 8px 0;
+  font-size: 13px;
+}
+
+.easyssh-desktop-about-row:last-child {
+  border-bottom: 0;
+}
+
+.easyssh-desktop-home > .flex {
+  min-height: 0;
+}
+
+.easyssh-desktop-home .scrollbar-custom {
+  scrollbar-gutter: stable;
+}

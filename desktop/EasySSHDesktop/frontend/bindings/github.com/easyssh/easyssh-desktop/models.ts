@@ -493,6 +493,114 @@ export enum DesktopServerStatus {
     DesktopServerOffline = "offline",
 };
 
+export class DesktopTerminalCloseInput {
+    "clientId": string;
+
+    /** Creates a new DesktopTerminalCloseInput instance. */
+    constructor($$source: Partial<DesktopTerminalCloseInput> = {}) {
+        if (!("clientId" in $$source)) {
+            this["clientId"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new DesktopTerminalCloseInput instance from a string or object.
+     */
+    static createFrom($$source: any = {}): DesktopTerminalCloseInput {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new DesktopTerminalCloseInput($$parsedSource as Partial<DesktopTerminalCloseInput>);
+    }
+}
+
+export class DesktopTerminalResizeInput {
+    "clientId": string;
+    "cols": number;
+    "rows": number;
+
+    /** Creates a new DesktopTerminalResizeInput instance. */
+    constructor($$source: Partial<DesktopTerminalResizeInput> = {}) {
+        if (!("clientId" in $$source)) {
+            this["clientId"] = "";
+        }
+        if (!("cols" in $$source)) {
+            this["cols"] = 0;
+        }
+        if (!("rows" in $$source)) {
+            this["rows"] = 0;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new DesktopTerminalResizeInput instance from a string or object.
+     */
+    static createFrom($$source: any = {}): DesktopTerminalResizeInput {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new DesktopTerminalResizeInput($$parsedSource as Partial<DesktopTerminalResizeInput>);
+    }
+}
+
+export class DesktopTerminalStartInput {
+    "clientId": string;
+    "serverId": string;
+    "cols": number;
+    "rows": number;
+
+    /** Creates a new DesktopTerminalStartInput instance. */
+    constructor($$source: Partial<DesktopTerminalStartInput> = {}) {
+        if (!("clientId" in $$source)) {
+            this["clientId"] = "";
+        }
+        if (!("serverId" in $$source)) {
+            this["serverId"] = "";
+        }
+        if (!("cols" in $$source)) {
+            this["cols"] = 0;
+        }
+        if (!("rows" in $$source)) {
+            this["rows"] = 0;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new DesktopTerminalStartInput instance from a string or object.
+     */
+    static createFrom($$source: any = {}): DesktopTerminalStartInput {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new DesktopTerminalStartInput($$parsedSource as Partial<DesktopTerminalStartInput>);
+    }
+}
+
+export class DesktopTerminalWriteInput {
+    "clientId": string;
+    "data": string;
+
+    /** Creates a new DesktopTerminalWriteInput instance. */
+    constructor($$source: Partial<DesktopTerminalWriteInput> = {}) {
+        if (!("clientId" in $$source)) {
+            this["clientId"] = "";
+        }
+        if (!("data" in $$source)) {
+            this["data"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new DesktopTerminalWriteInput instance from a string or object.
+     */
+    static createFrom($$source: any = {}): DesktopTerminalWriteInput {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new DesktopTerminalWriteInput($$parsedSource as Partial<DesktopTerminalWriteInput>);
+    }
+}
+
 // Private type creation functions
 const $$createType0 = DesktopActivityLogItem.createFrom;
 const $$createType1 = $Create.Array($$createType0);

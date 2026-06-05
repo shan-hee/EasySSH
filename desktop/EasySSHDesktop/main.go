@@ -21,6 +21,7 @@ var assets embed.FS
 func main() {
 	activityLogService := NewActivityLogService()
 	serverService := NewDesktopServerService()
+	terminalService := NewDesktopTerminalService(serverService)
 
 	app := application.New(application.Options{
 		Name:        "EasySSH",
@@ -28,6 +29,7 @@ func main() {
 		Services: []application.Service{
 			application.NewService(&DesktopService{}),
 			application.NewService(serverService),
+			application.NewService(terminalService),
 			application.NewService(activityLogService),
 		},
 		Assets: application.AssetOptions{
@@ -44,6 +46,7 @@ func main() {
 		Height:    760,
 		MinWidth:  960,
 		MinHeight: 620,
+		Frameless: true,
 		Mac: application.MacWindow{
 			InvisibleTitleBarHeight: 50,
 			Backdrop:                application.MacBackdropTranslucent,

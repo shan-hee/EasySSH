@@ -4,10 +4,12 @@
 import * as ActivityLogService from "./activitylogservice.js";
 import * as DesktopServerService from "./desktopserverservice.js";
 import * as DesktopService from "./desktopservice.js";
+import * as DesktopTerminalService from "./desktopterminalservice.js";
 export {
     ActivityLogService,
     DesktopServerService,
-    DesktopService
+    DesktopService,
+    DesktopTerminalService
 };
 
 export {
@@ -25,7 +27,11 @@ export {
     DesktopServerInput,
     DesktopServerListParams,
     DesktopServerListResult,
-    DesktopServerStatus
+    DesktopServerStatus,
+    DesktopTerminalCloseInput,
+    DesktopTerminalResizeInput,
+    DesktopTerminalStartInput,
+    DesktopTerminalWriteInput
 } from "./models.js";
 
 export type {

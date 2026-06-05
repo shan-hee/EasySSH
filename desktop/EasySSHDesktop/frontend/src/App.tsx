@@ -1,878 +1,1276 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import type { FormEvent } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, startTransition } from "react"
+import type { ReactNode } from "react"
+import { Browser, Events, Window } from "@wailsio/runtime"
+import { Button } from "@/components/ui/button"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import {
+  Activity,
+  BrowserRouter,
+  CompletionConfigProvider,
+  DashboardHeaderActions,
+  DEFAULT_SYSTEM_CONFIG,
+  FolderOpen,
+  Info,
+  Menu,
+  Minus,
+  RefreshCw,
+  SidebarProvider,
+  Square,
+  SshWorkspace,
+  StaticSystemConfigProvider,
+  TerminalComponent,
+  Terminal,
+  ThemeProvider,
+  Toaster,
+  X,
+  createBrowserWorkspacePreferenceAdapter,
+  createTerminalWorkspaceSessionControllerAdapter,
+  createTerminalWorkspaceSessionStoreAdapter,
+  createWorkspaceAdapters,
+  createWorkspaceCapabilitiesFromRuntime,
+  createWorkspaceI18nAdapter,
+  createWorkspaceSettingsAdapter,
+  toast,
+  useTerminalStore,
+  type RuntimeInfo,
+  type Server,
+  type ServerConnectionConfigsApi,
+  type SshWorkspaceActivityLogAdapter,
+  type SshWorkspaceApiClient,
+  type TerminalConnectionPhase,
+  type TerminalSession,
+  type TerminalWebSocketConstructor,
+  type WorkspaceActivityLogRecordInput,
+  type WorkspaceActivityLogStatus,
+} from "@easyssh/ssh-workspace/desktop"
 import {
   ActivityLogService,
   DesktopActivityLogStatus,
   DesktopServerAuthMethod,
   DesktopServerService,
+  DesktopTerminalService,
   DesktopService,
-} from '../bindings/github.com/easyssh/easyssh-desktop'
+} from "../bindings/github.com/easyssh/easyssh-desktop"
 import type {
-  DesktopRuntimeInfo,
+  DesktopActivityLogItem,
   DesktopServer,
-  DesktopServerCommandResult,
   DesktopServerInput,
-} from '../bindings/github.com/easyssh/easyssh-desktop'
+} from "../bindings/github.com/easyssh/easyssh-desktop"
 
-type ThemeMode = 'dark' | 'light'
-type ViewMode = 'list' | 'grid'
-type TerminalPanel = 'terminal' | 'files' | 'monitor' | 'docker' | 'ai'
+const connectionConfigName = "\u8fde\u63a5\u914d\u7f6e"
+const defaultMaxTabs = 50
+const defaultInactiveMinutes = 60
+const inactiveToastTitle = "\u7ec8\u7aef\u957f\u65f6\u95f4\u672a\u6d3b\u52a8"
+const inactiveToastCloseLabel = "\u5173\u95ed"
+const windowActionErrorMessage = "Failed to run window action:"
+const desktopActionErrorMessage = "\u684c\u9762\u8bbe\u7f6e\u64cd\u4f5c\u5931\u8d25"
+const desktopSettingsLabel = "\u8bbe\u7f6e"
+const terminalSettingsLabel = "\u7ec8\u7aef\u8bbe\u7f6e"
+const activityLogLabel = "\u6d3b\u52a8\u8bb0\u5f55"
+const openDataDirLabel = "\u6253\u5f00\u6570\u636e\u76ee\u5f55"
+const aboutDesktopLabel = "\u5173\u4e8e EasySSH"
+const aboutDesktopTitle = "\u5173\u4e8e EasySSH Desktop"
+const recentActivityDescription = "\u6700\u8fd1 50 \u6761\u684c\u9762\u7aef\u8fde\u63a5\u4e0e\u64cd\u4f5c\u8bb0\u5f55"
+const noActivityLabel = "\u6682\u65e0\u6d3b\u52a8\u8bb0\u5f55"
+const loadingLabel = "\u52a0\u8f7d\u4e2d..."
+const refreshLabel = "\u5237\u65b0"
+const dataDirOpenFailedMessage = "\u6253\u5f00\u6570\u636e\u76ee\u5f55\u5931\u8d25"
+const windowMinimizeLabel = "\u6700\u5c0f\u5316"
+const windowMaximizeLabel = "\u6700\u5927\u5316"
+const windowCloseLabel = "\u5173\u95ed"
+const desktopVersionLabel = "\u7248\u672c"
+const desktopPlatformLabel = "\u5e73\u53f0"
+const desktopArchLabel = "\u67b6\u6784"
+const desktopDataDirLabel = "\u6570\u636e\u76ee\u5f55"
+const desktopUnknownLabel = "\u672a\u77e5"
+const githubLabel = "GitHub"
+const githubUrl = "https://github.com/shan-hee/EasySSH"
 
-type TerminalLine = {
-  id: string
-  kind: 'input' | 'output' | 'error' | 'system'
-  text: string
+function formatMaxTabsMessage(maxTabs: number) {
+  return `\u6700\u591a\u53ea\u80fd\u6253\u5f00 ${maxTabs} \u4e2a\u6807\u7b7e`
 }
 
-type AppSession = {
-  id: string
-  type: 'config' | 'terminal'
-  title: string
-  server?: DesktopServer
-  activePanel: TerminalPanel
-  lines: TerminalLine[]
-  command: string
-  running: boolean
+function formatInactiveToastDescription(sessionName: string, inactiveMinutes: number) {
+  return `${sessionName} \u5df2\u8d85\u8fc7 ${inactiveMinutes} \u5206\u949f\u672a\u6d3b\u52a8`
 }
 
-type ServerFormState = {
-  name: string
-  host: string
-  port: string
-  username: string
-  authMethod: DesktopServerAuthMethod
-  password: string
-  privateKey: string
-  group: string
-  tags: string
-  description: string
-}
-
-type ToastState = {
-  tone: 'success' | 'error' | 'info'
-  message: string
-} | null
-
-const preferenceKeys = {
-  theme: 'easyssh.desktop.theme',
-  viewMode: 'easyssh.desktop.connection.viewMode',
-}
-
-const createId = (prefix: string) => `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}`
-
-const readPreference = <T extends string>(key: string, fallback: T, allowed: readonly T[]) => {
-  if (typeof window === 'undefined') return fallback
-  const value = window.localStorage.getItem(key) as T | null
-  return value && allowed.includes(value) ? value : fallback
-}
-
-const emptyServerForm: ServerFormState = {
-  name: '',
-  host: '',
-  port: '22',
-  username: '',
-  authMethod: DesktopServerAuthMethod.DesktopServerAuthPassword,
-  password: '',
-  privateKey: '',
-  group: '',
-  tags: '',
-  description: '',
-}
-
-const createConfigSession = (): AppSession => ({
-  id: createId('config'),
-  type: 'config',
-  title: '连接配置',
-  activePanel: 'terminal',
-  lines: [],
-  command: '',
-  running: false,
-})
-
-const createTerminalSession = (server: DesktopServer): AppSession => ({
-  id: createId('terminal'),
-  type: 'terminal',
-  title: server.name || server.host,
-  server,
-  activePanel: 'terminal',
-  command: '',
-  running: false,
-  lines: [
-    {
-      id: createId('line'),
-      kind: 'system',
-      text: `Connected target ${server.username}@${server.host}:${server.port}`,
-    },
-  ],
-})
-
-const serverToForm = (server: DesktopServer): ServerFormState => ({
-  name: server.name || '',
-  host: server.host,
-  port: String(server.port || 22),
-  username: server.username,
-  authMethod: server.auth_method || DesktopServerAuthMethod.DesktopServerAuthPassword,
-  password: server.password || '',
-  privateKey: server.private_key || '',
-  group: server.group || '',
-  tags: (server.tags || []).join(', '),
-  description: server.description || '',
-})
-
-const formToInput = (form: ServerFormState): DesktopServerInput => ({
-  name: form.name.trim(),
-  host: form.host.trim(),
-  port: Number.parseInt(form.port, 10) || 22,
-  username: form.username.trim(),
-  auth_method: form.authMethod,
-  password: form.password,
-  private_key: form.privateKey,
-  group: form.group.trim(),
-  tags: form.tags
-    .split(',')
-    .map((tag) => tag.trim())
-    .filter(Boolean),
-  description: form.description.trim(),
-})
-
-const formatTime = (value?: string) => {
-  if (!value) return 'never'
+function formatDesktopDateTime(value?: string) {
+  if (!value) return "-"
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return value
-  return date.toLocaleString([], { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+  return date.toLocaleString("zh-CN", { hour12: false })
 }
 
-const getServerLabel = (server: DesktopServer) => server.name || server.host
+function formatDesktopDuration(milliseconds?: number) {
+  if (!milliseconds) return "-"
+  if (milliseconds < 1000) return `${milliseconds}ms`
+  const seconds = Math.round(milliseconds / 1000)
+  if (seconds < 60) return `${seconds}s`
+  return `${Math.floor(seconds / 60)}m ${seconds % 60}s`
+}
 
-const getErrorMessage = (error: unknown, fallback: string) => {
-  if (error instanceof Error && error.message) return error.message
-  if (typeof error === 'string' && error.trim()) return error
-  return fallback
+function formatDesktopStatus(status: DesktopActivityLogStatus) {
+  if (status === DesktopActivityLogStatus.DesktopActivityLogFailure) return "\u5931\u8d25"
+  if (status === DesktopActivityLogStatus.DesktopActivityLogWarning) return "\u8b66\u544a"
+  return "\u6210\u529f"
+}
+
+function formatDesktopAction(action: string) {
+  switch (action) {
+    case "ssh_connect":
+      return "SSH \u8fde\u63a5"
+    case "ssh_disconnect":
+      return "SSH \u65ad\u5f00"
+    case "sftp_upload":
+      return "SFTP \u4e0a\u4f20"
+    case "sftp_download":
+      return "SFTP \u4e0b\u8f7d"
+    case "sftp_delete":
+      return "SFTP \u5220\u9664"
+    case "sftp_rename":
+      return "SFTP \u91cd\u547d\u540d"
+    case "sftp_mkdir":
+      return "SFTP \u65b0\u5efa\u76ee\u5f55"
+    case "monitoring_query":
+      return "\u76d1\u63a7\u67e5\u8be2"
+    default:
+      return action || "-"
+  }
+}
+
+function statusFromConnectionPhase(phase: TerminalConnectionPhase) {
+  if (phase === "ready") return "connected" as const
+  if (phase === "failed" || phase === "closed" || phase === "idle") return "disconnected" as const
+  return "reconnecting" as const
+}
+
+function createConfigSession(id = "config-initial"): TerminalSession {
+  const now = Date.now()
+
+  return {
+    id,
+    serverName: connectionConfigName,
+    host: "",
+    port: undefined,
+    username: "",
+    shouldConnect: false,
+    connectionPhase: "idle",
+    status: "disconnected",
+    lastActivity: now,
+    type: "config",
+    pinned: false,
+  }
+}
+
+function createTerminalSessionFromServer(
+  sessionId: string,
+  server: Server,
+  now = Date.now(),
+): TerminalSession {
+  return {
+    id: sessionId,
+    serverId: String(server.id),
+    serverName: server.name || `${server.username}@${server.host}:${server.port}`,
+    host: server.host,
+    port: server.port,
+    username: server.username,
+    shouldConnect: true,
+    connectionPhase: "idle",
+    status: "reconnecting",
+    lastActivity: now,
+    group: server.group,
+    tags: server.tags,
+    pinned: false,
+    type: "terminal",
+  }
+}
+
+function mapDesktopServer(server: DesktopServer): Server {
+  return {
+    id: server.id,
+    user_id: server.user_id || "local",
+    name: server.name || undefined,
+    host: server.host,
+    port: server.port || 22,
+    username: server.username,
+    auth_method: server.auth_method === DesktopServerAuthMethod.DesktopServerAuthKey ? "key" : "password",
+    password: server.password || undefined,
+    private_key: server.private_key || undefined,
+    group: server.group || undefined,
+    tags: server.tags || [],
+    status: server.status === "online" ? "online" : "offline",
+    last_connected: server.last_connected || undefined,
+    description: server.description || undefined,
+    created_at: server.created_at,
+    updated_at: server.updated_at,
+  }
+}
+
+function mapServerInput(input: Parameters<ServerConnectionConfigsApi["create"]>[0]): DesktopServerInput {
+  return {
+    name: input.name || "",
+    host: input.host,
+    port: input.port || 22,
+    username: input.username,
+    auth_method: input.auth_method === "key"
+      ? DesktopServerAuthMethod.DesktopServerAuthKey
+      : DesktopServerAuthMethod.DesktopServerAuthPassword,
+    password: input.password || "",
+    private_key: input.private_key || "",
+    group: input.group || "",
+    tags: input.tags || [],
+    description: input.description || "",
+  }
+}
+
+function createDesktopServerApi(): ServerConnectionConfigsApi {
+  return {
+    async list(params) {
+      const result = await DesktopServerService.List({
+        page: params?.page,
+        limit: params?.limit,
+        group: params?.group,
+        search: params?.search,
+      })
+
+      return {
+        data: (result.data || []).map(mapDesktopServer),
+        total: result.total,
+        page: result.page,
+        limit: result.limit,
+      }
+    },
+    async create(input) {
+      return mapDesktopServer(await DesktopServerService.Create(mapServerInput(input)))
+    },
+    async update(id, input) {
+      const current = await DesktopServerService.GetById(id)
+
+      return mapDesktopServer(await DesktopServerService.Update(id, mapServerInput({
+        name: input.name ?? current.name ?? "",
+        host: input.host ?? current.host,
+        port: input.port ?? current.port ?? 22,
+        username: input.username ?? current.username,
+        auth_method: input.auth_method ?? (current.auth_method === DesktopServerAuthMethod.DesktopServerAuthKey ? "key" : "password"),
+        password: input.password ?? current.password ?? "",
+        private_key: input.private_key ?? current.private_key ?? "",
+        group: input.group ?? current.group ?? "",
+        tags: input.tags ?? current.tags ?? [],
+        description: input.description ?? current.description ?? "",
+      })))
+    },
+    async delete(id) {
+      await DesktopServerService.Delete(id)
+    },
+    async reorder(serverIds) {
+      await DesktopServerService.Reorder(serverIds)
+    },
+  }
+}
+
+function mapActivityLogStatus(status: WorkspaceActivityLogStatus): DesktopActivityLogStatus {
+  if (status === "failure") return DesktopActivityLogStatus.DesktopActivityLogFailure
+  if (status === "warning") return DesktopActivityLogStatus.DesktopActivityLogWarning
+  return DesktopActivityLogStatus.DesktopActivityLogSuccess
+}
+
+function mapDesktopActivityLogStatus(status: DesktopActivityLogStatus): WorkspaceActivityLogStatus {
+  if (status === DesktopActivityLogStatus.DesktopActivityLogFailure) return "failure"
+  if (status === DesktopActivityLogStatus.DesktopActivityLogWarning) return "warning"
+  return "success"
+}
+
+function mapActivityLogItem(item: DesktopActivityLogItem) {
+  return {
+    id: item.id,
+    action: item.action,
+    resource: item.resource,
+    status: mapDesktopActivityLogStatus(item.status),
+    serverId: item.serverId,
+    durationMs: item.durationMs,
+    detail: item.detail,
+    createdAt: item.createdAt,
+  }
+}
+
+function mapNumberRecord(record?: Record<string, number | undefined>): Record<string, number> {
+  const result: Record<string, number> = {}
+  for (const [key, value] of Object.entries(record ?? {})) {
+    if (typeof value === "number") {
+      result[key] = value
+    }
+  }
+  return result
+}
+
+function createDesktopActivityLogAdapter(): SshWorkspaceActivityLogAdapter {
+  return {
+    async list(params) {
+      const result = await ActivityLogService.List({
+        page: params?.page,
+        limit: params?.limit,
+        action: params?.action,
+        serverId: params?.serverId,
+        status: params?.status ? mapActivityLogStatus(params.status) : undefined,
+        startDate: params?.startDate,
+        endDate: params?.endDate,
+      })
+
+      return {
+        items: (result.items || []).map(mapActivityLogItem),
+        total: result.total,
+        page: result.page,
+        pageSize: result.pageSize,
+        totalPages: result.totalPages,
+      }
+    },
+    async getById(id) {
+      return mapActivityLogItem(await ActivityLogService.GetById(id))
+    },
+    async getStatistics(params) {
+      const statistics = await ActivityLogService.GetStatistics({
+        startDate: params?.startDate,
+        endDate: params?.endDate,
+      })
+
+      return {
+        total: statistics.total,
+        successCount: statistics.successCount,
+        failureCount: statistics.failureCount,
+        byAction: mapNumberRecord(statistics.byAction),
+      }
+    },
+    async record(input: WorkspaceActivityLogRecordInput) {
+      return mapActivityLogItem(await ActivityLogService.Record({
+        action: input.action,
+        resource: input.resource,
+        status: mapActivityLogStatus(input.status),
+        serverId: input.serverId,
+        durationMs: input.durationMs,
+        detail: input.detail,
+      }))
+    },
+  }
+}
+
+const desktopTerminalOutputEvent = "easyssh:desktop-terminal:output"
+const desktopTerminalClosedEvent = "easyssh:desktop-terminal:closed"
+
+interface DesktopTerminalOutputPayload {
+  clientId?: string
+  data?: string
+}
+
+interface DesktopTerminalClosedPayload {
+  clientId?: string
+  reason?: string
+}
+
+const getDesktopEventData = (event: unknown) => {
+  return event && typeof event === "object" && "data" in event
+    ? (event as { data?: unknown }).data
+    : undefined
+}
+
+const getDesktopErrorMessage = (error: unknown) => {
+  return error instanceof Error ? error.message : String(error)
+}
+
+const encodeDesktopTerminalInput = (data: string) => {
+  const bytes = new TextEncoder().encode(data)
+  let binary = ""
+  for (const byte of bytes) {
+    binary += String.fromCharCode(byte)
+  }
+  return btoa(binary)
+}
+
+const decodeDesktopTerminalOutput = (data: string) => {
+  const binary = atob(data)
+  const bytes = new Uint8Array(binary.length)
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index)
+  }
+  return bytes.buffer
+}
+
+const createDesktopTerminalClientId = () => {
+  return `desktop-terminal-${Date.now()}-${Math.random().toString(36).slice(2)}`
+}
+
+function createDesktopTerminalSocket(): TerminalWebSocketConstructor {
+  return class DesktopTerminalSocket extends EventTarget {
+    static readonly CONNECTING = 0
+    static readonly OPEN = 1
+    static readonly CLOSING = 2
+    static readonly CLOSED = 3
+
+    readonly CONNECTING = 0
+    readonly OPEN = 1
+    readonly CLOSING = 2
+    readonly CLOSED = 3
+    readonly url: string
+    readonly extensions = ""
+    readonly protocol = ""
+    bufferedAmount = 0
+    binaryType: BinaryType = "arraybuffer"
+    readyState = DesktopTerminalSocket.CONNECTING
+    onopen: ((this: WebSocket, ev: Event) => unknown) | null = null
+    onmessage: ((this: WebSocket, ev: MessageEvent) => unknown) | null = null
+    onerror: ((this: WebSocket, ev: Event) => unknown) | null = null
+    onclose: ((this: WebSocket, ev: CloseEvent) => unknown) | null = null
+
+    private readonly serverId: string
+    private readonly clientId = createDesktopTerminalClientId()
+    private readonly cols: number
+    private readonly rows: number
+    private destroyed = false
+    private readonly disposeOutput: () => void
+    private readonly disposeClosed: () => void
+
+    constructor(url: string | URL) {
+      super()
+      this.url = String(url)
+      const params = new URL(this.url, window.location.href).searchParams
+      this.serverId = params.get("serverId") || ""
+      this.cols = Number(params.get("cols")) || 80
+      this.rows = Number(params.get("rows")) || 24
+
+      this.disposeOutput = Events.On(desktopTerminalOutputEvent, (event) => {
+        const data = getDesktopEventData(event) as DesktopTerminalOutputPayload | undefined
+        if (!data || data.clientId !== this.clientId || !data.data) {
+          return
+        }
+
+        try {
+          this.emitMessage(decodeDesktopTerminalOutput(data.data))
+        } catch (error) {
+          this.emitError(getDesktopErrorMessage(error))
+        }
+      })
+
+      this.disposeClosed = Events.On(desktopTerminalClosedEvent, (event) => {
+        const data = getDesktopEventData(event) as DesktopTerminalClosedPayload | undefined
+        if (!data || data.clientId !== this.clientId) {
+          return
+        }
+
+        this.close(1000, data.reason || "remote closed")
+      })
+
+      window.setTimeout(() => {
+        void this.start()
+      }, 0)
+    }
+
+    close(code = 1000, reason = "closed") {
+      if (this.readyState === DesktopTerminalSocket.CLOSED) return
+      this.destroyed = true
+      this.readyState = DesktopTerminalSocket.CLOSED
+      this.disposeOutput()
+      this.disposeClosed()
+      void DesktopTerminalService.Close({ clientId: this.clientId }).catch(() => {})
+      const event = new CloseEvent("close", { code, reason, wasClean: code === 1000 })
+      this.onclose?.call(this as unknown as WebSocket, event)
+      this.dispatchEvent(event)
+    }
+
+    send(data: string | ArrayBufferLike | Blob | ArrayBufferView) {
+      if (this.readyState !== DesktopTerminalSocket.OPEN) return
+      if (typeof data === "string") {
+        this.handleControlMessage(data)
+        return
+      }
+
+      void DesktopTerminalService.Write({
+        clientId: this.clientId,
+        data: encodeDesktopTerminalInput(this.decodeInput(data)),
+      }).catch((error) => this.emitError(getDesktopErrorMessage(error)))
+    }
+
+    private handleControlMessage(raw: string) {
+      try {
+        const message = JSON.parse(raw) as { type?: string; data?: unknown }
+        if (message.type === "ping") {
+          const now = Date.now()
+          const data = message.data && typeof message.data === "object"
+            ? message.data as Record<string, unknown>
+            : {}
+          this.emitControl("pong", {
+            ...data,
+            serverRecvTs: now,
+            serverSendTs: now,
+          })
+          return
+        }
+        if (message.type === "resize") {
+          const data = message.data && typeof message.data === "object"
+            ? message.data as { cols?: number; rows?: number }
+            : {}
+          void DesktopTerminalService.Resize({
+            clientId: this.clientId,
+            cols: data.cols || this.cols,
+            rows: data.rows || this.rows,
+          }).catch((error) => this.emitError(getDesktopErrorMessage(error)))
+          return
+        }
+        if (message.type === "fetch_completion_data") {
+          this.emitControl("completion_data", {
+            history: [],
+            scripts: [],
+            timestamp: Date.now(),
+          })
+          return
+        }
+        if (message.type === "completion_update") {
+          return
+        }
+      } catch {
+        // Ignore non-control strings.
+      }
+    }
+
+    private async start() {
+      if (this.destroyed) return
+
+      this.readyState = DesktopTerminalSocket.OPEN
+      this.emitOpen()
+      this.emitControl("handshake_complete")
+
+      try {
+        await DesktopTerminalService.Start({
+          clientId: this.clientId,
+          serverId: this.serverId,
+          cols: this.cols,
+          rows: this.rows,
+        })
+
+        if (this.destroyed) return
+
+        this.emitControl("connected")
+        void ActivityLogService.Record({
+          action: "ssh_connect",
+          resource: this.serverId,
+          status: DesktopActivityLogStatus.DesktopActivityLogSuccess,
+          serverId: this.serverId,
+        }).catch((error) => console.error("Failed to record desktop terminal activity:", error))
+      } catch (error) {
+        const message = getDesktopErrorMessage(error)
+        this.emitControl("error", {
+          error: "initialization_failed",
+          message,
+        })
+        void ActivityLogService.Record({
+          action: "ssh_connect",
+          resource: this.serverId,
+          status: DesktopActivityLogStatus.DesktopActivityLogFailure,
+          serverId: this.serverId,
+          detail: message,
+        }).catch((error) => console.error("Failed to record desktop terminal activity:", error))
+        this.close(1011, message)
+      }
+    }
+
+    private emitOpen() {
+      const event = new Event("open")
+      this.onopen?.call(this as unknown as WebSocket, event)
+      this.dispatchEvent(event)
+    }
+
+    private emitControl(type: string, data?: unknown) {
+      this.emitMessage(JSON.stringify({ type, data }))
+    }
+
+    private emitError(message: string) {
+      this.emitControl("error", {
+        error: "terminal_io_failed",
+        message,
+      })
+    }
+
+    private emitMessage(data: string | ArrayBuffer) {
+      const event = new MessageEvent("message", { data })
+      this.onmessage?.call(this as unknown as WebSocket, event)
+      this.dispatchEvent(event)
+    }
+
+    private decodeInput(data: ArrayBufferLike | Blob | ArrayBufferView) {
+      if (data instanceof Blob) return ""
+      if (ArrayBuffer.isView(data)) {
+        return new TextDecoder().decode(data)
+      }
+      return new TextDecoder().decode(data)
+    }
+  } as unknown as TerminalWebSocketConstructor
+}
+
+function createDesktopRuntime(runtime: Awaited<ReturnType<typeof DesktopService.RuntimeInfo>> | null): RuntimeInfo {
+  const runtimeCapabilities: RuntimeInfo["capabilities"] = runtime?.capabilities ?? {}
+
+  return {
+    profile: "desktop",
+    principal: {
+      kind: "local_owner",
+      role: "owner",
+    },
+    single_user: true,
+    portable: false,
+    managed: false,
+    data_dir: runtime?.dataDir,
+    version: runtime?.version,
+    capabilities: {
+      ...runtimeCapabilities,
+      servers: runtimeCapabilities.servers ?? true,
+      terminal: runtimeCapabilities.terminal ?? true,
+      sftp: false,
+      transfers: false,
+      monitoring: false,
+      docker: false,
+      ai: false,
+      activity_log: runtimeCapabilities.activity_log ?? true,
+      settings: runtimeCapabilities.settings ?? true,
+      desktop_data_dir: runtimeCapabilities.desktop_data_dir ?? true,
+      open_data_dir: runtimeCapabilities.open_data_dir ?? true,
+      portable_mode: runtimeCapabilities.portable_mode ?? false,
+    },
+  }
+}
+
+function DesktopProviders({ children }: { children: ReactNode }) {
+  return (
+    <BrowserRouter>
+      <ThemeProvider defaultTheme="system" enableSystem disableTransitionOnChange>
+        <StaticSystemConfigProvider
+          config={{
+            ...DEFAULT_SYSTEM_CONFIG,
+            system_name: "EasySSH Desktop",
+          }}
+        >
+          <CompletionConfigProvider>
+            <SidebarProvider defaultOpen={false} className="easyssh-desktop-sidebar-context">
+              {children}
+            </SidebarProvider>
+          </CompletionConfigProvider>
+        </StaticSystemConfigProvider>
+        <Toaster richColors position="top-right" />
+      </ThemeProvider>
+    </BrowserRouter>
+  )
+}
+
+function runWindowAction(action: () => Promise<void>) {
+  void action().catch((error) => {
+    console.error(windowActionErrorMessage, error)
+  })
+}
+
+function DesktopActivityLogDialog({
+  open,
+  onOpenChange,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+}) {
+  const [items, setItems] = useState<DesktopActivityLogItem[]>([])
+  const [loading, setLoading] = useState(false)
+
+  const loadItems = useCallback(async () => {
+    try {
+      setLoading(true)
+      const result = await ActivityLogService.List({ page: 1, limit: 50 })
+      setItems(result.items || [])
+    } catch (error) {
+      console.error(desktopActionErrorMessage, error)
+      toast.error(desktopActionErrorMessage)
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (open) {
+      void loadItems()
+    }
+  }, [loadItems, open])
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="easyssh-desktop-activity-dialog">
+        <DialogHeader>
+          <div className="flex items-start justify-between gap-3 pr-8">
+            <div className="min-w-0">
+              <DialogTitle className="flex items-center gap-2">
+                <Activity className="h-5 w-5" />
+                {activityLogLabel}
+              </DialogTitle>
+              <DialogDescription>{recentActivityDescription}</DialogDescription>
+            </div>
+            <Button variant="ghost" size="icon-sm" title={refreshLabel} aria-label={refreshLabel} onClick={() => void loadItems()} disabled={loading}>
+              <RefreshCw className={loading ? "h-4 w-4 animate-spin" : "h-4 w-4"} />
+            </Button>
+          </div>
+        </DialogHeader>
+
+        <div className="easyssh-desktop-activity-list scrollbar-custom">
+          {loading && items.length === 0 ? (
+            <div className="easyssh-desktop-empty-state">{loadingLabel}</div>
+          ) : items.length === 0 ? (
+            <div className="easyssh-desktop-empty-state">{noActivityLabel}</div>
+          ) : (
+            items.map((item) => (
+              <div key={item.id} className="easyssh-desktop-activity-item">
+                <div className="flex min-w-0 items-center justify-between gap-3">
+                  <div className="min-w-0 truncate text-sm font-medium">{formatDesktopAction(item.action)}</div>
+                  <span className="easyssh-desktop-status-badge">{formatDesktopStatus(item.status)}</span>
+                </div>
+                <div className="mt-1 truncate text-xs text-muted-foreground" title={item.resource}>
+                  {item.resource || "-"}
+                </div>
+                <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                  <span>{formatDesktopDateTime(item.createdAt)}</span>
+                  <span>{formatDesktopDuration(item.durationMs)}</span>
+                  {item.serverId ? <span>ID: {item.serverId}</span> : null}
+                </div>
+                {item.detail ? (
+                  <div className="mt-2 rounded-md bg-muted/50 px-2 py-1 text-xs text-muted-foreground">
+                    {item.detail}
+                  </div>
+                ) : null}
+              </div>
+            ))
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+function DesktopAboutDialog({
+  open,
+  onOpenChange,
+  runtime,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  runtime: Awaited<ReturnType<typeof DesktopService.RuntimeInfo>> | null
+}) {
+  const rows = [
+    [desktopVersionLabel, runtime?.version || desktopUnknownLabel],
+    [desktopPlatformLabel, runtime?.platform || desktopUnknownLabel],
+    [desktopArchLabel, runtime?.arch || desktopUnknownLabel],
+    [desktopDataDirLabel, runtime?.dataDir || desktopUnknownLabel],
+  ] as const
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="easyssh-desktop-about-dialog">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Info className="h-5 w-5" />
+            {aboutDesktopTitle}
+          </DialogTitle>
+          <DialogDescription>EasySSH Desktop</DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-2">
+          {rows.map(([label, value]) => (
+            <div key={label} className="easyssh-desktop-about-row">
+              <span className="text-muted-foreground">{label}</span>
+              <span className="min-w-0 truncate font-medium" title={value}>{value}</span>
+            </div>
+          ))}
+        </div>
+
+        <div className="flex justify-end">
+          <Button variant="outline" size="sm" onClick={() => void Browser.OpenURL(githubUrl)}>
+            {githubLabel}
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+function DesktopSettingsMenu({
+  runtime,
+  onOpenTerminalSettings,
+}: {
+  runtime: Awaited<ReturnType<typeof DesktopService.RuntimeInfo>> | null
+  onOpenTerminalSettings: () => void
+}) {
+  const [activityLogOpen, setActivityLogOpen] = useState(false)
+  const [aboutOpen, setAboutOpen] = useState(false)
+
+  const handleOpenDataDir = useCallback(() => {
+    void DesktopService.OpenDataDir().catch((error) => {
+      console.error(desktopActionErrorMessage, error)
+      toast.error(dataDirOpenFailedMessage)
+    })
+  }, [])
+
+  return (
+    <>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            className="easyssh-desktop-titlebar-menu-button"
+            aria-label={desktopSettingsLabel}
+            title={desktopSettingsLabel}
+          >
+            <Menu className="h-4 w-4" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="easyssh-desktop-settings-menu">
+          <DropdownMenuLabel>{desktopSettingsLabel}</DropdownMenuLabel>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem onSelect={onOpenTerminalSettings}>
+            <Terminal className="h-4 w-4" />
+            <span>{terminalSettingsLabel}</span>
+          </DropdownMenuItem>
+          <DropdownMenuItem onSelect={() => setActivityLogOpen(true)}>
+            <Activity className="h-4 w-4" />
+            <span>{activityLogLabel}</span>
+          </DropdownMenuItem>
+          <DropdownMenuItem onSelect={handleOpenDataDir}>
+            <FolderOpen className="h-4 w-4" />
+            <span>{openDataDirLabel}</span>
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem onSelect={() => setAboutOpen(true)}>
+            <Info className="h-4 w-4" />
+            <span>{aboutDesktopLabel}</span>
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+
+      <DesktopActivityLogDialog open={activityLogOpen} onOpenChange={setActivityLogOpen} />
+      <DesktopAboutDialog open={aboutOpen} onOpenChange={setAboutOpen} runtime={runtime} />
+    </>
+  )
+}
+
+function DesktopTitleBar({
+  runtime,
+  onOpenTerminalSettings,
+}: {
+  runtime: Awaited<ReturnType<typeof DesktopService.RuntimeInfo>> | null
+  onOpenTerminalSettings: () => void
+}) {
+  const handleMinimize = useCallback(() => {
+    runWindowAction(() => Window.Minimise())
+  }, [])
+
+  const handleMaximize = useCallback(() => {
+    runWindowAction(() => Window.ToggleMaximise())
+  }, [])
+
+  const handleClose = useCallback(() => {
+    runWindowAction(() => Window.Close())
+  }, [])
+
+  return (
+    <header className="easyssh-desktop-titlebar">
+      <div className="easyssh-desktop-titlebar-drag">
+        <img className="easyssh-desktop-titlebar-icon" src="/favicon.ico" alt="" aria-hidden="true" />
+        <span className="easyssh-desktop-titlebar-title">EasySSH</span>
+      </div>
+      <div className="easyssh-desktop-titlebar-actions">
+        <DesktopSettingsMenu runtime={runtime} onOpenTerminalSettings={onOpenTerminalSettings} />
+        <DashboardHeaderActions />
+        <div className="easyssh-desktop-window-controls" role="group" aria-label="Window controls">
+          <button
+            type="button"
+            className="easyssh-desktop-window-button"
+            aria-label={windowMinimizeLabel}
+            title={windowMinimizeLabel}
+            onClick={handleMinimize}
+          >
+            <Minus className="h-4 w-4" />
+          </button>
+          <button
+            type="button"
+            className="easyssh-desktop-window-button"
+            aria-label={windowMaximizeLabel}
+            title={windowMaximizeLabel}
+            onClick={handleMaximize}
+          >
+            <Square className="h-3.5 w-3.5" />
+          </button>
+          <button
+            type="button"
+            className="easyssh-desktop-window-button easyssh-desktop-window-button-close"
+            aria-label={windowCloseLabel}
+            title={windowCloseLabel}
+            onClick={handleClose}
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      </div>
+    </header>
+  )
 }
 
 function App() {
-  const [theme, setTheme] = useState<ThemeMode>(() => readPreference(preferenceKeys.theme, 'dark', ['dark', 'light']))
-  const [viewMode, setViewMode] = useState<ViewMode>(() => readPreference(preferenceKeys.viewMode, 'list', ['list', 'grid']))
-  const [runtime, setRuntime] = useState<DesktopRuntimeInfo | null>(null)
-  const [servers, setServers] = useState<DesktopServer[]>([])
-  const [loadingServers, setLoadingServers] = useState(true)
-  const [search, setSearch] = useState('')
-  const [activeGroup, setActiveGroup] = useState('all')
-  const [sessions, setSessions] = useState<AppSession[]>(() => [createConfigSession()])
-  const [activeSessionId, setActiveSessionId] = useState<string>('')
-  const [formOpen, setFormOpen] = useState(false)
-  const [editingServer, setEditingServer] = useState<DesktopServer | null>(null)
-  const [serverForm, setServerForm] = useState<ServerFormState>(emptyServerForm)
-  const [toast, setToast] = useState<ToastState>(null)
-  const [activityTotal, setActivityTotal] = useState(0)
+  const [runtime, setRuntime] = useState<Awaited<ReturnType<typeof DesktopService.RuntimeInfo>> | null>(null)
+  const [maxTabs, setMaxTabs] = useState(defaultMaxTabs)
+  const [inactiveMinutes, setInactiveMinutes] = useState(defaultInactiveMinutes)
+  const [terminalSettingsOpen, setTerminalSettingsOpen] = useState(false)
+  const inactivityNotifiedRef = useRef<Set<string>>(new Set())
+  const initializedRef = useRef(false)
 
-  useEffect(() => {
-    setActiveSessionId((current) => (
-      current && sessions.some((session) => session.id === current)
-        ? current
-        : sessions[0]?.id || ''
-    ))
-  }, [sessions])
+  const sessions = useTerminalStore((state) => state.sessions)
+  const activeSessionId = useTerminalStore((state) => state.activeSessionId)
+  const setSessions = useTerminalStore((state) => state.setSessions)
+  const setActiveSessionId = useTerminalStore((state) => state.setActiveSessionId)
+  const updateSessionActivity = useTerminalStore((state) => state.updateSessionActivity)
+  const getSessionLastActivity = useTerminalStore((state) => state.getSessionLastActivity)
 
-  useEffect(() => {
-    window.localStorage.setItem(preferenceKeys.theme, theme)
-  }, [theme])
-
-  useEffect(() => {
-    window.localStorage.setItem(preferenceKeys.viewMode, viewMode)
-  }, [viewMode])
+  const serverApi = useMemo(() => createDesktopServerApi(), [])
+  const activityLog = useMemo(() => createDesktopActivityLogAdapter(), [])
+  const workspaceSessionStore = useMemo(() => createTerminalWorkspaceSessionStoreAdapter(), [])
+  const workspaceSessionController = useMemo(() => createTerminalWorkspaceSessionControllerAdapter(), [])
+  const workspacePreferences = useMemo(() => createBrowserWorkspacePreferenceAdapter({ keyPrefix: "easyssh.desktop." }), [])
+  const terminalSocket = useMemo(() => createDesktopTerminalSocket(), [])
+  const runtimeInfo = useMemo(() => createDesktopRuntime(runtime), [runtime])
+  const capabilities = useMemo(() => createWorkspaceCapabilitiesFromRuntime(runtimeInfo, {
+    defaults: {
+      terminal: true,
+      sftp: false,
+      transfers: false,
+      ai: false,
+      monitor: false,
+      docker: false,
+      activityLog: true,
+      fullscreen: true,
+      crossSessionDrag: false,
+    },
+  }), [runtimeInfo])
+  const workspaceApi = useMemo<SshWorkspaceApiClient>(() => ({
+    terminal: {
+      WebSocketCtor: terminalSocket,
+      createWebSocketUrl: ({ serverId, cols, rows }) => {
+        const params = new URLSearchParams()
+        params.set("serverId", serverId)
+        params.set("cols", String(cols))
+        params.set("rows", String(rows))
+        return `desktop://terminal?${params.toString()}`
+      },
+      saveVerifiedCredential: async ({ serverId, authMethod, secret }) => {
+        const current = await DesktopServerService.GetById(serverId)
+        await DesktopServerService.Update(serverId, mapServerInput({
+          name: current.name ?? "",
+          host: current.host,
+          port: current.port || 22,
+          username: current.username,
+          auth_method: authMethod,
+          password: authMethod === "password" ? secret : current.password ?? "",
+          private_key: authMethod === "key" ? secret : current.private_key ?? "",
+          group: current.group ?? "",
+          tags: current.tags ?? [],
+          description: current.description ?? "",
+        }))
+      },
+    },
+  }), [terminalSocket])
+  const adapters = useMemo(() => createWorkspaceAdapters({
+    apiClient: workspaceApi,
+    authTicketProvider: async () => "desktop",
+    i18n: createWorkspaceI18nAdapter({
+      locale: "zh-CN",
+      timezone: "Asia/Shanghai",
+      fallback: (key: string) => key,
+    }),
+    notifier: {
+      success: (message) => toast.success(message),
+      error: (message) => toast.error(message),
+      action: (message, options) => toast(message, {
+        description: options.description,
+        action: {
+          label: options.actionLabel,
+          onClick: options.onAction,
+        },
+      }),
+      promise: (promise, messages) => toast.promise(promise, messages),
+    },
+    settings: createWorkspaceSettingsAdapter({
+      sftp: {
+        downloadExcludePatterns: DEFAULT_SYSTEM_CONFIG.download_exclude_patterns,
+      },
+    }),
+    preferences: workspacePreferences,
+    activityLog,
+    sessionStore: workspaceSessionStore,
+    sessionController: workspaceSessionController,
+  }), [activityLog, workspaceApi, workspacePreferences, workspaceSessionController, workspaceSessionStore])
 
   useEffect(() => {
     DesktopService.RuntimeInfo()
       .then(setRuntime)
-      .catch((error) => setToast({ tone: 'error', message: getErrorMessage(error, '运行时信息读取失败') }))
-  }, [])
-
-  const loadServers = useCallback(async () => {
-    try {
-      setLoadingServers(true)
-      const result = await DesktopServerService.List({ page: 1, limit: 500 })
-      setServers(result.data || [])
-    } catch (error) {
-      setToast({ tone: 'error', message: getErrorMessage(error, '连接配置读取失败') })
-    } finally {
-      setLoadingServers(false)
-    }
-  }, [])
-
-  const loadActivityCount = useCallback(async () => {
-    try {
-      const stats = await ActivityLogService.GetStatistics({})
-      setActivityTotal(stats.total || 0)
-    } catch {
-      setActivityTotal(0)
-    }
+      .catch((error) => {
+        console.error("Failed to load desktop runtime:", error)
+      })
   }, [])
 
   useEffect(() => {
-    void loadServers()
-    void loadActivityCount()
-  }, [loadActivityCount, loadServers])
+    if (initializedRef.current) return
+    initializedRef.current = true
 
-  const recordActivity = useCallback(async (
-    action: string,
-    resource: string,
-    status: DesktopActivityLogStatus = DesktopActivityLogStatus.DesktopActivityLogSuccess,
-    detail = '',
-    serverId = '',
-  ) => {
-    try {
-      await ActivityLogService.Record({ action, resource, status, detail, serverId })
-      void loadActivityCount()
-    } catch {
-      // Activity logging is best effort in the desktop shell.
-    }
-  }, [loadActivityCount])
-
-  const groups = useMemo(() => {
-    const counts = new Map<string, number>()
-    servers.forEach((server) => {
-      const group = server.group?.trim()
-      if (!group) return
-      counts.set(group, (counts.get(group) || 0) + 1)
-    })
-    return Array.from(counts.entries()).sort(([a], [b]) => a.localeCompare(b, 'zh-CN'))
-  }, [servers])
-
-  const filteredServers = useMemo(() => {
-    const keyword = search.trim().toLowerCase()
-    return servers.filter((server) => {
-      if (activeGroup !== 'all' && (server.group || '') !== activeGroup) return false
-      if (!keyword) return true
-      const tags = (server.tags || []).join(' ')
-      return [server.name, server.host, server.username, server.description, server.group, tags]
-        .filter(Boolean)
-        .some((value) => String(value).toLowerCase().includes(keyword))
-    })
-  }, [activeGroup, search, servers])
-
-  const activeSession = useMemo(
-    () => sessions.find((session) => session.id === activeSessionId) || sessions[0],
-    [activeSessionId, sessions],
-  )
-
-  const openCreateForm = () => {
-    setEditingServer(null)
-    setServerForm(emptyServerForm)
-    setFormOpen(true)
-  }
-
-  const openEditForm = (server: DesktopServer) => {
-    setEditingServer(server)
-    setServerForm(serverToForm(server))
-    setFormOpen(true)
-  }
-
-  const closeForm = () => {
-    setFormOpen(false)
-    setEditingServer(null)
-    setServerForm(emptyServerForm)
-  }
-
-  const saveServer = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    const input = formToInput(serverForm)
-    if (!input.host || !input.username) {
-      setToast({ tone: 'error', message: '主机和用户名不能为空' })
+    if (sessions.length === 0) {
+      const session = createConfigSession()
+      setSessions([session])
+      setActiveSessionId(session.id)
+      updateSessionActivity(session.id, session.lastActivity)
       return
     }
 
-    try {
-      if (editingServer) {
-        const updated = await DesktopServerService.Update(editingServer.id, input)
-        setServers((current) => current.map((server) => (server.id === updated.id ? updated : server)))
-        setSessions((current) => current.map((session) => (
-          session.server?.id === updated.id
-            ? { ...session, title: getServerLabel(updated), server: updated }
-            : session
-        )))
-        await recordActivity('server_update', getServerLabel(updated), DesktopActivityLogStatus.DesktopActivityLogSuccess, 'Desktop server updated', updated.id)
-        setToast({ tone: 'success', message: '连接配置已更新' })
-      } else {
-        const created = await DesktopServerService.Create(input)
-        setServers((current) => [...current, created])
-        await recordActivity('server_create', getServerLabel(created), DesktopActivityLogStatus.DesktopActivityLogSuccess, 'Desktop server created', created.id)
-        setToast({ tone: 'success', message: '连接配置已保存' })
-      }
-      closeForm()
-    } catch (error) {
-      setToast({ tone: 'error', message: getErrorMessage(error, '连接配置保存失败') })
+    if (!activeSessionId || !sessions.some((session) => session.id === activeSessionId)) {
+      setActiveSessionId(sessions[0]?.id ?? null)
     }
-  }
+  }, [activeSessionId, sessions, setActiveSessionId, setSessions, updateSessionActivity])
 
-  const deleteServer = async (server: DesktopServer) => {
-    if (!window.confirm(`删除连接配置 ${getServerLabel(server)}？`)) return
+  const resetToConfigSession = useCallback(() => {
+    const session = createConfigSession(`config-${Date.now()}`)
+    setSessions([session])
+    setActiveSessionId(session.id)
+    updateSessionActivity(session.id, session.lastActivity)
+  }, [setActiveSessionId, setSessions, updateSessionActivity])
 
-    try {
-      await DesktopServerService.Delete(server.id)
-      setServers((current) => current.filter((item) => item.id !== server.id))
+  const handleNewSession = useCallback(() => {
+    if (sessions.length >= maxTabs) {
+      toast.error(formatMaxTabsMessage(maxTabs))
+      return
+    }
+
+    const session = createConfigSession(`config-${Date.now()}`)
+    setSessions((current) => [...current, session])
+    setActiveSessionId(session.id)
+    updateSessionActivity(session.id, session.lastActivity)
+    return session.id
+  }, [maxTabs, sessions.length, setActiveSessionId, setSessions, updateSessionActivity])
+
+  const handleStartConnectionFromConfig = useCallback((sessionId: string, server: Server) => {
+    const now = Date.now()
+
+    startTransition(() => {
       setSessions((current) => current.map((session) => (
-        session.server?.id === server.id
-          ? { ...createConfigSession(), id: session.id }
+        session.id === sessionId
+          ? createTerminalSessionFromServer(sessionId, server, now)
           : session
       )))
-      await recordActivity('server_delete', getServerLabel(server), DesktopActivityLogStatus.DesktopActivityLogWarning, 'Desktop server deleted', server.id)
-      setToast({ tone: 'success', message: '连接配置已删除' })
-    } catch (error) {
-      setToast({ tone: 'error', message: getErrorMessage(error, '连接配置删除失败') })
-    }
-  }
+      setActiveSessionId(sessionId)
+      updateSessionActivity(sessionId, now)
+    })
 
-  const moveServer = async (serverId: string, direction: -1 | 1) => {
-    const currentIndex = servers.findIndex((server) => server.id === serverId)
-    const nextIndex = currentIndex + direction
-    if (currentIndex < 0 || nextIndex < 0 || nextIndex >= servers.length) return
+    void DesktopServerService.MarkConnected(server.id)
+      .catch((error) => console.error("Failed to mark desktop server connected:", error))
+    void ActivityLogService.Record({
+      action: "ssh_connect",
+      resource: `${server.username}@${server.host}:${server.port}`,
+      status: DesktopActivityLogStatus.DesktopActivityLogSuccess,
+      serverId: server.id,
+      detail: "Desktop command terminal opened",
+    }).catch((error) => console.error("Failed to record desktop connection activity:", error))
+  }, [setActiveSessionId, setSessions, updateSessionActivity])
 
-    const nextServers = [...servers]
-    const [item] = nextServers.splice(currentIndex, 1)
-    nextServers.splice(nextIndex, 0, item)
-    setServers(nextServers)
-
-    try {
-      await DesktopServerService.Reorder(nextServers.map((server) => server.id))
-    } catch (error) {
-      setToast({ tone: 'error', message: getErrorMessage(error, '排序保存失败') })
-      void loadServers()
-    }
-  }
-
-  const newConfigTab = () => {
-    const next = createConfigSession()
-    setSessions((current) => [...current, next])
-    setActiveSessionId(next.id)
-  }
-
-  const connectServer = async (server: DesktopServer) => {
-    try {
-      const probe = await DesktopServerService.ExecuteCommand({ serverId: server.id, command: 'echo EasySSH', timeoutMs: 15000 })
-      if (probe.exitCode !== 0) {
-        throw new Error(probe.output || `SSH probe exited with ${probe.exitCode}`)
+  const handleCloseSession = useCallback((sessionId: string) => {
+    if (sessions.length <= 1) {
+      if (sessions[0]?.type === "config") {
+        setActiveSessionId(sessions[0].id)
+        return
       }
-
-      const connectedServer = await DesktopServerService.MarkConnected(server.id)
-      setServers((current) => current.map((item) => (item.id === connectedServer.id ? connectedServer : item)))
-      const nextSession = createTerminalSession(connectedServer)
-      const targetConfigSessionId = activeSession?.type === 'config' ? activeSession.id : null
-
-      if (targetConfigSessionId) {
-        setSessions((current) => current.map((session) => (
-          session.id === targetConfigSessionId
-            ? { ...nextSession, id: session.id }
-            : session
-        )))
-        setActiveSessionId(targetConfigSessionId)
-      } else {
-        setSessions((current) => [...current, nextSession])
-        setActiveSessionId(nextSession.id)
-      }
-      await recordActivity('ssh_connect', `${connectedServer.username}@${connectedServer.host}`, DesktopActivityLogStatus.DesktopActivityLogSuccess, 'Desktop terminal session opened', connectedServer.id)
-      setToast({ tone: 'success', message: `已打开 ${getServerLabel(connectedServer)}` })
-    } catch (error) {
-      setToast({ tone: 'error', message: getErrorMessage(error, '连接打开失败') })
-    }
-  }
-
-  const closeSession = (sessionId: string) => {
-    const remainingSessions = sessions.filter((session) => session.id !== sessionId)
-    if (remainingSessions.length === 0) {
-      const nextSession = createConfigSession()
-      setSessions([nextSession])
-      setActiveSessionId(nextSession.id)
+      resetToConfigSession()
       return
     }
 
-    setSessions(remainingSessions)
-    if (sessionId === activeSessionId) {
-      setActiveSessionId(remainingSessions[0]?.id || '')
+    const currentIndex = sessions.findIndex((session) => session.id === sessionId)
+    if (activeSessionId === sessionId && currentIndex !== -1) {
+      const nextIndex = currentIndex < sessions.length - 1 ? currentIndex + 1 : currentIndex - 1
+      setActiveSessionId(sessions[nextIndex]?.id ?? null)
     }
-  }
 
-  const updateSession = (sessionId: string, updater: (session: AppSession) => AppSession) => {
-    setSessions((current) => current.map((session) => (session.id === sessionId ? updater(session) : session)))
-  }
+    setSessions((current) => current.filter((session) => session.id !== sessionId))
+  }, [activeSessionId, resetToConfigSession, sessions, setActiveSessionId, setSessions])
 
-  const runCommand = async (session: AppSession) => {
-    const command = session.command.trim()
-    if (!session.server || !command || session.running) return
-
-    updateSession(session.id, (current) => ({
-      ...current,
-      command: '',
-      running: true,
-      lines: [
-        ...current.lines,
-        { id: createId('line'), kind: 'input', text: `$ ${command}` },
-        { id: createId('line'), kind: 'system', text: 'running...' },
-      ],
-    }))
-
-    try {
-      const result = await DesktopServerService.ExecuteCommand({ serverId: session.server.id, command, timeoutMs: 60000 })
-      updateSession(session.id, (current) => ({
-        ...current,
-        running: false,
-        lines: replaceRunningLine(current.lines, result),
-      }))
-      await recordActivity(
-        'ssh_command',
-        command,
-        result.exitCode === 0 ? DesktopActivityLogStatus.DesktopActivityLogSuccess : DesktopActivityLogStatus.DesktopActivityLogWarning,
-        `exit ${result.exitCode}, ${result.durationMs}ms`,
-        session.server.id,
-      )
-    } catch (error) {
-      updateSession(session.id, (current) => ({
-        ...current,
-        running: false,
-        lines: replaceRunningLineWithError(current.lines, getErrorMessage(error, 'command failed')),
-      }))
-      await recordActivity('ssh_command', command, DesktopActivityLogStatus.DesktopActivityLogFailure, getErrorMessage(error, 'command failed'), session.server.id)
+  const handleCloseSessions = useCallback((sessionIds: string[]) => {
+    const closing = new Set(sessionIds)
+    const remaining = sessions.filter((session) => !closing.has(session.id))
+    if (remaining.length === 0) {
+      resetToConfigSession()
+      return
     }
-  }
+    if (activeSessionId && closing.has(activeSessionId)) {
+      setActiveSessionId(remaining[0]?.id ?? null)
+    }
+    setSessions(remaining)
+  }, [activeSessionId, resetToConfigSession, sessions, setActiveSessionId, setSessions])
 
-  const connectedSessions = sessions.filter((session) => session.type === 'terminal').length
+  const handleDuplicateSession = useCallback((sessionId: string) => {
+    const source = sessions.find((session) => session.id === sessionId)
+    if (!source) return
+    if (sessions.length >= maxTabs) {
+      toast.error(formatMaxTabsMessage(maxTabs))
+      return
+    }
+
+    const now = Date.now()
+    const duplicate: TerminalSession = {
+      ...source,
+      id: `session-${now}`,
+      lastActivity: now,
+      pinned: false,
+      connectionPhase: source.type === "terminal" ? "idle" : source.connectionPhase,
+      status: source.type === "terminal" ? "reconnecting" : source.status,
+    }
+
+    setSessions((current) => [...current, duplicate])
+    setActiveSessionId(duplicate.id)
+    updateSessionActivity(duplicate.id, now)
+  }, [maxTabs, sessions, setActiveSessionId, setSessions, updateSessionActivity])
+
+  const handleCloseOthers = useCallback((sessionId: string) => {
+    setSessions((current) => current.filter((session) => session.id === sessionId || session.pinned))
+    setActiveSessionId(sessionId)
+  }, [setActiveSessionId, setSessions])
+
+  const handleCloseAll = useCallback(() => {
+    const pinned = sessions.filter((session) => session.pinned)
+    if (pinned.length === 0) {
+      resetToConfigSession()
+      return
+    }
+    setSessions(pinned)
+    setActiveSessionId(pinned[0].id)
+  }, [resetToConfigSession, sessions, setActiveSessionId, setSessions])
+
+  const handleTogglePin = useCallback((sessionId: string) => {
+    setSessions((current) => current.map((session) => (
+      session.id === sessionId
+        ? { ...session, pinned: !session.pinned }
+        : session
+    )))
+  }, [setSessions])
+
+  const handleReorder = useCallback((newOrderIds: string[]) => {
+    const sessionMap = new Map(sessions.map((session) => [session.id, session]))
+    const next = newOrderIds.map((id) => sessionMap.get(id)).filter((session): session is TerminalSession => !!session)
+    if (next.length === sessions.length) {
+      setSessions(next)
+    }
+  }, [sessions, setSessions])
+
+  const handleSendCommand = useCallback((sessionId: string, command: string) => {
+    if (command.trim()) {
+      updateSessionActivity(sessionId)
+      inactivityNotifiedRef.current.delete(sessionId)
+    }
+  }, [updateSessionActivity])
+
+  const handleConnectionPhaseChange = useCallback((sessionId: string, phase: TerminalConnectionPhase) => {
+    setSessions((current) => current.map((session) => (
+      session.id === sessionId
+        ? {
+            ...session,
+            connectionPhase: phase,
+            status: statusFromConnectionPhase(phase),
+          }
+        : session
+    )))
+    if (phase === "ready") {
+      updateSessionActivity(sessionId)
+    }
+  }, [setSessions, updateSessionActivity])
+
+  const handleAuthCancelled = useCallback((sessionId: string) => {
+    const now = Date.now()
+    useTerminalStore.getState().destroySession(sessionId)
+    setSessions((current) => current.map((session) => (
+      session.id === sessionId
+        ? { ...createConfigSession(sessionId), lastActivity: now }
+        : session
+    )))
+    updateSessionActivity(sessionId, now)
+  }, [setSessions, updateSessionActivity])
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      const now = Date.now()
+      const threshold = inactiveMinutes * 60 * 1000
+
+      sessions.forEach((session) => {
+        const lastActivity = getSessionLastActivity(session.id) ?? session.lastActivity
+        if (now - lastActivity < threshold || inactivityNotifiedRef.current.has(session.id)) {
+          return
+        }
+        inactivityNotifiedRef.current.add(session.id)
+        toast(inactiveToastTitle, {
+          description: formatInactiveToastDescription(session.serverName, inactiveMinutes),
+          action: {
+            label: inactiveToastCloseLabel,
+            onClick: () => handleCloseSession(session.id),
+          },
+        })
+      })
+    }, 60 * 1000)
+
+    return () => window.clearInterval(timer)
+  }, [getSessionLastActivity, handleCloseSession, inactiveMinutes, sessions])
 
   return (
-    <main className={`desktop-shell terminal-config-shell theme-${theme}`}>
-      <header className="desktop-topbar">
-        <div className="brand-block">
-          <div className="brand-mark">E</div>
-          <div>
-            <div className="brand-title">EasySSH</div>
-            <div className="brand-subtitle">Desktop Terminal</div>
-          </div>
-        </div>
-        <div className="topbar-actions">
-          <button className="icon-button" type="button" title="新建连接配置页" aria-label="新建连接配置页" onClick={newConfigTab}>+</button>
-          <button className="icon-button" type="button" title="切换主题" aria-label="切换主题" onClick={() => setTheme((current) => current === 'dark' ? 'light' : 'dark')}>
-            {theme === 'dark' ? '○' : '●'}
-          </button>
-        </div>
-      </header>
-
-      <section className="terminal-workspace">
-        <div className="terminal-frame">
-          <div className="tabbar" role="tablist" aria-label="Terminal sessions">
-            {sessions.map((session) => (
-              <div
-                key={session.id}
-                className={`workspace-tab ${session.id === activeSessionId ? 'active' : ''}`}
-              >
-                <button
-                  className="tab-target"
-                  type="button"
-                  role="tab"
-                  aria-selected={session.id === activeSessionId}
-                  onClick={() => setActiveSessionId(session.id)}
-                >
-                  <span className={`session-dot ${session.type}`} />
-                  <span>{session.title}</span>
-                </button>
-                <button
-                  className="tab-close"
-                  type="button"
-                  title="关闭页签"
-                  aria-label="关闭页签"
-                  onClick={() => closeSession(session.id)}
-                >×</button>
-              </div>
-            ))}
-          </div>
-
-          <div className="workspace-content">
-            {activeSession?.type === 'terminal' ? (
-              <TerminalSessionView
-                session={activeSession}
-                onRunCommand={() => void runCommand(activeSession)}
-                onCommandChange={(command) => updateSession(activeSession.id, (current) => ({ ...current, command }))}
-                onPanelChange={(activePanel) => updateSession(activeSession.id, (current) => ({ ...current, activePanel }))}
-              />
-            ) : (
-              <ConnectionConfigView
-                servers={filteredServers}
-                allServers={servers}
-                groups={groups}
-                activeGroup={activeGroup}
-                loading={loadingServers}
-                search={search}
-                viewMode={viewMode}
-                onSearchChange={setSearch}
-                onGroupChange={setActiveGroup}
-                onViewModeChange={setViewMode}
-                onCreate={openCreateForm}
-                onEdit={openEditForm}
-                onDelete={(server) => void deleteServer(server)}
-                onConnect={(server) => void connectServer(server)}
-                onMove={moveServer}
-              />
-            )}
-          </div>
-        </div>
-
-        <aside className="workspace-side">
-          <div className="side-section">
-            <div className="side-title">状态</div>
-            <div className="status-metrics">
-              <div><strong>{servers.length}</strong><span>连接配置</span></div>
-              <div><strong>{connectedSessions}</strong><span>终端页签</span></div>
-              <div><strong>{activityTotal}</strong><span>本地记录</span></div>
-            </div>
-          </div>
-          <div className="side-section">
-            <div className="side-title">SQLite</div>
-            <div className="data-path">{runtime?.dataDir || 'loading...'}</div>
-          </div>
-          <div className="side-section capability-list">
-            <div className="side-title">能力</div>
-            <span>Terminal</span>
-            <span>Server Config</span>
-            <span>Command Exec</span>
-            <span>Activity Log</span>
-          </div>
-        </aside>
-      </section>
-
-      {formOpen && (
-        <ServerFormDialog
-          form={serverForm}
-          editing={!!editingServer}
-          onChange={setServerForm}
-          onClose={closeForm}
-          onSubmit={(event) => void saveServer(event)}
-        />
-      )}
-
-      {toast && (
-        <div className={`desktop-toast ${toast.tone}`} role="status">
-          <span>{toast.message}</span>
-          <button type="button" aria-label="关闭提示" title="关闭提示" onClick={() => setToast(null)}>×</button>
-        </div>
-      )}
-    </main>
-  )
-}
-
-function ConnectionConfigView({
-  servers,
-  allServers,
-  groups,
-  activeGroup,
-  loading,
-  search,
-  viewMode,
-  onSearchChange,
-  onGroupChange,
-  onViewModeChange,
-  onCreate,
-  onEdit,
-  onDelete,
-  onConnect,
-  onMove,
-}: {
-  servers: DesktopServer[]
-  allServers: DesktopServer[]
-  groups: [string, number][]
-  activeGroup: string
-  loading: boolean
-  search: string
-  viewMode: ViewMode
-  onSearchChange: (value: string) => void
-  onGroupChange: (value: string) => void
-  onViewModeChange: (value: ViewMode) => void
-  onCreate: () => void
-  onEdit: (server: DesktopServer) => void
-  onDelete: (server: DesktopServer) => void
-  onConnect: (server: DesktopServer) => void
-  onMove: (serverId: string, direction: -1 | 1) => void
-}) {
-  return (
-    <div className="connection-config-page">
-      <div className="config-toolbar">
-        <div className="search-box">
-          <span aria-hidden="true">⌕</span>
-          <input
-            value={search}
-            onChange={(event) => onSearchChange(event.target.value)}
-            placeholder="搜索名称、主机、用户、标签"
+    <DesktopProviders>
+      <SshWorkspace adapters={adapters} capabilities={capabilities} layout="desktop">
+        <main className="easyssh-desktop-home bg-background text-foreground">
+          <DesktopTitleBar
+            runtime={runtime}
+            onOpenTerminalSettings={() => setTerminalSettingsOpen(true)}
           />
-        </div>
-        <div className="toolbar-actions">
-          <div className="segmented" aria-label="视图模式">
-            <button type="button" className={viewMode === 'grid' ? 'active' : ''} title="网格" aria-label="网格" onClick={() => onViewModeChange('grid')}>▦</button>
-            <button type="button" className={viewMode === 'list' ? 'active' : ''} title="列表" aria-label="列表" onClick={() => onViewModeChange('list')}>☰</button>
-          </div>
-          <button className="primary-action compact" type="button" onClick={onCreate}>+ 添加</button>
-        </div>
-      </div>
-
-      <div className="group-filter" aria-label="连接分组">
-        <button className={activeGroup === 'all' ? 'active' : ''} type="button" onClick={() => onGroupChange('all')}>全部 ({allServers.length})</button>
-        {groups.map(([group, count]) => (
-          <button key={group} className={activeGroup === group ? 'active' : ''} type="button" onClick={() => onGroupChange(group)}>{group} ({count})</button>
-        ))}
-      </div>
-
-      {loading ? (
-        <div className="empty-state">正在读取本地连接配置</div>
-      ) : servers.length > 0 ? (
-        <div className={`server-list ${viewMode}`}>
-          {servers.map((server, index) => (
-            <ServerConfigItem
-              key={server.id}
-              server={server}
-              viewMode={viewMode}
-              disableMoveUp={index === 0}
-              disableMoveDown={index === servers.length - 1}
-              onEdit={onEdit}
-              onDelete={onDelete}
-              onConnect={onConnect}
-              onMove={onMove}
-            />
-          ))}
-        </div>
-      ) : (
-        <div className="empty-state">
-          <div className="empty-icon">▣</div>
-          <strong>{allServers.length > 0 ? '没有匹配的连接配置' : '还没有连接配置'}</strong>
-          <button className="primary-action compact" type="button" onClick={onCreate}>+ 添加</button>
-        </div>
-      )}
-    </div>
+          <TerminalComponent
+            sessions={sessions}
+            onNewSession={handleNewSession}
+            onCloseSession={handleCloseSession}
+            onCloseSessions={handleCloseSessions}
+            onSendCommand={handleSendCommand}
+            onDuplicateSession={handleDuplicateSession}
+            onCloseOthers={handleCloseOthers}
+            onCloseAll={handleCloseAll}
+            onTogglePin={handleTogglePin}
+            onReorderSessions={handleReorder}
+            onStartConnectionFromConfig={handleStartConnectionFromConfig}
+            onAuthCancelled={handleAuthCancelled}
+            externalActiveSessionId={activeSessionId}
+            onActiveSessionChange={setActiveSessionId}
+            onConnectionPhaseChange={handleConnectionPhaseChange}
+            onBehaviorSettingsChange={({ maxTabs, inactiveMinutes }) => {
+              setMaxTabs(Math.max(1, Math.min(maxTabs, defaultMaxTabs)))
+              setInactiveMinutes(Math.max(5, Math.min(inactiveMinutes, defaultInactiveMinutes)))
+            }}
+            serverApi={serverApi}
+            serverConfigsReady
+            hidePageHeader
+            unframed
+            settingsDialogOpen={terminalSettingsOpen}
+            onSettingsDialogOpenChange={setTerminalSettingsOpen}
+          />
+        </main>
+      </SshWorkspace>
+    </DesktopProviders>
   )
-}
-
-function ServerConfigItem({
-  server,
-  viewMode,
-  disableMoveUp,
-  disableMoveDown,
-  onEdit,
-  onDelete,
-  onConnect,
-  onMove,
-}: {
-  server: DesktopServer
-  viewMode: ViewMode
-  disableMoveUp: boolean
-  disableMoveDown: boolean
-  onEdit: (server: DesktopServer) => void
-  onDelete: (server: DesktopServer) => void
-  onConnect: (server: DesktopServer) => void
-  onMove: (serverId: string, direction: -1 | 1) => void
-}) {
-  return (
-    <article className={`server-item ${viewMode}`} onDoubleClick={() => onConnect(server)}>
-      <div className="server-glyph" aria-hidden="true">⌘</div>
-      <div className="server-main">
-        <div className="server-title-row">
-          <h3>{getServerLabel(server)}</h3>
-          <span className={`server-status ${server.status}`}>{server.status === 'online' ? 'online' : 'offline'}</span>
-        </div>
-        <div className="server-address">{server.username}@{server.host}:{server.port}</div>
-        {server.description && <p>{server.description}</p>}
-        <div className="server-meta">
-          {server.group && <span>{server.group}</span>}
-          {(server.tags || []).map((tag) => <span key={tag}>{tag}</span>)}
-          <span>{server.auth_method === DesktopServerAuthMethod.DesktopServerAuthKey ? 'key' : 'password'}</span>
-          <span>{formatTime(server.last_connected)}</span>
-        </div>
-      </div>
-      <div className="server-actions" onDoubleClick={(event) => event.stopPropagation()}>
-        <button type="button" title="上移" aria-label="上移" disabled={disableMoveUp} onClick={() => onMove(server.id, -1)}>↑</button>
-        <button type="button" title="下移" aria-label="下移" disabled={disableMoveDown} onClick={() => onMove(server.id, 1)}>↓</button>
-        <button type="button" title="编辑" aria-label="编辑" onClick={() => onEdit(server)}>✎</button>
-        <button type="button" title="删除" aria-label="删除" onClick={() => onDelete(server)}>×</button>
-      </div>
-    </article>
-  )
-}
-
-function TerminalSessionView({
-  session,
-  onRunCommand,
-  onCommandChange,
-  onPanelChange,
-}: {
-  session: AppSession
-  onRunCommand: () => void
-  onCommandChange: (command: string) => void
-  onPanelChange: (panel: TerminalPanel) => void
-}) {
-  const server = session.server
-  if (!server) return null
-
-  return (
-    <div className="terminal-session-page">
-      <div className="terminal-toolbar">
-        <div className="terminal-target">
-          <strong>{getServerLabel(server)}</strong>
-          <span>{server.username}@{server.host}:{server.port}</span>
-        </div>
-        <div className="tool-buttons" aria-label="终端工具">
-          {(['terminal', 'files', 'monitor', 'docker', 'ai'] as TerminalPanel[]).map((panel) => (
-            <button
-              key={panel}
-              type="button"
-              title={panelTitle(panel)}
-              aria-label={panelTitle(panel)}
-              className={session.activePanel === panel ? 'active' : ''}
-              onClick={() => onPanelChange(panel)}
-            >
-              {panelIcon(panel)}
-            </button>
-          ))}
-        </div>
-      </div>
-      <div className="terminal-body">
-        <div className="terminal-output" aria-live="polite">
-          {session.lines.map((line) => (
-            <div key={line.id} className={`terminal-row ${line.kind}`}>{line.text}</div>
-          ))}
-        </div>
-        {session.activePanel !== 'terminal' && <AuxiliaryPanel panel={session.activePanel} server={server} />}
-      </div>
-      <form className="command-line" onSubmit={(event) => { event.preventDefault(); onRunCommand() }}>
-        <span>$</span>
-        <input
-          value={session.command}
-          disabled={session.running}
-          onChange={(event) => onCommandChange(event.target.value)}
-          placeholder={session.running ? 'running...' : '输入命令并回车'}
-        />
-        <button type="submit" disabled={session.running || !session.command.trim()} title="执行" aria-label="执行">↵</button>
-      </form>
-    </div>
-  )
-}
-
-function AuxiliaryPanel({ panel, server }: { panel: TerminalPanel; server: DesktopServer }) {
-  const content = {
-    files: ['/', '/home', '/var/log', '/tmp'],
-    monitor: ['CPU  --', 'MEM  --', 'NET  --', 'DISK --'],
-    docker: ['containers --', 'images --', 'compose --'],
-    ai: ['context: current terminal', `target: ${server.host}`, 'mode: local desktop'],
-    terminal: [],
-  }[panel]
-
-  return (
-    <aside className="aux-panel">
-      <div className="aux-title">{panelTitle(panel)}</div>
-      {content.map((item) => <div key={item} className="aux-row">{item}</div>)}
-    </aside>
-  )
-}
-
-function ServerFormDialog({
-  form,
-  editing,
-  onChange,
-  onClose,
-  onSubmit,
-}: {
-  form: ServerFormState
-  editing: boolean
-  onChange: (form: ServerFormState) => void
-  onClose: () => void
-  onSubmit: (event: FormEvent<HTMLFormElement>) => void
-}) {
-  const patchForm = (patch: Partial<ServerFormState>) => onChange({ ...form, ...patch })
-
-  return (
-    <div className="modal-backdrop" role="presentation">
-      <form className="server-dialog" onSubmit={onSubmit}>
-        <div className="dialog-header">
-          <strong>{editing ? '编辑连接' : '添加连接'}</strong>
-          <button type="button" title="关闭" aria-label="关闭" onClick={onClose}>×</button>
-        </div>
-
-        <div className="form-grid">
-          <label><span>名称</span><input value={form.name} onChange={(event) => patchForm({ name: event.target.value })} /></label>
-          <label><span>主机</span><input required value={form.host} onChange={(event) => patchForm({ host: event.target.value })} /></label>
-          <label><span>端口</span><input required value={form.port} inputMode="numeric" onChange={(event) => patchForm({ port: event.target.value })} /></label>
-          <label><span>用户名</span><input required value={form.username} onChange={(event) => patchForm({ username: event.target.value })} /></label>
-          <label><span>认证方式</span><select value={form.authMethod} onChange={(event) => patchForm({ authMethod: event.target.value as DesktopServerAuthMethod })}>
-            <option value={DesktopServerAuthMethod.DesktopServerAuthPassword}>密码</option>
-            <option value={DesktopServerAuthMethod.DesktopServerAuthKey}>私钥</option>
-          </select></label>
-          <label><span>分组</span><input value={form.group} onChange={(event) => patchForm({ group: event.target.value })} /></label>
-        </div>
-
-        <label><span>密码 / 私钥口令</span><input type="password" value={form.password} onChange={(event) => patchForm({ password: event.target.value })} /></label>
-        <label><span>私钥</span><textarea value={form.privateKey} onChange={(event) => patchForm({ privateKey: event.target.value })} /></label>
-        <label><span>标签</span><input value={form.tags} onChange={(event) => patchForm({ tags: event.target.value })} /></label>
-        <label><span>描述</span><textarea value={form.description} onChange={(event) => patchForm({ description: event.target.value })} /></label>
-
-        <div className="dialog-actions">
-          <button type="button" className="secondary-action" onClick={onClose}>取消</button>
-          <button type="submit" className="primary-action compact">保存</button>
-        </div>
-      </form>
-    </div>
-  )
-}
-
-function replaceRunningLine(lines: TerminalLine[], result: DesktopServerCommandResult): TerminalLine[] {
-  const output = result.output.trim() || `(exit ${result.exitCode}, ${result.durationMs}ms)`
-  const next = [...lines]
-  const runningIndex = findLastRunningLineIndex(next)
-  const replacement: TerminalLine = {
-    id: createId('line'),
-    kind: result.exitCode === 0 ? 'output' : 'error',
-    text: output,
-  }
-  if (runningIndex >= 0) {
-    next.splice(runningIndex, 1, replacement)
-    return next
-  }
-  return [...next, replacement]
-}
-
-function replaceRunningLineWithError(lines: TerminalLine[], message: string): TerminalLine[] {
-  const next = [...lines]
-  const runningIndex = findLastRunningLineIndex(next)
-  const replacement: TerminalLine = { id: createId('line'), kind: 'error', text: message }
-  if (runningIndex >= 0) {
-    next.splice(runningIndex, 1, replacement)
-    return next
-  }
-  return [...next, replacement]
-}
-
-function findLastRunningLineIndex(lines: TerminalLine[]) {
-  for (let index = lines.length - 1; index >= 0; index -= 1) {
-    if (lines[index].kind === 'system' && lines[index].text === 'running...') {
-      return index
-    }
-  }
-
-  return -1
-}
-
-function panelTitle(panel: TerminalPanel) {
-  switch (panel) {
-    case 'files': return '文件'
-    case 'monitor': return '监控'
-    case 'docker': return 'Docker'
-    case 'ai': return 'AI'
-    case 'terminal':
-    default: return '终端'
-  }
-}
-
-function panelIcon(panel: TerminalPanel) {
-  switch (panel) {
-    case 'files': return '▣'
-    case 'monitor': return '⌁'
-    case 'docker': return '▤'
-    case 'ai': return 'AI'
-    case 'terminal':
-    default: return '$_'
-  }
 }
 
 export default App

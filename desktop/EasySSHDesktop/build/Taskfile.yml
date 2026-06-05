@@ -12,6 +12,21 @@ tasks:
     cmds:
       - task: install:frontend:deps:{{.PACKAGE_MANAGER}}
 
+  install:web:deps:
+    summary: Install shared web workspace dependencies
+    dir: ../../web
+    sources:
+      - package.json
+      - pnpm-lock.yaml
+      - pnpm-workspace.yaml
+    generates:
+      - node_modules
+    preconditions:
+      - sh: pnpm --version
+        msg: "pnpm not found. The shared web workspace requires pnpm."
+    cmds:
+      - pnpm install
+
   install:frontend:deps:npm:
     dir: frontend
     sources:
@@ -76,6 +91,7 @@ tasks:
       - dist/**/*
     deps:
       - task: install:frontend:deps
+      - task: install:web:deps
       - task: generate:bindings
         vars:
           BUILD_FLAGS:
@@ -196,6 +212,7 @@ tasks:
     summary: Runs the frontend in development mode
     deps:
       - task: install:frontend:deps
+      - task: install:web:deps
     cmds:
       - task: frontend:dev:{{.PACKAGE_MANAGER}}
 

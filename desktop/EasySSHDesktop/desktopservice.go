@@ -1,10 +1,13 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
+
+	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
 type DesktopCapability string
@@ -30,11 +33,11 @@ func (s *DesktopService) RuntimeInfo() DesktopRuntimeInfo {
 		Capabilities: map[DesktopCapability]bool{
 			"servers":          true,
 			"terminal":         true,
-			"sftp":             true,
-			"transfers":        true,
-			"monitoring":       true,
-			"docker":           true,
-			"ai":               true,
+			"sftp":             false,
+			"transfers":        false,
+			"monitoring":       false,
+			"docker":           false,
+			"ai":               false,
 			"activity_log":     true,
 			"settings":         true,
 			"desktop_data_dir": true,
@@ -42,6 +45,20 @@ func (s *DesktopService) RuntimeInfo() DesktopRuntimeInfo {
 			"portable_mode":    true,
 		},
 	}
+}
+
+func (s *DesktopService) OpenDataDir() error {
+	dataDir := desktopDataDir()
+	if err := os.MkdirAll(dataDir, 0o755); err != nil {
+		return err
+	}
+
+	app := application.Get()
+	if app == nil || app.Env == nil {
+		return fmt.Errorf("application environment is not ready")
+	}
+
+	return app.Env.OpenFileManager(dataDir, false)
 }
 
 func readVersion() string {

@@ -3,13 +3,19 @@
     "baseUrl": ".",
     "paths": {
       "@easyssh/ssh-workspace/desktop": ["../../../web/packages/ssh-workspace/src/desktop.ts"],
-      "@/*": ["../../../web/src/*"]
+      "@/*": ["../../../web/src/*"],
+      "react": ["../../../web/node_modules/@types/react/index.d.ts"],
+      "react/jsx-runtime": ["../../../web/node_modules/@types/react/jsx-runtime.d.ts"],
+      "react/jsx-dev-runtime": ["../../../web/node_modules/@types/react/jsx-dev-runtime.d.ts"],
+      "react-dom": ["../../../web/node_modules/@types/react-dom/index.d.ts"],
+      "react-dom/client": ["../../../web/node_modules/@types/react-dom/client.d.ts"]
     },
-    "target": "ES2020",
+    "target": "ES2022",
     "useDefineForClassFields": true,
-    "lib": ["ES2020", "DOM", "DOM.Iterable"],
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "module": "ESNext",
     "skipLibCheck": true,
+    "typeRoots": ["../../../web/node_modules/@types"],
 
     /* Bundler mode */
     "moduleResolution": "bundler",

@@ -1,6 +1,7 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import wails from "@wailsio/runtime/plugins/vite";
+import { createRequire } from "node:module";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -8,6 +9,10 @@ const frontendRoot = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(frontendRoot, "../../..");
 const workspacePackage = resolve(repoRoot, "web/packages/ssh-workspace/src/desktop.ts");
 const webSourceRoot = `${resolve(repoRoot, "web/src")}/`;
+const webNodeModulesRoot = resolve(repoRoot, "web/node_modules");
+const webRoot = resolve(repoRoot, "web");
+const webRequire = createRequire(resolve(webRoot, "package.json"));
+const tailwindPostcss = webRequire("@tailwindcss/postcss");
 
 // https://vitejs.dev/config/
 export default defineConfig({
@@ -23,6 +28,26 @@ export default defineConfig({
     dedupe: ["react", "react-dom"],
     alias: [
       {
+        find: /^react$/,
+        replacement: resolve(webNodeModulesRoot, "react/index.js"),
+      },
+      {
+        find: /^react\/jsx-runtime$/,
+        replacement: resolve(webNodeModulesRoot, "react/jsx-runtime.js"),
+      },
+      {
+        find: /^react\/jsx-dev-runtime$/,
+        replacement: resolve(webNodeModulesRoot, "react/jsx-dev-runtime.js"),
+      },
+      {
+        find: /^react-dom$/,
+        replacement: resolve(webNodeModulesRoot, "react-dom/index.js"),
+      },
+      {
+        find: /^react-dom\/client$/,
+        replacement: resolve(webNodeModulesRoot, "react-dom/client.js"),
+      },
+      {
         find: /^@easyssh\/ssh-workspace\/desktop$/,
         replacement: workspacePackage,
       },
@@ -30,6 +55,19 @@ export default defineConfig({
         find: /^@\//,
         replacement: webSourceRoot,
       },
+    ],
+  },
+  css: {
+    postcss: {
+      plugins: [
+        tailwindPostcss({ base: webRoot }),
+      ],
+    },
+  },
+  optimizeDeps: {
+    entries: [
+      "src/main.tsx",
+      "../../../web/packages/ssh-workspace/src/desktop.ts",
     ],
   },
   plugins: [react(), wails("./bindings")],
