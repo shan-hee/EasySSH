@@ -15,10 +15,20 @@ type DWMWINDOWATTRIBUTE int32
 
 const DwmwaUseImmersiveDarkModeBefore20h1 DWMWINDOWATTRIBUTE = 19
 const DwmwaUseImmersiveDarkMode DWMWINDOWATTRIBUTE = 20
+const DwmwaWindowCornerPreference DWMWINDOWATTRIBUTE = 33
 const DwmwaBorderColor DWMWINDOWATTRIBUTE = 34
 const DwmwaCaptionColor DWMWINDOWATTRIBUTE = 35
 const DwmwaTextColor DWMWINDOWATTRIBUTE = 36
 const DwmwaSystemBackdropType DWMWINDOWATTRIBUTE = 38
+
+type DWM_WINDOW_CORNER_PREFERENCE int32
+
+const (
+	DwmwcpDefault DWM_WINDOW_CORNER_PREFERENCE = iota
+	DwmwcpDoNotRound
+	DwmwcpRound
+	DwmwcpRoundSmall
+)
 
 const SPI_GETHIGHCONTRAST = 0x0042
 const HCF_HIGHCONTRASTON = 0x00000001
@@ -188,6 +198,10 @@ func SupportsImmersiveDarkMode() bool {
 	return IsWindowsVersionAtLeast(10, 0, 18985)
 }
 
+func SupportsWindowCornerPreference() bool {
+	return IsWindowsVersionAtLeast(10, 0, 22000)
+}
+
 func SetMenuTheme(hwnd uintptr, useDarkMode bool) {
 	if !SupportsThemes() {
 		return
@@ -241,6 +255,14 @@ func SetTheme(hwnd uintptr, useDarkMode bool) {
 
 func EnableTranslucency(hwnd uintptr, backdrop uint32) {
 	dwmSetWindowAttribute(hwnd, DwmwaSystemBackdropType, unsafe.Pointer(&backdrop), unsafe.Sizeof(backdrop))
+}
+
+func SetWindowCornerPreference(hwnd uintptr, preference DWM_WINDOW_CORNER_PREFERENCE) {
+	if !SupportsWindowCornerPreference() {
+		return
+	}
+
+	dwmSetWindowAttribute(hwnd, DwmwaWindowCornerPreference, unsafe.Pointer(&preference), unsafe.Sizeof(preference))
 }
 
 func SetTitleBarColour(hwnd uintptr, titleBarColour uint32) {

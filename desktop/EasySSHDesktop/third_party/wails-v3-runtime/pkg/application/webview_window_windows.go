@@ -13,17 +13,17 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/wailsapp/wails/v3/internal/debounce"
-	"github.com/wailsapp/wails/webview2/webviewloader"
 	"github.com/wailsapp/wails/v3/internal/assetserver"
 	"github.com/wailsapp/wails/v3/internal/assetserver/webview"
 	"github.com/wailsapp/wails/v3/internal/capabilities"
+	"github.com/wailsapp/wails/v3/internal/debounce"
 	"github.com/wailsapp/wails/v3/internal/runtime"
 	"github.com/wailsapp/wails/v3/internal/sliceutil"
+	"github.com/wailsapp/wails/webview2/webviewloader"
 
-	"github.com/wailsapp/wails/webview2/pkg/edge"
 	"github.com/wailsapp/wails/v3/pkg/events"
 	"github.com/wailsapp/wails/v3/pkg/w32"
+	"github.com/wailsapp/wails/webview2/pkg/edge"
 )
 
 var edgeMap = map[string]uintptr{
@@ -495,6 +495,10 @@ func (w *windowsWebviewWindow) run() {
 			int(rcClient.Right-rcClient.Left),
 			int(rcClient.Bottom-rcClient.Top),
 			w32.SWP_FRAMECHANGED)
+
+		if w.framelessWithDecorations() {
+			w32.SetWindowCornerPreference(uintptr(w.hwnd), w32.DwmwcpRound)
+		}
 	}
 
 	// Icon
@@ -1524,6 +1528,7 @@ func (w *windowsWebviewWindow) WndProc(msg uint32, wparam, lparam uintptr) uintp
 			if err != nil {
 				globalApplication.handleFatalError(err)
 			}
+			w32.SetWindowCornerPreference(uintptr(w.hwnd), w32.DwmwcpRound)
 		}
 	case w32.WM_CLOSE:
 
@@ -1795,6 +1800,7 @@ func (w *windowsWebviewWindow) WndProc(msg uint32, wparam, lparam uintptr) uintp
 				if err != nil {
 					globalApplication.handleFatalError(err)
 				}
+				w32.SetWindowCornerPreference(uintptr(w.hwnd), w32.DwmwcpRound)
 			}
 
 		case w32.WM_NCCALCSIZE:
