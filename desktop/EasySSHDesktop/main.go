@@ -20,12 +20,14 @@ var assets embed.FS
 // Dashboard navigation and server administration stay outside this window shell.
 func main() {
 	activityLogService := NewActivityLogService()
+	serverService := NewDesktopServerService()
 
 	app := application.New(application.Options{
 		Name:        "EasySSH",
 		Description: "EasySSH Desktop",
 		Services: []application.Service{
 			application.NewService(&DesktopService{}),
+			application.NewService(serverService),
 			application.NewService(activityLogService),
 		},
 		Assets: application.AssetOptions{

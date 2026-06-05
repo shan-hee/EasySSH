@@ -237,8 +237,267 @@ export class DesktopRuntimeInfo {
     }
 }
 
+export class DesktopServer {
+    "id": string;
+    "user_id": string;
+    "name"?: string;
+    "host": string;
+    "port": number;
+    "username": string;
+    "auth_method": DesktopServerAuthMethod;
+    "password"?: string;
+    "private_key"?: string;
+    "group"?: string;
+    "tags"?: string[];
+    "status": DesktopServerStatus;
+    "last_connected"?: string;
+    "description"?: string;
+    "created_at": string;
+    "updated_at": string;
+
+    /** Creates a new DesktopServer instance. */
+    constructor($$source: Partial<DesktopServer> = {}) {
+        if (!("id" in $$source)) {
+            this["id"] = "";
+        }
+        if (!("user_id" in $$source)) {
+            this["user_id"] = "";
+        }
+        if (!("host" in $$source)) {
+            this["host"] = "";
+        }
+        if (!("port" in $$source)) {
+            this["port"] = 0;
+        }
+        if (!("username" in $$source)) {
+            this["username"] = "";
+        }
+        if (!("auth_method" in $$source)) {
+            this["auth_method"] = DesktopServerAuthMethod.$zero;
+        }
+        if (!("status" in $$source)) {
+            this["status"] = DesktopServerStatus.$zero;
+        }
+        if (!("created_at" in $$source)) {
+            this["created_at"] = "";
+        }
+        if (!("updated_at" in $$source)) {
+            this["updated_at"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new DesktopServer instance from a string or object.
+     */
+    static createFrom($$source: any = {}): DesktopServer {
+        const $$createField10_0 = $$createType4;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("tags" in $$parsedSource) {
+            $$parsedSource["tags"] = $$createField10_0($$parsedSource["tags"]);
+        }
+        return new DesktopServer($$parsedSource as Partial<DesktopServer>);
+    }
+}
+
+export enum DesktopServerAuthMethod {
+    /**
+     * The Go zero value for the underlying type of the enum.
+     */
+    $zero = "",
+
+    DesktopServerAuthPassword = "password",
+    DesktopServerAuthKey = "key",
+};
+
+export class DesktopServerCommandInput {
+    "serverId": string;
+    "command": string;
+    "timeoutMs"?: number;
+
+    /** Creates a new DesktopServerCommandInput instance. */
+    constructor($$source: Partial<DesktopServerCommandInput> = {}) {
+        if (!("serverId" in $$source)) {
+            this["serverId"] = "";
+        }
+        if (!("command" in $$source)) {
+            this["command"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new DesktopServerCommandInput instance from a string or object.
+     */
+    static createFrom($$source: any = {}): DesktopServerCommandInput {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new DesktopServerCommandInput($$parsedSource as Partial<DesktopServerCommandInput>);
+    }
+}
+
+export class DesktopServerCommandResult {
+    "serverId": string;
+    "command": string;
+    "output": string;
+    "exitCode": number;
+    "durationMs": number;
+    "startedAt": string;
+    "completedAt": string;
+
+    /** Creates a new DesktopServerCommandResult instance. */
+    constructor($$source: Partial<DesktopServerCommandResult> = {}) {
+        if (!("serverId" in $$source)) {
+            this["serverId"] = "";
+        }
+        if (!("command" in $$source)) {
+            this["command"] = "";
+        }
+        if (!("output" in $$source)) {
+            this["output"] = "";
+        }
+        if (!("exitCode" in $$source)) {
+            this["exitCode"] = 0;
+        }
+        if (!("durationMs" in $$source)) {
+            this["durationMs"] = 0;
+        }
+        if (!("startedAt" in $$source)) {
+            this["startedAt"] = "";
+        }
+        if (!("completedAt" in $$source)) {
+            this["completedAt"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new DesktopServerCommandResult instance from a string or object.
+     */
+    static createFrom($$source: any = {}): DesktopServerCommandResult {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new DesktopServerCommandResult($$parsedSource as Partial<DesktopServerCommandResult>);
+    }
+}
+
+export class DesktopServerInput {
+    "name"?: string;
+    "host": string;
+    "port": number;
+    "username": string;
+    "auth_method": DesktopServerAuthMethod;
+    "password"?: string;
+    "private_key"?: string;
+    "group"?: string;
+    "tags"?: string[];
+    "description"?: string;
+
+    /** Creates a new DesktopServerInput instance. */
+    constructor($$source: Partial<DesktopServerInput> = {}) {
+        if (!("host" in $$source)) {
+            this["host"] = "";
+        }
+        if (!("port" in $$source)) {
+            this["port"] = 0;
+        }
+        if (!("username" in $$source)) {
+            this["username"] = "";
+        }
+        if (!("auth_method" in $$source)) {
+            this["auth_method"] = DesktopServerAuthMethod.$zero;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new DesktopServerInput instance from a string or object.
+     */
+    static createFrom($$source: any = {}): DesktopServerInput {
+        const $$createField8_0 = $$createType4;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("tags" in $$parsedSource) {
+            $$parsedSource["tags"] = $$createField8_0($$parsedSource["tags"]);
+        }
+        return new DesktopServerInput($$parsedSource as Partial<DesktopServerInput>);
+    }
+}
+
+export class DesktopServerListParams {
+    "page"?: number;
+    "limit"?: number;
+    "search"?: string;
+    "group"?: string;
+
+    /** Creates a new DesktopServerListParams instance. */
+    constructor($$source: Partial<DesktopServerListParams> = {}) {
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new DesktopServerListParams instance from a string or object.
+     */
+    static createFrom($$source: any = {}): DesktopServerListParams {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new DesktopServerListParams($$parsedSource as Partial<DesktopServerListParams>);
+    }
+}
+
+export class DesktopServerListResult {
+    "data": DesktopServer[];
+    "total": number;
+    "page": number;
+    "limit": number;
+
+    /** Creates a new DesktopServerListResult instance. */
+    constructor($$source: Partial<DesktopServerListResult> = {}) {
+        if (!("data" in $$source)) {
+            this["data"] = [];
+        }
+        if (!("total" in $$source)) {
+            this["total"] = 0;
+        }
+        if (!("page" in $$source)) {
+            this["page"] = 0;
+        }
+        if (!("limit" in $$source)) {
+            this["limit"] = 0;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new DesktopServerListResult instance from a string or object.
+     */
+    static createFrom($$source: any = {}): DesktopServerListResult {
+        const $$createField0_0 = $$createType6;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("data" in $$parsedSource) {
+            $$parsedSource["data"] = $$createField0_0($$parsedSource["data"]);
+        }
+        return new DesktopServerListResult($$parsedSource as Partial<DesktopServerListResult>);
+    }
+}
+
+export enum DesktopServerStatus {
+    /**
+     * The Go zero value for the underlying type of the enum.
+     */
+    $zero = "",
+
+    DesktopServerOnline = "online",
+    DesktopServerOffline = "offline",
+};
+
 // Private type creation functions
 const $$createType0 = DesktopActivityLogItem.createFrom;
 const $$createType1 = $Create.Array($$createType0);
 const $$createType2 = $Create.Map($Create.Any, $Create.Any);
 const $$createType3 = $Create.Map($Create.Any, $Create.Any);
+const $$createType4 = $Create.Array($Create.Any);
+const $$createType5 = DesktopServer.createFrom;
+const $$createType6 = $Create.Array($$createType5);
