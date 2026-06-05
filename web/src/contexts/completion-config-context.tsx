@@ -1,5 +1,5 @@
 
-import React, { createContext, useContext, useMemo, ReactNode } from "react"
+import { createContext, useContext, useMemo, type ReactNode } from "react"
 import type { CompletionConfig, SourceQuotaConfig } from "@/lib/completion/types"
 import { DEFAULT_COMPLETION_CONFIG, DEFAULT_SOURCE_QUOTAS } from "@/lib/completion/types"
 import { useSystemConfig } from "./system-config-context"

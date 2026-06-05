@@ -10,7 +10,7 @@ import { cn } from "@/lib/utils"
 import { useTerminalStore } from "@/stores/terminal-store"
 import { PageHeader } from "@/components/page-header"
 import { ActivityLogPane } from "@/components/ssh-workspace/activity-log-pane"
-import { ServerConnectionConfigs } from "@/components/servers/server-connection-configs"
+import { ServerConnectionConfigs, type ServerConnectionConfigsApi } from "@/components/servers/server-connection-configs"
 import { SessionSplitDropOverlay } from "@/components/tabs/session-split-drop-overlay"
 import {
   SessionSplitPane,
@@ -158,6 +158,12 @@ interface TerminalComponentProps {
   onActiveSessionChange?: (sessionId: string) => void
   onConnectionPhaseChange?: (sessionId: string, phase: TerminalConnectionPhase) => void
   onBehaviorSettingsChange?: (settings: { maxTabs: number; inactiveMinutes: number }) => void
+  serverApi?: ServerConnectionConfigsApi
+  serverConfigsReady?: boolean
+  hidePageHeader?: boolean
+  unframed?: boolean
+  settingsDialogOpen?: boolean
+  onSettingsDialogOpenChange?: (open: boolean) => void
 }
 
 export function TerminalComponent({
@@ -177,6 +183,12 @@ export function TerminalComponent({
   onActiveSessionChange,
   onConnectionPhaseChange,
   onBehaviorSettingsChange,
+  serverApi,
+  serverConfigsReady,
+  hidePageHeader = false,
+  unframed = false,
+  settingsDialogOpen,
+  onSettingsDialogOpenChange,
 }: TerminalComponentProps) {
   const { t: tTerminal } = useTranslation("terminal")
   const { mode: effectiveAppTheme } = useEffectiveThemeMode()
@@ -186,7 +198,14 @@ export function TerminalComponent({
   )
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [loaderStates, dispatchLoaderStates] = useReducer(reduceLoaderStates, {})
-  const [isSettingsOpen, setIsSettingsOpen] = useState(false)
+  const [internalSettingsOpen, setInternalSettingsOpen] = useState(false)
+  const isSettingsOpen = settingsDialogOpen ?? internalSettingsOpen
+  const setIsSettingsOpen = useCallback((open: boolean) => {
+    if (settingsDialogOpen === undefined) {
+      setInternalSettingsOpen(open)
+    }
+    onSettingsDialogOpenChange?.(open)
+  }, [onSettingsDialogOpenChange, settingsDialogOpen])
   const [internalBackVersion, setInternalBackVersion] = useState(0)
   const [activeSessionHistoryVersion, setActiveSessionHistoryVersion] = useState(0)
   const activeSessionRef = useRef(activeSession)
@@ -829,6 +848,8 @@ export function TerminalComponent({
         onAuthCancelled={() => onAuthCancelled?.(session.id)}
         onToggleFullscreen={handleToggleFullscreen}
         onStartConnectionFromConfig={(server) => onStartConnectionFromConfig(session.id, server)}
+        serverApi={serverApi}
+        serverConfigsReady={serverConfigsReady}
         onInternalBackHandlerChange={handleInternalBackHandlerChange}
         onInternalBackAvailabilityChange={handleInternalBackAvailabilityChange}
       />
@@ -843,6 +864,8 @@ export function TerminalComponent({
     onAuthCancelled,
     onConnectionPhaseChange,
     onStartConnectionFromConfig,
+    serverApi,
+    serverConfigsReady,
     settings,
   ])
 
@@ -890,16 +913,21 @@ export function TerminalComponent({
 
   return (
     <div className={cn("flex min-h-0 flex-1 flex-col", isFullscreen && "fixed inset-0 z-50 bg-background")}>
-      {!isFullscreen && (
+      {!hidePageHeader && !isFullscreen && (
         <PageHeader title={active?.serverName || tTerminal("connectionConfigTitle")}>
           <ActivityLogPane />
         </PageHeader>
       )}
 
-      <div className="flex min-h-0 flex-1 flex-col p-3 pt-0 sm:p-4 sm:pt-0">
+      <div className={cn(
+        "flex min-h-0 flex-1 flex-col",
+        unframed ? "p-0" : "p-3 pt-0 sm:p-4 sm:pt-0"
+      )}>
         <div className={cn(
-          "flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border shadow-2xl transition-colors",
-          "border-border/60 bg-background/70 text-foreground backdrop-blur-md"
+          "flex min-h-0 flex-1 flex-col overflow-hidden transition-colors",
+          unframed
+            ? "bg-background text-foreground"
+            : "rounded-xl border border-border/60 bg-background/70 text-foreground shadow-2xl backdrop-blur-md"
         )}>
           {/* 页签栏（仅保留标签，不显示面包屑） */}
           <SessionTabBar
@@ -943,6 +971,8 @@ export function TerminalComponent({
               <div className="relative min-h-0 flex-1 overflow-hidden">
                 <ServerConnectionConfigs
                   onConnect={handleStartConnectionFromActiveConfig}
+                  serverApi={serverApi}
+                  ready={serverConfigsReady}
                 />
               </div>
             ) : isMultiSessionGrid && splitLayout ? (

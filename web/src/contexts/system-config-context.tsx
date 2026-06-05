@@ -1,5 +1,5 @@
 
-import React, { createContext, useContext, useState, useEffect, ReactNode } from "react"
+import { createContext, useContext, useState, useEffect, type ReactNode } from "react"
 import { useLocation } from "react-router-dom"
 import type { SystemConfig } from "@/lib/api/settings"
 import { authApi, type AuthStatusResponse } from "@/lib/api/auth"
@@ -26,7 +26,7 @@ interface SystemConfigProviderProps {
 }
 
 // 默认系统配置（用于未能从后端获取配置时的兜底）
-const DEFAULT_SYSTEM_CONFIG: SystemConfig = {
+export const DEFAULT_SYSTEM_CONFIG: SystemConfig = {
   system_name: "EasySSH",
   system_logo: "/logo.svg",
   system_favicon: "/favicon.ico",
@@ -159,6 +159,40 @@ export function SystemConfigProvider({ children }: SystemConfigProviderProps) {
   )
 }
 
+interface StaticSystemConfigProviderProps {
+  children: ReactNode
+  config?: SystemConfig
+  authStatus?: AuthStatusResponse | null
+}
+
+export function StaticSystemConfigProvider({
+  children,
+  config = DEFAULT_SYSTEM_CONFIG,
+  authStatus,
+}: StaticSystemConfigProviderProps) {
+  const resolvedAuthStatus: AuthStatusResponse = authStatus ?? {
+    need_init: false,
+    is_authenticated: true,
+    system_config: config,
+    access_token_ttl_seconds: 0,
+  }
+
+  return (
+    <SystemConfigContext.Provider
+      value={{
+        config,
+        isLoading: false,
+        error: null,
+        refreshConfig: async () => undefined,
+        markLoggedOut: () => undefined,
+        authStatus: resolvedAuthStatus,
+      }}
+    >
+      {children}
+    </SystemConfigContext.Provider>
+  )
+}
+
 /**
  * 使用系统配置的 Hook
  * @returns 系统配置上下文
@@ -170,4 +204,8 @@ export function useSystemConfig() {
     throw new Error("useSystemConfig must be used within a SystemConfigProvider")
   }
   return context
+}
+
+export function useOptionalSystemConfig() {
+  return useContext(SystemConfigContext) ?? null
 }

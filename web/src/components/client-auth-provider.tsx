@@ -135,6 +135,10 @@ export function useClientAuth() {
   return context
 }
 
+export function useOptionalClientAuth() {
+  return useContext(ClientAuthContext) ?? null
+}
+
 function getUserSyncKey(user: User | null) {
   return user ? `${user.id}:${user.updated_at}` : null
 }

@@ -11,7 +11,7 @@ import { FolderOpen, Activity, Bot } from 'lucide-react'
 import { NetworkLatencyPopover } from './network-latency-popover'
 import { MonitorPanel } from './monitor/MonitorPanel'
 import { WebTerminal } from './web-terminal'
-import { ServerConnectionConfigs } from "@/components/servers/server-connection-configs"
+import { ServerConnectionConfigs, type ServerConnectionConfigsApi } from "@/components/servers/server-connection-configs"
 import { ConnectionLoader } from './connection-loader'
 import {
   FileManagerPanel,
@@ -19,6 +19,7 @@ import {
 } from './file-manager-panel'
 import { AiAssistantPanel } from './ai-assistant-panel'
 import { DockerPopover } from './docker'
+import { DockerIcon } from './docker/components/DockerIcon'
 import { useSftpSession } from '@/hooks/useSftpSession'
 import { cn } from '@/lib/utils'
 import { useTabUIStore } from '@/stores/tab-ui-store'
@@ -88,6 +89,8 @@ interface TabTerminalContentProps {
   onAuthCancelled: () => void
   onToggleFullscreen: () => void
   onStartConnectionFromConfig: (server: Server) => void
+  serverApi?: ServerConnectionConfigsApi
+  serverConfigsReady?: boolean
   onInternalBackHandlerChange?: (
     sessionId: string,
     handler: InternalBackHandler | null
@@ -110,6 +113,8 @@ export function TabTerminalContent({
   onAuthCancelled,
   onToggleFullscreen,
   onStartConnectionFromConfig,
+  serverApi,
+  serverConfigsReady,
   onInternalBackHandlerChange,
   onInternalBackAvailabilityChange,
 }: TabTerminalContentProps) {
@@ -146,11 +151,13 @@ export function TabTerminalContent({
   const tabState = useTabUIStore((state) => state.getTabState(session.id))
   const setTabState = useTabUIStore((state) => state.setTabState)
   const workspace = useOptionalSshWorkspace()
+  const isDesktopWorkspace = workspace?.layout === "desktop"
   const workspaceCapabilities = workspace?.capabilities
   const canUseSftpCapability = workspaceCapabilities?.sftp !== false
   const canUseMonitorCapability = workspaceCapabilities?.monitor !== false
   const canUseAiCapability = workspaceCapabilities?.ai !== false
   const canUseDockerCapability = workspaceCapabilities?.docker !== false
+  const canShowLatency = canUseMonitorCapability || isDesktopWorkspace
 
   const isDesktopMonitorOpen = tabState.isMonitorOpen
   const isMobileMonitorOpen = tabState.isMobileMonitorOpen ?? false
@@ -260,7 +267,11 @@ export function TabTerminalContent({
     session.username && session.host
       ? `${session.username}@${session.host}`
       : session.serverName || session.host || session.serverId
-  const shouldRenderToolbar = chrome !== "content" && session.type !== 'config' && !effectiveIsLoading
+  const shouldRenderToolbar =
+    chrome !== "content" &&
+    session.type !== 'config' &&
+    !effectiveIsLoading
+  const desktopUnavailableToolbarTitle = "桌面端暂未支持"
   const shouldRenderBody = chrome !== "toolbar"
   const shouldRenderSurface = surface !== "transparent"
 
@@ -416,34 +427,36 @@ export function TabTerminalContent({
             >
               {/* 左侧工具图标组 */}
               <div className="flex items-center gap-1">
-                {canUseSftpCapability && (
+                {(canUseSftpCapability || isDesktopWorkspace) && (
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="h-7 w-7 rounded-md transition-colors text-foreground hover:bg-accent/80 hover:text-accent-foreground"
+                    className="h-7 w-7 rounded-md transition-colors text-foreground hover:bg-accent/80 hover:text-accent-foreground disabled:opacity-50 disabled:hover:bg-transparent disabled:hover:text-foreground"
                     aria-label={tTerminal("ariaFileManager")}
-                    title={tTerminal("titleFileManagerWithShortcut")}
-                    onClick={() => setTabState(session.id, { isFileManagerOpen: !isFileManagerOpen })}
+                    title={canUseSftpCapability ? tTerminal("titleFileManagerWithShortcut") : desktopUnavailableToolbarTitle}
+                    disabled={!canUseSftpCapability}
+                    onClick={canUseSftpCapability ? () => setTabState(session.id, { isFileManagerOpen: !isFileManagerOpen }) : undefined}
                   >
                     <FolderOpen className="h-3.5 w-3.5" />
                   </Button>
                 )}
 
-                {canUseMonitorCapability && <NetworkLatencyPopover sessionId={session.id} />}
+                {canShowLatency && <NetworkLatencyPopover sessionId={session.id} />}
 
-                {canUseMonitorCapability && (
+                {(canUseMonitorCapability || isDesktopWorkspace) && (
                   <Button
                     variant="ghost"
                     size="icon"
                     className={cn(
-                      "h-7 w-7 rounded-md transition-colors hover:bg-accent/80 hover:text-accent-foreground",
+                      "h-7 w-7 rounded-md transition-colors hover:bg-accent/80 hover:text-accent-foreground disabled:opacity-50 disabled:hover:bg-transparent disabled:hover:text-foreground",
                       isMonitorButtonActive
                         ? "bg-accent text-accent-foreground"
                         : "text-foreground"
                     )}
                     aria-label={tTerminal("ariaMonitor")}
-                    title={tTerminal("titleMonitor")}
-                    onClick={toggleMonitor}
+                    title={canUseMonitorCapability ? tTerminal("titleMonitor") : desktopUnavailableToolbarTitle}
+                    disabled={!canUseMonitorCapability}
+                    onClick={canUseMonitorCapability ? toggleMonitor : undefined}
                   >
                     <Activity className="h-3.5 w-3.5" />
                   </Button>
@@ -457,14 +470,36 @@ export function TabTerminalContent({
                   />
                 )}
 
-                {canUseAiCapability && (
+                {!canUseDockerCapability && isDesktopWorkspace && isActive && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 rounded-md transition-colors flex items-center gap-2 px-2.5 text-foreground disabled:opacity-50 disabled:hover:bg-transparent disabled:hover:text-foreground"
+                    aria-label={tTerminal('ariaDocker')}
+                    title={desktopUnavailableToolbarTitle}
+                    disabled
+                  >
+                    <DockerIcon className="shrink-0" />
+                    <div className="flex flex-col items-start leading-none text-left min-w-[3rem]">
+                      <span className="text-[9px] uppercase font-semibold text-muted-foreground">
+                        DOCKER
+                      </span>
+                      <span className="text-xs tabular-nums font-medium text-muted-foreground">
+                        --/--
+                      </span>
+                    </div>
+                  </Button>
+                )}
+
+                {(canUseAiCapability || isDesktopWorkspace) && (
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="h-7 w-7 rounded-md transition-colors text-foreground hover:bg-accent/80 hover:text-accent-foreground"
+                    className="h-7 w-7 rounded-md transition-colors text-foreground hover:bg-accent/80 hover:text-accent-foreground disabled:opacity-50 disabled:hover:bg-transparent disabled:hover:text-foreground"
                     aria-label={tTerminal("ariaAiAssistant")}
-                    title={tTerminal("titleAiAssistantWithShortcut")}
-                    onClick={() => setTabState(session.id, { isAiInputOpen: !isAiInputOpen })}
+                    title={canUseAiCapability ? tTerminal("titleAiAssistantWithShortcut") : desktopUnavailableToolbarTitle}
+                    disabled={!canUseAiCapability}
+                    onClick={canUseAiCapability ? () => setTabState(session.id, { isAiInputOpen: !isAiInputOpen }) : undefined}
                   >
                     <Bot className="h-3.5 w-3.5" />
                   </Button>
@@ -501,6 +536,8 @@ export function TabTerminalContent({
               {session.type === 'config' ? (
                 <ServerConnectionConfigs
                   onConnect={onStartConnectionFromConfig}
+                  serverApi={serverApi}
+                  ready={serverConfigsReady}
                 />
               ) : (
                 <WebTerminal

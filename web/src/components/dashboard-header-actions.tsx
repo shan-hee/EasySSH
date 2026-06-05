@@ -20,7 +20,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { ThemeMenu } from "@/components/theme-menu"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
-import { useClientAuth } from "@/components/client-auth-provider"
+import { useOptionalClientAuth } from "@/components/client-auth-provider"
 import { useSystemConfig } from "@/contexts/system-config-context"
 import { authApi } from "@/lib/api/auth"
 import { getEffectiveLocale, saveLocaleToStorage } from "@/utils/datetime"
@@ -34,7 +34,10 @@ const localeOptions: Array<{ value: SupportedLocale; labelKey: "languageZhCN" | 
 
 export function DashboardHeaderActions() {
   const { t } = useTranslation("headerActions")
-  const { user, refreshUser } = useClientAuth()
+  const clientAuth = useOptionalClientAuth()
+  const user = clientAuth?.user ?? null
+  const isAuthenticated = clientAuth?.isAuthenticated ?? false
+  const refreshUser = clientAuth?.refreshUser
   const { config } = useSystemConfig()
   const [languageSaving, setLanguageSaving] = React.useState<SupportedLocale | null>(null)
 
@@ -51,8 +54,10 @@ export function DashboardHeaderActions() {
       saveLocaleToStorage(nextLocale)
 
       try {
-        await authApi.updateProfile({ language: nextLocale })
-        await refreshUser()
+        if (isAuthenticated) {
+          await authApi.updateProfile({ language: nextLocale })
+          await refreshUser?.()
+        }
         toast.success(t("languageSaved"))
       } catch (error: unknown) {
         saveLocaleToStorage(previousLocale)
@@ -61,7 +66,7 @@ export function DashboardHeaderActions() {
         setLanguageSaving(null)
       }
     },
-    [languageSaving, locale, refreshUser, t],
+    [isAuthenticated, languageSaving, locale, refreshUser, t],
   )
 
   return (

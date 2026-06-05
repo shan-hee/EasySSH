@@ -53,6 +53,16 @@ const SERVER_GRID_CLASSNAME = "grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-col
 interface ServerConnectionConfigsProps {
  onConnect?: (server: Server) => void
  defaultViewMode?: ViewMode
+ serverApi?: ServerConnectionConfigsApi
+ ready?: boolean
+}
+
+export interface ServerConnectionConfigsApi {
+ list: typeof serversApi.list
+ create: typeof serversApi.create
+ update: typeof serversApi.update
+ delete: typeof serversApi.delete
+ reorder: typeof serversApi.reorder
 }
 
 function getServerItemClassName(viewMode: ViewMode, sortable = true) {
@@ -146,15 +156,8 @@ function ServerItemBody({
     <>
       <ServerIcon className="h-5 w-5 flex-shrink-0 text-muted-foreground transition-colors group-hover:text-primary" />
 
-      <div
-        className={cn(
-          "min-w-0",
-          viewMode === "grid"
-            ? "w-full flex-1 space-y-2"
-            : "flex min-w-0 flex-1 flex-col gap-1 sm:flex-row sm:items-center sm:gap-4"
-        )}
-      >
-        <div className={cn("min-w-0", viewMode === "list" && "sm:w-52 sm:flex-none md:w-56")}>
+      <div className="flex min-w-0 flex-1 flex-col gap-1 sm:flex-row sm:items-center sm:gap-4">
+        <div className="min-w-0 sm:w-52 sm:flex-none md:w-56">
           <div className="flex min-w-0 items-center gap-2">
             <div className="truncate text-sm font-medium text-foreground transition-colors group-hover:text-primary">
               {server.name || server.host}
@@ -167,12 +170,7 @@ function ServerItemBody({
 
         {server.description && (
           <div
-            className={cn(
-              "text-xs text-muted-foreground/80",
-              viewMode === "grid"
-                ? "line-clamp-2"
-                : "line-clamp-2 sm:line-clamp-1 sm:flex-1 sm:text-left"
-            )}
+            className="line-clamp-2 text-xs text-muted-foreground/80 sm:line-clamp-1 sm:flex-1 sm:text-left"
           >
             {server.description}
           </div>
@@ -180,14 +178,7 @@ function ServerItemBody({
       </div>
 
       {server.tags && server.tags.length > 0 && (
-        <div
-          className={cn(
-            "flex max-w-full flex-wrap gap-1 overflow-hidden",
-            viewMode === "grid"
-              ? "w-full"
-              : "col-start-2 sm:col-start-auto sm:max-w-[12rem] sm:flex-shrink-0 md:max-w-[16rem]"
-          )}
-        >
+        <div className="col-start-2 flex max-w-full flex-wrap gap-1 overflow-hidden sm:col-start-auto sm:max-w-[12rem] sm:flex-shrink-0 md:max-w-[16rem]">
           {server.tags.map((tag) => (
             <Badge key={tag} variant="outline" className="max-w-[8rem] truncate text-xs">
               {tag}
@@ -198,12 +189,7 @@ function ServerItemBody({
 
       {showActions && onEdit && onDelete && (
         <div
-          className={cn(
-            "flex items-center gap-1",
-            viewMode === "grid"
-              ? "mt-auto w-full justify-end border-t border-border/70 pt-2"
-              : "col-start-2 justify-end sm:col-start-auto sm:flex-shrink-0"
-          )}
+          className="col-start-2 flex items-center justify-end gap-1 sm:col-start-auto sm:flex-shrink-0"
           onPointerDown={(e) => e.stopPropagation()}
           onClick={(e) => e.stopPropagation()}
           onDoubleClick={(e) => e.stopPropagation()}
@@ -335,8 +321,11 @@ function SortableServerItem({
 export function ServerConnectionConfigs({
  onConnect,
  defaultViewMode = "list",
+ serverApi = serversApi,
+ ready: externalReady,
 }: ServerConnectionConfigsProps) {
- const { ready } = useAuthReady()
+ const authReady = useAuthReady()
+ const ready = externalReady ?? authReady.ready
  const { t } = useTranslation("servers")
  const [servers, setServers] = useState<Server[]>([])
  const [filteredServers, setFilteredServers] = useState<Server[]>([])
@@ -430,7 +419,7 @@ export function ServerConnectionConfigs({
  setLoading(true)
  // 认证基于 HttpOnly Cookie，无需本地令牌
 
- const response = await serversApi.list({
+ const response = await serverApi.list({
  page: 1,
  limit: 100
  })
@@ -447,7 +436,7 @@ export function ServerConnectionConfigs({
  } finally {
  setLoading(false)
  }
- }, [t])
+ }, [serverApi, t])
 
  // 加载服务器列表
  useEffect(() => {
@@ -475,7 +464,7 @@ export function ServerConnectionConfigs({
  try {
  // 认证基于 HttpOnly Cookie
 
- await serversApi.delete(serverId)
+ await serverApi.delete(serverId)
  toast.success(t("toastDeleteSuccess"))
 
  // 乐观更新：直接从本地列表移除，避免整个页面刷新
@@ -520,7 +509,7 @@ export function ServerConnectionConfigs({
  // 认证基于 HttpOnly Cookie
 
  const serverIds = newOrder.map(s => s.id)
- await serversApi.reorder(serverIds)
+ await serverApi.reorder(serverIds)
  toast.success(t("toastSortSaved"))
  } catch (error: unknown) {
  console.error("Failed to save server order:", error)
@@ -564,7 +553,7 @@ export function ServerConnectionConfigs({
  description: data.description,
  }
 
- const newServer = await serversApi.create(serverData)
+ const newServer = await serverApi.create(serverData)
 
  toast.success(t("toastCreateSuccess"))
  setIsAddDialogOpen(false)
@@ -618,7 +607,7 @@ export function ServerConnectionConfigs({
  updateData.private_key = data.privateKey
  }
 
- const updatedServer = await serversApi.update(editingServer.id, updateData)
+ const updatedServer = await serverApi.update(editingServer.id, updateData)
 
  toast.success(t("toastUpdateSuccess"))
  setIsEditDialogOpen(false)

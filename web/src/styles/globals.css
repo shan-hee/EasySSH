@@ -2,6 +2,10 @@
 @import "tw-animate-css";
 @import "../styles/prism-theme.css";
 
+@source "../";
+@source "../../packages/ssh-workspace/src";
+@source "../../../desktop/EasySSHDesktop/frontend/src";
+
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {

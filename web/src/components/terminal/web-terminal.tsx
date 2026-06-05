@@ -196,6 +196,7 @@ export function WebTerminal({
     onConnectionPhaseChange,
     createAuthTicket: terminalAuthTicketProvider,
     createWebSocketUrl: workspace?.adapters.apiClient?.terminal?.createWebSocketUrl,
+    WebSocketCtor: workspace?.adapters.apiClient?.terminal?.WebSocketCtor,
   })
 
   useTerminalRendererSettings({

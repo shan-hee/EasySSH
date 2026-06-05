@@ -2,6 +2,7 @@ import type { BatchDeleteResponse, DirectoryListResponse, FileInfo } from "@/lib
 import type { SftpFileItem } from "@/lib/sftp-file-utils"
 import type { OptionalServerConnectionInfo, ServerConnectionInfo } from "./types"
 import type { TerminalConnectionPhase, TerminalWebSocketUrlResolver } from "@/lib/websocket-terminal"
+import type { TerminalWebSocketConstructor } from "@/lib/websocket-terminal"
 import type { SftpBatchDownloadMode } from "./sftp-session-api"
 
 export type SshWorkspaceLayout = "web" | "desktop" | "embedded"
@@ -135,6 +136,7 @@ export interface SshWorkspaceApiClient {
   }
   terminal?: {
     createWebSocketUrl?: TerminalWebSocketUrlResolver
+    WebSocketCtor?: TerminalWebSocketConstructor
     saveVerifiedCredential?: (request: WorkspaceTerminalCredentialSaveRequest) => Promise<unknown>
   }
 }

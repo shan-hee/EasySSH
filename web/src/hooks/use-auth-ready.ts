@@ -1,6 +1,6 @@
 
-import { useSystemConfig } from "@/contexts/system-config-context"
-import { useClientAuth } from "@/components/client-auth-provider"
+import { useOptionalSystemConfig } from "@/contexts/system-config-context"
+import { useOptionalClientAuth } from "@/components/client-auth-provider"
 
 /**
  * 统一的认证就绪 Hook
@@ -12,8 +12,11 @@ import { useClientAuth } from "@/components/client-auth-provider"
  *   - 可以安全发起业务请求
  */
 export function useAuthReady() {
-  const { authStatus, isLoading } = useSystemConfig()
-  const { isAuthenticated } = useClientAuth()
+  const systemConfig = useOptionalSystemConfig()
+  const clientAuth = useOptionalClientAuth()
+  const authStatus = systemConfig?.authStatus ?? null
+  const isLoading = systemConfig?.isLoading ?? false
+  const isAuthenticated = clientAuth?.isAuthenticated ?? false
 
   const ready =
     !isLoading &&
