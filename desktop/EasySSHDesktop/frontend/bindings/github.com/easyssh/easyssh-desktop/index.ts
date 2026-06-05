@@ -25,6 +25,7 @@ export type {
   DesktopActivityLogRecordInput,
   DesktopActivityLogStatistics,
   DesktopCapability,
+  DesktopPreferenceSnapshot,
   DesktopRuntimeInfo,
   DesktopServer,
   DesktopServerCommandInput,

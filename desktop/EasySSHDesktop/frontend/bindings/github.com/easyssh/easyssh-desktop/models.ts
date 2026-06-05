@@ -64,6 +64,8 @@ export interface DesktopActivityLogStatistics {
   byAction: Record<string, number | undefined>
 }
 
+export type DesktopPreferenceSnapshot = Record<string, string | undefined>
+
 export interface DesktopRuntimeInfo {
   profile: string
   version: string

@@ -29,7 +29,6 @@ import {
   X,
   toast,
 } from "@easyssh/ssh-workspace/desktop"
-import { DashboardHeaderActions } from "@/components/dashboard-header-actions"
 import {
   ActivityLogService,
   DesktopActivityLogStatus,
@@ -37,6 +36,7 @@ import {
   type DesktopActivityLogItem,
 } from "../../bindings/github.com/easyssh/easyssh-desktop"
 import type { DesktopRuntimeBindingInfo } from "../adapters/desktop-runtime"
+import { DesktopHeaderActions } from "./desktop-header-actions"
 
 export type DesktopView = "terminal" | "ai"
 
@@ -346,7 +346,7 @@ export function DesktopTitleBar({
             <Bot className="h-4 w-4" />
           </Button>
         )}
-        <DashboardHeaderActions />
+        <DesktopHeaderActions />
         <div className="easyssh-desktop-window-controls" role="group" aria-label="Window controls">
           <button
             type="button"

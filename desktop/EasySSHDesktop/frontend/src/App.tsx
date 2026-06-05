@@ -4,7 +4,6 @@ import {
   SshWorkspace,
   TerminalComponent,
   WORKSPACE_CAPABILITY_PRESETS,
-  createBrowserWorkspacePreferenceAdapter,
   createTerminalWorkspaceSessionControllerAdapter,
   createTerminalWorkspaceSessionStoreAdapter,
   createWorkspaceAdapters,
@@ -20,6 +19,7 @@ import {
 } from "@easyssh/ssh-workspace/desktop"
 import { createDesktopActivityLogAdapter, recordDesktopTerminalOpened } from "./adapters/desktop-activity-log-adapter"
 import { createDesktopAIAssistantAdapters } from "./adapters/desktop-ai-adapters"
+import { createDesktopPreferenceAdapter, loadDesktopPreferenceSnapshot, type DesktopPreferenceSnapshot } from "./adapters/desktop-preferences"
 import { createDesktopRuntime, loadDesktopRuntime, type DesktopRuntimeBindingInfo } from "./adapters/desktop-runtime"
 import { createDesktopServerApi, markDesktopServerConnected, saveDesktopVerifiedCredential } from "./adapters/desktop-server-api"
 import { DesktopAIAssistantView } from "./shell/desktop-ai-assistant-view"
@@ -30,6 +30,7 @@ import { createDesktopTerminalSocket } from "./terminal/desktop-terminal-socket"
 const connectionConfigName = "\u8fde\u63a5\u914d\u7f6e"
 const defaultMaxTabs = 50
 const defaultInactiveMinutes = 60
+const desktopLoadingLabel = "\u52a0\u8f7d\u4e2d..."
 const inactiveToastTitle = "\u7ec8\u7aef\u957f\u65f6\u95f4\u672a\u6d3b\u52a8"
 const inactiveToastCloseLabel = "\u5173\u95ed"
 
@@ -90,6 +91,7 @@ function createTerminalSessionFromServer(
 
 function App() {
   const [runtime, setRuntime] = useState<DesktopRuntimeBindingInfo | null>(null)
+  const [preferenceSnapshot, setPreferenceSnapshot] = useState<DesktopPreferenceSnapshot | null>(null)
   const [activeView, setActiveView] = useState<DesktopView>("terminal")
   const [aiAssistantMounted, setAiAssistantMounted] = useState(false)
   const [maxTabs, setMaxTabs] = useState(defaultMaxTabs)
@@ -110,7 +112,7 @@ function App() {
   const activityLog = useMemo(() => createDesktopActivityLogAdapter(), [])
   const workspaceSessionStore = useMemo(() => createTerminalWorkspaceSessionStoreAdapter(), [])
   const workspaceSessionController = useMemo(() => createTerminalWorkspaceSessionControllerAdapter(), [])
-  const workspacePreferences = useMemo(() => createBrowserWorkspacePreferenceAdapter({ keyPrefix: "easyssh.desktop." }), [])
+  const workspacePreferences = useMemo(() => createDesktopPreferenceAdapter(preferenceSnapshot ?? {}), [preferenceSnapshot])
   const terminalSocket = useMemo(() => createDesktopTerminalSocket(), [])
   const runtimeInfo = useMemo(() => createDesktopRuntime(runtime), [runtime])
   const capabilities = useMemo(() => (
@@ -170,6 +172,23 @@ function App() {
       .catch((error) => {
         console.error("Failed to load desktop runtime:", error)
       })
+  }, [])
+
+  useEffect(() => {
+    let mounted = true
+
+    loadDesktopPreferenceSnapshot()
+      .then((snapshot) => {
+        if (mounted) setPreferenceSnapshot(snapshot)
+      })
+      .catch((error) => {
+        console.error("Failed to load desktop preferences:", error)
+        if (mounted) setPreferenceSnapshot({})
+      })
+
+    return () => {
+      mounted = false
+    }
   }, [])
 
   useEffect(() => {
@@ -379,6 +398,24 @@ function App() {
 
     return () => window.clearInterval(timer)
   }, [getSessionLastActivity, handleCloseSession, inactiveMinutes, sessions])
+
+  if (preferenceSnapshot === null) {
+    return (
+      <DesktopProviders>
+        <main className="easyssh-desktop-home bg-background text-foreground">
+          <DesktopTitleBar
+            runtime={runtime}
+            activeView={activeView}
+            onToggleAiAssistant={handleToggleAiAssistant}
+            onOpenTerminalSettings={() => setTerminalSettingsOpen(true)}
+          />
+          <div className="flex min-h-0 flex-1 items-center justify-center text-sm text-muted-foreground">
+            {desktopLoadingLabel}
+          </div>
+        </main>
+      </DesktopProviders>
+    )
+  }
 
   return (
     <DesktopProviders>
