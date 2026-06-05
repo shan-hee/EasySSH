@@ -21,7 +21,14 @@ import {
 import { Switch } from "@/components/ui/switch"
 import { toast } from "@/components/ui/sonner"
 import { userAIConfigApi, type UserAIConfig } from "@/lib/api/settings"
+import type { SaveUserAIConfigRequest } from "@/lib/api/settings"
 import { cn } from "@/lib/utils"
+
+export interface AIAssistantConfigAdapter {
+  queryKey?: unknown[]
+  getUserAIConfig: () => Promise<UserAIConfig>
+  saveUserAIConfig: (config: SaveUserAIConfigRequest) => Promise<void>
+}
 
 interface AIAssistantConfigPopoverProps {
   open: boolean
@@ -29,6 +36,7 @@ interface AIAssistantConfigPopoverProps {
   trigger: ReactNode
   onSaved?: () => void
   customConfigOnly?: boolean
+  adapter?: AIAssistantConfigAdapter
 }
 
 interface AIConfigForm {
@@ -89,6 +97,7 @@ export function AIAssistantConfigPopover({
   trigger,
   onSaved,
   customConfigOnly = false,
+  adapter,
 }: AIAssistantConfigPopoverProps) {
   const { t } = useTranslation("aiAssistant")
   const { t: tAccount } = useTranslation("accountSettings")
@@ -115,7 +124,7 @@ export function AIAssistantConfigPopover({
   const loadConfig = useCallback(async () => {
     setLoading(true)
     try {
-      const nextConfig = await userAIConfigApi.getUserAIConfig()
+      const nextConfig = await (adapter?.getUserAIConfig ?? userAIConfigApi.getUserAIConfig)()
       setConfig(nextConfig)
       setForm(toForm(nextConfig, customConfigOnly))
     } catch (error: unknown) {
@@ -123,7 +132,7 @@ export function AIAssistantConfigPopover({
     } finally {
       setLoading(false)
     }
-  }, [customConfigOnly, t])
+  }, [adapter, customConfigOnly, t])
 
   useEffect(() => {
     if (open) {
@@ -161,7 +170,7 @@ export function AIAssistantConfigPopover({
 
     setSaving(true)
     try {
-      await userAIConfigApi.saveUserAIConfig({
+      await (adapter?.saveUserAIConfig ?? userAIConfigApi.saveUserAIConfig)({
         use_system_config: customConfigOnly ? false : form.use_system_config,
         custom_enabled: customConfigOnly ? true : form.custom_enabled,
         custom_provider: form.custom_provider,
@@ -171,7 +180,7 @@ export function AIAssistantConfigPopover({
       })
       toast.success(t("aiConfigSaveSuccess"))
       await loadConfig()
-      await queryClient.invalidateQueries({ queryKey: ["aiConfig"] })
+      await queryClient.invalidateQueries({ queryKey: adapter?.queryKey ?? ["aiConfig"] })
       onSaved?.()
     } catch (error: unknown) {
       toast.error(getErrorMessage(error, t("aiConfigSaveFailed")))

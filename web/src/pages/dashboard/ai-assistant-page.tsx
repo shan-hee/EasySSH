@@ -51,21 +51,43 @@ import {
 } from "@/components/ai-elements/conversation"
 import { AgentNoticeCard } from "@/components/ai-agent/agent-notice"
 import { useAgentSession } from "@/hooks/use-agent-session"
+import type { AgentSessionAdapter } from "@/hooks/use-agent-session"
 import { useAIConfig } from "@/hooks/use-ai-config"
+import type { AIConfigAdapter } from "@/hooks/use-ai-config"
 import { useAuthReady } from "@/hooks/use-auth-ready"
 import { useConfirmDialog } from "@/hooks/use-confirm-dialog"
 import { serversApi, type Server as ManagedServer } from "@/lib/api"
 import { deleteAISession, listAISessions, renameAISession, type CreateSessionResponse, type PermissionMode, type SessionListItem } from "@/lib/api/ai-agent"
+import type { AIAssistantConfigAdapter } from "@/components/ai-agent/ai-config-popover"
+import type { ServerListResponse } from "@/lib/api/servers"
 import { getServerDisplayName } from "@/lib/server-utils"
 import { cn } from "@/lib/utils"
 import { useTranslation } from "react-i18next"
 
 const SESSION_LIST_LIMIT = 30
 
+export interface AIAssistantPageAdapters {
+  aiConfig?: AIConfigAdapter
+  aiSettings?: AIAssistantConfigAdapter
+  aiSession?: AgentSessionAdapter
+  servers?: {
+    list: (params?: {
+      page?: number
+      limit?: number
+      group?: string
+      search?: string
+    }) => Promise<ServerListResponse>
+  }
+  listAISessions?: typeof listAISessions
+  renameAISession?: typeof renameAISession
+  deleteAISession?: typeof deleteAISession
+}
+
 interface AIAssistantPageProps {
   hidePageHeader?: boolean
   customConfigOnly?: boolean
   onReturnToTerminal?: () => void
+  adapters?: AIAssistantPageAdapters
 }
 
 function createSessionListItem(response: CreateSessionResponse, title: string): SessionListItem {
@@ -96,12 +118,13 @@ export default function AIAssistantPage({
   hidePageHeader = false,
   customConfigOnly = false,
   onReturnToTerminal,
+  adapters,
 }: AIAssistantPageProps) {
   const { t } = useTranslation("aiAssistant")
   const { ready } = useAuthReady()
   const { confirm: requestConfirm, confirmDialog } = useConfirmDialog()
-  const { isLoading, isConfigured, models, refetch: refetchAIConfig } = useAIConfig()
-  const agentSession = useAgentSession()
+  const { isLoading, isConfigured, models, refetch: refetchAIConfig } = useAIConfig(adapters?.aiConfig)
+  const agentSession = useAgentSession(adapters?.aiSession)
   const { session, sessionId, uiMessages, pendingConfirmationTasks, error, restoreLatestSession, restoreSession, startNewSession, sendMessage, confirmTask, cancelSession, closeSession } = agentSession
 
   const [draft, setDraft] = useState("")
@@ -145,14 +168,14 @@ export default function AIAssistantPage({
     setServersLoading(true)
 
     try {
-      const response = await serversApi.list({ limit: 1000 })
+      const response = await (adapters?.servers?.list ?? serversApi.list)({ limit: 1000 })
       setAvailableServers(sortReferencedServers(response.data))
     } catch {
       toast.error(t("toastLoadServersFailed"))
     } finally {
       setServersLoading(false)
     }
-  }, [ready, t])
+  }, [adapters?.servers, ready, t])
 
   useEffect(() => {
     void loadServers()
@@ -332,14 +355,14 @@ export default function AIAssistantPage({
     setSessionListLoading(true)
     try {
       setSessionListError("")
-      const response = await listAISessions({ limit: SESSION_LIST_LIMIT, q: sessionSearch })
+      const response = await (adapters?.listAISessions ?? listAISessions)({ limit: SESSION_LIST_LIMIT, q: sessionSearch })
       setSessionList(response.items)
     } catch {
       setSessionListError(t("sessionListLoadFailed"))
     } finally {
       setSessionListLoading(false)
     }
-  }, [isConfigured, isLoading, ready, sessionSearch, t])
+  }, [adapters?.listAISessions, isConfigured, isLoading, ready, sessionSearch, t])
 
   useEffect(() => {
     if (historyOpen) {
@@ -392,7 +415,7 @@ export default function AIAssistantPage({
 
     setSessionActionLoadingId(targetSessionId)
     try {
-      await renameAISession(targetSessionId, title)
+      await (adapters?.renameAISession ?? renameAISession)(targetSessionId, title)
       cancelRenameSession()
       setSessionList((current) => current.map((item) => (
         item.id === targetSessionId
@@ -422,7 +445,7 @@ export default function AIAssistantPage({
 
     setSessionActionLoadingId(targetSessionId)
     try {
-      await deleteAISession(targetSessionId)
+      await (adapters?.deleteAISession ?? deleteAISession)(targetSessionId)
       setSessionList((current) => current.filter((item) => item.id !== targetSessionId))
       if (targetSessionId === sessionId) {
         await closeSession()
@@ -720,6 +743,7 @@ export default function AIAssistantPage({
         open={configOpen}
         onOpenChange={setConfigOpen}
         customConfigOnly={customConfigOnly}
+        adapter={adapters?.aiSettings}
         onSaved={() => {
           void refetchAIConfig()
         }}

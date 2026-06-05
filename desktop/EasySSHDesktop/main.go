@@ -22,6 +22,7 @@ func main() {
 	activityLogService := NewActivityLogService()
 	serverService := NewDesktopServerService()
 	terminalService := NewDesktopTerminalService(serverService)
+	aiService := NewDesktopAIService()
 
 	app := application.New(application.Options{
 		Name:        "EasySSH",
@@ -31,6 +32,7 @@ func main() {
 			application.NewService(serverService),
 			application.NewService(terminalService),
 			application.NewService(activityLogService),
+			application.NewService(aiService),
 		},
 		Assets: application.AssetOptions{
 			Handler: application.AssetFileServerFS(assets),

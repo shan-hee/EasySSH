@@ -37,7 +37,7 @@ func (s *DesktopService) RuntimeInfo() DesktopRuntimeInfo {
 			"transfers":        false,
 			"monitoring":       false,
 			"docker":           false,
-			"ai":               false,
+			"ai":               true,
 			"activity_log":     true,
 			"settings":         true,
 			"desktop_data_dir": true,

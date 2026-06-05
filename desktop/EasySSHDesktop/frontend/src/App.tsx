@@ -18,10 +18,13 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import AIAssistantPage from "@/pages/dashboard/ai-assistant-page"
+import type { AIAssistantPageAdapters } from "@/pages/dashboard/ai-assistant-page"
 import { ClientAuthProvider } from "@/components/client-auth-provider"
 import { DashboardI18nProvider } from "@/providers/dashboard-i18n-provider"
 import { QueryProvider } from "@/providers/query-provider"
 import type { User } from "@/lib/api/auth"
+import type { AgentSessionScope } from "@/lib/api/ai-agent"
+import type { SaveUserAIConfigRequest } from "@/lib/api/settings"
 import {
   Activity,
   Bot,
@@ -71,6 +74,7 @@ import {
   DesktopTerminalService,
   DesktopService,
 } from "../bindings/github.com/easyssh/easyssh-desktop"
+import * as DesktopAIService from "../bindings/github.com/easyssh/easyssh-desktop/desktopaiservice"
 import type {
   DesktopActivityLogItem,
   DesktopServer,
@@ -386,6 +390,56 @@ function createDesktopActivityLogAdapter(): SshWorkspaceActivityLogAdapter {
   }
 }
 
+const desktopAiConfigQueryKey = ["desktopAiConfig"]
+
+function createDesktopAIAssistantAdapters(serverApi: ServerConnectionConfigsApi): AIAssistantPageAdapters {
+  return {
+    aiConfig: {
+      queryKey: desktopAiConfigQueryKey,
+      getAIConfig: () => DesktopAIService.GetAIConfig(),
+    },
+    aiSettings: {
+      queryKey: desktopAiConfigQueryKey,
+      getUserAIConfig: () => DesktopAIService.GetUserAIConfig(),
+      saveUserAIConfig: (config: SaveUserAIConfigRequest) => DesktopAIService.SaveUserAIConfig(config),
+    },
+    aiSession: {
+      getSession: (sessionId: string) => DesktopAIService.GetSession(sessionId),
+      getLatestSession: (scope?: AgentSessionScope) => DesktopAIService.GetLatestSession(scope),
+      createSession: (input) => DesktopAIService.CreateSession(input),
+      sendMessage: (input) => DesktopAIService.SendMessage(input),
+      cancelSession: async (sessionId: string) => {
+        await DesktopAIService.CancelSession(sessionId)
+      },
+      closeSession: async (sessionId: string) => {
+        await DesktopAIService.CloseSession(sessionId)
+      },
+    },
+    servers: {
+      list: (params?: Parameters<ServerConnectionConfigsApi["list"]>[0]) => serverApi.list(params),
+    },
+    listAISessions: (input: {
+      page?: number
+      limit?: number
+      q?: string
+      scope?: AgentSessionScope
+    } = {}) => DesktopAIService.ListSessions({
+      page: input.page,
+      limit: input.limit,
+      q: input.q,
+      scope_kind: input.scope?.kind,
+      terminal_session_id: input.scope?.terminal_session_id,
+      server_id: input.scope?.server_id,
+    }),
+    renameAISession: async (sessionId: string, title: string) => {
+      await DesktopAIService.RenameSession(sessionId, title)
+    },
+    deleteAISession: async (sessionId: string) => {
+      await DesktopAIService.DeleteSession(sessionId)
+    },
+  }
+}
+
 const desktopTerminalOutputEvent = "easyssh:desktop-terminal:output"
 const desktopTerminalClosedEvent = "easyssh:desktop-terminal:closed"
 
@@ -659,7 +713,7 @@ function createDesktopRuntime(runtime: Awaited<ReturnType<typeof DesktopService.
       transfers: false,
       monitoring: false,
       docker: false,
-      ai: false,
+      ai: runtimeCapabilities.ai ?? true,
       activity_log: runtimeCapabilities.activity_log ?? true,
       settings: runtimeCapabilities.settings ?? true,
       desktop_data_dir: runtimeCapabilities.desktop_data_dir ?? true,
@@ -691,7 +745,13 @@ function DesktopProviders({ children }: { children: ReactNode }) {
   )
 }
 
-function DesktopAIAssistantView({ onReturnToTerminal }: { onReturnToTerminal: () => void }) {
+function DesktopAIAssistantView({
+  adapters,
+  onReturnToTerminal,
+}: {
+  adapters: ReturnType<typeof createDesktopAIAssistantAdapters>
+  onReturnToTerminal: () => void
+}) {
   return (
     <QueryProvider>
       <ClientAuthProvider initialUser={desktopUser}>
@@ -701,6 +761,7 @@ function DesktopAIAssistantView({ onReturnToTerminal }: { onReturnToTerminal: ()
               hidePageHeader
               customConfigOnly
               onReturnToTerminal={onReturnToTerminal}
+              adapters={adapters}
             />
           </section>
         </DashboardI18nProvider>
@@ -999,6 +1060,7 @@ function App() {
   const getSessionLastActivity = useTerminalStore((state) => state.getSessionLastActivity)
 
   const serverApi = useMemo(() => createDesktopServerApi(), [])
+  const aiAssistantAdapters = useMemo(() => createDesktopAIAssistantAdapters(serverApi), [serverApi])
   const activityLog = useMemo(() => createDesktopActivityLogAdapter(), [])
   const workspaceSessionStore = useMemo(() => createTerminalWorkspaceSessionStoreAdapter(), [])
   const workspaceSessionController = useMemo(() => createTerminalWorkspaceSessionControllerAdapter(), [])
@@ -1010,7 +1072,7 @@ function App() {
       terminal: true,
       sftp: false,
       transfers: false,
-      ai: false,
+      ai: true,
       monitor: false,
       docker: false,
       activityLog: true,
@@ -1347,7 +1409,10 @@ function App() {
               aria-hidden={activeView !== "ai"}
             >
               {aiAssistantMounted ? (
-                <DesktopAIAssistantView onReturnToTerminal={handleReturnToTerminal} />
+                <DesktopAIAssistantView
+                  adapters={aiAssistantAdapters}
+                  onReturnToTerminal={handleReturnToTerminal}
+                />
               ) : null}
             </section>
           </div>

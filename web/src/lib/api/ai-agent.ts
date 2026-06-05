@@ -4,7 +4,7 @@ import type { UIMessage } from "@ai-sdk/react"
 export type PermissionMode = "readonly" | "balanced" | "privileged"
 export type AgentSessionStatus = "idle" | "running" | "waiting_confirmation" | "closed"
 export type AgentTaskStatus = "queued" | "waiting_confirm" | "running" | "succeeded" | "failed" | "cancelled"
-export type AgentTransportType = "ai_sdk_ui"
+export type AgentTransportType = "ai_sdk_ui" | "desktop_local"
 
 export interface ToolView {
   name: string
