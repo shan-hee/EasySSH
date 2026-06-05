@@ -1,6 +1,6 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from "react"
-import { Check, History, Loader2, Pencil, Plus, RefreshCw, Search, Send, Server as ServerIcon, Settings2, Shield, Square, SquarePen, Trash2, X } from "lucide-react"
+import { ArrowLeft, Check, History, Loader2, Pencil, Plus, RefreshCw, Search, Send, Server as ServerIcon, Settings2, Shield, Square, SquarePen, Trash2, X } from "lucide-react"
 
 import { AgentAIElementsTimeline } from "@/components/ai-agent/agent-ai-elements-timeline"
 import { AIAssistantConfigPopover } from "@/components/ai-agent/ai-config-popover"
@@ -62,6 +62,12 @@ import { useTranslation } from "react-i18next"
 
 const SESSION_LIST_LIMIT = 30
 
+interface AIAssistantPageProps {
+  hidePageHeader?: boolean
+  customConfigOnly?: boolean
+  onReturnToTerminal?: () => void
+}
+
 function createSessionListItem(response: CreateSessionResponse, title: string): SessionListItem {
   return {
     id: response.session_id,
@@ -86,7 +92,11 @@ function formatSessionTime(value: string) {
   })
 }
 
-export default function AIAssistantPage() {
+export default function AIAssistantPage({
+  hidePageHeader = false,
+  customConfigOnly = false,
+  onReturnToTerminal,
+}: AIAssistantPageProps) {
   const { t } = useTranslation("aiAssistant")
   const { ready } = useAuthReady()
   const { confirm: requestConfirm, confirmDialog } = useConfirmDialog()
@@ -709,6 +719,7 @@ export default function AIAssistantPage() {
       <AIAssistantConfigPopover
         open={configOpen}
         onOpenChange={setConfigOpen}
+        customConfigOnly={customConfigOnly}
         onSaved={() => {
           void refetchAIConfig()
         }}
@@ -731,11 +742,29 @@ export default function AIAssistantPage() {
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
       {confirmDialog}
-      <PageHeader title={t("pageTitle")} />
+      {!hidePageHeader && <PageHeader title={t("pageTitle")} />}
 
       <div className="shrink-0 px-4 pb-1 md:px-4">
-        <div className="flex h-9 items-center justify-end gap-1">
-          {sessionToolbar}
+        <div className="flex h-9 items-center justify-between gap-2">
+          {onReturnToTerminal ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="-ml-2 h-9 gap-1 bg-transparent px-2 text-sm font-medium text-muted-foreground hover:bg-transparent hover:text-foreground dark:hover:bg-transparent"
+              aria-label="返回终端"
+              title="返回终端"
+              onClick={onReturnToTerminal}
+            >
+              <ArrowLeft className="size-4" />
+              <span>返回终端</span>
+            </Button>
+          ) : (
+            <div />
+          )}
+          <div className="flex items-center justify-end gap-1">
+            {sessionToolbar}
+          </div>
         </div>
       </div>
 

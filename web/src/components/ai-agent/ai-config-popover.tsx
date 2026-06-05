@@ -28,6 +28,7 @@ interface AIAssistantConfigPopoverProps {
   onOpenChange: (open: boolean) => void
   trigger: ReactNode
   onSaved?: () => void
+  customConfigOnly?: boolean
 }
 
 interface AIConfigForm {
@@ -71,10 +72,10 @@ function getErrorMessage(error: unknown, defaultMessage: string): string {
   return defaultMessage
 }
 
-function toForm(config: UserAIConfig): AIConfigForm {
+function toForm(config: UserAIConfig, customConfigOnly = false): AIConfigForm {
   return {
-    use_system_config: config.use_system_config,
-    custom_enabled: config.custom_enabled,
+    use_system_config: customConfigOnly ? false : config.use_system_config,
+    custom_enabled: customConfigOnly ? true : config.custom_enabled,
     custom_provider: config.custom_provider || "openai",
     custom_api_key: "",
     custom_endpoint: config.custom_endpoint || "",
@@ -87,6 +88,7 @@ export function AIAssistantConfigPopover({
   onOpenChange,
   trigger,
   onSaved,
+  customConfigOnly = false,
 }: AIAssistantConfigPopoverProps) {
   const { t } = useTranslation("aiAssistant")
   const { t: tAccount } = useTranslation("accountSettings")
@@ -107,21 +109,21 @@ export function AIAssistantConfigPopover({
     [tAccount]
   )
 
-  const isSystemActive = form.use_system_config
-  const isCustomActive = !form.use_system_config && form.custom_enabled
+  const isSystemActive = !customConfigOnly && form.use_system_config
+  const isCustomActive = customConfigOnly || (!form.use_system_config && form.custom_enabled)
 
   const loadConfig = useCallback(async () => {
     setLoading(true)
     try {
       const nextConfig = await userAIConfigApi.getUserAIConfig()
       setConfig(nextConfig)
-      setForm(toForm(nextConfig))
+      setForm(toForm(nextConfig, customConfigOnly))
     } catch (error: unknown) {
       toast.error(getErrorMessage(error, t("aiConfigLoadFailed")))
     } finally {
       setLoading(false)
     }
-  }, [t])
+  }, [customConfigOnly, t])
 
   useEffect(() => {
     if (open) {
@@ -140,8 +142,8 @@ export function AIAssistantConfigPopover({
   const setCustomEnabled = (checked: boolean) => {
     setForm((current) => ({
       ...current,
-      use_system_config: !checked,
-      custom_enabled: checked,
+      use_system_config: customConfigOnly ? false : !checked,
+      custom_enabled: customConfigOnly ? true : checked,
     }))
   }
 
@@ -160,8 +162,8 @@ export function AIAssistantConfigPopover({
     setSaving(true)
     try {
       await userAIConfigApi.saveUserAIConfig({
-        use_system_config: form.use_system_config,
-        custom_enabled: form.custom_enabled,
+        use_system_config: customConfigOnly ? false : form.use_system_config,
+        custom_enabled: customConfigOnly ? true : form.custom_enabled,
         custom_provider: form.custom_provider,
         custom_api_key: form.custom_api_key.trim(),
         custom_endpoint: form.custom_endpoint.trim(),
@@ -206,39 +208,41 @@ export function AIAssistantConfigPopover({
         ) : (
           <div className="max-h-[70vh] overflow-y-auto p-3 scrollbar-custom">
             <div className="space-y-2">
-              <div
-                className={cn(
-                  "rounded-md border bg-card transition-colors",
-                  isSystemActive && "border-primary/40 bg-primary/5"
-                )}
-              >
-                <div className="flex items-center justify-between gap-3 p-3">
-                  <div className="flex min-w-0 items-start gap-3">
-                    <div className="flex size-9 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
-                      <Settings2 className="size-4" />
-                    </div>
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2">
-                        <h4 className="truncate text-sm font-medium">
-                          {t("aiConfigSystemTitle")}
-                        </h4>
-                        {isSystemActive && (
-                          <CheckCircle2 className="size-3.5 shrink-0 text-primary" />
-                        )}
+              {!customConfigOnly && (
+                <div
+                  className={cn(
+                    "rounded-md border bg-card transition-colors",
+                    isSystemActive && "border-primary/40 bg-primary/5"
+                  )}
+                >
+                  <div className="flex items-center justify-between gap-3 p-3">
+                    <div className="flex min-w-0 items-start gap-3">
+                      <div className="flex size-9 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
+                        <Settings2 className="size-4" />
                       </div>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        {t("aiConfigSystemDescription")}
-                      </p>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <h4 className="truncate text-sm font-medium">
+                            {t("aiConfigSystemTitle")}
+                          </h4>
+                          {isSystemActive && (
+                            <CheckCircle2 className="size-3.5 shrink-0 text-primary" />
+                          )}
+                        </div>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          {t("aiConfigSystemDescription")}
+                        </p>
+                      </div>
                     </div>
+                    <Switch
+                      checked={isSystemActive}
+                      onCheckedChange={setSystemEnabled}
+                      disabled={saving}
+                      aria-label={t("aiConfigSystemTitle")}
+                    />
                   </div>
-                  <Switch
-                    checked={isSystemActive}
-                    onCheckedChange={setSystemEnabled}
-                    disabled={saving}
-                    aria-label={t("aiConfigSystemTitle")}
-                  />
                 </div>
-              </div>
+              )}
 
               <div
                 className={cn(
@@ -265,12 +269,14 @@ export function AIAssistantConfigPopover({
                       </p>
                     </div>
                   </div>
-                  <Switch
-                    checked={isCustomActive}
-                    onCheckedChange={setCustomEnabled}
-                    disabled={saving}
-                    aria-label={t("aiConfigCustomTitle")}
-                  />
+                  {!customConfigOnly && (
+                    <Switch
+                      checked={isCustomActive}
+                      onCheckedChange={setCustomEnabled}
+                      disabled={saving}
+                      aria-label={t("aiConfigCustomTitle")}
+                    />
+                  )}
                 </div>
 
                 <div className="space-y-3 border-t border-border/60 p-3">

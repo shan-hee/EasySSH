@@ -17,8 +17,14 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import AIAssistantPage from "@/pages/dashboard/ai-assistant-page"
+import { ClientAuthProvider } from "@/components/client-auth-provider"
+import { DashboardI18nProvider } from "@/providers/dashboard-i18n-provider"
+import { QueryProvider } from "@/providers/query-provider"
+import type { User } from "@/lib/api/auth"
 import {
   Activity,
+  Bot,
   BrowserRouter,
   CompletionConfigProvider,
   DashboardHeaderActions,
@@ -79,6 +85,7 @@ const inactiveToastCloseLabel = "\u5173\u95ed"
 const windowActionErrorMessage = "Failed to run window action:"
 const desktopActionErrorMessage = "\u684c\u9762\u8bbe\u7f6e\u64cd\u4f5c\u5931\u8d25"
 const desktopSettingsLabel = "\u8bbe\u7f6e"
+const desktopAiAssistantLabel = "AI \u52a9\u624b"
 const terminalSettingsLabel = "\u7ec8\u7aef\u8bbe\u7f6e"
 const activityLogLabel = "\u6d3b\u52a8\u8bb0\u5f55"
 const openDataDirLabel = "\u6253\u5f00\u6570\u636e\u76ee\u5f55"
@@ -99,6 +106,18 @@ const desktopDataDirLabel = "\u6570\u636e\u76ee\u5f55"
 const desktopUnknownLabel = "\u672a\u77e5"
 const githubLabel = "GitHub"
 const githubUrl = "https://github.com/shan-hee/EasySSH"
+const desktopUser: User = {
+  id: "desktop-local-owner",
+  username: "desktop",
+  email: "desktop@easyssh.local",
+  role: "admin",
+  language: "zh-CN",
+  timezone: "Asia/Shanghai",
+  created_at: new Date(0).toISOString(),
+  updated_at: new Date(0).toISOString(),
+}
+
+type DesktopView = "terminal" | "ai"
 
 function formatMaxTabsMessage(maxTabs: number) {
   return `\u6700\u591a\u53ea\u80fd\u6253\u5f00 ${maxTabs} \u4e2a\u6807\u7b7e`
@@ -672,6 +691,24 @@ function DesktopProviders({ children }: { children: ReactNode }) {
   )
 }
 
+function DesktopAIAssistantView({ onReturnToTerminal }: { onReturnToTerminal: () => void }) {
+  return (
+    <QueryProvider>
+      <ClientAuthProvider initialUser={desktopUser}>
+        <DashboardI18nProvider>
+          <section className="easyssh-desktop-ai-view">
+            <AIAssistantPage
+              hidePageHeader
+              customConfigOnly
+              onReturnToTerminal={onReturnToTerminal}
+            />
+          </section>
+        </DashboardI18nProvider>
+      </ClientAuthProvider>
+    </QueryProvider>
+  )
+}
+
 function runWindowAction(action: () => Promise<void>) {
   void action().catch((error) => {
     console.error(windowActionErrorMessage, error)
@@ -867,9 +904,13 @@ function DesktopSettingsMenu({
 
 function DesktopTitleBar({
   runtime,
+  activeView,
+  onToggleAiAssistant,
   onOpenTerminalSettings,
 }: {
   runtime: Awaited<ReturnType<typeof DesktopService.RuntimeInfo>> | null
+  activeView: DesktopView
+  onToggleAiAssistant: () => void
   onOpenTerminalSettings: () => void
 }) {
   const handleMinimize = useCallback(() => {
@@ -892,6 +933,19 @@ function DesktopTitleBar({
       </div>
       <div className="easyssh-desktop-titlebar-actions">
         <DesktopSettingsMenu runtime={runtime} onOpenTerminalSettings={onOpenTerminalSettings} />
+        {activeView !== "ai" && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            className="easyssh-desktop-titlebar-ai-button"
+            aria-label={desktopAiAssistantLabel}
+            title={desktopAiAssistantLabel}
+            onClick={onToggleAiAssistant}
+          >
+            <Bot className="h-4 w-4" />
+          </Button>
+        )}
         <DashboardHeaderActions />
         <div className="easyssh-desktop-window-controls" role="group" aria-label="Window controls">
           <button
@@ -929,6 +983,8 @@ function DesktopTitleBar({
 
 function App() {
   const [runtime, setRuntime] = useState<Awaited<ReturnType<typeof DesktopService.RuntimeInfo>> | null>(null)
+  const [activeView, setActiveView] = useState<DesktopView>("terminal")
+  const [aiAssistantMounted, setAiAssistantMounted] = useState(false)
   const [maxTabs, setMaxTabs] = useState(defaultMaxTabs)
   const [inactiveMinutes, setInactiveMinutes] = useState(defaultInactiveMinutes)
   const [terminalSettingsOpen, setTerminalSettingsOpen] = useState(false)
@@ -1208,6 +1264,15 @@ function App() {
     updateSessionActivity(sessionId, now)
   }, [setSessions, updateSessionActivity])
 
+  const handleToggleAiAssistant = useCallback(() => {
+    setAiAssistantMounted(true)
+    setActiveView((current) => (current === "ai" ? "terminal" : "ai"))
+  }, [])
+
+  const handleReturnToTerminal = useCallback(() => {
+    setActiveView("terminal")
+  }, [])
+
   useEffect(() => {
     const timer = window.setInterval(() => {
       const now = Date.now()
@@ -1238,35 +1303,54 @@ function App() {
         <main className="easyssh-desktop-home bg-background text-foreground">
           <DesktopTitleBar
             runtime={runtime}
+            activeView={activeView}
+            onToggleAiAssistant={handleToggleAiAssistant}
             onOpenTerminalSettings={() => setTerminalSettingsOpen(true)}
           />
-          <TerminalComponent
-            sessions={sessions}
-            onNewSession={handleNewSession}
-            onCloseSession={handleCloseSession}
-            onCloseSessions={handleCloseSessions}
-            onSendCommand={handleSendCommand}
-            onDuplicateSession={handleDuplicateSession}
-            onCloseOthers={handleCloseOthers}
-            onCloseAll={handleCloseAll}
-            onTogglePin={handleTogglePin}
-            onReorderSessions={handleReorder}
-            onStartConnectionFromConfig={handleStartConnectionFromConfig}
-            onAuthCancelled={handleAuthCancelled}
-            externalActiveSessionId={activeSessionId}
-            onActiveSessionChange={setActiveSessionId}
-            onConnectionPhaseChange={handleConnectionPhaseChange}
-            onBehaviorSettingsChange={({ maxTabs, inactiveMinutes }) => {
-              setMaxTabs(Math.max(1, Math.min(maxTabs, defaultMaxTabs)))
-              setInactiveMinutes(Math.max(5, Math.min(inactiveMinutes, defaultInactiveMinutes)))
-            }}
-            serverApi={serverApi}
-            serverConfigsReady
-            hidePageHeader
-            unframed
-            settingsDialogOpen={terminalSettingsOpen}
-            onSettingsDialogOpenChange={setTerminalSettingsOpen}
-          />
+          <div className="easyssh-desktop-view-stack">
+            <section
+              className="easyssh-desktop-view-panel"
+              data-active={activeView === "terminal"}
+              aria-hidden={activeView !== "terminal"}
+            >
+              <TerminalComponent
+                sessions={sessions}
+                onNewSession={handleNewSession}
+                onCloseSession={handleCloseSession}
+                onCloseSessions={handleCloseSessions}
+                onSendCommand={handleSendCommand}
+                onDuplicateSession={handleDuplicateSession}
+                onCloseOthers={handleCloseOthers}
+                onCloseAll={handleCloseAll}
+                onTogglePin={handleTogglePin}
+                onReorderSessions={handleReorder}
+                onStartConnectionFromConfig={handleStartConnectionFromConfig}
+                onAuthCancelled={handleAuthCancelled}
+                externalActiveSessionId={activeSessionId}
+                onActiveSessionChange={setActiveSessionId}
+                onConnectionPhaseChange={handleConnectionPhaseChange}
+                onBehaviorSettingsChange={({ maxTabs, inactiveMinutes }) => {
+                  setMaxTabs(Math.max(1, Math.min(maxTabs, defaultMaxTabs)))
+                  setInactiveMinutes(Math.max(5, Math.min(inactiveMinutes, defaultInactiveMinutes)))
+                }}
+                serverApi={serverApi}
+                serverConfigsReady
+                hidePageHeader
+                unframed
+                settingsDialogOpen={terminalSettingsOpen}
+                onSettingsDialogOpenChange={setTerminalSettingsOpen}
+              />
+            </section>
+            <section
+              className="easyssh-desktop-view-panel"
+              data-active={activeView === "ai"}
+              aria-hidden={activeView !== "ai"}
+            >
+              {aiAssistantMounted ? (
+                <DesktopAIAssistantView onReturnToTerminal={handleReturnToTerminal} />
+              ) : null}
+            </section>
+          </div>
         </main>
       </SshWorkspace>
     </DesktopProviders>
