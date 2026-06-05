@@ -6,8 +6,45 @@ export type { WorkspaceTranslationParams, WorkspaceUiTranslator } from "@/compon
 export { createWorkspaceCapabilitiesFromRuntime } from "@/shell/runtime/runtime-workspace"
 export type { RuntimeWorkspaceCapabilitiesOptions } from "@/shell/runtime/runtime-workspace"
 export type { AppCapability, RuntimeInfo, RuntimePrincipal, RuntimeProfile } from "@/shell/runtime/types"
-export { createBrowserWorkspacePreferenceAdapter, createCompositeWorkspaceSessionController, createCompositeWorkspaceSessionStoreAdapter, createWorkspaceActivityLogAdapter, createWorkspaceAdapters, createWorkspaceAuthTicketProviderAdapter, createWorkspaceI18nAdapter, createWorkspaceNotifierAdapter, createWorkspaceSettingsAdapter, createWorkspaceTerminalAuthTicketProviderAdapter, createWorkspaceTransferAuthTicketProviderAdapter, createWorkspaceTransferHistoryAdapter, createWorkspaceTransferManagerAdapter, mapAuditLogListToWorkspaceActivityResult, mapAuditLogStatisticsToWorkspaceActivityStatistics, mapAuditLogToWorkspaceActivityLogItem, mapOperationRecordListToWorkspaceHistoryResult, mapOperationRecordStatisticsToWorkspaceStatistics, mapOperationRecordToWorkspaceHistoryItem } from "@/lib/session/workspace-adapters"
-export type { WorkspaceLogsApiLike, CreateBrowserWorkspacePreferenceAdapterOptions, CreateCompositeWorkspaceSessionStoreAdapterOptions, CreateWorkspaceAdaptersOptions, CreateWorkspaceI18nAdapterOptions, CreateWorkspaceSettingsAdapterOptions, CreateWorkspaceTransferManagerAdapterOptions, OperationRecordsTransferApiLike, WorkspaceNotifierLike, WorkspacePreferenceStorageLike, WorkspaceTranslator, WorkspaceTranslatorLike } from "@/lib/session/workspace-adapters"
+export {
+  createBrowserWorkspacePreferenceAdapter,
+  createCompositeWorkspaceSessionController,
+  createCompositeWorkspaceSessionStoreAdapter,
+  createWorkspaceAdapters,
+  createWorkspaceAuthTicketProviderAdapter,
+  createWorkspaceI18nAdapter,
+  createWorkspaceNotifierAdapter,
+  createWorkspaceSettingsAdapter,
+  createWorkspaceTerminalAuthTicketProviderAdapter,
+  createWorkspaceTransferAuthTicketProviderAdapter,
+  createWorkspaceTransferManagerAdapter,
+} from "@/lib/session/workspace-adapters"
+export type {
+  CreateBrowserWorkspacePreferenceAdapterOptions,
+  CreateCompositeWorkspaceSessionStoreAdapterOptions,
+  CreateWorkspaceAdaptersOptions,
+  CreateWorkspaceI18nAdapterOptions,
+  CreateWorkspaceSettingsAdapterOptions,
+  CreateWorkspaceTransferManagerAdapterOptions,
+  WorkspaceNotifierLike,
+  WorkspacePreferenceStorageLike,
+  WorkspaceTranslator,
+  WorkspaceTranslatorLike,
+} from "@/lib/session/workspace-adapters"
+export {
+  createWorkspaceActivityLogAdapter,
+  createWorkspaceTransferHistoryAdapter,
+  mapAuditLogListToWorkspaceActivityResult,
+  mapAuditLogStatisticsToWorkspaceActivityStatistics,
+  mapAuditLogToWorkspaceActivityLogItem,
+  mapOperationRecordListToWorkspaceHistoryResult,
+  mapOperationRecordStatisticsToWorkspaceStatistics,
+  mapOperationRecordToWorkspaceHistoryItem,
+} from "@/lib/session/web-workspace-adapters"
+export type {
+  OperationRecordsTransferApiLike,
+  WorkspaceLogsApiLike,
+} from "@/lib/session/web-workspace-adapters"
 export { DEFAULT_SFTP_DOWNLOAD_EXCLUDE_PATTERNS, parseWorkspaceDownloadExcludePatterns } from "@/lib/session/workspace-settings"
 export type { WorkspaceDownloadExcludePatternSource } from "@/lib/session/workspace-settings"
 export { createServerTransferTask, createUploadTransferTask, mapTransferProgressMessageToTaskUpdate, mapUploadProgressMessageToTransferUpdate, mapUploadTaskStatusToTransferTask, mergeTransferTaskUpdate, normalizeTransferStage } from "@/lib/session/transfer-tasks"
