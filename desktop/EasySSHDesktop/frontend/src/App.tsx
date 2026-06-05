@@ -18,16 +18,10 @@ import {
   type TerminalConnectionPhase,
   type TerminalSession,
 } from "@easyssh/ssh-workspace/desktop"
-import {
-  ActivityLogService,
-  DesktopActivityLogStatus,
-  DesktopServerService,
-  DesktopService,
-} from "../bindings/github.com/easyssh/easyssh-desktop"
-import { createDesktopActivityLogAdapter } from "./adapters/desktop-activity-log-adapter"
+import { createDesktopActivityLogAdapter, recordDesktopTerminalOpened } from "./adapters/desktop-activity-log-adapter"
 import { createDesktopAIAssistantAdapters } from "./adapters/desktop-ai-adapters"
-import { createDesktopRuntime, type DesktopRuntimeBindingInfo } from "./adapters/desktop-runtime"
-import { createDesktopServerApi, mapServerInput } from "./adapters/desktop-server-api"
+import { createDesktopRuntime, loadDesktopRuntime, type DesktopRuntimeBindingInfo } from "./adapters/desktop-runtime"
+import { createDesktopServerApi, markDesktopServerConnected, saveDesktopVerifiedCredential } from "./adapters/desktop-server-api"
 import { DesktopAIAssistantView } from "./shell/desktop-ai-assistant-view"
 import { DesktopProviders } from "./shell/desktop-providers"
 import { DesktopTitleBar, type DesktopView } from "./shell/desktop-titlebar"
@@ -134,19 +128,7 @@ function App() {
         return `desktop://terminal?${params.toString()}`
       },
       saveVerifiedCredential: async ({ serverId, authMethod, secret }) => {
-        const current = await DesktopServerService.GetById(serverId)
-        await DesktopServerService.Update(serverId, mapServerInput({
-          name: current.name ?? "",
-          host: current.host,
-          port: current.port || 22,
-          username: current.username,
-          auth_method: authMethod,
-          password: authMethod === "password" ? secret : current.password ?? "",
-          private_key: authMethod === "key" ? secret : current.private_key ?? "",
-          group: current.group ?? "",
-          tags: current.tags ?? [],
-          description: current.description ?? "",
-        }))
+        await saveDesktopVerifiedCredential({ serverId, authMethod, secret })
       },
     },
   }), [terminalSocket])
@@ -183,7 +165,7 @@ function App() {
   }), [activityLog, workspaceApi, workspacePreferences, workspaceSessionController, workspaceSessionStore])
 
   useEffect(() => {
-    DesktopService.RuntimeInfo()
+    loadDesktopRuntime()
       .then(setRuntime)
       .catch((error) => {
         console.error("Failed to load desktop runtime:", error)
@@ -240,15 +222,10 @@ function App() {
       updateSessionActivity(sessionId, now)
     })
 
-    void DesktopServerService.MarkConnected(server.id)
+    void markDesktopServerConnected(server.id)
       .catch((error) => console.error("Failed to mark desktop server connected:", error))
-    void ActivityLogService.Record({
-      action: "ssh_connect",
-      resource: `${server.username}@${server.host}:${server.port}`,
-      status: DesktopActivityLogStatus.DesktopActivityLogSuccess,
-      serverId: server.id,
-      detail: "Desktop command terminal opened",
-    }).catch((error) => console.error("Failed to record desktop connection activity:", error))
+    void recordDesktopTerminalOpened(server)
+      .catch((error) => console.error("Failed to record desktop connection activity:", error))
   }, [setActiveSessionId, setSessions, updateSessionActivity])
 
   const handleCloseSession = useCallback((sessionId: string) => {

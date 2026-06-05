@@ -1,7 +1,11 @@
 import type { RuntimeInfo } from "@easyssh/ssh-workspace/desktop"
-import type { DesktopService } from "../../bindings/github.com/easyssh/easyssh-desktop"
+import { DesktopService } from "../../bindings/github.com/easyssh/easyssh-desktop"
 
 export type DesktopRuntimeBindingInfo = Awaited<ReturnType<typeof DesktopService.RuntimeInfo>>
+
+export function loadDesktopRuntime(): Promise<DesktopRuntimeBindingInfo> {
+  return DesktopService.RuntimeInfo()
+}
 
 export function createDesktopRuntime(runtime: DesktopRuntimeBindingInfo | null): RuntimeInfo {
   const runtimeCapabilities: RuntimeInfo["capabilities"] = runtime?.capabilities ?? {}

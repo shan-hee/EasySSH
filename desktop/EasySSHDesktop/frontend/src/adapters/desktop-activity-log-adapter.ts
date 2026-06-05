@@ -93,3 +93,18 @@ export function createDesktopActivityLogAdapter(): SshWorkspaceActivityLogAdapte
     },
   }
 }
+
+export async function recordDesktopTerminalOpened(server: {
+  id: string
+  username: string
+  host: string
+  port: number
+}): Promise<void> {
+  await ActivityLogService.Record({
+    action: "ssh_connect",
+    resource: `${server.username}@${server.host}:${server.port}`,
+    status: DesktopActivityLogStatus.DesktopActivityLogSuccess,
+    serverId: server.id,
+    detail: "Desktop command terminal opened",
+  })
+}

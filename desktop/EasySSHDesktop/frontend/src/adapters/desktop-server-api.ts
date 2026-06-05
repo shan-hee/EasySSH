@@ -1,4 +1,8 @@
-import type { Server, ServerConnectionConfigsApi } from "@easyssh/ssh-workspace/desktop"
+import type {
+  Server,
+  ServerConnectionConfigsApi,
+  WorkspaceTerminalCredentialSaveRequest,
+} from "@easyssh/ssh-workspace/desktop"
 import {
   DesktopServerAuthMethod,
   DesktopServerService,
@@ -87,4 +91,28 @@ export function createDesktopServerApi(): ServerConnectionConfigsApi {
       await DesktopServerService.Reorder(serverIds)
     },
   }
+}
+
+export async function saveDesktopVerifiedCredential({
+  serverId,
+  authMethod,
+  secret,
+}: WorkspaceTerminalCredentialSaveRequest): Promise<void> {
+  const current = await DesktopServerService.GetById(serverId)
+  await DesktopServerService.Update(serverId, mapServerInput({
+    name: current.name ?? "",
+    host: current.host,
+    port: current.port || 22,
+    username: current.username,
+    auth_method: authMethod,
+    password: authMethod === "password" ? secret : current.password ?? "",
+    private_key: authMethod === "key" ? secret : current.private_key ?? "",
+    group: current.group ?? "",
+    tags: current.tags ?? [],
+    description: current.description ?? "",
+  }))
+}
+
+export async function markDesktopServerConnected(serverId: string): Promise<void> {
+  await DesktopServerService.MarkConnected(serverId)
 }
