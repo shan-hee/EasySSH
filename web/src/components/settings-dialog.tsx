@@ -18,8 +18,8 @@ import {
   Link,
   Unlink,
   Info,
-  Paintbrush,
   Activity,
+  Paintbrush,
 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -74,7 +74,6 @@ import { twoFactorApi } from "@/lib/api/2fa"
 import { sessionsApi, type Session } from "@/lib/api/sessions"
 import { notificationsApi } from "@/lib/api/notifications"
 import * as sshKeysApi from "@/lib/api/ssh-keys"
-import { userAIConfigApi, type UserAIConfig, type SaveUserAIConfigRequest } from "@/lib/api/settings"
 import { getEffectiveLocale, getEffectiveTimezone, formatInTimezone } from "@/utils/datetime"
 import { useConfirmDialog } from "@/hooks/use-confirm-dialog"
 import { toast } from "sonner"
@@ -109,7 +108,7 @@ function getErrorMessage(error: unknown, defaultMessage: string): string {
   return defaultMessage
 }
 
-type SettingsSection = "profile" | "security" | "notifications" | "sshKeys" | "monitor" | "ai" | "about"
+type SettingsSection = "profile" | "security" | "notifications" | "sshKeys" | "monitor" | "about"
 
 const settingsNavItems: { id: SettingsSection; icon: typeof User }[] = [
   { id: "profile", icon: User },
@@ -117,7 +116,6 @@ const settingsNavItems: { id: SettingsSection; icon: typeof User }[] = [
   { id: "notifications", icon: Bell },
   { id: "sshKeys", icon: Key },
   { id: "monitor", icon: Activity },
-  { id: "ai", icon: Paintbrush },
   { id: "about", icon: Info },
 ]
 
@@ -218,19 +216,6 @@ export const SettingsDialog = React.memo(function SettingsDialog({ children }: {
   const [generateLoading, setGenerateLoading] = React.useState(false)
   const [importLoading, setImportLoading] = React.useState(false)
 
-  // AI设置状态
-  const [aiConfig, setAiConfig] = React.useState<UserAIConfig | null>(null)
-  const [aiLoading, setAiLoading] = React.useState(false)
-  const [aiForm, setAiForm] = React.useState({
-    use_system_config: true,
-    custom_enabled: false,
-    custom_provider: "openai" as string,
-    custom_api_key: "" as string,
-    custom_endpoint: "" as string,
-    custom_models: "" as string,
-  })
-  const [showResetConfirm, setShowResetConfirm] = React.useState(false)
-
   // 监控数据源设置状态
   // 每个数据源独立存储配置，activeSource 表示当前选中的数据源
   const [monitorForm, setMonitorForm] = React.useState({
@@ -327,14 +312,6 @@ export const SettingsDialog = React.memo(function SettingsDialog({ children }: {
   React.useEffect(() => {
     if (activeSection === "sshKeys" && open) {
       loadSSHKeys()
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeSection, open])
-
-  // 当切换到AI设置标签时加载AI配置
-  React.useEffect(() => {
-    if (activeSection === "ai" && open) {
-      loadAIConfig()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeSection, open])
@@ -526,8 +503,6 @@ export const SettingsDialog = React.memo(function SettingsDialog({ children }: {
           return tAccount("navSSHKeys")
         case "monitor":
           return tAccount("navMonitor")
-        case "ai":
-          return tAccount("aiTitle")
         case "about":
           return tAccount("navAbout")
         default:
@@ -966,27 +941,6 @@ export const SettingsDialog = React.memo(function SettingsDialog({ children }: {
     }
   }, [tAccount])
 
-  // 加载AI配置
-  const loadAIConfig = React.useCallback(async () => {
-    setAiLoading(true)
-    try {
-      const config = await userAIConfigApi.getUserAIConfig()
-      setAiConfig(config)
-      setAiForm({
-        use_system_config: config.use_system_config,
-        custom_enabled: config.custom_enabled,
-        custom_provider: config.custom_provider || "openai",
-        custom_api_key: "", // 不从服务器获取API密钥
-        custom_endpoint: config.custom_endpoint || "",
-        custom_models: config.custom_models || "",
-      })
-    } catch (error: unknown) {
-      toast.error(getErrorMessage(error, tAccount("aiLoadFailed")))
-    } finally {
-      setAiLoading(false)
-    }
-  }, [tAccount])
-
   // 测试监控数据源连接
   const handleTestMonitorConnection = React.useCallback(async () => {
     const activeSource = monitorForm.activeSource
@@ -1066,55 +1020,6 @@ export const SettingsDialog = React.memo(function SettingsDialog({ children }: {
       setMonitorLoading(false)
     }
   }, [monitorForm, refreshUser, tAccount])
-
-  // 保存AI配置
-  const handleSaveAIConfig = React.useCallback(async () => {
-    // 如果使用自定义配置，验证必填字段
-    if (!aiForm.use_system_config && aiForm.custom_enabled) {
-      if (!aiForm.custom_api_key) {
-        toast.error("请输入 API 密钥")
-        return
-      }
-      if (!aiForm.custom_models) {
-        toast.error("请输入可用模型")
-        return
-      }
-    }
-
-    setAiLoading(true)
-    try {
-      const request: SaveUserAIConfigRequest = {
-        use_system_config: aiForm.use_system_config,
-        custom_enabled: aiForm.custom_enabled,
-        custom_provider: aiForm.custom_provider,
-        custom_api_key: aiForm.custom_api_key,
-        custom_endpoint: aiForm.custom_endpoint,
-        custom_models: aiForm.custom_models,
-      }
-      await userAIConfigApi.saveUserAIConfig(request)
-      toast.success(tAccount("aiSaveSuccess"))
-      loadAIConfig() // 重新加载配置
-    } catch (error: unknown) {
-      toast.error(getErrorMessage(error, tAccount("aiSaveFailed")))
-    } finally {
-      setAiLoading(false)
-    }
-  }, [aiForm, loadAIConfig, tAccount])
-
-  // 重置AI配置
-  const handleResetAIConfig = React.useCallback(async () => {
-    setAiLoading(true)
-    try {
-      await userAIConfigApi.deleteUserAIConfig()
-      toast.success(tAccount("aiResetSuccess"))
-      setShowResetConfirm(false)
-      loadAIConfig() // 重新加载配置
-    } catch (error: unknown) {
-      toast.error(getErrorMessage(error, tAccount("aiResetFailed")))
-    } finally {
-      setAiLoading(false)
-    }
-  }, [loadAIConfig, tAccount])
 
   const navItems = React.useMemo(() => settingsNavItems, [])
 
@@ -2317,162 +2222,6 @@ export const SettingsDialog = React.memo(function SettingsDialog({ children }: {
                     </div>
                   </div>
                 )}
-                {activeSection === "ai" && (
-                  <div className="space-y-4">
-                    <div className="bg-muted/50 rounded-xl p-4">
-                      <h4 className="font-medium mb-2">
-                        {tAccount("aiTitle")}
-                      </h4>
-                      <p className="text-sm text-muted-foreground mb-3">
-                        {tAccount("aiDescription")}
-                      </p>
-
-                      {aiLoading || !aiConfig ? (
-                        <div className="flex items-center justify-center py-8">
-                          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-                        </div>
-                      ) : (
-                        <div className="space-y-4">
-                          {/* 使用系统配置选项 */}
-                          <div className="flex items-center justify-between">
-                            <div className="space-y-1">
-                              <Label htmlFor="use-system-config">
-                                {tAccount("aiUseSystemConfigLabel")}
-                              </Label>
-                              <p className="text-sm text-muted-foreground">
-                                {tAccount("aiUseSystemConfigDescription")}
-                              </p>
-                            </div>
-                            <Switch
-                              id="use-system-config"
-                              checked={aiForm.use_system_config}
-                              onCheckedChange={(checked) => {
-                                setAiForm(prev => ({
-                                  ...prev,
-                                  use_system_config: checked,
-                                  custom_enabled: !checked,
-                                }))
-                              }}
-                            />
-                          </div>
-
-                          {/* 自定义配置 */}
-                          {!aiForm.use_system_config && (
-                            <div className="space-y-4 p-4 bg-background rounded-lg border">
-                              <div className="space-y-2">
-                                <Label htmlFor="ai-provider">
-                                  {tAccount("aiProviderLabel")}
-                                </Label>
-                                <Select
-                                  value={aiForm.custom_provider}
-                                  onValueChange={(value) =>
-                                    setAiForm(prev => ({ ...prev, custom_provider: value }))
-                                  }
-                                >
-                                  <SelectTrigger id="ai-provider">
-                                    <SelectValue placeholder={tAccount("aiProviderPlaceholder")} />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    <SelectItem value="openai">
-                                      {tAccount("aiProviderOpenAI")}
-                                    </SelectItem>
-                                    <SelectItem value="openai-response">
-                                      {tAccount("aiProviderOpenAIResponse")}
-                                    </SelectItem>
-                                    <SelectItem value="gemini">
-                                      {tAccount("aiProviderGemini")}
-                                    </SelectItem>
-                                    <SelectItem value="anthropic">
-                                      {tAccount("aiProviderAnthropic")}
-                                    </SelectItem>
-                                  </SelectContent>
-                                </Select>
-                              </div>
-
-                              <div className="space-y-2">
-                                <Label htmlFor="ai-api-key">
-                                  {tAccount("aiAPIKeyLabel")} <span className="text-destructive">*</span>
-                                </Label>
-                                <Input
-                                  id="ai-api-key"
-                                  type="password"
-                                  placeholder={tAccount("aiAPIKeyPlaceholder")}
-                                  value={aiForm.custom_api_key || ""}
-                                  onChange={(e) =>
-                                    setAiForm(prev => ({ ...prev, custom_api_key: e.target.value }))
-                                  }
-                                />
-                                <p className="text-xs text-muted-foreground">
-                                  {aiConfig?.has_api_key
-                                    ? tAccount("aiAPIKeySet")
-                                    : tAccount("aiAPIKeyNotSet")}
-                                  {" · "}
-                                  {tAccount("aiAPIKeyHint")}
-                                </p>
-                              </div>
-
-                              <div className="space-y-2">
-                                <Label htmlFor="ai-endpoint">
-                                  {tAccount("aiEndpointLabel")}
-                                </Label>
-                                <Input
-                                  id="ai-endpoint"
-                                  placeholder={tAccount("aiEndpointPlaceholder")}
-                                  value={aiForm.custom_endpoint || ""}
-                                  onChange={(e) =>
-                                    setAiForm(prev => ({ ...prev, custom_endpoint: e.target.value }))
-                                  }
-                                />
-                                <p className="text-xs text-muted-foreground">
-                                  {tAccount("aiEndpointHint")}
-                                </p>
-                              </div>
-
-                              <div className="space-y-2">
-                                <Label htmlFor="ai-models">
-                                  {tAccount("aiModelsLabel")} <span className="text-destructive">*</span>
-                                </Label>
-                                <Input
-                                  id="ai-models"
-                                  placeholder={tAccount("aiModelsPlaceholder")}
-                                  value={aiForm.custom_models || ""}
-                                  onChange={(e) =>
-                                    setAiForm(prev => ({ ...prev, custom_models: e.target.value }))
-                                  }
-                                />
-                                <p className="text-xs text-muted-foreground">
-                                  {tAccount("aiModelsHint")}
-                                </p>
-                              </div>
-                            </div>
-                          )}
-
-                          {/* 操作按钮 */}
-                          <div className="flex gap-2">
-                            <Button
-                              onClick={handleSaveAIConfig}
-                              disabled={aiLoading}
-                            >
-                              {aiLoading && (
-                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                              )}
-                              {tAccount("aiSaveButton")}
-                            </Button>
-                            {!aiForm.use_system_config && (
-                              <Button
-                                variant="outline"
-                                onClick={() => setShowResetConfirm(true)}
-                                disabled={aiLoading}
-                              >
-                                {tAccount("aiResetButton")}
-                              </Button>
-                            )}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
                 {activeSection === "about" && (
                   <div className="space-y-4">
                     <div className="bg-muted/50 rounded-xl p-6 text-center">
@@ -2855,32 +2604,6 @@ export const SettingsDialog = React.memo(function SettingsDialog({ children }: {
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* AI配置重置确认对话框 */}
-      <AlertDialog open={showResetConfirm} onOpenChange={setShowResetConfirm}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>
-              {tAccount("aiResetConfirmTitle")}
-            </AlertDialogTitle>
-            <AlertDialogDescription>
-              {tAccount("aiResetConfirmDescription")}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>
-              {tAccount("aiResetConfirmCancel")}
-            </AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleResetAIConfig}
-              disabled={aiLoading}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
-              {aiLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              {tAccount("aiResetConfirmOk")}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </Dialog>
   )
 })

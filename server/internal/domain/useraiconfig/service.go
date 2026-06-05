@@ -37,6 +37,13 @@ func (s *service) GetUserConfig(ctx context.Context, userID uuid.UUID) (*UserAIC
 
 // SaveUserConfig 保存用户AI配置
 func (s *service) SaveUserConfig(ctx context.Context, config *UserAIConfig) error {
+	// 更新已有自定义配置时允许前端不回传密钥，避免因密钥不下发而误要求用户重复填写。
+	if !config.UseSystemConfig && config.CustomEnabled && strings.TrimSpace(config.CustomAPIKey) == "" {
+		if existing, err := s.repo.GetByUserID(ctx, config.UserID); err == nil && existing != nil && existing.CustomAPIKey != "" {
+			config.CustomAPIKey = existing.CustomAPIKey
+		}
+	}
+
 	// 验证配置
 	if err := s.validateUserConfig(config); err != nil {
 		return err
