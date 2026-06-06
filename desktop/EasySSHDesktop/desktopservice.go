@@ -40,8 +40,8 @@ func (s *DesktopService) RuntimeInfo() DesktopRuntimeInfo {
 		Capabilities: map[DesktopCapability]bool{
 			"servers":          true,
 			"terminal":         true,
-			"sftp":             false,
-			"transfers":        false,
+			"sftp":             true,
+			"transfers":        true,
 			"monitoring":       false,
 			"docker":           false,
 			"ai":               true,

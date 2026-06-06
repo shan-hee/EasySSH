@@ -27,6 +27,7 @@ export interface UseFileTransferOptions {
   resolveWebSocketUrl?: TransferWebSocketUrlResolver;
   WebSocketCtor?: TransferWebSocketConstructor;
   uploadLimiter?: TransferConcurrencyLimiter;
+  uploadUsesProgressSocket?: boolean;
 }
 
 /**
@@ -39,6 +40,7 @@ export function useFileTransfer({
   resolveWebSocketUrl = getWsUrl,
   WebSocketCtor,
   uploadLimiter: providedUploadLimiter,
+  uploadUsesProgressSocket = true,
 }: UseFileTransferOptions = {}) {
   const accessToken = useAuthStore((state) => state.accessToken);
   const [tasks, setTasks] = useState<TransferTask[]>([]);
@@ -100,9 +102,26 @@ export function useFileTransfer({
     controller.updateTask(taskId, update);
   }, [controller]);
 
+  const uploadFile = useCallback(
+    (
+      serverId: string,
+      remotePath: string,
+      file: File,
+      onProgress?: (loaded: number, total: number) => void,
+      enableWebSocket = uploadUsesProgressSocket,
+    ) => controller.uploadFile(
+      serverId,
+      remotePath,
+      file,
+      onProgress,
+      enableWebSocket && uploadUsesProgressSocket,
+    ),
+    [controller, uploadUsesProgressSocket],
+  );
+
   return {
     tasks,
-    uploadFile: controller.uploadFile,
+    uploadFile,
     cancelTask: controller.cancelTask,
     removeTask: controller.removeTask,
     clearCompleted: controller.clearCompleted,

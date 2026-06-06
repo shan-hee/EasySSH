@@ -30,8 +30,8 @@ export const WORKSPACE_CAPABILITY_PRESETS = {
   desktop: {
     defaults: {
       terminal: true,
-      sftp: false,
-      transfers: false,
+      sftp: true,
+      transfers: true,
       ai: true,
       monitor: false,
       docker: false,

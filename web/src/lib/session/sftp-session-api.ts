@@ -5,7 +5,7 @@ import type { SftpOperationsApi } from "./sftp-operations"
 export type SftpBatchDownloadMode = "fast" | "compatible"
 
 export interface SftpSessionApi extends SftpDirectoryApi, SftpOperationsApi {
-  downloadFile: (serverId: string, path: string) => unknown
+  downloadFile: (serverId: string, path: string) => Promise<void> | void
   readFile: (serverId: string, path: string) => Promise<string>
   batchDownload: (
     serverId: string,

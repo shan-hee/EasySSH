@@ -20,6 +20,7 @@ import {
 import { AiAssistantPanel } from './ai-assistant-panel'
 import { DockerPopover } from './docker'
 import { useSftpSession } from '@/hooks/useSftpSession'
+import type { FileTransferSftpApi } from '@/hooks/useFileTransfer'
 import { cn } from '@/lib/utils'
 import { useTabUIStore } from '@/stores/tab-ui-store'
 import { useOptionalSshWorkspace } from '@/components/ssh-workspace/ssh-workspace'
@@ -197,11 +198,35 @@ export function TabTerminalContent({
     () => createWorkspaceTransferAuthTicketProviderAdapter(workspace?.adapters.authTicketProvider),
     [workspace?.adapters.authTicketProvider]
   )
+  const workspaceSftpApi = workspace?.adapters.apiClient?.sftp
+  const sftpFileTransferApi = React.useMemo<FileTransferSftpApi | undefined>(() => {
+    if (
+      !workspaceSftpApi?.createUploadTask ||
+      !workspaceSftpApi.listUploadTasks ||
+      !workspaceSftpApi.cancelUploadTask ||
+      !workspaceSftpApi.uploadFile ||
+      !workspaceSftpApi.directTransfer ||
+      !workspaceSftpApi.cancelTransfer
+    ) {
+      return undefined
+    }
+
+    return {
+      createUploadTask: workspaceSftpApi.createUploadTask,
+      listUploadTasks: workspaceSftpApi.listUploadTasks,
+      cancelUploadTask: workspaceSftpApi.cancelUploadTask,
+      uploadFile: workspaceSftpApi.uploadFile,
+      directTransfer: workspaceSftpApi.directTransfer,
+      cancelTransfer: workspaceSftpApi.cancelTransfer,
+    }
+  }, [workspaceSftpApi])
   const sftpFileTransferOptions = React.useMemo(
     () => ({
+      api: sftpFileTransferApi,
       createTicket: transferAuthTicketProvider,
+      uploadUsesProgressSocket: workspaceSftpApi?.uploadUsesProgressSocket ?? true,
     }),
-    [transferAuthTicketProvider]
+    [sftpFileTransferApi, transferAuthTicketProvider, workspaceSftpApi]
   )
   const sftpTranslate = React.useMemo(
     () => workspace?.adapters.i18n
@@ -221,7 +246,7 @@ export function TabTerminalContent({
     [
       sftpFileTransferOptions,
       sftpTranslate,
-      workspace?.adapters.apiClient?.sftp,
+      workspaceSftpApi,
       workspace?.adapters.notifier,
     ]
   )

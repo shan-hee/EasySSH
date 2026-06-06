@@ -242,7 +242,7 @@ export function useSftpSession(
    * 下载文件（使用浏览器原生下载）
    */
   const downloadFile = useCallback(
-    (fileName: string) => {
+    async (fileName: string) => {
       const file = files.find((f) => f.name === fileName);
       if (!file || file.type === 'directory') return;
 
@@ -250,9 +250,13 @@ export function useSftpSession(
         ? `${currentPath}${fileName}`
         : `${currentPath}/${fileName}`;
 
-      // 直接触发浏览器下载，由浏览器自带下载管理器处理
-      sessionApi.downloadFile(serverId, fullPath);
-      sessionNotifier.success(tSftp("toastDownloadStartSingle", { file: fileName }));
+      try {
+        await sessionApi.downloadFile(serverId, fullPath);
+        sessionNotifier.success(tSftp("toastDownloadStartSingle", { file: fileName }));
+      } catch (error) {
+        console.error('[useSftpSession] 下载失败:', error);
+        sessionNotifier.error(getErrorMessage(error, tSftp("toastDownloadFailed")));
+      }
     },
     [serverId, currentPath, files, sessionApi, sessionNotifier, tSftp]
   );

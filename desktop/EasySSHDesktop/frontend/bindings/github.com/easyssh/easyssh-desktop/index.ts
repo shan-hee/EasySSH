@@ -3,12 +3,14 @@
 
 import * as ActivityLogService from "./activitylogservice.js";
 import * as DesktopAIService from "./desktopaiservice.js";
+import * as DesktopSFTPService from "./desktopsftpservice.js";
 import * as DesktopServerService from "./desktopserverservice.js";
 import * as DesktopService from "./desktopservice.js";
 import * as DesktopTerminalService from "./desktopterminalservice.js";
 export {
     ActivityLogService,
     DesktopAIService,
+    DesktopSFTPService,
     DesktopServerService,
     DesktopService,
     DesktopTerminalService
@@ -36,6 +38,22 @@ export {
     DesktopActivityLogStatistics,
     DesktopActivityLogStatus,
     DesktopRuntimeInfo,
+    DesktopSFTPBatchDeleteInput,
+    DesktopSFTPBatchDeleteResult,
+    DesktopSFTPBatchDownloadInput,
+    DesktopSFTPBatchOperationError,
+    DesktopSFTPChmodInput,
+    DesktopSFTPDirectTransferInput,
+    DesktopSFTPDirectTransferResult,
+    DesktopSFTPDirectoryListResult,
+    DesktopSFTPDownloadFileInput,
+    DesktopSFTPFileInfo,
+    DesktopSFTPPathInput,
+    DesktopSFTPRenameInput,
+    DesktopSFTPUploadFileInput,
+    DesktopSFTPUploadTaskListResult,
+    DesktopSFTPUploadTaskStatus,
+    DesktopSFTPWriteFileInput,
     DesktopSaveUserAIConfigRequest,
     DesktopServer,
     DesktopServerAuthMethod,

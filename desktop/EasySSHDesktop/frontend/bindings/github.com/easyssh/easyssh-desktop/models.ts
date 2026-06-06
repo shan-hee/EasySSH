@@ -723,6 +723,529 @@ export class DesktopRuntimeInfo {
     }
 }
 
+export class DesktopSFTPBatchDeleteInput {
+    "serverId": string;
+    "paths": string[];
+
+    /** Creates a new DesktopSFTPBatchDeleteInput instance. */
+    constructor($$source: Partial<DesktopSFTPBatchDeleteInput> = {}) {
+        if (!("serverId" in $$source)) {
+            this["serverId"] = "";
+        }
+        if (!("paths" in $$source)) {
+            this["paths"] = [];
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new DesktopSFTPBatchDeleteInput instance from a string or object.
+     */
+    static createFrom($$source: any = {}): DesktopSFTPBatchDeleteInput {
+        const $$createField1_0 = $$createType0;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("paths" in $$parsedSource) {
+            $$parsedSource["paths"] = $$createField1_0($$parsedSource["paths"]);
+        }
+        return new DesktopSFTPBatchDeleteInput($$parsedSource as Partial<DesktopSFTPBatchDeleteInput>);
+    }
+}
+
+export class DesktopSFTPBatchDeleteResult {
+    "success": string[];
+    "failed": DesktopSFTPBatchOperationError[];
+    "total": number;
+
+    /** Creates a new DesktopSFTPBatchDeleteResult instance. */
+    constructor($$source: Partial<DesktopSFTPBatchDeleteResult> = {}) {
+        if (!("success" in $$source)) {
+            this["success"] = [];
+        }
+        if (!("failed" in $$source)) {
+            this["failed"] = [];
+        }
+        if (!("total" in $$source)) {
+            this["total"] = 0;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new DesktopSFTPBatchDeleteResult instance from a string or object.
+     */
+    static createFrom($$source: any = {}): DesktopSFTPBatchDeleteResult {
+        const $$createField0_0 = $$createType0;
+        const $$createField1_0 = $$createType19;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("success" in $$parsedSource) {
+            $$parsedSource["success"] = $$createField0_0($$parsedSource["success"]);
+        }
+        if ("failed" in $$parsedSource) {
+            $$parsedSource["failed"] = $$createField1_0($$parsedSource["failed"]);
+        }
+        return new DesktopSFTPBatchDeleteResult($$parsedSource as Partial<DesktopSFTPBatchDeleteResult>);
+    }
+}
+
+export class DesktopSFTPBatchDownloadInput {
+    "serverId": string;
+    "paths": string[];
+    "localPath": string;
+
+    /** Creates a new DesktopSFTPBatchDownloadInput instance. */
+    constructor($$source: Partial<DesktopSFTPBatchDownloadInput> = {}) {
+        if (!("serverId" in $$source)) {
+            this["serverId"] = "";
+        }
+        if (!("paths" in $$source)) {
+            this["paths"] = [];
+        }
+        if (!("localPath" in $$source)) {
+            this["localPath"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new DesktopSFTPBatchDownloadInput instance from a string or object.
+     */
+    static createFrom($$source: any = {}): DesktopSFTPBatchDownloadInput {
+        const $$createField1_0 = $$createType0;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("paths" in $$parsedSource) {
+            $$parsedSource["paths"] = $$createField1_0($$parsedSource["paths"]);
+        }
+        return new DesktopSFTPBatchDownloadInput($$parsedSource as Partial<DesktopSFTPBatchDownloadInput>);
+    }
+}
+
+export class DesktopSFTPBatchOperationError {
+    "path": string;
+    "error": string;
+    "message": string;
+
+    /** Creates a new DesktopSFTPBatchOperationError instance. */
+    constructor($$source: Partial<DesktopSFTPBatchOperationError> = {}) {
+        if (!("path" in $$source)) {
+            this["path"] = "";
+        }
+        if (!("error" in $$source)) {
+            this["error"] = "";
+        }
+        if (!("message" in $$source)) {
+            this["message"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new DesktopSFTPBatchOperationError instance from a string or object.
+     */
+    static createFrom($$source: any = {}): DesktopSFTPBatchOperationError {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new DesktopSFTPBatchOperationError($$parsedSource as Partial<DesktopSFTPBatchOperationError>);
+    }
+}
+
+export class DesktopSFTPChmodInput {
+    "serverId": string;
+    "path": string;
+    "mode": string;
+
+    /** Creates a new DesktopSFTPChmodInput instance. */
+    constructor($$source: Partial<DesktopSFTPChmodInput> = {}) {
+        if (!("serverId" in $$source)) {
+            this["serverId"] = "";
+        }
+        if (!("path" in $$source)) {
+            this["path"] = "";
+        }
+        if (!("mode" in $$source)) {
+            this["mode"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new DesktopSFTPChmodInput instance from a string or object.
+     */
+    static createFrom($$source: any = {}): DesktopSFTPChmodInput {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new DesktopSFTPChmodInput($$parsedSource as Partial<DesktopSFTPChmodInput>);
+    }
+}
+
+export class DesktopSFTPDirectTransferInput {
+    "sourceServerId": string;
+    "sourcePath": string;
+    "targetServerId": string;
+    "targetPath": string;
+
+    /** Creates a new DesktopSFTPDirectTransferInput instance. */
+    constructor($$source: Partial<DesktopSFTPDirectTransferInput> = {}) {
+        if (!("sourceServerId" in $$source)) {
+            this["sourceServerId"] = "";
+        }
+        if (!("sourcePath" in $$source)) {
+            this["sourcePath"] = "";
+        }
+        if (!("targetServerId" in $$source)) {
+            this["targetServerId"] = "";
+        }
+        if (!("targetPath" in $$source)) {
+            this["targetPath"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new DesktopSFTPDirectTransferInput instance from a string or object.
+     */
+    static createFrom($$source: any = {}): DesktopSFTPDirectTransferInput {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new DesktopSFTPDirectTransferInput($$parsedSource as Partial<DesktopSFTPDirectTransferInput>);
+    }
+}
+
+export class DesktopSFTPDirectTransferResult {
+    "success": boolean;
+    "task_id": string;
+    "message": string;
+
+    /** Creates a new DesktopSFTPDirectTransferResult instance. */
+    constructor($$source: Partial<DesktopSFTPDirectTransferResult> = {}) {
+        if (!("success" in $$source)) {
+            this["success"] = false;
+        }
+        if (!("task_id" in $$source)) {
+            this["task_id"] = "";
+        }
+        if (!("message" in $$source)) {
+            this["message"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new DesktopSFTPDirectTransferResult instance from a string or object.
+     */
+    static createFrom($$source: any = {}): DesktopSFTPDirectTransferResult {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new DesktopSFTPDirectTransferResult($$parsedSource as Partial<DesktopSFTPDirectTransferResult>);
+    }
+}
+
+export class DesktopSFTPDirectoryListResult {
+    "path": string;
+    "files": DesktopSFTPFileInfo[];
+    "parent"?: string;
+
+    /** Creates a new DesktopSFTPDirectoryListResult instance. */
+    constructor($$source: Partial<DesktopSFTPDirectoryListResult> = {}) {
+        if (!("path" in $$source)) {
+            this["path"] = "";
+        }
+        if (!("files" in $$source)) {
+            this["files"] = [];
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new DesktopSFTPDirectoryListResult instance from a string or object.
+     */
+    static createFrom($$source: any = {}): DesktopSFTPDirectoryListResult {
+        const $$createField1_0 = $$createType21;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("files" in $$parsedSource) {
+            $$parsedSource["files"] = $$createField1_0($$parsedSource["files"]);
+        }
+        return new DesktopSFTPDirectoryListResult($$parsedSource as Partial<DesktopSFTPDirectoryListResult>);
+    }
+}
+
+export class DesktopSFTPDownloadFileInput {
+    "serverId": string;
+    "path": string;
+    "localPath": string;
+
+    /** Creates a new DesktopSFTPDownloadFileInput instance. */
+    constructor($$source: Partial<DesktopSFTPDownloadFileInput> = {}) {
+        if (!("serverId" in $$source)) {
+            this["serverId"] = "";
+        }
+        if (!("path" in $$source)) {
+            this["path"] = "";
+        }
+        if (!("localPath" in $$source)) {
+            this["localPath"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new DesktopSFTPDownloadFileInput instance from a string or object.
+     */
+    static createFrom($$source: any = {}): DesktopSFTPDownloadFileInput {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new DesktopSFTPDownloadFileInput($$parsedSource as Partial<DesktopSFTPDownloadFileInput>);
+    }
+}
+
+export class DesktopSFTPFileInfo {
+    "name": string;
+    "path": string;
+    "size": number;
+    "mode": number;
+    "mod_time": string;
+    "is_dir": boolean;
+    "is_link": boolean;
+    "link_target"?: string;
+    "permission"?: string;
+
+    /** Creates a new DesktopSFTPFileInfo instance. */
+    constructor($$source: Partial<DesktopSFTPFileInfo> = {}) {
+        if (!("name" in $$source)) {
+            this["name"] = "";
+        }
+        if (!("path" in $$source)) {
+            this["path"] = "";
+        }
+        if (!("size" in $$source)) {
+            this["size"] = 0;
+        }
+        if (!("mode" in $$source)) {
+            this["mode"] = 0;
+        }
+        if (!("mod_time" in $$source)) {
+            this["mod_time"] = "";
+        }
+        if (!("is_dir" in $$source)) {
+            this["is_dir"] = false;
+        }
+        if (!("is_link" in $$source)) {
+            this["is_link"] = false;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new DesktopSFTPFileInfo instance from a string or object.
+     */
+    static createFrom($$source: any = {}): DesktopSFTPFileInfo {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new DesktopSFTPFileInfo($$parsedSource as Partial<DesktopSFTPFileInfo>);
+    }
+}
+
+export class DesktopSFTPPathInput {
+    "serverId": string;
+    "path": string;
+
+    /** Creates a new DesktopSFTPPathInput instance. */
+    constructor($$source: Partial<DesktopSFTPPathInput> = {}) {
+        if (!("serverId" in $$source)) {
+            this["serverId"] = "";
+        }
+        if (!("path" in $$source)) {
+            this["path"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new DesktopSFTPPathInput instance from a string or object.
+     */
+    static createFrom($$source: any = {}): DesktopSFTPPathInput {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new DesktopSFTPPathInput($$parsedSource as Partial<DesktopSFTPPathInput>);
+    }
+}
+
+export class DesktopSFTPRenameInput {
+    "serverId": string;
+    "oldPath": string;
+    "newPath": string;
+
+    /** Creates a new DesktopSFTPRenameInput instance. */
+    constructor($$source: Partial<DesktopSFTPRenameInput> = {}) {
+        if (!("serverId" in $$source)) {
+            this["serverId"] = "";
+        }
+        if (!("oldPath" in $$source)) {
+            this["oldPath"] = "";
+        }
+        if (!("newPath" in $$source)) {
+            this["newPath"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new DesktopSFTPRenameInput instance from a string or object.
+     */
+    static createFrom($$source: any = {}): DesktopSFTPRenameInput {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new DesktopSFTPRenameInput($$parsedSource as Partial<DesktopSFTPRenameInput>);
+    }
+}
+
+export class DesktopSFTPUploadFileInput {
+    "serverId": string;
+    "path": string;
+    "fileName": string;
+    "data": string;
+
+    /** Creates a new DesktopSFTPUploadFileInput instance. */
+    constructor($$source: Partial<DesktopSFTPUploadFileInput> = {}) {
+        if (!("serverId" in $$source)) {
+            this["serverId"] = "";
+        }
+        if (!("path" in $$source)) {
+            this["path"] = "";
+        }
+        if (!("fileName" in $$source)) {
+            this["fileName"] = "";
+        }
+        if (!("data" in $$source)) {
+            this["data"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new DesktopSFTPUploadFileInput instance from a string or object.
+     */
+    static createFrom($$source: any = {}): DesktopSFTPUploadFileInput {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new DesktopSFTPUploadFileInput($$parsedSource as Partial<DesktopSFTPUploadFileInput>);
+    }
+}
+
+export class DesktopSFTPUploadTaskListResult {
+    "tasks": DesktopSFTPUploadTaskStatus[];
+
+    /** Creates a new DesktopSFTPUploadTaskListResult instance. */
+    constructor($$source: Partial<DesktopSFTPUploadTaskListResult> = {}) {
+        if (!("tasks" in $$source)) {
+            this["tasks"] = [];
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new DesktopSFTPUploadTaskListResult instance from a string or object.
+     */
+    static createFrom($$source: any = {}): DesktopSFTPUploadTaskListResult {
+        const $$createField0_0 = $$createType23;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("tasks" in $$parsedSource) {
+            $$parsedSource["tasks"] = $$createField0_0($$parsedSource["tasks"]);
+        }
+        return new DesktopSFTPUploadTaskListResult($$parsedSource as Partial<DesktopSFTPUploadTaskListResult>);
+    }
+}
+
+export class DesktopSFTPUploadTaskStatus {
+    "id": string;
+    "file_name": string;
+    "file_size": number;
+    "status": string;
+    "progress": number;
+    "loaded": number;
+    "total": number;
+    "speed_bps": number;
+    "created_at": string;
+    "updated_at": string;
+
+    /** Creates a new DesktopSFTPUploadTaskStatus instance. */
+    constructor($$source: Partial<DesktopSFTPUploadTaskStatus> = {}) {
+        if (!("id" in $$source)) {
+            this["id"] = "";
+        }
+        if (!("file_name" in $$source)) {
+            this["file_name"] = "";
+        }
+        if (!("file_size" in $$source)) {
+            this["file_size"] = 0;
+        }
+        if (!("status" in $$source)) {
+            this["status"] = "";
+        }
+        if (!("progress" in $$source)) {
+            this["progress"] = 0;
+        }
+        if (!("loaded" in $$source)) {
+            this["loaded"] = 0;
+        }
+        if (!("total" in $$source)) {
+            this["total"] = 0;
+        }
+        if (!("speed_bps" in $$source)) {
+            this["speed_bps"] = 0;
+        }
+        if (!("created_at" in $$source)) {
+            this["created_at"] = "";
+        }
+        if (!("updated_at" in $$source)) {
+            this["updated_at"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new DesktopSFTPUploadTaskStatus instance from a string or object.
+     */
+    static createFrom($$source: any = {}): DesktopSFTPUploadTaskStatus {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new DesktopSFTPUploadTaskStatus($$parsedSource as Partial<DesktopSFTPUploadTaskStatus>);
+    }
+}
+
+export class DesktopSFTPWriteFileInput {
+    "serverId": string;
+    "path": string;
+    "content": string;
+
+    /** Creates a new DesktopSFTPWriteFileInput instance. */
+    constructor($$source: Partial<DesktopSFTPWriteFileInput> = {}) {
+        if (!("serverId" in $$source)) {
+            this["serverId"] = "";
+        }
+        if (!("path" in $$source)) {
+            this["path"] = "";
+        }
+        if (!("content" in $$source)) {
+            this["content"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new DesktopSFTPWriteFileInput instance from a string or object.
+     */
+    static createFrom($$source: any = {}): DesktopSFTPWriteFileInput {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new DesktopSFTPWriteFileInput($$parsedSource as Partial<DesktopSFTPWriteFileInput>);
+    }
+}
+
 export class DesktopSaveUserAIConfigRequest {
     "use_system_config": boolean;
     "custom_enabled": boolean;
@@ -1001,7 +1524,7 @@ export class DesktopServerListResult {
      * Creates a new DesktopServerListResult instance from a string or object.
      */
     static createFrom($$source: any = {}): DesktopServerListResult {
-        const $$createField0_0 = $$createType19;
+        const $$createField0_0 = $$createType25;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("data" in $$parsedSource) {
             $$parsedSource["data"] = $$createField0_0($$parsedSource["data"]);
@@ -1188,5 +1711,11 @@ const $$createType14 = DesktopActivityLogItem.createFrom;
 const $$createType15 = $Create.Array($$createType14);
 const $$createType16 = $Create.Map($Create.Any, $Create.Any);
 const $$createType17 = $Create.Map($Create.Any, $Create.Any);
-const $$createType18 = DesktopServer.createFrom;
+const $$createType18 = DesktopSFTPBatchOperationError.createFrom;
 const $$createType19 = $Create.Array($$createType18);
+const $$createType20 = DesktopSFTPFileInfo.createFrom;
+const $$createType21 = $Create.Array($$createType20);
+const $$createType22 = DesktopSFTPUploadTaskStatus.createFrom;
+const $$createType23 = $Create.Array($$createType22);
+const $$createType24 = DesktopServer.createFrom;
+const $$createType25 = $Create.Array($$createType24);

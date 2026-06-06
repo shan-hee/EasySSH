@@ -1,10 +1,12 @@
 import type { OptionalServerConnectionInfo, ServerConnectionInfo } from "./types"
 import type {
   BatchDeleteResponse,
+  DirectTransferResponse,
   DirectoryListResponse,
   FileInfo,
   SftpBatchDownloadMode,
   SftpFileItem,
+  UploadTaskListResponse,
 } from "./sftp-types"
 import type {
   TerminalConnectionPhase,
@@ -124,8 +126,16 @@ export interface WorkspaceTerminalCredentialSaveRequest {
 export interface SshWorkspaceApiClient {
   sftp?: {
     listDirectory: (serverId: string, path?: string) => Promise<DirectoryListResponse>
-    downloadFile?: (serverId: string, path: string) => unknown
-    uploadFile?: (serverId: string, path: string, file: File) => Promise<unknown>
+    downloadFile?: (serverId: string, path: string) => Promise<void> | void
+    uploadFile?: (
+      serverId: string,
+      path: string,
+      file: File,
+      onProgress?: (loaded: number, total: number) => void,
+      wsTaskId?: string,
+      onXhr?: (xhr: XMLHttpRequest) => void,
+    ) => Promise<FileInfo | null>
+    uploadUsesProgressSocket?: boolean
     delete?: (serverId: string, path: string) => Promise<FileInfo>
     rename?: (serverId: string, oldPath: string, newPath: string) => Promise<FileInfo>
     createDirectory?: (serverId: string, path: string) => Promise<FileInfo>
@@ -140,6 +150,16 @@ export interface SshWorkspaceApiClient {
       excludePatterns?: string[],
     ) => Promise<void>
     closeConnection?: (serverId: string) => Promise<unknown>
+    createUploadTask?: () => Promise<{ task_id: string }>
+    listUploadTasks?: () => Promise<UploadTaskListResponse>
+    cancelUploadTask?: (taskId: string) => Promise<unknown>
+    directTransfer?: (
+      sourceServerId: string,
+      sourcePath: string,
+      targetServerId: string,
+      targetPath: string,
+    ) => Promise<DirectTransferResponse>
+    cancelTransfer?: (taskId: string) => Promise<unknown>
   }
   terminal?: {
     createWebSocketUrl?: TerminalWebSocketUrlResolver
