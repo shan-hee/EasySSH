@@ -1,5 +1,7 @@
 import { readFileSync, readdirSync, statSync } from "node:fs"
 import { join, relative, resolve } from "node:path"
+import { error, log } from "node:console"
+import { exit } from "node:process"
 
 const repoRoot = resolve(import.meta.dirname, "../..")
 
@@ -68,16 +70,16 @@ for (const rule of rules) {
 }
 
 if (failures.length > 0) {
-  console.error("Workspace boundary check failed:\n")
+  error("Workspace boundary check failed:\n")
   for (const failure of failures) {
-    console.error(`${failure.file}:${failure.line}`)
-    console.error(`  ${failure.rule}`)
-    console.error(`  ${failure.text}\n`)
+    error(`${failure.file}:${failure.line}`)
+    error(`  ${failure.rule}`)
+    error(`  ${failure.text}\n`)
   }
-  process.exit(1)
+  exit(1)
 }
 
-console.log("Workspace boundary check passed.")
+log("Workspace boundary check passed.")
 
 function listFiles(root, extensions) {
   const files = []

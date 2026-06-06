@@ -269,7 +269,7 @@ export default function SftpPage() {
    setFullscreenSessionId((current) => (
      current && current !== sessionId ? null : current
    ))
- }, [setFullscreenSessionId])
+ }, [setActiveSessionId, setFullscreenSessionId])
  const {
    splitLayout,
    setSplitLayout,
@@ -353,7 +353,7 @@ export default function SftpPage() {
    if (!sessionIdSet.has(activeSessionId) && !configTabIdSet.has(activeSessionId)) {
      setActiveSessionId(sessions[0].id ?? configTabIds[0] ?? SFTP_CONFIG_TAB_ID)
    }
- }, [activeSessionId, configTabIds, configTabIdSet, sessionIdSet, sessions, syncSplitLayout])
+ }, [activeSessionId, configTabIds, configTabIdSet, sessionIdSet, sessions, setActiveSessionId, setConfigTabIds, syncSplitLayout])
 
  const handleReorderTabs = useCallback((newOrderIds: string[]) => {
    setSessions((current) => {
@@ -373,7 +373,7 @@ export default function SftpPage() {
 
      return [...ordered, ...remaining]
    })
- }, [setSessions])
+ }, [setConfigTabIds, setSessions])
 
  const handleNewTab = useCallback(() => {
    const configTabId = createSftpConfigTabId()
@@ -382,7 +382,7 @@ export default function SftpPage() {
    setActiveSessionId(configTabId)
    setFullscreenSessionId(null)
    setActiveId(null)
- }, [setActiveId, setFullscreenSessionId])
+ }, [setActiveId, setActiveSessionId, setConfigTabIds, setFullscreenSessionId])
 
  // 配置拖拽传感器 - 最小化激活约束
  const sensors = useSensors(
@@ -622,7 +622,7 @@ export default function SftpPage() {
    setSessions(prev => prev.filter(session => session.id !== sessionId))
    setFullscreenSessionId(prev => (prev === sessionId ? null : prev))
    setActiveId(prev => (prev === sessionId ? null : prev))
- }, [configTabIds, removeSessionFromWorkspace, setActiveId, setFullscreenSessionId, setSessions])
+ }, [configTabIds, removeSessionFromWorkspace, setActiveId, setActiveSessionId, setConfigTabIds, setFullscreenSessionId, setSessions])
 
  const handleCloseTab = useCallback((sessionId: string) => {
    if (sessionId === SFTP_WORKSPACE_TAB_ID) {
@@ -685,6 +685,8 @@ export default function SftpPage() {
    configTabIdSet,
    handleDisconnect,
    setActiveId,
+   setActiveSessionId,
+   setConfigTabIds,
    setSplitLayout,
    setFullscreenSessionId,
    setSessions,
@@ -1090,7 +1092,7 @@ export default function SftpPage() {
    }
  }, [tSftp, sftpSessionApi])
 
- const renderSftpSessionCard = (
+ const renderSftpSessionCard = useCallback((
    session: SftpSession,
    isFullscreenSession = false,
    chrome: "full" | "toolbar" | "content" = "full",
@@ -1120,7 +1122,26 @@ export default function SftpPage() {
    onRenameSessionLabel={handleRenameSession}
    onToggleFullscreen={toggleFullscreen}
  />
- )
+ ), [
+   handleBatchDelete,
+   handleBatchDownload,
+   handleCreateFile,
+   handleCreateFolder,
+   handleDelete,
+   handleDisconnect,
+   handleDownload,
+   handleNavigate,
+   handleNavigateBack,
+   handleNavigateForward,
+   handleReadFile,
+   handleRefreshSession,
+   handleRename,
+   handleRenameSession,
+   handleSaveFile,
+   handleUpload,
+   tSftp,
+   toggleFullscreen,
+ ])
 
  const renderSplitLeaf = useCallback((sessionId: string): React.ReactNode => {
    const session = sessions.find((item) => item.id === sessionId)
@@ -1159,6 +1180,7 @@ export default function SftpPage() {
    handleCrossSessionDrop,
    renderSftpSessionCard,
    sessions,
+   setActiveSessionId,
    tSftp,
    tabDropSide,
    tabDropTargetId,

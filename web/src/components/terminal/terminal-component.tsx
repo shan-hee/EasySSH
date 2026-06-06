@@ -859,6 +859,7 @@ export function TerminalComponent({
     handleAnimationComplete,
     handleCommand,
     handleInternalBackHandlerChange,
+    handleToggleFullscreen,
     isFullscreen,
     loaderStates,
     onAuthCancelled,
