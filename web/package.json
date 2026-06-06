@@ -14,6 +14,7 @@
     "test": "node --import tsx --test $(find test -type f \\( -name '*.test.ts' -o -name '*.test.tsx' \\) -print)",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
+    "check:workspace-boundaries": "node scripts/check-workspace-boundaries.mjs",
     "openapi:gen": "openapi-typescript ../shared/openapi.yaml -o src/types/openapi.ts"
   },
   "dependencies": {
