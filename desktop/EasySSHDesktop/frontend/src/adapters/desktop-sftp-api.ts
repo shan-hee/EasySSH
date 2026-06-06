@@ -148,5 +148,6 @@ export function createDesktopSftpApi(): DesktopSftpApi {
       await DesktopSFTPService.CloseConnection(serverId)
     },
     uploadUsesProgressSocket: false,
+    serverTransferUsesProgressSocket: false,
   }
 }

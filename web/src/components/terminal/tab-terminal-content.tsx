@@ -228,6 +228,7 @@ export function TabTerminalContent({
       api: sftpFileTransferApi,
       createTicket: transferAuthTicketProvider,
       uploadUsesProgressSocket: workspaceSftpApi?.uploadUsesProgressSocket ?? true,
+      serverTransferUsesProgressSocket: workspaceSftpApi?.serverTransferUsesProgressSocket ?? true,
     }),
     [sftpFileTransferApi, transferAuthTicketProvider, workspaceSftpApi]
   )

@@ -28,6 +28,7 @@ export interface UseFileTransferOptions {
   WebSocketCtor?: TransferWebSocketConstructor;
   uploadLimiter?: TransferConcurrencyLimiter;
   uploadUsesProgressSocket?: boolean;
+  serverTransferUsesProgressSocket?: boolean;
 }
 
 /**
@@ -41,6 +42,7 @@ export function useFileTransfer({
   WebSocketCtor,
   uploadLimiter: providedUploadLimiter,
   uploadUsesProgressSocket = true,
+  serverTransferUsesProgressSocket = true,
 }: UseFileTransferOptions = {}) {
   const accessToken = useAuthStore((state) => state.accessToken);
   const [tasks, setTasks] = useState<TransferTask[]>([]);
@@ -72,6 +74,7 @@ export function useFileTransfer({
     handles: transferHandles,
     getTasks: () => tasksRef.current,
     setTasks: updateTransferTasks,
+    serverTransferUsesProgressSocket,
     WebSocketCtor,
     logError: (message, error) => {
       console.error(message.replace('[transfer-manager]', '[useFileTransfer]'), error);
@@ -79,7 +82,7 @@ export function useFileTransfer({
     logWarn: (message, ...args) => {
       console.warn(message.replace('[transfer-manager]', '[useFileTransfer]'), ...args);
     },
-  }), [api, createTicket, resolveWebSocketUrl, uploadLimiter, transferHandles, updateTransferTasks, WebSocketCtor]);
+  }), [api, createTicket, resolveWebSocketUrl, uploadLimiter, transferHandles, updateTransferTasks, serverTransferUsesProgressSocket, WebSocketCtor]);
 
   useEffect(() => {
     if (!accessToken) {

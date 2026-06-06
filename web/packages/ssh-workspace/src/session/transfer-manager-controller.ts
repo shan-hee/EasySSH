@@ -71,6 +71,7 @@ export interface CreateFileTransferControllerOptions {
   handles: TransferRuntimeHandleStore
   getTasks: () => readonly TransferTask[]
   setTasks: TransferTaskStateUpdater
+  serverTransferUsesProgressSocket?: boolean
   WebSocketCtor?: TransferWebSocketConstructor
   logError?: (message: string, error?: unknown) => void
   logWarn?: (message: string, ...args: unknown[]) => void
@@ -116,6 +117,7 @@ export function createFileTransferController({
   handles,
   getTasks,
   setTasks,
+  serverTransferUsesProgressSocket = true,
   WebSocketCtor,
   logError = (message, error) => console.error(message, error),
   logWarn = (message, ...args) => console.warn(message, ...args),
@@ -326,6 +328,15 @@ export function createFileTransferController({
         targetServer: targetServerName,
       })
       setTasks((prev) => appendTransferTask(prev, task))
+
+      if (!serverTransferUsesProgressSocket) {
+        updateTask(taskId, {
+          progress: 100,
+          status: "completed",
+          transferMethod: "sftp",
+        })
+        return
+      }
 
       let wsConnection: WebSocket | null = null
       let isTransferFinished = () => false

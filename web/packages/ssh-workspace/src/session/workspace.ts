@@ -306,6 +306,7 @@ export interface SshWorkspaceApiClient {
       onXhr?: (xhr: XMLHttpRequest) => void,
     ) => Promise<FileInfo | null>
     uploadUsesProgressSocket?: boolean
+    serverTransferUsesProgressSocket?: boolean
     delete?: (serverId: string, path: string) => Promise<FileInfo>
     rename?: (serverId: string, oldPath: string, newPath: string) => Promise<FileInfo>
     createDirectory?: (serverId: string, path: string) => Promise<FileInfo>

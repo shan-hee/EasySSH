@@ -463,8 +463,49 @@ func (s *DesktopSFTPService) CancelUploadTask(_ string) error {
 	return nil
 }
 
-func (s *DesktopSFTPService) DirectTransfer(_ DesktopSFTPDirectTransferInput) (DesktopSFTPDirectTransferResult, error) {
-	return DesktopSFTPDirectTransferResult{}, errors.New("desktop direct transfer is not implemented yet")
+func (s *DesktopSFTPService) DirectTransfer(input DesktopSFTPDirectTransferInput) (DesktopSFTPDirectTransferResult, error) {
+	sourceServerID := strings.TrimSpace(input.SourceServerID)
+	targetServerID := strings.TrimSpace(input.TargetServerID)
+	if sourceServerID == "" {
+		return DesktopSFTPDirectTransferResult{}, errors.New("source server id is required")
+	}
+	if targetServerID == "" {
+		return DesktopSFTPDirectTransferResult{}, errors.New("target server id is required")
+	}
+
+	sourcePath := normalizeDesktopSFTPPath(input.SourcePath)
+	targetPath := normalizeDesktopSFTPPath(input.TargetPath)
+	if sourceServerID == targetServerID {
+		return DesktopSFTPDirectTransferResult{}, errors.New("cannot transfer between the same server")
+	}
+
+	sourceClient, sourceCloser, err := s.openClient(sourceServerID)
+	if err != nil {
+		return DesktopSFTPDirectTransferResult{}, fmt.Errorf("failed to connect source server: %w", err)
+	}
+	defer sourceCloser()
+
+	targetClient, targetCloser, err := s.openClient(targetServerID)
+	if err != nil {
+		return DesktopSFTPDirectTransferResult{}, fmt.Errorf("failed to connect target server: %w", err)
+	}
+	defer targetCloser()
+
+	sourceInfo, err := sourceClient.Stat(sourcePath)
+	if err != nil {
+		return DesktopSFTPDirectTransferResult{}, fmt.Errorf("failed to stat source path: %w", err)
+	}
+
+	stats, err := copyDesktopSFTPPath(sourceClient, targetClient, sourcePath, targetPath, sourceInfo)
+	if err != nil {
+		return DesktopSFTPDirectTransferResult{}, err
+	}
+
+	return DesktopSFTPDirectTransferResult{
+		Success: true,
+		TaskID:  fmt.Sprintf("desktop-transfer-%d", time.Now().UnixNano()),
+		Message: fmt.Sprintf("Transfer completed: %d file(s), %d byte(s) copied", stats.FilesCopied, stats.BytesCopied),
+	}, nil
 }
 
 func (s *DesktopSFTPService) CancelTransfer(_ string) error {
@@ -640,6 +681,92 @@ func addDesktopSFTPZipEntry(client *sftp.Client, zipWriter *zip.Writer, remotePa
 
 	_, err = io.Copy(archiveFile, remoteFile)
 	return err
+}
+
+type desktopSFTPTransferStats struct {
+	FilesCopied int
+	BytesCopied int64
+}
+
+func copyDesktopSFTPPath(sourceClient *sftp.Client, targetClient *sftp.Client, sourcePath string, targetPath string, sourceInfo os.FileInfo) (desktopSFTPTransferStats, error) {
+	stats := desktopSFTPTransferStats{}
+	if sourceInfo.IsDir() {
+		targetDir := joinDesktopSFTPPath(targetPath, sourceInfo.Name())
+		if err := copyDesktopSFTPDirectory(sourceClient, targetClient, sourcePath, targetDir, &stats); err != nil {
+			return desktopSFTPTransferStats{}, err
+		}
+		return stats, nil
+	}
+
+	targetFilePath := targetPath
+	if targetInfo, err := targetClient.Stat(targetPath); err == nil && targetInfo.IsDir() {
+		targetFilePath = joinDesktopSFTPPath(targetPath, path.Base(sourcePath))
+	}
+	if err := copyDesktopSFTPFile(sourceClient, targetClient, sourcePath, targetFilePath, sourceInfo, &stats); err != nil {
+		return desktopSFTPTransferStats{}, err
+	}
+
+	return stats, nil
+}
+
+func copyDesktopSFTPDirectory(sourceClient *sftp.Client, targetClient *sftp.Client, sourceDir string, targetDir string, stats *desktopSFTPTransferStats) error {
+	if err := targetClient.MkdirAll(targetDir); err != nil {
+		return fmt.Errorf("failed to create target directory: %w", err)
+	}
+
+	entries, err := sourceClient.ReadDir(sourceDir)
+	if err != nil {
+		return fmt.Errorf("failed to read source directory: %w", err)
+	}
+
+	for _, entry := range entries {
+		name := entry.Name()
+		if name == "." || name == ".." {
+			continue
+		}
+
+		childSourcePath := joinDesktopSFTPPath(sourceDir, name)
+		childTargetPath := joinDesktopSFTPPath(targetDir, name)
+		if entry.IsDir() && entry.Mode()&os.ModeSymlink == 0 {
+			if err := copyDesktopSFTPDirectory(sourceClient, targetClient, childSourcePath, childTargetPath, stats); err != nil {
+				return err
+			}
+			continue
+		}
+
+		if err := copyDesktopSFTPFile(sourceClient, targetClient, childSourcePath, childTargetPath, entry, stats); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func copyDesktopSFTPFile(sourceClient *sftp.Client, targetClient *sftp.Client, sourcePath string, targetPath string, sourceInfo os.FileInfo, stats *desktopSFTPTransferStats) error {
+	remoteFile, err := sourceClient.Open(sourcePath)
+	if err != nil {
+		return fmt.Errorf("failed to open source file: %w", err)
+	}
+	defer remoteFile.Close()
+
+	targetFile, err := targetClient.OpenFile(targetPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC)
+	if err != nil {
+		return fmt.Errorf("failed to create target file: %w", err)
+	}
+
+	copied, copyErr := io.Copy(targetFile, remoteFile)
+	closeErr := targetFile.Close()
+	if copyErr != nil {
+		return fmt.Errorf("failed to copy file: %w", copyErr)
+	}
+	if closeErr != nil {
+		return fmt.Errorf("failed to close target file: %w", closeErr)
+	}
+
+	_ = targetClient.Chmod(targetPath, sourceInfo.Mode().Perm())
+	stats.FilesCopied++
+	stats.BytesCopied += copied
+	return nil
 }
 
 func normalizeDesktopSFTPPath(value string) string {
