@@ -42,6 +42,9 @@ export default defineConfig(({ mode }) => {
         "@easyssh/ssh-workspace": fileURLToPath(
           new URL("./packages/ssh-workspace/src/index.ts", import.meta.url),
         ),
+        "@protobufjs/inquire": fileURLToPath(
+          new URL("./src/lib/proto/browser-inquire.cjs", import.meta.url),
+        ),
       },
     },
     define: {

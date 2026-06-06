@@ -2,7 +2,6 @@ import type { ComponentProps } from "react"
 import { AIAssistantWorkspaceView } from "@/components/ai-agent/ai-assistant-workspace-view"
 import { ClientAuthProvider } from "@/components/client-auth-provider"
 import { DashboardI18nProvider } from "@/providers/dashboard-i18n-provider"
-import { QueryProvider } from "@/providers/query-provider"
 import type { DesktopAIAssistantAdapters } from "../adapters/desktop-ai-adapters"
 
 const desktopUser: NonNullable<ComponentProps<typeof ClientAuthProvider>["initialUser"]> = {
@@ -24,19 +23,17 @@ export function DesktopAIAssistantView({
   onReturnToTerminal: () => void
 }) {
   return (
-    <QueryProvider>
-      <ClientAuthProvider initialUser={desktopUser}>
-        <DashboardI18nProvider>
-          <section className="easyssh-desktop-ai-view">
-            <AIAssistantWorkspaceView
-              hidePageHeader
-              customConfigOnly
-              onReturnToTerminal={onReturnToTerminal}
-              adapters={adapters}
-            />
-          </section>
-        </DashboardI18nProvider>
-      </ClientAuthProvider>
-    </QueryProvider>
+    <ClientAuthProvider initialUser={desktopUser}>
+      <DashboardI18nProvider>
+        <section className="easyssh-desktop-ai-view">
+          <AIAssistantWorkspaceView
+            hidePageHeader
+            customConfigOnly
+            onReturnToTerminal={onReturnToTerminal}
+            adapters={adapters}
+          />
+        </section>
+      </DashboardI18nProvider>
+    </ClientAuthProvider>
   )
 }

@@ -16,6 +16,14 @@ const tailwindPostcss = webRequire("@tailwindcss/postcss");
 
 // https://vitejs.dev/config/
 export default defineConfig({
+  cacheDir: "node_modules/.vite-desktop",
+  build: {
+    rolldownOptions: {
+      checks: {
+        pluginTimings: false,
+      },
+    },
+  },
   server: {
     host: "127.0.0.1",
     port: Number(process.env.WAILS_VITE_PORT) || 9245,
@@ -27,6 +35,10 @@ export default defineConfig({
   resolve: {
     dedupe: ["react", "react-dom"],
     alias: [
+      {
+        find: /^@protobufjs\/inquire$/,
+        replacement: resolve(webSourceRoot, "lib/proto/browser-inquire.cjs"),
+      },
       {
         find: /^react$/,
         replacement: resolve(webNodeModulesRoot, "react/index.js"),
