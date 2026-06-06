@@ -43,6 +43,15 @@ type DesktopTerminalCloseInput struct {
 	ClientID string `json:"clientId"`
 }
 
+type DesktopTerminalPingInput struct {
+	ClientID string `json:"clientId"`
+}
+
+type DesktopTerminalPingResult struct {
+	LatencyMs  int64 `json:"latencyMs"`
+	MeasuredAt int64 `json:"measuredAt"`
+}
+
 type DesktopTerminalOutputEvent struct {
 	ClientID string `json:"clientId"`
 	Data     string `json:"data"`
@@ -257,6 +266,45 @@ func (s *DesktopTerminalService) Close(input DesktopTerminalCloseInput) error {
 
 	s.closeByID(clientID, "client closed")
 	return nil
+}
+
+func (s *DesktopTerminalService) Ping(input DesktopTerminalPingInput) (DesktopTerminalPingResult, error) {
+	clientID := strings.TrimSpace(input.ClientID)
+	if clientID == "" {
+		return DesktopTerminalPingResult{}, errors.New("terminal client id is required")
+	}
+
+	terminalSession := s.getSession(clientID)
+	if terminalSession == nil || terminalSession.client == nil {
+		return DesktopTerminalPingResult{}, errors.New("terminal session is not active")
+	}
+
+	started := time.Now()
+	sshSession, err := terminalSession.client.NewSession()
+	if err != nil {
+		return DesktopTerminalPingResult{}, err
+	}
+	defer sshSession.Close()
+
+	done := make(chan error, 1)
+	go func() {
+		done <- sshSession.Run("true")
+	}()
+
+	select {
+	case err := <-done:
+		if err != nil {
+			return DesktopTerminalPingResult{}, err
+		}
+	case <-time.After(5 * time.Second):
+		_ = sshSession.Close()
+		return DesktopTerminalPingResult{}, errors.New("terminal ping timed out")
+	}
+
+	return DesktopTerminalPingResult{
+		LatencyMs:  time.Since(started).Milliseconds(),
+		MeasuredAt: time.Now().UnixMilli(),
+	}, nil
 }
 
 func (s *DesktopTerminalService) getSession(clientID string) *desktopTerminalSession {

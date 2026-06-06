@@ -33,7 +33,7 @@ export const WORKSPACE_CAPABILITY_PRESETS = {
       sftp: true,
       transfers: true,
       ai: true,
-      monitor: false,
+      monitor: true,
       docker: false,
       activityLog: true,
       fullscreen: true,

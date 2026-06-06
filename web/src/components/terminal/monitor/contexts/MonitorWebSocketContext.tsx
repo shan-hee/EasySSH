@@ -12,6 +12,7 @@
 
 import React, { createContext, useContext, ReactNode, useMemo } from 'react';
 import { useMonitorWebSocket, WSStatus, MonitorMetrics } from '../hooks/useMonitorWebSocket';
+import type { WorkspaceMonitorApi } from '@/lib/session/workspace';
 
 /**
  * 延迟相关数据
@@ -72,6 +73,7 @@ interface MonitorWebSocketProviderProps {
   enabled?: boolean;
   interval?: number;
   latencyIntervalMs?: number;
+  monitorApi?: WorkspaceMonitorApi;
 }
 
 /**
@@ -95,12 +97,14 @@ export const MonitorWebSocketProvider: React.FC<MonitorWebSocketProviderProps> =
   enabled = true,
   interval = 2,
   latencyIntervalMs = 5000,
+  monitorApi,
 }) => {
   const monitorData = useMonitorWebSocket({
     serverId,
     enabled,
     interval,
     latencyIntervalMs,
+    monitorApi,
   });
 
   // 延迟数据组 - 只在延迟相关值变化时更新

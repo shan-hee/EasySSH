@@ -13,6 +13,12 @@ export function Close(input: $models.DesktopTerminalCloseInput): $CancellablePro
     return $Call.ByID(2176147339, input);
 }
 
+export function Ping(input: $models.DesktopTerminalPingInput): $CancellablePromise<$models.DesktopTerminalPingResult> {
+    return $Call.ByID(2962857281, input).then(($result: any) => {
+        return $$createType0($result);
+    });
+}
+
 export function Resize(input: $models.DesktopTerminalResizeInput): $CancellablePromise<void> {
     return $Call.ByID(3001817145, input);
 }
@@ -24,3 +30,6 @@ export function Start(input: $models.DesktopTerminalStartInput): $CancellablePro
 export function Write(input: $models.DesktopTerminalWriteInput): $CancellablePromise<void> {
     return $Call.ByID(822013716, input);
 }
+
+// Private type creation functions
+const $$createType0 = $models.DesktopTerminalPingResult.createFrom;

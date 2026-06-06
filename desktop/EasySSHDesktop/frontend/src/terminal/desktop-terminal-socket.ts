@@ -78,6 +78,8 @@ export function createDesktopTerminalSocket(): TerminalWebSocketConstructor {
     private readonly cols: number
     private readonly rows: number
     private destroyed = false
+    private sshPingInFlight = false
+    private sshLatency: { sshLatencyMs?: number; sshLatencyMeasuredAt?: number } = {}
     private readonly disposeOutput: () => void
     private readonly disposeClosed: () => void
 
@@ -151,9 +153,11 @@ export function createDesktopTerminalSocket(): TerminalWebSocketConstructor {
             : {}
           this.emitControl("pong", {
             ...data,
+            ...this.sshLatency,
             serverRecvTs: now,
-            serverSendTs: now,
+            serverSendTs: Date.now(),
           })
+          void this.refreshSshLatency()
           return
         }
         if (message.type === "resize") {
@@ -183,6 +187,25 @@ export function createDesktopTerminalSocket(): TerminalWebSocketConstructor {
       }
     }
 
+    private async refreshSshLatency() {
+      if (this.sshPingInFlight || this.destroyed || this.readyState !== DesktopTerminalSocket.OPEN) {
+        return
+      }
+
+      this.sshPingInFlight = true
+      try {
+        const result = await DesktopTerminalService.Ping({ clientId: this.clientId })
+        this.sshLatency = {
+          sshLatencyMs: result.latencyMs,
+          sshLatencyMeasuredAt: result.measuredAt,
+        }
+      } catch {
+        this.sshLatency = {}
+      } finally {
+        this.sshPingInFlight = false
+      }
+    }
+
     private async start() {
       if (this.destroyed) return
 
@@ -201,6 +224,7 @@ export function createDesktopTerminalSocket(): TerminalWebSocketConstructor {
         if (this.destroyed) return
 
         this.emitControl("connected")
+        void this.refreshSshLatency()
         void ActivityLogService.Record({
           action: "ssh_connect",
           resource: this.serverId,

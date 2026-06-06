@@ -3,6 +3,7 @@
 
 import * as ActivityLogService from "./activitylogservice.js";
 import * as DesktopAIService from "./desktopaiservice.js";
+import * as DesktopMonitorService from "./desktopmonitorservice.js";
 import * as DesktopSFTPService from "./desktopsftpservice.js";
 import * as DesktopServerService from "./desktopserverservice.js";
 import * as DesktopService from "./desktopservice.js";
@@ -10,6 +11,7 @@ import * as DesktopTerminalService from "./desktopterminalservice.js";
 export {
     ActivityLogService,
     DesktopAIService,
+    DesktopMonitorService,
     DesktopSFTPService,
     DesktopServerService,
     DesktopService,
@@ -37,6 +39,14 @@ export {
     DesktopActivityLogRecordInput,
     DesktopActivityLogStatistics,
     DesktopActivityLogStatus,
+    DesktopMonitorCPUInfo,
+    DesktopMonitorCollectInput,
+    DesktopMonitorDiskInfo,
+    DesktopMonitorDockerInfo,
+    DesktopMonitorMemoryInfo,
+    DesktopMonitorNetworkInfo,
+    DesktopMonitorSnapshot,
+    DesktopMonitorSystemInfo,
     DesktopRuntimeInfo,
     DesktopSFTPBatchDeleteInput,
     DesktopSFTPBatchDeleteResult,
@@ -64,6 +74,8 @@ export {
     DesktopServerListResult,
     DesktopServerStatus,
     DesktopTerminalCloseInput,
+    DesktopTerminalPingInput,
+    DesktopTerminalPingResult,
     DesktopTerminalResizeInput,
     DesktopTerminalStartInput,
     DesktopTerminalWriteInput,

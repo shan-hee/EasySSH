@@ -399,6 +399,7 @@ export function TabTerminalContent({
       enabled={monitorEnabled}
       interval={settings.monitorInterval || 2}
       latencyIntervalMs={5000}
+      monitorApi={workspace?.adapters.apiClient?.monitor}
     >
       <div className={cn(
         "flex flex-col relative overflow-hidden",

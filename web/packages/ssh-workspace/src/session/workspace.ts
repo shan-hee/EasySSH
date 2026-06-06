@@ -123,6 +123,56 @@ export interface WorkspaceTerminalCredentialSaveRequest {
   secret: string
 }
 
+export interface WorkspaceMonitorMetrics {
+  systemInfo: {
+    os: string
+    hostname: string
+    cpuModel: string
+    arch: string
+    loadAvg: string
+    uptimeSeconds: number
+    cpuCores: number
+  }
+  cpu: {
+    usagePercent: number
+    coreCount: number
+  }
+  memory: {
+    ramUsedBytes: number
+    ramTotalBytes: number
+    swapUsedBytes: number
+    swapTotalBytes: number
+  }
+  network: {
+    bytesRecvPerSec: number
+    bytesSentPerSec: number
+  }
+  disks: Array<{
+    mountPoint: string
+    usedBytes: number
+    totalBytes: number
+  }>
+  diskTotalPercent: number
+  sshLatencyMs: number
+  timestamp: number
+  docker?: {
+    containersRunning: number
+    containersTotal: number
+    dockerInstalled: boolean
+  }
+}
+
+export interface WorkspaceMonitorCollectOptions {
+  intervalSeconds?: number
+}
+
+export interface WorkspaceMonitorApi {
+  collectMetrics: (
+    serverId: string,
+    options?: WorkspaceMonitorCollectOptions,
+  ) => Promise<WorkspaceMonitorMetrics>
+}
+
 export interface SshWorkspaceApiClient {
   sftp?: {
     listDirectory: (serverId: string, path?: string) => Promise<DirectoryListResponse>
@@ -166,6 +216,7 @@ export interface SshWorkspaceApiClient {
     WebSocketCtor?: TerminalWebSocketConstructor
     saveVerifiedCredential?: (request: WorkspaceTerminalCredentialSaveRequest) => Promise<unknown>
   }
+  monitor?: WorkspaceMonitorApi
 }
 
 export interface SshWorkspaceThemeAdapter {

@@ -676,6 +676,299 @@ export enum DesktopActivityLogStatus {
 
 export type DesktopCapability = string;
 
+export class DesktopMonitorCPUInfo {
+    "idleTicks": number;
+    "totalTicks": number;
+    "coreCount": number;
+    "usagePercent": number;
+
+    /** Creates a new DesktopMonitorCPUInfo instance. */
+    constructor($$source: Partial<DesktopMonitorCPUInfo> = {}) {
+        if (!("idleTicks" in $$source)) {
+            this["idleTicks"] = 0;
+        }
+        if (!("totalTicks" in $$source)) {
+            this["totalTicks"] = 0;
+        }
+        if (!("coreCount" in $$source)) {
+            this["coreCount"] = 0;
+        }
+        if (!("usagePercent" in $$source)) {
+            this["usagePercent"] = 0;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new DesktopMonitorCPUInfo instance from a string or object.
+     */
+    static createFrom($$source: any = {}): DesktopMonitorCPUInfo {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new DesktopMonitorCPUInfo($$parsedSource as Partial<DesktopMonitorCPUInfo>);
+    }
+}
+
+export class DesktopMonitorCollectInput {
+    "serverId": string;
+    "timeoutMs"?: number;
+
+    /** Creates a new DesktopMonitorCollectInput instance. */
+    constructor($$source: Partial<DesktopMonitorCollectInput> = {}) {
+        if (!("serverId" in $$source)) {
+            this["serverId"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new DesktopMonitorCollectInput instance from a string or object.
+     */
+    static createFrom($$source: any = {}): DesktopMonitorCollectInput {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new DesktopMonitorCollectInput($$parsedSource as Partial<DesktopMonitorCollectInput>);
+    }
+}
+
+export class DesktopMonitorDiskInfo {
+    "mountPoint": string;
+    "usedBytes": number;
+    "totalBytes": number;
+
+    /** Creates a new DesktopMonitorDiskInfo instance. */
+    constructor($$source: Partial<DesktopMonitorDiskInfo> = {}) {
+        if (!("mountPoint" in $$source)) {
+            this["mountPoint"] = "";
+        }
+        if (!("usedBytes" in $$source)) {
+            this["usedBytes"] = 0;
+        }
+        if (!("totalBytes" in $$source)) {
+            this["totalBytes"] = 0;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new DesktopMonitorDiskInfo instance from a string or object.
+     */
+    static createFrom($$source: any = {}): DesktopMonitorDiskInfo {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new DesktopMonitorDiskInfo($$parsedSource as Partial<DesktopMonitorDiskInfo>);
+    }
+}
+
+export class DesktopMonitorDockerInfo {
+    "containersRunning": number;
+    "containersTotal": number;
+    "dockerInstalled": boolean;
+
+    /** Creates a new DesktopMonitorDockerInfo instance. */
+    constructor($$source: Partial<DesktopMonitorDockerInfo> = {}) {
+        if (!("containersRunning" in $$source)) {
+            this["containersRunning"] = 0;
+        }
+        if (!("containersTotal" in $$source)) {
+            this["containersTotal"] = 0;
+        }
+        if (!("dockerInstalled" in $$source)) {
+            this["dockerInstalled"] = false;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new DesktopMonitorDockerInfo instance from a string or object.
+     */
+    static createFrom($$source: any = {}): DesktopMonitorDockerInfo {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new DesktopMonitorDockerInfo($$parsedSource as Partial<DesktopMonitorDockerInfo>);
+    }
+}
+
+export class DesktopMonitorMemoryInfo {
+    "ramUsedBytes": number;
+    "ramTotalBytes": number;
+    "swapUsedBytes": number;
+    "swapTotalBytes": number;
+
+    /** Creates a new DesktopMonitorMemoryInfo instance. */
+    constructor($$source: Partial<DesktopMonitorMemoryInfo> = {}) {
+        if (!("ramUsedBytes" in $$source)) {
+            this["ramUsedBytes"] = 0;
+        }
+        if (!("ramTotalBytes" in $$source)) {
+            this["ramTotalBytes"] = 0;
+        }
+        if (!("swapUsedBytes" in $$source)) {
+            this["swapUsedBytes"] = 0;
+        }
+        if (!("swapTotalBytes" in $$source)) {
+            this["swapTotalBytes"] = 0;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new DesktopMonitorMemoryInfo instance from a string or object.
+     */
+    static createFrom($$source: any = {}): DesktopMonitorMemoryInfo {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new DesktopMonitorMemoryInfo($$parsedSource as Partial<DesktopMonitorMemoryInfo>);
+    }
+}
+
+export class DesktopMonitorNetworkInfo {
+    "bytesRecvTotal": number;
+    "bytesSentTotal": number;
+
+    /** Creates a new DesktopMonitorNetworkInfo instance. */
+    constructor($$source: Partial<DesktopMonitorNetworkInfo> = {}) {
+        if (!("bytesRecvTotal" in $$source)) {
+            this["bytesRecvTotal"] = 0;
+        }
+        if (!("bytesSentTotal" in $$source)) {
+            this["bytesSentTotal"] = 0;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new DesktopMonitorNetworkInfo instance from a string or object.
+     */
+    static createFrom($$source: any = {}): DesktopMonitorNetworkInfo {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new DesktopMonitorNetworkInfo($$parsedSource as Partial<DesktopMonitorNetworkInfo>);
+    }
+}
+
+export class DesktopMonitorSnapshot {
+    "systemInfo": DesktopMonitorSystemInfo;
+    "cpu": DesktopMonitorCPUInfo;
+    "memory": DesktopMonitorMemoryInfo;
+    "network": DesktopMonitorNetworkInfo;
+    "disks": DesktopMonitorDiskInfo[];
+    "docker": DesktopMonitorDockerInfo;
+    "sshLatencyMs": number;
+    "timestamp": number;
+    "collectedAt": string;
+
+    /** Creates a new DesktopMonitorSnapshot instance. */
+    constructor($$source: Partial<DesktopMonitorSnapshot> = {}) {
+        if (!("systemInfo" in $$source)) {
+            this["systemInfo"] = (new DesktopMonitorSystemInfo());
+        }
+        if (!("cpu" in $$source)) {
+            this["cpu"] = (new DesktopMonitorCPUInfo());
+        }
+        if (!("memory" in $$source)) {
+            this["memory"] = (new DesktopMonitorMemoryInfo());
+        }
+        if (!("network" in $$source)) {
+            this["network"] = (new DesktopMonitorNetworkInfo());
+        }
+        if (!("disks" in $$source)) {
+            this["disks"] = [];
+        }
+        if (!("docker" in $$source)) {
+            this["docker"] = (new DesktopMonitorDockerInfo());
+        }
+        if (!("sshLatencyMs" in $$source)) {
+            this["sshLatencyMs"] = 0;
+        }
+        if (!("timestamp" in $$source)) {
+            this["timestamp"] = 0;
+        }
+        if (!("collectedAt" in $$source)) {
+            this["collectedAt"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new DesktopMonitorSnapshot instance from a string or object.
+     */
+    static createFrom($$source: any = {}): DesktopMonitorSnapshot {
+        const $$createField0_0 = $$createType17;
+        const $$createField1_0 = $$createType18;
+        const $$createField2_0 = $$createType19;
+        const $$createField3_0 = $$createType20;
+        const $$createField4_0 = $$createType22;
+        const $$createField5_0 = $$createType23;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("systemInfo" in $$parsedSource) {
+            $$parsedSource["systemInfo"] = $$createField0_0($$parsedSource["systemInfo"]);
+        }
+        if ("cpu" in $$parsedSource) {
+            $$parsedSource["cpu"] = $$createField1_0($$parsedSource["cpu"]);
+        }
+        if ("memory" in $$parsedSource) {
+            $$parsedSource["memory"] = $$createField2_0($$parsedSource["memory"]);
+        }
+        if ("network" in $$parsedSource) {
+            $$parsedSource["network"] = $$createField3_0($$parsedSource["network"]);
+        }
+        if ("disks" in $$parsedSource) {
+            $$parsedSource["disks"] = $$createField4_0($$parsedSource["disks"]);
+        }
+        if ("docker" in $$parsedSource) {
+            $$parsedSource["docker"] = $$createField5_0($$parsedSource["docker"]);
+        }
+        return new DesktopMonitorSnapshot($$parsedSource as Partial<DesktopMonitorSnapshot>);
+    }
+}
+
+export class DesktopMonitorSystemInfo {
+    "os": string;
+    "hostname": string;
+    "cpuModel": string;
+    "arch": string;
+    "loadAvg": string;
+    "uptimeSeconds": number;
+    "cpuCores": number;
+
+    /** Creates a new DesktopMonitorSystemInfo instance. */
+    constructor($$source: Partial<DesktopMonitorSystemInfo> = {}) {
+        if (!("os" in $$source)) {
+            this["os"] = "";
+        }
+        if (!("hostname" in $$source)) {
+            this["hostname"] = "";
+        }
+        if (!("cpuModel" in $$source)) {
+            this["cpuModel"] = "";
+        }
+        if (!("arch" in $$source)) {
+            this["arch"] = "";
+        }
+        if (!("loadAvg" in $$source)) {
+            this["loadAvg"] = "";
+        }
+        if (!("uptimeSeconds" in $$source)) {
+            this["uptimeSeconds"] = 0;
+        }
+        if (!("cpuCores" in $$source)) {
+            this["cpuCores"] = 0;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new DesktopMonitorSystemInfo instance from a string or object.
+     */
+    static createFrom($$source: any = {}): DesktopMonitorSystemInfo {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new DesktopMonitorSystemInfo($$parsedSource as Partial<DesktopMonitorSystemInfo>);
+    }
+}
+
 export type DesktopPreferenceSnapshot = { [_ in string]?: string };
 
 export class DesktopRuntimeInfo {
@@ -714,7 +1007,7 @@ export class DesktopRuntimeInfo {
      * Creates a new DesktopRuntimeInfo instance from a string or object.
      */
     static createFrom($$source: any = {}): DesktopRuntimeInfo {
-        const $$createField5_0 = $$createType17;
+        const $$createField5_0 = $$createType24;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("capabilities" in $$parsedSource) {
             $$parsedSource["capabilities"] = $$createField5_0($$parsedSource["capabilities"]);
@@ -777,7 +1070,7 @@ export class DesktopSFTPBatchDeleteResult {
      */
     static createFrom($$source: any = {}): DesktopSFTPBatchDeleteResult {
         const $$createField0_0 = $$createType0;
-        const $$createField1_0 = $$createType19;
+        const $$createField1_0 = $$createType26;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("success" in $$parsedSource) {
             $$parsedSource["success"] = $$createField0_0($$parsedSource["success"]);
@@ -963,7 +1256,7 @@ export class DesktopSFTPDirectoryListResult {
      * Creates a new DesktopSFTPDirectoryListResult instance from a string or object.
      */
     static createFrom($$source: any = {}): DesktopSFTPDirectoryListResult {
-        const $$createField1_0 = $$createType21;
+        const $$createField1_0 = $$createType28;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("files" in $$parsedSource) {
             $$parsedSource["files"] = $$createField1_0($$parsedSource["files"]);
@@ -1151,7 +1444,7 @@ export class DesktopSFTPUploadTaskListResult {
      * Creates a new DesktopSFTPUploadTaskListResult instance from a string or object.
      */
     static createFrom($$source: any = {}): DesktopSFTPUploadTaskListResult {
-        const $$createField0_0 = $$createType23;
+        const $$createField0_0 = $$createType30;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("tasks" in $$parsedSource) {
             $$parsedSource["tasks"] = $$createField0_0($$parsedSource["tasks"]);
@@ -1524,7 +1817,7 @@ export class DesktopServerListResult {
      * Creates a new DesktopServerListResult instance from a string or object.
      */
     static createFrom($$source: any = {}): DesktopServerListResult {
-        const $$createField0_0 = $$createType25;
+        const $$createField0_0 = $$createType32;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("data" in $$parsedSource) {
             $$parsedSource["data"] = $$createField0_0($$parsedSource["data"]);
@@ -1561,6 +1854,52 @@ export class DesktopTerminalCloseInput {
     static createFrom($$source: any = {}): DesktopTerminalCloseInput {
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         return new DesktopTerminalCloseInput($$parsedSource as Partial<DesktopTerminalCloseInput>);
+    }
+}
+
+export class DesktopTerminalPingInput {
+    "clientId": string;
+
+    /** Creates a new DesktopTerminalPingInput instance. */
+    constructor($$source: Partial<DesktopTerminalPingInput> = {}) {
+        if (!("clientId" in $$source)) {
+            this["clientId"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new DesktopTerminalPingInput instance from a string or object.
+     */
+    static createFrom($$source: any = {}): DesktopTerminalPingInput {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new DesktopTerminalPingInput($$parsedSource as Partial<DesktopTerminalPingInput>);
+    }
+}
+
+export class DesktopTerminalPingResult {
+    "latencyMs": number;
+    "measuredAt": number;
+
+    /** Creates a new DesktopTerminalPingResult instance. */
+    constructor($$source: Partial<DesktopTerminalPingResult> = {}) {
+        if (!("latencyMs" in $$source)) {
+            this["latencyMs"] = 0;
+        }
+        if (!("measuredAt" in $$source)) {
+            this["measuredAt"] = 0;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new DesktopTerminalPingResult instance from a string or object.
+     */
+    static createFrom($$source: any = {}): DesktopTerminalPingResult {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new DesktopTerminalPingResult($$parsedSource as Partial<DesktopTerminalPingResult>);
     }
 }
 
@@ -1710,12 +2049,19 @@ const $$createType13 = $Create.Array($$createType12);
 const $$createType14 = DesktopActivityLogItem.createFrom;
 const $$createType15 = $Create.Array($$createType14);
 const $$createType16 = $Create.Map($Create.Any, $Create.Any);
-const $$createType17 = $Create.Map($Create.Any, $Create.Any);
-const $$createType18 = DesktopSFTPBatchOperationError.createFrom;
-const $$createType19 = $Create.Array($$createType18);
-const $$createType20 = DesktopSFTPFileInfo.createFrom;
-const $$createType21 = $Create.Array($$createType20);
-const $$createType22 = DesktopSFTPUploadTaskStatus.createFrom;
-const $$createType23 = $Create.Array($$createType22);
-const $$createType24 = DesktopServer.createFrom;
-const $$createType25 = $Create.Array($$createType24);
+const $$createType17 = DesktopMonitorSystemInfo.createFrom;
+const $$createType18 = DesktopMonitorCPUInfo.createFrom;
+const $$createType19 = DesktopMonitorMemoryInfo.createFrom;
+const $$createType20 = DesktopMonitorNetworkInfo.createFrom;
+const $$createType21 = DesktopMonitorDiskInfo.createFrom;
+const $$createType22 = $Create.Array($$createType21);
+const $$createType23 = DesktopMonitorDockerInfo.createFrom;
+const $$createType24 = $Create.Map($Create.Any, $Create.Any);
+const $$createType25 = DesktopSFTPBatchOperationError.createFrom;
+const $$createType26 = $Create.Array($$createType25);
+const $$createType27 = DesktopSFTPFileInfo.createFrom;
+const $$createType28 = $Create.Array($$createType27);
+const $$createType29 = DesktopSFTPUploadTaskStatus.createFrom;
+const $$createType30 = $Create.Array($$createType29);
+const $$createType31 = DesktopServer.createFrom;
+const $$createType32 = $Create.Array($$createType31);

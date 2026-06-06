@@ -23,6 +23,7 @@ func main() {
 	serverService := NewDesktopServerService()
 	terminalService := NewDesktopTerminalService(serverService)
 	sftpService := NewDesktopSFTPService(serverService)
+	monitorService := NewDesktopMonitorService(serverService)
 	aiService := NewDesktopAIService()
 
 	app := application.New(application.Options{
@@ -33,6 +34,7 @@ func main() {
 			application.NewService(serverService),
 			application.NewService(terminalService),
 			application.NewService(sftpService),
+			application.NewService(monitorService),
 			application.NewService(activityLogService),
 			application.NewService(aiService),
 		},

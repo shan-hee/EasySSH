@@ -7,6 +7,7 @@ import { useEffect, useState, useRef, useCallback } from 'react';
 import { monitor } from '@/lib/proto/metrics';
 import { getWsUrl } from '@/lib/config';
 import { createAuthTicket } from '@/lib/auth-ticket';
+import type { WorkspaceMonitorApi } from '@/lib/session/workspace';
 import {
   useMonitorStore,
   WSStatus,
@@ -65,6 +66,7 @@ interface UseMonitorWebSocketOptions {
   onStatusChange?: (status: WSStatus) => void;
   // 本地延迟测量间隔（毫秒），默认 5000ms。若为 0 则关闭。
   latencyIntervalMs?: number;
+  monitorApi?: WorkspaceMonitorApi;
 }
 
 type PendingLatencyUpdate = {
@@ -145,6 +147,7 @@ export function useMonitorWebSocket({
   onError,
   onStatusChange,
   latencyIntervalMs = 5000,
+  monitorApi,
 }: UseMonitorWebSocketOptions) {
   const initialSnapshotRef = useRef<ReturnType<typeof getInitialConnectionSnapshot> | null>(null);
   if (!initialSnapshotRef.current) {
@@ -168,6 +171,7 @@ export function useMonitorWebSocket({
   // RTT 平滑（EWMA）与抖动（偏差）
   const [localLatencySmoothedMs, setLocalLatencySmoothedMs] = useState<number>(initialSnapshot.localLatencySmoothedMs);
   const [localLatencyDevMs, setLocalLatencyDevMs] = useState<number>(initialSnapshot.localLatencyDevMs);
+  const [adapterPollNonce, setAdapterPollNonce] = useState(0);
   const latencyTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const visibilityHandlerRef = useRef<(() => void) | null>(null);
 
@@ -185,6 +189,7 @@ export function useMonitorWebSocket({
 
   // ==================== 订阅监控数据更新 ====================
   useEffect(() => {
+    if (monitorApi) return
     if (!enabled || !serverId) return
 
     // 每个启用监控的 Hook 都订阅同一个 serverId。
@@ -239,10 +244,77 @@ export function useMonitorWebSocket({
     return () => {
       unsubscribe()
     }
-  }, [enabled, serverId, subscribe, getConnection])
+  }, [monitorApi, enabled, serverId, subscribe, getConnection])
+
+  useEffect(() => {
+    if (!monitorApi) return
+
+    if (!enabled || !serverId) {
+      setStatus(WSStatus.DISCONNECTED)
+      onStatusChange?.(WSStatus.DISCONNECTED)
+      return
+    }
+
+    let cancelled = false
+    let timer: ReturnType<typeof setTimeout> | null = null
+    let inFlight = false
+
+    const scheduleNext = () => {
+      if (cancelled) return
+      timer = setTimeout(collect, Math.max(1000, interval * 1000))
+    }
+
+    const collect = async () => {
+      if (cancelled || inFlight) return
+      inFlight = true
+      setStatus(WSStatus.CONNECTING)
+      onStatusChange?.(WSStatus.CONNECTING)
+
+      try {
+        const nextMetrics = await monitorApi.collectMetrics(serverId, {
+          intervalSeconds: interval,
+        })
+        if (cancelled) return
+
+        setMetrics(nextMetrics)
+        metricsHistoryRef.current = [...metricsHistoryRef.current, nextMetrics].slice(-20)
+        setStatus(WSStatus.CONNECTED)
+        onStatusChange?.(WSStatus.CONNECTED)
+      } catch (error) {
+        if (cancelled) return
+        const monitorError = error instanceof Error
+          ? error
+          : new Error(String(error))
+        setStatus(WSStatus.ERROR)
+        onStatusChange?.(WSStatus.ERROR)
+        onError?.(monitorError)
+      } finally {
+        inFlight = false
+        scheduleNext()
+      }
+    }
+
+    void collect()
+
+    return () => {
+      cancelled = true
+      if (timer) {
+        clearTimeout(timer)
+      }
+    }
+  }, [
+    adapterPollNonce,
+    enabled,
+    interval,
+    monitorApi,
+    onError,
+    onStatusChange,
+    serverId,
+  ])
 
   // 连接 WebSocket
   const connect = useCallback(() => {
+    if (monitorApi) return;
     if (!enabled || !serverId) return;
 
     // 仅在浏览器环境中执行
@@ -585,7 +657,7 @@ export function useMonitorWebSocket({
         onError?.(error as Error);
       }
     })()
-  }, [enabled, serverId, interval, onError, onStatusChange, latencyIntervalMs, getConnection, setConnection, updateMetrics, updateLocalLatency, updateStatus, notifySubscribers]); // 添加 Store 依赖
+  }, [monitorApi, enabled, serverId, interval, onError, onStatusChange, latencyIntervalMs, getConnection, setConnection, updateMetrics, updateLocalLatency, updateStatus, notifySubscribers]); // 添加 Store 依赖
 
   // 断开连接
   const disconnect = useCallback(() => {
@@ -631,7 +703,7 @@ export function useMonitorWebSocket({
     // 标记组件已挂载
     isMountedRef.current = true;
 
-    if (enabled && serverId) {
+    if (!monitorApi && enabled && serverId) {
       connect();
     }
 
@@ -643,7 +715,7 @@ export function useMonitorWebSocket({
       // 连接会保持活跃，只有在页签关闭时才会通过 Store.destroyConnection() 真正断开
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [enabled, serverId, interval]); // 添加 interval 依赖，当间隔改变时重新连接
+  }, [monitorApi, enabled, serverId, interval]); // 添加 interval 依赖，当间隔改变时重新连接
 
   // 获取历史数据（用于图表）
   const getMetricsHistory = useCallback(() => {
@@ -659,7 +731,7 @@ export function useMonitorWebSocket({
     localLatencyUpMs,
     localLatencyDownMs,
     clockOffsetMs,
-    reconnect: connect,
+    reconnect: monitorApi ? () => setAdapterPollNonce((value) => value + 1) : connect,
     disconnect,
     getMetricsHistory,
   };
