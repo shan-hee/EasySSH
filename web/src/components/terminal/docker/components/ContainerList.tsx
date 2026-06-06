@@ -28,11 +28,13 @@ import { useTranslation } from "react-i18next"
 import { cn } from '@/lib/utils'
 import { useTerminalStore } from '@/stores/terminal-store'
 import { toast } from 'sonner'
+import type { DockerApiClient } from '@/lib/api/docker'
 
 interface ContainerListProps {
   containers: DockerContainer[]
   serverId: string
   sessionId: string
+  dockerClient: DockerApiClient
   onRefresh: () => void
   isLoading?: boolean
 }
@@ -86,6 +88,7 @@ export function ContainerList({
   containers,
   serverId,
   sessionId,
+  dockerClient,
   onRefresh,
   isLoading = false,
 }: ContainerListProps) {
@@ -289,6 +292,7 @@ export function ContainerList({
                       container={container}
                       serverId={serverId}
                       sessionId={sessionId}
+                      dockerClient={dockerClient}
                       onRefresh={onRefresh}
                       onViewLogs={handleViewLogs}
                     />
@@ -314,6 +318,7 @@ export function ContainerList({
                       container={container}
                       serverId={serverId}
                       sessionId={sessionId}
+                      dockerClient={dockerClient}
                       onRefresh={onRefresh}
                       onViewLogs={handleViewLogs}
                     />
@@ -333,6 +338,7 @@ export function ContainerList({
           serverId={serverId}
           containerId={selectedContainer.id}
           containerName={selectedContainer.name}
+          dockerClient={dockerClient}
         />
       )}
 

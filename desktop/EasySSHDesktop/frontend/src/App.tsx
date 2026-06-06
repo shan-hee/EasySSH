@@ -22,6 +22,7 @@ import { createDesktopAIAssistantAdapters } from "./adapters/desktop-ai-adapters
 import { createDesktopPreferenceAdapter, loadDesktopPreferenceSnapshot, type DesktopPreferenceSnapshot } from "./adapters/desktop-preferences"
 import { createDesktopRuntime, loadDesktopRuntime, type DesktopRuntimeBindingInfo } from "./adapters/desktop-runtime"
 import { createDesktopServerApi, markDesktopServerConnected, saveDesktopVerifiedCredential } from "./adapters/desktop-server-api"
+import { createDesktopDockerApi } from "./adapters/desktop-docker-api"
 import { createDesktopMonitorApi } from "./adapters/desktop-monitor-api"
 import { createDesktopSftpApi } from "./adapters/desktop-sftp-api"
 import { DesktopAIAssistantView } from "./shell/desktop-ai-assistant-view"
@@ -117,6 +118,7 @@ function App() {
   const workspacePreferences = useMemo(() => createDesktopPreferenceAdapter(preferenceSnapshot ?? {}), [preferenceSnapshot])
   const sftpApi = useMemo(() => createDesktopSftpApi(), [])
   const monitorApi = useMemo(() => createDesktopMonitorApi(), [])
+  const dockerApi = useMemo(() => createDesktopDockerApi(), [])
   const terminalSocket = useMemo(() => createDesktopTerminalSocket(), [])
   const runtimeInfo = useMemo(() => createDesktopRuntime(runtime), [runtime])
   const capabilities = useMemo(() => (
@@ -126,6 +128,7 @@ function App() {
   const workspaceApi = useMemo<SshWorkspaceApiClient>(() => ({
     sftp: sftpApi,
     monitor: monitorApi,
+    docker: dockerApi,
     terminal: {
       WebSocketCtor: terminalSocket,
       createWebSocketUrl: ({ serverId, cols, rows }) => {
@@ -139,7 +142,7 @@ function App() {
         await saveDesktopVerifiedCredential({ serverId, authMethod, secret })
       },
     },
-  }), [monitorApi, sftpApi, terminalSocket])
+  }), [dockerApi, monitorApi, sftpApi, terminalSocket])
 
   const adapters = useMemo(() => createWorkspaceAdapters({
     apiClient: workspaceApi,

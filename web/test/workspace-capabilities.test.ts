@@ -16,7 +16,7 @@ describe("workspace capability presets", () => {
     assert.equal(capabilities.sftp, true)
     assert.equal(capabilities.transfers, true)
     assert.equal(capabilities.monitor, true)
-    assert.equal(capabilities.docker, false)
+    assert.equal(capabilities.docker, true)
     assert.equal(capabilities.crossSessionDrag, false)
   })
 

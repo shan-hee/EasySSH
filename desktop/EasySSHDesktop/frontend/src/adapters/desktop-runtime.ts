@@ -28,7 +28,7 @@ export function createDesktopRuntime(runtime: DesktopRuntimeBindingInfo | null):
       sftp: runtimeCapabilities.sftp ?? true,
       transfers: runtimeCapabilities.transfers ?? true,
       monitoring: runtimeCapabilities.monitoring ?? true,
-      docker: false,
+      docker: runtimeCapabilities.docker ?? true,
       ai: runtimeCapabilities.ai ?? true,
       activity_log: runtimeCapabilities.activity_log ?? true,
       settings: runtimeCapabilities.settings ?? true,

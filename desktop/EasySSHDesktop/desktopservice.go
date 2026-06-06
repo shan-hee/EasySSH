@@ -43,7 +43,7 @@ func (s *DesktopService) RuntimeInfo() DesktopRuntimeInfo {
 			"sftp":             true,
 			"transfers":        true,
 			"monitoring":       true,
-			"docker":           false,
+			"docker":           true,
 			"ai":               true,
 			"activity_log":     true,
 			"settings":         true,

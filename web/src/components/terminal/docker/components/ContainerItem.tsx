@@ -22,12 +22,13 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip'
 import { Download, RefreshCw } from 'lucide-react'
-import { dockerApi } from '@/lib/api/docker'
+import type { DockerApiClient } from '@/lib/api/docker'
 
 interface ContainerItemProps {
   container: DockerContainer
   serverId: string
   sessionId: string
+  dockerClient: DockerApiClient
   onRefresh: () => void
   onViewLogs: (containerId: string, name: string) => void
 }
@@ -36,6 +37,7 @@ export function ContainerItem({
   container,
   serverId,
   sessionId,
+  dockerClient,
   onRefresh,
   onViewLogs,
 }: ContainerItemProps) {
@@ -90,27 +92,27 @@ export function ContainerItem({
     try {
       switch (action) {
         case 'start':
-          await dockerApi.startContainer(serverId, container.id)
+          await dockerClient.startContainer(serverId, container.id)
           toast.success(t('dockerToastStartSuccess'))
           break
         case 'stop':
-          await dockerApi.stopContainer(serverId, container.id)
+          await dockerClient.stopContainer(serverId, container.id)
           toast.success(t('dockerToastStopSuccess'))
           break
         case 'restart':
-          await dockerApi.restartContainer(serverId, container.id)
+          await dockerClient.restartContainer(serverId, container.id)
           toast.success(t('dockerToastRestartSuccess'))
           break
         case 'pause':
-          await dockerApi.pauseContainer(serverId, container.id)
+          await dockerClient.pauseContainer(serverId, container.id)
           toast.success(t('dockerToastPauseSuccess'))
           break
         case 'unpause':
-          await dockerApi.unpauseContainer(serverId, container.id)
+          await dockerClient.unpauseContainer(serverId, container.id)
           toast.success(t('dockerToastUnpauseSuccess'))
           break
         case 'remove':
-          await dockerApi.removeContainer(serverId, container.id)
+          await dockerClient.removeContainer(serverId, container.id)
           toast.success(t('dockerToastRemoveSuccess'))
           break
       }

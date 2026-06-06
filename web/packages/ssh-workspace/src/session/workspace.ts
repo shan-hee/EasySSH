@@ -173,6 +173,126 @@ export interface WorkspaceMonitorApi {
   ) => Promise<WorkspaceMonitorMetrics>
 }
 
+export type WorkspaceDockerContainerState = "running" | "paused" | "exited" | "created" | "restarting" | "dead"
+
+export interface WorkspaceDockerPort {
+  ip?: string
+  privatePort: number
+  publicPort?: number
+  type: "tcp" | "udp"
+}
+
+export interface WorkspaceDockerMount {
+  type: string
+  source: string
+  destination: string
+  mode: string
+  rw: boolean
+}
+
+export interface WorkspaceDockerContainer {
+  id: string
+  names: string[]
+  image: string
+  imageId: string
+  command: string
+  created: number
+  status: string
+  state: WorkspaceDockerContainerState
+  ports: WorkspaceDockerPort[]
+  labels: Record<string, string>
+  mounts: WorkspaceDockerMount[]
+}
+
+export interface WorkspaceDockerContainerStats {
+  containerId: string
+  name: string
+  cpuPercent: number
+  memoryUsage: number
+  memoryLimit: number
+  memoryPercent: number
+  networkIn: number
+  networkOut: number
+  blockRead: number
+  blockWrite: number
+  pids: number
+}
+
+export interface WorkspaceDockerImage {
+  id: string
+  repository: string
+  tag: string
+  created: number
+  size: number
+  virtualSize: number
+}
+
+export interface WorkspaceDockerSystemInfo {
+  containersRunning: number
+  containersPaused: number
+  containersStopped: number
+  containersTotal: number
+  imagesCount: number
+  dockerVersion: string
+  serverVersion: string
+  storageDriver: string
+  totalMemory: number
+  cpus: number
+}
+
+export interface WorkspaceDockerContainersResponse {
+  data: WorkspaceDockerContainer[]
+  total: number
+}
+
+export interface WorkspaceDockerImagesResponse {
+  data: WorkspaceDockerImage[]
+  total: number
+}
+
+export interface WorkspaceDockerContainerLogsResponse {
+  data: string
+  container_id: string
+  lines: number
+}
+
+export interface WorkspaceDockerResourcesResponse {
+  stats: WorkspaceDockerContainerStats[]
+  systemInfo: WorkspaceDockerSystemInfo | null
+  dockerInstalled: boolean
+  error?: string
+}
+
+export interface WorkspaceDockerImageUpdateCheckResponse {
+  hasUpdate: boolean
+  imageName: string
+  containerName: string
+  updateCommand: string
+  error?: string
+}
+
+export interface WorkspaceDockerApi {
+  listContainers: (serverId: string, all?: boolean) => Promise<WorkspaceDockerContainersResponse>
+  getContainerStats: (serverId: string) => Promise<WorkspaceDockerContainerStats[]>
+  getContainerStat: (serverId: string, containerId: string) => Promise<WorkspaceDockerContainerStats>
+  getContainerLogs: (
+    serverId: string,
+    containerId: string,
+    tail?: number,
+    encoding?: string,
+  ) => Promise<WorkspaceDockerContainerLogsResponse>
+  startContainer: (serverId: string, containerId: string) => Promise<void>
+  stopContainer: (serverId: string, containerId: string) => Promise<void>
+  restartContainer: (serverId: string, containerId: string) => Promise<void>
+  pauseContainer: (serverId: string, containerId: string) => Promise<void>
+  unpauseContainer: (serverId: string, containerId: string) => Promise<void>
+  removeContainer: (serverId: string, containerId: string, force?: boolean) => Promise<void>
+  listImages: (serverId: string) => Promise<WorkspaceDockerImagesResponse>
+  getSystemInfo: (serverId: string) => Promise<WorkspaceDockerSystemInfo>
+  getResources: (serverId: string) => Promise<WorkspaceDockerResourcesResponse>
+  checkImageUpdate: (serverId: string, containerId: string) => Promise<WorkspaceDockerImageUpdateCheckResponse>
+}
+
 export interface SshWorkspaceApiClient {
   sftp?: {
     listDirectory: (serverId: string, path?: string) => Promise<DirectoryListResponse>
@@ -217,6 +337,7 @@ export interface SshWorkspaceApiClient {
     saveVerifiedCredential?: (request: WorkspaceTerminalCredentialSaveRequest) => Promise<unknown>
   }
   monitor?: WorkspaceMonitorApi
+  docker?: WorkspaceDockerApi
 }
 
 export interface SshWorkspaceThemeAdapter {

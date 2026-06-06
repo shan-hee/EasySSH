@@ -23,7 +23,8 @@ import { ContainerList } from './components/ContainerList'
 import { ImageList } from './components/ImageList'
 import { DockerOverview } from './components/DockerOverview'
 import { cn } from '@/lib/utils'
-import { dockerApi } from '@/lib/api/docker'
+import { useOptionalSshWorkspace } from '@/components/ssh-workspace/ssh-workspace'
+import { dockerApi, type DockerApiClient } from '@/lib/api/docker'
 import type {
   DockerContainer,
   DockerImage,
@@ -64,6 +65,8 @@ interface DockerPopoverProps {
 
 export function DockerPopover({ serverId, sessionId, isConnected }: DockerPopoverProps) {
   const { t } = useTranslation('terminal')
+  const workspace = useOptionalSshWorkspace()
+  const dockerClient = workspace?.adapters.apiClient?.docker ?? dockerApi
   const [open, setOpen] = useState(false)
   const containersFetchSeqRef = useRef(0)
   const containersFetchInFlightRef = useRef(false)
@@ -105,7 +108,7 @@ export function DockerPopover({ serverId, sessionId, isConnected }: DockerPopove
     setContainersLoading(true)
     setContainersError(null)
     try {
-      const res = await dockerApi.listContainers(serverId)
+      const res = await dockerClient.listContainers(serverId)
       if (containersFetchSeqRef.current !== fetchSeq) return
       setContainersData({
         containers: res.data,
@@ -125,7 +128,7 @@ export function DockerPopover({ serverId, sessionId, isConnected }: DockerPopove
         setContainersLoading(false)
       }
     }
-  }, [isConnected, serverId])
+  }, [dockerClient, isConnected, serverId])
 
   // 连接成功后立即通过 REST 拉一次容器列表，工具栏首帧数量和弹窗列表都以它为准。
   useEffect(() => {
@@ -139,7 +142,7 @@ export function DockerPopover({ serverId, sessionId, isConnected }: DockerPopove
     setImagesLoading(true)
     setImagesError(null)
     try {
-      const res = await dockerApi.listImages(serverId)
+      const res = await dockerClient.listImages(serverId)
       setImagesData({
         images: res.data,
         dockerInstalled: true,
@@ -154,14 +157,14 @@ export function DockerPopover({ serverId, sessionId, isConnected }: DockerPopove
     } finally {
       setImagesLoading(false)
     }
-  }, [serverId])
+  }, [dockerClient, serverId])
 
   // 获取资源数据
   const fetchResourcesData = useCallback(async () => {
     setResourcesLoading(true)
     setResourcesError(null)
     try {
-      const res = await dockerApi.getResources(serverId)
+      const res = await dockerClient.getResources(serverId)
       setResourcesData({
         stats: res.stats,
         systemInfo: res.systemInfo,
@@ -182,7 +185,7 @@ export function DockerPopover({ serverId, sessionId, isConnected }: DockerPopove
     } finally {
       setResourcesLoading(false)
     }
-  }, [serverId])
+  }, [dockerClient, serverId])
 
   // 页签切换处理 - 按需加载（只在首次加载）
   const handleTabChange = useCallback((value: string) => {
@@ -300,6 +303,7 @@ export function DockerPopover({ serverId, sessionId, isConnected }: DockerPopove
           containersError={containersError}
           imagesError={imagesError}
           resourcesError={resourcesError}
+          dockerClient={dockerClient}
           fetchContainersData={fetchContainersData}
           fetchImagesData={fetchImagesData}
           fetchResourcesData={fetchResourcesData}
@@ -324,6 +328,7 @@ function DockerPopoverContent({
   containersError,
   imagesError,
   resourcesError,
+  dockerClient,
   fetchContainersData,
   fetchImagesData,
   fetchResourcesData,
@@ -341,6 +346,7 @@ function DockerPopoverContent({
   containersError: string | null
   imagesError: string | null
   resourcesError: string | null
+  dockerClient: DockerApiClient
   fetchContainersData: () => Promise<void>
   fetchImagesData: () => Promise<void>
   fetchResourcesData: () => Promise<void>
@@ -412,6 +418,7 @@ function DockerPopoverContent({
               containers={containersData?.containers ?? []}
               serverId={serverId}
               sessionId={sessionId}
+              dockerClient={dockerClient}
               onRefresh={fetchContainersData}
               isLoading={containersLoading}
             />

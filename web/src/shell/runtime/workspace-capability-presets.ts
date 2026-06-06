@@ -34,7 +34,7 @@ export const WORKSPACE_CAPABILITY_PRESETS = {
       transfers: true,
       ai: true,
       monitor: true,
-      docker: false,
+      docker: true,
       activityLog: true,
       fullscreen: true,
       crossSessionDrag: false,

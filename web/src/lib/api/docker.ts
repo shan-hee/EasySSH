@@ -8,6 +8,7 @@ import type {
   DockerImage,
   DockerSystemInfo,
 } from "@/components/terminal/docker/types"
+import type { WorkspaceDockerApi } from "@/lib/session/workspace"
 
 /**
  * 容器列表响应
@@ -55,10 +56,12 @@ export interface ImageUpdateCheckResponse {
   error?: string
 }
 
+export type DockerApiClient = WorkspaceDockerApi
+
 /**
  * Docker API 服务
  */
-export const dockerApi = {
+export const dockerApi: DockerApiClient = {
   /**
    * 获取容器列表
    */

@@ -12,7 +12,7 @@ import {
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { RefreshCw, Loader2 } from 'lucide-react'
-import { dockerApi } from '@/lib/api/docker'
+import type { DockerApiClient } from '@/lib/api/docker'
 import { useTranslation } from "react-i18next"
 import { FileEditor } from '@/components/sftp/file-editor'
 
@@ -22,6 +22,7 @@ interface ContainerLogsProps {
   serverId: string
   containerId: string
   containerName: string
+  dockerClient: DockerApiClient
 }
 
 export function ContainerLogs({
@@ -30,6 +31,7 @@ export function ContainerLogs({
   serverId,
   containerId,
   containerName,
+  dockerClient,
 }: ContainerLogsProps) {
   const { t } = useTranslation('terminal')
   const [logs, setLogs] = useState<string>('')
@@ -42,14 +44,14 @@ export function ContainerLogs({
     if (!containerId) return
     setLoading(true)
     try {
-      const res = await dockerApi.getContainerLogs(serverId, containerId, tailLines, encoding)
+      const res = await dockerClient.getContainerLogs(serverId, containerId, tailLines, encoding)
       setLogs(res.data)
     } catch (error) {
       setLogs(`Error loading logs: ${error}`)
     } finally {
       setLoading(false)
     }
-  }, [containerId, encoding, serverId, tailLines])
+  }, [containerId, dockerClient, encoding, serverId, tailLines])
 
   // 下载日志
   const downloadLogs = () => {
