@@ -1,11 +1,4 @@
-export interface ServerConnectionInfo {
-  serverId: string
-  serverName: string
-  host: string
-  port?: number
-  username: string
-}
-
-export type OptionalServerConnectionInfo = Omit<ServerConnectionInfo, "serverId"> & {
-  serverId?: string
-}
+export type {
+  OptionalServerConnectionInfo,
+  ServerConnectionInfo,
+} from "../../../packages/ssh-workspace/src/session/types"
