@@ -13,6 +13,7 @@ export interface AIConfigAdapter {
 export function useAIConfig(adapter?: AIConfigAdapter) {
   const { ready } = useAuthReady()
   const queryFn = adapter?.getAIConfig ?? getAIConfig
+  const enabled = adapter ? true : ready
 
   const query = useQuery({
     queryKey: adapter?.queryKey ?? ["aiConfig"],
@@ -20,8 +21,8 @@ export function useAIConfig(adapter?: AIConfigAdapter) {
     staleTime: 5 * 60 * 1000,
     gcTime: 10 * 60 * 1000,
     retry: 1,
-    // 只有认证准备好后才发起请求
-    enabled: ready,
+    // Web 端等待认证；桌面等自定义 runtime adapter 可直接查询本地配置。
+    enabled,
   })
 
   return {

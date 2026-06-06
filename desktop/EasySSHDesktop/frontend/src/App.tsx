@@ -464,6 +464,7 @@ function App() {
                 }}
                 serverApi={serverApi}
                 serverConfigsReady
+                aiAssistantAdapters={aiAssistantAdapters}
                 hidePageHeader
                 unframed
                 settingsDialogOpen={terminalSettingsOpen}

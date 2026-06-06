@@ -18,6 +18,7 @@ import {
   FILE_MANAGER_PANEL_ANIMATION_MS,
 } from './file-manager-panel'
 import { AiAssistantPanel } from './ai-assistant-panel'
+import type { AIAssistantWorkspaceAdapters } from '@/components/ai-agent/ai-assistant-workspace-view'
 import { DockerPopover } from './docker'
 import { useSftpSession } from '@/hooks/useSftpSession'
 import type { FileTransferSftpApi } from '@/hooks/useFileTransfer'
@@ -91,6 +92,7 @@ interface TabTerminalContentProps {
   onStartConnectionFromConfig: (server: Server) => void
   serverApi?: ServerConnectionConfigsApi
   serverConfigsReady?: boolean
+  aiAssistantAdapters?: AIAssistantWorkspaceAdapters
   onInternalBackHandlerChange?: (
     sessionId: string,
     handler: InternalBackHandler | null
@@ -115,6 +117,7 @@ export function TabTerminalContent({
   onStartConnectionFromConfig,
   serverApi,
   serverConfigsReady,
+  aiAssistantAdapters,
   onInternalBackHandlerChange,
   onInternalBackAvailabilityChange,
 }: TabTerminalContentProps) {
@@ -579,6 +582,7 @@ export function TabTerminalContent({
                 isOpen={canUseAi}
                 onClose={() => setTabState(session.id, { isAiInputOpen: false })}
                 terminalSession={session}
+                adapters={aiAssistantAdapters}
               />
             )}
 

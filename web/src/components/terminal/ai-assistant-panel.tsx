@@ -18,6 +18,8 @@ import {
 import { useTranslation } from "react-i18next"
 
 import { AgentAIElementsTimeline } from "@/components/ai-agent/agent-ai-elements-timeline"
+import { AIAssistantConfigPopover } from "@/components/ai-agent/ai-config-popover"
+import type { AIAssistantWorkspaceAdapters } from "@/components/ai-agent/ai-assistant-workspace-view"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {
@@ -69,6 +71,7 @@ interface AiAssistantPanelProps {
   isOpen: boolean
   onClose: () => void
   terminalSession: TerminalSession
+  adapters?: AIAssistantWorkspaceAdapters
 }
 
 const TERMINAL_AI_SESSION_STORAGE_KEY = "easyssh:terminal-ai-assistant:sessions"
@@ -154,10 +157,16 @@ function formatSessionTime(value: string) {
   })
 }
 
-export function AiAssistantPanel({ isOpen, onClose, terminalSession }: AiAssistantPanelProps) {
+export function AiAssistantPanel({ isOpen, onClose, terminalSession, adapters }: AiAssistantPanelProps) {
   const { t: tAI } = useTranslation("aiAssistant")
   const { confirm: requestConfirm, confirmDialog } = useConfirmDialog()
-  const { isConfigured, isLoading: isConfigLoading, models, model: defaultModel } = useAIConfig()
+  const {
+    isConfigured,
+    isLoading: isConfigLoading,
+    models,
+    model: defaultModel,
+    refetch: refetchAIConfig,
+  } = useAIConfig(adapters?.aiConfig)
   const {
     session,
     sessionId,
@@ -172,12 +181,16 @@ export function AiAssistantPanel({ isOpen, onClose, terminalSession }: AiAssista
     confirmTask,
     cancelSession,
     closeSession,
-  } = useAgentSession()
+  } = useAgentSession(adapters?.aiSession)
+  const listSessions = adapters?.listAISessions ?? listAISessions
+  const renameSession = adapters?.renameAISession ?? renameAISession
+  const deleteSession = adapters?.deleteAISession ?? deleteAISession
 
   const [input, setInput] = useState("")
   const [model, setModel] = useState("auto")
   const [permissionMode, setPermissionMode] = useState<PermissionMode>("balanced")
   const [historyOpen, setHistoryOpen] = useState(false)
+  const [configOpen, setConfigOpen] = useState(false)
   const [sessionSearch, setSessionSearch] = useState("")
   const [sessionList, setSessionList] = useState<SessionListItem[]>([])
   const [sessionListLoading, setSessionListLoading] = useState(false)
@@ -351,7 +364,7 @@ export function AiAssistantPanel({ isOpen, onClose, terminalSession }: AiAssista
       return
     }
 
-    void listAISessions({ limit: 1, scope: terminalScope })
+    void listSessions({ limit: 1, scope: terminalScope })
       .then(async (response) => {
         const latestSessionId = response.items[0]?.id
         if (!latestSessionId) {
@@ -387,6 +400,7 @@ export function AiAssistantPanel({ isOpen, onClose, terminalSession }: AiAssista
     isConfigured,
     isConfigLoading,
     permissionMode,
+    listSessions,
     restoreSession,
     session,
     startNewSession,
@@ -529,7 +543,7 @@ export function AiAssistantPanel({ isOpen, onClose, terminalSession }: AiAssista
     setSessionListError("")
 
     try {
-      const response = await listAISessions({
+      const response = await listSessions({
         limit: SESSION_LIST_LIMIT,
         q: sessionSearch,
         scope: terminalScope,
@@ -540,7 +554,7 @@ export function AiAssistantPanel({ isOpen, onClose, terminalSession }: AiAssista
     } finally {
       setSessionListLoading(false)
     }
-  }, [isConfigured, isConfigLoading, sessionSearch, tAI, terminalScope])
+  }, [isConfigured, isConfigLoading, listSessions, sessionSearch, tAI, terminalScope])
 
   useEffect(() => {
     if (historyOpen) {
@@ -648,7 +662,7 @@ export function AiAssistantPanel({ isOpen, onClose, terminalSession }: AiAssista
 
     setSessionActionLoadingId(targetSessionId)
     try {
-      await renameAISession(targetSessionId, title)
+      await renameSession(targetSessionId, title)
       setSessionList((current) => current.map((item) => (
         item.id === targetSessionId
           ? { ...item, title, custom_title: true, updated_at: new Date().toISOString() }
@@ -660,7 +674,7 @@ export function AiAssistantPanel({ isOpen, onClose, terminalSession }: AiAssista
     } finally {
       setSessionActionLoadingId(null)
     }
-  }, [cancelRenameSession, renameDraft, sessionActionLoadingId, tAI])
+  }, [cancelRenameSession, renameDraft, renameSession, sessionActionLoadingId, tAI])
 
   const handleDeleteSession = useCallback(async (targetSessionId: string) => {
     if (!targetSessionId || sessionActionLoadingId) {
@@ -677,7 +691,7 @@ export function AiAssistantPanel({ isOpen, onClose, terminalSession }: AiAssista
 
     setSessionActionLoadingId(targetSessionId)
     try {
-      await deleteAISession(targetSessionId)
+      await deleteSession(targetSessionId)
       setSessionList((current) => current.filter((item) => item.id !== targetSessionId))
       removeStoredTerminalAISessionId(terminalSession.id, targetSessionId)
       if (targetSessionId === sessionId) {
@@ -694,6 +708,7 @@ export function AiAssistantPanel({ isOpen, onClose, terminalSession }: AiAssista
   }, [
     cancelRenameSession,
     closeSession,
+    deleteSession,
     renamingSessionId,
     requestConfirm,
     sessionActionLoadingId,
@@ -1153,6 +1168,25 @@ export function AiAssistantPanel({ isOpen, onClose, terminalSession }: AiAssista
                     <Loader2 className="size-3.5 animate-spin" />
                     <span>{tAI("checkingConfig")}</span>
                   </div>
+                ) : adapters?.aiSettings ? (
+                  <AIAssistantConfigPopover
+                    open={configOpen}
+                    onOpenChange={setConfigOpen}
+                    customConfigOnly
+                    adapter={adapters.aiSettings}
+                    onSaved={() => void refetchAIConfig()}
+                    trigger={
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-8 gap-1.5 px-2 text-xs text-muted-foreground hover:bg-transparent hover:text-foreground"
+                      >
+                        <Settings2 className="size-3.5" />
+                        <span>{tAI("configureAI")}</span>
+                      </Button>
+                    }
+                  />
                 ) : (
                   <Button
                     asChild

@@ -10,6 +10,7 @@ import { cn } from "@/lib/utils"
 import { useTerminalStore } from "@/stores/terminal-store"
 import { PageHeader } from "@/components/page-header"
 import { ActivityLogPane } from "@/components/ssh-workspace/activity-log-pane"
+import type { AIAssistantWorkspaceAdapters } from "@/components/ai-agent/ai-assistant-workspace-view"
 import { ServerConnectionConfigs, type ServerConnectionConfigsApi } from "@/components/servers/server-connection-configs"
 import { SessionSplitDropOverlay } from "@/components/tabs/session-split-drop-overlay"
 import {
@@ -160,6 +161,7 @@ interface TerminalComponentProps {
   onBehaviorSettingsChange?: (settings: { maxTabs: number; inactiveMinutes: number }) => void
   serverApi?: ServerConnectionConfigsApi
   serverConfigsReady?: boolean
+  aiAssistantAdapters?: AIAssistantWorkspaceAdapters
   hidePageHeader?: boolean
   unframed?: boolean
   settingsDialogOpen?: boolean
@@ -185,6 +187,7 @@ export function TerminalComponent({
   onBehaviorSettingsChange,
   serverApi,
   serverConfigsReady,
+  aiAssistantAdapters,
   hidePageHeader = false,
   unframed = false,
   settingsDialogOpen,
@@ -850,6 +853,7 @@ export function TerminalComponent({
         onStartConnectionFromConfig={(server) => onStartConnectionFromConfig(session.id, server)}
         serverApi={serverApi}
         serverConfigsReady={serverConfigsReady}
+        aiAssistantAdapters={aiAssistantAdapters}
         onInternalBackHandlerChange={handleInternalBackHandlerChange}
         onInternalBackAvailabilityChange={handleInternalBackAvailabilityChange}
       />
@@ -860,6 +864,7 @@ export function TerminalComponent({
     handleCommand,
     handleInternalBackHandlerChange,
     handleToggleFullscreen,
+    aiAssistantAdapters,
     isFullscreen,
     loaderStates,
     onAuthCancelled,
