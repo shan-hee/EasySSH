@@ -1,5 +1,5 @@
 
-import { useEffect, useState, useCallback } from "react"
+import { useEffect, useState, useCallback, useRef } from "react"
 import { useNavigate, useSearchParams } from "react-router-dom"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -62,6 +62,7 @@ export function LoginForm({
   const [codeChallenge, setCodeChallenge] = useState("")
   const [pkceState, setPkceState] = useState("")
   const [redirectUri, setRedirectUri] = useState("")
+  const handledGoogleErrorRef = useRef<string | null>(null)
 
   const { t: tAuth } = useTranslation("auth")
 
@@ -101,7 +102,14 @@ export function LoginForm({
       return
     }
 
-    const message = searchParams.get("google_message") || tAuth("loginGoogleRetryDesc")
+    const googleMessage = searchParams.get("google_message") || ""
+    const errorKey = `${googleError}:${googleMessage}`
+    if (handledGoogleErrorRef.current === errorKey) {
+      return
+    }
+    handledGoogleErrorRef.current = errorKey
+
+    const message = googleMessage || tAuth("loginGoogleRetryDesc")
     toast.error(tAuth("loginGoogleFailedTitle"), {
       description: message,
     })

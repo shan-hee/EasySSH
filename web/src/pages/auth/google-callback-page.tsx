@@ -1,5 +1,5 @@
 
-import { Suspense, useEffect } from "react"
+import { Suspense, useEffect, useRef } from "react"
 import { useNavigate, useSearchParams } from "react-router-dom"
 import { toast } from "@/components/ui/sonner"
 import { useTranslation } from "react-i18next"
@@ -41,8 +41,14 @@ function GoogleAuthCallbackInner() {
   const [searchParams] = useSearchParams()
   const setToken = useAuthStore((state) => state.setToken)
   const { refreshConfig } = useSystemConfig()
+  const hasHandledCallback = useRef(false)
 
   useEffect(() => {
+    if (hasHandledCallback.current) {
+      return
+    }
+    hasHandledCallback.current = true
+
     const queryParams = new URLSearchParams(window.location.search)
     const code = queryParams.get("code")
     const error = queryParams.get("error")
@@ -83,10 +89,10 @@ function GoogleAuthCallbackInner() {
           google_message: t("loginGoogleFailedDesc"),
         })
       } else {
-        toast.error(t("loginGoogleFailedTitle"), {
-          description: t("loginGoogleFailedDesc"),
+        redirectBackToLogin({
+          google_error: "google_oauth_error",
+          google_message: t("loginGoogleFailedDesc"),
         })
-        redirectBackToLogin()
       }
       return
     }
@@ -98,10 +104,10 @@ function GoogleAuthCallbackInner() {
           google_message: t("loginGoogleCredentialMissingDesc"),
         })
       } else {
-        toast.error(t("loginGoogleFailedTitle"), {
-          description: t("loginGoogleCredentialMissingDesc"),
+        redirectBackToLogin({
+          google_error: "google_credential_missing",
+          google_message: t("loginGoogleCredentialMissingDesc"),
         })
-        redirectBackToLogin()
       }
       return
     }
@@ -110,12 +116,13 @@ function GoogleAuthCallbackInner() {
       try {
         const storedState = window.sessionStorage.getItem("easyssh_google_oauth_state")
         const codeVerifier = window.sessionStorage.getItem("easyssh_google_pkce_verifier")
-        window.sessionStorage.removeItem("easyssh_google_oauth_state")
-        window.sessionStorage.removeItem("easyssh_google_pkce_verifier")
 
         if (!state || !storedState || state !== storedState || !codeVerifier) {
           throw new Error("Invalid Google OAuth state")
         }
+
+        window.sessionStorage.removeItem("easyssh_google_oauth_state")
+        window.sessionStorage.removeItem("easyssh_google_pkce_verifier")
 
         const redirectUri = `${window.location.origin}/auth/google/callback`
 
@@ -178,9 +185,6 @@ function GoogleAuthCallbackInner() {
             google_message: message,
           })
         } else {
-          toast.error(t("loginGoogleFailedTitle"), {
-            description: message,
-          })
           redirectBackToLogin({
             google_error: detail?.error ?? "google_login_failed",
             google_message: message,
