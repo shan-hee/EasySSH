@@ -2,7 +2,9 @@ import { startTransition, useCallback, useEffect, useMemo, useRef, useState } fr
 import {
   DEFAULT_SYSTEM_CONFIG,
   SshWorkspace,
+  ServerConnectionConfigs,
   TerminalComponent,
+  TerminalSftpTabContent,
   WORKSPACE_CAPABILITY_PRESETS,
   createTerminalWorkspaceSessionControllerAdapter,
   createTerminalWorkspaceSessionStoreAdapter,
@@ -92,6 +94,49 @@ function createTerminalSessionFromServer(
   }
 }
 
+type DesktopSftpTab =
+  | {
+      id: string
+      kind: "config"
+      label: string
+      createdAt: number
+    }
+  | {
+      id: string
+      kind: "session"
+      label: string
+      server: Server
+      createdAt: number
+    }
+
+function createSftpTabId(kind: DesktopSftpTab["kind"]) {
+  return `desktop-sftp-${kind}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+}
+
+function getServerDisplayName(server: Server) {
+  return server.name || `${server.username}@${server.host}:${server.port}`
+}
+
+function createSftpTabSession(tab: DesktopSftpTab): TerminalSession {
+  const isSession = tab.kind === "session"
+  return {
+    id: tab.id,
+    serverId: isSession ? String(tab.server.id) : undefined,
+    serverName: tab.label,
+    host: isSession ? tab.server.host : "",
+    port: isSession ? tab.server.port : undefined,
+    username: isSession ? tab.server.username : "",
+    shouldConnect: false,
+    connectionPhase: isSession ? "ready" : "idle",
+    status: isSession ? "connected" : "disconnected",
+    lastActivity: tab.createdAt,
+    group: isSession ? tab.server.group : undefined,
+    tags: isSession ? tab.server.tags : undefined,
+    pinned: false,
+    type: isSession ? "terminal" : "config",
+  }
+}
+
 function App() {
   const [runtime, setRuntime] = useState<DesktopRuntimeBindingInfo | null>(null)
   const [preferenceSnapshot, setPreferenceSnapshot] = useState<DesktopPreferenceSnapshot | null>(null)
@@ -100,6 +145,8 @@ function App() {
   const [maxTabs, setMaxTabs] = useState(defaultMaxTabs)
   const [inactiveMinutes, setInactiveMinutes] = useState(defaultInactiveMinutes)
   const [terminalSettingsOpen, setTerminalSettingsOpen] = useState(false)
+  const [sftpTabs, setSftpTabs] = useState<DesktopSftpTab[]>([])
+  const [activeSftpTabId, setActiveSftpTabId] = useState<string | null>(null)
   const inactivityNotifiedRef = useRef<Set<string>>(new Set())
   const initializedRef = useRef(false)
 
@@ -124,6 +171,8 @@ function App() {
   const capabilities = useMemo(() => (
     createWorkspaceCapabilitiesFromRuntime(runtimeInfo, WORKSPACE_CAPABILITY_PRESETS.desktop)
   ), [runtimeInfo])
+  const totalTabCount = sessions.length + sftpTabs.length
+  const sftpTabSessions = useMemo(() => sftpTabs.map(createSftpTabSession), [sftpTabs])
 
   const workspaceApi = useMemo<SshWorkspaceApiClient>(() => ({
     sftp: sftpApi,
@@ -225,7 +274,7 @@ function App() {
   }, [setActiveSessionId, setSessions, updateSessionActivity])
 
   const handleNewSession = useCallback(() => {
-    if (sessions.length >= maxTabs) {
+    if (totalTabCount >= maxTabs) {
       toast.error(formatMaxTabsMessage(maxTabs))
       return
     }
@@ -235,7 +284,71 @@ function App() {
     setActiveSessionId(session.id)
     updateSessionActivity(session.id, session.lastActivity)
     return session.id
-  }, [maxTabs, sessions.length, setActiveSessionId, setSessions, updateSessionActivity])
+  }, [maxTabs, setActiveSessionId, setSessions, totalTabCount, updateSessionActivity])
+
+  const handleNewSftpTab = useCallback(() => {
+    if (totalTabCount >= maxTabs) {
+      toast.error(formatMaxTabsMessage(maxTabs))
+      return
+    }
+
+    const now = Date.now()
+    const id = createSftpTabId("config")
+    setSftpTabs((current) => [
+      ...current,
+      {
+        id,
+        kind: "config",
+        label: connectionConfigName,
+        createdAt: now,
+      },
+    ])
+    setActiveSftpTabId(id)
+    return id
+  }, [maxTabs, totalTabCount])
+
+  const handleStartSftpFromConfig = useCallback((tabId: string, server: Server) => {
+    const now = Date.now()
+    const label = getServerDisplayName(server)
+    setSftpTabs((current) => current.map((tab) => (
+      tab.id === tabId
+        ? {
+            id: tab.id,
+            kind: "session",
+            label,
+            server,
+            createdAt: tab.createdAt || now,
+          }
+        : tab
+    )))
+  }, [])
+
+  const handleCloseSftpTab = useCallback((tabId: string) => {
+    setSftpTabs((current) => current.filter((tab) => tab.id !== tabId))
+    setActiveSftpTabId((current) => current === tabId ? null : current)
+  }, [])
+
+  const handleReorderSftpTabs = useCallback((newOrderIds: string[]) => {
+    setSftpTabs((current) => {
+      const tabMap = new Map(current.map((tab) => [tab.id, tab]))
+      const ordered = newOrderIds
+        .map((id) => tabMap.get(id))
+        .filter((tab): tab is DesktopSftpTab => Boolean(tab))
+      const orderedIds = new Set(ordered.map((tab) => tab.id))
+      const remaining = current.filter((tab) => !orderedIds.has(tab.id))
+
+      return [...ordered, ...remaining]
+    })
+  }, [])
+
+  const handleRenameSftpTab = useCallback((tabId: string, label: string) => {
+    const trimmedLabel = label.trim()
+    if (!trimmedLabel) return
+
+    setSftpTabs((current) => current.map((tab) => (
+      tab.id === tabId ? { ...tab, label: trimmedLabel } : tab
+    )))
+  }, [])
 
   const handleStartConnectionFromConfig = useCallback((sessionId: string, server: Server) => {
     const now = Date.now()
@@ -291,7 +404,7 @@ function App() {
   const handleDuplicateSession = useCallback((sessionId: string) => {
     const source = sessions.find((session) => session.id === sessionId)
     if (!source) return
-    if (sessions.length >= maxTabs) {
+    if (totalTabCount >= maxTabs) {
       toast.error(formatMaxTabsMessage(maxTabs))
       return
     }
@@ -309,7 +422,7 @@ function App() {
     setSessions((current) => [...current, duplicate])
     setActiveSessionId(duplicate.id)
     updateSessionActivity(duplicate.id, now)
-  }, [maxTabs, sessions, setActiveSessionId, setSessions, updateSessionActivity])
+  }, [maxTabs, sessions, setActiveSessionId, setSessions, totalTabCount, updateSessionActivity])
 
   const handleCloseOthers = useCallback((sessionId: string) => {
     setSessions((current) => current.filter((session) => session.id === sessionId || session.pinned))
@@ -363,6 +476,32 @@ function App() {
       updateSessionActivity(sessionId)
     }
   }, [setSessions, updateSessionActivity])
+
+  const renderSftpTabContent = useCallback((session: TerminalSession) => {
+    const tab = sftpTabs.find((item) => item.id === session.id)
+    if (!tab) return null
+
+    if (tab.kind === "config") {
+      return (
+        <ServerConnectionConfigs
+          defaultViewMode="grid"
+          onConnect={(server) => handleStartSftpFromConfig(tab.id, server)}
+          serverApi={serverApi}
+          ready
+        />
+      )
+    }
+
+    return (
+      <TerminalSftpTabContent
+        sessionId={tab.id}
+        server={tab.server}
+        label={tab.label}
+        onClose={() => handleCloseSftpTab(tab.id)}
+        onRenameSession={(label) => handleRenameSftpTab(tab.id, label)}
+      />
+    )
+  }, [handleCloseSftpTab, handleRenameSftpTab, handleStartSftpFromConfig, serverApi, sftpTabs])
 
   const handleAuthCancelled = useCallback((sessionId: string) => {
     const now = Date.now()
@@ -445,6 +584,19 @@ function App() {
               <TerminalComponent
                 sessions={sessions}
                 onNewSession={handleNewSession}
+                extraSessions={sftpTabSessions}
+                extraNewSessionActions={[{
+                  id: "new-desktop-sftp-session",
+                  label: "SFTP+",
+                  ariaLabel: "\u65b0\u5efa SFTP \u6587\u4ef6\u7ba1\u7406\u5668\u6807\u7b7e",
+                  title: "\u65b0\u5efa SFTP \u6587\u4ef6\u7ba1\u7406\u5668\u6807\u7b7e",
+                  onCreate: handleNewSftpTab,
+                }]}
+                renderExtraSessionContent={renderSftpTabContent}
+                onCloseExtraSession={handleCloseSftpTab}
+                onReorderExtraSessions={handleReorderSftpTabs}
+                externalActiveExtraSessionId={activeSftpTabId}
+                onActiveExtraSessionChange={setActiveSftpTabId}
                 onCloseSession={handleCloseSession}
                 onCloseSessions={handleCloseSessions}
                 onSendCommand={handleSendCommand}
