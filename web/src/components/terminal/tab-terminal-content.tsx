@@ -615,6 +615,7 @@ export function TabTerminalContent({
 
               {session.type === 'config' ? (
                 <ServerConnectionConfigs
+                  key={`terminal-config-${session.id}`}
                   onConnect={onStartConnectionFromConfig}
                   serverApi={serverApi}
                   ready={serverConfigsReady}

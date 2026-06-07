@@ -657,6 +657,7 @@ function TerminalPageContent() {
     if (tab.kind === "config") {
       return (
         <ServerConnectionConfigs
+          key={`sftp-config-${tab.id}`}
           defaultViewMode="grid"
           onConnect={(server) => handleStartSftpFromConfig(tab.id, server)}
         />

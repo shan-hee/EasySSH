@@ -725,8 +725,8 @@ export function SessionTabBar(props: SessionTabBarProps) {
       trimmedLabel,
       content: trimmedLabel ? (
         <>
-          {labelText ? <span>{labelText}</span> : null}
           {labelHasPlus ? <Plus className="h-4 w-4" /> : null}
+          {labelText ? <span>{labelText}</span> : null}
         </>
       ) : (
         <Plus className="h-4 w-4" />
@@ -769,24 +769,26 @@ export function SessionTabBar(props: SessionTabBarProps) {
     )
   }
 
-  const renderNewSessionButtons = (className?: string) => (
-    <>
-      {renderNewSessionButton({
-        key: "primary-new-session",
-        label: newSessionLabel,
-        onClick: onNewSession,
-        ariaLabel: tTerminal("ariaNewSession"),
-        className,
-      })}
-      {additionalNewSessionActions.map((action) => renderNewSessionButton({
-        key: action.id,
-        label: action.label,
-        onClick: action.onClick,
-        ariaLabel: action.ariaLabel,
-        title: action.title,
-      }))}
-    </>
+  const renderPrimaryNewSessionButton = (className?: string) => (
+    renderNewSessionButton({
+      key: "primary-new-session",
+      label: newSessionLabel,
+      onClick: onNewSession,
+      ariaLabel: tTerminal("ariaNewSession"),
+      className,
+    })
   )
+
+  const renderAdditionalNewSessionButtons = () => (
+    additionalNewSessionActions.map((action) => renderNewSessionButton({
+      key: action.id,
+      label: action.label,
+      onClick: action.onClick,
+      ariaLabel: action.ariaLabel,
+      title: action.title,
+    }))
+  )
+  const hasRightActions = additionalNewSessionActions.length > 0 || onOpenSettings || onToggleFullscreen
 
   return (
     <>
@@ -885,7 +887,7 @@ export function SessionTabBar(props: SessionTabBarProps) {
                     {/* 新建会话按钮：页签不溢出时显示 */}
                     {!isOverflowing && (
                       <div className="ml-1 flex items-center gap-1">
-                        {renderNewSessionButtons()}
+                        {renderPrimaryNewSessionButton()}
                       </div>
                     )}
                   </div>
@@ -918,7 +920,7 @@ export function SessionTabBar(props: SessionTabBarProps) {
                 {/* 新建会话按钮：页签不溢出时显示 */}
                 {!isOverflowing && (
                   <div className="ml-1 flex items-center gap-1">
-                    {renderNewSessionButtons()}
+                    {renderPrimaryNewSessionButton()}
                   </div>
                 )}
               </div>
@@ -928,12 +930,14 @@ export function SessionTabBar(props: SessionTabBarProps) {
           {/* 新建会话按钮：页签溢出时固定显示 */}
           {isOverflowing && (
             <div className="flex items-center gap-1 px-2 shrink-0">
-              {renderNewSessionButtons()}
+              {renderPrimaryNewSessionButton()}
             </div>
           )}
 
-          {(onOpenSettings || onToggleFullscreen) && (
-            <div className="flex items-center gap-1 border-l border-border/60 px-2">
+          {hasRightActions && (
+            <div className="flex shrink-0 items-center gap-1 border-l border-border/60 px-2">
+              {renderAdditionalNewSessionButtons()}
+
               {onOpenSettings && (
                 <Button
                   variant="ghost"

@@ -1312,6 +1312,7 @@ export function TerminalComponent({
             ) : activeConfigSession ? (
               <div className="relative min-h-0 flex-1 overflow-hidden">
                 <ServerConnectionConfigs
+                  key={`terminal-config-${activeConfigSession.id}`}
                   onConnect={handleStartConnectionFromActiveConfig}
                   serverApi={serverApi}
                   ready={serverConfigsReady}

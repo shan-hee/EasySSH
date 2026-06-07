@@ -484,6 +484,7 @@ function App() {
     if (tab.kind === "config") {
       return (
         <ServerConnectionConfigs
+          key={`desktop-sftp-config-${tab.id}`}
           defaultViewMode="grid"
           onConnect={(server) => handleStartSftpFromConfig(tab.id, server)}
           serverApi={serverApi}
