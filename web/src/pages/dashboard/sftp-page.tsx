@@ -90,9 +90,9 @@ const createSftpConfigTabId = () => (
   `sftp-config-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
 )
 
-const createSftpConfigTab = (id: string): TerminalSession => ({
+const createSftpConfigTab = (id: string, label: string): TerminalSession => ({
   id,
-  serverName: "sftp",
+  serverName: label,
   host: "",
   username: "",
   shouldConnect: false,
@@ -112,6 +112,8 @@ export default function SftpPage() {
  const { t: tCommon } = useTranslation("common")
  const { t: tSftp } = useTranslation("sftp")
  const { t: tTerminal } = useTranslation("terminal")
+ const { t: tServers } = useTranslation("servers")
+ const connectionConfigName = tServers("pageTitle")
 
  const convertFileInfo = useCallback(
    (file: FileInfo): ComponentFile =>
@@ -332,7 +334,7 @@ export default function SftpPage() {
 
      return [
        ...visibleTabs,
-       ...configTabIds.map(createSftpConfigTab),
+       ...configTabIds.map((id) => createSftpConfigTab(id, connectionConfigName)),
      ]
    },
  })
@@ -1234,6 +1236,7 @@ export default function SftpPage() {
    activeId={tabActiveId}
    onChangeActive={handleChangeTab}
    onNewSession={handleNewTab}
+   newSessionLabel="SFTP +"
    onCloseSession={handleCloseTab}
    onDuplicateSession={() => {}}
    onCloseOthers={() => {}}

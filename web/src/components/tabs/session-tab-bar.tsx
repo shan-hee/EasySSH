@@ -52,6 +52,7 @@ interface SessionTabBarProps {
   activeId: string
   onChangeActive: (id: string) => void
   onNewSession: () => void
+  newSessionLabel?: string
   onCloseSession: (id: string) => void
   onDuplicateSession: (id: string) => void
   onCloseOthers: (id: string) => void
@@ -433,6 +434,7 @@ export function SessionTabBar(props: SessionTabBarProps) {
     activeId,
     onChangeActive,
     onNewSession,
+    newSessionLabel,
     onCloseSession,
     onDuplicateSession,
     onCloseOthers,
@@ -698,6 +700,36 @@ export function SessionTabBar(props: SessionTabBarProps) {
     }
   }
 
+  const trimmedNewSessionLabel = newSessionLabel?.trim()
+  const newSessionLabelHasPlus = trimmedNewSessionLabel?.endsWith("+") ?? false
+  const newSessionLabelText = newSessionLabelHasPlus
+    ? trimmedNewSessionLabel?.slice(0, -1).trim()
+    : trimmedNewSessionLabel
+  const newSessionButtonContent = trimmedNewSessionLabel ? (
+    <>
+      {newSessionLabelText ? <span>{newSessionLabelText}</span> : null}
+      {newSessionLabelHasPlus ? <Plus className="h-4 w-4" /> : null}
+    </>
+  ) : (
+    <Plus className="h-4 w-4" />
+  )
+
+  const renderNewSessionButton = (className?: string) => (
+    <Button
+      variant="ghost"
+      size={trimmedNewSessionLabel ? "sm" : "icon"}
+      className={cn(
+        "h-8 rounded-lg text-muted-foreground transition-all duration-200 hover:bg-accent/70 hover:text-accent-foreground",
+        trimmedNewSessionLabel ? "w-auto px-3 text-sm font-medium" : "w-8",
+        className
+      )}
+      onClick={onNewSession}
+      aria-label={tTerminal("ariaNewSession")}
+    >
+      {newSessionButtonContent}
+    </Button>
+  )
+
   return (
     <>
       {/* 面包屑导航（可隐藏） */}
@@ -794,17 +826,7 @@ export function SessionTabBar(props: SessionTabBarProps) {
                     ))}
                     {/* 新建会话按钮：页签不溢出时显示 */}
                     {!isOverflowing && (
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className={cn(
-                          "ml-1 h-8 w-8 rounded-lg text-muted-foreground transition-all duration-200 hover:scale-105 hover:bg-accent/70 hover:text-accent-foreground",
-                        )}
-                        onClick={onNewSession}
-                        aria-label={tTerminal("ariaNewSession")}
-                      >
-                        <Plus className="h-4 w-4" />
-                      </Button>
+                      renderNewSessionButton("ml-1")
                     )}
                   </div>
                 </SortableContext>
@@ -835,17 +857,7 @@ export function SessionTabBar(props: SessionTabBarProps) {
                 ))}
                 {/* 新建会话按钮：页签不溢出时显示 */}
                 {!isOverflowing && (
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className={cn(
-                      "ml-1 h-8 w-8 rounded-lg text-muted-foreground transition-all duration-200 hover:scale-105 hover:bg-accent/70 hover:text-accent-foreground",
-                    )}
-                    onClick={onNewSession}
-                    aria-label={tTerminal("ariaNewSession")}
-                  >
-                    <Plus className="h-4 w-4" />
-                  </Button>
+                  renderNewSessionButton("ml-1")
                 )}
               </div>
             )}
@@ -854,17 +866,7 @@ export function SessionTabBar(props: SessionTabBarProps) {
           {/* 新建会话按钮：页签溢出时固定显示 */}
           {isOverflowing && (
             <div className="flex items-center gap-1 px-2 shrink-0">
-              <Button
-                variant="ghost"
-                size="icon"
-                className={cn(
-                  "h-8 w-8 rounded-lg text-muted-foreground transition-all duration-200 hover:scale-105 hover:bg-accent/70 hover:text-accent-foreground",
-                )}
-                onClick={onNewSession}
-                aria-label={tTerminal("ariaNewSession")}
-              >
-                <Plus className="h-4 w-4" />
-              </Button>
+              {renderNewSessionButton()}
             </div>
           )}
 
