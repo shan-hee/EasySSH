@@ -53,8 +53,8 @@ export function Delete(input: $models.DesktopSFTPPathInput): $CancellablePromise
     });
 }
 
-export function DirectTransfer($0: $models.DesktopSFTPDirectTransferInput): $CancellablePromise<$models.DesktopSFTPDirectTransferResult> {
-    return $Call.ByID(3508449626, $0).then(($result: any) => {
+export function DirectTransfer(input: $models.DesktopSFTPDirectTransferInput): $CancellablePromise<$models.DesktopSFTPDirectTransferResult> {
+    return $Call.ByID(3508449626, input).then(($result: any) => {
         return $$createType3($result);
     });
 }
