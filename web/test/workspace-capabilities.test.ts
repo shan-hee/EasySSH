@@ -17,7 +17,7 @@ describe("workspace capability presets", () => {
     assert.equal(capabilities.transfers, true)
     assert.equal(capabilities.monitor, true)
     assert.equal(capabilities.docker, true)
-    assert.equal(capabilities.crossSessionDrag, false)
+    assert.equal(capabilities.crossSessionDrag, true)
   })
 
   it("lets runtime capabilities disable defaults", () => {

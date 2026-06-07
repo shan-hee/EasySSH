@@ -1,6 +1,6 @@
 
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from "react"
-import { SessionTabBar } from "@/components/tabs/session-tab-bar"
+import { SessionTabBar, type CrossSessionFileDragData } from "@/components/tabs/session-tab-bar"
 import type {
   TerminalSession,
   TerminalConnectionPhase,
@@ -26,7 +26,11 @@ import { TabTerminalContent } from "./tab-terminal-content"
 import { useTabUIStore } from "@/stores/tab-ui-store"
 import { useTranslation } from "react-i18next"
 import { useOptionalSshWorkspace } from "@/components/ssh-workspace/ssh-workspace"
+import { toast } from "@/components/ui/sonner"
 import { useEffectiveThemeMode } from "@/hooks/use-effective-theme-mode"
+import { useFileTransfer, type FileTransferSftpApi } from "@/hooks/useFileTransfer"
+import { getErrorMessage } from "@/lib/error-utils"
+import { createWorkspaceTransferAuthTicketProviderAdapter } from "@/lib/session/workspace-adapters"
 import { useSessionSplitWorkspace } from "@/hooks/use-session-split-workspace"
 import {
   getTerminalTheme,
@@ -133,6 +137,28 @@ const getAdjacentSessionId = (sessions: TerminalSession[], sessionId: string) =>
 
 const TERMINAL_WORKSPACE_TAB_ID = "__terminal-workspace__"
 const WORKSPACE_TAB_LABEL = "工作空间"
+const DEFAULT_TERMINAL_SFTP_PATH = "/root"
+
+const disabledFileTransferApi: FileTransferSftpApi = {
+  async createUploadTask() {
+    throw new Error("SFTP transfer API is unavailable")
+  },
+  async listUploadTasks() {
+    return { tasks: [] }
+  },
+  async cancelUploadTask() {
+    return undefined
+  },
+  async uploadFile() {
+    throw new Error("SFTP transfer API is unavailable")
+  },
+  async directTransfer() {
+    throw new Error("SFTP transfer API is unavailable")
+  },
+  async cancelTransfer() {
+    return undefined
+  },
+}
 
 const getSessionConnectionSubtitle = (session: Pick<TerminalSession, "username" | "host">) => {
   if (session.username && session.host) return `${session.username}@${session.host}`
@@ -194,8 +220,53 @@ export function TerminalComponent({
   onSettingsDialogOpenChange,
 }: TerminalComponentProps) {
   const { t: tTerminal } = useTranslation("terminal")
+  const { t: tSftpFallback } = useTranslation("sftp")
   const { mode: effectiveAppTheme } = useEffectiveThemeMode()
   const workspace = useOptionalSshWorkspace()
+  const workspaceSftpApi = workspace?.adapters.apiClient?.sftp
+  const workspaceI18n = workspace?.adapters.i18n
+  const tSftp = useCallback((key: string, params?: Record<string, string | number>) => {
+    const workspaceText = workspaceI18n?.t("sftp", key, params)
+    if (workspaceText && workspaceText !== key) {
+      return workspaceText
+    }
+
+    return tSftpFallback(key, params)
+  }, [tSftpFallback, workspaceI18n])
+  const canUseCrossSessionDragCapability = workspace?.capabilities.crossSessionDrag === true
+  const crossSessionFileTransferApi = useMemo<FileTransferSftpApi | undefined>(() => {
+    if (
+      !canUseCrossSessionDragCapability ||
+      !workspaceSftpApi?.createUploadTask ||
+      !workspaceSftpApi.listUploadTasks ||
+      !workspaceSftpApi.cancelUploadTask ||
+      !workspaceSftpApi.uploadFile ||
+      !workspaceSftpApi.directTransfer ||
+      !workspaceSftpApi.cancelTransfer
+    ) {
+      return undefined
+    }
+
+    return {
+      createUploadTask: workspaceSftpApi.createUploadTask,
+      listUploadTasks: workspaceSftpApi.listUploadTasks,
+      cancelUploadTask: workspaceSftpApi.cancelUploadTask,
+      uploadFile: workspaceSftpApi.uploadFile,
+      directTransfer: workspaceSftpApi.directTransfer,
+      cancelTransfer: workspaceSftpApi.cancelTransfer,
+    }
+  }, [canUseCrossSessionDragCapability, workspaceSftpApi])
+  const crossSessionTransferAuthTicketProvider = useMemo(
+    () => createWorkspaceTransferAuthTicketProviderAdapter(workspace?.adapters.authTicketProvider),
+    [workspace?.adapters.authTicketProvider]
+  )
+  const crossSessionTransfer = useFileTransfer({
+    api: crossSessionFileTransferApi ?? disabledFileTransferApi,
+    createTicket: crossSessionTransferAuthTicketProvider,
+    uploadUsesProgressSocket: workspaceSftpApi?.uploadUsesProgressSocket ?? true,
+    serverTransferUsesProgressSocket: workspaceSftpApi?.serverTransferUsesProgressSocket ?? true,
+  })
+  const canUseCrossSessionTransfer = !!crossSessionFileTransferApi
   const [activeSession, setActiveSession] = useState<string>(
     externalActiveSessionId || sessions[0]?.id || ""
   )
@@ -218,11 +289,14 @@ export function TerminalComponent({
   const internalBackAvailabilityRef = useRef(new Map<string, boolean>())
   const internalBackSentinelArmedRef = useRef(false)
   const internalBackSentinelDisarmingRef = useRef(false)
+  const [sftpPathBySessionId, setSftpPathBySessionId] = useState<Record<string, string>>({})
+  const [sftpRefreshRequests, setSftpRefreshRequests] = useState<Record<string, number>>({})
 
   // ==================== 从 Store 获取销毁方法 ====================
   const destroySession = useTerminalStore(state => state.destroySession)
   const workspaceSplitLayout = useTerminalStore(state => state.splitLayout)
   const setWorkspaceSplitLayout = useTerminalStore(state => state.setSplitLayout)
+  const setTabState = useTabUIStore(state => state.setTabState)
   const deleteTabState = useTabUIStore(state => state.deleteTabState)
 
   // ==================== 获取活跃会话 ====================
@@ -238,6 +312,7 @@ export function TerminalComponent({
   const activeConfigSession = active?.type === "config" ? active : null
   const activeTerminalSession = active?.type !== "config" ? active : null
   const canUseFullscreenCapability = workspace?.capabilities.fullscreen !== false
+  const crossSessionTransferTasks = crossSessionTransfer.tasks
   const handleToggleFullscreen = useCallback(() => {
     setIsFullscreen((current) => !current)
   }, [])
@@ -259,6 +334,138 @@ export function TerminalComponent({
       return nextSessionId
     })
   }, [sessionIdSet])
+
+  useEffect(() => {
+    setSftpPathBySessionId((current) => {
+      const nextEntries = Object.entries(current).filter(([sessionId]) => sessionIdSet.has(sessionId))
+      if (nextEntries.length === Object.keys(current).length) {
+        return current
+      }
+      return Object.fromEntries(nextEntries)
+    })
+    setSftpRefreshRequests((current) => {
+      const nextEntries = Object.entries(current).filter(([sessionId]) => sessionIdSet.has(sessionId))
+      if (nextEntries.length === Object.keys(current).length) {
+        return current
+      }
+      return Object.fromEntries(nextEntries)
+    })
+  }, [sessionIdSet])
+
+  const notifyTransferSuccess = useCallback((message: string) => {
+    if (workspace?.adapters.notifier?.success) {
+      workspace.adapters.notifier.success(message)
+      return
+    }
+    toast.success(message)
+  }, [workspace?.adapters.notifier])
+
+  const notifyTransferError = useCallback((message: string) => {
+    if (workspace?.adapters.notifier?.error) {
+      workspace.adapters.notifier.error(message)
+      return
+    }
+    toast.error(message)
+  }, [workspace?.adapters.notifier])
+
+  const handleSftpPathChange = useCallback((sessionId: string, path: string) => {
+    setSftpPathBySessionId((current) => (
+      current[sessionId] === path
+        ? current
+        : { ...current, [sessionId]: path }
+    ))
+  }, [])
+
+  const requestSftpRefresh = useCallback((sessionId: string) => {
+    setSftpRefreshRequests((current) => ({
+      ...current,
+      [sessionId]: (current[sessionId] ?? 0) + 1,
+    }))
+  }, [])
+
+  const isCrossSessionTransferSessionReady = useCallback((session?: TerminalSession | null) => (
+    !!session &&
+    session.type !== "config" &&
+    session.id !== TERMINAL_WORKSPACE_TAB_ID &&
+    session.connectionPhase === "ready" &&
+    !!session.serverId
+  ), [])
+
+  const canAcceptCrossSessionFileDrop = useCallback((targetSession: TerminalSession) => (
+    canUseCrossSessionTransfer && isCrossSessionTransferSessionReady(targetSession)
+  ), [canUseCrossSessionTransfer, isCrossSessionTransferSessionReady])
+
+  const handleCrossSessionFileDrop = useCallback(async (
+    targetSessionId: string,
+    dragData: CrossSessionFileDragData,
+  ) => {
+    if (!canUseCrossSessionTransfer) {
+      return
+    }
+
+    const targetSession = sessions.find((session) => session.id === targetSessionId)
+    const sourceSession = sessions.find((session) => session.id === dragData.sourceSessionId)
+
+    if (!targetSession || !sourceSession) {
+      return
+    }
+
+    if (
+      !isCrossSessionTransferSessionReady(targetSession) ||
+      !isCrossSessionTransferSessionReady(sourceSession)
+    ) {
+      notifyTransferError(tSftp("toastTransferSessionNotConnected"))
+      return
+    }
+
+    if (sourceSession.serverId === targetSession.serverId) {
+      notifyTransferError(tSftp("toastTransferSameServer"))
+      return
+    }
+
+    const sourceServerId = sourceSession.serverId
+    const targetServerId = targetSession.serverId
+    if (!sourceServerId || !targetServerId) {
+      notifyTransferError(tSftp("toastTransferSessionNotConnected"))
+      return
+    }
+
+    const targetPath = sftpPathBySessionId[targetSession.id] ?? DEFAULT_TERMINAL_SFTP_PATH
+
+    setActiveSessionFromUser(targetSession.id)
+    setTabState(targetSession.id, { isFileManagerOpen: true })
+
+    try {
+      await crossSessionTransfer.directTransfer(
+        sourceServerId,
+        dragData.filePath,
+        targetServerId,
+        targetPath,
+        sourceSession.serverName,
+        targetSession.serverName,
+        dragData.fileName,
+      )
+      requestSftpRefresh(targetSession.id)
+      notifyTransferSuccess(tSftp("toastTransferSuccess", {
+        file: dragData.fileName,
+        size: "-",
+      }))
+    } catch (error) {
+      notifyTransferError(getErrorMessage(error, tSftp("toastTransferFailed")))
+    }
+  }, [
+    canUseCrossSessionTransfer,
+    crossSessionTransfer,
+    isCrossSessionTransferSessionReady,
+    notifyTransferError,
+    notifyTransferSuccess,
+    requestSftpRefresh,
+    sessions,
+    setActiveSessionFromUser,
+    setTabState,
+    sftpPathBySessionId,
+    tSftp,
+  ])
 
   const {
     splitLayout,
@@ -856,13 +1063,24 @@ export function TerminalComponent({
         aiAssistantAdapters={aiAssistantAdapters}
         onInternalBackHandlerChange={handleInternalBackHandlerChange}
         onInternalBackAvailabilityChange={handleInternalBackAvailabilityChange}
+        onSftpPathChange={handleSftpPathChange}
+        initialSftpPath={sftpPathBySessionId[session.id] ?? DEFAULT_TERMINAL_SFTP_PATH}
+        sftpRefreshRequestVersion={sftpRefreshRequests[session.id] ?? 0}
+        externalTransferTasks={crossSessionTransferTasks}
+        onClearExternalCompletedTransfers={crossSessionTransfer.clearCompleted}
+        onCancelExternalTransfer={(taskId) => {
+          void crossSessionTransfer.cancelDirectTransfer(taskId)
+        }}
       />
     )
   }, [
+    crossSessionTransfer,
+    crossSessionTransferTasks,
     handleInternalBackAvailabilityChange,
     handleAnimationComplete,
     handleCommand,
     handleInternalBackHandlerChange,
+    handleSftpPathChange,
     handleToggleFullscreen,
     aiAssistantAdapters,
     isFullscreen,
@@ -873,6 +1091,8 @@ export function TerminalComponent({
     serverApi,
     serverConfigsReady,
     settings,
+    sftpPathBySessionId,
+    sftpRefreshRequests,
   ])
 
   const renderSplitLeaf = useCallback((sessionId: string): ReactNode => {
@@ -892,11 +1112,15 @@ export function TerminalComponent({
         onDragStart={() => handleSplitPaneDragStart(session.id)}
         onDragEnd={handleSplitPaneDragEnd}
         dropOverlay={<SessionSplitDropOverlay side={tabDropTargetId === session.id ? tabDropSide : null} />}
+        canAcceptCrossSessionFileDrop={canAcceptCrossSessionFileDrop(session)}
+        onCrossSessionFileDrop={(targetSessionId, dragData) => {
+          void handleCrossSessionFileDrop(targetSessionId, dragData)
+        }}
       >
         {renderTerminalSessionContent(session, "content", true, "transparent")}
       </SessionSplitPane>
     )
-  }, [activeSession, handleSplitPaneDragEnd, handleSplitPaneDragStart, renderTerminalSessionContent, setActiveSessionFromUser, splitPaneHeaderBackground, tabDropSide, tabDropTargetId, terminalSessions])
+  }, [activeSession, canAcceptCrossSessionFileDrop, handleCrossSessionFileDrop, handleSplitPaneDragEnd, handleSplitPaneDragStart, renderTerminalSessionContent, setActiveSessionFromUser, splitPaneHeaderBackground, tabDropSide, tabDropTargetId, terminalSessions])
 
   const workspaceToolbarSession = useMemo(() => {
     if (!isMultiSessionGrid) return null
@@ -960,6 +1184,10 @@ export function TerminalComponent({
             onTabDragCancel={handleTabDragCancel}
             onRestoreDetachedSession={handleRestoreDetachedSession}
             onSplitPaneDropToTab={handleSplitPaneDropToTab}
+            canAcceptCrossSessionFileDrop={canAcceptCrossSessionFileDrop}
+            onCrossSessionFileDrop={(targetSessionId, dragData) => {
+              void handleCrossSessionFileDrop(targetSessionId, dragData)
+            }}
           />
 
           <div

@@ -29,11 +29,13 @@ import { createWorkspaceTransferAuthTicketProviderAdapter } from '@/lib/session/
 import type { TerminalConnectionPhase, TerminalSession } from './types'
 import type { TerminalSettings } from './terminal-settings-dialog'
 import type { Server } from "@/lib/server-types"
+import type { WorkspaceTransferTask } from "@/lib/session/workspace"
 import { useTranslation } from "react-i18next"
 import { getTerminalTheme, withTerminalBackgroundOpacity } from './terminal-themes'
 import { useEffectiveThemeMode } from '@/hooks/use-effective-theme-mode'
 
 const DESKTOP_TERMINAL_LAYOUT_QUERY = '(min-width: 768px)'
+const DEFAULT_TERMINAL_SFTP_INITIAL_PATH = '/root'
 
 type ConnectionLoaderMessageKey =
   | "connectionLoaderConnecting"
@@ -98,6 +100,12 @@ interface TabTerminalContentProps {
     handler: InternalBackHandler | null
   ) => void
   onInternalBackAvailabilityChange?: (sessionId: string, available: boolean) => void
+  onSftpPathChange?: (sessionId: string, path: string) => void
+  initialSftpPath?: string
+  sftpRefreshRequestVersion?: number
+  externalTransferTasks?: WorkspaceTransferTask[]
+  onClearExternalCompletedTransfers?: () => void
+  onCancelExternalTransfer?: (taskId: string) => void
 }
 
 export function TabTerminalContent({
@@ -120,12 +128,20 @@ export function TabTerminalContent({
   aiAssistantAdapters,
   onInternalBackHandlerChange,
   onInternalBackAvailabilityChange,
+  onSftpPathChange,
+  initialSftpPath = DEFAULT_TERMINAL_SFTP_INITIAL_PATH,
+  sftpRefreshRequestVersion = 0,
+  externalTransferTasks = [],
+  onClearExternalCompletedTransfers,
+  onCancelExternalTransfer,
 }: TabTerminalContentProps) {
   // 浮动面板根容器
   const [floatingPanelRoot, setFloatingPanelRoot] = useState<HTMLDivElement | null>(null)
   const [sftpInternalBackHandler, setSftpInternalBackHandler] =
     useState<InternalBackHandler | null>(null)
   const [shouldRenderFileManager, setShouldRenderFileManager] = useState(false)
+  const [sftpSessionInitialPath, setSftpSessionInitialPath] = useState(initialSftpPath)
+  const lastSftpRefreshRequestVersionRef = React.useRef(sftpRefreshRequestVersion)
   const [isDesktopLayout, setIsDesktopLayout] = useState(() => {
     if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
       return true
@@ -268,9 +284,70 @@ export function TabTerminalContent({
     shouldKeepFileManagerMounted && session.serverId
       ? session.serverId
       : '',
-    '/root',
+    sftpSessionInitialPath,
     sftpSessionOptions
   )
+
+  useEffect(() => {
+    if (shouldKeepFileManagerMounted) {
+      return
+    }
+
+    setSftpSessionInitialPath(initialSftpPath)
+  }, [initialSftpPath, shouldKeepFileManagerMounted])
+
+  useEffect(() => {
+    if (!shouldKeepFileManagerMounted || !session.serverId) {
+      return
+    }
+
+    onSftpPathChange?.(session.id, sftpSession.currentPath)
+  }, [
+    onSftpPathChange,
+    session.id,
+    session.serverId,
+    sftpSession.currentPath,
+    shouldKeepFileManagerMounted,
+  ])
+
+  useEffect(() => {
+    if (lastSftpRefreshRequestVersionRef.current === sftpRefreshRequestVersion) {
+      return
+    }
+
+    lastSftpRefreshRequestVersionRef.current = sftpRefreshRequestVersion
+    if (shouldKeepFileManagerMounted && session.serverId) {
+      sftpSession.refresh()
+    }
+  }, [
+    session.serverId,
+    sftpRefreshRequestVersion,
+    sftpSession,
+    shouldKeepFileManagerMounted,
+  ])
+
+  const externalTransferTaskIds = React.useMemo(
+    () => new Set(externalTransferTasks.map((task) => task.id)),
+    [externalTransferTasks]
+  )
+  const combinedTransferTasks = React.useMemo(
+    () => externalTransferTasks.length > 0
+      ? [...sftpSession.transferTasks, ...externalTransferTasks]
+      : sftpSession.transferTasks,
+    [externalTransferTasks, sftpSession.transferTasks]
+  )
+  const handleClearCompletedTransfers = React.useCallback(() => {
+    sftpSession.clearCompletedTransfers()
+    onClearExternalCompletedTransfers?.()
+  }, [onClearExternalCompletedTransfers, sftpSession])
+  const handleCancelTransfer = React.useCallback((taskId: string) => {
+    if (externalTransferTaskIds.has(taskId)) {
+      onCancelExternalTransfer?.(taskId)
+      return
+    }
+
+    sftpSession.cancelTransfer(taskId)
+  }, [externalTransferTaskIds, onCancelExternalTransfer, sftpSession])
 
   // 监控数据源跟随已就绪的终端页签保持订阅。
   // 桌面端监控面板也保持实时模式，和终端一样只切换可见性，避免切回时图表从冻结快照重绘而闪一下。
@@ -636,9 +713,9 @@ export function TabTerminalContent({
             onReadFile={sftpSession.readFile}
             onSaveFile={sftpSession.saveFile}
             onDisconnect={() => setTabState(session.id, { isFileManagerOpen: false })}
-            transferTasks={sftpSession.transferTasks}
-            onClearCompletedTransfers={sftpSession.clearCompletedTransfers}
-            onCancelTransfer={sftpSession.cancelTransfer}
+            transferTasks={combinedTransferTasks}
+            onClearCompletedTransfers={handleClearCompletedTransfers}
+            onCancelTransfer={handleCancelTransfer}
           />
         )}
 

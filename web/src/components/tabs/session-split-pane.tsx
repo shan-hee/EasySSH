@@ -1,6 +1,15 @@
-import type { CSSProperties, ReactNode } from "react"
+import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react"
 import type { SessionStatus } from "@/components/terminal/types"
-import { setSplitPaneDragSessionId } from "@/lib/session/split-pane-drag"
+import {
+  hasSplitPaneDragSession,
+  setSplitPaneDragSessionId,
+} from "@/lib/session/split-pane-drag"
+import { getDragSourceSessionId } from "@/lib/drag-state"
+import {
+  hasCrossSessionFileDragData,
+  parseCrossSessionFileDragData,
+  type CrossSessionFileDragData,
+} from "@/lib/session/cross-session-file-drag"
 import { cn } from "@/lib/utils"
 
 export interface SessionSplitPaneHeaderBackground {
@@ -21,6 +30,8 @@ interface SessionSplitPaneProps {
   onFocus?: () => void
   onDragStart?: () => void
   onDragEnd?: () => void
+  canAcceptCrossSessionFileDrop?: boolean
+  onCrossSessionFileDrop?: (sessionId: string, dragData: CrossSessionFileDragData) => void
 }
 
 const createPaneDragPreview = ({
@@ -66,7 +77,11 @@ export function SessionSplitPane({
   onFocus,
   onDragStart,
   onDragEnd,
+  canAcceptCrossSessionFileDrop = false,
+  onCrossSessionFileDrop,
 }: SessionSplitPaneProps) {
+  const [isCrossSessionFileDragOver, setIsCrossSessionFileDragOver] = useState(false)
+  const dragOverTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const backgroundColorStyle: CSSProperties | undefined = background?.color
     ? { backgroundColor: background.color }
     : undefined
@@ -76,6 +91,80 @@ export function SessionSplitPane({
         opacity: background.imageOpacity ?? 1,
       }
     : undefined
+
+  useEffect(() => () => {
+    if (dragOverTimeoutRef.current) {
+      clearTimeout(dragOverTimeoutRef.current)
+    }
+  }, [])
+
+  const clearFileDragOver = useCallback(() => {
+    setIsCrossSessionFileDragOver(false)
+    if (dragOverTimeoutRef.current) {
+      clearTimeout(dragOverTimeoutRef.current)
+      dragOverTimeoutRef.current = null
+    }
+  }, [])
+
+  const canAcceptFileDragEvent = useCallback((event: React.DragEvent) => {
+    if (
+      !canAcceptCrossSessionFileDrop ||
+      !onCrossSessionFileDrop ||
+      hasSplitPaneDragSession(event.dataTransfer) ||
+      !hasCrossSessionFileDragData(event.dataTransfer)
+    ) {
+      return false
+    }
+
+    const sourceId = getDragSourceSessionId()
+    return sourceId !== sessionId
+  }, [canAcceptCrossSessionFileDrop, onCrossSessionFileDrop, sessionId])
+
+  const handleFileDragEnter = useCallback((event: React.DragEvent<HTMLDivElement>) => {
+    if (!canAcceptFileDragEvent(event)) return
+
+    event.preventDefault()
+    event.stopPropagation()
+    event.dataTransfer.dropEffect = "move"
+    setIsCrossSessionFileDragOver(true)
+  }, [canAcceptFileDragEvent])
+
+  const handleFileDragOver = useCallback((event: React.DragEvent<HTMLDivElement>) => {
+    if (!canAcceptFileDragEvent(event)) return
+
+    event.preventDefault()
+    event.stopPropagation()
+    event.dataTransfer.dropEffect = "move"
+    setIsCrossSessionFileDragOver(true)
+
+    if (dragOverTimeoutRef.current) {
+      clearTimeout(dragOverTimeoutRef.current)
+    }
+    dragOverTimeoutRef.current = setTimeout(() => {
+      setIsCrossSessionFileDragOver(false)
+    }, 120)
+  }, [canAcceptFileDragEvent])
+
+  const handleFileDragLeave = useCallback((event: React.DragEvent<HTMLDivElement>) => {
+    if (!canAcceptFileDragEvent(event)) return
+
+    event.preventDefault()
+    event.stopPropagation()
+    clearFileDragOver()
+  }, [canAcceptFileDragEvent, clearFileDragOver])
+
+  const handleFileDrop = useCallback((event: React.DragEvent<HTMLDivElement>) => {
+    if (!canAcceptFileDragEvent(event)) return
+
+    event.preventDefault()
+    event.stopPropagation()
+    clearFileDragOver()
+
+    const dragData = parseCrossSessionFileDragData(event.dataTransfer)
+    if (dragData && dragData.sourceSessionId !== sessionId) {
+      onCrossSessionFileDrop?.(sessionId, dragData)
+    }
+  }, [canAcceptFileDragEvent, clearFileDragOver, onCrossSessionFileDrop, sessionId])
 
   return (
     <div
@@ -87,6 +176,10 @@ export function SessionSplitPane({
           : "border-border/55"
       )}
       onMouseDown={onFocus}
+      onDragEnter={handleFileDragEnter}
+      onDragOver={handleFileDragOver}
+      onDragLeave={handleFileDragLeave}
+      onDrop={handleFileDrop}
     >
       {background ? (
         <>
@@ -103,6 +196,9 @@ export function SessionSplitPane({
         <div aria-hidden="true" className="absolute inset-0 bg-background/70" />
       )}
       {dropOverlay}
+      {isCrossSessionFileDragOver && (
+        <div className="pointer-events-none absolute inset-1 z-50 rounded-xl border-2 border-dashed border-primary/65 bg-primary/10 backdrop-blur-[1px]" />
+      )}
       <div
         draggable
         className={cn(

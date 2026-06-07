@@ -1,5 +1,5 @@
 
-import { useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { createPortal } from "react-dom"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
@@ -40,6 +40,12 @@ import {
   getSplitPaneDragSessionId,
   hasSplitPaneDragSession,
 } from "@/lib/session/split-pane-drag"
+import { getDragSourceSessionId } from "@/lib/drag-state"
+import {
+  hasCrossSessionFileDragData,
+  parseCrossSessionFileDragData,
+  type CrossSessionFileDragData,
+} from "@/lib/session/cross-session-file-drag"
 
 interface SessionTabBarProps {
   sessions: TerminalSession[]
@@ -67,9 +73,12 @@ interface SessionTabBarProps {
   onTabDragCancel?: () => void
   onRestoreDetachedSession?: (id: string) => void
   onSplitPaneDropToTab?: (sessionId: string, targetSessionId: string, side: SessionTabDropSide) => boolean | void
+  canAcceptCrossSessionFileDrop?: (targetSession: TerminalSession) => boolean
+  onCrossSessionFileDrop?: (targetSessionId: string, dragData: CrossSessionFileDragData) => void
 }
 
 export type SessionTabDropSide = "top" | "right" | "bottom" | "left"
+export type { CrossSessionFileDragData }
 
 export type SessionTabDragEvent = {
   session: TerminalSession
@@ -91,6 +100,106 @@ type MenuState = {
 // 标签色彩算法暂不需要，后续如需按分组着色可恢复
 
 const TAB_DETACH_THRESHOLD_Y = 44
+
+const useCrossSessionFileDropTarget = ({
+  session,
+  canAcceptCrossSessionFileDrop,
+  onCrossSessionFileDrop,
+}: {
+  session: TerminalSession
+  canAcceptCrossSessionFileDrop?: (targetSession: TerminalSession) => boolean
+  onCrossSessionFileDrop?: (targetSessionId: string, dragData: CrossSessionFileDragData) => void
+}) => {
+  const [isCrossSessionFileDragOver, setIsCrossSessionFileDragOver] = useState(false)
+  const dragOverTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => () => {
+    if (dragOverTimeoutRef.current) {
+      clearTimeout(dragOverTimeoutRef.current)
+    }
+  }, [])
+
+  const clearDragOver = useCallback(() => {
+    setIsCrossSessionFileDragOver(false)
+    if (dragOverTimeoutRef.current) {
+      clearTimeout(dragOverTimeoutRef.current)
+      dragOverTimeoutRef.current = null
+    }
+  }, [])
+
+  const canAcceptEvent = useCallback((event: React.DragEvent) => {
+    if (!onCrossSessionFileDrop || hasSplitPaneDragSession(event.dataTransfer)) {
+      return false
+    }
+
+    if (!hasCrossSessionFileDragData(event.dataTransfer)) {
+      return false
+    }
+
+    const sourceId = getDragSourceSessionId()
+    if (sourceId === session.id) {
+      return false
+    }
+
+    return canAcceptCrossSessionFileDrop?.(session) ?? true
+  }, [canAcceptCrossSessionFileDrop, onCrossSessionFileDrop, session])
+
+  const handleDragEnter = useCallback((event: React.DragEvent) => {
+    if (!canAcceptEvent(event)) return
+
+    event.preventDefault()
+    event.stopPropagation()
+    event.dataTransfer.dropEffect = "move"
+    setIsCrossSessionFileDragOver(true)
+  }, [canAcceptEvent])
+
+  const handleDragOver = useCallback((event: React.DragEvent) => {
+    if (!canAcceptEvent(event)) return
+
+    event.preventDefault()
+    event.stopPropagation()
+    event.dataTransfer.dropEffect = "move"
+    setIsCrossSessionFileDragOver(true)
+
+    if (dragOverTimeoutRef.current) {
+      clearTimeout(dragOverTimeoutRef.current)
+    }
+    dragOverTimeoutRef.current = setTimeout(() => {
+      setIsCrossSessionFileDragOver(false)
+    }, 120)
+  }, [canAcceptEvent])
+
+  const handleDragLeave = useCallback((event: React.DragEvent) => {
+    if (!canAcceptEvent(event)) return
+
+    event.preventDefault()
+    event.stopPropagation()
+    clearDragOver()
+  }, [canAcceptEvent, clearDragOver])
+
+  const handleDrop = useCallback((event: React.DragEvent) => {
+    if (!canAcceptEvent(event)) return
+
+    event.preventDefault()
+    event.stopPropagation()
+    clearDragOver()
+
+    const dragData = parseCrossSessionFileDragData(event.dataTransfer)
+    if (dragData && dragData.sourceSessionId !== session.id) {
+      onCrossSessionFileDrop?.(session.id, dragData)
+    }
+  }, [canAcceptEvent, clearDragOver, onCrossSessionFileDrop, session.id])
+
+  return {
+    isCrossSessionFileDragOver,
+    dropTargetHandlers: {
+      onDragEnter: handleDragEnter,
+      onDragOver: handleDragOver,
+      onDragLeave: handleDragLeave,
+      onDrop: handleDrop,
+    },
+  }
+}
 
 const getTabDragEvent = (
   event: DragStartEvent | DragMoveEvent | DragEndEvent,
@@ -142,6 +251,8 @@ interface SortableTabProps {
   onContextMenu?: (e: React.MouseEvent, id: string) => void
   onAuxClick: (e: React.MouseEvent, id: string, pinned?: boolean) => void
   onDoubleClick: (id: string) => void
+  canAcceptCrossSessionFileDrop?: (targetSession: TerminalSession) => boolean
+  onCrossSessionFileDrop?: (targetSessionId: string, dragData: CrossSessionFileDragData) => void
 }
 
 function SortableTab({
@@ -154,6 +265,8 @@ function SortableTab({
   onContextMenu,
   onAuxClick,
   onDoubleClick,
+  canAcceptCrossSessionFileDrop,
+  onCrossSessionFileDrop,
 }: SortableTabProps) {
   const { t: tTerminal } = useTranslation("terminal")
   const {
@@ -170,6 +283,11 @@ function SortableTab({
     transition,
     opacity: isDragging ? 0.5 : 1,
   }
+  const { isCrossSessionFileDragOver, dropTargetHandlers } = useCrossSessionFileDropTarget({
+    session: s,
+    canAcceptCrossSessionFileDrop,
+    onCrossSessionFileDrop,
+  })
 
   const statusColor =
     s.status === "connected"
@@ -193,6 +311,7 @@ function SortableTab({
       }}
       onAuxClick={(e) => onAuxClick(e, s.id, s.pinned)}
       onDoubleClick={() => onDoubleClick(s.id)}
+      {...dropTargetHandlers}
       className={cn(
         "group relative flex items-center gap-2 h-8 pl-3 transition-all duration-200 ease-out select-none rounded-lg border backdrop-blur-sm cursor-grab active:cursor-grabbing",
         canClose || s.pinned ? "pr-8" : "pr-3",
@@ -201,7 +320,8 @@ function SortableTab({
           : "border-border/50 bg-card/35 text-muted-foreground opacity-75 hover:border-border hover:bg-card/65 hover:text-foreground hover:opacity-100",
         s.pinned && "ring-1 ring-blue-500/20",
         isDetached && "ring-1 ring-primary/35",
-        isDragging && "cursor-grabbing"
+        isDragging && "cursor-grabbing",
+        isCrossSessionFileDragOver && "border-primary/60 bg-primary/10 text-primary opacity-100 ring-1 ring-primary/40"
       )}
     >
       {/* 状态指示点 */}
@@ -215,6 +335,80 @@ function SortableTab({
       </span>
 
       {/* 固定图标 */}
+      {s.pinned && (
+        <div className="absolute top-1 right-1 w-1 h-1 rounded-full bg-blue-400" />
+      )}
+
+      {canClose && (
+        <button
+          className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded p-0.5 hover:bg-red-500/20 hover:text-red-400 opacity-100 scale-100 pointer-events-auto transition-all duration-150 md:opacity-0 md:scale-90 md:pointer-events-none md:group-hover:opacity-100 md:group-hover:scale-100 md:group-hover:pointer-events-auto"
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={(e) => { e.stopPropagation(); onCloseSession(s.id) }}
+          aria-label={tTerminal("ariaCloseTab")}
+        >
+          <X className="h-3 w-3" />
+        </button>
+      )}
+    </div>
+  )
+}
+
+function StaticTab(props: SortableTabProps) {
+  const {
+    session: s,
+    isActive: active,
+    isDetached = false,
+    canClose,
+    onChangeActive,
+    onCloseSession,
+    onContextMenu,
+    onAuxClick,
+    onDoubleClick,
+    canAcceptCrossSessionFileDrop,
+    onCrossSessionFileDrop,
+  } = props
+  const { t: tTerminal } = useTranslation("terminal")
+  const { isCrossSessionFileDragOver, dropTargetHandlers } = useCrossSessionFileDropTarget({
+    session: s,
+    canAcceptCrossSessionFileDrop,
+    onCrossSessionFileDrop,
+  })
+  const statusColor =
+    s.status === "connected"
+      ? "bg-green-500"
+      : s.status === "reconnecting"
+      ? "bg-yellow-500 animate-pulse"
+      : "bg-red-500"
+
+  return (
+    <div
+      data-session-tab-id={s.id}
+      role="button"
+      onClick={() => onChangeActive(s.id)}
+      onContextMenu={(e) => onContextMenu?.(e, s.id)}
+      onAuxClick={(e) => onAuxClick(e, s.id, s.pinned)}
+      onDoubleClick={() => onDoubleClick(s.id)}
+      {...dropTargetHandlers}
+      className={cn(
+        "group relative flex items-center gap-2 h-8 pl-3 transition-all duration-200 ease-out select-none rounded-lg border backdrop-blur-sm",
+        canClose || s.pinned ? "pr-8" : "pr-3",
+        active
+          ? "border-border bg-card/90 text-foreground shadow-sm"
+          : "border-border/50 bg-card/35 text-muted-foreground opacity-75 hover:border-border hover:bg-card/65 hover:text-foreground hover:opacity-100",
+        s.pinned && "ring-1 ring-blue-500/20",
+        isDetached && "ring-1 ring-primary/35",
+        isCrossSessionFileDragOver && "border-primary/60 bg-primary/10 text-primary opacity-100 ring-1 ring-primary/40"
+      )}
+    >
+      <div className={cn("w-1.5 h-1.5 rounded-full flex-shrink-0", statusColor)} />
+
+      <span className={cn(
+        "max-w-32 truncate text-xs font-medium transition-colors",
+        active ? "text-foreground" : "text-muted-foreground group-hover:text-foreground"
+      )}>
+        {s.serverName}
+      </span>
+
       {s.pinned && (
         <div className="absolute top-1 right-1 w-1 h-1 rounded-full bg-blue-400" />
       )}
@@ -260,6 +454,8 @@ export function SessionTabBar(props: SessionTabBarProps) {
     onTabDragCancel,
     onRestoreDetachedSession,
     onSplitPaneDropToTab,
+    canAcceptCrossSessionFileDrop,
+    onCrossSessionFileDrop,
   } = props
 
   const { config } = useSystemConfig()
@@ -592,6 +788,8 @@ export function SessionTabBar(props: SessionTabBarProps) {
                         onContextMenu={onContextMenu}
                         onAuxClick={onAuxClick}
                         onDoubleClick={onDoubleClick}
+                        canAcceptCrossSessionFileDrop={canAcceptCrossSessionFileDrop}
+                        onCrossSessionFileDrop={onCrossSessionFileDrop}
                       />
                     ))}
                     {/* 新建会话按钮：页签不溢出时显示 */}
@@ -619,61 +817,22 @@ export function SessionTabBar(props: SessionTabBarProps) {
             ) : (
               // 服务端渲染：静态页签（无拖动功能）
               <div ref={tabsContainerRef} className="flex items-center gap-1 min-h-0 pt-1 w-max">
-                {sessions.map((s) => {
-                  const active = s.id === activeId
-                  const statusColor =
-                    s.status === "connected"
-                      ? "bg-green-500"
-                      : s.status === "reconnecting"
-                      ? "bg-yellow-500 animate-pulse"
-                      : "bg-red-500"
-
-                  return (
-                    <div
-                      key={s.id}
-                      role="button"
-                      onClick={() => onChangeActive(s.id)}
-                      onContextMenu={(e) => onContextMenu(e, s.id)}
-                      onAuxClick={(e) => onAuxClick(e, s.id, s.pinned)}
-                      onDoubleClick={() => onDoubleClick(s.id)}
-                      className={cn(
-                        "group relative flex items-center gap-2 h-8 pl-3 transition-all duration-200 ease-out select-none rounded-lg border backdrop-blur-sm",
-                        (canCloseSession?.(s) ?? !s.pinned) || s.pinned ? "pr-8" : "pr-3",
-                        active
-                          ? "border-border bg-card/90 text-foreground shadow-sm"
-                          : "border-border/50 bg-card/35 text-muted-foreground opacity-75 hover:border-border hover:bg-card/65 hover:text-foreground hover:opacity-100",
-                        s.pinned && "ring-1 ring-blue-500/20",
-                        detachedIdSet.has(s.id) && "ring-1 ring-primary/35"
-                      )}
-                    >
-                      {/* 状态指示点 */}
-                      <div className={cn("w-1.5 h-1.5 rounded-full flex-shrink-0", statusColor)} />
-
-                      <span className={cn(
-                        "max-w-32 truncate text-xs font-medium transition-colors",
-                        active ? "text-foreground" : "text-muted-foreground group-hover:text-foreground"
-                      )}>
-                        {s.serverName}
-                      </span>
-
-                      {/* 固定图标 */}
-                      {s.pinned && (
-                        <div className="absolute top-1 right-1 w-1 h-1 rounded-full bg-blue-400" />
-                      )}
-
-                      {(canCloseSession?.(s) ?? !s.pinned) && (
-                        <button
-                          className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded p-0.5 hover:bg-red-500/20 hover:text-red-400 opacity-100 scale-100 pointer-events-auto transition-all duration-150 md:opacity-0 md:scale-90 md:pointer-events-none md:group-hover:opacity-100 md:group-hover:scale-100 md:group-hover:pointer-events-auto"
-                          onPointerDown={(e) => e.stopPropagation()}
-                          onClick={(e) => { e.stopPropagation(); onCloseSession(s.id) }}
-                          aria-label={tTerminal("ariaCloseTab")}
-                        >
-                          <X className="h-3 w-3" />
-                        </button>
-                      )}
-                    </div>
-                  )
-                })}
+                {sessions.map((s) => (
+                  <StaticTab
+                    key={s.id}
+                    session={s}
+                    isActive={s.id === activeId}
+                    isDetached={detachedIdSet.has(s.id)}
+                    canClose={canCloseSession?.(s) ?? !s.pinned}
+                    onChangeActive={onChangeActive}
+                    onCloseSession={onCloseSession}
+                    onContextMenu={onContextMenu}
+                    onAuxClick={onAuxClick}
+                    onDoubleClick={onDoubleClick}
+                    canAcceptCrossSessionFileDrop={canAcceptCrossSessionFileDrop}
+                    onCrossSessionFileDrop={onCrossSessionFileDrop}
+                  />
+                ))}
                 {/* 新建会话按钮：页签不溢出时显示 */}
                 {!isOverflowing && (
                   <Button

@@ -37,7 +37,7 @@ export const WORKSPACE_CAPABILITY_PRESETS = {
       docker: true,
       activityLog: true,
       fullscreen: true,
-      crossSessionDrag: false,
+      crossSessionDrag: true,
     },
   },
 } satisfies Record<WorkspaceCapabilityPresetName, RuntimeWorkspaceCapabilitiesOptions>
