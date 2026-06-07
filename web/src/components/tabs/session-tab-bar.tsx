@@ -53,6 +53,7 @@ interface SessionTabBarProps {
   onChangeActive: (id: string) => void
   onNewSession: () => void
   newSessionLabel?: string
+  additionalNewSessionActions?: SessionTabBarNewSessionAction[]
   onCloseSession: (id: string) => void
   onDuplicateSession: (id: string) => void
   onCloseOthers: (id: string) => void
@@ -76,10 +77,19 @@ interface SessionTabBarProps {
   onSplitPaneDropToTab?: (sessionId: string, targetSessionId: string, side: SessionTabDropSide) => boolean | void
   canAcceptCrossSessionFileDrop?: (targetSession: TerminalSession) => boolean
   onCrossSessionFileDrop?: (targetSessionId: string, dragData: CrossSessionFileDragData) => void
+  canShowContextMenu?: (session: TerminalSession) => boolean
 }
 
 export type SessionTabDropSide = "top" | "right" | "bottom" | "left"
 export type { CrossSessionFileDragData }
+
+export type SessionTabBarNewSessionAction = {
+  id: string
+  label: string
+  onClick: () => string | void
+  ariaLabel?: string
+  title?: string
+}
 
 export type SessionTabDragEvent = {
   session: TerminalSession
@@ -435,6 +445,7 @@ export function SessionTabBar(props: SessionTabBarProps) {
     onChangeActive,
     onNewSession,
     newSessionLabel,
+    additionalNewSessionActions = [],
     onCloseSession,
     onDuplicateSession,
     onCloseOthers,
@@ -458,6 +469,7 @@ export function SessionTabBar(props: SessionTabBarProps) {
     onSplitPaneDropToTab,
     canAcceptCrossSessionFileDrop,
     onCrossSessionFileDrop,
+    canShowContextMenu,
   } = props
 
   const { config } = useSystemConfig()
@@ -549,6 +561,8 @@ export function SessionTabBar(props: SessionTabBarProps) {
   const onContextMenu = (e: React.MouseEvent, id: string) => {
     e.preventDefault()
     if (!showContextMenu) return
+    const session = sessions.find((item) => item.id === id)
+    if (session && canShowContextMenu && !canShowContextMenu(session)) return
     setMenu({ open: true, x: e.clientX, y: e.clientY, targetId: id })
   }
 
@@ -700,34 +714,78 @@ export function SessionTabBar(props: SessionTabBarProps) {
     }
   }
 
-  const trimmedNewSessionLabel = newSessionLabel?.trim()
-  const newSessionLabelHasPlus = trimmedNewSessionLabel?.endsWith("+") ?? false
-  const newSessionLabelText = newSessionLabelHasPlus
-    ? trimmedNewSessionLabel?.slice(0, -1).trim()
-    : trimmedNewSessionLabel
-  const newSessionButtonContent = trimmedNewSessionLabel ? (
-    <>
-      {newSessionLabelText ? <span>{newSessionLabelText}</span> : null}
-      {newSessionLabelHasPlus ? <Plus className="h-4 w-4" /> : null}
-    </>
-  ) : (
-    <Plus className="h-4 w-4" />
-  )
+  const getNewSessionButtonContent = (label?: string) => {
+    const trimmedLabel = label?.trim()
+    const labelHasPlus = trimmedLabel?.endsWith("+") ?? false
+    const labelText = labelHasPlus
+      ? trimmedLabel?.slice(0, -1).trim()
+      : trimmedLabel
 
-  const renderNewSessionButton = (className?: string) => (
-    <Button
-      variant="ghost"
-      size={trimmedNewSessionLabel ? "sm" : "icon"}
-      className={cn(
-        "h-8 rounded-lg text-muted-foreground transition-all duration-200 hover:bg-accent/70 hover:text-accent-foreground",
-        trimmedNewSessionLabel ? "w-auto px-3 text-sm font-medium" : "w-8",
-        className
-      )}
-      onClick={onNewSession}
-      aria-label={tTerminal("ariaNewSession")}
-    >
-      {newSessionButtonContent}
-    </Button>
+    return {
+      trimmedLabel,
+      content: trimmedLabel ? (
+        <>
+          {labelText ? <span>{labelText}</span> : null}
+          {labelHasPlus ? <Plus className="h-4 w-4" /> : null}
+        </>
+      ) : (
+        <Plus className="h-4 w-4" />
+      ),
+    }
+  }
+
+  const renderNewSessionButton = ({
+    key,
+    label,
+    onClick,
+    ariaLabel,
+    title,
+    className,
+  }: {
+    key?: string
+    label?: string
+    onClick: () => string | void
+    ariaLabel?: string
+    title?: string
+    className?: string
+  }) => {
+    const { trimmedLabel, content } = getNewSessionButtonContent(label)
+    return (
+      <Button
+        key={key}
+        variant="ghost"
+        size={trimmedLabel ? "sm" : "icon"}
+        className={cn(
+          "h-8 rounded-lg text-muted-foreground transition-all duration-200 hover:bg-accent/70 hover:text-accent-foreground",
+          trimmedLabel ? "w-auto px-3 text-sm font-medium" : "w-8",
+          className
+        )}
+        onClick={onClick}
+        aria-label={ariaLabel ?? tTerminal("ariaNewSession")}
+        title={title}
+      >
+        {content}
+      </Button>
+    )
+  }
+
+  const renderNewSessionButtons = (className?: string) => (
+    <>
+      {renderNewSessionButton({
+        key: "primary-new-session",
+        label: newSessionLabel,
+        onClick: onNewSession,
+        ariaLabel: tTerminal("ariaNewSession"),
+        className,
+      })}
+      {additionalNewSessionActions.map((action) => renderNewSessionButton({
+        key: action.id,
+        label: action.label,
+        onClick: action.onClick,
+        ariaLabel: action.ariaLabel,
+        title: action.title,
+      }))}
+    </>
   )
 
   return (
@@ -826,7 +884,9 @@ export function SessionTabBar(props: SessionTabBarProps) {
                     ))}
                     {/* 新建会话按钮：页签不溢出时显示 */}
                     {!isOverflowing && (
-                      renderNewSessionButton("ml-1")
+                      <div className="ml-1 flex items-center gap-1">
+                        {renderNewSessionButtons()}
+                      </div>
                     )}
                   </div>
                 </SortableContext>
@@ -857,7 +917,9 @@ export function SessionTabBar(props: SessionTabBarProps) {
                 ))}
                 {/* 新建会话按钮：页签不溢出时显示 */}
                 {!isOverflowing && (
-                  renderNewSessionButton("ml-1")
+                  <div className="ml-1 flex items-center gap-1">
+                    {renderNewSessionButtons()}
+                  </div>
                 )}
               </div>
             )}
@@ -866,7 +928,7 @@ export function SessionTabBar(props: SessionTabBarProps) {
           {/* 新建会话按钮：页签溢出时固定显示 */}
           {isOverflowing && (
             <div className="flex items-center gap-1 px-2 shrink-0">
-              {renderNewSessionButton()}
+              {renderNewSessionButtons()}
             </div>
           )}
 

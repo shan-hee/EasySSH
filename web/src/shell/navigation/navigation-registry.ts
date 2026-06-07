@@ -3,7 +3,6 @@ import {
   Bot,
   CalendarClock,
   FileText,
-  FolderOpen,
   Monitor,
   ScrollText,
   Settings,
@@ -55,12 +54,6 @@ const workbench: NavigationItemDefinition[] = [
     url: "/dashboard/terminal",
     icon: Terminal,
     requiredCapabilities: ["servers", "terminal"],
-  },
-  {
-    titleKey: "fileManager",
-    url: "/dashboard/sftp",
-    icon: FolderOpen,
-    requiredCapabilities: ["sftp"],
   },
   {
     titleKey: "scripts",

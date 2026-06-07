@@ -1,6 +1,10 @@
 
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from "react"
-import { SessionTabBar, type CrossSessionFileDragData } from "@/components/tabs/session-tab-bar"
+import {
+  SessionTabBar,
+  type CrossSessionFileDragData,
+  type SessionTabBarNewSessionAction,
+} from "@/components/tabs/session-tab-bar"
 import type {
   TerminalSession,
   TerminalConnectionPhase,
@@ -169,6 +173,13 @@ interface TerminalComponentProps {
   sessions: TerminalSession[]
   // 返回新建会话的 id，便于自动激活
   onNewSession: () => string | void
+  extraSessions?: TerminalSession[]
+  extraNewSessionActions?: TerminalExtraNewSessionAction[]
+  renderExtraSessionContent?: (session: TerminalSession) => ReactNode
+  onCloseExtraSession?: (sessionId: string) => void
+  onReorderExtraSessions?: (newOrderIds: string[]) => void
+  externalActiveExtraSessionId?: string | null
+  onActiveExtraSessionChange?: (sessionId: string) => void
   onCloseSession: (sessionId: string) => void
   onCloseSessions?: (sessionIds: string[]) => void
   onSendCommand: (sessionId: string, command: string) => void
@@ -194,9 +205,24 @@ interface TerminalComponentProps {
   onSettingsDialogOpenChange?: (open: boolean) => void
 }
 
+export interface TerminalExtraNewSessionAction {
+  id: string
+  label: string
+  onCreate: () => string | void
+  ariaLabel?: string
+  title?: string
+}
+
 export function TerminalComponent({
   sessions,
   onNewSession,
+  extraSessions = [],
+  extraNewSessionActions = [],
+  renderExtraSessionContent,
+  onCloseExtraSession,
+  onReorderExtraSessions,
+  externalActiveExtraSessionId,
+  onActiveExtraSessionChange,
   onCloseSession,
   onCloseSessions,
   onSendCommand,
@@ -304,11 +330,16 @@ export function TerminalComponent({
     () => new Set(sessions.map((session) => session.id)),
     [sessions]
   )
+  const extraSessionIdSet = useMemo(
+    () => new Set(extraSessions.map((session) => session.id)),
+    [extraSessions]
+  )
   const terminalSessions = useMemo(
     () => sessions.filter((session) => session.type !== "config"),
     [sessions]
   )
   const active = sessions.find((s) => s.id === activeSession)
+  const activeExtraSession = extraSessions.find((s) => s.id === activeSession) ?? null
   const activeConfigSession = active?.type === "config" ? active : null
   const activeTerminalSession = active?.type !== "config" ? active : null
   const canUseFullscreenCapability = workspace?.capabilities.fullscreen !== false
@@ -522,6 +553,41 @@ export function TerminalComponent({
       ...workspaceSessions.map((session) => session.id),
     ].filter((id): id is string => Boolean(id)),
   })
+  const combinedTabSessions = useMemo(
+    () => [...tabSessions, ...extraSessions],
+    [extraSessions, tabSessions]
+  )
+  const combinedActiveTabId = activeExtraSession ? activeExtraSession.id : tabActiveId
+  const combinedExtraNewSessionActions = useMemo<SessionTabBarNewSessionAction[]>(() => (
+    extraNewSessionActions.map((action) => ({
+      id: action.id,
+      label: action.label,
+      ariaLabel: action.ariaLabel,
+      title: action.title,
+      onClick: () => {
+        const id = action.onCreate()
+        if (id) {
+          setActiveSessionFromUser(String(id))
+        }
+        return id
+      },
+    }))
+  ), [extraNewSessionActions, setActiveSessionFromUser])
+
+  const handleChangeCombinedActiveSession = useCallback((nextSessionId: string) => {
+    if (extraSessionIdSet.has(nextSessionId)) {
+      setActiveSessionFromUser(nextSessionId)
+      onActiveExtraSessionChange?.(nextSessionId)
+      return
+    }
+
+    handleChangeActiveSession(nextSessionId)
+  }, [
+    extraSessionIdSet,
+    handleChangeActiveSession,
+    onActiveExtraSessionChange,
+    setActiveSessionFromUser,
+  ])
 
   const setActiveSessionWithoutHistory = useCallback((nextSessionId: string) => {
     setActiveSession(nextSessionId)
@@ -529,9 +595,9 @@ export function TerminalComponent({
 
   // 当外部传入 activeSessionId 时，切换激活的会话
   useEffect(() => {
-	    if (
-	      externalActiveSessionId &&
-	      sessionIdSet.has(externalActiveSessionId)
+    if (
+      externalActiveSessionId &&
+      sessionIdSet.has(externalActiveSessionId)
 	    ) {
       const frame = window.requestAnimationFrame(() => {
         setActiveSessionWithoutHistory(externalActiveSessionId)
@@ -541,15 +607,37 @@ export function TerminalComponent({
   }, [externalActiveSessionId, sessionIdSet, setActiveSessionWithoutHistory])
 
   useEffect(() => {
+    if (
+      externalActiveExtraSessionId &&
+      extraSessionIdSet.has(externalActiveExtraSessionId)
+    ) {
+      const frame = window.requestAnimationFrame(() => {
+        setActiveSessionWithoutHistory(externalActiveExtraSessionId)
+      })
+      return () => window.cancelAnimationFrame(frame)
+    }
+  }, [externalActiveExtraSessionId, extraSessionIdSet, setActiveSessionWithoutHistory])
+
+  useEffect(() => {
     activeSessionRef.current = activeSession
     if (
       activeSession &&
       activeSession !== lastNotifiedActiveSessionRef.current
     ) {
       lastNotifiedActiveSessionRef.current = activeSession
-      onActiveSessionChange?.(activeSession)
+      if (sessionIdSet.has(activeSession)) {
+        onActiveSessionChange?.(activeSession)
+      } else if (extraSessionIdSet.has(activeSession)) {
+        onActiveExtraSessionChange?.(activeSession)
+      }
     }
-  }, [activeSession, onActiveSessionChange])
+  }, [
+    activeSession,
+    extraSessionIdSet,
+    onActiveExtraSessionChange,
+    onActiveSessionChange,
+    sessionIdSet,
+  ])
 
   useEffect(() => {
     const filteredHistory = activeSessionHistoryRef.current.filter((id) => sessionIdSet.has(id))
@@ -788,7 +876,7 @@ export function TerminalComponent({
     prevSessionsRef.current = sessions
 
     // 只在会话被删除（而非新增）且当前激活会话不存在时才切换
-    if (!active && sessions.length > 0 && !isSessionAdded) {
+    if (!active && !activeExtraSession && sessions.length > 0 && !isSessionAdded) {
       // 位置策略：优先激活右侧页签，没有则激活左侧
       // 找到被删除页签在原数组中的索引位置
       const deletedIndex = prevSessions.findIndex((s) => s.id === activeSession)
@@ -806,7 +894,7 @@ export function TerminalComponent({
 
       return () => clearTimeout(timer)
     }
-  }, [active, sessions, activeSession, setActiveSessionWithoutHistory])
+  }, [active, activeExtraSession, sessions, activeSession, setActiveSessionWithoutHistory])
 
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -849,7 +937,8 @@ export function TerminalComponent({
 
   const handleReorderTabSessions = useCallback((newOrderIds: string[]) => {
     onReorderSessions(newOrderIds.filter((id) => sessionIdSet.has(id)))
-  }, [onReorderSessions, sessionIdSet])
+    onReorderExtraSessions?.(newOrderIds.filter((id) => extraSessionIdSet.has(id)))
+  }, [extraSessionIdSet, onReorderExtraSessions, onReorderSessions, sessionIdSet])
 
   const handleNewSessionClick = () => {
     const id = onNewSession()
@@ -892,6 +981,19 @@ export function TerminalComponent({
 
   // ==================== 页签关闭处理：先切换/导航，再清理终端资源，避免可见终端先被清空 ====================
   const handleCloseSession = (sessionId: string) => {
+    if (extraSessionIdSet.has(sessionId)) {
+      if (activeSession === sessionId) {
+        const nextActiveSessionId = getAdjacentSessionId(combinedTabSessions, sessionId)
+        if (nextActiveSessionId && nextActiveSessionId !== sessionId) {
+          setActiveSessionWithoutHistory(nextActiveSessionId)
+        } else {
+          setActiveSessionWithoutHistory(sessions[0]?.id ?? "")
+        }
+      }
+      onCloseExtraSession?.(sessionId)
+      return
+    }
+
     if (sessionId === TERMINAL_WORKSPACE_TAB_ID) {
       if (workspaceSessionIds.length === 0) {
         setSplitLayout(null)
@@ -1144,7 +1246,7 @@ export function TerminalComponent({
   return (
     <div className={cn("flex min-h-0 flex-1 flex-col", isFullscreen && "fixed inset-0 z-50 bg-background")}>
       {!hidePageHeader && !isFullscreen && (
-        <PageHeader title={active?.serverName || tTerminal("connectionConfigTitle")}>
+        <PageHeader title={active?.serverName || activeExtraSession?.serverName || tTerminal("connectionConfigTitle")}>
           <ActivityLogPane />
         </PageHeader>
       )}
@@ -1161,10 +1263,11 @@ export function TerminalComponent({
         )}>
           {/* 页签栏（仅保留标签，不显示面包屑） */}
           <SessionTabBar
-            sessions={tabSessions}
-            activeId={tabActiveId}
-            onChangeActive={handleChangeActiveSession}
+            sessions={combinedTabSessions}
+            activeId={combinedActiveTabId}
+            onChangeActive={handleChangeCombinedActiveSession}
             onNewSession={handleNewSessionClick}
+            additionalNewSessionActions={combinedExtraNewSessionActions}
             onCloseSession={handleCloseSession}
             onDuplicateSession={onDuplicateSession}
             onCloseOthers={handleCloseOthers}
@@ -1176,7 +1279,12 @@ export function TerminalComponent({
             onOpenSettings={() => setIsSettingsOpen(true)}
             hideBreadcrumb
             onDetachSession={handleDetachSession}
-            canDetachSession={(session) => session.type !== "config" && session.id !== TERMINAL_WORKSPACE_TAB_ID}
+            canDetachSession={(session) => (
+              !extraSessionIdSet.has(session.id) &&
+              session.type !== "config" &&
+              session.id !== TERMINAL_WORKSPACE_TAB_ID
+            )}
+            canShowContextMenu={(session) => !extraSessionIdSet.has(session.id)}
             detachedSessionIds={detachedSessionIds}
             onTabDragStart={handleTabDragStart}
             onTabDragMove={handleTabDragMove}
@@ -1208,6 +1316,14 @@ export function TerminalComponent({
                   serverApi={serverApi}
                   ready={serverConfigsReady}
                 />
+              </div>
+            ) : activeExtraSession ? (
+              <div
+                data-extra-session-id={activeExtraSession.id}
+                className="relative min-h-0 flex-1 overflow-hidden"
+                onMouseDown={() => setActiveSessionFromUser(activeExtraSession.id)}
+              >
+                {renderExtraSessionContent?.(activeExtraSession)}
               </div>
             ) : isMultiSessionGrid && splitLayout ? (
               <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">

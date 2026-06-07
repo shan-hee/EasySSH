@@ -54,13 +54,6 @@ export const breadcrumbRouteConfig: Record<string, BreadcrumbConfig> = {
     showTitle: true,
   },
   // ===================
-  // 文件管理
-  // ===================
-  '/dashboard/sftp': {
-    // 仅显示系统名称 + 当前页面标题
-    showTitle: true,
-  },
-  // ===================
   // 监控告警
   // ===================
   '/dashboard/monitoring/resources': {

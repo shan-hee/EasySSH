@@ -15,7 +15,6 @@ import DashboardOverviewPage from "@/pages/dashboard/overview-page"
 import ScriptsPage from "@/pages/dashboard/scripts-page"
 import SettingsManagementPage from "@/pages/dashboard/settings-management-page"
 import SettingsPage from "@/pages/dashboard/settings-page"
-import SftpPage from "@/pages/dashboard/sftp-page"
 import TerminalPage from "@/pages/dashboard/terminal-page"
 import UsersPage from "@/pages/dashboard/users-page"
 import HomePage from "@/pages/home-page"
@@ -58,7 +57,7 @@ export function AppRouter() {
       <Route path="/dashboard" element={<DashboardLayout />}>
         <Route index element={<DashboardOverviewPage />} />
         <Route path="terminal" element={<TerminalPage />} />
-        <Route path="sftp" element={<SftpPage />} />
+        <Route path="sftp" element={<Navigate to="/dashboard/terminal?sftp=1" replace />} />
         <Route path="ai-assistant" element={<DashboardAISessionPage />} />
         <Route path="users" element={<UsersPage />} />
         <Route path="logs" element={<LogsPage />} />

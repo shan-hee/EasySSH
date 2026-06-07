@@ -1,0 +1,128 @@
+import { useCallback, useEffect, useMemo } from "react"
+import { useTranslation } from "react-i18next"
+import { toast } from "@/components/ui/sonner"
+import { SftpManager } from "@/components/sftp/sftp-manager"
+import { useOptionalSshWorkspace } from "@/components/ssh-workspace/ssh-workspace"
+import { useSftpSession } from "@/hooks/useSftpSession"
+import { createWorkspaceTransferAuthTicketProviderAdapter } from "@/lib/session/workspace-adapters"
+import type { Server } from "@/lib/server-types"
+
+export interface TerminalSftpTabContentProps {
+  sessionId: string
+  server: Server
+  label: string
+  onClose: () => void
+  onRenameSession: (label: string) => void
+}
+
+export function TerminalSftpTabContent({
+  sessionId,
+  server,
+  label,
+  onClose,
+  onRenameSession,
+}: TerminalSftpTabContentProps) {
+  const workspace = useOptionalSshWorkspace()
+  const workspaceSftpApi = workspace?.adapters.apiClient?.sftp
+  const workspaceI18n = workspace?.adapters.i18n
+  const { t: tSftpFallback } = useTranslation("sftp")
+  const tSftp = useCallback((key: string, params?: Record<string, string | number>) => {
+    const workspaceText = workspaceI18n?.t("sftp", key, params)
+    if (workspaceText && workspaceText !== key) {
+      return workspaceText
+    }
+
+    return tSftpFallback(key, params)
+  }, [tSftpFallback, workspaceI18n])
+
+  const notifier = useMemo(() => ({
+    success: (message: string) => {
+      workspace?.adapters.notifier?.success?.(message) ?? toast.success(message)
+    },
+    error: (message: string) => {
+      workspace?.adapters.notifier?.error?.(message) ?? toast.error(message)
+    },
+    promise: <T,>(promise: Promise<T>, messages: {
+      loading: string
+      success: string | ((data: T) => string)
+      error: string | ((error: unknown) => string)
+    }) => {
+      if (workspace?.adapters.notifier?.promise) {
+        return workspace.adapters.notifier.promise(promise, messages)
+      }
+
+      return toast.promise(promise, messages)
+    },
+  }), [workspace?.adapters.notifier])
+
+  const transferAuthTicketProvider = useMemo(
+    () => createWorkspaceTransferAuthTicketProviderAdapter(workspace?.adapters.authTicketProvider),
+    [workspace?.adapters.authTicketProvider],
+  )
+
+  const fileTransferOptions = useMemo(() => ({
+    createTicket: transferAuthTicketProvider,
+    uploadUsesProgressSocket: workspaceSftpApi?.uploadUsesProgressSocket ?? true,
+    serverTransferUsesProgressSocket: workspaceSftpApi?.serverTransferUsesProgressSocket ?? true,
+  }), [
+    transferAuthTicketProvider,
+    workspaceSftpApi?.serverTransferUsesProgressSocket,
+    workspaceSftpApi?.uploadUsesProgressSocket,
+  ])
+
+  const sftp = useSftpSession(String(server.id), "/", {
+    api: workspaceSftpApi,
+    notifier,
+    t: tSftp,
+    fileTransferOptions,
+  })
+
+  useEffect(() => {
+    if (sftp.error) {
+      notifier.error(sftp.error)
+    }
+  }, [notifier, sftp.error])
+
+  return (
+    <div className="h-full min-h-0 overflow-hidden bg-background">
+      <SftpManager
+        serverId={String(server.id)}
+        serverName={server.name || `${server.username}@${server.host}:${server.port}`}
+        host={server.host}
+        username={server.username}
+        isConnected
+        currentPath={sftp.currentPath}
+        files={sftp.files}
+        sessionId={sessionId}
+        sessionLabel={label}
+        isFullscreen={false}
+        chrome="full"
+        surface="normal"
+        viewModeStorageKey="easyssh:sftp:viewMode:merged"
+        defaultViewMode="grid"
+        isLoading={sftp.isLoading}
+        onNavigate={sftp.navigate}
+        onNavigateBack={sftp.goBack}
+        canNavigateBack={sftp.canGoBack}
+        onNavigateForward={sftp.goForward}
+        canNavigateForward={sftp.canGoForward}
+        onUpload={sftp.uploadFiles}
+        onDownload={sftp.downloadFile}
+        onDelete={sftp.deleteFile}
+        onBatchDelete={sftp.batchDeleteFiles}
+        onBatchDownload={sftp.batchDownloadFiles}
+        onCreateFolder={sftp.createFolder}
+        onCreateFile={sftp.createFile}
+        onRename={sftp.renameFile}
+        onDisconnect={onClose}
+        onRefresh={sftp.refresh}
+        onReadFile={sftp.readFile}
+        onSaveFile={sftp.saveFile}
+        onRenameSession={onRenameSession}
+        transferTasks={sftp.transferTasks}
+        onClearCompletedTransfers={sftp.clearCompletedTransfers}
+        onCancelTransfer={sftp.cancelTransfer}
+      />
+    </div>
+  )
+}

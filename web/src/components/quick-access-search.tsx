@@ -42,7 +42,7 @@ export function QuickAccessSearch() {
   const commands = React.useMemo<QuickCommand[]>(() => [
     { label: t("quickAccessCommandTerminal"), href: "/dashboard/terminal", icon: Terminal },
     { label: t("quickAccessCommandServers"), href: "/dashboard/servers", icon: ServerIcon },
-    { label: t("quickAccessCommandSftp"), href: "/dashboard/sftp", icon: FolderOpen },
+    { label: t("quickAccessCommandSftp"), href: "/dashboard/terminal?sftp=1", icon: FolderOpen },
     { label: t("quickAccessCommandAi"), href: "/dashboard/ai-assistant", icon: Bot },
     { label: t("quickAccessCommandScripts"), href: "/dashboard/scripts", icon: FileText },
     { label: t("quickAccessCommandSchedules"), href: "/dashboard/automation/schedules", icon: CalendarClock },
