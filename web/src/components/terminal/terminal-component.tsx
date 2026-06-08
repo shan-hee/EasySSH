@@ -1403,6 +1403,8 @@ export function TerminalComponent({
         isActive={activeSession === session.id}
         background={isSftpSession ? undefined : splitPaneHeaderBackground}
         onFocus={() => setActiveSessionFromUser(session.id)}
+        onClose={() => handleCloseSession(session.id)}
+        closeLabel={tTerminal("ariaCloseSplitPaneSession")}
         onDragStart={() => handleSplitPaneDragStart(session.id)}
         onDragEnd={handleSplitPaneDragEnd}
         dropOverlay={<SessionSplitDropOverlay side={tabDropTargetId === session.id ? tabDropSide : null} />}
@@ -1416,7 +1418,7 @@ export function TerminalComponent({
           : renderTerminalSessionContent(session, "content", true, "transparent")}
       </SessionSplitPane>
     )
-  }, [activeSession, canAcceptCrossSessionFileDrop, getExtraSessionRenderOptions, handleCrossSessionFileDrop, handleSplitPaneDragEnd, handleSplitPaneDragStart, renderExtraSessionContent, renderTerminalSessionContent, setActiveSessionFromUser, splitPaneHeaderBackground, tabDropSide, tabDropTargetId, workspaceSessions])
+  }, [activeSession, canAcceptCrossSessionFileDrop, getExtraSessionRenderOptions, handleCloseSession, handleCrossSessionFileDrop, handleSplitPaneDragEnd, handleSplitPaneDragStart, renderExtraSessionContent, renderTerminalSessionContent, setActiveSessionFromUser, splitPaneHeaderBackground, tTerminal, tabDropSide, tabDropTargetId, workspaceSessions])
 
   const workspaceToolbarSession = useMemo(() => {
     if (!isMultiSessionGrid) return null

@@ -900,6 +900,7 @@ const messages = {
     latencyStatusSlow: "较慢",
     latencyStatusUnknown: "测量中",
     ariaCloseTab: "关闭标签页",
+    ariaCloseSplitPaneSession: "关闭连接",
     ariaNewSession: "新建会话",
     ariaSettings: "终端设置",
     tabMenuTitle: "页签操作",

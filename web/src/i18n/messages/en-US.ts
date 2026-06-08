@@ -950,6 +950,7 @@ const messages = {
     latencyStatusSlow: "Slow",
     latencyStatusUnknown: "Measuring",
     ariaCloseTab: "Close tab",
+    ariaCloseSplitPaneSession: "Close connection",
     ariaNewSession: "New session",
     ariaSettings: "Terminal settings",
     tabMenuTitle: "Tab actions",

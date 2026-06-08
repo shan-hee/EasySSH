@@ -11,6 +11,7 @@ import {
   type CrossSessionFileDragData,
 } from "@/lib/session/cross-session-file-drag"
 import { cn } from "@/lib/utils"
+import { X } from "lucide-react"
 
 export interface SessionSplitPaneHeaderBackground {
   color?: string
@@ -28,6 +29,8 @@ interface SessionSplitPaneProps {
   dropOverlay?: ReactNode
   children: ReactNode
   onFocus?: () => void
+  onClose?: () => void
+  closeLabel?: string
   onDragStart?: () => void
   onDragEnd?: () => void
   canAcceptCrossSessionFileDrop?: boolean
@@ -75,6 +78,8 @@ export function SessionSplitPane({
   dropOverlay,
   children,
   onFocus,
+  onClose,
+  closeLabel = "Close",
   onDragStart,
   onDragEnd,
   canAcceptCrossSessionFileDrop = false,
@@ -202,7 +207,7 @@ export function SessionSplitPane({
       <div
         draggable
         className={cn(
-          "relative flex h-7 shrink-0 cursor-grab items-center overflow-hidden px-2.5 text-xs text-muted-foreground active:cursor-grabbing",
+          "relative flex h-7 shrink-0 cursor-grab items-center justify-between gap-2 overflow-hidden px-2.5 text-xs text-muted-foreground active:cursor-grabbing",
           !background && "bg-card/45 backdrop-blur-md"
         )}
         onDragStart={(event) => {
@@ -219,7 +224,7 @@ export function SessionSplitPane({
           onDragEnd?.()
         }}
       >
-        <span className="relative z-10 flex min-w-0 items-center gap-2">
+        <span className="relative z-10 flex min-w-0 flex-1 items-center gap-2">
           <span className={cn("h-1.5 w-1.5 shrink-0 rounded-full", getStatusClassName(status))} />
           <span className="min-w-0 truncate font-medium text-foreground">{title}</span>
           {subtitle && (
@@ -228,6 +233,32 @@ export function SessionSplitPane({
             </span>
           )}
         </span>
+        {onClose && (
+          <button
+            type="button"
+            className="relative z-10 -mr-1 flex h-5 w-5 shrink-0 cursor-pointer items-center justify-center rounded text-muted-foreground opacity-75 transition-colors hover:bg-destructive/15 hover:text-destructive hover:opacity-100"
+            aria-label={closeLabel}
+            title={closeLabel}
+            draggable={false}
+            onPointerDown={(event) => {
+              event.stopPropagation()
+            }}
+            onMouseDown={(event) => {
+              event.stopPropagation()
+            }}
+            onDragStart={(event) => {
+              event.preventDefault()
+              event.stopPropagation()
+            }}
+            onClick={(event) => {
+              event.preventDefault()
+              event.stopPropagation()
+              onClose()
+            }}
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        )}
       </div>
       <div className="relative flex min-h-0 min-w-0 w-full flex-1 overflow-hidden">
         {children}
