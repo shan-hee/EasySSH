@@ -138,6 +138,15 @@ function createSftpTabSession(tab: DesktopSftpTab): TerminalSession {
   }
 }
 
+function shouldCheckTerminalInactivity(session: TerminalSession) {
+  return (
+    session.type === "terminal" &&
+    !!session.serverId &&
+    session.connectionPhase === "ready" &&
+    session.status === "connected"
+  )
+}
+
 function App() {
   const [runtime, setRuntime] = useState<DesktopRuntimeBindingInfo | null>(null)
   const [preferenceSnapshot, setPreferenceSnapshot] = useState<DesktopPreferenceSnapshot | null>(null)
@@ -539,6 +548,11 @@ function App() {
       const threshold = inactiveMinutes * 60 * 1000
 
       sessions.forEach((session) => {
+        if (!shouldCheckTerminalInactivity(session)) {
+          inactivityNotifiedRef.current.delete(session.id)
+          return
+        }
+
         const lastActivity = getSessionLastActivity(session.id) ?? session.lastActivity
         if (now - lastActivity < threshold || inactivityNotifiedRef.current.has(session.id)) {
           return

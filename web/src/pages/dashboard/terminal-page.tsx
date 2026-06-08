@@ -113,6 +113,13 @@ const createSftpTabSession = (tab: MergedSftpTab): TerminalSession => {
   }
 }
 
+const shouldCheckTerminalInactivity = (session: TerminalSession) => (
+  session.type === "terminal" &&
+  !!session.serverId &&
+  session.connectionPhase === "ready" &&
+  session.status === "connected"
+)
+
 const readTerminalBehaviorSettings = (defaults: { maxTabs: number; inactiveMinutes: number }) => {
   if (typeof window === "undefined") {
     return defaults
@@ -694,6 +701,11 @@ function TerminalPageContent() {
       const threshold = inactiveMinutes * 60 * 1000
 
       sessionsRef.current.forEach((session) => {
+        if (!shouldCheckTerminalInactivity(session)) {
+          inactivityNotifiedRef.current.delete(session.id)
+          return
+        }
+
         const lastActivity = getSessionLastActivity(session.id) ?? session.lastActivity
         if (now - lastActivity >= threshold && !inactivityNotifiedRef.current.has(session.id)) {
           inactivityNotifiedRef.current.add(session.id)
