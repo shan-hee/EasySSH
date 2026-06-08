@@ -184,7 +184,7 @@ export function SftpFileBrowserPane({
     <div
       ref={dropZoneRef}
       className={cn(
-        "flex-1 relative min-h-0",
+        "relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden",
         viewMode === "grid" ? "overflow-hidden" : "",
         isDragging && "bg-primary/10",
       )}

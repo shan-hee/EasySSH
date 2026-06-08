@@ -47,6 +47,24 @@ type LoaderAction =
   | { type: "sync"; sessions: TerminalSession[] }
   | { type: "animation-complete"; sessionId: string }
 
+export interface TerminalExtraSessionRenderOptions {
+  chrome?: "full" | "toolbar" | "content"
+  surface?: "normal" | "transparent"
+  isVisible?: boolean
+  onPathChange?: (path: string) => void
+  refreshRequestVersion?: number
+  initialPath?: string
+  initialPathBackStack?: string[]
+  initialPathForwardStack?: string[]
+  onHistoryChange?: (history: TerminalExtraSessionPathHistory) => void
+}
+
+export interface TerminalExtraSessionPathHistory {
+  currentPath: string
+  pathBackStack: string[]
+  pathForwardStack: string[]
+}
+
 const reduceLoaderStates = (
   state: Record<string, LoaderState>,
   action: LoaderAction
@@ -119,7 +137,7 @@ const shouldShowConnectionLoader = (session?: TerminalSession) => {
 
   return !!(
     session &&
-    session.type !== "config" &&
+    session.type === "terminal" &&
     (session.shouldConnect || isResolvingConnectionTarget) &&
     CONNECTION_LOADER_PHASES.has(session.connectionPhase)
   )
@@ -137,6 +155,59 @@ const getAdjacentSessionId = (sessions: TerminalSession[], sessionId: string) =>
 
   const nextIndex = currentIndex < sessions.length - 1 ? currentIndex + 1 : currentIndex - 1
   return sessions[nextIndex]?.id
+}
+
+const orderSessionsById = (sessions: TerminalSession[], orderIds: string[]) => {
+  const sessionMap = new Map(sessions.map((session) => [session.id, session]))
+  const ordered = orderIds
+    .map((id) => sessionMap.get(id))
+    .filter((session): session is TerminalSession => Boolean(session))
+  const orderedIdSet = new Set(ordered.map((session) => session.id))
+  const remaining = sessions.filter((session) => !orderedIdSet.has(session.id))
+
+  return [...ordered, ...remaining]
+}
+
+const mergeVisibleSessionOrderIds = (
+  currentOrderIds: string[],
+  visibleOrderIds: string[],
+  orderableIds: string[],
+) => {
+  const orderableIdSet = new Set(orderableIds)
+  const visibleOrderIdSet = new Set(visibleOrderIds)
+  const next: string[] = []
+  let visibleIndex = 0
+
+  currentOrderIds.forEach((id) => {
+    if (!orderableIdSet.has(id)) return
+
+    if (!visibleOrderIdSet.has(id)) {
+      next.push(id)
+      return
+    }
+
+    const nextVisibleId = visibleOrderIds[visibleIndex]
+    visibleIndex += 1
+    if (nextVisibleId && orderableIdSet.has(nextVisibleId)) {
+      next.push(nextVisibleId)
+    }
+  })
+
+  for (; visibleIndex < visibleOrderIds.length; visibleIndex += 1) {
+    const id = visibleOrderIds[visibleIndex]
+    if (orderableIdSet.has(id)) {
+      next.push(id)
+    }
+  }
+
+  const nextIdSet = new Set(next)
+  orderableIds.forEach((id) => {
+    if (!nextIdSet.has(id)) {
+      next.push(id)
+    }
+  })
+
+  return next
 }
 
 const TERMINAL_WORKSPACE_TAB_ID = "__terminal-workspace__"
@@ -175,7 +246,7 @@ interface TerminalComponentProps {
   onNewSession: () => string | void
   extraSessions?: TerminalSession[]
   extraNewSessionActions?: TerminalExtraNewSessionAction[]
-  renderExtraSessionContent?: (session: TerminalSession) => ReactNode
+  renderExtraSessionContent?: (session: TerminalSession, options?: TerminalExtraSessionRenderOptions) => ReactNode
   onCloseExtraSession?: (sessionId: string) => void
   onReorderExtraSessions?: (newOrderIds: string[]) => void
   externalActiveExtraSessionId?: string | null
@@ -317,6 +388,8 @@ export function TerminalComponent({
   const internalBackSentinelDisarmingRef = useRef(false)
   const [sftpPathBySessionId, setSftpPathBySessionId] = useState<Record<string, string>>({})
   const [sftpRefreshRequests, setSftpRefreshRequests] = useState<Record<string, number>>({})
+  const [sftpHistoryBySessionId, setSftpHistoryBySessionId] = useState<Record<string, TerminalExtraSessionPathHistory>>({})
+  const [combinedTabOrderIds, setCombinedTabOrderIds] = useState<string[]>([])
 
   // ==================== 从 Store 获取销毁方法 ====================
   const destroySession = useTerminalStore(state => state.destroySession)
@@ -335,13 +408,25 @@ export function TerminalComponent({
     [extraSessions]
   )
   const terminalSessions = useMemo(
-    () => sessions.filter((session) => session.type !== "config"),
+    () => sessions.filter((session) => session.type === "terminal"),
     [sessions]
+  )
+  const workspaceExtraSessions = useMemo(
+    () => extraSessions.filter((session) => session.type === "sftp"),
+    [extraSessions]
+  )
+  const workspaceSessions = useMemo(
+    () => [...terminalSessions, ...workspaceExtraSessions],
+    [terminalSessions, workspaceExtraSessions]
+  )
+  const contentSessionIdSet = useMemo(
+    () => new Set([...sessionIdSet, ...extraSessionIdSet]),
+    [extraSessionIdSet, sessionIdSet]
   )
   const active = sessions.find((s) => s.id === activeSession)
   const activeExtraSession = extraSessions.find((s) => s.id === activeSession) ?? null
   const activeConfigSession = active?.type === "config" ? active : null
-  const activeTerminalSession = active?.type !== "config" ? active : null
+  const activeTerminalSession = active?.type === "terminal" ? active : null
   const canUseFullscreenCapability = workspace?.capabilities.fullscreen !== false
   const crossSessionTransferTasks = crossSessionTransfer.tasks
   const handleToggleFullscreen = useCallback(() => {
@@ -354,7 +439,7 @@ export function TerminalComponent({
         return previousSessionId
       }
 
-      if (previousSessionId && sessionIdSet.has(previousSessionId)) {
+      if (previousSessionId && contentSessionIdSet.has(previousSessionId)) {
         activeSessionHistoryRef.current = [
           ...activeSessionHistoryRef.current.filter((id) => id !== previousSessionId),
           previousSessionId,
@@ -364,24 +449,31 @@ export function TerminalComponent({
 
       return nextSessionId
     })
-  }, [sessionIdSet])
+  }, [contentSessionIdSet])
 
   useEffect(() => {
     setSftpPathBySessionId((current) => {
-      const nextEntries = Object.entries(current).filter(([sessionId]) => sessionIdSet.has(sessionId))
+      const nextEntries = Object.entries(current).filter(([sessionId]) => contentSessionIdSet.has(sessionId))
       if (nextEntries.length === Object.keys(current).length) {
         return current
       }
       return Object.fromEntries(nextEntries)
     })
     setSftpRefreshRequests((current) => {
-      const nextEntries = Object.entries(current).filter(([sessionId]) => sessionIdSet.has(sessionId))
+      const nextEntries = Object.entries(current).filter(([sessionId]) => contentSessionIdSet.has(sessionId))
       if (nextEntries.length === Object.keys(current).length) {
         return current
       }
       return Object.fromEntries(nextEntries)
     })
-  }, [sessionIdSet])
+    setSftpHistoryBySessionId((current) => {
+      const nextEntries = Object.entries(current).filter(([sessionId]) => contentSessionIdSet.has(sessionId))
+      if (nextEntries.length === Object.keys(current).length) {
+        return current
+      }
+      return Object.fromEntries(nextEntries)
+    })
+  }, [contentSessionIdSet])
 
   const notifyTransferSuccess = useCallback((message: string) => {
     if (workspace?.adapters.notifier?.success) {
@@ -407,6 +499,25 @@ export function TerminalComponent({
     ))
   }, [])
 
+  const handleSftpHistoryChange = useCallback((sessionId: string, history: TerminalExtraSessionPathHistory) => {
+    setSftpHistoryBySessionId((current) => {
+      const previous = current[sessionId]
+      if (
+        previous &&
+        previous.currentPath === history.currentPath &&
+        previous.pathBackStack.length === history.pathBackStack.length &&
+        previous.pathForwardStack.length === history.pathForwardStack.length &&
+        previous.pathBackStack.every((item, index) => item === history.pathBackStack[index]) &&
+        previous.pathForwardStack.every((item, index) => item === history.pathForwardStack[index])
+      ) {
+        return current
+      }
+
+      return { ...current, [sessionId]: history }
+    })
+    handleSftpPathChange(sessionId, history.currentPath)
+  }, [handleSftpPathChange])
+
   const requestSftpRefresh = useCallback((sessionId: string) => {
     setSftpRefreshRequests((current) => ({
       ...current,
@@ -416,10 +527,12 @@ export function TerminalComponent({
 
   const isCrossSessionTransferSessionReady = useCallback((session?: TerminalSession | null) => (
     !!session &&
-    session.type !== "config" &&
     session.id !== TERMINAL_WORKSPACE_TAB_ID &&
-    session.connectionPhase === "ready" &&
-    !!session.serverId
+    !!session.serverId &&
+    (
+      (session.type === "terminal" && session.connectionPhase === "ready") ||
+      session.type === "sftp"
+    )
   ), [])
 
   const canAcceptCrossSessionFileDrop = useCallback((targetSession: TerminalSession) => (
@@ -434,8 +547,8 @@ export function TerminalComponent({
       return
     }
 
-    const targetSession = sessions.find((session) => session.id === targetSessionId)
-    const sourceSession = sessions.find((session) => session.id === dragData.sourceSessionId)
+    const targetSession = workspaceSessions.find((session) => session.id === targetSessionId)
+    const sourceSession = workspaceSessions.find((session) => session.id === dragData.sourceSessionId)
 
     if (!targetSession || !sourceSession) {
       return
@@ -461,10 +574,13 @@ export function TerminalComponent({
       return
     }
 
-    const targetPath = sftpPathBySessionId[targetSession.id] ?? DEFAULT_TERMINAL_SFTP_PATH
+    const fallbackTargetPath = targetSession.type === "sftp" ? "/" : DEFAULT_TERMINAL_SFTP_PATH
+    const targetPath = sftpPathBySessionId[targetSession.id] ?? fallbackTargetPath
 
     setActiveSessionFromUser(targetSession.id)
-    setTabState(targetSession.id, { isFileManagerOpen: true })
+    if (targetSession.type === "terminal") {
+      setTabState(targetSession.id, { isFileManagerOpen: true })
+    }
 
     try {
       await crossSessionTransfer.directTransfer(
@@ -491,11 +607,11 @@ export function TerminalComponent({
     notifyTransferError,
     notifyTransferSuccess,
     requestSftpRefresh,
-    sessions,
     setActiveSessionFromUser,
     setTabState,
     sftpPathBySessionId,
     tSftp,
+    workspaceSessions,
   ])
 
   const {
@@ -509,6 +625,7 @@ export function TerminalComponent({
     workspaceDropRef,
     detachedSessionIds,
     workspaceSessionIds,
+    workspaceSessionIdSet: splitWorkspaceSessionIdSet,
     visibleSessionIdSet,
     isMultiSessionGrid,
     tabSessions,
@@ -532,7 +649,7 @@ export function TerminalComponent({
     filterWorkspaceSessions,
   } = useSessionSplitWorkspace({
     sessions,
-    workspaceSessions: terminalSessions,
+    workspaceSessions,
     activeSessionId: activeSession,
     splitLayout: workspaceSplitLayout,
     setSplitLayout: setWorkspaceSplitLayout,
@@ -553,11 +670,41 @@ export function TerminalComponent({
       ...workspaceSessions.map((session) => session.id),
     ].filter((id): id is string => Boolean(id)),
   })
-  const combinedTabSessions = useMemo(
-    () => [...tabSessions, ...extraSessions],
+  const visibleExtraSessions = useMemo(
+    () => extraSessions.filter((session) => !splitWorkspaceSessionIdSet.has(session.id)),
+    [extraSessions, splitWorkspaceSessionIdSet]
+  )
+  const isActiveExtraSessionInWorkspace = !!(
+    activeExtraSession && splitWorkspaceSessionIdSet.has(activeExtraSession.id)
+  )
+  const unorderedCombinedTabSessions = useMemo(
+    () => [...tabSessions, ...visibleExtraSessions],
+    [tabSessions, visibleExtraSessions]
+  )
+  const orderableCombinedTabSessionIds = useMemo(
+    () => [...tabSessions, ...extraSessions].map((session) => session.id),
     [extraSessions, tabSessions]
   )
-  const combinedActiveTabId = activeExtraSession ? activeExtraSession.id : tabActiveId
+  useEffect(() => {
+    setCombinedTabOrderIds((current) => {
+      const orderableIdSet = new Set(orderableCombinedTabSessionIds)
+      const preserved = current.filter((id) => orderableIdSet.has(id))
+      const preservedIdSet = new Set(preserved)
+      const added = orderableCombinedTabSessionIds.filter((id) => !preservedIdSet.has(id))
+      const next = [...preserved, ...added]
+
+      return next.length === current.length && next.every((id, index) => id === current[index])
+        ? current
+        : next
+    })
+  }, [orderableCombinedTabSessionIds])
+  const combinedTabSessions = useMemo(
+    () => orderSessionsById(unorderedCombinedTabSessions, combinedTabOrderIds),
+    [combinedTabOrderIds, unorderedCombinedTabSessions]
+  )
+  const combinedActiveTabId = activeExtraSession && !isActiveExtraSessionInWorkspace
+    ? activeExtraSession.id
+    : tabActiveId
   const combinedExtraNewSessionActions = useMemo<SessionTabBarNewSessionAction[]>(() => (
     extraNewSessionActions.map((action) => ({
       id: action.id,
@@ -640,7 +787,7 @@ export function TerminalComponent({
   ])
 
   useEffect(() => {
-    const filteredHistory = activeSessionHistoryRef.current.filter((id) => sessionIdSet.has(id))
+    const filteredHistory = activeSessionHistoryRef.current.filter((id) => contentSessionIdSet.has(id))
 
     if (filteredHistory.length !== activeSessionHistoryRef.current.length) {
       activeSessionHistoryRef.current = filteredHistory
@@ -649,11 +796,11 @@ export function TerminalComponent({
       })
       return () => window.cancelAnimationFrame(frame)
     }
-  }, [sessionIdSet])
+  }, [contentSessionIdSet])
 
   useEffect(() => {
-    syncSplitLayout(new Set(terminalSessions.map((session) => session.id)))
-  }, [syncSplitLayout, terminalSessions])
+    syncSplitLayout(new Set(workspaceSessions.map((session) => session.id)))
+  }, [syncSplitLayout, workspaceSessions])
 
   const handleInternalBackHandlerChange = useCallback((
     sessionId: string,
@@ -767,7 +914,7 @@ export function TerminalComponent({
             activeSessionHistoryRef.current = activeSessionHistoryRef.current.slice(0, -1)
             setActiveSessionHistoryVersion((version) => version + 1)
 
-            if (sessions.some((session) => session.id === previousSessionId)) {
+            if (contentSessionIdSet.has(previousSessionId)) {
               setActiveSessionWithoutHistory(previousSessionId)
               handled = true
               break
@@ -797,7 +944,7 @@ export function TerminalComponent({
 
     window.addEventListener("popstate", handlePopState)
     return () => window.removeEventListener("popstate", handlePopState)
-  }, [armInternalBackSentinel, sessions, setActiveSessionWithoutHistory])
+  }, [armInternalBackSentinel, contentSessionIdSet, setActiveSessionWithoutHistory])
 
   // 主题样式全部改为静态类 + dark: 前缀，避免 SSR/CSR 水合不一致
 
@@ -936,9 +1083,18 @@ export function TerminalComponent({
   }, [onSendCommand])
 
   const handleReorderTabSessions = useCallback((newOrderIds: string[]) => {
+    setCombinedTabOrderIds((current) => (
+      mergeVisibleSessionOrderIds(current, newOrderIds, orderableCombinedTabSessionIds)
+    ))
     onReorderSessions(newOrderIds.filter((id) => sessionIdSet.has(id)))
     onReorderExtraSessions?.(newOrderIds.filter((id) => extraSessionIdSet.has(id)))
-  }, [extraSessionIdSet, onReorderExtraSessions, onReorderSessions, sessionIdSet])
+  }, [
+    extraSessionIdSet,
+    onReorderExtraSessions,
+    onReorderSessions,
+    orderableCombinedTabSessionIds,
+    sessionIdSet,
+  ])
 
   const handleNewSessionClick = () => {
     const id = onNewSession()
@@ -990,6 +1146,7 @@ export function TerminalComponent({
           setActiveSessionWithoutHistory(sessions[0]?.id ?? "")
         }
       }
+      removeSessionFromWorkspace(sessionId)
       onCloseExtraSession?.(sessionId)
       return
     }
@@ -1000,8 +1157,13 @@ export function TerminalComponent({
         return
       }
 
-      const workspaceSessionIdSet = new Set(workspaceSessionIds)
-      const nextActiveSessionId = sessions.find((session) => !workspaceSessionIdSet.has(session.id))?.id ?? ""
+      const terminalWorkspaceSessionIds = workspaceSessionIds.filter((id) => sessionIdSet.has(id))
+      const extraWorkspaceSessionIds = workspaceSessionIds.filter((id) => extraSessionIdSet.has(id))
+      const closingSessionIdSet = new Set(workspaceSessionIds)
+      const nextActiveSessionId = combinedTabSessions.find((session) => (
+        session.id !== TERMINAL_WORKSPACE_TAB_ID &&
+        !closingSessionIdSet.has(session.id)
+      ))?.id ?? ""
       if (nextActiveSessionId) {
         setActiveSessionWithoutHistory(nextActiveSessionId)
       } else {
@@ -1009,12 +1171,15 @@ export function TerminalComponent({
       }
 
       setSplitLayout(null)
-      if (onCloseSessions) {
-        onCloseSessions(workspaceSessionIds)
-      } else {
-        workspaceSessionIds.forEach((id) => onCloseSession(id))
+      if (terminalWorkspaceSessionIds.length > 0) {
+        if (onCloseSessions) {
+          onCloseSessions(terminalWorkspaceSessionIds)
+        } else {
+          terminalWorkspaceSessionIds.forEach((id) => onCloseSession(id))
+        }
+        cleanupSessionsAfterTabSwitch(terminalWorkspaceSessionIds)
       }
-      cleanupSessionsAfterTabSwitch(workspaceSessionIds)
+      extraWorkspaceSessionIds.forEach((id) => onCloseExtraSession?.(id))
       return
     }
 
@@ -1197,9 +1362,36 @@ export function TerminalComponent({
     sftpRefreshRequests,
   ])
 
+  const getExtraSessionRenderOptions = useCallback((
+    session: TerminalSession,
+    surface: "normal" | "transparent",
+  ): TerminalExtraSessionRenderOptions => {
+    const sftpHistory = sftpHistoryBySessionId[session.id]
+
+    return {
+      chrome: "full",
+      surface,
+      isVisible: true,
+      onPathChange: (path) => handleSftpPathChange(session.id, path),
+      refreshRequestVersion: sftpRefreshRequests[session.id] ?? 0,
+      initialPath: sftpHistory?.currentPath ?? sftpPathBySessionId[session.id] ?? "/",
+      initialPathBackStack: sftpHistory?.pathBackStack,
+      initialPathForwardStack: sftpHistory?.pathForwardStack,
+      onHistoryChange: (history) => handleSftpHistoryChange(session.id, history),
+    }
+  }, [
+    handleSftpHistoryChange,
+    handleSftpPathChange,
+    sftpHistoryBySessionId,
+    sftpPathBySessionId,
+    sftpRefreshRequests,
+  ])
+
   const renderSplitLeaf = useCallback((sessionId: string): ReactNode => {
-    const session = terminalSessions.find((item) => item.id === sessionId)
+    const session = workspaceSessions.find((item) => item.id === sessionId)
     if (!session) return null
+
+    const isSftpSession = session.type === "sftp"
 
     return (
       <SessionSplitPane
@@ -1209,7 +1401,7 @@ export function TerminalComponent({
         subtitle={getSessionConnectionSubtitle(session)}
         status={session.status}
         isActive={activeSession === session.id}
-        background={splitPaneHeaderBackground}
+        background={isSftpSession ? undefined : splitPaneHeaderBackground}
         onFocus={() => setActiveSessionFromUser(session.id)}
         onDragStart={() => handleSplitPaneDragStart(session.id)}
         onDragEnd={handleSplitPaneDragEnd}
@@ -1219,10 +1411,12 @@ export function TerminalComponent({
           void handleCrossSessionFileDrop(targetSessionId, dragData)
         }}
       >
-        {renderTerminalSessionContent(session, "content", true, "transparent")}
+        {isSftpSession
+          ? renderExtraSessionContent?.(session, getExtraSessionRenderOptions(session, "transparent"))
+          : renderTerminalSessionContent(session, "content", true, "transparent")}
       </SessionSplitPane>
     )
-  }, [activeSession, canAcceptCrossSessionFileDrop, handleCrossSessionFileDrop, handleSplitPaneDragEnd, handleSplitPaneDragStart, renderTerminalSessionContent, setActiveSessionFromUser, splitPaneHeaderBackground, tabDropSide, tabDropTargetId, terminalSessions])
+  }, [activeSession, canAcceptCrossSessionFileDrop, getExtraSessionRenderOptions, handleCrossSessionFileDrop, handleSplitPaneDragEnd, handleSplitPaneDragStart, renderExtraSessionContent, renderTerminalSessionContent, setActiveSessionFromUser, splitPaneHeaderBackground, tabDropSide, tabDropTargetId, workspaceSessions])
 
   const workspaceToolbarSession = useMemo(() => {
     if (!isMultiSessionGrid) return null
@@ -1280,11 +1474,13 @@ export function TerminalComponent({
             hideBreadcrumb
             onDetachSession={handleDetachSession}
             canDetachSession={(session) => (
-              !extraSessionIdSet.has(session.id) &&
               session.type !== "config" &&
               session.id !== TERMINAL_WORKSPACE_TAB_ID
             )}
-            canShowContextMenu={(session) => !extraSessionIdSet.has(session.id)}
+            canShowContextMenu={(session) => (
+              !extraSessionIdSet.has(session.id) &&
+              session.id !== TERMINAL_WORKSPACE_TAB_ID
+            )}
             detachedSessionIds={detachedSessionIds}
             onTabDragStart={handleTabDragStart}
             onTabDragMove={handleTabDragMove}
@@ -1305,7 +1501,7 @@ export function TerminalComponent({
             onDrop={handleWorkspaceNativeDrop}
             onDragLeave={handleWorkspaceNativeDragLeave}
           >
-            {sessions.length === 0 ? (
+            {sessions.length === 0 && extraSessions.length === 0 ? (
               <div className="flex flex-1 items-center justify-center text-muted-foreground">
                 {tTerminal("emptySessionHint")}
               </div>
@@ -1318,14 +1514,6 @@ export function TerminalComponent({
                   ready={serverConfigsReady}
                 />
               </div>
-            ) : activeExtraSession ? (
-              <div
-                data-extra-session-id={activeExtraSession.id}
-                className="relative min-h-0 flex-1 overflow-hidden"
-                onMouseDown={() => setActiveSessionFromUser(activeExtraSession.id)}
-              >
-                {renderExtraSessionContent?.(activeExtraSession)}
-              </div>
             ) : isMultiSessionGrid && splitLayout ? (
               <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
                 {workspaceToolbarSession && renderTerminalSessionContent(workspaceToolbarSession, "toolbar", true)}
@@ -1337,6 +1525,17 @@ export function TerminalComponent({
                     hiddenSessionId={hiddenSplitSessionId}
                   />
                 </div>
+              </div>
+            ) : activeExtraSession ? (
+              <div
+                data-extra-session-id={activeExtraSession.id}
+                className="relative min-h-0 flex-1 overflow-hidden"
+                onMouseDown={() => setActiveSessionFromUser(activeExtraSession.id)}
+              >
+                {renderExtraSessionContent?.(
+                  activeExtraSession,
+                  getExtraSessionRenderOptions(activeExtraSession, "normal")
+                )}
               </div>
             ) : (
               activeTerminalSession && (

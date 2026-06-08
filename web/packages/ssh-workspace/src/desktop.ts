@@ -9,6 +9,10 @@ export { TerminalSftpTabContent } from "../../../src/components/terminal/termina
 export { ServerConnectionConfigs } from "../../../src/components/servers/server-connection-configs"
 export { Activity, Bot, FolderOpen, Github, Info, Menu, Minus, RefreshCw, Square, Terminal, X } from "lucide-react"
 export type { TerminalSftpTabContentProps } from "../../../src/components/terminal/terminal-sftp-tab-content"
+export type {
+  TerminalExtraSessionPathHistory,
+  TerminalExtraSessionRenderOptions,
+} from "../../../src/components/terminal/terminal-component"
 export type { TerminalSession, TerminalConnectionPhase } from "../../../src/components/terminal/types"
 export type { ServerConnectionConfigsApi } from "../../../src/components/servers/server-connection-configs"
 export { DEFAULT_SYSTEM_CONFIG, StaticSystemConfigProvider } from "../../../src/contexts/system-config-context"

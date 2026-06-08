@@ -318,7 +318,7 @@ export function SftpManager(props: SftpManagerProps) {
       <SftpSessionProvider value={sessionContextValue}>
         <div
           className={cn(
-            "flex min-w-0 flex-col overflow-hidden rounded-none border-0 transition-colors",
+            "flex min-w-0 w-full flex-col overflow-hidden rounded-none border-0 transition-colors",
             (surface !== "transparent" || isFullscreen) && "bg-background",
             shouldRenderBody ? "h-full" : "shrink-0",
             isFullscreen && "fixed inset-0 z-[9999]"

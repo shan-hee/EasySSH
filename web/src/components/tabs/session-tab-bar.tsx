@@ -1,5 +1,5 @@
 
-import { useCallback, useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { createPortal } from "react-dom"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
@@ -111,6 +111,7 @@ type MenuState = {
 // 标签色彩算法暂不需要，后续如需按分组着色可恢复
 
 const TAB_DETACH_THRESHOLD_Y = 44
+const TAB_WORKSPACE_DROP_THRESHOLD_Y = 18
 
 const useCrossSessionFileDropTarget = ({
   session,
@@ -291,7 +292,7 @@ function SortableTab({
 
   const style = {
     transform: CSS.Transform.toString(transform),
-    transition,
+    transition: isDragging ? "none" : transition,
     opacity: isDragging ? 0.5 : 1,
   }
   const { isCrossSessionFileDragOver, dropTargetHandlers } = useCrossSessionFileDropTarget({
@@ -331,7 +332,7 @@ function SortableTab({
           : "border-border/50 bg-card/35 text-muted-foreground opacity-75 hover:border-border hover:bg-card/65 hover:text-foreground hover:opacity-100",
         s.pinned && "ring-1 ring-blue-500/20",
         isDetached && "ring-1 ring-primary/35",
-        isDragging && "cursor-grabbing",
+        isDragging && "cursor-grabbing transition-none",
         isCrossSessionFileDragOver && "border-primary/60 bg-primary/10 text-primary opacity-100 ring-1 ring-primary/40"
       )}
     >
@@ -577,14 +578,21 @@ export function SessionTabBar(props: SessionTabBarProps) {
 
   // 拖拽活动状态
   const [draggedSession, setDraggedSession] = useState<TerminalSession | null>(null)
-  const detachedIdSet = new Set(detachedSessionIds)
+  const forwardedWorkspaceDragMoveRef = useRef(false)
+  const detachedIdSet = useMemo(() => new Set(detachedSessionIds), [detachedSessionIds])
+  const sessionIds = useMemo(() => sessions.map((s) => s.id), [sessions])
+  const sessionById = useMemo(
+    () => new Map(sessions.map((session) => [session.id, session])),
+    [sessions]
+  )
 
   // 拖拽结束处理
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event
     setDraggedSession(null)
+    forwardedWorkspaceDragMoveRef.current = false
 
-    const activeSession = sessions.find((s) => s.id === String(active.id))
+    const activeSession = sessionById.get(String(active.id))
     if (activeSession) {
       const handled = onTabDragEnd?.(getTabDragEvent(event, activeSession, tabBarRef.current))
       if (handled) {
@@ -616,23 +624,36 @@ export function SessionTabBar(props: SessionTabBarProps) {
 
   // 拖拽开始处理
   const handleDragStart = (event: DragStartEvent) => {
-    const session = sessions.find((s) => s.id === String(event.active.id))
+    const session = sessionById.get(String(event.active.id))
     if (session) {
       setDraggedSession(session)
+      forwardedWorkspaceDragMoveRef.current = false
       onTabDragStart?.(getTabDragEvent(event, session, tabBarRef.current))
     }
   }
 
   const handleDragMove = (event: DragMoveEvent) => {
-    const session = sessions.find((s) => s.id === String(event.active.id))
+    const session = sessionById.get(String(event.active.id))
     if (session) {
       const tabDragEvent = getTabDragEvent(event, session, tabBarRef.current)
-      onTabDragMove?.(tabDragEvent)
+      const shouldForwardMove = (
+        !tabDragEvent.isOverTabBar ||
+        Math.abs(tabDragEvent.deltaY) >= TAB_WORKSPACE_DROP_THRESHOLD_Y ||
+        forwardedWorkspaceDragMoveRef.current
+      )
+      if (shouldForwardMove) {
+        onTabDragMove?.(tabDragEvent)
+        forwardedWorkspaceDragMoveRef.current = (
+          !tabDragEvent.isOverTabBar ||
+          Math.abs(tabDragEvent.deltaY) >= TAB_WORKSPACE_DROP_THRESHOLD_Y
+        )
+      }
     }
   }
 
   const handleDragCancel = () => {
     setDraggedSession(null)
+    forwardedWorkspaceDragMoveRef.current = false
     onTabDragCancel?.()
   }
 
@@ -658,7 +679,7 @@ export function SessionTabBar(props: SessionTabBarProps) {
     <DragOverlay dropAnimation={null} modifiers={[snapCenterToCursor]} zIndex={10000}>
       {draggedSession ? (
         <div className={cn(
-          "group relative flex h-8 items-center gap-2 rounded-lg border pl-3 pr-8 text-foreground shadow-2xl backdrop-blur-sm transition-all duration-200 ease-out select-none",
+          "group relative flex h-8 items-center gap-2 rounded-lg border pl-3 pr-8 text-foreground shadow-2xl backdrop-blur-sm transition-none select-none",
           "border-border bg-card/90",
           draggedSession.pinned && "ring-1 ring-blue-500/20"
         )}>
@@ -864,7 +885,7 @@ export function SessionTabBar(props: SessionTabBarProps) {
                 modifiers={onDetachSession ? [] : [restrictToHorizontalAxis]}
               >
                 <SortableContext
-                  items={sessions.map((s) => s.id)}
+                  items={sessionIds}
                   strategy={horizontalListSortingStrategy}
                 >
                   <div ref={tabsContainerRef} className="flex items-center gap-1 min-h-0 pt-1 w-max">

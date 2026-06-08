@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo } from "react"
+import { useCallback, useEffect, useMemo, useRef } from "react"
 import { useTranslation } from "react-i18next"
 import { toast } from "@/components/ui/sonner"
 import { SftpManager } from "@/components/sftp/sftp-manager"
@@ -11,6 +11,18 @@ export interface TerminalSftpTabContentProps {
   sessionId: string
   server: Server
   label: string
+  chrome?: "full" | "toolbar" | "content"
+  surface?: "normal" | "transparent"
+  onPathChange?: (path: string) => void
+  refreshRequestVersion?: number
+  initialPath?: string
+  initialPathBackStack?: string[]
+  initialPathForwardStack?: string[]
+  onHistoryChange?: (history: {
+    currentPath: string
+    pathBackStack: string[]
+    pathForwardStack: string[]
+  }) => void
   onClose: () => void
   onRenameSession: (label: string) => void
 }
@@ -19,10 +31,19 @@ export function TerminalSftpTabContent({
   sessionId,
   server,
   label,
+  chrome = "full",
+  surface = "normal",
+  onPathChange,
+  refreshRequestVersion = 0,
+  initialPath = "/",
+  initialPathBackStack,
+  initialPathForwardStack,
+  onHistoryChange,
   onClose,
   onRenameSession,
 }: TerminalSftpTabContentProps) {
   const workspace = useOptionalSshWorkspace()
+  const lastRefreshRequestVersionRef = useRef(0)
   const workspaceSftpApi = workspace?.adapters.apiClient?.sftp
   const workspaceI18n = workspace?.adapters.i18n
   const { t: tSftpFallback } = useTranslation("sftp")
@@ -70,11 +91,14 @@ export function TerminalSftpTabContent({
     workspaceSftpApi?.uploadUsesProgressSocket,
   ])
 
-  const sftp = useSftpSession(String(server.id), "/", {
+  const sftp = useSftpSession(String(server.id), initialPath, {
     api: workspaceSftpApi,
     notifier,
     t: tSftp,
     fileTransferOptions,
+    initialPathBackStack,
+    initialPathForwardStack,
+    onHistoryChange,
   })
 
   useEffect(() => {
@@ -83,8 +107,25 @@ export function TerminalSftpTabContent({
     }
   }, [notifier, sftp.error])
 
+  useEffect(() => {
+    onPathChange?.(sftp.currentPath)
+  }, [onPathChange, sftp.currentPath])
+
+  useEffect(() => {
+    if (refreshRequestVersion > lastRefreshRequestVersionRef.current) {
+      lastRefreshRequestVersionRef.current = refreshRequestVersion
+      sftp.refresh()
+      return
+    }
+
+    lastRefreshRequestVersionRef.current = refreshRequestVersion
+  }, [refreshRequestVersion, sftp.refresh])
+
   return (
-    <div className="h-full min-h-0 overflow-hidden bg-background">
+    <div className={surface === "transparent"
+      ? "flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
+      : "flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-background"}
+    >
       <SftpManager
         serverId={String(server.id)}
         serverName={server.name || `${server.username}@${server.host}:${server.port}`}
@@ -96,8 +137,8 @@ export function TerminalSftpTabContent({
         sessionId={sessionId}
         sessionLabel={label}
         isFullscreen={false}
-        chrome="full"
-        surface="normal"
+        chrome={chrome}
+        surface={surface}
         viewModeStorageKey="easyssh:sftp:viewMode:merged"
         defaultViewMode="grid"
         isLoading={sftp.isLoading}

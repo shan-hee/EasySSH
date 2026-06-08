@@ -185,13 +185,14 @@ export function TabTerminalContent({
   const isFileManagerOpen = tabState.isFileManagerOpen
   const isAiInputOpen = tabState.isAiInputOpen
 
+  const isTerminalSession = session.type === 'terminal'
   const isTerminalReady = session.connectionPhase === "ready"
-  const hasReadyServer = session.type !== 'config' && isTerminalReady && !!session.serverId
+  const hasReadyServer = isTerminalSession && isTerminalReady && !!session.serverId
   const canRenderInlinePanels = chrome === "full"
   const canUseHeavyPanels = canRenderInlinePanels && isActive && hasReadyServer
   const canUseFileManager = canUseSftpCapability && canUseHeavyPanels && isFileManagerOpen
   const shouldKeepFileManagerMounted = canUseSftpCapability && canUseHeavyPanels && shouldRenderFileManager
-  const canMountAi = canRenderInlinePanels && canUseAiCapability && isActive && session.type !== 'config' && !effectiveIsLoading
+  const canMountAi = canRenderInlinePanels && canUseAiCapability && isActive && isTerminalSession && !effectiveIsLoading
   const canUseAi = canMountAi && isAiInputOpen
   const shouldReserveInlineMonitor =
     canRenderInlinePanels &&
@@ -358,14 +359,14 @@ export function TabTerminalContent({
   const monitorEnabled = canRenderInlinePanels && canUseMonitorCapability && hasReadyServer
   const { t: tTerminal } = useTranslation("terminal")
   const { mode: effectiveAppTheme } = useEffectiveThemeMode()
-  const shouldUseTerminalSurface = session.type !== 'config'
+  const shouldUseTerminalSurface = isTerminalSession
   const pageTheme = getTerminalTheme(settings.theme, effectiveAppTheme)
   const pageBackgroundColor = shouldUseTerminalSurface
     ? settings.opacity < 100
       ? withTerminalBackgroundOpacity(pageTheme.background, settings.opacity / 100)
       : pageTheme.background
     : 'transparent'
-  const hasBackgroundImage = session.type !== 'config' && settings.backgroundImage.trim().length > 0
+  const hasBackgroundImage = isTerminalSession && settings.backgroundImage.trim().length > 0
   const enableTerminalWebgl = true
   const connectionLoaderServerName =
     session.username && session.host
@@ -373,7 +374,7 @@ export function TabTerminalContent({
       : session.serverName || session.host || session.serverId
   const shouldRenderToolbar =
     chrome !== "content" &&
-    session.type !== 'config' &&
+    isTerminalSession &&
     !effectiveIsLoading
   const shouldRenderBody = chrome !== "toolbar"
   const shouldRenderSurface = surface !== "transparent"
@@ -506,7 +507,7 @@ export function TabTerminalContent({
         )}
 
         {/* 加载动画覆盖层 - 覆盖整个页签内容 */}
-        {shouldRenderBody && effectiveIsLoading && session.type !== 'config' && (
+        {shouldRenderBody && effectiveIsLoading && isTerminalSession && (
           <div className="absolute inset-0 z-[60]">
             <ConnectionLoader
               serverName={connectionLoaderServerName}
@@ -592,7 +593,7 @@ export function TabTerminalContent({
           {shouldRenderBody && (
           <div className="flex-1 min-h-0 relative flex">
             {/* 监控面板 - 左侧固定 280px */}
-            {session.type !== 'config' && isDesktopLayout && (
+            {isTerminalSession && isDesktopLayout && (
               <div
                 className={cn(
                   'transition-all duration-300 ease-out overflow-hidden border-r backdrop-blur-md',
@@ -620,7 +621,7 @@ export function TabTerminalContent({
                   serverApi={serverApi}
                   ready={serverConfigsReady}
                 />
-              ) : (
+              ) : isTerminalSession ? (
                 <WebTerminal
                   sessionId={session.id}
                   serverId={session.serverId}
@@ -653,7 +654,7 @@ export function TabTerminalContent({
                   transparentBackground={surface === "transparent" || hasBackgroundImage}
                   backgroundOpacity={settings.opacity / 100}
                 />
-              )}
+              ) : null}
             </div>
 
             {canMountAi && (

@@ -3,7 +3,7 @@ import { useEffect, useRef, useState, useCallback, useMemo, Suspense, startTrans
 import { useNavigate, useSearchParams } from "react-router-dom"
 import { toast } from "@/components/ui/sonner"
 import { SshWorkspace } from "@easyssh/ssh-workspace"
-import { TerminalComponent } from "@/components/terminal/terminal-component"
+import { TerminalComponent, type TerminalExtraSessionRenderOptions } from "@/components/terminal/terminal-component"
 import { TerminalSftpTabContent } from "@/components/terminal/terminal-sftp-tab-content"
 import type { TerminalSettings } from "@/components/terminal/terminal-settings-dialog"
 import type {
@@ -109,7 +109,7 @@ const createSftpTabSession = (tab: MergedSftpTab): TerminalSession => {
     group: isSession ? tab.server.group : undefined,
     tags: isSession ? tab.server.tags : undefined,
     pinned: false,
-    type: isSession ? "terminal" : "config",
+    type: isSession ? "sftp" : "config",
   }
 }
 
@@ -650,7 +650,7 @@ function TerminalPageContent() {
     inactivityNotifiedRef.current.delete(sessionId)
   }
 
-  const renderSftpTabContent = useCallback((session: TerminalSession) => {
+  const renderSftpTabContent = useCallback((session: TerminalSession, options?: TerminalExtraSessionRenderOptions) => {
     const tab = sftpTabs.find((item) => item.id === session.id)
     if (!tab) return null
 
@@ -669,6 +669,14 @@ function TerminalPageContent() {
         sessionId={tab.id}
         server={tab.server}
         label={tab.label}
+        chrome={options?.chrome}
+        surface={options?.surface}
+        onPathChange={options?.onPathChange}
+        refreshRequestVersion={options?.refreshRequestVersion}
+        initialPath={options?.initialPath}
+        initialPathBackStack={options?.initialPathBackStack}
+        initialPathForwardStack={options?.initialPathForwardStack}
+        onHistoryChange={options?.onHistoryChange}
         onClose={() => handleCloseSftpTab(tab.id)}
         onRenameSession={(label) => handleRenameSftpTab(tab.id, label)}
       />

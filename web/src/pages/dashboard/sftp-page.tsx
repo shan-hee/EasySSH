@@ -262,7 +262,7 @@ export default function SftpPage() {
      connectionPhase: session.isConnected ? "ready" : "ssh_connecting",
      status: session.isConnected ? "connected" : "reconnecting",
      lastActivity: Date.now(),
-     type: "terminal",
+     type: "sftp",
      pinned: false,
    }))
  ), [sessions])

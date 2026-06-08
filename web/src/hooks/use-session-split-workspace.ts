@@ -371,8 +371,10 @@ export function useSessionSplitWorkspace({
     if (target) {
       tabDragVisitedWorkspaceRef.current = true
     }
-    setTabDropSide(target?.side ?? null)
-    setTabDropTargetId(target?.targetSessionId ?? null)
+    const nextSide = target?.side ?? null
+    const nextTargetId = target?.targetSessionId ?? null
+    setTabDropSide((current) => (current === nextSide ? current : nextSide))
+    setTabDropTargetId((current) => (current === nextTargetId ? current : nextTargetId))
     return !!target
   }, [clearDropTarget, getTabDropTarget, isSessionDropDisabled])
 

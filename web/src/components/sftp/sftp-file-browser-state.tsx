@@ -37,7 +37,7 @@ export function SftpFileBrowserState({
     return (
       <>
         {dragOverlay}
-        <div className="flex items-center justify-center h-full">
+        <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center">
           <LoadingSpinner size="lg" label={tSftp("loadingFiles")} />
         </div>
       </>
@@ -48,7 +48,7 @@ export function SftpFileBrowserState({
     return (
       <>
         {dragOverlay}
-        <div className="flex items-center justify-center h-full">
+        <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center">
           <div className="text-center">
             <FolderOpen className={cn(
               "h-16 w-16 mx-auto mb-4 text-muted-foreground/30",

@@ -17,6 +17,7 @@ import {
   type Server,
   type SshWorkspaceApiClient,
   type TerminalConnectionPhase,
+  type TerminalExtraSessionRenderOptions,
   type TerminalSession,
 } from "@easyssh/ssh-workspace/desktop"
 import { createDesktopActivityLogAdapter, recordDesktopTerminalOpened } from "./adapters/desktop-activity-log-adapter"
@@ -133,7 +134,7 @@ function createSftpTabSession(tab: DesktopSftpTab): TerminalSession {
     group: isSession ? tab.server.group : undefined,
     tags: isSession ? tab.server.tags : undefined,
     pinned: false,
-    type: isSession ? "terminal" : "config",
+    type: isSession ? "sftp" : "config",
   }
 }
 
@@ -477,7 +478,7 @@ function App() {
     }
   }, [setSessions, updateSessionActivity])
 
-  const renderSftpTabContent = useCallback((session: TerminalSession) => {
+  const renderSftpTabContent = useCallback((session: TerminalSession, options?: TerminalExtraSessionRenderOptions) => {
     const tab = sftpTabs.find((item) => item.id === session.id)
     if (!tab) return null
 
@@ -498,6 +499,14 @@ function App() {
         sessionId={tab.id}
         server={tab.server}
         label={tab.label}
+        chrome={options?.chrome}
+        surface={options?.surface}
+        onPathChange={options?.onPathChange}
+        refreshRequestVersion={options?.refreshRequestVersion}
+        initialPath={options?.initialPath}
+        initialPathBackStack={options?.initialPathBackStack}
+        initialPathForwardStack={options?.initialPathForwardStack}
+        onHistoryChange={options?.onHistoryChange}
         onClose={() => handleCloseSftpTab(tab.id)}
         onRenameSession={(label) => handleRenameSftpTab(tab.id, label)}
       />

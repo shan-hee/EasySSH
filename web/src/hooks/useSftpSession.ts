@@ -58,6 +58,13 @@ export interface UseSftpSessionOptions {
   notifier?: SftpSessionNotifier;
   t?: TranslateFunction;
   fileTransferOptions?: UseFileTransferOptions;
+  initialPathBackStack?: string[];
+  initialPathForwardStack?: string[];
+  onHistoryChange?: (history: {
+    currentPath: string;
+    pathBackStack: string[];
+    pathForwardStack: string[];
+  }) => void;
 }
 
 const defaultSessionNotifier: SftpSessionNotifier = {
@@ -81,7 +88,15 @@ const defaultSessionNotifier: SftpSessionNotifier = {
 export function useSftpSession(
   serverId: string,
   initialPath: string = '/',
-  { api, notifier, t, fileTransferOptions }: UseSftpSessionOptions = {}
+  {
+    api,
+    notifier,
+    t,
+    fileTransferOptions,
+    initialPathBackStack = [],
+    initialPathForwardStack = [],
+    onHistoryChange,
+  }: UseSftpSessionOptions = {}
 ) {
   const defaultTranslate: TranslateFunction = (key) => key;
   const tSftp = t ?? defaultTranslate;
@@ -89,8 +104,9 @@ export function useSftpSession(
   const sessionApi = useMemo(() => createSftpSessionApi(api), [api]);
   const [currentPath, setCurrentPath] = useState(initialPath);
   const currentPathRef = useRef(initialPath);
-  const [pathBackStack, setPathBackStack] = useState<string[]>([]);
-  const [pathForwardStack, setPathForwardStack] = useState<string[]>([]);
+  const loadedServerRef = useRef<string | null>(null);
+  const [pathBackStack, setPathBackStack] = useState<string[]>(() => initialPathBackStack);
+  const [pathForwardStack, setPathForwardStack] = useState<string[]>(() => initialPathForwardStack);
   const [files, setFiles] = useState<FileItem[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -411,20 +427,24 @@ export function useSftpSession(
     [serverId, currentPath, sessionApi, sessionNotifier, tSftp]
   );
 
-  // 初始加载
+  // 初始加载。initialPath 只作为挂载/切换服务器时的初值，避免父级同步当前路径时清空历史栈。
   useEffect(() => {
-    if (serverId) {
-      loadDirectory(initialPath);
-    }
-  }, [serverId, initialPath, loadDirectory]);
-
-  // 切换服务器时清空路径访问历史，避免不同连接之间串历史。
-  useEffect(() => {
+    if (!serverId || loadedServerRef.current === serverId) return;
+    loadedServerRef.current = serverId;
     currentPathRef.current = initialPath;
     setCurrentPath(initialPath);
-    setPathBackStack([]);
-    setPathForwardStack([]);
-  }, [serverId, initialPath]);
+    setPathBackStack(initialPathBackStack);
+    setPathForwardStack(initialPathForwardStack);
+    void loadDirectory(initialPath);
+  }, [serverId, initialPath, initialPathBackStack, initialPathForwardStack, loadDirectory]);
+
+  useEffect(() => {
+    onHistoryChange?.({
+      currentPath,
+      pathBackStack,
+      pathForwardStack,
+    });
+  }, [currentPath, onHistoryChange, pathBackStack, pathForwardStack]);
 
   // 页面卸载/切换 serverId 时，主动关闭连接以加速资源回收
   useEffect(() => {
@@ -443,6 +463,8 @@ export function useSftpSession(
     isLoading,
     error,
     transferTasks: fileTransfer.tasks,
+    pathBackStack,
+    pathForwardStack,
     canGoBack: pathBackStack.length > 0,
     canGoForward: pathForwardStack.length > 0,
 
