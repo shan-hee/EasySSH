@@ -44,7 +44,7 @@ import {
 type LoaderState = "entering" | "loading" | "exiting"
 
 type LoaderAction =
-  | { type: "sync"; sessions: TerminalSession[] }
+  | { type: "sync"; sessions: TerminalSession[]; visibleSessionIds: ReadonlySet<string> }
   | { type: "animation-complete"; sessionId: string }
 
 export interface TerminalExtraSessionRenderOptions {
@@ -94,8 +94,17 @@ const reduceLoaderStates = (
       action.sessions.forEach((session) => {
         const shouldShow = shouldShowConnectionLoader(session)
         const currentState = next[session.id]
+        const isVisible = action.visibleSessionIds.has(session.id)
 
         if (shouldShow) {
+          if (!isVisible) {
+            if (currentState !== "loading") {
+              next[session.id] = "loading"
+              changed = true
+            }
+            return
+          }
+
           if (!currentState || currentState === "exiting") {
             next[session.id] = "entering"
             changed = true
@@ -103,7 +112,17 @@ const reduceLoaderStates = (
           return
         }
 
-        if (currentState && currentState !== "exiting") {
+        if (!currentState) {
+          return
+        }
+
+        if (!isVisible) {
+          delete next[session.id]
+          changed = true
+          return
+        }
+
+        if (currentState !== "exiting") {
           next[session.id] = "exiting"
           changed = true
         }
@@ -1283,14 +1302,44 @@ export function TerminalComponent({
     cleanupSessionsAfterTabSwitch(removedSessionIds)
   }
 
-	  const handleAnimationComplete = useCallback((sessionId: string) => {
-	    dispatchLoaderStates({ type: "animation-complete", sessionId })
-	  }, [])
+  const handleAnimationComplete = useCallback((sessionId: string) => {
+    dispatchLoaderStates({ type: "animation-complete", sessionId })
+  }, [])
 
-	  // Loader 只跟随连接 phase，不再依赖额外的 onLoadingChange 回调。
-	  useEffect(() => {
-	    dispatchLoaderStates({ type: "sync", sessions })
-	  }, [sessions])
+  const visibleLoaderSessionIds = useMemo(() => {
+    const visibleIds = new Set<string>()
+
+    if (isMultiSessionGrid && splitLayout) {
+      workspaceSessionIds.forEach((sessionId) => {
+        if (sessionId !== hiddenSplitSessionId && sessionIdSet.has(sessionId)) {
+          visibleIds.add(sessionId)
+        }
+      })
+      return visibleIds
+    }
+
+    if (activeTerminalSession) {
+      visibleIds.add(activeTerminalSession.id)
+    }
+
+    return visibleIds
+  }, [
+    activeTerminalSession,
+    hiddenSplitSessionId,
+    isMultiSessionGrid,
+    sessionIdSet,
+    splitLayout,
+    workspaceSessionIds,
+  ])
+
+  // Loader 只跟随连接 phase，不再依赖额外的 onLoadingChange 回调。
+  useEffect(() => {
+    dispatchLoaderStates({
+      type: "sync",
+      sessions,
+      visibleSessionIds: visibleLoaderSessionIds,
+    })
+  }, [sessions, visibleLoaderSessionIds])
 
   const handleStartConnectionFromActiveConfig = useCallback((server: Server) => {
     if (!activeConfigSession) return
@@ -1311,6 +1360,7 @@ export function TerminalComponent({
 
     return (
       <TabTerminalContent
+        key={`terminal-content-${session.id}-${chrome}`}
         session={session}
         isActive={isVisible}
         settings={settings}

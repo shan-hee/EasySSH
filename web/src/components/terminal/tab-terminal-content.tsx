@@ -623,6 +623,7 @@ export function TabTerminalContent({
                 />
               ) : isTerminalSession ? (
                 <WebTerminal
+                  key={`web-terminal-${session.id}`}
                   sessionId={session.id}
                   serverId={session.serverId}
                   serverName={session.serverName}

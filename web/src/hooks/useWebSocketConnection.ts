@@ -72,13 +72,21 @@ export function useWebSocketConnection(config: WebSocketConnectionConfig) {
   } = config
 
   const wsRef = useRef<TerminalWebSocket | null>(null)
+  const wsSessionIdRef = useRef<string | null>(null)
+  const wsServerIdRef = useRef<string | undefined>(undefined)
   const errorShownRef = useRef(false)
   const terminalRef = useRef<Terminal | undefined>(terminal)
   const isActiveRef = useRef(isActive)
   const outputBufferRef = useRef<string[]>([])
   const outputFrameRef = useRef<number | null>(null)
   const outputTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const [connectionPhase, setConnectionPhase] = useState<TerminalConnectionPhase>('idle')
+  const [connectionPhase, setConnectionPhase] = useState<TerminalConnectionPhase>(() => {
+    if (!sessionId || !serverId) return 'idle'
+    const existingInstance = useTerminalStore.getState().getTerminal(sessionId)
+    return existingInstance?.serverId === serverId && existingInstance.wsConnection
+      ? existingInstance.wsConnection.getPhase()
+      : 'idle'
+  })
   const [connectionNonce, setConnectionNonce] = useState(0)
   const getTerminal = useTerminalStore(state => state.getTerminal)
   const updateWebSocket = useTerminalStore(state => state.updateWebSocket)
@@ -98,6 +106,34 @@ export function useWebSocketConnection(config: WebSocketConnectionConfig) {
     setConnectionPhase(phase)
     onConnectionPhaseRef.current?.(phase)
   }, [])
+
+  const assignWsRef = useCallback((
+    ownerSessionId: string,
+    ownerServerId: string | undefined,
+    ws: TerminalWebSocket | null,
+  ) => {
+    wsRef.current = ws
+    wsSessionIdRef.current = ws ? ownerSessionId : null
+    wsServerIdRef.current = ws ? ownerServerId : undefined
+  }, [])
+
+  const getCurrentSessionWs = useCallback(() => {
+    if (
+      wsRef.current &&
+      wsSessionIdRef.current === sessionId &&
+      wsServerIdRef.current === serverId
+    ) {
+      return wsRef.current
+    }
+
+    const currentInstance = getTerminal(sessionId)
+    if (serverId && currentInstance?.serverId === serverId && currentInstance.wsConnection) {
+      assignWsRef(sessionId, serverId, currentInstance.wsConnection)
+      return currentInstance.wsConnection
+    }
+
+    return null
+  }, [assignWsRef, getTerminal, serverId, sessionId])
 
   // 每次渲染时同步最新的回调到 ref
   useEffect(() => {
@@ -135,10 +171,28 @@ export function useWebSocketConnection(config: WebSocketConnectionConfig) {
   // ==================== 核心修复：从 Store 同步 wsRef ====================
   // 每次渲染时，先从 Store 获取现有连接
   const instance = getTerminal(sessionId)
-  if (instance?.wsConnection && !wsRef.current) {
+  if (
+    instance?.wsConnection &&
+    instance.serverId === serverId &&
+    (
+      !wsRef.current ||
+      wsSessionIdRef.current !== sessionId ||
+      wsServerIdRef.current !== serverId
+    )
+  ) {
     // Store 中有连接，但 ref 未初始化，同步过来
-    wsRef.current = instance.wsConnection
+    assignWsRef(sessionId, serverId, instance.wsConnection)
   }
+
+  useEffect(() => {
+    const currentInstance = getTerminal(sessionId)
+    if (!currentInstance?.wsConnection || currentInstance.serverId !== serverId) {
+      return
+    }
+
+    assignWsRef(sessionId, serverId, currentInstance.wsConnection)
+    reportConnectionPhase(currentInstance.wsConnection.getPhase())
+  }, [assignWsRef, getTerminal, reportConnectionPhase, serverId, sessionId])
 
   // ==================== 关键修复：检测终端实例是否准备好 ====================
   // 从 Store 获取终端实例状态，作为依赖项信号
@@ -241,15 +295,22 @@ export function useWebSocketConnection(config: WebSocketConnectionConfig) {
     const currentInstance = getTerminal(sessionId)
     const terminalInstance = currentInstance?.terminal || terminal
 
+    if (wsRef.current && wsSessionIdRef.current !== sessionId) {
+      assignWsRef(sessionId, serverId, null)
+    }
+
     // 只有满足以下条件才创建连接：
     // 1. 有 serverId
     // 2. 当前页签明确需要连接
     // 3. 终端实例已创建
     if (!serverId || !shouldConnect) {
       // 如果连接断开，清理现有连接
-      if (wsRef.current) {
-        wsRef.current.disconnect()
-        wsRef.current = null
+      const ownedWs = wsSessionIdRef.current === sessionId
+        ? wsRef.current
+        : currentInstance?.wsConnection ?? null
+      if (ownedWs) {
+        ownedWs.disconnect()
+        assignWsRef(sessionId, serverId, null)
         updateWebSocket(sessionId, null)
       }
       errorShownRef.current = false
@@ -262,24 +323,25 @@ export function useWebSocketConnection(config: WebSocketConnectionConfig) {
     }
 
     // 检查是否已有连接且 serverId 未变化（从 Store 和 ref 双重检查）
-    if (wsRef.current && currentInstance?.serverId === serverId) {
-      const currentPhase = wsRef.current.getPhase()
+    const currentWs = getCurrentSessionWs()
+    if (currentWs && currentInstance?.serverId === serverId) {
+      const currentPhase = currentWs.getPhase()
       reportConnectionPhase(currentPhase)
       return
     }
 
     // 如果 Store 中有连接且 serverId 匹配，同步到 ref
     if (currentInstance?.wsConnection && currentInstance.serverId === serverId) {
-      wsRef.current = currentInstance.wsConnection
+      assignWsRef(sessionId, serverId, currentInstance.wsConnection)
       const storedPhase = currentInstance.wsConnection.getPhase()
       reportConnectionPhase(storedPhase)
       return
     }
 
     // 同一页签如果切到另一台服务器，先断开旧连接，避免旧 SSH 会话挂在后台。
-    if (wsRef.current) {
+    if (wsSessionIdRef.current === sessionId && wsRef.current) {
       wsRef.current.disconnect()
-      wsRef.current = null
+      assignWsRef(sessionId, serverId, null)
       updateWebSocket(sessionId, null)
     }
 
@@ -300,12 +362,19 @@ export function useWebSocketConnection(config: WebSocketConnectionConfig) {
           // 并规避透明背景 + WebGL 场景下的局部黑底伪影
         },
         onDisconnected: () => {
-          const disconnectedPhase = wsRef.current?.getPhase()
+          const disconnectedPhase = ws.getPhase()
           onConnectionEndRef.current?.()
-          wsRef.current = null
-          updateWebSocket(sessionId, null)
+          if (wsRef.current === ws && wsSessionIdRef.current === sessionId) {
+            assignWsRef(sessionId, serverId, null)
+          }
+          const latestInstance = getTerminal(sessionId)
+          const isLatestSessionWs = latestInstance?.wsConnection === ws
+          if (isLatestSessionWs) {
+            updateWebSocket(sessionId, null)
+          }
           const inst = getTerminal(sessionId)
           if (
+            isLatestSessionWs &&
             inst?.terminal &&
             disconnectedPhase !== 'failed' &&
             disconnectedPhase !== 'closed' &&
@@ -363,7 +432,7 @@ export function useWebSocketConnection(config: WebSocketConnectionConfig) {
       })
 
       ws.connect()
-      wsRef.current = ws
+      assignWsRef(sessionId, serverId, ws)
 
       // 更新 Store 中的连接引用和 serverId
       const currentInstance = getTerminal(sessionId)
@@ -396,45 +465,51 @@ export function useWebSocketConnection(config: WebSocketConnectionConfig) {
 
   // 动态同步补全拉取开关，避免切换配置时必须重建连接
   useEffect(() => {
-    if (!wsRef.current) {
+    const currentWs = getCurrentSessionWs()
+    if (!currentWs) {
       return
     }
 
     const shouldFetch = !!enableCompletionFetch
-    wsRef.current.setCompletionFetchEnabled(shouldFetch)
+    currentWs.setCompletionFetchEnabled(shouldFetch)
 
     // 开关从关闭切到开启且连接已建立时，主动拉取一次补全数据
-    if (shouldFetch && wsRef.current.isConnected()) {
-      wsRef.current.fetchCompletionData(500)
+    if (shouldFetch && currentWs.isConnected()) {
+      currentWs.fetchCompletionData(500)
     }
-  }, [enableCompletionFetch, sessionId, serverId])
+  }, [enableCompletionFetch, getCurrentSessionWs, sessionId, serverId])
 
   const sendInput = useCallback((data: string) => {
-    if (wsRef.current && wsRef.current.isConnected()) {
-      wsRef.current.sendInput(data)
+    const currentWs = getCurrentSessionWs()
+    if (currentWs?.isConnected()) {
+      currentWs.sendInput(data)
     }
-  }, [])
+  }, [getCurrentSessionWs])
 
   const resize = useCallback((newCols: number, newRows: number) => {
-    if (wsRef.current && wsRef.current.isConnected()) {
-      wsRef.current.resize(newCols, newRows)
+    const currentWs = getCurrentSessionWs()
+    if (currentWs?.isConnected()) {
+      currentWs.resize(newCols, newRows)
     }
-  }, [])
+  }, [getCurrentSessionWs])
 
   const reconnect = useCallback(() => {
-    if (wsRef.current) {
-      wsRef.current.disconnect()
-      wsRef.current = null
+    const currentWs = getCurrentSessionWs()
+    if (currentWs) {
+      currentWs.disconnect()
+      assignWsRef(sessionId, serverId, null)
       updateWebSocket(sessionId, null)
     }
     reportConnectionPhase('idle')
     errorShownRef.current = false
     setConnectionNonce((value) => value + 1)
-  }, [reportConnectionPhase, sessionId, updateWebSocket])
+  }, [assignWsRef, getCurrentSessionWs, reportConnectionPhase, serverId, sessionId, updateWebSocket])
 
   // 返回当前连接引用
   return {
-    ws: wsRef.current,
+    ws: wsSessionIdRef.current === sessionId && wsServerIdRef.current === serverId
+      ? wsRef.current
+      : null,
     connectionPhase,
     sendInput,
     resize,
