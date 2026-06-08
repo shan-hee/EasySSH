@@ -1,4 +1,4 @@
-import type { DirectTransferResponse, FileInfo, UploadTaskListResponse } from "./sftp-types"
+import type { DirectTransferOptions, DirectTransferResponse, FileInfo, UploadTaskListResponse } from "./sftp-types"
 import {
   createServerTransferTask,
   createUploadTransferTask,
@@ -38,6 +38,8 @@ import {
   type TransferWebSocketUrlResolver,
 } from "./transfer-runtime"
 
+export type FileTransferDirectTransferOptions = DirectTransferOptions
+
 export interface FileTransferSftpApi {
   createUploadTask: () => Promise<{ task_id: string }>
   listUploadTasks: () => Promise<UploadTaskListResponse>
@@ -55,6 +57,7 @@ export interface FileTransferSftpApi {
     sourcePath: string,
     targetServerId: string,
     targetPath: string,
+    options?: FileTransferDirectTransferOptions,
   ) => Promise<DirectTransferResponse>
   cancelTransfer: (taskId: string) => Promise<unknown>
 }
@@ -105,6 +108,7 @@ export interface FileTransferController {
     sourceServerName: string,
     targetServerName: string,
     fileName: string,
+    options?: FileTransferDirectTransferOptions,
   ) => Promise<void>
   cancelDirectTransfer: (taskId: string) => Promise<void>
 }
@@ -318,8 +322,12 @@ export function createFileTransferController({
 
     updateTask,
 
-    async directTransfer(sourceServerId, sourcePath, targetServerId, targetPath, sourceServerName, targetServerName, fileName) {
-      const started = await api.directTransfer(sourceServerId, sourcePath, targetServerId, targetPath)
+    async directTransfer(sourceServerId, sourcePath, targetServerId, targetPath, sourceServerName, targetServerName, fileName, options) {
+      const started = await api.directTransfer(sourceServerId, sourcePath, targetServerId, targetPath, {
+        ...options,
+        sourceServerName: options?.sourceServerName ?? sourceServerName,
+        targetServerName: options?.targetServerName ?? targetServerName,
+      })
       const taskId = started.task_id
       const task = createServerTransferTask({
         taskId,

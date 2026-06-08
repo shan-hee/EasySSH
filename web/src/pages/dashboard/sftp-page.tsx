@@ -36,6 +36,7 @@ import { createAuthTicket } from "@/lib/auth-ticket"
 import { toast } from "@/components/ui/sonner"
 import { getErrorMessage } from "@/lib/error-utils"
 import { useFileTransfer } from "@/hooks/useFileTransfer"
+import type { FileTransferDirectTransferOptions } from "@/lib/session/transfer-manager-controller"
 import {
   performDelete,
   performCreateFolder,
@@ -128,7 +129,11 @@ export default function SftpPage() {
 	 )
 	 const sftpSessionApi = React.useMemo(() => createSftpSessionApi(sftpApi), [])
  const sftpAuthFlowAdapters = useTerminalAuthFlowAdapters({})
- const { credentialDialog, runWithCredentialRetry } = useSftpAuthRetry({
+ const {
+   credentialDialog,
+   runWithCredentialRetry,
+   runDirectTransferWithCredentialRetry,
+ } = useSftpAuthRetry({
    tTerminal,
    adapters: sftpAuthFlowAdapters,
  })
@@ -171,6 +176,38 @@ export default function SftpPage() {
    })
  }, [runWithCredentialRetry, sftpSessionApi])
 
+ const sftpWorkspaceApi = React.useMemo(() => ({
+   ...sftpApi,
+   directTransfer: (
+     sourceServerId: string,
+     sourcePath: string,
+     targetServerId: string,
+     targetPath: string,
+     options?: FileTransferDirectTransferOptions,
+   ) => {
+     const sourceSession = sessionsRef.current.find((item) => item.serverId === sourceServerId)
+     const targetSession = sessionsRef.current.find((item) => item.serverId === targetServerId)
+
+     return runDirectTransferWithCredentialRetry({
+       sourceServerId,
+       sourcePath,
+       sourceServerName: options?.sourceServerName ?? sourceSession?.serverName ?? sourceServerId,
+       sourceAuthMethod: options?.sourceAuthMethod ?? sourceSession?.authMethod ?? "password",
+       targetServerId,
+       targetPath,
+       targetServerName: options?.targetServerName ?? targetSession?.serverName ?? targetServerId,
+       targetAuthMethod: options?.targetAuthMethod ?? targetSession?.authMethod ?? "password",
+       operation: (credentialOptions) => sftpApi.directTransfer(
+         sourceServerId,
+         sourcePath,
+         targetServerId,
+         targetPath,
+         credentialOptions,
+       ),
+     })
+   },
+ }), [runDirectTransferWithCredentialRetry])
+
  const workspaceAuthTicketProvider = React.useMemo(() => createWorkspaceAuthTicketProviderAdapter(createAuthTicket), [])
  const transferAuthTicketProvider = React.useMemo(
    () => createWorkspaceTransferAuthTicketProviderAdapter(workspaceAuthTicketProvider),
@@ -179,6 +216,7 @@ export default function SftpPage() {
 
  // 文件传输管理
  const fileTransfer = useFileTransfer({
+   api: sftpWorkspaceApi,
    createTicket: transferAuthTicketProvider,
  })
  const {
@@ -199,7 +237,7 @@ export default function SftpPage() {
  const workspaceTransferHistory = React.useMemo(() => createWorkspaceTransferHistoryAdapter(operationRecordsApi), [])
  const workspaceAdapters = React.useMemo(() => createWorkspaceAdapters({
    apiClient: {
-     sftp: sftpSessionApi,
+     sftp: sftpWorkspaceApi,
    },
    i18n: createWorkspaceI18nAdapter({
      locale: effectiveLocale,
@@ -560,7 +598,11 @@ export default function SftpPage() {
        targetPath,
        sourceSession.serverName,
        targetSession.serverName,
-       fileName
+       fileName,
+       {
+         sourceAuthMethod: sourceSession.authMethod ?? "password",
+         targetAuthMethod: targetSession.authMethod ?? "password",
+       },
      )
 
      // 传输成功后刷新目标会话的文件列表

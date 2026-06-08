@@ -30,10 +30,12 @@ export { sftpApi } from "@/lib/api/sftp"
 export type {
   BatchDeleteResponse,
   BatchOperationError,
+  DirectTransferOptions,
   DirectTransferResponse,
   DirectoryListResponse,
   DiskUsageResponse,
   FileInfo,
+  SftpTransferCredential,
   TransferProgressMessage,
   TransferResponse,
   UploadProgressStage,
@@ -119,6 +121,7 @@ export { createFileTransferController } from "./transfer-manager-controller"
 export type {
   CreateFileTransferControllerOptions,
   FileTransferController,
+  FileTransferDirectTransferOptions,
   FileTransferSftpApi,
   RestoreUploadTasksOptions,
   TransferTaskStateUpdater,

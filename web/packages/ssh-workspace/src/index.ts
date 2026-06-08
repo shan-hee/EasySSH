@@ -125,6 +125,7 @@ export { createFileTransferController } from "./session/transfer-manager-control
 export type {
   CreateFileTransferControllerOptions,
   FileTransferController,
+  FileTransferDirectTransferOptions,
   FileTransferSftpApi,
   RestoreUploadTasksOptions,
   TransferTaskStateUpdater,
@@ -132,12 +133,14 @@ export type {
 export type {
   BatchDeleteResponse,
   BatchOperationError,
+  DirectTransferOptions,
   DirectTransferResponse,
   DirectoryListResponse,
   DiskUsageResponse,
   FileInfo,
   SftpBatchDownloadMode,
   SftpFileItem,
+  SftpTransferCredential,
   TransferProgressMessage,
   TransferResponse,
   UploadProgressStage,

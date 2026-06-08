@@ -34,6 +34,14 @@ type Credential struct {
 	PrivateKeyPassphrase string
 }
 
+func (c Credential) toSSHCredential() sshDomain.Credential {
+	return sshDomain.Credential{
+		AuthMethod:           c.AuthMethod,
+		Secret:               c.Secret,
+		PrivateKeyPassphrase: c.PrivateKeyPassphrase,
+	}
+}
+
 // Release 释放本次 SFTP 会话，并归还 SSH 引用
 func (pc *PooledClient) Release() {
 	pc.releaseOnce.Do(func() {
@@ -143,6 +151,7 @@ type Pool struct {
 	hostKeyCallback ssh.HostKeyCallback
 	serverService   server.Service
 	serverRepo      server.Repository
+	credentialStore *sshDomain.RuntimeCredentialStore
 	connTimeout     time.Duration // 连接超时时间
 	log             *logger.Logger
 
@@ -164,6 +173,7 @@ func NewPool(
 	hostKeyCallback ssh.HostKeyCallback,
 	serverService server.Service,
 	serverRepo server.Repository,
+	credentialStore *sshDomain.RuntimeCredentialStore,
 ) *Pool {
 	if config == nil {
 		config = DefaultPoolConfig()
@@ -192,6 +202,7 @@ func NewPool(
 		hostKeyCallback: hostKeyCallback,
 		serverService:   serverService,
 		serverRepo:      serverRepo,
+		credentialStore: credentialStore,
 		connTimeout:     connTimeout,
 		log:             logger.NewModule("SFTP Pool"),
 		maxIdleTime:     maxIdle,
@@ -233,7 +244,12 @@ func makeKey(userID, serverID uuid.UUID) string {
 
 // Get 获取一次 SFTP 会话（底层 SSH 复用），并限制每条 SSH 的并发 SFTP 会话数
 func (p *Pool) Get(ctx context.Context, userID, serverID uuid.UUID) (client *PooledClient, err error) {
-	return p.get(ctx, userID, serverID)
+	if p.credentialStore != nil {
+		if credential, ok := p.credentialStore.Get(userID, serverID); ok {
+			return p.get(ctx, userID, serverID, true, sshDomain.CredentialOptions(credential)...)
+		}
+	}
+	return p.get(ctx, userID, serverID, true)
 }
 
 // GetWithCredential 使用临时凭据获取一次 SFTP 会话。凭据只用于创建新的底层 SSH 连接。
@@ -245,22 +261,23 @@ func (p *Pool) GetWithCredential(ctx context.Context, userID, serverID uuid.UUID
 		return nil, sshDomain.ErrCredentialRequired
 	}
 
-	opts := []sshDomain.ClientOption{}
-	if credential.AuthMethod == server.AuthMethodKey {
-		if credential.Secret != "" {
-			opts = append(opts, sshDomain.WithPrivateKeyAuth(credential.Secret))
-		}
-	} else {
-		opts = append(opts, sshDomain.WithPasswordAuth(credential.Secret))
-	}
-	if credential.PrivateKeyPassphrase != "" {
-		opts = append(opts, sshDomain.WithPrivateKeyPassphrase(credential.PrivateKeyPassphrase))
+	client, err = p.get(ctx, userID, serverID, false, sshDomain.CredentialOptions(&sshDomain.Credential{
+		AuthMethod:           credential.AuthMethod,
+		Secret:               credential.Secret,
+		PrivateKeyPassphrase: credential.PrivateKeyPassphrase,
+	})...)
+	if err != nil {
+		return nil, err
 	}
 
-	return p.get(ctx, userID, serverID, opts...)
+	if p.credentialStore != nil {
+		p.credentialStore.Set(userID, serverID, credential.toSSHCredential())
+	}
+
+	return client, nil
 }
 
-func (p *Pool) get(ctx context.Context, userID, serverID uuid.UUID, opts ...sshDomain.ClientOption) (client *PooledClient, err error) {
+func (p *Pool) get(ctx context.Context, userID, serverID uuid.UUID, allowReuse bool, opts ...sshDomain.ClientOption) (client *PooledClient, err error) {
 	key := makeKey(userID, serverID)
 
 	if ctx == nil {
@@ -281,7 +298,7 @@ func (p *Pool) get(ctx context.Context, userID, serverID uuid.UUID, opts ...sshD
 	// 尝试复用 SSH 连接（在池锁内完成存在性检查 + IncRef，避免竞态）
 	p.mu.Lock()
 	sshConn, exists := p.connections[key]
-	if exists && sshConn.IsHealthy() {
+	if allowReuse && exists && sshConn.IsHealthy() {
 		sshConn.IncRef()
 		p.mu.Unlock()
 
@@ -293,7 +310,7 @@ func (p *Pool) get(ctx context.Context, userID, serverID uuid.UUID, opts ...sshD
 				logger.Err(createErr))
 			p.invalidateSSHConn(key, sshConn)
 
-			newSSH, newErr := p.createNewSSH(ctx, userID, serverID, opts...)
+			newSSH, newErr := p.createNewSSH(ctx, userID, serverID, allowReuse, opts...)
 			if newErr != nil {
 				err = createErr
 				return nil, err
@@ -332,6 +349,34 @@ func (p *Pool) get(ctx context.Context, userID, serverID uuid.UUID, opts ...sshD
 		return client, nil
 	}
 
+	if exists && !allowReuse {
+		delete(p.connections, key)
+		p.mu.Unlock()
+		p.markClosingAndMaybeClose(sshConn)
+		newSSH, newErr := p.createNewSSH(ctx, userID, serverID, false, opts...)
+		if newErr != nil {
+			err = newErr
+			return nil, err
+		}
+		newSFTP, newErr := NewClient(newSSH.Client, &server.Server{ID: serverID})
+		if newErr != nil {
+			p.invalidateSSHConn(key, newSSH)
+			err = newErr
+			return nil, err
+		}
+
+		client = &PooledClient{
+			Client:         newSFTP,
+			pool:           p,
+			key:            key,
+			userID:         userID,
+			serverID:       serverID,
+			sshConn:        newSSH,
+			permitAcquired: permitAcquired,
+		}
+		return client, nil
+	}
+
 	if exists {
 		delete(p.connections, key)
 	}
@@ -344,7 +389,7 @@ func (p *Pool) get(ctx context.Context, userID, serverID uuid.UUID, opts ...sshD
 	}
 
 	// 创建新 SSH 连接
-	newSSH, err := p.createNewSSH(ctx, userID, serverID, opts...)
+	newSSH, err := p.createNewSSH(ctx, userID, serverID, allowReuse, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -368,18 +413,25 @@ func (p *Pool) get(ctx context.Context, userID, serverID uuid.UUID, opts ...sshD
 }
 
 // createNewSSH 创建新的 SSH 连接并加入池
-func (p *Pool) createNewSSH(ctx context.Context, userID, serverID uuid.UUID, opts ...sshDomain.ClientOption) (*pooledSSHConn, error) {
+func (p *Pool) createNewSSH(ctx context.Context, userID, serverID uuid.UUID, allowReuse bool, opts ...sshDomain.ClientOption) (*pooledSSHConn, error) {
 	key := makeKey(userID, serverID)
 
 	// 双重检查（持有写锁）
 	p.mu.Lock()
-	if existing, exists := p.connections[key]; exists && existing.IsHealthy() {
+	if allowReuse {
+		if existing, exists := p.connections[key]; exists && existing.IsHealthy() {
+			p.mu.Unlock()
+			existing.IncRef()
+			p.log.Debug("复用刚创建的 SSH 连接",
+				logger.String("key", key),
+				logger.Int("refCount", existing.GetRefCount()))
+			return existing, nil
+		}
+	} else if existing, exists := p.connections[key]; exists {
+		delete(p.connections, key)
 		p.mu.Unlock()
-		existing.IncRef()
-		p.log.Debug("复用刚创建的 SSH 连接",
-			logger.String("key", key),
-			logger.Int("refCount", existing.GetRefCount()))
-		return existing, nil
+		p.markClosingAndMaybeClose(existing)
+		p.mu.Lock()
 	}
 	p.mu.Unlock()
 
@@ -429,14 +481,21 @@ func (p *Pool) createNewSSH(ctx context.Context, userID, serverID uuid.UUID, opt
 
 	// 加入连接池（持有写锁）
 	p.mu.Lock()
-	if existing, exists := p.connections[key]; exists && existing.IsHealthy() {
+	if allowReuse {
+		if existing, exists := p.connections[key]; exists && existing.IsHealthy() {
+			p.mu.Unlock()
+			go newConn.Client.Close()
+			existing.IncRef()
+			p.log.Debug("复用其他 goroutine 创建的 SSH 连接",
+				logger.String("key", key),
+				logger.Int("refCount", existing.GetRefCount()))
+			return existing, nil
+		}
+	} else if existing, exists := p.connections[key]; exists {
+		delete(p.connections, key)
 		p.mu.Unlock()
-		go newConn.Client.Close()
-		existing.IncRef()
-		p.log.Debug("复用其他 goroutine 创建的 SSH 连接",
-			logger.String("key", key),
-			logger.Int("refCount", existing.GetRefCount()))
-		return existing, nil
+		p.markClosingAndMaybeClose(existing)
+		p.mu.Lock()
 	}
 	p.connections[key] = newConn
 	p.mu.Unlock()

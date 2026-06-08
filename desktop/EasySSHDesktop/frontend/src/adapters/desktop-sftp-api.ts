@@ -2,6 +2,7 @@ import { Call, Dialogs } from "@wailsio/runtime"
 import type { SshWorkspaceApiClient } from "@easyssh/ssh-workspace/desktop"
 import type {
   BatchDeleteResponse,
+  DirectTransferOptions,
   DirectTransferResponse,
   DirectoryListResponse,
   FileInfo,
@@ -13,6 +14,18 @@ type DesktopSftpApi = NonNullable<SshWorkspaceApiClient["sftp"]>
 
 const desktopDownloadCancelledMessage = "已取消保存"
 const desktopSftpAuthenticateMethod = "github.com/easyssh/easyssh-desktop.DesktopSFTPService.Authenticate"
+
+function toDesktopTransferCredential(credential?: DirectTransferOptions["sourceCredential"]) {
+  if (!credential) {
+    return undefined
+  }
+
+  return {
+    authMethod: credential.auth_method,
+    secret: credential.secret,
+    privateKeyPassphrase: credential.private_key_passphrase,
+  }
+}
 
 function remoteBaseName(remotePath: string, fallback: string) {
   return remotePath.split("/").filter(Boolean).pop() || fallback
@@ -142,12 +155,14 @@ export function createDesktopSftpApi(): DesktopSftpApi {
     async cancelUploadTask(taskId) {
       await DesktopSFTPService.CancelUploadTask(taskId)
     },
-    async directTransfer(sourceServerId, sourcePath, targetServerId, targetPath) {
+    async directTransfer(sourceServerId, sourcePath, targetServerId, targetPath, options) {
       return await DesktopSFTPService.DirectTransfer({
         sourceServerId,
         sourcePath,
         targetServerId,
         targetPath,
+        sourceCredential: toDesktopTransferCredential(options?.sourceCredential),
+        targetCredential: toDesktopTransferCredential(options?.targetCredential),
       }) as DirectTransferResponse
     },
     async cancelTransfer(taskId) {

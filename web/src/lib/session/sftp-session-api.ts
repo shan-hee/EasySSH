@@ -1,8 +1,11 @@
 import { sftpApi } from "@/lib/api/sftp"
+import type { DirectTransferOptions, DirectTransferResponse, FileInfo, UploadTaskListResponse } from "@/lib/sftp-types"
 import type { SftpDirectoryApi } from "./sftp-directory"
 import type { SftpOperationsApi } from "./sftp-operations"
 
 export type SftpBatchDownloadMode = "fast" | "compatible"
+
+export type SftpSessionDirectTransferOptions = DirectTransferOptions
 
 export interface SftpSessionApi extends SftpDirectoryApi, SftpOperationsApi {
   authenticate?: (
@@ -21,6 +24,27 @@ export interface SftpSessionApi extends SftpDirectoryApi, SftpOperationsApi {
   ) => Promise<void>
   chmod?: (serverId: string, path: string, mode: string) => Promise<unknown>
   closeConnection?: (serverId: string) => Promise<unknown>
+  createUploadTask?: () => Promise<{ task_id: string }>
+  listUploadTasks?: () => Promise<UploadTaskListResponse>
+  cancelUploadTask?: (taskId: string) => Promise<unknown>
+  uploadFile?: (
+    serverId: string,
+    path: string,
+    file: File,
+    onProgress?: (loaded: number, total: number) => void,
+    wsTaskId?: string,
+    onXhr?: (xhr: XMLHttpRequest) => void,
+  ) => Promise<FileInfo | null>
+  directTransfer?: (
+    sourceServerId: string,
+    sourcePath: string,
+    targetServerId: string,
+    targetPath: string,
+    options?: SftpSessionDirectTransferOptions,
+  ) => Promise<DirectTransferResponse>
+  cancelTransfer?: (taskId: string) => Promise<unknown>
+  uploadUsesProgressSocket?: boolean
+  serverTransferUsesProgressSocket?: boolean
 }
 
 export type SftpSessionApiAdapter = Partial<SftpSessionApi>
@@ -46,6 +70,18 @@ export function createSftpSessionApi(adapter?: SftpSessionApiAdapter): SftpSessi
   if (adapter.batchDownload) definedAdapter.batchDownload = adapter.batchDownload
   if (adapter.chmod) definedAdapter.chmod = adapter.chmod
   if (adapter.closeConnection) definedAdapter.closeConnection = adapter.closeConnection
+  if (adapter.createUploadTask) definedAdapter.createUploadTask = adapter.createUploadTask
+  if (adapter.listUploadTasks) definedAdapter.listUploadTasks = adapter.listUploadTasks
+  if (adapter.cancelUploadTask) definedAdapter.cancelUploadTask = adapter.cancelUploadTask
+  if (adapter.uploadFile) definedAdapter.uploadFile = adapter.uploadFile
+  if (adapter.directTransfer) definedAdapter.directTransfer = adapter.directTransfer
+  if (adapter.cancelTransfer) definedAdapter.cancelTransfer = adapter.cancelTransfer
+  if (typeof adapter.uploadUsesProgressSocket === "boolean") {
+    definedAdapter.uploadUsesProgressSocket = adapter.uploadUsesProgressSocket
+  }
+  if (typeof adapter.serverTransferUsesProgressSocket === "boolean") {
+    definedAdapter.serverTransferUsesProgressSocket = adapter.serverTransferUsesProgressSocket
+  }
 
   return {
     ...defaultSftpSessionApi,

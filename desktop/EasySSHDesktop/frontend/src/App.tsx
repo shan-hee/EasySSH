@@ -15,6 +15,7 @@ import {
   toast,
   useTerminalStore,
   type Server,
+  type DirectTransferOptions,
   type SshWorkspaceApiClient,
   type TerminalConnectionPhase,
   type TerminalExtraSessionRenderOptions,
@@ -80,6 +81,7 @@ function createTerminalSessionFromServer(
   return {
     id: sessionId,
     serverId: String(server.id),
+    authMethod: server.auth_method === "key" ? "key" : "password",
     serverName: server.name || `${server.username}@${server.host}:${server.port}`,
     host: server.host,
     port: server.port,
@@ -123,6 +125,7 @@ function createSftpTabSession(tab: DesktopSftpTab): TerminalSession {
   return {
     id: tab.id,
     serverId: isSession ? String(tab.server.id) : undefined,
+    authMethod: isSession ? (tab.server.auth_method === "key" ? "key" : "password") : undefined,
     serverName: tab.label,
     host: isSession ? tab.server.host : "",
     port: isSession ? tab.server.port : undefined,
@@ -183,9 +186,31 @@ function App() {
   ), [runtimeInfo])
   const totalTabCount = sessions.length + sftpTabs.length
   const sftpTabSessions = useMemo(() => sftpTabs.map(createSftpTabSession), [sftpTabs])
+  const combinedSessionsRef = useRef<TerminalSession[]>([])
+  combinedSessionsRef.current = [...sessions, ...sftpTabSessions]
 
   const workspaceApi = useMemo<SshWorkspaceApiClient>(() => ({
-    sftp: sftpApi,
+    sftp: {
+      ...sftpApi,
+      directTransfer: (
+        sourceServerId: string,
+        sourcePath: string,
+        targetServerId: string,
+        targetPath: string,
+        options?: DirectTransferOptions,
+      ) => {
+        const sourceSession = combinedSessionsRef.current.find((session) => session.serverId === sourceServerId)
+        const targetSession = combinedSessionsRef.current.find((session) => session.serverId === targetServerId)
+
+        return sftpApi.directTransfer?.(sourceServerId, sourcePath, targetServerId, targetPath, {
+          ...options,
+          sourceServerName: options?.sourceServerName ?? sourceSession?.serverName ?? sourceServerId,
+          sourceAuthMethod: options?.sourceAuthMethod ?? sourceSession?.authMethod ?? "password",
+          targetServerName: options?.targetServerName ?? targetSession?.serverName ?? targetServerId,
+          targetAuthMethod: options?.targetAuthMethod ?? targetSession?.authMethod ?? "password",
+        }) ?? Promise.reject(new Error("SFTP direct transfer is unavailable"))
+      },
+    },
     monitor: monitorApi,
     docker: dockerApi,
     terminal: {

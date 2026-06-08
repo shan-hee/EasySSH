@@ -1762,6 +1762,8 @@ export class DesktopSFTPDirectTransferInput {
     "sourcePath": string;
     "targetServerId": string;
     "targetPath": string;
+    "sourceCredential"?: DesktopSSHCredential;
+    "targetCredential"?: DesktopSSHCredential;
 
     /** Creates a new DesktopSFTPDirectTransferInput instance. */
     constructor($$source: Partial<DesktopSFTPDirectTransferInput> = {}) {
@@ -1787,6 +1789,32 @@ export class DesktopSFTPDirectTransferInput {
     static createFrom($$source: any = {}): DesktopSFTPDirectTransferInput {
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         return new DesktopSFTPDirectTransferInput($$parsedSource as Partial<DesktopSFTPDirectTransferInput>);
+    }
+}
+
+export class DesktopSSHCredential {
+    "authMethod": DesktopServerAuthMethod;
+    "secret": string;
+    "privateKeyPassphrase"?: string;
+
+    /** Creates a new DesktopSSHCredential instance. */
+    constructor($$source: Partial<DesktopSSHCredential> = {}) {
+        if (!("authMethod" in $$source)) {
+            this["authMethod"] = DesktopServerAuthMethod.$zero;
+        }
+        if (!("secret" in $$source)) {
+            this["secret"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new DesktopSSHCredential instance from a string or object.
+     */
+    static createFrom($$source: any = {}): DesktopSSHCredential {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new DesktopSSHCredential($$parsedSource as Partial<DesktopSSHCredential>);
     }
 }
 

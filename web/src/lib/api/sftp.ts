@@ -4,6 +4,7 @@ import { getCurrentAccessToken } from "@/stores/auth-store"
 import { createAuthTicket } from "@/lib/auth-ticket"
 import type {
   BatchDeleteResponse,
+  DirectTransferOptions,
   DirectTransferResponse,
   DirectoryListResponse,
   DiskUsageResponse,
@@ -551,6 +552,7 @@ export const sftpApi = {
     sourcePath: string,
     targetServerId: string,
     targetPath: string,
+    options?: DirectTransferOptions,
   ): Promise<DirectTransferResponse> {
     return apiFetch<DirectTransferResponse>(`/sftp/transfer/direct`, {
       method: "POST",
@@ -559,6 +561,8 @@ export const sftpApi = {
         source_path: sourcePath,
         target_server_id: targetServerId,
         target_path: targetPath,
+        source_credential: options?.sourceCredential,
+        target_credential: options?.targetCredential,
       },
     })
   },

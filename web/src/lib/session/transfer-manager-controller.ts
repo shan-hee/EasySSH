@@ -2,6 +2,7 @@ export { createFileTransferController } from "../../../packages/ssh-workspace/sr
 export type {
   CreateFileTransferControllerOptions,
   FileTransferController,
+  FileTransferDirectTransferOptions,
   FileTransferSftpApi,
   RestoreUploadTasksOptions,
   TransferTaskStateUpdater,

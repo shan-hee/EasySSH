@@ -359,6 +359,7 @@ func main() {
 
 	// SFTP 上传 WebSocket 处理器
 	sftpUploadWSHandler := ws.NewSFTPUploadHandler(securityService, cfg.Server.WebDevPort)
+	runtimeCredentialStore := ssh.NewRuntimeCredentialStore()
 
 	// SFTP 跨服务器传输 WebSocket 处理器
 	sftpTransferWSHandler := ws.NewSFTPTransferHandler(
@@ -369,6 +370,7 @@ func main() {
 		cfg.Server.WebDevPort,
 		sshHostKeyService.GetHostKeyCallback(),
 		operationRecordService,
+		runtimeCredentialStore,
 	)
 
 	// 令牌有效期（秒），用于 Cookie 和 API 响应
@@ -402,10 +404,10 @@ func main() {
 		ConnTimeout:            time.Duration(cfg.SFTP.ConnTimeoutSeconds) * time.Second,
 		MaxSFTPSessionsPerConn: cfg.SFTP.MaxSFTPSessionsPerConn,
 	}
-	sftpHandler := rest.NewSFTPHandler(serverService, serverRepo, encryptor, sftpUploadWSHandler, sshHostKeyService.GetHostKeyCallback(), sftpPoolConfig, operationRecordService)
+	sftpHandler := rest.NewSFTPHandler(serverService, serverRepo, encryptor, sftpUploadWSHandler, sshHostKeyService.GetHostKeyCallback(), sftpPoolConfig, runtimeCredentialStore, operationRecordService)
 	sftpHandler.SetTransferHandler(sftpTransferWSHandler) // 注入跨服务器传输处理器
 
-	terminalHandler := ws.NewTerminalHandler(serverService, serverRepo, sessionManager, encryptor, operationRecordService, sshHostKeyService, securityService, cfg.Server.WebDevPort, completionService, systemConfigService)
+	terminalHandler := ws.NewTerminalHandler(serverService, serverRepo, sessionManager, encryptor, operationRecordService, sshHostKeyService, securityService, cfg.Server.WebDevPort, completionService, systemConfigService, runtimeCredentialStore)
 	monitorHandler := ws.NewMonitorHandler(monitorConnectionPool, securityService, cfg.Server.WebDevPort)
 	auditLogHandler := rest.NewAuditLogHandler(auditLogService)
 	dashboardHandler := rest.NewDashboardHandler(dashboardService)

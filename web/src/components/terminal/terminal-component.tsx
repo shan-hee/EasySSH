@@ -610,6 +610,10 @@ export function TerminalComponent({
         sourceSession.serverName,
         targetSession.serverName,
         dragData.fileName,
+        {
+          sourceAuthMethod: sourceSession.authMethod ?? "password",
+          targetAuthMethod: targetSession.authMethod ?? "password",
+        },
       )
       requestSftpRefresh(targetSession.id)
       notifyTransferSuccess(tSftp("toastTransferSuccess", {

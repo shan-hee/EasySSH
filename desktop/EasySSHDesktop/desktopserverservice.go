@@ -97,19 +97,23 @@ type DesktopServerCommandResult struct {
 	CompletedAt string `json:"completedAt"`
 }
 
-type desktopSSHCredential struct {
-	AuthMethod           DesktopServerAuthMethod
-	Secret               string
-	PrivateKeyPassphrase string
+type DesktopSSHCredential struct {
+	AuthMethod           DesktopServerAuthMethod `json:"authMethod"`
+	Secret               string                  `json:"secret"`
+	PrivateKeyPassphrase string                  `json:"privateKeyPassphrase,omitempty"`
 }
 
 type DesktopServerService struct {
-	mu sync.Mutex
-	db *sql.DB
+	mu                    sync.Mutex
+	db                    *sql.DB
+	temporaryCredentialMu sync.Mutex
+	temporaryCredentials  map[string]DesktopSSHCredential
 }
 
 func NewDesktopServerService() *DesktopServerService {
-	return &DesktopServerService{}
+	return &DesktopServerService{
+		temporaryCredentials: map[string]DesktopSSHCredential{},
+	}
 }
 
 func (s *DesktopServerService) ServiceName() string {
@@ -125,6 +129,8 @@ func (s *DesktopServerService) ServiceShutdown() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	s.clearTemporaryCredentials()
+
 	if s.db == nil {
 		return nil
 	}
@@ -132,6 +138,51 @@ func (s *DesktopServerService) ServiceShutdown() error {
 	err := s.db.Close()
 	s.db = nil
 	return err
+}
+
+func (s *DesktopServerService) setTemporaryCredential(serverID string, credential DesktopSSHCredential) {
+	serverID = strings.TrimSpace(serverID)
+	if serverID == "" {
+		return
+	}
+
+	s.temporaryCredentialMu.Lock()
+	s.temporaryCredentials[serverID] = credential
+	s.temporaryCredentialMu.Unlock()
+}
+
+func (s *DesktopServerService) getTemporaryCredential(serverID string) (*DesktopSSHCredential, bool) {
+	serverID = strings.TrimSpace(serverID)
+	if serverID == "" {
+		return nil, false
+	}
+
+	s.temporaryCredentialMu.Lock()
+	defer s.temporaryCredentialMu.Unlock()
+
+	credential, ok := s.temporaryCredentials[serverID]
+	if !ok {
+		return nil, false
+	}
+
+	return &credential, true
+}
+
+func (s *DesktopServerService) clearTemporaryCredential(serverID string) {
+	serverID = strings.TrimSpace(serverID)
+	if serverID == "" {
+		return
+	}
+
+	s.temporaryCredentialMu.Lock()
+	delete(s.temporaryCredentials, serverID)
+	s.temporaryCredentialMu.Unlock()
+}
+
+func (s *DesktopServerService) clearTemporaryCredentials() {
+	s.temporaryCredentialMu.Lock()
+	s.temporaryCredentials = map[string]DesktopSSHCredential{}
+	s.temporaryCredentialMu.Unlock()
 }
 
 func (s *DesktopServerService) List(params DesktopServerListParams) (DesktopServerListResult, error) {
@@ -641,7 +692,7 @@ func buildDesktopServerSSHAuthMethods(server DesktopServer) ([]ssh.AuthMethod, e
 	return buildDesktopServerSSHAuthMethodsWithCredential(server, nil)
 }
 
-func buildDesktopServerSSHAuthMethodsWithCredential(server DesktopServer, credential *desktopSSHCredential) ([]ssh.AuthMethod, error) {
+func buildDesktopServerSSHAuthMethodsWithCredential(server DesktopServer, credential *DesktopSSHCredential) ([]ssh.AuthMethod, error) {
 	authMethods := make([]ssh.AuthMethod, 0, 2)
 	if credential != nil {
 		switch credential.AuthMethod {

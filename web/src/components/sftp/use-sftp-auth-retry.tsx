@@ -2,6 +2,7 @@ import { useCallback, useState } from "react"
 import { isApiError } from "@/lib/api-client"
 import type { Server } from "@/lib/server-types"
 import type { SftpSessionApi } from "@/lib/session/sftp-session-api"
+import type { DirectTransferOptions, DirectTransferResponse, SftpTransferCredential } from "@/lib/sftp-types"
 import type { TerminalAuthMethod, TerminalAuthPrompt } from "@/lib/websocket-terminal"
 import { TerminalAuthChallengeDialog } from "@/components/terminal/terminal-auth-challenge-dialog"
 import type { TerminalAuthFlowAdapters } from "@/components/terminal/use-terminal-auth-flow"
@@ -30,6 +31,18 @@ export interface RunSftpCredentialRetryOptions<T> {
   authMethod: TerminalAuthMethod
   api: Pick<SftpSessionApi, "authenticate">
   operation: () => Promise<T>
+}
+
+export interface RunSftpDirectTransferCredentialRetryOptions {
+  sourceServerId: string
+  sourcePath: string
+  sourceServerName: string
+  sourceAuthMethod: TerminalAuthMethod
+  targetServerId: string
+  targetPath: string
+  targetServerName: string
+  targetAuthMethod: TerminalAuthMethod
+  operation: (options?: DirectTransferOptions) => Promise<DirectTransferResponse>
 }
 
 export interface UseSftpAuthRetryOptions {
@@ -82,8 +95,33 @@ function getApiErrorCode(error: unknown) {
   return null
 }
 
-function isSftpPrivateKeyPassphraseError(error: unknown) {
+function getSftpTransferCredentialErrorSide(error: unknown): "source" | "target" | null {
   const code = getApiErrorCode(error)
+  if (code?.startsWith("source_")) {
+    return "source"
+  }
+  if (code?.startsWith("target_")) {
+    return "target"
+  }
+
+  return null
+}
+
+function stripSftpTransferCredentialErrorSide(code: string | null) {
+  if (!code) {
+    return null
+  }
+  if (code.startsWith("source_")) {
+    return code.slice("source_".length)
+  }
+  if (code.startsWith("target_")) {
+    return code.slice("target_".length)
+  }
+  return code
+}
+
+function isSftpPrivateKeyPassphraseError(error: unknown) {
+  const code = stripSftpTransferCredentialErrorSide(getApiErrorCode(error))
   if (
     code === "sftp_private_key_passphrase_required" ||
     code === "sftp_private_key_passphrase_invalid"
@@ -100,6 +138,18 @@ function isSftpPrivateKeyPassphraseError(error: unknown) {
   }
 
   return false
+}
+
+function toSftpTransferCredential(credential: {
+  authMethod: TerminalAuthMethod
+  secret: string
+  privateKeyPassphrase?: string
+}): SftpTransferCredential {
+  return {
+    auth_method: credential.authMethod,
+    secret: credential.secret,
+    private_key_passphrase: credential.privateKeyPassphrase,
+  }
 }
 
 export function getServerAuthMethod(server: Pick<Server, "auth_method">): TerminalAuthMethod {
@@ -293,6 +343,115 @@ export function useSftpAuthRetry({
     }
   }, [promptCredentialSave, requestCredential, requestPrivateKeyPassphrase])
 
+  const runDirectTransferWithCredentialRetry = useCallback(async ({
+    sourceServerId,
+    sourcePath,
+    sourceServerName,
+    sourceAuthMethod,
+    targetServerId,
+    targetPath,
+    targetServerName,
+    targetAuthMethod,
+    operation,
+  }: RunSftpDirectTransferCredentialRetryOptions): Promise<DirectTransferResponse> => {
+    const options: DirectTransferOptions = {}
+    const authMethods: Record<"source" | "target", TerminalAuthMethod> = {
+      source: sourceAuthMethod,
+      target: targetAuthMethod,
+    }
+    const serverIds = {
+      source: sourceServerId,
+      target: targetServerId,
+    }
+    const serverNames = {
+      source: sourceServerName,
+      target: targetServerName,
+    }
+    const credentialAttempts = {
+      source: 0,
+      target: 0,
+    }
+    const passphraseAttempts = {
+      source: 0,
+      target: 0,
+    }
+    const successfulCredentials: Partial<Record<"source" | "target", {
+      authMethod: TerminalAuthMethod
+      secret: string
+    }>> = {}
+    let lastError: unknown = null
+
+    const setCredential = (
+      side: "source" | "target",
+      credential: SftpTransferCredential,
+      saveCandidate?: { authMethod: TerminalAuthMethod; secret: string },
+    ) => {
+      if (side === "source") {
+        options.sourceCredential = credential
+      } else {
+        options.targetCredential = credential
+      }
+      if (saveCandidate?.secret) {
+        successfulCredentials[side] = saveCandidate
+      }
+    }
+
+    for (let attempt = 1; attempt <= SFTP_CREDENTIAL_MAX_ATTEMPTS * 4; attempt++) {
+      try {
+        const result = await operation(
+          options.sourceCredential || options.targetCredential
+            ? options
+            : undefined,
+        )
+        for (const side of ["source", "target"] as const) {
+          const credential = successfulCredentials[side]
+          if (!credential) {
+            continue
+          }
+          promptCredentialSave(
+            serverIds[side],
+            serverNames[side],
+            credential.authMethod,
+            credential.secret,
+          )
+        }
+        return result
+      } catch (error) {
+        lastError = error
+        const side = getSftpTransferCredentialErrorSide(error)
+        if (!side || !isSftpCredentialRequiredError(error)) {
+          throw error
+        }
+
+        if (authMethods[side] === "key" && isSftpPrivateKeyPassphraseError(error)) {
+          passphraseAttempts[side] += 1
+          if (passphraseAttempts[side] > SFTP_CREDENTIAL_MAX_ATTEMPTS) {
+            throw error
+          }
+          const passphrase = await requestPrivateKeyPassphrase(serverNames[side], passphraseAttempts[side])
+          const existing = side === "source" ? options.sourceCredential : options.targetCredential
+          setCredential(side, {
+            auth_method: "key",
+            secret: existing?.secret ?? "",
+            private_key_passphrase: passphrase,
+          })
+          continue
+        }
+
+        credentialAttempts[side] += 1
+        if (credentialAttempts[side] > SFTP_CREDENTIAL_MAX_ATTEMPTS) {
+          throw error
+        }
+        const credential = await requestCredential(serverNames[side], authMethods[side], credentialAttempts[side])
+        authMethods[side] = credential.authMethod
+        const nextCredential = toSftpTransferCredential(credential)
+        setCredential(side, nextCredential, credential)
+      }
+    }
+
+    throw lastError ?? new Error("sftp direct transfer authentication failed")
+  }, [promptCredentialSave, requestCredential, requestPrivateKeyPassphrase])
+
   const credentialDialog = (
     <TerminalAuthChallengeDialog
       prompt={credentialPrompt?.prompt ?? null}
@@ -320,5 +479,6 @@ export function useSftpAuthRetry({
   return {
     credentialDialog,
     runWithCredentialRetry,
+    runDirectTransferWithCredentialRetry,
   }
 }

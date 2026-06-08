@@ -54,12 +54,13 @@ type TerminalHandler struct {
 	webDevPort        int                  // 前端开发端口，用于默认同源白名单
 	completionService completion.Service   // 补全服务
 	systemConfigSvc   systemconfig.Service // 系统配置（用于补全配置动态生效）
+	credentialStore   *sshDomain.RuntimeCredentialStore
 	completionSubMu   sync.RWMutex
 	completionSubs    map[completionBroadcastKey]map[*completionSubscriber]struct{}
 }
 
 // NewTerminalHandler 创建终端处理器
-func NewTerminalHandler(serverService server.Service, serverRepo server.Repository, sessionManager *sshDomain.SessionManager, encryptor *crypto.Encryptor, operationRecords operationrecord.Service, hostKeyService *sshhostkey.Service, securityService security.Service, webDevPort int, completionService completion.Service, systemConfigSvc systemconfig.Service) *TerminalHandler {
+func NewTerminalHandler(serverService server.Service, serverRepo server.Repository, sessionManager *sshDomain.SessionManager, encryptor *crypto.Encryptor, operationRecords operationrecord.Service, hostKeyService *sshhostkey.Service, securityService security.Service, webDevPort int, completionService completion.Service, systemConfigSvc systemconfig.Service, credentialStore *sshDomain.RuntimeCredentialStore) *TerminalHandler {
 	return &TerminalHandler{
 		serverService:     serverService,
 		serverRepo:        serverRepo,
@@ -71,6 +72,7 @@ func NewTerminalHandler(serverService server.Service, serverRepo server.Reposito
 		webDevPort:        webDevPort,
 		completionService: completionService,
 		systemConfigSvc:   systemConfigSvc,
+		credentialStore:   credentialStore,
 		completionSubs:    make(map[completionBroadcastKey]map[*completionSubscriber]struct{}),
 	}
 }
@@ -688,13 +690,14 @@ func (h *TerminalHandler) HandleSSH(c *gin.Context) {
 				sshDomain.WithKeyboardInteractive(keyboardInteractive),
 			}
 			if credential != nil {
-				if credential.AuthMethod == server.AuthMethodKey {
-					opts = append(opts, sshDomain.WithPrivateKeyAuth(credential.Secret))
-				} else {
-					opts = append(opts, sshDomain.WithPasswordAuth(credential.Secret))
-				}
-				if credential.PrivateKeyPassphrase != "" {
-					opts = append(opts, sshDomain.WithPrivateKeyPassphrase(credential.PrivateKeyPassphrase))
+				opts = append(opts, sshDomain.CredentialOptions(&sshDomain.Credential{
+					AuthMethod:           credential.AuthMethod,
+					Secret:               credential.Secret,
+					PrivateKeyPassphrase: credential.PrivateKeyPassphrase,
+				})...)
+			} else if h.credentialStore != nil {
+				if cachedCredential, ok := h.credentialStore.Get(userUUID, serverUUID); ok {
+					opts = append(opts, sshDomain.CredentialOptions(cachedCredential)...)
 				}
 			}
 
@@ -801,6 +804,13 @@ func (h *TerminalHandler) HandleSSH(c *gin.Context) {
 			}()
 			sendResult(initResult{err: err})
 			return
+		}
+		if credential != nil && h.credentialStore != nil {
+			h.credentialStore.Set(userUUID, serverUUID, sshDomain.Credential{
+				AuthMethod:           credential.AuthMethod,
+				Secret:               credential.Secret,
+				PrivateKeyPassphrase: credential.PrivateKeyPassphrase,
+			})
 		}
 
 		// 异步更新服务器状态为在线

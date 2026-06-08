@@ -40,6 +40,14 @@ type TransferProgressMessage struct {
 	Method         string  `json:"method"`          // 传输方式: "rsync", "scp", "sftp"
 }
 
+// DirectTransferCredential 是一次跨服务器传输使用的临时认证信息。
+// 它只保存在当前传输任务内，不持久化到服务器配置。
+type DirectTransferCredential struct {
+	AuthMethod           server.AuthMethod `json:"auth_method"`
+	Secret               string            `json:"secret"`
+	PrivateKeyPassphrase string            `json:"private_key_passphrase,omitempty"`
+}
+
 // TransferTask 传输任务
 type TransferTask struct {
 	ID               string
@@ -71,6 +79,7 @@ type SFTPTransferHandler struct {
 	securityService  security.Service
 	webDevPort       int
 	hostKeyCallback  ssh.HostKeyCallback
+	credentialStore  *sshDomain.RuntimeCredentialStore
 	defaultTaskTTL   time.Duration
 	operationRecords operationrecord.Service
 }
@@ -84,6 +93,7 @@ func NewSFTPTransferHandler(
 	webDevPort int,
 	hostKeyCallback ssh.HostKeyCallback,
 	operationRecords operationrecord.Service,
+	credentialStore *sshDomain.RuntimeCredentialStore,
 ) *SFTPTransferHandler {
 	if webDevPort <= 0 {
 		webDevPort = 3000
@@ -98,6 +108,7 @@ func NewSFTPTransferHandler(
 		securityService:  securityService,
 		webDevPort:       webDevPort,
 		hostKeyCallback:  hostKeyCallback,
+		credentialStore:  credentialStore,
 		defaultTaskTTL:   30 * time.Minute,
 		operationRecords: operationRecords,
 	}
@@ -267,6 +278,8 @@ func (h *SFTPTransferHandler) StartDirectTransfer(
 	sourcePath string,
 	targetServerID uuid.UUID,
 	targetPath string,
+	sourceCredential *DirectTransferCredential,
+	targetCredential *DirectTransferCredential,
 ) error {
 	// 获取源服务器和目标服务器信息
 	sourceServer, err := h.serverService.GetByID(ctx, userID, sourceServerID)
@@ -277,6 +290,14 @@ func (h *SFTPTransferHandler) StartDirectTransfer(
 	targetServer, err := h.serverService.GetByID(ctx, userID, targetServerID)
 	if err != nil {
 		return fmt.Errorf("failed to get target server: %w", err)
+	}
+
+	if err := h.validateDirectTransferEndpoint(ctx, userID, sourceServerID, sourceServer, sourceCredential); err != nil {
+		return fmt.Errorf("source: %w", err)
+	}
+
+	if err := h.validateDirectTransferEndpoint(ctx, userID, targetServerID, targetServer, targetCredential); err != nil {
+		return fmt.Errorf("target: %w", err)
 	}
 
 	// 创建传输上下文：支持手动取消 + 自动 TTL
@@ -324,7 +345,17 @@ func (h *SFTPTransferHandler) StartDirectTransfer(
 		}()
 
 		log.Printf("[SFTPTransferWS] 开始 SFTP 中转传输: taskID=%s", taskID)
-		transferErr := h.executeSftpRelayTransfer(transferCtx, taskID, sourceServer, sourcePath, targetServer, targetPath)
+		transferErr := h.executeSftpRelayTransfer(
+			transferCtx,
+			taskID,
+			sourceServer,
+			sourcePath,
+			targetServer,
+			targetPath,
+			userID,
+			sourceCredential,
+			targetCredential,
+		)
 		finishedAt := time.Now()
 
 		if transferErr != nil {
@@ -353,6 +384,85 @@ func (h *SFTPTransferHandler) StartDirectTransfer(
 			h.upsertTransferOperationRecord(task, operationrecord.StatusSuccess, "", &finishedAt)
 		}
 	}()
+
+	return nil
+}
+
+func (c *DirectTransferCredential) toSSHCredential() *sshDomain.Credential {
+	if c == nil {
+		return nil
+	}
+
+	return &sshDomain.Credential{
+		AuthMethod:           c.AuthMethod,
+		Secret:               c.Secret,
+		PrivateKeyPassphrase: c.PrivateKeyPassphrase,
+	}
+}
+
+func (h *SFTPTransferHandler) directTransferCredentialOptions(
+	userID uuid.UUID,
+	serverID uuid.UUID,
+	credential *DirectTransferCredential,
+) []sshDomain.ClientOption {
+	if sshCredential := credential.toSSHCredential(); sshCredential != nil {
+		return sshDomain.CredentialOptions(sshCredential)
+	}
+
+	if h.credentialStore != nil {
+		if cachedCredential, ok := h.credentialStore.Get(userID, serverID); ok {
+			return sshDomain.CredentialOptions(cachedCredential)
+		}
+	}
+
+	return nil
+}
+
+func (h *SFTPTransferHandler) saveDirectTransferCredential(
+	userID uuid.UUID,
+	serverID uuid.UUID,
+	credential *DirectTransferCredential,
+) {
+	if credential == nil || h.credentialStore == nil {
+		return
+	}
+
+	if sshCredential := credential.toSSHCredential(); sshCredential != nil {
+		h.credentialStore.Set(userID, serverID, *sshCredential)
+	}
+}
+
+func (h *SFTPTransferHandler) validateDirectTransferEndpoint(
+	ctx context.Context,
+	userID uuid.UUID,
+	serverID uuid.UUID,
+	srv *server.Server,
+	credential *DirectTransferCredential,
+) error {
+	client, err := sshDomain.NewClient(
+		srv,
+		h.encryptor,
+		h.hostKeyCallback,
+		h.directTransferCredentialOptions(userID, serverID, credential)...,
+	)
+	if err != nil {
+		return err
+	}
+	defer client.Close()
+
+	if err := client.ConnectContext(ctx, srv.Host, srv.Port); err != nil {
+		return err
+	}
+
+	sftpClient, err := sftp.NewClient(client.GetRawConnection())
+	if err != nil {
+		return err
+	}
+	if err := sftpClient.Close(); err != nil {
+		return err
+	}
+
+	h.saveDirectTransferCredential(userID, serverID, credential)
 
 	return nil
 }
@@ -452,12 +562,20 @@ func (h *SFTPTransferHandler) executeSftpRelayTransfer(
 	sourcePath string,
 	targetServer *server.Server,
 	targetPath string,
+	userID uuid.UUID,
+	sourceCredential *DirectTransferCredential,
+	targetCredential *DirectTransferCredential,
 ) error {
 	log.Printf("[SFTPTransferWS] 开始 SFTP 中转传输: taskID=%s, source=%s:%s -> target=%s:%s",
 		taskID, sourceServer.Host, sourcePath, targetServer.Host, targetPath)
 
 	// 连接源服务器
-	sourceSSHClient, err := sshDomain.NewClient(sourceServer, h.encryptor, h.hostKeyCallback)
+	sourceSSHClient, err := sshDomain.NewClient(
+		sourceServer,
+		h.encryptor,
+		h.hostKeyCallback,
+		h.directTransferCredentialOptions(userID, sourceServer.ID, sourceCredential)...,
+	)
 	if err != nil {
 		return fmt.Errorf("failed to create source SSH client: %w", err)
 	}
@@ -475,7 +593,12 @@ func (h *SFTPTransferHandler) executeSftpRelayTransfer(
 	defer sourceSFTP.Close()
 
 	// 连接目标服务器
-	targetSSHClient, err := sshDomain.NewClient(targetServer, h.encryptor, h.hostKeyCallback)
+	targetSSHClient, err := sshDomain.NewClient(
+		targetServer,
+		h.encryptor,
+		h.hostKeyCallback,
+		h.directTransferCredentialOptions(userID, targetServer.ID, targetCredential)...,
+	)
 	if err != nil {
 		return fmt.Errorf("failed to create target SSH client: %w", err)
 	}

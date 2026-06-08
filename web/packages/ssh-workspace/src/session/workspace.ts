@@ -1,6 +1,7 @@
 import type { OptionalServerConnectionInfo, ServerConnectionInfo } from "./types"
 import type {
   BatchDeleteResponse,
+  DirectTransferOptions,
   DirectTransferResponse,
   DirectoryListResponse,
   FileInfo,
@@ -35,6 +36,7 @@ export interface WorkspaceSessionSeed extends ServerConnectionInfo {
 
 export interface WorkspaceTerminalSession extends OptionalServerConnectionInfo {
   id: string
+  authMethod?: "password" | "key"
   shouldConnect: boolean
   connectionPhase: TerminalConnectionPhase
   status: "connected" | "disconnected" | "reconnecting"
@@ -340,6 +342,7 @@ export interface SshWorkspaceApiClient {
       sourcePath: string,
       targetServerId: string,
       targetPath: string,
+      options?: DirectTransferOptions,
     ) => Promise<DirectTransferResponse>
     cancelTransfer?: (taskId: string) => Promise<unknown>
   }
@@ -554,6 +557,7 @@ export interface SshWorkspaceTransferManager {
     sourceServerName: string,
     targetServerName: string,
     fileName: string,
+    options?: DirectTransferOptions,
   ) => Promise<void>
   createTransferTask?: (
     fileName: string,

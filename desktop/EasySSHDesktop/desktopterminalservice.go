@@ -126,13 +126,15 @@ func (s *DesktopTerminalService) Start(input DesktopTerminalStartInput) error {
 		return err
 	}
 
-	var credential *desktopSSHCredential
+	var credential *DesktopSSHCredential
 	if input.AuthMethod == DesktopServerAuthPassword || input.AuthMethod == DesktopServerAuthKey {
-		credential = &desktopSSHCredential{
+		credential = &DesktopSSHCredential{
 			AuthMethod:           input.AuthMethod,
 			Secret:               input.Secret,
 			PrivateKeyPassphrase: input.PrivateKeyPassphrase,
 		}
+	} else if cachedCredential, ok := s.serverService.getTemporaryCredential(serverID); ok {
+		credential = cachedCredential
 	}
 
 	authMethods, err := buildDesktopServerSSHAuthMethodsWithCredential(server, credential)
@@ -210,6 +212,10 @@ func (s *DesktopTerminalService) Start(input DesktopTerminalStartInput) error {
 	if err := sshSession.Shell(); err != nil {
 		s.closeByID(clientID, err.Error())
 		return err
+	}
+
+	if credential != nil {
+		s.serverService.setTemporaryCredential(serverID, *credential)
 	}
 
 	go s.waitForSession(clientID, sshSession)

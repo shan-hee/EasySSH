@@ -56,11 +56,12 @@ type SFTPHandler struct {
 	transferHandler  *ws.SFTPTransferHandler // 跨服务器直连传输处理器
 	hostKeyCallback  ssh.HostKeyCallback     // SSH主机密钥验证回调
 	pool             *sftp.Pool              // SFTP 连接池
+	credentialStore  *sshDomain.RuntimeCredentialStore
 	operationRecords operationrecord.Service
 }
 
 // NewSFTPHandler 创建 SFTP 处理器
-func NewSFTPHandler(serverService server.Service, serverRepo server.Repository, encryptor *crypto.Encryptor, uploadWSHandler *ws.SFTPUploadHandler, hostKeyCallback ssh.HostKeyCallback, poolConfig *sftp.PoolConfig, operationRecords operationrecord.Service) *SFTPHandler {
+func NewSFTPHandler(serverService server.Service, serverRepo server.Repository, encryptor *crypto.Encryptor, uploadWSHandler *ws.SFTPUploadHandler, hostKeyCallback ssh.HostKeyCallback, poolConfig *sftp.PoolConfig, credentialStore *sshDomain.RuntimeCredentialStore, operationRecords operationrecord.Service) *SFTPHandler {
 	// 创建连接池
 	pool := sftp.NewPool(
 		poolConfig,
@@ -68,6 +69,7 @@ func NewSFTPHandler(serverService server.Service, serverRepo server.Repository, 
 		hostKeyCallback,
 		serverService,
 		serverRepo,
+		credentialStore,
 	)
 
 	return &SFTPHandler{
@@ -77,6 +79,7 @@ func NewSFTPHandler(serverService server.Service, serverRepo server.Repository, 
 		uploadWSHandler:  uploadWSHandler,
 		hostKeyCallback:  hostKeyCallback,
 		pool:             pool,
+		credentialStore:  credentialStore,
 		operationRecords: operationRecords,
 	}
 }
@@ -2489,10 +2492,12 @@ func (h *SFTPHandler) transferDirectory(ctx context.Context, sourceClient, targe
 
 // DirectTransferRequest 直连传输请求
 type DirectTransferRequest struct {
-	SourceServerID string `json:"source_server_id" binding:"required"`
-	SourcePath     string `json:"source_path" binding:"required"`
-	TargetServerID string `json:"target_server_id" binding:"required"`
-	TargetPath     string `json:"target_path" binding:"required"`
+	SourceServerID   string                       `json:"source_server_id" binding:"required"`
+	SourcePath       string                       `json:"source_path" binding:"required"`
+	TargetServerID   string                       `json:"target_server_id" binding:"required"`
+	TargetPath       string                       `json:"target_path" binding:"required"`
+	SourceCredential *ws.DirectTransferCredential `json:"source_credential,omitempty"`
+	TargetCredential *ws.DirectTransferCredential `json:"target_credential,omitempty"`
 }
 
 // DirectTransferResponse 直连传输响应
@@ -2500,6 +2505,40 @@ type DirectTransferResponse struct {
 	Success bool   `json:"success"`
 	TaskID  string `json:"task_id"`
 	Message string `json:"message"`
+}
+
+func validateDirectTransferCredentialInput(credential *ws.DirectTransferCredential) bool {
+	if credential == nil {
+		return true
+	}
+
+	return credential.AuthMethod == server.AuthMethodPassword || credential.AuthMethod == server.AuthMethodKey
+}
+
+func respondDirectTransferStartError(c *gin.Context, err error) {
+	message := err.Error()
+	sidePrefix := ""
+	codePrefix := ""
+	if strings.HasPrefix(message, "source: ") {
+		sidePrefix = "source "
+		codePrefix = "source_"
+		message = strings.TrimPrefix(message, "source: ")
+	} else if strings.HasPrefix(message, "target: ") {
+		sidePrefix = "target "
+		codePrefix = "target_"
+		message = strings.TrimPrefix(message, "target: ")
+	}
+
+	if code, ok := isSFTPPrivateKeyPassphraseError(err); ok {
+		RespondError(c, http.StatusPreconditionRequired, codePrefix+code, sidePrefix+message)
+		return
+	}
+	if isSFTPCredentialRequiredError(err) {
+		RespondError(c, http.StatusPreconditionRequired, codePrefix+"sftp_credential_required", sidePrefix+message)
+		return
+	}
+
+	RespondError(c, http.StatusInternalServerError, "transfer_start_failed", err.Error())
 }
 
 // DirectTransfer 跨服务器直连传输（使用 rsync/scp）
@@ -2516,6 +2555,14 @@ func (h *SFTPHandler) DirectTransfer(c *gin.Context) {
 	var req DirectTransferRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		RespondError(c, http.StatusBadRequest, "validation_error", err.Error())
+		return
+	}
+	if !validateDirectTransferCredentialInput(req.SourceCredential) {
+		RespondError(c, http.StatusBadRequest, "unsupported_source_auth_method", "Unsupported source authentication method")
+		return
+	}
+	if !validateDirectTransferCredentialInput(req.TargetCredential) {
+		RespondError(c, http.StatusBadRequest, "unsupported_target_auth_method", "Unsupported target authentication method")
 		return
 	}
 
@@ -2560,11 +2607,13 @@ func (h *SFTPHandler) DirectTransfer(c *gin.Context) {
 		req.SourcePath,
 		targetServerID,
 		req.TargetPath,
+		req.SourceCredential,
+		req.TargetCredential,
 	)
 
 	if err != nil {
 		fmt.Printf("[SFTP DirectTransfer] Failed to start transfer: %v\n", err)
-		RespondError(c, http.StatusInternalServerError, "transfer_start_failed", err.Error())
+		respondDirectTransferStartError(c, err)
 		return
 	}
 
@@ -2630,6 +2679,9 @@ func (h *SFTPHandler) CloseConnection(c *gin.Context) {
 
 	// 关闭该用户对该服务器的所有连接
 	h.pool.CloseByKey(userID, serverID)
+	if h.credentialStore != nil {
+		h.credentialStore.Delete(userID, serverID)
+	}
 
 	fmt.Printf("[SFTP Pool] User %s closed connections for server %s\n", userID, serverID)
 

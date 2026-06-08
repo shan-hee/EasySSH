@@ -87,6 +87,21 @@ export interface DirectTransferResponse {
   message: string
 }
 
+export interface SftpTransferCredential {
+  auth_method: "password" | "key"
+  secret: string
+  private_key_passphrase?: string
+}
+
+export interface DirectTransferOptions {
+  sourceCredential?: SftpTransferCredential
+  targetCredential?: SftpTransferCredential
+  sourceServerName?: string
+  targetServerName?: string
+  sourceAuthMethod?: "password" | "key"
+  targetAuthMethod?: "password" | "key"
+}
+
 export interface TransferProgressMessage {
   type: "started" | "progress" | "complete" | "error" | "cancelled"
   task_id: string

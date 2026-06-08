@@ -19,6 +19,7 @@ export { DEFAULT_SYSTEM_CONFIG, StaticSystemConfigProvider } from "../../../src/
 export { CompletionConfigProvider } from "../../../src/contexts/completion-config-context"
 export { DEFAULT_SFTP_DOWNLOAD_EXCLUDE_PATTERNS, parseWorkspaceDownloadExcludePatterns } from "./session/workspace-settings"
 export type { WorkspaceDownloadExcludePatternSource } from "./session/workspace-settings"
+export type { DirectTransferOptions } from "./session/sftp-types"
 export { createWorkspaceAdapters, createWorkspaceI18nAdapter, createWorkspaceSettingsAdapter } from "./session/workspace-adapters"
 export { createWorkspaceCapabilitiesFromRuntime } from "../../../src/shell/runtime/runtime-workspace"
 export type { RuntimeWorkspaceCapabilitiesOptions } from "../../../src/shell/runtime/runtime-workspace"

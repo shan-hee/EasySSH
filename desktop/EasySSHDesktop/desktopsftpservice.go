@@ -11,7 +11,6 @@ import (
 	"path"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/pkg/sftp"
@@ -68,10 +67,12 @@ type DesktopSFTPBatchDownloadInput struct {
 }
 
 type DesktopSFTPDirectTransferInput struct {
-	SourceServerID string `json:"sourceServerId"`
-	SourcePath     string `json:"sourcePath"`
-	TargetServerID string `json:"targetServerId"`
-	TargetPath     string `json:"targetPath"`
+	SourceServerID   string                `json:"sourceServerId"`
+	SourcePath       string                `json:"sourcePath"`
+	TargetServerID   string                `json:"targetServerId"`
+	TargetPath       string                `json:"targetPath"`
+	SourceCredential *DesktopSSHCredential `json:"sourceCredential,omitempty"`
+	TargetCredential *DesktopSSHCredential `json:"targetCredential,omitempty"`
 }
 
 type DesktopSFTPAuthenticateInput struct {
@@ -135,15 +136,12 @@ type DesktopSFTPDirectTransferResult struct {
 }
 
 type DesktopSFTPService struct {
-	serverService         *DesktopServerService
-	temporaryCredentialMu sync.Mutex
-	temporaryCredentials  map[string]desktopSSHCredential
+	serverService *DesktopServerService
 }
 
 func NewDesktopSFTPService(serverService *DesktopServerService) *DesktopSFTPService {
 	return &DesktopSFTPService{
-		serverService:        serverService,
-		temporaryCredentials: map[string]desktopSSHCredential{},
+		serverService: serverService,
 	}
 }
 
@@ -159,7 +157,7 @@ func (s *DesktopSFTPService) Authenticate(input DesktopSFTPAuthenticateInput) er
 		return errors.New("server credential is required")
 	}
 
-	credential := desktopSSHCredential{
+	credential := DesktopSSHCredential{
 		AuthMethod:           input.AuthMethod,
 		Secret:               input.Secret,
 		PrivateKeyPassphrase: input.PrivateKeyPassphrase,
@@ -170,9 +168,7 @@ func (s *DesktopSFTPService) Authenticate(input DesktopSFTPAuthenticateInput) er
 	}
 	closer()
 
-	s.temporaryCredentialMu.Lock()
-	s.temporaryCredentials[serverID] = credential
-	s.temporaryCredentialMu.Unlock()
+	s.serverService.setTemporaryCredential(serverID, credential)
 	return nil
 }
 
@@ -521,13 +517,13 @@ func (s *DesktopSFTPService) DirectTransfer(input DesktopSFTPDirectTransferInput
 		return DesktopSFTPDirectTransferResult{}, errors.New("cannot transfer between the same server")
 	}
 
-	sourceClient, sourceCloser, err := s.openClient(sourceServerID)
+	sourceClient, sourceCloser, err := s.openClientForTransfer(sourceServerID, input.SourceCredential)
 	if err != nil {
 		return DesktopSFTPDirectTransferResult{}, fmt.Errorf("failed to connect source server: %w", err)
 	}
 	defer sourceCloser()
 
-	targetClient, targetCloser, err := s.openClient(targetServerID)
+	targetClient, targetCloser, err := s.openClientForTransfer(targetServerID, input.TargetCredential)
 	if err != nil {
 		return DesktopSFTPDirectTransferResult{}, fmt.Errorf("failed to connect target server: %w", err)
 	}
@@ -560,9 +556,7 @@ func (s *DesktopSFTPService) CloseConnection(serverID string) error {
 		return nil
 	}
 
-	s.temporaryCredentialMu.Lock()
-	delete(s.temporaryCredentials, serverID)
-	s.temporaryCredentialMu.Unlock()
+	s.serverService.clearTemporaryCredential(serverID)
 	return nil
 }
 
@@ -572,18 +566,28 @@ func (s *DesktopSFTPService) openClient(serverID string) (*sftp.Client, func(), 
 		return nil, nil, errors.New("server id is required")
 	}
 
-	s.temporaryCredentialMu.Lock()
-	credential, hasCredential := s.temporaryCredentials[serverID]
-	s.temporaryCredentialMu.Unlock()
-
-	if hasCredential {
-		return s.openClientWithCredential(serverID, &credential)
+	if credential, hasCredential := s.serverService.getTemporaryCredential(serverID); hasCredential {
+		return s.openClientWithCredential(serverID, credential)
 	}
 
 	return s.openClientWithCredential(serverID, nil)
 }
 
-func (s *DesktopSFTPService) openClientWithCredential(serverID string, credential *desktopSSHCredential) (*sftp.Client, func(), error) {
+func (s *DesktopSFTPService) openClientForTransfer(serverID string, credential *DesktopSSHCredential) (*sftp.Client, func(), error) {
+	if credential == nil {
+		return s.openClient(serverID)
+	}
+
+	client, closer, err := s.openClientWithCredential(serverID, credential)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	s.serverService.setTemporaryCredential(serverID, *credential)
+	return client, closer, nil
+}
+
+func (s *DesktopSFTPService) openClientWithCredential(serverID string, credential *DesktopSSHCredential) (*sftp.Client, func(), error) {
 	serverID = strings.TrimSpace(serverID)
 	if serverID == "" {
 		return nil, nil, errors.New("server id is required")

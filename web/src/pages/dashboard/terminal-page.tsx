@@ -15,12 +15,15 @@ import { serversApi, sftpApi, type Server } from "@/lib/api"
 import { createAuthTicket } from "@/lib/auth-ticket"
 import { createTerminalWorkspaceSessionControllerAdapter, createTerminalWorkspaceSessionStoreAdapter, useTerminalStore } from "@/stores/terminal-store"
 import { createSftpSessionApi } from "@/lib/session/sftp-session-api"
+import type { FileTransferDirectTransferOptions } from "@/lib/session/transfer-manager-controller"
 import { createBrowserWorkspacePreferenceAdapter, createWorkspaceAdapters, createWorkspaceAuthTicketProviderAdapter, createWorkspaceI18nAdapter, createWorkspaceNotifierAdapter, createWorkspaceSettingsAdapter } from "@/lib/session/workspace-adapters"
 import { useAuthReady } from "@/hooks/use-auth-ready"
 import { useTranslation } from "react-i18next"
 import { useSystemConfig } from "@/contexts/system-config-context"
 import { WORKSPACE_CAPABILITY_PRESETS, createWorkspaceCapabilitiesFromRuntime, useRuntime } from "@/shell/runtime"
 import { isViteDev } from "@/lib/vite-env"
+import { getServerAuthMethod, useSftpAuthRetry } from "@/components/sftp/use-sftp-auth-retry"
+import { useTerminalAuthFlowAdapters } from "@/components/terminal/use-terminal-auth-flow-adapters"
 
 const statusFromConnectionPhase = (phase: TerminalConnectionPhase) => {
   if (phase === "ready") return "connected" as const
@@ -56,6 +59,7 @@ const createTerminalSessionFromServer = (
 ): TerminalSession => ({
   id: sessionId,
   serverId: String(server.id),
+  authMethod: getServerAuthMethod(server),
   serverName: server.name || `${server.username}@${server.host}:${server.port}`,
   host: server.host,
   port: server.port,
@@ -98,6 +102,7 @@ const createSftpTabSession = (tab: MergedSftpTab): TerminalSession => {
   return {
     id: tab.id,
     serverId: isSession ? String(tab.server.id) : undefined,
+    authMethod: isSession ? getServerAuthMethod(tab.server) : undefined,
     serverName: tab.label,
     host: isSession ? tab.server.host : "",
     port: isSession ? tab.server.port : undefined,
@@ -188,7 +193,47 @@ function TerminalPageContent() {
   const workspaceSessionStore = useMemo(() => createTerminalWorkspaceSessionStoreAdapter(), [])
   const workspaceSessionController = useMemo(() => createTerminalWorkspaceSessionControllerAdapter(), [])
   const workspaceAuthTicketProvider = useMemo(() => createWorkspaceAuthTicketProviderAdapter(createAuthTicket), [])
-  const sftpSessionApi = useMemo(() => createSftpSessionApi(sftpApi), [])
+  const sftpAuthFlowAdapters = useTerminalAuthFlowAdapters({})
+  const { credentialDialog, runDirectTransferWithCredentialRetry } = useSftpAuthRetry({
+    tTerminal: t,
+    adapters: sftpAuthFlowAdapters,
+  })
+  const combinedSessionsRef = useRef<TerminalSession[]>([])
+  const sftpSessionApi = useMemo(() => {
+    const workspaceApi = {
+      ...sftpApi,
+      directTransfer: (
+        sourceServerId: string,
+        sourcePath: string,
+        targetServerId: string,
+        targetPath: string,
+        options?: FileTransferDirectTransferOptions,
+      ) => {
+        const sourceSession = combinedSessionsRef.current.find((session) => session.serverId === sourceServerId)
+        const targetSession = combinedSessionsRef.current.find((session) => session.serverId === targetServerId)
+
+        return runDirectTransferWithCredentialRetry({
+          sourceServerId,
+          sourcePath,
+          sourceServerName: options?.sourceServerName ?? sourceSession?.serverName ?? sourceServerId,
+          sourceAuthMethod: options?.sourceAuthMethod ?? sourceSession?.authMethod ?? "password",
+          targetServerId,
+          targetPath,
+          targetServerName: options?.targetServerName ?? targetSession?.serverName ?? targetServerId,
+          targetAuthMethod: options?.targetAuthMethod ?? targetSession?.authMethod ?? "password",
+          operation: (credentialOptions) => sftpApi.directTransfer(
+            sourceServerId,
+            sourcePath,
+            targetServerId,
+            targetPath,
+            credentialOptions,
+          ),
+        })
+      },
+    }
+
+    return createSftpSessionApi(workspaceApi)
+  }, [runDirectTransferWithCredentialRetry])
   const workspacePreferences = useMemo(() => createBrowserWorkspacePreferenceAdapter(), [])
   const workspaceAdapters = useMemo(() => createWorkspaceAdapters({
     apiClient: {
@@ -237,6 +282,7 @@ function TerminalPageContent() {
     () => sftpTabs.map(createSftpTabSession),
     [sftpTabs]
   )
+  combinedSessionsRef.current = [...sessions, ...sftpTabSessions]
 
   const applyTerminalBehaviorSettings = useCallback(
     (settings: { maxTabs: number; inactiveMinutes: number }) => {
@@ -727,6 +773,7 @@ function TerminalPageContent() {
       layout="web"
     >
       <div className="flex min-h-0 flex-1 flex-col min-w-0 overflow-hidden">
+        {credentialDialog}
         <TerminalComponent
           sessions={sessions}
           onNewSession={handleNewSession}
