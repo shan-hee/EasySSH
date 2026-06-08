@@ -1233,7 +1233,9 @@ const messages = {
     quickFormAuthMethodPrivateKey: "私钥验证",
     quickFormPasswordLabel: "密码（选填）",
     quickFormPasswordPlaceholder: "请输入密码",
-    quickFormRememberPasswordLabel: "记住密码",
+    quickFormRememberPasswordLabel: "保存凭据",
+    quickFormRememberCredentialDescription:
+      "不保存时，连接时临时输入密码或私钥。",
     quickFormPrivateKeyLabel: "私钥",
     quickFormPrivateKeyPlaceholder: "请输入或从文件导入私钥内容",
     quickFormDescriptionLabel: "服务器描述",

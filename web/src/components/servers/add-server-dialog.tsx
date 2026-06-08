@@ -316,6 +316,28 @@ export function AddServerDialog({
                     </TabsTrigger>
                   </TabsList>
 
+                  <div className="mt-3 flex items-start gap-2 rounded-md border border-border bg-muted/40 px-3 py-2.5">
+                    <Checkbox
+                      id="remember"
+                      checked={formData.rememberPassword}
+                      onCheckedChange={(checked) =>
+                        handleInputChange("rememberPassword", checked === true)
+                      }
+                      className="mt-0.5"
+                    />
+                    <div className="grid gap-1 leading-none">
+                      <Label
+                        htmlFor="remember"
+                        className="text-sm font-normal cursor-pointer"
+                      >
+                        {tServers("quickFormRememberPasswordLabel")}
+                      </Label>
+                      <p className="text-xs text-muted-foreground">
+                        {tServers("quickFormRememberCredentialDescription")}
+                      </p>
+                    </div>
+                  </div>
+
                   <TabsContent value="password" forceMount className="mt-3 data-[state=inactive]:hidden">
                     {/* 将密码输入包裹在 form 中，并提供隐藏的用户名字段，满足密码管理器与无障碍建议 */}
                     <form className="space-y-3" onSubmit={(e) => e.preventDefault()}>
@@ -341,21 +363,6 @@ export function AddServerDialog({
                           value={formData.password}
                           onChange={(e) => handleInputChange("password", e.target.value)}
                         />
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <Checkbox
-                          id="remember"
-                          checked={formData.rememberPassword}
-                          onCheckedChange={(checked) =>
-                            handleInputChange("rememberPassword", checked === true)
-                          }
-                        />
-                        <Label
-                          htmlFor="remember"
-                          className="text-sm font-normal cursor-pointer"
-                        >
-                          {tServers("quickFormRememberPasswordLabel")}
-                        </Label>
                       </div>
                     </form>
                   </TabsContent>

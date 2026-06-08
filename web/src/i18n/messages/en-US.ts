@@ -1282,7 +1282,9 @@ const messages = {
     quickFormAuthMethodPrivateKey: "Private key",
     quickFormPasswordLabel: "Password (optional)",
     quickFormPasswordPlaceholder: "Enter password",
-    quickFormRememberPasswordLabel: "Remember password",
+    quickFormRememberPasswordLabel: "Save credential",
+    quickFormRememberCredentialDescription:
+      "If not saved, enter the password or private key when connecting.",
     quickFormPrivateKeyLabel: "Private key",
     quickFormPrivateKeyPlaceholder:
       "Enter private key or import from file",

@@ -120,6 +120,60 @@ type sftpTransferRecordInput struct {
 	Detail         map[string]interface{}
 }
 
+type sftpAuthenticateRequest struct {
+	AuthMethod           server.AuthMethod `json:"auth_method" binding:"required"`
+	Secret               string            `json:"secret"`
+	PrivateKeyPassphrase string            `json:"private_key_passphrase"`
+}
+
+func isSFTPCredentialRequiredError(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, sshDomain.ErrCredentialRequired) {
+		return true
+	}
+
+	message := strings.ToLower(err.Error())
+	return strings.Contains(message, "server credential is required") ||
+		strings.Contains(message, "unable to authenticate") ||
+		strings.Contains(message, "permission denied") ||
+		strings.Contains(message, "authentication failed") ||
+		strings.Contains(message, "no supported methods remain") ||
+		strings.Contains(message, "failed to decrypt password") ||
+		strings.Contains(message, "failed to decrypt private key") ||
+		strings.Contains(message, "failed to parse private key")
+}
+
+func isSFTPPrivateKeyPassphraseError(err error) (string, bool) {
+	if err == nil {
+		return "", false
+	}
+
+	message := strings.ToLower(err.Error())
+	switch {
+	case strings.Contains(message, "private_key_passphrase_required"):
+		return "sftp_private_key_passphrase_required", true
+	case strings.Contains(message, "private_key_passphrase_invalid"):
+		return "sftp_private_key_passphrase_invalid", true
+	default:
+		return "", false
+	}
+}
+
+func respondSFTPConnectionError(c *gin.Context, err error) {
+	if code, ok := isSFTPPrivateKeyPassphraseError(err); ok {
+		RespondError(c, http.StatusPreconditionRequired, code, err.Error())
+		return
+	}
+	if isSFTPCredentialRequiredError(err) {
+		RespondError(c, http.StatusPreconditionRequired, "sftp_credential_required", err.Error())
+		return
+	}
+
+	RespondError(c, http.StatusInternalServerError, "sftp_error", err.Error())
+}
+
 func (h *SFTPHandler) upsertSFTPTransferRecord(input sftpTransferRecordInput) {
 	if h.operationRecords == nil || input.UserID == uuid.Nil || input.ServerID == uuid.Nil {
 		return
@@ -303,6 +357,45 @@ func (h *SFTPHandler) CancelUploadTask(c *gin.Context) {
 	RespondSuccess(c, gin.H{"success": true})
 }
 
+// Authenticate 使用临时凭据为指定服务器建立 SFTP 池化连接。
+// POST /api/v1/sftp/:server_id/auth
+func (h *SFTPHandler) Authenticate(c *gin.Context) {
+	serverID, err := uuid.Parse(c.Param("server_id"))
+	if err != nil {
+		RespondError(c, http.StatusBadRequest, "invalid_server_id", "Invalid server ID")
+		return
+	}
+
+	userID, err := getUserIDFromContext(c)
+	if err != nil {
+		RespondError(c, http.StatusUnauthorized, "unauthorized", err.Error())
+		return
+	}
+
+	var req sftpAuthenticateRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		RespondError(c, http.StatusBadRequest, "validation_error", err.Error())
+		return
+	}
+	if req.AuthMethod != server.AuthMethodPassword && req.AuthMethod != server.AuthMethodKey {
+		RespondError(c, http.StatusBadRequest, "unsupported_auth_method", "Unsupported authentication method")
+		return
+	}
+
+	client, err := h.pool.GetWithCredential(c.Request.Context(), userID, serverID, sftp.Credential{
+		AuthMethod:           req.AuthMethod,
+		Secret:               req.Secret,
+		PrivateKeyPassphrase: req.PrivateKeyPassphrase,
+	})
+	if err != nil {
+		respondSFTPConnectionError(c, err)
+		return
+	}
+	defer client.Release()
+
+	RespondSuccess(c, gin.H{"success": true})
+}
+
 // getPooledClient 从连接池获取 SFTP 客户端
 // 调用者需要在操作完成后调用 client.Release() 释放连接
 func (h *SFTPHandler) getPooledClient(c *gin.Context, serverID uuid.UUID) (*sftp.PooledClient, error) {
@@ -377,7 +470,7 @@ func (h *SFTPHandler) ListDirectory(c *gin.Context) {
 	// 从连接池获取 SFTP 客户端
 	sftpClient, err := h.getPooledClient(c, serverID)
 	if err != nil {
-		RespondError(c, http.StatusInternalServerError, "sftp_error", err.Error())
+		respondSFTPConnectionError(c, err)
 		return
 	}
 	defer sftpClient.Release() // 释放回连接池，而不是关闭
@@ -412,7 +505,7 @@ func (h *SFTPHandler) GetFileInfo(c *gin.Context) {
 	// 从连接池获取 SFTP 客户端
 	sftpClient, err := h.getPooledClient(c, serverID)
 	if err != nil {
-		RespondError(c, http.StatusInternalServerError, "sftp_error", err.Error())
+		respondSFTPConnectionError(c, err)
 		return
 	}
 	defer sftpClient.Release()
@@ -483,7 +576,7 @@ func (h *SFTPHandler) UploadFile(c *gin.Context) {
 			ErrorMessage: err.Error(),
 			FailureCount: 1,
 		})
-		RespondError(c, http.StatusInternalServerError, "sftp_error", err.Error())
+		respondSFTPConnectionError(c, err)
 		return
 	}
 	defer sftpClient.Release()
@@ -827,7 +920,7 @@ func (h *SFTPHandler) UploadFileStream(c *gin.Context) {
 					"stage": "stream",
 				},
 			})
-			RespondError(c, http.StatusInternalServerError, "sftp_error", err.Error())
+			respondSFTPConnectionError(c, err)
 			return
 		}
 		defer sftpClient.Release()
@@ -1065,7 +1158,7 @@ func (h *SFTPHandler) DownloadFile(c *gin.Context) {
 			ErrorMessage: err.Error(),
 			FailureCount: 1,
 		})
-		RespondError(c, http.StatusInternalServerError, "sftp_error", err.Error())
+		respondSFTPConnectionError(c, err)
 		return
 	}
 	defer sftpClient.Release()
@@ -1161,7 +1254,7 @@ func (h *SFTPHandler) CreateDirectory(c *gin.Context) {
 	// 从连接池获取 SFTP 客户端
 	sftpClient, err := h.getPooledClient(c, serverID)
 	if err != nil {
-		RespondError(c, http.StatusInternalServerError, "sftp_error", err.Error())
+		respondSFTPConnectionError(c, err)
 		return
 	}
 	defer sftpClient.Release()
@@ -1219,7 +1312,7 @@ func (h *SFTPHandler) Delete(c *gin.Context) {
 	sftpClient, err := h.getPooledClient(c, serverID)
 	if err != nil {
 		fmt.Printf("[SFTP Delete] Failed to get SFTP client: %v\n", err)
-		RespondError(c, http.StatusInternalServerError, "sftp_error", err.Error())
+		respondSFTPConnectionError(c, err)
 		return
 	}
 	defer sftpClient.Release()
@@ -1278,7 +1371,7 @@ func (h *SFTPHandler) Rename(c *gin.Context) {
 	// 从连接池获取 SFTP 客户端
 	sftpClient, err := h.getPooledClient(c, serverID)
 	if err != nil {
-		RespondError(c, http.StatusInternalServerError, "sftp_error", err.Error())
+		respondSFTPConnectionError(c, err)
 		return
 	}
 	defer sftpClient.Release()
@@ -1330,7 +1423,7 @@ func (h *SFTPHandler) Chmod(c *gin.Context) {
 	// 从连接池获取 SFTP 客户端
 	sftpClient, err := h.getPooledClient(c, serverID)
 	if err != nil {
-		RespondError(c, http.StatusInternalServerError, "sftp_error", err.Error())
+		respondSFTPConnectionError(c, err)
 		return
 	}
 	defer sftpClient.Release()
@@ -1367,7 +1460,7 @@ func (h *SFTPHandler) ReadFile(c *gin.Context) {
 	// 从连接池获取 SFTP 客户端
 	sftpClient, err := h.getPooledClient(c, serverID)
 	if err != nil {
-		RespondError(c, http.StatusInternalServerError, "sftp_error", err.Error())
+		respondSFTPConnectionError(c, err)
 		return
 	}
 	defer sftpClient.Release()
@@ -1424,7 +1517,7 @@ func (h *SFTPHandler) WriteFile(c *gin.Context) {
 	// 从连接池获取 SFTP 客户端
 	sftpClient, err := h.getPooledClient(c, serverID)
 	if err != nil {
-		RespondError(c, http.StatusInternalServerError, "sftp_error", err.Error())
+		respondSFTPConnectionError(c, err)
 		return
 	}
 	defer sftpClient.Release()
@@ -1461,7 +1554,7 @@ func (h *SFTPHandler) GetDiskUsage(c *gin.Context) {
 	// 从连接池获取 SFTP 客户端
 	sftpClient, err := h.getPooledClient(c, serverID)
 	if err != nil {
-		RespondError(c, http.StatusInternalServerError, "sftp_error", err.Error())
+		respondSFTPConnectionError(c, err)
 		return
 	}
 	defer sftpClient.Release()
@@ -1520,7 +1613,7 @@ func (h *SFTPHandler) BatchDelete(c *gin.Context) {
 	sftpClient, err := h.getPooledClient(c, serverID)
 	if err != nil {
 		fmt.Printf("[SFTP BatchDelete] Failed to get SFTP client: %v\n", err)
-		RespondError(c, http.StatusInternalServerError, "sftp_error", err.Error())
+		respondSFTPConnectionError(c, err)
 		return
 	}
 	defer sftpClient.Release()
@@ -1703,7 +1796,7 @@ func (h *SFTPHandler) compatibleDownload(c *gin.Context, serverID uuid.UUID, req
 	sftpClient, err := h.getPooledClient(c, serverID)
 	if err != nil {
 		fmt.Printf("[SFTP CompatibleDownload] Failed to get SFTP client: %v\n", err)
-		RespondError(c, http.StatusInternalServerError, "sftp_error", err.Error())
+		respondSFTPConnectionError(c, err)
 		return
 	}
 	defer sftpClient.Release()

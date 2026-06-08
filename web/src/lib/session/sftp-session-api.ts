@@ -5,6 +5,12 @@ import type { SftpOperationsApi } from "./sftp-operations"
 export type SftpBatchDownloadMode = "fast" | "compatible"
 
 export interface SftpSessionApi extends SftpDirectoryApi, SftpOperationsApi {
+  authenticate?: (
+    serverId: string,
+    authMethod: "password" | "key",
+    secret: string,
+    privateKeyPassphrase?: string,
+  ) => Promise<unknown>
   downloadFile: (serverId: string, path: string) => Promise<void> | void
   readFile: (serverId: string, path: string) => Promise<string>
   batchDownload: (
@@ -28,6 +34,7 @@ export function createSftpSessionApi(adapter?: SftpSessionApiAdapter): SftpSessi
 
   const definedAdapter: SftpSessionApiAdapter = {}
 
+  if (adapter.authenticate) definedAdapter.authenticate = adapter.authenticate
   if (adapter.listDirectory) definedAdapter.listDirectory = adapter.listDirectory
   if (adapter.delete) definedAdapter.delete = adapter.delete
   if (adapter.createDirectory) definedAdapter.createDirectory = adapter.createDirectory

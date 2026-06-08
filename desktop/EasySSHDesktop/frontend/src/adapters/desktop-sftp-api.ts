@@ -1,4 +1,4 @@
-import { Dialogs } from "@wailsio/runtime"
+import { Call, Dialogs } from "@wailsio/runtime"
 import type { SshWorkspaceApiClient } from "@easyssh/ssh-workspace/desktop"
 import type {
   BatchDeleteResponse,
@@ -12,6 +12,7 @@ import { DesktopSFTPService } from "../../bindings/github.com/easyssh/easyssh-de
 type DesktopSftpApi = NonNullable<SshWorkspaceApiClient["sftp"]>
 
 const desktopDownloadCancelledMessage = "已取消保存"
+const desktopSftpAuthenticateMethod = "github.com/easyssh/easyssh-desktop.DesktopSFTPService.Authenticate"
 
 function remoteBaseName(remotePath: string, fallback: string) {
   return remotePath.split("/").filter(Boolean).pop() || fallback
@@ -69,6 +70,14 @@ async function chooseSavePath(filename: string) {
 
 export function createDesktopSftpApi(): DesktopSftpApi {
   return {
+    async authenticate(serverId, authMethod, secret, privateKeyPassphrase) {
+      await Call.ByName(desktopSftpAuthenticateMethod, {
+        serverId,
+        authMethod,
+        secret,
+        privateKeyPassphrase,
+      })
+    },
     async listDirectory(serverId, remotePath = "/") {
       return normalizeDirectoryList(await DesktopSFTPService.ListDirectory({
         serverId,

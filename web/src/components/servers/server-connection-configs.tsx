@@ -546,11 +546,17 @@ export function ServerConnectionConfigs({
  port: parseInt(data.port) || 22,
  username: data.username,
  auth_method: data.authMethod === "privateKey" ? "key" : "password",
- password: data.password,
- private_key: data.privateKey,
  group: data.group?.trim() || undefined,
  tags: data.tags,
  description: data.description,
+ }
+
+ if (data.rememberPassword) {
+ if (data.authMethod === "privateKey" && data.privateKey) {
+ serverData.private_key = data.privateKey
+ } else if (data.authMethod === "password" && data.password) {
+ serverData.password = data.password
+ }
  }
 
  const newServer = await serverApi.create(serverData)
@@ -597,14 +603,28 @@ export function ServerConnectionConfigs({
  description: data.description,
  }
 
- // 只有在填写了密码时才发送
- if (data.password) {
+ if (data.authMethod === "password") {
+ if (data.rememberPassword && data.password) {
  updateData.password = data.password
+ } else if (!data.rememberPassword && (editingServer.has_password || data.password)) {
+ updateData.password = ""
  }
 
- // 只有在填写了私钥时才发送
- if (data.privateKey) {
+ if (editingServer.has_private_key) {
+ updateData.private_key = ""
+ }
+ }
+
+ if (data.authMethod === "privateKey") {
+ if (data.rememberPassword && data.privateKey) {
  updateData.private_key = data.privateKey
+ } else if (!data.rememberPassword && (editingServer.has_private_key || data.privateKey)) {
+ updateData.private_key = ""
+ }
+
+ if (editingServer.has_password) {
+ updateData.password = ""
+ }
  }
 
  const updatedServer = await serverApi.update(editingServer.id, updateData)
@@ -859,7 +879,9 @@ export function ServerConnectionConfigs({
  authMethod: editingServer.auth_method === "key" ? "privateKey" : "password",
  password: editingServer.password || "",
  privateKey: editingServer.private_key || "",
- rememberPassword: false,
+ rememberPassword: editingServer.auth_method === "key"
+ ? Boolean(editingServer.has_private_key || editingServer.private_key)
+ : Boolean(editingServer.has_password || editingServer.password),
  tags: editingServer.tags || [],
  description: editingServer.description || "",
  group: editingServer.group || "",

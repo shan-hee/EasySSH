@@ -22,10 +22,13 @@ const (
 )
 
 type DesktopTerminalStartInput struct {
-	ClientID string `json:"clientId"`
-	ServerID string `json:"serverId"`
-	Cols     int    `json:"cols"`
-	Rows     int    `json:"rows"`
+	ClientID             string                  `json:"clientId"`
+	ServerID             string                  `json:"serverId"`
+	Cols                 int                     `json:"cols"`
+	Rows                 int                     `json:"rows"`
+	AuthMethod           DesktopServerAuthMethod `json:"authMethod,omitempty"`
+	Secret               string                  `json:"secret,omitempty"`
+	PrivateKeyPassphrase string                  `json:"privateKeyPassphrase,omitempty"`
 }
 
 type DesktopTerminalWriteInput struct {
@@ -123,7 +126,16 @@ func (s *DesktopTerminalService) Start(input DesktopTerminalStartInput) error {
 		return err
 	}
 
-	authMethods, err := buildDesktopServerSSHAuthMethods(server)
+	var credential *desktopSSHCredential
+	if input.AuthMethod == DesktopServerAuthPassword || input.AuthMethod == DesktopServerAuthKey {
+		credential = &desktopSSHCredential{
+			AuthMethod:           input.AuthMethod,
+			Secret:               input.Secret,
+			PrivateKeyPassphrase: input.PrivateKeyPassphrase,
+		}
+	}
+
+	authMethods, err := buildDesktopServerSSHAuthMethodsWithCredential(server, credential)
 	if err != nil {
 		return err
 	}

@@ -106,12 +106,8 @@ func (s *serverService) Create(ctx context.Context, userID uuid.UUID, req *Creat
 		req.Port = 22
 	}
 
-	// 验证认证方式
-	if req.AuthMethod == AuthMethodPassword && req.Password == "" {
-		return nil, errors.New("password is required for password authentication")
-	}
-	if req.AuthMethod == AuthMethodKey && req.PrivateKey == "" {
-		return nil, errors.New("private_key is required for key authentication")
+	if req.AuthMethod != AuthMethodPassword && req.AuthMethod != AuthMethodKey {
+		return nil, fmt.Errorf("unsupported auth method: %s", req.AuthMethod)
 	}
 
 	// 创建服务器

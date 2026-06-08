@@ -97,6 +97,12 @@ type DesktopServerCommandResult struct {
 	CompletedAt string `json:"completedAt"`
 }
 
+type desktopSSHCredential struct {
+	AuthMethod           DesktopServerAuthMethod
+	Secret               string
+	PrivateKeyPassphrase string
+}
+
 type DesktopServerService struct {
 	mu sync.Mutex
 	db *sql.DB
@@ -632,9 +638,44 @@ func isValidDesktopServerAuthMethod(method DesktopServerAuthMethod) bool {
 }
 
 func buildDesktopServerSSHAuthMethods(server DesktopServer) ([]ssh.AuthMethod, error) {
+	return buildDesktopServerSSHAuthMethodsWithCredential(server, nil)
+}
+
+func buildDesktopServerSSHAuthMethodsWithCredential(server DesktopServer, credential *desktopSSHCredential) ([]ssh.AuthMethod, error) {
 	authMethods := make([]ssh.AuthMethod, 0, 2)
-	if strings.TrimSpace(server.Password) != "" {
-		authMethods = append(authMethods, ssh.Password(server.Password))
+	if credential != nil {
+		switch credential.AuthMethod {
+		case DesktopServerAuthPassword:
+			if strings.TrimSpace(credential.Secret) != "" {
+				authMethods = append(authMethods, ssh.Password(credential.Secret))
+			}
+			return authMethods, nil
+		case DesktopServerAuthKey:
+			privateKey := strings.TrimSpace(credential.Secret)
+			if privateKey == "" {
+				privateKey = strings.TrimSpace(server.PrivateKey)
+			}
+			if privateKey == "" {
+				return authMethods, nil
+			}
+
+			signer, err := parseDesktopPrivateKey(privateKey, credential.PrivateKeyPassphrase)
+			if err != nil {
+				return nil, err
+			}
+
+			authMethods = append(authMethods, ssh.PublicKeys(signer))
+			return authMethods, nil
+		default:
+			return nil, fmt.Errorf("unsupported auth method: %s", credential.AuthMethod)
+		}
+	}
+
+	if server.AuthMethod == DesktopServerAuthPassword {
+		if strings.TrimSpace(server.Password) != "" {
+			authMethods = append(authMethods, ssh.Password(server.Password))
+		}
+		return authMethods, nil
 	}
 
 	privateKey := strings.TrimSpace(server.PrivateKey)
@@ -642,16 +683,36 @@ func buildDesktopServerSSHAuthMethods(server DesktopServer) ([]ssh.AuthMethod, e
 		return authMethods, nil
 	}
 
-	signer, err := ssh.ParsePrivateKey([]byte(privateKey))
-	if err != nil && strings.TrimSpace(server.Password) != "" {
-		signer, err = ssh.ParsePrivateKeyWithPassphrase([]byte(privateKey), []byte(server.Password))
-	}
+	signer, err := parseDesktopPrivateKey(privateKey, server.Password)
 	if err != nil {
 		return nil, err
 	}
 
 	authMethods = append(authMethods, ssh.PublicKeys(signer))
 	return authMethods, nil
+}
+
+func parseDesktopPrivateKey(privateKey string, passphrase string) (ssh.Signer, error) {
+	signer, err := ssh.ParsePrivateKey([]byte(privateKey))
+	if err == nil {
+		return signer, nil
+	}
+
+	var missingPassphrase *ssh.PassphraseMissingError
+	if !errors.As(err, &missingPassphrase) {
+		return nil, fmt.Errorf("failed to parse private key: %w", err)
+	}
+
+	if strings.TrimSpace(passphrase) == "" {
+		return nil, fmt.Errorf("private_key_passphrase_required: %w", err)
+	}
+
+	signer, passphraseErr := ssh.ParsePrivateKeyWithPassphrase([]byte(privateKey), []byte(passphrase))
+	if passphraseErr != nil {
+		return nil, fmt.Errorf("private_key_passphrase_invalid: %w", passphraseErr)
+	}
+
+	return signer, nil
 }
 
 func normalizeDesktopCommandOutput(output string) string {

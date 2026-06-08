@@ -11,6 +11,7 @@ import (
 	"path"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/pkg/sftp"
@@ -73,6 +74,13 @@ type DesktopSFTPDirectTransferInput struct {
 	TargetPath     string `json:"targetPath"`
 }
 
+type DesktopSFTPAuthenticateInput struct {
+	ServerID             string                  `json:"serverId"`
+	AuthMethod           DesktopServerAuthMethod `json:"authMethod"`
+	Secret               string                  `json:"secret"`
+	PrivateKeyPassphrase string                  `json:"privateKeyPassphrase,omitempty"`
+}
+
 type DesktopSFTPFileInfo struct {
 	Name       string `json:"name"`
 	Path       string `json:"path"`
@@ -127,11 +135,45 @@ type DesktopSFTPDirectTransferResult struct {
 }
 
 type DesktopSFTPService struct {
-	serverService *DesktopServerService
+	serverService         *DesktopServerService
+	temporaryCredentialMu sync.Mutex
+	temporaryCredentials  map[string]desktopSSHCredential
 }
 
 func NewDesktopSFTPService(serverService *DesktopServerService) *DesktopSFTPService {
-	return &DesktopSFTPService{serverService: serverService}
+	return &DesktopSFTPService{
+		serverService:        serverService,
+		temporaryCredentials: map[string]desktopSSHCredential{},
+	}
+}
+
+func (s *DesktopSFTPService) Authenticate(input DesktopSFTPAuthenticateInput) error {
+	serverID := strings.TrimSpace(input.ServerID)
+	if serverID == "" {
+		return errors.New("server id is required")
+	}
+	if input.AuthMethod != DesktopServerAuthPassword && input.AuthMethod != DesktopServerAuthKey {
+		return fmt.Errorf("unsupported auth method: %s", input.AuthMethod)
+	}
+	if input.AuthMethod == DesktopServerAuthPassword && input.Secret == "" {
+		return errors.New("server credential is required")
+	}
+
+	credential := desktopSSHCredential{
+		AuthMethod:           input.AuthMethod,
+		Secret:               input.Secret,
+		PrivateKeyPassphrase: input.PrivateKeyPassphrase,
+	}
+	_, closer, err := s.openClientWithCredential(serverID, &credential)
+	if err != nil {
+		return err
+	}
+	closer()
+
+	s.temporaryCredentialMu.Lock()
+	s.temporaryCredentials[serverID] = credential
+	s.temporaryCredentialMu.Unlock()
+	return nil
 }
 
 func (s *DesktopSFTPService) ListDirectory(input DesktopSFTPPathInput) (DesktopSFTPDirectoryListResult, error) {
@@ -512,11 +554,36 @@ func (s *DesktopSFTPService) CancelTransfer(_ string) error {
 	return nil
 }
 
-func (s *DesktopSFTPService) CloseConnection(_ string) error {
+func (s *DesktopSFTPService) CloseConnection(serverID string) error {
+	serverID = strings.TrimSpace(serverID)
+	if serverID == "" {
+		return nil
+	}
+
+	s.temporaryCredentialMu.Lock()
+	delete(s.temporaryCredentials, serverID)
+	s.temporaryCredentialMu.Unlock()
 	return nil
 }
 
 func (s *DesktopSFTPService) openClient(serverID string) (*sftp.Client, func(), error) {
+	serverID = strings.TrimSpace(serverID)
+	if serverID == "" {
+		return nil, nil, errors.New("server id is required")
+	}
+
+	s.temporaryCredentialMu.Lock()
+	credential, hasCredential := s.temporaryCredentials[serverID]
+	s.temporaryCredentialMu.Unlock()
+
+	if hasCredential {
+		return s.openClientWithCredential(serverID, &credential)
+	}
+
+	return s.openClientWithCredential(serverID, nil)
+}
+
+func (s *DesktopSFTPService) openClientWithCredential(serverID string, credential *desktopSSHCredential) (*sftp.Client, func(), error) {
 	serverID = strings.TrimSpace(serverID)
 	if serverID == "" {
 		return nil, nil, errors.New("server id is required")
@@ -527,7 +594,7 @@ func (s *DesktopSFTPService) openClient(serverID string) (*sftp.Client, func(), 
 		return nil, nil, err
 	}
 
-	authMethods, err := buildDesktopServerSSHAuthMethods(server)
+	authMethods, err := buildDesktopServerSSHAuthMethodsWithCredential(server, credential)
 	if err != nil {
 		return nil, nil, err
 	}

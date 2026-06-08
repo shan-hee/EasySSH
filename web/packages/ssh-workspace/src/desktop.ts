@@ -76,6 +76,7 @@ export type {
   WorkspaceSessionListUpdater,
   WorkspaceSessionSeed,
   WorkspaceSessionSnapshot,
+  WorkspaceSftpCredentialRequest,
   WorkspaceTerminalCredentialSaveRequest,
   WorkspaceTerminalSession,
   WorkspaceTransferHistoryItem,

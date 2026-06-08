@@ -50,7 +50,7 @@ import { getEffectiveLocale, getEffectiveTimezone } from "@/utils/datetime"
 import { useTranslation } from "react-i18next"
 import { convertSftpFileInfo, type SftpFileItem } from "@/lib/sftp-file-utils"
 import { loadSftpDirectory } from "@/lib/session/sftp-directory"
-import { createSftpSessionApi } from "@/lib/session/sftp-session-api"
+import { createSftpSessionApi, type SftpSessionApi } from "@/lib/session/sftp-session-api"
 import type { SftpWorkspaceSession } from "@/lib/session/workspace"
 import { createBrowserWorkspacePreferenceAdapter, createWorkspaceAdapters, createWorkspaceAuthTicketProviderAdapter, createWorkspaceI18nAdapter, createWorkspaceNotifierAdapter, createWorkspaceSettingsAdapter, createWorkspaceTransferAuthTicketProviderAdapter, createWorkspaceTransferManagerAdapter } from "@/lib/session/workspace-adapters"
 import { createWorkspaceTransferHistoryAdapter } from "@/lib/session/web-workspace-adapters"
@@ -59,6 +59,8 @@ import { WORKSPACE_CAPABILITY_PRESETS, createWorkspaceCapabilitiesFromRuntime, u
 import type { TerminalSession } from "@/components/terminal/types"
 import { useSessionSplitWorkspace } from "@/hooks/use-session-split-workspace"
 import { hasSplitPaneDragSession } from "@/lib/session/split-pane-drag"
+import { useTerminalAuthFlowAdapters } from "@/components/terminal/use-terminal-auth-flow-adapters"
+import { getServerAuthMethod, useSftpAuthRetry } from "@/components/sftp/use-sftp-auth-retry"
 
 type ComponentFile = SftpFileItem
 type SftpSession = SftpWorkspaceSession
@@ -123,9 +125,14 @@ export default function SftpPage() {
        showDirSizeDash: true,
      }),
    [effectiveLocale, effectiveTimezone],
- )
- const sftpSessionApi = React.useMemo(() => createSftpSessionApi(sftpApi), [])
- // 认证改为基于 HttpOnly Cookie，不再需要前端 token
+	 )
+	 const sftpSessionApi = React.useMemo(() => createSftpSessionApi(sftpApi), [])
+ const sftpAuthFlowAdapters = useTerminalAuthFlowAdapters({})
+ const { credentialDialog, runWithCredentialRetry } = useSftpAuthRetry({
+   tTerminal,
+   adapters: sftpAuthFlowAdapters,
+ })
+	 // 认证改为基于 HttpOnly Cookie，不再需要前端 token
 
  // SFTP 工作区会话状态进入 runtime store，页面只保留业务编排。
  const sessions = useSftpSessionStore((state) => state.sessions)
@@ -148,6 +155,21 @@ export default function SftpPage() {
 
  // 始终保持 ref 指向最新会话，便于稳定回调访问（避免 useEffect 的一帧滞后）
  sessionsRef.current = sessions
+
+ const runSftpWithSessionCredentialRetry = useCallback(<T,>(
+   serverId: string,
+   operation: () => Promise<T>,
+ ) => {
+   const session = sessionsRef.current.find((item) => item.serverId === serverId)
+
+   return runWithCredentialRetry({
+     serverId,
+     serverName: session?.serverName ?? serverId,
+     authMethod: session?.authMethod ?? "password",
+     api: sftpSessionApi,
+     operation,
+   })
+ }, [runWithCredentialRetry, sftpSessionApi])
 
  const workspaceAuthTicketProvider = React.useMemo(() => createWorkspaceAuthTicketProviderAdapter(createAuthTicket), [])
  const transferAuthTicketProvider = React.useMemo(
@@ -198,13 +220,24 @@ export default function SftpPage() {
    sessionController: workspaceSessionController,
    transferManager: createWorkspaceTransferManagerAdapter({
      tasks: transferTasks,
-     downloadFile: (serverId, remotePath) => {
-       sftpSessionApi.downloadFile(serverId, remotePath)
-     },
-     batchDownload: (serverId, remotePaths, mode, excludePatterns) => (
-       sftpSessionApi.batchDownload(serverId, remotePaths, mode, excludePatterns)
+     downloadFile: (serverId, remotePath) => (
+       runSftpWithSessionCredentialRetry(
+         serverId,
+         () => Promise.resolve(sftpSessionApi.downloadFile(serverId, remotePath)),
+       )
      ),
-     uploadFile,
+     batchDownload: (serverId, remotePaths, mode, excludePatterns) => (
+       runSftpWithSessionCredentialRetry(
+         serverId,
+         () => sftpSessionApi.batchDownload(serverId, remotePaths, mode, excludePatterns),
+       )
+     ),
+     uploadFile: (serverId, remotePath, file, onProgress, enableWebSocket) => (
+       runSftpWithSessionCredentialRetry(
+         serverId,
+         () => uploadFile(serverId, remotePath, file, onProgress, enableWebSocket),
+       )
+     ),
      directTransfer,
      createTransferTask: fileTransfer.createTransferTask,
      addTask: fileTransfer.addTask,
@@ -233,6 +266,7 @@ export default function SftpPage() {
    tCommon,
    tSftp,
    tTerminal,
+   runSftpWithSessionCredentialRetry,
    sftpSessionApi,
    transferTasks,
    uploadFile,
@@ -443,6 +477,59 @@ export default function SftpPage() {
    setFullscreenSessionId(prev => (prev === sessionId ? null : sessionId))
  }, [setFullscreenSessionId])
 
+	 const loadDirectoryWithCredentialRetry = useCallback(({
+   serverId,
+   serverName,
+   authMethod,
+   path,
+ }: {
+   serverId: string
+   serverName: string
+   authMethod: "password" | "key"
+   path: string
+ }) => (
+   runWithCredentialRetry({
+     serverId,
+     serverName,
+     authMethod,
+     api: sftpSessionApi,
+     operation: () => loadSftpDirectory({
+       serverId,
+       path,
+       convertFileInfo,
+       withParentEntry: true,
+       api: sftpSessionApi,
+     }),
+	   })
+	 ), [convertFileInfo, runWithCredentialRetry, sftpSessionApi])
+
+ const createSessionOperationApi = useCallback((session: SftpSession): SftpSessionApi => {
+   const run = <T,>(operation: () => Promise<T>) => runWithCredentialRetry({
+     serverId: session.serverId,
+     serverName: session.serverName,
+     authMethod: session.authMethod ?? "password",
+     api: sftpSessionApi,
+     operation,
+   })
+
+   return {
+     ...sftpSessionApi,
+     delete: (serverId, path) => run(() => sftpSessionApi.delete(serverId, path)),
+     createDirectory: (serverId, path) => run(() => sftpSessionApi.createDirectory(serverId, path)),
+     writeFile: (serverId, path, content) => run(() => sftpSessionApi.writeFile(serverId, path, content)),
+     rename: (serverId, oldPath, newPath) => run(() => sftpSessionApi.rename(serverId, oldPath, newPath)),
+     batchDelete: (serverId, paths) => run(() => sftpSessionApi.batchDelete(serverId, paths)),
+     downloadFile: (serverId, path) => run(() => Promise.resolve(sftpSessionApi.downloadFile(serverId, path))),
+     readFile: (serverId, path) => run(() => sftpSessionApi.readFile(serverId, path)),
+     batchDownload: (serverId, paths, mode, excludePatterns) => (
+       run(() => sftpSessionApi.batchDownload(serverId, paths, mode, excludePatterns))
+     ),
+     chmod: sftpSessionApi.chmod
+       ? (serverId, path, mode) => run(() => sftpSessionApi.chmod!(serverId, path, mode))
+       : undefined,
+   }
+ }, [runWithCredentialRetry, sftpSessionApi])
+
  // 处理跨会话文件拖放 - 使用直连传输 (rsync/scp)
  const handleCrossSessionDrop = useCallback(async (targetSessionId: string, dragData: CrossSessionDragData) => {
    const targetSession = sessionsRef.current.find(s => s.id === targetSessionId)
@@ -478,12 +565,11 @@ export default function SftpPage() {
 
      // 传输成功后刷新目标会话的文件列表
      try {
-       const directory = await loadSftpDirectory({
+       const directory = await loadDirectoryWithCredentialRetry({
          serverId: targetSession.serverId,
+         serverName: targetSession.serverName,
+         authMethod: targetSession.authMethod ?? "password",
          path: targetPath,
-         convertFileInfo,
-         withParentEntry: true,
-         api: sftpSessionApi,
        })
 
        setSessions(prev =>
@@ -504,10 +590,10 @@ export default function SftpPage() {
  } catch (err) {
      toast.error(getErrorMessage(err, tSftp("toastTransferFailed")))
    }
- }, [tSftp, convertFileInfo, directTransfer, setSessions, sftpSessionApi])
+	 }, [tSftp, directTransfer, loadDirectoryWithCredentialRetry, setSessions])
 
- // 快速创建并连接到服务器
- const handleQuickConnect = async (server: ApiServer) => {
+	 // 快速创建并连接到服务器
+	 const handleQuickConnect = async (server: ApiServer) => {
 
  const configTabIdToReplace = configTabIdSet.has(activeSessionId) ? activeSessionId : null
 
@@ -516,15 +602,17 @@ export default function SftpPage() {
 
  const sessionId = `session-${nextSessionId}`
  // 在SFTP页面使用根目录，在终端页面使用用户主目录
- const initialPath = "/"
- const serverDisplayName = server.name || `${server.username}@${server.host}:${server.port}`
- const newSession: SftpSession = {
- id: sessionId,
- serverId: server.id,
- serverName: serverDisplayName,
- host: server.host,
- username: server.username,
- currentPath: initialPath,
+	 const initialPath = "/"
+	 const serverDisplayName = server.name || `${server.username}@${server.host}:${server.port}`
+ const authMethod = getServerAuthMethod(server)
+	 const newSession: SftpSession = {
+	 id: sessionId,
+	 serverId: server.id,
+	 serverName: serverDisplayName,
+	 host: server.host,
+	 username: server.username,
+ authMethod,
+	 currentPath: initialPath,
  pathBackStack: [],
  pathForwardStack: [],
  files: [],
@@ -541,15 +629,14 @@ export default function SftpPage() {
  setActiveSessionId(sessionId)
  setFullscreenSessionId(null)
 
- // 连接并加载文件列表
- try {
- const directory = await loadSftpDirectory({
- serverId: server.id,
- path: initialPath,
- convertFileInfo,
- withParentEntry: true,
- api: sftpSessionApi,
- })
+	 // 连接并加载文件列表
+	 try {
+	 const directory = await loadDirectoryWithCredentialRetry({
+	 serverId: server.id,
+	 serverName: serverDisplayName,
+	 authMethod,
+	 path: initialPath,
+	 })
 
  setSessions(prev =>
  prev.map(s =>
@@ -584,13 +671,12 @@ export default function SftpPage() {
  )
 
  try {
- const directory = await loadSftpDirectory({
- serverId: session.serverId,
- path: session.currentPath,
- convertFileInfo,
- withParentEntry: true,
- api: sftpSessionApi,
- })
+	 const directory = await loadDirectoryWithCredentialRetry({
+	 serverId: session.serverId,
+	 serverName: session.serverName,
+	 authMethod: session.authMethod ?? "password",
+	 path: session.currentPath,
+	 })
 
  // 使用 startTransition 降低状态更新优先级
  startTransition(() => {
@@ -607,7 +693,7 @@ export default function SftpPage() {
  )
  toast.error(getErrorMessage(error, tSftp("toastRefreshFailed")))
  }
- }, [tSftp, convertFileInfo, setSessions, sftpSessionApi])
+	 }, [tSftp, loadDirectoryWithCredentialRetry, setSessions])
 
  // 断开连接
  const handleDisconnect = useCallback((sessionId: string) => {
@@ -715,13 +801,12 @@ export default function SftpPage() {
  )
 
  try {
- const directory = await loadSftpDirectory({
- serverId: session.serverId,
- path,
- convertFileInfo,
- withParentEntry: true,
- api: sftpSessionApi,
- })
+	 const directory = await loadDirectoryWithCredentialRetry({
+	 serverId: session.serverId,
+	 serverName: session.serverName,
+	 authMethod: session.authMethod ?? "password",
+	 path,
+	 })
 
  // 使用 startTransition 降低状态更新优先级,避免阻塞 UI
  startTransition(() => {
@@ -753,7 +838,7 @@ export default function SftpPage() {
  )
  toast.error(getErrorMessage(error, tSftp("toastLoadDirectoryFailed")))
 }
- }, [tSftp, convertFileInfo, setSessions, sftpSessionApi])
+	 }, [tSftp, loadDirectoryWithCredentialRetry, setSessions])
 
  // 回到上一次访问的目录
  const handleNavigateBack = useCallback(async (sessionId: string) => {
@@ -766,13 +851,12 @@ export default function SftpPage() {
  )
 
  try {
- const directory = await loadSftpDirectory({
- serverId: session.serverId,
- path: previousPath,
- convertFileInfo,
- withParentEntry: true,
- api: sftpSessionApi,
- })
+	 const directory = await loadDirectoryWithCredentialRetry({
+	 serverId: session.serverId,
+	 serverName: session.serverName,
+	 authMethod: session.authMethod ?? "password",
+	 path: previousPath,
+	 })
 
  startTransition(() => {
    setSessions(prev =>
@@ -801,7 +885,7 @@ export default function SftpPage() {
  )
  toast.error(getErrorMessage(error, tSftp("toastLoadDirectoryFailed")))
  }
- }, [tSftp, convertFileInfo, setSessions, sftpSessionApi])
+	 }, [tSftp, loadDirectoryWithCredentialRetry, setSessions])
 
  // 前进到下一次访问的目录
  const handleNavigateForward = useCallback(async (sessionId: string) => {
@@ -814,13 +898,12 @@ export default function SftpPage() {
  )
 
  try {
- const directory = await loadSftpDirectory({
- serverId: session.serverId,
- path: nextPath,
- convertFileInfo,
- withParentEntry: true,
- api: sftpSessionApi,
- })
+	 const directory = await loadDirectoryWithCredentialRetry({
+	 serverId: session.serverId,
+	 serverName: session.serverName,
+	 authMethod: session.authMethod ?? "password",
+	 path: nextPath,
+	 })
 
  startTransition(() => {
    setSessions(prev =>
@@ -849,7 +932,7 @@ export default function SftpPage() {
  )
  toast.error(getErrorMessage(error, tSftp("toastLoadDirectoryFailed")))
  }
- }, [tSftp, convertFileInfo, setSessions, sftpSessionApi])
+	 }, [tSftp, loadDirectoryWithCredentialRetry, setSessions])
 
  // 上传文件（接入统一上传任务 UI）
  const handleUpload = useCallback(async (
@@ -866,17 +949,23 @@ export default function SftpPage() {
 
   for (const file of files) {
      try {
-       await uploadFile(
-         session.serverId,
-         session.currentPath,
-         file,
-         onProgress
-           ? (loaded, total) => {
-               onProgress(file.name, loaded, total)
-             }
-           : undefined,
-         true // 启用 WebSocket 进度（与终端文件管理器保持一致）
-       )
+       await runWithCredentialRetry({
+         serverId: session.serverId,
+         serverName: session.serverName,
+         authMethod: session.authMethod ?? "password",
+         api: sftpSessionApi,
+         operation: () => uploadFile(
+           session.serverId,
+           session.currentPath,
+           file,
+           onProgress
+             ? (loaded, total) => {
+                 onProgress(file.name, loaded, total)
+               }
+             : undefined,
+           true // 启用 WebSocket 进度（与终端文件管理器保持一致）
+         ),
+       })
        successCount++
      } catch (error: unknown) {
        console.error(`Failed to upload ${file.name}:`, error)
@@ -893,19 +982,23 @@ export default function SftpPage() {
   if (failCount > 0) {
     toast.error(tSftp("toastUploadFailed", { count: failCount }))
   }
- }, [tSftp, uploadFile, handleRefreshSession])
+ }, [tSftp, uploadFile, handleRefreshSession, runWithCredentialRetry, sftpSessionApi])
 
  // 下载文件
- const handleDownload = useCallback((sessionId: string, fileName: string) => {
+ const handleDownload = useCallback(async (sessionId: string, fileName: string) => {
  const session = sessionsRef.current.find(s => s.id === sessionId)
  if (!session || !session.isConnected) return
 
  const filePath = `${session.currentPath}/${fileName}`.replace("//", "/")
 
- // 直接触发浏览器下载，由浏览器自带下载管理器处理
- sftpSessionApi.downloadFile(session.serverId, filePath)
- toast.success(tSftp("toastDownloadStartSingle", { file: fileName }))
- }, [tSftp, sftpSessionApi])
+ try {
+   await createSessionOperationApi(session).downloadFile(session.serverId, filePath)
+   toast.success(tSftp("toastDownloadStartSingle", { file: fileName }))
+ } catch (error: unknown) {
+   console.error("Failed to download file:", error)
+   toast.error(getErrorMessage(error, tSftp("toastDownloadFailed")))
+ }
+ }, [tSftp, createSessionOperationApi])
 
  /**
   * 创建多会话文件列表更新器
@@ -939,10 +1032,10 @@ export default function SftpPage() {
        t: tSftp,
        notifier: toast,
        setFiles: createSessionFilesUpdater(sessionId),
-       api: sftpSessionApi,
+       api: createSessionOperationApi(session),
      })
    },
-   [tSftp, createSessionFilesUpdater, sftpSessionApi]
+   [tSftp, createSessionFilesUpdater, createSessionOperationApi]
  )
 
  // 创建文件夹 (使用通用函数)
@@ -959,10 +1052,10 @@ export default function SftpPage() {
        notifier: toast,
        setFiles: createSessionFilesUpdater(sessionId),
        convertFileInfo,
-       api: sftpSessionApi,
+       api: createSessionOperationApi(session),
      })
    },
-   [tSftp, createSessionFilesUpdater, convertFileInfo, sftpSessionApi]
+   [tSftp, createSessionFilesUpdater, convertFileInfo, createSessionOperationApi]
  )
 
  // 创建文件 (使用通用函数)
@@ -979,10 +1072,10 @@ export default function SftpPage() {
        notifier: toast,
        setFiles: createSessionFilesUpdater(sessionId),
        convertFileInfo,
-       api: sftpSessionApi,
+       api: createSessionOperationApi(session),
      })
    },
-   [tSftp, createSessionFilesUpdater, convertFileInfo, sftpSessionApi]
+   [tSftp, createSessionFilesUpdater, convertFileInfo, createSessionOperationApi]
  )
 
  // 重命名 (使用通用函数)
@@ -999,10 +1092,10 @@ export default function SftpPage() {
        t: tSftp,
        notifier: toast,
        setFiles: createSessionFilesUpdater(sessionId),
-       api: sftpSessionApi,
+       api: createSessionOperationApi(session),
      })
    },
-   [tSftp, createSessionFilesUpdater, sftpSessionApi]
+   [tSftp, createSessionFilesUpdater, createSessionOperationApi]
  )
 
  // 读取文件
@@ -1015,14 +1108,14 @@ export default function SftpPage() {
  const filePath = `${session.currentPath}/${fileName}`.replace("//", "/")
 
  try {
- const content = await sftpSessionApi.readFile(session.serverId, filePath)
+ const content = await createSessionOperationApi(session).readFile(session.serverId, filePath)
  return content
  } catch (error: unknown) {
  console.error("Failed to read file:", error)
  toast.error(getErrorMessage(error, tSftp("toastReadFileFailed")))
  throw error
  }
- }, [tSftp, sftpSessionApi])
+ }, [tSftp, createSessionOperationApi])
 
  // 保存文件 (使用通用函数)
  const handleSaveFile = useCallback(
@@ -1041,10 +1134,10 @@ export default function SftpPage() {
        notifier: toast,
        setFiles: createSessionFilesUpdater(sessionId),
        convertFileInfo,
-       api: sftpSessionApi,
+       api: createSessionOperationApi(session),
      })
    },
-   [tSftp, createSessionFilesUpdater, convertFileInfo, sftpSessionApi]
+   [tSftp, createSessionFilesUpdater, convertFileInfo, createSessionOperationApi]
  )
 
  // 批量删除文件 (使用通用函数)
@@ -1062,10 +1155,10 @@ export default function SftpPage() {
        t: tSftp,
        notifier: toast,
        setFiles: createSessionFilesUpdater(sessionId),
-       api: sftpSessionApi,
+       api: createSessionOperationApi(session),
      })
    },
-   [tSftp, createSessionFilesUpdater, sftpSessionApi]
+   [tSftp, createSessionFilesUpdater, createSessionOperationApi]
  )
 
  // 批量下载文件（文件管理器固定使用推荐的快速下载方案）
@@ -1082,17 +1175,17 @@ export default function SftpPage() {
    // 构建完整路径
    const filePaths = fileNames.map(fileName =>
      `${session.currentPath}/${fileName}`.replace("//", "/")
-   )
+  )
 
   try {
-    await sftpSessionApi.batchDownload(session.serverId, filePaths, "fast", excludePatterns)
+    await createSessionOperationApi(session).batchDownload(session.serverId, filePaths, "fast", excludePatterns)
     toast.success(tSftp("toastBatchDownloadStart", { count: fileNames.length }))
   } catch (error: unknown) {
     console.error("Failed to batch download:", error)
     toast.error(getErrorMessage(error, tSftp("toastBatchDownloadFailed")))
      throw error
    }
- }, [tSftp, sftpSessionApi])
+ }, [tSftp, createSessionOperationApi])
 
  const renderSftpSessionCard = useCallback((
    session: SftpSession,
@@ -1355,6 +1448,7 @@ export default function SftpPage() {
  </div>
  </div>
  </div>
+ {credentialDialog}
  </SshWorkspace>
  )
 }

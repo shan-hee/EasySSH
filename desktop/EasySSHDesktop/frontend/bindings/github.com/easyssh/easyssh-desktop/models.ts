@@ -2521,6 +2521,9 @@ export class DesktopTerminalStartInput {
     "serverId": string;
     "cols": number;
     "rows": number;
+    "authMethod"?: DesktopServerAuthMethod;
+    "secret"?: string;
+    "privateKeyPassphrase"?: string;
 
     /** Creates a new DesktopTerminalStartInput instance. */
     constructor($$source: Partial<DesktopTerminalStartInput> = {}) {

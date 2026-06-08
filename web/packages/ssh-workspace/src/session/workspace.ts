@@ -46,6 +46,7 @@ export interface WorkspaceTerminalSession extends OptionalServerConnectionInfo {
 }
 export interface SftpWorkspaceSession extends ServerConnectionInfo {
   id: string
+  authMethod?: "password" | "key"
   currentPath: string
   pathBackStack?: string[]
   pathForwardStack?: string[]
@@ -121,6 +122,10 @@ export interface WorkspaceTerminalCredentialSaveRequest {
   serverId: string
   authMethod: "password" | "key"
   secret: string
+}
+
+export interface WorkspaceSftpCredentialRequest extends WorkspaceTerminalCredentialSaveRequest {
+  privateKeyPassphrase?: string
 }
 
 export interface WorkspaceMonitorMetrics {
@@ -296,6 +301,12 @@ export interface WorkspaceDockerApi {
 export interface SshWorkspaceApiClient {
   sftp?: {
     listDirectory: (serverId: string, path?: string) => Promise<DirectoryListResponse>
+    authenticate?: (
+      serverId: string,
+      authMethod: "password" | "key",
+      secret: string,
+      privateKeyPassphrase?: string,
+    ) => Promise<unknown>
     downloadFile?: (serverId: string, path: string) => Promise<void> | void
     uploadFile?: (
       serverId: string,

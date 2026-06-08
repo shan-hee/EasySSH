@@ -6,6 +6,8 @@ import { useOptionalSshWorkspace } from "@/components/ssh-workspace/ssh-workspac
 import { useSftpSession } from "@/hooks/useSftpSession"
 import { createWorkspaceTransferAuthTicketProviderAdapter } from "@/lib/session/workspace-adapters"
 import type { Server } from "@/lib/server-types"
+import { useTerminalAuthFlowAdapters } from "@/components/terminal/use-terminal-auth-flow-adapters"
+import { getServerAuthMethod, useSftpAuthRetry } from "@/components/sftp/use-sftp-auth-retry"
 
 export interface TerminalSftpTabContentProps {
   sessionId: string
@@ -47,6 +49,7 @@ export function TerminalSftpTabContent({
   const workspaceSftpApi = workspace?.adapters.apiClient?.sftp
   const workspaceI18n = workspace?.adapters.i18n
   const { t: tSftpFallback } = useTranslation("sftp")
+  const { t: tTerminal } = useTranslation("terminal")
   const tSftp = useCallback((key: string, params?: Record<string, string | number>) => {
     const workspaceText = workspaceI18n?.t("sftp", key, params)
     if (workspaceText && workspaceText !== key) {
@@ -90,12 +93,21 @@ export function TerminalSftpTabContent({
     workspaceSftpApi?.serverTransferUsesProgressSocket,
     workspaceSftpApi?.uploadUsesProgressSocket,
   ])
+  const effectiveAuthFlowAdapters = useTerminalAuthFlowAdapters({})
+  const { credentialDialog, runWithCredentialRetry } = useSftpAuthRetry({
+    tTerminal,
+    adapters: effectiveAuthFlowAdapters,
+  })
+  const canRetrySftpCredentials = !workspaceSftpApi || !!workspaceSftpApi.authenticate
 
   const sftp = useSftpSession(String(server.id), initialPath, {
     api: workspaceSftpApi,
     notifier,
     t: tSftp,
     fileTransferOptions,
+    serverName: server.name || `${server.username}@${server.host}:${server.port}`,
+    authMethod: getServerAuthMethod(server),
+    runWithCredentialRetry: canRetrySftpCredentials ? runWithCredentialRetry : undefined,
     initialPathBackStack,
     initialPathForwardStack,
     onHistoryChange,
@@ -164,6 +176,7 @@ export function TerminalSftpTabContent({
         onClearCompletedTransfers={sftp.clearCompletedTransfers}
         onCancelTransfer={sftp.cancelTransfer}
       />
+      {canRetrySftpCredentials && credentialDialog}
     </div>
   )
 }

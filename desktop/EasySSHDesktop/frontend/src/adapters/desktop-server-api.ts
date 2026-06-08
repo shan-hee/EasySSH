@@ -21,6 +21,8 @@ export function mapDesktopServer(server: DesktopServer): Server {
     auth_method: server.auth_method === DesktopServerAuthMethod.DesktopServerAuthKey ? "key" : "password",
     password: server.password || undefined,
     private_key: server.private_key || undefined,
+    has_password: Boolean(server.password),
+    has_private_key: Boolean(server.private_key),
     group: server.group || undefined,
     tags: server.tags || [],
     status: server.status === "online" ? "online" : "offline",

@@ -22,6 +22,8 @@ type Client struct {
 	createdAt time.Time
 }
 
+var ErrCredentialRequired = errors.New("server credential is required")
+
 type clientOptions struct {
 	keyboardInteractive  ssh.KeyboardInteractiveChallenge
 	authMethod           *server.AuthMethod
@@ -92,6 +94,9 @@ func NewClient(srv *server.Server, encryptor *crypto.Encryptor, hostKeyCallback 
 				return nil, fmt.Errorf("failed to decrypt password: %w", err)
 			}
 		}
+		if password == "" {
+			return nil, ErrCredentialRequired
+		}
 		authMethods = append(authMethods, ssh.Password(password))
 	} else {
 		privateKey := options.privateKey
@@ -101,6 +106,9 @@ func NewClient(srv *server.Server, encryptor *crypto.Encryptor, hostKeyCallback 
 			if err != nil {
 				return nil, fmt.Errorf("failed to decrypt private key: %w", err)
 			}
+		}
+		if privateKey == "" {
+			return nil, ErrCredentialRequired
 		}
 
 		signer, err := parsePrivateKey(privateKey, options.privateKeyPassphrase)

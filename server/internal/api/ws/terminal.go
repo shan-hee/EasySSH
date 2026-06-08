@@ -252,6 +252,7 @@ func isTerminalSSHAuthError(err error) bool {
 		"failed to decrypt password",
 		"failed to decrypt private key",
 		"failed to parse private key",
+		"server credential is required",
 	}
 	for _, marker := range authMarkers {
 		if strings.Contains(message, marker) {
@@ -298,6 +299,8 @@ func classifyTerminalInitError(err error) terminalErrorInfo {
 		info.Code = "private_key_decrypt_failed"
 	case strings.Contains(message, "failed to decrypt password"):
 		info.Code = "password_decrypt_failed"
+	case strings.Contains(message, "server credential is required"):
+		info.Code = "credential_required"
 	case strings.Contains(message, "unable to authenticate") ||
 		strings.Contains(message, "permission denied") ||
 		strings.Contains(message, "authentication failed"):

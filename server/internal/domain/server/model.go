@@ -72,20 +72,22 @@ func (s *Server) IsOnline() bool {
 // ToPublic 转换为公开信息（不包含密码和私钥）
 func (s *Server) ToPublic() map[string]interface{} {
 	result := map[string]interface{}{
-		"id":          s.ID,
-		"user_id":     s.UserID,
-		"name":        s.Name,
-		"host":        s.Host,
-		"port":        s.Port,
-		"username":    s.Username,
-		"auth_method": s.AuthMethod,
-		"group":       s.Group,
-		"tags":        s.Tags,
-		"status":      s.Status,
-		"description": s.Description,
-		"sort_order":  s.SortOrder,
-		"created_at":  s.CreatedAt,
-		"updated_at":  s.UpdatedAt,
+		"id":              s.ID,
+		"user_id":         s.UserID,
+		"name":            s.Name,
+		"host":            s.Host,
+		"port":            s.Port,
+		"username":        s.Username,
+		"auth_method":     s.AuthMethod,
+		"has_password":    s.Password != "",
+		"has_private_key": s.PrivateKey != "",
+		"group":           s.Group,
+		"tags":            s.Tags,
+		"status":          s.Status,
+		"description":     s.Description,
+		"sort_order":      s.SortOrder,
+		"created_at":      s.CreatedAt,
+		"updated_at":      s.UpdatedAt,
 	}
 
 	if s.LastConnected != nil {

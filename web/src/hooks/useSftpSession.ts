@@ -1,7 +1,7 @@
 
 import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
-import type { FileInfo } from '@/lib/api/sftp';
-import { useFileTransfer, type UseFileTransferOptions } from './useFileTransfer';
+import { sftpApi, type FileInfo } from '@/lib/api/sftp';
+import { useFileTransfer, type FileTransferSftpApi, type UseFileTransferOptions } from './useFileTransfer';
 import { getErrorMessage } from "@/lib/error-utils";
 import { convertSftpFileInfo, type SftpFileItem } from "@/lib/sftp-file-utils";
 import { loadSftpDirectory } from "@/lib/session/sftp-directory";
@@ -17,8 +17,18 @@ import {
 } from "@/lib/session/sftp-operations";
 import {
   createSftpSessionApi,
+  type SftpSessionApi,
   type SftpSessionApiAdapter,
 } from "@/lib/session/sftp-session-api";
+
+type SftpAuthMethod = "password" | "key";
+type SftpCredentialRetryRunner = <T>(options: {
+  serverId: string;
+  serverName: string;
+  authMethod: SftpAuthMethod;
+  api: Pick<SftpSessionApi, "authenticate">;
+  operation: () => Promise<T>;
+}) => Promise<T>;
 
 /**
  * SFTP会话状态
@@ -60,6 +70,9 @@ export interface UseSftpSessionOptions {
   fileTransferOptions?: UseFileTransferOptions;
   initialPathBackStack?: string[];
   initialPathForwardStack?: string[];
+  serverName?: string;
+  authMethod?: SftpAuthMethod;
+  runWithCredentialRetry?: SftpCredentialRetryRunner;
   onHistoryChange?: (history: {
     currentPath: string;
     pathBackStack: string[];
@@ -81,6 +94,22 @@ const defaultSessionNotifier: SftpSessionNotifier = {
   },
 };
 
+function isFileTransferSftpApi(candidate: unknown): candidate is FileTransferSftpApi {
+  if (!candidate || typeof candidate !== "object") {
+    return false;
+  }
+
+  const api = candidate as Partial<Record<keyof FileTransferSftpApi, unknown>>;
+  return (
+    typeof api.createUploadTask === "function" &&
+    typeof api.listUploadTasks === "function" &&
+    typeof api.cancelUploadTask === "function" &&
+    typeof api.uploadFile === "function" &&
+    typeof api.directTransfer === "function" &&
+    typeof api.cancelTransfer === "function"
+  );
+}
+
 /**
  * useSftpSession Hook
  * 管理SFTP会话的状态和操作
@@ -95,6 +124,9 @@ export function useSftpSession(
     fileTransferOptions,
     initialPathBackStack = [],
     initialPathForwardStack = [],
+    serverName = serverId,
+    authMethod = "password",
+    runWithCredentialRetry,
     onHistoryChange,
   }: UseSftpSessionOptions = {}
 ) {
@@ -111,7 +143,67 @@ export function useSftpSession(
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const fileTransfer = useFileTransfer(fileTransferOptions);
+  const runSftpOperation = useCallback(<T,>(operation: () => Promise<T>) => {
+    if (!runWithCredentialRetry) {
+      return operation();
+    }
+
+    return runWithCredentialRetry({
+      serverId,
+      serverName,
+      authMethod,
+      api: sessionApi,
+      operation,
+    });
+  }, [authMethod, runWithCredentialRetry, serverId, serverName, sessionApi]);
+
+  const fileTransferApi = useMemo<FileTransferSftpApi>(() => {
+    const candidateApi = fileTransferOptions?.api ?? api;
+    const baseApi = isFileTransferSftpApi(candidateApi) ? candidateApi : sftpApi;
+
+    return {
+      ...baseApi,
+      uploadFile: (targetServerId, path, file, onProgress, wsTaskId, onXhr) => (
+        runSftpOperation(() => baseApi.uploadFile(targetServerId, path, file, onProgress, wsTaskId, onXhr))
+      ),
+    };
+  }, [api, fileTransferOptions?.api, runSftpOperation]);
+
+  const effectiveFileTransferOptions = useMemo<UseFileTransferOptions>(() => ({
+    ...fileTransferOptions,
+    api: fileTransferApi,
+  }), [fileTransferApi, fileTransferOptions]);
+
+  const fileTransfer = useFileTransfer(effectiveFileTransferOptions);
+
+  const operationApi = useMemo<SftpSessionApi>(() => ({
+    ...sessionApi,
+    delete: (targetServerId, path) => runSftpOperation(() => sessionApi.delete(targetServerId, path)),
+    createDirectory: (targetServerId, path) => (
+      runSftpOperation(() => sessionApi.createDirectory(targetServerId, path))
+    ),
+    writeFile: (targetServerId, path, content) => (
+      runSftpOperation(() => sessionApi.writeFile(targetServerId, path, content))
+    ),
+    rename: (targetServerId, oldPath, newPath) => (
+      runSftpOperation(() => sessionApi.rename(targetServerId, oldPath, newPath))
+    ),
+    batchDelete: (targetServerId, paths) => (
+      runSftpOperation(() => sessionApi.batchDelete(targetServerId, paths))
+    ),
+    downloadFile: (targetServerId, path) => (
+      runSftpOperation(() => Promise.resolve(sessionApi.downloadFile(targetServerId, path)))
+    ),
+    readFile: (targetServerId, path) => runSftpOperation(() => sessionApi.readFile(targetServerId, path)),
+    batchDownload: (targetServerId, paths, mode, excludePatterns) => (
+      runSftpOperation(() => sessionApi.batchDownload(targetServerId, paths, mode, excludePatterns))
+    ),
+    chmod: sessionApi.chmod
+      ? (targetServerId, path, mode) => (
+          runSftpOperation(() => sessionApi.chmod!(targetServerId, path, mode))
+        )
+      : undefined,
+  }), [runSftpOperation, sessionApi]);
 
   /**
    * 转换后端FileInfo为前端FileItem
@@ -134,13 +226,13 @@ export function useSftpSession(
     setError(null);
 
     try {
-      const directory = await loadSftpDirectory({
+      const directory = await runSftpOperation(() => loadSftpDirectory({
         serverId,
         path,
         convertFileInfo,
         withParentEntry: false,
         api: sessionApi,
-      });
+      }));
 
       setFiles(directory.files);
       setCurrentPath(directory.path);
@@ -155,7 +247,7 @@ export function useSftpSession(
     } finally {
       setIsLoading(false);
     }
-  }, [serverId, convertFileInfo, sessionApi]);
+  }, [serverId, convertFileInfo, runSftpOperation, sessionApi]);
 
   /**
    * 导航到指定路径
@@ -267,14 +359,14 @@ export function useSftpSession(
         : `${currentPath}/${fileName}`;
 
       try {
-        await sessionApi.downloadFile(serverId, fullPath);
+        await operationApi.downloadFile(serverId, fullPath);
         sessionNotifier.success(tSftp("toastDownloadStartSingle", { file: fileName }));
       } catch (error) {
         console.error('[useSftpSession] 下载失败:', error);
         sessionNotifier.error(getErrorMessage(error, tSftp("toastDownloadFailed")));
       }
     },
-    [serverId, currentPath, files, sessionApi, sessionNotifier, tSftp]
+    [serverId, currentPath, files, operationApi, sessionNotifier, tSftp]
   );
 
   /**
@@ -288,9 +380,9 @@ export function useSftpSession(
       t: tSftp,
       notifier: sessionNotifier,
       setFiles,
-      api: sessionApi,
+      api: operationApi,
     }),
-    [serverId, currentPath, sessionApi, sessionNotifier, tSftp]
+    [serverId, currentPath, operationApi, sessionNotifier, tSftp]
   );
 
   /**
@@ -305,9 +397,9 @@ export function useSftpSession(
       notifier: sessionNotifier,
       setFiles,
       convertFileInfo,
-      api: sessionApi,
+      api: operationApi,
     }),
-    [serverId, currentPath, convertFileInfo, sessionApi, sessionNotifier, tSftp]
+    [serverId, currentPath, convertFileInfo, operationApi, sessionNotifier, tSftp]
   );
 
   /**
@@ -322,9 +414,9 @@ export function useSftpSession(
       notifier: sessionNotifier,
       setFiles,
       convertFileInfo,
-      api: sessionApi,
+      api: operationApi,
     }),
-    [serverId, currentPath, convertFileInfo, sessionApi, sessionNotifier, tSftp]
+    [serverId, currentPath, convertFileInfo, operationApi, sessionNotifier, tSftp]
   );
 
   /**
@@ -339,9 +431,9 @@ export function useSftpSession(
       t: tSftp,
       notifier: sessionNotifier,
       setFiles,
-      api: sessionApi,
+      api: operationApi,
     }),
-    [serverId, currentPath, sessionApi, sessionNotifier, tSftp]
+    [serverId, currentPath, operationApi, sessionNotifier, tSftp]
   );
 
   /**
@@ -354,7 +446,7 @@ export function useSftpSession(
           ? `${currentPath}${fileName}`
           : `${currentPath}/${fileName}`;
 
-        const content = await sessionApi.readFile(serverId, fullPath);
+        const content = await operationApi.readFile(serverId, fullPath);
 
         return content;
       } catch (error) {
@@ -363,7 +455,7 @@ export function useSftpSession(
         throw error;
       }
     },
-    [serverId, currentPath, sessionApi, sessionNotifier, tSftp]
+    [serverId, currentPath, operationApi, sessionNotifier, tSftp]
   );
 
   /**
@@ -379,9 +471,9 @@ export function useSftpSession(
       notifier: sessionNotifier,
       setFiles,
       convertFileInfo,
-      api: sessionApi,
+      api: operationApi,
     }),
-    [serverId, currentPath, convertFileInfo, sessionApi, sessionNotifier, tSftp]
+    [serverId, currentPath, convertFileInfo, operationApi, sessionNotifier, tSftp]
   );
 
   /**
@@ -395,9 +487,9 @@ export function useSftpSession(
       t: tSftp,
       notifier: sessionNotifier,
       setFiles,
-      api: sessionApi,
+      api: operationApi,
     }),
-    [serverId, currentPath, sessionApi, sessionNotifier, tSftp]
+    [serverId, currentPath, operationApi, sessionNotifier, tSftp]
   );
 
   /**
@@ -414,7 +506,7 @@ export function useSftpSession(
         );
 
         // 直接调用 API 的批量下载，内部使用浏览器下载机制
-        await sessionApi.batchDownload(serverId, fullPaths, "fast", excludePatterns);
+        await operationApi.batchDownload(serverId, fullPaths, "fast", excludePatterns);
         sessionNotifier.success(
           tSftp("toastBatchDownloadStart", { count: fileNames.length })
         );
@@ -424,7 +516,7 @@ export function useSftpSession(
         throw error;
       }
     },
-    [serverId, currentPath, sessionApi, sessionNotifier, tSftp]
+    [serverId, currentPath, operationApi, sessionNotifier, tSftp]
   );
 
   // 初始加载。initialPath 只作为挂载/切换服务器时的初值，避免父级同步当前路径时清空历史栈。

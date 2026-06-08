@@ -646,6 +646,7 @@ func main() {
 			sftpRoutes.GET("/list", middleware.RequirePermission(permissionService, "file:view"), sftpHandler.ListDirectory)      // 列出目录
 			sftpRoutes.GET("/stat", middleware.RequirePermission(permissionService, "file:view"), sftpHandler.GetFileInfo)        // 文件信息
 			sftpRoutes.GET("/disk-usage", middleware.RequirePermission(permissionService, "file:view"), sftpHandler.GetDiskUsage) // 磁盘使用
+			sftpRoutes.POST("/auth", middleware.RequirePermission(permissionService, "file:view"), sftpHandler.Authenticate)      // 使用临时凭据建立 SFTP 连接
 
 			// 文件传输
 			sftpRoutes.POST("/upload", middleware.RequirePermission(permissionService, "file:manage"), sftpHandler.UploadFile)              // 旧版上传文件（保留兼容，不再由前端默认接入）

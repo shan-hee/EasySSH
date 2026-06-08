@@ -12,6 +12,8 @@ export interface Server {
   auth_method: AuthMethod
   password?: string
   private_key?: string
+  has_password?: boolean
+  has_private_key?: boolean
   group?: string
   tags?: string[]
   status: ServerStatus

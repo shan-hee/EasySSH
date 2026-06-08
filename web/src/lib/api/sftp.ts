@@ -73,6 +73,27 @@ export const sftpApi = {
   },
 
   /**
+   * 使用临时凭据建立 SFTP 连接，不保存凭据。
+   */
+  async authenticate(
+    serverId: string,
+    authMethod: "password" | "key",
+    secret: string,
+    privateKeyPassphrase?: string
+  ): Promise<void> {
+    await apiFetch<void>(`/sftp/${serverId}/auth`, {
+      method: "POST",
+      body: {
+        auth_method: authMethod,
+        secret,
+        private_key_passphrase: privateKeyPassphrase || undefined,
+      },
+      retry: false,
+      timeout: 30000,
+    })
+  },
+
+  /**
    * 获取文件信息
    */
   async getFileInfo(serverId: string, path: string): Promise<FileInfo> {

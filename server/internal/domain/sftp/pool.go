@@ -27,6 +27,13 @@ type PooledClient struct {
 	releaseOnce    sync.Once
 }
 
+// Credential 是一次性 SFTP 建连凭据，只用于当前连接池建连，不负责持久化。
+type Credential struct {
+	AuthMethod           server.AuthMethod
+	Secret               string
+	PrivateKeyPassphrase string
+}
+
 // Release 释放本次 SFTP 会话，并归还 SSH 引用
 func (pc *PooledClient) Release() {
 	pc.releaseOnce.Do(func() {
@@ -226,6 +233,34 @@ func makeKey(userID, serverID uuid.UUID) string {
 
 // Get 获取一次 SFTP 会话（底层 SSH 复用），并限制每条 SSH 的并发 SFTP 会话数
 func (p *Pool) Get(ctx context.Context, userID, serverID uuid.UUID) (client *PooledClient, err error) {
+	return p.get(ctx, userID, serverID)
+}
+
+// GetWithCredential 使用临时凭据获取一次 SFTP 会话。凭据只用于创建新的底层 SSH 连接。
+func (p *Pool) GetWithCredential(ctx context.Context, userID, serverID uuid.UUID, credential Credential) (client *PooledClient, err error) {
+	if credential.AuthMethod != server.AuthMethodPassword && credential.AuthMethod != server.AuthMethodKey {
+		return nil, fmt.Errorf("unsupported auth method: %s", credential.AuthMethod)
+	}
+	if credential.AuthMethod == server.AuthMethodPassword && credential.Secret == "" {
+		return nil, sshDomain.ErrCredentialRequired
+	}
+
+	opts := []sshDomain.ClientOption{}
+	if credential.AuthMethod == server.AuthMethodKey {
+		if credential.Secret != "" {
+			opts = append(opts, sshDomain.WithPrivateKeyAuth(credential.Secret))
+		}
+	} else {
+		opts = append(opts, sshDomain.WithPasswordAuth(credential.Secret))
+	}
+	if credential.PrivateKeyPassphrase != "" {
+		opts = append(opts, sshDomain.WithPrivateKeyPassphrase(credential.PrivateKeyPassphrase))
+	}
+
+	return p.get(ctx, userID, serverID, opts...)
+}
+
+func (p *Pool) get(ctx context.Context, userID, serverID uuid.UUID, opts ...sshDomain.ClientOption) (client *PooledClient, err error) {
 	key := makeKey(userID, serverID)
 
 	if ctx == nil {
@@ -258,7 +293,7 @@ func (p *Pool) Get(ctx context.Context, userID, serverID uuid.UUID) (client *Poo
 				logger.Err(createErr))
 			p.invalidateSSHConn(key, sshConn)
 
-			newSSH, newErr := p.createNewSSH(ctx, userID, serverID)
+			newSSH, newErr := p.createNewSSH(ctx, userID, serverID, opts...)
 			if newErr != nil {
 				err = createErr
 				return nil, err
@@ -309,7 +344,7 @@ func (p *Pool) Get(ctx context.Context, userID, serverID uuid.UUID) (client *Poo
 	}
 
 	// 创建新 SSH 连接
-	newSSH, err := p.createNewSSH(ctx, userID, serverID)
+	newSSH, err := p.createNewSSH(ctx, userID, serverID, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -333,7 +368,7 @@ func (p *Pool) Get(ctx context.Context, userID, serverID uuid.UUID) (client *Poo
 }
 
 // createNewSSH 创建新的 SSH 连接并加入池
-func (p *Pool) createNewSSH(ctx context.Context, userID, serverID uuid.UUID) (*pooledSSHConn, error) {
+func (p *Pool) createNewSSH(ctx context.Context, userID, serverID uuid.UUID, opts ...sshDomain.ClientOption) (*pooledSSHConn, error) {
 	key := makeKey(userID, serverID)
 
 	// 双重检查（持有写锁）
@@ -367,7 +402,7 @@ func (p *Pool) createNewSSH(ctx context.Context, userID, serverID uuid.UUID) (*p
 	}
 
 	// 创建 SSH 客户端并使用 ctx 建连（可取消）
-	sshClient, err := sshDomain.NewClient(srv, p.encryptor, p.hostKeyCallback)
+	sshClient, err := sshDomain.NewClient(srv, p.encryptor, p.hostKeyCallback, opts...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create SSH client: %w", err)
 	}

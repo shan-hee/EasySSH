@@ -3,6 +3,7 @@ import type { TerminalWebSocketConstructor } from "@easyssh/ssh-workspace/deskto
 import {
   ActivityLogService,
   DesktopActivityLogStatus,
+  DesktopServerService,
   DesktopTerminalService,
 } from "../../bindings/github.com/easyssh/easyssh-desktop"
 
@@ -17,6 +18,14 @@ interface DesktopTerminalOutputPayload {
 interface DesktopTerminalClosedPayload {
   clientId?: string
   reason?: string
+}
+
+type DesktopAuthMethod = "password" | "key"
+
+interface DesktopTerminalCredential {
+  authMethod: DesktopAuthMethod
+  secret: string
+  privateKeyPassphrase?: string
 }
 
 const getDesktopEventData = (event: unknown) => {
@@ -51,6 +60,39 @@ const createDesktopTerminalClientId = () => {
   return `desktop-terminal-${Date.now()}-${Math.random().toString(36).slice(2)}`
 }
 
+const desktopTerminalAuthMaxAttempts = 3
+
+const getDesktopTerminalAuthMethod = (value?: string): DesktopAuthMethod => (
+  value === "key" ? "key" : "password"
+)
+
+const getDesktopTerminalAuthErrorCode = (error: unknown) => {
+  const message = getDesktopErrorMessage(error).toLowerCase()
+  if (message.includes("private_key_passphrase_required")) return "private_key_passphrase_required"
+  if (message.includes("private_key_passphrase_invalid")) return "private_key_passphrase_invalid"
+  if (message.includes("server credential is required")) return "credential_required"
+  if (
+    message.includes("unable to authenticate") ||
+    message.includes("permission denied") ||
+    message.includes("authentication failed") ||
+    message.includes("no supported methods remain")
+  ) {
+    return "auth_failed"
+  }
+  if (message.includes("failed to parse private key")) return "private_key_invalid"
+  return "initialization_failed"
+}
+
+const isDesktopTerminalAuthRetryable = (error: unknown) => {
+  const code = getDesktopTerminalAuthErrorCode(error)
+  return code === "credential_required" || code === "auth_failed"
+}
+
+const isDesktopTerminalPassphraseError = (error: unknown) => {
+  const code = getDesktopTerminalAuthErrorCode(error)
+  return code === "private_key_passphrase_required" || code === "private_key_passphrase_invalid"
+}
+
 export function createDesktopTerminalSocket(): TerminalWebSocketConstructor {
   return class DesktopTerminalSocket extends EventTarget {
     static readonly CONNECTING = 0
@@ -82,6 +124,10 @@ export function createDesktopTerminalSocket(): TerminalWebSocketConstructor {
     private sshLatency: { sshLatencyMs?: number; sshLatencyMeasuredAt?: number } = {}
     private readonly disposeOutput: () => void
     private readonly disposeClosed: () => void
+    private pendingAuthPrompt: {
+      requestId: string
+      resolve: (credential: DesktopTerminalCredential | null) => void
+    } | null = null
 
     constructor(url: string | URL) {
       super()
@@ -122,6 +168,10 @@ export function createDesktopTerminalSocket(): TerminalWebSocketConstructor {
       if (this.readyState === DesktopTerminalSocket.CLOSED) return
       this.destroyed = true
       this.readyState = DesktopTerminalSocket.CLOSED
+      if (this.pendingAuthPrompt) {
+        this.pendingAuthPrompt.resolve(null)
+        this.pendingAuthPrompt = null
+      }
       this.disposeOutput()
       this.disposeClosed()
       void DesktopTerminalService.Close({ clientId: this.clientId }).catch(() => {})
@@ -182,9 +232,187 @@ export function createDesktopTerminalSocket(): TerminalWebSocketConstructor {
         if (message.type === "completion_update") {
           return
         }
+        if (message.type === "auth_response") {
+          const data = message.data && typeof message.data === "object"
+            ? message.data as {
+              request_id?: string
+              answers?: string[]
+              cancelled?: boolean
+              auth_method?: DesktopAuthMethod
+            }
+            : {}
+          if (this.pendingAuthPrompt && data.request_id === this.pendingAuthPrompt.requestId) {
+            const pending = this.pendingAuthPrompt
+            this.pendingAuthPrompt = null
+            if (data.cancelled) {
+              pending.resolve(null)
+            } else {
+              pending.resolve({
+                authMethod: getDesktopTerminalAuthMethod(data.auth_method),
+                secret: data.answers?.[0] ?? "",
+              })
+            }
+          }
+          return
+        }
       } catch {
         // Ignore non-control strings.
       }
+    }
+
+    private requestCredential(serverName: string, authMethod: DesktopAuthMethod, attempt: number) {
+      const requestId = `desktop-terminal-credential-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+
+      return new Promise<DesktopTerminalCredential | null>((resolve) => {
+        this.pendingAuthPrompt = {
+          requestId,
+          resolve,
+        }
+        this.emitControl("auth_prompt", {
+          request_id: requestId,
+          kind: "credential_retry",
+          prompts: [{
+            text: authMethod === "key" ? "Private key" : "Password",
+            echo: false,
+          }],
+          auth_method: authMethod,
+          attempt,
+          max_attempts: desktopTerminalAuthMaxAttempts,
+          attempts_remaining: desktopTerminalAuthMaxAttempts - attempt,
+          name: serverName,
+        })
+      })
+    }
+
+    private requestPrivateKeyPassphrase(serverName: string, attempt: number) {
+      const requestId = `desktop-terminal-passphrase-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+
+      return new Promise<string | null>((resolve) => {
+        this.pendingAuthPrompt = {
+          requestId,
+          resolve: (credential) => resolve(credential?.secret ?? null),
+        }
+        this.emitControl("auth_prompt", {
+          request_id: requestId,
+          kind: "private_key_passphrase",
+          prompts: [{
+            text: "Private key passphrase",
+            echo: false,
+          }],
+          auth_method: "key",
+          attempt,
+          max_attempts: desktopTerminalAuthMaxAttempts,
+          attempts_remaining: desktopTerminalAuthMaxAttempts - attempt,
+          name: serverName,
+        })
+      })
+    }
+
+    private async startDesktopTerminal(credential?: DesktopTerminalCredential | null) {
+      await DesktopTerminalService.Start({
+        clientId: this.clientId,
+        serverId: this.serverId,
+        cols: this.cols,
+        rows: this.rows,
+        authMethod: credential?.authMethod,
+        secret: credential?.secret,
+        privateKeyPassphrase: credential?.privateKeyPassphrase,
+      })
+    }
+
+    private async connectWithCredentialRetry() {
+      const server = await DesktopServerService.GetById(this.serverId)
+      const serverName = server.name || `${server.username}@${server.host}:${server.port}`
+      const initialAuthMethod = getDesktopTerminalAuthMethod(server.auth_method)
+
+      try {
+        await this.startDesktopTerminal()
+        return true
+      } catch (error) {
+        if (initialAuthMethod === "key" && isDesktopTerminalPassphraseError(error)) {
+          let lastError = error
+
+          for (let attempt = 1; attempt <= desktopTerminalAuthMaxAttempts; attempt += 1) {
+            const passphrase = await this.requestPrivateKeyPassphrase(serverName, attempt)
+            if (passphrase === null || this.destroyed) {
+              this.close(1000, "authentication cancelled")
+              return false
+            }
+
+            try {
+              await this.startDesktopTerminal({
+                authMethod: "key",
+                secret: "",
+                privateKeyPassphrase: passphrase,
+              })
+              return true
+            } catch (nextError) {
+              lastError = nextError
+              if (!isDesktopTerminalPassphraseError(nextError)) {
+                throw nextError
+              }
+            }
+          }
+
+          throw lastError
+        }
+
+        if (!isDesktopTerminalAuthRetryable(error)) {
+          throw error
+        }
+      }
+
+      let nextAuthMethod = initialAuthMethod
+      let lastError: unknown = null
+
+      for (let attempt = 1; attempt <= desktopTerminalAuthMaxAttempts; attempt += 1) {
+        const credential = await this.requestCredential(serverName, nextAuthMethod, attempt)
+        if (!credential || this.destroyed) {
+          this.close(1000, "authentication cancelled")
+          return false
+        }
+        nextAuthMethod = credential.authMethod
+
+        try {
+          await this.startDesktopTerminal(credential)
+          return true
+        } catch (error) {
+          if (credential.authMethod === "key" && isDesktopTerminalPassphraseError(error)) {
+            let passphraseError = error
+
+            for (let passphraseAttempt = 1; passphraseAttempt <= desktopTerminalAuthMaxAttempts; passphraseAttempt += 1) {
+              const passphrase = await this.requestPrivateKeyPassphrase(serverName, passphraseAttempt)
+              if (passphrase === null || this.destroyed) {
+                this.close(1000, "authentication cancelled")
+                return false
+              }
+
+              try {
+                await this.startDesktopTerminal({
+                  ...credential,
+                  privateKeyPassphrase: passphrase,
+                })
+                return true
+              } catch (nextPassphraseError) {
+                passphraseError = nextPassphraseError
+                if (!isDesktopTerminalPassphraseError(nextPassphraseError)) {
+                  throw nextPassphraseError
+                }
+              }
+            }
+
+            lastError = passphraseError
+            throw lastError
+          }
+
+          lastError = error
+          if (!isDesktopTerminalAuthRetryable(error)) {
+            throw error
+          }
+        }
+      }
+
+      throw lastError ?? new Error("authentication failed")
     }
 
     private async refreshSshLatency() {
@@ -214,12 +442,8 @@ export function createDesktopTerminalSocket(): TerminalWebSocketConstructor {
       this.emitControl("handshake_complete")
 
       try {
-        await DesktopTerminalService.Start({
-          clientId: this.clientId,
-          serverId: this.serverId,
-          cols: this.cols,
-          rows: this.rows,
-        })
+        const connected = await this.connectWithCredentialRetry()
+        if (!connected) return
 
         if (this.destroyed) return
 
@@ -233,8 +457,9 @@ export function createDesktopTerminalSocket(): TerminalWebSocketConstructor {
         }).catch((error) => console.error("Failed to record desktop terminal activity:", error))
       } catch (error) {
         const message = getDesktopErrorMessage(error)
+        const errorCode = getDesktopTerminalAuthErrorCode(error)
         this.emitControl("error", {
-          error: "initialization_failed",
+          error: errorCode,
           message,
         })
         void ActivityLogService.Record({
