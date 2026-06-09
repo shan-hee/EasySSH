@@ -3,9 +3,14 @@ import { isApiError } from "@/lib/api-client"
 import type { Server } from "@/lib/server-types"
 import type { SftpSessionApi } from "@/lib/session/sftp-session-api"
 import type { DirectTransferOptions, DirectTransferResponse, SftpTransferCredential } from "@/lib/sftp-types"
-import type { TerminalAuthMethod, TerminalAuthPrompt } from "@/lib/websocket-terminal"
+import type { TerminalAuthMethod, TerminalAuthPrompt, TerminalAuthResponsePayload } from "@/lib/websocket-terminal"
 import { TerminalAuthChallengeDialog } from "@/components/terminal/terminal-auth-challenge-dialog"
 import type { TerminalAuthFlowAdapters } from "@/components/terminal/use-terminal-auth-flow"
+import {
+  authMethodCredentialFields,
+  normalizeSSHAuthMethod,
+  requiresPrivateKey,
+} from "@/lib/ssh-auth-methods"
 
 type TerminalTranslator = (key: string, params?: Record<string, string | number>) => string
 
@@ -14,7 +19,7 @@ type CredentialPromptState =
       mode: "credential"
       serverName: string
       prompt: TerminalAuthPrompt
-      resolve: (credential: { authMethod: TerminalAuthMethod; secret: string }) => void
+      resolve: (credential: SftpCredentialInput) => void
       reject: (error: Error) => void
     }
   | {
@@ -24,12 +29,32 @@ type CredentialPromptState =
       resolve: (passphrase: string) => void
       reject: (error: Error) => void
     }
+  | {
+      mode: "interactive"
+      serverName: string
+      prompt: TerminalAuthPrompt
+      resolve: (response: SftpInteractiveAuthResponse) => void
+      reject: (error: Error) => void
+    }
+
+type SftpCredentialInput = {
+  authMethod: TerminalAuthMethod
+  secret?: string
+  password?: string
+  privateKey?: string
+  privateKeyPassphrase?: string
+}
+
+type SftpInteractiveAuthResponse = {
+  response: string[] | TerminalAuthResponsePayload
+  authMethod?: TerminalAuthMethod
+}
 
 export interface RunSftpCredentialRetryOptions<T> {
   serverId: string
   serverName: string
   authMethod: TerminalAuthMethod
-  api: Pick<SftpSessionApi, "authenticate">
+  api: Pick<SftpSessionApi, "authenticate" | "preAuthenticate">
   operation: () => Promise<T>
 }
 
@@ -73,6 +98,7 @@ export function isSftpCredentialRequiredError(error: unknown) {
       message.includes("authentication failed") ||
       message.includes("no supported methods remain") ||
       message.includes("failed to parse private key") ||
+      message.includes("keyboard_interactive_required") ||
       message.includes("failed to decrypt password") ||
       message.includes("failed to decrypt private key")
     )
@@ -142,18 +168,22 @@ function isSftpPrivateKeyPassphraseError(error: unknown) {
 
 function toSftpTransferCredential(credential: {
   authMethod: TerminalAuthMethod
-  secret: string
+  secret?: string
+  password?: string
+  privateKey?: string
   privateKeyPassphrase?: string
 }): SftpTransferCredential {
   return {
     auth_method: credential.authMethod,
     secret: credential.secret,
+    password: credential.password,
+    private_key: credential.privateKey,
     private_key_passphrase: credential.privateKeyPassphrase,
   }
 }
 
 export function getServerAuthMethod(server: Pick<Server, "auth_method">): TerminalAuthMethod {
-  return server.auth_method === "key" ? "key" : "password"
+  return normalizeSSHAuthMethod(server.auth_method)
 }
 
 const SFTP_CREDENTIAL_MAX_ATTEMPTS = 3
@@ -165,7 +195,14 @@ export function useSftpAuthRetry({
   const [credentialPrompt, setCredentialPrompt] = useState<CredentialPromptState | null>(null)
 
   const requestCredential = useCallback((serverName: string, authMethod: TerminalAuthMethod, attempt: number) => (
-    new Promise<{ authMethod: TerminalAuthMethod; secret: string }>((resolve, reject) => {
+    new Promise<SftpCredentialInput>((resolve, reject) => {
+      const prompts = authMethodCredentialFields(authMethod).map((field) => ({
+        text: field === "key"
+          ? tTerminal("authRetryPrivateKeyLabel")
+          : tTerminal("authRetryPasswordLabel"),
+        echo: false,
+      }))
+
       setCredentialPrompt({
         mode: "credential",
         serverName,
@@ -174,12 +211,7 @@ export function useSftpAuthRetry({
         prompt: {
           request_id: `sftp-credential-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
           kind: "credential_retry",
-          prompts: [{
-            text: authMethod === "key"
-              ? tTerminal("authRetryPrivateKeyLabel")
-              : tTerminal("authRetryPasswordLabel"),
-            echo: false,
-          }],
+          prompts,
           auth_method: authMethod,
           attempt,
           max_attempts: SFTP_CREDENTIAL_MAX_ATTEMPTS,
@@ -188,6 +220,18 @@ export function useSftpAuthRetry({
       })
     })
   ), [tTerminal])
+
+  const requestInteractiveResponse = useCallback((serverName: string, prompt: TerminalAuthPrompt) => (
+    new Promise<SftpInteractiveAuthResponse>((resolve, reject) => {
+      setCredentialPrompt({
+        mode: "interactive",
+        serverName,
+        prompt,
+        resolve,
+        reject,
+      })
+    })
+  ), [])
 
   const requestPrivateKeyPassphrase = useCallback((serverName: string, attempt: number) => (
     new Promise<string>((resolve, reject) => {
@@ -212,27 +256,37 @@ export function useSftpAuthRetry({
     })
   ), [tTerminal])
 
-  const promptCredentialSave = useCallback((
-    serverId: string,
-    serverName: string,
-    authMethod: TerminalAuthMethod,
-    secret: string,
-  ) => {
-    if (!adapters?.requestCredentialSave || !adapters.saveCredential) {
-      return
-    }
+    const promptCredentialSave = useCallback((
+      serverId: string,
+      serverName: string,
+      authMethod: TerminalAuthMethod,
+      secret: string,
+      options?: {
+        password?: string
+        privateKey?: string
+      },
+    ) => {
+      if (!adapters?.requestCredentialSave || !adapters.saveCredential) {
+        return
+      }
+      const saveSecret = secret || options?.password || options?.privateKey
+      if (!saveSecret) {
+        return
+      }
 
-    adapters.requestCredentialSave({
-      title: tTerminal("authRetrySavePrompt"),
-      description: tTerminal("authRetrySaveDescription", { server: serverName }),
-      actionLabel: tTerminal("authRetrySaveAction"),
-      onConfirm: () => {
-        void adapters.saveCredential?.({
-          serverId,
-          authMethod,
-          secret,
-        }).then(() => {
-          adapters.notifySuccess?.(tTerminal("authRetrySaveSuccess"))
+      adapters.requestCredentialSave({
+        title: tTerminal("authRetrySavePrompt"),
+        description: tTerminal("authRetrySaveDescription", { server: serverName }),
+        actionLabel: tTerminal("authRetrySaveAction"),
+        onConfirm: () => {
+          void adapters.saveCredential?.({
+            serverId,
+            authMethod,
+            secret: saveSecret,
+            password: options?.password,
+            privateKey: options?.privateKey,
+          }).then(() => {
+            adapters.notifySuccess?.(tTerminal("authRetrySaveSuccess"))
         }).catch((error) => {
           console.error("[SFTP] 保存补充凭据失败:", error)
           adapters.notifyError?.(tTerminal("authRetrySaveFailed"))
@@ -240,6 +294,46 @@ export function useSftpAuthRetry({
       },
     })
   }, [adapters, tTerminal])
+
+  const authenticateForSftp = useCallback(async (
+    api: Pick<SftpSessionApi, "authenticate" | "preAuthenticate">,
+    serverId: string,
+    serverName: string,
+    credential: SftpCredentialInput,
+  ) => {
+    if (api.preAuthenticate) {
+      await api.preAuthenticate(serverId, {
+        authMethod: credential.authMethod,
+        password: credential.password,
+        privateKey: credential.privateKey,
+        secret: credential.secret,
+        privateKeyPassphrase: credential.privateKeyPassphrase,
+      }, async (prompt, respond) => {
+        try {
+          const { response, authMethod } = await requestInteractiveResponse(serverName, prompt)
+          respond(response, false, authMethod)
+        } catch {
+          respond([], true)
+        }
+      })
+      return
+    }
+
+    if (!api.authenticate) {
+      throw new Error("sftp authentication is not available")
+    }
+
+    await api.authenticate(
+      serverId,
+      credential.authMethod,
+      credential.secret ?? "",
+      credential.privateKeyPassphrase,
+      {
+        password: credential.password,
+        privateKey: credential.privateKey,
+      },
+    )
+  }, [requestInteractiveResponse])
 
   const runWithCredentialRetry = useCallback(async <T,>({
     serverId,
@@ -251,22 +345,25 @@ export function useSftpAuthRetry({
     try {
       return await operation()
     } catch (error) {
-      if (!api.authenticate) {
+      if (!api.authenticate && !api.preAuthenticate) {
         throw error
       }
 
-      if (authMethod === "key" && isSftpPrivateKeyPassphraseError(error)) {
+      if (requiresPrivateKey(authMethod) && isSftpPrivateKeyPassphraseError(error)) {
         let passphraseError = error
 
         for (let passphraseAttempt = 1; passphraseAttempt <= SFTP_CREDENTIAL_MAX_ATTEMPTS; passphraseAttempt++) {
           const passphrase = await requestPrivateKeyPassphrase(serverName, passphraseAttempt)
 
           try {
-            await api.authenticate(
+            await authenticateForSftp(
+              api,
               serverId,
-              "key",
-              "",
-              passphrase,
+              serverName,
+              {
+                authMethod,
+                privateKeyPassphrase: passphrase,
+              },
             )
 
             return await operation()
@@ -288,37 +385,98 @@ export function useSftpAuthRetry({
       let nextAuthMethod = authMethod
       let lastError = error
 
+      if (api.preAuthenticate) {
+        try {
+          await authenticateForSftp(
+            api,
+            serverId,
+            serverName,
+            { authMethod: nextAuthMethod },
+          )
+          return await operation()
+        } catch (preAuthError) {
+          if (requiresPrivateKey(nextAuthMethod) && isSftpPrivateKeyPassphraseError(preAuthError)) {
+            lastError = preAuthError
+            for (let passphraseAttempt = 1; passphraseAttempt <= SFTP_CREDENTIAL_MAX_ATTEMPTS; passphraseAttempt++) {
+              const passphrase = await requestPrivateKeyPassphrase(serverName, passphraseAttempt)
+
+              try {
+                await authenticateForSftp(
+                  api,
+                  serverId,
+                  serverName,
+                  {
+                    authMethod: nextAuthMethod,
+                    privateKeyPassphrase: passphrase,
+                  },
+                )
+                return await operation()
+              } catch (nextPassphraseError) {
+                lastError = nextPassphraseError
+                if (!isSftpPrivateKeyPassphraseError(nextPassphraseError)) {
+                  throw nextPassphraseError
+                }
+              }
+            }
+
+            throw lastError
+          }
+
+          lastError = preAuthError
+          if (!isSftpCredentialRequiredError(preAuthError)) {
+            throw preAuthError
+          }
+        }
+      }
+
       for (let attempt = 1; attempt <= SFTP_CREDENTIAL_MAX_ATTEMPTS; attempt++) {
         const credential = await requestCredential(serverName, nextAuthMethod, attempt)
         nextAuthMethod = credential.authMethod
 
         try {
-          await api.authenticate(
-            serverId,
-            credential.authMethod,
-            credential.secret,
-          )
+          await authenticateForSftp(api, serverId, serverName, credential)
 
           const result = await operation()
-          promptCredentialSave(serverId, serverName, credential.authMethod, credential.secret)
+          promptCredentialSave(
+            serverId,
+            serverName,
+            credential.authMethod,
+            credential.secret ?? credential.password ?? credential.privateKey ?? "",
+            {
+              password: credential.password,
+              privateKey: credential.privateKey,
+            },
+          )
           return result
         } catch (retryError) {
-          if (credential.authMethod === "key" && isSftpPrivateKeyPassphraseError(retryError)) {
+          if (requiresPrivateKey(credential.authMethod) && isSftpPrivateKeyPassphraseError(retryError)) {
             let passphraseError = retryError
 
             for (let passphraseAttempt = 1; passphraseAttempt <= SFTP_CREDENTIAL_MAX_ATTEMPTS; passphraseAttempt++) {
               const passphrase = await requestPrivateKeyPassphrase(serverName, passphraseAttempt)
 
               try {
-                await api.authenticate(
+                await authenticateForSftp(
+                  api,
                   serverId,
-                  credential.authMethod,
-                  credential.secret,
-                  passphrase,
+                  serverName,
+                  {
+                    ...credential,
+                    privateKeyPassphrase: passphrase,
+                  },
                 )
 
                 const result = await operation()
-                promptCredentialSave(serverId, serverName, credential.authMethod, credential.secret)
+                promptCredentialSave(
+                  serverId,
+                  serverName,
+                  credential.authMethod,
+                  credential.secret ?? credential.password ?? credential.privateKey ?? "",
+                  {
+                    password: credential.password,
+                    privateKey: credential.privateKey,
+                  },
+                )
                 return result
               } catch (nextPassphraseError) {
                 passphraseError = nextPassphraseError
@@ -341,7 +499,7 @@ export function useSftpAuthRetry({
 
       throw lastError
     }
-  }, [promptCredentialSave, requestCredential, requestPrivateKeyPassphrase])
+  }, [authenticateForSftp, promptCredentialSave, requestCredential, requestPrivateKeyPassphrase])
 
   const runDirectTransferWithCredentialRetry = useCallback(async ({
     sourceServerId,
@@ -376,21 +534,30 @@ export function useSftpAuthRetry({
     const successfulCredentials: Partial<Record<"source" | "target", {
       authMethod: TerminalAuthMethod
       secret: string
+      password?: string
+      privateKey?: string
     }>> = {}
     let lastError: unknown = null
 
     const setCredential = (
       side: "source" | "target",
       credential: SftpTransferCredential,
-      saveCandidate?: { authMethod: TerminalAuthMethod; secret: string },
+      saveCandidate?: { authMethod: TerminalAuthMethod; secret?: string; password?: string; privateKey?: string },
     ) => {
       if (side === "source") {
         options.sourceCredential = credential
       } else {
         options.targetCredential = credential
       }
-      if (saveCandidate?.secret) {
-        successfulCredentials[side] = saveCandidate
+
+      const saveSecret = saveCandidate?.secret ?? saveCandidate?.password ?? saveCandidate?.privateKey
+      if (saveCandidate && saveSecret) {
+        successfulCredentials[side] = {
+          authMethod: saveCandidate.authMethod,
+          secret: saveSecret,
+          password: saveCandidate.password,
+          privateKey: saveCandidate.privateKey,
+        }
       }
     }
 
@@ -401,6 +568,7 @@ export function useSftpAuthRetry({
             ? options
             : undefined,
         )
+
         for (const side of ["source", "target"] as const) {
           const credential = successfulCredentials[side]
           if (!credential) {
@@ -411,8 +579,13 @@ export function useSftpAuthRetry({
             serverNames[side],
             credential.authMethod,
             credential.secret,
+            {
+              password: credential.password,
+              privateKey: credential.privateKey,
+            },
           )
         }
+
         return result
       } catch (error) {
         lastError = error
@@ -421,16 +594,19 @@ export function useSftpAuthRetry({
           throw error
         }
 
-        if (authMethods[side] === "key" && isSftpPrivateKeyPassphraseError(error)) {
+        if (requiresPrivateKey(authMethods[side]) && isSftpPrivateKeyPassphraseError(error)) {
           passphraseAttempts[side] += 1
           if (passphraseAttempts[side] > SFTP_CREDENTIAL_MAX_ATTEMPTS) {
             throw error
           }
+
           const passphrase = await requestPrivateKeyPassphrase(serverNames[side], passphraseAttempts[side])
           const existing = side === "source" ? options.sourceCredential : options.targetCredential
           setCredential(side, {
-            auth_method: "key",
+            auth_method: existing?.auth_method ?? authMethods[side],
             secret: existing?.secret ?? "",
+            password: existing?.password,
+            private_key: existing?.private_key,
             private_key_passphrase: passphrase,
           })
           continue
@@ -440,6 +616,7 @@ export function useSftpAuthRetry({
         if (credentialAttempts[side] > SFTP_CREDENTIAL_MAX_ATTEMPTS) {
           throw error
         }
+
         const credential = await requestCredential(serverNames[side], authMethods[side], credentialAttempts[side])
         authMethods[side] = credential.authMethod
         const nextCredential = toSftpTransferCredential(credential)
@@ -458,12 +635,27 @@ export function useSftpAuthRetry({
         if (!credentialPrompt) {
           return
         }
-        const secret = answers[0] ?? ""
-        const method = authMethod ?? credentialPrompt.prompt.auth_method ?? "password"
+        const payload = Array.isArray(answers)
+          ? { answers, authMethod }
+          : {
+              answers: answers.answers ?? [],
+              authMethod: answers.authMethod ?? authMethod,
+              password: answers.password,
+              privateKey: answers.privateKey,
+            }
+        const secret = payload.answers[0] ?? payload.password ?? payload.privateKey ?? ""
+        const method = payload.authMethod ?? credentialPrompt.prompt.auth_method ?? "password"
         if (credentialPrompt.mode === "passphrase") {
           credentialPrompt.resolve(secret)
+        } else if (credentialPrompt.mode === "interactive") {
+          credentialPrompt.resolve({ response: payload, authMethod: method })
         } else {
-          credentialPrompt.resolve({ authMethod: method, secret })
+          credentialPrompt.resolve({
+            authMethod: method,
+            secret,
+            password: payload.password,
+            privateKey: payload.privateKey,
+          })
         }
         setCredentialPrompt(null)
       }}

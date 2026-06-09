@@ -132,6 +132,8 @@ type AuthResponseMessage struct {
 	Answers    []string          `json:"answers"`
 	Cancelled  bool              `json:"cancelled,omitempty"`
 	AuthMethod server.AuthMethod `json:"auth_method,omitempty"`
+	Password   string            `json:"password,omitempty"`
+	PrivateKey string            `json:"private_key,omitempty"`
 }
 
 // HostKeyResponseMessage SSH 主机密钥变更确认响应
@@ -178,6 +180,8 @@ type CompletionUpdateMessage struct {
 type terminalCredentialRetry struct {
 	AuthMethod           server.AuthMethod
 	Secret               string
+	Password             string
+	PrivateKey           string
 	PrivateKeyPassphrase string
 }
 
@@ -247,6 +251,7 @@ func isTerminalSSHAuthError(err error) bool {
 
 	message := strings.ToLower(err.Error())
 	authMarkers := []string{
+		"keyboard_interactive_required",
 		"unable to authenticate",
 		"permission denied",
 		"authentication failed",
@@ -302,7 +307,8 @@ func classifyTerminalInitError(err error) terminalErrorInfo {
 		info.Code = "private_key_decrypt_failed"
 	case strings.Contains(message, "failed to decrypt password"):
 		info.Code = "password_decrypt_failed"
-	case strings.Contains(message, "server credential is required"):
+	case strings.Contains(message, "server credential is required") ||
+		strings.Contains(message, "keyboard_interactive_required"):
 		info.Code = "credential_required"
 	case strings.Contains(message, "unable to authenticate") ||
 		strings.Contains(message, "permission denied") ||
@@ -396,15 +402,24 @@ func readTerminalAuthResponse(conn *websocket.Conn, writeJSON func(interface{}) 
 func newTerminalCredentialRetryPrompt(conn *websocket.Conn, writeJSON func(interface{}) error, srv *server.Server, attempt, maxAttempts int) (*terminalCredentialRetry, error) {
 	requestID := uuid.NewString()
 	authMethod := srv.AuthMethod
-	promptText := "Password"
-	if authMethod == server.AuthMethodKey {
-		promptText = "Private key"
+	if !authMethod.IsValid() {
+		authMethod = server.AuthMethodPassword
+	}
+	prompts := make([]AuthPromptItem, 0, 2)
+	factors, _ := authMethod.AuthFactors()
+	for _, factor := range factors {
+		switch factor {
+		case server.AuthFactorPassword:
+			prompts = append(prompts, AuthPromptItem{Text: "Password", Echo: false})
+		case server.AuthFactorKey:
+			prompts = append(prompts, AuthPromptItem{Text: "Private key", Echo: false})
+		}
 	}
 
 	payload, _ := json.Marshal(AuthPromptMessage{
 		RequestID:         requestID,
 		Kind:              "credential_retry",
-		Prompts:           []AuthPromptItem{{Text: promptText, Echo: false}},
+		Prompts:           prompts,
 		AuthMethod:        authMethod,
 		Attempt:           attempt,
 		MaxAttempts:       maxAttempts,
@@ -426,17 +441,55 @@ func newTerminalCredentialRetryPrompt(conn *websocket.Conn, writeJSON func(inter
 	if authMethod == "" {
 		authMethod = srv.AuthMethod
 	}
-	if authMethod != server.AuthMethodPassword && authMethod != server.AuthMethodKey {
+	if !authMethod.IsValid() {
 		return nil, fmt.Errorf("unsupported authentication method: %s", authMethod)
 	}
-	if len(response.Answers) == 0 || response.Answers[0] == "" {
-		return nil, fmt.Errorf("authentication credential is required")
+
+	credential := &terminalCredentialRetry{AuthMethod: authMethod}
+	password := response.Password
+	privateKey := response.PrivateKey
+	answerIndex := 0
+	factors, _ = authMethod.AuthFactors()
+	for _, factor := range factors {
+		if answerIndex >= len(response.Answers) {
+			break
+		}
+		switch factor {
+		case server.AuthFactorPassword:
+			if password == "" {
+				password = response.Answers[answerIndex]
+				answerIndex++
+			}
+		case server.AuthFactorKey:
+			if privateKey == "" {
+				privateKey = response.Answers[answerIndex]
+				answerIndex++
+			}
+		}
+	}
+	if authMethod.RequiresPassword() {
+		if password == "" {
+			return nil, fmt.Errorf("authentication password is required")
+		}
+		credential.Password = password
+	}
+	if authMethod.RequiresPrivateKey() {
+		if strings.TrimSpace(privateKey) == "" {
+			return nil, fmt.Errorf("authentication private key is required")
+		}
+		credential.PrivateKey = privateKey
+	}
+	if !authMethod.RequiresPassword() && !authMethod.RequiresPrivateKey() {
+		if len(response.Answers) > 0 {
+			credential.Secret = response.Answers[0]
+		}
+	} else if authMethod == server.AuthMethodPassword {
+		credential.Secret = credential.Password
+	} else if authMethod == server.AuthMethodKey {
+		credential.Secret = credential.PrivateKey
 	}
 
-	return &terminalCredentialRetry{
-		AuthMethod: authMethod,
-		Secret:     response.Answers[0],
-	}, nil
+	return credential, nil
 }
 
 func newTerminalPrivateKeyPassphrasePrompt(conn *websocket.Conn, writeJSON func(interface{}) error, attempt, maxAttempts int) (string, error) {
@@ -697,6 +750,8 @@ func (h *TerminalHandler) HandleSSH(c *gin.Context) {
 				opts = append(opts, sshDomain.CredentialOptions(&sshDomain.Credential{
 					AuthMethod:           credential.AuthMethod,
 					Secret:               credential.Secret,
+					Password:             credential.Password,
+					PrivateKey:           credential.PrivateKey,
 					PrivateKeyPassphrase: credential.PrivateKeyPassphrase,
 				})...)
 			} else if h.credentialStore != nil {
@@ -725,7 +780,7 @@ func (h *TerminalHandler) HandleSSH(c *gin.Context) {
 
 		var credential *terminalCredentialRetry
 		client, err = connectWithCredential(nil)
-		if err != nil && isTerminalPrivateKeyPassphraseError(err) && srv.AuthMethod == server.AuthMethodKey {
+		if err != nil && isTerminalPrivateKeyPassphraseError(err) && srv.AuthMethod.RequiresPrivateKey() {
 			for attempt := 1; attempt <= terminalSSHAuthRetryMaxAttempts; attempt++ {
 				passphrase, promptErr := newTerminalPrivateKeyPassphrasePrompt(
 					wsConn,
@@ -739,7 +794,7 @@ func (h *TerminalHandler) HandleSSH(c *gin.Context) {
 				}
 
 				credential = &terminalCredentialRetry{
-					AuthMethod:           server.AuthMethodKey,
+					AuthMethod:           srv.AuthMethod,
 					PrivateKeyPassphrase: passphrase,
 				}
 				client, err = connectWithCredential(credential)
@@ -767,7 +822,7 @@ func (h *TerminalHandler) HandleSSH(c *gin.Context) {
 
 				credential = nextCredential
 				client, err = connectWithCredential(credential)
-				if err != nil && isTerminalPrivateKeyPassphraseError(err) && credential.AuthMethod == server.AuthMethodKey {
+				if err != nil && isTerminalPrivateKeyPassphraseError(err) && credential.AuthMethod.RequiresPrivateKey() {
 					for passphraseAttempt := 1; passphraseAttempt <= terminalSSHAuthRetryMaxAttempts; passphraseAttempt++ {
 						passphrase, passphraseErr := newTerminalPrivateKeyPassphrasePrompt(
 							wsConn,
@@ -813,6 +868,8 @@ func (h *TerminalHandler) HandleSSH(c *gin.Context) {
 			h.credentialStore.Set(userUUID, serverUUID, sshDomain.Credential{
 				AuthMethod:           credential.AuthMethod,
 				Secret:               credential.Secret,
+				Password:             credential.Password,
+				PrivateKey:           credential.PrivateKey,
 				PrivateKeyPassphrase: credential.PrivateKeyPassphrase,
 			})
 		}

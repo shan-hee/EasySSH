@@ -1,4 +1,14 @@
-export type AuthMethod = "password" | "key"
+export type AuthMethod =
+  | "password"
+  | "key"
+  | "password_keyboard"
+  | "key_keyboard"
+  | "key_password"
+  | "key_password_keyboard"
+  | "password_key"
+  | "password_key_keyboard"
+  | "keyboard_interactive"
+  | "keyboard"
 
 export type ServerStatus = "online" | "offline"
 

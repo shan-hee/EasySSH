@@ -1,5 +1,6 @@
 import { sftpApi } from "@/lib/api/sftp"
 import type { DirectTransferOptions, DirectTransferResponse, FileInfo, UploadTaskListResponse } from "@/lib/sftp-types"
+import type { TerminalAuthMethod, TerminalAuthPrompt, TerminalAuthResponsePayload } from "@/lib/websocket-terminal"
 import type { SftpDirectoryApi } from "./sftp-directory"
 import type { SftpOperationsApi } from "./sftp-operations"
 
@@ -10,9 +11,27 @@ export type SftpSessionDirectTransferOptions = DirectTransferOptions
 export interface SftpSessionApi extends SftpDirectoryApi, SftpOperationsApi {
   authenticate?: (
     serverId: string,
-    authMethod: "password" | "key",
+    authMethod: TerminalAuthMethod,
     secret: string,
     privateKeyPassphrase?: string,
+    options?: {
+      password?: string
+      privateKey?: string
+    },
+  ) => Promise<unknown>
+  preAuthenticate?: (
+    serverId: string,
+    credential: {
+      authMethod?: TerminalAuthMethod
+      password?: string
+      privateKey?: string
+      secret?: string
+      privateKeyPassphrase?: string
+    },
+    onAuthPrompt: (
+      prompt: TerminalAuthPrompt,
+      respond: (response: string[] | TerminalAuthResponsePayload, cancelled?: boolean, authMethod?: TerminalAuthMethod) => void,
+    ) => void,
   ) => Promise<unknown>
   downloadFile: (serverId: string, path: string) => Promise<void> | void
   readFile: (serverId: string, path: string) => Promise<string>
@@ -59,6 +78,7 @@ export function createSftpSessionApi(adapter?: SftpSessionApiAdapter): SftpSessi
   const definedAdapter: SftpSessionApiAdapter = {}
 
   if (adapter.authenticate) definedAdapter.authenticate = adapter.authenticate
+  if (adapter.preAuthenticate) definedAdapter.preAuthenticate = adapter.preAuthenticate
   if (adapter.listDirectory) definedAdapter.listDirectory = adapter.listDirectory
   if (adapter.delete) definedAdapter.delete = adapter.delete
   if (adapter.createDirectory) definedAdapter.createDirectory = adapter.createDirectory

@@ -28,6 +28,7 @@ var ErrHostKeyCallbackRequired = errors.New("ssh host key callback is required")
 type clientOptions struct {
 	keyboardInteractive  ssh.KeyboardInteractiveChallenge
 	authMethod           *server.AuthMethod
+	authMethodExplicit   bool
 	password             string
 	privateKey           string
 	privateKeyPassphrase string
@@ -43,11 +44,21 @@ func WithKeyboardInteractive(challenge ssh.KeyboardInteractiveChallenge) ClientO
 	}
 }
 
+// WithAuthMethod overrides the server's saved authentication strategy for this connection.
+func WithAuthMethod(method server.AuthMethod) ClientOption {
+	return func(opts *clientOptions) {
+		opts.authMethod = &method
+		opts.authMethodExplicit = true
+	}
+}
+
 // WithPasswordAuth uses a plaintext password for this SSH connection only.
 func WithPasswordAuth(password string) ClientOption {
 	return func(opts *clientOptions) {
-		method := server.AuthMethodPassword
-		opts.authMethod = &method
+		if !opts.authMethodExplicit {
+			method := server.AuthMethodPassword
+			opts.authMethod = &method
+		}
 		opts.password = password
 	}
 }
@@ -55,8 +66,10 @@ func WithPasswordAuth(password string) ClientOption {
 // WithPrivateKeyAuth uses a plaintext private key for this SSH connection only.
 func WithPrivateKeyAuth(privateKey string) ClientOption {
 	return func(opts *clientOptions) {
-		method := server.AuthMethodKey
-		opts.authMethod = &method
+		if !opts.authMethodExplicit {
+			method := server.AuthMethodKey
+			opts.authMethod = &method
+		}
 		opts.privateKey = privateKey
 	}
 }
@@ -89,40 +102,55 @@ func NewClient(srv *server.Server, encryptor *crypto.Encryptor, hostKeyCallback 
 		authMethod = *options.authMethod
 	}
 
-	if authMethod == server.AuthMethodPassword {
-		password := options.password
-		if password == "" {
-			var err error
-			password, err = encryptor.DecryptWithAAD(srv.Password, srv.CredentialAAD("password"))
-			if err != nil {
-				return nil, fmt.Errorf("failed to decrypt password: %w", err)
-			}
-		}
-		if password == "" {
-			return nil, ErrCredentialRequired
-		}
-		authMethods = append(authMethods, ssh.Password(password))
-	} else {
-		privateKey := options.privateKey
-		if privateKey == "" {
-			var err error
-			privateKey, err = encryptor.DecryptWithAAD(srv.PrivateKey, srv.CredentialAAD("private_key"))
-			if err != nil {
-				return nil, fmt.Errorf("failed to decrypt private key: %w", err)
-			}
-		}
-		if privateKey == "" {
-			return nil, ErrCredentialRequired
-		}
-
-		signer, err := parsePrivateKey(privateKey, options.privateKeyPassphrase)
-		if err != nil {
-			return nil, err
-		}
-		authMethods = append(authMethods, ssh.PublicKeys(signer))
+	factors, ok := authMethod.AuthFactors()
+	if !ok {
+		return nil, fmt.Errorf("unsupported auth method: %s", authMethod)
 	}
 
-	if options.keyboardInteractive != nil {
+	hasKeyboardInteractive := false
+	for _, factor := range factors {
+		switch factor {
+		case server.AuthFactorPassword:
+			password := options.password
+			if password == "" {
+				var err error
+				password, err = encryptor.DecryptWithAAD(srv.Password, srv.CredentialAAD("password"))
+				if err != nil {
+					return nil, fmt.Errorf("failed to decrypt password: %w", err)
+				}
+			}
+			if password == "" {
+				return nil, ErrCredentialRequired
+			}
+			authMethods = append(authMethods, ssh.Password(password))
+		case server.AuthFactorKey:
+			privateKey := options.privateKey
+			if privateKey == "" {
+				var err error
+				privateKey, err = encryptor.DecryptWithAAD(srv.PrivateKey, srv.CredentialAAD("private_key"))
+				if err != nil {
+					return nil, fmt.Errorf("failed to decrypt private key: %w", err)
+				}
+			}
+			if privateKey == "" {
+				return nil, ErrCredentialRequired
+			}
+
+			signer, err := parsePrivateKey(privateKey, options.privateKeyPassphrase)
+			if err != nil {
+				return nil, err
+			}
+			authMethods = append(authMethods, ssh.PublicKeys(signer))
+		case server.AuthFactorKeyboardInteractive:
+			if options.keyboardInteractive == nil {
+				return nil, fmt.Errorf("keyboard_interactive_required")
+			}
+			hasKeyboardInteractive = true
+			authMethods = append(authMethods, ssh.KeyboardInteractive(options.keyboardInteractive))
+		}
+	}
+
+	if options.keyboardInteractive != nil && !hasKeyboardInteractive {
 		authMethods = append(authMethods, ssh.KeyboardInteractive(options.keyboardInteractive))
 	}
 

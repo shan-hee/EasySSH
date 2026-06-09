@@ -87,9 +87,23 @@ export interface DirectTransferResponse {
   message: string
 }
 
+export type SftpAuthMethod =
+  | "password"
+  | "key"
+  | "password_keyboard"
+  | "key_keyboard"
+  | "key_password"
+  | "key_password_keyboard"
+  | "password_key"
+  | "password_key_keyboard"
+  | "keyboard_interactive"
+  | "keyboard"
+
 export interface SftpTransferCredential {
-  auth_method: "password" | "key"
-  secret: string
+  auth_method: SftpAuthMethod
+  secret?: string
+  password?: string
+  private_key?: string
   private_key_passphrase?: string
 }
 
@@ -98,8 +112,8 @@ export interface DirectTransferOptions {
   targetCredential?: SftpTransferCredential
   sourceServerName?: string
   targetServerName?: string
-  sourceAuthMethod?: "password" | "key"
-  targetAuthMethod?: "password" | "key"
+  sourceAuthMethod?: SftpAuthMethod
+  targetAuthMethod?: SftpAuthMethod
 }
 
 export interface TransferProgressMessage {

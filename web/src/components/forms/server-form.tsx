@@ -13,6 +13,13 @@ import { useFormValidation, validationRules } from "@/hooks/use-form-validation"
 import { X, Plus, Save, TestTube } from "lucide-react"
 import { PrivateKeyInput } from "@/components/servers/private-key-input"
 import { useTranslation } from "react-i18next"
+import type { AuthMethod } from "@/lib/server-types"
+import {
+  authMethodLabelKey,
+  requiresPassword,
+  requiresPrivateKey,
+  SSH_AUTH_METHODS,
+} from "@/lib/ssh-auth-methods"
 
 interface ServerFormData {
   name: string
@@ -21,7 +28,7 @@ interface ServerFormData {
   username: string
   password: string
   privateKey: string
-  authMethod: "password" | "privateKey"
+  authMethod: AuthMethod
   description: string
   tags: string[]
   autoConnect: boolean
@@ -231,23 +238,22 @@ export function ServerForm({ initialData, onSubmit, onCancel, isLoading }: Serve
             <Label>{tServers("formAuthMethodLabel")}</Label>
             <Select
               value={values.authMethod}
-              onValueChange={(value: "password" | "privateKey") => setValue("authMethod", value)}
+              onValueChange={(value) => setValue("authMethod", value)}
             >
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="password">
-                  {tServers("formAuthMethodPassword")}
-                </SelectItem>
-                <SelectItem value="privateKey">
-                  {tServers("formAuthMethodPrivateKey")}
-                </SelectItem>
+                {SSH_AUTH_METHODS.map((method) => (
+                  <SelectItem key={method} value={method}>
+                    {tServers(authMethodLabelKey(method))}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>
 
-          {values.authMethod === "password" ? (
+          {requiresPassword(values.authMethod) && (
             <div className="space-y-2">
               <Label htmlFor="password">
                 {tServers("formPasswordLabel")} *
@@ -265,7 +271,8 @@ export function ServerForm({ initialData, onSubmit, onCancel, isLoading }: Serve
                 <p className="text-sm text-red-500">{errors.password}</p>
               )}
             </div>
-          ) : (
+          )}
+          {requiresPrivateKey(values.authMethod) && (
             <PrivateKeyInput
               id="privateKey"
               label={tServers("formPrivateKeyLabel")}

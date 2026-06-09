@@ -4,6 +4,7 @@ import type {
   TerminalAuthMethod,
   TerminalAuthPrompt,
   TerminalAuthPromptResponder,
+  TerminalAuthResponsePayload,
   TerminalConnectionPhase,
   TerminalHostKeyPrompt,
   TerminalHostKeyResponder,
@@ -15,6 +16,8 @@ export interface TerminalCredentialSaveRequest {
   serverId: string
   authMethod: TerminalAuthMethod
   secret: string
+  password?: string
+  privateKey?: string
 }
 
 export interface TerminalCredentialSavePrompt {
@@ -59,6 +62,8 @@ export function useTerminalAuthFlow({
   const successfulCredentialRef = useRef<{
     authMethod: TerminalAuthMethod
     secret: string
+    password?: string
+    privateKey?: string
   } | null>(null)
 
   const handleAuthPrompt = useCallback((
@@ -83,15 +88,25 @@ export function useTerminalAuthFlow({
     successfulCredentialRef.current = null
   }, [])
 
-  const handleAuthChallengeSubmit = useCallback((answers: string[], authMethod?: TerminalAuthMethod) => {
+  const handleAuthChallengeSubmit = useCallback((answers: string[] | TerminalAuthResponsePayload, authMethod?: TerminalAuthMethod) => {
+    const payload = Array.isArray(answers)
+      ? { answers, authMethod }
+      : {
+          answers: answers.answers ?? [],
+          authMethod: answers.authMethod ?? authMethod,
+          password: answers.password,
+          privateKey: answers.privateKey,
+        }
     if (
       authChallenge?.prompt.kind === "credential_retry" &&
-      authMethod &&
-      answers[0]
+      payload.authMethod &&
+      (payload.answers[0] || payload.password || payload.privateKey)
     ) {
       successfulCredentialRef.current = {
-        authMethod,
-        secret: answers[0],
+        authMethod: payload.authMethod,
+        secret: payload.answers[0] ?? payload.password ?? payload.privateKey ?? "",
+        password: payload.password,
+        privateKey: payload.privateKey,
       }
     }
 
@@ -152,6 +167,8 @@ export function useTerminalAuthFlow({
           serverId,
           authMethod: credential.authMethod,
           secret: credential.secret,
+          password: credential.password,
+          privateKey: credential.privateKey,
         }).then(() => {
           adapters.notifySuccess?.(tTerminal("authRetrySaveSuccess"))
         }).catch((error) => {

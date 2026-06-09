@@ -3,6 +3,7 @@ import { apiFetch } from "@/lib/api-client"
 export type AuthTicketType =
   | "ws_terminal"
   | "ws_monitor"
+  | "ws_sftp_auth"
   | "ws_sftp_upload"
   | "ws_sftp_transfer"
   | "sftp_download"

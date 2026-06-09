@@ -36,7 +36,7 @@ export interface WorkspaceSessionSeed extends ServerConnectionInfo {
 
 export interface WorkspaceTerminalSession extends OptionalServerConnectionInfo {
   id: string
-  authMethod?: "password" | "key"
+  authMethod?: WorkspaceAuthMethod
   shouldConnect: boolean
   connectionPhase: TerminalConnectionPhase
   status: "connected" | "disconnected" | "reconnecting"
@@ -48,7 +48,7 @@ export interface WorkspaceTerminalSession extends OptionalServerConnectionInfo {
 }
 export interface SftpWorkspaceSession extends ServerConnectionInfo {
   id: string
-  authMethod?: "password" | "key"
+  authMethod?: WorkspaceAuthMethod
   currentPath: string
   pathBackStack?: string[]
   pathForwardStack?: string[]
@@ -120,10 +120,24 @@ export interface SshWorkspaceI18n {
   timezone?: string
 }
 
+export type WorkspaceAuthMethod =
+  | "password"
+  | "key"
+  | "password_keyboard"
+  | "key_keyboard"
+  | "key_password"
+  | "key_password_keyboard"
+  | "password_key"
+  | "password_key_keyboard"
+  | "keyboard_interactive"
+  | "keyboard"
+
 export interface WorkspaceTerminalCredentialSaveRequest {
   serverId: string
-  authMethod: "password" | "key"
+  authMethod: WorkspaceAuthMethod
   secret: string
+  password?: string
+  privateKey?: string
 }
 
 export interface WorkspaceSftpCredentialRequest extends WorkspaceTerminalCredentialSaveRequest {
@@ -303,12 +317,16 @@ export interface WorkspaceDockerApi {
 export interface SshWorkspaceApiClient {
   sftp?: {
     listDirectory: (serverId: string, path?: string) => Promise<DirectoryListResponse>
-    authenticate?: (
-      serverId: string,
-      authMethod: "password" | "key",
-      secret: string,
-      privateKeyPassphrase?: string,
-    ) => Promise<unknown>
+	    authenticate?: (
+	      serverId: string,
+	      authMethod: WorkspaceAuthMethod,
+	      secret: string,
+	      privateKeyPassphrase?: string,
+	      options?: {
+	        password?: string
+	        privateKey?: string
+	      },
+	    ) => Promise<unknown>
     downloadFile?: (serverId: string, path: string) => Promise<void> | void
     uploadFile?: (
       serverId: string,

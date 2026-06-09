@@ -15,6 +15,8 @@ const defaultRuntimeCredentialTTL = 15 * time.Minute
 type Credential struct {
 	AuthMethod           server.AuthMethod
 	Secret               string
+	Password             string
+	PrivateKey           string
 	PrivateKeyPassphrase string
 }
 
@@ -23,13 +25,30 @@ func CredentialOptions(credential *Credential) []ClientOption {
 		return nil
 	}
 
-	opts := make([]ClientOption, 0, 2)
-	if credential.AuthMethod == server.AuthMethodKey {
-		if credential.Secret != "" {
-			opts = append(opts, WithPrivateKeyAuth(credential.Secret))
+	opts := make([]ClientOption, 0, 4)
+	if credential.AuthMethod.IsValid() {
+		opts = append(opts, WithAuthMethod(credential.AuthMethod))
+	}
+
+	password := credential.Password
+	privateKey := credential.PrivateKey
+	if credential.Secret != "" {
+		if credential.AuthMethod.RequiresPrivateKey() && !credential.AuthMethod.RequiresPassword() {
+			privateKey = credential.Secret
+		} else if credential.AuthMethod.RequiresPassword() && !credential.AuthMethod.RequiresPrivateKey() {
+			password = credential.Secret
+		} else if credential.AuthMethod == server.AuthMethodKey {
+			privateKey = credential.Secret
+		} else if credential.AuthMethod == server.AuthMethodPassword {
+			password = credential.Secret
 		}
-	} else {
-		opts = append(opts, WithPasswordAuth(credential.Secret))
+	}
+
+	if password != "" {
+		opts = append(opts, WithPasswordAuth(password))
+	}
+	if privateKey != "" {
+		opts = append(opts, WithPrivateKeyAuth(privateKey))
 	}
 	if credential.PrivateKeyPassphrase != "" {
 		opts = append(opts, WithPrivateKeyPassphrase(credential.PrivateKeyPassphrase))

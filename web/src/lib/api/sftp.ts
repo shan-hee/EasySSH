@@ -2,6 +2,7 @@ import { apiFetch } from "@/lib/api-client"
 import { getApiUrl } from "../config"
 import { getCurrentAccessToken } from "@/stores/auth-store"
 import { createAuthTicket } from "@/lib/auth-ticket"
+import type { TerminalAuthMethod, TerminalAuthPrompt, TerminalAuthResponsePayload } from "@/lib/websocket-terminal"
 import type {
   BatchDeleteResponse,
   DirectTransferOptions,
@@ -78,19 +79,133 @@ export const sftpApi = {
    */
   async authenticate(
     serverId: string,
-    authMethod: "password" | "key",
+    authMethod: TerminalAuthMethod,
     secret: string,
-    privateKeyPassphrase?: string
+    privateKeyPassphrase?: string,
+    options?: {
+      password?: string
+      privateKey?: string
+    },
   ): Promise<void> {
     await apiFetch<void>(`/sftp/${serverId}/auth`, {
       method: "POST",
       body: {
         auth_method: authMethod,
         secret,
+        password: options?.password,
+        private_key: options?.privateKey,
         private_key_passphrase: privateKeyPassphrase || undefined,
       },
       retry: false,
       timeout: 30000,
+    })
+  },
+
+  async preAuthenticate(
+    serverId: string,
+    credential: {
+      authMethod?: TerminalAuthMethod
+      password?: string
+      privateKey?: string
+      secret?: string
+      privateKeyPassphrase?: string
+    },
+    onAuthPrompt: (
+      prompt: TerminalAuthPrompt,
+      respond: (response: string[] | TerminalAuthResponsePayload, cancelled?: boolean, authMethod?: TerminalAuthMethod) => void,
+    ) => void,
+  ): Promise<void> {
+    const { ticket } = await createAuthTicket({
+      type: "ws_sftp_auth",
+      server_id: serverId,
+    })
+
+    await new Promise<void>((resolve, reject) => {
+      const params = new URLSearchParams()
+      params.set("ticket", ticket)
+      const ws = new WebSocket(getApiUrl().replace(/^http/, "ws") + `/sftp/${serverId}/auth/ws?${params.toString()}`)
+      let settled = false
+
+      const finish = (error?: Error) => {
+        if (settled) return
+        settled = true
+        try {
+          ws.close(1000, "sftp auth finished")
+        } catch {
+          // ignore close errors
+        }
+        if (error) {
+          reject(error)
+        } else {
+          resolve()
+        }
+      }
+
+      ws.onopen = () => {
+        ws.send(JSON.stringify({
+          type: "auth_start",
+          data: {
+            auth_method: credential.authMethod,
+            password: credential.password,
+            private_key: credential.privateKey,
+            secret: credential.secret,
+            private_key_passphrase: credential.privateKeyPassphrase,
+          },
+        }))
+      }
+
+      ws.onerror = () => {
+        finish(new Error("sftp pre-authentication websocket failed"))
+      }
+
+      ws.onclose = (event) => {
+        if (!settled && event.code !== 1000) {
+          finish(new Error(event.reason || "sftp pre-authentication websocket closed"))
+        }
+      }
+
+      ws.onmessage = (event) => {
+        try {
+          const message = JSON.parse(event.data) as { type?: string; data?: unknown }
+          if (message.type === "authenticated") {
+            finish()
+            return
+          }
+          if (message.type === "error") {
+            const data = message.data as { error?: string; message?: string } | undefined
+            const error = new Error(data?.message || data?.error || "sftp pre-authentication failed")
+            ;(error as Error & { code?: string }).code = data?.error
+            finish(error)
+            return
+          }
+          if (message.type === "auth_prompt" && message.data && typeof message.data === "object") {
+            const prompt = message.data as TerminalAuthPrompt
+            onAuthPrompt(prompt, (response, cancelled = false, authMethod) => {
+              const payload = Array.isArray(response)
+                ? { answers: response, authMethod }
+                : {
+                    answers: response.answers ?? [],
+                    authMethod: response.authMethod ?? authMethod,
+                    password: response.password,
+                    privateKey: response.privateKey,
+                  }
+              ws.send(JSON.stringify({
+                type: "auth_response",
+                data: {
+                  request_id: prompt.request_id,
+                  answers: payload.answers,
+                  cancelled,
+                  auth_method: payload.authMethod,
+                  password: payload.password,
+                  private_key: payload.privateKey,
+                },
+              }))
+            })
+          }
+        } catch (error) {
+          finish(error instanceof Error ? error : new Error("failed to parse sftp auth websocket message"))
+        }
+      }
     })
   },
 

@@ -3,6 +3,7 @@ import { useMemo } from "react"
 import { toast } from "@/components/ui/sonner"
 import { useOptionalSshWorkspace } from "@/components/ssh-workspace/ssh-workspace"
 import { serversApi } from "@/lib/api"
+import { primaryCredentialMethod } from "@/lib/ssh-auth-methods"
 import type { TerminalAuthFlowAdapters } from "./use-terminal-auth-flow"
 
 export interface UseTerminalAuthFlowAdaptersOptions {
@@ -30,10 +31,12 @@ export function useTerminalAuthFlowAdapters({
         actionLabel,
         onAction: onConfirm,
       }),
-      saveCredential: ({ serverId, authMethod, secret }) => saveVerifiedCredential({
+      saveCredential: ({ serverId, authMethod, secret, password, privateKey }) => saveVerifiedCredential({
         serverId,
         authMethod,
         secret,
+        password,
+        privateKey,
       }),
     }
   }, [workspace?.adapters.apiClient?.terminal?.saveVerifiedCredential, workspace?.adapters.notifier])
@@ -50,18 +53,18 @@ export function useTerminalAuthFlowAdapters({
         },
       })
     },
-    saveCredential: ({ serverId, authMethod, secret }) => {
-      const payload = authMethod === "key"
-        ? {
-            auth_method: "key" as const,
-            private_key: secret,
-            verified_connection_credential: true,
-          }
-        : {
-            auth_method: "password" as const,
-            password: secret,
-            verified_connection_credential: true,
-          }
+      saveCredential: ({ serverId, authMethod, secret, password, privateKey }) => {
+        const payload = {
+          auth_method: authMethod,
+          verified_connection_credential: true,
+          ...(password !== undefined ? { password } : {}),
+          ...(privateKey !== undefined ? { private_key: privateKey } : {}),
+          ...(password === undefined && privateKey === undefined
+            ? primaryCredentialMethod(authMethod) === "key"
+              ? { private_key: secret }
+              : { password: secret }
+            : {}),
+        }
 
       return serversApi.update(serverId, payload)
     },

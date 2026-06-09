@@ -62,6 +62,7 @@ import { useSessionSplitWorkspace } from "@/hooks/use-session-split-workspace"
 import { hasSplitPaneDragSession } from "@/lib/session/split-pane-drag"
 import { useTerminalAuthFlowAdapters } from "@/components/terminal/use-terminal-auth-flow-adapters"
 import { getServerAuthMethod, useSftpAuthRetry } from "@/components/sftp/use-sftp-auth-retry"
+import type { TerminalAuthMethod } from "@/lib/websocket-terminal"
 
 type ComponentFile = SftpFileItem
 type SftpSession = SftpWorkspaceSession
@@ -597,7 +598,7 @@ export default function SftpPage() {
  }: {
    serverId: string
    serverName: string
-   authMethod: "password" | "key"
+	   authMethod: TerminalAuthMethod
    path: string
  }) => (
    runWithCredentialRetry({

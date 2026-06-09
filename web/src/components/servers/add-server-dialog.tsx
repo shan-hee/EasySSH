@@ -27,6 +27,13 @@ import { PrivateKeyInput } from "@/components/servers/private-key-input"
 import { useTranslation } from "react-i18next"
 import { toast } from "@/components/ui/sonner"
 import { ServerTagCombobox } from "@/components/servers/server-tag-combobox"
+import type { AuthMethod } from "@/lib/server-types"
+import {
+  authMethodLabelKey,
+  requiresPassword,
+  requiresPrivateKey,
+  SSH_AUTH_METHODS,
+} from "@/lib/ssh-auth-methods"
 interface AddServerDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -43,7 +50,7 @@ export interface ServerFormData {
   host: string
   port: string
   username: string
-  authMethod: "password" | "privateKey"
+  authMethod: AuthMethod
   password: string
   privateKey: string
   rememberPassword: boolean
@@ -302,24 +309,26 @@ export function AddServerDialog({
                 </div>
               )}
 
-              {/* 认证方式 */}
-              <div className="space-y-3 pt-2">
-                <Label>{tServers("quickFormAuthMethodLabel")}</Label>
-                <Tabs
-                  className="w-full"
-                  value={formData.authMethod}
-                  onValueChange={(value) => handleInputChange("authMethod", value as "password" | "privateKey")}
-                >
-                  <TabsList className="grid w-full max-w-md grid-cols-2">
-                    <TabsTrigger value="password">
-                      {tServers("quickFormAuthMethodPassword")}
-                    </TabsTrigger>
-                    <TabsTrigger value="privateKey">
-                      {tServers("quickFormAuthMethodPrivateKey")}
-                    </TabsTrigger>
-                  </TabsList>
+                {/* 认证方式 */}
+                <div className="space-y-3 pt-2">
+                  <Label>{tServers("quickFormAuthMethodLabel")}</Label>
+                  <Select
+                    value={formData.authMethod}
+                    onValueChange={(value) => handleInputChange("authMethod", value)}
+                  >
+                    <SelectTrigger className="w-full max-w-md">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {SSH_AUTH_METHODS.map((method) => (
+                        <SelectItem key={method} value={method}>
+                          {tServers(authMethodLabelKey(method))}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
 
-                  <div className="mt-3 flex items-start gap-2 rounded-md border border-border bg-muted/40 px-3 py-2.5">
+                  <div className="flex items-start gap-2 rounded-md border border-border bg-muted/40 px-3 py-2.5">
                     <Checkbox
                       id="remember"
                       checked={formData.rememberPassword}
@@ -341,8 +350,7 @@ export function AddServerDialog({
                     </div>
                   </div>
 
-                  <TabsContent value="password" forceMount className="mt-3 data-[state=inactive]:hidden">
-                    {/* 将密码输入包裹在 form 中，并提供隐藏的用户名字段，满足密码管理器与无障碍建议 */}
+                  {requiresPassword(formData.authMethod) && (
                     <form className="space-y-3" onSubmit={(e) => e.preventDefault()}>
                       <Label htmlFor="username-hidden" className="sr-only">
                         {tServers("quickFormUsernameLabel")}
@@ -368,9 +376,9 @@ export function AddServerDialog({
                         />
                       </div>
                     </form>
-                  </TabsContent>
+                  )}
 
-                  <TabsContent value="privateKey" forceMount className="mt-3 data-[state=inactive]:hidden">
+                  {requiresPrivateKey(formData.authMethod) && (
                     <PrivateKeyInput
                       id="privateKey"
                       label={tServers("quickFormPrivateKeyLabel")}
@@ -378,9 +386,8 @@ export function AddServerDialog({
                       onChange={(v) => handleInputChange("privateKey", v)}
                       placeholder={tServers("quickFormPrivateKeyPlaceholder")}
                     />
-                  </TabsContent>
-                </Tabs>
-              </div>
+                  )}
+                </div>
             </div>
           </TabsContent>
 

@@ -106,7 +106,7 @@ func (s *serverService) Create(ctx context.Context, userID uuid.UUID, req *Creat
 		req.Port = 22
 	}
 
-	if req.AuthMethod != AuthMethodPassword && req.AuthMethod != AuthMethodKey {
+	if !req.AuthMethod.IsValid() {
 		return nil, fmt.Errorf("unsupported auth method: %s", req.AuthMethod)
 	}
 
@@ -192,6 +192,9 @@ func (s *serverService) Update(ctx context.Context, userID, serverID uuid.UUID, 
 		server.Username = *req.Username
 	}
 	if req.AuthMethod != nil {
+		if !req.AuthMethod.IsValid() {
+			return nil, fmt.Errorf("unsupported auth method: %s", *req.AuthMethod)
+		}
 		server.AuthMethod = *req.AuthMethod
 	}
 	if req.Group != nil {

@@ -43,6 +43,8 @@ func ticketExpectationForRequest(c *gin.Context) (auth.TicketExpectation, bool) 
 		return auth.TicketExpectation{Type: auth.TicketTypeWSMonitor, Ref: c.Param("server_id")}, true
 	case "/api/v1/sftp/upload/ws/:task_id":
 		return auth.TicketExpectation{Type: auth.TicketTypeWSSFTPUpload, Ref: c.Param("task_id")}, true
+	case "/api/v1/sftp/:server_id/auth/ws":
+		return auth.TicketExpectation{Type: auth.TicketTypeWSSFTPAuth, Ref: c.Param("server_id")}, true
 	case "/api/v1/sftp/transfer/ws/:task_id":
 		return auth.TicketExpectation{Type: auth.TicketTypeWSSFTPTransfer, Ref: c.Param("task_id")}, true
 	case "/api/v1/sftp/:server_id/download":

@@ -20,13 +20,14 @@ import {
   type SftpSessionApi,
   type SftpSessionApiAdapter,
 } from "@/lib/session/sftp-session-api";
+import type { TerminalAuthMethod } from "@/lib/websocket-terminal";
 
-type SftpAuthMethod = "password" | "key";
+type SftpAuthMethod = TerminalAuthMethod;
 type SftpCredentialRetryRunner = <T>(options: {
   serverId: string;
   serverName: string;
   authMethod: SftpAuthMethod;
-  api: Pick<SftpSessionApi, "authenticate">;
+  api: Pick<SftpSessionApi, "authenticate" | "preAuthenticate">;
   operation: () => Promise<T>;
 }) => Promise<T>;
 

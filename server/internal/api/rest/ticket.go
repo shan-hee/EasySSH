@@ -100,7 +100,7 @@ func (h *TicketHandler) CreateTicket(c *gin.Context) {
 	}
 
 	switch tt {
-	case auth.TicketTypeWSTerminal, auth.TicketTypeWSMonitor:
+	case auth.TicketTypeWSTerminal, auth.TicketTypeWSMonitor, auth.TicketTypeWSSFTPAuth:
 		serverID := strings.TrimSpace(req.ServerID)
 		if serverID == "" {
 			RespondError(c, http.StatusBadRequest, "missing_server_id", "server_id is required")

@@ -45,6 +45,8 @@ type TransferProgressMessage struct {
 type DirectTransferCredential struct {
 	AuthMethod           server.AuthMethod `json:"auth_method"`
 	Secret               string            `json:"secret"`
+	Password             string            `json:"password,omitempty"`
+	PrivateKey           string            `json:"private_key,omitempty"`
 	PrivateKeyPassphrase string            `json:"private_key_passphrase,omitempty"`
 }
 
@@ -396,6 +398,8 @@ func (c *DirectTransferCredential) toSSHCredential() *sshDomain.Credential {
 	return &sshDomain.Credential{
 		AuthMethod:           c.AuthMethod,
 		Secret:               c.Secret,
+		Password:             c.Password,
+		PrivateKey:           c.PrivateKey,
 		PrivateKeyPassphrase: c.PrivateKeyPassphrase,
 	}
 }

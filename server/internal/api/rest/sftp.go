@@ -126,6 +126,8 @@ type sftpTransferRecordInput struct {
 type sftpAuthenticateRequest struct {
 	AuthMethod           server.AuthMethod `json:"auth_method" binding:"required"`
 	Secret               string            `json:"secret"`
+	Password             string            `json:"password"`
+	PrivateKey           string            `json:"private_key"`
 	PrivateKeyPassphrase string            `json:"private_key_passphrase"`
 }
 
@@ -138,7 +140,8 @@ func isSFTPCredentialRequiredError(err error) bool {
 	}
 
 	message := strings.ToLower(err.Error())
-	return strings.Contains(message, "server credential is required") ||
+	return strings.Contains(message, "keyboard_interactive_required") ||
+		strings.Contains(message, "server credential is required") ||
 		strings.Contains(message, "unable to authenticate") ||
 		strings.Contains(message, "permission denied") ||
 		strings.Contains(message, "authentication failed") ||
@@ -380,7 +383,7 @@ func (h *SFTPHandler) Authenticate(c *gin.Context) {
 		RespondError(c, http.StatusBadRequest, "validation_error", err.Error())
 		return
 	}
-	if req.AuthMethod != server.AuthMethodPassword && req.AuthMethod != server.AuthMethodKey {
+	if !req.AuthMethod.IsValid() {
 		RespondError(c, http.StatusBadRequest, "unsupported_auth_method", "Unsupported authentication method")
 		return
 	}
@@ -388,6 +391,8 @@ func (h *SFTPHandler) Authenticate(c *gin.Context) {
 	client, err := h.pool.GetWithCredential(c.Request.Context(), userID, serverID, sftp.Credential{
 		AuthMethod:           req.AuthMethod,
 		Secret:               req.Secret,
+		Password:             req.Password,
+		PrivateKey:           req.PrivateKey,
 		PrivateKeyPassphrase: req.PrivateKeyPassphrase,
 	})
 	if err != nil {
@@ -2512,7 +2517,7 @@ func validateDirectTransferCredentialInput(credential *ws.DirectTransferCredenti
 		return true
 	}
 
-	return credential.AuthMethod == server.AuthMethodPassword || credential.AuthMethod == server.AuthMethodKey
+	return credential.AuthMethod.IsValid()
 }
 
 func respondDirectTransferStartError(c *gin.Context, err error) {

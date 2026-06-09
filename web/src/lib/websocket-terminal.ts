@@ -97,7 +97,17 @@ export interface TerminalAuthPromptItem {
   echo: boolean
 }
 
-export type TerminalAuthMethod = "password" | "key"
+export type TerminalAuthMethod =
+  | "password"
+  | "key"
+  | "password_keyboard"
+  | "key_keyboard"
+  | "key_password"
+  | "key_password_keyboard"
+  | "password_key"
+  | "password_key_keyboard"
+  | "keyboard_interactive"
+  | "keyboard"
 
 export interface TerminalAuthPrompt {
   request_id: string
@@ -112,10 +122,17 @@ export interface TerminalAuthPrompt {
 }
 
 export type TerminalAuthPromptResponder = (
-  answers: string[],
+  answers: string[] | TerminalAuthResponsePayload,
   cancelled?: boolean,
   authMethod?: TerminalAuthMethod
 ) => void
+
+export interface TerminalAuthResponsePayload {
+  answers?: string[]
+  authMethod?: TerminalAuthMethod
+  password?: string
+  privateKey?: string
+}
 
 export interface TerminalLatencyData {
   terminalWsLatencyMs: number
@@ -538,7 +555,7 @@ export class TerminalWebSocket {
    */
   sendAuthResponse(
     requestId: string,
-    answers: string[],
+    answersOrPayload: string[] | TerminalAuthResponsePayload,
     cancelled: boolean = false,
     authMethod?: TerminalAuthMethod
   ): void {
@@ -554,13 +571,24 @@ export class TerminalWebSocket {
         this.setPhase("closed")
       }
 
+      const payload = Array.isArray(answersOrPayload)
+        ? { answers: answersOrPayload, authMethod }
+        : {
+            answers: answersOrPayload.answers ?? [],
+            authMethod: answersOrPayload.authMethod ?? authMethod,
+            password: answersOrPayload.password,
+            privateKey: answersOrPayload.privateKey,
+          }
+
       const message = {
         type: "auth_response",
         data: {
           request_id: requestId,
-          answers,
+          answers: payload.answers,
           cancelled,
-          auth_method: authMethod,
+          auth_method: payload.authMethod,
+          password: payload.password,
+          private_key: payload.privateKey,
         },
       }
       this.ws.send(JSON.stringify(message))
@@ -710,8 +738,8 @@ export class TerminalWebSocket {
         if (message.data && typeof message.data === "object") {
           this.setPhase("authenticating")
           const prompt = message.data as TerminalAuthPrompt
-          const respond: TerminalAuthPromptResponder = (answers, cancelled = false, authMethod) => {
-            this.sendAuthResponse(prompt.request_id, answers, cancelled, authMethod)
+          const respond: TerminalAuthPromptResponder = (answersOrPayload, cancelled = false, authMethod) => {
+            this.sendAuthResponse(prompt.request_id, answersOrPayload, cancelled, authMethod)
           }
 
           if (this.onAuthPrompt) {

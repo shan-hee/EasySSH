@@ -31,6 +31,8 @@ type PooledClient struct {
 type Credential struct {
 	AuthMethod           server.AuthMethod
 	Secret               string
+	Password             string
+	PrivateKey           string
 	PrivateKeyPassphrase string
 }
 
@@ -38,6 +40,8 @@ func (c Credential) toSSHCredential() sshDomain.Credential {
 	return sshDomain.Credential{
 		AuthMethod:           c.AuthMethod,
 		Secret:               c.Secret,
+		Password:             c.Password,
+		PrivateKey:           c.PrivateKey,
 		PrivateKeyPassphrase: c.PrivateKeyPassphrase,
 	}
 }
@@ -253,19 +257,21 @@ func (p *Pool) Get(ctx context.Context, userID, serverID uuid.UUID) (client *Poo
 }
 
 // GetWithCredential 使用临时凭据获取一次 SFTP 会话。凭据只用于创建新的底层 SSH 连接。
-func (p *Pool) GetWithCredential(ctx context.Context, userID, serverID uuid.UUID, credential Credential) (client *PooledClient, err error) {
-	if credential.AuthMethod != server.AuthMethodPassword && credential.AuthMethod != server.AuthMethodKey {
+func (p *Pool) GetWithCredential(ctx context.Context, userID, serverID uuid.UUID, credential Credential, extraOpts ...sshDomain.ClientOption) (client *PooledClient, err error) {
+	if !credential.AuthMethod.IsValid() {
 		return nil, fmt.Errorf("unsupported auth method: %s", credential.AuthMethod)
 	}
-	if credential.AuthMethod == server.AuthMethodPassword && credential.Secret == "" {
-		return nil, sshDomain.ErrCredentialRequired
-	}
 
-	client, err = p.get(ctx, userID, serverID, false, sshDomain.CredentialOptions(&sshDomain.Credential{
+	opts := sshDomain.CredentialOptions(&sshDomain.Credential{
 		AuthMethod:           credential.AuthMethod,
 		Secret:               credential.Secret,
+		Password:             credential.Password,
+		PrivateKey:           credential.PrivateKey,
 		PrivateKeyPassphrase: credential.PrivateKeyPassphrase,
-	})...)
+	})
+	opts = append(opts, extraOpts...)
+
+	client, err = p.get(ctx, userID, serverID, false, opts...)
 	if err != nil {
 		return nil, err
 	}

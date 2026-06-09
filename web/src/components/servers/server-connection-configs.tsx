@@ -11,6 +11,7 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import type { ServerFormData } from "@/components/servers/add-server-dialog"
 import { serversApi, type Server, type AuthMethod } from "@/lib/api"
 import { cn } from "@/lib/utils"
+import { normalizeSSHAuthMethod, requiresPassword, requiresPrivateKey } from "@/lib/ssh-auth-methods"
 import {
  Search,
  Plus,
@@ -408,7 +409,7 @@ export function ServerConnectionConfigs({
  host: duplicatingServer.host,
  port: duplicatingServer.port?.toString() || "22",
  username: duplicatingServer.username,
- authMethod: duplicatingServer.auth_method === "key" ? "privateKey" : "password",
+	 authMethod: normalizeSSHAuthMethod(duplicatingServer.auth_method),
  password: "",
  privateKey: "",
  rememberPassword: false,
@@ -605,19 +606,20 @@ export function ServerConnectionConfigs({
  host: data.host,
  port: parseInt(data.port) || 22,
  username: data.username,
- auth_method: data.authMethod === "privateKey" ? "key" : "password",
+	 auth_method: data.authMethod,
  group: data.group?.trim() || undefined,
  tags: data.tags,
  description: data.description,
  }
 
- if (data.rememberPassword) {
- if (data.authMethod === "privateKey" && data.privateKey) {
- serverData.private_key = data.privateKey
- } else if (data.authMethod === "password" && data.password) {
- serverData.password = data.password
- }
- }
+	 if (data.rememberPassword) {
+	 if (requiresPassword(data.authMethod) && data.password) {
+	 serverData.password = data.password
+	 }
+	 if (requiresPrivateKey(data.authMethod) && data.privateKey) {
+	 serverData.private_key = data.privateKey
+	 }
+	 }
 
  const newServer = await serverApi.create(serverData)
 
@@ -646,7 +648,7 @@ export function ServerConnectionConfigs({
  host: string
  port: number
  username: string
- auth_method: "password" | "key"
+	 auth_method: AuthMethod
  password?: string
  private_key?: string
  group?: string
@@ -657,35 +659,33 @@ export function ServerConnectionConfigs({
  host: data.host,
  port: parseInt(data.port) || 22,
  username: data.username,
- auth_method: data.authMethod === "privateKey" ? "key" : "password",
+	 auth_method: data.authMethod,
  group: data.group?.trim() || "",
  tags: data.tags,
  description: data.description,
  }
 
- if (data.authMethod === "password") {
- if (data.rememberPassword && data.password) {
- updateData.password = data.password
- } else if (!data.rememberPassword && (editingServer.has_password || data.password)) {
- updateData.password = ""
- }
+	 const needsPassword = requiresPassword(data.authMethod)
+	 const needsPrivateKey = requiresPrivateKey(data.authMethod)
+	 if (needsPassword) {
+	 if (data.rememberPassword && data.password) {
+	 updateData.password = data.password
+	 } else if (!data.rememberPassword && (editingServer.has_password || data.password)) {
+	 updateData.password = ""
+	 }
+	 } else if (editingServer.has_password) {
+	 updateData.password = ""
+	 }
 
- if (editingServer.has_private_key) {
- updateData.private_key = ""
- }
- }
-
- if (data.authMethod === "privateKey") {
- if (data.rememberPassword && data.privateKey) {
- updateData.private_key = data.privateKey
- } else if (!data.rememberPassword && (editingServer.has_private_key || data.privateKey)) {
- updateData.private_key = ""
- }
-
- if (editingServer.has_password) {
- updateData.password = ""
- }
- }
+	 if (needsPrivateKey) {
+	 if (data.rememberPassword && data.privateKey) {
+	 updateData.private_key = data.privateKey
+	 } else if (!data.rememberPassword && (editingServer.has_private_key || data.privateKey)) {
+	 updateData.private_key = ""
+	 }
+	 } else if (editingServer.has_private_key) {
+	 updateData.private_key = ""
+	 }
 
  const updatedServer = await serverApi.update(editingServer.id, updateData)
 
@@ -940,12 +940,15 @@ export function ServerConnectionConfigs({
  host: editingServer.host,
  port: editingServer.port?.toString() || "22",
  username: editingServer.username,
- authMethod: editingServer.auth_method === "key" ? "privateKey" : "password",
+	 authMethod: normalizeSSHAuthMethod(editingServer.auth_method),
  password: editingServer.password || "",
  privateKey: editingServer.private_key || "",
- rememberPassword: editingServer.auth_method === "key"
- ? Boolean(editingServer.has_private_key || editingServer.private_key)
- : Boolean(editingServer.has_password || editingServer.password),
+	 rememberPassword: Boolean(
+	 editingServer.has_private_key ||
+	 editingServer.private_key ||
+	 editingServer.has_password ||
+	 editingServer.password
+	 ),
  tags: editingServer.tags || [],
  description: editingServer.description || "",
  group: editingServer.group || "",

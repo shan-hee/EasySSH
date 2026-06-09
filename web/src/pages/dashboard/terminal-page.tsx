@@ -24,6 +24,7 @@ import { WORKSPACE_CAPABILITY_PRESETS, createWorkspaceCapabilitiesFromRuntime, u
 import { isViteDev } from "@/lib/vite-env"
 import { getServerAuthMethod, useSftpAuthRetry } from "@/components/sftp/use-sftp-auth-retry"
 import { useTerminalAuthFlowAdapters } from "@/components/terminal/use-terminal-auth-flow-adapters"
+import { primaryCredentialMethod } from "@/lib/ssh-auth-methods"
 
 const statusFromConnectionPhase = (phase: TerminalConnectionPhase) => {
   if (phase === "ready") return "connected" as const
@@ -239,18 +240,18 @@ function TerminalPageContent() {
     apiClient: {
       sftp: sftpSessionApi,
       terminal: {
-        saveVerifiedCredential: ({ serverId, authMethod, secret }) => {
-          const payload = authMethod === "key"
-            ? {
-                auth_method: "key" as const,
-                private_key: secret,
-                verified_connection_credential: true,
-              }
-            : {
-                auth_method: "password" as const,
-                password: secret,
-                verified_connection_credential: true,
-              }
+          saveVerifiedCredential: ({ serverId, authMethod, secret, password, privateKey }) => {
+            const payload = {
+              auth_method: authMethod,
+              verified_connection_credential: true,
+              ...(password !== undefined ? { password } : {}),
+              ...(privateKey !== undefined ? { private_key: privateKey } : {}),
+              ...(password === undefined && privateKey === undefined
+                ? primaryCredentialMethod(authMethod) === "key"
+                  ? { private_key: secret }
+                  : { password: secret }
+                : {}),
+            }
 
           return serversApi.update(serverId, payload)
         },

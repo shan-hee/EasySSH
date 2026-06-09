@@ -395,6 +395,7 @@ func main() {
 	}
 	sftpHandler := rest.NewSFTPHandler(serverService, serverRepo, encryptor, sftpUploadWSHandler, sshHostKeyService.GetHostKeyCallback(), sftpPoolConfig, runtimeCredentialStore, operationRecordService)
 	sftpHandler.SetTransferHandler(sftpTransferWSHandler) // 注入跨服务器传输处理器
+	sftpAuthWSHandler := ws.NewSFTPAuthHandler(sftpHandler.GetPool(), serverService, securityService, cfg.Server.WebDevPort)
 
 	transferJobRepo := transferjob.NewRepository(database)
 	transferJobService := transferjob.NewService(
@@ -667,6 +668,7 @@ func main() {
 			sftpRoutes.GET("/stat", middleware.RequirePermission(permissionService, "file:view"), sftpHandler.GetFileInfo)        // 文件信息
 			sftpRoutes.GET("/disk-usage", middleware.RequirePermission(permissionService, "file:view"), sftpHandler.GetDiskUsage) // 磁盘使用
 			sftpRoutes.POST("/auth", middleware.RequirePermission(permissionService, "file:view"), sftpHandler.Authenticate)      // 使用临时凭据建立 SFTP 连接
+			sftpRoutes.GET("/auth/ws", middleware.RequirePermission(permissionService, "file:view"), sftpAuthWSHandler.HandleAuthWebSocket)
 
 			// 文件传输
 			sftpRoutes.POST("/upload/stream", middleware.RequirePermission(permissionService, "file:manage"), sftpHandler.UploadFileStream) // 新版流式上传文件

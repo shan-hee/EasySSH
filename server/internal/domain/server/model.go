@@ -8,12 +8,29 @@ import (
 	"gorm.io/gorm"
 )
 
-// AuthMethod 认证方式
+// AuthMethod 认证方式 / 认证策略。
 type AuthMethod string
 
 const (
-	AuthMethodPassword AuthMethod = "password"
-	AuthMethodKey      AuthMethod = "key"
+	AuthMethodPassword                 AuthMethod = "password"
+	AuthMethodKey                      AuthMethod = "key"
+	AuthMethodPasswordKeyboard         AuthMethod = "password_keyboard"
+	AuthMethodKeyKeyboard              AuthMethod = "key_keyboard"
+	AuthMethodKeyPassword              AuthMethod = "key_password"
+	AuthMethodKeyPasswordKeyboard      AuthMethod = "key_password_keyboard"
+	AuthMethodPasswordKey              AuthMethod = "password_key"
+	AuthMethodPasswordKeyKeyboard      AuthMethod = "password_key_keyboard"
+	AuthMethodKeyboardInteractive      AuthMethod = "keyboard_interactive"
+	AuthMethodKeyboardInteractiveAlias AuthMethod = "keyboard"
+)
+
+// AuthFactor 认证策略中的单个 SSH 认证因子。
+type AuthFactor string
+
+const (
+	AuthFactorPassword            AuthFactor = "password"
+	AuthFactorKey                 AuthFactor = "key"
+	AuthFactorKeyboardInteractive AuthFactor = "keyboard_interactive"
 )
 
 // ServerStatus 服务器状态
@@ -33,7 +50,7 @@ type Server struct {
 	Host          string       `gorm:"not null;size:255" json:"host"`
 	Port          int          `gorm:"default:22" json:"port"`
 	Username      string       `gorm:"not null;size:50" json:"username"`
-	AuthMethod    AuthMethod   `gorm:"type:varchar(20);not null" json:"auth_method"`
+	AuthMethod    AuthMethod   `gorm:"type:varchar(64);not null" json:"auth_method"`
 	Password      string       `gorm:"type:text" json:"-"` // 加密存储，不在 JSON 中返回
 	PrivateKey    string       `gorm:"type:text" json:"-"` // 加密存储，不在 JSON 中返回
 	Group         string       `gorm:"column:server_group;size:50" json:"group"`
@@ -59,6 +76,76 @@ func (Server) TableName() string {
 
 func (s *Server) CredentialAAD(column string) []byte {
 	return []byte(fmt.Sprintf("easyssh:servers:%s:%s:%s", s.UserID.String(), s.ID.String(), column))
+}
+
+// AuthFactors 返回当前认证策略包含的 SSH 认证因子及顺序。
+func (m AuthMethod) AuthFactors() ([]AuthFactor, bool) {
+	switch m {
+	case AuthMethodPassword:
+		return []AuthFactor{AuthFactorPassword}, true
+	case AuthMethodKey:
+		return []AuthFactor{AuthFactorKey}, true
+	case AuthMethodPasswordKeyboard:
+		return []AuthFactor{AuthFactorPassword, AuthFactorKeyboardInteractive}, true
+	case AuthMethodKeyKeyboard:
+		return []AuthFactor{AuthFactorKey, AuthFactorKeyboardInteractive}, true
+	case AuthMethodKeyPassword:
+		return []AuthFactor{AuthFactorKey, AuthFactorPassword}, true
+	case AuthMethodKeyPasswordKeyboard:
+		return []AuthFactor{AuthFactorKey, AuthFactorPassword, AuthFactorKeyboardInteractive}, true
+	case AuthMethodPasswordKey:
+		return []AuthFactor{AuthFactorPassword, AuthFactorKey}, true
+	case AuthMethodPasswordKeyKeyboard:
+		return []AuthFactor{AuthFactorPassword, AuthFactorKey, AuthFactorKeyboardInteractive}, true
+	case AuthMethodKeyboardInteractive, AuthMethodKeyboardInteractiveAlias:
+		return []AuthFactor{AuthFactorKeyboardInteractive}, true
+	default:
+		return nil, false
+	}
+}
+
+func (m AuthMethod) IsValid() bool {
+	_, ok := m.AuthFactors()
+	return ok
+}
+
+func (m AuthMethod) RequiresPassword() bool {
+	factors, ok := m.AuthFactors()
+	if !ok {
+		return false
+	}
+	for _, factor := range factors {
+		if factor == AuthFactorPassword {
+			return true
+		}
+	}
+	return false
+}
+
+func (m AuthMethod) RequiresPrivateKey() bool {
+	factors, ok := m.AuthFactors()
+	if !ok {
+		return false
+	}
+	for _, factor := range factors {
+		if factor == AuthFactorKey {
+			return true
+		}
+	}
+	return false
+}
+
+func (m AuthMethod) SupportsKeyboardInteractive() bool {
+	factors, ok := m.AuthFactors()
+	if !ok {
+		return false
+	}
+	for _, factor := range factors {
+		if factor == AuthFactorKeyboardInteractive {
+			return true
+		}
+	}
+	return false
 }
 
 // BeforeCreate GORM 钩子：创建前生成 UUID
