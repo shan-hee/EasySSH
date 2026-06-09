@@ -67,8 +67,7 @@ func (s *Service) VerifyHostKey(hostname string, remote net.Addr, key ssh.Public
 
 		if err := s.db.Create(&newKey).Error; err != nil {
 			log.Printf("⚠️  Failed to save host key for %s:%d: %v", host, port, err)
-			// 即使保存失败，也允许连接（降级到不安全模式）
-			return nil
+			return fmt.Errorf("failed to persist first-seen SSH host key for %s:%d: %w", host, port, err)
 		}
 
 		log.Printf("✅ New SSH host key trusted for %s:%d (fingerprint: %s)", host, port, fingerprint)
@@ -77,8 +76,7 @@ func (s *Service) VerifyHostKey(hostname string, remote net.Addr, key ssh.Public
 
 	if result.Error != nil {
 		log.Printf("⚠️  Failed to query host key for %s:%d: %v", host, port, result.Error)
-		// 数据库查询失败，降级到不安全模式
-		return nil
+		return fmt.Errorf("failed to query SSH host key for %s:%d: %w", host, port, result.Error)
 	}
 
 	if existingKey.TrustStatus == "revoked" {

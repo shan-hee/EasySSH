@@ -3,7 +3,7 @@ import { apiFetch } from "@/lib/api-client"
 export interface SSHKey {
   id: number
   created_at: string
-  user_id: number
+  user_id: string
   name: string
   public_key: string
   fingerprint: string

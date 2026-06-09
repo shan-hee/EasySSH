@@ -19,32 +19,33 @@ const (
 )
 
 type backupTablePolicy struct {
-	Table         string
-	Section       backupSection
-	RestoreMode   backupRestoreMode
-	Exportable    bool
-	Restorable    bool
-	LogicalKeys   [][]string
-	UserScoped    bool
-	History       bool
-	DefaultSeeded bool
+	Table           string
+	Section         backupSection
+	RestoreMode     backupRestoreMode
+	Exportable      bool
+	Restorable      bool
+	LogicalKeys     [][]string
+	UserScoped      bool
+	History         bool
+	DefaultSeeded   bool
+	ExcludedColumns []string
 }
 
 var backupTablePolicies = map[string]backupTablePolicy{
 	// Singleton configuration. These rows describe current system state; restoring config means
 	// making the current singleton rows match the backup, not applying database conflict strategy.
-	"system_config":       singletonConfigPolicy("system_config"),
+	"system_config":       excludeColumns(singletonConfigPolicy("system_config"), "google_client_secret"),
 	"security_config":     singletonConfigPolicy("security_config"),
 	"notification_config": singletonConfigPolicy("notification_config"),
-	"ai_config":           singletonConfigPolicy("ai_config"),
+	"ai_config":           excludeColumns(singletonConfigPolicy("ai_config"), "system_api_key"),
 
 	// User-owned configuration is business data because each row belongs to a user.
-	"user_ai_config": entityPolicy("user_ai_config", [][]string{{"user_id"}}, true),
+	"user_ai_config": excludeColumns(entityPolicy("user_ai_config", [][]string{{"user_id"}}, true), "custom_api_key"),
 
 	// Core business entities.
-	"users":           entityPolicy("users", [][]string{{"email"}, {"google_sub"}}, false),
-	"servers":         entityPolicy("servers", nil, true),
-	"ssh_keys":        entityPolicy("ssh_keys", [][]string{{"user_id", "fingerprint"}}, true),
+	"users":           excludeColumns(entityPolicy("users", [][]string{{"email"}, {"google_sub"}}, false), "password", "two_factor_enabled", "two_factor_secret", "backup_codes", "nezha_api_token", "komari_api_token"),
+	"servers":         excludeColumns(entityPolicy("servers", nil, true), "password", "private_key"),
+	"ssh_keys":        excludeColumns(entityPolicy("ssh_keys", [][]string{{"user_id", "fingerprint"}}, true), "private_key"),
 	"ssh_host_keys":   entityPolicy("ssh_host_keys", [][]string{{"host", "port"}}, false),
 	"scripts":         entityPolicy("scripts", nil, true),
 	"batch_tasks":     entityPolicy("batch_tasks", nil, true),
@@ -110,6 +111,11 @@ func ignoredRuntimePolicy(table string) backupTablePolicy {
 		Exportable:  false,
 		Restorable:  false,
 	}
+}
+
+func excludeColumns(policy backupTablePolicy, columns ...string) backupTablePolicy {
+	policy.ExcludedColumns = append(policy.ExcludedColumns, columns...)
+	return policy
 }
 
 func backupPolicyForTable(table string) (backupTablePolicy, bool) {

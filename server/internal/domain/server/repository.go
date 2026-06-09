@@ -151,14 +151,26 @@ func (r *gormRepository) UpdateStatus(ctx context.Context, serverID uuid.UUID, s
 }
 
 func (r *gormRepository) Delete(ctx context.Context, id uuid.UUID) error {
-	result := r.db.WithContext(ctx).Delete(&Server{}, id)
-	if result.Error != nil {
-		return result.Error
-	}
-	if result.RowsAffected == 0 {
-		return ErrServerNotFound
-	}
-	return nil
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		result := tx.Model(&Server{}).
+			Where("id = ?", id).
+			UpdateColumns(map[string]interface{}{
+				"password":    "",
+				"private_key": "",
+			})
+		if result.Error != nil {
+			return result.Error
+		}
+
+		result = tx.Delete(&Server{}, id)
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected == 0 {
+			return ErrServerNotFound
+		}
+		return nil
+	})
 }
 
 func (r *gormRepository) List(ctx context.Context, limit, offset int) ([]*Server, int64, error) {

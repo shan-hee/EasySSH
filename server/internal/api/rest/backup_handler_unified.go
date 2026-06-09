@@ -1,6 +1,7 @@
 package rest
 
 import (
+	cryptorand "crypto/rand"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -13,6 +14,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/gin-gonic/gin"
+	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 )
 
@@ -329,6 +331,7 @@ func (h *BackupHandler) exportStructuredSection(sectionType backupSection) (*Bac
 		if err != nil {
 			return nil, fmt.Errorf("failed to get columns for table %s: %w", table, err)
 		}
+		columns = filterExcludedBackupColumns(columns, policy.ExcludedColumns)
 		if len(columns) == 0 {
 			continue
 		}
@@ -338,7 +341,7 @@ func (h *BackupHandler) exportStructuredSection(sectionType backupSection) (*Bac
 			return nil, fmt.Errorf("failed to get primary key for table %s: %w", table, err)
 		}
 
-		rows, err := h.getStructuredTableRows(table, columns)
+		rows, err := h.getStructuredTableRows(table, columns, policy)
 		if err != nil {
 			return nil, fmt.Errorf("failed to export rows for table %s: %w", table, err)
 		}
@@ -354,7 +357,7 @@ func (h *BackupHandler) exportStructuredSection(sectionType backupSection) (*Bac
 	return section, nil
 }
 
-func (h *BackupHandler) getStructuredTableRows(table string, columns []string) ([]map[string]interface{}, error) {
+func (h *BackupHandler) getStructuredTableRows(table string, columns []string, policy backupTablePolicy) ([]map[string]interface{}, error) {
 	driver := h.db.Dialector.Name()
 	quotedColumns := make([]string, len(columns))
 	for i, column := range columns {
@@ -366,6 +369,9 @@ func (h *BackupHandler) getStructuredTableRows(table string, columns []string) (
 		strings.Join(quotedColumns, ", "),
 		quoteIdentifier(driver, table),
 	)
+	if shouldExcludeSoftDeletedRows(policy, columns) {
+		query += fmt.Sprintf(" WHERE %s IS NULL", quoteIdentifier(driver, "deleted_at"))
+	}
 
 	rows, err := h.db.Raw(query).Rows()
 	if err != nil {
@@ -452,7 +458,7 @@ func (h *BackupHandler) restoreSingletonConfigTable(tx *gorm.DB, table BackupTab
 		return false, table, nil
 	}
 
-	if err := h.validateRestoreTable(tx, &table); err != nil {
+	if err := h.validateRestoreTable(tx, &table, policy); err != nil {
 		return false, table, err
 	}
 
@@ -536,7 +542,7 @@ func (h *BackupHandler) restoreEntityTable(tx *gorm.DB, table BackupTable, polic
 		return false, table, nil
 	}
 
-	if err := h.validateRestoreTable(tx, &table); err != nil {
+	if err := h.validateRestoreTable(tx, &table, policy); err != nil {
 		return false, table, err
 	}
 
@@ -597,6 +603,9 @@ func (h *BackupHandler) restoreEntityTable(tx *gorm.DB, table BackupTable, polic
 			}
 		}
 
+		if err := h.prepareRestoreInsertRow(table.Name, row); err != nil {
+			return false, table, err
+		}
 		if err := tx.Table(table.Name).Create(row).Error; err != nil {
 			return false, table, fmt.Errorf("failed to restore table %s: %w", table.Name, err)
 		}
@@ -609,9 +618,22 @@ func (h *BackupHandler) restoreEntityTable(tx *gorm.DB, table BackupTable, polic
 	return changed, table, nil
 }
 
-func (h *BackupHandler) validateRestoreTable(tx *gorm.DB, table *BackupTable) error {
+func (h *BackupHandler) validateRestoreTable(tx *gorm.DB, table *BackupTable, policy backupTablePolicy) error {
 	if !isValidDBIdentifier(table.Name) {
 		return fmt.Errorf("invalid table name: %s", table.Name)
+	}
+	if column := firstExcludedBackupColumn(table.Columns, policy.ExcludedColumns); column != "" {
+		return fmt.Errorf("table %s includes non-restorable sensitive column %s", table.Name, column)
+	}
+	if column := firstExcludedBackupColumn(table.PrimaryKey, policy.ExcludedColumns); column != "" {
+		return fmt.Errorf("table %s uses non-restorable sensitive primary key column %s", table.Name, column)
+	}
+	for index, row := range table.Rows {
+		for column := range row {
+			if containsStringFold(policy.ExcludedColumns, column) {
+				return fmt.Errorf("table %s row %d contains non-restorable sensitive column %s", table.Name, index+1, column)
+			}
+		}
 	}
 	for _, column := range table.Columns {
 		if !isValidDBIdentifier(column) {
@@ -643,6 +665,70 @@ func (h *BackupHandler) validateRestoreTable(tx *gorm.DB, table *BackupTable) er
 	}
 
 	return nil
+}
+
+func filterExcludedBackupColumns(columns []string, excludedColumns []string) []string {
+	if len(columns) == 0 || len(excludedColumns) == 0 {
+		return columns
+	}
+
+	filtered := make([]string, 0, len(columns))
+	for _, column := range columns {
+		if containsStringFold(excludedColumns, column) {
+			continue
+		}
+		filtered = append(filtered, column)
+	}
+	return filtered
+}
+
+func firstExcludedBackupColumn(columns []string, excludedColumns []string) string {
+	for _, column := range columns {
+		if containsStringFold(excludedColumns, column) {
+			return column
+		}
+	}
+	return ""
+}
+
+func shouldExcludeSoftDeletedRows(policy backupTablePolicy, columns []string) bool {
+	return !policy.History && policy.Section != backupSectionRuntime && containsStringFold(columns, "deleted_at")
+}
+
+func (h *BackupHandler) prepareRestoreInsertRow(table string, row map[string]interface{}) error {
+	switch {
+	case isUsersRestoreTable(table):
+		if _, ok := row["password"]; !ok {
+			passwordHash, err := generateUnavailablePasswordHash()
+			if err != nil {
+				return fmt.Errorf("failed to generate placeholder password hash for restored user: %w", err)
+			}
+			row["password"] = passwordHash
+		}
+		row["two_factor_enabled"] = false
+		row["two_factor_secret"] = ""
+		row["backup_codes"] = ""
+	case strings.EqualFold(strings.TrimSpace(table), "ssh_keys"):
+		if _, ok := row["private_key"]; !ok {
+			row["private_key"] = ""
+		}
+	}
+
+	return nil
+}
+
+func generateUnavailablePasswordHash() (string, error) {
+	randomBytes := make([]byte, 32)
+	if _, err := cryptorand.Read(randomBytes); err != nil {
+		return "", err
+	}
+
+	password := "easyssh-restored-disabled-" + base64.RawURLEncoding.EncodeToString(randomBytes)
+	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+		return "", err
+	}
+	return string(hash), nil
 }
 
 func (h *BackupHandler) normalizeRestoreRow(tx *gorm.DB, table string, columns []string, rawRow map[string]interface{}) (map[string]interface{}, error) {

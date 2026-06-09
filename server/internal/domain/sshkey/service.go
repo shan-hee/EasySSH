@@ -15,15 +15,16 @@ import (
 	"io"
 	"strings"
 
+	"github.com/google/uuid"
 	"golang.org/x/crypto/ssh"
 )
 
 // Service defines the interface for SSH key business logic
 type Service interface {
-	GenerateKeyPair(req *CreateSSHKeyRequest, userID uint) (*SSHKeyResponse, error)
-	ImportKeyPair(req *ImportSSHKeyRequest, userID uint) (*SSHKeyResponse, error)
-	GetUserKeys(userID uint) ([]SSHKey, error)
-	DeleteKey(keyID uint, userID uint) error
+	GenerateKeyPair(req *CreateSSHKeyRequest, userID uuid.UUID) (*SSHKeyResponse, error)
+	ImportKeyPair(req *ImportSSHKeyRequest, userID uuid.UUID) (*SSHKeyResponse, error)
+	GetUserKeys(userID uuid.UUID) ([]SSHKey, error)
+	DeleteKey(keyID uint, userID uuid.UUID) error
 }
 
 type service struct {
@@ -42,7 +43,7 @@ func NewService(repo Repository, encryptionKey string) Service {
 }
 
 // GenerateKeyPair generates a new SSH key pair
-func (s *service) GenerateKeyPair(req *CreateSSHKeyRequest, userID uint) (*SSHKeyResponse, error) {
+func (s *service) GenerateKeyPair(req *CreateSSHKeyRequest, userID uuid.UUID) (*SSHKeyResponse, error) {
 	var privateKey interface{}
 	var err error
 	var algorithm string
@@ -127,7 +128,7 @@ func (s *service) GenerateKeyPair(req *CreateSSHKeyRequest, userID uint) (*SSHKe
 }
 
 // ImportKeyPair imports an existing SSH key pair
-func (s *service) ImportKeyPair(req *ImportSSHKeyRequest, userID uint) (*SSHKeyResponse, error) {
+func (s *service) ImportKeyPair(req *ImportSSHKeyRequest, userID uuid.UUID) (*SSHKeyResponse, error) {
 	// 解析私钥
 	privateKeyPEM := strings.TrimSpace(req.PrivateKey)
 
@@ -227,12 +228,12 @@ func (s *service) ImportKeyPair(req *ImportSSHKeyRequest, userID uint) (*SSHKeyR
 }
 
 // GetUserKeys retrieves all SSH keys for a user
-func (s *service) GetUserKeys(userID uint) ([]SSHKey, error) {
+func (s *service) GetUserKeys(userID uuid.UUID) ([]SSHKey, error) {
 	return s.repo.FindByUserID(userID)
 }
 
 // DeleteKey deletes an SSH key
-func (s *service) DeleteKey(keyID uint, userID uint) error {
+func (s *service) DeleteKey(keyID uint, userID uuid.UUID) error {
 	return s.repo.Delete(keyID, userID)
 }
 

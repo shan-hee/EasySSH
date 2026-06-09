@@ -6,19 +6,22 @@ import (
 	"github.com/easyssh/server/internal/domain/auth"
 	"github.com/easyssh/server/internal/domain/server"
 	"github.com/easyssh/server/internal/pkg/crypto"
+	"golang.org/x/crypto/ssh"
 )
 
 // DataSourceFactory 数据源工厂
 type DataSourceFactory struct {
-	serverService server.Service
-	encryptor     *crypto.Encryptor
+	serverService   server.Service
+	encryptor       *crypto.Encryptor
+	hostKeyCallback ssh.HostKeyCallback
 }
 
 // NewDataSourceFactory 创建数据源工厂
-func NewDataSourceFactory(serverService server.Service, encryptor *crypto.Encryptor) *DataSourceFactory {
+func NewDataSourceFactory(serverService server.Service, encryptor *crypto.Encryptor, hostKeyCallback ssh.HostKeyCallback) *DataSourceFactory {
 	return &DataSourceFactory{
-		serverService: serverService,
-		encryptor:     encryptor,
+		serverService:   serverService,
+		encryptor:       encryptor,
+		hostKeyCallback: hostKeyCallback,
 	}
 }
 
@@ -27,7 +30,7 @@ func (f *DataSourceFactory) CreateDataSource(user *auth.User) (DataSourceProvide
 	switch auth.MonitorDataSourceType(user.MonitorDataSource) {
 	case auth.MonitorDataSourceEasySSH, "":
 		// 默认使用 EasySSH
-		return NewEasySSHDataSource(f.serverService, f.encryptor, user.ID), nil
+		return NewEasySSHDataSource(f.serverService, f.encryptor, user.ID, f.hostKeyCallback), nil
 
 	case auth.MonitorDataSourceNezha:
 		if user.NezhaAPIEndpoint == "" {
@@ -68,7 +71,7 @@ func (f *DataSourceFactory) CreateDataSource(user *auth.User) (DataSourceProvide
 func (f *DataSourceFactory) CreateDataSourceFromConfig(config *DataSourceConfig, user *auth.User) (DataSourceProvider, error) {
 	switch config.Type {
 	case "easyssh", "":
-		return NewEasySSHDataSource(f.serverService, f.encryptor, user.ID), nil
+		return NewEasySSHDataSource(f.serverService, f.encryptor, user.ID, f.hostKeyCallback), nil
 
 	case "nezha":
 		if config.Endpoint == "" {

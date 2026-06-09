@@ -9,6 +9,7 @@ import (
 	"github.com/easyssh/server/internal/domain/server"
 	"github.com/easyssh/server/internal/pkg/crypto"
 	"github.com/google/uuid"
+	"golang.org/x/crypto/ssh"
 )
 
 // Service 监控服务接口
@@ -30,14 +31,16 @@ type service struct {
 	serverService     server.Service
 	encryptor         *crypto.Encryptor
 	dataSourceFactory *DataSourceFactory
+	hostKeyCallback   ssh.HostKeyCallback
 }
 
 // NewService 创建监控服务
-func NewService(serverService server.Service, encryptor *crypto.Encryptor) Service {
+func NewService(serverService server.Service, encryptor *crypto.Encryptor, hostKeyCallback ssh.HostKeyCallback) Service {
 	return &service{
 		serverService:     serverService,
 		encryptor:         encryptor,
-		dataSourceFactory: NewDataSourceFactory(serverService, encryptor),
+		dataSourceFactory: NewDataSourceFactory(serverService, encryptor, hostKeyCallback),
+		hostKeyCallback:   hostKeyCallback,
 	}
 }
 
@@ -55,7 +58,7 @@ func (s *service) GetAllServersResources(ctx context.Context) (*AllServersResour
 	}
 
 	// 创建 EasySSH 数据源
-	dataSource := NewEasySSHDataSource(s.serverService, s.encryptor, userID)
+	dataSource := NewEasySSHDataSource(s.serverService, s.encryptor, userID, s.hostKeyCallback)
 
 	// 使用数据源获取资源
 	summaries, err := dataSource.GetServersResources(ctx)
@@ -85,7 +88,7 @@ func (s *service) StreamServersResources(ctx context.Context, resultChan chan<- 
 	}
 
 	// 创建 EasySSH 数据源
-	dataSource := NewEasySSHDataSource(s.serverService, s.encryptor, userID)
+	dataSource := NewEasySSHDataSource(s.serverService, s.encryptor, userID, s.hostKeyCallback)
 
 	// 使用数据源流式获取资源
 	return dataSource.StreamServersResources(ctx, resultChan)

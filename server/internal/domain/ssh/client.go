@@ -23,6 +23,7 @@ type Client struct {
 }
 
 var ErrCredentialRequired = errors.New("server credential is required")
+var ErrHostKeyCallbackRequired = errors.New("ssh host key callback is required")
 
 type clientOptions struct {
 	keyboardInteractive  ssh.KeyboardInteractiveChallenge
@@ -68,8 +69,11 @@ func WithPrivateKeyPassphrase(passphrase string) ClientOption {
 }
 
 // NewClient 创建 SSH 客户端
-// hostKeyCallback: 可选的主机密钥验证回调，如果为 nil 则使用不安全的模式（不推荐）
 func NewClient(srv *server.Server, encryptor *crypto.Encryptor, hostKeyCallback ssh.HostKeyCallback, opts ...ClientOption) (*Client, error) {
+	if hostKeyCallback == nil {
+		return nil, ErrHostKeyCallbackRequired
+	}
+
 	options := &clientOptions{}
 	for _, opt := range opts {
 		if opt != nil {
@@ -120,12 +124,6 @@ func NewClient(srv *server.Server, encryptor *crypto.Encryptor, hostKeyCallback 
 
 	if options.keyboardInteractive != nil {
 		authMethods = append(authMethods, ssh.KeyboardInteractive(options.keyboardInteractive))
-	}
-
-	// 配置 SSH 客户端
-	// 如果没有提供主机密钥验证回调，显式使用不安全的模式（不推荐）
-	if hostKeyCallback == nil {
-		hostKeyCallback = ssh.InsecureIgnoreHostKey()
 	}
 
 	config := &ssh.ClientConfig{

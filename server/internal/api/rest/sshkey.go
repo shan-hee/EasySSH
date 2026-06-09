@@ -33,7 +33,13 @@ func NewSSHKeyHandler(service sshkey.Service) *SSHKeyHandler {
 // @Failure 500 {object} ErrorResponse
 // @Router /api/ssh-keys [get]
 func (h *SSHKeyHandler) GetSSHKeys(c *gin.Context) {
-	userID := c.GetUint("user_id")
+	userID, err := getUserIDFromContext(c)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, ErrorResponse{
+			Error: err.Error(),
+		})
+		return
+	}
 
 	keys, err := h.service.GetUserKeys(userID)
 	if err != nil {
@@ -60,7 +66,13 @@ func (h *SSHKeyHandler) GetSSHKeys(c *gin.Context) {
 // @Failure 500 {object} ErrorResponse
 // @Router /api/ssh-keys/generate [post]
 func (h *SSHKeyHandler) GenerateSSHKey(c *gin.Context) {
-	userID := c.GetUint("user_id")
+	userID, err := getUserIDFromContext(c)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, ErrorResponse{
+			Error: err.Error(),
+		})
+		return
+	}
 
 	var req sshkey.CreateSSHKeyRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -95,7 +107,13 @@ func (h *SSHKeyHandler) GenerateSSHKey(c *gin.Context) {
 // @Failure 500 {object} ErrorResponse
 // @Router /api/ssh-keys/import [post]
 func (h *SSHKeyHandler) ImportSSHKey(c *gin.Context) {
-	userID := c.GetUint("user_id")
+	userID, err := getUserIDFromContext(c)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, ErrorResponse{
+			Error: err.Error(),
+		})
+		return
+	}
 
 	var req sshkey.ImportSSHKeyRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -131,7 +149,13 @@ func (h *SSHKeyHandler) ImportSSHKey(c *gin.Context) {
 // @Failure 500 {object} ErrorResponse
 // @Router /api/ssh-keys/{id} [delete]
 func (h *SSHKeyHandler) DeleteSSHKey(c *gin.Context) {
-	userID := c.GetUint("user_id")
+	userID, err := getUserIDFromContext(c)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, ErrorResponse{
+			Error: err.Error(),
+		})
+		return
+	}
 
 	keyID, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {

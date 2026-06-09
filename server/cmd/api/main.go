@@ -52,7 +52,6 @@ import (
 	"github.com/easyssh/server/internal/platform"
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
-	"gorm.io/gorm"
 )
 
 func main() {
@@ -117,7 +116,6 @@ func main() {
 	); err != nil {
 		log.Fatalf("❌ Failed to migrate database: %v", err)
 	}
-	dropLegacySystemCompletionColumns(database, cfg.Server.Env)
 	log.Println("✅ Database migrated successfully")
 
 	// 系统配置服务（JWT_SECRET 仍来自 .env，其余 JWT 过期/刷新配置来自系统设置）
@@ -278,7 +276,7 @@ func main() {
 	sessionManager := ssh.NewSessionManager()
 
 	// 监控连接池（独立于终端会话）
-	monitorConnectionPool := monitor.NewConnectionPool(serverService, encryptor)
+	monitorConnectionPool := monitor.NewConnectionPool(serverService, encryptor, sshHostKeyService.GetHostKeyCallback())
 	defer monitorConnectionPool.Close() // 程序退出时关闭连接池
 
 	// 审计日志服务
@@ -290,7 +288,7 @@ func main() {
 	dashboardService := dashboard.NewService(dashboardRepo)
 
 	// 监控服务
-	monitoringService := monitoring.NewService(serverService, encryptor)
+	monitoringService := monitoring.NewService(serverService, encryptor, sshHostKeyService.GetHostKeyCallback())
 
 	// 脚本服务
 	scriptRepo := script.NewRepository(database)
@@ -440,7 +438,7 @@ func main() {
 	userAIConfigHandler := rest.NewUserAIConfigHandler(userAIConfigService)
 	aiRuntimeConfigHandler := rest.NewAIRuntimeConfigHandler(aichat.NewConfigResolver(aiConfigService, userAIConfigService))
 	// AI 工具执行器和会话运行时
-	aiToolExecutor := aichat.NewToolExecutorService(serverService, sftpHandler.GetPool(), encryptor)
+	aiToolExecutor := aichat.NewToolExecutorService(serverService, sftpHandler.GetPool(), encryptor, sshHostKeyService.GetHostKeyCallback())
 	aiRuntimeManager := aichat.NewRuntimeManager(aiConfigService, userAIConfigService, aiToolExecutor)
 	aiRuntimeManager.SetSessionStore(runtime.NewGormSessionStore(database))
 	aiSessionHandler := rest.NewAISessionHandler(aiRuntimeManager)
@@ -616,7 +614,12 @@ func main() {
 		sshRoutes.Use(middleware.AuthMiddleware(jwtService, ticketService, authRepo))
 		{
 			// WebSocket 终端
-			sshRoutes.GET("/terminal/:server_id", middleware.RequirePermission(permissionService, "terminal:execute"), terminalHandler.HandleSSH)
+			sshRoutes.GET(
+				"/terminal/:server_id",
+				middleware.RequirePermission(permissionService, "server:connect"),
+				middleware.RequirePermission(permissionService, "terminal:execute"),
+				terminalHandler.HandleSSH,
+			)
 
 			// 会话管理 REST API
 			sshRoutes.GET("/sessions", middleware.RequirePermission(permissionService, "terminal:execute"), sshHandler.ListSessions)        // 会话列表
@@ -628,25 +631,27 @@ func main() {
 		// Docker 路由（需要认证）
 		dockerRoutes := v1.Group("/docker/:serverId")
 		dockerRoutes.Use(middleware.AuthMiddleware(jwtService, ticketService, authRepo))
+		dockerRoutes.Use(middleware.RequirePermission(permissionService, "server:connect"))
 		{
-			dockerRoutes.GET("/containers", dockerHandler.ListContainers)                             // 容器列表
-			dockerRoutes.GET("/containers/:id/logs", dockerHandler.GetContainerLogs)                  // 容器日志
-			dockerRoutes.GET("/containers/:id/check-update", dockerHandler.CheckContainerImageUpdate) // 检查镜像更新
-			dockerRoutes.POST("/containers/:id/start", dockerHandler.StartContainer)                  // 启动容器
-			dockerRoutes.POST("/containers/:id/stop", dockerHandler.StopContainer)                    // 停止容器
-			dockerRoutes.POST("/containers/:id/restart", dockerHandler.RestartContainer)              // 重启容器
-			dockerRoutes.POST("/containers/:id/pause", dockerHandler.PauseContainer)                  // 暂停容器
-			dockerRoutes.POST("/containers/:id/unpause", dockerHandler.UnpauseContainer)              // 恢复容器
-			dockerRoutes.DELETE("/containers/:id", dockerHandler.RemoveContainer)                     // 删除容器
-			dockerRoutes.GET("/images", dockerHandler.ListImages)                                     // 镜像列表
-			dockerRoutes.GET("/system", dockerHandler.GetSystemInfo)                                  // 系统信息
-			dockerRoutes.GET("/stats", dockerHandler.GetStats)                                        // 容器统计
-			dockerRoutes.GET("/resources", dockerHandler.GetResources)                                // 资源页签数据（stats + systemInfo）
+			dockerRoutes.GET("/containers", middleware.RequirePermission(permissionService, "docker:view"), dockerHandler.ListContainers)                             // 容器列表
+			dockerRoutes.GET("/containers/:id/logs", middleware.RequirePermission(permissionService, "docker:view"), dockerHandler.GetContainerLogs)                  // 容器日志
+			dockerRoutes.GET("/containers/:id/check-update", middleware.RequirePermission(permissionService, "docker:view"), dockerHandler.CheckContainerImageUpdate) // 检查镜像更新
+			dockerRoutes.POST("/containers/:id/start", middleware.RequirePermission(permissionService, "docker:manage"), dockerHandler.StartContainer)                // 启动容器
+			dockerRoutes.POST("/containers/:id/stop", middleware.RequirePermission(permissionService, "docker:manage"), dockerHandler.StopContainer)                  // 停止容器
+			dockerRoutes.POST("/containers/:id/restart", middleware.RequirePermission(permissionService, "docker:manage"), dockerHandler.RestartContainer)            // 重启容器
+			dockerRoutes.POST("/containers/:id/pause", middleware.RequirePermission(permissionService, "docker:manage"), dockerHandler.PauseContainer)                // 暂停容器
+			dockerRoutes.POST("/containers/:id/unpause", middleware.RequirePermission(permissionService, "docker:manage"), dockerHandler.UnpauseContainer)            // 恢复容器
+			dockerRoutes.DELETE("/containers/:id", middleware.RequirePermission(permissionService, "docker:manage"), dockerHandler.RemoveContainer)                   // 删除容器
+			dockerRoutes.GET("/images", middleware.RequirePermission(permissionService, "docker:view"), dockerHandler.ListImages)                                     // 镜像列表
+			dockerRoutes.GET("/system", middleware.RequirePermission(permissionService, "docker:view"), dockerHandler.GetSystemInfo)                                  // 系统信息
+			dockerRoutes.GET("/stats", middleware.RequirePermission(permissionService, "docker:view"), dockerHandler.GetStats)                                        // 容器统计
+			dockerRoutes.GET("/resources", middleware.RequirePermission(permissionService, "docker:view"), dockerHandler.GetResources)                                // 资源页签数据（stats + systemInfo）
 		}
 
 		// 监控 WebSocket 路由（需要认证）
 		monitorRoutes := v1.Group("/monitor")
 		monitorRoutes.Use(middleware.AuthMiddleware(jwtService, ticketService, authRepo))
+		monitorRoutes.Use(middleware.RequirePermission(permissionService, "server:connect"))
 		{
 			// WebSocket 实时监控 - 使用 server_id 查找活跃会话
 			monitorRoutes.GET("/server/:server_id", monitorHandler.HandleMonitor) // 实时监控 WebSocket
@@ -655,6 +660,7 @@ func main() {
 		// SFTP 路由（需要认证）
 		sftpRoutes := v1.Group("/sftp/:server_id")
 		sftpRoutes.Use(middleware.AuthMiddleware(jwtService, ticketService, authRepo))
+		sftpRoutes.Use(middleware.RequirePermission(permissionService, "server:connect"))
 		{
 			// 文件浏览
 			sftpRoutes.GET("/list", middleware.RequirePermission(permissionService, "file:view"), sftpHandler.ListDirectory)      // 列出目录
@@ -663,7 +669,6 @@ func main() {
 			sftpRoutes.POST("/auth", middleware.RequirePermission(permissionService, "file:view"), sftpHandler.Authenticate)      // 使用临时凭据建立 SFTP 连接
 
 			// 文件传输
-			sftpRoutes.POST("/upload", middleware.RequirePermission(permissionService, "file:manage"), sftpHandler.UploadFile)              // 旧版上传文件（保留兼容，不再由前端默认接入）
 			sftpRoutes.POST("/upload/stream", middleware.RequirePermission(permissionService, "file:manage"), sftpHandler.UploadFileStream) // 新版流式上传文件
 			sftpRoutes.GET("/download", middleware.RequirePermission(permissionService, "file:manage"), sftpHandler.DownloadFile)           // 下载文件
 
@@ -688,6 +693,7 @@ func main() {
 		// SFTP 连接池统计路由（需要认证）
 		sftpPoolRoutes := v1.Group("/sftp/pool")
 		sftpPoolRoutes.Use(middleware.AuthMiddleware(jwtService, ticketService, authRepo))
+		sftpPoolRoutes.Use(middleware.RequirePermission(permissionService, "server:connect"))
 		sftpPoolRoutes.Use(middleware.RequirePermission(permissionService, "file:view"))
 		{
 			sftpPoolRoutes.GET("/stats", sftpHandler.GetPoolStats) // 连接池统计
@@ -696,6 +702,7 @@ func main() {
 		// SFTP 上传进度 WebSocket 路由（需要认证）
 		sftpWSRoutes := v1.Group("/sftp/upload/ws")
 		sftpWSRoutes.Use(middleware.AuthMiddleware(jwtService, ticketService, authRepo))
+		sftpWSRoutes.Use(middleware.RequirePermission(permissionService, "server:connect"))
 		sftpWSRoutes.Use(middleware.RequirePermission(permissionService, "file:manage"))
 		{
 			sftpWSRoutes.GET("/:task_id", sftpUploadWSHandler.HandleUploadWebSocket) // 上传进度 WebSocket
@@ -704,6 +711,7 @@ func main() {
 		// SFTP 上传任务路由（需要认证）
 		sftpUploadRoutes := v1.Group("/sftp/upload")
 		sftpUploadRoutes.Use(middleware.AuthMiddleware(jwtService, ticketService, authRepo))
+		sftpUploadRoutes.Use(middleware.RequirePermission(permissionService, "server:connect"))
 		sftpUploadRoutes.Use(middleware.RequirePermission(permissionService, "file:manage"))
 		{
 			sftpUploadRoutes.POST("/task", sftpHandler.CreateUploadTask)                  // 创建上传任务（服务端生成 task_id）
@@ -715,6 +723,7 @@ func main() {
 		// SFTP 跨服务器传输路由（需要认证）
 		sftpTransferRoutes := v1.Group("/sftp")
 		sftpTransferRoutes.Use(middleware.AuthMiddleware(jwtService, ticketService, authRepo))
+		sftpTransferRoutes.Use(middleware.RequirePermission(permissionService, "server:connect"))
 		sftpTransferRoutes.Use(middleware.RequirePermission(permissionService, "file:manage"))
 		{
 			sftpTransferRoutes.POST("/transfer", sftpHandler.Transfer)                       // 跨服务器文件传输（流式中转）
@@ -725,6 +734,7 @@ func main() {
 		// SFTP 跨服务器传输进度 WebSocket 路由（需要认证）
 		sftpTransferWSRoutes := v1.Group("/sftp/transfer/ws")
 		sftpTransferWSRoutes.Use(middleware.AuthMiddleware(jwtService, ticketService, authRepo))
+		sftpTransferWSRoutes.Use(middleware.RequirePermission(permissionService, "server:connect"))
 		sftpTransferWSRoutes.Use(middleware.RequirePermission(permissionService, "file:manage"))
 		{
 			sftpTransferWSRoutes.GET("/:task_id", sftpTransferWSHandler.HandleTransferWebSocket) // 传输进度 WebSocket
@@ -733,6 +743,7 @@ func main() {
 		// 监控路由（需要认证）
 		monitoringRoutes := v1.Group("/monitoring")
 		monitoringRoutes.Use(middleware.AuthMiddleware(jwtService, ticketService, authRepo))
+		monitoringRoutes.Use(middleware.RequirePermission(permissionService, "server:connect"))
 		{
 			monitoringRoutes.GET("/resources", monitoringHandler.GetAllResources)                 // 所有服务器资源概览
 			monitoringRoutes.GET("/resources/stream", monitoringHandler.StreamResources)          // 流式获取服务器资源（SSE）
@@ -912,6 +923,7 @@ func main() {
 		// 备份恢复路由（需要认证）
 		backupRoutes := v1.Group("/backup")
 		backupRoutes.Use(middleware.AuthMiddleware(jwtService, ticketService, authRepo))
+		backupRoutes.Use(middleware.RequirePermission(permissionService, "backup:manage"))
 		{
 			backupRoutes.GET("/export", backupHandler.ExportBackup)    // 导出统一备份
 			backupRoutes.POST("/restore", backupHandler.RestoreBackup) // 恢复统一备份
@@ -1060,39 +1072,6 @@ func readAppVersion() string {
 		}
 	}
 	return "dev"
-}
-
-func dropLegacySystemCompletionColumns(database *gorm.DB, env string) {
-	if strings.EqualFold(strings.TrimSpace(env), "production") {
-		return
-	}
-
-	migrator := database.Migrator()
-	columnTypes, err := migrator.ColumnTypes(&systemconfig.SystemConfig{})
-	if err != nil {
-		log.Printf("⚠️ Failed to inspect legacy system_config completion columns: %v", err)
-		return
-	}
-	existingColumns := make(map[string]bool, len(columnTypes))
-	for _, columnType := range columnTypes {
-		existingColumns[strings.ToLower(columnType.Name())] = true
-	}
-
-	for _, column := range []string{
-		"completion_enabled",
-		"completion_providers",
-		"completion_quotas",
-		"completion_cache",
-	} {
-		if !existingColumns[column] {
-			continue
-		}
-		if err := migrator.DropColumn(&systemconfig.SystemConfig{}, column); err != nil {
-			log.Printf("⚠️ Failed to drop legacy system_config.%s: %v", column, err)
-			continue
-		}
-		log.Printf("✅ Dropped legacy system_config.%s", column)
-	}
 }
 
 func runtimeDataDir(driver string, dsn string) string {

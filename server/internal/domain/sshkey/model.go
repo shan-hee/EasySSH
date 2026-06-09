@@ -3,6 +3,7 @@ package sshkey
 import (
 	"time"
 
+	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
 
@@ -12,7 +13,7 @@ type SSHKey struct {
 	CreatedAt   time.Time      `json:"created_at"`
 	UpdatedAt   time.Time      `json:"updated_at"`
 	DeletedAt   gorm.DeletedAt `gorm:"index" json:"-"`
-	UserID      uint           `gorm:"not null;index" json:"user_id"`
+	UserID      uuid.UUID      `gorm:"type:char(36);not null;index" json:"user_id"`
 	Name        string         `gorm:"type:varchar(100);not null" json:"name"`
 	PublicKey   string         `gorm:"type:text;not null" json:"public_key"`
 	PrivateKey  string         `gorm:"type:text;not null" json:"-"` // 加密存储，不在JSON响应中返回
@@ -43,7 +44,7 @@ type ImportSSHKeyRequest struct {
 type SSHKeyResponse struct {
 	ID          uint      `json:"id"`
 	CreatedAt   time.Time `json:"created_at"`
-	UserID      uint      `json:"user_id"`
+	UserID      uuid.UUID `json:"user_id"`
 	Name        string    `json:"name"`
 	PublicKey   string    `json:"public_key"`
 	PrivateKey  string    `json:"private_key,omitempty"` // 仅在生成/导入时返回

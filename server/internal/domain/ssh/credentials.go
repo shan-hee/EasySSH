@@ -3,10 +3,13 @@ package ssh
 import (
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/easyssh/server/internal/domain/server"
 	"github.com/google/uuid"
 )
+
+const defaultRuntimeCredentialTTL = 15 * time.Minute
 
 // Credential 是一次 SSH/SFTP 建连使用的临时认证信息，不负责持久化。
 type Credential struct {
@@ -36,12 +39,19 @@ func CredentialOptions(credential *Credential) []ClientOption {
 
 type RuntimeCredentialStore struct {
 	mu         sync.RWMutex
-	credential map[string]Credential
+	credential map[string]runtimeCredentialEntry
+	ttl        time.Duration
+}
+
+type runtimeCredentialEntry struct {
+	Credential Credential
+	ExpiresAt  time.Time
 }
 
 func NewRuntimeCredentialStore() *RuntimeCredentialStore {
 	return &RuntimeCredentialStore{
-		credential: map[string]Credential{},
+		credential: map[string]runtimeCredentialEntry{},
+		ttl:        defaultRuntimeCredentialTTL,
 	}
 }
 
@@ -55,7 +65,10 @@ func (s *RuntimeCredentialStore) Set(userID, serverID uuid.UUID, credential Cred
 	}
 
 	s.mu.Lock()
-	s.credential[runtimeCredentialKey(userID, serverID)] = credential
+	s.credential[runtimeCredentialKey(userID, serverID)] = runtimeCredentialEntry{
+		Credential: credential,
+		ExpiresAt:  time.Now().Add(s.ttl),
+	}
 	s.mu.Unlock()
 }
 
@@ -64,14 +77,24 @@ func (s *RuntimeCredentialStore) Get(userID, serverID uuid.UUID) (*Credential, b
 		return nil, false
 	}
 
+	key := runtimeCredentialKey(userID, serverID)
 	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	credential, ok := s.credential[runtimeCredentialKey(userID, serverID)]
+	entry, ok := s.credential[key]
+	s.mu.RUnlock()
 	if !ok {
 		return nil, false
 	}
 
+	if time.Now().After(entry.ExpiresAt) {
+		s.mu.Lock()
+		if current, exists := s.credential[key]; exists && current.ExpiresAt.Equal(entry.ExpiresAt) {
+			delete(s.credential, key)
+		}
+		s.mu.Unlock()
+		return nil, false
+	}
+
+	credential := entry.Credential
 	return &credential, true
 }
 

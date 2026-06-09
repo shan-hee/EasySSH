@@ -194,6 +194,78 @@ func decodeTextWithEncoding(content string, encodingName string) string {
 	return string(decoded)
 }
 
+func dockerShellQuote(value string) string {
+	return "'" + strings.ReplaceAll(value, "'", "'\"'\"'") + "'"
+}
+
+func validateDockerContainerRef(value string) bool {
+	value = strings.TrimSpace(value)
+	if value == "" || len(value) > 255 {
+		return false
+	}
+	if !isDockerRefStart(rune(value[0])) {
+		return false
+	}
+
+	for _, r := range value {
+		if (r >= 'a' && r <= 'z') ||
+			(r >= 'A' && r <= 'Z') ||
+			(r >= '0' && r <= '9') ||
+			r == '_' ||
+			r == '.' ||
+			r == '-' ||
+			r == ':' {
+			continue
+		}
+		return false
+	}
+	return true
+}
+
+func validateDockerImageRef(value string) bool {
+	value = strings.TrimSpace(value)
+	if value == "" || len(value) > 255 {
+		return false
+	}
+	if !isDockerRefStart(rune(value[0])) {
+		return false
+	}
+
+	for _, r := range value {
+		if (r >= 'a' && r <= 'z') ||
+			(r >= 'A' && r <= 'Z') ||
+			(r >= '0' && r <= '9') ||
+			r == '_' ||
+			r == '.' ||
+			r == '-' ||
+			r == ':' ||
+			r == '/' ||
+			r == '@' ||
+			r == '+' {
+			continue
+		}
+		return false
+	}
+	return true
+}
+
+func isDockerRefStart(r rune) bool {
+	return (r >= 'a' && r <= 'z') ||
+		(r >= 'A' && r <= 'Z') ||
+		(r >= '0' && r <= '9')
+}
+
+func parseDockerTail(value string) (int, error) {
+	tail, err := strconv.Atoi(strings.TrimSpace(value))
+	if err != nil {
+		return 0, fmt.Errorf("tail must be a number")
+	}
+	if tail < 1 || tail > 5000 {
+		return 0, fmt.Errorf("tail must be between 1 and 5000")
+	}
+	return tail, nil
+}
+
 // ListContainers 获取容器列表
 func (h *DockerHandler) ListContainers(c *gin.Context) {
 	serverID := c.Param("serverId")
@@ -398,7 +470,15 @@ func (h *DockerHandler) listContainersViaInspect(client *sshDomain.Client, all b
 		return []DockerContainer{}, nil
 	}
 
-	inspectCmd := fmt.Sprintf("docker inspect %s", strings.Join(ids, " "))
+	quotedIDs := make([]string, 0, len(ids))
+	for _, id := range ids {
+		if !validateDockerContainerRef(id) {
+			return nil, fmt.Errorf("invalid docker container reference from docker ps: %s", id)
+		}
+		quotedIDs = append(quotedIDs, dockerShellQuote(id))
+	}
+
+	inspectCmd := fmt.Sprintf("docker inspect %s", strings.Join(quotedIDs, " "))
 	inspectOut, err := h.executeCommand(client, inspectCmd)
 	if err != nil {
 		return nil, err
@@ -567,8 +647,16 @@ func parseInspectPorts(ports map[string][]dockerInspectPortBinding) []DockerPort
 // GetContainerLogs 获取容器日志
 func (h *DockerHandler) GetContainerLogs(c *gin.Context) {
 	serverID := c.Param("serverId")
-	containerID := c.Param("id")
-	tail := c.DefaultQuery("tail", "100")
+	containerID := strings.TrimSpace(c.Param("id"))
+	if !validateDockerContainerRef(containerID) {
+		RespondError(c, http.StatusBadRequest, "invalid_docker_reference", "Invalid container ID or name")
+		return
+	}
+	tail, err := parseDockerTail(c.DefaultQuery("tail", "100"))
+	if err != nil {
+		RespondError(c, http.StatusBadRequest, "invalid_tail", err.Error())
+		return
+	}
 	encodingName := c.DefaultQuery("encoding", "utf-8")
 
 	pooledConn, err := h.getPooledConnection(c, serverID)
@@ -578,7 +666,7 @@ func (h *DockerHandler) GetContainerLogs(c *gin.Context) {
 	}
 	defer h.releaseConnection(c, serverID)
 
-	cmd := fmt.Sprintf("docker logs --tail %s %s 2>&1", tail, containerID)
+	cmd := fmt.Sprintf("docker logs --tail %d %s 2>&1", tail, dockerShellQuote(containerID))
 	output, err := h.executeCommand(pooledConn.Client, cmd)
 	if err != nil {
 		// Docker logs 可能返回错误码但仍有输出
@@ -589,11 +677,10 @@ func (h *DockerHandler) GetContainerLogs(c *gin.Context) {
 	}
 	output = decodeTextWithEncoding(output, encodingName)
 
-	tailInt, _ := strconv.Atoi(tail)
 	RespondSuccess(c, map[string]interface{}{
 		"data":         output,
 		"container_id": containerID,
-		"lines":        tailInt,
+		"lines":        tail,
 		"encoding":     encodingName,
 	})
 }
@@ -601,7 +688,11 @@ func (h *DockerHandler) GetContainerLogs(c *gin.Context) {
 // StartContainer 启动容器
 func (h *DockerHandler) StartContainer(c *gin.Context) {
 	serverID := c.Param("serverId")
-	containerID := c.Param("id")
+	containerID := strings.TrimSpace(c.Param("id"))
+	if !validateDockerContainerRef(containerID) {
+		RespondError(c, http.StatusBadRequest, "invalid_docker_reference", "Invalid container ID or name")
+		return
+	}
 
 	pooledConn, err := h.getPooledConnection(c, serverID)
 	if err != nil {
@@ -610,7 +701,7 @@ func (h *DockerHandler) StartContainer(c *gin.Context) {
 	}
 	defer h.releaseConnection(c, serverID)
 
-	cmd := fmt.Sprintf("docker start %s", containerID)
+	cmd := fmt.Sprintf("docker start %s", dockerShellQuote(containerID))
 	_, err = h.executeCommand(pooledConn.Client, cmd)
 	if err != nil {
 		RespondError(c, http.StatusInternalServerError, "docker_error", err.Error())
@@ -623,7 +714,11 @@ func (h *DockerHandler) StartContainer(c *gin.Context) {
 // StopContainer 停止容器
 func (h *DockerHandler) StopContainer(c *gin.Context) {
 	serverID := c.Param("serverId")
-	containerID := c.Param("id")
+	containerID := strings.TrimSpace(c.Param("id"))
+	if !validateDockerContainerRef(containerID) {
+		RespondError(c, http.StatusBadRequest, "invalid_docker_reference", "Invalid container ID or name")
+		return
+	}
 
 	pooledConn, err := h.getPooledConnection(c, serverID)
 	if err != nil {
@@ -632,7 +727,7 @@ func (h *DockerHandler) StopContainer(c *gin.Context) {
 	}
 	defer h.releaseConnection(c, serverID)
 
-	cmd := fmt.Sprintf("docker stop %s", containerID)
+	cmd := fmt.Sprintf("docker stop %s", dockerShellQuote(containerID))
 	_, err = h.executeCommand(pooledConn.Client, cmd)
 	if err != nil {
 		RespondError(c, http.StatusInternalServerError, "docker_error", err.Error())
@@ -645,7 +740,11 @@ func (h *DockerHandler) StopContainer(c *gin.Context) {
 // RestartContainer 重启容器
 func (h *DockerHandler) RestartContainer(c *gin.Context) {
 	serverID := c.Param("serverId")
-	containerID := c.Param("id")
+	containerID := strings.TrimSpace(c.Param("id"))
+	if !validateDockerContainerRef(containerID) {
+		RespondError(c, http.StatusBadRequest, "invalid_docker_reference", "Invalid container ID or name")
+		return
+	}
 
 	pooledConn, err := h.getPooledConnection(c, serverID)
 	if err != nil {
@@ -654,7 +753,7 @@ func (h *DockerHandler) RestartContainer(c *gin.Context) {
 	}
 	defer h.releaseConnection(c, serverID)
 
-	cmd := fmt.Sprintf("docker restart %s", containerID)
+	cmd := fmt.Sprintf("docker restart %s", dockerShellQuote(containerID))
 	_, err = h.executeCommand(pooledConn.Client, cmd)
 	if err != nil {
 		RespondError(c, http.StatusInternalServerError, "docker_error", err.Error())
@@ -667,7 +766,11 @@ func (h *DockerHandler) RestartContainer(c *gin.Context) {
 // PauseContainer 暂停容器
 func (h *DockerHandler) PauseContainer(c *gin.Context) {
 	serverID := c.Param("serverId")
-	containerID := c.Param("id")
+	containerID := strings.TrimSpace(c.Param("id"))
+	if !validateDockerContainerRef(containerID) {
+		RespondError(c, http.StatusBadRequest, "invalid_docker_reference", "Invalid container ID or name")
+		return
+	}
 
 	pooledConn, err := h.getPooledConnection(c, serverID)
 	if err != nil {
@@ -676,7 +779,7 @@ func (h *DockerHandler) PauseContainer(c *gin.Context) {
 	}
 	defer h.releaseConnection(c, serverID)
 
-	cmd := fmt.Sprintf("docker pause %s", containerID)
+	cmd := fmt.Sprintf("docker pause %s", dockerShellQuote(containerID))
 	_, err = h.executeCommand(pooledConn.Client, cmd)
 	if err != nil {
 		RespondError(c, http.StatusInternalServerError, "docker_error", err.Error())
@@ -689,7 +792,11 @@ func (h *DockerHandler) PauseContainer(c *gin.Context) {
 // UnpauseContainer 恢复容器
 func (h *DockerHandler) UnpauseContainer(c *gin.Context) {
 	serverID := c.Param("serverId")
-	containerID := c.Param("id")
+	containerID := strings.TrimSpace(c.Param("id"))
+	if !validateDockerContainerRef(containerID) {
+		RespondError(c, http.StatusBadRequest, "invalid_docker_reference", "Invalid container ID or name")
+		return
+	}
 
 	pooledConn, err := h.getPooledConnection(c, serverID)
 	if err != nil {
@@ -698,7 +805,7 @@ func (h *DockerHandler) UnpauseContainer(c *gin.Context) {
 	}
 	defer h.releaseConnection(c, serverID)
 
-	cmd := fmt.Sprintf("docker unpause %s", containerID)
+	cmd := fmt.Sprintf("docker unpause %s", dockerShellQuote(containerID))
 	_, err = h.executeCommand(pooledConn.Client, cmd)
 	if err != nil {
 		RespondError(c, http.StatusInternalServerError, "docker_error", err.Error())
@@ -711,7 +818,11 @@ func (h *DockerHandler) UnpauseContainer(c *gin.Context) {
 // RemoveContainer 删除容器
 func (h *DockerHandler) RemoveContainer(c *gin.Context) {
 	serverID := c.Param("serverId")
-	containerID := c.Param("id")
+	containerID := strings.TrimSpace(c.Param("id"))
+	if !validateDockerContainerRef(containerID) {
+		RespondError(c, http.StatusBadRequest, "invalid_docker_reference", "Invalid container ID or name")
+		return
+	}
 	force := c.DefaultQuery("force", "false") == "true"
 
 	pooledConn, err := h.getPooledConnection(c, serverID)
@@ -721,9 +832,9 @@ func (h *DockerHandler) RemoveContainer(c *gin.Context) {
 	}
 	defer h.releaseConnection(c, serverID)
 
-	cmd := fmt.Sprintf("docker rm %s", containerID)
+	cmd := fmt.Sprintf("docker rm %s", dockerShellQuote(containerID))
 	if force {
-		cmd = fmt.Sprintf("docker rm -f %s", containerID)
+		cmd = fmt.Sprintf("docker rm -f %s", dockerShellQuote(containerID))
 	}
 
 	_, err = h.executeCommand(pooledConn.Client, cmd)
@@ -1250,7 +1361,11 @@ type ImageUpdateCheckResponse struct {
 // CheckContainerImageUpdate 检查容器镜像是否有更新
 func (h *DockerHandler) CheckContainerImageUpdate(c *gin.Context) {
 	serverID := c.Param("serverId")
-	containerID := c.Param("id")
+	containerID := strings.TrimSpace(c.Param("id"))
+	if !validateDockerContainerRef(containerID) {
+		RespondError(c, http.StatusBadRequest, "invalid_docker_reference", "Invalid container ID or name")
+		return
+	}
 
 	pooledConn, err := h.getPooledConnection(c, serverID)
 	if err != nil {
@@ -1260,7 +1375,7 @@ func (h *DockerHandler) CheckContainerImageUpdate(c *gin.Context) {
 	defer h.releaseConnection(c, serverID)
 
 	// 获取容器信息
-	inspectCmd := fmt.Sprintf("docker inspect %s --format '{{.Name}}|{{.Config.Image}}'", containerID)
+	inspectCmd := fmt.Sprintf("docker inspect %s --format '{{.Name}}|{{.Config.Image}}'", dockerShellQuote(containerID))
 	output, err := h.executeCommand(pooledConn.Client, inspectCmd)
 	if err != nil {
 		RespondError(c, http.StatusInternalServerError, "docker_error", "获取容器信息失败: "+err.Error())
@@ -1275,10 +1390,15 @@ func (h *DockerHandler) CheckContainerImageUpdate(c *gin.Context) {
 	}
 
 	containerName := strings.TrimPrefix(parts[0], "/")
-	imageName := parts[1]
+	imageName := strings.TrimSpace(parts[1])
+	if !validateDockerImageRef(imageName) {
+		RespondError(c, http.StatusInternalServerError, "docker_error", "镜像名称无效")
+		return
+	}
+	quotedImageName := dockerShellQuote(imageName)
 
 	// 获取本地镜像 digest
-	localDigestCmd := fmt.Sprintf("docker image inspect %s --format '{{index .RepoDigests 0}}' 2>/dev/null || echo ''", imageName)
+	localDigestCmd := fmt.Sprintf("docker image inspect %s --format '{{index .RepoDigests 0}}' 2>/dev/null || echo ''", quotedImageName)
 	localDigestOutput, _ := h.executeCommand(pooledConn.Client, localDigestCmd)
 	localDigest := strings.TrimSpace(localDigestOutput)
 
@@ -1288,11 +1408,11 @@ func (h *DockerHandler) CheckContainerImageUpdate(c *gin.Context) {
 	}
 
 	// 获取远程镜像 digest (使用 docker manifest inspect)
-	remoteDigestCmd := fmt.Sprintf("docker manifest inspect %s 2>/dev/null | grep -m1 '\"digest\"' | cut -d'\"' -f4 || echo ''", imageName)
+	remoteDigestCmd := fmt.Sprintf("docker manifest inspect %s 2>/dev/null | grep -m1 '\"digest\"' | cut -d'\"' -f4 || echo ''", quotedImageName)
 	remoteDigestOutput, _ := h.executeCommand(pooledConn.Client, remoteDigestCmd)
 	remoteDigest := strings.TrimSpace(remoteDigestOutput)
 
-	// 生成更新命令
+	// 生成展示命令，实际远端执行命令仍使用 quotedImageName。
 	updateCommand := fmt.Sprintf("docker pull %s", imageName)
 
 	// 判断是否有更新

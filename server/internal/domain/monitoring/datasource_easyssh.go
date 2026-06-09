@@ -12,21 +12,24 @@ import (
 	sshDomain "github.com/easyssh/server/internal/domain/ssh"
 	"github.com/easyssh/server/internal/pkg/crypto"
 	"github.com/google/uuid"
+	"golang.org/x/crypto/ssh"
 )
 
 // EasySSHDataSource EasySSH 数据源（SSH 直连采集）
 type EasySSHDataSource struct {
-	serverService server.Service
-	encryptor     *crypto.Encryptor
-	userID        uuid.UUID
+	serverService   server.Service
+	encryptor       *crypto.Encryptor
+	userID          uuid.UUID
+	hostKeyCallback ssh.HostKeyCallback
 }
 
 // NewEasySSHDataSource 创建 EasySSH 数据源
-func NewEasySSHDataSource(serverService server.Service, encryptor *crypto.Encryptor, userID uuid.UUID) *EasySSHDataSource {
+func NewEasySSHDataSource(serverService server.Service, encryptor *crypto.Encryptor, userID uuid.UUID, hostKeyCallback ssh.HostKeyCallback) *EasySSHDataSource {
 	return &EasySSHDataSource{
-		serverService: serverService,
-		encryptor:     encryptor,
-		userID:        userID,
+		serverService:   serverService,
+		encryptor:       encryptor,
+		userID:          userID,
+		hostKeyCallback: hostKeyCallback,
 	}
 }
 
@@ -141,7 +144,7 @@ func (e *EasySSHDataSource) collectServerResource(ctx context.Context, srv *serv
 	}
 
 	// 创建 SSH 客户端
-	sshClient, err := sshDomain.NewClient(srv, e.encryptor, nil)
+	sshClient, err := sshDomain.NewClient(srv, e.encryptor, e.hostKeyCallback)
 	if err != nil {
 		result.Status = "error"
 		result.Error = fmt.Sprintf("failed to create SSH client: %v", err)

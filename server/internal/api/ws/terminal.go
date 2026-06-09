@@ -569,6 +569,9 @@ func (h *TerminalHandler) HandleSSH(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_server_id"})
 		return
 	}
+	if h.credentialStore != nil {
+		defer h.credentialStore.Delete(userUUID, serverUUID)
+	}
 
 	// 获取终端尺寸参数
 	cols := 80

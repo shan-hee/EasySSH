@@ -11,17 +11,18 @@ import (
 	sshDomain "github.com/easyssh/server/internal/domain/ssh"
 	"github.com/easyssh/server/internal/pkg/crypto"
 	"github.com/google/uuid"
+	"golang.org/x/crypto/ssh"
 )
 
 // PooledConnection 池化的监控连接
 type PooledConnection struct {
-	Client       *sshDomain.Client // SSH 客户端
-	RefCount     int               // 引用计数（多少个监控 WebSocket 在使用）
-	ServerID     string            // 服务器 ID
-	UserID       string            // 用户 ID
-	CreatedAt    time.Time         // 创建时间
-	LastUsedAt   time.Time         // 最后使用时间
-	mu           sync.RWMutex      // 连接级别的锁
+	Client     *sshDomain.Client // SSH 客户端
+	RefCount   int               // 引用计数（多少个监控 WebSocket 在使用）
+	ServerID   string            // 服务器 ID
+	UserID     string            // 用户 ID
+	CreatedAt  time.Time         // 创建时间
+	LastUsedAt time.Time         // 最后使用时间
+	mu         sync.RWMutex      // 连接级别的锁
 }
 
 // IncRef 增加引用计数
@@ -66,20 +67,22 @@ func (pc *PooledConnection) IsHealthy() bool {
 
 // ConnectionPool 监控专用连接池
 type ConnectionPool struct {
-	connections        map[string]*PooledConnection // key: userID:serverID
-	mu                 sync.RWMutex
-	serverService      server.Service // 服务器服务，用于获取服务器配置
-	encryptor          *crypto.Encryptor
-	connectionTimeout  time.Duration  // 连接超时时间
+	connections       map[string]*PooledConnection // key: userID:serverID
+	mu                sync.RWMutex
+	serverService     server.Service // 服务器服务，用于获取服务器配置
+	encryptor         *crypto.Encryptor
+	connectionTimeout time.Duration // 连接超时时间
+	hostKeyCallback   ssh.HostKeyCallback
 }
 
 // NewConnectionPool 创建监控连接池
-func NewConnectionPool(serverService server.Service, encryptor *crypto.Encryptor) *ConnectionPool {
+func NewConnectionPool(serverService server.Service, encryptor *crypto.Encryptor, hostKeyCallback ssh.HostKeyCallback) *ConnectionPool {
 	return &ConnectionPool{
 		connections:       make(map[string]*PooledConnection),
 		serverService:     serverService,
 		encryptor:         encryptor,
 		connectionTimeout: 30 * time.Second, // 默认30秒超时
+		hostKeyCallback:   hostKeyCallback,
 	}
 }
 
@@ -142,7 +145,7 @@ func (p *ConnectionPool) GetOrCreate(userID, serverID string) (*PooledConnection
 		return nil, fmt.Errorf("invalid server id: %w", err)
 	}
 
-	srv, err := p.serverService.GetByID(nil, userUUID, serverUUID)
+	srv, err := p.serverService.GetByID(context.Background(), userUUID, serverUUID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get server config: %w", err)
 	}
@@ -160,8 +163,7 @@ func (p *ConnectionPool) GetOrCreate(userID, serverID string) (*PooledConnection
 	resultChan := make(chan result, 1)
 
 	go func() {
-		// 创建 SSH 客户端（连接池使用不安全模式以避免阻塞）
-		client, err := sshDomain.NewClient(srv, p.encryptor, nil)
+		client, err := sshDomain.NewClient(srv, p.encryptor, p.hostKeyCallback)
 		if err != nil {
 			resultChan <- result{nil, fmt.Errorf("failed to create ssh client: %w", err)}
 			return
@@ -300,13 +302,13 @@ func (p *ConnectionPool) GetAllConnections() []map[string]interface{} {
 	result := make([]map[string]interface{}, 0, len(p.connections))
 	for key, conn := range p.connections {
 		result = append(result, map[string]interface{}{
-			"key":           key,
-			"server_id":     conn.ServerID,
-			"user_id":       conn.UserID,
-			"ref_count":     conn.GetRefCount(),
-			"created_at":    conn.CreatedAt,
-			"last_used_at":  conn.LastUsedAt,
-			"is_healthy":    conn.IsHealthy(),
+			"key":          key,
+			"server_id":    conn.ServerID,
+			"user_id":      conn.UserID,
+			"ref_count":    conn.GetRefCount(),
+			"created_at":   conn.CreatedAt,
+			"last_used_at": conn.LastUsedAt,
+			"is_healthy":   conn.IsHealthy(),
 		})
 	}
 

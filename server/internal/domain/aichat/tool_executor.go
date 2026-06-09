@@ -13,13 +13,15 @@ import (
 	sshDomain "github.com/easyssh/server/internal/domain/ssh"
 	"github.com/easyssh/server/internal/pkg/crypto"
 	"github.com/google/uuid"
+	"golang.org/x/crypto/ssh"
 )
 
 // ToolExecutorService 工具执行服务
 type ToolExecutorService struct {
-	serverService server.Service
-	sftpPool      *sftp.Pool
-	encryptor     *crypto.Encryptor
+	serverService   server.Service
+	sftpPool        *sftp.Pool
+	encryptor       *crypto.Encryptor
+	hostKeyCallback ssh.HostKeyCallback
 }
 
 // NewToolExecutorService 创建工具执行服务
@@ -27,11 +29,13 @@ func NewToolExecutorService(
 	serverService server.Service,
 	sftpPool *sftp.Pool,
 	encryptor *crypto.Encryptor,
+	hostKeyCallback ssh.HostKeyCallback,
 ) *ToolExecutorService {
 	return &ToolExecutorService{
-		serverService: serverService,
-		sftpPool:      sftpPool,
-		encryptor:     encryptor,
+		serverService:   serverService,
+		sftpPool:        sftpPool,
+		encryptor:       encryptor,
+		hostKeyCallback: hostKeyCallback,
 	}
 }
 
@@ -199,7 +203,7 @@ func (s *ToolExecutorService) executeCommand(ctx context.Context, userID uuid.UU
 	}
 
 	// 创建 SSH 客户端
-	sshClient, err := sshDomain.NewClient(srv, s.encryptor, nil)
+	sshClient, err := sshDomain.NewClient(srv, s.encryptor, s.hostKeyCallback)
 	if err != nil {
 		result.Content = fmt.Sprintf("创建SSH客户端失败: %v", err)
 		result.IsError = true
@@ -535,7 +539,7 @@ func (s *ToolExecutorService) executeGetSystemInfo(ctx context.Context, userID u
 	}
 
 	// 创建 SSH 客户端
-	sshClient, err := sshDomain.NewClient(srv, s.encryptor, nil)
+	sshClient, err := sshDomain.NewClient(srv, s.encryptor, s.hostKeyCallback)
 	if err != nil {
 		result.Content = fmt.Sprintf("创建SSH客户端失败: %v", err)
 		result.IsError = true

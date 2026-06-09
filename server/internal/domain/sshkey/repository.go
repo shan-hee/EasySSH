@@ -1,15 +1,16 @@
 package sshkey
 
 import (
+	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
 
 // Repository defines the interface for SSH key persistence operations
 type Repository interface {
 	Create(key *SSHKey) error
-	FindByID(id uint, userID uint) (*SSHKey, error)
-	FindByUserID(userID uint) ([]SSHKey, error)
-	Delete(id uint, userID uint) error
+	FindByID(id uint, userID uuid.UUID) (*SSHKey, error)
+	FindByUserID(userID uuid.UUID) ([]SSHKey, error)
+	Delete(id uint, userID uuid.UUID) error
 	Update(key *SSHKey) error
 }
 
@@ -28,7 +29,7 @@ func (r *repository) Create(key *SSHKey) error {
 }
 
 // FindByID finds an SSH key by ID and user ID
-func (r *repository) FindByID(id uint, userID uint) (*SSHKey, error) {
+func (r *repository) FindByID(id uint, userID uuid.UUID) (*SSHKey, error) {
 	var key SSHKey
 	err := r.db.Where("id = ? AND user_id = ?", id, userID).First(&key).Error
 	if err != nil {
@@ -38,14 +39,14 @@ func (r *repository) FindByID(id uint, userID uint) (*SSHKey, error) {
 }
 
 // FindByUserID finds all SSH keys for a specific user
-func (r *repository) FindByUserID(userID uint) ([]SSHKey, error) {
+func (r *repository) FindByUserID(userID uuid.UUID) ([]SSHKey, error) {
 	var keys []SSHKey
 	err := r.db.Where("user_id = ?", userID).Order("created_at DESC").Find(&keys).Error
 	return keys, err
 }
 
 // Delete deletes an SSH key by ID and user ID
-func (r *repository) Delete(id uint, userID uint) error {
+func (r *repository) Delete(id uint, userID uuid.UUID) error {
 	return r.db.Where("id = ? AND user_id = ?", id, userID).Delete(&SSHKey{}).Error
 }
 
