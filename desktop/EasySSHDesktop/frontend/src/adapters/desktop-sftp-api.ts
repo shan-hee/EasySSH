@@ -8,21 +8,31 @@ import type {
   FileInfo,
   UploadTaskListResponse,
 } from "@/lib/sftp-types"
-import { DesktopSFTPService } from "../../bindings/github.com/easyssh/easyssh-desktop"
+import {
+  DesktopSFTPService,
+  DesktopServerAuthMethod,
+  type DesktopSSHCredential,
+} from "../../bindings/github.com/easyssh/easyssh-desktop"
 
 type DesktopSftpApi = NonNullable<SshWorkspaceApiClient["sftp"]>
 
 const desktopDownloadCancelledMessage = "已取消保存"
 const desktopSftpAuthenticateMethod = "github.com/easyssh/easyssh-desktop.DesktopSFTPService.Authenticate"
 
-function toDesktopTransferCredential(credential?: DirectTransferOptions["sourceCredential"]) {
+function toDesktopServerAuthMethod(authMethod?: string) {
+  return authMethod === "key"
+    ? DesktopServerAuthMethod.DesktopServerAuthKey
+    : DesktopServerAuthMethod.DesktopServerAuthPassword
+}
+
+function toDesktopTransferCredential(credential?: DirectTransferOptions["sourceCredential"]): DesktopSSHCredential | undefined {
   if (!credential) {
     return undefined
   }
 
   return {
-    authMethod: credential.auth_method,
-    secret: credential.secret,
+    authMethod: toDesktopServerAuthMethod(credential.auth_method),
+    secret: credential.secret || "",
     privateKeyPassphrase: credential.private_key_passphrase,
   }
 }

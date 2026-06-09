@@ -4,6 +4,7 @@ import {
   ActivityLogService,
   DesktopActivityLogStatus,
   DesktopScriptService,
+  DesktopServerAuthMethod,
   DesktopServerService,
   DesktopTerminalService,
 } from "../../bindings/github.com/easyssh/easyssh-desktop"
@@ -71,6 +72,13 @@ const desktopTerminalAuthMaxAttempts = 3
 const getDesktopTerminalAuthMethod = (value?: string): DesktopAuthMethod => (
   value === "key" ? "key" : "password"
 )
+
+const toDesktopServerAuthMethod = (value?: DesktopAuthMethod) => {
+  if (!value) return undefined
+  return value === "key"
+    ? DesktopServerAuthMethod.DesktopServerAuthKey
+    : DesktopServerAuthMethod.DesktopServerAuthPassword
+}
 
 const getDesktopTerminalAuthErrorCode = (error: unknown) => {
   const message = getDesktopErrorMessage(error).toLowerCase()
@@ -319,7 +327,7 @@ export function createDesktopTerminalSocket(): TerminalWebSocketConstructor {
         serverId: this.serverId,
         cols: this.cols,
         rows: this.rows,
-        authMethod: credential?.authMethod,
+        authMethod: toDesktopServerAuthMethod(credential?.authMethod),
         secret: credential?.secret,
         privateKeyPassphrase: credential?.privateKeyPassphrase,
       })

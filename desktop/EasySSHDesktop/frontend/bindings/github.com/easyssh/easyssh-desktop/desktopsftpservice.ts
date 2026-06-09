@@ -9,6 +9,10 @@ import { Call as $Call, CancellablePromise as $CancellablePromise, Create as $Cr
 // @ts-ignore: Unused imports
 import * as $models from "./models.js";
 
+export function Authenticate(input: $models.DesktopSFTPAuthenticateInput): $CancellablePromise<void> {
+    return $Call.ByID(1027935973, input);
+}
+
 export function BatchDelete(input: $models.DesktopSFTPBatchDeleteInput): $CancellablePromise<$models.DesktopSFTPBatchDeleteResult> {
     return $Call.ByID(4063668539, input).then(($result: any) => {
         return $$createType0($result);
@@ -31,8 +35,8 @@ export function Chmod(input: $models.DesktopSFTPChmodInput): $CancellablePromise
     return $Call.ByID(2779146953, input);
 }
 
-export function CloseConnection($0: string): $CancellablePromise<void> {
-    return $Call.ByID(1389952524, $0);
+export function CloseConnection(serverID: string): $CancellablePromise<void> {
+    return $Call.ByID(1389952524, serverID);
 }
 
 export function CreateDirectory(input: $models.DesktopSFTPPathInput): $CancellablePromise<$models.DesktopSFTPFileInfo> {

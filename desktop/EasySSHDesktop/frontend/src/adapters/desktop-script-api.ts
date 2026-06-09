@@ -11,9 +11,15 @@ import type {
   UpdateScriptRequest,
 } from "@easyssh/ssh-workspace/desktop"
 import type { ServerConnectionConfigsApi } from "@easyssh/ssh-workspace/desktop"
+import type {
+  DesktopBatchTask,
+  DesktopBatchTaskInput,
+  DesktopScript,
+  DesktopScriptInput,
+} from "../../bindings/github.com/easyssh/easyssh-desktop"
 import * as DesktopScriptService from "../../bindings/github.com/easyssh/easyssh-desktop/desktopscriptservice"
 
-function mapDesktopScript(script: DesktopScriptService.DesktopScript): Script {
+function mapDesktopScript(script: DesktopScript): Script {
   return {
     id: script.id,
     user_id: script.user_id || "local",
@@ -29,7 +35,7 @@ function mapDesktopScript(script: DesktopScriptService.DesktopScript): Script {
   }
 }
 
-function mapDesktopBatchTask(task: DesktopScriptService.DesktopBatchTask): BatchTask {
+function mapDesktopBatchTask(task: DesktopBatchTask): BatchTask {
   return {
     id: task.id,
     user_id: task.user_id || "local",
@@ -50,7 +56,7 @@ function mapDesktopBatchTask(task: DesktopScriptService.DesktopBatchTask): Batch
   }
 }
 
-function toDesktopScriptInput(input: CreateScriptRequest | UpdateScriptRequest): DesktopScriptService.DesktopScriptInput {
+function toDesktopScriptInput(input: CreateScriptRequest | UpdateScriptRequest): DesktopScriptInput {
   return {
     name: input.name || "",
     description: input.description || "",
@@ -60,7 +66,7 @@ function toDesktopScriptInput(input: CreateScriptRequest | UpdateScriptRequest):
   }
 }
 
-function toDesktopBatchTaskInput(input: CreateBatchTaskRequest): DesktopScriptService.DesktopBatchTaskInput {
+function toDesktopBatchTaskInput(input: CreateBatchTaskRequest): DesktopBatchTaskInput {
   return {
     task_name: input.task_name,
     task_type: input.task_type,
