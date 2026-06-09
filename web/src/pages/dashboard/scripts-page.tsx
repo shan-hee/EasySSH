@@ -823,7 +823,7 @@ const totalExecutions = useMemo(() => (
  </DialogDescription>
  </DialogHeader>
 
- <div className="space-y-4 py-4 flex-1 min-h-0 overflow-y-auto scrollbar-custom">
+ <div className="space-y-4 px-1 py-4 flex-1 min-h-0 overflow-y-auto scrollbar-custom">
 {/* 脚本名称 */}
 <div className="space-y-2">
 <Label htmlFor="script-name">
@@ -971,7 +971,7 @@ placeholder={t("fieldDescriptionPlaceholder")}
  </DialogDescription>
  </DialogHeader>
 
- <div className="space-y-4 py-4 flex-1 min-h-0 overflow-y-auto scrollbar-custom">
+ <div className="space-y-4 px-1 py-4 flex-1 min-h-0 overflow-y-auto scrollbar-custom">
  {/* 脚本名称 */}
  <div className="space-y-2">
  <Label htmlFor="edit-script-name">

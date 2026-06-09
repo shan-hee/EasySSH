@@ -125,7 +125,7 @@ export function ScheduledTaskDialog({
           </TabsList>
 
           {/* 步骤 1: 基本信息 */}
-          <TabsContent value="basic" className="flex-1 min-h-0 overflow-y-auto scrollbar-custom mt-4 space-y-4">
+          <TabsContent value="basic" className="flex-1 min-h-0 overflow-y-auto scrollbar-custom mt-4 space-y-4 px-1">
             <div className="space-y-2">
               <Label htmlFor="task-name">
                 {t("fieldTaskName")} <span className="text-destructive">*</span>
@@ -186,7 +186,7 @@ export function ScheduledTaskDialog({
           </TabsContent>
 
           {/* 步骤 2: 任务配置 */}
-          <TabsContent value="config" className="flex-1 min-h-0 overflow-y-auto scrollbar-custom mt-4 space-y-4">
+          <TabsContent value="config" className="flex-1 min-h-0 overflow-y-auto scrollbar-custom mt-4 space-y-4 px-1">
             {/* 命令/脚本任务 */}
             {(task.task_type === "command" || task.task_type === "script") && (
               <div className="space-y-2">
@@ -368,7 +368,7 @@ export function ScheduledTaskDialog({
           </TabsContent>
 
           {/* 步骤 3: 调度设置 */}
-          <TabsContent value="schedule" className="flex-1 min-h-0 overflow-y-auto scrollbar-custom mt-4 space-y-4">
+          <TabsContent value="schedule" className="flex-1 min-h-0 overflow-y-auto scrollbar-custom mt-4 space-y-4 px-1">
             {/* 服务器选择 (仅非 SFTP 任务显示) */}
             {!isSftpTask && (
               <div className="space-y-2">

@@ -25,6 +25,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
 import { Switch } from "@/components/ui/switch"
 import {
   InputOTP,
@@ -1928,9 +1929,9 @@ export const SettingsDialog = React.memo(function SettingsDialog({ children }: {
                             <Label htmlFor="imp-key">
                               {tAccount("sshImportPrivateKeyLabel")}
                             </Label>
-                            <textarea
+                            <Textarea
                               id="imp-key"
-                              className="w-full min-h-[200px] px-3 py-2 text-sm rounded-md border border-input bg-background font-mono"
+                              className="min-h-[200px] font-mono text-sm"
                               placeholder={tAccount("sshImportPrivateKeyPlaceholder")}
                               value={importForm.private_key}
                               onChange={(e) =>
@@ -1989,8 +1990,8 @@ export const SettingsDialog = React.memo(function SettingsDialog({ children }: {
                                   {tAccount("sshCopyButtonLabel")}
                                 </Button>
                               </div>
-                              <textarea
-                                className="w-full min-h-[80px] px-3 py-2 text-xs rounded-md border border-input bg-background font-mono"
+                              <Textarea
+                                className="min-h-[80px] font-mono text-xs md:text-xs"
                                 value={selectedKey.public_key}
                                 readOnly
                               />
@@ -2012,8 +2013,8 @@ export const SettingsDialog = React.memo(function SettingsDialog({ children }: {
                                   {tAccount("sshCopyButtonLabel")}
                                 </Button>
                               </div>
-                              <textarea
-                                className="w-full min-h-[200px] px-3 py-2 text-xs rounded-md border border-input bg-background font-mono"
+                              <Textarea
+                                className="min-h-[200px] font-mono text-xs md:text-xs"
                                 value={selectedKey.private_key}
                                 readOnly
                               />
