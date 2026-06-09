@@ -61,10 +61,18 @@ export function TerminalSftpTabContent({
 
   const notifier = useMemo(() => ({
     success: (message: string) => {
-      workspace?.adapters.notifier?.success?.(message) ?? toast.success(message)
+      if (workspace?.adapters.notifier?.success) {
+        workspace.adapters.notifier.success(message)
+        return
+      }
+      toast.success(message)
     },
     error: (message: string) => {
-      workspace?.adapters.notifier?.error?.(message) ?? toast.error(message)
+      if (workspace?.adapters.notifier?.error) {
+        workspace.adapters.notifier.error(message)
+        return
+      }
+      toast.error(message)
     },
     promise: <T,>(promise: Promise<T>, messages: {
       loading: string
@@ -112,26 +120,27 @@ export function TerminalSftpTabContent({
     initialPathForwardStack,
     onHistoryChange,
   })
+  const { currentPath, error, refresh } = sftp
 
   useEffect(() => {
-    if (sftp.error) {
-      notifier.error(sftp.error)
+    if (error) {
+      notifier.error(error)
     }
-  }, [notifier, sftp.error])
+  }, [error, notifier])
 
   useEffect(() => {
-    onPathChange?.(sftp.currentPath)
-  }, [onPathChange, sftp.currentPath])
+    onPathChange?.(currentPath)
+  }, [currentPath, onPathChange])
 
   useEffect(() => {
     if (refreshRequestVersion > lastRefreshRequestVersionRef.current) {
       lastRefreshRequestVersionRef.current = refreshRequestVersion
-      sftp.refresh()
+      refresh()
       return
     }
 
     lastRefreshRequestVersionRef.current = refreshRequestVersion
-  }, [refreshRequestVersion, sftp.refresh])
+  }, [refresh, refreshRequestVersion])
 
   return (
     <div className={surface === "transparent"

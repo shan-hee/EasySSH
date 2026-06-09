@@ -1,12 +1,13 @@
 
 import { startTransition } from "react"
-import { ChevronLeft, ChevronRight, Home, LayoutGrid, List, Maximize2, Minimize2, X } from "lucide-react"
+import { ChevronLeft, ChevronRight, CloudUpload, Home, LayoutGrid, List, Maximize2, Minimize2, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
 import { TransferTaskPanel } from "@/components/sftp/transfer-task-panel"
 import { ActivityLogPane } from "@/components/ssh-workspace/activity-log-pane"
 import { useWorkspaceSftpTranslator } from "@/components/ssh-workspace/use-workspace-translator"
+import type { TransferJob } from "@/lib/api/transfer-jobs"
 import type { WorkspaceTransferTask } from "@/lib/session/workspace"
 
 export interface SftpWorkspaceToolbarProps {
@@ -27,8 +28,13 @@ export interface SftpWorkspaceToolbarProps {
   onViewModeChange: (mode: "grid" | "list") => void
   showTransferTasks: boolean
   transferTasks: WorkspaceTransferTask[]
+  backgroundTransferJobs?: TransferJob[]
   onClearCompletedTransfers?: () => void
   onCancelTransfer?: (taskId: string) => void
+  onCreateBackgroundUpload?: () => void
+  onCancelBackgroundTransfer?: (jobId: string) => void
+  onDeleteBackgroundTransfer?: (jobId: string) => void
+  onDownloadBackgroundArtifact?: (jobId: string) => void
   isFullscreen: boolean
   onToggleFullscreen?: () => void
   onDisconnect: () => void
@@ -51,8 +57,13 @@ export function SftpWorkspaceToolbar({
   onViewModeChange,
   showTransferTasks,
   transferTasks,
+  backgroundTransferJobs,
   onClearCompletedTransfers,
   onCancelTransfer,
+  onCreateBackgroundUpload,
+  onCancelBackgroundTransfer,
+  onDeleteBackgroundTransfer,
+  onDownloadBackgroundArtifact,
   isFullscreen,
   onToggleFullscreen,
   onDisconnect,
@@ -265,11 +276,27 @@ export function SftpWorkspaceToolbar({
           <List className="h-3.5 w-3.5" />
         </Button>
 
+        {onCreateBackgroundUpload && (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7 rounded-md transition-all duration-200 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+            onClick={onCreateBackgroundUpload}
+            title={tSftp("backgroundUploadTooltip")}
+          >
+            <CloudUpload className="h-3.5 w-3.5" />
+          </Button>
+        )}
+
         {showTransferTasks && (
           <TransferTaskPanel
             transferTasks={transferTasks}
+            backgroundTransferJobs={backgroundTransferJobs}
             onClearCompletedTransfers={onClearCompletedTransfers}
             onCancelTransfer={onCancelTransfer}
+            onCancelBackgroundTransfer={onCancelBackgroundTransfer}
+            onDeleteBackgroundTransfer={onDeleteBackgroundTransfer}
+            onDownloadBackgroundArtifact={onDownloadBackgroundArtifact}
           />
         )}
 

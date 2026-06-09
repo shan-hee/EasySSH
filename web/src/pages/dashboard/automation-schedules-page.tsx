@@ -10,6 +10,7 @@ import { Progress } from "@/components/ui/progress"
 import { Textarea } from "@/components/ui/textarea"
 import { toast } from "sonner"
 import { getErrorMessage } from "@/lib/error-utils"
+import { isApiError } from "@/lib/api-client"
 import {
  Dialog,
  DialogContent,
@@ -37,12 +38,16 @@ import {
  Zap,
  Search,
  FileText,
+ Download,
+ Upload,
 } from "lucide-react"
 import {
  scheduledTasksApi,
  scriptsApi,
  serversApi,
+ transferJobsApi,
  type ScheduledTask,
+ type ScheduledTaskType,
  type Script,
  type Server
 } from "@/lib/api"
@@ -58,6 +63,47 @@ import {
   DashboardSideList,
   InlineStatusBadge,
 } from "./logs/components/log-dashboard-widgets"
+
+type ScheduledPayload = {
+ server_id?: string
+ source_path?: string
+ target_path?: string
+ staged_job_id?: string
+ name?: string
+ description?: string
+ retention_days?: number
+}
+
+const parseScheduledPayload = (value?: string): ScheduledPayload => {
+ if (!value) return {}
+ try {
+ return JSON.parse(value) as ScheduledPayload
+ } catch {
+ return {}
+ }
+}
+
+const getTaskTypeLabel = (type: ScheduledTaskType, t: (key: string) => string) => {
+ if (type === "command") return t("typeCommand")
+ if (type === "script") return t("typeScript")
+ if (type === "batch") return t("typeBatch")
+ if (type === "sftp_upload") return "SFTP 上传"
+ if (type === "sftp_download") return "SFTP 下载"
+ return type
+}
+
+const getTaskTypeTone = (type: ScheduledTaskType) => {
+ if (type === "command") return "blue" as const
+ if (type === "script") return "violet" as const
+ if (type === "batch") return "amber" as const
+ if (type === "sftp_upload") return "emerald" as const
+ if (type === "sftp_download") return "cyan" as const
+ return "slate" as const
+}
+
+const isSftpTaskType = (type: ScheduledTaskType) => (
+ type === "sftp_upload" || type === "sftp_download"
+)
 
 export default function AutomationSchedulesPage() {
  const { ready } = useAuthReady()
@@ -93,24 +139,36 @@ export default function AutomationSchedulesPage() {
  const [newTask, setNewTask] = useState({
  task_name: "",
  description: "",
- task_type: "command" as "command" | "script" | "batch",
+ task_type: "command" as ScheduledTaskType,
  command: "",
  script_id: null as string | null,
  cron_expression: "",
  timezone: "Asia/Shanghai",
  enabled: true,
  server_ids: [] as string[],
+ sftp_server_id: "",
+ sftp_source_path: "",
+ sftp_target_path: "/",
+ sftp_retention_days: 3,
+ sftp_upload_file: null as File | null,
  })
 
  // 编辑任务表单状态
  const [editTask, setEditTask] = useState({
  task_name: "",
  description: "",
+ task_type: "command" as ScheduledTaskType,
  command: "",
  cron_expression: "",
  timezone: "Asia/Shanghai",
  enabled: true,
  server_ids: [] as string[],
+ sftp_server_id: "",
+ sftp_source_path: "",
+ sftp_target_path: "/",
+ sftp_retention_days: 3,
+ sftp_upload_file: null as File | null,
+ sftp_staged_job_id: "",
  })
 
  // 服务器选择器状态
@@ -132,7 +190,7 @@ export default function AutomationSchedulesPage() {
  const tasksList = Array.isArray(tasksRes?.data) ? tasksRes.data : []
  const serversList = Array.isArray(serversRes?.data) ? serversRes.data : []
  const scriptsList = Array.isArray(scriptsRes?.data) ? scriptsRes.data : []
- const statsData = statsRes?.data || statsRes || {}
+ const statsData = statsRes || {}
 
  setTasks(Array.isArray(tasksList) ? tasksList : [])
  setServers(Array.isArray(serversList) ? serversList : [])
@@ -185,6 +243,20 @@ export default function AutomationSchedulesPage() {
  (script.description &&
  script.description.toLowerCase().includes(scriptSearchTerm.toLowerCase()))
  )
+
+ const cleanupStagedJob = async (stagedJobId: string) => {
+ if (!stagedJobId) return true
+ try {
+ await transferJobsApi.delete(stagedJobId)
+ return true
+ } catch (error: unknown) {
+ if (isApiError(error) && error.status === 404) {
+ return true
+ }
+ console.warn("清理 SFTP 暂存文件失败:", error)
+ return false
+ }
+ }
 
  // 服务器选择处理
  const toggleServer = (serverId: string) => {
@@ -252,6 +324,10 @@ export default function AutomationSchedulesPage() {
 
  // 创建定时任务
  const handleCreateTask = async () => {
+ const isSftpUpload = newTask.task_type === "sftp_upload"
+ const isSftpDownload = newTask.task_type === "sftp_download"
+ const isSftpTask = isSftpTaskType(newTask.task_type)
+
  if (!newTask.task_name || !newTask.cron_expression) {
  toast.error(t("toastMustNameCron"))
  return
@@ -267,25 +343,72 @@ export default function AutomationSchedulesPage() {
  return
  }
 
- if (newTask.server_ids.length === 0) {
+ if (!isSftpTask && newTask.server_ids.length === 0) {
  toast.error(t("toastSelectServer"))
  return
  }
 
+ if (isSftpUpload && (!newTask.sftp_server_id || !newTask.sftp_target_path || !newTask.sftp_upload_file)) {
+ toast.error("请选择 SFTP 服务器、目标目录和要暂存的文件")
+ return
+ }
+
+ if (isSftpDownload && (!newTask.sftp_server_id || !newTask.sftp_source_path)) {
+ toast.error("请选择 SFTP 服务器并填写远端文件路径")
+ return
+ }
+
+ let stagedJobIdToCleanup = ""
  try {
- // 认证基于 HttpOnly Cookie
+ let payloadJSON: string | undefined
+ let serverIds = newTask.server_ids
+
+ if (isSftpUpload && newTask.sftp_upload_file) {
+ const stagedJob = await transferJobsApi.createBackgroundUpload({
+ serverId: newTask.sftp_server_id,
+ targetPath: newTask.sftp_target_path,
+ file: newTask.sftp_upload_file,
+ name: `${newTask.task_name} - 暂存文件`,
+ description: newTask.description || undefined,
+ retentionDays: newTask.sftp_retention_days,
+ deferStart: true,
+ })
+ stagedJobIdToCleanup = stagedJob.id
+ payloadJSON = JSON.stringify({
+ staged_job_id: stagedJob.id,
+ server_id: newTask.sftp_server_id,
+ target_path: newTask.sftp_target_path,
+ retention_days: newTask.sftp_retention_days,
+ name: newTask.task_name,
+ description: newTask.description || undefined,
+ })
+ serverIds = [newTask.sftp_server_id]
+ }
+
+ if (isSftpDownload) {
+ payloadJSON = JSON.stringify({
+ server_id: newTask.sftp_server_id,
+ source_path: newTask.sftp_source_path,
+ retention_days: newTask.sftp_retention_days,
+ name: newTask.task_name,
+ description: newTask.description || undefined,
+ })
+ serverIds = [newTask.sftp_server_id]
+ }
 
  await scheduledTasksApi.create({
  task_name: newTask.task_name,
  task_type: newTask.task_type,
- command: newTask.command || undefined,
- script_id: newTask.script_id || undefined,
- server_ids: newTask.server_ids,
+ command: isSftpTask ? undefined : newTask.command || undefined,
+ script_id: newTask.task_type === "script" ? newTask.script_id || undefined : undefined,
+ payload_json: payloadJSON,
+ server_ids: serverIds,
  cron_expression: newTask.cron_expression,
  timezone: newTask.timezone,
  enabled: newTask.enabled,
  description: newTask.description || undefined,
  })
+ stagedJobIdToCleanup = ""
 
  toast.success(t("toastCreateSuccess"))
  setIsDialogOpen(false)
@@ -301,11 +424,19 @@ export default function AutomationSchedulesPage() {
  timezone: "Asia/Shanghai",
  enabled: true,
  server_ids: [],
+ sftp_server_id: "",
+ sftp_source_path: "",
+ sftp_target_path: "/",
+ sftp_retention_days: 3,
+ sftp_upload_file: null,
  })
 
  // 重新加载任务列表
  await loadData()
  } catch (error: unknown) {
+ if (typeof stagedJobIdToCleanup === "string" && stagedJobIdToCleanup) {
+ await cleanupStagedJob(stagedJobIdToCleanup)
+ }
  console.error("创建定时任务失败:", error)
  toast.error(getErrorMessage(error, t("toastCreateFailed")))
  }
@@ -313,21 +444,33 @@ export default function AutomationSchedulesPage() {
 
  // 编辑任务
  const handleEdit = (task: ScheduledTask) => {
+ const payload = parseScheduledPayload(task.payload_json)
  setEditingTaskId(task.id)
  setEditTask({
  task_name: task.task_name,
  description: task.description || "",
+ task_type: task.task_type,
  command: task.command || "",
  cron_expression: task.cron_expression,
  timezone: task.timezone,
  enabled: task.enabled,
  server_ids: task.server_ids || [],
+ sftp_server_id: payload.server_id || task.server_ids?.[0] || "",
+ sftp_source_path: payload.source_path || "",
+ sftp_target_path: payload.target_path || "/",
+ sftp_retention_days: payload.retention_days || 3,
+ sftp_upload_file: null,
+ sftp_staged_job_id: payload.staged_job_id || "",
  })
  setIsEditDialogOpen(true)
  }
 
  // 更新定时任务
  const handleUpdateTask = async () => {
+ const isSftpUpload = editTask.task_type === "sftp_upload"
+ const isSftpDownload = editTask.task_type === "sftp_download"
+ const isSftpTask = isSftpTaskType(editTask.task_type)
+
  if (!editTask.task_name || !editTask.cron_expression) {
  toast.error(t("toastMustNameCron"))
  return
@@ -335,18 +478,75 @@ export default function AutomationSchedulesPage() {
 
  if (editingTaskId === null) return
 
+ if (!isSftpTask && editTask.server_ids.length === 0) {
+ toast.error(t("toastSelectServer"))
+ return
+ }
+
+ if (isSftpUpload && (!editTask.sftp_server_id || !editTask.sftp_target_path || (!editTask.sftp_staged_job_id && !editTask.sftp_upload_file))) {
+ toast.error("SFTP 上传任务需要服务器、目标目录和暂存文件")
+ return
+ }
+
+ if (isSftpDownload && (!editTask.sftp_server_id || !editTask.sftp_source_path)) {
+ toast.error("SFTP 下载任务需要服务器和远端文件路径")
+ return
+ }
+
+ let uploadedStagedJobIdToCleanup = ""
  try {
- // 认证基于 HttpOnly Cookie
+ let payloadJSON: string | undefined
+ let serverIds = editTask.server_ids
+
+ if (isSftpUpload) {
+ let stagedJobId = editTask.sftp_staged_job_id
+ if (editTask.sftp_upload_file) {
+ const stagedJob = await transferJobsApi.createBackgroundUpload({
+ serverId: editTask.sftp_server_id,
+ targetPath: editTask.sftp_target_path,
+ file: editTask.sftp_upload_file,
+ name: `${editTask.task_name} - 暂存文件`,
+ description: editTask.description || undefined,
+ retentionDays: editTask.sftp_retention_days,
+ deferStart: true,
+ })
+ stagedJobId = stagedJob.id
+ uploadedStagedJobIdToCleanup = stagedJob.id
+ }
+ payloadJSON = JSON.stringify({
+ staged_job_id: stagedJobId,
+ server_id: editTask.sftp_server_id,
+ target_path: editTask.sftp_target_path,
+ retention_days: editTask.sftp_retention_days,
+ name: editTask.task_name,
+ description: editTask.description || undefined,
+ })
+ serverIds = [editTask.sftp_server_id]
+ }
+
+ if (isSftpDownload) {
+ payloadJSON = JSON.stringify({
+ server_id: editTask.sftp_server_id,
+ source_path: editTask.sftp_source_path,
+ retention_days: editTask.sftp_retention_days,
+ name: editTask.task_name,
+ description: editTask.description || undefined,
+ })
+ serverIds = [editTask.sftp_server_id]
+ }
 
  await scheduledTasksApi.update(editingTaskId, {
  task_name: editTask.task_name,
- command: editTask.command || undefined,
- server_ids: editTask.server_ids,
+ task_type: editTask.task_type,
+ command: isSftpTask ? undefined : editTask.command || undefined,
+ payload_json: payloadJSON,
+ server_ids: serverIds,
  cron_expression: editTask.cron_expression,
  timezone: editTask.timezone,
  enabled: editTask.enabled,
  description: editTask.description || undefined,
  })
+ uploadedStagedJobIdToCleanup = ""
 
  toast.success(t("toastUpdateSuccess"))
  setIsEditDialogOpen(false)
@@ -356,16 +556,26 @@ export default function AutomationSchedulesPage() {
  setEditTask({
  task_name: "",
  description: "",
+ task_type: "command",
  command: "",
  cron_expression: "",
  timezone: "Asia/Shanghai",
  enabled: true,
  server_ids: [],
+ sftp_server_id: "",
+ sftp_source_path: "",
+ sftp_target_path: "/",
+ sftp_retention_days: 3,
+ sftp_upload_file: null,
+ sftp_staged_job_id: "",
  })
 
  // 重新加载任务列表
  await loadData()
  } catch (error: unknown) {
+ if (typeof uploadedStagedJobIdToCleanup === "string" && uploadedStagedJobIdToCleanup) {
+ await cleanupStagedJob(uploadedStagedJobIdToCleanup)
+ }
  console.error("更新定时任务失败:", error)
  toast.error(getErrorMessage(error, t("toastUpdateFailed")))
  }
@@ -463,11 +673,19 @@ export default function AutomationSchedulesPage() {
  command: tasks.filter((task) => task.task_type === "command").length,
  script: tasks.filter((task) => task.task_type === "script").length,
  batch: tasks.filter((task) => task.task_type === "batch").length,
+ sftp_upload: tasks.filter((task) => task.task_type === "sftp_upload").length,
+ sftp_download: tasks.filter((task) => task.task_type === "sftp_download").length,
  }), [tasks])
 
  const targetServerCount = useMemo(() => {
  const serverIds = new Set<string>()
- tasks.forEach((task) => (task.server_ids || []).forEach((id) => serverIds.add(id)))
+ tasks.forEach((task) => {
+ (task.server_ids || []).forEach((id) => serverIds.add(id))
+ const payload = parseScheduledPayload(task.payload_json)
+ if (payload.server_id) {
+ serverIds.add(payload.server_id)
+ }
+ })
  return serverIds.size
  }, [tasks])
 
@@ -546,8 +764,8 @@ export default function AutomationSchedulesPage() {
                    <div className="mt-1 truncate text-xs text-muted-foreground">{task.cron_expression}</div>
                  </div>
                  <InlineStatusBadge
-                   label={task.task_type === "command" ? t("typeCommand") : task.task_type === "script" ? t("typeScript") : t("typeBatch")}
-                   tone={task.task_type === "command" ? "blue" : task.task_type === "script" ? "violet" : "amber"}
+                   label={getTaskTypeLabel(task.task_type, t)}
+                   tone={getTaskTypeTone(task.task_type)}
                  />
                </div>
                <div className="mt-3 flex items-center justify-between text-xs text-muted-foreground">
@@ -587,6 +805,8 @@ export default function AutomationSchedulesPage() {
                    { label: t("typeCommand"), value: "command" },
                    { label: t("typeScript"), value: "script" },
                    { label: t("typeBatch"), value: "batch" },
+                   { label: "SFTP 上传", value: "sftp_upload" },
+                   { label: "SFTP 下载", value: "sftp_download" },
                  ],
                },
              ]}
@@ -637,6 +857,8 @@ export default function AutomationSchedulesPage() {
              { label: t("typeCommand"), value: typeCounts.command, tone: "blue" as const },
              { label: t("typeScript"), value: typeCounts.script, tone: "violet" as const },
              { label: t("typeBatch"), value: typeCounts.batch, tone: "amber" as const },
+             { label: "SFTP 上传", value: typeCounts.sftp_upload, tone: "emerald" as const },
+             { label: "SFTP 下载", value: typeCounts.sftp_download, tone: "cyan" as const },
            ].map((item) => {
              const percent = statistics.total > 0 ? Math.round((item.value / statistics.total) * 100) : 0
              return (
@@ -724,8 +946,14 @@ export default function AutomationSchedulesPage() {
  </Label>
  <Select
  value={newTask.task_type}
- onValueChange={(value: "command" | "script" | "batch") =>
- setNewTask({ ...newTask, task_type: value })
+ onValueChange={(value) =>
+ setNewTask({
+ ...newTask,
+ task_type: value as ScheduledTaskType,
+ server_ids: isSftpTaskType(value as ScheduledTaskType) ? [] : newTask.server_ids,
+ command: isSftpTaskType(value as ScheduledTaskType) ? "" : newTask.command,
+ script_id: value === "script" ? newTask.script_id : null,
+ })
  }
  >
  <SelectTrigger>
@@ -735,12 +963,14 @@ export default function AutomationSchedulesPage() {
  <SelectItem value="command">{t("typeCommand")}</SelectItem>
  <SelectItem value="script">{t("typeScript")}</SelectItem>
  <SelectItem value="batch">{t("typeBatch")}</SelectItem>
+ <SelectItem value="sftp_upload">SFTP 上传</SelectItem>
+ <SelectItem value="sftp_download">SFTP 下载</SelectItem>
  </SelectContent>
  </Select>
  </div>
 
  {/* 命令/脚本内容 */}
- {newTask.task_type !== "batch" && (
+ {(newTask.task_type === "command" || newTask.task_type === "script") && (
  <div className="space-y-2">
  <Label htmlFor="task-command">
  {newTask.task_type === "command" ? t("fieldCommandLabel") : t("fieldScriptLabel")}{" "}
@@ -771,16 +1001,116 @@ export default function AutomationSchedulesPage() {
  </div>
  )}
 
+ {isSftpTaskType(newTask.task_type) && (
+ <div className="rounded-md border bg-muted/20 p-3">
+ <div className="mb-3 flex items-center gap-2 text-sm font-medium">
+ {newTask.task_type === "sftp_upload" ? (
+ <Upload className="h-4 w-4 text-emerald-600" />
+ ) : (
+ <Download className="h-4 w-4 text-cyan-600" />
+ )}
+ <span>{newTask.task_type === "sftp_upload" ? "后台上传任务" : "后台下载任务"}</span>
+ </div>
+ <div className="grid gap-4 md:grid-cols-2">
+ <div className="space-y-2">
+ <Label htmlFor="sftp-server">
+ SFTP 服务器 <span className="text-destructive">*</span>
+ </Label>
+ <Select
+ value={newTask.sftp_server_id}
+ onValueChange={(value) => setNewTask({ ...newTask, sftp_server_id: value })}
+ >
+ <SelectTrigger id="sftp-server">
+ <SelectValue placeholder="选择服务器" />
+ </SelectTrigger>
+ <SelectContent>
+ {servers
+ .filter((server) => server.status === "online")
+ .map((server) => (
+ <SelectItem key={server.id} value={server.id}>
+ {server.name || server.host}
+ </SelectItem>
+ ))}
+ </SelectContent>
+ </Select>
+ </div>
+
+ <div className="space-y-2">
+ <Label htmlFor="sftp-retention">产物保留天数</Label>
+ <Input
+ id="sftp-retention"
+ type="number"
+ min={1}
+ max={30}
+ value={newTask.sftp_retention_days}
+ onChange={(event) => setNewTask({
+ ...newTask,
+ sftp_retention_days: Number.parseInt(event.target.value, 10) || 3,
+ })}
+ />
+ </div>
+
+ {newTask.task_type === "sftp_upload" ? (
+ <>
+ <div className="space-y-2">
+ <Label htmlFor="sftp-target-path">
+ 远端目标目录 <span className="text-destructive">*</span>
+ </Label>
+ <Input
+ id="sftp-target-path"
+ placeholder="/tmp"
+ value={newTask.sftp_target_path}
+ onChange={(event) => setNewTask({ ...newTask, sftp_target_path: event.target.value })}
+ />
+ </div>
+ <div className="space-y-2">
+ <Label htmlFor="sftp-upload-file">
+ 暂存文件 <span className="text-destructive">*</span>
+ </Label>
+ <Input
+ id="sftp-upload-file"
+ type="file"
+ onChange={(event) => setNewTask({
+ ...newTask,
+ sftp_upload_file: event.target.files?.[0] ?? null,
+ })}
+ />
+ <p className="text-xs text-muted-foreground">
+ 创建时会先上传到 EasySSH 暂存区，之后每次定时触发再上传到远端。
+ </p>
+ </div>
+ </>
+ ) : (
+ <div className="space-y-2 md:col-span-2">
+ <Label htmlFor="sftp-source-path">
+ 远端文件路径 <span className="text-destructive">*</span>
+ </Label>
+ <Input
+ id="sftp-source-path"
+ placeholder="/var/log/app.log"
+ value={newTask.sftp_source_path}
+ onChange={(event) => setNewTask({ ...newTask, sftp_source_path: event.target.value })}
+ />
+ <p className="text-xs text-muted-foreground">
+ 后台下载当前支持单文件，完成后会在后台传输任务里生成可下载产物。
+ </p>
+ </div>
+ )}
+ </div>
+ </div>
+ )}
+
  {/* 服务器选择 */}
-    <div className="space-y-2">
-    <Label>
-    {t("fieldTargetServers")} <span className="text-destructive">*</span>
-    </Label>
-    <div className="border rounded-md p-3 max-h-[200px] overflow-y-auto">
-    <div className="flex items-center justify-between mb-2">
-    <span className="text-sm text-muted-foreground">
-    {t("selectedServersCount", { selected: newTask.server_ids.length })}
-    </span>
+ {!isSftpTaskType(newTask.task_type) && (
+ <div className="space-y-2">
+ <Label>
+ {t("fieldTargetServers")} <span className="text-destructive">*</span>
+ </Label>
+ <div className="max-h-[200px] overflow-y-auto rounded-md border p-3">
+ <div className="mb-2 flex items-center justify-between">
+ <span className="text-sm text-muted-foreground">
+ {t("selectedServersCount", { selected: newTask.server_ids.length })}
+ </span>
  <Button variant="ghost" size="sm" onClick={toggleSelectAll}>
  {newTask.server_ids.length === filteredServers.filter((s) => s.status === "online").length
  ? t("unselectAll")
@@ -802,7 +1132,7 @@ export default function AutomationSchedulesPage() {
  .map((server) => (
  <div
  key={server.id}
- className={`flex items-center gap-2 p-2 rounded cursor-pointer hover:bg-accent ${
+ className={`flex cursor-pointer items-center gap-2 rounded p-2 hover:bg-accent ${
  newTask.server_ids.includes(server.id) ? "bg-accent" : ""
  }`}
  onClick={() => toggleServer(server.id)}
@@ -814,7 +1144,7 @@ export default function AutomationSchedulesPage() {
  className="cursor-pointer"
  />
  <div className="flex-1">
- <div className="font-medium text-sm">{server.name || server.host}</div>
+ <div className="text-sm font-medium">{server.name || server.host}</div>
  <div className="text-xs text-muted-foreground">{server.host}</div>
  </div>
  <Badge variant="outline" className="text-xs">
@@ -825,6 +1155,7 @@ export default function AutomationSchedulesPage() {
  </div>
  </div>
  </div>
+ )}
 
  {/* Cron表达式 */}
  <div className="space-y-2">
@@ -919,7 +1250,15 @@ export default function AutomationSchedulesPage() {
  />
  </div>
 
+ <div className="space-y-2">
+ <Label>任务类型</Label>
+ <div>
+ <InlineStatusBadge label={getTaskTypeLabel(editTask.task_type, t)} tone={getTaskTypeTone(editTask.task_type)} />
+ </div>
+ </div>
+
  {/* 命令内容 */}
+ {(editTask.task_type === "command" || editTask.task_type === "script") && (
  <div className="space-y-2">
  <Label htmlFor="edit-task-command">{t("fieldCommandScriptLabel")}</Label>
  <Textarea
@@ -930,15 +1269,105 @@ export default function AutomationSchedulesPage() {
  onChange={(e) => setEditTask({ ...editTask, command: e.target.value })}
  />
  </div>
+ )}
+
+ {isSftpTaskType(editTask.task_type) && (
+ <div className="rounded-md border bg-muted/20 p-3">
+ <div className="mb-3 flex items-center gap-2 text-sm font-medium">
+ {editTask.task_type === "sftp_upload" ? (
+ <Upload className="h-4 w-4 text-emerald-600" />
+ ) : (
+ <Download className="h-4 w-4 text-cyan-600" />
+ )}
+ <span>{editTask.task_type === "sftp_upload" ? "后台上传任务" : "后台下载任务"}</span>
+ </div>
+ <div className="grid gap-4 md:grid-cols-2">
+ <div className="space-y-2">
+ <Label htmlFor="edit-sftp-server">SFTP 服务器</Label>
+ <Select
+ value={editTask.sftp_server_id}
+ onValueChange={(value) => setEditTask({ ...editTask, sftp_server_id: value })}
+ >
+ <SelectTrigger id="edit-sftp-server">
+ <SelectValue placeholder="选择服务器" />
+ </SelectTrigger>
+ <SelectContent>
+ {servers
+ .filter((server) => server.status === "online")
+ .map((server) => (
+ <SelectItem key={server.id} value={server.id}>
+ {server.name || server.host}
+ </SelectItem>
+ ))}
+ </SelectContent>
+ </Select>
+ </div>
+
+ <div className="space-y-2">
+ <Label htmlFor="edit-sftp-retention">产物保留天数</Label>
+ <Input
+ id="edit-sftp-retention"
+ type="number"
+ min={1}
+ max={30}
+ value={editTask.sftp_retention_days}
+ onChange={(event) => setEditTask({
+ ...editTask,
+ sftp_retention_days: Number.parseInt(event.target.value, 10) || 3,
+ })}
+ />
+ </div>
+
+ {editTask.task_type === "sftp_upload" ? (
+ <>
+ <div className="space-y-2">
+ <Label htmlFor="edit-sftp-target-path">远端目标目录</Label>
+ <Input
+ id="edit-sftp-target-path"
+ placeholder="/tmp"
+ value={editTask.sftp_target_path}
+ onChange={(event) => setEditTask({ ...editTask, sftp_target_path: event.target.value })}
+ />
+ </div>
+ <div className="space-y-2">
+ <Label htmlFor="edit-sftp-upload-file">替换暂存文件</Label>
+ <Input
+ id="edit-sftp-upload-file"
+ type="file"
+ onChange={(event) => setEditTask({
+ ...editTask,
+ sftp_upload_file: event.target.files?.[0] ?? null,
+ })}
+ />
+ <p className="text-xs text-muted-foreground">
+ 不选择新文件时继续使用当前暂存文件。
+ </p>
+ </div>
+ </>
+ ) : (
+ <div className="space-y-2 md:col-span-2">
+ <Label htmlFor="edit-sftp-source-path">远端文件路径</Label>
+ <Input
+ id="edit-sftp-source-path"
+ placeholder="/var/log/app.log"
+ value={editTask.sftp_source_path}
+ onChange={(event) => setEditTask({ ...editTask, sftp_source_path: event.target.value })}
+ />
+ </div>
+ )}
+ </div>
+ </div>
+ )}
 
  {/* 服务器选择 */}
-    <div className="space-y-2">
-    <Label>{t("fieldTargetServers")}</Label>
-    <div className="border rounded-md p-3 max-h-[200px] overflow-y-auto">
-    <div className="flex items-center justify-between mb-2">
-    <span className="text-sm text-muted-foreground">
-    {t("selectedServersCount", { selected: editTask.server_ids.length })}
-    </span>
+ {!isSftpTaskType(editTask.task_type) && (
+ <div className="space-y-2">
+ <Label>{t("fieldTargetServers")}</Label>
+ <div className="max-h-[200px] overflow-y-auto rounded-md border p-3">
+ <div className="mb-2 flex items-center justify-between">
+ <span className="text-sm text-muted-foreground">
+ {t("selectedServersCount", { selected: editTask.server_ids.length })}
+ </span>
  <Button variant="ghost" size="sm" onClick={toggleEditSelectAll}>
  {editTask.server_ids.length === filteredServers.filter((s) => s.status === "online").length
  ? t("unselectAll")
@@ -960,7 +1389,7 @@ export default function AutomationSchedulesPage() {
  .map((server) => (
  <div
  key={server.id}
- className={`flex items-center gap-2 p-2 rounded cursor-pointer hover:bg-accent ${
+ className={`flex cursor-pointer items-center gap-2 rounded p-2 hover:bg-accent ${
  editTask.server_ids.includes(server.id) ? "bg-accent" : ""
  }`}
  onClick={() => toggleEditServer(server.id)}
@@ -972,7 +1401,7 @@ export default function AutomationSchedulesPage() {
  className="cursor-pointer"
  />
  <div className="flex-1">
- <div className="font-medium text-sm">{server.name || server.host}</div>
+ <div className="text-sm font-medium">{server.name || server.host}</div>
  <div className="text-xs text-muted-foreground">{server.host}</div>
  </div>
  <Badge variant="outline" className="text-xs">
@@ -983,6 +1412,7 @@ export default function AutomationSchedulesPage() {
  </div>
  </div>
  </div>
+ )}
 
  {/* Cron表达式 */}
  <div className="space-y-2">

@@ -345,11 +345,9 @@ export function useSftpAuthRetry({
 
   const runDirectTransferWithCredentialRetry = useCallback(async ({
     sourceServerId,
-    sourcePath,
     sourceServerName,
     sourceAuthMethod,
     targetServerId,
-    targetPath,
     targetServerName,
     targetAuthMethod,
     operation,

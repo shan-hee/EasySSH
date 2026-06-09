@@ -35,6 +35,11 @@ type SystemConfigDTOV2 struct {
 	DefaultDownloadMode     string                                  `json:"default_download_mode"`
 	SkipExcludedOnUpload    bool                                    `json:"skip_excluded_on_upload"`
 	MaxFileUploadSize       int                                     `json:"max_file_upload_size"`
+	TransferStoragePath     string                                  `json:"transfer_storage_path"`
+	TransferRetentionDays   int                                     `json:"transfer_retention_days"`
+	TransferMaxStorageGB    int                                     `json:"transfer_max_storage_gb"`
+	TransferMaxConcurrency  int                                     `json:"transfer_max_concurrency"`
+	TransferCleanupEnabled  bool                                    `json:"transfer_cleanup_enabled"`
 	CompletionEnabled       bool                                    `json:"completion_enabled"`
 	CompletionProviders     *systemconfig.CompletionProvidersConfig `json:"completion_providers,omitempty"`
 	CompletionQuotas        *systemconfig.CompletionQuotasConfig    `json:"completion_quotas,omitempty"`
@@ -118,6 +123,11 @@ func (h *SystemConfigHandler) toDTO(config *systemconfig.SystemConfig) *SystemCo
 		DefaultDownloadMode:          config.DefaultDownloadMode,
 		SkipExcludedOnUpload:         config.SkipExcludedOnUpload,
 		MaxFileUploadSize:            config.MaxFileUploadSize,
+		TransferStoragePath:          config.TransferStoragePath,
+		TransferRetentionDays:        config.TransferRetentionDays,
+		TransferMaxStorageGB:         config.TransferMaxStorageGB,
+		TransferMaxConcurrency:       config.TransferMaxConcurrency,
+		TransferCleanupEnabled:       config.TransferCleanupEnabled,
 		CompletionEnabled:            config.CompletionEnabled,
 		AllowRegistration:            config.AllowRegistration,
 		DefaultRole:                  config.DefaultRole,
@@ -169,6 +179,11 @@ func (h *SystemConfigHandler) fromDTO(dto *SystemConfigDTOV2) (*systemconfig.Sys
 		DefaultDownloadMode:          dto.DefaultDownloadMode,
 		SkipExcludedOnUpload:         dto.SkipExcludedOnUpload,
 		MaxFileUploadSize:            dto.MaxFileUploadSize,
+		TransferStoragePath:          dto.TransferStoragePath,
+		TransferRetentionDays:        dto.TransferRetentionDays,
+		TransferMaxStorageGB:         dto.TransferMaxStorageGB,
+		TransferMaxConcurrency:       dto.TransferMaxConcurrency,
+		TransferCleanupEnabled:       dto.TransferCleanupEnabled,
 		CompletionEnabled:            dto.CompletionEnabled,
 		AllowRegistration:            dto.AllowRegistration,
 		DefaultRole:                  dto.DefaultRole,
@@ -280,6 +295,11 @@ func (h *SystemConfigHandler) PatchFileTransferConfig(c *gin.Context) {
 	existingConfig.DefaultDownloadMode = dto.DefaultDownloadMode
 	existingConfig.SkipExcludedOnUpload = dto.SkipExcludedOnUpload
 	existingConfig.MaxFileUploadSize = dto.MaxFileUploadSize
+	existingConfig.TransferStoragePath = dto.TransferStoragePath
+	existingConfig.TransferRetentionDays = dto.TransferRetentionDays
+	existingConfig.TransferMaxStorageGB = dto.TransferMaxStorageGB
+	existingConfig.TransferMaxConcurrency = dto.TransferMaxConcurrency
+	existingConfig.TransferCleanupEnabled = dto.TransferCleanupEnabled
 
 	if err := h.service.Save(c.Request.Context(), existingConfig); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})

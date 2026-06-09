@@ -22,6 +22,8 @@ import {
   MoreHorizontal,
   Terminal,
   FileText,
+  Upload,
+  Download,
 } from "lucide-react"
 import { type ScheduledTask } from "@/lib/api"
 
@@ -47,6 +49,10 @@ function getTypeIcon(type: string) {
       return <FileText className="h-4 w-4" />
     case "batch":
       return <Zap className="h-4 w-4" />
+    case "sftp_upload":
+      return <Upload className="h-4 w-4" />
+    case "sftp_download":
+      return <Download className="h-4 w-4" />
     default:
       return <Calendar className="h-4 w-4" />
   }
@@ -132,6 +138,8 @@ export function createScheduledTaskColumns(
           command: t("typeCommand"),
           script: t("typeScript"),
           batch: t("typeBatch"),
+          sftp_upload: "SFTP 上传",
+          sftp_download: "SFTP 下载",
         }
         return (
           <div className="flex items-center gap-2">

@@ -84,6 +84,11 @@ export interface SystemConfig {
   default_download_mode: "fast" | "compatible"
   skip_excluded_on_upload: boolean
   max_file_upload_size: number
+  transfer_storage_path?: string
+  transfer_retention_days?: number
+  transfer_max_storage_gb?: number
+  transfer_max_concurrency?: number
+  transfer_cleanup_enabled?: boolean
 
   // 补全配置
   completion_enabled?: boolean

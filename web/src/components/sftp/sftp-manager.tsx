@@ -1,5 +1,5 @@
 
-import { useRef, useMemo, useCallback } from "react"
+import { useRef, useMemo, useCallback, type ChangeEvent } from "react"
 import { createPortal } from "react-dom"
 import { SftpSessionProvider } from "@/contexts/sftp-session-context"
 import "@/components/Folder.css"
@@ -22,6 +22,7 @@ import { useSftpFileBrowserController, type SftpFileBrowserItem } from "@/compon
 import { useSftpDragDropController } from "@/components/sftp/use-sftp-drag-drop-controller"
 import { useSftpFileActionController } from "@/components/sftp/use-sftp-file-action-controller"
 import { useSftpWorkspaceHeaderController } from "@/components/sftp/use-sftp-workspace-header-controller"
+import type { TransferJob } from "@/lib/api/transfer-jobs"
 
 export type SftpManagerFileItem = SftpFileBrowserItem
 
@@ -66,8 +67,14 @@ export interface SftpManagerProps {
   onToggleFullscreen?: () => void
   // 传输任务管理(从外部传入)
   transferTasks?: WorkspaceTransferTask[]
+  backgroundTransferJobs?: TransferJob[]
   onClearCompletedTransfers?: () => void
   onCancelTransfer?: (taskId: string) => void
+  onCreateBackgroundUpload?: (files: FileList) => void | Promise<void>
+  onCreateBackgroundDownload?: (fileName: string) => void | Promise<void>
+  onCancelBackgroundTransfer?: (jobId: string) => void
+  onDeleteBackgroundTransfer?: (jobId: string) => void
+  onDownloadBackgroundArtifact?: (jobId: string) => void
   preferences?: SshWorkspacePreferenceAdapter
 }
 
@@ -113,8 +120,14 @@ export function SftpManager(props: SftpManagerProps) {
     onRenameSession,
     onToggleFullscreen,
     transferTasks,
+    backgroundTransferJobs,
     onClearCompletedTransfers,
     onCancelTransfer,
+    onCreateBackgroundUpload,
+    onCreateBackgroundDownload,
+    onCancelBackgroundTransfer,
+    onDeleteBackgroundTransfer,
+    onDownloadBackgroundArtifact,
     preferences,
   } = props
   const workspaceTransferManager = workspace?.adapters.transferManager
@@ -124,7 +137,13 @@ export function SftpManager(props: SftpManagerProps) {
   const effectiveTransferTasks = transferTasks ?? workspaceTransferManager?.tasks ?? []
   const effectiveClearCompletedTransfers = onClearCompletedTransfers ?? workspaceTransferManager?.clearCompleted
   const effectiveCancelTransfer = onCancelTransfer ?? workspaceTransferManager?.cancelTask
-  const showTransferTasks = transferTasks !== undefined || !!workspaceTransferManager
+  const showTransferTasks = (
+    transferTasks !== undefined ||
+    !!workspaceTransferManager ||
+    !!backgroundTransferJobs?.length ||
+    !!onCreateBackgroundUpload ||
+    !!onCreateBackgroundDownload
+  )
   const {
     selectedFiles,
     setSelectedFiles,
@@ -148,6 +167,7 @@ export function SftpManager(props: SftpManagerProps) {
     preferences: preferences ?? workspace?.adapters.preferences,
   })
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const backgroundFileInputRef = useRef<HTMLInputElement>(null)
   const dropZoneRef = useRef<HTMLDivElement>(null)
   const editInputRef = useRef<HTMLInputElement>(null)
   const editingSessionLabelRef = useRef(false)
@@ -228,6 +248,7 @@ export function SftpManager(props: SftpManagerProps) {
     canNavigateBack,
     onInternalBackHandlerChange,
     onDownload,
+    onBackgroundDownload: onCreateBackgroundDownload,
     onDelete,
     onBatchDelete,
     onBatchDownload,
@@ -260,6 +281,14 @@ export function SftpManager(props: SftpManagerProps) {
   const handleClearCompleted = useCallback(() => {
     effectiveClearCompletedTransfers?.()
   }, [effectiveClearCompletedTransfers])
+
+  const handleBackgroundUploadInputChange = useCallback((event: ChangeEvent<HTMLInputElement>) => {
+    const inputFiles = event.target.files
+    if (inputFiles && inputFiles.length > 0) {
+      void onCreateBackgroundUpload?.(inputFiles)
+    }
+    event.target.value = ""
+  }, [onCreateBackgroundUpload])
 
   // Context value for nested components
   const sessionContextValue = useMemo(() => ({
@@ -342,8 +371,13 @@ export function SftpManager(props: SftpManagerProps) {
         onViewModeChange={setViewMode}
         showTransferTasks={showTransferTasks}
         transferTasks={effectiveTransferTasks}
+        backgroundTransferJobs={backgroundTransferJobs}
         onClearCompletedTransfers={handleClearCompleted}
         onCancelTransfer={effectiveCancelTransfer}
+        onCreateBackgroundUpload={onCreateBackgroundUpload ? () => backgroundFileInputRef.current?.click() : undefined}
+        onCancelBackgroundTransfer={onCancelBackgroundTransfer}
+        onDeleteBackgroundTransfer={onDeleteBackgroundTransfer}
+        onDownloadBackgroundArtifact={onDownloadBackgroundArtifact}
         isFullscreen={isFullscreen}
         onToggleFullscreen={onToggleFullscreen}
         onDisconnect={onDisconnect}
@@ -414,11 +448,23 @@ export function SftpManager(props: SftpManagerProps) {
             onFileDoubleClick={handleFileDoubleClick}
             onContextMenu={handleContextMenu}
             onSort={handleSort}
+            enableBackgroundDownload={!!onCreateBackgroundDownload}
             onAction={handleFileAction}
             onInputChange={handleInputChange}
           />
         </>
       ))}
+
+      {onCreateBackgroundUpload && (
+      <input
+        ref={backgroundFileInputRef}
+        type="file"
+        multiple
+        className="hidden"
+        tabIndex={-1}
+        onChange={handleBackgroundUploadInputChange}
+      />
+      )}
 
       {/* 权限修改对话框 */}
       {shouldRenderBody && (
@@ -455,6 +501,8 @@ export function SftpManager(props: SftpManagerProps) {
         onCreateFolder={() => startCreateNew("folder")}
         onCreateFile={() => startCreateNew("file")}
         onUpload={() => fileInputRef.current?.click()}
+        onBackgroundUpload={onCreateBackgroundUpload ? () => backgroundFileInputRef.current?.click() : undefined}
+        enableBackgroundDownload={!!onCreateBackgroundDownload}
         onRefresh={onRefresh}
         onClose={closeContextMenu}
       />

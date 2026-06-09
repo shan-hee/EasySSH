@@ -1,14 +1,17 @@
 import { apiFetch } from "@/lib/api-client"
 
+export type ScheduledTaskType = "command" | "script" | "batch" | "sftp_upload" | "sftp_download"
+
 // 定时任务类型定义
 export interface ScheduledTask {
   id: string
   user_id: string
   task_name: string
-  task_type: "command" | "script" | "batch"
+  task_type: ScheduledTaskType
   script_id?: string
   batch_task_id?: string
   command?: string
+  payload_json?: string
   server_ids?: string[]
   cron_expression: string
   timezone: string
@@ -25,10 +28,11 @@ export interface ScheduledTask {
 
 export interface CreateScheduledTaskRequest {
   task_name: string
-  task_type: "command" | "script" | "batch"
+  task_type: ScheduledTaskType
   script_id?: string
   batch_task_id?: string
   command?: string
+  payload_json?: string
   server_ids?: string[]
   cron_expression: string
   timezone?: string
@@ -38,7 +42,9 @@ export interface CreateScheduledTaskRequest {
 
 export interface UpdateScheduledTaskRequest {
   task_name?: string
+  task_type?: ScheduledTaskType
   command?: string
+  payload_json?: string
   server_ids?: string[]
   cron_expression?: string
   timezone?: string
@@ -50,7 +56,7 @@ export interface ListScheduledTasksParams {
   page?: number
   limit?: number
   enabled?: boolean
-  task_type?: "command" | "script" | "batch"
+  task_type?: ScheduledTaskType
 }
 
 export interface ListScheduledTasksResponse {
@@ -93,18 +99,18 @@ export const scheduledTasksApi = {
    */
   async create(
     data: CreateScheduledTaskRequest
-  ): Promise<{ data: ScheduledTask }> {
-    return apiFetch<{ data: ScheduledTask }>(`/scheduled-tasks`, {
+  ): Promise<ScheduledTask> {
+    return apiFetch<ScheduledTask>(`/scheduled-tasks`, {
       method: "POST",
-      body: JSON.stringify(data),
+      body: data,
     })
   },
 
   /**
    * 获取定时任务详情
    */
-  async getById(id: string): Promise<{ data: ScheduledTask }> {
-    return apiFetch<{ data: ScheduledTask }>(`/scheduled-tasks/${id}`)
+  async getById(id: string): Promise<ScheduledTask> {
+    return apiFetch<ScheduledTask>(`/scheduled-tasks/${id}`)
   },
 
   /**
@@ -113,18 +119,18 @@ export const scheduledTasksApi = {
   async update(
     id: string,
     data: UpdateScheduledTaskRequest
-  ): Promise<{ data: ScheduledTask }> {
-    return apiFetch<{ data: ScheduledTask }>(`/scheduled-tasks/${id}`, {
+  ): Promise<ScheduledTask> {
+    return apiFetch<ScheduledTask>(`/scheduled-tasks/${id}`, {
       method: "PUT",
-      body: JSON.stringify(data),
+      body: data,
     })
   },
 
   /**
    * 删除定时任务
    */
-  async delete(id: string): Promise<{ data: { message: string } }> {
-    return apiFetch<{ data: { message: string } }>(`/scheduled-tasks/${id}`, {
+  async delete(id: string): Promise<{ message: string }> {
+    return apiFetch<{ message: string }>(`/scheduled-tasks/${id}`, {
       method: "DELETE",
     })
   },
@@ -132,25 +138,25 @@ export const scheduledTasksApi = {
   /**
    * 获取定时任务统计信息
    */
-  async getStatistics(): Promise<{ data: ScheduledTaskStatistics }> {
-    return apiFetch<{ data: ScheduledTaskStatistics }>(`/scheduled-tasks/statistics`)
+  async getStatistics(): Promise<ScheduledTaskStatistics> {
+    return apiFetch<ScheduledTaskStatistics>(`/scheduled-tasks/statistics`)
   },
 
   /**
    * 启用/禁用定时任务
    */
-  async toggle(id: string, enabled: boolean): Promise<{ data: { message: string } }> {
-    return apiFetch<{ data: { message: string } }>(`/scheduled-tasks/${id}/toggle`, {
+  async toggle(id: string, enabled: boolean): Promise<{ message: string }> {
+    return apiFetch<{ message: string }>(`/scheduled-tasks/${id}/toggle`, {
       method: "POST",
-      body: JSON.stringify({ enabled }),
+      body: { enabled },
     })
   },
 
   /**
    * 手动触发定时任务
    */
-  async trigger(id: string): Promise<{ data: { message: string } }> {
-    return apiFetch<{ data: { message: string } }>(`/scheduled-tasks/${id}/trigger`, {
+  async trigger(id: string): Promise<{ message: string }> {
+    return apiFetch<{ message: string }>(`/scheduled-tasks/${id}/trigger`, {
       method: "POST",
     })
   },

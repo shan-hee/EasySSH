@@ -77,6 +77,7 @@ export interface UseSftpFileActionControllerOptions {
     handler: { handle: () => boolean | Promise<boolean> } | null
   ) => void
   onDownload: (fileName: string) => void
+  onBackgroundDownload?: (fileName: string) => void | Promise<void>
   onDelete: (fileName: string) => void
   onBatchDelete?: (fileNames: string[]) => Promise<BatchDeleteResult>
   onBatchDownload?: (fileNames: string[], excludePatterns?: string[]) => Promise<void>
@@ -144,6 +145,7 @@ export function useSftpFileActionController({
   canNavigateBack,
   onInternalBackHandlerChange,
   onDownload,
+  onBackgroundDownload,
   onDelete,
   onBatchDelete,
   onBatchDownload,
@@ -462,6 +464,16 @@ export function useSftpFileActionController({
           onDownload(file.name)
         }
         break
+      case "backgroundDownload":
+        if (file.type !== "file") {
+          return
+        }
+        if (!onBackgroundDownload) {
+          notifier.error(tSftp("toastBackgroundTransferUnavailable"))
+          return
+        }
+        void onBackgroundDownload(file.name)
+        break
       case "rename":
         setTimeout(() => startRename(file.name), 50)
         break
@@ -477,7 +489,7 @@ export function useSftpFileActionController({
         requestDelete(file.name)
         break
     }
-  }, [currentPath, handleBatchDownload, handleOpenEditor, onDownload, onNavigate, requestDelete, setSelectedFiles, startRename])
+  }, [currentPath, handleBatchDownload, handleOpenEditor, notifier, onBackgroundDownload, onDownload, onNavigate, requestDelete, setSelectedFiles, startRename, tSftp])
 
   const contextMenuFile = useMemo<SftpFileActionItem | null>(() => {
     if (!contextMenu?.fileName || !contextMenu.fileType) {

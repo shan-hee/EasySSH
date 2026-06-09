@@ -259,7 +259,7 @@ export function TabTerminalContent({
   )
   const sftpSessionOptions = React.useMemo(
     () => ({
-      api: workspace?.adapters.apiClient?.sftp,
+      api: workspaceSftpApi,
       notifier: workspace?.adapters.notifier,
       t: sftpTranslate,
       fileTransferOptions: sftpFileTransferOptions,

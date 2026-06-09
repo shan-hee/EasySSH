@@ -41,6 +41,11 @@ export const fileTransferSchema = z.object({
     .number()
     .min(1, "settingsValidation.fileUploadSizeMin")
     .max(1024, "settingsValidation.fileUploadSizeMax"),
+  transfer_storage_path: z.string().default(""),
+  transfer_retention_days: z.number().min(1).max(30).default(3),
+  transfer_max_storage_gb: z.number().min(1).max(1024).default(10),
+  transfer_max_concurrency: z.number().min(1).max(16).default(2),
+  transfer_cleanup_enabled: z.boolean().default(true),
 })
 
 // 补全配置 Schema

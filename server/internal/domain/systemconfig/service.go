@@ -41,6 +41,8 @@ func (s *service) Get(ctx context.Context) (*SystemConfig, error) {
 
 // Save 保存系统配置
 func (s *service) Save(ctx context.Context, config *SystemConfig) error {
+	config.ApplyTransferDefaults()
+
 	// 验证配置
 	if err := s.validate(config); err != nil {
 		return err
@@ -105,6 +107,15 @@ func (s *service) validate(config *SystemConfig) error {
 	// 验证文件上传大小
 	if config.MaxFileUploadSize < 1 || config.MaxFileUploadSize > 1024 {
 		return errors.New("max file upload size must be between 1 and 1024 MB")
+	}
+	if config.TransferRetentionDays < 1 || config.TransferRetentionDays > 30 {
+		return errors.New("transfer retention days must be between 1 and 30")
+	}
+	if config.TransferMaxStorageGB < 1 || config.TransferMaxStorageGB > 1024 {
+		return errors.New("transfer max storage must be between 1 and 1024 GB")
+	}
+	if config.TransferMaxConcurrency < 1 || config.TransferMaxConcurrency > 16 {
+		return errors.New("transfer max concurrency must be between 1 and 16")
 	}
 
 	// 验证补全配置

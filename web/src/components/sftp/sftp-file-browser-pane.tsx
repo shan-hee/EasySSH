@@ -57,6 +57,7 @@ export interface SftpFileBrowserPaneProps {
   onFileDoubleClick: (fileName: string, fileType: "file" | "directory") => void
   onContextMenu: (event: MouseEvent<HTMLElement>, fileName: string, fileType: "file" | "directory") => void
   onSort: (key: SftpFileSortKey) => void
+  enableBackgroundDownload?: boolean
   onAction: (file: EnhancedSftpFileBrowserItem, action: FileAction) => void
   onInputChange: (event: ChangeEvent<HTMLInputElement>) => void
 }
@@ -101,6 +102,7 @@ export function SftpFileBrowserPane({
   onFileDoubleClick,
   onContextMenu,
   onSort,
+  enableBackgroundDownload = false,
   onAction,
   onInputChange,
 }: SftpFileBrowserPaneProps) {
@@ -174,6 +176,7 @@ export function SftpFileBrowserPane({
       onClick={(fileName, event) => onFileClick(fileName, event)}
       onDoubleClick={onFileDoubleClick}
       onContextMenu={(event, fileName, fileType) => onContextMenu(event, fileName, fileType)}
+      enableBackgroundDownload={enableBackgroundDownload}
       onAction={(_, action) => onAction(file, action)}
     />
   )

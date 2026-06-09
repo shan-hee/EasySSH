@@ -1,11 +1,13 @@
 
 import {
+  CloudDownload,
   Download,
   Trash2,
   Eye,
   Edit,
   FileText,
 } from "lucide-react"
+import type { ReactNode } from "react"
 import { useWorkspaceSftpTranslator } from "@/components/ssh-workspace/use-workspace-translator"
 import { cn } from "@/lib/utils"
 import {
@@ -24,6 +26,7 @@ interface FileItem {
 export type FileAction =
   | "open"
   | "download"
+  | "backgroundDownload"
   | "rename"
   | "chmod"
   | "delete"
@@ -32,6 +35,7 @@ interface FileActionMenuProps {
   file: FileItem
   mode: "dropdown" | "context"
   selectedFilesCount?: number
+  enableBackgroundDownload?: boolean
   onAction: (action: FileAction) => void
 }
 
@@ -40,7 +44,7 @@ type FileActionMenuItemProps = {
   className: string
   variant?: "default" | "destructive"
   onClick: () => void
-  children: React.ReactNode
+  children: ReactNode
 }
 
 function FileActionMenuItem({
@@ -87,6 +91,7 @@ export function FileActionMenu({
   file,
   mode,
   selectedFilesCount = 0,
+  enableBackgroundDownload = false,
   onAction,
 }: FileActionMenuProps) {
   const t = useWorkspaceSftpTranslator()
@@ -134,6 +139,17 @@ export function FileActionMenu({
         </FileActionMenuItem>
       ) : (
         null
+      )}
+
+      {enableBackgroundDownload && file.type === "file" && (
+        <FileActionMenuItem
+          mode={mode}
+          className={itemClassName}
+          onClick={() => onAction("backgroundDownload")}
+        >
+          <CloudDownload className="h-4 w-4 mr-2" />
+          <span className="flex-1">{t("actionBackgroundDownload")}</span>
+        </FileActionMenuItem>
       )}
 
       <FileActionMenuSeparator mode={mode} className={separatorClassName} />

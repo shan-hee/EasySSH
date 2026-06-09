@@ -41,6 +41,7 @@ import (
 	"github.com/easyssh/server/internal/domain/systemconfig"
 	"github.com/easyssh/server/internal/domain/taskexecutor"
 	"github.com/easyssh/server/internal/domain/taskscheduler"
+	"github.com/easyssh/server/internal/domain/transferjob"
 	"github.com/easyssh/server/internal/domain/user"
 	"github.com/easyssh/server/internal/domain/useraiconfig"
 	"github.com/easyssh/server/internal/domain/verification"
@@ -95,6 +96,7 @@ func main() {
 		&batchtask.BatchTask{},             // 批量任务表
 		&scheduledtask.ScheduledTask{},     // 定时任务表
 		&operationrecord.OperationRecord{}, // 统一操作记录表
+		&transferjob.TransferJob{},         // 后台文件传输任务表
 		// 新的配置表
 		&systemconfig.SystemConfig{},             // 系统配置表
 		&security.SecurityConfig{},               // 安全配置表
@@ -333,13 +335,6 @@ func main() {
 	// 注入调度器到定时任务服务
 	scheduledTaskService.SetScheduler(taskScheduler)
 
-	// 启动调度器
-	if err := taskScheduler.Start(); err != nil {
-		log.Printf("⚠️ Warning: Failed to start task scheduler: %v", err)
-	} else {
-		log.Println("✅ Task scheduler started")
-	}
-
 	// 用户管理服务
 	userRepo := user.NewRepository(database)
 	userService := user.NewService(userRepo)
@@ -407,6 +402,25 @@ func main() {
 	sftpHandler := rest.NewSFTPHandler(serverService, serverRepo, encryptor, sftpUploadWSHandler, sshHostKeyService.GetHostKeyCallback(), sftpPoolConfig, runtimeCredentialStore, operationRecordService)
 	sftpHandler.SetTransferHandler(sftpTransferWSHandler) // 注入跨服务器传输处理器
 
+	transferJobRepo := transferjob.NewRepository(database)
+	transferJobService := transferjob.NewService(
+		transferJobRepo,
+		sftpHandler.GetPool(),
+		serverService,
+		systemConfigService,
+		operationRecordService,
+		transferjob.ServiceOptions{DataDir: runtimeInfo.DataDir},
+	)
+	taskExecutor.SetTransferJobService(transferJobService)
+	transferJobService.StartMaintenance(context.Background())
+
+	// 启动调度器。需在 transfer job service 注入后启动，避免 SFTP 定时任务触发时执行器缺少传输服务。
+	if err := taskScheduler.Start(); err != nil {
+		log.Printf("⚠️ Warning: Failed to start task scheduler: %v", err)
+	} else {
+		log.Println("✅ Task scheduler started")
+	}
+
 	terminalHandler := ws.NewTerminalHandler(serverService, serverRepo, sessionManager, encryptor, operationRecordService, sshHostKeyService, securityService, cfg.Server.WebDevPort, completionService, systemConfigService, runtimeCredentialStore)
 	monitorHandler := ws.NewMonitorHandler(monitorConnectionPool, securityService, cfg.Server.WebDevPort)
 	auditLogHandler := rest.NewAuditLogHandler(auditLogService)
@@ -416,6 +430,8 @@ func main() {
 	scriptHandler := rest.NewScriptHandler(scriptService)
 	batchTaskHandler := rest.NewBatchTaskHandler(batchTaskService)
 	scheduledTaskHandler := rest.NewScheduledTaskHandler(scheduledTaskService)
+	scheduledTaskHandler.SetTransferJobService(transferJobService)
+	transferJobHandler := rest.NewTransferJobHandler(transferJobService)
 	operationRecordHandler := rest.NewOperationRecordHandler(operationRecordService)
 	userHandler := rest.NewUserHandler(userService, accountLockService)
 	permissionHandler := rest.NewPermissionHandler(permissionService)
@@ -754,6 +770,21 @@ func main() {
 			operationRecordRoutes.GET("/:id", operationRecordHandler.GetByID)
 		}
 
+		// 后台文件传输任务路由（需要认证）
+		transferJobRoutes := v1.Group("/transfer-jobs")
+		transferJobRoutes.Use(middleware.AuthMiddleware(jwtService, ticketService, authRepo))
+		transferJobRoutes.Use(middleware.RequirePermission(permissionService, "file:manage"))
+		{
+			transferJobRoutes.GET("", transferJobHandler.List)
+			transferJobRoutes.GET("/statistics", transferJobHandler.GetStatistics)
+			transferJobRoutes.POST("/sftp/upload", transferJobHandler.CreateUpload)
+			transferJobRoutes.POST("/sftp/download", transferJobHandler.CreateDownload)
+			transferJobRoutes.GET("/:id", transferJobHandler.GetByID)
+			transferJobRoutes.POST("/:id/cancel", transferJobHandler.Cancel)
+			transferJobRoutes.DELETE("/:id", transferJobHandler.Delete)
+			transferJobRoutes.GET("/:id/artifact", transferJobHandler.DownloadArtifact)
+		}
+
 		// 脚本管理路由（需要认证）
 		scriptRoutes := v1.Group("/scripts")
 		scriptRoutes.Use(middleware.AuthMiddleware(jwtService, ticketService, authRepo))
@@ -996,6 +1027,9 @@ func main() {
 	// 停止任务调度器
 	taskScheduler.Stop()
 	log.Println("✅ Task scheduler stopped")
+
+	transferJobService.Stop()
+	log.Println("✅ Transfer job service stopped")
 
 	// 关闭 SFTP 连接池
 	if sftpHandler != nil {

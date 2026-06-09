@@ -13,6 +13,7 @@ import (
 	"github.com/easyssh/server/internal/domain/script"
 	"github.com/easyssh/server/internal/domain/server"
 	"github.com/easyssh/server/internal/domain/ssh"
+	"github.com/easyssh/server/internal/domain/transferjob"
 	"github.com/easyssh/server/internal/pkg/crypto"
 	"github.com/google/uuid"
 	gossh "golang.org/x/crypto/ssh"
@@ -46,6 +47,7 @@ type Executor struct {
 	operationRecords operationrecord.Service
 	encryptor        *crypto.Encryptor
 	hostKeyCallback  gossh.HostKeyCallback
+	transferJobs     transferjob.Service
 	maxConcurrency   int
 }
 
@@ -77,6 +79,10 @@ func (e *Executor) SetHostKeyCallback(callback gossh.HostKeyCallback) {
 	e.hostKeyCallback = callback
 }
 
+func (e *Executor) SetTransferJobService(service transferjob.Service) {
+	e.transferJobs = service
+}
+
 // Execute 执行任务
 func (e *Executor) Execute(ctx context.Context, task *scheduledtask.ScheduledTask, trigger TriggerType) {
 	log.Printf("[TaskExecutor] 开始执行任务: taskID=%s, type=%s, trigger=%s",
@@ -98,6 +104,11 @@ func (e *Executor) Execute(ctx context.Context, task *scheduledtask.ScheduledTas
 		StartTime:       startTime,
 	}
 	e.upsertOperationRecord(record)
+
+	if isTransferTask(task.TaskType) {
+		e.executeTransferTask(ctx, task, &record)
+		return
+	}
 
 	// 根据任务类型获取要执行的命令
 	command, err := e.resolveCommand(ctx, task)
@@ -147,6 +158,57 @@ func (e *Executor) Execute(ctx context.Context, task *scheduledtask.ScheduledTas
 
 	log.Printf("[TaskExecutor] 任务执行完成: taskID=%s, status=%s, success=%d, failed=%d",
 		task.ID, finalStatus, successCount, failedCount)
+}
+
+func isTransferTask(taskType string) bool {
+	return taskType == string(transferjob.JobKindSFTPUpload) || taskType == string(transferjob.JobKindSFTPDownload)
+}
+
+func (e *Executor) executeTransferTask(ctx context.Context, task *scheduledtask.ScheduledTask, record *taskExecutionRecord) {
+	if e.transferJobs == nil {
+		err := "transfer job service is not initialized"
+		e.completeExecution(record, executionStatusFailed, err, 0, 1, nil)
+		e.updateTaskStatus(task.ID, "failed")
+		return
+	}
+
+	job, err := e.transferJobs.RunScheduledTask(ctx, transferjob.RunScheduledRequest{
+		UserID:          task.UserID,
+		ScheduledTaskID: task.ID,
+		TaskName:        task.TaskName,
+		TaskType:        task.TaskType,
+		PayloadJSON:     task.PayloadJSON,
+	})
+	if err != nil {
+		log.Printf("[TaskExecutor] 触发传输任务失败: taskID=%s, error=%v", task.ID, err)
+		e.completeExecution(record, executionStatusFailed, err.Error(), 0, 1, nil)
+		e.updateTaskStatus(task.ID, "failed")
+		return
+	}
+
+	record.TransferJobID = job.ID
+	record.Command = fmt.Sprintf("transfer_job:%s", job.ID)
+	record.TotalServers = 1
+	var serverID uuid.UUID
+	if job.TargetServerID != nil {
+		serverID = *job.TargetServerID
+	} else if job.SourceServerID != nil {
+		serverID = *job.SourceServerID
+	}
+	result := ServerExecutionResult{
+		ServerID:  serverID,
+		Status:    executionStatusSuccess,
+		Output:    fmt.Sprintf("transfer job queued: %s", job.ID),
+		StartTime: record.StartTime,
+	}
+	endTime := time.Now()
+	result.EndTime = &endTime
+	result.Duration = endTime.Sub(record.StartTime).Milliseconds()
+	e.completeExecution(record, executionStatusSuccess, "", 1, 0, []ServerExecutionResult{result})
+	e.updateTaskStatus(task.ID, "success")
+
+	log.Printf("[TaskExecutor] 传输任务已触发: taskID=%s, jobID=%s, type=%s",
+		task.ID, job.ID, task.TaskType)
 }
 
 // ServerExecutionResult 服务器执行结果
@@ -334,6 +396,7 @@ func (e *Executor) completeExecution(
 type taskExecutionRecord struct {
 	ID              uuid.UUID
 	ScheduledTaskID uuid.UUID
+	TransferJobID   uuid.UUID
 	UserID          uuid.UUID
 	TaskName        string
 	TaskType        string
@@ -372,6 +435,7 @@ func (e *Executor) upsertOperationRecord(execution taskExecutionRecord) {
 	}
 	detail, _ := json.Marshal(map[string]interface{}{
 		"scheduled_task_id": execution.ScheduledTaskID,
+		"transfer_job_id":   execution.TransferJobID,
 		"task_type":         execution.TaskType,
 		"trigger_type":      execution.TriggerType,
 		"server_results":    execution.ServerResults,

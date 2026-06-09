@@ -20,6 +20,17 @@ function parsePort(value: string | undefined) {
   return Number.isInteger(port) && port >= 1 && port <= 65535 ? port : undefined
 }
 
+function manualChunks(id: string) {
+  if (!id.includes("node_modules")) return undefined
+  if (id.includes("/@xterm/")) return "xterm"
+  if (id.includes("/monaco-editor/") || id.includes("/@monaco-editor/")) return "monaco"
+  if (id.includes("/echarts/") || id.includes("/echarts-for-react/")) return "echarts"
+  if (id.includes("/mermaid/")) return "mermaid"
+  if (id.includes("/shiki/") || id.includes("/@shikijs/")) return "shiki"
+  if (id.includes("/@fontsource")) return "fonts"
+  return undefined
+}
+
 export default defineConfig(({ mode }) => {
   const env = {
     ...loadEnv(mode, join(__dirname, ".."), ""),
@@ -50,6 +61,14 @@ export default defineConfig(({ mode }) => {
     define: {
       "import.meta.env.VITE_APP_VERSION": JSON.stringify(version),
       "import.meta.env.VITE_BUILD_DATE": JSON.stringify(buildDate),
+    },
+    build: {
+      reportCompressedSize: false,
+      rollupOptions: {
+        output: {
+          manualChunks,
+        },
+      },
     },
   }
 })

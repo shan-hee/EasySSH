@@ -240,6 +240,11 @@ func (r *progressReader) Read(p []byte) (n int, err error) {
 
 // DownloadFile 下载文件
 func (c *Client) DownloadFile(remotePath string, localWriter io.Writer) error {
+	return c.DownloadFileWithProgressWithContext(context.Background(), remotePath, localWriter, nil)
+}
+
+// DownloadFileWithProgressWithContext 下载文件并报告进度，支持上下文取消。
+func (c *Client) DownloadFileWithProgressWithContext(ctx context.Context, remotePath string, localWriter io.Writer, onProgress func(loaded int64)) error {
 	// 打开远程文件
 	remoteFile, err := c.sftpClient.Open(remotePath)
 	if err != nil {
@@ -247,12 +252,30 @@ func (c *Client) DownloadFile(remotePath string, localWriter io.Writer) error {
 	}
 	defer remoteFile.Close()
 
+	reader := io.Reader(remoteFile)
+	var progress *progressReader
+	if onProgress != nil {
+		progress = &progressReader{
+			reader:      remoteFile,
+			onProgress:  onProgress,
+			lastReport:  0,
+			reportEvery: 65536,
+		}
+		reader = progress
+	}
+
 	// 复制数据
-	_, err = io.Copy(localWriter, remoteFile)
+	_, err = io.Copy(localWriter, &ctxReader{ctx: ctx, reader: reader})
 	if err != nil {
+		if errors.Is(err, context.Canceled) {
+			return context.Canceled
+		}
 		return fmt.Errorf("failed to download file: %w", err)
 	}
 
+	if progress != nil {
+		onProgress(progress.loaded)
+	}
 	return nil
 }
 

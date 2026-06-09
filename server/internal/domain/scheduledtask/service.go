@@ -1,6 +1,7 @@
 package scheduledtask
 
 import (
+	"encoding/json"
 	"errors"
 	"time"
 
@@ -34,6 +35,7 @@ type Service interface {
 	GetStatistics(userID uuid.UUID) (*ScheduledTaskStatistics, error)
 	ToggleTask(userID uuid.UUID, id uuid.UUID, enabled bool) error
 	TriggerTask(userID uuid.UUID, id uuid.UUID) error
+	IsStagedJobReferenced(userID uuid.UUID, stagedJobID uuid.UUID, excludeTaskID uuid.UUID) (bool, error)
 	SetScheduler(scheduler TaskScheduler)
 }
 
@@ -62,6 +64,39 @@ func (s *service) validateCronExpression(expr string) error {
 	return nil
 }
 
+func isValidPayloadJSON(value string) bool {
+	if value == "" {
+		return false
+	}
+	var payload map[string]interface{}
+	return json.Unmarshal([]byte(value), &payload) == nil
+}
+
+func isValidTaskType(taskType string) bool {
+	return taskType == "command" ||
+		taskType == "script" ||
+		taskType == "batch" ||
+		taskType == "sftp_upload" ||
+		taskType == "sftp_download"
+}
+
+func isSFTPTaskType(taskType string) bool {
+	return taskType == "sftp_upload" || taskType == "sftp_download"
+}
+
+func stagedJobIDFromPayload(payloadJSON string) string {
+	if payloadJSON == "" {
+		return ""
+	}
+	var payload struct {
+		StagedJobID string `json:"staged_job_id"`
+	}
+	if err := json.Unmarshal([]byte(payloadJSON), &payload); err != nil {
+		return ""
+	}
+	return payload.StagedJobID
+}
+
 // calculateNextRunTime 计算下次运行时间
 func (s *service) calculateNextRunTime(cronExpr, timezone string) (*time.Time, error) {
 	loc, err := time.LoadLocation(timezone)
@@ -87,9 +122,11 @@ func (s *service) CreateScheduledTask(userID uuid.UUID, req *CreateScheduledTask
 	}
 
 	// 验证任务类型
-	validTaskTypes := map[string]bool{"command": true, "script": true, "batch": true}
-	if !validTaskTypes[req.TaskType] {
-		return nil, errors.New("invalid task_type, must be one of: command, script, batch")
+	if !isValidTaskType(req.TaskType) {
+		return nil, errors.New("invalid task_type, must be one of: command, script, batch, sftp_upload, sftp_download")
+	}
+	if isSFTPTaskType(req.TaskType) && !isValidPayloadJSON(req.PayloadJSON) {
+		return nil, errors.New("payload_json must be a valid JSON object for SFTP tasks")
 	}
 
 	// 验证Cron表达式
@@ -141,6 +178,7 @@ func (s *service) CreateScheduledTask(userID uuid.UUID, req *CreateScheduledTask
 		ScriptID:       scriptID,
 		BatchTaskID:    batchTaskID,
 		Command:        req.Command,
+		PayloadJSON:    req.PayloadJSON,
 		ServerIDs:      req.ServerIDs,
 		CronExpression: req.CronExpression,
 		Timezone:       timezone,
@@ -178,13 +216,35 @@ func (s *service) UpdateScheduledTask(userID uuid.UUID, id uuid.UUID, req *Updat
 
 	// 构建更新字段
 	updates := make(map[string]interface{})
+	taskType := existingTask.TaskType
+	payloadJSON := existingTask.PayloadJSON
 
 	if req.TaskName != "" {
 		updates["task_name"] = req.TaskName
 	}
 
+	if req.TaskType != "" {
+		if !isValidTaskType(req.TaskType) {
+			return nil, errors.New("invalid task_type, must be one of: command, script, batch, sftp_upload, sftp_download")
+		}
+		taskType = req.TaskType
+		updates["task_type"] = req.TaskType
+	}
+
 	if req.Command != "" {
 		updates["command"] = req.Command
+	}
+
+	if req.PayloadJSON != "" {
+		if !isValidPayloadJSON(req.PayloadJSON) {
+			return nil, errors.New("payload_json must be a valid JSON object")
+		}
+		payloadJSON = req.PayloadJSON
+		updates["payload_json"] = req.PayloadJSON
+	}
+
+	if isSFTPTaskType(taskType) && !isValidPayloadJSON(payloadJSON) {
+		return nil, errors.New("payload_json must be a valid JSON object for SFTP tasks")
 	}
 
 	if len(req.ServerIDs) > 0 {
@@ -374,4 +434,29 @@ func (s *service) TriggerTask(userID uuid.UUID, id uuid.UUID) error {
 	}
 
 	return ErrSchedulerNotInitialized
+}
+
+func (s *service) IsStagedJobReferenced(userID uuid.UUID, stagedJobID uuid.UUID, excludeTaskID uuid.UUID) (bool, error) {
+	if stagedJobID == uuid.Nil {
+		return false, nil
+	}
+	tasks, _, err := s.repo.List(userID, &ListScheduledTasksRequest{
+		Page:     1,
+		Limit:    100000,
+		TaskType: "sftp_upload",
+	})
+	if err != nil {
+		return false, err
+	}
+
+	target := stagedJobID.String()
+	for _, task := range tasks {
+		if excludeTaskID != uuid.Nil && task.ID == excludeTaskID {
+			continue
+		}
+		if stagedJobIDFromPayload(task.PayloadJSON) == target {
+			return true, nil
+		}
+	}
+	return false, nil
 }

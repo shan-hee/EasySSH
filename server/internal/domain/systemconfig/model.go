@@ -25,6 +25,11 @@ type SystemConfig struct {
 	DefaultDownloadMode     string `gorm:"size:20;not null;default:'fast'" json:"default_download_mode"`
 	SkipExcludedOnUpload    bool   `gorm:"not null;default:true" json:"skip_excluded_on_upload"`
 	MaxFileUploadSize       int    `gorm:"not null;default:100" json:"max_file_upload_size"` // MB
+	TransferStoragePath     string `gorm:"type:text" json:"transfer_storage_path"`
+	TransferRetentionDays   int    `gorm:"not null;default:3" json:"transfer_retention_days"`
+	TransferMaxStorageGB    int    `gorm:"not null;default:10" json:"transfer_max_storage_gb"`
+	TransferMaxConcurrency  int    `gorm:"not null;default:2" json:"transfer_max_concurrency"`
+	TransferCleanupEnabled  bool   `gorm:"not null;default:true" json:"transfer_cleanup_enabled"`
 
 	// 补全配置（JSON存储）
 	CompletionEnabled   bool   `gorm:"not null;default:true" json:"completion_enabled"`
@@ -183,4 +188,36 @@ venv
 dist
 build
 target`
+}
+
+// DefaultTransferStoragePath 为空表示使用运行时数据目录下的 transfers 子目录。
+func DefaultTransferStoragePath() string {
+	return ""
+}
+
+func DefaultTransferRetentionDays() int {
+	return 3
+}
+
+func DefaultTransferMaxStorageGB() int {
+	return 10
+}
+
+func DefaultTransferMaxConcurrency() int {
+	return 2
+}
+
+func (c *SystemConfig) ApplyTransferDefaults() {
+	if c == nil {
+		return
+	}
+	if c.TransferRetentionDays <= 0 {
+		c.TransferRetentionDays = DefaultTransferRetentionDays()
+	}
+	if c.TransferMaxStorageGB <= 0 {
+		c.TransferMaxStorageGB = DefaultTransferMaxStorageGB()
+	}
+	if c.TransferMaxConcurrency <= 0 {
+		c.TransferMaxConcurrency = DefaultTransferMaxConcurrency()
+	}
 }

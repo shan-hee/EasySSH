@@ -1,7 +1,7 @@
 
 import { createPortal } from "react-dom"
 import { useEffect, useRef } from "react"
-import { FolderPlus, FileText, RefreshCw, Upload } from "lucide-react"
+import { CloudUpload, FolderPlus, FileText, RefreshCw, Upload } from "lucide-react"
 import { FileActionMenu, type FileAction } from "@/components/sftp/file-action-menu"
 import { useWorkspaceSftpTranslator } from "@/components/ssh-workspace/use-workspace-translator"
 import { cn } from "@/lib/utils"
@@ -27,6 +27,8 @@ export interface SftpContextMenuProps {
   onCreateFolder: () => void
   onCreateFile: () => void
   onUpload: () => void
+  onBackgroundUpload?: () => void
+  enableBackgroundDownload?: boolean
   onRefresh: () => void
   onClose: () => void
 }
@@ -39,6 +41,8 @@ export function SftpContextMenu({
   onCreateFolder,
   onCreateFile,
   onUpload,
+  onBackgroundUpload,
+  enableBackgroundDownload = false,
   onRefresh,
   onClose,
 }: SftpContextMenuProps) {
@@ -137,6 +141,19 @@ export function SftpContextMenu({
               </kbd>
             </button>
 
+            {onBackgroundUpload && (
+              <button
+                className="w-full px-3 py-2 text-left text-sm flex items-center gap-2.5 transition-all hover:bg-accent hover:text-accent-foreground rounded-sm"
+                onClick={() => {
+                  onBackgroundUpload()
+                  onClose()
+                }}
+              >
+                <CloudUpload className="h-4 w-4" />
+                <span className="flex-1">{tSftp("contextBackgroundUploadFile")}</span>
+              </button>
+            )}
+
             <button
               className="w-full px-3 py-2 text-left text-sm flex items-center gap-2.5 transition-all hover:bg-accent hover:text-accent-foreground rounded-sm"
               onClick={() => {
@@ -190,6 +207,7 @@ export function SftpContextMenu({
             file={file}
             mode="context"
             selectedFilesCount={selectedFilesCount}
+            enableBackgroundDownload={enableBackgroundDownload}
             onAction={(action) => {
               onAction(action)
               onClose()

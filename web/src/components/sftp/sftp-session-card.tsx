@@ -3,6 +3,7 @@ import React from "react"
 import { Server } from "lucide-react"
 import { SftpManager } from "@/components/sftp/sftp-manager"
 import { cn } from "@/lib/utils"
+import type { TransferJob } from "@/lib/api/transfer-jobs"
 import type { WorkspaceTransferTask } from "@/lib/session/workspace"
 import type { BatchDeleteResult } from "@/lib/session/sftp-operations"
 import type { SftpWorkspaceSession } from "@/lib/session/workspace"
@@ -14,8 +15,14 @@ export interface SftpSessionCardProps {
   surface?: "normal" | "transparent"
   connectingText: string
   transferTasks?: WorkspaceTransferTask[]
+  backgroundTransferJobs?: TransferJob[]
   onClearCompletedTransfers?: () => void
   onCancelTransfer?: (taskId: string) => void
+  onCreateBackgroundUploadSession?: (sessionId: string, files: FileList) => void | Promise<void>
+  onCreateBackgroundDownloadSession?: (sessionId: string, fileName: string) => void | Promise<void>
+  onCancelBackgroundTransfer?: (jobId: string) => void
+  onDeleteBackgroundTransfer?: (jobId: string) => void
+  onDownloadBackgroundArtifact?: (jobId: string) => void
   onNavigateSession: (sessionId: string, path: string) => void
   onNavigateBackSession: (sessionId: string) => void | Promise<void>
   onNavigateForwardSession: (sessionId: string) => void | Promise<void>
@@ -42,8 +49,14 @@ export const SftpSessionCard = React.memo(function SftpSessionCard({
   surface = "normal",
   connectingText,
   transferTasks,
+  backgroundTransferJobs,
   onClearCompletedTransfers,
   onCancelTransfer,
+  onCreateBackgroundUploadSession,
+  onCreateBackgroundDownloadSession,
+  onCancelBackgroundTransfer,
+  onDeleteBackgroundTransfer,
+  onDownloadBackgroundArtifact,
   onNavigateSession,
   onNavigateBackSession,
   onNavigateForwardSession,
@@ -71,6 +84,14 @@ export const SftpSessionCard = React.memo(function SftpSessionCard({
     [onUploadSession, session.id],
   )
   const onDownload = React.useCallback((fileName: string) => onDownloadSession(session.id, fileName), [onDownloadSession, session.id])
+  const onCreateBackgroundUpload = React.useCallback(
+    (files: FileList) => onCreateBackgroundUploadSession?.(session.id, files),
+    [onCreateBackgroundUploadSession, session.id],
+  )
+  const onCreateBackgroundDownload = React.useCallback(
+    (fileName: string) => onCreateBackgroundDownloadSession?.(session.id, fileName),
+    [onCreateBackgroundDownloadSession, session.id],
+  )
   const onDelete = React.useCallback((fileName: string) => onDeleteSession(session.id, fileName), [onDeleteSession, session.id])
   const onBatchDelete = React.useCallback((fileNames: string[]) => onBatchDeleteSession(session.id, fileNames), [onBatchDeleteSession, session.id])
   const onBatchDownload = React.useCallback(
@@ -156,8 +177,14 @@ export const SftpSessionCard = React.memo(function SftpSessionCard({
       onRenameSession={onRenameLabel}
       onToggleFullscreen={onToggleFullscreenBound}
       transferTasks={transferTasks}
+      backgroundTransferJobs={backgroundTransferJobs}
       onClearCompletedTransfers={onClearCompletedTransfers}
       onCancelTransfer={onCancelTransfer}
+      onCreateBackgroundUpload={onCreateBackgroundUploadSession ? onCreateBackgroundUpload : undefined}
+      onCreateBackgroundDownload={onCreateBackgroundDownloadSession ? onCreateBackgroundDownload : undefined}
+      onCancelBackgroundTransfer={onCancelBackgroundTransfer}
+      onDeleteBackgroundTransfer={onDeleteBackgroundTransfer}
+      onDownloadBackgroundArtifact={onDownloadBackgroundArtifact}
     />
   )
 })

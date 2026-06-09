@@ -54,6 +54,11 @@ func (r *repository) Get(ctx context.Context) (*SystemConfig, error) {
 				SkipExcludedOnUpload:         true,
 				MaxFileUploadSize:            100,
 				DownloadExcludePatterns:      DefaultDownloadExcludePatterns(),
+				TransferStoragePath:          DefaultTransferStoragePath(),
+				TransferRetentionDays:        DefaultTransferRetentionDays(),
+				TransferMaxStorageGB:         DefaultTransferMaxStorageGB(),
+				TransferMaxConcurrency:       DefaultTransferMaxConcurrency(),
+				TransferCleanupEnabled:       true,
 				CompletionEnabled:            true,
 				JWTAccessExpireMinutes:       jwtDefaults.AccessExpireMinutes,
 				JWTRefreshIdleExpireDays:     jwtDefaults.RefreshIdleExpireDays,
@@ -82,11 +87,14 @@ func (r *repository) Get(ctx context.Context) (*SystemConfig, error) {
 		}
 	}
 
+	config.ApplyTransferDefaults()
 	return &config, nil
 }
 
 // Save 保存系统配置
 func (r *repository) Save(ctx context.Context, config *SystemConfig) error {
+	config.ApplyTransferDefaults()
+
 	// 查询是否存在配置
 	var existing SystemConfig
 	err := r.db.WithContext(ctx).First(&existing).Error

@@ -1,5 +1,5 @@
 
-import React, { useEffect, useRef, useCallback, startTransition } from "react"
+import React, { useEffect, useRef, useCallback, useState, startTransition } from "react"
 import { PageHeader } from "@/components/page-header"
 import { SshWorkspace } from "@easyssh/ssh-workspace"
 import { SessionTabBar } from "@/components/tabs/session-tab-bar"
@@ -31,7 +31,7 @@ import {
  rectSortingStrategy,
 } from '@dnd-kit/sortable'
 import { createPortal } from 'react-dom'
-import { operationRecordsApi, sftpApi, type Server as ApiServer, type FileInfo } from "@/lib/api"
+import { operationRecordsApi, sftpApi, transferJobsApi, type Server as ApiServer, type FileInfo, type TransferJob } from "@/lib/api"
 import { createAuthTicket } from "@/lib/auth-ticket"
 import { toast } from "@/components/ui/sonner"
 import { getErrorMessage } from "@/lib/error-utils"
@@ -105,6 +105,16 @@ const createSftpConfigTab = (id: string, label: string): TerminalSession => ({
   type: "config",
   pinned: false,
 })
+
+const joinRemotePath = (dir: string, name: string) => (
+  `${dir.endsWith("/") ? dir : `${dir}/`}${name}`.replace(/\/+/g, "/")
+)
+
+const isActiveBackgroundTransfer = (job: TransferJob) => (
+  job.status === "staging" ||
+  job.status === "queued" ||
+  job.status === "running"
+)
 
 export default function SftpPage() {
  const { runtime } = useRuntime()
@@ -228,6 +238,69 @@ export default function SftpPage() {
  } = fileTransfer
  const transferTasksRef = useRef(transferTasks)
  transferTasksRef.current = transferTasks
+ const [backgroundTransferJobs, setBackgroundTransferJobs] = useState<TransferJob[]>([])
+
+ const refreshBackgroundTransferJobs = useCallback(async () => {
+   const result = await transferJobsApi.list({ page: 1, page_size: 50 })
+   setBackgroundTransferJobs(Array.isArray(result.jobs) ? result.jobs : [])
+ }, [])
+
+ useEffect(() => {
+   void refreshBackgroundTransferJobs().catch((error) => {
+     console.error("Failed to load background transfer jobs:", error)
+   })
+ }, [refreshBackgroundTransferJobs])
+
+ useEffect(() => {
+   if (!backgroundTransferJobs.some(isActiveBackgroundTransfer)) {
+     return
+   }
+
+   const timer = window.setInterval(() => {
+     void refreshBackgroundTransferJobs().catch((error) => {
+       console.error("Failed to refresh background transfer jobs:", error)
+     })
+   }, 3000)
+
+   return () => window.clearInterval(timer)
+ }, [backgroundTransferJobs, refreshBackgroundTransferJobs])
+
+ const handleCancelBackgroundTransfer = useCallback(async (jobId: string) => {
+   try {
+     await transferJobsApi.cancel(jobId)
+     toast.success("后台传输已取消")
+     await refreshBackgroundTransferJobs()
+   } catch (error: unknown) {
+     toast.error(getErrorMessage(error, "取消后台传输失败"))
+   }
+ }, [refreshBackgroundTransferJobs])
+
+ const handleDeleteBackgroundTransfer = useCallback(async (jobId: string) => {
+   try {
+     await transferJobsApi.delete(jobId)
+     setBackgroundTransferJobs((jobs) => jobs.filter((job) => job.id !== jobId))
+     toast.success("后台传输记录已删除")
+   } catch (error: unknown) {
+     toast.error(getErrorMessage(error, "删除后台传输记录失败"))
+   }
+ }, [])
+
+ const handleDownloadBackgroundArtifact = useCallback(async (jobId: string) => {
+   const job = backgroundTransferJobs.find((item) => item.id === jobId)
+   try {
+     const blob = await transferJobsApi.downloadArtifact(jobId)
+     const url = URL.createObjectURL(blob)
+     const anchor = document.createElement("a")
+     anchor.href = url
+     anchor.download = job?.artifact_name || job?.file_name || job?.name || "transfer-artifact"
+     document.body.appendChild(anchor)
+     anchor.click()
+     anchor.remove()
+     window.setTimeout(() => URL.revokeObjectURL(url), 0)
+   } catch (error: unknown) {
+     toast.error(getErrorMessage(error, "下载后台任务产物失败"))
+   }
+ }, [backgroundTransferJobs])
  const workspaceSessionStore = React.useMemo(
    () => createSftpWorkspaceSessionStoreAdapter(() => transferTasksRef.current),
    [],
@@ -306,6 +379,7 @@ export default function SftpPage() {
    tTerminal,
    runSftpWithSessionCredentialRetry,
    sftpSessionApi,
+   sftpWorkspaceApi,
    transferTasks,
    uploadFile,
    workspacePreferences,
@@ -1031,7 +1105,7 @@ export default function SftpPage() {
  const session = sessionsRef.current.find(s => s.id === sessionId)
  if (!session || !session.isConnected) return
 
- const filePath = `${session.currentPath}/${fileName}`.replace("//", "/")
+ const filePath = joinRemotePath(session.currentPath, fileName)
 
  try {
    await createSessionOperationApi(session).downloadFile(session.serverId, filePath)
@@ -1147,7 +1221,7 @@ export default function SftpPage() {
  throw new Error("SFTP session is not connected")
  }
 
- const filePath = `${session.currentPath}/${fileName}`.replace("//", "/")
+ const filePath = joinRemotePath(session.currentPath, fileName)
 
  try {
  const content = await createSessionOperationApi(session).readFile(session.serverId, filePath)
@@ -1215,9 +1289,7 @@ export default function SftpPage() {
    }
 
    // 构建完整路径
-   const filePaths = fileNames.map(fileName =>
-     `${session.currentPath}/${fileName}`.replace("//", "/")
-  )
+   const filePaths = fileNames.map(fileName => joinRemotePath(session.currentPath, fileName))
 
   try {
     await createSessionOperationApi(session).batchDownload(session.serverId, filePaths, "fast", excludePatterns)
@@ -1228,6 +1300,59 @@ export default function SftpPage() {
      throw error
    }
  }, [tSftp, createSessionOperationApi])
+
+ const handleCreateBackgroundUpload = useCallback(async (sessionId: string, uploadFiles: FileList) => {
+   const session = sessionsRef.current.find(s => s.id === sessionId)
+   if (!session || !session.isConnected) return
+
+   const files = Array.from(uploadFiles)
+   if (files.length === 0) return
+
+   let successCount = 0
+   let failCount = 0
+
+   for (const file of files) {
+     try {
+       await transferJobsApi.createBackgroundUpload({
+         serverId: session.serverId,
+         targetPath: session.currentPath,
+         file,
+         name: `后台上传 ${file.name}`,
+       })
+       successCount++
+     } catch (error: unknown) {
+       console.error(`Failed to create background upload for ${file.name}:`, error)
+       failCount++
+     }
+   }
+
+   if (successCount > 0) {
+     toast.success(`已创建 ${successCount} 个后台上传任务`)
+     await refreshBackgroundTransferJobs()
+   }
+   if (failCount > 0) {
+     toast.error(`${failCount} 个后台上传任务创建失败`)
+   }
+ }, [refreshBackgroundTransferJobs])
+
+ const handleCreateBackgroundDownload = useCallback(async (sessionId: string, fileName: string) => {
+   const session = sessionsRef.current.find(s => s.id === sessionId)
+   if (!session || !session.isConnected) return
+
+   const filePath = joinRemotePath(session.currentPath, fileName)
+   try {
+     await transferJobsApi.createBackgroundDownload({
+       server_id: session.serverId,
+       source_path: filePath,
+       name: `后台下载 ${fileName}`,
+     })
+     toast.success(`已创建后台下载任务: ${fileName}`)
+     await refreshBackgroundTransferJobs()
+   } catch (error: unknown) {
+     console.error("Failed to create background download:", error)
+     toast.error(getErrorMessage(error, "创建后台下载任务失败"))
+   }
+ }, [refreshBackgroundTransferJobs])
 
  const renderSftpSessionCard = useCallback((
    session: SftpSession,
@@ -1246,6 +1371,14 @@ export default function SftpPage() {
    onNavigateForwardSession={handleNavigateForward}
    onUploadSession={handleUpload}
    onDownloadSession={handleDownload}
+   backgroundTransferJobs={backgroundTransferJobs.filter((job) => (
+     job.source_server_id === session.serverId || job.target_server_id === session.serverId
+   ))}
+   onCreateBackgroundUploadSession={handleCreateBackgroundUpload}
+   onCreateBackgroundDownloadSession={handleCreateBackgroundDownload}
+   onCancelBackgroundTransfer={handleCancelBackgroundTransfer}
+   onDeleteBackgroundTransfer={handleDeleteBackgroundTransfer}
+   onDownloadBackgroundArtifact={handleDownloadBackgroundArtifact}
    onDeleteSession={handleDelete}
    onBatchDeleteSession={handleBatchDelete}
    onBatchDownloadSession={handleBatchDownload}
@@ -1260,13 +1393,19 @@ export default function SftpPage() {
    onToggleFullscreen={toggleFullscreen}
  />
  ), [
+   backgroundTransferJobs,
    handleBatchDelete,
    handleBatchDownload,
+   handleCancelBackgroundTransfer,
    handleCreateFile,
+   handleCreateBackgroundDownload,
+   handleCreateBackgroundUpload,
    handleCreateFolder,
    handleDelete,
+   handleDeleteBackgroundTransfer,
    handleDisconnect,
    handleDownload,
+   handleDownloadBackgroundArtifact,
    handleNavigate,
    handleNavigateBack,
    handleNavigateForward,

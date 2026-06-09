@@ -1126,12 +1126,12 @@ export function TerminalComponent({
     }
   }
 
-  const cleanupSession = (sessionId: string) => {
+  const cleanupSession = useCallback((sessionId: string) => {
     destroySession(sessionId)
     deleteTabState(sessionId)
-  }
+  }, [deleteTabState, destroySession])
 
-  const cleanupSessionsWhenIdle = (sessionIds: string[]) => {
+  const cleanupSessionsWhenIdle = useCallback((sessionIds: string[]) => {
     const runCleanup = () => {
       sessionIds.forEach(cleanupSession)
     }
@@ -1142,24 +1142,24 @@ export function TerminalComponent({
     }
 
     window.setTimeout(runCleanup, 0)
-  }
+  }, [cleanupSession])
 
-  const cleanupSessionsAfterDelay = (sessionIds: string[], delayMs: number) => {
+  const cleanupSessionsAfterDelay = useCallback((sessionIds: string[], delayMs: number) => {
     window.setTimeout(() => {
       cleanupSessionsWhenIdle(sessionIds)
     }, delayMs)
-  }
+  }, [cleanupSessionsWhenIdle])
 
-  const cleanupSessionsAfterNavigation = (sessionIds: string[]) => {
+  const cleanupSessionsAfterNavigation = useCallback((sessionIds: string[]) => {
     cleanupSessionsAfterDelay(sessionIds, PAGE_NAVIGATION_CLEANUP_DELAY_MS)
-  }
+  }, [cleanupSessionsAfterDelay])
 
-  const cleanupSessionsAfterTabSwitch = (sessionIds: string[]) => {
+  const cleanupSessionsAfterTabSwitch = useCallback((sessionIds: string[]) => {
     cleanupSessionsAfterDelay(sessionIds, TAB_SWITCH_CLEANUP_DELAY_MS)
-  }
+  }, [cleanupSessionsAfterDelay])
 
   // ==================== 页签关闭处理：先切换/导航，再清理终端资源，避免可见终端先被清空 ====================
-  const handleCloseSession = (sessionId: string) => {
+  const handleCloseSession = useCallback((sessionId: string) => {
     if (extraSessionIdSet.has(sessionId)) {
       if (activeSession === sessionId) {
         const nextActiveSessionId = getAdjacentSessionId(combinedTabSessions, sessionId)
@@ -1245,7 +1245,22 @@ export function TerminalComponent({
     onCloseSession(sessionId)
     // 2. 稍后再销毁终端实例和 WebSocket，避免可见页签先被清空
     cleanupSessionsAfterTabSwitch([sessionId])
-  }
+  }, [
+    activeSession,
+    cleanupSessionsAfterNavigation,
+    cleanupSessionsAfterTabSwitch,
+    combinedTabSessions,
+    extraSessionIdSet,
+    onCloseExtraSession,
+    onCloseSession,
+    onCloseSessions,
+    removeSessionFromWorkspace,
+    sessionIdSet,
+    sessions,
+    setActiveSessionWithoutHistory,
+    setSplitLayout,
+    workspaceSessionIds,
+  ])
 
   const handleCloseOthers = (sessionId: string) => {
     const remainingSessions = sessions.filter((session) => session.id === sessionId || session.pinned)

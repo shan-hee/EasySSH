@@ -34,6 +34,7 @@ export interface SftpFileTableRowProps {
   onClick: (fileName: string, event: MouseEvent<HTMLTableRowElement>) => void
   onDoubleClick: (fileName: string, fileType: "file" | "directory") => void
   onContextMenu: (event: MouseEvent<HTMLTableRowElement>, fileName: string, fileType: "file" | "directory") => void
+  enableBackgroundDownload?: boolean
   onAction: (file: SftpFileTableRowItem, action: FileAction) => void
 }
 
@@ -60,6 +61,7 @@ export function SftpFileTableRow({
   onClick,
   onDoubleClick,
   onContextMenu,
+  enableBackgroundDownload = false,
   onAction,
 }: SftpFileTableRowProps) {
   const handleRenameKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
@@ -143,6 +145,7 @@ export function SftpFileTableRow({
         <SftpFileActionDropdown
           file={file}
           selectedFilesCount={selectedFilesCount}
+          enableBackgroundDownload={enableBackgroundDownload}
           onAction={(action) => onAction(file, action)}
         />
       </TableCell>
