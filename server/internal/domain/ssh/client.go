@@ -93,7 +93,7 @@ func NewClient(srv *server.Server, encryptor *crypto.Encryptor, hostKeyCallback 
 		password := options.password
 		if password == "" {
 			var err error
-			password, err = encryptor.Decrypt(srv.Password)
+			password, err = encryptor.DecryptWithAAD(srv.Password, srv.CredentialAAD("password"))
 			if err != nil {
 				return nil, fmt.Errorf("failed to decrypt password: %w", err)
 			}
@@ -106,7 +106,7 @@ func NewClient(srv *server.Server, encryptor *crypto.Encryptor, hostKeyCallback 
 		privateKey := options.privateKey
 		if privateKey == "" {
 			var err error
-			privateKey, err = encryptor.Decrypt(srv.PrivateKey)
+			privateKey, err = encryptor.DecryptWithAAD(srv.PrivateKey, srv.CredentialAAD("private_key"))
 			if err != nil {
 				return nil, fmt.Errorf("failed to decrypt private key: %w", err)
 			}

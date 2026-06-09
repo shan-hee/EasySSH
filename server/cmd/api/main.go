@@ -344,7 +344,7 @@ func main() {
 
 	// SSH密钥服务
 	sshKeyRepo := sshkey.NewRepository(database)
-	sshKeyService := sshkey.NewService(sshKeyRepo, cfg.Server.EncryptionKey)
+	sshKeyService := sshkey.NewService(sshKeyRepo, encryptor)
 
 	// SFTP 上传 WebSocket 处理器
 	sftpUploadWSHandler := ws.NewSFTPUploadHandler(securityService, cfg.Server.WebDevPort)

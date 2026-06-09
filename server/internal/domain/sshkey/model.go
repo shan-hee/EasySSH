@@ -1,6 +1,7 @@
 package sshkey
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
@@ -25,6 +26,10 @@ type SSHKey struct {
 // TableName specifies the table name for SSHKey model
 func (SSHKey) TableName() string {
 	return "ssh_keys"
+}
+
+func (k *SSHKey) PrivateKeyAAD() []byte {
+	return []byte(fmt.Sprintf("easyssh:ssh_keys:%s:%s:private_key", k.UserID.String(), k.Fingerprint))
 }
 
 // CreateSSHKeyRequest represents the request to generate a new SSH key

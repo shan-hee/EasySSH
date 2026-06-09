@@ -1,20 +1,17 @@
 package sshkey
 
 import (
-	"crypto/aes"
-	"crypto/cipher"
 	"crypto/ed25519"
 	"crypto/md5"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
-	"encoding/base64"
 	"encoding/pem"
 	"errors"
 	"fmt"
-	"io"
 	"strings"
 
+	"github.com/easyssh/server/internal/pkg/crypto"
 	"github.com/google/uuid"
 	"golang.org/x/crypto/ssh"
 )
@@ -28,17 +25,15 @@ type Service interface {
 }
 
 type service struct {
-	repo          Repository
-	encryptionKey []byte
+	repo      Repository
+	encryptor *crypto.Encryptor
 }
 
 // NewService creates a new SSH key service
-func NewService(repo Repository, encryptionKey string) Service {
-	// 使用MD5哈希encryptionKey以获得固定长度的密钥
-	hash := md5.Sum([]byte(encryptionKey))
+func NewService(repo Repository, encryptor *crypto.Encryptor) Service {
 	return &service{
-		repo:          repo,
-		encryptionKey: hash[:],
+		repo:      repo,
+		encryptor: encryptor,
 	}
 }
 
@@ -92,22 +87,20 @@ func (s *service) GenerateKeyPair(req *CreateSSHKeyRequest, userID uuid.UUID) (*
 		return nil, fmt.Errorf("failed to calculate fingerprint: %w", err)
 	}
 
-	// 加密私钥
-	encryptedPrivateKey, err := s.encryptPrivateKey(privateKeyPEM)
-	if err != nil {
-		return nil, fmt.Errorf("failed to encrypt private key: %w", err)
-	}
-
 	// 保存到数据库
 	sshKey := &SSHKey{
 		UserID:      userID,
 		Name:        req.Name,
 		PublicKey:   publicKey,
-		PrivateKey:  encryptedPrivateKey,
 		Fingerprint: fingerprint,
 		Algorithm:   algorithm,
 		KeySize:     keySize,
 	}
+	encryptedPrivateKey, err := s.encryptPrivateKey(sshKey, privateKeyPEM)
+	if err != nil {
+		return nil, fmt.Errorf("failed to encrypt private key: %w", err)
+	}
+	sshKey.PrivateKey = encryptedPrivateKey
 
 	if err := s.repo.Create(sshKey); err != nil {
 		return nil, fmt.Errorf("failed to save SSH key: %w", err)
@@ -192,22 +185,20 @@ func (s *service) ImportKeyPair(req *ImportSSHKeyRequest, userID uuid.UUID) (*SS
 		return nil, fmt.Errorf("failed to calculate fingerprint: %w", err)
 	}
 
-	// 加密私钥
-	encryptedPrivateKey, err := s.encryptPrivateKey(privateKeyPEM)
-	if err != nil {
-		return nil, fmt.Errorf("failed to encrypt private key: %w", err)
-	}
-
 	// 保存到数据库
 	sshKey := &SSHKey{
 		UserID:      userID,
 		Name:        req.Name,
 		PublicKey:   publicKey,
-		PrivateKey:  encryptedPrivateKey,
 		Fingerprint: fingerprint,
 		Algorithm:   algorithm,
 		KeySize:     keySize,
 	}
+	encryptedPrivateKey, err := s.encryptPrivateKey(sshKey, privateKeyPEM)
+	if err != nil {
+		return nil, fmt.Errorf("failed to encrypt private key: %w", err)
+	}
+	sshKey.PrivateKey = encryptedPrivateKey
 
 	if err := s.repo.Create(sshKey); err != nil {
 		return nil, fmt.Errorf("failed to save SSH key: %w", err)
@@ -237,56 +228,18 @@ func (s *service) DeleteKey(keyID uint, userID uuid.UUID) error {
 	return s.repo.Delete(keyID, userID)
 }
 
-// encryptPrivateKey encrypts the private key using AES
-func (s *service) encryptPrivateKey(privateKeyPEM string) (string, error) {
-	block, err := aes.NewCipher(s.encryptionKey)
-	if err != nil {
-		return "", err
+func (s *service) encryptPrivateKey(key *SSHKey, privateKeyPEM string) (string, error) {
+	if s.encryptor == nil {
+		return "", errors.New("encryptor is required")
 	}
-
-	gcm, err := cipher.NewGCM(block)
-	if err != nil {
-		return "", err
-	}
-
-	nonce := make([]byte, gcm.NonceSize())
-	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
-		return "", err
-	}
-
-	ciphertext := gcm.Seal(nonce, nonce, []byte(privateKeyPEM), nil)
-	return base64.StdEncoding.EncodeToString(ciphertext), nil
+	return s.encryptor.EncryptWithAAD(privateKeyPEM, key.PrivateKeyAAD())
 }
 
-// decryptPrivateKey decrypts the private key using AES (for future use)
-func (s *service) decryptPrivateKey(encryptedKey string) (string, error) {
-	data, err := base64.StdEncoding.DecodeString(encryptedKey)
-	if err != nil {
-		return "", err
+func (s *service) decryptPrivateKey(key *SSHKey) (string, error) {
+	if s.encryptor == nil {
+		return "", errors.New("encryptor is required")
 	}
-
-	block, err := aes.NewCipher(s.encryptionKey)
-	if err != nil {
-		return "", err
-	}
-
-	gcm, err := cipher.NewGCM(block)
-	if err != nil {
-		return "", err
-	}
-
-	nonceSize := gcm.NonceSize()
-	if len(data) < nonceSize {
-		return "", errors.New("ciphertext too short")
-	}
-
-	nonce, ciphertext := data[:nonceSize], data[nonceSize:]
-	plaintext, err := gcm.Open(nil, nonce, ciphertext, nil)
-	if err != nil {
-		return "", err
-	}
-
-	return string(plaintext), nil
+	return s.encryptor.DecryptWithAAD(key.PrivateKey, key.PrivateKeyAAD())
 }
 
 // encodePrivateKeyToPEM encodes a private key to PEM format

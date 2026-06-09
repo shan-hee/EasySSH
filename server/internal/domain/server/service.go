@@ -112,6 +112,7 @@ func (s *serverService) Create(ctx context.Context, userID uuid.UUID, req *Creat
 
 	// 创建服务器
 	server := &Server{
+		ID:          uuid.New(),
 		UserID:      userID,
 		Name:        req.Name,
 		Host:        req.Host,
@@ -126,7 +127,7 @@ func (s *serverService) Create(ctx context.Context, userID uuid.UUID, req *Creat
 
 	// 加密密码
 	if req.Password != "" {
-		encrypted, err := s.encryptor.Encrypt(req.Password)
+		encrypted, err := s.encryptor.EncryptWithAAD(req.Password, server.CredentialAAD("password"))
 		if err != nil {
 			return nil, fmt.Errorf("failed to encrypt password: %w", err)
 		}
@@ -135,7 +136,7 @@ func (s *serverService) Create(ctx context.Context, userID uuid.UUID, req *Creat
 
 	// 加密私钥
 	if req.PrivateKey != "" {
-		encrypted, err := s.encryptor.Encrypt(req.PrivateKey)
+		encrypted, err := s.encryptor.EncryptWithAAD(req.PrivateKey, server.CredentialAAD("private_key"))
 		if err != nil {
 			return nil, fmt.Errorf("failed to encrypt private key: %w", err)
 		}
@@ -208,7 +209,7 @@ func (s *serverService) Update(ctx context.Context, userID, serverID uuid.UUID, 
 		if *req.Password == "" {
 			server.Password = ""
 		} else {
-			encrypted, err := s.encryptor.Encrypt(*req.Password)
+			encrypted, err := s.encryptor.EncryptWithAAD(*req.Password, server.CredentialAAD("password"))
 			if err != nil {
 				return nil, fmt.Errorf("failed to encrypt password: %w", err)
 			}
@@ -221,7 +222,7 @@ func (s *serverService) Update(ctx context.Context, userID, serverID uuid.UUID, 
 		if *req.PrivateKey == "" {
 			server.PrivateKey = ""
 		} else {
-			encrypted, err := s.encryptor.Encrypt(*req.PrivateKey)
+			encrypted, err := s.encryptor.EncryptWithAAD(*req.PrivateKey, server.CredentialAAD("private_key"))
 			if err != nil {
 				return nil, fmt.Errorf("failed to encrypt private key: %w", err)
 			}

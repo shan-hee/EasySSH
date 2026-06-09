@@ -14,6 +14,8 @@ var (
 	ErrInvalidCiphertext = errors.New("invalid ciphertext")
 )
 
+const encryptedValuePrefix = "enc:v1:"
+
 // Encryptor AES 加密器
 type Encryptor struct {
 	key []byte
@@ -36,6 +38,11 @@ func NewEncryptor(key string) (*Encryptor, error) {
 
 // Encrypt 加密数据
 func (e *Encryptor) Encrypt(plaintext string) (string, error) {
+	return e.EncryptWithAAD(plaintext, nil)
+}
+
+// EncryptWithAAD 加密数据，并将上下文信息加入 GCM 认证数据。
+func (e *Encryptor) EncryptWithAAD(plaintext string, aad []byte) (string, error) {
 	if plaintext == "" {
 		return "", nil
 	}
@@ -59,20 +66,28 @@ func (e *Encryptor) Encrypt(plaintext string) (string, error) {
 	}
 
 	// 加密
-	ciphertext := gcm.Seal(nonce, nonce, []byte(plaintext), nil)
+	ciphertext := gcm.Seal(nonce, nonce, []byte(plaintext), aad)
 
-	// Base64 编码
-	return base64.StdEncoding.EncodeToString(ciphertext), nil
+	// Base64 编码并加版本前缀
+	return encryptedValuePrefix + base64.StdEncoding.EncodeToString(ciphertext), nil
 }
 
 // Decrypt 解密数据
 func (e *Encryptor) Decrypt(ciphertext string) (string, error) {
+	return e.DecryptWithAAD(ciphertext, nil)
+}
+
+// DecryptWithAAD 解密数据，并要求上下文信息与加密时一致。
+func (e *Encryptor) DecryptWithAAD(ciphertext string, aad []byte) (string, error) {
 	if ciphertext == "" {
 		return "", nil
 	}
+	if len(ciphertext) <= len(encryptedValuePrefix) || ciphertext[:len(encryptedValuePrefix)] != encryptedValuePrefix {
+		return "", ErrInvalidCiphertext
+	}
 
 	// Base64 解码
-	data, err := base64.StdEncoding.DecodeString(ciphertext)
+	data, err := base64.StdEncoding.DecodeString(ciphertext[len(encryptedValuePrefix):])
 	if err != nil {
 		return "", ErrInvalidCiphertext
 	}
@@ -99,7 +114,7 @@ func (e *Encryptor) Decrypt(ciphertext string) (string, error) {
 	nonce, cipherBytes := data[:nonceSize], data[nonceSize:]
 
 	// 解密
-	plaintext, err := gcm.Open(nil, nonce, cipherBytes, nil)
+	plaintext, err := gcm.Open(nil, nonce, cipherBytes, aad)
 	if err != nil {
 		return "", ErrInvalidCiphertext
 	}

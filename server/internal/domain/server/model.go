@@ -1,6 +1,7 @@
 package server
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
@@ -54,6 +55,10 @@ type Server struct {
 // TableName 指定表名
 func (Server) TableName() string {
 	return "servers"
+}
+
+func (s *Server) CredentialAAD(column string) []byte {
+	return []byte(fmt.Sprintf("easyssh:servers:%s:%s:%s", s.UserID.String(), s.ID.String(), column))
 }
 
 // BeforeCreate GORM 钩子：创建前生成 UUID
