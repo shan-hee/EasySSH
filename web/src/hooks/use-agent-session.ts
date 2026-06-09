@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useChat, type UIMessage } from "@ai-sdk/react"
-import { DefaultChatTransport, isToolUIPart, lastAssistantMessageIsCompleteWithApprovalResponses } from "ai"
+import { DefaultChatTransport } from "ai"
 import {
   cancelAISession,
   closeAISession,
@@ -43,25 +43,6 @@ function createLocalId(prefix: string) {
 
 function emptySessionMessages(session: SessionView | null) {
   return session?.ui_messages ?? []
-}
-
-function collectApprovalIds(messages: UIMessage[]) {
-  const pending = new Set<string>()
-  const responded = new Set<string>()
-  for (const message of messages) {
-    if (message.role !== "assistant") {
-      continue
-    }
-    for (const part of message.parts) {
-      if (isToolUIPart(part) && part.state === "approval-requested") {
-        pending.add(part.approval.id)
-      }
-      if (isToolUIPart(part) && part.state === "approval-responded") {
-        responded.add(part.approval.id)
-      }
-    }
-  }
-  return { pending, responded }
 }
 
 export function useAgentSession(adapter?: AgentSessionAdapter) {
@@ -117,7 +98,6 @@ export function useAgentSession(adapter?: AgentSessionAdapter) {
     id: chatId,
     messages: emptySessionMessages(session),
     transport: chatTransport,
-    sendAutomaticallyWhen: lastAssistantMessageIsCompleteWithApprovalResponses,
     onError(chatError) {
       setError(chatError.message)
       setTransport(sessionRef.current ? "ai_sdk_ui" : "idle")
@@ -320,21 +300,14 @@ export function useAgentSession(adapter?: AgentSessionAdapter) {
       pushLocalError("当前桌面 AI 模式暂不需要工具确认")
       return
     }
-    const approvalIds = collectApprovalIds(chat.messages)
-    const approved = decision === "confirm"
+
+    const task = sessionRef.current?.tasks.find((item) => item.id === taskId)
+    if (task && task.status !== "waiting_confirm") {
+      return
+    }
 
     try {
-      if (approvalIds.pending.has(taskId)) {
-        await chat.addToolApprovalResponse({
-          id: taskId,
-          approved,
-        })
-        return
-      }
-      if (approvalIds.responded.has(taskId)) {
-        return
-      }
-
+      setTransport("ai_sdk_ui")
       await chat.sendMessage(undefined, {
         body: {
           approval: {
