@@ -32,9 +32,12 @@ import {
   Package,
   Database,
   Eye,
+  Download,
+  Upload,
   ChevronDown,
 } from "lucide-react"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
+import { toast } from "@/components/ui/sonner"
 import { KeyboardShortcutInput } from "./keyboard-shortcut-input"
 import { useTranslation } from "react-i18next"
 import { getTerminalTheme, withTerminalBackgroundOpacity } from "./terminal-themes"
@@ -42,6 +45,8 @@ import { useEffectiveThemeMode } from "@/hooks/use-effective-theme-mode"
 import {
   DEFAULT_TERMINAL_SETTINGS,
   normalizeTerminalSettings,
+  parseTerminalSettingsImport,
+  serializeTerminalSettingsExport,
   type TerminalCompletionCache,
   type TerminalCompletionProviders,
   type TerminalCompletionQuotas,
@@ -105,6 +110,7 @@ export function TerminalSettingsDialog({
   const { mode: effectiveAppTheme } = useEffectiveThemeMode()
   const [localSettings, setLocalSettings] = useState(() => normalizeTerminalSettings(settings))
   const deferredApplyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const importInputRef = useRef<HTMLInputElement | null>(null)
 
   const previewTheme = getTerminalTheme(localSettings.theme, effectiveAppTheme)
   const previewBackgroundColor =
@@ -144,6 +150,51 @@ export function TerminalSettingsDialog({
     }
     setLocalSettings(resetSettings)
     onSettingsChange(resetSettings)
+  }
+
+  const applyImportedSettings = (nextSettings: TerminalSettings) => {
+    if (deferredApplyTimerRef.current) {
+      clearTimeout(deferredApplyTimerRef.current)
+      deferredApplyTimerRef.current = null
+    }
+    setLocalSettings(nextSettings)
+    onSettingsChange(nextSettings)
+  }
+
+  const handleExport = () => {
+    const normalizedSettings = normalizeTerminalSettings(localSettings)
+    const content = serializeTerminalSettingsExport(normalizedSettings)
+    const blob = new Blob([content], { type: "application/json;charset=utf-8" })
+    const url = URL.createObjectURL(blob)
+    const anchor = document.createElement("a")
+    const date = new Date().toISOString().slice(0, 10)
+    anchor.href = url
+    anchor.download = `easyssh-terminal-settings-${date}.json`
+    document.body.appendChild(anchor)
+    anchor.click()
+    anchor.remove()
+    URL.revokeObjectURL(url)
+    toast.success(t("exportSuccess"))
+  }
+
+  const handleImportClick = () => {
+    importInputRef.current?.click()
+  }
+
+  const handleImportFile = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    event.target.value = ""
+    if (!file) return
+
+    try {
+      const content = await file.text()
+      const importedSettings = parseTerminalSettingsImport(content)
+      applyImportedSettings(importedSettings)
+      toast.success(t("importSuccess"))
+    } catch (error) {
+      console.error("Failed to import terminal settings:", error)
+      toast.error(t("importFailed"))
+    }
   }
 
   const updateSetting = <K extends keyof TerminalSettings>(
@@ -1036,11 +1087,26 @@ export function TerminalSettingsDialog({
           </TabsContent>
         </Tabs>
 
-        <div className="flex justify-between pt-4 pb-6 px-6 shrink-0">
+        <div className="flex flex-wrap justify-between gap-3 pt-4 pb-6 px-6 shrink-0">
           <Button variant="outline" onClick={handleReset}>
             {t("btnReset")}
           </Button>
-          <div className="flex gap-2">
+          <input
+            ref={importInputRef}
+            type="file"
+            accept="application/json,.json"
+            className="hidden"
+            onChange={handleImportFile}
+          />
+          <div className="flex flex-wrap justify-end gap-2">
+            <Button variant="outline" onClick={handleImportClick}>
+              <Upload className="mr-2 h-4 w-4" />
+              {t("btnImport")}
+            </Button>
+            <Button variant="outline" onClick={handleExport}>
+              <Download className="mr-2 h-4 w-4" />
+              {t("btnExport")}
+            </Button>
             <Button variant="outline" onClick={() => onOpenChange(false)}>
               {t("btnCancel")}
             </Button>

@@ -3,6 +3,8 @@ import { DEFAULT_COMPLETION_CONFIG } from "@/lib/completion/types"
 import type { CompletionFetchOptions } from "@/lib/websocket-terminal"
 
 export const TERMINAL_SETTINGS_STORAGE_KEY = "terminal-settings"
+export const TERMINAL_SETTINGS_EXPORT_SCHEMA = "easyssh.terminal-settings"
+export const TERMINAL_SETTINGS_EXPORT_VERSION = 1
 
 export interface TerminalCompletionProviders {
   local: boolean
@@ -66,6 +68,13 @@ export interface TerminalSettings {
   completionProviders: TerminalCompletionProviders
   completionQuotas: TerminalCompletionQuotas
   completionCache: TerminalCompletionCache
+}
+
+export interface TerminalSettingsExportPayload {
+  schema: typeof TERMINAL_SETTINGS_EXPORT_SCHEMA
+  version: typeof TERMINAL_SETTINGS_EXPORT_VERSION
+  exported_at: string
+  settings: TerminalSettings
 }
 
 export interface TerminalCompletionProviderFlags {
@@ -141,6 +150,10 @@ const normalizeBoolean = (value: unknown, fallback: boolean) => (
 
 const normalizeString = (value: unknown, fallback: string) => (
   typeof value === "string" ? value : fallback
+)
+
+const isRecord = (value: unknown): value is Record<string, unknown> => (
+  !!value && typeof value === "object" && !Array.isArray(value)
 )
 
 export function normalizeTerminalSettings(input: unknown): TerminalSettings {
@@ -228,6 +241,42 @@ export function loadTerminalSettingsFromStorage(storage: Storage): TerminalSetti
   }
 
   return normalizeTerminalSettings(JSON.parse(saved))
+}
+
+export function createTerminalSettingsExportPayload(
+  settings: TerminalSettings,
+): TerminalSettingsExportPayload {
+  return {
+    schema: TERMINAL_SETTINGS_EXPORT_SCHEMA,
+    version: TERMINAL_SETTINGS_EXPORT_VERSION,
+    exported_at: new Date().toISOString(),
+    settings: normalizeTerminalSettings(settings),
+  }
+}
+
+export function serializeTerminalSettingsExport(settings: TerminalSettings): string {
+  return `${JSON.stringify(createTerminalSettingsExportPayload(settings), null, 2)}\n`
+}
+
+export function parseTerminalSettingsImport(content: string): TerminalSettings {
+  let parsed: unknown
+
+  try {
+    parsed = JSON.parse(content)
+  } catch {
+    throw new Error("invalid_json")
+  }
+
+  if (
+    !isRecord(parsed) ||
+    parsed.schema !== TERMINAL_SETTINGS_EXPORT_SCHEMA ||
+    parsed.version !== TERMINAL_SETTINGS_EXPORT_VERSION ||
+    !isRecord(parsed.settings)
+  ) {
+    throw new Error("invalid_terminal_settings")
+  }
+
+  return normalizeTerminalSettings(parsed.settings)
 }
 
 export function buildTerminalCompletionProviderFlags(
