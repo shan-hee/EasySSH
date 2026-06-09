@@ -6,6 +6,7 @@ import * as DesktopAIService from "./desktopaiservice.js";
 import * as DesktopDockerService from "./desktopdockerservice.js";
 import * as DesktopMonitorService from "./desktopmonitorservice.js";
 import * as DesktopSFTPService from "./desktopsftpservice.js";
+import * as DesktopScriptService from "./desktopscriptservice.js";
 import * as DesktopServerService from "./desktopserverservice.js";
 import * as DesktopService from "./desktopservice.js";
 import * as DesktopTerminalService from "./desktopterminalservice.js";
@@ -15,6 +16,7 @@ export {
     DesktopDockerService,
     DesktopMonitorService,
     DesktopSFTPService,
+    DesktopScriptService,
     DesktopServerService,
     DesktopService,
     DesktopTerminalService
@@ -105,3 +107,24 @@ export type {
     DesktopCapability,
     DesktopPreferenceSnapshot
 } from "./models.js";
+
+export type {
+    DesktopBatchTask,
+    DesktopBatchTask as DesktopLocalBatchTask,
+    DesktopBatchTaskInput,
+    DesktopBatchTaskInput as DesktopLocalBatchTaskInput,
+    DesktopBatchTaskListParams,
+    DesktopBatchTaskListParams as DesktopLocalBatchTaskListParams,
+    DesktopBatchTaskListResult,
+    DesktopBatchTaskListResult as DesktopLocalBatchTaskListResult,
+    DesktopBatchTaskStartResult,
+    DesktopBatchTaskStartResult as DesktopLocalBatchTaskStartResult,
+    DesktopScript,
+    DesktopScript as DesktopLocalScript,
+    DesktopScriptInput,
+    DesktopScriptInput as DesktopLocalScriptInput,
+    DesktopScriptListParams,
+    DesktopScriptListParams as DesktopLocalScriptListParams,
+    DesktopScriptListResult,
+    DesktopScriptListResult as DesktopLocalScriptListResult
+} from "./desktopscriptservice.js";

@@ -39,6 +39,7 @@ func (s *DesktopService) RuntimeInfo() DesktopRuntimeInfo {
 		DataDir:  desktopDataDir(),
 		Capabilities: map[DesktopCapability]bool{
 			"servers":          true,
+			"scripts":          true,
 			"terminal":         true,
 			"sftp":             true,
 			"transfers":        true,

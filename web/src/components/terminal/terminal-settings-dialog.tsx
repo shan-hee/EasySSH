@@ -68,8 +68,8 @@ function CollapsibleSection({
   children: React.ReactNode
 }) {
   return (
-    <Collapsible defaultOpen={defaultOpen} className="rounded-lg border">
-      <CollapsibleTrigger className="group flex w-full items-center justify-between gap-2 p-4 text-left hover:bg-muted/50 transition-colors">
+    <Collapsible defaultOpen={defaultOpen}>
+      <CollapsibleTrigger className="group flex w-full items-center justify-between gap-2 py-2 text-left">
         <div className="flex items-center gap-2 min-w-0">
           <span className="text-muted-foreground">{icon}</span>
           <div className="min-w-0">
@@ -82,7 +82,7 @@ function CollapsibleSection({
         <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-200 group-data-[state=open]:rotate-180" />
       </CollapsibleTrigger>
       <CollapsibleContent>
-        <div className="border-t p-4 space-y-4">{children}</div>
+        <div className="pt-2 space-y-4">{children}</div>
       </CollapsibleContent>
     </Collapsible>
   )
@@ -722,7 +722,7 @@ export function TerminalSettingsDialog({
                 >
                   <div className="space-y-3">
                     {/* 本地命令库 */}
-                    <div className="rounded-lg border p-4 space-y-3">
+                    <div className="space-y-3">
                       <div className="flex items-center justify-between gap-4">
                         <div className="min-w-0">
                           <Label htmlFor="completionProviderLocal">{t("completionProviderLocalLabel")}</Label>
@@ -775,7 +775,7 @@ export function TerminalSettingsDialog({
                     </div>
 
                     {/* 脚本库 */}
-                    <div className="rounded-lg border p-4 space-y-3">
+                    <div className="space-y-3">
                       <div className="flex items-center justify-between gap-4">
                         <div className="min-w-0">
                           <Label htmlFor="completionProviderScript">{t("completionProviderScriptLabel")}</Label>
@@ -828,7 +828,7 @@ export function TerminalSettingsDialog({
                     </div>
 
                     {/* 会话历史 */}
-                    <div className="rounded-lg border p-4 space-y-3">
+                    <div className="space-y-3">
                       <div className="flex items-center justify-between gap-4">
                         <div className="min-w-0">
                           <Label htmlFor="completionProviderSession">{t("completionProviderSessionLabel")}</Label>
@@ -881,7 +881,7 @@ export function TerminalSettingsDialog({
                     </div>
 
                     {/* 远端历史命令 */}
-                    <div className="rounded-lg border p-4 space-y-3">
+                    <div className="space-y-3">
                       <div className="flex items-center justify-between gap-4">
                         <div className="min-w-0">
                           <Label htmlFor="completionProviderRemoteHistory">

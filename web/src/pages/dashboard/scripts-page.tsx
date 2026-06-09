@@ -22,7 +22,7 @@ import {
  DialogHeader,
  DialogTitle,
 } from "@/components/ui/dialog"
-import { Plus, X, RefreshCw, Search, Check, Terminal, Server as ServerIcon, FileText, Tag, User, Play } from "lucide-react"
+import { ArrowLeft, Plus, X, RefreshCw, Search, Check, Terminal, Server as ServerIcon, FileText, Tag, User, Play } from "lucide-react"
 import { scriptsApi, serversApi, batchTasksApi, type Script, type Server } from "@/lib/api"
 import { Checkbox } from "@/components/ui/checkbox"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
@@ -45,10 +45,36 @@ function formatScriptTime(value?: string) {
   return date.toLocaleString()
 }
 
-export default function ScriptsPage() {
+export interface ScriptsPageAdapters {
+ scripts?: Pick<typeof scriptsApi, "list" | "create" | "update" | "delete" | "execute">
+ servers?: Pick<typeof serversApi, "list">
+ batchTasks?: Pick<typeof batchTasksApi, "create" | "start">
+}
+
+export interface ScriptsPageProps {
+ adapters?: ScriptsPageAdapters
+ hidePageHeader?: boolean
+ onReturnToTerminal?: () => void
+ ready?: boolean
+ executionRedirectPath?: string | null
+ onExecutionStarted?: () => void | Promise<void>
+}
+
+export default function ScriptsPage({
+ adapters,
+ hidePageHeader = false,
+ onReturnToTerminal,
+ ready: readyOverride,
+ executionRedirectPath = "/dashboard/operation-logs?type=execution",
+ onExecutionStarted,
+}: ScriptsPageProps = {}) {
  const { t } = useTranslation("scripts")
  const navigate = useNavigate()
- const { ready } = useAuthReady()
+ const { ready: authReady } = useAuthReady()
+ const ready = readyOverride ?? authReady
+ const scriptsClient = adapters?.scripts ?? scriptsApi
+ const serversClient = adapters?.servers ?? serversApi
+ const batchTasksClient = adapters?.batchTasks ?? batchTasksApi
  const { confirm: requestConfirm, confirmDialog } = useConfirmDialog()
  const [scripts, setScripts] = useState<Script[]>([])
  const [loading, setLoading] = useState(true)
@@ -112,7 +138,7 @@ export default function ScriptsPage() {
 // 加载脚本列表
  const loadScripts = useCallback(async () => {
   try {
-     const response = await scriptsApi.list({
+     const response = await scriptsClient.list({
        page,
        limit: pageSize,
      })
@@ -127,7 +153,7 @@ export default function ScriptsPage() {
      setLoading(false)
      setRefreshing(false)
    }
- }, [page, pageSize, t])
+ }, [page, pageSize, scriptsClient, t])
 
  // 刷新脚本列表
  const handleRefresh = async () => {
@@ -199,7 +225,7 @@ export default function ScriptsPage() {
 const loadServers = useCallback(async () => {
   setLoadingServers(true)
   try {
-    const response = await serversApi.list({ limit: 1000 })
+    const response = await serversClient.list({ limit: 1000 })
     setServers(response.data || [])
   } catch (error: unknown) {
     console.error("加载服务器列表失败:", error)
@@ -207,7 +233,7 @@ const loadServers = useCallback(async () => {
   } finally {
     setLoadingServers(false)
   }
-}, [t])
+}, [serversClient, t])
 
 // 过滤后的服务器列表
 const filteredServers = useMemo(() => {
@@ -265,7 +291,7 @@ const handleExecuteScript = useCallback(async () => {
   try {
     // 创建批量任务
     // 注意: apiFetch 会自动解包 data 字段，所以直接获取 task
-    const response = await batchTasksApi.create({
+    const response = await batchTasksClient.create({
       task_name: `${t("executeTaskPrefix")}: ${executingScript.name}`,
       task_type: "script",
       script_id: executingScript.id,
@@ -277,20 +303,24 @@ const handleExecuteScript = useCallback(async () => {
     const task = "data" in response ? response.data : response
 
     // 启动任务
-    await batchTasksApi.start(task.id)
+    await batchTasksClient.start(task.id)
 
     toast.success(t("toastExecuteStarted"))
     setIsExecuteDialogOpen(false)
+    await onExecutionStarted?.()
+    await loadScripts()
 
-    // 跳转到统一操作日志中的执行记录视图
-    navigate("/dashboard/operation-logs?type=execution")
+    if (executionRedirectPath) {
+      // 跳转到统一操作日志中的执行记录视图
+      navigate(executionRedirectPath)
+    }
   } catch (error: unknown) {
     console.error("执行脚本失败:", error)
     toast.error(getErrorMessage(error, t("toastExecuteFailed")))
   } finally {
     setExecuting(false)
   }
-}, [executingScript, selectedServerIds, servers, executionMode, t, navigate])
+}, [batchTasksClient, executingScript, executionMode, executionRedirectPath, loadScripts, navigate, onExecutionStarted, selectedServerIds, servers, t])
 
 // 切换服务器选择
 const toggleServerSelection = useCallback((serverId: string) => {
@@ -358,14 +388,14 @@ const handleCloseExecuteDialog = useCallback((open: boolean) => {
  }
 
  try {
- await scriptsApi.delete(scriptId)
+ await scriptsClient.delete(scriptId)
  toast.success(t("toastDeleteSuccess"))
  await loadScripts()
  } catch (error: unknown) {
  console.error("删除脚本失败:", error)
  toast.error(getErrorMessage(error, t("toastDeleteFailed")))
  }
- }, [loadScripts, requestConfirm, t])
+ }, [loadScripts, requestConfirm, scriptsClient, t])
 
 // DataTable 列定义与可见列
 const columns = useMemo(() => createScriptColumns({
@@ -541,7 +571,7 @@ const totalExecutions = useMemo(() => (
  }
 
  try {
- await scriptsApi.create({
+ await scriptsClient.create({
   name: newScript.name,
   description: newScript.description || "",
   content: newScript.content,
@@ -596,7 +626,7 @@ const totalExecutions = useMemo(() => (
  if (editingScriptId === null) return
 
  try {
- await scriptsApi.update(editingScriptId, {
+ await scriptsClient.update(editingScriptId, {
   name: editScript.name,
   description: editScript.description || "",
   content: editScript.content,
@@ -643,7 +673,27 @@ const totalExecutions = useMemo(() => (
  return (
  <>
  {confirmDialog}
- <PageHeader title={t("pageTitle")} />
+ {!hidePageHeader && <PageHeader title={t("pageTitle")} />}
+
+ {onReturnToTerminal ? (
+   <div className="shrink-0 px-4 pb-1 md:px-4">
+     <div className="flex h-9 items-center justify-between gap-2">
+       <Button
+         type="button"
+         variant="ghost"
+         size="sm"
+         className="-ml-2 h-9 gap-1 bg-transparent px-2 text-sm font-medium text-muted-foreground hover:bg-transparent hover:text-foreground dark:hover:bg-transparent"
+         aria-label="返回终端"
+         title="返回终端"
+         onClick={onReturnToTerminal}
+       >
+         <ArrowLeft className="size-4" />
+         <span>返回终端</span>
+       </Button>
+       <div />
+     </div>
+   </div>
+ ) : null}
 
  <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-auto p-3 pt-0 sm:gap-4 sm:p-4 sm:pt-0 xl:overflow-hidden">
    <div className="grid shrink-0 grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">

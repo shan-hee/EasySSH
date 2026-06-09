@@ -3,6 +3,7 @@ import type { TerminalWebSocketConstructor } from "@easyssh/ssh-workspace/deskto
 import {
   ActivityLogService,
   DesktopActivityLogStatus,
+  DesktopScriptService,
   DesktopServerService,
   DesktopTerminalService,
 } from "../../bindings/github.com/easyssh/easyssh-desktop"
@@ -18,6 +19,11 @@ interface DesktopTerminalOutputPayload {
 interface DesktopTerminalClosedPayload {
   clientId?: string
   reason?: string
+}
+
+interface DesktopFetchCompletionData {
+  includeHistory?: boolean
+  includeScripts?: boolean
 }
 
 type DesktopAuthMethod = "password" | "key"
@@ -222,11 +228,10 @@ export function createDesktopTerminalSocket(): TerminalWebSocketConstructor {
           return
         }
         if (message.type === "fetch_completion_data") {
-          this.emitControl("completion_data", {
-            history: [],
-            scripts: [],
-            timestamp: Date.now(),
-          })
+          const data = message.data && typeof message.data === "object"
+            ? message.data as DesktopFetchCompletionData
+            : {}
+          void this.fetchCompletionData(data)
           return
         }
         if (message.type === "completion_update") {
@@ -317,6 +322,37 @@ export function createDesktopTerminalSocket(): TerminalWebSocketConstructor {
         authMethod: credential?.authMethod,
         secret: credential?.secret,
         privateKeyPassphrase: credential?.privateKeyPassphrase,
+      })
+    }
+
+    private async fetchCompletionData(options: DesktopFetchCompletionData) {
+      let scripts: {
+        name: string
+        content: string
+        description: string
+        executions: number
+        tags: string[]
+      }[] = []
+
+      if (options.includeScripts !== false) {
+        try {
+          const result = await DesktopScriptService.List({ page: 1, limit: 1000 })
+          scripts = (result.data || []).map((script) => ({
+            name: script.name,
+            content: script.content,
+            description: script.description || "",
+            executions: script.executions || 0,
+            tags: script.tags || [],
+          }))
+        } catch (error) {
+          console.error("Failed to load desktop completion scripts:", error)
+        }
+      }
+
+      this.emitControl("completion_data", {
+        history: [],
+        scripts,
+        timestamp: Date.now(),
       })
     }
 

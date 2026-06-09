@@ -7,7 +7,9 @@ export { ActivityLogPane } from "../../../src/components/ssh-workspace/activity-
 export { TerminalComponent } from "../../../src/components/terminal/terminal-component"
 export { TerminalSftpTabContent } from "../../../src/components/terminal/terminal-sftp-tab-content"
 export { ServerConnectionConfigs } from "../../../src/components/servers/server-connection-configs"
-export { Activity, Bot, FolderOpen, Github, Info, Menu, Minus, RefreshCw, Square, Terminal, X } from "lucide-react"
+export { default as ScriptsPage } from "../../../src/pages/dashboard/scripts-page"
+export { Activity, Bot, FileText, FolderOpen, Github, Info, Menu, Minus, RefreshCw, Square, Terminal, X } from "lucide-react"
+export type { ScriptsPageAdapters, ScriptsPageProps } from "../../../src/pages/dashboard/scripts-page"
 export type { TerminalSftpTabContentProps } from "../../../src/components/terminal/terminal-sftp-tab-content"
 export type {
   TerminalExtraSessionPathHistory,
@@ -26,6 +28,19 @@ export { WORKSPACE_CAPABILITY_PRESETS } from "../../../src/shell/runtime/workspa
 export type { WorkspaceCapabilityPresetName } from "../../../src/shell/runtime/workspace-capability-presets"
 export { createTerminalWorkspaceSessionControllerAdapter, createTerminalWorkspaceSessionStoreAdapter, useTerminalStore } from "../../../src/stores/terminal-store"
 export type { Server } from "../../../src/lib/server-types"
+export type { ServerListResponse } from "../../../src/lib/server-types"
+export type {
+  CreateScriptRequest,
+  ListScriptsParams,
+  ListScriptsResponse,
+  Script,
+  UpdateScriptRequest,
+} from "../../../src/lib/api/scripts"
+export type {
+  BatchTask,
+  CreateBatchTaskRequest,
+  ListBatchTasksResponse,
+} from "../../../src/lib/api/batch-tasks"
 export type { TerminalWebSocketConstructor } from "./session/terminal-types"
 export type { AppCapability, RuntimeInfo, RuntimePrincipal, RuntimeProfile } from "../../../src/shell/runtime/types"
 export type {

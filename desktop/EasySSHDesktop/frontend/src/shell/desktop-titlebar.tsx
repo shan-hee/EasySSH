@@ -19,6 +19,7 @@ import {
 import {
   Activity,
   Bot,
+  FileText,
   FolderOpen,
   Info,
   Menu,
@@ -38,13 +39,14 @@ import {
 import type { DesktopRuntimeBindingInfo } from "../adapters/desktop-runtime"
 import { DesktopHeaderActions } from "./desktop-header-actions"
 
-export type DesktopView = "terminal" | "ai"
+export type DesktopView = "terminal" | "ai" | "scripts"
 
 const windowActionErrorMessage = "Failed to run window action:"
 const desktopActionErrorMessage = "\u684c\u9762\u8bbe\u7f6e\u64cd\u4f5c\u5931\u8d25"
 const desktopSettingsLabel = "\u8bbe\u7f6e"
 const desktopAiAssistantLabel = "AI \u52a9\u624b"
 const terminalSettingsLabel = "\u7ec8\u7aef\u8bbe\u7f6e"
+const scriptLibraryLabel = "\u811a\u672c\u5e93"
 const activityLogLabel = "\u6d3b\u52a8\u8bb0\u5f55"
 const openDataDirLabel = "\u6253\u5f00\u6570\u636e\u76ee\u5f55"
 const aboutDesktopLabel = "\u5173\u4e8e EasySSH"
@@ -104,6 +106,8 @@ function formatDesktopAction(action: string) {
       return "SFTP \u65b0\u5efa\u76ee\u5f55"
     case "monitoring_query":
       return "\u76d1\u63a7\u67e5\u8be2"
+    case "script_execute":
+      return "\u811a\u672c\u6267\u884c"
     default:
       return action || "-"
   }
@@ -245,9 +249,11 @@ function DesktopAboutDialog({
 function DesktopSettingsMenu({
   runtime,
   onOpenTerminalSettings,
+  onOpenScripts,
 }: {
   runtime: DesktopRuntimeBindingInfo | null
   onOpenTerminalSettings: () => void
+  onOpenScripts: () => void
 }) {
   const [activityLogOpen, setActivityLogOpen] = useState(false)
   const [aboutOpen, setAboutOpen] = useState(false)
@@ -280,6 +286,10 @@ function DesktopSettingsMenu({
             <Terminal className="h-4 w-4" />
             <span>{terminalSettingsLabel}</span>
           </DropdownMenuItem>
+          <DropdownMenuItem onSelect={onOpenScripts}>
+            <FileText className="h-4 w-4" />
+            <span>{scriptLibraryLabel}</span>
+          </DropdownMenuItem>
           <DropdownMenuItem onSelect={() => setActivityLogOpen(true)}>
             <Activity className="h-4 w-4" />
             <span>{activityLogLabel}</span>
@@ -307,11 +317,13 @@ export function DesktopTitleBar({
   activeView,
   onToggleAiAssistant,
   onOpenTerminalSettings,
+  onOpenScripts,
 }: {
   runtime: DesktopRuntimeBindingInfo | null
   activeView: DesktopView
   onToggleAiAssistant: () => void
   onOpenTerminalSettings: () => void
+  onOpenScripts: () => void
 }) {
   const handleMinimize = useCallback(() => {
     runWindowAction(() => Window.Minimise())
@@ -332,7 +344,11 @@ export function DesktopTitleBar({
         <span className="easyssh-desktop-titlebar-title">EasySSH</span>
       </div>
       <div className="easyssh-desktop-titlebar-actions">
-        <DesktopSettingsMenu runtime={runtime} onOpenTerminalSettings={onOpenTerminalSettings} />
+        <DesktopSettingsMenu
+          runtime={runtime}
+          onOpenTerminalSettings={onOpenTerminalSettings}
+          onOpenScripts={onOpenScripts}
+        />
         {activeView !== "ai" && (
           <Button
             type="button"

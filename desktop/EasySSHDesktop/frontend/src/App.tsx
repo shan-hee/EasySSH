@@ -28,9 +28,11 @@ import { createDesktopRuntime, loadDesktopRuntime, type DesktopRuntimeBindingInf
 import { createDesktopServerApi, markDesktopServerConnected, saveDesktopVerifiedCredential } from "./adapters/desktop-server-api"
 import { createDesktopDockerApi } from "./adapters/desktop-docker-api"
 import { createDesktopMonitorApi } from "./adapters/desktop-monitor-api"
+import { createDesktopScriptAdapters } from "./adapters/desktop-script-api"
 import { createDesktopSftpApi } from "./adapters/desktop-sftp-api"
 import { DesktopAIAssistantView } from "./shell/desktop-ai-assistant-view"
 import { DesktopProviders } from "./shell/desktop-providers"
+import { DesktopScriptsView } from "./shell/desktop-scripts-view"
 import { DesktopTitleBar, type DesktopView } from "./shell/desktop-titlebar"
 import { createDesktopTerminalSocket } from "./terminal/desktop-terminal-socket"
 
@@ -155,6 +157,7 @@ function App() {
   const [preferenceSnapshot, setPreferenceSnapshot] = useState<DesktopPreferenceSnapshot | null>(null)
   const [activeView, setActiveView] = useState<DesktopView>("terminal")
   const [aiAssistantMounted, setAiAssistantMounted] = useState(false)
+  const [scriptsMounted, setScriptsMounted] = useState(false)
   const [maxTabs, setMaxTabs] = useState(defaultMaxTabs)
   const [inactiveMinutes, setInactiveMinutes] = useState(defaultInactiveMinutes)
   const [terminalSettingsOpen, setTerminalSettingsOpen] = useState(false)
@@ -171,6 +174,7 @@ function App() {
   const getSessionLastActivity = useTerminalStore((state) => state.getSessionLastActivity)
 
   const serverApi = useMemo(() => createDesktopServerApi(), [])
+  const scriptAdapters = useMemo(() => createDesktopScriptAdapters(serverApi), [serverApi])
   const aiAssistantAdapters = useMemo(() => createDesktopAIAssistantAdapters(serverApi), [serverApi])
   const activityLog = useMemo(() => createDesktopActivityLogAdapter(), [])
   const workspaceSessionStore = useMemo(() => createTerminalWorkspaceSessionStoreAdapter(), [])
@@ -563,6 +567,11 @@ function App() {
     setActiveView((current) => (current === "ai" ? "terminal" : "ai"))
   }, [])
 
+  const handleOpenScripts = useCallback(() => {
+    setScriptsMounted(true)
+    setActiveView("scripts")
+  }, [])
+
   const handleReturnToTerminal = useCallback(() => {
     setActiveView("terminal")
   }, [])
@@ -605,6 +614,7 @@ function App() {
             activeView={activeView}
             onToggleAiAssistant={handleToggleAiAssistant}
             onOpenTerminalSettings={() => setTerminalSettingsOpen(true)}
+            onOpenScripts={handleOpenScripts}
           />
           <div className="flex min-h-0 flex-1 items-center justify-center text-sm text-muted-foreground">
             {desktopLoadingLabel}
@@ -623,6 +633,7 @@ function App() {
             activeView={activeView}
             onToggleAiAssistant={handleToggleAiAssistant}
             onOpenTerminalSettings={() => setTerminalSettingsOpen(true)}
+            onOpenScripts={handleOpenScripts}
           />
           <div className="easyssh-desktop-view-stack">
             <section
@@ -680,6 +691,18 @@ function App() {
               {aiAssistantMounted ? (
                 <DesktopAIAssistantView
                   adapters={aiAssistantAdapters}
+                  onReturnToTerminal={handleReturnToTerminal}
+                />
+              ) : null}
+            </section>
+            <section
+              className="easyssh-desktop-view-panel"
+              data-active={activeView === "scripts"}
+              aria-hidden={activeView !== "scripts"}
+            >
+              {scriptsMounted ? (
+                <DesktopScriptsView
+                  adapters={scriptAdapters}
                   onReturnToTerminal={handleReturnToTerminal}
                 />
               ) : null}

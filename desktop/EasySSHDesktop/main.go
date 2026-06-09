@@ -21,6 +21,7 @@ var assets embed.FS
 func main() {
 	activityLogService := NewActivityLogService()
 	serverService := NewDesktopServerService()
+	scriptService := NewDesktopScriptService(serverService, activityLogService)
 	terminalService := NewDesktopTerminalService(serverService)
 	sftpService := NewDesktopSFTPService(serverService)
 	monitorService := NewDesktopMonitorService(serverService)
@@ -33,6 +34,7 @@ func main() {
 		Services: []application.Service{
 			application.NewService(&DesktopService{}),
 			application.NewService(serverService),
+			application.NewService(scriptService),
 			application.NewService(terminalService),
 			application.NewService(sftpService),
 			application.NewService(monitorService),
