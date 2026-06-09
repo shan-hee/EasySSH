@@ -1187,6 +1187,8 @@ const messages = {
     completionShowIconDescription: "Show type icons in completion items",
     completionShowDescriptionLabel: "Show description",
     completionShowDescriptionDescription: "Show detailed description text in completion items",
+    completionDisplayTitle: "Display options",
+    completionDisplayDescription: "Control how completion items are rendered",
     completionProvidersTitle: "Sources & quotas",
     completionProvidersDescription: "Choose suggestion sources and control how much each source contributes",
     completionProviderLocalLabel: "Local command library",

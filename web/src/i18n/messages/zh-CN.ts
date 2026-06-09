@@ -1137,6 +1137,8 @@ const messages = {
     completionShowIconDescription: "在补全项中显示类型图标",
     completionShowDescriptionLabel: "显示描述",
     completionShowDescriptionDescription: "在补全项中显示详细描述信息",
+    completionDisplayTitle: "显示选项",
+    completionDisplayDescription: "控制补全弹窗的显示样式",
     completionProvidersTitle: "数据来源与配额",
     completionProvidersDescription: "选择补全建议的数据来源，并控制各来源在结果中的占比",
     completionProviderLocalLabel: "本地命令库",

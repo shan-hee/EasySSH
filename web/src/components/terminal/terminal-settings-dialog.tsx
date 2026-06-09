@@ -31,7 +31,10 @@ import {
   Command,
   Package,
   Database,
+  Eye,
+  ChevronDown,
 } from "lucide-react"
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { KeyboardShortcutInput } from "./keyboard-shortcut-input"
 import { useTranslation } from "react-i18next"
 import { getTerminalTheme, withTerminalBackgroundOpacity } from "./terminal-themes"
@@ -46,6 +49,44 @@ import {
 } from "./terminal-settings"
 
 export type { TerminalSettings } from "./terminal-settings"
+
+/**
+ * 可折叠设置区块组件
+ * 用于将密集的设置项分组展示，减少视觉拥挤感
+ */
+function CollapsibleSection({
+  icon,
+  title,
+  description,
+  defaultOpen = false,
+  children,
+}: {
+  icon: React.ReactNode
+  title: string
+  description?: string
+  defaultOpen?: boolean
+  children: React.ReactNode
+}) {
+  return (
+    <Collapsible defaultOpen={defaultOpen} className="rounded-lg border">
+      <CollapsibleTrigger className="group flex w-full items-center justify-between gap-2 p-4 text-left hover:bg-muted/50 transition-colors">
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="text-muted-foreground">{icon}</span>
+          <div className="min-w-0">
+            <div className="text-sm font-medium">{title}</div>
+            {description && (
+              <p className="text-xs text-muted-foreground mt-0.5">{description}</p>
+            )}
+          </div>
+        </div>
+        <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-200 group-data-[state=open]:rotate-180" />
+      </CollapsibleTrigger>
+      <CollapsibleContent>
+        <div className="border-t p-4 space-y-4">{children}</div>
+      </CollapsibleContent>
+    </Collapsible>
+  )
+}
 
 interface TerminalSettingsDialogProps {
   open: boolean
@@ -586,7 +627,9 @@ export function TerminalSettingsDialog({
           </TabsContent>
 
           {/* 补全设置 */}
+          {/* 补全设置 */}
           <TabsContent value="completion" className="space-y-4 overflow-y-auto scrollbar-custom pr-2 mt-4">
+            {/* 基础设置 - 始终可见 */}
             <div className="flex items-center justify-between">
               <div>
                 <Label htmlFor="completionEnabled">{t("completionEnabledLabel")}</Label>
@@ -670,241 +713,244 @@ export function TerminalSettingsDialog({
                   </p>
                 </div>
 
-                <div className="border-t pt-4 space-y-4">
-                  <div className="flex items-center gap-2 text-sm font-medium">
-                    <Package className="h-4 w-4" />
-                    {t("completionProvidersTitle")}
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    {t("completionProvidersDescription")}
-                  </p>
-
-                  <div className="rounded-lg border p-4 space-y-3">
-                    <div className="flex items-center justify-between gap-4">
-                      <div className="min-w-0">
-                        <Label htmlFor="completionProviderLocal">{t("completionProviderLocalLabel")}</Label>
-                        <p className="text-sm text-muted-foreground">
-                          {t("completionProviderLocalDescription")}
-                        </p>
-                      </div>
-                      <Switch
-                        id="completionProviderLocal"
-                        checked={localSettings.completionProviders.local}
-                        onCheckedChange={(checked) => updateCompletionProvider("local", checked)}
-                      />
-                    </div>
-                    {localSettings.completionProviders.local && (
-                      <div className="grid gap-3 border-t pt-3">
-                        <div className="flex items-center gap-4">
-                          <span className="w-16 text-sm text-muted-foreground">
-                            {t("completionQuotaMinLabel")}
-                          </span>
-                          <Slider
-                            min={0}
-                            max={10}
-                            step={1}
-                            value={[localSettings.completionQuotas.localMin]}
-                            onValueChange={(value) => updateCompletionQuota("localMin", value[0])}
-                            className="flex-1"
-                          />
-                          <span className="w-12 text-sm text-muted-foreground">
-                            {t("completionQuotaItemsValue", { count: localSettings.completionQuotas.localMin })}
-                          </span>
+                {/* 数据来源与配额 - 折叠面板，默认展开 */}
+                <CollapsibleSection
+                  icon={<Package className="h-4 w-4" />}
+                  title={t("completionProvidersTitle")}
+                  description={t("completionProvidersDescription")}
+                  defaultOpen={true}
+                >
+                  <div className="space-y-3">
+                    {/* 本地命令库 */}
+                    <div className="rounded-lg border p-4 space-y-3">
+                      <div className="flex items-center justify-between gap-4">
+                        <div className="min-w-0">
+                          <Label htmlFor="completionProviderLocal">{t("completionProviderLocalLabel")}</Label>
+                          <p className="text-sm text-muted-foreground">
+                            {t("completionProviderLocalDescription")}
+                          </p>
                         </div>
-                        <div className="flex items-center gap-4">
-                          <span className="w-16 text-sm text-muted-foreground">
-                            {t("completionQuotaMaxLabel")}
-                          </span>
-                          <Slider
-                            min={1}
-                            max={10}
-                            step={1}
-                            value={[localSettings.completionQuotas.localMax]}
-                            onValueChange={(value) => updateCompletionQuota("localMax", value[0])}
-                            className="flex-1"
-                          />
-                          <span className="w-12 text-sm text-muted-foreground">
-                            {t("completionQuotaItemsValue", { count: localSettings.completionQuotas.localMax })}
-                          </span>
-                        </div>
+                        <Switch
+                          id="completionProviderLocal"
+                          checked={localSettings.completionProviders.local}
+                          onCheckedChange={(checked) => updateCompletionProvider("local", checked)}
+                        />
                       </div>
-                    )}
-                  </div>
-
-                  <div className="rounded-lg border p-4 space-y-3">
-                    <div className="flex items-center justify-between gap-4">
-                      <div className="min-w-0">
-                        <Label htmlFor="completionProviderScript">{t("completionProviderScriptLabel")}</Label>
-                        <p className="text-sm text-muted-foreground">
-                          {t("completionProviderScriptDescription")}
-                        </p>
-                      </div>
-                      <Switch
-                        id="completionProviderScript"
-                        checked={localSettings.completionProviders.script}
-                        onCheckedChange={(checked) => updateCompletionProvider("script", checked)}
-                      />
-                    </div>
-                    {localSettings.completionProviders.script && (
-                      <div className="grid gap-3 border-t pt-3">
-                        <div className="flex items-center gap-4">
-                          <span className="w-16 text-sm text-muted-foreground">
-                            {t("completionQuotaMinLabel")}
-                          </span>
-                          <Slider
-                            min={0}
-                            max={10}
-                            step={1}
-                            value={[localSettings.completionQuotas.scriptMin]}
-                            onValueChange={(value) => updateCompletionQuota("scriptMin", value[0])}
-                            className="flex-1"
-                          />
-                          <span className="w-12 text-sm text-muted-foreground">
-                            {t("completionQuotaItemsValue", { count: localSettings.completionQuotas.scriptMin })}
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-4">
-                          <span className="w-16 text-sm text-muted-foreground">
-                            {t("completionQuotaMaxLabel")}
-                          </span>
-                          <Slider
-                            min={0}
-                            max={10}
-                            step={1}
-                            value={[localSettings.completionQuotas.scriptMax]}
-                            onValueChange={(value) => updateCompletionQuota("scriptMax", value[0])}
-                            className="flex-1"
-                          />
-                          <span className="w-12 text-sm text-muted-foreground">
-                            {t("completionQuotaItemsValue", { count: localSettings.completionQuotas.scriptMax })}
-                          </span>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="rounded-lg border p-4 space-y-3">
-                    <div className="flex items-center justify-between gap-4">
-                      <div className="min-w-0">
-                        <Label htmlFor="completionProviderSession">{t("completionProviderSessionLabel")}</Label>
-                        <p className="text-sm text-muted-foreground">
-                          {t("completionProviderSessionDescription")}
-                        </p>
-                      </div>
-                      <Switch
-                        id="completionProviderSession"
-                        checked={localSettings.completionProviders.session}
-                        onCheckedChange={(checked) => updateCompletionProvider("session", checked)}
-                      />
-                    </div>
-                    {localSettings.completionProviders.session && (
-                      <div className="grid gap-3 border-t pt-3">
-                        <div className="flex items-center gap-4">
-                          <span className="w-16 text-sm text-muted-foreground">
-                            {t("completionQuotaMinLabel")}
-                          </span>
-                          <Slider
-                            min={0}
-                            max={10}
-                            step={1}
-                            value={[localSettings.completionQuotas.sessionMin]}
-                            onValueChange={(value) => updateCompletionQuota("sessionMin", value[0])}
-                            className="flex-1"
-                          />
-                          <span className="w-12 text-sm text-muted-foreground">
-                            {t("completionQuotaItemsValue", { count: localSettings.completionQuotas.sessionMin })}
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-4">
-                          <span className="w-16 text-sm text-muted-foreground">
-                            {t("completionQuotaMaxLabel")}
-                          </span>
-                          <Slider
-                            min={0}
-                            max={10}
-                            step={1}
-                            value={[localSettings.completionQuotas.sessionMax]}
-                            onValueChange={(value) => updateCompletionQuota("sessionMax", value[0])}
-                            className="flex-1"
-                          />
-                          <span className="w-12 text-sm text-muted-foreground">
-                            {t("completionQuotaItemsValue", { count: localSettings.completionQuotas.sessionMax })}
-                          </span>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="rounded-lg border p-4 space-y-3">
-                    <div className="flex items-center justify-between gap-4">
-                      <div className="min-w-0">
-                        <Label htmlFor="completionProviderRemoteHistory">
-                          {t("completionProviderRemoteHistoryLabel")}
-                        </Label>
-                        <p className="text-sm text-muted-foreground">
-                          {t("completionProviderRemoteHistoryDescription")}
-                        </p>
-                      </div>
-                      <Switch
-                        id="completionProviderRemoteHistory"
-                        checked={localSettings.completionProviders.remoteHistory}
-                        onCheckedChange={(checked) => updateCompletionProvider("remoteHistory", checked)}
-                      />
-                    </div>
-                    {localSettings.completionProviders.remoteHistory && (
-                      <div className="grid gap-3 border-t pt-3">
-                        <div className="flex items-center justify-between gap-4">
-                          <div>
-                            <Label htmlFor="completionRemoteHistoryUnlimited" className="text-sm">
-                              {t("completionRemoteHistoryUnlimitedLabel")}
-                            </Label>
-                            <p className="text-xs text-muted-foreground">
-                              {t("completionRemoteHistoryUnlimitedDescription")}
-                            </p>
+                      {localSettings.completionProviders.local && (
+                        <div className="grid gap-3 border-t pt-3">
+                          <div className="flex items-center gap-4">
+                            <span className="w-16 text-sm text-muted-foreground">
+                              {t("completionQuotaMinLabel")}
+                            </span>
+                            <Slider
+                              min={0}
+                              max={10}
+                              step={1}
+                              value={[localSettings.completionQuotas.localMin]}
+                              onValueChange={(value) => updateCompletionQuota("localMin", value[0])}
+                              className="flex-1"
+                            />
+                            <span className="w-12 text-sm text-muted-foreground">
+                              {t("completionQuotaItemsValue", { count: localSettings.completionQuotas.localMin })}
+                            </span>
                           </div>
-                          <Switch
-                            id="completionRemoteHistoryUnlimited"
-                            checked={localSettings.completionQuotas.remoteHistoryUnlimited}
-                            onCheckedChange={(checked) => (
-                              updateCompletionQuota("remoteHistoryUnlimited", checked)
-                            )}
-                          />
+                          <div className="flex items-center gap-4">
+                            <span className="w-16 text-sm text-muted-foreground">
+                              {t("completionQuotaMaxLabel")}
+                            </span>
+                            <Slider
+                              min={1}
+                              max={10}
+                              step={1}
+                              value={[localSettings.completionQuotas.localMax]}
+                              onValueChange={(value) => updateCompletionQuota("localMax", value[0])}
+                              className="flex-1"
+                            />
+                            <span className="w-12 text-sm text-muted-foreground">
+                              {t("completionQuotaItemsValue", { count: localSettings.completionQuotas.localMax })}
+                            </span>
+                          </div>
                         </div>
-                        <div className="flex items-center gap-4">
-                          <span className="w-16 text-sm text-muted-foreground">
-                            {t("completionRemoteHistorySoftMaxLabel")}
-                          </span>
-                          <Slider
-                            min={1}
-                            max={20}
-                            step={1}
-                            value={[localSettings.completionQuotas.remoteHistorySoftMax]}
-                            onValueChange={(value) => updateCompletionQuota("remoteHistorySoftMax", value[0])}
-                            className="flex-1"
-                          />
-                          <span className="w-12 text-sm text-muted-foreground">
-                            {t("completionQuotaItemsValue", {
-                              count: localSettings.completionQuotas.remoteHistorySoftMax,
-                            })}
-                          </span>
+                      )}
+                    </div>
+
+                    {/* 脚本库 */}
+                    <div className="rounded-lg border p-4 space-y-3">
+                      <div className="flex items-center justify-between gap-4">
+                        <div className="min-w-0">
+                          <Label htmlFor="completionProviderScript">{t("completionProviderScriptLabel")}</Label>
+                          <p className="text-sm text-muted-foreground">
+                            {t("completionProviderScriptDescription")}
+                          </p>
                         </div>
+                        <Switch
+                          id="completionProviderScript"
+                          checked={localSettings.completionProviders.script}
+                          onCheckedChange={(checked) => updateCompletionProvider("script", checked)}
+                        />
                       </div>
-                    )}
-                  </div>
+                      {localSettings.completionProviders.script && (
+                        <div className="grid gap-3 border-t pt-3">
+                          <div className="flex items-center gap-4">
+                            <span className="w-16 text-sm text-muted-foreground">
+                              {t("completionQuotaMinLabel")}
+                            </span>
+                            <Slider
+                              min={0}
+                              max={10}
+                              step={1}
+                              value={[localSettings.completionQuotas.scriptMin]}
+                              onValueChange={(value) => updateCompletionQuota("scriptMin", value[0])}
+                              className="flex-1"
+                            />
+                            <span className="w-12 text-sm text-muted-foreground">
+                              {t("completionQuotaItemsValue", { count: localSettings.completionQuotas.scriptMin })}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-4">
+                            <span className="w-16 text-sm text-muted-foreground">
+                              {t("completionQuotaMaxLabel")}
+                            </span>
+                            <Slider
+                              min={0}
+                              max={10}
+                              step={1}
+                              value={[localSettings.completionQuotas.scriptMax]}
+                              onValueChange={(value) => updateCompletionQuota("scriptMax", value[0])}
+                              className="flex-1"
+                            />
+                            <span className="w-12 text-sm text-muted-foreground">
+                              {t("completionQuotaItemsValue", { count: localSettings.completionQuotas.scriptMax })}
+                            </span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
 
-                  <p className="text-xs text-muted-foreground">
-                    {t("completionQuotaHelp")}
-                  </p>
-                </div>
+                    {/* 会话历史 */}
+                    <div className="rounded-lg border p-4 space-y-3">
+                      <div className="flex items-center justify-between gap-4">
+                        <div className="min-w-0">
+                          <Label htmlFor="completionProviderSession">{t("completionProviderSessionLabel")}</Label>
+                          <p className="text-sm text-muted-foreground">
+                            {t("completionProviderSessionDescription")}
+                          </p>
+                        </div>
+                        <Switch
+                          id="completionProviderSession"
+                          checked={localSettings.completionProviders.session}
+                          onCheckedChange={(checked) => updateCompletionProvider("session", checked)}
+                        />
+                      </div>
+                      {localSettings.completionProviders.session && (
+                        <div className="grid gap-3 border-t pt-3">
+                          <div className="flex items-center gap-4">
+                            <span className="w-16 text-sm text-muted-foreground">
+                              {t("completionQuotaMinLabel")}
+                            </span>
+                            <Slider
+                              min={0}
+                              max={10}
+                              step={1}
+                              value={[localSettings.completionQuotas.sessionMin]}
+                              onValueChange={(value) => updateCompletionQuota("sessionMin", value[0])}
+                              className="flex-1"
+                            />
+                            <span className="w-12 text-sm text-muted-foreground">
+                              {t("completionQuotaItemsValue", { count: localSettings.completionQuotas.sessionMin })}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-4">
+                            <span className="w-16 text-sm text-muted-foreground">
+                              {t("completionQuotaMaxLabel")}
+                            </span>
+                            <Slider
+                              min={0}
+                              max={10}
+                              step={1}
+                              value={[localSettings.completionQuotas.sessionMax]}
+                              onValueChange={(value) => updateCompletionQuota("sessionMax", value[0])}
+                              className="flex-1"
+                            />
+                            <span className="w-12 text-sm text-muted-foreground">
+                              {t("completionQuotaItemsValue", { count: localSettings.completionQuotas.sessionMax })}
+                            </span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
 
-                <div className="border-t pt-4 space-y-4">
-                  <div className="flex items-center gap-2 text-sm font-medium">
-                    <Database className="h-4 w-4" />
-                    {t("completionCacheTitle")}
+                    {/* 远端历史命令 */}
+                    <div className="rounded-lg border p-4 space-y-3">
+                      <div className="flex items-center justify-between gap-4">
+                        <div className="min-w-0">
+                          <Label htmlFor="completionProviderRemoteHistory">
+                            {t("completionProviderRemoteHistoryLabel")}
+                          </Label>
+                          <p className="text-sm text-muted-foreground">
+                            {t("completionProviderRemoteHistoryDescription")}
+                          </p>
+                        </div>
+                        <Switch
+                          id="completionProviderRemoteHistory"
+                          checked={localSettings.completionProviders.remoteHistory}
+                          onCheckedChange={(checked) => updateCompletionProvider("remoteHistory", checked)}
+                        />
+                      </div>
+                      {localSettings.completionProviders.remoteHistory && (
+                        <div className="grid gap-3 border-t pt-3">
+                          <div className="flex items-center justify-between gap-4">
+                            <div>
+                              <Label htmlFor="completionRemoteHistoryUnlimited" className="text-sm">
+                                {t("completionRemoteHistoryUnlimitedLabel")}
+                              </Label>
+                              <p className="text-xs text-muted-foreground">
+                                {t("completionRemoteHistoryUnlimitedDescription")}
+                              </p>
+                            </div>
+                            <Switch
+                              id="completionRemoteHistoryUnlimited"
+                              checked={localSettings.completionQuotas.remoteHistoryUnlimited}
+                              onCheckedChange={(checked) => (
+                                updateCompletionQuota("remoteHistoryUnlimited", checked)
+                              )}
+                            />
+                          </div>
+                          <div className="flex items-center gap-4">
+                            <span className="w-16 text-sm text-muted-foreground">
+                              {t("completionRemoteHistorySoftMaxLabel")}
+                            </span>
+                            <Slider
+                              min={1}
+                              max={20}
+                              step={1}
+                              value={[localSettings.completionQuotas.remoteHistorySoftMax]}
+                              onValueChange={(value) => updateCompletionQuota("remoteHistorySoftMax", value[0])}
+                              className="flex-1"
+                            />
+                            <span className="w-12 text-sm text-muted-foreground">
+                              {t("completionQuotaItemsValue", {
+                                count: localSettings.completionQuotas.remoteHistorySoftMax,
+                              })}
+                            </span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    <p className="text-xs text-muted-foreground">
+                      {t("completionQuotaHelp")}
+                    </p>
                   </div>
-                  <p className="text-xs text-muted-foreground">
-                    {t("completionCacheDescription")}
-                  </p>
+                </CollapsibleSection>
+
+                {/* 缓存设置 - 折叠面板，默认收起 */}
+                <CollapsibleSection
+                  icon={<Database className="h-4 w-4" />}
+                  title={t("completionCacheTitle")}
+                  description={t("completionCacheDescription")}
+                  defaultOpen={false}
+                >
                   <div className="space-y-2">
                     <Label htmlFor="completionCacheTtl">{t("completionCacheTtlLabel")}</Label>
                     <div className="flex items-center gap-4">
@@ -948,9 +994,15 @@ export function TerminalSettingsDialog({
                       {t("completionCacheMaxEntriesHelp")}
                     </p>
                   </div>
-                </div>
+                </CollapsibleSection>
 
-                <div className="border-t pt-4 space-y-4">
+                {/* 显示选项 - 折叠面板，默认收起 */}
+                <CollapsibleSection
+                  icon={<Eye className="h-4 w-4" />}
+                  title={t("completionDisplayTitle")}
+                  description={t("completionDisplayDescription")}
+                  defaultOpen={false}
+                >
                   <div className="flex items-center justify-between">
                     <div>
                       <Label htmlFor="completionShowIcon">{t("completionShowIconLabel")}</Label>
@@ -978,7 +1030,7 @@ export function TerminalSettingsDialog({
                       onCheckedChange={(checked) => updateSetting('completionShowDescription', checked)}
                     />
                   </div>
-                </div>
+                </CollapsibleSection>
               </>
             )}
           </TabsContent>
