@@ -16,7 +16,6 @@ export type {
 export type { TerminalSession, TerminalConnectionPhase } from "../../../src/components/terminal/types"
 export type { ServerConnectionConfigsApi } from "../../../src/components/servers/server-connection-configs"
 export { DEFAULT_SYSTEM_CONFIG, StaticSystemConfigProvider } from "../../../src/contexts/system-config-context"
-export { CompletionConfigProvider } from "../../../src/contexts/completion-config-context"
 export { DEFAULT_SFTP_DOWNLOAD_EXCLUDE_PATTERNS, parseWorkspaceDownloadExcludePatterns } from "./session/workspace-settings"
 export type { WorkspaceDownloadExcludePatternSource } from "./session/workspace-settings"
 export type { DirectTransferOptions } from "./session/sftp-types"

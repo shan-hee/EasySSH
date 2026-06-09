@@ -7,7 +7,10 @@ import { TerminalHostKeyDialog } from "./terminal-host-key-dialog"
 import { CompletionPopup } from "./completion-popup"
 import { useTerminalAuthFlowAdapters } from "./use-terminal-auth-flow-adapters"
 import { useTerminalAutoFit } from "./use-terminal-auto-fit"
-import { useTerminalCompletionController } from "./use-terminal-completion-controller"
+import {
+  useTerminalCompletionController,
+  type TerminalCompletionProviderFlags,
+} from "./use-terminal-completion-controller"
 import { useTerminalConnectionController } from "./use-terminal-connection-controller"
 import { useTerminalContainerApi } from "./use-terminal-container-api"
 import { useTerminalInputActions } from "./use-terminal-input-actions"
@@ -22,13 +25,14 @@ import {
 } from "./use-terminal-renderer-settings"
 import type { Terminal } from "@xterm/xterm"
 import { TerminalThemeProvider } from "@/contexts/terminal-theme-context"
-import { useCompletionConfig } from "@/contexts/completion-config-context"
 import { useTerminalAuthFlow, type TerminalAuthFlowAdapters } from "@/components/terminal/use-terminal-auth-flow"
 import { useOptionalSshWorkspace } from "@/components/ssh-workspace/ssh-workspace"
 import { useTerminalInstance } from "@/hooks/useTerminalInstance"
 import { useEffectiveThemeMode } from "@/hooks/use-effective-theme-mode"
 import { createWorkspaceTerminalAuthTicketProviderAdapter } from "@/lib/session/workspace-adapters"
-import type { TerminalConnectionPhase } from "@/lib/websocket-terminal"
+import type { CompletionConfig } from "@/lib/completion/types"
+import { DEFAULT_COMPLETION_CONFIG } from "@/lib/completion/types"
+import type { CompletionFetchOptions, TerminalConnectionPhase } from "@/lib/websocket-terminal"
 
 export interface WebTerminalProps {
   sessionId: string
@@ -60,6 +64,9 @@ export interface WebTerminalProps {
   completionMaxItems?: number
   completionShowIcon?: boolean
   completionShowDescription?: boolean
+  completionConfig?: CompletionConfig
+  completionProviderEnabled?: TerminalCompletionProviderFlags
+  completionFetchOptions?: CompletionFetchOptions
   enableWebgl?: boolean
   transparentBackground?: boolean
   backgroundOpacity?: number
@@ -95,18 +102,21 @@ export function WebTerminal({
   completionMaxItems = 10,
   completionShowIcon = true,
   completionShowDescription = true,
+  completionConfig,
+  completionProviderEnabled,
+  completionFetchOptions,
   enableWebgl = true,
   transparentBackground = false,
   backgroundOpacity = 1,
 }: WebTerminalProps) {
   const { t: tTerminal } = useTranslation("terminal")
   const workspace = useOptionalSshWorkspace()
-  const { completionConfig, globalConfig } = useCompletionConfig()
   const { mode: effectiveAppTheme, version: themeModeVersion } = useEffectiveThemeMode()
   const workspaceTheme = workspace?.adapters.theme
   const effectiveTerminalTheme = resolveTerminalThemeName(workspaceTheme?.terminalTheme, theme)
   const effectiveTerminalAppTheme = resolveTerminalAppThemeMode(workspaceTheme?.mode, effectiveAppTheme)
-  const effectiveCompletionEnabled = completionEnabled && completionConfig.enabled
+  const resolvedCompletionConfig = completionConfig ?? DEFAULT_COMPLETION_CONFIG
+  const effectiveCompletionEnabled = completionEnabled && resolvedCompletionConfig.enabled
 
   const terminalFontFamily = formatTerminalFontFamily(fontFamily)
   const { terminalTheme, terminalRendererTheme } = useMemo(() => {
@@ -137,16 +147,18 @@ export function WebTerminal({
   const sendInputRef = useRef<(data: string) => void>(() => {})
   const completionUpdateSenderRef = useRef<((command: string) => void) | null>(null)
 
-  const completionProviderEnabled = useMemo(() => ({
-    local: !!globalConfig.providers.local,
-    session: !!globalConfig.providers.session,
-    script: !!globalConfig.providers.script,
-    remoteHistory: !!globalConfig.providers.remote_history,
+  const resolvedCompletionProviderEnabled = useMemo(() => completionProviderEnabled ?? ({
+    local: !!resolvedCompletionConfig.providers.local,
+    session: !!resolvedCompletionConfig.providers.session || !!resolvedCompletionConfig.providers.history,
+    script: !!resolvedCompletionConfig.providers.script,
+    remoteHistory: !!resolvedCompletionConfig.providers.remote,
   }), [
-    globalConfig.providers.local,
-    globalConfig.providers.remote_history,
-    globalConfig.providers.script,
-    globalConfig.providers.session,
+    completionProviderEnabled,
+    resolvedCompletionConfig.providers.history,
+    resolvedCompletionConfig.providers.local,
+    resolvedCompletionConfig.providers.remote,
+    resolvedCompletionConfig.providers.script,
+    resolvedCompletionConfig.providers.session,
   ])
 
   const effectiveAuthFlowAdapters = useTerminalAuthFlowAdapters({ authFlowAdapters })
@@ -168,14 +180,15 @@ export function WebTerminal({
     terminalReady,
     isTerminalReadyRef,
     containerRef,
-    completionConfig,
+    completionConfig: resolvedCompletionConfig,
     effectiveCompletionEnabled,
     completionTrigger,
     completionAutoDelay,
     completionMaxItems,
     completionShowIcon,
     completionShowDescription,
-    providerEnabled: completionProviderEnabled,
+    providerEnabled: resolvedCompletionProviderEnabled,
+    completionFetchOptions,
     sendInputRef,
     completionUpdateSenderRef,
     onCommand,

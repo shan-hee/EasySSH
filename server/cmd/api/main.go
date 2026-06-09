@@ -52,6 +52,7 @@ import (
 	"github.com/easyssh/server/internal/platform"
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
+	"gorm.io/gorm"
 )
 
 func main() {
@@ -116,6 +117,7 @@ func main() {
 	); err != nil {
 		log.Fatalf("❌ Failed to migrate database: %v", err)
 	}
+	dropLegacySystemCompletionColumns(database, cfg.Server.Env)
 	log.Println("✅ Database migrated successfully")
 
 	// 系统配置服务（JWT_SECRET 仍来自 .env，其余 JWT 过期/刷新配置来自系统设置）
@@ -295,13 +297,7 @@ func main() {
 	scriptService := script.NewService(scriptRepo)
 
 	// 补全服务
-	// 从新的系统配置服务读取补全缓存配置
-	completionCacheConfig, err := systemConfigService.GetCompletionCache(context.Background())
-	if err != nil {
-		log.Printf("Failed to get completion cache config, using defaults: %v", err)
-		completionCacheConfig = systemconfig.DefaultCompletionCache()
-	}
-	completionService := completion.NewService(scriptRepo, completionCacheConfig.TTLMinutes, completionCacheConfig.MaxEntries)
+	completionService := completion.NewService(scriptRepo, 0, 0)
 
 	// 批量任务服务
 	batchTaskRepo := batchtask.NewRepository(database)
@@ -421,7 +417,7 @@ func main() {
 		log.Println("✅ Task scheduler started")
 	}
 
-	terminalHandler := ws.NewTerminalHandler(serverService, serverRepo, sessionManager, encryptor, operationRecordService, sshHostKeyService, securityService, cfg.Server.WebDevPort, completionService, systemConfigService, runtimeCredentialStore)
+	terminalHandler := ws.NewTerminalHandler(serverService, serverRepo, sessionManager, encryptor, operationRecordService, sshHostKeyService, securityService, cfg.Server.WebDevPort, completionService, runtimeCredentialStore)
 	monitorHandler := ws.NewMonitorHandler(monitorConnectionPool, securityService, cfg.Server.WebDevPort)
 	auditLogHandler := rest.NewAuditLogHandler(auditLogService)
 	dashboardHandler := rest.NewDashboardHandler(dashboardService)
@@ -835,7 +831,6 @@ func main() {
 			// 系统配置 - 分组部分更新
 			settingsGroup.PATCH("/system/basic", systemConfigHandler.PatchBasicInfo)
 			settingsGroup.PATCH("/system/file-transfer", systemConfigHandler.PatchFileTransferConfig)
-			settingsGroup.PATCH("/system/completion", systemConfigHandler.PatchCompletionConfig)
 			settingsGroup.PATCH("/system/jwt-session", systemConfigHandler.PatchJWTSessionConfig)
 
 			// 安全配置
@@ -1065,6 +1060,39 @@ func readAppVersion() string {
 		}
 	}
 	return "dev"
+}
+
+func dropLegacySystemCompletionColumns(database *gorm.DB, env string) {
+	if strings.EqualFold(strings.TrimSpace(env), "production") {
+		return
+	}
+
+	migrator := database.Migrator()
+	columnTypes, err := migrator.ColumnTypes(&systemconfig.SystemConfig{})
+	if err != nil {
+		log.Printf("⚠️ Failed to inspect legacy system_config completion columns: %v", err)
+		return
+	}
+	existingColumns := make(map[string]bool, len(columnTypes))
+	for _, columnType := range columnTypes {
+		existingColumns[strings.ToLower(columnType.Name())] = true
+	}
+
+	for _, column := range []string{
+		"completion_enabled",
+		"completion_providers",
+		"completion_quotas",
+		"completion_cache",
+	} {
+		if !existingColumns[column] {
+			continue
+		}
+		if err := migrator.DropColumn(&systemconfig.SystemConfig{}, column); err != nil {
+			log.Printf("⚠️ Failed to drop legacy system_config.%s: %v", column, err)
+			continue
+		}
+		log.Printf("✅ Dropped legacy system_config.%s", column)
+	}
 }
 
 func runtimeDataDir(driver string, dsn string) string {

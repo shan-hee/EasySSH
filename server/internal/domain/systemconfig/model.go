@@ -31,12 +31,6 @@ type SystemConfig struct {
 	TransferMaxConcurrency  int    `gorm:"not null;default:2" json:"transfer_max_concurrency"`
 	TransferCleanupEnabled  bool   `gorm:"not null;default:true" json:"transfer_cleanup_enabled"`
 
-	// 补全配置（JSON存储）
-	CompletionEnabled   bool   `gorm:"not null;default:true" json:"completion_enabled"`
-	CompletionProviders string `gorm:"type:text" json:"completion_providers"` // JSON: CompletionProvidersConfig
-	CompletionQuotas    string `gorm:"type:text" json:"completion_quotas"`    // JSON: CompletionQuotasConfig
-	CompletionCache     string `gorm:"type:text" json:"completion_cache"`     // JSON: CompletionCacheConfig
-
 	// 注册配置
 	AllowRegistration bool   `gorm:"not null;default:false" json:"allow_registration"`
 	DefaultRole       string `gorm:"size:20;not null;default:'user'" json:"default_role"` // 新用户默认角色: user, viewer
@@ -63,32 +57,6 @@ func (SystemConfig) TableName() string {
 	return "system_config"
 }
 
-// CompletionProvidersConfig 补全提供者配置
-type CompletionProvidersConfig struct {
-	Local         bool `json:"local"`          // 本地命令库
-	RemoteHistory bool `json:"remote_history"` // 远端历史命令
-	Script        bool `json:"script"`         // 脚本库
-	Session       bool `json:"session"`        // 会话历史
-}
-
-// CompletionQuotasConfig 补全配额配置
-type CompletionQuotasConfig struct {
-	LocalMin               int  `json:"local_min"`                // 本地命令库最少数量
-	LocalMax               int  `json:"local_max"`                // 本地命令库最多数量
-	ScriptMin              int  `json:"script_min"`               // 脚本库最少数量
-	ScriptMax              int  `json:"script_max"`               // 脚本库最多数量
-	SessionMin             int  `json:"session_min"`              // 会话历史最少数量
-	SessionMax             int  `json:"session_max"`              // 会话历史最多数量
-	RemoteHistoryUnlimited bool `json:"remote_history_unlimited"` // 远端历史是否无限制
-	RemoteHistorySoftMax   int  `json:"remote_history_soft_max"`  // 远端历史软上限
-}
-
-// CompletionCacheConfig 补全缓存配置
-type CompletionCacheConfig struct {
-	TTLMinutes int `json:"ttl_minutes"` // 缓存TTL（分钟）
-	MaxEntries int `json:"max_entries"` // 最大缓存条目数
-}
-
 // JWTSessionConfig JWT 过期与刷新设置（不包含 JWT_SECRET）。
 type JWTSessionConfig struct {
 	AccessExpireMinutes       int  `json:"jwt_access_expire_minutes"`
@@ -96,38 +64,6 @@ type JWTSessionConfig struct {
 	RefreshAbsoluteExpireDays int  `json:"jwt_refresh_absolute_expire_days"`
 	RefreshRotate             bool `json:"jwt_refresh_rotate"`
 	RefreshReuseDetection     bool `json:"jwt_refresh_reuse_detection"`
-}
-
-// DefaultCompletionProviders 默认补全提供者配置
-func DefaultCompletionProviders() *CompletionProvidersConfig {
-	return &CompletionProvidersConfig{
-		Local:         true,
-		RemoteHistory: true,
-		Script:        true,
-		Session:       true,
-	}
-}
-
-// DefaultCompletionQuotas 默认补全配额配置
-func DefaultCompletionQuotas() *CompletionQuotasConfig {
-	return &CompletionQuotasConfig{
-		LocalMin:               1,
-		LocalMax:               3,
-		ScriptMin:              0,
-		ScriptMax:              2,
-		SessionMin:             0,
-		SessionMax:             2,
-		RemoteHistoryUnlimited: true,
-		RemoteHistorySoftMax:   7,
-	}
-}
-
-// DefaultCompletionCache 默认补全缓存配置
-func DefaultCompletionCache() *CompletionCacheConfig {
-	return &CompletionCacheConfig{
-		TTLMinutes: 5,
-		MaxEntries: 100,
-	}
 }
 
 // DefaultJWTSessionConfig 默认 JWT 过期与刷新设置。

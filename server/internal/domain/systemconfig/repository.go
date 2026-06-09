@@ -2,7 +2,6 @@ package systemconfig
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 
 	"gorm.io/gorm"
@@ -15,15 +14,6 @@ type Repository interface {
 
 	// Save 保存系统配置
 	Save(ctx context.Context, config *SystemConfig) error
-
-	// GetCompletionProviders 获取补全提供者配置
-	GetCompletionProviders(ctx context.Context) (*CompletionProvidersConfig, error)
-
-	// GetCompletionQuotas 获取补全配额配置
-	GetCompletionQuotas(ctx context.Context) (*CompletionQuotasConfig, error)
-
-	// GetCompletionCache 获取补全缓存配置
-	GetCompletionCache(ctx context.Context) (*CompletionCacheConfig, error)
 }
 
 type repository struct {
@@ -59,23 +49,11 @@ func (r *repository) Get(ctx context.Context) (*SystemConfig, error) {
 				TransferMaxStorageGB:         DefaultTransferMaxStorageGB(),
 				TransferMaxConcurrency:       DefaultTransferMaxConcurrency(),
 				TransferCleanupEnabled:       true,
-				CompletionEnabled:            true,
 				JWTAccessExpireMinutes:       jwtDefaults.AccessExpireMinutes,
 				JWTRefreshIdleExpireDays:     jwtDefaults.RefreshIdleExpireDays,
 				JWTRefreshAbsoluteExpireDays: jwtDefaults.RefreshAbsoluteExpireDays,
 				JWTRefreshRotate:             jwtDefaults.RefreshRotate,
 				JWTRefreshReuseDetection:     jwtDefaults.RefreshReuseDetection,
-			}
-
-			// 序列化默认补全配置
-			if providers, err := json.Marshal(DefaultCompletionProviders()); err == nil {
-				config.CompletionProviders = string(providers)
-			}
-			if quotas, err := json.Marshal(DefaultCompletionQuotas()); err == nil {
-				config.CompletionQuotas = string(quotas)
-			}
-			if cache, err := json.Marshal(DefaultCompletionCache()); err == nil {
-				config.CompletionCache = string(cache)
 			}
 
 			// 创建默认配置
@@ -109,61 +87,4 @@ func (r *repository) Save(ctx context.Context, config *SystemConfig) error {
 	// 存在则更新（保留ID）
 	config.ID = existing.ID
 	return r.db.WithContext(ctx).Save(config).Error
-}
-
-// GetCompletionProviders 获取补全提供者配置
-func (r *repository) GetCompletionProviders(ctx context.Context) (*CompletionProvidersConfig, error) {
-	config, err := r.Get(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	if config.CompletionProviders == "" {
-		return DefaultCompletionProviders(), nil
-	}
-
-	var providers CompletionProvidersConfig
-	if err := json.Unmarshal([]byte(config.CompletionProviders), &providers); err != nil {
-		return DefaultCompletionProviders(), nil
-	}
-
-	return &providers, nil
-}
-
-// GetCompletionQuotas 获取补全配额配置
-func (r *repository) GetCompletionQuotas(ctx context.Context) (*CompletionQuotasConfig, error) {
-	config, err := r.Get(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	if config.CompletionQuotas == "" {
-		return DefaultCompletionQuotas(), nil
-	}
-
-	var quotas CompletionQuotasConfig
-	if err := json.Unmarshal([]byte(config.CompletionQuotas), &quotas); err != nil {
-		return DefaultCompletionQuotas(), nil
-	}
-
-	return &quotas, nil
-}
-
-// GetCompletionCache 获取补全缓存配置
-func (r *repository) GetCompletionCache(ctx context.Context) (*CompletionCacheConfig, error) {
-	config, err := r.Get(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	if config.CompletionCache == "" {
-		return DefaultCompletionCache(), nil
-	}
-
-	var cache CompletionCacheConfig
-	if err := json.Unmarshal([]byte(config.CompletionCache), &cache); err != nil {
-		return DefaultCompletionCache(), nil
-	}
-
-	return &cache, nil
 }

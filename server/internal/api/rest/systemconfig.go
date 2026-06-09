@@ -1,7 +1,6 @@
 package rest
 
 import (
-	"encoding/json"
 	"net/http"
 
 	"github.com/easyssh/server/internal/domain/systemconfig"
@@ -25,25 +24,21 @@ type GetSystemConfigResponseV2 struct {
 
 // SystemConfigDTOV2 系统配置DTO（新版）
 type SystemConfigDTOV2 struct {
-	SystemName              string                                  `json:"system_name"`
-	SystemLogo              string                                  `json:"system_logo"`
-	SystemFavicon           string                                  `json:"system_favicon"`
-	DefaultLanguage         string                                  `json:"default_language"`
-	DefaultTimezone         string                                  `json:"default_timezone"`
-	DateFormat              string                                  `json:"date_format"`
-	DownloadExcludePatterns string                                  `json:"download_exclude_patterns"`
-	DefaultDownloadMode     string                                  `json:"default_download_mode"`
-	SkipExcludedOnUpload    bool                                    `json:"skip_excluded_on_upload"`
-	MaxFileUploadSize       int                                     `json:"max_file_upload_size"`
-	TransferStoragePath     string                                  `json:"transfer_storage_path"`
-	TransferRetentionDays   int                                     `json:"transfer_retention_days"`
-	TransferMaxStorageGB    int                                     `json:"transfer_max_storage_gb"`
-	TransferMaxConcurrency  int                                     `json:"transfer_max_concurrency"`
-	TransferCleanupEnabled  bool                                    `json:"transfer_cleanup_enabled"`
-	CompletionEnabled       bool                                    `json:"completion_enabled"`
-	CompletionProviders     *systemconfig.CompletionProvidersConfig `json:"completion_providers,omitempty"`
-	CompletionQuotas        *systemconfig.CompletionQuotasConfig    `json:"completion_quotas,omitempty"`
-	CompletionCache         *systemconfig.CompletionCacheConfig     `json:"completion_cache,omitempty"`
+	SystemName              string `json:"system_name"`
+	SystemLogo              string `json:"system_logo"`
+	SystemFavicon           string `json:"system_favicon"`
+	DefaultLanguage         string `json:"default_language"`
+	DefaultTimezone         string `json:"default_timezone"`
+	DateFormat              string `json:"date_format"`
+	DownloadExcludePatterns string `json:"download_exclude_patterns"`
+	DefaultDownloadMode     string `json:"default_download_mode"`
+	SkipExcludedOnUpload    bool   `json:"skip_excluded_on_upload"`
+	MaxFileUploadSize       int    `json:"max_file_upload_size"`
+	TransferStoragePath     string `json:"transfer_storage_path"`
+	TransferRetentionDays   int    `json:"transfer_retention_days"`
+	TransferMaxStorageGB    int    `json:"transfer_max_storage_gb"`
+	TransferMaxConcurrency  int    `json:"transfer_max_concurrency"`
+	TransferCleanupEnabled  bool   `json:"transfer_cleanup_enabled"`
 	// 注册配置
 	AllowRegistration bool   `json:"allow_registration"`
 	DefaultRole       string `json:"default_role"`
@@ -128,7 +123,6 @@ func (h *SystemConfigHandler) toDTO(config *systemconfig.SystemConfig) *SystemCo
 		TransferMaxStorageGB:         config.TransferMaxStorageGB,
 		TransferMaxConcurrency:       config.TransferMaxConcurrency,
 		TransferCleanupEnabled:       config.TransferCleanupEnabled,
-		CompletionEnabled:            config.CompletionEnabled,
 		AllowRegistration:            config.AllowRegistration,
 		DefaultRole:                  config.DefaultRole,
 		OAuthEnabled:                 config.OAuthEnabled,
@@ -139,28 +133,6 @@ func (h *SystemConfigHandler) toDTO(config *systemconfig.SystemConfig) *SystemCo
 		JWTRefreshAbsoluteExpireDays: jwtConfig.RefreshAbsoluteExpireDays,
 		JWTRefreshRotate:             jwtConfig.RefreshRotate,
 		JWTRefreshReuseDetection:     jwtConfig.RefreshReuseDetection,
-	}
-
-	// 解析补全配置
-	if config.CompletionProviders != "" {
-		var providers systemconfig.CompletionProvidersConfig
-		if err := json.Unmarshal([]byte(config.CompletionProviders), &providers); err == nil {
-			dto.CompletionProviders = &providers
-		}
-	}
-
-	if config.CompletionQuotas != "" {
-		var quotas systemconfig.CompletionQuotasConfig
-		if err := json.Unmarshal([]byte(config.CompletionQuotas), &quotas); err == nil {
-			dto.CompletionQuotas = &quotas
-		}
-	}
-
-	if config.CompletionCache != "" {
-		var cache systemconfig.CompletionCacheConfig
-		if err := json.Unmarshal([]byte(config.CompletionCache), &cache); err == nil {
-			dto.CompletionCache = &cache
-		}
 	}
 
 	return dto
@@ -184,7 +156,6 @@ func (h *SystemConfigHandler) fromDTO(dto *SystemConfigDTOV2) (*systemconfig.Sys
 		TransferMaxStorageGB:         dto.TransferMaxStorageGB,
 		TransferMaxConcurrency:       dto.TransferMaxConcurrency,
 		TransferCleanupEnabled:       dto.TransferCleanupEnabled,
-		CompletionEnabled:            dto.CompletionEnabled,
 		AllowRegistration:            dto.AllowRegistration,
 		DefaultRole:                  dto.DefaultRole,
 		OAuthEnabled:                 dto.OAuthEnabled,
@@ -195,31 +166,6 @@ func (h *SystemConfigHandler) fromDTO(dto *SystemConfigDTOV2) (*systemconfig.Sys
 		JWTRefreshAbsoluteExpireDays: dto.JWTRefreshAbsoluteExpireDays,
 		JWTRefreshRotate:             dto.JWTRefreshRotate,
 		JWTRefreshReuseDetection:     dto.JWTRefreshReuseDetection,
-	}
-
-	// 序列化补全配置
-	if dto.CompletionProviders != nil {
-		data, err := json.Marshal(dto.CompletionProviders)
-		if err != nil {
-			return nil, err
-		}
-		config.CompletionProviders = string(data)
-	}
-
-	if dto.CompletionQuotas != nil {
-		data, err := json.Marshal(dto.CompletionQuotas)
-		if err != nil {
-			return nil, err
-		}
-		config.CompletionQuotas = string(data)
-	}
-
-	if dto.CompletionCache != nil {
-		data, err := json.Marshal(dto.CompletionCache)
-		if err != nil {
-			return nil, err
-		}
-		config.CompletionCache = string(data)
 	}
 
 	return config, nil
@@ -307,67 +253,6 @@ func (h *SystemConfigHandler) PatchFileTransferConfig(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "File transfer config updated successfully"})
-}
-
-// PatchCompletionConfig 部分更新补全配置
-// @Summary 部分更新补全配置
-// @Tags 系统设置
-// @Accept json
-// @Produce json
-// @Param request body SystemConfigDTOV2 true "补全配置"
-// @Success 200 {object} map[string]string
-// @Router /api/v1/settings/system/completion [patch]
-func (h *SystemConfigHandler) PatchCompletionConfig(c *gin.Context) {
-	var dto SystemConfigDTOV2
-	if err := c.ShouldBindJSON(&dto); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
-		return
-	}
-
-	// 获取现有配置
-	existingConfig, err := h.service.Get(c.Request.Context())
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-
-	// 只更新补全配置字段
-	existingConfig.CompletionEnabled = dto.CompletionEnabled
-
-	// 序列化补全配置
-	if dto.CompletionProviders != nil {
-		data, err := json.Marshal(dto.CompletionProviders)
-		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-			return
-		}
-		existingConfig.CompletionProviders = string(data)
-	}
-
-	if dto.CompletionQuotas != nil {
-		data, err := json.Marshal(dto.CompletionQuotas)
-		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-			return
-		}
-		existingConfig.CompletionQuotas = string(data)
-	}
-
-	if dto.CompletionCache != nil {
-		data, err := json.Marshal(dto.CompletionCache)
-		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-			return
-		}
-		existingConfig.CompletionCache = string(data)
-	}
-
-	if err := h.service.Save(c.Request.Context(), existingConfig); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{"message": "Completion config updated successfully"})
 }
 
 // PatchJWTSessionConfig 部分更新 JWT 过期与刷新配置。

@@ -2,7 +2,6 @@ package systemconfig
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 )
@@ -14,15 +13,6 @@ type Service interface {
 
 	// Save 保存系统配置
 	Save(ctx context.Context, config *SystemConfig) error
-
-	// GetCompletionProviders 获取补全提供者配置
-	GetCompletionProviders(ctx context.Context) (*CompletionProvidersConfig, error)
-
-	// GetCompletionQuotas 获取补全配额配置
-	GetCompletionQuotas(ctx context.Context) (*CompletionQuotasConfig, error)
-
-	// GetCompletionCache 获取补全缓存配置
-	GetCompletionCache(ctx context.Context) (*CompletionCacheConfig, error)
 }
 
 type service struct {
@@ -48,26 +38,7 @@ func (s *service) Save(ctx context.Context, config *SystemConfig) error {
 		return err
 	}
 
-	// 序列化补全配置（如果是结构体形式传入）
-	// 这里假设前端传入的是已经序列化好的JSON字符串
-	// 如果需要从结构体转换，可以在这里处理
-
 	return s.repo.Save(ctx, config)
-}
-
-// GetCompletionProviders 获取补全提供者配置
-func (s *service) GetCompletionProviders(ctx context.Context) (*CompletionProvidersConfig, error) {
-	return s.repo.GetCompletionProviders(ctx)
-}
-
-// GetCompletionQuotas 获取补全配额配置
-func (s *service) GetCompletionQuotas(ctx context.Context) (*CompletionQuotasConfig, error) {
-	return s.repo.GetCompletionQuotas(ctx)
-}
-
-// GetCompletionCache 获取补全缓存配置
-func (s *service) GetCompletionCache(ctx context.Context) (*CompletionCacheConfig, error) {
-	return s.repo.GetCompletionCache(ctx)
 }
 
 // validate 验证系统配置
@@ -118,11 +89,6 @@ func (s *service) validate(config *SystemConfig) error {
 		return errors.New("transfer max concurrency must be between 1 and 16")
 	}
 
-	// 验证补全配置
-	if err := s.validateCompletionConfig(config); err != nil {
-		return err
-	}
-
 	if err := s.validateJWTSessionConfig(config.JWTSessionConfig()); err != nil {
 		return err
 	}
@@ -143,76 +109,5 @@ func (s *service) validateJWTSessionConfig(config *JWTSessionConfig) error {
 	if config.RefreshAbsoluteExpireDays < config.RefreshIdleExpireDays {
 		return errors.New("JWT refresh token absolute expiration must be greater than or equal to idle expiration")
 	}
-	return nil
-}
-
-// validateCompletionConfig 验证补全配置
-func (s *service) validateCompletionConfig(config *SystemConfig) error {
-	// 验证补全提供者配置
-	if config.CompletionProviders != "" {
-		var providers CompletionProvidersConfig
-		if err := json.Unmarshal([]byte(config.CompletionProviders), &providers); err != nil {
-			return fmt.Errorf("invalid completion providers config: %w", err)
-		}
-	}
-
-	// 验证补全配额配置
-	if config.CompletionQuotas != "" {
-		var quotas CompletionQuotasConfig
-		if err := json.Unmarshal([]byte(config.CompletionQuotas), &quotas); err != nil {
-			return fmt.Errorf("invalid completion quotas config: %w", err)
-		}
-
-		// 验证配额范围
-		if quotas.LocalMin < 0 || quotas.LocalMin > 10 {
-			return errors.New("local_min must be between 0 and 10")
-		}
-		if quotas.LocalMax < 1 || quotas.LocalMax > 10 {
-			return errors.New("local_max must be between 1 and 10")
-		}
-		if quotas.LocalMin > quotas.LocalMax {
-			return errors.New("local_min must be less than or equal to local_max")
-		}
-
-		if quotas.ScriptMin < 0 || quotas.ScriptMin > 10 {
-			return errors.New("script_min must be between 0 and 10")
-		}
-		if quotas.ScriptMax < 0 || quotas.ScriptMax > 10 {
-			return errors.New("script_max must be between 0 and 10")
-		}
-		if quotas.ScriptMin > quotas.ScriptMax {
-			return errors.New("script_min must be less than or equal to script_max")
-		}
-
-		if quotas.SessionMin < 0 || quotas.SessionMin > 10 {
-			return errors.New("session_min must be between 0 and 10")
-		}
-		if quotas.SessionMax < 0 || quotas.SessionMax > 10 {
-			return errors.New("session_max must be between 0 and 10")
-		}
-		if quotas.SessionMin > quotas.SessionMax {
-			return errors.New("session_min must be less than or equal to session_max")
-		}
-
-		if quotas.RemoteHistorySoftMax < 1 || quotas.RemoteHistorySoftMax > 20 {
-			return errors.New("remote_history_soft_max must be between 1 and 20")
-		}
-	}
-
-	// 验证补全缓存配置
-	if config.CompletionCache != "" {
-		var cache CompletionCacheConfig
-		if err := json.Unmarshal([]byte(config.CompletionCache), &cache); err != nil {
-			return fmt.Errorf("invalid completion cache config: %w", err)
-		}
-
-		if cache.TTLMinutes < 1 || cache.TTLMinutes > 60 {
-			return errors.New("ttl_minutes must be between 1 and 60")
-		}
-		if cache.MaxEntries < 10 || cache.MaxEntries > 1000 {
-			return errors.New("max_entries must be between 10 and 1000")
-		}
-	}
-
 	return nil
 }

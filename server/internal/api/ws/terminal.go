@@ -19,7 +19,6 @@ import (
 	"github.com/easyssh/server/internal/domain/server"
 	sshDomain "github.com/easyssh/server/internal/domain/ssh"
 	"github.com/easyssh/server/internal/domain/sshhostkey"
-	"github.com/easyssh/server/internal/domain/systemconfig"
 	"github.com/easyssh/server/internal/pkg/crypto"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -49,18 +48,17 @@ type TerminalHandler struct {
 	sessionManager    *sshDomain.SessionManager
 	encryptor         *crypto.Encryptor
 	operationRecords  operationrecord.Service
-	hostKeyService    *sshhostkey.Service  // SSH主机密钥验证服务
-	securityService   security.Service     // 安全配置服务（用于 CORS）
-	webDevPort        int                  // 前端开发端口，用于默认同源白名单
-	completionService completion.Service   // 补全服务
-	systemConfigSvc   systemconfig.Service // 系统配置（用于补全配置动态生效）
+	hostKeyService    *sshhostkey.Service // SSH主机密钥验证服务
+	securityService   security.Service    // 安全配置服务（用于 CORS）
+	webDevPort        int                 // 前端开发端口，用于默认同源白名单
+	completionService completion.Service  // 补全服务
 	credentialStore   *sshDomain.RuntimeCredentialStore
 	completionSubMu   sync.RWMutex
 	completionSubs    map[completionBroadcastKey]map[*completionSubscriber]struct{}
 }
 
 // NewTerminalHandler 创建终端处理器
-func NewTerminalHandler(serverService server.Service, serverRepo server.Repository, sessionManager *sshDomain.SessionManager, encryptor *crypto.Encryptor, operationRecords operationrecord.Service, hostKeyService *sshhostkey.Service, securityService security.Service, webDevPort int, completionService completion.Service, systemConfigSvc systemconfig.Service, credentialStore *sshDomain.RuntimeCredentialStore) *TerminalHandler {
+func NewTerminalHandler(serverService server.Service, serverRepo server.Repository, sessionManager *sshDomain.SessionManager, encryptor *crypto.Encryptor, operationRecords operationrecord.Service, hostKeyService *sshhostkey.Service, securityService security.Service, webDevPort int, completionService completion.Service, credentialStore *sshDomain.RuntimeCredentialStore) *TerminalHandler {
 	return &TerminalHandler{
 		serverService:     serverService,
 		serverRepo:        serverRepo,
@@ -71,7 +69,6 @@ func NewTerminalHandler(serverService server.Service, serverRepo server.Reposito
 		securityService:   securityService,
 		webDevPort:        webDevPort,
 		completionService: completionService,
-		systemConfigSvc:   systemConfigSvc,
 		credentialStore:   credentialStore,
 		completionSubs:    make(map[completionBroadcastKey]map[*completionSubscriber]struct{}),
 	}
@@ -159,7 +156,11 @@ type ErrorMessage struct {
 
 // FetchCompletionDataMessage 获取补全数据请求
 type FetchCompletionDataMessage struct {
-	HistoryLimit int `json:"historyLimit"` // 历史命令数量限制，默认500
+	HistoryLimit    int   `json:"historyLimit"`              // 历史命令数量限制，默认500
+	IncludeHistory  *bool `json:"includeHistory,omitempty"`  // 是否拉取远端历史
+	IncludeScripts  *bool `json:"includeScripts,omitempty"`  // 是否拉取脚本库
+	CacheTTLMinutes int   `json:"cacheTtlMinutes,omitempty"` // 缓存TTL（分钟）
+	CacheMaxEntries int   `json:"cacheMaxEntries,omitempty"` // 最大缓存条目数
 }
 
 // CompletionDataResponse 补全数据响应
@@ -1130,33 +1131,19 @@ func (h *TerminalHandler) HandleSSH(c *gin.Context) {
 						}
 
 						fetchOpts := completion.FetchOptions{
-							HistoryLimit:   fetchReq.HistoryLimit,
-							IncludeHistory: true,
-							IncludeScripts: true,
+							HistoryLimit:    fetchReq.HistoryLimit,
+							IncludeHistory:  true,
+							IncludeScripts:  true,
+							CacheTTLMinutes: fetchReq.CacheTTLMinutes,
+							MaxCacheSize:    fetchReq.CacheMaxEntries,
 						}
 
-						// 运行时读取系统配置，使补全提供者与缓存配置动态生效
-						if h.systemConfigSvc != nil {
-							if providers, cfgErr := h.systemConfigSvc.GetCompletionProviders(context.Background()); cfgErr != nil {
-								log.Printf("Failed to get completion providers config: %v", cfgErr)
-							} else if providers != nil {
-								fetchOpts.IncludeHistory = providers.RemoteHistory
-								fetchOpts.IncludeScripts = providers.Script
-							}
-
-							if quotas, cfgErr := h.systemConfigSvc.GetCompletionQuotas(context.Background()); cfgErr != nil {
-								log.Printf("Failed to get completion quotas config: %v", cfgErr)
-							} else if quotas != nil && !quotas.RemoteHistoryUnlimited && quotas.RemoteHistorySoftMax > 0 && fetchOpts.HistoryLimit > quotas.RemoteHistorySoftMax {
-								fetchOpts.HistoryLimit = quotas.RemoteHistorySoftMax
-							}
-
-							if cacheCfg, cfgErr := h.systemConfigSvc.GetCompletionCache(context.Background()); cfgErr != nil {
-								log.Printf("Failed to get completion cache config: %v", cfgErr)
-							} else if cacheCfg != nil {
-								h.completionService.UpdateCacheConfig(cacheCfg.TTLMinutes, cacheCfg.MaxEntries)
-							}
+						if fetchReq.IncludeHistory != nil {
+							fetchOpts.IncludeHistory = *fetchReq.IncludeHistory
 						}
-
+						if fetchReq.IncludeScripts != nil {
+							fetchOpts.IncludeScripts = *fetchReq.IncludeScripts
+						}
 						if !fetchOpts.IncludeHistory {
 							fetchOpts.HistoryLimit = 0
 						}

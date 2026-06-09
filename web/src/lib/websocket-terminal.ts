@@ -64,6 +64,7 @@ export interface TerminalWebSocketOptions {
   onHostKeyPrompt?: (prompt: TerminalHostKeyPrompt, respond: TerminalHostKeyResponder) => void // SSH主机密钥变更确认回调
   onConnectionPhase?: (phase: TerminalConnectionPhase) => void
   enableCompletionFetch?: boolean // 是否在连接成功后自动拉取补全数据
+  completionFetchOptions?: CompletionFetchOptions
   createAuthTicket?: TerminalWebSocketAuthTicketProvider
   createWebSocketUrl?: TerminalWebSocketUrlResolver
   WebSocketCtor?: TerminalWebSocketConstructor
@@ -195,6 +196,14 @@ export interface CompletionUpdateResponse {
   newCommand: string
 }
 
+export interface CompletionFetchOptions {
+  historyLimit?: number
+  includeHistory?: boolean
+  includeScripts?: boolean
+  cacheTtlMinutes?: number
+  cacheMaxEntries?: number
+}
+
 export interface ScriptItem {
   name: string
   content: string
@@ -221,6 +230,7 @@ export class TerminalWebSocket {
   private onHostKeyPrompt?: (prompt: TerminalHostKeyPrompt, respond: TerminalHostKeyResponder) => void
   private onConnectionPhase?: (phase: TerminalConnectionPhase) => void
   private enableCompletionFetch: boolean
+  private completionFetchOptions?: CompletionFetchOptions
   private createTerminalAuthTicket: TerminalWebSocketAuthTicketProvider
   private createTerminalWebSocketUrl: TerminalWebSocketUrlResolver
   private WebSocketCtor?: TerminalWebSocketConstructor
@@ -258,6 +268,7 @@ export class TerminalWebSocket {
     this.onHostKeyPrompt = options.onHostKeyPrompt
     this.onConnectionPhase = options.onConnectionPhase
     this.enableCompletionFetch = options.enableCompletionFetch ?? true
+    this.completionFetchOptions = options.completionFetchOptions
     this.createTerminalAuthTicket = options.createAuthTicket ?? defaultCreateTerminalAuthTicket
     this.createTerminalWebSocketUrl = options.createWebSocketUrl ?? defaultCreateTerminalWebSocketUrl
     this.WebSocketCtor = options.WebSocketCtor
@@ -474,16 +485,25 @@ export class TerminalWebSocket {
   /**
    * 请求补全数据
    */
-  fetchCompletionData(historyLimit: number = 500): void {
+  fetchCompletionData(options: number | CompletionFetchOptions = this.completionFetchOptions ?? {}): void {
     if (!this.ws || this.ws.readyState !== this.ws.OPEN) {
       console.warn("[TerminalWS] WebSocket 未连接，无法请求补全数据")
       return
     }
 
     try {
+      const data = typeof options === "number"
+        ? { historyLimit: options }
+        : {
+            historyLimit: options.historyLimit ?? 500,
+            includeHistory: options.includeHistory ?? true,
+            includeScripts: options.includeScripts ?? true,
+            cacheTtlMinutes: options.cacheTtlMinutes,
+            cacheMaxEntries: options.cacheMaxEntries,
+          }
       const message = {
         type: "fetch_completion_data",
-        data: { historyLimit }
+        data,
       }
       this.ws.send(JSON.stringify(message))
     } catch (error) {
@@ -598,6 +618,10 @@ export class TerminalWebSocket {
     this.enableCompletionFetch = enabled
   }
 
+  setCompletionFetchOptions(options?: CompletionFetchOptions): void {
+    this.completionFetchOptions = options
+  }
+
   /**
    * 断开连接
    */
@@ -668,7 +692,7 @@ export class TerminalWebSocket {
 
         // SSH连接建立后按需请求补全数据
         if (this.enableCompletionFetch) {
-          this.fetchCompletionData(500)
+          this.fetchCompletionData()
         }
         break
       case "completion_data":

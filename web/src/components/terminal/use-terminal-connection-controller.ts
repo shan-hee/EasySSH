@@ -4,6 +4,7 @@ import type { Terminal } from "@xterm/xterm"
 import { useWebSocketConnection } from "@/hooks/useWebSocketConnection"
 import type {
   CompletionDataResponse,
+  CompletionFetchOptions,
   CompletionUpdateResponse,
   TerminalAuthPrompt,
   TerminalAuthPromptResponder,
@@ -21,6 +22,7 @@ type TerminalTranslator = (key: string, params?: Record<string, string | number>
 
 export interface TerminalCompletionConnectionBridge {
   enableCompletionFetch: boolean
+  completionFetchOptions?: CompletionFetchOptions
   handleCompletionData: (data: CompletionDataResponse) => void
   handleCompletionUpdate: (data: CompletionUpdateResponse) => void
   clearProviderData: () => void
@@ -78,6 +80,7 @@ export function useTerminalConnectionController({
   const formatTerminalErrorMessage = useTerminalConnectionErrorFormatter(tTerminal)
   const {
     enableCompletionFetch,
+    completionFetchOptions,
     handleCompletionData,
     handleCompletionUpdate,
     clearProviderData,
@@ -103,6 +106,7 @@ export function useTerminalConnectionController({
     cols: terminal?.cols || 80,
     rows: terminal?.rows || 24,
     enableCompletionFetch,
+    completionFetchOptions,
     onCompletionData: handleCompletionData,
     onCompletionUpdate: handleCompletionUpdate,
     onAuthPrompt: handleAuthPrompt,

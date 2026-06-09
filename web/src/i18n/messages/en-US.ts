@@ -1187,6 +1187,31 @@ const messages = {
     completionShowIconDescription: "Show type icons in completion items",
     completionShowDescriptionLabel: "Show description",
     completionShowDescriptionDescription: "Show detailed description text in completion items",
+    completionProvidersTitle: "Sources & quotas",
+    completionProvidersDescription: "Choose suggestion sources and control how much each source contributes",
+    completionProviderLocalLabel: "Local command library",
+    completionProviderLocalDescription: "Built-in common Linux/Unix commands and subcommands",
+    completionProviderScriptLabel: "Script library",
+    completionProviderScriptDescription: "Suggest from saved scripts",
+    completionProviderSessionLabel: "Session history",
+    completionProviderSessionDescription: "Suggest from commands executed in this terminal session",
+    completionProviderRemoteHistoryLabel: "Remote command history",
+    completionProviderRemoteHistoryDescription: "Fetch suggestions from shell history files on the server",
+    completionQuotaMinLabel: "Min",
+    completionQuotaMaxLabel: "Max",
+    completionQuotaItemsValue: "{count} items",
+    completionRemoteHistoryUnlimitedLabel: "Fill remaining slots",
+    completionRemoteHistoryUnlimitedDescription: "Allow remote history to fill the list when other sources are sparse",
+    completionRemoteHistorySoftMaxLabel: "Soft cap",
+    completionQuotaHelp: "Quotas only affect result allocation in the completion popup; they do not block command execution.",
+    completionCacheTitle: "Cache strategy",
+    completionCacheDescription: "Control caching for remote history and script completion data",
+    completionCacheTtlLabel: "Cache TTL",
+    completionCacheTtlValue: "{minutes} min",
+    completionCacheTtlHelp: "Completion data is fetched again after the cache expires",
+    completionCacheMaxEntriesLabel: "Max cache entries",
+    completionCacheMaxEntriesValue: "{count} items",
+    completionCacheMaxEntriesHelp: "Older least-used entries are evicted after the limit is reached",
     btnReset: "Reset to defaults",
     btnCancel: "Cancel",
     btnSave: "Save settings",
@@ -2327,7 +2352,6 @@ const messages = {
     pageTitle: "System settings",
     itemBasic: "Basic info",
     itemFileTransfer: "File transfer",
-    itemCompletion: "Completion",
     itemAccessControl: "Access control",
     itemSessionManagement: "Session management",
     itemNetworkSecurity: "Network security",
@@ -2556,55 +2580,6 @@ const messages = {
     performanceHintTitle: "Performance tips:",
     performanceHintExcludeRules:
       "Exclude rules: can significantly reduce download time and size (e.g. node_modules often takes hundreds of MB).",
-  },
-  settingsSystemCompletion: {
-    sectionMainTitle: "Completion",
-    sectionMainDescription:
-      "Configure global behavior for terminal command completion",
-    fieldEnabledLabel: "Enable command completion",
-    fieldEnabledDesc:
-      "Globally enable or disable terminal command completion",
-    disabledAlert:
-      "Completion is disabled. When enabled, users can press Tab in terminal to trigger completion.",
-    sectionProvidersTitle: "Completion providers & quotas",
-    sectionProvidersDescription:
-      "Configure completion data sources and their limits",
-    providerLocalTitle: "Local command library",
-    providerLocalDesc:
-      "Built-in 200+ common Linux/Unix commands and subcommands",
-    providerHistoryTitle: "History commands",
-    providerHistoryDesc:
-      "Suggest from recorded command history",
-    providerScriptTitle: "Script library",
-    providerScriptDesc:
-      "Suggest from scripts saved by users",
-    providerSessionTitle: "Session history",
-    providerSessionDesc:
-      "Suggest from commands in the current session",
-    providerRemoteHistoryTitle: "Remote history commands",
-    providerRemoteHistoryDesc:
-      "Suggest from shell history files on servers",
-    labelMin: "Min",
-    labelMax: "Max",
-    labelUnlimitedMode: "Unlimited mode",
-    labelUnlimitedModeDesc:
-      "Allow this source to fill remaining suggestion slots",
-    labelSoftLimit: "Soft limit",
-    quotaHint:
-      "Quotas keep results balanced across sources. “Min” guarantees at least this many, “Max” caps the maximum.",
-    sectionCacheTitle: "Cache settings",
-    sectionCacheDescription:
-      "Configure caching strategy for completion results",
-    fieldCacheTtl: "Cache TTL",
-    fieldCacheTtlSuffix: " minutes",
-    fieldCacheTtlDesc:
-      "How long completion results are kept in cache",
-    fieldCacheMax: "Max cache entries",
-    fieldCacheMaxSuffix: " items",
-    fieldCacheMaxDesc:
-      "Maximum number of cached completion results; excess entries are evicted using LRU",
-    finalAlert:
-      "These are global completion settings. Users can further customize trigger behavior and limits in terminal settings.",
   },
   settingsSystemI18n: {
     sectionTitle: "Internationalization",

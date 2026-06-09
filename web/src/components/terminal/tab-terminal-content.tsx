@@ -4,7 +4,7 @@
  * 包含独立的 MonitorWebSocketProvider
  */
 
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import { MonitorWebSocketProvider } from './monitor/contexts/MonitorWebSocketContext'
 import { Button } from '@/components/ui/button'
 import { FolderOpen, Activity, Bot } from 'lucide-react'
@@ -27,7 +27,12 @@ import { useTabUIStore } from '@/stores/tab-ui-store'
 import { useOptionalSshWorkspace } from '@/components/ssh-workspace/ssh-workspace'
 import { createWorkspaceTransferAuthTicketProviderAdapter } from '@/lib/session/workspace-adapters'
 import type { TerminalConnectionPhase, TerminalSession } from './types'
-import type { TerminalSettings } from './terminal-settings-dialog'
+import {
+  buildTerminalCompletionConfig,
+  buildTerminalCompletionFetchOptions,
+  buildTerminalCompletionProviderFlags,
+  type TerminalSettings,
+} from './terminal-settings'
 import type { Server } from "@/lib/server-types"
 import type { WorkspaceTransferTask } from "@/lib/session/workspace"
 import { useTranslation } from "react-i18next"
@@ -366,6 +371,52 @@ export function TabTerminalContent({
       ? withTerminalBackgroundOpacity(pageTheme.background, settings.opacity / 100)
       : pageTheme.background
     : 'transparent'
+  const completionConfig = useMemo(
+    () => buildTerminalCompletionConfig(settings),
+    [
+      settings.completionAutoDelay,
+      settings.completionCache.maxEntries,
+      settings.completionCache.ttlMinutes,
+      settings.completionEnabled,
+      settings.completionMaxItems,
+      settings.completionProviders.local,
+      settings.completionProviders.remoteHistory,
+      settings.completionProviders.script,
+      settings.completionProviders.session,
+      settings.completionQuotas.localMax,
+      settings.completionQuotas.localMin,
+      settings.completionQuotas.remoteHistorySoftMax,
+      settings.completionQuotas.remoteHistoryUnlimited,
+      settings.completionQuotas.scriptMax,
+      settings.completionQuotas.scriptMin,
+      settings.completionQuotas.sessionMax,
+      settings.completionQuotas.sessionMin,
+      settings.completionShowDescription,
+      settings.completionShowIcon,
+      settings.completionTrigger,
+    ],
+  )
+  const completionProviderEnabled = useMemo(
+    () => buildTerminalCompletionProviderFlags(settings),
+    [
+      settings.completionProviders.local,
+      settings.completionProviders.remoteHistory,
+      settings.completionProviders.script,
+      settings.completionProviders.session,
+    ],
+  )
+  const completionFetchOptions = useMemo(
+    () => buildTerminalCompletionFetchOptions(settings),
+    [
+      settings.completionCache.maxEntries,
+      settings.completionCache.ttlMinutes,
+      settings.completionEnabled,
+      settings.completionProviders.remoteHistory,
+      settings.completionProviders.script,
+      settings.completionQuotas.remoteHistorySoftMax,
+      settings.completionQuotas.remoteHistoryUnlimited,
+    ],
+  )
   const hasBackgroundImage = isTerminalSession && settings.backgroundImage.trim().length > 0
   const enableTerminalWebgl = true
   const connectionLoaderServerName =
@@ -651,6 +702,9 @@ export function TabTerminalContent({
                   completionMaxItems={settings.completionMaxItems}
                   completionShowIcon={settings.completionShowIcon}
                   completionShowDescription={settings.completionShowDescription}
+                  completionConfig={completionConfig}
+                  completionProviderEnabled={completionProviderEnabled}
+                  completionFetchOptions={completionFetchOptions}
                   enableWebgl={enableTerminalWebgl}
                   transparentBackground={surface === "transparent" || hasBackgroundImage}
                   backgroundOpacity={settings.opacity / 100}

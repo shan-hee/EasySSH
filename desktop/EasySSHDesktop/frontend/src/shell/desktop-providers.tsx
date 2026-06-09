@@ -1,7 +1,6 @@
 import type { ReactNode } from "react"
 import { BrowserRouter } from "react-router-dom"
 import {
-  CompletionConfigProvider,
   DEFAULT_SYSTEM_CONFIG,
   SidebarProvider,
   StaticSystemConfigProvider,
@@ -21,11 +20,9 @@ export function DesktopProviders({ children }: { children: ReactNode }) {
               system_name: "EasySSH Desktop",
             }}
           >
-            <CompletionConfigProvider>
-              <SidebarProvider defaultOpen={false} className="easyssh-desktop-sidebar-context">
-                {children}
-              </SidebarProvider>
-            </CompletionConfigProvider>
+            <SidebarProvider defaultOpen={false} className="easyssh-desktop-sidebar-context">
+              {children}
+            </SidebarProvider>
           </StaticSystemConfigProvider>
         </QueryProvider>
         <Toaster richColors position="top-right" />

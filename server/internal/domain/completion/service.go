@@ -35,15 +35,16 @@ type CompletionData struct {
 
 // FetchOptions 拉取补全数据选项
 type FetchOptions struct {
-	HistoryLimit   int
-	IncludeHistory bool
-	IncludeScripts bool
+	HistoryLimit    int
+	IncludeHistory  bool
+	IncludeScripts  bool
+	CacheTTLMinutes int
+	MaxCacheSize    int
 }
 
 // Service 补全服务接口
 type Service interface {
 	FetchCompletionData(client *ssh.Client, userID uuid.UUID, serverID uuid.UUID, opts FetchOptions) (*CompletionData, error)
-	UpdateCacheConfig(cacheTTLMinutes int, maxCacheSize int)
 	AppendHistoryCommand(userID uuid.UUID, serverID uuid.UUID, command string)
 	ClearCache(userID uuid.UUID, serverID uuid.UUID)
 	ClearUserCache(userID uuid.UUID)
@@ -64,6 +65,7 @@ type cacheEntry struct {
 	data      *CompletionData
 	timestamp time.Time
 	lastUsed  time.Time // 最后使用时间（用于LRU淘汰）
+	ttl       time.Duration
 }
 
 type service struct {
@@ -111,7 +113,11 @@ func (s *service) cleanupCache() {
 		now := time.Now()
 		expiredCount := 0
 		for key, entry := range s.cache {
-			if now.Sub(entry.timestamp) > s.cacheTTL {
+			ttl := entry.ttl
+			if ttl <= 0 {
+				ttl = s.cacheTTL
+			}
+			if now.Sub(entry.timestamp) > ttl {
 				delete(s.cache, key)
 				expiredCount++
 			}
@@ -131,57 +137,13 @@ func normalizeFetchOptions(opts FetchOptions) FetchOptions {
 	if !opts.IncludeHistory {
 		opts.HistoryLimit = 0
 	}
+	if opts.CacheTTLMinutes <= 0 {
+		opts.CacheTTLMinutes = int(defaultCacheTTLMinutes)
+	}
+	if opts.MaxCacheSize <= 0 {
+		opts.MaxCacheSize = defaultMaxCacheSize
+	}
 	return opts
-}
-
-// UpdateCacheConfig 运行时更新缓存配置
-func (s *service) UpdateCacheConfig(cacheTTLMinutes int, maxCacheSize int) {
-	if cacheTTLMinutes <= 0 {
-		cacheTTLMinutes = defaultCacheTTLMinutes
-	}
-	if maxCacheSize <= 0 {
-		maxCacheSize = defaultMaxCacheSize
-	}
-
-	newTTL := time.Duration(cacheTTLMinutes) * time.Minute
-
-	s.cacheMutex.Lock()
-	defer s.cacheMutex.Unlock()
-
-	changed := false
-	if s.cacheTTL != newTTL {
-		s.cacheTTL = newTTL
-		changed = true
-	}
-	if s.maxCacheSize != maxCacheSize {
-		s.maxCacheSize = maxCacheSize
-		changed = true
-	}
-
-	// 若最大容量变小，立即执行 LRU 淘汰
-	for len(s.cache) > s.maxCacheSize {
-		var oldestKey cacheKey
-		var oldestTime time.Time
-		first := true
-
-		for k, entry := range s.cache {
-			if first || entry.lastUsed.Before(oldestTime) {
-				oldestKey = k
-				oldestTime = entry.lastUsed
-				first = false
-			}
-		}
-
-		if first {
-			break
-		}
-		delete(s.cache, oldestKey)
-	}
-
-	if changed {
-		log.Printf("Updated completion cache config: ttl=%dmin, max_size=%d (current cache size: %d)",
-			cacheTTLMinutes, maxCacheSize, len(s.cache))
-	}
 }
 
 func (s *service) FetchCompletionData(client *ssh.Client, userID uuid.UUID, serverID uuid.UUID, opts FetchOptions) (*CompletionData, error) {
@@ -198,7 +160,8 @@ func (s *service) FetchCompletionData(client *ssh.Client, userID uuid.UUID, serv
 
 	s.cacheMutex.Lock()
 	if entry, exists := s.cache[key]; exists {
-		if time.Since(entry.timestamp) < s.cacheTTL {
+		requestTTL := time.Duration(opts.CacheTTLMinutes) * time.Minute
+		if time.Since(entry.timestamp) < requestTTL {
 			// 更新最后使用时间（LRU）
 			entry.lastUsed = time.Now()
 			s.cacheMutex.Unlock()
@@ -267,7 +230,7 @@ func (s *service) FetchCompletionData(client *ssh.Client, userID uuid.UUID, serv
 	s.cacheMutex.Lock()
 
 	// 检查是否超过最大缓存大小
-	if len(s.cache) >= s.maxCacheSize {
+	if len(s.cache) >= opts.MaxCacheSize {
 		// 执行LRU淘汰：找到最久未使用的条目
 		var oldestKey cacheKey
 		var oldestTime time.Time
@@ -292,11 +255,12 @@ func (s *service) FetchCompletionData(client *ssh.Client, userID uuid.UUID, serv
 		data:      data,
 		timestamp: now,
 		lastUsed:  now,
+		ttl:       time.Duration(opts.CacheTTLMinutes) * time.Minute,
 	}
 	s.cacheMutex.Unlock()
 
 	log.Printf("Cached completion data for user: %s, server: %s (cache size: %d/%d)",
-		userID, serverID, len(s.cache), s.maxCacheSize)
+		userID, serverID, len(s.cache), opts.MaxCacheSize)
 
 	return data, nil
 }

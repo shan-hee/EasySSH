@@ -27,7 +27,11 @@ import {
   isUpArrow,
   parseCompletionContext,
 } from "@/lib/completion/utils"
-import type { CompletionDataResponse, CompletionUpdateResponse } from "@/lib/websocket-terminal"
+import type {
+  CompletionDataResponse,
+  CompletionFetchOptions,
+  CompletionUpdateResponse,
+} from "@/lib/websocket-terminal"
 
 export type CompletionPlacement = "top" | "bottom"
 
@@ -60,6 +64,7 @@ export interface UseTerminalCompletionControllerOptions {
   completionShowIcon: boolean
   completionShowDescription: boolean
   providerEnabled: TerminalCompletionProviderFlags
+  completionFetchOptions?: CompletionFetchOptions
   sendInputRef: MutableRefObject<(data: string) => void>
   completionUpdateSenderRef: MutableRefObject<((command: string) => void) | null>
   onCommand: (command: string) => void
@@ -74,6 +79,7 @@ export interface UseTerminalCompletionControllerResult {
   handleCompletionUpdate: (data: CompletionUpdateResponse) => void
   clearProviderData: () => void
   enableCompletionFetch: boolean
+  completionFetchOptions?: CompletionFetchOptions
 }
 
 const emptyCompletionState: TerminalCompletionState = {
@@ -98,6 +104,7 @@ export function useTerminalCompletionController({
   completionShowIcon,
   completionShowDescription,
   providerEnabled,
+  completionFetchOptions,
   sendInputRef,
   completionUpdateSenderRef,
   onCommand,
@@ -471,5 +478,6 @@ export function useTerminalCompletionController({
     handleCompletionUpdate,
     clearProviderData,
     enableCompletionFetch: effectiveCompletionEnabled && (providerEnabled.remoteHistory || providerEnabled.script),
+    completionFetchOptions,
   }
 }

@@ -7,6 +7,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   TerminalWebSocket,
   type CompletionDataResponse,
+  type CompletionFetchOptions,
   type CompletionUpdateResponse,
   type TerminalConnectionPhase,
   type TerminalConnectionError,
@@ -40,6 +41,7 @@ export interface WebSocketConnectionConfig {
   onConnectionPhase?: (phase: TerminalConnectionPhase) => void
   formatErrorMessage?: (error: TerminalConnectionError) => string
   enableCompletionFetch?: boolean
+  completionFetchOptions?: CompletionFetchOptions
   createAuthTicket?: TerminalWebSocketAuthTicketProvider
   createWebSocketUrl?: TerminalWebSocketUrlResolver
   WebSocketCtor?: TerminalWebSocketConstructor
@@ -66,6 +68,7 @@ export function useWebSocketConnection(config: WebSocketConnectionConfig) {
     onConnectionPhase,
     formatErrorMessage,
     enableCompletionFetch,
+    completionFetchOptions,
     createAuthTicket,
     createWebSocketUrl,
     WebSocketCtor,
@@ -426,6 +429,7 @@ export function useWebSocketConnection(config: WebSocketConnectionConfig) {
           reportConnectionPhase(phase)
         },
         enableCompletionFetch: !!enableCompletionFetch,
+        completionFetchOptions,
         createAuthTicket,
         createWebSocketUrl,
         WebSocketCtor,
@@ -472,12 +476,13 @@ export function useWebSocketConnection(config: WebSocketConnectionConfig) {
 
     const shouldFetch = !!enableCompletionFetch
     currentWs.setCompletionFetchEnabled(shouldFetch)
+    currentWs.setCompletionFetchOptions(completionFetchOptions)
 
     // 开关从关闭切到开启且连接已建立时，主动拉取一次补全数据
     if (shouldFetch && currentWs.isConnected()) {
-      currentWs.fetchCompletionData(500)
+      currentWs.fetchCompletionData(completionFetchOptions)
     }
-  }, [enableCompletionFetch, getCurrentSessionWs, sessionId, serverId])
+  }, [completionFetchOptions, enableCompletionFetch, getCurrentSessionWs, sessionId, serverId])
 
   const sendInput = useCallback((data: string) => {
     const currentWs = getCurrentSessionWs()

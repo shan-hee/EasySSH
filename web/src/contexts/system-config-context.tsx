@@ -42,27 +42,6 @@ export const DEFAULT_SYSTEM_CONFIG: SystemConfig = {
   transfer_max_storage_gb: 10,
   transfer_max_concurrency: 2,
   transfer_cleanup_enabled: true,
-  completion_enabled: true,
-  completion_providers: {
-    local: true,
-    remote_history: true,
-    script: true,
-    session: true,
-  },
-  completion_quotas: {
-    local_min: 1,
-    local_max: 3,
-    script_min: 0,
-    script_max: 2,
-    session_min: 0,
-    session_max: 2,
-    remote_history_unlimited: true,
-    remote_history_soft_max: 7,
-  },
-  completion_cache: {
-    ttl_minutes: 5,
-    max_entries: 100,
-  },
   tab_session: {
     max_tabs: 50,
     inactive_minutes: 60,

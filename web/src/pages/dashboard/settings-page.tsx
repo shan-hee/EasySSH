@@ -7,7 +7,6 @@ import {
   Settings,
   Globe,
   HardDrive,
-  Command,
   Shield,
   Clock,
   Archive,
@@ -20,7 +19,6 @@ import { cn } from "@/lib/utils"
 // 导入所有配置子页签组件
 import { BasicTab } from "./settings/system-config/_tabs/basic-tab"
 import { FileTransferTab } from "./settings/system-config/_tabs/file-transfer-tab"
-import { CompletionTab } from "./settings/system-config/_tabs/completion-tab"
 
 import { AccessControlTab } from "./settings/security-center/_tabs/access-control-tab"
 import { SessionManagementTab } from "./settings/security-center/_tabs/session-management-tab"
@@ -43,7 +41,6 @@ interface TabItem {
 const tabs: TabItem[] = [
   { id: "basic", nameKey: "itemBasic", icon: Settings, component: BasicTab },
   { id: "file-transfer", nameKey: "itemFileTransfer", icon: HardDrive, component: FileTransferTab },
-  { id: "completion", nameKey: "itemCompletion", icon: Command, component: CompletionTab },
   { id: "access-control", nameKey: "itemAccessControl", icon: Shield, component: AccessControlTab },
   { id: "session", nameKey: "itemSessionManagement", icon: Clock, component: SessionManagementTab },
   { id: "network", nameKey: "itemNetworkSecurity", icon: Globe, component: NetworkSecurityTab },
@@ -60,11 +57,14 @@ function SettingsContent() {
   const { pathname } = useLocation()
   const [searchParams] = useSearchParams()
 
-  const initialSection = searchParams.get("section") || "basic"
+  const initialSectionParam = searchParams.get("section") || "basic"
+  const initialSection = tabs.some((tab) => tab.id === initialSectionParam)
+    ? initialSectionParam
+    : "basic"
   const [activeSection, setActiveSection] = useState(initialSection)
 
-  const activeTab = tabs.find((tab) => tab.id === activeSection)
-  const ActiveComponent = activeTab?.component
+  const activeTab = tabs.find((tab) => tab.id === activeSection) ?? tabs[0]
+  const ActiveComponent = activeTab.component
 
   const handleSectionChange = (section: string) => {
     setActiveSection(section)

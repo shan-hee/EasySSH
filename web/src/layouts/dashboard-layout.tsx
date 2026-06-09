@@ -5,7 +5,6 @@ import SidebarProviderServer from "@/components/sidebar-provider-server"
 import { AppSidebar } from "@/components/app-sidebar"
 import { SidebarInset, useSidebar } from "@/components/ui/sidebar"
 import { ClientAuthProvider } from "@/components/client-auth-provider"
-import { CompletionConfigProvider } from "@/contexts/completion-config-context"
 import { useSystemConfig } from "@/contexts/system-config-context"
 import { DashboardI18nProvider } from "@/providers/dashboard-i18n-provider"
 import { getAuthRedirectDecision, getCurrentBrowserPath } from "@/lib/auth-redirect"
@@ -70,18 +69,16 @@ export default function DashboardLayout() {
   return (
     <ClientAuthProvider initialUser={initialUser}>
       <DashboardI18nProvider>
-        <CompletionConfigProvider>
-          <SidebarProviderServer>
-            <MobileSidebarRouteCloser />
-            <AppSidebar />
-            <SidebarInset>
-              {/* 添加淡入动画，使界面显示更平滑 */}
-              <div className="animate-in fade-in duration-300 flex min-h-0 flex-1 flex-col overflow-hidden scrollbar-custom">
-                <Outlet />
-              </div>
-            </SidebarInset>
-          </SidebarProviderServer>
-        </CompletionConfigProvider>
+        <SidebarProviderServer>
+          <MobileSidebarRouteCloser />
+          <AppSidebar />
+          <SidebarInset>
+            {/* 添加淡入动画，使界面显示更平滑 */}
+            <div className="animate-in fade-in duration-300 flex min-h-0 flex-1 flex-col overflow-hidden scrollbar-custom">
+              <Outlet />
+            </div>
+          </SidebarInset>
+        </SidebarProviderServer>
       </DashboardI18nProvider>
     </ClientAuthProvider>
   )

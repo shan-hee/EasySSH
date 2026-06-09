@@ -24,8 +24,14 @@ import {
 import { SessionSplitView } from "@/components/tabs/session-split-view"
 import {
   TerminalSettingsDialog,
-  type TerminalSettings,
 } from "./terminal-settings-dialog"
+import {
+  DEFAULT_TERMINAL_SETTINGS,
+  loadTerminalSettingsFromStorage,
+  normalizeTerminalSettings,
+  TERMINAL_SETTINGS_STORAGE_KEY,
+  type TerminalSettings,
+} from "./terminal-settings"
 import { TabTerminalContent } from "./tab-terminal-content"
 import { useTabUIStore } from "@/stores/tab-ui-store"
 import { useTranslation } from "react-i18next"
@@ -975,43 +981,13 @@ export function TerminalComponent({
     // 从 localStorage 加载设置
     if (typeof window !== 'undefined') {
       try {
-        const saved = localStorage.getItem('terminal-settings')
-        if (saved) {
-          return JSON.parse(saved)
-        }
+        return loadTerminalSettingsFromStorage(localStorage)
       } catch (error) {
         console.error('Failed to load terminal settings:', error)
       }
     }
     // 默认设置
-    return {
-      fontSize: 14,
-      fontFamily: 'JetBrains Mono',
-      cursorStyle: 'block',
-      cursorBlink: true,
-      scrollback: 1000,
-      rightClickPaste: true,
-      copyOnSelect: true,
-      theme: 'default',
-      opacity: 95,
-      backgroundImage: '',
-      backgroundImageOpacity: 20,
-      maxTabs: 50,
-      inactiveMinutes: 60,
-      hibernateBackground: true,
-      autoReconnect: true,
-      confirmBeforeClose: true,
-      monitorInterval: 2, // 默认 2 秒
-      copyShortcut: 'Ctrl+Shift+C',
-      pasteShortcut: 'Ctrl+Shift+V',
-      clearShortcut: 'Ctrl+L',
-      completionEnabled: true,
-      completionTrigger: 'auto',
-      completionAutoDelay: 300,
-      completionMaxItems: 10,
-      completionShowIcon: true,
-      completionShowDescription: true,
-    }
+    return DEFAULT_TERMINAL_SETTINGS
   })
 
   const splitPaneHeaderBackground = useMemo<SessionSplitPaneHeaderBackground>(() => {
@@ -1070,10 +1046,11 @@ export function TerminalComponent({
 
   // 保存设置到 localStorage（使用防抖优化性能）
   const handleSettingsChange = (newSettings: TerminalSettings) => {
-    setSettings(newSettings)
+    const normalizedSettings = normalizeTerminalSettings(newSettings)
+    setSettings(normalizedSettings)
     onBehaviorSettingsChange?.({
-      maxTabs: newSettings.maxTabs,
-      inactiveMinutes: newSettings.inactiveMinutes,
+      maxTabs: normalizedSettings.maxTabs,
+      inactiveMinutes: normalizedSettings.inactiveMinutes,
     })
 
     // 防抖保存到 localStorage，避免频繁写入
@@ -1084,7 +1061,7 @@ export function TerminalComponent({
     saveTimerRef.current = setTimeout(() => {
       if (typeof window !== 'undefined') {
         try {
-          localStorage.setItem('terminal-settings', JSON.stringify(newSettings))
+          localStorage.setItem(TERMINAL_SETTINGS_STORAGE_KEY, JSON.stringify(normalizedSettings))
         } catch (error) {
           console.error('Failed to save terminal settings:', error)
         }
