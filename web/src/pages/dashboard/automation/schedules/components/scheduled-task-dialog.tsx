@@ -20,8 +20,9 @@ import {
 } from "@/components/ui/select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
-import { Search, Upload, Download, Server, Clock, Settings2 } from "lucide-react"
+import { Upload, Download, Server, Clock, Settings2 } from "lucide-react"
 import type { ScheduledTaskType, Server as ApiServer, Script } from "@/lib/api"
+import { ServerTagSelector } from "./server-tag-selector"
 
 type ScheduledTaskDialogProps = {
   open: boolean
@@ -63,38 +64,9 @@ export function ScheduledTaskDialog({
   onOpenScriptLibrary,
   t,
 }: ScheduledTaskDialogProps) {
-  const [serverSearchTerm, setServerSearchTerm] = useState("")
   const [currentTab, setCurrentTab] = useState("basic")
 
   const isSftpTask = task.task_type === "sftp_upload" || task.task_type === "sftp_download"
-  const filteredServers = servers.filter(
-    (server) =>
-      (server.name?.toLowerCase().includes(serverSearchTerm.toLowerCase()) ?? false) ||
-      server.host.toLowerCase().includes(serverSearchTerm.toLowerCase())
-  )
-
-  const toggleServer = (serverId: string) => {
-    const server = servers.find((s) => s.id === serverId)
-    if (server && server.status !== "online") {
-      return
-    }
-
-    onTaskChange({
-      ...task,
-      server_ids: task.server_ids.includes(serverId)
-        ? task.server_ids.filter((id) => id !== serverId)
-        : [...task.server_ids, serverId],
-    })
-  }
-
-  const toggleSelectAll = () => {
-    const onlineServers = filteredServers.filter((s) => s.status === "online")
-    if (task.server_ids.length === onlineServers.length) {
-      onTaskChange({ ...task, server_ids: [] })
-    } else {
-      onTaskChange({ ...task, server_ids: onlineServers.map((s) => s.id) })
-    }
-  }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -371,59 +343,14 @@ export function ScheduledTaskDialog({
           <TabsContent value="schedule" className="flex-1 min-h-0 overflow-y-auto scrollbar-custom mt-4 space-y-4 px-1">
             {/* 服务器选择 (仅非 SFTP 任务显示) */}
             {!isSftpTask && (
-              <div className="space-y-2">
-                <Label>
-                  {t("fieldTargetServers")} <span className="text-destructive">*</span>
-                </Label>
-                <div className="max-h-[240px] overflow-y-auto rounded-md border p-3">
-                  <div className="mb-2 flex items-center justify-between">
-                    <span className="text-sm text-muted-foreground">
-                      {t("selectedServersCount")}: {task.server_ids.length}
-                    </span>
-                    <Button variant="ghost" size="sm" onClick={toggleSelectAll}>
-                      {task.server_ids.length === filteredServers.filter((s) => s.status === "online").length
-                        ? t("unselectAll")
-                        : t("selectAll")}
-                    </Button>
-                  </div>
-                  <div className="relative mb-2">
-                    <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                    <Input
-                      placeholder={t("serverSearchPlaceholder")}
-                      className="pl-10"
-                      value={serverSearchTerm}
-                      onChange={(e) => setServerSearchTerm(e.target.value)}
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    {filteredServers
-                      .filter((s) => s.status === "online")
-                      .map((server) => (
-                        <div
-                          key={server.id}
-                          className={`flex cursor-pointer items-center gap-2 rounded p-2 hover:bg-accent ${
-                            task.server_ids.includes(server.id) ? "bg-accent" : ""
-                          }`}
-                          onClick={() => toggleServer(server.id)}
-                        >
-                          <input
-                            type="checkbox"
-                            checked={task.server_ids.includes(server.id)}
-                            onChange={() => toggleServer(server.id)}
-                            className="cursor-pointer"
-                          />
-                          <div className="flex-1">
-                            <div className="text-sm font-medium">{server.name || server.host}</div>
-                            <div className="text-xs text-muted-foreground">{server.host}</div>
-                          </div>
-                          <Badge variant="outline" className="text-xs">
-                            {server.status}
-                          </Badge>
-                        </div>
-                      ))}
-                  </div>
-                </div>
-              </div>
+              <ServerTagSelector
+                servers={servers}
+                selectedIds={task.server_ids}
+                onSelectedChange={(ids) => onTaskChange({ ...task, server_ids: ids })}
+                label={t("fieldTargetServers")}
+                required
+                t={t}
+              />
             )}
 
             {/* Cron 表达式 */}
