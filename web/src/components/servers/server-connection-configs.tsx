@@ -17,6 +17,7 @@ import {
  Server as ServerIcon,
  Loader2,
  Edit,
+ Copy,
  Trash2,
  LayoutGrid,
  List,
@@ -80,12 +81,14 @@ function ServerItemBody({
   viewMode,
   showActions = true,
   onEdit,
+  onDuplicate,
   onDelete,
 }: {
   server: Server
   viewMode: ViewMode
   showActions?: boolean
   onEdit?: (server: Server) => void
+  onDuplicate?: (server: Server) => void
   onDelete?: (id: string) => void
 }) {
   const { t } = useTranslation("servers")
@@ -119,13 +122,23 @@ function ServerItemBody({
           </p>
         </div>
 
-        {showActions && onEdit && onDelete && (
+        {showActions && onEdit && onDuplicate && onDelete && (
           <div
             className="absolute right-2 top-2 flex flex-col items-center gap-1 opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100 md:focus-within:opacity-100"
             onPointerDown={(e) => e.stopPropagation()}
             onClick={(e) => e.stopPropagation()}
             onDoubleClick={(e) => e.stopPropagation()}
           >
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 w-7 p-0 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+              onClick={() => onDuplicate(server)}
+              title={t("tooltipDuplicate")}
+              aria-label={t("tooltipDuplicate")}
+            >
+              <Copy className="h-3.5 w-3.5" />
+            </Button>
             <Button
               variant="ghost"
               size="sm"
@@ -187,13 +200,23 @@ function ServerItemBody({
         </div>
       )}
 
-      {showActions && onEdit && onDelete && (
+      {showActions && onEdit && onDuplicate && onDelete && (
         <div
           className="col-start-2 flex items-center justify-end gap-1 sm:col-start-auto sm:flex-shrink-0"
           onPointerDown={(e) => e.stopPropagation()}
           onClick={(e) => e.stopPropagation()}
           onDoubleClick={(e) => e.stopPropagation()}
         >
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-8 w-8 p-0 hover:bg-accent hover:text-accent-foreground"
+            onClick={() => onDuplicate(server)}
+            title={t("tooltipDuplicate")}
+            aria-label={t("tooltipDuplicate")}
+          >
+            <Copy className="h-4 w-4" />
+          </Button>
           <Button
             variant="ghost"
             size="sm"
@@ -271,12 +294,14 @@ function SortableServerItem({
   viewMode,
   onConnect,
   onEdit,
+  onDuplicate,
   onDelete,
 }: {
   server: Server
   viewMode: ViewMode
   onConnect: (id: string) => void
   onEdit: (server: Server) => void
+  onDuplicate: (server: Server) => void
   onDelete: (id: string) => void
 }) {
   const {
@@ -312,6 +337,7 @@ function SortableServerItem({
         server={server}
         viewMode={viewMode}
         onEdit={onEdit}
+        onDuplicate={onDuplicate}
         onDelete={onDelete}
       />
     </div>
@@ -331,6 +357,7 @@ export function ServerConnectionConfigs({
  const [filteredServers, setFilteredServers] = useState<Server[]>([])
  const [searchTerm, setSearchTerm] = useState("")
  const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
+ const [duplicatingServer, setDuplicatingServer] = useState<Server | null>(null)
  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
  const [editingServer, setEditingServer] = useState<Server | null>(null)
  const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null)
@@ -372,6 +399,27 @@ export function ServerConnectionConfigs({
  () => servers.find(server => server.id === deleteTargetId) || null,
  [deleteTargetId, servers]
  )
+
+ const duplicateInitialData = useMemo<Partial<ServerFormData> | undefined>(() => {
+ if (!duplicatingServer) return undefined
+
+ return {
+ name: t("duplicateName", { name: duplicatingServer.name || duplicatingServer.host }),
+ host: duplicatingServer.host,
+ port: duplicatingServer.port?.toString() || "22",
+ username: duplicatingServer.username,
+ authMethod: duplicatingServer.auth_method === "key" ? "privateKey" : "password",
+ password: "",
+ privateKey: "",
+ rememberPassword: false,
+ tags: duplicatingServer.tags || [],
+ description: duplicatingServer.description || "",
+ group: duplicatingServer.group || "",
+ jumpServer: "",
+ autoConnect: false,
+ keepAlive: true,
+ }
+ }, [duplicatingServer, t])
 
  // 配置拖拽传感器
  const sensors = useSensors(
@@ -454,6 +502,18 @@ export function ServerConnectionConfigs({
  const handleEdit = (server: Server) => {
  setEditingServer(server)
  setIsEditDialogOpen(true)
+ }
+
+ const handleDuplicate = (server: Server) => {
+ setDuplicatingServer(server)
+ setIsAddDialogOpen(true)
+ }
+
+ const handleAddDialogOpenChange = (nextOpen: boolean) => {
+ setIsAddDialogOpen(nextOpen)
+ if (!nextOpen) {
+ setDuplicatingServer(null)
+ }
  }
 
  const handleRequestDelete = (serverId: string) => {
@@ -562,7 +622,7 @@ export function ServerConnectionConfigs({
  const newServer = await serverApi.create(serverData)
 
  toast.success(t("toastCreateSuccess"))
- setIsAddDialogOpen(false)
+ handleAddDialogOpenChange(false)
 
  // 乐观更新：直接添加到本地列表，避免整个页面刷新
  setServers(prev => [...prev, newServer])
@@ -772,6 +832,7 @@ export function ServerConnectionConfigs({
  viewMode={viewMode}
  onConnect={handleConnect}
  onEdit={handleEdit}
+ onDuplicate={handleDuplicate}
  onDelete={handleRequestDelete}
  />
  ))}
@@ -858,10 +919,13 @@ export function ServerConnectionConfigs({
  {/* 添加服务器弹窗 */}
  <AddServerDialog
  open={isAddDialogOpen}
- onOpenChange={setIsAddDialogOpen}
+ onOpenChange={handleAddDialogOpenChange}
  onSubmit={handleAddServer}
  availableGroups={availableGroups}
  availableTags={availableTags}
+ title={duplicatingServer ? t("duplicateDialogTitle") : undefined}
+ description={duplicatingServer ? t("duplicateDialogDescription") : undefined}
+ initialData={duplicateInitialData}
  />
 
  {/* 编辑服务器弹窗 */}

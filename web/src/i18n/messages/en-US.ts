@@ -1194,6 +1194,7 @@ const messages = {
   servers: {
     pageTitle: "Connection configs",
     tooltipEdit: "Edit config",
+    tooltipDuplicate: "Duplicate config",
     tooltipDelete: "Delete server",
     searchPlaceholder: "Search by server name, host or username...",
     addServer: "Add server",
@@ -1261,6 +1262,10 @@ const messages = {
 
     // Quick add / edit dialog
     quickFormDialogTitle: "New connection",
+    duplicateDialogTitle: "Duplicate connection",
+    duplicateDialogDescription:
+      "Connection details have been copied. Review credentials before saving.",
+    duplicateName: "{name} copy",
     editDialogTitle: "Edit server",
     editDialogDescription:
       "Edit server connection information (host, port, username and authentication method), and choose whether to auto connect and keep the connection alive.",

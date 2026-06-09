@@ -1144,6 +1144,7 @@ const messages = {
   servers: {
     pageTitle: "连接配置",
     tooltipEdit: "编辑配置",
+    tooltipDuplicate: "复制配置",
     tooltipDelete: "删除服务器",
     searchPlaceholder: "搜索服务器名称、地址或用户名...",
     addServer: "添加服务器",
@@ -1212,6 +1213,10 @@ const messages = {
 
     // 快速新建 / 编辑连接对话框
     quickFormDialogTitle: "新建连接",
+    duplicateDialogTitle: "复制连接",
+    duplicateDialogDescription:
+      "已复制当前服务器的连接信息，请补充或调整凭据后保存。",
+    duplicateName: "{name} 副本",
     editDialogTitle: "编辑服务器",
     editDialogDescription:
       "编辑服务器连接信息（主机、端口、用户名与认证方式），并选择是否自动连接与保持连接。",

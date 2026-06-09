@@ -1,5 +1,5 @@
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import {
   Dialog,
   DialogContent,
@@ -31,6 +31,9 @@ interface AddServerDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   onSubmit?: (data: ServerFormData) => void
+  initialData?: Partial<ServerFormData>
+  title?: string
+  description?: string
   availableGroups?: string[]
   availableTags?: string[]
 }
@@ -52,50 +55,50 @@ export interface ServerFormData {
   keepAlive: boolean
 }
 
+const getEmptyFormData = (): ServerFormData => ({
+  name: "",
+  host: "",
+  port: "22",
+  username: "",
+  authMethod: "password",
+  password: "",
+  privateKey: "",
+  rememberPassword: false,
+  tags: [],
+  description: "",
+  group: "",
+  jumpServer: "",
+  autoConnect: false,
+  keepAlive: true,
+})
+
+const getInitialFormData = (initialData?: Partial<ServerFormData>): ServerFormData => ({
+  ...getEmptyFormData(),
+  ...initialData,
+  tags: initialData?.tags ? [...initialData.tags] : [],
+})
+
 export function AddServerDialog({
   open,
   onOpenChange,
   onSubmit,
+  initialData,
+  title,
+  description,
   availableGroups = [],
   availableTags = [],
 }: AddServerDialogProps) {
   // 认证方式切换改为使用 shadcn Tabs，统一以 formData.authMethod 为单一数据源
-  const [formData, setFormData] = useState<ServerFormData>({
-    name: "",
-    host: "",
-    port: "22",
-    username: "",
-    authMethod: "password",
-    password: "",
-    privateKey: "",
-    rememberPassword: false,
-    tags: [],
-    description: "",
-    group: "",
-    jumpServer: "",
-    autoConnect: false,
-    keepAlive: true,
-  })
+  const [formData, setFormData] = useState<ServerFormData>(() => getInitialFormData(initialData))
 
   const [newTag, setNewTag] = useState("")
   const { t: tServers } = useTranslation("servers")
 
-  const getEmptyFormData = (): ServerFormData => ({
-    name: "",
-    host: "",
-    port: "22",
-    username: "",
-    authMethod: "password",
-    password: "",
-    privateKey: "",
-    rememberPassword: false,
-    tags: [],
-    description: "",
-    group: "",
-    jumpServer: "",
-    autoConnect: false,
-    keepAlive: true,
-  })
+  useEffect(() => {
+    if (!open) return
+    setFormData(getInitialFormData(initialData))
+    setNewTag("")
+  }, [initialData, open])
 
   const handleInputChange = (field: keyof ServerFormData, value: string | boolean) => {
     setFormData(prev => ({
@@ -182,10 +185,10 @@ export function AddServerDialog({
       >
         <div className="px-6 pt-6">
           <DialogHeader>
-            <DialogTitle>{tServers("quickFormDialogTitle")}</DialogTitle>
+            <DialogTitle>{title || tServers("quickFormDialogTitle")}</DialogTitle>
             {/* 为无障碍提供描述，避免控制台警告 */}
             <DialogDescription className="sr-only">
-              {tServers("quickFormDialogDescription")}
+              {description || tServers("quickFormDialogDescription")}
             </DialogDescription>
           </DialogHeader>
         </div>
