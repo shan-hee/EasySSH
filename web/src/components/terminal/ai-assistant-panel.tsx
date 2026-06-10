@@ -61,6 +61,7 @@ import { cn } from "@/lib/utils"
 import type { TerminalSession } from "./types"
 
 const ANIMATION_DELAY = 160
+const PANEL_OPEN_SETTLE_DELAY = 180
 const SESSION_LIST_LIMIT = 30
 const PANEL_WIDTH_STORAGE_KEY = "easyssh:terminal-ai-assistant:panel-width"
 const DEFAULT_PANEL_WIDTH = 420
@@ -201,6 +202,7 @@ export function AiAssistantPanel({ isOpen, onClose, terminalSession, adapters }:
   const [sessionActionLoadingId, setSessionActionLoadingId] = useState<string | null>(null)
   const [panelWidth, setPanelWidth] = useState(DEFAULT_PANEL_WIDTH)
   const [isResizing, setIsResizing] = useState(false)
+  const [isOpenSettled, setIsOpenSettled] = useState(false)
 
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const panelRef = useRef<HTMLElement>(null)
@@ -323,6 +325,25 @@ export function AiAssistantPanel({ isOpen, onClose, terminalSession, adapters }:
   useEffect(() => {
     if (!isOpen) {
       setHistoryOpen(false)
+      setIsOpenSettled(false)
+      return
+    }
+
+    let timer = 0
+    const frame = window.requestAnimationFrame(() => {
+      timer = window.setTimeout(() => {
+        setIsOpenSettled(true)
+      }, PANEL_OPEN_SETTLE_DELAY)
+    })
+
+    return () => {
+      window.cancelAnimationFrame(frame)
+      window.clearTimeout(timer)
+    }
+  }, [isOpen])
+
+  useEffect(() => {
+    if (!isOpenSettled) {
       return
     }
 
@@ -331,10 +352,10 @@ export function AiAssistantPanel({ isOpen, onClose, terminalSession, adapters }:
     }, ANIMATION_DELAY)
 
     return () => window.clearTimeout(timer)
-  }, [isOpen])
+  }, [isOpenSettled])
 
   useEffect(() => {
-    if (!isOpen || !isConfigured || isConfigLoading || session || transport !== "idle" || error) {
+    if (!isOpenSettled || !isConfigured || isConfigLoading || session || transport !== "idle" || error) {
       return
     }
 
@@ -342,6 +363,23 @@ export function AiAssistantPanel({ isOpen, onClose, terminalSession, adapters }:
       return
     }
     restoreAttemptKeyRef.current = terminalSession.id
+
+    const restoreLatestTerminalSession = async () => {
+      try {
+        const response = await listSessions({ limit: 1, scope: terminalScope })
+        const latestSessionId = response.items[0]?.id
+        if (!latestSessionId) {
+          return
+        }
+
+        const restored = await restoreSession(latestSessionId, { silent: true })
+        if (restored) {
+          storeTerminalAISessionId(terminalSession.id, latestSessionId)
+        }
+      } catch {
+        // Opening the panel should stay instant even if history lookup fails.
+      }
+    }
 
     const storedSessionId = getStoredTerminalAISessionId(terminalSession.id)
     if (storedSessionId) {
@@ -351,59 +389,20 @@ export function AiAssistantPanel({ isOpen, onClose, terminalSession, adapters }:
         }
 
         removeStoredTerminalAISessionId(terminalSession.id, storedSessionId)
-        void startNewSession({
-          model: activeModel,
-          permissionMode,
-          scope: terminalScope,
-        }).then((response) => {
-          if (response) {
-            storeTerminalAISessionId(terminalSession.id, response.session_id)
-          }
-        })
+        void restoreLatestTerminalSession()
       })
       return
     }
 
-    void listSessions({ limit: 1, scope: terminalScope })
-      .then(async (response) => {
-        const latestSessionId = response.items[0]?.id
-        if (!latestSessionId) {
-          return false
-        }
-
-        const restored = await restoreSession(latestSessionId, { silent: true })
-        if (restored) {
-          storeTerminalAISessionId(terminalSession.id, latestSessionId)
-        }
-        return restored
-      })
-      .catch(() => false)
-      .then((restored) => {
-        if (restored) {
-          return
-        }
-
-        void startNewSession({
-          model: activeModel,
-          permissionMode,
-          scope: terminalScope,
-        }).then((response) => {
-          if (response) {
-            storeTerminalAISessionId(terminalSession.id, response.session_id)
-          }
-        })
-      })
+    void restoreLatestTerminalSession()
   }, [
-    activeModel,
     error,
-    isOpen,
+    isOpenSettled,
     isConfigured,
     isConfigLoading,
-    permissionMode,
     listSessions,
     restoreSession,
     session,
-    startNewSession,
     terminalScope,
     terminalSession.id,
     transport,
@@ -788,7 +787,7 @@ export function AiAssistantPanel({ isOpen, onClose, terminalSession, adapters }:
       className={cn(
         "absolute inset-y-0 right-0 z-40 h-full min-h-0 w-full shrink-0 overflow-hidden text-foreground",
         "md:relative md:inset-auto md:translate-x-0",
-        isResizing ? "transition-none" : "transition-all duration-200 ease-out",
+        isResizing ? "transition-none" : "transition-[transform,width,max-width] duration-150 ease-out",
         isOpen
           ? "translate-x-0 md:w-[var(--terminal-ai-panel-width)] md:max-w-[55vw]"
           : "translate-x-full md:w-0 md:max-w-[0px] md:border-l-0 md:shadow-none"
@@ -804,10 +803,10 @@ export function AiAssistantPanel({ isOpen, onClose, terminalSession, adapters }:
           "absolute inset-y-0 right-0 flex h-full min-h-0 w-full flex-col overflow-hidden border-l shadow-2xl backdrop-blur-xl",
           "border-border/70 bg-card/95 text-card-foreground",
           "md:w-[var(--terminal-ai-panel-width)]",
-          "transition-opacity ease-out",
+          "transition-opacity duration-75 ease-out",
           isOpen
-            ? "opacity-100 delay-75 duration-100"
-            : "opacity-0 delay-0 duration-0"
+            ? "opacity-100"
+            : "opacity-0"
         )}
         aria-hidden={!isOpen}
       >

@@ -4,7 +4,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from "@/compon
 import { Progress } from "@/components/ui/progress"
 import { cn } from "@/lib/utils"
 import { formatBytesString, formatSpeed } from "@/lib/format-utils"
-import { useWorkspaceSftpTranslator } from "@/components/ssh-workspace/use-workspace-translator"
+import { useWorkspaceSftpTranslator, type WorkspaceUiTranslator } from "@/components/ssh-workspace/use-workspace-translator"
 import { UploadProgressItem } from "@/components/sftp/upload-progress-item"
 import type { TransferJob } from "@/lib/api/transfer-jobs"
 import type { WorkspaceTransferTask } from "@/lib/session/workspace"
@@ -22,41 +22,41 @@ export interface TransferTaskPanelProps {
 const activeBackgroundStatuses = new Set(["staging", "queued", "running"])
 const removableBackgroundStatuses = new Set(["created", "completed", "failed", "cancelled", "expired"])
 
-function getBackgroundStatusLabel(job: TransferJob) {
+function getBackgroundStatusLabel(job: TransferJob, tSftp: WorkspaceUiTranslator) {
   switch (job.status) {
     case "created":
-      return "已暂存"
+      return tSftp("backgroundStatusCreated")
     case "staging":
-      return "暂存中"
+      return tSftp("backgroundStatusStaging")
     case "queued":
-      return "排队中"
+      return tSftp("backgroundStatusQueued")
     case "running":
-      return "传输中"
+      return tSftp("backgroundStatusRunning")
     case "completed":
-      return "已完成"
+      return tSftp("backgroundStatusCompleted")
     case "failed":
-      return "失败"
+      return tSftp("backgroundStatusFailed")
     case "cancelled":
-      return "已取消"
+      return tSftp("backgroundStatusCancelled")
     case "expired":
-      return "已过期"
+      return tSftp("backgroundStatusExpired")
     default:
       return job.status
   }
 }
 
-function getBackgroundStageLabel(job: TransferJob) {
+function getBackgroundStageLabel(job: TransferJob, tSftp: WorkspaceUiTranslator) {
   switch (job.stage) {
     case "staging":
-      return "暂存"
+      return tSftp("backgroundStageStaging")
     case "transfer_to_remote":
-      return "上传到远端"
+      return tSftp("backgroundStageTransferToRemote")
     case "download_from_remote":
-      return "从远端下载"
+      return tSftp("backgroundStageDownloadFromRemote")
     case "ready_for_download":
-      return "可取回"
+      return tSftp("backgroundStageReadyForDownload")
     case "cleanup":
-      return "清理"
+      return tSftp("backgroundStageCleanup")
     default:
       return job.stage
   }
@@ -73,6 +73,7 @@ function BackgroundTransferItem({
   onDelete?: (jobId: string) => void
   onDownloadArtifact?: (jobId: string) => void
 }) {
+  const tSftp = useWorkspaceSftpTranslator()
   const isActive = activeBackgroundStatuses.has(job.status)
   const isScheduledStagedInput = job.kind === "sftp_upload" && job.status === "created" && !!job.scheduled_task_id
   const canDelete = removableBackgroundStatuses.has(job.status) && !isScheduledStagedInput
@@ -107,7 +108,7 @@ function BackgroundTransferItem({
             <div className="min-w-0">
               <div className="truncate text-sm font-medium">{job.name || job.file_name || job.artifact_name}</div>
               <div className="mt-0.5 truncate text-xs text-muted-foreground">
-                {job.kind === "sftp_upload" ? "后台上传" : "后台下载"} · {getBackgroundStageLabel(job)}
+                {job.kind === "sftp_upload" ? tSftp("backgroundKindUpload") : tSftp("backgroundKindDownload")} · {getBackgroundStageLabel(job, tSftp)}
               </div>
             </div>
             <div className="flex shrink-0 items-center gap-1">
@@ -117,7 +118,7 @@ function BackgroundTransferItem({
                   size="icon"
                   className="h-7 w-7 rounded-md"
                   onClick={() => onDownloadArtifact?.(job.id)}
-                  title="下载产物"
+                  title={tSftp("backgroundDownloadArtifactTitle")}
                 >
                   <Download className="h-3.5 w-3.5" />
                 </Button>
@@ -128,7 +129,7 @@ function BackgroundTransferItem({
                   size="icon"
                   className="h-7 w-7 rounded-md"
                   onClick={() => onCancel(job.id)}
-                  title="取消后台传输"
+                  title={tSftp("backgroundCancelTitle")}
                 >
                   <X className="h-3.5 w-3.5" />
                 </Button>
@@ -139,7 +140,7 @@ function BackgroundTransferItem({
                   size="icon"
                   className="h-7 w-7 rounded-md text-muted-foreground hover:text-destructive"
                   onClick={() => onDelete(job.id)}
-                  title="删除任务记录"
+                  title={tSftp("backgroundDeleteTitle")}
                 >
                   <Trash2 className="h-3.5 w-3.5" />
                 </Button>
@@ -149,7 +150,7 @@ function BackgroundTransferItem({
           <div className="mt-2 space-y-1.5">
             <Progress value={progress} className="h-1.5" />
             <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
-              <span className="truncate">{getBackgroundStatusLabel(job)} · {progress}%</span>
+              <span className="truncate">{getBackgroundStatusLabel(job, tSftp)} · {progress}%</span>
               <span className="shrink-0 tabular-nums">{speed ? `${speed} · ` : ""}{fileSize}</span>
             </div>
             {job.error_message && (
@@ -223,7 +224,7 @@ export function TransferTaskPanel({
             {effectiveTransferTasks.length > 0 && (
               <div>
                 <div className="border-b bg-muted/40 px-3 py-1.5 text-xs font-medium text-muted-foreground">
-                  会话传输
+                  {tSftp("transferPanelSessionSection")}
                 </div>
                 {effectiveTransferTasks.map((task) => (
                   <UploadProgressItem
@@ -237,7 +238,7 @@ export function TransferTaskPanel({
             {backgroundTransferJobs.length > 0 && (
               <div>
                 <div className="border-b bg-muted/40 px-3 py-1.5 text-xs font-medium text-muted-foreground">
-                  后台传输
+                  {tSftp("transferPanelBackgroundSection")}
                 </div>
                 {backgroundTransferJobs.map((job) => (
                   <BackgroundTransferItem

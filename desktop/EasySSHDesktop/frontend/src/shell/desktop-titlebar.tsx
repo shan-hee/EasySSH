@@ -26,10 +26,10 @@ import {
   Minus,
   RefreshCw,
   Square,
-  Terminal,
   X,
   toast,
 } from "@easyssh/ssh-workspace/desktop"
+import type { Locale } from "@/i18n"
 import {
   ActivityLogService,
   DesktopActivityLogStatus,
@@ -38,40 +38,21 @@ import {
 } from "../../bindings/github.com/easyssh/easyssh-desktop"
 import type { DesktopRuntimeBindingInfo } from "../adapters/desktop-runtime"
 import { DesktopHeaderActions } from "./desktop-header-actions"
+import { useTranslation } from "react-i18next"
 
 export type DesktopView = "terminal" | "ai" | "scripts"
 
 const windowActionErrorMessage = "Failed to run window action:"
-const desktopActionErrorMessage = "\u684c\u9762\u8bbe\u7f6e\u64cd\u4f5c\u5931\u8d25"
-const desktopSettingsLabel = "\u8bbe\u7f6e"
-const desktopAiAssistantLabel = "AI \u52a9\u624b"
-const terminalSettingsLabel = "\u7ec8\u7aef\u8bbe\u7f6e"
-const scriptLibraryLabel = "\u811a\u672c\u5e93"
-const activityLogLabel = "\u6d3b\u52a8\u8bb0\u5f55"
-const openDataDirLabel = "\u6253\u5f00\u6570\u636e\u76ee\u5f55"
-const aboutDesktopLabel = "\u5173\u4e8e EasySSH"
-const aboutDesktopTitle = "\u5173\u4e8e EasySSH Desktop"
-const recentActivityDescription = "\u6700\u8fd1 50 \u6761\u684c\u9762\u7aef\u8fde\u63a5\u4e0e\u64cd\u4f5c\u8bb0\u5f55"
-const noActivityLabel = "\u6682\u65e0\u6d3b\u52a8\u8bb0\u5f55"
-const loadingLabel = "\u52a0\u8f7d\u4e2d..."
-const refreshLabel = "\u5237\u65b0"
-const dataDirOpenFailedMessage = "\u6253\u5f00\u6570\u636e\u76ee\u5f55\u5931\u8d25"
-const windowMinimizeLabel = "\u6700\u5c0f\u5316"
-const windowMaximizeLabel = "\u6700\u5927\u5316"
-const windowCloseLabel = "\u5173\u95ed"
-const desktopVersionLabel = "\u7248\u672c"
-const desktopPlatformLabel = "\u5e73\u53f0"
-const desktopArchLabel = "\u67b6\u6784"
-const desktopDataDirLabel = "\u6570\u636e\u76ee\u5f55"
-const desktopUnknownLabel = "\u672a\u77e5"
 const githubLabel = "GitHub"
 const githubUrl = "https://github.com/shan-hee/EasySSH"
 
-function formatDesktopDateTime(value?: string) {
+type DesktopTranslator = ReturnType<typeof useTranslation>["t"]
+
+function formatDesktopDateTime(value: string | undefined, locale: string) {
   if (!value) return "-"
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return value
-  return date.toLocaleString("zh-CN", { hour12: false })
+  return date.toLocaleString(locale, { hour12: false })
 }
 
 function formatDesktopDuration(milliseconds?: number) {
@@ -82,32 +63,32 @@ function formatDesktopDuration(milliseconds?: number) {
   return `${Math.floor(seconds / 60)}m ${seconds % 60}s`
 }
 
-function formatDesktopStatus(status: DesktopActivityLogStatus) {
-  if (status === DesktopActivityLogStatus.DesktopActivityLogFailure) return "\u5931\u8d25"
-  if (status === DesktopActivityLogStatus.DesktopActivityLogWarning) return "\u8b66\u544a"
-  return "\u6210\u529f"
+function formatDesktopStatus(status: DesktopActivityLogStatus, t: DesktopTranslator) {
+  if (status === DesktopActivityLogStatus.DesktopActivityLogFailure) return t("statusFailure")
+  if (status === DesktopActivityLogStatus.DesktopActivityLogWarning) return t("statusWarning")
+  return t("statusSuccess")
 }
 
-function formatDesktopAction(action: string) {
+function formatDesktopAction(action: string, t: DesktopTranslator) {
   switch (action) {
     case "ssh_connect":
-      return "SSH \u8fde\u63a5"
+      return t("actionSshConnect")
     case "ssh_disconnect":
-      return "SSH \u65ad\u5f00"
+      return t("actionSshDisconnect")
     case "sftp_upload":
-      return "SFTP \u4e0a\u4f20"
+      return t("actionSftpUpload")
     case "sftp_download":
-      return "SFTP \u4e0b\u8f7d"
+      return t("actionSftpDownload")
     case "sftp_delete":
-      return "SFTP \u5220\u9664"
+      return t("actionSftpDelete")
     case "sftp_rename":
-      return "SFTP \u91cd\u547d\u540d"
+      return t("actionSftpRename")
     case "sftp_mkdir":
-      return "SFTP \u65b0\u5efa\u76ee\u5f55"
+      return t("actionSftpMkdir")
     case "monitoring_query":
-      return "\u76d1\u63a7\u67e5\u8be2"
+      return t("actionMonitoringQuery")
     case "script_execute":
-      return "\u811a\u672c\u6267\u884c"
+      return t("actionScriptExecute")
     default:
       return action || "-"
   }
@@ -126,6 +107,8 @@ function DesktopActivityLogDialog({
   open: boolean
   onOpenChange: (open: boolean) => void
 }) {
+  const { t, i18n } = useTranslation("desktop")
+  const { t: tCommon } = useTranslation("common")
   const [items, setItems] = useState<DesktopActivityLogItem[]>([])
   const [loading, setLoading] = useState(false)
 
@@ -135,12 +118,12 @@ function DesktopActivityLogDialog({
       const result = await ActivityLogService.List({ page: 1, limit: 50 })
       setItems(result.items || [])
     } catch (error) {
-      console.error(desktopActionErrorMessage, error)
-      toast.error(desktopActionErrorMessage)
+      console.error(t("desktopActionErrorMessage"), error)
+      toast.error(t("desktopActionErrorMessage"))
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [t])
 
   useEffect(() => {
     if (open) {
@@ -156,11 +139,11 @@ function DesktopActivityLogDialog({
             <div className="min-w-0">
               <DialogTitle className="flex items-center gap-2">
                 <Activity className="h-5 w-5" />
-                {activityLogLabel}
+                {t("activityLogLabel")}
               </DialogTitle>
-              <DialogDescription>{recentActivityDescription}</DialogDescription>
+              <DialogDescription>{t("recentActivityDescription")}</DialogDescription>
             </div>
-            <Button variant="ghost" size="icon-sm" title={refreshLabel} aria-label={refreshLabel} onClick={() => void loadItems()} disabled={loading}>
+            <Button variant="ghost" size="icon-sm" title={t("refreshLabel")} aria-label={t("refreshLabel")} onClick={() => void loadItems()} disabled={loading}>
               <RefreshCw className={loading ? "h-4 w-4 animate-spin" : "h-4 w-4"} />
             </Button>
           </div>
@@ -168,21 +151,21 @@ function DesktopActivityLogDialog({
 
         <div className="easyssh-desktop-activity-list scrollbar-custom">
           {loading && items.length === 0 ? (
-            <div className="easyssh-desktop-empty-state">{loadingLabel}</div>
+            <div className="easyssh-desktop-empty-state">{tCommon("loading")}</div>
           ) : items.length === 0 ? (
-            <div className="easyssh-desktop-empty-state">{noActivityLabel}</div>
+            <div className="easyssh-desktop-empty-state">{t("noActivityLabel")}</div>
           ) : (
             items.map((item) => (
               <div key={item.id} className="easyssh-desktop-activity-item">
                 <div className="flex min-w-0 items-center justify-between gap-3">
-                  <div className="min-w-0 truncate text-sm font-medium">{formatDesktopAction(item.action)}</div>
-                  <span className="easyssh-desktop-status-badge">{formatDesktopStatus(item.status)}</span>
+                  <div className="min-w-0 truncate text-sm font-medium">{formatDesktopAction(item.action, t)}</div>
+                  <span className="easyssh-desktop-status-badge">{formatDesktopStatus(item.status, t)}</span>
                 </div>
                 <div className="mt-1 truncate text-xs text-muted-foreground" title={item.resource}>
                   {item.resource || "-"}
                 </div>
                 <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
-                  <span>{formatDesktopDateTime(item.createdAt)}</span>
+                  <span>{formatDesktopDateTime(item.createdAt, i18n.language)}</span>
                   <span>{formatDesktopDuration(item.durationMs)}</span>
                   {item.serverId ? <span>ID: {item.serverId}</span> : null}
                 </div>
@@ -209,11 +192,12 @@ function DesktopAboutDialog({
   onOpenChange: (open: boolean) => void
   runtime: DesktopRuntimeBindingInfo | null
 }) {
+  const { t } = useTranslation("desktop")
   const rows = [
-    [desktopVersionLabel, runtime?.version || desktopUnknownLabel],
-    [desktopPlatformLabel, runtime?.platform || desktopUnknownLabel],
-    [desktopArchLabel, runtime?.arch || desktopUnknownLabel],
-    [desktopDataDirLabel, runtime?.dataDir || desktopUnknownLabel],
+    [t("desktopVersionLabel"), runtime?.version || t("desktopUnknownLabel")],
+    [t("desktopPlatformLabel"), runtime?.platform || t("desktopUnknownLabel")],
+    [t("desktopArchLabel"), runtime?.arch || t("desktopUnknownLabel")],
+    [t("desktopDataDirLabel"), runtime?.dataDir || t("desktopUnknownLabel")],
   ] as const
 
   return (
@@ -222,7 +206,7 @@ function DesktopAboutDialog({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Info className="h-5 w-5" />
-            {aboutDesktopTitle}
+            {t("aboutDesktopTitle")}
           </DialogTitle>
           <DialogDescription>EasySSH Desktop</DialogDescription>
         </DialogHeader>
@@ -248,22 +232,21 @@ function DesktopAboutDialog({
 
 function DesktopSettingsMenu({
   runtime,
-  onOpenTerminalSettings,
   onOpenScripts,
 }: {
   runtime: DesktopRuntimeBindingInfo | null
-  onOpenTerminalSettings: () => void
   onOpenScripts: () => void
 }) {
+  const { t } = useTranslation("desktop")
   const [activityLogOpen, setActivityLogOpen] = useState(false)
   const [aboutOpen, setAboutOpen] = useState(false)
 
   const handleOpenDataDir = useCallback(() => {
     void DesktopService.OpenDataDir().catch((error) => {
-      console.error(desktopActionErrorMessage, error)
-      toast.error(dataDirOpenFailedMessage)
+      console.error(t("desktopActionErrorMessage"), error)
+      toast.error(t("dataDirOpenFailedMessage"))
     })
-  }, [])
+  }, [t])
 
   return (
     <>
@@ -273,35 +256,31 @@ function DesktopSettingsMenu({
             variant="ghost"
             size="icon-sm"
             className="easyssh-desktop-titlebar-menu-button"
-            aria-label={desktopSettingsLabel}
-            title={desktopSettingsLabel}
+            aria-label={t("settingsLabel")}
+            title={t("settingsLabel")}
           >
             <Menu className="h-4 w-4" />
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="easyssh-desktop-settings-menu">
-          <DropdownMenuLabel>{desktopSettingsLabel}</DropdownMenuLabel>
+          <DropdownMenuLabel>{t("settingsLabel")}</DropdownMenuLabel>
           <DropdownMenuSeparator />
-          <DropdownMenuItem onSelect={onOpenTerminalSettings}>
-            <Terminal className="h-4 w-4" />
-            <span>{terminalSettingsLabel}</span>
-          </DropdownMenuItem>
           <DropdownMenuItem onSelect={onOpenScripts}>
             <FileText className="h-4 w-4" />
-            <span>{scriptLibraryLabel}</span>
+            <span>{t("scriptLibraryLabel")}</span>
           </DropdownMenuItem>
           <DropdownMenuItem onSelect={() => setActivityLogOpen(true)}>
             <Activity className="h-4 w-4" />
-            <span>{activityLogLabel}</span>
+            <span>{t("activityLogLabel")}</span>
           </DropdownMenuItem>
           <DropdownMenuItem onSelect={handleOpenDataDir}>
             <FolderOpen className="h-4 w-4" />
-            <span>{openDataDirLabel}</span>
+            <span>{t("openDataDirLabel")}</span>
           </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem onSelect={() => setAboutOpen(true)}>
             <Info className="h-4 w-4" />
-            <span>{aboutDesktopLabel}</span>
+            <span>{t("aboutDesktopLabel")}</span>
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
@@ -315,16 +294,19 @@ function DesktopSettingsMenu({
 export function DesktopTitleBar({
   runtime,
   activeView,
+  locale,
   onToggleAiAssistant,
-  onOpenTerminalSettings,
+  onLocaleChange,
   onOpenScripts,
 }: {
   runtime: DesktopRuntimeBindingInfo | null
   activeView: DesktopView
+  locale: Locale
   onToggleAiAssistant: () => void
-  onOpenTerminalSettings: () => void
+  onLocaleChange: (locale: Locale) => void
   onOpenScripts: () => void
 }) {
+  const { t } = useTranslation("desktop")
   const handleMinimize = useCallback(() => {
     runWindowAction(() => Window.Minimise())
   }, [])
@@ -346,7 +328,6 @@ export function DesktopTitleBar({
       <div className="easyssh-desktop-titlebar-actions">
         <DesktopSettingsMenu
           runtime={runtime}
-          onOpenTerminalSettings={onOpenTerminalSettings}
           onOpenScripts={onOpenScripts}
         />
         {activeView !== "ai" && (
@@ -355,20 +336,20 @@ export function DesktopTitleBar({
             variant="ghost"
             size="icon-sm"
             className="easyssh-desktop-titlebar-ai-button"
-            aria-label={desktopAiAssistantLabel}
-            title={desktopAiAssistantLabel}
+            aria-label={t("aiAssistantLabel")}
+            title={t("aiAssistantLabel")}
             onClick={onToggleAiAssistant}
           >
             <Bot className="h-4 w-4" />
           </Button>
         )}
-        <DesktopHeaderActions />
-        <div className="easyssh-desktop-window-controls" role="group" aria-label="Window controls">
+        <DesktopHeaderActions locale={locale} onLocaleChange={onLocaleChange} />
+        <div className="easyssh-desktop-window-controls" role="group" aria-label={t("windowControlsLabel")}>
           <button
             type="button"
             className="easyssh-desktop-window-button"
-            aria-label={windowMinimizeLabel}
-            title={windowMinimizeLabel}
+            aria-label={t("windowMinimizeLabel")}
+            title={t("windowMinimizeLabel")}
             onClick={handleMinimize}
           >
             <Minus className="h-4 w-4" />
@@ -376,8 +357,8 @@ export function DesktopTitleBar({
           <button
             type="button"
             className="easyssh-desktop-window-button"
-            aria-label={windowMaximizeLabel}
-            title={windowMaximizeLabel}
+            aria-label={t("windowMaximizeLabel")}
+            title={t("windowMaximizeLabel")}
             onClick={handleMaximize}
           >
             <Square className="h-3.5 w-3.5" />
@@ -385,8 +366,8 @@ export function DesktopTitleBar({
           <button
             type="button"
             className="easyssh-desktop-window-button easyssh-desktop-window-button-close"
-            aria-label={windowCloseLabel}
-            title={windowCloseLabel}
+            aria-label={t("windowCloseLabel")}
+            title={t("windowCloseLabel")}
             onClick={handleClose}
           >
             <X className="h-4 w-4" />

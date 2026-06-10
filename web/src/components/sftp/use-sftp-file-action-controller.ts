@@ -348,8 +348,8 @@ export function useSftpFileActionController({
 
   const startCreateNew = useCallback((type: SftpCreateEntryType) => {
     setCreatingNew(type)
-    setEditingFileName(type === "folder" ? "New folder" : "New file.txt")
-  }, [])
+    setEditingFileName(type === "folder" ? tSftp("defaultNewFolderName") : tSftp("defaultNewFileName"))
+  }, [tSftp])
 
   const cancelCreate = useCallback(() => {
     setCreatingNew(null)

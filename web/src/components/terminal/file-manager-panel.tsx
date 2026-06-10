@@ -5,6 +5,7 @@ import { X, GripVertical } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { SftpManager } from "@/components/sftp/sftp-manager"
 import { useOptionalSshWorkspace } from "@/components/ssh-workspace/ssh-workspace"
+import { useWorkspaceSftpTranslator } from "@/components/ssh-workspace/use-workspace-translator"
 import type { SshWorkspacePreferenceAdapter, WorkspaceTransferTask } from "@/lib/session/workspace"
 import type { SftpFileItem } from "@/lib/sftp-file-utils"
 import type { BatchDeleteResult } from "@/lib/session/sftp-operations"
@@ -93,6 +94,7 @@ export function FileManagerPanel({
   ...sftpProps
 }: FileManagerPanelProps) {
   const workspace = useOptionalSshWorkspace()
+  const tSftp = useWorkspaceSftpTranslator()
   const preferences = workspace?.adapters.preferences
   const [width, setWidth] = useState(() => readPanelWidthPreference(
     preferences,
@@ -285,10 +287,10 @@ export function FileManagerPanel({
                       <X className="h-8 w-8" />
                     </div>
                     <h3 className="mb-2 text-lg font-semibold text-foreground">
-                      未连接
+                      {tSftp("disconnectedTitle")}
                     </h3>
                     <p className="text-sm text-muted-foreground">
-                      等待连接到服务器...
+                      {tSftp("disconnectedDescription")}
                     </p>
                   </div>
                 </div>

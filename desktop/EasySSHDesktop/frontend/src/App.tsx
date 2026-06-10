@@ -1,4 +1,5 @@
 import { startTransition, useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useTranslation } from "react-i18next"
 import {
   DEFAULT_SYSTEM_CONFIG,
   SshWorkspace,
@@ -21,6 +22,8 @@ import {
   type TerminalExtraSessionRenderOptions,
   type TerminalSession,
 } from "@easyssh/ssh-workspace/desktop"
+import { i18n, type Locale } from "@/i18n"
+import { getEffectiveLocale, saveLocaleToStorage } from "@/utils/datetime"
 import { createDesktopActivityLogAdapter, recordDesktopTerminalOpened } from "./adapters/desktop-activity-log-adapter"
 import { createDesktopAIAssistantAdapters } from "./adapters/desktop-ai-adapters"
 import { createDesktopPreferenceAdapter, loadDesktopPreferenceSnapshot, type DesktopPreferenceSnapshot } from "./adapters/desktop-preferences"
@@ -36,20 +39,8 @@ import { DesktopScriptsView } from "./shell/desktop-scripts-view"
 import { DesktopTitleBar, type DesktopView } from "./shell/desktop-titlebar"
 import { createDesktopTerminalSocket } from "./terminal/desktop-terminal-socket"
 
-const connectionConfigName = "\u8fde\u63a5\u914d\u7f6e"
 const defaultMaxTabs = 50
 const defaultInactiveMinutes = 60
-const desktopLoadingLabel = "\u52a0\u8f7d\u4e2d..."
-const inactiveToastTitle = "\u7ec8\u7aef\u957f\u65f6\u95f4\u672a\u6d3b\u52a8"
-const inactiveToastCloseLabel = "\u5173\u95ed"
-
-function formatMaxTabsMessage(maxTabs: number) {
-  return `\u6700\u591a\u53ea\u80fd\u6253\u5f00 ${maxTabs} \u4e2a\u6807\u7b7e`
-}
-
-function formatInactiveToastDescription(sessionName: string, inactiveMinutes: number) {
-  return `${sessionName} \u5df2\u8d85\u8fc7 ${inactiveMinutes} \u5206\u949f\u672a\u6d3b\u52a8`
-}
 
 function statusFromConnectionPhase(phase: TerminalConnectionPhase) {
   if (phase === "ready") return "connected" as const
@@ -57,7 +48,7 @@ function statusFromConnectionPhase(phase: TerminalConnectionPhase) {
   return "reconnecting" as const
 }
 
-function createConfigSession(id = "config-initial"): TerminalSession {
+function createConfigSession(connectionConfigName: string, id = "config-initial"): TerminalSession {
   const now = Date.now()
 
   return {
@@ -153,6 +144,7 @@ function shouldCheckTerminalInactivity(session: TerminalSession) {
 }
 
 function App() {
+  const [locale, setLocale] = useState<Locale>(() => getEffectiveLocale(null, DEFAULT_SYSTEM_CONFIG))
   const [runtime, setRuntime] = useState<DesktopRuntimeBindingInfo | null>(null)
   const [preferenceSnapshot, setPreferenceSnapshot] = useState<DesktopPreferenceSnapshot | null>(null)
   const [activeView, setActiveView] = useState<DesktopView>("terminal")
@@ -172,6 +164,11 @@ function App() {
   const setActiveSessionId = useTerminalStore((state) => state.setActiveSessionId)
   const updateSessionActivity = useTerminalStore((state) => state.updateSessionActivity)
   const getSessionLastActivity = useTerminalStore((state) => state.getSessionLastActivity)
+  const { t: tCommon } = useTranslation("common")
+  const { t: tDesktop } = useTranslation("desktop")
+  const { t: tTerminal } = useTranslation("terminal")
+  const { t: tSftp } = useTranslation("sftp")
+  const connectionConfigName = tTerminal("connectionConfigTitle")
 
   const serverApi = useMemo(() => createDesktopServerApi(), [])
   const scriptAdapters = useMemo(() => createDesktopScriptAdapters(serverApi), [serverApi])
@@ -232,12 +229,24 @@ function App() {
     },
   }), [dockerApi, monitorApi, sftpApi, terminalSocket])
 
+  const handleLocaleChange = useCallback((nextLocale: Locale) => {
+    if (nextLocale === locale) {
+      return
+    }
+
+    saveLocaleToStorage(nextLocale)
+    setLocale(nextLocale)
+  }, [locale])
+
   const adapters = useMemo(() => createWorkspaceAdapters({
     apiClient: workspaceApi,
     authTicketProvider: async () => "desktop",
     i18n: createWorkspaceI18nAdapter({
-      locale: "zh-CN",
+      locale,
       timezone: "Asia/Shanghai",
+      common: tCommon,
+      terminal: tTerminal,
+      sftp: tSftp,
       fallback: (key: string) => key,
     }),
     notifier: {
@@ -261,7 +270,21 @@ function App() {
     activityLog,
     sessionStore: workspaceSessionStore,
     sessionController: workspaceSessionController,
-  }), [activityLog, workspaceApi, workspacePreferences, workspaceSessionController, workspaceSessionStore])
+  }), [
+    activityLog,
+    locale,
+    tCommon,
+    tSftp,
+    tTerminal,
+    workspaceApi,
+    workspacePreferences,
+    workspaceSessionController,
+    workspaceSessionStore,
+  ])
+
+  useEffect(() => {
+    void i18n.changeLanguage(locale)
+  }, [locale])
 
   useEffect(() => {
     loadDesktopRuntime()
@@ -293,7 +316,7 @@ function App() {
     initializedRef.current = true
 
     if (sessions.length === 0) {
-      const session = createConfigSession()
+      const session = createConfigSession(connectionConfigName)
       setSessions([session])
       setActiveSessionId(session.id)
       updateSessionActivity(session.id, session.lastActivity)
@@ -303,31 +326,44 @@ function App() {
     if (!activeSessionId || !sessions.some((session) => session.id === activeSessionId)) {
       setActiveSessionId(sessions[0]?.id ?? null)
     }
-  }, [activeSessionId, sessions, setActiveSessionId, setSessions, updateSessionActivity])
+  }, [activeSessionId, connectionConfigName, sessions, setActiveSessionId, setSessions, updateSessionActivity])
+
+  useEffect(() => {
+    setSessions((current) => current.map((session) => (
+      session.type === "config" && session.serverName !== connectionConfigName
+        ? { ...session, serverName: connectionConfigName }
+        : session
+    )))
+    setSftpTabs((current) => current.map((tab) => (
+      tab.kind === "config" && tab.label !== connectionConfigName
+        ? { ...tab, label: connectionConfigName }
+        : tab
+    )))
+  }, [connectionConfigName, setSessions])
 
   const resetToConfigSession = useCallback(() => {
-    const session = createConfigSession(`config-${Date.now()}`)
+    const session = createConfigSession(connectionConfigName, `config-${Date.now()}`)
     setSessions([session])
     setActiveSessionId(session.id)
     updateSessionActivity(session.id, session.lastActivity)
-  }, [setActiveSessionId, setSessions, updateSessionActivity])
+  }, [connectionConfigName, setActiveSessionId, setSessions, updateSessionActivity])
 
   const handleNewSession = useCallback(() => {
     if (totalTabCount >= maxTabs) {
-      toast.error(formatMaxTabsMessage(maxTabs))
+      toast.error(tTerminal("errorMaxTabsReached", { max: maxTabs }))
       return
     }
 
-    const session = createConfigSession(`config-${Date.now()}`)
+    const session = createConfigSession(connectionConfigName, `config-${Date.now()}`)
     setSessions((current) => [...current, session])
     setActiveSessionId(session.id)
     updateSessionActivity(session.id, session.lastActivity)
     return session.id
-  }, [maxTabs, setActiveSessionId, setSessions, totalTabCount, updateSessionActivity])
+  }, [connectionConfigName, maxTabs, setActiveSessionId, setSessions, tTerminal, totalTabCount, updateSessionActivity])
 
   const handleNewSftpTab = useCallback(() => {
     if (totalTabCount >= maxTabs) {
-      toast.error(formatMaxTabsMessage(maxTabs))
+      toast.error(tTerminal("errorMaxTabsReached", { max: maxTabs }))
       return
     }
 
@@ -344,7 +380,7 @@ function App() {
     ])
     setActiveSftpTabId(id)
     return id
-  }, [maxTabs, totalTabCount])
+  }, [connectionConfigName, maxTabs, tTerminal, totalTabCount])
 
   const handleStartSftpFromConfig = useCallback((tabId: string, server: Server) => {
     const now = Date.now()
@@ -444,7 +480,7 @@ function App() {
     const source = sessions.find((session) => session.id === sessionId)
     if (!source) return
     if (totalTabCount >= maxTabs) {
-      toast.error(formatMaxTabsMessage(maxTabs))
+      toast.error(tTerminal("errorMaxTabsReached", { max: maxTabs }))
       return
     }
 
@@ -461,7 +497,7 @@ function App() {
     setSessions((current) => [...current, duplicate])
     setActiveSessionId(duplicate.id)
     updateSessionActivity(duplicate.id, now)
-  }, [maxTabs, sessions, setActiveSessionId, setSessions, totalTabCount, updateSessionActivity])
+  }, [maxTabs, sessions, setActiveSessionId, setSessions, tTerminal, totalTabCount, updateSessionActivity])
 
   const handleCloseOthers = useCallback((sessionId: string) => {
     setSessions((current) => current.filter((session) => session.id === sessionId || session.pinned))
@@ -556,11 +592,11 @@ function App() {
     useTerminalStore.getState().destroySession(sessionId)
     setSessions((current) => current.map((session) => (
       session.id === sessionId
-        ? { ...createConfigSession(sessionId), lastActivity: now }
+        ? { ...createConfigSession(connectionConfigName, sessionId), lastActivity: now }
         : session
     )))
     updateSessionActivity(sessionId, now)
-  }, [setSessions, updateSessionActivity])
+  }, [connectionConfigName, setSessions, updateSessionActivity])
 
   const handleToggleAiAssistant = useCallback(() => {
     setAiAssistantMounted(true)
@@ -592,10 +628,10 @@ function App() {
           return
         }
         inactivityNotifiedRef.current.add(session.id)
-        toast(inactiveToastTitle, {
-          description: formatInactiveToastDescription(session.serverName, inactiveMinutes),
+        toast(tTerminal("inactiveToastTitle", { name: session.serverName }), {
+          description: tTerminal("inactiveToastDescription", { minutes: inactiveMinutes }),
           action: {
-            label: inactiveToastCloseLabel,
+            label: tTerminal("inactiveToastActionLabel"),
             onClick: () => handleCloseSession(session.id),
           },
         })
@@ -603,7 +639,7 @@ function App() {
     }, 60 * 1000)
 
     return () => window.clearInterval(timer)
-  }, [getSessionLastActivity, handleCloseSession, inactiveMinutes, sessions])
+  }, [getSessionLastActivity, handleCloseSession, inactiveMinutes, sessions, tTerminal])
 
   if (preferenceSnapshot === null) {
     return (
@@ -612,12 +648,13 @@ function App() {
           <DesktopTitleBar
             runtime={runtime}
             activeView={activeView}
+            locale={locale}
             onToggleAiAssistant={handleToggleAiAssistant}
-            onOpenTerminalSettings={() => setTerminalSettingsOpen(true)}
+            onLocaleChange={handleLocaleChange}
             onOpenScripts={handleOpenScripts}
           />
           <div className="flex min-h-0 flex-1 items-center justify-center text-sm text-muted-foreground">
-            {desktopLoadingLabel}
+            {tCommon("loading")}
           </div>
         </main>
       </DesktopProviders>
@@ -631,8 +668,9 @@ function App() {
           <DesktopTitleBar
             runtime={runtime}
             activeView={activeView}
+            locale={locale}
             onToggleAiAssistant={handleToggleAiAssistant}
-            onOpenTerminalSettings={() => setTerminalSettingsOpen(true)}
+            onLocaleChange={handleLocaleChange}
             onOpenScripts={handleOpenScripts}
           />
           <div className="easyssh-desktop-view-stack">
@@ -648,8 +686,8 @@ function App() {
                 extraNewSessionActions={[{
                   id: "new-desktop-sftp-session",
                   label: "SFTP+",
-                  ariaLabel: "\u65b0\u5efa SFTP \u6587\u4ef6\u7ba1\u7406\u5668\u6807\u7b7e",
-                  title: "\u65b0\u5efa SFTP \u6587\u4ef6\u7ba1\u7406\u5668\u6807\u7b7e",
+                  ariaLabel: tDesktop("newSftpTabLabel"),
+                  title: tDesktop("newSftpTabLabel"),
                   onCreate: handleNewSftpTab,
                 }]}
                 renderExtraSessionContent={renderSftpTabContent}
@@ -691,6 +729,7 @@ function App() {
               {aiAssistantMounted ? (
                 <DesktopAIAssistantView
                   adapters={aiAssistantAdapters}
+                  locale={locale}
                   onReturnToTerminal={handleReturnToTerminal}
                 />
               ) : null}
@@ -703,6 +742,7 @@ function App() {
               {scriptsMounted ? (
                 <DesktopScriptsView
                   adapters={scriptAdapters}
+                  locale={locale}
                   onReturnToTerminal={handleReturnToTerminal}
                 />
               ) : null}
