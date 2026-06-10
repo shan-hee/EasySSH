@@ -631,6 +631,13 @@ func (g *DesktopGateway) handleMonitor(w http.ResponseWriter, r *http.Request) {
 		defer cancelWrite()
 		return conn.Write(writeCtx, websocket.MessageText, data)
 	}
+	writeBinary := func(data []byte) error {
+		writeMu.Lock()
+		defer writeMu.Unlock()
+		writeCtx, cancelWrite := context.WithTimeout(ctx, desktopGatewayWriteTimeout)
+		defer cancelWrite()
+		return conn.Write(writeCtx, websocket.MessageBinary, data)
+	}
 
 	_ = writeJSON(map[string]any{"type": "handshake_complete", "status": "connecting"})
 	_ = writeJSON(map[string]any{"type": "ready"})
@@ -686,14 +693,11 @@ func (g *DesktopGateway) handleMonitor(w http.ResponseWriter, r *http.Request) {
 			_ = writeJSON(map[string]any{"type": "error", "message": err.Error()})
 			return
 		}
-		metrics := mapDesktopMonitorSnapshotForGateway(snapshot, previousSnapshot)
+		metrics := encodeDesktopMonitorSnapshotProto(snapshot, previousSnapshot)
 		snapshotCopy := snapshot
 		previousSnapshot = &snapshotCopy
 
-		_ = writeJSON(map[string]any{
-			"type": "metrics",
-			"data": metrics,
-		})
+		_ = writeBinary(metrics)
 	}
 
 	sendSnapshot()
@@ -1067,65 +1071,6 @@ func (r *desktopGatewayTerminalRuntime) requestPrivateKeyPassphrase(ctx context.
 		return firstString(response.Answers), nil
 	case <-ctx.Done():
 		return "", ctx.Err()
-	}
-}
-
-func mapDesktopMonitorSnapshotForGateway(snapshot DesktopMonitorSnapshot, previous *DesktopMonitorSnapshot) map[string]any {
-	disks := make([]map[string]any, 0, len(snapshot.Disks))
-	var diskTotal uint64
-	var diskUsed uint64
-	for _, disk := range snapshot.Disks {
-		diskTotal += disk.TotalBytes
-		diskUsed += disk.UsedBytes
-		disks = append(disks, map[string]any{
-			"mountPoint": disk.MountPoint,
-			"usedBytes":  disk.UsedBytes,
-			"totalBytes": disk.TotalBytes,
-		})
-	}
-	diskPercent := 0.0
-	if diskTotal > 0 {
-		diskPercent = float64(diskUsed) / float64(diskTotal) * 100
-	}
-
-	network := calculateDesktopGatewayNetworkRate(snapshot, previous)
-	return map[string]any{
-		"systemInfo": map[string]any{
-			"os":            snapshot.SystemInfo.OS,
-			"hostname":      snapshot.SystemInfo.Hostname,
-			"cpuModel":      snapshot.SystemInfo.CPUModel,
-			"arch":          snapshot.SystemInfo.Arch,
-			"loadAvg":       snapshot.SystemInfo.LoadAvg,
-			"uptimeSeconds": snapshot.SystemInfo.UptimeSeconds,
-			"cpuCores":      snapshot.SystemInfo.CPUCores,
-		},
-		"cpu": map[string]any{
-			"usagePercent": calculateDesktopGatewayCPUUsage(snapshot, previous),
-			"coreCount":    snapshot.CPU.CoreCount,
-			"idleTicks":    snapshot.CPU.IdleTicks,
-			"totalTicks":   snapshot.CPU.TotalTicks,
-		},
-		"memory": map[string]any{
-			"ramUsedBytes":   snapshot.Memory.RAMUsedBytes,
-			"ramTotalBytes":  snapshot.Memory.RAMTotalBytes,
-			"swapUsedBytes":  snapshot.Memory.SwapUsedBytes,
-			"swapTotalBytes": snapshot.Memory.SwapTotalBytes,
-		},
-		"network": map[string]any{
-			"bytesRecvPerSec": network.bytesRecvPerSec,
-			"bytesSentPerSec": network.bytesSentPerSec,
-			"bytesRecvTotal":  snapshot.Network.BytesRecvTotal,
-			"bytesSentTotal":  snapshot.Network.BytesSentTotal,
-		},
-		"disks":            disks,
-		"diskTotalPercent": diskPercent,
-		"sshLatencyMs":     snapshot.SSHLatency,
-		"timestamp":        snapshot.Timestamp,
-		"docker": map[string]any{
-			"containersRunning": snapshot.Docker.ContainersRunning,
-			"containersTotal":   snapshot.Docker.ContainersTotal,
-			"dockerInstalled":   snapshot.Docker.DockerInstalled,
-		},
 	}
 }
 

@@ -142,85 +142,6 @@ const getInitialConnectionSnapshot = (serverId: string) => {
   }
 };
 
-const toNumber = (value: unknown): number => {
-  if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
-  if (typeof value === 'bigint') return Number(value);
-  if (typeof value === 'string') {
-    const parsed = Number(value);
-    return Number.isFinite(parsed) ? parsed : 0;
-  }
-  return 0;
-};
-
-const normalizeMonitorMetrics = (value: unknown): MonitorMetrics | null => {
-  if (!value || typeof value !== 'object') {
-    return null;
-  }
-
-  const data = value as Record<string, unknown>;
-  const systemInfo = data.systemInfo && typeof data.systemInfo === 'object'
-    ? data.systemInfo as Record<string, unknown>
-    : {};
-  const cpu = data.cpu && typeof data.cpu === 'object'
-    ? data.cpu as Record<string, unknown>
-    : {};
-  const memory = data.memory && typeof data.memory === 'object'
-    ? data.memory as Record<string, unknown>
-    : {};
-  const network = data.network && typeof data.network === 'object'
-    ? data.network as Record<string, unknown>
-    : {};
-  const docker = data.docker && typeof data.docker === 'object'
-    ? data.docker as Record<string, unknown>
-    : undefined;
-
-  return {
-    systemInfo: {
-      os: String(systemInfo.os ?? ''),
-      hostname: String(systemInfo.hostname ?? ''),
-      cpuModel: String(systemInfo.cpuModel ?? ''),
-      arch: String(systemInfo.arch ?? ''),
-      loadAvg: String(systemInfo.loadAvg ?? ''),
-      uptimeSeconds: toNumber(systemInfo.uptimeSeconds),
-      cpuCores: toNumber(systemInfo.cpuCores),
-    },
-    cpu: {
-      usagePercent: toNumber(cpu.usagePercent),
-      coreCount: toNumber(cpu.coreCount),
-    },
-    memory: {
-      ramUsedBytes: toNumber(memory.ramUsedBytes),
-      ramTotalBytes: toNumber(memory.ramTotalBytes),
-      swapUsedBytes: toNumber(memory.swapUsedBytes),
-      swapTotalBytes: toNumber(memory.swapTotalBytes),
-    },
-    network: {
-      bytesRecvPerSec: toNumber(network.bytesRecvPerSec),
-      bytesSentPerSec: toNumber(network.bytesSentPerSec),
-    },
-    disks: Array.isArray(data.disks)
-      ? data.disks.map((disk) => {
-          const diskRecord = disk && typeof disk === 'object'
-            ? disk as Record<string, unknown>
-            : {};
-          return {
-            mountPoint: String(diskRecord.mountPoint ?? ''),
-            usedBytes: toNumber(diskRecord.usedBytes),
-            totalBytes: toNumber(diskRecord.totalBytes),
-          };
-        })
-      : [],
-    diskTotalPercent: toNumber(data.diskTotalPercent),
-    sshLatencyMs: toNumber(data.sshLatencyMs),
-    timestamp: toNumber(data.timestamp),
-    docker: docker ? {
-      containersRunning: toNumber(docker.containersRunning),
-      containersTotal: toNumber(docker.containersTotal),
-      dockerInstalled: Boolean(docker.dockerInstalled),
-    } : undefined,
-  };
-};
-
 const toStoreMonitorMetrics = (formattedMetrics: MonitorMetrics): StoreMonitorMetrics => {
   const ramUsagePercent = formattedMetrics.memory.ramTotalBytes > 0
     ? (formattedMetrics.memory.ramUsedBytes / formattedMetrics.memory.ramTotalBytes) * 100
@@ -633,16 +554,6 @@ export function useMonitorWebSocket({
               }
 
               // 处理错误消息
-              if (msg && msg.type === 'metrics') {
-                const formattedMetrics = normalizeMonitorMetrics(msg.data);
-                if (!formattedMetrics) return;
-
-                const storeMetrics = toStoreMonitorMetrics(formattedMetrics);
-                updateMetrics(serverId, storeMetrics);
-                notifySubscribers(serverId, storeMetrics);
-                return;
-              }
-
               if (msg && msg.type === 'error') {
                 const error = new Error(msg.message || 'Monitoring connection failed');
                 onError?.(error);
