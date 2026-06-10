@@ -178,7 +178,13 @@ function App() {
   const workspaceSessionController = useMemo(() => createTerminalWorkspaceSessionControllerAdapter(), [])
   const workspacePreferences = useMemo(() => createDesktopPreferenceAdapter(preferenceSnapshot ?? {}), [preferenceSnapshot])
   const sftpApi = useMemo(() => createDesktopSftpApi(), [])
-  const monitorApi = useMemo(() => createDesktopMonitorApi(), [])
+  const desktopGateway = runtime?.gateway
+  const desktopGatewayWsBaseUrl = desktopGateway?.wsBaseUrl
+  const desktopGatewayToken = desktopGateway?.token
+  const monitorApi = useMemo(
+    () => createDesktopMonitorApi(desktopGateway),
+    [desktopGateway],
+  )
   const dockerApi = useMemo(() => createDesktopDockerApi(), [])
   const terminalSocket = useMemo(() => createDesktopTerminalSocket(), [])
   const runtimeInfo = useMemo(() => createDesktopRuntime(runtime), [runtime])
@@ -215,19 +221,23 @@ function App() {
     monitor: monitorApi,
     docker: dockerApi,
     terminal: {
-      WebSocketCtor: terminalSocket,
-      createWebSocketUrl: ({ serverId, cols, rows }) => {
+      ...(desktopGatewayWsBaseUrl && desktopGatewayToken ? {} : { WebSocketCtor: terminalSocket }),
+      createWebSocketUrl: ({ serverId, cols, rows, ticket }) => {
         const params = new URLSearchParams()
         params.set("serverId", serverId)
         params.set("cols", String(cols))
         params.set("rows", String(rows))
+        if (desktopGatewayWsBaseUrl && desktopGatewayToken) {
+          params.set("ticket", ticket || desktopGatewayToken)
+          return `${desktopGatewayWsBaseUrl}/terminal?${params.toString()}`
+        }
         return `desktop://terminal?${params.toString()}`
       },
       saveVerifiedCredential: async ({ serverId, authMethod, secret }) => {
         await saveDesktopVerifiedCredential({ serverId, authMethod, secret })
       },
     },
-  }), [dockerApi, monitorApi, sftpApi, terminalSocket])
+  }), [desktopGatewayToken, desktopGatewayWsBaseUrl, dockerApi, monitorApi, sftpApi, terminalSocket])
 
   const handleLocaleChange = useCallback((nextLocale: Locale) => {
     if (nextLocale === locale) {
@@ -240,7 +250,7 @@ function App() {
 
   const adapters = useMemo(() => createWorkspaceAdapters({
     apiClient: workspaceApi,
-    authTicketProvider: async () => "desktop",
+    authTicketProvider: async () => desktopGatewayToken ?? "desktop",
     i18n: createWorkspaceI18nAdapter({
       locale,
       timezone: "Asia/Shanghai",
@@ -277,6 +287,7 @@ function App() {
     tSftp,
     tTerminal,
     workspaceApi,
+    desktopGatewayToken,
     workspacePreferences,
     workspaceSessionController,
     workspaceSessionStore,

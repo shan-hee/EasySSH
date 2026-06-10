@@ -187,11 +187,33 @@ export interface WorkspaceMonitorCollectOptions {
   intervalSeconds?: number
 }
 
+export interface WorkspaceMonitorWebSocketAuthTicketRequest {
+  type: "ws_monitor"
+  server_id: string
+}
+
+export type WorkspaceMonitorWebSocketAuthTicketProvider = (
+  request: WorkspaceMonitorWebSocketAuthTicketRequest,
+) => Promise<string>
+
+export interface WorkspaceMonitorWebSocketUrlRequest {
+  serverId: string
+  interval: number
+  ticket: string
+}
+
+export type WorkspaceMonitorWebSocketUrlResolver = (
+  request: WorkspaceMonitorWebSocketUrlRequest,
+) => string | Promise<string>
+
 export interface WorkspaceMonitorApi {
-  collectMetrics: (
+  collectMetrics?: (
     serverId: string,
     options?: WorkspaceMonitorCollectOptions,
   ) => Promise<WorkspaceMonitorMetrics>
+  createAuthTicket?: WorkspaceMonitorWebSocketAuthTicketProvider
+  createWebSocketUrl?: WorkspaceMonitorWebSocketUrlResolver
+  WebSocketCtor?: TerminalWebSocketConstructor
 }
 
 export type WorkspaceDockerContainerState = "running" | "paused" | "exited" | "created" | "restarting" | "dead"

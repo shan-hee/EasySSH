@@ -1,7 +1,17 @@
 import type { RuntimeInfo } from "@easyssh/ssh-workspace/desktop"
 import { DesktopService } from "../../bindings/github.com/easyssh/easyssh-desktop"
 
-export type DesktopRuntimeBindingInfo = Awaited<ReturnType<typeof DesktopService.RuntimeInfo>>
+export interface DesktopGatewayInfo {
+  httpBaseUrl?: string
+  wsBaseUrl?: string
+  token?: string
+}
+
+type DesktopRuntimeBindingBaseInfo = Awaited<ReturnType<typeof DesktopService.RuntimeInfo>>
+
+export type DesktopRuntimeBindingInfo = DesktopRuntimeBindingBaseInfo & {
+  gateway?: DesktopGatewayInfo
+}
 
 export function loadDesktopRuntime(): Promise<DesktopRuntimeBindingInfo> {
   return DesktopService.RuntimeInfo()

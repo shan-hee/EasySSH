@@ -1452,6 +1452,35 @@ export class DesktopDockerSystemInfo {
     }
 }
 
+export class DesktopGatewayInfo {
+    "httpBaseUrl": string;
+    "wsBaseUrl": string;
+    "token": string;
+
+    /** Creates a new DesktopGatewayInfo instance. */
+    constructor($$source: Partial<DesktopGatewayInfo> = {}) {
+        if (!("httpBaseUrl" in $$source)) {
+            this["httpBaseUrl"] = "";
+        }
+        if (!("wsBaseUrl" in $$source)) {
+            this["wsBaseUrl"] = "";
+        }
+        if (!("token" in $$source)) {
+            this["token"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new DesktopGatewayInfo instance from a string or object.
+     */
+    static createFrom($$source: any = {}): DesktopGatewayInfo {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new DesktopGatewayInfo($$parsedSource as Partial<DesktopGatewayInfo>);
+    }
+}
+
 export class DesktopMonitorCPUInfo {
     "idleTicks": number;
     "totalTicks": number;
@@ -1753,6 +1782,7 @@ export class DesktopRuntimeInfo {
     "platform": string;
     "arch": string;
     "dataDir": string;
+    "gateway": DesktopGatewayInfo;
     "capabilities": { [_ in DesktopCapability]?: boolean };
 
     /** Creates a new DesktopRuntimeInfo instance. */
@@ -1772,6 +1802,9 @@ export class DesktopRuntimeInfo {
         if (!("dataDir" in $$source)) {
             this["dataDir"] = "";
         }
+        if (!("gateway" in $$source)) {
+            this["gateway"] = (new DesktopGatewayInfo());
+        }
         if (!("capabilities" in $$source)) {
             this["capabilities"] = {};
         }
@@ -1784,9 +1817,13 @@ export class DesktopRuntimeInfo {
      */
     static createFrom($$source: any = {}): DesktopRuntimeInfo {
         const $$createField5_0 = $$createType39;
+        const $$createField6_0 = $$createType40;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("gateway" in $$parsedSource) {
+            $$parsedSource["gateway"] = $$createField5_0($$parsedSource["gateway"]);
+        }
         if ("capabilities" in $$parsedSource) {
-            $$parsedSource["capabilities"] = $$createField5_0($$parsedSource["capabilities"]);
+            $$parsedSource["capabilities"] = $$createField6_0($$parsedSource["capabilities"]);
         }
         return new DesktopRuntimeInfo($$parsedSource as Partial<DesktopRuntimeInfo>);
     }
@@ -1876,7 +1913,7 @@ export class DesktopSFTPBatchDeleteResult {
      */
     static createFrom($$source: any = {}): DesktopSFTPBatchDeleteResult {
         const $$createField0_0 = $$createType0;
-        const $$createField1_0 = $$createType41;
+        const $$createField1_0 = $$createType42;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("success" in $$parsedSource) {
             $$parsedSource["success"] = $$createField0_0($$parsedSource["success"]);
@@ -2009,8 +2046,8 @@ export class DesktopSFTPDirectTransferInput {
      * Creates a new DesktopSFTPDirectTransferInput instance from a string or object.
      */
     static createFrom($$source: any = {}): DesktopSFTPDirectTransferInput {
-        const $$createField4_0 = $$createType43;
-        const $$createField5_0 = $$createType43;
+        const $$createField4_0 = $$createType44;
+        const $$createField5_0 = $$createType44;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("sourceCredential" in $$parsedSource) {
             $$parsedSource["sourceCredential"] = $$createField4_0($$parsedSource["sourceCredential"]);
@@ -2072,7 +2109,7 @@ export class DesktopSFTPDirectoryListResult {
      * Creates a new DesktopSFTPDirectoryListResult instance from a string or object.
      */
     static createFrom($$source: any = {}): DesktopSFTPDirectoryListResult {
-        const $$createField1_0 = $$createType45;
+        const $$createField1_0 = $$createType46;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("files" in $$parsedSource) {
             $$parsedSource["files"] = $$createField1_0($$parsedSource["files"]);
@@ -2260,7 +2297,7 @@ export class DesktopSFTPUploadTaskListResult {
      * Creates a new DesktopSFTPUploadTaskListResult instance from a string or object.
      */
     static createFrom($$source: any = {}): DesktopSFTPUploadTaskListResult {
-        const $$createField0_0 = $$createType47;
+        const $$createField0_0 = $$createType48;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("tasks" in $$parsedSource) {
             $$parsedSource["tasks"] = $$createField0_0($$parsedSource["tasks"]);
@@ -2577,7 +2614,7 @@ export class DesktopScriptListResult {
      * Creates a new DesktopScriptListResult instance from a string or object.
      */
     static createFrom($$source: any = {}): DesktopScriptListResult {
-        const $$createField0_0 = $$createType49;
+        const $$createField0_0 = $$createType50;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("data" in $$parsedSource) {
             $$parsedSource["data"] = $$createField0_0($$parsedSource["data"]);
@@ -2823,7 +2860,7 @@ export class DesktopServerListResult {
      * Creates a new DesktopServerListResult instance from a string or object.
      */
     static createFrom($$source: any = {}): DesktopServerListResult {
-        const $$createField0_0 = $$createType51;
+        const $$createField0_0 = $$createType52;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("data" in $$parsedSource) {
             $$parsedSource["data"] = $$createField0_0($$parsedSource["data"]);
@@ -3080,16 +3117,17 @@ const $$createType35 = DesktopMonitorNetworkInfo.createFrom;
 const $$createType36 = DesktopMonitorDiskInfo.createFrom;
 const $$createType37 = $Create.Array($$createType36);
 const $$createType38 = DesktopMonitorDockerInfo.createFrom;
-const $$createType39 = $Create.Map($Create.Any, $Create.Any);
-const $$createType40 = DesktopSFTPBatchOperationError.createFrom;
-const $$createType41 = $Create.Array($$createType40);
-const $$createType42 = DesktopSSHCredential.createFrom;
-const $$createType43 = $Create.Nullable($$createType42);
-const $$createType44 = DesktopSFTPFileInfo.createFrom;
-const $$createType45 = $Create.Array($$createType44);
-const $$createType46 = DesktopSFTPUploadTaskStatus.createFrom;
-const $$createType47 = $Create.Array($$createType46);
-const $$createType48 = DesktopScript.createFrom;
-const $$createType49 = $Create.Array($$createType48);
-const $$createType50 = DesktopServer.createFrom;
-const $$createType51 = $Create.Array($$createType50);
+const $$createType39 = DesktopGatewayInfo.createFrom;
+const $$createType40 = $Create.Map($Create.Any, $Create.Any);
+const $$createType41 = DesktopSFTPBatchOperationError.createFrom;
+const $$createType42 = $Create.Array($$createType41);
+const $$createType43 = DesktopSSHCredential.createFrom;
+const $$createType44 = $Create.Nullable($$createType43);
+const $$createType45 = DesktopSFTPFileInfo.createFrom;
+const $$createType46 = $Create.Array($$createType45);
+const $$createType47 = DesktopSFTPUploadTaskStatus.createFrom;
+const $$createType48 = $Create.Array($$createType47);
+const $$createType49 = DesktopScript.createFrom;
+const $$createType50 = $Create.Array($$createType49);
+const $$createType51 = DesktopServer.createFrom;
+const $$createType52 = $Create.Array($$createType51);

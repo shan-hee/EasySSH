@@ -3,7 +3,7 @@
  * 使用 Protobuf 二进制传输获取实时系统监控数据
  */
 
-import { useEffect, useState, useRef, useCallback } from 'react';
+import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { monitor } from '@/lib/proto/metrics';
 import { getWsUrl } from '@/lib/config';
 import { createAuthTicket } from '@/lib/auth-ticket';
@@ -78,6 +78,14 @@ type PendingLatencyUpdate = {
   clockOffsetMs?: number;
 };
 
+type MonitorPollingApi = WorkspaceMonitorApi & {
+  collectMetrics: NonNullable<WorkspaceMonitorApi['collectMetrics']>;
+};
+
+type MonitorWebSocketApi = WorkspaceMonitorApi & {
+  createWebSocketUrl: NonNullable<WorkspaceMonitorApi['createWebSocketUrl']>;
+};
+
 const toHookMetrics = (metrics: StoreMonitorMetrics): MonitorMetrics => ({
   systemInfo: {
     os: metrics.systemInfo.os,
@@ -134,6 +142,131 @@ const getInitialConnectionSnapshot = (serverId: string) => {
   }
 };
 
+const toNumber = (value: unknown): number => {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
+  if (typeof value === 'bigint') return Number(value);
+  if (typeof value === 'string') {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+  return 0;
+};
+
+const normalizeMonitorMetrics = (value: unknown): MonitorMetrics | null => {
+  if (!value || typeof value !== 'object') {
+    return null;
+  }
+
+  const data = value as Record<string, unknown>;
+  const systemInfo = data.systemInfo && typeof data.systemInfo === 'object'
+    ? data.systemInfo as Record<string, unknown>
+    : {};
+  const cpu = data.cpu && typeof data.cpu === 'object'
+    ? data.cpu as Record<string, unknown>
+    : {};
+  const memory = data.memory && typeof data.memory === 'object'
+    ? data.memory as Record<string, unknown>
+    : {};
+  const network = data.network && typeof data.network === 'object'
+    ? data.network as Record<string, unknown>
+    : {};
+  const docker = data.docker && typeof data.docker === 'object'
+    ? data.docker as Record<string, unknown>
+    : undefined;
+
+  return {
+    systemInfo: {
+      os: String(systemInfo.os ?? ''),
+      hostname: String(systemInfo.hostname ?? ''),
+      cpuModel: String(systemInfo.cpuModel ?? ''),
+      arch: String(systemInfo.arch ?? ''),
+      loadAvg: String(systemInfo.loadAvg ?? ''),
+      uptimeSeconds: toNumber(systemInfo.uptimeSeconds),
+      cpuCores: toNumber(systemInfo.cpuCores),
+    },
+    cpu: {
+      usagePercent: toNumber(cpu.usagePercent),
+      coreCount: toNumber(cpu.coreCount),
+    },
+    memory: {
+      ramUsedBytes: toNumber(memory.ramUsedBytes),
+      ramTotalBytes: toNumber(memory.ramTotalBytes),
+      swapUsedBytes: toNumber(memory.swapUsedBytes),
+      swapTotalBytes: toNumber(memory.swapTotalBytes),
+    },
+    network: {
+      bytesRecvPerSec: toNumber(network.bytesRecvPerSec),
+      bytesSentPerSec: toNumber(network.bytesSentPerSec),
+    },
+    disks: Array.isArray(data.disks)
+      ? data.disks.map((disk) => {
+          const diskRecord = disk && typeof disk === 'object'
+            ? disk as Record<string, unknown>
+            : {};
+          return {
+            mountPoint: String(diskRecord.mountPoint ?? ''),
+            usedBytes: toNumber(diskRecord.usedBytes),
+            totalBytes: toNumber(diskRecord.totalBytes),
+          };
+        })
+      : [],
+    diskTotalPercent: toNumber(data.diskTotalPercent),
+    sshLatencyMs: toNumber(data.sshLatencyMs),
+    timestamp: toNumber(data.timestamp),
+    docker: docker ? {
+      containersRunning: toNumber(docker.containersRunning),
+      containersTotal: toNumber(docker.containersTotal),
+      dockerInstalled: Boolean(docker.dockerInstalled),
+    } : undefined,
+  };
+};
+
+const toStoreMonitorMetrics = (formattedMetrics: MonitorMetrics): StoreMonitorMetrics => {
+  const ramUsagePercent = formattedMetrics.memory.ramTotalBytes > 0
+    ? (formattedMetrics.memory.ramUsedBytes / formattedMetrics.memory.ramTotalBytes) * 100
+    : 0;
+
+  return {
+    systemInfo: {
+      os: formattedMetrics.systemInfo.os,
+      hostname: formattedMetrics.systemInfo.hostname,
+      cpuModel: formattedMetrics.systemInfo.cpuModel,
+      arch: formattedMetrics.systemInfo.arch,
+      loadAvg: formattedMetrics.systemInfo.loadAvg,
+      uptimeSeconds: formattedMetrics.systemInfo.uptimeSeconds,
+      cpuCores: formattedMetrics.systemInfo.cpuCores,
+    },
+    cpu: {
+      usage: formattedMetrics.cpu.usagePercent,
+      cores: formattedMetrics.cpu.coreCount,
+    },
+    memory: {
+      total: formattedMetrics.memory.ramTotalBytes,
+      used: formattedMetrics.memory.ramUsedBytes,
+      free: Math.max(0, formattedMetrics.memory.ramTotalBytes - formattedMetrics.memory.ramUsedBytes),
+      usagePercent: ramUsagePercent,
+      swapUsed: formattedMetrics.memory.swapUsedBytes,
+      swapTotal: formattedMetrics.memory.swapTotalBytes,
+    },
+    disk: {
+      total: formattedMetrics.disks.reduce((acc, d) => acc + d.totalBytes, 0),
+      used: formattedMetrics.disks.reduce((acc, d) => acc + d.usedBytes, 0),
+      free: formattedMetrics.disks.reduce((acc, d) => acc + (d.totalBytes - d.usedBytes), 0),
+      usagePercent: formattedMetrics.diskTotalPercent,
+    },
+    disks: formattedMetrics.disks,
+    network: {
+      bytesIn: formattedMetrics.network.bytesRecvPerSec,
+      bytesOut: formattedMetrics.network.bytesSentPerSec,
+      packetsIn: 0,
+      packetsOut: 0,
+    },
+    timestamp: formattedMetrics.timestamp,
+    sshLatencyMs: formattedMetrics.sshLatencyMs,
+    docker: formattedMetrics.docker,
+  };
+};
+
 /**
  * 监控 WebSocket Hook
  *
@@ -186,10 +319,20 @@ export function useMonitorWebSocket({
   const updateStatus = useMonitorStore(state => state.updateStatus)
   const subscribe = useMonitorStore(state => state.subscribe)
   const notifySubscribers = useMonitorStore(state => state.notifySubscribers)
+  const monitorWebSocketApi = useMemo<MonitorWebSocketApi | undefined>(
+    () => monitorApi?.createWebSocketUrl ? monitorApi as MonitorWebSocketApi : undefined,
+    [monitorApi],
+  )
+  const monitorPollingApi = useMemo<MonitorPollingApi | undefined>(
+    () => monitorApi && !monitorApi.createWebSocketUrl && monitorApi.collectMetrics
+      ? monitorApi as MonitorPollingApi
+      : undefined,
+    [monitorApi],
+  )
 
   // ==================== 订阅监控数据更新 ====================
   useEffect(() => {
-    if (monitorApi) return
+    if (monitorPollingApi) return
     if (!enabled || !serverId) return
 
     // 每个启用监控的 Hook 都订阅同一个 serverId。
@@ -244,10 +387,10 @@ export function useMonitorWebSocket({
     return () => {
       unsubscribe()
     }
-  }, [monitorApi, enabled, serverId, subscribe, getConnection])
+  }, [monitorPollingApi, enabled, serverId, subscribe, getConnection])
 
   useEffect(() => {
-    if (!monitorApi) return
+    if (!monitorPollingApi) return
 
     if (!enabled || !serverId) {
       setStatus(WSStatus.DISCONNECTED)
@@ -271,13 +414,16 @@ export function useMonitorWebSocket({
       onStatusChange?.(WSStatus.CONNECTING)
 
       try {
-        const nextMetrics = await monitorApi.collectMetrics(serverId, {
+        const nextMetrics = await monitorPollingApi.collectMetrics(serverId, {
           intervalSeconds: interval,
         })
         if (cancelled) return
 
         setMetrics(nextMetrics)
         metricsHistoryRef.current = [...metricsHistoryRef.current, nextMetrics].slice(-20)
+        const storeMetrics = toStoreMonitorMetrics(nextMetrics)
+        updateMetrics(serverId, storeMetrics)
+        notifySubscribers(serverId, storeMetrics)
         setStatus(WSStatus.CONNECTED)
         onStatusChange?.(WSStatus.CONNECTED)
       } catch (error) {
@@ -306,15 +452,17 @@ export function useMonitorWebSocket({
     adapterPollNonce,
     enabled,
     interval,
-    monitorApi,
+    monitorPollingApi,
+    notifySubscribers,
     onError,
     onStatusChange,
     serverId,
+    updateMetrics,
   ])
 
   // 连接 WebSocket
   const connect = useCallback(() => {
-    if (monitorApi) return;
+    if (monitorPollingApi) return;
     if (!enabled || !serverId) return;
 
     // 仅在浏览器环境中执行
@@ -338,18 +486,24 @@ export function useMonitorWebSocket({
 
     void (async () => {
       try {
-        const { ticket } = await createAuthTicket({ type: 'ws_monitor', server_id: serverId })
-
-        const params = new URLSearchParams()
-        params.set('interval', String(interval))
-        params.set('ticket', ticket)
-        const wsUrl = getWsUrl(`/api/v1/monitor/server/${serverId}?${params.toString()}`);
+        const ticket = monitorWebSocketApi?.createAuthTicket
+          ? await monitorWebSocketApi.createAuthTicket({ type: 'ws_monitor', server_id: serverId })
+          : (await createAuthTicket({ type: 'ws_monitor', server_id: serverId })).ticket
+        const wsUrl = monitorWebSocketApi?.createWebSocketUrl
+          ? await monitorWebSocketApi.createWebSocketUrl({ serverId, interval, ticket })
+          : (() => {
+              const params = new URLSearchParams()
+              params.set('interval', String(interval))
+              params.set('ticket', ticket)
+              return getWsUrl(`/api/v1/monitor/server/${serverId}?${params.toString()}`)
+            })();
 
       setStatus(WSStatus.CONNECTING);
       onStatusChange?.(WSStatus.CONNECTING);
 
       // 创建 WebSocket 连接
-      const ws = new WebSocket(wsUrl);
+      const SocketCtor = monitorWebSocketApi?.WebSocketCtor ?? WebSocket;
+      const ws = new SocketCtor(wsUrl);
       ws.binaryType = 'arraybuffer';
 
       // 立即保存到 wsRef，以便 disconnect 能够正确处理
@@ -452,49 +606,7 @@ export function useMonitorWebSocket({
             };
 
             // ==================== 核心改动：通过 Store 分发消息给所有订阅者 ====================
-            const ramUsagePercent = formattedMetrics.memory.ramTotalBytes > 0
-              ? (formattedMetrics.memory.ramUsedBytes / formattedMetrics.memory.ramTotalBytes) * 100
-              : 0;
-
-            const storeMetrics: StoreMonitorMetrics = {
-              systemInfo: {
-                os: formattedMetrics.systemInfo.os,
-                hostname: formattedMetrics.systemInfo.hostname,
-                cpuModel: formattedMetrics.systemInfo.cpuModel,
-                arch: formattedMetrics.systemInfo.arch,
-                loadAvg: formattedMetrics.systemInfo.loadAvg,
-                uptimeSeconds: formattedMetrics.systemInfo.uptimeSeconds,
-                cpuCores: formattedMetrics.systemInfo.cpuCores,
-              },
-              cpu: {
-                usage: formattedMetrics.cpu.usagePercent,
-                cores: formattedMetrics.cpu.coreCount,
-              },
-              memory: {
-                total: formattedMetrics.memory.ramTotalBytes,
-                used: formattedMetrics.memory.ramUsedBytes,
-                free: Math.max(0, formattedMetrics.memory.ramTotalBytes - formattedMetrics.memory.ramUsedBytes),
-                usagePercent: ramUsagePercent,
-                swapUsed: formattedMetrics.memory.swapUsedBytes,
-                swapTotal: formattedMetrics.memory.swapTotalBytes,
-              },
-              disk: {
-                total: formattedMetrics.disks.reduce((acc, d) => acc + d.totalBytes, 0),
-                used: formattedMetrics.disks.reduce((acc, d) => acc + d.usedBytes, 0),
-                free: formattedMetrics.disks.reduce((acc, d) => acc + (d.totalBytes - d.usedBytes), 0),
-                usagePercent: formattedMetrics.diskTotalPercent,
-              },
-              disks: formattedMetrics.disks,
-              network: {
-                bytesIn: formattedMetrics.network.bytesRecvPerSec,
-                bytesOut: formattedMetrics.network.bytesSentPerSec,
-                packetsIn: 0,
-                packetsOut: 0,
-              },
-              timestamp: formattedMetrics.timestamp,
-              sshLatencyMs: formattedMetrics.sshLatencyMs,
-              docker: formattedMetrics.docker,
-            };
+            const storeMetrics = toStoreMonitorMetrics(formattedMetrics);
 
             // 更新 Store（用于新订阅者获取最新数据）
             updateMetrics(serverId, storeMetrics);
@@ -521,6 +633,16 @@ export function useMonitorWebSocket({
               }
 
               // 处理错误消息
+              if (msg && msg.type === 'metrics') {
+                const formattedMetrics = normalizeMonitorMetrics(msg.data);
+                if (!formattedMetrics) return;
+
+                const storeMetrics = toStoreMonitorMetrics(formattedMetrics);
+                updateMetrics(serverId, storeMetrics);
+                notifySubscribers(serverId, storeMetrics);
+                return;
+              }
+
               if (msg && msg.type === 'error') {
                 const error = new Error(msg.message || 'Monitoring connection failed');
                 onError?.(error);
@@ -657,7 +779,7 @@ export function useMonitorWebSocket({
         onError?.(error as Error);
       }
     })()
-  }, [monitorApi, enabled, serverId, interval, onError, onStatusChange, latencyIntervalMs, getConnection, setConnection, updateMetrics, updateLocalLatency, updateStatus, notifySubscribers]); // 添加 Store 依赖
+  }, [monitorPollingApi, monitorWebSocketApi, enabled, serverId, interval, onError, onStatusChange, latencyIntervalMs, getConnection, setConnection, updateMetrics, updateLocalLatency, updateStatus, notifySubscribers]); // 添加 Store 依赖
 
   // 断开连接
   const disconnect = useCallback(() => {
@@ -703,7 +825,7 @@ export function useMonitorWebSocket({
     // 标记组件已挂载
     isMountedRef.current = true;
 
-    if (!monitorApi && enabled && serverId) {
+    if (!monitorPollingApi && enabled && serverId) {
       connect();
     }
 
@@ -715,7 +837,7 @@ export function useMonitorWebSocket({
       // 连接会保持活跃，只有在页签关闭时才会通过 Store.destroyConnection() 真正断开
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [monitorApi, enabled, serverId, interval]); // 添加 interval 依赖，当间隔改变时重新连接
+  }, [monitorPollingApi, monitorWebSocketApi, enabled, serverId, interval]); // 添加 interval 依赖，当间隔改变时重新连接
 
   // 获取历史数据（用于图表）
   const getMetricsHistory = useCallback(() => {
@@ -731,7 +853,7 @@ export function useMonitorWebSocket({
     localLatencyUpMs,
     localLatencyDownMs,
     clockOffsetMs,
-    reconnect: monitorApi ? () => setAdapterPollNonce((value) => value + 1) : connect,
+    reconnect: monitorPollingApi ? () => setAdapterPollNonce((value) => value + 1) : connect,
     disconnect,
     getMetricsHistory,
   };

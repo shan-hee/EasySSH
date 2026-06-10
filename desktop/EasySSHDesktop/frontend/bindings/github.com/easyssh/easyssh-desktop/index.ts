@@ -4,6 +4,7 @@
 import * as ActivityLogService from "./activitylogservice.js";
 import * as DesktopAIService from "./desktopaiservice.js";
 import * as DesktopDockerService from "./desktopdockerservice.js";
+import * as DesktopGateway from "./desktopgateway.js";
 import * as DesktopMonitorService from "./desktopmonitorservice.js";
 import * as DesktopSFTPService from "./desktopsftpservice.js";
 import * as DesktopScriptService from "./desktopscriptservice.js";
@@ -14,6 +15,7 @@ export {
     ActivityLogService,
     DesktopAIService,
     DesktopDockerService,
+    DesktopGateway,
     DesktopMonitorService,
     DesktopSFTPService,
     DesktopScriptService,
@@ -64,6 +66,7 @@ export {
     DesktopDockerResourcesResult,
     DesktopDockerServerInput,
     DesktopDockerSystemInfo,
+    DesktopGatewayInfo,
     DesktopMonitorCPUInfo,
     DesktopMonitorCollectInput,
     DesktopMonitorDiskInfo,

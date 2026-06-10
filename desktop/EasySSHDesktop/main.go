@@ -25,6 +25,7 @@ func main() {
 	terminalService := NewDesktopTerminalService(serverService)
 	sftpService := NewDesktopSFTPService(serverService)
 	monitorService := NewDesktopMonitorService(serverService)
+	desktopGateway := NewDesktopGateway(serverService, scriptService, monitorService)
 	dockerService := NewDesktopDockerService(serverService)
 	aiService := NewDesktopAIService()
 
@@ -32,14 +33,15 @@ func main() {
 		Name:        "EasySSH",
 		Description: "EasySSH Desktop",
 		Services: []application.Service{
-			application.NewService(&DesktopService{}),
 			application.NewService(serverService),
 			application.NewService(scriptService),
 			application.NewService(terminalService),
+			application.NewService(desktopGateway),
 			application.NewService(sftpService),
 			application.NewService(monitorService),
 			application.NewService(dockerService),
 			application.NewService(activityLogService),
+			application.NewService(NewDesktopService(desktopGateway)),
 			application.NewService(aiService),
 		},
 		Assets: application.AssetOptions{

@@ -21,22 +21,35 @@ type DesktopRuntimeInfo struct {
 	Platform     string                     `json:"platform"`
 	Arch         string                     `json:"arch"`
 	DataDir      string                     `json:"dataDir"`
+	Gateway      DesktopGatewayInfo         `json:"gateway"`
 	Capabilities map[DesktopCapability]bool `json:"capabilities"`
 }
 
 type DesktopPreferenceSnapshot map[string]string
 
-type DesktopService struct{}
+type DesktopService struct {
+	gateway *DesktopGateway
+}
+
+func NewDesktopService(gateway *DesktopGateway) *DesktopService {
+	return &DesktopService{gateway: gateway}
+}
 
 var desktopPreferenceMu sync.Mutex
 
 func (s *DesktopService) RuntimeInfo() DesktopRuntimeInfo {
+	var gateway DesktopGatewayInfo
+	if s.gateway != nil {
+		gateway = s.gateway.Info()
+	}
+
 	return DesktopRuntimeInfo{
 		Profile:  "desktop",
 		Version:  readVersion(),
 		Platform: runtime.GOOS,
 		Arch:     runtime.GOARCH,
 		DataDir:  desktopDataDir(),
+		Gateway:  gateway,
 		Capabilities: map[DesktopCapability]bool{
 			"servers":          true,
 			"scripts":          true,

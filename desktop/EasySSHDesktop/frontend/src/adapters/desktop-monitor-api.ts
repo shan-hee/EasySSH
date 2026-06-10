@@ -1,12 +1,13 @@
 import type { WorkspaceMonitorApi, WorkspaceMonitorMetrics } from "@easyssh/ssh-workspace/desktop"
 import { DesktopMonitorService } from "../../bindings/github.com/easyssh/easyssh-desktop"
+import type { DesktopGatewayInfo } from "./desktop-runtime"
 
 type DesktopMonitorSnapshot = Awaited<ReturnType<typeof DesktopMonitorService.Collect>>
 
 const previousSnapshots = new Map<string, DesktopMonitorSnapshot>()
 
-export function createDesktopMonitorApi(): WorkspaceMonitorApi {
-  return {
+export function createDesktopMonitorApi(gateway?: DesktopGatewayInfo): WorkspaceMonitorApi {
+  const api: WorkspaceMonitorApi = {
     async collectMetrics(serverId, options) {
       const snapshot = await DesktopMonitorService.Collect({
         serverId,
@@ -16,8 +17,21 @@ export function createDesktopMonitorApi(): WorkspaceMonitorApi {
       previousSnapshots.set(serverId, snapshot)
 
       return mapDesktopMonitorSnapshot(snapshot, previous)
-    },
+    }
   }
+
+  if (gateway?.wsBaseUrl && gateway.token) {
+    api.createAuthTicket = async () => gateway.token ?? "desktop"
+    api.createWebSocketUrl = ({ serverId, interval, ticket }) => {
+      const params = new URLSearchParams()
+      params.set("serverId", serverId)
+      params.set("interval", String(interval))
+      params.set("ticket", ticket)
+      return `${gateway.wsBaseUrl}/monitor?${params.toString()}`
+    }
+  }
+
+  return api
 }
 
 function mapDesktopMonitorSnapshot(
