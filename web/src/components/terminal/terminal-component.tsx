@@ -1486,7 +1486,7 @@ export function TerminalComponent({
   // 每个页签独立管理快捷键
 
   return (
-    <div className={cn("flex min-h-0 flex-1 flex-col", isFullscreen && "fixed inset-0 z-50 bg-background")}>
+    <div className={cn("flex min-h-0 min-w-0 flex-1 flex-col", isFullscreen && "fixed inset-0 z-50 bg-background")}>
       {!hidePageHeader && !isFullscreen && (
         <PageHeader title={active?.serverName || activeExtraSession?.serverName || tTerminal("connectionConfigTitle")}>
           <ActivityLogPane />
@@ -1494,11 +1494,11 @@ export function TerminalComponent({
       )}
 
       <div className={cn(
-        "flex min-h-0 flex-1 flex-col",
+        "flex min-h-0 min-w-0 flex-1 flex-col",
         unframed ? "p-0" : "p-3 pt-0 sm:p-4 sm:pt-0"
       )}>
         <div className={cn(
-          "flex min-h-0 flex-1 flex-col overflow-hidden transition-colors",
+          "flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden transition-colors",
           unframed
             ? "bg-background text-foreground"
             : "rounded-xl border border-border/60 bg-background/70 text-foreground shadow-2xl backdrop-blur-md"
@@ -1544,7 +1544,7 @@ export function TerminalComponent({
 
           <div
             ref={workspaceDropRef}
-            className="relative flex min-h-0 flex-1 flex-col overflow-hidden"
+            className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
             onDragOver={handleWorkspaceNativeDragOver}
             onDrop={handleWorkspaceNativeDrop}
             onDragLeave={handleWorkspaceNativeDragLeave}
@@ -1554,7 +1554,7 @@ export function TerminalComponent({
                 {tTerminal("emptySessionHint")}
               </div>
             ) : activeConfigSession ? (
-              <div className="relative min-h-0 flex-1 overflow-hidden">
+              <div className="relative min-h-0 min-w-0 flex-1 overflow-hidden">
                 <ServerConnectionConfigs
                   key={`terminal-config-${activeConfigSession.id}`}
                   onConnect={handleStartConnectionFromActiveConfig}
@@ -1563,9 +1563,9 @@ export function TerminalComponent({
                 />
               </div>
             ) : isMultiSessionGrid && splitLayout ? (
-              <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
+              <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
                 {workspaceToolbarSession && renderTerminalSessionContent(workspaceToolbarSession, "toolbar", true)}
-                <div className="relative flex min-h-0 flex-1 overflow-auto p-2">
+                <div className="relative flex min-h-0 min-w-0 flex-1 overflow-auto p-2">
                   <SessionSplitView
                     node={splitLayout}
                     renderLeaf={renderSplitLeaf}
@@ -1577,7 +1577,7 @@ export function TerminalComponent({
             ) : activeExtraSession ? (
               <div
                 data-extra-session-id={activeExtraSession.id}
-                className="relative min-h-0 flex-1 overflow-hidden"
+                className="relative min-h-0 min-w-0 flex-1 overflow-hidden"
                 onMouseDown={() => setActiveSessionFromUser(activeExtraSession.id)}
               >
                 {renderExtraSessionContent?.(
@@ -1589,7 +1589,7 @@ export function TerminalComponent({
               activeTerminalSession && (
                 <div
                   data-split-session-id={activeTerminalSession.id}
-                  className="relative min-h-0 flex-1 overflow-hidden"
+                  className="relative min-h-0 min-w-0 flex-1 overflow-hidden"
                   onMouseDown={() => setActiveSessionFromUser(activeTerminalSession.id)}
                 >
                   <SessionSplitDropOverlay

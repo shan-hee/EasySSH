@@ -270,10 +270,10 @@ export function WebTerminal({
   }
 
   return (
-    <div className="h-full w-full relative overflow-hidden">
+    <div className="h-full w-full min-w-0 relative overflow-hidden">
       <div
         ref={containerRef}
-        className="h-full w-full terminal-container"
+        className="h-full w-full min-w-0 terminal-container"
       />
 
       {terminalCompletion.completionState.visible && terminal && (

@@ -535,7 +535,7 @@ export function TabTerminalContent({
       monitorApi={workspace?.adapters.apiClient?.monitor}
     >
       <div className={cn(
-        "flex flex-col relative overflow-hidden",
+        "flex min-w-0 flex-col relative overflow-hidden",
         shouldRenderBody ? "flex-1 h-full" : "shrink-0"
       )}>
         {shouldRenderBody && shouldRenderSurface && (
@@ -571,7 +571,7 @@ export function TabTerminalContent({
         )}
 
         <div className={cn(
-          "relative z-10 flex min-h-0 flex-col",
+          "relative z-10 flex min-h-0 min-w-0 flex-col",
           shouldRenderBody ? "flex-1" : "shrink-0"
         )}>
           {shouldRenderToolbar && (
@@ -642,7 +642,7 @@ export function TabTerminalContent({
 
           {/* 内容区域：监控面板 + 终端 */}
           {shouldRenderBody && (
-          <div className="flex-1 min-h-0 relative flex">
+          <div className="flex-1 min-h-0 min-w-0 relative flex overflow-hidden">
             {/* 监控面板 - 左侧固定 280px */}
             {isTerminalSession && isDesktopLayout && (
               <div
@@ -659,7 +659,7 @@ export function TabTerminalContent({
             )}
 
             {/* 终端区域 */}
-            <div className="flex-1 min-w-0 relative">
+            <div className="flex-1 min-w-0 relative overflow-hidden">
               {/* 文件管理器悬浮挂载根，位于终端容器内部 */}
               {shouldMountFileManagerInTerminal && (
                 <div ref={setFloatingPanelRoot} className="absolute inset-0 pointer-events-none" />
