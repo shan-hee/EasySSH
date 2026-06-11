@@ -1,17 +1,9 @@
-name: Build EasySSH Artifacts
+name: Build EasySSH Docker Image
 
-# 不再由 push 直接触发：
-#   - 正式发版统一由 release.yml (tag 触发) 调用本 workflow
+# Docker 镜像构建：
+#   - 正式发版由 release.yml (tag 触发) 调用本 workflow
 #   - workflow_dispatch 保留为紧急重建镜像的手动入口
 on:
-<<<<<<< HEAD
-  push:
-    branches: [main]
-    paths:
-      - 'VERSION'
-      - 'Dockerfile'
-      - '.github/workflows/docker-build.yml'
-=======
   workflow_call:
     inputs:
       version:
@@ -28,7 +20,6 @@ on:
         required: false
         type: boolean
         default: true
->>>>>>> f90d6e4 (chore: 将版本号升级至1.0.1)
 
   workflow_dispatch:
     inputs:
@@ -50,26 +41,13 @@ on:
           - 'linux/amd64'
           - 'linux/amd64,linux/arm64'
           - 'linux/arm64'
-      build-desktop:
-        description: 'Build the desktop artifact'
-        required: true
-        type: boolean
-        default: true
-      desktop-target:
-        description: 'Desktop build target'
-        required: true
-        type: choice
-        default: 'windows-x86'
-        options:
-          - 'windows-x86'
-          - 'windows-amd64'
 
 env:
   DOCKER_IMAGE: shanhee/easyssh
 
 jobs:
   build:
-    name: Build Docker Image
+    name: 🐳 Docker Image
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -77,32 +55,16 @@ jobs:
       actions: read
 
     steps:
-      - name: Checkout source
+      - name: 📥 检出代码
         uses: actions/checkout@v4
 
-<<<<<<< HEAD
-      - name: Resolve version
-=======
       - name: 📖 解析版本号
->>>>>>> f90d6e4 (chore: 将版本号升级至1.0.1)
         id: version
         env:
-          VERSION_INPUT: ${{ github.event.inputs.version || '' }}
+          VERSION_INPUT: ${{ inputs.version || '' }}
         run: |
-<<<<<<< HEAD
           if [ -n "$VERSION_INPUT" ]; then
             VERSION="$VERSION_INPUT"
-            echo "Using workflow input version: $VERSION"
-          elif [ -f "VERSION" ]; then
-            VERSION=$(tr -d '[:space:]' < VERSION)
-            echo "Using VERSION file: $VERSION"
-          else
-            VERSION="dev"
-            echo "VERSION file was not found. Using default version: dev"
-=======
-          # 优先使用传入的版本号，否则回退到 VERSION 文件
-          if [ -n "${{ inputs.version }}" ]; then
-            VERSION="${{ inputs.version }}"
             echo "使用传入的版本号: $VERSION"
           elif [ -f "VERSION" ]; then
             VERSION=$(tr -d '[:space:]' < VERSION)
@@ -110,8 +72,8 @@ jobs:
           else
             echo "::error::未提供版本号且 VERSION 文件不存在"
             exit 1
->>>>>>> f90d6e4 (chore: 将版本号升级至1.0.1)
           fi
+
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Extract Docker metadata
@@ -120,15 +82,8 @@ jobs:
         with:
           images: ${{ env.DOCKER_IMAGE }}
           tags: |
-<<<<<<< HEAD
-            type=raw,value=latest,enable=${{ github.event_name == 'workflow_dispatch' && github.event.inputs['update-latest'] == 'true' }}
-            type=raw,value=v${{ steps.version.outputs.version }},enable=${{ github.event_name == 'workflow_dispatch' }}
-            type=raw,value=latest,enable=${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
-            type=raw,value=v${{ steps.version.outputs.version }},enable=${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
-=======
             type=raw,value=v${{ steps.version.outputs.version }}
-            type=raw,value=latest,enable=${{ inputs.update-latest }}
->>>>>>> f90d6e4 (chore: 将版本号升级至1.0.1)
+            type=raw,value=latest,enable=${{ inputs['update-latest'] }}
 
       - name: Setup QEMU
         uses: docker/setup-qemu-action@v3
@@ -146,13 +101,7 @@ jobs:
           username: shanhee
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-<<<<<<< HEAD
-      - name: Build and push EasySSH Docker image
-        id: build
-=======
-      # 先在本地构建 amd64 镜像用于安全扫描，扫描通过后才推送
       - name: 🏗️ 构建镜像 (本地, 用于安全扫描)
->>>>>>> f90d6e4 (chore: 将版本号升级至1.0.1)
         uses: docker/build-push-action@v5
         with:
           context: .
@@ -166,11 +115,7 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-<<<<<<< HEAD
-      - name: Run Trivy security scan
-=======
       - name: 🔍 Trivy 扫描 (生成报告)
->>>>>>> f90d6e4 (chore: 将版本号升级至1.0.1)
         continue-on-error: true
         uses: aquasecurity/trivy-action@master
         with:
@@ -185,123 +130,6 @@ jobs:
         with:
           sarif_file: 'trivy-results.sarif'
 
-<<<<<<< HEAD
-      - name: Generate Docker summary
-        run: |
-          echo "## EasySSH Docker image build succeeded" >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "**Image tags:**" >> "$GITHUB_STEP_SUMMARY"
-          echo '```' >> "$GITHUB_STEP_SUMMARY"
-          echo "shanhee/easyssh:latest" >> "$GITHUB_STEP_SUMMARY"
-          echo "shanhee/easyssh:v${{ steps.version.outputs.version }}" >> "$GITHUB_STEP_SUMMARY"
-          echo '```' >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "**Platforms:** ${{ github.event.inputs.platforms || env.PLATFORMS }}" >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "**Digest:** \`${{ steps.build.outputs.digest }}\`" >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "### Quick start" >> "$GITHUB_STEP_SUMMARY"
-          echo '```bash' >> "$GITHUB_STEP_SUMMARY"
-          echo "docker pull shanhee/easyssh:latest" >> "$GITHUB_STEP_SUMMARY"
-          echo "cd EasySSH" >> "$GITHUB_STEP_SUMMARY"
-          echo "docker compose up -d" >> "$GITHUB_STEP_SUMMARY"
-          echo '```' >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "### Image info" >> "$GITHUB_STEP_SUMMARY"
-          echo "- **Version:** v${{ steps.version.outputs.version }}" >> "$GITHUB_STEP_SUMMARY"
-          echo "- **Contains:** Go backend + Next.js static files" >> "$GITHUB_STEP_SUMMARY"
-          echo "- **Platforms:** ${{ github.event.inputs.platforms || env.PLATFORMS }}" >> "$GITHUB_STEP_SUMMARY"
-
-  desktop-windows:
-    name: Build EasySSH Desktop Windows
-    if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs['build-desktop'] == 'true' }}
-    runs-on: windows-latest
-    permissions:
-      contents: read
-    defaults:
-      run:
-        shell: pwsh
-        working-directory: desktop/EasySSHDesktop
-
-    steps:
-      - name: Checkout source
-        uses: actions/checkout@v4
-
-      - name: Setup Go
-        uses: actions/setup-go@v5
-        with:
-          go-version-file: desktop/EasySSHDesktop/go.mod
-          cache-dependency-path: desktop/EasySSHDesktop/go.sum
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '24'
-
-      - name: Setup pnpm
-        run: |
-          corepack enable
-          corepack prepare pnpm@11.1.3 --activate
-
-      - name: Install Wails CLI
-        run: |
-          go install github.com/wailsapp/wails/v3/cmd/wails3@v3.0.0-alpha.97
-          $goBin = Join-Path (go env GOPATH) 'bin'
-          $goBin | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
-
-      - name: Resolve desktop target
-        id: desktop
-        run: |
-          $target = "${{ github.event.inputs['desktop-target'] || 'windows-x86' }}"
-          switch ($target) {
-            'windows-x86' { $arch = '386' }
-            'windows-amd64' { $arch = 'amd64' }
-            default { throw "Unsupported desktop target: $target" }
-          }
-          "target=$target" >> $env:GITHUB_OUTPUT
-          "arch=$arch" >> $env:GITHUB_OUTPUT
-
-      - name: Build desktop app
-        run: wails3 task windows:build ARCH=${{ steps.desktop.outputs.arch }}
-
-      - name: Package desktop artifact
-        id: package
-        env:
-          VERSION_INPUT: ${{ github.event.inputs.version || '' }}
-        run: |
-          $version = $env:VERSION_INPUT
-          if ([string]::IsNullOrWhiteSpace($version) -and (Test-Path ..\..\VERSION)) {
-            $version = (Get-Content ..\..\VERSION -Raw).Trim()
-          }
-          if ([string]::IsNullOrWhiteSpace($version)) {
-            $version = 'dev'
-          }
-
-          $target = "${{ steps.desktop.outputs.target }}"
-          $artifactBase = "easysshdesktop-$target-v$version"
-          New-Item -ItemType Directory -Force -Path dist | Out-Null
-          Copy-Item -Path bin\easysshdesktop.exe -Destination "dist\$artifactBase.exe" -Force
-          Compress-Archive -Path "dist\$artifactBase.exe" -DestinationPath "dist\$artifactBase.zip" -Force
-
-          "version=$version" >> $env:GITHUB_OUTPUT
-          "artifact=$artifactBase.zip" >> $env:GITHUB_OUTPUT
-
-      - name: Upload desktop artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: easyssh-desktop-${{ steps.desktop.outputs.target }}
-          path: desktop/EasySSHDesktop/dist/*.zip
-          if-no-files-found: error
-
-      - name: Generate desktop summary
-        run: |
-          "## EasySSH Desktop artifact" >> $env:GITHUB_STEP_SUMMARY
-          "" >> $env:GITHUB_STEP_SUMMARY
-          "- **Target:** ${{ steps.desktop.outputs.target }}" >> $env:GITHUB_STEP_SUMMARY
-          "- **Arch:** ${{ steps.desktop.outputs.arch }}" >> $env:GITHUB_STEP_SUMMARY
-          "- **Version:** v${{ steps.package.outputs.version }}" >> $env:GITHUB_STEP_SUMMARY
-          "- **Artifact:** ${{ steps.package.outputs.artifact }}" >> $env:GITHUB_STEP_SUMMARY
-=======
       - name: 🚧 Trivy 安全关卡 (存在可修复的 CRITICAL 漏洞则终止发布)
         uses: aquasecurity/trivy-action@master
         with:
@@ -329,22 +157,21 @@ jobs:
 
       - name: 📊 生成构建摘要
         run: |
-          echo "## 🐳 EasySSH Docker 镜像构建成功" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**镜像标签:**" >> $GITHUB_STEP_SUMMARY
-          echo '```' >> $GITHUB_STEP_SUMMARY
-          echo "shanhee/easyssh:v${{ steps.version.outputs.version }}" >> $GITHUB_STEP_SUMMARY
-          if [ "${{ inputs.update-latest }}" = "true" ]; then
-            echo "shanhee/easyssh:latest" >> $GITHUB_STEP_SUMMARY
+          echo "## 🐳 EasySSH Docker 镜像构建成功" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "**镜像标签:**" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          echo "shanhee/easyssh:v${{ steps.version.outputs.version }}" >> "$GITHUB_STEP_SUMMARY"
+          if [ "${{ inputs['update-latest'] }}" = "true" ]; then
+            echo "shanhee/easyssh:latest" >> "$GITHUB_STEP_SUMMARY"
           fi
-          echo '```' >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**支持架构:** ${{ inputs.platforms }}" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**镜像摘要:** \`${{ steps.build.outputs.digest }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### 🚀 快速启动" >> $GITHUB_STEP_SUMMARY
-          echo '```bash' >> $GITHUB_STEP_SUMMARY
-          echo "docker pull shanhee/easyssh:v${{ steps.version.outputs.version }}" >> $GITHUB_STEP_SUMMARY
-          echo '```' >> $GITHUB_STEP_SUMMARY
->>>>>>> f90d6e4 (chore: 将版本号升级至1.0.1)
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "**支持架构:** ${{ inputs.platforms }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "**镜像摘要:** \`${{ steps.build.outputs.digest }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "### 🚀 快速启动" >> "$GITHUB_STEP_SUMMARY"
+          echo '```bash' >> "$GITHUB_STEP_SUMMARY"
+          echo "docker pull shanhee/easyssh:v${{ steps.version.outputs.version }}" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
