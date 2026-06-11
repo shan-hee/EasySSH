@@ -34,6 +34,13 @@ jobs:
       - name: 📥 检出代码
         uses: actions/checkout@v4
 
+      # wails3 generate bindings 按宿主 (Linux) 平台分析 Go 代码，需要 gtk/webkit 头文件，
+      # 即使最终构建目标是 Windows
+      - name: 🔧 安装 Linux 系统依赖
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq libgtk-4-dev libwebkitgtk-6.0-dev
+
       - name: 🔧 设置 Go
         uses: actions/setup-go@v5
         with:
