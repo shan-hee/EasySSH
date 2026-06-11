@@ -108,8 +108,9 @@ docker compose -f docker-compose.dev.yml up -d --build
 
 触发方式：
 
-- 推送到 `main` 分支且修改了 `VERSION`、`Dockerfile` 或 `.github/workflows/docker-build.yml` 时自动构建并推送。
-- 在 GitHub Actions 页面手动运行 `Build EasySSH Docker Image`，可指定版本号、是否更新 `latest`、构建平台。
+- 推送 `v*` tag（推荐使用 `./scripts/bump-version.sh <version>`）触发发布流水线 `.github/workflows/release.yml`，依次执行版本校验、镜像构建（默认 `linux/amd64`，含 Trivy 安全扫描）、Windows 桌面端构建（默认 x86）和 GitHub Release 创建。
+- 在 GitHub Actions 页面手动运行 `Build EasySSH Docker Image`，可指定版本号、是否更新 `latest`、构建平台（用于紧急重建镜像或构建其他架构，不会创建 Release）。
+- 在 GitHub Actions 页面手动运行 `Build EasySSH Desktop`，可选择 Windows 架构（amd64 / arm64），产物以 artifact 形式上传。
 
 如需更换 Docker Hub 账号或镜像名，需要同步修改 `.github/workflows/docker-build.yml` 中的 `DOCKER_IMAGE` 和登录用户名。
 

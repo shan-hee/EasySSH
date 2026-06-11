@@ -1,0 +1,91 @@
+name: Build EasySSH Desktop
+
+# 桌面端构建（Wails v3, Windows 交叉编译）：
+#   - 由 release.yml (tag 触发) 调用，默认构建 Windows x86 (amd64)
+#   - workflow_dispatch 可手动选择架构，产物以 artifact 形式上传
+on:
+  workflow_call:
+    inputs:
+      arch:
+        description: 'Windows 架构 (amd64 / arm64)'
+        required: false
+        type: string
+        default: 'amd64'
+
+  workflow_dispatch:
+    inputs:
+      arch:
+        description: 'Windows 架构'
+        required: true
+        type: choice
+        default: 'amd64'
+        options:
+          - 'amd64'
+          - 'arm64'
+
+jobs:
+  build:
+    name: 💻 Windows ${{ inputs.arch }}
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: desktop/EasySSHDesktop
+    steps:
+      - name: 📥 检出代码
+        uses: actions/checkout@v4
+
+      - name: 🔧 设置 Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: desktop/EasySSHDesktop/go.mod
+          cache-dependency-path: desktop/EasySSHDesktop/go.sum
+
+      # 桌面端前端用 npm，共享 web workspace 用 pnpm，两者都需要
+      - name: 🔧 设置 pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          package_json_file: web/package.json
+
+      - name: 🔧 设置 Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+
+      - name: 🔧 安装 wails3 CLI (与 go.mod 版本一致)
+        run: |
+          WAILS_VERSION=$(go list -m -f '{{.Version}}' github.com/wailsapp/wails/v3)
+          echo "安装 wails3 $WAILS_VERSION"
+          go install "github.com/wailsapp/wails/v3/cmd/wails3@${WAILS_VERSION}"
+
+      - name: 🏗️ 构建 Windows 应用 (CGO=0 交叉编译)
+        run: wails3 task windows:build ARCH=${{ inputs.arch }}
+
+      - name: 📦 打包 zip
+        id: package
+        run: |
+          # 沿用既有命名约定: amd64 -> x86
+          if [ "${{ inputs.arch }}" = "amd64" ]; then
+            SUFFIX="x86"
+          else
+            SUFFIX="${{ inputs.arch }}"
+          fi
+          ZIP_NAME="easysshdesktop-windows-${SUFFIX}.zip"
+          cd bin
+          zip "$ZIP_NAME" easysshdesktop.exe
+          echo "zip_name=$ZIP_NAME" >> $GITHUB_OUTPUT
+
+      - name: 📤 上传构建产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-windows-${{ inputs.arch }}
+          path: desktop/EasySSHDesktop/bin/${{ steps.package.outputs.zip_name }}
+          if-no-files-found: error
+
+      - name: 📊 生成构建摘要
+        run: |
+          echo "## 💻 EasySSH Desktop 构建成功" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **平台:** Windows (${{ inputs.arch }})" >> $GITHUB_STEP_SUMMARY
+          echo "- **产物:** \`${{ steps.package.outputs.zip_name }}\`" >> $GITHUB_STEP_SUMMARY

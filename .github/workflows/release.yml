@@ -1,5 +1,9 @@
-name: Create Release
+name: Release
 
+# 发版唯一入口：推送 v* 标签
+# 流程：版本校验 → 镜像 (linux/amd64) + 桌面端 (Windows x86) → 创建 GitHub Release
+# 注：测试在本地完成后再发版，流水线不跑 CI；
+#     需要其他架构时在 Actions 页面手动运行 docker-build / desktop-build 并选择平台
 on:
   push:
     tags:
@@ -9,7 +13,61 @@ permissions:
   contents: write
 
 jobs:
+  # 1. 校验 tag 与 VERSION 文件一致，保证版本号单一来源
+  validate:
+    name: ✅ 版本校验
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - name: 📥 检出代码
+        uses: actions/checkout@v4
+
+      - name: 🔎 校验 tag 与 VERSION 文件一致
+        id: version
+        run: |
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          FILE_VERSION=$(tr -d '[:space:]' < VERSION)
+
+          echo "Tag 版本: $TAG_VERSION"
+          echo "VERSION 文件版本: $FILE_VERSION"
+
+          if [ "$TAG_VERSION" != "$FILE_VERSION" ]; then
+            echo "::error::tag ($GITHUB_REF_NAME) 与 VERSION 文件 ($FILE_VERSION) 不一致。请先运行 ./scripts/bump-version.sh $TAG_VERSION 更新版本号后再打 tag。"
+            exit 1
+          fi
+
+          echo "version=$TAG_VERSION" >> $GITHUB_OUTPUT
+
+  # 2. 构建并推送 Docker 镜像（内部含 Trivy 安全关卡，扫描不通过不会推送）
+  docker:
+    name: 🐳 镜像
+    needs: validate
+    uses: ./.github/workflows/docker-build.yml
+    with:
+      version: ${{ needs.validate.outputs.version }}
+      platforms: 'linux/amd64'
+      update-latest: true
+    secrets: inherit
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+
+  # 3. 构建 Windows 桌面端 (默认 x86/amd64)
+  desktop:
+    name: 💻 桌面端
+    needs: validate
+    uses: ./.github/workflows/desktop-build.yml
+    with:
+      arch: 'amd64'
+    permissions:
+      contents: read
+
+  # 4. 全部成功后创建 GitHub Release
   release:
+    name: 🎉 创建 Release
+    needs: [validate, docker, desktop]
     runs-on: ubuntu-latest
     steps:
       - name: 📥 检出代码
@@ -18,129 +76,88 @@ jobs:
           fetch-depth: 0
 
       - name: 📝 生成 Release Notes
-        id: release_notes
         run: |
-          # 获取当前标签和前一个标签
-          CURRENT_TAG="${GITHUB_REF#refs/tags/}"
+          CURRENT_TAG="${GITHUB_REF_NAME}"
           PREVIOUS_TAG=$(git describe --tags --abbrev=0 "$CURRENT_TAG^" 2>/dev/null || echo "")
 
           echo "当前标签: $CURRENT_TAG"
           echo "前一个标签: $PREVIOUS_TAG"
 
-          # 生成更新日志
+          if [ -z "$PREVIOUS_TAG" ]; then
+            RANGE=""
+          else
+            RANGE="$PREVIOUS_TAG..$CURRENT_TAG"
+          fi
+
+          # 按 conventional commits 前缀分类输出一节变更日志
+          section() {
+            local title="$1" pattern="$2"
+            local lines
+            lines=$(git log $RANGE --pretty=format:"%s (%h)" --no-merges | \
+              grep -iE "$pattern" | sed -E 's/^[a-zA-Z]+(\([^)]*\))?!?: */- /' || true)
+            if [ -n "$lines" ]; then
+              echo "### $title"
+              echo "$lines"
+              echo ""
+            fi
+          }
+
           {
             echo "## 🚀 更新内容"
             echo ""
-
-            if [ -z "$PREVIOUS_TAG" ]; then
-              echo "### ✨ 新功能"
-              git log --pretty=format:"- %s (%h)" --no-merges | head -20
-            else
-              # 提取功能变更
-              echo "### ✨ 新功能"
-              git log "$PREVIOUS_TAG..$CURRENT_TAG" --pretty=format:"%s" --no-merges | \
-                grep -iE "^feat|^feature" | sed 's/^feat\(.*\): /- /' | sed 's/^feature\(.*\): /- /' || echo "- 无新功能"
-
-              echo ""
-              echo "### 🐛 Bug 修复"
-              git log "$PREVIOUS_TAG..$CURRENT_TAG" --pretty=format:"%s" --no-merges | \
-                grep -iE "^fix|^bugfix" | sed 's/^fix\(.*\): /- /' | sed 's/^bugfix\(.*\): /- /' || echo "- 无 Bug 修复"
-
-              echo ""
-              echo "### 📚 文档更新"
-              git log "$PREVIOUS_TAG..$CURRENT_TAG" --pretty=format:"%s" --no-merges | \
-                grep -iE "^docs|^doc" | sed 's/^docs\(.*\): /- /' | sed 's/^doc\(.*\): /- /' || echo "- 无文档更新"
-
-              echo ""
-              echo "### ♻️ 代码重构"
-              git log "$PREVIOUS_TAG..$CURRENT_TAG" --pretty=format:"%s" --no-merges | \
-                grep -iE "^refactor" | sed 's/^refactor\(.*\): /- /' || echo "- 无重构"
-
-              echo ""
-              echo "### 🎨 样式优化"
-              git log "$PREVIOUS_TAG..$CURRENT_TAG" --pretty=format:"%s" --no-merges | \
-                grep -iE "^style|^ui" | sed 's/^style\(.*\): /- /' | sed 's/^ui\(.*\): /- /' || echo "- 无样式优化"
-            fi
-
-            echo ""
+            section "✨ 新功能" '^(feat|feature)(\(|!|:)'
+            section "🐛 Bug 修复" '^(fix|bugfix)(\(|!|:)'
+            section "♻️ 代码重构" '^refactor(\(|!|:)'
+            section "⚡ 性能优化" '^perf(\(|!|:)'
+            section "🎨 样式优化" '^(style|ui)(\(|!|:)'
+            section "📚 文档更新" '^docs?(\(|!|:)'
             echo "---"
             echo ""
             echo "## 🐳 Docker 镜像"
             echo ""
-            echo "### 拉取镜像"
             echo '```bash'
-            echo "# 后端镜像"
-            echo "docker pull shanhee/easyssh-backend:$CURRENT_TAG"
-            echo "docker pull shanhee/easyssh-backend:latest"
-            echo ""
-            echo "# 前端镜像"
-            echo "docker pull shanhee/easyssh-frontend:$CURRENT_TAG"
-            echo "docker pull shanhee/easyssh-frontend:latest"
+            echo "docker pull shanhee/easyssh:$CURRENT_TAG"
+            echo "docker pull shanhee/easyssh:latest"
             echo '```'
             echo ""
-            echo "### 支持架构"
-            echo "- \`linux/amd64\`"
-            echo "- \`linux/arm64\`"
+            echo "**支持架构:** \`linux/amd64\`（需要 arm64 时在 Actions 页面手动运行 Build EasySSH Docker Image 选择平台）"
+            echo ""
+            echo "## 💻 桌面端"
+            echo ""
+            echo "Windows (x86) 客户端见下方 Assets: \`easysshdesktop-windows-x86.zip\`"
             echo ""
             echo "## 📦 快速部署"
             echo ""
-            echo "### Docker Compose"
             echo '```bash'
             echo "# 下载 docker-compose.yml"
-            echo "wget https://raw.githubusercontent.com/shan-hee/EasySSH-NextJS/$CURRENT_TAG/docker/docker-compose.yml"
+            echo "wget https://raw.githubusercontent.com/shan-hee/EasySSH/$CURRENT_TAG/docker/docker-compose.yml"
             echo ""
-            echo "# 修改配置"
-            echo "vi docker-compose.yml"
-            echo ""
-            echo "# 启动服务"
-            echo "docker-compose up -d"
-            echo '```'
-            echo ""
-            echo "### Docker Compose 部署（推荐）"
-            echo '```bash'
-            echo "# 使用 docker-compose.yml"
-            echo "cd docker"
+            echo "# 按需修改配置后启动"
             echo "docker compose up -d"
             echo '```'
             echo ""
-            echo "### 独立运行"
-            echo '```bash'
-            echo "# 后端"
-            echo "docker run -d \\"
-            echo "  --name easyssh-backend \\"
-            echo "  -p 8520:8520 \\"
-            echo "  -v easyssh-data:/app/data \\"
-            echo "  -e DB_DRIVER=sqlite \\"
-            echo "  -e DB_PATH=/app/data/easyssh.db \\"
-            echo "  shanhee/easyssh-backend:$CURRENT_TAG"
-            echo ""
-            echo "# 前端"
-            echo "docker run -d \\"
-            echo "  --name easyssh-frontend \\"
-            echo "  -p 8520:8520 \\"
-            echo "  -e NEXT_PUBLIC_API_BASE=http://backend:8520 \\"
-            echo "  shanhee/easyssh-frontend:$CURRENT_TAG"
-            echo '```'
-            echo ""
-            echo "## 📖 文档"
-            echo ""
-            echo "- [部署文档](https://github.com/shan-hee/EasySSH-NextJS/blob/main/docs/deployment.md)"
-            echo "- [环境变量配置](https://github.com/shan-hee/EasySSH-NextJS/blob/main/.env.example)"
-            echo "- [更新日志](https://github.com/shan-hee/EasySSH-NextJS/releases)"
-            echo ""
             echo "## 🔒 安全"
             echo ""
-            echo "所有镜像已通过 Trivy 安全扫描。查看 [Security](https://github.com/shan-hee/EasySSH-NextJS/security) 标签页了解详情。"
+            echo "镜像已通过 Trivy 安全扫描（存在可修复的 CRITICAL 漏洞时会阻断发布）。详见 [Security](https://github.com/shan-hee/EasySSH/security) 标签页。"
             echo ""
             echo "---"
             echo ""
-            echo "**完整更新日志:** [\`$PREVIOUS_TAG...$CURRENT_TAG\`](https://github.com/shan-hee/EasySSH-NextJS/compare/$PREVIOUS_TAG...$CURRENT_TAG)"
+            if [ -n "$PREVIOUS_TAG" ]; then
+              echo "**完整更新日志:** [\`$PREVIOUS_TAG...$CURRENT_TAG\`](https://github.com/shan-hee/EasySSH/compare/$PREVIOUS_TAG...$CURRENT_TAG)"
+            fi
           } > release_notes.md
 
           cat release_notes.md
 
+      - name: 📥 下载桌面端构建产物
+        uses: actions/download-artifact@v4
+        with:
+          pattern: desktop-windows-*
+          path: desktop-artifacts
+          merge-multiple: true
+
       - name: 🎉 创建 GitHub Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           body_path: release_notes.md
           draft: false
@@ -149,6 +166,7 @@ jobs:
           files: |
             docker/docker-compose.yml
             .env.example
+            desktop-artifacts/*.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -156,6 +174,6 @@ jobs:
         run: |
           echo "## ✅ Release 创建成功" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**版本:** \`${GITHUB_REF#refs/tags/}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**版本:** \`${GITHUB_REF_NAME}\`" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**查看 Release:** [点击这里](https://github.com/shan-hee/EasySSH-NextJS/releases/tag/${GITHUB_REF#refs/tags/})" >> $GITHUB_STEP_SUMMARY
+          echo "**查看 Release:** [点击这里](https://github.com/shan-hee/EasySSH/releases/tag/${GITHUB_REF_NAME})" >> $GITHUB_STEP_SUMMARY

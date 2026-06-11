@@ -1,12 +1,34 @@
 name: Build EasySSH Artifacts
 
+# 不再由 push 直接触发：
+#   - 正式发版统一由 release.yml (tag 触发) 调用本 workflow
+#   - workflow_dispatch 保留为紧急重建镜像的手动入口
 on:
+<<<<<<< HEAD
   push:
     branches: [main]
     paths:
       - 'VERSION'
       - 'Dockerfile'
       - '.github/workflows/docker-build.yml'
+=======
+  workflow_call:
+    inputs:
+      version:
+        description: '镜像版本号 (不含 v 前缀)'
+        required: true
+        type: string
+      platforms:
+        description: '构建平台'
+        required: false
+        type: string
+        default: 'linux/amd64'
+      update-latest:
+        description: '是否更新 latest 标签'
+        required: false
+        type: boolean
+        default: true
+>>>>>>> f90d6e4 (chore: 将版本号升级至1.0.1)
 
   workflow_dispatch:
     inputs:
@@ -44,7 +66,6 @@ on:
 
 env:
   DOCKER_IMAGE: shanhee/easyssh
-  PLATFORMS: linux/amd64
 
 jobs:
   build:
@@ -52,7 +73,6 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      packages: write
       security-events: write
       actions: read
 
@@ -60,11 +80,16 @@ jobs:
       - name: Checkout source
         uses: actions/checkout@v4
 
+<<<<<<< HEAD
       - name: Resolve version
+=======
+      - name: 📖 解析版本号
+>>>>>>> f90d6e4 (chore: 将版本号升级至1.0.1)
         id: version
         env:
           VERSION_INPUT: ${{ github.event.inputs.version || '' }}
         run: |
+<<<<<<< HEAD
           if [ -n "$VERSION_INPUT" ]; then
             VERSION="$VERSION_INPUT"
             echo "Using workflow input version: $VERSION"
@@ -74,6 +99,18 @@ jobs:
           else
             VERSION="dev"
             echo "VERSION file was not found. Using default version: dev"
+=======
+          # 优先使用传入的版本号，否则回退到 VERSION 文件
+          if [ -n "${{ inputs.version }}" ]; then
+            VERSION="${{ inputs.version }}"
+            echo "使用传入的版本号: $VERSION"
+          elif [ -f "VERSION" ]; then
+            VERSION=$(tr -d '[:space:]' < VERSION)
+            echo "使用 VERSION 文件中的版本号: $VERSION"
+          else
+            echo "::error::未提供版本号且 VERSION 文件不存在"
+            exit 1
+>>>>>>> f90d6e4 (chore: 将版本号升级至1.0.1)
           fi
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
@@ -83,10 +120,15 @@ jobs:
         with:
           images: ${{ env.DOCKER_IMAGE }}
           tags: |
+<<<<<<< HEAD
             type=raw,value=latest,enable=${{ github.event_name == 'workflow_dispatch' && github.event.inputs['update-latest'] == 'true' }}
             type=raw,value=v${{ steps.version.outputs.version }},enable=${{ github.event_name == 'workflow_dispatch' }}
             type=raw,value=latest,enable=${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
             type=raw,value=v${{ steps.version.outputs.version }},enable=${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+=======
+            type=raw,value=v${{ steps.version.outputs.version }}
+            type=raw,value=latest,enable=${{ inputs.update-latest }}
+>>>>>>> f90d6e4 (chore: 将版本号升级至1.0.1)
 
       - name: Setup QEMU
         uses: docker/setup-qemu-action@v3
@@ -104,27 +146,35 @@ jobs:
           username: shanhee
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
+<<<<<<< HEAD
       - name: Build and push EasySSH Docker image
         id: build
+=======
+      # 先在本地构建 amd64 镜像用于安全扫描，扫描通过后才推送
+      - name: 🏗️ 构建镜像 (本地, 用于安全扫描)
+>>>>>>> f90d6e4 (chore: 将版本号升级至1.0.1)
         uses: docker/build-push-action@v5
         with:
           context: .
           file: ./Dockerfile
-          platforms: ${{ github.event.inputs.platforms || env.PLATFORMS }}
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+          platforms: linux/amd64
+          push: false
+          load: true
+          tags: ${{ env.DOCKER_IMAGE }}:scan
           build-args: |
             VERSION=${{ steps.version.outputs.version }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-          provenance: false
 
+<<<<<<< HEAD
       - name: Run Trivy security scan
+=======
+      - name: 🔍 Trivy 扫描 (生成报告)
+>>>>>>> f90d6e4 (chore: 将版本号升级至1.0.1)
         continue-on-error: true
         uses: aquasecurity/trivy-action@master
         with:
-          image-ref: ${{ env.DOCKER_IMAGE }}:latest
+          image-ref: ${{ env.DOCKER_IMAGE }}:scan
           format: 'sarif'
           output: 'trivy-results.sarif'
           severity: 'CRITICAL,HIGH'
@@ -135,6 +185,7 @@ jobs:
         with:
           sarif_file: 'trivy-results.sarif'
 
+<<<<<<< HEAD
       - name: Generate Docker summary
         run: |
           echo "## EasySSH Docker image build succeeded" >> "$GITHUB_STEP_SUMMARY"
@@ -250,3 +301,50 @@ jobs:
           "- **Arch:** ${{ steps.desktop.outputs.arch }}" >> $env:GITHUB_STEP_SUMMARY
           "- **Version:** v${{ steps.package.outputs.version }}" >> $env:GITHUB_STEP_SUMMARY
           "- **Artifact:** ${{ steps.package.outputs.artifact }}" >> $env:GITHUB_STEP_SUMMARY
+=======
+      - name: 🚧 Trivy 安全关卡 (存在可修复的 CRITICAL 漏洞则终止发布)
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ env.DOCKER_IMAGE }}:scan
+          format: 'table'
+          severity: 'CRITICAL'
+          ignore-unfixed: true
+          exit-code: '1'
+
+      - name: 🏗️ 构建并推送多架构镜像
+        id: build
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: ${{ inputs.platforms }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            VERSION=${{ steps.version.outputs.version }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          provenance: false
+
+      - name: 📊 生成构建摘要
+        run: |
+          echo "## 🐳 EasySSH Docker 镜像构建成功" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**镜像标签:**" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "shanhee/easyssh:v${{ steps.version.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ inputs.update-latest }}" = "true" ]; then
+            echo "shanhee/easyssh:latest" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**支持架构:** ${{ inputs.platforms }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**镜像摘要:** \`${{ steps.build.outputs.digest }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 🚀 快速启动" >> $GITHUB_STEP_SUMMARY
+          echo '```bash' >> $GITHUB_STEP_SUMMARY
+          echo "docker pull shanhee/easyssh:v${{ steps.version.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+>>>>>>> f90d6e4 (chore: 将版本号升级至1.0.1)

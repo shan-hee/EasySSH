@@ -8,7 +8,7 @@
 
 提供直观的 Web 界面进行远程服务器管理，支持终端模拟、文件传输、系统监控等功能
 
-[![Version](https://img.shields.io/badge/version-1.0.31-blue)](https://github.com/shan-hee/EasySSH/releases)
+[![Version](https://img.shields.io/badge/version-1.0.1-blue)](https://github.com/shan-hee/EasySSH/releases)
 [![Go](https://img.shields.io/badge/Go-1.25-00ADD8?logo=go)](https://go.dev/)
 [![Vite](https://img.shields.io/badge/Vite-7-646CFF?logo=vite)](https://vite.dev/)
 [![React](https://img.shields.io/badge/React-19.1-61DAFB?logo=react)](https://react.dev/)
@@ -17,7 +17,7 @@
 [![Docker Image Version](https://img.shields.io/docker/v/shanhee/easyssh?label=Docker&logo=docker&sort=semver)](https://hub.docker.com/r/shanhee/easyssh)
 [![Docker Image Size](https://img.shields.io/docker/image-size/shanhee/easyssh/latest?logo=docker)](https://hub.docker.com/r/shanhee/easyssh)
 [![Docker Pulls](https://img.shields.io/docker/pulls/shanhee/easyssh?logo=docker)](https://hub.docker.com/r/shanhee/easyssh)
-[![Build Status](https://img.shields.io/github/actions/workflow/status/shan-hee/EasySSH/docker-build.yml?branch=main&logo=github)](https://github.com/shan-hee/EasySSH/actions)
+[![Build Status](https://img.shields.io/github/actions/workflow/status/shan-hee/EasySSH/release.yml?logo=github)](https://github.com/shan-hee/EasySSH/actions)
 [![License](https://img.shields.io/github/license/shan-hee/EasySSH)](LICENSE)
 
 [快速开始](#快速开始) • [功能特性](#功能特性) • [技术栈](#技术栈) • [部署指南](#生产环境部署docker) • [开发文档](#开发指南)
