@@ -518,7 +518,15 @@ export interface SshWorkspaceTransferHistoryAdapter {
   delete?: (id: string) => Promise<unknown>
 }
 
-export type WorkspaceActivityLogStatus = "success" | "failure" | "warning"
+export type WorkspaceActivityLogStatus =
+  | "pending"
+  | "running"
+  | "success"
+  | "failure"
+  | "partial"
+  | "canceled"
+  | "timeout"
+  | "warning"
 
 export interface WorkspaceActivityLogItem {
   id: string

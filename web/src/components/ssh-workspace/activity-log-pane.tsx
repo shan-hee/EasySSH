@@ -1,6 +1,6 @@
 
 import * as React from "react"
-import { Activity, AlertTriangle, CheckCircle, Loader2, RefreshCw, XCircle } from "lucide-react"
+import { Activity, AlertTriangle, CheckCircle, Clock, Loader2, RefreshCw, XCircle } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
@@ -8,12 +8,38 @@ import { useOptionalSshWorkspace } from "@/components/ssh-workspace/ssh-workspac
 import type { WorkspaceActivityLogItem } from "@/lib/session/workspace"
 import { useTranslation } from "react-i18next"
 
+type ActivityLogStatus = WorkspaceActivityLogItem["status"]
+
 function formatCreatedAt(value: string) {
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) {
     return value
   }
   return date.toLocaleString()
+}
+
+function getStatusIcon(status: ActivityLogStatus) {
+  if (status === "success") {
+    return <CheckCircle className="h-3 w-3 text-green-600" />
+  }
+  if (status === "pending" || status === "running") {
+    return <Clock className="h-3 w-3 text-blue-600" />
+  }
+  if (status === "warning" || status === "partial" || status === "timeout") {
+    return <AlertTriangle className="h-3 w-3 text-amber-600" />
+  }
+  return <XCircle className="h-3 w-3 text-red-600" />
+}
+
+function getStatusLabel(t: (key: string) => string, status: ActivityLogStatus) {
+  if (status === "success") return t("filterStatusSuccessLabel")
+  if (status === "warning") return t("filterStatusWarningLabel")
+  if (status === "pending") return t("statusPending")
+  if (status === "running") return t("statusRunning")
+  if (status === "partial") return t("statusPartial")
+  if (status === "canceled") return t("statusCanceled")
+  if (status === "timeout") return t("statusTimeout")
+  return t("filterStatusFailureLabel")
 }
 
 export function ActivityLogPane({ compact = false }: { compact?: boolean }) {
@@ -109,18 +135,8 @@ export function ActivityLogPane({ compact = false }: { compact?: boolean }) {
                       {actionLabels[item.action as keyof typeof actionLabels] || item.action}
                     </div>
                     <Badge variant="outline" className="shrink-0 gap-1">
-                      {item.status === "success" ? (
-                        <CheckCircle className="h-3 w-3 text-green-600" />
-                      ) : item.status === "warning" ? (
-                        <AlertTriangle className="h-3 w-3 text-amber-600" />
-                      ) : (
-                        <XCircle className="h-3 w-3 text-red-600" />
-                      )}
-                      {item.status === "success"
-                        ? t("filterStatusSuccessLabel")
-                        : item.status === "warning"
-                          ? t("filterStatusWarningLabel")
-                          : t("filterStatusFailureLabel")}
+                      {getStatusIcon(item.status)}
+                      {getStatusLabel(t, item.status)}
                     </Badge>
                   </div>
                   <div className="mt-1 truncate text-xs text-muted-foreground" title={item.resource}>
