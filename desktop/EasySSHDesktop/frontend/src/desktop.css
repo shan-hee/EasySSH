@@ -214,5 +214,47 @@ body {
 }
 
 .easyssh-desktop-home .scrollbar-custom {
-  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: oklch(0.65 0 0 / 50%) transparent;
+}
+
+.easyssh-desktop-home .scrollbar-custom::-webkit-scrollbar {
+  width: 6px;
+  height: 4px;
+}
+
+.easyssh-desktop-home .scrollbar-custom::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.easyssh-desktop-home .scrollbar-custom::-webkit-scrollbar-thumb {
+  background-color: oklch(0.65 0 0 / 40%);
+  border-radius: 3px;
+}
+
+.easyssh-desktop-home .scrollbar-custom::-webkit-scrollbar-thumb:hover {
+  background-color: oklch(0.65 0 0 / 60%);
+}
+
+.easyssh-desktop-home :where(.dialog-scrollbar-root, .dialog-scrollbar-root *) {
+  scrollbar-width: thin;
+  scrollbar-color: oklch(0.65 0 0 / 50%) transparent;
+}
+
+.easyssh-desktop-home :where(.dialog-scrollbar-root, .dialog-scrollbar-root *)::-webkit-scrollbar {
+  width: 6px;
+  height: 4px;
+}
+
+.easyssh-desktop-home :where(.dialog-scrollbar-root, .dialog-scrollbar-root *)::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.easyssh-desktop-home :where(.dialog-scrollbar-root, .dialog-scrollbar-root *)::-webkit-scrollbar-thumb {
+  background-color: oklch(0.65 0 0 / 40%);
+  border-radius: 3px;
+}
+
+.easyssh-desktop-home :where(.dialog-scrollbar-root, .dialog-scrollbar-root *)::-webkit-scrollbar-thumb:hover {
+  background-color: oklch(0.65 0 0 / 60%);
 }
