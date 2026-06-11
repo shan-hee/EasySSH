@@ -203,7 +203,7 @@ jobs:
         run: |
           $target = "${{ github.event.inputs['desktop-target'] || 'windows-x86' }}"
           switch ($target) {
-            'windows-x86' { $arch = 'x86' }
+            'windows-x86' { $arch = '386' }
             'windows-amd64' { $arch = 'amd64' }
             default { throw "Unsupported desktop target: $target" }
           }
