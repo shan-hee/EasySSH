@@ -45,6 +45,8 @@ type DesktopServer struct {
 	AuthMethod    DesktopServerAuthMethod `json:"auth_method"`
 	Password      string                  `json:"password,omitempty"`
 	PrivateKey    string                  `json:"private_key,omitempty"`
+	HasPassword   bool                    `json:"has_password"`
+	HasPrivateKey bool                    `json:"has_private_key"`
 	Group         string                  `json:"group,omitempty"`
 	Tags          []string                `json:"tags,omitempty"`
 	Status        DesktopServerStatus     `json:"status"`
@@ -69,16 +71,18 @@ type DesktopServerListResult struct {
 }
 
 type DesktopServerInput struct {
-	Name        string                  `json:"name,omitempty"`
-	Host        string                  `json:"host"`
-	Port        int                     `json:"port"`
-	Username    string                  `json:"username"`
-	AuthMethod  DesktopServerAuthMethod `json:"auth_method"`
-	Password    string                  `json:"password,omitempty"`
-	PrivateKey  string                  `json:"private_key,omitempty"`
-	Group       string                  `json:"group,omitempty"`
-	Tags        []string                `json:"tags,omitempty"`
-	Description string                  `json:"description,omitempty"`
+	Name          string                  `json:"name,omitempty"`
+	Host          string                  `json:"host"`
+	Port          int                     `json:"port"`
+	Username      string                  `json:"username"`
+	AuthMethod    DesktopServerAuthMethod `json:"auth_method"`
+	Password      string                  `json:"password,omitempty"`
+	PrivateKey    string                  `json:"private_key,omitempty"`
+	PasswordSet   bool                    `json:"password_set,omitempty"`
+	PrivateKeySet bool                    `json:"private_key_set,omitempty"`
+	Group         string                  `json:"group,omitempty"`
+	Tags          []string                `json:"tags,omitempty"`
+	Description   string                  `json:"description,omitempty"`
 }
 
 type DesktopServerCommandInput struct {
@@ -221,6 +225,10 @@ func (s *DesktopServerService) List(params DesktopServerListParams) (DesktopServ
 		return DesktopServerListResult{}, err
 	}
 
+	for index := range servers {
+		servers[index] = sanitizeDesktopServer(servers[index])
+	}
+
 	return DesktopServerListResult{
 		Data:  servers,
 		Total: total,
@@ -246,7 +254,12 @@ func (s *DesktopServerService) GetById(id string) (DesktopServer, error) {
 		FROM desktop_servers
 		WHERE id = ?`, id)
 
-	return scanDesktopServer(row)
+	server, err := scanDesktopServer(row)
+	if err != nil {
+		return DesktopServer{}, err
+	}
+
+	return sanitizeDesktopServer(server), nil
 }
 
 func (s *DesktopServerService) Create(input DesktopServerInput) (DesktopServer, error) {
@@ -301,6 +314,17 @@ func (s *DesktopServerService) Update(id string, input DesktopServerInput) (Desk
 	server, tagsJSON, err := normalizeDesktopServerInput(input)
 	if err != nil {
 		return DesktopServer{}, err
+	}
+
+	current, err := s.getByIDRaw(id)
+	if err != nil {
+		return DesktopServer{}, err
+	}
+	if !input.PasswordSet {
+		server.Password = current.Password
+	}
+	if !input.PrivateKeySet {
+		server.PrivateKey = current.PrivateKey
 	}
 
 	now := time.Now().UTC().Format(time.RFC3339Nano)
@@ -401,7 +425,7 @@ func (s *DesktopServerService) ExecuteCommand(input DesktopServerCommandInput) (
 		return DesktopServerCommandResult{}, errors.New("command is required")
 	}
 
-	server, err := s.GetById(serverID)
+	server, err := s.getByIDRaw(serverID)
 	if err != nil {
 		return DesktopServerCommandResult{}, err
 	}
@@ -536,6 +560,26 @@ func (s *DesktopServerService) database() (*sql.DB, error) {
 
 	s.db = database
 	return s.db, nil
+}
+
+func (s *DesktopServerService) getByIDRaw(id string) (DesktopServer, error) {
+	database, err := s.database()
+	if err != nil {
+		return DesktopServer{}, err
+	}
+
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return DesktopServer{}, errors.New("server id is required")
+	}
+
+	row := database.QueryRow(`
+		SELECT id, user_id, name, host, port, username, auth_method, password, private_key,
+			server_group, tags_json, status, last_connected, description, created_at, updated_at
+		FROM desktop_servers
+		WHERE id = ?`, id)
+
+	return scanDesktopServer(row)
 }
 
 func configureDesktopServerDatabase(database *sql.DB) error {
@@ -826,8 +870,18 @@ func scanDesktopServer(scanner desktopServerScanner) (DesktopServer, error) {
 	if server.Tags == nil {
 		server.Tags = []string{}
 	}
+	server.HasPassword = strings.TrimSpace(server.Password) != ""
+	server.HasPrivateKey = strings.TrimSpace(server.PrivateKey) != ""
 
 	return server, nil
+}
+
+func sanitizeDesktopServer(server DesktopServer) DesktopServer {
+	server.HasPassword = strings.TrimSpace(server.Password) != ""
+	server.HasPrivateKey = strings.TrimSpace(server.PrivateKey) != ""
+	server.Password = ""
+	server.PrivateKey = ""
+	return server
 }
 
 func newDesktopServerID() string {

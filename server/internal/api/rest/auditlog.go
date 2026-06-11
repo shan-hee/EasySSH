@@ -33,9 +33,6 @@ func (h *AuditLogHandler) ListAll(c *gin.Context) {
 	if !ok {
 		return
 	}
-	if category := c.Query("category"); category != "" {
-		req.Category = auditlog.LogCategory(category)
-	}
 
 	logs, total, err := h.auditService.List(c.Request.Context(), req)
 	if err != nil {
@@ -71,9 +68,6 @@ func (h *AuditLogHandler) GetAllStatistics(c *gin.Context) {
 	req, ok := parseAuditLogStatisticsRequest(c, true)
 	if !ok {
 		return
-	}
-	if category := c.Query("category"); category != "" {
-		req.Category = auditlog.LogCategory(category)
 	}
 
 	stats, err := h.auditService.GetStatistics(c.Request.Context(), req)
@@ -154,8 +148,29 @@ func parseAuditLogListRequest(c *gin.Context, allowUserID bool) (*auditlog.ListA
 	if action := c.Query("action"); action != "" {
 		req.Action = auditlog.ActionType(action)
 	}
+	if typ := c.Query("type"); typ != "" {
+		req.Type = typ
+	}
+	if category := c.Query("category"); category != "" {
+		req.Category = auditlog.LogCategory(category)
+	}
 	if status := c.Query("status"); status != "" {
 		req.Status = auditlog.Status(status)
+	}
+	if source := c.Query("source"); source != "" {
+		req.Source = source
+	}
+	if ip := c.Query("ip"); ip != "" {
+		req.IP = ip
+	}
+	if keyword := firstNonEmptyQuery(c, "keyword", "q"); keyword != "" {
+		req.Keyword = keyword
+	}
+	if sortBy := c.Query("sort_by"); sortBy != "" {
+		req.SortBy = sortBy
+	}
+	if sortOrder := c.Query("sort_order"); sortOrder != "" {
+		req.SortOrder = sortOrder
 	}
 
 	if startTime, ok := parseQueryTime(c, "start_date", false); !ok {
@@ -199,6 +214,9 @@ func parseAuditLogStatisticsRequest(c *gin.Context, allowUserID bool) (*auditlog
 	if days, err := strconv.Atoi(daysStr); err == nil {
 		req.Days = days
 	}
+	if category := c.Query("category"); category != "" {
+		req.Category = auditlog.LogCategory(category)
+	}
 
 	if startTime, ok := parseQueryTime(c, "start_date", false); !ok {
 		return nil, false
@@ -236,6 +254,12 @@ func parseQueryTime(c *gin.Context, key string, endOfDay bool) (*time.Time, bool
 }
 
 func respondLogList(c *gin.Context, logs []*auditlog.AuditLog, total int64, req *auditlog.ListAuditLogsRequest) {
+	if req.Page < 1 {
+		req.Page = 1
+	}
+	if req.PageSize < 1 {
+		req.PageSize = 20
+	}
 	totalPages := int(total) / req.PageSize
 	if int(total)%req.PageSize > 0 {
 		totalPages++
@@ -248,6 +272,15 @@ func respondLogList(c *gin.Context, logs []*auditlog.AuditLog, total int64, req 
 		"page_size":   req.PageSize,
 		"total_pages": totalPages,
 	})
+}
+
+func firstNonEmptyQuery(c *gin.Context, keys ...string) string {
+	for _, key := range keys {
+		if value := c.Query(key); value != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 func requireAdmin(c *gin.Context) bool {

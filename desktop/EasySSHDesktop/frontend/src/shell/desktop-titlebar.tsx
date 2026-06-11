@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useState } from "react"
 import { Browser, Window } from "@wailsio/runtime"
 import { Button } from "@/components/ui/button"
 import {
@@ -18,169 +18,33 @@ import {
 } from "@/components/ui/dropdown-menu"
 import {
   Activity,
+  ArchiveRestore,
   Bot,
   FileText,
   FolderOpen,
   Info,
   Menu,
   Minus,
-  RefreshCw,
   Square,
   X,
   toast,
 } from "@easyssh/ssh-workspace/desktop"
 import type { Locale } from "@/i18n"
-import {
-  ActivityLogService,
-  DesktopActivityLogStatus,
-  DesktopService,
-  type DesktopActivityLogItem,
-} from "../../bindings/github.com/easyssh/easyssh-desktop"
+import { DesktopService } from "../../bindings/github.com/easyssh/easyssh-desktop"
 import type { DesktopRuntimeBindingInfo } from "../adapters/desktop-runtime"
 import { DesktopHeaderActions } from "./desktop-header-actions"
 import { useTranslation } from "react-i18next"
 
-export type DesktopView = "terminal" | "ai" | "scripts"
+export type DesktopView = "terminal" | "ai" | "scripts" | "activity-logs" | "backup-restore"
 
 const windowActionErrorMessage = "Failed to run window action:"
 const githubLabel = "GitHub"
 const githubUrl = "https://github.com/shan-hee/EasySSH"
 
-type DesktopTranslator = ReturnType<typeof useTranslation>["t"]
-
-function formatDesktopDateTime(value: string | undefined, locale: string) {
-  if (!value) return "-"
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return value
-  return date.toLocaleString(locale, { hour12: false })
-}
-
-function formatDesktopDuration(milliseconds?: number) {
-  if (!milliseconds) return "-"
-  if (milliseconds < 1000) return `${milliseconds}ms`
-  const seconds = Math.round(milliseconds / 1000)
-  if (seconds < 60) return `${seconds}s`
-  return `${Math.floor(seconds / 60)}m ${seconds % 60}s`
-}
-
-function formatDesktopStatus(status: DesktopActivityLogStatus, t: DesktopTranslator) {
-  if (status === DesktopActivityLogStatus.DesktopActivityLogFailure) return t("statusFailure")
-  if (status === DesktopActivityLogStatus.DesktopActivityLogWarning) return t("statusWarning")
-  return t("statusSuccess")
-}
-
-function formatDesktopAction(action: string, t: DesktopTranslator) {
-  switch (action) {
-    case "ssh_connect":
-      return t("actionSshConnect")
-    case "ssh_disconnect":
-      return t("actionSshDisconnect")
-    case "sftp_upload":
-      return t("actionSftpUpload")
-    case "sftp_download":
-      return t("actionSftpDownload")
-    case "sftp_delete":
-      return t("actionSftpDelete")
-    case "sftp_rename":
-      return t("actionSftpRename")
-    case "sftp_mkdir":
-      return t("actionSftpMkdir")
-    case "monitoring_query":
-      return t("actionMonitoringQuery")
-    case "script_execute":
-      return t("actionScriptExecute")
-    default:
-      return action || "-"
-  }
-}
-
 function runWindowAction(action: () => Promise<void>) {
   void action().catch((error) => {
     console.error(windowActionErrorMessage, error)
   })
-}
-
-function DesktopActivityLogDialog({
-  open,
-  onOpenChange,
-}: {
-  open: boolean
-  onOpenChange: (open: boolean) => void
-}) {
-  const { t, i18n } = useTranslation("desktop")
-  const { t: tCommon } = useTranslation("common")
-  const [items, setItems] = useState<DesktopActivityLogItem[]>([])
-  const [loading, setLoading] = useState(false)
-
-  const loadItems = useCallback(async () => {
-    try {
-      setLoading(true)
-      const result = await ActivityLogService.List({ page: 1, limit: 50 })
-      setItems(result.items || [])
-    } catch (error) {
-      console.error(t("desktopActionErrorMessage"), error)
-      toast.error(t("desktopActionErrorMessage"))
-    } finally {
-      setLoading(false)
-    }
-  }, [t])
-
-  useEffect(() => {
-    if (open) {
-      void loadItems()
-    }
-  }, [loadItems, open])
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="easyssh-desktop-activity-dialog">
-        <DialogHeader>
-          <div className="flex items-start justify-between gap-3 pr-8">
-            <div className="min-w-0">
-              <DialogTitle className="flex items-center gap-2">
-                <Activity className="h-5 w-5" />
-                {t("activityLogLabel")}
-              </DialogTitle>
-              <DialogDescription>{t("recentActivityDescription")}</DialogDescription>
-            </div>
-            <Button variant="ghost" size="icon-sm" title={t("refreshLabel")} aria-label={t("refreshLabel")} onClick={() => void loadItems()} disabled={loading}>
-              <RefreshCw className={loading ? "h-4 w-4 animate-spin" : "h-4 w-4"} />
-            </Button>
-          </div>
-        </DialogHeader>
-
-        <div className="easyssh-desktop-activity-list scrollbar-custom">
-          {loading && items.length === 0 ? (
-            <div className="easyssh-desktop-empty-state">{tCommon("loading")}</div>
-          ) : items.length === 0 ? (
-            <div className="easyssh-desktop-empty-state">{t("noActivityLabel")}</div>
-          ) : (
-            items.map((item) => (
-              <div key={item.id} className="easyssh-desktop-activity-item">
-                <div className="flex min-w-0 items-center justify-between gap-3">
-                  <div className="min-w-0 truncate text-sm font-medium">{formatDesktopAction(item.action, t)}</div>
-                  <span className="easyssh-desktop-status-badge">{formatDesktopStatus(item.status, t)}</span>
-                </div>
-                <div className="mt-1 truncate text-xs text-muted-foreground" title={item.resource}>
-                  {item.resource || "-"}
-                </div>
-                <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
-                  <span>{formatDesktopDateTime(item.createdAt, i18n.language)}</span>
-                  <span>{formatDesktopDuration(item.durationMs)}</span>
-                  {item.serverId ? <span>ID: {item.serverId}</span> : null}
-                </div>
-                {item.detail ? (
-                  <div className="mt-2 rounded-md bg-muted/50 px-2 py-1 text-xs text-muted-foreground">
-                    {item.detail}
-                  </div>
-                ) : null}
-              </div>
-            ))
-          )}
-        </div>
-      </DialogContent>
-    </Dialog>
-  )
 }
 
 function DesktopAboutDialog({
@@ -233,12 +97,15 @@ function DesktopAboutDialog({
 function DesktopSettingsMenu({
   runtime,
   onOpenScripts,
+  onOpenActivityLogs,
+  onOpenBackupRestore,
 }: {
   runtime: DesktopRuntimeBindingInfo | null
   onOpenScripts: () => void
+  onOpenActivityLogs: () => void
+  onOpenBackupRestore: () => void
 }) {
   const { t } = useTranslation("desktop")
-  const [activityLogOpen, setActivityLogOpen] = useState(false)
   const [aboutOpen, setAboutOpen] = useState(false)
 
   const handleOpenDataDir = useCallback(() => {
@@ -269,9 +136,13 @@ function DesktopSettingsMenu({
             <FileText className="h-4 w-4" />
             <span>{t("scriptLibraryLabel")}</span>
           </DropdownMenuItem>
-          <DropdownMenuItem onSelect={() => setActivityLogOpen(true)}>
+          <DropdownMenuItem onSelect={onOpenActivityLogs}>
             <Activity className="h-4 w-4" />
             <span>{t("activityLogLabel")}</span>
+          </DropdownMenuItem>
+          <DropdownMenuItem onSelect={onOpenBackupRestore}>
+            <ArchiveRestore className="h-4 w-4" />
+            <span>{t("backupRestoreLabel")}</span>
           </DropdownMenuItem>
           <DropdownMenuItem onSelect={handleOpenDataDir}>
             <FolderOpen className="h-4 w-4" />
@@ -285,7 +156,6 @@ function DesktopSettingsMenu({
         </DropdownMenuContent>
       </DropdownMenu>
 
-      <DesktopActivityLogDialog open={activityLogOpen} onOpenChange={setActivityLogOpen} />
       <DesktopAboutDialog open={aboutOpen} onOpenChange={setAboutOpen} runtime={runtime} />
     </>
   )
@@ -298,6 +168,8 @@ export function DesktopTitleBar({
   onToggleAiAssistant,
   onLocaleChange,
   onOpenScripts,
+  onOpenActivityLogs,
+  onOpenBackupRestore,
 }: {
   runtime: DesktopRuntimeBindingInfo | null
   activeView: DesktopView
@@ -305,6 +177,8 @@ export function DesktopTitleBar({
   onToggleAiAssistant: () => void
   onLocaleChange: (locale: Locale) => void
   onOpenScripts: () => void
+  onOpenActivityLogs: () => void
+  onOpenBackupRestore: () => void
 }) {
   const { t } = useTranslation("desktop")
   const handleMinimize = useCallback(() => {
@@ -329,6 +203,8 @@ export function DesktopTitleBar({
         <DesktopSettingsMenu
           runtime={runtime}
           onOpenScripts={onOpenScripts}
+          onOpenActivityLogs={onOpenActivityLogs}
+          onOpenBackupRestore={onOpenBackupRestore}
         />
         {activeView !== "ai" && (
           <Button

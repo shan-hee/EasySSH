@@ -405,7 +405,7 @@ func (g *DesktopGateway) initializeTerminalSession(
 	cols int,
 	rows int,
 ) desktopGatewayTerminalInitResult {
-	server, err := g.serverService.GetById(serverID)
+	server, err := g.serverService.getByIDRaw(serverID)
 	if err != nil {
 		return desktopGatewayTerminalInitResult{err: err}
 	}

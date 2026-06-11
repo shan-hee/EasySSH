@@ -121,7 +121,7 @@ func (s *DesktopTerminalService) Start(input DesktopTerminalStartInput) error {
 
 	s.closeByID(clientID, "session replaced")
 
-	server, err := s.serverService.GetById(serverID)
+	server, err := s.serverService.getByIDRaw(serverID)
 	if err != nil {
 		return err
 	}

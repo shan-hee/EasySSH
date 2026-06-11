@@ -17,7 +17,7 @@ export function DesktopProviders({ children }: { children: ReactNode }) {
           <StaticSystemConfigProvider
             config={{
               ...DEFAULT_SYSTEM_CONFIG,
-              system_name: "EasySSH Desktop",
+              system_name: "EasySSH",
             }}
           >
             <SidebarProvider defaultOpen={false} className="easyssh-desktop-sidebar-context">

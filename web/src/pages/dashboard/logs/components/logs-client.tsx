@@ -4,19 +4,26 @@ import type { ColumnDef } from "@tanstack/react-table"
 import {
   Activity,
   AlertTriangle,
+  ArrowDown,
+  ArrowUp,
+  ArrowUpDown,
   Download,
   KeyRound,
+  Search,
   ShieldAlert,
   ShieldCheck,
   User,
+  X,
 } from "lucide-react"
 import { useTranslation } from "react-i18next"
 import { useAuthReady } from "@/hooks/use-auth-ready"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
+import { Input } from "@/components/ui/input"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { toast } from "@/components/ui/sonner"
 import { getErrorMessage } from "@/lib/error-utils"
-import { logsApi, type AuditLog, type AuditLogStatisticsResponse } from "@/lib/api/logs"
+import { logsApi, type AuditLog, type AuditLogListParams, type AuditLogStatisticsResponse } from "@/lib/api/logs"
 import { DataTable } from "@/components/ui/data-table"
 import { DataTableToolbar } from "@/components/ui/data-table-toolbar"
 import {
@@ -42,10 +49,46 @@ interface LogsPageData {
 interface LogsClientProps {
   initialData?: LogsPageData
   defaultAction?: string
+  api?: Pick<typeof logsApi, "list" | "getStatistics">
 }
 
 const TREND_BUCKETS = 12
 const DAY_MS = 24 * 60 * 60 * 1000
+const ALL_VALUE = "__all"
+
+type SortOrder = "asc" | "desc"
+
+interface LogFilters {
+  type: string
+  category: string
+  status: string
+  source: string
+  ip: string
+  keyword: string
+  start_date: string
+  end_date: string
+}
+
+interface LogSortState {
+  sort_by: string
+  sort_order: SortOrder
+}
+
+const defaultFilters: LogFilters = {
+  type: ALL_VALUE,
+  category: ALL_VALUE,
+  status: ALL_VALUE,
+  source: "",
+  ip: "",
+  keyword: "",
+  start_date: "",
+  end_date: "",
+}
+
+const defaultSort: LogSortState = {
+  sort_by: "created_at",
+  sort_order: "desc",
+}
 
 function formatTime(value?: string) {
   if (!value) return "-"
@@ -116,14 +159,56 @@ function actionTone(action: string): DashboardTone {
 
 function statusTone(status: AuditLog["status"]): DashboardTone {
   if (status === "success") return "emerald"
-  if (status === "warning") return "amber"
+  if (status === "running" || status === "pending") return "blue"
+  if (status === "warning" || status === "partial" || status === "timeout") return "amber"
   return "rose"
 }
 
 function statusLabel(t: (key: string) => string, status: AuditLog["status"]) {
   if (status === "success") return t("filterStatusSuccessLabel")
   if (status === "warning") return t("filterStatusWarningLabel")
+  if (status === "pending") return t("statusPending")
+  if (status === "running") return t("statusRunning")
+  if (status === "partial") return t("statusPartial")
+  if (status === "canceled") return t("statusCanceled")
+  if (status === "timeout") return t("statusTimeout")
   return t("filterStatusFailureLabel")
+}
+
+function typeLabel(t: (key: string) => string, type?: AuditLog["type"]) {
+  if (type === "connection") return t("typeConnection")
+  if (type === "transfer") return t("typeTransfer")
+  if (type === "execution") return t("typeExecution")
+  if (type === "audit") return t("typeAudit")
+  return "-"
+}
+
+function categoryLabel(t: (key: string) => string, category?: AuditLog["category"]) {
+  if (category === "activity") return t("categoryActivity")
+  if (category === "audit") return t("categoryAudit")
+  return "-"
+}
+
+function filtersToParams(filters: LogFilters): Pick<AuditLogListParams, "type" | "category" | "status" | "source" | "ip" | "keyword" | "start_date" | "end_date"> {
+  return {
+    type: filters.type === ALL_VALUE ? undefined : filters.type as AuditLogListParams["type"],
+    category: filters.category === ALL_VALUE ? undefined : filters.category as AuditLogListParams["category"],
+    status: filters.status === ALL_VALUE ? undefined : filters.status,
+    source: filters.source.trim() || undefined,
+    ip: filters.ip.trim() || undefined,
+    keyword: filters.keyword.trim() || undefined,
+    start_date: filters.start_date || undefined,
+    end_date: filters.end_date || undefined,
+  }
+}
+
+function hasActiveFilters(filters: LogFilters) {
+  return Object.entries(filters).some(([key, value]) => {
+    if (key === "type" || key === "category" || key === "status") {
+      return value !== ALL_VALUE
+    }
+    return value.trim() !== ""
+  })
 }
 
 function getTodayRange() {
@@ -193,7 +278,7 @@ function exportLogs(logs: AuditLog[]) {
   URL.revokeObjectURL(url)
 }
 
-export function LogsClient({ initialData, defaultAction }: LogsClientProps) {
+export function LogsClient({ initialData, defaultAction, api = logsApi }: LogsClientProps) {
   const { ready } = useAuthReady()
   const { t } = useTranslation("logsAudit")
   const [logs, setLogs] = React.useState<AuditLog[]>(initialData?.logs || [])
@@ -206,15 +291,28 @@ export function LogsClient({ initialData, defaultAction }: LogsClientProps) {
   const [totalPages, setTotalPages] = React.useState(initialData?.totalPages || 1)
   const [totalRows, setTotalRows] = React.useState(initialData?.totalCount || 0)
   const [selectedLogId, setSelectedLogId] = React.useState<string | null>(null)
+  const [filters, setFilters] = React.useState<LogFilters>(defaultFilters)
+  const [sort, setSort] = React.useState<LogSortState>(defaultSort)
 
-  const loadStatistics = React.useCallback(async () => {
+  const loadStatistics = React.useCallback(async (
+    nextFilters: LogFilters = filters,
+    nextSort: LogSortState = sort,
+  ) => {
     try {
+      const todayRange = getTodayRange()
+      const filterParams = filtersToParams(nextFilters)
       const [statsResponse, recentResponse] = await Promise.all([
-        logsApi.getStatistics(getTodayRange()),
-        logsApi.list({
+        api.getStatistics({
+          category: filterParams.category,
+          start_date: filterParams.start_date || todayRange.start_date,
+          end_date: filterParams.end_date || todayRange.end_date,
+        }),
+        api.list({
           page: 1,
           page_size: 100,
           action: defaultAction,
+          ...filterParams,
+          ...nextSort,
           ...getLast24HoursRange(),
         }),
       ])
@@ -223,19 +321,23 @@ export function LogsClient({ initialData, defaultAction }: LogsClientProps) {
     } catch (error: unknown) {
       toast.error(getErrorMessage(error, t("toastLoadFailed")))
     }
-  }, [defaultAction, t])
+  }, [api, defaultAction, filters, sort, t])
 
   const loadLogs = React.useCallback(async (
     currentPage: number,
     currentPageSize: number,
-    options: { showTableLoading?: boolean } = {},
+    options: { showTableLoading?: boolean; filters?: LogFilters; sort?: LogSortState } = {},
   ) => {
     try {
       if (options.showTableLoading) setTableLoading(true)
-      const logsResponse = await logsApi.list({
+      const filterParams = filtersToParams(options.filters ?? filters)
+      const sortParams = options.sort ?? sort
+      const logsResponse = await api.list({
         page: currentPage,
         page_size: currentPageSize,
         action: defaultAction,
+        ...filterParams,
+        ...sortParams,
       })
       setLogs(logsResponse.logs || [])
       setTotalPages(logsResponse.total_pages || 1)
@@ -250,7 +352,7 @@ export function LogsClient({ initialData, defaultAction }: LogsClientProps) {
     } finally {
       if (options.showTableLoading) setTableLoading(false)
     }
-  }, [defaultAction, t])
+  }, [api, defaultAction, filters, sort, t])
 
   React.useEffect(() => {
     if (initialData || !ready) return
@@ -323,7 +425,7 @@ export function LogsClient({ initialData, defaultAction }: LogsClientProps) {
       id: log.id,
       icon: log.status === "warning" ? AlertTriangle : ShieldAlert,
       title: actionLabel(t, log.action),
-      description: `${log.username || "-"} · ${log.ip || "-"}`,
+      description: `${log.username || "-"} / ${log.ip || "-"}`,
       time: formatTime(log.created_at),
       tone: statusTone(log.status),
     }))
@@ -347,11 +449,40 @@ export function LogsClient({ initialData, defaultAction }: LogsClientProps) {
     void loadLogs(1, nextSize, { showTableLoading: true })
   }
 
+  const handleApplyFilters = () => {
+    setPage(1)
+    setSelectedLogId(null)
+    void Promise.all([
+      loadLogs(1, pageSize, { showTableLoading: true }),
+      loadStatistics(),
+    ])
+  }
+
+  const handleResetFilters = () => {
+    const nextFilters = { ...defaultFilters }
+    setFilters(nextFilters)
+    setPage(1)
+    setSelectedLogId(null)
+    void Promise.all([
+      loadLogs(1, pageSize, { showTableLoading: true, filters: nextFilters }),
+      loadStatistics(nextFilters),
+    ])
+  }
+
+  const handleSort = React.useCallback((field: string) => {
+    const nextSort: LogSortState = sort.sort_by === field
+      ? { sort_by: field, sort_order: sort.sort_order === "asc" ? "desc" : "asc" }
+      : { sort_by: field, sort_order: "desc" }
+    setSort(nextSort)
+    setPage(1)
+    void loadLogs(1, pageSize, { showTableLoading: true, sort: nextSort })
+  }, [loadLogs, pageSize, sort])
+
   const logColumns = React.useMemo<ColumnDef<AuditLog>[]>(() => [
     {
       id: "created_at",
       accessorKey: "created_at",
-      header: t("columnTime"),
+      header: () => <SortableHeader label={t("columnTime")} field="created_at" sort={sort} onSort={handleSort} />,
       cell: ({ row }) => (
         <span className="whitespace-nowrap font-mono text-xs">
           {formatTime(row.original.created_at)}
@@ -359,9 +490,31 @@ export function LogsClient({ initialData, defaultAction }: LogsClientProps) {
       ),
     },
     {
+      id: "type",
+      accessorKey: "type",
+      header: () => <SortableHeader label={t("columnType")} field="type" sort={sort} onSort={handleSort} />,
+      cell: ({ row }) => (
+        <InlineStatusBadge
+          label={typeLabel(t, row.original.type)}
+          tone={row.original.type === "audit" ? "amber" : actionTone(row.original.action)}
+        />
+      ),
+    },
+    {
+      id: "category",
+      accessorKey: "category",
+      header: () => <SortableHeader label={t("columnCategory")} field="category" sort={sort} onSort={handleSort} />,
+      cell: ({ row }) => (
+        <InlineStatusBadge
+          label={categoryLabel(t, row.original.category)}
+          tone={row.original.category === "audit" ? "violet" : "emerald"}
+        />
+      ),
+    },
+    {
       id: "status",
       accessorKey: "status",
-      header: t("columnStatus"),
+      header: () => <SortableHeader label={t("columnStatus")} field="status" sort={sort} onSort={handleSort} />,
       cell: ({ row }) => (
         <InlineStatusBadge
           label={statusLabel(t, row.original.status)}
@@ -377,7 +530,7 @@ export function LogsClient({ initialData, defaultAction }: LogsClientProps) {
     {
       id: "action",
       accessorKey: "action",
-      header: t("columnAction"),
+      header: () => <SortableHeader label={t("columnAction")} field="action" sort={sort} onSort={handleSort} />,
       cell: ({ row }) => (
         <InlineStatusBadge
           label={actionLabel(t, row.original.action)}
@@ -388,13 +541,13 @@ export function LogsClient({ initialData, defaultAction }: LogsClientProps) {
     {
       id: "username",
       accessorKey: "username",
-      header: t("columnUser"),
+      header: () => <SortableHeader label={t("columnUser")} field="username" sort={sort} onSort={handleSort} />,
       cell: ({ row }) => row.original.username || "-",
     },
     {
       id: "resource",
       accessorKey: "resource",
-      header: t("columnResource"),
+      header: () => <SortableHeader label={t("columnResource")} field="resource" sort={sort} onSort={handleSort} />,
       cell: ({ row }) => (
         <span className="block max-w-[180px] truncate" title={row.original.resource || undefined}>
           {row.original.resource || "-"}
@@ -402,12 +555,32 @@ export function LogsClient({ initialData, defaultAction }: LogsClientProps) {
       ),
     },
     {
+      id: "source",
+      accessorKey: "source",
+      header: () => <SortableHeader label={t("columnSource")} field="source" sort={sort} onSort={handleSort} />,
+      cell: ({ row }) => (
+        <span className="whitespace-nowrap text-xs text-muted-foreground">
+          {row.original.source || "-"}
+        </span>
+      ),
+    },
+    {
       id: "ip",
       accessorKey: "ip",
-      header: t("columnIp"),
+      header: () => <SortableHeader label={t("columnIp")} field="ip" sort={sort} onSort={handleSort} />,
       cell: ({ row }) => (
         <span className="whitespace-nowrap font-mono text-xs">
           {row.original.ip || "-"}
+        </span>
+      ),
+    },
+    {
+      id: "duration",
+      accessorKey: "duration",
+      header: () => <SortableHeader label={t("columnDuration")} field="duration_ms" sort={sort} onSort={handleSort} />,
+      cell: ({ row }) => (
+        <span className="whitespace-nowrap font-mono text-xs">
+          {formatDuration(row.original.duration)}
         </span>
       ),
     },
@@ -437,7 +610,7 @@ export function LogsClient({ initialData, defaultAction }: LogsClientProps) {
         ].some((item) => item?.toLowerCase().includes(keyword))
       },
     },
-  ], [t])
+  ], [handleSort, sort, t])
 
   const total = statistics?.total_logs || 0
 
@@ -469,7 +642,8 @@ export function LogsClient({ initialData, defaultAction }: LogsClientProps) {
           onPageSizeChange={handlePageSizeChange}
           emptyMessage={t("emptyMessage")}
           className="min-h-[520px] overflow-hidden xl:min-h-0"
-          tableClassName="min-w-[920px]"
+          scrollContainerClassName="min-h-[360px]"
+          tableClassName="min-w-[1180px]"
           density="compact"
           onRowClick={(log) => setSelectedLogId(log.id)}
           getRowClassName={(log) => (
@@ -478,19 +652,16 @@ export function LogsClient({ initialData, defaultAction }: LogsClientProps) {
           toolbar={(table) => (
             <DataTableToolbar
               table={table}
-              searchKey="details"
-              searchPlaceholder={t("activitySearchPlaceholder")}
-              filters={[
-                {
-                  column: "status",
-                  title: t("filterStatusTitle"),
-                  options: [
-                    { value: "success", label: statusLabel(t, "success") },
-                    { value: "warning", label: statusLabel(t, "warning") },
-                    { value: "failure", label: statusLabel(t, "failure") },
-                  ],
-                },
-              ]}
+              filterSlot={
+                <LogFilterControls
+                  filters={filters}
+                  onFiltersChange={setFilters}
+                  onApply={handleApplyFilters}
+                  onReset={handleResetFilters}
+                  hasActiveFilters={hasActiveFilters(filters)}
+                  t={t}
+                />
+              }
               showRefresh
               onRefresh={handleRefresh}
               isRefreshing={tableLoading}
@@ -522,7 +693,7 @@ export function LogsClient({ initialData, defaultAction }: LogsClientProps) {
                   <Detail label={t("columnIp")} value={selectedLog.ip || "-"} />
                   <Detail label={t("columnStatus")} value={statusLabel(t, selectedLog.status)} />
                   <Detail label={t("columnDuration")} value={formatDuration(selectedLog.duration)} />
-                  <Detail label={t("columnCategory")} value={selectedLog.category === "activity" ? t("categoryActivity") : t("categoryAudit")} />
+                  <Detail label={t("columnCategory")} value={categoryLabel(t, selectedLog.category)} />
                   <Detail label={t("columnAction")} value={actionLabel(t, selectedLog.action)} />
                   <Detail label={t("columnServer")} value={selectedLog.server_id || "-"} />
                 </div>
@@ -542,6 +713,148 @@ export function LogsClient({ initialData, defaultAction }: LogsClientProps) {
           </Card>
         </div>
       </div>
+    </div>
+  )
+}
+
+function SortableHeader({
+  label,
+  field,
+  sort,
+  onSort,
+}: {
+  label: string
+  field: string
+  sort: LogSortState
+  onSort: (field: string) => void
+}) {
+  const active = sort.sort_by === field
+  const Icon = active ? (sort.sort_order === "asc" ? ArrowUp : ArrowDown) : ArrowUpDown
+
+  return (
+    <Button
+      type="button"
+      variant="ghost"
+      size="sm"
+      className="h-7 -translate-x-2 px-2 text-xs font-medium"
+      onClick={() => onSort(field)}
+    >
+      <span>{label}</span>
+      <Icon className="ml-1.5 h-3.5 w-3.5" />
+    </Button>
+  )
+}
+
+function LogFilterControls({
+  filters,
+  onFiltersChange,
+  onApply,
+  onReset,
+  hasActiveFilters,
+  t,
+}: {
+  filters: LogFilters
+  onFiltersChange: React.Dispatch<React.SetStateAction<LogFilters>>
+  onApply: () => void
+  onReset: () => void
+  hasActiveFilters: boolean
+  t: (key: string) => string
+}) {
+  const updateFilter = (key: keyof LogFilters, value: string) => {
+    onFiltersChange((current) => ({ ...current, [key]: value }))
+  }
+
+  const handleKeyDown: React.KeyboardEventHandler<HTMLInputElement> = (event) => {
+    if (event.key === "Enter") {
+      onApply()
+    }
+  }
+
+  return (
+    <div className="flex w-full flex-wrap items-center gap-2">
+      <Input
+        value={filters.keyword}
+        placeholder={t("filterKeywordPlaceholder")}
+        onChange={(event) => updateFilter("keyword", event.target.value)}
+        onKeyDown={handleKeyDown}
+        className="h-8 w-full min-w-[180px] sm:w-[220px]"
+      />
+      <Select value={filters.type} onValueChange={(value) => updateFilter("type", value)}>
+        <SelectTrigger className="h-8 w-full sm:w-[150px]">
+          <SelectValue placeholder={t("filterTypeTitle")} />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value={ALL_VALUE}>{t("filterAll")}</SelectItem>
+          <SelectItem value="connection">{t("typeConnection")}</SelectItem>
+          <SelectItem value="transfer">{t("typeTransfer")}</SelectItem>
+          <SelectItem value="execution">{t("typeExecution")}</SelectItem>
+          <SelectItem value="audit">{t("typeAudit")}</SelectItem>
+        </SelectContent>
+      </Select>
+      <Select value={filters.category} onValueChange={(value) => updateFilter("category", value)}>
+        <SelectTrigger className="h-8 w-full sm:w-[140px]">
+          <SelectValue placeholder={t("filterCategoryTitle")} />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value={ALL_VALUE}>{t("filterAll")}</SelectItem>
+          <SelectItem value="activity">{t("categoryActivity")}</SelectItem>
+          <SelectItem value="audit">{t("categoryAudit")}</SelectItem>
+        </SelectContent>
+      </Select>
+      <Select value={filters.status} onValueChange={(value) => updateFilter("status", value)}>
+        <SelectTrigger className="h-8 w-full sm:w-[140px]">
+          <SelectValue placeholder={t("filterStatusTitle")} />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value={ALL_VALUE}>{t("filterAll")}</SelectItem>
+          <SelectItem value="pending">{t("statusPending")}</SelectItem>
+          <SelectItem value="running">{t("statusRunning")}</SelectItem>
+          <SelectItem value="success">{t("filterStatusSuccessLabel")}</SelectItem>
+          <SelectItem value="failure">{t("filterStatusFailureLabel")}</SelectItem>
+          <SelectItem value="partial">{t("statusPartial")}</SelectItem>
+          <SelectItem value="canceled">{t("statusCanceled")}</SelectItem>
+          <SelectItem value="timeout">{t("statusTimeout")}</SelectItem>
+          <SelectItem value="warning">{t("filterStatusWarningLabel")}</SelectItem>
+        </SelectContent>
+      </Select>
+      <Input
+        value={filters.source}
+        placeholder={t("filterSourcePlaceholder")}
+        onChange={(event) => updateFilter("source", event.target.value)}
+        onKeyDown={handleKeyDown}
+        className="h-8 w-full min-w-[120px] sm:w-[150px]"
+      />
+      <Input
+        value={filters.ip}
+        placeholder={t("filterIpPlaceholder")}
+        onChange={(event) => updateFilter("ip", event.target.value)}
+        onKeyDown={handleKeyDown}
+        className="h-8 w-full min-w-[120px] sm:w-[150px]"
+      />
+      <Input
+        type="date"
+        value={filters.start_date}
+        aria-label={t("filterStartDate")}
+        onChange={(event) => updateFilter("start_date", event.target.value)}
+        className="h-8 w-full sm:w-[150px]"
+      />
+      <Input
+        type="date"
+        value={filters.end_date}
+        aria-label={t("filterEndDate")}
+        onChange={(event) => updateFilter("end_date", event.target.value)}
+        className="h-8 w-full sm:w-[150px]"
+      />
+      <Button type="button" size="sm" className="h-8" onClick={onApply}>
+        <Search className="mr-2 h-4 w-4" />
+        {t("applyFilters")}
+      </Button>
+      {hasActiveFilters ? (
+        <Button type="button" variant="ghost" size="sm" className="h-8" onClick={onReset}>
+          <X className="mr-2 h-4 w-4" />
+          {t("clearServerFilters")}
+        </Button>
+      ) : null}
     </div>
   )
 }

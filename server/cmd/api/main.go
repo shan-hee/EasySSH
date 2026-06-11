@@ -86,12 +86,16 @@ func main() {
 
 	log.Println("✅ GeoIP client initialized with in-memory cache")
 
-	// 数据库迁移（自动迁移）
+	// Development migration: remove the deprecated split audit log table after
+	// merging audit and operation logs into operation_records.
+	if err := database.Exec("DROP TABLE IF EXISTS audit_logs").Error; err != nil {
+		log.Fatalf("Failed to drop deprecated audit_logs table: %v", err)
+	}
+
 	if err := database.AutoMigrate(
 		&auth.User{},
 		&auth.Session{}, // 用户会话表
 		&server.Server{},
-		&auditlog.AuditLog{},
 		&script.Script{},                   // 脚本表
 		&batchtask.BatchTask{},             // 批量任务表
 		&scheduledtask.ScheduledTask{},     // 定时任务表
@@ -475,7 +479,6 @@ func main() {
 	r.Use(middleware.SecurityConfigCache(securityService))           // 安全配置缓存(避免重复查询)
 	r.Use(middleware.CORS(cfg, securityService))                     // 跨域（支持动态配置）
 	r.Use(middleware.CSRFMiddleware(cfg))                            // Cookie 凭证端点 CSRF 防护
-	r.Use(middleware.AuditLogMiddleware(auditLogService, nil))       // 审计日志（使用默认配置）
 	r.Use(middleware.OptionalIPWhitelistMiddleware(securityService)) // IP 访问控制验证（可选）
 
 	// API v1 路由组
@@ -511,6 +514,7 @@ func main() {
 
 		// 认证路由（公开）
 		authRoutes := v1.Group("/auth")
+		authRoutes.Use(middleware.AuditLogMiddleware(auditLogService, nil))
 		{
 			authRoutes.POST("/send-verification-code", authHandler.SendVerificationCode)
 			authRoutes.POST("/send-password-reset-code", authHandler.SendPasswordResetCode)
@@ -529,6 +533,7 @@ func main() {
 
 		// OAuth 路由（公开）
 		oauthRoutes := v1.Group("/oauth")
+		oauthRoutes.Use(middleware.AuditLogMiddleware(auditLogService, nil))
 		{
 			// 与 /oauth 前缀下的端点保持一一对应，便于前端统一通过 /api/v1 调用
 			oauthRoutes.POST("/authorize", middleware.LoginRateLimitMiddleware(securityService), authHandler.OAuthAuthorize) // 开发版 PKCE 授权码端点（含登录验证）
@@ -573,6 +578,7 @@ func main() {
 		userManagementRoutes := v1.Group("/users")
 		userManagementRoutes.Use(middleware.AuthMiddleware(jwtService, ticketService, authRepo))
 		userManagementRoutes.Use(middleware.RequirePermission(permissionService, "user:manage"))
+		userManagementRoutes.Use(middleware.AuditLogMiddleware(auditLogService, nil))
 		{
 			userManagementRoutes.GET("", userHandler.ListUsers)                    // 获取用户列表
 			userManagementRoutes.GET("/statistics", userHandler.GetStatistics)     // 获取统计信息
@@ -599,6 +605,7 @@ func main() {
 		// 服务器路由（需要认证）
 		serverRoutes := v1.Group("/servers")
 		serverRoutes.Use(middleware.AuthMiddleware(jwtService, ticketService, authRepo))
+		serverRoutes.Use(middleware.AuditLogMiddleware(auditLogService, nil))
 		{
 			serverRoutes.GET("", middleware.RequirePermission(permissionService, "server:view"), serverHandler.List)                     // 列表
 			serverRoutes.GET("/statistics", middleware.RequirePermission(permissionService, "server:view"), serverHandler.GetStatistics) // 统计
@@ -770,7 +777,7 @@ func main() {
 			logRoutes.GET("/:id", auditLogHandler.GetAnyByID)
 		}
 
-		// 统一操作记录路由：普通用户查看自己的记录，管理员可查看全局记录
+		// 统一操作记录路由：当前用户只读查看自己的记录；管理员全局视角走 /logs
 		operationRecordRoutes := v1.Group("/operation-records")
 		operationRecordRoutes.Use(middleware.AuthMiddleware(jwtService, ticketService, authRepo))
 		{

@@ -674,6 +674,118 @@ export enum DesktopActivityLogStatus {
     DesktopActivityLogWarning = "warning",
 };
 
+export class DesktopBackupExportInput {
+    "include_config": boolean;
+    "include_database": boolean;
+
+    /** Creates a new DesktopBackupExportInput instance. */
+    constructor($$source: Partial<DesktopBackupExportInput> = {}) {
+        if (!("include_config" in $$source)) {
+            this["include_config"] = false;
+        }
+        if (!("include_database" in $$source)) {
+            this["include_database"] = false;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new DesktopBackupExportInput instance from a string or object.
+     */
+    static createFrom($$source: any = {}): DesktopBackupExportInput {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new DesktopBackupExportInput($$parsedSource as Partial<DesktopBackupExportInput>);
+    }
+}
+
+export class DesktopBackupExportResult {
+    "filename": string;
+    "content": string;
+
+    /** Creates a new DesktopBackupExportResult instance. */
+    constructor($$source: Partial<DesktopBackupExportResult> = {}) {
+        if (!("filename" in $$source)) {
+            this["filename"] = "";
+        }
+        if (!("content" in $$source)) {
+            this["content"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new DesktopBackupExportResult instance from a string or object.
+     */
+    static createFrom($$source: any = {}): DesktopBackupExportResult {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new DesktopBackupExportResult($$parsedSource as Partial<DesktopBackupExportResult>);
+    }
+}
+
+export class DesktopBackupRestoreInput {
+    "content": string;
+    "include_config": boolean;
+    "include_database": boolean;
+    "conflict_strategy": string;
+
+    /** Creates a new DesktopBackupRestoreInput instance. */
+    constructor($$source: Partial<DesktopBackupRestoreInput> = {}) {
+        if (!("content" in $$source)) {
+            this["content"] = "";
+        }
+        if (!("include_config" in $$source)) {
+            this["include_config"] = false;
+        }
+        if (!("include_database" in $$source)) {
+            this["include_database"] = false;
+        }
+        if (!("conflict_strategy" in $$source)) {
+            this["conflict_strategy"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new DesktopBackupRestoreInput instance from a string or object.
+     */
+    static createFrom($$source: any = {}): DesktopBackupRestoreInput {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new DesktopBackupRestoreInput($$parsedSource as Partial<DesktopBackupRestoreInput>);
+    }
+}
+
+export class DesktopBackupRestoreResult {
+    "inserted": number;
+    "updated": number;
+    "skipped": number;
+
+    /** Creates a new DesktopBackupRestoreResult instance. */
+    constructor($$source: Partial<DesktopBackupRestoreResult> = {}) {
+        if (!("inserted" in $$source)) {
+            this["inserted"] = 0;
+        }
+        if (!("updated" in $$source)) {
+            this["updated"] = 0;
+        }
+        if (!("skipped" in $$source)) {
+            this["skipped"] = 0;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new DesktopBackupRestoreResult instance from a string or object.
+     */
+    static createFrom($$source: any = {}): DesktopBackupRestoreResult {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new DesktopBackupRestoreResult($$parsedSource as Partial<DesktopBackupRestoreResult>);
+    }
+}
+
 export class DesktopBatchTask {
     "id": string;
     "user_id": string;
@@ -2633,6 +2745,8 @@ export class DesktopServer {
     "auth_method": DesktopServerAuthMethod;
     "password"?: string;
     "private_key"?: string;
+    "has_password": boolean;
+    "has_private_key": boolean;
     "group"?: string;
     "tags"?: string[];
     "status": DesktopServerStatus;
@@ -2661,6 +2775,12 @@ export class DesktopServer {
         if (!("auth_method" in $$source)) {
             this["auth_method"] = DesktopServerAuthMethod.$zero;
         }
+        if (!("has_password" in $$source)) {
+            this["has_password"] = false;
+        }
+        if (!("has_private_key" in $$source)) {
+            this["has_private_key"] = false;
+        }
         if (!("status" in $$source)) {
             this["status"] = DesktopServerStatus.$zero;
         }
@@ -2678,10 +2798,10 @@ export class DesktopServer {
      * Creates a new DesktopServer instance from a string or object.
      */
     static createFrom($$source: any = {}): DesktopServer {
-        const $$createField10_0 = $$createType0;
+        const $$createField12_0 = $$createType0;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("tags" in $$parsedSource) {
-            $$parsedSource["tags"] = $$createField10_0($$parsedSource["tags"]);
+            $$parsedSource["tags"] = $$createField12_0($$parsedSource["tags"]);
         }
         return new DesktopServer($$parsedSource as Partial<DesktopServer>);
     }
@@ -2776,6 +2896,8 @@ export class DesktopServerInput {
     "auth_method": DesktopServerAuthMethod;
     "password"?: string;
     "private_key"?: string;
+    "password_set"?: boolean;
+    "private_key_set"?: boolean;
     "group"?: string;
     "tags"?: string[];
     "description"?: string;
@@ -2802,10 +2924,10 @@ export class DesktopServerInput {
      * Creates a new DesktopServerInput instance from a string or object.
      */
     static createFrom($$source: any = {}): DesktopServerInput {
-        const $$createField8_0 = $$createType0;
+        const $$createField10_0 = $$createType0;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("tags" in $$parsedSource) {
-            $$parsedSource["tags"] = $$createField8_0($$parsedSource["tags"]);
+            $$parsedSource["tags"] = $$createField10_0($$parsedSource["tags"]);
         }
         return new DesktopServerInput($$parsedSource as Partial<DesktopServerInput>);
     }

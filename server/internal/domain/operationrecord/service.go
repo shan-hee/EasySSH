@@ -2,6 +2,7 @@ package operationrecord
 
 import (
 	"context"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -12,6 +13,7 @@ type Service interface {
 	GetByID(ctx context.Context, id uuid.UUID) (*OperationRecord, error)
 	GetStatistics(ctx context.Context, req *StatisticsRequest) (*Statistics, error)
 	DeleteBySource(ctx context.Context, sourceTable string, sourceID string) error
+	DeleteOld(ctx context.Context, before time.Time, category Category) (int64, error)
 }
 
 type service struct {
@@ -46,4 +48,8 @@ func (s *service) GetStatistics(ctx context.Context, req *StatisticsRequest) (*S
 
 func (s *service) DeleteBySource(ctx context.Context, sourceTable string, sourceID string) error {
 	return s.repo.DeleteBySource(ctx, sourceTable, sourceID)
+}
+
+func (s *service) DeleteOld(ctx context.Context, before time.Time, category Category) (int64, error) {
+	return s.repo.DeleteOld(ctx, before, category)
 }

@@ -1,14 +1,26 @@
 import { apiFetch } from "@/lib/api-client"
 
+export type AuditLogStatus =
+  | "pending"
+  | "running"
+  | "success"
+  | "failure"
+  | "partial"
+  | "canceled"
+  | "timeout"
+  | "warning"
+
 export interface AuditLog {
   id: string
   user_id: string
   username: string
   server_id?: string
+  type?: "connection" | "transfer" | "execution" | "audit"
   action: string
   category: "activity" | "audit"
   resource: string
-  status: "success" | "failure" | "warning"
+  source?: string
+  status: AuditLogStatus
   ip: string
   user_agent: string
   details?: string
@@ -43,29 +55,38 @@ export interface AuditLogCleanupResponse {
   retention_days: number
 }
 
-export const logsApi = {
-  async list(params?: {
-    page?: number
-    page_size?: number
-    user_id?: string
-    server_id?: string
-    action?: string
-    category?: "activity" | "audit"
-    status?: string
-    start_date?: string
-    end_date?: string
-  }): Promise<AuditLogListResponse> {
-    const queryParams = new URLSearchParams()
-    if (params?.page) queryParams.set("page", params.page.toString())
-    if (params?.page_size) queryParams.set("page_size", params.page_size.toString())
-    if (params?.user_id) queryParams.set("user_id", params.user_id)
-    if (params?.server_id) queryParams.set("server_id", params.server_id)
-    if (params?.action) queryParams.set("action", params.action)
-    if (params?.category) queryParams.set("category", params.category)
-    if (params?.status) queryParams.set("status", params.status)
-    if (params?.start_date) queryParams.set("start_date", params.start_date)
-    if (params?.end_date) queryParams.set("end_date", params.end_date)
+export interface AuditLogListParams {
+  page?: number
+  page_size?: number
+  user_id?: string
+  server_id?: string
+  type?: "connection" | "transfer" | "execution" | "audit"
+  action?: string
+  category?: "activity" | "audit"
+  status?: string
+  source?: string
+  ip?: string
+  keyword?: string
+  q?: string
+  start_date?: string
+  end_date?: string
+  sort_by?: string
+  sort_order?: "asc" | "desc"
+}
 
+function buildQueryParams(params?: object) {
+  const queryParams = new URLSearchParams()
+  Object.entries(params ?? {}).forEach(([key, value]) => {
+    if (value !== undefined && value !== "") {
+      queryParams.set(key, String(value))
+    }
+  })
+  return queryParams
+}
+
+export const logsApi = {
+  async list(params?: AuditLogListParams): Promise<AuditLogListResponse> {
+    const queryParams = buildQueryParams(params)
     const url = `/logs${queryParams.toString() ? `?${queryParams}` : ""}`
     return apiFetch<AuditLogListResponse>(url)
   },

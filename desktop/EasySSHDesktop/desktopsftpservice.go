@@ -593,7 +593,7 @@ func (s *DesktopSFTPService) openClientWithCredential(serverID string, credentia
 		return nil, nil, errors.New("server id is required")
 	}
 
-	server, err := s.serverService.GetById(serverID)
+	server, err := s.serverService.getByIDRaw(serverID)
 	if err != nil {
 		return nil, nil, err
 	}

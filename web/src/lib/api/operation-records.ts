@@ -1,6 +1,7 @@
 import { apiFetch } from "@/lib/api-client"
 
-export type OperationRecordType = "connection" | "transfer" | "execution"
+export type OperationRecordType = "connection" | "transfer" | "execution" | "audit"
+export type OperationRecordCategory = "activity" | "audit"
 export type OperationRecordStatus =
   | "pending"
   | "running"
@@ -9,12 +10,14 @@ export type OperationRecordStatus =
   | "partial"
   | "canceled"
   | "timeout"
+  | "warning"
 
 export interface OperationRecord {
   id: string
   user_id: string
   username: string
   type: OperationRecordType
+  category: OperationRecordCategory
   action: string
   status: OperationRecordStatus
   server_id?: string
@@ -22,6 +25,8 @@ export interface OperationRecord {
   title: string
   resource: string
   source: string
+  ip: string
+  user_agent: string
   started_at?: string
   finished_at?: string
   duration_ms: number
@@ -61,11 +66,18 @@ export interface OperationRecordListParams {
   page?: number
   page_size?: number
   type?: OperationRecordType
+  category?: OperationRecordCategory
   action?: string
   status?: OperationRecordStatus
   server_id?: string
+  source?: string
+  ip?: string
+  keyword?: string
+  q?: string
   start_date?: string
   end_date?: string
+  sort_by?: string
+  sort_order?: "asc" | "desc"
 }
 
 function buildQueryParams(params?: object) {
@@ -89,7 +101,7 @@ export const operationRecordsApi = {
     return apiFetch<OperationRecord>(`/operation-records/${id}`)
   },
 
-  async getStatistics(params?: Pick<OperationRecordListParams, "type" | "start_date" | "end_date">): Promise<OperationRecordStatistics> {
+  async getStatistics(params?: Pick<OperationRecordListParams, "type" | "category" | "start_date" | "end_date">): Promise<OperationRecordStatistics> {
     const queryParams = buildQueryParams(params)
     const url = `/operation-records/statistics${queryParams.toString() ? `?${queryParams}` : ""}`
     return apiFetch<OperationRecordStatistics>(url)

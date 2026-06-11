@@ -13,6 +13,14 @@ const (
 	TypeConnection RecordType = "connection"
 	TypeTransfer   RecordType = "transfer"
 	TypeExecution  RecordType = "execution"
+	TypeAudit      RecordType = "audit"
+)
+
+type Category string
+
+const (
+	CategoryActivity Category = "activity"
+	CategoryAudit    Category = "audit"
 )
 
 type Status string
@@ -25,6 +33,7 @@ const (
 	StatusPartial  Status = "partial"
 	StatusCanceled Status = "canceled"
 	StatusTimeout  Status = "timeout"
+	StatusWarning  Status = "warning"
 )
 
 // OperationRecord 统一承载连接、传输、执行等用户操作型历史。
@@ -34,6 +43,7 @@ type OperationRecord struct {
 
 	Username string     `gorm:"size:50" json:"username"`
 	Type     RecordType `gorm:"type:varchar(30);not null;index;index:idx_operation_type_time,priority:1" json:"type"`
+	Category Category   `gorm:"type:varchar(20);not null;default:activity;index;index:idx_operation_category_time,priority:1" json:"category"`
 	Action   string     `gorm:"type:varchar(50);not null;index" json:"action"`
 	Status   Status     `gorm:"type:varchar(30);not null;index" json:"status"`
 
@@ -42,6 +52,8 @@ type OperationRecord struct {
 	Title      string     `gorm:"size:255" json:"title"`
 	Resource   string     `gorm:"type:text" json:"resource"`
 	Source     string     `gorm:"size:50;index" json:"source"`
+	IP         string     `gorm:"size:45;index:idx_operation_ip_time,priority:1" json:"ip"`
+	UserAgent  string     `gorm:"size:500" json:"user_agent"`
 
 	StartedAt  *time.Time `gorm:"index" json:"started_at,omitempty"`
 	FinishedAt *time.Time `gorm:"index" json:"finished_at,omitempty"`
@@ -62,7 +74,7 @@ type OperationRecord struct {
 	SourceTable string `gorm:"size:80;not null;uniqueIndex:idx_operation_source" json:"source_table"`
 	SourceID    string `gorm:"size:80;not null;uniqueIndex:idx_operation_source" json:"source_id"`
 
-	CreatedAt time.Time      `gorm:"index;index:idx_operation_user_time,priority:2,sort:desc;index:idx_operation_type_time,priority:2,sort:desc" json:"created_at"`
+	CreatedAt time.Time      `gorm:"index;index:idx_operation_user_time,priority:2,sort:desc;index:idx_operation_type_time,priority:2,sort:desc;index:idx_operation_category_time,priority:2,sort:desc;index:idx_operation_ip_time,priority:2,sort:desc" json:"created_at"`
 	UpdatedAt time.Time      `json:"updated_at"`
 	DeletedAt gorm.DeletedAt `gorm:"index" json:"-"`
 }
@@ -75,17 +87,26 @@ func (r *OperationRecord) BeforeCreate(tx *gorm.DB) error {
 	if r.ID == uuid.Nil {
 		r.ID = uuid.New()
 	}
+	if r.Category == "" {
+		r.Category = CategoryActivity
+	}
 	return nil
 }
 
 type ListRequest struct {
 	UserID    *uuid.UUID
 	Type      RecordType
+	Category  Category
 	Action    string
 	Status    Status
 	ServerID  *uuid.UUID
+	Source    string
+	IP        string
+	Keyword   string
 	StartTime *time.Time
 	EndTime   *time.Time
+	SortBy    string
+	SortOrder string
 	Page      int
 	PageSize  int
 }
@@ -101,6 +122,7 @@ type ListResponse struct {
 type StatisticsRequest struct {
 	UserID    *uuid.UUID
 	Type      RecordType
+	Category  Category
 	StartTime *time.Time
 	EndTime   *time.Time
 	Days      int

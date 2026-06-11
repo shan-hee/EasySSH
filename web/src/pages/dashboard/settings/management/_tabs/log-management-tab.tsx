@@ -68,9 +68,9 @@ export function LogManagementTab() {
             </CardHeader>
             <CardContent className="grid gap-4 p-4 sm:p-5">
               <div className="grid gap-2 sm:max-w-xs">
-                <Label htmlFor="audit-log-retention-days">{t("cleanupRetentionLabel")}</Label>
+                <Label htmlFor="log-retention-days">{t("cleanupRetentionLabel")}</Label>
                 <Input
-                  id="audit-log-retention-days"
+                  id="log-retention-days"
                   type="number"
                   min={1}
                   max={3650}

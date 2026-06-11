@@ -57,7 +57,7 @@ func (h *OperationRecordHandler) GetByID(c *gin.Context) {
 	}
 
 	record, err := h.service.GetByID(c.Request.Context(), id)
-	if err != nil || (!isAdminContext(c) && record.UserID != currentUserID) {
+	if err != nil || record.UserID != currentUserID {
 		RespondError(c, http.StatusNotFound, "record_not_found", "Operation record not found")
 		return
 	}
@@ -103,11 +103,29 @@ func parseOperationRecordListRequest(c *gin.Context) (*operationrecord.ListReque
 	if typ := c.Query("type"); typ != "" {
 		req.Type = operationrecord.RecordType(typ)
 	}
+	if category := c.Query("category"); category != "" {
+		req.Category = operationrecord.Category(category)
+	}
 	if action := c.Query("action"); action != "" {
 		req.Action = action
 	}
 	if status := c.Query("status"); status != "" {
 		req.Status = operationrecord.Status(status)
+	}
+	if source := c.Query("source"); source != "" {
+		req.Source = source
+	}
+	if ip := c.Query("ip"); ip != "" {
+		req.IP = ip
+	}
+	if keyword := firstNonEmptyQuery(c, "keyword", "q"); keyword != "" {
+		req.Keyword = keyword
+	}
+	if sortBy := c.Query("sort_by"); sortBy != "" {
+		req.SortBy = sortBy
+	}
+	if sortOrder := c.Query("sort_order"); sortOrder != "" {
+		req.SortOrder = sortOrder
 	}
 	if serverIDStr := c.Query("server_id"); serverIDStr != "" {
 		serverID, err := uuid.Parse(serverIDStr)
@@ -153,6 +171,9 @@ func parseOperationRecordStatisticsRequest(c *gin.Context) (*operationrecord.Sta
 	if typ := c.Query("type"); typ != "" {
 		req.Type = operationrecord.RecordType(typ)
 	}
+	if category := c.Query("category"); category != "" {
+		req.Category = operationrecord.Category(category)
+	}
 	if days, err := strconv.Atoi(c.DefaultQuery("days", "30")); err == nil {
 		req.Days = days
 	}
@@ -171,20 +192,9 @@ func parseOperationRecordStatisticsRequest(c *gin.Context) (*operationrecord.Sta
 }
 
 func applyOperationRecordUserScope(c *gin.Context, req *operationrecord.ListRequest, currentUserID uuid.UUID) {
-	if isAdminContext(c) {
-		return
-	}
 	req.UserID = &currentUserID
 }
 
 func applyOperationRecordStatisticsUserScope(c *gin.Context, req *operationrecord.StatisticsRequest, currentUserID uuid.UUID) {
-	if isAdminContext(c) {
-		return
-	}
 	req.UserID = &currentUserID
-}
-
-func isAdminContext(c *gin.Context) bool {
-	role, exists := c.Get("role")
-	return exists && role == "admin"
 }

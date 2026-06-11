@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
 import { TransferTaskPanel } from "@/components/sftp/transfer-task-panel"
 import { ActivityLogPane } from "@/components/ssh-workspace/activity-log-pane"
+import { useOptionalSshWorkspace } from "@/components/ssh-workspace/ssh-workspace"
 import { useWorkspaceSftpTranslator } from "@/components/ssh-workspace/use-workspace-translator"
 import type { TransferJob } from "@/lib/api/transfer-jobs"
 import type { WorkspaceTransferTask } from "@/lib/session/workspace"
@@ -69,6 +70,8 @@ export function SftpWorkspaceToolbar({
   onDisconnect,
 }: SftpWorkspaceToolbarProps) {
   const tSftp = useWorkspaceSftpTranslator()
+  const workspace = useOptionalSshWorkspace()
+  const showActivityLogPane = workspace?.layout !== "desktop"
 
   const navigateHome = () => {
     startTransition(() => {
@@ -300,7 +303,7 @@ export function SftpWorkspaceToolbar({
           />
         )}
 
-        <ActivityLogPane compact />
+        {showActivityLogPane ? <ActivityLogPane compact /> : null}
 
         {onToggleFullscreen && (
           <Button

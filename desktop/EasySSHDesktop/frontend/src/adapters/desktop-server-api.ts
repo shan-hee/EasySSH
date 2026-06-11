@@ -21,8 +21,8 @@ export function mapDesktopServer(server: DesktopServer): Server {
     auth_method: server.auth_method === DesktopServerAuthMethod.DesktopServerAuthKey ? "key" : "password",
     password: server.password || undefined,
     private_key: server.private_key || undefined,
-    has_password: Boolean(server.password),
-    has_private_key: Boolean(server.private_key),
+    has_password: Boolean(server.has_password),
+    has_private_key: Boolean(server.has_private_key),
     group: server.group || undefined,
     tags: server.tags || [],
     status: server.status === "online" ? "online" : "offline",
@@ -34,6 +34,9 @@ export function mapDesktopServer(server: DesktopServer): Server {
 }
 
 export function mapServerInput(input: Parameters<ServerConnectionConfigsApi["create"]>[0]): DesktopServerInput {
+  const passwordSet = Object.prototype.hasOwnProperty.call(input, "password") && input.password !== undefined
+  const privateKeySet = Object.prototype.hasOwnProperty.call(input, "private_key") && input.private_key !== undefined
+
   return {
     name: input.name || "",
     host: input.host,
@@ -44,6 +47,8 @@ export function mapServerInput(input: Parameters<ServerConnectionConfigsApi["cre
       : DesktopServerAuthMethod.DesktopServerAuthPassword,
     password: input.password || "",
     private_key: input.private_key || "",
+    password_set: passwordSet,
+    private_key_set: privateKeySet,
     group: input.group || "",
     tags: input.tags || [],
     description: input.description || "",
@@ -72,19 +77,25 @@ export function createDesktopServerApi(): ServerConnectionConfigsApi {
     },
     async update(id, input) {
       const current = await DesktopServerService.GetById(id)
-
-      return mapDesktopServer(await DesktopServerService.Update(id, mapServerInput({
+      const mergedInput: Parameters<ServerConnectionConfigsApi["create"]>[0] = {
         name: input.name ?? current.name ?? "",
         host: input.host ?? current.host,
         port: input.port ?? current.port ?? 22,
         username: input.username ?? current.username,
         auth_method: input.auth_method ?? (current.auth_method === DesktopServerAuthMethod.DesktopServerAuthKey ? "key" : "password"),
-        password: input.password ?? current.password ?? "",
-        private_key: input.private_key ?? current.private_key ?? "",
         group: input.group ?? current.group ?? "",
         tags: input.tags ?? current.tags ?? [],
         description: input.description ?? current.description ?? "",
-      })))
+      }
+
+      if (Object.prototype.hasOwnProperty.call(input, "password")) {
+        mergedInput.password = input.password ?? ""
+      }
+      if (Object.prototype.hasOwnProperty.call(input, "private_key")) {
+        mergedInput.private_key = input.private_key ?? ""
+      }
+
+      return mapDesktopServer(await DesktopServerService.Update(id, mapServerInput(mergedInput)))
     },
     async delete(id) {
       await DesktopServerService.Delete(id)
@@ -101,18 +112,25 @@ export async function saveDesktopVerifiedCredential({
   secret,
 }: WorkspaceTerminalCredentialSaveRequest): Promise<void> {
   const current = await DesktopServerService.GetById(serverId)
-  await DesktopServerService.Update(serverId, mapServerInput({
+  const input: Parameters<ServerConnectionConfigsApi["create"]>[0] = {
     name: current.name ?? "",
     host: current.host,
     port: current.port || 22,
     username: current.username,
     auth_method: authMethod,
-    password: authMethod === "password" ? secret : current.password ?? "",
-    private_key: authMethod === "key" ? secret : current.private_key ?? "",
     group: current.group ?? "",
     tags: current.tags ?? [],
     description: current.description ?? "",
-  }))
+  }
+
+  if (authMethod === "password") {
+    input.password = secret
+  }
+  if (authMethod === "key") {
+    input.private_key = secret
+  }
+
+  await DesktopServerService.Update(serverId, mapServerInput(input))
 }
 
 export async function markDesktopServerConnected(serverId: string): Promise<void> {

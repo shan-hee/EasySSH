@@ -2,6 +2,7 @@ package operationrecord
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -15,6 +16,7 @@ type Repository interface {
 	GetByID(ctx context.Context, id uuid.UUID) (*OperationRecord, error)
 	GetStatistics(ctx context.Context, req *StatisticsRequest) (*Statistics, error)
 	DeleteBySource(ctx context.Context, sourceTable string, sourceID string) error
+	DeleteOld(ctx context.Context, before time.Time, category Category) (int64, error)
 }
 
 type repository struct {
@@ -35,6 +37,7 @@ func (r *repository) Upsert(ctx context.Context, record *OperationRecord) error 
 			"user_id",
 			"username",
 			"type",
+			"category",
 			"action",
 			"status",
 			"server_id",
@@ -42,6 +45,8 @@ func (r *repository) Upsert(ctx context.Context, record *OperationRecord) error 
 			"title",
 			"resource",
 			"source",
+			"ip",
+			"user_agent",
 			"started_at",
 			"finished_at",
 			"duration_ms",
@@ -84,7 +89,7 @@ func (r *repository) List(ctx context.Context, req *ListRequest) (*ListResponse,
 
 	var records []*OperationRecord
 	err := query.
-		Order("created_at DESC").
+		Order(r.listOrder(req)).
 		Limit(req.PageSize).
 		Offset((req.Page - 1) * req.PageSize).
 		Find(&records).Error
@@ -174,12 +179,25 @@ func (r *repository) DeleteBySource(ctx context.Context, sourceTable string, sou
 		Delete(&OperationRecord{}).Error
 }
 
+func (r *repository) DeleteOld(ctx context.Context, before time.Time, category Category) (int64, error) {
+	query := r.db.WithContext(ctx).Where("created_at < ?", before)
+	if category != "" {
+		query = query.Where("category = ?", category)
+	}
+
+	result := query.Delete(&OperationRecord{})
+	return result.RowsAffected, result.Error
+}
+
 func (r *repository) applyListFilters(query *gorm.DB, req *ListRequest) *gorm.DB {
 	if req.UserID != nil {
 		query = query.Where("user_id = ?", *req.UserID)
 	}
 	if req.Type != "" {
 		query = query.Where("type = ?", req.Type)
+	}
+	if req.Category != "" {
+		query = query.Where("category = ?", req.Category)
 	}
 	if req.Action != "" {
 		query = query.Where("action = ?", req.Action)
@@ -189,6 +207,19 @@ func (r *repository) applyListFilters(query *gorm.DB, req *ListRequest) *gorm.DB
 	}
 	if req.ServerID != nil {
 		query = query.Where("server_id = ?", *req.ServerID)
+	}
+	if req.Source != "" {
+		query = query.Where("source = ?", req.Source)
+	}
+	if req.IP != "" {
+		query = query.Where("ip = ?", req.IP)
+	}
+	if keyword := strings.TrimSpace(req.Keyword); keyword != "" {
+		like := "%" + strings.ToLower(keyword) + "%"
+		query = query.Where(
+			"LOWER(username) LIKE ? OR LOWER(action) LIKE ? OR LOWER(status) LIKE ? OR LOWER(server_name) LIKE ? OR LOWER(title) LIKE ? OR LOWER(resource) LIKE ? OR LOWER(source) LIKE ? OR LOWER(ip) LIKE ? OR LOWER(error_message) LIKE ? OR LOWER(detail_json) LIKE ?",
+			like, like, like, like, like, like, like, like, like, like,
+		)
 	}
 	if req.StartTime != nil {
 		query = query.Where("created_at >= ?", *req.StartTime)
@@ -207,6 +238,9 @@ func (r *repository) statisticsQuery(ctx context.Context, req *StatisticsRequest
 	if req.Type != "" {
 		query = query.Where("type = ?", req.Type)
 	}
+	if req.Category != "" {
+		query = query.Where("category = ?", req.Category)
+	}
 	if req.StartTime != nil {
 		query = query.Where("created_at >= ?", *req.StartTime)
 	} else if req.Days > 0 {
@@ -216,4 +250,37 @@ func (r *repository) statisticsQuery(ctx context.Context, req *StatisticsRequest
 		query = query.Where("created_at <= ?", *req.EndTime)
 	}
 	return query
+}
+
+func (r *repository) listOrder(req *ListRequest) clause.OrderByColumn {
+	sortBy := strings.ToLower(strings.TrimSpace(req.SortBy))
+	column, ok := operationRecordSortColumns[sortBy]
+	if !ok {
+		column = "created_at"
+	}
+
+	return clause.OrderByColumn{
+		Column: clause.Column{Name: column},
+		Desc:   strings.ToLower(strings.TrimSpace(req.SortOrder)) != "asc",
+	}
+}
+
+var operationRecordSortColumns = map[string]string{
+	"created_at":      "created_at",
+	"updated_at":      "updated_at",
+	"started_at":      "started_at",
+	"finished_at":     "finished_at",
+	"username":        "username",
+	"type":            "type",
+	"category":        "category",
+	"action":          "action",
+	"status":          "status",
+	"server_name":     "server_name",
+	"resource":        "resource",
+	"source":          "source",
+	"ip":              "ip",
+	"duration_ms":     "duration_ms",
+	"progress":        "progress",
+	"bytes_total":     "bytes_total",
+	"bytes_processed": "bytes_processed",
 }

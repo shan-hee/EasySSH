@@ -34,6 +34,8 @@ import { createDesktopMonitorApi } from "./adapters/desktop-monitor-api"
 import { createDesktopScriptAdapters } from "./adapters/desktop-script-api"
 import { createDesktopSftpApi } from "./adapters/desktop-sftp-api"
 import { DesktopAIAssistantView } from "./shell/desktop-ai-assistant-view"
+import { DesktopActivityLogsView } from "./shell/desktop-activity-logs-view"
+import { DesktopBackupRestoreView } from "./shell/desktop-backup-restore-view"
 import { DesktopProviders } from "./shell/desktop-providers"
 import { DesktopScriptsView } from "./shell/desktop-scripts-view"
 import { DesktopTitleBar, type DesktopView } from "./shell/desktop-titlebar"
@@ -150,6 +152,8 @@ function App() {
   const [activeView, setActiveView] = useState<DesktopView>("terminal")
   const [aiAssistantMounted, setAiAssistantMounted] = useState(false)
   const [scriptsMounted, setScriptsMounted] = useState(false)
+  const [activityLogsMounted, setActivityLogsMounted] = useState(false)
+  const [backupRestoreMounted, setBackupRestoreMounted] = useState(false)
   const [maxTabs, setMaxTabs] = useState(defaultMaxTabs)
   const [inactiveMinutes, setInactiveMinutes] = useState(defaultInactiveMinutes)
   const [terminalSettingsOpen, setTerminalSettingsOpen] = useState(false)
@@ -619,6 +623,16 @@ function App() {
     setActiveView("scripts")
   }, [])
 
+  const handleOpenActivityLogs = useCallback(() => {
+    setActivityLogsMounted(true)
+    setActiveView("activity-logs")
+  }, [])
+
+  const handleOpenBackupRestore = useCallback(() => {
+    setBackupRestoreMounted(true)
+    setActiveView("backup-restore")
+  }, [])
+
   const handleReturnToTerminal = useCallback(() => {
     setActiveView("terminal")
   }, [])
@@ -663,6 +677,8 @@ function App() {
             onToggleAiAssistant={handleToggleAiAssistant}
             onLocaleChange={handleLocaleChange}
             onOpenScripts={handleOpenScripts}
+            onOpenActivityLogs={handleOpenActivityLogs}
+            onOpenBackupRestore={handleOpenBackupRestore}
           />
           <div className="flex min-h-0 flex-1 items-center justify-center text-sm text-muted-foreground">
             {tCommon("loading")}
@@ -683,6 +699,8 @@ function App() {
             onToggleAiAssistant={handleToggleAiAssistant}
             onLocaleChange={handleLocaleChange}
             onOpenScripts={handleOpenScripts}
+            onOpenActivityLogs={handleOpenActivityLogs}
+            onOpenBackupRestore={handleOpenBackupRestore}
           />
           <div className="easyssh-desktop-view-stack">
             <section
@@ -753,6 +771,30 @@ function App() {
               {scriptsMounted ? (
                 <DesktopScriptsView
                   adapters={scriptAdapters}
+                  locale={locale}
+                  onReturnToTerminal={handleReturnToTerminal}
+                />
+              ) : null}
+            </section>
+            <section
+              className="easyssh-desktop-view-panel"
+              data-active={activeView === "activity-logs"}
+              aria-hidden={activeView !== "activity-logs"}
+            >
+              {activityLogsMounted ? (
+                <DesktopActivityLogsView
+                  locale={locale}
+                  onReturnToTerminal={handleReturnToTerminal}
+                />
+              ) : null}
+            </section>
+            <section
+              className="easyssh-desktop-view-panel"
+              data-active={activeView === "backup-restore"}
+              aria-hidden={activeView !== "backup-restore"}
+            >
+              {backupRestoreMounted ? (
+                <DesktopBackupRestoreView
                   locale={locale}
                   onReturnToTerminal={handleReturnToTerminal}
                 />

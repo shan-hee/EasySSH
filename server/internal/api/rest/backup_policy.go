@@ -54,7 +54,6 @@ var backupTablePolicies = map[string]backupTablePolicy{
 
 	// Operational history and append-like records. They remain in the database section but keep
 	// explicit policy metadata so later UI can expose them separately without touching restore logic.
-	"audit_logs":        historyPolicy("audit_logs", nil, true),
 	"operation_records": historyPolicy("operation_records", [][]string{{"source_table", "source_id"}}, true),
 	"login_attempts":    historyPolicy("login_attempts", [][]string{{"id"}}, false),
 	"login_alerts":      historyPolicy("login_alerts", nil, true),

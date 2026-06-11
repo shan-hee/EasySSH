@@ -8,8 +8,10 @@ export { TerminalComponent } from "../../../src/components/terminal/terminal-com
 export { TerminalSftpTabContent } from "../../../src/components/terminal/terminal-sftp-tab-content"
 export { ServerConnectionConfigs } from "../../../src/components/servers/server-connection-configs"
 export { default as ScriptsPage } from "../../../src/pages/dashboard/scripts-page"
-export { Activity, Bot, Check, FileText, FolderOpen, Github, Info, Languages, Menu, Minus, RefreshCw, Square, Terminal, X } from "lucide-react"
+export { BackupRestoreTab } from "../../../src/pages/dashboard/settings/management/_tabs/backup-restore-tab"
+export { Activity, ArchiveRestore, Bot, Check, FileText, FolderOpen, Github, Info, Languages, Menu, Minus, RefreshCw, Square, Terminal, X } from "lucide-react"
 export type { ScriptsPageAdapters, ScriptsPageProps } from "../../../src/pages/dashboard/scripts-page"
+export type { BackupContent, BackupRestoreAdapter, ConflictStrategy } from "../../../src/pages/dashboard/settings/management/_tabs/backup-restore-tab"
 export type { TerminalSftpTabContentProps } from "../../../src/components/terminal/terminal-sftp-tab-content"
 export type {
   TerminalExtraSessionPathHistory,

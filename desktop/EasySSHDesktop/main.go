@@ -28,6 +28,7 @@ func main() {
 	desktopGateway := NewDesktopGateway(serverService, scriptService, monitorService)
 	dockerService := NewDesktopDockerService(serverService)
 	aiService := NewDesktopAIService()
+	backupService := NewDesktopBackupService()
 
 	app := application.New(application.Options{
 		Name:        "EasySSH",
@@ -41,6 +42,7 @@ func main() {
 			application.NewService(monitorService),
 			application.NewService(dockerService),
 			application.NewService(activityLogService),
+			application.NewService(backupService),
 			application.NewService(NewDesktopService(desktopGateway)),
 			application.NewService(aiService),
 		},

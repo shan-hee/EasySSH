@@ -3,6 +3,7 @@
 
 import * as ActivityLogService from "./activitylogservice.js";
 import * as DesktopAIService from "./desktopaiservice.js";
+import * as DesktopBackupService from "./desktopbackupservice.js";
 import * as DesktopDockerService from "./desktopdockerservice.js";
 import * as DesktopGateway from "./desktopgateway.js";
 import * as DesktopMonitorService from "./desktopmonitorservice.js";
@@ -14,6 +15,7 @@ import * as DesktopTerminalService from "./desktopterminalservice.js";
 export {
     ActivityLogService,
     DesktopAIService,
+    DesktopBackupService,
     DesktopDockerService,
     DesktopGateway,
     DesktopMonitorService,
@@ -45,6 +47,10 @@ export {
     DesktopActivityLogRecordInput,
     DesktopActivityLogStatistics,
     DesktopActivityLogStatus,
+    DesktopBackupExportInput,
+    DesktopBackupExportResult,
+    DesktopBackupRestoreInput,
+    DesktopBackupRestoreResult,
     DesktopBatchTask,
     DesktopBatchTaskInput,
     DesktopBatchTaskListParams,

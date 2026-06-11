@@ -1,5 +1,5 @@
 
-import { useRef, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
 import {
   AlertTriangle,
@@ -23,8 +23,16 @@ import { useConfirmDialog } from "@/hooks/use-confirm-dialog"
 import { getApiUrl } from "@/lib/config"
 import { getCurrentAccessToken } from "@/stores/auth-store"
 
-type BackupContent = "config" | "database"
-type ConflictStrategy = "skip" | "overwrite" | "error"
+export type BackupContent = "config" | "database"
+export type ConflictStrategy = "skip" | "overwrite" | "error"
+export interface BackupRestoreAdapter {
+  exportBackup: (options: { include_config: boolean; include_database: boolean }) => Promise<{ blob: Blob; filename?: string }>
+  restoreBackup: (
+    file: File,
+    options: { include_config: boolean; include_database: boolean; conflict_strategy: ConflictStrategy }
+  ) => Promise<void>
+  supportsConfig?: boolean
+}
 type BackupTranslationKey =
   | "contentConfigTitle"
   | "contentConfigDescription"
@@ -82,7 +90,13 @@ const conflictOptions: Array<{
   },
 ]
 
-export function BackupRestoreTab() {
+export function BackupRestoreTab({
+  adapter,
+  desktopMode = false,
+}: {
+  adapter?: BackupRestoreAdapter
+  desktopMode?: boolean
+} = {}) {
   const { t } = useTranslation("settingsManagementBackup")
   const { confirm: requestConfirm, confirmDialog } = useConfirmDialog()
   const { refreshConfig } = useSystemConfig()
@@ -98,10 +112,22 @@ export function BackupRestoreTab() {
   })
   const [conflictStrategy, setConflictStrategy] = useState<ConflictStrategy>("skip")
 
-  const exportSelected = exportContent.config || exportContent.database
-  const restoreSelected = restoreContent.config || restoreContent.database
+  const activeAdapter = adapter || createWebBackupRestoreAdapter(authHeaders)
+  const supportsConfig = activeAdapter.supportsConfig !== false
+  const visibleContentOptions = supportsConfig
+    ? contentOptions
+    : contentOptions.filter((option) => option.value !== "config")
+  const exportSelected = (supportsConfig && exportContent.config) || exportContent.database
+  const restoreSelected = (supportsConfig && restoreContent.config) || restoreContent.database
 
-  const authHeaders = () => {
+  useEffect(() => {
+    if (!supportsConfig) {
+      setExportContent((current) => ({ ...current, config: false, database: true }))
+      setRestoreContent((current) => ({ ...current, config: false, database: true }))
+    }
+  }, [supportsConfig])
+
+  function authHeaders() {
     const headers: HeadersInit = {}
     const token = getCurrentAccessToken()
     if (token) {
@@ -134,24 +160,14 @@ export function BackupRestoreTab() {
       setLoading("export")
       toast.info(t("toastExportLoading"))
 
-      const params = new URLSearchParams({
-        include_config: String(exportContent.config),
-        include_database: String(exportContent.database),
+      const { blob, filename } = await activeAdapter.exportBackup({
+        include_config: supportsConfig && exportContent.config,
+        include_database: exportContent.database,
       })
-      const response = await fetch(`${getApiUrl()}/backup/export?${params.toString()}`, {
-        headers: authHeaders(),
-      })
-
-      if (!response.ok) {
-        const detail = await readErrorMessage(response)
-        throw new Error(detail || "Export failed")
-      }
-
-      const blob = await response.blob()
       const downloadUrl = window.URL.createObjectURL(blob)
       const a = document.createElement("a")
       a.href = downloadUrl
-      a.download = getDownloadFilename(response) || `easyssh_backup_${new Date().toISOString().slice(0, 10)}.json`
+      a.download = filename || `easyssh_backup_${new Date().toISOString().slice(0, 10)}.json`
       document.body.appendChild(a)
       a.click()
       window.URL.revokeObjectURL(downloadUrl)
@@ -187,24 +203,13 @@ export function BackupRestoreTab() {
       setLoading("restore")
       toast.info(t("toastRestoreLoading"))
 
-      const formData = new FormData()
-      formData.append("file", file)
-      formData.append("include_config", String(restoreContent.config))
-      formData.append("include_database", String(restoreContent.database))
-      formData.append("conflict_strategy", conflictStrategy)
-
-      const response = await fetch(`${getApiUrl()}/backup/restore`, {
-        method: "POST",
-        headers: authHeaders(),
-        body: formData,
+      await activeAdapter.restoreBackup(file, {
+        include_config: supportsConfig && restoreContent.config,
+        include_database: restoreContent.database,
+        conflict_strategy: conflictStrategy,
       })
 
-      if (!response.ok) {
-        const detail = await readErrorMessage(response)
-        throw new Error(detail || "Restore failed")
-      }
-
-      if (restoreContent.config) {
+      if (supportsConfig && restoreContent.config && !desktopMode) {
         await refreshConfig({ refreshAuth: false })
       }
 
@@ -231,7 +236,9 @@ export function BackupRestoreTab() {
               <span className="font-medium">{t("alertTitle")}</span>
               {t("alertItemUnified")}
             </span>
-            <span className="text-muted-foreground">{t("alertItemSensitive")}</span>
+            <span className="text-muted-foreground">
+              {desktopMode ? t("desktopDatabaseOnlyHint") : t("alertItemSensitive")}
+            </span>
           </AlertDescription>
         </Alert>
 
@@ -247,7 +254,7 @@ export function BackupRestoreTab() {
             <CardContent className="space-y-4">
               <ContentSelector
                 idPrefix="export"
-                options={contentOptions}
+                options={visibleContentOptions}
                 values={exportContent}
                 onChange={toggleExportContent}
                 disabled={loading !== null}
@@ -293,7 +300,7 @@ export function BackupRestoreTab() {
             <CardContent className="space-y-4">
               <ContentSelector
                 idPrefix="restore"
-                options={contentOptions}
+                options={visibleContentOptions}
                 values={restoreContent}
                 onChange={toggleRestoreContent}
                 disabled={loading !== null}
@@ -378,6 +385,49 @@ export function BackupRestoreTab() {
       </div>
     </div>
   )
+}
+
+function createWebBackupRestoreAdapter(authHeaders: () => HeadersInit): BackupRestoreAdapter {
+  return {
+    async exportBackup(options) {
+      const params = new URLSearchParams({
+        include_config: String(options.include_config),
+        include_database: String(options.include_database),
+      })
+      const response = await fetch(`${getApiUrl()}/backup/export?${params.toString()}`, {
+        headers: authHeaders(),
+      })
+
+      if (!response.ok) {
+        const detail = await readErrorMessage(response)
+        throw new Error(detail || "Export failed")
+      }
+
+      return {
+        blob: await response.blob(),
+        filename: getDownloadFilename(response),
+      }
+    },
+
+    async restoreBackup(file, options) {
+      const formData = new FormData()
+      formData.append("file", file)
+      formData.append("include_config", String(options.include_config))
+      formData.append("include_database", String(options.include_database))
+      formData.append("conflict_strategy", options.conflict_strategy)
+
+      const response = await fetch(`${getApiUrl()}/backup/restore`, {
+        method: "POST",
+        headers: authHeaders(),
+        body: formData,
+      })
+
+      if (!response.ok) {
+        const detail = await readErrorMessage(response)
+        throw new Error(detail || "Restore failed")
+      }
+    },
+  }
 }
 
 function ContentSelector({
