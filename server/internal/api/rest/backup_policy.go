@@ -64,6 +64,7 @@ var backupTablePolicies = map[string]backupTablePolicy{
 	"user_sessions":   ignoredRuntimePolicy("user_sessions"),
 	"trusted_devices": ignoredRuntimePolicy("trusted_devices"),
 	"rsa_key_pairs":   ignoredRuntimePolicy("rsa_key_pairs"),
+	"transfer_jobs":   ignoredRuntimePolicy("transfer_jobs"),
 }
 
 func singletonConfigPolicy(table string) backupTablePolicy {

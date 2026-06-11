@@ -818,12 +818,12 @@ export function AIAssistantWorkspaceView({
 
             <div className="shrink-0 pt-4">
               {error && (
-                <AgentNoticeCard tone="error" size="md" className="mx-auto mb-3 w-full max-w-[72rem] shadow-sm">
+                <AgentNoticeCard tone="error" size="md" className="mx-auto mb-3 w-full max-w-5xl shadow-sm">
                   {error}
                 </AgentNoticeCard>
               )}
 
-              <div className="mx-auto w-full max-w-[72rem]">
+              <div className="mx-auto w-full max-w-5xl">
                 <input
                   ref={fileInputRef}
                   type="file"
