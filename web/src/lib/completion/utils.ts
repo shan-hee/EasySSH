@@ -20,6 +20,26 @@ type TerminalWithRenderDimensions = Terminal & {
   }
 }
 
+function getTerminalPadding(container?: HTMLElement | null): { left: number; top: number } {
+  if (!container || typeof window === "undefined") {
+    return { left: 16, top: 16 }
+  }
+
+  const xtermElement = container.querySelector<HTMLElement>(".xterm")
+  if (!xtermElement) {
+    return { left: 16, top: 16 }
+  }
+
+  const style = window.getComputedStyle(xtermElement)
+  const left = Number.parseFloat(style.paddingLeft)
+  const top = Number.parseFloat(style.paddingTop)
+
+  return {
+    left: Number.isFinite(left) ? left : 16,
+    top: Number.isFinite(top) ? top : 16,
+  }
+}
+
 /**
  * 从终端获取当前输入行
  * @param terminal xterm.js 终端实例
@@ -120,9 +140,10 @@ export function parseCompletionContext(terminal: Terminal): CompletionContext {
 /**
  * 计算光标在屏幕上的位置(用于定位补全弹窗)
  * @param terminal xterm.js 终端实例
+ * @param container 终端容器，用于把相对坐标转换为视口坐标
  * @returns 光标的屏幕坐标和当前行区域
  */
-export function getCursorScreenPosition(terminal: Terminal): {
+export function getCursorScreenPosition(terminal: Terminal, container?: HTMLElement | null): {
   x: number
   y: number
   lineTop: number
@@ -131,58 +152,83 @@ export function getCursorScreenPosition(terminal: Terminal): {
   const buffer = terminal.buffer.active
   const cursorX = buffer.cursorX
   const cursorY = buffer.cursorY
-  const padding = 16 // 终端内边距
+  const containerRect = container?.getBoundingClientRect()
 
-  // 方案1: 尝试使用内部API获取精确尺寸
-  const dimensions = (terminal as TerminalWithRenderDimensions)._core?._renderService?.dimensions
-  if (dimensions?.css?.cell) {
-    const lineHeight = dimensions.css.cell.height
-    const lineTop = padding + cursorY * lineHeight
-    const lineBottom = lineTop + lineHeight
+  const cursorElement = container?.querySelector<HTMLElement>(".xterm-cursor-layer .xterm-cursor")
+  const cursorRect = cursorElement?.getBoundingClientRect()
+  if (cursorRect && cursorRect.width > 0 && cursorRect.height > 0) {
     return {
-      x: padding + cursorX * dimensions.css.cell.width,
-      y: padding + (cursorY + 1) * lineHeight, // +1 显示在光标下方
-      lineTop,
-      lineBottom,
+      x: cursorRect.left,
+      y: cursorRect.bottom,
+      lineTop: cursorRect.top,
+      lineBottom: cursorRect.bottom,
     }
   }
 
-  // 方案2: 尝试通过DOM测量获取字符尺寸
-  const xtermScreen = document.querySelector(".xterm-screen")
+  const padding = getTerminalPadding(container)
+  const toViewport = (point: { x: number; y: number; lineTop: number; lineBottom: number }) => {
+    if (!containerRect) {
+      return point
+    }
+
+    return {
+      x: point.x + containerRect.left,
+      y: point.y + containerRect.top,
+      lineTop: point.lineTop + containerRect.top,
+      lineBottom: point.lineBottom + containerRect.top,
+    }
+  }
+
+  // 方案2: 通过DOM测量获取字符尺寸
+  const xtermScreen = container?.querySelector<HTMLElement>(".xterm-screen")
   if (xtermScreen && terminal.cols > 0 && terminal.rows > 0) {
     const rect = xtermScreen.getBoundingClientRect()
-    // 减去padding计算实际渲染区域
-    const renderWidth = rect.width - padding * 2
-    const renderHeight = rect.height - padding * 2
+    const renderWidth = rect.width
+    const renderHeight = rect.height
 
     if (renderWidth > 0 && renderHeight > 0) {
       const charWidth = renderWidth / terminal.cols
       const lineHeight = renderHeight / terminal.rows
-      const lineTop = padding + cursorY * lineHeight
+      const lineTop = rect.top + cursorY * lineHeight
       const lineBottom = lineTop + lineHeight
 
       return {
-        x: padding + cursorX * charWidth,
-        y: padding + (cursorY + 1) * lineHeight,
+        x: rect.left + cursorX * charWidth,
+        y: rect.top + (cursorY + 1) * lineHeight,
         lineTop,
         lineBottom,
       }
     }
   }
 
-  // 方案3: 最终降级 - 使用经验值
+  // 方案3: 尝试使用内部API获取精确尺寸。部分渲染器下这里可能受缩放影响，
+  // 因此只在真实光标和屏幕 DOM 尺寸不可用时作为兜底。
+  const dimensions = (terminal as TerminalWithRenderDimensions)._core?._renderService?.dimensions
+  if (dimensions?.css?.cell) {
+    const lineHeight = dimensions.css.cell.height
+    const lineTop = padding.top + cursorY * lineHeight
+    const lineBottom = lineTop + lineHeight
+    return toViewport({
+      x: padding.left + cursorX * dimensions.css.cell.width,
+      y: padding.top + (cursorY + 1) * lineHeight,
+      lineTop,
+      lineBottom,
+    })
+  }
+
+  // 方案4: 最终降级 - 使用经验值
   // 基于常见终端字体大小(14px)的估算
   const charWidth = 8.4 // 14px字体的平均字符宽度
   const lineHeight = 20 // 14px字体的行高
-  const lineTop = padding + cursorY * lineHeight
+  const lineTop = padding.top + cursorY * lineHeight
   const lineBottom = lineTop + lineHeight
 
-  return {
-    x: padding + cursorX * charWidth,
-    y: padding + (cursorY + 1) * lineHeight,
+  return toViewport({
+    x: padding.left + cursorX * charWidth,
+    y: padding.top + (cursorY + 1) * lineHeight,
     lineTop,
     lineBottom,
-  }
+  })
 }
 
 /**

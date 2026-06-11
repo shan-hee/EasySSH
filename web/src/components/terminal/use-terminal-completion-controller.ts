@@ -46,7 +46,7 @@ export interface TerminalCompletionState {
   visible: boolean
   items: CompletionItem[]
   selectedIndex: number
-  position: { x: number; y: number }
+  position: { x: number; y: number; lineTop?: number; lineBottom?: number }
   matchedPrefix: string
 }
 
@@ -117,10 +117,15 @@ export function useTerminalCompletionController({
   const autoCompleteTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const completionInProgressRef = useRef(false)
   const handleCompletionRequestRef = useRef<(() => Promise<void>) | undefined>(undefined)
+  const onCommandRef = useRef(onCommand)
   const [completionState, setCompletionState] = useState<TerminalCompletionState>(emptyCompletionState)
   const [completionPlacement, setCompletionPlacement] = useState<CompletionPlacement>("bottom")
   const completionPlacementRef = useRef<CompletionPlacement>("bottom")
   const completionStateRef = useRef(completionState)
+  const providerLocalEnabled = providerEnabled.local
+  const providerSessionEnabled = providerEnabled.session
+  const providerScriptEnabled = providerEnabled.script
+  const providerRemoteHistoryEnabled = providerEnabled.remoteHistory
 
   useEffect(() => {
     completionPlacementRef.current = completionPlacement
@@ -129,6 +134,10 @@ export function useTerminalCompletionController({
   useEffect(() => {
     completionStateRef.current = completionState
   }, [completionState])
+
+  useEffect(() => {
+    onCommandRef.current = onCommand
+  }, [onCommand])
 
   const getMergedConfig = useCallback((): CompletionConfig => ({
     ...completionConfig,
@@ -147,16 +156,16 @@ export function useTerminalCompletionController({
   ])
 
   const syncProviderEnabledState = useCallback((engine: CompletionEngine) => {
-    engine.setProviderEnabled("local", effectiveCompletionEnabled && providerEnabled.local)
-    engine.setProviderEnabled("session", effectiveCompletionEnabled && providerEnabled.session)
-    engine.setProviderEnabled("script", effectiveCompletionEnabled && providerEnabled.script)
-    engine.setProviderEnabled("remote-history", effectiveCompletionEnabled && providerEnabled.remoteHistory)
+    engine.setProviderEnabled("local", effectiveCompletionEnabled && providerLocalEnabled)
+    engine.setProviderEnabled("session", effectiveCompletionEnabled && providerSessionEnabled)
+    engine.setProviderEnabled("script", effectiveCompletionEnabled && providerScriptEnabled)
+    engine.setProviderEnabled("remote-history", effectiveCompletionEnabled && providerRemoteHistoryEnabled)
   }, [
     effectiveCompletionEnabled,
-    providerEnabled.local,
-    providerEnabled.remoteHistory,
-    providerEnabled.script,
-    providerEnabled.session,
+    providerLocalEnabled,
+    providerRemoteHistoryEnabled,
+    providerScriptEnabled,
+    providerSessionEnabled,
   ])
 
   const createCompletionEngine = useCallback((targetSessionId: string) => {
@@ -276,18 +285,12 @@ export function useTerminalCompletionController({
         return
       }
 
-      const cursorPosition = getCursorScreenPosition(terminal)
-      let position = {
+      const cursorPosition = getCursorScreenPosition(terminal, containerRef.current)
+      const position = {
         x: cursorPosition.x,
         y: cursorPosition.y,
-      }
-
-      if (containerRef.current) {
-        const rect = containerRef.current.getBoundingClientRect()
-        position = {
-          x: position.x + rect.left,
-          y: position.y + rect.top,
-        }
+        lineTop: cursorPosition.lineTop,
+        lineBottom: cursorPosition.lineBottom,
       }
 
       const rawPrefix = context.fullLine.slice(
@@ -304,6 +307,8 @@ export function useTerminalCompletionController({
         position,
         matchedPrefix,
       })
+    } catch {
+      closeCompletion()
     } finally {
       completionInProgressRef.current = false
     }
@@ -326,7 +331,7 @@ export function useTerminalCompletionController({
         }
 
         sendInputRef.current(data)
-        onCommand(data)
+        onCommandRef.current(data)
         return
       }
 
@@ -374,7 +379,7 @@ export function useTerminalCompletionController({
       }
 
       sendInputRef.current(data)
-      onCommand(data)
+      onCommandRef.current(data)
 
       if (isEnterKey(data)) {
         if (autoCompleteTimerRef.current) {
@@ -426,6 +431,7 @@ export function useTerminalCompletionController({
         return
       }
 
+      const delay = completionEngineRef.current?.getConfig().autoTriggerDelay ?? completionAutoDelay ?? 200
       autoCompleteTimerRef.current = setTimeout(() => {
         if (!effectiveCompletionEnabled || completionTrigger !== "auto") {
           autoCompleteTimerRef.current = null
@@ -445,7 +451,7 @@ export function useTerminalCompletionController({
         }
 
         autoCompleteTimerRef.current = null
-      }, completionEngineRef.current?.getConfig().autoTriggerDelay ?? completionAutoDelay ?? 200)
+      }, delay)
     })
 
     return () => {
@@ -463,7 +469,6 @@ export function useTerminalCompletionController({
     completionUpdateSenderRef,
     effectiveCompletionEnabled,
     isTerminalReadyRef,
-    onCommand,
     sendInputRef,
     terminal,
     terminalReady,
@@ -477,7 +482,7 @@ export function useTerminalCompletionController({
     handleCompletionData,
     handleCompletionUpdate,
     clearProviderData,
-    enableCompletionFetch: effectiveCompletionEnabled && (providerEnabled.remoteHistory || providerEnabled.script),
+    enableCompletionFetch: effectiveCompletionEnabled && (providerRemoteHistoryEnabled || providerScriptEnabled),
     completionFetchOptions,
   }
 }

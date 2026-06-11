@@ -1,8 +1,5 @@
-/**
- * 补全弹窗组件 - 基于 Radix Popover + cmdk
- */
-
-import { useEffect, useRef, useCallback, useState } from "react"
+import { useEffect, useLayoutEffect, useRef, useCallback, useState } from "react"
+import { createPortal } from "react-dom"
 import {
   Command as CommandIcon,
   Clock3,
@@ -10,11 +7,6 @@ import {
   FileText,
   Sparkles,
 } from "lucide-react"
-import {
-  Popover,
-  PopoverContent,
-  PopoverAnchor,
-} from "@/components/ui/popover"
 import {
   Command,
   CommandList,
@@ -31,7 +23,7 @@ type Placement = "top" | "bottom"
 interface CompletionPopupProps {
   items: CompletionItem[]
   selectedIndex: number
-  position: { x: number; y: number }
+  position: { x: number; y: number; lineTop?: number; lineBottom?: number }
   matchedPrefix: string
   showIcon?: boolean
   onSelect: (item: CompletionItem, index: number) => void
@@ -47,6 +39,9 @@ const sourceLabelKey: Record<CompletionItem["source"], string> = {
   script: "completionSourceScript",
   ai: "completionSourceAi",
 }
+
+const POPUP_OFFSET = 4
+const COLLISION_PADDING = 8
 
 /**
  * 高亮匹配的前缀
@@ -109,9 +104,14 @@ export function CompletionPopup({
 }: CompletionPopupProps) {
   const theme = useTerminalTheme()
   const { t } = useTranslation("terminal")
+  const popupRef = useRef<HTMLDivElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
   const itemRefs = useRef<Map<number, HTMLDivElement>>(new Map())
   const [placement, setPlacement] = useState<Placement>("bottom")
+  const [popupPosition, setPopupPosition] = useState({
+    left: position.x,
+    top: position.y + POPUP_OFFSET,
+  })
 
   // 自动滚动到选中项
   useEffect(() => {
@@ -131,145 +131,161 @@ export function CompletionPopup({
     [onSelectedIndexChange]
   )
 
-  // 处理位置变化
-  const handlePlacementChange = useCallback(
-    (newPlacement: Placement) => {
-      setPlacement(newPlacement)
-      if (onPlacementChange) {
-        onPlacementChange(newPlacement)
+  useEffect(() => {
+    if (typeof document === "undefined") {
+      return
+    }
+
+    const handlePointerDown = (event: MouseEvent) => {
+      const target = event.target
+      if (target instanceof Node && popupRef.current?.contains(target)) {
+        return
       }
-    },
-    [onPlacementChange]
-  )
+
+      onClose()
+    }
+
+    document.addEventListener("mousedown", handlePointerDown)
+    return () => document.removeEventListener("mousedown", handlePointerDown)
+  }, [onClose])
+
+  useLayoutEffect(() => {
+    const popupElement = popupRef.current
+    if (!popupElement || typeof window === "undefined") {
+      return
+    }
+
+    const rect = popupElement.getBoundingClientRect()
+    const viewportWidth = window.innerWidth
+    const viewportHeight = window.innerHeight
+    const bottomTop = position.y + POPUP_OFFSET
+    const topAnchor = position.lineTop ?? position.y
+    const topTop = topAnchor - rect.height - POPUP_OFFSET
+    const spaceBelow = viewportHeight - bottomTop - COLLISION_PADDING
+    const spaceAbove = topAnchor - COLLISION_PADDING
+    const nextPlacement: Placement =
+      rect.height > spaceBelow && spaceAbove > spaceBelow ? "top" : "bottom"
+    const rawTop = nextPlacement === "top" ? topTop : bottomTop
+    const maxLeft = viewportWidth - rect.width - COLLISION_PADDING
+    const nextPosition = {
+      left: Math.max(COLLISION_PADDING, Math.min(position.x, maxLeft)),
+      top: Math.max(
+        COLLISION_PADDING,
+        Math.min(rawTop, viewportHeight - rect.height - COLLISION_PADDING)
+      ),
+    }
+
+    setPopupPosition((current) => (
+      current.left === nextPosition.left && current.top === nextPosition.top
+        ? current
+        : nextPosition
+    ))
+
+    if (nextPlacement !== placement) {
+      setPlacement(nextPlacement)
+      onPlacementChange?.(nextPlacement)
+    }
+  }, [items.length, onPlacementChange, placement, position.lineTop, position.x, position.y])
 
   if (items.length === 0) {
+    return null
+  }
+
+  if (typeof document === "undefined") {
     return null
   }
 
   // 当弹窗在上方时，反转列表顺序
   const displayItems = placement === "top" ? [...items].reverse() : items
 
-  return (
-    <Popover open={true} onOpenChange={(open) => !open && onClose()}>
-      {/* 虚拟锚点：定位到光标位置 */}
-      <PopoverAnchor asChild>
-        <div
-          style={{
-            position: "fixed",
-            left: position.x,
-            top: position.y,
-            width: 1,
-            height: 1,
-            pointerEvents: "none",
-          }}
-        />
-      </PopoverAnchor>
-
-      <PopoverContent
-        side="bottom"
-        sideOffset={4}
-        align="start"
-        alignOffset={0}
-        collisionPadding={8}
-        avoidCollisions={true}
-        // 阻止自动聚焦，避免抢走终端焦点
-        onOpenAutoFocus={(e) => e.preventDefault()}
-        onCloseAutoFocus={(e) => e.preventDefault()}
-        // 阻止按键事件冒泡到 Popover（由终端组件处理）
-        onKeyDown={(e) => e.stopPropagation()}
-        // 监听位置变化
-        onPointerDownOutside={(e) => e.preventDefault()}
-        className={cn(
-          "w-auto min-w-[320px] max-w-[550px] p-0 overflow-hidden flex",
-          placement === "top" ? "flex-col-reverse" : "flex-col"
-        )}
-        style={{
-          backgroundColor: theme.background,
-          color: theme.foreground,
-          // 当弹窗在上方时，增加底部间距避免遮挡光标
-          marginBottom: placement === "top" ? 16 : 0,
-        }}
-        // Radix 会通过 data-side 属性告知当前位置
-        ref={(el) => {
-          if (el) {
-            const side = el.getAttribute("data-side") as Placement | null
-            if (side && side !== placement) {
-              handlePlacementChange(side)
-            }
-          }
-        }}
+  return createPortal(
+    <div
+      ref={popupRef}
+      data-completion-popup
+      className={cn(
+        "fixed z-[80] w-auto min-w-[320px] max-w-[550px] overflow-hidden flex rounded-lg border shadow-md outline-hidden",
+        placement === "top" ? "flex-col-reverse" : "flex-col"
+      )}
+      style={{
+        left: popupPosition.left,
+        top: popupPosition.top,
+        backgroundColor: theme.background,
+        color: theme.foreground,
+      }}
+      onMouseDown={(e) => e.preventDefault()}
+      onKeyDown={(e) => e.stopPropagation()}
+    >
+      <Command
+        className="bg-transparent"
+        // 禁用 cmdk 内置的键盘导航，由终端组件处理
+        disablePointerSelection={false}
+        loop={false}
       >
-        <Command
-          className="bg-transparent"
-          // 禁用 cmdk 内置的键盘导航，由终端组件处理
-          disablePointerSelection={false}
-          loop={false}
+        <CommandList
+          ref={listRef}
+          className="max-h-[240px] overflow-y-auto scrollbar-custom"
         >
-          <CommandList
-            ref={listRef}
-            className="max-h-[240px] overflow-y-auto scrollbar-custom"
-          >
-            <CommandGroup className="p-0">
-              {displayItems.map((item, displayIndex) => {
-                // 计算原始索引
-                const originalIndex =
-                  placement === "top"
-                    ? items.length - 1 - displayIndex
-                    : displayIndex
-                const isSelected = originalIndex === selectedIndex
+          <CommandGroup className="p-0">
+            {displayItems.map((item, displayIndex) => {
+              // 计算原始索引
+              const originalIndex =
+                placement === "top"
+                  ? items.length - 1 - displayIndex
+                  : displayIndex
+              const isSelected = originalIndex === selectedIndex
 
-                return (
-                  <CommandItem
-                    key={`${item.text}-${originalIndex}`}
-                    value={`${item.text}-${originalIndex}`}
-                    data-selected={isSelected}
-                    ref={(el) => {
-                      if (el) {
-                        itemRefs.current.set(originalIndex, el)
-                      } else {
-                        itemRefs.current.delete(originalIndex)
-                      }
-                    }}
-                    onSelect={() => onSelect(item, originalIndex)}
-                    onMouseEnter={() => handleMouseEnter(originalIndex)}
-                    className={cn(
-                      "flex items-center gap-3 px-3 py-1.5 cursor-pointer rounded-none",
-                      "aria-selected:bg-transparent", // 禁用 cmdk 默认选中样式
-                      "bg-transparent"
-                    )}
-                    style={{
-                      backgroundColor: isSelected ? theme.selectionBackground : "transparent",
-                    }}
-                  >
-                    {/* 图标 */}
-                    {showIcon && (
-                      <div
-                        className="flex-shrink-0 opacity-70"
-                        title={t(sourceLabelKey[item.source])}
-                        aria-label={t(sourceLabelKey[item.source])}
-                      >
-                        {(() => {
-                          const Icon = getCompletionIcon(item)
-                          return <Icon className="h-3.5 w-3.5" />
-                        })()}
-                      </div>
-                    )}
-
-                    {/* 主文本 */}
-                    <div className="flex-1 min-w-0 font-mono text-sm">
-                      <HighlightedText
-                        text={item.displayText || item.text}
-                        prefix={matchedPrefix}
-                        highlightColor={theme.green || "#22c55e"}
-                      />
+              return (
+                <CommandItem
+                  key={`${item.text}-${originalIndex}`}
+                  value={`${item.text}-${originalIndex}`}
+                  data-selected={isSelected}
+                  ref={(el) => {
+                    if (el) {
+                      itemRefs.current.set(originalIndex, el)
+                    } else {
+                      itemRefs.current.delete(originalIndex)
+                    }
+                  }}
+                  onSelect={() => onSelect(item, originalIndex)}
+                  onMouseEnter={() => handleMouseEnter(originalIndex)}
+                  className={cn(
+                    "flex items-center gap-3 px-3 py-1.5 cursor-pointer rounded-none",
+                    "aria-selected:bg-transparent", // 禁用 cmdk 默认选中样式
+                    "bg-transparent"
+                  )}
+                  style={{
+                    backgroundColor: isSelected ? theme.selectionBackground : "transparent",
+                  }}
+                >
+                  {/* 图标 */}
+                  {showIcon && (
+                    <div
+                      className="flex-shrink-0 opacity-70"
+                      title={t(sourceLabelKey[item.source])}
+                      aria-label={t(sourceLabelKey[item.source])}
+                    >
+                      {(() => {
+                        const Icon = getCompletionIcon(item)
+                        return <Icon className="h-3.5 w-3.5" />
+                      })()}
                     </div>
-                  </CommandItem>
-                )
-              })}
-            </CommandGroup>
-          </CommandList>
-        </Command>
-      </PopoverContent>
-    </Popover>
+                  )}
+
+                  {/* 主文本 */}
+                  <div className="flex-1 min-w-0 font-mono text-sm">
+                    <HighlightedText
+                      text={item.displayText || item.text}
+                      prefix={matchedPrefix}
+                      highlightColor={theme.green || "#22c55e"}
+                    />
+                  </div>
+                </CommandItem>
+              )
+            })}
+          </CommandGroup>
+        </CommandList>
+      </Command>
+    </div>,
+    document.body
   )
 }
