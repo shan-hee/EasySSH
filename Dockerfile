@@ -48,8 +48,8 @@ FROM alpine:3.22
 
 WORKDIR /app
 
-# 运行时组件：证书、时区与健康检查工具
-RUN apk --no-cache add ca-certificates tzdata wget
+# 运行时组件：证书与时区；健康检查使用 Alpine 自带的 BusyBox wget
+RUN apk --no-cache add ca-certificates tzdata
 
 # 使用非 root 用户运行
 ARG APP_UID=1001
@@ -76,6 +76,6 @@ EXPOSE 8520
 
 # 健康检查：命中后端健康接口
 HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
-  CMD wget -q -O /dev/null http://127.0.0.1:8520/api/v1/health || exit 1
+  CMD busybox wget -q -O /dev/null http://127.0.0.1:8520/api/v1/health || exit 1
 
 CMD ["./easyssh-api"]
