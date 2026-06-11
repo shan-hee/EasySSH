@@ -86,12 +86,6 @@ func main() {
 
 	log.Println("✅ GeoIP client initialized with in-memory cache")
 
-	// Development migration: remove the deprecated split audit log table after
-	// merging audit and operation logs into operation_records.
-	if err := database.Exec("DROP TABLE IF EXISTS audit_logs").Error; err != nil {
-		log.Fatalf("Failed to drop deprecated audit_logs table: %v", err)
-	}
-
 	if err := database.AutoMigrate(
 		&auth.User{},
 		&auth.Session{}, // 用户会话表

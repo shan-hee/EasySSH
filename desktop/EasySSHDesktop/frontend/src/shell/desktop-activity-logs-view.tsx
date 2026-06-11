@@ -1,6 +1,6 @@
 import * as React from "react"
 import type { ComponentProps } from "react"
-import { ArrowLeft } from "lucide-react"
+import { ArrowLeft } from "@easyssh/ssh-workspace/desktop"
 import { Button } from "@/components/ui/button"
 import { ClientAuthProvider } from "@/components/client-auth-provider"
 import { LogsClient } from "@/pages/dashboard/logs/components/logs-client"

@@ -1,6 +1,5 @@
 import { useMemo, type ComponentProps } from "react"
-import { ArrowLeft } from "lucide-react"
-import { BackupRestoreTab } from "@easyssh/ssh-workspace/desktop"
+import { ArrowLeft, BackupRestoreTab } from "@easyssh/ssh-workspace/desktop"
 import { Button } from "@/components/ui/button"
 import { ClientAuthProvider } from "@/components/client-auth-provider"
 import type { Locale } from "@/i18n"

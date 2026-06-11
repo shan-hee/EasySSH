@@ -9,7 +9,7 @@ export { TerminalSftpTabContent } from "../../../src/components/terminal/termina
 export { ServerConnectionConfigs } from "../../../src/components/servers/server-connection-configs"
 export { default as ScriptsPage } from "../../../src/pages/dashboard/scripts-page"
 export { BackupRestoreTab } from "../../../src/pages/dashboard/settings/management/_tabs/backup-restore-tab"
-export { Activity, ArchiveRestore, Bot, Check, FileText, FolderOpen, Github, Info, Languages, Menu, Minus, RefreshCw, Square, Terminal, X } from "lucide-react"
+export { Activity, ArchiveRestore, ArrowLeft, Bot, Check, FileText, FolderOpen, Github, Info, Languages, Menu, Minus, RefreshCw, Square, Terminal, X } from "lucide-react"
 export type { ScriptsPageAdapters, ScriptsPageProps } from "../../../src/pages/dashboard/scripts-page"
 export type { BackupContent, BackupRestoreAdapter, ConflictStrategy } from "../../../src/pages/dashboard/settings/management/_tabs/backup-restore-tab"
 export type { TerminalSftpTabContentProps } from "../../../src/components/terminal/terminal-sftp-tab-content"
