@@ -1,9 +1,38 @@
-<?xml version="1.0" encoding="UTF-8" standalone="no"?>
-<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
-<svg width="100%" height="100%" viewBox="0 0 583 533" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" xml:space="preserve" xmlns:serif="http://www.serif.com/" style="fill-rule:evenodd;clip-rule:evenodd;stroke-linejoin:round;stroke-miterlimit:2;">
-    <g transform="matrix(1,0,0,1,-246,-251)">
-        <g id="Ebene1">
-            <path d="M246,251L265,784L401,784L506,450L507,450L505,784L641,784L829,251L682,251L596,567L595,567L596,251L478,251L378,568L391,251L246,251Z"/>
-        </g>
-    </g>
+<svg width="240" height="240" viewBox="0 0 240 240" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="easyssh-rainbow-gradient" x1="0" y1="0" x2="480" y2="480" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#ff0000"/>
+      <stop offset="7.14%" stop-color="#ff7f00"/>
+      <stop offset="14.28%" stop-color="#ffff00"/>
+      <stop offset="21.42%" stop-color="#00ff66"/>
+      <stop offset="28.56%" stop-color="#3f6fff"/>
+      <stop offset="35.71%" stop-color="#6b33c9"/>
+      <stop offset="42.85%" stop-color="#a84dff"/>
+      <stop offset="50%" stop-color="#ff0000"/>
+      <stop offset="57.14%" stop-color="#ff7f00"/>
+      <stop offset="64.28%" stop-color="#ffff00"/>
+      <stop offset="71.42%" stop-color="#00ff66"/>
+      <stop offset="78.56%" stop-color="#3f6fff"/>
+      <stop offset="85.71%" stop-color="#6b33c9"/>
+      <stop offset="92.85%" stop-color="#a84dff"/>
+      <stop offset="100%" stop-color="#ff0000"/>
+    </linearGradient>
+    <pattern id="easyssh-rainbow-pattern" patternUnits="userSpaceOnUse" width="480" height="480">
+      <rect width="480" height="480" fill="url(#easyssh-rainbow-gradient)"/>
+    </pattern>
+    <mask id="easyssh-icon-mask">
+      <rect width="240" height="240" fill="black"/>
+      <g transform="translate(20,20) scale(8.3333)">
+        <path fill="white" d="M20,19V7H4V19H20M20,3A2,2 0 0,1 22,5V19A2,2 0 0,1 20,21H4A2,2 0 0,1 2,19V5C2,3.89 2.9,3 4,3H20M13,17V15H18V17H13M9.58,13L5.57,9H8.4L11.7,12.3C12.09,12.69 12.09,13.33 11.7,13.72L8.42,17H5.59L9.58,13Z"/>
+      </g>
+    </mask>
+    <filter id="easyssh-icon-glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="4" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+  <rect width="240" height="240" fill="url(#easyssh-rainbow-pattern)" mask="url(#easyssh-icon-mask)" filter="url(#easyssh-icon-glow)"/>
 </svg>

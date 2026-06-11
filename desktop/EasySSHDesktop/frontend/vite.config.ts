@@ -10,6 +10,8 @@ const repoRoot = resolve(frontendRoot, "../../..");
 const workspacePackage = resolve(repoRoot, "web/packages/ssh-workspace/src/desktop.ts");
 const webSourceRoot = `${resolve(repoRoot, "web/src")}/`;
 const webNodeModulesRoot = resolve(repoRoot, "web/node_modules");
+const webI18next = resolve(webNodeModulesRoot, "i18next/dist/esm/i18next.js");
+const webReactI18next = resolve(webNodeModulesRoot, "react-i18next/dist/es/index.js");
 const webRoot = resolve(repoRoot, "web");
 const webRequire = createRequire(resolve(webRoot, "package.json"));
 const tailwindPostcss = webRequire("@tailwindcss/postcss");
@@ -33,11 +35,19 @@ export default defineConfig({
     },
   },
   resolve: {
-    dedupe: ["react", "react-dom"],
+    dedupe: ["react", "react-dom", "i18next", "react-i18next"],
     alias: [
       {
         find: /^@protobufjs\/inquire$/,
         replacement: resolve(webSourceRoot, "lib/proto/browser-inquire.cjs"),
+      },
+      {
+        find: /^i18next$/,
+        replacement: webI18next,
+      },
+      {
+        find: /^react-i18next$/,
+        replacement: webReactI18next,
       },
       {
         find: /^react$/,
