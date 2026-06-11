@@ -117,7 +117,7 @@ fi
 echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo -e "${GREEN}📋 变更摘要:${NC}"
 echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-git diff --stat VERSION web/package.json README.md desktop/EasySSHDesktop 2>/dev/null || true
+git --no-pager diff --stat VERSION web/package.json README.md desktop/EasySSHDesktop 2>/dev/null || true
 echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}\n"
 
 # 6. 询问是否提交并发版
