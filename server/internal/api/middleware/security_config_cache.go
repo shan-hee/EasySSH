@@ -18,6 +18,11 @@ const (
 // 在请求开始时一次性获取所有配置,避免后续中间件重复查询数据库
 func SecurityConfigCache(securityService security.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		if IsHealthProbePath(c.Request.URL.Path) {
+			c.Next()
+			return
+		}
+
 		// 一次性获取所有配置
 		ctx := c.Request.Context()
 		config, err := securityService.Get(ctx)
@@ -31,6 +36,10 @@ func SecurityConfigCache(securityService security.Service) gin.HandlerFunc {
 }
 
 // GetSecurityConfigFromContext 从上下文中获取缓存的安全配置
+func IsHealthProbePath(path string) bool {
+	return path == "/api/v1/health" || path == "/api/v1/ping"
+}
+
 func GetSecurityConfigFromContext(c *gin.Context) (*security.SecurityConfig, bool) {
 	if config, exists := c.Get(string(securityConfigKey)); exists {
 		if secConfig, ok := config.(*security.SecurityConfig); ok {

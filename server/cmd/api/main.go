@@ -484,7 +484,9 @@ func main() {
 		v1.GET("/health", func(c *gin.Context) {
 			// 检查数据库连接
 			dbStatus := "ok"
-			if err := db.HealthCheck(database); err != nil {
+			dbCtx, cancel := context.WithTimeout(c.Request.Context(), 500*time.Millisecond)
+			defer cancel()
+			if err := db.HealthCheckContext(dbCtx, database); err != nil {
 				dbStatus = "error: " + err.Error()
 			}
 

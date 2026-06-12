@@ -1,6 +1,7 @@
 package db
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"os"
@@ -154,9 +155,13 @@ func Close(db *gorm.DB) error {
 
 // HealthCheck 数据库健康检查
 func HealthCheck(db *gorm.DB) error {
+	return HealthCheckContext(context.Background(), db)
+}
+
+func HealthCheckContext(ctx context.Context, db *gorm.DB) error {
 	sqlDB, err := db.DB()
 	if err != nil {
 		return err
 	}
-	return sqlDB.Ping()
+	return sqlDB.PingContext(ctx)
 }

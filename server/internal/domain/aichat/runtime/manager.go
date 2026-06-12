@@ -24,12 +24,10 @@ var (
 	ErrInvalidDecision                = errors.New("invalid confirmation decision")
 	ErrEmptyMessageContent            = errors.New("message content cannot be empty")
 	ErrSessionHasPendingConfirmations = errors.New("session has pending confirmations")
-	errConversationMaxRoundsReached   = errors.New("max tool rounds reached")
 )
 
 const (
 	defaultCleanupInterval = 5 * time.Minute
-	defaultMaxToolRounds   = 10
 )
 
 type ConfigResolver interface {
@@ -46,7 +44,6 @@ type Manager struct {
 	registry   *registry.ToolRegistry
 	store      SessionStore
 	ttl        time.Duration
-	maxRounds  int
 	cleanupGap time.Duration
 
 	mu       sync.RWMutex
@@ -98,7 +95,6 @@ func NewManager(resolver ConfigResolver, factory TurnRunner, toolRegistry *regis
 		factory:    factory,
 		registry:   toolRegistry,
 		ttl:        ttl,
-		maxRounds:  defaultMaxToolRounds,
 		cleanupGap: defaultCleanupInterval,
 		sessions:   make(map[string]*session),
 	}
@@ -375,7 +371,9 @@ func (m *Manager) SendUserMessageWithOptions(ctx context.Context, userID uuid.UU
 	if permissionMode != "" {
 		s.permissionMode = normalizePermissionMode(permissionMode)
 	}
-	if scope.Kind != "" {
+	if strings.EqualFold(input.Scope.Kind, "global") {
+		s.scope = SessionScope{}
+	} else if scope.Kind != "" {
 		s.scope = scope
 	}
 	s.messages = append(s.messages, provider.Message{
@@ -604,7 +602,7 @@ func (m *Manager) runSession(sessionID string) {
 		return
 	}
 
-	for round := 0; round < m.maxRounds; round++ {
+	for round := 0; ; round++ {
 		tools := m.visibleToolsForSession(s)
 		systemPrompt := buildToolSystemPrompt(s.permissionMode, tools, s.scope)
 
@@ -687,8 +685,6 @@ func (m *Manager) runSession(sessionID string) {
 			return
 		}
 	}
-
-	m.failSessionTurn(s, "max_rounds_reached", errConversationMaxRoundsReached.Error())
 }
 
 func (m *Manager) resolvePendingTasks(sessionID string, inputs []ConfirmTaskInput) {
@@ -949,10 +945,7 @@ func (m *Manager) appendAssistantDelta(s *session, messageID, delta string) {
 	m.mu.Lock()
 	s.appendAssistantDelta(messageID, delta)
 	s.updatedAt = time.Now()
-	snapshot := m.snapshotForPersistenceLocked(s)
 	m.mu.Unlock()
-
-	m.saveSnapshot(context.Background(), snapshot)
 }
 
 func (m *Manager) completeTurn(s *session, closed bool) {
@@ -1498,10 +1491,12 @@ func (m *Manager) restoreSnapshot(snapshot *SessionSnapshot) (*session, error) {
 		return nil, ErrSessionNotFound
 	}
 
+	normalizeRestoredSnapshot(snapshot)
+
 	m.mu.Lock()
-	defer m.mu.Unlock()
 
 	if existing, ok := m.sessions[snapshot.ID]; ok {
+		m.mu.Unlock()
 		return existing, nil
 	}
 
@@ -1532,7 +1527,17 @@ func (m *Manager) restoreSnapshot(snapshot *SessionSnapshot) (*session, error) {
 	}
 
 	m.sessions[s.id] = s
+	m.mu.Unlock()
+
 	return s, nil
+}
+
+func normalizeRestoredSnapshot(snapshot *SessionSnapshot) {
+	if snapshot.Status != SessionStatusRunning {
+		return
+	}
+
+	snapshot.Status = SessionStatusIdle
 }
 
 func (m *Manager) snapshotForPersistenceLocked(s *session) SessionSnapshot {

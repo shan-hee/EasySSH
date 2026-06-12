@@ -18,7 +18,10 @@ func CORS(cfg *config.Config, securityService security.Service) gin.HandlerFunc 
 	}
 
 	return gincors.New(gincors.Config{
-		AllowOriginFunc: func(origin string) bool {
+		AllowOriginWithContextFunc: func(c *gin.Context, origin string) bool {
+			if IsHealthProbePath(c.Request.URL.Path) {
+				return true
+			}
 			if strings.TrimSpace(origin) == "" {
 				return false
 			}

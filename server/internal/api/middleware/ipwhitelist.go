@@ -17,6 +17,10 @@ func OptionalIPWhitelistMiddleware(securityService security.Service) gin.Handler
 
 		// 将客户端 IP 存入上下文
 		c.Set("client_ip", clientIP)
+		if IsHealthProbePath(c.Request.URL.Path) {
+			c.Next()
+			return
+		}
 
 		// 优先从上下文缓存获取配置
 		var allowed bool

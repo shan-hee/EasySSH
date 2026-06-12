@@ -45,6 +45,10 @@ function emptySessionMessages(session: SessionView | null) {
   return session?.ui_messages ?? []
 }
 
+function toErrorMessage(error: unknown) {
+  return error instanceof Error ? error.message : String(error)
+}
+
 export function useAgentSession(adapter?: AgentSessionAdapter) {
   const [session, setSession] = useState<SessionView | null>(null)
   const [transport, setTransport] = useState<TransportState>("idle")
@@ -88,7 +92,7 @@ export function useAgentSession(adapter?: AgentSessionAdapter) {
       setTransport(adapter ? "desktop_local" : "ai_sdk_ui")
       return response.session
     } catch (refreshError) {
-      const message = refreshError instanceof Error ? refreshError.message : String(refreshError)
+      const message = toErrorMessage(refreshError)
       setError(message)
       return null
     }
@@ -147,6 +151,7 @@ export function useAgentSession(adapter?: AgentSessionAdapter) {
     closingSessionIdRef.current = null
     setError(null)
     setLocalErrorMessages([])
+    sessionRef.current = response.session
     setSession(response.session)
     setTransport(adapter ? "desktop_local" : "ai_sdk_ui")
     restoredMessagesSessionIdRef.current = null
@@ -174,7 +179,8 @@ export function useAgentSession(adapter?: AgentSessionAdapter) {
       return true
     } catch (restoreError) {
       setTransport("idle")
-      pushLocalError(restoreError instanceof Error ? restoreError.message : String(restoreError))
+      const message = toErrorMessage(restoreError)
+      pushLocalError(message)
       return false
     }
   }, [adapter, applySessionResponse, pushLocalError, transport])
@@ -194,8 +200,9 @@ export function useAgentSession(adapter?: AgentSessionAdapter) {
       return true
     } catch (restoreError) {
       setTransport(sessionRef.current ? "ai_sdk_ui" : "idle")
+      const message = toErrorMessage(restoreError)
       if (!input.silent) {
-        pushLocalError(restoreError instanceof Error ? restoreError.message : String(restoreError))
+        pushLocalError(message)
       }
       return false
     }
@@ -233,7 +240,8 @@ export function useAgentSession(adapter?: AgentSessionAdapter) {
       return response
     } catch (createError) {
       setTransport(currentSession ? "ai_sdk_ui" : "idle")
-      pushLocalError(createError instanceof Error ? createError.message : String(createError))
+      const message = toErrorMessage(createError)
+      pushLocalError(message)
       return null
     }
   }, [adapter, applySessionResponse, pushLocalError])
@@ -282,7 +290,7 @@ export function useAgentSession(adapter?: AgentSessionAdapter) {
       })
       return true
     } catch (sendError) {
-      const message = sendError instanceof Error ? sendError.message : String(sendError)
+      const message = toErrorMessage(sendError)
       pushLocalError(message)
       void refreshSessionSnapshot(activeSessionId)
       return false
@@ -317,7 +325,8 @@ export function useAgentSession(adapter?: AgentSessionAdapter) {
         },
       })
     } catch (confirmError) {
-      pushLocalError(confirmError instanceof Error ? confirmError.message : String(confirmError))
+      const message = toErrorMessage(confirmError)
+      pushLocalError(message)
       void refreshSessionSnapshot(activeSessionId)
     }
   }, [adapter, chat, pushLocalError, refreshSessionSnapshot])
@@ -337,7 +346,8 @@ export function useAgentSession(adapter?: AgentSessionAdapter) {
       }
       await refreshSessionSnapshot(activeSessionId)
     } catch (cancelError) {
-      pushLocalError(cancelError instanceof Error ? cancelError.message : String(cancelError))
+      const message = toErrorMessage(cancelError)
+      pushLocalError(message)
     }
   }, [adapter, chat, pushLocalError, refreshSessionSnapshot])
 
@@ -357,6 +367,7 @@ export function useAgentSession(adapter?: AgentSessionAdapter) {
     }
 
     setSession(null)
+    sessionRef.current = null
     setError(null)
     setLocalErrorMessages([])
     chat.setMessages([])

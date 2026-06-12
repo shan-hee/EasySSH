@@ -57,7 +57,7 @@ import type { AIConfigAdapter } from "@/hooks/use-ai-config"
 import { useAuthReady } from "@/hooks/use-auth-ready"
 import { useConfirmDialog } from "@/hooks/use-confirm-dialog"
 import { serversApi, type Server as ManagedServer } from "@/lib/api"
-import { deleteAISession, listAISessions, renameAISession, type CreateSessionResponse, type PermissionMode, type SessionListItem } from "@/lib/api/ai-agent"
+import { deleteAISession, listAISessions, renameAISession, type AgentSessionScope, type CreateSessionResponse, type PermissionMode, type SessionListItem } from "@/lib/api/ai-agent"
 import type { AIAssistantConfigAdapter } from "@/components/ai-agent/ai-config-popover"
 import type { ServerListResponse } from "@/lib/api/servers"
 import { getServerDisplayName } from "@/lib/server-utils"
@@ -114,6 +114,29 @@ function formatSessionTime(value: string) {
   })
 }
 
+function getScopeServerId(scope?: AgentSessionScope) {
+  return scope?.server_id?.trim() || undefined
+}
+
+function createWorkspaceScopeFromServer(server: ManagedServer): AgentSessionScope {
+  return {
+    kind: "terminal",
+    server_id: server.id,
+    server_name: getServerDisplayName(server),
+    host: server.host,
+    port: server.port,
+    username: server.username,
+  }
+}
+
+function workspaceScopeFromServers(selectedServers: ManagedServer[]) {
+  if (selectedServers.length !== 1) {
+    return undefined
+  }
+
+  return createWorkspaceScopeFromServer(selectedServers[0])
+}
+
 export function AIAssistantWorkspaceView({
   hidePageHeader = false,
   customConfigOnly = false,
@@ -148,6 +171,7 @@ export function AIAssistantWorkspaceView({
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const sessionCreatingRef = useRef(false)
+  const syncedSessionServerRef = useRef<string | null>(null)
 
   useEffect(() => {
     if (models.length === 0) {
@@ -159,6 +183,30 @@ export function AIAssistantWorkspaceView({
       setSelectedModel(models[0])
     }
   }, [models, selectedModel])
+
+  useEffect(() => {
+    if (!session?.id) {
+      syncedSessionServerRef.current = null
+      return
+    }
+
+    if (session.permission_mode) {
+      setPermissionMode(session.permission_mode)
+    }
+
+    if (session.model && models.includes(session.model)) {
+      setSelectedModel(session.model)
+    }
+
+    const serverId = getScopeServerId(session.scope)
+    const syncKey = `${session.id}:${serverId ?? ""}`
+    if (syncedSessionServerRef.current === syncKey) {
+      return
+    }
+
+    syncedSessionServerRef.current = syncKey
+    setSelectedServerIds(serverId ? [serverId] : [])
+  }, [models, session?.id, session?.model, session?.permission_mode, session?.scope])
 
   const loadServers = useCallback(async () => {
     if (!ready) {
@@ -193,6 +241,11 @@ export function AIAssistantWorkspaceView({
     () =>
       [
         {
+          value: "readonly" as const,
+          label: t("permissionModeReadonly"),
+          description: t("permissionModeReadonlyDesc"),
+        },
+        {
           value: "balanced" as const,
           label: t("permissionModeBalanced"),
           description: t("permissionModeBalancedDesc"),
@@ -210,6 +263,27 @@ export function AIAssistantWorkspaceView({
     () => availableServers.filter((server) => selectedServerIds.includes(server.id)),
     [availableServers, selectedServerIds]
   )
+  const activeWorkspaceScope = useMemo<AgentSessionScope>(() => {
+    const sessionServerId = getScopeServerId(session?.scope)
+
+    if (selectedServerIds.length === 1) {
+      const selectedScope = workspaceScopeFromServers(selectedServers)
+      if (selectedScope) {
+        return selectedScope
+      }
+
+      if (sessionServerId === selectedServerIds[0] && session?.scope?.kind) {
+        return session.scope
+      }
+
+      return {
+        kind: "terminal",
+        server_id: selectedServerIds[0],
+      }
+    }
+
+    return { kind: "global" }
+  }, [selectedServerIds, selectedServers, session?.scope])
   const isConfigChecking = !ready || isLoading
   const showConfigAction = ready && !isLoading && !isConfigured
   const modelSelectDisabled = isConfigChecking || !isConfigured || models.length === 0
@@ -231,14 +305,7 @@ export function AIAssistantWorkspaceView({
     agentSession.tasks.length === 0
   )
   const createSessionDisabled = !ready || isLoading || !isConfigured || sessionCreating
-  const canSubmit =
-    Boolean(draft.trim()) &&
-    ready &&
-    !isLoading &&
-    !attachmentsLoading &&
-    isConfigured &&
-    !sessionCreating &&
-    (!session || session.status === "idle" || session.status === "closed")
+  const canAttemptSubmit = Boolean(draft.trim())
 
   const buildMessageContext = useCallback(
     () => buildAgentMessageContext({ attachments, selectedServers, t }),
@@ -258,15 +325,50 @@ export function AIAssistantWorkspaceView({
 
   const submit = async (messageText = draft) => {
     const normalizedDraft = messageText.trim()
-    if (!normalizedDraft || !ready || isLoading || !isConfigured || attachmentsLoading || sessionCreatingRef.current) {
-      return
-    }
-
-    if (session && session.status !== "idle" && session.status !== "closed") {
-      return
-    }
-
     const contextText = buildMessageContext()
+    const blockReasons: string[] = []
+
+    if (!normalizedDraft) {
+      blockReasons.push("empty_message")
+    }
+    if (!ready) {
+      blockReasons.push("auth_not_ready")
+    }
+    if (isLoading) {
+      blockReasons.push("config_loading")
+    }
+    if (!isConfigured) {
+      blockReasons.push("ai_not_configured")
+    }
+    if (attachmentsLoading) {
+      blockReasons.push("attachments_loading")
+    }
+    if (sessionCreatingRef.current) {
+      blockReasons.push("session_creating")
+    }
+    if (session && session.status !== "idle" && session.status !== "closed") {
+      blockReasons.push(`session_${session.status}`)
+    }
+
+    if (blockReasons.length > 0) {
+      if (normalizedDraft) {
+        if (!ready || isLoading) {
+          toast.info(t("checkingConfig"))
+        } else if (!isConfigured) {
+          toast.info(t("aiNotConfigured"))
+        } else if (attachmentsLoading || sessionCreatingRef.current) {
+          toast.info(t("loading"))
+        } else if (session && session.status !== "idle" && session.status !== "closed") {
+          toast.info(
+            pendingConfirmationTasks.length > 0
+              ? t("pendingToolsHint", { count: pendingConfirmationTasks.length })
+              : t(session.status === "waiting_confirmation" ? "statusWaitingConfirmation" : "statusRunning")
+          )
+        }
+      }
+      return
+    }
+
     const submittedAttachments = attachments
     setDraft("")
     setAttachments([])
@@ -280,6 +382,7 @@ export function AIAssistantWorkspaceView({
         response = await startNewSession({
           model: selectedModel || undefined,
           permissionMode,
+          scope: activeWorkspaceScope,
         })
       } finally {
         sessionCreatingRef.current = false
@@ -294,7 +397,7 @@ export function AIAssistantWorkspaceView({
       prependSessionListItem(response)
     }
 
-    const sent = await sendMessage(normalizedDraft, contextText, selectedModel || undefined, permissionMode)
+    const sent = await sendMessage(normalizedDraft, contextText, selectedModel || undefined, permissionMode, activeWorkspaceScope)
     if (!sent) {
       setDraft((current) => current || messageText)
       setAttachments((current) => current.length > 0 ? current : submittedAttachments)
@@ -331,6 +434,7 @@ export function AIAssistantWorkspaceView({
       const response = await startNewSession({
         model: selectedModel || undefined,
         permissionMode,
+        scope: activeWorkspaceScope,
       })
 
       if (response) {
@@ -1039,7 +1143,7 @@ export function AIAssistantWorkspaceView({
                         </PromptInputSubmit>
                       ) : (
                         <PromptInputSubmit
-                          disabled={!canSubmit}
+                          disabled={!canAttemptSubmit}
                           size="icon-sm"
                           className="h-9 w-9"
                           aria-label={t("send")}
