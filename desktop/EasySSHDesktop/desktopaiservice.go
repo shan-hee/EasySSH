@@ -353,6 +353,7 @@ func (s *DesktopAIService) ListSessions(params DesktopAIListSessionsParams) (Des
 		if !desktopAIScopeMatches(decodeDesktopAIScope(scopeJSON), params) {
 			continue
 		}
+		sessionStatus := s.activeDesktopAISessionStatus(id, DesktopAISessionStatus(status))
 		total++
 		if total <= offset {
 			continue
@@ -366,7 +367,7 @@ func (s *DesktopAIService) ListSessions(params DesktopAIListSessionsParams) (Des
 			ID:             id,
 			Model:          model,
 			PermissionMode: DesktopAIPermissionMode(permissionMode),
-			Status:         DesktopAISessionStatus(status),
+			Status:         sessionStatus,
 			Title:          desktopAISessionTitle(title, customTitle == 1, messages),
 			CustomTitle:    customTitle == 1,
 			MessageCount:   len(messages),
@@ -384,10 +385,10 @@ func (s *DesktopAIService) ListSessions(params DesktopAIListSessionsParams) (Des
 
 func (s *DesktopAIService) GetLatestSession(scope *DesktopAISessionScope) (*DesktopAICreateSessionResponse, error) {
 	params := DesktopAIListSessionsParams{Page: 1, Limit: 1}
-	if scope != nil {
-		params.ScopeKind = scope.Kind
-		params.TerminalSessionID = scope.TerminalSessionID
-		params.ServerID = scope.ServerID
+	if normalizedScope := normalizeDesktopAISessionScope(scope); normalizedScope != nil {
+		params.ScopeKind = normalizedScope.Kind
+		params.TerminalSessionID = normalizedScope.TerminalSessionID
+		params.ServerID = normalizedScope.ServerID
 	}
 	result, err := s.ListSessions(params)
 	if err != nil {
@@ -441,7 +442,7 @@ func (s *DesktopAIService) CreateSession(input DesktopAICreateSessionInput) (Des
 		CustomTitle:    false,
 		Model:          model,
 		PermissionMode: permissionMode,
-		Scope:          input.Scope,
+		Scope:          normalizeDesktopAISessionScope(input.Scope),
 		Status:         DesktopAISessionIdle,
 		Messages:       []DesktopAIMessageView{},
 		Tasks:          []DesktopAITaskView{},
@@ -502,7 +503,11 @@ func (s *DesktopAIService) SendMessage(ctx context.Context, input DesktopAISendM
 	record.Model = model
 	record.PermissionMode = normalizeDesktopAIPermission(input.PermissionMode)
 	if input.Scope != nil {
-		record.Scope = input.Scope
+		if strings.EqualFold(strings.TrimSpace(input.Scope.Kind), "global") {
+			record.Scope = nil
+		} else if scope := normalizeDesktopAISessionScope(input.Scope); scope != nil {
+			record.Scope = scope
+		}
 	}
 	record.Status = DesktopAISessionRunning
 	record.UpdatedAt = now
@@ -714,7 +719,7 @@ func (s *DesktopAIService) loadSession(id string) (desktopAISessionRecord, error
 	record.CustomTitle = customTitle == 1
 	record.PermissionMode = normalizeDesktopAIPermission(DesktopAIPermissionMode(permissionMode))
 	record.Scope = decodeDesktopAIScope(scopeJSON)
-	record.Status = DesktopAISessionStatus(status)
+	record.Status = s.activeDesktopAISessionStatus(record.ID, DesktopAISessionStatus(status))
 	if record.Status == "" {
 		record.Status = DesktopAISessionIdle
 	}
@@ -802,6 +807,23 @@ func (s *DesktopAIService) cancelAIRequest(sessionID string) bool {
 	}
 	active.Cancel()
 	return true
+}
+
+func (s *DesktopAIService) hasActiveAIRequest(sessionID string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	_, ok := s.activeRequests[sessionID]
+	return ok
+}
+
+func (s *DesktopAIService) activeDesktopAISessionStatus(sessionID string, status DesktopAISessionStatus) DesktopAISessionStatus {
+	if status == DesktopAISessionRunning && !s.hasActiveAIRequest(sessionID) {
+		return DesktopAISessionIdle
+	}
+	if status == "" {
+		return DesktopAISessionIdle
+	}
+	return status
 }
 
 func (s *DesktopAIService) completeChat(ctx context.Context, config desktopAIConfigRecord, messages []DesktopAIMessageView, contextText string, model string, permission DesktopAIPermissionMode) (string, error) {
@@ -1008,6 +1030,14 @@ func normalizeDesktopAIListParams(params DesktopAIListSessionsParams) DesktopAIL
 	params.ScopeKind = strings.TrimSpace(params.ScopeKind)
 	params.TerminalSessionID = strings.TrimSpace(params.TerminalSessionID)
 	params.ServerID = strings.TrimSpace(params.ServerID)
+	if params.ScopeKind == "" && (params.TerminalSessionID != "" || params.ServerID != "") {
+		params.ScopeKind = "terminal"
+	}
+	if !strings.EqualFold(params.ScopeKind, "terminal") {
+		params.ScopeKind = ""
+		params.TerminalSessionID = ""
+		params.ServerID = ""
+	}
 	return params
 }
 
@@ -1025,9 +1055,11 @@ func buildDesktopAIWhere(params DesktopAIListSessionsParams) (string, []any) {
 }
 
 func desktopAIScopeMatches(scope *DesktopAISessionScope, params DesktopAIListSessionsParams) bool {
+	params = normalizeDesktopAIListParams(params)
 	if params.ScopeKind == "" && params.TerminalSessionID == "" && params.ServerID == "" {
 		return true
 	}
+	scope = normalizeDesktopAISessionScope(scope)
 	if scope == nil {
 		return false
 	}
@@ -1041,6 +1073,33 @@ func desktopAIScopeMatches(scope *DesktopAISessionScope, params DesktopAIListSes
 		return false
 	}
 	return true
+}
+
+func normalizeDesktopAISessionScope(scope *DesktopAISessionScope) *DesktopAISessionScope {
+	if scope == nil {
+		return nil
+	}
+
+	normalized := &DesktopAISessionScope{
+		Kind:              strings.ToLower(strings.TrimSpace(scope.Kind)),
+		TerminalSessionID: strings.TrimSpace(scope.TerminalSessionID),
+		ServerID:          strings.TrimSpace(scope.ServerID),
+		ServerName:        strings.TrimSpace(scope.ServerName),
+		Host:              strings.TrimSpace(scope.Host),
+		Port:              scope.Port,
+		Username:          strings.TrimSpace(scope.Username),
+	}
+
+	switch normalized.Kind {
+	case "terminal":
+		return normalized
+	default:
+		if normalized.TerminalSessionID != "" || normalized.ServerID != "" {
+			normalized.Kind = "terminal"
+			return normalized
+		}
+		return nil
+	}
 }
 
 func (record desktopAISessionRecord) toView() DesktopAISessionView {
@@ -1182,7 +1241,7 @@ func decodeDesktopAIScope(value string) *DesktopAISessionScope {
 	if scope.Kind == "" {
 		return nil
 	}
-	return &scope
+	return normalizeDesktopAISessionScope(&scope)
 }
 
 func decodeDesktopAIMessages(value string) []DesktopAIMessageView {
