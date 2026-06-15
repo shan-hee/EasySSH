@@ -215,7 +215,8 @@ func (h *AISessionHandler) Chat(c *gin.Context) {
 			userID,
 			sessionID,
 			runtime.SendUserMessageInput{
-				Content:        buildAISessionMessageContent(action.content, req.Context),
+				Content:        action.content,
+				Context:        req.Context,
 				Model:          req.Model,
 				PermissionMode: req.PermissionMode,
 				Scope:          req.Scope,
@@ -348,15 +349,6 @@ func (h *AISessionHandler) CloseSession(c *gin.Context) {
 	}
 
 	RespondNoContent(c)
-}
-
-func buildAISessionMessageContent(content, contextText string) string {
-	content = strings.TrimSpace(content)
-	contextText = strings.TrimSpace(contextText)
-	if contextText == "" {
-		return content
-	}
-	return content + "\n\n" + contextText
 }
 
 type aiSDKChatAction struct {

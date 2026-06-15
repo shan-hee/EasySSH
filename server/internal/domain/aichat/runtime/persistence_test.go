@@ -227,9 +227,11 @@ func TestManagerPersistsRestoresAndListsSessions(t *testing.T) {
 	userID := uuid.New()
 	store := newMemorySessionStore()
 	runner := &fakeTurnRunner{
-		scripts: []fakeTurnScript{{
-			result: provider.TurnResult{Content: "完成。"},
-		}},
+		scripts: []fakeTurnScript{
+			{result: provider.TurnResult{Content: "完成。"}},
+			{result: provider.TurnResult{Content: "已切换服务器。"}},
+			{result: provider.TurnResult{Content: "终端会话完成。"}},
+		},
 	}
 
 	manager := NewManager(
@@ -267,6 +269,51 @@ func TestManagerPersistsRestoresAndListsSessions(t *testing.T) {
 	require.Equal(t, "巡检会话", items[0].Title)
 	require.True(t, items[0].CustomTitle)
 
+	require.NoError(t, manager.SendUserMessageWithOptions(context.Background(), userID, session.ID, SendUserMessageInput{
+		Content:        "切换到指定服务器",
+		PermissionMode: "privileged",
+		Scope: SessionScope{
+			Kind:       "terminal",
+			ServerID:   "server-2",
+			ServerName: "Pve-Debian14",
+		},
+	}))
+	require.Eventually(t, func() bool {
+		view, err := manager.GetSession(userID, session.ID)
+		return err == nil && view.Status == SessionStatusIdle && len(view.Messages) >= 4
+	}, 2*time.Second, 20*time.Millisecond)
+
+	items, total, err = manager.ListSessions(context.Background(), userID, "", 10, 0)
+	require.NoError(t, err)
+	require.Equal(t, int64(1), total)
+	require.Equal(t, session.ID, items[0].ID)
+	require.Equal(t, "privileged", items[0].PermissionMode)
+	require.Equal(t, 4, items[0].MessageCount)
+
+	terminalSession, err := manager.CreateSession(context.Background(), userID, CreateSessionInput{
+		Model:          "gpt-test",
+		PermissionMode: "privileged",
+		Scope: SessionScope{
+			Kind:       "terminal",
+			ServerID:   "server-1",
+			ServerName: "Pve-Debian13",
+		},
+	})
+	require.NoError(t, err)
+	require.NoError(t, manager.SendUserMessage(context.Background(), userID, terminalSession.ID, "你好"))
+
+	require.Eventually(t, func() bool {
+		view, err := manager.GetSession(userID, terminalSession.ID)
+		return err == nil && view.Status == SessionStatusIdle && len(view.Messages) >= 2
+	}, 2*time.Second, 20*time.Millisecond)
+
+	items, total, err = manager.ListSessions(context.Background(), userID, "", 10, 0)
+	require.NoError(t, err)
+	require.Equal(t, int64(2), total)
+	require.Equal(t, terminalSession.ID, items[0].ID)
+	require.Equal(t, "你好", items[0].Title)
+	require.Equal(t, "privileged", items[0].PermissionMode)
+
 	restoredManager := NewManager(
 		fakeResolver{config: provider.Config{Model: "fake-model"}},
 		nil,
@@ -282,6 +329,7 @@ func TestManagerPersistsRestoresAndListsSessions(t *testing.T) {
 	require.Len(t, restored.Messages, 2)
 
 	require.NoError(t, manager.DeleteSession(context.Background(), userID, session.ID))
+	require.NoError(t, manager.DeleteSession(context.Background(), userID, terminalSession.ID))
 	items, total, err = manager.ListSessions(context.Background(), userID, "", 10, 0)
 	require.NoError(t, err)
 	require.Equal(t, int64(0), total)

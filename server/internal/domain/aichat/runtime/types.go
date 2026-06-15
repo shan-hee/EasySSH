@@ -164,6 +164,7 @@ type CreateSessionInput struct {
 
 type SendUserMessageInput struct {
 	Content        string
+	Context        string
 	Model          string
 	PermissionMode string
 	Scope          SessionScope

@@ -16,6 +16,7 @@ import {
 import { getApiUrl, getAuthHeaders } from "@/lib/api-client"
 
 type TransportState = "idle" | "connecting" | "ai_sdk_ui" | "desktop_local"
+const TARGET_SESSION_ID_BODY_KEY = "__easyssh_target_session_id"
 
 export interface AgentSessionAdapter {
   getSession: (sessionId: string) => Promise<CreateSessionResponse>
@@ -41,12 +42,18 @@ function createLocalId(prefix: string) {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
 }
 
-function emptySessionMessages(session: SessionView | null) {
-  return session?.ui_messages ?? []
-}
-
 function toErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error)
+}
+
+function getSessionChatApi(sessionId?: string | null) {
+  return getApiUrl(`/ai/sessions/${sessionId?.trim() || "__idle__"}/chat`)
+}
+
+function getSessionMessagesSyncKey(session: SessionView) {
+  const messages = session.ui_messages ?? []
+
+  return `${session.id}:${JSON.stringify(messages)}`
 }
 
 export function useAgentSession(adapter?: AgentSessionAdapter) {
@@ -58,7 +65,7 @@ export function useAgentSession(adapter?: AgentSessionAdapter) {
   const sessionRef = useRef<SessionView | null>(null)
   const latestRestoreAttemptedRef = useRef(false)
   const closingSessionIdRef = useRef<string | null>(null)
-  const restoredMessagesSessionIdRef = useRef<string | null>(null)
+  const syncedMessagesKeyRef = useRef<string | null>(null)
   const idleChatIdRef = useRef(createLocalId("agent-chat"))
 
   useEffect(() => {
@@ -66,17 +73,42 @@ export function useAgentSession(adapter?: AgentSessionAdapter) {
   }, [session])
 
   const sessionId = session?.id ?? null
-  const chatId = sessionId ?? idleChatIdRef.current
+  const chatId = idleChatIdRef.current
 
   const chatTransport = useMemo(
     () => new DefaultChatTransport<UIMessage>({
-      api: sessionId ? getApiUrl(`/ai/sessions/${sessionId}/chat`) : getApiUrl("/ai/sessions/__idle__/chat"),
+      api: getSessionChatApi(null),
       headers: () => getAuthHeaders(),
+      prepareSendMessagesRequest(options) {
+        const body = options.body ?? {}
+        const targetSessionIdValue = body[TARGET_SESSION_ID_BODY_KEY]
+        const targetSessionId = typeof targetSessionIdValue === "string"
+          ? targetSessionIdValue.trim()
+          : ""
+        const requestBody = { ...body }
+        delete requestBody[TARGET_SESSION_ID_BODY_KEY]
+
+        return {
+          api: targetSessionId ? getSessionChatApi(targetSessionId) : options.api,
+          headers: options.headers,
+          credentials: options.credentials,
+          body: {
+            ...requestBody,
+            id: options.id,
+            messages: options.messages,
+            trigger: options.trigger,
+            messageId: options.messageId,
+          },
+        }
+      },
     }),
-    [sessionId]
+    []
   )
 
-  const refreshSessionSnapshot = useCallback(async (targetSessionId = sessionRef.current?.id) => {
+  const refreshSessionSnapshot = useCallback(async (
+    targetSessionId = sessionRef.current?.id,
+    input: { syncMessages?: boolean } = {}
+  ) => {
     if (!targetSessionId || closingSessionIdRef.current === targetSessionId) {
       return null
     }
@@ -88,6 +120,10 @@ export function useAgentSession(adapter?: AgentSessionAdapter) {
       if (closingSessionIdRef.current === targetSessionId) {
         return null
       }
+      syncedMessagesKeyRef.current = input.syncMessages === false
+        ? getSessionMessagesSyncKey(response.session)
+        : null
+      sessionRef.current = response.session
       setSession(response.session)
       setTransport(adapter ? "desktop_local" : "ai_sdk_ui")
       return response.session
@@ -100,29 +136,30 @@ export function useAgentSession(adapter?: AgentSessionAdapter) {
 
   const chat = useChat<UIMessage>({
     id: chatId,
-    messages: emptySessionMessages(session),
+    messages: [],
     transport: chatTransport,
     onError(chatError) {
       setError(chatError.message)
       setTransport(sessionRef.current ? "ai_sdk_ui" : "idle")
     },
     onFinish() {
-      void refreshSessionSnapshot()
+      void refreshSessionSnapshot(undefined, { syncMessages: false })
     },
   })
 
   useEffect(() => {
     if (!session?.id) {
-      restoredMessagesSessionIdRef.current = null
+      syncedMessagesKeyRef.current = null
       return
     }
 
-    if (restoredMessagesSessionIdRef.current === session.id) {
+    const syncKey = getSessionMessagesSyncKey(session)
+    if (syncedMessagesKeyRef.current === syncKey) {
       return
     }
 
     chat.setMessages(session.ui_messages || [])
-    restoredMessagesSessionIdRef.current = session.id
+    syncedMessagesKeyRef.current = syncKey
   }, [chat, session?.id, session?.ui_messages])
 
   const pushLocalError = useCallback((message: string) => {
@@ -147,14 +184,19 @@ export function useAgentSession(adapter?: AgentSessionAdapter) {
     ])
   }, [])
 
-  const applySessionResponse = useCallback((response: CreateSessionResponse) => {
+  const applySessionResponse = useCallback((
+    response: CreateSessionResponse,
+    input: { syncMessages?: boolean } = {}
+  ) => {
     closingSessionIdRef.current = null
     setError(null)
     setLocalErrorMessages([])
     sessionRef.current = response.session
     setSession(response.session)
     setTransport(adapter ? "desktop_local" : "ai_sdk_ui")
-    restoredMessagesSessionIdRef.current = null
+    syncedMessagesKeyRef.current = input.syncMessages === false
+      ? getSessionMessagesSyncKey(response.session)
+      : null
     return response
   }, [adapter])
 
@@ -236,7 +278,8 @@ export function useAgentSession(adapter?: AgentSessionAdapter) {
       const response = adapter
         ? await adapter.createSession(createInput)
         : await createAISession(createInput)
-      applySessionResponse(response)
+      chat.setMessages([])
+      applySessionResponse(response, { syncMessages: false })
       return response
     } catch (createError) {
       setTransport(currentSession ? "ai_sdk_ui" : "idle")
@@ -244,7 +287,7 @@ export function useAgentSession(adapter?: AgentSessionAdapter) {
       pushLocalError(message)
       return null
     }
-  }, [adapter, applySessionResponse, pushLocalError])
+  }, [adapter, applySessionResponse, chat, pushLocalError])
 
   const sendMessage = useCallback(async (
     content: string,
@@ -282,6 +325,7 @@ export function useAgentSession(adapter?: AgentSessionAdapter) {
 
       await chat.sendMessage({ text: normalizedContent }, {
         body: {
+          [TARGET_SESSION_ID_BODY_KEY]: activeSessionId,
           context: contextText,
           model,
           permission_mode: permissionMode,
@@ -318,6 +362,7 @@ export function useAgentSession(adapter?: AgentSessionAdapter) {
       setTransport("ai_sdk_ui")
       await chat.sendMessage(undefined, {
         body: {
+          [TARGET_SESSION_ID_BODY_KEY]: activeSessionId,
           approval: {
             task_id: taskId,
             decision,
@@ -371,7 +416,7 @@ export function useAgentSession(adapter?: AgentSessionAdapter) {
     setError(null)
     setLocalErrorMessages([])
     chat.setMessages([])
-    restoredMessagesSessionIdRef.current = null
+    syncedMessagesKeyRef.current = null
     closingSessionIdRef.current = null
     latestRestoreAttemptedRef.current = true
     setTransport("idle")
@@ -386,8 +431,9 @@ export function useAgentSession(adapter?: AgentSessionAdapter) {
   const pendingConfirmationTasks = tasks.filter((task) => task.status === "waiting_confirm")
   const availableTools: ToolView[] = session?.available_tools || []
   const canSend = Boolean(sessionId) && session?.status === "idle" && (Boolean(adapter) || chat.status === "ready")
+  const snapshotMessages = session?.ui_messages || []
   const uiMessages = adapter
-    ? [...(session?.ui_messages || []), ...localErrorMessages]
+    ? [...snapshotMessages, ...localErrorMessages]
     : [...chat.messages, ...localErrorMessages]
 
   return {

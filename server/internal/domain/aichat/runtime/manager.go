@@ -61,10 +61,11 @@ type session struct {
 	createdAt      time.Time
 	updatedAt      time.Time
 
-	messages     []provider.Message
-	messageViews []MessageView
-	tasks        map[string]*taskState
-	taskOrder    []string
+	messages       []provider.Message
+	messageViews   []MessageView
+	pendingContext string
+	tasks          map[string]*taskState
+	taskOrder      []string
 
 	subscribers map[string]chan Event
 
@@ -146,24 +147,50 @@ func (m *Manager) GetSession(userID uuid.UUID, sessionID string) (*SessionView, 
 
 func (m *Manager) ListSessions(ctx context.Context, userID uuid.UUID, query string, limit, offset int, scope ...SessionScope) ([]SessionListItem, int64, error) {
 	filterScope := normalizeSessionScopeFromVariadic(scope)
+	query = strings.ToLower(strings.TrimSpace(query))
 	if m.store != nil && filterScope.Kind == "" {
-		snapshots, total, err := m.store.List(ctx, userID, strings.TrimSpace(query), limit, offset)
+		storeLimit := limit
+		if storeLimit <= 0 || storeLimit > 100 {
+			storeLimit = 100
+		}
+
+		snapshots, _, err := m.store.List(ctx, userID, query, storeLimit, 0)
 		if err != nil {
 			return nil, 0, err
 		}
 
-		items := make([]SessionListItem, 0, len(snapshots))
+		itemByID := make(map[string]SessionListItem, len(snapshots))
 		for _, snapshot := range snapshots {
-			items = append(items, sessionListItemFromSnapshot(snapshot))
+			item := sessionListItemFromSnapshot(snapshot)
+			itemByID[item.ID] = item
 		}
-		return items, total, nil
+
+		m.mu.RLock()
+		for _, s := range m.sessions {
+			if s.userID != userID {
+				continue
+			}
+			item := sessionListItemFromSnapshot(m.snapshotForPersistenceLocked(s))
+			if query != "" && !sessionListItemMatchesQuery(item, query) {
+				delete(itemByID, item.ID)
+				continue
+			}
+			itemByID[item.ID] = item
+		}
+		m.mu.RUnlock()
+
+		items := make([]SessionListItem, 0, len(itemByID))
+		for _, item := range itemByID {
+			items = append(items, item)
+		}
+
+		return paginateSessionListItems(items, limit, offset), int64(len(items)), nil
 	}
 
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
 	items := make([]SessionListItem, 0)
-	query = strings.ToLower(strings.TrimSpace(query))
 	for _, s := range m.sessions {
 		if s.userID != userID {
 			continue
@@ -172,17 +199,27 @@ func (m *Manager) ListSessions(ctx context.Context, userID uuid.UUID, query stri
 			continue
 		}
 		item := sessionListItemFromSnapshot(m.snapshotForPersistenceLocked(s))
-		if query != "" && !strings.Contains(strings.ToLower(item.Title), query) {
+		if query != "" && !sessionListItemMatchesQuery(item, query) {
 			continue
 		}
 		items = append(items, item)
 	}
 
+	return paginateSessionListItems(items, limit, offset), int64(len(items)), nil
+}
+
+func sessionListItemMatchesQuery(item SessionListItem, query string) bool {
+	if query == "" {
+		return true
+	}
+	return strings.Contains(strings.ToLower(item.Title), query)
+}
+
+func paginateSessionListItems(items []SessionListItem, limit, offset int) []SessionListItem {
 	sort.SliceStable(items, func(i, j int) bool {
 		return items[i].UpdatedAt.After(items[j].UpdatedAt)
 	})
 
-	total := int64(len(items))
 	if offset < 0 {
 		offset = 0
 	}
@@ -190,13 +227,13 @@ func (m *Manager) ListSessions(ctx context.Context, userID uuid.UUID, query stri
 		limit = 30
 	}
 	if offset >= len(items) {
-		return nil, total, nil
+		return nil
 	}
 	end := offset + limit
 	if end > len(items) {
 		end = len(items)
 	}
-	return items[offset:end], total, nil
+	return items[offset:end]
 }
 
 func (m *Manager) RenameSession(ctx context.Context, userID uuid.UUID, sessionID, title string) error {
@@ -342,6 +379,7 @@ func (m *Manager) SendUserMessageWithOptions(ctx context.Context, userID uuid.UU
 		return ErrEmptyMessageContent
 	}
 	model := strings.TrimSpace(input.Model)
+	contextText := strings.TrimSpace(input.Context)
 	permissionMode := strings.TrimSpace(input.PermissionMode)
 	scope := normalizeSessionScope(input.Scope)
 
@@ -386,6 +424,7 @@ func (m *Manager) SendUserMessageWithOptions(ctx context.Context, userID uuid.UU
 		Content:   content,
 		CreatedAt: now,
 	})
+	s.pendingContext = contextText
 	s.status = SessionStatusRunning
 	s.processing = true
 	s.updatedAt = now
@@ -502,6 +541,7 @@ func (m *Manager) CancelSession(ctx context.Context, userID uuid.UUID, sessionID
 	cancel := s.currentRun
 	s.currentRun = nil
 	s.processing = false
+	s.pendingContext = ""
 	s.status = SessionStatusIdle
 	s.updatedAt = time.Now()
 	view := m.snapshotSessionLocked(s)
@@ -544,6 +584,7 @@ func (m *Manager) closeSession(s *session) {
 	cancel := s.currentRun
 	s.currentRun = nil
 	s.processing = false
+	s.pendingContext = ""
 	view := m.snapshotSessionLocked(s)
 	snapshot := m.snapshotForPersistenceLocked(s)
 	subs := cloneSubscribersLocked(s)
@@ -611,10 +652,15 @@ func (m *Manager) runSession(sessionID string) {
 			m.mu.RUnlock()
 			return
 		}
+		contextText := strings.TrimSpace(s.pendingContext)
+		promptContent := systemPrompt
+		if contextText != "" {
+			promptContent += "\n\n" + contextText
+		}
 		reqMessages := make([]provider.Message, 0, len(s.messages)+1)
 		reqMessages = append(reqMessages, provider.Message{
 			Role:    "system",
-			Content: systemPrompt,
+			Content: promptContent,
 		})
 		reqMessages = append(reqMessages, s.messages...)
 		m.mu.RUnlock()
@@ -958,6 +1004,7 @@ func (m *Manager) completeTurn(s *session, closed bool) {
 		}
 		s.processing = false
 		s.currentRun = nil
+		s.pendingContext = ""
 		s.updatedAt = time.Now()
 	}
 	view := m.snapshotSessionLocked(s)
@@ -975,6 +1022,10 @@ func (m *Manager) completeTurn(s *session, closed bool) {
 }
 
 func (m *Manager) failSessionTurn(s *session, code, message string) {
+	m.mu.Lock()
+	s.pendingContext = ""
+	m.mu.Unlock()
+
 	m.emitEvent(s, Event{
 		ID:        uuid.NewString(),
 		Type:      EventError,

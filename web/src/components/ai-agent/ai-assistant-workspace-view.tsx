@@ -57,7 +57,7 @@ import type { AIConfigAdapter } from "@/hooks/use-ai-config"
 import { useAuthReady } from "@/hooks/use-auth-ready"
 import { useConfirmDialog } from "@/hooks/use-confirm-dialog"
 import { serversApi, type Server as ManagedServer } from "@/lib/api"
-import { deleteAISession, listAISessions, renameAISession, type AgentSessionScope, type CreateSessionResponse, type PermissionMode, type SessionListItem } from "@/lib/api/ai-agent"
+import { deleteAISession, listAISessions, renameAISession, type AgentSessionScope, type CreateSessionResponse, type PermissionMode, type SessionListItem, type SessionView } from "@/lib/api/ai-agent"
 import type { AIAssistantConfigAdapter } from "@/components/ai-agent/ai-config-popover"
 import type { ServerListResponse } from "@/lib/api/servers"
 import { getServerDisplayName } from "@/lib/server-utils"
@@ -91,18 +91,36 @@ export interface AIAssistantWorkspaceViewProps {
 }
 
 function createSessionListItem(response: CreateSessionResponse, title: string): SessionListItem {
+  return createSessionListItemFromSession(response.session, title)
+}
+
+function createSessionListItemFromSession(
+  session: SessionView,
+  title: string,
+  customTitle = false
+): SessionListItem {
   return {
-    id: response.session_id,
-    model: response.session.model,
-    permission_mode: response.session.permission_mode,
-    status: response.session.status,
+    id: session.id,
+    model: session.model,
+    permission_mode: session.permission_mode,
+    status: session.status,
     title,
-    custom_title: false,
-    message_count: response.session.messages.length,
-    task_count: response.session.tasks.length,
-    created_at: response.session.created_at,
-    updated_at: response.session.updated_at,
+    custom_title: customTitle,
+    message_count: session.messages.length,
+    task_count: session.tasks.length,
+    created_at: session.created_at,
+    updated_at: session.updated_at,
   }
+}
+
+function getDefaultSessionListTitle(session: SessionView, fallback: string) {
+  const firstUserMessage = session.messages.find((message) => message.role === "user")?.content.trim()
+  if (!firstUserMessage) {
+    return fallback
+  }
+
+  const chars = Array.from(firstUserMessage)
+  return chars.length > 40 ? `${chars.slice(0, 40).join("")}...` : firstUserMessage
 }
 
 function formatSessionTime(value: string) {
@@ -322,6 +340,29 @@ export function AIAssistantWorkspaceView({
       ...current.filter((item) => item.id !== response.session_id),
     ].slice(0, SESSION_LIST_LIMIT))
   }, [sessionSearch, t])
+
+  useEffect(() => {
+    if (!session?.id || !historyOpen) {
+      return
+    }
+
+    setSessionList((current) => {
+      const existing = current.find((item) => item.id === session.id)
+      const title = existing?.custom_title
+        ? existing.title
+        : getDefaultSessionListTitle(session, existing?.title || t("newSession"))
+      const nextItem = createSessionListItemFromSession(session, title, existing?.custom_title ?? false)
+      const query = sessionSearch.trim().toLowerCase()
+      if (query && !nextItem.title.toLowerCase().includes(query)) {
+        return current.filter((item) => item.id !== session.id)
+      }
+
+      return [
+        nextItem,
+        ...current.filter((item) => item.id !== session.id),
+      ].slice(0, SESSION_LIST_LIMIT)
+    })
+  }, [historyOpen, session, sessionSearch, t])
 
   const submit = async (messageText = draft) => {
     const normalizedDraft = messageText.trim()

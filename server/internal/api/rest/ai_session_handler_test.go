@@ -283,8 +283,11 @@ func TestAISessionHandlerCreateSendConfirmAndClose(t *testing.T) {
 	calls := runner.snapshotCalls()
 	require.Len(t, calls, 2)
 	require.Len(t, calls[0].Messages, 2)
-	require.Contains(t, calls[0].Messages[1].Content, "执行 uptime")
-	require.Contains(t, calls[0].Messages[1].Content, "请只返回摘要")
+	require.Contains(t, calls[0].Messages[0].Content, "请只返回摘要")
+	require.Equal(t, "执行 uptime", calls[0].Messages[1].Content)
+	require.NotContains(t, calls[0].Messages[1].Content, "请只返回摘要")
+	require.Contains(t, calls[1].Messages[0].Content, "请只返回摘要")
+	require.Equal(t, "执行 uptime", latest.Data.Session.Messages[0].Content)
 
 	closeResp := performJSONRequest(t, router, http.MethodDelete, "/sessions/"+created.Data.SessionID, nil)
 	require.Equal(t, http.StatusNoContent, closeResp.Code)
