@@ -216,6 +216,10 @@ func sessionListItemMatchesQuery(item SessionListItem, query string) bool {
 }
 
 func paginateSessionListItems(items []SessionListItem, limit, offset int) []SessionListItem {
+	if items == nil {
+		items = []SessionListItem{}
+	}
+
 	sort.SliceStable(items, func(i, j int) bool {
 		return items[i].UpdatedAt.After(items[j].UpdatedAt)
 	})
@@ -227,7 +231,7 @@ func paginateSessionListItems(items []SessionListItem, limit, offset int) []Sess
 		limit = 30
 	}
 	if offset >= len(items) {
-		return nil
+		return []SessionListItem{}
 	}
 	end := offset + limit
 	if end > len(items) {
