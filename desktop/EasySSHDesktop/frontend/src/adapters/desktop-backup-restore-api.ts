@@ -4,12 +4,14 @@ import { DesktopBackupService } from "../../bindings/github.com/easyssh/easyssh-
 export function createDesktopBackupRestoreAdapter(): BackupRestoreAdapter {
   return {
     supportsConfig: false,
-    supportsSensitive: false,
+    supportsSensitive: true,
 
     async exportBackup(options) {
       const result = await DesktopBackupService.ExportBackup({
         include_config: false,
         include_database: options.include_database,
+        include_sensitive: Boolean(options.include_sensitive),
+        backup_password: options.backup_password || "",
       })
 
       return {
@@ -24,6 +26,7 @@ export function createDesktopBackupRestoreAdapter(): BackupRestoreAdapter {
         include_config: false,
         include_database: options.include_database,
         conflict_strategy: normalizeConflictStrategy(options.conflict_strategy),
+        backup_password: options.backup_password || "",
       })
     },
   }

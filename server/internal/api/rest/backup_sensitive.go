@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/easyssh/server/internal/pkg/crypto"
+	"github.com/easyssh/shared/backupcrypto"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
@@ -253,9 +254,9 @@ func (h *BackupHandler) decryptSensitiveRows(spec sensitiveTableSpec, rows []map
 	return nil
 }
 
-func (h *BackupHandler) decryptSensitivePayload(envelope *crypto.BackupEncryptedPayload, password string) (*BackupSensitivePayload, error) {
+func (h *BackupHandler) decryptSensitivePayload(envelope *backupcrypto.BackupEncryptedPayload, password string) (*BackupSensitivePayload, error) {
 	var payload BackupSensitivePayload
-	if err := crypto.DecryptBackupJSON(envelope, password, backupSensitiveAAD(), &payload); err != nil {
+	if err := backupcrypto.DecryptBackupJSON(envelope, password, backupSensitiveAAD(), &payload); err != nil {
 		return nil, err
 	}
 	if strings.TrimSpace(payload.Version) != backupSensitivePayloadVersion {

@@ -677,6 +677,8 @@ export enum DesktopActivityLogStatus {
 export class DesktopBackupExportInput {
     "include_config": boolean;
     "include_database": boolean;
+    "include_sensitive": boolean;
+    "backup_password": string;
 
     /** Creates a new DesktopBackupExportInput instance. */
     constructor($$source: Partial<DesktopBackupExportInput> = {}) {
@@ -685,6 +687,12 @@ export class DesktopBackupExportInput {
         }
         if (!("include_database" in $$source)) {
             this["include_database"] = false;
+        }
+        if (!("include_sensitive" in $$source)) {
+            this["include_sensitive"] = false;
+        }
+        if (!("backup_password" in $$source)) {
+            this["backup_password"] = "";
         }
 
         Object.assign(this, $$source);
@@ -729,6 +737,7 @@ export class DesktopBackupRestoreInput {
     "include_config": boolean;
     "include_database": boolean;
     "conflict_strategy": string;
+    "backup_password": string;
 
     /** Creates a new DesktopBackupRestoreInput instance. */
     constructor($$source: Partial<DesktopBackupRestoreInput> = {}) {
@@ -743,6 +752,9 @@ export class DesktopBackupRestoreInput {
         }
         if (!("conflict_strategy" in $$source)) {
             this["conflict_strategy"] = "";
+        }
+        if (!("backup_password" in $$source)) {
+            this["backup_password"] = "";
         }
 
         Object.assign(this, $$source);

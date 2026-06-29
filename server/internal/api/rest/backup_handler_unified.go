@@ -14,7 +14,7 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/easyssh/server/internal/pkg/crypto"
+	"github.com/easyssh/shared/backupcrypto"
 	"github.com/gin-gonic/gin"
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
@@ -40,14 +40,14 @@ type BackupContentSelection struct {
 }
 
 type UnifiedBackup struct {
-	Format     string                         `json:"format"`
-	Version    string                         `json:"version"`
-	ExportTime string                         `json:"export_time"`
-	Contents   BackupContentSelection         `json:"contents"`
-	Config     *BackupDataSection             `json:"config,omitempty"`
-	Database   *BackupDataSection             `json:"database,omitempty"`
-	Sensitive  *crypto.BackupEncryptedPayload `json:"sensitive,omitempty"`
-	Warnings   []string                       `json:"warnings,omitempty"`
+	Format     string                               `json:"format"`
+	Version    string                               `json:"version"`
+	ExportTime string                               `json:"export_time"`
+	Contents   BackupContentSelection               `json:"contents"`
+	Config     *BackupDataSection                   `json:"config,omitempty"`
+	Database   *BackupDataSection                   `json:"database,omitempty"`
+	Sensitive  *backupcrypto.BackupEncryptedPayload `json:"sensitive,omitempty"`
+	Warnings   []string                             `json:"warnings,omitempty"`
 }
 
 type BackupDataSection struct {
@@ -186,7 +186,7 @@ func (h *BackupHandler) exportBackup(c *gin.Context, options exportBackupOptions
 			})
 			return
 		}
-		envelope, err := crypto.EncryptBackupJSON(sensitivePayload, options.BackupPassword, backupSensitiveAAD())
+		envelope, err := backupcrypto.EncryptBackupJSON(sensitivePayload, options.BackupPassword, backupSensitiveAAD())
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{
 				"error":  "Failed to encrypt sensitive backup data",
@@ -442,6 +442,9 @@ func validateUnifiedBackup(backup *UnifiedBackup) error {
 	}
 	if backup.Config == nil && backup.Database == nil {
 		return fmt.Errorf("backup has no restorable content")
+	}
+	if backup.Contents.Config != (backup.Config != nil) || backup.Contents.Database != (backup.Database != nil) {
+		return fmt.Errorf("backup content metadata is inconsistent")
 	}
 	if backup.Contents.Sensitive != (backup.Sensitive != nil) {
 		return fmt.Errorf("backup sensitive metadata is inconsistent")

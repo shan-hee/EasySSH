@@ -2969,7 +2969,7 @@ const messages = {
     alertItemSensitive:
       "Backup files may contain keys, tokens, encrypted server credentials, and other sensitive data.",
     desktopDatabaseOnlyHint:
-      "Desktop exports database data only. System config and server credentials are not included.",
+      "Desktop exports database data only; full backups encrypt server credentials.",
     alertItemSuggestion:
       "Recommended to export backups regularly to a secure location.",
     exportTitle: "Export",
@@ -2986,7 +2986,7 @@ const messages = {
       "Users, servers, scripts, tasks, logs, keys, sessions, and other business data",
     sensitiveExportTitle: "Full backup",
     sensitiveExportDescription:
-      "Include recoverable passwords, private keys, tokens, and API keys, protected by a backup password",
+      "Include recoverable passwords, private keys, tokens, and API keys supported by this client, protected by a backup password",
     backupPasswordLabel: "Backup password",
     backupPasswordPlaceholder: "Enter a backup password",
     backupPasswordHint:

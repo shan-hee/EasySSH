@@ -5,6 +5,7 @@ go 1.25.0
 require (
 	filippo.io/csrf v0.2.1
 	github.com/coreos/go-oidc/v3 v3.18.0
+	github.com/easyssh/shared v0.0.0
 	github.com/gin-contrib/cors v1.7.7
 	github.com/gin-gonic/gin v1.12.0
 	github.com/glebarez/sqlite v1.11.0
@@ -31,6 +32,8 @@ require (
 	gorm.io/driver/postgres v1.5.11
 	gorm.io/gorm v1.30.0
 )
+
+replace github.com/easyssh/shared => ../shared
 
 require (
 	cloud.google.com/go/compute/metadata v0.9.0 // indirect

@@ -4,12 +4,15 @@ go 1.25.0
 
 require (
 	github.com/coder/websocket v1.8.14
+	github.com/easyssh/shared v0.0.0
 	github.com/google/uuid v1.6.0
 	github.com/pkg/sftp v1.13.6
 	github.com/wailsapp/wails/v3 v3.0.0-alpha.97
 	golang.org/x/crypto v0.50.0
 	modernc.org/sqlite v1.44.3
 )
+
+replace github.com/easyssh/shared => ../../shared
 
 replace github.com/wailsapp/wails/v3 => ./third_party/wails-v3-runtime
 
