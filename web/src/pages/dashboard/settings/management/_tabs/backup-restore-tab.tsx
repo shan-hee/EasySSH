@@ -149,6 +149,14 @@ export function BackupRestoreTab({
     }
   }, [includeSensitive])
 
+  useEffect(() => {
+    if (!supportsSensitive) {
+      setIncludeSensitive(false)
+      setBackupPassword("")
+      setRestorePassword("")
+    }
+  }, [supportsSensitive])
+
   function authHeaders() {
     const headers: HeadersInit = {}
     const token = getCurrentAccessToken()
@@ -190,7 +198,7 @@ export function BackupRestoreTab({
         include_config: supportsConfig && exportContent.config,
         include_database: exportContent.database,
         include_sensitive: supportsSensitive && includeSensitive,
-        backup_password: includeSensitive ? backupPassword : undefined,
+        backup_password: supportsSensitive && includeSensitive ? backupPassword : undefined,
       })
       const downloadUrl = window.URL.createObjectURL(blob)
       const a = document.createElement("a")
@@ -202,6 +210,9 @@ export function BackupRestoreTab({
       document.body.removeChild(a)
 
       toast.success(t("toastExportSuccess"))
+      if (includeSensitive) {
+        setBackupPassword("")
+      }
     } catch (error) {
       console.error("Failed to export backup:", error)
       toast.error(error instanceof Error ? error.message : t("toastExportFailed"))
@@ -210,24 +221,27 @@ export function BackupRestoreTab({
     }
   }
 
-  const handleRestoreClick = async () => {
+  const handleRestoreClick = () => {
     if (!restoreSelected) {
       toast.error(t("toastSelectRestoreContent"))
       return
-    }
-    if (conflictStrategy === "overwrite") {
-      const confirmed = await requestConfirm({
-        description: t("confirmOverwriteRestore"),
-      })
-      if (!confirmed) {
-        return
-      }
     }
     restoreFileInputRef.current?.click()
   }
 
   const handleRestoreFile = async (file: File) => {
     try {
+      if (conflictStrategy === "overwrite") {
+        if (restoreFileInputRef.current) {
+          restoreFileInputRef.current.value = ""
+        }
+        const confirmed = await requestConfirm({
+          description: t("confirmOverwriteRestore"),
+        })
+        if (!confirmed) {
+          return
+        }
+      }
       setLoading("restore")
       toast.info(t("toastRestoreLoading"))
 
@@ -243,6 +257,7 @@ export function BackupRestoreTab({
       }
 
       toast.success(t("toastRestoreSuccess"))
+      setRestorePassword("")
     } catch (error) {
       console.error("Failed to restore backup:", error)
       toast.error(error instanceof Error ? error.message : t("toastRestoreFailed"))

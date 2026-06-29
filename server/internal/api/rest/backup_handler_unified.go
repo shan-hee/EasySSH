@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
 	"math"
 	"net/http"
 	"regexp"
@@ -19,7 +20,11 @@ import (
 	"gorm.io/gorm"
 )
 
-const unifiedBackupVersion = "2.0"
+const (
+	unifiedBackupVersion          = "2.0"
+	maxBackupRestoreFileSizeBytes = 32 << 20
+	backupRestoreMultipartBytes   = maxBackupRestoreFileSizeBytes + (1 << 20)
+)
 
 var (
 	compactTimezoneSuffix = regexp.MustCompile(`([+-]\d{2})(\d{2})$`)
@@ -164,7 +169,16 @@ func (h *BackupHandler) exportBackup(c *gin.Context, options exportBackupOptions
 	}
 
 	if options.IncludeSensitive {
-		sensitivePayload, err := h.exportSensitivePayload(includeConfig, includeDatabase, backup.ExportTime)
+		baseSHA256, err := backupBaseSHA256(backup)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"error":  "Failed to fingerprint backup",
+				"detail": err.Error(),
+			})
+			return
+		}
+
+		sensitivePayload, err := h.exportSensitivePayload(includeConfig, includeDatabase, backup.ExportTime, baseSHA256)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{
 				"error":  "Failed to export sensitive backup data",
@@ -214,9 +228,19 @@ func (h *BackupHandler) exportBackup(c *gin.Context, options exportBackupOptions
 // @Success 200 {object} map[string]interface{}
 // @Router /api/v1/backup/restore [post]
 func (h *BackupHandler) RestoreBackup(c *gin.Context) {
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, backupRestoreMultipartBytes)
+
 	file, err := c.FormFile("file")
 	if err != nil {
+		if strings.Contains(err.Error(), "http: request body too large") {
+			c.JSON(http.StatusRequestEntityTooLarge, gin.H{"error": "Backup file is too large"})
+			return
+		}
 		c.JSON(http.StatusBadRequest, gin.H{"error": "No file uploaded"})
+		return
+	}
+	if file.Size > maxBackupRestoreFileSizeBytes {
+		c.JSON(http.StatusRequestEntityTooLarge, gin.H{"error": "Backup file is too large"})
 		return
 	}
 
@@ -234,6 +258,14 @@ func (h *BackupHandler) RestoreBackup(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error":  "Invalid backup file format",
 			"detail": err.Error(),
+		})
+		return
+	}
+	var extra json.RawMessage
+	if err := decoder.Decode(&extra); err != io.EOF {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":  "Invalid backup file format",
+			"detail": "backup file contains trailing data",
 		})
 		return
 	}
@@ -284,6 +316,13 @@ func (h *BackupHandler) RestoreBackup(c *gin.Context) {
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{
 				"error":  "Failed to decrypt sensitive backup data",
+				"detail": err.Error(),
+			})
+			return
+		}
+		if err := verifySensitiveBaseSHA256(&backup, sensitivePayload); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error":  "Invalid sensitive backup data",
 				"detail": err.Error(),
 			})
 			return
@@ -398,8 +437,14 @@ func validateUnifiedBackup(backup *UnifiedBackup) error {
 	if strings.TrimSpace(backup.Version) == "" {
 		return fmt.Errorf("missing backup version")
 	}
+	if strings.TrimSpace(backup.Version) != unifiedBackupVersion {
+		return fmt.Errorf("unsupported backup version: %s", backup.Version)
+	}
 	if backup.Config == nil && backup.Database == nil {
 		return fmt.Errorf("backup has no restorable content")
+	}
+	if backup.Contents.Sensitive != (backup.Sensitive != nil) {
+		return fmt.Errorf("backup sensitive metadata is inconsistent")
 	}
 	return nil
 }

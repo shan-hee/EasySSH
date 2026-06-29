@@ -1,11 +1,13 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"math"
 	"os"
 	"path/filepath"
@@ -55,11 +57,13 @@ type desktopUnifiedBackup struct {
 	Contents   desktopBackupContents `json:"contents"`
 	Config     *desktopBackupSection `json:"config,omitempty"`
 	Database   *desktopBackupSection `json:"database,omitempty"`
+	Sensitive  json.RawMessage       `json:"sensitive,omitempty"`
 }
 
 type desktopBackupContents struct {
-	Config   bool `json:"config"`
-	Database bool `json:"database"`
+	Config    bool `json:"config"`
+	Database  bool `json:"database"`
+	Sensitive bool `json:"sensitive,omitempty"`
 }
 
 type desktopBackupSection struct {
@@ -155,11 +159,23 @@ func (s *DesktopBackupService) RestoreBackup(input DesktopBackupRestoreInput) (D
 	}
 
 	var backup desktopUnifiedBackup
-	if err := json.Unmarshal([]byte(input.Content), &backup); err != nil {
+	decoder := json.NewDecoder(bytes.NewReader([]byte(input.Content)))
+	decoder.UseNumber()
+	if err := decoder.Decode(&backup); err != nil {
 		return DesktopBackupRestoreResult{}, fmt.Errorf("invalid backup file: %w", err)
+	}
+	var extra json.RawMessage
+	if err := decoder.Decode(&extra); err != io.EOF {
+		return DesktopBackupRestoreResult{}, errors.New("invalid backup file: trailing data")
 	}
 	if strings.TrimSpace(backup.Format) != desktopBackupFormat {
 		return DesktopBackupRestoreResult{}, errors.New("unsupported backup format")
+	}
+	if strings.TrimSpace(backup.Version) != desktopBackupVersion {
+		return DesktopBackupRestoreResult{}, errors.New("unsupported backup version")
+	}
+	if backup.Contents.Sensitive || len(backup.Sensitive) > 0 {
+		return DesktopBackupRestoreResult{}, errors.New("desktop restore does not support full encrypted backups")
 	}
 	if backup.Database == nil {
 		return DesktopBackupRestoreResult{}, errors.New("backup file does not include database")

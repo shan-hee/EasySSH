@@ -18,6 +18,13 @@ const (
 	BackupEnvelopeAlgorithm = "AES-256-GCM"
 	BackupEnvelopeKDF       = "argon2id"
 	BackupEnvelopeVersion   = "1"
+
+	backupEnvelopeKDFVersion   = 19
+	backupEnvelopeMemoryKiB    = 64 * 1024
+	backupEnvelopeIterations   = 3
+	backupEnvelopeParallelism  = 2
+	backupEnvelopeKeyLength    = 32
+	backupEnvelopeSaltByteSize = 16
 )
 
 type BackupKDFParams struct {
@@ -86,6 +93,9 @@ func DecryptBackupJSON(envelope *BackupEncryptedPayload, password string, aad []
 	if envelope.Algorithm != BackupEnvelopeAlgorithm {
 		return fmt.Errorf("unsupported backup encryption algorithm: %s", envelope.Algorithm)
 	}
+	if envelope.Version != BackupEnvelopeVersion {
+		return fmt.Errorf("unsupported backup envelope version: %s", envelope.Version)
+	}
 	if envelope.KDF.Algorithm != BackupEnvelopeKDF {
 		return fmt.Errorf("unsupported backup kdf: %s", envelope.KDF.Algorithm)
 	}
@@ -127,17 +137,17 @@ func DecryptBackupJSON(envelope *BackupEncryptedPayload, password string, aad []
 }
 
 func deriveBackupKey(password string) (BackupKDFParams, []byte, error) {
-	salt := make([]byte, 16)
+	salt := make([]byte, backupEnvelopeSaltByteSize)
 	if _, err := io.ReadFull(rand.Reader, salt); err != nil {
 		return BackupKDFParams{}, nil, err
 	}
 	params := BackupKDFParams{
 		Algorithm:   BackupEnvelopeKDF,
-		Version:     19,
-		MemoryKiB:   64 * 1024,
-		Iterations:  3,
-		Parallelism: 2,
-		KeyLength:   32,
+		Version:     backupEnvelopeKDFVersion,
+		MemoryKiB:   backupEnvelopeMemoryKiB,
+		Iterations:  backupEnvelopeIterations,
+		Parallelism: backupEnvelopeParallelism,
+		KeyLength:   backupEnvelopeKeyLength,
 		Salt:        base64.StdEncoding.EncodeToString(salt),
 	}
 	key, err := deriveBackupKeyFromParams(password, params)
@@ -148,12 +158,20 @@ func deriveBackupKeyFromParams(password string, params BackupKDFParams) ([]byte,
 	if strings.TrimSpace(password) == "" {
 		return nil, errors.New("backup password is required")
 	}
-	if params.MemoryKiB == 0 || params.Iterations == 0 || params.Parallelism == 0 || params.KeyLength == 0 {
+	if params.Algorithm != BackupEnvelopeKDF ||
+		params.Version != backupEnvelopeKDFVersion ||
+		params.MemoryKiB != backupEnvelopeMemoryKiB ||
+		params.Iterations != backupEnvelopeIterations ||
+		params.Parallelism != backupEnvelopeParallelism ||
+		params.KeyLength != backupEnvelopeKeyLength {
 		return nil, errors.New("invalid backup kdf parameters")
 	}
 	salt, err := base64.StdEncoding.DecodeString(params.Salt)
 	if err != nil {
 		return nil, fmt.Errorf("failed to decode backup salt: %w", err)
+	}
+	if len(salt) != backupEnvelopeSaltByteSize {
+		return nil, errors.New("invalid backup salt size")
 	}
 	return argon2.IDKey([]byte(password), salt, params.Iterations, params.MemoryKiB, params.Parallelism, params.KeyLength), nil
 }

@@ -17,10 +17,10 @@ type NotificationConfig struct {
 	WebhookConfig string `gorm:"type:text" json:"webhook_config"` // JSON: WebhookConfig
 
 	// 钉钉配置（JSON存储）
-	DingTalkConfig string `gorm:"type:text" json:"dingtalk_config"` // JSON: DingTalkConfig
+	DingTalkConfig string `gorm:"column:ding_talk_config;type:text" json:"dingtalk_config"` // JSON: DingTalkConfig
 
 	// 企业微信配置（JSON存储）
-	WeComConfig string `gorm:"type:text" json:"wecom_config"` // JSON: WeComConfig
+	WeComConfig string `gorm:"column:we_com_config;type:text" json:"wecom_config"` // JSON: WeComConfig
 
 	CreatedAt time.Time      `json:"created_at"`
 	UpdatedAt time.Time      `json:"updated_at"`

@@ -1,6 +1,9 @@
 package rest
 
 import (
+	"crypto/sha256"
+	"crypto/subtle"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -11,7 +14,7 @@ import (
 	"gorm.io/gorm"
 )
 
-const backupSensitivePayloadVersion = "1"
+const backupSensitivePayloadVersion = "2"
 
 type exportBackupOptions struct {
 	IncludeConfig    bool
@@ -31,6 +34,7 @@ type BackupSensitivePayload struct {
 	Version    string                 `json:"version"`
 	ExportTime string                 `json:"export_time"`
 	Contents   BackupContentSelection `json:"contents"`
+	BaseSHA256 string                 `json:"base_sha256"`
 	Config     *BackupDataSection     `json:"config,omitempty"`
 	Database   *BackupDataSection     `json:"database,omitempty"`
 	Warnings   []string               `json:"warnings,omitempty"`
@@ -53,8 +57,8 @@ var sensitiveBackupTables = []sensitiveTableSpec{
 	{
 		Table:            "notification_config",
 		Section:          backupSectionConfig,
-		Columns:          []string{"id", "smtp_config", "webhook_config", "dingtalk_config", "wecom_config"},
-		SensitiveColumns: []string{"smtp_config", "webhook_config", "dingtalk_config"},
+		Columns:          []string{"id", "smtp_config", "webhook_config", "ding_talk_config"},
+		SensitiveColumns: []string{"smtp_config", "webhook_config", "ding_talk_config"},
 	},
 	{
 		Table:            "ai_config",
@@ -125,13 +129,14 @@ func applyExportRequestOptions(options *exportBackupOptions, req exportBackupPos
 }
 
 func backupSensitiveAAD() []byte {
-	return []byte("easyssh:backup:sensitive:v1")
+	return []byte("easyssh:backup:sensitive:v2")
 }
 
-func (h *BackupHandler) exportSensitivePayload(includeConfig bool, includeDatabase bool, exportTime string) (*BackupSensitivePayload, error) {
+func (h *BackupHandler) exportSensitivePayload(includeConfig bool, includeDatabase bool, exportTime string, baseSHA256 string) (*BackupSensitivePayload, error) {
 	payload := &BackupSensitivePayload{
 		Version:    backupSensitivePayloadVersion,
 		ExportTime: exportTime,
+		BaseSHA256: baseSHA256,
 		Contents: BackupContentSelection{
 			Config:    includeConfig,
 			Database:  includeDatabase,
@@ -259,9 +264,52 @@ func (h *BackupHandler) decryptSensitivePayload(envelope *crypto.BackupEncrypted
 	return &payload, nil
 }
 
+func backupBaseSHA256(backup *UnifiedBackup) (string, error) {
+	base := struct {
+		Format     string                 `json:"format"`
+		Version    string                 `json:"version"`
+		ExportTime string                 `json:"export_time"`
+		Contents   BackupContentSelection `json:"contents"`
+		Config     *BackupDataSection     `json:"config,omitempty"`
+		Database   *BackupDataSection     `json:"database,omitempty"`
+	}{
+		Format:     backup.Format,
+		Version:    backup.Version,
+		ExportTime: backup.ExportTime,
+		Contents:   backup.Contents,
+		Config:     backup.Config,
+		Database:   backup.Database,
+	}
+
+	data, err := json.Marshal(base)
+	if err != nil {
+		return "", fmt.Errorf("failed to serialize backup base digest: %w", err)
+	}
+	sum := sha256.Sum256(data)
+	return hex.EncodeToString(sum[:]), nil
+}
+
+func verifySensitiveBaseSHA256(backup *UnifiedBackup, payload *BackupSensitivePayload) error {
+	expected := strings.TrimSpace(payload.BaseSHA256)
+	if expected == "" {
+		return errors.New("sensitive backup base digest is missing")
+	}
+	actual, err := backupBaseSHA256(backup)
+	if err != nil {
+		return err
+	}
+	if subtle.ConstantTimeCompare([]byte(actual), []byte(expected)) != 1 {
+		return errors.New("backup base content does not match encrypted sensitive payload")
+	}
+	return nil
+}
+
 func mergeSensitivePayload(backup *UnifiedBackup, payload *BackupSensitivePayload, includeConfig bool, includeDatabase bool) error {
 	if payload == nil {
 		return nil
+	}
+	if payload.Contents.Config != backup.Contents.Config || payload.Contents.Database != backup.Contents.Database || !payload.Contents.Sensitive {
+		return errors.New("sensitive backup contents do not match base backup")
 	}
 	if includeConfig && payload.Config != nil {
 		if backup.Config == nil {
@@ -481,7 +529,10 @@ func (h *BackupHandler) decryptNotificationConfigRow(row map[string]interface{})
 	if err := h.transformJSONSecret(row, "webhook_config", "secret", notificationConfigAAD("webhook", "secret"), false); err != nil {
 		return err
 	}
-	return h.transformJSONSecret(row, "dingtalk_config", "secret", notificationConfigAAD("dingtalk", "secret"), false)
+	if err := h.transformJSONSecret(row, "ding_talk_config", "secret", notificationConfigAAD("dingtalk", "secret"), false); err != nil {
+		return err
+	}
+	return nil
 }
 
 func sanitizeStructuredExportRow(table string, row map[string]interface{}) map[string]interface{} {
@@ -490,7 +541,7 @@ func sanitizeStructuredExportRow(table string, row map[string]interface{}) map[s
 	}
 	clearJSONSecret(row, "smtp_config", "password")
 	clearJSONSecret(row, "webhook_config", "secret")
-	clearJSONSecret(row, "dingtalk_config", "secret")
+	clearJSONSecret(row, "ding_talk_config", "secret")
 	return row
 }
 
@@ -509,7 +560,7 @@ func (h *BackupHandler) preserveNotificationSecrets(tx *gorm.DB, table string, r
 
 	copyJSONSecretIfBlank(row, existing, "smtp_config", "password")
 	copyJSONSecretIfBlank(row, existing, "webhook_config", "secret")
-	copyJSONSecretIfBlank(row, existing, "dingtalk_config", "secret")
+	copyJSONSecretIfBlank(row, existing, "ding_talk_config", "secret")
 	return nil
 }
 
@@ -518,7 +569,7 @@ func (h *BackupHandler) getExistingNotificationConfigRow(tx *gorm.DB, row map[st
 	if err != nil {
 		return nil, err
 	}
-	selectColumns := filterExistingColumns(columns, []string{"id", "smtp_config", "webhook_config", "dingtalk_config", "wecom_config"})
+	selectColumns := filterExistingColumns(columns, []string{"id", "smtp_config", "webhook_config", "ding_talk_config"})
 	if len(selectColumns) == 0 {
 		return nil, nil
 	}
@@ -616,7 +667,10 @@ func (h *BackupHandler) encryptNotificationConfigRow(row map[string]interface{})
 	if err := h.transformJSONSecret(row, "webhook_config", "secret", notificationConfigAAD("webhook", "secret"), true); err != nil {
 		return err
 	}
-	return h.transformJSONSecret(row, "dingtalk_config", "secret", notificationConfigAAD("dingtalk", "secret"), true)
+	if err := h.transformJSONSecret(row, "ding_talk_config", "secret", notificationConfigAAD("dingtalk", "secret"), true); err != nil {
+		return err
+	}
+	return nil
 }
 
 func (h *BackupHandler) transformJSONSecret(row map[string]interface{}, column string, field string, aad []byte, encrypt bool) error {
@@ -626,7 +680,7 @@ func (h *BackupHandler) transformJSONSecret(row map[string]interface{}, column s
 	}
 	var data map[string]interface{}
 	if err := json.Unmarshal([]byte(raw), &data); err != nil {
-		return nil
+		return fmt.Errorf("invalid JSON in %s: %w", column, err)
 	}
 	value := backupStringValue(data[field])
 	if strings.TrimSpace(value) == "" {
@@ -659,6 +713,7 @@ func clearJSONSecret(row map[string]interface{}, column string, field string) {
 	}
 	var data map[string]interface{}
 	if err := json.Unmarshal([]byte(raw), &data); err != nil {
+		row[column] = ""
 		return
 	}
 	if _, ok := data[field]; !ok {
