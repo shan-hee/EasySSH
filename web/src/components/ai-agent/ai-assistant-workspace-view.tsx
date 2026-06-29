@@ -1,5 +1,5 @@
 
-import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type KeyboardEvent, type SyntheticEvent } from "react"
 import { ArrowLeft, Check, History, Loader2, Pencil, Plus, RefreshCw, Search, Send, Server as ServerIcon, Settings2, Shield, Square, SquarePen, Trash2, X } from "lucide-react"
 
 import { AgentAIElementsTimeline } from "@/components/ai-agent/agent-ai-elements-timeline"
@@ -19,15 +19,8 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList,
-} from "@/components/ui/command"
-import {
   Popover,
+  PopoverAnchor,
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover"
@@ -65,6 +58,7 @@ import { cn } from "@/lib/utils"
 import { useTranslation } from "react-i18next"
 
 const SESSION_LIST_LIMIT = 30
+const SERVER_MENTION_LIMIT = 8
 
 export interface AIAssistantWorkspaceAdapters {
   aiConfig?: AIConfigAdapter
@@ -132,10 +126,6 @@ function formatSessionTime(value: string) {
   })
 }
 
-function getScopeServerId(scope?: AgentSessionScope) {
-  return scope?.server_id?.trim() || undefined
-}
-
 function createWorkspaceScopeFromServer(server: ManagedServer): AgentSessionScope {
   return {
     kind: "terminal",
@@ -153,6 +143,65 @@ function workspaceScopeFromServers(selectedServers: ManagedServer[]) {
   }
 
   return createWorkspaceScopeFromServer(selectedServers[0])
+}
+
+function workspaceScopeFromMentionedServers(mentionedServers: ManagedServer[]): AgentSessionScope {
+  return workspaceScopeFromServers(mentionedServers) ?? { kind: "global" }
+}
+
+function getServerMentionText(server: ManagedServer) {
+  return `@${getServerDisplayName(server)}`
+}
+
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+}
+
+function isServerMentioned(value: string, server: ManagedServer) {
+  const mentionText = getServerMentionText(server)
+  return new RegExp(`${escapeRegExp(mentionText)}(?=$|[\\s,，。.!?;；:：、)\\]）】])`, "u").test(value)
+}
+
+function getMentionedServers(value: string, servers: ManagedServer[]) {
+  return servers.filter((server) => isServerMentioned(value, server))
+}
+
+function getServerMentionSearchText(server: ManagedServer) {
+  return [
+    getServerDisplayName(server),
+    server.name,
+    server.host,
+    server.username,
+    server.group,
+    `${server.username}@${server.host}:${server.port}`,
+    ...(server.tags ?? []),
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase()
+}
+
+function getActiveServerMention(value: string, caretPosition: number | null | undefined) {
+  if (caretPosition === null || caretPosition === undefined) {
+    return null
+  }
+
+  const beforeCaret = value.slice(0, caretPosition)
+  const triggerStart = beforeCaret.lastIndexOf("@")
+  if (triggerStart < 0) {
+    return null
+  }
+
+  const query = beforeCaret.slice(triggerStart + 1)
+  if (/\s/.test(query)) {
+    return null
+  }
+
+  return {
+    end: caretPosition,
+    query,
+    start: triggerStart,
+  }
 }
 
 export function AIAssistantWorkspaceView({
@@ -173,7 +222,12 @@ export function AIAssistantWorkspaceView({
   const [permissionMode, setPermissionMode] = useState<PermissionMode>("balanced")
   const [availableServers, setAvailableServers] = useState<ManagedServer[]>([])
   const [serversLoading, setServersLoading] = useState(false)
-  const [selectedServerIds, setSelectedServerIds] = useState<string[]>([])
+  const [serverMention, setServerMention] = useState<{
+    end: number
+    query: string
+    start: number
+  } | null>(null)
+  const [serverMentionIndex, setServerMentionIndex] = useState(0)
   const [attachments, setAttachments] = useState<ComposerAttachment[]>([])
   const [attachmentsLoading, setAttachmentsLoading] = useState(false)
   const [sessionList, setSessionList] = useState<SessionListItem[]>([])
@@ -189,7 +243,6 @@ export function AIAssistantWorkspaceView({
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const sessionCreatingRef = useRef(false)
-  const syncedSessionServerRef = useRef<string | null>(null)
 
   useEffect(() => {
     if (models.length === 0) {
@@ -204,7 +257,6 @@ export function AIAssistantWorkspaceView({
 
   useEffect(() => {
     if (!session?.id) {
-      syncedSessionServerRef.current = null
       return
     }
 
@@ -215,16 +267,7 @@ export function AIAssistantWorkspaceView({
     if (session.model && models.includes(session.model)) {
       setSelectedModel(session.model)
     }
-
-    const serverId = getScopeServerId(session.scope)
-    const syncKey = `${session.id}:${serverId ?? ""}`
-    if (syncedSessionServerRef.current === syncKey) {
-      return
-    }
-
-    syncedSessionServerRef.current = syncKey
-    setSelectedServerIds(serverId ? [serverId] : [])
-  }, [models, session?.id, session?.model, session?.permission_mode, session?.scope])
+  }, [models, session?.id, session?.model, session?.permission_mode])
 
   const loadServers = useCallback(async () => {
     if (!ready) {
@@ -277,31 +320,6 @@ export function AIAssistantWorkspaceView({
     [t]
   )
 
-  const selectedServers = useMemo(
-    () => availableServers.filter((server) => selectedServerIds.includes(server.id)),
-    [availableServers, selectedServerIds]
-  )
-  const activeWorkspaceScope = useMemo<AgentSessionScope>(() => {
-    const sessionServerId = getScopeServerId(session?.scope)
-
-    if (selectedServerIds.length === 1) {
-      const selectedScope = workspaceScopeFromServers(selectedServers)
-      if (selectedScope) {
-        return selectedScope
-      }
-
-      if (sessionServerId === selectedServerIds[0] && session?.scope?.kind) {
-        return session.scope
-      }
-
-      return {
-        kind: "terminal",
-        server_id: selectedServerIds[0],
-      }
-    }
-
-    return { kind: "global" }
-  }, [selectedServerIds, selectedServers, session?.scope])
   const isConfigChecking = !ready || isLoading
   const showConfigAction = ready && !isLoading && !isConfigured
   const modelSelectDisabled = isConfigChecking || !isConfigured || models.length === 0
@@ -326,8 +344,12 @@ export function AIAssistantWorkspaceView({
   const canAttemptSubmit = Boolean(draft.trim())
 
   const buildMessageContext = useCallback(
-    () => buildAgentMessageContext({ attachments, selectedServers, t }),
-    [attachments, selectedServers, t]
+    (messageText: string) => buildAgentMessageContext({
+      attachments,
+      selectedServers: getMentionedServers(messageText, availableServers),
+      t,
+    }),
+    [attachments, availableServers, t]
   )
 
   const prependSessionListItem = useCallback((response: CreateSessionResponse) => {
@@ -366,7 +388,9 @@ export function AIAssistantWorkspaceView({
 
   const submit = async (messageText = draft) => {
     const normalizedDraft = messageText.trim()
-    const contextText = buildMessageContext()
+    const submittedServers = getMentionedServers(normalizedDraft, availableServers)
+    const submittedScope = workspaceScopeFromMentionedServers(submittedServers)
+    const contextText = buildMessageContext(normalizedDraft)
     const blockReasons: string[] = []
 
     if (!normalizedDraft) {
@@ -423,7 +447,7 @@ export function AIAssistantWorkspaceView({
         response = await startNewSession({
           model: selectedModel || undefined,
           permissionMode,
-          scope: activeWorkspaceScope,
+          scope: submittedScope,
         })
       } finally {
         sessionCreatingRef.current = false
@@ -438,7 +462,7 @@ export function AIAssistantWorkspaceView({
       prependSessionListItem(response)
     }
 
-    const sent = await sendMessage(normalizedDraft, contextText, selectedModel || undefined, permissionMode, activeWorkspaceScope)
+    const sent = await sendMessage(normalizedDraft, contextText, selectedModel || undefined, permissionMode, submittedScope)
     if (!sent) {
       setDraft((current) => current || messageText)
       setAttachments((current) => current.length > 0 ? current : submittedAttachments)
@@ -475,7 +499,7 @@ export function AIAssistantWorkspaceView({
       const response = await startNewSession({
         model: selectedModel || undefined,
         permissionMode,
-        scope: activeWorkspaceScope,
+        scope: { kind: "global" },
       })
 
       if (response) {
@@ -606,13 +630,140 @@ export function AIAssistantWorkspaceView({
     }
   }
 
-  const toggleServerSelection = useCallback((serverId: string) => {
-    setSelectedServerIds((current) => (
-      current.includes(serverId)
-        ? current.filter((item) => item !== serverId)
-        : [...current, serverId]
-    ))
+  const closeServerMention = useCallback(() => {
+    setServerMention(null)
+    setServerMentionIndex(0)
   }, [])
+
+  const updateServerMention = useCallback((value: string, caretPosition: number | null) => {
+    if (serverReferenceDisabled) {
+      closeServerMention()
+      return
+    }
+
+    const nextMention = getActiveServerMention(value, caretPosition)
+    if (!nextMention) {
+      closeServerMention()
+      return
+    }
+
+    setServerMention(nextMention)
+  }, [closeServerMention, serverReferenceDisabled])
+
+  const handleDraftChange = useCallback((event: ChangeEvent<HTMLTextAreaElement>) => {
+    const nextDraft = event.currentTarget.value
+    setDraft(nextDraft)
+    updateServerMention(nextDraft, event.currentTarget.selectionStart)
+  }, [updateServerMention])
+
+  const handleDraftCaretChange = useCallback((event: SyntheticEvent<HTMLTextAreaElement>) => {
+    updateServerMention(event.currentTarget.value, event.currentTarget.selectionStart)
+  }, [updateServerMention])
+
+  const handleDraftKeyUp = useCallback((event: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (!["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End"].includes(event.key)) {
+      return
+    }
+
+    updateServerMention(event.currentTarget.value, event.currentTarget.selectionStart)
+  }, [updateServerMention])
+
+  const serverMentionOpen = Boolean(serverMention) && !serverReferenceDisabled
+  const serverMentionQuery = serverMention?.query.trim().toLowerCase() ?? ""
+  const serverMentionOptions = useMemo(() => {
+    const candidates = serverMentionQuery
+      ? availableServers.filter((server) => getServerMentionSearchText(server).includes(serverMentionQuery))
+      : availableServers
+
+    return candidates.slice(0, SERVER_MENTION_LIMIT)
+  }, [availableServers, serverMentionQuery])
+
+  useEffect(() => {
+    setServerMentionIndex(0)
+  }, [serverMention?.start, serverMentionQuery])
+
+  useEffect(() => {
+    if (serverMentionIndex >= serverMentionOptions.length) {
+      setServerMentionIndex(0)
+    }
+  }, [serverMentionIndex, serverMentionOptions.length])
+
+  useEffect(() => {
+    if (serverMentionOpen && availableServers.length === 0 && !serversLoading) {
+      void loadServers()
+    }
+  }, [availableServers.length, loadServers, serverMentionOpen, serversLoading])
+
+  const selectServerMention = useCallback((server: ManagedServer) => {
+    const activeMention = serverMention
+    if (!activeMention) {
+      return
+    }
+
+    const mentionText = getServerMentionText(server)
+    const suffix = draft.slice(activeMention.end)
+    const suffixStartsWithWhitespace = /^\s/.test(suffix)
+    const separator = suffix.length === 0 || !suffixStartsWithWhitespace ? " " : ""
+    const nextDraft = `${draft.slice(0, activeMention.start)}${mentionText}${separator}${suffix}`
+    const nextCaretPosition = activeMention.start + mentionText.length + (
+      separator.length || (suffixStartsWithWhitespace ? 1 : 0)
+    )
+
+    setDraft(nextDraft)
+    closeServerMention()
+
+    requestAnimationFrame(() => {
+      inputRef.current?.focus()
+      inputRef.current?.setSelectionRange(nextCaretPosition, nextCaretPosition)
+    })
+  }, [closeServerMention, draft, serverMention])
+
+  const handleComposerKeyDown = useCallback((event: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (!serverMentionOpen) {
+      return
+    }
+
+    if (event.nativeEvent.isComposing) {
+      return
+    }
+
+    if (event.key === "ArrowDown") {
+      event.preventDefault()
+      setServerMentionIndex((current) => (
+        serverMentionOptions.length === 0 ? 0 : (current + 1) % serverMentionOptions.length
+      ))
+      return
+    }
+
+    if (event.key === "ArrowUp") {
+      event.preventDefault()
+      setServerMentionIndex((current) => (
+        serverMentionOptions.length === 0
+          ? 0
+          : (current - 1 + serverMentionOptions.length) % serverMentionOptions.length
+      ))
+      return
+    }
+
+    if (event.key === "Enter" || event.key === "Tab") {
+      event.preventDefault()
+      if (serverMentionOptions.length > 0) {
+        selectServerMention(serverMentionOptions[serverMentionIndex] ?? serverMentionOptions[0])
+      }
+      return
+    }
+
+    if (event.key === "Escape") {
+      event.preventDefault()
+      closeServerMention()
+    }
+  }, [
+    closeServerMention,
+    selectServerMention,
+    serverMentionIndex,
+    serverMentionOpen,
+    serverMentionOptions,
+  ])
 
   const removeAttachment = useCallback((attachmentId: string) => {
     setAttachments((current) => current.filter((attachment) => attachment.id !== attachmentId))
@@ -979,10 +1130,10 @@ export function AIAssistantWorkspaceView({
 
                 <ComposerReferenceChips
                   attachments={attachments}
-                  onClearServers={() => setSelectedServerIds([])}
+                  onClearServers={() => undefined}
                   onRemoveAttachment={removeAttachment}
-                  onToggleServer={toggleServerSelection}
-                  selectedServers={selectedServers}
+                  onToggleServer={() => undefined}
+                  selectedServers={[]}
                   t={t}
                 />
 
@@ -990,15 +1141,120 @@ export function AIAssistantWorkspaceView({
                   className="border-border/0 bg-card/0 shadow-xl backdrop-blur supports-[backdrop-filter]:bg-card/0"
                   onSubmit={(message) => submit(message.text)}
                 >
-                  <PromptInputTextarea
-                    ref={inputRef}
-                    value={draft}
-                    onChange={(event) => setDraft(event.target.value)}
-                    placeholder={hasTimeline ? t("composerPlaceholder") : t("inputPlaceholder")}
-                    minHeight={56}
-                    maxHeight={180}
-                    className="px-4 pt-3 text-sm"
-                  />
+                  <Popover
+                    open={serverMentionOpen}
+                    onOpenChange={(open) => {
+                      if (!open) {
+                        closeServerMention()
+                      }
+                    }}
+                  >
+                    <PopoverAnchor asChild>
+                      <PromptInputTextarea
+                        ref={inputRef}
+                        value={draft}
+                        onChange={handleDraftChange}
+                        onClick={handleDraftCaretChange}
+                        onKeyDown={handleComposerKeyDown}
+                        onKeyUp={handleDraftKeyUp}
+                        onSelect={handleDraftCaretChange}
+                        placeholder={hasTimeline ? t("composerPlaceholder") : t("inputPlaceholderWithMention")}
+                        minHeight={56}
+                        maxHeight={180}
+                        className="px-4 pt-3 text-sm"
+                      />
+                    </PopoverAnchor>
+                    <PopoverContent
+                      align="start"
+                      side="top"
+                      sideOffset={8}
+                      onCloseAutoFocus={(event) => event.preventDefault()}
+                      onOpenAutoFocus={(event) => event.preventDefault()}
+                      className="w-[min(34rem,calc(100vw-2rem))] overflow-hidden p-0 shadow-2xl"
+                    >
+                      <div className="flex items-center justify-between border-b border-border/60 px-3 py-2">
+                        <div className="flex min-w-0 items-center gap-2 text-xs font-medium text-muted-foreground">
+                          <ServerIcon className="size-3.5" />
+                          <span className="truncate">{t("referenceServer")}</span>
+                        </div>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="size-7 shrink-0 text-muted-foreground hover:text-foreground"
+                          onClick={() => void loadServers()}
+                          disabled={serversLoading}
+                          aria-label={t("referenceServerRefresh")}
+                          title={t("referenceServerRefresh")}
+                        >
+                          <RefreshCw className={cn("size-3.5", serversLoading && "animate-spin")} />
+                        </Button>
+                      </div>
+
+                      <div className="max-h-72 overflow-y-auto p-1 scrollbar-custom" role="listbox">
+                        {serversLoading && availableServers.length === 0 ? (
+                          <div className="flex items-center justify-center gap-2 px-3 py-8 text-sm text-muted-foreground">
+                            <Loader2 className="size-4 animate-spin" />
+                            <span>{t("referenceServerLoading")}</span>
+                          </div>
+                        ) : serverMentionOptions.length === 0 ? (
+                          <div className="px-3 py-8 text-center text-sm text-muted-foreground">
+                            {t("referenceServerEmpty")}
+                          </div>
+                        ) : (
+                          <div className="space-y-1">
+                            {serverMentionOptions.map((server, index) => {
+                              const isActive = index === serverMentionIndex
+
+                              return (
+                                <button
+                                  key={server.id}
+                                  type="button"
+                                  role="option"
+                                  aria-selected={isActive}
+                                  className={cn(
+                                    "flex w-full items-center gap-2 rounded-md px-2 py-2 text-left transition-colors",
+                                    isActive
+                                      ? "bg-accent text-accent-foreground"
+                                      : "text-foreground hover:bg-accent/70"
+                                  )}
+                                  onMouseDown={(event) => {
+                                    event.preventDefault()
+                                    selectServerMention(server)
+                                  }}
+                                >
+                                  <span
+                                    className={cn(
+                                      "flex size-5 shrink-0 items-center justify-center rounded-md border text-[10px]",
+                                      "border-border text-muted-foreground"
+                                    )}
+                                  >
+                                    @
+                                  </span>
+                                  <span className="min-w-0 flex-1">
+                                    <span className="block truncate text-sm font-medium">
+                                      {getServerDisplayName(server)}
+                                    </span>
+                                    <span className="block truncate text-xs text-muted-foreground">
+                                      {server.username}@{server.host}:{server.port}
+                                    </span>
+                                  </span>
+                                  <span
+                                    className={cn(
+                                      "shrink-0 text-[10px] uppercase tracking-wide",
+                                      server.status === "online" ? "text-emerald-600" : "text-muted-foreground"
+                                    )}
+                                  >
+                                    {server.status}
+                                  </span>
+                                </button>
+                              )
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    </PopoverContent>
+                  </Popover>
 
                   <PromptInputToolbar className="flex-wrap gap-3 px-2 py-1.5">
                     <PromptInputTools className="flex flex-wrap items-center gap-2">
@@ -1035,103 +1291,6 @@ export function AIAssistantWorkspaceView({
                           ))}
                         </PromptInputModelSelectContent>
                       </PromptInputModelSelect>
-
-                      <Popover>
-                        <PopoverTrigger asChild>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            className="h-9 gap-2 bg-transparent px-2.5 text-xs font-normal text-muted-foreground hover:bg-transparent hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50 sm:text-sm"
-                            disabled={serverReferenceDisabled}
-                          >
-                            <ServerIcon className="size-3.5" />
-                            <span className="hidden sm:inline">
-                              {selectedServerIds.length > 0
-                                ? t("referenceServerSelected", { count: selectedServerIds.length })
-                                : t("referenceServer")}
-                            </span>
-                            <span className="sm:hidden">
-                              {selectedServerIds.length > 0 ? selectedServerIds.length : t("referenceServer")}
-                            </span>
-                          </Button>
-                        </PopoverTrigger>
-                        <PopoverContent align="start" className="w-[340px] p-0">
-                          <div className="flex items-center justify-between border-b border-border/60 px-3 py-2 text-xs text-muted-foreground">
-                            <span>{t("referenceServerHint")}</span>
-                            <div className="flex items-center gap-1">
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="icon"
-                                className="size-7"
-                                onClick={() => void loadServers()}
-                                disabled={serversLoading}
-                              >
-                                <RefreshCw className={cn("size-3.5", serversLoading && "animate-spin")} />
-                              </Button>
-                              {selectedServerIds.length > 0 && (
-                                <Button
-                                  type="button"
-                                  variant="ghost"
-                                  size="sm"
-                                  className="h-7 px-2 text-xs"
-                                  onClick={() => setSelectedServerIds([])}
-                                >
-                                  {t("referenceServerClear")}
-                                </Button>
-                              )}
-                            </div>
-                          </div>
-
-                          <Command>
-                            <CommandInput placeholder={t("referenceServer")} />
-                            <CommandList>
-                              <CommandEmpty>
-                                {serversLoading ? t("referenceServerLoading") : t("referenceServerEmpty")}
-                              </CommandEmpty>
-                              <CommandGroup>
-                                {availableServers.map((server) => {
-                                  const isSelected = selectedServerIds.includes(server.id)
-
-                                  return (
-                                    <CommandItem
-                                      key={server.id}
-                                      value={`${getServerDisplayName(server)} ${server.host} ${server.username}`}
-                                      onSelect={() => toggleServerSelection(server.id)}
-                                    >
-                                      <div
-                                        className={cn(
-                                          "mr-2 flex h-4 w-4 items-center justify-center rounded-sm border border-primary",
-                                          isSelected
-                                            ? "bg-primary text-primary-foreground"
-                                            : "opacity-50"
-                                        )}
-                                      >
-                                        {isSelected && <Check className="size-3" />}
-                                      </div>
-                                      <div className="min-w-0 flex-1">
-                                        <div className="truncate text-sm font-medium">{getServerDisplayName(server)}</div>
-                                        <div className="truncate text-xs text-muted-foreground">
-                                          {server.username}@{server.host}:{server.port}
-                                        </div>
-                                      </div>
-                                      <span
-                                        className={cn(
-                                          "ml-2 shrink-0 text-[10px] uppercase tracking-wide",
-                                          server.status === "online" ? "text-emerald-600" : "text-muted-foreground"
-                                        )}
-                                      >
-                                        {server.status}
-                                      </span>
-                                    </CommandItem>
-                                  )
-                                })}
-                              </CommandGroup>
-                            </CommandList>
-                          </Command>
-                        </PopoverContent>
-                      </Popover>
 
                       <Button
                         type="button"

@@ -2122,6 +2122,7 @@ const messages = {
       "Hi, I’m your AI assistant. I can help you manage servers, write scripts, analyze logs and more.",
     emptyDescriptionGuide: "Type your question below or choose a quick template to start.",
     inputPlaceholder: "Type your question... (Shift+Enter for new line, Enter to send)",
+    inputPlaceholderWithMention: "Type your question... use @ to pick a server",
     exportRoleUser: "User",
     exportRoleAssistant: "AI Assistant",
     safetyNotice:
@@ -2260,7 +2261,7 @@ const messages = {
     modelPlaceholder: "Select model",
     sessionActionLabel: "Session action",
     newSession: "New session",
-    composerPlaceholder: "Describe the goal or action you want, press Enter to send, Shift+Enter for newline.",
+    composerPlaceholder: "Describe the goal or action you want. Use @ to pick a server.",
     sessionMetaTitle: "Session State",
     sessionMetaDescription: "Current model, permission mode, and transport for the active session.",
     sessionMetaTransport: "Transport",
