@@ -69,7 +69,7 @@ jobs:
       - name: 🏗️ 构建 Windows 应用 (CGO=0 交叉编译)
         run: wails3 task windows:build ARCH=${{ inputs.arch }}
 
-      - name: 📦 准备构建产物名称
+      - name: 📦 打包桌面端 zip
         id: artifact
         run: |
           # 桌面端发布命名约定: amd64 -> 86
@@ -78,13 +78,24 @@ jobs:
           else
             SUFFIX="${{ inputs.arch }}"
           fi
-          echo "artifact_name=EasySSH-windows-${SUFFIX}-desktop" >> "$GITHUB_OUTPUT"
+          PACKAGE_NAME="EasySSH-windows-${SUFFIX}-desktop"
+          ZIP_NAME="${PACKAGE_NAME}.zip"
+
+          rm -rf "bin/${PACKAGE_NAME}" "bin/${ZIP_NAME}"
+          mkdir -p "bin/${PACKAGE_NAME}/data"
+          cp bin/EasySSH.exe "bin/${PACKAGE_NAME}/EasySSH.exe"
+
+          cd bin
+          zip -r "$ZIP_NAME" "$PACKAGE_NAME"
+
+          echo "artifact_name=${PACKAGE_NAME}" >> "$GITHUB_OUTPUT"
+          echo "zip_name=${ZIP_NAME}" >> "$GITHUB_OUTPUT"
 
       - name: 📤 上传构建产物
         uses: actions/upload-artifact@v4
         with:
           name: ${{ steps.artifact.outputs.artifact_name }}
-          path: desktop/EasySSHDesktop/bin/EasySSH.exe
+          path: desktop/EasySSHDesktop/bin/${{ steps.artifact.outputs.zip_name }}
           if-no-files-found: error
 
       - name: 📊 生成构建摘要
@@ -92,4 +103,4 @@ jobs:
           echo "## 💻 EasySSH Desktop 构建成功" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "- **平台:** Windows (${{ inputs.arch }})" >> $GITHUB_STEP_SUMMARY
-          echo "- **Artifact:** \`${{ steps.artifact.outputs.artifact_name }}\`（下载后压缩包内直接是 \`EasySSH.exe\`）" >> $GITHUB_STEP_SUMMARY
+          echo "- **Artifact:** \`${{ steps.artifact.outputs.zip_name }}\`（解压后包含 \`${{ steps.artifact.outputs.artifact_name }}/EasySSH.exe\` 与同级 \`data/\` 目录）" >> $GITHUB_STEP_SUMMARY
