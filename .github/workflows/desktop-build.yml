@@ -72,15 +72,15 @@ jobs:
       - name: 📦 打包 zip
         id: package
         run: |
-          # 沿用既有命名约定: amd64 -> x86
+          # 桌面端发布命名约定: amd64 -> 86
           if [ "${{ inputs.arch }}" = "amd64" ]; then
-            SUFFIX="x86"
+            SUFFIX="86"
           else
             SUFFIX="${{ inputs.arch }}"
           fi
-          ZIP_NAME="easysshdesktop-windows-${SUFFIX}.zip"
+          ZIP_NAME="EasySSH-windows-${SUFFIX}-desktop.zip"
           cd bin
-          zip "$ZIP_NAME" easysshdesktop.exe
+          zip "$ZIP_NAME" EasySSH.exe
           echo "zip_name=$ZIP_NAME" >> $GITHUB_OUTPUT
 
       - name: 📤 上传构建产物

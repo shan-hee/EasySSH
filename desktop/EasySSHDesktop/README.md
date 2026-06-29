@@ -14,10 +14,12 @@ EasySSH Desktop is the Wails v3 shell for the embeddable SSH/SFTP workspace. The
 From this directory:
 
 ```bash
-/root/go/bin/wails3 task windows:build ARCH=386
+/root/go/bin/wails3 task windows:build ARCH=amd64
 ```
 
-The Windows x86 executable is written to `bin/easysshdesktop.exe`. The release zip is produced from the executable and supporting release metadata.
+The Windows 86 executable is written to `bin/EasySSH.exe`. The release zip is `EasySSH-windows-86-desktop.zip`.
+
+Desktop data is stored in the `data` folder next to the desktop executable.
 
 ## Layout
 

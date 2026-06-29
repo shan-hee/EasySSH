@@ -3,7 +3,7 @@
 #
 # The lines below are called `modelines`. See `:help modeline`
 
-name: "easysshdesktop"
+name: "easyssh"
 arch: ${GOARCH}
 platform: "linux"
 version: "1.0.14"
@@ -17,12 +17,12 @@ license: "MIT"
 release: "1"
 
 contents:
-  - src: "./bin/easysshdesktop"
-    dst: "/usr/local/bin/easysshdesktop"
+  - src: "./bin/EasySSH"
+    dst: "/usr/local/bin/EasySSH"
   - src: "./build/appicon.png"
-    dst: "/usr/share/icons/hicolor/128x128/apps/easysshdesktop.png"
-  - src: "./build/linux/easysshdesktop.desktop"
-    dst: "/usr/share/applications/easysshdesktop.desktop"
+    dst: "/usr/share/icons/hicolor/128x128/apps/EasySSH.png"
+  - src: "./build/linux/EasySSH.desktop"
+    dst: "/usr/share/applications/EasySSH.desktop"
 
 # Default dependencies for the GTK4 + WebKitGTK 6.0 stack (Ubuntu 24.04+ / Debian 13+)
 depends:

@@ -14,7 +14,7 @@
     ProcessorArchitecture="x86" />
 
   <Properties>
-    <DisplayName>EasySSH Desktop</DisplayName>
+    <DisplayName>EasySSH</DisplayName>
     <PublisherDisplayName>EasySSH</PublisherDisplayName>
     <Description>Cross-platform SSH/SFTP workspace</Description>
     <Logo>Assets\StoreLogo.png</Logo>
@@ -29,9 +29,9 @@
   </Resources>
 
   <Applications>
-    <Application Id="EasySSHDesktop" Executable="easysshdesktop.exe" EntryPoint="Windows.FullTrustApplication">
+    <Application Id="EasySSH" Executable="EasySSH.exe" EntryPoint="Windows.FullTrustApplication">
       <uap:VisualElements
-        DisplayName="EasySSH Desktop"
+        DisplayName="EasySSH"
         Description="Cross-platform SSH/SFTP workspace"
         BackgroundColor="transparent"
         Square150x150Logo="Assets\Square150x150Logo.png"
@@ -41,7 +41,7 @@
       </uap:VisualElements>
 
       <Extensions>
-        <desktop:Extension Category="windows.fullTrustProcess" Executable="easysshdesktop.exe" />
+        <desktop:Extension Category="windows.fullTrustProcess" Executable="EasySSH.exe" />
 
 
       </Extensions>

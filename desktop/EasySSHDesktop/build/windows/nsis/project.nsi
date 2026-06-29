@@ -19,9 +19,9 @@ Unicode true
 ####
 ## The following information is taken from the wails_tools.nsh file, but they can be overwritten here.
 ####
-## !define INFO_PROJECTNAME    "easysshdesktop" # Default "EasySSH Desktop"
+## !define INFO_PROJECTNAME    "EasySSH" # Default "EasySSH"
 ## !define INFO_COMPANYNAME    "EasySSH" # Default "EasySSH"
-## !define INFO_PRODUCTNAME    "EasySSH Desktop" # Default "EasySSH Desktop"
+## !define INFO_PRODUCTNAME    "EasySSH" # Default "EasySSH"
 ## !define INFO_PRODUCTVERSION "1.0.14"     # Default "1.0.14"
 ## !define INFO_COPYRIGHT      "(c) 2026, EasySSH" # Default "(c) 2026, EasySSH"
 ###

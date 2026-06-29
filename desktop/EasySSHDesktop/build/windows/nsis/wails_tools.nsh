@@ -5,13 +5,13 @@
 !include "FileFunc.nsh"
 
 !ifndef INFO_PROJECTNAME
-    !define INFO_PROJECTNAME "EasySSH Desktop"
+    !define INFO_PROJECTNAME "EasySSH"
 !endif
 !ifndef INFO_COMPANYNAME
     !define INFO_COMPANYNAME "EasySSH"
 !endif
 !ifndef INFO_PRODUCTNAME
-    !define INFO_PRODUCTNAME "EasySSH Desktop"
+    !define INFO_PRODUCTNAME "EasySSH"
 !endif
 !ifndef INFO_PRODUCTVERSION
     !define INFO_PRODUCTVERSION "1.0.14"

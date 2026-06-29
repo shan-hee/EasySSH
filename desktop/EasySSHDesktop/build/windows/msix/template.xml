@@ -8,13 +8,13 @@
         AllowPromptForPassword="false">
     </Settings>
     <Installer
-        Path="easysshdesktop.exe"
+        Path="EasySSH.exe"
         Arguments=""
-        InstallLocation="C:\Program Files\EasySSH\EasySSH Desktop">
+        InstallLocation="C:\Program Files\EasySSH\EasySSH">
     </Installer>
     <PackageInformation
         PackageName="io.easyssh.desktop"
-        PackageDisplayName="EasySSH Desktop"
+        PackageDisplayName="EasySSH"
         PublisherName="CN=EasySSH"
         PublisherDisplayName="EasySSH"
         Version="1.0.14.0"
@@ -25,10 +25,10 @@
         </Capabilities>
         <Applications>
             <Application
-                Id="EasySSHDesktop"
+                Id="EasySSH"
                 Description="Cross-platform SSH/SFTP workspace"
-                DisplayName="EasySSH Desktop"
-                ExecutableName="easysshdesktop.exe"
+                DisplayName="EasySSH"
+                ExecutableName="EasySSH.exe"
                 EntryPoint="Windows.FullTrustApplication">
 
             </Application>
@@ -41,13 +41,13 @@
         </Dependencies>
         <Properties>
             <Framework>false</Framework>
-            <DisplayName>EasySSH Desktop</DisplayName>
+            <DisplayName>EasySSH</DisplayName>
             <PublisherDisplayName>EasySSH</PublisherDisplayName>
             <Description>Cross-platform SSH/SFTP workspace</Description>
             <Logo>Assets\AppIcon.png</Logo>
         </Properties>
     </PackageInformation>
-    <SaveLocation PackagePath="easysshdesktop-x86.msix" />
+    <SaveLocation PackagePath="EasySSH-86.msix" />
     <PackageIntegrity>
         <CertificatePath></CertificatePath>
     </PackageIntegrity>

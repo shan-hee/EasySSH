@@ -72,7 +72,7 @@ function DesktopAboutDialog({
             <Info className="h-5 w-5" />
             {t("aboutDesktopTitle")}
           </DialogTitle>
-          <DialogDescription>EasySSH Desktop</DialogDescription>
+          <DialogDescription>EasySSH</DialogDescription>
         </DialogHeader>
 
         <div className="space-y-2">

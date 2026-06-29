@@ -32,7 +32,7 @@ func main() {
 
 	app := application.New(application.Options{
 		Name:        "EasySSH",
-		Description: "EasySSH Desktop",
+		Description: "EasySSH",
 		Services: []application.Service{
 			application.NewService(serverService),
 			application.NewService(scriptService),

@@ -99,12 +99,12 @@ func readVersion() string {
 }
 
 func desktopDataDir() string {
-	baseDir, err := os.UserConfigDir()
-	if err != nil || baseDir == "" {
-		baseDir = os.TempDir()
+	executablePath, err := os.Executable()
+	if err != nil {
+		panic(fmt.Errorf("failed to resolve desktop executable path: %w", err))
 	}
 
-	return filepath.Join(baseDir, "EasySSH", "Desktop")
+	return filepath.Join(filepath.Dir(executablePath), "data")
 }
 
 func (s *DesktopService) ListPreferences() (DesktopPreferenceSnapshot, error) {

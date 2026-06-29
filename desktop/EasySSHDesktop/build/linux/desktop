@@ -1,11 +1,11 @@
 [Desktop Entry]
 Version=1.0
-Name=EasySSH Desktop
+Name=EasySSH
 Comment=Cross-platform SSH/SFTP workspace
 # The Exec line includes %u to pass the URL to the application
-Exec=/usr/local/bin/easysshdesktop %u
+Exec=/usr/local/bin/EasySSH %u
 Terminal=false
 Type=Application
-Icon=easysshdesktop
+Icon=EasySSH
 Categories=Utility;
-StartupWMClass=easysshdesktop
+StartupWMClass=EasySSH
