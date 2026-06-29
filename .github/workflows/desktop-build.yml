@@ -69,8 +69,8 @@ jobs:
       - name: 🏗️ 构建 Windows 应用 (CGO=0 交叉编译)
         run: wails3 task windows:build ARCH=${{ inputs.arch }}
 
-      - name: 📦 打包 zip
-        id: package
+      - name: 📦 准备构建产物名称
+        id: artifact
         run: |
           # 桌面端发布命名约定: amd64 -> 86
           if [ "${{ inputs.arch }}" = "amd64" ]; then
@@ -78,16 +78,13 @@ jobs:
           else
             SUFFIX="${{ inputs.arch }}"
           fi
-          ZIP_NAME="EasySSH-windows-${SUFFIX}-desktop.zip"
-          cd bin
-          zip "$ZIP_NAME" EasySSH.exe
-          echo "zip_name=$ZIP_NAME" >> $GITHUB_OUTPUT
+          echo "artifact_name=EasySSH-windows-${SUFFIX}-desktop" >> "$GITHUB_OUTPUT"
 
       - name: 📤 上传构建产物
         uses: actions/upload-artifact@v4
         with:
-          name: desktop-windows-${{ inputs.arch }}
-          path: desktop/EasySSHDesktop/bin/${{ steps.package.outputs.zip_name }}
+          name: ${{ steps.artifact.outputs.artifact_name }}
+          path: desktop/EasySSHDesktop/bin/EasySSH.exe
           if-no-files-found: error
 
       - name: 📊 生成构建摘要
@@ -95,4 +92,4 @@ jobs:
           echo "## 💻 EasySSH Desktop 构建成功" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "- **平台:** Windows (${{ inputs.arch }})" >> $GITHUB_STEP_SUMMARY
-          echo "- **产物:** \`${{ steps.package.outputs.zip_name }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Artifact:** \`${{ steps.artifact.outputs.artifact_name }}\`（下载后压缩包内直接是 \`EasySSH.exe\`）" >> $GITHUB_STEP_SUMMARY

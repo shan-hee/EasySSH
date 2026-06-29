@@ -29,10 +29,12 @@ WORKDIR /app/server
 RUN apk add --no-cache git ca-certificates tzdata
 
 # 先下载依赖，提升增量构建速度
+COPY shared/go.mod shared/go.sum /app/shared/
 COPY server/go.mod server/go.sum ./
 RUN go mod download && go mod verify
 
 # 复制后端源码，并把前端静态产物注入到 static 目录
+COPY shared/ /app/shared/
 COPY server/ ./
 COPY --from=frontend-builder /app/web/dist ./static
 

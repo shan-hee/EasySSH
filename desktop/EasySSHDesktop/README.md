@@ -17,7 +17,7 @@ From this directory:
 /root/go/bin/wails3 task windows:build ARCH=amd64
 ```
 
-The Windows 86 executable is written to `bin/EasySSH.exe`. The release zip is `EasySSH-windows-86-desktop.zip`.
+The Windows 86 executable is written to `bin/EasySSH.exe`. The GitHub Release asset is `EasySSH-windows-86-desktop.exe`.
 
 Desktop data is stored in the `data` folder next to the desktop executable.
 

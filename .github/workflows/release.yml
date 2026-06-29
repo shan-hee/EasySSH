@@ -124,7 +124,7 @@ jobs:
             echo ""
             echo "## 💻 桌面端"
             echo ""
-            echo "Windows (86) 客户端见下方 Assets: \`EasySSH-windows-86-desktop.zip\`"
+            echo "Windows (86) 客户端见下方 Assets: \`EasySSH-windows-86-desktop.exe\`"
             echo ""
             echo "## 📦 快速部署"
             echo ""
@@ -152,9 +152,14 @@ jobs:
       - name: 📥 下载桌面端构建产物
         uses: actions/download-artifact@v4
         with:
-          pattern: desktop-windows-*
+          pattern: EasySSH-windows-*-desktop
           path: desktop-artifacts
           merge-multiple: true
+
+      - name: 📦 准备桌面端 Release 资产
+        run: |
+          mkdir -p release-assets
+          cp desktop-artifacts/EasySSH.exe release-assets/EasySSH-windows-86-desktop.exe
 
       - name: 🎉 创建 GitHub Release
         uses: softprops/action-gh-release@v2
@@ -166,7 +171,7 @@ jobs:
           files: |
             docker/docker-compose.yml
             .env.example
-            desktop-artifacts/*.zip
+            release-assets/*.exe
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
