@@ -708,8 +708,8 @@ export function ServerConnectionConfigs({
  <div className={"h-full flex flex-col overflow-hidden relative transition-colors bg-background text-foreground"}>
  <div className={"absolute top-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-border to-transparent"} />
 
- <div className="flex-1 flex flex-col items-center px-4 py-6 sm:px-6 lg:px-8 lg:py-8 overflow-y-auto">
- <div className={cn("w-full space-y-3 transition-[max-width] duration-200", viewMode === "grid" ? "max-w-6xl" : "max-w-3xl")}>
+ <div className="flex min-h-0 flex-1 flex-col items-center px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
+ <div className={cn("flex min-h-0 w-full flex-1 flex-col gap-3 transition-[max-width] duration-200", viewMode === "grid" ? "max-w-6xl" : "max-w-3xl")}>
  {/* 搜索栏和添加按钮 - 始终显示（有服务器时） */}
  {(loading || servers.length > 0) && (
  <div className="space-y-3">
@@ -796,22 +796,17 @@ export function ServerConnectionConfigs({
 
  {/* 加载状态 */}
  {loading && (
- <div className="space-y-4">
- <div className={"h-px bg-gradient-to-r from-transparent via-border to-transparent"} />
- <div className="flex flex-col items-center justify-center py-12 gap-4">
+ <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-4 py-12">
  <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
  <p className="text-sm text-muted-foreground">
    {t("loadingList")}
  </p>
  </div>
- </div>
  )}
 
  {/* 服务器列表 */}
  {!loading && filteredServers.length > 0 && (
- <div className="space-y-4">
- <div className={"h-px bg-gradient-to-r from-transparent via-border to-transparent"} />
-
+ <div className="min-h-0 flex-1 overflow-y-auto pr-1 scrollbar-custom">
  {isMounted ? (
  <DndContext
  sensors={sensors}
