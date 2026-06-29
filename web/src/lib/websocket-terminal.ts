@@ -716,6 +716,8 @@ export class TerminalWebSocket {
         this.lastError = null
         this.errorNotified = false
         this.authCancelled = false
+        this.pendingPings.clear()
+        this.startPing()
         this.onConnected?.()
 
         // SSH连接建立后按需请求补全数据
@@ -831,12 +833,17 @@ export class TerminalWebSocket {
   /**
    * 启动心跳
    */
-  private startPing(): void {
+  private startPing(sendImmediately: boolean = true): void {
     if (this.pingInterval) {
+      if (sendImmediately) {
+        this.sendPing()
+      }
       return
     }
 
-    this.sendPing()
+    if (sendImmediately) {
+      this.sendPing()
+    }
     this.pingInterval = setInterval(() => {
       this.sendPing()
     }, TERMINAL_PING_INTERVAL_MS)
@@ -898,8 +905,11 @@ export class TerminalWebSocket {
     }
 
     let rtt: number | null = null
-    if (data.id && this.pendingPings.has(data.id)) {
-      const startedAt = this.pendingPings.get(data.id)!
+    if (data.id) {
+      const startedAt = this.pendingPings.get(data.id)
+      if (startedAt === undefined) {
+        return
+      }
       this.pendingPings.delete(data.id)
       rtt = Math.max(0, Math.round(performance.now() - startedAt))
     } else if (typeof data.ts === "number") {
@@ -907,6 +917,9 @@ export class TerminalWebSocket {
     }
 
     if (rtt === null) {
+      return
+    }
+    if (this.phase !== "ready") {
       return
     }
 
