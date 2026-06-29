@@ -116,9 +116,15 @@ func main() {
 	}
 	log.Println("✅ Database migrated successfully")
 
+	// 统一加密器（用于所有需要再次使用的敏感凭据）
+	encryptor, err := crypto.NewEncryptor(cfg.Server.EncryptionKey)
+	if err != nil {
+		log.Fatalf("❌ Failed to create encryptor: %v", err)
+	}
+
 	// 系统配置服务（JWT_SECRET 仍来自 .env，其余 JWT 过期/刷新配置来自系统设置）
 	systemConfigRepo := systemconfig.NewRepository(database)
-	systemConfigService := systemconfig.NewService(systemConfigRepo)
+	systemConfigService := systemconfig.NewService(systemConfigRepo, encryptor)
 	systemCfg, err := systemConfigService.Get(context.Background())
 	if err != nil {
 		log.Fatalf("❌ Failed to load system config: %v", err)
@@ -147,7 +153,7 @@ func main() {
 
 	// 认证服务（会话过期时间与 JWT 刷新闲置过期时间保持一致）
 	authRepo := auth.NewRepository(database)
-	authService := auth.NewService(authRepo, jwtService, refreshIdleDuration)
+	authService := auth.NewService(authRepo, jwtService, refreshIdleDuration, encryptor)
 
 	// 安全配置服务
 	securityRepo := security.NewRepository(database)
@@ -155,15 +161,15 @@ func main() {
 
 	// 通知配置服务
 	notificationConfigRepo := notificationconfig.NewRepository(database)
-	notificationConfigService := notificationconfig.NewService(notificationConfigRepo)
+	notificationConfigService := notificationconfig.NewService(notificationConfigRepo, encryptor)
 
 	// AI配置服务
 	aiConfigRepo := aiconfig.NewRepository(database)
-	aiConfigService := aiconfig.NewService(aiConfigRepo)
+	aiConfigService := aiconfig.NewService(aiConfigRepo, encryptor)
 
 	// 用户AI配置服务
 	userAIConfigRepo := useraiconfig.NewRepository(database)
-	userAIConfigService := useraiconfig.NewService(userAIConfigRepo)
+	userAIConfigService := useraiconfig.NewService(userAIConfigRepo, encryptor)
 
 	log.Println("✅ New configuration services initialized")
 
@@ -256,12 +262,6 @@ func main() {
 	// 验证码服务（进程内短期存储）
 	verificationService := verification.NewService()
 	log.Println("✅ Verification service initialized")
-
-	// 加密器（用于服务器密码和私钥）
-	encryptor, err := crypto.NewEncryptor(cfg.Server.EncryptionKey)
-	if err != nil {
-		log.Fatalf("❌ Failed to create encryptor: %v", err)
-	}
 
 	// 服务器服务
 	serverRepo := server.NewRepository(database)
@@ -446,7 +446,7 @@ func main() {
 	// 其他处理器
 	sshKeyHandler := rest.NewSSHKeyHandler(sshKeyService)
 	avatarHandler := rest.NewAvatarHandler()
-	backupHandler := rest.NewBackupHandler(database)
+	backupHandler := rest.NewBackupHandler(database, encryptor)
 	runtimeHandler := rest.NewRuntimeHandler(runtimeInfo)
 
 	// 创建 Gin 路由
@@ -930,8 +930,9 @@ func main() {
 		backupRoutes.Use(middleware.AuthMiddleware(jwtService, ticketService, authRepo))
 		backupRoutes.Use(middleware.RequirePermission(permissionService, "backup:manage"))
 		{
-			backupRoutes.GET("/export", backupHandler.ExportBackup)    // 导出统一备份
-			backupRoutes.POST("/restore", backupHandler.RestoreBackup) // 恢复统一备份
+			backupRoutes.GET("/export", backupHandler.ExportBackup)      // 导出统一备份（默认脱敏）
+			backupRoutes.POST("/export", backupHandler.ExportBackupPost) // 导出统一备份（支持完整加密备份）
+			backupRoutes.POST("/restore", backupHandler.RestoreBackup)   // 恢复统一备份
 		}
 
 		// SSH密钥路由（需要认证）

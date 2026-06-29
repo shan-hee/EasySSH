@@ -43,9 +43,10 @@ type SystemConfigDTOV2 struct {
 	AllowRegistration bool   `json:"allow_registration"`
 	DefaultRole       string `json:"default_role"`
 	// OAuth 配置
-	OAuthEnabled       bool   `json:"oauth_enabled"`
-	GoogleClientID     string `json:"google_client_id"`
-	GoogleClientSecret string `json:"google_client_secret,omitempty"`
+	OAuthEnabled          bool   `json:"oauth_enabled"`
+	GoogleClientID        string `json:"google_client_id"`
+	GoogleClientSecret    string `json:"google_client_secret,omitempty"`
+	HasGoogleClientSecret bool   `json:"has_google_client_secret,omitempty"`
 	// JWT 过期与刷新（不包含 JWT_SECRET）
 	JWTAccessExpireMinutes       int  `json:"jwt_access_expire_minutes"`
 	JWTRefreshIdleExpireDays     int  `json:"jwt_refresh_idle_expire_days"`
@@ -127,7 +128,7 @@ func (h *SystemConfigHandler) toDTO(config *systemconfig.SystemConfig) *SystemCo
 		DefaultRole:                  config.DefaultRole,
 		OAuthEnabled:                 config.OAuthEnabled,
 		GoogleClientID:               config.GoogleClientID,
-		GoogleClientSecret:           config.GoogleClientSecret,
+		HasGoogleClientSecret:        config.GoogleClientSecret != "",
 		JWTAccessExpireMinutes:       jwtConfig.AccessExpireMinutes,
 		JWTRefreshIdleExpireDays:     jwtConfig.RefreshIdleExpireDays,
 		JWTRefreshAbsoluteExpireDays: jwtConfig.RefreshAbsoluteExpireDays,

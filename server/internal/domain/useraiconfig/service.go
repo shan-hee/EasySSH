@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/easyssh/server/internal/pkg/crypto"
 	"github.com/google/uuid"
 )
 
@@ -22,17 +23,29 @@ type Service interface {
 }
 
 type service struct {
-	repo Repository
+	repo      Repository
+	encryptor *crypto.Encryptor
 }
 
 // NewService 创建用户AI配置服务
-func NewService(repo Repository) Service {
-	return &service{repo: repo}
+func NewService(repo Repository, encryptor *crypto.Encryptor) Service {
+	return &service{repo: repo, encryptor: encryptor}
 }
 
 // GetUserConfig 获取用户AI配置
 func (s *service) GetUserConfig(ctx context.Context, userID uuid.UUID) (*UserAIConfig, error) {
-	return s.repo.GetByUserID(ctx, userID)
+	config, err := s.repo.GetByUserID(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	if config.CustomAPIKey != "" && s.encryptor != nil {
+		decrypted, err := s.encryptor.DecryptSecret(config.CustomAPIKey, userAPIKeyAAD(config.UserID))
+		if err != nil {
+			return nil, fmt.Errorf("failed to decrypt custom API key: %w", err)
+		}
+		config.CustomAPIKey = decrypted
+	}
+	return config, nil
 }
 
 // SaveUserConfig 保存用户AI配置
@@ -47,6 +60,13 @@ func (s *service) SaveUserConfig(ctx context.Context, config *UserAIConfig) erro
 	// 验证配置
 	if err := s.validateUserConfig(config); err != nil {
 		return err
+	}
+	if config.CustomAPIKey != "" && s.encryptor != nil && !crypto.HasEncryptedPrefix(config.CustomAPIKey) {
+		encrypted, err := s.encryptor.EncryptSecret(config.CustomAPIKey, userAPIKeyAAD(config.UserID))
+		if err != nil {
+			return fmt.Errorf("failed to encrypt custom API key: %w", err)
+		}
+		config.CustomAPIKey = encrypted
 	}
 
 	return s.repo.Save(ctx, config)
@@ -95,4 +115,8 @@ func (s *service) validateUserConfig(config *UserAIConfig) error {
 	}
 
 	return nil
+}
+
+func userAPIKeyAAD(userID uuid.UUID) []byte {
+	return crypto.SecretAAD("user_ai_config", userID.String(), "custom_api_key")
 }

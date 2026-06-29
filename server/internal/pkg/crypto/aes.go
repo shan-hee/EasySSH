@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"errors"
+	"fmt"
 	"io"
 )
 
@@ -14,7 +15,7 @@ var (
 	ErrInvalidCiphertext = errors.New("invalid ciphertext")
 )
 
-const encryptedValuePrefix = "enc:v1:"
+const encryptedValuePrefix = "enc:v2:"
 
 // Encryptor AES 加密器
 type Encryptor struct {
@@ -36,9 +37,8 @@ func NewEncryptor(key string) (*Encryptor, error) {
 	return &Encryptor{key: keyBytes}, nil
 }
 
-// Encrypt 加密数据
-func (e *Encryptor) Encrypt(plaintext string) (string, error) {
-	return e.EncryptWithAAD(plaintext, nil)
+func (e *Encryptor) EncryptSecret(plaintext string, aad []byte) (string, error) {
+	return e.EncryptWithAAD(plaintext, aad)
 }
 
 // EncryptWithAAD 加密数据，并将上下文信息加入 GCM 认证数据。
@@ -72,9 +72,8 @@ func (e *Encryptor) EncryptWithAAD(plaintext string, aad []byte) (string, error)
 	return encryptedValuePrefix + base64.StdEncoding.EncodeToString(ciphertext), nil
 }
 
-// Decrypt 解密数据
-func (e *Encryptor) Decrypt(ciphertext string) (string, error) {
-	return e.DecryptWithAAD(ciphertext, nil)
+func (e *Encryptor) DecryptSecret(value string, aad []byte) (string, error) {
+	return e.DecryptWithAAD(value, aad)
 }
 
 // DecryptWithAAD 解密数据，并要求上下文信息与加密时一致。
@@ -120,4 +119,12 @@ func (e *Encryptor) DecryptWithAAD(ciphertext string, aad []byte) (string, error
 	}
 
 	return string(plaintext), nil
+}
+
+func HasEncryptedPrefix(value string) bool {
+	return len(value) > len(encryptedValuePrefix) && value[:len(encryptedValuePrefix)] == encryptedValuePrefix
+}
+
+func SecretAAD(table string, rowID interface{}, column string) []byte {
+	return []byte(fmt.Sprintf("easyssh:%s:%v:%s", table, rowID, column))
 }

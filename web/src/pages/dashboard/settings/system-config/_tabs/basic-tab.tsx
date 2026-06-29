@@ -1,4 +1,5 @@
 
+import { useState } from "react"
 import { useTranslation } from "react-i18next"
 import { SettingsSection } from "@/components/settings/settings-section"
 import { FormInput, FormSelect, FormSwitch } from "@/components/settings/form-field"
@@ -20,6 +21,7 @@ import { SettingsLoading } from "@/components/settings/settings-loading"
 export function BasicTab() {
   const { t } = useTranslation("settingsSystemBasic")
   const { t: tCommon } = useTranslation("common")
+  const [hasGoogleClientSecret, setHasGoogleClientSecret] = useState(false)
 
   const languageOptions = [
     { label: t("languageZhCN"), value: "zh-CN" },
@@ -50,6 +52,7 @@ export function BasicTab() {
     schema: basicInfoSchema,
     loadFn: async () => {
       const data = await settingsApi.getSystemConfig()
+      setHasGoogleClientSecret(data.has_google_client_secret === true)
       return {
         system_name: data.system_name,
         system_logo: data.system_logo,
@@ -67,6 +70,9 @@ export function BasicTab() {
     saveFn: async (data) => {
       // 只提交基本信息配置
       await settingsApi.saveBasicInfo(data)
+      if (data.google_client_secret) {
+        setHasGoogleClientSecret(true)
+      }
     },
   })
 
@@ -264,7 +270,11 @@ export function BasicTab() {
                   form={form}
                   name="google_client_secret"
                   label={t("fieldGoogleClientSecret")}
-                  description={t("fieldGoogleClientSecretDesc")}
+                  description={
+                    hasGoogleClientSecret
+                      ? t("fieldGoogleClientSecretConfiguredDesc")
+                      : t("fieldGoogleClientSecretDesc")
+                  }
                   type="password"
                   placeholder="GOCSPX-xxxxxxxxxxxxxxxxxxxxx"
                 />

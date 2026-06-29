@@ -36,14 +36,14 @@ func (f *DataSourceFactory) CreateDataSource(user *auth.User) (DataSourceProvide
 		if user.NezhaAPIEndpoint == "" {
 			return nil, fmt.Errorf("Nezha endpoint is required")
 		}
-		// 解密 token（如果已加密）
+		// 解密 token
 		token := user.NezhaAPIToken
 		if token != "" && f.encryptor != nil {
-			decrypted, err := f.encryptor.Decrypt(token)
-			if err == nil {
-				token = decrypted
+			decrypted, err := f.encryptor.DecryptSecret(token, crypto.SecretAAD("users", user.ID.String(), "nezha_api_token"))
+			if err != nil {
+				return nil, fmt.Errorf("failed to decrypt Nezha token: %w", err)
 			}
-			// 如果解密失败，假设 token 未加密，直接使用原值
+			token = decrypted
 		}
 		return NewNezhaDataSource(user.NezhaAPIEndpoint, token), nil
 
@@ -51,14 +51,14 @@ func (f *DataSourceFactory) CreateDataSource(user *auth.User) (DataSourceProvide
 		if user.KomariAPIEndpoint == "" {
 			return nil, fmt.Errorf("Komari endpoint is required")
 		}
-		// 解密 token（如果已加密）
+		// 解密 token
 		token := user.KomariAPIToken
 		if token != "" && f.encryptor != nil {
-			decrypted, err := f.encryptor.Decrypt(token)
-			if err == nil {
-				token = decrypted
+			decrypted, err := f.encryptor.DecryptSecret(token, crypto.SecretAAD("users", user.ID.String(), "komari_api_token"))
+			if err != nil {
+				return nil, fmt.Errorf("failed to decrypt Komari token: %w", err)
 			}
-			// 如果解密失败，假设 token 未加密，直接使用原值
+			token = decrypted
 		}
 		return NewKomariDataSource(user.KomariAPIEndpoint, token), nil
 

@@ -105,6 +105,7 @@ export interface SystemConfig {
   oauth_enabled?: boolean
   google_client_id?: string
   google_client_secret?: string
+  has_google_client_secret?: boolean
 }
 
 /**

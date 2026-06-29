@@ -13,6 +13,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/easyssh/server/internal/pkg/crypto"
 	"github.com/gin-gonic/gin"
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
@@ -28,17 +29,20 @@ var (
 )
 
 type BackupContentSelection struct {
-	Config   bool `json:"config"`
-	Database bool `json:"database"`
+	Config    bool `json:"config"`
+	Database  bool `json:"database"`
+	Sensitive bool `json:"sensitive,omitempty"`
 }
 
 type UnifiedBackup struct {
-	Format     string                 `json:"format"`
-	Version    string                 `json:"version"`
-	ExportTime string                 `json:"export_time"`
-	Contents   BackupContentSelection `json:"contents"`
-	Config     *BackupDataSection     `json:"config,omitempty"`
-	Database   *BackupDataSection     `json:"database,omitempty"`
+	Format     string                         `json:"format"`
+	Version    string                         `json:"version"`
+	ExportTime string                         `json:"export_time"`
+	Contents   BackupContentSelection         `json:"contents"`
+	Config     *BackupDataSection             `json:"config,omitempty"`
+	Database   *BackupDataSection             `json:"database,omitempty"`
+	Sensitive  *crypto.BackupEncryptedPayload `json:"sensitive,omitempty"`
+	Warnings   []string                       `json:"warnings,omitempty"`
 }
 
 type BackupDataSection struct {
@@ -85,9 +89,43 @@ type restoreConflictKey struct {
 func (h *BackupHandler) ExportBackup(c *gin.Context) {
 	includeConfig := parseBoolQuery(c, "include_config", true)
 	includeDatabase := parseBoolQuery(c, "include_database", true)
+	includeSensitive := parseBoolQuery(c, "include_sensitive", false)
+	if includeSensitive {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Sensitive backup export requires POST /backup/export"})
+		return
+	}
+	h.exportBackup(c, exportBackupOptions{
+		IncludeConfig:   includeConfig,
+		IncludeDatabase: includeDatabase,
+	})
+}
+
+// ExportBackupPost 导出统一备份文件，支持通过请求体传入完整备份密码。
+func (h *BackupHandler) ExportBackupPost(c *gin.Context) {
+	options, err := parseExportBackupPostOptions(c)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	h.exportBackup(c, options)
+}
+
+func (h *BackupHandler) exportBackup(c *gin.Context, options exportBackupOptions) {
+	includeConfig := options.IncludeConfig
+	includeDatabase := options.IncludeDatabase
 	if !includeConfig && !includeDatabase {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "No backup content selected"})
 		return
+	}
+	if options.IncludeSensitive {
+		if h.encryptor == nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Sensitive backup encryption is not available"})
+			return
+		}
+		if strings.TrimSpace(options.BackupPassword) == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Backup password is required for sensitive backup"})
+			return
+		}
 	}
 
 	backup := &UnifiedBackup{
@@ -95,8 +133,9 @@ func (h *BackupHandler) ExportBackup(c *gin.Context) {
 		Version:    unifiedBackupVersion,
 		ExportTime: time.Now().UTC().Format(time.RFC3339),
 		Contents: BackupContentSelection{
-			Config:   includeConfig,
-			Database: includeDatabase,
+			Config:    includeConfig,
+			Database:  includeDatabase,
+			Sensitive: options.IncludeSensitive,
 		},
 	}
 
@@ -124,6 +163,27 @@ func (h *BackupHandler) ExportBackup(c *gin.Context) {
 		backup.Database = section
 	}
 
+	if options.IncludeSensitive {
+		sensitivePayload, err := h.exportSensitivePayload(includeConfig, includeDatabase, backup.ExportTime)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"error":  "Failed to export sensitive backup data",
+				"detail": err.Error(),
+			})
+			return
+		}
+		envelope, err := crypto.EncryptBackupJSON(sensitivePayload, options.BackupPassword, backupSensitiveAAD())
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"error":  "Failed to encrypt sensitive backup data",
+				"detail": err.Error(),
+			})
+			return
+		}
+		backup.Sensitive = envelope
+		backup.Warnings = append(backup.Warnings, sensitivePayload.Warnings...)
+	}
+
 	jsonData, err := json.MarshalIndent(backup, "", "  ")
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
@@ -134,7 +194,11 @@ func (h *BackupHandler) ExportBackup(c *gin.Context) {
 	}
 
 	timestamp := time.Now().Format("20060102_150405")
-	filename := fmt.Sprintf("easyssh_backup_%s.json", timestamp)
+	prefix := "easyssh_backup"
+	if options.IncludeSensitive {
+		prefix = "easyssh_full_backup"
+	}
+	filename := fmt.Sprintf("%s_%s.json", prefix, timestamp)
 	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=%s", filename))
 	c.Data(http.StatusOK, "application/json", jsonData)
 }
@@ -196,6 +260,44 @@ func (h *BackupHandler) RestoreBackup(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Backup file does not include database"})
 		return
 	}
+	allowSensitiveConfigRestore := false
+	allowSensitiveDatabaseRestore := false
+	if backup.Sensitive != nil {
+		if h.encryptor == nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Sensitive backup restore is not available"})
+			return
+		}
+		if err := h.validatePlainBackupSections(&backup, includeConfig, includeDatabase); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error":  "Invalid backup file",
+				"detail": err.Error(),
+			})
+			return
+		}
+		sanitizePlainBackupSections(&backup, includeConfig, includeDatabase)
+		password := c.PostForm("backup_password")
+		if strings.TrimSpace(password) == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Backup password is required for sensitive backup restore"})
+			return
+		}
+		sensitivePayload, err := h.decryptSensitivePayload(backup.Sensitive, password)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error":  "Failed to decrypt sensitive backup data",
+				"detail": err.Error(),
+			})
+			return
+		}
+		if err := mergeSensitivePayload(&backup, sensitivePayload, includeConfig, includeDatabase); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error":  "Invalid sensitive backup data",
+				"detail": err.Error(),
+			})
+			return
+		}
+		allowSensitiveConfigRestore = includeConfig && sensitivePayload.Config != nil
+		allowSensitiveDatabaseRestore = includeDatabase && sensitivePayload.Database != nil
+	}
 
 	strategy := RestoreConflictError
 	if includeDatabase {
@@ -210,7 +312,7 @@ func (h *BackupHandler) RestoreBackup(c *gin.Context) {
 	summary := gin.H{}
 	if err := h.db.Transaction(func(tx *gorm.DB) error {
 		if includeConfig {
-			result, err := h.restoreConfigSection(tx, backup.Config)
+			result, err := h.restoreConfigSection(tx, backup.Config, allowSensitiveConfigRestore)
 			if err != nil {
 				return err
 			}
@@ -218,7 +320,7 @@ func (h *BackupHandler) RestoreBackup(c *gin.Context) {
 		}
 
 		if includeDatabase {
-			result, err := h.restoreDataSection(tx, backup.Database, strategy)
+			result, err := h.restoreDataSection(tx, backup.Database, strategy, allowSensitiveDatabaseRestore)
 			if err != nil {
 				return err
 			}
@@ -341,7 +443,7 @@ func (h *BackupHandler) exportStructuredSection(sectionType backupSection) (*Bac
 			return nil, fmt.Errorf("failed to get primary key for table %s: %w", table, err)
 		}
 
-		rows, err := h.getStructuredTableRows(table, columns, policy)
+		rows, err := h.getStructuredTableRows(table, columns, policy, true)
 		if err != nil {
 			return nil, fmt.Errorf("failed to export rows for table %s: %w", table, err)
 		}
@@ -357,7 +459,7 @@ func (h *BackupHandler) exportStructuredSection(sectionType backupSection) (*Bac
 	return section, nil
 }
 
-func (h *BackupHandler) getStructuredTableRows(table string, columns []string, policy backupTablePolicy) ([]map[string]interface{}, error) {
+func (h *BackupHandler) getStructuredTableRows(table string, columns []string, policy backupTablePolicy, sanitize bool) ([]map[string]interface{}, error) {
 	driver := h.db.Dialector.Name()
 	quotedColumns := make([]string, len(columns))
 	for i, column := range columns {
@@ -369,7 +471,7 @@ func (h *BackupHandler) getStructuredTableRows(table string, columns []string, p
 		strings.Join(quotedColumns, ", "),
 		quoteIdentifier(driver, table),
 	)
-	if shouldExcludeSoftDeletedRows(policy, columns) {
+	if h.shouldExcludeSoftDeletedRows(table, policy, columns) {
 		query += fmt.Sprintf(" WHERE %s IS NULL", quoteIdentifier(driver, "deleted_at"))
 	}
 
@@ -394,6 +496,9 @@ func (h *BackupHandler) getStructuredTableRows(table string, columns []string, p
 		row := make(map[string]interface{}, len(columns))
 		for i, column := range columns {
 			row[column] = normalizeBackupValue(values[i])
+		}
+		if sanitize {
+			row = sanitizeStructuredExportRow(table, row)
 		}
 		result = append(result, row)
 	}
@@ -425,7 +530,7 @@ func normalizeBackupValue(value interface{}) interface{} {
 	}
 }
 
-func (h *BackupHandler) restoreConfigSection(tx *gorm.DB, section *BackupDataSection) (*restoreSectionSummary, error) {
+func (h *BackupHandler) restoreConfigSection(tx *gorm.DB, section *BackupDataSection, allowSensitive bool) (*restoreSectionSummary, error) {
 	summary := &restoreSectionSummary{}
 	restoredTables := make([]BackupTable, 0)
 
@@ -438,7 +543,7 @@ func (h *BackupHandler) restoreConfigSection(tx *gorm.DB, section *BackupDataSec
 			continue
 		}
 
-		changed, restoredTable, err := h.restoreSingletonConfigTable(tx, table, policy, summary)
+		changed, restoredTable, err := h.restoreSingletonConfigTable(tx, table, policy, summary, allowSensitive)
 		if err != nil {
 			return nil, err
 		}
@@ -452,13 +557,13 @@ func (h *BackupHandler) restoreConfigSection(tx *gorm.DB, section *BackupDataSec
 	return summary, nil
 }
 
-func (h *BackupHandler) restoreSingletonConfigTable(tx *gorm.DB, table BackupTable, policy backupTablePolicy, summary *restoreSectionSummary) (bool, BackupTable, error) {
+func (h *BackupHandler) restoreSingletonConfigTable(tx *gorm.DB, table BackupTable, policy backupTablePolicy, summary *restoreSectionSummary, allowSensitive bool) (bool, BackupTable, error) {
 	summary.Tables++
 	if len(table.Rows) == 0 {
 		return false, table, nil
 	}
 
-	if err := h.validateRestoreTable(tx, &table, policy); err != nil {
+	if err := h.validateRestoreTable(tx, &table, policy, allowSensitive); err != nil {
 		return false, table, err
 	}
 
@@ -479,6 +584,13 @@ func (h *BackupHandler) restoreSingletonConfigTable(tx *gorm.DB, table BackupTab
 		if err != nil {
 			return false, table, err
 		}
+		if allowSensitive {
+			if err := h.prepareSensitiveRestoreRow(table.Name, row); err != nil {
+				return false, table, err
+			}
+		} else {
+			row = sanitizeStructuredExportRow(table.Name, row)
+		}
 
 		conflictKey, err := h.findBackupConflictKey(tx, table.Name, conflictKeys, row)
 		if err != nil {
@@ -487,6 +599,11 @@ func (h *BackupHandler) restoreSingletonConfigTable(tx *gorm.DB, table BackupTab
 		if conflictKey == nil {
 			conflictKey, err = h.findExistingConfigRowKey(tx, table.Name, table.PrimaryKey, row)
 			if err != nil {
+				return false, table, err
+			}
+		}
+		if !allowSensitive {
+			if err := h.preserveNotificationSecrets(tx, table.Name, row); err != nil {
 				return false, table, err
 			}
 		}
@@ -508,7 +625,7 @@ func (h *BackupHandler) restoreSingletonConfigTable(tx *gorm.DB, table BackupTab
 	return changed, table, nil
 }
 
-func (h *BackupHandler) restoreDataSection(tx *gorm.DB, section *BackupDataSection, strategy RestoreConflictStrategy) (*restoreSectionSummary, error) {
+func (h *BackupHandler) restoreDataSection(tx *gorm.DB, section *BackupDataSection, strategy RestoreConflictStrategy, allowSensitive bool) (*restoreSectionSummary, error) {
 	summary := &restoreSectionSummary{}
 	restoredTables := make([]BackupTable, 0)
 	userIDMappings := make(map[string]interface{})
@@ -522,7 +639,7 @@ func (h *BackupHandler) restoreDataSection(tx *gorm.DB, section *BackupDataSecti
 			continue
 		}
 
-		changed, restoredTable, err := h.restoreEntityTable(tx, table, policy, strategy, userIDMappings, summary)
+		changed, restoredTable, err := h.restoreEntityTable(tx, table, policy, strategy, userIDMappings, summary, allowSensitive)
 		if err != nil {
 			return nil, err
 		}
@@ -536,13 +653,13 @@ func (h *BackupHandler) restoreDataSection(tx *gorm.DB, section *BackupDataSecti
 	return summary, nil
 }
 
-func (h *BackupHandler) restoreEntityTable(tx *gorm.DB, table BackupTable, policy backupTablePolicy, strategy RestoreConflictStrategy, userIDMappings map[string]interface{}, summary *restoreSectionSummary) (bool, BackupTable, error) {
+func (h *BackupHandler) restoreEntityTable(tx *gorm.DB, table BackupTable, policy backupTablePolicy, strategy RestoreConflictStrategy, userIDMappings map[string]interface{}, summary *restoreSectionSummary, allowSensitive bool) (bool, BackupTable, error) {
 	summary.Tables++
 	if len(table.Rows) == 0 {
 		return false, table, nil
 	}
 
-	if err := h.validateRestoreTable(tx, &table, policy); err != nil {
+	if err := h.validateRestoreTable(tx, &table, policy, allowSensitive); err != nil {
 		return false, table, err
 	}
 
@@ -574,11 +691,20 @@ func (h *BackupHandler) restoreEntityTable(tx *gorm.DB, table BackupTable, polic
 
 		if conflictKey != nil {
 			if isUsersRestoreTable(table.Name) {
-				if err := h.recordExistingUserIDMapping(tx, table.Name, table.PrimaryKey, *conflictKey, row, userIDMappings); err != nil {
+				existingID, err := h.recordExistingUserIDMapping(tx, table.Name, table.PrimaryKey, *conflictKey, row, userIDMappings)
+				if err != nil {
 					return false, table, err
+				}
+				if existingID != nil {
+					row["id"] = existingID
 				}
 			}
 			if policy.DefaultSeeded {
+				if allowSensitive {
+					if err := h.prepareSensitiveRestoreRow(table.Name, row); err != nil {
+						return false, table, err
+					}
+				}
 				if err := h.updateBackupRow(tx, table.Name, *conflictKey, table.PrimaryKey, row); err != nil {
 					return false, table, err
 				}
@@ -594,6 +720,11 @@ func (h *BackupHandler) restoreEntityTable(tx *gorm.DB, table BackupTable, polic
 			case RestoreConflictError:
 				return false, table, fmt.Errorf("table %s item already exists: %s", table.Name, formatConflictKey(*conflictKey, row))
 			case RestoreConflictOverwrite:
+				if allowSensitive {
+					if err := h.prepareSensitiveRestoreRow(table.Name, row); err != nil {
+						return false, table, err
+					}
+				}
 				if err := h.updateBackupRow(tx, table.Name, *conflictKey, table.PrimaryKey, row); err != nil {
 					return false, table, err
 				}
@@ -605,6 +736,11 @@ func (h *BackupHandler) restoreEntityTable(tx *gorm.DB, table BackupTable, polic
 
 		if err := h.prepareRestoreInsertRow(table.Name, row); err != nil {
 			return false, table, err
+		}
+		if allowSensitive {
+			if err := h.prepareSensitiveRestoreRow(table.Name, row); err != nil {
+				return false, table, err
+			}
 		}
 		if err := tx.Table(table.Name).Create(row).Error; err != nil {
 			return false, table, fmt.Errorf("failed to restore table %s: %w", table.Name, err)
@@ -618,20 +754,22 @@ func (h *BackupHandler) restoreEntityTable(tx *gorm.DB, table BackupTable, polic
 	return changed, table, nil
 }
 
-func (h *BackupHandler) validateRestoreTable(tx *gorm.DB, table *BackupTable, policy backupTablePolicy) error {
+func (h *BackupHandler) validateRestoreTable(tx *gorm.DB, table *BackupTable, policy backupTablePolicy, allowSensitive bool) error {
 	if !isValidDBIdentifier(table.Name) {
 		return fmt.Errorf("invalid table name: %s", table.Name)
 	}
-	if column := firstExcludedBackupColumn(table.Columns, policy.ExcludedColumns); column != "" {
-		return fmt.Errorf("table %s includes non-restorable sensitive column %s", table.Name, column)
-	}
-	if column := firstExcludedBackupColumn(table.PrimaryKey, policy.ExcludedColumns); column != "" {
-		return fmt.Errorf("table %s uses non-restorable sensitive primary key column %s", table.Name, column)
-	}
-	for index, row := range table.Rows {
-		for column := range row {
-			if containsStringFold(policy.ExcludedColumns, column) {
-				return fmt.Errorf("table %s row %d contains non-restorable sensitive column %s", table.Name, index+1, column)
+	if !allowSensitive {
+		if column := firstExcludedBackupColumn(table.Columns, policy.ExcludedColumns); column != "" {
+			return fmt.Errorf("table %s includes non-restorable sensitive column %s", table.Name, column)
+		}
+		if column := firstExcludedBackupColumn(table.PrimaryKey, policy.ExcludedColumns); column != "" {
+			return fmt.Errorf("table %s uses non-restorable sensitive primary key column %s", table.Name, column)
+		}
+		for index, row := range table.Rows {
+			for column := range row {
+				if containsStringFold(policy.ExcludedColumns, column) {
+					return fmt.Errorf("table %s row %d contains non-restorable sensitive column %s", table.Name, index+1, column)
+				}
 			}
 		}
 	}
@@ -695,6 +833,20 @@ func shouldExcludeSoftDeletedRows(policy backupTablePolicy, columns []string) bo
 	return !policy.History && policy.Section != backupSectionRuntime && containsStringFold(columns, "deleted_at")
 }
 
+func (h *BackupHandler) shouldExcludeSoftDeletedRows(table string, policy backupTablePolicy, columns []string) bool {
+	if shouldExcludeSoftDeletedRows(policy, columns) {
+		return true
+	}
+	if policy.History || policy.Section == backupSectionRuntime {
+		return false
+	}
+	tableColumns, err := h.getTableColumns(table)
+	if err != nil {
+		return false
+	}
+	return containsStringFold(tableColumns, "deleted_at")
+}
+
 func (h *BackupHandler) prepareRestoreInsertRow(table string, row map[string]interface{}) error {
 	switch {
 	case isUsersRestoreTable(table):
@@ -705,9 +857,15 @@ func (h *BackupHandler) prepareRestoreInsertRow(table string, row map[string]int
 			}
 			row["password"] = passwordHash
 		}
-		row["two_factor_enabled"] = false
-		row["two_factor_secret"] = ""
-		row["backup_codes"] = ""
+		if _, ok := row["two_factor_enabled"]; !ok {
+			row["two_factor_enabled"] = false
+		}
+		if _, ok := row["two_factor_secret"]; !ok {
+			row["two_factor_secret"] = ""
+		}
+		if _, ok := row["backup_codes"]; !ok {
+			row["backup_codes"] = ""
+		}
 	case strings.EqualFold(strings.TrimSpace(table), "ssh_keys"):
 		if _, ok := row["private_key"]; !ok {
 			row["private_key"] = ""
@@ -1040,26 +1198,26 @@ func recordInsertedUserIDMapping(primaryKey []string, row map[string]interface{}
 	userIDMappings[restoreMappingKey(value)] = value
 }
 
-func (h *BackupHandler) recordExistingUserIDMapping(tx *gorm.DB, table string, primaryKey []string, conflictKey restoreConflictKey, row map[string]interface{}, userIDMappings map[string]interface{}) error {
+func (h *BackupHandler) recordExistingUserIDMapping(tx *gorm.DB, table string, primaryKey []string, conflictKey restoreConflictKey, row map[string]interface{}, userIDMappings map[string]interface{}) (interface{}, error) {
 	if !isSingleIDPrimaryKey(primaryKey) {
-		return nil
+		return nil, nil
 	}
 
 	backupID, ok := row["id"]
 	if !ok || backupID == nil {
-		return nil
+		return nil, nil
 	}
 
 	existingID, err := h.getExistingRowColumnValue(tx, table, conflictKey.Columns, row, "id")
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if existingID == nil {
-		return nil
+		return nil, nil
 	}
 
 	userIDMappings[restoreMappingKey(backupID)] = existingID
-	return nil
+	return existingID, nil
 }
 
 func (h *BackupHandler) getExistingRowColumnValue(tx *gorm.DB, table string, keyColumns []string, row map[string]interface{}, selectColumn string) (interface{}, error) {

@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+
+	"github.com/easyssh/server/internal/pkg/crypto"
 )
 
 // Service AI配置服务接口
@@ -17,17 +19,29 @@ type Service interface {
 }
 
 type service struct {
-	repo Repository
+	repo      Repository
+	encryptor *crypto.Encryptor
 }
 
 // NewService 创建AI配置服务
-func NewService(repo Repository) Service {
-	return &service{repo: repo}
+func NewService(repo Repository, encryptor *crypto.Encryptor) Service {
+	return &service{repo: repo, encryptor: encryptor}
 }
 
 // GetSystemConfig 获取系统级AI配置
 func (s *service) GetSystemConfig(ctx context.Context) (*AIConfig, error) {
-	return s.repo.GetSystemConfig(ctx)
+	config, err := s.repo.GetSystemConfig(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if config.SystemAPIKey != "" && s.encryptor != nil {
+		decrypted, err := s.encryptor.DecryptSecret(config.SystemAPIKey, systemAPIKeyAAD())
+		if err != nil {
+			return nil, fmt.Errorf("failed to decrypt system API key: %w", err)
+		}
+		config.SystemAPIKey = decrypted
+	}
+	return config, nil
 }
 
 // SaveSystemConfig 保存系统级AI配置
@@ -35,6 +49,13 @@ func (s *service) SaveSystemConfig(ctx context.Context, config *AIConfig) error 
 	// 验证配置
 	if err := s.validateSystemConfig(config); err != nil {
 		return err
+	}
+	if config.SystemAPIKey != "" && s.encryptor != nil && !crypto.HasEncryptedPrefix(config.SystemAPIKey) {
+		encrypted, err := s.encryptor.EncryptSecret(config.SystemAPIKey, systemAPIKeyAAD())
+		if err != nil {
+			return fmt.Errorf("failed to encrypt system API key: %w", err)
+		}
+		config.SystemAPIKey = encrypted
 	}
 
 	return s.repo.SaveSystemConfig(ctx, config)
@@ -69,4 +90,8 @@ func (s *service) validateSystemConfig(config *AIConfig) error {
 	}
 
 	return nil
+}
+
+func systemAPIKeyAAD() []byte {
+	return crypto.SecretAAD("ai_config", "system", "system_api_key")
 }

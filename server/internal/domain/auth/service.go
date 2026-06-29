@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	secretcrypto "github.com/easyssh/server/internal/pkg/crypto"
 	"github.com/easyssh/server/internal/pkg/ttlcache"
 	"github.com/google/uuid"
 )
@@ -151,9 +152,10 @@ type authService struct {
 	emailService          EmailService          // 可选的邮件服务
 	accountLockService    AccountLockService    // 账户锁定服务（可选）
 	loginDetectionService LoginDetectionService // 登录检测服务（可选）
-	runMode               string                // 存储运行模式
-	sessionIdleDuration   time.Duration         // 会话闲置过期时间（用于 user_sessions.ExpiresAt）
-	refreshGraceDuration  time.Duration         // refresh token 轮换后的短暂并发宽限窗口
+	encryptor             *secretcrypto.Encryptor
+	runMode               string        // 存储运行模式
+	sessionIdleDuration   time.Duration // 会话闲置过期时间（用于 user_sessions.ExpiresAt）
+	refreshGraceDuration  time.Duration // refresh token 轮换后的短暂并发宽限窗口
 	refreshLocks          map[string]*refreshLock
 	refreshLocksMu        sync.Mutex
 	authCodes             *ttlcache.Cache[authorizationCodeRecord]
@@ -188,7 +190,7 @@ type EmailService interface {
 
 // NewService 创建认证服务
 // sessionIdleDuration 用于 user_sessions.ExpiresAt，通常应与 JWT 刷新闲置过期时间保持一致
-func NewService(repo Repository, jwtService JWTService, sessionIdleDuration time.Duration) Service {
+func NewService(repo Repository, jwtService JWTService, sessionIdleDuration time.Duration, encryptor *secretcrypto.Encryptor) Service {
 	return &authService{
 		repo:                  repo,
 		jwtService:            jwtService,
@@ -196,6 +198,7 @@ func NewService(repo Repository, jwtService JWTService, sessionIdleDuration time
 		emailService:          nil, // 默认不启用邮件服务
 		accountLockService:    nil, // 默认不启用账户锁定
 		loginDetectionService: nil, // 默认不启用登录检测
+		encryptor:             encryptor,
 		runMode:               "production",
 		sessionIdleDuration:   sessionIdleDuration,
 		refreshGraceDuration:  30 * time.Second,
@@ -1003,7 +1006,13 @@ func (s *authService) initializeProductionMode(ctx context.Context, adminUser *U
 }
 
 func (s *authService) resolveTwoFactorSecret(user *User) (string, error) {
-	return DecryptTOTPSecret(user.TwoFactorSecret)
+	if user == nil || strings.TrimSpace(user.TwoFactorSecret) == "" {
+		return "", nil
+	}
+	if s.encryptor == nil {
+		return "", fmt.Errorf("encryptor is required to decrypt two-factor secret")
+	}
+	return s.encryptor.DecryptSecret(user.TwoFactorSecret, s.userSecretAAD(user.ID, "two_factor_secret"))
 }
 
 // Generate2FASecret 生成 2FA secret（第一步：生成但不保存）
@@ -1020,7 +1029,7 @@ func (s *authService) Generate2FASecret(ctx context.Context, userID uuid.UUID) (
 		return "", "", fmt.Errorf("failed to generate TOTP secret: %w", err)
 	}
 
-	encryptedSecret, err := EncryptTOTPSecret(secret)
+	encryptedSecret, err := s.encryptUserSecret(user.ID, "two_factor_secret", secret)
 	if err != nil {
 		return "", "", fmt.Errorf("failed to encrypt TOTP secret: %w", err)
 	}
@@ -1383,7 +1392,11 @@ func (s *authService) UpdateMonitorDataSource(ctx context.Context, userID uuid.U
 			user.NezhaAPIEndpoint = endpoint
 		}
 		if token != "" {
-			user.NezhaAPIToken = token
+			encrypted, err := s.encryptUserSecret(user.ID, "nezha_api_token", token)
+			if err != nil {
+				return fmt.Errorf("failed to encrypt Nezha token: %w", err)
+			}
+			user.NezhaAPIToken = encrypted
 		}
 		if setActive {
 			user.MonitorDataSource = dataSource
@@ -1395,7 +1408,11 @@ func (s *authService) UpdateMonitorDataSource(ctx context.Context, userID uuid.U
 			user.KomariAPIEndpoint = endpoint
 		}
 		if token != "" {
-			user.KomariAPIToken = token
+			encrypted, err := s.encryptUserSecret(user.ID, "komari_api_token", token)
+			if err != nil {
+				return fmt.Errorf("failed to encrypt Komari token: %w", err)
+			}
+			user.KomariAPIToken = encrypted
 		}
 		if setActive {
 			user.MonitorDataSource = dataSource
@@ -1406,6 +1423,23 @@ func (s *authService) UpdateMonitorDataSource(ctx context.Context, userID uuid.U
 	}
 
 	return s.repo.Update(ctx, user)
+}
+
+func (s *authService) encryptUserSecret(userID uuid.UUID, column string, plaintext string) (string, error) {
+	if strings.TrimSpace(plaintext) == "" {
+		return "", nil
+	}
+	if s.encryptor == nil {
+		return "", fmt.Errorf("encryptor is required")
+	}
+	if secretcrypto.HasEncryptedPrefix(plaintext) {
+		return plaintext, nil
+	}
+	return s.encryptor.EncryptSecret(plaintext, s.userSecretAAD(userID, column))
+}
+
+func (s *authService) userSecretAAD(userID uuid.UUID, column string) []byte {
+	return secretcrypto.SecretAAD("users", userID.String(), column)
 }
 
 // generateAvatarForUser 为用户生成头像

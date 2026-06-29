@@ -4,6 +4,7 @@ import { DesktopBackupService } from "../../bindings/github.com/easyssh/easyssh-
 export function createDesktopBackupRestoreAdapter(): BackupRestoreAdapter {
   return {
     supportsConfig: false,
+    supportsSensitive: false,
 
     async exportBackup(options) {
       const result = await DesktopBackupService.ExportBackup({

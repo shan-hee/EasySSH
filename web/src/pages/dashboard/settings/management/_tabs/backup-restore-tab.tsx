@@ -8,6 +8,7 @@ import {
   Download,
   FileCog,
   Loader2,
+  LockKeyhole,
   Upload,
 } from "lucide-react"
 import { toast } from "sonner"
@@ -16,6 +17,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Checkbox } from "@/components/ui/checkbox"
+import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { useSystemConfig } from "@/contexts/system-config-context"
@@ -25,13 +27,23 @@ import { getCurrentAccessToken } from "@/stores/auth-store"
 
 export type BackupContent = "config" | "database"
 export type ConflictStrategy = "skip" | "overwrite" | "error"
+type ExportBackupOptions = {
+  include_config: boolean
+  include_database: boolean
+  include_sensitive?: boolean
+  backup_password?: string
+}
+type RestoreBackupOptions = {
+  include_config: boolean
+  include_database: boolean
+  conflict_strategy: ConflictStrategy
+  backup_password?: string
+}
 export interface BackupRestoreAdapter {
-  exportBackup: (options: { include_config: boolean; include_database: boolean }) => Promise<{ blob: Blob; filename?: string }>
-  restoreBackup: (
-    file: File,
-    options: { include_config: boolean; include_database: boolean; conflict_strategy: ConflictStrategy }
-  ) => Promise<void>
+  exportBackup: (options: ExportBackupOptions) => Promise<{ blob: Blob; filename?: string }>
+  restoreBackup: (file: File, options: RestoreBackupOptions) => Promise<void>
   supportsConfig?: boolean
+  supportsSensitive?: boolean
 }
 type BackupTranslationKey =
   | "contentConfigTitle"
@@ -111,9 +123,13 @@ export function BackupRestoreTab({
     database: true,
   })
   const [conflictStrategy, setConflictStrategy] = useState<ConflictStrategy>("skip")
+  const [includeSensitive, setIncludeSensitive] = useState(false)
+  const [backupPassword, setBackupPassword] = useState("")
+  const [restorePassword, setRestorePassword] = useState("")
 
   const activeAdapter = adapter || createWebBackupRestoreAdapter(authHeaders)
   const supportsConfig = activeAdapter.supportsConfig !== false
+  const supportsSensitive = activeAdapter.supportsSensitive !== false
   const visibleContentOptions = supportsConfig
     ? contentOptions
     : contentOptions.filter((option) => option.value !== "config")
@@ -126,6 +142,12 @@ export function BackupRestoreTab({
       setRestoreContent((current) => ({ ...current, config: false, database: true }))
     }
   }, [supportsConfig])
+
+  useEffect(() => {
+    if (!includeSensitive) {
+      setBackupPassword("")
+    }
+  }, [includeSensitive])
 
   function authHeaders() {
     const headers: HeadersInit = {}
@@ -155,6 +177,10 @@ export function BackupRestoreTab({
       toast.error(t("toastSelectExportContent"))
       return
     }
+    if (includeSensitive && backupPassword.trim() === "") {
+      toast.error(t("toastBackupPasswordRequired"))
+      return
+    }
 
     try {
       setLoading("export")
@@ -163,6 +189,8 @@ export function BackupRestoreTab({
       const { blob, filename } = await activeAdapter.exportBackup({
         include_config: supportsConfig && exportContent.config,
         include_database: exportContent.database,
+        include_sensitive: supportsSensitive && includeSensitive,
+        backup_password: includeSensitive ? backupPassword : undefined,
       })
       const downloadUrl = window.URL.createObjectURL(blob)
       const a = document.createElement("a")
@@ -207,6 +235,7 @@ export function BackupRestoreTab({
         include_config: supportsConfig && restoreContent.config,
         include_database: restoreContent.database,
         conflict_strategy: conflictStrategy,
+        backup_password: restorePassword || undefined,
       })
 
       if (supportsConfig && restoreContent.config && !desktopMode) {
@@ -260,6 +289,47 @@ export function BackupRestoreTab({
                 disabled={loading !== null}
                 t={t}
               />
+
+              {supportsSensitive && (
+                <div className="space-y-3 rounded-md border bg-background/40 p-3">
+                  <Label
+                    htmlFor="export-include-sensitive"
+                    className="flex cursor-pointer items-start gap-3"
+                  >
+                    <Checkbox
+                      id="export-include-sensitive"
+                      checked={includeSensitive}
+                      disabled={loading !== null}
+                      onCheckedChange={(checked) => setIncludeSensitive(checked === true)}
+                      className="mt-0.5"
+                    />
+                    <LockKeyhole className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+                    <span className="min-w-0 space-y-1">
+                      <span className="block text-sm font-medium leading-none">{t("sensitiveExportTitle")}</span>
+                      <span className="block text-xs font-normal leading-5 text-muted-foreground">
+                        {t("sensitiveExportDescription")}
+                      </span>
+                    </span>
+                  </Label>
+                  {includeSensitive && (
+                    <div className="space-y-1">
+                      <Label htmlFor="backup-password" className="text-xs font-medium">
+                        {t("backupPasswordLabel")}
+                      </Label>
+                      <Input
+                        id="backup-password"
+                        type="password"
+                        value={backupPassword}
+                        onChange={(event) => setBackupPassword(event.target.value)}
+                        disabled={loading !== null}
+                        autoComplete="new-password"
+                        placeholder={t("backupPasswordPlaceholder")}
+                      />
+                      <p className="text-xs leading-5 text-muted-foreground">{t("backupPasswordHint")}</p>
+                    </div>
+                  )}
+                </div>
+              )}
 
               <div className="space-y-3 border-t pt-4">
                 <div className="space-y-1 text-xs leading-5 text-muted-foreground">
@@ -340,6 +410,24 @@ export function BackupRestoreTab({
                 </RadioGroup>
               </div>
 
+              {supportsSensitive && (
+                <div className="space-y-2 border-t pt-4">
+                  <Label htmlFor="restore-backup-password" className="text-sm font-medium">
+                    {t("restorePasswordLabel")}
+                  </Label>
+                  <Input
+                    id="restore-backup-password"
+                    type="password"
+                    value={restorePassword}
+                    onChange={(event) => setRestorePassword(event.target.value)}
+                    disabled={loading !== null}
+                    autoComplete="current-password"
+                    placeholder={t("restorePasswordPlaceholder")}
+                  />
+                  <p className="text-xs leading-5 text-muted-foreground">{t("restorePasswordHint")}</p>
+                </div>
+              )}
+
               <input
                 ref={restoreFileInputRef}
                 type="file"
@@ -390,12 +478,14 @@ export function BackupRestoreTab({
 function createWebBackupRestoreAdapter(authHeaders: () => HeadersInit): BackupRestoreAdapter {
   return {
     async exportBackup(options) {
-      const params = new URLSearchParams({
-        include_config: String(options.include_config),
-        include_database: String(options.include_database),
-      })
-      const response = await fetch(`${getApiUrl()}/backup/export?${params.toString()}`, {
-        headers: authHeaders(),
+      const headers = {
+        ...((authHeaders() as Record<string, string>) || {}),
+        "Content-Type": "application/json",
+      }
+      const response = await fetch(`${getApiUrl()}/backup/export`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify(options),
       })
 
       if (!response.ok) {
@@ -415,6 +505,9 @@ function createWebBackupRestoreAdapter(authHeaders: () => HeadersInit): BackupRe
       formData.append("include_config", String(options.include_config))
       formData.append("include_database", String(options.include_database))
       formData.append("conflict_strategy", options.conflict_strategy)
+      if (options.backup_password) {
+        formData.append("backup_password", options.backup_password)
+      }
 
       const response = await fetch(`${getApiUrl()}/backup/restore`, {
         method: "POST",

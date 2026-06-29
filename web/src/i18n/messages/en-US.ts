@@ -2653,6 +2653,8 @@ const messages = {
     fieldGoogleClientSecret: "Google Client Secret",
     fieldGoogleClientSecretDesc:
       "OAuth 2.0 Client Secret from Google Cloud Console (stored only on server side)",
+    fieldGoogleClientSecretConfiguredDesc:
+      "Client Secret is configured. Leave blank to keep it, or enter a new value to replace it.",
     registerSectionTitle: "Registration settings",
     registerSectionDescription: "Control user self-registration",
     oauthSectionTitle: "OAuth login",
@@ -2982,6 +2984,18 @@ const messages = {
     contentDatabaseTitle: "Database",
     contentDatabaseDescription:
       "Users, servers, scripts, tasks, logs, keys, sessions, and other business data",
+    sensitiveExportTitle: "Full backup",
+    sensitiveExportDescription:
+      "Include recoverable passwords, private keys, tokens, and API keys, protected by a backup password",
+    backupPasswordLabel: "Backup password",
+    backupPasswordPlaceholder: "Enter a backup password",
+    backupPasswordHint:
+      "The same password is required to restore this full backup. EasySSH does not store it.",
+    restorePasswordLabel: "Full backup password",
+    restorePasswordPlaceholder:
+      "Enter the backup password if this file is a full backup",
+    restorePasswordHint:
+      "Leave blank for a redacted backup. Full backups use this password to decrypt sensitive data.",
     btnExport: "Export backup",
     btnExportLoading: "Exporting...",
     btnRestore: "Choose file and restore",
@@ -3007,6 +3021,7 @@ const messages = {
       "Overwrite will update current matching records. Continue?",
     toastSelectExportContent: "Select at least one export content type",
     toastSelectRestoreContent: "Select at least one restore content type",
+    toastBackupPasswordRequired: "Enter the full backup password",
     toastExportLoading: "Exporting backup...",
     toastExportSuccess: "Backup exported",
     toastExportFailed: "Failed to export backup",

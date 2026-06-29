@@ -10,6 +10,8 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	"github.com/easyssh/server/internal/pkg/crypto"
 )
 
 // Service 通知配置服务接口
@@ -46,12 +48,13 @@ type Service interface {
 }
 
 type service struct {
-	repo Repository
+	repo      Repository
+	encryptor *crypto.Encryptor
 }
 
 // NewService 创建通知配置服务
-func NewService(repo Repository) Service {
-	return &service{repo: repo}
+func NewService(repo Repository, encryptor *crypto.Encryptor) Service {
+	return &service{repo: repo, encryptor: encryptor}
 }
 
 // Get 获取通知配置
@@ -66,7 +69,14 @@ func (s *service) Save(ctx context.Context, config *NotificationConfig) error {
 
 // GetSMTPConfig 获取SMTP配置
 func (s *service) GetSMTPConfig(ctx context.Context) (*SMTPConfig, error) {
-	return s.repo.GetSMTPConfig(ctx)
+	config, err := s.repo.GetSMTPConfig(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.decryptSMTPConfig(config); err != nil {
+		return nil, err
+	}
+	return config, nil
 }
 
 // SaveSMTPConfig 保存SMTP配置
@@ -82,6 +92,9 @@ func (s *service) SaveSMTPConfig(ctx context.Context, config *SMTPConfig) error 
 		if err == nil && existing != nil {
 			config.Password = existing.Password
 		}
+	}
+	if err := s.encryptSMTPConfig(config); err != nil {
+		return err
 	}
 
 	return s.repo.SaveSMTPConfig(ctx, config)
@@ -143,7 +156,14 @@ func (s *service) TestSMTPConnection(ctx context.Context, config *SMTPConfig) er
 
 // GetWebhookConfig 获取Webhook配置
 func (s *service) GetWebhookConfig(ctx context.Context) (*WebhookConfig, error) {
-	return s.repo.GetWebhookConfig(ctx)
+	config, err := s.repo.GetWebhookConfig(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.decryptWebhookConfig(config); err != nil {
+		return nil, err
+	}
+	return config, nil
 }
 
 // SaveWebhookConfig 保存Webhook配置
@@ -159,6 +179,9 @@ func (s *service) SaveWebhookConfig(ctx context.Context, config *WebhookConfig) 
 		if err == nil && existing != nil {
 			config.Secret = existing.Secret
 		}
+	}
+	if err := s.encryptWebhookConfig(config); err != nil {
+		return err
 	}
 
 	return s.repo.SaveWebhookConfig(ctx, config)
@@ -208,7 +231,14 @@ func (s *service) TestWebhookConnection(ctx context.Context, config *WebhookConf
 
 // GetDingTalkConfig 获取钉钉配置
 func (s *service) GetDingTalkConfig(ctx context.Context) (*DingTalkConfig, error) {
-	return s.repo.GetDingTalkConfig(ctx)
+	config, err := s.repo.GetDingTalkConfig(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.decryptDingTalkConfig(config); err != nil {
+		return nil, err
+	}
+	return config, nil
 }
 
 // SaveDingTalkConfig 保存钉钉配置
@@ -224,6 +254,9 @@ func (s *service) SaveDingTalkConfig(ctx context.Context, config *DingTalkConfig
 		if err == nil && existing != nil {
 			config.Secret = existing.Secret
 		}
+	}
+	if err := s.encryptDingTalkConfig(config); err != nil {
+		return err
 	}
 
 	return s.repo.SaveDingTalkConfig(ctx, config)
@@ -261,6 +294,82 @@ func (s *service) TestDingTalkConnection(ctx context.Context, config *DingTalkCo
 	}
 
 	return nil
+}
+
+func (s *service) encryptSMTPConfig(config *SMTPConfig) error {
+	if config == nil || config.Password == "" || s.encryptor == nil || crypto.HasEncryptedPrefix(config.Password) {
+		return nil
+	}
+	encrypted, err := s.encryptor.EncryptSecret(config.Password, notificationSecretAAD("smtp", "password"))
+	if err != nil {
+		return fmt.Errorf("failed to encrypt SMTP password: %w", err)
+	}
+	config.Password = encrypted
+	return nil
+}
+
+func (s *service) decryptSMTPConfig(config *SMTPConfig) error {
+	if config == nil || config.Password == "" || s.encryptor == nil {
+		return nil
+	}
+	decrypted, err := s.encryptor.DecryptSecret(config.Password, notificationSecretAAD("smtp", "password"))
+	if err != nil {
+		return fmt.Errorf("failed to decrypt SMTP password: %w", err)
+	}
+	config.Password = decrypted
+	return nil
+}
+
+func (s *service) encryptWebhookConfig(config *WebhookConfig) error {
+	if config == nil || config.Secret == "" || s.encryptor == nil || crypto.HasEncryptedPrefix(config.Secret) {
+		return nil
+	}
+	encrypted, err := s.encryptor.EncryptSecret(config.Secret, notificationSecretAAD("webhook", "secret"))
+	if err != nil {
+		return fmt.Errorf("failed to encrypt webhook secret: %w", err)
+	}
+	config.Secret = encrypted
+	return nil
+}
+
+func (s *service) decryptWebhookConfig(config *WebhookConfig) error {
+	if config == nil || config.Secret == "" || s.encryptor == nil {
+		return nil
+	}
+	decrypted, err := s.encryptor.DecryptSecret(config.Secret, notificationSecretAAD("webhook", "secret"))
+	if err != nil {
+		return fmt.Errorf("failed to decrypt webhook secret: %w", err)
+	}
+	config.Secret = decrypted
+	return nil
+}
+
+func (s *service) encryptDingTalkConfig(config *DingTalkConfig) error {
+	if config == nil || config.Secret == "" || s.encryptor == nil || crypto.HasEncryptedPrefix(config.Secret) {
+		return nil
+	}
+	encrypted, err := s.encryptor.EncryptSecret(config.Secret, notificationSecretAAD("dingtalk", "secret"))
+	if err != nil {
+		return fmt.Errorf("failed to encrypt DingTalk secret: %w", err)
+	}
+	config.Secret = encrypted
+	return nil
+}
+
+func (s *service) decryptDingTalkConfig(config *DingTalkConfig) error {
+	if config == nil || config.Secret == "" || s.encryptor == nil {
+		return nil
+	}
+	decrypted, err := s.encryptor.DecryptSecret(config.Secret, notificationSecretAAD("dingtalk", "secret"))
+	if err != nil {
+		return fmt.Errorf("failed to decrypt DingTalk secret: %w", err)
+	}
+	config.Secret = decrypted
+	return nil
+}
+
+func notificationSecretAAD(section string, field string) []byte {
+	return crypto.SecretAAD("notification_config", section, field)
 }
 
 // GetWeComConfig 获取企业微信配置

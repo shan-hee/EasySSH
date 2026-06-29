@@ -1,13 +1,17 @@
 package rest
 
-import "gorm.io/gorm"
+import (
+	"github.com/easyssh/server/internal/pkg/crypto"
+	"gorm.io/gorm"
+)
 
 // BackupHandler handles unified JSON backup export and restore.
 type BackupHandler struct {
-	db *gorm.DB
+	db        *gorm.DB
+	encryptor *crypto.Encryptor
 }
 
 // NewBackupHandler creates a unified backup handler.
-func NewBackupHandler(db *gorm.DB) *BackupHandler {
-	return &BackupHandler{db: db}
+func NewBackupHandler(db *gorm.DB, encryptor *crypto.Encryptor) *BackupHandler {
+	return &BackupHandler{db: db, encryptor: encryptor}
 }

@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+
+	"github.com/easyssh/server/internal/pkg/crypto"
 )
 
 // Service 系统配置服务接口
@@ -16,17 +18,29 @@ type Service interface {
 }
 
 type service struct {
-	repo Repository
+	repo      Repository
+	encryptor *crypto.Encryptor
 }
 
 // NewService 创建系统配置服务
-func NewService(repo Repository) Service {
-	return &service{repo: repo}
+func NewService(repo Repository, encryptor *crypto.Encryptor) Service {
+	return &service{repo: repo, encryptor: encryptor}
 }
 
 // Get 获取系统配置
 func (s *service) Get(ctx context.Context) (*SystemConfig, error) {
-	return s.repo.Get(ctx)
+	config, err := s.repo.Get(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if config.GoogleClientSecret != "" && s.encryptor != nil {
+		decrypted, err := s.encryptor.DecryptSecret(config.GoogleClientSecret, googleClientSecretAAD())
+		if err != nil {
+			return nil, fmt.Errorf("failed to decrypt Google client secret: %w", err)
+		}
+		config.GoogleClientSecret = decrypted
+	}
+	return config, nil
 }
 
 // Save 保存系统配置
@@ -36,6 +50,20 @@ func (s *service) Save(ctx context.Context, config *SystemConfig) error {
 	// 验证配置
 	if err := s.validate(config); err != nil {
 		return err
+	}
+	if s.encryptor != nil {
+		if config.GoogleClientSecret == "" {
+			if existing, err := s.repo.Get(ctx); err == nil && existing != nil && existing.GoogleClientSecret != "" {
+				config.GoogleClientSecret = existing.GoogleClientSecret
+			}
+		}
+		if config.GoogleClientSecret != "" && !crypto.HasEncryptedPrefix(config.GoogleClientSecret) {
+			encrypted, err := s.encryptor.EncryptSecret(config.GoogleClientSecret, googleClientSecretAAD())
+			if err != nil {
+				return fmt.Errorf("failed to encrypt Google client secret: %w", err)
+			}
+			config.GoogleClientSecret = encrypted
+		}
 	}
 
 	return s.repo.Save(ctx, config)
@@ -94,6 +122,10 @@ func (s *service) validate(config *SystemConfig) error {
 	}
 
 	return nil
+}
+
+func googleClientSecretAAD() []byte {
+	return crypto.SecretAAD("system_config", "system", "google_client_secret")
 }
 
 func (s *service) validateJWTSessionConfig(config *JWTSessionConfig) error {
