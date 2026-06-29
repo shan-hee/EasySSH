@@ -599,6 +599,26 @@ func newTerminalHostKeyPrompt(conn *websocket.Conn, writeJSON func(interface{}) 
 	return true, nil
 }
 
+func (h *TerminalHandler) updateServerOSIfEmpty(ctx context.Context, srv *server.Server, client *sshDomain.Client) {
+	if srv == nil || client == nil || strings.TrimSpace(srv.OS) != "" {
+		return
+	}
+
+	osValue, err := client.DetectOS()
+	if err != nil {
+		log.Printf("Failed to detect server OS: server_id=%s err=%v", srv.ID, err)
+		return
+	}
+	osValue = strings.TrimSpace(osValue)
+	if osValue == "" {
+		return
+	}
+
+	if err := h.serverRepo.UpdateOSIfEmpty(ctx, srv.ID, osValue); err != nil {
+		log.Printf("Failed to update server OS: server_id=%s err=%v", srv.ID, err)
+	}
+}
+
 // HandleSSH 处理 SSH WebSocket 连接
 // WS /api/v1/ssh/terminal/:server_id
 func (h *TerminalHandler) HandleSSH(c *gin.Context) {
@@ -930,6 +950,7 @@ func (h *TerminalHandler) HandleSSH(c *gin.Context) {
 			sendResult(initResult{err: fmt.Errorf("shell_start_failed: %w", err)})
 			return
 		}
+		go h.updateServerOSIfEmpty(context.Background(), srv, client)
 
 		h.upsertTerminalOperationRecord(terminalOperationRecord{
 			UserID:       userUUID,

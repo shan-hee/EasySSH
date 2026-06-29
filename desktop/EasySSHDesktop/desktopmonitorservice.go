@@ -201,6 +201,9 @@ func (s *DesktopMonitorService) Collect(input DesktopMonitorCollectInput) (Deskt
 	if snapshot.Disks == nil {
 		snapshot.Disks = []DesktopMonitorDiskInfo{}
 	}
+	if err := s.serverService.UpdateOSIfEmpty(serverID, snapshot.SystemInfo.OS); err != nil {
+		fmt.Printf("failed to update desktop server OS from monitor: %v\n", err)
+	}
 
 	return snapshot, nil
 }

@@ -451,6 +451,7 @@ func (h *SFTPHandler) createSFTPClient(c *gin.Context, serverID uuid.UUID) (*sft
 		// 不中断连接，只记录错误
 		fmt.Printf("Failed to update server status: %v\n", err)
 	}
+	go h.updateServerOSIfEmpty(srv, sshClient)
 
 	// 创建 SFTP 客户端
 	sftpClient, err := sftp.NewClient(sshClient, srv)
@@ -460,6 +461,26 @@ func (h *SFTPHandler) createSFTPClient(c *gin.Context, serverID uuid.UUID) (*sft
 	}
 
 	return sftpClient, srv, nil
+}
+
+func (h *SFTPHandler) updateServerOSIfEmpty(srv *server.Server, sshClient *sshDomain.Client) {
+	if h.serverRepo == nil || srv == nil || sshClient == nil || strings.TrimSpace(srv.OS) != "" {
+		return
+	}
+
+	osValue, err := sshClient.DetectOS()
+	if err != nil {
+		fmt.Printf("Failed to detect server OS: server_id=%s err=%v\n", srv.ID, err)
+		return
+	}
+	osValue = strings.TrimSpace(osValue)
+	if osValue == "" {
+		return
+	}
+
+	if err := h.serverRepo.UpdateOSIfEmpty(context.Background(), srv.ID, osValue); err != nil {
+		fmt.Printf("Failed to update server OS: server_id=%s err=%v\n", srv.ID, err)
+	}
 }
 
 // ListDirectory 列出目录
@@ -1897,6 +1918,7 @@ func (h *SFTPHandler) fastDownload(c *gin.Context, serverID uuid.UUID, req Batch
 		RespondError(c, http.StatusInternalServerError, "connection_error", err.Error())
 		return
 	}
+	go h.updateServerOSIfEmpty(srv, sshClient)
 
 	// 构建 tar 命令
 	// 策略: 对每个路径,切换到其父目录(-C),然后打包目录名(去掉路径前缀)

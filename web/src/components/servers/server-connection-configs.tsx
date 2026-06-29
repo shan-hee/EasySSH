@@ -8,6 +8,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { AddServerDialog } from "@/components/servers/add-server-dialog"
 import { EditServerDialog } from "@/components/servers/edit-server-dialog"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
+import { ServerSystemIcon } from "@/components/servers/server-system-icon"
 import type { ServerFormData } from "@/components/servers/add-server-dialog"
 import { serversApi, type Server, type AuthMethod } from "@/lib/api"
 import { cn } from "@/lib/utils"
@@ -99,12 +100,7 @@ function ServerItemBody({
     return (
       <>
         <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-muted transition-colors">
-          <ServerIcon
-            className={cn(
-              "h-6 w-6 text-muted-foreground transition-colors",
-              isOnline ? "group-hover:text-status-connected" : "group-hover:text-foreground"
-            )}
-          />
+          <ServerSystemIcon server={server} size={24} />
         </div>
 
         <div className="w-full space-y-0.5">
@@ -168,7 +164,7 @@ function ServerItemBody({
 
   return (
     <>
-      <ServerIcon className="h-5 w-5 flex-shrink-0 text-muted-foreground transition-colors group-hover:text-primary" />
+      <ServerSystemIcon server={server} size={20} />
 
       <div className="flex min-w-0 flex-1 flex-col gap-1 sm:flex-row sm:items-center sm:gap-4">
         <div className="min-w-0 sm:w-52 sm:flex-none md:w-56">

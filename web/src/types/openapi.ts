@@ -1654,6 +1654,8 @@ export interface components {
              * @enum {string}
              */
             status?: "online" | "offline" | "error";
+            /** @example Ubuntu 22.04.3 LTS */
+            os?: string;
             /** Format: date-time */
             last_connected?: string;
             /** Format: date-time */

@@ -28,6 +28,7 @@ export function mapDesktopServer(server: DesktopServer): Server {
     status: server.status === "online" ? "online" : "offline",
     last_connected: server.last_connected || undefined,
     description: server.description || undefined,
+    os: server.os || undefined,
     created_at: server.created_at,
     updated_at: server.updated_at,
   }

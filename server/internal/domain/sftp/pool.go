@@ -3,6 +3,7 @@ package sftp
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -220,6 +221,26 @@ func NewPool(
 
 	go p.cleanupLoop()
 	return p
+}
+
+func (p *Pool) updateServerOSIfEmpty(srv *server.Server, sshClient *sshDomain.Client) {
+	if p.serverRepo == nil || srv == nil || sshClient == nil || strings.TrimSpace(srv.OS) != "" {
+		return
+	}
+
+	osValue, err := sshClient.DetectOS()
+	if err != nil {
+		p.log.Warn("Failed to detect server OS", logger.String("serverID", srv.ID.String()), logger.Err(err))
+		return
+	}
+	osValue = strings.TrimSpace(osValue)
+	if osValue == "" {
+		return
+	}
+
+	if err := p.serverRepo.UpdateOSIfEmpty(context.Background(), srv.ID, osValue); err != nil {
+		p.log.Warn("Failed to update server OS", logger.String("serverID", srv.ID.String()), logger.Err(err))
+	}
 }
 
 // PoolConfig 连接池配置
@@ -477,6 +498,7 @@ func (p *Pool) createNewSSH(ctx context.Context, userID, serverID uuid.UUID, all
 			p.log.Warn("Failed to update server status", logger.Err(err))
 		}
 	}
+	go p.updateServerOSIfEmpty(srv, sshClient)
 
 	newConn := &pooledSSHConn{
 		Client:     sshClient,

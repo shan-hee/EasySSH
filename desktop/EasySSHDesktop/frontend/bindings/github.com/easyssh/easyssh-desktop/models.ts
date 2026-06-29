@@ -2764,6 +2764,7 @@ export class DesktopServer {
     "status": DesktopServerStatus;
     "last_connected"?: string;
     "description"?: string;
+    "os"?: string;
     "created_at": string;
     "updated_at": string;
 

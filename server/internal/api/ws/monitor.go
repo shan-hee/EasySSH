@@ -1,6 +1,7 @@
 package ws
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -13,6 +14,7 @@ import (
 	"github.com/easyssh/server/internal/api/middleware"
 	"github.com/easyssh/server/internal/domain/monitor"
 	"github.com/easyssh/server/internal/domain/security"
+	"github.com/easyssh/server/internal/domain/server"
 	sshDomain "github.com/easyssh/server/internal/domain/ssh"
 	pb "github.com/easyssh/server/internal/proto"
 	"github.com/gin-gonic/gin"
@@ -31,9 +33,13 @@ const (
 
 // wsSubscriber WebSocket 订阅者（实现 monitor.MetricsSubscriber 接口）
 type wsSubscriber struct {
-	id      string
-	conn    *websocket.Conn
-	writeMu *sync.Mutex
+	id          string
+	conn        *websocket.Conn
+	writeMu     *sync.Mutex
+	serverID    uuid.UUID
+	serverRepo  server.Repository
+	osPersistMu sync.Mutex
+	osPersisted bool
 }
 
 func (s *wsSubscriber) ID() string {
@@ -41,6 +47,8 @@ func (s *wsSubscriber) ID() string {
 }
 
 func (s *wsSubscriber) OnMetrics(metrics *pb.SystemMetrics) {
+	s.persistOSIfEmpty(metrics)
+
 	data, err := proto.Marshal(metrics)
 	if err != nil {
 		log.Printf("[wsSubscriber] 序列化失败: %v", err)
@@ -55,9 +63,35 @@ func (s *wsSubscriber) OnMetrics(metrics *pb.SystemMetrics) {
 	}
 }
 
+func (s *wsSubscriber) persistOSIfEmpty(metrics *pb.SystemMetrics) {
+	if s.serverRepo == nil || metrics == nil || metrics.SystemInfo == nil {
+		return
+	}
+
+	osValue := strings.TrimSpace(metrics.SystemInfo.Os)
+	if osValue == "" {
+		return
+	}
+
+	s.osPersistMu.Lock()
+	if s.osPersisted {
+		s.osPersistMu.Unlock()
+		return
+	}
+	s.osPersisted = true
+	s.osPersistMu.Unlock()
+
+	go func() {
+		if err := s.serverRepo.UpdateOSIfEmpty(context.Background(), s.serverID, osValue); err != nil {
+			log.Printf("[Monitor] Failed to persist server OS: server_id=%s err=%v", s.serverID, err)
+		}
+	}()
+}
+
 // MonitorHandler WebSocket 监控处理器
 type MonitorHandler struct {
 	connectionPool   *monitor.ConnectionPool
+	serverRepo       server.Repository
 	securityService  security.Service                // 安全配置服务（用于 CORS）
 	webDevPort       int                             // 前端开发端口，用于默认同源白名单
 	dockerSF         singleflight.Group              // Docker 数据请求合并
@@ -65,9 +99,10 @@ type MonitorHandler struct {
 }
 
 // NewMonitorHandler 创建监控处理器
-func NewMonitorHandler(connectionPool *monitor.ConnectionPool, securityService security.Service, webDevPort int) *MonitorHandler {
+func NewMonitorHandler(connectionPool *monitor.ConnectionPool, serverRepo server.Repository, securityService security.Service, webDevPort int) *MonitorHandler {
 	return &MonitorHandler{
 		connectionPool:   connectionPool,
+		serverRepo:       serverRepo,
 		securityService:  securityService,
 		webDevPort:       webDevPort,
 		collectorManager: monitor.NewSharedCollectorManager(),
@@ -104,6 +139,11 @@ func (h *MonitorHandler) HandleMonitor(c *gin.Context) {
 	serverID := c.Param("server_id")
 	if serverID == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "server_id required"})
+		return
+	}
+	serverUUID, err := uuid.Parse(serverID)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_server_id"})
 		return
 	}
 
@@ -200,9 +240,11 @@ func (h *MonitorHandler) HandleMonitor(c *gin.Context) {
 	// 创建 WebSocket 订阅者并注册到共享采集器
 	subID := uuid.New().String()
 	subscriber := &wsSubscriber{
-		id:      subID,
-		conn:    wsConn,
-		writeMu: &writeMu,
+		id:         subID,
+		conn:       wsConn,
+		writeMu:    &writeMu,
+		serverID:   serverUUID,
+		serverRepo: h.serverRepo,
 	}
 	// 使用工厂函数延迟创建 Collector，仅在首个订阅者时才实际创建
 	h.collectorManager.GetOrCreate(serverID, func() *monitor.Collector {

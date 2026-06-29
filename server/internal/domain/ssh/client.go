@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"strings"
 	"time"
 
 	"github.com/easyssh/server/internal/domain/server"
@@ -313,6 +314,31 @@ func (c *Client) ExecuteCommand(cmd string) (string, error) {
 	}
 
 	return string(output), nil
+}
+
+var osDetectionCommands = []string{
+	`sh -c 'os=$(awk -F= '"'"'/^PRETTY_NAME=/ { gsub(/^"|"$/, "", $2); print $2; exit }'"'"' /etc/os-release 2>/dev/null); if [ -n "$os" ]; then printf "%s\n" "$os"; elif command -v sw_vers >/dev/null 2>&1; then printf "%s %s\n" "$(sw_vers -productName)" "$(sw_vers -productVersion)"; else uname -s 2>/dev/null; fi'`,
+	`powershell -NoProfile -NonInteractive -Command "$os = (Get-CimInstance Win32_OperatingSystem -ErrorAction SilentlyContinue).Caption; if (-not $os) { $os = (Get-WmiObject Win32_OperatingSystem -ErrorAction SilentlyContinue).Caption }; if ($os) { [Console]::Out.WriteLine($os) }"`,
+	`cmd /C ver`,
+}
+
+func (c *Client) DetectOS() (string, error) {
+	var lastErr error
+	for _, command := range osDetectionCommands {
+		output, err := c.ExecuteCommand(command)
+		osValue := strings.TrimSpace(output)
+		if err == nil && osValue != "" {
+			return osValue, nil
+		}
+		if err != nil {
+			lastErr = err
+		}
+	}
+
+	if lastErr != nil {
+		return "", lastErr
+	}
+	return "", nil
 }
 
 // CopyTo 复制文件到远程服务器

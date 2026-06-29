@@ -36,6 +36,9 @@ type Repository interface {
 	// UpdateStatus 仅更新服务器状态和最后连接时间（性能优化）
 	UpdateStatus(ctx context.Context, serverID uuid.UUID, status ServerStatus, lastConnected *time.Time) error
 
+	// UpdateOSIfEmpty 仅当 OS 为空时写入识别结果
+	UpdateOSIfEmpty(ctx context.Context, serverID uuid.UUID, os string) error
+
 	// Delete 删除服务器（软删除）
 	Delete(ctx context.Context, id uuid.UUID) error
 
@@ -146,6 +149,27 @@ func (r *gormRepository) UpdateStatus(ctx context.Context, serverID uuid.UUID, s
 	}
 	if result.RowsAffected == 0 {
 		return ErrServerNotFound
+	}
+	return nil
+}
+
+func (r *gormRepository) UpdateOSIfEmpty(ctx context.Context, serverID uuid.UUID, osValue string) error {
+	osValue = strings.TrimSpace(osValue)
+	if osValue == "" {
+		return nil
+	}
+
+	result := r.db.WithContext(ctx).
+		Model(&Server{}).
+		Unscoped().
+		Where("id = ? AND (os = '' OR os IS NULL)", serverID).
+		UpdateColumns(map[string]interface{}{
+			"os":         osValue,
+			"updated_at": time.Now(),
+		})
+
+	if result.Error != nil {
+		return result.Error
 	}
 	return nil
 }

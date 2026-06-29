@@ -52,6 +52,7 @@ type DesktopServer struct {
 	Status        DesktopServerStatus     `json:"status"`
 	LastConnected string                  `json:"last_connected,omitempty"`
 	Description   string                  `json:"description,omitempty"`
+	OS            string                  `json:"os,omitempty"`
 	CreatedAt     string                  `json:"created_at"`
 	UpdatedAt     string                  `json:"updated_at"`
 }
@@ -208,7 +209,7 @@ func (s *DesktopServerService) List(params DesktopServerListParams) (DesktopServ
 	queryArgs := append(append([]any{}, args...), params.Limit, offset)
 	querySQL := fmt.Sprintf(`
 		SELECT id, user_id, name, host, port, username, auth_method, password, private_key,
-			server_group, tags_json, status, last_connected, description, created_at, updated_at
+			server_group, tags_json, status, last_connected, description, os, created_at, updated_at
 		FROM desktop_servers
 		WHERE %s
 		ORDER BY sort_order ASC, created_at ASC, id ASC
@@ -250,7 +251,7 @@ func (s *DesktopServerService) GetById(id string) (DesktopServer, error) {
 
 	row := database.QueryRow(`
 		SELECT id, user_id, name, host, port, username, auth_method, password, private_key,
-			server_group, tags_json, status, last_connected, description, created_at, updated_at
+			server_group, tags_json, status, last_connected, description, os, created_at, updated_at
 		FROM desktop_servers
 		WHERE id = ?`, id)
 
@@ -288,11 +289,11 @@ func (s *DesktopServerService) Create(input DesktopServerInput) (DesktopServer, 
 	_, err = database.Exec(`
 		INSERT INTO desktop_servers (
 			id, user_id, name, host, port, username, auth_method, password, private_key,
-			server_group, tags_json, status, last_connected, description, sort_order, created_at, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			server_group, tags_json, status, last_connected, description, os, sort_order, created_at, updated_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		server.ID, server.UserID, server.Name, server.Host, server.Port, server.Username,
 		server.AuthMethod, server.Password, server.PrivateKey, server.Group, tagsJSON,
-		server.Status, server.LastConnected, server.Description, sortOrder, server.CreatedAt, server.UpdatedAt)
+		server.Status, server.LastConnected, server.Description, server.OS, sortOrder, server.CreatedAt, server.UpdatedAt)
 	if err != nil {
 		return DesktopServer{}, err
 	}
@@ -326,15 +327,25 @@ func (s *DesktopServerService) Update(id string, input DesktopServerInput) (Desk
 	if !input.PrivateKeySet {
 		server.PrivateKey = current.PrivateKey
 	}
+	server.OS = current.OS
+	configChanged := server.Host != current.Host ||
+		server.Port != current.Port ||
+		server.Username != current.Username ||
+		server.AuthMethod != current.AuthMethod ||
+		input.PasswordSet ||
+		input.PrivateKeySet
+	if configChanged {
+		server.OS = ""
+	}
 
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	result, err := database.Exec(`
 		UPDATE desktop_servers
 		SET name = ?, host = ?, port = ?, username = ?, auth_method = ?, password = ?, private_key = ?,
-			server_group = ?, tags_json = ?, description = ?, updated_at = ?
+			server_group = ?, tags_json = ?, description = ?, os = ?, updated_at = ?
 		WHERE id = ?`,
 		server.Name, server.Host, server.Port, server.Username, server.AuthMethod,
-		server.Password, server.PrivateKey, server.Group, tagsJSON, server.Description, now, id)
+		server.Password, server.PrivateKey, server.Group, tagsJSON, server.Description, server.OS, now, id)
 	if err != nil {
 		return DesktopServer{}, err
 	}
@@ -413,6 +424,77 @@ func (s *DesktopServerService) MarkConnected(id string) (DesktopServer, error) {
 	}
 
 	return s.GetById(id)
+}
+
+func (s *DesktopServerService) UpdateOSIfEmpty(id string, osValue string) error {
+	database, err := s.database()
+	if err != nil {
+		return err
+	}
+
+	id = strings.TrimSpace(id)
+	osValue = strings.TrimSpace(osValue)
+	if id == "" || osValue == "" {
+		return nil
+	}
+
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	_, err = database.Exec(`
+		UPDATE desktop_servers
+		SET os = ?, updated_at = ?
+		WHERE id = ? AND (os = '' OR os IS NULL)`, osValue, now, id)
+	return err
+}
+
+var desktopOSDetectionCommands = []string{
+	`sh -c 'os=$(awk -F= '"'"'/^PRETTY_NAME=/ { gsub(/^"|"$/, "", $2); print $2; exit }'"'"' /etc/os-release 2>/dev/null); if [ -n "$os" ]; then printf "%s\n" "$os"; elif command -v sw_vers >/dev/null 2>&1; then printf "%s %s\n" "$(sw_vers -productName)" "$(sw_vers -productVersion)"; else uname -s 2>/dev/null; fi'`,
+	`powershell -NoProfile -NonInteractive -Command "$os = (Get-CimInstance Win32_OperatingSystem -ErrorAction SilentlyContinue).Caption; if (-not $os) { $os = (Get-WmiObject Win32_OperatingSystem -ErrorAction SilentlyContinue).Caption }; if ($os) { [Console]::Out.WriteLine($os) }"`,
+	`cmd /C ver`,
+}
+
+func (s *DesktopServerService) DetectAndPersistOSIfEmpty(server DesktopServer, client *ssh.Client) {
+	if client == nil || strings.TrimSpace(server.OS) != "" {
+		return
+	}
+
+	osValue, err := detectDesktopServerOS(client)
+	if err != nil {
+		fmt.Printf("failed to detect desktop server OS: %v\n", err)
+		return
+	}
+
+	if osValue == "" {
+		return
+	}
+
+	if err := s.UpdateOSIfEmpty(server.ID, osValue); err != nil {
+		fmt.Printf("failed to update desktop server OS: %v\n", err)
+	}
+}
+
+func detectDesktopServerOS(client *ssh.Client) (string, error) {
+	var lastErr error
+	for _, command := range desktopOSDetectionCommands {
+		session, err := client.NewSession()
+		if err != nil {
+			return "", err
+		}
+		output, err := session.CombinedOutput(command)
+		_ = session.Close()
+
+		osValue := strings.TrimSpace(string(output))
+		if err == nil && osValue != "" {
+			return osValue, nil
+		}
+		if err != nil {
+			lastErr = err
+		}
+	}
+
+	if lastErr != nil {
+		return "", lastErr
+	}
+	return "", nil
 }
 
 func (s *DesktopServerService) ExecuteCommand(input DesktopServerCommandInput) (DesktopServerCommandResult, error) {
@@ -575,7 +657,7 @@ func (s *DesktopServerService) getByIDRaw(id string) (DesktopServer, error) {
 
 	row := database.QueryRow(`
 		SELECT id, user_id, name, host, port, username, auth_method, password, private_key,
-			server_group, tags_json, status, last_connected, description, created_at, updated_at
+			server_group, tags_json, status, last_connected, description, os, created_at, updated_at
 		FROM desktop_servers
 		WHERE id = ?`, id)
 
@@ -604,6 +686,7 @@ func configureDesktopServerDatabase(database *sql.DB) error {
 			status TEXT NOT NULL DEFAULT 'offline',
 			last_connected TEXT NOT NULL DEFAULT '',
 			description TEXT NOT NULL DEFAULT '',
+			os TEXT NOT NULL DEFAULT '',
 			sort_order INTEGER NOT NULL DEFAULT 0,
 			created_at TEXT NOT NULL,
 			updated_at TEXT NOT NULL
@@ -854,6 +937,7 @@ func scanDesktopServer(scanner desktopServerScanner) (DesktopServer, error) {
 		&server.Status,
 		&server.LastConnected,
 		&server.Description,
+		&server.OS,
 		&server.CreatedAt,
 		&server.UpdatedAt,
 	)

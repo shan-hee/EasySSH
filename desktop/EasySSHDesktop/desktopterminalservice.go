@@ -213,6 +213,7 @@ func (s *DesktopTerminalService) Start(input DesktopTerminalStartInput) error {
 		s.closeByID(clientID, err.Error())
 		return err
 	}
+	go s.serverService.DetectAndPersistOSIfEmpty(server, client)
 
 	if credential != nil {
 		s.serverService.setTemporaryCredential(serverID, *credential)

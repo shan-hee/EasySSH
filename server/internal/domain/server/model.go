@@ -58,6 +58,7 @@ type Server struct {
 	Status        ServerStatus `gorm:"type:varchar(20);default:'offline'" json:"status"`
 	LastConnected *time.Time   `json:"last_connected,omitempty"`
 	Description   string       `gorm:"type:text" json:"description"`
+	OS            string       `gorm:"size:100" json:"os,omitempty"`
 	SortOrder     int          `gorm:"default:0;index" json:"sort_order"` // 用户自定义排序顺序
 	// 地理位置信息（通过 IP 自动查询）
 	Country     string         `gorm:"size:100" json:"country,omitempty"`
@@ -180,6 +181,10 @@ func (s *Server) ToPublic() map[string]interface{} {
 		"sort_order":      s.SortOrder,
 		"created_at":      s.CreatedAt,
 		"updated_at":      s.UpdatedAt,
+	}
+
+	if s.OS != "" {
+		result["os"] = s.OS
 	}
 
 	if s.LastConnected != nil {

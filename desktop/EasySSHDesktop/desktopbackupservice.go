@@ -378,14 +378,14 @@ func exportDesktopServers(database *sql.DB) (desktopBackupTable, error) {
 		PrimaryKey: []string{"id"},
 		Columns: []string{
 			"id", "user_id", "name", "host", "port", "username", "auth_method", "server_group",
-			"tags", "status", "last_connected", "description", "sort_order", "created_at", "updated_at",
+			"tags", "status", "last_connected", "description", "os", "sort_order", "created_at", "updated_at",
 		},
 		Rows: []map[string]any{},
 	}
 
 	rows, err := database.Query(`
 		SELECT id, name, host, port, username, auth_method, server_group, tags_json,
-			status, last_connected, description, sort_order, created_at, updated_at
+			status, last_connected, description, os, sort_order, created_at, updated_at
 		FROM desktop_servers
 		ORDER BY sort_order ASC, created_at ASC, id ASC`)
 	if err != nil {
@@ -394,9 +394,9 @@ func exportDesktopServers(database *sql.DB) (desktopBackupTable, error) {
 	defer rows.Close()
 
 	for rows.Next() {
-		var id, name, host, username, authMethod, group, tagsJSON, status, lastConnected, description, createdAt, updatedAt string
+		var id, name, host, username, authMethod, group, tagsJSON, status, lastConnected, description, osValue, createdAt, updatedAt string
 		var port, sortOrder int
-		if err := rows.Scan(&id, &name, &host, &port, &username, &authMethod, &group, &tagsJSON, &status, &lastConnected, &description, &sortOrder, &createdAt, &updatedAt); err != nil {
+		if err := rows.Scan(&id, &name, &host, &port, &username, &authMethod, &group, &tagsJSON, &status, &lastConnected, &description, &osValue, &sortOrder, &createdAt, &updatedAt); err != nil {
 			return table, err
 		}
 		backupID := desktopBackupUUID("server", id)
@@ -413,6 +413,7 @@ func exportDesktopServers(database *sql.DB) (desktopBackupTable, error) {
 			"status":         status,
 			"last_connected": nullableDesktopString(lastConnected),
 			"description":    description,
+			"os":             osValue,
 			"sort_order":     sortOrder,
 			"created_at":     createdAt,
 			"updated_at":     updatedAt,
@@ -858,6 +859,7 @@ func restoreDesktopServerRow(tx *sql.Tx, row map[string]any, strategy string, re
 		"status":         normalizeDesktopBackupServerStatus(firstDesktopString(row, "status")),
 		"last_connected": firstDesktopString(row, "last_connected"),
 		"description":    firstDesktopString(row, "description"),
+		"os":             firstDesktopString(row, "os"),
 		"sort_order":     desktopIntValue(row["sort_order"], 0),
 		"created_at":     desktopTimeValue(row["created_at"], now),
 		"updated_at":     desktopTimeValue(row["updated_at"], now),
@@ -1027,7 +1029,7 @@ func desktopBackupColumns(values map[string]any) []string {
 	}
 	preferred := []string{
 		"id", "user_id", "name", "host", "port", "username", "auth_method", "password", "private_key",
-		"server_group", "tags_json", "status", "last_connected", "description", "sort_order",
+		"server_group", "tags_json", "status", "last_connected", "description", "os", "sort_order",
 		"task_name", "task_type", "content", "script_id", "server_ids_json", "execution_mode",
 		"success_count", "failed_count", "started_at", "completed_at", "duration", "action",
 		"resource", "server_id", "duration_ms", "detail", "language", "executions", "author",

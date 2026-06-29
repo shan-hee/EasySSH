@@ -239,6 +239,9 @@ func (s *serverService) Update(ctx context.Context, userID, serverID uuid.UUID, 
 	if endpointConfigChanged || (authConfigChanged && !req.VerifiedConnectionCredential) {
 		server.Status = StatusOffline
 	}
+	if endpointConfigChanged || authConfigChanged {
+		server.OS = ""
+	}
 
 	// 保存更新
 	if err := s.repo.Update(ctx, server); err != nil {

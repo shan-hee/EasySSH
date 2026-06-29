@@ -529,6 +529,7 @@ func (g *DesktopGateway) initializeTerminalSession(
 		client.Close()
 		return desktopGatewayTerminalInitResult{server: server, err: err}
 	}
+	go g.serverService.DetectAndPersistOSIfEmpty(server, client)
 
 	return desktopGatewayTerminalInitResult{
 		server:     server,

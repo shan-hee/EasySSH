@@ -297,6 +297,9 @@ components:
           type: string
           enum: [online, offline, error]
           example: online
+        os:
+          type: string
+          example: Ubuntu 22.04.3 LTS
         last_connected:
           type: string
           format: date-time
