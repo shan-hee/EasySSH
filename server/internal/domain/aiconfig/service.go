@@ -46,6 +46,13 @@ func (s *service) GetSystemConfig(ctx context.Context) (*AIConfig, error) {
 
 // SaveSystemConfig 保存系统级AI配置
 func (s *service) SaveSystemConfig(ctx context.Context, config *AIConfig) error {
+	// 更新系统配置时允许前端不回传密钥，避免因密钥不下发而误清空已有配置。
+	if strings.TrimSpace(config.SystemAPIKey) == "" {
+		if existing, err := s.repo.GetSystemConfig(ctx); err == nil && existing != nil && existing.SystemAPIKey != "" {
+			config.SystemAPIKey = existing.SystemAPIKey
+		}
+	}
+
 	// 验证配置
 	if err := s.validateSystemConfig(config); err != nil {
 		return err
