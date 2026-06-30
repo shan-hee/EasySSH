@@ -1,24 +1,14 @@
 import type { Column, ColumnDef } from "@tanstack/react-table"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
-import { Code2, ArrowUpDown, ArrowUp, ArrowDown, Play, Edit, Trash2, MoreHorizontal } from "lucide-react"
+import { Code2, ArrowUpDown, ArrowUp, ArrowDown, Play, Trash2 } from "lucide-react"
 import { type Script } from "@/lib/api"
 import { formatTimestamp } from "@/components/ui/data-table"
 import { cn } from "@/lib/utils"
 
 interface Handlers {
   onExecute: (id: string) => void
-  onEdit: (id: string) => void
   onDelete: (id: string) => void
-  onSelect?: (id: string) => void
-  selectedId?: string | null
   t: (key: string) => string
 }
 
@@ -58,10 +48,7 @@ function SortableHeader<TValue>({
 
 export function createScriptColumns({
   onExecute,
-  onEdit,
   onDelete,
-  onSelect,
-  selectedId,
   t,
 }: Handlers): ColumnDef<Script>[] {
   const columns: ColumnDef<Script>[] = [
@@ -75,14 +62,7 @@ export function createScriptColumns({
         const script = row.original
         const primaryTag = script.tags?.[0]
         return (
-          <button
-            type="button"
-            onClick={() => onSelect?.(script.id)}
-            className={cn(
-              "flex w-full min-w-0 items-start gap-2 rounded-md px-1 py-0.5 text-left transition-colors hover:bg-accent/60",
-              selectedId === script.id && "bg-accent text-accent-foreground"
-            )}
-          >
+          <div className="flex w-full min-w-0 items-start gap-2 rounded-md px-1 py-0.5 text-left">
             <Code2 className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
             <div className="min-w-0 space-y-1">
               <div className="flex min-w-0 items-center gap-2">
@@ -99,7 +79,7 @@ export function createScriptColumns({
                 </p>
               )}
             </div>
-          </button>
+          </div>
         )
       },
       filterFn: (row, id, value) => {
@@ -232,28 +212,27 @@ export function createScriptColumns({
               size="sm"
               className="h-8 w-8 p-0"
               title={t("actionExecuteTitle")}
-              onClick={() => onExecute(script.id)}
+              aria-label={t("actionExecuteTitle")}
+              onClick={(event) => {
+                event.stopPropagation()
+                onExecute(script.id)
+              }}
             >
               <Play className="h-4 w-4" />
             </Button>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="sm" className="h-8 w-8 p-0" title={t("colActions")}>
-                  <MoreHorizontal className="h-4 w-4" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={() => onEdit(script.id)}>
-                  <Edit className="mr-2 h-4 w-4" />
-                  {t("actionEdit")}
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={() => onDelete(script.id)} className="text-destructive">
-                  <Trash2 className="mr-2 h-4 w-4" />
-                  {t("actionDelete")}
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-8 w-8 p-0 text-destructive hover:text-destructive"
+              title={t("actionDelete")}
+              aria-label={t("actionDelete")}
+              onClick={(event) => {
+                event.stopPropagation()
+                onDelete(script.id)
+              }}
+            >
+              <Trash2 className="h-4 w-4" />
+            </Button>
           </div>
         )
       },

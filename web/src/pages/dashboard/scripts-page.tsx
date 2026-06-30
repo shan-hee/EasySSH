@@ -408,12 +408,9 @@ const handleCloseExecuteDialog = useCallback((open: boolean) => {
 // DataTable 列定义与可见列
 const columns = useMemo(() => createScriptColumns({
   onExecute: handleExecute,
-  onEdit: handleEdit,
   onDelete: handleDelete,
-  onSelect: handleOpenDetail,
-  selectedId: selectedScriptId,
   t: (key: string) => t(key),
-}), [handleExecute, handleEdit, handleDelete, handleOpenDetail, selectedScriptId, t])
+}), [handleExecute, handleDelete, t])
 
 const visibleColumns = useMemo(
   () => columns.filter((col) =>
@@ -727,6 +724,10 @@ const totalExecutions = useMemo(() => (
        scrollContainerClassName="min-h-[360px]"
        tableClassName="min-w-[1120px] table-fixed"
        density="compact"
+       onRowClick={(script) => handleOpenDetail(script.id)}
+       getRowClassName={(script) => (
+         selectedScriptId === script.id ? "bg-emerald-500/5 hover:bg-emerald-500/10" : undefined
+       )}
        toolbar={(table) => (
          <DataTableToolbar
            table={table}

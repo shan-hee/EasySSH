@@ -83,6 +83,9 @@ export function useUserColumns(options?: UserColumnsOptions): ColumnDef<UserDeta
     // 多选列
     {
       id: "select",
+      size: 44,
+      minSize: 44,
+      maxSize: 44,
       header: ({ table }) => (
         <Checkbox
           checked={
@@ -107,6 +110,8 @@ export function useUserColumns(options?: UserColumnsOptions): ColumnDef<UserDeta
     // 用户信息列
     {
       accessorKey: "username",
+      size: 360,
+      minSize: 300,
       header: ({ column }) => {
         return (
           <Button
@@ -124,8 +129,8 @@ export function useUserColumns(options?: UserColumnsOptions): ColumnDef<UserDeta
         const user = row.original
         const locked = isUserLocked(user)
         return (
-          <div className="flex items-center gap-3">
-            <div className="relative">
+          <div className="flex min-w-0 items-center gap-3">
+            <div className="relative shrink-0">
               <SmartAvatar
                 className="h-10 w-10"
                 src={user.avatar}
@@ -138,16 +143,16 @@ export function useUserColumns(options?: UserColumnsOptions): ColumnDef<UserDeta
                 </div>
               )}
             </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="font-medium">{user.username}</span>
+            <div className="min-w-0">
+              <div className="flex min-w-0 items-center gap-2">
+                <span className="truncate font-medium">{user.username}</span>
                 {locked && (
                   <Badge variant="destructive" className="text-xs px-1.5 py-0">
                     {t("statusLocked")}
                   </Badge>
                 )}
               </div>
-              <div className="text-sm text-muted-foreground">{user.email}</div>
+              <div className="truncate text-sm text-muted-foreground">{user.email}</div>
             </div>
           </div>
         )
@@ -165,6 +170,8 @@ export function useUserColumns(options?: UserColumnsOptions): ColumnDef<UserDeta
     // 角色列
     {
       accessorKey: "role",
+      size: 160,
+      minSize: 140,
       header: ({ column }) => {
         return (
           <Button
@@ -187,6 +194,8 @@ export function useUserColumns(options?: UserColumnsOptions): ColumnDef<UserDeta
     // 创建时间列
     {
       accessorKey: "created_at",
+      size: 220,
+      minSize: 190,
       header: ({ column }) => {
         return (
           <Button
@@ -208,6 +217,8 @@ export function useUserColumns(options?: UserColumnsOptions): ColumnDef<UserDeta
     // 最后登录时间列
     {
       accessorKey: "last_login_at",
+      size: 200,
+      minSize: 160,
       header: ({ column }) => {
         return (
           <Button
@@ -234,6 +245,9 @@ export function useUserColumns(options?: UserColumnsOptions): ColumnDef<UserDeta
     // 操作列
     {
       id: "actions",
+      size: 72,
+      minSize: 64,
+      maxSize: 80,
       header: () => (
         <div className="text-right">{t("colActions")}</div>
       ),

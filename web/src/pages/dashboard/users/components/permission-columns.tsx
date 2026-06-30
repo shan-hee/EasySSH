@@ -190,6 +190,9 @@ export function usePermissionColumns(options?: PermissionColumnsOptions): Column
     // 多选列
     {
       id: "select",
+      size: 44,
+      minSize: 44,
+      maxSize: 44,
       header: ({ table }) => (
         <Checkbox
           checked={
@@ -214,6 +217,8 @@ export function usePermissionColumns(options?: PermissionColumnsOptions): Column
     // 权限名称列
     {
       accessorKey: "name",
+      size: 260,
+      minSize: 220,
       header: ({ column }) => {
         return (
           <Button
@@ -249,6 +254,8 @@ export function usePermissionColumns(options?: PermissionColumnsOptions): Column
     // 描述列
     {
       accessorKey: "description",
+      size: 320,
+      minSize: 260,
       header: () => t("permColDescription"),
       cell: ({ row }) => (
         <div className="text-sm text-muted-foreground max-w-[200px] truncate">
@@ -260,6 +267,8 @@ export function usePermissionColumns(options?: PermissionColumnsOptions): Column
     // 模块列
     {
       accessorKey: "module",
+      size: 170,
+      minSize: 150,
       header: ({ column }) => {
         return (
           <Button
@@ -282,6 +291,8 @@ export function usePermissionColumns(options?: PermissionColumnsOptions): Column
     // 适用角色列
     {
       accessorKey: "roles",
+      size: 260,
+      minSize: 220,
       header: () => t("permColRoles"),
       cell: ({ row }) => <RoleBadges roles={row.getValue("roles")} />,
     },
@@ -289,6 +300,9 @@ export function usePermissionColumns(options?: PermissionColumnsOptions): Column
     // 操作列
     {
       id: "actions",
+      size: 72,
+      minSize: 64,
+      maxSize: 80,
       header: () => (
         <div className="text-right">{t("colActions")}</div>
       ),
