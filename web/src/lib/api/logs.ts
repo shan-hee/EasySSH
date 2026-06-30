@@ -60,10 +60,10 @@ export interface AuditLogListParams {
   page_size?: number
   user_id?: string
   server_id?: string
-  type?: "connection" | "transfer" | "execution" | "audit"
+  type?: "connection" | "transfer" | "execution" | "audit" | Array<"connection" | "transfer" | "execution" | "audit">
   action?: string
-  category?: "activity" | "audit"
-  status?: string
+  category?: "activity" | "audit" | Array<"activity" | "audit">
+  status?: string | string[]
   source?: string
   ip?: string
   keyword?: string
@@ -78,7 +78,10 @@ function buildQueryParams(params?: object) {
   const queryParams = new URLSearchParams()
   Object.entries(params ?? {}).forEach(([key, value]) => {
     if (value !== undefined && value !== "") {
-      queryParams.set(key, String(value))
+      const stringValue = Array.isArray(value) ? value.join(",") : String(value)
+      if (stringValue !== "") {
+        queryParams.set(key, stringValue)
+      }
     }
   })
   return queryParams

@@ -65,10 +65,10 @@ export interface OperationRecordStatistics {
 export interface OperationRecordListParams {
   page?: number
   page_size?: number
-  type?: OperationRecordType
-  category?: OperationRecordCategory
+  type?: OperationRecordType | OperationRecordType[]
+  category?: OperationRecordCategory | OperationRecordCategory[]
   action?: string
-  status?: OperationRecordStatus
+  status?: OperationRecordStatus | OperationRecordStatus[]
   server_id?: string
   source?: string
   ip?: string
@@ -84,7 +84,10 @@ function buildQueryParams(params?: object) {
   const queryParams = new URLSearchParams()
   Object.entries(params ?? {}).forEach(([key, value]) => {
     if (value !== undefined && value !== "") {
-      queryParams.set(key, String(value))
+      const stringValue = Array.isArray(value) ? value.join(",") : String(value)
+      if (stringValue !== "") {
+        queryParams.set(key, stringValue)
+      }
     }
   })
   return queryParams

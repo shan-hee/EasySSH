@@ -30,6 +30,7 @@ import {
   FolderKey,
   KeyRound,
   Plus,
+  RefreshCw,
   Server,
   Settings,
   Shield,
@@ -46,12 +47,8 @@ import { usePermissionColumns, staticPermissions } from "./users/components/perm
 import { useAuthReady } from "@/hooks/use-auth-ready"
 import { useConfirmDialog } from "@/hooks/use-confirm-dialog"
 import {
-  DashboardMetricCard,
-  DashboardSideList,
   InlineStatusBadge,
 } from "./logs/components/log-dashboard-widgets"
-
-const DAY_MS = 24 * 60 * 60 * 1000
 
 function isLockedUser(user: UserDetail) {
   if (!user.locked_until) return false
@@ -67,6 +64,7 @@ function formatUserTime(value?: string) {
 
 export default function UsersPage() {
   const { t } = useTranslation("users")
+  const { t: tCommon } = useTranslation("common")
   const { ready } = useAuthReady()
   const { confirm: requestConfirm, confirmDialog } = useConfirmDialog()
 
@@ -592,23 +590,6 @@ export default function UsersPage() {
 
   const lockedUsers = useMemo(() => users.filter(isLockedUser), [users])
 
-  const recentActiveUsers = useMemo(() => {
-    const threshold = Date.now() - 7 * DAY_MS
-    return users.filter((user) => {
-      if (!user.last_login_at) return false
-      const loginTime = new Date(user.last_login_at).getTime()
-      return !Number.isNaN(loginTime) && loginTime >= threshold
-    })
-  }, [users])
-
-  const userSpark = useMemo(() => [
-    statistics.viewerUsers,
-    statistics.normalUsers,
-    statistics.adminUsers,
-    recentActiveUsers.length,
-    users.length,
-  ], [recentActiveUsers.length, statistics.adminUsers, statistics.normalUsers, statistics.viewerUsers, users.length])
-
   const roleDistribution = useMemo(() => [
     { label: t("filterRoleAdmin"), value: statistics.adminUsers, tone: "violet" as const },
     { label: t("filterRoleUser"), value: statistics.normalUsers, tone: "blue" as const },
@@ -658,12 +639,25 @@ export default function UsersPage() {
       }))
   ), [users])
 
+  const workspaceTabs = () => (
+    <TabsList className="h-8 w-full sm:w-fit">
+      <TabsTrigger value="users" className="gap-2 px-3">
+        <Users className="h-4 w-4" />
+        {t("tabUsers")}
+      </TabsTrigger>
+      <TabsTrigger value="permissions" className="gap-2 px-3">
+        <KeyRound className="h-4 w-4" />
+        {t("tabPermissions")}
+      </TabsTrigger>
+    </TabsList>
+  )
+
   return (
     <>
       {confirmDialog}
       <PageHeader title={t("pageTitle")} />
 
-      <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-auto p-3 pt-0 sm:gap-4 sm:p-4 sm:pt-0 xl:overflow-hidden">
+      <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto overflow-x-hidden p-3 pt-0 scrollbar-custom sm:gap-4 sm:p-4 sm:pt-0">
         <div className="flex shrink-0 flex-col gap-2 text-sm text-muted-foreground md:flex-row md:items-center md:justify-between">
           <p>集中维护团队成员、角色权限和账号风险，保持小团队协作边界清晰。</p>
           <div className="flex items-center gap-2">
@@ -672,148 +666,35 @@ export default function UsersPage() {
           </div>
         </div>
 
-        <div className="grid shrink-0 grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-5">
-          <DashboardMetricCard title={t("statsTotalUsers")} value={statistics.totalUsers} icon={Users} tone="emerald" spark={userSpark} loading={loading} />
-          <DashboardMetricCard title="近 7 天活跃" value={recentActiveUsers.length} icon={Users} tone="blue" spark={userSpark} loading={loading} />
-          <DashboardMetricCard title={t("statsAdmins")} value={statistics.adminUsers} icon={Shield} tone="violet" spark={userSpark} loading={loading} />
-          <DashboardMetricCard title="锁定账户" value={lockedUsers.length} icon={Shield} tone={lockedUsers.length > 0 ? "rose" : "slate"} spark={lockedUsers.map(() => 1)} loading={loading} />
-          <DashboardMetricCard title={t("tabPermissions")} value={permissions.length} icon={KeyRound} tone="amber" spark={permissionModuleStats.map((item) => item.count)} loading={loading} />
-        </div>
-
-        <div className="grid min-h-0 flex-1 gap-3 xl:grid-cols-[minmax(0,2fr)_minmax(340px,0.9fr)] xl:overflow-hidden">
-          <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "users" | "permissions")} className="flex min-h-0 flex-col">
-            <div className="flex shrink-0 flex-col gap-3 rounded-md border bg-card p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
-              <div>
-                <h2 className="text-base font-semibold">成员与权限工作区</h2>
-                <p className="mt-1 text-sm text-muted-foreground">在同一工作区维护成员账号、角色策略和模块授权。</p>
-              </div>
-              <TabsList className="w-fit">
-                <TabsTrigger value="users" className="gap-2">
-                  <Users className="h-4 w-4" />
-                  {t("tabUsers")}
-                </TabsTrigger>
-                <TabsTrigger value="permissions" className="gap-2">
-                  <KeyRound className="h-4 w-4" />
-                  {t("tabPermissions")}
-                </TabsTrigger>
-              </TabsList>
+        <div className="grid shrink-0 gap-3 xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.1fr)_minmax(0,1fr)]">
+          <Card className="gap-0 p-4 sm:p-5">
+            <div className="flex items-center justify-between gap-3">
+              <h2 className="text-base font-semibold">角色分布</h2>
+              <InlineStatusBadge label={`${statistics.totalUsers} 人`} tone="emerald" />
             </div>
-
-            {/* 用户列表 Tab */}
-            <TabsContent value="users" className="mt-3 min-h-0 flex-1 overflow-hidden">
-              <DataTable
-                  data={users}
-                  columns={columns}
-                  loading={loading || refreshing}
-                  emptyMessage={t("tableEmpty")}
-                  enableRowSelection={true}
-                  className="min-h-0"
-                  density="compact"
-                  toolbar={(table) => (
-                    <DataTableToolbar
-                      table={table}
-                      searchKey="username"
-                      searchPlaceholder={t("searchPlaceholder")}
-                      filters={roleFilters}
-                      onRefresh={handleRefresh}
-                      showRefresh={true}
-                      isRefreshing={refreshing}
-                    >
-                      <Button size="sm" onClick={() => setIsCreateDialogOpen(true)}>
-                        <Plus className="mr-2 h-4 w-4" />
-                        {t("btnNewUser")}
-                      </Button>
-                    </DataTableToolbar>
-                  )}
-                  batchActions={(table) => (
-                    <Button
-                      variant="destructive"
-                      size="sm"
-                      onClick={() => {
-                        const selectedRows = table.getFilteredSelectedRowModel().rows
-                        const userIds = selectedRows.map(row => row.original.id)
-                        handleBatchDelete(userIds)
-                      }}
-                      className="h-7"
-                    >
-                      <Trash2 className="mr-2 h-4 w-4" />
-                      {t("batchDelete")}
-                    </Button>
-                  )}
-              />
-            </TabsContent>
-
-            {/* 权限列表 Tab */}
-            <TabsContent value="permissions" className="mt-3 min-h-0 flex-1 overflow-hidden">
-              <DataTable
-                  data={permissions}
-                  columns={permissionColumns}
-                  loading={loading}
-                  emptyMessage={t("permTableEmpty")}
-                  enableRowSelection={true}
-                  className="min-h-0"
-                  density="compact"
-                  toolbar={(table) => (
-                    <DataTableToolbar
-                      table={table}
-                      searchKey="name"
-                      searchPlaceholder={t("permSearchPlaceholder")}
-                      filters={moduleFilters}
-                      showRefresh={false}
-                    >
-                      <Button size="sm" onClick={handleOpenPermCreateDialog}>
-                        <Plus className="mr-2 h-4 w-4" />
-                        {t("permBtnNew")}
-                      </Button>
-                    </DataTableToolbar>
-                  )}
-                  batchActions={(table) => (
-                    <Button
-                      variant="destructive"
-                      size="sm"
-                      onClick={() => {
-                        const selectedRows = table.getFilteredSelectedRowModel().rows
-                        const permissionIds = selectedRows.map(row => row.original.id)
-                        handleBatchDeletePermissions(permissionIds)
-                      }}
-                      className="h-7"
-                    >
-                      <Trash2 className="mr-2 h-4 w-4" />
-                      {t("batchDelete")}
-                    </Button>
-                  )}
-              />
-            </TabsContent>
-          </Tabs>
-
-          <div className="scrollbar-custom grid min-h-0 gap-3 overflow-visible xl:overflow-auto xl:pr-1">
-            <Card className="gap-0 p-4 sm:p-5">
-              <div className="flex items-center justify-between gap-3">
-                <h2 className="text-base font-semibold">角色分布</h2>
-                <InlineStatusBadge label={`${statistics.totalUsers} 人`} tone="emerald" />
-              </div>
-              <div className="mt-4 space-y-3 text-sm">
-                {roleDistribution.map((item) => {
-                  const percent = statistics.totalUsers > 0 ? Math.round((item.value / statistics.totalUsers) * 100) : 0
-                  return (
-                    <div key={item.label} className="space-y-1.5">
-                      <div className="flex items-center justify-between gap-3">
-                        <InlineStatusBadge label={item.label} tone={item.tone} />
-                        <span className="text-muted-foreground tabular-nums">{item.value} / {percent}%</span>
-                      </div>
-                      <Progress value={percent} className="h-1.5" />
+            <div className="mt-4 space-y-3 text-sm">
+              {roleDistribution.map((item) => {
+                const percent = statistics.totalUsers > 0 ? Math.round((item.value / statistics.totalUsers) * 100) : 0
+                return (
+                  <div key={item.label} className="space-y-1.5">
+                    <div className="flex items-center justify-between gap-3">
+                      <InlineStatusBadge label={item.label} tone={item.tone} />
+                      <span className="text-muted-foreground tabular-nums">{item.value} / {percent}%</span>
                     </div>
-                  )
-                })}
-              </div>
-            </Card>
+                    <Progress value={percent} className="h-1.5" />
+                  </div>
+                )
+              })}
+            </div>
+          </Card>
 
-            <Card className="gap-0 p-4 sm:p-5">
-              <div className="flex items-center justify-between gap-3">
-                <h2 className="text-base font-semibold">权限覆盖</h2>
-                <InlineStatusBadge label={`${permissions.length} 项`} tone="amber" />
-              </div>
-              <div className="mt-4 space-y-3 text-sm">
+          <Card className="gap-0 p-4 sm:p-5">
+            <div className="flex items-center justify-between gap-3">
+              <h2 className="text-base font-semibold">权限覆盖</h2>
+              <InlineStatusBadge label={`${permissions.length} 项`} tone="amber" />
+            </div>
+            <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
+              <div className="space-y-3 text-sm">
                 {rolePermissionCoverage.map((item) => (
                   <div key={item.role} className="space-y-1.5">
                     <div className="flex items-center justify-between gap-3">
@@ -824,11 +705,7 @@ export default function UsersPage() {
                   </div>
                 ))}
               </div>
-            </Card>
-
-            <Card className="gap-0 p-4 sm:p-5">
-              <h2 className="text-base font-semibold">模块权限</h2>
-              <div className="mt-4 grid grid-cols-2 gap-2 text-sm">
+              <div className="grid grid-cols-2 gap-2 text-sm">
                 {permissionModuleStats.map((item) => (
                   <div key={item.module} className="rounded-md bg-muted/50 p-3">
                     <div className="truncate text-xs text-muted-foreground">{item.label}</div>
@@ -836,35 +713,160 @@ export default function UsersPage() {
                   </div>
                 ))}
               </div>
-            </Card>
+            </div>
+          </Card>
 
-            <Card className="gap-0 p-4 sm:p-5">
-              <div className="flex items-center justify-between gap-3">
-                <h2 className="text-base font-semibold">账号风险</h2>
-                <InlineStatusBadge label={lockedUsers.length === 0 ? "无锁定" : `${lockedUsers.length} 个锁定`} tone={lockedUsers.length === 0 ? "emerald" : "rose"} />
-              </div>
-              <div className="mt-4 space-y-2">
-                {lockedUsers.length === 0 ? (
-                  <div className="py-6 text-center text-sm text-muted-foreground">暂无锁定账户</div>
-                ) : lockedUsers.slice(0, 4).map((user) => (
-                  <div key={user.id} className="rounded-md bg-muted/50 px-3 py-2 text-sm">
-                    <div className="flex items-center justify-between gap-3">
-                      <span className="truncate font-medium">{user.username}</span>
-                      <InlineStatusBadge label="锁定" tone="rose" />
+          <Card className="gap-0 p-4 sm:p-5">
+            <div className="flex items-center justify-between gap-3">
+              <h2 className="text-base font-semibold">账号动态</h2>
+              <InlineStatusBadge label={lockedUsers.length === 0 ? "无锁定" : `${lockedUsers.length} 个锁定`} tone={lockedUsers.length === 0 ? "emerald" : "rose"} />
+            </div>
+            <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-1">
+              <div>
+                <div className="mb-2 text-sm font-medium">账号风险</div>
+                <div className="space-y-2">
+                  {lockedUsers.length === 0 ? (
+                    <div className="rounded-md border border-dashed p-4 text-center text-sm text-muted-foreground">暂无锁定账户</div>
+                  ) : lockedUsers.slice(0, 3).map((user) => (
+                    <div key={user.id} className="rounded-md bg-muted/50 px-3 py-2 text-sm">
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="truncate font-medium">{user.username}</span>
+                        <InlineStatusBadge label="锁定" tone="rose" />
+                      </div>
+                      <div className="mt-1 truncate text-xs text-muted-foreground">{user.lock_reason || formatUserTime(user.locked_until)}</div>
                     </div>
-                    <div className="mt-1 truncate text-xs text-muted-foreground">{user.lock_reason || formatUserTime(user.locked_until)}</div>
-                  </div>
-                ))}
+                  ))}
+                </div>
               </div>
-            </Card>
-
-            <DashboardSideList
-              title="最近登录"
-              empty="暂无登录记录"
-              items={recentLoginItems}
-            />
-          </div>
+              <div>
+                <div className="mb-2 text-sm font-medium">最近登录</div>
+                <div className="space-y-2">
+                  {recentLoginItems.length === 0 ? (
+                    <div className="rounded-md border border-dashed p-4 text-center text-sm text-muted-foreground">暂无登录记录</div>
+                  ) : recentLoginItems.slice(0, 3).map((item) => {
+                    const Icon = item.icon
+                    return (
+                      <div key={item.id} className="flex items-start gap-3 rounded-md px-1 py-2 hover:bg-accent">
+                        <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">
+                          <Icon className="h-4 w-4" />
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <div className="truncate text-sm font-medium">{item.title}</div>
+                          <div className="truncate text-xs text-muted-foreground">{item.description}</div>
+                        </div>
+                        <span className="shrink-0 text-xs tabular-nums text-muted-foreground">{item.time}</span>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            </div>
+          </Card>
         </div>
+
+        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "users" | "permissions")} className="flex min-h-[520px] shrink-0 flex-col xl:min-h-0 xl:flex-1">
+          {/* 用户列表 Tab */}
+          <TabsContent value="users" className="min-h-0 flex-1 overflow-hidden">
+            <DataTable
+                data={users}
+                columns={columns}
+                loading={loading || refreshing}
+                emptyMessage={t("tableEmpty")}
+                enableRowSelection={true}
+                className="min-h-0"
+                scrollContainerClassName="min-h-[360px]"
+                tableClassName="min-w-[980px]"
+                density="compact"
+                toolbar={(table) => (
+                  <DataTableToolbar
+                    table={table}
+                    searchKey="username"
+                    searchPlaceholder={t("searchPlaceholder")}
+                    filters={roleFilters}
+                    onRefresh={handleRefresh}
+                    showRefresh={false}
+                    isRefreshing={refreshing}
+                  >
+                    <Button size="sm" onClick={() => setIsCreateDialogOpen(true)}>
+                      <Plus className="mr-2 h-4 w-4" />
+                      {t("btnNewUser")}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleRefresh}
+                      disabled={refreshing}
+                      className="h-8"
+                    >
+                      <RefreshCw className={`mr-2 h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
+                      {tCommon("tableRefresh")}
+                    </Button>
+                    {workspaceTabs()}
+                  </DataTableToolbar>
+                )}
+                batchActions={(table) => (
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    onClick={() => {
+                      const selectedRows = table.getFilteredSelectedRowModel().rows
+                      const userIds = selectedRows.map(row => row.original.id)
+                      handleBatchDelete(userIds)
+                    }}
+                    className="h-7"
+                  >
+                    <Trash2 className="mr-2 h-4 w-4" />
+                    {t("batchDelete")}
+                  </Button>
+                )}
+            />
+          </TabsContent>
+
+          {/* 权限列表 Tab */}
+          <TabsContent value="permissions" className="min-h-0 flex-1 overflow-hidden">
+            <DataTable
+                data={permissions}
+                columns={permissionColumns}
+                loading={loading}
+                emptyMessage={t("permTableEmpty")}
+                enableRowSelection={true}
+                className="min-h-0"
+                scrollContainerClassName="min-h-[360px]"
+                tableClassName="min-w-[980px]"
+                density="compact"
+                toolbar={(table) => (
+                  <DataTableToolbar
+                    table={table}
+                    searchKey="name"
+                    searchPlaceholder={t("permSearchPlaceholder")}
+                    filters={moduleFilters}
+                    showRefresh={false}
+                  >
+                    <Button size="sm" onClick={handleOpenPermCreateDialog}>
+                      <Plus className="mr-2 h-4 w-4" />
+                      {t("permBtnNew")}
+                    </Button>
+                    {workspaceTabs()}
+                  </DataTableToolbar>
+                )}
+                batchActions={(table) => (
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    onClick={() => {
+                      const selectedRows = table.getFilteredSelectedRowModel().rows
+                      const permissionIds = selectedRows.map(row => row.original.id)
+                      handleBatchDeletePermissions(permissionIds)
+                    }}
+                    className="h-7"
+                  >
+                    <Trash2 className="mr-2 h-4 w-4" />
+                    {t("batchDelete")}
+                  </Button>
+                )}
+            />
+          </TabsContent>
+        </Tabs>
       </div>
 
       {/* 新建用户对话框 */}

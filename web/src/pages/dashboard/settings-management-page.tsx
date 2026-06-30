@@ -4,8 +4,7 @@ import { PageHeader } from "@/components/page-header"
 import { Users, Database } from "lucide-react"
 import { UserManagementContent } from "./settings/management/_tabs/user-management-content"
 import { BackupRestoreTab } from "./settings/management/_tabs/backup-restore-tab"
-import { SidebarProvider, Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarMenu, SidebarMenuItem, SidebarMenuButton } from "@/components/ui/sidebar"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useTranslation } from "react-i18next"
 
 type SectionId = "users" | "backup"
@@ -27,64 +26,34 @@ export default function ManagementPage() {
     <>
       <PageHeader title={t("pageTitle")} />
 
-      <div className="flex min-h-0 flex-1 overflow-hidden">
-        <SidebarProvider>
-          {/* 左侧导航栏 - 桌面端 */}
-          <Sidebar collapsible="none" className="hidden md:flex md:w-44 lg:w-48 border-r shrink-0">
-            <SidebarContent className="py-4">
-              <SidebarGroup>
-                <SidebarGroupContent>
-                  <SidebarMenu>
-                    {navItems.map((item) => (
-                      <SidebarMenuItem key={item.id}>
-                        <SidebarMenuButton
-                          asChild
-                          isActive={item.id === activeSection}
-                          onClick={() => handleSectionChange(item.id)}
-                        >
-                          <button>
-                            <item.icon />
-                            <span>{t(item.labelKey)}</span>
-                          </button>
-                        </SidebarMenuButton>
-                      </SidebarMenuItem>
-                    ))}
-                  </SidebarMenu>
-                </SidebarGroupContent>
-              </SidebarGroup>
-            </SidebarContent>
-          </Sidebar>
-
-          {/* 右侧内容区 */}
-          <main className="flex min-h-0 flex-1 flex-col overflow-hidden">
-            {/* 移动端下拉选择器 */}
-            <div className="md:hidden border-b px-4 py-3">
-              <Select value={activeSection} onValueChange={(value: SectionId) => handleSectionChange(value)}>
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder={t("selectPlaceholder")} />
-                </SelectTrigger>
-                <SelectContent>
-                  {navItems.map((item) => (
-                    <SelectItem key={item.id} value={item.id}>
-                      <div className="flex items-center gap-2">
-                        <item.icon className="h-4 w-4" />
-                        <span>{t(item.labelKey)}</span>
-                      </div>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto overflow-x-hidden p-3 pt-0 scrollbar-custom sm:p-4 sm:pt-0">
+        <Tabs
+          value={activeSection}
+          onValueChange={(value) => handleSectionChange(value as SectionId)}
+          className="min-h-0 flex-1 gap-3"
+        >
+          <div className="flex shrink-0 flex-col gap-3 rounded-md border bg-card p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
+            <div>
+              <h2 className="text-base font-semibold">{t("pageTitle")}</h2>
+              <p className="mt-1 text-sm text-muted-foreground">集中维护组织成员、权限策略与系统备份。</p>
             </div>
+            <TabsList className="w-full sm:w-fit">
+              {navItems.map((item) => (
+                <TabsTrigger key={item.id} value={item.id} className="gap-2">
+                  <item.icon className="h-4 w-4" />
+                  {t(item.labelKey)}
+                </TabsTrigger>
+              ))}
+            </TabsList>
+          </div>
 
-            {/* 内容滚动区域 */}
-            <div className="min-h-0 flex-1 overflow-y-auto scrollbar-custom">
-              <div className="space-y-4 p-4">
-                {activeSection === "users" && <UserManagementContent />}
-                {activeSection === "backup" && <BackupRestoreTab />}
-              </div>
-            </div>
-          </main>
-        </SidebarProvider>
+          <TabsContent value="users" className="mt-0 flex min-h-[620px] shrink-0 overflow-hidden xl:min-h-0 xl:flex-1">
+            <UserManagementContent />
+          </TabsContent>
+          <TabsContent value="backup" className="mt-0 min-h-0 overflow-auto scrollbar-custom">
+            <BackupRestoreTab />
+          </TabsContent>
+        </Tabs>
       </div>
     </>
   )

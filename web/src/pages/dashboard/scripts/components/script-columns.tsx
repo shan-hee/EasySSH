@@ -1,4 +1,4 @@
-import { ColumnDef } from "@tanstack/react-table"
+import type { Column, ColumnDef } from "@tanstack/react-table"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -8,7 +8,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { Code2, ArrowUpDown, ArrowUp, ArrowDown, Play, Edit, Trash2, User, CalendarClock, Hash, MoreHorizontal } from "lucide-react"
+import { Code2, ArrowUpDown, ArrowUp, ArrowDown, Play, Edit, Trash2, MoreHorizontal } from "lucide-react"
 import { type Script } from "@/lib/api"
 import { formatTimestamp } from "@/components/ui/data-table"
 import { cn } from "@/lib/utils"
@@ -20,6 +20,40 @@ interface Handlers {
   onSelect?: (id: string) => void
   selectedId?: string | null
   t: (key: string) => string
+}
+
+function SortableHeader<TValue>({
+  column,
+  label,
+  align = "left",
+}: {
+  column: Column<Script, TValue>
+  label: string
+  align?: "left" | "center" | "right"
+}) {
+  const Icon = column.getIsSorted() === "asc"
+    ? ArrowUp
+    : column.getIsSorted() === "desc"
+      ? ArrowDown
+      : ArrowUpDown
+
+  return (
+    <Button
+      type="button"
+      variant="ghost"
+      size="sm"
+      onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+      className={cn(
+        "h-7 px-2 text-xs font-medium",
+        align === "left" && "-translate-x-2",
+        align === "center" && "mx-auto",
+        align === "right" && "ml-auto"
+      )}
+    >
+      <span>{label}</span>
+      <Icon className="ml-1.5 h-3.5 w-3.5" />
+    </Button>
+  )
 }
 
 export function createScriptColumns({
@@ -34,25 +68,9 @@ export function createScriptColumns({
     {
       id: "name",
       accessorKey: "name",
-      header: ({ column }) => (
-        <Button
-          variant="ghost"
-          onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-          className="px-2"
-        >
-          <div className="flex items-center gap-2">
-            <Code2 className="h-4 w-4" />
-            {t("colName")}
-          </div>
-          {column.getIsSorted() === "asc" ? (
-            <ArrowUp className="ml-2 h-4 w-4" />
-          ) : column.getIsSorted() === "desc" ? (
-            <ArrowDown className="ml-2 h-4 w-4" />
-          ) : (
-            <ArrowUpDown className="ml-2 h-4 w-4" />
-          )}
-        </Button>
-      ),
+      size: 360,
+      minSize: 320,
+      header: ({ column }) => <SortableHeader column={column} label={t("colName")} />,
       cell: ({ row }) => {
         const script = row.original
         const primaryTag = script.tags?.[0]
@@ -61,7 +79,7 @@ export function createScriptColumns({
             type="button"
             onClick={() => onSelect?.(script.id)}
             className={cn(
-              "flex min-w-[200px] max-w-[340px] items-start gap-2 rounded-md px-1 py-0.5 text-left transition-colors hover:bg-accent/60",
+              "flex w-full min-w-0 items-start gap-2 rounded-md px-1 py-0.5 text-left transition-colors hover:bg-accent/60",
               selectedId === script.id && "bg-accent text-accent-foreground"
             )}
           >
@@ -97,6 +115,8 @@ export function createScriptColumns({
     {
       id: "description",
       accessorKey: "description",
+      size: 260,
+      minSize: 220,
       header: t("colDescription"),
       cell: ({ row }) => (
         <span className="line-clamp-2 max-w-[240px] text-xs text-muted-foreground">
@@ -108,6 +128,8 @@ export function createScriptColumns({
     {
       id: "content",
       accessorKey: "content",
+      size: 340,
+      minSize: 280,
       header: t("colContent"),
       cell: ({ row }) => (
         <div className="max-w-[320px] rounded-md bg-muted px-3 py-2">
@@ -121,11 +143,13 @@ export function createScriptColumns({
     {
       id: "tags",
       accessorKey: "tags",
+      size: 170,
+      minSize: 140,
       header: t("colTags"),
       cell: ({ row }) => {
         const tags = row.original.tags || []
         return (
-          <div className="flex max-w-[150px] flex-wrap gap-1">
+          <div className="flex w-full flex-wrap gap-1">
             {tags.length === 0 ? (
               <span className="text-sm text-muted-foreground">-</span>
             ) : (
@@ -155,27 +179,11 @@ export function createScriptColumns({
     {
       id: "author",
       accessorKey: "author",
-      header: ({ column }) => (
-        <Button
-          variant="ghost"
-          onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-          className="px-2"
-        >
-          <div className="flex items-center gap-2">
-            <User className="h-4 w-4" />
-            {t("colAuthor")}
-          </div>
-          {column.getIsSorted() === "asc" ? (
-            <ArrowUp className="ml-2 h-4 w-4" />
-          ) : column.getIsSorted() === "desc" ? (
-            <ArrowDown className="ml-2 h-4 w-4" />
-          ) : (
-            <ArrowUpDown className="ml-2 h-4 w-4" />
-          )}
-        </Button>
-      ),
+      size: 170,
+      minSize: 140,
+      header: ({ column }) => <SortableHeader column={column} label={t("colAuthor")} />,
       cell: ({ row }) => (
-        <span className="block max-w-[96px] truncate text-sm text-muted-foreground">{row.original.author || "-"}</span>
+        <span className="block truncate text-sm text-muted-foreground">{row.original.author || "-"}</span>
       ),
       filterFn: (row, id, value) => {
         const selected = (value as string[]) || []
@@ -186,25 +194,9 @@ export function createScriptColumns({
     {
       id: "updated_at",
       accessorKey: "updated_at",
-      header: ({ column }) => (
-        <Button
-          variant="ghost"
-          onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-          className="px-2"
-        >
-          <div className="flex items-center gap-2">
-            <CalendarClock className="h-4 w-4" />
-            {t("colUpdatedAt")}
-          </div>
-          {column.getIsSorted() === "asc" ? (
-            <ArrowUp className="ml-2 h-4 w-4" />
-          ) : column.getIsSorted() === "desc" ? (
-            <ArrowDown className="ml-2 h-4 w-4" />
-          ) : (
-            <ArrowUpDown className="ml-2 h-4 w-4" />
-          )}
-        </Button>
-      ),
+      size: 170,
+      minSize: 150,
+      header: ({ column }) => <SortableHeader column={column} label={t("colUpdatedAt")} />,
       cell: ({ row }) => {
         const ts = row.original.updated_at
         const { date, time } = formatTimestamp(ts)
@@ -219,32 +211,18 @@ export function createScriptColumns({
     {
       id: "executions",
       accessorKey: "executions",
-      header: ({ column }) => (
-        <Button
-          variant="ghost"
-          onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-          className="px-2"
-        >
-          <div className="flex items-center gap-2">
-            <Hash className="h-4 w-4" />
-            {t("colExecutions")}
-          </div>
-          {column.getIsSorted() === "asc" ? (
-            <ArrowUp className="ml-2 h-4 w-4" />
-          ) : column.getIsSorted() === "desc" ? (
-            <ArrowDown className="ml-2 h-4 w-4" />
-          ) : (
-            <ArrowUpDown className="ml-2 h-4 w-4" />
-          )}
-        </Button>
-      ),
+      size: 130,
+      minSize: 110,
+      header: ({ column }) => <SortableHeader column={column} label={t("colExecutions")} align="center" />,
       cell: ({ row }) => (
-        <span className="tabular-nums">{row.original.executions || 0}</span>
+        <span className="block text-center tabular-nums">{row.original.executions || 0}</span>
       ),
     },
     {
       id: "actions",
-      header: t("colActions"),
+      size: 120,
+      minSize: 100,
+      header: () => <div className="text-right">{t("colActions")}</div>,
       cell: ({ row }) => {
         const script = row.original
         return (

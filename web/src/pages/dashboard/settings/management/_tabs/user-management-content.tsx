@@ -1,6 +1,5 @@
 
 import { useState, useEffect, useCallback } from "react"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -247,9 +246,9 @@ export function UserManagementContent() {
 
   // 渲染主体内容（去掉 PageHeader）
   return loading ? (
-    <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden p-3 pt-0 sm:gap-4 sm:p-4 sm:pt-0">
-      {/* 统计卡片骨架屏 */}
-      <div className="grid shrink-0 gap-3 md:grid-cols-4">
+    <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto overflow-x-hidden p-3 pt-0 scrollbar-custom sm:gap-4 sm:p-4 sm:pt-0">
+      {/* 统计概览骨架屏 */}
+      <div className="grid shrink-0 gap-2 md:grid-cols-4">
         <SkeletonCard showHeader={false} lines={2} />
         <SkeletonCard showHeader={false} lines={2} />
         <SkeletonCard showHeader={false} lines={2} />
@@ -259,128 +258,87 @@ export function UserManagementContent() {
       <SkeletonCard showHeader lines={8} className="min-h-0 flex-1" />
     </div>
   ) : (
-    <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden p-3 pt-0 sm:gap-4 sm:p-4 sm:pt-0">
+    <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto overflow-x-hidden p-3 pt-0 scrollbar-custom sm:gap-4 sm:p-4 sm:pt-0">
       {confirmDialog}
-      {/* 统计卡片 */}
-      <div className="grid shrink-0 gap-3 md:grid-cols-4">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">
-              {t("statsTotalUsers")}
-            </CardTitle>
-            <Users className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{statistics.totalUsers}</div>
-            <p className="text-xs text-muted-foreground">
-              {t("statsTotalUsersDesc")}
-            </p>
-          </CardContent>
-        </Card>
+      <div className="grid shrink-0 gap-2 sm:grid-cols-2 xl:grid-cols-4">
+        {[
+          { label: t("statsTotalUsers"), value: statistics.totalUsers, icon: Users, hint: t("statsTotalUsersDesc") },
+          { label: t("statsAdmins"), value: statistics.adminUsers, icon: Shield, hint: t("statsAdminsDesc") },
+          { label: t("statsNormalUsers"), value: statistics.normalUsers, icon: Users, hint: t("statsNormalUsersDesc") },
+          { label: t("statsViewers"), value: statistics.viewerUsers, icon: Eye, hint: t("statsViewersDesc") },
+        ].map((item) => {
+          const Icon = item.icon
+          return (
+            <div key={item.label} className="rounded-md border bg-card p-3">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="truncate text-xs text-muted-foreground">{item.label}</div>
+                  <div className="mt-1 text-xl font-semibold tabular-nums">{item.value}</div>
+                  <div className="mt-1 truncate text-xs text-muted-foreground">{item.hint}</div>
+                </div>
+                <Icon className="h-4 w-4 shrink-0 text-muted-foreground" />
+              </div>
+            </div>
+          )
+        })}
+      </div>
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">
-              {t("statsAdmins")}
-            </CardTitle>
-            <Shield className="h-4 w-4 text-red-500" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{statistics.adminUsers}</div>
-            <p className="text-xs text-muted-foreground">
-              {t("statsAdminsDesc")}
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">
-              {t("statsNormalUsers")}
-            </CardTitle>
-            <Users className="h-4 w-4 text-blue-500" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{statistics.normalUsers}</div>
-            <p className="text-xs text-muted-foreground">
-              {t("statsNormalUsersDesc")}
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">
-              {t("statsViewers")}
-            </CardTitle>
-            <Eye className="h-4 w-4 text-gray-500" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{statistics.viewerUsers}</div>
-            <p className="text-xs text-muted-foreground">
-              {t("statsViewersDesc")}
-            </p>
-          </CardContent>
-        </Card>
+      <div className="flex shrink-0 flex-col gap-1 rounded-md border bg-card p-4 sm:p-5">
+        <h2 className="text-base font-semibold">{t("pageTitle")}</h2>
+        <p className="text-sm text-muted-foreground">{t("tableDescription", { count: users.length })}</p>
       </div>
 
       {/* 用户管理表格 */}
-      <Card className="min-h-0 flex-1 gap-0 overflow-hidden">
-        <CardHeader className="flex shrink-0 flex-row items-center justify-between">
-          <div>
-            <CardTitle className="text-lg">{t("pageTitle")}</CardTitle>
-            <CardDescription>
-              {t("tableDescription", { count: users.length })}
-            </CardDescription>
-          </div>
-          <Button onClick={() => setIsCreateDialogOpen(true)}>
-            <Plus className="mr-2 h-4 w-4" />
-            {t("btnNewUser")}
-          </Button>
-        </CardHeader>
-        <CardContent className="min-h-0 flex-1 p-4 pt-0">
-          <DataTable
-            columns={columns}
-            data={users}
-            enableRowSelection={true}
-            toolbar={(table) => (
-              <DataTableToolbar
-                table={table}
-                searchKey="username"
-                searchPlaceholder={t("searchPlaceholder")}
-                filters={[
-                  {
-                    column: "role",
-                    title: t("filterRoleTitle"),
-                    options: [
-                      { label: t("filterRoleAdmin"), value: "admin", icon: Shield },
-                      { label: t("filterRoleUser"), value: "user", icon: Users },
-                      { label: t("filterRoleViewer"), value: "viewer", icon: Eye },
-                    ],
-                  },
-                ]}
-                onRefresh={handleRefresh}
-                showRefresh={true}
-              />
-            )}
-            batchActions={(table) => (
-              <Button
-                variant="destructive"
-                size="sm"
-                onClick={() => {
-                  const selectedRows = table.getFilteredSelectedRowModel().rows
-                  const userIds = selectedRows.map((row) => (row.original as UserDetail).id)
-                  handleBatchDelete(userIds)
-                }}
-                className="h-7"
-              >
-                <Trash2 className="mr-2 h-4 w-4" />
-                {t("batchDelete")}
+      <div className="min-h-[520px] shrink-0 overflow-hidden xl:min-h-0 xl:flex-1">
+        <DataTable
+          columns={columns}
+          data={users}
+          enableRowSelection={true}
+          className="min-h-0"
+          scrollContainerClassName="min-h-[360px]"
+          tableClassName="min-w-[980px]"
+          toolbar={(table) => (
+            <DataTableToolbar
+              table={table}
+              searchKey="username"
+              searchPlaceholder={t("searchPlaceholder")}
+              filters={[
+                {
+                  column: "role",
+                  title: t("filterRoleTitle"),
+                  options: [
+                    { label: t("filterRoleAdmin"), value: "admin", icon: Shield },
+                    { label: t("filterRoleUser"), value: "user", icon: Users },
+                    { label: t("filterRoleViewer"), value: "viewer", icon: Eye },
+                  ],
+                },
+              ]}
+              onRefresh={handleRefresh}
+              showRefresh={true}
+            >
+              <Button size="sm" onClick={() => setIsCreateDialogOpen(true)}>
+                <Plus className="mr-2 h-4 w-4" />
+                {t("btnNewUser")}
               </Button>
-            )}
-          />
-        </CardContent>
-      </Card>
+            </DataTableToolbar>
+          )}
+          batchActions={(table) => (
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={() => {
+                const selectedRows = table.getFilteredSelectedRowModel().rows
+                const userIds = selectedRows.map((row) => (row.original as UserDetail).id)
+                handleBatchDelete(userIds)
+              }}
+              className="h-7"
+            >
+              <Trash2 className="mr-2 h-4 w-4" />
+              {t("batchDelete")}
+            </Button>
+          )}
+        />
+      </div>
 
       {/* 创建用户对话框 */}
       <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>

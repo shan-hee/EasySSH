@@ -1,7 +1,6 @@
 import * as React from "react"
 import type { ColumnDef } from "@tanstack/react-table"
 import {
-  AlertTriangle,
   ArrowDown,
   ArrowUp,
   ArrowUpDown,
@@ -10,19 +9,22 @@ import {
   History,
   Rocket,
   Search,
-  TerminalSquare,
   Upload,
   X,
-  XCircle,
 } from "lucide-react"
 import { useTranslation } from "react-i18next"
 import { useSearchParams } from "react-router-dom"
 import { PageHeader } from "@/components/page-header"
 import { Button } from "@/components/ui/button"
-import { Card } from "@/components/ui/card"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Progress } from "@/components/ui/progress"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { toast } from "@/components/ui/sonner"
 import { getErrorMessage } from "@/lib/error-utils"
 import { DataTable } from "@/components/ui/data-table"
@@ -32,33 +34,27 @@ import {
   type OperationRecord,
   type OperationRecordCategory,
   type OperationRecordListParams,
-  type OperationRecordStatistics,
   type OperationRecordStatus,
   type OperationRecordType,
 } from "@/lib/api/operation-records"
 import { useAuthReady } from "@/hooks/use-auth-ready"
 import {
-  DashboardDonutCard,
-  DashboardMetricCard,
-  DashboardSideList,
   DashboardStatusLine,
-  DashboardTrendCard,
   InlineStatusBadge,
   type DashboardTone,
-  type DonutItem,
 } from "./logs/components/log-dashboard-widgets"
-
-const TREND_BUCKETS = 12
-const DAY_MS = 24 * 60 * 60 * 1000
-const ALL_VALUE = "__all"
-const EMPTY_BY_TYPE: Partial<Record<OperationRecordType, number>> = {}
+import {
+  LogDateRangeFilterButton,
+  LogServerFilterButton,
+  type ServerFilterOption,
+} from "./logs/components/log-server-filters"
 
 type SortOrder = "asc" | "desc"
 
 interface OperationRecordFilters {
-  type: string
-  category: string
-  status: string
+  type: string[]
+  category: string[]
+  status: string[]
   source: string
   ip: string
   keyword: string
@@ -78,9 +74,9 @@ const defaultSort: OperationRecordSortState = {
 
 function createDefaultFilters(type?: OperationRecordType): OperationRecordFilters {
   return {
-    type: type || ALL_VALUE,
-    category: ALL_VALUE,
-    status: ALL_VALUE,
+    type: type ? [type] : [],
+    category: [],
+    status: [],
     source: "",
     ip: "",
     keyword: "",
@@ -152,48 +148,41 @@ function categoryTone(category: OperationRecordCategory): DashboardTone {
   return category === "audit" ? "violet" : "emerald"
 }
 
-function getTodayRange() {
-  const start = new Date()
-  start.setHours(0, 0, 0, 0)
-  const end = new Date(start)
-  end.setDate(end.getDate() + 1)
-  end.setMilliseconds(end.getMilliseconds() - 1)
-
-  return {
-    start_date: start.toISOString(),
-    end_date: end.toISOString(),
+function actionLabel(t: (key: string) => string, action: string) {
+  const labels: Record<string, string> = {
+    login: t("actionLogin"),
+    logout: t("actionLogout"),
+    ssh_connect: t("actionConnect"),
+    ssh_disconnect: t("actionDisconnect"),
+    ssh_session: t("actionSshSession"),
+    sftp_upload: t("actionUpload"),
+    sftp_download: t("actionDownload"),
+    sftp_delete: t("actionDelete"),
+    sftp_rename: t("actionRename"),
+    sftp_mkdir: t("actionMkdir"),
+    upload: t("actionUpload"),
+    download: t("actionDownload"),
+    batch_download: t("actionBatchDownload"),
+    transfer: t("actionTransfer"),
+    monitoring_query: t("actionMonitoringQuery"),
+    task_execute: t("actionTaskExecute"),
+    server_create: t("actionServerCreate"),
+    server_update: t("actionServerUpdate"),
+    server_delete: t("actionServerDelete"),
+    server_test: t("actionServerTest"),
+    user_create: t("actionUserCreate"),
+    user_update: t("actionUserUpdate"),
+    user_delete: t("actionUserDelete"),
+    scheduled_task_create: t("actionScheduledTaskCreate"),
+    scheduled_task_update: t("actionScheduledTaskUpdate"),
+    scheduled_task_delete: t("actionScheduledTaskDelete"),
+    scheduled_task_toggle: t("actionScheduledTaskToggle"),
+    scheduled_task_trigger: t("actionScheduledTaskTrigger"),
+    create: t("actionCreate"),
+    update: t("actionUpdate"),
+    delete: t("actionDelete"),
   }
-}
-
-function getLast24HoursRange() {
-  const end = new Date()
-  return {
-    start_date: new Date(end.getTime() - DAY_MS).toISOString(),
-    end_date: end.toISOString(),
-  }
-}
-
-function getTrendBucketIndex(value?: string) {
-  if (!value) return -1
-  const timestamp = new Date(value).getTime()
-  if (Number.isNaN(timestamp)) return -1
-
-  const now = Date.now()
-  const start = now - DAY_MS
-  if (timestamp < start || timestamp > now) return -1
-
-  return Math.min(TREND_BUCKETS - 1, Math.floor(((timestamp - start) / DAY_MS) * TREND_BUCKETS))
-}
-
-function buildTrend(records: OperationRecord[], predicate: (record: OperationRecord) => boolean = () => true) {
-  const buckets = Array.from({ length: TREND_BUCKETS }, () => 0)
-  records.forEach((record) => {
-    if (!predicate(record)) return
-    const bucket = getTrendBucketIndex(record.started_at || record.created_at)
-    if (bucket < 0) return
-    buckets[bucket] += Math.max(1, record.success_count + record.failure_count || 1)
-  })
-  return buckets
+  return labels[action] || action
 }
 
 function exportRecords(records: OperationRecord[]) {
@@ -208,9 +197,9 @@ function exportRecords(records: OperationRecord[]) {
 
 function filtersToParams(filters: OperationRecordFilters): Pick<OperationRecordListParams, "type" | "category" | "status" | "source" | "ip" | "keyword" | "start_date" | "end_date"> {
   return {
-    type: filters.type === ALL_VALUE ? undefined : filters.type as OperationRecordType,
-    category: filters.category === ALL_VALUE ? undefined : filters.category as OperationRecordCategory,
-    status: filters.status === ALL_VALUE ? undefined : filters.status as OperationRecordStatus,
+    type: filters.type.length > 0 ? filters.type as OperationRecordType[] : undefined,
+    category: filters.category.length > 0 ? filters.category as OperationRecordCategory[] : undefined,
+    status: filters.status.length > 0 ? filters.status as OperationRecordStatus[] : undefined,
     source: filters.source.trim() || undefined,
     ip: filters.ip.trim() || undefined,
     keyword: filters.keyword.trim() || undefined,
@@ -222,9 +211,9 @@ function filtersToParams(filters: OperationRecordFilters): Pick<OperationRecordL
 function hasActiveFilters(filters: OperationRecordFilters) {
   return Object.entries(filters).some(([key, value]) => {
     if (key === "type" || key === "category" || key === "status") {
-      return value !== ALL_VALUE
+      return Array.isArray(value) && value.length > 0
     }
-    return value.trim() !== ""
+    return typeof value === "string" && value.trim() !== ""
   })
 }
 
@@ -251,8 +240,6 @@ function OperationLogsContent() {
   const [filters, setFilters] = React.useState<OperationRecordFilters>(() => createDefaultFilters(initialType))
   const [sort, setSort] = React.useState<OperationRecordSortState>(defaultSort)
   const [records, setRecords] = React.useState<OperationRecord[]>([])
-  const [trendRecords, setTrendRecords] = React.useState<OperationRecord[]>([])
-  const [statistics, setStatistics] = React.useState<OperationRecordStatistics | null>(null)
   const [page, setPage] = React.useState(1)
   const [pageSize, setPageSize] = React.useState(20)
   const [totalPages, setTotalPages] = React.useState(1)
@@ -260,6 +247,7 @@ function OperationLogsContent() {
   const [loading, setLoading] = React.useState(true)
   const [refreshing, setRefreshing] = React.useState(false)
   const [selectedId, setSelectedId] = React.useState<string | null>(null)
+  const [isDetailDialogOpen, setIsDetailDialogOpen] = React.useState(false)
 
   const typeLabels = React.useMemo<Record<OperationRecordType, string>>(() => ({
     connection: t("typeConnection"),
@@ -296,34 +284,16 @@ function OperationLogsContent() {
       else setLoading(true)
 
       const filterParams = filtersToParams(nextFilters)
-      const todayRange = getTodayRange()
-      const [list, stats, recent] = await Promise.all([
-        operationRecordsApi.list({
-          page: nextPage,
-          page_size: nextPageSize,
-          ...filterParams,
-          ...nextSort,
-        }),
-        operationRecordsApi.getStatistics({
-          type: filterParams.type,
-          category: filterParams.category,
-          start_date: filterParams.start_date || todayRange.start_date,
-          end_date: filterParams.end_date || todayRange.end_date,
-        }),
-        operationRecordsApi.list({
-          page: 1,
-          page_size: 100,
-          ...filterParams,
-          ...nextSort,
-          ...getLast24HoursRange(),
-        }),
-      ])
+      const list = await operationRecordsApi.list({
+        page: nextPage,
+        page_size: nextPageSize,
+        ...filterParams,
+        ...nextSort,
+      })
       setRecords(list.records || [])
-      setTrendRecords(recent.records || [])
       setPage(list.page || nextPage)
       setTotalPages(list.total_pages || 1)
       setTotalRows(list.total || 0)
-      setStatistics(stats)
       setSelectedId((current) => (
         current && list.records?.some((record) => record.id === current)
           ? current
@@ -346,7 +316,7 @@ function OperationLogsContent() {
   React.useEffect(() => {
     if (previousTypeParamRef.current === initialType) return
     previousTypeParamRef.current = initialType
-    const nextFilters = { ...filters, type: initialType || ALL_VALUE }
+    const nextFilters = { ...filters, type: initialType ? [initialType] : [] }
     setFilters(nextFilters)
     setPage(1)
     setSelectedId(null)
@@ -360,60 +330,6 @@ function OperationLogsContent() {
     () => records.find((record) => record.id === selectedId) || records[0] || null,
     [records, selectedId]
   )
-
-  const trend = React.useMemo(() => buildTrend(trendRecords), [trendRecords])
-  const connectionTrend = React.useMemo(
-    () => buildTrend(trendRecords, (record) => record.type === "connection"),
-    [trendRecords]
-  )
-  const transferTrend = React.useMemo(
-    () => buildTrend(trendRecords, (record) => record.type === "transfer"),
-    [trendRecords]
-  )
-  const executionTrend = React.useMemo(
-    () => buildTrend(trendRecords, (record) => record.type === "execution"),
-    [trendRecords]
-  )
-  const failureTrend = React.useMemo(
-    () => buildTrend(trendRecords, (record) => record.status === "failure"),
-    [trendRecords]
-  )
-  const hasTrendData = trend.some((value) => value > 0)
-  const total = statistics?.total || 0
-  const byType = statistics?.by_type || EMPTY_BY_TYPE
-  const donutItems = React.useMemo<DonutItem[]>(() => {
-    const source = Object.keys(byType).length > 0
-      ? byType
-      : records.reduce<Record<string, number>>((acc, record) => {
-          acc[record.type] = (acc[record.type] || 0) + 1
-          return acc
-        }, {})
-    return (["connection", "transfer", "execution", "audit"] as OperationRecordType[]).map((recordType, index) => ({
-      label: typeLabels[recordType],
-      value: source[recordType] || 0,
-      color: ["var(--chart-1)", "var(--chart-4)", "var(--chart-3)", "var(--chart-2)"][index],
-    }))
-  }, [byType, records, typeLabels])
-
-  const recentExceptions = React.useMemo(() => (
-    trendRecords
-      .filter((record) => (
-        record.status === "failure" ||
-        record.status === "partial" ||
-        record.status === "canceled" ||
-        record.status === "timeout" ||
-        record.status === "warning"
-      ))
-      .slice(0, 5)
-      .map((record) => ({
-        id: record.id,
-        icon: record.status === "partial" || record.status === "warning" ? AlertTriangle : XCircle,
-        title: record.title || record.resource || typeLabels[record.type],
-        description: `${record.server_name || "-"} / ${record.username || "-"}`,
-        time: formatTime(record.started_at || record.created_at),
-        tone: statusTone(record.status),
-      }))
-  ), [trendRecords, typeLabels])
 
   const handlePageChange = (nextPage: number) => {
     setPage(nextPage)
@@ -433,6 +349,7 @@ function OperationLogsContent() {
   const handleApplyFilters = () => {
     setPage(1)
     setSelectedId(null)
+    setIsDetailDialogOpen(false)
     void loadData(1, true, filters, pageSize)
   }
 
@@ -441,6 +358,7 @@ function OperationLogsContent() {
     setFilters(nextFilters)
     setPage(1)
     setSelectedId(null)
+    setIsDetailDialogOpen(false)
     void loadData(1, true, nextFilters, pageSize)
   }
 
@@ -495,11 +413,12 @@ function OperationLogsContent() {
       cell: ({ row }) => {
         const record = row.original
         const TypeIcon = typeIcon(record.type)
+        const readableAction = actionLabel(t, record.action)
         return (
           <div className="flex min-w-[220px] items-center gap-2">
             <TypeIcon className="h-4 w-4 shrink-0 text-muted-foreground" />
             <div className="min-w-0">
-              <div className="truncate font-medium">{record.title || record.resource || record.action}</div>
+              <div className="truncate font-medium">{record.title || readableAction}</div>
               <div className="truncate text-xs text-muted-foreground">{record.resource || record.source || "-"}</div>
             </div>
           </div>
@@ -579,15 +498,7 @@ function OperationLogsContent() {
         <DashboardStatusLine label={t("systemHealthy")} timestamp={formatDateTime(new Date().toISOString())} />
       </div>
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-5">
-        <DashboardMetricCard title={t("metricTodayOps")} value={total} icon={FileText} tone="emerald" spark={trend} loading={loading} />
-        <DashboardMetricCard title={t("metricConnections")} value={byType.connection || 0} icon={TerminalSquare} tone="blue" spark={connectionTrend} loading={loading} />
-        <DashboardMetricCard title={t("metricTransfers")} value={byType.transfer || 0} icon={Upload} tone="violet" spark={transferTrend} loading={loading} />
-        <DashboardMetricCard title={t("metricExecutions")} value={byType.execution || 0} icon={Rocket} tone="amber" spark={executionTrend} loading={loading} />
-        <DashboardMetricCard title={t("metricFailures")} value={statistics?.failure_count || 0} icon={AlertTriangle} tone="rose" spark={failureTrend} loading={loading} />
-      </div>
-
-      <div className="grid min-h-0 flex-1 gap-3 xl:grid-cols-[minmax(0,2fr)_minmax(320px,0.85fr)] xl:overflow-hidden">
+      <div className="min-h-0 flex-1 overflow-hidden">
         <DataTable
           data={records}
           columns={recordColumns}
@@ -599,11 +510,14 @@ function OperationLogsContent() {
           onPageChange={handlePageChange}
           onPageSizeChange={handlePageSizeChange}
           emptyMessage={t("empty")}
-          className="min-h-[520px] overflow-hidden xl:min-h-0"
+          className="min-h-0 overflow-hidden"
           scrollContainerClassName="min-h-[360px]"
           tableClassName="min-w-[1280px]"
           density="compact"
-          onRowClick={(record) => setSelectedId(record.id)}
+          onRowClick={(record) => {
+            setSelectedId(record.id)
+            setIsDetailDialogOpen(true)
+          }}
           getRowClassName={(record) => (
             selectedRecord?.id === record.id ? "bg-emerald-500/5 hover:bg-emerald-500/10" : undefined
           )}
@@ -631,50 +545,53 @@ function OperationLogsContent() {
             </DataTableToolbar>
           )}
         />
+      </div>
 
-        <div className="grid min-h-0 gap-3 overflow-visible xl:overflow-auto">
-          <DashboardTrendCard title={t("trendTitle")} label={t("last24Hours")} data={hasTrendData ? trend : []} tone="emerald" emptyLabel={t("empty")} loading={loading} />
-          <DashboardDonutCard title={t("typeDistributionTitle")} totalLabel={t("totalLabel")} totalValue={total} items={donutItems} loading={loading} />
-          <DashboardSideList title={t("recentExceptionsTitle")} empty={t("empty")} items={recentExceptions} />
-          <Card className="gap-0 p-4 sm:p-5">
+      <Dialog open={isDetailDialogOpen} onOpenChange={setIsDetailDialogOpen}>
+        <DialogContent className="flex max-h-[90vh] flex-col sm:max-w-3xl">
+          <DialogHeader className="shrink-0 pr-8">
             <div className="flex flex-wrap items-center gap-2">
-              <h2 className="text-base font-semibold">{t("detailTitle")}</h2>
+              <DialogTitle>{t("detailTitle")}</DialogTitle>
               {selectedRecord && <InlineStatusBadge label={typeLabels[selectedRecord.type]} tone={typeTone(selectedRecord.type)} />}
               {selectedRecord && <span className="font-mono text-xs text-muted-foreground">ID: {selectedRecord.id}</span>}
             </div>
-            {selectedRecord ? (
-              <div className="mt-4 grid gap-4">
-                <div className="grid gap-x-6 gap-y-3 text-sm sm:grid-cols-2 xl:grid-cols-1">
-                  <Detail label={t("columnType")} value={typeLabels[selectedRecord.type]} />
-                  <Detail label={t("columnCategory")} value={categoryLabels[selectedRecord.category]} />
-                  <Detail label={t("columnStatus")} value={statusLabels[selectedRecord.status] || selectedRecord.status} />
-                  <Detail label={t("columnUser")} value={selectedRecord.username || "-"} />
-                  <Detail label={t("columnServer")} value={selectedRecord.server_name || "-"} />
-                  <Detail label={t("columnSource")} value={selectedRecord.source || "-"} />
-                  <Detail label={t("columnIp")} value={selectedRecord.ip || "-"} />
-                  <Detail label={t("columnDuration")} value={formatDuration(selectedRecord.duration_ms)} />
-                  <Detail label={t("detailStartedAt")} value={formatDateTime(selectedRecord.started_at || selectedRecord.created_at)} />
-                  <Detail label={t("detailFinishedAt")} value={formatDateTime(selectedRecord.finished_at)} />
-                  <Detail label={t("detailTraffic")} value={`${formatBytes(selectedRecord.bytes_processed)} / ${formatBytes(selectedRecord.bytes_total)}`} />
-                </div>
-                <div className="rounded-lg border bg-muted/25 p-4">
-                  <div className="mb-2 flex items-center justify-between gap-2 text-sm font-medium">
-                    <span>{t("detailPreviewTitle")}</span>
-                    <Button variant="ghost" size="sm" className="h-7 px-2" onClick={() => navigator.clipboard?.writeText(selectedRecord.detail_json || selectedRecord.error_message || "")}>
-                      {t("copy")}
-                    </Button>
-                  </div>
-                  <pre className="max-h-36 overflow-auto whitespace-pre-wrap break-words rounded-md bg-background/70 p-3 font-mono text-xs text-muted-foreground">
-                    {selectedRecord.detail_json || selectedRecord.error_message || selectedRecord.resource || selectedRecord.user_agent || "-"}
-                  </pre>
-                </div>
+            <DialogDescription>
+              {selectedRecord ? selectedRecord.title || actionLabel(t, selectedRecord.action) : t("empty")}
+            </DialogDescription>
+          </DialogHeader>
+          {selectedRecord ? (
+            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-1 py-2 scrollbar-custom">
+              <div className="grid gap-x-6 gap-y-3 text-sm sm:grid-cols-2">
+                <Detail label={t("columnType")} value={typeLabels[selectedRecord.type]} />
+                <Detail label={t("columnCategory")} value={categoryLabels[selectedRecord.category]} />
+                <Detail label={t("columnStatus")} value={statusLabels[selectedRecord.status] || selectedRecord.status} />
+                <Detail label={t("columnAction")} value={actionLabel(t, selectedRecord.action)} />
+                <Detail label={t("columnUser")} value={selectedRecord.username || "-"} />
+                <Detail label={t("columnServer")} value={selectedRecord.server_name || "-"} />
+                <Detail label={t("columnSource")} value={selectedRecord.source || "-"} />
+                <Detail label={t("columnIp")} value={selectedRecord.ip || "-"} />
+                <Detail label={t("columnDuration")} value={formatDuration(selectedRecord.duration_ms)} />
+                <Detail label={t("detailStartedAt")} value={formatDateTime(selectedRecord.started_at || selectedRecord.created_at)} />
+                <Detail label={t("detailFinishedAt")} value={formatDateTime(selectedRecord.finished_at)} />
+                <Detail label={t("detailTraffic")} value={`${formatBytes(selectedRecord.bytes_processed)} / ${formatBytes(selectedRecord.bytes_total)}`} />
               </div>
-            ) : (
-              <div className="mt-4 text-sm text-muted-foreground">{t("empty")}</div>
-            )}
-          </Card>
-        </div>
-      </div>
+              <div className="rounded-lg border bg-muted/25 p-4">
+                <div className="mb-2 flex items-center justify-between gap-2 text-sm font-medium">
+                  <span>{t("detailPreviewTitle")}</span>
+                  <Button variant="ghost" size="sm" className="h-7 px-2" onClick={() => navigator.clipboard?.writeText(selectedRecord.detail_json || selectedRecord.error_message || "")}>
+                    {t("copy")}
+                  </Button>
+                </div>
+                <pre className="max-h-[42vh] overflow-auto whitespace-pre-wrap break-words rounded-md bg-background/70 p-3 font-mono text-xs text-muted-foreground">
+                  {selectedRecord.detail_json || selectedRecord.error_message || selectedRecord.resource || selectedRecord.user_agent || "-"}
+                </pre>
+              </div>
+            </div>
+          ) : (
+            <div className="py-10 text-center text-sm text-muted-foreground">{t("empty")}</div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
@@ -720,9 +637,9 @@ function OperationRecordFilterControls({
   onApply: () => void
   onReset: () => void
   hasActiveFilters: boolean
-  t: (key: string) => string
+  t: (key: string, options?: Record<string, unknown>) => string
 }) {
-  const updateFilter = (key: keyof OperationRecordFilters, value: string) => {
+  const updateFilter = <K extends keyof OperationRecordFilters>(key: K, value: OperationRecordFilters[K]) => {
     onFiltersChange((current) => ({ ...current, [key]: value }))
   }
 
@@ -731,6 +648,29 @@ function OperationRecordFilterControls({
       onApply()
     }
   }
+
+  const typeOptions = React.useMemo<ServerFilterOption[]>(() => [
+    { label: t("typeConnection"), value: "connection" },
+    { label: t("typeTransfer"), value: "transfer" },
+    { label: t("typeExecution"), value: "execution" },
+    { label: t("typeAudit"), value: "audit" },
+  ], [t])
+
+  const categoryOptions = React.useMemo<ServerFilterOption[]>(() => [
+    { label: t("categoryActivity"), value: "activity" },
+    { label: t("categoryAudit"), value: "audit" },
+  ], [t])
+
+  const statusOptions = React.useMemo<ServerFilterOption[]>(() => [
+    { label: t("statusPending"), value: "pending" },
+    { label: t("statusRunning"), value: "running" },
+    { label: t("statusSuccess"), value: "success" },
+    { label: t("statusFailure"), value: "failure" },
+    { label: t("statusPartial"), value: "partial" },
+    { label: t("statusCanceled"), value: "canceled" },
+    { label: t("statusTimeout"), value: "timeout" },
+    { label: t("statusWarning"), value: "warning" },
+  ], [t])
 
   return (
     <div className="flex w-full flex-wrap items-center gap-2">
@@ -741,44 +681,33 @@ function OperationRecordFilterControls({
         onKeyDown={handleKeyDown}
         className="h-8 w-full min-w-[180px] sm:w-[220px]"
       />
-      <Select value={filters.type} onValueChange={(value) => updateFilter("type", value)}>
-        <SelectTrigger className="h-8 w-full sm:w-[150px]">
-          <SelectValue placeholder={t("filterTypeTitle")} />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value={ALL_VALUE}>{t("filterAll")}</SelectItem>
-          <SelectItem value="connection">{t("typeConnection")}</SelectItem>
-          <SelectItem value="transfer">{t("typeTransfer")}</SelectItem>
-          <SelectItem value="execution">{t("typeExecution")}</SelectItem>
-          <SelectItem value="audit">{t("typeAudit")}</SelectItem>
-        </SelectContent>
-      </Select>
-      <Select value={filters.category} onValueChange={(value) => updateFilter("category", value)}>
-        <SelectTrigger className="h-8 w-full sm:w-[140px]">
-          <SelectValue placeholder={t("filterCategoryTitle")} />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value={ALL_VALUE}>{t("filterAll")}</SelectItem>
-          <SelectItem value="activity">{t("categoryActivity")}</SelectItem>
-          <SelectItem value="audit">{t("categoryAudit")}</SelectItem>
-        </SelectContent>
-      </Select>
-      <Select value={filters.status} onValueChange={(value) => updateFilter("status", value)}>
-        <SelectTrigger className="h-8 w-full sm:w-[140px]">
-          <SelectValue placeholder={t("filterStatusTitle")} />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value={ALL_VALUE}>{t("filterAll")}</SelectItem>
-          <SelectItem value="pending">{t("statusPending")}</SelectItem>
-          <SelectItem value="running">{t("statusRunning")}</SelectItem>
-          <SelectItem value="success">{t("statusSuccess")}</SelectItem>
-          <SelectItem value="failure">{t("statusFailure")}</SelectItem>
-          <SelectItem value="partial">{t("statusPartial")}</SelectItem>
-          <SelectItem value="canceled">{t("statusCanceled")}</SelectItem>
-          <SelectItem value="timeout">{t("statusTimeout")}</SelectItem>
-          <SelectItem value="warning">{t("statusWarning")}</SelectItem>
-        </SelectContent>
-      </Select>
+      <LogServerFilterButton
+        title={t("filterTypeTitle")}
+        values={filters.type}
+        options={typeOptions}
+        selectedLabel={(count) => t("filterSelectedCount", { count })}
+        clearLabel={t("clearServerFilters")}
+        emptyLabel={t("filterEmpty")}
+        onValuesChange={(values) => updateFilter("type", values)}
+      />
+      <LogServerFilterButton
+        title={t("filterCategoryTitle")}
+        values={filters.category}
+        options={categoryOptions}
+        selectedLabel={(count) => t("filterSelectedCount", { count })}
+        clearLabel={t("clearServerFilters")}
+        emptyLabel={t("filterEmpty")}
+        onValuesChange={(values) => updateFilter("category", values)}
+      />
+      <LogServerFilterButton
+        title={t("filterStatusTitle")}
+        values={filters.status}
+        options={statusOptions}
+        selectedLabel={(count) => t("filterSelectedCount", { count })}
+        clearLabel={t("clearServerFilters")}
+        emptyLabel={t("filterEmpty")}
+        onValuesChange={(values) => updateFilter("status", values)}
+      />
       <Input
         value={filters.source}
         placeholder={t("filterSourcePlaceholder")}
@@ -793,19 +722,19 @@ function OperationRecordFilterControls({
         onKeyDown={handleKeyDown}
         className="h-8 w-full min-w-[120px] sm:w-[150px]"
       />
-      <Input
-        type="date"
-        value={filters.start_date}
-        aria-label={t("filterStartDate")}
-        onChange={(event) => updateFilter("start_date", event.target.value)}
-        className="h-8 w-full sm:w-[150px]"
-      />
-      <Input
-        type="date"
-        value={filters.end_date}
-        aria-label={t("filterEndDate")}
-        onChange={(event) => updateFilter("end_date", event.target.value)}
-        className="h-8 w-full sm:w-[150px]"
+      <LogDateRangeFilterButton
+        title={t("filterDateRange")}
+        startValue={filters.start_date}
+        endValue={filters.end_date}
+        onRangeChange={(range) => {
+          onFiltersChange((current) => ({
+            ...current,
+            start_date: range.start,
+            end_date: range.end,
+          }))
+        }}
+        clearLabel={t("clearServerFilters")}
+        todayLabel={t("filterToday")}
       />
       <Button type="button" size="sm" className="h-8" onClick={onApply}>
         <Search className="mr-2 h-4 w-4" />

@@ -5,7 +5,6 @@ import { PageHeader } from "@/components/page-header"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
-import { Card } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Kbd } from "@/components/ui/kbd"
@@ -32,7 +31,6 @@ import { useNavigate } from "react-router-dom"
 import { createScriptColumns } from "./scripts/components/script-columns"
 import { useAuthReady } from "@/hooks/use-auth-ready"
 import { useConfirmDialog } from "@/hooks/use-confirm-dialog"
-import { cn } from "@/lib/utils"
 import {
   DashboardMetricCard,
   InlineStatusBadge,
@@ -79,7 +77,6 @@ export default function ScriptsPage({
  const [scripts, setScripts] = useState<Script[]>([])
  const [loading, setLoading] = useState(true)
  const [isDialogOpen, setIsDialogOpen] = useState(false)
- const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
  const [editingScriptId, setEditingScriptId] = useState<string | null>(null)
  const [refreshing, setRefreshing] = useState(false)
 
@@ -97,6 +94,8 @@ export default function ScriptsPage({
  const [pageSize, setPageSize] = useState(20)
  const [totalPages, setTotalPages] = useState(1)
  const [totalRows, setTotalRows] = useState(0)
+ const [isDetailDialogOpen, setIsDetailDialogOpen] = useState(false)
+ const [detailDialogMode, setDetailDialogMode] = useState<"view" | "edit">("view")
  const [columnVisibility, setColumnVisibility] = useState<Record<string, boolean>>({
    name: true,
    description: false,
@@ -107,7 +106,6 @@ export default function ScriptsPage({
    executions: true,
  })
  const [selectedScriptId, setSelectedScriptId] = useState<string | null>(null)
- const [scriptCategory, setScriptCategory] = useState("all")
 
  // 新建脚本表单状态
  const [newScript, setNewScript] = useState({
@@ -171,11 +169,13 @@ export default function ScriptsPage({
  useEffect(() => {
    if (scripts.length === 0) {
      setSelectedScriptId(null)
+     setIsDetailDialogOpen(false)
      return
    }
 
-   if (!selectedScriptId || !scripts.some((script) => script.id === selectedScriptId)) {
-     setSelectedScriptId(scripts[0].id)
+   if (selectedScriptId && !scripts.some((script) => script.id === selectedScriptId)) {
+     setSelectedScriptId(null)
+     setIsDetailDialogOpen(false)
    }
  }, [scripts, selectedScriptId])
 
@@ -364,9 +364,16 @@ const handleCloseExecuteDialog = useCallback((open: boolean) => {
   }
 }, [])
 
+ const handleOpenDetail = useCallback((scriptId: string) => {
+ setSelectedScriptId(scriptId)
+ setDetailDialogMode("view")
+ setIsDetailDialogOpen(true)
+ }, [])
+
  const handleEdit = useCallback((scriptId: string) => {
  const script = scripts.find(s => s.id === scriptId)
  if (script) {
+ setSelectedScriptId(scriptId)
  setEditingScriptId(scriptId)
  setEditScript({
  name: script.name,
@@ -374,7 +381,8 @@ const handleCloseExecuteDialog = useCallback((open: boolean) => {
  content: script.content,
  tags: [...script.tags],
  })
- setIsEditDialogOpen(true)
+ setDetailDialogMode("edit")
+ setIsDetailDialogOpen(true)
  }
  }, [scripts])
 
@@ -402,10 +410,10 @@ const columns = useMemo(() => createScriptColumns({
   onExecute: handleExecute,
   onEdit: handleEdit,
   onDelete: handleDelete,
-  onSelect: setSelectedScriptId,
+  onSelect: handleOpenDetail,
   selectedId: selectedScriptId,
   t: (key: string) => t(key),
-}), [handleExecute, handleEdit, handleDelete, selectedScriptId, t])
+}), [handleExecute, handleEdit, handleDelete, handleOpenDetail, selectedScriptId, t])
 
 const visibleColumns = useMemo(
   () => columns.filter((col) =>
@@ -434,14 +442,9 @@ const tagCounts = useMemo(() => {
     .sort((a, b) => b.count - a.count)
 }, [scripts])
 
-const tableScripts = useMemo(() => {
-  if (scriptCategory === "all") return scripts
-  return scripts.filter((script) => (script.tags || []).includes(scriptCategory))
-}, [scriptCategory, scripts])
-
 const selectedScript = useMemo(() => (
-  scripts.find((script) => script.id === selectedScriptId) || tableScripts[0] || scripts[0] || null
-), [scripts, selectedScriptId, tableScripts])
+  scripts.find((script) => script.id === selectedScriptId) || null
+), [scripts, selectedScriptId])
 
 const scriptSpark = useMemo(() => (
   scripts.slice(-12).map((script) => script.executions || 0)
@@ -635,7 +638,8 @@ const totalExecutions = useMemo(() => (
 })
 
  toast.success(t("toastUpdateSuccess"))
- setIsEditDialogOpen(false)
+ setIsDetailDialogOpen(false)
+ setDetailDialogMode("view")
  setEditingScriptId(null)
 
  // 重置表单
@@ -655,10 +659,11 @@ const totalExecutions = useMemo(() => (
  }
  }
 
- const handleCloseEditDialog = (open: boolean) => {
- setIsEditDialogOpen(open)
+ const handleCloseDetailDialog = (open: boolean) => {
+ setIsDetailDialogOpen(open)
  if (!open) {
  setEditingScriptId(null)
+ setDetailDialogMode("view")
  // 重置表单
  setEditScript({
  name: "",
@@ -695,7 +700,7 @@ const totalExecutions = useMemo(() => (
    </div>
  ) : null}
 
- <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-auto p-3 pt-0 sm:gap-4 sm:p-4 sm:pt-0 xl:overflow-hidden">
+ <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto overflow-x-hidden p-3 pt-0 scrollbar-custom sm:gap-4 sm:p-4 sm:pt-0">
    <div className="grid shrink-0 grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
      <DashboardMetricCard title={t("statsTotalScripts")} value={totalRows || scripts.length} icon={FileText} tone="emerald" spark={scriptSpark} loading={loading} />
      <DashboardMetricCard title={t("statsTags")} value={filterOptions.tags.length} icon={Tag} tone="blue" spark={tagCounts.slice(0, 12).map((item) => item.count)} loading={loading} />
@@ -703,64 +708,24 @@ const totalExecutions = useMemo(() => (
      <DashboardMetricCard title="累计执行" value={totalExecutions} icon={Play} tone="amber" spark={scriptSpark} loading={loading} />
    </div>
 
-   <section className="grid min-h-0 flex-1 gap-3 xl:grid-cols-[170px_minmax(0,1fr)_300px] 2xl:grid-cols-[180px_minmax(0,1fr)_320px]">
-     <Card className="hidden min-h-0 gap-0 p-3 xl:flex xl:flex-col">
-       <div className="px-1 pb-3">
-         <h2 className="text-sm font-semibold">分类</h2>
-         <p className="mt-1 text-xs text-muted-foreground">按标签聚合脚本集合。</p>
-       </div>
-       <div className="min-h-0 flex-1 space-y-1 overflow-y-auto pr-1">
-         <button
-           type="button"
-           onClick={() => {
-             setScriptCategory("all")
-             setPage(1)
-           }}
-           className={cn(
-             "flex w-full items-center justify-between rounded-md px-3 py-2 text-sm transition-colors hover:bg-accent",
-             scriptCategory === "all" && "bg-accent font-medium"
-           )}
-         >
-           <span>全部脚本</span>
-           <span className="text-xs tabular-nums text-muted-foreground">{scripts.length}</span>
-         </button>
-         {tagCounts.map((item) => (
-           <button
-             key={item.tag}
-             type="button"
-             onClick={() => {
-               setScriptCategory(item.tag)
-               setPage(1)
-               const nextScript = scripts.find((script) => (script.tags || []).includes(item.tag))
-               if (nextScript) setSelectedScriptId(nextScript.id)
-             }}
-             className={cn(
-               "flex w-full items-center justify-between rounded-md px-3 py-2 text-sm transition-colors hover:bg-accent",
-               scriptCategory === item.tag && "bg-accent font-medium"
-             )}
-           >
-             <span className="truncate">{item.tag}</span>
-             <span className="ml-2 text-xs tabular-nums text-muted-foreground">{item.count}</span>
-           </button>
-         ))}
-       </div>
-     </Card>
-
+   <section className="min-h-[520px] shrink-0 overflow-hidden xl:min-h-0 xl:flex-1">
      <DataTable
-       data={tableScripts}
+       data={scripts}
        columns={visibleColumns}
        loading={loading || refreshing}
-       currentPage={scriptCategory === "all" ? page : 1}
-       pageCount={scriptCategory === "all" ? totalPages : 1}
+       currentPage={page}
+       pageCount={totalPages}
        pageSize={pageSize}
-       totalRows={scriptCategory === "all" ? totalRows : tableScripts.length}
+       totalRows={totalRows}
        onPageChange={setPage}
        onPageSizeChange={(newPageSize) => {
          setPageSize(newPageSize)
          setPage(1)
        }}
        emptyMessage={t("tableEmpty")}
-       className="min-h-0 overflow-hidden"
+       className="min-h-[520px] overflow-hidden xl:min-h-0"
+       scrollContainerClassName="min-h-[360px]"
+       tableClassName="min-w-[1120px] table-fixed"
        density="compact"
        toolbar={(table) => (
          <DataTableToolbar
@@ -801,67 +766,227 @@ const totalExecutions = useMemo(() => (
          </DataTableToolbar>
        )}
      />
-
-     <Card className="hidden min-h-0 gap-0 overflow-hidden p-4 xl:flex xl:flex-col">
-       <div className="flex items-start justify-between gap-3">
-         <div className="min-w-0">
-           <h2 className="truncate text-base font-semibold">脚本详情</h2>
-           <p className="mt-1 text-sm text-muted-foreground">查看当前选中脚本的标签、内容和最近更新。</p>
-         </div>
-         {selectedScript && <InlineStatusBadge label={selectedScript.language || "bash"} tone="blue" />}
-       </div>
-       {selectedScript ? (
-         <div className="mt-4 flex min-h-0 flex-1 flex-col gap-4">
-           <div>
-             <div className="text-sm font-medium">{selectedScript.name}</div>
-             <p className="mt-1 line-clamp-3 text-sm text-muted-foreground">{selectedScript.description || "暂无描述"}</p>
-           </div>
-           <div className="grid grid-cols-2 gap-2 text-sm">
-             <div className="rounded-md bg-muted/50 p-3">
-               <div className="text-xs text-muted-foreground">执行次数</div>
-               <div className="mt-1 font-semibold tabular-nums">{selectedScript.executions || 0}</div>
-             </div>
-             <div className="rounded-md bg-muted/50 p-3">
-               <div className="text-xs text-muted-foreground">作者</div>
-               <div className="mt-1 truncate font-semibold">{selectedScript.author || "-"}</div>
-             </div>
-           </div>
-           <div className="flex flex-wrap gap-1">
-             {(selectedScript.tags || []).length === 0 ? (
-               <InlineStatusBadge label="未分类" tone="slate" />
-             ) : selectedScript.tags.map((tag) => (
-               <InlineStatusBadge key={tag} label={tag} tone="violet" />
-             ))}
-           </div>
-           <pre className="min-h-0 flex-1 overflow-auto rounded-md border bg-muted/40 p-3 text-xs leading-relaxed text-muted-foreground">{selectedScript.content}</pre>
-           <div className="space-y-2 text-xs text-muted-foreground">
-             <div className="flex items-center justify-between gap-3">
-               <span>创建时间</span>
-               <span className="truncate text-right tabular-nums">{formatScriptTime(selectedScript.created_at)}</span>
-             </div>
-             <div className="flex items-center justify-between gap-3">
-               <span>更新时间</span>
-               <span className="truncate text-right tabular-nums">{formatScriptTime(selectedScript.updated_at)}</span>
-             </div>
-           </div>
-           <div className="flex gap-2">
-             <Button className="flex-1" size="sm" onClick={() => handleExecute(selectedScript.id)}>
-               <Play className="mr-2 h-4 w-4" />
-               执行
-             </Button>
-             <Button variant="outline" size="sm" onClick={() => handleEdit(selectedScript.id)}>
-               编辑
-             </Button>
-           </div>
-         </div>
-       ) : (
-         <div className="flex min-h-0 flex-1 items-center justify-center text-sm text-muted-foreground">
-           {t("tableEmpty")}
-         </div>
-       )}
-     </Card>
    </section>
  </div>
+
+ {/* 脚本详情/编辑合并弹窗 */}
+ <Dialog open={isDetailDialogOpen} onOpenChange={handleCloseDetailDialog}>
+ <DialogContent className="flex max-h-[90vh] flex-col sm:max-w-3xl">
+ <DialogHeader className="shrink-0 pr-8">
+ <div className="flex flex-wrap items-center gap-2">
+ <DialogTitle>{detailDialogMode === "edit" ? t("editDialogTitle") : "脚本详情"}</DialogTitle>
+ {selectedScript && <InlineStatusBadge label={selectedScript.language || "bash"} tone="blue" />}
+ </div>
+ <DialogDescription>
+ {detailDialogMode === "edit" ? t("editDialogDescription") : "查看脚本标签、内容、执行次数和最近更新时间。"}
+ </DialogDescription>
+ </DialogHeader>
+
+ {selectedScript && detailDialogMode === "view" ? (
+ <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-1 py-2 scrollbar-custom">
+ <div>
+ <h3 className="text-base font-semibold">{selectedScript.name}</h3>
+ <p className="mt-1 text-sm text-muted-foreground">{selectedScript.description || "暂无描述"}</p>
+ </div>
+ <div className="grid gap-2 text-sm sm:grid-cols-2 lg:grid-cols-4">
+ <div className="rounded-md bg-muted/50 p-3">
+ <div className="text-xs text-muted-foreground">执行次数</div>
+ <div className="mt-1 font-semibold tabular-nums">{selectedScript.executions || 0}</div>
+ </div>
+ <div className="rounded-md bg-muted/50 p-3">
+ <div className="text-xs text-muted-foreground">作者</div>
+ <div className="mt-1 truncate font-semibold">{selectedScript.author || "-"}</div>
+ </div>
+ <div className="rounded-md bg-muted/50 p-3">
+ <div className="text-xs text-muted-foreground">创建时间</div>
+ <div className="mt-1 truncate font-semibold tabular-nums">{formatScriptTime(selectedScript.created_at)}</div>
+ </div>
+ <div className="rounded-md bg-muted/50 p-3">
+ <div className="text-xs text-muted-foreground">更新时间</div>
+ <div className="mt-1 truncate font-semibold tabular-nums">{formatScriptTime(selectedScript.updated_at)}</div>
+ </div>
+ </div>
+ <div className="flex flex-wrap gap-1.5">
+ {(selectedScript.tags || []).length === 0 ? (
+ <InlineStatusBadge label="未分类" tone="slate" />
+ ) : selectedScript.tags.map((tag) => (
+ <InlineStatusBadge key={tag} label={tag} tone="violet" />
+ ))}
+ </div>
+ <pre className="max-h-[45vh] overflow-auto whitespace-pre-wrap break-words rounded-md border bg-muted/40 p-3 font-mono text-xs leading-relaxed text-muted-foreground">{selectedScript.content}</pre>
+ </div>
+ ) : null}
+
+ {selectedScript && detailDialogMode === "edit" ? (
+ <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-1 py-2 scrollbar-custom">
+ <div className="space-y-2">
+ <Label htmlFor="detail-edit-script-name">
+ {t("fieldNameLabel")} <span className="text-destructive">*</span>
+ </Label>
+ <Input
+ id="detail-edit-script-name"
+ placeholder={t("fieldNamePlaceholder")}
+ value={editScript.name}
+ onChange={(e) => setEditScript({ ...editScript, name: e.target.value })}
+ />
+ </div>
+
+ <div className="space-y-2">
+ <Label htmlFor="detail-edit-script-description">{t("fieldDescriptionLabel")}</Label>
+ <Input
+ id="detail-edit-script-description"
+ placeholder={t("fieldDescriptionPlaceholder")}
+ value={editScript.description}
+ onChange={(e) => setEditScript({ ...editScript, description: e.target.value })}
+ />
+ </div>
+
+ <div className="space-y-2">
+ <Label htmlFor="detail-edit-script-content">
+ {t("fieldContentLabel")} <span className="text-destructive">*</span>
+ </Label>
+ <Textarea
+ id="detail-edit-script-content"
+ placeholder="#!/bin/bash&#10;&#10;echo 'Hello World'"
+ className="min-h-[240px] font-mono"
+ value={editScript.content}
+ onChange={(e) => setEditScript({ ...editScript, content: e.target.value })}
+ />
+ <p className="text-xs text-muted-foreground">
+ {t("fieldContentHint")}
+ </p>
+ </div>
+
+ <div className="space-y-2">
+ <Label htmlFor="detail-edit-script-tags">{t("fieldTagsLabel")}</Label>
+ <div className="relative">
+ <Input
+ id="detail-edit-script-tags"
+ placeholder={t("tagsInputPlaceholder")}
+ value={editTagInput}
+ onChange={(e) => {
+ setEditTagInput(e.target.value)
+ setShowEditSuggestions(true)
+ setSelectedEditSuggestionIndex(-1)
+ }}
+ onFocus={() => setShowEditSuggestions(true)}
+ onBlur={() => {
+ setTimeout(() => {
+ setShowEditSuggestions(false)
+ setSelectedEditSuggestionIndex(-1)
+ }, 200)
+ }}
+ onKeyDown={handleKeyDownEditTag}
+ />
+
+ {showEditSuggestions && filteredEditSuggestions.length > 0 && editTagInput.trim() && (
+ <div className="absolute z-50 mt-1 max-h-[200px] w-full overflow-y-auto rounded-md border bg-popover shadow-md scrollbar-custom">
+ <div className="p-1">
+ {filteredEditSuggestions.map((tag, index) => (
+ <button
+ key={tag}
+ ref={(el) => {
+ editSuggestionRefs.current[index] = el
+ }}
+ type="button"
+ className={`w-full rounded-sm px-2 py-1.5 text-left text-sm transition-colors ${
+ index === selectedEditSuggestionIndex
+ ? 'bg-accent text-accent-foreground'
+ : 'hover:bg-accent/50'
+ }`}
+ onMouseEnter={() => setSelectedEditSuggestionIndex(index)}
+ onMouseDown={(e) => {
+ e.preventDefault()
+ handleAddEditTag(tag)
+ }}
+ >
+ {tag}
+ </button>
+ ))}
+ </div>
+ </div>
+ )}
+ </div>
+
+ <p className="flex flex-wrap items-center gap-1 text-xs text-muted-foreground">
+ {t("tagsHintPrefix")}
+ <Kbd>↑</Kbd>
+ <Kbd>↓</Kbd>
+ {t("tagsHintSelect")}
+ <Kbd>Enter</Kbd>
+ {t("tagsHintEnter")}
+ <Kbd>Esc</Kbd>
+ {t("tagsHintEsc")}
+ </p>
+
+ {editScript.tags.length > 0 && (
+ <div className="mt-2 flex flex-wrap gap-2">
+ {editScript.tags.map((tag) => (
+ <Badge key={tag} variant="secondary" className="gap-1">
+ {tag}
+ <button
+ type="button"
+ onClick={() => handleRemoveEditTag(tag)}
+ className="ml-1 hover:text-destructive"
+ >
+ <X className="h-3 w-3" />
+ </button>
+ </Badge>
+ ))}
+ </div>
+ )}
+ </div>
+ </div>
+ ) : null}
+
+ {!selectedScript ? (
+ <div className="py-10 text-center text-sm text-muted-foreground">{t("tableEmpty")}</div>
+ ) : null}
+
+ {selectedScript && detailDialogMode === "view" ? (
+ <DialogFooter className="shrink-0">
+ <Button
+ variant="outline"
+ onClick={() => handleEdit(selectedScript.id)}
+ >
+ 编辑
+ </Button>
+ <Button
+ onClick={() => {
+ setIsDetailDialogOpen(false)
+ handleExecute(selectedScript.id)
+ }}
+ >
+ <Play className="mr-2 h-4 w-4" />
+ 执行
+ </Button>
+ </DialogFooter>
+ ) : null}
+ {selectedScript && detailDialogMode === "edit" ? (
+ <DialogFooter className="shrink-0">
+ <Button
+ variant="outline"
+ onClick={() => {
+ setEditScript({
+ name: selectedScript.name,
+ description: selectedScript.description || "",
+ content: selectedScript.content,
+ tags: [...selectedScript.tags],
+ })
+ setEditTagInput("")
+ setEditingScriptId(null)
+ setDetailDialogMode("view")
+ }}
+ >
+ {t("dialogCancel")}
+ </Button>
+ <Button onClick={handleUpdateScript}>
+ {t("editDialogSave")}
+ </Button>
+ </DialogFooter>
+ ) : null}
+ </DialogContent>
+ </Dialog>
 
  {/* 新建脚本弹窗 */}
  <Dialog open={isDialogOpen} onOpenChange={handleCloseDialog}>
@@ -1006,154 +1131,6 @@ placeholder={t("fieldDescriptionPlaceholder")}
  </Button>
  <Button onClick={handleCreateScript}>
  {t("dialogCreateSubmit")}
- </Button>
- </DialogFooter>
- </DialogContent>
- </Dialog>
-
- {/* 编辑脚本弹窗 */}
- <Dialog open={isEditDialogOpen} onOpenChange={handleCloseEditDialog}>
- <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col">
- <DialogHeader className="shrink-0">
- <DialogTitle>{t("editDialogTitle")}</DialogTitle>
- <DialogDescription>
- {t("editDialogDescription")}
- </DialogDescription>
- </DialogHeader>
-
- <div className="space-y-4 px-1 py-4 flex-1 min-h-0 overflow-y-auto scrollbar-custom">
- {/* 脚本名称 */}
- <div className="space-y-2">
- <Label htmlFor="edit-script-name">
- {t("fieldNameLabel")} <span className="text-destructive">*</span>
- </Label>
- <Input
- id="edit-script-name"
- placeholder={t("fieldNamePlaceholder")}
- value={editScript.name}
- onChange={(e) => setEditScript({ ...editScript, name: e.target.value })}
- />
- </div>
-
- {/* 脚本描述 */}
- <div className="space-y-2">
- <Label htmlFor="edit-script-description">{t("fieldDescriptionLabel")}</Label>
- <Input
- id="edit-script-description"
- placeholder={t("fieldDescriptionPlaceholder")}
- value={editScript.description}
- onChange={(e) => setEditScript({ ...editScript, description: e.target.value })}
- />
- </div>
-
- {/* 脚本内容 */}
- <div className="space-y-2">
- <Label htmlFor="edit-script-content">
- {t("fieldContentLabel")} <span className="text-destructive">*</span>
- </Label>
- <Textarea
- id="edit-script-content"
- placeholder="#!/bin/bash&#10;&#10;echo 'Hello World'"
- className="font-mono min-h-[200px]"
- value={editScript.content}
- onChange={(e) => setEditScript({ ...editScript, content: e.target.value })}
- />
- <p className="text-xs text-muted-foreground">
- {t("fieldContentHint")}
- </p>
- </div>
-
- {/* 标签 */}
- <div className="space-y-2">
- <Label htmlFor="edit-script-tags">{t("fieldTagsLabel")}</Label>
- <div className="relative">
- <Input
- id="edit-script-tags"
- placeholder={t("tagsInputPlaceholder")}
- value={editTagInput}
- onChange={(e) => {
- setEditTagInput(e.target.value)
- setShowEditSuggestions(true)
- setSelectedEditSuggestionIndex(-1)
- }}
- onFocus={() => setShowEditSuggestions(true)}
- onBlur={() => {
- // 延迟关闭，让点击建议项有时间触发
- setTimeout(() => {
- setShowEditSuggestions(false)
- setSelectedEditSuggestionIndex(-1)
- }, 200)
- }}
- onKeyDown={handleKeyDownEditTag}
- />
-
- {/* 标签建议下拉列表 */}
- {showEditSuggestions && filteredEditSuggestions.length > 0 && editTagInput.trim() && (
- <div className="absolute z-50 w-full mt-1 bg-popover border rounded-md shadow-md max-h-[200px] overflow-y-auto scrollbar-custom">
- <div className="p-1">
- {filteredEditSuggestions.map((tag, index) => (
- <button
- key={tag}
- ref={(el) => {
- editSuggestionRefs.current[index] = el
- }}
- type="button"
- className={`w-full text-left px-2 py-1.5 text-sm rounded-sm cursor-pointer transition-colors ${
- index === selectedEditSuggestionIndex
- ? 'bg-accent text-accent-foreground'
- : 'hover:bg-accent/50'
- }`}
- onMouseEnter={() => setSelectedEditSuggestionIndex(index)}
- onMouseDown={(e) => {
- e.preventDefault() // 防止失去焦点
- handleAddEditTag(tag)
- }}
- >
- {tag}
- </button>
- ))}
- </div>
- </div>
- )}
- </div>
-
- <p className="text-xs text-muted-foreground flex items-center gap-1 flex-wrap">
- {t("tagsHintPrefix")}
- <Kbd>↑</Kbd>
- <Kbd>↓</Kbd>
- {t("tagsHintSelect")}
- <Kbd>Enter</Kbd>
- {t("tagsHintEnter")}
- <Kbd>Esc</Kbd>
- {t("tagsHintEsc")}
- </p>
-
- {/* 已添加的标签 */}
- {editScript.tags.length > 0 && (
- <div className="flex flex-wrap gap-2 mt-2">
- {editScript.tags.map((tag) => (
- <Badge key={tag} variant="secondary" className="gap-1">
- {tag}
- <button
- type="button"
- onClick={() => handleRemoveEditTag(tag)}
- className="ml-1 hover:text-destructive"
- >
- <X className="h-3 w-3" />
- </button>
- </Badge>
- ))}
- </div>
- )}
- </div>
- </div>
-
- <DialogFooter className="shrink-0">
- <Button variant="outline" onClick={() => setIsEditDialogOpen(false)}>
- {t("dialogCancel")}
- </Button>
- <Button onClick={handleUpdateScript}>
- {t("editDialogSave")}
  </Button>
  </DialogFooter>
  </DialogContent>
