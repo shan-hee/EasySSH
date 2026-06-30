@@ -3,7 +3,6 @@ package rest
 import (
 	"net/http"
 	"strconv"
-	"time"
 
 	"github.com/easyssh/server/internal/domain/auditlog"
 	"github.com/gin-gonic/gin"
@@ -148,14 +147,14 @@ func parseAuditLogListRequest(c *gin.Context, allowUserID bool) (*auditlog.ListA
 	if action := c.Query("action"); action != "" {
 		req.Action = auditlog.ActionType(action)
 	}
-	if typ := c.Query("type"); typ != "" {
-		req.Type = typ
+	if values := splitQueryValues(c, "type"); len(values) > 0 {
+		setQuerySelection(values, &req.Type, &req.Types)
 	}
-	if category := c.Query("category"); category != "" {
-		req.Category = auditlog.LogCategory(category)
+	if values := splitQueryValues(c, "category"); len(values) > 0 {
+		setQuerySelection(values, &req.Category, &req.Categories)
 	}
-	if status := c.Query("status"); status != "" {
-		req.Status = auditlog.Status(status)
+	if values := splitQueryValues(c, "status"); len(values) > 0 {
+		setQuerySelection(values, &req.Status, &req.Statuses)
 	}
 	if source := c.Query("source"); source != "" {
 		req.Source = source
@@ -232,27 +231,6 @@ func parseAuditLogStatisticsRequest(c *gin.Context, allowUserID bool) (*auditlog
 	return req, true
 }
 
-func parseQueryTime(c *gin.Context, key string, endOfDay bool) (*time.Time, bool) {
-	value := c.Query(key)
-	if value == "" {
-		return nil, true
-	}
-
-	if parsed, err := time.Parse(time.RFC3339, value); err == nil {
-		return &parsed, true
-	}
-
-	parsed, err := time.Parse("2006-01-02", value)
-	if err != nil {
-		RespondError(c, http.StatusBadRequest, "invalid_"+key, "Invalid "+key)
-		return nil, false
-	}
-	if endOfDay {
-		parsed = parsed.AddDate(0, 0, 1).Add(-time.Nanosecond)
-	}
-	return &parsed, true
-}
-
 func respondLogList(c *gin.Context, logs []*auditlog.AuditLog, total int64, req *auditlog.ListAuditLogsRequest) {
 	if req.Page < 1 {
 		req.Page = 1
@@ -272,15 +250,6 @@ func respondLogList(c *gin.Context, logs []*auditlog.AuditLog, total int64, req 
 		"page_size":   req.PageSize,
 		"total_pages": totalPages,
 	})
-}
-
-func firstNonEmptyQuery(c *gin.Context, keys ...string) string {
-	for _, key := range keys {
-		if value := c.Query(key); value != "" {
-			return value
-		}
-	}
-	return ""
 }
 
 func requireAdmin(c *gin.Context) bool {

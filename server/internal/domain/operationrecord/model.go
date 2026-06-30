@@ -94,21 +94,24 @@ func (r *OperationRecord) BeforeCreate(tx *gorm.DB) error {
 }
 
 type ListRequest struct {
-	UserID    *uuid.UUID
-	Type      RecordType
-	Category  Category
-	Action    string
-	Status    Status
-	ServerID  *uuid.UUID
-	Source    string
-	IP        string
-	Keyword   string
-	StartTime *time.Time
-	EndTime   *time.Time
-	SortBy    string
-	SortOrder string
-	Page      int
-	PageSize  int
+	UserID     *uuid.UUID
+	Type       RecordType
+	Types      []RecordType
+	Category   Category
+	Categories []Category
+	Action     string
+	Status     Status
+	Statuses   []Status
+	ServerID   *uuid.UUID
+	Source     string
+	IP         string
+	Keyword    string
+	StartTime  *time.Time
+	EndTime    *time.Time
+	SortBy     string
+	SortOrder  string
+	Page       int
+	PageSize   int
 }
 
 type ListResponse struct {

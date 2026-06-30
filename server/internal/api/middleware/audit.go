@@ -116,41 +116,37 @@ func auditResource(c *gin.Context) string {
 	return c.Request.URL.Path
 }
 
+type auditRouteKey struct {
+	method string
+	path   string
+}
+
+var auditActionByRoute = map[auditRouteKey]auditlog.ActionType{
+	{"POST", "/oauth/authorize"}:        auditlog.ActionLogin,
+	{"POST", "/api/v1/oauth/authorize"}: auditlog.ActionLogin,
+	{"POST", "/api/v1/oauth/logout"}:    auditlog.ActionLogout,
+	{"POST", "/api/v1/auth/logout"}:     auditlog.ActionLogout,
+
+	{"POST", "/api/v1/servers"}:          auditlog.ActionServerCreate,
+	{"PUT", "/api/v1/servers/:id"}:       auditlog.ActionServerUpdate,
+	{"DELETE", "/api/v1/servers/:id"}:    auditlog.ActionServerDelete,
+	{"POST", "/api/v1/servers/:id/test"}: auditlog.ActionServerTest,
+	{"POST", "/api/v1/servers/test"}:     auditlog.ActionServerTest,
+
+	{"POST", "/api/v1/users"}:              auditlog.ActionUserCreate,
+	{"PUT", "/api/v1/users/:id"}:           auditlog.ActionUserUpdate,
+	{"DELETE", "/api/v1/users/:id"}:        auditlog.ActionUserDelete,
+	{"POST", "/api/v1/users/:id/password"}: auditlog.ActionUserUpdate,
+	{"POST", "/api/v1/users/:id/lock"}:     auditlog.ActionUserUpdate,
+	{"POST", "/api/v1/users/:id/unlock"}:   auditlog.ActionUserUpdate,
+
+	{"POST", "/api/v1/scheduled-tasks"}:             auditlog.ActionScheduledTaskCreate,
+	{"PUT", "/api/v1/scheduled-tasks/:id"}:          auditlog.ActionScheduledTaskUpdate,
+	{"DELETE", "/api/v1/scheduled-tasks/:id"}:       auditlog.ActionScheduledTaskDelete,
+	{"POST", "/api/v1/scheduled-tasks/:id/toggle"}:  auditlog.ActionScheduledTaskToggle,
+	{"POST", "/api/v1/scheduled-tasks/:id/trigger"}: auditlog.ActionScheduledTaskTrigger,
+}
+
 func determineAction(method, path string) auditlog.ActionType {
-	if method == "POST" && (path == "/oauth/authorize" || path == "/api/v1/oauth/authorize") {
-		return auditlog.ActionLogin
-	}
-	if method == "POST" && (path == "/api/v1/oauth/logout" || path == "/api/v1/auth/logout") {
-		return auditlog.ActionLogout
-	}
-
-	if method == "POST" && path == "/api/v1/servers" {
-		return auditlog.ActionServerCreate
-	}
-	if method == "PUT" && path == "/api/v1/servers/:id" {
-		return auditlog.ActionServerUpdate
-	}
-	if method == "DELETE" && path == "/api/v1/servers/:id" {
-		return auditlog.ActionServerDelete
-	}
-	if method == "POST" && (path == "/api/v1/servers/:id/test" || path == "/api/v1/servers/test") {
-		return auditlog.ActionServerTest
-	}
-
-	if method == "POST" && path == "/api/v1/users" {
-		return auditlog.ActionUserCreate
-	}
-	if method == "PUT" && path == "/api/v1/users/:id" {
-		return auditlog.ActionUserUpdate
-	}
-	if method == "DELETE" && path == "/api/v1/users/:id" {
-		return auditlog.ActionUserDelete
-	}
-	if method == "POST" && (path == "/api/v1/users/:id/password" ||
-		path == "/api/v1/users/:id/lock" ||
-		path == "/api/v1/users/:id/unlock") {
-		return auditlog.ActionUserUpdate
-	}
-
-	return ""
+	return auditActionByRoute[auditRouteKey{method: method, path: path}]
 }

@@ -88,22 +88,63 @@ func auditListRequestToOperationRecordRequest(req *ListAuditLogsRequest) *operat
 	}
 
 	return &operationrecord.ListRequest{
-		UserID:    req.UserID,
-		Type:      operationrecord.RecordType(req.Type),
-		Category:  mapLogCategory(req.Category),
-		Action:    string(req.Action),
-		Status:    operationrecord.Status(req.Status),
-		ServerID:  req.ServerID,
-		Source:    req.Source,
-		IP:        req.IP,
-		Keyword:   req.Keyword,
-		StartTime: req.StartTime,
-		EndTime:   req.EndTime,
-		SortBy:    req.SortBy,
-		SortOrder: req.SortOrder,
-		Page:      req.Page,
-		PageSize:  req.PageSize,
+		UserID:     req.UserID,
+		Type:       operationrecord.RecordType(req.Type),
+		Types:      mapLogTypes(req.Types),
+		Category:   mapLogCategory(req.Category),
+		Categories: mapLogCategories(req.Categories),
+		Action:     string(req.Action),
+		Status:     operationrecord.Status(req.Status),
+		Statuses:   mapLogStatuses(req.Statuses),
+		ServerID:   req.ServerID,
+		Source:     req.Source,
+		IP:         req.IP,
+		Keyword:    req.Keyword,
+		StartTime:  req.StartTime,
+		EndTime:    req.EndTime,
+		SortBy:     req.SortBy,
+		SortOrder:  req.SortOrder,
+		Page:       req.Page,
+		PageSize:   req.PageSize,
 	}
+}
+
+func mapLogTypes(types []string) []operationrecord.RecordType {
+	if len(types) == 0 {
+		return nil
+	}
+
+	recordTypes := make([]operationrecord.RecordType, 0, len(types))
+	for _, typ := range types {
+		recordTypes = append(recordTypes, operationrecord.RecordType(typ))
+	}
+	return recordTypes
+}
+
+func mapLogCategories(categories []LogCategory) []operationrecord.Category {
+	if len(categories) == 0 {
+		return nil
+	}
+
+	recordCategories := make([]operationrecord.Category, 0, len(categories))
+	for _, category := range categories {
+		if mapped := mapLogCategory(category); mapped != "" {
+			recordCategories = append(recordCategories, mapped)
+		}
+	}
+	return recordCategories
+}
+
+func mapLogStatuses(statuses []Status) []operationrecord.Status {
+	if len(statuses) == 0 {
+		return nil
+	}
+
+	recordStatuses := make([]operationrecord.Status, 0, len(statuses))
+	for _, status := range statuses {
+		recordStatuses = append(recordStatuses, operationrecord.Status(status))
+	}
+	return recordStatuses
 }
 
 func mapLogCategory(category LogCategory) operationrecord.Category {

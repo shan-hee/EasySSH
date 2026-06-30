@@ -193,16 +193,22 @@ func (r *repository) applyListFilters(query *gorm.DB, req *ListRequest) *gorm.DB
 	if req.UserID != nil {
 		query = query.Where("user_id = ?", *req.UserID)
 	}
-	if req.Type != "" {
+	if len(req.Types) > 0 {
+		query = query.Where("type IN ?", req.Types)
+	} else if req.Type != "" {
 		query = query.Where("type = ?", req.Type)
 	}
-	if req.Category != "" {
+	if len(req.Categories) > 0 {
+		query = query.Where("category IN ?", req.Categories)
+	} else if req.Category != "" {
 		query = query.Where("category = ?", req.Category)
 	}
 	if req.Action != "" {
 		query = query.Where("action = ?", req.Action)
 	}
-	if req.Status != "" {
+	if len(req.Statuses) > 0 {
+		query = query.Where("status IN ?", req.Statuses)
+	} else if req.Status != "" {
 		query = query.Where("status = ?", req.Status)
 	}
 	if req.ServerID != nil {

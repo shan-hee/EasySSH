@@ -30,7 +30,7 @@ func (h *OperationRecordHandler) List(c *gin.Context) {
 	if !ok {
 		return
 	}
-	applyOperationRecordUserScope(c, req, currentUserID)
+	applyOperationRecordUserScope(req, currentUserID)
 
 	result, err := h.service.List(c.Request.Context(), req)
 	if err != nil {
@@ -78,7 +78,7 @@ func (h *OperationRecordHandler) GetStatistics(c *gin.Context) {
 	if !ok {
 		return
 	}
-	applyOperationRecordStatisticsUserScope(c, req, currentUserID)
+	applyOperationRecordStatisticsUserScope(req, currentUserID)
 
 	stats, err := h.service.GetStatistics(c.Request.Context(), req)
 	if err != nil {
@@ -100,17 +100,17 @@ func parseOperationRecordListRequest(c *gin.Context) (*operationrecord.ListReque
 		}
 		req.UserID = &userID
 	}
-	if typ := c.Query("type"); typ != "" {
-		req.Type = operationrecord.RecordType(typ)
+	if values := splitQueryValues(c, "type"); len(values) > 0 {
+		setQuerySelection(values, &req.Type, &req.Types)
 	}
-	if category := c.Query("category"); category != "" {
-		req.Category = operationrecord.Category(category)
+	if values := splitQueryValues(c, "category"); len(values) > 0 {
+		setQuerySelection(values, &req.Category, &req.Categories)
 	}
 	if action := c.Query("action"); action != "" {
 		req.Action = action
 	}
-	if status := c.Query("status"); status != "" {
-		req.Status = operationrecord.Status(status)
+	if values := splitQueryValues(c, "status"); len(values) > 0 {
+		setQuerySelection(values, &req.Status, &req.Statuses)
 	}
 	if source := c.Query("source"); source != "" {
 		req.Source = source
@@ -191,10 +191,10 @@ func parseOperationRecordStatisticsRequest(c *gin.Context) (*operationrecord.Sta
 	return req, true
 }
 
-func applyOperationRecordUserScope(c *gin.Context, req *operationrecord.ListRequest, currentUserID uuid.UUID) {
+func applyOperationRecordUserScope(req *operationrecord.ListRequest, currentUserID uuid.UUID) {
 	req.UserID = &currentUserID
 }
 
-func applyOperationRecordStatisticsUserScope(c *gin.Context, req *operationrecord.StatisticsRequest, currentUserID uuid.UUID) {
+func applyOperationRecordStatisticsUserScope(req *operationrecord.StatisticsRequest, currentUserID uuid.UUID) {
 	req.UserID = &currentUserID
 }

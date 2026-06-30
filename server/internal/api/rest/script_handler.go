@@ -28,17 +28,9 @@ func (h *ScriptHandler) Create(c *gin.Context) {
 		return
 	}
 
-	userID, exists := c.Get("user_id")
-	if !exists {
-		RespondError(c, http.StatusUnauthorized, "unauthorized", "user_id not found")
-		return
-	}
-
 	username := c.GetString("username")
-
-	uid, err := uuid.Parse(userID.(string))
-	if err != nil {
-		RespondError(c, http.StatusBadRequest, "invalid_user_id", err.Error())
+	uid, ok := requireCurrentUserID(c)
+	if !ok {
 		return
 	}
 
@@ -65,15 +57,8 @@ func (h *ScriptHandler) Update(c *gin.Context) {
 		return
 	}
 
-	userID, exists := c.Get("user_id")
-	if !exists {
-		RespondError(c, http.StatusUnauthorized, "unauthorized", "user_id not found")
-		return
-	}
-
-	uid, err := uuid.Parse(userID.(string))
-	if err != nil {
-		RespondError(c, http.StatusBadRequest, "invalid_user_id", err.Error())
+	uid, ok := requireCurrentUserID(c)
+	if !ok {
 		return
 	}
 
@@ -102,15 +87,8 @@ func (h *ScriptHandler) Delete(c *gin.Context) {
 		return
 	}
 
-	userID, exists := c.Get("user_id")
-	if !exists {
-		RespondError(c, http.StatusUnauthorized, "unauthorized", "user_id not found")
-		return
-	}
-
-	uid, err := uuid.Parse(userID.(string))
-	if err != nil {
-		RespondError(c, http.StatusBadRequest, "invalid_user_id", err.Error())
+	uid, ok := requireCurrentUserID(c)
+	if !ok {
 		return
 	}
 
@@ -138,15 +116,8 @@ func (h *ScriptHandler) GetByID(c *gin.Context) {
 		return
 	}
 
-	userID, exists := c.Get("user_id")
-	if !exists {
-		RespondError(c, http.StatusUnauthorized, "unauthorized", "user_id not found")
-		return
-	}
-
-	uid, err := uuid.Parse(userID.(string))
-	if err != nil {
-		RespondError(c, http.StatusBadRequest, "invalid_user_id", err.Error())
+	uid, ok := requireCurrentUserID(c)
+	if !ok {
 		return
 	}
 
@@ -175,15 +146,8 @@ func (h *ScriptHandler) List(c *gin.Context) {
 		return
 	}
 
-	userID, exists := c.Get("user_id")
-	if !exists {
-		RespondError(c, http.StatusUnauthorized, "unauthorized", "user_id not found")
-		return
-	}
-
-	uid, err := uuid.Parse(userID.(string))
-	if err != nil {
-		RespondError(c, http.StatusBadRequest, "invalid_user_id", err.Error())
+	uid, ok := requireCurrentUserID(c)
+	if !ok {
 		return
 	}
 
@@ -204,15 +168,8 @@ func (h *ScriptHandler) Execute(c *gin.Context) {
 		return
 	}
 
-	userID, exists := c.Get("user_id")
-	if !exists {
-		RespondError(c, http.StatusUnauthorized, "unauthorized", "user_id not found")
-		return
-	}
-
-	uid, err := uuid.Parse(userID.(string))
-	if err != nil {
-		RespondError(c, http.StatusBadRequest, "invalid_user_id", err.Error())
+	uid, ok := requireCurrentUserID(c)
+	if !ok {
 		return
 	}
 

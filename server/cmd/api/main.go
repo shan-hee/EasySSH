@@ -825,6 +825,7 @@ func main() {
 		// 定时任务路由（需要认证）
 		scheduledTaskRoutes := v1.Group("/scheduled-tasks")
 		scheduledTaskRoutes.Use(middleware.AuthMiddleware(jwtService, ticketService, authRepo))
+		scheduledTaskRoutes.Use(middleware.AuditLogMiddleware(auditLogService, nil))
 		{
 			scheduledTaskRoutes.GET("", scheduledTaskHandler.List)                     // 任务列表
 			scheduledTaskRoutes.POST("", scheduledTaskHandler.Create)                  // 创建任务

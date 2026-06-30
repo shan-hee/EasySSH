@@ -40,15 +40,8 @@ func (h *ScheduledTaskHandler) Create(c *gin.Context) {
 		return
 	}
 
-	userID, exists := c.Get("user_id")
-	if !exists {
-		RespondError(c, http.StatusUnauthorized, "unauthorized", "user_id not found")
-		return
-	}
-
-	uid, err := uuid.Parse(userID.(string))
-	if err != nil {
-		RespondError(c, http.StatusBadRequest, "invalid_user_id", err.Error())
+	uid, ok := requireCurrentUserID(c)
+	if !ok {
 		return
 	}
 
@@ -85,15 +78,8 @@ func (h *ScheduledTaskHandler) List(c *gin.Context) {
 		return
 	}
 
-	userID, exists := c.Get("user_id")
-	if !exists {
-		RespondError(c, http.StatusUnauthorized, "unauthorized", "user_id not found")
-		return
-	}
-
-	uid, err := uuid.Parse(userID.(string))
-	if err != nil {
-		RespondError(c, http.StatusBadRequest, "invalid_user_id", err.Error())
+	uid, ok := requireCurrentUserID(c)
+	if !ok {
 		return
 	}
 
@@ -115,15 +101,8 @@ func (h *ScheduledTaskHandler) GetByID(c *gin.Context) {
 		return
 	}
 
-	userID, exists := c.Get("user_id")
-	if !exists {
-		RespondError(c, http.StatusUnauthorized, "unauthorized", "user_id not found")
-		return
-	}
-
-	uid, err := uuid.Parse(userID.(string))
-	if err != nil {
-		RespondError(c, http.StatusBadRequest, "invalid_user_id", err.Error())
+	uid, ok := requireCurrentUserID(c)
+	if !ok {
 		return
 	}
 
@@ -159,15 +138,8 @@ func (h *ScheduledTaskHandler) Update(c *gin.Context) {
 		return
 	}
 
-	userID, exists := c.Get("user_id")
-	if !exists {
-		RespondError(c, http.StatusUnauthorized, "unauthorized", "user_id not found")
-		return
-	}
-
-	uid, err := uuid.Parse(userID.(string))
-	if err != nil {
-		RespondError(c, http.StatusBadRequest, "invalid_user_id", err.Error())
+	uid, ok := requireCurrentUserID(c)
+	if !ok {
 		return
 	}
 
@@ -238,15 +210,8 @@ func (h *ScheduledTaskHandler) Delete(c *gin.Context) {
 		return
 	}
 
-	userID, exists := c.Get("user_id")
-	if !exists {
-		RespondError(c, http.StatusUnauthorized, "unauthorized", "user_id not found")
-		return
-	}
-
-	uid, err := uuid.Parse(userID.(string))
-	if err != nil {
-		RespondError(c, http.StatusBadRequest, "invalid_user_id", err.Error())
+	uid, ok := requireCurrentUserID(c)
+	if !ok {
 		return
 	}
 
@@ -420,15 +385,8 @@ func (h *ScheduledTaskHandler) deleteStagedTransferJob(ctx context.Context, user
 
 // GetStatistics 获取定时任务统计信息
 func (h *ScheduledTaskHandler) GetStatistics(c *gin.Context) {
-	userID, exists := c.Get("user_id")
-	if !exists {
-		RespondError(c, http.StatusUnauthorized, "unauthorized", "user_id not found")
-		return
-	}
-
-	uid, err := uuid.Parse(userID.(string))
-	if err != nil {
-		RespondError(c, http.StatusBadRequest, "invalid_user_id", err.Error())
+	uid, ok := requireCurrentUserID(c)
+	if !ok {
 		return
 	}
 
@@ -458,15 +416,8 @@ func (h *ScheduledTaskHandler) Toggle(c *gin.Context) {
 		return
 	}
 
-	userID, exists := c.Get("user_id")
-	if !exists {
-		RespondError(c, http.StatusUnauthorized, "unauthorized", "user_id not found")
-		return
-	}
-
-	uid, err := uuid.Parse(userID.(string))
-	if err != nil {
-		RespondError(c, http.StatusBadRequest, "invalid_user_id", err.Error())
+	uid, ok := requireCurrentUserID(c)
+	if !ok {
 		return
 	}
 
@@ -495,15 +446,8 @@ func (h *ScheduledTaskHandler) Trigger(c *gin.Context) {
 		return
 	}
 
-	userID, exists := c.Get("user_id")
-	if !exists {
-		RespondError(c, http.StatusUnauthorized, "unauthorized", "user_id not found")
-		return
-	}
-
-	uid, err := uuid.Parse(userID.(string))
-	if err != nil {
-		RespondError(c, http.StatusBadRequest, "invalid_user_id", err.Error())
+	uid, ok := requireCurrentUserID(c)
+	if !ok {
 		return
 	}
 

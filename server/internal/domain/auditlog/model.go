@@ -31,6 +31,12 @@ const (
 	ActionUserCreate ActionType = "user_create"
 	ActionUserUpdate ActionType = "user_update"
 	ActionUserDelete ActionType = "user_delete"
+
+	ActionScheduledTaskCreate  ActionType = "scheduled_task_create"
+	ActionScheduledTaskUpdate  ActionType = "scheduled_task_update"
+	ActionScheduledTaskDelete  ActionType = "scheduled_task_delete"
+	ActionScheduledTaskToggle  ActionType = "scheduled_task_toggle"
+	ActionScheduledTaskTrigger ActionType = "scheduled_task_trigger"
 )
 
 type LogCategory string
@@ -96,21 +102,24 @@ type CreateAuditLogRequest struct {
 }
 
 type ListAuditLogsRequest struct {
-	UserID    *uuid.UUID
-	ServerID  *uuid.UUID
-	Type      string
-	Action    ActionType
-	Category  LogCategory
-	Status    Status
-	Source    string
-	IP        string
-	Keyword   string
-	StartTime *time.Time
-	EndTime   *time.Time
-	SortBy    string
-	SortOrder string
-	Page      int
-	PageSize  int
+	UserID     *uuid.UUID
+	ServerID   *uuid.UUID
+	Type       string
+	Types      []string
+	Action     ActionType
+	Category   LogCategory
+	Categories []LogCategory
+	Status     Status
+	Statuses   []Status
+	Source     string
+	IP         string
+	Keyword    string
+	StartTime  *time.Time
+	EndTime    *time.Time
+	SortBy     string
+	SortOrder  string
+	Page       int
+	PageSize   int
 }
 
 type AuditLogStatisticsRequest struct {
