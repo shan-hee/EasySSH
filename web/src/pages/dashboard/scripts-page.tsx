@@ -722,7 +722,6 @@ const totalExecutions = useMemo(() => (
        emptyMessage={t("tableEmpty")}
        className="min-h-[520px] overflow-hidden xl:min-h-0"
        scrollContainerClassName="min-h-[360px]"
-       tableClassName="min-w-[1120px] table-fixed"
        density="compact"
        onRowClick={(script) => handleOpenDetail(script.id)}
        getRowClassName={(script) => (

@@ -1,5 +1,5 @@
 
-import { ColumnDef } from "@tanstack/react-table"
+import type { Column, ColumnDef } from "@tanstack/react-table"
 import { useTranslation } from "react-i18next"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -12,6 +12,8 @@ import {
 } from "@/components/ui/dropdown-menu"
 import {
   ArrowUpDown,
+  ArrowUp,
+  ArrowDown,
   MoreHorizontal,
   Edit,
   Trash2,
@@ -25,6 +27,33 @@ import {
   Settings,
 } from "lucide-react"
 import type { Permission } from "@/lib/api/permissions"
+import type { DataTableColumnMeta } from "@/components/ui/column-meta"
+
+function SortableHeader<TValue>({
+  column,
+  label,
+}: {
+  column: Column<Permission, TValue>
+  label: string
+}) {
+  const Icon = column.getIsSorted() === "asc"
+    ? ArrowUp
+    : column.getIsSorted() === "desc"
+      ? ArrowDown
+      : ArrowUpDown
+  return (
+    <Button
+      type="button"
+      variant="ghost"
+      size="sm"
+      onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+      className="h-7 px-2 text-xs font-medium"
+    >
+      <span>{label}</span>
+      <Icon className="ml-1.5 h-3.5 w-3.5" />
+    </Button>
+  )
+}
 
 // 静态权限数据
 export const staticPermissions: Permission[] = [
@@ -146,7 +175,6 @@ interface PermissionColumnsOptions {
 export function usePermissionColumns(options?: PermissionColumnsOptions): ColumnDef<Permission, unknown>[] {
   const { t } = useTranslation("users")
 
-  // 模块图标和颜色
   const ModuleBadge = ({ module }: { module: Permission["module"] }) => {
     const config = {
       server: { icon: Server, label: t("permModuleServer"), className: "bg-blue-100 text-blue-800 border-blue-200" },
@@ -164,7 +192,6 @@ export function usePermissionColumns(options?: PermissionColumnsOptions): Column
     )
   }
 
-  // 角色徽章
   const RoleBadges = ({ roles }: { roles: Permission["roles"] }) => {
     const roleConfig = {
       admin: { icon: Shield, label: t("filterRoleAdmin"), className: "bg-purple-100 text-purple-800 border-purple-200" },
@@ -186,13 +213,15 @@ export function usePermissionColumns(options?: PermissionColumnsOptions): Column
     )
   }
 
+  const meta = (m: DataTableColumnMeta): DataTableColumnMeta => m
+
   return [
-    // 多选列
     {
       id: "select",
       size: 44,
       minSize: 44,
       maxSize: 44,
+      meta: meta({ align: "center" }),
       header: ({ table }) => (
         <Checkbox
           checked={
@@ -214,24 +243,12 @@ export function usePermissionColumns(options?: PermissionColumnsOptions): Column
       enableHiding: false,
     },
 
-    // 权限名称列
     {
       accessorKey: "name",
       size: 260,
       minSize: 220,
-      header: ({ column }) => {
-        return (
-          <Button
-            variant="ghost"
-            size="sm"
-            className="-ml-3 h-8 data-[state=open]:bg-accent"
-            onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-          >
-            {t("permColName")}
-            <ArrowUpDown className="ml-2 h-4 w-4" />
-          </Button>
-        )
-      },
+      meta: meta({ align: "left" }),
+      header: ({ column }) => <SortableHeader column={column} label={t("permColName")} />,
       cell: ({ row }) => {
         const permission = row.original
         return (
@@ -251,11 +268,11 @@ export function usePermissionColumns(options?: PermissionColumnsOptions): Column
       },
     },
 
-    // 描述列
     {
       accessorKey: "description",
       size: 320,
       minSize: 260,
+      meta: meta({ align: "left" }),
       header: () => t("permColDescription"),
       cell: ({ row }) => (
         <div className="text-sm text-muted-foreground max-w-[200px] truncate">
@@ -264,53 +281,39 @@ export function usePermissionColumns(options?: PermissionColumnsOptions): Column
       ),
     },
 
-    // 模块列
     {
       accessorKey: "module",
       size: 170,
       minSize: 150,
-      header: ({ column }) => {
-        return (
-          <Button
-            variant="ghost"
-            size="sm"
-            className="-ml-3 h-8 data-[state=open]:bg-accent"
-            onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-          >
-            {t("permColModule")}
-            <ArrowUpDown className="ml-2 h-4 w-4" />
-          </Button>
-        )
-      },
+      meta: meta({ align: "left" }),
+      header: ({ column }) => <SortableHeader column={column} label={t("permColModule")} />,
       cell: ({ row }) => <ModuleBadge module={row.getValue("module")} />,
       filterFn: (row, id, value) => {
         return value.includes(row.getValue(id))
       },
     },
 
-    // 适用角色列
     {
       accessorKey: "roles",
       size: 260,
       minSize: 220,
+      meta: meta({ align: "left" }),
       header: () => t("permColRoles"),
       cell: ({ row }) => <RoleBadges roles={row.getValue("roles")} />,
     },
 
-    // 操作列
     {
       id: "actions",
       size: 72,
       minSize: 64,
       maxSize: 80,
-      header: () => (
-        <div className="text-right">{t("colActions")}</div>
-      ),
+      meta: meta({ align: "right" }),
+      header: () => t("colActions"),
       cell: ({ row }) => {
         const permission = row.original
 
         return (
-          <div className="text-right">
+          <div className="flex w-full items-center justify-end">
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" size="sm" className="h-8 w-8 p-0">

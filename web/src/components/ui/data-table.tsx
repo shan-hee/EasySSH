@@ -23,6 +23,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
+import { resolveColumnClass } from "@/components/ui/column-meta"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -139,21 +140,6 @@ function getDensityClasses(density: TableDensity) {
         header: "px-3 py-2 h-10",
         cell: "px-3 py-1.5",
       }
-  }
-}
-
-function getColumnStyle<TData, TValue>(
-  columnDef: ColumnDef<TData, TValue>
-): React.CSSProperties | undefined {
-  const { size, minSize, maxSize } = columnDef
-  if (size === undefined && minSize === undefined && maxSize === undefined) {
-    return undefined
-  }
-
-  return {
-    width: size,
-    minWidth: minSize,
-    maxWidth: maxSize,
   }
 }
 
@@ -302,7 +288,22 @@ export function DataTable<TData, TValue = unknown>({
             scrollContainerClassName
           )}
         >
-          <Table className={cn(loading ? "invisible" : "", tableClassName)}>
+          <Table
+            fixedLayout
+            className={cn(loading ? "invisible" : "", tableClassName)}
+          >
+            <colgroup>
+              {table.getHeaderGroups()[0]?.headers.map((header) => (
+                <col
+                  key={header.id}
+                  style={{
+                    width: header.column.columnDef.size !== undefined
+                      ? header.column.columnDef.size
+                      : undefined,
+                  }}
+                />
+              ))}
+            </colgroup>
             <TableHeader>
               {table.getHeaderGroups().map((headerGroup) => (
                 <TableRow
@@ -312,10 +313,10 @@ export function DataTable<TData, TValue = unknown>({
                   {headerGroup.headers.map((header) => (
                     <TableHead
                       key={header.id}
-                      style={getColumnStyle(header.column.columnDef)}
                       className={cn(
                         "sticky top-0 z-[1] whitespace-nowrap bg-table-header",
-                        densityClasses.header
+                        densityClasses.header,
+                        resolveColumnClass(header.column.columnDef, "head")
                       )}
                     >
                       {header.isPlaceholder
@@ -344,8 +345,10 @@ export function DataTable<TData, TValue = unknown>({
                     {row.getVisibleCells().map((cell) => (
                       <TableCell
                         key={cell.id}
-                        style={getColumnStyle(cell.column.columnDef)}
-                        className={densityClasses.cell}
+                        className={cn(
+                          densityClasses.cell,
+                          resolveColumnClass(cell.column.columnDef, "cell")
+                        )}
                       >
                         {flexRender(
                           cell.column.columnDef.cell,

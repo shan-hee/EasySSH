@@ -1,5 +1,5 @@
 
-import { ColumnDef } from "@tanstack/react-table"
+import type { Column, ColumnDef } from "@tanstack/react-table"
 import { useTranslation } from "react-i18next"
 import { UserDetail, UserRole } from "@/lib/api/users"
 import { Badge } from "@/components/ui/badge"
@@ -14,6 +14,8 @@ import {
 } from "@/components/ui/dropdown-menu"
 import {
   ArrowUpDown,
+  ArrowUp,
+  ArrowDown,
   MoreHorizontal,
   Edit,
   Trash2,
@@ -27,6 +29,7 @@ import {
 import { useClientAuth } from "@/components/client-auth-provider"
 import { useSystemConfig } from "@/hooks/use-system-config"
 import { formatInTimezone, getEffectiveLocale, getEffectiveTimezone } from "@/utils/datetime"
+import type { DataTableColumnMeta } from "@/components/ui/column-meta"
 
 interface UserColumnsOptions {
   onEdit?: (user: UserDetail) => void
@@ -34,6 +37,32 @@ interface UserColumnsOptions {
   onChangePassword?: (userId: string) => void
   onLock?: (userId: string, username: string) => void
   onUnlock?: (userId: string, username: string) => void
+}
+
+function SortableHeader<TValue>({
+  column,
+  label,
+}: {
+  column: Column<UserDetail, TValue>
+  label: string
+}) {
+  const Icon = column.getIsSorted() === "asc"
+    ? ArrowUp
+    : column.getIsSorted() === "desc"
+      ? ArrowDown
+      : ArrowUpDown
+  return (
+    <Button
+      type="button"
+      variant="ghost"
+      size="sm"
+      onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+      className="h-7 px-2 text-xs font-medium"
+    >
+      <span>{label}</span>
+      <Icon className="ml-1.5 h-3.5 w-3.5" />
+    </Button>
+  )
 }
 
 export function useUserColumns(options?: UserColumnsOptions): ColumnDef<UserDetail, unknown>[] {
@@ -46,13 +75,11 @@ export function useUserColumns(options?: UserColumnsOptions): ColumnDef<UserDeta
   const formatDate = (value: string) =>
     formatInTimezone(value, { second: undefined }, effectiveLocale, effectiveTimezone)
 
-  // 判断用户是否被锁定
   const isUserLocked = (user: UserDetail) => {
     if (!user.locked_until) return false
     return new Date(user.locked_until) > new Date()
   }
 
-  // 角色显示组件
   const RoleBadge = ({ role }: { role: UserRole }) => {
     switch (role) {
       case "admin":
@@ -79,13 +106,15 @@ export function useUserColumns(options?: UserColumnsOptions): ColumnDef<UserDeta
     }
   }
 
+  const meta = (m: DataTableColumnMeta): DataTableColumnMeta => m
+
   return [
-    // 多选列
     {
       id: "select",
       size: 44,
       minSize: 44,
       maxSize: 44,
+      meta: meta({ align: "center" }),
       header: ({ table }) => (
         <Checkbox
           checked={
@@ -107,24 +136,12 @@ export function useUserColumns(options?: UserColumnsOptions): ColumnDef<UserDeta
       enableHiding: false,
     },
 
-    // 用户信息列
     {
       accessorKey: "username",
       size: 360,
       minSize: 300,
-      header: ({ column }) => {
-        return (
-          <Button
-            variant="ghost"
-            size="sm"
-            className="-ml-3 h-8 data-[state=open]:bg-accent"
-            onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-          >
-            {t("fieldUsername")}
-            <ArrowUpDown className="ml-2 h-4 w-4" />
-          </Button>
-        )
-      },
+      meta: meta({ align: "left" }),
+      header: ({ column }) => <SortableHeader column={column} label={t("fieldUsername")} />,
       cell: ({ row }) => {
         const user = row.original
         const locked = isUserLocked(user)
@@ -167,71 +184,35 @@ export function useUserColumns(options?: UserColumnsOptions): ColumnDef<UserDeta
       },
     },
 
-    // 角色列
     {
       accessorKey: "role",
       size: 160,
       minSize: 140,
-      header: ({ column }) => {
-        return (
-          <Button
-            variant="ghost"
-            size="sm"
-            className="-ml-3 h-8 data-[state=open]:bg-accent"
-            onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-          >
-            {t("fieldRole")}
-            <ArrowUpDown className="ml-2 h-4 w-4" />
-          </Button>
-        )
-      },
+      meta: meta({ align: "left" }),
+      header: ({ column }) => <SortableHeader column={column} label={t("fieldRole")} />,
       cell: ({ row }) => <RoleBadge role={row.getValue("role")} />,
       filterFn: (row, id, value) => {
         return value.includes(row.getValue(id))
       },
     },
 
-    // 创建时间列
     {
       accessorKey: "created_at",
       size: 220,
       minSize: 190,
-      header: ({ column }) => {
-        return (
-          <Button
-            variant="ghost"
-            size="sm"
-            className="-ml-3 h-8 data-[state=open]:bg-accent"
-            onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-          >
-            创建时间
-            <ArrowUpDown className="ml-2 h-4 w-4" />
-          </Button>
-        )
-      },
+      meta: meta({ align: "left" }),
+      header: ({ column }) => <SortableHeader column={column} label="创建时间" />,
       cell: ({ row }) => {
         return <div className="text-sm">{formatDate(row.getValue("created_at"))}</div>
       },
     },
 
-    // 最后登录时间列
     {
       accessorKey: "last_login_at",
       size: 200,
       minSize: 160,
-      header: ({ column }) => {
-        return (
-          <Button
-            variant="ghost"
-            size="sm"
-            className="-ml-3 h-8 data-[state=open]:bg-accent"
-            onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-          >
-            最后登录
-            <ArrowUpDown className="ml-2 h-4 w-4" />
-          </Button>
-        )
-      },
+      meta: meta({ align: "left" }),
+      header: ({ column }) => <SortableHeader column={column} label="最后登录" />,
       cell: ({ row }) => {
         const lastLogin = row.getValue("last_login_at") as string | undefined
         return (
@@ -242,21 +223,19 @@ export function useUserColumns(options?: UserColumnsOptions): ColumnDef<UserDeta
       },
     },
 
-    // 操作列
     {
       id: "actions",
       size: 72,
       minSize: 64,
       maxSize: 80,
-      header: () => (
-        <div className="text-right">{t("colActions")}</div>
-      ),
+      meta: meta({ align: "right" }),
+      header: () => t("colActions"),
       cell: ({ row }) => {
         const user = row.original
         const locked = isUserLocked(user)
 
         return (
-          <div className="text-right">
+          <div className="flex w-full items-center justify-end">
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" size="sm" className="h-8 w-8 p-0">

@@ -26,6 +26,7 @@ import { getErrorMessage } from "@/lib/error-utils"
 import { logsApi, type AuditLog, type AuditLogListParams } from "@/lib/api/logs"
 import { DataTable } from "@/components/ui/data-table"
 import { DataTableToolbar } from "@/components/ui/data-table-toolbar"
+import type { DataTableColumnMeta } from "@/components/ui/column-meta"
 import {
   DashboardStatusLine,
   InlineStatusBadge,
@@ -326,10 +327,15 @@ export function LogsClient({ initialData, defaultAction, api = logsApi }: LogsCl
     void loadLogs(1, pageSize, { showTableLoading: true, sort: nextSort })
   }, [loadLogs, pageSize, sort])
 
-  const logColumns = React.useMemo<ColumnDef<AuditLog>[]>(() => [
+  const logColumns = React.useMemo<ColumnDef<AuditLog>[]>(() => {
+    const meta = (m: DataTableColumnMeta): DataTableColumnMeta => m
+    return [
     {
       id: "created_at",
       accessorKey: "created_at",
+      size: 180,
+      minSize: 150,
+      meta: meta({ align: "left" }),
       header: () => <SortableHeader label={t("columnTime")} field="created_at" sort={sort} onSort={handleSort} />,
       cell: ({ row }) => (
         <span className="whitespace-nowrap font-mono text-xs">
@@ -340,6 +346,9 @@ export function LogsClient({ initialData, defaultAction, api = logsApi }: LogsCl
     {
       id: "type",
       accessorKey: "type",
+      size: 100,
+      minSize: 80,
+      meta: meta({ align: "left" }),
       header: () => <SortableHeader label={t("columnType")} field="type" sort={sort} onSort={handleSort} />,
       cell: ({ row }) => (
         <InlineStatusBadge
@@ -351,6 +360,9 @@ export function LogsClient({ initialData, defaultAction, api = logsApi }: LogsCl
     {
       id: "category",
       accessorKey: "category",
+      size: 110,
+      minSize: 90,
+      meta: meta({ align: "left" }),
       header: () => <SortableHeader label={t("columnCategory")} field="category" sort={sort} onSort={handleSort} />,
       cell: ({ row }) => (
         <InlineStatusBadge
@@ -362,6 +374,9 @@ export function LogsClient({ initialData, defaultAction, api = logsApi }: LogsCl
     {
       id: "status",
       accessorKey: "status",
+      size: 120,
+      minSize: 100,
+      meta: meta({ align: "left" }),
       header: () => <SortableHeader label={t("columnStatus")} field="status" sort={sort} onSort={handleSort} />,
       cell: ({ row }) => (
         <InlineStatusBadge
@@ -378,6 +393,9 @@ export function LogsClient({ initialData, defaultAction, api = logsApi }: LogsCl
     {
       id: "action",
       accessorKey: "action",
+      size: 140,
+      minSize: 110,
+      meta: meta({ align: "left" }),
       header: () => <SortableHeader label={t("columnAction")} field="action" sort={sort} onSort={handleSort} />,
       cell: ({ row }) => (
         <InlineStatusBadge
@@ -389,15 +407,21 @@ export function LogsClient({ initialData, defaultAction, api = logsApi }: LogsCl
     {
       id: "username",
       accessorKey: "username",
+      size: 120,
+      minSize: 100,
+      meta: meta({ align: "left" }),
       header: () => <SortableHeader label={t("columnUser")} field="username" sort={sort} onSort={handleSort} />,
       cell: ({ row }) => row.original.username || "-",
     },
     {
       id: "resource",
       accessorKey: "resource",
+      size: 180,
+      minSize: 150,
+      meta: meta({ align: "left" }),
       header: () => <SortableHeader label={t("columnResource")} field="resource" sort={sort} onSort={handleSort} />,
       cell: ({ row }) => (
-        <span className="block max-w-[180px] truncate" title={row.original.resource || undefined}>
+        <span className="block w-full truncate" title={row.original.resource || undefined}>
           {row.original.resource || "-"}
         </span>
       ),
@@ -405,6 +429,9 @@ export function LogsClient({ initialData, defaultAction, api = logsApi }: LogsCl
     {
       id: "source",
       accessorKey: "source",
+      size: 100,
+      minSize: 80,
+      meta: meta({ align: "left" }),
       header: () => <SortableHeader label={t("columnSource")} field="source" sort={sort} onSort={handleSort} />,
       cell: ({ row }) => (
         <span className="whitespace-nowrap text-xs text-muted-foreground">
@@ -415,6 +442,9 @@ export function LogsClient({ initialData, defaultAction, api = logsApi }: LogsCl
     {
       id: "ip",
       accessorKey: "ip",
+      size: 130,
+      minSize: 110,
+      meta: meta({ align: "left" }),
       header: () => <SortableHeader label={t("columnIp")} field="ip" sort={sort} onSort={handleSort} />,
       cell: ({ row }) => (
         <span className="whitespace-nowrap font-mono text-xs">
@@ -425,6 +455,9 @@ export function LogsClient({ initialData, defaultAction, api = logsApi }: LogsCl
     {
       id: "duration",
       accessorKey: "duration",
+      size: 100,
+      minSize: 80,
+      meta: meta({ align: "left" }),
       header: () => <SortableHeader label={t("columnDuration")} field="duration_ms" sort={sort} onSort={handleSort} />,
       cell: ({ row }) => (
         <span className="whitespace-nowrap font-mono text-xs">
@@ -435,11 +468,14 @@ export function LogsClient({ initialData, defaultAction, api = logsApi }: LogsCl
     {
       id: "details",
       accessorKey: "details",
+      size: 260,
+      minSize: 220,
+      meta: meta({ align: "left" }),
       header: t("columnDetails"),
       cell: ({ row }) => {
         const details = row.original.details || row.original.error_msg || "-"
         return (
-          <span className="block max-w-[260px] truncate text-muted-foreground" title={details === "-" ? undefined : details}>
+          <span className="block w-full truncate text-muted-foreground" title={details === "-" ? undefined : details}>
             {details}
           </span>
         )
@@ -458,7 +494,7 @@ export function LogsClient({ initialData, defaultAction, api = logsApi }: LogsCl
         ].some((item) => item?.toLowerCase().includes(keyword))
       },
     },
-  ], [handleSort, sort, t])
+  ]}, [handleSort, sort, t])
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-auto p-3 pt-0 sm:gap-4 sm:p-4 sm:pt-0 xl:overflow-hidden">
@@ -481,7 +517,6 @@ export function LogsClient({ initialData, defaultAction, api = logsApi }: LogsCl
           emptyMessage={t("emptyMessage")}
           className="min-h-0 overflow-hidden"
           scrollContainerClassName="min-h-[360px]"
-          tableClassName="min-w-[1180px]"
           density="compact"
           onRowClick={(log) => {
             setSelectedLogId(log.id)

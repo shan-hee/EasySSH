@@ -775,7 +775,6 @@ export default function UsersPage() {
                 enableRowSelection={true}
                 className="min-h-0"
                 scrollContainerClassName="min-h-[360px]"
-                tableClassName="min-w-[980px]"
                 density="compact"
                 toolbar={(table) => (
                   <DataTableToolbar
@@ -832,7 +831,6 @@ export default function UsersPage() {
                 enableRowSelection={true}
                 className="min-h-0"
                 scrollContainerClassName="min-h-[360px]"
-                tableClassName="min-w-[980px]"
                 density="compact"
                 toolbar={(table) => (
                   <DataTableToolbar

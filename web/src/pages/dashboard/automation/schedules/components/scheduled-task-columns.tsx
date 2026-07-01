@@ -1,4 +1,4 @@
-import { ColumnDef } from "@tanstack/react-table"
+import type { Column, ColumnDef } from "@tanstack/react-table"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -26,6 +26,7 @@ import {
   Download,
 } from "lucide-react"
 import { type ScheduledTask } from "@/lib/api"
+import type { DataTableColumnMeta } from "@/components/ui/column-meta"
 
 interface ScheduledTaskColumnsOptions {
   onToggle: (taskId: string, enabled: boolean) => void
@@ -38,9 +39,33 @@ interface ScheduledTaskColumnsOptions {
 type I18nValues = Record<string, string | number | Date>
 type I18nT = (key: string, values?: I18nValues) => string
 
-/**
- * 获取任务类型图标
- */
+function SortableHeader<TValue>({
+  column,
+  label,
+}: {
+  column: Column<ScheduledTask, TValue>
+  label: string
+}) {
+  const Icon = column.getIsSorted() === "asc"
+    ? ArrowUp
+    : column.getIsSorted() === "desc"
+      ? ArrowDown
+      : ArrowUpDown
+
+  return (
+    <Button
+      type="button"
+      variant="ghost"
+      size="sm"
+      onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+      className="h-7 px-2 text-xs font-medium"
+    >
+      <span>{label}</span>
+      <Icon className="ml-1.5 h-3.5 w-3.5" />
+    </Button>
+  )
+}
+
 function getTypeIcon(type: string) {
   switch (type) {
     case "command":
@@ -58,52 +83,35 @@ function getTypeIcon(type: string) {
   }
 }
 
-/**
- * 计算成功率
- */
 function calculateSuccessRate(task: ScheduledTask): string {
   if (task.run_count === 0) return "100.0"
   const successCount = task.run_count - task.failure_count
   return ((successCount / task.run_count) * 100).toFixed(1)
 }
 
-/**
- * 创建定时任务表格列定义
- */
 export function createScheduledTaskColumns(
   t: I18nT,
   options: ScheduledTaskColumnsOptions
 ): ColumnDef<ScheduledTask>[] {
   const { onToggle, onTrigger, onEdit, onDelete, formatDate } = options
 
+  const meta = (m: DataTableColumnMeta): DataTableColumnMeta => m
+
   return [
-    // 任务名称列
     {
       id: "task_name",
       accessorKey: "task_name",
-      header: ({ column }) => (
-        <Button
-          variant="ghost"
-          onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-          className="px-2"
-        >
-          {t("tableColTaskName")}
-          {column.getIsSorted() === "asc" ? (
-            <ArrowUp className="ml-2 h-4 w-4" />
-          ) : column.getIsSorted() === "desc" ? (
-            <ArrowDown className="ml-2 h-4 w-4" />
-          ) : (
-            <ArrowUpDown className="ml-2 h-4 w-4" />
-          )}
-        </Button>
-      ),
+      size: 280,
+      minSize: 240,
+      meta: meta({ align: "left" }),
+      header: ({ column }) => <SortableHeader column={column} label={t("tableColTaskName")} />,
       cell: ({ row }) => {
         const task = row.original
         return (
-          <div className="flex flex-col">
-            <span className="font-medium">{task.task_name}</span>
+          <div className="flex w-full min-w-0 flex-col py-0.5">
+            <span className="truncate font-medium">{task.task_name}</span>
             {task.description && (
-              <span className="text-xs text-muted-foreground line-clamp-1">
+              <span className="truncate text-xs text-muted-foreground">
                 {task.description}
               </span>
             )}
@@ -112,26 +120,13 @@ export function createScheduledTaskColumns(
       },
     },
 
-    // 类型列
     {
       id: "task_type",
       accessorKey: "task_type",
-      header: ({ column }) => (
-        <Button
-          variant="ghost"
-          onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-          className="px-2"
-        >
-          {t("tableColType")}
-          {column.getIsSorted() === "asc" ? (
-            <ArrowUp className="ml-2 h-4 w-4" />
-          ) : column.getIsSorted() === "desc" ? (
-            <ArrowDown className="ml-2 h-4 w-4" />
-          ) : (
-            <ArrowUpDown className="ml-2 h-4 w-4" />
-          )}
-        </Button>
-      ),
+      size: 140,
+      minSize: 120,
+      meta: meta({ align: "left" }),
+      header: ({ column }) => <SortableHeader column={column} label={t("tableColType")} />,
       cell: ({ row }) => {
         const type = row.getValue("task_type") as string
         const typeLabels: Record<string, string> = {
@@ -142,9 +137,9 @@ export function createScheduledTaskColumns(
           sftp_download: "SFTP 下载",
         }
         return (
-          <div className="flex items-center gap-2">
+          <div className="flex w-full min-w-0 items-center gap-2">
             {getTypeIcon(type)}
-            <span className="text-sm">{typeLabels[type] || type}</span>
+            <span className="truncate text-sm">{typeLabels[type] || type}</span>
           </div>
         )
       },
@@ -153,10 +148,12 @@ export function createScheduledTaskColumns(
       },
     },
 
-    // Cron表达式列
     {
       id: "cron_expression",
       accessorKey: "cron_expression",
+      size: 160,
+      minSize: 140,
+      meta: meta({ align: "left" }),
       header: t("tableColCron"),
       cell: ({ row }) => {
         const cron = row.getValue("cron_expression") as string
@@ -168,26 +165,13 @@ export function createScheduledTaskColumns(
       },
     },
 
-    // 状态列
     {
       id: "enabled",
       accessorKey: "enabled",
-      header: ({ column }) => (
-        <Button
-          variant="ghost"
-          onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-          className="px-2"
-        >
-          {t("tableColStatus")}
-          {column.getIsSorted() === "asc" ? (
-            <ArrowUp className="ml-2 h-4 w-4" />
-          ) : column.getIsSorted() === "desc" ? (
-            <ArrowDown className="ml-2 h-4 w-4" />
-          ) : (
-            <ArrowUpDown className="ml-2 h-4 w-4" />
-          )}
-        </Button>
-      ),
+      size: 120,
+      minSize: 100,
+      meta: meta({ align: "left" }),
+      header: ({ column }) => <SortableHeader column={column} label={t("tableColStatus")} />,
       cell: ({ row }) => {
         const task = row.original
         if (!task.enabled) {
@@ -208,39 +192,26 @@ export function createScheduledTaskColumns(
       },
     },
 
-    // 上次运行列
     {
       id: "last_run_at",
       accessorKey: "last_run_at",
-      header: ({ column }) => (
-        <Button
-          variant="ghost"
-          onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-          className="px-2"
-        >
-          {t("tableColLastRun")}
-          {column.getIsSorted() === "asc" ? (
-            <ArrowUp className="ml-2 h-4 w-4" />
-          ) : column.getIsSorted() === "desc" ? (
-            <ArrowDown className="ml-2 h-4 w-4" />
-          ) : (
-            <ArrowUpDown className="ml-2 h-4 w-4" />
-          )}
-        </Button>
-      ),
+      size: 200,
+      minSize: 170,
+      meta: meta({ align: "left" }),
+      header: ({ column }) => <SortableHeader column={column} label={t("tableColLastRun")} />,
       cell: ({ row }) => {
         const task = row.original
         return (
-          <div className="flex flex-col text-sm">
-            <span>{formatDate(task.last_run_at)}</span>
+          <div className="flex w-full min-w-0 flex-col py-0.5 text-sm">
+            <span className="truncate">{formatDate(task.last_run_at)}</span>
             {task.last_status && (
-              <div className="flex items-center gap-1 mt-1">
+              <div className="mt-1 flex items-center gap-1">
                 {task.last_status === "success" ? (
-                  <CheckCircle className="h-3 w-3 text-green-600" />
+                  <CheckCircle className="h-3 w-3 shrink-0 text-green-600" />
                 ) : (
-                  <XCircle className="h-3 w-3 text-red-600" />
+                  <XCircle className="h-3 w-3 shrink-0 text-red-600" />
                 )}
-                <span className="text-xs text-muted-foreground">
+                <span className="truncate text-xs text-muted-foreground">
                   {task.last_status === "success" ? t("lastStatusSuccess") : t("lastStatusFailed")}
                 </span>
               </div>
@@ -250,92 +221,56 @@ export function createScheduledTaskColumns(
       },
     },
 
-    // 下次运行列
     {
       id: "next_run_at",
       accessorKey: "next_run_at",
-      header: ({ column }) => (
-        <Button
-          variant="ghost"
-          onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-          className="px-2"
-        >
-          {t("tableColNextRun")}
-          {column.getIsSorted() === "asc" ? (
-            <ArrowUp className="ml-2 h-4 w-4" />
-          ) : column.getIsSorted() === "desc" ? (
-            <ArrowDown className="ml-2 h-4 w-4" />
-          ) : (
-            <ArrowUpDown className="ml-2 h-4 w-4" />
-          )}
-        </Button>
-      ),
+      size: 180,
+      minSize: 150,
+      meta: meta({ align: "left" }),
+      header: ({ column }) => <SortableHeader column={column} label={t("tableColNextRun")} />,
       cell: ({ row }) => {
         const nextRun = row.getValue("next_run_at") as string
-        return <span className="text-sm">{formatDate(nextRun)}</span>
+        return <span className="block truncate text-sm">{formatDate(nextRun)}</span>
       },
     },
 
-    // 运行次数列
     {
       id: "run_count",
       accessorKey: "run_count",
-      header: ({ column }) => (
-        <Button
-          variant="ghost"
-          onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-          className="px-2"
-        >
-          {t("tableColRunCount")}
-          {column.getIsSorted() === "asc" ? (
-            <ArrowUp className="ml-2 h-4 w-4" />
-          ) : column.getIsSorted() === "desc" ? (
-            <ArrowDown className="ml-2 h-4 w-4" />
-          ) : (
-            <ArrowUpDown className="ml-2 h-4 w-4" />
-          )}
-        </Button>
-      ),
+      size: 100,
+      minSize: 80,
+      meta: meta({ align: "center" }),
+      header: ({ column }) => <SortableHeader column={column} label={t("tableColRunCount")} />,
       cell: ({ row }) => {
         const count = row.getValue("run_count") as number
-        return <span className="text-sm text-center block">{count}</span>
+        return <span className="block tabular-nums text-sm">{count}</span>
       },
     },
 
-    // 成功率列
     {
       id: "success_rate",
       accessorFn: (row) => calculateSuccessRate(row),
-      header: ({ column }) => (
-        <Button
-          variant="ghost"
-          onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-          className="px-2"
-        >
-          {t("tableColSuccessRate")}
-          {column.getIsSorted() === "asc" ? (
-            <ArrowUp className="ml-2 h-4 w-4" />
-          ) : column.getIsSorted() === "desc" ? (
-            <ArrowDown className="ml-2 h-4 w-4" />
-          ) : (
-            <ArrowUpDown className="ml-2 h-4 w-4" />
-          )}
-        </Button>
-      ),
+      size: 110,
+      minSize: 90,
+      meta: meta({ align: "center" }),
+      header: ({ column }) => <SortableHeader column={column} label={t("tableColSuccessRate")} />,
       cell: ({ row }) => {
         const rate = calculateSuccessRate(row.original)
-        return <span className="text-sm text-center block">{rate}%</span>
+        return <span className="block tabular-nums text-sm">{rate}%</span>
       },
     },
 
-    // 操作列
     {
       id: "actions",
-      header: () => <div className="text-right">{t("tableColActions")}</div>,
+      size: 96,
+      minSize: 84,
+      maxSize: 110,
+      meta: meta({ align: "right" }),
+      header: () => t("tableColActions"),
       cell: ({ row }) => {
         const task = row.original
         return (
-          <div className="flex items-center justify-end gap-1">
+          <div className="flex w-full items-center justify-end gap-1">
             <Button
               variant="ghost"
               size="sm"

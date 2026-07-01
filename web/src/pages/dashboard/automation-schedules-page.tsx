@@ -611,7 +611,6 @@ export default function AutomationSchedulesPage() {
        emptyMessage={t("emptyAll")}
        className="min-h-0 overflow-hidden"
        scrollContainerClassName="min-h-[360px]"
-       tableClassName="min-w-[1120px]"
        density="compact"
        toolbar={(table) => (
          <DataTableToolbar

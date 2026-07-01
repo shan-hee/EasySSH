@@ -1,4 +1,5 @@
-import { ColumnDef } from "@tanstack/react-table"
+import type { Column, ColumnDef } from "@tanstack/react-table"
+import type { ReactNode } from "react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { ArrowUpDown, ArrowUp, ArrowDown, Clock, User, Server, Globe, AlertTriangle, CheckCircle } from "lucide-react"
@@ -7,9 +8,45 @@ import {
   getActionColor,
   formatTimestamp,
 } from "@/components/ui/data-table"
+import type { DataTableColumnMeta } from "@/components/ui/column-meta"
 
 type I18nValues = Record<string, string | number | Date>
 type I18nT = (key: string, values?: I18nValues) => string
+
+function SortableHeader<TValue>({
+  column,
+  label,
+  icon,
+}: {
+  column: Column<AuditLog, TValue>
+  label: string
+  icon?: ReactNode
+}) {
+  const Icon = column.getIsSorted() === "asc"
+    ? ArrowUp
+    : column.getIsSorted() === "desc"
+      ? ArrowDown
+      : ArrowUpDown
+  return (
+    <Button
+      type="button"
+      variant="ghost"
+      size="sm"
+      onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+      className="h-7 px-2 text-xs font-medium"
+    >
+      {icon ? (
+        <span className="mr-1.5 flex items-center gap-1">
+          {icon}
+          <span>{label}</span>
+        </span>
+      ) : (
+        <span>{label}</span>
+      )}
+      <Icon className="ml-1.5 h-3.5 w-3.5" />
+    </Button>
+  )
+}
 
 /**
  * 根据传入的多语言函数创建操作日志表格列定义。
@@ -81,11 +118,16 @@ function formatDurationWithI18n(
 export function createAuditLogColumns(
   t: I18nT,
 ): ColumnDef<AuditLog>[] {
+  const meta = (m: DataTableColumnMeta): DataTableColumnMeta => m
+
   return [
   // 类别列
   {
     id: "category",
     accessorKey: "category",
+    size: 110,
+    minSize: 90,
+    meta: meta({ align: "left" }),
     header: t("columnCategory"),
     cell: ({ row }) => {
       const category = row.getValue("category") as string
@@ -101,27 +143,12 @@ export function createAuditLogColumns(
   {
     id: "created_at",
     accessorKey: "created_at",
-    header: ({ column }) => {
-      return (
-        <Button
-          variant="ghost"
-          onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-          className="px-2"
-        >
-          <div className="flex items-center gap-2">
-            <Clock className="h-4 w-4" />
-            {t("columnTime")}
-          </div>
-          {column.getIsSorted() === "asc" ? (
-            <ArrowUp className="ml-2 h-4 w-4" />
-          ) : column.getIsSorted() === "desc" ? (
-            <ArrowDown className="ml-2 h-4 w-4" />
-          ) : (
-            <ArrowUpDown className="ml-2 h-4 w-4" />
-          )}
-        </Button>
-      )
-    },
+    size: 180,
+    minSize: 150,
+    meta: meta({ align: "left" }),
+    header: ({ column }) => (
+      <SortableHeader column={column} label={t("columnTime")} icon={<Clock className="h-3.5 w-3.5" />} />
+    ),
     cell: ({ row }) => {
       const timestamp = row.getValue("created_at") as string
       const { date, time } = formatTimestamp(timestamp)
@@ -143,24 +170,11 @@ export function createAuditLogColumns(
   {
     id: "username",
     accessorKey: "username",
+    size: 160,
+    minSize: 130,
+    meta: meta({ align: "left" }),
     header: ({ column }) => (
-      <Button
-        variant="ghost"
-        onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-        className="px-2"
-      >
-        <div className="flex items-center gap-2">
-          <User className="h-4 w-4" />
-          {t("columnUser")}
-        </div>
-        {column.getIsSorted() === "asc" ? (
-          <ArrowUp className="ml-2 h-4 w-4" />
-        ) : column.getIsSorted() === "desc" ? (
-          <ArrowDown className="ml-2 h-4 w-4" />
-        ) : (
-          <ArrowUpDown className="ml-2 h-4 w-4" />
-        )}
-      </Button>
+      <SortableHeader column={column} label={t("columnUser")} icon={<User className="h-3.5 w-3.5" />} />
     ),
     cell: ({ row }) => {
       const username = row.getValue("username") as string
@@ -174,22 +188,10 @@ export function createAuditLogColumns(
   {
     id: "action",
     accessorKey: "action",
-    header: ({ column }) => (
-      <Button
-        variant="ghost"
-        onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-        className="px-2"
-      >
-        {t("columnAction")}
-        {column.getIsSorted() === "asc" ? (
-          <ArrowUp className="ml-2 h-4 w-4" />
-        ) : column.getIsSorted() === "desc" ? (
-          <ArrowDown className="ml-2 h-4 w-4" />
-        ) : (
-          <ArrowUpDown className="ml-2 h-4 w-4" />
-        )}
-      </Button>
-    ),
+    size: 140,
+    minSize: 110,
+    meta: meta({ align: "left" }),
+    header: ({ column }) => <SortableHeader column={column} label={t("columnAction")} />,
     cell: ({ row }) => {
       const action = row.getValue("action") as string
       return (
@@ -207,22 +209,10 @@ export function createAuditLogColumns(
   {
     id: "resource",
     accessorKey: "resource",
-    header: ({ column }) => (
-      <Button
-        variant="ghost"
-        onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-        className="px-2"
-      >
-        {t("columnResource")}
-        {column.getIsSorted() === "asc" ? (
-          <ArrowUp className="ml-2 h-4 w-4" />
-        ) : column.getIsSorted() === "desc" ? (
-          <ArrowDown className="ml-2 h-4 w-4" />
-        ) : (
-          <ArrowUpDown className="ml-2 h-4 w-4" />
-        )}
-      </Button>
-    ),
+    size: 120,
+    minSize: 100,
+    meta: meta({ align: "left" }),
+    header: ({ column }) => <SortableHeader column={column} label={t("columnResource")} />,
     cell: ({ row }) => {
       const resource = row.getValue("resource") as string
       return (
@@ -240,22 +230,10 @@ export function createAuditLogColumns(
   {
     id: "status",
     accessorKey: "status",
-    header: ({ column }) => (
-      <Button
-        variant="ghost"
-        onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-        className="px-2"
-      >
-        {t("columnStatus")}
-        {column.getIsSorted() === "asc" ? (
-          <ArrowUp className="ml-2 h-4 w-4" />
-        ) : column.getIsSorted() === "desc" ? (
-          <ArrowDown className="ml-2 h-4 w-4" />
-        ) : (
-          <ArrowUpDown className="ml-2 h-4 w-4" />
-        )}
-      </Button>
-    ),
+    size: 150,
+    minSize: 120,
+    meta: meta({ align: "left" }),
+    header: ({ column }) => <SortableHeader column={column} label={t("columnStatus")} />,
     cell: ({ row }) => {
       const status = row.getValue("status") as string
       const isSuccess = status === "success"
@@ -296,24 +274,11 @@ export function createAuditLogColumns(
   {
     id: "ip",
     accessorKey: "ip",
+    size: 150,
+    minSize: 120,
+    meta: meta({ align: "left" }),
     header: ({ column }) => (
-      <Button
-        variant="ghost"
-        onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-        className="px-2"
-      >
-        <div className="flex items-center gap-2">
-          <Globe className="h-4 w-4" />
-          {t("columnIp")}
-        </div>
-        {column.getIsSorted() === "asc" ? (
-          <ArrowUp className="ml-2 h-4 w-4" />
-        ) : column.getIsSorted() === "desc" ? (
-          <ArrowDown className="ml-2 h-4 w-4" />
-        ) : (
-          <ArrowUpDown className="ml-2 h-4 w-4" />
-        )}
-      </Button>
+      <SortableHeader column={column} label={t("columnIp")} icon={<Globe className="h-3.5 w-3.5" />} />
     ),
     cell: ({ row }) => {
       const ip = row.getValue("ip") as string
@@ -327,6 +292,9 @@ export function createAuditLogColumns(
   {
     id: "details",
     accessorKey: "details",
+    size: 280,
+    minSize: 220,
+    meta: meta({ align: "left" }),
     header: t("columnDetails"),
     cell: ({ row }) => {
       const log = row.original
@@ -355,22 +323,10 @@ export function createAuditLogColumns(
   {
     id: "duration",
     accessorKey: "duration",
-    header: ({ column }) => (
-      <Button
-        variant="ghost"
-        onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-        className="px-2"
-      >
-        {t("columnDuration")}
-        {column.getIsSorted() === "asc" ? (
-          <ArrowUp className="ml-2 h-4 w-4" />
-        ) : column.getIsSorted() === "desc" ? (
-          <ArrowDown className="ml-2 h-4 w-4" />
-        ) : (
-          <ArrowUpDown className="ml-2 h-4 w-4" />
-        )}
-      </Button>
-    ),
+    size: 110,
+    minSize: 90,
+    meta: meta({ align: "left" }),
+    header: ({ column }) => <SortableHeader column={column} label={t("columnDuration")} />,
     cell: ({ row }) => {
       const duration = row.getValue("duration") as number
       return (
@@ -385,24 +341,11 @@ export function createAuditLogColumns(
   {
     id: "server_id",
     accessorKey: "server_id",
+    size: 150,
+    minSize: 120,
+    meta: meta({ align: "left" }),
     header: ({ column }) => (
-      <Button
-        variant="ghost"
-        onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-        className="px-2"
-      >
-        <div className="flex items-center gap-2">
-          <Server className="h-4 w-4" />
-          {t("columnServer")}
-        </div>
-        {column.getIsSorted() === "asc" ? (
-          <ArrowUp className="ml-2 h-4 w-4" />
-        ) : column.getIsSorted() === "desc" ? (
-          <ArrowDown className="ml-2 h-4 w-4" />
-        ) : (
-          <ArrowUpDown className="ml-2 h-4 w-4" />
-        )}
-      </Button>
+      <SortableHeader column={column} label={t("columnServer")} icon={<Server className="h-3.5 w-3.5" />} />
     ),
     cell: ({ row }) => {
       const serverId = row.getValue("server_id") as string

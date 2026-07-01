@@ -296,7 +296,6 @@ export function UserManagementContent() {
           enableRowSelection={true}
           className="min-h-0"
           scrollContainerClassName="min-h-[360px]"
-          tableClassName="min-w-[980px]"
           toolbar={(table) => (
             <DataTableToolbar
               table={table}

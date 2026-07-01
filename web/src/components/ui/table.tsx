@@ -4,23 +4,50 @@ import { cn } from "@/lib/utils"
 
 interface TableProps extends React.HTMLAttributes<HTMLTableElement> {
   wrapperClassName?: string
+  /**
+   * 列宽来源：传入 <colgroup> 子元素即可，table-layout:fixed 会自动生效。
+   * 若不传 colgroup，则保持 table-layout:auto 的旧行为。
+   */
+  fixedLayout?: boolean
 }
 
 const Table = React.forwardRef<HTMLTableElement, TableProps>(
-  ({ className, wrapperClassName, ...props }, ref) => (
+  ({ className, wrapperClassName, fixedLayout, children, ...props }, ref) => (
     <div className={cn("relative w-full", wrapperClassName)}>
       <table
         ref={ref}
         className={cn(
           "w-full caption-bottom bg-table text-sm",
+          fixedLayout && "table-fixed",
           className
         )}
         {...props}
-      />
+      >
+        {children}
+      </table>
     </div>
   )
 )
 Table.displayName = "Table"
+
+interface ColgroupProps {
+  widths: (number | undefined)[]
+}
+
+function Colgroup({ widths }: ColgroupProps) {
+  return (
+    <colgroup>
+      {widths.map((width, i) => (
+        <col
+          key={i}
+          style={width !== undefined ? { width } : undefined}
+        />
+      ))}
+    </colgroup>
+  )
+}
+
+export { Colgroup }
 
 const TableHeader = React.forwardRef<
   HTMLTableSectionElement,

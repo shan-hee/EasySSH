@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button"
 import { Code2, ArrowUpDown, ArrowUp, ArrowDown, Play, Trash2 } from "lucide-react"
 import { type Script } from "@/lib/api"
 import { formatTimestamp } from "@/components/ui/data-table"
-import { cn } from "@/lib/utils"
+import type { DataTableColumnMeta } from "@/components/ui/column-meta"
 
 interface Handlers {
   onExecute: (id: string) => void
@@ -15,11 +15,9 @@ interface Handlers {
 function SortableHeader<TValue>({
   column,
   label,
-  align = "left",
 }: {
   column: Column<Script, TValue>
   label: string
-  align?: "left" | "center" | "right"
 }) {
   const Icon = column.getIsSorted() === "asc"
     ? ArrowUp
@@ -33,12 +31,7 @@ function SortableHeader<TValue>({
       variant="ghost"
       size="sm"
       onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-      className={cn(
-        "h-7 px-2 text-xs font-medium",
-        align === "left" && "-translate-x-2",
-        align === "center" && "mx-auto",
-        align === "right" && "ml-auto"
-      )}
+      className="h-7 px-2 text-xs font-medium"
     >
       <span>{label}</span>
       <Icon className="ml-1.5 h-3.5 w-3.5" />
@@ -51,12 +44,15 @@ export function createScriptColumns({
   onDelete,
   t,
 }: Handlers): ColumnDef<Script>[] {
+  const meta = (m: DataTableColumnMeta): DataTableColumnMeta => m
+
   const columns: ColumnDef<Script>[] = [
     {
       id: "name",
       accessorKey: "name",
       size: 360,
       minSize: 320,
+      meta: meta({ align: "left" }),
       header: ({ column }) => <SortableHeader column={column} label={t("colName")} />,
       cell: ({ row }) => {
         const script = row.original
@@ -97,6 +93,7 @@ export function createScriptColumns({
       accessorKey: "description",
       size: 260,
       minSize: 220,
+      meta: meta({ align: "left" }),
       header: t("colDescription"),
       cell: ({ row }) => (
         <span className="line-clamp-2 max-w-[240px] text-xs text-muted-foreground">
@@ -110,6 +107,7 @@ export function createScriptColumns({
       accessorKey: "content",
       size: 340,
       minSize: 280,
+      meta: meta({ align: "left" }),
       header: t("colContent"),
       cell: ({ row }) => (
         <div className="max-w-[320px] rounded-md bg-muted px-3 py-2">
@@ -125,6 +123,7 @@ export function createScriptColumns({
       accessorKey: "tags",
       size: 170,
       minSize: 140,
+      meta: meta({ align: "left" }),
       header: t("colTags"),
       cell: ({ row }) => {
         const tags = row.original.tags || []
@@ -161,6 +160,7 @@ export function createScriptColumns({
       accessorKey: "author",
       size: 170,
       minSize: 140,
+      meta: meta({ align: "left" }),
       header: ({ column }) => <SortableHeader column={column} label={t("colAuthor")} />,
       cell: ({ row }) => (
         <span className="block truncate text-sm text-muted-foreground">{row.original.author || "-"}</span>
@@ -176,6 +176,7 @@ export function createScriptColumns({
       accessorKey: "updated_at",
       size: 170,
       minSize: 150,
+      meta: meta({ align: "left" }),
       header: ({ column }) => <SortableHeader column={column} label={t("colUpdatedAt")} />,
       cell: ({ row }) => {
         const ts = row.original.updated_at
@@ -193,20 +194,22 @@ export function createScriptColumns({
       accessorKey: "executions",
       size: 130,
       minSize: 110,
-      header: ({ column }) => <SortableHeader column={column} label={t("colExecutions")} align="center" />,
+      meta: meta({ align: "center" }),
+      header: ({ column }) => <SortableHeader column={column} label={t("colExecutions")} />,
       cell: ({ row }) => (
-        <span className="block text-center tabular-nums">{row.original.executions || 0}</span>
+        <span className="block tabular-nums">{row.original.executions || 0}</span>
       ),
     },
     {
       id: "actions",
       size: 120,
       minSize: 100,
-      header: () => <div className="text-right">{t("colActions")}</div>,
+      meta: meta({ align: "right" }),
+      header: () => t("colActions"),
       cell: ({ row }) => {
         const script = row.original
         return (
-          <div className="flex items-center justify-end gap-1">
+          <div className="flex w-full items-center justify-end gap-1">
             <Button
               variant="ghost"
               size="sm"

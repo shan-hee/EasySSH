@@ -29,6 +29,7 @@ import { toast } from "@/components/ui/sonner"
 import { getErrorMessage } from "@/lib/error-utils"
 import { DataTable } from "@/components/ui/data-table"
 import { DataTableToolbar } from "@/components/ui/data-table-toolbar"
+import type { DataTableColumnMeta } from "@/components/ui/column-meta"
 import {
   operationRecordsApi,
   type OperationRecord,
@@ -371,10 +372,15 @@ function OperationLogsContent() {
     void loadData(1, true, filters, pageSize, nextSort)
   }, [filters, loadData, pageSize, sort])
 
-  const recordColumns = React.useMemo<ColumnDef<OperationRecord>[]>(() => [
+  const recordColumns = React.useMemo<ColumnDef<OperationRecord>[]>(() => {
+    const meta = (m: DataTableColumnMeta): DataTableColumnMeta => m
+    return [
     {
       id: "started_at",
       accessorFn: (record) => record.started_at || record.created_at,
+      size: 180,
+      minSize: 150,
+      meta: meta({ align: "left" }),
       header: () => <SortableHeader label={t("columnTime")} field="created_at" sort={sort} onSort={handleSort} />,
       cell: ({ row }) => (
         <span className="whitespace-nowrap font-mono text-xs">
@@ -385,6 +391,9 @@ function OperationLogsContent() {
     {
       id: "type",
       accessorKey: "type",
+      size: 100,
+      minSize: 80,
+      meta: meta({ align: "left" }),
       header: () => <SortableHeader label={t("columnType")} field="type" sort={sort} onSort={handleSort} />,
       cell: ({ row }) => (
         <InlineStatusBadge label={typeLabels[row.original.type]} tone={typeTone(row.original.type)} />
@@ -393,6 +402,9 @@ function OperationLogsContent() {
     {
       id: "category",
       accessorKey: "category",
+      size: 110,
+      minSize: 90,
+      meta: meta({ align: "left" }),
       header: () => <SortableHeader label={t("columnCategory")} field="category" sort={sort} onSort={handleSort} />,
       cell: ({ row }) => (
         <InlineStatusBadge label={categoryLabels[row.original.category]} tone={categoryTone(row.original.category)} />
@@ -401,6 +413,9 @@ function OperationLogsContent() {
     {
       id: "status",
       accessorKey: "status",
+      size: 120,
+      minSize: 100,
+      meta: meta({ align: "left" }),
       header: () => <SortableHeader label={t("columnStatus")} field="status" sort={sort} onSort={handleSort} />,
       cell: ({ row }) => (
         <InlineStatusBadge label={statusLabels[row.original.status] || row.original.status} tone={statusTone(row.original.status)} />
@@ -409,13 +424,16 @@ function OperationLogsContent() {
     {
       id: "action",
       accessorKey: "action",
+      size: 240,
+      minSize: 200,
+      meta: meta({ align: "left" }),
       header: () => <SortableHeader label={t("columnAction")} field="action" sort={sort} onSort={handleSort} />,
       cell: ({ row }) => {
         const record = row.original
         const TypeIcon = typeIcon(record.type)
         const readableAction = actionLabel(t, record.action)
         return (
-          <div className="flex min-w-[220px] items-center gap-2">
+          <div className="flex w-full min-w-0 items-center gap-2">
             <TypeIcon className="h-4 w-4 shrink-0 text-muted-foreground" />
             <div className="min-w-0">
               <div className="truncate font-medium">{record.title || readableAction}</div>
@@ -428,15 +446,21 @@ function OperationLogsContent() {
     {
       id: "username",
       accessorKey: "username",
+      size: 120,
+      minSize: 100,
+      meta: meta({ align: "left" }),
       header: () => <SortableHeader label={t("columnUser")} field="username" sort={sort} onSort={handleSort} />,
       cell: ({ row }) => row.original.username || "-",
     },
     {
       id: "server_name",
       accessorKey: "server_name",
+      size: 160,
+      minSize: 130,
+      meta: meta({ align: "left" }),
       header: () => <SortableHeader label={t("columnServer")} field="server_name" sort={sort} onSort={handleSort} />,
       cell: ({ row }) => (
-        <span className="block max-w-[160px] truncate" title={row.original.server_name || undefined}>
+        <span className="block w-full truncate" title={row.original.server_name || undefined}>
           {row.original.server_name || "-"}
         </span>
       ),
@@ -444,22 +468,31 @@ function OperationLogsContent() {
     {
       id: "source",
       accessorKey: "source",
+      size: 100,
+      minSize: 80,
+      meta: meta({ align: "left" }),
       header: () => <SortableHeader label={t("columnSource")} field="source" sort={sort} onSort={handleSort} />,
       cell: ({ row }) => <span className="whitespace-nowrap text-xs text-muted-foreground">{row.original.source || "-"}</span>,
     },
     {
       id: "ip",
       accessorKey: "ip",
+      size: 130,
+      minSize: 110,
+      meta: meta({ align: "left" }),
       header: () => <SortableHeader label={t("columnIp")} field="ip" sort={sort} onSort={handleSort} />,
       cell: ({ row }) => <span className="whitespace-nowrap font-mono text-xs">{row.original.ip || "-"}</span>,
     },
     {
       id: "progress",
       accessorKey: "progress",
+      size: 130,
+      minSize: 110,
+      meta: meta({ align: "left" }),
       header: () => <SortableHeader label={t("columnProgress")} field="progress" sort={sort} onSort={handleSort} />,
       cell: ({ row }) => (
         row.original.progress > 0 ? (
-          <div className="flex min-w-[110px] items-center gap-2">
+          <div className="flex w-full items-center gap-2">
             <Progress
               value={row.original.progress}
               className="h-1.5"
@@ -473,23 +506,29 @@ function OperationLogsContent() {
     {
       id: "duration_ms",
       accessorKey: "duration_ms",
+      size: 100,
+      minSize: 80,
+      meta: meta({ align: "left" }),
       header: () => <SortableHeader label={t("columnDuration")} field="duration_ms" sort={sort} onSort={handleSort} />,
       cell: ({ row }) => formatDuration(row.original.duration_ms),
     },
     {
       id: "result",
       accessorFn: (record) => record.error_message || record.detail_json || "",
+      size: 260,
+      minSize: 220,
+      meta: meta({ align: "left" }),
       header: t("columnResult"),
       cell: ({ row }) => {
         const result = row.original.error_message || row.original.detail_json || row.original.source || "-"
         return (
-          <span className="block max-w-[260px] truncate text-muted-foreground" title={result === "-" ? undefined : result}>
+          <span className="block w-full truncate text-muted-foreground" title={result === "-" ? undefined : result}>
             {result}
           </span>
         )
       },
     },
-  ], [categoryLabels, handleSort, sort, statusLabels, t, typeLabels])
+  ]}, [categoryLabels, handleSort, sort, statusLabels, t, typeLabels])
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-auto p-3 pt-0 sm:gap-4 sm:p-4 sm:pt-0 xl:overflow-hidden">
@@ -512,7 +551,6 @@ function OperationLogsContent() {
           emptyMessage={t("empty")}
           className="min-h-0 overflow-hidden"
           scrollContainerClassName="min-h-[360px]"
-          tableClassName="min-w-[1280px]"
           density="compact"
           onRowClick={(record) => {
             setSelectedId(record.id)
