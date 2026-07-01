@@ -63,6 +63,7 @@ import type { ServerListResponse } from "@/lib/api/servers"
 import { getServerDisplayName } from "@/lib/server-utils"
 import { cn } from "@/lib/utils"
 import { useTranslation } from "react-i18next"
+import { useSynchronousSelectedItemScroll } from "@/hooks/use-synchronous-selected-item-scroll"
 
 const SESSION_LIST_LIMIT = 30
 const SERVER_MENTION_LIMIT = 8
@@ -235,6 +236,7 @@ export function AIAssistantWorkspaceView({
     start: number
   } | null>(null)
   const [serverMentionIndex, setServerMentionIndex] = useState(0)
+  const serverMentionListRef = useRef<HTMLDivElement>(null)
   const serverMentionItemRefs = useRef<Map<string, HTMLDivElement>>(new Map())
   const [attachments, setAttachments] = useState<ComposerAttachment[]>([])
   const [attachmentsLoading, setAttachmentsLoading] = useState(false)
@@ -696,18 +698,21 @@ export function AIAssistantWorkspaceView({
     }
   }, [serverMentionIndex, serverMentionOptions.length])
 
-  useEffect(() => {
-    if (!serverMentionOpen) {
-      return
-    }
-
+  const getSelectedServerMentionElement = useCallback(() => {
     const selectedServer = serverMentionOptions[serverMentionIndex]
-    const selectedElement = selectedServer
+    return selectedServer
       ? serverMentionItemRefs.current.get(selectedServer.id)
       : null
+  }, [serverMentionIndex, serverMentionOptions])
 
-    selectedElement?.scrollIntoView({ block: "nearest", behavior: "smooth" })
-  }, [serverMentionIndex, serverMentionOpen, serverMentionOptions])
+  useSynchronousSelectedItemScroll({
+    enabled: serverMentionOpen,
+    getSelectedElement: getSelectedServerMentionElement,
+    listRef: serverMentionListRef,
+    selectedKey: serverMentionIndex,
+  })
+
+  const selectedServerMentionValue = serverMentionOptions[serverMentionIndex]?.id ?? ""
 
   useEffect(() => {
     if (serverMentionOpen && availableServers.length === 0 && !serversLoading) {
@@ -1214,21 +1219,11 @@ export function AIAssistantWorkspaceView({
 
                       <Command
                         shouldFilter={false}
-                        loop
-                        value={serverMentionOptions[serverMentionIndex]?.id ?? ""}
-                        onValueChange={(value) => {
-                          if (!value) {
-                            setServerMentionIndex(0)
-                            return
-                          }
-                          const index = serverMentionOptions.findIndex((server) => server.id === value)
-                          if (index >= 0) {
-                            setServerMentionIndex(index)
-                          }
-                        }}
+                        disablePointerSelection
+                        value={selectedServerMentionValue}
                         className="bg-popover"
                       >
-                        <CommandList className="max-h-72 p-1">
+                        <CommandList ref={serverMentionListRef} className="max-h-72 p-1">
                           {serversLoading && availableServers.length === 0 ? (
                             <div className="flex items-center justify-center gap-2 px-3 py-8 text-sm text-muted-foreground">
                               <Loader2 className="size-4 animate-spin" />
@@ -1240,42 +1235,50 @@ export function AIAssistantWorkspaceView({
                             </CommandEmpty>
                           ) : (
                             <CommandGroup className="p-0">
-                              {serverMentionOptions.map((server) => (
-                                <CommandItem
-                                  key={server.id}
-                                  ref={(element) => {
-                                    if (element) {
-                                      serverMentionItemRefs.current.set(server.id, element)
-                                    } else {
-                                      serverMentionItemRefs.current.delete(server.id)
-                                    }
-                                  }}
-                                  value={server.id}
-                                  onMouseDown={(event) => event.preventDefault()}
-                                  onSelect={() => selectServerMention(server)}
-                                  className="gap-2 rounded-md px-2 py-2 text-foreground transition-colors hover:bg-accent/70"
-                                >
-                                  <span className="flex size-5 shrink-0 items-center justify-center rounded-md border border-border text-[10px] text-muted-foreground">
-                                    @
-                                  </span>
-                                  <span className="min-w-0 flex-1">
-                                    <span className="block truncate text-sm font-medium">
-                                      {getServerDisplayName(server)}
-                                    </span>
-                                    <span className="block truncate text-xs text-muted-foreground">
-                                      {server.username}@{server.host}:{server.port}
-                                    </span>
-                                  </span>
-                                  <span
+                              {serverMentionOptions.map((server, index) => {
+                                const isSelected = index === serverMentionIndex
+
+                                return (
+                                  <CommandItem
+                                    key={server.id}
+                                    ref={(element) => {
+                                      if (element) {
+                                        serverMentionItemRefs.current.set(server.id, element)
+                                      } else {
+                                        serverMentionItemRefs.current.delete(server.id)
+                                      }
+                                    }}
+                                    value={server.id}
+                                    onMouseDown={(event) => event.preventDefault()}
+                                    onMouseMove={() => setServerMentionIndex(index)}
+                                    onSelect={() => selectServerMention(server)}
                                     className={cn(
-                                      "shrink-0 text-[10px] uppercase tracking-wide",
-                                      server.status === "online" ? "text-emerald-600" : "text-muted-foreground"
+                                      "gap-2 rounded-md px-2 py-2 text-foreground hover:bg-accent/70 data-[selected=true]:bg-transparent data-[selected=true]:text-foreground",
+                                      isSelected && "!bg-accent !text-accent-foreground hover:!bg-accent"
                                     )}
                                   >
-                                    {server.status}
-                                  </span>
-                                </CommandItem>
-                              ))}
+                                    <span className="flex size-5 shrink-0 items-center justify-center rounded-md border border-border text-[10px] text-muted-foreground">
+                                      @
+                                    </span>
+                                    <span className="min-w-0 flex-1">
+                                      <span className="block truncate text-sm font-medium">
+                                        {getServerDisplayName(server)}
+                                      </span>
+                                      <span className="block truncate text-xs text-muted-foreground">
+                                        {server.username}@{server.host}:{server.port}
+                                      </span>
+                                    </span>
+                                    <span
+                                      className={cn(
+                                        "shrink-0 text-[10px] uppercase tracking-wide",
+                                        server.status === "online" ? "text-emerald-600" : "text-muted-foreground"
+                                      )}
+                                    >
+                                      {server.status}
+                                    </span>
+                                  </CommandItem>
+                                )
+                              })}
                             </CommandGroup>
                           )}
                         </CommandList>

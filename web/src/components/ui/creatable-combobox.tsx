@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react"
 import { Plus } from "lucide-react"
 
 import {
@@ -11,6 +11,7 @@ import {
 import { Input } from "@/components/ui/input"
 import { Popover, PopoverAnchor, PopoverContent } from "@/components/ui/popover"
 import { cn } from "@/lib/utils"
+import { useSynchronousSelectedItemScroll } from "@/hooks/use-synchronous-selected-item-scroll"
 
 export type CreatableComboboxOption = {
   value: string
@@ -63,6 +64,7 @@ export function CreatableCombobox({
 }: CreatableComboboxProps) {
   const [open, setOpen] = useState(false)
   const [activeIndex, setActiveIndex] = useState(0)
+  const listRef = useRef<HTMLDivElement>(null)
   const itemRefs = useRef<(HTMLDivElement | null)[]>([])
   const query = value.trim()
 
@@ -107,16 +109,24 @@ export function CreatableCombobox({
   }, [canCreate, filteredOptions, query])
 
   const visible = open && (items.length > 0 || !!emptyText)
+  const selectedCommandValue = activeIndex >= 0 ? items[activeIndex]?.value ?? "" : ""
 
   useEffect(() => {
     setActiveIndex(items.length > 0 ? 0 : -1)
     itemRefs.current = []
   }, [items.length, value])
 
-  useEffect(() => {
-    if (activeIndex < 0) return
-    itemRefs.current[activeIndex]?.scrollIntoView({ block: "nearest" })
-  }, [activeIndex])
+  const getSelectedElement = useCallback(
+    () => activeIndex < 0 ? null : itemRefs.current[activeIndex],
+    [activeIndex],
+  )
+
+  useSynchronousSelectedItemScroll({
+    enabled: visible,
+    getSelectedElement,
+    listRef,
+    selectedKey: activeIndex,
+  })
 
   const commit = (nextValue: string) => {
     const normalizedValue = nextValue.trim()
@@ -200,8 +210,8 @@ export function CreatableCombobox({
           contentClassName
         )}
       >
-        <Command shouldFilter={false}>
-          <CommandList className="max-h-52">
+        <Command shouldFilter={false} disablePointerSelection value={selectedCommandValue}>
+          <CommandList ref={listRef} className="max-h-52">
             {items.length === 0 ? (
               <CommandEmpty>{emptyText}</CommandEmpty>
             ) : (
@@ -213,12 +223,12 @@ export function CreatableCombobox({
                       itemRefs.current[index] = element
                     }}
                     value={item.value}
-                    onMouseEnter={() => setActiveIndex(index)}
+                    onMouseMove={() => setActiveIndex(index)}
                     onMouseDown={(event) => event.preventDefault()}
                     onSelect={() => commit(item.value)}
                     className={cn(
-                      "gap-2",
-                      index === activeIndex && "bg-accent text-accent-foreground"
+                      "gap-2 data-[selected=true]:bg-transparent data-[selected=true]:text-foreground",
+                      index === activeIndex && "!bg-accent !text-accent-foreground"
                     )}
                   >
                     {item.type === "create" ? (

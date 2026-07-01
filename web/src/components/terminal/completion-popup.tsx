@@ -17,6 +17,7 @@ import type { CompletionItem } from "@/lib/completion/types"
 import { useTerminalTheme } from "@/contexts/terminal-theme-context"
 import { useTranslation } from "react-i18next"
 import { cn } from "@/lib/utils"
+import { useSynchronousSelectedItemScroll } from "@/hooks/use-synchronous-selected-item-scroll"
 
 type Placement = "top" | "bottom"
 
@@ -113,16 +114,18 @@ export function CompletionPopup({
     top: position.y + POPUP_OFFSET,
   })
 
-  // 自动滚动到选中项
-  useEffect(() => {
-    const selectedElement = itemRefs.current.get(selectedIndex)
-    if (selectedElement) {
-      selectedElement.scrollIntoView({ block: "nearest", behavior: "smooth" })
-    }
-  }, [selectedIndex])
+  const getSelectedElement = useCallback(
+    () => itemRefs.current.get(selectedIndex),
+    [selectedIndex],
+  )
 
-  // 处理鼠标悬停
-  const handleMouseEnter = useCallback(
+  useSynchronousSelectedItemScroll({
+    getSelectedElement,
+    listRef,
+    selectedKey: selectedIndex,
+  })
+
+  const handleMouseMove = useCallback(
     (index: number) => {
       if (onSelectedIndexChange) {
         onSelectedIndexChange(index)
@@ -197,6 +200,9 @@ export function CompletionPopup({
 
   // 当弹窗在上方时，反转列表顺序
   const displayItems = placement === "top" ? [...items].reverse() : items
+  const selectedCommandValue = items[selectedIndex]
+    ? `${items[selectedIndex].text}-${selectedIndex}`
+    : ""
 
   return createPortal(
     <div
@@ -218,8 +224,9 @@ export function CompletionPopup({
       <Command
         className="bg-transparent"
         // 禁用 cmdk 内置的键盘导航，由终端组件处理
-        disablePointerSelection={false}
+        disablePointerSelection
         loop={false}
+        value={selectedCommandValue}
       >
         <CommandList
           ref={listRef}
@@ -247,10 +254,10 @@ export function CompletionPopup({
                     }
                   }}
                   onSelect={() => onSelect(item, originalIndex)}
-                  onMouseEnter={() => handleMouseEnter(originalIndex)}
+                  onMouseMove={() => handleMouseMove(originalIndex)}
                   className={cn(
                     "flex items-center gap-3 px-3 py-1.5 cursor-pointer rounded-none",
-                    "aria-selected:bg-transparent", // 禁用 cmdk 默认选中样式
+                    "data-[selected=true]:bg-transparent aria-selected:bg-transparent", // 禁用 cmdk 默认选中样式
                     "bg-transparent"
                   )}
                   style={{
