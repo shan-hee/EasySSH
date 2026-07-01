@@ -33,6 +33,7 @@ export type ToolPart = ToolUIPart | DynamicToolUIPart;
 
 export type ToolHeaderProps = {
   title?: string;
+  description?: string;
   className?: string;
 } & (
   | { type: ToolUIPart["type"]; state: ToolUIPart["state"]; toolName?: never }
@@ -72,6 +73,7 @@ export const getStatusBadge = (status: ToolPart["state"]) => (
 
 export const ToolHeader = ({
   className,
+  description,
   title,
   type,
   state,
@@ -89,10 +91,19 @@ export const ToolHeader = ({
       )}
       {...props}
     >
-      <div className="flex items-center gap-2">
-        <WrenchIcon className="size-4 text-muted-foreground" />
-        <span className="font-medium text-sm">{title ?? derivedName}</span>
-        {getStatusBadge(state)}
+      <div className="flex min-w-0 items-start gap-2">
+        <WrenchIcon className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+        <div className="min-w-0 space-y-0.5 text-left">
+          <div className="flex min-w-0 items-center gap-2">
+            <span className="truncate font-medium text-sm">{title ?? derivedName}</span>
+            {getStatusBadge(state)}
+          </div>
+          {description && (
+            <div className="truncate font-mono text-muted-foreground text-xs">
+              {description}
+            </div>
+          )}
+        </div>
       </div>
       <ChevronDownIcon className="size-4 text-muted-foreground transition-transform group-data-[state=open]:rotate-180" />
     </CollapsibleTrigger>
