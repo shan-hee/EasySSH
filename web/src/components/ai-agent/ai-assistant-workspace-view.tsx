@@ -235,6 +235,7 @@ export function AIAssistantWorkspaceView({
     start: number
   } | null>(null)
   const [serverMentionIndex, setServerMentionIndex] = useState(0)
+  const serverMentionItemRefs = useRef<Map<string, HTMLDivElement>>(new Map())
   const [attachments, setAttachments] = useState<ComposerAttachment[]>([])
   const [attachmentsLoading, setAttachmentsLoading] = useState(false)
   const [sessionList, setSessionList] = useState<SessionListItem[]>([])
@@ -694,6 +695,19 @@ export function AIAssistantWorkspaceView({
       setServerMentionIndex(0)
     }
   }, [serverMentionIndex, serverMentionOptions.length])
+
+  useEffect(() => {
+    if (!serverMentionOpen) {
+      return
+    }
+
+    const selectedServer = serverMentionOptions[serverMentionIndex]
+    const selectedElement = selectedServer
+      ? serverMentionItemRefs.current.get(selectedServer.id)
+      : null
+
+    selectedElement?.scrollIntoView({ block: "nearest", behavior: "smooth" })
+  }, [serverMentionIndex, serverMentionOpen, serverMentionOptions])
 
   useEffect(() => {
     if (serverMentionOpen && availableServers.length === 0 && !serversLoading) {
@@ -1229,6 +1243,13 @@ export function AIAssistantWorkspaceView({
                               {serverMentionOptions.map((server) => (
                                 <CommandItem
                                   key={server.id}
+                                  ref={(element) => {
+                                    if (element) {
+                                      serverMentionItemRefs.current.set(server.id, element)
+                                    } else {
+                                      serverMentionItemRefs.current.delete(server.id)
+                                    }
+                                  }}
                                   value={server.id}
                                   onMouseDown={(event) => event.preventDefault()}
                                   onSelect={() => selectServerMention(server)}

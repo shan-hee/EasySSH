@@ -10,14 +10,7 @@ import type {
   TerminalSession,
   TerminalConnectionPhase,
 } from "@/components/terminal/types"
-import {
-  CommandDialog,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList,
-} from "@/components/ui/command"
+import { SftpServerPickerDialog } from "@/components/sftp/sftp-server-picker-dialog"
 import { serversApi, sftpApi, type Server } from "@/lib/api"
 import { createAuthTicket } from "@/lib/auth-ticket"
 import { createTerminalWorkspaceSessionControllerAdapter, createTerminalWorkspaceSessionStoreAdapter, useTerminalStore } from "@/stores/terminal-store"
@@ -32,9 +25,6 @@ import { isViteDev } from "@/lib/vite-env"
 import { getServerAuthMethod, useSftpAuthRetry } from "@/components/sftp/use-sftp-auth-retry"
 import { useTerminalAuthFlowAdapters } from "@/components/terminal/use-terminal-auth-flow-adapters"
 import { primaryCredentialMethod } from "@/lib/ssh-auth-methods"
-import { Loader2, Server as ServerIcon } from "lucide-react"
-
-const SFTP_SERVER_SEARCH_DEBOUNCE_MS = 180
 
 const statusFromConnectionPhase = (phase: TerminalConnectionPhase) => {
   if (phase === "ready") return "connected" as const
@@ -100,10 +90,6 @@ const getServerDisplayName = (server: Server) => (
   server.name || `${server.username}@${server.host}:${server.port}`
 )
 
-const getServerTarget = (server: Server) => (
-  `${server.username}@${server.host}:${server.port}`
-)
-
 const createSftpTabSession = (tab: MergedSftpTab): TerminalSession => {
   return {
     id: tab.id,
@@ -122,111 +108,6 @@ const createSftpTabSession = (tab: MergedSftpTab): TerminalSession => {
     pinned: false,
     type: "sftp",
   }
-}
-
-function SftpServerPickerDialog({
-  open,
-  ready,
-  onOpenChange,
-  onSelect,
-}: {
-  open: boolean
-  ready: boolean
-  onOpenChange: (open: boolean) => void
-  onSelect: (server: Server) => boolean
-}) {
-  const { t } = useTranslation("terminal")
-  const [query, setQuery] = useState("")
-  const [servers, setServers] = useState<Server[]>([])
-  const [loading, setLoading] = useState(false)
-
-  useEffect(() => {
-    if (!open || !ready) {
-      return
-    }
-
-    let cancelled = false
-    const timer = window.setTimeout(async () => {
-      setLoading(true)
-      try {
-        const response = await serversApi.list({
-          page: 1,
-          limit: 20,
-          search: query.trim() || undefined,
-        })
-        if (!cancelled) {
-          setServers(Array.isArray(response) ? response : response.data)
-        }
-      } catch (error) {
-        if (!cancelled) {
-          console.error("Failed to load SFTP server picker list:", error)
-          setServers([])
-        }
-      } finally {
-        if (!cancelled) {
-          setLoading(false)
-        }
-      }
-    }, query.trim() ? SFTP_SERVER_SEARCH_DEBOUNCE_MS : 0)
-
-    return () => {
-      cancelled = true
-      window.clearTimeout(timer)
-    }
-  }, [open, query, ready])
-
-  const handleOpenChange = useCallback((nextOpen: boolean) => {
-    onOpenChange(nextOpen)
-    if (!nextOpen) {
-      setQuery("")
-      setServers([])
-    }
-  }, [onOpenChange])
-
-  const handleSelect = useCallback((server: Server) => {
-    if (onSelect(server)) {
-      handleOpenChange(false)
-    }
-  }, [handleOpenChange, onSelect])
-
-  return (
-    <CommandDialog open={open} onOpenChange={handleOpenChange} title={t("sftpPickerTitle")}>
-      <CommandInput
-        autoFocus
-        value={query}
-        onValueChange={setQuery}
-        placeholder={t("sftpPickerPlaceholder")}
-      />
-      <CommandList>
-        <CommandEmpty>{loading ? t("sftpPickerLoading") : t("sftpPickerEmpty")}</CommandEmpty>
-
-        <CommandGroup heading={t("sftpPickerServers")}>
-          {servers.map((server) => (
-            <CommandItem
-              key={server.id}
-              value={`${getServerDisplayName(server)} ${getServerTarget(server)} ${server.group ?? ""}`}
-              onSelect={() => handleSelect(server)}
-              className="gap-2"
-            >
-              <ServerIcon className="h-4 w-4 text-muted-foreground" />
-              <span className="min-w-0 flex-1">
-                <span className="block truncate">{getServerDisplayName(server)}</span>
-                <span className="block truncate font-mono text-xs text-muted-foreground">
-                  {getServerTarget(server)}
-                </span>
-              </span>
-            </CommandItem>
-          ))}
-          {loading && servers.length === 0 ? (
-            <div className="flex items-center gap-2 px-2 py-2 text-sm text-muted-foreground">
-              <Loader2 className="h-4 w-4 animate-spin" />
-              <span>{t("sftpPickerLoading")}</span>
-            </div>
-          ) : null}
-        </CommandGroup>
-      </CommandList>
-    </CommandDialog>
-  )
 }
 
 const shouldCheckTerminalInactivity = (session: TerminalSession) => (
@@ -870,6 +751,7 @@ function TerminalPageContent() {
         <SftpServerPickerDialog
           open={sftpPickerOpen}
           ready={ready}
+          serverApi={serversApi}
           onOpenChange={setSftpPickerOpen}
           onSelect={handleCreateSftpTabFromServer}
         />
