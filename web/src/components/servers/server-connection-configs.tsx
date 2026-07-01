@@ -51,7 +51,21 @@ import { useTranslation } from "react-i18next"
 type ViewMode = "grid" | "list"
 type DragOverlaySize = { width: number; height: number } | null
 
-const SERVER_GRID_CLASSNAME = "grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6"
+const SERVER_GRID_CLASSNAME = "grid grid-cols-[repeat(auto-fill,minmax(min(100%,20rem),1fr))] gap-2.5"
+const SERVER_VIEW_MODE_STORAGE_KEY = "easyssh:servers:connection-configs:view-mode"
+
+function readStoredViewMode(defaultViewMode: ViewMode): ViewMode {
+  if (typeof window === "undefined") {
+    return defaultViewMode
+  }
+
+  try {
+    const stored = window.localStorage.getItem(SERVER_VIEW_MODE_STORAGE_KEY)
+    return stored === "grid" || stored === "list" ? stored : defaultViewMode
+  } catch {
+    return defaultViewMode
+  }
+}
 
 interface ServerConnectionConfigsProps {
  onConnect?: (server: Server) => void
@@ -70,10 +84,10 @@ export interface ServerConnectionConfigsApi {
 
 function getServerItemClassName(viewMode: ViewMode, sortable = true) {
   return cn(
-    "group relative rounded-lg border border-border bg-card text-card-foreground outline-none transition-all duration-200 hover:bg-accent hover:text-accent-foreground focus-visible:border-primary/50 focus-visible:ring-[3px] focus-visible:ring-primary/20",
+    "relative rounded-lg border border-border bg-card text-card-foreground outline-none transition-[background-color,border-color,box-shadow] duration-200 focus-visible:border-primary/50 focus-visible:ring-[3px] focus-visible:ring-primary/20",
     sortable && "cursor-grab active:cursor-grabbing",
     viewMode === "grid"
-      ? "flex h-full min-h-[126px] flex-col items-center justify-center gap-2.5 p-4 text-center hover:border-primary/30"
+      ? "grid min-h-[72px] grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 p-3 hover:bg-accent/60 hover:border-primary/40"
       : "grid grid-cols-[auto_minmax(0,1fr)] items-start gap-3 p-4 hover:bg-accent/60 hover:border-primary/40 sm:flex sm:items-center"
   )
 }
@@ -99,29 +113,31 @@ function ServerItemBody({
   if (viewMode === "grid") {
     return (
       <>
-        <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-muted transition-colors">
-          <ServerSystemIcon server={server} size={24} />
-        </div>
+        <ServerSystemIcon server={server} size={20} />
 
-        <div className="w-full space-y-0.5">
+        <div className="min-w-0 space-y-1">
           <h3
             className={cn(
-              "truncate text-xs font-medium transition-colors",
+              "truncate text-sm font-medium",
               isOnline
-                ? "text-card-foreground group-hover:text-status-connected"
-                : "text-muted-foreground group-hover:text-foreground"
+                ? "text-card-foreground"
+                : "text-muted-foreground"
             )}
+            title={server.name || server.host}
           >
             {server.name || server.host}
           </h3>
-          <p className="truncate font-mono text-[10px] text-muted-foreground">
+          <p
+            className="truncate font-mono text-xs text-muted-foreground"
+            title={`${server.username}@${server.host}:${server.port}`}
+          >
             {server.username}@{server.host}:{server.port}
           </p>
         </div>
 
         {showActions && onEdit && onDuplicate && onDelete && (
           <div
-            className="absolute right-2 top-2 flex flex-col items-center gap-1 opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100 md:focus-within:opacity-100"
+            className="flex items-center justify-end gap-1"
             onPointerDown={(e) => e.stopPropagation()}
             onClick={(e) => e.stopPropagation()}
             onDoubleClick={(e) => e.stopPropagation()}
@@ -129,7 +145,7 @@ function ServerItemBody({
             <Button
               variant="ghost"
               size="sm"
-              className="h-7 w-7 p-0 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+              className="h-7 w-7 p-0 text-muted-foreground hover:bg-transparent hover:text-muted-foreground dark:hover:bg-transparent"
               onClick={() => onDuplicate(server)}
               title={t("tooltipDuplicate")}
               aria-label={t("tooltipDuplicate")}
@@ -139,7 +155,7 @@ function ServerItemBody({
             <Button
               variant="ghost"
               size="sm"
-              className="h-7 w-7 p-0 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+              className="h-7 w-7 p-0 text-muted-foreground hover:bg-transparent hover:text-muted-foreground dark:hover:bg-transparent"
               onClick={() => onEdit(server)}
               title={t("tooltipEdit")}
               aria-label={t("tooltipEdit")}
@@ -149,7 +165,7 @@ function ServerItemBody({
             <Button
               variant="ghost"
               size="sm"
-              className="h-7 w-7 p-0 text-destructive hover:bg-destructive/10 hover:text-destructive"
+              className="h-7 w-7 p-0 text-destructive hover:bg-transparent hover:text-destructive dark:hover:bg-transparent"
               onClick={() => onDelete(server.id)}
               title={t("tooltipDelete")}
               aria-label={t("tooltipDelete")}
@@ -169,7 +185,7 @@ function ServerItemBody({
       <div className="flex min-w-0 flex-1 flex-col gap-1 sm:flex-row sm:items-center sm:gap-4">
         <div className="min-w-0 sm:w-52 sm:flex-none md:w-56">
           <div className="flex min-w-0 items-center gap-2">
-            <div className="truncate text-sm font-medium text-foreground transition-colors group-hover:text-primary">
+            <div className="truncate text-sm font-medium text-foreground">
               {server.name || server.host}
             </div>
           </div>
@@ -207,7 +223,7 @@ function ServerItemBody({
           <Button
             variant="ghost"
             size="sm"
-            className="h-8 w-8 p-0 hover:bg-accent hover:text-accent-foreground"
+            className="h-8 w-8 p-0 hover:bg-transparent hover:text-foreground dark:hover:bg-transparent"
             onClick={() => onDuplicate(server)}
             title={t("tooltipDuplicate")}
             aria-label={t("tooltipDuplicate")}
@@ -217,7 +233,7 @@ function ServerItemBody({
           <Button
             variant="ghost"
             size="sm"
-            className="h-8 w-8 p-0 hover:bg-accent hover:text-accent-foreground"
+            className="h-8 w-8 p-0 hover:bg-transparent hover:text-foreground dark:hover:bg-transparent"
             onClick={() => onEdit(server)}
             title={t("tooltipEdit")}
             aria-label={t("tooltipEdit")}
@@ -227,7 +243,7 @@ function ServerItemBody({
           <Button
             variant="ghost"
             size="sm"
-            className="h-8 w-8 p-0 text-destructive hover:bg-destructive/10 hover:text-destructive"
+            className="h-8 w-8 p-0 text-destructive hover:bg-transparent hover:text-destructive dark:hover:bg-transparent"
             onClick={() => onDelete(server.id)}
             title={t("tooltipDelete")}
             aria-label={t("tooltipDelete")}
@@ -360,7 +376,7 @@ export function ServerConnectionConfigs({
  const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null)
  const [loading, setLoading] = useState(true)
  const [activeGroup, setActiveGroup] = useState<string>('all')
- const [viewMode, setViewMode] = useState<ViewMode>(defaultViewMode)
+ const [viewMode, setViewMode] = useState<ViewMode>(() => readStoredViewMode(defaultViewMode))
  const [draggedServer, setDraggedServer] = useState<Server | null>(null)
  const [dragOverlaySize, setDragOverlaySize] = useState<DragOverlaySize>(null)
  const [isMounted, setIsMounted] = useState(false)
@@ -458,6 +474,16 @@ export function ServerConnectionConfigs({
  useEffect(() => {
    setIsMounted(true)
  }, [])
+
+ useEffect(() => {
+   if (typeof window === "undefined") return
+
+   try {
+     window.localStorage.setItem(SERVER_VIEW_MODE_STORAGE_KEY, viewMode)
+   } catch {
+     // 忽略无可用本地存储的环境。
+   }
+ }, [viewMode])
 
  const loadServers = useCallback(async () => {
  try {

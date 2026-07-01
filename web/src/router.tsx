@@ -57,7 +57,7 @@ export function AppRouter() {
       <Route path="/dashboard" element={<DashboardLayout />}>
         <Route index element={<DashboardOverviewPage />} />
         <Route path="terminal" element={<TerminalPage />} />
-        <Route path="sftp" element={<Navigate to="/dashboard/terminal?sftp=1" replace />} />
+        <Route path="sftp" element={<Navigate to="/dashboard/terminal?sftpPicker=1" replace />} />
         <Route path="ai-assistant" element={<DashboardAISessionPage />} />
         <Route path="users" element={<UsersPage />} />
         <Route path="logs" element={<LogsPage />} />

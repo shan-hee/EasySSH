@@ -10,7 +10,14 @@ import type {
   TerminalSession,
   TerminalConnectionPhase,
 } from "@/components/terminal/types"
-import { ServerConnectionConfigs } from "@/components/servers/server-connection-configs"
+import {
+  CommandDialog,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command"
 import { serversApi, sftpApi, type Server } from "@/lib/api"
 import { createAuthTicket } from "@/lib/auth-ticket"
 import { createTerminalWorkspaceSessionControllerAdapter, createTerminalWorkspaceSessionStoreAdapter, useTerminalStore } from "@/stores/terminal-store"
@@ -25,6 +32,9 @@ import { isViteDev } from "@/lib/vite-env"
 import { getServerAuthMethod, useSftpAuthRetry } from "@/components/sftp/use-sftp-auth-retry"
 import { useTerminalAuthFlowAdapters } from "@/components/terminal/use-terminal-auth-flow-adapters"
 import { primaryCredentialMethod } from "@/lib/ssh-auth-methods"
+import { Loader2, Server as ServerIcon } from "lucide-react"
+
+const SFTP_SERVER_SEARCH_DEBOUNCE_MS = 180
 
 const statusFromConnectionPhase = (phase: TerminalConnectionPhase) => {
   if (phase === "ready") return "connected" as const
@@ -75,48 +85,148 @@ const createTerminalSessionFromServer = (
   type: "terminal",
 })
 
-type MergedSftpTab =
-  | {
-      id: string
-      kind: "config"
-      label: string
-      createdAt: number
-    }
-  | {
-      id: string
-      kind: "session"
-      label: string
-      server: Server
-      createdAt: number
-    }
+type MergedSftpTab = {
+  id: string
+  label: string
+  server: Server
+  createdAt: number
+}
 
-const createSftpTabId = (kind: MergedSftpTab["kind"]) => (
-  `sftp-${kind}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+const createSftpTabId = () => (
+  `sftp-session-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
 )
 
 const getServerDisplayName = (server: Server) => (
   server.name || `${server.username}@${server.host}:${server.port}`
 )
 
+const getServerTarget = (server: Server) => (
+  `${server.username}@${server.host}:${server.port}`
+)
+
 const createSftpTabSession = (tab: MergedSftpTab): TerminalSession => {
-  const isSession = tab.kind === "session"
   return {
     id: tab.id,
-    serverId: isSession ? String(tab.server.id) : undefined,
-    authMethod: isSession ? getServerAuthMethod(tab.server) : undefined,
+    serverId: String(tab.server.id),
+    authMethod: getServerAuthMethod(tab.server),
     serverName: tab.label,
-    host: isSession ? tab.server.host : "",
-    port: isSession ? tab.server.port : undefined,
-    username: isSession ? tab.server.username : "",
+    host: tab.server.host,
+    port: tab.server.port,
+    username: tab.server.username,
     shouldConnect: false,
-    connectionPhase: isSession ? "ready" : "idle",
-    status: isSession ? "connected" : "disconnected",
+    connectionPhase: "ready",
+    status: "connected",
     lastActivity: tab.createdAt,
-    group: isSession ? tab.server.group : undefined,
-    tags: isSession ? tab.server.tags : undefined,
+    group: tab.server.group,
+    tags: tab.server.tags,
     pinned: false,
-    type: isSession ? "sftp" : "config",
+    type: "sftp",
   }
+}
+
+function SftpServerPickerDialog({
+  open,
+  ready,
+  onOpenChange,
+  onSelect,
+}: {
+  open: boolean
+  ready: boolean
+  onOpenChange: (open: boolean) => void
+  onSelect: (server: Server) => boolean
+}) {
+  const { t } = useTranslation("terminal")
+  const [query, setQuery] = useState("")
+  const [servers, setServers] = useState<Server[]>([])
+  const [loading, setLoading] = useState(false)
+
+  useEffect(() => {
+    if (!open || !ready) {
+      return
+    }
+
+    let cancelled = false
+    const timer = window.setTimeout(async () => {
+      setLoading(true)
+      try {
+        const response = await serversApi.list({
+          page: 1,
+          limit: 20,
+          search: query.trim() || undefined,
+        })
+        if (!cancelled) {
+          setServers(Array.isArray(response) ? response : response.data)
+        }
+      } catch (error) {
+        if (!cancelled) {
+          console.error("Failed to load SFTP server picker list:", error)
+          setServers([])
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false)
+        }
+      }
+    }, query.trim() ? SFTP_SERVER_SEARCH_DEBOUNCE_MS : 0)
+
+    return () => {
+      cancelled = true
+      window.clearTimeout(timer)
+    }
+  }, [open, query, ready])
+
+  const handleOpenChange = useCallback((nextOpen: boolean) => {
+    onOpenChange(nextOpen)
+    if (!nextOpen) {
+      setQuery("")
+      setServers([])
+    }
+  }, [onOpenChange])
+
+  const handleSelect = useCallback((server: Server) => {
+    if (onSelect(server)) {
+      handleOpenChange(false)
+    }
+  }, [handleOpenChange, onSelect])
+
+  return (
+    <CommandDialog open={open} onOpenChange={handleOpenChange} title={t("sftpPickerTitle")}>
+      <CommandInput
+        autoFocus
+        value={query}
+        onValueChange={setQuery}
+        placeholder={t("sftpPickerPlaceholder")}
+      />
+      <CommandList>
+        <CommandEmpty>{loading ? t("sftpPickerLoading") : t("sftpPickerEmpty")}</CommandEmpty>
+
+        <CommandGroup heading={t("sftpPickerServers")}>
+          {servers.map((server) => (
+            <CommandItem
+              key={server.id}
+              value={`${getServerDisplayName(server)} ${getServerTarget(server)} ${server.group ?? ""}`}
+              onSelect={() => handleSelect(server)}
+              className="gap-2"
+            >
+              <ServerIcon className="h-4 w-4 text-muted-foreground" />
+              <span className="min-w-0 flex-1">
+                <span className="block truncate">{getServerDisplayName(server)}</span>
+                <span className="block truncate font-mono text-xs text-muted-foreground">
+                  {getServerTarget(server)}
+                </span>
+              </span>
+            </CommandItem>
+          ))}
+          {loading && servers.length === 0 ? (
+            <div className="flex items-center gap-2 px-2 py-2 text-sm text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              <span>{t("sftpPickerLoading")}</span>
+            </div>
+          ) : null}
+        </CommandGroup>
+      </CommandList>
+    </CommandDialog>
+  )
 }
 
 const shouldCheckTerminalInactivity = (session: TerminalSession) => (
@@ -181,7 +291,7 @@ function TerminalPageContent() {
   const consumedServerIdRef = useRef<string | null>(null)
   const consumedSftpOpenRef = useRef(false)
   const serverIdFromSearch = searchParams.get("serverId")?.trim() ?? ""
-  const shouldOpenSftpFromSearch = searchParams.get("sftp") === "1"
+  const shouldOpenSftpFromSearch = searchParams.get("sftpPicker") === "1"
 
   const sessions = useTerminalStore((state) => state.sessions)
   const activeSessionId = useTerminalStore((state) => state.activeSessionId)
@@ -191,6 +301,7 @@ function TerminalPageContent() {
   const getSessionLastActivity = useTerminalStore((state) => state.getSessionLastActivity)
   const [sftpTabs, setSftpTabs] = useState<MergedSftpTab[]>([])
   const [activeSftpTabId, setActiveSftpTabId] = useState<string | null>(null)
+  const [sftpPickerOpen, setSftpPickerOpen] = useState(false)
   const workspaceSessionStore = useMemo(() => createTerminalWorkspaceSessionStoreAdapter(), [])
   const workspaceSessionController = useMemo(() => createTerminalWorkspaceSessionControllerAdapter(), [])
   const workspaceAuthTicketProvider = useMemo(() => createWorkspaceAuthTicketProviderAdapter(createAuthTicket), [])
@@ -370,42 +481,35 @@ function TerminalPageContent() {
     return id
   }
 
-  const handleNewSftpTab = useCallback((): string | void => {
+  const handleOpenSftpPicker = useCallback(() => {
     if (totalTabCount >= maxTabs) {
       toast.error(t("errorMaxTabsReached", { max: maxTabs }))
       return
     }
 
+    setSftpPickerOpen(true)
+  }, [maxTabs, t, totalTabCount])
+
+  const handleCreateSftpTabFromServer = useCallback((server: Server): boolean => {
+    if (totalTabCount >= maxTabs) {
+      toast.error(t("errorMaxTabsReached", { max: maxTabs }))
+      return false
+    }
+
     const now = Date.now()
-    const id = createSftpTabId("config")
+    const id = createSftpTabId()
     setSftpTabs((prev) => [
       ...prev,
       {
         id,
-        kind: "config",
-        label: connectionConfigName,
+        label: getServerDisplayName(server),
+        server,
         createdAt: now,
       },
     ])
     setActiveSftpTabId(id)
-    return id
-  }, [connectionConfigName, maxTabs, t, totalTabCount])
-
-  const handleStartSftpFromConfig = useCallback((tabId: string, server: Server) => {
-    const now = Date.now()
-    const label = getServerDisplayName(server)
-    setSftpTabs((prev) => prev.map((tab) => (
-      tab.id === tabId
-        ? {
-            id: tab.id,
-            kind: "session",
-            label,
-            server,
-            createdAt: tab.createdAt || now,
-          }
-        : tab
-    )))
-  }, [])
+    return true
+  }, [maxTabs, t, totalTabCount])
 
   const handleCloseSftpTab = useCallback((tabId: string) => {
     setSftpTabs((prev) => prev.filter((tab) => tab.id !== tabId))
@@ -442,15 +546,13 @@ function TerminalPageContent() {
     if (!ready || consumedSftpOpenRef.current) return
 
     consumedSftpOpenRef.current = true
-    const id = handleNewSftpTab()
-    if (id) {
-      setTimeout(() => {
-        const url = new URL(window.location.href)
-        url.searchParams.delete("sftp")
-        navigate(`${url.pathname}${url.search}${url.hash}`, { replace: true })
-      }, 0)
-    }
-  }, [handleNewSftpTab, navigate, ready, shouldOpenSftpFromSearch])
+    handleOpenSftpPicker()
+    setTimeout(() => {
+      const url = new URL(window.location.href)
+      url.searchParams.delete("sftpPicker")
+      navigate(`${url.pathname}${url.search}${url.hash}`, { replace: true })
+    }, 0)
+  }, [handleOpenSftpPicker, navigate, ready, shouldOpenSftpFromSearch])
 
   const handleStartConnectionFromConfig = useCallback((sessionId: string, server: Server) => {
     const now = Date.now()
@@ -708,16 +810,6 @@ function TerminalPageContent() {
     const tab = sftpTabs.find((item) => item.id === session.id)
     if (!tab) return null
 
-    if (tab.kind === "config") {
-      return (
-        <ServerConnectionConfigs
-          key={`sftp-config-${tab.id}`}
-          defaultViewMode="grid"
-          onConnect={(server) => handleStartSftpFromConfig(tab.id, server)}
-        />
-      )
-    }
-
     return (
       <TerminalSftpTabContent
         sessionId={tab.id}
@@ -735,7 +827,7 @@ function TerminalPageContent() {
         onRenameSession={(label) => handleRenameSftpTab(tab.id, label)}
       />
     )
-  }, [handleCloseSftpTab, handleRenameSftpTab, handleStartSftpFromConfig, sftpTabs])
+  }, [handleCloseSftpTab, handleRenameSftpTab, sftpTabs])
 
   const sessionsRef = useRef(sessions)
   useEffect(() => {
@@ -775,6 +867,12 @@ function TerminalPageContent() {
     >
       <div className="flex min-h-0 flex-1 flex-col min-w-0 overflow-hidden">
         {credentialDialog}
+        <SftpServerPickerDialog
+          open={sftpPickerOpen}
+          ready={ready}
+          onOpenChange={setSftpPickerOpen}
+          onSelect={handleCreateSftpTabFromServer}
+        />
         <TerminalComponent
           sessions={sessions}
           onNewSession={handleNewSession}
@@ -782,9 +880,9 @@ function TerminalPageContent() {
           extraNewSessionActions={[{
             id: "new-sftp-session",
             label: "SFTP+",
-            ariaLabel: "新建 SFTP 文件管理器页签",
-            title: "新建 SFTP 文件管理器页签",
-            onCreate: handleNewSftpTab,
+            ariaLabel: t("sftpPickerActionLabel"),
+            title: t("sftpPickerActionLabel"),
+            onCreate: handleOpenSftpPicker,
           }]}
           renderExtraSessionContent={renderSftpTabContent}
           onCloseExtraSession={handleCloseSftpTab}
