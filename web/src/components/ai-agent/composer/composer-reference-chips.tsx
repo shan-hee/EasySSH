@@ -3,6 +3,11 @@ import type { TFunction } from "i18next"
 
 import { FileText, Server as ServerIcon, X } from "lucide-react"
 
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
 import type { Server as ManagedServer } from "@/lib/api"
 import { getServerDisplayName, getServerShortName } from "@/lib/server-utils"
 import { formatFileSize, type ComposerAttachment } from "./attachments"
@@ -36,21 +41,34 @@ export function ComposerReferenceChips({
             {t("referencedServersLabel")}
           </span>
           {selectedServers.map((server) => (
-            <span
-              key={server.id}
-              className="inline-flex max-w-full items-center gap-1 rounded-md border border-border/60 bg-muted/40 px-2 py-1 text-xs text-foreground"
-              title={getServerDisplayName(server)}
-            >
-              <ServerIcon className="size-3.5 text-muted-foreground" />
-              <span className="max-w-[10rem] truncate">{getServerShortName(server)}</span>
-              <button
-                type="button"
-                className="text-muted-foreground transition-colors hover:text-foreground"
-                onClick={() => onToggleServer(server.id)}
-              >
-                <X className="size-3.5" />
-              </button>
-            </span>
+            <Tooltip key={server.id} delayDuration={150}>
+              <TooltipTrigger asChild>
+                <span
+                  className="inline-flex max-w-full cursor-default items-center gap-1 rounded-md border border-border/60 bg-muted/40 px-2 py-1 text-xs text-foreground transition-colors hover:border-primary/40 hover:bg-primary/5"
+                >
+                  <ServerIcon className="size-3.5 text-muted-foreground" />
+                  <span className="max-w-[10rem] truncate">{getServerShortName(server)}</span>
+                  <button
+                    type="button"
+                    className="text-muted-foreground transition-colors hover:text-foreground"
+                    onClick={() => onToggleServer(server.id)}
+                  >
+                    <X className="size-3.5" />
+                  </button>
+                </span>
+              </TooltipTrigger>
+              <TooltipContent side="top" className="max-w-[16rem]">
+                <div className="flex flex-col gap-0.5">
+                  <span className="text-xs font-semibold">{getServerDisplayName(server)}</span>
+                  <span className="text-[11px] text-muted-foreground">
+                    {server.username}@{server.host}:{server.port}
+                  </span>
+                  {server.group && (
+                    <span className="text-[11px] text-muted-foreground">{server.group}</span>
+                  )}
+                </div>
+              </TooltipContent>
+            </Tooltip>
           ))}
           <button
             type="button"
@@ -68,25 +86,40 @@ export function ComposerReferenceChips({
             {t("attachedFilesLabel")}
           </span>
           {attachments.map((attachment) => (
-            <span
-              key={attachment.id}
-              className="inline-flex max-w-full items-center gap-1 rounded-md border border-border/60 bg-muted/40 px-2 py-1 text-xs text-foreground"
-              title={`${attachment.name} · ${formatFileSize(attachment.size)}`}
-            >
-              <FileText className="size-3.5 text-muted-foreground" />
-              <span className="max-w-[12rem] truncate">{attachment.name}</span>
-              <span className="text-muted-foreground">{formatFileSize(attachment.size)}</span>
-              {attachment.truncated && (
-                <span className="text-muted-foreground">{t("attachmentInlineTruncated")}</span>
-              )}
-              <button
-                type="button"
-                className="text-muted-foreground transition-colors hover:text-foreground"
-                onClick={() => onRemoveAttachment(attachment.id)}
-              >
-                <X className="size-3.5" />
-              </button>
-            </span>
+            <Tooltip key={attachment.id} delayDuration={150}>
+              <TooltipTrigger asChild>
+                <span
+                  className="inline-flex max-w-full cursor-default items-center gap-1 rounded-md border border-border/60 bg-muted/40 px-2 py-1 text-xs text-foreground transition-colors hover:border-primary/40 hover:bg-primary/5"
+                >
+                  <FileText className="size-3.5 text-muted-foreground" />
+                  <span className="max-w-[12rem] truncate">{attachment.name}</span>
+                  <span className="text-muted-foreground">{formatFileSize(attachment.size)}</span>
+                  {attachment.truncated && (
+                    <span className="text-muted-foreground">{t("attachmentInlineTruncated")}</span>
+                  )}
+                  <button
+                    type="button"
+                    className="text-muted-foreground transition-colors hover:text-foreground"
+                    onClick={() => onRemoveAttachment(attachment.id)}
+                  >
+                    <X className="size-3.5" />
+                  </button>
+                </span>
+              </TooltipTrigger>
+              <TooltipContent side="top" className="max-w-[16rem]">
+                <div className="flex flex-col gap-0.5">
+                  <span className="text-xs font-semibold">{attachment.name}</span>
+                  <span className="text-[11px] text-muted-foreground">
+                    {formatFileSize(attachment.size)}
+                  </span>
+                  {attachment.truncated && (
+                    <span className="text-[11px] text-amber-600 dark:text-amber-400">
+                      {t("attachmentInlineTruncated")}
+                    </span>
+                  )}
+                </div>
+              </TooltipContent>
+            </Tooltip>
           ))}
         </div>
       )}
