@@ -1,16 +1,21 @@
+import type { ReactNode } from "react"
+import { CloudUpload, FileText, FolderPlus, RefreshCw, Upload } from "lucide-react"
 
-import { createPortal } from "react-dom"
-import { useEffect, useRef } from "react"
-import { CloudUpload, FolderPlus, FileText, RefreshCw, Upload } from "lucide-react"
 import { FileActionMenu, type FileAction } from "@/components/sftp/file-action-menu"
 import { useWorkspaceSftpTranslator } from "@/components/ssh-workspace/use-workspace-translator"
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuLabel,
+  ContextMenuSeparator,
+  ContextMenuShortcut,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu"
 import { cn } from "@/lib/utils"
-import { computeFloatingPosition } from "@/lib/overlay-position"
 import type { SftpFileItem } from "@/lib/sftp-file-utils"
 
 export interface SftpContextMenuState {
-  x: number
-  y: number
   fileName?: string
   fileType?: "file" | "directory"
   isBlank?: boolean
@@ -19,203 +24,184 @@ export interface SftpContextMenuState {
 
 export type SftpContextMenuFile = Pick<SftpFileItem, "name" | "type" | "size" | "modified" | "permissions">
 
-export interface SftpContextMenuProps {
-  contextMenu: SftpContextMenuState | null
-  file: SftpContextMenuFile | null
+export interface SftpFileContextMenuProps {
+  file: SftpContextMenuFile
   selectedFilesCount: number
+  enableBackgroundDownload?: boolean
+  disabled?: boolean
+  onOpen?: () => void
+  onOpenChange?: (open: boolean) => void
   onAction: (action: FileAction) => void
+  children: ReactNode
+}
+
+export interface SftpBlankContextMenuProps {
+  selectedFilesCount: number
+  disabled?: boolean
+  onOpenChange?: (open: boolean) => void
   onCreateFolder: () => void
   onCreateFile: () => void
   onUpload: () => void
   onBackgroundUpload?: () => void
-  enableBackgroundDownload?: boolean
   onRefresh: () => void
-  onClose: () => void
+  children: ReactNode
 }
 
-export function SftpContextMenu({
-  contextMenu,
-  file,
+function SftpContextMenuSelectedLabel({ count }: { count: number }) {
+  const tSftp = useWorkspaceSftpTranslator()
+
+  if (count <= 1) {
+    return null
+  }
+
+  return (
+    <>
+      <ContextMenuLabel className="px-2 py-1.5 text-xs font-medium text-muted-foreground">
+        {tSftp("contextSelectedTitle", { count })}
+      </ContextMenuLabel>
+      <ContextMenuSeparator />
+    </>
+  )
+}
+
+export function SftpBlankContextMenuContent({
   selectedFilesCount,
-  onAction,
   onCreateFolder,
   onCreateFile,
   onUpload,
   onBackgroundUpload,
-  enableBackgroundDownload = false,
   onRefresh,
-  onClose,
-}: SftpContextMenuProps) {
+}: Omit<SftpBlankContextMenuProps, "children" | "disabled" | "onOpenChange">) {
   const tSftp = useWorkspaceSftpTranslator()
-  const menuRef = useRef<HTMLDivElement | null>(null)
 
-  useEffect(() => {
-    if (!contextMenu) return
+  return (
+    <ContextMenuContent
+      className={cn(
+        "min-w-[200px] rounded-lg border-border/60 bg-popover/95 text-popover-foreground backdrop-blur-xl"
+      )}
+    >
+      <SftpContextMenuSelectedLabel count={selectedFilesCount} />
 
-    const handleClickOutside = () => {
-      onClose()
-    }
+      <ContextMenuItem onSelect={onCreateFolder}>
+        <FolderPlus className="h-4 w-4" />
+        <span>{tSftp("contextNewFolder")}</span>
+        <ContextMenuShortcut>⌘⇧N</ContextMenuShortcut>
+      </ContextMenuItem>
 
-    const timer = window.setTimeout(() => {
-      document.addEventListener("click", handleClickOutside)
-    }, 0)
+      {onBackgroundUpload && (
+        <ContextMenuItem onSelect={onBackgroundUpload}>
+          <CloudUpload className="h-4 w-4" />
+          <span>{tSftp("contextBackgroundUploadFile")}</span>
+        </ContextMenuItem>
+      )}
 
-    return () => {
-      window.clearTimeout(timer)
-      document.removeEventListener("click", handleClickOutside)
-    }
-  }, [contextMenu, onClose])
+      <ContextMenuItem onSelect={onCreateFile}>
+        <FileText className="h-4 w-4" />
+        <span>{tSftp("contextNewFile")}</span>
+        <ContextMenuShortcut>⌘N</ContextMenuShortcut>
+      </ContextMenuItem>
 
-  useEffect(() => {
-    if (!contextMenu || !menuRef.current) return
+      <ContextMenuItem onSelect={onUpload}>
+        <Upload className="h-4 w-4" />
+        <span>{tSftp("contextUploadFile")}</span>
+        <ContextMenuShortcut>⌘U</ContextMenuShortcut>
+      </ContextMenuItem>
 
-    const menu = menuRef.current
-    const rect = menu.getBoundingClientRect()
-    const coords = computeFloatingPosition({
-      anchor: { x: contextMenu.x, y: contextMenu.y },
-      rect,
-      preferredPlacements: ["bottom", "top", "right", "left"],
-      margin: 8,
-    })
+      <ContextMenuItem onSelect={onRefresh}>
+        <RefreshCw className="h-4 w-4" />
+        <span>{tSftp("contextRefresh")}</span>
+        <ContextMenuShortcut>⌘R</ContextMenuShortcut>
+      </ContextMenuItem>
+    </ContextMenuContent>
+  )
+}
 
-    if (!coords) {
-      onClose()
-      return
-    }
+export function SftpFileContextMenuContent({
+  file,
+  selectedFilesCount,
+  enableBackgroundDownload = false,
+  onAction,
+}: Pick<SftpFileContextMenuProps, "file" | "selectedFilesCount" | "enableBackgroundDownload" | "onAction">) {
+  return (
+    <ContextMenuContent
+      className={cn(
+        "min-w-[200px] rounded-lg border-border/60 bg-popover/95 text-popover-foreground backdrop-blur-xl"
+      )}
+    >
+      <SftpContextMenuSelectedLabel count={selectedFilesCount} />
+      <FileActionMenu
+        file={file}
+        mode="context"
+        selectedFilesCount={selectedFilesCount}
+        enableBackgroundDownload={enableBackgroundDownload}
+        onAction={onAction}
+      />
+    </ContextMenuContent>
+  )
+}
 
-    menu.style.left = `${coords.left}px`
-    menu.style.top = `${coords.top}px`
-  }, [contextMenu, onClose])
+export function SftpBlankContextMenu({
+  selectedFilesCount,
+  disabled = false,
+  onOpenChange,
+  onCreateFolder,
+  onCreateFile,
+  onUpload,
+  onBackgroundUpload,
+  onRefresh,
+  children,
+}: SftpBlankContextMenuProps) {
+  return (
+    <ContextMenu onOpenChange={onOpenChange}>
+      <ContextMenuTrigger asChild disabled={disabled}>
+        {children}
+      </ContextMenuTrigger>
+      <SftpBlankContextMenuContent
+        selectedFilesCount={selectedFilesCount}
+        onCreateFolder={onCreateFolder}
+        onCreateFile={onCreateFile}
+        onUpload={onUpload}
+        onBackgroundUpload={onBackgroundUpload}
+        onRefresh={onRefresh}
+      />
+    </ContextMenu>
+  )
+}
 
-  if (!contextMenu) {
-    return null
-  }
-
-  return createPortal(
-    <div
-      ref={menuRef}
-      key={contextMenu.key}
-      className="fixed z-[9999] animate-in fade-in-0 zoom-in-95 duration-200"
-      style={{
-        left: `${contextMenu.x}px`,
-        top: `${contextMenu.y}px`,
-      }}
-      onClick={(event) => event.stopPropagation()}
-      onContextMenu={(event) => {
-        event.stopPropagation()
+export function SftpFileContextMenu({
+  file,
+  selectedFilesCount,
+  enableBackgroundDownload = false,
+  disabled = false,
+  onOpen,
+  onOpenChange,
+  onAction,
+  children,
+}: SftpFileContextMenuProps) {
+  return (
+    <ContextMenu
+      onOpenChange={(open) => {
+        if (open) {
+          onOpen?.()
+        }
+        onOpenChange?.(open)
       }}
     >
-      <div
-        className={cn(
-          "min-w-[200px] rounded-lg shadow-md border p-1 bg-popover text-popover-foreground border-border",
-        )}
+      <ContextMenuTrigger
+        asChild
+        disabled={disabled}
+        onContextMenu={(event) => {
+          event.stopPropagation()
+        }}
       >
-        {selectedFilesCount > 1 && (
-          <>
-            <div
-              className={cn(
-                "px-3 py-1.5 text-xs font-medium text-muted-foreground",
-              )}
-            >
-              {tSftp("contextSelectedTitle", { count: selectedFilesCount })}
-            </div>
-            <div className={cn("h-px mx-2 mb-1 bg-border")} />
-          </>
-        )}
-
-        {contextMenu.isBlank ? (
-          <>
-            <button
-              className="w-full px-3 py-2 text-left text-sm flex items-center gap-2.5 transition-all hover:bg-accent hover:text-accent-foreground rounded-sm"
-              onClick={() => {
-                onCreateFolder()
-                onClose()
-              }}
-            >
-              <FolderPlus className="h-4 w-4" />
-              <span className="flex-1">{tSftp("contextNewFolder")}</span>
-              <kbd className={cn(
-                "text-[10px] px-1.5 py-0.5 rounded font-mono bg-muted text-muted-foreground",
-              )}>
-                ⌘⇧N
-              </kbd>
-            </button>
-
-            {onBackgroundUpload && (
-              <button
-                className="w-full px-3 py-2 text-left text-sm flex items-center gap-2.5 transition-all hover:bg-accent hover:text-accent-foreground rounded-sm"
-                onClick={() => {
-                  onBackgroundUpload()
-                  onClose()
-                }}
-              >
-                <CloudUpload className="h-4 w-4" />
-                <span className="flex-1">{tSftp("contextBackgroundUploadFile")}</span>
-              </button>
-            )}
-
-            <button
-              className="w-full px-3 py-2 text-left text-sm flex items-center gap-2.5 transition-all hover:bg-accent hover:text-accent-foreground rounded-sm"
-              onClick={() => {
-                onCreateFile()
-                onClose()
-              }}
-            >
-              <FileText className="h-4 w-4" />
-              <span className="flex-1">{tSftp("contextNewFile")}</span>
-              <kbd className={cn(
-                "text-[10px] px-1.5 py-0.5 rounded font-mono bg-muted text-muted-foreground",
-              )}>
-                ⌘N
-              </kbd>
-            </button>
-
-            <button
-              className="w-full px-3 py-2 text-left text-sm flex items-center gap-2.5 transition-all hover:bg-accent hover:text-accent-foreground rounded-sm"
-              onClick={() => {
-                onUpload()
-                onClose()
-              }}
-            >
-              <Upload className="h-4 w-4" />
-              <span className="flex-1">{tSftp("contextUploadFile")}</span>
-              <kbd className={cn(
-                "text-[10px] px-1.5 py-0.5 rounded font-mono bg-muted text-muted-foreground",
-              )}>
-                ⌘U
-              </kbd>
-            </button>
-
-            <button
-              className="w-full px-3 py-2 text-left text-sm flex items-center gap-2.5 transition-all hover:bg-accent hover:text-accent-foreground rounded-sm"
-              onClick={() => {
-                onRefresh()
-                onClose()
-              }}
-            >
-              <RefreshCw className="h-4 w-4" />
-              <span className="flex-1">{tSftp("contextRefresh")}</span>
-              <kbd className={cn(
-                "text-[10px] px-1.5 py-0.5 rounded font-mono bg-muted text-muted-foreground",
-              )}>
-                ⌘R
-              </kbd>
-            </button>
-          </>
-        ) : file ? (
-          <FileActionMenu
-            file={file}
-            mode="context"
-            selectedFilesCount={selectedFilesCount}
-            enableBackgroundDownload={enableBackgroundDownload}
-            onAction={(action) => {
-              onAction(action)
-              onClose()
-            }}
-          />
-        ) : null}
-      </div>
-    </div>,
-    document.body,
+        {children}
+      </ContextMenuTrigger>
+      <SftpFileContextMenuContent
+        file={file}
+        selectedFilesCount={selectedFilesCount}
+        enableBackgroundDownload={enableBackgroundDownload}
+        onAction={onAction}
+      />
+    </ContextMenu>
   )
 }

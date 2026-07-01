@@ -5,6 +5,7 @@ import { useFileListVirtualizer } from "@/hooks/use-file-list-virtualizer"
 import { cn } from "@/lib/utils"
 import { SftpCreateEntry } from "@/components/sftp/sftp-create-entry"
 import { SftpFileBrowserState } from "@/components/sftp/sftp-file-browser-state"
+import { SftpBlankContextMenu } from "@/components/sftp/sftp-context-menu"
 import { SftpFileGridItem } from "@/components/sftp/sftp-file-grid-item"
 import { SftpFileTableHeader } from "@/components/sftp/sftp-file-table-header"
 import { SftpFileTableRow } from "@/components/sftp/sftp-file-table-row"
@@ -36,7 +37,13 @@ export interface SftpFileBrowserPaneProps {
   editInputRef: RefObject<HTMLInputElement | null>
   folderLabel: string
   onClearSelectedFiles: () => void
-  onBlankContextMenu: (event: MouseEvent<HTMLDivElement>) => void
+  onOpenBlankContextMenu: () => void
+  onCloseContextMenu: () => void
+  onCreateFolder: () => void
+  onCreateFile: () => void
+  onUpload: () => void
+  onBackgroundUpload?: () => void
+  onRefresh: () => void
   onDragEnter: (event: DragEvent<HTMLDivElement>) => void
   onDragLeave: (event: DragEvent<HTMLDivElement>) => void
   onDragOver: (event: DragEvent<HTMLDivElement>) => void
@@ -55,10 +62,11 @@ export interface SftpFileBrowserPaneProps {
   onNativeDrop: (event: DragEvent, fileName: string, fileType: "file" | "directory") => void
   onFileClick: (fileName: string, event: MouseEvent<HTMLElement>) => void
   onFileDoubleClick: (fileName: string, fileType: "file" | "directory") => void
-  onContextMenu: (event: MouseEvent<HTMLElement>, fileName: string, fileType: "file" | "directory") => void
+  onOpenFileContextMenu: (fileName: string, fileType: "file" | "directory") => void
   onSort: (key: SftpFileSortKey) => void
   enableBackgroundDownload?: boolean
   onAction: (file: EnhancedSftpFileBrowserItem, action: FileAction) => void
+  onContextAction: (action: FileAction) => void
   onInputChange: (event: ChangeEvent<HTMLInputElement>) => void
 }
 
@@ -81,7 +89,13 @@ export function SftpFileBrowserPane({
   editInputRef,
   folderLabel,
   onClearSelectedFiles,
-  onBlankContextMenu,
+  onOpenBlankContextMenu,
+  onCloseContextMenu,
+  onCreateFolder,
+  onCreateFile,
+  onUpload,
+  onBackgroundUpload,
+  onRefresh,
   onDragEnter,
   onDragLeave,
   onDragOver,
@@ -100,10 +114,11 @@ export function SftpFileBrowserPane({
   onNativeDrop,
   onFileClick,
   onFileDoubleClick,
-  onContextMenu,
+  onOpenFileContextMenu,
   onSort,
   enableBackgroundDownload = false,
   onAction,
+  onContextAction,
   onInputChange,
 }: SftpFileBrowserPaneProps) {
   const listScrollRef = useRef<HTMLDivElement>(null)
@@ -147,7 +162,12 @@ export function SftpFileBrowserPane({
       onDrop={(event, fileName, fileType) => onNativeDrop(event, fileName, fileType)}
       onClick={(fileName, event) => onFileClick(fileName, event)}
       onDoubleClick={onFileDoubleClick}
-      onContextMenu={(event, fileName, fileType) => onContextMenu(event, fileName, fileType)}
+      onOpenContextMenu={onOpenFileContextMenu}
+      onCloseContextMenu={onCloseContextMenu}
+      selectedFilesCount={selectedFiles.length}
+      enableBackgroundDownload={enableBackgroundDownload}
+      onAction={(_, action) => onAction(file, action)}
+      onContextAction={onContextAction}
     />
   )
 
@@ -175,15 +195,17 @@ export function SftpFileBrowserPane({
       onDrop={(event, fileName, fileType) => onNativeDrop(event, fileName, fileType)}
       onClick={(fileName, event) => onFileClick(fileName, event)}
       onDoubleClick={onFileDoubleClick}
-      onContextMenu={(event, fileName, fileType) => onContextMenu(event, fileName, fileType)}
+      onOpenContextMenu={onOpenFileContextMenu}
+      onCloseContextMenu={onCloseContextMenu}
       enableBackgroundDownload={enableBackgroundDownload}
       onAction={(_, action) => onAction(file, action)}
+      onContextAction={onContextAction}
     />
   )
 
   const hasVisibleContent = !isLoading && (filteredFiles.length > 0 || creatingNew)
 
-  return (
+  const browserPane = (
     <div
       ref={dropZoneRef}
       className={cn(
@@ -196,7 +218,6 @@ export function SftpFileBrowserPane({
       onDragOver={onDragOver}
       onDrop={onDrop}
       onClick={onClearSelectedFiles}
-      onContextMenu={onBlankContextMenu}
     >
       <SftpFileBrowserState
         isDragging={isDragging}
@@ -321,5 +342,26 @@ export function SftpFileBrowserPane({
         onChange={onInputChange}
       />
     </div>
+  )
+
+  return (
+    <SftpBlankContextMenu
+      selectedFilesCount={selectedFiles.length}
+      disabled={editingFile !== null || creatingNew !== null}
+      onOpenChange={(open) => {
+        if (open) {
+          onOpenBlankContextMenu()
+        } else {
+          onCloseContextMenu()
+        }
+      }}
+      onCreateFolder={onCreateFolder}
+      onCreateFile={onCreateFile}
+      onUpload={onUpload}
+      onBackgroundUpload={onBackgroundUpload}
+      onRefresh={onRefresh}
+    >
+      {browserPane}
+    </SftpBlankContextMenu>
   )
 }

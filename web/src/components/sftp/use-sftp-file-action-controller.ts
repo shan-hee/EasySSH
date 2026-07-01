@@ -10,7 +10,6 @@ import {
   type ChangeEvent,
   type Dispatch,
   type FocusEvent,
-  type MouseEvent,
   type RefObject,
   type SetStateAction,
 } from "react"
@@ -47,8 +46,6 @@ export interface SftpDeleteConfirmDialogState {
 }
 
 export interface SftpFileContextMenuState {
-  x: number
-  y: number
   fileName?: string
   fileType?: "file" | "directory"
   isBlank?: boolean
@@ -217,12 +214,8 @@ export function useSftpFileActionController({
     void handleOpenEditor(fileName)
   }, [currentPath, handleOpenEditor, onNavigate])
 
-  const handleContextMenu = useCallback((event: MouseEvent, fileName: string, fileType: "file" | "directory") => {
-    event.preventDefault()
-    event.stopPropagation()
+  const openFileContextMenu = useCallback((fileName: string, fileType: "file" | "directory") => {
     setContextMenu({
-      x: event.clientX,
-      y: event.clientY,
       fileName,
       fileType,
       isBlank: false,
@@ -234,12 +227,8 @@ export function useSftpFileActionController({
     }
   }, [selectedFiles, setSelectedFiles])
 
-  const handleBlankContextMenu = useCallback((event: MouseEvent) => {
-    event.preventDefault()
-    event.stopPropagation()
+  const openBlankContextMenu = useCallback(() => {
     setContextMenu({
-      x: event.clientX,
-      y: event.clientY,
       isBlank: true,
       key: Date.now(),
     })
@@ -694,8 +683,8 @@ export function useSftpFileActionController({
     closeContextMenu,
     handleInputChange,
     handleFileDoubleClick,
-    handleContextMenu,
-    handleBlankContextMenu,
+    handleContextMenu: openFileContextMenu,
+    handleBlankContextMenu: openBlankContextMenu,
     finishRename,
     cancelRename,
     handleRenameBlur,

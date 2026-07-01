@@ -1,5 +1,5 @@
 
-import { useState, useEffect, useRef, useMemo, useCallback } from "react"
+import { useState, useEffect, useMemo, useCallback } from "react"
 import { useTranslation } from "react-i18next"
 import { PageHeader } from "@/components/page-header"
 import { Button } from "@/components/ui/button"
@@ -7,7 +7,6 @@ import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import { Kbd } from "@/components/ui/kbd"
 import { toast } from "sonner"
 import { getErrorMessage } from "@/lib/error-utils"
 import { DataTable } from "@/components/ui/data-table"
@@ -27,6 +26,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Skeleton } from "@/components/ui/skeleton"
+import { CreatableCombobox } from "@/components/ui/creatable-combobox"
 import { useNavigate } from "react-router-dom"
 import { createScriptColumns } from "./scripts/components/script-columns"
 import { useAuthReady } from "@/hooks/use-auth-ready"
@@ -124,14 +124,8 @@ export default function ScriptsPage({
  })
 
  const [tagInput, setTagInput] = useState("")
- const [showSuggestions, setShowSuggestions] = useState(false)
- const [selectedSuggestionIndex, setSelectedSuggestionIndex] = useState(-1)
- const suggestionRefs = useRef<(HTMLButtonElement | null)[]>([])
 
  const [editTagInput, setEditTagInput] = useState("")
- const [showEditSuggestions, setShowEditSuggestions] = useState(false)
- const [selectedEditSuggestionIndex, setSelectedEditSuggestionIndex] = useState(-1)
- const editSuggestionRefs = useRef<(HTMLButtonElement | null)[]>([])
 
 // 加载脚本列表
  const loadScripts = useCallback(async () => {
@@ -179,47 +173,14 @@ export default function ScriptsPage({
    }
  }, [scripts, selectedScriptId])
 
- // 自动滚动选中的建议项到可见区域
- useEffect(() => {
- if (selectedSuggestionIndex >= 0 && suggestionRefs.current[selectedSuggestionIndex]) {
- suggestionRefs.current[selectedSuggestionIndex]?.scrollIntoView({
- block: 'nearest',
- behavior: 'smooth'
- })
- }
- }, [selectedSuggestionIndex])
-
- useEffect(() => {
- if (selectedEditSuggestionIndex >= 0 && editSuggestionRefs.current[selectedEditSuggestionIndex]) {
- editSuggestionRefs.current[selectedEditSuggestionIndex]?.scrollIntoView({
- block: 'nearest',
- behavior: 'smooth'
- })
- }
- }, [selectedEditSuggestionIndex])
-
  // 获取所有标签（安全处理）
  const allTags = Array.from(new Set((scripts || []).flatMap(script => script.tags || [])))
 
  // 获取可用标签（排除已选择的）
  const availableTags = allTags.filter(tag => !newScript.tags.includes(tag))
 
- // 根据输入过滤标签建议
- const filteredSuggestions = tagInput.trim()
- ? availableTags.filter(tag =>
- tag.toLowerCase().includes(tagInput.toLowerCase())
- )
- : availableTags
-
  // 编辑模式的可用标签（排除已选择的）
  const availableEditTags = allTags.filter(tag => !editScript.tags.includes(tag))
-
- // 编辑模式的标签建议
- const filteredEditSuggestions = editTagInput.trim()
- ? availableEditTags.filter(tag =>
- tag.toLowerCase().includes(editTagInput.toLowerCase())
- )
- : availableEditTags
 
 // 加载服务器列表
 const loadServers = useCallback(async () => {
@@ -459,44 +420,6 @@ const totalExecutions = useMemo(() => (
  tags: [...newScript.tags, tagToAdd],
  })
  setTagInput("")
- setShowSuggestions(false)
- setSelectedSuggestionIndex(-1)
- }
- }
-
- const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
- if (!showSuggestions || filteredSuggestions.length === 0) {
- if (e.key === 'Enter') {
- e.preventDefault()
- handleAddTag()
- }
- return
- }
-
- switch (e.key) {
- case 'ArrowDown':
- e.preventDefault()
- setSelectedSuggestionIndex((prev) =>
- prev < filteredSuggestions.length - 1 ? prev + 1 : prev
- )
- break
- case 'ArrowUp':
- e.preventDefault()
- setSelectedSuggestionIndex((prev) => (prev > 0 ? prev - 1 : -1))
- break
- case 'Enter':
- e.preventDefault()
- if (selectedSuggestionIndex >= 0) {
- handleAddTag(filteredSuggestions[selectedSuggestionIndex])
- } else {
- handleAddTag()
- }
- break
- case 'Escape':
- e.preventDefault()
- setShowSuggestions(false)
- setSelectedSuggestionIndex(-1)
- break
  }
  }
 
@@ -516,44 +439,6 @@ const totalExecutions = useMemo(() => (
  tags: [...editScript.tags, tagToAdd],
  })
  setEditTagInput("")
- setShowEditSuggestions(false)
- setSelectedEditSuggestionIndex(-1)
- }
- }
-
- const handleKeyDownEditTag = (e: React.KeyboardEvent<HTMLInputElement>) => {
- if (!showEditSuggestions || filteredEditSuggestions.length === 0) {
- if (e.key === 'Enter') {
- e.preventDefault()
- handleAddEditTag()
- }
- return
- }
-
- switch (e.key) {
- case 'ArrowDown':
- e.preventDefault()
- setSelectedEditSuggestionIndex((prev) =>
- prev < filteredEditSuggestions.length - 1 ? prev + 1 : prev
- )
- break
- case 'ArrowUp':
- e.preventDefault()
- setSelectedEditSuggestionIndex((prev) => (prev > 0 ? prev - 1 : -1))
- break
- case 'Enter':
- e.preventDefault()
- if (selectedEditSuggestionIndex >= 0) {
- handleAddEditTag(filteredEditSuggestions[selectedEditSuggestionIndex])
- } else {
- handleAddEditTag()
- }
- break
- case 'Escape':
- e.preventDefault()
- setShowEditSuggestions(false)
- setSelectedEditSuggestionIndex(-1)
- break
  }
  }
 
@@ -859,65 +744,14 @@ const totalExecutions = useMemo(() => (
 
  <div className="space-y-2">
  <Label htmlFor="detail-edit-script-tags">{t("fieldTagsLabel")}</Label>
- <div className="relative">
- <Input
+ <CreatableCombobox
  id="detail-edit-script-tags"
- placeholder={t("tagsInputPlaceholder")}
  value={editTagInput}
- onChange={(e) => {
- setEditTagInput(e.target.value)
- setShowEditSuggestions(true)
- setSelectedEditSuggestionIndex(-1)
- }}
- onFocus={() => setShowEditSuggestions(true)}
- onBlur={() => {
- setTimeout(() => {
- setShowEditSuggestions(false)
- setSelectedEditSuggestionIndex(-1)
- }, 200)
- }}
- onKeyDown={handleKeyDownEditTag}
+ onValueChange={setEditTagInput}
+ options={availableEditTags.map((tag) => ({ value: tag, label: tag }))}
+ onSelect={handleAddEditTag}
+ placeholder={t("tagsInputPlaceholder")}
  />
-
- {showEditSuggestions && filteredEditSuggestions.length > 0 && editTagInput.trim() && (
- <div className="absolute z-50 mt-1 max-h-[200px] w-full overflow-y-auto rounded-md border bg-popover shadow-md scrollbar-custom">
- <div className="p-1">
- {filteredEditSuggestions.map((tag, index) => (
- <button
- key={tag}
- ref={(el) => {
- editSuggestionRefs.current[index] = el
- }}
- type="button"
- className={`w-full rounded-sm px-2 py-1.5 text-left text-sm transition-colors ${
- index === selectedEditSuggestionIndex
- ? 'bg-accent text-accent-foreground'
- : 'hover:bg-accent/50'
- }`}
- onMouseEnter={() => setSelectedEditSuggestionIndex(index)}
- onMouseDown={(e) => {
- e.preventDefault()
- handleAddEditTag(tag)
- }}
- >
- {tag}
- </button>
- ))}
- </div>
- </div>
- )}
- </div>
-
- <p className="flex flex-wrap items-center gap-1 text-xs text-muted-foreground">
- {t("tagsHintPrefix")}
- <Kbd>↑</Kbd>
- <Kbd>↓</Kbd>
- {t("tagsHintSelect")}
- <Kbd>Enter</Kbd>
- {t("tagsHintEnter")}
- <Kbd>Esc</Kbd>
- {t("tagsHintEsc")}
- </p>
 
  {editScript.tags.length > 0 && (
  <div className="mt-2 flex flex-wrap gap-2">
@@ -1043,67 +877,14 @@ placeholder={t("fieldDescriptionPlaceholder")}
  {/* 标签 */}
  <div className="space-y-2">
  <Label htmlFor="script-tags">{t("fieldTagsLabel")}</Label>
- <div className="relative">
- <Input
+ <CreatableCombobox
  id="script-tags"
- placeholder={t("tagsInputPlaceholder")}
  value={tagInput}
- onChange={(e) => {
- setTagInput(e.target.value)
- setShowSuggestions(true)
- setSelectedSuggestionIndex(-1)
- }}
- onFocus={() => setShowSuggestions(true)}
- onBlur={() => {
- // 延迟关闭，让点击建议项有时间触发
- setTimeout(() => {
- setShowSuggestions(false)
- setSelectedSuggestionIndex(-1)
- }, 200)
- }}
- onKeyDown={handleKeyDown}
+ onValueChange={setTagInput}
+ options={availableTags.map((tag) => ({ value: tag, label: tag }))}
+ onSelect={handleAddTag}
+ placeholder={t("tagsInputPlaceholder")}
  />
-
- {/* 标签建议下拉列表 */}
- {showSuggestions && filteredSuggestions.length > 0 && tagInput.trim() && (
- <div className="absolute z-50 w-full mt-1 bg-popover border rounded-md shadow-md max-h-[200px] overflow-y-auto scrollbar-custom">
- <div className="p-1">
- {filteredSuggestions.map((tag, index) => (
- <button
- key={tag}
- ref={(el) => {
- suggestionRefs.current[index] = el
- }}
- type="button"
- className={`w-full text-left px-2 py-1.5 text-sm rounded-sm cursor-pointer transition-colors ${
- index === selectedSuggestionIndex
- ? 'bg-accent text-accent-foreground'
- : 'hover:bg-accent/50'
- }`}
- onMouseEnter={() => setSelectedSuggestionIndex(index)}
- onMouseDown={(e) => {
- e.preventDefault() // 防止失去焦点
- handleAddTag(tag)
- }}
- >
- {tag}
- </button>
- ))}
- </div>
- </div>
- )}
- </div>
-
- <p className="text-xs text-muted-foreground flex items-center gap-1 flex-wrap">
- {t("tagsHintPrefix")}
- <Kbd>↑</Kbd>
- <Kbd>↓</Kbd>
- {t("tagsHintSelect")}
- <Kbd>Enter</Kbd>
- {t("tagsHintEnter")}
- <Kbd>Esc</Kbd>
- {t("tagsHintEsc")}
- </p>
 
  {/* 已添加的标签 */}
  {newScript.tags.length > 0 && (

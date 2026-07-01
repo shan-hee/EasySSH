@@ -20,6 +20,7 @@ import {
 } from "@/components/ui/select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Upload, Download, Server, Clock, Settings2 } from "lucide-react"
 import type { ScheduledTaskType, Server as ApiServer, Script } from "@/lib/api"
 import { ServerTagSelector } from "./server-tag-selector"
@@ -391,12 +392,10 @@ export function ScheduledTaskDialog({
 
             {/* 启用状态 */}
             <div className="flex items-center gap-2">
-              <input
-                type="checkbox"
+              <Checkbox
                 id="task-enabled"
                 checked={task.enabled}
-                onChange={(e) => onTaskChange({ ...task, enabled: e.target.checked })}
-                className="cursor-pointer"
+                onCheckedChange={(checked) => onTaskChange({ ...task, enabled: checked === true })}
               />
               <Label htmlFor="task-enabled" className="cursor-pointer">
                 {mode === "create" ? t("fieldEnableOnCreate") : t("fieldEnableTask")}

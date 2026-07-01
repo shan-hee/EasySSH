@@ -5,6 +5,13 @@ import Editor from "@monaco-editor/react"
 import { useTheme } from "@/components/theme-provider"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { useWorkspaceSftpTranslator } from "@/components/ssh-workspace/use-workspace-translator"
 import {
   X,
@@ -35,12 +42,6 @@ const DEFAULT_TEXT_ENCODING_OPTIONS: TextEncodingOption[] = [
   { value: "euc-jp", label: "EUC-JP" },
   { value: "euc-kr", label: "EUC-KR" },
 ]
-
-const nativeSelectClassName =
-  "h-5 rounded border-0 bg-transparent px-0 font-mono text-xs text-inherit outline-none hover:text-foreground focus:text-foreground [&_option]:bg-popover [&_option]:text-popover-foreground dark:[&_option]:bg-zinc-900 dark:[&_option]:text-zinc-100"
-
-const nativeOptionClassName =
-  "bg-popover text-popover-foreground dark:bg-zinc-900 dark:text-zinc-100"
 
 interface FileEditorProps {
   fileName: string
@@ -182,6 +183,26 @@ export function FileEditor({
     setInternalEncoding(nextEncoding)
     onEncodingChange?.(nextEncoding)
   }
+
+  const encodingSelect = onEncodingChange ? (
+    <Select value={selectedEncoding} onValueChange={handleEncodingChange}>
+      <SelectTrigger
+        aria-label={tSftp("editorEncodingLabel")}
+        className="h-5 border-0 bg-transparent px-0 font-mono text-xs text-inherit shadow-none hover:text-foreground focus:ring-0 focus:ring-offset-0 [&>svg]:ml-1 [&>svg]:size-3"
+      >
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent align="start" className="z-[10000] min-w-28">
+        {encodingOptions.map((option) => (
+          <SelectItem key={option.value} value={option.value}>
+            {option.label}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  ) : (
+    <span>{selectedEncodingLabel}</span>
+  )
 
   // 保存文件
   const handleSave = useCallback(async () => {
@@ -510,26 +531,7 @@ export function FileEditor({
               <span className="font-mono">
                 {getLanguage(fileName).toUpperCase()}
               </span>
-              {onEncodingChange ? (
-                <select
-                  value={selectedEncoding}
-                  onChange={(event) => handleEncodingChange(event.target.value)}
-                  className={nativeSelectClassName}
-                  aria-label={tSftp("editorEncodingLabel")}
-                >
-                  {encodingOptions.map((option) => (
-                    <option
-                      key={option.value}
-                      value={option.value}
-                      className={nativeOptionClassName}
-                    >
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              ) : (
-                <span>{selectedEncodingLabel}</span>
-              )}
+              {encodingSelect}
               <span>LF</span>
             </div>
             <div className="flex shrink-0 items-center gap-3">
@@ -775,26 +777,7 @@ export function FileEditor({
           <span className="font-mono">
             {getLanguage(fileName).toUpperCase()}
           </span>
-          {onEncodingChange ? (
-            <select
-              value={selectedEncoding}
-              onChange={(event) => handleEncodingChange(event.target.value)}
-              className={nativeSelectClassName}
-              aria-label={tSftp("editorEncodingLabel")}
-            >
-              {encodingOptions.map((option) => (
-                <option
-                  key={option.value}
-                  value={option.value}
-                  className={nativeOptionClassName}
-                >
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          ) : (
-            <span>{selectedEncodingLabel}</span>
-          )}
+          {encodingSelect}
           <span>LF</span>
         </div>
         <div className="flex shrink-0 items-center gap-3">

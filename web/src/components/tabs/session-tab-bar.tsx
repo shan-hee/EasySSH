@@ -14,6 +14,14 @@ import {
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb"
 import { Badge } from "@/components/ui/badge"
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuLabel,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu"
 import { Link } from "react-router-dom"
 import {
   DndContext,
@@ -99,13 +107,6 @@ export type SessionTabDragEvent = {
   deltaX: number
   deltaY: number
   isOverTabBar: boolean
-}
-
-type MenuState = {
-  open: boolean
-  x: number
-  y: number
-  targetId?: string
 }
 
 // 标签色彩算法暂不需要，后续如需按分组着色可恢复
@@ -260,7 +261,6 @@ interface SortableTabProps {
   canClose: boolean
   onChangeActive: (id: string) => void
   onCloseSession: (id: string) => void
-  onContextMenu?: (e: React.MouseEvent, id: string) => void
   onAuxClick: (e: React.MouseEvent, id: string, pinned?: boolean) => void
   onDoubleClick: (id: string) => void
   canAcceptCrossSessionFileDrop?: (targetSession: TerminalSession) => boolean
@@ -274,7 +274,6 @@ function SortableTab({
   canClose,
   onChangeActive,
   onCloseSession,
-  onContextMenu,
   onAuxClick,
   onDoubleClick,
   canAcceptCrossSessionFileDrop,
@@ -317,10 +316,6 @@ function SortableTab({
       data-session-tab-id={s.id}
       role="button"
       onClick={() => onChangeActive(s.id)}
-      onContextMenu={(e) => {
-        e.preventDefault()
-        onContextMenu?.(e, s.id)
-      }}
       onAuxClick={(e) => onAuxClick(e, s.id, s.pinned)}
       onDoubleClick={() => onDoubleClick(s.id)}
       {...dropTargetHandlers}
@@ -373,7 +368,6 @@ function StaticTab(props: SortableTabProps) {
     canClose,
     onChangeActive,
     onCloseSession,
-    onContextMenu,
     onAuxClick,
     onDoubleClick,
     canAcceptCrossSessionFileDrop,
@@ -397,7 +391,6 @@ function StaticTab(props: SortableTabProps) {
       data-session-tab-id={s.id}
       role="button"
       onClick={() => onChangeActive(s.id)}
-      onContextMenu={(e) => onContextMenu?.(e, s.id)}
       onAuxClick={(e) => onAuxClick(e, s.id, s.pinned)}
       onDoubleClick={() => onDoubleClick(s.id)}
       {...dropTargetHandlers}
@@ -475,8 +468,6 @@ export function SessionTabBar(props: SessionTabBarProps) {
 
   const { config } = useSystemConfig()
   const { t: tTerminal } = useTranslation("terminal")
-  const [menu, setMenu] = useState<MenuState>({ open: false, x: 0, y: 0 })
-  const menuRef = useRef<HTMLDivElement>(null)
 
   // 客户端挂载状态（解决 DndContext 水合不匹配问题）
   const [isMounted, setIsMounted] = useState(false)
@@ -541,31 +532,6 @@ export function SessionTabBar(props: SessionTabBarProps) {
       window.removeEventListener('resize', throttledCheck)
     }
   }, [sessionCount]) // 只依赖 session 数量，不依赖整个数组
-
-  useEffect(() => {
-    const onDocClick = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        setMenu(m => ({ ...m, open: false }))
-      }
-    }
-    const onEsc = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setMenu(m => ({ ...m, open: false }))
-    }
-    document.addEventListener("mousedown", onDocClick)
-    document.addEventListener("keydown", onEsc)
-    return () => {
-      document.removeEventListener("mousedown", onDocClick)
-      document.removeEventListener("keydown", onEsc)
-    }
-  }, [])
-
-  const onContextMenu = (e: React.MouseEvent, id: string) => {
-    e.preventDefault()
-    if (!showContextMenu) return
-    const session = sessions.find((item) => item.id === id)
-    if (session && canShowContextMenu && !canShowContextMenu(session)) return
-    setMenu({ open: true, x: e.clientX, y: e.clientY, targetId: id })
-  }
 
   // 使用 @dnd-kit 配置拖拽传感器
   const sensors = useSensors(
@@ -810,6 +776,38 @@ export function SessionTabBar(props: SessionTabBarProps) {
     }))
   )
   const hasRightActions = additionalNewSessionActions.length > 0 || onOpenSettings || onToggleFullscreen
+  const renderTabContextMenu = (session: TerminalSession, tab: React.ReactElement) => {
+    if (!showContextMenu || (canShowContextMenu && !canShowContextMenu(session))) {
+      return tab
+    }
+
+    return (
+      <ContextMenu key={session.id}>
+        <ContextMenuTrigger asChild>
+          {tab}
+        </ContextMenuTrigger>
+        <ContextMenuContent className="min-w-48 rounded-lg border-border/60 bg-popover/95 text-popover-foreground backdrop-blur-xl">
+          <ContextMenuLabel className="px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+            {tTerminal("tabMenuTitle")}
+          </ContextMenuLabel>
+          <ContextMenuSeparator />
+          <ContextMenuItem onSelect={() => onDuplicateSession(session.id)}>
+            {tTerminal("tabMenuDuplicate")}
+          </ContextMenuItem>
+          <ContextMenuItem onSelect={() => onCloseOthers(session.id)}>
+            {tTerminal("tabMenuCloseOthers")}
+          </ContextMenuItem>
+          <ContextMenuItem variant="destructive" onSelect={onCloseAll}>
+            {tTerminal("tabMenuCloseAll")}
+          </ContextMenuItem>
+          <ContextMenuSeparator />
+          <ContextMenuItem onSelect={() => onTogglePin(session.id)}>
+            {tTerminal("tabMenuTogglePin")}
+          </ContextMenuItem>
+        </ContextMenuContent>
+      </ContextMenu>
+    )
+  }
 
   return (
     <>
@@ -889,7 +887,8 @@ export function SessionTabBar(props: SessionTabBarProps) {
                   strategy={horizontalListSortingStrategy}
                 >
                   <div ref={tabsContainerRef} className="flex items-center gap-1 min-h-0 pt-1 w-max">
-                    {sessions.map((s) => (
+                    {sessions.map((s) => renderTabContextMenu(
+                      s,
                       <SortableTab
                         key={s.id}
                         session={s}
@@ -898,7 +897,6 @@ export function SessionTabBar(props: SessionTabBarProps) {
                         canClose={canCloseSession?.(s) ?? !s.pinned}
                         onChangeActive={onChangeActive}
                         onCloseSession={onCloseSession}
-                        onContextMenu={onContextMenu}
                         onAuxClick={onAuxClick}
                         onDoubleClick={onDoubleClick}
                         canAcceptCrossSessionFileDrop={canAcceptCrossSessionFileDrop}
@@ -922,7 +920,8 @@ export function SessionTabBar(props: SessionTabBarProps) {
             ) : (
               // 服务端渲染：静态页签（无拖动功能）
               <div ref={tabsContainerRef} className="flex items-center gap-1 min-h-0 pt-1 w-max">
-                {sessions.map((s) => (
+                {sessions.map((s) => renderTabContextMenu(
+                  s,
                   <StaticTab
                     key={s.id}
                     session={s}
@@ -931,7 +930,6 @@ export function SessionTabBar(props: SessionTabBarProps) {
                     canClose={canCloseSession?.(s) ?? !s.pinned}
                     onChangeActive={onChangeActive}
                     onCloseSession={onCloseSession}
-                    onContextMenu={onContextMenu}
                     onAuxClick={onAuxClick}
                     onDoubleClick={onDoubleClick}
                     canAcceptCrossSessionFileDrop={canAcceptCrossSessionFileDrop}
@@ -993,76 +991,6 @@ export function SessionTabBar(props: SessionTabBarProps) {
         </div>
       </div>
 
-      {/* 右键菜单（现代化设计） */}
-      {menu.open && (
-        <div
-          ref={menuRef}
-          className={cn(
-            "fixed z-50 min-w-48 rounded-lg border border-border bg-popover p-1.5 text-popover-foreground shadow-2xl backdrop-blur-xl animate-in fade-in-0 zoom-in-95 duration-200",
-          )}
-          style={{ left: menu.x, top: menu.y }}
-        >
-          <div className={cn(
-            "px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground",
-          )}>{tTerminal("tabMenuTitle")}</div>
-          <div className={cn(
-            "my-1 h-px bg-gradient-to-r from-transparent via-border to-transparent",
-          )} />
-
-          <button
-            className={cn(
-              "group flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm transition-colors hover:bg-accent hover:text-accent-foreground",
-            )}
-            onClick={() => {
-              if (menu.targetId) onDuplicateSession(menu.targetId)
-              setMenu(m => ({ ...m, open: false }))
-            }}
-          >
-            <span className={cn(
-              "text-muted-foreground transition-colors group-hover:text-accent-foreground",
-            )}>{tTerminal("tabMenuDuplicate")}</span>
-          </button>
-
-          <button
-            className={cn(
-              "group flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm transition-colors hover:bg-accent hover:text-accent-foreground",
-            )}
-            onClick={() => {
-              if (menu.targetId) onCloseOthers(menu.targetId)
-              setMenu(m => ({ ...m, open: false }))
-            }}
-          >
-            <span className={cn(
-              "text-muted-foreground transition-colors group-hover:text-accent-foreground",
-            )}>{tTerminal("tabMenuCloseOthers")}</span>
-          </button>
-
-          <button
-            className={cn(
-              "flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm text-muted-foreground transition-colors hover:bg-destructive/15 hover:text-destructive",
-            )}
-            onClick={() => { onCloseAll(); setMenu(m => ({ ...m, open: false })) }}
-          >
-            {tTerminal("tabMenuCloseAll")}
-          </button>
-
-          <div className={cn(
-            "my-1 h-px bg-gradient-to-r from-transparent via-border to-transparent",
-          )} />
-
-          <button
-            className={cn(
-              "flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm text-muted-foreground transition-colors hover:bg-primary/15 hover:text-primary",
-            )}
-            onClick={() => {
-              if (menu.targetId) onTogglePin(menu.targetId)
-              setMenu(m => ({ ...m, open: false }))
-            }}
-          >
-            {tTerminal("tabMenuTogglePin")}
-          </button>
-        </div>
-      )}
     </>
   )
 }

@@ -14,6 +14,11 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu"
+import {
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuShortcut,
+} from "@/components/ui/context-menu"
 
 interface FileItem {
   name: string
@@ -59,9 +64,9 @@ function FileActionMenuItem({
       {children}
     </DropdownMenuItem>
   ) : (
-    <button type="button" className={className} onClick={onClick}>
+    <ContextMenuItem className={className} variant={variant} onSelect={onClick}>
       {children}
-    </button>
+    </ContextMenuItem>
   )
 }
 
@@ -69,18 +74,16 @@ function FileActionMenuSeparator({ mode, className }: { mode: "dropdown" | "cont
   return mode === "dropdown" ? (
     <DropdownMenuSeparator className={className} />
   ) : (
-    <div className={className} />
+    <ContextMenuSeparator className={className} />
   )
 }
 
-function KeyboardShortcut({ children }: { children: string }) {
-  return (
-    <kbd className={cn(
-      "text-[10px] px-1.5 py-0.5 rounded font-mono bg-muted text-muted-foreground",
-    )}>
-      {children}
-    </kbd>
-  )
+function KeyboardShortcut({ mode, children }: { mode: "dropdown" | "context"; children: string }) {
+  if (mode === "context") {
+    return <ContextMenuShortcut>{children}</ContextMenuShortcut>
+  }
+
+  return <span className="ml-auto text-xs tracking-widest text-muted-foreground">{children}</span>
 }
 
 /**
@@ -101,15 +104,15 @@ export function FileActionMenu({
   // 通用样式
   const itemClassName = mode === "dropdown"
     ? cn("focus:bg-accent focus:text-accent-foreground")
-    : cn("w-full px-3 py-2 text-left text-sm flex items-center gap-2.5 transition-all hover:bg-accent hover:text-accent-foreground rounded-sm")
+    : cn("")
 
   const separatorClassName = mode === "dropdown"
     ? cn("bg-border")
-    : cn("h-px mx-2 my-1 bg-border")
+    : cn("")
 
   const deleteClassName = mode === "dropdown"
     ? cn("")
-    : cn("w-full px-3 py-2 text-left text-sm flex items-center gap-2.5 transition-all text-destructive hover:bg-destructive/10 hover:text-destructive rounded-sm")
+    : cn("")
 
   return (
     <>
@@ -123,7 +126,7 @@ export function FileActionMenu({
         <span className="flex-1">
           {file.type === "directory" ? t("contextOpen") : t("contextEdit")}
         </span>
-        <KeyboardShortcut>⏎</KeyboardShortcut>
+        <KeyboardShortcut mode={mode}>⏎</KeyboardShortcut>
       </FileActionMenuItem>
 
       {/* 下载：文件管理器只保留推荐下载路径，其他方案移动到传输任务页 */}
@@ -135,7 +138,7 @@ export function FileActionMenu({
         >
           <Download className="h-4 w-4 mr-2" />
           <span className="flex-1">{t("actionDownload")}</span>
-          <KeyboardShortcut>⌘D</KeyboardShortcut>
+          <KeyboardShortcut mode={mode}>⌘D</KeyboardShortcut>
         </FileActionMenuItem>
       ) : (
         null
@@ -163,7 +166,7 @@ export function FileActionMenu({
         >
           <Edit className="h-4 w-4 mr-2" />
           <span className="flex-1">{t("actionRename")}</span>
-          <KeyboardShortcut>F2</KeyboardShortcut>
+          <KeyboardShortcut mode={mode}>F2</KeyboardShortcut>
         </FileActionMenuItem>
       )}
 
@@ -194,7 +197,7 @@ export function FileActionMenu({
             ? t("actionDeleteMulti", { count: selectedFilesCount })
             : t("actionDeleteSingle")}
         </span>
-        <KeyboardShortcut>⌫</KeyboardShortcut>
+        <KeyboardShortcut mode={mode}>⌫</KeyboardShortcut>
       </FileActionMenuItem>
     </>
   )

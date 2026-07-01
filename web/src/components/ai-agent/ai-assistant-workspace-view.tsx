@@ -19,6 +19,13 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command"
+import {
   Popover,
   PopoverAnchor,
   PopoverContent,
@@ -1191,44 +1198,43 @@ export function AIAssistantWorkspaceView({
                         </Button>
                       </div>
 
-                      <div className="max-h-72 overflow-y-auto p-1 scrollbar-custom" role="listbox">
-                        {serversLoading && availableServers.length === 0 ? (
-                          <div className="flex items-center justify-center gap-2 px-3 py-8 text-sm text-muted-foreground">
-                            <Loader2 className="size-4 animate-spin" />
-                            <span>{t("referenceServerLoading")}</span>
-                          </div>
-                        ) : serverMentionOptions.length === 0 ? (
-                          <div className="px-3 py-8 text-center text-sm text-muted-foreground">
-                            {t("referenceServerEmpty")}
-                          </div>
-                        ) : (
-                          <div className="space-y-1">
-                            {serverMentionOptions.map((server, index) => {
-                              const isActive = index === serverMentionIndex
-
-                              return (
-                                <button
+                      <Command
+                        shouldFilter={false}
+                        loop
+                        value={serverMentionOptions[serverMentionIndex]?.id ?? ""}
+                        onValueChange={(value) => {
+                          if (!value) {
+                            setServerMentionIndex(0)
+                            return
+                          }
+                          const index = serverMentionOptions.findIndex((server) => server.id === value)
+                          if (index >= 0) {
+                            setServerMentionIndex(index)
+                          }
+                        }}
+                        className="bg-popover"
+                      >
+                        <CommandList className="max-h-72 p-1">
+                          {serversLoading && availableServers.length === 0 ? (
+                            <div className="flex items-center justify-center gap-2 px-3 py-8 text-sm text-muted-foreground">
+                              <Loader2 className="size-4 animate-spin" />
+                              <span>{t("referenceServerLoading")}</span>
+                            </div>
+                          ) : serverMentionOptions.length === 0 ? (
+                            <CommandEmpty className="px-3 py-8 text-center text-sm text-muted-foreground">
+                              {t("referenceServerEmpty")}
+                            </CommandEmpty>
+                          ) : (
+                            <CommandGroup className="p-0">
+                              {serverMentionOptions.map((server) => (
+                                <CommandItem
                                   key={server.id}
-                                  type="button"
-                                  role="option"
-                                  aria-selected={isActive}
-                                  className={cn(
-                                    "flex w-full items-center gap-2 rounded-md px-2 py-2 text-left transition-colors",
-                                    isActive
-                                      ? "bg-accent text-accent-foreground"
-                                      : "text-foreground hover:bg-accent/70"
-                                  )}
-                                  onMouseDown={(event) => {
-                                    event.preventDefault()
-                                    selectServerMention(server)
-                                  }}
+                                  value={server.id}
+                                  onMouseDown={(event) => event.preventDefault()}
+                                  onSelect={() => selectServerMention(server)}
+                                  className="gap-2 rounded-md px-2 py-2 text-foreground transition-colors hover:bg-accent/70"
                                 >
-                                  <span
-                                    className={cn(
-                                      "flex size-5 shrink-0 items-center justify-center rounded-md border text-[10px]",
-                                      "border-border text-muted-foreground"
-                                    )}
-                                  >
+                                  <span className="flex size-5 shrink-0 items-center justify-center rounded-md border border-border text-[10px] text-muted-foreground">
                                     @
                                   </span>
                                   <span className="min-w-0 flex-1">
@@ -1247,12 +1253,12 @@ export function AIAssistantWorkspaceView({
                                   >
                                     {server.status}
                                   </span>
-                                </button>
-                              )
-                            })}
-                          </div>
-                        )}
-                      </div>
+                                </CommandItem>
+                              ))}
+                            </CommandGroup>
+                          )}
+                        </CommandList>
+                      </Command>
                     </PopoverContent>
                   </Popover>
 

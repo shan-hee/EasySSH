@@ -11,6 +11,13 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { RefreshCw, Loader2 } from 'lucide-react'
 import type { DockerApiClient } from '@/lib/api/docker'
 import { useTranslation } from "react-i18next"
@@ -73,7 +80,6 @@ export function ContainerLogs({
 
   const displayContent = logs || (loading ? t('dockerLogsLoading') : t('dockerNoLogs'))
   const fileName = `${containerName}-logs.log`
-  const optionClassName = "bg-popover text-popover-foreground"
 
   return (
     <Dialog modal={false} open={open} onOpenChange={onOpenChange}>
@@ -101,17 +107,20 @@ export function ContainerLogs({
           onEncodingChange={setEncoding}
           toolbarActions={
             <>
-              <select
-                value={tailLines}
-                onChange={(event) => setTailLines(Number(event.target.value))}
-                className="h-7 rounded border border-border bg-background px-2 text-xs text-foreground [&_option]:bg-popover [&_option]:text-popover-foreground"
-                aria-label={t('dockerLogsTailLines')}
-              >
-                <option value={100} className={optionClassName}>100 lines</option>
-                <option value={200} className={optionClassName}>200 lines</option>
-                <option value={500} className={optionClassName}>500 lines</option>
-                <option value={1000} className={optionClassName}>1000 lines</option>
-              </select>
+              <Select value={String(tailLines)} onValueChange={(value) => setTailLines(Number(value))}>
+                <SelectTrigger
+                  aria-label={t('dockerLogsTailLines')}
+                  className="h-7 w-[104px] rounded border-border bg-background px-2 text-xs"
+                >
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent align="end">
+                  <SelectItem value="100">100 lines</SelectItem>
+                  <SelectItem value="200">200 lines</SelectItem>
+                  <SelectItem value="500">500 lines</SelectItem>
+                  <SelectItem value="1000">1000 lines</SelectItem>
+                </SelectContent>
+              </Select>
               <Button
                 variant="ghost"
                 size="icon"

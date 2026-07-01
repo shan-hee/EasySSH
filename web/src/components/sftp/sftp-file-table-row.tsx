@@ -4,6 +4,7 @@ import { ChevronRight } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { TableCell, TableRow } from "@/components/ui/table"
 import { SftpFileActionDropdown } from "@/components/sftp/sftp-file-action-dropdown"
+import { SftpFileContextMenu } from "@/components/sftp/sftp-context-menu"
 import { renderSftpFileListIcon } from "@/components/sftp/sftp-file-icons"
 import type { FileAction } from "@/components/sftp/file-action-menu"
 import { cn } from "@/lib/utils"
@@ -33,9 +34,11 @@ export interface SftpFileTableRowProps {
   onDrop: (event: DragEvent<HTMLTableRowElement>, fileName: string, fileType: "file" | "directory") => void
   onClick: (fileName: string, event: MouseEvent<HTMLTableRowElement>) => void
   onDoubleClick: (fileName: string, fileType: "file" | "directory") => void
-  onContextMenu: (event: MouseEvent<HTMLTableRowElement>, fileName: string, fileType: "file" | "directory") => void
+  onOpenContextMenu: (fileName: string, fileType: "file" | "directory") => void
+  onCloseContextMenu: () => void
   enableBackgroundDownload?: boolean
   onAction: (file: SftpFileTableRowItem, action: FileAction) => void
+  onContextAction: (action: FileAction) => void
 }
 
 export function SftpFileTableRow({
@@ -60,9 +63,11 @@ export function SftpFileTableRow({
   onDrop,
   onClick,
   onDoubleClick,
-  onContextMenu,
+  onOpenContextMenu,
+  onCloseContextMenu,
   enableBackgroundDownload = false,
   onAction,
+  onContextAction,
 }: SftpFileTableRowProps) {
   const handleRenameKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
     if (event.key === "Enter") {
@@ -73,7 +78,7 @@ export function SftpFileTableRow({
     event.stopPropagation()
   }
 
-  return (
+  const tableRow = (
     <TableRow
       key={file.name}
       data-index={dataIndex}
@@ -95,7 +100,6 @@ export function SftpFileTableRow({
       )}
       onClick={(event) => onClick(file.name, event)}
       onDoubleClick={() => onDoubleClick(file.name, file.type)}
-      onContextMenu={(event) => onContextMenu(event, file.name, file.type)}
     >
       <TableCell>
         <div className="flex items-center gap-2">
@@ -150,5 +154,26 @@ export function SftpFileTableRow({
         />
       </TableCell>
     </TableRow>
+  )
+
+  if (isEditing) {
+    return tableRow
+  }
+
+  return (
+    <SftpFileContextMenu
+      file={file}
+      selectedFilesCount={selectedFilesCount}
+      enableBackgroundDownload={enableBackgroundDownload}
+      onOpen={() => onOpenContextMenu(file.name, file.type)}
+      onOpenChange={(open) => {
+        if (!open) {
+          onCloseContextMenu()
+        }
+      }}
+      onAction={onContextAction}
+    >
+      {tableRow}
+    </SftpFileContextMenu>
   )
 }

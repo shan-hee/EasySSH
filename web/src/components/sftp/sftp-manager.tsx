@@ -16,7 +16,6 @@ import { SftpWorkspaceToolbar } from "@/components/sftp/sftp-workspace-toolbar"
 import { SftpFileToolbar } from "@/components/sftp/sftp-file-toolbar"
 import { SftpFileBrowserPane } from "@/components/sftp/sftp-file-browser-pane"
 import { SftpFileEditorPane } from "@/components/sftp/sftp-file-editor-pane"
-import { SftpContextMenu } from "@/components/sftp/sftp-context-menu"
 import { useOptionalSshWorkspace } from "@/components/ssh-workspace/ssh-workspace"
 import { useSftpFileBrowserController, type SftpFileBrowserItem } from "@/components/sftp/use-sftp-file-browser-controller"
 import { useSftpDragDropController } from "@/components/sftp/use-sftp-drag-drop-controller"
@@ -199,8 +198,6 @@ export function SftpManager(props: SftpManagerProps) {
     ?? DEFAULT_SFTP_DOWNLOAD_EXCLUDE_PATTERNS
 
   const {
-    contextMenu,
-    contextMenuFile,
     editingFile,
     editingFileName,
     creatingNew,
@@ -427,7 +424,13 @@ export function SftpManager(props: SftpManagerProps) {
             editInputRef={editInputRef}
             folderLabel={tSftp("itemTypeFolder")}
             onClearSelectedFiles={clearSelectedFiles}
-            onBlankContextMenu={handleBlankContextMenu}
+            onOpenBlankContextMenu={handleBlankContextMenu}
+            onCloseContextMenu={closeContextMenu}
+            onCreateFolder={() => startCreateNew("folder")}
+            onCreateFile={() => startCreateNew("file")}
+            onUpload={() => fileInputRef.current?.click()}
+            onBackgroundUpload={onCreateBackgroundUpload ? () => backgroundFileInputRef.current?.click() : undefined}
+            onRefresh={onRefresh}
             onDragEnter={handleDragEnter}
             onDragLeave={handleDragLeave}
             onDragOver={handleDragOver}
@@ -446,10 +449,11 @@ export function SftpManager(props: SftpManagerProps) {
             onNativeDrop={handleNativeDrop}
             onFileClick={handleFileClick}
             onFileDoubleClick={handleFileDoubleClick}
-            onContextMenu={handleContextMenu}
+            onOpenFileContextMenu={handleContextMenu}
             onSort={handleSort}
             enableBackgroundDownload={!!onCreateBackgroundDownload}
             onAction={handleFileAction}
+            onContextAction={handleContextMenuAction}
             onInputChange={handleInputChange}
           />
         </>
@@ -493,19 +497,6 @@ export function SftpManager(props: SftpManagerProps) {
       />
 
 
-      <SftpContextMenu
-        contextMenu={contextMenu}
-        file={contextMenuFile}
-        selectedFilesCount={selectedFiles.length}
-        onAction={handleContextMenuAction}
-        onCreateFolder={() => startCreateNew("folder")}
-        onCreateFile={() => startCreateNew("file")}
-        onUpload={() => fileInputRef.current?.click()}
-        onBackgroundUpload={onCreateBackgroundUpload ? () => backgroundFileInputRef.current?.click() : undefined}
-        enableBackgroundDownload={!!onCreateBackgroundDownload}
-        onRefresh={onRefresh}
-        onClose={closeContextMenu}
-      />
       </>
       )}
       </div>

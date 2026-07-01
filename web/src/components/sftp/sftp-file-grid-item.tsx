@@ -4,10 +4,12 @@ import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
 import Folder from "@/components/Folder"
 import FileIcon from "@/components/File"
+import { SftpFileContextMenu } from "@/components/sftp/sftp-context-menu"
+import type { FileAction } from "@/components/sftp/file-action-menu"
 import { getSftpFileTypeInfo } from "@/components/sftp/sftp-file-icons"
 import type { SftpFileItem } from "@/lib/sftp-file-utils"
 
-export type SftpFileGridItemFile = Pick<SftpFileItem, "name" | "type" | "size">
+export type SftpFileGridItemFile = Pick<SftpFileItem, "name" | "type" | "size" | "modified" | "permissions">
 
 export interface SftpFileGridItemProps {
   file: SftpFileGridItemFile
@@ -29,7 +31,12 @@ export interface SftpFileGridItemProps {
   onDrop: (event: DragEvent<HTMLDivElement>, fileName: string, fileType: "file" | "directory") => void
   onClick: (fileName: string, event: MouseEvent<HTMLDivElement>) => void
   onDoubleClick: (fileName: string, fileType: "file" | "directory") => void
-  onContextMenu: (event: MouseEvent<HTMLDivElement>, fileName: string, fileType: "file" | "directory") => void
+  onOpenContextMenu: (fileName: string, fileType: "file" | "directory") => void
+  onCloseContextMenu: () => void
+  selectedFilesCount: number
+  enableBackgroundDownload?: boolean
+  onAction: (file: SftpFileGridItemFile, action: FileAction) => void
+  onContextAction: (action: FileAction) => void
 }
 
 export function SftpFileGridItem({
@@ -52,7 +59,12 @@ export function SftpFileGridItem({
   onDrop,
   onClick,
   onDoubleClick,
-  onContextMenu,
+  onOpenContextMenu,
+  onCloseContextMenu,
+  selectedFilesCount,
+  enableBackgroundDownload = false,
+  onAction,
+  onContextAction,
 }: SftpFileGridItemProps) {
   const handleRenameKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
     if (event.key === "Enter") {
@@ -64,7 +76,7 @@ export function SftpFileGridItem({
 
   const fileTypeInfo = file.type === "file" ? getSftpFileTypeInfo(file.name) : null
 
-  return (
+  const gridItem = (
     <div
       draggable={!isEditing}
       onDragStart={(event) => onDragStart(event, file.name)}
@@ -85,7 +97,6 @@ export function SftpFileGridItem({
           onDoubleClick(file.name, file.type)
         }
       }}
-      onContextMenu={(event) => onContextMenu(event, file.name, file.type)}
       className={cn(
         "group relative rounded-lg p-3 cursor-pointer select-none transition-all hover:bg-table-row-hover",
         (isSelected || (isDraggedOver && file.type === "directory")) && "bg-table-row-selected hover:bg-table-row-selected",
@@ -131,5 +142,26 @@ export function SftpFileGridItem({
         </div>
       </div>
     </div>
+  )
+
+  if (isEditing) {
+    return gridItem
+  }
+
+  return (
+    <SftpFileContextMenu
+      file={file}
+      selectedFilesCount={selectedFilesCount}
+      enableBackgroundDownload={enableBackgroundDownload}
+      onOpen={() => onOpenContextMenu(file.name, file.type)}
+      onOpenChange={(open) => {
+        if (!open) {
+          onCloseContextMenu()
+        }
+      }}
+      onAction={onContextAction}
+    >
+      {gridItem}
+    </SftpFileContextMenu>
   )
 }
