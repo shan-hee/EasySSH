@@ -35,7 +35,6 @@ export interface SftpFileGridItemProps {
   onCloseContextMenu: () => void
   selectedFilesCount: number
   enableBackgroundDownload?: boolean
-  onAction: (file: SftpFileGridItemFile, action: FileAction) => void
   onContextAction: (action: FileAction) => void
 }
 
@@ -63,7 +62,6 @@ export function SftpFileGridItem({
   onCloseContextMenu,
   selectedFilesCount,
   enableBackgroundDownload = false,
-  onAction,
   onContextAction,
 }: SftpFileGridItemProps) {
   const handleRenameKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {

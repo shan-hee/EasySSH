@@ -373,49 +373,15 @@ export function TabTerminalContent({
     : 'transparent'
   const completionConfig = useMemo(
     () => buildTerminalCompletionConfig(settings),
-    [
-      settings.completionAutoDelay,
-      settings.completionCache.maxEntries,
-      settings.completionCache.ttlMinutes,
-      settings.completionEnabled,
-      settings.completionMaxItems,
-      settings.completionProviders.local,
-      settings.completionProviders.remoteHistory,
-      settings.completionProviders.script,
-      settings.completionProviders.session,
-      settings.completionQuotas.localMax,
-      settings.completionQuotas.localMin,
-      settings.completionQuotas.remoteHistorySoftMax,
-      settings.completionQuotas.remoteHistoryUnlimited,
-      settings.completionQuotas.scriptMax,
-      settings.completionQuotas.scriptMin,
-      settings.completionQuotas.sessionMax,
-      settings.completionQuotas.sessionMin,
-      settings.completionShowDescription,
-      settings.completionShowIcon,
-      settings.completionTrigger,
-    ],
+    [settings],
   )
   const completionProviderEnabled = useMemo(
     () => buildTerminalCompletionProviderFlags(settings),
-    [
-      settings.completionProviders.local,
-      settings.completionProviders.remoteHistory,
-      settings.completionProviders.script,
-      settings.completionProviders.session,
-    ],
+    [settings],
   )
   const completionFetchOptions = useMemo(
     () => buildTerminalCompletionFetchOptions(settings),
-    [
-      settings.completionCache.maxEntries,
-      settings.completionCache.ttlMinutes,
-      settings.completionEnabled,
-      settings.completionProviders.remoteHistory,
-      settings.completionProviders.script,
-      settings.completionQuotas.remoteHistorySoftMax,
-      settings.completionQuotas.remoteHistoryUnlimited,
-    ],
+    [settings],
   )
   const hasBackgroundImage = isTerminalSession && settings.backgroundImage.trim().length > 0
   const enableTerminalWebgl = true

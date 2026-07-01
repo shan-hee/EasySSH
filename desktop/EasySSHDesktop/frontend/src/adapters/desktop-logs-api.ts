@@ -10,7 +10,7 @@ import type {
   AuditLogListResponse,
   AuditLogStatisticsResponse,
   AuditLogStatus,
-} from "@/lib/api/logs"
+} from "@easyssh/ssh-workspace/desktop"
 
 const desktopUserId = "desktop-local-owner"
 const desktopUsername = "desktop"

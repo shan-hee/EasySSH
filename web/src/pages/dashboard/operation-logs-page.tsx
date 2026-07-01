@@ -43,12 +43,12 @@ import {
   DashboardStatusLine,
   InlineStatusBadge,
   type DashboardTone,
-} from "./logs/components/log-dashboard-widgets"
+} from "@/components/logs/log-dashboard-widgets"
 import {
   LogDateRangeFilterButton,
   LogServerFilterButton,
   type ServerFilterOption,
-} from "./logs/components/log-server-filters"
+} from "@/components/logs/log-server-filters"
 
 type SortOrder = "asc" | "desc"
 

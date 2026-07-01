@@ -160,7 +160,7 @@ export function useAgentSession(adapter?: AgentSessionAdapter) {
 
     chat.setMessages(session.ui_messages || [])
     syncedMessagesKeyRef.current = syncKey
-  }, [chat, session?.id, session?.ui_messages])
+  }, [chat, session])
 
   const pushLocalError = useCallback((message: string) => {
     setError(message)

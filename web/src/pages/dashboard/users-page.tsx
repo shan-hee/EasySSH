@@ -48,7 +48,7 @@ import { useAuthReady } from "@/hooks/use-auth-ready"
 import { useConfirmDialog } from "@/hooks/use-confirm-dialog"
 import {
   InlineStatusBadge,
-} from "./logs/components/log-dashboard-widgets"
+} from "@/components/logs/log-dashboard-widgets"
 
 function isLockedUser(user: UserDetail) {
   if (!user.locked_until) return false

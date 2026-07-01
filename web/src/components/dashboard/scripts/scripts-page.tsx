@@ -28,13 +28,13 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { Skeleton } from "@/components/ui/skeleton"
 import { CreatableCombobox } from "@/components/ui/creatable-combobox"
 import { useNavigate } from "react-router-dom"
-import { createScriptColumns } from "./scripts/components/script-columns"
+import { createScriptColumns } from "./script-columns"
 import { useAuthReady } from "@/hooks/use-auth-ready"
 import { useConfirmDialog } from "@/hooks/use-confirm-dialog"
 import {
   DashboardMetricCard,
   InlineStatusBadge,
-} from "./logs/components/log-dashboard-widgets"
+} from "@/components/logs/log-dashboard-widgets"
 
 function formatScriptTime(value?: string) {
   if (!value) return "-"

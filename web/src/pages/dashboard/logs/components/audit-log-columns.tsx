@@ -3,7 +3,7 @@ import type { ReactNode } from "react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { ArrowUpDown, ArrowUp, ArrowDown, Clock, User, Server, Globe, AlertTriangle, CheckCircle } from "lucide-react"
-import { AuditLog } from "@/lib/api/logs"
+import type { AuditLog } from "@/lib/log-types"
 import {
   getActionColor,
   formatTimestamp,

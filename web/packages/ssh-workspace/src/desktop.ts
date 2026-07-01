@@ -7,11 +7,12 @@ export { ActivityLogPane } from "../../../src/components/ssh-workspace/activity-
 export { TerminalComponent } from "../../../src/components/terminal/terminal-component"
 export { TerminalSftpTabContent } from "../../../src/components/terminal/terminal-sftp-tab-content"
 export { ServerConnectionConfigs } from "../../../src/components/servers/server-connection-configs"
-export { default as ScriptsPage } from "../../../src/pages/dashboard/scripts-page"
-export { BackupRestoreTab } from "../../../src/pages/dashboard/settings/management/_tabs/backup-restore-tab"
+export { LogsClient } from "../../../src/components/logs/logs-client"
+export { default as ScriptsPage } from "../../../src/components/dashboard/scripts/scripts-page"
+export { BackupRestoreTab } from "../../../src/components/settings/backup-restore-tab"
 export { Activity, ArchiveRestore, ArrowLeft, Bot, Check, FileText, FolderOpen, Github, Info, Languages, Menu, Minus, RefreshCw, Square, Terminal, X } from "lucide-react"
-export type { ScriptsPageAdapters, ScriptsPageProps } from "../../../src/pages/dashboard/scripts-page"
-export type { BackupContent, BackupRestoreAdapter, ConflictStrategy } from "../../../src/pages/dashboard/settings/management/_tabs/backup-restore-tab"
+export type { ScriptsPageAdapters, ScriptsPageProps } from "../../../src/components/dashboard/scripts/scripts-page"
+export type { BackupContent, BackupRestoreAdapter, ConflictStrategy } from "../../../src/components/settings/backup-restore-tab"
 export type { TerminalSftpTabContentProps } from "../../../src/components/terminal/terminal-sftp-tab-content"
 export type {
   TerminalExtraSessionPathHistory,
@@ -37,12 +38,19 @@ export type {
   ListScriptsResponse,
   Script,
   UpdateScriptRequest,
-} from "../../../src/lib/api/scripts"
+} from "../../../src/lib/script-types"
 export type {
   BatchTask,
   CreateBatchTaskRequest,
   ListBatchTasksResponse,
-} from "../../../src/lib/api/batch-tasks"
+} from "../../../src/lib/batch-task-types"
+export type {
+  AuditLog,
+  AuditLogListParams,
+  AuditLogListResponse,
+  AuditLogStatisticsResponse,
+  AuditLogStatus,
+} from "../../../src/lib/log-types"
 export type { TerminalWebSocketConstructor } from "./session/terminal-types"
 export type { AppCapability, RuntimeInfo, RuntimePrincipal, RuntimeProfile } from "../../../src/shell/runtime/types"
 export type {

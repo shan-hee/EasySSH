@@ -3,7 +3,7 @@ import { useState } from "react"
 import { PageHeader } from "@/components/page-header"
 import { Users, Database } from "lucide-react"
 import { UserManagementContent } from "./settings/management/_tabs/user-management-content"
-import { BackupRestoreTab } from "./settings/management/_tabs/backup-restore-tab"
+import { BackupRestoreTab } from "@/components/settings/backup-restore-tab"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useTranslation } from "react-i18next"
 

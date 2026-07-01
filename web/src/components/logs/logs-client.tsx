@@ -23,7 +23,7 @@ import {
 import { Input } from "@/components/ui/input"
 import { toast } from "@/components/ui/sonner"
 import { getErrorMessage } from "@/lib/error-utils"
-import { logsApi, type AuditLog, type AuditLogListParams } from "@/lib/api/logs"
+import type { AuditLog, AuditLogListParams } from "@/lib/log-types"
 import { DataTable } from "@/components/ui/data-table"
 import { DataTableToolbar } from "@/components/ui/data-table-toolbar"
 import type { DataTableColumnMeta } from "@/components/ui/column-meta"
@@ -49,7 +49,15 @@ interface LogsPageData {
 interface LogsClientProps {
   initialData?: LogsPageData
   defaultAction?: string
-  api?: Pick<typeof logsApi, "list">
+  api: {
+    list: (params?: AuditLogListParams) => Promise<{
+      logs: AuditLog[]
+      total: number
+      page: number
+      page_size: number
+      total_pages: number
+    }>
+  }
 }
 
 type SortOrder = "asc" | "desc"
@@ -222,7 +230,7 @@ function exportLogs(logs: AuditLog[]) {
   URL.revokeObjectURL(url)
 }
 
-export function LogsClient({ initialData, defaultAction, api = logsApi }: LogsClientProps) {
+export function LogsClient({ initialData, defaultAction, api }: LogsClientProps) {
   const { ready } = useAuthReady()
   const { t } = useTranslation("logsAudit")
   const [logs, setLogs] = React.useState<AuditLog[]>(initialData?.logs || [])

@@ -19,7 +19,7 @@ import type {
   AuditLog,
   AuditLogListResponse,
   AuditLogStatisticsResponse,
-} from "@/lib/api/logs"
+} from "@/lib/log-types"
 
 export interface OperationRecordsTransferApiLike {
   list: (params?: OperationRecordListParams) => Promise<OperationRecordListResponse>

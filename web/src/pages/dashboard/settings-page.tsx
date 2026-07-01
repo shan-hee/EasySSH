@@ -24,7 +24,7 @@ import { AccessControlTab } from "./settings/security-center/_tabs/access-contro
 import { SessionManagementTab } from "./settings/security-center/_tabs/session-management-tab"
 import { NetworkSecurityTab } from "./settings/security-center/_tabs/network-security-tab"
 
-import { BackupRestoreTab } from "./settings/management/_tabs/backup-restore-tab"
+import { BackupRestoreTab } from "@/components/settings/backup-restore-tab"
 import { LogManagementTab } from "./settings/management/_tabs/log-management-tab"
 
 import { NotificationConfigWrapper } from "./settings/integrations/_tabs/notification-config-wrapper"

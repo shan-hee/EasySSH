@@ -5,26 +5,16 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
 import { toast } from "sonner"
 import { getErrorMessage } from "@/lib/error-utils"
 import { isApiError } from "@/lib/api-client"
 import {
- Dialog,
- DialogContent,
- DialogDescription,
- DialogFooter,
- DialogHeader,
- DialogTitle,
+	 Dialog,
+	 DialogContent,
+	 DialogDescription,
+	 DialogHeader,
+	 DialogTitle,
 } from "@/components/ui/dialog"
-import {
- Select,
- SelectContent,
- SelectItem,
- SelectTrigger,
- SelectValue,
-} from "@/components/ui/select"
 import { DataTable } from "@/components/ui/data-table"
 import { DataTableToolbar } from "@/components/ui/data-table-toolbar"
 import {
@@ -51,7 +41,7 @@ import { useTranslation } from "react-i18next"
 import { createScheduledTaskColumns } from "./automation/schedules/components/scheduled-task-columns"
 import {
   InlineStatusBadge,
-} from "./logs/components/log-dashboard-widgets"
+} from "@/components/logs/log-dashboard-widgets"
 import { ScheduledTaskDialog } from "./automation/schedules/components/scheduled-task-dialog"
 
 type ScheduledPayload = {
@@ -135,9 +125,8 @@ export default function AutomationSchedulesPage() {
  sftp_staged_job_id: "",
  })
 
- // 服务器选择器状态
- const [serverSearchTerm, setServerSearchTerm] = useState("")
- const [scriptSearchTerm, setScriptSearchTerm] = useState("")
+	 // 脚本库筛选状态
+	 const [scriptSearchTerm, setScriptSearchTerm] = useState("")
 
  // 加载所有数据
  const loadData = async () => {
@@ -184,14 +173,7 @@ export default function AutomationSchedulesPage() {
  }, [ready])
 
 
- // 过滤服务器
- const filteredServers = servers.filter(
- (server) =>
- (server.name?.toLowerCase().includes(serverSearchTerm.toLowerCase()) ?? false) ||
- server.host.toLowerCase().includes(serverSearchTerm.toLowerCase())
- )
-
- // 过滤脚本
+	 // 过滤脚本
  const filteredScripts = scripts.filter(
  (script) =>
  script.name.toLowerCase().includes(scriptSearchTerm.toLowerCase()) ||

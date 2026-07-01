@@ -166,7 +166,6 @@ export function SftpFileBrowserPane({
       onCloseContextMenu={onCloseContextMenu}
       selectedFilesCount={selectedFiles.length}
       enableBackgroundDownload={enableBackgroundDownload}
-      onAction={(_, action) => onAction(file, action)}
       onContextAction={onContextAction}
     />
   )

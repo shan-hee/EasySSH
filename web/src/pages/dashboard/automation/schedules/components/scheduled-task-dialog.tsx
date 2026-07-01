@@ -25,11 +25,7 @@ import { Upload, Download, Server, Clock, Settings2 } from "lucide-react"
 import type { ScheduledTaskType, Server as ApiServer, Script } from "@/lib/api"
 import { ServerTagSelector } from "./server-tag-selector"
 
-type ScheduledTaskDialogProps = {
-  open: boolean
-  onOpenChange: (open: boolean) => void
-  mode: "create" | "edit"
-  task: {
+type ScheduledTaskDialogTask = {
     task_name: string
     description: string
     task_type: ScheduledTaskType
@@ -44,9 +40,15 @@ type ScheduledTaskDialogProps = {
     sftp_target_path: string
     sftp_retention_days: number
     sftp_upload_file: File | null
-    sftp_staged_job_id?: string
-  }
-  onTaskChange: (task: any) => void
+    sftp_staged_job_id: string
+}
+
+type ScheduledTaskDialogProps = {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  mode: "create" | "edit"
+  task: ScheduledTaskDialogTask
+  onTaskChange: (task: ScheduledTaskDialogTask) => void
   servers: ApiServer[]
   scripts: Script[]
   onSubmit: () => void
