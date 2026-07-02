@@ -12,6 +12,9 @@ import { Button } from '@/components/ui/button'
 interface DockerOverviewProps {
   systemInfo: DockerSystemInfo | null
   stats: ContainerStats[]
+  statsTruncated?: boolean
+  statsLimit?: number
+  runningStatsTotal?: number
   onRefresh: () => void
   isLoading?: boolean
 }
@@ -19,6 +22,9 @@ interface DockerOverviewProps {
 export function DockerOverview({
   systemInfo,
   stats,
+  statsTruncated = false,
+  statsLimit = 0,
+  runningStatsTotal = 0,
   onRefresh,
   isLoading = false,
 }: DockerOverviewProps) {
@@ -60,13 +66,13 @@ export function DockerOverview({
   const statCards = [
     {
       icon: Cpu,
-      label: t('dockerTotalCpu'),
+      label: t(statsTruncated ? 'dockerSampledCpu' : 'dockerTotalCpu'),
       value: `${resourceUsage.cpu.toFixed(1)}%`,
       color: 'text-blue-500',
     },
     {
       icon: HardDrive,
-      label: t('dockerTotalMemory'),
+      label: t(statsTruncated ? 'dockerSampledMemory' : 'dockerTotalMemory'),
       value: formatMemory(resourceUsage.memory),
       color: 'text-green-500',
     },
@@ -108,8 +114,17 @@ export function DockerOverview({
 
       {/* 容器资源占用列表 */}
       <div className="rounded-lg border border-border p-2.5">
-        <div className="flex items-center mb-2">
+        <div className="flex items-center gap-2 mb-2">
           <h3 className="text-sm font-medium">{t('dockerResourcesTitle')}</h3>
+          {statsTruncated && (
+            <span className="text-[10px] text-muted-foreground truncate">
+              {t('dockerResourcesSampled', {
+                shown: String(stats.length),
+                total: String(runningStatsTotal || stats.length),
+                limit: String(statsLimit || stats.length),
+              })}
+            </span>
+          )}
           <Button
             variant="ghost"
             size="icon"

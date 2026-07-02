@@ -1188,6 +1188,9 @@ const messages = {
     dockerResourcesTitle: "Container Resources",
     dockerTotalCpu: "Total CPU",
     dockerTotalMemory: "Total Memory",
+    dockerSampledCpu: "Sample CPU",
+    dockerSampledMemory: "Sample Memory",
+    dockerResourcesSampled: "Showing {shown}/{total} running containers, sampling up to {limit}",
     dockerVersion: "Version",
     dockerStorageDriver: "Storage Driver",
     // Docker update

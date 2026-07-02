@@ -42,6 +42,9 @@ export interface ResourcesResponse {
   stats: ContainerStats[]
   systemInfo: DockerSystemInfo | null
   dockerInstalled: boolean
+  statsTruncated?: boolean
+  statsLimit?: number
+  runningStatsTotal?: number
   error?: string
 }
 

@@ -80,10 +80,18 @@ export function createDesktopDockerApi(): DesktopDockerApi {
     },
     async getResources(serverId) {
       const result = await DesktopDockerService.GetResources({ serverId })
+      const resourceMeta = result as typeof result & {
+        statsTruncated?: boolean
+        statsLimit?: number
+        runningStatsTotal?: number
+      }
       return {
         stats: (result.stats || []).map(mapStats),
         systemInfo: result.systemInfo ? mapSystemInfo(result.systemInfo) : null,
         dockerInstalled: Boolean(result.dockerInstalled),
+        statsTruncated: Boolean(resourceMeta.statsTruncated),
+        statsLimit: toNumber(resourceMeta.statsLimit),
+        runningStatsTotal: toNumber(resourceMeta.runningStatsTotal),
         error: result.error,
       } satisfies WorkspaceDockerResourcesResponse
     },

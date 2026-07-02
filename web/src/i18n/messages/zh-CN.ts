@@ -1138,6 +1138,9 @@ const messages = {
     dockerResourcesTitle: "容器资源占用",
     dockerTotalCpu: "总 CPU",
     dockerTotalMemory: "总内存",
+    dockerSampledCpu: "采样 CPU",
+    dockerSampledMemory: "采样内存",
+    dockerResourcesSampled: "显示 {shown}/{total} 个运行容器，最多采样 {limit} 个",
     dockerVersion: "版本",
     dockerStorageDriver: "存储驱动",
     // Docker 更新

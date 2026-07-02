@@ -11,6 +11,7 @@ import (
 )
 
 const desktopDockerSockNoCurlSentinel = "__EASYSSH_NO_CURL__"
+const desktopDockerResourceStatsLimit = 50
 
 var desktopDockerIdentifierPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.:-]*$`)
 
@@ -124,10 +125,13 @@ type DesktopDockerContainerLogsResult struct {
 }
 
 type DesktopDockerResourcesResult struct {
-	Stats           []DesktopDockerContainerStats `json:"stats"`
-	SystemInfo      *DesktopDockerSystemInfo      `json:"systemInfo"`
-	DockerInstalled bool                          `json:"dockerInstalled"`
-	Error           string                        `json:"error,omitempty"`
+	Stats             []DesktopDockerContainerStats `json:"stats"`
+	SystemInfo        *DesktopDockerSystemInfo      `json:"systemInfo"`
+	DockerInstalled   bool                          `json:"dockerInstalled"`
+	StatsTruncated    bool                          `json:"statsTruncated"`
+	StatsLimit        int                           `json:"statsLimit"`
+	RunningStatsTotal int                           `json:"runningStatsTotal"`
+	Error             string                        `json:"error,omitempty"`
 }
 
 type DesktopDockerImageUpdateCheckResult struct {
@@ -191,17 +195,12 @@ func (s *DesktopDockerService) GetResources(input DesktopDockerServerInput) (Des
 			Stats:           []DesktopDockerContainerStats{},
 			SystemInfo:      nil,
 			DockerInstalled: false,
+			StatsLimit:      desktopDockerResourceStatsLimit,
 			Error:           "Docker not installed or not accessible",
 		}, nil
 	}
 
-	script := `
-echo "=== STATS ==="
-docker stats --no-stream --format '{{json .}}' 2>/dev/null || true
-echo "=== INFO ==="
-docker info --format '{"Containers":{{.Containers}},"ContainersRunning":{{.ContainersRunning}},"ContainersPaused":{{.ContainersPaused}},"ContainersStopped":{{.ContainersStopped}},"Images":{{.Images}},"DockerVersion":"{{.ServerVersion}}","ServerVersion":"{{.ServerVersion}}","Driver":"{{.Driver}}","MemTotal":{{.MemTotal}},"NCPU":{{.NCPU}}}' 2>/dev/null || echo '{}'
-`
-	output, err := s.executeSuccess(serverID, script, 30000)
+	output, err := s.executeSuccess(serverID, buildDesktopDockerResourcesScript(desktopDockerResourceStatsLimit), 30000)
 	if err != nil {
 		return DesktopDockerResourcesResult{}, err
 	}
@@ -210,12 +209,24 @@ docker info --format '{"Containers":{{.Containers}},"ContainersRunning":{{.Conta
 	result := DesktopDockerResourcesResult{
 		Stats:           []DesktopDockerContainerStats{},
 		DockerInstalled: true,
+		StatsLimit:      desktopDockerResourceStatsLimit,
 	}
 	if statsData, ok := sections["STATS"]; ok {
 		result.Stats = parseDesktopDockerStats(statsData)
 	}
 	if infoData, ok := sections["INFO"]; ok {
 		result.SystemInfo = parseDesktopDockerSystemInfo(infoData)
+	}
+	if metaData, ok := sections["STATS_META"]; ok {
+		meta := parseDesktopDockerStatsMeta(metaData)
+		if meta.StatsLimit > 0 {
+			result.StatsLimit = meta.StatsLimit
+		}
+		result.RunningStatsTotal = meta.RunningTotal
+		result.StatsTruncated = meta.RunningTotal > meta.StatsSampled
+	}
+	if result.RunningStatsTotal == 0 {
+		result.RunningStatsTotal = len(result.Stats)
 	}
 
 	return result, nil
@@ -487,6 +498,39 @@ func (s *DesktopDockerService) executeSuccess(serverID string, command string, t
 		return "", desktopDockerCommandError(result, "docker command failed")
 	}
 	return result.Output, nil
+}
+
+type desktopDockerStatsMeta struct {
+	RunningTotal int `json:"RunningTotal"`
+	StatsLimit   int `json:"StatsLimit"`
+	StatsSampled int `json:"StatsSampled"`
+}
+
+func buildDesktopDockerResourcesScript(statsLimit int) string {
+	if statsLimit <= 0 {
+		statsLimit = desktopDockerResourceStatsLimit
+	}
+	return strings.ReplaceAll(`
+_stats_limit=__EASYSSH_STATS_LIMIT__
+echo "=== INFO ==="
+docker info --format '{"Containers":{{.Containers}},"ContainersRunning":{{.ContainersRunning}},"ContainersPaused":{{.ContainersPaused}},"ContainersStopped":{{.ContainersStopped}},"Images":{{.Images}},"DockerVersion":"{{.ServerVersion}}","ServerVersion":"{{.ServerVersion}}","Driver":"{{.Driver}}","MemTotal":{{.MemTotal}},"NCPU":{{.NCPU}}}' 2>/dev/null || echo '{}'
+_stats_ids=$(docker ps -q --no-trunc 2>/dev/null || true)
+_stats_total=$(printf '%s\n' "$_stats_ids" | awk 'NF { n++ } END { print n + 0 }')
+_stats_sample=$(printf '%s\n' "$_stats_ids" | awk -v limit="$_stats_limit" 'NF && n < limit { print; n++ }')
+_stats_sampled=$(printf '%s\n' "$_stats_sample" | awk 'NF { n++ } END { print n + 0 }')
+echo "=== STATS_META ==="
+printf '{"RunningTotal":%s,"StatsLimit":%s,"StatsSampled":%s}\n' "${_stats_total:-0}" "$_stats_limit" "${_stats_sampled:-0}"
+echo "=== STATS ==="
+if [ -n "$_stats_sample" ]; then
+  docker stats --no-stream --format '{{json .}}' $_stats_sample 2>/dev/null || true
+fi
+`, "__EASYSSH_STATS_LIMIT__", strconv.Itoa(statsLimit))
+}
+
+func parseDesktopDockerStatsMeta(data string) desktopDockerStatsMeta {
+	var meta desktopDockerStatsMeta
+	_ = json.Unmarshal([]byte(strings.TrimSpace(data)), &meta)
+	return meta
 }
 
 type desktopDockerSockContainerSummary struct {

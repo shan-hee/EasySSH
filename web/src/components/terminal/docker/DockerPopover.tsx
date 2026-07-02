@@ -54,6 +54,9 @@ interface ResourcesTabData {
   stats: ContainerStats[]
   systemInfo: DockerSystemInfo | null
   dockerInstalled: boolean
+  statsTruncated?: boolean
+  statsLimit?: number
+  runningStatsTotal?: number
   error?: string
 }
 
@@ -169,6 +172,9 @@ export function DockerPopover({ serverId, sessionId, isConnected }: DockerPopove
         stats: res.stats,
         systemInfo: res.systemInfo,
         dockerInstalled: res.dockerInstalled,
+        statsTruncated: res.statsTruncated,
+        statsLimit: res.statsLimit,
+        runningStatsTotal: res.runningStatsTotal,
       })
     } catch (err) {
       const errMsg = String(err)
@@ -463,6 +469,9 @@ function DockerPopoverContent({
             <DockerOverview
               systemInfo={resourcesData?.systemInfo ?? null}
               stats={resourcesData?.stats ?? []}
+              statsTruncated={resourcesData?.statsTruncated}
+              statsLimit={resourcesData?.statsLimit}
+              runningStatsTotal={resourcesData?.runningStatsTotal}
               onRefresh={fetchResourcesData}
               isLoading={resourcesLoading}
             />

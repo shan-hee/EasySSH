@@ -95,6 +95,8 @@ type DockerSystemInfo struct {
 	CPUs              int    `json:"cpus"`
 }
 
+const dockerResourceStatsLimit = 50
+
 // DockerHandler Docker 处理器
 type DockerHandler struct {
 	serverService   server.Service
@@ -921,10 +923,46 @@ func (h *DockerHandler) GetStats(c *gin.Context) {
 
 // DockerResourcesResponse 资源页签响应（最小化数据）
 type DockerResourcesResponse struct {
-	Stats           []ContainerStats  `json:"stats"`
-	SystemInfo      *DockerSystemInfo `json:"systemInfo"`
-	DockerInstalled bool              `json:"dockerInstalled"`
-	Error           string            `json:"error,omitempty"`
+	Stats             []ContainerStats  `json:"stats"`
+	SystemInfo        *DockerSystemInfo `json:"systemInfo"`
+	DockerInstalled   bool              `json:"dockerInstalled"`
+	StatsTruncated    bool              `json:"statsTruncated"`
+	StatsLimit        int               `json:"statsLimit"`
+	RunningStatsTotal int               `json:"runningStatsTotal"`
+	Error             string            `json:"error,omitempty"`
+}
+
+type dockerStatsMeta struct {
+	RunningTotal int `json:"RunningTotal"`
+	StatsLimit   int `json:"StatsLimit"`
+	StatsSampled int `json:"StatsSampled"`
+}
+
+func buildDockerResourcesScript(statsLimit int) string {
+	if statsLimit <= 0 {
+		statsLimit = dockerResourceStatsLimit
+	}
+	return strings.ReplaceAll(`
+_stats_limit=__EASYSSH_STATS_LIMIT__
+echo "=== INFO ==="
+docker info --format '{"Containers":{{.Containers}},"ContainersRunning":{{.ContainersRunning}},"ContainersPaused":{{.ContainersPaused}},"ContainersStopped":{{.ContainersStopped}},"Images":{{.Images}},"ServerVersion":"{{.ServerVersion}}","Driver":"{{.Driver}}","MemTotal":{{.MemTotal}},"NCPU":{{.NCPU}}}' 2>/dev/null || echo '{}'
+_stats_ids=$(docker ps -q --no-trunc 2>/dev/null || true)
+_stats_total=$(printf '%s\n' "$_stats_ids" | awk 'NF { n++ } END { print n + 0 }')
+_stats_sample=$(printf '%s\n' "$_stats_ids" | awk -v limit="$_stats_limit" 'NF && n < limit { print; n++ }')
+_stats_sampled=$(printf '%s\n' "$_stats_sample" | awk 'NF { n++ } END { print n + 0 }')
+echo "=== STATS_META ==="
+printf '{"RunningTotal":%s,"StatsLimit":%s,"StatsSampled":%s}\n' "${_stats_total:-0}" "$_stats_limit" "${_stats_sampled:-0}"
+echo "=== STATS ==="
+if [ -n "$_stats_sample" ]; then
+  docker stats --no-stream --format '{{json .}}' $_stats_sample 2>/dev/null || true
+fi
+`, "__EASYSSH_STATS_LIMIT__", strconv.Itoa(statsLimit))
+}
+
+func parseDockerStatsMeta(data string) dockerStatsMeta {
+	var meta dockerStatsMeta
+	_ = json.Unmarshal([]byte(strings.TrimSpace(data)), &meta)
+	return meta
 }
 
 // GetResources 获取资源页签数据（仅 stats + systemInfo）
@@ -943,20 +981,13 @@ func (h *DockerHandler) GetResources(c *gin.Context) {
 	if err != nil || strings.TrimSpace(checkOutput) == "" {
 		RespondSuccess(c, DockerResourcesResponse{
 			DockerInstalled: false,
+			StatsLimit:      dockerResourceStatsLimit,
 			Error:           "Docker not installed or not accessible",
 		})
 		return
 	}
 
-	// 仅获取 stats 和 system info
-	script := `
-echo "=== STATS ==="
-docker stats --no-stream --format '{{json .}}' 2>/dev/null || echo '[]'
-echo "=== INFO ==="
-docker info --format '{"Containers":{{.Containers}},"ContainersRunning":{{.ContainersRunning}},"ContainersPaused":{{.ContainersPaused}},"ContainersStopped":{{.ContainersStopped}},"Images":{{.Images}},"ServerVersion":"{{.ServerVersion}}","Driver":"{{.Driver}}","MemTotal":{{.MemTotal}},"NCPU":{{.NCPU}}}' 2>/dev/null || echo '{}'
-`
-
-	output, err := h.executeCommand(pooledConn.Client, script)
+	output, err := h.executeCommand(pooledConn.Client, buildDockerResourcesScript(dockerResourceStatsLimit))
 	if err != nil {
 		RespondError(c, http.StatusInternalServerError, "docker_error", err.Error())
 		return
@@ -968,11 +999,24 @@ docker info --format '{"Containers":{{.Containers}},"ContainersRunning":{{.Conta
 	response := DockerResourcesResponse{
 		DockerInstalled: true,
 		Stats:           make([]ContainerStats, 0),
+		StatsLimit:      dockerResourceStatsLimit,
+	}
+
+	if metaData, ok := sections["STATS_META"]; ok {
+		meta := parseDockerStatsMeta(metaData)
+		if meta.StatsLimit > 0 {
+			response.StatsLimit = meta.StatsLimit
+		}
+		response.RunningStatsTotal = meta.RunningTotal
+		response.StatsTruncated = meta.RunningTotal > meta.StatsSampled
 	}
 
 	// 解析统计
 	if statsData, ok := sections["STATS"]; ok {
 		response.Stats = h.parseStats(statsData)
+	}
+	if response.RunningStatsTotal == 0 {
+		response.RunningStatsTotal = len(response.Stats)
 	}
 
 	// 解析系统信息

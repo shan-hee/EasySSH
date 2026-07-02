@@ -303,6 +303,9 @@ export interface WorkspaceDockerResourcesResponse {
   stats: WorkspaceDockerContainerStats[]
   systemInfo: WorkspaceDockerSystemInfo | null
   dockerInstalled: boolean
+  statsTruncated?: boolean
+  statsLimit?: number
+  runningStatsTotal?: number
   error?: string
 }
 
