@@ -426,7 +426,7 @@ func (s *DesktopServerService) MarkConnected(id string) (DesktopServer, error) {
 	return s.GetById(id)
 }
 
-func (s *DesktopServerService) UpdateOSIfEmpty(id string, osValue string) error {
+func (s *DesktopServerService) updateOSIfEmpty(id string, osValue string) error {
 	database, err := s.database()
 	if err != nil {
 		return err
@@ -452,7 +452,7 @@ var desktopOSDetectionCommands = []string{
 	`cmd /C ver`,
 }
 
-func (s *DesktopServerService) DetectAndPersistOSIfEmpty(server DesktopServer, client *ssh.Client) {
+func (s *DesktopServerService) detectAndPersistOSIfEmpty(server DesktopServer, client *ssh.Client) {
 	if client == nil || strings.TrimSpace(server.OS) != "" {
 		return
 	}
@@ -467,7 +467,7 @@ func (s *DesktopServerService) DetectAndPersistOSIfEmpty(server DesktopServer, c
 		return
 	}
 
-	if err := s.UpdateOSIfEmpty(server.ID, osValue); err != nil {
+	if err := s.updateOSIfEmpty(server.ID, osValue); err != nil {
 		fmt.Printf("failed to update desktop server OS: %v\n", err)
 	}
 }

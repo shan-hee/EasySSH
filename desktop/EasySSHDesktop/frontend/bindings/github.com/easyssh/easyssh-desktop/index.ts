@@ -12,6 +12,7 @@ import * as DesktopScriptService from "./desktopscriptservice.js";
 import * as DesktopServerService from "./desktopserverservice.js";
 import * as DesktopService from "./desktopservice.js";
 import * as DesktopTerminalService from "./desktopterminalservice.js";
+import * as DesktopUpdateService from "./desktopupdateservice.js";
 export {
     ActivityLogService,
     DesktopAIService,
@@ -23,7 +24,8 @@ export {
     DesktopScriptService,
     DesktopServerService,
     DesktopService,
-    DesktopTerminalService
+    DesktopTerminalService,
+    DesktopUpdateService
 };
 
 export {
@@ -119,6 +121,9 @@ export {
     DesktopTerminalResizeInput,
     DesktopTerminalStartInput,
     DesktopTerminalWriteInput,
+    DesktopUpdateAsset,
+    DesktopUpdateCheckResult,
+    DesktopUpdateStatus,
     DesktopUserAIConfig
 } from "./models.js";
 

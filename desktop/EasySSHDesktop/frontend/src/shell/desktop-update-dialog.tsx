@@ -224,7 +224,7 @@ export function DesktopUpdateDialog({ open, onOpenChange, autoCheck = true, chec
           </Button>
           {canInstall ? (
             <Button type="button" disabled={isWorking} onClick={() => void installUpdate()}>
-              {status === "downloading" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+              {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
               {t("updateInstallLabel")}
             </Button>
           ) : null}

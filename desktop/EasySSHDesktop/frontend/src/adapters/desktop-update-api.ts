@@ -1,6 +1,9 @@
-import { Call, Events } from "@wailsio/runtime"
+import { Events } from "@wailsio/runtime"
+import {
+  DesktopUpdateService,
+  type DesktopUpdateCheckResult as DesktopUpdateCheckResultModel,
+} from "../../bindings/github.com/easyssh/easyssh-desktop"
 
-const desktopUpdateServicePrefix = "github.com/easyssh/easyssh-desktop.DesktopUpdateService"
 export const desktopUpdateStatusEvent = "easyssh:desktop:update-status"
 
 export type DesktopUpdateStatus =
@@ -45,21 +48,32 @@ export type DesktopUpdateProgress = {
   release_url?: string
 }
 
+const updateStatuses = new Set<string>([
+  "idle",
+  "checking",
+  "up_to_date",
+  "available",
+  "downloading",
+  "verifying",
+  "ready",
+  "error",
+])
+
 export const desktopUpdateApi = {
-  getStatus(): Promise<DesktopUpdateCheckResult> {
-    return Call.ByName(`${desktopUpdateServicePrefix}.GetUpdateStatus`)
+  async getStatus(): Promise<DesktopUpdateCheckResult> {
+    return toDesktopUpdateCheckResult(await DesktopUpdateService.GetUpdateStatus())
   },
 
-  checkForUpdate(): Promise<DesktopUpdateCheckResult> {
-    return Call.ByName(`${desktopUpdateServicePrefix}.CheckForUpdate`)
+  async checkForUpdate(): Promise<DesktopUpdateCheckResult> {
+    return toDesktopUpdateCheckResult(await DesktopUpdateService.CheckForUpdate())
   },
 
-  installUpdate(): Promise<DesktopUpdateCheckResult> {
-    return Call.ByName(`${desktopUpdateServicePrefix}.InstallUpdate`)
+  async installUpdate(): Promise<DesktopUpdateCheckResult> {
+    return toDesktopUpdateCheckResult(await DesktopUpdateService.InstallUpdate())
   },
 
   restartToUpdate(): Promise<void> {
-    return Call.ByName(`${desktopUpdateServicePrefix}.RestartToUpdate`)
+    return DesktopUpdateService.RestartToUpdate()
   },
 
   onProgress(callback: (progress: DesktopUpdateProgress) => void): () => void {
@@ -67,4 +81,31 @@ export const desktopUpdateApi = {
       callback(event.data as DesktopUpdateProgress)
     })
   },
+}
+
+function toDesktopUpdateCheckResult(result: DesktopUpdateCheckResultModel): DesktopUpdateCheckResult {
+  return {
+    current_version: result.current_version,
+    latest_version: result.latest_version,
+    has_update: result.has_update,
+    status: toDesktopUpdateStatus(result.status),
+    release_url: result.release_url,
+    published_at: result.published_at,
+    notes: result.notes,
+    artifact: result.artifact
+      ? {
+          filename: result.artifact.filename,
+          download_url: result.artifact.download_url,
+          size: result.artifact.size,
+          sha256: result.artifact.sha256,
+          platform: result.artifact.platform,
+          arch: result.artifact.arch,
+        }
+      : undefined,
+    error: result.error,
+  }
+}
+
+function toDesktopUpdateStatus(status: unknown): DesktopUpdateStatus {
+  return typeof status === "string" && updateStatuses.has(status) ? status as DesktopUpdateStatus : "idle"
 }

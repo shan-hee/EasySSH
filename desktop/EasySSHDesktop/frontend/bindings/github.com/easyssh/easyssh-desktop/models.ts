@@ -3171,6 +3171,99 @@ export class DesktopTerminalWriteInput {
     }
 }
 
+export class DesktopUpdateAsset {
+    "filename": string;
+    "download_url": string;
+    "size"?: number;
+    "sha256"?: string;
+    "platform": string;
+    "arch": string;
+
+    /** Creates a new DesktopUpdateAsset instance. */
+    constructor($$source: Partial<DesktopUpdateAsset> = {}) {
+        if (!("filename" in $$source)) {
+            this["filename"] = "";
+        }
+        if (!("download_url" in $$source)) {
+            this["download_url"] = "";
+        }
+        if (!("platform" in $$source)) {
+            this["platform"] = "";
+        }
+        if (!("arch" in $$source)) {
+            this["arch"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new DesktopUpdateAsset instance from a string or object.
+     */
+    static createFrom($$source: any = {}): DesktopUpdateAsset {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new DesktopUpdateAsset($$parsedSource as Partial<DesktopUpdateAsset>);
+    }
+}
+
+export class DesktopUpdateCheckResult {
+    "current_version": string;
+    "latest_version": string;
+    "has_update": boolean;
+    "status": DesktopUpdateStatus;
+    "release_url"?: string;
+    "published_at"?: string;
+    "notes"?: string;
+    "artifact"?: DesktopUpdateAsset | null;
+    "error"?: string;
+
+    /** Creates a new DesktopUpdateCheckResult instance. */
+    constructor($$source: Partial<DesktopUpdateCheckResult> = {}) {
+        if (!("current_version" in $$source)) {
+            this["current_version"] = "";
+        }
+        if (!("latest_version" in $$source)) {
+            this["latest_version"] = "";
+        }
+        if (!("has_update" in $$source)) {
+            this["has_update"] = false;
+        }
+        if (!("status" in $$source)) {
+            this["status"] = DesktopUpdateStatus.$zero;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new DesktopUpdateCheckResult instance from a string or object.
+     */
+    static createFrom($$source: any = {}): DesktopUpdateCheckResult {
+        const $$createField7_0 = $$createType54;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("artifact" in $$parsedSource) {
+            $$parsedSource["artifact"] = $$createField7_0($$parsedSource["artifact"]);
+        }
+        return new DesktopUpdateCheckResult($$parsedSource as Partial<DesktopUpdateCheckResult>);
+    }
+}
+
+export enum DesktopUpdateStatus {
+    /**
+     * The Go zero value for the underlying type of the enum.
+     */
+    $zero = "",
+
+    DesktopUpdateStatusIdle = "idle",
+    DesktopUpdateStatusChecking = "checking",
+    DesktopUpdateStatusUpToDate = "up_to_date",
+    DesktopUpdateStatusAvailable = "available",
+    DesktopUpdateStatusDownloading = "downloading",
+    DesktopUpdateStatusVerifying = "verifying",
+    DesktopUpdateStatusReady = "ready",
+    DesktopUpdateStatusError = "error",
+};
+
 export class DesktopUserAIConfig {
     "use_system_config": boolean;
     "custom_enabled": boolean;
@@ -3266,3 +3359,5 @@ const $$createType49 = DesktopScript.createFrom;
 const $$createType50 = $Create.Array($$createType49);
 const $$createType51 = DesktopServer.createFrom;
 const $$createType52 = $Create.Array($$createType51);
+const $$createType53 = DesktopUpdateAsset.createFrom;
+const $$createType54 = $Create.Nullable($$createType53);
