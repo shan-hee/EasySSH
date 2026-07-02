@@ -54,7 +54,12 @@ func (h *UpdateCheckHandler) Check(c *gin.Context) {
 		return
 	}
 
-	result := updatecheck.BuildCheckResult(h.runtimeInfo.Version, target, manifest)
+	currentVersion := h.runtimeInfo.Version
+	if requestedVersion := strings.TrimSpace(c.Query("current_version")); updatecheck.IsComparableVersion(requestedVersion) {
+		currentVersion = requestedVersion
+	}
+
+	result := updatecheck.BuildCheckResult(currentVersion, target, manifest)
 	RespondSuccess(c, result)
 }
 

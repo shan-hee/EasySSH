@@ -71,6 +71,7 @@ ENV TZ=Asia/Shanghai \
 # 复制后端二进制与前端静态资源
 COPY --from=backend-builder --chown=appuser:appuser /app/server/easyssh-api ./
 COPY --from=backend-builder --chown=appuser:appuser /app/server/static ./static
+COPY --from=frontend-builder --chown=appuser:appuser /app/VERSION ./VERSION
 
 USER appuser
 

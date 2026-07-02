@@ -1,10 +1,12 @@
 import * as React from "react"
 import { toast } from "@/components/ui/sonner"
 import { updatesApi, type UpdateCheckResult } from "@/lib/api/updates"
+import { viteEnv } from "@/lib/vite-env"
 
 const updateCheckStorageKey = "easyssh:last-web-update-check"
 const updateCheckIntervalMs = 24 * 60 * 60 * 1000
 const defaultUpgradeCommand = "docker compose pull && docker compose up -d"
+const currentWebVersion = viteEnv.VITE_APP_VERSION?.trim()
 
 export type UpdateCheckTranslator = (key: string, options?: Record<string, unknown>) => string
 
@@ -26,6 +28,26 @@ function setUpdateCheckState(nextState: Partial<UpdateCheckState>) {
   }
 
   updateCheckListeners.forEach((listener) => listener(updateCheckState))
+}
+
+function normalizeVersion(version?: string) {
+  return version?.trim().replace(/^[vV]/, "") ?? ""
+}
+
+function normalizeWebUpdateResult(result: UpdateCheckResult): UpdateCheckResult {
+  if (!currentWebVersion) {
+    return result
+  }
+
+  const normalizedCurrent = normalizeVersion(currentWebVersion)
+  const normalizedLatest = normalizeVersion(result.latest_version)
+  const sameVersion = normalizedCurrent !== "" && normalizedCurrent === normalizedLatest
+
+  return {
+    ...result,
+    current_version: currentWebVersion,
+    has_update: sameVersion ? false : result.has_update,
+  }
 }
 
 interface UseUpdateCheckOptions {
@@ -77,7 +99,7 @@ export function useUpdateCheck(t: UpdateCheckTranslator, options: UseUpdateCheck
         window.localStorage.setItem(updateCheckStorageKey, String(Date.now()))
       }
       try {
-        const result = await updatesApi.checkWeb()
+        const result = normalizeWebUpdateResult(await updatesApi.checkWeb(currentWebVersion))
         setUpdateCheckState({ lastResult: result })
 
         if (result.has_update) {

@@ -154,6 +154,9 @@ func NormalizeVersion(version string) string {
 }
 
 func IsNewer(candidate string, current string) bool {
+	if !IsComparableVersion(candidate) || !IsComparableVersion(current) {
+		return false
+	}
 	return CompareVersions(candidate, current) > 0
 }
 
@@ -184,19 +187,30 @@ func CompareVersions(a string, b string) int {
 	return comparePrerelease(left.prerelease, right.prerelease)
 }
 
+func IsComparableVersion(version string) bool {
+	return parseVersion(NormalizeVersion(version)).valid
+}
+
 type parsedVersion struct {
 	parts      []int
 	prerelease string
+	valid      bool
 }
 
 func parseVersion(version string) parsedVersion {
 	version = strings.TrimSpace(version)
 	version = strings.Split(version, "+")[0]
+	if version == "" {
+		return parsedVersion{}
+	}
 
 	prerelease := ""
 	if idx := strings.Index(version, "-"); idx >= 0 {
 		prerelease = version[idx+1:]
 		version = version[:idx]
+	}
+	if version == "" {
+		return parsedVersion{}
 	}
 
 	rawParts := strings.Split(version, ".")
@@ -204,18 +218,16 @@ func parseVersion(version string) parsedVersion {
 	for _, part := range rawParts {
 		part = strings.TrimSpace(part)
 		if part == "" {
-			parts = append(parts, 0)
-			continue
+			return parsedVersion{}
 		}
 		value, err := strconv.Atoi(part)
 		if err != nil {
-			parts = append(parts, 0)
-			continue
+			return parsedVersion{}
 		}
 		parts = append(parts, value)
 	}
 
-	return parsedVersion{parts: parts, prerelease: prerelease}
+	return parsedVersion{parts: parts, prerelease: prerelease, valid: true}
 }
 
 func comparePrerelease(a string, b string) int {

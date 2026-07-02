@@ -18,8 +18,12 @@ export interface UpdateCheckResult {
 }
 
 export const updatesApi = {
-  async checkWeb(): Promise<UpdateCheckResult> {
+  async checkWeb(currentVersion?: string): Promise<UpdateCheckResult> {
     const params = new URLSearchParams({ target: "web" })
+    if (currentVersion?.trim()) {
+      params.set("current_version", currentVersion.trim())
+    }
+
     return apiFetch<UpdateCheckResult>(`/updates/check?${params.toString()}`, {
       method: "GET",
       retry: false,
