@@ -23,6 +23,8 @@ The release zip contains an `EasySSH-windows-86-desktop` folder with `EasySSH.ex
 
 Desktop data is stored in the `data` folder next to the desktop executable.
 
+Release builds also publish `EasySSH-windows-amd64-update.zip`. That updater asset is intentionally separate from the manual download package and contains only a top-level `EasySSH.exe`, which allows the Wails updater helper to replace the running portable executable safely.
+
 ## Layout
 
 - `main.go`: Wails application entry point and main window configuration.

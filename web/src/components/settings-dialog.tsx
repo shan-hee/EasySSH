@@ -11,6 +11,7 @@ import {
   X,
   Copy,
   Check,
+  ExternalLink,
   Monitor,
   Smartphone,
   Tablet,
@@ -20,6 +21,7 @@ import {
   Info,
   Activity,
   Paintbrush,
+  RefreshCw,
 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -77,6 +79,7 @@ import { notificationsApi } from "@/lib/api/notifications"
 import * as sshKeysApi from "@/lib/api/ssh-keys"
 import { getEffectiveLocale, getEffectiveTimezone, formatInTimezone } from "@/utils/datetime"
 import { useConfirmDialog } from "@/hooks/use-confirm-dialog"
+import { useUpdateCheck } from "@/hooks/use-update-check"
 import { toast } from "sonner"
 import { useTranslation } from "react-i18next"
 import { generateCodeVerifier, deriveCodeChallenge } from "@/lib/pkce"
@@ -122,9 +125,11 @@ const settingsNavItems: { id: SettingsSection; icon: typeof User }[] = [
 
 export const SettingsDialog = React.memo(function SettingsDialog({ children }: { children: React.ReactNode }) {
   const { t: tAccount } = useTranslation("accountSettings")
+  const { t: tUpdate } = useTranslation("headerActions")
   const { confirm: requestConfirm, confirmDialog } = useConfirmDialog()
   const [open, setOpen] = React.useState(false)
   const [activeSection, setActiveSection] = React.useState<SettingsSection>("profile")
+  const { checking: updateChecking, lastResult: updateResult, checkForUpdates, copyUpgradeCommand } = useUpdateCheck(tUpdate, { auto: false })
 
   // 使用 ClientAuthProvider 获取用户数据（dashboard 中使用）
   const { user, refreshUser, logout } = useClientAuth()
@@ -140,6 +145,10 @@ export const SettingsDialog = React.memo(function SettingsDialog({ children }: {
     () => getEffectiveTimezone(user, config),
     [user, config],
   )
+  const appVersion = viteEnv.VITE_APP_VERSION || "1.0.0"
+  const hasUpdate = updateResult?.has_update ?? false
+  const updateReleaseUrl = updateResult?.release_url
+  const displayedCurrentVersion = updateResult?.current_version || appVersion
 
   // 个人信息表单状态
   const [profileForm, setProfileForm] = React.useState({
@@ -2249,7 +2258,7 @@ export const SettingsDialog = React.memo(function SettingsDialog({ children }: {
                             {tAccount("aboutVersionLabel")}
                           </span>
                           <span className="font-medium">
-                            {viteEnv.VITE_APP_VERSION || "1.0.0"}
+                            {appVersion}
                           </span>
                         </div>
                         <div className="flex justify-between py-2 border-b border-border/50">
@@ -2289,6 +2298,84 @@ export const SettingsDialog = React.memo(function SettingsDialog({ children }: {
                           </span>
                         </div>
                       </div>
+                    </div>
+
+                    <div className="bg-muted/50 rounded-xl p-4">
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                        <div className="space-y-1">
+                          <h4 className="font-medium">
+                            {tAccount("aboutUpdateTitle")}
+                          </h4>
+                          <p className="text-sm text-muted-foreground">
+                            {updateChecking
+                              ? tAccount("aboutUpdateCheckingDescription")
+                              : hasUpdate
+                                ? tAccount("aboutUpdateAvailableDescription", {
+                                    version: updateResult?.latest_version,
+                                  })
+                                : updateResult
+                                  ? tAccount("aboutUpdateLatestDescription", {
+                                      version: displayedCurrentVersion,
+                                    })
+                                  : tAccount("aboutUpdateIdleDescription")}
+                          </p>
+                        </div>
+                        <Button
+                          variant={hasUpdate ? "default" : "outline"}
+                          size="sm"
+                          onClick={() => {
+                            void checkForUpdates()
+                          }}
+                          disabled={updateChecking}
+                          className="sm:ml-4"
+                        >
+                          {updateChecking ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <RefreshCw className="h-4 w-4" />
+                          )}
+                          {tAccount("aboutUpdateCheckButton")}
+                        </Button>
+                      </div>
+
+                      {hasUpdate ? (
+                        <div className="mt-4 border-t border-border/60 pt-4">
+                          <div className="flex flex-col gap-1 text-sm sm:flex-row sm:items-center sm:justify-between">
+                            <span className="font-medium">
+                              {tAccount("aboutUpdateAvailableTitle", {
+                                version: updateResult?.latest_version,
+                              })}
+                            </span>
+                            <span className="text-muted-foreground">
+                              {tAccount("aboutUpdateCurrentVersion", {
+                                version: displayedCurrentVersion,
+                              })}
+                            </span>
+                          </div>
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => {
+                                void copyUpgradeCommand()
+                              }}
+                            >
+                              <Copy className="h-4 w-4" />
+                              {tAccount("aboutUpdateCopyCommandButton")}
+                            </Button>
+                            {updateReleaseUrl ? (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => window.open(updateReleaseUrl, "_blank", "noopener,noreferrer")}
+                              >
+                                <ExternalLink className="h-4 w-4" />
+                                {tAccount("aboutUpdateViewReleaseButton")}
+                              </Button>
+                            ) : null}
+                          </div>
+                        </div>
+                      ) : null}
                     </div>
 
                     <div className="bg-muted/50 rounded-xl p-4">

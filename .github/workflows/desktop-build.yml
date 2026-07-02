@@ -80,16 +80,21 @@ jobs:
           fi
           PACKAGE_NAME="EasySSH-windows-${SUFFIX}-desktop"
           ZIP_NAME="${PACKAGE_NAME}.zip"
+          UPDATE_PACKAGE_NAME="EasySSH-windows-${{ inputs.arch }}-update"
+          UPDATE_ZIP_NAME="${UPDATE_PACKAGE_NAME}.zip"
 
-          rm -rf "bin/${PACKAGE_NAME}" "bin/${ZIP_NAME}"
+          rm -rf "bin/${PACKAGE_NAME}" "bin/${ZIP_NAME}" "bin/${UPDATE_ZIP_NAME}"
           mkdir -p "bin/${PACKAGE_NAME}/data"
           cp bin/EasySSH.exe "bin/${PACKAGE_NAME}/EasySSH.exe"
 
           cd bin
           zip -r "$ZIP_NAME" "$PACKAGE_NAME"
+          zip "$UPDATE_ZIP_NAME" EasySSH.exe
 
           echo "artifact_name=${PACKAGE_NAME}" >> "$GITHUB_OUTPUT"
           echo "zip_name=${ZIP_NAME}" >> "$GITHUB_OUTPUT"
+          echo "update_artifact_name=${UPDATE_PACKAGE_NAME}" >> "$GITHUB_OUTPUT"
+          echo "update_zip_name=${UPDATE_ZIP_NAME}" >> "$GITHUB_OUTPUT"
 
       - name: 📤 上传构建产物
         uses: actions/upload-artifact@v4
@@ -98,9 +103,17 @@ jobs:
           path: desktop/EasySSHDesktop/bin/${{ steps.artifact.outputs.zip_name }}
           if-no-files-found: error
 
+      - name: 📤 上传更新专用产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.artifact.outputs.update_artifact_name }}
+          path: desktop/EasySSHDesktop/bin/${{ steps.artifact.outputs.update_zip_name }}
+          if-no-files-found: error
+
       - name: 📊 生成构建摘要
         run: |
           echo "## 💻 EasySSH Desktop 构建成功" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "- **平台:** Windows (${{ inputs.arch }})" >> $GITHUB_STEP_SUMMARY
           echo "- **Artifact:** \`${{ steps.artifact.outputs.zip_name }}\`（解压后包含 \`${{ steps.artifact.outputs.artifact_name }}/EasySSH.exe\` 与同级 \`data/\` 目录）" >> $GITHUB_STEP_SUMMARY
+          echo "- **Updater Artifact:** \`${{ steps.artifact.outputs.update_zip_name }}\`（顶层仅包含 \`EasySSH.exe\`，供一键更新使用）" >> $GITHUB_STEP_SUMMARY

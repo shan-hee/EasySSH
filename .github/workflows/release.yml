@@ -152,7 +152,7 @@ jobs:
       - name: 📥 下载桌面端构建产物
         uses: actions/download-artifact@v4
         with:
-          pattern: EasySSH-windows-*-desktop
+          pattern: EasySSH-windows-*
           path: desktop-artifacts
           merge-multiple: true
 
@@ -160,6 +160,53 @@ jobs:
         run: |
           mkdir -p release-assets
           cp desktop-artifacts/*.zip release-assets/
+
+      - name: 🧾 生成更新清单
+        run: |
+          VERSION="${{ needs.validate.outputs.version }}"
+          TAG="v${VERSION}"
+          RELEASE_URL="https://github.com/${{ github.repository }}/releases/tag/${TAG}"
+          MANIFEST_URL_BASE="https://github.com/${{ github.repository }}/releases/download/${TAG}"
+          WINDOWS_UPDATE_ZIP="EasySSH-windows-amd64-update.zip"
+          WINDOWS_UPDATE_PATH="release-assets/${WINDOWS_UPDATE_ZIP}"
+
+          if [ ! -f "$WINDOWS_UPDATE_PATH" ]; then
+            echo "::error::Missing updater asset: $WINDOWS_UPDATE_PATH"
+            exit 1
+          fi
+
+          WINDOWS_UPDATE_SIZE=$(wc -c < "$WINDOWS_UPDATE_PATH" | tr -d '[:space:]')
+          WINDOWS_UPDATE_SHA256=$(sha256sum "$WINDOWS_UPDATE_PATH" | awk '{print $1}')
+          RELEASE_NOTES_JSON=$(python3 -c 'import json; from pathlib import Path; print(json.dumps(Path("release_notes.md").read_text(encoding="utf-8")))')
+
+          cat > release-assets/release-manifest.json <<EOF
+          {
+            "version": "${VERSION}",
+            "tag": "${TAG}",
+            "published_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+            "release_url": "${RELEASE_URL}",
+            "notes": ${RELEASE_NOTES_JSON},
+            "web": {
+              "docker_image": "shanhee/easyssh:${TAG}",
+              "docker_compose": "docker compose pull && docker compose up -d",
+              "docker_compose_file": "${MANIFEST_URL_BASE}/docker-compose.yml"
+            },
+            "desktop": {
+              "windows-amd64": {
+                "filename": "${WINDOWS_UPDATE_ZIP}",
+                "download_url": "${MANIFEST_URL_BASE}/${WINDOWS_UPDATE_ZIP}",
+                "size": ${WINDOWS_UPDATE_SIZE},
+                "sha256": "${WINDOWS_UPDATE_SHA256}",
+                "platform": "windows",
+                "arch": "amd64"
+              }
+            }
+          }
+          EOF
+
+          python3 -m json.tool release-assets/release-manifest.json > /tmp/release-manifest.json
+          mv /tmp/release-manifest.json release-assets/release-manifest.json
+          cat release-assets/release-manifest.json
 
       - name: 🎉 创建 GitHub Release
         uses: softprops/action-gh-release@v2
@@ -172,6 +219,7 @@ jobs:
             docker/docker-compose.yml
             .env.example
             release-assets/*.zip
+            release-assets/release-manifest.json
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

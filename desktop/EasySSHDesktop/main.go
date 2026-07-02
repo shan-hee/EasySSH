@@ -29,6 +29,7 @@ func main() {
 	dockerService := NewDesktopDockerService(serverService)
 	aiService := NewDesktopAIService()
 	backupService := NewDesktopBackupService()
+	updateService := NewDesktopUpdateService()
 
 	app := application.New(application.Options{
 		Name:        "EasySSH",
@@ -44,6 +45,7 @@ func main() {
 			application.NewService(activityLogService),
 			application.NewService(backupService),
 			application.NewService(NewDesktopService(desktopGateway)),
+			application.NewService(updateService),
 			application.NewService(aiService),
 		},
 		Assets: application.AssetOptions{
@@ -53,6 +55,10 @@ func main() {
 			ApplicationShouldTerminateAfterLastWindowClosed: true,
 		},
 	})
+
+	if err := updateService.attachApp(app); err != nil {
+		log.Printf("failed to initialize desktop updater: %v", err)
+	}
 
 	app.Window.NewWithOptions(application.WebviewWindowOptions{
 		Title:     "EasySSH",

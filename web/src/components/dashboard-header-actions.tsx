@@ -22,6 +22,7 @@ import { ThemeMenu } from "@/components/theme-menu"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { useOptionalClientAuth } from "@/components/client-auth-provider"
 import { useSystemConfig } from "@/contexts/system-config-context"
+import { useUpdateCheck } from "@/hooks/use-update-check"
 import { authApi } from "@/lib/api/auth"
 import { getEffectiveLocale, saveLocaleToStorage } from "@/utils/datetime"
 
@@ -40,6 +41,7 @@ export function DashboardHeaderActions() {
   const refreshUser = clientAuth?.refreshUser
   const { config } = useSystemConfig()
   const [languageSaving, setLanguageSaving] = React.useState<SupportedLocale | null>(null)
+  useUpdateCheck(t)
 
   const locale = React.useMemo(() => getEffectiveLocale(user, config), [user, config])
 

@@ -11,7 +11,7 @@ export { ServerConnectionConfigs } from "../../../src/components/servers/server-
 export { LogsClient } from "../../../src/components/logs/logs-client"
 export { default as ScriptsPage } from "../../../src/components/dashboard/scripts/scripts-page"
 export { BackupRestoreTab } from "../../../src/components/settings/backup-restore-tab"
-export { Activity, ArchiveRestore, ArrowLeft, Bot, Check, FileText, FolderOpen, Github, Info, Languages, Menu, Minus, RefreshCw, Square, Terminal, X } from "lucide-react"
+export { Activity, ArchiveRestore, ArrowLeft, Bot, Check, Download, ExternalLink, FileText, FolderOpen, Github, Info, Languages, Loader2, Menu, Minus, RefreshCw, RotateCw, Square, Terminal, X } from "lucide-react"
 export type { ScriptsPageAdapters, ScriptsPageProps } from "../../../src/components/dashboard/scripts/scripts-page"
 export type { BackupContent, BackupRestoreAdapter, ConflictStrategy } from "../../../src/components/settings/backup-restore-tab"
 export type { TerminalSftpTabContentProps } from "../../../src/components/terminal/terminal-sftp-tab-content"

@@ -84,6 +84,9 @@ if [ -f "$DESKTOP_DIR/build/config.yml" ]; then
   fi
 
   if [ "$OLD_DESKTOP_VERSION" = "$VERSION" ]; then
+    if [ -f "$DESKTOP_DIR/desktopversion.go" ]; then
+      sed_inplace -E "s/desktopBundledVersion = \"[^\"]+\"/desktopBundledVersion = \"$VERSION\"/" "$DESKTOP_DIR/desktopversion.go"
+    fi
     echo -e "${GREEN}✅ 桌面端版本号已是 $VERSION，无需更新${NC}\n"
   else
     # build/ 下的资产 (manifest/plist/nsis/msix/nfpm 等) 由 wails3 生成并写死版本号，
@@ -100,6 +103,10 @@ if [ -f "$DESKTOP_DIR/build/config.yml" ]; then
       else
         echo -e "${YELLOW}⚠️  npm 未安装，跳过桌面前端 package.json 更新${NC}"
       fi
+    fi
+
+    if [ -f "$DESKTOP_DIR/desktopversion.go" ]; then
+      sed_inplace -E "s/desktopBundledVersion = \"[^\"]+\"/desktopBundledVersion = \"$VERSION\"/" "$DESKTOP_DIR/desktopversion.go"
     fi
 
     echo -e "${GREEN}✅ 桌面端版本号 $OLD_DESKTOP_VERSION -> $VERSION${NC}\n"
@@ -140,6 +147,9 @@ if [ "$CONFIRM" = "y" ] || [ "$CONFIRM" = "Y" ]; then
   fi
   if [ -f "$DESKTOP_DIR/frontend/package-lock.json" ]; then
     git add "$DESKTOP_DIR/frontend/package-lock.json"
+  fi
+  if [ -f "$DESKTOP_DIR/desktopversion.go" ]; then
+    git add "$DESKTOP_DIR/desktopversion.go"
   fi
 
   # 提交

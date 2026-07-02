@@ -209,6 +209,23 @@ body {
   border-bottom: 0;
 }
 
+.easyssh-desktop-update-dialog {
+  width: min(540px, calc(100vw - 32px));
+  max-width: min(540px, calc(100vw - 32px));
+  --wails-draggable: no-drag;
+}
+
+.easyssh-desktop-update-version-grid {
+  display: grid;
+  grid-template-columns: 112px minmax(0, 1fr);
+  gap: 8px 12px;
+  min-width: 0;
+  border: 1px solid color-mix(in oklab, var(--border) 70%, transparent);
+  border-radius: 8px;
+  padding: 12px;
+  font-size: 13px;
+}
+
 .easyssh-desktop-home > .flex {
   min-height: 0;
 }

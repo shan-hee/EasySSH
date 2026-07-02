@@ -448,6 +448,7 @@ func main() {
 	avatarHandler := rest.NewAvatarHandler()
 	backupHandler := rest.NewBackupHandler(database, encryptor)
 	runtimeHandler := rest.NewRuntimeHandler(runtimeInfo)
+	updateCheckHandler := rest.NewUpdateCheckHandler(runtimeInfo)
 
 	// 创建 Gin 路由
 	r := gin.New()
@@ -479,6 +480,7 @@ func main() {
 	v1 := r.Group("/api/v1")
 	{
 		v1.GET("/runtime", runtimeHandler.GetRuntime)
+		v1.GET("/updates/check", updateCheckHandler.Check)
 
 		// 健康检查
 		v1.GET("/health", func(c *gin.Context) {
@@ -493,7 +495,7 @@ func main() {
 			c.JSON(http.StatusOK, gin.H{
 				"status":  "ok",
 				"service": "easyssh-api",
-				"version": "1.0.0",
+				"version": runtimeInfo.Version,
 				"dependencies": gin.H{
 					"database": dbStatus,
 				},

@@ -95,7 +95,7 @@ func readVersion() string {
 		}
 	}
 
-	return "0.1.0"
+	return desktopBundledVersion
 }
 
 func desktopDataDir() string {
