@@ -19,6 +19,10 @@ var assets embed.FS
 // main initializes the desktop shell. The first screen is the SSH/SFTP workspace;
 // Dashboard navigation and server administration stay outside this window shell.
 func main() {
+	if err := ensureDesktopDataDir(); err != nil {
+		log.Fatalf("failed to initialize desktop data directory: %v", err)
+	}
+
 	activityLogService := NewActivityLogService()
 	serverService := NewDesktopServerService()
 	scriptService := NewDesktopScriptService(serverService, activityLogService)

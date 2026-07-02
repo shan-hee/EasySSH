@@ -17,13 +17,11 @@ From this directory:
 /root/go/bin/wails3 task windows:build ARCH=amd64
 ```
 
-The Windows 86 executable is written to `bin/EasySSH.exe`. The GitHub Release asset is `EasySSH-windows-86-desktop.zip`.
+The Windows amd64 executable is written to `bin/EasySSH.exe`. The GitHub Release asset is `EasySSH-windows-amd64-desktop.zip`.
 
-The release zip contains an `EasySSH-windows-86-desktop` folder with `EasySSH.exe` and a sibling `data` folder.
+The release zip contains a single top-level `EasySSH.exe`. The same asset is used for manual downloads and desktop one-click updates.
 
-Desktop data is stored in the `data` folder next to the desktop executable.
-
-Release builds also publish `EasySSH-windows-amd64-update.zip`. That updater asset is intentionally separate from the manual download package and contains only a top-level `EasySSH.exe`, which allows the Wails updater helper to replace the running portable executable safely.
+Desktop data is stored in the `data` folder next to the desktop executable. The app creates that folder on startup when it does not exist.
 
 ## Layout
 

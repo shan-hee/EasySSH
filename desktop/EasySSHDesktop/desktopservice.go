@@ -107,6 +107,10 @@ func desktopDataDir() string {
 	return filepath.Join(filepath.Dir(executablePath), "data")
 }
 
+func ensureDesktopDataDir() error {
+	return os.MkdirAll(desktopDataDir(), 0o755)
+}
+
 func (s *DesktopService) ListPreferences() (DesktopPreferenceSnapshot, error) {
 	desktopPreferenceMu.Lock()
 	defer desktopPreferenceMu.Unlock()

@@ -1,7 +1,7 @@
 name: Release
 
 # 发版唯一入口：推送 v* 标签
-# 流程：版本校验 → 镜像 (linux/amd64) + 桌面端 (Windows 86) → 创建 GitHub Release
+# 流程：版本校验 → 镜像 (linux/amd64) + 桌面端 (Windows amd64) → 创建 GitHub Release
 # 注：测试在本地完成后再发版，流水线不跑 CI；
 #     需要其他架构时在 Actions 页面手动运行 docker-build / desktop-build 并选择平台
 on:
@@ -54,7 +54,7 @@ jobs:
       security-events: write
       actions: read
 
-  # 3. 构建 Windows 桌面端 (默认 86/amd64)
+  # 3. 构建 Windows 桌面端 (默认 amd64)
   desktop:
     name: 💻 桌面端
     needs: validate
@@ -124,7 +124,7 @@ jobs:
             echo ""
             echo "## 💻 桌面端"
             echo ""
-            echo "Windows (86) 客户端见下方 Assets: \`EasySSH-windows-86-desktop.zip\`"
+            echo "Windows (amd64) 客户端见下方 Assets: \`EasySSH-windows-amd64-desktop.zip\`"
             echo ""
             echo "## 📦 快速部署"
             echo ""
@@ -167,16 +167,16 @@ jobs:
           TAG="v${VERSION}"
           RELEASE_URL="https://github.com/${{ github.repository }}/releases/tag/${TAG}"
           MANIFEST_URL_BASE="https://github.com/${{ github.repository }}/releases/download/${TAG}"
-          WINDOWS_UPDATE_ZIP="EasySSH-windows-amd64-update.zip"
-          WINDOWS_UPDATE_PATH="release-assets/${WINDOWS_UPDATE_ZIP}"
+          WINDOWS_DESKTOP_ZIP="EasySSH-windows-amd64-desktop.zip"
+          WINDOWS_DESKTOP_PATH="release-assets/${WINDOWS_DESKTOP_ZIP}"
 
-          if [ ! -f "$WINDOWS_UPDATE_PATH" ]; then
-            echo "::error::Missing updater asset: $WINDOWS_UPDATE_PATH"
+          if [ ! -f "$WINDOWS_DESKTOP_PATH" ]; then
+            echo "::error::Missing desktop asset: $WINDOWS_DESKTOP_PATH"
             exit 1
           fi
 
-          WINDOWS_UPDATE_SIZE=$(wc -c < "$WINDOWS_UPDATE_PATH" | tr -d '[:space:]')
-          WINDOWS_UPDATE_SHA256=$(sha256sum "$WINDOWS_UPDATE_PATH" | awk '{print $1}')
+          WINDOWS_DESKTOP_SIZE=$(wc -c < "$WINDOWS_DESKTOP_PATH" | tr -d '[:space:]')
+          WINDOWS_DESKTOP_SHA256=$(sha256sum "$WINDOWS_DESKTOP_PATH" | awk '{print $1}')
           RELEASE_NOTES_JSON=$(python3 -c 'import json; from pathlib import Path; print(json.dumps(Path("release_notes.md").read_text(encoding="utf-8")))')
 
           cat > release-assets/release-manifest.json <<EOF
@@ -193,10 +193,10 @@ jobs:
             },
             "desktop": {
               "windows-amd64": {
-                "filename": "${WINDOWS_UPDATE_ZIP}",
-                "download_url": "${MANIFEST_URL_BASE}/${WINDOWS_UPDATE_ZIP}",
-                "size": ${WINDOWS_UPDATE_SIZE},
-                "sha256": "${WINDOWS_UPDATE_SHA256}",
+                "filename": "${WINDOWS_DESKTOP_ZIP}",
+                "download_url": "${MANIFEST_URL_BASE}/${WINDOWS_DESKTOP_ZIP}",
+                "size": ${WINDOWS_DESKTOP_SIZE},
+                "sha256": "${WINDOWS_DESKTOP_SHA256}",
                 "platform": "windows",
                 "arch": "amd64"
               }
