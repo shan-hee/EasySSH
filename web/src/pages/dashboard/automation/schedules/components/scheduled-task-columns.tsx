@@ -1,6 +1,7 @@
 import type { Column, ColumnDef } from "@tanstack/react-table"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -98,6 +99,32 @@ export function createScheduledTaskColumns(
   const meta = (m: DataTableColumnMeta): DataTableColumnMeta => m
 
   return [
+    {
+      id: "select",
+      size: 44,
+      minSize: 44,
+      maxSize: 44,
+      meta: meta({ align: "center" }),
+      header: ({ table }) => (
+        <Checkbox
+          checked={
+            table.getIsAllPageRowsSelected() ||
+            (table.getIsSomePageRowsSelected() && "indeterminate")
+          }
+          onCheckedChange={(value) => table.toggleAllPageRowsSelected(!!value)}
+          aria-label="select all"
+        />
+      ),
+      cell: ({ row }) => (
+        <Checkbox
+          checked={row.getIsSelected()}
+          onCheckedChange={(value) => row.toggleSelected(!!value)}
+          aria-label="select row"
+        />
+      ),
+      enableSorting: false,
+      enableHiding: false,
+    },
     {
       id: "task_name",
       accessorKey: "task_name",
@@ -265,12 +292,11 @@ export function createScheduledTaskColumns(
       size: 96,
       minSize: 84,
       maxSize: 110,
-      meta: meta({ align: "right" }),
       header: () => t("tableColActions"),
       cell: ({ row }) => {
         const task = row.original
         return (
-          <div className="flex w-full items-center justify-end gap-1">
+          <div className="flex w-full items-center gap-1">
             <Button
               variant="ghost"
               size="sm"

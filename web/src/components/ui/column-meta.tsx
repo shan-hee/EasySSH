@@ -51,9 +51,13 @@ export function resolveColumnClass<TData, TValue>(
 ): string {
   const meta = getColumnMeta(columnDef)
   const extra = position === "head" ? meta.headerClassName : meta.cellClassName
+  const isActionsColumn = columnDef.id === "actions"
+  const align = isActionsColumn ? "center" : meta.align
+
   return cn(
-    resolveAlignClass(meta.align),
+    resolveAlignClass(align),
     resolveStickyClass(meta.sticky, position),
+    isActionsColumn && position === "cell" && "[&>div]:justify-center",
     extra
   )
 }

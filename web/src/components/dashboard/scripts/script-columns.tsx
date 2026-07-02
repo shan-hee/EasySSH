@@ -1,13 +1,15 @@
 import type { Column, ColumnDef } from "@tanstack/react-table"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Code2, ArrowUpDown, ArrowUp, ArrowDown, Play, Trash2 } from "lucide-react"
+import { Checkbox } from "@/components/ui/checkbox"
+import { ArrowUpDown, ArrowUp, ArrowDown, Edit, Play, Trash2 } from "lucide-react"
 import { type Script } from "@/lib/api"
 import { formatTimestamp } from "@/components/ui/data-table"
 import type { DataTableColumnMeta } from "@/components/ui/column-meta"
 
 interface Handlers {
   onExecute: (id: string) => void
+  onEdit: (id: string) => void
   onDelete: (id: string) => void
   t: (key: string) => string
 }
@@ -41,12 +43,40 @@ function SortableHeader<TValue>({
 
 export function createScriptColumns({
   onExecute,
+  onEdit,
   onDelete,
   t,
 }: Handlers): ColumnDef<Script>[] {
   const meta = (m: DataTableColumnMeta): DataTableColumnMeta => m
 
   const columns: ColumnDef<Script>[] = [
+    {
+      id: "select",
+      size: 44,
+      minSize: 44,
+      maxSize: 44,
+      meta: meta({ align: "center" }),
+      header: ({ table }) => (
+        <Checkbox
+          checked={
+            table.getIsAllPageRowsSelected() ||
+            (table.getIsSomePageRowsSelected() && "indeterminate")
+          }
+          onCheckedChange={(value) => table.toggleAllPageRowsSelected(!!value)}
+          aria-label="select all"
+        />
+      ),
+      cell: ({ row }) => (
+        <Checkbox
+          checked={row.getIsSelected()}
+          onClick={(event) => event.stopPropagation()}
+          onCheckedChange={(value) => row.toggleSelected(!!value)}
+          aria-label="select row"
+        />
+      ),
+      enableSorting: false,
+      enableHiding: false,
+    },
     {
       id: "name",
       accessorKey: "name",
@@ -59,7 +89,6 @@ export function createScriptColumns({
         const primaryTag = script.tags?.[0]
         return (
           <div className="flex w-full min-w-0 items-start gap-2 rounded-md px-1 py-0.5 text-left">
-            <Code2 className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
             <div className="min-w-0 space-y-1">
               <div className="flex min-w-0 items-center gap-2">
                 <span className="truncate font-medium">{script.name}</span>
@@ -202,14 +231,13 @@ export function createScriptColumns({
     },
     {
       id: "actions",
-      size: 120,
-      minSize: 100,
-      meta: meta({ align: "right" }),
+      size: 132,
+      minSize: 120,
       header: () => t("colActions"),
       cell: ({ row }) => {
         const script = row.original
         return (
-          <div className="flex w-full items-center justify-end gap-1">
+          <div className="flex w-full items-center gap-1">
             <Button
               variant="ghost"
               size="sm"
@@ -222,6 +250,19 @@ export function createScriptColumns({
               }}
             >
               <Play className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-8 w-8 p-0"
+              title={t("actionEdit")}
+              aria-label={t("actionEdit")}
+              onClick={(event) => {
+                event.stopPropagation()
+                onEdit(script.id)
+              }}
+            >
+              <Edit className="h-4 w-4" />
             </Button>
             <Button
               variant="ghost"

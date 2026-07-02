@@ -53,6 +53,7 @@ interface DataTableProps<TData, TValue = unknown> {
   batchActions?: (table: ReturnType<typeof useReactTable<TData>>) => React.ReactNode
   onRowClick?: (row: TData) => void
   getRowClassName?: (row: TData) => string | undefined
+  getRowId?: (row: TData, index: number) => string
 }
 
 export function formatTimestamp(timestamp: string): { date: string; time: string } {
@@ -163,6 +164,7 @@ export function DataTable<TData, TValue = unknown>({
   batchActions,
   onRowClick,
   getRowClassName,
+  getRowId,
 }: DataTableProps<TData, TValue>) {
   const { t: tCommon } = useTranslation("common")
   const [sorting, setSorting] = React.useState<SortingState>([])
@@ -195,6 +197,7 @@ export function DataTable<TData, TValue = unknown>({
     onColumnFiltersChange: setColumnFilters,
     onColumnVisibilityChange: setColumnVisibility,
     onRowSelectionChange: setRowSelection,
+    getRowId,
     enableRowSelection: enableRowSelection,
     state: {
       sorting,

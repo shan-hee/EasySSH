@@ -33,15 +33,7 @@ import { useAuthReady } from "@/hooks/use-auth-ready"
 import { useConfirmDialog } from "@/hooks/use-confirm-dialog"
 import {
   DashboardMetricCard,
-  InlineStatusBadge,
 } from "@/components/logs/log-dashboard-widgets"
-
-function formatScriptTime(value?: string) {
-  if (!value) return "-"
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return value
-  return date.toLocaleString()
-}
 
 export interface ScriptsPageAdapters {
  scripts?: Pick<typeof scriptsApi, "list" | "create" | "update" | "delete" | "execute">
@@ -94,8 +86,7 @@ export default function ScriptsPage({
  const [pageSize, setPageSize] = useState(20)
  const [totalPages, setTotalPages] = useState(1)
  const [totalRows, setTotalRows] = useState(0)
- const [isDetailDialogOpen, setIsDetailDialogOpen] = useState(false)
- const [detailDialogMode, setDetailDialogMode] = useState<"view" | "edit">("view")
+ const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
  const [columnVisibility, setColumnVisibility] = useState<Record<string, boolean>>({
    name: true,
    description: false,
@@ -105,7 +96,6 @@ export default function ScriptsPage({
    updated_at: true,
    executions: true,
  })
- const [selectedScriptId, setSelectedScriptId] = useState<string | null>(null)
 
  // 新建脚本表单状态
  const [newScript, setNewScript] = useState({
@@ -161,17 +151,11 @@ export default function ScriptsPage({
  }, [page, pageSize, loadScripts, ready])
 
  useEffect(() => {
-   if (scripts.length === 0) {
-     setSelectedScriptId(null)
-     setIsDetailDialogOpen(false)
-     return
+   if (editingScriptId && !scripts.some((script) => script.id === editingScriptId)) {
+     setEditingScriptId(null)
+     setIsEditDialogOpen(false)
    }
-
-   if (selectedScriptId && !scripts.some((script) => script.id === selectedScriptId)) {
-     setSelectedScriptId(null)
-     setIsDetailDialogOpen(false)
-   }
- }, [scripts, selectedScriptId])
+ }, [scripts, editingScriptId])
 
  // 获取所有标签（安全处理）
  const allTags = Array.from(new Set((scripts || []).flatMap(script => script.tags || [])))
@@ -325,16 +309,9 @@ const handleCloseExecuteDialog = useCallback((open: boolean) => {
   }
 }, [])
 
- const handleOpenDetail = useCallback((scriptId: string) => {
- setSelectedScriptId(scriptId)
- setDetailDialogMode("view")
- setIsDetailDialogOpen(true)
- }, [])
-
  const handleEdit = useCallback((scriptId: string) => {
  const script = scripts.find(s => s.id === scriptId)
  if (script) {
- setSelectedScriptId(scriptId)
  setEditingScriptId(scriptId)
  setEditScript({
  name: script.name,
@@ -342,8 +319,7 @@ const handleCloseExecuteDialog = useCallback((open: boolean) => {
  content: script.content,
  tags: [...script.tags],
  })
- setDetailDialogMode("edit")
- setIsDetailDialogOpen(true)
+ setIsEditDialogOpen(true)
  }
  }, [scripts])
 
@@ -369,9 +345,10 @@ const handleCloseExecuteDialog = useCallback((open: boolean) => {
 // DataTable 列定义与可见列
 const columns = useMemo(() => createScriptColumns({
   onExecute: handleExecute,
+  onEdit: handleEdit,
   onDelete: handleDelete,
   t: (key: string) => t(key),
-}), [handleExecute, handleDelete, t])
+}), [handleExecute, handleEdit, handleDelete, t])
 
 const visibleColumns = useMemo(
   () => columns.filter((col) =>
@@ -399,10 +376,6 @@ const tagCounts = useMemo(() => {
     .map(([tag, count]) => ({ tag, count }))
     .sort((a, b) => b.count - a.count)
 }, [scripts])
-
-const selectedScript = useMemo(() => (
-  scripts.find((script) => script.id === selectedScriptId) || null
-), [scripts, selectedScriptId])
 
 const scriptSpark = useMemo(() => (
   scripts.slice(-12).map((script) => script.executions || 0)
@@ -520,8 +493,7 @@ const totalExecutions = useMemo(() => (
 })
 
  toast.success(t("toastUpdateSuccess"))
- setIsDetailDialogOpen(false)
- setDetailDialogMode("view")
+ setIsEditDialogOpen(false)
  setEditingScriptId(null)
 
  // 重置表单
@@ -541,11 +513,10 @@ const totalExecutions = useMemo(() => (
  }
  }
 
- const handleCloseDetailDialog = (open: boolean) => {
- setIsDetailDialogOpen(open)
+ const handleCloseEditDialog = (open: boolean) => {
+ setIsEditDialogOpen(open)
  if (!open) {
  setEditingScriptId(null)
- setDetailDialogMode("view")
  // 重置表单
  setEditScript({
  name: "",
@@ -605,13 +576,11 @@ const totalExecutions = useMemo(() => (
          setPage(1)
        }}
        emptyMessage={t("tableEmpty")}
+       enableRowSelection={true}
+       getRowId={(script) => script.id}
        className="min-h-[520px] overflow-hidden xl:min-h-0"
        scrollContainerClassName="min-h-[360px]"
        density="compact"
-       onRowClick={(script) => handleOpenDetail(script.id)}
-       getRowClassName={(script) => (
-         selectedScriptId === script.id ? "bg-emerald-500/5 hover:bg-emerald-500/10" : undefined
-       )}
        toolbar={(table) => (
          <DataTableToolbar
            table={table}
@@ -654,62 +623,21 @@ const totalExecutions = useMemo(() => (
    </section>
  </div>
 
- {/* 脚本详情/编辑合并弹窗 */}
- <Dialog open={isDetailDialogOpen} onOpenChange={handleCloseDetailDialog}>
+ {/* 编辑脚本弹窗 */}
+ <Dialog open={isEditDialogOpen} onOpenChange={handleCloseEditDialog}>
  <DialogContent className="flex max-h-[90vh] flex-col sm:max-w-3xl">
  <DialogHeader className="shrink-0 pr-8">
- <div className="flex flex-wrap items-center gap-2">
- <DialogTitle>{detailDialogMode === "edit" ? t("editDialogTitle") : "脚本详情"}</DialogTitle>
- {selectedScript && <InlineStatusBadge label={selectedScript.language || "bash"} tone="blue" />}
- </div>
- <DialogDescription>
- {detailDialogMode === "edit" ? t("editDialogDescription") : "查看脚本标签、内容、执行次数和最近更新时间。"}
- </DialogDescription>
+ <DialogTitle>{t("editDialogTitle")}</DialogTitle>
+ <DialogDescription>{t("editDialogDescription")}</DialogDescription>
  </DialogHeader>
 
- {selectedScript && detailDialogMode === "view" ? (
- <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-1 py-2 scrollbar-custom">
- <div>
- <h3 className="text-base font-semibold">{selectedScript.name}</h3>
- <p className="mt-1 text-sm text-muted-foreground">{selectedScript.description || "暂无描述"}</p>
- </div>
- <div className="grid gap-2 text-sm sm:grid-cols-2 lg:grid-cols-4">
- <div className="rounded-md bg-muted/50 p-3">
- <div className="text-xs text-muted-foreground">执行次数</div>
- <div className="mt-1 font-semibold tabular-nums">{selectedScript.executions || 0}</div>
- </div>
- <div className="rounded-md bg-muted/50 p-3">
- <div className="text-xs text-muted-foreground">作者</div>
- <div className="mt-1 truncate font-semibold">{selectedScript.author || "-"}</div>
- </div>
- <div className="rounded-md bg-muted/50 p-3">
- <div className="text-xs text-muted-foreground">创建时间</div>
- <div className="mt-1 truncate font-semibold tabular-nums">{formatScriptTime(selectedScript.created_at)}</div>
- </div>
- <div className="rounded-md bg-muted/50 p-3">
- <div className="text-xs text-muted-foreground">更新时间</div>
- <div className="mt-1 truncate font-semibold tabular-nums">{formatScriptTime(selectedScript.updated_at)}</div>
- </div>
- </div>
- <div className="flex flex-wrap gap-1.5">
- {(selectedScript.tags || []).length === 0 ? (
- <InlineStatusBadge label="未分类" tone="slate" />
- ) : selectedScript.tags.map((tag) => (
- <InlineStatusBadge key={tag} label={tag} tone="violet" />
- ))}
- </div>
- <pre className="max-h-[45vh] overflow-auto whitespace-pre-wrap break-words rounded-md border bg-muted/40 p-3 font-mono text-xs leading-relaxed text-muted-foreground">{selectedScript.content}</pre>
- </div>
- ) : null}
-
- {selectedScript && detailDialogMode === "edit" ? (
  <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-1 py-2 scrollbar-custom">
  <div className="space-y-2">
- <Label htmlFor="detail-edit-script-name">
+ <Label htmlFor="edit-script-name">
  {t("fieldNameLabel")} <span className="text-destructive">*</span>
  </Label>
  <Input
- id="detail-edit-script-name"
+ id="edit-script-name"
  placeholder={t("fieldNamePlaceholder")}
  value={editScript.name}
  onChange={(e) => setEditScript({ ...editScript, name: e.target.value })}
@@ -717,9 +645,9 @@ const totalExecutions = useMemo(() => (
  </div>
 
  <div className="space-y-2">
- <Label htmlFor="detail-edit-script-description">{t("fieldDescriptionLabel")}</Label>
+ <Label htmlFor="edit-script-description">{t("fieldDescriptionLabel")}</Label>
  <Input
- id="detail-edit-script-description"
+ id="edit-script-description"
  placeholder={t("fieldDescriptionPlaceholder")}
  value={editScript.description}
  onChange={(e) => setEditScript({ ...editScript, description: e.target.value })}
@@ -727,11 +655,11 @@ const totalExecutions = useMemo(() => (
  </div>
 
  <div className="space-y-2">
- <Label htmlFor="detail-edit-script-content">
+ <Label htmlFor="edit-script-content">
  {t("fieldContentLabel")} <span className="text-destructive">*</span>
  </Label>
  <Textarea
- id="detail-edit-script-content"
+ id="edit-script-content"
  placeholder="#!/bin/bash&#10;&#10;echo 'Hello World'"
  className="min-h-[240px] font-mono"
  value={editScript.content}
@@ -743,9 +671,9 @@ const totalExecutions = useMemo(() => (
  </div>
 
  <div className="space-y-2">
- <Label htmlFor="detail-edit-script-tags">{t("fieldTagsLabel")}</Label>
+ <Label htmlFor="edit-script-tags">{t("fieldTagsLabel")}</Label>
  <CreatableCombobox
- id="detail-edit-script-tags"
+ id="edit-script-tags"
  value={editTagInput}
  onValueChange={setEditTagInput}
  options={availableEditTags.map((tag) => ({ value: tag, label: tag }))}
@@ -771,46 +699,11 @@ const totalExecutions = useMemo(() => (
  )}
  </div>
  </div>
- ) : null}
 
- {!selectedScript ? (
- <div className="py-10 text-center text-sm text-muted-foreground">{t("tableEmpty")}</div>
- ) : null}
-
- {selectedScript && detailDialogMode === "view" ? (
  <DialogFooter className="shrink-0">
  <Button
  variant="outline"
- onClick={() => handleEdit(selectedScript.id)}
- >
- 编辑
- </Button>
- <Button
- onClick={() => {
- setIsDetailDialogOpen(false)
- handleExecute(selectedScript.id)
- }}
- >
- <Play className="mr-2 h-4 w-4" />
- 执行
- </Button>
- </DialogFooter>
- ) : null}
- {selectedScript && detailDialogMode === "edit" ? (
- <DialogFooter className="shrink-0">
- <Button
- variant="outline"
- onClick={() => {
- setEditScript({
- name: selectedScript.name,
- description: selectedScript.description || "",
- content: selectedScript.content,
- tags: [...selectedScript.tags],
- })
- setEditTagInput("")
- setEditingScriptId(null)
- setDetailDialogMode("view")
- }}
+ onClick={() => handleCloseEditDialog(false)}
  >
  {t("dialogCancel")}
  </Button>
@@ -818,7 +711,6 @@ const totalExecutions = useMemo(() => (
  {t("editDialogSave")}
  </Button>
  </DialogFooter>
- ) : null}
  </DialogContent>
  </Dialog>
 

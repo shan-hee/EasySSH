@@ -591,6 +591,8 @@ export default function AutomationSchedulesPage() {
        columns={columns}
        loading={loading || refreshing}
        emptyMessage={t("emptyAll")}
+       enableRowSelection={true}
+       getRowId={(task) => task.id}
        className="min-h-0 overflow-hidden"
        scrollContainerClassName="min-h-[360px]"
        density="compact"

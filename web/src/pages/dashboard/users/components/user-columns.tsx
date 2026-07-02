@@ -228,14 +228,13 @@ export function useUserColumns(options?: UserColumnsOptions): ColumnDef<UserDeta
       size: 72,
       minSize: 64,
       maxSize: 80,
-      meta: meta({ align: "right" }),
       header: () => t("colActions"),
       cell: ({ row }) => {
         const user = row.original
         const locked = isUserLocked(user)
 
         return (
-          <div className="flex w-full items-center justify-end">
+          <div className="flex w-full items-center">
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" size="sm" className="h-8 w-8 p-0">

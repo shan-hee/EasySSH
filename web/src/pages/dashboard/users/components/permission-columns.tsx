@@ -307,13 +307,12 @@ export function usePermissionColumns(options?: PermissionColumnsOptions): Column
       size: 72,
       minSize: 64,
       maxSize: 80,
-      meta: meta({ align: "right" }),
       header: () => t("colActions"),
       cell: ({ row }) => {
         const permission = row.original
 
         return (
-          <div className="flex w-full items-center justify-end">
+          <div className="flex w-full items-center">
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
