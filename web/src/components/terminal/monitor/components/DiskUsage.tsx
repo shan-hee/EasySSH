@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next"
 import ReactECharts from "echarts-for-react";
 import type { EChartsOption } from "echarts";
 import type { DiskData } from '../types/metrics';
+import { formatBytes } from "@/lib/format-utils";
 import {
   ChartConfig,
   ChartContainer,
@@ -19,6 +20,11 @@ interface DiskUsageProps {
 
 const DISK_COLOR_VARS = MONITOR_COLORS.disk.usedPalette;
 
+function formatCompactBytes(bytes: number): string {
+  const formatted = formatBytes(Math.max(0, bytes));
+  return `${formatted.value}${formatted.unit}`;
+}
+
 /**
  * 磁盘使用组件
  * 使用 ECharts 堆叠条形图显示磁盘使用情况
@@ -31,15 +37,23 @@ export const DiskUsage: React.FC<DiskUsageProps> = React.memo(({ data, totalPerc
     () =>
       data.map((disk) => ({
         name: disk.name,
-        used: disk.value,
-        free: disk.total - disk.value,
-        total: disk.total,
+        used: disk.usedBytes,
+        free: Math.max(0, disk.totalBytes - disk.usedBytes),
+        total: disk.totalBytes,
         percent: disk.percent,
-        unit: disk.unit,
-        totalUnit: disk.totalUnit,
+        usedLabel: `${disk.value} ${disk.unit}`,
+        freeLabel: formatBytes(Math.max(0, disk.totalBytes - disk.usedBytes)).formatted,
+        totalLabel: `${disk.total} ${disk.totalUnit}`,
       })),
     [data]
   );
+  const axis = React.useMemo(() => {
+    const totals = chartData
+      .map((item) => Number.isFinite(item.total) ? item.total : 0);
+    const maxTotal = totals.length > 0 ? Math.max(...totals) : undefined;
+
+    return { maxTotal };
+  }, [chartData]);
 
   const colorConfig = React.useMemo<ChartConfig>(() => {
     const config: ChartConfig = {};
@@ -68,8 +82,8 @@ export const DiskUsage: React.FC<DiskUsageProps> = React.memo(({ data, totalPerc
 
   const option: EChartsOption = React.useMemo(() => {
     const names = chartData.map((item) => item.name);
-    // 使用后端传来的整机总容量作为 X 轴最大值, 精确显示总数
-    const maxTotal = chartData.length > 0 ? chartData[0].total : undefined;
+    // 使用当前数据中的最大容量作为 X 轴上限，兼容汇总盘与多挂载点两种数据形态
+    const maxTotal = axis.maxTotal;
 
     return {
       animation: true,
@@ -106,9 +120,10 @@ export const DiskUsage: React.FC<DiskUsageProps> = React.memo(({ data, totalPerc
               used?: number
               value?: number
               free?: number
-              unit?: string
               total?: number
-              totalUnit?: string
+              usedLabel?: string
+              freeLabel?: string
+              totalLabel?: string
               usedColor?: string
               freeColor?: string
               percent?: number
@@ -119,9 +134,7 @@ export const DiskUsage: React.FC<DiskUsageProps> = React.memo(({ data, totalPerc
           const data = base.data || {};
           const used = data.used ?? data.value ?? 0;
           const free = data.free ?? 0;
-          const unit = data.unit || "";
           const total = data.total ?? (used + free);
-          const totalUnit = data.totalUnit || unit;
           const usedColor =
             data.usedColor ??
             base.color ??
@@ -130,10 +143,9 @@ export const DiskUsage: React.FC<DiskUsageProps> = React.memo(({ data, totalPerc
             data.freeColor ??
             freeSegmentColor;
           const percent = data.percent ?? 0;
-          const freeDisplay =
-            typeof free === "number" && Number.isFinite(free)
-              ? free.toFixed(1)
-              : free;
+          const usedDisplay = data.usedLabel || formatBytes(used).formatted;
+          const freeDisplay = data.freeLabel || formatBytes(free).formatted;
+          const totalDisplay = data.totalLabel || formatBytes(total).formatted;
 
           const percentColor =
             percent > 90
@@ -144,19 +156,19 @@ export const DiskUsage: React.FC<DiskUsageProps> = React.memo(({ data, totalPerc
 
           return `
             <div style="font-size:11px;color:${chartTheme.tooltipText};">
-              <div style="margin-bottom:4px;">${t("diskTooltipTotal")}: ${total} ${totalUnit}</div>
+              <div style="margin-bottom:4px;">${t("diskTooltipTotal")}: ${totalDisplay}</div>
               <div style="margin-bottom:2px;display:flex;align-items:center;gap:6px;">
                 <span style="display:inline-block;width:8px;height:8px;border-radius:9999px;background:${usedColor};"></span>
                 <span>${t("diskTooltipUsed")}:</span>
                 <span style="font-family:var(--font-jetbrains-mono),ui-monospace;font-weight:600;">
-                  ${used} ${unit}
+                  ${usedDisplay}
                 </span>
               </div>
               <div style="margin-bottom:2px;display:flex;align-items:center;gap:6px;">
                 <span style="display:inline-block;width:8px;height:8px;border-radius:9999px;background:${freeColor};"></span>
                 <span>${t("diskTooltipFree")}:</span>
                 <span style="font-family:var(--font-jetbrains-mono),ui-monospace;font-weight:600;">
-                  ${freeDisplay} ${unit}
+                  ${freeDisplay}
                 </span>
               </div>
               <div style="padding-left:14px;font-weight:600;color:${percentColor};">
@@ -178,13 +190,12 @@ export const DiskUsage: React.FC<DiskUsageProps> = React.memo(({ data, totalPerc
           showMaxLabel: true,
           showMinLabel: true,
           formatter: (value: number) => {
-            const unit = chartData[0]?.unit || "GB";
             // 对于最大值，显示2位小数
             if (maxTotal && Math.abs(value - maxTotal) < 0.01) {
-              return `${maxTotal.toFixed(2)}${unit}`;
+              return formatCompactBytes(maxTotal);
             }
             // 其他刻度显示整数
-            return `${Math.round(value)}${unit}`;
+            return formatCompactBytes(value);
           },
         },
         splitLine: {
@@ -251,7 +262,7 @@ export const DiskUsage: React.FC<DiskUsageProps> = React.memo(({ data, totalPerc
         },
       ],
     };
-  }, [chartData, diskColors, t, chartTheme, freeSegmentColor]);
+  }, [axis, chartData, diskColors, t, chartTheme, freeSegmentColor]);
 
   return (
     <div className="space-y-1">

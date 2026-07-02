@@ -147,6 +147,8 @@ export const MonitorPanel: React.FC<MonitorPanelProps> = ({
       },
       disks: displayMetrics.disks.map(disk => ({
         name: disk.mountPoint,
+        usedBytes: disk.usedBytes,
+        totalBytes: disk.totalBytes,
         ...formatBytes(disk.usedBytes),
         total: formatBytes(disk.totalBytes).value,
         totalUnit: formatBytes(disk.totalBytes).unit,

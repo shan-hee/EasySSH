@@ -105,7 +105,7 @@ function calculateNetworkRate(snapshot: DesktopMonitorSnapshot, previous?: Deskt
     }
   }
 
-  const elapsedSeconds = Math.max(1, toNumber(snapshot.timestamp) - toNumber(previous.timestamp))
+  const elapsedSeconds = Math.max(1, getSnapshotElapsedSeconds(snapshot, previous))
   const recvDelta = toNumber(snapshot.network?.bytesRecvTotal) - toNumber(previous.network?.bytesRecvTotal)
   const sentDelta = toNumber(snapshot.network?.bytesSentTotal) - toNumber(previous.network?.bytesSentTotal)
 
@@ -113,6 +113,16 @@ function calculateNetworkRate(snapshot: DesktopMonitorSnapshot, previous?: Deskt
     bytesRecvPerSec: Math.max(0, Math.round(recvDelta / elapsedSeconds)),
     bytesSentPerSec: Math.max(0, Math.round(sentDelta / elapsedSeconds)),
   }
+}
+
+function getSnapshotElapsedSeconds(snapshot: DesktopMonitorSnapshot, previous: DesktopMonitorSnapshot) {
+  const currentCollectedAt = Date.parse(String(snapshot.collectedAt || ""))
+  const previousCollectedAt = Date.parse(String(previous.collectedAt || ""))
+  if (Number.isFinite(currentCollectedAt) && Number.isFinite(previousCollectedAt)) {
+    const elapsedMs = currentCollectedAt - previousCollectedAt
+    if (elapsedMs > 0) return elapsedMs / 1000
+  }
+  return toNumber(snapshot.timestamp) - toNumber(previous.timestamp)
 }
 
 function clampPercent(value: number) {

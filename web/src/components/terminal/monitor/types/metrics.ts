@@ -60,6 +60,8 @@ export interface NetworkData {
  */
 export interface DiskData {
   name: string;        // 挂载点名称 "/" 或 "/home"
+  usedBytes: number;   // 已使用字节数
+  totalBytes: number;  // 总容量字节数
   value: number;       // 数值（根据 unit 决定单位）
   unit: string;        // 单位 "B" | "KB" | "MB" | "GB"
   formatted: string;   // 格式化字符串 "45.2 GB"

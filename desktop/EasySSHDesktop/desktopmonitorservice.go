@@ -3,95 +3,11 @@ package main
 import (
 	"errors"
 	"fmt"
-	"strconv"
 	"strings"
 	"time"
+
+	"github.com/easyssh/shared/monitoring"
 )
-
-const desktopMonitorCollectCommand = `
-set +e
-
-if [ -r /etc/os-release ]; then
-  OS_NAME=$(awk -F= '/^PRETTY_NAME=/{gsub(/^"|"$/, "", $2); print $2; exit}' /etc/os-release)
-fi
-[ -n "$OS_NAME" ] || OS_NAME=$(uname -s 2>/dev/null)
-HOSTNAME_VALUE=$(hostname 2>/dev/null || uname -n 2>/dev/null)
-ARCH_VALUE=$(uname -m 2>/dev/null)
-CPU_MODEL=$(awk -F': ' '/model name|Hardware|Processor/{print $2; exit}' /proc/cpuinfo 2>/dev/null)
-[ -n "$CPU_MODEL" ] || CPU_MODEL=$(uname -p 2>/dev/null)
-CPU_CORES=$(getconf _NPROCESSORS_ONLN 2>/dev/null || nproc 2>/dev/null || echo 0)
-LOAD_AVG=$(awk '{print $1" "$2" "$3}' /proc/loadavg 2>/dev/null)
-UPTIME_SECONDS=$(awk '{printf "%d", $1}' /proc/uptime 2>/dev/null)
-
-CPU_LINE=$(awk 'NR==1 {idle=$5+$6; total=0; for (i=2; i<=NF; i++) total += $i; printf "%s %s", idle, total}' /proc/stat 2>/dev/null)
-CPU_IDLE=$(printf '%s' "$CPU_LINE" | awk '{print $1}')
-CPU_TOTAL=$(printf '%s' "$CPU_LINE" | awk '{print $2}')
-
-MEM_LINE=$(awk '
-  /MemTotal:/ {total=$2*1024}
-  /MemAvailable:/ {available=$2*1024}
-  /MemFree:/ {free=$2*1024}
-  /SwapTotal:/ {swapTotal=$2*1024}
-  /SwapFree:/ {swapFree=$2*1024}
-  END {
-    if (!available) available=free
-    used=total-available
-    swapUsed=swapTotal-swapFree
-    printf "%s %s %s %s", used, total, swapUsed, swapTotal
-  }
-' /proc/meminfo 2>/dev/null)
-RAM_USED=$(printf '%s' "$MEM_LINE" | awk '{print $1}')
-RAM_TOTAL=$(printf '%s' "$MEM_LINE" | awk '{print $2}')
-SWAP_USED=$(printf '%s' "$MEM_LINE" | awk '{print $3}')
-SWAP_TOTAL=$(printf '%s' "$MEM_LINE" | awk '{print $4}')
-
-NET_LINE=$(awk '
-  NR>2 {
-    gsub(":", "", $1)
-    if ($1 != "lo") {
-      rx += $2
-      tx += $10
-    }
-  }
-  END {printf "%s %s", rx, tx}
-' /proc/net/dev 2>/dev/null)
-NET_RX=$(printf '%s' "$NET_LINE" | awk '{print $1}')
-NET_TX=$(printf '%s' "$NET_LINE" | awk '{print $2}')
-
-DOCKER_INSTALLED=0
-DOCKER_RUNNING=0
-DOCKER_TOTAL=0
-if command -v docker >/dev/null 2>&1; then
-  DOCKER_INSTALLED=1
-  DOCKER_RUNNING=$(docker ps -q 2>/dev/null | wc -l | awk '{print $1}')
-  DOCKER_TOTAL=$(docker ps -aq 2>/dev/null | wc -l | awk '{print $1}')
-fi
-
-printf 'OS=%s\n' "$OS_NAME"
-printf 'HOSTNAME=%s\n' "$HOSTNAME_VALUE"
-printf 'ARCH=%s\n' "$ARCH_VALUE"
-printf 'CPU_MODEL=%s\n' "$CPU_MODEL"
-printf 'CPU_CORES=%s\n' "$CPU_CORES"
-printf 'LOAD_AVG=%s\n' "$LOAD_AVG"
-printf 'UPTIME_SECONDS=%s\n' "$UPTIME_SECONDS"
-printf 'CPU_IDLE=%s\n' "$CPU_IDLE"
-printf 'CPU_TOTAL=%s\n' "$CPU_TOTAL"
-printf 'RAM_USED=%s\n' "$RAM_USED"
-printf 'RAM_TOTAL=%s\n' "$RAM_TOTAL"
-printf 'SWAP_USED=%s\n' "$SWAP_USED"
-printf 'SWAP_TOTAL=%s\n' "$SWAP_TOTAL"
-printf 'NET_RX=%s\n' "$NET_RX"
-printf 'NET_TX=%s\n' "$NET_TX"
-printf 'DOCKER_INSTALLED=%s\n' "$DOCKER_INSTALLED"
-printf 'DOCKER_RUNNING=%s\n' "$DOCKER_RUNNING"
-printf 'DOCKER_TOTAL=%s\n' "$DOCKER_TOTAL"
-
-df -P -k 2>/dev/null | awk '
-  NR>1 && $2 > 0 && $1 !~ /^(tmpfs|devtmpfs|squashfs)$/ {
-    printf "DISK|%s|%s|%s\n", $6, $3 * 1024, $2 * 1024
-  }
-'
-`
 
 type DesktopMonitorCollectInput struct {
 	ServerID  string `json:"serverId"`
@@ -149,6 +65,7 @@ type DesktopMonitorSnapshot struct {
 	SSHLatency  int64                     `json:"sshLatencyMs"`
 	Timestamp   int64                     `json:"timestamp"`
 	CollectedAt string                    `json:"collectedAt"`
+	collectedAt time.Time
 }
 
 type DesktopMonitorService struct {
@@ -173,9 +90,13 @@ func (s *DesktopMonitorService) Collect(input DesktopMonitorCollectInput) (Deskt
 		timeoutMs = 30000
 	}
 
+	command := monitoring.BuildMetricsScript(monitoring.MetricsScriptOptions{
+		IncludeStaticInfo:  true,
+		IncludeDockerStats: true,
+	})
 	result, err := s.serverService.ExecuteCommand(DesktopServerCommandInput{
 		ServerID:  serverID,
-		Command:   desktopMonitorCollectCommand,
+		Command:   command,
 		TimeoutMs: timeoutMs,
 	})
 	if err != nil {
@@ -198,6 +119,7 @@ func (s *DesktopMonitorService) Collect(input DesktopMonitorCollectInput) (Deskt
 	snapshot.SSHLatency = result.DurationMs
 	snapshot.Timestamp = completedAt.Unix()
 	snapshot.CollectedAt = completedAt.Format(time.RFC3339Nano)
+	snapshot.collectedAt = completedAt
 	if snapshot.Disks == nil {
 		snapshot.Disks = []DesktopMonitorDiskInfo{}
 	}
@@ -209,108 +131,47 @@ func (s *DesktopMonitorService) Collect(input DesktopMonitorCollectInput) (Deskt
 }
 
 func parseDesktopMonitorSnapshot(output string) (DesktopMonitorSnapshot, error) {
-	values := map[string]string{}
-	disks := []DesktopMonitorDiskInfo{}
+	metrics := monitoring.ParseMetricsOutput(output)
 
-	for _, line := range strings.Split(output, "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-		if strings.HasPrefix(line, "DISK|") {
-			disk, ok := parseDesktopMonitorDisk(line)
-			if ok {
-				disks = append(disks, disk)
-			}
-			continue
-		}
-
-		key, value, ok := strings.Cut(line, "=")
-		if !ok {
-			continue
-		}
-		values[strings.TrimSpace(key)] = strings.TrimSpace(value)
+	disks := make([]DesktopMonitorDiskInfo, 0, len(metrics.Disks))
+	for _, disk := range metrics.Disks {
+		disks = append(disks, DesktopMonitorDiskInfo{
+			MountPoint: disk.MountPoint,
+			UsedBytes:  disk.UsedBytes,
+			TotalBytes: disk.TotalBytes,
+		})
 	}
 
-	snapshot := DesktopMonitorSnapshot{
+	return DesktopMonitorSnapshot{
 		SystemInfo: DesktopMonitorSystemInfo{
-			OS:            values["OS"],
-			Hostname:      values["HOSTNAME"],
-			CPUModel:      values["CPU_MODEL"],
-			Arch:          values["ARCH"],
-			LoadAvg:       values["LOAD_AVG"],
-			UptimeSeconds: parseDesktopMonitorInt64(values["UPTIME_SECONDS"]),
-			CPUCores:      parseDesktopMonitorInt(values["CPU_CORES"]),
+			OS:            metrics.SystemInfo.OS,
+			Hostname:      metrics.SystemInfo.Hostname,
+			CPUModel:      metrics.SystemInfo.CPUModel,
+			Arch:          metrics.SystemInfo.Arch,
+			LoadAvg:       metrics.SystemInfo.LoadAvg,
+			UptimeSeconds: int64(metrics.SystemInfo.UptimeSeconds),
+			CPUCores:      int(metrics.SystemInfo.CPUCores),
 		},
 		CPU: DesktopMonitorCPUInfo{
-			IdleTicks:  parseDesktopMonitorUint64(values["CPU_IDLE"]),
-			TotalTicks: parseDesktopMonitorUint64(values["CPU_TOTAL"]),
-			CoreCount:  parseDesktopMonitorInt(values["CPU_CORES"]),
+			IdleTicks:  metrics.CPU.IdleTotal(),
+			TotalTicks: metrics.CPU.Total(),
+			CoreCount:  int(metrics.SystemInfo.CPUCores),
 		},
 		Memory: DesktopMonitorMemoryInfo{
-			RAMUsedBytes:   parseDesktopMonitorUint64(values["RAM_USED"]),
-			RAMTotalBytes:  parseDesktopMonitorUint64(values["RAM_TOTAL"]),
-			SwapUsedBytes:  parseDesktopMonitorUint64(values["SWAP_USED"]),
-			SwapTotalBytes: parseDesktopMonitorUint64(values["SWAP_TOTAL"]),
+			RAMUsedBytes:   metrics.Memory.RAMUsedBytes,
+			RAMTotalBytes:  metrics.Memory.RAMTotalBytes,
+			SwapUsedBytes:  metrics.Memory.SwapUsedBytes,
+			SwapTotalBytes: metrics.Memory.SwapTotalBytes,
 		},
 		Network: DesktopMonitorNetworkInfo{
-			BytesRecvTotal: parseDesktopMonitorUint64(values["NET_RX"]),
-			BytesSentTotal: parseDesktopMonitorUint64(values["NET_TX"]),
+			BytesRecvTotal: metrics.Network.BytesRecvTotal,
+			BytesSentTotal: metrics.Network.BytesSentTotal,
 		},
 		Disks: disks,
 		Docker: DesktopMonitorDockerInfo{
-			ContainersRunning: parseDesktopMonitorInt(values["DOCKER_RUNNING"]),
-			ContainersTotal:   parseDesktopMonitorInt(values["DOCKER_TOTAL"]),
-			DockerInstalled:   parseDesktopMonitorBool(values["DOCKER_INSTALLED"]),
+			ContainersRunning: int(metrics.Docker.ContainersRunning),
+			ContainersTotal:   int(metrics.Docker.ContainersTotal),
+			DockerInstalled:   metrics.Docker.DockerInstalled,
 		},
-	}
-
-	return snapshot, nil
-}
-
-func parseDesktopMonitorDisk(line string) (DesktopMonitorDiskInfo, bool) {
-	parts := strings.Split(line, "|")
-	if len(parts) != 4 {
-		return DesktopMonitorDiskInfo{}, false
-	}
-
-	mountPoint := strings.TrimSpace(parts[1])
-	if mountPoint == "" {
-		return DesktopMonitorDiskInfo{}, false
-	}
-
-	return DesktopMonitorDiskInfo{
-		MountPoint: mountPoint,
-		UsedBytes:  parseDesktopMonitorUint64(parts[2]),
-		TotalBytes: parseDesktopMonitorUint64(parts[3]),
-	}, true
-}
-
-func parseDesktopMonitorUint64(value string) uint64 {
-	parsed, err := strconv.ParseUint(strings.TrimSpace(value), 10, 64)
-	if err != nil {
-		return 0
-	}
-	return parsed
-}
-
-func parseDesktopMonitorInt64(value string) int64 {
-	parsed, err := strconv.ParseInt(strings.TrimSpace(value), 10, 64)
-	if err != nil {
-		return 0
-	}
-	return parsed
-}
-
-func parseDesktopMonitorInt(value string) int {
-	parsed := parseDesktopMonitorInt64(value)
-	if parsed < 0 {
-		return 0
-	}
-	return int(parsed)
-}
-
-func parseDesktopMonitorBool(value string) bool {
-	value = strings.TrimSpace(strings.ToLower(value))
-	return value == "1" || value == "true" || value == "yes"
+	}, nil
 }

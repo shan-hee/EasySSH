@@ -1099,7 +1099,10 @@ func calculateDesktopGatewayNetworkRate(snapshot DesktopMonitorSnapshot, previou
 		return desktopGatewayNetworkRate{}
 	}
 
-	elapsedSeconds := snapshot.Timestamp - previous.Timestamp
+	elapsedSeconds := snapshot.collectedAt.Sub(previous.collectedAt).Seconds()
+	if elapsedSeconds <= 0 {
+		elapsedSeconds = float64(snapshot.Timestamp - previous.Timestamp)
+	}
 	if elapsedSeconds <= 0 {
 		elapsedSeconds = 1
 	}
@@ -1107,8 +1110,8 @@ func calculateDesktopGatewayNetworkRate(snapshot DesktopMonitorSnapshot, previou
 	recvDelta := safeUint64Delta(snapshot.Network.BytesRecvTotal, previous.Network.BytesRecvTotal)
 	sentDelta := safeUint64Delta(snapshot.Network.BytesSentTotal, previous.Network.BytesSentTotal)
 	return desktopGatewayNetworkRate{
-		bytesRecvPerSec: recvDelta / uint64(elapsedSeconds),
-		bytesSentPerSec: sentDelta / uint64(elapsedSeconds),
+		bytesRecvPerSec: uint64(float64(recvDelta) / elapsedSeconds),
+		bytesSentPerSec: uint64(float64(sentDelta) / elapsedSeconds),
 	}
 }
 
