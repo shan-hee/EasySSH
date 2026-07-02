@@ -8,7 +8,7 @@
 
 提供直观的 Web 界面进行远程服务器管理，支持终端模拟、文件传输、系统监控等功能
 
-[![Version](https://img.shields.io/badge/version-1.0.17-blue)](https://github.com/shan-hee/EasySSH/releases)
+[![Version](https://img.shields.io/badge/version-1.0.18-blue)](https://github.com/shan-hee/EasySSH/releases)
 [![Go](https://img.shields.io/badge/Go-1.25-00ADD8?logo=go)](https://go.dev/)
 [![Vite](https://img.shields.io/badge/Vite-7-646CFF?logo=vite)](https://vite.dev/)
 [![React](https://img.shields.io/badge/React-19.1-61DAFB?logo=react)](https://react.dev/)
