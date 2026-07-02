@@ -190,8 +190,8 @@ body {
 }
 
 .easyssh-desktop-about-dialog {
-  width: min(520px, calc(100vw - 32px));
-  max-width: min(520px, calc(100vw - 32px));
+  width: min(560px, calc(100vw - 32px));
+  max-width: min(560px, calc(100vw - 32px));
 }
 
 .easyssh-desktop-about-row {
@@ -209,10 +209,11 @@ body {
   border-bottom: 0;
 }
 
-.easyssh-desktop-update-dialog {
-  width: min(540px, calc(100vw - 32px));
-  max-width: min(540px, calc(100vw - 32px));
-  --wails-draggable: no-drag;
+.easyssh-desktop-update-panel {
+  display: grid;
+  gap: 12px;
+  border-top: 1px solid color-mix(in oklab, var(--border) 65%, transparent);
+  padding-top: 14px;
 }
 
 .easyssh-desktop-update-version-grid {

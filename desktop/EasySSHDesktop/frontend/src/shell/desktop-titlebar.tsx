@@ -25,7 +25,6 @@ import {
   Info,
   Menu,
   Minus,
-  RefreshCw,
   Square,
   X,
   toast,
@@ -34,7 +33,7 @@ import type { Locale } from "@/i18n"
 import { DesktopService } from "../../bindings/github.com/easyssh/easyssh-desktop"
 import type { DesktopRuntimeBindingInfo } from "../adapters/desktop-runtime"
 import { DesktopHeaderActions } from "./desktop-header-actions"
-import { DesktopUpdateDialog } from "./desktop-update-dialog"
+import { DesktopUpdatePanel } from "./desktop-update-dialog"
 import { useTranslation } from "react-i18next"
 
 export type DesktopView = "terminal" | "ai" | "scripts" | "activity-logs" | "backup-restore"
@@ -53,12 +52,10 @@ function DesktopAboutDialog({
   open,
   onOpenChange,
   runtime,
-  onOpenUpdates,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
   runtime: DesktopRuntimeBindingInfo | null
-  onOpenUpdates: () => void
 }) {
   const { t } = useTranslation("desktop")
   const rows = [
@@ -88,11 +85,9 @@ function DesktopAboutDialog({
           ))}
         </div>
 
-        <div className="flex justify-end gap-2">
-          <Button variant="outline" size="sm" onClick={onOpenUpdates}>
-            <RefreshCw className="h-4 w-4" />
-            {t("updateCheckNowLabel")}
-          </Button>
+        <DesktopUpdatePanel autoCheck={false} onRequestOpen={() => onOpenChange(true)} />
+
+        <div className="flex justify-end">
           <Button variant="outline" size="sm" onClick={() => void Browser.OpenURL(githubUrl)}>
             {githubLabel}
           </Button>
@@ -115,13 +110,6 @@ function DesktopSettingsMenu({
 }) {
   const { t } = useTranslation("desktop")
   const [aboutOpen, setAboutOpen] = useState(false)
-  const [updateOpen, setUpdateOpen] = useState(false)
-  const [updateCheckRequest, setUpdateCheckRequest] = useState(0)
-
-  const openUpdateDialog = useCallback(() => {
-    setUpdateOpen(true)
-    setUpdateCheckRequest((value) => value + 1)
-  }, [])
 
   const handleOpenDataDir = useCallback(() => {
     void DesktopService.OpenDataDir().catch((error) => {
@@ -164,10 +152,6 @@ function DesktopSettingsMenu({
             <span>{t("openDataDirLabel")}</span>
           </DropdownMenuItem>
           <DropdownMenuSeparator />
-          <DropdownMenuItem onSelect={openUpdateDialog}>
-            <RefreshCw className="h-4 w-4" />
-            <span>{t("updateCheckNowLabel")}</span>
-          </DropdownMenuItem>
           <DropdownMenuItem onSelect={() => setAboutOpen(true)}>
             <Info className="h-4 w-4" />
             <span>{t("aboutDesktopLabel")}</span>
@@ -179,12 +163,7 @@ function DesktopSettingsMenu({
         open={aboutOpen}
         onOpenChange={setAboutOpen}
         runtime={runtime}
-        onOpenUpdates={() => {
-          setAboutOpen(false)
-          openUpdateDialog()
-        }}
       />
-      <DesktopUpdateDialog open={updateOpen} onOpenChange={setUpdateOpen} checkRequest={updateCheckRequest} />
     </>
   )
 }
