@@ -1824,15 +1824,15 @@ const messages = {
     loading: "Loading",
     refresh: "Refresh",
     toastLoadFailed: "Failed to load activity logs",
-    cleanupButton: "Clean audit logs",
-    cleanupDialogTitle: "Clean audit logs",
+    cleanupButton: "Clean logs",
+    cleanupDialogTitle: "Clean logs",
     cleanupDialogDescription:
-      "Delete old audit-category logs by retention days. Deleted logs cannot be restored.",
+      "Delete old log records by retention days. Deleted logs cannot be restored.",
     cleanupRetentionLabel: "Retention days",
     cleanupRetentionHint:
-      "Audit-category logs older than this value will be deleted. For example, 90 keeps the latest 90 days.",
+      "Log records older than this value will be deleted. For example, 90 keeps the latest 90 days.",
     cleanupWarning:
-      "Activity logs are not cleaned by this action. Make sure you no longer need these audit records.",
+      "This action cleans unified log records, including activity and audit-category logs. Make sure you no longer need these records.",
     cleanupCancel: "Cancel",
     cleanupConfirm: "Clean logs",
     cleanupRunning: "Cleaning...",
@@ -2574,29 +2574,7 @@ const messages = {
     itemNetworkSecurity: "Network security",
     itemAIConfig: "AI config",
     itemNotificationConfig: "Notification config",
-    itemLogs: "Log management",
     itemBackup: "Backup & restore",
-  },
-  settingsManagementLogs: {
-    sectionTitle: "Log management",
-    sectionDescription: "Manage log retention and cleanup policies in one place.",
-    cleanupCardTitle: "Log cleanup",
-    cleanupCardDescription:
-      "Clean old logs by retention days to reduce long-term growth in the unified log table.",
-    cleanupButton: "Clean logs",
-    cleanupDialogTitle: "Clean logs",
-    cleanupDialogDescription:
-      "Logs older than the retention period will be deleted and cannot be restored.",
-    cleanupRetentionLabel: "Retention days",
-    cleanupRetentionHint: "For example, 90 keeps log records from the latest 90 days.",
-    cleanupWarning:
-      "This action cleans the unified log records, including activity and audit-category logs. Confirm these records are no longer needed before continuing.",
-    cleanupCancel: "Cancel",
-    cleanupConfirm: "Clean logs",
-    cleanupRunning: "Cleaning...",
-    cleanupSuccess: "Cleaned {count} logs",
-    cleanupFailed: "Failed to clean logs",
-    cleanupInvalidRetention: "Retention days must be between 1 and 3650",
   },
   settingsSecurityAccess: {
     sectionTitle: "IP access control",

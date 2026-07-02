@@ -47,6 +47,7 @@ export type {
 } from "../../../src/lib/batch-task-types"
 export type {
   AuditLog,
+  AuditLogCleanupResponse,
   AuditLogListParams,
   AuditLogListResponse,
   AuditLogStatisticsResponse,

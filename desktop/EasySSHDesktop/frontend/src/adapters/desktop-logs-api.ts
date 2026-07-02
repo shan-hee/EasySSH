@@ -6,6 +6,7 @@ import {
 } from "../../bindings/github.com/easyssh/easyssh-desktop"
 import type {
   AuditLog,
+  AuditLogCleanupResponse,
   AuditLogListParams,
   AuditLogListResponse,
   AuditLogStatisticsResponse,
@@ -66,11 +67,17 @@ function matchKeyword(log: AuditLog, keyword?: string) {
   ].some((item) => item?.toLowerCase().includes(value))
 }
 
+function includesFilter<T extends string>(filter: T | T[] | undefined, value: T | undefined) {
+  if (!filter) return true
+  if (!value) return false
+  return Array.isArray(filter) ? filter.includes(value) : filter === value
+}
+
 function filterLogs(logs: AuditLog[], params?: AuditLogListParams) {
   return logs.filter((log) => {
-    if (params?.type && log.type !== params.type) return false
-    if (params?.category && log.category !== params.category) return false
-    if (params?.status && log.status !== params.status) return false
+    if (!includesFilter(params?.type, log.type)) return false
+    if (!includesFilter(params?.category, log.category)) return false
+    if (!includesFilter(params?.status, log.status)) return false
     if (params?.source && !log.source?.toLowerCase().includes(params.source.toLowerCase())) return false
     if (params?.ip && !log.ip?.toLowerCase().includes(params.ip.toLowerCase())) return false
     return matchKeyword(log, params?.keyword || params?.q)
@@ -121,18 +128,25 @@ function sortLogs(logs: AuditLog[], params?: AuditLogListParams) {
   })
 }
 
+function normalizeDesktopStatusFilter(status?: string | string[]) {
+  if (Array.isArray(status)) {
+    return status.length === 1 ? normalizeDesktopStatusFilter(status[0]) : undefined
+  }
+  return (
+    status === "success" ||
+    status === "failure" ||
+    status === "warning"
+      ? status as DesktopActivityLogStatus
+      : undefined
+  )
+}
+
 async function fetchDesktopLogs(params?: AuditLogListParams) {
   const request: DesktopActivityLogListParams = {
     page: 1,
     limit: 100,
     action: params?.action,
-    status: (
-      params?.status === "success" ||
-      params?.status === "failure" ||
-      params?.status === "warning"
-        ? params.status
-        : undefined
-    ) as DesktopActivityLogStatus | undefined,
+    status: normalizeDesktopStatusFilter(params?.status),
     startDate: params?.start_date,
     endDate: params?.end_date,
   }
@@ -149,6 +163,12 @@ async function fetchDesktopLogs(params?: AuditLogListParams) {
   } while (currentPage <= totalPages && currentPage <= maxDesktopLogPages)
 
   return allItems.map(mapDesktopLog)
+}
+
+function retentionDaysToBefore(retentionDays: number) {
+  const before = new Date()
+  before.setUTCDate(before.getUTCDate() - retentionDays)
+  return before.toISOString()
 }
 
 export function createDesktopLogsApi() {
@@ -195,6 +215,15 @@ export function createDesktopLogsApi() {
         top_users: logs.length
           ? [{ user_id: desktopUserId, username: desktopUsername, count: logs.length }]
           : [],
+      }
+    },
+
+    async cleanup(retentionDays: number): Promise<AuditLogCleanupResponse> {
+      const deletedCount = await ActivityLogService.Clear(retentionDaysToBefore(retentionDays))
+
+      return {
+        deleted_count: deletedCount,
+        retention_days: retentionDays,
       }
     },
   }
