@@ -39,6 +39,7 @@ import { DesktopBackupRestoreView } from "./shell/desktop-backup-restore-view"
 import { DesktopProviders } from "./shell/desktop-providers"
 import { DesktopScriptsView } from "./shell/desktop-scripts-view"
 import { DesktopTitleBar, type DesktopView } from "./shell/desktop-titlebar"
+import { DesktopUpdateFailureDialog } from "./shell/desktop-update-failure-dialog"
 import { createDesktopTerminalSocket } from "./terminal/desktop-terminal-socket"
 
 const defaultMaxTabs = 50
@@ -651,6 +652,7 @@ function App() {
             {tCommon("loading")}
           </div>
         </main>
+        <DesktopUpdateFailureDialog />
       </DesktopProviders>
     )
   }
@@ -776,6 +778,7 @@ function App() {
             </section>
           </div>
         </main>
+        <DesktopUpdateFailureDialog />
       </SshWorkspace>
     </DesktopProviders>
   )

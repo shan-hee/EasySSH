@@ -1,6 +1,7 @@
 package updater
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -92,11 +93,16 @@ func runHelperSwap(target, newPath string, parentPID int, logPath string, wait p
 	lg.logf("helper start: target=%s new=%s pid=%d", target, newPath, parentPID)
 
 	if _, err := os.Stat(target); err != nil {
-		lg.logf("stat target failed: %v", err)
+		message := fmt.Sprintf("stat target failed: %v", err)
+		lg.logf(message)
+		writeHelperFailureNotice(target, newPath, "", logPath, "stat-target", message, false, lg)
 		return 10
 	}
 	if _, err := os.Stat(newPath); err != nil {
-		lg.logf("stat new failed: %v", err)
+		message := fmt.Sprintf("stat new failed: %v", err)
+		lg.logf(message)
+		relaunched := launchOriginal(target, l, lg)
+		writeHelperFailureNotice(target, newPath, "", logPath, "stat-new", message, relaunched, lg)
 		return 11
 	}
 
@@ -110,7 +116,9 @@ func runHelperSwap(target, newPath string, parentPID int, logPath string, wait p
 	// with two copies of the app racing on shared state.
 	if parentPID > 0 {
 		if err := wait(parentPID, 30*time.Second); err != nil {
-			lg.logf("parent did not exit within timeout: %v — aborting swap", err)
+			message := fmt.Sprintf("parent did not exit within timeout: %v; aborting swap", err)
+			lg.logf(message)
+			writeHelperFailureNotice(target, newPath, "", logPath, "wait-parent", message, true, lg)
 			return 17
 		}
 	}
@@ -120,7 +128,10 @@ func runHelperSwap(target, newPath string, parentPID int, logPath string, wait p
 
 	lg.logf("backing up %s → %s", target, backup)
 	if err := copyAny(target, backup); err != nil {
-		lg.logf("backup failed: %v", err)
+		message := fmt.Sprintf("backup failed: %v", err)
+		lg.logf(message)
+		relaunched := launchOriginal(target, l, lg)
+		writeHelperFailureNotice(target, newPath, backup, logPath, "backup", message, relaunched, lg)
 		return 12
 	}
 
@@ -159,9 +170,14 @@ func runHelperSwap(target, newPath string, parentPID int, logPath string, wait p
 	}
 
 	if !swapped {
-		lg.logf("all swap attempts exhausted — restoring backup")
+		message := "all swap attempts exhausted; restoring backup"
+		lg.logf(message)
+		writeHelperFailureNotice(target, newPath, backup, logPath, "replace", message, true, lg)
 		if err := restoreFromBackup(backup, target, l); err != nil {
+			message = fmt.Sprintf("%s; restore failed: %v", message, err)
 			lg.logf("restore failed: %v", err)
+			relaunched := launchOriginal(target, l, lg)
+			writeHelperFailureNotice(target, newPath, backup, logPath, "replace", message, relaunched, lg)
 			return 14
 		}
 		return 13
@@ -177,9 +193,14 @@ func runHelperSwap(target, newPath string, parentPID int, logPath string, wait p
 	clearHelperEnv()
 
 	if err := l.launch(target); err != nil {
-		lg.logf("launch new failed: %v — restoring backup", err)
+		message := fmt.Sprintf("launch new failed: %v; restoring backup", err)
+		lg.logf(message)
+		writeHelperFailureNotice(target, "", backup, logPath, "launch-new", message, true, lg)
 		if err := restoreFromBackup(backup, target, l); err != nil {
+			message = fmt.Sprintf("%s; restore failed: %v", message, err)
 			lg.logf("restore failed: %v", err)
+			relaunched := launchOriginal(target, l, lg)
+			writeHelperFailureNotice(target, "", backup, logPath, "launch-new", message, relaunched, lg)
 			return 16
 		}
 		return 15
@@ -214,7 +235,84 @@ func restoreFromBackup(backup, target string, l launcher) error {
 	if err := os.Rename(backup, target); err != nil {
 		return fmt.Errorf("restore: %w", err)
 	}
+	clearHelperEnv()
 	return l.launch(target)
+}
+
+type helperFailureNotice struct {
+	FailedAt            string `json:"failed_at"`
+	Stage               string `json:"stage"`
+	Message             string `json:"message"`
+	Target              string `json:"target"`
+	NewPath             string `json:"new_path,omitempty"`
+	Backup              string `json:"backup,omitempty"`
+	LogPath             string `json:"log_path,omitempty"`
+	RelaunchedOriginal  bool   `json:"relaunched_original"`
+	ManualReplaceTarget string `json:"manual_replace_target,omitempty"`
+	ManualReplaceSource string `json:"manual_replace_source,omitempty"`
+}
+
+func launchOriginal(target string, l launcher, lg *helperLog) bool {
+	clearHelperEnv()
+	if err := l.launch(target); err != nil {
+		if lg != nil {
+			lg.logf("launch original failed: %v", err)
+		}
+		return false
+	}
+	return true
+}
+
+func writeHelperFailureNotice(target, newPath, backup, logPath, stage, message string, relaunched bool, lg *helperLog) {
+	if strings.TrimSpace(target) == "" {
+		return
+	}
+	notice := helperFailureNotice{
+		FailedAt:            time.Now().Format(time.RFC3339),
+		Stage:               stage,
+		Message:             message,
+		Target:              target,
+		NewPath:             newPath,
+		Backup:              backup,
+		LogPath:             logPath,
+		RelaunchedOriginal:  relaunched,
+		ManualReplaceTarget: target,
+		ManualReplaceSource: newPath,
+	}
+	path := helperFailureNoticePath(target)
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		if lg != nil {
+			lg.logf("write failure notice mkdir: %v", err)
+		}
+		return
+	}
+	data, err := json.MarshalIndent(notice, "", "  ")
+	if err != nil {
+		if lg != nil {
+			lg.logf("write failure notice marshal: %v", err)
+		}
+		return
+	}
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, append(data, '\n'), 0o600); err != nil {
+		if lg != nil {
+			lg.logf("write failure notice: %v", err)
+		}
+		return
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		_ = os.Remove(path)
+		if renameErr := os.Rename(tmp, path); renameErr != nil {
+			if lg != nil {
+				lg.logf("publish failure notice: %v", renameErr)
+			}
+			_ = os.Remove(tmp)
+		}
+	}
+}
+
+func helperFailureNoticePath(target string) string {
+	return filepath.Join(filepath.Dir(target), "data", "update-failure.json")
 }
 
 // copyAny dispatches between file and directory copies. macOS .app bundles

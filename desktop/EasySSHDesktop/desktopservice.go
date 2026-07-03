@@ -25,6 +25,19 @@ type DesktopRuntimeInfo struct {
 	Capabilities map[DesktopCapability]bool `json:"capabilities"`
 }
 
+type DesktopUpdateFailureNotice struct {
+	FailedAt            string `json:"failed_at"`
+	Stage               string `json:"stage"`
+	Message             string `json:"message"`
+	Target              string `json:"target"`
+	NewPath             string `json:"new_path,omitempty"`
+	Backup              string `json:"backup,omitempty"`
+	LogPath             string `json:"log_path,omitempty"`
+	RelaunchedOriginal  bool   `json:"relaunched_original"`
+	ManualReplaceTarget string `json:"manual_replace_target,omitempty"`
+	ManualReplaceSource string `json:"manual_replace_source,omitempty"`
+}
+
 type DesktopPreferenceSnapshot map[string]string
 
 type DesktopService struct {
@@ -80,6 +93,58 @@ func (s *DesktopService) OpenDataDir() error {
 	}
 
 	return app.Env.OpenFileManager(dataDir, false)
+}
+
+func (s *DesktopService) OpenPathInFileManager(path string) error {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return fmt.Errorf("path is required")
+	}
+
+	app := application.Get()
+	if app == nil || app.Env == nil {
+		return fmt.Errorf("application environment is not ready")
+	}
+
+	info, err := os.Stat(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			parent := filepath.Dir(path)
+			if parent == "." || parent == "" {
+				return err
+			}
+			return app.Env.OpenFileManager(parent, false)
+		}
+		return err
+	}
+
+	return app.Env.OpenFileManager(path, !info.IsDir())
+}
+
+func (s *DesktopService) GetUpdateFailureNotice() (*DesktopUpdateFailureNotice, error) {
+	path := desktopUpdateFailureNoticePath()
+	content, err := os.ReadFile(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	var notice DesktopUpdateFailureNotice
+	if err := json.Unmarshal(content, &notice); err != nil {
+		return nil, err
+	}
+
+	return &notice, nil
+}
+
+func (s *DesktopService) ClearUpdateFailureNotice() error {
+	err := os.Remove(desktopUpdateFailureNoticePath())
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	return err
 }
 
 func readVersion() string {
@@ -169,6 +234,10 @@ func validateDesktopPreferenceKey(key string) error {
 
 func desktopPreferencesPath() string {
 	return filepath.Join(desktopDataDir(), "preferences.json")
+}
+
+func desktopUpdateFailureNoticePath() string {
+	return filepath.Join(desktopDataDir(), "update-failure.json")
 }
 
 func readDesktopPreferences() (DesktopPreferenceSnapshot, error) {

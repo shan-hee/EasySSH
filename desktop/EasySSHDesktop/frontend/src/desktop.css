@@ -227,6 +227,53 @@ body {
   font-size: 13px;
 }
 
+.easyssh-desktop-update-failure-dialog {
+  width: min(720px, calc(100vw - 32px));
+  max-width: min(720px, calc(100vw - 32px));
+  max-height: min(720px, calc(100vh - 32px));
+  overflow: auto;
+  --wails-draggable: no-drag;
+}
+
+.easyssh-desktop-update-failure-rows {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  border: 1px solid color-mix(in oklab, var(--border) 70%, transparent);
+  border-radius: 8px;
+  padding: 12px;
+  font-size: 13px;
+}
+
+.easyssh-desktop-update-failure-row {
+  display: grid;
+  grid-template-columns: 92px minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+  min-width: 0;
+}
+
+.easyssh-desktop-update-failure-manual {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  border-top: 1px solid color-mix(in oklab, var(--border) 65%, transparent);
+  padding-top: 12px;
+}
+
+.easyssh-desktop-update-failure-manual pre {
+  max-height: 180px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+  border: 1px solid color-mix(in oklab, var(--border) 70%, transparent);
+  border-radius: 8px;
+  background: color-mix(in oklab, var(--muted) 60%, transparent);
+  padding: 10px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
 .easyssh-desktop-home > .flex {
   min-height: 0;
 }

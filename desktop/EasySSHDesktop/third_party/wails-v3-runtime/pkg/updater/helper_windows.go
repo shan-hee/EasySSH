@@ -3,6 +3,7 @@
 package updater
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -62,13 +63,14 @@ func replaceTarget(target, newPath string) error {
 		// Sweep any .old files leftover from prior updates — by now the
 		// kernel has released them.
 		sweepRenameAsides(target)
-		return os.Rename(newPath, target)
+		return moveReplacement(newPath, target)
 	}
 	aside := fmt.Sprintf("%s.old.%d", target, time.Now().UnixNano())
 	if err := os.Rename(target, aside); err != nil {
 		return fmt.Errorf("rename-aside %s → %s: %w", target, aside, err)
 	}
-	if err := os.Rename(newPath, target); err != nil {
+	if err := moveReplacement(newPath, target); err != nil {
+		_ = os.RemoveAll(target)
 		_ = os.Rename(aside, target) // put the original back; avoid half-state
 		return err
 	}
@@ -78,6 +80,22 @@ func replaceTarget(target, newPath string) error {
 	_ = os.Remove(aside)
 	sweepRenameAsides(target)
 	return nil
+}
+
+func moveReplacement(newPath, target string) error {
+	if err := os.Rename(newPath, target); err != nil {
+		if !isCrossDeviceRename(err) {
+			return err
+		}
+		if copyErr := copyAny(newPath, target); copyErr != nil {
+			return fmt.Errorf("copy replacement across volumes: %w", copyErr)
+		}
+	}
+	return nil
+}
+
+func isCrossDeviceRename(err error) bool {
+	return errors.Is(err, syscall.Errno(17))
 }
 
 // sweepRenameAsides best-effort-deletes any "<target>.old.*" siblings.
