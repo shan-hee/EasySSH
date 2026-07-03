@@ -29,7 +29,6 @@ import {
   DEFAULT_TERMINAL_SETTINGS,
   loadTerminalSettingsFromStorage,
   normalizeTerminalSettings,
-  resolveTerminalBackgroundImageLayerOpacity,
   TERMINAL_SETTINGS_STORAGE_KEY,
   type TerminalSettings,
 } from "./terminal-settings"
@@ -45,7 +44,6 @@ import { createWorkspaceTransferAuthTicketProviderAdapter } from "@/lib/session/
 import { useSessionSplitWorkspace } from "@/hooks/use-session-split-workspace"
 import {
   getTerminalTheme,
-  withTerminalBackgroundOpacity,
 } from "@/components/terminal/terminal-themes"
 
 type LoaderState = "entering" | "loading" | "exiting"
@@ -994,31 +992,16 @@ export function TerminalComponent({
   const splitPaneHeaderBackground = useMemo<SessionSplitPaneHeaderBackground>(() => {
     const terminalTheme = getTerminalTheme(settings.theme, effectiveAppTheme)
     const image = settings.backgroundImage.trim()
-    const transparentColor = settings.opacity < 100
-      ? withTerminalBackgroundOpacity(terminalTheme.background, settings.opacity / 100)
-      : terminalTheme.background
-    const color = image ? terminalTheme.background : transparentColor
 
     return {
-      color,
+      color: terminalTheme.background,
       image: image || undefined,
-      imageOpacity: resolveTerminalBackgroundImageLayerOpacity(
-        settings.backgroundImageOpacity,
-        settings.backgroundImageOverlayOpacity,
-      ),
-      overlayColor: image
-        ? withTerminalBackgroundOpacity(
-            terminalTheme.background,
-            settings.backgroundImageOverlayOpacity / 100,
-          )
-        : undefined,
+      imageOpacity: settings.backgroundImageOpacity / 100,
     }
   }, [
     effectiveAppTheme,
     settings.backgroundImage,
     settings.backgroundImageOpacity,
-    settings.backgroundImageOverlayOpacity,
-    settings.opacity,
     settings.theme,
   ])
 

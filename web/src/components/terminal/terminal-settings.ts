@@ -41,10 +41,9 @@ export interface TerminalSettings {
 
   // 主题设置
   theme: "default" | "dark" | "light" | "solarized" | "dracula"
-  opacity: number
   backgroundImage: string
   backgroundImageOpacity: number
-  backgroundImageOverlayOpacity: number
+  backgroundTextEnhance: boolean
 
   // 行为设置
   maxTabs: number
@@ -94,10 +93,9 @@ export const DEFAULT_TERMINAL_SETTINGS: TerminalSettings = {
   rightClickPaste: true,
   copyOnSelect: true,
   theme: "default",
-  opacity: 95,
   backgroundImage: "",
-  backgroundImageOpacity: 20,
-  backgroundImageOverlayOpacity: 78,
+  backgroundImageOpacity: 100,
+  backgroundTextEnhance: true,
   maxTabs: 50,
   inactiveMinutes: 60,
   hibernateBackground: true,
@@ -133,17 +131,6 @@ export const DEFAULT_TERMINAL_SETTINGS: TerminalSettings = {
     ttlMinutes: 5,
     maxEntries: 100,
   },
-}
-
-export function resolveTerminalBackgroundImageLayerOpacity(
-  imageOpacityPercent: number,
-  overlayOpacityPercent: number,
-): number {
-  const targetImageOpacity = Math.min(100, Math.max(0, imageOpacityPercent)) / 100
-  const overlayOpacity = Math.min(95, Math.max(60, overlayOpacityPercent)) / 100
-  const remainingVisibility = Math.max(0.05, 1 - overlayOpacity)
-
-  return Math.min(1, targetImageOpacity / remainingVisibility)
 }
 
 const clampNumber = (value: unknown, fallback: number, min: number, max: number) => {
@@ -187,7 +174,6 @@ export function normalizeTerminalSettings(input: unknown): TerminalSettings {
     rightClickPaste: normalizeBoolean(value.rightClickPaste, defaults.rightClickPaste),
     copyOnSelect: normalizeBoolean(value.copyOnSelect, defaults.copyOnSelect),
     theme: normalizeChoice(value.theme, ["default", "dark", "light", "solarized", "dracula"] as const, defaults.theme),
-    opacity: clampNumber(value.opacity, defaults.opacity, 50, 100),
     backgroundImage: normalizeString(value.backgroundImage, defaults.backgroundImage),
     backgroundImageOpacity: clampNumber(
       value.backgroundImageOpacity,
@@ -195,11 +181,9 @@ export function normalizeTerminalSettings(input: unknown): TerminalSettings {
       0,
       100,
     ),
-    backgroundImageOverlayOpacity: clampNumber(
-      value.backgroundImageOverlayOpacity,
-      defaults.backgroundImageOverlayOpacity,
-      60,
-      95,
+    backgroundTextEnhance: normalizeBoolean(
+      value.backgroundTextEnhance,
+      defaults.backgroundTextEnhance,
     ),
     maxTabs: clampNumber(value.maxTabs, defaults.maxTabs, 5, 100),
     inactiveMinutes: clampNumber(value.inactiveMinutes, defaults.inactiveMinutes, 10, 180),

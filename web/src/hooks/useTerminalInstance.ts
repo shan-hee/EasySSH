@@ -6,6 +6,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useTerminalStore, type TerminalInstanceState } from '@/stores/terminal-store'
 import type { TerminalTheme } from '@/components/terminal/terminal-themes'
+import type { TerminalFontWeight } from '@/components/terminal/use-terminal-renderer-settings'
 
 export interface TerminalConfig {
   theme: TerminalTheme
@@ -16,6 +17,8 @@ export interface TerminalConfig {
   scrollback: number
   enableWebgl?: boolean
   allowTransparency?: boolean
+  fontWeight?: TerminalFontWeight
+  fontWeightBold?: TerminalFontWeight
 }
 
 /**
@@ -141,6 +144,8 @@ export function useTerminalInstance(
     // 如果实例已存在，直接挂载
     if (existingInstance) {
       existingInstance.terminal.options.allowTransparency = config.allowTransparency === true
+      existingInstance.terminal.options.fontWeight = config.fontWeight ?? '400'
+      existingInstance.terminal.options.fontWeightBold = config.fontWeightBold ?? '600'
       void syncRendererMode(existingInstance.terminal, config.enableWebgl !== false)
 
       // 检查是否已经挂载到当前容器
@@ -180,8 +185,8 @@ export function useTerminalInstance(
           theme: config.theme,
           fontSize: config.fontSize,
           fontFamily: config.fontFamily,
-          fontWeight: '400',
-          fontWeightBold: '600',
+          fontWeight: config.fontWeight ?? '400',
+          fontWeightBold: config.fontWeightBold ?? '600',
           cursorBlink: config.cursorBlink,
           cursorStyle: config.cursorStyle,
           cursorWidth: config.cursorStyle === 'bar' ? 2 : 1,

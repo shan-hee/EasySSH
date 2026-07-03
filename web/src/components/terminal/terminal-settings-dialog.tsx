@@ -40,13 +40,12 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { toast } from "@/components/ui/sonner"
 import { KeyboardShortcutInput } from "./keyboard-shortcut-input"
 import { useTranslation } from "react-i18next"
-import { getTerminalTheme, withTerminalBackgroundOpacity } from "./terminal-themes"
+import { getTerminalTheme } from "./terminal-themes"
 import { useEffectiveThemeMode } from "@/hooks/use-effective-theme-mode"
 import {
   DEFAULT_TERMINAL_SETTINGS,
   normalizeTerminalSettings,
   parseTerminalSettingsImport,
-  resolveTerminalBackgroundImageLayerOpacity,
   serializeTerminalSettingsExport,
   type TerminalCompletionCache,
   type TerminalCompletionProviders,
@@ -114,21 +113,8 @@ export function TerminalSettingsDialog({
   const importInputRef = useRef<HTMLInputElement | null>(null)
 
   const previewTheme = getTerminalTheme(localSettings.theme, effectiveAppTheme)
-  const previewBackgroundColor =
-    localSettings.opacity < 100
-      ? withTerminalBackgroundOpacity(previewTheme.background, localSettings.opacity / 100)
-      : previewTheme.background
-  const previewBaseBackgroundColor = localSettings.backgroundImage.trim()
-    ? previewTheme.background
-    : previewBackgroundColor
-  const previewReadabilityOverlayColor = withTerminalBackgroundOpacity(
-    previewTheme.background,
-    localSettings.backgroundImageOverlayOpacity / 100,
-  )
-  const previewBackgroundImageLayerOpacity = resolveTerminalBackgroundImageLayerOpacity(
-    localSettings.backgroundImageOpacity,
-    localSettings.backgroundImageOverlayOpacity,
-  )
+  const previewBaseBackgroundColor = previewTheme.background
+  const previewBackgroundImageLayerOpacity = localSettings.backgroundImageOpacity / 100
 
   // 当传入的 settings 变化时，同步到 localSettings
   useEffect(() => {
@@ -451,24 +437,6 @@ export function TerminalSettingsDialog({
               </p>
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="opacity">{t("opacityLabel")}</Label>
-              <div className="flex items-center gap-4">
-                <Slider
-                  id="opacity"
-                  min={50}
-                  max={100}
-                  step={5}
-                  value={[localSettings.opacity]}
-                  onValueChange={(value) => updateSetting('opacity', value[0])}
-                  className="flex-1"
-                />
-                <span className="w-12 text-sm text-muted-foreground">
-                  {localSettings.opacity}%
-                </span>
-              </div>
-            </div>
-
             <div className="border-t pt-4 space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="backgroundImage">{t("backgroundImageLabel")}</Label>
@@ -507,25 +475,18 @@ export function TerminalSettingsDialog({
               )}
 
               {localSettings.backgroundImage && (
-                <div className="space-y-2">
-                  <Label htmlFor="backgroundImageOverlayOpacity">{t("backgroundImageOverlayOpacityLabel")}</Label>
-                  <div className="flex items-center gap-4">
-                    <Slider
-                      id="backgroundImageOverlayOpacity"
-                      min={60}
-                      max={95}
-                      step={5}
-                      value={[localSettings.backgroundImageOverlayOpacity]}
-                      onValueChange={(value) => updateSetting('backgroundImageOverlayOpacity', value[0])}
-                      className="flex-1"
-                    />
-                    <span className="w-12 text-sm text-muted-foreground">
-                      {localSettings.backgroundImageOverlayOpacity}%
-                    </span>
+                <div className="flex items-center justify-between gap-4">
+                  <div className="space-y-1">
+                    <Label htmlFor="backgroundTextEnhance">{t("backgroundTextEnhanceLabel")}</Label>
+                    <p className="text-xs text-muted-foreground">
+                      {t("backgroundTextEnhanceHelp")}
+                    </p>
                   </div>
-                  <p className="text-xs text-muted-foreground">
-                    {t("backgroundImageOverlayOpacityHelp")}
-                  </p>
+                  <Switch
+                    id="backgroundTextEnhance"
+                    checked={localSettings.backgroundTextEnhance}
+                    onCheckedChange={(checked) => updateSetting('backgroundTextEnhance', checked)}
+                  />
                 </div>
               )}
 
@@ -547,13 +508,11 @@ export function TerminalSettingsDialog({
                       }}
                     />
                     <div
-                      aria-hidden="true"
-                      className="absolute inset-0"
-                      style={{ backgroundColor: previewReadabilityOverlayColor }}
-                    />
-                    <div
                       className="absolute inset-0 flex items-center px-4 text-sm font-medium"
-                      style={{ color: previewTheme.foreground }}
+                      style={{
+                        color: previewTheme.foreground,
+                        fontWeight: localSettings.backgroundTextEnhance ? 600 : 400,
+                      }}
                     >
                       root@easyssh:~# systemctl status ssh
                     </div>

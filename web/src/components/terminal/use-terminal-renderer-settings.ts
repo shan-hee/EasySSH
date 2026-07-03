@@ -11,6 +11,7 @@ import {
 export type TerminalThemeName = "default" | "dark" | "light" | "solarized" | "dracula"
 export type TerminalCursorStyle = "block" | "underline" | "bar"
 export type TerminalAppThemeMode = "light" | "dark"
+export type TerminalFontWeight = "normal" | "bold" | "400" | "500" | "600" | "700"
 
 export interface TerminalRendererThemeResult {
   terminalTheme: TerminalTheme
@@ -21,7 +22,6 @@ export interface ResolveTerminalRendererThemeOptions {
   theme: TerminalThemeName
   appTheme: TerminalAppThemeMode
   transparentBackground: boolean
-  backgroundOpacity: number
 }
 
 export type TerminalThemeModePreference = TerminalAppThemeMode | "system"
@@ -35,6 +35,8 @@ export interface UseTerminalRendererSettingsOptions {
   themeModeVersion: number
   fontSize: number
   fontFamily: string
+  fontWeight: TerminalFontWeight
+  fontWeightBold: TerminalFontWeight
   cursorStyle: TerminalCursorStyle
   cursorBlink: boolean
   scrollback: number
@@ -75,7 +77,12 @@ function scheduleTerminalRefresh(
   })
 }
 
-async function loadTerminalFontFamily(fontFamily: string, fontSize: number) {
+async function loadTerminalFontFamily(
+  fontFamily: string,
+  fontSize: number,
+  fontWeight: TerminalFontWeight,
+  fontWeightBold: TerminalFontWeight,
+) {
   if (typeof document === "undefined" || !document.fonts?.load) return
 
   const fontFamilyStack = fontFamily.trim()
@@ -83,8 +90,8 @@ async function loadTerminalFontFamily(fontFamily: string, fontSize: number) {
 
   try {
     await Promise.all([
-      document.fonts.load(`400 ${fontSize}px ${fontFamilyStack}`),
-      document.fonts.load(`600 ${fontSize}px ${fontFamilyStack}`),
+      document.fonts.load(`${fontWeight} ${fontSize}px ${fontFamilyStack}`),
+      document.fonts.load(`${fontWeightBold} ${fontSize}px ${fontFamilyStack}`),
       document.fonts.ready,
     ])
   } catch {
@@ -123,10 +130,8 @@ export function resolveTerminalRendererTheme({
   theme,
   appTheme,
   transparentBackground,
-  backgroundOpacity,
 }: ResolveTerminalRendererThemeOptions): TerminalRendererThemeResult {
   const terminalTheme = getTerminalTheme(theme, appTheme)
-  void backgroundOpacity
   const transparentTerminalBackground = withTerminalBackgroundOpacity(terminalTheme.background, 0)
   const terminalRendererBackground = transparentBackground
     ? transparentTerminalBackground
@@ -150,6 +155,8 @@ export function useTerminalRendererSettings({
   themeModeVersion,
   fontSize,
   fontFamily,
+  fontWeight,
+  fontWeightBold,
   cursorStyle,
   cursorBlink,
   scrollback,
@@ -182,6 +189,18 @@ export function useTerminalRendererSettings({
       shouldFit = true
     }
 
+    if (terminal.options.fontWeight !== fontWeight) {
+      terminal.options.fontWeight = fontWeight
+      shouldRefresh = true
+      shouldFit = true
+    }
+
+    if (terminal.options.fontWeightBold !== fontWeightBold) {
+      terminal.options.fontWeightBold = fontWeightBold
+      shouldRefresh = true
+      shouldFit = true
+    }
+
     if (terminal.options.cursorStyle !== cursorStyle) {
       terminal.options.cursorStyle = cursorStyle
       terminal.options.cursorWidth = cursorStyle === "bar" ? 2 : 1
@@ -201,18 +220,31 @@ export function useTerminalRendererSettings({
     if (shouldRefresh) {
       scheduleTerminalRefresh(terminal, fitAddon, shouldFit)
     }
-  }, [cursorBlink, cursorStyle, fitAddon, fontFamily, fontSize, scrollback, terminal, terminalReady])
+  }, [
+    cursorBlink,
+    cursorStyle,
+    fitAddon,
+    fontFamily,
+    fontSize,
+    fontWeight,
+    fontWeightBold,
+    scrollback,
+    terminal,
+    terminalReady,
+  ])
 
   useEffect(() => {
     if (!terminal || !terminalReady) return
 
     let cancelled = false
 
-    void loadTerminalFontFamily(fontFamily, fontSize).then(() => {
+    void loadTerminalFontFamily(fontFamily, fontSize, fontWeight, fontWeightBold).then(() => {
       if (
         cancelled ||
         terminal.options.fontFamily !== fontFamily ||
-        terminal.options.fontSize !== fontSize
+        terminal.options.fontSize !== fontSize ||
+        terminal.options.fontWeight !== fontWeight ||
+        terminal.options.fontWeightBold !== fontWeightBold
       ) {
         return
       }
@@ -223,7 +255,7 @@ export function useTerminalRendererSettings({
     return () => {
       cancelled = true
     }
-  }, [fitAddon, fontFamily, fontSize, terminal, terminalReady])
+  }, [fitAddon, fontFamily, fontSize, fontWeight, fontWeightBold, terminal, terminalReady])
 
   useEffect(() => {
     if (!terminal || !terminalReady) return

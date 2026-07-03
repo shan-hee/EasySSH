@@ -21,6 +21,7 @@ import {
   resolveTerminalThemeName,
   useTerminalRendererSettings,
   type TerminalCursorStyle,
+  type TerminalFontWeight,
   type TerminalThemeName,
 } from "./use-terminal-renderer-settings"
 import type { Terminal } from "@xterm/xterm"
@@ -69,7 +70,8 @@ export interface WebTerminalProps {
   completionFetchOptions?: CompletionFetchOptions
   enableWebgl?: boolean
   transparentBackground?: boolean
-  backgroundOpacity?: number
+  fontWeight?: TerminalFontWeight
+  fontWeightBold?: TerminalFontWeight
 }
 
 export function WebTerminal({
@@ -107,7 +109,8 @@ export function WebTerminal({
   completionFetchOptions,
   enableWebgl = true,
   transparentBackground = false,
-  backgroundOpacity = 1,
+  fontWeight = "400",
+  fontWeightBold = "600",
 }: WebTerminalProps) {
   const { t: tTerminal } = useTranslation("terminal")
   const workspace = useOptionalSshWorkspace()
@@ -126,9 +129,8 @@ export function WebTerminal({
       theme: effectiveTerminalTheme,
       appTheme: effectiveTerminalAppTheme,
       transparentBackground,
-      backgroundOpacity,
     })
-  }, [backgroundOpacity, effectiveTerminalAppTheme, effectiveTerminalTheme, themeModeVersion, transparentBackground])
+  }, [effectiveTerminalAppTheme, effectiveTerminalTheme, themeModeVersion, transparentBackground])
 
   const { terminal, fitAddon, terminalReady, containerRef, isClient } = useTerminalInstance(
     sessionId,
@@ -141,6 +143,8 @@ export function WebTerminal({
       scrollback,
       enableWebgl,
       allowTransparency: allowTerminalTransparency,
+      fontWeight,
+      fontWeightBold,
     },
     true
   )
@@ -223,6 +227,8 @@ export function WebTerminal({
     themeModeVersion,
     fontSize,
     fontFamily: terminalFontFamily,
+    fontWeight,
+    fontWeightBold,
     cursorStyle,
     cursorBlink,
     scrollback,

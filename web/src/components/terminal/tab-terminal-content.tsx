@@ -31,13 +31,12 @@ import {
   buildTerminalCompletionConfig,
   buildTerminalCompletionFetchOptions,
   buildTerminalCompletionProviderFlags,
-  resolveTerminalBackgroundImageLayerOpacity,
   type TerminalSettings,
 } from './terminal-settings'
 import type { Server } from "@/lib/server-types"
 import type { WorkspaceTransferTask } from "@/lib/session/workspace"
 import { useTranslation } from "react-i18next"
-import { getTerminalTheme, withTerminalBackgroundOpacity } from './terminal-themes'
+import { getTerminalTheme } from './terminal-themes'
 import { useEffectiveThemeMode } from '@/hooks/use-effective-theme-mode'
 
 const DESKTOP_TERMINAL_LAYOUT_QUERY = '(min-width: 768px)'
@@ -367,22 +366,10 @@ export function TabTerminalContent({
   const { mode: effectiveAppTheme } = useEffectiveThemeMode()
   const shouldUseTerminalSurface = isTerminalSession
   const pageTheme = getTerminalTheme(settings.theme, effectiveAppTheme)
-  const pageBackgroundColor = shouldUseTerminalSurface
-    ? settings.opacity < 100
-      ? withTerminalBackgroundOpacity(pageTheme.background, settings.opacity / 100)
-      : pageTheme.background
-    : 'transparent'
-  const pageBaseBackgroundColor = shouldUseTerminalSurface && settings.backgroundImage.trim().length > 0
+  const pageBaseBackgroundColor = shouldUseTerminalSurface
     ? pageTheme.background
-    : pageBackgroundColor
-  const pageReadabilityOverlayColor = withTerminalBackgroundOpacity(
-    pageTheme.background,
-    settings.backgroundImageOverlayOpacity / 100,
-  )
-  const pageBackgroundImageLayerOpacity = resolveTerminalBackgroundImageLayerOpacity(
-    settings.backgroundImageOpacity,
-    settings.backgroundImageOverlayOpacity,
-  )
+    : 'transparent'
+  const pageBackgroundImageLayerOpacity = settings.backgroundImageOpacity / 100
   const completionConfig = useMemo(
     () => buildTerminalCompletionConfig(settings),
     [settings],
@@ -532,14 +519,6 @@ export function TabTerminalContent({
               backgroundImage: `url(${settings.backgroundImage})`,
               opacity: pageBackgroundImageLayerOpacity,
             }}
-          />
-        )}
-
-        {shouldRenderBody && shouldRenderSurface && hasBackgroundImage && (
-          <div
-            aria-hidden="true"
-            className="absolute inset-0 pointer-events-none"
-            style={{ backgroundColor: pageReadabilityOverlayColor }}
           />
         )}
 
@@ -693,7 +672,8 @@ export function TabTerminalContent({
                   completionFetchOptions={completionFetchOptions}
                   enableWebgl={enableTerminalWebgl}
                   transparentBackground={surface === "transparent" || hasBackgroundImage}
-                  backgroundOpacity={settings.opacity / 100}
+                  fontWeight={hasBackgroundImage && settings.backgroundTextEnhance ? "bold" : "400"}
+                  fontWeightBold={hasBackgroundImage && settings.backgroundTextEnhance ? "bold" : "600"}
                 />
               ) : null}
             </div>
