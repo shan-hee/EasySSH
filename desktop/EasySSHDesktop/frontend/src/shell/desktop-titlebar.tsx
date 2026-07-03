@@ -36,6 +36,7 @@ import { DesktopService } from "../../bindings/github.com/easyssh/easyssh-deskto
 import type { DesktopRuntimeBindingInfo } from "../adapters/desktop-runtime"
 import { DesktopHeaderActions } from "./desktop-header-actions"
 import { desktopUpdateApi, type DesktopUpdateCheckResult } from "../adapters/desktop-update-api"
+import { DesktopInlineUpdateAction } from "./desktop-inline-update-action"
 import { useTranslation } from "react-i18next"
 
 export type DesktopView = "terminal" | "ai" | "scripts" | "activity-logs" | "backup-restore"
@@ -105,6 +106,7 @@ function DesktopAboutVersionValue({ version }: { version: string }) {
   const { t } = useTranslation("desktop")
   const [result, setResult] = useState<DesktopUpdateCheckResult | null>(null)
   const [checking, setChecking] = useState(false)
+  const hasInlineUpdateAction = Boolean(result?.has_update && result.latest_version)
 
   useEffect(() => {
     let mounted = true
@@ -139,29 +141,24 @@ function DesktopAboutVersionValue({ version }: { version: string }) {
       .finally(() => setChecking(false))
   }, [checking, t])
 
-  const updateVersion = result?.has_update ? result.latest_version : ""
-
   return (
     <span className="easyssh-desktop-about-version-value">
       <span className="min-w-0 truncate font-medium" title={version}>{version}</span>
-      {updateVersion ? (
-        <span className="easyssh-desktop-update-badge" title={t("updateAvailableTitle", { version: updateVersion })}>
-          <span aria-hidden="true">↑</span>
-          <span>{updateVersion}</span>
-        </span>
+      <DesktopInlineUpdateAction initialResult={result} onResultChange={setResult} />
+      {!hasInlineUpdateAction ? (
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          className="easyssh-desktop-about-update-button"
+          disabled={checking}
+          aria-label={t("updateCheckNowLabel")}
+          title={t("updateCheckNowLabel")}
+          onClick={handleCheckUpdate}
+        >
+          {checking ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+        </Button>
       ) : null}
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon-sm"
-        className="easyssh-desktop-about-update-button"
-        disabled={checking}
-        aria-label={t("updateCheckNowLabel")}
-        title={t("updateCheckNowLabel")}
-        onClick={handleCheckUpdate}
-      >
-        {checking ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-      </Button>
     </span>
   )
 }

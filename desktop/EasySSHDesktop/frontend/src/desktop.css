@@ -238,6 +238,60 @@ body {
   font-weight: 600;
   line-height: 1.3;
   white-space: nowrap;
+  cursor: pointer;
+  appearance: none;
+  font-family: inherit;
+  transition:
+    background-color 160ms ease,
+    border-color 160ms ease,
+    color 160ms ease,
+    opacity 160ms ease;
+  --wails-draggable: no-drag;
+}
+
+.easyssh-desktop-update-badge:hover:not(:disabled) {
+  border-color: color-mix(in oklab, var(--primary) 68%, transparent);
+  background: color-mix(in oklab, var(--primary) 24%, transparent);
+}
+
+.easyssh-desktop-update-badge:focus-visible {
+  outline: 2px solid color-mix(in oklab, var(--ring) 70%, transparent);
+  outline-offset: 2px;
+}
+
+.easyssh-desktop-update-badge:disabled {
+  cursor: default;
+  opacity: 0.82;
+}
+
+.easyssh-desktop-update-badge[data-status="downloading"],
+.easyssh-desktop-update-badge[data-status="verifying"] {
+  min-width: 58px;
+  justify-content: center;
+  border-color: color-mix(in oklab, var(--primary) 40%, transparent);
+  background:
+    linear-gradient(
+      90deg,
+      color-mix(in oklab, var(--primary) 28%, transparent) 0%,
+      color-mix(in oklab, var(--primary) 14%, transparent) 100%
+    );
+}
+
+.easyssh-desktop-update-badge[data-status="ready"] {
+  border-color: color-mix(in oklab, var(--primary) 62%, transparent);
+  background: var(--primary);
+  color: var(--primary-foreground);
+}
+
+.easyssh-desktop-update-badge[data-status="ready"]:hover:not(:disabled) {
+  border-color: color-mix(in oklab, var(--primary) 75%, var(--foreground));
+  background: color-mix(in oklab, var(--primary) 86%, var(--foreground));
+}
+
+.easyssh-desktop-update-badge[data-status="error"] {
+  border-color: color-mix(in oklab, var(--destructive) 55%, transparent);
+  background: color-mix(in oklab, var(--destructive) 14%, transparent);
+  color: color-mix(in oklab, var(--destructive) 84%, var(--foreground));
 }
 
 .easyssh-desktop-update-failure-dialog {
