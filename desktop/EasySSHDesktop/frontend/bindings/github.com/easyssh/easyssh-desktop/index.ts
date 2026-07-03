@@ -123,6 +123,7 @@ export {
     DesktopTerminalWriteInput,
     DesktopUpdateAsset,
     DesktopUpdateCheckResult,
+    DesktopUpdateFailureNotice,
     DesktopUpdateStatus,
     DesktopUserAIConfig
 } from "./models.js";

@@ -9,14 +9,28 @@ import { Call as $Call, CancellablePromise as $CancellablePromise, Create as $Cr
 // @ts-ignore: Unused imports
 import * as $models from "./models.js";
 
+export function ClearUpdateFailureNotice(): $CancellablePromise<void> {
+    return $Call.ByID(2044166355);
+}
+
+export function GetUpdateFailureNotice(): $CancellablePromise<$models.DesktopUpdateFailureNotice | null> {
+    return $Call.ByID(3842279080).then(($result: any) => {
+        return $$createType1($result);
+    });
+}
+
 export function ListPreferences(): $CancellablePromise<$models.DesktopPreferenceSnapshot> {
     return $Call.ByID(3443184929).then(($result: any) => {
-        return $$createType0($result);
+        return $$createType2($result);
     });
 }
 
 export function OpenDataDir(): $CancellablePromise<void> {
     return $Call.ByID(3791649608);
+}
+
+export function OpenPathInFileManager(path: string): $CancellablePromise<void> {
+    return $Call.ByID(2478855450, path);
 }
 
 export function RemovePreference(key: string): $CancellablePromise<void> {
@@ -25,7 +39,7 @@ export function RemovePreference(key: string): $CancellablePromise<void> {
 
 export function RuntimeInfo(): $CancellablePromise<$models.DesktopRuntimeInfo> {
     return $Call.ByID(3211740111).then(($result: any) => {
-        return $$createType2($result);
+        return $$createType4($result);
     });
 }
 
@@ -34,11 +48,13 @@ export function SetPreference(key: string, value: string): $CancellablePromise<v
 }
 
 // Private type creation functions
-var $$createType0 = (function $$initCreateType0(...args: any[]): any {
-    if ($$createType0 === $$initCreateType0) {
-        $$createType0 = $$createType1;
+const $$createType0 = $models.DesktopUpdateFailureNotice.createFrom;
+const $$createType1 = $Create.Nullable($$createType0);
+var $$createType2 = (function $$initCreateType2(...args: any[]): any {
+    if ($$createType2 === $$initCreateType2) {
+        $$createType2 = $$createType3;
     }
-    return $$createType0(...args);
+    return $$createType2(...args);
 });
-const $$createType1 = $Create.Map($Create.Any, $Create.Any);
-const $$createType2 = $models.DesktopRuntimeInfo.createFrom;
+const $$createType3 = $Create.Map($Create.Any, $Create.Any);
+const $$createType4 = $models.DesktopRuntimeInfo.createFrom;

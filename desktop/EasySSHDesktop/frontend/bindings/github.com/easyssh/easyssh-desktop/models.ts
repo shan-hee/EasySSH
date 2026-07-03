@@ -1464,6 +1464,9 @@ export class DesktopDockerResourcesResult {
     "stats": DesktopDockerContainerStats[];
     "systemInfo": DesktopDockerSystemInfo | null;
     "dockerInstalled": boolean;
+    "statsTruncated": boolean;
+    "statsLimit": number;
+    "runningStatsTotal": number;
     "error"?: string;
 
     /** Creates a new DesktopDockerResourcesResult instance. */
@@ -1476,6 +1479,15 @@ export class DesktopDockerResourcesResult {
         }
         if (!("dockerInstalled" in $$source)) {
             this["dockerInstalled"] = false;
+        }
+        if (!("statsTruncated" in $$source)) {
+            this["statsTruncated"] = false;
+        }
+        if (!("statsLimit" in $$source)) {
+            this["statsLimit"] = 0;
+        }
+        if (!("runningStatsTotal" in $$source)) {
+            this["runningStatsTotal"] = 0;
         }
 
         Object.assign(this, $$source);
@@ -3245,6 +3257,48 @@ export class DesktopUpdateCheckResult {
             $$parsedSource["artifact"] = $$createField7_0($$parsedSource["artifact"]);
         }
         return new DesktopUpdateCheckResult($$parsedSource as Partial<DesktopUpdateCheckResult>);
+    }
+}
+
+export class DesktopUpdateFailureNotice {
+    "failed_at": string;
+    "stage": string;
+    "message": string;
+    "target": string;
+    "new_path"?: string;
+    "backup"?: string;
+    "log_path"?: string;
+    "relaunched_original": boolean;
+    "manual_replace_target"?: string;
+    "manual_replace_source"?: string;
+
+    /** Creates a new DesktopUpdateFailureNotice instance. */
+    constructor($$source: Partial<DesktopUpdateFailureNotice> = {}) {
+        if (!("failed_at" in $$source)) {
+            this["failed_at"] = "";
+        }
+        if (!("stage" in $$source)) {
+            this["stage"] = "";
+        }
+        if (!("message" in $$source)) {
+            this["message"] = "";
+        }
+        if (!("target" in $$source)) {
+            this["target"] = "";
+        }
+        if (!("relaunched_original" in $$source)) {
+            this["relaunched_original"] = false;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new DesktopUpdateFailureNotice instance from a string or object.
+     */
+    static createFrom($$source: any = {}): DesktopUpdateFailureNotice {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new DesktopUpdateFailureNotice($$parsedSource as Partial<DesktopUpdateFailureNotice>);
     }
 }
 

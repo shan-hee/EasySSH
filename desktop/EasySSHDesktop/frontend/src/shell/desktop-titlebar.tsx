@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { Browser, Window } from "@wailsio/runtime"
 import { Button } from "@/components/ui/button"
 import {
@@ -23,8 +23,10 @@ import {
   FileText,
   FolderOpen,
   Info,
+  Loader2,
   Menu,
   Minus,
+  RefreshCw,
   Square,
   X,
   toast,
@@ -33,7 +35,7 @@ import type { Locale } from "@/i18n"
 import { DesktopService } from "../../bindings/github.com/easyssh/easyssh-desktop"
 import type { DesktopRuntimeBindingInfo } from "../adapters/desktop-runtime"
 import { DesktopHeaderActions } from "./desktop-header-actions"
-import { DesktopUpdatePanel } from "./desktop-update-dialog"
+import { desktopUpdateApi, type DesktopUpdateCheckResult } from "../adapters/desktop-update-api"
 import { useTranslation } from "react-i18next"
 
 export type DesktopView = "terminal" | "ai" | "scripts" | "activity-logs" | "backup-restore"
@@ -58,8 +60,8 @@ function DesktopAboutDialog({
   runtime: DesktopRuntimeBindingInfo | null
 }) {
   const { t } = useTranslation("desktop")
+  const version = runtime?.version || t("desktopUnknownLabel")
   const rows = [
-    [t("desktopVersionLabel"), runtime?.version || t("desktopUnknownLabel")],
     [t("desktopPlatformLabel"), runtime?.platform || t("desktopUnknownLabel")],
     [t("desktopArchLabel"), runtime?.arch || t("desktopUnknownLabel")],
     [t("desktopDataDirLabel"), runtime?.dataDir || t("desktopUnknownLabel")],
@@ -77,6 +79,10 @@ function DesktopAboutDialog({
         </DialogHeader>
 
         <div className="space-y-2">
+          <div className="easyssh-desktop-about-row">
+            <span className="text-muted-foreground">{t("desktopVersionLabel")}</span>
+            <DesktopAboutVersionValue version={version} />
+          </div>
           {rows.map(([label, value]) => (
             <div key={label} className="easyssh-desktop-about-row">
               <span className="text-muted-foreground">{label}</span>
@@ -85,8 +91,6 @@ function DesktopAboutDialog({
           ))}
         </div>
 
-        <DesktopUpdatePanel autoCheck={false} onRequestOpen={() => onOpenChange(true)} />
-
         <div className="flex justify-end">
           <Button variant="outline" size="sm" onClick={() => void Browser.OpenURL(githubUrl)}>
             {githubLabel}
@@ -94,6 +98,71 @@ function DesktopAboutDialog({
         </div>
       </DialogContent>
     </Dialog>
+  )
+}
+
+function DesktopAboutVersionValue({ version }: { version: string }) {
+  const { t } = useTranslation("desktop")
+  const [result, setResult] = useState<DesktopUpdateCheckResult | null>(null)
+  const [checking, setChecking] = useState(false)
+
+  useEffect(() => {
+    let mounted = true
+
+    desktopUpdateApi.getStatus()
+      .then((next) => {
+        if (mounted) setResult(next)
+      })
+      .catch(() => {
+        // Best-effort: the inline action still lets the user check manually.
+      })
+
+    return () => {
+      mounted = false
+    }
+  }, [])
+
+  const handleCheckUpdate = useCallback(() => {
+    if (checking) return
+
+    setChecking(true)
+    void desktopUpdateApi.checkForUpdate()
+      .then((next) => {
+        setResult(next)
+        if (!next.has_update) {
+          toast.success(t("updateLatestTitle"))
+        }
+      })
+      .catch(() => {
+        toast.error(t("updateCheckFailedTitle"))
+      })
+      .finally(() => setChecking(false))
+  }, [checking, t])
+
+  const updateVersion = result?.has_update ? result.latest_version : ""
+
+  return (
+    <span className="easyssh-desktop-about-version-value">
+      <span className="min-w-0 truncate font-medium" title={version}>{version}</span>
+      {updateVersion ? (
+        <span className="easyssh-desktop-update-badge" title={t("updateAvailableTitle", { version: updateVersion })}>
+          <span aria-hidden="true">↑</span>
+          <span>{updateVersion}</span>
+        </span>
+      ) : null}
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon-sm"
+        className="easyssh-desktop-about-update-button"
+        disabled={checking}
+        aria-label={t("updateCheckNowLabel")}
+        title={t("updateCheckNowLabel")}
+        onClick={handleCheckUpdate}
+      >
+        {checking ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+      </Button>
+    </span>
   )
 }
 
