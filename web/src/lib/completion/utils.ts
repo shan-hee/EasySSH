@@ -266,6 +266,72 @@ export function parseCompletionContext(
 }
 
 /**
+ * 去除 token 外层引号，支持未闭合引号。
+ */
+export function stripOuterQuote(value: string): string {
+  if (
+    value.length >= 1 &&
+    ((value.startsWith("'") && !value.endsWith("'")) ||
+      (value.startsWith('"') && !value.endsWith('"')))
+  ) {
+    return value.slice(1)
+  }
+
+  if (
+    value.length >= 2 &&
+    ((value.startsWith("'") && value.endsWith("'")) ||
+      (value.startsWith('"') && value.endsWith('"')))
+  ) {
+    return value.slice(1, -1)
+  }
+
+  return value
+}
+
+/**
+ * 反解 shell token 内的反斜杠转义。
+ */
+export function unescapeShellToken(value: string): string {
+  let result = ""
+  let escaped = false
+
+  for (const char of value) {
+    if (escaped) {
+      result += char
+      escaped = false
+      continue
+    }
+
+    if (char === "\\") {
+      escaped = true
+      continue
+    }
+
+    result += char
+  }
+
+  if (escaped) {
+    result += "\\"
+  }
+
+  return result
+}
+
+export function getCommandNameFromToken(token: string): string {
+  const normalized = stripOuterQuote(token)
+  const slashIndex = normalized.lastIndexOf("/")
+  return (slashIndex >= 0 ? normalized.slice(slashIndex + 1) : normalized).toLowerCase()
+}
+
+export function isShellOptionToken(token: string): boolean {
+  return token.startsWith("-") && token !== "-" && token !== "--"
+}
+
+export function isShellAssignmentToken(token: string): boolean {
+  return /^[A-Za-z_][A-Za-z0-9_]*=/.test(token)
+}
+
+/**
  * 计算光标在屏幕上的位置(用于定位补全弹窗)
  * @param terminal xterm.js 终端实例
  * @param container 终端容器，用于把相对坐标转换为视口坐标

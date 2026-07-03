@@ -27,14 +27,19 @@ import type {
 import type { SftpDirectoryApi } from "@/lib/session/sftp-directory"
 import {
   applyCompletion,
+  getCommandNameFromToken,
   getCursorScreenPosition,
   isBackspaceKey,
   isDownArrow,
   isEnterKey,
   isEscapeKey,
+  isShellAssignmentToken,
+  isShellOptionToken,
   isTabKey,
   isUpArrow,
   parseCompletionContext,
+  stripOuterQuote,
+  unescapeShellToken,
 } from "@/lib/completion/utils"
 import type {
   CompletionDataResponse,
@@ -105,28 +110,14 @@ const emptyCompletionState: TerminalCompletionState = {
 
 const PATH_COMMAND_PREFIXES = new Set(["command", "env", "nice", "nohup", "sudo", "time"])
 
-function getCommandName(token: string): string {
-  const normalized = token.replace(/^['"]|['"]$/g, "")
-  const slashIndex = normalized.lastIndexOf("/")
-  return (slashIndex >= 0 ? normalized.slice(slashIndex + 1) : normalized).toLowerCase()
-}
-
-function isOptionToken(token: string): boolean {
-  return token.startsWith("-") && token !== "-" && token !== "--"
-}
-
-function isShellAssignmentToken(token: string): boolean {
-  return /^[A-Za-z_][A-Za-z0-9_]*=/.test(token)
-}
-
 function isPathArgumentCompletionContext(context: CompletionContext): boolean {
   for (let index = 0; index < context.tokens.length; index++) {
     const token = context.tokens[index]
-    if (!token || isOptionToken(token)) {
+    if (!token || isShellOptionToken(token)) {
       continue
     }
 
-    const commandName = getCommandName(token)
+    const commandName = getCommandNameFromToken(token)
     if (PATH_COMMAND_PREFIXES.has(commandName) || isShellAssignmentToken(token)) {
       continue
     }
@@ -135,52 +126,6 @@ function isPathArgumentCompletionContext(context: CompletionContext): boolean {
   }
 
   return false
-}
-
-function stripOuterQuote(value: string): string {
-  if (
-    value.length >= 1 &&
-    ((value.startsWith("'") && !value.endsWith("'")) ||
-      (value.startsWith('"') && !value.endsWith('"')))
-  ) {
-    return value.slice(1)
-  }
-
-  if (
-    value.length >= 2 &&
-    ((value.startsWith("'") && value.endsWith("'")) ||
-      (value.startsWith('"') && value.endsWith('"')))
-  ) {
-    return value.slice(1, -1)
-  }
-
-  return value
-}
-
-function unescapeShellToken(value: string): string {
-  let result = ""
-  let escaped = false
-
-  for (const char of value) {
-    if (escaped) {
-      result += char
-      escaped = false
-      continue
-    }
-
-    if (char === "\\") {
-      escaped = true
-      continue
-    }
-
-    result += char
-  }
-
-  if (escaped) {
-    result += "\\"
-  }
-
-  return result
 }
 
 function getPathCompletionMatchedPrefix(context: CompletionContext): string {

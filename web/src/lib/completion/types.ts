@@ -52,7 +52,7 @@ export interface CompletionItem {
   providerName?: string
   /** 替换起始位置（相对于命令行，不含 prompt；默认使用当前词范围） */
   replaceStart?: number
-  /** 替换结束位置（相对于命令行，不含 prompt；默认使用光标位置） */
+  /** 替换结束位置（相对于命令行，不含 prompt；默认使用当前词范围） */
   replaceEnd?: number
 }
 

@@ -1,5 +1,12 @@
 import type { SftpDirectoryApi } from "@/lib/session/sftp-directory"
 import type { CompletionContext, CompletionItem, CompletionProvider } from "../types"
+import {
+  getCommandNameFromToken,
+  isShellAssignmentToken,
+  isShellOptionToken,
+  stripOuterQuote,
+  unescapeShellToken,
+} from "../utils"
 
 interface PathProviderOptions {
   serverId?: string
@@ -130,12 +137,12 @@ export class PathProvider implements CompletionProvider {
     }
 
     const currentWord = context.currentWord
-    if (this.isOptionToken(currentWord)) {
+    if (isShellOptionToken(currentWord)) {
       return false
     }
 
     return commandInfo.isPathCommand ||
-      PATH_PREFIX_PATTERN.test(this.stripOuterQuote(currentWord))
+      PATH_PREFIX_PATTERN.test(stripOuterQuote(currentWord))
   }
 
   async getCompletions(context: CompletionContext): Promise<CompletionItem[]> {
@@ -170,7 +177,7 @@ export class PathProvider implements CompletionProvider {
       })
     }
 
-    const normalizedPrefix = this.unescapePathToken(target.prefix).toLowerCase()
+    const normalizedPrefix = unescapeShellToken(target.prefix).toLowerCase()
     return entries
       .filter((entry) => !foldersOnly || entry.is_dir)
       .filter((entry) => entry.name.toLowerCase().startsWith(normalizedPrefix))
@@ -198,11 +205,11 @@ export class PathProvider implements CompletionProvider {
   private resolveCommandInfo(tokens: string[]): CommandInfo | null {
     for (let index = 0; index < tokens.length; index++) {
       const token = tokens[index]
-      if (!token || this.isOptionToken(token) || this.isShellAssignmentToken(token)) {
+      if (!token || isShellOptionToken(token) || isShellAssignmentToken(token)) {
         continue
       }
 
-      const command = this.stripCommandToken(token)
+      const command = getCommandNameFromToken(token)
       if (!command || COMMAND_PREFIXES.has(command)) {
         continue
       }
@@ -215,20 +222,6 @@ export class PathProvider implements CompletionProvider {
     }
 
     return null
-  }
-
-  private isOptionToken(token: string): boolean {
-    return token.startsWith("-") && token !== "-" && token !== "--"
-  }
-
-  private isShellAssignmentToken(token: string): boolean {
-    return /^[A-Za-z_][A-Za-z0-9_]*=/.test(token)
-  }
-
-  private stripCommandToken(token: string): string {
-    const unquoted = this.stripOuterQuote(token)
-    const slashIndex = unquoted.lastIndexOf("/")
-    return (slashIndex >= 0 ? unquoted.slice(slashIndex + 1) : unquoted).toLowerCase()
   }
 
   private resolveCwd(context: CompletionContext): string {
@@ -310,8 +303,8 @@ export class PathProvider implements CompletionProvider {
       Math.max(0, context.cursorPosition - context.currentWordStart)
     )
     const quoted = this.getQuoteStyle(currentWord)
-    const unquotedWord = this.stripOuterQuote(wordPrefix)
-    const unescapedWord = this.unescapePathToken(unquotedWord)
+    const unquotedWord = stripOuterQuote(wordPrefix)
+    const unescapedWord = unescapeShellToken(unquotedWord)
     const lastSlashIndex = unescapedWord.lastIndexOf("/")
     const typedDirectory = lastSlashIndex >= 0 ? unescapedWord.slice(0, lastSlashIndex + 1) : ""
     const prefix = lastSlashIndex >= 0 ? unescapedWord.slice(lastSlashIndex + 1) : unescapedWord
@@ -433,52 +426,6 @@ export class PathProvider implements CompletionProvider {
     if (value.startsWith("'")) return "single"
     if (value.startsWith('"')) return "double"
     return null
-  }
-
-  private stripOuterQuote(value: string): string {
-    if (
-      value.length >= 1 &&
-      ((value.startsWith("'") && !value.endsWith("'")) ||
-        (value.startsWith('"') && !value.endsWith('"')))
-    ) {
-      return value.slice(1)
-    }
-
-    if (
-      value.length >= 2 &&
-      ((value.startsWith("'") && value.endsWith("'")) ||
-        (value.startsWith('"') && value.endsWith('"')))
-    ) {
-      return value.slice(1, -1)
-    }
-
-    return value
-  }
-
-  private unescapePathToken(value: string): string {
-    let result = ""
-    let escaped = false
-
-    for (const char of value) {
-      if (escaped) {
-        result += char
-        escaped = false
-        continue
-      }
-
-      if (char === "\\") {
-        escaped = true
-        continue
-      }
-
-      result += char
-    }
-
-    if (escaped) {
-      result += "\\"
-    }
-
-    return result
   }
 
   private escapePathSegment(value: string, quoted: "single" | "double" | null): string {
