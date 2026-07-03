@@ -117,6 +117,7 @@ export function WebTerminal({
   const effectiveTerminalAppTheme = resolveTerminalAppThemeMode(workspaceTheme?.mode, effectiveAppTheme)
   const resolvedCompletionConfig = completionConfig ?? DEFAULT_COMPLETION_CONFIG
   const effectiveCompletionEnabled = completionEnabled && resolvedCompletionConfig.enabled
+  const allowTerminalTransparency = transparentBackground
 
   const terminalFontFamily = formatTerminalFontFamily(fontFamily)
   const { terminalTheme, terminalRendererTheme } = useMemo(() => {
@@ -139,6 +140,7 @@ export function WebTerminal({
       cursorBlink,
       scrollback,
       enableWebgl,
+      allowTransparency: allowTerminalTransparency,
     },
     true
   )
@@ -217,6 +219,7 @@ export function WebTerminal({
     fitAddon,
     terminalReady,
     terminalRendererTheme,
+    allowTransparency: allowTerminalTransparency,
     themeModeVersion,
     fontSize,
     fontFamily: terminalFontFamily,
@@ -270,7 +273,10 @@ export function WebTerminal({
   }
 
   return (
-    <div className="h-full w-full min-w-0 relative overflow-hidden">
+    <div
+      className="h-full w-full min-w-0 relative overflow-hidden"
+      data-terminal-transparent-background={allowTerminalTransparency ? "true" : "false"}
+    >
       <div
         ref={containerRef}
         className="h-full w-full min-w-0 terminal-container"
@@ -321,9 +327,9 @@ export function WebTerminal({
           overscroll-behavior: contain;
           overscroll-behavior-y: contain;
         }
-        .terminal-container .xterm,
-        .terminal-container .xterm-screen,
-        .terminal-container .xterm-viewport {
+        [data-terminal-transparent-background="true"] .terminal-container .xterm,
+        [data-terminal-transparent-background="true"] .terminal-container .xterm-screen,
+        [data-terminal-transparent-background="true"] .terminal-container .xterm-viewport {
           background: transparent !important;
         }
         .terminal-container .xterm {

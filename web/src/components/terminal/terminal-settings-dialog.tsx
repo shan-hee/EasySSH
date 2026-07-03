@@ -46,6 +46,7 @@ import {
   DEFAULT_TERMINAL_SETTINGS,
   normalizeTerminalSettings,
   parseTerminalSettingsImport,
+  resolveTerminalBackgroundImageLayerOpacity,
   serializeTerminalSettingsExport,
   type TerminalCompletionCache,
   type TerminalCompletionProviders,
@@ -117,6 +118,17 @@ export function TerminalSettingsDialog({
     localSettings.opacity < 100
       ? withTerminalBackgroundOpacity(previewTheme.background, localSettings.opacity / 100)
       : previewTheme.background
+  const previewBaseBackgroundColor = localSettings.backgroundImage.trim()
+    ? previewTheme.background
+    : previewBackgroundColor
+  const previewReadabilityOverlayColor = withTerminalBackgroundOpacity(
+    previewTheme.background,
+    localSettings.backgroundImageOverlayOpacity / 100,
+  )
+  const previewBackgroundImageLayerOpacity = resolveTerminalBackgroundImageLayerOpacity(
+    localSettings.backgroundImageOpacity,
+    localSettings.backgroundImageOverlayOpacity,
+  )
 
   // 当传入的 settings 变化时，同步到 localSettings
   useEffect(() => {
@@ -495,21 +507,49 @@ export function TerminalSettingsDialog({
               )}
 
               {localSettings.backgroundImage && (
+                <div className="space-y-2">
+                  <Label htmlFor="backgroundImageOverlayOpacity">{t("backgroundImageOverlayOpacityLabel")}</Label>
+                  <div className="flex items-center gap-4">
+                    <Slider
+                      id="backgroundImageOverlayOpacity"
+                      min={60}
+                      max={95}
+                      step={5}
+                      value={[localSettings.backgroundImageOverlayOpacity]}
+                      onValueChange={(value) => updateSetting('backgroundImageOverlayOpacity', value[0])}
+                      className="flex-1"
+                    />
+                    <span className="w-12 text-sm text-muted-foreground">
+                      {localSettings.backgroundImageOverlayOpacity}%
+                    </span>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    {t("backgroundImageOverlayOpacityHelp")}
+                  </p>
+                </div>
+              )}
+
+              {localSettings.backgroundImage && (
                 <div className="rounded-lg border p-4 space-y-2">
                   <Label>{t("previewLabel")}</Label>
                   <div className="relative w-full h-32 rounded-md border overflow-hidden">
                     <div
                       aria-hidden="true"
                       className="absolute inset-0"
-                      style={{ backgroundColor: previewBackgroundColor }}
+                      style={{ backgroundColor: previewBaseBackgroundColor }}
                     />
                     <div
                       aria-hidden="true"
                       className="absolute inset-0 bg-cover bg-center bg-no-repeat"
                       style={{
                         backgroundImage: `url(${localSettings.backgroundImage})`,
-                        opacity: localSettings.backgroundImageOpacity / 100,
+                        opacity: previewBackgroundImageLayerOpacity,
                       }}
+                    />
+                    <div
+                      aria-hidden="true"
+                      className="absolute inset-0"
+                      style={{ backgroundColor: previewReadabilityOverlayColor }}
                     />
                     <div
                       className="absolute inset-0 flex items-center px-4 text-sm font-medium"

@@ -44,6 +44,7 @@ export interface TerminalSettings {
   opacity: number
   backgroundImage: string
   backgroundImageOpacity: number
+  backgroundImageOverlayOpacity: number
 
   // 行为设置
   maxTabs: number
@@ -96,6 +97,7 @@ export const DEFAULT_TERMINAL_SETTINGS: TerminalSettings = {
   opacity: 95,
   backgroundImage: "",
   backgroundImageOpacity: 20,
+  backgroundImageOverlayOpacity: 78,
   maxTabs: 50,
   inactiveMinutes: 60,
   hibernateBackground: true,
@@ -131,6 +133,17 @@ export const DEFAULT_TERMINAL_SETTINGS: TerminalSettings = {
     ttlMinutes: 5,
     maxEntries: 100,
   },
+}
+
+export function resolveTerminalBackgroundImageLayerOpacity(
+  imageOpacityPercent: number,
+  overlayOpacityPercent: number,
+): number {
+  const targetImageOpacity = Math.min(100, Math.max(0, imageOpacityPercent)) / 100
+  const overlayOpacity = Math.min(95, Math.max(60, overlayOpacityPercent)) / 100
+  const remainingVisibility = Math.max(0.05, 1 - overlayOpacity)
+
+  return Math.min(1, targetImageOpacity / remainingVisibility)
 }
 
 const clampNumber = (value: unknown, fallback: number, min: number, max: number) => {
@@ -181,6 +194,12 @@ export function normalizeTerminalSettings(input: unknown): TerminalSettings {
       defaults.backgroundImageOpacity,
       0,
       100,
+    ),
+    backgroundImageOverlayOpacity: clampNumber(
+      value.backgroundImageOverlayOpacity,
+      defaults.backgroundImageOverlayOpacity,
+      60,
+      95,
     ),
     maxTabs: clampNumber(value.maxTabs, defaults.maxTabs, 5, 100),
     inactiveMinutes: clampNumber(value.inactiveMinutes, defaults.inactiveMinutes, 10, 180),

@@ -15,6 +15,7 @@ export interface TerminalConfig {
   cursorBlink: boolean
   scrollback: number
   enableWebgl?: boolean
+  allowTransparency?: boolean
 }
 
 /**
@@ -139,7 +140,7 @@ export function useTerminalInstance(
 
     // 如果实例已存在，直接挂载
     if (existingInstance) {
-      existingInstance.terminal.options.allowTransparency = true
+      existingInstance.terminal.options.allowTransparency = config.allowTransparency === true
       void syncRendererMode(existingInstance.terminal, config.enableWebgl !== false)
 
       // 检查是否已经挂载到当前容器
@@ -191,7 +192,7 @@ export function useTerminalInstance(
           letterSpacing: 0,
           // 性能优化选项
           allowProposedApi: true,
-          allowTransparency: true,
+          allowTransparency: config.allowTransparency === true,
           disableStdin: false,
           fastScrollModifier: 'shift',
           // 降低滚轮灵敏度，避免一次滚动跳动过多

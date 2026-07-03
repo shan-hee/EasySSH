@@ -31,6 +31,7 @@ export interface UseTerminalRendererSettingsOptions {
   fitAddon?: FitAddon | null
   terminalReady: boolean
   terminalRendererTheme: TerminalTheme
+  allowTransparency: boolean
   themeModeVersion: number
   fontSize: number
   fontFamily: string
@@ -125,15 +126,11 @@ export function resolveTerminalRendererTheme({
   backgroundOpacity,
 }: ResolveTerminalRendererThemeOptions): TerminalRendererThemeResult {
   const terminalTheme = getTerminalTheme(theme, appTheme)
-  const shouldUseTransparentRendererBackground =
-    transparentBackground || (theme === "default" && backgroundOpacity < 1)
+  void backgroundOpacity
   const transparentTerminalBackground = withTerminalBackgroundOpacity(terminalTheme.background, 0)
-  const translucentTerminalBackground = withTerminalBackgroundOpacity(terminalTheme.background, backgroundOpacity)
-  const terminalRendererBackground = shouldUseTransparentRendererBackground
+  const terminalRendererBackground = transparentBackground
     ? transparentTerminalBackground
-    : backgroundOpacity < 1
-      ? translucentTerminalBackground
-      : terminalTheme.background
+    : terminalTheme.background
 
   return {
     terminalTheme,
@@ -149,6 +146,7 @@ export function useTerminalRendererSettings({
   fitAddon,
   terminalReady,
   terminalRendererTheme,
+  allowTransparency,
   themeModeVersion,
   fontSize,
   fontFamily,
@@ -159,11 +157,11 @@ export function useTerminalRendererSettings({
   useLayoutEffect(() => {
     if (!terminal) return
 
-    terminal.options.allowTransparency = true
+    terminal.options.allowTransparency = allowTransparency
     terminal.options.theme = terminalRendererTheme
 
     scheduleTerminalRefresh(terminal, fitAddon)
-  }, [fitAddon, terminal, terminalRendererTheme, themeModeVersion])
+  }, [allowTransparency, fitAddon, terminal, terminalRendererTheme, themeModeVersion])
 
   useLayoutEffect(() => {
     if (!terminal || !terminalReady) return

@@ -31,6 +31,7 @@ import {
   buildTerminalCompletionConfig,
   buildTerminalCompletionFetchOptions,
   buildTerminalCompletionProviderFlags,
+  resolveTerminalBackgroundImageLayerOpacity,
   type TerminalSettings,
 } from './terminal-settings'
 import type { Server } from "@/lib/server-types"
@@ -371,6 +372,17 @@ export function TabTerminalContent({
       ? withTerminalBackgroundOpacity(pageTheme.background, settings.opacity / 100)
       : pageTheme.background
     : 'transparent'
+  const pageBaseBackgroundColor = shouldUseTerminalSurface && settings.backgroundImage.trim().length > 0
+    ? pageTheme.background
+    : pageBackgroundColor
+  const pageReadabilityOverlayColor = withTerminalBackgroundOpacity(
+    pageTheme.background,
+    settings.backgroundImageOverlayOpacity / 100,
+  )
+  const pageBackgroundImageLayerOpacity = resolveTerminalBackgroundImageLayerOpacity(
+    settings.backgroundImageOpacity,
+    settings.backgroundImageOverlayOpacity,
+  )
   const completionConfig = useMemo(
     () => buildTerminalCompletionConfig(settings),
     [settings],
@@ -508,7 +520,7 @@ export function TabTerminalContent({
           <div
             aria-hidden="true"
             className="absolute inset-0 pointer-events-none"
-            style={{ backgroundColor: pageBackgroundColor }}
+            style={{ backgroundColor: pageBaseBackgroundColor }}
           />
         )}
 
@@ -518,8 +530,16 @@ export function TabTerminalContent({
             className="absolute inset-0 pointer-events-none bg-cover bg-center bg-no-repeat"
             style={{
               backgroundImage: `url(${settings.backgroundImage})`,
-              opacity: settings.backgroundImageOpacity / 100,
+              opacity: pageBackgroundImageLayerOpacity,
             }}
+          />
+        )}
+
+        {shouldRenderBody && shouldRenderSurface && hasBackgroundImage && (
+          <div
+            aria-hidden="true"
+            className="absolute inset-0 pointer-events-none"
+            style={{ backgroundColor: pageReadabilityOverlayColor }}
           />
         )}
 

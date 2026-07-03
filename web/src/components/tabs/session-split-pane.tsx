@@ -17,6 +17,7 @@ export interface SessionSplitPaneHeaderBackground {
   color?: string
   image?: string
   imageOpacity?: number
+  overlayColor?: string
 }
 
 interface SessionSplitPaneProps {
@@ -194,6 +195,13 @@ export function SessionSplitPane({
               aria-hidden="true"
               className="absolute inset-0 bg-cover bg-center bg-no-repeat"
               style={backgroundImageStyle}
+            />
+          )}
+          {background.overlayColor && (
+            <div
+              aria-hidden="true"
+              className="absolute inset-0"
+              style={{ backgroundColor: background.overlayColor }}
             />
           )}
         </>

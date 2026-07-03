@@ -29,6 +29,7 @@ import {
   DEFAULT_TERMINAL_SETTINGS,
   loadTerminalSettingsFromStorage,
   normalizeTerminalSettings,
+  resolveTerminalBackgroundImageLayerOpacity,
   TERMINAL_SETTINGS_STORAGE_KEY,
   type TerminalSettings,
 } from "./terminal-settings"
@@ -992,20 +993,31 @@ export function TerminalComponent({
 
   const splitPaneHeaderBackground = useMemo<SessionSplitPaneHeaderBackground>(() => {
     const terminalTheme = getTerminalTheme(settings.theme, effectiveAppTheme)
-    const color = settings.opacity < 100
+    const image = settings.backgroundImage.trim()
+    const transparentColor = settings.opacity < 100
       ? withTerminalBackgroundOpacity(terminalTheme.background, settings.opacity / 100)
       : terminalTheme.background
-    const image = settings.backgroundImage.trim()
+    const color = image ? terminalTheme.background : transparentColor
 
     return {
       color,
       image: image || undefined,
-      imageOpacity: settings.backgroundImageOpacity / 100,
+      imageOpacity: resolveTerminalBackgroundImageLayerOpacity(
+        settings.backgroundImageOpacity,
+        settings.backgroundImageOverlayOpacity,
+      ),
+      overlayColor: image
+        ? withTerminalBackgroundOpacity(
+            terminalTheme.background,
+            settings.backgroundImageOverlayOpacity / 100,
+          )
+        : undefined,
     }
   }, [
     effectiveAppTheme,
     settings.backgroundImage,
     settings.backgroundImageOpacity,
+    settings.backgroundImageOverlayOpacity,
     settings.opacity,
     settings.theme,
   ])
