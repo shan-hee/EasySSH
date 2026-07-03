@@ -1,5 +1,5 @@
 
-import { useCallback, useMemo, useRef } from "react"
+import { useCallback, useEffect, useMemo, useRef } from "react"
 import { useTranslation } from "react-i18next"
 import { ConnectionLoader } from "./connection-loader"
 import { TerminalAuthChallengeDialog } from "./terminal-auth-challenge-dialog"
@@ -68,10 +68,34 @@ export interface WebTerminalProps {
   completionConfig?: CompletionConfig
   completionProviderEnabled?: TerminalCompletionProviderFlags
   completionFetchOptions?: CompletionFetchOptions
+  pathCompletionCwd?: string
   enableWebgl?: boolean
   transparentBackground?: boolean
   fontWeight?: TerminalFontWeight
   fontWeightBold?: TerminalFontWeight
+}
+
+function parseOsc7Cwd(data: string): string | undefined {
+  if (!data.startsWith("file://")) {
+    return undefined
+  }
+
+  try {
+    const url = new URL(data)
+    const pathname = decodeURIComponent(url.pathname)
+    return pathname.startsWith("/") ? pathname : undefined
+  } catch {
+    const match = data.match(/^file:\/\/[^/]*(\/.*)$/)
+    if (!match?.[1]) {
+      return undefined
+    }
+
+    try {
+      return decodeURIComponent(match[1])
+    } catch {
+      return match[1]
+    }
+  }
 }
 
 export function WebTerminal({
@@ -107,6 +131,7 @@ export function WebTerminal({
   completionConfig,
   completionProviderEnabled,
   completionFetchOptions,
+  pathCompletionCwd,
   enableWebgl = true,
   transparentBackground = false,
   fontWeight = "400",
@@ -152,20 +177,50 @@ export function WebTerminal({
   const isTerminalReadyRef = useRef(false)
   const sendInputRef = useRef<(data: string) => void>(() => {})
   const completionUpdateSenderRef = useRef<((command: string) => void) | null>(null)
+  const osc7CwdRef = useRef<string | undefined>(undefined)
 
   const resolvedCompletionProviderEnabled = useMemo(() => completionProviderEnabled ?? ({
     local: !!resolvedCompletionConfig.providers.local,
     session: !!resolvedCompletionConfig.providers.session || !!resolvedCompletionConfig.providers.history,
     script: !!resolvedCompletionConfig.providers.script,
     remoteHistory: !!resolvedCompletionConfig.providers.remote,
+    path: !!resolvedCompletionConfig.providers.path,
   }), [
     completionProviderEnabled,
     resolvedCompletionConfig.providers.history,
     resolvedCompletionConfig.providers.local,
+    resolvedCompletionConfig.providers.path,
     resolvedCompletionConfig.providers.remote,
     resolvedCompletionConfig.providers.script,
     resolvedCompletionConfig.providers.session,
   ])
+
+  const getPathCompletionCwd = useCallback(
+    () => osc7CwdRef.current ?? pathCompletionCwd,
+    [pathCompletionCwd],
+  )
+
+  useEffect(() => {
+    osc7CwdRef.current = undefined
+  }, [serverId, sessionId])
+
+  useEffect(() => {
+    if (!terminal) return
+
+    const disposable = terminal.parser.registerOscHandler(7, (data) => {
+      const cwd = parseOsc7Cwd(data)
+      if (!cwd) {
+        return false
+      }
+
+      osc7CwdRef.current = cwd
+      return true
+    })
+
+    return () => {
+      disposable.dispose()
+    }
+  }, [terminal])
 
   const effectiveAuthFlowAdapters = useTerminalAuthFlowAdapters({ authFlowAdapters })
   const terminalAuthTicketProvider = useMemo(
@@ -183,6 +238,9 @@ export function WebTerminal({
   const terminalCompletion = useTerminalCompletionController({
     sessionId,
     terminal,
+    serverId,
+    pathCompletionApi: workspace?.adapters.apiClient?.sftp,
+    getPathCompletionCwd,
     terminalReady,
     isTerminalReadyRef,
     containerRef,

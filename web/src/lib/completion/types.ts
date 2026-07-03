@@ -17,7 +17,18 @@ export type CompletionItemType =
 /**
  * 补全项来源
  */
-export type CompletionSource = "local" | "remote" | "history" | "script" | "ai"
+export type CompletionSource =
+  | "local"
+  | "remote"
+  | "history"
+  | "script"
+  | "ai"
+  | "path"
+
+/**
+ * 补全触发来源
+ */
+export type CompletionTriggerKind = "auto" | "manual" | "space"
 
 /**
  * 补全项
@@ -39,6 +50,10 @@ export interface CompletionItem {
   score?: number
   /** 提供者名称(用于配额分配) */
   providerName?: string
+  /** 替换起始位置（相对于命令行，不含 prompt；默认使用当前词范围） */
+  replaceStart?: number
+  /** 替换结束位置（相对于命令行，不含 prompt；默认使用光标位置） */
+  replaceEnd?: number
 }
 
 /**
@@ -47,10 +62,20 @@ export interface CompletionItem {
 export interface CompletionContext {
   /** 完整输入行 */
   fullLine: string
+  /** 终端 prompt 文本（如果能识别） */
+  promptText?: string
+  /** 当前工作目录（优先来自 OSC 7，其次由调用方兜底提供） */
+  cwd?: string
+  /** 本次补全的触发来源 */
+  triggerKind?: CompletionTriggerKind
   /** 当前光标位置 */
   cursorPosition: number
   /** 当前输入的词(光标所在位置) */
   currentWord: string
+  /** 当前词起始位置（相对于命令行，不含 prompt） */
+  currentWordStart: number
+  /** 当前词结束位置（相对于命令行，不含 prompt） */
+  currentWordEnd: number
   /** 已分词的命令 */
   tokens: string[]
   /** 当前词在 tokens 中的索引 */
@@ -87,6 +112,11 @@ export interface CompletionProvider {
    * @returns 补全项列表,如果不支持则返回空数组
    */
   getCompletions(context: CompletionContext): Promise<CompletionItem[]>
+  /**
+   * 判断当前上下文是否应该触发该提供者。
+   * 未实现时视为支持当前上下文。
+   */
+  shouldTrigger?(context: CompletionContext): boolean
 }
 
 /**
@@ -124,6 +154,7 @@ export interface CompletionConfig {
     history: boolean
     script?: boolean
     session?: boolean
+    path?: boolean
   }
   /** 是否显示描述 */
   showDescription: boolean
@@ -144,6 +175,7 @@ export interface CompletionConfig {
  * 默认来源配额配置
  */
 export const DEFAULT_SOURCE_QUOTAS: SourceQuotaConfig[] = [
+  { providerName: "path", min: 0, max: 24 },
   { providerName: "local", min: 1, max: 3 },
   { providerName: "script", min: 0, max: 2 },
   { providerName: "session", min: 0, max: 2 },
@@ -170,6 +202,7 @@ export const DEFAULT_COMPLETION_CONFIG: CompletionConfig = {
     history: false, // Phase 3 实现后默认开启
     script: false,
     session: false,
+    path: true,
   },
   showDescription: true,
   showIcon: true,

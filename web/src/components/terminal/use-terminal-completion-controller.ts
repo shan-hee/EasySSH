@@ -12,10 +12,19 @@ import {
 import type { Terminal } from "@xterm/xterm"
 import { CompletionEngine } from "@/lib/completion/completion-engine"
 import { LocalCommandProvider } from "@/lib/completion/providers/local-command-provider"
+import {
+  PathProvider,
+  PATH_COMPLETION_COMMANDS,
+} from "@/lib/completion/providers/path-provider"
 import { RemoteHistoryProvider } from "@/lib/completion/providers/remote-history-provider"
 import { ScriptProvider } from "@/lib/completion/providers/script-provider"
 import { SessionProvider } from "@/lib/completion/providers/session-provider"
-import type { CompletionConfig, CompletionItem } from "@/lib/completion/types"
+import type {
+  CompletionConfig,
+  CompletionContext,
+  CompletionItem,
+} from "@/lib/completion/types"
+import type { SftpDirectoryApi } from "@/lib/session/sftp-directory"
 import {
   applyCompletion,
   getCursorScreenPosition,
@@ -40,6 +49,7 @@ export interface TerminalCompletionProviderFlags {
   session: boolean
   script: boolean
   remoteHistory: boolean
+  path: boolean
 }
 
 export interface TerminalCompletionState {
@@ -53,6 +63,9 @@ export interface TerminalCompletionState {
 export interface UseTerminalCompletionControllerOptions {
   sessionId: string
   terminal: Terminal | null | undefined
+  serverId?: string
+  pathCompletionApi?: SftpDirectoryApi
+  getPathCompletionCwd?: () => string | undefined
   terminalReady: boolean
   isTerminalReadyRef: MutableRefObject<boolean>
   containerRef: RefObject<HTMLDivElement | null>
@@ -90,9 +103,119 @@ const emptyCompletionState: TerminalCompletionState = {
   matchedPrefix: "",
 }
 
+const PATH_COMMAND_PREFIXES = new Set(["command", "env", "nice", "nohup", "sudo", "time"])
+
+function getCommandName(token: string): string {
+  const normalized = token.replace(/^['"]|['"]$/g, "")
+  const slashIndex = normalized.lastIndexOf("/")
+  return (slashIndex >= 0 ? normalized.slice(slashIndex + 1) : normalized).toLowerCase()
+}
+
+function isOptionToken(token: string): boolean {
+  return token.startsWith("-") && token !== "-" && token !== "--"
+}
+
+function isShellAssignmentToken(token: string): boolean {
+  return /^[A-Za-z_][A-Za-z0-9_]*=/.test(token)
+}
+
+function isPathArgumentCompletionContext(context: CompletionContext): boolean {
+  for (let index = 0; index < context.tokens.length; index++) {
+    const token = context.tokens[index]
+    if (!token || isOptionToken(token)) {
+      continue
+    }
+
+    const commandName = getCommandName(token)
+    if (PATH_COMMAND_PREFIXES.has(commandName) || isShellAssignmentToken(token)) {
+      continue
+    }
+
+    return PATH_COMPLETION_COMMANDS.has(commandName) && context.currentTokenIndex >= index
+  }
+
+  return false
+}
+
+function stripOuterQuote(value: string): string {
+  if (
+    value.length >= 1 &&
+    ((value.startsWith("'") && !value.endsWith("'")) ||
+      (value.startsWith('"') && !value.endsWith('"')))
+  ) {
+    return value.slice(1)
+  }
+
+  if (
+    value.length >= 2 &&
+    ((value.startsWith("'") && value.endsWith("'")) ||
+      (value.startsWith('"') && value.endsWith('"')))
+  ) {
+    return value.slice(1, -1)
+  }
+
+  return value
+}
+
+function unescapeShellToken(value: string): string {
+  let result = ""
+  let escaped = false
+
+  for (const char of value) {
+    if (escaped) {
+      result += char
+      escaped = false
+      continue
+    }
+
+    if (char === "\\") {
+      escaped = true
+      continue
+    }
+
+    result += char
+  }
+
+  if (escaped) {
+    result += "\\"
+  }
+
+  return result
+}
+
+function getPathCompletionMatchedPrefix(context: CompletionContext): string {
+  const wordPrefix = context.currentWord.slice(
+    0,
+    Math.max(0, context.cursorPosition - context.currentWordStart)
+  )
+  const unquotedPrefix = stripOuterQuote(wordPrefix)
+  const unescapedPrefix = unescapeShellToken(unquotedPrefix)
+  const slashIndex = unescapedPrefix.lastIndexOf("/")
+  return slashIndex >= 0 ? unescapedPrefix.slice(slashIndex + 1) : unescapedPrefix
+}
+
+function getCompletionMatchedPrefix(
+  context: CompletionContext,
+  items: CompletionItem[]
+): string {
+  if (items.some((item) => item.source === "path")) {
+    return getPathCompletionMatchedPrefix(context)
+  }
+
+  const rawPrefix = context.fullLine.slice(
+    0,
+    Math.min(context.cursorPosition, context.fullLine.length)
+  )
+  const linePrefix = rawPrefix.trim()
+  return linePrefix || context.currentWord
+}
+
 export function useTerminalCompletionController({
   sessionId,
   terminal,
+  serverId,
+  pathCompletionApi,
+  getPathCompletionCwd,
   terminalReady,
   isTerminalReadyRef,
   containerRef,
@@ -114,9 +237,12 @@ export function useTerminalCompletionController({
   const remoteHistoryProviderRef = useRef<RemoteHistoryProvider | null>(null)
   const scriptProviderRef = useRef<ScriptProvider | null>(null)
   const sessionProviderRef = useRef<SessionProvider | null>(null)
+  const pathProviderRef = useRef<PathProvider | null>(null)
   const autoCompleteTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const completionInProgressRef = useRef(false)
-  const handleCompletionRequestRef = useRef<(() => Promise<void>) | undefined>(undefined)
+  const completionRequestVersionRef = useRef(0)
+  const handleCompletionRequestRef = useRef<(
+    (triggerKind?: CompletionContext["triggerKind"]) => Promise<boolean>
+  ) | undefined>(undefined)
   const onCommandRef = useRef(onCommand)
   const [completionState, setCompletionState] = useState<TerminalCompletionState>(emptyCompletionState)
   const [completionPlacement, setCompletionPlacement] = useState<CompletionPlacement>("bottom")
@@ -126,6 +252,7 @@ export function useTerminalCompletionController({
   const providerSessionEnabled = providerEnabled.session
   const providerScriptEnabled = providerEnabled.script
   const providerRemoteHistoryEnabled = providerEnabled.remoteHistory
+  const providerPathEnabled = providerEnabled.path
 
   useEffect(() => {
     completionPlacementRef.current = completionPlacement
@@ -160,12 +287,19 @@ export function useTerminalCompletionController({
     engine.setProviderEnabled("session", effectiveCompletionEnabled && providerSessionEnabled)
     engine.setProviderEnabled("script", effectiveCompletionEnabled && providerScriptEnabled)
     engine.setProviderEnabled("remote-history", effectiveCompletionEnabled && providerRemoteHistoryEnabled)
+    engine.setProviderEnabled(
+      "path",
+      effectiveCompletionEnabled && providerPathEnabled && !!serverId && !!pathCompletionApi
+    )
   }, [
     effectiveCompletionEnabled,
+    pathCompletionApi,
     providerLocalEnabled,
+    providerPathEnabled,
     providerRemoteHistoryEnabled,
     providerScriptEnabled,
     providerSessionEnabled,
+    serverId,
   ])
 
   const createCompletionEngine = useCallback((targetSessionId: string) => {
@@ -181,6 +315,14 @@ export function useTerminalCompletionController({
     scriptProviderRef.current = scriptProvider
     engine.registerProvider(scriptProvider)
 
+    const pathProvider = new PathProvider({
+      serverId,
+      api: pathCompletionApi,
+      getFallbackCwd: getPathCompletionCwd,
+    })
+    pathProviderRef.current = pathProvider
+    engine.registerProvider(pathProvider)
+
     const remoteHistoryProvider = new RemoteHistoryProvider()
     remoteHistoryProviderRef.current = remoteHistoryProvider
     engine.registerProvider(remoteHistoryProvider)
@@ -188,7 +330,7 @@ export function useTerminalCompletionController({
     syncProviderEnabledState(engine)
     completionEngineRef.current = engine
     completionEngineSessionIdRef.current = targetSessionId
-  }, [getMergedConfig, syncProviderEnabledState])
+  }, [getMergedConfig, getPathCompletionCwd, pathCompletionApi, serverId, syncProviderEnabledState])
 
   useEffect(() => {
     if (completionEngineRef.current && completionEngineSessionIdRef.current === sessionId) {
@@ -199,7 +341,7 @@ export function useTerminalCompletionController({
       clearTimeout(autoCompleteTimerRef.current)
       autoCompleteTimerRef.current = null
     }
-    completionInProgressRef.current = false
+    completionRequestVersionRef.current++
     setCompletionState(emptyCompletionState)
     createCompletionEngine(sessionId)
   }, [createCompletionEngine, sessionId])
@@ -208,14 +350,26 @@ export function useTerminalCompletionController({
     if (!completionEngineRef.current) return
 
     completionEngineRef.current.updateConfig(getMergedConfig())
+    pathProviderRef.current?.updateOptions({
+      serverId,
+      api: pathCompletionApi,
+      getFallbackCwd: getPathCompletionCwd,
+    })
     syncProviderEnabledState(completionEngineRef.current)
     completionEngineRef.current.clearCache()
-  }, [getMergedConfig, syncProviderEnabledState])
+  }, [
+    getMergedConfig,
+    getPathCompletionCwd,
+    pathCompletionApi,
+    serverId,
+    syncProviderEnabledState,
+  ])
 
   const clearProviderData = useCallback(() => {
     remoteHistoryProviderRef.current?.clear()
     scriptProviderRef.current?.clear()
     sessionProviderRef.current?.clear()
+    pathProviderRef.current?.clear()
     completionEngineRef.current?.clearCache()
   }, [])
 
@@ -230,9 +384,18 @@ export function useTerminalCompletionController({
     completionEngineRef.current?.clearCache()
   }, [])
 
-  const closeCompletion = useCallback(() => {
+  const resetCompletionState = useCallback(() => {
     setCompletionState(emptyCompletionState)
   }, [])
+
+  const invalidateCompletionRequest = useCallback(() => {
+    completionRequestVersionRef.current++
+  }, [])
+
+  const closeCompletion = useCallback(() => {
+    invalidateCompletionRequest()
+    resetCompletionState()
+  }, [invalidateCompletionRequest, resetCompletionState])
 
   useEffect(() => {
     if (!effectiveCompletionEnabled && completionStateRef.current.visible) {
@@ -243,46 +406,71 @@ export function useTerminalCompletionController({
   const applyCompletionItem = useCallback((item: CompletionItem) => {
     if (!terminal) return
 
-    const context = parseCompletionContext(terminal)
+    const context = parseCompletionContext(terminal, {
+      cwd: getPathCompletionCwd?.(),
+    })
     const isFullLineCompletion = item.source === "script" || item.type === "history"
     let deleteCount: number
+    let forwardDeleteCount = 0
     let completionText = item.text
 
-    if (isFullLineCompletion) {
-      const currentLine = context.fullLine.trim()
+    if (
+      typeof item.replaceStart === "number" &&
+      typeof item.replaceEnd === "number"
+    ) {
+      deleteCount = Math.max(0, context.cursorPosition - item.replaceStart)
+      forwardDeleteCount = Math.max(0, item.replaceEnd - context.cursorPosition)
+    } else if (isFullLineCompletion) {
+      const clampedCursorPosition = Math.min(context.cursorPosition, context.fullLine.length)
+      const linePrefix = context.fullLine.slice(0, clampedCursorPosition).trim()
 
-      if (currentLine && item.text.startsWith(currentLine)) {
+      if (clampedCursorPosition >= context.fullLine.length && linePrefix && item.text.startsWith(linePrefix)) {
         deleteCount = 0
-        completionText = item.text.slice(currentLine.length)
+        completionText = item.text.slice(linePrefix.length)
       } else {
-        deleteCount = context.fullLine.length
+        deleteCount = clampedCursorPosition
+        forwardDeleteCount = Math.max(0, context.fullLine.length - clampedCursorPosition)
       }
     } else {
-      deleteCount = context.currentWord.length
+      deleteCount = Math.max(0, context.cursorPosition - context.currentWordStart)
+      forwardDeleteCount = Math.max(0, context.currentWordEnd - context.cursorPosition)
     }
 
-    applyCompletion(terminal, completionText, deleteCount, sendInputRef.current)
+    applyCompletion(
+      terminal,
+      completionText,
+      deleteCount,
+      sendInputRef.current,
+      forwardDeleteCount
+    )
     closeCompletion()
-  }, [closeCompletion, sendInputRef, terminal])
+  }, [closeCompletion, getPathCompletionCwd, sendInputRef, terminal])
 
-  const handleCompletionRequest = useCallback(async () => {
+  const handleCompletionRequest = useCallback(async (
+    triggerKind: CompletionContext["triggerKind"] = "manual"
+  ) => {
     if (!effectiveCompletionEnabled || !terminal || !completionEngineRef.current) {
-      return
+      return false
     }
 
-    if (completionInProgressRef.current) {
-      return
-    }
-    completionInProgressRef.current = true
+    const requestVersion = completionRequestVersionRef.current + 1
+    completionRequestVersionRef.current = requestVersion
 
-    const context = parseCompletionContext(terminal)
+    const context = parseCompletionContext(terminal, {
+      cwd: getPathCompletionCwd?.(),
+      triggerKind,
+    })
 
     try {
       const result = await completionEngineRef.current.getCompletions(context)
 
+      if (requestVersion !== completionRequestVersionRef.current) {
+        return true
+      }
+
       if (!result || result.items.length === 0) {
-        closeCompletion()
-        return
+        resetCompletionState()
+        return false
       }
 
       const cursorPosition = getCursorScreenPosition(terminal, containerRef.current)
@@ -293,26 +481,27 @@ export function useTerminalCompletionController({
         lineBottom: cursorPosition.lineBottom,
       }
 
-      const rawPrefix = context.fullLine.slice(
-        0,
-        Math.min(context.cursorPosition, context.fullLine.length)
-      )
-      const linePrefix = rawPrefix.trim()
-      const matchedPrefix = linePrefix || context.currentWord
-
       setCompletionState({
         visible: true,
         items: result.items,
         selectedIndex: 0,
         position,
-        matchedPrefix,
+        matchedPrefix: getCompletionMatchedPrefix(context, result.items),
       })
+      return true
     } catch {
-      closeCompletion()
-    } finally {
-      completionInProgressRef.current = false
+      if (requestVersion === completionRequestVersionRef.current) {
+        resetCompletionState()
+      }
+      return false
     }
-  }, [containerRef, effectiveCompletionEnabled, terminal, closeCompletion])
+  }, [
+    containerRef,
+    effectiveCompletionEnabled,
+    getPathCompletionCwd,
+    resetCompletionState,
+    terminal,
+  ])
 
   useEffect(() => {
     handleCompletionRequestRef.current = handleCompletionRequest
@@ -325,8 +514,22 @@ export function useTerminalCompletionController({
       if (!isTerminalReadyRef.current) return
 
       if (isTabKey(data)) {
+        if (completionStateRef.current.visible) {
+          const selectedItem = completionStateRef.current.items[completionStateRef.current.selectedIndex]
+          if (selectedItem) {
+            applyCompletionItem(selectedItem)
+          }
+          return
+        }
+
         if (effectiveCompletionEnabled && completionTrigger === "tab") {
-          void handleCompletionRequestRef.current?.()
+          void (async () => {
+            const handled = await handleCompletionRequestRef.current?.("manual")
+            if (!handled) {
+              sendInputRef.current(data)
+              onCommandRef.current(data)
+            }
+          })()
           return
         }
 
@@ -349,7 +552,9 @@ export function useTerminalCompletionController({
           const isTopPlacement = completionPlacementRef.current === "top"
           setCompletionState((prev) => {
             const delta = isTopPlacement ? 1 : -1
-            const nextIndex = Math.max(0, Math.min(prev.items.length - 1, prev.selectedIndex + delta))
+            const nextIndex = prev.items.length > 0
+              ? (prev.selectedIndex + delta + prev.items.length) % prev.items.length
+              : 0
             if (nextIndex === prev.selectedIndex) return prev
             return { ...prev, selectedIndex: nextIndex }
           })
@@ -360,7 +565,9 @@ export function useTerminalCompletionController({
           const isTopPlacement = completionPlacementRef.current === "top"
           setCompletionState((prev) => {
             const delta = isTopPlacement ? -1 : 1
-            const nextIndex = Math.max(0, Math.min(prev.items.length - 1, prev.selectedIndex + delta))
+            const nextIndex = prev.items.length > 0
+              ? (prev.selectedIndex + delta + prev.items.length) % prev.items.length
+              : 0
             if (nextIndex === prev.selectedIndex) return prev
             return { ...prev, selectedIndex: nextIndex }
           })
@@ -380,6 +587,7 @@ export function useTerminalCompletionController({
 
       sendInputRef.current(data)
       onCommandRef.current(data)
+      invalidateCompletionRequest()
 
       if (isEnterKey(data)) {
         if (autoCompleteTimerRef.current) {
@@ -387,7 +595,9 @@ export function useTerminalCompletionController({
           autoCompleteTimerRef.current = null
         }
 
-        const context = parseCompletionContext(terminal)
+        const context = parseCompletionContext(terminal, {
+          cwd: getPathCompletionCwd?.(),
+        })
         const command = context.fullLine.trim()
 
         if (command && sessionProviderRef.current) {
@@ -427,7 +637,11 @@ export function useTerminalCompletionController({
         return
       }
 
-      if (data === " ") {
+      const shouldTriggerAfterSpace = data === " " &&
+        isPathArgumentCompletionContext(parseCompletionContext(terminal, {
+          cwd: getPathCompletionCwd?.(),
+        }))
+      if (data === " " && !shouldTriggerAfterSpace) {
         return
       }
 
@@ -438,7 +652,10 @@ export function useTerminalCompletionController({
           return
         }
 
-        const context = parseCompletionContext(terminal)
+        const context = parseCompletionContext(terminal, {
+          cwd: getPathCompletionCwd?.(),
+          triggerKind: shouldTriggerAfterSpace ? "space" : "auto",
+        })
         const rawPrefix = context.fullLine.slice(
           0,
           Math.min(context.cursorPosition, context.fullLine.length)
@@ -446,8 +663,8 @@ export function useTerminalCompletionController({
         const linePrefix = rawPrefix.trim()
         const effectivePrefix = linePrefix || context.currentWord
 
-        if (effectivePrefix && effectivePrefix.length >= 2) {
-          void handleCompletionRequestRef.current?.()
+        if (shouldTriggerAfterSpace || (effectivePrefix && effectivePrefix.length >= 2)) {
+          void handleCompletionRequestRef.current?.(shouldTriggerAfterSpace ? "space" : "auto")
         }
 
         autoCompleteTimerRef.current = null
@@ -468,6 +685,7 @@ export function useTerminalCompletionController({
     completionTrigger,
     completionUpdateSenderRef,
     effectiveCompletionEnabled,
+    invalidateCompletionRequest,
     isTerminalReadyRef,
     sendInputRef,
     terminal,

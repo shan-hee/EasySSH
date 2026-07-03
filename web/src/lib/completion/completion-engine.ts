@@ -81,17 +81,26 @@ export class CompletionEngine {
     // 生成缓存键：基于会话ID、当前词和token位置
     // 包含 sessionId 确保不同服务器的补全结果不会混淆
     // 使用 effectivePrefix（优先整行前缀）以体现行级语义
-    const cacheKey = `${this.sessionId}:${effectivePrefix}:${context.currentTokenIndex}`
+    const cacheKey = `${this.sessionId}:${context.promptText ?? ""}:${effectivePrefix}:${context.currentTokenIndex}`
+    const enabledProviders = this.providers.filter(
+      (provider) => provider.enabled && (provider.shouldTrigger?.(context) ?? true)
+    )
+    if (enabledProviders.length === 0) {
+      return null
+    }
+
+    const hasPathProvider = enabledProviders.some((provider) => provider.name === "path")
+    const shouldUseGlobalCache = !hasPathProvider
 
     // 尝试从缓存获取
-    const cached = this.cache.get(cacheKey)
-    if (cached) {
-      return cached
+    if (shouldUseGlobalCache) {
+      const cached = this.cache.get(cacheKey)
+      if (cached) {
+        return cached
+      }
     }
 
     // 并行请求所有启用的提供者
-    const enabledProviders = this.providers.filter((p) => p.enabled)
-
     const results = await Promise.allSettled(
       enabledProviders.map((provider) => provider.getCompletions(context))
     )
@@ -110,24 +119,35 @@ export class CompletionEngine {
       return null
     }
 
+    const hasPathItems = allItems.some((item) => item.source === "path")
+    const totalLimit = hasPathItems
+      ? Math.max(this.config.maxItems, 24)
+      : this.config.maxItems
+    const itemsForDeduplication =
+      context.currentTokenIndex === 0 && hasPathItems
+        ? allItems.filter((item) => item.source === "path" || item.text !== context.currentWord)
+        : allItems
+
     // 去重(基于 text)
-    const uniqueItems = this.deduplicateItems(allItems)
+    const uniqueItems = this.deduplicateItems(itemsForDeduplication)
 
     // 根据配置选择分配策略
     let limitedItems: CompletionItem[]
 
     if (this.config.enableQuotaAllocation && this.config.sourceQuotas) {
       // 使用配额分配
-      limitedItems = this.allocateWithQuota(uniqueItems)
+      limitedItems = this.allocateWithQuota(uniqueItems, totalLimit)
     } else {
       // 使用原有的简单排序+截取
       const sortedItems = this.sortItems(uniqueItems)
-      limitedItems = sortedItems.slice(0, this.config.maxItems)
+      limitedItems = sortedItems.slice(0, totalLimit)
     }
 
-    // 计算替换范围
-    const replaceStart = context.cursorPosition - context.currentWord.length
-    const replaceEnd = context.cursorPosition
+    // 计算默认替换范围；单个补全项可以用 replaceStart / replaceEnd 覆盖。
+    const defaultReplaceStart = context.currentWordStart
+    const defaultReplaceEnd = context.currentWordEnd
+    const replaceStart = limitedItems[0]?.replaceStart ?? defaultReplaceStart
+    const replaceEnd = limitedItems[0]?.replaceEnd ?? defaultReplaceEnd
 
     // 计算公共前缀
     const commonPrefix = getCommonPrefix(limitedItems.map((item) => item.text))
@@ -139,8 +159,10 @@ export class CompletionEngine {
       commonPrefix,
     }
 
-    // 写入缓存
-    this.cache.set(cacheKey, result)
+    // 路径补全依赖远端目录实时状态，使用 PathProvider 自己的短 TTL 缓存即可。
+    if (shouldUseGlobalCache) {
+      this.cache.set(cacheKey, result)
+    }
 
     return result
   }
@@ -189,10 +211,10 @@ export class CompletionEngine {
    * 3. 如果有剩余空间，按优先级继续分配
    */
   private allocateWithQuota(
-    items: CompletionItem[]
+    items: CompletionItem[],
+    totalLimit: number
   ): CompletionItem[] {
     const quotaConfigs = this.config.sourceQuotas || DEFAULT_SOURCE_QUOTAS
-    const totalLimit = this.config.maxItems
 
     // 1. 按提供者分组，并在组内按匹配度排序
     const itemsByProvider = new Map<string, CompletionItem[]>()
@@ -211,6 +233,12 @@ export class CompletionEngine {
 
     const result: CompletionItem[] = []
     const usedByProvider = new Map<string, number>()
+    const selectedItemTexts = new Set<string>()
+    const pushResultItem = (providerName: string, item: CompletionItem) => {
+      result.push(item)
+      selectedItemTexts.add(item.text)
+      usedByProvider.set(providerName, (usedByProvider.get(providerName) ?? 0) + 1)
+    }
 
     // 2. 先满足每个来源的 min 配额（如果有足够候选）
     for (const config of quotaConfigs) {
@@ -223,9 +251,8 @@ export class CompletionEngine {
       if (take <= 0) continue
 
       for (let i = 0; i < take; i++) {
-        result.push(groupItems[i])
+        pushResultItem(providerName, groupItems[i])
       }
-      usedByProvider.set(providerName, take)
       itemsByProvider.set(providerName, groupItems.slice(take))
     }
 
@@ -249,8 +276,49 @@ export class CompletionEngine {
       quotaMap.set(config.providerName, config)
     }
 
-    // 4. 在不超过各来源 max 的前提下，用全局排序填满剩余空位
+    // 4. 在不超过各来源 max / softMax 的前提下，用全局排序填满剩余空位
     //    注意：当启用配额分配时，未配置配额的来源视为禁用来源。
+    const takeFromRemainingPool = (allowUnlimitedOverflow: boolean) => {
+      for (const entry of remainingPool) {
+        if (result.length >= totalLimit) break
+
+        const providerName = entry.providerName
+        const item = entry.item
+        const config = quotaMap.get(providerName)
+
+        if (selectedItemTexts.has(item.text)) {
+          continue
+        }
+
+        if (!config) {
+          continue
+        }
+
+        let providerMax = totalLimit
+        if (config.unlimited) {
+          providerMax = allowUnlimitedOverflow
+            ? totalLimit
+            : Math.min(config.softMax ?? totalLimit, totalLimit)
+        } else {
+          providerMax = config.max
+        }
+
+        const used = usedByProvider.get(providerName) ?? 0
+        if (used >= providerMax) {
+          continue
+        }
+
+        pushResultItem(providerName, item)
+      }
+    }
+
+    takeFromRemainingPool(false)
+
+    if (result.length >= totalLimit) {
+      return result
+    }
+
+    // 5. unlimited 来源可以在其他来源不足时继续填满剩余位置。
     for (const entry of remainingPool) {
       if (result.length >= totalLimit) break
 
@@ -258,24 +326,20 @@ export class CompletionEngine {
       const item = entry.item
       const config = quotaMap.get(providerName)
 
-      if (!config) {
+      if (selectedItemTexts.has(item.text)) {
         continue
       }
 
-      let providerMax = totalLimit
-      if (config.unlimited) {
-        providerMax = Math.min(config.softMax ?? totalLimit, totalLimit)
-      } else {
-        providerMax = config.max
+      if (!config?.unlimited) {
+        continue
       }
 
       const used = usedByProvider.get(providerName) ?? 0
-      if (used >= providerMax) {
+      if (used >= totalLimit) {
         continue
       }
 
-      result.push(item)
-      usedByProvider.set(providerName, used + 1)
+      pushResultItem(providerName, item)
     }
 
     return result
@@ -285,6 +349,10 @@ export class CompletionEngine {
    * 根据 CompletionItem 判断来自哪个提供者
    */
   private getProviderName(item: CompletionItem): string {
+    if (item.source === "path" || item.type === "directory" || item.type === "file") {
+      return "path"
+    }
+
     if (item.type === "history") {
       if (item.source === "remote") {
         return "remote-history"

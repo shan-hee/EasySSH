@@ -382,6 +382,7 @@ export function TabTerminalContent({
     () => buildTerminalCompletionFetchOptions(settings),
     [settings],
   )
+  const pathCompletionCwd = sftpSession.currentPath || sftpSessionInitialPath || initialSftpPath
   const hasBackgroundImage = isTerminalSession && settings.backgroundImage.trim().length > 0
   const enableTerminalWebgl = true
   const connectionLoaderServerName =
@@ -670,6 +671,7 @@ export function TabTerminalContent({
                   completionConfig={completionConfig}
                   completionProviderEnabled={completionProviderEnabled}
                   completionFetchOptions={completionFetchOptions}
+                  pathCompletionCwd={pathCompletionCwd}
                   enableWebgl={enableTerminalWebgl}
                   transparentBackground={surface === "transparent" || hasBackgroundImage}
                   fontWeight={hasBackgroundImage && settings.backgroundTextEnhance ? "bold" : "400"}

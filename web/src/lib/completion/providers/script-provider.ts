@@ -39,6 +39,18 @@ export class ScriptProvider implements CompletionProvider {
     this.scriptsCache = []
   }
 
+  shouldTrigger(context: CompletionContext): boolean {
+    if (context.triggerKind === "space") {
+      return false
+    }
+
+    const rawPrefix = context.fullLine.slice(
+      0,
+      Math.min(context.cursorPosition, context.fullLine.length)
+    )
+    return rawPrefix.trim().length > 0 || context.currentWord.length > 0
+  }
+
   /**
    * 获取补全项
    */

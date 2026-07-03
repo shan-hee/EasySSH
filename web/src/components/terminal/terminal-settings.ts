@@ -11,6 +11,7 @@ export interface TerminalCompletionProviders {
   remoteHistory: boolean
   script: boolean
   session: boolean
+  path: boolean
 }
 
 export interface TerminalCompletionQuotas {
@@ -18,6 +19,8 @@ export interface TerminalCompletionQuotas {
   localMax: number
   scriptMin: number
   scriptMax: number
+  pathMin: number
+  pathMax: number
   sessionMin: number
   sessionMax: number
   remoteHistoryUnlimited: boolean
@@ -82,6 +85,7 @@ export interface TerminalCompletionProviderFlags {
   session: boolean
   script: boolean
   remoteHistory: boolean
+  path: boolean
 }
 
 export const DEFAULT_TERMINAL_SETTINGS: TerminalSettings = {
@@ -116,12 +120,15 @@ export const DEFAULT_TERMINAL_SETTINGS: TerminalSettings = {
     remoteHistory: true,
     script: true,
     session: true,
+    path: true,
   },
   completionQuotas: {
     localMin: 1,
     localMax: 3,
     scriptMin: 0,
     scriptMax: 2,
+    pathMin: 0,
+    pathMax: 24,
     sessionMin: 0,
     sessionMax: 2,
     remoteHistoryUnlimited: true,
@@ -197,7 +204,7 @@ export function normalizeTerminalSettings(input: unknown): TerminalSettings {
     completionEnabled: normalizeBoolean(value.completionEnabled, defaults.completionEnabled),
     completionTrigger: normalizeChoice(value.completionTrigger, ["tab", "auto"] as const, defaults.completionTrigger),
     completionAutoDelay: clampNumber(value.completionAutoDelay, defaults.completionAutoDelay, 100, 1000),
-    completionMaxItems: clampNumber(value.completionMaxItems, defaults.completionMaxItems, 5, 20),
+    completionMaxItems: clampNumber(value.completionMaxItems, defaults.completionMaxItems, 5, 24),
     completionShowIcon: normalizeBoolean(value.completionShowIcon, defaults.completionShowIcon),
     completionShowDescription: normalizeBoolean(
       value.completionShowDescription,
@@ -211,12 +218,15 @@ export function normalizeTerminalSettings(input: unknown): TerminalSettings {
       ),
       script: normalizeBoolean(providers.script, defaults.completionProviders.script),
       session: normalizeBoolean(providers.session, defaults.completionProviders.session),
+      path: normalizeBoolean(providers.path, defaults.completionProviders.path),
     },
     completionQuotas: {
       localMin: clampNumber(quotas.localMin, defaults.completionQuotas.localMin, 0, 10),
       localMax: clampNumber(quotas.localMax, defaults.completionQuotas.localMax, 1, 10),
       scriptMin: clampNumber(quotas.scriptMin, defaults.completionQuotas.scriptMin, 0, 10),
       scriptMax: clampNumber(quotas.scriptMax, defaults.completionQuotas.scriptMax, 0, 10),
+      pathMin: clampNumber(quotas.pathMin, defaults.completionQuotas.pathMin, 0, 10),
+      pathMax: clampNumber(quotas.pathMax, defaults.completionQuotas.pathMax, 0, 24),
       sessionMin: clampNumber(quotas.sessionMin, defaults.completionQuotas.sessionMin, 0, 10),
       sessionMax: clampNumber(quotas.sessionMax, defaults.completionQuotas.sessionMax, 0, 10),
       remoteHistoryUnlimited: normalizeBoolean(
@@ -290,12 +300,21 @@ export function buildTerminalCompletionProviderFlags(
     session: settings.completionProviders.session,
     script: settings.completionProviders.script,
     remoteHistory: settings.completionProviders.remoteHistory,
+    path: settings.completionProviders.path,
   }
 }
 
 export function buildTerminalCompletionSourceQuotas(settings: TerminalSettings): SourceQuotaConfig[] {
   const quotas = settings.completionQuotas
   const sourceQuotas: SourceQuotaConfig[] = []
+
+  if (settings.completionProviders.path) {
+    sourceQuotas.push({
+      providerName: "path",
+      min: Math.min(quotas.pathMin, quotas.pathMax),
+      max: quotas.pathMax,
+    })
+  }
 
   if (settings.completionProviders.local) {
     sourceQuotas.push({
@@ -347,6 +366,7 @@ export function buildTerminalCompletionConfig(settings: TerminalSettings): Compl
       history: settings.completionProviders.session,
       script: settings.completionProviders.script,
       session: settings.completionProviders.session,
+      path: settings.completionProviders.path,
     },
     showDescription: settings.completionShowDescription,
     showIcon: settings.completionShowIcon,

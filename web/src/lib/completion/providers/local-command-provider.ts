@@ -266,6 +266,22 @@ export class LocalCommandProvider implements CompletionProvider {
     )
   }
 
+  shouldTrigger(context: CompletionContext): boolean {
+    if (context.triggerKind === "space") {
+      return false
+    }
+
+    if (context.currentTokenIndex > 1) {
+      return false
+    }
+
+    if (context.triggerKind === "auto" && !context.currentWord) {
+      return false
+    }
+
+    return true
+  }
+
   async getCompletions(
     context: CompletionContext
   ): Promise<CompletionItem[]> {

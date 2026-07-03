@@ -4,7 +4,9 @@ import {
   Command as CommandIcon,
   Clock3,
   Cloud,
+  File,
   FileText,
+  Folder,
   Sparkles,
 } from "lucide-react"
 import {
@@ -39,6 +41,7 @@ const sourceLabelKey: Record<CompletionItem["source"], string> = {
   history: "completionSourceHistory",
   script: "completionSourceScript",
   ai: "completionSourceAi",
+  path: "completionSourcePath",
 }
 
 const POPUP_OFFSET = 4
@@ -74,6 +77,12 @@ function HighlightedText({
 }
 
 function getCompletionIcon(item: CompletionItem) {
+  if (item.type === "directory") {
+    return Folder
+  }
+  if (item.type === "file") {
+    return File
+  }
   if (item.providerName === "session") {
     return Clock3
   }

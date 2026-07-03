@@ -748,7 +748,7 @@ export function TerminalSettingsDialog({
                     <Slider
                       id="completionMaxItems"
                       min={5}
-                      max={20}
+                      max={24}
                       step={1}
                       value={[localSettings.completionMaxItems]}
                       onValueChange={(value) => updateSetting('completionMaxItems', value[0])}
@@ -871,6 +871,59 @@ export function TerminalSettingsDialog({
                             />
                             <span className="w-12 text-sm text-muted-foreground">
                               {t("completionQuotaItemsValue", { count: localSettings.completionQuotas.scriptMax })}
+                            </span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* 远端路径 */}
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between gap-4">
+                        <div className="min-w-0">
+                          <Label htmlFor="completionProviderPath">{t("completionProviderPathLabel")}</Label>
+                          <p className="text-sm text-muted-foreground">
+                            {t("completionProviderPathDescription")}
+                          </p>
+                        </div>
+                        <Switch
+                          id="completionProviderPath"
+                          checked={localSettings.completionProviders.path}
+                          onCheckedChange={(checked) => updateCompletionProvider("path", checked)}
+                        />
+                      </div>
+                      {localSettings.completionProviders.path && (
+                        <div className="grid gap-3 border-t pt-3">
+                          <div className="flex items-center gap-4">
+                            <span className="w-16 text-sm text-muted-foreground">
+                              {t("completionQuotaMinLabel")}
+                            </span>
+                            <Slider
+                              min={0}
+                              max={10}
+                              step={1}
+                              value={[localSettings.completionQuotas.pathMin]}
+                              onValueChange={(value) => updateCompletionQuota("pathMin", value[0])}
+                              className="flex-1"
+                            />
+                            <span className="w-12 text-sm text-muted-foreground">
+                              {t("completionQuotaItemsValue", { count: localSettings.completionQuotas.pathMin })}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-4">
+                            <span className="w-16 text-sm text-muted-foreground">
+                              {t("completionQuotaMaxLabel")}
+                            </span>
+                            <Slider
+                              min={0}
+                              max={24}
+                              step={1}
+                              value={[localSettings.completionQuotas.pathMax]}
+                              onValueChange={(value) => updateCompletionQuota("pathMax", value[0])}
+                              className="flex-1"
+                            />
+                            <span className="w-12 text-sm text-muted-foreground">
+                              {t("completionQuotaItemsValue", { count: localSettings.completionQuotas.pathMax })}
                             </span>
                           </div>
                         </div>

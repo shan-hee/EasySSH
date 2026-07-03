@@ -3,7 +3,7 @@
  */
 
 import type { Terminal } from "@xterm/xterm"
-import type { CompletionContext } from "./types"
+import type { CompletionContext, CompletionTriggerKind } from "./types"
 
 type TerminalWithRenderDimensions = Terminal & {
   _core?: {
@@ -52,10 +52,78 @@ export function getCurrentLine(terminal: Terminal): string {
 
   if (!line) return ""
 
-  // 转换为字符串,去除 ANSI 转义序列
-  const text = line.translateToString(true)
+  // 保留光标前的尾随空格，否则 `git ` / `cd ` 这类场景会被错误解析为上一 token。
+  const rawText = line.translateToString(false)
+  const visibleLength = Math.max(rawText.trimEnd().length, buffer.cursorX)
+  const text = rawText.slice(0, visibleLength)
 
   return text
+}
+
+interface ExtractedCommand {
+  promptText: string
+  command: string
+}
+
+const HIGH_CONFIDENCE_PROMPT_BOUNDARY_CHARS = new Set(["$", "#", "%", "❯", "❮", "➜", "➤", "›"])
+const LOW_CONFIDENCE_PROMPT_BOUNDARY_CHARS = new Set([">"])
+
+function looksLikePromptText(text: string): boolean {
+  const trimmed = text.trim()
+  if (!trimmed) return false
+  if (trimmed.length <= 2) return true
+  return /[@:~\/\\\]\)]/.test(trimmed) || /[❯❮➜➤›]/.test(trimmed)
+}
+
+function extractCommandPartsWithBoundaries(
+  line: string,
+  boundaryChars: Set<string>
+): ExtractedCommand | null {
+  for (let index = line.length - 1; index >= 0; index--) {
+    const char = line[index]
+    if (!boundaryChars.has(char)) continue
+
+    const nextChar = index + 1 < line.length ? line[index + 1] : ""
+    if (nextChar && !/\s/.test(nextChar)) continue
+
+    let commandStart = index + 1
+    while (commandStart < line.length && /\s/.test(line[commandStart])) {
+      commandStart++
+    }
+
+    const promptText = line.slice(0, commandStart)
+    if (!looksLikePromptText(promptText)) continue
+
+    return {
+      promptText,
+      command: line.slice(commandStart),
+    }
+  }
+
+  return null
+}
+
+function extractCommandParts(line: string): ExtractedCommand {
+  const highConfidenceResult = extractCommandPartsWithBoundaries(
+    line,
+    HIGH_CONFIDENCE_PROMPT_BOUNDARY_CHARS
+  )
+  if (highConfidenceResult) {
+    return highConfidenceResult
+  }
+
+  const lowConfidenceResult = extractCommandPartsWithBoundaries(
+    line,
+    LOW_CONFIDENCE_PROMPT_BOUNDARY_CHARS
+  )
+  if (lowConfidenceResult) {
+    return lowConfidenceResult
+  }
+
+  return {
+    promptText: "",
+    command: line.trimStart(),
+  }
 }
 
 /**
@@ -64,30 +132,80 @@ export function getCurrentLine(terminal: Terminal): string {
  * @returns 去除 prompt 后的命令
  */
 export function extractCommand(line: string): string {
-  // 常见 prompt 模式:
-  // user@host:~$ command
-  // user@host:~/path$ command
-  // [user@host ~]$ command
-  // > command
-  // $ command
-  // # command
+  return extractCommandParts(line).command
+}
 
-  // 匹配最后一个 $, #, > 符号后的内容
-  const promptPatterns = [
-    /^.*?[$#>]\s*(.*)$/, // 标准 prompt
-    /^\[.*?\]\s*[$#>]\s*(.*)$/, // 带方括号的 prompt
-    /^.*?:\s*(.*)$/, // 简单冒号 prompt
-  ]
+interface TokenSpan {
+  text: string
+  start: number
+  end: number
+}
 
-  for (const pattern of promptPatterns) {
-    const match = line.match(pattern)
-    if (match && match[1] !== undefined) {
-      return match[1]
+function tokenizeCommandWithPositions(input: string): TokenSpan[] {
+  const tokens: TokenSpan[] = []
+  let current = ""
+  let start = -1
+  let inSingleQuote = false
+  let inDoubleQuote = false
+  let escaped = false
+
+  for (let index = 0; index < input.length; index++) {
+    const char = input[index]
+
+    if (escaped) {
+      if (start < 0) start = index
+      current += char
+      escaped = false
+      continue
     }
+
+    if (char === "\\") {
+      if (start < 0) start = index
+      current += char
+      escaped = true
+      continue
+    }
+
+    if (char === "'" && !inDoubleQuote) {
+      if (start < 0) start = index
+      current += char
+      inSingleQuote = !inSingleQuote
+      continue
+    }
+
+    if (char === '"' && !inSingleQuote) {
+      if (start < 0) start = index
+      current += char
+      inDoubleQuote = !inDoubleQuote
+      continue
+    }
+
+    if (/\s/.test(char) && !inSingleQuote && !inDoubleQuote) {
+      if (start >= 0) {
+        tokens.push({ text: current, start, end: index })
+        current = ""
+        start = -1
+      }
+      continue
+    }
+
+    if (start < 0) start = index
+    current += char
   }
 
-  // 如果没有匹配到 prompt,返回整行
-  return line.trim()
+  if (start >= 0) {
+    tokens.push({ text: current, start, end: input.length })
+  }
+
+  if (input.length > 0 && /\s$/.test(input)) {
+    tokens.push({ text: "", start: input.length, end: input.length })
+  }
+
+  if (tokens.length === 0) {
+    tokens.push({ text: "", start: 0, end: 0 })
+  }
+
+  return tokens
 }
 
 /**
@@ -95,43 +213,53 @@ export function extractCommand(line: string): string {
  * @param terminal xterm.js 终端实例
  * @returns 补全上下文
  */
-export function parseCompletionContext(terminal: Terminal): CompletionContext {
+export interface ParseCompletionContextOptions {
+  cwd?: string
+  triggerKind?: CompletionTriggerKind
+}
+
+export function parseCompletionContext(
+  terminal: Terminal,
+  options: ParseCompletionContextOptions = {}
+): CompletionContext {
   const buffer = terminal.buffer.active
   const fullLine = getCurrentLine(terminal)
-  const command = extractCommand(fullLine)
+  const { command, promptText } = extractCommandParts(fullLine)
 
   // 获取光标在命令中的位置
   const cursorX = buffer.cursorX
   const promptLength = fullLine.length - command.length
   const cursorPosition = Math.max(0, cursorX - promptLength)
 
-  // 分词(简单按空格分割)
-  const tokens = command.split(/\s+/).filter((t) => t.length > 0)
+  const tokenSpans = tokenizeCommandWithPositions(command)
+  const tokens = tokenSpans.map((token) => token.text)
 
   // 找到光标所在的词
   let currentTokenIndex = 0
-  let charCount = 0
-
-  for (let i = 0; i < tokens.length; i++) {
-    const tokenStart = charCount
-    const tokenEnd = charCount + tokens[i].length
-
-    if (cursorPosition >= tokenStart && cursorPosition <= tokenEnd) {
+  for (let i = 0; i < tokenSpans.length; i++) {
+    const token = tokenSpans[i]
+    if (cursorPosition >= token.start && cursorPosition <= token.end) {
       currentTokenIndex = i
       break
     }
-
-    // +1 for space
-    charCount = tokenEnd + 1
+    if (cursorPosition > token.end) {
+      currentTokenIndex = i
+    }
   }
 
   // 获取当前词
-  const currentWord = tokens[currentTokenIndex] || ""
+  const currentToken = tokenSpans[currentTokenIndex]
+  const currentWord = currentToken?.text || ""
 
   return {
     fullLine: command,
+    promptText,
+    cwd: options.cwd,
+    triggerKind: options.triggerKind,
     cursorPosition,
     currentWord,
+    currentWordStart: currentToken?.start ?? cursorPosition,
+    currentWordEnd: currentToken?.end ?? cursorPosition,
     tokens,
     currentTokenIndex,
   }
@@ -242,10 +370,15 @@ export function applyCompletion(
   terminal: Terminal,
   completion: string,
   deleteCount: number,
-  sendInput: (data: string) => void
+  sendInput: (data: string) => void,
+  forwardDeleteCount = 0
 ): void {
   // 合并删除和补全为一次操作，避免竞态条件和视觉闪烁
   let combinedInput = ""
+
+  if (forwardDeleteCount > 0) {
+    combinedInput += "\x1b[3~".repeat(forwardDeleteCount)
+  }
 
   // 添加删除字符（如果需要）
   if (deleteCount > 0) {
