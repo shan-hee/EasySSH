@@ -20,7 +20,7 @@ export function DesktopProviders({ children }: { children: ReactNode }) {
               system_name: "EasySSH",
             }}
           >
-            <SidebarProvider defaultOpen={false} className="easyssh-desktop-sidebar-context">
+            <SidebarProvider defaultOpen={false}>
               {children}
             </SidebarProvider>
           </StaticSystemConfigProvider>

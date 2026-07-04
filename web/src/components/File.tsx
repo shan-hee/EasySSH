@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import './File.css';
+import React from 'react';
+import { cn } from "@/lib/utils";
 
 interface FileProps {
   color?: string;
@@ -69,8 +69,6 @@ const File: React.FC<FileProps> = ({
   className = '',
   isFocused = false
 }) => {
-  const [isHovered, setIsHovered] = useState(false);
-
   const fileBodyColor = color;
   const fileFoldColor = darkenColor(color, 0.15);
   const fileAccentColor = lightenColor(color, 0.2);
@@ -81,36 +79,52 @@ const File: React.FC<FileProps> = ({
     '--file-fold-color': fileFoldColor,
     '--file-accent-color': fileAccentColor,
     '--file-shadow-color': fileShadowColor,
+    '--file-mark-color': 'color-mix(in oklab, var(--foreground) 86%, var(--file-body-color))',
+    '--file-mark-surface': 'color-mix(in oklab, var(--background) 24%, transparent)',
+    '--file-mark-muted': 'color-mix(in oklab, var(--background) 32%, transparent)',
   } as React.CSSProperties;
 
-  const wrapperClassName = `file-wrapper ${isHovered || isFocused ? 'file-wrapper--active' : ''}`.trim();
-  const fileClassName = `file ${isHovered || isFocused ? 'hover' : ''}`.trim();
+  const wrapperClassName = cn(
+    "group/file transition-transform duration-200 ease-in hover:-translate-y-2",
+    isFocused && "-translate-y-2",
+    className
+  );
+  const bodyClassName = cn(
+    "relative h-[90px] w-[70px] overflow-hidden rounded-lg bg-[var(--file-body-color)] shadow-[0_4px_8px_color-mix(in_oklab,var(--file-shadow-color)_18%,transparent)] transition-shadow duration-200 ease-in group-hover/file:shadow-[0_8px_16px_color-mix(in_oklab,var(--file-shadow-color)_26%,transparent)]",
+    isFocused && "shadow-[0_8px_16px_color-mix(in_oklab,var(--file-shadow-color)_26%,transparent)]"
+  );
+  const foldClassName = cn(
+    "absolute right-0 top-0 h-5 w-5 rounded-bl-lg bg-[var(--file-fold-color)] shadow-[-2px_2px_4px_color-mix(in_oklab,var(--file-shadow-color)_18%,transparent)] transition-all duration-200 ease-in before:absolute before:right-0 before:top-0 before:h-0 before:w-0 before:border-b-[20px] before:border-r-[20px] before:border-solid before:border-b-transparent before:[border-right-color:var(--file-accent-color)] before:content-[''] group-hover/file:rounded-br-lg",
+    isFocused && "rounded-br-lg"
+  );
+  const linesClassName = cn(
+    "absolute bottom-[15px] left-[10%] right-[10%] opacity-70 transition-opacity duration-200 ease-in group-hover/file:opacity-100",
+    isFocused && "opacity-100"
+  );
   const scaleStyle = {
     transform: `scale(${size})`,
   };
 
   return (
-    <div
-      className={`${wrapperClassName} ${className}`}
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
-    >
+    <div className={wrapperClassName}>
       <div style={scaleStyle}>
-        <div className={fileClassName} style={fileStyle}>
-        <div className="file__body">
-          <div className="file__fold"></div>
-          <div className="file__content">
-            {icon && <div className="file__icon">{icon}</div>}
-            {fileType && !icon && (
-              <div className="file__type">{fileType}</div>
-            )}
+        <div className="cursor-pointer" style={fileStyle}>
+          <div className={bodyClassName}>
+            <div className={foldClassName}></div>
+            <div className="absolute left-[5%] right-[5%] top-[25px] flex h-[30px] items-center justify-center [will-change:auto]">
+              {icon && <div className="flex items-center justify-center text-base text-[var(--file-mark-color)] [will-change:auto]">{icon}</div>}
+              {fileType && !icon && (
+                <div className="rounded bg-[var(--file-mark-surface)] px-2 py-1 text-[11px] font-bold uppercase tracking-[0.5px] text-[var(--file-mark-color)] [will-change:auto]">
+                  {fileType}
+                </div>
+              )}
+            </div>
+            <div className={linesClassName}>
+              <div className="mb-1 h-[3px] w-full rounded-sm bg-[var(--file-mark-muted)]"></div>
+              <div className="mb-1 h-[3px] w-[85%] rounded-sm bg-[var(--file-mark-muted)]"></div>
+              <div className="mb-1 h-[3px] w-[60%] rounded-sm bg-[var(--file-mark-muted)]"></div>
+            </div>
           </div>
-          <div className="file__lines">
-            <div className="file__line file__line--1"></div>
-            <div className="file__line file__line--2"></div>
-            <div className="file__line file__line--3"></div>
-          </div>
-        </div>
         </div>
       </div>
     </div>

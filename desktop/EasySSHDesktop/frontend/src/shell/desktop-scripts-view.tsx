@@ -29,7 +29,7 @@ export function DesktopScriptsView({
   return (
     <ClientAuthProvider key={locale} initialUser={createDesktopUser(locale)}>
       <DashboardI18nProvider>
-        <section className="easyssh-desktop-scripts-view">
+        <section className="flex h-full w-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-background">
           <ScriptsPage
             adapters={adapters}
             hidePageHeader

@@ -2,8 +2,6 @@
 import { useRef, useMemo, useCallback, type ChangeEvent } from "react"
 import { createPortal } from "react-dom"
 import { SftpSessionProvider } from "@/contexts/sftp-session-context"
-import "@/components/Folder.css"
-import "@/components/File.css"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import { cn } from "@/lib/utils"
 import { ChmodDialog } from "@/components/sftp/chmod-dialog"

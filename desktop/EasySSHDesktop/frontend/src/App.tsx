@@ -637,7 +637,7 @@ function App() {
   if (preferenceSnapshot === null) {
     return (
       <DesktopProviders>
-        <main className="easyssh-desktop-home bg-background text-foreground">
+        <main className="flex h-full w-full min-h-0 min-w-0 isolate flex-col overflow-hidden bg-background text-foreground">
           <DesktopTitleBar
             runtime={runtime}
             activeView={activeView}
@@ -660,7 +660,7 @@ function App() {
   return (
     <DesktopProviders>
       <SshWorkspace adapters={adapters} capabilities={capabilities} layout="desktop">
-        <main className="easyssh-desktop-home bg-background text-foreground">
+        <main className="flex h-full w-full min-h-0 min-w-0 isolate flex-col overflow-hidden bg-background text-foreground">
           <DesktopTitleBar
             runtime={runtime}
             activeView={activeView}
@@ -671,9 +671,9 @@ function App() {
             onOpenActivityLogs={handleOpenActivityLogs}
             onOpenBackupRestore={handleOpenBackupRestore}
           />
-          <div className="easyssh-desktop-view-stack">
+          <div className="relative min-h-0 min-w-0 flex-1 overflow-hidden">
             <section
-              className="easyssh-desktop-view-panel"
+              className="pointer-events-none invisible absolute inset-0 flex min-h-0 min-w-0 overflow-hidden opacity-0 data-[active=true]:pointer-events-auto data-[active=true]:visible data-[active=true]:opacity-100"
               data-active={activeView === "terminal"}
               aria-hidden={activeView !== "terminal"}
             >
@@ -727,7 +727,7 @@ function App() {
               />
             </section>
             <section
-              className="easyssh-desktop-view-panel"
+              className="pointer-events-none invisible absolute inset-0 flex min-h-0 min-w-0 overflow-hidden opacity-0 data-[active=true]:pointer-events-auto data-[active=true]:visible data-[active=true]:opacity-100"
               data-active={activeView === "ai"}
               aria-hidden={activeView !== "ai"}
             >
@@ -740,7 +740,7 @@ function App() {
               ) : null}
             </section>
             <section
-              className="easyssh-desktop-view-panel"
+              className="pointer-events-none invisible absolute inset-0 flex min-h-0 min-w-0 overflow-hidden opacity-0 data-[active=true]:pointer-events-auto data-[active=true]:visible data-[active=true]:opacity-100"
               data-active={activeView === "scripts"}
               aria-hidden={activeView !== "scripts"}
             >
@@ -753,7 +753,7 @@ function App() {
               ) : null}
             </section>
             <section
-              className="easyssh-desktop-view-panel"
+              className="pointer-events-none invisible absolute inset-0 flex min-h-0 min-w-0 overflow-hidden opacity-0 data-[active=true]:pointer-events-auto data-[active=true]:visible data-[active=true]:opacity-100"
               data-active={activeView === "activity-logs"}
               aria-hidden={activeView !== "activity-logs"}
             >
@@ -765,7 +765,7 @@ function App() {
               ) : null}
             </section>
             <section
-              className="easyssh-desktop-view-panel"
+              className="pointer-events-none invisible absolute inset-0 flex min-h-0 min-w-0 overflow-hidden opacity-0 data-[active=true]:pointer-events-auto data-[active=true]:visible data-[active=true]:opacity-100"
               data-active={activeView === "backup-restore"}
               aria-hidden={activeView !== "backup-restore"}
             >

@@ -97,7 +97,7 @@ export function DesktopUpdateFailureDialog() {
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogContent className="easyssh-desktop-update-failure-dialog">
+      <DialogContent className="max-h-[min(720px,calc(100vh-32px))] w-[min(720px,calc(100vw-32px))] max-w-[min(720px,calc(100vw-32px))] overflow-auto sm:max-w-[min(720px,calc(100vw-32px))] [--wails-draggable:no-drag]">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <TriangleAlert className="h-5 w-5 text-destructive" />
@@ -110,19 +110,19 @@ export function DesktopUpdateFailureDialog() {
           </DialogDescription>
         </DialogHeader>
 
-        <div className="easyssh-desktop-update-failure-rows">
+        <div className="grid min-w-0 gap-2 rounded-lg border border-[color-mix(in_oklab,var(--border)_70%,transparent)] p-3 text-[13px]">
           {rows.map(([label, value]) => (
-            <div key={label} className="easyssh-desktop-update-failure-row">
+            <div key={label} className="grid min-w-0 grid-cols-[92px_minmax(0,1fr)] items-start gap-3">
               <span className="text-muted-foreground">{label}</span>
               <span className="min-w-0 break-all font-medium" title={value}>{value}</span>
             </div>
           ))}
         </div>
 
-        <div className="easyssh-desktop-update-failure-manual">
+        <div className="grid min-w-0 gap-2 border-t border-[color-mix(in_oklab,var(--border)_65%,transparent)] pt-3">
           <div className="text-sm font-medium">{t("updateFailureManualTitle")}</div>
           <p className="text-sm text-muted-foreground">{t("updateFailureManualDescription")}</p>
-          <pre>{manualCommand || t("updateFailureManualUnavailable")}</pre>
+          <pre className="max-h-[180px] overflow-auto whitespace-pre-wrap break-all rounded-lg border border-[color-mix(in_oklab,var(--border)_70%,transparent)] bg-[color-mix(in_oklab,var(--muted)_60%,transparent)] p-2.5 text-xs leading-normal">{manualCommand || t("updateFailureManualUnavailable")}</pre>
         </div>
 
         <DialogFooter>

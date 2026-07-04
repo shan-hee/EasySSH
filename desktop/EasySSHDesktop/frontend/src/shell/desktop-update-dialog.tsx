@@ -161,13 +161,13 @@ export function DesktopUpdatePanel({ autoCheck = true, checkRequest = 0, onReque
   const description = dialogDescription(status, result, progress, t)
 
   return (
-    <div className="easyssh-desktop-update-panel">
+    <div className="grid gap-4">
       <div className="space-y-1">
         <h3 className="text-sm font-medium">{title}</h3>
         <p className="text-sm text-muted-foreground">{description}</p>
       </div>
 
-      <div className="easyssh-desktop-update-version-grid">
+      <div className="grid min-w-0 grid-cols-[120px_minmax(0,1fr)] items-center gap-x-3 gap-y-2 text-sm">
         <span className="text-muted-foreground">{t("desktopVersionLabel")}</span>
         <span>{result?.current_version || progress?.current_version || t("desktopUnknownLabel")}</span>
         <span className="text-muted-foreground">{t("updateLatestVersionLabel")}</span>

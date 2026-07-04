@@ -7,6 +7,7 @@ import {
   type DesktopUpdateProgress,
   type DesktopUpdateStatus,
 } from "../adapters/desktop-update-api"
+import { cn } from "@/lib/utils"
 
 type DesktopInlineUpdateActionProps = {
   initialResult?: DesktopUpdateCheckResult | null
@@ -145,10 +146,17 @@ export function DesktopInlineUpdateAction({
   const title = inlineUpdateTitle(status, latestVersion, progressValue, t)
   const disabled = busy || status === "downloading" || status === "verifying"
 
+  const className = cn(
+    "inline-flex max-w-[132px] shrink-0 appearance-none items-center gap-[3px] whitespace-nowrap rounded-full border border-[color-mix(in_oklab,var(--primary)_50%,transparent)] bg-[color-mix(in_oklab,var(--primary)_18%,transparent)] px-2 py-0.5 font-sans text-xs font-semibold leading-[1.3] text-[color-mix(in_oklab,var(--primary)_78%,var(--foreground))] transition-colors duration-150 [--wails-draggable:no-drag] [&:not(:disabled):hover]:border-[color-mix(in_oklab,var(--primary)_68%,transparent)] [&:not(:disabled):hover]:bg-[color-mix(in_oklab,var(--primary)_24%,transparent)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color-mix(in_oklab,var(--ring)_70%,transparent)] disabled:cursor-default disabled:opacity-[0.82]",
+    (status === "downloading" || status === "verifying") && "min-w-[58px] justify-center border-[color-mix(in_oklab,var(--primary)_40%,transparent)] bg-[linear-gradient(90deg,color-mix(in_oklab,var(--primary)_28%,transparent)_0%,color-mix(in_oklab,var(--primary)_14%,transparent)_100%)]",
+    status === "ready" && "border-[color-mix(in_oklab,var(--primary)_62%,transparent)] bg-primary text-primary-foreground [&:not(:disabled):hover]:border-[color-mix(in_oklab,var(--primary)_75%,var(--foreground))] [&:not(:disabled):hover]:bg-[color-mix(in_oklab,var(--primary)_86%,var(--foreground))]",
+    status === "error" && "border-[color-mix(in_oklab,var(--destructive)_55%,transparent)] bg-[color-mix(in_oklab,var(--destructive)_14%,transparent)] text-[color-mix(in_oklab,var(--destructive)_84%,var(--foreground))]"
+  )
+
   return (
     <button
       type="button"
-      className="easyssh-desktop-update-badge"
+      className={className}
       data-status={status}
       disabled={disabled}
       title={title}

@@ -4,8 +4,7 @@ import { I18nextProvider } from "react-i18next"
 import App from './App'
 import { i18n } from "@/i18n"
 import "@/styles/vendor-styles"
-import "@/styles/app.css"
-import "./desktop.css"
+import "@/styles/globals.css"
 
 ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
   <React.StrictMode>

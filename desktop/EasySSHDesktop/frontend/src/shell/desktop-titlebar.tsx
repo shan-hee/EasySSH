@@ -38,12 +38,16 @@ import { DesktopHeaderActions } from "./desktop-header-actions"
 import { desktopUpdateApi, type DesktopUpdateCheckResult } from "../adapters/desktop-update-api"
 import { DesktopInlineUpdateAction } from "./desktop-inline-update-action"
 import { useTranslation } from "react-i18next"
+import { cn } from "@/lib/utils"
 
 export type DesktopView = "terminal" | "ai" | "scripts" | "activity-logs" | "backup-restore"
 
 const windowActionErrorMessage = "Failed to run window action:"
 const githubLabel = "GitHub"
 const githubUrl = "https://github.com/shan-hee/EasySSH"
+const aboutRowClassName = "grid min-w-0 grid-cols-[86px_minmax(0,1fr)] items-center gap-3 border-b border-[color-mix(in_oklab,var(--border)_55%,transparent)] py-2 text-[13px] last:border-b-0"
+const titlebarIconButtonClassName = "size-[30px] [--wails-draggable:no-drag]"
+const windowButtonClassName = "inline-flex h-full w-[46px] items-center justify-center border-0 bg-transparent p-0 text-foreground outline-none transition-colors duration-150 [--wails-draggable:no-drag] hover:bg-[color-mix(in_oklab,var(--accent)_75%,transparent)] focus-visible:bg-[color-mix(in_oklab,var(--accent)_85%,transparent)] focus-visible:shadow-[inset_0_0_0_1px_var(--ring)]"
 
 function runWindowAction(action: () => Promise<void>) {
   void action().catch((error) => {
@@ -70,7 +74,7 @@ function DesktopAboutDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="easyssh-desktop-about-dialog">
+      <DialogContent className="w-[min(560px,calc(100vw-32px))] max-w-[min(560px,calc(100vw-32px))] sm:max-w-[min(560px,calc(100vw-32px))] [--wails-draggable:no-drag]">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Info className="h-5 w-5" />
@@ -80,12 +84,12 @@ function DesktopAboutDialog({
         </DialogHeader>
 
         <div className="space-y-2">
-          <div className="easyssh-desktop-about-row">
+          <div className={aboutRowClassName}>
             <span className="text-muted-foreground">{t("desktopVersionLabel")}</span>
             <DesktopAboutVersionValue version={version} />
           </div>
           {rows.map(([label, value]) => (
-            <div key={label} className="easyssh-desktop-about-row">
+            <div key={label} className={aboutRowClassName}>
               <span className="text-muted-foreground">{label}</span>
               <span className="min-w-0 truncate font-medium" title={value}>{value}</span>
             </div>
@@ -142,7 +146,7 @@ function DesktopAboutVersionValue({ version }: { version: string }) {
   }, [checking, t])
 
   return (
-    <span className="easyssh-desktop-about-version-value">
+    <span className="flex min-w-0 items-center gap-2">
       <span className="min-w-0 truncate font-medium" title={version}>{version}</span>
       <DesktopInlineUpdateAction initialResult={result} onResultChange={setResult} />
       {!hasInlineUpdateAction ? (
@@ -150,7 +154,7 @@ function DesktopAboutVersionValue({ version }: { version: string }) {
           type="button"
           variant="ghost"
           size="icon-sm"
-          className="easyssh-desktop-about-update-button"
+          className="size-[26px] min-w-[26px] shrink-0"
           disabled={checking}
           aria-label={t("updateCheckNowLabel")}
           title={t("updateCheckNowLabel")}
@@ -191,14 +195,14 @@ function DesktopSettingsMenu({
           <Button
             variant="ghost"
             size="icon-sm"
-            className="easyssh-desktop-titlebar-menu-button"
+            className={titlebarIconButtonClassName}
             aria-label={t("settingsLabel")}
             title={t("settingsLabel")}
           >
             <Menu className="h-4 w-4" />
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="easyssh-desktop-settings-menu">
+        <DropdownMenuContent align="end" className="w-[196px] [--wails-draggable:no-drag] [&_[data-slot=dropdown-menu-item]]:cursor-default">
           <DropdownMenuLabel>{t("settingsLabel")}</DropdownMenuLabel>
           <DropdownMenuSeparator />
           <DropdownMenuItem onSelect={onOpenScripts}>
@@ -267,12 +271,12 @@ export function DesktopTitleBar({
   }, [])
 
   return (
-    <header className="easyssh-desktop-titlebar">
-      <div className="easyssh-desktop-titlebar-drag">
-        <img className="easyssh-desktop-titlebar-icon" src="/favicon.ico" alt="" aria-hidden="true" />
-        <span className="easyssh-desktop-titlebar-title">EasySSH</span>
+    <header className="flex h-9 shrink-0 basis-9 items-center justify-between border-b border-[color-mix(in_oklab,var(--border)_45%,transparent)] bg-[color-mix(in_oklab,var(--background)_94%,transparent)] text-foreground backdrop-blur-md [--wails-draggable:drag]">
+      <div className="flex h-full min-w-0 flex-1 items-center gap-2 px-3 [--wails-draggable:drag]">
+        <img className="size-4 shrink-0" src="/favicon.ico" alt="" aria-hidden="true" />
+        <span className="min-w-0 truncate text-xs leading-none">EasySSH</span>
       </div>
-      <div className="easyssh-desktop-titlebar-actions">
+      <div className="flex h-full min-w-0 shrink-0 items-center gap-1 pl-2 [--wails-draggable:no-drag] [&_[data-radix-popper-content-wrapper]]:[--wails-draggable:no-drag] [&_[data-slot=button]]:size-[30px] [&_a]:[--wails-draggable:no-drag] [&_button]:[--wails-draggable:no-drag] [&_svg]:pointer-events-none">
         <DesktopSettingsMenu
           runtime={runtime}
           onOpenScripts={onOpenScripts}
@@ -284,7 +288,7 @@ export function DesktopTitleBar({
             type="button"
             variant="ghost"
             size="icon-sm"
-            className="easyssh-desktop-titlebar-ai-button"
+            className={titlebarIconButtonClassName}
             aria-label={t("aiAssistantLabel")}
             title={t("aiAssistantLabel")}
             onClick={onToggleAiAssistant}
@@ -293,10 +297,10 @@ export function DesktopTitleBar({
           </Button>
         )}
         <DesktopHeaderActions locale={locale} onLocaleChange={onLocaleChange} />
-        <div className="easyssh-desktop-window-controls" role="group" aria-label={t("windowControlsLabel")}>
+        <div className="ml-1 flex h-full items-stretch [--wails-draggable:no-drag]" role="group" aria-label={t("windowControlsLabel")}>
           <button
             type="button"
-            className="easyssh-desktop-window-button"
+            className={windowButtonClassName}
             aria-label={t("windowMinimizeLabel")}
             title={t("windowMinimizeLabel")}
             onClick={handleMinimize}
@@ -305,7 +309,7 @@ export function DesktopTitleBar({
           </button>
           <button
             type="button"
-            className="easyssh-desktop-window-button"
+            className={windowButtonClassName}
             aria-label={t("windowMaximizeLabel")}
             title={t("windowMaximizeLabel")}
             onClick={handleMaximize}
@@ -314,7 +318,10 @@ export function DesktopTitleBar({
           </button>
           <button
             type="button"
-            className="easyssh-desktop-window-button easyssh-desktop-window-button-close"
+            className={cn(
+              windowButtonClassName,
+              "hover:!bg-[oklch(0.577_0.245_27.325)] hover:text-white focus-visible:!bg-[oklch(0.577_0.245_27.325)] focus-visible:text-white"
+            )}
             aria-label={t("windowCloseLabel")}
             title={t("windowCloseLabel")}
             onClick={handleClose}
