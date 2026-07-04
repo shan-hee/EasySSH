@@ -1,6 +1,6 @@
 // 终端主题配置
 
-import { colorToHex, contrastRatio, ensureContrast, hexToRgb, mixHexColors } from "@/lib/color-utils"
+import { colorToHex, contrastRatio, ensureContrast, mixHexColors } from "@/lib/color-utils"
 
 export interface TerminalTheme {
   background: string
@@ -206,23 +206,10 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value))
 }
 
-function isLightColor(color: string): boolean {
-  const [r, g, b] = hexToRgb(color) ?? [255, 255, 255]
-  const channels = [r, g, b].map((channel) => {
-    const value = channel / 255
-    return value <= 0.03928 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4
-  })
-  const luminance = 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2]
-
-  return luminance > 0.5
-}
-
 function getThemeGeneratorTerminalTheme(appTheme: 'light' | 'dark' = 'dark'): TerminalTheme {
-  const initialFallback = THEME_COLOR_FALLBACKS[appTheme]
-  const themeBackground = getCssThemeValue('background', initialFallback.background)
-  const inferredAppTheme: 'light' | 'dark' = isLightColor(colorToHex(themeBackground)) ? 'light' : 'dark'
-  const fallback = THEME_COLOR_FALLBACKS[inferredAppTheme]
-  const background = getTerminalBackground(inferredAppTheme, themeBackground)
+  const fallback = THEME_COLOR_FALLBACKS[appTheme]
+  const themeBackground = getCssThemeValue('background', fallback.background)
+  const background = getTerminalBackground(appTheme, themeBackground)
   const foreground = ensureContrast(getCssThemeColor('foreground', fallback.foreground), background, 7)
   const mutedForeground = ensureContrast(getCssThemeColor('muted-foreground', fallback.brightBlack), background, 3)
   const primary = ensureContrast(getCssThemeColor('primary', fallback.cursor), background, 3)
@@ -234,7 +221,7 @@ function getThemeGeneratorTerminalTheme(appTheme: 'light' | 'dark' = 'dark'): Te
   const cyan = ensureContrast(getCssThemeColor('chart-2', fallback.cyan), background, 3)
   const magenta = ensureContrast(getCssThemeColor('chart-4', fallback.magenta), background, 3)
   const white = ensureContrast(foreground, background, 7)
-  const black = ensureContrast(mixHexColors(background, foreground, inferredAppTheme === 'light' ? 0.85 : 0.18), background, 3)
+  const black = ensureContrast(mixHexColors(background, foreground, appTheme === 'light' ? 0.85 : 0.18), background, 3)
 
   return {
     background,
@@ -257,7 +244,7 @@ function getThemeGeneratorTerminalTheme(appTheme: 'light' | 'dark' = 'dark'): Te
     brightBlue: ensureContrast(mixHexColors(blue, foreground, 0.16), background, 4.5),
     brightMagenta: ensureContrast(mixHexColors(magenta, foreground, 0.16), background, 4.5),
     brightCyan: ensureContrast(mixHexColors(cyan, foreground, 0.16), background, 4.5),
-    brightWhite: ensureContrast(mixHexColors(foreground, "#ffffff", inferredAppTheme === 'light' ? 0 : 0.12), background, 8),
+    brightWhite: ensureContrast(mixHexColors(foreground, "#ffffff", appTheme === 'light' ? 0 : 0.12), background, 8),
   }
 }
 

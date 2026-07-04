@@ -18,6 +18,8 @@ interface ThemeContextValue {
 }
 
 const ThemeContext = React.createContext<ThemeContextValue | null>(null)
+const useIsomorphicLayoutEffect =
+  typeof window === "undefined" ? React.useEffect : React.useLayoutEffect
 
 function getStoredTheme(defaultTheme: ThemePreference): ThemePreference {
   if (typeof window === "undefined") {
@@ -49,22 +51,49 @@ function applyTheme(theme: ResolvedTheme) {
   root.classList.toggle("dark", theme === "dark")
 }
 
+function disableTransitionsTemporarily() {
+  const css = document.createElement("style")
+  css.appendChild(
+    document.createTextNode(
+      "*,*::before,*::after{transition:none!important;animation-duration:0.01ms!important;animation-delay:0s!important}",
+    ),
+  )
+  document.head.appendChild(css)
+  window.getComputedStyle(document.body)
+  window.requestAnimationFrame(() => {
+    window.requestAnimationFrame(() => {
+      css.remove()
+    })
+  })
+}
+
 export function ThemeProvider({
   children,
   defaultTheme = "system",
   enableSystem = true,
+  disableTransitionOnChange = false,
 }: ThemeProviderProps) {
   const [theme, setThemeState] = React.useState<ThemePreference>(() => getStoredTheme(defaultTheme))
   const [resolvedTheme, setResolvedTheme] = React.useState<ResolvedTheme>(() => resolveTheme(theme, enableSystem))
 
-  React.useEffect(() => {
+  const applyResolvedTheme = React.useCallback(
+    (nextResolvedTheme: ResolvedTheme) => {
+      if (disableTransitionOnChange) {
+        disableTransitionsTemporarily()
+      }
+      applyTheme(nextResolvedTheme)
+    },
+    [disableTransitionOnChange],
+  )
+
+  useIsomorphicLayoutEffect(() => {
     const nextResolvedTheme = resolveTheme(theme, enableSystem)
     setResolvedTheme(nextResolvedTheme)
-    applyTheme(nextResolvedTheme)
+    applyResolvedTheme(nextResolvedTheme)
     window.localStorage.setItem("theme", theme)
-  }, [enableSystem, theme])
+  }, [applyResolvedTheme, enableSystem, theme])
 
-  React.useEffect(() => {
+  useIsomorphicLayoutEffect(() => {
     if (!enableSystem || theme !== "system") {
       return
     }
@@ -73,12 +102,12 @@ export function ThemeProvider({
     const handleChange = () => {
       const nextResolvedTheme = getSystemTheme()
       setResolvedTheme(nextResolvedTheme)
-      applyTheme(nextResolvedTheme)
+      applyResolvedTheme(nextResolvedTheme)
     }
 
     media.addEventListener("change", handleChange)
     return () => media.removeEventListener("change", handleChange)
-  }, [enableSystem, theme])
+  }, [applyResolvedTheme, enableSystem, theme])
 
   const setTheme = React.useCallback((nextTheme: ThemePreference) => {
     setThemeState(nextTheme)

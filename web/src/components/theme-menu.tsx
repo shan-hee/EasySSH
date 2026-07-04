@@ -54,9 +54,21 @@ function getPresetLabel(id: string, label: string, defaultLabel: string) {
   return id === "default" ? defaultLabel : label
 }
 
+function resolveThemeGeneratorMode(mode: ThemePreference, fallback: "light" | "dark"): "light" | "dark" {
+  if (mode === "light" || mode === "dark") {
+    return mode
+  }
+
+  if (typeof window !== "undefined" && window.matchMedia("(prefers-color-scheme: dark)").matches) {
+    return "dark"
+  }
+
+  return fallback
+}
+
 export function ThemeMenu() {
   const { t } = useTranslation("headerActions")
-  const { theme, setTheme } = useTheme()
+  const { theme, resolvedTheme, setTheme } = useTheme()
   const themeGeneratorVersion = useThemeGeneratorVersion()
   const [selectedPreset, setSelectedPreset] = React.useState<string | null>(() => getCurrentPresetId())
   const selectedMode = getThemePreference(theme)
@@ -71,18 +83,27 @@ export function ThemeMenu() {
 
   const selectThemeMode = React.useCallback(
     (mode: ThemePreference) => {
+      const nextState = loadThemeGeneratorState()
+      nextState.mode = resolveThemeGeneratorMode(mode, resolvedTheme)
+
       setTheme(mode)
+      persistThemeGeneratorState(nextState)
+      applyThemeGeneratorState(nextState)
     },
-    [setTheme],
+    [resolvedTheme, setTheme],
   )
 
-  const selectPreset = React.useCallback((presetId: string) => {
-    const nextState = applyThemePresetToState(createThemeGeneratorState(), presetId)
+  const selectPreset = React.useCallback(
+    (presetId: string) => {
+      const nextState = applyThemePresetToState(createThemeGeneratorState(), presetId)
+      nextState.mode = resolvedTheme
 
-    persistThemeGeneratorState(nextState)
-    applyThemeGeneratorState(nextState)
-    setSelectedPreset(nextState.preset)
-  }, [])
+      persistThemeGeneratorState(nextState)
+      applyThemeGeneratorState(nextState)
+      setSelectedPreset(nextState.preset)
+    },
+    [resolvedTheme],
+  )
 
   return (
     <DropdownMenu>

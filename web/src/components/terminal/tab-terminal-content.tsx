@@ -36,8 +36,6 @@ import {
 import type { Server } from "@/lib/server-types"
 import type { WorkspaceTransferTask } from "@/lib/session/workspace"
 import { useTranslation } from "react-i18next"
-import { getTerminalTheme } from './terminal-themes'
-import { useEffectiveThemeMode } from '@/hooks/use-effective-theme-mode'
 
 const DESKTOP_TERMINAL_LAYOUT_QUERY = '(min-width: 768px)'
 const DEFAULT_TERMINAL_SFTP_INITIAL_PATH = '/root'
@@ -363,12 +361,6 @@ export function TabTerminalContent({
       : ''
   const monitorEnabled = canRenderInlinePanels && canUseMonitorCapability && hasReadyServer
   const { t: tTerminal } = useTranslation("terminal")
-  const { mode: effectiveAppTheme } = useEffectiveThemeMode()
-  const shouldUseTerminalSurface = isTerminalSession
-  const pageTheme = getTerminalTheme(settings.theme, effectiveAppTheme)
-  const pageBaseBackgroundColor = shouldUseTerminalSurface
-    ? pageTheme.background
-    : 'transparent'
   const pageBackgroundImageLayerOpacity = settings.backgroundImageOpacity / 100
   const completionConfig = useMemo(
     () => buildTerminalCompletionConfig(settings),
@@ -507,8 +499,7 @@ export function TabTerminalContent({
         {shouldRenderBody && shouldRenderSurface && (
           <div
             aria-hidden="true"
-            className="absolute inset-0 pointer-events-none"
-            style={{ backgroundColor: pageBaseBackgroundColor }}
+            className="absolute inset-0 pointer-events-none bg-background transition-colors"
           />
         )}
 
