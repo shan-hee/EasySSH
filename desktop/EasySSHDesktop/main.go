@@ -66,8 +66,8 @@ func main() {
 
 	app.Window.NewWithOptions(application.WebviewWindowOptions{
 		Title:     "EasySSH",
-		Width:     1180,
-		Height:    760,
+		Width:     1320,
+		Height:    860,
 		MinWidth:  960,
 		MinHeight: 620,
 		Frameless: true,

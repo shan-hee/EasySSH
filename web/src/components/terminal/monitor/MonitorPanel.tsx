@@ -1,14 +1,15 @@
 /**
  * 系统监控主面板组件
- * 固定宽度 250px, 高度 915px
+ * 固定宽度 280px，高度跟随父容器
  * 整合所有监控子组件,实现紧凑美观的布局
  * 使用 WebSocket + Protobuf 二进制传输获取真实监控数据
  */
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { cn } from '@/lib/utils';
 import { formatBytes } from '@/lib/format-utils';
 import type { MonitorMetrics } from './hooks/useMonitorWebSocket';
+import type { MonitorPanelDensity } from './types/metrics';
 import { useMonitoringData } from './contexts/MonitorWebSocketContext';
 import { SystemInfo } from './components/SystemInfo';
 import { CPUChart } from './components/CPUChart';
@@ -18,6 +19,39 @@ import { DiskUsage } from './components/DiskUsage';
 import { MonitorSkeleton } from './components/MonitorSkeleton';
 
 const EMPTY_METRICS_HISTORY: MonitorMetrics[] = [];
+const COMPACT_HEIGHT_THRESHOLD = 700;
+// 这里读到的是终端内容区高度，不是桌面窗口外框高度；500px 能让 620px 桌面窗口落在 compact。
+const MINI_HEIGHT_THRESHOLD = 500;
+
+const DENSITY_LAYOUT: Record<MonitorPanelDensity, {
+  contentClassName: string;
+  cpuChartHeight: number;
+  memoryChartHeight: number;
+  networkChartHeight: number;
+  diskChartHeight: number;
+}> = {
+  full: {
+    contentClassName: "py-1.5 px-3 space-y-1.5",
+    cpuChartHeight: 106,
+    memoryChartHeight: 106,
+    networkChartHeight: 106,
+    diskChartHeight: 106,
+  },
+  compact: {
+    contentClassName: "py-1.5 px-3 space-y-2",
+    cpuChartHeight: 64,
+    memoryChartHeight: 74,
+    networkChartHeight: 64,
+    diskChartHeight: 62,
+  },
+  mini: {
+    contentClassName: "py-2 px-3 space-y-3",
+    cpuChartHeight: 0,
+    memoryChartHeight: 0,
+    networkChartHeight: 0,
+    diskChartHeight: 0,
+  },
+};
 
 interface MonitorPanelProps {
   className?: string;
@@ -34,23 +68,14 @@ interface MonitorPanelProps {
  * 避免在延迟数据更新时不必要的重新渲染
  *
  * 宽度: 280px (固定宽度)
- * 高度分配 (总计 720px, 完美适配1080p):
- * - 顶部内边距: 6px
- * - 系统信息: 148px (标题28px + 内容120px)
- * - 间距: 6px
- * - CPU图表: 134px (标题28px + 图表106px)
- * - 间距: 6px
- * - 内存图表: 134px (标题28px + 图表106px)
- * - 间距: 6px
- * - 网络图表: 134px (标题28px + 图表106px)
- * - 间距: 6px
- * - 磁盘使用: 134px (标题28px + 图表106px)
- * - 底部内边距: 6px
+ * 高度: 跟随父容器，按可用高度切换 full / compact / mini 三档
  */
 export const MonitorPanel: React.FC<MonitorPanelProps> = ({
   className,
   isLive = true,
 }) => {
+  const panelRef = useRef<HTMLDivElement | null>(null);
+  const [panelHeight, setPanelHeight] = useState<number | null>(null);
   // 【性能优化】只订阅监控数据，不订阅延迟数据
   const { metrics, getMetricsHistory } = useMonitoringData();
   const [frozenSnapshot, setFrozenSnapshot] = useState<{
@@ -77,6 +102,48 @@ export const MonitorPanel: React.FC<MonitorPanelProps> = ({
 
   const displayMetrics = isLive ? metrics : frozenSnapshot.metrics;
   const displayHistory = isLive ? liveHistory : frozenSnapshot.history;
+  const density = useMemo<MonitorPanelDensity>(() => {
+    if (panelHeight === null) return "full";
+    if (panelHeight < MINI_HEIGHT_THRESHOLD) return "mini";
+    if (panelHeight < COMPACT_HEIGHT_THRESHOLD) return "compact";
+    return "full";
+  }, [panelHeight]);
+  const layout = DENSITY_LAYOUT[density];
+
+  useEffect(() => {
+    const node = panelRef.current;
+    if (!node) return;
+
+    let frame = 0;
+    const measure = () => {
+      window.cancelAnimationFrame(frame);
+      frame = window.requestAnimationFrame(() => {
+        const nextHeight = Math.round(node.getBoundingClientRect().height);
+        setPanelHeight((currentHeight) => (
+          currentHeight === nextHeight ? currentHeight : nextHeight
+        ));
+      });
+    };
+
+    measure();
+
+    if (typeof ResizeObserver !== "undefined") {
+      const observer = new ResizeObserver(measure);
+      observer.observe(node);
+
+      return () => {
+        window.cancelAnimationFrame(frame);
+        observer.disconnect();
+      };
+    }
+
+    window.addEventListener("resize", measure);
+
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.removeEventListener("resize", measure);
+    };
+  }, []);
 
   // 转换数据格式以适配现有组件
   const formattedMetrics = useMemo(() => {
@@ -162,58 +229,61 @@ export const MonitorPanel: React.FC<MonitorPanelProps> = ({
 
   const panelContent = useMemo(() => {
     if (!formattedMetrics) {
-      return <MonitorSkeleton />;
+      return <MonitorSkeleton density={density} />;
     }
 
     return (
       <>
-        {/* 1. 系统信息 - 148px */}
-        <div className="min-h-[148px]">
-          <SystemInfo data={formattedMetrics.systemInfo} />
-        </div>
+        <SystemInfo data={formattedMetrics.systemInfo} density={density} />
 
-        {/* 2. CPU 图表 - 134px */}
-        <div className="min-h-[134px]">
-          <CPUChart data={formattedMetrics.cpuHistory} currentUsage={formattedMetrics.currentCPU} />
-        </div>
+        <CPUChart
+          data={formattedMetrics.cpuHistory}
+          currentUsage={formattedMetrics.currentCPU}
+          density={density}
+          chartHeight={layout.cpuChartHeight}
+        />
 
-        {/* 3. 内存图表 - 134px */}
-        <div className="min-h-[134px]">
-          <MemoryChart data={formattedMetrics.memory} />
-        </div>
+        <MemoryChart
+          data={formattedMetrics.memory}
+          density={density}
+          chartHeight={layout.memoryChartHeight}
+        />
 
-        {/* 4. 网络图表 - 134px */}
-        <div className="min-h-[134px]">
-          <NetworkChart
-            data={formattedMetrics.networkHistory}
-            currentDownload={formattedMetrics.currentNetwork.download}
-            currentUpload={formattedMetrics.currentNetwork.upload}
-          />
-        </div>
+        <NetworkChart
+          data={formattedMetrics.networkHistory}
+          currentDownload={formattedMetrics.currentNetwork.download}
+          currentUpload={formattedMetrics.currentNetwork.upload}
+          density={density}
+          chartHeight={layout.networkChartHeight}
+        />
 
-        {/* 5. 磁盘使用 - 134px */}
-        <div className="min-h-[134px]">
-          <DiskUsage data={formattedMetrics.disks} totalPercent={formattedMetrics.diskTotalPercent} />
-        </div>
+        <DiskUsage
+          data={formattedMetrics.disks}
+          totalPercent={formattedMetrics.diskTotalPercent}
+          density={density}
+          chartHeight={layout.diskChartHeight}
+        />
       </>
     );
-  }, [formattedMetrics]);
+  }, [formattedMetrics, density, layout]);
 
   return (
     <div
+      ref={panelRef}
+      data-monitor-density={density}
       className={cn(
-        // 固定宽度,最小高度
-        "w-[280px] min-h-[720px] flex-shrink-0",
-        // 内边距和间距
-        "py-1.5 px-3 space-y-1.5",
-        // 样式 - 移除边框（由外层容器处理）
-        "overflow-y-auto",
-        // 滚动条样式
-        "monitor-panel-scrollbar",
+        "w-[280px] h-full min-h-0 flex-shrink-0 overflow-hidden",
         className
       )}
     >
-      {panelContent}
+      <div
+        className={cn(
+          "h-full min-h-0 overflow-y-auto monitor-panel-scrollbar",
+          layout.contentClassName
+        )}
+      >
+        {panelContent}
+      </div>
     </div>
   );
 };

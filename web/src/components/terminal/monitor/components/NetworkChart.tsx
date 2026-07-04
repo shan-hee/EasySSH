@@ -3,11 +3,12 @@ import React from 'react';
 import { useTranslation } from "react-i18next"
 import ReactECharts from "echarts-for-react";
 import type { EChartsOption } from "echarts";
-import type { NetworkData } from '../types/metrics';
+import type { MonitorPanelDensity, NetworkData } from '../types/metrics';
 import {
   ChartConfig,
   ChartContainer,
 } from "@/components/ui/chart";
+import { cn } from "@/lib/utils";
 import { useEchartsColors } from "@/lib/echarts-theme";
 import { MONITOR_COLORS } from "../constants/colors";
 import { useMonitorChartTheme } from "../hooks/useMonitorChartTheme";
@@ -16,6 +17,8 @@ interface NetworkChartProps {
   data: NetworkData[];
   currentDownload: number;
   currentUpload: number;
+  density?: MonitorPanelDensity;
+  chartHeight?: number;
 }
 
 /**
@@ -45,12 +48,14 @@ const chartConfig = {
 /**
  * 网络流量图表组件
  * 使用 ECharts 双折线图显示上行和下行流量
- * 固定高度 142px
+ * 图表高度由监控面板密度控制
  */
 export const NetworkChart: React.FC<NetworkChartProps> = React.memo(({
   data,
   currentDownload,
   currentUpload,
+  density = "full",
+  chartHeight,
 }) => {
   const { t } = useTranslation("terminalMonitor");
   // 转换数据格式为图表需要的格式
@@ -68,6 +73,7 @@ export const NetworkChart: React.FC<NetworkChartProps> = React.memo(({
   const chartTheme = useMonitorChartTheme();
   const downloadColor = colors.download || chartTheme.download;
   const uploadColor = colors.upload || chartTheme.upload;
+  const resolvedChartHeight = chartHeight ?? (density === "compact" ? 72 : 106);
 
   // 计算Y轴的最大值用于显示刻度
   // 找出实际数据的最大值
@@ -270,10 +276,28 @@ export const NetworkChart: React.FC<NetworkChartProps> = React.memo(({
     };
   }, [chartData, downloadColor, uploadColor, maxValue, t, chartTheme]);
 
+  if (density === "mini") {
+    return (
+      <div className="space-y-1">
+        <div className="flex justify-between items-center h-6">
+          <span className="text-xs font-semibold">{t("networkLabel")}</span>
+        </div>
+        <div className="grid grid-cols-2 gap-1.5 text-[11px] font-mono tabular-nums">
+          <div className="min-w-0 rounded bg-muted/45 px-2 py-1" style={{ color: downloadColor }}>
+            <span className="truncate">↓ {formatSpeed(currentDownload)}</span>
+          </div>
+          <div className="min-w-0 rounded bg-muted/45 px-2 py-1" style={{ color: uploadColor }}>
+            <span className="truncate">↑ {formatSpeed(currentUpload)}</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-1">
       {/* 标题栏 - 高度 28px */}
-      <div className="flex justify-between items-center h-7">
+      <div className={cn("flex justify-between items-center", density === "compact" ? "h-6" : "h-7")}>
         <span className="text-xs font-semibold">{t("networkLabel")}</span>
         <div className="text-xs font-mono font-semibold tabular-nums flex items-center gap-2">
           <span style={{ color: downloadColor }}>↓ {formatSpeed(currentDownload)}</span>
@@ -281,8 +305,8 @@ export const NetworkChart: React.FC<NetworkChartProps> = React.memo(({
         </div>
       </div>
 
-      {/* 图表区域 - 固定高度 106px */}
-      <div className="h-[106px] w-full relative">
+      {/* 图表区域 - 高度由监控面板密度控制 */}
+      <div className="w-full relative" style={{ height: resolvedChartHeight }}>
         {/* 内嵌 Y 轴标签 */}
         <div className="absolute left-1 top-2 bottom-4 flex flex-col justify-between text-[9px] text-muted-foreground/70 pointer-events-none z-10">
           {[...yAxisTicks].reverse().map((value, idx) => (

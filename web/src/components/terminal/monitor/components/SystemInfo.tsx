@@ -6,11 +6,12 @@
 
 import React, { useState } from 'react';
 import { useTranslation } from "react-i18next"
-import type { SystemInfo as SystemInfoType } from '../types/metrics';
+import type { MonitorPanelDensity, SystemInfo as SystemInfoType } from '../types/metrics';
 import { cn } from '@/lib/utils';
 
 interface SystemInfoProps {
   data: SystemInfoType;
+  density?: MonitorPanelDensity;
 }
 
 /**
@@ -61,23 +62,50 @@ const InfoRow: React.FC<{
 /**
  * 系统信息组件
  */
-export const SystemInfo: React.FC<SystemInfoProps> = React.memo(({ data }) => {
+export const SystemInfo: React.FC<SystemInfoProps> = React.memo(({ data, density = "full" }) => {
   const { t } = useTranslation("terminalMonitor");
+  const rows = React.useMemo(() => {
+    if (density === "mini") {
+      return [
+        { label: t("labelHost"), value: data.hostname, monospace: true },
+        { label: "OS", value: data.os },
+      ];
+    }
+
+    if (density === "compact") {
+      return [
+        { label: t("labelHost"), value: data.hostname, monospace: true },
+        { label: "OS", value: data.os },
+        { label: t("labelUptime"), value: data.uptime, monospace: true },
+      ];
+    }
+
+    return [
+      { label: "OS", value: data.os },
+      { label: t("labelHost"), value: data.hostname, monospace: true },
+      { label: "CPU", value: data.cpu },
+      { label: t("labelArch"), value: data.arch, monospace: true },
+      { label: t("labelLoad"), value: data.load, monospace: true },
+      { label: t("labelUptime"), value: data.uptime, monospace: true },
+    ];
+  }, [data, density, t]);
+
   return (
     <div className="space-y-1">
       {/* 模块标题 - 高度 28px */}
-      <div className="h-7 flex items-center">
+      <div className={cn("flex items-center", density === "full" ? "h-7" : "h-6")}>
         <span className="text-xs font-semibold">{t("systemInfoTitle")}</span>
       </div>
 
-      {/* 信息列表 - 6行×20px = 120px */}
       <div className="space-y-0">
-        <InfoRow label="OS" value={data.os} />
-        <InfoRow label={t("labelHost")} value={data.hostname} monospace />
-        <InfoRow label="CPU" value={data.cpu} />
-        <InfoRow label={t("labelArch")} value={data.arch} monospace />
-        <InfoRow label={t("labelLoad")} value={data.load} monospace />
-        <InfoRow label={t("labelUptime")} value={data.uptime} monospace />
+        {rows.map((row) => (
+          <InfoRow
+            key={row.label}
+            label={row.label}
+            value={row.value}
+            monospace={row.monospace}
+          />
+        ))}
       </div>
     </div>
   );

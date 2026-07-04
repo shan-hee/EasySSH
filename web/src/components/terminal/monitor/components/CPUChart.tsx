@@ -3,11 +3,12 @@ import React from 'react';
 import { useTranslation } from "react-i18next"
 import ReactECharts from "echarts-for-react";
 import type { EChartsOption } from "echarts";
-import type { CPUData } from '../types/metrics';
+import type { CPUData, MonitorPanelDensity } from '../types/metrics';
 import {
   ChartConfig,
   ChartContainer,
 } from "@/components/ui/chart";
+import { cn } from "@/lib/utils";
 import { useEchartsColors } from "@/lib/echarts-theme";
 import { MONITOR_COLORS } from "../constants/colors";
 import { useMonitorChartTheme } from "../hooks/useMonitorChartTheme";
@@ -15,6 +16,8 @@ import { useMonitorChartTheme } from "../hooks/useMonitorChartTheme";
 interface CPUChartProps {
   data: CPUData[];
   currentUsage: number;
+  density?: MonitorPanelDensity;
+  chartHeight?: number;
 }
 
 /**
@@ -30,9 +33,14 @@ const chartConfig = {
 /**
  * CPU 使用率图表组件
  * 使用 ECharts 折线面积图显示最近 20 个数据点的 CPU 使用率
- * 固定高度 142px
+ * 图表高度由监控面板密度控制
  */
-export const CPUChart: React.FC<CPUChartProps> = React.memo(({ data, currentUsage }) => {
+export const CPUChart: React.FC<CPUChartProps> = React.memo(({
+  data,
+  currentUsage,
+  density = "full",
+  chartHeight,
+}) => {
   const { t } = useTranslation("terminalMonitor");
   // 转换数据格式为图表需要的格式
   const chartData = React.useMemo(
@@ -48,6 +56,7 @@ export const CPUChart: React.FC<CPUChartProps> = React.memo(({ data, currentUsag
   const colors = useEchartsColors(chartConfig);
   const chartTheme = useMonitorChartTheme();
   const usageColor = colors.usage || chartTheme.cpu;
+  const resolvedChartHeight = chartHeight ?? (density === "compact" ? 72 : 106);
 
   // 动态 Y 轴上限：根据当前数据的最大值自适应
   const dataMax = chartData.length > 0
@@ -209,10 +218,35 @@ export const CPUChart: React.FC<CPUChartProps> = React.memo(({ data, currentUsag
     };
   }, [chartData, usageColor, maxValue, t, chartTheme]);
 
+  if (density === "mini") {
+    return (
+      <div className="space-y-2">
+        <div className="flex justify-between items-center h-6">
+          <span className="text-xs font-semibold">{t("cpuLabel")}</span>
+          <span className={cn(
+            "text-xs font-mono font-semibold tabular-nums transition-colors duration-500",
+            currentUsage > 80 ? 'text-destructive' : currentUsage > 60 ? 'text-status-warning' : 'text-muted-foreground'
+          )}>
+            {currentUsage}%
+          </span>
+        </div>
+        <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
+          <div
+            className="h-full rounded-full transition-all duration-500"
+            style={{
+              width: `${Math.max(0, Math.min(100, currentUsage))}%`,
+              backgroundColor: usageColor,
+            }}
+          />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-1">
       {/* 标题栏 - 高度 28px */}
-      <div className="flex justify-between items-center h-7">
+      <div className={cn("flex justify-between items-center", density === "compact" ? "h-6" : "h-7")}>
         <span className="text-xs font-semibold">{t("cpuLabel")}</span>
         <span className={`text-xs font-mono font-semibold tabular-nums transition-colors duration-500 ${
           currentUsage > 80 ? 'text-destructive' : currentUsage > 60 ? 'text-status-warning' : 'text-muted-foreground'
@@ -221,8 +255,8 @@ export const CPUChart: React.FC<CPUChartProps> = React.memo(({ data, currentUsag
         </span>
       </div>
 
-      {/* 图表区域 - 固定高度 106px */}
-      <div className="h-[106px] w-full relative">
+      {/* 图表区域 - 高度由监控面板密度控制 */}
+      <div className="w-full relative" style={{ height: resolvedChartHeight }}>
         {/* 内嵌 Y 轴标签 */}
         <div className="absolute left-1 top-2 bottom-4 flex flex-col justify-between text-[9px] text-muted-foreground/70 pointer-events-none z-10">
           {[...yAxisTicks].reverse().map((value, idx) => (

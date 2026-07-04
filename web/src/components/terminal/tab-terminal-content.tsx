@@ -616,11 +616,11 @@ export function TabTerminalContent({
                   'transition-all duration-300 ease-out overflow-hidden border-r backdrop-blur-md',
                   'border-border/60 bg-card/35 text-foreground',
                   shouldReserveInlineMonitor
-                    ? 'w-[280px] opacity-100 translate-x-0'
+                    ? 'h-full min-h-0 w-[280px] opacity-100 translate-x-0'
                     : 'w-0 opacity-0 -translate-x-4 border-r-0'
                 )}
               >
-                {shouldReserveInlineMonitor && <MonitorPanel />}
+                {shouldReserveInlineMonitor && <MonitorPanel className="h-full min-h-0" />}
               </div>
             )}
 

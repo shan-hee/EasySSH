@@ -2,6 +2,8 @@
  * 系统监控数据类型定义
  */
 
+export type MonitorPanelDensity = "full" | "compact" | "mini";
+
 /**
  * 系统基础信息
  */

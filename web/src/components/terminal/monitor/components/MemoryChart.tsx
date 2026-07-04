@@ -3,17 +3,20 @@ import React from 'react';
 import { useTranslation } from "react-i18next"
 import ReactECharts from "echarts-for-react";
 import type { EChartsOption } from "echarts";
-import type { MemoryData } from '../types/metrics';
+import type { MemoryData, MonitorPanelDensity } from '../types/metrics';
 import {
   ChartConfig,
   ChartContainer,
 } from "@/components/ui/chart";
+import { cn } from "@/lib/utils";
 import { useEchartsColors } from "@/lib/echarts-theme";
 import { MONITOR_COLORS } from "../constants/colors";
 import { useMonitorChartTheme } from "../hooks/useMonitorChartTheme";
 
 interface MemoryChartProps {
   data: MemoryData;
+  density?: MonitorPanelDensity;
+  chartHeight?: number;
 }
 
 /**
@@ -33,9 +36,13 @@ const chartConfig = {
 /**
  * 内存使用图表组件
  * 使用 ECharts 同心环形图显示 RAM 和 Swap
- * 固定高度 142px
+ * 图表高度由监控面板密度控制
  */
-export const MemoryChart: React.FC<MemoryChartProps> = React.memo(({ data }) => {
+export const MemoryChart: React.FC<MemoryChartProps> = React.memo(({
+  data,
+  density = "full",
+  chartHeight,
+}) => {
   const { t } = useTranslation("terminalMonitor");
   const memoryTooltipUsedLabel = t("memoryTooltipUsed");
   const chartData = React.useMemo(
@@ -50,6 +57,8 @@ export const MemoryChart: React.FC<MemoryChartProps> = React.memo(({ data }) => 
   const chartTheme = useMonitorChartTheme();
   const ramColor = colors.ram || chartTheme.ram;
   const swapColor = colors.swap || chartTheme.swap;
+  const resolvedChartHeight = chartHeight ?? (density === "compact" ? 82 : 106);
+  const ringSize = density === "compact" ? Math.min(72, resolvedChartHeight) : 100;
 
   const option: EChartsOption = React.useMemo(() => {
     const ramPercent = Math.max(0, Math.min(100, chartData.ramPercent));
@@ -177,17 +186,59 @@ export const MemoryChart: React.FC<MemoryChartProps> = React.memo(({ data }) => 
     };
   }, [chartData, ramColor, swapColor, data, memoryTooltipUsedLabel, chartTheme]);
 
+  if (density === "mini") {
+    return (
+      <div className="space-y-2">
+        <div className="flex justify-between items-center h-6">
+          <span className="text-xs font-semibold">{t("memoryLabel")}</span>
+        </div>
+        <div className="space-y-2">
+          {[
+            { label: "RAM", value: data.ram, color: ramColor },
+            { label: "Swap", value: data.swap, color: swapColor },
+          ].map((item) => (
+            <div key={item.label} className="space-y-1">
+              <div className="flex min-w-0 items-center justify-between gap-2 text-xs">
+                <div className="flex min-w-0 items-center gap-1.5">
+                  <span
+                    className="h-2 w-2 shrink-0 rounded-full"
+                    style={{ backgroundColor: item.color }}
+                  />
+                  <span className="font-medium" style={{ color: item.color }}>
+                    {item.label}
+                  </span>
+                </div>
+                <span className="min-w-0 truncate font-mono text-[11px] font-semibold tabular-nums text-muted-foreground">
+                  {item.value.percent}% · {item.value.value} {item.value.unit}
+                </span>
+              </div>
+              <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
+                <div
+                  className="h-full rounded-full transition-all duration-500"
+                  style={{
+                    width: `${Math.max(0, Math.min(100, item.value.percent))}%`,
+                    backgroundColor: item.color,
+                  }}
+                />
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-1">
       {/* 标题栏 - 高度 28px */}
-      <div className="flex justify-between items-center h-7">
+      <div className={cn("flex justify-between items-center", density === "compact" ? "h-6" : "h-7")}>
         <span className="text-xs font-semibold">{t("memoryLabel")}</span>
       </div>
 
-      {/* 图表区域 - 固定高度 106px,左文右图 */}
-      <div className="h-[106px] flex items-center gap-3">
+      {/* 图表区域 - 高度由监控面板密度控制,左文右图 */}
+      <div className={cn("flex items-center", density === "compact" ? "gap-2" : "gap-3")} style={{ height: resolvedChartHeight }}>
         {/* 左侧:文字信息 */}
-        <div className="flex-1 space-y-3 text-xs min-w-0">
+        <div className={cn("flex-1 text-xs min-w-0", density === "compact" ? "space-y-2" : "space-y-3")}>
           {/* RAM 信息 */}
           <div className="space-y-0.5">
             <div className="flex items-center gap-1.5">
@@ -240,7 +291,7 @@ export const MemoryChart: React.FC<MemoryChartProps> = React.memo(({ data }) => 
         </div>
 
         {/* 右侧:径向条形图 */}
-        <div className="w-[100px] h-[100px] relative flex-shrink-0">
+        <div className="relative flex-shrink-0" style={{ width: ringSize, height: ringSize }}>
           <ChartContainer config={chartConfig} className="w-full h-full">
             {() => (
               <ReactECharts

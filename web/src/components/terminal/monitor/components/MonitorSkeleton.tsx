@@ -6,17 +6,19 @@
 
 import React from 'react';
 import { Skeleton } from '@/components/ui/skeleton';
+import { cn } from '@/lib/utils';
+import type { MonitorPanelDensity } from '../types/metrics';
 
 /**
  * 系统信息骨架
  */
-const SystemInfoSkeleton: React.FC = () => (
+const SystemInfoSkeleton: React.FC<{ density: MonitorPanelDensity }> = ({ density }) => (
   <div className="space-y-1">
-    <div className="h-7 flex items-center">
+    <div className={cn("flex items-center", density === "full" ? "h-7" : "h-6")}>
       <Skeleton className="h-3 w-16" />
     </div>
     <div className="space-y-0">
-      {Array.from({ length: 6 }).map((_, i) => (
+      {Array.from({ length: density === "full" ? 6 : density === "compact" ? 3 : 2 }).map((_, i) => (
         <div key={i} className="flex justify-between items-center h-5 px-1.5">
           <Skeleton className="h-2.5 w-12" />
           <Skeleton className="h-2.5 w-24" />
@@ -37,12 +39,16 @@ function getBarSkeletonWidth(index: number): string {
   return `${62 + index * 16}%`
 }
 
-const LineChartSkeleton: React.FC<{ showPercentage?: boolean }> = ({
-  showPercentage = true
+const LineChartSkeleton: React.FC<{
+  showPercentage?: boolean;
+  density: MonitorPanelDensity;
+}> = ({
+  showPercentage = true,
+  density,
 }) => (
   <div className="space-y-1">
     {/* 标题行 */}
-    <div className="flex justify-between items-center h-7">
+    <div className={cn("flex justify-between items-center", density === "compact" ? "h-6" : "h-7")}>
       <Skeleton className="h-3 w-12" />
       {showPercentage ? (
         <Skeleton className="h-3 w-10" />
@@ -55,7 +61,7 @@ const LineChartSkeleton: React.FC<{ showPercentage?: boolean }> = ({
     </div>
 
     {/* 曲线图区域 */}
-    <div className="h-[106px] relative px-2">
+    <div className="relative px-2" style={{ height: density === "compact" ? 64 : 106 }}>
       {/* Y轴刻度 */}
       <div className="absolute left-1 top-2 bottom-4 flex flex-col justify-between">
         {Array.from({ length: 4 }).map((_, i) => (
@@ -89,18 +95,39 @@ const LineChartSkeleton: React.FC<{ showPercentage?: boolean }> = ({
   </div>
 );
 
+const MiniMetricSkeleton: React.FC<{ twoColumns?: boolean }> = ({ twoColumns = false }) => (
+  <div className="space-y-2">
+    <div className="flex justify-between items-center h-6">
+      <Skeleton className="h-3 w-12" />
+      <Skeleton className="h-3 w-12" />
+    </div>
+    {twoColumns ? (
+      <div className="grid grid-cols-2 gap-1.5">
+        <Skeleton className="h-6 w-full" />
+        <Skeleton className="h-6 w-full" />
+      </div>
+    ) : (
+      <Skeleton className="h-1.5 w-full" />
+    )}
+  </div>
+);
+
 /**
  * 内存 径向图骨架（Radial Chart）
  */
-const RadialChartSkeleton: React.FC = () => (
+const RadialChartSkeleton: React.FC<{ density: MonitorPanelDensity }> = ({ density }) => {
+  const chartHeight = density === "compact" ? 74 : 106;
+  const ringSize = density === "compact" ? 72 : 100;
+
+  return (
   <div className="space-y-1">
     {/* 标题行 */}
-    <div className="flex justify-between items-center h-7">
+    <div className={cn("flex justify-between items-center", density === "compact" ? "h-6" : "h-7")}>
       <Skeleton className="h-3 w-12" />
     </div>
 
     {/* 径向图区域 */}
-    <div className="h-[106px] flex items-center gap-3">
+    <div className={cn("flex items-center", density === "compact" ? "gap-2" : "gap-3")} style={{ height: chartHeight }}>
       {/* 左侧：文字信息 */}
       <div className="flex-1 space-y-3">
         {/* RAM */}
@@ -125,26 +152,27 @@ const RadialChartSkeleton: React.FC = () => (
       </div>
 
       {/* 右侧：圆形图 */}
-      <div className="w-[100px] h-[100px] flex-shrink-0 flex items-center justify-center">
+      <div className="flex-shrink-0 flex items-center justify-center" style={{ width: ringSize, height: ringSize }}>
         <Skeleton className="w-20 h-20 rounded-full" />
       </div>
     </div>
   </div>
-);
+  );
+};
 
 /**
  * 磁盘 柱状图骨架（Bar Chart）
  */
-const BarChartSkeleton: React.FC = () => (
+const BarChartSkeleton: React.FC<{ density: MonitorPanelDensity }> = ({ density }) => (
   <div className="space-y-1">
     {/* 标题行 */}
-    <div className="flex justify-between items-center h-7">
+    <div className={cn("flex justify-between items-center", density === "compact" ? "h-6" : "h-7")}>
       <Skeleton className="h-3 w-12" />
       <Skeleton className="h-3 w-10" />
     </div>
 
     {/* 柱状图区域 */}
-    <div className="h-[106px] flex flex-col justify-center gap-2 px-2">
+    <div className="flex flex-col justify-center gap-2 px-2" style={{ height: density === "compact" ? 70 : 106 }}>
       {/* 水平柱状条 */}
       {Array.from({ length: 2 }).map((_, i) => (
         <div key={i} className="flex items-center gap-2">
@@ -166,32 +194,46 @@ const BarChartSkeleton: React.FC = () => (
 /**
  * 监控面板完整骨架屏
  */
-export const MonitorSkeleton: React.FC = () => {
+export const MonitorSkeleton: React.FC<{ density?: MonitorPanelDensity }> = ({
+  density = "full",
+}) => {
+  if (density === "mini") {
+    return (
+      <div className="space-y-3">
+        <SystemInfoSkeleton density={density} />
+        <MiniMetricSkeleton />
+        <MiniMetricSkeleton />
+        <MiniMetricSkeleton twoColumns />
+        <MiniMetricSkeleton />
+      </div>
+    );
+  }
+
   return (
-    <div className="w-full py-1.5 px-3 space-y-1.5">
+    <div className={cn("w-full", density === "compact" ? "space-y-2" : "space-y-1.5")}>
       {/* 系统信息骨架 - 148px */}
-      <div className="min-h-[148px]">
-        <SystemInfoSkeleton />
+      <div>
+        <SystemInfoSkeleton density={density} />
       </div>
 
       {/* CPU 曲线图骨架 - 134px */}
-      <div className="min-h-[134px]">
-        <LineChartSkeleton showPercentage={true} />
+      <div>
+        <LineChartSkeleton showPercentage={true} density={density} />
       </div>
 
       {/* 内存 径向图骨架 - 134px */}
-      <div className="min-h-[134px]">
-        <RadialChartSkeleton />
+      <div>
+        <RadialChartSkeleton density={density} />
       </div>
 
       {/* 网络 曲线图骨架 - 134px */}
-      <div className="min-h-[134px]">
-        <LineChartSkeleton showPercentage={false} />
+      <div>
+        <LineChartSkeleton showPercentage={false} density={density} />
       </div>
 
       {/* 磁盘 柱状图骨架 - 134px */}
-      <div className="min-h-[134px]">
-        <BarChartSkeleton />
+      <div>
+        <BarChartSkeleton density={density} />
       </div>
     </div>
   );
