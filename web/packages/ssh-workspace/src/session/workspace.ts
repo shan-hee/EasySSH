@@ -4,10 +4,12 @@ import type {
   DirectTransferOptions,
   DirectTransferResponse,
   DirectoryListResponse,
+  DiskUsageResponse,
   FileInfo,
   SftpBatchDownloadMode,
   SftpFileItem,
   UploadTaskListResponse,
+  UploadTaskStatus,
 } from "./sftp-types"
 import type {
   TerminalConnectionPhase,
@@ -342,17 +344,19 @@ export interface WorkspaceDockerApi {
 export interface SshWorkspaceApiClient {
   sftp?: {
     listDirectory: (serverId: string, path?: string) => Promise<DirectoryListResponse>
-	    authenticate?: (
-	      serverId: string,
-	      authMethod: WorkspaceAuthMethod,
-	      secret: string,
-	      privateKeyPassphrase?: string,
-	      options?: {
-	        password?: string
-	        privateKey?: string
-	      },
-	    ) => Promise<unknown>
-    downloadFile?: (serverId: string, path: string) => Promise<void> | void
+    authenticate?: (
+      serverId: string,
+      authMethod: WorkspaceAuthMethod,
+      secret: string,
+      privateKeyPassphrase?: string,
+      options?: {
+        password?: string
+        privateKey?: string
+      },
+    ) => Promise<unknown>
+    getFileInfo?: (serverId: string, path: string) => Promise<FileInfo>
+    getDiskUsage?: (serverId: string, path?: string) => Promise<DiskUsageResponse>
+    downloadFile?: (serverId: string, path: string, taskId?: string) => Promise<void> | void
     uploadFile?: (
       serverId: string,
       path: string,
@@ -375,10 +379,13 @@ export interface SshWorkspaceApiClient {
       paths: string[],
       mode?: SftpBatchDownloadMode,
       excludePatterns?: string[],
+      taskId?: string,
     ) => Promise<void>
     closeConnection?: (serverId: string) => Promise<unknown>
     createUploadTask?: () => Promise<{ task_id: string }>
     listUploadTasks?: () => Promise<UploadTaskListResponse>
+    getUploadTask?: (taskId: string) => Promise<UploadTaskStatus>
+    getTransferTask?: (taskId: string) => Promise<UploadTaskStatus>
     cancelUploadTask?: (taskId: string) => Promise<unknown>
     directTransfer?: (
       sourceServerId: string,

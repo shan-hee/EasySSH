@@ -11,6 +11,8 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -27,6 +29,8 @@ const (
 	desktopGatewayAuthMaxAttempts     = 3
 	desktopGatewaySSHLatencyInterval  = 15 * time.Second
 	desktopGatewayWriteTimeout        = 10 * time.Second
+	desktopGatewayDefaultHistoryLimit = 500
+	desktopGatewayMaxHistoryEntries   = 5000
 )
 
 type DesktopGatewayInfo struct {
@@ -40,11 +44,14 @@ type DesktopGateway struct {
 	scriptService *DesktopScriptService
 	monitor       *DesktopMonitorService
 
-	mu          sync.RWMutex
-	server      *http.Server
-	httpBaseURL string
-	wsBaseURL   string
-	token       string
+	mu                      sync.RWMutex
+	server                  *http.Server
+	httpBaseURL             string
+	wsBaseURL               string
+	token                   string
+	completionHistoryMu     sync.Mutex
+	completionHistoryLoaded bool
+	completionHistory       map[string][]string
 }
 
 type desktopGatewayMessage struct {
@@ -70,6 +77,10 @@ type desktopGatewayFetchCompletionDataMessage struct {
 	CacheMaxEntries int   `json:"cacheMaxEntries,omitempty"`
 }
 
+type desktopGatewayCompletionUpdateMessage struct {
+	NewCommand string `json:"newCommand"`
+}
+
 type desktopGatewayAuthResponseMessage struct {
 	RequestID             string                  `json:"request_id"`
 	Answers               []string                `json:"answers"`
@@ -79,6 +90,12 @@ type desktopGatewayAuthResponseMessage struct {
 	PrivateKey            string                  `json:"private_key,omitempty"`
 	PrivateKeyPassphrase  string                  `json:"privateKeyPassphrase,omitempty"`
 	PrivateKeyPassphrase2 string                  `json:"private_key_passphrase,omitempty"`
+}
+
+type desktopGatewayHostKeyResponseMessage struct {
+	RequestID   string `json:"request_id"`
+	Accepted    bool   `json:"accepted"`
+	Fingerprint string `json:"fingerprint"`
 }
 
 type desktopGatewayErrorMessage struct {
@@ -95,6 +112,7 @@ type desktopGatewayAuthPromptMessage struct {
 	RequestID         string                         `json:"request_id"`
 	Kind              string                         `json:"kind,omitempty"`
 	Name              string                         `json:"name,omitempty"`
+	Instruction       string                         `json:"instruction,omitempty"`
 	Prompts           []desktopGatewayAuthPromptItem `json:"prompts"`
 	AuthMethod        DesktopServerAuthMethod        `json:"auth_method,omitempty"`
 	Attempt           int                            `json:"attempt,omitempty"`
@@ -118,7 +136,9 @@ type desktopGatewayTerminalRuntime struct {
 	writeMu    sync.Mutex
 	promptMu   sync.Mutex
 	prompts    map[string]chan desktopGatewayAuthResponseMessage
+	hostKeys   map[string]chan desktopGatewayHostKeyResponseMessage
 	serverName string
+	serverID   string
 
 	terminalMu    sync.Mutex
 	stdin         io.Writer
@@ -241,8 +261,10 @@ func (g *DesktopGateway) handleTerminal(w http.ResponseWriter, r *http.Request) 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	runtime := &desktopGatewayTerminalRuntime{
-		conn:    conn,
-		prompts: map[string]chan desktopGatewayAuthResponseMessage{},
+		conn:     conn,
+		prompts:  map[string]chan desktopGatewayAuthResponseMessage{},
+		hostKeys: map[string]chan desktopGatewayHostKeyResponseMessage{},
+		serverID: serverID,
 	}
 
 	done := make(chan struct{})
@@ -312,10 +334,13 @@ func (g *DesktopGateway) handleTerminal(w http.ResponseWriter, r *http.Request) 
 	onFetchCompletionData := func(options desktopGatewayFetchCompletionDataMessage) {
 		g.sendTerminalCompletionData(ctx, runtime, options)
 	}
+	onCompletionUpdate := func(update desktopGatewayCompletionUpdateMessage) {
+		g.appendTerminalCompletionHistory(serverID, update.NewCommand)
+	}
 
 	readerCtx, cancelReader := context.WithCancel(ctx)
 	defer cancelReader()
-	go runtime.readTerminalMessages(readerCtx, closeDone, onPing, onFetchCompletionData)
+	go runtime.readTerminalMessages(readerCtx, closeDone, onPing, onFetchCompletionData, onCompletionUpdate)
 
 	if err := runtime.writeJSON(ctx, desktopGatewayMessage{
 		Type: "handshake_complete",
@@ -412,7 +437,7 @@ func (g *DesktopGateway) initializeTerminalSession(
 	runtime.serverName = serverDisplayName(server)
 
 	var credential *DesktopSSHCredential
-	client, err := g.connectDesktopSSH(ctx, server, nil)
+	client, err := g.connectDesktopSSH(ctx, runtime, server, nil)
 	if err != nil && isDesktopTerminalPassphraseError(err) && server.AuthMethod == DesktopServerAuthKey {
 		var lastErr error = err
 		for attempt := 1; attempt <= desktopGatewayAuthMaxAttempts; attempt++ {
@@ -425,7 +450,7 @@ func (g *DesktopGateway) initializeTerminalSession(
 				Secret:               "",
 				PrivateKeyPassphrase: passphrase,
 			}
-			client, err = g.connectDesktopSSH(ctx, server, credential)
+			client, err = g.connectDesktopSSH(ctx, runtime, server, credential)
 			if err == nil {
 				break
 			}
@@ -449,7 +474,7 @@ func (g *DesktopGateway) initializeTerminalSession(
 			}
 			nextAuthMethod = nextCredential.AuthMethod
 			credential = nextCredential
-			client, err = g.connectDesktopSSH(ctx, server, credential)
+			client, err = g.connectDesktopSSH(ctx, runtime, server, credential)
 			if err != nil && credential.AuthMethod == DesktopServerAuthKey && isDesktopTerminalPassphraseError(err) {
 				var passphraseErr error = err
 				for passphraseAttempt := 1; passphraseAttempt <= desktopGatewayAuthMaxAttempts; passphraseAttempt++ {
@@ -458,7 +483,7 @@ func (g *DesktopGateway) initializeTerminalSession(
 						return desktopGatewayTerminalInitResult{server: server, err: promptErr}
 					}
 					credential.PrivateKeyPassphrase = passphrase
-					client, err = g.connectDesktopSSH(ctx, server, credential)
+					client, err = g.connectDesktopSSH(ctx, runtime, server, credential)
 					if err == nil {
 						break
 					}
@@ -542,7 +567,12 @@ func (g *DesktopGateway) initializeTerminalSession(
 	}
 }
 
-func (g *DesktopGateway) connectDesktopSSH(ctx context.Context, server DesktopServer, credential *DesktopSSHCredential) (*ssh.Client, error) {
+func (g *DesktopGateway) connectDesktopSSH(
+	ctx context.Context,
+	runtime *desktopGatewayTerminalRuntime,
+	server DesktopServer,
+	credential *DesktopSSHCredential,
+) (*ssh.Client, error) {
 	if credential == nil {
 		if cachedCredential, ok := g.serverService.getTemporaryCredential(server.ID); ok {
 			credential = cachedCredential
@@ -552,15 +582,23 @@ func (g *DesktopGateway) connectDesktopSSH(ctx context.Context, server DesktopSe
 	if err != nil {
 		return nil, err
 	}
+	if runtime != nil {
+		authMethods = append(authMethods, ssh.KeyboardInteractive(runtime.keyboardInteractiveChallenge(ctx)))
+	}
 	if len(authMethods) == 0 {
 		return nil, errors.New("server credential is required")
 	}
 
 	config := &ssh.ClientConfig{
-		User:            server.Username,
-		Auth:            authMethods,
-		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
-		Timeout:         12 * time.Second,
+		User: server.Username,
+		Auth: authMethods,
+		HostKeyCallback: desktopHostKeyCallbackWithChangeApproval(func(details *DesktopHostKeyVerificationError) (bool, error) {
+			if runtime == nil {
+				return false, errors.New("terminal runtime is not available")
+			}
+			return runtime.requestHostKeyApproval(ctx, details)
+		}),
+		Timeout: 12 * time.Second,
 	}
 	address := net.JoinHostPort(server.Host, strconv.Itoa(server.Port))
 
@@ -719,9 +757,17 @@ func (g *DesktopGateway) sendTerminalCompletionData(
 	runtime *desktopGatewayTerminalRuntime,
 	options desktopGatewayFetchCompletionDataMessage,
 ) {
+	includeHistory := true
+	if options.IncludeHistory != nil {
+		includeHistory = *options.IncludeHistory
+	}
 	includeScripts := true
 	if options.IncludeScripts != nil {
 		includeScripts = *options.IncludeScripts
+	}
+	history := []string{}
+	if includeHistory {
+		history = g.listTerminalCompletionHistory(runtime.serverID, options.HistoryLimit)
 	}
 
 	scripts := []map[string]any{}
@@ -747,7 +793,7 @@ func (g *DesktopGateway) sendTerminalCompletionData(
 	}
 
 	data, _ := json.Marshal(map[string]any{
-		"history":   []string{},
+		"history":   history,
 		"scripts":   scripts,
 		"timestamp": time.Now().UnixMilli(),
 	})
@@ -755,6 +801,105 @@ func (g *DesktopGateway) sendTerminalCompletionData(
 		Type: "completion_data",
 		Data: data,
 	})
+}
+
+func (g *DesktopGateway) listTerminalCompletionHistory(serverID string, limit int) []string {
+	limit = normalizeDesktopGatewayHistoryLimit(limit)
+
+	g.completionHistoryMu.Lock()
+	defer g.completionHistoryMu.Unlock()
+
+	g.ensureTerminalCompletionHistoryLocked()
+	history := g.completionHistory[normalizeDesktopGatewayHistoryServerID(serverID)]
+	if len(history) == 0 {
+		return []string{}
+	}
+	if len(history) > limit {
+		history = history[:limit]
+	}
+
+	result := make([]string, len(history))
+	copy(result, history)
+	return result
+}
+
+func (g *DesktopGateway) appendTerminalCompletionHistory(serverID string, command string) {
+	trimmed := strings.TrimSpace(command)
+	if trimmed == "" {
+		return
+	}
+
+	g.completionHistoryMu.Lock()
+	defer g.completionHistoryMu.Unlock()
+
+	g.ensureTerminalCompletionHistoryLocked()
+	key := normalizeDesktopGatewayHistoryServerID(serverID)
+	current := g.completionHistory[key]
+	next := make([]string, 0, minInt(len(current)+1, desktopGatewayMaxHistoryEntries))
+	next = append(next, trimmed)
+	for _, existing := range current {
+		if existing == trimmed {
+			continue
+		}
+		next = append(next, existing)
+		if len(next) >= desktopGatewayMaxHistoryEntries {
+			break
+		}
+	}
+	g.completionHistory[key] = next
+
+	if err := g.writeTerminalCompletionHistoryLocked(); err != nil {
+		log.Printf("failed to save desktop terminal completion history: %v", err)
+	}
+}
+
+func (g *DesktopGateway) ensureTerminalCompletionHistoryLocked() {
+	if g.completionHistoryLoaded {
+		return
+	}
+
+	g.completionHistoryLoaded = true
+	g.completionHistory = map[string][]string{}
+
+	content, err := os.ReadFile(desktopGatewayCompletionHistoryPath())
+	if errors.Is(err, os.ErrNotExist) {
+		return
+	}
+	if err != nil {
+		log.Printf("failed to read desktop terminal completion history: %v", err)
+		return
+	}
+
+	var stored map[string][]string
+	if err := json.Unmarshal(content, &stored); err != nil {
+		log.Printf("failed to parse desktop terminal completion history: %v", err)
+		return
+	}
+
+	for serverID, history := range stored {
+		key := normalizeDesktopGatewayHistoryServerID(serverID)
+		if key == "" {
+			continue
+		}
+		g.completionHistory[key] = normalizeDesktopGatewayHistoryEntries(history)
+	}
+}
+
+func (g *DesktopGateway) writeTerminalCompletionHistoryLocked() error {
+	if g.completionHistory == nil {
+		return nil
+	}
+
+	content, err := json.MarshalIndent(g.completionHistory, "", "  ")
+	if err != nil {
+		return err
+	}
+
+	path := desktopGatewayCompletionHistoryPath()
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	return os.WriteFile(path, content, 0o600)
 }
 
 func (r *desktopGatewayTerminalRuntime) writeJSON(ctx context.Context, value any) error {
@@ -813,6 +958,7 @@ func (r *desktopGatewayTerminalRuntime) readTerminalMessages(
 	closeDone func(),
 	onPing func(desktopGatewayPingMessage),
 	onFetchCompletionData func(desktopGatewayFetchCompletionDataMessage),
+	onCompletionUpdate func(desktopGatewayCompletionUpdateMessage),
 ) {
 	for {
 		messageType, payload, err := r.conn.Read(ctx)
@@ -867,6 +1013,12 @@ func (r *desktopGatewayTerminalRuntime) readTerminalMessages(
 					continue
 				}
 				r.resolvePrompt(response)
+			case "host_key_response":
+				var response desktopGatewayHostKeyResponseMessage
+				if err := json.Unmarshal(message.Data, &response); err != nil {
+					continue
+				}
+				r.resolveHostKeyPrompt(response)
 			case "fetch_completion_data":
 				var options desktopGatewayFetchCompletionDataMessage
 				if len(message.Data) > 0 {
@@ -874,6 +1026,11 @@ func (r *desktopGatewayTerminalRuntime) readTerminalMessages(
 				}
 				onFetchCompletionData(options)
 			case "completion_update":
+				var update desktopGatewayCompletionUpdateMessage
+				if len(message.Data) > 0 {
+					_ = json.Unmarshal(message.Data, &update)
+				}
+				onCompletionUpdate(update)
 			}
 		}
 	}
@@ -978,6 +1135,33 @@ func (r *desktopGatewayTerminalRuntime) resolvePrompt(response desktopGatewayAut
 	}
 }
 
+func (r *desktopGatewayTerminalRuntime) registerHostKeyPrompt(ch chan desktopGatewayHostKeyResponseMessage) string {
+	id := fmt.Sprintf("desktop-terminal-host-key-%d", time.Now().UnixNano())
+	r.promptMu.Lock()
+	r.hostKeys[id] = ch
+	r.promptMu.Unlock()
+	return id
+}
+
+func (r *desktopGatewayTerminalRuntime) unregisterHostKeyPrompt(id string) {
+	r.promptMu.Lock()
+	delete(r.hostKeys, id)
+	r.promptMu.Unlock()
+}
+
+func (r *desktopGatewayTerminalRuntime) resolveHostKeyPrompt(response desktopGatewayHostKeyResponseMessage) {
+	r.promptMu.Lock()
+	ch := r.hostKeys[response.RequestID]
+	r.promptMu.Unlock()
+	if ch == nil {
+		return
+	}
+	select {
+	case ch <- response:
+	default:
+	}
+}
+
 func (r *desktopGatewayTerminalRuntime) requestCredential(
 	ctx context.Context,
 	authMethod DesktopServerAuthMethod,
@@ -1032,6 +1216,89 @@ func (r *desktopGatewayTerminalRuntime) requestCredential(
 		}, nil
 	case <-ctx.Done():
 		return nil, ctx.Err()
+	}
+}
+
+func (r *desktopGatewayTerminalRuntime) keyboardInteractiveChallenge(ctx context.Context) ssh.KeyboardInteractiveChallenge {
+	return func(name string, instruction string, questions []string, echos []bool) ([]string, error) {
+		if len(questions) == 0 {
+			return []string{}, nil
+		}
+
+		ch := make(chan desktopGatewayAuthResponseMessage, 1)
+		id := r.registerPrompt(ch)
+		defer r.unregisterPrompt(id)
+
+		prompts := make([]desktopGatewayAuthPromptItem, len(questions))
+		for index, question := range questions {
+			echo := false
+			if index < len(echos) {
+				echo = echos[index]
+			}
+			prompts[index] = desktopGatewayAuthPromptItem{
+				Text: question,
+				Echo: echo,
+			}
+		}
+
+		prompt := desktopGatewayAuthPromptMessage{
+			RequestID:   id,
+			Kind:        "keyboard_interactive",
+			Name:        name,
+			Instruction: instruction,
+			Prompts:     prompts,
+		}
+		data, _ := json.Marshal(prompt)
+		if err := r.writeJSON(ctx, desktopGatewayMessage{Type: "auth_prompt", Data: data}); err != nil {
+			return nil, err
+		}
+
+		select {
+		case response := <-ch:
+			if response.Cancelled {
+				return nil, errors.New("auth_cancelled")
+			}
+			answers := make([]string, len(questions))
+			copy(answers, response.Answers)
+			return answers, nil
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+	}
+}
+
+func (r *desktopGatewayTerminalRuntime) requestHostKeyApproval(ctx context.Context, details *DesktopHostKeyVerificationError) (bool, error) {
+	ch := make(chan desktopGatewayHostKeyResponseMessage, 1)
+	id := r.registerHostKeyPrompt(ch)
+	defer r.unregisterHostKeyPrompt(id)
+
+	payload := struct {
+		RequestID string `json:"request_id"`
+		*DesktopHostKeyVerificationError
+	}{
+		RequestID:                       id,
+		DesktopHostKeyVerificationError: details,
+	}
+	data, _ := json.Marshal(payload)
+	if err := r.writeJSON(ctx, desktopGatewayMessage{Type: "host_key_prompt", Data: data}); err != nil {
+		return false, err
+	}
+
+	select {
+	case response := <-ch:
+		if !response.Accepted {
+			return false, nil
+		}
+		if response.Fingerprint != "" && response.Fingerprint != details.ReceivedKey {
+			return false, fmt.Errorf(
+				"host key response fingerprint mismatch: approved %s, expected %s",
+				response.Fingerprint,
+				details.ReceivedKey,
+			)
+		}
+		return true, nil
+	case <-ctx.Done():
+		return false, ctx.Err()
 	}
 }
 
@@ -1161,7 +1428,16 @@ func measureDesktopSSHLatency(client *ssh.Client) (time.Duration, error) {
 func classifyDesktopGatewayTerminalError(err error) (string, string) {
 	message := err.Error()
 	lower := strings.ToLower(message)
+	var hostKeyErr *DesktopHostKeyVerificationError
 	switch {
+	case errors.As(err, &hostKeyErr):
+		return "host_key_changed", message
+	case errors.Is(err, errDesktopHostKeyRevoked):
+		return "host_key_revoked", message
+	case strings.Contains(lower, "host key verification failed"):
+		return "host_key_changed", message
+	case strings.Contains(lower, "host key trust has been revoked"):
+		return "host_key_revoked", message
 	case strings.Contains(lower, "auth_cancelled"):
 		return "auth_cancelled", "Authentication cancelled"
 	case strings.Contains(lower, "private_key_passphrase_required"):
@@ -1273,8 +1549,59 @@ func newDesktopGatewayToken() string {
 	return fmt.Sprintf("%d", time.Now().UnixNano())
 }
 
+func desktopGatewayCompletionHistoryPath() string {
+	return filepath.Join(desktopDataDir(), "terminal-completion-history.json")
+}
+
+func normalizeDesktopGatewayHistoryLimit(limit int) int {
+	if limit <= 0 {
+		return desktopGatewayDefaultHistoryLimit
+	}
+	if limit > desktopGatewayMaxHistoryEntries {
+		return desktopGatewayMaxHistoryEntries
+	}
+	return limit
+}
+
+func normalizeDesktopGatewayHistoryServerID(serverID string) string {
+	serverID = strings.TrimSpace(serverID)
+	if serverID == "" {
+		return "default"
+	}
+	return serverID
+}
+
+func normalizeDesktopGatewayHistoryEntries(entries []string) []string {
+	seen := make(map[string]struct{}, len(entries))
+	normalized := make([]string, 0, minInt(len(entries), desktopGatewayMaxHistoryEntries))
+
+	for _, entry := range entries {
+		trimmed := strings.TrimSpace(entry)
+		if trimmed == "" {
+			continue
+		}
+		if _, exists := seen[trimmed]; exists {
+			continue
+		}
+		seen[trimmed] = struct{}{}
+		normalized = append(normalized, trimmed)
+		if len(normalized) >= desktopGatewayMaxHistoryEntries {
+			break
+		}
+	}
+
+	return normalized
+}
+
 func maxInt(a int, b int) int {
 	if a > b {
+		return a
+	}
+	return b
+}
+
+func minInt(a int, b int) int {
+	if a < b {
 		return a
 	}
 	return b

@@ -58,6 +58,7 @@ export {
 } from "./session/transfer-controller"
 export type { ApplyTransferTaskUpdateOptions } from "./session/transfer-controller"
 export {
+  createDownloadTransferTask,
   createServerTransferTask,
   createUploadTransferTask,
   mapTransferProgressMessageToTaskUpdate,
@@ -67,6 +68,7 @@ export {
   normalizeTransferStage,
 } from "./session/transfer-tasks"
 export type {
+  CreateDownloadTransferTaskOptions,
   CreateServerTransferTaskOptions,
   CreateUploadTransferTaskOptions,
   MappedUploadProgressMessage,

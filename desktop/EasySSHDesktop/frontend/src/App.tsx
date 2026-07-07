@@ -24,7 +24,7 @@ import {
 } from "@easyssh/ssh-workspace/desktop"
 import { i18n, type Locale } from "@/i18n"
 import { getEffectiveLocale, saveLocaleToStorage } from "@/utils/datetime"
-import { createDesktopActivityLogAdapter, recordDesktopTerminalOpened } from "./adapters/desktop-activity-log-adapter"
+import { createDesktopActivityLogAdapter, createDesktopTransferHistoryAdapter, recordDesktopTerminalOpened } from "./adapters/desktop-activity-log-adapter"
 import { createDesktopAIAssistantAdapters } from "./adapters/desktop-ai-adapters"
 import { createDesktopPreferenceAdapter, loadDesktopPreferenceSnapshot, type DesktopPreferenceSnapshot } from "./adapters/desktop-preferences"
 import { createDesktopRuntime, loadDesktopRuntime, type DesktopRuntimeBindingInfo } from "./adapters/desktop-runtime"
@@ -41,6 +41,7 @@ import { DesktopScriptsView } from "./shell/desktop-scripts-view"
 import { DesktopTitleBar, type DesktopView } from "./shell/desktop-titlebar"
 import { DesktopUpdateFailureDialog } from "./shell/desktop-update-failure-dialog"
 import { createDesktopTerminalSocket } from "./terminal/desktop-terminal-socket"
+import { useFileTransfer, type FileTransferSftpApi } from "@/hooks/useFileTransfer"
 
 const defaultMaxTabs = 50
 const defaultInactiveMinutes = 60
@@ -170,10 +171,18 @@ function App() {
   const scriptAdapters = useMemo(() => createDesktopScriptAdapters(serverApi), [serverApi])
   const aiAssistantAdapters = useMemo(() => createDesktopAIAssistantAdapters(serverApi), [serverApi])
   const activityLog = useMemo(() => createDesktopActivityLogAdapter(), [])
+  const transferHistory = useMemo(() => createDesktopTransferHistoryAdapter(), [])
   const workspaceSessionStore = useMemo(() => createTerminalWorkspaceSessionStoreAdapter(), [])
   const workspaceSessionController = useMemo(() => createTerminalWorkspaceSessionControllerAdapter(), [])
   const workspacePreferences = useMemo(() => createDesktopPreferenceAdapter(preferenceSnapshot ?? {}), [preferenceSnapshot])
   const sftpApi = useMemo(() => createDesktopSftpApi(), [])
+  const desktopTransferTicketProvider = useCallback(async () => ({ ticket: "desktop" }), [])
+  const fileTransfer = useFileTransfer({
+    api: sftpApi as FileTransferSftpApi,
+    createTicket: desktopTransferTicketProvider,
+    uploadUsesProgressSocket: sftpApi.uploadUsesProgressSocket,
+    serverTransferUsesProgressSocket: sftpApi.serverTransferUsesProgressSocket,
+  })
   const desktopGateway = runtime?.gateway
   const desktopGatewayWsBaseUrl = desktopGateway?.wsBaseUrl
   const desktopGatewayToken = desktopGateway?.token
@@ -273,6 +282,22 @@ function App() {
       },
     }),
     preferences: workspacePreferences,
+    transferManager: {
+      tasks: fileTransfer.tasks,
+      downloadFile: fileTransfer.downloadFile,
+      batchDownload: fileTransfer.batchDownload,
+      uploadFile: fileTransfer.uploadFile,
+      directTransfer: fileTransfer.directTransfer,
+      createTransferTask: fileTransfer.createTransferTask,
+      addTask: fileTransfer.addTask,
+      updateTask: fileTransfer.updateTask,
+      removeTask: fileTransfer.removeTask,
+      clearAll: fileTransfer.clearAll,
+      clearCompleted: fileTransfer.clearCompleted,
+      cancelTask: fileTransfer.cancelTask,
+      cancelDirectTransfer: fileTransfer.cancelDirectTransfer,
+      history: transferHistory,
+    },
     activityLog,
     sessionStore: workspaceSessionStore,
     sessionController: workspaceSessionController,
@@ -284,6 +309,20 @@ function App() {
     tTerminal,
     workspaceApi,
     desktopGatewayToken,
+    fileTransfer.addTask,
+    fileTransfer.batchDownload,
+    fileTransfer.cancelDirectTransfer,
+    fileTransfer.cancelTask,
+    fileTransfer.clearAll,
+    fileTransfer.clearCompleted,
+    fileTransfer.createTransferTask,
+    fileTransfer.directTransfer,
+    fileTransfer.downloadFile,
+    fileTransfer.removeTask,
+    fileTransfer.tasks,
+    fileTransfer.updateTask,
+    fileTransfer.uploadFile,
+    transferHistory,
     workspacePreferences,
     workspaceSessionController,
     workspaceSessionStore,

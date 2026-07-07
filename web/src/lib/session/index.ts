@@ -81,6 +81,7 @@ export type {
 } from "./sftp-session-api"
 
 export {
+  createDownloadTransferTask,
   createServerTransferTask,
   createUploadTransferTask,
   mapTransferProgressMessageToTaskUpdate,
@@ -90,6 +91,7 @@ export {
   normalizeTransferStage,
 } from "./transfer-tasks"
 export type {
+  CreateDownloadTransferTaskOptions,
   CreateServerTransferTaskOptions,
   CreateUploadTransferTaskOptions,
   MappedUploadProgressMessage,

@@ -113,6 +113,7 @@ export function TerminalSftpTabContent({
     notifier,
     t: tSftp,
     fileTransferOptions,
+    transferManager: workspace?.adapters.transferManager,
     serverName: server.name || `${server.username}@${server.host}:${server.port}`,
     authMethod: getServerAuthMethod(server),
     runWithCredentialRetry: canRetrySftpCredentials ? runWithCredentialRetry : undefined,

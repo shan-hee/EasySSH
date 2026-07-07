@@ -32,7 +32,7 @@ func main() {
 	serverService := NewDesktopServerService()
 	scriptService := NewDesktopScriptService(serverService, activityLogService)
 	terminalService := NewDesktopTerminalService(serverService)
-	sftpService := NewDesktopSFTPService(serverService)
+	sftpService := NewDesktopSFTPService(serverService, activityLogService)
 	monitorService := NewDesktopMonitorService(serverService)
 	desktopGateway := NewDesktopGateway(serverService, scriptService, monitorService)
 	dockerService := NewDesktopDockerService(serverService)

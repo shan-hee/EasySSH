@@ -1,4 +1,5 @@
 export {
+  createDownloadTransferTask,
   createServerTransferTask,
   createUploadTransferTask,
   mapTransferProgressMessageToTaskUpdate,
@@ -8,6 +9,7 @@ export {
   normalizeTransferStage,
 } from "../../../packages/ssh-workspace/src/session/transfer-tasks"
 export type {
+  CreateDownloadTransferTaskOptions,
   CreateServerTransferTaskOptions,
   CreateUploadTransferTaskOptions,
   MappedUploadProgressMessage,

@@ -1,5 +1,5 @@
 import { sftpApi } from "@/lib/api/sftp"
-import type { DirectTransferOptions, DirectTransferResponse, FileInfo, UploadTaskListResponse } from "@/lib/sftp-types"
+import type { DirectTransferOptions, DirectTransferResponse, DiskUsageResponse, FileInfo, UploadTaskListResponse, UploadTaskStatus } from "@/lib/sftp-types"
 import type { TerminalAuthMethod, TerminalAuthPrompt, TerminalAuthResponsePayload } from "@/lib/websocket-terminal"
 import type { SftpDirectoryApi } from "./sftp-directory"
 import type { SftpOperationsApi } from "./sftp-operations"
@@ -33,18 +33,23 @@ export interface SftpSessionApi extends SftpDirectoryApi, SftpOperationsApi {
       respond: (response: string[] | TerminalAuthResponsePayload, cancelled?: boolean, authMethod?: TerminalAuthMethod) => void,
     ) => void,
   ) => Promise<unknown>
-  downloadFile: (serverId: string, path: string) => Promise<void> | void
+  getFileInfo?: (serverId: string, path: string) => Promise<FileInfo>
+  getDiskUsage?: (serverId: string, path?: string) => Promise<DiskUsageResponse>
+  downloadFile: (serverId: string, path: string, taskId?: string) => Promise<void> | void
   readFile: (serverId: string, path: string) => Promise<string>
   batchDownload: (
     serverId: string,
     paths: string[],
     mode?: SftpBatchDownloadMode,
     excludePatterns?: string[],
+    taskId?: string,
   ) => Promise<void>
   chmod?: (serverId: string, path: string, mode: string) => Promise<unknown>
   closeConnection?: (serverId: string) => Promise<unknown>
   createUploadTask?: () => Promise<{ task_id: string }>
   listUploadTasks?: () => Promise<UploadTaskListResponse>
+  getUploadTask?: (taskId: string) => Promise<UploadTaskStatus>
+  getTransferTask?: (taskId: string) => Promise<UploadTaskStatus>
   cancelUploadTask?: (taskId: string) => Promise<unknown>
   uploadFile?: (
     serverId: string,
@@ -79,6 +84,8 @@ export function createSftpSessionApi(adapter?: SftpSessionApiAdapter): SftpSessi
 
   if (adapter.authenticate) definedAdapter.authenticate = adapter.authenticate
   if (adapter.preAuthenticate) definedAdapter.preAuthenticate = adapter.preAuthenticate
+  if (adapter.getFileInfo) definedAdapter.getFileInfo = adapter.getFileInfo
+  if (adapter.getDiskUsage) definedAdapter.getDiskUsage = adapter.getDiskUsage
   if (adapter.listDirectory) definedAdapter.listDirectory = adapter.listDirectory
   if (adapter.delete) definedAdapter.delete = adapter.delete
   if (adapter.createDirectory) definedAdapter.createDirectory = adapter.createDirectory
@@ -92,6 +99,8 @@ export function createSftpSessionApi(adapter?: SftpSessionApiAdapter): SftpSessi
   if (adapter.closeConnection) definedAdapter.closeConnection = adapter.closeConnection
   if (adapter.createUploadTask) definedAdapter.createUploadTask = adapter.createUploadTask
   if (adapter.listUploadTasks) definedAdapter.listUploadTasks = adapter.listUploadTasks
+  if (adapter.getUploadTask) definedAdapter.getUploadTask = adapter.getUploadTask
+  if (adapter.getTransferTask) definedAdapter.getTransferTask = adapter.getTransferTask
   if (adapter.cancelUploadTask) definedAdapter.cancelUploadTask = adapter.cancelUploadTask
   if (adapter.uploadFile) definedAdapter.uploadFile = adapter.uploadFile
   if (adapter.directTransfer) definedAdapter.directTransfer = adapter.directTransfer

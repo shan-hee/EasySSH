@@ -371,6 +371,8 @@ export function TerminalComponent({
     return {
       createUploadTask: workspaceSftpApi.createUploadTask,
       listUploadTasks: workspaceSftpApi.listUploadTasks,
+      getUploadTask: workspaceSftpApi.getUploadTask,
+      getTransferTask: workspaceSftpApi.getTransferTask,
       cancelUploadTask: workspaceSftpApi.cancelUploadTask,
       uploadFile: workspaceSftpApi.uploadFile,
       directTransfer: workspaceSftpApi.directTransfer,

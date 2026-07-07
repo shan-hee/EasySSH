@@ -55,9 +55,11 @@ export function ActivityLogPane({ compact = false }: { compact?: boolean }) {
     ssh_disconnect: t("actionDisconnect"),
     sftp_upload: t("actionUpload"),
     sftp_download: t("actionDownload"),
+    sftp_transfer: t("actionTransfer"),
     sftp_delete: t("actionDelete"),
     sftp_rename: t("actionRename"),
     sftp_mkdir: t("actionMkdir"),
+    sftp_chmod: t("actionChmod"),
     monitoring_query: t("actionMonitoringQuery"),
   }), [t])
 

@@ -522,8 +522,10 @@ export const sftpApi = {
     serverId: string,
     paths: string[],
     mode: "fast" | "compatible" = "compatible",
-    excludePatterns?: string[]
+    excludePatterns?: string[],
+    taskId?: string
   ): Promise<void> {
+    void taskId
     const apiUrl = getApiUrl()
     const isRelativeApiUrl = apiUrl.startsWith("/")
 
@@ -603,7 +605,8 @@ export const sftpApi = {
   /**
    * 单文件下载（直接触发浏览器下载，使用浏览器原生下载管理器显示进度）
    */
-  downloadFile(serverId: string, path: string): void {
+  downloadFile(serverId: string, path: string, taskId?: string): void {
+    void taskId
     void (async () => {
       try {
         const apiUrl = getApiUrl()

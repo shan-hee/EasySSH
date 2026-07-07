@@ -1,5 +1,6 @@
-import type { DirectTransferOptions, DirectTransferResponse, FileInfo, UploadTaskListResponse } from "./sftp-types"
+import type { DirectTransferOptions, DirectTransferResponse, FileInfo, SftpBatchDownloadMode, UploadTaskListResponse, UploadTaskStatus } from "./sftp-types"
 import {
+  createDownloadTransferTask,
   createServerTransferTask,
   createUploadTransferTask,
   mapUploadTaskStatusToTransferTask,
@@ -43,7 +44,17 @@ export type FileTransferDirectTransferOptions = DirectTransferOptions
 export interface FileTransferSftpApi {
   createUploadTask: () => Promise<{ task_id: string }>
   listUploadTasks: () => Promise<UploadTaskListResponse>
+  getUploadTask?: (taskId: string) => Promise<UploadTaskStatus>
+  getTransferTask?: (taskId: string) => Promise<UploadTaskStatus>
   cancelUploadTask: (taskId: string) => Promise<unknown>
+  downloadFile?: (serverId: string, path: string, taskId?: string) => Promise<void> | void
+  batchDownload?: (
+    serverId: string,
+    paths: string[],
+    mode?: SftpBatchDownloadMode,
+    excludePatterns?: string[],
+    taskId?: string,
+  ) => Promise<void>
   uploadFile: (
     serverId: string,
     path: string,
@@ -86,6 +97,13 @@ export interface RestoreUploadTasksOptions {
 
 export interface FileTransferController {
   restoreUploadTasks: (options?: RestoreUploadTasksOptions) => Promise<void>
+  downloadFile: (serverId: string, remotePath: string, fileName?: string) => Promise<void>
+  batchDownload: (
+    serverId: string,
+    remotePaths: string[],
+    mode?: SftpBatchDownloadMode,
+    excludePatterns?: string[],
+  ) => Promise<void>
   uploadFile: (
     serverId: string,
     remotePath: string,
@@ -132,6 +150,18 @@ export function createFileTransferController({
   const runtimeLogWarn = (message: string, ...args: unknown[]) => {
     logWarn(message.replace("[transfer-runtime]", "[transfer-manager]"), ...args)
   }
+  const isTransferCancellationMessage = (message: string) => {
+    const normalizedMessage = message.toLowerCase()
+    return (
+      message === "Upload aborted" ||
+      normalizedMessage.includes("upload cancelled") ||
+      normalizedMessage.includes("transfer cancelled") ||
+      normalizedMessage.includes("cancelled") ||
+      normalizedMessage.includes("canceled") ||
+      message.includes("已取消") ||
+      message.includes("取消")
+    )
+  }
   const updateTaskProgress = (taskId: string, update: TransferTaskUpdate) => {
     setTasks((prev) => applyTransferTaskUpdate(prev, taskId, update, { mergeProgress: true }))
   }
@@ -152,6 +182,80 @@ export function createFileTransferController({
       },
       logError: runtimeLogError,
     })
+  }
+  const startTaskPolling = (
+    taskId: string,
+    fileSizeBytes: number,
+    readStatus?: (taskId: string) => Promise<UploadTaskStatus>,
+    onProgress?: (loaded: number, total: number) => void,
+  ) => {
+    if (!readStatus) {
+      return () => undefined
+    }
+
+    let stopped = false
+    let inFlight = false
+    let timer: ReturnType<typeof setInterval> | null = null
+    const stop = () => {
+      stopped = true
+      if (timer) {
+        clearInterval(timer)
+        timer = null
+      }
+    }
+    const poll = async () => {
+      if (stopped || inFlight) {
+        return
+      }
+
+      inFlight = true
+      try {
+        const status = await readStatus(taskId)
+        if (stopped) {
+          return
+        }
+
+        const currentTask = findTransferTask(getTasks(), taskId)
+        if (currentTask?.status === "completed" || currentTask?.status === "failed" || currentTask?.status === "cancelled") {
+          stop()
+          return
+        }
+        const mapped = mapUploadTaskStatusToTransferTask(status, currentTask?.startTime)
+        updateTaskProgress(taskId, {
+          fileName: mapped.fileName,
+          fileSize: mapped.fileSize,
+          fileSizeBytes: mapped.fileSizeBytes || fileSizeBytes,
+          progress: mapped.progress,
+          status: mapped.status,
+          speed: mapped.speed,
+          timeRemaining: mapped.timeRemaining,
+          error: mapped.error,
+          bytesTransferred: mapped.bytesTransferred,
+          stage: mapped.stage,
+        })
+
+        const total = status.total || status.file_size || fileSizeBytes
+        if (total > 0) {
+          onProgress?.(status.loaded || 0, total)
+        }
+        if (status.status === "completed" || status.status === "failed" || status.status === "cancelled") {
+          stop()
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
+        if (!message.toLowerCase().includes("task not found")) {
+          logWarn("[transfer-manager] Failed to poll transfer task:", error)
+        }
+      } finally {
+        inFlight = false
+      }
+    }
+
+    timer = setInterval(() => {
+      void poll()
+    }, 500)
+    void poll()
+    return stop
   }
 
   return {
@@ -198,6 +302,7 @@ export function createFileTransferController({
       }
 
       let wsConnection: WebSocket | null = null
+      let stopPolling: (() => void) | null = null
       try {
         if (enableWebSocket) {
           try {
@@ -225,6 +330,9 @@ export function createFileTransferController({
             await waitForTransferWebSocketOpen(wsConnection, { timeoutMs: 2000 })
           }
         }
+        if (!wsConnection) {
+          stopPolling = startTaskPolling(task.id, file.size, api.getUploadTask, onProgress)
+        }
 
         const fileInfo = await api.uploadFile(
           serverId,
@@ -251,7 +359,7 @@ export function createFileTransferController({
         return fileInfo ?? null
       } catch (error: unknown) {
         const message = error instanceof Error ? error.message : String(error)
-        const isAborted = message === "Upload aborted" || message.toLowerCase().includes("upload cancelled")
+        const isAborted = isTransferCancellationMessage(message)
 
         updateTaskProgress(task.id, {
           status: isAborted ? "cancelled" : "failed",
@@ -263,11 +371,100 @@ export function createFileTransferController({
         }
         throw error
       } finally {
+        stopPolling?.()
         releaseSlot?.()
         releaseTransferRuntimeTaskHandles(handles, task.id, {
           closeWebSocket: !!wsConnection,
           includeConnecting: true,
         })
+      }
+    },
+
+    async downloadFile(serverId, remotePath, fileName) {
+      if (!api.downloadFile) {
+        return
+      }
+
+      if (!api.getTransferTask) {
+        await api.downloadFile(serverId, remotePath)
+        return
+      }
+
+      const taskId = `download-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`
+      const task = createDownloadTransferTask({
+        taskId,
+        fileName: fileName || remotePath.split("/").filter(Boolean).pop() || "download",
+      })
+      setTasks((prev) => appendTransferTask(prev, task))
+
+      let stopPolling: (() => void) | null = null
+      try {
+        stopPolling = startTaskPolling(task.id, task.fileSizeBytes, api.getTransferTask)
+        await api.downloadFile(serverId, remotePath, task.id)
+        updateTaskProgress(task.id, {
+          progress: 100,
+          status: "completed",
+        })
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : String(error)
+        const isCancelled = isTransferCancellationMessage(message)
+        updateTaskProgress(task.id, {
+          status: isCancelled ? "cancelled" : "failed",
+          error: isCancelled ? "已取消" : message || "下载失败",
+        })
+        if (isCancelled) {
+          return
+        }
+        throw error
+      } finally {
+        stopPolling?.()
+        releaseTransferRuntimeTaskHandles(handles, task.id)
+      }
+    },
+
+    async batchDownload(serverId, remotePaths, mode, excludePatterns) {
+      if (!api.batchDownload) {
+        return
+      }
+
+      if (!api.getTransferTask) {
+        await api.batchDownload(serverId, remotePaths, mode, excludePatterns)
+        return
+      }
+
+      const extension = mode === "fast" ? "tar.gz" : "zip"
+      const fileName = remotePaths.length === 1
+        ? `${remotePaths[0]?.split("/").filter(Boolean).pop() || "download"}.${extension}`
+        : `easyssh-download.${extension}`
+      const taskId = `download-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`
+      const task = createDownloadTransferTask({
+        taskId,
+        fileName,
+      })
+      setTasks((prev) => appendTransferTask(prev, task))
+
+      let stopPolling: (() => void) | null = null
+      try {
+        stopPolling = startTaskPolling(task.id, task.fileSizeBytes, api.getTransferTask)
+        await api.batchDownload(serverId, remotePaths, mode, excludePatterns, task.id)
+        updateTaskProgress(task.id, {
+          progress: 100,
+          status: "completed",
+        })
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : String(error)
+        const isCancelled = isTransferCancellationMessage(message)
+        updateTaskProgress(task.id, {
+          status: isCancelled ? "cancelled" : "failed",
+          error: isCancelled ? "已取消" : message || "下载失败",
+        })
+        if (isCancelled) {
+          return
+        }
+        throw error
+      } finally {
+        stopPolling?.()
+        releaseTransferRuntimeTaskHandles(handles, task.id)
       }
     },
 
@@ -323,11 +520,44 @@ export function createFileTransferController({
     updateTask,
 
     async directTransfer(sourceServerId, sourcePath, targetServerId, targetPath, sourceServerName, targetServerName, fileName, options) {
-      const started = await api.directTransfer(sourceServerId, sourcePath, targetServerId, targetPath, {
-        ...options,
-        sourceServerName: options?.sourceServerName ?? sourceServerName,
-        targetServerName: options?.targetServerName ?? targetServerName,
+      const localTask = createServerTransferTask({
+        taskId: !serverTransferUsesProgressSocket ? options?.taskId : undefined,
+        fileName,
+        sourceServer: sourceServerName,
+        targetServer: targetServerName,
       })
+      if (!serverTransferUsesProgressSocket) {
+        setTasks((prev) => appendTransferTask(prev, localTask))
+      }
+
+      let started: DirectTransferResponse
+      let stopPolling: (() => void) | null = null
+      try {
+        if (!serverTransferUsesProgressSocket) {
+          stopPolling = startTaskPolling(localTask.id, 0, api.getTransferTask)
+        }
+        started = await api.directTransfer(sourceServerId, sourcePath, targetServerId, targetPath, {
+          ...options,
+          taskId: serverTransferUsesProgressSocket ? options?.taskId : options?.taskId ?? localTask.id,
+          sourceServerName: options?.sourceServerName ?? sourceServerName,
+          targetServerName: options?.targetServerName ?? targetServerName,
+        })
+      } catch (error: unknown) {
+        if (!serverTransferUsesProgressSocket) {
+          const message = error instanceof Error ? error.message : String(error)
+          const isCancelled = isTransferCancellationMessage(message)
+          updateTask(localTask.id, {
+            status: isCancelled ? "cancelled" : "failed",
+            error: isCancelled ? "已取消" : message || "传输失败",
+          })
+          if (isCancelled) {
+            return
+          }
+        }
+        throw error
+      } finally {
+        stopPolling?.()
+      }
       const taskId = started.task_id
       const task = createServerTransferTask({
         taskId,
@@ -335,13 +565,29 @@ export function createFileTransferController({
         sourceServer: sourceServerName,
         targetServer: targetServerName,
       })
-      setTasks((prev) => appendTransferTask(prev, task))
+      if (serverTransferUsesProgressSocket) {
+        setTasks((prev) => appendTransferTask(prev, task))
+      }
 
       if (!serverTransferUsesProgressSocket) {
-        updateTask(taskId, {
-          progress: 100,
-          status: "completed",
-          transferMethod: "sftp",
+        setTasks((prev) => {
+          const replaced = prev.map((item) => (
+            item.id === localTask.id
+              ? {
+                  ...item,
+                  id: taskId,
+                  progress: 100,
+                  status: "completed" as const,
+                  transferMethod: "sftp" as const,
+                }
+              : item
+          ))
+          return replaced.some((item) => item.id === taskId) ? replaced : appendTransferTask(replaced, {
+            ...task,
+            progress: 100,
+            status: "completed",
+            transferMethod: "sftp",
+          })
         })
         return
       }
@@ -388,7 +634,7 @@ export function createFileTransferController({
         await transferWatcher.completion
       } catch (error: unknown) {
         const message = error instanceof Error ? error.message : String(error)
-        const isCancelled = message.includes("取消") || message.includes("cancelled")
+        const isCancelled = isTransferCancellationMessage(message)
 
         if (!isCancelled && !isTransferFinished()) {
           updateTask(taskId, {

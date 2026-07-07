@@ -228,6 +228,8 @@ export default function SftpPage() {
  })
  const {
    tasks: transferTasks,
+   downloadFile,
+   batchDownload,
    uploadFile,
    clearCompleted,
    cancelTask,
@@ -328,16 +330,16 @@ export default function SftpPage() {
    sessionController: workspaceSessionController,
    transferManager: createWorkspaceTransferManagerAdapter({
      tasks: transferTasks,
-     downloadFile: (serverId, remotePath) => (
+     downloadFile: (serverId, remotePath, fileName) => (
        runSftpWithSessionCredentialRetry(
          serverId,
-         () => Promise.resolve(sftpSessionApi.downloadFile(serverId, remotePath)),
+         () => downloadFile(serverId, remotePath, fileName),
        )
      ),
      batchDownload: (serverId, remotePaths, mode, excludePatterns) => (
        runSftpWithSessionCredentialRetry(
          serverId,
-         () => sftpSessionApi.batchDownload(serverId, remotePaths, mode, excludePatterns),
+         () => batchDownload(serverId, remotePaths, mode, excludePatterns),
        )
      ),
      uploadFile: (serverId, remotePath, file, onProgress, enableWebSocket) => (
@@ -359,7 +361,9 @@ export default function SftpPage() {
    }),
  }), [
    cancelTask,
+   batchDownload,
    clearCompleted,
+   downloadFile,
    directTransfer,
    effectiveLocale,
    effectiveTimezone,
@@ -375,7 +379,6 @@ export default function SftpPage() {
    tSftp,
    tTerminal,
    runSftpWithSessionCredentialRetry,
-   sftpSessionApi,
    sftpWorkspaceApi,
    transferTasks,
    uploadFile,
@@ -1105,13 +1108,19 @@ export default function SftpPage() {
  const filePath = joinSftpRemotePath(session.currentPath, fileName)
 
  try {
-   await createSessionOperationApi(session).downloadFile(session.serverId, filePath)
+   await runWithCredentialRetry({
+     serverId: session.serverId,
+     serverName: session.serverName,
+     authMethod: session.authMethod ?? "password",
+     api: sftpSessionApi,
+     operation: () => downloadFile(session.serverId, filePath, fileName),
+   })
    toast.success(tSftp("toastDownloadStartSingle", { file: fileName }))
  } catch (error: unknown) {
    console.error("Failed to download file:", error)
    toast.error(getErrorMessage(error, tSftp("toastDownloadFailed")))
  }
- }, [tSftp, createSessionOperationApi])
+ }, [tSftp, downloadFile, runWithCredentialRetry, sftpSessionApi])
 
  /**
   * 创建多会话文件列表更新器
@@ -1289,14 +1298,20 @@ export default function SftpPage() {
    const filePaths = fileNames.map(fileName => joinSftpRemotePath(session.currentPath, fileName))
 
   try {
-    await createSessionOperationApi(session).batchDownload(session.serverId, filePaths, "fast", excludePatterns)
+    await runWithCredentialRetry({
+      serverId: session.serverId,
+      serverName: session.serverName,
+      authMethod: session.authMethod ?? "password",
+      api: sftpSessionApi,
+      operation: () => batchDownload(session.serverId, filePaths, "fast", excludePatterns),
+    })
     toast.success(tSftp("toastBatchDownloadStart", { count: fileNames.length }))
   } catch (error: unknown) {
     console.error("Failed to batch download:", error)
     toast.error(getErrorMessage(error, tSftp("toastBatchDownloadFailed")))
      throw error
    }
- }, [tSftp, createSessionOperationApi])
+ }, [tSftp, batchDownload, runWithCredentialRetry, sftpSessionApi])
 
  const handleCreateBackgroundUpload = useCallback(async (sessionId: string, uploadFiles: FileList) => {
    const session = sessionsRef.current.find(s => s.id === sessionId)

@@ -1847,6 +1847,9 @@ export class DesktopSFTPBatchDownloadInput {
     "serverId": string;
     "paths": string[];
     "localPath": string;
+    "mode"?: string;
+    "excludePatterns"?: string[];
+    "taskId"?: string;
 
     /** Creates a new DesktopSFTPBatchDownloadInput instance. */
     constructor($$source: Partial<DesktopSFTPBatchDownloadInput> = {}) {
@@ -1868,9 +1871,13 @@ export class DesktopSFTPBatchDownloadInput {
      */
     static createFrom($$source: any = {}): DesktopSFTPBatchDownloadInput {
         const $$createField1_0 = $$createType0;
+        const $$createField4_0 = $$createType0;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("paths" in $$parsedSource) {
             $$parsedSource["paths"] = $$createField1_0($$parsedSource["paths"]);
+        }
+        if ("excludePatterns" in $$parsedSource) {
+            $$parsedSource["excludePatterns"] = $$createField4_0($$parsedSource["excludePatterns"]);
         }
         return new DesktopSFTPBatchDownloadInput($$parsedSource as Partial<DesktopSFTPBatchDownloadInput>);
     }
@@ -1939,6 +1946,7 @@ export class DesktopSFTPDirectTransferInput {
     "sourcePath": string;
     "targetServerId": string;
     "targetPath": string;
+    "taskId"?: string;
     "sourceCredential"?: DesktopSSHCredential | null;
     "targetCredential"?: DesktopSSHCredential | null;
 
@@ -1964,14 +1972,14 @@ export class DesktopSFTPDirectTransferInput {
      * Creates a new DesktopSFTPDirectTransferInput instance from a string or object.
      */
     static createFrom($$source: any = {}): DesktopSFTPDirectTransferInput {
-        const $$createField4_0 = $$createType40;
         const $$createField5_0 = $$createType40;
+        const $$createField6_0 = $$createType40;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("sourceCredential" in $$parsedSource) {
-            $$parsedSource["sourceCredential"] = $$createField4_0($$parsedSource["sourceCredential"]);
+            $$parsedSource["sourceCredential"] = $$createField5_0($$parsedSource["sourceCredential"]);
         }
         if ("targetCredential" in $$parsedSource) {
-            $$parsedSource["targetCredential"] = $$createField5_0($$parsedSource["targetCredential"]);
+            $$parsedSource["targetCredential"] = $$createField6_0($$parsedSource["targetCredential"]);
         }
         return new DesktopSFTPDirectTransferInput($$parsedSource as Partial<DesktopSFTPDirectTransferInput>);
     }
@@ -2040,6 +2048,7 @@ export class DesktopSFTPDownloadFileInput {
     "serverId": string;
     "path": string;
     "localPath": string;
+    "taskId"?: string;
 
     /** Creates a new DesktopSFTPDownloadFileInput instance. */
     constructor($$source: Partial<DesktopSFTPDownloadFileInput> = {}) {
@@ -2062,6 +2071,43 @@ export class DesktopSFTPDownloadFileInput {
     static createFrom($$source: any = {}): DesktopSFTPDownloadFileInput {
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         return new DesktopSFTPDownloadFileInput($$parsedSource as Partial<DesktopSFTPDownloadFileInput>);
+    }
+}
+
+export class DesktopSFTPDiskUsageResult {
+    "path": string;
+    "total": number;
+    "used": number;
+    "available": number;
+    "usage_percent": number;
+
+    /** Creates a new DesktopSFTPDiskUsageResult instance. */
+    constructor($$source: Partial<DesktopSFTPDiskUsageResult> = {}) {
+        if (!("path" in $$source)) {
+            this["path"] = "";
+        }
+        if (!("total" in $$source)) {
+            this["total"] = 0;
+        }
+        if (!("used" in $$source)) {
+            this["used"] = 0;
+        }
+        if (!("available" in $$source)) {
+            this["available"] = 0;
+        }
+        if (!("usage_percent" in $$source)) {
+            this["usage_percent"] = 0;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new DesktopSFTPDiskUsageResult instance from a string or object.
+     */
+    static createFrom($$source: any = {}): DesktopSFTPDiskUsageResult {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new DesktopSFTPDiskUsageResult($$parsedSource as Partial<DesktopSFTPDiskUsageResult>);
     }
 }
 
@@ -2171,6 +2217,7 @@ export class DesktopSFTPUploadFileInput {
     "path": string;
     "fileName": string;
     "data": string;
+    "taskId"?: string;
 
     /** Creates a new DesktopSFTPUploadFileInput instance. */
     constructor($$source: Partial<DesktopSFTPUploadFileInput> = {}) {
@@ -2226,15 +2273,23 @@ export class DesktopSFTPUploadTaskListResult {
 
 export class DesktopSFTPUploadTaskStatus {
     "id": string;
+    "type"?: string;
     "file_name": string;
     "file_size": number;
+    "server_id"?: string;
+    "remote_path"?: string;
     "status": string;
+    "stage"?: string;
     "progress": number;
     "loaded": number;
     "total": number;
     "speed_bps": number;
+    "message"?: string;
+    "error"?: string;
     "created_at": string;
+    "started_at"?: string;
     "updated_at": string;
+    "ended_at"?: string;
 
     /** Creates a new DesktopSFTPUploadTaskStatus instance. */
     constructor($$source: Partial<DesktopSFTPUploadTaskStatus> = {}) {

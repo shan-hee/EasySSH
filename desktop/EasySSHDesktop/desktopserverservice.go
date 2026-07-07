@@ -533,7 +533,7 @@ func (s *DesktopServerService) ExecuteCommand(input DesktopServerCommandInput) (
 	config := &ssh.ClientConfig{
 		User:            server.Username,
 		Auth:            authMethods,
-		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
+		HostKeyCallback: desktopHostKeyCallback(),
 		Timeout:         12 * time.Second,
 	}
 

@@ -19,6 +19,13 @@ export interface CreateServerTransferTaskOptions {
   startTime?: number
 }
 
+export interface CreateDownloadTransferTaskOptions {
+  taskId: string
+  fileName: string
+  fileSizeBytes?: number
+  startTime?: number
+}
+
 export type TransferTaskUpdate = Partial<WorkspaceTransferTask>
 
 export interface UploadProgressMessageLike {
@@ -57,20 +64,27 @@ export function mapUploadTaskStatusToTransferTask(
   const startedAt = Date.parse(task.started_at || task.created_at || "")
   const fileSizeBytes = task.total || task.file_size || 0
   const bytesTransferred = task.loaded || 0
+  const type: WorkspaceTransferTask["type"] =
+    task.type === "download" || task.status === "downloading"
+      ? "download"
+      : task.type === "transfer" || task.status === "transferring"
+      ? "transfer"
+      : "upload"
+  const activeStatus = type === "download" ? "downloading" : type === "transfer" ? "transferring" : "uploading"
   const speed = task.speed_bps > 0 ? formatSpeed(task.speed_bps) : undefined
   const timeRemaining =
-    task.status === "uploading" && task.speed_bps > 0 && fileSizeBytes > bytesTransferred
+    task.status === activeStatus && task.speed_bps > 0 && fileSizeBytes > bytesTransferred
       ? formatRemainingTime((fileSizeBytes - bytesTransferred) / task.speed_bps)
       : undefined
 
   return {
     id: task.id,
-    fileName: task.file_name || task.remote_path?.split("/").pop() || "upload",
+    fileName: task.file_name || task.remote_path?.split("/").pop() || type,
     fileSize: fileSizeBytes > 0 ? formatBytesString(fileSizeBytes) : "-",
     fileSizeBytes,
     progress: Math.round(task.progress || 0),
     status: task.status,
-    type: "upload",
+    type,
     speed,
     timeRemaining,
     error: task.error || task.message,
@@ -117,6 +131,26 @@ export function createServerTransferTask({
     startTime,
     sourceServer,
     targetServer,
+  }
+}
+
+export function createDownloadTransferTask({
+  taskId,
+  fileName,
+  fileSizeBytes = 0,
+  startTime = Date.now(),
+}: CreateDownloadTransferTaskOptions): WorkspaceTransferTask {
+  return {
+    id: taskId,
+    fileName,
+    fileSize: fileSizeBytes > 0 ? formatBytesString(fileSizeBytes) : "-",
+    fileSizeBytes,
+    progress: 0,
+    status: "downloading",
+    type: "download",
+    startTime,
+    bytesTransferred: 0,
+    stage: "stream",
   }
 }
 

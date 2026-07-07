@@ -23,8 +23,15 @@ interface DesktopTerminalClosedPayload {
 }
 
 interface DesktopFetchCompletionData {
+  historyLimit?: number
   includeHistory?: boolean
   includeScripts?: boolean
+  cacheTtlMinutes?: number
+  cacheMaxEntries?: number
+}
+
+interface DesktopCompletionUpdateData {
+  newCommand?: string
 }
 
 type DesktopAuthMethod = "password" | "key"
@@ -68,6 +75,9 @@ const createDesktopTerminalClientId = () => {
 }
 
 const desktopTerminalAuthMaxAttempts = 3
+const desktopTerminalDefaultHistoryLimit = 500
+const desktopTerminalMaxHistoryEntries = 5000
+const desktopTerminalHistoryStoragePrefix = "easyssh:desktop:terminal-history:"
 
 const getDesktopTerminalAuthMethod = (value?: string): DesktopAuthMethod => (
   value === "key" ? "key" : "password"
@@ -80,8 +90,57 @@ const toDesktopServerAuthMethod = (value?: DesktopAuthMethod) => {
     : DesktopServerAuthMethod.DesktopServerAuthPassword
 }
 
+const normalizeDesktopTerminalHistoryLimit = (limit?: number) => {
+  if (!Number.isFinite(limit) || !limit || limit <= 0) {
+    return desktopTerminalDefaultHistoryLimit
+  }
+  return Math.min(Math.floor(limit), desktopTerminalMaxHistoryEntries)
+}
+
+const getDesktopTerminalHistoryStorageKey = (serverId: string) => {
+  return `${desktopTerminalHistoryStoragePrefix}${serverId || "default"}`
+}
+
+const readDesktopTerminalHistory = (serverId: string) => {
+  try {
+    const raw = window.localStorage.getItem(getDesktopTerminalHistoryStorageKey(serverId))
+    const parsed = raw ? JSON.parse(raw) : []
+    return Array.isArray(parsed)
+      ? parsed.filter((item): item is string => typeof item === "string" && item.trim().length > 0)
+      : []
+  } catch {
+    return []
+  }
+}
+
+const writeDesktopTerminalHistory = (serverId: string, history: string[]) => {
+  try {
+    window.localStorage.setItem(
+      getDesktopTerminalHistoryStorageKey(serverId),
+      JSON.stringify(history.slice(0, desktopTerminalMaxHistoryEntries)),
+    )
+  } catch {
+    // Ignore storage quota or privacy-mode failures; completion still works in memory for the current session.
+  }
+}
+
+const addDesktopTerminalHistoryCommand = (serverId: string, command?: string) => {
+  const trimmed = command?.trim()
+  if (!trimmed) {
+    return
+  }
+
+  const nextHistory = [
+    trimmed,
+    ...readDesktopTerminalHistory(serverId).filter((item) => item !== trimmed),
+  ].slice(0, desktopTerminalMaxHistoryEntries)
+  writeDesktopTerminalHistory(serverId, nextHistory)
+}
+
 const getDesktopTerminalAuthErrorCode = (error: unknown) => {
   const message = getDesktopErrorMessage(error).toLowerCase()
+  if (message.includes("host key verification failed")) return "host_key_changed"
+  if (message.includes("host key trust has been revoked")) return "host_key_revoked"
   if (message.includes("private_key_passphrase_required")) return "private_key_passphrase_required"
   if (message.includes("private_key_passphrase_invalid")) return "private_key_passphrase_invalid"
   if (message.includes("server credential is required")) return "credential_required"
@@ -243,6 +302,10 @@ export function createDesktopTerminalSocket(): TerminalWebSocketConstructor {
           return
         }
         if (message.type === "completion_update") {
+          const data = message.data && typeof message.data === "object"
+            ? message.data as DesktopCompletionUpdateData
+            : {}
+          addDesktopTerminalHistoryCommand(this.serverId, data.newCommand)
           return
         }
         if (message.type === "auth_response") {
@@ -334,6 +397,9 @@ export function createDesktopTerminalSocket(): TerminalWebSocketConstructor {
     }
 
     private async fetchCompletionData(options: DesktopFetchCompletionData) {
+      const history = options.includeHistory === false
+        ? []
+        : readDesktopTerminalHistory(this.serverId).slice(0, normalizeDesktopTerminalHistoryLimit(options.historyLimit))
       let scripts: {
         name: string
         content: string
@@ -358,7 +424,7 @@ export function createDesktopTerminalSocket(): TerminalWebSocketConstructor {
       }
 
       this.emitControl("completion_data", {
-        history: [],
+        history,
         scripts,
         timestamp: Date.now(),
       })

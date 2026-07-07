@@ -67,6 +67,30 @@ export function DownloadFile(input: $models.DesktopSFTPDownloadFileInput): $Canc
     return $Call.ByID(2953817614, input);
 }
 
+export function GetDiskUsage(input: $models.DesktopSFTPPathInput): $CancellablePromise<$models.DesktopSFTPDiskUsageResult> {
+    return $Call.ByName("github.com/easyssh/easyssh-desktop.DesktopSFTPService.GetDiskUsage", input).then(($result: any) => {
+        return $$createType6($result);
+    });
+}
+
+export function GetFileInfo(input: $models.DesktopSFTPPathInput): $CancellablePromise<$models.DesktopSFTPFileInfo> {
+    return $Call.ByName("github.com/easyssh/easyssh-desktop.DesktopSFTPService.GetFileInfo", input).then(($result: any) => {
+        return $$createType1($result);
+    });
+}
+
+export function GetUploadTask($0: string): $CancellablePromise<$models.DesktopSFTPUploadTaskStatus> {
+    return $Call.ByName("github.com/easyssh/easyssh-desktop.DesktopSFTPService.GetUploadTask", $0).then(($result: any) => {
+        return $$createType7($result);
+    });
+}
+
+export function GetTransferTask($0: string): $CancellablePromise<$models.DesktopSFTPUploadTaskStatus> {
+    return $Call.ByName("github.com/easyssh/easyssh-desktop.DesktopSFTPService.GetTransferTask", $0).then(($result: any) => {
+        return $$createType7($result);
+    });
+}
+
 export function ListDirectory(input: $models.DesktopSFTPPathInput): $CancellablePromise<$models.DesktopSFTPDirectoryListResult> {
     return $Call.ByID(3642171603, input).then(($result: any) => {
         return $$createType4($result);
@@ -108,3 +132,5 @@ const $$createType2 = $Create.Map($Create.Any, $Create.Any);
 const $$createType3 = $models.DesktopSFTPDirectTransferResult.createFrom;
 const $$createType4 = $models.DesktopSFTPDirectoryListResult.createFrom;
 const $$createType5 = $models.DesktopSFTPUploadTaskListResult.createFrom;
+const $$createType6 = $models.DesktopSFTPDiskUsageResult.createFrom;
+const $$createType7 = $models.DesktopSFTPUploadTaskStatus.createFrom;

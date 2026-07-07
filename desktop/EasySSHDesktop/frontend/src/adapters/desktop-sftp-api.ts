@@ -4,8 +4,10 @@ import type {
   BatchDeleteResponse,
   DirectTransferOptions,
   DirectTransferResponse,
+  DiskUsageResponse,
   DirectoryListResponse,
   FileInfo,
+  UploadTaskStatus,
   UploadTaskListResponse,
 } from "@/lib/sftp-types"
 import { sftpRemoteBaseName } from "@/lib/sftp-file-utils"
@@ -28,10 +30,14 @@ function toDesktopTransferCredential(credential?: DirectTransferOptions["sourceC
   if (!credential) {
     return undefined
   }
+  const authMethod = toDesktopServerAuthMethod(credential.auth_method)
+  const secret = authMethod === DesktopServerAuthMethod.DesktopServerAuthKey
+    ? credential.secret || credential.private_key || ""
+    : credential.secret || credential.password || ""
 
   return {
-    authMethod: toDesktopServerAuthMethod(credential.auth_method),
-    secret: credential.secret || "",
+    authMethod,
+    secret,
     privateKeyPassphrase: credential.private_key_passphrase,
   }
 }
@@ -88,11 +94,15 @@ async function chooseSavePath(filename: string) {
 
 export function createDesktopSftpApi(): DesktopSftpApi {
   return {
-    async authenticate(serverId, authMethod, secret, privateKeyPassphrase) {
+    async authenticate(serverId, authMethod, secret, privateKeyPassphrase, options) {
+      const desktopAuthMethod = toDesktopServerAuthMethod(authMethod)
+      const credentialSecret = desktopAuthMethod === DesktopServerAuthMethod.DesktopServerAuthKey
+        ? secret || options?.privateKey || ""
+        : secret || options?.password || ""
       await DesktopSFTPService.Authenticate({
         serverId,
-        authMethod: toDesktopServerAuthMethod(authMethod),
-        secret,
+        authMethod: desktopAuthMethod,
+        secret: credentialSecret,
         privateKeyPassphrase,
       })
     },
@@ -101,6 +111,15 @@ export function createDesktopSftpApi(): DesktopSftpApi {
         serverId,
         path: remotePath,
       }) as DirectoryListResponse)
+    },
+    async getFileInfo(serverId, remotePath) {
+      return normalizeFileInfo(await DesktopSFTPService.GetFileInfo({ serverId, path: remotePath }) as FileInfo)
+    },
+    async getDiskUsage(serverId, remotePath = "/") {
+      return await DesktopSFTPService.GetDiskUsage({
+        serverId,
+        path: remotePath,
+      }) as DiskUsageResponse
     },
     async delete(serverId, remotePath) {
       return normalizeFileInfo(await DesktopSFTPService.Delete({ serverId, path: remotePath }) as FileInfo)
@@ -127,24 +146,33 @@ export function createDesktopSftpApi(): DesktopSftpApi {
     async chmod(serverId, remotePath, mode) {
       await DesktopSFTPService.Chmod({ serverId, path: remotePath, mode })
     },
-    async downloadFile(serverId, remotePath) {
+    async downloadFile(serverId, remotePath, taskId) {
       const localPath = await chooseSavePath(sftpRemoteBaseName(remotePath, "download"))
-      await DesktopSFTPService.DownloadFile({ serverId, path: remotePath, localPath })
+      await DesktopSFTPService.DownloadFile({ serverId, path: remotePath, localPath, taskId })
     },
-    async batchDownload(serverId, paths) {
+    async batchDownload(serverId, paths, mode, excludePatterns, taskId) {
+      const extension = mode === "fast" ? "tar.gz" : "zip"
       const fallbackName = paths.length === 1
-        ? `${sftpRemoteBaseName(paths[0] || "", "download")}.zip`
-        : "easyssh-download.zip"
+        ? `${sftpRemoteBaseName(paths[0] || "", "download")}.${extension}`
+        : `easyssh-download.${extension}`
       const localPath = await chooseSavePath(fallbackName)
-      await DesktopSFTPService.BatchDownload({ serverId, paths, localPath })
+      await DesktopSFTPService.BatchDownload({
+        serverId,
+        paths,
+        localPath,
+        mode,
+        excludePatterns,
+        taskId,
+      })
     },
-    async uploadFile(serverId, remotePath, file, onProgress) {
+    async uploadFile(serverId, remotePath, file, onProgress, wsTaskId) {
       const data = await readFileAsBase64(file)
       const fileInfo = normalizeFileInfo(await DesktopSFTPService.UploadFile({
         serverId,
         path: remotePath,
         fileName: file.name,
         data,
+        taskId: wsTaskId,
       }) as FileInfo)
 
       onProgress?.(file.size, file.size)
@@ -157,6 +185,12 @@ export function createDesktopSftpApi(): DesktopSftpApi {
     async listUploadTasks() {
       return await DesktopSFTPService.ListUploadTasks() as UploadTaskListResponse
     },
+    async getUploadTask(taskId) {
+      return await DesktopSFTPService.GetUploadTask(taskId) as UploadTaskStatus
+    },
+    async getTransferTask(taskId) {
+      return await DesktopSFTPService.GetTransferTask(taskId) as UploadTaskStatus
+    },
     async cancelUploadTask(taskId) {
       await DesktopSFTPService.CancelUploadTask(taskId)
     },
@@ -166,6 +200,7 @@ export function createDesktopSftpApi(): DesktopSftpApi {
         sourcePath,
         targetServerId,
         targetPath,
+        taskId: options?.taskId,
         sourceCredential: toDesktopTransferCredential(options?.sourceCredential),
         targetCredential: toDesktopTransferCredential(options?.targetCredential),
       }) as DirectTransferResponse

@@ -5,6 +5,7 @@ import {
   CheckCircle2,
   XCircle,
   Clock,
+  Download,
   Upload,
   Server,
   ArrowRight,
@@ -51,6 +52,9 @@ export function UploadProgressItem({ task, onCancel }: UploadProgressItemProps) 
     if (isPending) {
       return <Clock className="h-4 w-4 text-status-warning" />
     }
+    if (task.type === "download") {
+      return <Download className="h-4 w-4 text-primary animate-pulse" />
+    }
     return <Upload className="h-4 w-4 text-primary animate-pulse" />
   }
 
@@ -74,8 +78,8 @@ export function UploadProgressItem({ task, onCancel }: UploadProgressItemProps) 
         </Badge>
       </div>
 
-      {/* 上传进度指示器 */}
-      {task.type === 'upload' && (isActive || isCompleted || isFailed || isCancelled) && (
+      {/* 上传/下载进度指示器 */}
+      {(task.type === 'upload' || task.type === 'download') && (isActive || isCompleted || isFailed || isCancelled) && (
         <div className="mb-2">
           <div className="flex items-center gap-1 mb-1.5">
             <div className={cn(
@@ -92,8 +96,8 @@ export function UploadProgressItem({ task, onCancel }: UploadProgressItemProps) 
               ) : (
                 <Loader2 className="h-3.5 w-3.5 text-primary animate-spin" />
               )}
-              <Upload className="h-3 w-3" />
-              <span>{tSftp("uploadStageStream")}</span>
+              {task.type === "download" ? <Download className="h-3 w-3" /> : <Upload className="h-3 w-3" />}
+              <span>{task.type === "download" ? tSftp("transferTypeDownload") : tSftp("uploadStageStream")}</span>
             </div>
           </div>
 
@@ -190,12 +194,12 @@ export function UploadProgressItem({ task, onCancel }: UploadProgressItemProps) 
         <div className="flex items-center gap-2">
           {isActive ? (
             <>
-              {task.type === 'upload' && (
+              {(task.type === 'upload' || task.type === 'download') && (
                 <span className={cn(
                   "font-medium",
                   "text-primary"
                 )}>
-                  {tSftp("uploadStageStreamShort")}
+                  {task.type === "download" ? tSftp("transferTypeDownload") : tSftp("uploadStageStreamShort")}
                 </span>
               )}
               {task.speed && (

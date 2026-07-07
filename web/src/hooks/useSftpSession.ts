@@ -20,6 +20,7 @@ import {
   type SftpSessionApi,
   type SftpSessionApiAdapter,
 } from "@/lib/session/sftp-session-api";
+import type { SshWorkspaceTransferManager } from "@/lib/session/workspace";
 import type { TerminalAuthMethod } from "@/lib/websocket-terminal";
 
 type SftpAuthMethod = TerminalAuthMethod;
@@ -69,6 +70,7 @@ export interface UseSftpSessionOptions {
   notifier?: SftpSessionNotifier;
   t?: TranslateFunction;
   fileTransferOptions?: UseFileTransferOptions;
+  transferManager?: SshWorkspaceTransferManager;
   initialPathBackStack?: string[];
   initialPathForwardStack?: string[];
   serverName?: string;
@@ -123,6 +125,7 @@ export function useSftpSession(
     notifier,
     t,
     fileTransferOptions,
+    transferManager,
     initialPathBackStack = [],
     initialPathForwardStack = [],
     serverName = serverId,
@@ -164,6 +167,16 @@ export function useSftpSession(
 
     return {
       ...baseApi,
+      downloadFile: baseApi.downloadFile
+        ? (targetServerId, path, taskId) => (
+            runSftpOperation(() => Promise.resolve(baseApi.downloadFile!(targetServerId, path, taskId)))
+          )
+        : undefined,
+      batchDownload: baseApi.batchDownload
+        ? (targetServerId, paths, mode, excludePatterns, taskId) => (
+            runSftpOperation(() => baseApi.batchDownload!(targetServerId, paths, mode, excludePatterns, taskId))
+          )
+        : undefined,
       uploadFile: (targetServerId, path, file, onProgress, wsTaskId, onXhr) => (
         runSftpOperation(() => baseApi.uploadFile(targetServerId, path, file, onProgress, wsTaskId, onXhr))
       ),
@@ -175,7 +188,31 @@ export function useSftpSession(
     api: fileTransferApi,
   }), [fileTransferApi, fileTransferOptions]);
 
-  const fileTransfer = useFileTransfer(effectiveFileTransferOptions);
+  const internalFileTransfer = useFileTransfer(effectiveFileTransferOptions);
+  const uploadFileWithCredentialRetry = transferManager?.uploadFile
+    ? (...args: Parameters<NonNullable<SshWorkspaceTransferManager["uploadFile"]>>) => (
+        runSftpOperation(() => Promise.resolve(transferManager.uploadFile!(...args)))
+      )
+    : internalFileTransfer.uploadFile;
+  const downloadFileWithCredentialRetry = transferManager?.downloadFile
+    ? (...args: Parameters<NonNullable<SshWorkspaceTransferManager["downloadFile"]>>) => (
+        runSftpOperation(() => Promise.resolve(transferManager.downloadFile!(...args)))
+      )
+    : internalFileTransfer.downloadFile;
+  const batchDownloadWithCredentialRetry = transferManager?.batchDownload
+    ? (...args: Parameters<NonNullable<SshWorkspaceTransferManager["batchDownload"]>>) => (
+        runSftpOperation(() => transferManager.batchDownload!(...args))
+      )
+    : internalFileTransfer.batchDownload;
+  const fileTransfer = {
+    tasks: transferManager?.tasks ?? internalFileTransfer.tasks,
+    uploadFile: uploadFileWithCredentialRetry,
+    downloadFile: downloadFileWithCredentialRetry,
+    batchDownload: batchDownloadWithCredentialRetry,
+    cancelTask: transferManager?.cancelTask ?? internalFileTransfer.cancelTask,
+    removeTask: transferManager?.removeTask ?? internalFileTransfer.removeTask,
+    clearCompleted: transferManager?.clearCompleted ?? internalFileTransfer.clearCompleted,
+  };
 
   const operationApi = useMemo<SftpSessionApi>(() => ({
     ...sessionApi,
@@ -348,7 +385,7 @@ export function useSftpSession(
   );
 
   /**
-   * 下载文件（使用浏览器原生下载）
+   * 下载文件
    */
   const downloadFile = useCallback(
     async (fileName: string) => {
@@ -360,14 +397,14 @@ export function useSftpSession(
         : `${currentPath}/${fileName}`;
 
       try {
-        await operationApi.downloadFile(serverId, fullPath);
+        await fileTransfer.downloadFile(serverId, fullPath, fileName);
         sessionNotifier.success(tSftp("toastDownloadStartSingle", { file: fileName }));
       } catch (error) {
         console.error('[useSftpSession] 下载失败:', error);
         sessionNotifier.error(getErrorMessage(error, tSftp("toastDownloadFailed")));
       }
     },
-    [serverId, currentPath, files, operationApi, sessionNotifier, tSftp]
+    [serverId, currentPath, files, fileTransfer, sessionNotifier, tSftp]
   );
 
   /**
@@ -506,8 +543,7 @@ export function useSftpSession(
             : `${currentPath}/${fileName}`
         );
 
-        // 直接调用 API 的批量下载，内部使用浏览器下载机制
-        await operationApi.batchDownload(serverId, fullPaths, "fast", excludePatterns);
+        await fileTransfer.batchDownload(serverId, fullPaths, "fast", excludePatterns);
         sessionNotifier.success(
           tSftp("toastBatchDownloadStart", { count: fileNames.length })
         );
@@ -517,7 +553,7 @@ export function useSftpSession(
         throw error;
       }
     },
-    [serverId, currentPath, operationApi, sessionNotifier, tSftp]
+    [serverId, currentPath, fileTransfer, sessionNotifier, tSftp]
   );
 
   // 初始加载。initialPath 只作为挂载/切换服务器时的初值，避免父级同步当前路径时清空历史栈。

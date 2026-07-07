@@ -52,11 +52,12 @@ export type UploadProgressStage = "http" | "sftp" | "stream"
 
 export interface UploadTaskStatus {
   id: string
+  type?: "upload" | "download" | "transfer" | string
   file_name: string
   file_size: number
   server_id?: string
   remote_path?: string
-  status: "pending" | "uploading" | "completed" | "failed" | "cancelled"
+  status: "pending" | "uploading" | "downloading" | "transferring" | "completed" | "failed" | "cancelled"
   stage?: UploadProgressStage
   progress: number
   loaded: number
@@ -108,6 +109,7 @@ export interface SftpTransferCredential {
 }
 
 export interface DirectTransferOptions {
+  taskId?: string
   sourceCredential?: SftpTransferCredential
   targetCredential?: SftpTransferCredential
   sourceServerName?: string

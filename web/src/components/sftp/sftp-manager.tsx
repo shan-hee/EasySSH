@@ -134,9 +134,24 @@ export function SftpManager(props: SftpManagerProps) {
   const effectiveTransferTasks = transferTasks ?? workspaceTransferManager?.tasks ?? []
   const effectiveClearCompletedTransfers = onClearCompletedTransfers ?? workspaceTransferManager?.clearCompleted
   const effectiveCancelTransfer = onCancelTransfer ?? workspaceTransferManager?.cancelTask
+  const hasWorkspaceTransferTaskSurface = !!workspaceTransferManager && (
+    workspaceTransferManager.tasks.length > 0 ||
+    !!workspaceTransferManager.downloadFile ||
+    !!workspaceTransferManager.batchDownload ||
+    !!workspaceTransferManager.uploadFile ||
+    !!workspaceTransferManager.directTransfer ||
+    !!workspaceTransferManager.createTransferTask ||
+    !!workspaceTransferManager.addTask ||
+    !!workspaceTransferManager.updateTask ||
+    !!workspaceTransferManager.removeTask ||
+    !!workspaceTransferManager.clearAll ||
+    !!workspaceTransferManager.clearCompleted ||
+    !!workspaceTransferManager.cancelTask ||
+    !!workspaceTransferManager.cancelDirectTransfer
+  )
   const showTransferTasks = (
     transferTasks !== undefined ||
-    !!workspaceTransferManager ||
+    hasWorkspaceTransferTaskSurface ||
     !!backgroundTransferJobs?.length ||
     !!onCreateBackgroundUpload ||
     !!onCreateBackgroundDownload

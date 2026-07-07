@@ -566,7 +566,7 @@ export async function cancelTransferRuntimeTask({
     } catch (error) {
       logError("[transfer-runtime] Failed to cancel upload via API:", error)
     }
-  } else if (task?.type === "transfer" && cancelServerTransfer) {
+  } else if ((task?.type === "transfer" || task?.type === "download") && cancelServerTransfer) {
     try {
       await cancelServerTransfer(taskId)
     } catch (error) {

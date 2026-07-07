@@ -124,6 +124,8 @@ export function useFileTransfer({
 
   return {
     tasks,
+    downloadFile: controller.downloadFile,
+    batchDownload: controller.batchDownload,
     uploadFile,
     cancelTask: controller.cancelTask,
     removeTask: controller.removeTask,

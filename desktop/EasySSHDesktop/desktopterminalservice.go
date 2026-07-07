@@ -147,7 +147,7 @@ func (s *DesktopTerminalService) Start(input DesktopTerminalStartInput) error {
 	config := &ssh.ClientConfig{
 		User:            server.Username,
 		Auth:            authMethods,
-		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
+		HostKeyCallback: desktopHostKeyCallback(),
 		Timeout:         12 * time.Second,
 	}
 
