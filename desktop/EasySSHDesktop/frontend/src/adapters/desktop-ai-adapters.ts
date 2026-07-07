@@ -1,4 +1,5 @@
 import type { AIAssistantWorkspaceAdapters } from "@/components/ai-agent/ai-assistant-workspace-view"
+import { Events } from "@wailsio/runtime"
 import type {
   AgentSessionScope,
   AgentSessionStatus,
@@ -31,9 +32,20 @@ import {
 } from "../../bindings/github.com/easyssh/easyssh-desktop/models"
 
 const desktopAiConfigQueryKey = ["desktopAiConfig"]
+const desktopAISessionEvent = "easyssh:desktop-ai:session-event"
 
 type DesktopAITaskViewWithAssistantMessage = DesktopAITaskView & {
   assistant_message_id?: string
+}
+
+type DesktopAIUIMessage = SessionView["ui_messages"][number]
+
+type DesktopAISessionEvent = {
+  session_id?: string
+  type?: string
+  session?: DesktopAISessionView
+  ui_message?: DesktopAIUIMessage
+  error?: string
 }
 
 export function createDesktopAIAssistantAdapters(serverApi: ServerConnectionConfigsApi): AIAssistantWorkspaceAdapters {
@@ -72,6 +84,20 @@ export function createDesktopAIAssistantAdapters(serverApi: ServerConnectionConf
           scope: toDesktopSessionScope(input.scope),
         }))
       ),
+      subscribeSessionEvents: (callback) => Events.On(desktopAISessionEvent, (event) => {
+        const data = getDesktopAIEventData(event) as DesktopAISessionEvent | undefined
+        if (!data) {
+          return
+        }
+
+        callback({
+          session_id: data.session_id,
+          type: data.type,
+          session: data.session ? fromDesktopSession(data.session) : undefined,
+          ui_message: data.ui_message,
+          error: data.error,
+        })
+      }),
       cancelSession: async (sessionId: string) => {
         await DesktopAIService.CancelSession(sessionId)
       },
@@ -105,6 +131,12 @@ export function createDesktopAIAssistantAdapters(serverApi: ServerConnectionConf
 }
 
 export type DesktopAIAssistantAdapters = ReturnType<typeof createDesktopAIAssistantAdapters>
+
+function getDesktopAIEventData(event: unknown) {
+  return event && typeof event === "object" && "data" in event
+    ? (event as { data?: unknown }).data
+    : undefined
+}
 
 function toDesktopPermissionMode(permissionMode?: PermissionMode): DesktopAIPermissionMode | undefined {
   switch (permissionMode) {

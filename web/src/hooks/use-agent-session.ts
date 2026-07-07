@@ -34,6 +34,13 @@ export interface AgentSessionAdapter {
     permission_mode?: PermissionMode
     scope?: AgentSessionScope
   }) => Promise<CreateSessionResponse>
+  subscribeSessionEvents?: (callback: (event: {
+    session_id?: string
+    type?: string
+    session?: SessionView
+    ui_message?: UIMessage
+    error?: string
+  }) => void) => () => void
   cancelSession: (sessionId: string) => Promise<void>
   closeSession: (sessionId: string) => Promise<void>
 }
@@ -54,6 +61,51 @@ function getSessionMessagesSyncKey(session: SessionView) {
   const messages = session.ui_messages ?? []
 
   return `${session.id}:${JSON.stringify(messages)}`
+}
+
+function getAdapterTransport(adapter?: AgentSessionAdapter): TransportState {
+  if (!adapter) {
+    return "ai_sdk_ui"
+  }
+  return adapter.subscribeSessionEvents ? "ai_sdk_ui" : "desktop_local"
+}
+
+function mergeUIMessage(messages: UIMessage[], nextMessage: UIMessage) {
+  const existingIndex = messages.findIndex((message) => message.id === nextMessage.id)
+  if (existingIndex < 0) {
+    return [...messages, nextMessage]
+  }
+
+  const existingMessage = messages[existingIndex]
+  if (isStreamingUIMessage(nextMessage) && !isStreamingUIMessage(existingMessage)) {
+    return messages
+  }
+  if (isStreamingUIMessage(nextMessage) && getUIMessageTextLength(nextMessage) < getUIMessageTextLength(existingMessage)) {
+    return messages
+  }
+
+  const nextMessages = [...messages]
+  nextMessages[existingIndex] = nextMessage
+  return nextMessages
+}
+
+function isStreamingUIMessage(message: UIMessage) {
+  if (message.metadata && typeof message.metadata === "object" && "pending" in message.metadata) {
+    return Boolean((message.metadata as { pending?: unknown }).pending)
+  }
+
+  return message.parts.some((part) => (
+    "state" in part && (part as { state?: unknown }).state === "streaming"
+  ))
+}
+
+function getUIMessageTextLength(message: UIMessage) {
+  return message.parts.reduce((length, part) => {
+    if ("text" in part && typeof part.text === "string") {
+      return length + part.text.length
+    }
+    return length
+  }, 0)
 }
 
 export function useAgentSession(adapter?: AgentSessionAdapter) {
@@ -125,7 +177,7 @@ export function useAgentSession(adapter?: AgentSessionAdapter) {
         : null
       sessionRef.current = response.session
       setSession(response.session)
-      setTransport(adapter ? "desktop_local" : "ai_sdk_ui")
+      setTransport(getAdapterTransport(adapter))
       return response.session
     } catch (refreshError) {
       const message = toErrorMessage(refreshError)
@@ -146,6 +198,7 @@ export function useAgentSession(adapter?: AgentSessionAdapter) {
       void refreshSessionSnapshot(undefined, { syncMessages: false })
     },
   })
+  const setChatMessages = chat.setMessages
 
   useEffect(() => {
     if (!session?.id) {
@@ -158,9 +211,43 @@ export function useAgentSession(adapter?: AgentSessionAdapter) {
       return
     }
 
-    chat.setMessages(session.ui_messages || [])
+    setChatMessages(session.ui_messages || [])
     syncedMessagesKeyRef.current = syncKey
-  }, [chat, session])
+  }, [session, setChatMessages])
+
+  useEffect(() => {
+    if (!adapter?.subscribeSessionEvents) {
+      return
+    }
+
+    return adapter.subscribeSessionEvents((event) => {
+      const activeSession = sessionRef.current
+      if (!activeSession || event.session_id !== activeSession.id || closingSessionIdRef.current === activeSession.id) {
+        return
+      }
+
+      if (event.error) {
+        setError(event.error)
+      }
+
+      if (event.session) {
+        sessionRef.current = event.session
+        setSession(event.session)
+        setChatMessages((current) => {
+          const snapshotMessages = event.session?.ui_messages || []
+          return snapshotMessages.length >= current.length ? snapshotMessages : current
+        })
+        syncedMessagesKeyRef.current = getSessionMessagesSyncKey(event.session)
+        setTransport(getAdapterTransport(adapter))
+        return
+      }
+
+      if (event.ui_message) {
+        setChatMessages((current) => mergeUIMessage(current, event.ui_message as UIMessage))
+        setTransport(getAdapterTransport(adapter))
+      }
+    })
+  }, [adapter, setChatMessages])
 
   const pushLocalError = useCallback((message: string) => {
     setError(message)
@@ -193,7 +280,7 @@ export function useAgentSession(adapter?: AgentSessionAdapter) {
     setLocalErrorMessages([])
     sessionRef.current = response.session
     setSession(response.session)
-    setTransport(adapter ? "desktop_local" : "ai_sdk_ui")
+    setTransport(getAdapterTransport(adapter))
     syncedMessagesKeyRef.current = input.syncMessages === false
       ? getSessionMessagesSyncKey(response.session)
       : null
@@ -241,7 +328,7 @@ export function useAgentSession(adapter?: AgentSessionAdapter) {
       applySessionResponse(response)
       return true
     } catch (restoreError) {
-      setTransport(sessionRef.current ? "ai_sdk_ui" : "idle")
+      setTransport(sessionRef.current ? getAdapterTransport(adapter) : "idle")
       const message = toErrorMessage(restoreError)
       if (!input.silent) {
         pushLocalError(message)
@@ -282,7 +369,7 @@ export function useAgentSession(adapter?: AgentSessionAdapter) {
       applySessionResponse(response, { syncMessages: false })
       return response
     } catch (createError) {
-      setTransport(currentSession ? "ai_sdk_ui" : "idle")
+      setTransport(currentSession ? getAdapterTransport(adapter) : "idle")
       const message = toErrorMessage(createError)
       pushLocalError(message)
       return null
@@ -307,7 +394,7 @@ export function useAgentSession(adapter?: AgentSessionAdapter) {
       ? { ...current, status: "running", updated_at: new Date().toISOString() }
       : current
     )
-    setTransport(adapter ? "desktop_local" : "ai_sdk_ui")
+    setTransport(getAdapterTransport(adapter))
 
     try {
       if (adapter) {
@@ -319,7 +406,7 @@ export function useAgentSession(adapter?: AgentSessionAdapter) {
           permission_mode: permissionMode,
           scope,
         })
-        applySessionResponse(response)
+        applySessionResponse(response, { syncMessages: Boolean(adapter.subscribeSessionEvents) })
         return true
       }
 
@@ -433,7 +520,9 @@ export function useAgentSession(adapter?: AgentSessionAdapter) {
   const canSend = Boolean(sessionId) && session?.status === "idle" && (Boolean(adapter) || chat.status === "ready")
   const snapshotMessages = session?.ui_messages || []
   const uiMessages = adapter
-    ? [...snapshotMessages, ...localErrorMessages]
+    ? adapter.subscribeSessionEvents
+      ? [...chat.messages, ...localErrorMessages]
+      : [...snapshotMessages, ...localErrorMessages]
     : [...chat.messages, ...localErrorMessages]
 
   return {

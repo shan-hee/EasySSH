@@ -38,6 +38,8 @@ const (
 	DesktopAISessionClosed  DesktopAISessionStatus = "closed"
 )
 
+const desktopAISessionEvent = "easyssh:desktop-ai:session-event"
+
 type DesktopAITaskStatus string
 
 type DesktopAIConfigStatus struct {
@@ -170,6 +172,14 @@ type DesktopAISendMessageInput struct {
 	Model          string                  `json:"model,omitempty"`
 	PermissionMode DesktopAIPermissionMode `json:"permission_mode,omitempty"`
 	Scope          *DesktopAISessionScope  `json:"scope,omitempty"`
+}
+
+type DesktopAISessionEvent struct {
+	SessionID string                `json:"session_id"`
+	Type      string                `json:"type"`
+	Session   *DesktopAISessionView `json:"session,omitempty"`
+	UIMessage *aichatui.UIMessage   `json:"ui_message,omitempty"`
+	Error     string                `json:"error,omitempty"`
 }
 
 type desktopAIConfigRecord struct {
@@ -527,13 +537,36 @@ func (s *DesktopAIService) SendMessage(ctx context.Context, input DesktopAISendM
 	if err := s.saveSession(record); err != nil {
 		return DesktopAICreateSessionResponse{}, err
 	}
+	s.emitAISessionSnapshot(record)
 
-	assistantContent, err := s.completeChat(requestContext, config, record.Messages, input.Context, model, record.PermissionMode)
+	assistantMessageID := newDesktopAIID("msg")
+	assistantStartedAt := time.Now().UTC().Format(time.RFC3339Nano)
+	var assistantContentBuilder strings.Builder
+	assistantContent, err := s.completeChat(requestContext, config, record.Messages, input.Context, model, record.PermissionMode, func(delta string) error {
+		if delta == "" {
+			return nil
+		}
+
+		assistantContentBuilder.WriteString(delta)
+		assistantMessage := DesktopAIMessageView{
+			ID:        assistantMessageID,
+			Role:      "assistant",
+			Content:   assistantContentBuilder.String(),
+			CreatedAt: assistantStartedAt,
+		}
+		s.emitAISessionEvent(DesktopAISessionEvent{
+			SessionID: sessionID,
+			Type:      "message",
+			UIMessage: desktopAIUIMessagePtr(assistantMessage, true),
+		})
+		return nil
+	})
 	completedAt := time.Now().UTC().Format(time.RFC3339Nano)
 	if err != nil {
 		record.Status = DesktopAISessionIdle
 		record.UpdatedAt = completedAt
 		_ = s.saveSession(record)
+		s.emitAISessionSnapshot(record)
 		if errors.Is(err, context.Canceled) || errors.Is(requestContext.Err(), context.Canceled) {
 			view := record.toView()
 			return DesktopAICreateSessionResponse{
@@ -546,7 +579,7 @@ func (s *DesktopAIService) SendMessage(ctx context.Context, input DesktopAISendM
 	}
 
 	assistantMessage := DesktopAIMessageView{
-		ID:        newDesktopAIID("msg"),
+		ID:        assistantMessageID,
 		Role:      "assistant",
 		Content:   strings.TrimSpace(assistantContent),
 		CreatedAt: completedAt,
@@ -557,6 +590,7 @@ func (s *DesktopAIService) SendMessage(ctx context.Context, input DesktopAISendM
 	if err := s.saveSession(record); err != nil {
 		return DesktopAICreateSessionResponse{}, err
 	}
+	s.emitAISessionSnapshot(record)
 
 	view := record.toView()
 	return DesktopAICreateSessionResponse{
@@ -822,7 +856,7 @@ func (s *DesktopAIService) activeDesktopAISessionStatus(sessionID string, status
 	return status
 }
 
-func (s *DesktopAIService) completeChat(ctx context.Context, config desktopAIConfigRecord, messages []DesktopAIMessageView, contextText string, model string, permission DesktopAIPermissionMode) (string, error) {
+func (s *DesktopAIService) completeChat(ctx context.Context, config desktopAIConfigRecord, messages []DesktopAIMessageView, contextText string, model string, permission DesktopAIPermissionMode, onDelta func(string) error) (string, error) {
 	factory := aiprovider.NewFactory()
 	result, err := factory.StreamTurn(ctx, aiprovider.Config{
 		Provider: config.CustomProvider,
@@ -832,7 +866,10 @@ func (s *DesktopAIService) completeChat(ctx context.Context, config desktopAICon
 	}, aiprovider.TurnRequest{
 		Model:    model,
 		Messages: desktopAIProviderMessages(messages, contextText, permission),
-	}, func(aiprovider.Event) error {
+	}, func(event aiprovider.Event) error {
+		if event.Type == aiprovider.EventTextDelta && onDelta != nil {
+			return onDelta(event.Delta)
+		}
 		return nil
 	})
 	if err != nil {
@@ -1017,6 +1054,24 @@ func (record desktopAISessionRecord) toView() DesktopAISessionView {
 	}
 }
 
+func (s *DesktopAIService) emitAISessionSnapshot(record desktopAISessionRecord) {
+	view := record.toView()
+	s.emitAISessionEvent(DesktopAISessionEvent{
+		SessionID: record.ID,
+		Type:      "session",
+		Session:   &view,
+	})
+}
+
+func (s *DesktopAIService) emitAISessionEvent(event DesktopAISessionEvent) {
+	app := application.Get()
+	if app == nil || app.Event == nil {
+		return
+	}
+
+	app.Event.Emit(desktopAISessionEvent, event)
+}
+
 func desktopAIUIMessages(messages []DesktopAIMessageView, tasks []DesktopAITaskView) []aichatui.UIMessage {
 	return aichatui.BuildMessages(
 		toAichatUIMessages(messages),
@@ -1035,6 +1090,19 @@ func toAichatUIMessages(messages []DesktopAIMessageView) []aichatui.MessageView 
 		})
 	}
 	return result
+}
+
+func desktopAIUIMessagePtr(message DesktopAIMessageView, streaming bool) *aichatui.UIMessage {
+	uiMessage, ok := aichatui.Message(aichatui.MessageView{
+		ID:        message.ID,
+		Role:      message.Role,
+		Content:   message.Content,
+		CreatedAt: parseDesktopAITime(message.CreatedAt),
+	}, streaming)
+	if !ok {
+		return nil
+	}
+	return &uiMessage
 }
 
 func toAichatUITasks(tasks []DesktopAITaskView) []aichatui.TaskView {
