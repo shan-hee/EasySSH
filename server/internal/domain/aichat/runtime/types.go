@@ -1,6 +1,10 @@
 package runtime
 
-import "time"
+import (
+	"time"
+
+	"github.com/easyssh/shared/aichatui"
+)
 
 type SessionStatus string
 
@@ -11,15 +15,15 @@ const (
 	SessionStatusClosed              SessionStatus = "closed"
 )
 
-type TaskStatus string
+type TaskStatus = aichatui.TaskStatus
 
 const (
-	TaskStatusQueued         TaskStatus = "queued"
-	TaskStatusWaitingConfirm TaskStatus = "waiting_confirm"
-	TaskStatusRunning        TaskStatus = "running"
-	TaskStatusSucceeded      TaskStatus = "succeeded"
-	TaskStatusFailed         TaskStatus = "failed"
-	TaskStatusCancelled      TaskStatus = "cancelled"
+	TaskStatusQueued         = aichatui.TaskStatusQueued
+	TaskStatusWaitingConfirm = aichatui.TaskStatusWaitingConfirm
+	TaskStatusRunning        = aichatui.TaskStatusRunning
+	TaskStatusSucceeded      = aichatui.TaskStatusSucceeded
+	TaskStatusFailed         = aichatui.TaskStatusFailed
+	TaskStatusCancelled      = aichatui.TaskStatusCancelled
 )
 
 type Decision string
@@ -56,29 +60,9 @@ type ToolView struct {
 	Dangerous   bool   `json:"dangerous"`
 }
 
-type MessageView struct {
-	ID        string    `json:"id"`
-	Role      string    `json:"role"`
-	Content   string    `json:"content"`
-	CreatedAt time.Time `json:"created_at"`
-}
+type MessageView = aichatui.MessageView
 
-type TaskView struct {
-	ID                   string                 `json:"id"`
-	AssistantMessageID   string                 `json:"assistant_message_id,omitempty"`
-	ToolCallID           string                 `json:"tool_call_id"`
-	ToolName             string                 `json:"tool_name"`
-	ToolDisplayName      string                 `json:"tool_display_name,omitempty"`
-	Summary              string                 `json:"summary,omitempty"`
-	Status               TaskStatus             `json:"status"`
-	Dangerous            bool                   `json:"dangerous"`
-	RequiresConfirmation bool                   `json:"requires_confirmation"`
-	Arguments            map[string]interface{} `json:"arguments,omitempty"`
-	Result               string                 `json:"result,omitempty"`
-	Error                string                 `json:"error,omitempty"`
-	CreatedAt            time.Time              `json:"created_at"`
-	UpdatedAt            time.Time              `json:"updated_at"`
-}
+type TaskView = aichatui.TaskView
 
 type AssistantEventData struct {
 	MessageID string `json:"message_id"`
@@ -98,12 +82,7 @@ type ErrorView struct {
 	Message string `json:"message"`
 }
 
-type UIMessage struct {
-	ID       string                   `json:"id"`
-	Role     string                   `json:"role"`
-	Metadata map[string]interface{}   `json:"metadata,omitempty"`
-	Parts    []map[string]interface{} `json:"parts"`
-}
+type UIMessage = aichatui.UIMessage
 
 type SessionListItem struct {
 	ID             string        `json:"id"`

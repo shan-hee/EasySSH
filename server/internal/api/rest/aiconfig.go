@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/easyssh/server/internal/domain/aiconfig"
+	sharedaiconfig "github.com/easyssh/shared/aiconfig"
 	"github.com/gin-gonic/gin"
 	openai "github.com/sashabaranov/go-openai"
 )
@@ -43,42 +44,10 @@ type AIModelsProbeResponseDTO struct {
 	Message   string   `json:"message,omitempty"`
 }
 
-func normalizeOpenAIProbeBaseURL(provider, endpoint string) string {
-	baseURL := strings.TrimSpace(strings.TrimSuffix(endpoint, "/"))
-	if baseURL == "" {
-		return ""
-	}
-
-	lower := strings.ToLower(baseURL)
-	for _, suffix := range []string{"/chat/completions", "/completions", "/responses"} {
-		if strings.HasSuffix(lower, suffix) {
-			baseURL = baseURL[:len(baseURL)-len(suffix)]
-			lower = strings.ToLower(baseURL)
-			break
-		}
-	}
-
-	// Gemini 的 OpenAI 兼容地址通常是 /v1beta/openai，不应强制改写到 /v1。
-	if strings.EqualFold(provider, "gemini") {
-		return baseURL
-	}
-
-	if idx := strings.Index(lower, "/v1/"); idx >= 0 {
-		baseURL = baseURL[:idx+3]
-		lower = strings.ToLower(baseURL)
-	}
-
-	if !strings.HasSuffix(lower, "/v1") {
-		baseURL += "/v1"
-	}
-
-	return baseURL
-}
-
 func fetchOpenAICompatibleModels(provider, apiKey, endpoint string) ([]string, error) {
 	cfg := openai.DefaultConfig(apiKey)
 	if endpoint != "" {
-		cfg.BaseURL = normalizeOpenAIProbeBaseURL(provider, endpoint)
+		cfg.BaseURL = sharedaiconfig.NormalizeOpenAIBaseURL(provider, endpoint)
 	}
 
 	client := openai.NewClientWithConfig(cfg)

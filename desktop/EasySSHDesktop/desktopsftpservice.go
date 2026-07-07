@@ -13,11 +13,12 @@ import (
 	"strings"
 	"time"
 
+	"github.com/easyssh/shared/sftputil"
 	"github.com/pkg/sftp"
 	"golang.org/x/crypto/ssh"
 )
 
-const desktopSFTPMaxTextBytes = 5 << 20
+const desktopSFTPMaxTextBytes = sftputil.MaxTextFileBytes
 
 type DesktopSFTPPathInput struct {
 	ServerID string `json:"serverId"`
@@ -173,7 +174,7 @@ func (s *DesktopSFTPService) Authenticate(input DesktopSFTPAuthenticateInput) er
 }
 
 func (s *DesktopSFTPService) ListDirectory(input DesktopSFTPPathInput) (DesktopSFTPDirectoryListResult, error) {
-	remotePath := normalizeDesktopSFTPPath(input.Path)
+	remotePath := sftputil.NormalizePath(input.Path)
 	client, closer, err := s.openClient(input.ServerID)
 	if err != nil {
 		return DesktopSFTPDirectoryListResult{}, err
@@ -192,7 +193,7 @@ func (s *DesktopSFTPService) ListDirectory(input DesktopSFTPPathInput) (DesktopS
 			continue
 		}
 
-		fullPath := joinDesktopSFTPPath(remotePath, name)
+		fullPath := sftputil.JoinPath(remotePath, name)
 		linkTarget := ""
 		if entry.Mode()&os.ModeSymlink != 0 {
 			if target, readErr := client.ReadLink(fullPath); readErr == nil {
@@ -204,13 +205,13 @@ func (s *DesktopSFTPService) ListDirectory(input DesktopSFTPPathInput) (DesktopS
 
 	return DesktopSFTPDirectoryListResult{
 		Path:   remotePath,
-		Parent: desktopSFTPParent(remotePath),
+		Parent: sftputil.ParentPath(remotePath),
 		Files:  files,
 	}, nil
 }
 
 func (s *DesktopSFTPService) Delete(input DesktopSFTPPathInput) (DesktopSFTPFileInfo, error) {
-	remotePath := normalizeDesktopSFTPPath(input.Path)
+	remotePath := sftputil.NormalizePath(input.Path)
 	client, closer, err := s.openClient(input.ServerID)
 	if err != nil {
 		return DesktopSFTPFileInfo{}, err
@@ -249,7 +250,7 @@ func (s *DesktopSFTPService) BatchDelete(input DesktopSFTPBatchDeleteInput) (Des
 	}
 
 	for _, itemPath := range input.Paths {
-		remotePath := normalizeDesktopSFTPPath(itemPath)
+		remotePath := sftputil.NormalizePath(itemPath)
 		info, statErr := client.Lstat(remotePath)
 		if statErr != nil {
 			result.Failed = append(result.Failed, desktopSFTPBatchError(remotePath, statErr))
@@ -273,7 +274,7 @@ func (s *DesktopSFTPService) BatchDelete(input DesktopSFTPBatchDeleteInput) (Des
 }
 
 func (s *DesktopSFTPService) CreateDirectory(input DesktopSFTPPathInput) (DesktopSFTPFileInfo, error) {
-	remotePath := normalizeDesktopSFTPPath(input.Path)
+	remotePath := sftputil.NormalizePath(input.Path)
 	client, closer, err := s.openClient(input.ServerID)
 	if err != nil {
 		return DesktopSFTPFileInfo{}, err
@@ -288,8 +289,8 @@ func (s *DesktopSFTPService) CreateDirectory(input DesktopSFTPPathInput) (Deskto
 }
 
 func (s *DesktopSFTPService) Rename(input DesktopSFTPRenameInput) (DesktopSFTPFileInfo, error) {
-	oldPath := normalizeDesktopSFTPPath(input.OldPath)
-	newPath := normalizeDesktopSFTPPath(input.NewPath)
+	oldPath := sftputil.NormalizePath(input.OldPath)
+	newPath := sftputil.NormalizePath(input.NewPath)
 	client, closer, err := s.openClient(input.ServerID)
 	if err != nil {
 		return DesktopSFTPFileInfo{}, err
@@ -304,7 +305,7 @@ func (s *DesktopSFTPService) Rename(input DesktopSFTPRenameInput) (DesktopSFTPFi
 }
 
 func (s *DesktopSFTPService) ReadFile(input DesktopSFTPPathInput) (string, error) {
-	remotePath := normalizeDesktopSFTPPath(input.Path)
+	remotePath := sftputil.NormalizePath(input.Path)
 	client, closer, err := s.openClient(input.ServerID)
 	if err != nil {
 		return "", err
@@ -340,7 +341,7 @@ func (s *DesktopSFTPService) ReadFile(input DesktopSFTPPathInput) (string, error
 }
 
 func (s *DesktopSFTPService) WriteFile(input DesktopSFTPWriteFileInput) (DesktopSFTPFileInfo, error) {
-	remotePath := normalizeDesktopSFTPPath(input.Path)
+	remotePath := sftputil.NormalizePath(input.Path)
 	client, closer, err := s.openClient(input.ServerID)
 	if err != nil {
 		return DesktopSFTPFileInfo{}, err
@@ -363,7 +364,7 @@ func (s *DesktopSFTPService) WriteFile(input DesktopSFTPWriteFileInput) (Desktop
 }
 
 func (s *DesktopSFTPService) Chmod(input DesktopSFTPChmodInput) error {
-	remotePath := normalizeDesktopSFTPPath(input.Path)
+	remotePath := sftputil.NormalizePath(input.Path)
 	mode, err := strconv.ParseUint(strings.TrimSpace(input.Mode), 8, 32)
 	if err != nil {
 		return fmt.Errorf("invalid chmod mode: %w", err)
@@ -379,7 +380,7 @@ func (s *DesktopSFTPService) Chmod(input DesktopSFTPChmodInput) error {
 }
 
 func (s *DesktopSFTPService) UploadFile(input DesktopSFTPUploadFileInput) (DesktopSFTPFileInfo, error) {
-	basePath := normalizeDesktopSFTPPath(input.Path)
+	basePath := sftputil.NormalizePath(input.Path)
 	fileName := path.Base(strings.TrimSpace(input.FileName))
 	if fileName == "." || fileName == "/" || fileName == "" {
 		return DesktopSFTPFileInfo{}, errors.New("file name is required")
@@ -390,7 +391,7 @@ func (s *DesktopSFTPService) UploadFile(input DesktopSFTPUploadFileInput) (Deskt
 		return DesktopSFTPFileInfo{}, err
 	}
 
-	remotePath := joinDesktopSFTPPath(basePath, fileName)
+	remotePath := sftputil.JoinPath(basePath, fileName)
 	client, closer, err := s.openClient(input.ServerID)
 	if err != nil {
 		return DesktopSFTPFileInfo{}, err
@@ -413,7 +414,7 @@ func (s *DesktopSFTPService) UploadFile(input DesktopSFTPUploadFileInput) (Deskt
 }
 
 func (s *DesktopSFTPService) DownloadFile(input DesktopSFTPDownloadFileInput) error {
-	remotePath := normalizeDesktopSFTPPath(input.Path)
+	remotePath := sftputil.NormalizePath(input.Path)
 	localPath := strings.TrimSpace(input.LocalPath)
 	if localPath == "" {
 		return errors.New("local path is required")
@@ -474,7 +475,7 @@ func (s *DesktopSFTPService) BatchDownload(input DesktopSFTPBatchDownloadInput) 
 
 	zipWriter := zip.NewWriter(localFile)
 	for _, itemPath := range input.Paths {
-		remotePath := normalizeDesktopSFTPPath(itemPath)
+		remotePath := sftputil.NormalizePath(itemPath)
 		baseName := strings.Trim(path.Base(remotePath), "/")
 		if baseName == "" || baseName == "." {
 			baseName = "download"
@@ -511,8 +512,8 @@ func (s *DesktopSFTPService) DirectTransfer(input DesktopSFTPDirectTransferInput
 		return DesktopSFTPDirectTransferResult{}, errors.New("target server id is required")
 	}
 
-	sourcePath := normalizeDesktopSFTPPath(input.SourcePath)
-	targetPath := normalizeDesktopSFTPPath(input.TargetPath)
+	sourcePath := sftputil.NormalizePath(input.SourcePath)
+	targetPath := sftputil.NormalizePath(input.TargetPath)
 	if sourceServerID == targetServerID {
 		return DesktopSFTPDirectTransferResult{}, errors.New("cannot transfer between the same server")
 	}
@@ -652,14 +653,14 @@ func desktopSFTPFileInfoFromFileInfo(remotePath string, info os.FileInfo, linkTa
 	mode := info.Mode()
 	return DesktopSFTPFileInfo{
 		Name:       info.Name(),
-		Path:       normalizeDesktopSFTPPath(remotePath),
+		Path:       sftputil.NormalizePath(remotePath),
 		Size:       info.Size(),
 		Mode:       uint32(mode.Perm()),
 		ModTime:    info.ModTime().UTC().Format(time.RFC3339Nano),
 		IsDir:      info.IsDir(),
 		IsLink:     mode&os.ModeSymlink != 0,
 		LinkTarget: linkTarget,
-		Permission: desktopSFTPPermissionString(mode),
+		Permission: sftputil.PermissionString(mode),
 	}
 }
 
@@ -675,7 +676,7 @@ func removeDesktopSFTPDirectory(client *sftp.Client, remotePath string) error {
 			continue
 		}
 
-		childPath := joinDesktopSFTPPath(remotePath, name)
+		childPath := sftputil.JoinPath(remotePath, name)
 		if entry.IsDir() && entry.Mode()&os.ModeSymlink == 0 {
 			if err := removeDesktopSFTPDirectory(client, childPath); err != nil {
 				return err
@@ -723,7 +724,7 @@ func addDesktopSFTPZipEntry(client *sftp.Client, zipWriter *zip.Writer, remotePa
 				continue
 			}
 
-			childRemotePath := joinDesktopSFTPPath(remotePath, name)
+			childRemotePath := sftputil.JoinPath(remotePath, name)
 			childArchivePath := strings.TrimRight(archivePath, "/") + "/" + name
 			if err := addDesktopSFTPZipEntry(client, zipWriter, childRemotePath, childArchivePath); err != nil {
 				return err
@@ -762,7 +763,7 @@ type desktopSFTPTransferStats struct {
 func copyDesktopSFTPPath(sourceClient *sftp.Client, targetClient *sftp.Client, sourcePath string, targetPath string, sourceInfo os.FileInfo) (desktopSFTPTransferStats, error) {
 	stats := desktopSFTPTransferStats{}
 	if sourceInfo.IsDir() {
-		targetDir := joinDesktopSFTPPath(targetPath, sourceInfo.Name())
+		targetDir := sftputil.JoinPath(targetPath, sourceInfo.Name())
 		if err := copyDesktopSFTPDirectory(sourceClient, targetClient, sourcePath, targetDir, &stats); err != nil {
 			return desktopSFTPTransferStats{}, err
 		}
@@ -771,7 +772,7 @@ func copyDesktopSFTPPath(sourceClient *sftp.Client, targetClient *sftp.Client, s
 
 	targetFilePath := targetPath
 	if targetInfo, err := targetClient.Stat(targetPath); err == nil && targetInfo.IsDir() {
-		targetFilePath = joinDesktopSFTPPath(targetPath, path.Base(sourcePath))
+		targetFilePath = sftputil.JoinPath(targetPath, path.Base(sourcePath))
 	}
 	if err := copyDesktopSFTPFile(sourceClient, targetClient, sourcePath, targetFilePath, sourceInfo, &stats); err != nil {
 		return desktopSFTPTransferStats{}, err
@@ -796,8 +797,8 @@ func copyDesktopSFTPDirectory(sourceClient *sftp.Client, targetClient *sftp.Clie
 			continue
 		}
 
-		childSourcePath := joinDesktopSFTPPath(sourceDir, name)
-		childTargetPath := joinDesktopSFTPPath(targetDir, name)
+		childSourcePath := sftputil.JoinPath(sourceDir, name)
+		childTargetPath := sftputil.JoinPath(targetDir, name)
 		if entry.IsDir() && entry.Mode()&os.ModeSymlink == 0 {
 			if err := copyDesktopSFTPDirectory(sourceClient, targetClient, childSourcePath, childTargetPath, stats); err != nil {
 				return err
@@ -838,61 +839,6 @@ func copyDesktopSFTPFile(sourceClient *sftp.Client, targetClient *sftp.Client, s
 	stats.FilesCopied++
 	stats.BytesCopied += copied
 	return nil
-}
-
-func normalizeDesktopSFTPPath(value string) string {
-	value = strings.TrimSpace(strings.ReplaceAll(value, "\\", "/"))
-	if value == "" {
-		return "/"
-	}
-	if !strings.HasPrefix(value, "/") {
-		value = "/" + value
-	}
-
-	return path.Clean(value)
-}
-
-func joinDesktopSFTPPath(basePath string, name string) string {
-	basePath = normalizeDesktopSFTPPath(basePath)
-	name = strings.TrimPrefix(strings.ReplaceAll(name, "\\", "/"), "/")
-	return normalizeDesktopSFTPPath(path.Join(basePath, name))
-}
-
-func desktopSFTPParent(remotePath string) string {
-	remotePath = normalizeDesktopSFTPPath(remotePath)
-	if remotePath == "/" {
-		return ""
-	}
-
-	return path.Dir(remotePath)
-}
-
-func desktopSFTPPermissionString(mode os.FileMode) string {
-	prefix := "-"
-	if mode.IsDir() {
-		prefix = "d"
-	} else if mode&os.ModeSymlink != 0 {
-		prefix = "l"
-	}
-
-	perms := ""
-	bits := []struct {
-		bit  os.FileMode
-		char string
-	}{
-		{0o400, "r"}, {0o200, "w"}, {0o100, "x"},
-		{0o040, "r"}, {0o020, "w"}, {0o010, "x"},
-		{0o004, "r"}, {0o002, "w"}, {0o001, "x"},
-	}
-	for _, item := range bits {
-		if mode.Perm()&item.bit != 0 {
-			perms += item.char
-		} else {
-			perms += "-"
-		}
-	}
-
-	return prefix + perms
 }
 
 func desktopSFTPBatchError(remotePath string, err error) DesktopSFTPBatchOperationError {

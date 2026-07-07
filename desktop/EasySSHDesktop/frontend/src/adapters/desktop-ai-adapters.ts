@@ -32,6 +32,10 @@ import {
 
 const desktopAiConfigQueryKey = ["desktopAiConfig"]
 
+type DesktopAITaskViewWithAssistantMessage = DesktopAITaskView & {
+  assistant_message_id?: string
+}
+
 export function createDesktopAIAssistantAdapters(serverApi: ServerConnectionConfigsApi): AIAssistantWorkspaceAdapters {
   return {
     aiConfig: {
@@ -217,8 +221,11 @@ function fromDesktopMessage(message: DesktopAIMessageView): MessageView {
 }
 
 function fromDesktopTask(task: DesktopAITaskView): TaskView {
+  const desktopTask = task as DesktopAITaskViewWithAssistantMessage
+
   return {
     id: task.id,
+    assistant_message_id: desktopTask.assistant_message_id,
     tool_call_id: task.tool_call_id,
     tool_name: task.tool_name,
     tool_display_name: task.tool_display_name,

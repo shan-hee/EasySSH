@@ -1,6 +1,5 @@
 import {
   ActivityLogService,
-  DesktopActivityLogStatus,
   type DesktopActivityLogItem,
   type DesktopActivityLogListParams,
 } from "../../bindings/github.com/easyssh/easyssh-desktop"
@@ -10,47 +9,15 @@ import type {
   AuditLogListParams,
   AuditLogListResponse,
   AuditLogStatisticsResponse,
-  AuditLogStatus,
 } from "@easyssh/ssh-workspace/desktop"
+import {
+  desktopLogUserId,
+  desktopLogUsername,
+  mapDesktopActivityLogItemToAuditLog,
+  normalizeDesktopActivityLogStatusFilter,
+} from "./desktop-activity-log-mappers"
 
-const desktopUserId = "desktop-local-owner"
-const desktopUsername = "desktop"
-const desktopSource = "desktop"
 const maxDesktopLogPages = 100
-
-function desktopTypeFromAction(action: string): AuditLog["type"] {
-  if (action.startsWith("ssh_")) return "connection"
-  if (action.startsWith("sftp_")) return "transfer"
-  if (action.startsWith("script_")) return "execution"
-  return "audit"
-}
-
-function normalizeDesktopStatus(status?: DesktopActivityLogStatus | string): AuditLogStatus {
-  if (status === DesktopActivityLogStatus.DesktopActivityLogFailure || status === "failure") return "failure"
-  if (status === DesktopActivityLogStatus.DesktopActivityLogWarning || status === "warning") return "warning"
-  return "success"
-}
-
-function mapDesktopLog(item: DesktopActivityLogItem): AuditLog {
-  const action = item.action || ""
-  return {
-    id: item.id,
-    user_id: desktopUserId,
-    username: desktopUsername,
-    server_id: item.serverId || undefined,
-    type: desktopTypeFromAction(action),
-    action,
-    category: "activity",
-    resource: item.resource || "",
-    source: desktopSource,
-    status: normalizeDesktopStatus(item.status),
-    ip: "",
-    user_agent: "EasySSH",
-    details: item.detail || "",
-    duration: item.durationMs || 0,
-    created_at: item.createdAt,
-  }
-}
 
 function matchKeyword(log: AuditLog, keyword?: string) {
   const value = keyword?.trim().toLowerCase()
@@ -128,25 +95,12 @@ function sortLogs(logs: AuditLog[], params?: AuditLogListParams) {
   })
 }
 
-function normalizeDesktopStatusFilter(status?: string | string[]) {
-  if (Array.isArray(status)) {
-    return status.length === 1 ? normalizeDesktopStatusFilter(status[0]) : undefined
-  }
-  return (
-    status === "success" ||
-    status === "failure" ||
-    status === "warning"
-      ? status as DesktopActivityLogStatus
-      : undefined
-  )
-}
-
 async function fetchDesktopLogs(params?: AuditLogListParams) {
   const request: DesktopActivityLogListParams = {
     page: 1,
     limit: 100,
     action: params?.action,
-    status: normalizeDesktopStatusFilter(params?.status),
+    status: normalizeDesktopActivityLogStatusFilter(params?.status),
     startDate: params?.start_date,
     endDate: params?.end_date,
   }
@@ -162,7 +116,7 @@ async function fetchDesktopLogs(params?: AuditLogListParams) {
     currentPage += 1
   } while (currentPage <= totalPages && currentPage <= maxDesktopLogPages)
 
-  return allItems.map(mapDesktopLog)
+  return allItems.map(mapDesktopActivityLogItemToAuditLog)
 }
 
 function retentionDaysToBefore(retentionDays: number) {
@@ -213,7 +167,7 @@ export function createDesktopLogsApi() {
         action_stats: actionStats,
         recent_failures: recentFailures,
         top_users: logs.length
-          ? [{ user_id: desktopUserId, username: desktopUsername, count: logs.length }]
+          ? [{ user_id: desktopLogUserId, username: desktopLogUsername, count: logs.length }]
           : [],
       }
     },

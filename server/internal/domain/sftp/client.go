@@ -6,12 +6,12 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/easyssh/server/internal/domain/server"
 	sshDomain "github.com/easyssh/server/internal/domain/ssh"
 	"github.com/easyssh/server/internal/pkg/logger"
+	"github.com/easyssh/shared/sftputil"
 	"github.com/pkg/sftp"
 )
 
@@ -71,6 +71,7 @@ func (c *Client) CloseSFTP() error {
 
 // ListDirectory 列出目录
 func (c *Client) ListDirectory(path string) (*DirectoryListing, error) {
+	path = sftputil.NormalizePath(path)
 	// 读取目录
 	entries, err := c.sftpClient.ReadDir(path)
 	if err != nil {
@@ -80,7 +81,7 @@ func (c *Client) ListDirectory(path string) (*DirectoryListing, error) {
 	files := make([]*FileInfo, 0, len(entries))
 
 	for _, entry := range entries {
-		fullPath := filepath.Join(path, entry.Name())
+		fullPath := sftputil.JoinPath(path, entry.Name())
 		isLink := entry.Mode()&os.ModeSymlink != 0
 		var linkTarget string
 		if isLink {
@@ -98,7 +99,7 @@ func (c *Client) ListDirectory(path string) (*DirectoryListing, error) {
 			IsLink:     isLink,
 			LinkTarget: linkTarget,
 			ModTime:    entry.ModTime(),
-			Permission: entry.Mode().String(),
+			Permission: sftputil.PermissionString(entry.Mode()),
 		}
 
 		files = append(files, fileInfo)
@@ -114,6 +115,7 @@ func (c *Client) ListDirectory(path string) (*DirectoryListing, error) {
 
 // GetFileInfo 获取文件信息
 func (c *Client) GetFileInfo(path string) (*FileInfo, error) {
+	path = sftputil.NormalizePath(path)
 	// 使用 Lstat 保留符号链接信息（Stat 会跟随链接）
 	stat, err := c.sftpClient.Lstat(path)
 	if err != nil {
@@ -130,14 +132,14 @@ func (c *Client) GetFileInfo(path string) (*FileInfo, error) {
 
 	fileInfo := &FileInfo{
 		Name:       stat.Name(),
-		Path:       path,
+		Path:       sftputil.NormalizePath(path),
 		Size:       stat.Size(),
 		Mode:       stat.Mode(),
 		IsDir:      stat.IsDir(),
 		IsLink:     isLink,
 		LinkTarget: linkTarget,
 		ModTime:    stat.ModTime(),
-		Permission: stat.Mode().String(),
+		Permission: sftputil.PermissionString(stat.Mode()),
 	}
 
 	return fileInfo, nil
@@ -331,6 +333,7 @@ func (c *Client) RemoveAll(path string) error {
 
 // removeAll 递归删除目录（类似 os.RemoveAll）
 func (c *Client) removeAll(path string) error {
+	path = sftputil.NormalizePath(path)
 	// 获取目录内容
 	entries, err := c.sftpClient.ReadDir(path)
 	if err != nil {
@@ -352,7 +355,7 @@ func (c *Client) removeAll(path string) error {
 
 	// 递归删除所有子项
 	for _, entry := range entries {
-		childPath := filepath.Join(path, entry.Name())
+		childPath := sftputil.JoinPath(path, entry.Name())
 		if entry.IsDir() {
 			if err := c.removeAll(childPath); err != nil {
 				logger.Warn("failed to remove subdirectory",

@@ -1,6 +1,7 @@
 import type { WorkspaceMonitorApi, WorkspaceMonitorMetrics } from "@easyssh/ssh-workspace/desktop"
 import { DesktopMonitorService } from "../../bindings/github.com/easyssh/easyssh-desktop"
 import type { DesktopGatewayInfo } from "./desktop-runtime"
+import { toFiniteNumber } from "./desktop-adapter-utils"
 
 type DesktopMonitorSnapshot = Awaited<ReturnType<typeof DesktopMonitorService.Collect>>
 
@@ -40,13 +41,13 @@ function mapDesktopMonitorSnapshot(
 ): WorkspaceMonitorMetrics {
   const disks = (snapshot.disks || []).map((disk) => ({
     mountPoint: disk.mountPoint || "-",
-    usedBytes: toNumber(disk.usedBytes),
-    totalBytes: toNumber(disk.totalBytes),
+    usedBytes: toFiniteNumber(disk.usedBytes),
+    totalBytes: toFiniteNumber(disk.totalBytes),
   }))
 
   const diskTotalBytes = disks.reduce((sum, disk) => sum + disk.totalBytes, 0)
   const diskUsedBytes = disks.reduce((sum, disk) => sum + disk.usedBytes, 0)
-  const timestamp = toNumber(snapshot.timestamp) || Math.floor(Date.now() / 1000)
+  const timestamp = toFiniteNumber(snapshot.timestamp) || Math.floor(Date.now() / 1000)
 
   return {
     systemInfo: {
@@ -55,43 +56,43 @@ function mapDesktopMonitorSnapshot(
       cpuModel: snapshot.systemInfo?.cpuModel || "-",
       arch: snapshot.systemInfo?.arch || "-",
       loadAvg: snapshot.systemInfo?.loadAvg || "-",
-      uptimeSeconds: toNumber(snapshot.systemInfo?.uptimeSeconds),
-      cpuCores: toNumber(snapshot.systemInfo?.cpuCores) || toNumber(snapshot.cpu?.coreCount),
+      uptimeSeconds: toFiniteNumber(snapshot.systemInfo?.uptimeSeconds),
+      cpuCores: toFiniteNumber(snapshot.systemInfo?.cpuCores) || toFiniteNumber(snapshot.cpu?.coreCount),
     },
     cpu: {
       usagePercent: calculateCpuUsage(snapshot, previous),
-      coreCount: toNumber(snapshot.cpu?.coreCount) || toNumber(snapshot.systemInfo?.cpuCores),
+      coreCount: toFiniteNumber(snapshot.cpu?.coreCount) || toFiniteNumber(snapshot.systemInfo?.cpuCores),
     },
     memory: {
-      ramUsedBytes: toNumber(snapshot.memory?.ramUsedBytes),
-      ramTotalBytes: toNumber(snapshot.memory?.ramTotalBytes),
-      swapUsedBytes: toNumber(snapshot.memory?.swapUsedBytes),
-      swapTotalBytes: toNumber(snapshot.memory?.swapTotalBytes),
+      ramUsedBytes: toFiniteNumber(snapshot.memory?.ramUsedBytes),
+      ramTotalBytes: toFiniteNumber(snapshot.memory?.ramTotalBytes),
+      swapUsedBytes: toFiniteNumber(snapshot.memory?.swapUsedBytes),
+      swapTotalBytes: toFiniteNumber(snapshot.memory?.swapTotalBytes),
     },
     network: calculateNetworkRate(snapshot, previous),
     disks,
     diskTotalPercent: diskTotalBytes > 0 ? (diskUsedBytes / diskTotalBytes) * 100 : 0,
-    sshLatencyMs: toNumber(snapshot.sshLatencyMs),
+    sshLatencyMs: toFiniteNumber(snapshot.sshLatencyMs),
     timestamp,
     docker: {
-      containersRunning: toNumber(snapshot.docker?.containersRunning),
-      containersTotal: toNumber(snapshot.docker?.containersTotal),
+      containersRunning: toFiniteNumber(snapshot.docker?.containersRunning),
+      containersTotal: toFiniteNumber(snapshot.docker?.containersTotal),
       dockerInstalled: Boolean(snapshot.docker?.dockerInstalled),
     },
   }
 }
 
 function calculateCpuUsage(snapshot: DesktopMonitorSnapshot, previous?: DesktopMonitorSnapshot) {
-  const currentIdle = toNumber(snapshot.cpu?.idleTicks)
-  const currentTotal = toNumber(snapshot.cpu?.totalTicks)
+  const currentIdle = toFiniteNumber(snapshot.cpu?.idleTicks)
+  const currentTotal = toFiniteNumber(snapshot.cpu?.totalTicks)
   if (!previous) {
-    return clampPercent(toNumber(snapshot.cpu?.usagePercent))
+    return clampPercent(toFiniteNumber(snapshot.cpu?.usagePercent))
   }
 
-  const idleDelta = currentIdle - toNumber(previous.cpu?.idleTicks)
-  const totalDelta = currentTotal - toNumber(previous.cpu?.totalTicks)
+  const idleDelta = currentIdle - toFiniteNumber(previous.cpu?.idleTicks)
+  const totalDelta = currentTotal - toFiniteNumber(previous.cpu?.totalTicks)
   if (totalDelta <= 0 || idleDelta < 0) {
-    return clampPercent(toNumber(snapshot.cpu?.usagePercent))
+    return clampPercent(toFiniteNumber(snapshot.cpu?.usagePercent))
   }
 
   return clampPercent((1 - idleDelta / totalDelta) * 100)
@@ -106,8 +107,8 @@ function calculateNetworkRate(snapshot: DesktopMonitorSnapshot, previous?: Deskt
   }
 
   const elapsedSeconds = Math.max(1, getSnapshotElapsedSeconds(snapshot, previous))
-  const recvDelta = toNumber(snapshot.network?.bytesRecvTotal) - toNumber(previous.network?.bytesRecvTotal)
-  const sentDelta = toNumber(snapshot.network?.bytesSentTotal) - toNumber(previous.network?.bytesSentTotal)
+  const recvDelta = toFiniteNumber(snapshot.network?.bytesRecvTotal) - toFiniteNumber(previous.network?.bytesRecvTotal)
+  const sentDelta = toFiniteNumber(snapshot.network?.bytesSentTotal) - toFiniteNumber(previous.network?.bytesSentTotal)
 
   return {
     bytesRecvPerSec: Math.max(0, Math.round(recvDelta / elapsedSeconds)),
@@ -122,20 +123,10 @@ function getSnapshotElapsedSeconds(snapshot: DesktopMonitorSnapshot, previous: D
     const elapsedMs = currentCollectedAt - previousCollectedAt
     if (elapsedMs > 0) return elapsedMs / 1000
   }
-  return toNumber(snapshot.timestamp) - toNumber(previous.timestamp)
+  return toFiniteNumber(snapshot.timestamp) - toFiniteNumber(previous.timestamp)
 }
 
 function clampPercent(value: number) {
   if (!Number.isFinite(value)) return 0
   return Math.min(100, Math.max(0, value))
-}
-
-function toNumber(value: unknown) {
-  if (typeof value === "number") return Number.isFinite(value) ? value : 0
-  if (typeof value === "bigint") return Number(value)
-  if (typeof value === "string") {
-    const parsed = Number(value)
-    return Number.isFinite(parsed) ? parsed : 0
-  }
-  return 0
 }

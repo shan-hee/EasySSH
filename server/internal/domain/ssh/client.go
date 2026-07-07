@@ -11,6 +11,7 @@ import (
 
 	"github.com/easyssh/server/internal/domain/server"
 	"github.com/easyssh/server/internal/pkg/crypto"
+	"github.com/easyssh/shared/sshutil"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -137,7 +138,7 @@ func NewClient(srv *server.Server, encryptor *crypto.Encryptor, hostKeyCallback 
 				return nil, ErrCredentialRequired
 			}
 
-			signer, err := parsePrivateKey(privateKey, options.privateKeyPassphrase)
+			signer, err := sshutil.ParsePrivateKey(privateKey, options.privateKeyPassphrase)
 			if err != nil {
 				return nil, err
 			}
@@ -170,30 +171,6 @@ func NewClient(srv *server.Server, encryptor *crypto.Encryptor, hostKeyCallback 
 	}
 
 	return client, nil
-}
-
-func parsePrivateKey(privateKey, passphrase string) (ssh.Signer, error) {
-	keyBytes := []byte(privateKey)
-	signer, err := ssh.ParsePrivateKey(keyBytes)
-	if err == nil {
-		return signer, nil
-	}
-
-	var missingPassphrase *ssh.PassphraseMissingError
-	if !errors.As(err, &missingPassphrase) {
-		return nil, fmt.Errorf("failed to parse private key: %w", err)
-	}
-
-	if passphrase == "" {
-		return nil, fmt.Errorf("private_key_passphrase_required: %w", err)
-	}
-
-	signer, err = ssh.ParsePrivateKeyWithPassphrase(keyBytes, []byte(passphrase))
-	if err != nil {
-		return nil, fmt.Errorf("private_key_passphrase_invalid: %w", err)
-	}
-
-	return signer, nil
 }
 
 // Connect 连接到服务器

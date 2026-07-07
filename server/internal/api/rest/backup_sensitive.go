@@ -1,9 +1,6 @@
 package rest
 
 import (
-	"crypto/sha256"
-	"crypto/subtle"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -11,11 +8,10 @@ import (
 
 	"github.com/easyssh/server/internal/pkg/crypto"
 	"github.com/easyssh/shared/backupcrypto"
+	"github.com/easyssh/shared/backuputil"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
-
-const backupSensitivePayloadVersion = "2"
 
 type exportBackupOptions struct {
 	IncludeConfig    bool
@@ -31,15 +27,7 @@ type exportBackupPostRequest struct {
 	BackupPassword   string `json:"backup_password" form:"backup_password"`
 }
 
-type BackupSensitivePayload struct {
-	Version    string                 `json:"version"`
-	ExportTime string                 `json:"export_time"`
-	Contents   BackupContentSelection `json:"contents"`
-	BaseSHA256 string                 `json:"base_sha256"`
-	Config     *BackupDataSection     `json:"config,omitempty"`
-	Database   *BackupDataSection     `json:"database,omitempty"`
-	Warnings   []string               `json:"warnings,omitempty"`
-}
+type BackupSensitivePayload = backuputil.SensitivePayload
 
 type sensitiveTableSpec struct {
 	Table            string
@@ -129,13 +117,9 @@ func applyExportRequestOptions(options *exportBackupOptions, req exportBackupPos
 	options.BackupPassword = req.BackupPassword
 }
 
-func backupSensitiveAAD() []byte {
-	return []byte("easyssh:backup:sensitive:v2")
-}
-
 func (h *BackupHandler) exportSensitivePayload(includeConfig bool, includeDatabase bool, exportTime string, baseSHA256 string) (*BackupSensitivePayload, error) {
 	payload := &BackupSensitivePayload{
-		Version:    backupSensitivePayloadVersion,
+		Version:    backuputil.SensitivePayloadVersion,
 		ExportTime: exportTime,
 		BaseSHA256: baseSHA256,
 		Contents: BackupContentSelection{
@@ -256,53 +240,13 @@ func (h *BackupHandler) decryptSensitiveRows(spec sensitiveTableSpec, rows []map
 
 func (h *BackupHandler) decryptSensitivePayload(envelope *backupcrypto.BackupEncryptedPayload, password string) (*BackupSensitivePayload, error) {
 	var payload BackupSensitivePayload
-	if err := backupcrypto.DecryptBackupJSON(envelope, password, backupSensitiveAAD(), &payload); err != nil {
+	if err := backupcrypto.DecryptBackupJSON(envelope, password, backuputil.SensitiveAAD(), &payload); err != nil {
 		return nil, err
 	}
-	if strings.TrimSpace(payload.Version) != backupSensitivePayloadVersion {
+	if strings.TrimSpace(payload.Version) != backuputil.SensitivePayloadVersion {
 		return nil, fmt.Errorf("unsupported sensitive backup payload version: %s", payload.Version)
 	}
 	return &payload, nil
-}
-
-func backupBaseSHA256(backup *UnifiedBackup) (string, error) {
-	base := struct {
-		Format     string                 `json:"format"`
-		Version    string                 `json:"version"`
-		ExportTime string                 `json:"export_time"`
-		Contents   BackupContentSelection `json:"contents"`
-		Config     *BackupDataSection     `json:"config,omitempty"`
-		Database   *BackupDataSection     `json:"database,omitempty"`
-	}{
-		Format:     backup.Format,
-		Version:    backup.Version,
-		ExportTime: backup.ExportTime,
-		Contents:   backup.Contents,
-		Config:     backup.Config,
-		Database:   backup.Database,
-	}
-
-	data, err := json.Marshal(base)
-	if err != nil {
-		return "", fmt.Errorf("failed to serialize backup base digest: %w", err)
-	}
-	sum := sha256.Sum256(data)
-	return hex.EncodeToString(sum[:]), nil
-}
-
-func verifySensitiveBaseSHA256(backup *UnifiedBackup, payload *BackupSensitivePayload) error {
-	expected := strings.TrimSpace(payload.BaseSHA256)
-	if expected == "" {
-		return errors.New("sensitive backup base digest is missing")
-	}
-	actual, err := backupBaseSHA256(backup)
-	if err != nil {
-		return err
-	}
-	if subtle.ConstantTimeCompare([]byte(actual), []byte(expected)) != 1 {
-		return errors.New("backup base content does not match encrypted sensitive payload")
-	}
-	return nil
 }
 
 func mergeSensitivePayload(backup *UnifiedBackup, payload *BackupSensitivePayload, includeConfig bool, includeDatabase bool) error {

@@ -4,6 +4,7 @@ import {
   getCommandNameFromToken,
   isShellAssignmentToken,
   isShellOptionToken,
+  stripAnsi,
   stripOuterQuote,
   unescapeShellToken,
 } from "../utils"
@@ -239,12 +240,12 @@ export class PathProvider implements CompletionProvider {
       return null
     }
 
-    const withoutAnsi = promptText.replace(/\x1b\[[0-9;?]*[ -/]*[@-~]/g, "")
+    const withoutAnsi = stripAnsi(promptText)
     const promptWithoutMarker = withoutAnsi
       .replace(/[$#%>❯❮➜➤›]\s*$/, "")
       .trim()
-      .replace(/[\]\)]$/, "")
-    const cwdMatch = promptWithoutMarker.match(/(?:^|[\s:])(~(?:\/[^\s\])]*)?|\/[^\s\])]*)\s*$/)
+      .replace(/[\])]$/, "")
+    const cwdMatch = promptWithoutMarker.match(/(?:^|[\s:])(~(?:\/[^\s)\]]*)?|\/[^\s)\]]*)\s*$/)
     if (!cwdMatch) {
       return null
     }

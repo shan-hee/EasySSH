@@ -9,6 +9,7 @@ import type {
   WorkspaceDockerSystemInfo,
 } from "@easyssh/ssh-workspace/desktop"
 import { DesktopDockerService } from "../../bindings/github.com/easyssh/easyssh-desktop"
+import { toFiniteNumber } from "./desktop-adapter-utils"
 
 type DesktopDockerApi = NonNullable<SshWorkspaceApiClient["docker"]>
 type DesktopDockerContainerModel = Awaited<ReturnType<typeof DesktopDockerService.ListContainers>>["data"][number]
@@ -90,8 +91,8 @@ export function createDesktopDockerApi(): DesktopDockerApi {
         systemInfo: result.systemInfo ? mapSystemInfo(result.systemInfo) : null,
         dockerInstalled: Boolean(result.dockerInstalled),
         statsTruncated: Boolean(resourceMeta.statsTruncated),
-        statsLimit: toNumber(resourceMeta.statsLimit),
-        runningStatsTotal: toNumber(resourceMeta.runningStatsTotal),
+        statsLimit: toFiniteNumber(resourceMeta.statsLimit),
+        runningStatsTotal: toFiniteNumber(resourceMeta.runningStatsTotal),
         error: result.error,
       } satisfies WorkspaceDockerResourcesResponse
     },
@@ -115,7 +116,7 @@ function mapContainer(container: DesktopDockerContainerModel): WorkspaceDockerCo
     image: container.image || "",
     imageId: container.imageId || "",
     command: container.command || "",
-    created: toNumber(container.created),
+    created: toFiniteNumber(container.created),
     status: container.status || "",
     state: normalizeContainerState(container.state),
     ports: (container.ports || []).map(mapPort),
@@ -133,8 +134,8 @@ function mapContainer(container: DesktopDockerContainerModel): WorkspaceDockerCo
 function mapPort(port: DesktopDockerContainerModel["ports"][number]): WorkspaceDockerPort {
   return {
     ip: port.ip || undefined,
-    privatePort: toNumber(port.privatePort),
-    publicPort: port.publicPort ? toNumber(port.publicPort) : undefined,
+    privatePort: toFiniteNumber(port.privatePort),
+    publicPort: port.publicPort ? toFiniteNumber(port.publicPort) : undefined,
     type: port.type === "udp" ? "udp" : "tcp",
   }
 }
@@ -144,9 +145,9 @@ function mapImage(image: DesktopDockerImageModel): WorkspaceDockerImage {
     id: image.id || "",
     repository: image.repository || "",
     tag: image.tag || "",
-    created: toNumber(image.created),
-    size: toNumber(image.size),
-    virtualSize: toNumber(image.virtualSize),
+    created: toFiniteNumber(image.created),
+    size: toFiniteNumber(image.size),
+    virtualSize: toFiniteNumber(image.virtualSize),
   }
 }
 
@@ -154,30 +155,30 @@ function mapStats(stats: DesktopDockerStatsModel): WorkspaceDockerContainerStats
   return {
     containerId: stats.containerId || "",
     name: stats.name || "",
-    cpuPercent: toNumber(stats.cpuPercent),
-    memoryUsage: toNumber(stats.memoryUsage),
-    memoryLimit: toNumber(stats.memoryLimit),
-    memoryPercent: toNumber(stats.memoryPercent),
-    networkIn: toNumber(stats.networkIn),
-    networkOut: toNumber(stats.networkOut),
-    blockRead: toNumber(stats.blockRead),
-    blockWrite: toNumber(stats.blockWrite),
-    pids: toNumber(stats.pids),
+    cpuPercent: toFiniteNumber(stats.cpuPercent),
+    memoryUsage: toFiniteNumber(stats.memoryUsage),
+    memoryLimit: toFiniteNumber(stats.memoryLimit),
+    memoryPercent: toFiniteNumber(stats.memoryPercent),
+    networkIn: toFiniteNumber(stats.networkIn),
+    networkOut: toFiniteNumber(stats.networkOut),
+    blockRead: toFiniteNumber(stats.blockRead),
+    blockWrite: toFiniteNumber(stats.blockWrite),
+    pids: toFiniteNumber(stats.pids),
   }
 }
 
 function mapSystemInfo(info: DesktopDockerSystemInfoModel): WorkspaceDockerSystemInfo {
   return {
-    containersRunning: toNumber(info.containersRunning),
-    containersPaused: toNumber(info.containersPaused),
-    containersStopped: toNumber(info.containersStopped),
-    containersTotal: toNumber(info.containersTotal),
-    imagesCount: toNumber(info.imagesCount),
+    containersRunning: toFiniteNumber(info.containersRunning),
+    containersPaused: toFiniteNumber(info.containersPaused),
+    containersStopped: toFiniteNumber(info.containersStopped),
+    containersTotal: toFiniteNumber(info.containersTotal),
+    imagesCount: toFiniteNumber(info.imagesCount),
     dockerVersion: info.dockerVersion || info.serverVersion || "",
     serverVersion: info.serverVersion || info.dockerVersion || "",
     storageDriver: info.storageDriver || "",
-    totalMemory: toNumber(info.totalMemory),
-    cpus: toNumber(info.cpus),
+    totalMemory: toFiniteNumber(info.totalMemory),
+    cpus: toFiniteNumber(info.cpus),
   }
 }
 
@@ -194,14 +195,4 @@ function normalizeLabels(labels: Record<string, string | undefined> | null | und
     }
   })
   return result
-}
-
-function toNumber(value: unknown) {
-  if (typeof value === "number") return Number.isFinite(value) ? value : 0
-  if (typeof value === "bigint") return Number(value)
-  if (typeof value === "string") {
-    const parsed = Number(value)
-    return Number.isFinite(parsed) ? parsed : 0
-  }
-  return 0
 }

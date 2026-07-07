@@ -3,16 +3,17 @@ package aichat
 import (
 	"errors"
 	"fmt"
-	"strings"
+
+	"github.com/easyssh/shared/aipermission"
 )
 
 // PermissionMode 会话权限模式
 type PermissionMode string
 
 const (
-	PermissionModeReadOnly   PermissionMode = "readonly"
-	PermissionModeBalanced   PermissionMode = "balanced"
-	PermissionModePrivileged PermissionMode = "privileged"
+	PermissionModeReadOnly   PermissionMode = aipermission.ModeReadonly
+	PermissionModeBalanced   PermissionMode = aipermission.ModeBalanced
+	PermissionModePrivileged PermissionMode = aipermission.ModePrivileged
 )
 
 var (
@@ -35,16 +36,7 @@ func (e *ToolPermissionError) Is(target error) bool {
 
 // NormalizePermissionMode 规范化权限模式，默认 balanced
 func NormalizePermissionMode(raw string) PermissionMode {
-	switch strings.ToLower(strings.TrimSpace(raw)) {
-	case string(PermissionModeReadOnly):
-		return PermissionModeReadOnly
-	case string(PermissionModePrivileged):
-		return PermissionModePrivileged
-	case string(PermissionModeBalanced):
-		fallthrough
-	default:
-		return PermissionModeBalanced
-	}
+	return PermissionMode(aipermission.NormalizeMode(raw))
 }
 
 // IsToolAllowedInMode 判断指定权限模式是否允许执行工具

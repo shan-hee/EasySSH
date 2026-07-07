@@ -12,6 +12,8 @@ import (
 
 	"github.com/easyssh/server/internal/domain/aichat/provider"
 	"github.com/easyssh/server/internal/domain/aichat/registry"
+	"github.com/easyssh/shared/aichatui"
+	"github.com/easyssh/shared/aipermission"
 	"github.com/google/uuid"
 )
 
@@ -523,7 +525,7 @@ func (m *Manager) ConfirmTasks(ctx context.Context, userID uuid.UUID, sessionID 
 				Decision:  string(item.decision),
 				CreatedAt: now,
 			},
-			UIMessage: uiMessagePtrForTask(view),
+			UIMessage: aichatui.TaskMessagePtr(view),
 		})
 	}
 
@@ -951,7 +953,7 @@ func (m *Manager) materializeTasks(s *session, assistantMessageID string, toolCa
 					Status:    string(view.Status),
 					CreatedAt: time.Now(),
 				},
-				UIMessage: uiMessagePtrForTask(view),
+				UIMessage: aichatui.TaskMessagePtr(view),
 			})
 			continue
 		}
@@ -1070,7 +1072,7 @@ func (m *Manager) snapshotSessionLocked(s *session) SessionView {
 		UpdatedAt:        s.updatedAt,
 		Messages:         messages,
 		Tasks:            tasks,
-		UIMessages:       m.buildUIMessagesLocked(s),
+		UIMessages:       aichatui.BuildMessages(s.messageViews, tasks),
 		AvailableTools:   buildToolViews(m.visibleToolsForSessionLocked(s)),
 		DefaultTransport: TransportAISDKUI,
 	}
@@ -1083,125 +1085,8 @@ func (m *Manager) emitTaskEvent(s *session, eventType EventType, task TaskView) 
 		SessionID: s.id,
 		CreatedAt: time.Now(),
 		Task:      &task,
-		UIMessage: uiMessagePtrForTask(task),
+		UIMessage: aichatui.TaskMessagePtr(task),
 	})
-}
-
-func (m *Manager) buildUIMessagesLocked(s *session) []UIMessage {
-	items := make([]uiTimelineItem, 0, len(s.messageViews)+len(s.taskOrder))
-	sequence := 0
-	for _, message := range s.messageViews {
-		items = append(items, uiTimelineItem{
-			createdAt:  message.CreatedAt,
-			sequence:   sequence,
-			message:    message,
-			hasMessage: true,
-		})
-		sequence++
-	}
-	for _, taskID := range s.taskOrder {
-		if task, ok := s.tasks[taskID]; ok {
-			items = append(items, uiTimelineItem{
-				createdAt: task.view.CreatedAt,
-				sequence:  sequence,
-				task:      task.view,
-				hasTask:   true,
-			})
-			sequence++
-		}
-	}
-
-	sort.SliceStable(items, func(i, j int) bool {
-		if items[i].createdAt.Equal(items[j].createdAt) {
-			return items[i].sequence < items[j].sequence
-		}
-		return items[i].createdAt.Before(items[j].createdAt)
-	})
-
-	messages := make([]UIMessage, 0, len(items))
-	currentAssistantIndex := -1
-	currentStepSource := ""
-
-	for _, item := range items {
-		if item.hasMessage {
-			message := item.message
-			switch message.Role {
-			case "user", "system":
-				if uiMessage, ok := uiMessageForMessage(message, false); ok {
-					messages = append(messages, uiMessage)
-				}
-				currentAssistantIndex = -1
-				currentStepSource = ""
-			case "assistant":
-				parts := uiPartsForAssistant(message, false)
-				if len(parts) == 0 {
-					continue
-				}
-				currentAssistantIndex = ensureAssistantUIMessage(&messages, currentAssistantIndex, message.ID, message.CreatedAt)
-				appendStepStartIfNeeded(&messages[currentAssistantIndex], &currentStepSource, message.ID)
-				messages[currentAssistantIndex].Parts = append(messages[currentAssistantIndex].Parts, parts...)
-			}
-			continue
-		}
-
-		if item.hasTask {
-			task := item.task
-			messageID := coalesce(task.AssistantMessageID, "task:"+task.ID)
-			currentAssistantIndex = ensureAssistantUIMessage(&messages, currentAssistantIndex, messageID, task.CreatedAt)
-
-			stepSource := task.AssistantMessageID
-			if stepSource == "" {
-				stepSource = currentStepSource
-			}
-			if stepSource == "" {
-				stepSource = "task:" + task.ID
-			}
-			appendStepStartIfNeeded(&messages[currentAssistantIndex], &currentStepSource, stepSource)
-			messages[currentAssistantIndex].Parts = append(messages[currentAssistantIndex].Parts, uiToolPartForTask(task))
-		}
-	}
-
-	return messages
-}
-
-type uiTimelineItem struct {
-	createdAt  time.Time
-	sequence   int
-	message    MessageView
-	hasMessage bool
-	task       TaskView
-	hasTask    bool
-}
-
-func ensureAssistantUIMessage(messages *[]UIMessage, currentIndex int, messageID string, createdAt time.Time) int {
-	if currentIndex >= 0 {
-		return currentIndex
-	}
-	if strings.TrimSpace(messageID) == "" {
-		messageID = "assistant"
-	}
-	*messages = append(*messages, UIMessage{
-		ID:   messageID,
-		Role: "assistant",
-		Metadata: map[string]interface{}{
-			"source":       "message",
-			"createdAt":    createdAt,
-			"originalRole": "assistant",
-		},
-		Parts: []map[string]interface{}{},
-	})
-	return len(*messages) - 1
-}
-
-func appendStepStartIfNeeded(message *UIMessage, currentStepSource *string, sourceID string) {
-	if strings.TrimSpace(sourceID) == "" {
-		sourceID = "assistant"
-	}
-	if *currentStepSource == sourceID {
-		return
-	}
-	message.Parts = append(message.Parts, map[string]interface{}{"type": "step-start"})
-	*currentStepSource = sourceID
 }
 
 func (m *Manager) uiMessageForAssistantDelta(s *session, messageID string) *UIMessage {
@@ -1210,7 +1095,7 @@ func (m *Manager) uiMessageForAssistantDelta(s *session, messageID string) *UIMe
 
 	for _, message := range s.messageViews {
 		if message.ID == messageID {
-			uiMessage := uiMessageForAssistant(message, true)
+			uiMessage := aichatui.AssistantMessage(message, true)
 			return &uiMessage
 		}
 	}
@@ -1224,222 +1109,12 @@ func (m *Manager) uiMessageForAssistantMessage(s *session, messageID string) *UI
 
 	for _, message := range s.messageViews {
 		if message.ID == messageID {
-			uiMessage := uiMessageForAssistant(message, false)
+			uiMessage := aichatui.AssistantMessage(message, false)
 			return &uiMessage
 		}
 	}
 
 	return nil
-}
-
-func uiMessageForMessage(message MessageView, streaming bool) (UIMessage, bool) {
-	switch message.Role {
-	case "user":
-		return UIMessage{
-			ID:   message.ID,
-			Role: "user",
-			Metadata: map[string]interface{}{
-				"source":       "message",
-				"createdAt":    message.CreatedAt,
-				"originalRole": message.Role,
-			},
-			Parts: []map[string]interface{}{
-				{
-					"type":  "text",
-					"text":  message.Content,
-					"state": "done",
-				},
-			},
-		}, true
-	case "assistant":
-		return uiMessageForAssistant(message, streaming), true
-	case "system":
-		return UIMessage{
-			ID:   message.ID,
-			Role: "system",
-			Metadata: map[string]interface{}{
-				"source":       "message",
-				"createdAt":    message.CreatedAt,
-				"originalRole": message.Role,
-			},
-			Parts: []map[string]interface{}{
-				{
-					"type":  "text",
-					"text":  message.Content,
-					"state": "done",
-				},
-			},
-		}, true
-	default:
-		return UIMessage{}, false
-	}
-}
-
-func uiMessageForAssistant(message MessageView, streaming bool) UIMessage {
-	return UIMessage{
-		ID:   message.ID,
-		Role: "assistant",
-		Metadata: map[string]interface{}{
-			"source":       "message",
-			"createdAt":    message.CreatedAt,
-			"pending":      streaming,
-			"originalRole": message.Role,
-		},
-		Parts: uiPartsForAssistant(message, streaming),
-	}
-}
-
-func uiPartsForAssistant(message MessageView, streaming bool) []map[string]interface{} {
-	toolStatus, withoutToolStatus := extractLastTaggedContent(message.Content, "tool-status")
-	reasoning, text := extractLastTaggedContent(withoutToolStatus, "think")
-	state := "done"
-	if streaming {
-		state = "streaming"
-	}
-
-	parts := make([]map[string]interface{}, 0, 3)
-	if strings.TrimSpace(toolStatus) != "" {
-		parts = append(parts, map[string]interface{}{
-			"type": "data-tool-status",
-			"id":   message.ID + ":tool-status",
-			"data": map[string]interface{}{
-				"text": strings.TrimSpace(toolStatus),
-			},
-		})
-	}
-	if strings.TrimSpace(reasoning) != "" {
-		parts = append(parts, map[string]interface{}{
-			"type":  "reasoning",
-			"text":  strings.TrimSpace(reasoning),
-			"state": state,
-		})
-	}
-	if strings.TrimSpace(text) != "" {
-		parts = append(parts, map[string]interface{}{
-			"type":  "text",
-			"text":  strings.TrimSpace(text),
-			"state": state,
-		})
-	}
-
-	return parts
-}
-
-func uiMessageForTask(task TaskView) UIMessage {
-	return UIMessage{
-		ID:   "task:" + task.ID,
-		Role: "assistant",
-		Metadata: map[string]interface{}{
-			"source":               "task",
-			"createdAt":            task.CreatedAt,
-			"updatedAt":            task.UpdatedAt,
-			"taskId":               task.ID,
-			"taskStatus":           task.Status,
-			"dangerous":            task.Dangerous,
-			"requiresConfirmation": task.RequiresConfirmation,
-			"displayName":          task.ToolDisplayName,
-			"summary":              task.Summary,
-		},
-		Parts: []map[string]interface{}{uiToolPartForTask(task)},
-	}
-}
-
-func uiMessagePtrForTask(task TaskView) *UIMessage {
-	uiMessage := uiMessageForTask(task)
-	return &uiMessage
-}
-
-func uiToolPartForTask(task TaskView) map[string]interface{} {
-	part := map[string]interface{}{
-		"type":             "dynamic-tool",
-		"toolName":         task.ToolName,
-		"toolCallId":       coalesce(task.ToolCallID, task.ID),
-		"title":            coalesce(task.ToolDisplayName, task.ToolName),
-		"providerExecuted": false,
-		"input":            task.Arguments,
-		"toolMetadata": map[string]interface{}{
-			"taskId":               task.ID,
-			"assistantMessageId":   task.AssistantMessageID,
-			"taskStatus":           task.Status,
-			"dangerous":            task.Dangerous,
-			"requiresConfirmation": task.RequiresConfirmation,
-			"displayName":          task.ToolDisplayName,
-			"summary":              task.Summary,
-		},
-	}
-
-	switch task.Status {
-	case TaskStatusWaitingConfirm:
-		part["state"] = "approval-requested"
-		part["approval"] = map[string]interface{}{
-			"id": task.ID,
-		}
-	case TaskStatusSucceeded:
-		part["state"] = "output-available"
-		part["output"] = task.Result
-	case TaskStatusFailed:
-		part["state"] = "output-error"
-		part["errorText"] = coalesce(task.Error, "Tool execution failed")
-	case TaskStatusCancelled:
-		part["state"] = "output-denied"
-		part["approval"] = map[string]interface{}{
-			"id":       task.ID,
-			"approved": false,
-			"reason":   coalesce(task.Error, task.Result),
-		}
-	default:
-		part["state"] = "input-available"
-	}
-
-	if task.Arguments == nil {
-		part["input"] = map[string]interface{}{}
-	}
-
-	return part
-}
-
-func extractLastTaggedContent(content, tagName string) (string, string) {
-	openTag := "<" + tagName + ">"
-	closeTag := "</" + tagName + ">"
-	lower := strings.ToLower(content)
-	lowerOpen := strings.ToLower(openTag)
-	lowerClose := strings.ToLower(closeTag)
-
-	start := strings.LastIndex(lower, lowerOpen)
-	if start < 0 {
-		return "", content
-	}
-
-	valueStart := start + len(openTag)
-	endRelative := strings.Index(lower[valueStart:], lowerClose)
-	if endRelative < 0 {
-		return strings.TrimSpace(content[valueStart:]), strings.TrimSpace(content[:start])
-	}
-
-	end := valueStart + endRelative
-	value := content[valueStart:end]
-	remaining := strings.TrimSpace(content[:start] + content[end+len(closeTag):])
-	return strings.TrimSpace(value), remaining
-}
-
-func uiMessageCreatedAt(message UIMessage) time.Time {
-	if message.Metadata == nil {
-		return time.Time{}
-	}
-	value, ok := message.Metadata["createdAt"]
-	if !ok {
-		return time.Time{}
-	}
-	switch typed := value.(type) {
-	case time.Time:
-		return typed
-	case string:
-		parsed, err := time.Parse(time.RFC3339Nano, typed)
-		if err == nil {
-			return parsed
-		}
-	}
-	return time.Time{}
 }
 
 func (m *Manager) emitEvent(s *session, event Event) {
@@ -1738,14 +1413,7 @@ func buildToolViews(specs []registry.ToolSpec) []ToolView {
 }
 
 func normalizePermissionMode(raw string) string {
-	switch strings.ToLower(strings.TrimSpace(raw)) {
-	case "readonly":
-		return "readonly"
-	case "privileged":
-		return "privileged"
-	default:
-		return "balanced"
-	}
+	return aipermission.NormalizeMode(raw)
 }
 
 func requiresUserConfirmation(permissionMode string, spec registry.ToolSpec) bool {
@@ -1960,14 +1628,7 @@ func formatTerminalScope(scope SessionScope) string {
 }
 
 func permissionRule(mode string) string {
-	switch normalizePermissionMode(mode) {
-	case "readonly":
-		return "当前是只读分析模式：仅允许查询、读取、分析；如果用户要求写入、删除或状态变更，请明确说明限制并给出只读替代方案。"
-	case "privileged":
-		return "当前是全部权限模式：可直接使用当前会话可见的全部工具；危险操作无需等待二次确认，但需要在结果中说明风险与影响。"
-	default:
-		return "当前是标准权限模式：允许常规运维操作；危险动作会进入系统确认流程。"
-	}
+	return aipermission.Rule(mode)
 }
 
 func decodeArguments(raw json.RawMessage) map[string]interface{} {

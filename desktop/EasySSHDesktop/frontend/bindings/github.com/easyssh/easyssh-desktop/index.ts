@@ -68,8 +68,6 @@ export {
     DesktopDockerImageUpdateCheckResult,
     DesktopDockerImagesResult,
     DesktopDockerListContainersInput,
-    DesktopDockerMount,
-    DesktopDockerPort,
     DesktopDockerRemoveContainerInput,
     DesktopDockerResourcesResult,
     DesktopDockerServerInput,

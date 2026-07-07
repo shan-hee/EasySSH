@@ -1,101 +1,28 @@
 package rest
 
 import (
-	"bytes"
-	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
-	"strconv"
 	"strings"
-	"time"
 
 	"github.com/easyssh/server/internal/domain/monitor"
 	"github.com/easyssh/server/internal/domain/server"
 	sshDomain "github.com/easyssh/server/internal/domain/ssh"
 	"github.com/easyssh/server/internal/pkg/crypto"
+	"github.com/easyssh/shared/dockerutil"
+	"github.com/easyssh/shared/textencoding"
 	"github.com/gin-gonic/gin"
 	"golang.org/x/crypto/ssh"
-	"golang.org/x/text/encoding"
-	"golang.org/x/text/encoding/japanese"
-	"golang.org/x/text/encoding/korean"
-	"golang.org/x/text/encoding/simplifiedchinese"
-	"golang.org/x/text/encoding/traditionalchinese"
-	"golang.org/x/text/transform"
 )
 
-// DockerContainer Docker 容器信息
-type DockerContainer struct {
-	ID      string            `json:"id"`
-	Names   []string          `json:"names"`
-	Image   string            `json:"image"`
-	ImageID string            `json:"imageId"`
-	Command string            `json:"command"`
-	Created int64             `json:"created"`
-	Status  string            `json:"status"`
-	State   string            `json:"state"`
-	Ports   []DockerPort      `json:"ports"`
-	Labels  map[string]string `json:"labels"`
-	Mounts  []DockerMount     `json:"mounts"`
-}
+type DockerContainer = dockerutil.Container
+type DockerPort = dockerutil.Port
+type DockerMount = dockerutil.Mount
+type ContainerStats = dockerutil.ContainerStats
+type DockerImage = dockerutil.Image
+type DockerSystemInfo = dockerutil.SystemInfo
 
-// DockerPort 端口映射
-type DockerPort struct {
-	IP          string `json:"ip,omitempty"`
-	PrivatePort int    `json:"privatePort"`
-	PublicPort  int    `json:"publicPort,omitempty"`
-	Type        string `json:"type"`
-}
-
-// DockerMount 挂载点
-type DockerMount struct {
-	Type        string `json:"type"`
-	Source      string `json:"source"`
-	Destination string `json:"destination"`
-	Mode        string `json:"mode"`
-	RW          bool   `json:"rw"`
-}
-
-// ContainerStats 容器资源统计
-type ContainerStats struct {
-	ContainerID   string  `json:"containerId"`
-	Name          string  `json:"name"`
-	CPUPercent    float64 `json:"cpuPercent"`
-	MemoryUsage   int64   `json:"memoryUsage"`
-	MemoryLimit   int64   `json:"memoryLimit"`
-	MemoryPercent float64 `json:"memoryPercent"`
-	NetworkIn     int64   `json:"networkIn"`
-	NetworkOut    int64   `json:"networkOut"`
-	BlockRead     int64   `json:"blockRead"`
-	BlockWrite    int64   `json:"blockWrite"`
-	PIDs          int     `json:"pids"`
-}
-
-// DockerImage Docker 镜像
-type DockerImage struct {
-	ID          string `json:"id"`
-	Repository  string `json:"repository"`
-	Tag         string `json:"tag"`
-	Created     int64  `json:"created"`
-	Size        int64  `json:"size"`
-	VirtualSize int64  `json:"virtualSize"`
-}
-
-// DockerSystemInfo Docker 系统信息
-type DockerSystemInfo struct {
-	ContainersRunning int    `json:"containersRunning"`
-	ContainersPaused  int    `json:"containersPaused"`
-	ContainersStopped int    `json:"containersStopped"`
-	ContainersTotal   int    `json:"containersTotal"`
-	ImagesCount       int    `json:"imagesCount"`
-	DockerVersion     string `json:"dockerVersion"`
-	ServerVersion     string `json:"serverVersion"`
-	StorageDriver     string `json:"storageDriver"`
-	TotalMemory       int64  `json:"totalMemory"`
-	CPUs              int    `json:"cpus"`
-}
-
-const dockerResourceStatsLimit = 50
+const dockerResourceStatsLimit = dockerutil.DefaultResourceStatsLimit
 
 // DockerHandler Docker 处理器
 type DockerHandler struct {
@@ -164,110 +91,6 @@ func (h *DockerHandler) executeCommand(client *sshDomain.Client, cmd string) (st
 	return string(output), nil
 }
 
-func decoderForEncoding(name string) encoding.Encoding {
-	switch strings.ToLower(strings.TrimSpace(name)) {
-	case "gbk", "gb2312":
-		return simplifiedchinese.GBK
-	case "gb18030":
-		return simplifiedchinese.GB18030
-	case "big5":
-		return traditionalchinese.Big5
-	case "shift_jis", "shift-jis", "sjis":
-		return japanese.ShiftJIS
-	case "euc-jp":
-		return japanese.EUCJP
-	case "euc-kr":
-		return korean.EUCKR
-	default:
-		return nil
-	}
-}
-
-func decodeTextWithEncoding(content string, encodingName string) string {
-	decoder := decoderForEncoding(encodingName)
-	if decoder == nil {
-		return content
-	}
-
-	decoded, err := io.ReadAll(transform.NewReader(bytes.NewReader([]byte(content)), decoder.NewDecoder()))
-	if err != nil {
-		return content
-	}
-	return string(decoded)
-}
-
-func dockerShellQuote(value string) string {
-	return "'" + strings.ReplaceAll(value, "'", "'\"'\"'") + "'"
-}
-
-func validateDockerContainerRef(value string) bool {
-	value = strings.TrimSpace(value)
-	if value == "" || len(value) > 255 {
-		return false
-	}
-	if !isDockerRefStart(rune(value[0])) {
-		return false
-	}
-
-	for _, r := range value {
-		if (r >= 'a' && r <= 'z') ||
-			(r >= 'A' && r <= 'Z') ||
-			(r >= '0' && r <= '9') ||
-			r == '_' ||
-			r == '.' ||
-			r == '-' ||
-			r == ':' {
-			continue
-		}
-		return false
-	}
-	return true
-}
-
-func validateDockerImageRef(value string) bool {
-	value = strings.TrimSpace(value)
-	if value == "" || len(value) > 255 {
-		return false
-	}
-	if !isDockerRefStart(rune(value[0])) {
-		return false
-	}
-
-	for _, r := range value {
-		if (r >= 'a' && r <= 'z') ||
-			(r >= 'A' && r <= 'Z') ||
-			(r >= '0' && r <= '9') ||
-			r == '_' ||
-			r == '.' ||
-			r == '-' ||
-			r == ':' ||
-			r == '/' ||
-			r == '@' ||
-			r == '+' {
-			continue
-		}
-		return false
-	}
-	return true
-}
-
-func isDockerRefStart(r rune) bool {
-	return (r >= 'a' && r <= 'z') ||
-		(r >= 'A' && r <= 'Z') ||
-		(r >= '0' && r <= '9')
-}
-
-func parseDockerTail(value string) (int, error) {
-	tail, err := strconv.Atoi(strings.TrimSpace(value))
-	if err != nil {
-		return 0, fmt.Errorf("tail must be a number")
-	}
-	if tail < 1 || tail > 5000 {
-		return 0, fmt.Errorf("tail must be between 1 and 5000")
-	}
-	return tail, nil
-}
-
 // ListContainers 获取容器列表
 func (h *DockerHandler) ListContainers(c *gin.Context) {
 	serverID := c.Param("serverId")
@@ -327,125 +150,11 @@ func (h *DockerHandler) listContainersViaDockerSock(client *sshDomain.Client, al
 		return nil, false, nil
 	}
 
-	containers, err := h.parseContainersFromDockerSock(output)
+	containers, err := dockerutil.ParseContainersFromSock(output)
 	if err != nil {
 		return nil, true, err
 	}
 	return containers, true, nil
-}
-
-type dockerSockContainerSummary struct {
-	ID      string            `json:"Id"`
-	Names   []string          `json:"Names"`
-	Image   string            `json:"Image"`
-	ImageID string            `json:"ImageID"`
-	Command string            `json:"Command"`
-	Created int64             `json:"Created"`
-	State   string            `json:"State"`
-	Status  string            `json:"Status"`
-	Ports   []DockerPort      `json:"Ports"`
-	Labels  map[string]string `json:"Labels"`
-	Mounts  []dockerSockMount `json:"Mounts"`
-}
-
-type dockerSockMount struct {
-	Type        string `json:"Type"`
-	Source      string `json:"Source"`
-	Destination string `json:"Destination"`
-	Mode        string `json:"Mode"`
-	RW          bool   `json:"RW"`
-}
-
-func (h *DockerHandler) parseContainersFromDockerSock(data string) ([]DockerContainer, error) {
-	data = strings.TrimSpace(data)
-	if data == "" || data == "[]" {
-		return []DockerContainer{}, nil
-	}
-
-	var raw []dockerSockContainerSummary
-	if err := json.Unmarshal([]byte(data), &raw); err != nil {
-		return nil, err
-	}
-
-	containers := make([]DockerContainer, 0, len(raw))
-	for _, c := range raw {
-		names := make([]string, 0, len(c.Names))
-		for _, n := range c.Names {
-			n = strings.TrimSpace(strings.TrimPrefix(n, "/"))
-			if n != "" {
-				names = append(names, n)
-			}
-		}
-
-		mounts := make([]DockerMount, 0, len(c.Mounts))
-		for _, m := range c.Mounts {
-			mounts = append(mounts, DockerMount{
-				Type:        m.Type,
-				Source:      m.Source,
-				Destination: m.Destination,
-				Mode:        m.Mode,
-				RW:          m.RW,
-			})
-		}
-
-		labels := c.Labels
-		if labels == nil {
-			labels = make(map[string]string)
-		}
-
-		containers = append(containers, DockerContainer{
-			ID:      c.ID,
-			Names:   names,
-			Image:   c.Image,
-			ImageID: c.ImageID,
-			Command: c.Command,
-			Created: c.Created,
-			Status:  c.Status,
-			State:   strings.ToLower(c.State),
-			Ports:   c.Ports,
-			Labels:  labels,
-			Mounts:  mounts,
-		})
-	}
-
-	return containers, nil
-}
-
-type dockerPSMeta struct {
-	Status string
-	State  string
-	Names  []string
-}
-
-type dockerInspectPortBinding struct {
-	HostIP   string `json:"HostIp"`
-	HostPort string `json:"HostPort"`
-}
-
-type dockerInspectContainer struct {
-	ID      string   `json:"Id"`
-	Name    string   `json:"Name"`
-	Image   string   `json:"Image"`
-	Created string   `json:"Created"`
-	Path    string   `json:"Path"`
-	Args    []string `json:"Args"`
-	State   struct {
-		Status string `json:"Status"`
-	} `json:"State"`
-	Config struct {
-		Image  string            `json:"Image"`
-		Labels map[string]string `json:"Labels"`
-	} `json:"Config"`
-	NetworkSettings struct {
-		Ports map[string][]dockerInspectPortBinding `json:"Ports"`
-	} `json:"NetworkSettings"`
-	Mounts []struct {
-		Type        string `json:"Type"`
-		Source      string `json:"Source"`
-		Destination string `json:"Destination"`
-		Mode        string `json:"Mode"`
-		RW          bool   `json:"RW"`
-	} `json:"Mounts"`
 }
 
 func (h *DockerHandler) listContainersViaInspect(client *sshDomain.Client, all bool) ([]DockerContainer, error) {
@@ -459,7 +168,7 @@ func (h *DockerHandler) listContainersViaInspect(client *sshDomain.Client, all b
 	if err != nil {
 		return nil, err
 	}
-	meta := h.parseDockerPSMeta(metaOut)
+	meta := dockerutil.ParsePSMeta(metaOut)
 
 	idsCmd := fmt.Sprintf("docker ps %s -q", psFlag)
 	idsOut, err := h.executeCommand(client, idsCmd)
@@ -467,17 +176,17 @@ func (h *DockerHandler) listContainersViaInspect(client *sshDomain.Client, all b
 		return nil, err
 	}
 
-	ids := splitNonEmptyLines(idsOut)
+	ids := dockerutil.SplitNonEmptyLines(idsOut)
 	if len(ids) == 0 {
 		return []DockerContainer{}, nil
 	}
 
 	quotedIDs := make([]string, 0, len(ids))
 	for _, id := range ids {
-		if !validateDockerContainerRef(id) {
+		if !dockerutil.ValidateContainerRef(id) {
 			return nil, fmt.Errorf("invalid docker container reference from docker ps: %s", id)
 		}
-		quotedIDs = append(quotedIDs, dockerShellQuote(id))
+		quotedIDs = append(quotedIDs, dockerutil.ShellQuote(id))
 	}
 
 	inspectCmd := fmt.Sprintf("docker inspect %s", strings.Join(quotedIDs, " "))
@@ -486,175 +195,18 @@ func (h *DockerHandler) listContainersViaInspect(client *sshDomain.Client, all b
 		return nil, err
 	}
 
-	inspectOut = strings.TrimSpace(inspectOut)
-	var inspected []dockerInspectContainer
-	if err := json.Unmarshal([]byte(inspectOut), &inspected); err != nil {
-		return nil, err
-	}
-
-	containers := make([]DockerContainer, 0, len(inspected))
-	for _, ic := range inspected {
-		labels := ic.Config.Labels
-		if labels == nil {
-			labels = make(map[string]string)
-		}
-
-		names := []string{}
-		if m, ok := meta[ic.ID]; ok && len(m.Names) > 0 {
-			names = m.Names
-		} else if ic.Name != "" {
-			name := strings.TrimPrefix(strings.TrimSpace(ic.Name), "/")
-			if name != "" {
-				names = []string{name}
-			}
-		}
-
-		createdUnix := int64(0)
-		if ic.Created != "" {
-			if t, err := time.Parse(time.RFC3339Nano, ic.Created); err == nil {
-				createdUnix = t.Unix()
-			} else if t, err := time.Parse(time.RFC3339, ic.Created); err == nil {
-				createdUnix = t.Unix()
-			}
-		}
-
-		mounts := make([]DockerMount, 0, len(ic.Mounts))
-		for _, m := range ic.Mounts {
-			mounts = append(mounts, DockerMount{
-				Type:        m.Type,
-				Source:      m.Source,
-				Destination: m.Destination,
-				Mode:        m.Mode,
-				RW:          m.RW,
-			})
-		}
-
-		status := ""
-		state := strings.ToLower(ic.State.Status)
-		if m, ok := meta[ic.ID]; ok {
-			status = m.Status
-			if m.State != "" {
-				state = strings.ToLower(m.State)
-			}
-		}
-		if status == "" {
-			status = ic.State.Status
-		}
-
-		command := strings.TrimSpace(strings.Join(append([]string{ic.Path}, ic.Args...), " "))
-
-		containers = append(containers, DockerContainer{
-			ID:      ic.ID,
-			Names:   names,
-			Image:   ic.Config.Image,
-			ImageID: ic.Image,
-			Command: command,
-			Created: createdUnix,
-			Status:  status,
-			State:   state,
-			Ports:   parseInspectPorts(ic.NetworkSettings.Ports),
-			Labels:  labels,
-			Mounts:  mounts,
-		})
-	}
-
-	return containers, nil
-}
-
-func (h *DockerHandler) parseDockerPSMeta(output string) map[string]dockerPSMeta {
-	result := make(map[string]dockerPSMeta)
-	for _, line := range strings.Split(strings.TrimSpace(output), "\n") {
-		line = strings.TrimRight(line, "\r")
-		if strings.TrimSpace(line) == "" {
-			continue
-		}
-		parts := strings.SplitN(line, "\t", 4)
-		if len(parts) < 4 {
-			continue
-		}
-		id := strings.TrimSpace(parts[0])
-		if id == "" {
-			continue
-		}
-		names := []string{}
-		for _, n := range strings.Split(parts[3], ",") {
-			n = strings.TrimSpace(n)
-			if n != "" {
-				names = append(names, n)
-			}
-		}
-		result[id] = dockerPSMeta{
-			Status: strings.TrimSpace(parts[1]),
-			State:  strings.TrimSpace(parts[2]),
-			Names:  names,
-		}
-	}
-	return result
-}
-
-func splitNonEmptyLines(output string) []string {
-	lines := strings.Split(strings.TrimSpace(output), "\n")
-	out := make([]string, 0, len(lines))
-	for _, l := range lines {
-		l = strings.TrimSpace(strings.TrimRight(l, "\r"))
-		if l != "" {
-			out = append(out, l)
-		}
-	}
-	return out
-}
-
-func parseInspectPorts(ports map[string][]dockerInspectPortBinding) []DockerPort {
-	if len(ports) == 0 {
-		return []DockerPort{}
-	}
-
-	result := make([]DockerPort, 0)
-	for containerPortSpec, bindings := range ports {
-		spec := strings.TrimSpace(containerPortSpec)
-		if spec == "" {
-			continue
-		}
-		privateStr, proto := spec, "tcp"
-		if strings.Contains(spec, "/") {
-			parts := strings.SplitN(spec, "/", 2)
-			privateStr = parts[0]
-			if parts[1] != "" {
-				proto = parts[1]
-			}
-		}
-		privatePort, err := strconv.Atoi(privateStr)
-		if err != nil || privatePort <= 0 {
-			continue
-		}
-
-		if len(bindings) == 0 {
-			result = append(result, DockerPort{PrivatePort: privatePort, Type: proto})
-			continue
-		}
-
-		for _, b := range bindings {
-			publicPort, _ := strconv.Atoi(strings.TrimSpace(b.HostPort))
-			result = append(result, DockerPort{
-				IP:          strings.TrimSpace(b.HostIP),
-				PrivatePort: privatePort,
-				PublicPort:  publicPort,
-				Type:        proto,
-			})
-		}
-	}
-	return result
+	return dockerutil.ParseInspectContainers(inspectOut, meta)
 }
 
 // GetContainerLogs 获取容器日志
 func (h *DockerHandler) GetContainerLogs(c *gin.Context) {
 	serverID := c.Param("serverId")
 	containerID := strings.TrimSpace(c.Param("id"))
-	if !validateDockerContainerRef(containerID) {
+	if !dockerutil.ValidateContainerRef(containerID) {
 		RespondError(c, http.StatusBadRequest, "invalid_docker_reference", "Invalid container ID or name")
 		return
 	}
-	tail, err := parseDockerTail(c.DefaultQuery("tail", "100"))
+	tail, err := dockerutil.ParseTail(c.DefaultQuery("tail", "100"))
 	if err != nil {
 		RespondError(c, http.StatusBadRequest, "invalid_tail", err.Error())
 		return
@@ -668,7 +220,7 @@ func (h *DockerHandler) GetContainerLogs(c *gin.Context) {
 	}
 	defer h.releaseConnection(c, serverID)
 
-	cmd := fmt.Sprintf("docker logs --tail %d %s 2>&1", tail, dockerShellQuote(containerID))
+	cmd := fmt.Sprintf("docker logs --tail %d %s 2>&1", tail, dockerutil.ShellQuote(containerID))
 	output, err := h.executeCommand(pooledConn.Client, cmd)
 	if err != nil {
 		// Docker logs 可能返回错误码但仍有输出
@@ -677,7 +229,7 @@ func (h *DockerHandler) GetContainerLogs(c *gin.Context) {
 			return
 		}
 	}
-	output = decodeTextWithEncoding(output, encodingName)
+	output = textencoding.Decode(output, encodingName)
 
 	RespondSuccess(c, map[string]interface{}{
 		"data":         output,
@@ -691,7 +243,7 @@ func (h *DockerHandler) GetContainerLogs(c *gin.Context) {
 func (h *DockerHandler) StartContainer(c *gin.Context) {
 	serverID := c.Param("serverId")
 	containerID := strings.TrimSpace(c.Param("id"))
-	if !validateDockerContainerRef(containerID) {
+	if !dockerutil.ValidateContainerRef(containerID) {
 		RespondError(c, http.StatusBadRequest, "invalid_docker_reference", "Invalid container ID or name")
 		return
 	}
@@ -703,7 +255,7 @@ func (h *DockerHandler) StartContainer(c *gin.Context) {
 	}
 	defer h.releaseConnection(c, serverID)
 
-	cmd := fmt.Sprintf("docker start %s", dockerShellQuote(containerID))
+	cmd := fmt.Sprintf("docker start %s", dockerutil.ShellQuote(containerID))
 	_, err = h.executeCommand(pooledConn.Client, cmd)
 	if err != nil {
 		RespondError(c, http.StatusInternalServerError, "docker_error", err.Error())
@@ -717,7 +269,7 @@ func (h *DockerHandler) StartContainer(c *gin.Context) {
 func (h *DockerHandler) StopContainer(c *gin.Context) {
 	serverID := c.Param("serverId")
 	containerID := strings.TrimSpace(c.Param("id"))
-	if !validateDockerContainerRef(containerID) {
+	if !dockerutil.ValidateContainerRef(containerID) {
 		RespondError(c, http.StatusBadRequest, "invalid_docker_reference", "Invalid container ID or name")
 		return
 	}
@@ -729,7 +281,7 @@ func (h *DockerHandler) StopContainer(c *gin.Context) {
 	}
 	defer h.releaseConnection(c, serverID)
 
-	cmd := fmt.Sprintf("docker stop %s", dockerShellQuote(containerID))
+	cmd := fmt.Sprintf("docker stop %s", dockerutil.ShellQuote(containerID))
 	_, err = h.executeCommand(pooledConn.Client, cmd)
 	if err != nil {
 		RespondError(c, http.StatusInternalServerError, "docker_error", err.Error())
@@ -743,7 +295,7 @@ func (h *DockerHandler) StopContainer(c *gin.Context) {
 func (h *DockerHandler) RestartContainer(c *gin.Context) {
 	serverID := c.Param("serverId")
 	containerID := strings.TrimSpace(c.Param("id"))
-	if !validateDockerContainerRef(containerID) {
+	if !dockerutil.ValidateContainerRef(containerID) {
 		RespondError(c, http.StatusBadRequest, "invalid_docker_reference", "Invalid container ID or name")
 		return
 	}
@@ -755,7 +307,7 @@ func (h *DockerHandler) RestartContainer(c *gin.Context) {
 	}
 	defer h.releaseConnection(c, serverID)
 
-	cmd := fmt.Sprintf("docker restart %s", dockerShellQuote(containerID))
+	cmd := fmt.Sprintf("docker restart %s", dockerutil.ShellQuote(containerID))
 	_, err = h.executeCommand(pooledConn.Client, cmd)
 	if err != nil {
 		RespondError(c, http.StatusInternalServerError, "docker_error", err.Error())
@@ -769,7 +321,7 @@ func (h *DockerHandler) RestartContainer(c *gin.Context) {
 func (h *DockerHandler) PauseContainer(c *gin.Context) {
 	serverID := c.Param("serverId")
 	containerID := strings.TrimSpace(c.Param("id"))
-	if !validateDockerContainerRef(containerID) {
+	if !dockerutil.ValidateContainerRef(containerID) {
 		RespondError(c, http.StatusBadRequest, "invalid_docker_reference", "Invalid container ID or name")
 		return
 	}
@@ -781,7 +333,7 @@ func (h *DockerHandler) PauseContainer(c *gin.Context) {
 	}
 	defer h.releaseConnection(c, serverID)
 
-	cmd := fmt.Sprintf("docker pause %s", dockerShellQuote(containerID))
+	cmd := fmt.Sprintf("docker pause %s", dockerutil.ShellQuote(containerID))
 	_, err = h.executeCommand(pooledConn.Client, cmd)
 	if err != nil {
 		RespondError(c, http.StatusInternalServerError, "docker_error", err.Error())
@@ -795,7 +347,7 @@ func (h *DockerHandler) PauseContainer(c *gin.Context) {
 func (h *DockerHandler) UnpauseContainer(c *gin.Context) {
 	serverID := c.Param("serverId")
 	containerID := strings.TrimSpace(c.Param("id"))
-	if !validateDockerContainerRef(containerID) {
+	if !dockerutil.ValidateContainerRef(containerID) {
 		RespondError(c, http.StatusBadRequest, "invalid_docker_reference", "Invalid container ID or name")
 		return
 	}
@@ -807,7 +359,7 @@ func (h *DockerHandler) UnpauseContainer(c *gin.Context) {
 	}
 	defer h.releaseConnection(c, serverID)
 
-	cmd := fmt.Sprintf("docker unpause %s", dockerShellQuote(containerID))
+	cmd := fmt.Sprintf("docker unpause %s", dockerutil.ShellQuote(containerID))
 	_, err = h.executeCommand(pooledConn.Client, cmd)
 	if err != nil {
 		RespondError(c, http.StatusInternalServerError, "docker_error", err.Error())
@@ -821,7 +373,7 @@ func (h *DockerHandler) UnpauseContainer(c *gin.Context) {
 func (h *DockerHandler) RemoveContainer(c *gin.Context) {
 	serverID := c.Param("serverId")
 	containerID := strings.TrimSpace(c.Param("id"))
-	if !validateDockerContainerRef(containerID) {
+	if !dockerutil.ValidateContainerRef(containerID) {
 		RespondError(c, http.StatusBadRequest, "invalid_docker_reference", "Invalid container ID or name")
 		return
 	}
@@ -834,9 +386,9 @@ func (h *DockerHandler) RemoveContainer(c *gin.Context) {
 	}
 	defer h.releaseConnection(c, serverID)
 
-	cmd := fmt.Sprintf("docker rm %s", dockerShellQuote(containerID))
+	cmd := fmt.Sprintf("docker rm %s", dockerutil.ShellQuote(containerID))
 	if force {
-		cmd = fmt.Sprintf("docker rm -f %s", dockerShellQuote(containerID))
+		cmd = fmt.Sprintf("docker rm -f %s", dockerutil.ShellQuote(containerID))
 	}
 
 	_, err = h.executeCommand(pooledConn.Client, cmd)
@@ -866,7 +418,7 @@ func (h *DockerHandler) ListImages(c *gin.Context) {
 		return
 	}
 
-	images := h.parseImages(output)
+	images := dockerutil.ParseImages(output)
 	RespondSuccess(c, map[string]interface{}{
 		"data":  images,
 		"total": len(images),
@@ -891,7 +443,7 @@ func (h *DockerHandler) GetSystemInfo(c *gin.Context) {
 		return
 	}
 
-	info := h.parseSystemInfo(output)
+	info := dockerutil.ParseSystemInfo(output)
 	RespondSuccess(c, map[string]interface{}{
 		"data": info,
 	})
@@ -915,7 +467,7 @@ func (h *DockerHandler) GetStats(c *gin.Context) {
 		return
 	}
 
-	stats := h.parseStats(output)
+	stats := dockerutil.ParseStats(output)
 	RespondSuccess(c, map[string]interface{}{
 		"data": stats,
 	})
@@ -930,39 +482,6 @@ type DockerResourcesResponse struct {
 	StatsLimit        int               `json:"statsLimit"`
 	RunningStatsTotal int               `json:"runningStatsTotal"`
 	Error             string            `json:"error,omitempty"`
-}
-
-type dockerStatsMeta struct {
-	RunningTotal int `json:"RunningTotal"`
-	StatsLimit   int `json:"StatsLimit"`
-	StatsSampled int `json:"StatsSampled"`
-}
-
-func buildDockerResourcesScript(statsLimit int) string {
-	if statsLimit <= 0 {
-		statsLimit = dockerResourceStatsLimit
-	}
-	return strings.ReplaceAll(`
-_stats_limit=__EASYSSH_STATS_LIMIT__
-echo "=== INFO ==="
-docker info --format '{"Containers":{{.Containers}},"ContainersRunning":{{.ContainersRunning}},"ContainersPaused":{{.ContainersPaused}},"ContainersStopped":{{.ContainersStopped}},"Images":{{.Images}},"ServerVersion":"{{.ServerVersion}}","Driver":"{{.Driver}}","MemTotal":{{.MemTotal}},"NCPU":{{.NCPU}}}' 2>/dev/null || echo '{}'
-_stats_ids=$(docker ps -q --no-trunc 2>/dev/null || true)
-_stats_total=$(printf '%s\n' "$_stats_ids" | awk 'NF { n++ } END { print n + 0 }')
-_stats_sample=$(printf '%s\n' "$_stats_ids" | awk -v limit="$_stats_limit" 'NF && n < limit { print; n++ }')
-_stats_sampled=$(printf '%s\n' "$_stats_sample" | awk 'NF { n++ } END { print n + 0 }')
-echo "=== STATS_META ==="
-printf '{"RunningTotal":%s,"StatsLimit":%s,"StatsSampled":%s}\n' "${_stats_total:-0}" "$_stats_limit" "${_stats_sampled:-0}"
-echo "=== STATS ==="
-if [ -n "$_stats_sample" ]; then
-  docker stats --no-stream --format '{{json .}}' $_stats_sample 2>/dev/null || true
-fi
-`, "__EASYSSH_STATS_LIMIT__", strconv.Itoa(statsLimit))
-}
-
-func parseDockerStatsMeta(data string) dockerStatsMeta {
-	var meta dockerStatsMeta
-	_ = json.Unmarshal([]byte(strings.TrimSpace(data)), &meta)
-	return meta
 }
 
 // GetResources 获取资源页签数据（仅 stats + systemInfo）
@@ -987,14 +506,14 @@ func (h *DockerHandler) GetResources(c *gin.Context) {
 		return
 	}
 
-	output, err := h.executeCommand(pooledConn.Client, buildDockerResourcesScript(dockerResourceStatsLimit))
+	output, err := h.executeCommand(pooledConn.Client, dockerutil.BuildResourcesScript(dockerResourceStatsLimit))
 	if err != nil {
 		RespondError(c, http.StatusInternalServerError, "docker_error", err.Error())
 		return
 	}
 
 	// 解析输出
-	sections := h.parseSections(output)
+	sections := dockerutil.ParseSections(output)
 
 	response := DockerResourcesResponse{
 		DockerInstalled: true,
@@ -1003,7 +522,7 @@ func (h *DockerHandler) GetResources(c *gin.Context) {
 	}
 
 	if metaData, ok := sections["STATS_META"]; ok {
-		meta := parseDockerStatsMeta(metaData)
+		meta := dockerutil.ParseStatsMeta(metaData)
 		if meta.StatsLimit > 0 {
 			response.StatsLimit = meta.StatsLimit
 		}
@@ -1013,7 +532,7 @@ func (h *DockerHandler) GetResources(c *gin.Context) {
 
 	// 解析统计
 	if statsData, ok := sections["STATS"]; ok {
-		response.Stats = h.parseStats(statsData)
+		response.Stats = dockerutil.ParseStats(statsData)
 	}
 	if response.RunningStatsTotal == 0 {
 		response.RunningStatsTotal = len(response.Stats)
@@ -1021,376 +540,10 @@ func (h *DockerHandler) GetResources(c *gin.Context) {
 
 	// 解析系统信息
 	if infoData, ok := sections["INFO"]; ok {
-		response.SystemInfo = h.parseSystemInfo(infoData)
+		response.SystemInfo = dockerutil.ParseSystemInfo(infoData)
 	}
 
 	RespondSuccess(c, response)
-}
-
-// parseSections 解析脚本输出的各个部分
-func (h *DockerHandler) parseSections(output string) map[string]string {
-	sections := make(map[string]string)
-	lines := strings.Split(output, "\n")
-
-	var currentSection string
-	var sectionLines []string
-
-	for _, line := range lines {
-		if strings.HasPrefix(line, "=== ") && strings.HasSuffix(line, " ===") {
-			if currentSection != "" {
-				sections[currentSection] = strings.Join(sectionLines, "\n")
-			}
-			currentSection = strings.Trim(line, "= ")
-			sectionLines = []string{}
-		} else if currentSection != "" {
-			sectionLines = append(sectionLines, line)
-		}
-	}
-
-	if currentSection != "" {
-		sections[currentSection] = strings.Join(sectionLines, "\n")
-	}
-
-	return sections
-}
-
-// parseContainers 解析容器列表
-func (h *DockerHandler) parseContainers(data string) []DockerContainer {
-	containers := make([]DockerContainer, 0)
-	lines := strings.Split(strings.TrimSpace(data), "\n")
-
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
-		if line == "" || line == "[]" {
-			continue
-		}
-
-		// Docker ps --format '{{json .}}' 输出的 JSON 格式
-		var raw map[string]interface{}
-		if err := json.Unmarshal([]byte(line), &raw); err != nil {
-			continue
-		}
-
-		container := DockerContainer{
-			ID:      getString(raw, "ID"),
-			Image:   getString(raw, "Image"),
-			Command: getString(raw, "Command"),
-			Status:  getString(raw, "Status"),
-			State:   strings.ToLower(getString(raw, "State")),
-			Labels:  make(map[string]string),
-			Mounts:  make([]DockerMount, 0),
-		}
-
-		// 解析名称
-		names := getString(raw, "Names")
-		if names != "" {
-			container.Names = strings.Split(names, ",")
-		}
-
-		// 解析创建时间
-		createdAt := getString(raw, "CreatedAt")
-		if createdAt != "" {
-			if t, err := time.Parse("2006-01-02 15:04:05 -0700 MST", createdAt); err == nil {
-				container.Created = t.Unix()
-			}
-		}
-
-		// 解析端口
-		ports := getString(raw, "Ports")
-		if ports != "" {
-			container.Ports = h.parsePorts(ports)
-		}
-
-		// 解析标签
-		labels := getString(raw, "Labels")
-		if labels != "" {
-			for _, kv := range strings.Split(labels, ",") {
-				parts := strings.SplitN(kv, "=", 2)
-				if len(parts) == 2 {
-					container.Labels[parts[0]] = parts[1]
-				}
-			}
-		}
-
-		// 解析挂载点
-		mounts := getString(raw, "Mounts")
-		if mounts != "" {
-			for _, m := range strings.Split(mounts, ",") {
-				if m != "" {
-					container.Mounts = append(container.Mounts, DockerMount{
-						Source: m,
-					})
-				}
-			}
-		}
-
-		containers = append(containers, container)
-	}
-
-	return containers
-}
-
-// parsePorts 解析端口映射
-func (h *DockerHandler) parsePorts(ports string) []DockerPort {
-	result := make([]DockerPort, 0)
-
-	// 格式: "0.0.0.0:80->80/tcp, 443/tcp"
-	for _, p := range strings.Split(ports, ", ") {
-		p = strings.TrimSpace(p)
-		if p == "" {
-			continue
-		}
-
-		port := DockerPort{Type: "tcp"}
-
-		// 检查协议
-		if strings.HasSuffix(p, "/udp") {
-			port.Type = "udp"
-			p = strings.TrimSuffix(p, "/udp")
-		} else if strings.HasSuffix(p, "/tcp") {
-			p = strings.TrimSuffix(p, "/tcp")
-		}
-
-		// 解析映射
-		if strings.Contains(p, "->") {
-			parts := strings.Split(p, "->")
-			if len(parts) == 2 {
-				// 解析公共端口 (IP:port)
-				hostPart := parts[0]
-				if strings.Contains(hostPart, ":") {
-					hostParts := strings.Split(hostPart, ":")
-					if len(hostParts) == 2 {
-						port.IP = hostParts[0]
-						port.PublicPort, _ = strconv.Atoi(hostParts[1])
-					}
-				} else {
-					port.PublicPort, _ = strconv.Atoi(hostPart)
-				}
-				// 解析私有端口
-				port.PrivatePort, _ = strconv.Atoi(parts[1])
-			}
-		} else {
-			// 仅私有端口
-			port.PrivatePort, _ = strconv.Atoi(p)
-		}
-
-		if port.PrivatePort > 0 {
-			result = append(result, port)
-		}
-	}
-
-	return result
-}
-
-// parseStats 解析容器统计
-func (h *DockerHandler) parseStats(data string) []ContainerStats {
-	stats := make([]ContainerStats, 0)
-	lines := strings.Split(strings.TrimSpace(data), "\n")
-
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
-		if line == "" || line == "[]" {
-			continue
-		}
-
-		var raw map[string]interface{}
-		if err := json.Unmarshal([]byte(line), &raw); err != nil {
-			continue
-		}
-
-		stat := ContainerStats{
-			ContainerID: getString(raw, "ID"),
-			Name:        getString(raw, "Name"),
-		}
-
-		// 解析 CPU 使用率 (格式: "2.50%")
-		cpuStr := getString(raw, "CPUPerc")
-		stat.CPUPercent = parsePercent(cpuStr)
-
-		// 解析内存使用 (格式: "128MiB / 2GiB")
-		memStr := getString(raw, "MemUsage")
-		stat.MemoryUsage, stat.MemoryLimit = parseMemory(memStr)
-
-		// 解析内存百分比
-		memPercStr := getString(raw, "MemPerc")
-		stat.MemoryPercent = parsePercent(memPercStr)
-
-		// 解析网络 IO (格式: "1.5kB / 2.3kB")
-		netStr := getString(raw, "NetIO")
-		stat.NetworkIn, stat.NetworkOut = parseNetIO(netStr)
-
-		// 解析块 IO
-		blockStr := getString(raw, "BlockIO")
-		stat.BlockRead, stat.BlockWrite = parseNetIO(blockStr)
-
-		// 解析 PIDs
-		pidsStr := getString(raw, "PIDs")
-		stat.PIDs, _ = strconv.Atoi(pidsStr)
-
-		stats = append(stats, stat)
-	}
-
-	return stats
-}
-
-// parseImages 解析镜像列表
-func (h *DockerHandler) parseImages(data string) []DockerImage {
-	images := make([]DockerImage, 0)
-	lines := strings.Split(strings.TrimSpace(data), "\n")
-
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
-		if line == "" || line == "[]" {
-			continue
-		}
-
-		var raw map[string]interface{}
-		if err := json.Unmarshal([]byte(line), &raw); err != nil {
-			continue
-		}
-
-		image := DockerImage{
-			ID:         getString(raw, "ID"),
-			Repository: getString(raw, "Repository"),
-			Tag:        getString(raw, "Tag"),
-		}
-
-		// 解析创建时间
-		createdAt := getString(raw, "CreatedAt")
-		if createdAt != "" {
-			if t, err := time.Parse("2006-01-02 15:04:05 -0700 MST", createdAt); err == nil {
-				image.Created = t.Unix()
-			}
-		}
-
-		// 解析大小
-		sizeStr := getString(raw, "Size")
-		image.Size = parseSize(sizeStr)
-
-		images = append(images, image)
-	}
-
-	return images
-}
-
-// parseSystemInfo 解析系统信息
-func (h *DockerHandler) parseSystemInfo(data string) *DockerSystemInfo {
-	data = strings.TrimSpace(data)
-	if data == "" || data == "{}" {
-		return nil
-	}
-
-	var raw map[string]interface{}
-	if err := json.Unmarshal([]byte(data), &raw); err != nil {
-		return nil
-	}
-
-	info := &DockerSystemInfo{
-		ContainersRunning: getInt(raw, "ContainersRunning"),
-		ContainersPaused:  getInt(raw, "ContainersPaused"),
-		ContainersStopped: getInt(raw, "ContainersStopped"),
-		ContainersTotal:   getInt(raw, "Containers"),
-		ImagesCount:       getInt(raw, "Images"),
-		ServerVersion:     getString(raw, "ServerVersion"),
-		StorageDriver:     getString(raw, "Driver"),
-		TotalMemory:       getInt64(raw, "MemTotal"),
-		CPUs:              getInt(raw, "NCPU"),
-	}
-
-	return info
-}
-
-// 辅助函数
-func getString(m map[string]interface{}, key string) string {
-	if v, ok := m[key]; ok {
-		if s, ok := v.(string); ok {
-			return s
-		}
-	}
-	return ""
-}
-
-func getInt(m map[string]interface{}, key string) int {
-	if v, ok := m[key]; ok {
-		switch n := v.(type) {
-		case float64:
-			return int(n)
-		case int:
-			return n
-		}
-	}
-	return 0
-}
-
-func getInt64(m map[string]interface{}, key string) int64 {
-	if v, ok := m[key]; ok {
-		switch n := v.(type) {
-		case float64:
-			return int64(n)
-		case int64:
-			return n
-		case int:
-			return int64(n)
-		}
-	}
-	return 0
-}
-
-func parsePercent(s string) float64 {
-	s = strings.TrimSpace(s)
-	s = strings.TrimSuffix(s, "%")
-	v, _ := strconv.ParseFloat(s, 64)
-	return v
-}
-
-func parseMemory(s string) (int64, int64) {
-	// 格式: "128MiB / 2GiB"
-	parts := strings.Split(s, " / ")
-	if len(parts) != 2 {
-		return 0, 0
-	}
-	return parseSize(parts[0]), parseSize(parts[1])
-}
-
-func parseNetIO(s string) (int64, int64) {
-	// 格式: "1.5kB / 2.3kB"
-	parts := strings.Split(s, " / ")
-	if len(parts) != 2 {
-		return 0, 0
-	}
-	return parseSize(parts[0]), parseSize(parts[1])
-}
-
-func parseSize(s string) int64 {
-	s = strings.TrimSpace(s)
-	s = strings.ToUpper(s)
-
-	multiplier := int64(1)
-
-	if strings.HasSuffix(s, "B") {
-		s = strings.TrimSuffix(s, "B")
-	}
-	if strings.HasSuffix(s, "I") {
-		s = strings.TrimSuffix(s, "I")
-	}
-
-	switch {
-	case strings.HasSuffix(s, "K"):
-		multiplier = 1024
-		s = strings.TrimSuffix(s, "K")
-	case strings.HasSuffix(s, "M"):
-		multiplier = 1024 * 1024
-		s = strings.TrimSuffix(s, "M")
-	case strings.HasSuffix(s, "G"):
-		multiplier = 1024 * 1024 * 1024
-		s = strings.TrimSuffix(s, "G")
-	case strings.HasSuffix(s, "T"):
-		multiplier = 1024 * 1024 * 1024 * 1024
-		s = strings.TrimSuffix(s, "T")
-	}
-
-	v, _ := strconv.ParseFloat(s, 64)
-	return int64(v * float64(multiplier))
 }
 
 // ImageUpdateCheckResponse 镜像更新检查响应
@@ -1406,7 +559,7 @@ type ImageUpdateCheckResponse struct {
 func (h *DockerHandler) CheckContainerImageUpdate(c *gin.Context) {
 	serverID := c.Param("serverId")
 	containerID := strings.TrimSpace(c.Param("id"))
-	if !validateDockerContainerRef(containerID) {
+	if !dockerutil.ValidateContainerRef(containerID) {
 		RespondError(c, http.StatusBadRequest, "invalid_docker_reference", "Invalid container ID or name")
 		return
 	}
@@ -1419,7 +572,7 @@ func (h *DockerHandler) CheckContainerImageUpdate(c *gin.Context) {
 	defer h.releaseConnection(c, serverID)
 
 	// 获取容器信息
-	inspectCmd := fmt.Sprintf("docker inspect %s --format '{{.Name}}|{{.Config.Image}}'", dockerShellQuote(containerID))
+	inspectCmd := fmt.Sprintf("docker inspect %s --format '{{.Name}}|{{.Config.Image}}'", dockerutil.ShellQuote(containerID))
 	output, err := h.executeCommand(pooledConn.Client, inspectCmd)
 	if err != nil {
 		RespondError(c, http.StatusInternalServerError, "docker_error", "获取容器信息失败: "+err.Error())
@@ -1435,11 +588,11 @@ func (h *DockerHandler) CheckContainerImageUpdate(c *gin.Context) {
 
 	containerName := strings.TrimPrefix(parts[0], "/")
 	imageName := strings.TrimSpace(parts[1])
-	if !validateDockerImageRef(imageName) {
+	if !dockerutil.ValidateImageRef(imageName) {
 		RespondError(c, http.StatusInternalServerError, "docker_error", "镜像名称无效")
 		return
 	}
-	quotedImageName := dockerShellQuote(imageName)
+	quotedImageName := dockerutil.ShellQuote(imageName)
 
 	// 获取本地镜像 digest
 	localDigestCmd := fmt.Sprintf("docker image inspect %s --format '{{index .RepoDigests 0}}' 2>/dev/null || echo ''", quotedImageName)

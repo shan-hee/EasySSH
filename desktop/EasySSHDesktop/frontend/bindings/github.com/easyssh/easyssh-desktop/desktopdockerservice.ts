@@ -7,6 +7,10 @@ import { Call as $Call, CancellablePromise as $CancellablePromise, Create as $Cr
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import * as dockerutil$0 from "../shared/dockerutil/models.js";
+
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import * as $models from "./models.js";
 
 export function CheckImageUpdate(input: $models.DesktopDockerContainerInput): $CancellablePromise<$models.DesktopDockerImageUpdateCheckResult> {
@@ -84,9 +88,9 @@ export function UnpauseContainer(input: $models.DesktopDockerContainerInput): $C
 // Private type creation functions
 const $$createType0 = $models.DesktopDockerImageUpdateCheckResult.createFrom;
 const $$createType1 = $models.DesktopDockerContainerLogsResult.createFrom;
-const $$createType2 = $models.DesktopDockerContainerStats.createFrom;
+const $$createType2 = dockerutil$0.ContainerStats.createFrom;
 const $$createType3 = $Create.Array($$createType2);
 const $$createType4 = $models.DesktopDockerResourcesResult.createFrom;
-const $$createType5 = $models.DesktopDockerSystemInfo.createFrom;
+const $$createType5 = dockerutil$0.SystemInfo.createFrom;
 const $$createType6 = $models.DesktopDockerContainersResult.createFrom;
 const $$createType7 = $models.DesktopDockerImagesResult.createFrom;

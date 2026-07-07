@@ -1,6 +1,7 @@
 import { sftpApi } from "@/lib/api/sftp"
 import { getErrorMessage } from "@/lib/error-utils"
 import type { BatchDeleteResponse, FileInfo } from "@/lib/sftp-types"
+import { joinSftpRemotePath, sftpRemoteBaseName } from "@/lib/sftp-file-utils"
 
 export type TranslateFunction = (key: string, params?: Record<string, string | number>) => string
 export type SftpFileListUpdater<T> = (updater: T[] | ((files: T[]) => T[])) => void
@@ -36,12 +37,6 @@ export const upsertFileItem = <T extends { name: string }>(items: T[], item: T):
   return next
 }
 
-const joinRemotePath = (currentPath: string, name: string): string => (
-  currentPath.endsWith("/")
-    ? `${currentPath}${name}`
-    : `${currentPath}/${name}`
-)
-
 export interface DeleteOperationConfig<T extends { name: string }> {
   serverId: string
   currentPath: string
@@ -61,7 +56,7 @@ export async function performDelete<T extends { name: string }>({
   setFiles,
   api = sftpApi,
 }: DeleteOperationConfig<T>): Promise<void> {
-  const fullPath = joinRemotePath(currentPath, fileName)
+  const fullPath = joinSftpRemotePath(currentPath, fileName)
 
   const deletePromise = api.delete(serverId, fullPath).then(() => {
     setFiles((prev) => prev.filter((file) => file.name !== fileName))
@@ -97,7 +92,7 @@ export async function performCreateFolder<T extends { name: string }>({
   convertFileInfo,
   api = sftpApi,
 }: CreateFolderOperationConfig<T>): Promise<void> {
-  const fullPath = joinRemotePath(currentPath, name)
+  const fullPath = joinSftpRemotePath(currentPath, name)
 
   const createPromise = api.createDirectory(serverId, fullPath).then((info) => {
     const item = convertFileInfo(info)
@@ -134,7 +129,7 @@ export async function performCreateFile<T extends { name: string }>({
   convertFileInfo,
   api = sftpApi,
 }: CreateFileOperationConfig<T>): Promise<void> {
-  const fullPath = joinRemotePath(currentPath, name)
+  const fullPath = joinSftpRemotePath(currentPath, name)
 
   const createPromise = api.writeFile(serverId, fullPath, "").then((info) => {
     const item = convertFileInfo(info)
@@ -171,8 +166,8 @@ export async function performRename<T extends { name: string }>({
   setFiles,
   api = sftpApi,
 }: RenameOperationConfig<T>): Promise<void> {
-  const oldPath = joinRemotePath(currentPath, oldName)
-  const newPath = joinRemotePath(currentPath, newName)
+  const oldPath = joinSftpRemotePath(currentPath, oldName)
+  const newPath = joinSftpRemotePath(currentPath, newName)
 
   const renamePromise = api.rename(serverId, oldPath, newPath).then(() => {
     setFiles((prev) =>
@@ -216,7 +211,7 @@ export async function performSaveFile<T extends { name: string }>({
   convertFileInfo,
   api = sftpApi,
 }: SaveFileOperationConfig<T>): Promise<void> {
-  const fullPath = joinRemotePath(currentPath, fileName)
+  const fullPath = joinSftpRemotePath(currentPath, fileName)
 
   const savePromise = api.writeFile(serverId, fullPath, content).then((info) => {
     const updated = convertFileInfo(info)
@@ -257,13 +252,12 @@ export async function performBatchDelete<T extends { name: string }>({
   setFiles,
   api = sftpApi,
 }: BatchDeleteOperationConfig<T>): Promise<BatchDeleteResult> {
-  const fullPaths = fileNames.map((fileName) => joinRemotePath(currentPath, fileName))
+  const fullPaths = fileNames.map((fileName) => joinSftpRemotePath(currentPath, fileName))
 
   const batchDeletePromise = api.batchDelete(serverId, fullPaths).then((result) => {
     const successNames = new Set(
       result.success.map((path) => {
-        const parts = path.split("/")
-        return parts[parts.length - 1] || path
+        return sftpRemoteBaseName(path, path)
       }),
     )
 
@@ -271,8 +265,7 @@ export async function performBatchDelete<T extends { name: string }>({
 
     if (result.failed.length > 0) {
       const failedNames = result.failed.map((failure) => {
-        const parts = failure.path.split("/")
-        return parts[parts.length - 1] || failure.path
+        return sftpRemoteBaseName(failure.path, failure.path)
       }).join(", ")
 
       notifier.error?.(

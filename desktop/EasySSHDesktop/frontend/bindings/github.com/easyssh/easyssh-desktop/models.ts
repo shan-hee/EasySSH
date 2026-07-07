@@ -5,6 +5,13 @@
 // @ts-ignore: Unused imports
 import { Create as $Create } from "@wailsio/runtime";
 
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import * as aichatui$0 from "../shared/aichatui/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import * as dockerutil$0 from "../shared/dockerutil/models.js";
+
 export class DesktopAIConfigStatus {
     "configured": boolean;
     "provider"?: string;
@@ -326,7 +333,7 @@ export class DesktopAISessionView {
     "updated_at": string;
     "messages": DesktopAIMessageView[];
     "tasks": DesktopAITaskView[];
-    "ui_messages": { [_ in string]?: any }[];
+    "ui_messages": aichatui$0.UIMessage[];
     "available_tools": DesktopAIToolView[];
     "default_transport": string;
 
@@ -402,6 +409,7 @@ export type DesktopAITaskStatus = string;
 
 export class DesktopAITaskView {
     "id": string;
+    "assistant_message_id"?: string;
     "tool_call_id": string;
     "tool_name": string;
     "tool_display_name"?: string;
@@ -450,10 +458,10 @@ export class DesktopAITaskView {
      * Creates a new DesktopAITaskView instance from a string or object.
      */
     static createFrom($$source: any = {}): DesktopAITaskView {
-        const $$createField8_0 = $$createType10;
+        const $$createField9_0 = $$createType14;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("arguments" in $$parsedSource) {
-            $$parsedSource["arguments"] = $$createField8_0($$parsedSource["arguments"]);
+            $$parsedSource["arguments"] = $$createField9_0($$parsedSource["arguments"]);
         }
         return new DesktopAITaskView($$parsedSource as Partial<DesktopAITaskView>);
     }
@@ -585,7 +593,7 @@ export class DesktopActivityLogListResult {
      * Creates a new DesktopActivityLogListResult instance from a string or object.
      */
     static createFrom($$source: any = {}): DesktopActivityLogListResult {
-        const $$createField0_0 = $$createType15;
+        const $$createField0_0 = $$createType16;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("items" in $$parsedSource) {
             $$parsedSource["items"] = $$createField0_0($$parsedSource["items"]);
@@ -654,7 +662,7 @@ export class DesktopActivityLogStatistics {
      * Creates a new DesktopActivityLogStatistics instance from a string or object.
      */
     static createFrom($$source: any = {}): DesktopActivityLogStatistics {
-        const $$createField3_0 = $$createType16;
+        const $$createField3_0 = $$createType17;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("byAction" in $$parsedSource) {
             $$parsedSource["byAction"] = $$createField3_0($$parsedSource["byAction"]);
@@ -960,7 +968,7 @@ export class DesktopBatchTaskListResult {
      * Creates a new DesktopBatchTaskListResult instance from a string or object.
      */
     static createFrom($$source: any = {}): DesktopBatchTaskListResult {
-        const $$createField0_0 = $$createType18;
+        const $$createField0_0 = $$createType19;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("data" in $$parsedSource) {
             $$parsedSource["data"] = $$createField0_0($$parsedSource["data"]);
@@ -992,82 +1000,8 @@ export class DesktopBatchTaskStartResult {
 
 export type DesktopCapability = string;
 
-export class DesktopDockerContainer {
-    "id": string;
-    "names": string[];
-    "image": string;
-    "imageId": string;
-    "command": string;
-    "created": number;
-    "status": string;
-    "state": string;
-    "ports": DesktopDockerPort[];
-    "labels": { [_ in string]?: string };
-    "mounts": DesktopDockerMount[];
-
-    /** Creates a new DesktopDockerContainer instance. */
-    constructor($$source: Partial<DesktopDockerContainer> = {}) {
-        if (!("id" in $$source)) {
-            this["id"] = "";
-        }
-        if (!("names" in $$source)) {
-            this["names"] = [];
-        }
-        if (!("image" in $$source)) {
-            this["image"] = "";
-        }
-        if (!("imageId" in $$source)) {
-            this["imageId"] = "";
-        }
-        if (!("command" in $$source)) {
-            this["command"] = "";
-        }
-        if (!("created" in $$source)) {
-            this["created"] = 0;
-        }
-        if (!("status" in $$source)) {
-            this["status"] = "";
-        }
-        if (!("state" in $$source)) {
-            this["state"] = "";
-        }
-        if (!("ports" in $$source)) {
-            this["ports"] = [];
-        }
-        if (!("labels" in $$source)) {
-            this["labels"] = {};
-        }
-        if (!("mounts" in $$source)) {
-            this["mounts"] = [];
-        }
-
-        Object.assign(this, $$source);
-    }
-
-    /**
-     * Creates a new DesktopDockerContainer instance from a string or object.
-     */
-    static createFrom($$source: any = {}): DesktopDockerContainer {
-        const $$createField1_0 = $$createType0;
-        const $$createField8_0 = $$createType20;
-        const $$createField9_0 = $$createType21;
-        const $$createField10_0 = $$createType23;
-        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        if ("names" in $$parsedSource) {
-            $$parsedSource["names"] = $$createField1_0($$parsedSource["names"]);
-        }
-        if ("ports" in $$parsedSource) {
-            $$parsedSource["ports"] = $$createField8_0($$parsedSource["ports"]);
-        }
-        if ("labels" in $$parsedSource) {
-            $$parsedSource["labels"] = $$createField9_0($$parsedSource["labels"]);
-        }
-        if ("mounts" in $$parsedSource) {
-            $$parsedSource["mounts"] = $$createField10_0($$parsedSource["mounts"]);
-        }
-        return new DesktopDockerContainer($$parsedSource as Partial<DesktopDockerContainer>);
-    }
-}
+export const DesktopDockerContainer = dockerutil$0.Container;
+export type DesktopDockerContainer = dockerutil$0.Container;
 
 export class DesktopDockerContainerInput {
     "serverId": string;
@@ -1154,66 +1088,8 @@ export class DesktopDockerContainerLogsResult {
     }
 }
 
-export class DesktopDockerContainerStats {
-    "containerId": string;
-    "name": string;
-    "cpuPercent": number;
-    "memoryUsage": number;
-    "memoryLimit": number;
-    "memoryPercent": number;
-    "networkIn": number;
-    "networkOut": number;
-    "blockRead": number;
-    "blockWrite": number;
-    "pids": number;
-
-    /** Creates a new DesktopDockerContainerStats instance. */
-    constructor($$source: Partial<DesktopDockerContainerStats> = {}) {
-        if (!("containerId" in $$source)) {
-            this["containerId"] = "";
-        }
-        if (!("name" in $$source)) {
-            this["name"] = "";
-        }
-        if (!("cpuPercent" in $$source)) {
-            this["cpuPercent"] = 0;
-        }
-        if (!("memoryUsage" in $$source)) {
-            this["memoryUsage"] = 0;
-        }
-        if (!("memoryLimit" in $$source)) {
-            this["memoryLimit"] = 0;
-        }
-        if (!("memoryPercent" in $$source)) {
-            this["memoryPercent"] = 0;
-        }
-        if (!("networkIn" in $$source)) {
-            this["networkIn"] = 0;
-        }
-        if (!("networkOut" in $$source)) {
-            this["networkOut"] = 0;
-        }
-        if (!("blockRead" in $$source)) {
-            this["blockRead"] = 0;
-        }
-        if (!("blockWrite" in $$source)) {
-            this["blockWrite"] = 0;
-        }
-        if (!("pids" in $$source)) {
-            this["pids"] = 0;
-        }
-
-        Object.assign(this, $$source);
-    }
-
-    /**
-     * Creates a new DesktopDockerContainerStats instance from a string or object.
-     */
-    static createFrom($$source: any = {}): DesktopDockerContainerStats {
-        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        return new DesktopDockerContainerStats($$parsedSource as Partial<DesktopDockerContainerStats>);
-    }
-}
+export const DesktopDockerContainerStats = dockerutil$0.ContainerStats;
+export type DesktopDockerContainerStats = dockerutil$0.ContainerStats;
 
 export class DesktopDockerContainersResult {
     "data": DesktopDockerContainer[];
@@ -1235,7 +1111,7 @@ export class DesktopDockerContainersResult {
      * Creates a new DesktopDockerContainersResult instance from a string or object.
      */
     static createFrom($$source: any = {}): DesktopDockerContainersResult {
-        const $$createField0_0 = $$createType25;
+        const $$createField0_0 = $$createType21;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("data" in $$parsedSource) {
             $$parsedSource["data"] = $$createField0_0($$parsedSource["data"]);
@@ -1244,46 +1120,8 @@ export class DesktopDockerContainersResult {
     }
 }
 
-export class DesktopDockerImage {
-    "id": string;
-    "repository": string;
-    "tag": string;
-    "created": number;
-    "size": number;
-    "virtualSize": number;
-
-    /** Creates a new DesktopDockerImage instance. */
-    constructor($$source: Partial<DesktopDockerImage> = {}) {
-        if (!("id" in $$source)) {
-            this["id"] = "";
-        }
-        if (!("repository" in $$source)) {
-            this["repository"] = "";
-        }
-        if (!("tag" in $$source)) {
-            this["tag"] = "";
-        }
-        if (!("created" in $$source)) {
-            this["created"] = 0;
-        }
-        if (!("size" in $$source)) {
-            this["size"] = 0;
-        }
-        if (!("virtualSize" in $$source)) {
-            this["virtualSize"] = 0;
-        }
-
-        Object.assign(this, $$source);
-    }
-
-    /**
-     * Creates a new DesktopDockerImage instance from a string or object.
-     */
-    static createFrom($$source: any = {}): DesktopDockerImage {
-        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        return new DesktopDockerImage($$parsedSource as Partial<DesktopDockerImage>);
-    }
-}
+export const DesktopDockerImage = dockerutil$0.Image;
+export type DesktopDockerImage = dockerutil$0.Image;
 
 export class DesktopDockerImageUpdateCheckResult {
     "hasUpdate": boolean;
@@ -1339,7 +1177,7 @@ export class DesktopDockerImagesResult {
      * Creates a new DesktopDockerImagesResult instance from a string or object.
      */
     static createFrom($$source: any = {}): DesktopDockerImagesResult {
-        const $$createField0_0 = $$createType27;
+        const $$createField0_0 = $$createType23;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("data" in $$parsedSource) {
             $$parsedSource["data"] = $$createField0_0($$parsedSource["data"]);
@@ -1367,70 +1205,6 @@ export class DesktopDockerListContainersInput {
     static createFrom($$source: any = {}): DesktopDockerListContainersInput {
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         return new DesktopDockerListContainersInput($$parsedSource as Partial<DesktopDockerListContainersInput>);
-    }
-}
-
-export class DesktopDockerMount {
-    "type": string;
-    "source": string;
-    "destination": string;
-    "mode": string;
-    "rw": boolean;
-
-    /** Creates a new DesktopDockerMount instance. */
-    constructor($$source: Partial<DesktopDockerMount> = {}) {
-        if (!("type" in $$source)) {
-            this["type"] = "";
-        }
-        if (!("source" in $$source)) {
-            this["source"] = "";
-        }
-        if (!("destination" in $$source)) {
-            this["destination"] = "";
-        }
-        if (!("mode" in $$source)) {
-            this["mode"] = "";
-        }
-        if (!("rw" in $$source)) {
-            this["rw"] = false;
-        }
-
-        Object.assign(this, $$source);
-    }
-
-    /**
-     * Creates a new DesktopDockerMount instance from a string or object.
-     */
-    static createFrom($$source: any = {}): DesktopDockerMount {
-        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        return new DesktopDockerMount($$parsedSource as Partial<DesktopDockerMount>);
-    }
-}
-
-export class DesktopDockerPort {
-    "ip"?: string;
-    "privatePort": number;
-    "publicPort"?: number;
-    "type": string;
-
-    /** Creates a new DesktopDockerPort instance. */
-    constructor($$source: Partial<DesktopDockerPort> = {}) {
-        if (!("privatePort" in $$source)) {
-            this["privatePort"] = 0;
-        }
-        if (!("type" in $$source)) {
-            this["type"] = "";
-        }
-
-        Object.assign(this, $$source);
-    }
-
-    /**
-     * Creates a new DesktopDockerPort instance from a string or object.
-     */
-    static createFrom($$source: any = {}): DesktopDockerPort {
-        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        return new DesktopDockerPort($$parsedSource as Partial<DesktopDockerPort>);
     }
 }
 
@@ -1497,8 +1271,8 @@ export class DesktopDockerResourcesResult {
      * Creates a new DesktopDockerResourcesResult instance from a string or object.
      */
     static createFrom($$source: any = {}): DesktopDockerResourcesResult {
-        const $$createField0_0 = $$createType29;
-        const $$createField1_0 = $$createType31;
+        const $$createField0_0 = $$createType25;
+        const $$createField1_0 = $$createType27;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("stats" in $$parsedSource) {
             $$parsedSource["stats"] = $$createField0_0($$parsedSource["stats"]);
@@ -1531,62 +1305,8 @@ export class DesktopDockerServerInput {
     }
 }
 
-export class DesktopDockerSystemInfo {
-    "containersRunning": number;
-    "containersPaused": number;
-    "containersStopped": number;
-    "containersTotal": number;
-    "imagesCount": number;
-    "dockerVersion": string;
-    "serverVersion": string;
-    "storageDriver": string;
-    "totalMemory": number;
-    "cpus": number;
-
-    /** Creates a new DesktopDockerSystemInfo instance. */
-    constructor($$source: Partial<DesktopDockerSystemInfo> = {}) {
-        if (!("containersRunning" in $$source)) {
-            this["containersRunning"] = 0;
-        }
-        if (!("containersPaused" in $$source)) {
-            this["containersPaused"] = 0;
-        }
-        if (!("containersStopped" in $$source)) {
-            this["containersStopped"] = 0;
-        }
-        if (!("containersTotal" in $$source)) {
-            this["containersTotal"] = 0;
-        }
-        if (!("imagesCount" in $$source)) {
-            this["imagesCount"] = 0;
-        }
-        if (!("dockerVersion" in $$source)) {
-            this["dockerVersion"] = "";
-        }
-        if (!("serverVersion" in $$source)) {
-            this["serverVersion"] = "";
-        }
-        if (!("storageDriver" in $$source)) {
-            this["storageDriver"] = "";
-        }
-        if (!("totalMemory" in $$source)) {
-            this["totalMemory"] = 0;
-        }
-        if (!("cpus" in $$source)) {
-            this["cpus"] = 0;
-        }
-
-        Object.assign(this, $$source);
-    }
-
-    /**
-     * Creates a new DesktopDockerSystemInfo instance from a string or object.
-     */
-    static createFrom($$source: any = {}): DesktopDockerSystemInfo {
-        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        return new DesktopDockerSystemInfo($$parsedSource as Partial<DesktopDockerSystemInfo>);
-    }
-}
+export const DesktopDockerSystemInfo = dockerutil$0.SystemInfo;
+export type DesktopDockerSystemInfo = dockerutil$0.SystemInfo;
 
 export class DesktopGatewayInfo {
     "httpBaseUrl": string;
@@ -1836,12 +1556,12 @@ export class DesktopMonitorSnapshot {
      * Creates a new DesktopMonitorSnapshot instance from a string or object.
      */
     static createFrom($$source: any = {}): DesktopMonitorSnapshot {
-        const $$createField0_0 = $$createType32;
-        const $$createField1_0 = $$createType33;
-        const $$createField2_0 = $$createType34;
-        const $$createField3_0 = $$createType35;
-        const $$createField4_0 = $$createType37;
-        const $$createField5_0 = $$createType38;
+        const $$createField0_0 = $$createType28;
+        const $$createField1_0 = $$createType29;
+        const $$createField2_0 = $$createType30;
+        const $$createField3_0 = $$createType31;
+        const $$createField4_0 = $$createType33;
+        const $$createField5_0 = $$createType34;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("systemInfo" in $$parsedSource) {
             $$parsedSource["systemInfo"] = $$createField0_0($$parsedSource["systemInfo"]);
@@ -1952,8 +1672,8 @@ export class DesktopRuntimeInfo {
      * Creates a new DesktopRuntimeInfo instance from a string or object.
      */
     static createFrom($$source: any = {}): DesktopRuntimeInfo {
-        const $$createField5_0 = $$createType39;
-        const $$createField6_0 = $$createType40;
+        const $$createField5_0 = $$createType35;
+        const $$createField6_0 = $$createType36;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("gateway" in $$parsedSource) {
             $$parsedSource["gateway"] = $$createField5_0($$parsedSource["gateway"]);
@@ -2049,7 +1769,7 @@ export class DesktopSFTPBatchDeleteResult {
      */
     static createFrom($$source: any = {}): DesktopSFTPBatchDeleteResult {
         const $$createField0_0 = $$createType0;
-        const $$createField1_0 = $$createType42;
+        const $$createField1_0 = $$createType38;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("success" in $$parsedSource) {
             $$parsedSource["success"] = $$createField0_0($$parsedSource["success"]);
@@ -2182,8 +1902,8 @@ export class DesktopSFTPDirectTransferInput {
      * Creates a new DesktopSFTPDirectTransferInput instance from a string or object.
      */
     static createFrom($$source: any = {}): DesktopSFTPDirectTransferInput {
-        const $$createField4_0 = $$createType44;
-        const $$createField5_0 = $$createType44;
+        const $$createField4_0 = $$createType40;
+        const $$createField5_0 = $$createType40;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("sourceCredential" in $$parsedSource) {
             $$parsedSource["sourceCredential"] = $$createField4_0($$parsedSource["sourceCredential"]);
@@ -2245,7 +1965,7 @@ export class DesktopSFTPDirectoryListResult {
      * Creates a new DesktopSFTPDirectoryListResult instance from a string or object.
      */
     static createFrom($$source: any = {}): DesktopSFTPDirectoryListResult {
-        const $$createField1_0 = $$createType46;
+        const $$createField1_0 = $$createType42;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("files" in $$parsedSource) {
             $$parsedSource["files"] = $$createField1_0($$parsedSource["files"]);
@@ -2433,7 +2153,7 @@ export class DesktopSFTPUploadTaskListResult {
      * Creates a new DesktopSFTPUploadTaskListResult instance from a string or object.
      */
     static createFrom($$source: any = {}): DesktopSFTPUploadTaskListResult {
-        const $$createField0_0 = $$createType48;
+        const $$createField0_0 = $$createType44;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("tasks" in $$parsedSource) {
             $$parsedSource["tasks"] = $$createField0_0($$parsedSource["tasks"]);
@@ -2750,7 +2470,7 @@ export class DesktopScriptListResult {
      * Creates a new DesktopScriptListResult instance from a string or object.
      */
     static createFrom($$source: any = {}): DesktopScriptListResult {
-        const $$createField0_0 = $$createType50;
+        const $$createField0_0 = $$createType46;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("data" in $$parsedSource) {
             $$parsedSource["data"] = $$createField0_0($$parsedSource["data"]);
@@ -3007,7 +2727,7 @@ export class DesktopServerListResult {
      * Creates a new DesktopServerListResult instance from a string or object.
      */
     static createFrom($$source: any = {}): DesktopServerListResult {
-        const $$createField0_0 = $$createType52;
+        const $$createField0_0 = $$createType48;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("data" in $$parsedSource) {
             $$parsedSource["data"] = $$createField0_0($$parsedSource["data"]);
@@ -3251,7 +2971,7 @@ export class DesktopUpdateCheckResult {
      * Creates a new DesktopUpdateCheckResult instance from a string or object.
      */
     static createFrom($$source: any = {}): DesktopUpdateCheckResult {
-        const $$createField7_0 = $$createType54;
+        const $$createField7_0 = $$createType50;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("artifact" in $$parsedSource) {
             $$parsedSource["artifact"] = $$createField7_0($$parsedSource["artifact"]);
@@ -3370,48 +3090,44 @@ const $$createType6 = DesktopAIMessageView.createFrom;
 const $$createType7 = $Create.Array($$createType6);
 const $$createType8 = DesktopAITaskView.createFrom;
 const $$createType9 = $Create.Array($$createType8);
-const $$createType10 = $Create.Map($Create.Any, $Create.Any);
+const $$createType10 = aichatui$0.UIMessage.createFrom;
 const $$createType11 = $Create.Array($$createType10);
 const $$createType12 = DesktopAIToolView.createFrom;
 const $$createType13 = $Create.Array($$createType12);
-const $$createType14 = DesktopActivityLogItem.createFrom;
-const $$createType15 = $Create.Array($$createType14);
-const $$createType16 = $Create.Map($Create.Any, $Create.Any);
-const $$createType17 = DesktopBatchTask.createFrom;
-const $$createType18 = $Create.Array($$createType17);
-const $$createType19 = DesktopDockerPort.createFrom;
-const $$createType20 = $Create.Array($$createType19);
-const $$createType21 = $Create.Map($Create.Any, $Create.Any);
-const $$createType22 = DesktopDockerMount.createFrom;
+const $$createType14 = $Create.Map($Create.Any, $Create.Any);
+const $$createType15 = DesktopActivityLogItem.createFrom;
+const $$createType16 = $Create.Array($$createType15);
+const $$createType17 = $Create.Map($Create.Any, $Create.Any);
+const $$createType18 = DesktopBatchTask.createFrom;
+const $$createType19 = $Create.Array($$createType18);
+const $$createType20 = dockerutil$0.Container.createFrom;
+const $$createType21 = $Create.Array($$createType20);
+const $$createType22 = dockerutil$0.Image.createFrom;
 const $$createType23 = $Create.Array($$createType22);
-const $$createType24 = DesktopDockerContainer.createFrom;
+const $$createType24 = dockerutil$0.ContainerStats.createFrom;
 const $$createType25 = $Create.Array($$createType24);
-const $$createType26 = DesktopDockerImage.createFrom;
-const $$createType27 = $Create.Array($$createType26);
-const $$createType28 = DesktopDockerContainerStats.createFrom;
-const $$createType29 = $Create.Array($$createType28);
-const $$createType30 = DesktopDockerSystemInfo.createFrom;
-const $$createType31 = $Create.Nullable($$createType30);
-const $$createType32 = DesktopMonitorSystemInfo.createFrom;
-const $$createType33 = DesktopMonitorCPUInfo.createFrom;
-const $$createType34 = DesktopMonitorMemoryInfo.createFrom;
-const $$createType35 = DesktopMonitorNetworkInfo.createFrom;
-const $$createType36 = DesktopMonitorDiskInfo.createFrom;
-const $$createType37 = $Create.Array($$createType36);
-const $$createType38 = DesktopMonitorDockerInfo.createFrom;
-const $$createType39 = DesktopGatewayInfo.createFrom;
-const $$createType40 = $Create.Map($Create.Any, $Create.Any);
-const $$createType41 = DesktopSFTPBatchOperationError.createFrom;
+const $$createType26 = dockerutil$0.SystemInfo.createFrom;
+const $$createType27 = $Create.Nullable($$createType26);
+const $$createType28 = DesktopMonitorSystemInfo.createFrom;
+const $$createType29 = DesktopMonitorCPUInfo.createFrom;
+const $$createType30 = DesktopMonitorMemoryInfo.createFrom;
+const $$createType31 = DesktopMonitorNetworkInfo.createFrom;
+const $$createType32 = DesktopMonitorDiskInfo.createFrom;
+const $$createType33 = $Create.Array($$createType32);
+const $$createType34 = DesktopMonitorDockerInfo.createFrom;
+const $$createType35 = DesktopGatewayInfo.createFrom;
+const $$createType36 = $Create.Map($Create.Any, $Create.Any);
+const $$createType37 = DesktopSFTPBatchOperationError.createFrom;
+const $$createType38 = $Create.Array($$createType37);
+const $$createType39 = DesktopSSHCredential.createFrom;
+const $$createType40 = $Create.Nullable($$createType39);
+const $$createType41 = DesktopSFTPFileInfo.createFrom;
 const $$createType42 = $Create.Array($$createType41);
-const $$createType43 = DesktopSSHCredential.createFrom;
-const $$createType44 = $Create.Nullable($$createType43);
-const $$createType45 = DesktopSFTPFileInfo.createFrom;
+const $$createType43 = DesktopSFTPUploadTaskStatus.createFrom;
+const $$createType44 = $Create.Array($$createType43);
+const $$createType45 = DesktopScript.createFrom;
 const $$createType46 = $Create.Array($$createType45);
-const $$createType47 = DesktopSFTPUploadTaskStatus.createFrom;
+const $$createType47 = DesktopServer.createFrom;
 const $$createType48 = $Create.Array($$createType47);
-const $$createType49 = DesktopScript.createFrom;
-const $$createType50 = $Create.Array($$createType49);
-const $$createType51 = DesktopServer.createFrom;
-const $$createType52 = $Create.Array($$createType51);
-const $$createType53 = DesktopUpdateAsset.createFrom;
-const $$createType54 = $Create.Nullable($$createType53);
+const $$createType49 = DesktopUpdateAsset.createFrom;
+const $$createType50 = $Create.Nullable($$createType49);

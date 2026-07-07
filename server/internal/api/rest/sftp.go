@@ -23,14 +23,15 @@ import (
 	"github.com/easyssh/server/internal/domain/sftp"
 	sshDomain "github.com/easyssh/server/internal/domain/ssh"
 	"github.com/easyssh/server/internal/pkg/crypto"
+	"github.com/easyssh/shared/sftputil"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"golang.org/x/crypto/ssh"
 )
 
 const (
-	maxTextReadBytes  = 5 << 20 // 5MB
-	maxTextWriteBytes = 5 << 20 // 5MB
+	maxTextReadBytes  = sftputil.MaxTextFileBytes
+	maxTextWriteBytes = sftputil.MaxTextFileBytes
 )
 
 type ctxReader struct {

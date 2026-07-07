@@ -630,6 +630,7 @@ export function useTerminalCompletionController({
     completionTrigger,
     completionUpdateSenderRef,
     effectiveCompletionEnabled,
+    getPathCompletionCwd,
     invalidateCompletionRequest,
     isTerminalReadyRef,
     sendInputRef,

@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"crypto/rand"
 	"database/sql"
@@ -9,14 +8,16 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
-	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/easyssh/shared/aichatui"
+	sharedaiconfig "github.com/easyssh/shared/aiconfig"
+	"github.com/easyssh/shared/aipermission"
+	"github.com/easyssh/shared/aiprovider"
 	"github.com/wailsapp/wails/v3/pkg/application"
 	_ "modernc.org/sqlite"
 )
@@ -24,9 +25,9 @@ import (
 type DesktopAIPermissionMode string
 
 const (
-	DesktopAIPermissionReadonly   DesktopAIPermissionMode = "readonly"
-	DesktopAIPermissionBalanced   DesktopAIPermissionMode = "balanced"
-	DesktopAIPermissionPrivileged DesktopAIPermissionMode = "privileged"
+	DesktopAIPermissionReadonly   DesktopAIPermissionMode = aipermission.ModeReadonly
+	DesktopAIPermissionBalanced   DesktopAIPermissionMode = aipermission.ModeBalanced
+	DesktopAIPermissionPrivileged DesktopAIPermissionMode = aipermission.ModePrivileged
 )
 
 type DesktopAISessionStatus string
@@ -92,6 +93,7 @@ type DesktopAIMessageView struct {
 
 type DesktopAITaskView struct {
 	ID                   string              `json:"id"`
+	AssistantMessageID   string              `json:"assistant_message_id,omitempty"`
 	ToolCallID           string              `json:"tool_call_id"`
 	ToolName             string              `json:"tool_name"`
 	ToolDisplayName      string              `json:"tool_display_name,omitempty"`
@@ -117,7 +119,7 @@ type DesktopAISessionView struct {
 	UpdatedAt        string                  `json:"updated_at"`
 	Messages         []DesktopAIMessageView  `json:"messages"`
 	Tasks            []DesktopAITaskView     `json:"tasks"`
-	UIMessages       []map[string]any        `json:"ui_messages"`
+	UIMessages       []aichatui.UIMessage    `json:"ui_messages"`
 	AvailableTools   []DesktopAIToolView     `json:"available_tools"`
 	DefaultTransport string                  `json:"default_transport"`
 }
@@ -189,7 +191,6 @@ type desktopAISessionRecord struct {
 	Status         DesktopAISessionStatus
 	Messages       []DesktopAIMessageView
 	Tasks          []DesktopAITaskView
-	UIMessages     []map[string]any
 	CreatedAt      string
 	UpdatedAt      string
 }
@@ -247,11 +248,11 @@ func (s *DesktopAIService) GetAIConfig() (DesktopAIConfigStatus, error) {
 		return DesktopAIConfigStatus{}, err
 	}
 
-	models := splitDesktopAIModels(config.CustomModels)
+	models := sharedaiconfig.ParseModels(config.CustomModels)
 	configured := config.CustomEnabled && strings.TrimSpace(config.CustomAPIKey) != "" && len(models) > 0
 	status := DesktopAIConfigStatus{
 		Configured: configured,
-		Provider:   normalizeDesktopAIProvider(config.CustomProvider),
+		Provider:   sharedaiconfig.NormalizeProvider(config.CustomProvider),
 		Models:     models,
 		HasKey:     strings.TrimSpace(config.CustomAPIKey) != "",
 	}
@@ -273,7 +274,7 @@ func (s *DesktopAIService) GetUserAIConfig() (DesktopUserAIConfig, error) {
 	return DesktopUserAIConfig{
 		UseSystemConfig: false,
 		CustomEnabled:   config.CustomEnabled,
-		CustomProvider:  normalizeDesktopAIProvider(config.CustomProvider),
+		CustomProvider:  sharedaiconfig.NormalizeProvider(config.CustomProvider),
 		CustomEndpoint:  config.CustomEndpoint,
 		CustomModels:    config.CustomModels,
 		HasAPIKey:       strings.TrimSpace(config.CustomAPIKey) != "",
@@ -291,7 +292,7 @@ func (s *DesktopAIService) SaveUserAIConfig(input DesktopSaveUserAIConfigRequest
 		return err
 	}
 
-	provider := normalizeDesktopAIProvider(input.CustomProvider)
+	provider := sharedaiconfig.NormalizeProvider(input.CustomProvider)
 	apiKey := strings.TrimSpace(input.CustomAPIKey)
 	if apiKey == "" {
 		apiKey = current.CustomAPIKey
@@ -425,7 +426,7 @@ func (s *DesktopAIService) CreateSession(input DesktopAICreateSessionInput) (Des
 
 	model := strings.TrimSpace(input.Model)
 	if model == "" {
-		models := splitDesktopAIModels(config.CustomModels)
+		models := sharedaiconfig.ParseModels(config.CustomModels)
 		if len(models) > 0 {
 			model = models[0]
 		}
@@ -446,7 +447,6 @@ func (s *DesktopAIService) CreateSession(input DesktopAICreateSessionInput) (Des
 		Status:         DesktopAISessionIdle,
 		Messages:       []DesktopAIMessageView{},
 		Tasks:          []DesktopAITaskView{},
-		UIMessages:     []map[string]any{},
 		CreatedAt:      now,
 		UpdatedAt:      now,
 	}
@@ -487,7 +487,7 @@ func (s *DesktopAIService) SendMessage(ctx context.Context, input DesktopAISendM
 		model = record.Model
 	}
 	if model == "" {
-		models := splitDesktopAIModels(config.CustomModels)
+		models := sharedaiconfig.ParseModels(config.CustomModels)
 		if len(models) > 0 {
 			model = models[0]
 		}
@@ -518,7 +518,6 @@ func (s *DesktopAIService) SendMessage(ctx context.Context, input DesktopAISendM
 		CreatedAt: now,
 	}
 	record.Messages = append(record.Messages, userMessage)
-	record.UIMessages = append(record.UIMessages, desktopAIUIMessage(userMessage.ID, "user", content, now))
 	if record.Title == "" {
 		record.Title = makeDesktopAITitle(content)
 	}
@@ -553,7 +552,6 @@ func (s *DesktopAIService) SendMessage(ctx context.Context, input DesktopAISendM
 		CreatedAt: completedAt,
 	}
 	record.Messages = append(record.Messages, assistantMessage)
-	record.UIMessages = append(record.UIMessages, desktopAIUIMessage(assistantMessage.ID, "assistant", assistantMessage.Content, completedAt))
 	record.Status = DesktopAISessionIdle
 	record.UpdatedAt = completedAt
 	if err := s.saveSession(record); err != nil {
@@ -680,7 +678,7 @@ func (s *DesktopAIService) loadConfig() (desktopAIConfigRecord, error) {
 	}
 	record.UseSystemConfig = useSystemConfig == 1
 	record.CustomEnabled = customEnabled == 1
-	record.CustomProvider = normalizeDesktopAIProvider(record.CustomProvider)
+	record.CustomProvider = sharedaiconfig.NormalizeProvider(record.CustomProvider)
 	return record, nil
 }
 
@@ -695,9 +693,9 @@ func (s *DesktopAIService) loadSession(id string) (desktopAISessionRecord, error
 
 	var record desktopAISessionRecord
 	var customTitle int
-	var permissionMode, status, scopeJSON, messagesJSON, tasksJSON, uiMessagesJSON string
+	var permissionMode, status, scopeJSON, messagesJSON, tasksJSON string
 	err = database.QueryRow(`
-		SELECT id, title, custom_title, model, permission_mode, scope_json, status, messages_json, tasks_json, ui_messages_json, created_at, updated_at
+		SELECT id, title, custom_title, model, permission_mode, scope_json, status, messages_json, tasks_json, created_at, updated_at
 		FROM desktop_ai_sessions
 		WHERE id = ?`, id).Scan(
 		&record.ID,
@@ -709,7 +707,6 @@ func (s *DesktopAIService) loadSession(id string) (desktopAISessionRecord, error
 		&status,
 		&messagesJSON,
 		&tasksJSON,
-		&uiMessagesJSON,
 		&record.CreatedAt,
 		&record.UpdatedAt,
 	)
@@ -725,7 +722,6 @@ func (s *DesktopAIService) loadSession(id string) (desktopAISessionRecord, error
 	}
 	record.Messages = decodeDesktopAIMessages(messagesJSON)
 	record.Tasks = decodeDesktopAITasks(tasksJSON)
-	record.UIMessages = decodeDesktopAIUIMessages(uiMessagesJSON)
 	return record, nil
 }
 
@@ -737,7 +733,7 @@ func (s *DesktopAIService) saveSession(record desktopAISessionRecord) error {
 	scopeJSON := mustDesktopAIJSON(record.Scope)
 	messagesJSON := mustDesktopAIJSON(record.Messages)
 	tasksJSON := mustDesktopAIJSON(record.Tasks)
-	uiMessagesJSON := mustDesktopAIJSON(record.UIMessages)
+	uiMessagesJSON := mustDesktopAIJSON(desktopAIUIMessages(record.Messages, record.Tasks))
 	_, err = database.Exec(`
 		INSERT INTO desktop_ai_sessions
 			(id, title, custom_title, model, permission_mode, scope_json, status, messages_json, tasks_json, ui_messages_json, created_at, updated_at)
@@ -827,152 +823,53 @@ func (s *DesktopAIService) activeDesktopAISessionStatus(sessionID string, status
 }
 
 func (s *DesktopAIService) completeChat(ctx context.Context, config desktopAIConfigRecord, messages []DesktopAIMessageView, contextText string, model string, permission DesktopAIPermissionMode) (string, error) {
-	provider := normalizeDesktopAIProvider(config.CustomProvider)
-	switch provider {
-	case "anthropic":
-		return s.completeAnthropic(ctx, config, messages, contextText, model, permission)
-	default:
-		return s.completeOpenAICompatible(ctx, config, messages, contextText, model, permission)
-	}
-}
-
-func (s *DesktopAIService) completeOpenAICompatible(ctx context.Context, config desktopAIConfigRecord, messages []DesktopAIMessageView, contextText string, model string, permission DesktopAIPermissionMode) (string, error) {
-	endpoint := normalizeDesktopOpenAIBaseURL(config.CustomProvider, config.CustomEndpoint)
-	if endpoint == "" {
-		if normalizeDesktopAIProvider(config.CustomProvider) == "gemini" {
-			endpoint = "https://generativelanguage.googleapis.com/v1beta/openai"
-		} else {
-			endpoint = "https://api.openai.com/v1"
-		}
-	}
-	url := strings.TrimSuffix(endpoint, "/") + "/chat/completions"
-
-	payloadMessages := []map[string]string{{
-		"role":    "system",
-		"content": desktopAISystemPrompt(permission),
-	}}
-	for _, message := range messages {
-		if message.Role != "user" && message.Role != "assistant" {
-			continue
-		}
-		content := message.Content
-		if message.ID == messages[len(messages)-1].ID && message.Role == "user" && strings.TrimSpace(contextText) != "" {
-			content = content + "\n\n" + strings.TrimSpace(contextText)
-		}
-		payloadMessages = append(payloadMessages, map[string]string{
-			"role":    message.Role,
-			"content": content,
-		})
-	}
-
-	payload := map[string]any{
-		"model":    model,
-		"messages": payloadMessages,
-	}
-	body, _ := json.Marshal(payload)
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
+	factory := aiprovider.NewFactory()
+	result, err := factory.StreamTurn(ctx, aiprovider.Config{
+		Provider: config.CustomProvider,
+		APIKey:   strings.TrimSpace(config.CustomAPIKey),
+		Endpoint: strings.TrimSpace(config.CustomEndpoint),
+		Model:    model,
+	}, aiprovider.TurnRequest{
+		Model:    model,
+		Messages: desktopAIProviderMessages(messages, contextText, permission),
+	}, func(aiprovider.Event) error {
+		return nil
+	})
 	if err != nil {
 		return "", err
 	}
-	req.Header.Set("Authorization", "Bearer "+strings.TrimSpace(config.CustomAPIKey))
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Accept", "application/json")
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return "", err
-	}
-	defer resp.Body.Close()
-	raw, _ := io.ReadAll(io.LimitReader(resp.Body, 4*1024*1024))
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return "", fmt.Errorf("AI provider returned %s: %s", resp.Status, strings.TrimSpace(string(raw)))
-	}
-
-	var decoded struct {
-		Choices []struct {
-			Message struct {
-				Content string `json:"content"`
-			} `json:"message"`
-		} `json:"choices"`
-	}
-	if err := json.Unmarshal(raw, &decoded); err != nil {
-		return "", err
-	}
-	if len(decoded.Choices) == 0 {
-		return "", errors.New("AI provider returned no choices")
-	}
-	return decoded.Choices[0].Message.Content, nil
-}
-
-func (s *DesktopAIService) completeAnthropic(ctx context.Context, config desktopAIConfigRecord, messages []DesktopAIMessageView, contextText string, model string, permission DesktopAIPermissionMode) (string, error) {
-	endpoint := strings.TrimSpace(strings.TrimSuffix(config.CustomEndpoint, "/"))
-	if endpoint == "" {
-		endpoint = "https://api.anthropic.com/v1"
-	}
-	url := endpoint
-	if !strings.HasSuffix(strings.ToLower(url), "/messages") {
-		url += "/messages"
-	}
-
-	payloadMessages := make([]map[string]string, 0, len(messages))
-	for _, message := range messages {
-		if message.Role != "user" && message.Role != "assistant" {
-			continue
-		}
-		content := message.Content
-		if message.ID == messages[len(messages)-1].ID && message.Role == "user" && strings.TrimSpace(contextText) != "" {
-			content = content + "\n\n" + strings.TrimSpace(contextText)
-		}
-		payloadMessages = append(payloadMessages, map[string]string{
-			"role":    message.Role,
-			"content": content,
-		})
-	}
-	payload := map[string]any{
-		"model":      model,
-		"max_tokens": 4096,
-		"system":     desktopAISystemPrompt(permission),
-		"messages":   payloadMessages,
-	}
-	body, _ := json.Marshal(payload)
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
-	if err != nil {
-		return "", err
-	}
-	req.Header.Set("x-api-key", strings.TrimSpace(config.CustomAPIKey))
-	req.Header.Set("anthropic-version", "2023-06-01")
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Accept", "application/json")
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return "", err
-	}
-	defer resp.Body.Close()
-	raw, _ := io.ReadAll(io.LimitReader(resp.Body, 4*1024*1024))
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return "", fmt.Errorf("AI provider returned %s: %s", resp.Status, strings.TrimSpace(string(raw)))
-	}
-
-	var decoded struct {
-		Content []struct {
-			Type string `json:"type"`
-			Text string `json:"text"`
-		} `json:"content"`
-	}
-	if err := json.Unmarshal(raw, &decoded); err != nil {
-		return "", err
-	}
-	var builder strings.Builder
-	for _, part := range decoded.Content {
-		if part.Type == "text" {
-			builder.WriteString(part.Text)
-		}
-	}
-	if strings.TrimSpace(builder.String()) == "" {
+	if strings.TrimSpace(result.Content) == "" {
 		return "", errors.New("AI provider returned no text")
 	}
-	return builder.String(), nil
+	return result.Content, nil
+}
+
+func desktopAIProviderMessages(messages []DesktopAIMessageView, contextText string, permission DesktopAIPermissionMode) []aiprovider.Message {
+	result := []aiprovider.Message{{
+		Role:    "system",
+		Content: desktopAISystemPrompt(permission),
+	}}
+	lastMessageID := ""
+	if len(messages) > 0 {
+		lastMessageID = messages[len(messages)-1].ID
+	}
+	contextText = strings.TrimSpace(contextText)
+
+	for _, message := range messages {
+		if message.Role != "user" && message.Role != "assistant" {
+			continue
+		}
+		content := message.Content
+		if message.ID == lastMessageID && message.Role == "user" && contextText != "" {
+			content = content + "\n\n" + contextText
+		}
+		result = append(result, aiprovider.Message{
+			Role:    message.Role,
+			Content: content,
+		})
+	}
+
+	return result
 }
 
 func configureDesktopAIDatabase(database *sql.DB) error {
@@ -1103,6 +1000,7 @@ func normalizeDesktopAISessionScope(scope *DesktopAISessionScope) *DesktopAISess
 }
 
 func (record desktopAISessionRecord) toView() DesktopAISessionView {
+	uiMessages := desktopAIUIMessages(record.Messages, record.Tasks)
 	return DesktopAISessionView{
 		ID:               record.ID,
 		Model:            record.Model,
@@ -1113,30 +1011,69 @@ func (record desktopAISessionRecord) toView() DesktopAISessionView {
 		UpdatedAt:        record.UpdatedAt,
 		Messages:         record.Messages,
 		Tasks:            record.Tasks,
-		UIMessages:       record.UIMessages,
+		UIMessages:       uiMessages,
 		AvailableTools:   []DesktopAIToolView{},
 		DefaultTransport: "desktop_local",
 	}
 }
 
-func desktopAIUIMessage(id string, role string, content string, createdAt string) map[string]any {
-	return map[string]any{
-		"id":   id,
-		"role": role,
-		"metadata": map[string]any{
-			"createdAt": createdAt,
-		},
-		"parts": []map[string]any{
-			{
-				"type": "text",
-				"text": content,
-			},
-		},
+func desktopAIUIMessages(messages []DesktopAIMessageView, tasks []DesktopAITaskView) []aichatui.UIMessage {
+	return aichatui.BuildMessages(
+		toAichatUIMessages(messages),
+		toAichatUITasks(tasks),
+	)
+}
+
+func toAichatUIMessages(messages []DesktopAIMessageView) []aichatui.MessageView {
+	result := make([]aichatui.MessageView, 0, len(messages))
+	for _, message := range messages {
+		result = append(result, aichatui.MessageView{
+			ID:        message.ID,
+			Role:      message.Role,
+			Content:   message.Content,
+			CreatedAt: parseDesktopAITime(message.CreatedAt),
+		})
 	}
+	return result
+}
+
+func toAichatUITasks(tasks []DesktopAITaskView) []aichatui.TaskView {
+	result := make([]aichatui.TaskView, 0, len(tasks))
+	for _, task := range tasks {
+		result = append(result, aichatui.TaskView{
+			ID:                   task.ID,
+			AssistantMessageID:   task.AssistantMessageID,
+			ToolCallID:           task.ToolCallID,
+			ToolName:             task.ToolName,
+			ToolDisplayName:      task.ToolDisplayName,
+			Summary:              task.Summary,
+			Status:               aichatui.TaskStatus(task.Status),
+			Dangerous:            task.Dangerous,
+			RequiresConfirmation: task.RequiresConfirmation,
+			Arguments:            task.Arguments,
+			Result:               task.Result,
+			Error:                task.Error,
+			CreatedAt:            parseDesktopAITime(task.CreatedAt),
+			UpdatedAt:            parseDesktopAITime(task.UpdatedAt),
+		})
+	}
+	return result
+}
+
+func parseDesktopAITime(value string) time.Time {
+	parsed, err := time.Parse(time.RFC3339Nano, value)
+	if err == nil {
+		return parsed
+	}
+	parsed, err = time.Parse(time.RFC3339, value)
+	if err == nil {
+		return parsed
+	}
+	return time.Time{}
 }
 
 func desktopAISystemPrompt(permission DesktopAIPermissionMode) string {
-	return "You are EasySSH Desktop AI assistant. Help the user manage SSH servers, write scripts, analyze logs, and reason about terminal workflows. Be concise, practical, and ask for confirmation before suggesting destructive commands. Current permission mode: " + string(permission) + "."
+	return "You are EasySSH Desktop AI assistant. Help the user manage SSH servers, write scripts, analyze logs, and reason about terminal workflows. Be concise, practical, and ask for confirmation before suggesting destructive commands. Current permission rule: " + aipermission.Rule(string(permission))
 }
 
 func desktopAISessionTitle(title string, custom bool, messages []DesktopAIMessageView) string {
@@ -1166,67 +1103,8 @@ func makeDesktopAITitle(content string) string {
 	return title
 }
 
-func normalizeDesktopAIProvider(provider string) string {
-	switch strings.ToLower(strings.TrimSpace(provider)) {
-	case "openai-response":
-		return "openai-response"
-	case "gemini":
-		return "gemini"
-	case "anthropic":
-		return "anthropic"
-	default:
-		return "openai"
-	}
-}
-
 func normalizeDesktopAIPermission(permission DesktopAIPermissionMode) DesktopAIPermissionMode {
-	switch permission {
-	case DesktopAIPermissionReadonly, DesktopAIPermissionPrivileged:
-		return permission
-	default:
-		return DesktopAIPermissionBalanced
-	}
-}
-
-func normalizeDesktopOpenAIBaseURL(provider string, endpoint string) string {
-	baseURL := strings.TrimSpace(strings.TrimSuffix(endpoint, "/"))
-	if baseURL == "" {
-		return ""
-	}
-	lower := strings.ToLower(baseURL)
-	for _, suffix := range []string{"/chat/completions", "/completions", "/responses"} {
-		if strings.HasSuffix(lower, suffix) {
-			baseURL = baseURL[:len(baseURL)-len(suffix)]
-			lower = strings.ToLower(baseURL)
-			break
-		}
-	}
-	if normalizeDesktopAIProvider(provider) == "gemini" {
-		return baseURL
-	}
-	if idx := strings.Index(lower, "/v1/"); idx >= 0 {
-		baseURL = baseURL[:idx+3]
-		lower = strings.ToLower(baseURL)
-	}
-	if !strings.HasSuffix(lower, "/v1") {
-		baseURL += "/v1"
-	}
-	return baseURL
-}
-
-func splitDesktopAIModels(value string) []string {
-	parts := strings.Split(value, ",")
-	models := make([]string, 0, len(parts))
-	seen := map[string]bool{}
-	for _, part := range parts {
-		model := strings.TrimSpace(part)
-		if model == "" || seen[model] {
-			continue
-		}
-		seen[model] = true
-		models = append(models, model)
-	}
-	return models
+	return DesktopAIPermissionMode(aipermission.NormalizeMode(string(permission)))
 }
 
 func decodeDesktopAIScope(value string) *DesktopAISessionScope {
@@ -1256,14 +1134,6 @@ func decodeDesktopAITasks(value string) []DesktopAITaskView {
 	var result []DesktopAITaskView
 	if err := json.Unmarshal([]byte(value), &result); err != nil || result == nil {
 		return []DesktopAITaskView{}
-	}
-	return result
-}
-
-func decodeDesktopAIUIMessages(value string) []map[string]any {
-	var result []map[string]any
-	if err := json.Unmarshal([]byte(value), &result); err != nil || result == nil {
-		return []map[string]any{}
 	}
 	return result
 }

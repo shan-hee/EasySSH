@@ -29,6 +29,42 @@ interface ConvertOptions {
 
 const permissionCache = new Map<string, string>()
 
+export function normalizeSftpRemotePath(value: string): string {
+  const raw = value.trim().replace(/\\/g, "/")
+  if (!raw) {
+    return "/"
+  }
+
+  const segments: string[] = []
+  for (const segment of raw.split("/")) {
+    if (!segment || segment === ".") {
+      continue
+    }
+    if (segment === "..") {
+      segments.pop()
+      continue
+    }
+    segments.push(segment)
+  }
+
+  return segments.length > 0 ? `/${segments.join("/")}` : "/"
+}
+
+export function joinSftpRemotePath(basePath: string, name: string): string {
+  const normalizedBase = normalizeSftpRemotePath(basePath)
+  const child = name.replace(/\\/g, "/").replace(/^\/+/, "")
+  return normalizeSftpRemotePath(`${normalizedBase}/${child}`)
+}
+
+export function joinSftpRelativePath(basePath: string, name: string): string {
+  return joinSftpRemotePath(basePath || "/", name).replace(/^\/+/, "")
+}
+
+export function sftpRemoteBaseName(remotePath: string, fallback: string): string {
+  const normalized = normalizeSftpRemotePath(remotePath)
+  return normalized.split("/").filter(Boolean).pop() || fallback
+}
+
 export function formatSftpPermissions(mode: number, isDir: boolean, override?: string): string {
   if (override) return override
   const cacheKey = `${mode}-${isDir}`

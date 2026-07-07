@@ -1,4 +1,4 @@
-import type { BackupRestoreAdapter, ConflictStrategy } from "@easyssh/ssh-workspace/desktop"
+import type { BackupRestoreAdapter } from "@easyssh/ssh-workspace/desktop"
 import { DesktopBackupService } from "../../bindings/github.com/easyssh/easyssh-desktop"
 
 export function createDesktopBackupRestoreAdapter(): BackupRestoreAdapter {
@@ -25,15 +25,9 @@ export function createDesktopBackupRestoreAdapter(): BackupRestoreAdapter {
         content: await file.text(),
         include_config: false,
         include_database: options.include_database,
-        conflict_strategy: normalizeConflictStrategy(options.conflict_strategy),
+        conflict_strategy: options.conflict_strategy,
         backup_password: options.backup_password || "",
       })
     },
   }
-}
-
-function normalizeConflictStrategy(value: ConflictStrategy) {
-  return value === "skip" || value === "overwrite" || value === "error"
-    ? value
-    : "error"
 }

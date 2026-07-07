@@ -7,11 +7,11 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/easyssh/server/internal/domain/aichat/registry"
+	"github.com/easyssh/shared/aiprovider"
 	"github.com/stretchr/testify/require"
 )
 
-func TestStreamOpenAIWithToolsNormalizesTextAndChunkedToolCalls(t *testing.T) {
+func TestFactoryNormalizesOpenAITextAndChunkedToolCalls(t *testing.T) {
 	t.Parallel()
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -28,7 +28,7 @@ func TestStreamOpenAIWithToolsNormalizesTextAndChunkedToolCalls(t *testing.T) {
 	defer server.Close()
 
 	var events []Event
-	result, err := streamOpenAIWithTools(
+	result, err := NewFactory().StreamTurn(
 		context.Background(),
 		Config{Provider: "openai", APIKey: "test-key", Endpoint: server.URL},
 		TurnRequest{Model: "test-model", Messages: []Message{{Role: "user", Content: "列出在线服务器"}}},
@@ -50,7 +50,7 @@ func TestStreamOpenAIWithToolsNormalizesTextAndChunkedToolCalls(t *testing.T) {
 	require.JSONEq(t, `{"status":"online"}`, string(result.ToolCalls[0].Arguments))
 }
 
-func TestStreamOpenAIWithToolsKeepsMultipleToolCallOrderWithoutIndexes(t *testing.T) {
+func TestFactoryKeepsOpenAIToolCallOrderWithoutIndexes(t *testing.T) {
 	t.Parallel()
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -62,7 +62,7 @@ func TestStreamOpenAIWithToolsKeepsMultipleToolCallOrderWithoutIndexes(t *testin
 	}))
 	defer server.Close()
 
-	result, err := streamOpenAIWithTools(
+	result, err := NewFactory().StreamTurn(
 		context.Background(),
 		Config{Provider: "openai", APIKey: "test-key", Endpoint: server.URL},
 		TurnRequest{Model: "test-model", Messages: []Message{{Role: "user", Content: "查询服务器"}}},
@@ -82,13 +82,13 @@ func TestStreamOpenAIWithToolsKeepsMultipleToolCallOrderWithoutIndexes(t *testin
 func TestConvertToAnthropicMessagesNormalizesSystemToolUseAndToolResult(t *testing.T) {
 	t.Parallel()
 
-	messages, systemPrompt := convertToAnthropicMessages([]Message{
+	messages, systemPrompt := aiprovider.ConvertToAnthropicMessages([]aiprovider.Message{
 		{Role: "system", Content: "你是 EasySSH 助手"},
 		{Role: "user", Content: "查服务器"},
 		{
 			Role:    "assistant",
 			Content: "我会调用工具。",
-			ToolCalls: []registry.ToolCall{{
+			ToolCalls: []aiprovider.ToolCall{{
 				ID:        "toolu-1",
 				Name:      "list_servers",
 				Arguments: json.RawMessage(`{"status":"online"}`),
@@ -116,7 +116,7 @@ func TestConvertToAnthropicMessagesNormalizesSystemToolUseAndToolResult(t *testi
 	require.Equal(t, "toolu-1", *messages[2].Content[0].MessageContentToolResult.ToolUseID)
 }
 
-func TestStreamAnthropicWithToolsNormalizesTextAndToolUse(t *testing.T) {
+func TestFactoryNormalizesAnthropicTextAndToolUse(t *testing.T) {
 	t.Parallel()
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -138,7 +138,7 @@ func TestStreamAnthropicWithToolsNormalizesTextAndToolUse(t *testing.T) {
 	defer server.Close()
 
 	var events []Event
-	result, err := streamAnthropicWithTools(
+	result, err := NewFactory().StreamTurn(
 		context.Background(),
 		Config{Provider: "anthropic", APIKey: "test-key", Endpoint: server.URL},
 		TurnRequest{Model: "claude-test", Messages: []Message{{Role: "user", Content: "列出在线服务器"}}},

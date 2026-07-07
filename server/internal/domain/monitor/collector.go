@@ -331,16 +331,10 @@ func (c *Collector) collectDockerStats() (*pb.DockerStats, error) {
 		return nil, fmt.Errorf("invalid docker stats status: %q", status)
 	}
 
-	return c.parseDocker(output), nil
-}
-
-// parseDocker 解析 Docker 统计数据
-func (c *Collector) parseDocker(data string) *pb.DockerStats {
-	stats := monitoring.ParseDockerStatsOutput(data)
-
+	stats := monitoring.ParseDockerStatsOutput(output)
 	return &pb.DockerStats{
 		DockerInstalled:   stats.DockerInstalled,
 		ContainersRunning: stats.ContainersRunning,
 		ContainersTotal:   stats.ContainersTotal,
-	}
+	}, nil
 }

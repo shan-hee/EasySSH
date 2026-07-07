@@ -30,6 +30,7 @@ export interface MessageView {
 
 export interface TaskView {
   id: string
+  assistant_message_id?: string
   tool_call_id: string
   tool_name: string
   tool_display_name?: string

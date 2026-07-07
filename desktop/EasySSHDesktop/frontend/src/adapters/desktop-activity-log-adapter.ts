@@ -1,48 +1,16 @@
 import type {
   SshWorkspaceActivityLogAdapter,
   WorkspaceActivityLogRecordInput,
-  WorkspaceActivityLogStatus,
 } from "@easyssh/ssh-workspace/desktop"
 import {
   ActivityLogService,
   DesktopActivityLogStatus,
-  type DesktopActivityLogItem,
 } from "../../bindings/github.com/easyssh/easyssh-desktop"
-
-export function mapActivityLogStatus(status: WorkspaceActivityLogStatus): DesktopActivityLogStatus {
-  if (status === "failure") return DesktopActivityLogStatus.DesktopActivityLogFailure
-  if (status === "warning") return DesktopActivityLogStatus.DesktopActivityLogWarning
-  return DesktopActivityLogStatus.DesktopActivityLogSuccess
-}
-
-export function mapDesktopActivityLogStatus(status: DesktopActivityLogStatus): WorkspaceActivityLogStatus {
-  if (status === DesktopActivityLogStatus.DesktopActivityLogFailure) return "failure"
-  if (status === DesktopActivityLogStatus.DesktopActivityLogWarning) return "warning"
-  return "success"
-}
-
-export function mapActivityLogItem(item: DesktopActivityLogItem) {
-  return {
-    id: item.id,
-    action: item.action,
-    resource: item.resource,
-    status: mapDesktopActivityLogStatus(item.status),
-    serverId: item.serverId,
-    durationMs: item.durationMs,
-    detail: item.detail,
-    createdAt: item.createdAt,
-  }
-}
-
-function mapNumberRecord(record?: Record<string, number | undefined>): Record<string, number> {
-  const result: Record<string, number> = {}
-  for (const [key, value] of Object.entries(record ?? {})) {
-    if (typeof value === "number") {
-      result[key] = value
-    }
-  }
-  return result
-}
+import { mapNumberRecord } from "./desktop-adapter-utils"
+import {
+  mapDesktopActivityLogItem,
+  mapWorkspaceActivityLogStatusToDesktop,
+} from "./desktop-activity-log-mappers"
 
 export function createDesktopActivityLogAdapter(): SshWorkspaceActivityLogAdapter {
   return {
@@ -52,13 +20,13 @@ export function createDesktopActivityLogAdapter(): SshWorkspaceActivityLogAdapte
         limit: params?.limit,
         action: params?.action,
         serverId: params?.serverId,
-        status: params?.status ? mapActivityLogStatus(params.status) : undefined,
+        status: params?.status ? mapWorkspaceActivityLogStatusToDesktop(params.status) : undefined,
         startDate: params?.startDate,
         endDate: params?.endDate,
       })
 
       return {
-        items: (result.items || []).map(mapActivityLogItem),
+        items: (result.items || []).map(mapDesktopActivityLogItem),
         total: result.total,
         page: result.page,
         pageSize: result.pageSize,
@@ -66,7 +34,7 @@ export function createDesktopActivityLogAdapter(): SshWorkspaceActivityLogAdapte
       }
     },
     async getById(id) {
-      return mapActivityLogItem(await ActivityLogService.GetById(id))
+      return mapDesktopActivityLogItem(await ActivityLogService.GetById(id))
     },
     async getStatistics(params) {
       const statistics = await ActivityLogService.GetStatistics({
@@ -82,10 +50,10 @@ export function createDesktopActivityLogAdapter(): SshWorkspaceActivityLogAdapte
       }
     },
     async record(input: WorkspaceActivityLogRecordInput) {
-      return mapActivityLogItem(await ActivityLogService.Record({
+      return mapDesktopActivityLogItem(await ActivityLogService.Record({
         action: input.action,
         resource: input.resource,
-        status: mapActivityLogStatus(input.status),
+        status: mapWorkspaceActivityLogStatusToDesktop(input.status),
         serverId: input.serverId,
         durationMs: input.durationMs,
         detail: input.detail,

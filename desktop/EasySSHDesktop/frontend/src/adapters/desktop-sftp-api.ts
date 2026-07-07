@@ -8,6 +8,7 @@ import type {
   FileInfo,
   UploadTaskListResponse,
 } from "@/lib/sftp-types"
+import { sftpRemoteBaseName } from "@/lib/sftp-file-utils"
 import {
   DesktopSFTPService,
   DesktopServerAuthMethod,
@@ -35,10 +36,6 @@ function toDesktopTransferCredential(credential?: DirectTransferOptions["sourceC
     secret: credential.secret || "",
     privateKeyPassphrase: credential.private_key_passphrase,
   }
-}
-
-function remoteBaseName(remotePath: string, fallback: string) {
-  return remotePath.split("/").filter(Boolean).pop() || fallback
 }
 
 function normalizeFileInfo(info: FileInfo): FileInfo {
@@ -133,12 +130,12 @@ export function createDesktopSftpApi(): DesktopSftpApi {
       await DesktopSFTPService.Chmod({ serverId, path: remotePath, mode })
     },
     async downloadFile(serverId, remotePath) {
-      const localPath = await chooseSavePath(remoteBaseName(remotePath, "download"))
+      const localPath = await chooseSavePath(sftpRemoteBaseName(remotePath, "download"))
       await DesktopSFTPService.DownloadFile({ serverId, path: remotePath, localPath })
     },
     async batchDownload(serverId, paths) {
       const fallbackName = paths.length === 1
-        ? `${remoteBaseName(paths[0] || "", "download")}.zip`
+        ? `${sftpRemoteBaseName(paths[0] || "", "download")}.zip`
         : "easyssh-download.zip"
       const localPath = await chooseSavePath(fallbackName)
       await DesktopSFTPService.BatchDownload({ serverId, paths, localPath })

@@ -17,7 +17,7 @@ import type { FileAction } from "@/components/sftp/file-action-menu"
 import { getErrorMessage } from "@/lib/error-utils"
 import type { BatchDeleteResult } from "@/lib/session/sftp-operations"
 import type { SshWorkspaceNotifier } from "@/lib/session/workspace"
-import type { SftpFileItem } from "@/lib/sftp-file-utils"
+import { joinSftpRemotePath, sftpRemoteBaseName, type SftpFileItem } from "@/lib/sftp-file-utils"
 
 type SftpTranslator = (key: string, params?: Record<string, string | number>) => string
 
@@ -171,7 +171,7 @@ export function useSftpFileActionController({
 
     try {
       const content = await onReadFile(fileName)
-      const fullPath = `${currentPath}/${fileName}`.replace(/\/+/g, "/")
+      const fullPath = joinSftpRemotePath(currentPath, fileName)
       setEditorState({
         isOpen: true,
         fileName,
@@ -204,7 +204,7 @@ export function useSftpFileActionController({
 
   const handleFileDoubleClick = useCallback((fileName: string, fileType: "file" | "directory") => {
     if (fileType === "directory") {
-      const next = (currentPath.endsWith("/") ? currentPath : `${currentPath}/`) + fileName
+      const next = joinSftpRemotePath(currentPath, fileName)
       startTransition(() => {
         onNavigate(next)
       })
@@ -379,7 +379,7 @@ export function useSftpFileActionController({
 
         if (result.failed.length > 0) {
           const failedNames = result.failed
-            .map((item) => item.path.split("/").pop())
+            .map((item) => sftpRemoteBaseName(item.path, item.path))
             .filter(Boolean)
             .join(", ")
 
@@ -440,7 +440,7 @@ export function useSftpFileActionController({
     switch (action) {
       case "open":
         if (file.type === "directory") {
-          onNavigate(`${currentPath}/${file.name}`.replace(/\/+/g, "/"))
+          onNavigate(joinSftpRemotePath(currentPath, file.name))
         } else {
           void handleOpenEditor(file.name)
         }
@@ -470,7 +470,7 @@ export function useSftpFileActionController({
         setChmodDialog({
           isOpen: true,
           fileName: file.name,
-          filePath: `${currentPath}/${file.name}`.replace(/\/+/g, "/"),
+          filePath: joinSftpRemotePath(currentPath, file.name),
           permissions: file.permissions,
         })
         break

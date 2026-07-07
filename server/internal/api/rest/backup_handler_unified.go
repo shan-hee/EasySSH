@@ -15,15 +15,10 @@ import (
 	"unicode/utf8"
 
 	"github.com/easyssh/shared/backupcrypto"
+	"github.com/easyssh/shared/backuputil"
 	"github.com/gin-gonic/gin"
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
-)
-
-const (
-	unifiedBackupVersion          = "2.0"
-	maxBackupRestoreFileSizeBytes = 32 << 20
-	backupRestoreMultipartBytes   = maxBackupRestoreFileSizeBytes + (1 << 20)
 )
 
 var (
@@ -33,41 +28,16 @@ var (
 	identifierPattern     = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 )
 
-type BackupContentSelection struct {
-	Config    bool `json:"config"`
-	Database  bool `json:"database"`
-	Sensitive bool `json:"sensitive,omitempty"`
-}
-
-type UnifiedBackup struct {
-	Format     string                               `json:"format"`
-	Version    string                               `json:"version"`
-	ExportTime string                               `json:"export_time"`
-	Contents   BackupContentSelection               `json:"contents"`
-	Config     *BackupDataSection                   `json:"config,omitempty"`
-	Database   *BackupDataSection                   `json:"database,omitempty"`
-	Sensitive  *backupcrypto.BackupEncryptedPayload `json:"sensitive,omitempty"`
-	Warnings   []string                             `json:"warnings,omitempty"`
-}
-
-type BackupDataSection struct {
-	Driver string        `json:"driver"`
-	Tables []BackupTable `json:"tables"`
-}
-
-type BackupTable struct {
-	Name       string                   `json:"name"`
-	PrimaryKey []string                 `json:"primary_key"`
-	Columns    []string                 `json:"columns"`
-	Rows       []map[string]interface{} `json:"rows"`
-}
-
-type RestoreConflictStrategy string
+type BackupContentSelection = backuputil.ContentSelection
+type UnifiedBackup = backuputil.UnifiedBackup
+type BackupDataSection = backuputil.DataSection
+type BackupTable = backuputil.Table
+type RestoreConflictStrategy = backuputil.RestoreConflictStrategy
 
 const (
-	RestoreConflictSkip      RestoreConflictStrategy = "skip"
-	RestoreConflictOverwrite RestoreConflictStrategy = "overwrite"
-	RestoreConflictError     RestoreConflictStrategy = "error"
+	RestoreConflictSkip      RestoreConflictStrategy = backuputil.RestoreConflictSkip
+	RestoreConflictOverwrite RestoreConflictStrategy = backuputil.RestoreConflictOverwrite
+	RestoreConflictError     RestoreConflictStrategy = backuputil.RestoreConflictError
 )
 
 type restoreSectionSummary struct {
@@ -134,8 +104,8 @@ func (h *BackupHandler) exportBackup(c *gin.Context, options exportBackupOptions
 	}
 
 	backup := &UnifiedBackup{
-		Format:     "easyssh-unified-backup",
-		Version:    unifiedBackupVersion,
+		Format:     backuputil.Format,
+		Version:    backuputil.Version,
 		ExportTime: time.Now().UTC().Format(time.RFC3339),
 		Contents: BackupContentSelection{
 			Config:    includeConfig,
@@ -169,7 +139,7 @@ func (h *BackupHandler) exportBackup(c *gin.Context, options exportBackupOptions
 	}
 
 	if options.IncludeSensitive {
-		baseSHA256, err := backupBaseSHA256(backup)
+		baseSHA256, err := backuputil.BaseSHA256(backup)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{
 				"error":  "Failed to fingerprint backup",
@@ -186,7 +156,7 @@ func (h *BackupHandler) exportBackup(c *gin.Context, options exportBackupOptions
 			})
 			return
 		}
-		envelope, err := backupcrypto.EncryptBackupJSON(sensitivePayload, options.BackupPassword, backupSensitiveAAD())
+		envelope, err := backupcrypto.EncryptBackupJSON(sensitivePayload, options.BackupPassword, backuputil.SensitiveAAD())
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{
 				"error":  "Failed to encrypt sensitive backup data",
@@ -228,7 +198,7 @@ func (h *BackupHandler) exportBackup(c *gin.Context, options exportBackupOptions
 // @Success 200 {object} map[string]interface{}
 // @Router /api/v1/backup/restore [post]
 func (h *BackupHandler) RestoreBackup(c *gin.Context) {
-	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, backupRestoreMultipartBytes)
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, backuputil.RestoreMultipartSizeBytes)
 
 	file, err := c.FormFile("file")
 	if err != nil {
@@ -239,7 +209,7 @@ func (h *BackupHandler) RestoreBackup(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "No file uploaded"})
 		return
 	}
-	if file.Size > maxBackupRestoreFileSizeBytes {
+	if file.Size > backuputil.MaxRestoreFileSizeBytes {
 		c.JSON(http.StatusRequestEntityTooLarge, gin.H{"error": "Backup file is too large"})
 		return
 	}
@@ -270,7 +240,7 @@ func (h *BackupHandler) RestoreBackup(c *gin.Context) {
 		return
 	}
 
-	if err := validateUnifiedBackup(&backup); err != nil {
+	if err := backuputil.ValidateUnifiedBackup(&backup); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error":  "Invalid backup file",
 			"detail": err.Error(),
@@ -320,7 +290,7 @@ func (h *BackupHandler) RestoreBackup(c *gin.Context) {
 			})
 			return
 		}
-		if err := verifySensitiveBaseSHA256(&backup, sensitivePayload); err != nil {
+		if err := backuputil.VerifySensitiveBaseSHA256(&backup, sensitivePayload); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{
 				"error":  "Invalid sensitive backup data",
 				"detail": err.Error(),
@@ -341,7 +311,7 @@ func (h *BackupHandler) RestoreBackup(c *gin.Context) {
 	strategy := RestoreConflictError
 	if includeDatabase {
 		var err error
-		strategy, err = parseRestoreConflictStrategy(c.PostForm("conflict_strategy"))
+		strategy, err = backuputil.ParseRestoreConflictStrategy(c.PostForm("conflict_strategy"))
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
@@ -415,41 +385,6 @@ func parseBoolString(value string) (bool, error) {
 	default:
 		return false, fmt.Errorf("invalid bool value: %s", value)
 	}
-}
-
-func parseRestoreConflictStrategy(value string) (RestoreConflictStrategy, error) {
-	switch RestoreConflictStrategy(strings.ToLower(strings.TrimSpace(value))) {
-	case "", RestoreConflictError:
-		return RestoreConflictError, nil
-	case RestoreConflictSkip:
-		return RestoreConflictSkip, nil
-	case RestoreConflictOverwrite:
-		return RestoreConflictOverwrite, nil
-	default:
-		return "", fmt.Errorf("unsupported conflict strategy: %s", value)
-	}
-}
-
-func validateUnifiedBackup(backup *UnifiedBackup) error {
-	if strings.TrimSpace(backup.Format) != "easyssh-unified-backup" {
-		return fmt.Errorf("unsupported backup format")
-	}
-	if strings.TrimSpace(backup.Version) == "" {
-		return fmt.Errorf("missing backup version")
-	}
-	if strings.TrimSpace(backup.Version) != unifiedBackupVersion {
-		return fmt.Errorf("unsupported backup version: %s", backup.Version)
-	}
-	if backup.Config == nil && backup.Database == nil {
-		return fmt.Errorf("backup has no restorable content")
-	}
-	if backup.Contents.Config != (backup.Config != nil) || backup.Contents.Database != (backup.Database != nil) {
-		return fmt.Errorf("backup content metadata is inconsistent")
-	}
-	if backup.Contents.Sensitive != (backup.Sensitive != nil) {
-		return fmt.Errorf("backup sensitive metadata is inconsistent")
-	}
-	return nil
 }
 
 func (h *BackupHandler) exportStructuredSection(sectionType backupSection) (*BackupDataSection, error) {

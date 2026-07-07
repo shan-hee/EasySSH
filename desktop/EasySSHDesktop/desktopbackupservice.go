@@ -3,10 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
-	"crypto/sha256"
-	"crypto/subtle"
 	"database/sql"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -19,18 +16,15 @@ import (
 	"time"
 
 	"github.com/easyssh/shared/backupcrypto"
+	"github.com/easyssh/shared/backuputil"
 	"github.com/google/uuid"
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
 const (
-	desktopBackupFormat                  = "easyssh-unified-backup"
-	desktopBackupVersion                 = "2.0"
-	desktopBackupSensitivePayloadVersion = "2"
-	desktopBackupRestoreMaxBytes         = 32 << 20
-	desktopBackupUserID                  = "00000000-0000-4000-8000-000000000001"
-	desktopBackupUsername                = "desktop"
-	desktopBackupEmail                   = "desktop-local-owner@easyssh.local"
+	desktopBackupUserID   = "00000000-0000-4000-8000-000000000001"
+	desktopBackupUsername = "desktop"
+	desktopBackupEmail    = "desktop-local-owner@easyssh.local"
 )
 
 type DesktopBackupExportInput struct {
@@ -59,44 +53,11 @@ type DesktopBackupRestoreResult struct {
 	Skipped  int `json:"skipped"`
 }
 
-type desktopUnifiedBackup struct {
-	Format     string                               `json:"format"`
-	Version    string                               `json:"version"`
-	ExportTime string                               `json:"export_time"`
-	Contents   desktopBackupContents                `json:"contents"`
-	Config     *desktopBackupSection                `json:"config,omitempty"`
-	Database   *desktopBackupSection                `json:"database,omitempty"`
-	Sensitive  *backupcrypto.BackupEncryptedPayload `json:"sensitive,omitempty"`
-	Warnings   []string                             `json:"warnings,omitempty"`
-}
-
-type desktopBackupContents struct {
-	Config    bool `json:"config"`
-	Database  bool `json:"database"`
-	Sensitive bool `json:"sensitive,omitempty"`
-}
-
-type desktopBackupSection struct {
-	Driver string               `json:"driver"`
-	Tables []desktopBackupTable `json:"tables"`
-}
-
-type desktopBackupTable struct {
-	Name       string           `json:"name"`
-	PrimaryKey []string         `json:"primary_key"`
-	Columns    []string         `json:"columns"`
-	Rows       []map[string]any `json:"rows"`
-}
-
-type desktopBackupSensitivePayload struct {
-	Version    string                `json:"version"`
-	ExportTime string                `json:"export_time"`
-	Contents   desktopBackupContents `json:"contents"`
-	BaseSHA256 string                `json:"base_sha256"`
-	Config     *desktopBackupSection `json:"config,omitempty"`
-	Database   *desktopBackupSection `json:"database,omitempty"`
-	Warnings   []string              `json:"warnings,omitempty"`
-}
+type desktopUnifiedBackup = backuputil.UnifiedBackup
+type desktopBackupContents = backuputil.ContentSelection
+type desktopBackupSection = backuputil.DataSection
+type desktopBackupTable = backuputil.Table
+type desktopBackupSensitivePayload = backuputil.SensitivePayload
 
 type DesktopBackupService struct {
 	mu sync.Mutex
@@ -143,8 +104,8 @@ func (s *DesktopBackupService) ExportBackup(input DesktopBackupExportInput) (Des
 	}
 
 	backup := desktopUnifiedBackup{
-		Format:     desktopBackupFormat,
-		Version:    desktopBackupVersion,
+		Format:     backuputil.Format,
+		Version:    backuputil.Version,
 		ExportTime: time.Now().UTC().Format(time.RFC3339),
 		Contents: desktopBackupContents{
 			Config:    false,
@@ -164,7 +125,7 @@ func (s *DesktopBackupService) ExportBackup(input DesktopBackupExportInput) (Des
 	backup.Database.Tables = tables
 
 	if input.IncludeSensitive {
-		baseSHA256, err := desktopBackupBaseSHA256(&backup)
+		baseSHA256, err := backuputil.BaseSHA256(&backup)
 		if err != nil {
 			return DesktopBackupExportResult{}, err
 		}
@@ -172,7 +133,7 @@ func (s *DesktopBackupService) ExportBackup(input DesktopBackupExportInput) (Des
 		if err != nil {
 			return DesktopBackupExportResult{}, err
 		}
-		envelope, err := backupcrypto.EncryptBackupJSON(sensitivePayload, input.BackupPassword, desktopBackupSensitiveAAD())
+		envelope, err := backupcrypto.EncryptBackupJSON(sensitivePayload, input.BackupPassword, backuputil.SensitiveAAD())
 		if err != nil {
 			return DesktopBackupExportResult{}, err
 		}
@@ -200,7 +161,7 @@ func (s *DesktopBackupService) RestoreBackup(input DesktopBackupRestoreInput) (D
 	if strings.TrimSpace(input.Content) == "" {
 		return DesktopBackupRestoreResult{}, errors.New("backup content is required")
 	}
-	if len(input.Content) > desktopBackupRestoreMaxBytes {
+	if len(input.Content) > backuputil.MaxRestoreFileSizeBytes {
 		return DesktopBackupRestoreResult{}, errors.New("backup file is too large")
 	}
 	if !input.IncludeDatabase {
@@ -217,17 +178,8 @@ func (s *DesktopBackupService) RestoreBackup(input DesktopBackupRestoreInput) (D
 	if err := decoder.Decode(&extra); err != io.EOF {
 		return DesktopBackupRestoreResult{}, errors.New("invalid backup file: trailing data")
 	}
-	if strings.TrimSpace(backup.Format) != desktopBackupFormat {
-		return DesktopBackupRestoreResult{}, errors.New("unsupported backup format")
-	}
-	if strings.TrimSpace(backup.Version) != desktopBackupVersion {
-		return DesktopBackupRestoreResult{}, errors.New("unsupported backup version")
-	}
-	if backup.Contents.Config != (backup.Config != nil) || backup.Contents.Database != (backup.Database != nil) {
-		return DesktopBackupRestoreResult{}, errors.New("backup content metadata is inconsistent")
-	}
-	if backup.Contents.Sensitive != (backup.Sensitive != nil) {
-		return DesktopBackupRestoreResult{}, errors.New("backup sensitive metadata is inconsistent")
+	if err := backuputil.ValidateUnifiedBackup(&backup); err != nil {
+		return DesktopBackupRestoreResult{}, err
 	}
 	if backup.Database == nil {
 		return DesktopBackupRestoreResult{}, errors.New("backup file does not include database")
@@ -243,7 +195,7 @@ func (s *DesktopBackupService) RestoreBackup(input DesktopBackupRestoreInput) (D
 		if err != nil {
 			return DesktopBackupRestoreResult{}, err
 		}
-		if err := verifyDesktopSensitiveBaseSHA256(&backup, sensitivePayload); err != nil {
+		if err := backuputil.VerifySensitiveBaseSHA256(&backup, sensitivePayload); err != nil {
 			return DesktopBackupRestoreResult{}, err
 		}
 		if err := mergeDesktopSensitivePayload(&backup, sensitivePayload); err != nil {
@@ -252,7 +204,10 @@ func (s *DesktopBackupService) RestoreBackup(input DesktopBackupRestoreInput) (D
 		allowSensitiveDatabaseRestore = sensitivePayload.Database != nil
 	}
 
-	strategy := normalizeDesktopRestoreStrategy(input.ConflictStrategy)
+	strategy, err := backuputil.ParseRestoreConflictStrategy(input.ConflictStrategy)
+	if err != nil {
+		return DesktopBackupRestoreResult{}, err
+	}
 	database, err := s.database()
 	if err != nil {
 		return DesktopBackupRestoreResult{}, err
@@ -592,7 +547,7 @@ func exportDesktopSensitivePayload(database *sql.DB, exportTime string, baseSHA2
 	}
 
 	return &desktopBackupSensitivePayload{
-		Version:    desktopBackupSensitivePayloadVersion,
+		Version:    backuputil.SensitivePayloadVersion,
 		ExportTime: exportTime,
 		Contents: desktopBackupContents{
 			Config:    false,
@@ -643,59 +598,15 @@ func exportDesktopSensitiveServers(database *sql.DB) (desktopBackupTable, error)
 	return table, rows.Err()
 }
 
-func desktopBackupSensitiveAAD() []byte {
-	return []byte("easyssh:backup:sensitive:v2")
-}
-
-func desktopBackupBaseSHA256(backup *desktopUnifiedBackup) (string, error) {
-	base := struct {
-		Format     string                `json:"format"`
-		Version    string                `json:"version"`
-		ExportTime string                `json:"export_time"`
-		Contents   desktopBackupContents `json:"contents"`
-		Config     *desktopBackupSection `json:"config,omitempty"`
-		Database   *desktopBackupSection `json:"database,omitempty"`
-	}{
-		Format:     backup.Format,
-		Version:    backup.Version,
-		ExportTime: backup.ExportTime,
-		Contents:   backup.Contents,
-		Config:     backup.Config,
-		Database:   backup.Database,
-	}
-
-	data, err := json.Marshal(base)
-	if err != nil {
-		return "", fmt.Errorf("failed to serialize backup base digest: %w", err)
-	}
-	sum := sha256.Sum256(data)
-	return hex.EncodeToString(sum[:]), nil
-}
-
 func decryptDesktopSensitivePayload(envelope *backupcrypto.BackupEncryptedPayload, password string) (*desktopBackupSensitivePayload, error) {
 	var payload desktopBackupSensitivePayload
-	if err := backupcrypto.DecryptBackupJSON(envelope, password, desktopBackupSensitiveAAD(), &payload); err != nil {
+	if err := backupcrypto.DecryptBackupJSON(envelope, password, backuputil.SensitiveAAD(), &payload); err != nil {
 		return nil, err
 	}
-	if strings.TrimSpace(payload.Version) != desktopBackupSensitivePayloadVersion {
+	if strings.TrimSpace(payload.Version) != backuputil.SensitivePayloadVersion {
 		return nil, fmt.Errorf("unsupported sensitive backup payload version: %s", payload.Version)
 	}
 	return &payload, nil
-}
-
-func verifyDesktopSensitiveBaseSHA256(backup *desktopUnifiedBackup, payload *desktopBackupSensitivePayload) error {
-	expected := strings.TrimSpace(payload.BaseSHA256)
-	if expected == "" {
-		return errors.New("sensitive backup base digest is missing")
-	}
-	actual, err := desktopBackupBaseSHA256(backup)
-	if err != nil {
-		return err
-	}
-	if subtle.ConstantTimeCompare([]byte(actual), []byte(expected)) != 1 {
-		return errors.New("backup base content does not match encrypted sensitive payload")
-	}
-	return nil
 }
 
 func sanitizeDesktopPlainSensitive(backup *desktopUnifiedBackup) {
@@ -810,7 +721,7 @@ func desktopBackupColumnAllowed(column string, allowed ...string) bool {
 	return false
 }
 
-func restoreDesktopBackupTable(tx *sql.Tx, table desktopBackupTable, strategy string, result *DesktopBackupRestoreResult, allowSensitive bool) error {
+func restoreDesktopBackupTable(tx *sql.Tx, table desktopBackupTable, strategy backuputil.RestoreConflictStrategy, result *DesktopBackupRestoreResult, allowSensitive bool) error {
 	switch strings.ToLower(strings.TrimSpace(table.Name)) {
 	case "servers":
 		for _, row := range table.Rows {
@@ -840,7 +751,7 @@ func restoreDesktopBackupTable(tx *sql.Tx, table desktopBackupTable, strategy st
 	return nil
 }
 
-func restoreDesktopServerRow(tx *sql.Tx, row map[string]any, strategy string, result *DesktopBackupRestoreResult, allowSensitive bool) error {
+func restoreDesktopServerRow(tx *sql.Tx, row map[string]any, strategy backuputil.RestoreConflictStrategy, result *DesktopBackupRestoreResult, allowSensitive bool) error {
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	id := firstDesktopString(row, "id")
 	if id == "" {
@@ -875,7 +786,7 @@ func restoreDesktopServerRow(tx *sql.Tx, row map[string]any, strategy string, re
 	return restoreDesktopMappedRow(tx, "desktop_servers", id, values, strategy, result)
 }
 
-func restoreDesktopScriptRow(tx *sql.Tx, row map[string]any, strategy string, result *DesktopBackupRestoreResult) error {
+func restoreDesktopScriptRow(tx *sql.Tx, row map[string]any, strategy backuputil.RestoreConflictStrategy, result *DesktopBackupRestoreResult) error {
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	id := firstDesktopString(row, "id")
 	if id == "" {
@@ -900,7 +811,7 @@ func restoreDesktopScriptRow(tx *sql.Tx, row map[string]any, strategy string, re
 	return restoreDesktopMappedRow(tx, "desktop_scripts", id, values, strategy, result)
 }
 
-func restoreDesktopBatchTaskRow(tx *sql.Tx, row map[string]any, strategy string, result *DesktopBackupRestoreResult) error {
+func restoreDesktopBatchTaskRow(tx *sql.Tx, row map[string]any, strategy backuputil.RestoreConflictStrategy, result *DesktopBackupRestoreResult) error {
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	id := firstDesktopString(row, "id")
 	if id == "" {
@@ -927,7 +838,7 @@ func restoreDesktopBatchTaskRow(tx *sql.Tx, row map[string]any, strategy string,
 	return restoreDesktopMappedRow(tx, "desktop_batch_tasks", id, values, strategy, result)
 }
 
-func restoreDesktopActivityRow(tx *sql.Tx, row map[string]any, strategy string, result *DesktopBackupRestoreResult) error {
+func restoreDesktopActivityRow(tx *sql.Tx, row map[string]any, strategy backuputil.RestoreConflictStrategy, result *DesktopBackupRestoreResult) error {
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	id := firstDesktopString(row, "id")
 	if strings.EqualFold(firstDesktopString(row, "source_table"), "desktop_activity_logs") {
@@ -951,17 +862,17 @@ func restoreDesktopActivityRow(tx *sql.Tx, row map[string]any, strategy string, 
 	return restoreDesktopMappedRow(tx, "activity_logs", id, values, strategy, result)
 }
 
-func restoreDesktopMappedRow(tx *sql.Tx, table string, id string, values map[string]any, strategy string, result *DesktopBackupRestoreResult) error {
+func restoreDesktopMappedRow(tx *sql.Tx, table string, id string, values map[string]any, strategy backuputil.RestoreConflictStrategy, result *DesktopBackupRestoreResult) error {
 	exists, err := desktopBackupRowExists(tx, table, id)
 	if err != nil {
 		return err
 	}
 	if exists {
 		switch strategy {
-		case "skip":
+		case backuputil.RestoreConflictSkip:
 			result.Skipped++
 			return nil
-		case "error":
+		case backuputil.RestoreConflictError:
 			return fmt.Errorf("table %s item already exists: id=%s", table, id)
 		}
 		if err := updateDesktopBackupRow(tx, table, id, values); err != nil {
@@ -1049,15 +960,6 @@ func desktopBackupColumns(values map[string]any) []string {
 		}
 	}
 	return ordered
-}
-
-func normalizeDesktopRestoreStrategy(value string) string {
-	switch strings.ToLower(strings.TrimSpace(value)) {
-	case "skip", "overwrite", "error":
-		return strings.ToLower(strings.TrimSpace(value))
-	default:
-		return "error"
-	}
 }
 
 func nullableDesktopString(value string) any {

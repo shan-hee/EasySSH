@@ -16,6 +16,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/easyssh/shared/sshutil"
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"golang.org/x/crypto/ssh"
 	_ "modernc.org/sqlite"
@@ -837,7 +838,7 @@ func buildDesktopServerSSHAuthMethodsWithCredential(server DesktopServer, creden
 				return authMethods, nil
 			}
 
-			signer, err := parseDesktopPrivateKey(privateKey, credential.PrivateKeyPassphrase)
+			signer, err := sshutil.ParsePrivateKey(privateKey, credential.PrivateKeyPassphrase)
 			if err != nil {
 				return nil, err
 			}
@@ -861,36 +862,13 @@ func buildDesktopServerSSHAuthMethodsWithCredential(server DesktopServer, creden
 		return authMethods, nil
 	}
 
-	signer, err := parseDesktopPrivateKey(privateKey, server.Password)
+	signer, err := sshutil.ParsePrivateKey(privateKey, server.Password)
 	if err != nil {
 		return nil, err
 	}
 
 	authMethods = append(authMethods, ssh.PublicKeys(signer))
 	return authMethods, nil
-}
-
-func parseDesktopPrivateKey(privateKey string, passphrase string) (ssh.Signer, error) {
-	signer, err := ssh.ParsePrivateKey([]byte(privateKey))
-	if err == nil {
-		return signer, nil
-	}
-
-	var missingPassphrase *ssh.PassphraseMissingError
-	if !errors.As(err, &missingPassphrase) {
-		return nil, fmt.Errorf("failed to parse private key: %w", err)
-	}
-
-	if strings.TrimSpace(passphrase) == "" {
-		return nil, fmt.Errorf("private_key_passphrase_required: %w", err)
-	}
-
-	signer, passphraseErr := ssh.ParsePrivateKeyWithPassphrase([]byte(privateKey), []byte(passphrase))
-	if passphraseErr != nil {
-		return nil, fmt.Errorf("private_key_passphrase_invalid: %w", passphraseErr)
-	}
-
-	return signer, nil
 }
 
 func normalizeDesktopCommandOutput(output string) string {

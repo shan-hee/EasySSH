@@ -49,7 +49,7 @@ import { useClientAuth } from "@/components/client-auth-provider"
 import { useSystemConfig } from "@/hooks/use-system-config"
 import { getEffectiveLocale, getEffectiveTimezone } from "@/utils/datetime"
 import { useTranslation } from "react-i18next"
-import { convertSftpFileInfo, type SftpFileItem } from "@/lib/sftp-file-utils"
+import { convertSftpFileInfo, joinSftpRemotePath, type SftpFileItem } from "@/lib/sftp-file-utils"
 import { loadSftpDirectory } from "@/lib/session/sftp-directory"
 import { createSftpSessionApi, type SftpSessionApi } from "@/lib/session/sftp-session-api"
 import type { SftpWorkspaceSession } from "@/lib/session/workspace"
@@ -106,10 +106,6 @@ const createSftpConfigTab = (id: string, label: string): TerminalSession => ({
   type: "config",
   pinned: false,
 })
-
-const joinRemotePath = (dir: string, name: string) => (
-  `${dir.endsWith("/") ? dir : `${dir}/`}${name}`.replace(/\/+/g, "/")
-)
 
 const isActiveBackgroundTransfer = (job: TransferJob) => (
   job.status === "staging" ||
@@ -1106,7 +1102,7 @@ export default function SftpPage() {
  const session = sessionsRef.current.find(s => s.id === sessionId)
  if (!session || !session.isConnected) return
 
- const filePath = joinRemotePath(session.currentPath, fileName)
+ const filePath = joinSftpRemotePath(session.currentPath, fileName)
 
  try {
    await createSessionOperationApi(session).downloadFile(session.serverId, filePath)
@@ -1222,7 +1218,7 @@ export default function SftpPage() {
  throw new Error("SFTP session is not connected")
  }
 
- const filePath = joinRemotePath(session.currentPath, fileName)
+ const filePath = joinSftpRemotePath(session.currentPath, fileName)
 
  try {
  const content = await createSessionOperationApi(session).readFile(session.serverId, filePath)
@@ -1290,7 +1286,7 @@ export default function SftpPage() {
    }
 
    // 构建完整路径
-   const filePaths = fileNames.map(fileName => joinRemotePath(session.currentPath, fileName))
+   const filePaths = fileNames.map(fileName => joinSftpRemotePath(session.currentPath, fileName))
 
   try {
     await createSessionOperationApi(session).batchDownload(session.serverId, filePaths, "fast", excludePatterns)
@@ -1340,7 +1336,7 @@ export default function SftpPage() {
    const session = sessionsRef.current.find(s => s.id === sessionId)
    if (!session || !session.isConnected) return
 
-   const filePath = joinRemotePath(session.currentPath, fileName)
+   const filePath = joinSftpRemotePath(session.currentPath, fileName)
    try {
      await transferJobsApi.createBackgroundDownload({
        server_id: session.serverId,

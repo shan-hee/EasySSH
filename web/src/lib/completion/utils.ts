@@ -72,7 +72,7 @@ function looksLikePromptText(text: string): boolean {
   const trimmed = text.trim()
   if (!trimmed) return false
   if (trimmed.length <= 2) return true
-  return /[@:~\/\\\]\)]/.test(trimmed) || /[❯❮➜➤›]/.test(trimmed)
+  return /[@:~/\\)\]]/.test(trimmed) || /[❯❮➜➤›]/.test(trimmed)
 }
 
 function extractCommandPartsWithBoundaries(
@@ -469,7 +469,8 @@ export function applyCompletion(
  * @returns 纯文本
  */
 export function stripAnsi(text: string): string {
-  return text.replace(new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*[a-zA-Z]`, "g"), "")
+  const escapeChar = String.fromCharCode(27)
+  return text.replace(new RegExp(`${escapeChar}\\[[0-9;?]*[ -/]*[@-~]`, "g"), "")
 }
 
 /**

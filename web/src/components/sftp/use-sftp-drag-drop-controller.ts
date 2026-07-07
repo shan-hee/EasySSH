@@ -2,6 +2,7 @@
 import { useCallback, useState, type DragEvent, type RefObject } from "react"
 import { setDragSourceSessionId } from "@/lib/drag-state"
 import { hasSplitPaneDragSession } from "@/lib/session/split-pane-drag"
+import { joinSftpRelativePath, joinSftpRemotePath } from "@/lib/sftp-file-utils"
 
 export interface SftpDragDropFileItem {
   name: string
@@ -42,7 +43,7 @@ export function useSftpDragDropController({
     const dragData = {
       sessionId,
       fileName,
-      filePath: `${currentPath}/${fileName}`.replace(/\/+/g, "/"),
+      filePath: joinSftpRemotePath(currentPath, fileName),
       fileType: file?.type || "file",
       sourceSessionId: sessionId,
     }
@@ -119,7 +120,7 @@ export function useSftpDragDropController({
     }
 
     if (targetType === "directory") {
-      const newName = `${targetFileName}/${draggedFileName}`.replace(/\/+/g, "/")
+      const newName = joinSftpRelativePath(targetFileName, draggedFileName)
       onRename(draggedFileName, newName)
     }
 
