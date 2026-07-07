@@ -1,5 +1,4 @@
 import type { RuntimeInfo } from "@easyssh/ssh-workspace/desktop"
-import { Call } from "@wailsio/runtime"
 import { DesktopService } from "../../bindings/github.com/easyssh/easyssh-desktop"
 
 export interface DesktopGatewayInfo {
@@ -27,27 +26,20 @@ export type DesktopUpdateFailureNotice = {
   manual_replace_source?: string
 }
 
-const desktopServiceGetUpdateFailureNoticeMethod =
-  "github.com/easyssh/easyssh-desktop.DesktopService.GetUpdateFailureNotice"
-const desktopServiceClearUpdateFailureNoticeMethod =
-  "github.com/easyssh/easyssh-desktop.DesktopService.ClearUpdateFailureNotice"
-const desktopServiceOpenPathInFileManagerMethod =
-  "github.com/easyssh/easyssh-desktop.DesktopService.OpenPathInFileManager"
-
 export function loadDesktopRuntime(): Promise<DesktopRuntimeBindingInfo> {
   return DesktopService.RuntimeInfo()
 }
 
 export async function getDesktopUpdateFailureNotice(): Promise<DesktopUpdateFailureNotice | null> {
-  return await Call.ByName(desktopServiceGetUpdateFailureNoticeMethod) as DesktopUpdateFailureNotice | null
+  return await DesktopService.GetUpdateFailureNotice() as DesktopUpdateFailureNotice | null
 }
 
 export async function clearDesktopUpdateFailureNotice(): Promise<void> {
-  await Call.ByName(desktopServiceClearUpdateFailureNoticeMethod)
+  await DesktopService.ClearUpdateFailureNotice()
 }
 
 export async function openDesktopPathInFileManager(path: string): Promise<void> {
-  await Call.ByName(desktopServiceOpenPathInFileManagerMethod, path)
+  await DesktopService.OpenPathInFileManager(path)
 }
 
 export function createDesktopRuntime(runtime: DesktopRuntimeBindingInfo | null): RuntimeInfo {
