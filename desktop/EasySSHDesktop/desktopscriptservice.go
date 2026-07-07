@@ -460,7 +460,7 @@ func (s *DesktopScriptService) StartBatchTask(id string) (DesktopBatchTaskStartR
 
 	if task.ScriptID != "" {
 		if err := s.incrementExecutions(task.ScriptID); err != nil {
-			fmt.Printf("failed to increment desktop script executions: %v\n", err)
+			desktopLogPrintf("failed to increment desktop script executions: %v", err)
 		}
 	}
 
@@ -572,13 +572,13 @@ func configureDesktopScriptDatabase(database *sql.DB) error {
 func (s *DesktopScriptService) runBatchTask(taskID string) {
 	task, err := s.GetBatchTaskById(taskID)
 	if err != nil {
-		fmt.Printf("failed to load desktop batch task: %v\n", err)
+		desktopLogPrintf("failed to load desktop batch task: %v", err)
 		return
 	}
 
 	command, err := s.resolveBatchTaskCommand(task)
 	if err != nil {
-		fmt.Printf("failed to resolve desktop batch task command: %v\n", err)
+		desktopLogPrintf("failed to resolve desktop batch task command: %v", err)
 		_ = s.completeBatchTask(task.ID, 0, len(task.ServerIDs), "failed")
 		return
 	}
@@ -697,7 +697,7 @@ func (s *DesktopScriptService) finishBatchTaskServerResult(result desktopBatchTa
 	result.DurationMs = completed.Sub(started).Milliseconds()
 
 	if err := s.recordBatchTaskResult(result); err != nil {
-		fmt.Printf("failed to record desktop batch task result: %v\n", err)
+		desktopLogPrintf("failed to record desktop batch task result: %v", err)
 	}
 
 	if s.activityLogger != nil {
@@ -719,7 +719,7 @@ func (s *DesktopScriptService) finishBatchTaskServerResult(result desktopBatchTa
 			Detail:     detail,
 		})
 		if err != nil {
-			fmt.Printf("failed to record desktop script activity: %v\n", err)
+			desktopLogPrintf("failed to record desktop script activity: %v", err)
 		}
 	}
 }

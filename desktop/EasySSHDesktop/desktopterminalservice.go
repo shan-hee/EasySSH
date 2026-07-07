@@ -3,7 +3,6 @@ package main
 import (
 	"encoding/base64"
 	"errors"
-	"fmt"
 	"io"
 	"net"
 	"strconv"
@@ -222,7 +221,7 @@ func (s *DesktopTerminalService) Start(input DesktopTerminalStartInput) error {
 	go s.waitForSession(clientID, sshSession)
 
 	if _, err := s.serverService.MarkConnected(serverID); err != nil {
-		fmt.Printf("failed to mark desktop server connected: %v\n", err)
+		desktopLogPrintf("failed to mark desktop server connected: %v", err)
 	}
 
 	return nil

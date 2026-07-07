@@ -460,7 +460,7 @@ func (s *DesktopServerService) detectAndPersistOSIfEmpty(server DesktopServer, c
 
 	osValue, err := detectDesktopServerOS(client)
 	if err != nil {
-		fmt.Printf("failed to detect desktop server OS: %v\n", err)
+		desktopLogPrintf("failed to detect desktop server OS: %v", err)
 		return
 	}
 
@@ -469,7 +469,7 @@ func (s *DesktopServerService) detectAndPersistOSIfEmpty(server DesktopServer, c
 	}
 
 	if err := s.updateOSIfEmpty(server.ID, osValue); err != nil {
-		fmt.Printf("failed to update desktop server OS: %v\n", err)
+		desktopLogPrintf("failed to update desktop server OS: %v", err)
 	}
 }
 

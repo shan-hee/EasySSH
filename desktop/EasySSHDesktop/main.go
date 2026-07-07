@@ -4,6 +4,7 @@ import (
 	"embed"
 
 	"log"
+	"os"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
@@ -22,6 +23,10 @@ func main() {
 	if err := ensureDesktopDataDir(); err != nil {
 		log.Fatalf("failed to initialize desktop data directory: %v", err)
 	}
+	if err := initDesktopLogger(); err != nil {
+		log.Fatalf("failed to initialize desktop logger: %v", err)
+	}
+	defer closeDesktopLogger()
 
 	activityLogService := NewActivityLogService()
 	serverService := NewDesktopServerService()
@@ -36,8 +41,10 @@ func main() {
 	updateService := NewDesktopUpdateService()
 
 	app := application.New(application.Options{
-		Name:        "EasySSH",
-		Description: "EasySSH",
+		Name:         "EasySSH",
+		Description:  "EasySSH",
+		Logger:       newDesktopWailsLogger(),
+		PanicHandler: handleDesktopPanic,
 		Services: []application.Service{
 			application.NewService(serverService),
 			application.NewService(scriptService),
@@ -83,6 +90,8 @@ func main() {
 
 	err := app.Run()
 	if err != nil {
-		log.Fatal(err)
+		log.Printf("desktop app failed: %v", err)
+		closeDesktopLogger()
+		os.Exit(1)
 	}
 }
