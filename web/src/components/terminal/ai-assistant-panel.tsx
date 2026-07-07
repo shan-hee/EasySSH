@@ -179,6 +179,8 @@ export function AiAssistantPanel({ isOpen, onClose, terminalSession, adapters }:
     restoreSession,
     startNewSession,
     sendMessage,
+    updateMessage: updateUserMessage,
+    deleteMessage: deleteUserMessage,
     confirmTask,
     cancelSession,
     closeSession,
@@ -716,6 +718,28 @@ export function AiAssistantPanel({ isOpen, onClose, terminalSession, adapters }:
     terminalSession.id,
   ])
 
+  const handleUpdateUserMessage = useCallback(async (messageId: string, content: string) => {
+    return updateUserMessage(messageId, content, {
+      regenerate: true,
+      contextText: terminalContextText,
+      model: activeModel,
+      permissionMode,
+      scope: terminalScope,
+    })
+  }, [activeModel, permissionMode, terminalContextText, terminalScope, updateUserMessage])
+
+  const handleDeleteUserMessage = useCallback(async (messageId: string) => {
+    const confirmed = await requestConfirm({
+      description: tAI("deleteMessageConfirm"),
+      variant: "destructive",
+    })
+    if (!confirmed) {
+      return false
+    }
+
+    return deleteUserMessage(messageId)
+  }, [deleteUserMessage, requestConfirm, tAI])
+
   const handleSubmit = useCallback(async (messageText = input) => {
     const normalizedInput = messageText.trim()
     if (!normalizedInput || !isConfigured || isConfigLoading || sessionCreatingRef.current) {
@@ -1074,6 +1098,8 @@ export function AiAssistantPanel({ isOpen, onClose, terminalSession, adapters }:
               messages={uiMessages}
               tText={tAI}
               onConfirmTask={confirmTask}
+              onUpdateUserMessage={handleUpdateUserMessage}
+              onDeleteUserMessage={handleDeleteUserMessage}
               assistantLoadingState={assistantLoadingState}
               emptyDescription={tAI("terminalEmptyDescription")}
               compact

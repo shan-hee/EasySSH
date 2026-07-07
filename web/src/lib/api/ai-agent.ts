@@ -1,5 +1,5 @@
 import { apiFetch } from "@/lib/api-client"
-import type { AgentSessionScope, CreateSessionInput, CreateSessionResponse, ListSessionsResponse } from "@/lib/ai-agent-types"
+import type { AgentSessionScope, CreateSessionInput, CreateSessionResponse, ListSessionsResponse, UpdateMessageInput } from "@/lib/ai-agent-types"
 
 export type {
   AgentSessionScope,
@@ -81,6 +81,19 @@ export async function renameAISession(sessionId: string, title: string): Promise
 
 export async function deleteAISession(sessionId: string): Promise<void> {
   await apiFetch<string>(`/ai/sessions/${sessionId}`, {
+    method: "DELETE",
+  })
+}
+
+export async function updateAIMessage(sessionId: string, messageId: string, input: UpdateMessageInput): Promise<CreateSessionResponse> {
+  return apiFetch<CreateSessionResponse>(`/ai/sessions/${sessionId}/messages/${messageId}`, {
+    method: "PATCH",
+    body: input,
+  })
+}
+
+export async function deleteAIMessage(sessionId: string, messageId: string): Promise<CreateSessionResponse> {
+  return apiFetch<CreateSessionResponse>(`/ai/sessions/${sessionId}/messages/${messageId}`, {
     method: "DELETE",
   })
 }

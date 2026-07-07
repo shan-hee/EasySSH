@@ -149,6 +149,10 @@ type SendUserMessageInput struct {
 	Scope          SessionScope
 }
 
+type UpdateMessageInput struct {
+	Content string
+}
+
 type ConfirmTaskInput struct {
 	TaskID   string
 	Decision Decision

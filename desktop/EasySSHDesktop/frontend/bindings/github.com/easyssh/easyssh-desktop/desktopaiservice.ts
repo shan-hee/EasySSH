@@ -25,6 +25,12 @@ export function CreateSession(input: $models.DesktopAICreateSessionInput): $Canc
     });
 }
 
+export function DeleteMessage(sessionID: string, messageID: string): $CancellablePromise<$models.DesktopAICreateSessionResponse> {
+    return $Call.ByID(2510145091, sessionID, messageID).then(($result: any) => {
+        return $$createType1($result);
+    });
+}
+
 export function DeleteSession(id: string): $CancellablePromise<void> {
     return $Call.ByID(374287456, id);
 }
@@ -59,6 +65,12 @@ export function ListSessions(params: $models.DesktopAIListSessionsParams): $Canc
     });
 }
 
+export function RegenerateMessage(input: $models.DesktopAIRegenerateMessageInput): $CancellablePromise<$models.DesktopAICreateSessionResponse> {
+    return $Call.ByID(3319367080, input).then(($result: any) => {
+        return $$createType1($result);
+    });
+}
+
 export function RenameSession(id: string, title: string): $CancellablePromise<{ [_ in string]?: boolean }> {
     return $Call.ByID(362709311, id, title).then(($result: any) => {
         return $$createType0($result);
@@ -71,6 +83,12 @@ export function SaveUserAIConfig(input: $models.DesktopSaveUserAIConfigRequest):
 
 export function SendMessage(input: $models.DesktopAISendMessageInput): $CancellablePromise<$models.DesktopAICreateSessionResponse> {
     return $Call.ByID(256307000, input).then(($result: any) => {
+        return $$createType1($result);
+    });
+}
+
+export function UpdateMessage(input: $models.DesktopAIUpdateMessageInput): $CancellablePromise<$models.DesktopAICreateSessionResponse> {
+    return $Call.ByID(498586565, input).then(($result: any) => {
         return $$createType1($result);
     });
 }

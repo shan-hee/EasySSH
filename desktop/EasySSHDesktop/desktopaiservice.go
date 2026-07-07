@@ -174,6 +174,21 @@ type DesktopAISendMessageInput struct {
 	Scope          *DesktopAISessionScope  `json:"scope,omitempty"`
 }
 
+type DesktopAIUpdateMessageInput struct {
+	SessionID string `json:"session_id"`
+	MessageID string `json:"message_id"`
+	Content   string `json:"content"`
+}
+
+type DesktopAIRegenerateMessageInput struct {
+	SessionID      string                  `json:"session_id"`
+	MessageID      string                  `json:"message_id"`
+	Context        string                  `json:"context,omitempty"`
+	Model          string                  `json:"model,omitempty"`
+	PermissionMode DesktopAIPermissionMode `json:"permission_mode,omitempty"`
+	Scope          *DesktopAISessionScope  `json:"scope,omitempty"`
+}
+
 type DesktopAISessionEvent struct {
 	SessionID string                `json:"session_id"`
 	Type      string                `json:"type"`
@@ -531,6 +546,11 @@ func (s *DesktopAIService) SendMessage(ctx context.Context, input DesktopAISendM
 	if record.Title == "" {
 		record.Title = makeDesktopAITitle(content)
 	}
+	return s.completeDesktopAITurn(ctx, record, config, input.Context, model)
+}
+
+func (s *DesktopAIService) completeDesktopAITurn(ctx context.Context, record desktopAISessionRecord, config desktopAIConfigRecord, contextText string, model string) (DesktopAICreateSessionResponse, error) {
+	sessionID := record.ID
 	requestContext, requestID := s.beginAIRequest(ctx, sessionID)
 	defer s.finishAIRequest(sessionID, requestID)
 
@@ -542,7 +562,7 @@ func (s *DesktopAIService) SendMessage(ctx context.Context, input DesktopAISendM
 	assistantMessageID := newDesktopAIID("msg")
 	assistantStartedAt := time.Now().UTC().Format(time.RFC3339Nano)
 	var assistantContentBuilder strings.Builder
-	assistantContent, err := s.completeChat(requestContext, config, record.Messages, input.Context, model, record.PermissionMode, func(delta string) error {
+	assistantContent, err := s.completeChat(requestContext, config, record.Messages, contextText, model, record.PermissionMode, func(delta string) error {
 		if delta == "" {
 			return nil
 		}
@@ -613,6 +633,182 @@ func (s *DesktopAIService) CancelSession(id string) (map[string]bool, error) {
 		return nil, err
 	}
 	return map[string]bool{"cancelled": cancelled}, nil
+}
+
+func (s *DesktopAIService) UpdateMessage(input DesktopAIUpdateMessageInput) (DesktopAICreateSessionResponse, error) {
+	sessionID := strings.TrimSpace(input.SessionID)
+	messageID := strings.TrimSpace(input.MessageID)
+	content := strings.TrimSpace(input.Content)
+	if sessionID == "" || messageID == "" {
+		return DesktopAICreateSessionResponse{}, errors.New("AI session id and message id are required")
+	}
+	if content == "" {
+		return DesktopAICreateSessionResponse{}, errors.New("AI message content is required")
+	}
+
+	record, err := s.loadSession(sessionID)
+	if err != nil {
+		return DesktopAICreateSessionResponse{}, err
+	}
+	if record.Status == DesktopAISessionRunning {
+		return DesktopAICreateSessionResponse{}, errors.New("AI session is busy")
+	}
+
+	messageIndex := -1
+	for index, message := range record.Messages {
+		if message.ID == messageID {
+			messageIndex = index
+			break
+		}
+	}
+	if messageIndex < 0 {
+		return DesktopAICreateSessionResponse{}, errors.New("AI message not found")
+	}
+	if record.Messages[messageIndex].Role != "user" {
+		return DesktopAICreateSessionResponse{}, errors.New("AI message cannot be edited")
+	}
+
+	record.Messages[messageIndex].Content = content
+	record.Messages = truncateDesktopAIMessages(record.Messages, messageIndex+1)
+	record.Tasks = truncateDesktopAITasks(record.Tasks, record.Messages)
+	record.Status = DesktopAISessionIdle
+	record.UpdatedAt = time.Now().UTC().Format(time.RFC3339Nano)
+	if !record.CustomTitle {
+		record.Title = defaultDesktopAISessionTitle(record.Messages)
+	}
+	if err := s.saveSession(record); err != nil {
+		return DesktopAICreateSessionResponse{}, err
+	}
+	s.emitAISessionSnapshot(record)
+
+	view := record.toView()
+	return DesktopAICreateSessionResponse{
+		SessionID:        view.ID,
+		Session:          view,
+		DefaultTransport: view.DefaultTransport,
+	}, nil
+}
+
+func (s *DesktopAIService) RegenerateMessage(ctx context.Context, input DesktopAIRegenerateMessageInput) (DesktopAICreateSessionResponse, error) {
+	sessionID := strings.TrimSpace(input.SessionID)
+	messageID := strings.TrimSpace(input.MessageID)
+	if sessionID == "" || messageID == "" {
+		return DesktopAICreateSessionResponse{}, errors.New("AI session id and message id are required")
+	}
+
+	record, err := s.loadSession(sessionID)
+	if err != nil {
+		return DesktopAICreateSessionResponse{}, err
+	}
+	if record.Status == DesktopAISessionRunning {
+		return DesktopAICreateSessionResponse{}, errors.New("AI session is busy")
+	}
+
+	messageIndex := -1
+	for index, message := range record.Messages {
+		if message.ID == messageID {
+			messageIndex = index
+			break
+		}
+	}
+	if messageIndex < 0 {
+		return DesktopAICreateSessionResponse{}, errors.New("AI message not found")
+	}
+	if record.Messages[messageIndex].Role != "user" {
+		return DesktopAICreateSessionResponse{}, errors.New("AI message cannot be regenerated")
+	}
+
+	config, err := s.loadConfig()
+	if err != nil {
+		return DesktopAICreateSessionResponse{}, err
+	}
+	model := strings.TrimSpace(input.Model)
+	if model == "" {
+		model = record.Model
+	}
+	if model == "" {
+		models := sharedaiconfig.ParseModels(config.CustomModels)
+		if len(models) > 0 {
+			model = models[0]
+		}
+	}
+	if model == "" {
+		return DesktopAICreateSessionResponse{}, errors.New("AI model is required")
+	}
+	if strings.TrimSpace(config.CustomAPIKey) == "" {
+		return DesktopAICreateSessionResponse{}, errors.New("AI API key is required")
+	}
+
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	record.Model = model
+	if input.PermissionMode != "" {
+		record.PermissionMode = normalizeDesktopAIPermission(input.PermissionMode)
+	}
+	if input.Scope != nil {
+		if strings.EqualFold(strings.TrimSpace(input.Scope.Kind), "global") {
+			record.Scope = nil
+		} else if scope := normalizeDesktopAISessionScope(input.Scope); scope != nil {
+			record.Scope = scope
+		}
+	}
+	record.Messages = truncateDesktopAIMessages(record.Messages, messageIndex+1)
+	record.Tasks = truncateDesktopAITasks(record.Tasks, record.Messages)
+	record.Status = DesktopAISessionRunning
+	record.UpdatedAt = now
+	if !record.CustomTitle {
+		record.Title = defaultDesktopAISessionTitle(record.Messages)
+	}
+
+	return s.completeDesktopAITurn(ctx, record, config, input.Context, model)
+}
+
+func (s *DesktopAIService) DeleteMessage(sessionID string, messageID string) (DesktopAICreateSessionResponse, error) {
+	sessionID = strings.TrimSpace(sessionID)
+	messageID = strings.TrimSpace(messageID)
+	if sessionID == "" || messageID == "" {
+		return DesktopAICreateSessionResponse{}, errors.New("AI session id and message id are required")
+	}
+
+	record, err := s.loadSession(sessionID)
+	if err != nil {
+		return DesktopAICreateSessionResponse{}, err
+	}
+	if record.Status == DesktopAISessionRunning {
+		return DesktopAICreateSessionResponse{}, errors.New("AI session is busy")
+	}
+
+	messageIndex := -1
+	for index, message := range record.Messages {
+		if message.ID == messageID {
+			messageIndex = index
+			break
+		}
+	}
+	if messageIndex < 0 {
+		return DesktopAICreateSessionResponse{}, errors.New("AI message not found")
+	}
+	if record.Messages[messageIndex].Role != "user" {
+		return DesktopAICreateSessionResponse{}, errors.New("AI message cannot be deleted")
+	}
+
+	record.Messages = truncateDesktopAIMessages(record.Messages, messageIndex)
+	record.Tasks = truncateDesktopAITasks(record.Tasks, record.Messages)
+	record.Status = DesktopAISessionIdle
+	record.UpdatedAt = time.Now().UTC().Format(time.RFC3339Nano)
+	if !record.CustomTitle {
+		record.Title = defaultDesktopAISessionTitle(record.Messages)
+	}
+	if err := s.saveSession(record); err != nil {
+		return DesktopAICreateSessionResponse{}, err
+	}
+	s.emitAISessionSnapshot(record)
+
+	view := record.toView()
+	return DesktopAICreateSessionResponse{
+		SessionID:        view.ID,
+		Session:          view,
+		DefaultTransport: view.DefaultTransport,
+	}, nil
 }
 
 func (s *DesktopAIService) RenameSession(id string, title string) (map[string]bool, error) {
@@ -1159,6 +1355,15 @@ func desktopAISessionTitle(title string, custom bool, messages []DesktopAIMessag
 	return "New session"
 }
 
+func defaultDesktopAISessionTitle(messages []DesktopAIMessageView) string {
+	for _, message := range messages {
+		if message.Role == "user" && strings.TrimSpace(message.Content) != "" {
+			return makeDesktopAITitle(message.Content)
+		}
+	}
+	return ""
+}
+
 func makeDesktopAITitle(content string) string {
 	title := strings.Join(strings.Fields(content), " ")
 	if len([]rune(title)) > 36 {
@@ -1202,6 +1407,35 @@ func decodeDesktopAITasks(value string) []DesktopAITaskView {
 	var result []DesktopAITaskView
 	if err := json.Unmarshal([]byte(value), &result); err != nil || result == nil {
 		return []DesktopAITaskView{}
+	}
+	return result
+}
+
+func truncateDesktopAIMessages(messages []DesktopAIMessageView, end int) []DesktopAIMessageView {
+	if end < 0 {
+		end = 0
+	}
+	if end > len(messages) {
+		end = len(messages)
+	}
+	return append([]DesktopAIMessageView(nil), messages[:end]...)
+}
+
+func truncateDesktopAITasks(tasks []DesktopAITaskView, messages []DesktopAIMessageView) []DesktopAITaskView {
+	if len(tasks) == 0 {
+		return []DesktopAITaskView{}
+	}
+
+	keepMessageIDs := make(map[string]struct{}, len(messages))
+	for _, message := range messages {
+		keepMessageIDs[message.ID] = struct{}{}
+	}
+
+	result := make([]DesktopAITaskView, 0, len(tasks))
+	for _, task := range tasks {
+		if _, ok := keepMessageIDs[task.AssistantMessageID]; ok {
+			result = append(result, task)
+		}
 	}
 	return result
 }

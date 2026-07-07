@@ -86,6 +86,8 @@ func newTestAISessionRouter(userID uuid.UUID, handler *AISessionHandler) *gin.En
 	router.PATCH("/sessions/:session_id", handler.RenameSession)
 	router.POST("/sessions/:session_id/chat", handler.Chat)
 	router.POST("/sessions/:session_id/cancel", handler.CancelSession)
+	router.PATCH("/sessions/:session_id/messages/:message_id", handler.UpdateMessage)
+	router.DELETE("/sessions/:session_id/messages/:message_id", handler.DeleteMessage)
 	router.DELETE("/sessions/:session_id", handler.DeleteSession)
 	return router
 }
@@ -294,6 +296,95 @@ func TestAISessionHandlerCreateSendConfirmAndClose(t *testing.T) {
 
 	_, err := manager.GetSession(userID, created.Data.SessionID)
 	require.ErrorIs(t, err, runtime.ErrSessionNotFound)
+}
+
+func TestAISessionHandlerUpdateAndDeleteUserMessage(t *testing.T) {
+	userID := uuid.New()
+	runner := &restFakeTurnRunner{
+		scripts: []restFakeTurnScript{
+			{
+				deltas: []string{"原", "回答"},
+				result: provider.TurnResult{Content: "原回答"},
+			},
+			{
+				deltas: []string{"新", "回答"},
+				result: provider.TurnResult{Content: "新回答"},
+			},
+		},
+	}
+	manager := runtime.NewManager(
+		restFakeResolver{config: provider.Config{Model: "fake-model"}},
+		runner,
+		registry.NewToolRegistry(nil),
+		time.Minute,
+	)
+
+	handler := NewAISessionHandler(manager)
+	router := newTestAISessionRouter(userID, handler)
+
+	createResp := performJSONRequest(t, router, http.MethodPost, "/sessions", map[string]interface{}{
+		"model":           "gpt-test",
+		"permission_mode": "balanced",
+	})
+	require.Equal(t, http.StatusCreated, createResp.Code)
+
+	var created struct {
+		Data CreateAISessionResponse `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(createResp.Body.Bytes(), &created))
+
+	sendResp := performJSONRequest(t, router, http.MethodPost, "/sessions/"+created.Data.SessionID+"/chat", chatRequestBody("你是谁", nil))
+	require.Equal(t, http.StatusOK, sendResp.Code)
+
+	latestResp := performJSONRequest(t, router, http.MethodGet, "/sessions/"+created.Data.SessionID, nil)
+	require.Equal(t, http.StatusOK, latestResp.Code)
+	var latest struct {
+		Data CreateAISessionResponse `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(latestResp.Body.Bytes(), &latest))
+	require.Len(t, latest.Data.Session.Messages, 2)
+	userMessageID := latest.Data.Session.Messages[0].ID
+
+	updateResp := performJSONRequest(t, router, http.MethodPatch, "/sessions/"+created.Data.SessionID+"/messages/"+userMessageID, map[string]interface{}{
+		"content": "你能做什么",
+	})
+	require.Equal(t, http.StatusOK, updateResp.Code)
+	var updated struct {
+		Data CreateAISessionResponse `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(updateResp.Body.Bytes(), &updated))
+	require.Len(t, updated.Data.Session.Messages, 1)
+	require.Equal(t, "你能做什么", updated.Data.Session.Messages[0].Content)
+
+	regenerateResp := performJSONRequest(t, router, http.MethodPost, "/sessions/"+created.Data.SessionID+"/chat", map[string]interface{}{
+		"id":        "test-chat",
+		"trigger":   "submit-message",
+		"messageId": userMessageID,
+		"mode":      "regenerate",
+		"messages":  updated.Data.Session.UIMessages,
+	})
+	require.Equal(t, http.StatusOK, regenerateResp.Code)
+
+	regeneratedResp := performJSONRequest(t, router, http.MethodGet, "/sessions/"+created.Data.SessionID, nil)
+	require.Equal(t, http.StatusOK, regeneratedResp.Code)
+	var regenerated struct {
+		Data CreateAISessionResponse `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(regeneratedResp.Body.Bytes(), &regenerated))
+	require.Len(t, regenerated.Data.Session.Messages, 2)
+	require.Equal(t, userMessageID, regenerated.Data.Session.Messages[0].ID)
+	require.Equal(t, "你能做什么", regenerated.Data.Session.Messages[0].Content)
+	require.Equal(t, "assistant", regenerated.Data.Session.Messages[1].Role)
+	require.Equal(t, "新回答", regenerated.Data.Session.Messages[1].Content)
+
+	deleteResp := performJSONRequest(t, router, http.MethodDelete, "/sessions/"+created.Data.SessionID+"/messages/"+userMessageID, nil)
+	require.Equal(t, http.StatusOK, deleteResp.Code)
+	var deleted struct {
+		Data CreateAISessionResponse `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(deleteResp.Body.Bytes(), &deleted))
+	require.Empty(t, deleted.Data.Session.Messages)
+	require.Empty(t, deleted.Data.Session.UIMessages)
 }
 
 func TestAISessionHandlerReturnsNotFoundForUnknownSession(t *testing.T) {

@@ -96,6 +96,10 @@ export interface CreateSessionResponse {
   default_transport: AgentTransportType
 }
 
+export interface UpdateMessageInput {
+  content: string
+}
+
 export interface ListSessionsResponse {
   items: SessionListItem[]
   total: number

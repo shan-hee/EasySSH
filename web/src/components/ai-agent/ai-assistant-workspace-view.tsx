@@ -223,7 +223,22 @@ export function AIAssistantWorkspaceView({
   const { confirm: requestConfirm, confirmDialog } = useConfirmDialog()
   const { isLoading, isConfigured, models, refetch: refetchAIConfig } = useAIConfig(adapters?.aiConfig)
   const agentSession = useAgentSession(adapters?.aiSession)
-  const { session, sessionId, uiMessages, pendingConfirmationTasks, error, restoreLatestSession, restoreSession, startNewSession, sendMessage, confirmTask, cancelSession, closeSession } = agentSession
+  const {
+    session,
+    sessionId,
+    uiMessages,
+    pendingConfirmationTasks,
+    error,
+    restoreLatestSession,
+    restoreSession,
+    startNewSession,
+    sendMessage,
+    updateMessage: updateUserMessage,
+    deleteMessage: deleteUserMessage,
+    confirmTask,
+    cancelSession,
+    closeSession,
+  } = agentSession
 
   const [draft, setDraft] = useState("")
   const [selectedModel, setSelectedModel] = useState("")
@@ -478,6 +493,29 @@ export function AIAssistantWorkspaceView({
       setAttachments((current) => current.length > 0 ? current : submittedAttachments)
     }
   }
+
+  const handleUpdateUserMessage = useCallback(async (messageId: string, content: string) => {
+    const mentionedServers = getMentionedServers(content, availableServers)
+    return updateUserMessage(messageId, content, {
+      regenerate: true,
+      contextText: buildMessageContext(content),
+      model: selectedModel || undefined,
+      permissionMode,
+      scope: workspaceScopeFromMentionedServers(mentionedServers),
+    })
+  }, [availableServers, buildMessageContext, permissionMode, selectedModel, updateUserMessage])
+
+  const handleDeleteUserMessage = useCallback(async (messageId: string) => {
+    const confirmed = await requestConfirm({
+      description: t("deleteMessageConfirm"),
+      variant: "destructive",
+    })
+    if (!confirmed) {
+      return false
+    }
+
+    return deleteUserMessage(messageId)
+  }, [deleteUserMessage, requestConfirm, t])
 
   const handleUseTemplate = (prompt: string) => {
     setDraft(prompt)
@@ -1127,6 +1165,8 @@ export function AIAssistantWorkspaceView({
                       messages={uiMessages}
                       tText={t}
                       onConfirmTask={confirmTask}
+                      onUpdateUserMessage={handleUpdateUserMessage}
+                      onDeleteUserMessage={handleDeleteUserMessage}
                       assistantLoadingState={assistantLoadingState}
                       className="mx-auto w-full max-w-5xl"
                     />

@@ -21,6 +21,9 @@ var (
 	ErrSessionNotFound                = errors.New("ai session not found")
 	ErrSessionClosed                  = errors.New("ai session already closed")
 	ErrSessionBusy                    = errors.New("ai session is busy")
+	ErrMessageNotFound                = errors.New("ai message not found")
+	ErrMessageNotEditable             = errors.New("ai message cannot be edited")
+	ErrMessageNotDeletable            = errors.New("ai message cannot be deleted")
 	ErrTaskNotFound                   = errors.New("ai task not found")
 	ErrTaskConfirmationNotPending     = errors.New("ai task is not awaiting confirmation")
 	ErrInvalidDecision                = errors.New("invalid confirmation decision")
@@ -316,6 +319,117 @@ func (m *Manager) DeleteSession(ctx context.Context, userID uuid.UUID, sessionID
 	return nil
 }
 
+func (m *Manager) UpdateUserMessage(ctx context.Context, userID uuid.UUID, sessionID, messageID string, input UpdateMessageInput) (*SessionView, error) {
+	content := strings.TrimSpace(input.Content)
+	if content == "" {
+		return nil, ErrEmptyMessageContent
+	}
+
+	s, err := m.getOrRestoreSession(ctx, userID, sessionID)
+	if err != nil {
+		return nil, err
+	}
+
+	m.mu.Lock()
+	if s.closed {
+		m.mu.Unlock()
+		return nil, ErrSessionClosed
+	}
+	if s.processing {
+		m.mu.Unlock()
+		return nil, ErrSessionBusy
+	}
+
+	messageIndex := -1
+	for index, message := range s.messageViews {
+		if message.ID == messageID {
+			messageIndex = index
+			break
+		}
+	}
+	if messageIndex < 0 {
+		m.mu.Unlock()
+		return nil, ErrMessageNotFound
+	}
+	if s.messageViews[messageIndex].Role != "user" {
+		m.mu.Unlock()
+		return nil, ErrMessageNotEditable
+	}
+
+	s.messageViews[messageIndex].Content = content
+	s.updateProviderMessageContentForVisibleMessage(messageIndex+1, content)
+	s.truncateAfterMessageIndex(messageIndex + 1)
+	s.truncateProviderMessagesAfterVisibleMessage(messageIndex + 1)
+	s.status = SessionStatusIdle
+	s.pendingContext = ""
+	s.updatedAt = time.Now()
+	view := m.snapshotSessionLocked(s)
+	snapshot := m.snapshotForPersistenceLocked(s)
+	m.mu.Unlock()
+
+	m.saveSnapshot(ctx, snapshot)
+	m.emitEvent(s, Event{
+		ID:        uuid.NewString(),
+		Type:      EventSessionCompleted,
+		SessionID: s.id,
+		CreatedAt: time.Now(),
+		Session:   &view,
+	})
+	return &view, nil
+}
+
+func (m *Manager) DeleteMessage(ctx context.Context, userID uuid.UUID, sessionID, messageID string) (*SessionView, error) {
+	s, err := m.getOrRestoreSession(ctx, userID, sessionID)
+	if err != nil {
+		return nil, err
+	}
+
+	m.mu.Lock()
+	if s.closed {
+		m.mu.Unlock()
+		return nil, ErrSessionClosed
+	}
+	if s.processing {
+		m.mu.Unlock()
+		return nil, ErrSessionBusy
+	}
+
+	messageIndex := -1
+	for index, message := range s.messageViews {
+		if message.ID == messageID {
+			messageIndex = index
+			break
+		}
+	}
+	if messageIndex < 0 {
+		m.mu.Unlock()
+		return nil, ErrMessageNotFound
+	}
+	if s.messageViews[messageIndex].Role != "user" {
+		m.mu.Unlock()
+		return nil, ErrMessageNotDeletable
+	}
+
+	s.truncateAfterMessageIndex(messageIndex)
+	s.truncateProviderMessagesAfterVisibleMessage(messageIndex)
+	s.status = SessionStatusIdle
+	s.pendingContext = ""
+	s.updatedAt = time.Now()
+	view := m.snapshotSessionLocked(s)
+	snapshot := m.snapshotForPersistenceLocked(s)
+	m.mu.Unlock()
+
+	m.saveSnapshot(ctx, snapshot)
+	m.emitEvent(s, Event{
+		ID:        uuid.NewString(),
+		Type:      EventSessionCompleted,
+		SessionID: s.id,
+		CreatedAt: time.Now(),
+		Session:   &view,
+	})
+	return &view, nil
+}
+
 func (m *Manager) GetLatestActiveSession(ctx context.Context, userID uuid.UUID) (*SessionView, error) {
 	if m.store == nil {
 		return nil, ErrSessionNotFound
@@ -434,6 +548,73 @@ func (m *Manager) SendUserMessageWithOptions(ctx context.Context, userID uuid.UU
 	s.status = SessionStatusRunning
 	s.processing = true
 	s.updatedAt = now
+	snapshot := m.snapshotForPersistenceLocked(s)
+	m.mu.Unlock()
+
+	m.saveSnapshot(ctx, snapshot)
+	go m.runSession(sessionID)
+	return nil
+}
+
+func (m *Manager) RegenerateAfterUserMessage(ctx context.Context, userID uuid.UUID, sessionID, messageID string, input SendUserMessageInput) error {
+	messageID = strings.TrimSpace(messageID)
+	if messageID == "" {
+		return ErrMessageNotFound
+	}
+
+	model := strings.TrimSpace(input.Model)
+	contextText := strings.TrimSpace(input.Context)
+	permissionMode := strings.TrimSpace(input.PermissionMode)
+	scope := normalizeSessionScope(input.Scope)
+
+	s, err := m.getOrRestoreSession(ctx, userID, sessionID)
+	if err != nil {
+		return err
+	}
+
+	m.mu.Lock()
+	if s.closed {
+		m.mu.Unlock()
+		return ErrSessionClosed
+	}
+	if s.processing {
+		m.mu.Unlock()
+		return ErrSessionBusy
+	}
+
+	messageIndex := -1
+	for index, message := range s.messageViews {
+		if message.ID == messageID {
+			messageIndex = index
+			break
+		}
+	}
+	if messageIndex < 0 {
+		m.mu.Unlock()
+		return ErrMessageNotFound
+	}
+	if s.messageViews[messageIndex].Role != "user" {
+		m.mu.Unlock()
+		return ErrMessageNotEditable
+	}
+
+	if model != "" {
+		s.model = model
+	}
+	if permissionMode != "" {
+		s.permissionMode = normalizePermissionMode(permissionMode)
+	}
+	if strings.EqualFold(input.Scope.Kind, "global") {
+		s.scope = SessionScope{}
+	} else if scope.Kind != "" {
+		s.scope = scope
+	}
+	s.truncateAfterMessageIndex(messageIndex + 1)
+	s.truncateProviderMessagesAfterVisibleMessage(messageIndex + 1)
+	s.pendingContext = contextText
+	s.status = SessionStatusRunning
+	s.processing = true
+	s.updatedAt = time.Now()
 	snapshot := m.snapshotForPersistenceLocked(s)
 	m.mu.Unlock()
 
@@ -1394,6 +1575,73 @@ func (s *session) hasPendingConfirmation() bool {
 		}
 	}
 	return false
+}
+
+func (s *session) truncateAfterMessageIndex(messageIndex int) {
+	if messageIndex < 0 {
+		messageIndex = 0
+	}
+	if messageIndex > len(s.messageViews) {
+		messageIndex = len(s.messageViews)
+	}
+
+	keepIDs := make(map[string]struct{}, messageIndex)
+	for _, message := range s.messageViews[:messageIndex] {
+		keepIDs[message.ID] = struct{}{}
+	}
+
+	s.messageViews = append([]MessageView(nil), s.messageViews[:messageIndex]...)
+	nextTaskOrder := make([]string, 0, len(s.taskOrder))
+	for _, taskID := range s.taskOrder {
+		task, ok := s.tasks[taskID]
+		if !ok {
+			continue
+		}
+		if _, keep := keepIDs[task.view.AssistantMessageID]; keep {
+			nextTaskOrder = append(nextTaskOrder, taskID)
+			continue
+		}
+		delete(s.tasks, taskID)
+	}
+	s.taskOrder = nextTaskOrder
+}
+
+func (s *session) updateProviderMessageContentForVisibleMessage(visibleMessageCount int, content string) {
+	if visibleMessageCount <= 0 {
+		return
+	}
+
+	seen := 0
+	for index := range s.messages {
+		if s.messages[index].Role == "tool" {
+			continue
+		}
+		seen++
+		if seen == visibleMessageCount {
+			s.messages[index].Content = content
+			return
+		}
+	}
+}
+
+func (s *session) truncateProviderMessagesAfterVisibleMessage(visibleMessageCount int) {
+	if visibleMessageCount < 0 {
+		visibleMessageCount = 0
+	}
+
+	seen := 0
+	end := len(s.messages)
+	for index, message := range s.messages {
+		if message.Role == "tool" {
+			continue
+		}
+		seen++
+		if seen > visibleMessageCount {
+			end = index
+			break
+		}
+	}
+	s.messages = append([]provider.Message(nil), s.messages[:end]...)
 }
 
 func buildToolViews(specs []registry.ToolSpec) []ToolView {

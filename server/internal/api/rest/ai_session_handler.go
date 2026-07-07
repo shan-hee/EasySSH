@@ -48,6 +48,7 @@ type AISDKChatRequest struct {
 	MessageID      string                    `json:"messageId,omitempty"`
 	Context        string                    `json:"context,omitempty"`
 	Model          string                    `json:"model,omitempty"`
+	Mode           string                    `json:"mode,omitempty"`
 	PermissionMode string                    `json:"permission_mode,omitempty" binding:"omitempty,oneof=readonly balanced privileged"`
 	Scope          runtime.SessionScope      `json:"scope,omitempty"`
 	Approval       *AISDKChatApprovalRequest `json:"approval,omitempty"`
@@ -55,6 +56,10 @@ type AISDKChatRequest struct {
 
 type RenameAISessionRequest struct {
 	Title string `json:"title" binding:"required"`
+}
+
+type UpdateAIMessageRequest struct {
+	Content string `json:"content" binding:"required"`
 }
 
 func (h *AISessionHandler) ListSessions(c *gin.Context) {
@@ -225,6 +230,22 @@ func (h *AISessionHandler) Chat(c *gin.Context) {
 			h.respondRuntimeError(c, err)
 			return
 		}
+	case "regenerate":
+		if err := h.manager.RegenerateAfterUserMessage(
+			c.Request.Context(),
+			userID,
+			sessionID,
+			action.messageID,
+			runtime.SendUserMessageInput{
+				Context:        req.Context,
+				Model:          req.Model,
+				PermissionMode: req.PermissionMode,
+				Scope:          req.Scope,
+			},
+		); err != nil {
+			h.respondRuntimeError(c, err)
+			return
+		}
 	default:
 		RespondError(c, http.StatusBadRequest, "validation_error", "unsupported AI SDK chat request")
 		return
@@ -330,6 +351,68 @@ func (h *AISessionHandler) DeleteSession(c *gin.Context) {
 	RespondNoContent(c)
 }
 
+func (h *AISessionHandler) UpdateMessage(c *gin.Context) {
+	userID, err := getUserIDFromContext(c)
+	if err != nil {
+		RespondError(c, http.StatusUnauthorized, "unauthorized", err.Error())
+		return
+	}
+
+	sessionID := strings.TrimSpace(c.Param("session_id"))
+	messageID := strings.TrimSpace(c.Param("message_id"))
+	if sessionID == "" || messageID == "" {
+		RespondError(c, http.StatusBadRequest, "invalid_message_id", "session_id and message_id are required")
+		return
+	}
+
+	var req UpdateAIMessageRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		RespondError(c, http.StatusBadRequest, "validation_error", err.Error())
+		return
+	}
+
+	view, err := h.manager.UpdateUserMessage(c.Request.Context(), userID, sessionID, messageID, runtime.UpdateMessageInput{
+		Content: req.Content,
+	})
+	if err != nil {
+		h.respondRuntimeError(c, err)
+		return
+	}
+
+	RespondSuccess(c, CreateAISessionResponse{
+		SessionID:        view.ID,
+		Session:          view,
+		DefaultTransport: view.DefaultTransport,
+	})
+}
+
+func (h *AISessionHandler) DeleteMessage(c *gin.Context) {
+	userID, err := getUserIDFromContext(c)
+	if err != nil {
+		RespondError(c, http.StatusUnauthorized, "unauthorized", err.Error())
+		return
+	}
+
+	sessionID := strings.TrimSpace(c.Param("session_id"))
+	messageID := strings.TrimSpace(c.Param("message_id"))
+	if sessionID == "" || messageID == "" {
+		RespondError(c, http.StatusBadRequest, "invalid_message_id", "session_id and message_id are required")
+		return
+	}
+
+	view, err := h.manager.DeleteMessage(c.Request.Context(), userID, sessionID, messageID)
+	if err != nil {
+		h.respondRuntimeError(c, err)
+		return
+	}
+
+	RespondSuccess(c, CreateAISessionResponse{
+		SessionID:        view.ID,
+		Session:          view,
+		DefaultTransport: view.DefaultTransport,
+	})
+}
+
 func (h *AISessionHandler) CloseSession(c *gin.Context) {
 	userID, err := getUserIDFromContext(c)
 	if err != nil {
@@ -354,6 +437,7 @@ func (h *AISessionHandler) CloseSession(c *gin.Context) {
 type aiSDKChatAction struct {
 	kind      string
 	content   string
+	messageID string
 	approvals []aiSDKChatApproval
 }
 
@@ -373,6 +457,14 @@ func resolveAISDKChatAction(req AISDKChatRequest) (aiSDKChatAction, error) {
 
 	if approvals := approvalResponsesFromUIMessages(req.Messages); len(approvals) > 0 {
 		return aiSDKChatAction{kind: "approval", approvals: approvals}, nil
+	}
+
+	if strings.EqualFold(strings.TrimSpace(req.Mode), "regenerate") {
+		messageID := strings.TrimSpace(req.MessageID)
+		if messageID == "" {
+			return aiSDKChatAction{}, errors.New("message id is required")
+		}
+		return aiSDKChatAction{kind: "regenerate", messageID: messageID}, nil
 	}
 
 	content := latestUserMessageText(req.Messages)
@@ -949,9 +1041,11 @@ func (h *AISessionHandler) respondRuntimeError(c *gin.Context, err error) {
 	switch {
 	case errors.Is(err, runtime.ErrSessionNotFound):
 		RespondError(c, http.StatusNotFound, "session_not_found", err.Error())
+	case errors.Is(err, runtime.ErrMessageNotFound):
+		RespondError(c, http.StatusNotFound, "message_not_found", err.Error())
 	case errors.Is(err, runtime.ErrTaskNotFound):
 		RespondError(c, http.StatusNotFound, "task_not_found", err.Error())
-	case errors.Is(err, runtime.ErrEmptyMessageContent), errors.Is(err, runtime.ErrInvalidDecision):
+	case errors.Is(err, runtime.ErrEmptyMessageContent), errors.Is(err, runtime.ErrInvalidDecision), errors.Is(err, runtime.ErrMessageNotEditable), errors.Is(err, runtime.ErrMessageNotDeletable):
 		RespondError(c, http.StatusBadRequest, "validation_error", err.Error())
 	case errors.Is(err, runtime.ErrSessionBusy), errors.Is(err, runtime.ErrSessionClosed), errors.Is(err, runtime.ErrTaskConfirmationNotPending), errors.Is(err, runtime.ErrSessionHasPendingConfirmations):
 		RespondError(c, http.StatusConflict, "session_conflict", err.Error())

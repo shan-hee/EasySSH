@@ -3,12 +3,15 @@ import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react"
 import {
   Check,
   ChevronDown,
+  Copy,
   FileText,
   FolderOpen,
   Loader2,
+  Pencil,
   Server,
   ShieldAlert,
   Terminal,
+  Trash2,
   X,
 } from "lucide-react"
 import {
@@ -24,6 +27,8 @@ import {
 import { AgentEmptyState, AgentNoticeCard } from "@/components/ai-agent/agent-notice"
 import {
   Message,
+  MessageAction,
+  MessageActions,
   MessageContent,
   MessageResponse,
 } from "@/components/ai-elements/message"
@@ -63,6 +68,8 @@ interface AgentAIElementsTimelineProps {
   messages: UIMessage[]
   tText: TimelineTranslate
   onConfirmTask?: (taskId: string, decision: ToolDecision) => void | Promise<void>
+  onUpdateUserMessage?: (messageId: string, content: string) => boolean | Promise<boolean>
+  onDeleteUserMessage?: (messageId: string) => boolean | Promise<boolean>
   assistantLoadingState?: AssistantLoadingState
   emptyDescription?: string
   compact?: boolean
@@ -93,6 +100,12 @@ function getDataMessage(part: AgentMessagePart, key: string) {
   return typeof value === "string" ? value : ""
 }
 
+function getMessageText(message: UIMessage) {
+  return message.parts
+    .map((part) => (isTextUIPart(part) ? part.text : ""))
+    .join("")
+}
+
 function hasRenderableContent(message: UIMessage) {
   return message.parts.some((part) => {
     if (isTextUIPart(part)) {
@@ -109,6 +122,31 @@ function hasRenderableContent(message: UIMessage) {
     }
     return false
   })
+}
+
+async function copyTextToClipboard(text: string) {
+  if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
+    try {
+      await navigator.clipboard.writeText(text)
+      return
+    } catch {
+      // Some desktop WebView/browser contexts expose clipboard but reject writes.
+    }
+  }
+
+  if (typeof document === "undefined") {
+    return
+  }
+
+  const textarea = document.createElement("textarea")
+  textarea.value = text
+  textarea.setAttribute("readonly", "")
+  textarea.style.position = "fixed"
+  textarea.style.left = "-9999px"
+  document.body.appendChild(textarea)
+  textarea.select()
+  document.execCommand("copy")
+  document.body.removeChild(textarea)
 }
 
 function toolOutput(part: AgentToolPart) {
@@ -715,15 +753,121 @@ function ChatMessage({
   message,
   tText,
   onConfirmTask,
+  onUpdateUserMessage,
+  onDeleteUserMessage,
   compact,
 }: {
   message: UIMessage
   tText: TimelineTranslate
   onConfirmTask?: (taskId: string, decision: ToolDecision) => void | Promise<void>
+  onUpdateUserMessage?: (messageId: string, content: string) => boolean | Promise<boolean>
+  onDeleteUserMessage?: (messageId: string) => boolean | Promise<boolean>
   compact?: boolean
 }) {
+  const messageText = getMessageText(message)
+  const isUserMessage = message.role === "user"
+  const [isEditing, setIsEditing] = useState(false)
+  const [editDraft, setEditDraft] = useState(messageText)
+  const [isSaving, setIsSaving] = useState(false)
+  const [isDeleting, setIsDeleting] = useState(false)
+  const [copied, setCopied] = useState(false)
+
+  useEffect(() => {
+    if (!isEditing) {
+      setEditDraft(messageText)
+    }
+  }, [isEditing, messageText])
+
+  useEffect(() => {
+    if (!copied) {
+      return
+    }
+
+    const timer = window.setTimeout(() => setCopied(false), 1400)
+    return () => window.clearTimeout(timer)
+  }, [copied])
+
   if (!hasRenderableContent(message)) {
     return null
+  }
+
+  const actionDisabled = isSaving || isDeleting
+  const canEdit = isUserMessage && Boolean(onUpdateUserMessage)
+  const canDelete = isUserMessage && Boolean(onDeleteUserMessage)
+
+  const startEditing = () => {
+    if (!canEdit || actionDisabled) {
+      return
+    }
+    setEditDraft(messageText)
+    setIsEditing(true)
+  }
+
+  const cancelEditing = () => {
+    if (actionDisabled) {
+      return
+    }
+    setEditDraft(messageText)
+    setIsEditing(false)
+  }
+
+  const submitEditing = async () => {
+    if (!onUpdateUserMessage || actionDisabled) {
+      return
+    }
+
+    const nextContent = editDraft.trim()
+    if (!nextContent) {
+      return
+    }
+    if (nextContent === messageText.trim()) {
+      setIsEditing(false)
+      return
+    }
+
+    setIsSaving(true)
+    try {
+      const updated = await onUpdateUserMessage(message.id, nextContent)
+      if (updated) {
+        setIsEditing(false)
+      }
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  const handleEditKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (event.key === "Escape") {
+      event.preventDefault()
+      cancelEditing()
+      return
+    }
+    if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+      event.preventDefault()
+      void submitEditing()
+    }
+  }
+
+  const copyMessage = async () => {
+    if (!messageText.trim() || actionDisabled) {
+      return
+    }
+
+    await copyTextToClipboard(messageText)
+    setCopied(true)
+  }
+
+  const deleteMessage = async () => {
+    if (!onDeleteUserMessage || actionDisabled) {
+      return
+    }
+
+    setIsDeleting(true)
+    try {
+      await onDeleteUserMessage(message.id)
+    } finally {
+      setIsDeleting(false)
+    }
   }
 
   return (
@@ -734,26 +878,100 @@ function ChatMessage({
           compact && "text-xs"
         )}
       >
-        {createMessageRenderSegments(message).map((segment) => (
-          segment.type === "tool-group" ? (
-            <ToolGroupView
-              key={`${message.id}:tools:${segment.startIndex}:${segment.parts.map((part) => `${part.toolCallId}:${part.state}`).join("|")}`}
-              parts={segment.parts}
-              tText={tText}
-              onConfirmTask={onConfirmTask}
-              compact={compact}
-            />
-          ) : (
-            <MessagePartView
-              key={getPartKey(message, segment.part, segment.index)}
-              part={segment.part}
-              tText={tText}
-              onConfirmTask={onConfirmTask}
-              compact={compact}
-            />
-          )
-        ))}
+        {isEditing ? (
+          <textarea
+            autoFocus
+            value={editDraft}
+            onChange={(event) => setEditDraft(event.target.value)}
+            onKeyDown={handleEditKeyDown}
+            className={cn(
+              "min-h-24 w-[min(34rem,calc(100vw-4rem))] resize-y rounded-md border border-border/70 bg-background/85 px-3 py-2 text-sm leading-6 text-foreground outline-none transition focus-visible:border-ring focus-visible:ring-[2px] focus-visible:ring-ring/30",
+              compact && "min-h-20 text-xs leading-5"
+            )}
+            disabled={actionDisabled}
+          />
+        ) : (
+          createMessageRenderSegments(message).map((segment) => (
+            segment.type === "tool-group" ? (
+              <ToolGroupView
+                key={`${message.id}:tools:${segment.startIndex}:${segment.parts.map((part) => `${part.toolCallId}:${part.state}`).join("|")}`}
+                parts={segment.parts}
+                tText={tText}
+                onConfirmTask={onConfirmTask}
+                compact={compact}
+              />
+            ) : (
+              <MessagePartView
+                key={getPartKey(message, segment.part, segment.index)}
+                part={segment.part}
+                tText={tText}
+                onConfirmTask={onConfirmTask}
+                compact={compact}
+              />
+            )
+          ))
+        )}
       </MessageContent>
+      {isUserMessage && (
+        <MessageActions className="ml-auto pr-1 text-muted-foreground">
+          {isEditing ? (
+            <>
+              <MessageAction
+                tooltip={tText("save")}
+                label={tText("save")}
+                disabled={actionDisabled || !editDraft.trim()}
+                onClick={() => void submitEditing()}
+                className="size-8 text-muted-foreground hover:text-foreground"
+              >
+                {isSaving ? <Loader2 className="size-4 animate-spin" /> : <Check className="size-4" />}
+              </MessageAction>
+              <MessageAction
+                tooltip={tText("cancel")}
+                label={tText("cancel")}
+                disabled={actionDisabled}
+                onClick={cancelEditing}
+                className="size-8 text-muted-foreground hover:text-foreground"
+              >
+                <X className="size-4" />
+              </MessageAction>
+            </>
+          ) : (
+            <>
+              {canEdit && (
+                <MessageAction
+                  tooltip={tText("edit")}
+                  label={tText("edit")}
+                  disabled={actionDisabled}
+                  onClick={startEditing}
+                  className="size-8 text-muted-foreground hover:text-foreground"
+                >
+                  <Pencil className="size-4" />
+                </MessageAction>
+              )}
+              <MessageAction
+                tooltip={copied ? tText("copied") : tText("copy")}
+                label={copied ? tText("copied") : tText("copy")}
+                disabled={actionDisabled || !messageText.trim()}
+                onClick={() => void copyMessage()}
+                className="size-8 text-muted-foreground hover:text-foreground"
+              >
+                {copied ? <Check className="size-4" /> : <Copy className="size-4" />}
+              </MessageAction>
+              {canDelete && (
+                <MessageAction
+                  tooltip={tText("delete")}
+                  label={tText("delete")}
+                  disabled={actionDisabled}
+                  onClick={() => void deleteMessage()}
+                  className="size-8 text-muted-foreground hover:text-destructive"
+                >
+                  {isDeleting ? <Loader2 className="size-4 animate-spin" /> : <Trash2 className="size-4" />}
+                </MessageAction>
+              )}
+            </>
+          )}
+        </MessageActions>
+      )}
     </Message>
   )
 }
@@ -762,6 +980,8 @@ export function AgentAIElementsTimeline({
   messages,
   tText,
   onConfirmTask,
+  onUpdateUserMessage,
+  onDeleteUserMessage,
   assistantLoadingState = false,
   emptyDescription,
   compact = false,
@@ -813,6 +1033,8 @@ export function AgentAIElementsTimeline({
           message={message}
           tText={tText}
           onConfirmTask={onConfirmTask}
+          onUpdateUserMessage={onUpdateUserMessage}
+          onDeleteUserMessage={onDeleteUserMessage}
           compact={compact}
         />
       ))}

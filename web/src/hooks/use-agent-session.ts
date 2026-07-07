@@ -5,8 +5,10 @@ import {
   cancelAISession,
   closeAISession,
   createAISession,
+  deleteAIMessage,
   getAISession,
   getLatestAISession,
+  updateAIMessage,
   type AgentSessionScope,
   type CreateSessionResponse,
   type PermissionMode,
@@ -33,6 +35,23 @@ export interface AgentSessionAdapter {
     model?: string
     permission_mode?: PermissionMode
     scope?: AgentSessionScope
+  }) => Promise<CreateSessionResponse>
+  updateMessage: (input: {
+    session_id: string
+    message_id: string
+    content: string
+  }) => Promise<CreateSessionResponse>
+  regenerateMessage?: (input: {
+    session_id: string
+    message_id: string
+    context?: string
+    model?: string
+    permission_mode?: PermissionMode
+    scope?: AgentSessionScope
+  }) => Promise<CreateSessionResponse>
+  deleteMessage: (input: {
+    session_id: string
+    message_id: string
   }) => Promise<CreateSessionResponse>
   subscribeSessionEvents?: (callback: (event: {
     session_id?: string
@@ -106,6 +125,44 @@ function getUIMessageTextLength(message: UIMessage) {
     }
     return length
   }, 0)
+}
+
+function getUIMessageText(message: UIMessage) {
+  return message.parts
+    .map((part) => ("text" in part && typeof part.text === "string" ? part.text : ""))
+    .join("")
+}
+
+function resolveUserMessageId(session: SessionView | null, uiMessages: UIMessage[], messageId: string) {
+  const sessionMessages = session?.messages ?? []
+  if (sessionMessages.some((message) => message.id === messageId)) {
+    return messageId
+  }
+
+  const uiMessageIndex = uiMessages.findIndex((message) => message.id === messageId && message.role === "user")
+  if (uiMessageIndex >= 0) {
+    const userMessageIndex = uiMessages
+      .slice(0, uiMessageIndex + 1)
+      .filter((message) => message.role === "user")
+      .length - 1
+    const sessionUserMessage = sessionMessages.filter((message) => message.role === "user")[userMessageIndex]
+    if (sessionUserMessage?.id) {
+      return sessionUserMessage.id
+    }
+  }
+
+  const uiMessage = uiMessages.find((message) => message.id === messageId && message.role === "user")
+  const content = uiMessage ? getUIMessageText(uiMessage).trim() : ""
+  if (content) {
+    const matches = sessionMessages.filter((message) => (
+      message.role === "user" && message.content.trim() === content
+    ))
+    if (matches.length === 1) {
+      return matches[0].id
+    }
+  }
+
+  return messageId
 }
 
 export function useAgentSession(adapter?: AgentSessionAdapter) {
@@ -195,7 +252,7 @@ export function useAgentSession(adapter?: AgentSessionAdapter) {
       setTransport(sessionRef.current ? "ai_sdk_ui" : "idle")
     },
     onFinish() {
-      void refreshSessionSnapshot(undefined, { syncMessages: false })
+      void refreshSessionSnapshot()
     },
   })
   const setChatMessages = chat.setMessages
@@ -428,6 +485,127 @@ export function useAgentSession(adapter?: AgentSessionAdapter) {
     }
   }, [adapter, applySessionResponse, chat, pushLocalError, refreshSessionSnapshot])
 
+  const regenerateAfterUpdate = useCallback(async (
+    activeSessionId: string,
+    messageId: string,
+    content: string,
+    input: {
+      contextText?: string
+      model?: string
+      permissionMode?: PermissionMode
+      scope?: AgentSessionScope
+    } = {}
+  ) => {
+    if (adapter && !adapter.regenerateMessage) {
+      return
+    }
+
+    setError(null)
+    setSession((current) => current
+      ? { ...current, status: "running", updated_at: new Date().toISOString() }
+      : current
+    )
+    setTransport(getAdapterTransport(adapter))
+
+    try {
+      if (adapter) {
+        const response = await adapter.regenerateMessage({
+          session_id: activeSessionId,
+          message_id: messageId,
+          context: input.contextText,
+          model: input.model,
+          permission_mode: input.permissionMode,
+          scope: input.scope,
+        })
+        applySessionResponse(response, { syncMessages: Boolean(adapter.subscribeSessionEvents) })
+        return
+      }
+
+      await chat.sendMessage({ text: content, messageId }, {
+        body: {
+          [TARGET_SESSION_ID_BODY_KEY]: activeSessionId,
+          mode: "regenerate",
+          context: input.contextText,
+          model: input.model,
+          permission_mode: input.permissionMode,
+          scope: input.scope,
+        },
+      })
+    } catch (regenerateError) {
+      const message = toErrorMessage(regenerateError)
+      pushLocalError(message)
+      void refreshSessionSnapshot(activeSessionId)
+    }
+  }, [adapter, applySessionResponse, chat, pushLocalError, refreshSessionSnapshot])
+
+  const updateMessage = useCallback(async (
+    messageId: string,
+    content: string,
+    input: {
+      regenerate?: boolean
+      contextText?: string
+      model?: string
+      permissionMode?: PermissionMode
+      scope?: AgentSessionScope
+    } = {}
+  ) => {
+    const activeSessionId = sessionRef.current?.id
+    const normalizedContent = content.trim()
+    if (!activeSessionId || !messageId || !normalizedContent) {
+      return false
+    }
+
+    const canonicalMessageId = resolveUserMessageId(sessionRef.current, chat.messages, messageId)
+    setError(null)
+    setTransport(getAdapterTransport(adapter))
+    try {
+      const response = adapter
+        ? await adapter.updateMessage({
+          session_id: activeSessionId,
+          message_id: canonicalMessageId,
+          content: normalizedContent,
+        })
+        : await updateAIMessage(activeSessionId, canonicalMessageId, { content: normalizedContent })
+      applySessionResponse(response)
+      setChatMessages(response.session.ui_messages || [])
+      if (input.regenerate !== false) {
+        void regenerateAfterUpdate(activeSessionId, canonicalMessageId, normalizedContent, input)
+      }
+      return true
+    } catch (updateError) {
+      const message = toErrorMessage(updateError)
+      pushLocalError(message)
+      void refreshSessionSnapshot(activeSessionId)
+      return false
+    }
+  }, [adapter, applySessionResponse, chat.messages, pushLocalError, refreshSessionSnapshot, regenerateAfterUpdate, setChatMessages])
+
+  const deleteMessage = useCallback(async (messageId: string) => {
+    const activeSessionId = sessionRef.current?.id
+    if (!activeSessionId || !messageId) {
+      return false
+    }
+
+    const canonicalMessageId = resolveUserMessageId(sessionRef.current, chat.messages, messageId)
+    setError(null)
+    setTransport(getAdapterTransport(adapter))
+    try {
+      const response = adapter
+        ? await adapter.deleteMessage({
+          session_id: activeSessionId,
+          message_id: canonicalMessageId,
+        })
+        : await deleteAIMessage(activeSessionId, canonicalMessageId)
+      applySessionResponse(response)
+      return true
+    } catch (deleteError) {
+      const message = toErrorMessage(deleteError)
+      pushLocalError(message)
+      void refreshSessionSnapshot(activeSessionId)
+      return false
+    }
+  }, [adapter, applySessionResponse, chat.messages, pushLocalError, refreshSessionSnapshot])
+
   const confirmTask = useCallback(async (taskId: string, decision: "confirm" | "reject") => {
     const activeSessionId = sessionRef.current?.id
     if (!activeSessionId || !taskId) {
@@ -541,6 +719,8 @@ export function useAgentSession(adapter?: AgentSessionAdapter) {
     restoreSession,
     startNewSession,
     sendMessage,
+    updateMessage,
+    deleteMessage,
     confirmTask,
     cancelSession,
     closeSession,

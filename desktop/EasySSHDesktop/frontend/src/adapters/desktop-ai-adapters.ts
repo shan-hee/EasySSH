@@ -22,7 +22,9 @@ import {
   type DesktopAICreateSessionResponse,
   type DesktopAIListSessionsResult,
   DesktopAIPermissionMode,
+  DesktopAIRegenerateMessageInput,
   DesktopAISendMessageInput,
+  DesktopAIUpdateMessageInput,
   type DesktopAISessionListItem,
   type DesktopAISessionScope,
   type DesktopAISessionView,
@@ -83,6 +85,26 @@ export function createDesktopAIAssistantAdapters(serverApi: ServerConnectionConf
           permission_mode: toDesktopPermissionMode(input.permission_mode),
           scope: toDesktopSessionScope(input.scope),
         }))
+      ),
+      updateMessage: async (input) => fromDesktopSessionResponse(
+        await DesktopAIService.UpdateMessage(new DesktopAIUpdateMessageInput({
+          session_id: input.session_id,
+          message_id: input.message_id,
+          content: input.content,
+        }))
+      ),
+      regenerateMessage: async (input) => fromDesktopSessionResponse(
+        await DesktopAIService.RegenerateMessage(new DesktopAIRegenerateMessageInput({
+          session_id: input.session_id,
+          message_id: input.message_id,
+          context: input.context,
+          model: input.model,
+          permission_mode: toDesktopPermissionMode(input.permission_mode),
+          scope: toDesktopSessionScope(input.scope),
+        }))
+      ),
+      deleteMessage: async (input) => fromDesktopSessionResponse(
+        await DesktopAIService.DeleteMessage(input.session_id, input.message_id)
       ),
       subscribeSessionEvents: (callback) => Events.On(desktopAISessionEvent, (event) => {
         const data = getDesktopAIEventData(event) as DesktopAISessionEvent | undefined

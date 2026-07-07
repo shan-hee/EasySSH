@@ -198,6 +198,39 @@ export enum DesktopAIPermissionMode {
     DesktopAIPermissionPrivileged = "privileged",
 };
 
+export class DesktopAIRegenerateMessageInput {
+    "session_id": string;
+    "message_id": string;
+    "context"?: string;
+    "model"?: string;
+    "permission_mode"?: DesktopAIPermissionMode;
+    "scope"?: DesktopAISessionScope | null;
+
+    /** Creates a new DesktopAIRegenerateMessageInput instance. */
+    constructor($$source: Partial<DesktopAIRegenerateMessageInput> = {}) {
+        if (!("session_id" in $$source)) {
+            this["session_id"] = "";
+        }
+        if (!("message_id" in $$source)) {
+            this["message_id"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new DesktopAIRegenerateMessageInput instance from a string or object.
+     */
+    static createFrom($$source: any = {}): DesktopAIRegenerateMessageInput {
+        const $$createField5_0 = $$createType2;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("scope" in $$parsedSource) {
+            $$parsedSource["scope"] = $$createField5_0($$parsedSource["scope"]);
+        }
+        return new DesktopAIRegenerateMessageInput($$parsedSource as Partial<DesktopAIRegenerateMessageInput>);
+    }
+}
+
 export class DesktopAISendMessageInput {
     "session_id": string;
     "content": string;
@@ -494,6 +527,35 @@ export class DesktopAIToolView {
     static createFrom($$source: any = {}): DesktopAIToolView {
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         return new DesktopAIToolView($$parsedSource as Partial<DesktopAIToolView>);
+    }
+}
+
+export class DesktopAIUpdateMessageInput {
+    "session_id": string;
+    "message_id": string;
+    "content": string;
+
+    /** Creates a new DesktopAIUpdateMessageInput instance. */
+    constructor($$source: Partial<DesktopAIUpdateMessageInput> = {}) {
+        if (!("session_id" in $$source)) {
+            this["session_id"] = "";
+        }
+        if (!("message_id" in $$source)) {
+            this["message_id"] = "";
+        }
+        if (!("content" in $$source)) {
+            this["content"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new DesktopAIUpdateMessageInput instance from a string or object.
+     */
+    static createFrom($$source: any = {}): DesktopAIUpdateMessageInput {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new DesktopAIUpdateMessageInput($$parsedSource as Partial<DesktopAIUpdateMessageInput>);
     }
 }
 
