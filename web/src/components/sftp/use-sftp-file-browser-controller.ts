@@ -47,7 +47,7 @@ export interface UseSftpFileBrowserControllerResult {
   sortOrder: SftpFileSortOrder
   filteredFiles: EnhancedSftpFileBrowserItem[]
   handleSort: (key: SftpFileSortKey) => void
-  handleFileClick: (fileName: string, event: MouseEvent<HTMLElement>) => void
+  handleFileMouseDown: (fileName: string, event: MouseEvent<HTMLElement>) => void
   handleSelectAll: () => void
 }
 
@@ -140,15 +140,18 @@ export function useSftpFileBrowserController({
       }
 
       if (prev.length === 1 && prev[0] === fileName) {
-        return []
+        return prev
       }
 
       return [fileName]
     })
   }, [])
 
-  const handleFileClick = useCallback((fileName: string, event: MouseEvent<HTMLElement>) => {
+  const handleFileMouseDown = useCallback((fileName: string, event: MouseEvent<HTMLElement>) => {
     event.stopPropagation()
+    if (event.button !== 0) {
+      return
+    }
     handleFileSelect(fileName, event)
   }, [handleFileSelect])
 
@@ -200,7 +203,7 @@ export function useSftpFileBrowserController({
     sortOrder,
     filteredFiles,
     handleSort,
-    handleFileClick,
+    handleFileMouseDown,
     handleSelectAll,
   }
 }

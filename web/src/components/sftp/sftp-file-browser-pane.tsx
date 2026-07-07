@@ -60,7 +60,7 @@ export interface SftpFileBrowserPaneProps {
   onNativeDragOver: (event: DragEvent, fileName: string, fileType: "file" | "directory") => void
   onNativeDragLeave: () => void
   onNativeDrop: (event: DragEvent, fileName: string, fileType: "file" | "directory") => void
-  onFileClick: (fileName: string, event: MouseEvent<HTMLElement>) => void
+  onFileSelect: (fileName: string, event: MouseEvent<HTMLElement>) => void
   onFileDoubleClick: (fileName: string, fileType: "file" | "directory") => void
   onOpenFileContextMenu: (fileName: string, fileType: "file" | "directory") => void
   onSort: (key: SftpFileSortKey) => void
@@ -112,7 +112,7 @@ export function SftpFileBrowserPane({
   onNativeDragOver,
   onNativeDragLeave,
   onNativeDrop,
-  onFileClick,
+  onFileSelect,
   onFileDoubleClick,
   onOpenFileContextMenu,
   onSort,
@@ -160,7 +160,7 @@ export function SftpFileBrowserPane({
       onDragOver={(event, fileName, fileType) => onNativeDragOver(event, fileName, fileType)}
       onDragLeave={onNativeDragLeave}
       onDrop={(event, fileName, fileType) => onNativeDrop(event, fileName, fileType)}
-      onClick={(fileName, event) => onFileClick(fileName, event)}
+      onSelect={(fileName, event) => onFileSelect(fileName, event)}
       onDoubleClick={onFileDoubleClick}
       onOpenContextMenu={onOpenFileContextMenu}
       onCloseContextMenu={onCloseContextMenu}
@@ -192,7 +192,7 @@ export function SftpFileBrowserPane({
       onDragOver={(event, fileName, fileType) => onNativeDragOver(event, fileName, fileType)}
       onDragLeave={onNativeDragLeave}
       onDrop={(event, fileName, fileType) => onNativeDrop(event, fileName, fileType)}
-      onClick={(fileName, event) => onFileClick(fileName, event)}
+      onSelect={(fileName, event) => onFileSelect(fileName, event)}
       onDoubleClick={onFileDoubleClick}
       onOpenContextMenu={onOpenFileContextMenu}
       onCloseContextMenu={onCloseContextMenu}
@@ -216,7 +216,11 @@ export function SftpFileBrowserPane({
       onDragLeave={onDragLeave}
       onDragOver={onDragOver}
       onDrop={onDrop}
-      onClick={onClearSelectedFiles}
+      onMouseDown={(event) => {
+        if (event.button === 0) {
+          onClearSelectedFiles()
+        }
+      }}
     >
       <SftpFileBrowserState
         isDragging={isDragging}

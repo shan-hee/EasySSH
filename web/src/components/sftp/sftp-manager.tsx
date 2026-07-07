@@ -155,7 +155,7 @@ export function SftpManager(props: SftpManagerProps) {
     sortOrder,
     filteredFiles,
     handleSort,
-    handleFileClick,
+    handleFileMouseDown,
     handleSelectAll,
   } = useSftpFileBrowserController({
     files,
@@ -445,7 +445,7 @@ export function SftpManager(props: SftpManagerProps) {
             onNativeDragOver={handleNativeDragOver}
             onNativeDragLeave={clearDragOverFolder}
             onNativeDrop={handleNativeDrop}
-            onFileClick={handleFileClick}
+            onFileSelect={handleFileMouseDown}
             onFileDoubleClick={handleFileDoubleClick}
             onOpenFileContextMenu={handleContextMenu}
             onSort={handleSort}

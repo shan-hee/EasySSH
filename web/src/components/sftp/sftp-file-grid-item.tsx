@@ -29,7 +29,7 @@ export interface SftpFileGridItemProps {
   onDragOver: (event: DragEvent<HTMLDivElement>, fileName: string, fileType: "file" | "directory") => void
   onDragLeave: () => void
   onDrop: (event: DragEvent<HTMLDivElement>, fileName: string, fileType: "file" | "directory") => void
-  onClick: (fileName: string, event: MouseEvent<HTMLDivElement>) => void
+  onSelect: (fileName: string, event: MouseEvent<HTMLDivElement>) => void
   onDoubleClick: (fileName: string, fileType: "file" | "directory") => void
   onOpenContextMenu: (fileName: string, fileType: "file" | "directory") => void
   onCloseContextMenu: () => void
@@ -56,7 +56,7 @@ export function SftpFileGridItem({
   onDragOver,
   onDragLeave,
   onDrop,
-  onClick,
+  onSelect,
   onDoubleClick,
   onOpenContextMenu,
   onCloseContextMenu,
@@ -85,18 +85,21 @@ export function SftpFileGridItem({
         onDragLeave()
       }}
       onDrop={(event) => onDrop(event, file.name, file.type)}
-      onClick={(event) => {
-        if (!isEditing) {
-          onClick(file.name, event)
+      onMouseDown={(event) => {
+        if (isEditing) {
+          event.stopPropagation()
+          return
         }
+        onSelect(file.name, event)
       }}
+      onClick={(event) => event.stopPropagation()}
       onDoubleClick={() => {
         if (!isEditing) {
           onDoubleClick(file.name, file.type)
         }
       }}
       className={cn(
-        "group relative rounded-lg p-3 cursor-pointer select-none transition-all hover:bg-table-row-hover",
+        "group relative rounded-lg p-3 cursor-pointer select-none transition-none hover:bg-table-row-hover",
         (isSelected || (isDraggedOver && file.type === "directory")) && "bg-table-row-selected hover:bg-table-row-selected",
         isDragged && "opacity-50",
       )}

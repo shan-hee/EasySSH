@@ -32,7 +32,7 @@ export interface SftpFileTableRowProps {
   onDragOver: (event: DragEvent<HTMLTableRowElement>, fileName: string, fileType: "file" | "directory") => void
   onDragLeave: () => void
   onDrop: (event: DragEvent<HTMLTableRowElement>, fileName: string, fileType: "file" | "directory") => void
-  onClick: (fileName: string, event: MouseEvent<HTMLTableRowElement>) => void
+  onSelect: (fileName: string, event: MouseEvent<HTMLTableRowElement>) => void
   onDoubleClick: (fileName: string, fileType: "file" | "directory") => void
   onOpenContextMenu: (fileName: string, fileType: "file" | "directory") => void
   onCloseContextMenu: () => void
@@ -61,7 +61,7 @@ export function SftpFileTableRow({
   onDragOver,
   onDragLeave,
   onDrop,
-  onClick,
+  onSelect,
   onDoubleClick,
   onOpenContextMenu,
   onCloseContextMenu,
@@ -93,12 +93,18 @@ export function SftpFileTableRow({
       }}
       onDrop={(event) => onDrop(event, file.name, file.type)}
       className={cn(
-        "cursor-pointer transition-colors border-b-0",
+        "cursor-pointer border-b-0 transition-none hover:bg-table-row-hover",
         (isSelected || (isDraggedOver && file.type === "directory")) && "bg-table-row-selected hover:bg-table-row-selected",
-        "hover:bg-table-row-hover",
         isDragged && "opacity-50",
       )}
-      onClick={(event) => onClick(file.name, event)}
+      onMouseDown={(event) => {
+        if (isEditing) {
+          event.stopPropagation()
+          return
+        }
+        onSelect(file.name, event)
+      }}
+      onClick={(event) => event.stopPropagation()}
       onDoubleClick={() => onDoubleClick(file.name, file.type)}
     >
       <TableCell>
@@ -145,7 +151,11 @@ export function SftpFileTableRow({
         </span>
       </TableCell>
 
-      <TableCell className="text-right" onClick={(event) => event.stopPropagation()}>
+      <TableCell
+        className="text-right"
+        onMouseDown={(event) => event.stopPropagation()}
+        onClick={(event) => event.stopPropagation()}
+      >
         <SftpFileActionDropdown
           file={file}
           selectedFilesCount={selectedFilesCount}
