@@ -1125,6 +1125,7 @@ const messages = {
     terminalErrorPrivateKeyPassphraseRequired: "This private key requires a passphrase.",
     terminalErrorPrivateKeyPassphraseInvalid: "The private key passphrase is incorrect.",
     terminalErrorPrivateKeyInvalid: "The private key format is invalid. Check the key content.",
+    terminalErrorKeyboardInteractiveRequired: "This connection channel does not support keyboard-interactive authentication. Use a terminal channel with interactive authentication support.",
     terminalErrorCredentialDecryptFailed: "Unable to decrypt saved credentials. Save the authentication details again.",
     terminalErrorAlgorithmMismatch: "SSH algorithms are incompatible. Check the server SSH configuration.",
     terminalErrorGeneric: "Connection failed. Please try again later.",
@@ -1778,6 +1779,7 @@ const messages = {
     logsPageTitle: "Activity Logs",
     activityDashboardTitle: "Activity Logs",
     activityDashboardDescription: "Track connections, commands, logins, and system events for server operation auditing.",
+    desktopActivityDashboardDescription: "Review locally recorded connection, command, transfer, and script execution events.",
     collectionHealthy: "Log collection healthy",
     metricTodayEvents: "Today events",
     metricFailedLogins: "Failed events",
@@ -3080,6 +3082,8 @@ const messages = {
     alertTitle: "Important:",
     alertItemUnified:
       "Backups are now a single JSON file that can include config and database data.",
+    desktopAlertItemUnified:
+      "Backups are exported as one JSON file containing local EasySSH data.",
     alertItemSelectable:
       "Export and restore both let you choose config, database, or both.",
     alertItemRestoreStrategy:
@@ -3102,9 +3106,13 @@ const messages = {
     contentDatabaseTitle: "Database",
     contentDatabaseDescription:
       "Users, servers, scripts, tasks, logs, keys, sessions, and other business data",
+    desktopContentDatabaseDescription:
+      "Local servers, scripts, tasks, activity logs, and connection-related data",
     sensitiveExportTitle: "Full backup",
     sensitiveExportDescription:
       "Include recoverable passwords, private keys, tokens, and API keys supported by this client, protected by a backup password",
+    desktopSensitiveExportDescription:
+      "Include recoverable server passwords and private keys, protected by a backup password",
     backupPasswordLabel: "Backup password",
     backupPasswordPlaceholder: "Enter a backup password",
     backupPasswordHint:
@@ -3120,12 +3128,16 @@ const messages = {
     btnRestoreLoading: "Restoring...",
     exportHintFormat: "• Export format: EasySSH unified backup JSON",
     exportHintContent: "• Export config only, database only, or both",
+    desktopExportHintContent:
+      "• Desktop exports local database data; full backups additionally encrypt server credentials",
     restoreHintFormat: "• Supported format: EasySSH unified backup JSON",
     restoreHintWarning:
       "• Overwrite updates current matching records. Only restore trusted backups.",
     conflictStrategyLabel: "Conflict handling",
     conflictStrategyDescription:
       "Config and default data are restored to the backup values; other existing database records use this strategy.",
+    desktopConflictStrategyDescription:
+      "Existing local records use this strategy. Confirm the backup source before overwriting.",
     conflictSkipTitle: "Skip existing items",
     conflictSkipDescription:
       "Keep current database data and import only records that do not exist.",

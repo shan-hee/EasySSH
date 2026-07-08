@@ -7,7 +7,8 @@
 入口约定：
 
 - `@easyssh/ssh-workspace`：Web/UI Kit 主入口，暴露 Workspace context、UI building blocks、session/transfer core 与 Web 当前 adapters。
-- `@easyssh/ssh-workspace/desktop`：Desktop Shell 轻量入口，只暴露桌面挂载所需的 Workspace 根组件、context、基础 settings、capabilities helper 和 adapter/types，避免把 Web Dashboard 专属 UI barrel 带入 Wails 前端。
+- `@easyssh/ssh-workspace/desktop`：Desktop Shell 轻量入口，只暴露桌面挂载所需的 Workspace 根组件、context、基础 settings、capabilities helper 和 adapter/types，避免把 Web Dashboard 专属 UI barrel 带入 Wails 前端。Desktop 入口可以复用 SSH、SFTP、transfer、script、本地批量执行、monitor、Docker、AI、activity log 和 backup/restore 等核心能力组件，但必须通过 adapter/runtime/`desktopMode` 保持本地单用户语义。
+- Desktop 入口导出的 `LogsClient`、`ScriptsPage`、`BackupRestoreTab` 是本地语义 wrapper，会强制 Desktop 模式；脚本执行不会跳转到 Web operation logs。
 
 当前公开边界覆盖：
 
@@ -20,5 +21,5 @@
 
 - 保持 `@easyssh/ssh-workspace` 包名稳定。
 - 先迁移纯 session/core、adapter 合约和无 Dashboard 外壳 UI。
-- 不把 Dashboard 侧边栏、导航、权限、系统设置页或 Web 专属路由逻辑迁入包内。
+- 不把 Dashboard 侧边栏、导航、用户管理、角色权限、审计治理、安全策略、登录态、系统设置页、scheduled automation 或 Web 专属路由逻辑迁入包内。
 - Wails/Desktop Shell 通过 adapters、capabilities、runtime profile 和 pane/theme/preference 注入挂载 Workspace；真实 server picker、导航、设置注册表和运行形态能力继续留在 Shell 层。

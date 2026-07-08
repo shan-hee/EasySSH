@@ -9,6 +9,18 @@ EasySSH Desktop is the Wails v3 shell for the embeddable SSH/SFTP workspace. The
 - Icon entry points for desktop-only controls such as theme and workspace settings.
 - Production metadata for Windows, macOS, and Linux build assets.
 
+## Product Boundary
+
+Desktop shares the core EasySSH workspace capabilities with Web: SSH terminal, SFTP, file transfers, scripts, monitoring, Docker helpers, AI assistant, activity logs, and local backup/restore.
+
+Desktop is a single-user local app. It should use `local_owner` / `owner` runtime semantics and local data-owner markers when Web-shaped data requires a `user_id`, but it must not introduce the Web user-management system. Keep these Web-only concerns out of Desktop unless a future product decision explicitly changes the boundary:
+
+- Login/session management, registration, OAuth, 2FA, account lockout, and notification preferences.
+- User, role, permission, audit, login-log, security-policy, rate-limit, and IP-allowlist administration.
+- Server-side organization settings, multi-user governance, scheduled automation pages, and backend-only background task controls.
+
+When Desktop reuses Web components, prefer adapter props such as `desktopMode` and runtime capabilities to keep the visible UI local and personal. Web-compatible backup fields such as the synthetic `users` table are compatibility shims, not a Desktop user model.
+
 ## Build
 
 From this directory:
