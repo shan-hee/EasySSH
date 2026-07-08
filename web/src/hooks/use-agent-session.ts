@@ -60,6 +60,11 @@ export interface AgentSessionAdapter {
     ui_message?: UIMessage
     error?: string
   }) => void) => () => void
+  confirmTask?: (input: {
+    session_id: string
+    task_id: string
+    decision: "confirm" | "reject"
+  }) => Promise<CreateSessionResponse>
   cancelSession: (sessionId: string) => Promise<void>
   closeSession: (sessionId: string) => Promise<void>
 }
@@ -613,17 +618,27 @@ export function useAgentSession(adapter?: AgentSessionAdapter) {
     }
 
     setError(null)
-    if (adapter) {
-      pushLocalError("当前桌面 AI 模式暂不需要工具确认")
-      return
-    }
-
     const task = sessionRef.current?.tasks.find((item) => item.id === taskId)
     if (task && task.status !== "waiting_confirm") {
       return
     }
 
     try {
+      if (adapter?.confirmTask) {
+        setTransport(getAdapterTransport(adapter))
+        const response = await adapter.confirmTask({
+          session_id: activeSessionId,
+          task_id: taskId,
+          decision,
+        })
+        applySessionResponse(response)
+        return
+      }
+      if (adapter) {
+        pushLocalError("当前 AI 适配器暂不支持工具确认")
+        return
+      }
+
       setTransport("ai_sdk_ui")
       await chat.sendMessage(undefined, {
         body: {
@@ -639,7 +654,7 @@ export function useAgentSession(adapter?: AgentSessionAdapter) {
       pushLocalError(message)
       void refreshSessionSnapshot(activeSessionId)
     }
-  }, [adapter, chat, pushLocalError, refreshSessionSnapshot])
+  }, [adapter, applySessionResponse, chat, pushLocalError, refreshSessionSnapshot])
 
   const cancelSession = useCallback(async () => {
     const activeSessionId = sessionRef.current?.id

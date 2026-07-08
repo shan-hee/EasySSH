@@ -59,6 +59,7 @@ import {
 import { useConfirmDialog } from "@/hooks/use-confirm-dialog"
 import { cn } from "@/lib/utils"
 import type { TerminalSession } from "./types"
+import { useOptionalSshWorkspace } from "@/components/ssh-workspace/ssh-workspace"
 
 const ANIMATION_DELAY = 160
 const PANEL_OPEN_SETTLE_DELAY = 180
@@ -131,6 +132,23 @@ function removeStoredTerminalAISessionId(terminalSessionId: string, aiSessionId?
   }
 }
 
+function assertDesktopAIAdapters(layout: string | undefined, adapters?: AIAssistantWorkspaceAdapters) {
+  if (layout !== "desktop") {
+    return
+  }
+
+  if (
+    !adapters?.aiConfig ||
+    !adapters.aiSettings ||
+    !adapters.aiSession ||
+    !adapters.listAISessions ||
+    !adapters.renameAISession ||
+    !adapters.deleteAISession
+  ) {
+    throw new Error("Desktop terminal AI requires local AI session and settings adapters")
+  }
+}
+
 function createSessionListItem(
   response: CreateSessionResponse,
   title: string
@@ -161,6 +179,9 @@ function formatSessionTime(value: string) {
 export function AiAssistantPanel({ isOpen, onClose, terminalSession, adapters }: AiAssistantPanelProps) {
   const { t: tAI } = useTranslation("aiAssistant")
   const { confirm: requestConfirm, confirmDialog } = useConfirmDialog()
+  const workspace = useOptionalSshWorkspace()
+  const canUseWebSettingsFallback = workspace?.layout !== "desktop"
+  assertDesktopAIAdapters(workspace?.layout, adapters)
   const {
     isConfigured,
     isLoading: isConfigLoading,
@@ -1212,7 +1233,7 @@ export function AiAssistantPanel({ isOpen, onClose, terminalSession, adapters }:
                       </Button>
                     }
                   />
-                ) : (
+                ) : canUseWebSettingsFallback ? (
                   <Button
                     asChild
                     type="button"
@@ -1225,7 +1246,7 @@ export function AiAssistantPanel({ isOpen, onClose, terminalSession, adapters }:
                       <span>{tAI("configureAI")}</span>
                     </Link>
                   </Button>
-                )}
+                ) : null}
               </PromptInputTools>
 
               <div className="ml-auto flex items-center gap-2">

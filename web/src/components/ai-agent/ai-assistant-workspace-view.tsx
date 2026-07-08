@@ -212,12 +212,32 @@ function getActiveServerMention(value: string, caretPosition: number | null | un
   }
 }
 
+function assertCustomConfigAdapters(customConfigOnly: boolean, adapters?: AIAssistantWorkspaceAdapters) {
+  if (!customConfigOnly) {
+    return
+  }
+
+  if (
+    !adapters?.aiConfig ||
+    !adapters.aiSettings ||
+    !adapters.aiSession ||
+    !adapters.servers ||
+    !adapters.listAISessions ||
+    !adapters.renameAISession ||
+    !adapters.deleteAISession
+  ) {
+    throw new Error("Custom AI workspace requires local AI, server, and session adapters")
+  }
+}
+
 export function AIAssistantWorkspaceView({
   hidePageHeader = false,
   customConfigOnly = false,
   onReturnToTerminal,
   adapters,
 }: AIAssistantWorkspaceViewProps) {
+  assertCustomConfigAdapters(customConfigOnly, adapters)
+
   const { t } = useTranslation("aiAssistant")
   const { ready } = useAuthReady()
   const { confirm: requestConfirm, confirmDialog } = useConfirmDialog()

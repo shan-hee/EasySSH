@@ -1751,6 +1751,8 @@ export class DesktopSFTPAuthenticateInput {
     "serverId": string;
     "authMethod": DesktopServerAuthMethod;
     "secret": string;
+    "password"?: string;
+    "privateKey"?: string;
     "privateKeyPassphrase"?: string;
 
     /** Creates a new DesktopSFTPAuthenticateInput instance. */
@@ -2018,6 +2020,7 @@ export class DesktopSFTPDirectoryListResult {
     "path": string;
     "files": DesktopSFTPFileInfo[];
     "parent"?: string;
+    "can_read": boolean;
 
     /** Creates a new DesktopSFTPDirectoryListResult instance. */
     constructor($$source: Partial<DesktopSFTPDirectoryListResult> = {}) {
@@ -2026,6 +2029,9 @@ export class DesktopSFTPDirectoryListResult {
         }
         if (!("files" in $$source)) {
             this["files"] = [];
+        }
+        if (!("can_read" in $$source)) {
+            this["can_read"] = false;
         }
 
         Object.assign(this, $$source);
@@ -2368,6 +2374,8 @@ export class DesktopSFTPWriteFileInput {
 export class DesktopSSHCredential {
     "authMethod": DesktopServerAuthMethod;
     "secret": string;
+    "password"?: string;
+    "privateKey"?: string;
     "privateKeyPassphrase"?: string;
 
     /** Creates a new DesktopSSHCredential instance. */
@@ -2677,6 +2685,14 @@ export enum DesktopServerAuthMethod {
 
     DesktopServerAuthPassword = "password",
     DesktopServerAuthKey = "key",
+    DesktopServerAuthPasswordKeyboard = "password_keyboard",
+    DesktopServerAuthKeyKeyboard = "key_keyboard",
+    DesktopServerAuthKeyPassword = "key_password",
+    DesktopServerAuthKeyPasswordKeyboard = "key_password_keyboard",
+    DesktopServerAuthPasswordKey = "password_key",
+    DesktopServerAuthPasswordKeyKeyboard = "password_key_keyboard",
+    DesktopServerAuthKeyboardInteractive = "keyboard_interactive",
+    DesktopServerAuthKeyboardInteractiveAlias = "keyboard",
 };
 
 export class DesktopServerCommandInput {
@@ -2966,6 +2982,8 @@ export class DesktopTerminalStartInput {
     "rows": number;
     "authMethod"?: DesktopServerAuthMethod;
     "secret"?: string;
+    "password"?: string;
+    "privateKey"?: string;
     "privateKeyPassphrase"?: string;
 
     /** Creates a new DesktopTerminalStartInput instance. */

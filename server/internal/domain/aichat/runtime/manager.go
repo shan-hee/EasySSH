@@ -74,9 +74,10 @@ type session struct {
 
 	subscribers map[string]chan Event
 
-	processing bool
-	currentRun context.CancelFunc
-	closed     bool
+	processing   bool
+	currentRun   context.CancelFunc
+	currentRunID string
+	closed       bool
 }
 
 type taskState struct {
@@ -301,6 +302,7 @@ func (m *Manager) DeleteSession(ctx context.Context, userID uuid.UUID, sessionID
 		s.closed = true
 		s.processing = false
 		s.currentRun = nil
+		s.currentRunID = ""
 		m.mu.Unlock()
 
 		if cancel != nil {
@@ -523,6 +525,7 @@ func (m *Manager) SendUserMessageWithOptions(ctx context.Context, userID uuid.UU
 	}
 
 	now := time.Now()
+	runID := uuid.NewString()
 	if model != "" {
 		s.model = model
 	}
@@ -547,12 +550,13 @@ func (m *Manager) SendUserMessageWithOptions(ctx context.Context, userID uuid.UU
 	s.pendingContext = contextText
 	s.status = SessionStatusRunning
 	s.processing = true
+	s.currentRunID = runID
 	s.updatedAt = now
 	snapshot := m.snapshotForPersistenceLocked(s)
 	m.mu.Unlock()
 
 	m.saveSnapshot(ctx, snapshot)
-	go m.runSession(sessionID)
+	go m.runSession(sessionID, runID)
 	return nil
 }
 
@@ -598,6 +602,7 @@ func (m *Manager) RegenerateAfterUserMessage(ctx context.Context, userID uuid.UU
 		return ErrMessageNotEditable
 	}
 
+	runID := uuid.NewString()
 	if model != "" {
 		s.model = model
 	}
@@ -614,12 +619,13 @@ func (m *Manager) RegenerateAfterUserMessage(ctx context.Context, userID uuid.UU
 	s.pendingContext = contextText
 	s.status = SessionStatusRunning
 	s.processing = true
+	s.currentRunID = runID
 	s.updatedAt = time.Now()
 	snapshot := m.snapshotForPersistenceLocked(s)
 	m.mu.Unlock()
 
 	m.saveSnapshot(ctx, snapshot)
-	go m.runSession(sessionID)
+	go m.runSession(sessionID, runID)
 	return nil
 }
 
@@ -665,11 +671,12 @@ func (m *Manager) ConfirmTasks(ctx context.Context, userID uuid.UUID, sessionID 
 		decision Decision
 		status   string
 	}, 0, len(inputs))
+	runCtx, cancelRun := context.WithCancel(context.Background())
+	runID := uuid.NewString()
 	for _, input := range inputs {
 		task := s.tasks[input.TaskID]
 		confirmationStatus := string(task.view.Status)
 		if input.Decision == DecisionConfirm {
-			s.status = SessionStatusRunning
 			task.view.Status = TaskStatusRunning
 			confirmationStatus = string(TaskStatusRunning)
 		} else {
@@ -688,6 +695,10 @@ func (m *Manager) ConfirmTasks(ctx context.Context, userID uuid.UUID, sessionID 
 			status:   confirmationStatus,
 		})
 	}
+	s.status = SessionStatusRunning
+	s.processing = true
+	s.currentRun = cancelRun
+	s.currentRunID = runID
 	s.updatedAt = now
 	snapshot := m.snapshotForPersistenceLocked(s)
 	m.mu.Unlock()
@@ -710,7 +721,7 @@ func (m *Manager) ConfirmTasks(ctx context.Context, userID uuid.UUID, sessionID 
 		})
 	}
 
-	go m.resolvePendingTasks(sessionID, inputs)
+	go m.resolvePendingTasks(runCtx, cancelRun, runID, sessionID, inputs)
 	return nil
 }
 
@@ -727,10 +738,13 @@ func (m *Manager) CancelSession(ctx context.Context, userID uuid.UUID, sessionID
 	}
 	cancel := s.currentRun
 	s.currentRun = nil
+	s.currentRunID = ""
 	s.processing = false
 	s.pendingContext = ""
 	s.status = SessionStatusIdle
-	s.updatedAt = time.Now()
+	now := time.Now()
+	s.updatedAt = now
+	cancelledTasks := m.cancelActiveTasksLocked(s, now)
 	view := m.snapshotSessionLocked(s)
 	snapshot := m.snapshotForPersistenceLocked(s)
 	m.mu.Unlock()
@@ -739,11 +753,14 @@ func (m *Manager) CancelSession(ctx context.Context, userID uuid.UUID, sessionID
 		cancel()
 	}
 	m.saveSnapshot(ctx, snapshot)
+	for _, task := range cancelledTasks {
+		m.emitTaskEvent(s, EventTaskUpdated, task)
+	}
 	m.emitEvent(s, Event{
 		ID:        uuid.NewString(),
 		Type:      EventSessionCompleted,
 		SessionID: s.id,
-		CreatedAt: time.Now(),
+		CreatedAt: now,
 		Session:   &view,
 	})
 	return nil
@@ -770,8 +787,10 @@ func (m *Manager) closeSession(s *session) {
 	s.updatedAt = time.Now()
 	cancel := s.currentRun
 	s.currentRun = nil
+	s.currentRunID = ""
 	s.processing = false
 	s.pendingContext = ""
+	cancelledTasks := m.cancelActiveTasksLocked(s, s.updatedAt)
 	view := m.snapshotSessionLocked(s)
 	snapshot := m.snapshotForPersistenceLocked(s)
 	subs := cloneSubscribersLocked(s)
@@ -784,6 +803,16 @@ func (m *Manager) closeSession(s *session) {
 	}
 
 	m.saveSnapshot(context.Background(), snapshot)
+	for _, task := range cancelledTasks {
+		m.emitToSubscribers(subs, Event{
+			ID:        uuid.NewString(),
+			Type:      EventTaskUpdated,
+			SessionID: s.id,
+			CreatedAt: time.Now(),
+			Task:      &task,
+			UIMessage: aichatui.TaskMessagePtr(task),
+		})
+	}
 	m.emitToSubscribers(subs, Event{
 		ID:        uuid.NewString(),
 		Type:      EventSessionCompleted,
@@ -797,27 +826,32 @@ func (m *Manager) closeSession(s *session) {
 	}
 }
 
-func (m *Manager) runSession(sessionID string) {
+func (m *Manager) runSession(sessionID, runID string) {
+	ctx, cancel := context.WithCancel(context.Background())
+	m.runSessionWithContext(sessionID, ctx, cancel, runID)
+}
+
+func (m *Manager) runSessionWithContext(sessionID string, ctx context.Context, cancel context.CancelFunc, runID string) {
 	s, ok := m.getSessionByID(sessionID)
 	if !ok {
+		cancel()
 		return
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-
 	m.mu.Lock()
-	if s.closed {
+	if s.closed || s.currentRunID != runID {
 		m.mu.Unlock()
 		cancel()
 		return
 	}
 	s.currentRun = cancel
+	s.currentRunID = runID
 	m.mu.Unlock()
 	defer cancel()
 
 	config, err := m.resolver.Resolve(ctx, s.userID)
 	if err != nil {
-		m.failSessionTurn(s, "config_error", err.Error())
+		m.failSessionTurn(s, "config_error", err.Error(), runID)
 		return
 	}
 
@@ -826,7 +860,7 @@ func (m *Manager) runSession(sessionID string) {
 		model = config.Model
 	}
 	if model == "" {
-		m.failSessionTurn(s, "model_missing", "未找到可用模型配置")
+		m.failSessionTurn(s, "model_missing", "未找到可用模型配置", runID)
 		return
 	}
 
@@ -878,16 +912,16 @@ func (m *Manager) runSession(sessionID string) {
 		})
 		if err != nil {
 			if ctx.Err() != nil {
-				m.completeTurn(s, false)
+				m.completeTurn(s, false, runID)
 				return
 			}
-			m.failSessionTurn(s, "provider_error", err.Error())
+			m.failSessionTurn(s, "provider_error", err.Error(), runID)
 			return
 		}
 
 		m.finalizeAssistantTurn(s, assistantMessageID, result)
 		if len(result.ToolCalls) == 0 {
-			m.completeTurn(s, false)
+			m.completeTurn(s, false, runID)
 			return
 		}
 
@@ -898,12 +932,15 @@ func (m *Manager) runSession(sessionID string) {
 
 		if pendingConfirm {
 			m.mu.Lock()
-			if !s.closed {
-				s.status = SessionStatusWaitingConfirmation
-				s.processing = false
-				s.currentRun = nil
-				s.updatedAt = time.Now()
+			if s.closed || s.currentRunID != runID {
+				m.mu.Unlock()
+				return
 			}
+			s.status = SessionStatusWaitingConfirmation
+			s.processing = false
+			s.currentRun = nil
+			s.currentRunID = ""
+			s.updatedAt = time.Now()
 			view := m.snapshotSessionLocked(s)
 			snapshot := m.snapshotForPersistenceLocked(s)
 			m.mu.Unlock()
@@ -920,15 +957,20 @@ func (m *Manager) runSession(sessionID string) {
 	}
 }
 
-func (m *Manager) resolvePendingTasks(sessionID string, inputs []ConfirmTaskInput) {
+func (m *Manager) resolvePendingTasks(ctx context.Context, cancel context.CancelFunc, runID string, sessionID string, inputs []ConfirmTaskInput) {
+	defer cancel()
+
 	s, ok := m.getSessionByID(sessionID)
 	if !ok {
 		return
 	}
 
 	for _, input := range inputs {
+		if ctx.Err() != nil {
+			return
+		}
 		if input.Decision == DecisionConfirm {
-			m.executeTask(context.Background(), s, input.TaskID)
+			m.executeTask(ctx, s, input.TaskID)
 		} else {
 			m.rejectTask(s, input.TaskID)
 		}
@@ -939,10 +981,19 @@ func (m *Manager) resolvePendingTasks(sessionID string, inputs []ConfirmTaskInpu
 		m.mu.Unlock()
 		return
 	}
+	if ctx.Err() != nil {
+		m.mu.Unlock()
+		return
+	}
+	if s.currentRunID != runID {
+		m.mu.Unlock()
+		return
+	}
 	if s.hasPendingConfirmation() {
 		s.status = SessionStatusWaitingConfirmation
 		s.processing = false
 		s.currentRun = nil
+		s.currentRunID = ""
 		s.updatedAt = time.Now()
 		snapshot := m.snapshotForPersistenceLocked(s)
 		m.mu.Unlock()
@@ -957,7 +1008,7 @@ func (m *Manager) resolvePendingTasks(sessionID string, inputs []ConfirmTaskInpu
 	m.mu.Unlock()
 
 	m.saveSnapshot(context.Background(), snapshot)
-	go m.runSession(sessionID)
+	m.runSessionWithContext(sessionID, ctx, cancel, runID)
 }
 
 func (m *Manager) executeTask(ctx context.Context, s *session, taskID string) {
@@ -965,6 +1016,22 @@ func (m *Manager) executeTask(ctx context.Context, s *session, taskID string) {
 	task, ok := s.tasks[taskID]
 	if !ok || s.closed {
 		m.mu.Unlock()
+		return
+	}
+	if task.view.Status == TaskStatusCancelled || ctx.Err() != nil {
+		if task.view.Result == "" {
+			task.view.Result = "操作已取消。"
+		}
+		task.view.Status = TaskStatusCancelled
+		task.view.Error = ""
+		task.view.UpdatedAt = time.Now()
+		s.updatedAt = task.view.UpdatedAt
+		view := task.view
+		snapshot := m.snapshotForPersistenceLocked(s)
+		m.mu.Unlock()
+
+		m.saveSnapshot(context.Background(), snapshot)
+		m.emitTaskEvent(s, EventTaskUpdated, view)
 		return
 	}
 	task.view.Status = TaskStatusRunning
@@ -987,6 +1054,23 @@ func (m *Manager) executeTask(ctx context.Context, s *session, taskID string) {
 	}
 
 	now := time.Now()
+	if task.view.Status == TaskStatusCancelled || ctx.Err() != nil {
+		task.view.Status = TaskStatusCancelled
+		if task.view.Result == "" {
+			task.view.Result = "操作已取消。"
+		}
+		task.view.Error = ""
+		task.view.UpdatedAt = now
+		s.updatedAt = now
+		view = task.view
+		snapshot = m.snapshotForPersistenceLocked(s)
+		m.mu.Unlock()
+
+		m.saveSnapshot(context.Background(), snapshot)
+		m.emitTaskEvent(s, EventTaskUpdated, view)
+		return
+	}
+
 	toolMessage := ""
 	if err != nil {
 		task.view.Status = TaskStatusFailed
@@ -1042,6 +1126,25 @@ func (m *Manager) rejectTask(s *session, taskID string) {
 
 	m.saveSnapshot(context.Background(), snapshot)
 	m.emitTaskEvent(s, EventTaskUpdated, view)
+}
+
+func (m *Manager) cancelActiveTasksLocked(s *session, now time.Time) []TaskView {
+	cancelled := make([]TaskView, 0)
+	for _, taskID := range s.taskOrder {
+		task, ok := s.tasks[taskID]
+		if !ok {
+			continue
+		}
+		if task.view.Status != TaskStatusQueued && task.view.Status != TaskStatusRunning {
+			continue
+		}
+		task.view.Status = TaskStatusCancelled
+		task.view.Result = "操作已取消。"
+		task.view.Error = ""
+		task.view.UpdatedAt = now
+		cancelled = append(cancelled, task.view)
+	}
+	return cancelled
 }
 
 func (m *Manager) materializeTasks(s *session, assistantMessageID string, toolCalls []registry.ToolCall) ([]string, bool) {
@@ -1181,19 +1284,22 @@ func (m *Manager) appendAssistantDelta(s *session, messageID, delta string) {
 	m.mu.Unlock()
 }
 
-func (m *Manager) completeTurn(s *session, closed bool) {
+func (m *Manager) completeTurn(s *session, closed bool, runID string) {
 	m.mu.Lock()
-	if !s.closed {
-		if closed {
-			s.status = SessionStatusClosed
-		} else {
-			s.status = SessionStatusIdle
-		}
-		s.processing = false
-		s.currentRun = nil
-		s.pendingContext = ""
-		s.updatedAt = time.Now()
+	if s.closed || s.currentRunID != runID {
+		m.mu.Unlock()
+		return
 	}
+	if closed {
+		s.status = SessionStatusClosed
+	} else {
+		s.status = SessionStatusIdle
+	}
+	s.processing = false
+	s.currentRun = nil
+	s.currentRunID = ""
+	s.pendingContext = ""
+	s.updatedAt = time.Now()
 	view := m.snapshotSessionLocked(s)
 	snapshot := m.snapshotForPersistenceLocked(s)
 	m.mu.Unlock()
@@ -1208,8 +1314,12 @@ func (m *Manager) completeTurn(s *session, closed bool) {
 	})
 }
 
-func (m *Manager) failSessionTurn(s *session, code, message string) {
+func (m *Manager) failSessionTurn(s *session, code, message string, runID string) {
 	m.mu.Lock()
+	if s.closed || s.currentRunID != runID {
+		m.mu.Unlock()
+		return
+	}
 	s.pendingContext = ""
 	m.mu.Unlock()
 
@@ -1223,7 +1333,7 @@ func (m *Manager) failSessionTurn(s *session, code, message string) {
 			Message: message,
 		},
 	})
-	m.completeTurn(s, false)
+	m.completeTurn(s, false, runID)
 }
 
 func (m *Manager) snapshotSession(s *session) SessionView {
@@ -1351,6 +1461,7 @@ func (m *Manager) cleanupLoop() {
 				s.processing = false
 				cancel := s.currentRun
 				s.currentRun = nil
+				s.currentRunID = ""
 				s.updatedAt = now
 				if cancel != nil {
 					cancel()

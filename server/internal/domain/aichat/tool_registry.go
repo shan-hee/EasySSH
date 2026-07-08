@@ -99,8 +99,8 @@ func (s *ToolExecutorService) BuildToolRegistry() *registry.ToolRegistry {
 					},
 					"path": map[string]interface{}{
 						"type":        "string",
-						"description": "目录路径，默认为用户主目录",
-						"default":     "~",
+						"description": "目录路径，默认 /",
+						"default":     "/",
 					},
 				},
 				"required": []string{"server_id"},
@@ -112,7 +112,7 @@ func (s *ToolExecutorService) BuildToolRegistry() *registry.ToolRegistry {
 		{
 			Name:        "read_file",
 			DisplayName: "读取文件",
-			Description: "读取服务器上指定文件的内容。适用于文本文件，大文件会被截断。",
+			Description: "读取服务器上指定文本文件的内容。超大文件会拒绝读取，长内容会按行截断。",
 			Parameters: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -211,7 +211,7 @@ func (s *ToolExecutorService) BuildToolRegistry() *registry.ToolRegistry {
 		{
 			Name:        "get_system_info",
 			DisplayName: "系统信息",
-			Description: "获取服务器的系统信息，包括CPU、内存、磁盘使用情况等。",
+			Description: "获取服务器的系统信息，包括 CPU、内存、磁盘、网络和 Docker 概况。",
 			Parameters: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{

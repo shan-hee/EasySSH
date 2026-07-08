@@ -12,6 +12,8 @@ import (
 	"github.com/easyssh/server/internal/domain/sftp"
 	sshDomain "github.com/easyssh/server/internal/domain/ssh"
 	"github.com/easyssh/server/internal/pkg/crypto"
+	sharedmonitoring "github.com/easyssh/shared/monitoring"
+	"github.com/easyssh/shared/sftputil"
 	"github.com/google/uuid"
 	"golang.org/x/crypto/ssh"
 )
@@ -91,11 +93,18 @@ func (s *ToolExecutorService) executeListServers(ctx context.Context, userID uui
 	}
 
 	type serverInfo struct {
-		ID     string `json:"id"`
-		Name   string `json:"name"`
-		Host   string `json:"host"`
-		Port   int    `json:"port"`
-		Status string `json:"status"`
+		ID            string            `json:"id"`
+		Name          string            `json:"name"`
+		Host          string            `json:"host"`
+		Port          int               `json:"port"`
+		Username      string            `json:"username"`
+		AuthMethod    server.AuthMethod `json:"auth_method"`
+		Status        string            `json:"status"`
+		Group         string            `json:"group"`
+		Tags          []string          `json:"tags"`
+		Description   string            `json:"description"`
+		OS            string            `json:"os,omitempty"`
+		LastConnected *time.Time        `json:"last_connected,omitempty"`
 	}
 
 	serverList := make([]serverInfo, len(servers))
@@ -105,16 +114,22 @@ func (s *ToolExecutorService) executeListServers(ctx context.Context, userID uui
 			name = srv.Name
 		}
 		serverList[i] = serverInfo{
-			ID:     srv.ID.String(),
-			Name:   name,
-			Host:   srv.Host,
-			Port:   srv.Port,
-			Status: string(srv.Status),
+			ID:            srv.ID.String(),
+			Name:          name,
+			Host:          srv.Host,
+			Port:          srv.Port,
+			Username:      srv.Username,
+			AuthMethod:    srv.AuthMethod,
+			Status:        string(srv.Status),
+			Group:         srv.Group,
+			Tags:          srv.Tags,
+			Description:   srv.Description,
+			OS:            srv.OS,
+			LastConnected: srv.LastConnected,
 		}
 	}
 
-	data, _ := json.MarshalIndent(serverList, "", "  ")
-	result.Content = fmt.Sprintf("找到 %d 台服务器:\n%s", len(servers), string(data))
+	result.Content = aiToolJSON(fmt.Sprintf("找到 %d 台服务器", len(servers)), serverList)
 	return result, nil
 }
 
@@ -146,23 +161,25 @@ func (s *ToolExecutorService) executeGetServerInfo(ctx context.Context, userID u
 	}
 
 	info := map[string]interface{}{
-		"id":             srv.ID.String(),
-		"name":           srv.Name,
-		"host":           srv.Host,
-		"port":           srv.Port,
-		"username":       srv.Username,
-		"auth_method":    srv.AuthMethod,
-		"status":         srv.Status,
-		"group":          srv.Group,
-		"tags":           srv.Tags,
-		"description":    srv.Description,
-		"last_connected": srv.LastConnected,
-		"country":        srv.Country,
-		"city":           srv.City,
+		"id":              srv.ID.String(),
+		"name":            srv.Name,
+		"host":            srv.Host,
+		"port":            srv.Port,
+		"username":        srv.Username,
+		"auth_method":     srv.AuthMethod,
+		"status":          srv.Status,
+		"group":           srv.Group,
+		"tags":            srv.Tags,
+		"description":     srv.Description,
+		"os":              srv.OS,
+		"last_connected":  srv.LastConnected,
+		"has_password":    srv.Password != "",
+		"has_private_key": srv.PrivateKey != "",
+		"country":         srv.Country,
+		"city":            srv.City,
 	}
 
-	data, _ := json.MarshalIndent(info, "", "  ")
-	result.Content = string(data)
+	result.Content = aiToolJSON("服务器信息", info)
 	return result, nil
 }
 
@@ -210,9 +227,8 @@ func (s *ToolExecutorService) executeCommand(ctx context.Context, userID uuid.UU
 		return result, nil
 	}
 
-	// 使用带超时的上下文连接
-	connectCtx, cancel := context.WithTimeout(ctx, time.Duration(args.Timeout)*time.Second)
-	defer cancel()
+	connectCtx, connectCancel := context.WithTimeout(ctx, 12*time.Second)
+	defer connectCancel()
 
 	if err := sshClient.ConnectContext(connectCtx, srv.Host, srv.Port); err != nil {
 		result.Content = fmt.Sprintf("连接服务器失败: %v", err)
@@ -221,20 +237,38 @@ func (s *ToolExecutorService) executeCommand(ctx context.Context, userID uuid.UU
 	}
 	defer sshClient.Close()
 
-	// 执行命令
-	output, err := sshClient.ExecuteCommand(args.Command)
-	if err != nil {
-		result.Content = fmt.Sprintf("命令执行失败: %v\n输出: %s", err, output)
+	commandCtx, commandCancel := context.WithTimeout(ctx, time.Duration(args.Timeout)*time.Second)
+	defer commandCancel()
+
+	commandResult, err := sshClient.ExecuteCommandDetailedContext(commandCtx, args.Command)
+	if err != nil && commandResult == nil {
+		result.Content = fmt.Sprintf("命令执行失败: %v", err)
 		result.IsError = true
 		return result, nil
 	}
 
-	// 限制输出长度
-	if len(output) > 10000 {
-		output = output[:10000] + "\n... (输出已截断)"
+	output := commandResult.Output
+	if len([]rune(output)) > 12000 {
+		runes := []rune(output)
+		output = string(runes[:12000]) + "\n... (输出已截断)"
 	}
 
-	result.Content = fmt.Sprintf("命令执行成功:\n```\n%s\n```", strings.TrimSpace(output))
+	payload := map[string]interface{}{
+		"server_id":    serverID.String(),
+		"command":      commandResult.Command,
+		"exit_code":    commandResult.ExitCode,
+		"duration_ms":  commandResult.DurationMs,
+		"started_at":   commandResult.StartedAt.Format(time.RFC3339Nano),
+		"completed_at": commandResult.CompletedAt.Format(time.RFC3339Nano),
+		"output":       output,
+	}
+	if err != nil || commandResult.ExitCode != 0 {
+		result.Content = aiToolJSON("命令执行失败", payload)
+		result.IsError = true
+		return result, nil
+	}
+
+	result.Content = aiToolJSON("命令执行成功", payload)
 	return result, nil
 }
 
@@ -280,30 +314,27 @@ func (s *ToolExecutorService) executeListDirectory(ctx context.Context, userID u
 		return result, nil
 	}
 
-	// 格式化输出
-	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("目录: %s\n共 %d 项:\n\n", listing.Path, listing.Total))
-
+	files := make([]map[string]interface{}, 0, len(listing.Files))
 	for _, f := range listing.Files {
-		typeStr := "文件"
-		if f.IsDir {
-			typeStr = "目录"
-		} else if f.IsLink {
-			typeStr = "链接"
-		}
-		sb.WriteString(fmt.Sprintf("%s  %10d  %s  %s\n",
-			f.Permission,
-			f.Size,
-			f.ModTime.Format("2006-01-02 15:04"),
-			f.Name,
-		))
-		if f.IsLink && f.LinkTarget != "" {
-			sb.WriteString(fmt.Sprintf("    -> %s\n", f.LinkTarget))
-		}
-		_ = typeStr // 暂时不使用
+		files = append(files, map[string]interface{}{
+			"name":        f.Name,
+			"path":        f.Path,
+			"size":        f.Size,
+			"is_dir":      f.IsDir,
+			"is_link":     f.IsLink,
+			"permission":  f.Permission,
+			"modified_at": f.ModTime,
+			"link_target": f.LinkTarget,
+		})
 	}
 
-	result.Content = sb.String()
+	result.Content = aiToolJSON("目录列表", map[string]interface{}{
+		"path":     listing.Path,
+		"parent":   sftputil.ParentPath(listing.Path),
+		"files":    files,
+		"total":    len(files),
+		"can_read": listing.CanRead,
+	})
 	return result, nil
 }
 
@@ -344,6 +375,23 @@ func (s *ToolExecutorService) executeReadFile(ctx context.Context, userID uuid.U
 		return result, nil
 	}
 	defer client.Release()
+
+	info, err := client.GetFileInfo(args.Path)
+	if err != nil {
+		result.Content = fmt.Sprintf("获取文件信息失败: %v", err)
+		result.IsError = true
+		return result, nil
+	}
+	if info.IsDir {
+		result.Content = "读取文件失败: cannot read a directory"
+		result.IsError = true
+		return result, nil
+	}
+	if info.Size > sftputil.MaxTextFileBytes {
+		result.Content = fmt.Sprintf("读取文件失败: file is too large to edit: %d bytes", info.Size)
+		result.IsError = true
+		return result, nil
+	}
 
 	// 读取文件
 	content, err := client.ReadFile(args.Path)
@@ -408,7 +456,14 @@ func (s *ToolExecutorService) executeWriteFile(ctx context.Context, userID uuid.
 		return result, nil
 	}
 
-	result.Content = fmt.Sprintf("文件已成功写入: %s (%d 字节)", args.Path, len(args.Content))
+	info, err := client.GetFileInfo(args.Path)
+	if err != nil {
+		result.Content = fmt.Sprintf("获取文件信息失败: %v", err)
+		result.IsError = true
+		return result, nil
+	}
+
+	result.Content = aiToolJSON("文件已写入", info)
 	return result, nil
 }
 
@@ -449,7 +504,14 @@ func (s *ToolExecutorService) executeCreateDirectory(ctx context.Context, userID
 		return result, nil
 	}
 
-	result.Content = fmt.Sprintf("目录已成功创建: %s", args.Path)
+	info, err := client.GetFileInfo(args.Path)
+	if err != nil {
+		result.Content = fmt.Sprintf("获取目录信息失败: %v", err)
+		result.IsError = true
+		return result, nil
+	}
+
+	result.Content = aiToolJSON("目录已创建", info)
 	return result, nil
 }
 
@@ -498,16 +560,15 @@ func (s *ToolExecutorService) executeDeleteFile(ctx context.Context, userID uuid
 			result.IsError = true
 			return result, nil
 		}
-		result.Content = fmt.Sprintf("目录已删除: %s", args.Path)
 	} else {
 		if err := client.DeleteFile(args.Path); err != nil {
 			result.Content = fmt.Sprintf("删除文件失败: %v", err)
 			result.IsError = true
 			return result, nil
 		}
-		result.Content = fmt.Sprintf("文件已删除: %s", args.Path)
 	}
 
+	result.Content = aiToolJSON("文件或目录已删除", info)
 	return result, nil
 }
 
@@ -546,7 +607,7 @@ func (s *ToolExecutorService) executeGetSystemInfo(ctx context.Context, userID u
 		return result, nil
 	}
 
-	connectCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	connectCtx, cancel := context.WithTimeout(ctx, 12*time.Second)
 	defer cancel()
 
 	if err := sshClient.ConnectContext(connectCtx, srv.Host, srv.Port); err != nil {
@@ -556,35 +617,83 @@ func (s *ToolExecutorService) executeGetSystemInfo(ctx context.Context, userID u
 	}
 	defer sshClient.Close()
 
-	// 执行系统信息收集命令
-	commands := []struct {
-		name string
-		cmd  string
-	}{
-		{"主机名", "hostname"},
-		{"系统信息", "uname -a"},
-		{"CPU信息", "cat /proc/cpuinfo | grep 'model name' | head -1 | cut -d: -f2"},
-		{"CPU核心数", "nproc"},
-		{"内存使用", "free -h | grep Mem"},
-		{"磁盘使用", "df -h / | tail -1"},
-		{"系统负载", "uptime"},
-		{"运行时间", "uptime -p 2>/dev/null || uptime"},
+	command := sharedmonitoring.BuildMetricsScript(sharedmonitoring.MetricsScriptOptions{
+		IncludeStaticInfo:  true,
+		IncludeDockerStats: true,
+	})
+	commandCtx, commandCancel := context.WithTimeout(ctx, 30*time.Second)
+	defer commandCancel()
+	commandResult, err := sshClient.ExecuteCommandDetailedContext(commandCtx, command)
+	if err != nil && commandResult == nil {
+		result.Content = fmt.Sprintf("获取系统信息失败: %v", err)
+		result.IsError = true
+		return result, nil
 	}
-
-	var sb strings.Builder
-	sb.WriteString("系统信息:\n\n")
-
-	for _, c := range commands {
-		output, err := sshClient.ExecuteCommand(c.cmd)
-		if err != nil {
-			sb.WriteString(fmt.Sprintf("**%s**: 获取失败\n", c.name))
-		} else {
-			sb.WriteString(fmt.Sprintf("**%s**: %s\n", c.name, strings.TrimSpace(output)))
+	if commandResult.ExitCode != 0 {
+		message := strings.TrimSpace(commandResult.Output)
+		if message == "" {
+			message = fmt.Sprintf("monitor command failed with exit code %d", commandResult.ExitCode)
 		}
+		result.Content = "获取系统信息失败: " + message
+		result.IsError = true
+		return result, nil
 	}
 
-	result.Content = sb.String()
+	metrics := sharedmonitoring.ParseMetricsOutput(commandResult.Output)
+	disks := make([]map[string]interface{}, 0, len(metrics.Disks))
+	for _, disk := range metrics.Disks {
+		disks = append(disks, map[string]interface{}{
+			"mountPoint": disk.MountPoint,
+			"usedBytes":  disk.UsedBytes,
+			"totalBytes": disk.TotalBytes,
+		})
+	}
+
+	collectedAt := time.Now().UTC()
+	result.Content = aiToolJSON("系统信息", map[string]interface{}{
+		"system_info": map[string]interface{}{
+			"os":            metrics.SystemInfo.OS,
+			"hostname":      metrics.SystemInfo.Hostname,
+			"cpuModel":      metrics.SystemInfo.CPUModel,
+			"arch":          metrics.SystemInfo.Arch,
+			"loadAvg":       metrics.SystemInfo.LoadAvg,
+			"uptimeSeconds": int64(metrics.SystemInfo.UptimeSeconds),
+			"cpuCores":      int(metrics.SystemInfo.CPUCores),
+		},
+		"cpu": map[string]interface{}{
+			"idleTicks":    metrics.CPU.IdleTotal(),
+			"totalTicks":   metrics.CPU.Total(),
+			"coreCount":    int(metrics.SystemInfo.CPUCores),
+			"usagePercent": float64(0),
+		},
+		"memory": map[string]interface{}{
+			"ramUsedBytes":   metrics.Memory.RAMUsedBytes,
+			"ramTotalBytes":  metrics.Memory.RAMTotalBytes,
+			"swapUsedBytes":  metrics.Memory.SwapUsedBytes,
+			"swapTotalBytes": metrics.Memory.SwapTotalBytes,
+		},
+		"network": map[string]interface{}{
+			"bytesRecvTotal": metrics.Network.BytesRecvTotal,
+			"bytesSentTotal": metrics.Network.BytesSentTotal,
+		},
+		"disks": disks,
+		"docker": map[string]interface{}{
+			"containersRunning": int(metrics.Docker.ContainersRunning),
+			"containersTotal":   int(metrics.Docker.ContainersTotal),
+			"dockerInstalled":   metrics.Docker.DockerInstalled,
+		},
+		"ssh_latency_ms": commandResult.DurationMs,
+		"collected_at":   collectedAt.Format(time.RFC3339Nano),
+	})
 	return result, nil
+}
+
+func aiToolJSON(title string, value interface{}) string {
+	data, err := json.MarshalIndent(value, "", "  ")
+	if err != nil {
+		return strings.TrimSpace(title) + ":\n" + fmt.Sprint(value)
+	}
+	return strings.TrimSpace(title) + ":\n" + string(data)
 }
 
 // 辅助函数：按行读取并限制行数
