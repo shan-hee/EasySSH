@@ -1,5 +1,6 @@
 import { Dialogs } from "@wailsio/runtime"
-import type { SshWorkspaceApiClient } from "@easyssh/ssh-workspace/desktop"
+import type { AuthMethod, SshWorkspaceApiClient } from "@easyssh/ssh-workspace/desktop"
+import { supportsKeyboardInteractive } from "@easyssh/ssh-workspace/desktop"
 import type {
   BatchDeleteResponse,
   DirectTransferOptions,
@@ -13,31 +14,94 @@ import type {
 import { sftpRemoteBaseName } from "@/lib/sftp-file-utils"
 import {
   DesktopSFTPService,
-  DesktopServerAuthMethod,
   type DesktopSSHCredential,
 } from "../../bindings/github.com/easyssh/easyssh-desktop"
+import { desktopAuthRequiresPassword, desktopAuthRequiresPrivateKey, toDesktopAuthMethod } from "./desktop-server-api"
+import type { DesktopGatewayInfo } from "./desktop-runtime"
 
 type DesktopSftpApi = NonNullable<SshWorkspaceApiClient["sftp"]>
+type DesktopSftpPreAuthPrompt = Parameters<Parameters<NonNullable<DesktopSftpApi["preAuthenticate"]>>[2]>[0]
+type DesktopSftpHostKeyPrompt = Parameters<NonNullable<Parameters<NonNullable<DesktopSftpApi["preAuthenticate"]>>[3]>>[0]
 
 const desktopDownloadCancelledMessage = "已取消保存"
-function toDesktopServerAuthMethod(authMethod?: string) {
-  return authMethod === "key"
-    ? DesktopServerAuthMethod.DesktopServerAuthKey
-    : DesktopServerAuthMethod.DesktopServerAuthPassword
+const desktopKeyboardInteractiveGatewayRequired = "desktop gateway is required for keyboard-interactive authentication"
+
+type DesktopDirectTransferSide = "source" | "target"
+
+function createDesktopSftpError(message: string, code?: string) {
+  const error = new Error(message)
+  if (code) {
+    const codedError = error as Error & { code?: string }
+    codedError.code = code
+  }
+  return error
+}
+
+function getDesktopErrorMessage(error: unknown) {
+  return error instanceof Error ? error.message : String(error)
+}
+
+function classifyDesktopSftpAuthErrorCode(message: string) {
+  const normalized = message.toLowerCase()
+  if (normalized.includes("host key trust has been revoked")) return "host_key_revoked"
+  if (
+    normalized.includes("host key verification failed") ||
+    normalized.includes("ssh host key verification failed")
+  ) {
+    return "sftp_host_key_changed"
+  }
+  if (normalized.includes("private_key_passphrase_required")) return "sftp_private_key_passphrase_required"
+  if (normalized.includes("private_key_passphrase_invalid")) return "sftp_private_key_passphrase_invalid"
+  if (normalized.includes("keyboard_interactive_required") || normalized.includes("keyboard-interactive")) return "keyboard_interactive_required"
+  if (
+    normalized.includes("server credential is required") ||
+    normalized.includes("unable to authenticate") ||
+    normalized.includes("permission denied") ||
+    normalized.includes("authentication failed") ||
+    normalized.includes("no supported methods remain") ||
+    normalized.includes("attempted methods") ||
+    normalized.includes("failed to parse private key")
+  ) {
+    return "sftp_credential_required"
+  }
+  return null
+}
+
+function getDesktopDirectTransferSide(message: string): DesktopDirectTransferSide | null {
+  const normalized = message.toLowerCase()
+  if (normalized.includes("failed to connect source server")) {
+    return "source"
+  }
+  if (normalized.includes("failed to connect target server")) {
+    return "target"
+  }
+  return null
+}
+
+function normalizeDesktopDirectTransferError(error: unknown) {
+  const message = getDesktopErrorMessage(error)
+  const side = getDesktopDirectTransferSide(message)
+  const code = classifyDesktopSftpAuthErrorCode(message)
+  if (!side || !code) {
+    return error instanceof Error ? error : new Error(message)
+  }
+  return createDesktopSftpError(message, `${side}_${code}`)
 }
 
 function toDesktopTransferCredential(credential?: DirectTransferOptions["sourceCredential"]): DesktopSSHCredential | undefined {
   if (!credential) {
     return undefined
   }
-  const authMethod = toDesktopServerAuthMethod(credential.auth_method)
-  const secret = authMethod === DesktopServerAuthMethod.DesktopServerAuthKey
-    ? credential.secret || credential.private_key || ""
-    : credential.secret || credential.password || ""
+  const authMethod = toDesktopAuthMethod(credential.auth_method)
+  const method = credential.auth_method
+  const password = credential.password || (desktopAuthRequiresPassword(method) && !desktopAuthRequiresPrivateKey(method) ? credential.secret : "") || ""
+  const privateKey = credential.private_key || (desktopAuthRequiresPrivateKey(method) && !desktopAuthRequiresPassword(method) ? credential.secret : "") || ""
 
   return {
     authMethod,
-    secret,
+    secret: credential.secret || "",
+    password,
+    privateKey,
     privateKeyPassphrase: credential.private_key_passphrase,
   }
 }
@@ -60,6 +124,7 @@ function normalizeDirectoryList(result: DirectoryListResponse): DirectoryListRes
   return {
     path: result.path,
     parent: result.parent,
+    can_read: result.can_read,
     files: (result.files || []).map(normalizeFileInfo),
   }
 }
@@ -92,20 +157,160 @@ async function chooseSavePath(filename: string) {
   return localPath
 }
 
-export function createDesktopSftpApi(): DesktopSftpApi {
+export function createDesktopSftpApi(gateway?: DesktopGatewayInfo, runtimeReady = true): DesktopSftpApi {
+  const authenticate: NonNullable<DesktopSftpApi["authenticate"]> = async (serverId, authMethod, secret, privateKeyPassphrase, options) => {
+    if (supportsKeyboardInteractive(authMethod)) {
+      throw createDesktopSftpError(desktopKeyboardInteractiveGatewayRequired, "keyboard_interactive_required")
+    }
+    const desktopAuthMethod = toDesktopAuthMethod(authMethod)
+    await DesktopSFTPService.Authenticate({
+      serverId,
+      authMethod: desktopAuthMethod,
+      secret: secret || "",
+      password: options?.password || (desktopAuthRequiresPassword(authMethod) && !desktopAuthRequiresPrivateKey(authMethod) ? secret : "") || "",
+      privateKey: options?.privateKey || (desktopAuthRequiresPrivateKey(authMethod) && !desktopAuthRequiresPassword(authMethod) ? secret : "") || "",
+      privateKeyPassphrase,
+    })
+  }
+
   return {
-    async authenticate(serverId, authMethod, secret, privateKeyPassphrase, options) {
-      const desktopAuthMethod = toDesktopServerAuthMethod(authMethod)
-      const credentialSecret = desktopAuthMethod === DesktopServerAuthMethod.DesktopServerAuthKey
-        ? secret || options?.privateKey || ""
-        : secret || options?.password || ""
-      await DesktopSFTPService.Authenticate({
-        serverId,
-        authMethod: desktopAuthMethod,
-        secret: credentialSecret,
-        privateKeyPassphrase,
+    async preAuthenticate(serverId, credential, onAuthPrompt, onHostKeyPrompt) {
+      if (!gateway?.wsBaseUrl || !gateway.token) {
+        if (!runtimeReady) {
+          throw createDesktopSftpError("desktop sftp runtime is not ready", "sftp_runtime_not_ready")
+        }
+        if (supportsKeyboardInteractive(credential.authMethod)) {
+          throw createDesktopSftpError(desktopKeyboardInteractiveGatewayRequired, "keyboard_interactive_required")
+        }
+        await authenticate(
+          serverId,
+          credential.authMethod || "password",
+          credential.secret || "",
+          credential.privateKeyPassphrase,
+          {
+            password: credential.password,
+            privateKey: credential.privateKey,
+          },
+        )
+        return
+      }
+
+      await new Promise<void>((resolve, reject) => {
+        const params = new URLSearchParams()
+        params.set("serverId", serverId)
+        params.set("ticket", gateway.token || "desktop")
+        const ws = new WebSocket(`${gateway.wsBaseUrl}/sftp-auth?${params.toString()}`)
+        let settled = false
+
+        const finish = (error?: Error) => {
+          if (settled) return
+          settled = true
+          try {
+            ws.close(1000, "sftp auth finished")
+          } catch {
+            // Ignore close errors.
+          }
+          if (error) {
+            reject(error)
+          } else {
+            resolve()
+          }
+        }
+
+        ws.onopen = () => {
+          ws.send(JSON.stringify({
+            type: "auth_start",
+            data: {
+              auth_method: credential.authMethod,
+              password: credential.password,
+              private_key: credential.privateKey,
+              secret: credential.secret,
+              private_key_passphrase: credential.privateKeyPassphrase,
+            },
+          }))
+        }
+
+        ws.onerror = () => {
+          finish(new Error("sftp pre-authentication websocket failed"))
+        }
+
+        ws.onclose = (event) => {
+          if (!settled && event.code !== 1000) {
+            finish(new Error(event.reason || "sftp pre-authentication websocket closed"))
+          }
+        }
+
+        ws.onmessage = (event) => {
+          try {
+            const message = JSON.parse(event.data) as { type?: string; data?: unknown }
+            if (message.type === "authenticated") {
+              finish()
+              return
+            }
+            if (message.type === "error") {
+              const data = message.data as { error?: string; message?: string } | undefined
+              const error = new Error(data?.message || data?.error || "sftp pre-authentication failed")
+              ;(error as Error & { code?: string }).code = data?.error
+              finish(error)
+              return
+            }
+            if (message.type === "auth_prompt" && message.data && typeof message.data === "object") {
+              const prompt = message.data as DesktopSftpPreAuthPrompt
+              onAuthPrompt(prompt, (response, cancelled = false, authMethod) => {
+                const payload: {
+                  answers?: string[]
+                  authMethod?: AuthMethod
+                  password?: string
+                  privateKey?: string
+                  privateKeyPassphrase?: string
+                } = Array.isArray(response)
+                  ? { answers: response, authMethod }
+                  : {
+                      answers: response.answers ?? [],
+                      authMethod: response.authMethod ?? authMethod,
+                      password: response.password,
+                      privateKey: response.privateKey,
+                      privateKeyPassphrase: response.privateKeyPassphrase,
+                    }
+                ws.send(JSON.stringify({
+                  type: "auth_response",
+                  data: {
+                    request_id: prompt.request_id,
+                    answers: payload.answers,
+                    cancelled,
+                    auth_method: payload.authMethod,
+                    password: payload.password,
+                    private_key: payload.privateKey,
+                    private_key_passphrase: payload.privateKeyPassphrase,
+                  },
+                }))
+              })
+            }
+            if (message.type === "host_key_prompt" && message.data && typeof message.data === "object") {
+              const prompt = message.data as DesktopSftpHostKeyPrompt
+              const respond = (accepted: boolean, fingerprint?: string) => {
+                ws.send(JSON.stringify({
+                  type: "host_key_response",
+                  data: {
+                    request_id: prompt.request_id,
+                    accepted,
+                    fingerprint,
+                  },
+                }))
+              }
+              if (onHostKeyPrompt) {
+                onHostKeyPrompt(prompt, respond)
+              } else {
+                respond(false)
+              }
+            }
+          } catch (error) {
+            finish(error instanceof Error ? error : new Error("failed to parse sftp auth websocket message"))
+          }
+        }
       })
     },
+    authenticate,
     async listDirectory(serverId, remotePath = "/") {
       return normalizeDirectoryList(await DesktopSFTPService.ListDirectory({
         serverId,
@@ -195,15 +400,19 @@ export function createDesktopSftpApi(): DesktopSftpApi {
       await DesktopSFTPService.CancelUploadTask(taskId)
     },
     async directTransfer(sourceServerId, sourcePath, targetServerId, targetPath, options) {
-      return await DesktopSFTPService.DirectTransfer({
-        sourceServerId,
-        sourcePath,
-        targetServerId,
-        targetPath,
-        taskId: options?.taskId,
-        sourceCredential: toDesktopTransferCredential(options?.sourceCredential),
-        targetCredential: toDesktopTransferCredential(options?.targetCredential),
-      }) as DirectTransferResponse
+      try {
+        return await DesktopSFTPService.DirectTransfer({
+          sourceServerId,
+          sourcePath,
+          targetServerId,
+          targetPath,
+          taskId: options?.taskId,
+          sourceCredential: toDesktopTransferCredential(options?.sourceCredential),
+          targetCredential: toDesktopTransferCredential(options?.targetCredential),
+        }) as DirectTransferResponse
+      } catch (error) {
+        throw normalizeDesktopDirectTransferError(error)
+      }
     },
     async cancelTransfer(taskId) {
       await DesktopSFTPService.CancelTransfer(taskId)

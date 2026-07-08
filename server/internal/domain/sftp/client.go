@@ -69,6 +69,14 @@ func (c *Client) CloseSFTP() error {
 	return nil
 }
 
+// RawClient returns the underlying package SFTP client for internal streaming workflows.
+func (c *Client) RawClient() *sftp.Client {
+	if c == nil {
+		return nil
+	}
+	return c.sftpClient
+}
+
 // ListDirectory 列出目录
 func (c *Client) ListDirectory(path string) (*DirectoryListing, error) {
 	path = sftputil.NormalizePath(path)
@@ -158,6 +166,7 @@ func (c *Client) UploadFileWithProgress(localReader io.Reader, remotePath string
 
 // UploadFileWithProgressWithContext 上传文件并报告进度，支持上下文取消
 func (c *Client) UploadFileWithProgressWithContext(ctx context.Context, localReader io.Reader, remotePath string, onProgress func(loaded int64)) error {
+	remotePath = sftputil.NormalizePath(remotePath)
 	// 创建远程文件
 	remoteFile, err := c.sftpClient.Create(remotePath)
 	if err != nil {
@@ -247,6 +256,7 @@ func (c *Client) DownloadFile(remotePath string, localWriter io.Writer) error {
 
 // DownloadFileWithProgressWithContext 下载文件并报告进度，支持上下文取消。
 func (c *Client) DownloadFileWithProgressWithContext(ctx context.Context, remotePath string, localWriter io.Writer, onProgress func(loaded int64)) error {
+	remotePath = sftputil.NormalizePath(remotePath)
 	// 打开远程文件
 	remoteFile, err := c.sftpClient.Open(remotePath)
 	if err != nil {
@@ -283,6 +293,7 @@ func (c *Client) DownloadFileWithProgressWithContext(ctx context.Context, remote
 
 // CreateDirectory 创建目录
 func (c *Client) CreateDirectory(path string) error {
+	path = sftputil.NormalizePath(path)
 	err := c.sftpClient.Mkdir(path)
 	if err != nil {
 		return fmt.Errorf("failed to create directory: %w", err)
@@ -292,6 +303,7 @@ func (c *Client) CreateDirectory(path string) error {
 
 // CreateDirectories 创建多级目录
 func (c *Client) CreateDirectories(path string) error {
+	path = sftputil.NormalizePath(path)
 	err := c.sftpClient.MkdirAll(path)
 	if err != nil {
 		return fmt.Errorf("failed to create directories: %w", err)
@@ -301,6 +313,7 @@ func (c *Client) CreateDirectories(path string) error {
 
 // DeleteFile 删除文件（直接删除）
 func (c *Client) DeleteFile(path string) error {
+	path = sftputil.NormalizePath(path)
 	if c.sftpClient == nil {
 		return fmt.Errorf("sftp client not initialized")
 	}
@@ -317,6 +330,7 @@ func (c *Client) DeleteDirectory(path string) error {
 
 // RemoveFile 永久删除文件（用于清理半文件/后台清理等）
 func (c *Client) RemoveFile(path string) error {
+	path = sftputil.NormalizePath(path)
 	if c.sftpClient == nil {
 		return fmt.Errorf("sftp client not initialized")
 	}
@@ -385,6 +399,8 @@ func (c *Client) removeAll(path string) error {
 
 // RenameFile 重命名文件或目录
 func (c *Client) RenameFile(oldPath, newPath string) error {
+	oldPath = sftputil.NormalizePath(oldPath)
+	newPath = sftputil.NormalizePath(newPath)
 	err := c.sftpClient.Rename(oldPath, newPath)
 	if err != nil {
 		return fmt.Errorf("failed to rename: %w", err)
@@ -394,6 +410,7 @@ func (c *Client) RenameFile(oldPath, newPath string) error {
 
 // Chmod 修改文件或目录权限
 func (c *Client) Chmod(path string, mode os.FileMode) error {
+	path = sftputil.NormalizePath(path)
 	err := c.sftpClient.Chmod(path, mode)
 	if err != nil {
 		return fmt.Errorf("failed to chmod: %w", err)
@@ -412,6 +429,7 @@ func (c *Client) GetWorkingDirectory() (string, error) {
 
 // ChangeDirectory 切换目录
 func (c *Client) ChangeDirectory(path string) error {
+	path = sftputil.NormalizePath(path)
 	// SFTP 客户端没有 Chdir 方法，我们可以验证目录存在
 	stat, err := c.sftpClient.Stat(path)
 	if err != nil {
@@ -427,6 +445,7 @@ func (c *Client) ChangeDirectory(path string) error {
 
 // ReadFile 读取文件内容
 func (c *Client) ReadFile(path string) ([]byte, error) {
+	path = sftputil.NormalizePath(path)
 	file, err := c.sftpClient.Open(path)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open file: %w", err)
@@ -438,6 +457,7 @@ func (c *Client) ReadFile(path string) ([]byte, error) {
 
 // WriteFile 写入文件内容
 func (c *Client) WriteFile(path string, data []byte, perm os.FileMode) error {
+	path = sftputil.NormalizePath(path)
 	file, err := c.sftpClient.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC)
 	if err != nil {
 		return fmt.Errorf("failed to open file for writing: %w", err)
@@ -462,6 +482,7 @@ func (c *Client) WriteFile(path string, data []byte, perm os.FileMode) error {
 
 // Exists 检查文件或目录是否存在
 func (c *Client) Exists(path string) (bool, error) {
+	path = sftputil.NormalizePath(path)
 	_, err := c.sftpClient.Stat(path)
 	if err != nil {
 		if strings.Contains(err.Error(), "not exist") || strings.Contains(err.Error(), "no such file") {
@@ -474,6 +495,7 @@ func (c *Client) Exists(path string) (bool, error) {
 
 // GetDiskUsage 获取磁盘使用情况
 func (c *Client) GetDiskUsage(path string) (*DiskUsage, error) {
+	path = sftputil.NormalizePath(path)
 	// SFTP 协议没有直接获取磁盘使用情况的方法
 	// 需要通过 SSH 执行命令获取
 	// 这里返回一个简化的实现
@@ -498,6 +520,7 @@ func (c *Client) GetDiskUsage(path string) (*DiskUsage, error) {
 
 // OpenFile 打开文件进行读取（用于跨服务器传输）
 func (c *Client) OpenFile(path string) (*sftp.File, error) {
+	path = sftputil.NormalizePath(path)
 	file, err := c.sftpClient.Open(path)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open file: %w", err)
@@ -507,6 +530,7 @@ func (c *Client) OpenFile(path string) (*sftp.File, error) {
 
 // CreateFile 创建文件进行写入（用于跨服务器传输）
 func (c *Client) CreateFile(path string) (*sftp.File, error) {
+	path = sftputil.NormalizePath(path)
 	file, err := c.sftpClient.Create(path)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create file: %w", err)

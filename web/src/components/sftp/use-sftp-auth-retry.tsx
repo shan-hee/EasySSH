@@ -1,15 +1,23 @@
-import { useCallback, useState } from "react"
+import { useCallback, useRef, useState } from "react"
 import { isApiError } from "@/lib/api-client"
 import type { Server } from "@/lib/server-types"
 import type { SftpSessionApi } from "@/lib/session/sftp-session-api"
 import type { DirectTransferOptions, DirectTransferResponse, SftpTransferCredential } from "@/lib/sftp-types"
-import type { TerminalAuthMethod, TerminalAuthPrompt, TerminalAuthResponsePayload } from "@/lib/websocket-terminal"
+import type {
+  TerminalAuthMethod,
+  TerminalAuthPrompt,
+  TerminalAuthResponsePayload,
+  TerminalHostKeyPrompt,
+  TerminalHostKeyResponder,
+} from "@/lib/websocket-terminal"
 import { TerminalAuthChallengeDialog } from "@/components/terminal/terminal-auth-challenge-dialog"
+import { TerminalHostKeyDialog } from "@/components/terminal/terminal-host-key-dialog"
 import type { TerminalAuthFlowAdapters } from "@/components/terminal/use-terminal-auth-flow"
 import {
   authMethodCredentialFields,
   normalizeSSHAuthMethod,
   requiresPrivateKey,
+  supportsKeyboardInteractive,
 } from "@/lib/ssh-auth-methods"
 
 type TerminalTranslator = (key: string, params?: Record<string, string | number>) => string
@@ -67,6 +75,7 @@ export interface RunSftpDirectTransferCredentialRetryOptions {
   targetPath: string
   targetServerName: string
   targetAuthMethod: TerminalAuthMethod
+  api?: Pick<SftpSessionApi, "authenticate" | "preAuthenticate">
   operation: (options?: DirectTransferOptions) => Promise<DirectTransferResponse>
 }
 
@@ -76,6 +85,16 @@ export interface UseSftpAuthRetryOptions {
 }
 
 export function isSftpCredentialRequiredError(error: unknown) {
+  const code = stripSftpTransferCredentialErrorSide(getApiErrorCode(error))
+  if (
+    code === "sftp_credential_required" ||
+    code === "keyboard_interactive_required" ||
+    code === "sftp_private_key_passphrase_required" ||
+    code === "sftp_private_key_passphrase_invalid"
+  ) {
+    return true
+  }
+
   if (isApiError(error)) {
     const detail = error.detail
     if (detail && typeof detail === "object") {
@@ -108,14 +127,17 @@ export function isSftpCredentialRequiredError(error: unknown) {
 }
 
 function getApiErrorCode(error: unknown) {
-  if (!isApiError(error)) {
-    return null
+  if (isApiError(error)) {
+    const detail = error.detail
+    if (detail && typeof detail === "object") {
+      const detailObj = detail as { error?: unknown }
+      return typeof detailObj.error === "string" ? detailObj.error : null
+    }
   }
 
-  const detail = error.detail
-  if (detail && typeof detail === "object") {
-    const detailObj = detail as { error?: unknown }
-    return typeof detailObj.error === "string" ? detailObj.error : null
+  if (error instanceof Error && "code" in error) {
+    const code = (error as Error & { code?: unknown }).code
+    return typeof code === "string" ? code : null
   }
 
   return null
@@ -166,6 +188,56 @@ function isSftpPrivateKeyPassphraseError(error: unknown) {
   return false
 }
 
+export function isSftpKeyboardInteractiveRequiredError(error: unknown) {
+  const code = stripSftpTransferCredentialErrorSide(getApiErrorCode(error))
+  if (code === "keyboard_interactive_required") {
+    return true
+  }
+
+  if (error instanceof Error) {
+    return error.message.toLowerCase().includes("keyboard_interactive_required")
+  }
+
+  return false
+}
+
+export function formatSftpAuthError(
+  error: unknown,
+  fallbackMessage: string,
+  tTerminal: TerminalTranslator,
+) {
+  if (isSftpKeyboardInteractiveRequiredError(error)) {
+    return tTerminal("terminalErrorKeyboardInteractiveRequired")
+  }
+  return fallbackMessage
+}
+
+function isSftpHostKeyChangedError(error: unknown) {
+  const code = stripSftpTransferCredentialErrorSide(getApiErrorCode(error))
+  if (code === "host_key_changed" || code === "sftp_host_key_changed") {
+    return true
+  }
+
+  if (error instanceof Error) {
+    const message = error.message.toLowerCase()
+    return (
+      message.includes("host key verification failed") ||
+      message.includes("ssh host key verification failed")
+    )
+  }
+
+  if (isApiError(error) && typeof error.detail === "object" && error.detail !== null) {
+    const detail = error.detail as { message?: unknown }
+    const message = typeof detail.message === "string" ? detail.message.toLowerCase() : ""
+    return (
+      message.includes("host key verification failed") ||
+      message.includes("ssh host key verification failed")
+    )
+  }
+
+  return false
+}
+
 function toSftpTransferCredential(credential: {
   authMethod: TerminalAuthMethod
   secret?: string
@@ -193,6 +265,12 @@ export function useSftpAuthRetry({
   adapters,
 }: UseSftpAuthRetryOptions) {
   const [credentialPrompt, setCredentialPrompt] = useState<CredentialPromptState | null>(null)
+  const [hostKeyWarning, setHostKeyWarning] = useState<{
+    prompt: TerminalHostKeyPrompt
+    respond: TerminalHostKeyResponder
+  } | null>(null)
+  const [hostKeyTrusting, setHostKeyTrusting] = useState(false)
+  const hostKeyResponseSentRef = useRef(false)
 
   const requestCredential = useCallback((serverName: string, authMethod: TerminalAuthMethod, attempt: number) => (
     new Promise<SftpCredentialInput>((resolve, reject) => {
@@ -232,6 +310,40 @@ export function useSftpAuthRetry({
       })
     })
   ), [])
+
+  const handleHostKeyPrompt = useCallback((
+    prompt: TerminalHostKeyPrompt,
+    respond: TerminalHostKeyResponder,
+  ) => {
+    hostKeyResponseSentRef.current = false
+    setHostKeyWarning({ prompt, respond })
+  }, [])
+
+  const handleTrustHostKey = useCallback(() => {
+    if (!hostKeyWarning || hostKeyResponseSentRef.current) {
+      return
+    }
+
+    setHostKeyTrusting(true)
+    try {
+      hostKeyResponseSentRef.current = true
+      hostKeyWarning.respond(true, hostKeyWarning.prompt.received_key)
+      adapters?.notifySuccess?.(tTerminal("hostKeyChangedSuccess"))
+      setHostKeyWarning(null)
+    } finally {
+      setHostKeyTrusting(false)
+    }
+  }, [adapters, hostKeyWarning, tTerminal])
+
+  const handleCancelHostKey = useCallback(() => {
+    if (!hostKeyWarning || hostKeyResponseSentRef.current) {
+      return
+    }
+
+    hostKeyResponseSentRef.current = true
+    hostKeyWarning.respond(false)
+    setHostKeyWarning(null)
+  }, [hostKeyWarning])
 
   const requestPrivateKeyPassphrase = useCallback((serverName: string, attempt: number) => (
     new Promise<string>((resolve, reject) => {
@@ -315,7 +427,7 @@ export function useSftpAuthRetry({
         } catch {
           respond([], true)
         }
-      })
+      }, handleHostKeyPrompt)
       return
     }
 
@@ -333,7 +445,7 @@ export function useSftpAuthRetry({
         privateKey: credential.privateKey,
       },
     )
-  }, [requestInteractiveResponse])
+  }, [handleHostKeyPrompt, requestInteractiveResponse])
 
   const runWithCredentialRetry = useCallback(async <T,>({
     serverId,
@@ -347,6 +459,16 @@ export function useSftpAuthRetry({
     } catch (error) {
       if (!api.authenticate && !api.preAuthenticate) {
         throw error
+      }
+
+      if (api.preAuthenticate && isSftpHostKeyChangedError(error)) {
+        await authenticateForSftp(
+          api,
+          serverId,
+          serverName,
+          { authMethod },
+        )
+        return await operation()
       }
 
       if (requiresPrivateKey(authMethod) && isSftpPrivateKeyPassphraseError(error)) {
@@ -508,6 +630,7 @@ export function useSftpAuthRetry({
     targetServerId,
     targetServerName,
     targetAuthMethod,
+    api,
     operation,
   }: RunSftpDirectTransferCredentialRetryOptions): Promise<DirectTransferResponse> => {
     const options: DirectTransferOptions = {}
@@ -530,6 +653,14 @@ export function useSftpAuthRetry({
     const passphraseAttempts = {
       source: 0,
       target: 0,
+    }
+    const interactivePreAuthenticated = {
+      source: false,
+      target: false,
+    }
+    const hostKeyPreAuthenticated = {
+      source: false,
+      target: false,
     }
     const successfulCredentials: Partial<Record<"source" | "target", {
       authMethod: TerminalAuthMethod
@@ -590,8 +721,53 @@ export function useSftpAuthRetry({
       } catch (error) {
         lastError = error
         const side = getSftpTransferCredentialErrorSide(error)
-        if (!side || !isSftpCredentialRequiredError(error)) {
+        if (!side) {
           throw error
+        }
+        if (isSftpHostKeyChangedError(error)) {
+          if (!api?.preAuthenticate || hostKeyPreAuthenticated[side]) {
+            throw error
+          }
+
+          hostKeyPreAuthenticated[side] = true
+          const existing = side === "source" ? options.sourceCredential : options.targetCredential
+          await authenticateForSftp(api, serverIds[side], serverNames[side], {
+            authMethod: existing?.auth_method ?? authMethods[side],
+            secret: existing?.secret,
+            password: existing?.password,
+            privateKey: existing?.private_key,
+            privateKeyPassphrase: existing?.private_key_passphrase,
+          })
+          if (side === "source") {
+            delete options.sourceCredential
+          } else {
+            delete options.targetCredential
+          }
+          continue
+        }
+        if (!isSftpCredentialRequiredError(error)) {
+          throw error
+        }
+        if (isSftpKeyboardInteractiveRequiredError(error)) {
+          if (!api?.preAuthenticate || interactivePreAuthenticated[side] || !supportsKeyboardInteractive(authMethods[side])) {
+            throw error
+          }
+
+          interactivePreAuthenticated[side] = true
+          const existing = side === "source" ? options.sourceCredential : options.targetCredential
+          await authenticateForSftp(api, serverIds[side], serverNames[side], {
+            authMethod: existing?.auth_method ?? authMethods[side],
+            secret: existing?.secret,
+            password: existing?.password,
+            privateKey: existing?.private_key,
+            privateKeyPassphrase: existing?.private_key_passphrase,
+          })
+          if (side === "source") {
+            delete options.sourceCredential
+          } else {
+            delete options.targetCredential
+          }
+          continue
         }
 
         if (requiresPrivateKey(authMethods[side]) && isSftpPrivateKeyPassphraseError(error)) {
@@ -625,45 +801,69 @@ export function useSftpAuthRetry({
     }
 
     throw lastError ?? new Error("sftp direct transfer authentication failed")
-  }, [promptCredentialSave, requestCredential, requestPrivateKeyPassphrase])
+  }, [authenticateForSftp, promptCredentialSave, requestCredential, requestPrivateKeyPassphrase])
 
   const credentialDialog = (
-    <TerminalAuthChallengeDialog
-      prompt={credentialPrompt?.prompt ?? null}
-      serverName={credentialPrompt?.serverName ?? ""}
-      onSubmit={(answers, authMethod) => {
-        if (!credentialPrompt) {
-          return
-        }
-        const payload = Array.isArray(answers)
-          ? { answers, authMethod }
-          : {
-              answers: answers.answers ?? [],
-              authMethod: answers.authMethod ?? authMethod,
-              password: answers.password,
-              privateKey: answers.privateKey,
-            }
-        const secret = payload.answers[0] ?? payload.password ?? payload.privateKey ?? ""
-        const method = payload.authMethod ?? credentialPrompt.prompt.auth_method ?? "password"
-        if (credentialPrompt.mode === "passphrase") {
-          credentialPrompt.resolve(secret)
-        } else if (credentialPrompt.mode === "interactive") {
-          credentialPrompt.resolve({ response: payload, authMethod: method })
-        } else {
-          credentialPrompt.resolve({
-            authMethod: method,
-            secret,
-            password: payload.password,
-            privateKey: payload.privateKey,
-          })
-        }
-        setCredentialPrompt(null)
-      }}
-      onCancel={() => {
-        credentialPrompt?.reject(new Error("authentication cancelled by user"))
-        setCredentialPrompt(null)
-      }}
-    />
+    <>
+      <TerminalAuthChallengeDialog
+        prompt={credentialPrompt?.prompt ?? null}
+        serverName={credentialPrompt?.serverName ?? ""}
+        onSubmit={(answers, authMethod) => {
+          if (!credentialPrompt) {
+            return
+          }
+          const payload: TerminalAuthResponsePayload & { authMethod?: TerminalAuthMethod } = Array.isArray(answers)
+            ? { answers, authMethod }
+            : {
+                answers: answers.answers ?? [],
+                authMethod: answers.authMethod ?? authMethod,
+                password: answers.password,
+                privateKey: answers.privateKey,
+                privateKeyPassphrase: answers.privateKeyPassphrase,
+              }
+          const secret = payload.answers[0] ?? payload.password ?? payload.privateKey ?? ""
+          const method = payload.authMethod ?? credentialPrompt.prompt.auth_method ?? "password"
+          if (credentialPrompt.mode === "passphrase") {
+            credentialPrompt.resolve(secret)
+          } else if (credentialPrompt.mode === "interactive") {
+            credentialPrompt.resolve({ response: payload, authMethod: method })
+          } else {
+            credentialPrompt.resolve({
+              authMethod: method,
+              secret,
+              password: payload.password,
+              privateKey: payload.privateKey,
+              privateKeyPassphrase: payload.privateKeyPassphrase,
+            })
+          }
+          setCredentialPrompt(null)
+        }}
+        onCancel={() => {
+          credentialPrompt?.reject(new Error("authentication cancelled by user"))
+          setCredentialPrompt(null)
+        }}
+      />
+      <TerminalHostKeyDialog
+        prompt={hostKeyWarning?.prompt ?? null}
+        isTrusting={hostKeyTrusting}
+        labels={{
+          title: tTerminal("hostKeyChangedTitle"),
+          description: tTerminal("hostKeyChangedDescription", {
+            server: hostKeyWarning
+              ? `${hostKeyWarning.prompt.host}:${hostKeyWarning.prompt.port}`
+              : "",
+          }),
+          expected: tTerminal("hostKeyChangedExpected"),
+          received: tTerminal("hostKeyChangedReceived"),
+          risk: tTerminal("hostKeyChangedRisk"),
+          cancel: tTerminal("hostKeyChangedCancel"),
+          trust: tTerminal("hostKeyChangedTrust"),
+          trusting: tTerminal("hostKeyChangedTrusting"),
+        }}
+        onCancel={handleCancelHostKey}
+        onTrust={handleTrustHostKey}
+      />
+    </>
   )
 
   return {

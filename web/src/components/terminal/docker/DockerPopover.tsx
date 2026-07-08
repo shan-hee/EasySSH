@@ -69,7 +69,11 @@ interface DockerPopoverProps {
 export function DockerPopover({ serverId, sessionId, isConnected }: DockerPopoverProps) {
   const { t } = useTranslation('terminal')
   const workspace = useOptionalSshWorkspace()
-  const dockerClient = workspace?.adapters.apiClient?.docker ?? dockerApi
+  const workspaceDockerClient = workspace?.adapters.apiClient?.docker
+  if (workspace?.layout === "desktop" && !workspaceDockerClient) {
+    throw new Error("Desktop DockerPopover requires a desktop docker api adapter")
+  }
+  const dockerClient = workspaceDockerClient ?? dockerApi
   const [open, setOpen] = useState(false)
   const containersFetchSeqRef = useRef(0)
   const containersFetchInFlightRef = useRef(false)

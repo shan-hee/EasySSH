@@ -1,6 +1,12 @@
 import { sftpApi } from "@/lib/api/sftp"
 import type { DirectTransferOptions, DirectTransferResponse, DiskUsageResponse, FileInfo, UploadTaskListResponse, UploadTaskStatus } from "@/lib/sftp-types"
-import type { TerminalAuthMethod, TerminalAuthPrompt, TerminalAuthResponsePayload } from "@/lib/websocket-terminal"
+import type {
+  TerminalAuthMethod,
+  TerminalAuthPrompt,
+  TerminalAuthResponsePayload,
+  TerminalHostKeyPrompt,
+  TerminalHostKeyResponder,
+} from "@/lib/websocket-terminal"
 import type { SftpDirectoryApi } from "./sftp-directory"
 import type { SftpOperationsApi } from "./sftp-operations"
 
@@ -31,6 +37,10 @@ export interface SftpSessionApi extends SftpDirectoryApi, SftpOperationsApi {
     onAuthPrompt: (
       prompt: TerminalAuthPrompt,
       respond: (response: string[] | TerminalAuthResponsePayload, cancelled?: boolean, authMethod?: TerminalAuthMethod) => void,
+    ) => void,
+    onHostKeyPrompt?: (
+      prompt: TerminalHostKeyPrompt,
+      respond: TerminalHostKeyResponder,
     ) => void,
   ) => Promise<unknown>
   getFileInfo?: (serverId: string, path: string) => Promise<FileInfo>
@@ -74,6 +84,45 @@ export interface SftpSessionApi extends SftpDirectoryApi, SftpOperationsApi {
 export type SftpSessionApiAdapter = Partial<SftpSessionApi>
 
 export const defaultSftpSessionApi: SftpSessionApi = sftpApi
+
+const completeSftpSessionApiMethods = [
+  "authenticate",
+  "preAuthenticate",
+  "getFileInfo",
+  "getDiskUsage",
+  "listDirectory",
+  "delete",
+  "createDirectory",
+  "writeFile",
+  "rename",
+  "batchDelete",
+  "downloadFile",
+  "readFile",
+  "batchDownload",
+  "chmod",
+  "closeConnection",
+  "createUploadTask",
+  "listUploadTasks",
+  "getUploadTask",
+  "getTransferTask",
+  "cancelUploadTask",
+  "uploadFile",
+  "directTransfer",
+  "cancelTransfer",
+] as const satisfies readonly (keyof SftpSessionApi)[]
+
+export function assertCompleteSftpSessionApi(
+  adapter: SftpSessionApiAdapter | undefined,
+  context: string,
+): asserts adapter is SftpSessionApi {
+  const missingMethods = completeSftpSessionApiMethods.filter((method) => (
+    typeof adapter?.[method] !== "function"
+  ))
+
+  if (missingMethods.length > 0) {
+    throw new Error(`${context} requires a complete SFTP api adapter: ${missingMethods.join(", ")}`)
+  }
+}
 
 export function createSftpSessionApi(adapter?: SftpSessionApiAdapter): SftpSessionApi {
   if (!adapter) {

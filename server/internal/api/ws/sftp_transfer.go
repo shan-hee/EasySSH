@@ -15,6 +15,7 @@ import (
 	"github.com/easyssh/server/internal/domain/operationrecord"
 	"github.com/easyssh/server/internal/domain/security"
 	"github.com/easyssh/server/internal/domain/server"
+	sftpDomain "github.com/easyssh/server/internal/domain/sftp"
 	sshDomain "github.com/easyssh/server/internal/domain/ssh"
 	"github.com/easyssh/server/internal/pkg/crypto"
 	"github.com/gin-gonic/gin"
@@ -82,6 +83,7 @@ type SFTPTransferHandler struct {
 	webDevPort       int
 	hostKeyCallback  ssh.HostKeyCallback
 	credentialStore  *sshDomain.RuntimeCredentialStore
+	pool             *sftpDomain.Pool
 	defaultTaskTTL   time.Duration
 	operationRecords operationrecord.Service
 }
@@ -114,6 +116,11 @@ func NewSFTPTransferHandler(
 		defaultTaskTTL:   30 * time.Minute,
 		operationRecords: operationRecords,
 	}
+}
+
+// SetPool attaches the shared SFTP pool used by interactive pre-authentication.
+func (h *SFTPTransferHandler) SetPool(pool *sftpDomain.Pool) {
+	h.pool = pool
 }
 
 // getUpgrader 创建 WebSocket upgrader
@@ -443,6 +450,37 @@ func (h *SFTPTransferHandler) validateDirectTransferEndpoint(
 	srv *server.Server,
 	credential *DirectTransferCredential,
 ) error {
+	_, closer, err := h.openDirectTransferSFTPClient(ctx, userID, serverID, srv, credential)
+	if err != nil {
+		return err
+	}
+	defer closer()
+
+	h.saveDirectTransferCredential(userID, serverID, credential)
+
+	return nil
+}
+
+func (h *SFTPTransferHandler) openDirectTransferSFTPClient(
+	ctx context.Context,
+	userID uuid.UUID,
+	serverID uuid.UUID,
+	srv *server.Server,
+	credential *DirectTransferCredential,
+) (*sftp.Client, func(), error) {
+	if credential == nil && h.pool != nil {
+		pooledClient, err := h.pool.Get(ctx, userID, serverID)
+		if err != nil {
+			return nil, nil, err
+		}
+		rawClient := pooledClient.RawClient()
+		if rawClient == nil {
+			pooledClient.Release()
+			return nil, nil, fmt.Errorf("pooled sftp client is not available")
+		}
+		return rawClient, pooledClient.Release, nil
+	}
+
 	client, err := sshDomain.NewClient(
 		srv,
 		h.encryptor,
@@ -450,25 +488,23 @@ func (h *SFTPTransferHandler) validateDirectTransferEndpoint(
 		h.directTransferCredentialOptions(userID, serverID, credential)...,
 	)
 	if err != nil {
-		return err
+		return nil, nil, err
 	}
-	defer client.Close()
-
 	if err := client.ConnectContext(ctx, srv.Host, srv.Port); err != nil {
-		return err
+		client.Close()
+		return nil, nil, err
 	}
 
 	sftpClient, err := sftp.NewClient(client.GetRawConnection())
 	if err != nil {
-		return err
-	}
-	if err := sftpClient.Close(); err != nil {
-		return err
+		client.Close()
+		return nil, nil, err
 	}
 
-	h.saveDirectTransferCredential(userID, serverID, credential)
-
-	return nil
+	return sftpClient, func() {
+		_ = sftpClient.Close()
+		client.Close()
+	}, nil
 }
 
 func (h *SFTPTransferHandler) upsertTransferOperationRecord(task *TransferTask, status operationrecord.Status, errorMessage string, finishedAt *time.Time) {
@@ -574,50 +610,18 @@ func (h *SFTPTransferHandler) executeSftpRelayTransfer(
 		taskID, sourceServer.Host, sourcePath, targetServer.Host, targetPath)
 
 	// 连接源服务器
-	sourceSSHClient, err := sshDomain.NewClient(
-		sourceServer,
-		h.encryptor,
-		h.hostKeyCallback,
-		h.directTransferCredentialOptions(userID, sourceServer.ID, sourceCredential)...,
-	)
+	sourceSFTP, sourceCloser, err := h.openDirectTransferSFTPClient(ctx, userID, sourceServer.ID, sourceServer, sourceCredential)
 	if err != nil {
-		return fmt.Errorf("failed to create source SSH client: %w", err)
-	}
-	defer sourceSSHClient.Close()
-
-	if err := sourceSSHClient.ConnectContext(ctx, sourceServer.Host, sourceServer.Port); err != nil {
 		return fmt.Errorf("failed to connect to source server: %w", err)
 	}
-
-	// 创建源 SFTP 客户端
-	sourceSFTP, err := sftp.NewClient(sourceSSHClient.GetRawConnection())
-	if err != nil {
-		return fmt.Errorf("failed to create source SFTP client: %w", err)
-	}
-	defer sourceSFTP.Close()
+	defer sourceCloser()
 
 	// 连接目标服务器
-	targetSSHClient, err := sshDomain.NewClient(
-		targetServer,
-		h.encryptor,
-		h.hostKeyCallback,
-		h.directTransferCredentialOptions(userID, targetServer.ID, targetCredential)...,
-	)
+	targetSFTP, targetCloser, err := h.openDirectTransferSFTPClient(ctx, userID, targetServer.ID, targetServer, targetCredential)
 	if err != nil {
-		return fmt.Errorf("failed to create target SSH client: %w", err)
-	}
-	defer targetSSHClient.Close()
-
-	if err := targetSSHClient.ConnectContext(ctx, targetServer.Host, targetServer.Port); err != nil {
 		return fmt.Errorf("failed to connect to target server: %w", err)
 	}
-
-	// 创建目标 SFTP 客户端
-	targetSFTP, err := sftp.NewClient(targetSSHClient.GetRawConnection())
-	if err != nil {
-		return fmt.Errorf("failed to create target SFTP client: %w", err)
-	}
-	defer targetSFTP.Close()
+	defer targetCloser()
 
 	// 获取源文件信息
 	sourceInfo, err := sourceSFTP.Stat(sourcePath)

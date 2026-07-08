@@ -2,7 +2,13 @@ import { apiFetch } from "@/lib/api-client"
 import { getApiUrl } from "../config"
 import { getCurrentAccessToken } from "@/stores/auth-store"
 import { createAuthTicket } from "@/lib/auth-ticket"
-import type { TerminalAuthMethod, TerminalAuthPrompt, TerminalAuthResponsePayload } from "@/lib/websocket-terminal"
+import type {
+  TerminalAuthMethod,
+  TerminalAuthPrompt,
+  TerminalAuthResponsePayload,
+  TerminalHostKeyPrompt,
+  TerminalHostKeyResponder,
+} from "@/lib/websocket-terminal"
 import type {
   BatchDeleteResponse,
   DirectTransferOptions,
@@ -114,6 +120,10 @@ export const sftpApi = {
       prompt: TerminalAuthPrompt,
       respond: (response: string[] | TerminalAuthResponsePayload, cancelled?: boolean, authMethod?: TerminalAuthMethod) => void,
     ) => void,
+    onHostKeyPrompt?: (
+      prompt: TerminalHostKeyPrompt,
+      respond: TerminalHostKeyResponder,
+    ) => void,
   ): Promise<void> {
     const { ticket } = await createAuthTicket({
       type: "ws_sftp_auth",
@@ -181,13 +191,14 @@ export const sftpApi = {
           if (message.type === "auth_prompt" && message.data && typeof message.data === "object") {
             const prompt = message.data as TerminalAuthPrompt
             onAuthPrompt(prompt, (response, cancelled = false, authMethod) => {
-              const payload = Array.isArray(response)
+              const payload: TerminalAuthResponsePayload & { authMethod?: TerminalAuthMethod } = Array.isArray(response)
                 ? { answers: response, authMethod }
                 : {
                     answers: response.answers ?? [],
                     authMethod: response.authMethod ?? authMethod,
                     password: response.password,
                     privateKey: response.privateKey,
+                    privateKeyPassphrase: response.privateKeyPassphrase,
                   }
               ws.send(JSON.stringify({
                 type: "auth_response",
@@ -198,9 +209,28 @@ export const sftpApi = {
                   auth_method: payload.authMethod,
                   password: payload.password,
                   private_key: payload.privateKey,
+                  private_key_passphrase: payload.privateKeyPassphrase,
                 },
               }))
             })
+          }
+          if (message.type === "host_key_prompt" && message.data && typeof message.data === "object") {
+            const prompt = message.data as TerminalHostKeyPrompt
+            const respond: TerminalHostKeyResponder = (accepted, fingerprint) => {
+              ws.send(JSON.stringify({
+                type: "host_key_response",
+                data: {
+                  request_id: prompt.request_id,
+                  accepted,
+                  fingerprint,
+                },
+              }))
+            }
+            if (onHostKeyPrompt) {
+              onHostKeyPrompt(prompt, respond)
+            } else {
+              respond(false)
+            }
           }
         } catch (error) {
           finish(error instanceof Error ? error : new Error("failed to parse sftp auth websocket message"))

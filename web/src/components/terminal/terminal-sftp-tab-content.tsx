@@ -4,6 +4,7 @@ import { toast } from "@/components/ui/sonner"
 import { SftpManager } from "@/components/sftp/sftp-manager"
 import { useOptionalSshWorkspace } from "@/components/ssh-workspace/ssh-workspace"
 import { useSftpSession } from "@/hooks/useSftpSession"
+import { assertCompleteSftpSessionApi } from "@/lib/session/sftp-session-api"
 import { createWorkspaceTransferAuthTicketProviderAdapter } from "@/lib/session/workspace-adapters"
 import type { Server } from "@/lib/server-types"
 import { useTerminalAuthFlowAdapters } from "@/components/terminal/use-terminal-auth-flow-adapters"
@@ -47,6 +48,12 @@ export function TerminalSftpTabContent({
   const workspace = useOptionalSshWorkspace()
   const lastRefreshRequestVersionRef = useRef(0)
   const workspaceSftpApi = workspace?.adapters.apiClient?.sftp
+  if (workspace?.layout === "desktop" && !workspaceSftpApi) {
+    throw new Error("Desktop SFTP tab requires a desktop SFTP api adapter")
+  }
+  if (workspace?.layout === "desktop") {
+    assertCompleteSftpSessionApi(workspaceSftpApi, "Desktop SFTP tab")
+  }
   const workspaceI18n = workspace?.adapters.i18n
   const { t: tSftpFallback } = useTranslation("sftp")
   const { t: tTerminal } = useTranslation("terminal")
@@ -106,7 +113,7 @@ export function TerminalSftpTabContent({
     tTerminal,
     adapters: effectiveAuthFlowAdapters,
   })
-  const canRetrySftpCredentials = !workspaceSftpApi || !!workspaceSftpApi.authenticate
+  const canRetrySftpCredentials = !workspaceSftpApi || !!workspaceSftpApi.authenticate || !!workspaceSftpApi.preAuthenticate
 
   const sftp = useSftpSession(String(server.id), initialPath, {
     api: workspaceSftpApi,

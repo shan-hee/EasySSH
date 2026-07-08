@@ -3,6 +3,7 @@ package main
 import (
 	"archive/zip"
 	"bytes"
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -90,6 +91,8 @@ type DesktopSFTPAuthenticateInput struct {
 	ServerID             string                  `json:"serverId"`
 	AuthMethod           DesktopServerAuthMethod `json:"authMethod"`
 	Secret               string                  `json:"secret"`
+	Password             string                  `json:"password,omitempty"`
+	PrivateKey           string                  `json:"privateKey,omitempty"`
 	PrivateKeyPassphrase string                  `json:"privateKeyPassphrase,omitempty"`
 }
 
@@ -106,9 +109,10 @@ type DesktopSFTPFileInfo struct {
 }
 
 type DesktopSFTPDirectoryListResult struct {
-	Path   string                `json:"path"`
-	Files  []DesktopSFTPFileInfo `json:"files"`
-	Parent string                `json:"parent,omitempty"`
+	Path    string                `json:"path"`
+	Files   []DesktopSFTPFileInfo `json:"files"`
+	Parent  string                `json:"parent,omitempty"`
+	CanRead bool                  `json:"can_read"`
 }
 
 type DesktopSFTPBatchOperationError struct {
@@ -181,18 +185,27 @@ type desktopSFTPTask struct {
 	cancelled bool
 }
 
+type desktopSFTPAuthenticatedSSHClient struct {
+	client          *ssh.Client
+	credential      DesktopSSHCredential
+	authenticatedAt time.Time
+}
+
 type DesktopSFTPService struct {
-	serverService *DesktopServerService
-	activityLog   *ActivityLogService
-	taskMu        sync.Mutex
-	tasks         map[string]*desktopSFTPTask
+	serverService    *DesktopServerService
+	activityLog      *ActivityLogService
+	taskMu           sync.Mutex
+	tasks            map[string]*desktopSFTPTask
+	authenticatedMu  sync.Mutex
+	authenticatedSSH map[string]*desktopSFTPAuthenticatedSSHClient
 }
 
 func NewDesktopSFTPService(serverService *DesktopServerService, activityLog *ActivityLogService) *DesktopSFTPService {
 	return &DesktopSFTPService{
-		serverService: serverService,
-		activityLog:   activityLog,
-		tasks:         make(map[string]*desktopSFTPTask),
+		serverService:    serverService,
+		activityLog:      activityLog,
+		tasks:            make(map[string]*desktopSFTPTask),
+		authenticatedSSH: make(map[string]*desktopSFTPAuthenticatedSSHClient),
 	}
 }
 
@@ -499,7 +512,7 @@ func desktopSFTPActivityStatus(err error) DesktopActivityLogStatus {
 	if err == nil {
 		return DesktopActivityLogSuccess
 	}
-	if errors.Is(err, errDesktopSFTPTaskCancelled) {
+	if errors.Is(err, errDesktopSFTPTaskCancelled) || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 		return DesktopActivityLogWarning
 	}
 	return DesktopActivityLogFailure
@@ -510,16 +523,16 @@ func (s *DesktopSFTPService) Authenticate(input DesktopSFTPAuthenticateInput) er
 	if serverID == "" {
 		return errors.New("server id is required")
 	}
-	if input.AuthMethod != DesktopServerAuthPassword && input.AuthMethod != DesktopServerAuthKey {
+	input.AuthMethod = normalizeDesktopServerAuthMethod(input.AuthMethod)
+	if !input.AuthMethod.IsValid() {
 		return fmt.Errorf("unsupported auth method: %s", input.AuthMethod)
-	}
-	if input.AuthMethod == DesktopServerAuthPassword && input.Secret == "" {
-		return errors.New("server credential is required")
 	}
 
 	credential := DesktopSSHCredential{
 		AuthMethod:           input.AuthMethod,
 		Secret:               input.Secret,
+		Password:             input.Password,
+		PrivateKey:           input.PrivateKey,
 		PrivateKeyPassphrase: input.PrivateKeyPassphrase,
 	}
 	_, closer, err := s.openClientWithCredential(serverID, &credential)
@@ -528,20 +541,33 @@ func (s *DesktopSFTPService) Authenticate(input DesktopSFTPAuthenticateInput) er
 	}
 	closer()
 
+	s.clearAuthenticatedSSHClient(serverID)
 	s.serverService.setTemporaryCredential(serverID, credential)
 	return nil
 }
 
 func (s *DesktopSFTPService) ListDirectory(input DesktopSFTPPathInput) (DesktopSFTPDirectoryListResult, error) {
+	return s.ListDirectoryContext(context.Background(), input)
+}
+
+func (s *DesktopSFTPService) ListDirectoryContext(ctx context.Context, input DesktopSFTPPathInput) (DesktopSFTPDirectoryListResult, error) {
+	ctx = desktopNonNilContext(ctx)
 	remotePath := sftputil.NormalizePath(input.Path)
-	client, closer, err := s.openClient(input.ServerID)
+	client, closer, err := s.openClientContext(ctx, input.ServerID)
 	if err != nil {
 		return DesktopSFTPDirectoryListResult{}, err
 	}
+	closer = desktopSFTPContextCloser(ctx, closer)
 	defer closer()
 
+	if err := ctx.Err(); err != nil {
+		return DesktopSFTPDirectoryListResult{}, err
+	}
 	entries, err := client.ReadDir(remotePath)
 	if err != nil {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return DesktopSFTPDirectoryListResult{}, ctxErr
+		}
 		return DesktopSFTPDirectoryListResult{}, err
 	}
 
@@ -563,9 +589,10 @@ func (s *DesktopSFTPService) ListDirectory(input DesktopSFTPPathInput) (DesktopS
 	}
 
 	return DesktopSFTPDirectoryListResult{
-		Path:   remotePath,
-		Parent: sftputil.ParentPath(remotePath),
-		Files:  files,
+		Path:    remotePath,
+		Parent:  sftputil.ParentPath(remotePath),
+		Files:   files,
+		CanRead: true,
 	}, nil
 }
 
@@ -617,6 +644,11 @@ func (s *DesktopSFTPService) GetDiskUsage(input DesktopSFTPPathInput) (DesktopSF
 }
 
 func (s *DesktopSFTPService) Delete(input DesktopSFTPPathInput) (snapshot DesktopSFTPFileInfo, err error) {
+	return s.DeleteContext(context.Background(), input)
+}
+
+func (s *DesktopSFTPService) DeleteContext(ctx context.Context, input DesktopSFTPPathInput) (snapshot DesktopSFTPFileInfo, err error) {
+	ctx = desktopNonNilContext(ctx)
 	remotePath := sftputil.NormalizePath(input.Path)
 	started := time.Now().UTC()
 	defer func() {
@@ -630,14 +662,21 @@ func (s *DesktopSFTPService) Delete(input DesktopSFTPPathInput) (snapshot Deskto
 		s.recordSFTPActivity("sftp_delete", input.ServerID, remotePath, desktopSFTPActivityStatus(err), started, detail)
 	}()
 
-	client, closer, err := s.openClient(input.ServerID)
+	client, closer, err := s.openClientContext(ctx, input.ServerID)
 	if err != nil {
 		return DesktopSFTPFileInfo{}, err
 	}
+	closer = desktopSFTPContextCloser(ctx, closer)
 	defer closer()
 
+	if err := ctx.Err(); err != nil {
+		return DesktopSFTPFileInfo{}, err
+	}
 	info, err := client.Lstat(remotePath)
 	if err != nil {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return DesktopSFTPFileInfo{}, ctxErr
+		}
 		return DesktopSFTPFileInfo{}, err
 	}
 	snapshot = desktopSFTPFileInfoFromFileInfo(remotePath, info, "")
@@ -648,6 +687,9 @@ func (s *DesktopSFTPService) Delete(input DesktopSFTPPathInput) (snapshot Deskto
 		err = client.Remove(remotePath)
 	}
 	if err != nil {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return DesktopSFTPFileInfo{}, ctxErr
+		}
 		return DesktopSFTPFileInfo{}, err
 	}
 
@@ -715,6 +757,11 @@ func (s *DesktopSFTPService) BatchDelete(input DesktopSFTPBatchDeleteInput) (res
 }
 
 func (s *DesktopSFTPService) CreateDirectory(input DesktopSFTPPathInput) (info DesktopSFTPFileInfo, err error) {
+	return s.CreateDirectoryContext(context.Background(), input)
+}
+
+func (s *DesktopSFTPService) CreateDirectoryContext(ctx context.Context, input DesktopSFTPPathInput) (info DesktopSFTPFileInfo, err error) {
+	ctx = desktopNonNilContext(ctx)
 	remotePath := sftputil.NormalizePath(input.Path)
 	started := time.Now().UTC()
 	defer func() {
@@ -728,18 +775,30 @@ func (s *DesktopSFTPService) CreateDirectory(input DesktopSFTPPathInput) (info D
 		s.recordSFTPActivity("sftp_mkdir", input.ServerID, remotePath, desktopSFTPActivityStatus(err), started, detail)
 	}()
 
-	client, closer, err := s.openClient(input.ServerID)
+	client, closer, err := s.openClientContext(ctx, input.ServerID)
 	if err != nil {
 		return DesktopSFTPFileInfo{}, err
 	}
+	closer = desktopSFTPContextCloser(ctx, closer)
 	defer closer()
 
-	err = client.Mkdir(remotePath)
+	if err := ctx.Err(); err != nil {
+		return DesktopSFTPFileInfo{}, err
+	}
+	err = client.MkdirAll(remotePath)
 	if err != nil {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return DesktopSFTPFileInfo{}, ctxErr
+		}
 		return DesktopSFTPFileInfo{}, err
 	}
 
 	info, err = desktopSFTPStat(client, remotePath)
+	if err != nil {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return DesktopSFTPFileInfo{}, ctxErr
+		}
+	}
 	return info, err
 }
 
@@ -775,15 +834,27 @@ func (s *DesktopSFTPService) Rename(input DesktopSFTPRenameInput) (info DesktopS
 }
 
 func (s *DesktopSFTPService) ReadFile(input DesktopSFTPPathInput) (string, error) {
+	return s.ReadFileContext(context.Background(), input)
+}
+
+func (s *DesktopSFTPService) ReadFileContext(ctx context.Context, input DesktopSFTPPathInput) (string, error) {
+	ctx = desktopNonNilContext(ctx)
 	remotePath := sftputil.NormalizePath(input.Path)
-	client, closer, err := s.openClient(input.ServerID)
+	client, closer, err := s.openClientContext(ctx, input.ServerID)
 	if err != nil {
 		return "", err
 	}
+	closer = desktopSFTPContextCloser(ctx, closer)
 	defer closer()
 
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
 	info, err := client.Stat(remotePath)
 	if err != nil {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return "", ctxErr
+		}
 		return "", err
 	}
 	if info.IsDir() {
@@ -795,12 +866,18 @@ func (s *DesktopSFTPService) ReadFile(input DesktopSFTPPathInput) (string, error
 
 	file, err := client.Open(remotePath)
 	if err != nil {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return "", ctxErr
+		}
 		return "", err
 	}
 	defer file.Close()
 
 	content, err := io.ReadAll(io.LimitReader(file, desktopSFTPMaxTextBytes+1))
 	if err != nil {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return "", ctxErr
+		}
 		return "", err
 	}
 	if len(content) > desktopSFTPMaxTextBytes {
@@ -811,6 +888,11 @@ func (s *DesktopSFTPService) ReadFile(input DesktopSFTPPathInput) (string, error
 }
 
 func (s *DesktopSFTPService) WriteFile(input DesktopSFTPWriteFileInput) (info DesktopSFTPFileInfo, err error) {
+	return s.WriteFileContext(context.Background(), input)
+}
+
+func (s *DesktopSFTPService) WriteFileContext(ctx context.Context, input DesktopSFTPWriteFileInput) (info DesktopSFTPFileInfo, err error) {
+	ctx = desktopNonNilContext(ctx)
 	remotePath := sftputil.NormalizePath(input.Path)
 	started := time.Now().UTC()
 	defer func() {
@@ -825,27 +907,51 @@ func (s *DesktopSFTPService) WriteFile(input DesktopSFTPWriteFileInput) (info De
 		s.recordSFTPActivity("sftp_upload", input.ServerID, remotePath, desktopSFTPActivityStatus(err), started, detail)
 	}()
 
-	client, closer, err := s.openClient(input.ServerID)
+	client, closer, err := s.openClientContext(ctx, input.ServerID)
 	if err != nil {
 		return DesktopSFTPFileInfo{}, err
 	}
+	closer = desktopSFTPContextCloser(ctx, closer)
 	defer closer()
 
+	if err := ctx.Err(); err != nil {
+		return DesktopSFTPFileInfo{}, err
+	}
 	file, err := client.OpenFile(remotePath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC)
 	if err != nil {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return DesktopSFTPFileInfo{}, ctxErr
+		}
 		return DesktopSFTPFileInfo{}, err
 	}
 	_, err = file.Write([]byte(input.Content))
 	if err != nil {
 		_ = file.Close()
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return DesktopSFTPFileInfo{}, ctxErr
+		}
 		return DesktopSFTPFileInfo{}, err
 	}
 	err = file.Close()
 	if err != nil {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return DesktopSFTPFileInfo{}, ctxErr
+		}
+		return DesktopSFTPFileInfo{}, err
+	}
+	if err := client.Chmod(remotePath, 0o644); err != nil {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return DesktopSFTPFileInfo{}, ctxErr
+		}
 		return DesktopSFTPFileInfo{}, err
 	}
 
 	info, err = desktopSFTPStat(client, remotePath)
+	if err != nil {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return DesktopSFTPFileInfo{}, ctxErr
+		}
+	}
 	return info, err
 }
 
@@ -933,6 +1039,10 @@ func (s *DesktopSFTPService) UploadFile(input DesktopSFTPUploadFileInput) (info 
 	}
 	err = file.Close()
 	if err != nil {
+		s.failTask(taskID, err)
+		return DesktopSFTPFileInfo{}, err
+	}
+	if err := client.Chmod(remotePath, 0o644); err != nil {
 		s.failTask(taskID, err)
 		return DesktopSFTPFileInfo{}, err
 	}
@@ -1293,33 +1403,116 @@ func (s *DesktopSFTPService) CloseConnection(serverID string) error {
 	}
 
 	s.serverService.clearTemporaryCredential(serverID)
+	s.clearAuthenticatedSSHClient(serverID)
 	return nil
 }
 
+func (s *DesktopSFTPService) setAuthenticatedSSHClient(serverID string, client *ssh.Client, credential DesktopSSHCredential) {
+	serverID = strings.TrimSpace(serverID)
+	if serverID == "" || client == nil {
+		return
+	}
+
+	s.authenticatedMu.Lock()
+	if existing := s.authenticatedSSH[serverID]; existing != nil && existing.client != nil {
+		_ = existing.client.Close()
+	}
+	s.authenticatedSSH[serverID] = &desktopSFTPAuthenticatedSSHClient{
+		client:          client,
+		credential:      credential,
+		authenticatedAt: time.Now(),
+	}
+	s.authenticatedMu.Unlock()
+}
+
+func (s *DesktopSFTPService) getAuthenticatedSSHClient(serverID string) (*ssh.Client, bool) {
+	serverID = strings.TrimSpace(serverID)
+	if serverID == "" {
+		return nil, false
+	}
+
+	s.authenticatedMu.Lock()
+	defer s.authenticatedMu.Unlock()
+
+	entry := s.authenticatedSSH[serverID]
+	if entry == nil || entry.client == nil {
+		return nil, false
+	}
+
+	return entry.client, true
+}
+
+func (s *DesktopSFTPService) clearAuthenticatedSSHClient(serverID string) {
+	serverID = strings.TrimSpace(serverID)
+	if serverID == "" {
+		return
+	}
+
+	s.authenticatedMu.Lock()
+	entry := s.authenticatedSSH[serverID]
+	delete(s.authenticatedSSH, serverID)
+	s.authenticatedMu.Unlock()
+
+	if entry != nil && entry.client != nil {
+		_ = entry.client.Close()
+	}
+}
+
 func (s *DesktopSFTPService) openSSHClient(serverID string) (*ssh.Client, func(), error) {
+	return s.openSSHClientContext(context.Background(), serverID)
+}
+
+func (s *DesktopSFTPService) openSSHClientContext(ctx context.Context, serverID string) (*ssh.Client, func(), error) {
+	ctx = desktopNonNilContext(ctx)
 	serverID = strings.TrimSpace(serverID)
 	if serverID == "" {
 		return nil, nil, errors.New("server id is required")
 	}
 
-	if credential, hasCredential := s.serverService.getTemporaryCredential(serverID); hasCredential {
-		return s.openSSHClientWithCredential(serverID, credential)
+	if err := ctx.Err(); err != nil {
+		return nil, nil, err
+	}
+	if client, ok := s.getAuthenticatedSSHClient(serverID); ok {
+		return client, func() {}, nil
 	}
 
-	return s.openSSHClientWithCredential(serverID, nil)
+	if credential, hasCredential := s.serverService.getTemporaryCredential(serverID); hasCredential {
+		return s.openSSHClientWithCredentialContext(ctx, serverID, credential)
+	}
+
+	return s.openSSHClientWithCredentialContext(ctx, serverID, nil)
 }
 
 func (s *DesktopSFTPService) openClient(serverID string) (*sftp.Client, func(), error) {
+	return s.openClientContext(context.Background(), serverID)
+}
+
+func (s *DesktopSFTPService) openClientContext(ctx context.Context, serverID string) (*sftp.Client, func(), error) {
+	ctx = desktopNonNilContext(ctx)
 	serverID = strings.TrimSpace(serverID)
 	if serverID == "" {
 		return nil, nil, errors.New("server id is required")
 	}
 
-	if credential, hasCredential := s.serverService.getTemporaryCredential(serverID); hasCredential {
-		return s.openClientWithCredential(serverID, credential)
+	if err := ctx.Err(); err != nil {
+		return nil, nil, err
+	}
+	if sshClient, ok := s.getAuthenticatedSSHClient(serverID); ok {
+		sftpClient, err := sftp.NewClient(sshClient)
+		if err != nil {
+			s.clearAuthenticatedSSHClient(serverID)
+			return nil, nil, err
+		}
+		return sftpClient, func() {
+			_ = sftpClient.Close()
+		}, nil
 	}
 
-	return s.openClientWithCredential(serverID, nil)
+	if credential, hasCredential := s.serverService.getTemporaryCredential(serverID); hasCredential {
+		return s.openClientWithCredentialContext(ctx, serverID, credential)
+	}
+
+	return s.openClientWithCredentialContext(ctx, serverID, nil)
 }
 
 func (s *DesktopSFTPService) openClientForTransfer(serverID string, credential *DesktopSSHCredential) (*sftp.Client, func(), error) {
@@ -1332,16 +1525,25 @@ func (s *DesktopSFTPService) openClientForTransfer(serverID string, credential *
 		return nil, nil, err
 	}
 
+	s.clearAuthenticatedSSHClient(serverID)
 	s.serverService.setTemporaryCredential(serverID, *credential)
 	return client, closer, nil
 }
 
 func (s *DesktopSFTPService) openSSHClientWithCredential(serverID string, credential *DesktopSSHCredential) (*ssh.Client, func(), error) {
+	return s.openSSHClientWithCredentialContext(context.Background(), serverID, credential)
+}
+
+func (s *DesktopSFTPService) openSSHClientWithCredentialContext(ctx context.Context, serverID string, credential *DesktopSSHCredential) (*ssh.Client, func(), error) {
+	ctx = desktopNonNilContext(ctx)
 	serverID = strings.TrimSpace(serverID)
 	if serverID == "" {
 		return nil, nil, errors.New("server id is required")
 	}
 
+	if err := ctx.Err(); err != nil {
+		return nil, nil, err
+	}
 	server, err := s.serverService.getByIDRaw(serverID)
 	if err != nil {
 		return nil, nil, err
@@ -1363,11 +1565,30 @@ func (s *DesktopSFTPService) openSSHClientWithCredential(serverID string, creden
 	}
 
 	address := net.JoinHostPort(server.Host, strconv.Itoa(server.Port))
-	sshClient, err := ssh.Dial("tcp", address, config)
+	dialer := net.Dialer{Timeout: config.Timeout}
+	conn, err := dialer.DialContext(ctx, "tcp", address)
 	if err != nil {
 		return nil, nil, err
 	}
 
+	stopHandshakeWatch := make(chan struct{})
+	go func() {
+		select {
+		case <-ctx.Done():
+			_ = conn.Close()
+		case <-stopHandshakeWatch:
+		}
+	}()
+	sshConn, channels, requests, err := ssh.NewClientConn(conn, address, config)
+	close(stopHandshakeWatch)
+	if err != nil {
+		_ = conn.Close()
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return nil, nil, ctxErr
+		}
+		return nil, nil, err
+	}
+	sshClient := ssh.NewClient(sshConn, channels, requests)
 	closer := func() {
 		_ = sshClient.Close()
 	}
@@ -1375,11 +1596,20 @@ func (s *DesktopSFTPService) openSSHClientWithCredential(serverID string, creden
 }
 
 func (s *DesktopSFTPService) openClientWithCredential(serverID string, credential *DesktopSSHCredential) (*sftp.Client, func(), error) {
-	sshClient, sshCloser, err := s.openSSHClientWithCredential(serverID, credential)
+	return s.openClientWithCredentialContext(context.Background(), serverID, credential)
+}
+
+func (s *DesktopSFTPService) openClientWithCredentialContext(ctx context.Context, serverID string, credential *DesktopSSHCredential) (*sftp.Client, func(), error) {
+	ctx = desktopNonNilContext(ctx)
+	sshClient, sshCloser, err := s.openSSHClientWithCredentialContext(ctx, serverID, credential)
 	if err != nil {
 		return nil, nil, err
 	}
 
+	if err := ctx.Err(); err != nil {
+		sshCloser()
+		return nil, nil, err
+	}
 	sftpClient, err := sftp.NewClient(sshClient)
 	if err != nil {
 		sshCloser()
@@ -1391,6 +1621,33 @@ func (s *DesktopSFTPService) openClientWithCredential(serverID string, credentia
 		sshCloser()
 	}
 	return sftpClient, closer, nil
+}
+
+func desktopNonNilContext(ctx context.Context) context.Context {
+	if ctx == nil {
+		return context.Background()
+	}
+	return ctx
+}
+
+func desktopSFTPContextCloser(ctx context.Context, closer func()) func() {
+	ctx = desktopNonNilContext(ctx)
+	var once sync.Once
+	var stopOnce sync.Once
+	done := make(chan struct{})
+	go func() {
+		select {
+		case <-ctx.Done():
+			once.Do(closer)
+		case <-done:
+		}
+	}()
+	return func() {
+		once.Do(closer)
+		stopOnce.Do(func() {
+			close(done)
+		})
+	}
 }
 
 func desktopSFTPStat(client *sftp.Client, remotePath string) (DesktopSFTPFileInfo, error) {

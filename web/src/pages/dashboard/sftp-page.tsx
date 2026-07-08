@@ -61,7 +61,7 @@ import type { TerminalSession } from "@/components/terminal/types"
 import { useSessionSplitWorkspace } from "@/hooks/use-session-split-workspace"
 import { hasSplitPaneDragSession } from "@/lib/session/split-pane-drag"
 import { useTerminalAuthFlowAdapters } from "@/components/terminal/use-terminal-auth-flow-adapters"
-import { getServerAuthMethod, useSftpAuthRetry } from "@/components/sftp/use-sftp-auth-retry"
+import { formatSftpAuthError, getServerAuthMethod, useSftpAuthRetry } from "@/components/sftp/use-sftp-auth-retry"
 import type { TerminalAuthMethod } from "@/lib/websocket-terminal"
 
 type ComponentFile = SftpFileItem
@@ -195,25 +195,26 @@ export default function SftpPage() {
      const sourceSession = sessionsRef.current.find((item) => item.serverId === sourceServerId)
      const targetSession = sessionsRef.current.find((item) => item.serverId === targetServerId)
 
-     return runDirectTransferWithCredentialRetry({
-       sourceServerId,
-       sourcePath,
-       sourceServerName: options?.sourceServerName ?? sourceSession?.serverName ?? sourceServerId,
-       sourceAuthMethod: options?.sourceAuthMethod ?? sourceSession?.authMethod ?? "password",
-       targetServerId,
-       targetPath,
-       targetServerName: options?.targetServerName ?? targetSession?.serverName ?? targetServerId,
-       targetAuthMethod: options?.targetAuthMethod ?? targetSession?.authMethod ?? "password",
-       operation: (credentialOptions) => sftpApi.directTransfer(
-         sourceServerId,
-         sourcePath,
-         targetServerId,
-         targetPath,
-         credentialOptions,
-       ),
-     })
-   },
- }), [runDirectTransferWithCredentialRetry])
+	     return runDirectTransferWithCredentialRetry({
+	       sourceServerId,
+	       sourcePath,
+	       sourceServerName: options?.sourceServerName ?? sourceSession?.serverName ?? sourceServerId,
+	       sourceAuthMethod: options?.sourceAuthMethod ?? sourceSession?.authMethod ?? "password",
+	       targetServerId,
+	       targetPath,
+	       targetServerName: options?.targetServerName ?? targetSession?.serverName ?? targetServerId,
+	       targetAuthMethod: options?.targetAuthMethod ?? targetSession?.authMethod ?? "password",
+	       api: sftpSessionApi,
+	       operation: (credentialOptions) => sftpApi.directTransfer(
+	         sourceServerId,
+	         sourcePath,
+	         targetServerId,
+	         targetPath,
+	         credentialOptions,
+	       ),
+	     })
+	   },
+	 }), [runDirectTransferWithCredentialRetry, sftpSessionApi])
 
  const workspaceAuthTicketProvider = React.useMemo(() => createWorkspaceAuthTicketProviderAdapter(createAuthTicket), [])
  const transferAuthTicketProvider = React.useMemo(
@@ -704,7 +705,7 @@ export default function SftpPage() {
        size: "-"
      }))
  } catch (err) {
-     toast.error(getErrorMessage(err, tSftp("toastTransferFailed")))
+     toast.error(formatSftpAuthError(err, getErrorMessage(err, tSftp("toastTransferFailed")), tTerminal))
    }
 	 }, [tSftp, directTransfer, loadDirectoryWithCredentialRetry, setSessions])
 

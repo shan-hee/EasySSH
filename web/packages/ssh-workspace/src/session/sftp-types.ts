@@ -1,3 +1,5 @@
+import type { AuthMethod } from "../../../../src/lib/server-types"
+
 /** Shell-neutral SFTP file metadata returned by Web or Desktop adapters. */
 export interface FileInfo {
   name: string
@@ -24,6 +26,7 @@ export interface DirectoryListResponse {
   path: string
   files: FileInfo[]
   parent?: string
+  can_read?: boolean
 }
 
 export interface DiskUsageResponse {
@@ -88,17 +91,7 @@ export interface DirectTransferResponse {
   message: string
 }
 
-export type SftpAuthMethod =
-  | "password"
-  | "key"
-  | "password_keyboard"
-  | "key_keyboard"
-  | "key_password"
-  | "key_password_keyboard"
-  | "password_key"
-  | "password_key_keyboard"
-  | "keyboard_interactive"
-  | "keyboard"
+export type SftpAuthMethod = AuthMethod
 
 export interface SftpTransferCredential {
   auth_method: SftpAuthMethod

@@ -3,9 +3,11 @@ package ws
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -14,9 +16,11 @@ import (
 	"github.com/easyssh/server/internal/domain/server"
 	sftpDomain "github.com/easyssh/server/internal/domain/sftp"
 	sshDomain "github.com/easyssh/server/internal/domain/ssh"
+	"github.com/easyssh/server/internal/domain/sshhostkey"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
+	"golang.org/x/crypto/ssh"
 )
 
 const sftpAuthInitTimeout = 5 * time.Minute
@@ -26,6 +30,7 @@ type SFTPAuthHandler struct {
 	pool            *sftpDomain.Pool
 	serverService   server.Service
 	securityService security.Service
+	hostKeyService  *sshhostkey.Service
 	webDevPort      int
 }
 
@@ -38,7 +43,7 @@ type sftpAuthRequest struct {
 }
 
 // NewSFTPAuthHandler creates an interactive SFTP authentication handler.
-func NewSFTPAuthHandler(pool *sftpDomain.Pool, serverService server.Service, securityService security.Service, webDevPort int) *SFTPAuthHandler {
+func NewSFTPAuthHandler(pool *sftpDomain.Pool, serverService server.Service, securityService security.Service, hostKeyService *sshhostkey.Service, webDevPort int) *SFTPAuthHandler {
 	if webDevPort <= 0 {
 		webDevPort = 3000
 	}
@@ -46,6 +51,7 @@ func NewSFTPAuthHandler(pool *sftpDomain.Pool, serverService server.Service, sec
 		pool:            pool,
 		serverService:   serverService,
 		securityService: securityService,
+		hostKeyService:  hostKeyService,
 		webDevPort:      webDevPort,
 	}
 }
@@ -157,15 +163,11 @@ func (h *SFTPAuthHandler) HandleAuthWebSocket(c *gin.Context) {
 		serverID,
 		credential,
 		sshDomain.WithKeyboardInteractive(newTerminalKeyboardInteractiveChallenge(wsConn, safeWriteJSON)),
+		sshDomain.WithHostKeyCallback(h.hostKeyCallback(wsConn, safeWriteJSON)),
 	)
 	if err != nil {
-		code := "sftp_auth_failed"
-		if isTerminalPrivateKeyPassphraseError(err) {
-			code = "sftp_private_key_passphrase_required"
-		} else if isTerminalSSHAuthError(err) {
-			code = "sftp_credential_required"
-		}
-		writeError(code, err)
+		code, message := classifySFTPAuthWebSocketError(err)
+		writeError(code, errors.New(message))
 		return
 	}
 	client.Release()
@@ -174,6 +176,51 @@ func (h *SFTPAuthHandler) HandleAuthWebSocket(c *gin.Context) {
 	if err := safeWriteJSON(Message{Type: "authenticated", Data: payload}); err != nil {
 		log.Printf("[SFTPAuthWS] failed to send authenticated: %v", err)
 	}
+}
+
+func classifySFTPAuthWebSocketError(err error) (string, string) {
+	if err == nil {
+		return "sftp_auth_failed", ""
+	}
+
+	raw := err.Error()
+	message := strings.ToLower(raw)
+	var hostKeyErr *sshhostkey.HostKeyVerificationError
+	switch {
+	case errors.As(err, &hostKeyErr):
+		return "sftp_host_key_changed", raw
+	case errors.Is(err, sshhostkey.ErrHostKeyRevoked):
+		return "host_key_revoked", raw
+	case strings.Contains(message, "host key verification failed"):
+		return "sftp_host_key_changed", raw
+	case strings.Contains(message, "host key trust has been revoked"):
+		return "host_key_revoked", raw
+	case strings.Contains(message, "auth_cancelled") ||
+		strings.Contains(message, "authentication cancelled"):
+		return "auth_cancelled", "Authentication cancelled"
+	case strings.Contains(message, "private_key_passphrase_required"):
+		return "sftp_private_key_passphrase_required", raw
+	case strings.Contains(message, "private_key_passphrase_invalid"):
+		return "sftp_private_key_passphrase_invalid", raw
+	case strings.Contains(message, "keyboard_interactive_required"):
+		return "keyboard_interactive_required", raw
+	case isTerminalSSHAuthError(err):
+		return "sftp_credential_required", raw
+	default:
+		return "sftp_auth_failed", raw
+	}
+}
+
+func (h *SFTPAuthHandler) hostKeyCallback(conn *websocket.Conn, writeJSON func(interface{}) error) ssh.HostKeyCallback {
+	if h.hostKeyService == nil {
+		return nil
+	}
+
+	return h.hostKeyService.GetTrustOnChangeHostKeyCallback(
+		func(details *sshhostkey.HostKeyVerificationError) (bool, error) {
+			return newTerminalHostKeyPrompt(conn, writeJSON, details)
+		},
+	)
 }
 
 func (h *SFTPAuthHandler) readInitialAuthRequest(conn *websocket.Conn, writeJSON func(interface{}) error) (sftpAuthRequest, error) {

@@ -168,7 +168,28 @@ func isSFTPPrivateKeyPassphraseError(err error) (string, bool) {
 	}
 }
 
+func classifySFTPHostKeyError(err error) (string, int, bool) {
+	if err == nil {
+		return "", 0, false
+	}
+
+	message := strings.ToLower(err.Error())
+	switch {
+	case strings.Contains(message, "host key trust has been revoked"):
+		return "host_key_revoked", http.StatusForbidden, true
+	case strings.Contains(message, "host key verification failed") ||
+		strings.Contains(message, "ssh host key verification failed"):
+		return "sftp_host_key_changed", http.StatusPreconditionRequired, true
+	default:
+		return "", 0, false
+	}
+}
+
 func respondSFTPConnectionError(c *gin.Context, err error) {
+	if code, status, ok := classifySFTPHostKeyError(err); ok {
+		RespondError(c, status, code, err.Error())
+		return
+	}
 	if code, ok := isSFTPPrivateKeyPassphraseError(err); ok {
 		RespondError(c, http.StatusPreconditionRequired, code, err.Error())
 		return
@@ -2559,6 +2580,10 @@ func respondDirectTransferStartError(c *gin.Context, err error) {
 
 	if code, ok := isSFTPPrivateKeyPassphraseError(err); ok {
 		RespondError(c, http.StatusPreconditionRequired, codePrefix+code, sidePrefix+message)
+		return
+	}
+	if code, status, ok := classifySFTPHostKeyError(err); ok {
+		RespondError(c, status, codePrefix+code, sidePrefix+message)
 		return
 	}
 	if isSFTPCredentialRequiredError(err) {
