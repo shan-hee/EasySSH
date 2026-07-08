@@ -20,7 +20,7 @@ export function App() {
           </SystemConfigProvider>
         </RuntimeProvider>
       </QueryProvider>
-      <Toaster richColors position="top-right" />
+      <Toaster richColors position="bottom-right" />
     </ThemeProvider>
   )
 }
