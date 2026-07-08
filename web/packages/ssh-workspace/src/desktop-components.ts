@@ -1,12 +1,15 @@
-import { createElement, type ComponentProps } from "react"
+import { createElement, type ComponentProps, type ComponentType } from "react"
 
 import { LogsClient as BaseLogsClient } from "../../../src/components/logs/logs-client"
 import BaseScriptsPage from "../../../src/components/dashboard/scripts/scripts-page"
 import { BackupRestoreTab as BaseBackupRestoreTab } from "../../../src/components/settings/backup-restore-tab"
 
 export type LogsClientProps = ComponentProps<typeof BaseLogsClient>
-export type ScriptsPageProps = ComponentProps<typeof BaseScriptsPage>
-export type BackupRestoreTabProps = ComponentProps<typeof BaseBackupRestoreTab>
+export type ScriptsPageProps = NonNullable<ComponentProps<typeof BaseScriptsPage>>
+export type BackupRestoreTabProps = NonNullable<ComponentProps<typeof BaseBackupRestoreTab>>
+
+const DesktopScriptsPage = BaseScriptsPage as ComponentType<ScriptsPageProps>
+const DesktopBackupRestoreTab = BaseBackupRestoreTab as ComponentType<BackupRestoreTabProps>
 
 export function LogsClient(props: LogsClientProps) {
   if (!props.api) {
@@ -25,7 +28,7 @@ export function ScriptsPage(props: ScriptsPageProps = {}) {
     throw new Error("Desktop ScriptsPage requires desktop script, server, and batch task adapters")
   }
 
-  return createElement(BaseScriptsPage, {
+  return createElement(DesktopScriptsPage, {
     ...props,
     desktopMode: true,
     executionRedirectPath: null,
@@ -37,7 +40,7 @@ export function BackupRestoreTab(props: BackupRestoreTabProps = {}) {
     throw new Error("Desktop BackupRestoreTab requires a desktop backup adapter")
   }
 
-  return createElement(BaseBackupRestoreTab, {
+  return createElement(DesktopBackupRestoreTab, {
     ...props,
     desktopMode: true,
   })

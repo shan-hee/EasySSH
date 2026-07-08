@@ -821,7 +821,7 @@ export function useSftpAuthRetry({
                 privateKey: answers.privateKey,
                 privateKeyPassphrase: answers.privateKeyPassphrase,
               }
-          const secret = payload.answers[0] ?? payload.password ?? payload.privateKey ?? ""
+          const secret = (payload.answers ?? [])[0] ?? payload.password ?? payload.privateKey ?? ""
           const method = payload.authMethod ?? credentialPrompt.prompt.auth_method ?? "password"
           if (credentialPrompt.mode === "passphrase") {
             credentialPrompt.resolve(secret)

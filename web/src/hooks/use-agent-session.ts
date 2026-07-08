@@ -501,7 +501,8 @@ export function useAgentSession(adapter?: AgentSessionAdapter) {
       scope?: AgentSessionScope
     } = {}
   ) => {
-    if (adapter && !adapter.regenerateMessage) {
+    const regenerateMessage = adapter?.regenerateMessage
+    if (adapter && !regenerateMessage) {
       return
     }
 
@@ -513,8 +514,8 @@ export function useAgentSession(adapter?: AgentSessionAdapter) {
     setTransport(getAdapterTransport(adapter))
 
     try {
-      if (adapter) {
-        const response = await adapter.regenerateMessage({
+      if (adapter && regenerateMessage) {
+        const response = await regenerateMessage({
           session_id: activeSessionId,
           message_id: messageId,
           context: input.contextText,

@@ -1,6 +1,6 @@
 
 import * as React from "react"
-import type { ColumnDef } from "@tanstack/react-table"
+import type { ColumnDef, Row } from "@tanstack/react-table"
 import {
   ArrowDown,
   ArrowUp,
@@ -388,7 +388,7 @@ export function LogsClient({ initialData, defaultAction, desktopMode = false, ap
       minSize: 150,
       meta: meta({ align: "left" }),
       header: () => <SortableHeader label={t("columnTime")} field="created_at" sort={sort} onSort={handleSort} />,
-      cell: ({ row }) => (
+      cell: ({ row }: { row: Row<AuditLog> }) => (
         <span className="whitespace-nowrap font-mono text-xs">
           {formatTime(row.original.created_at)}
         </span>
@@ -401,7 +401,7 @@ export function LogsClient({ initialData, defaultAction, desktopMode = false, ap
       minSize: 80,
       meta: meta({ align: "left" }),
       header: () => <SortableHeader label={t("columnType")} field="type" sort={sort} onSort={handleSort} />,
-      cell: ({ row }) => (
+      cell: ({ row }: { row: Row<AuditLog> }) => (
         <InlineStatusBadge
           label={typeLabel(t, row.original.type)}
           tone={row.original.type === "audit" ? "amber" : actionTone(row.original.action)}
@@ -415,7 +415,7 @@ export function LogsClient({ initialData, defaultAction, desktopMode = false, ap
       minSize: 90,
       meta: meta({ align: "left" }),
       header: () => <SortableHeader label={t("columnCategory")} field="category" sort={sort} onSort={handleSort} />,
-      cell: ({ row }) => (
+      cell: ({ row }: { row: Row<AuditLog> }) => (
         <InlineStatusBadge
           label={categoryLabel(t, row.original.category)}
           tone={row.original.category === "audit" ? "violet" : "emerald"}
@@ -429,13 +429,13 @@ export function LogsClient({ initialData, defaultAction, desktopMode = false, ap
       minSize: 100,
       meta: meta({ align: "left" }),
       header: () => <SortableHeader label={t("columnStatus")} field="status" sort={sort} onSort={handleSort} />,
-      cell: ({ row }) => (
+      cell: ({ row }: { row: Row<AuditLog> }) => (
         <InlineStatusBadge
           label={statusLabel(t, row.original.status)}
           tone={statusTone(row.original.status)}
         />
       ),
-      filterFn: (row, id, value) => {
+      filterFn: (row: Row<AuditLog>, id: string, value: unknown) => {
         const selected = (value as string[]) || []
         if (selected.length === 0) return true
         return selected.includes(row.getValue(id) as string)
@@ -448,7 +448,7 @@ export function LogsClient({ initialData, defaultAction, desktopMode = false, ap
       minSize: 110,
       meta: meta({ align: "left" }),
       header: () => <SortableHeader label={t("columnAction")} field="action" sort={sort} onSort={handleSort} />,
-      cell: ({ row }) => (
+      cell: ({ row }: { row: Row<AuditLog> }) => (
         <InlineStatusBadge
           label={actionLabel(t, row.original.action)}
           tone={actionTone(row.original.action)}
@@ -462,7 +462,7 @@ export function LogsClient({ initialData, defaultAction, desktopMode = false, ap
       minSize: 100,
       meta: meta({ align: "left" }),
       header: () => <SortableHeader label={t("columnUser")} field="username" sort={sort} onSort={handleSort} />,
-      cell: ({ row }) => row.original.username || "-",
+      cell: ({ row }: { row: Row<AuditLog> }) => row.original.username || "-",
     },
     {
       id: "resource",
@@ -471,7 +471,7 @@ export function LogsClient({ initialData, defaultAction, desktopMode = false, ap
       minSize: 150,
       meta: meta({ align: "left" }),
       header: () => <SortableHeader label={t("columnResource")} field="resource" sort={sort} onSort={handleSort} />,
-      cell: ({ row }) => (
+      cell: ({ row }: { row: Row<AuditLog> }) => (
         <span className="block w-full truncate" title={row.original.resource || undefined}>
           {row.original.resource || "-"}
         </span>
@@ -484,7 +484,7 @@ export function LogsClient({ initialData, defaultAction, desktopMode = false, ap
       minSize: 80,
       meta: meta({ align: "left" }),
       header: () => <SortableHeader label={t("columnSource")} field="source" sort={sort} onSort={handleSort} />,
-      cell: ({ row }) => (
+      cell: ({ row }: { row: Row<AuditLog> }) => (
         <span className="whitespace-nowrap text-xs text-muted-foreground">
           {row.original.source || "-"}
         </span>
@@ -497,7 +497,7 @@ export function LogsClient({ initialData, defaultAction, desktopMode = false, ap
       minSize: 110,
       meta: meta({ align: "left" }),
       header: () => <SortableHeader label={t("columnIp")} field="ip" sort={sort} onSort={handleSort} />,
-      cell: ({ row }) => (
+      cell: ({ row }: { row: Row<AuditLog> }) => (
         <span className="whitespace-nowrap font-mono text-xs">
           {row.original.ip || "-"}
         </span>
@@ -510,7 +510,7 @@ export function LogsClient({ initialData, defaultAction, desktopMode = false, ap
       minSize: 80,
       meta: meta({ align: "left" }),
       header: () => <SortableHeader label={t("columnDuration")} field="duration_ms" sort={sort} onSort={handleSort} />,
-      cell: ({ row }) => (
+      cell: ({ row }: { row: Row<AuditLog> }) => (
         <span className="whitespace-nowrap font-mono text-xs">
           {formatDuration(row.original.duration)}
         </span>
@@ -523,7 +523,7 @@ export function LogsClient({ initialData, defaultAction, desktopMode = false, ap
       minSize: 220,
       meta: meta({ align: "left" }),
       header: t("columnDetails"),
-      cell: ({ row }) => {
+      cell: ({ row }: { row: Row<AuditLog> }) => {
         const details = row.original.details || row.original.error_msg || "-"
         return (
           <span className="block w-full truncate text-muted-foreground" title={details === "-" ? undefined : details}>
@@ -531,7 +531,7 @@ export function LogsClient({ initialData, defaultAction, desktopMode = false, ap
           </span>
         )
       },
-      filterFn: (row, _id, value) => {
+      filterFn: (row: Row<AuditLog>, _id: string, value: unknown) => {
         const keyword = String(value || "").trim().toLowerCase()
         if (!keyword) return true
         const log = row.original

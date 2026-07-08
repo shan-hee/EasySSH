@@ -393,16 +393,23 @@ export function TerminalComponent({
           targetServerName: options?.targetServerName ?? targetServerId,
           targetAuthMethod: options?.targetAuthMethod ?? "password",
           api: workspaceSftpApi,
-          operation: (credentialOptions) => workspaceSftpApi.directTransfer(
-            sourceServerId,
-            sourcePath,
-            targetServerId,
-            targetPath,
-            {
-              ...options,
-              ...(credentialOptions ?? {}),
-            },
-          ),
+          operation: (credentialOptions) => {
+            const directTransfer = workspaceSftpApi.directTransfer
+            if (!directTransfer) {
+              return Promise.reject(new Error("SFTP direct transfer is unavailable"))
+            }
+
+            return directTransfer(
+              sourceServerId,
+              sourcePath,
+              targetServerId,
+              targetPath,
+              {
+                ...options,
+                ...(credentialOptions ?? {}),
+              },
+            )
+          },
         })
       ),
       cancelTransfer: workspaceSftpApi.cancelTransfer,
