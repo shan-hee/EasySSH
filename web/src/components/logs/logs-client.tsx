@@ -62,6 +62,7 @@ interface LogsPageData {
 interface LogsClientProps {
   initialData?: LogsPageData
   defaultAction?: string
+  desktopMode?: boolean
   api: {
     list: (params?: AuditLogListParams) => Promise<{
       logs: AuditLog[]
@@ -246,7 +247,7 @@ function exportLogs(logs: AuditLog[]) {
   URL.revokeObjectURL(url)
 }
 
-export function LogsClient({ initialData, defaultAction, api }: LogsClientProps) {
+export function LogsClient({ initialData, defaultAction, desktopMode = false, api }: LogsClientProps) {
   const { ready } = useAuthReady()
   const { t } = useTranslation("logsAudit")
   const [logs, setLogs] = React.useState<AuditLog[]>(initialData?.logs || [])
@@ -544,12 +545,15 @@ export function LogsClient({ initialData, defaultAction, api }: LogsClientProps)
         ].some((item) => item?.toLowerCase().includes(keyword))
       },
     },
-  ]}, [handleSort, sort, t])
+  ].filter((column) => (
+    !desktopMode ||
+    !["category", "username", "source", "ip"].includes(column.id ?? "")
+  ))}, [desktopMode, handleSort, sort, t])
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-auto p-3 pt-0 sm:gap-4 sm:p-4 sm:pt-0 xl:overflow-hidden">
       <div className="flex flex-col gap-2 text-sm text-muted-foreground md:flex-row md:items-center md:justify-between">
-        <p>{t("activityDashboardDescription")}</p>
+        <p>{desktopMode ? t("desktopActivityDashboardDescription") : t("activityDashboardDescription")}</p>
         <DashboardStatusLine label={t("collectionHealthy")} timestamp={formatDateTime(new Date().toISOString())} />
       </div>
 
@@ -585,6 +589,7 @@ export function LogsClient({ initialData, defaultAction, api }: LogsClientProps)
                   onApply={handleApplyFilters}
                   onReset={handleResetFilters}
                   hasActiveFilters={hasActiveFilters(filters)}
+                  desktopMode={desktopMode}
                   t={t}
                 />
               }
@@ -625,14 +630,18 @@ export function LogsClient({ initialData, defaultAction, api }: LogsClientProps)
             <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-1 py-2 scrollbar-custom">
               <div className="grid gap-x-6 gap-y-3 text-sm sm:grid-cols-2">
                 <Detail label={t("columnTime")} value={`${formatDate(selectedLog.created_at)} ${formatTime(selectedLog.created_at)}`} />
-                <Detail label={t("columnUser")} value={selectedLog.username || "-"} />
                 <Detail label={t("columnResource")} value={selectedLog.resource || "-"} />
-                <Detail label={t("columnIp")} value={selectedLog.ip || "-"} />
                 <Detail label={t("columnStatus")} value={statusLabel(t, selectedLog.status)} />
                 <Detail label={t("columnDuration")} value={formatDuration(selectedLog.duration)} />
-                <Detail label={t("columnCategory")} value={categoryLabel(t, selectedLog.category)} />
                 <Detail label={t("columnAction")} value={actionLabel(t, selectedLog.action)} />
                 <Detail label={t("columnServer")} value={selectedLog.server_id || "-"} />
+                {!desktopMode ? (
+                  <>
+                    <Detail label={t("columnUser")} value={selectedLog.username || "-"} />
+                    <Detail label={t("columnIp")} value={selectedLog.ip || "-"} />
+                    <Detail label={t("columnCategory")} value={categoryLabel(t, selectedLog.category)} />
+                  </>
+                ) : null}
               </div>
               <div className="rounded-lg border bg-muted/25 p-4">
                 <div className="mb-2 flex items-center gap-2 text-sm font-medium">
@@ -730,6 +739,7 @@ function LogFilterControls({
   onApply,
   onReset,
   hasActiveFilters,
+  desktopMode,
   t,
 }: {
   filters: LogFilters
@@ -737,6 +747,7 @@ function LogFilterControls({
   onApply: () => void
   onReset: () => void
   hasActiveFilters: boolean
+  desktopMode?: boolean
   t: (key: string, options?: Record<string, unknown>) => string
 }) {
   const updateFilter = <K extends keyof LogFilters>(key: K, value: LogFilters[K]) => {
@@ -749,12 +760,14 @@ function LogFilterControls({
     }
   }
 
-  const typeOptions = React.useMemo<ServerFilterOption[]>(() => [
-    { label: t("typeConnection"), value: "connection" },
-    { label: t("typeTransfer"), value: "transfer" },
-    { label: t("typeExecution"), value: "execution" },
-    { label: t("typeAudit"), value: "audit" },
-  ], [t])
+  const typeOptions = React.useMemo<ServerFilterOption[]>(() => {
+    const options: ServerFilterOption[] = [
+      { label: t("typeConnection"), value: "connection" },
+      { label: t("typeTransfer"), value: "transfer" },
+      { label: t("typeExecution"), value: "execution" },
+    ]
+    return desktopMode ? options : [...options, { label: t("typeAudit"), value: "audit" }]
+  }, [desktopMode, t])
 
   const categoryOptions = React.useMemo<ServerFilterOption[]>(() => [
     { label: t("categoryActivity"), value: "activity" },
@@ -790,15 +803,17 @@ function LogFilterControls({
         emptyLabel={t("filterEmpty")}
         onValuesChange={(values) => updateFilter("type", values)}
       />
-      <LogServerFilterButton
-        title={t("filterCategoryTitle")}
-        values={filters.category}
-        options={categoryOptions}
-        selectedLabel={(count) => t("filterSelectedCount", { count })}
-        clearLabel={t("clearServerFilters")}
-        emptyLabel={t("filterEmpty")}
-        onValuesChange={(values) => updateFilter("category", values)}
-      />
+      {!desktopMode ? (
+        <LogServerFilterButton
+          title={t("filterCategoryTitle")}
+          values={filters.category}
+          options={categoryOptions}
+          selectedLabel={(count) => t("filterSelectedCount", { count })}
+          clearLabel={t("clearServerFilters")}
+          emptyLabel={t("filterEmpty")}
+          onValuesChange={(values) => updateFilter("category", values)}
+        />
+      ) : null}
       <LogServerFilterButton
         title={t("filterStatusTitle")}
         values={filters.status}
@@ -808,20 +823,24 @@ function LogFilterControls({
         emptyLabel={t("filterEmpty")}
         onValuesChange={(values) => updateFilter("status", values)}
       />
-      <Input
-        value={filters.source}
-        placeholder={t("filterSourcePlaceholder")}
-        onChange={(event) => updateFilter("source", event.target.value)}
-        onKeyDown={handleKeyDown}
-        className="h-8 w-full min-w-[120px] sm:w-[150px]"
-      />
-      <Input
-        value={filters.ip}
-        placeholder={t("filterIpPlaceholder")}
-        onChange={(event) => updateFilter("ip", event.target.value)}
-        onKeyDown={handleKeyDown}
-        className="h-8 w-full min-w-[120px] sm:w-[150px]"
-      />
+      {!desktopMode ? (
+        <>
+          <Input
+            value={filters.source}
+            placeholder={t("filterSourcePlaceholder")}
+            onChange={(event) => updateFilter("source", event.target.value)}
+            onKeyDown={handleKeyDown}
+            className="h-8 w-full min-w-[120px] sm:w-[150px]"
+          />
+          <Input
+            value={filters.ip}
+            placeholder={t("filterIpPlaceholder")}
+            onChange={(event) => updateFilter("ip", event.target.value)}
+            onKeyDown={handleKeyDown}
+            className="h-8 w-full min-w-[120px] sm:w-[150px]"
+          />
+        </>
+      ) : null}
       <LogDateRangeFilterButton
         title={t("filterDateRange")}
         startValue={filters.start_date}

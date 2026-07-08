@@ -50,6 +50,7 @@ type BackupTranslationKey =
   | "contentConfigDescription"
   | "contentDatabaseTitle"
   | "contentDatabaseDescription"
+  | "desktopContentDatabaseDescription"
 type ConflictTranslationKey =
   | "conflictSkipTitle"
   | "conflictSkipDescription"
@@ -109,6 +110,10 @@ export function BackupRestoreTab({
   adapter?: BackupRestoreAdapter
   desktopMode?: boolean
 } = {}) {
+  if (desktopMode && !adapter) {
+    throw new Error("Desktop backup restore requires a desktop backup adapter")
+  }
+
   const { t } = useTranslation("settingsManagementBackup")
   const { confirm: requestConfirm, confirmDialog } = useConfirmDialog()
   const { refreshConfig } = useSystemConfig()
@@ -278,7 +283,7 @@ export function BackupRestoreTab({
           <AlertDescription className="flex flex-col gap-1 text-sm sm:flex-row sm:items-center sm:justify-between">
             <span>
               <span className="font-medium">{t("alertTitle")}</span>
-              {t("alertItemUnified")}
+              {desktopMode ? t("desktopAlertItemUnified") : t("alertItemUnified")}
             </span>
             <span className="text-muted-foreground">
               {desktopMode ? t("desktopDatabaseOnlyHint") : t("alertItemSensitive")}
@@ -302,6 +307,7 @@ export function BackupRestoreTab({
                 values={exportContent}
                 onChange={toggleExportContent}
                 disabled={loading !== null}
+                desktopMode={desktopMode}
                 t={t}
               />
 
@@ -322,7 +328,7 @@ export function BackupRestoreTab({
                     <span className="min-w-0 space-y-1">
                       <span className="block text-sm font-medium leading-none">{t("sensitiveExportTitle")}</span>
                       <span className="block text-xs font-normal leading-5 text-muted-foreground">
-                        {t("sensitiveExportDescription")}
+                        {desktopMode ? t("desktopSensitiveExportDescription") : t("sensitiveExportDescription")}
                       </span>
                     </span>
                   </Label>
@@ -349,7 +355,7 @@ export function BackupRestoreTab({
               <div className="space-y-3 border-t pt-4">
                 <div className="space-y-1 text-xs leading-5 text-muted-foreground">
                   <p>{t("exportHintFormat")}</p>
-                  <p>{t("exportHintContent")}</p>
+                  <p>{desktopMode ? t("desktopExportHintContent") : t("exportHintContent")}</p>
                 </div>
                 <div className="flex justify-end">
                   <Button
@@ -389,13 +395,16 @@ export function BackupRestoreTab({
                 values={restoreContent}
                 onChange={toggleRestoreContent}
                 disabled={loading !== null}
+                desktopMode={desktopMode}
                 t={t}
               />
 
               <div className="space-y-3 border-t pt-4">
                 <div>
                   <Label className="text-sm font-medium">{t("conflictStrategyLabel")}</Label>
-                  <p className="mt-1 text-xs text-muted-foreground">{t("conflictStrategyDescription")}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {desktopMode ? t("desktopConflictStrategyDescription") : t("conflictStrategyDescription")}
+                  </p>
                 </div>
                 <RadioGroup
                   value={conflictStrategy}
@@ -544,6 +553,7 @@ function ContentSelector({
   values,
   onChange,
   disabled,
+  desktopMode,
   t,
 }: {
   idPrefix: string
@@ -551,6 +561,7 @@ function ContentSelector({
   values: Record<BackupContent, boolean>
   onChange: (value: BackupContent, checked: boolean) => void
   disabled: boolean
+  desktopMode?: boolean
   t: BackupTranslator
 }) {
   return (
@@ -575,7 +586,7 @@ function ContentSelector({
             <span className="min-w-0 space-y-1">
               <span className="block text-sm font-medium leading-none">{t(option.titleKey)}</span>
               <span className="block text-xs font-normal leading-5 text-muted-foreground">
-                {t(option.descriptionKey)}
+                {t(desktopMode && option.value === "database" ? "desktopContentDatabaseDescription" : option.descriptionKey)}
               </span>
             </span>
           </Label>

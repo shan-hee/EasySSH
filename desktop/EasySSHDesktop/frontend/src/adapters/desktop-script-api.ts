@@ -18,11 +18,12 @@ import type {
   DesktopScriptInput,
 } from "../../bindings/github.com/easyssh/easyssh-desktop"
 import * as DesktopScriptService from "../../bindings/github.com/easyssh/easyssh-desktop/desktopscriptservice"
+import { DESKTOP_LOCAL_DATA_USER_ID } from "./desktop-local-identity"
 
 function mapDesktopScript(script: DesktopScript): Script {
   return {
     id: script.id,
-    user_id: script.user_id || "local",
+    user_id: script.user_id || DESKTOP_LOCAL_DATA_USER_ID,
     name: script.name,
     description: script.description || "",
     content: script.content,
@@ -38,7 +39,7 @@ function mapDesktopScript(script: DesktopScript): Script {
 function mapDesktopBatchTask(task: DesktopBatchTask): BatchTask {
   return {
     id: task.id,
-    user_id: task.user_id || "local",
+    user_id: task.user_id || DESKTOP_LOCAL_DATA_USER_ID,
     task_name: task.task_name,
     task_type: task.task_type === "command" || task.task_type === "file" ? task.task_type : "script",
     content: task.content || "",

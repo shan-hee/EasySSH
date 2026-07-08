@@ -19,7 +19,7 @@ export function DesktopActivityLogsView({
     <DesktopWebViewShell locale={locale}>
       <div className="flex min-h-0 flex-1 flex-col">
         <DesktopReturnHeader title={t("activityLogLabel")} onReturnToTerminal={onReturnToTerminal} />
-        <LogsClient api={logsApi} />
+        <LogsClient api={logsApi} desktopMode />
       </div>
     </DesktopWebViewShell>
   )

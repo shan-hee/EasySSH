@@ -236,7 +236,7 @@ func (s *DesktopScriptService) Create(input DesktopScriptInput) (DesktopScript, 
 
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	script.ID = newDesktopScriptID()
-	script.UserID = "local"
+	script.UserID = desktopLocalDataUserID
 	script.Author = "desktop"
 	script.CreatedAt = now
 	script.UpdatedAt = now
@@ -327,7 +327,7 @@ func (s *DesktopScriptService) CreateBatchTask(input DesktopBatchTaskInput) (Des
 
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	task.ID = newDesktopBatchTaskID()
-	task.UserID = "local"
+	task.UserID = desktopLocalDataUserID
 	task.Status = "pending"
 	task.CreatedAt = now
 	task.UpdatedAt = now
@@ -814,8 +814,7 @@ func normalizeDesktopScriptInput(input DesktopScriptInput) (DesktopScript, strin
 		return DesktopScript{}, "", errors.New("script name is required")
 	}
 
-	content := strings.TrimSpace(input.Content)
-	if content == "" {
+	if strings.TrimSpace(input.Content) == "" {
 		return DesktopScript{}, "", errors.New("script content is required")
 	}
 
@@ -833,7 +832,7 @@ func normalizeDesktopScriptInput(input DesktopScriptInput) (DesktopScript, strin
 	return DesktopScript{
 		Name:        name,
 		Description: strings.TrimSpace(input.Description),
-		Content:     content,
+		Content:     input.Content,
 		Language:    language,
 		Tags:        tags,
 		Author:      "desktop",
@@ -918,7 +917,7 @@ func normalizeDesktopBatchTaskInput(input DesktopBatchTaskInput) (DesktopBatchTa
 	return DesktopBatchTask{
 		TaskName:      taskName,
 		TaskType:      taskType,
-		Content:       strings.TrimSpace(input.Content),
+		Content:       input.Content,
 		ScriptID:      strings.TrimSpace(input.ScriptID),
 		ServerIDs:     serverIDs,
 		ExecutionMode: executionMode,

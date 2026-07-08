@@ -7,9 +7,13 @@ import type {
   WorkspaceActivityLogItem,
   WorkspaceActivityLogStatus,
 } from "@easyssh/ssh-workspace/desktop"
+import {
+  DESKTOP_LOCAL_OWNER_ID,
+  DESKTOP_LOCAL_USERNAME,
+} from "./desktop-local-identity"
 
-export const desktopLogUserId = "desktop-local-owner"
-export const desktopLogUsername = "desktop"
+export const desktopLogUserId = DESKTOP_LOCAL_OWNER_ID
+export const desktopLogUsername = DESKTOP_LOCAL_USERNAME
 export const desktopLogSource = "desktop"
 
 export function mapWorkspaceActivityLogStatusToDesktop(status: WorkspaceActivityLogStatus): DesktopActivityLogStatus {
@@ -41,7 +45,7 @@ export function desktopAuditLogTypeFromAction(action: string): AuditLog["type"] 
   if (action.startsWith("ssh_")) return "connection"
   if (action.startsWith("sftp_")) return "transfer"
   if (action.startsWith("script_")) return "execution"
-  return "audit"
+  return "execution"
 }
 
 export function mapDesktopActivityLogItemToAuditLog(item: DesktopActivityLogItem): AuditLog {

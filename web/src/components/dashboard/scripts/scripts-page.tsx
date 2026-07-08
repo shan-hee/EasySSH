@@ -44,6 +44,7 @@ export interface ScriptsPageAdapters {
 export interface ScriptsPageProps {
  adapters?: ScriptsPageAdapters
  hidePageHeader?: boolean
+ desktopMode?: boolean
  onReturnToTerminal?: () => void
  ready?: boolean
  executionRedirectPath?: string | null
@@ -53,11 +54,16 @@ export interface ScriptsPageProps {
 export default function ScriptsPage({
  adapters,
  hidePageHeader = false,
+ desktopMode = false,
  onReturnToTerminal,
  ready: readyOverride,
  executionRedirectPath = "/dashboard/operation-logs?type=execution",
  onExecutionStarted,
 }: ScriptsPageProps = {}) {
+ if (desktopMode && (!adapters?.scripts || !adapters.servers || !adapters.batchTasks)) {
+  throw new Error("Desktop scripts page requires desktop script, server, and batch task adapters")
+ }
+
  const { t } = useTranslation("scripts")
  const navigate = useNavigate()
  const { ready: authReady } = useAuthReady()
@@ -352,9 +358,10 @@ const columns = useMemo(() => createScriptColumns({
 
 const visibleColumns = useMemo(
   () => columns.filter((col) =>
+    (!desktopMode || col.id !== "author") &&
     (col.id ? columnVisibility[col.id] ?? true : true)
   ),
-  [columns, columnVisibility]
+  [columns, columnVisibility, desktopMode]
 )
 
 // 筛选项（根据现有字段：作者、标签）
@@ -557,7 +564,9 @@ const totalExecutions = useMemo(() => (
    <div className="grid shrink-0 grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
      <DashboardMetricCard title={t("statsTotalScripts")} value={totalRows || scripts.length} icon={FileText} tone="emerald" spark={scriptSpark} loading={loading} />
      <DashboardMetricCard title={t("statsTags")} value={filterOptions.tags.length} icon={Tag} tone="blue" spark={tagCounts.slice(0, 12).map((item) => item.count)} loading={loading} />
-     <DashboardMetricCard title={t("statsAuthors")} value={filterOptions.authors.length} icon={User} tone="violet" spark={filterOptions.authors.map(() => 1)} loading={loading} />
+     {!desktopMode ? (
+       <DashboardMetricCard title={t("statsAuthors")} value={filterOptions.authors.length} icon={User} tone="violet" spark={filterOptions.authors.map(() => 1)} loading={loading} />
+     ) : null}
      <DashboardMetricCard title="累计执行" value={totalExecutions} icon={Play} tone="amber" spark={scriptSpark} loading={loading} />
    </div>
 
@@ -587,7 +596,7 @@ const totalExecutions = useMemo(() => (
            searchKey="name"
            searchPlaceholder={t("tableSearchPlaceholder")}
            filters={[
-             { column: 'author', title: t("filterAuthorTitle"), options: filterOptions.authors },
+             ...(!desktopMode ? [{ column: 'author', title: t("filterAuthorTitle"), options: filterOptions.authors }] : []),
              { column: 'tags', title: t("filterTagsTitle"), options: filterOptions.tags },
            ]}
            onRefresh={handleRefresh}
@@ -600,7 +609,7 @@ const totalExecutions = useMemo(() => (
                { id: 'description', label: t("cvDescription") },
                { id: 'content', label: t("cvContent") },
                { id: 'tags', label: t("cvTags") },
-               { id: 'author', label: t("cvAuthor") },
+               ...(!desktopMode ? [{ id: 'author', label: t("cvAuthor") }] : []),
                { id: 'updated_at', label: t("cvUpdatedAt") },
                { id: 'executions', label: t("cvExecutions") },
              ].map(column => ({

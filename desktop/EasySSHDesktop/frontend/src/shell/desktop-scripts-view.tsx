@@ -16,6 +16,7 @@ export function DesktopScriptsView({
       <ScriptsPage
         adapters={adapters}
         hidePageHeader
+        desktopMode
         ready
         executionRedirectPath={null}
         onReturnToTerminal={onReturnToTerminal}

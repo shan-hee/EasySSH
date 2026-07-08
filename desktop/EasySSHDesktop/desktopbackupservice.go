@@ -25,6 +25,8 @@ const (
 	desktopBackupUserID   = "00000000-0000-4000-8000-000000000001"
 	desktopBackupUsername = "desktop"
 	desktopBackupEmail    = "desktop-local-owner@easyssh.local"
+	// Desktop has no Web user system; this role is only for Web-compatible backup restore.
+	desktopBackupWebCompatibleRole = "admin"
 )
 
 type DesktopBackupExportInput struct {
@@ -284,7 +286,7 @@ func exportDesktopBackupTables(database *sql.DB) ([]desktopBackupTable, error) {
 			"id":                  desktopBackupUserID,
 			"username":            desktopBackupUsername,
 			"email":               desktopBackupEmail,
-			"role":                "admin",
+			"role":                desktopBackupWebCompatibleRole,
 			"avatar":              "",
 			"language":            "",
 			"timezone":            "Asia/Shanghai",
@@ -759,7 +761,7 @@ func restoreDesktopServerRow(tx *sql.Tx, row map[string]any, strategy backuputil
 	}
 	values := map[string]any{
 		"id":             id,
-		"user_id":        "local",
+		"user_id":        desktopLocalDataUserID,
 		"name":           firstDesktopString(row, "name"),
 		"host":           firstDesktopString(row, "host"),
 		"port":           desktopIntValue(row["port"], 22),
@@ -794,7 +796,7 @@ func restoreDesktopScriptRow(tx *sql.Tx, row map[string]any, strategy backuputil
 	}
 	values := map[string]any{
 		"id":          id,
-		"user_id":     "local",
+		"user_id":     desktopLocalDataUserID,
 		"name":        firstDesktopString(row, "name"),
 		"description": firstDesktopString(row, "description"),
 		"content":     firstDesktopString(row, "content"),
@@ -819,7 +821,7 @@ func restoreDesktopBatchTaskRow(tx *sql.Tx, row map[string]any, strategy backupu
 	}
 	values := map[string]any{
 		"id":              id,
-		"user_id":         "local",
+		"user_id":         desktopLocalDataUserID,
 		"task_name":       firstDesktopString(row, "task_name"),
 		"task_type":       firstNonEmptyDesktopString(firstDesktopString(row, "task_type"), "script"),
 		"content":         firstDesktopString(row, "content"),
@@ -1135,8 +1137,9 @@ func desktopTimeValue(value any, fallback string) string {
 }
 
 func normalizeDesktopBackupAuthMethod(value string) string {
-	if strings.TrimSpace(value) == "key" {
-		return "key"
+	method := normalizeDesktopServerAuthMethod(DesktopServerAuthMethod(strings.TrimSpace(value)))
+	if method.IsValid() {
+		return string(method)
 	}
 	return "password"
 }
@@ -1169,7 +1172,7 @@ func desktopRecordType(action string) string {
 	if strings.HasPrefix(action, "script_") {
 		return "execution"
 	}
-	return "audit"
+	return "execution"
 }
 
 func desktopRecordCounts(status string) (int, int) {

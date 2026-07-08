@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"strings"
@@ -77,6 +78,14 @@ func NewDesktopMonitorService(serverService *DesktopServerService) *DesktopMonit
 }
 
 func (s *DesktopMonitorService) Collect(input DesktopMonitorCollectInput) (DesktopMonitorSnapshot, error) {
+	return s.CollectContext(context.Background(), input)
+}
+
+func (s *DesktopMonitorService) CollectContext(ctx context.Context, input DesktopMonitorCollectInput) (DesktopMonitorSnapshot, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
 	serverID := strings.TrimSpace(input.ServerID)
 	if serverID == "" {
 		return DesktopMonitorSnapshot{}, errors.New("server id is required")
@@ -94,12 +103,15 @@ func (s *DesktopMonitorService) Collect(input DesktopMonitorCollectInput) (Deskt
 		IncludeStaticInfo:  true,
 		IncludeDockerStats: true,
 	})
-	result, err := s.serverService.ExecuteCommand(DesktopServerCommandInput{
+	result, err := s.serverService.ExecuteCommandContext(ctx, DesktopServerCommandInput{
 		ServerID:  serverID,
 		Command:   command,
 		TimeoutMs: timeoutMs,
 	})
 	if err != nil {
+		return DesktopMonitorSnapshot{}, err
+	}
+	if err := ctx.Err(); err != nil {
 		return DesktopMonitorSnapshot{}, err
 	}
 	if result.ExitCode != 0 {
