@@ -1,5 +1,4 @@
 import type { AuthMethod } from "@/lib/server-types"
-import type { TerminalAuthMethod } from "@/lib/websocket-terminal"
 
 export const SSH_AUTH_METHODS = [
   "password",
@@ -41,7 +40,7 @@ export function normalizeSSHAuthMethod(
     : fallback
 }
 
-export function authMethodFactors(method?: AuthMethod | TerminalAuthMethod | string | null): SSHAuthFactor[] {
+export function authMethodFactors(method?: AuthMethod | string | null): SSHAuthFactor[] {
   switch (method) {
     case "password":
       return ["password"]
@@ -67,29 +66,29 @@ export function authMethodFactors(method?: AuthMethod | TerminalAuthMethod | str
   }
 }
 
-export function authMethodCredentialFields(method?: AuthMethod | TerminalAuthMethod | string | null): SSHCredentialField[] {
+export function authMethodCredentialFields(method?: AuthMethod | string | null): SSHCredentialField[] {
   return authMethodFactors(method).filter((factor): factor is SSHCredentialField => (
     factor === "password" || factor === "key"
   ))
 }
 
-export function requiresPassword(method?: AuthMethod | TerminalAuthMethod | string | null) {
+export function requiresPassword(method?: AuthMethod | string | null) {
   return authMethodFactors(method).includes("password")
 }
 
-export function requiresPrivateKey(method?: AuthMethod | TerminalAuthMethod | string | null) {
+export function requiresPrivateKey(method?: AuthMethod | string | null) {
   return authMethodFactors(method).includes("key")
 }
 
-export function supportsKeyboardInteractive(method?: AuthMethod | TerminalAuthMethod | string | null) {
+export function supportsKeyboardInteractive(method?: AuthMethod | string | null) {
   return authMethodFactors(method).includes("keyboard_interactive")
 }
 
-export function primaryCredentialMethod(method?: AuthMethod | TerminalAuthMethod | string | null): "password" | "key" {
+export function primaryCredentialMethod(method?: AuthMethod | string | null): "password" | "key" {
   return authMethodCredentialFields(method)[0] ?? "password"
 }
 
-export function authMethodLabelKey(method: AuthMethod | TerminalAuthMethod | string) {
+export function authMethodLabelKey(method: AuthMethod | string) {
   switch (method) {
     case "password":
       return "quickFormAuthMethodPassword"

@@ -1,7 +1,12 @@
 import type {
+  AuthMethod,
   Server,
   ServerConnectionConfigsApi,
   WorkspaceTerminalCredentialSaveRequest,
+} from "@easyssh/ssh-workspace/desktop"
+import {
+  requiresPassword,
+  requiresPrivateKey,
 } from "@easyssh/ssh-workspace/desktop"
 import {
   DesktopServerAuthMethod,
@@ -9,16 +14,50 @@ import {
   type DesktopServer,
   type DesktopServerInput,
 } from "../../bindings/github.com/easyssh/easyssh-desktop"
+import { DESKTOP_LOCAL_DATA_USER_ID } from "./desktop-local-identity"
+
+const desktopAuthMethodMap: Record<AuthMethod, DesktopServerAuthMethod> = {
+  password: DesktopServerAuthMethod.DesktopServerAuthPassword,
+  key: DesktopServerAuthMethod.DesktopServerAuthKey,
+  password_keyboard: DesktopServerAuthMethod.DesktopServerAuthPasswordKeyboard,
+  key_keyboard: DesktopServerAuthMethod.DesktopServerAuthKeyKeyboard,
+  key_password: DesktopServerAuthMethod.DesktopServerAuthKeyPassword,
+  key_password_keyboard: DesktopServerAuthMethod.DesktopServerAuthKeyPasswordKeyboard,
+  password_key: DesktopServerAuthMethod.DesktopServerAuthPasswordKey,
+  password_key_keyboard: DesktopServerAuthMethod.DesktopServerAuthPasswordKeyKeyboard,
+  keyboard_interactive: DesktopServerAuthMethod.DesktopServerAuthKeyboardInteractive,
+  keyboard: DesktopServerAuthMethod.DesktopServerAuthKeyboardInteractive,
+}
+
+export function fromDesktopAuthMethod(authMethod: DesktopServerAuthMethod | string): AuthMethod {
+  return authMethod === DesktopServerAuthMethod.DesktopServerAuthKeyboardInteractiveAlias
+    ? "keyboard_interactive"
+    : desktopAuthMethodMap[authMethod as AuthMethod]
+      ? authMethod as AuthMethod
+      : "password"
+}
+
+export function toDesktopAuthMethod(authMethod?: AuthMethod | string): DesktopServerAuthMethod {
+  return desktopAuthMethodMap[(authMethod || "password") as AuthMethod] ?? DesktopServerAuthMethod.DesktopServerAuthPassword
+}
+
+export function desktopAuthRequiresPassword(authMethod?: AuthMethod | string) {
+  return requiresPassword(authMethod)
+}
+
+export function desktopAuthRequiresPrivateKey(authMethod?: AuthMethod | string) {
+  return requiresPrivateKey(authMethod)
+}
 
 export function mapDesktopServer(server: DesktopServer): Server {
   return {
     id: server.id,
-    user_id: server.user_id || "local",
+    user_id: server.user_id || DESKTOP_LOCAL_DATA_USER_ID,
     name: server.name || undefined,
     host: server.host,
     port: server.port || 22,
     username: server.username,
-    auth_method: server.auth_method === DesktopServerAuthMethod.DesktopServerAuthKey ? "key" : "password",
+    auth_method: fromDesktopAuthMethod(server.auth_method),
     password: server.password || undefined,
     private_key: server.private_key || undefined,
     has_password: Boolean(server.has_password),
@@ -43,9 +82,7 @@ export function mapServerInput(input: Parameters<ServerConnectionConfigsApi["cre
     host: input.host,
     port: input.port || 22,
     username: input.username,
-    auth_method: input.auth_method === "key"
-      ? DesktopServerAuthMethod.DesktopServerAuthKey
-      : DesktopServerAuthMethod.DesktopServerAuthPassword,
+    auth_method: toDesktopAuthMethod(input.auth_method),
     password: input.password || "",
     private_key: input.private_key || "",
     password_set: passwordSet,
@@ -83,7 +120,7 @@ export function createDesktopServerApi(): ServerConnectionConfigsApi {
         host: input.host ?? current.host,
         port: input.port ?? current.port ?? 22,
         username: input.username ?? current.username,
-        auth_method: input.auth_method ?? (current.auth_method === DesktopServerAuthMethod.DesktopServerAuthKey ? "key" : "password"),
+        auth_method: input.auth_method ?? fromDesktopAuthMethod(current.auth_method),
         group: input.group ?? current.group ?? "",
         tags: input.tags ?? current.tags ?? [],
         description: input.description ?? current.description ?? "",
@@ -111,6 +148,8 @@ export async function saveDesktopVerifiedCredential({
   serverId,
   authMethod,
   secret,
+  password,
+  privateKey,
 }: WorkspaceTerminalCredentialSaveRequest): Promise<void> {
   const current = await DesktopServerService.GetById(serverId)
   const input: Parameters<ServerConnectionConfigsApi["create"]>[0] = {
@@ -124,10 +163,14 @@ export async function saveDesktopVerifiedCredential({
     description: current.description ?? "",
   }
 
-  if (authMethod === "password") {
+  if (password !== undefined) {
+    input.password = password
+  } else if (desktopAuthRequiresPassword(authMethod)) {
     input.password = secret
   }
-  if (authMethod === "key") {
+  if (privateKey !== undefined) {
+    input.private_key = privateKey
+  } else if (desktopAuthRequiresPrivateKey(authMethod)) {
     input.private_key = secret
   }
 

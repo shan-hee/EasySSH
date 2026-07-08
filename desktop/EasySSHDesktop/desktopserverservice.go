@@ -25,8 +25,24 @@ import (
 type DesktopServerAuthMethod string
 
 const (
-	DesktopServerAuthPassword DesktopServerAuthMethod = "password"
-	DesktopServerAuthKey      DesktopServerAuthMethod = "key"
+	DesktopServerAuthPassword                 DesktopServerAuthMethod = "password"
+	DesktopServerAuthKey                      DesktopServerAuthMethod = "key"
+	DesktopServerAuthPasswordKeyboard         DesktopServerAuthMethod = "password_keyboard"
+	DesktopServerAuthKeyKeyboard              DesktopServerAuthMethod = "key_keyboard"
+	DesktopServerAuthKeyPassword              DesktopServerAuthMethod = "key_password"
+	DesktopServerAuthKeyPasswordKeyboard      DesktopServerAuthMethod = "key_password_keyboard"
+	DesktopServerAuthPasswordKey              DesktopServerAuthMethod = "password_key"
+	DesktopServerAuthPasswordKeyKeyboard      DesktopServerAuthMethod = "password_key_keyboard"
+	DesktopServerAuthKeyboardInteractive      DesktopServerAuthMethod = "keyboard_interactive"
+	DesktopServerAuthKeyboardInteractiveAlias DesktopServerAuthMethod = "keyboard"
+)
+
+type DesktopServerAuthFactor string
+
+const (
+	DesktopServerAuthFactorPassword            DesktopServerAuthFactor = "password"
+	DesktopServerAuthFactorKey                 DesktopServerAuthFactor = "key"
+	DesktopServerAuthFactorKeyboardInteractive DesktopServerAuthFactor = "keyboard_interactive"
 )
 
 type DesktopServerStatus string
@@ -106,6 +122,8 @@ type DesktopServerCommandResult struct {
 type DesktopSSHCredential struct {
 	AuthMethod           DesktopServerAuthMethod `json:"authMethod"`
 	Secret               string                  `json:"secret"`
+	Password             string                  `json:"password,omitempty"`
+	PrivateKey           string                  `json:"privateKey,omitempty"`
 	PrivateKeyPassphrase string                  `json:"privateKeyPassphrase,omitempty"`
 }
 
@@ -277,7 +295,7 @@ func (s *DesktopServerService) Create(input DesktopServerInput) (DesktopServer, 
 
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	server.ID = newDesktopServerID()
-	server.UserID = "local"
+	server.UserID = desktopLocalDataUserID
 	server.Status = DesktopServerOffline
 	server.CreatedAt = now
 	server.UpdatedAt = now
@@ -499,6 +517,14 @@ func detectDesktopServerOS(client *ssh.Client) (string, error) {
 }
 
 func (s *DesktopServerService) ExecuteCommand(input DesktopServerCommandInput) (DesktopServerCommandResult, error) {
+	return s.ExecuteCommandContext(context.Background(), input)
+}
+
+func (s *DesktopServerService) ExecuteCommandContext(ctx context.Context, input DesktopServerCommandInput) (DesktopServerCommandResult, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
 	serverID := strings.TrimSpace(input.ServerID)
 	command := strings.TrimSpace(input.Command)
 	if serverID == "" {
@@ -530,6 +556,19 @@ func (s *DesktopServerService) ExecuteCommand(input DesktopServerCommandInput) (
 	}
 
 	started := time.Now().UTC()
+	if err := ctx.Err(); err != nil {
+		completed := time.Now().UTC()
+		return DesktopServerCommandResult{
+			ServerID:    serverID,
+			Command:     command,
+			Output:      "operation cancelled",
+			ExitCode:    130,
+			DurationMs:  completed.Sub(started).Milliseconds(),
+			StartedAt:   started.Format(time.RFC3339Nano),
+			CompletedAt: completed.Format(time.RFC3339Nano),
+		}, nil
+	}
+
 	config := &ssh.ClientConfig{
 		User:            server.Username,
 		Auth:            authMethods,
@@ -581,6 +620,8 @@ func (s *DesktopServerService) ExecuteCommand(input DesktopServerCommandInput) (
 
 	var output []byte
 	exitCode := 0
+	timeoutTimer := time.NewTimer(timeout)
+	defer timeoutTimer.Stop()
 	select {
 	case response := <-done:
 		output = response.output
@@ -591,7 +632,19 @@ func (s *DesktopServerService) ExecuteCommand(input DesktopServerCommandInput) (
 				exitCode = exitErr.ExitStatus()
 			}
 		}
-	case <-time.After(timeout):
+	case <-ctx.Done():
+		client.Close()
+		completed := time.Now().UTC()
+		return DesktopServerCommandResult{
+			ServerID:    serverID,
+			Command:     command,
+			Output:      "operation cancelled",
+			ExitCode:    130,
+			DurationMs:  completed.Sub(started).Milliseconds(),
+			StartedAt:   started.Format(time.RFC3339Nano),
+			CompletedAt: completed.Format(time.RFC3339Nano),
+		}, nil
+	case <-timeoutTimer.C:
 		client.Close()
 		completed := time.Now().UTC()
 		return DesktopServerCommandResult{
@@ -767,6 +820,7 @@ func normalizeDesktopServerInput(input DesktopServerInput) (DesktopServer, strin
 	if authMethod == "" {
 		authMethod = DesktopServerAuthPassword
 	}
+	authMethod = normalizeDesktopServerAuthMethod(authMethod)
 	if !isValidDesktopServerAuthMethod(authMethod) {
 		return DesktopServer{}, "", fmt.Errorf("unsupported auth method: %s", authMethod)
 	}
@@ -808,12 +862,83 @@ func normalizeDesktopServerTags(tags []string) []string {
 }
 
 func isValidDesktopServerAuthMethod(method DesktopServerAuthMethod) bool {
+	return method.IsValid()
+}
+
+func normalizeDesktopServerAuthMethod(method DesktopServerAuthMethod) DesktopServerAuthMethod {
+	if method == DesktopServerAuthKeyboardInteractiveAlias {
+		return DesktopServerAuthKeyboardInteractive
+	}
+	return method
+}
+
+func (method DesktopServerAuthMethod) AuthFactors() ([]DesktopServerAuthFactor, bool) {
 	switch method {
-	case DesktopServerAuthPassword, DesktopServerAuthKey:
-		return true
+	case DesktopServerAuthPassword:
+		return []DesktopServerAuthFactor{DesktopServerAuthFactorPassword}, true
+	case DesktopServerAuthKey:
+		return []DesktopServerAuthFactor{DesktopServerAuthFactorKey}, true
+	case DesktopServerAuthPasswordKeyboard:
+		return []DesktopServerAuthFactor{DesktopServerAuthFactorPassword, DesktopServerAuthFactorKeyboardInteractive}, true
+	case DesktopServerAuthKeyKeyboard:
+		return []DesktopServerAuthFactor{DesktopServerAuthFactorKey, DesktopServerAuthFactorKeyboardInteractive}, true
+	case DesktopServerAuthKeyPassword:
+		return []DesktopServerAuthFactor{DesktopServerAuthFactorKey, DesktopServerAuthFactorPassword}, true
+	case DesktopServerAuthKeyPasswordKeyboard:
+		return []DesktopServerAuthFactor{DesktopServerAuthFactorKey, DesktopServerAuthFactorPassword, DesktopServerAuthFactorKeyboardInteractive}, true
+	case DesktopServerAuthPasswordKey:
+		return []DesktopServerAuthFactor{DesktopServerAuthFactorPassword, DesktopServerAuthFactorKey}, true
+	case DesktopServerAuthPasswordKeyKeyboard:
+		return []DesktopServerAuthFactor{DesktopServerAuthFactorPassword, DesktopServerAuthFactorKey, DesktopServerAuthFactorKeyboardInteractive}, true
+	case DesktopServerAuthKeyboardInteractive, DesktopServerAuthKeyboardInteractiveAlias:
+		return []DesktopServerAuthFactor{DesktopServerAuthFactorKeyboardInteractive}, true
 	default:
+		return nil, false
+	}
+}
+
+func (method DesktopServerAuthMethod) IsValid() bool {
+	_, ok := method.AuthFactors()
+	return ok
+}
+
+func (method DesktopServerAuthMethod) RequiresPassword() bool {
+	factors, ok := method.AuthFactors()
+	if !ok {
 		return false
 	}
+	for _, factor := range factors {
+		if factor == DesktopServerAuthFactorPassword {
+			return true
+		}
+	}
+	return false
+}
+
+func (method DesktopServerAuthMethod) RequiresPrivateKey() bool {
+	factors, ok := method.AuthFactors()
+	if !ok {
+		return false
+	}
+	for _, factor := range factors {
+		if factor == DesktopServerAuthFactorKey {
+			return true
+		}
+	}
+	return false
+}
+
+func (method DesktopServerAuthMethod) SupportsKeyboardInteractive() bool {
+	factors, ok := method.AuthFactors()
+	if !ok {
+		return false
+	}
+	for _, factor := range factors {
+		if factor == DesktopServerAuthFactorKeyboardInteractive {
+			return true
+		}
+	}
+	return false
 }
 
 func buildDesktopServerSSHAuthMethods(server DesktopServer) ([]ssh.AuthMethod, error) {
@@ -821,54 +946,87 @@ func buildDesktopServerSSHAuthMethods(server DesktopServer) ([]ssh.AuthMethod, e
 }
 
 func buildDesktopServerSSHAuthMethodsWithCredential(server DesktopServer, credential *DesktopSSHCredential) ([]ssh.AuthMethod, error) {
-	authMethods := make([]ssh.AuthMethod, 0, 2)
-	if credential != nil {
-		switch credential.AuthMethod {
-		case DesktopServerAuthPassword:
-			if strings.TrimSpace(credential.Secret) != "" {
-				authMethods = append(authMethods, ssh.Password(credential.Secret))
-			}
-			return authMethods, nil
-		case DesktopServerAuthKey:
-			privateKey := strings.TrimSpace(credential.Secret)
-			if privateKey == "" {
-				privateKey = strings.TrimSpace(server.PrivateKey)
-			}
-			if privateKey == "" {
-				return authMethods, nil
-			}
+	return buildDesktopServerSSHAuthMethodsWithCredentialAndKeyboard(server, credential, nil)
+}
 
-			signer, err := sshutil.ParsePrivateKey(privateKey, credential.PrivateKeyPassphrase)
+func buildDesktopServerSSHAuthMethodsWithCredentialAndKeyboard(server DesktopServer, credential *DesktopSSHCredential, keyboardInteractive ssh.KeyboardInteractiveChallenge) ([]ssh.AuthMethod, error) {
+	authMethod := normalizeDesktopServerAuthMethod(server.AuthMethod)
+	if credential != nil && credential.AuthMethod != "" {
+		authMethod = normalizeDesktopServerAuthMethod(credential.AuthMethod)
+	}
+	if !authMethod.IsValid() {
+		return nil, fmt.Errorf("unsupported auth method: %s", authMethod)
+	}
+
+	factors, _ := authMethod.AuthFactors()
+	authMethods := make([]ssh.AuthMethod, 0, len(factors)+1)
+	hasKeyboardInteractive := false
+
+	for _, factor := range factors {
+		switch factor {
+		case DesktopServerAuthFactorPassword:
+			password := desktopServerCredentialPassword(authMethod, server, credential)
+			if password == "" {
+				return nil, errors.New("server credential is required")
+			}
+			authMethods = append(authMethods, ssh.Password(password))
+		case DesktopServerAuthFactorKey:
+			privateKey := desktopServerCredentialPrivateKey(authMethod, server, credential)
+			if strings.TrimSpace(privateKey) == "" {
+				return nil, errors.New("server credential is required")
+			}
+			signer, err := sshutil.ParsePrivateKey(privateKey, desktopServerCredentialPrivateKeyPassphrase(credential))
 			if err != nil {
 				return nil, err
 			}
-
 			authMethods = append(authMethods, ssh.PublicKeys(signer))
-			return authMethods, nil
-		default:
-			return nil, fmt.Errorf("unsupported auth method: %s", credential.AuthMethod)
+		case DesktopServerAuthFactorKeyboardInteractive:
+			if keyboardInteractive == nil {
+				return nil, fmt.Errorf("keyboard_interactive_required")
+			}
+			hasKeyboardInteractive = true
+			authMethods = append(authMethods, ssh.KeyboardInteractive(keyboardInteractive))
 		}
 	}
 
-	if server.AuthMethod == DesktopServerAuthPassword {
-		if strings.TrimSpace(server.Password) != "" {
-			authMethods = append(authMethods, ssh.Password(server.Password))
-		}
-		return authMethods, nil
+	if keyboardInteractive != nil && !hasKeyboardInteractive {
+		authMethods = append(authMethods, ssh.KeyboardInteractive(keyboardInteractive))
 	}
 
-	privateKey := strings.TrimSpace(server.PrivateKey)
-	if privateKey == "" {
-		return authMethods, nil
-	}
-
-	signer, err := sshutil.ParsePrivateKey(privateKey, server.Password)
-	if err != nil {
-		return nil, err
-	}
-
-	authMethods = append(authMethods, ssh.PublicKeys(signer))
 	return authMethods, nil
+}
+
+func desktopServerCredentialPassword(authMethod DesktopServerAuthMethod, server DesktopServer, credential *DesktopSSHCredential) string {
+	if credential == nil {
+		return server.Password
+	}
+	if credential.Password != "" {
+		return credential.Password
+	}
+	if credential.Secret != "" && authMethod.RequiresPassword() && !authMethod.RequiresPrivateKey() {
+		return credential.Secret
+	}
+	return server.Password
+}
+
+func desktopServerCredentialPrivateKey(authMethod DesktopServerAuthMethod, server DesktopServer, credential *DesktopSSHCredential) string {
+	if credential == nil {
+		return server.PrivateKey
+	}
+	if credential.PrivateKey != "" {
+		return credential.PrivateKey
+	}
+	if credential.Secret != "" && authMethod.RequiresPrivateKey() && !authMethod.RequiresPassword() {
+		return credential.Secret
+	}
+	return server.PrivateKey
+}
+
+func desktopServerCredentialPrivateKeyPassphrase(credential *DesktopSSHCredential) string {
+	if credential == nil {
+		return ""
+	}
+	return credential.PrivateKeyPassphrase
 }
 
 func normalizeDesktopCommandOutput(output string) string {
@@ -929,17 +1087,18 @@ func scanDesktopServer(scanner desktopServerScanner) (DesktopServer, error) {
 		}
 	}
 
+	server.AuthMethod = normalizeDesktopServerAuthMethod(server.AuthMethod)
 	if server.Tags == nil {
 		server.Tags = []string{}
 	}
-	server.HasPassword = strings.TrimSpace(server.Password) != ""
+	server.HasPassword = server.Password != ""
 	server.HasPrivateKey = strings.TrimSpace(server.PrivateKey) != ""
 
 	return server, nil
 }
 
 func sanitizeDesktopServer(server DesktopServer) DesktopServer {
-	server.HasPassword = strings.TrimSpace(server.Password) != ""
+	server.HasPassword = server.Password != ""
 	server.HasPrivateKey = strings.TrimSpace(server.PrivateKey) != ""
 	server.Password = ""
 	server.PrivateKey = ""

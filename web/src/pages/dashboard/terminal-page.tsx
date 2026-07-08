@@ -193,6 +193,7 @@ function TerminalPageContent() {
   })
   const combinedSessionsRef = useRef<TerminalSession[]>([])
   const sftpSessionApi = useMemo(() => {
+    const baseSftpSessionApi = createSftpSessionApi(sftpApi)
     const workspaceApi = {
       ...sftpApi,
       directTransfer: (
@@ -214,6 +215,7 @@ function TerminalPageContent() {
           targetPath,
           targetServerName: options?.targetServerName ?? targetSession?.serverName ?? targetServerId,
           targetAuthMethod: options?.targetAuthMethod ?? targetSession?.authMethod ?? "password",
+          api: baseSftpSessionApi,
           operation: (credentialOptions) => sftpApi.directTransfer(
             sourceServerId,
             sourcePath,
@@ -268,6 +270,7 @@ function TerminalPageContent() {
   const workspaceCapabilities = useMemo(() => (
     createWorkspaceCapabilitiesFromRuntime(runtime, WORKSPACE_CAPABILITY_PRESETS.webTerminal)
   ), [runtime])
+  const canUseSftpCapability = workspaceCapabilities.sftp !== false
   const tabPolicyMaxTabs = systemConfig?.tab_session?.max_tabs ?? 50
   const tabPolicyInactiveMinutes = systemConfig?.tab_session?.inactive_minutes ?? 60
   const totalTabCount = sessions.length + sftpTabs.length
@@ -363,15 +366,21 @@ function TerminalPageContent() {
   }
 
   const handleOpenSftpPicker = useCallback(() => {
+    if (!canUseSftpCapability) {
+      return
+    }
     if (totalTabCount >= maxTabs) {
       toast.error(t("errorMaxTabsReached", { max: maxTabs }))
       return
     }
 
     setSftpPickerOpen(true)
-  }, [maxTabs, t, totalTabCount])
+  }, [canUseSftpCapability, maxTabs, t, totalTabCount])
 
   const handleCreateSftpTabFromServer = useCallback((server: Server): boolean => {
+    if (!canUseSftpCapability) {
+      return false
+    }
     if (totalTabCount >= maxTabs) {
       toast.error(t("errorMaxTabsReached", { max: maxTabs }))
       return false
@@ -390,7 +399,7 @@ function TerminalPageContent() {
     ])
     setActiveSftpTabId(id)
     return true
-  }, [maxTabs, t, totalTabCount])
+  }, [canUseSftpCapability, maxTabs, t, totalTabCount])
 
   const handleCloseSftpTab = useCallback((tabId: string) => {
     setSftpTabs((prev) => prev.filter((tab) => tab.id !== tabId))
@@ -427,13 +436,15 @@ function TerminalPageContent() {
     if (!ready || consumedSftpOpenRef.current) return
 
     consumedSftpOpenRef.current = true
-    handleOpenSftpPicker()
+    if (canUseSftpCapability) {
+      handleOpenSftpPicker()
+    }
     setTimeout(() => {
       const url = new URL(window.location.href)
       url.searchParams.delete("sftpPicker")
       navigate(`${url.pathname}${url.search}${url.hash}`, { replace: true })
     }, 0)
-  }, [handleOpenSftpPicker, navigate, ready, shouldOpenSftpFromSearch])
+  }, [canUseSftpCapability, handleOpenSftpPicker, navigate, ready, shouldOpenSftpFromSearch])
 
   const handleStartConnectionFromConfig = useCallback((sessionId: string, server: Server) => {
     const now = Date.now()
@@ -749,7 +760,7 @@ function TerminalPageContent() {
       <div className="flex min-h-0 flex-1 flex-col min-w-0 overflow-hidden">
         {credentialDialog}
         <SftpServerPickerDialog
-          open={sftpPickerOpen}
+          open={canUseSftpCapability && sftpPickerOpen}
           ready={ready}
           serverApi={serversApi}
           onOpenChange={setSftpPickerOpen}
@@ -759,13 +770,13 @@ function TerminalPageContent() {
           sessions={sessions}
           onNewSession={handleNewSession}
           extraSessions={sftpTabSessions}
-          extraNewSessionActions={[{
+          extraNewSessionActions={canUseSftpCapability ? [{
             id: "new-sftp-session",
             label: "SFTP+",
             ariaLabel: t("sftpPickerActionLabel"),
             title: t("sftpPickerActionLabel"),
             onCreate: handleOpenSftpPicker,
-          }]}
+          }] : []}
           renderExtraSessionContent={renderSftpTabContent}
           onCloseExtraSession={handleCloseSftpTab}
           onReorderExtraSessions={handleReorderSftpTabs}

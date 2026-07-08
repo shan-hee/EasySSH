@@ -43,6 +43,7 @@ type DesktopGateway struct {
 	serverService *DesktopServerService
 	scriptService *DesktopScriptService
 	monitor       *DesktopMonitorService
+	sftpService   *DesktopSFTPService
 
 	mu                      sync.RWMutex
 	server                  *http.Server
@@ -79,6 +80,14 @@ type desktopGatewayFetchCompletionDataMessage struct {
 
 type desktopGatewayCompletionUpdateMessage struct {
 	NewCommand string `json:"newCommand"`
+}
+
+type desktopGatewaySFTPAuthStartMessage struct {
+	AuthMethod           DesktopServerAuthMethod `json:"auth_method,omitempty"`
+	Password             string                  `json:"password,omitempty"`
+	PrivateKey           string                  `json:"private_key,omitempty"`
+	Secret               string                  `json:"secret,omitempty"`
+	PrivateKeyPassphrase string                  `json:"private_key_passphrase,omitempty"`
 }
 
 type desktopGatewayAuthResponseMessage struct {
@@ -147,11 +156,12 @@ type desktopGatewayTerminalRuntime struct {
 	pendingResize *desktopGatewayResizeMessage
 }
 
-func NewDesktopGateway(serverService *DesktopServerService, scriptService *DesktopScriptService, monitor *DesktopMonitorService) *DesktopGateway {
+func NewDesktopGateway(serverService *DesktopServerService, scriptService *DesktopScriptService, monitor *DesktopMonitorService, sftpService *DesktopSFTPService) *DesktopGateway {
 	return &DesktopGateway{
 		serverService: serverService,
 		scriptService: scriptService,
 		monitor:       monitor,
+		sftpService:   sftpService,
 		token:         newDesktopGatewayToken(),
 	}
 }
@@ -169,6 +179,8 @@ func (g *DesktopGateway) ServiceStartup(_ context.Context, _ application.Service
 	mux := http.NewServeMux()
 	mux.HandleFunc("/terminal", g.handleTerminal)
 	mux.HandleFunc("/monitor", g.handleMonitor)
+	mux.HandleFunc("/sftp-auth", g.handleSFTPAuth)
+	mux.HandleFunc("/sftp/auth", g.handleSFTPAuth)
 
 	server := &http.Server{
 		Handler: mux,
@@ -438,7 +450,7 @@ func (g *DesktopGateway) initializeTerminalSession(
 
 	var credential *DesktopSSHCredential
 	client, err := g.connectDesktopSSH(ctx, runtime, server, nil)
-	if err != nil && isDesktopTerminalPassphraseError(err) && server.AuthMethod == DesktopServerAuthKey {
+	if err != nil && isDesktopTerminalPassphraseError(err) && server.AuthMethod.RequiresPrivateKey() {
 		var lastErr error = err
 		for attempt := 1; attempt <= desktopGatewayAuthMaxAttempts; attempt++ {
 			passphrase, promptErr := runtime.requestPrivateKeyPassphrase(ctx, attempt, desktopGatewayAuthMaxAttempts)
@@ -446,8 +458,7 @@ func (g *DesktopGateway) initializeTerminalSession(
 				return desktopGatewayTerminalInitResult{server: server, err: promptErr}
 			}
 			credential = &DesktopSSHCredential{
-				AuthMethod:           DesktopServerAuthKey,
-				Secret:               "",
+				AuthMethod:           server.AuthMethod,
 				PrivateKeyPassphrase: passphrase,
 			}
 			client, err = g.connectDesktopSSH(ctx, runtime, server, credential)
@@ -475,7 +486,7 @@ func (g *DesktopGateway) initializeTerminalSession(
 			nextAuthMethod = nextCredential.AuthMethod
 			credential = nextCredential
 			client, err = g.connectDesktopSSH(ctx, runtime, server, credential)
-			if err != nil && credential.AuthMethod == DesktopServerAuthKey && isDesktopTerminalPassphraseError(err) {
+			if err != nil && credential.AuthMethod.RequiresPrivateKey() && isDesktopTerminalPassphraseError(err) {
 				var passphraseErr error = err
 				for passphraseAttempt := 1; passphraseAttempt <= desktopGatewayAuthMaxAttempts; passphraseAttempt++ {
 					passphrase, promptErr := runtime.requestPrivateKeyPassphrase(ctx, passphraseAttempt, desktopGatewayAuthMaxAttempts)
@@ -578,12 +589,13 @@ func (g *DesktopGateway) connectDesktopSSH(
 			credential = cachedCredential
 		}
 	}
-	authMethods, err := buildDesktopServerSSHAuthMethodsWithCredential(server, credential)
+	var keyboardInteractive ssh.KeyboardInteractiveChallenge
+	if runtime != nil {
+		keyboardInteractive = runtime.keyboardInteractiveChallenge(ctx)
+	}
+	authMethods, err := buildDesktopServerSSHAuthMethodsWithCredentialAndKeyboard(server, credential, keyboardInteractive)
 	if err != nil {
 		return nil, err
-	}
-	if runtime != nil {
-		authMethods = append(authMethods, ssh.KeyboardInteractive(runtime.keyboardInteractiveChallenge(ctx)))
 	}
 	if len(authMethods) == 0 {
 		return nil, errors.New("server credential is required")
@@ -750,6 +762,171 @@ func (g *DesktopGateway) handleMonitor(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+}
+
+func (g *DesktopGateway) handleSFTPAuth(w http.ResponseWriter, r *http.Request) {
+	if !g.validateRequest(r) {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	serverID := strings.TrimSpace(r.URL.Query().Get("serverId"))
+	if serverID == "" {
+		serverID = strings.TrimSpace(r.URL.Query().Get("server_id"))
+	}
+	if serverID == "" {
+		http.Error(w, "server id is required", http.StatusBadRequest)
+		return
+	}
+
+	conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{
+		InsecureSkipVerify: true,
+	})
+	if err != nil {
+		log.Printf("desktop sftp auth websocket accept failed: %v", err)
+		return
+	}
+	defer conn.Close(websocket.StatusNormalClosure, "closed")
+
+	ctx, cancel := context.WithTimeout(context.Background(), desktopGatewayTerminalInitTimeout)
+	defer cancel()
+	runtime := &desktopGatewayTerminalRuntime{
+		conn:     conn,
+		prompts:  map[string]chan desktopGatewayAuthResponseMessage{},
+		hostKeys: map[string]chan desktopGatewayHostKeyResponseMessage{},
+		serverID: serverID,
+	}
+
+	writeStatus := func(status string) {
+		data, _ := json.Marshal(map[string]string{"status": status})
+		_ = runtime.writeJSON(ctx, desktopGatewayMessage{
+			Type: "status",
+			Data: data,
+		})
+	}
+	writeError := func(code string, err error) {
+		message := ""
+		if err != nil {
+			message = err.Error()
+		}
+		data, _ := json.Marshal(desktopGatewayErrorMessage{
+			Error:   code,
+			Message: message,
+		})
+		_ = runtime.writeJSON(ctx, desktopGatewayMessage{
+			Type: "error",
+			Data: data,
+		})
+	}
+
+	server, err := g.serverService.getByIDRaw(serverID)
+	if err != nil {
+		writeError("server_not_found", err)
+		return
+	}
+	runtime.serverName = serverDisplayName(server)
+
+	writeStatus("authenticating")
+	start, err := runtime.readSFTPAuthStart(ctx)
+	if err != nil {
+		writeError("sftp_auth_request_failed", err)
+		return
+	}
+
+	authCtx, cancelAuth := context.WithCancel(ctx)
+	defer cancelAuth()
+	go runtime.readSFTPAuthMessages(authCtx, cancelAuth)
+
+	authMethod := normalizeDesktopGatewayAuthMethod(start.AuthMethod, server.AuthMethod)
+	credential := &DesktopSSHCredential{
+		AuthMethod:           authMethod,
+		Secret:               start.Secret,
+		Password:             start.Password,
+		PrivateKey:           start.PrivateKey,
+		PrivateKeyPassphrase: start.PrivateKeyPassphrase,
+	}
+
+	client, closer, err := g.connectDesktopSFTPAuthSSH(authCtx, runtime, server, credential)
+	if err != nil {
+		code, message := classifyDesktopGatewaySFTPAuthError(err)
+		writeError(code, errors.New(message))
+		return
+	}
+	cancelAuth()
+
+	g.serverService.setTemporaryCredential(serverID, *credential)
+	if g.sftpService != nil {
+		g.sftpService.setAuthenticatedSSHClient(serverID, client, *credential)
+	} else {
+		closer()
+	}
+	if _, err := g.serverService.MarkConnected(serverID); err != nil {
+		log.Printf("failed to mark desktop server connected after sftp auth: %v", err)
+	}
+
+	data, _ := json.Marshal(map[string]string{"status": "authenticated"})
+	_ = runtime.writeJSON(ctx, desktopGatewayMessage{
+		Type: "authenticated",
+		Data: data,
+	})
+}
+
+func (g *DesktopGateway) connectDesktopSFTPAuthSSH(
+	ctx context.Context,
+	runtime *desktopGatewayTerminalRuntime,
+	server DesktopServer,
+	credential *DesktopSSHCredential,
+) (*ssh.Client, func(), error) {
+	var keyboardInteractive ssh.KeyboardInteractiveChallenge
+	if runtime != nil {
+		keyboardInteractive = runtime.keyboardInteractiveChallenge(ctx)
+	}
+	authMethods, err := buildDesktopServerSSHAuthMethodsWithCredentialAndKeyboard(server, credential, keyboardInteractive)
+	if err != nil {
+		return nil, nil, err
+	}
+	if len(authMethods) == 0 {
+		return nil, nil, errors.New("server credential is required")
+	}
+
+	config := &ssh.ClientConfig{
+		User: server.Username,
+		Auth: authMethods,
+		HostKeyCallback: desktopHostKeyCallbackWithChangeApproval(func(details *DesktopHostKeyVerificationError) (bool, error) {
+			if runtime == nil {
+				return false, errors.New("sftp auth runtime is not available")
+			}
+			return runtime.requestHostKeyApproval(ctx, details)
+		}),
+		Timeout: 12 * time.Second,
+	}
+	address := net.JoinHostPort(server.Host, strconv.Itoa(server.Port))
+
+	type dialResult struct {
+		client *ssh.Client
+		err    error
+	}
+	done := make(chan dialResult, 1)
+	go func() {
+		client, err := ssh.Dial("tcp", address, config)
+		done <- dialResult{client: client, err: err}
+	}()
+
+	var client *ssh.Client
+	select {
+	case result := <-done:
+		if result.err != nil {
+			return nil, nil, result.err
+		}
+		client = result.client
+	case <-ctx.Done():
+		return nil, nil, ctx.Err()
+	}
+
+	go g.serverService.detectAndPersistOSIfEmpty(server, client)
+	return client, func() {
+		_ = client.Close()
+	}, nil
 }
 
 func (g *DesktopGateway) sendTerminalCompletionData(
@@ -1036,6 +1213,76 @@ func (r *desktopGatewayTerminalRuntime) readTerminalMessages(
 	}
 }
 
+func (r *desktopGatewayTerminalRuntime) readSFTPAuthStart(ctx context.Context) (desktopGatewaySFTPAuthStartMessage, error) {
+	for {
+		messageType, payload, err := r.conn.Read(ctx)
+		if err != nil {
+			return desktopGatewaySFTPAuthStartMessage{}, err
+		}
+		if messageType != websocket.MessageText {
+			continue
+		}
+
+		var message desktopGatewayMessage
+		if err := json.Unmarshal(payload, &message); err != nil {
+			continue
+		}
+		switch message.Type {
+		case "ping":
+			_ = r.writeJSON(ctx, desktopGatewayMessage{
+				Type: "pong",
+				Data: message.Data,
+			})
+		case "auth_start":
+			var start desktopGatewaySFTPAuthStartMessage
+			if len(message.Data) > 0 {
+				if err := json.Unmarshal(message.Data, &start); err != nil {
+					return desktopGatewaySFTPAuthStartMessage{}, err
+				}
+			}
+			return start, nil
+		}
+	}
+}
+
+func (r *desktopGatewayTerminalRuntime) readSFTPAuthMessages(ctx context.Context, cancel context.CancelFunc) {
+	defer cancel()
+
+	for {
+		messageType, payload, err := r.conn.Read(ctx)
+		if err != nil {
+			return
+		}
+		if messageType != websocket.MessageText {
+			continue
+		}
+
+		var message desktopGatewayMessage
+		if err := json.Unmarshal(payload, &message); err != nil {
+			continue
+		}
+		switch message.Type {
+		case "ping":
+			_ = r.writeJSON(ctx, desktopGatewayMessage{
+				Type: "pong",
+				Data: message.Data,
+			})
+		case "auth_response":
+			var response desktopGatewayAuthResponseMessage
+			if err := json.Unmarshal(message.Data, &response); err != nil {
+				continue
+			}
+			r.resolvePrompt(response)
+		case "host_key_response":
+			var response desktopGatewayHostKeyResponseMessage
+			if err := json.Unmarshal(message.Data, &response); err != nil {
+				continue
+			}
+			r.resolveHostKeyPrompt(response)
+		}
+	}
+}
+
 func (r *desktopGatewayTerminalRuntime) setTerminalIO(stdin io.Writer, session *ssh.Session) {
 	var pending *desktopGatewayResizeMessage
 
@@ -1173,19 +1420,34 @@ func (r *desktopGatewayTerminalRuntime) requestCredential(
 	defer r.unregisterPrompt(id)
 
 	authMethod = normalizeDesktopGatewayAuthMethod(authMethod, DesktopServerAuthPassword)
-	promptText := "Password"
-	if authMethod == DesktopServerAuthKey {
-		promptText = "Private key"
+	factors, _ := authMethod.AuthFactors()
+	prompts := make([]desktopGatewayAuthPromptItem, 0, len(factors))
+	for _, factor := range factors {
+		switch factor {
+		case DesktopServerAuthFactorPassword:
+			prompts = append(prompts, desktopGatewayAuthPromptItem{
+				Text: "Password",
+				Echo: false,
+			})
+		case DesktopServerAuthFactorKey:
+			prompts = append(prompts, desktopGatewayAuthPromptItem{
+				Text: "Private key",
+				Echo: false,
+			})
+		}
+	}
+	if len(prompts) == 0 {
+		prompts = append(prompts, desktopGatewayAuthPromptItem{
+			Text: "Password",
+			Echo: false,
+		})
 	}
 
 	prompt := desktopGatewayAuthPromptMessage{
-		RequestID: id,
-		Kind:      "credential_retry",
-		Name:      r.serverName,
-		Prompts: []desktopGatewayAuthPromptItem{{
-			Text: promptText,
-			Echo: false,
-		}},
+		RequestID:         id,
+		Kind:              "credential_retry",
+		Name:              r.serverName,
+		Prompts:           prompts,
 		AuthMethod:        authMethod,
 		Attempt:           attempt,
 		MaxAttempts:       maxAttempts,
@@ -1202,17 +1464,13 @@ func (r *desktopGatewayTerminalRuntime) requestCredential(
 			return nil, errors.New("auth_cancelled")
 		}
 		nextMethod := normalizeDesktopGatewayAuthMethod(response.AuthMethod, authMethod)
-		secret := firstString(response.Answers)
-		if nextMethod == DesktopServerAuthPassword && strings.TrimSpace(response.Password) != "" {
-			secret = response.Password
-		}
-		if nextMethod == DesktopServerAuthKey && strings.TrimSpace(response.PrivateKey) != "" {
-			secret = response.PrivateKey
-		}
+		password, privateKey := desktopGatewayCredentialValues(nextMethod, response)
 
 		return &DesktopSSHCredential{
 			AuthMethod: nextMethod,
-			Secret:     secret,
+			Secret:     firstString(response.Answers),
+			Password:   password,
+			PrivateKey: privateKey,
 		}, nil
 	case <-ctx.Done():
 		return nil, ctx.Err()
@@ -1463,6 +1721,39 @@ func classifyDesktopGatewayTerminalError(err error) (string, string) {
 	}
 }
 
+func classifyDesktopGatewaySFTPAuthError(err error) (string, string) {
+	if err == nil {
+		return "sftp_auth_failed", ""
+	}
+
+	message := err.Error()
+	lower := strings.ToLower(message)
+	var hostKeyErr *DesktopHostKeyVerificationError
+	switch {
+	case errors.As(err, &hostKeyErr):
+		return "sftp_host_key_changed", message
+	case errors.Is(err, errDesktopHostKeyRevoked):
+		return "host_key_revoked", message
+	case strings.Contains(lower, "host key verification failed"):
+		return "sftp_host_key_changed", message
+	case strings.Contains(lower, "host key trust has been revoked"):
+		return "host_key_revoked", message
+	case strings.Contains(lower, "auth_cancelled") ||
+		strings.Contains(lower, "authentication cancelled"):
+		return "auth_cancelled", "Authentication cancelled"
+	case strings.Contains(lower, "private_key_passphrase_required"):
+		return "sftp_private_key_passphrase_required", message
+	case strings.Contains(lower, "private_key_passphrase_invalid"):
+		return "sftp_private_key_passphrase_invalid", message
+	case strings.Contains(lower, "keyboard_interactive_required"):
+		return "keyboard_interactive_required", message
+	case isDesktopTerminalAuthRetryable(err):
+		return "sftp_credential_required", message
+	default:
+		return "sftp_auth_failed", message
+	}
+}
+
 func isDesktopTerminalAuthRetryable(err error) bool {
 	if err == nil {
 		return false
@@ -1476,6 +1767,7 @@ func isDesktopTerminalAuthRetryable(err error) bool {
 		"authentication failed",
 		"no supported methods remain",
 		"attempted methods",
+		"failed to parse private key",
 	}
 	for _, marker := range markers {
 		if strings.Contains(message, marker) {
@@ -1496,13 +1788,43 @@ func isDesktopTerminalPassphraseError(err error) bool {
 }
 
 func normalizeDesktopGatewayAuthMethod(method DesktopServerAuthMethod, fallback DesktopServerAuthMethod) DesktopServerAuthMethod {
-	if method == DesktopServerAuthKey {
-		return DesktopServerAuthKey
-	}
-	if method == DesktopServerAuthPassword {
-		return DesktopServerAuthPassword
+	method = normalizeDesktopServerAuthMethod(method)
+	if method.IsValid() {
+		return method
 	}
 	return fallback
+}
+
+func desktopGatewayCredentialValues(method DesktopServerAuthMethod, response desktopGatewayAuthResponseMessage) (string, string) {
+	password := response.Password
+	privateKey := response.PrivateKey
+
+	answers := response.Answers
+	answerIndex := 0
+	factors, ok := method.AuthFactors()
+	if !ok {
+		return "", ""
+	}
+	for _, factor := range factors {
+		if factor != DesktopServerAuthFactorPassword && factor != DesktopServerAuthFactorKey {
+			continue
+		}
+		if answerIndex >= len(answers) {
+			break
+		}
+		switch factor {
+		case DesktopServerAuthFactorPassword:
+			if password == "" {
+				password = answers[answerIndex]
+			}
+		case DesktopServerAuthFactorKey:
+			if strings.TrimSpace(privateKey) == "" {
+				privateKey = answers[answerIndex]
+			}
+		}
+		answerIndex++
+	}
+	return password, privateKey
 }
 
 func parsePositiveInt(value string, fallback int) int {

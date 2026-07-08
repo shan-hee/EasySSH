@@ -139,6 +139,10 @@ export function WebTerminal({
 }: WebTerminalProps) {
   const { t: tTerminal } = useTranslation("terminal")
   const workspace = useOptionalSshWorkspace()
+  const workspaceTerminalApi = workspace?.adapters.apiClient?.terminal
+  if (workspace?.layout === "desktop" && !workspaceTerminalApi?.createWebSocketUrl) {
+    throw new Error("Desktop terminal requires a desktop terminal WebSocket adapter")
+  }
   const { mode: effectiveAppTheme, version: themeModeVersion } = useEffectiveThemeMode()
   const workspaceTheme = workspace?.adapters.theme
   const effectiveTerminalTheme = resolveTerminalThemeName(workspaceTheme?.terminalTheme, theme)
@@ -272,8 +276,8 @@ export function WebTerminal({
     completionUpdateSenderRef,
     onConnectionPhaseChange,
     createAuthTicket: terminalAuthTicketProvider,
-    createWebSocketUrl: workspace?.adapters.apiClient?.terminal?.createWebSocketUrl,
-    WebSocketCtor: workspace?.adapters.apiClient?.terminal?.WebSocketCtor,
+    createWebSocketUrl: workspaceTerminalApi?.createWebSocketUrl,
+    WebSocketCtor: workspaceTerminalApi?.WebSocketCtor,
   })
 
   useTerminalRendererSettings({

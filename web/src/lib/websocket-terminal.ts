@@ -5,6 +5,7 @@
 
 import { getWsUrl } from './config'
 import { createAuthTicket } from "@/lib/auth-ticket"
+import type { AuthMethod } from "@/lib/server-types"
 
 const TERMINAL_PING_INTERVAL_MS = 5000
 const TERMINAL_PING_TIMEOUT_MS = 60000
@@ -97,17 +98,7 @@ export interface TerminalAuthPromptItem {
   echo: boolean
 }
 
-export type TerminalAuthMethod =
-  | "password"
-  | "key"
-  | "password_keyboard"
-  | "key_keyboard"
-  | "key_password"
-  | "key_password_keyboard"
-  | "password_key"
-  | "password_key_keyboard"
-  | "keyboard_interactive"
-  | "keyboard"
+export type TerminalAuthMethod = AuthMethod
 
 export interface TerminalAuthPrompt {
   request_id: string
@@ -132,6 +123,7 @@ export interface TerminalAuthResponsePayload {
   authMethod?: TerminalAuthMethod
   password?: string
   privateKey?: string
+  privateKeyPassphrase?: string
 }
 
 export interface TerminalLatencyData {
@@ -571,13 +563,14 @@ export class TerminalWebSocket {
         this.setPhase("closed")
       }
 
-      const payload = Array.isArray(answersOrPayload)
+      const payload: TerminalAuthResponsePayload & { authMethod?: TerminalAuthMethod } = Array.isArray(answersOrPayload)
         ? { answers: answersOrPayload, authMethod }
         : {
             answers: answersOrPayload.answers ?? [],
             authMethod: answersOrPayload.authMethod ?? authMethod,
             password: answersOrPayload.password,
             privateKey: answersOrPayload.privateKey,
+            privateKeyPassphrase: answersOrPayload.privateKeyPassphrase,
           }
 
       const message = {
@@ -589,6 +582,7 @@ export class TerminalWebSocket {
           auth_method: payload.authMethod,
           password: payload.password,
           private_key: payload.privateKey,
+          private_key_passphrase: payload.privateKeyPassphrase,
         },
       }
       this.ws.send(JSON.stringify(message))
@@ -779,6 +773,8 @@ export class TerminalWebSocket {
           errorCode === "host_key_changed" ||
           errorCode === "auth_cancelled" ||
           errorCode === "auth_failed" ||
+          errorCode === "credential_required" ||
+          errorCode === "keyboard_interactive_required" ||
           errorCode === "private_key_passphrase_required" ||
           errorCode === "private_key_passphrase_invalid" ||
           errorCode === "private_key_invalid" ||

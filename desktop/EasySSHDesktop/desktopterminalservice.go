@@ -27,6 +27,8 @@ type DesktopTerminalStartInput struct {
 	Rows                 int                     `json:"rows"`
 	AuthMethod           DesktopServerAuthMethod `json:"authMethod,omitempty"`
 	Secret               string                  `json:"secret,omitempty"`
+	Password             string                  `json:"password,omitempty"`
+	PrivateKey           string                  `json:"privateKey,omitempty"`
 	PrivateKeyPassphrase string                  `json:"privateKeyPassphrase,omitempty"`
 }
 
@@ -126,10 +128,13 @@ func (s *DesktopTerminalService) Start(input DesktopTerminalStartInput) error {
 	}
 
 	var credential *DesktopSSHCredential
-	if input.AuthMethod == DesktopServerAuthPassword || input.AuthMethod == DesktopServerAuthKey {
+	input.AuthMethod = normalizeDesktopServerAuthMethod(input.AuthMethod)
+	if input.AuthMethod.IsValid() {
 		credential = &DesktopSSHCredential{
 			AuthMethod:           input.AuthMethod,
 			Secret:               input.Secret,
+			Password:             input.Password,
+			PrivateKey:           input.PrivateKey,
 			PrivateKeyPassphrase: input.PrivateKeyPassphrase,
 		}
 	} else if cachedCredential, ok := s.serverService.getTemporaryCredential(serverID); ok {

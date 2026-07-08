@@ -96,6 +96,7 @@ export function useTerminalAuthFlow({
           authMethod: answers.authMethod ?? authMethod,
           password: answers.password,
           privateKey: answers.privateKey,
+          privateKeyPassphrase: answers.privateKeyPassphrase,
         }
     if (
       authChallenge?.prompt.kind === "credential_retry" &&

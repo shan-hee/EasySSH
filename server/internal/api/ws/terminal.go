@@ -307,8 +307,9 @@ func classifyTerminalInitError(err error) terminalErrorInfo {
 		info.Code = "private_key_decrypt_failed"
 	case strings.Contains(message, "failed to decrypt password"):
 		info.Code = "password_decrypt_failed"
-	case strings.Contains(message, "server credential is required") ||
-		strings.Contains(message, "keyboard_interactive_required"):
+	case strings.Contains(message, "keyboard_interactive_required"):
+		info.Code = "keyboard_interactive_required"
+	case strings.Contains(message, "server credential is required"):
 		info.Code = "credential_required"
 	case strings.Contains(message, "unable to authenticate") ||
 		strings.Contains(message, "permission denied") ||

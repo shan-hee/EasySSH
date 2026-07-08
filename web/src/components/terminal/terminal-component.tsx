@@ -40,6 +40,7 @@ import { toast } from "@/components/ui/sonner"
 import { useEffectiveThemeMode } from "@/hooks/use-effective-theme-mode"
 import { useFileTransfer, type FileTransferSftpApi } from "@/hooks/useFileTransfer"
 import { getErrorMessage } from "@/lib/error-utils"
+import { formatSftpAuthError, useSftpAuthRetry } from "@/components/sftp/use-sftp-auth-retry"
 import { createWorkspaceTransferAuthTicketProviderAdapter } from "@/lib/session/workspace-adapters"
 import { useSessionSplitWorkspace } from "@/hooks/use-session-split-workspace"
 import {
@@ -354,6 +355,12 @@ export function TerminalComponent({
 
     return tSftpFallback(key, params)
   }, [tSftpFallback, workspaceI18n])
+  const {
+    credentialDialog: sftpTransferCredentialDialog,
+    runDirectTransferWithCredentialRetry,
+  } = useSftpAuthRetry({
+    tTerminal,
+  })
   const canUseCrossSessionDragCapability = workspace?.capabilities.crossSessionDrag === true
   const crossSessionFileTransferApi = useMemo<FileTransferSftpApi | undefined>(() => {
     if (
@@ -375,10 +382,32 @@ export function TerminalComponent({
       getTransferTask: workspaceSftpApi.getTransferTask,
       cancelUploadTask: workspaceSftpApi.cancelUploadTask,
       uploadFile: workspaceSftpApi.uploadFile,
-      directTransfer: workspaceSftpApi.directTransfer,
+      directTransfer: (sourceServerId, sourcePath, targetServerId, targetPath, options) => (
+        runDirectTransferWithCredentialRetry({
+          sourceServerId,
+          sourcePath,
+          sourceServerName: options?.sourceServerName ?? sourceServerId,
+          sourceAuthMethod: options?.sourceAuthMethod ?? "password",
+          targetServerId,
+          targetPath,
+          targetServerName: options?.targetServerName ?? targetServerId,
+          targetAuthMethod: options?.targetAuthMethod ?? "password",
+          api: workspaceSftpApi,
+          operation: (credentialOptions) => workspaceSftpApi.directTransfer(
+            sourceServerId,
+            sourcePath,
+            targetServerId,
+            targetPath,
+            {
+              ...options,
+              ...(credentialOptions ?? {}),
+            },
+          ),
+        })
+      ),
       cancelTransfer: workspaceSftpApi.cancelTransfer,
     }
-  }, [canUseCrossSessionDragCapability, workspaceSftpApi])
+  }, [canUseCrossSessionDragCapability, runDirectTransferWithCredentialRetry, workspaceSftpApi])
   const crossSessionTransferAuthTicketProvider = useMemo(
     () => createWorkspaceTransferAuthTicketProviderAdapter(workspace?.adapters.authTicketProvider),
     [workspace?.adapters.authTicketProvider]
@@ -628,7 +657,7 @@ export function TerminalComponent({
         size: "-",
       }))
     } catch (error) {
-      notifyTransferError(getErrorMessage(error, tSftp("toastTransferFailed")))
+      notifyTransferError(formatSftpAuthError(error, getErrorMessage(error, tSftp("toastTransferFailed")), tTerminal))
     }
   }, [
     canUseCrossSessionTransfer,
@@ -1484,6 +1513,7 @@ export function TerminalComponent({
 
   return (
     <div className={cn("flex min-h-0 min-w-0 flex-1 flex-col", isFullscreen && "fixed inset-0 z-50 bg-background")}>
+      {sftpTransferCredentialDialog}
       {!hidePageHeader && !isFullscreen && (
         <PageHeader title={active?.serverName || activeExtraSession?.serverName || tTerminal("connectionConfigTitle")}>
           <ActivityLogPane />

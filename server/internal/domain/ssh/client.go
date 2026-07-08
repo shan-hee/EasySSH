@@ -24,6 +24,15 @@ type Client struct {
 	createdAt time.Time
 }
 
+type CommandResult struct {
+	Command     string
+	Output      string
+	ExitCode    int
+	DurationMs  int64
+	StartedAt   time.Time
+	CompletedAt time.Time
+}
+
 var ErrCredentialRequired = errors.New("server credential is required")
 var ErrHostKeyCallbackRequired = errors.New("ssh host key callback is required")
 
@@ -34,6 +43,7 @@ type clientOptions struct {
 	password             string
 	privateKey           string
 	privateKeyPassphrase string
+	hostKeyCallback      ssh.HostKeyCallback
 }
 
 // ClientOption configures optional SSH client behavior.
@@ -83,6 +93,13 @@ func WithPrivateKeyPassphrase(passphrase string) ClientOption {
 	}
 }
 
+// WithHostKeyCallback overrides host key verification for this SSH connection.
+func WithHostKeyCallback(callback ssh.HostKeyCallback) ClientOption {
+	return func(opts *clientOptions) {
+		opts.hostKeyCallback = callback
+	}
+}
+
 // NewClient 创建 SSH 客户端
 func NewClient(srv *server.Server, encryptor *crypto.Encryptor, hostKeyCallback ssh.HostKeyCallback, opts ...ClientOption) (*Client, error) {
 	if hostKeyCallback == nil {
@@ -94,6 +111,9 @@ func NewClient(srv *server.Server, encryptor *crypto.Encryptor, hostKeyCallback 
 		if opt != nil {
 			opt(options)
 		}
+	}
+	if options.hostKeyCallback != nil {
+		hostKeyCallback = options.hostKeyCallback
 	}
 
 	// 解密认证信息
@@ -291,6 +311,77 @@ func (c *Client) ExecuteCommand(cmd string) (string, error) {
 	}
 
 	return string(output), nil
+}
+
+func (c *Client) ExecuteCommandDetailed(cmd string) (*CommandResult, error) {
+	return c.ExecuteCommandDetailedContext(context.Background(), cmd)
+}
+
+func (c *Client) ExecuteCommandDetailedContext(ctx context.Context, cmd string) (*CommandResult, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	session, err := c.NewSession()
+	if err != nil {
+		return nil, err
+	}
+	defer session.Close()
+
+	started := time.Now().UTC()
+
+	type commandResponse struct {
+		output []byte
+		err    error
+	}
+	done := make(chan commandResponse, 1)
+	go func() {
+		output, err := session.CombinedOutput(cmd)
+		done <- commandResponse{output: output, err: err}
+	}()
+
+	select {
+	case response := <-done:
+		completed := time.Now().UTC()
+		return sshCommandResult(cmd, response.output, response.err, started, completed), response.err
+	case <-ctx.Done():
+		_ = session.Close()
+		completed := time.Now().UTC()
+		exitCode := 130
+		output := "operation cancelled"
+		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			exitCode = 124
+			output = "command timed out"
+		}
+		return &CommandResult{
+			Command:     cmd,
+			Output:      output,
+			ExitCode:    exitCode,
+			DurationMs:  completed.Sub(started).Milliseconds(),
+			StartedAt:   started,
+			CompletedAt: completed,
+		}, ctx.Err()
+	}
+}
+
+func sshCommandResult(cmd string, output []byte, err error, started time.Time, completed time.Time) *CommandResult {
+	exitCode := 0
+	if err != nil {
+		exitCode = 1
+		var exitErr *ssh.ExitError
+		if errors.As(err, &exitErr) {
+			exitCode = exitErr.ExitStatus()
+		}
+	}
+
+	return &CommandResult{
+		Command:     cmd,
+		Output:      strings.TrimRight(strings.ReplaceAll(string(output), "\r\n", "\n"), "\n"),
+		ExitCode:    exitCode,
+		DurationMs:  completed.Sub(started).Milliseconds(),
+		StartedAt:   started,
+		CompletedAt: completed,
+	}
 }
 
 var osDetectionCommands = []string{

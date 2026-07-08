@@ -48,6 +48,14 @@ export function formatTerminalConnectionError(
   }
 
   if (
+    error.code === "keyboard_interactive_required" ||
+    rawMessage.includes("keyboard_interactive_required") ||
+    rawMessage.includes("keyboard-interactive")
+  ) {
+    return tTerminal("terminalErrorKeyboardInteractiveRequired")
+  }
+
+  if (
     error.code === "private_key_decrypt_failed" ||
     error.code === "password_decrypt_failed"
   ) {
@@ -55,7 +63,9 @@ export function formatTerminalConnectionError(
   }
 
   if (
+    error.code === "credential_required" ||
     error.code === "auth_failed" ||
+    rawMessage.includes("server credential is required") ||
     rawMessage.includes("unable to authenticate") ||
     rawMessage.includes("permission denied") ||
     rawMessage.includes("authentication failed")

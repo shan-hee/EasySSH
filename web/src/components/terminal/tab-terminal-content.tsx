@@ -25,6 +25,7 @@ import type { FileTransferSftpApi } from '@/hooks/useFileTransfer'
 import { cn } from '@/lib/utils'
 import { useTabUIStore } from '@/stores/tab-ui-store'
 import { useOptionalSshWorkspace } from '@/components/ssh-workspace/ssh-workspace'
+import { assertCompleteSftpSessionApi } from '@/lib/session/sftp-session-api'
 import { createWorkspaceTransferAuthTicketProviderAdapter } from '@/lib/session/workspace-adapters'
 import type { TerminalConnectionPhase, TerminalSession } from './types'
 import {
@@ -174,6 +175,7 @@ export function TabTerminalContent({
   const setTabState = useTabUIStore((state) => state.setTabState)
   const workspace = useOptionalSshWorkspace()
   const workspaceCapabilities = workspace?.capabilities
+  const isDesktopWorkspace = workspace?.layout === "desktop"
   const canUseSftpCapability = workspaceCapabilities?.sftp !== false
   const canUseMonitorCapability = workspaceCapabilities?.monitor !== false
   const canUseAiCapability = workspaceCapabilities?.ai !== false
@@ -222,6 +224,16 @@ export function TabTerminalContent({
     [workspace?.adapters.authTicketProvider]
   )
   const workspaceSftpApi = workspace?.adapters.apiClient?.sftp
+  if (isDesktopWorkspace && !workspaceSftpApi) {
+    throw new Error("Desktop terminal file manager requires a desktop SFTP api adapter")
+  }
+  if (isDesktopWorkspace) {
+    assertCompleteSftpSessionApi(workspaceSftpApi, "Desktop terminal file manager")
+  }
+  const workspaceMonitorApi = workspace?.adapters.apiClient?.monitor
+  if (isDesktopWorkspace && canUseMonitorCapability && !workspaceMonitorApi) {
+    throw new Error("Desktop terminal monitor requires a desktop monitor api adapter")
+  }
   const sftpFileTransferApi = React.useMemo<FileTransferSftpApi | undefined>(() => {
     if (
       !workspaceSftpApi?.createUploadTask ||
@@ -490,7 +502,7 @@ export function TabTerminalContent({
       enabled={monitorEnabled}
       interval={settings.monitorInterval || 2}
       latencyIntervalMs={5000}
-      monitorApi={workspace?.adapters.apiClient?.monitor}
+      monitorApi={workspaceMonitorApi}
     >
       <div className={cn(
         "flex min-w-0 flex-col relative overflow-hidden",

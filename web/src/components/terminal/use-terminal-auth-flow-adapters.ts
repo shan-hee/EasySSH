@@ -70,5 +70,9 @@ export function useTerminalAuthFlowAdapters({
     },
   }), [])
 
+  if (workspace?.layout === "desktop" && !authFlowAdapters && !workspaceAuthFlowAdapters) {
+    throw new Error("Desktop terminal authentication requires local credential adapters")
+  }
+
   return authFlowAdapters ?? workspaceAuthFlowAdapters ?? defaultAuthFlowAdapters
 }
