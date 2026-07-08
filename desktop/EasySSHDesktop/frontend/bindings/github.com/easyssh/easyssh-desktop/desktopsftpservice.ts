@@ -68,25 +68,25 @@ export function DownloadFile(input: $models.DesktopSFTPDownloadFileInput): $Canc
 }
 
 export function GetDiskUsage(input: $models.DesktopSFTPPathInput): $CancellablePromise<$models.DesktopSFTPDiskUsageResult> {
-    return $Call.ByName("github.com/easyssh/easyssh-desktop.DesktopSFTPService.GetDiskUsage", input).then(($result: any) => {
+    return $Call.ByID(3684496188, input).then(($result: any) => {
         return $$createType6($result);
     });
 }
 
 export function GetFileInfo(input: $models.DesktopSFTPPathInput): $CancellablePromise<$models.DesktopSFTPFileInfo> {
-    return $Call.ByName("github.com/easyssh/easyssh-desktop.DesktopSFTPService.GetFileInfo", input).then(($result: any) => {
+    return $Call.ByID(4074473146, input).then(($result: any) => {
         return $$createType1($result);
     });
 }
 
 export function GetUploadTask($0: string): $CancellablePromise<$models.DesktopSFTPUploadTaskStatus> {
-    return $Call.ByName("github.com/easyssh/easyssh-desktop.DesktopSFTPService.GetUploadTask", $0).then(($result: any) => {
+    return $Call.ByID(1928740572, $0).then(($result: any) => {
         return $$createType7($result);
     });
 }
 
 export function GetTransferTask($0: string): $CancellablePromise<$models.DesktopSFTPUploadTaskStatus> {
-    return $Call.ByName("github.com/easyssh/easyssh-desktop.DesktopSFTPService.GetTransferTask", $0).then(($result: any) => {
+    return $Call.ByID(2480019214, $0).then(($result: any) => {
         return $$createType7($result);
     });
 }

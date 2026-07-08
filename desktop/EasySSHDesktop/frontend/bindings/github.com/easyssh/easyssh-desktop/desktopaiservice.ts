@@ -20,7 +20,7 @@ export function CloseSession(id: string): $CancellablePromise<void> {
 }
 
 export function ConfirmTask(input: $models.DesktopAIConfirmTaskInput): $CancellablePromise<$models.DesktopAICreateSessionResponse> {
-    return $Call.ByID(3604708908, input).then(($result: any) => {
+    return $Call.ByID(1018369184, input).then(($result: any) => {
         return $$createType1($result);
     });
 }
