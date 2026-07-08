@@ -1,4 +1,4 @@
-import type { ReactNode } from "react"
+import { useRef, type ReactNode } from "react"
 import { CloudUpload, FileText, FolderPlus, RefreshCw, Upload } from "lucide-react"
 
 import { FileActionMenu, type FileAction } from "@/components/sftp/file-action-menu"
@@ -73,16 +73,31 @@ export function SftpBlankContextMenuContent({
   onRefresh,
 }: Omit<SftpBlankContextMenuProps, "children" | "disabled" | "onOpenChange">) {
   const tSftp = useWorkspaceSftpTranslator()
+  const pendingCreateActionRef = useRef<(() => void) | null>(null)
+
+  const handleCreateAction = (action: () => void) => {
+    pendingCreateActionRef.current = action
+  }
 
   return (
     <ContextMenuContent
+      onCloseAutoFocus={(event) => {
+        const pendingCreateAction = pendingCreateActionRef.current
+        if (!pendingCreateAction) {
+          return
+        }
+
+        event.preventDefault()
+        pendingCreateActionRef.current = null
+        pendingCreateAction()
+      }}
       className={cn(
         "min-w-[200px] rounded-lg border-border/60 bg-popover/95 text-popover-foreground backdrop-blur-xl"
       )}
     >
       <SftpContextMenuSelectedLabel count={selectedFilesCount} />
 
-      <ContextMenuItem onSelect={onCreateFolder}>
+      <ContextMenuItem onSelect={() => handleCreateAction(onCreateFolder)}>
         <FolderPlus className="h-4 w-4" />
         <span>{tSftp("contextNewFolder")}</span>
         <ContextMenuShortcut>⌘⇧N</ContextMenuShortcut>
@@ -95,7 +110,7 @@ export function SftpBlankContextMenuContent({
         </ContextMenuItem>
       )}
 
-      <ContextMenuItem onSelect={onCreateFile}>
+      <ContextMenuItem onSelect={() => handleCreateAction(onCreateFile)}>
         <FileText className="h-4 w-4" />
         <span>{tSftp("contextNewFile")}</span>
         <ContextMenuShortcut>⌘N</ContextMenuShortcut>
@@ -152,7 +167,7 @@ export function SftpBlankContextMenu({
   children,
 }: SftpBlankContextMenuProps) {
   return (
-    <ContextMenu onOpenChange={onOpenChange}>
+    <ContextMenu modal={false} onOpenChange={onOpenChange}>
       <ContextMenuTrigger asChild disabled={disabled}>
         {children}
       </ContextMenuTrigger>
@@ -180,6 +195,7 @@ export function SftpFileContextMenu({
 }: SftpFileContextMenuProps) {
   return (
     <ContextMenu
+      modal={false}
       onOpenChange={(open) => {
         if (open) {
           onOpen?.()

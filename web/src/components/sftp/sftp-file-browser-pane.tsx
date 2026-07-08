@@ -350,7 +350,7 @@ export function SftpFileBrowserPane({
   return (
     <SftpBlankContextMenu
       selectedFilesCount={selectedFiles.length}
-      disabled={editingFile !== null || creatingNew !== null}
+      disabled={editingFile !== null}
       onOpenChange={(open) => {
         if (open) {
           onOpenBlankContextMenu()
