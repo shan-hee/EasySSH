@@ -61,7 +61,7 @@ export default function DashboardLayout() {
     const isAdmin = initialUser?.role === "admin" || runtime.principal.role === "owner"
     if (isRouteAllowed(runtime, pathname, isAdmin)) return
 
-    navigate(getRouteFallback(pathname), { replace: true })
+    navigate(getRouteFallback(pathname, runtime, isAdmin), { replace: true })
   }, [initialUser?.role, isLoading, isRuntimeLoading, navigate, pathname, runtime])
 
   // 乐观渲染：立即显示界面，后台验证

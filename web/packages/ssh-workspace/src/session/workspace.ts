@@ -1,4 +1,5 @@
 import type { OptionalServerConnectionInfo, ServerConnectionInfo } from "./types"
+import type { AuthMethod } from "../../../../src/lib/server-types"
 import type {
   BatchDeleteResponse,
   DirectTransferOptions,
@@ -122,17 +123,7 @@ export interface SshWorkspaceI18n {
   timezone?: string
 }
 
-export type WorkspaceAuthMethod =
-  | "password"
-  | "key"
-  | "password_keyboard"
-  | "key_keyboard"
-  | "key_password"
-  | "key_password_keyboard"
-  | "password_key"
-  | "password_key_keyboard"
-  | "keyboard_interactive"
-  | "keyboard"
+export type WorkspaceAuthMethod = AuthMethod
 
 export interface WorkspaceTerminalCredentialSaveRequest {
   serverId: string
@@ -145,6 +136,53 @@ export interface WorkspaceTerminalCredentialSaveRequest {
 export interface WorkspaceSftpCredentialRequest extends WorkspaceTerminalCredentialSaveRequest {
   privateKeyPassphrase?: string
 }
+
+export interface WorkspaceSftpAuthPromptItem {
+  text: string
+  echo: boolean
+}
+
+export interface WorkspaceSftpAuthPrompt {
+  request_id: string
+  kind?: "keyboard_interactive" | "credential_retry" | "private_key_passphrase" | string
+  name?: string
+  instruction?: string
+  prompts: WorkspaceSftpAuthPromptItem[]
+  auth_method?: WorkspaceAuthMethod
+  attempt?: number
+  max_attempts?: number
+  attempts_remaining?: number
+}
+
+export interface WorkspaceSftpHostKeyPrompt {
+  request_id: string
+  host: string
+  port: number
+  expected_key: string
+  received_key: string
+  expected_key_type: string
+  received_key_type: string
+  message?: string
+}
+
+export interface WorkspaceSftpAuthResponsePayload {
+  answers?: string[]
+  authMethod?: WorkspaceAuthMethod
+  password?: string
+  privateKey?: string
+  privateKeyPassphrase?: string
+}
+
+export type WorkspaceSftpAuthPromptResponder = (
+  response: string[] | WorkspaceSftpAuthResponsePayload,
+  cancelled?: boolean,
+  authMethod?: WorkspaceAuthMethod,
+) => void
+
+export type WorkspaceSftpHostKeyResponder = (
+  accepted: boolean,
+  fingerprint?: string,
+) => void
 
 export interface WorkspaceMonitorMetrics {
   systemInfo: {
@@ -353,6 +391,24 @@ export interface SshWorkspaceApiClient {
         password?: string
         privateKey?: string
       },
+    ) => Promise<unknown>
+    preAuthenticate?: (
+      serverId: string,
+      credential: {
+        authMethod?: WorkspaceAuthMethod
+        password?: string
+        privateKey?: string
+        secret?: string
+        privateKeyPassphrase?: string
+      },
+      onAuthPrompt: (
+        prompt: WorkspaceSftpAuthPrompt,
+        respond: WorkspaceSftpAuthPromptResponder,
+      ) => void,
+      onHostKeyPrompt?: (
+        prompt: WorkspaceSftpHostKeyPrompt,
+        respond: WorkspaceSftpHostKeyResponder,
+      ) => void,
     ) => Promise<unknown>
     getFileInfo?: (serverId: string, path: string) => Promise<FileInfo>
     getDiskUsage?: (serverId: string, path?: string) => Promise<DiskUsageResponse>

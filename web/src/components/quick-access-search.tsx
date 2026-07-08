@@ -12,8 +12,12 @@ import {
   CommandItem,
   CommandList,
 } from "@/components/ui/command"
+import { useClientAuth } from "@/components/client-auth-provider"
 import { serversApi, type Server } from "@/lib/api"
 import { cn } from "@/lib/utils"
+import { hasAllCapabilities } from "@/shell/runtime/capabilities"
+import { useRuntime } from "@/shell/runtime/runtime-provider"
+import type { AppCapability, RuntimeProfile } from "@/shell/runtime/types"
 
 const SEARCH_DEBOUNCE_MS = 180
 
@@ -21,6 +25,9 @@ type QuickCommand = {
   label: string
   href: string
   icon: React.ComponentType<{ className?: string }>
+  profiles?: RuntimeProfile[]
+  requiredCapabilities?: AppCapability[]
+  adminOnly?: boolean
 }
 
 function getServerLabel(server: Server) {
@@ -34,20 +41,34 @@ function getServerTarget(server: Server) {
 export function QuickAccessSearch() {
   const navigate = useNavigate()
   const { t } = useTranslation("dashboard")
+  const { runtime } = useRuntime()
+  const { user } = useClientAuth()
   const [open, setOpen] = React.useState(false)
   const [query, setQuery] = React.useState("")
   const [servers, setServers] = React.useState<Server[]>([])
   const [loading, setLoading] = React.useState(false)
 
   const commands = React.useMemo<QuickCommand[]>(() => [
-    { label: t("quickAccessCommandTerminal"), href: "/dashboard/terminal", icon: Terminal },
-    { label: t("quickAccessCommandServers"), href: "/dashboard/servers", icon: ServerIcon },
-    { label: t("quickAccessCommandSftp"), href: "/dashboard/terminal?sftpPicker=1", icon: FolderOpen },
-    { label: t("quickAccessCommandAi"), href: "/dashboard/ai-assistant", icon: Bot },
-    { label: t("quickAccessCommandScripts"), href: "/dashboard/scripts", icon: FileText },
-    { label: t("quickAccessCommandSchedules"), href: "/dashboard/automation/schedules", icon: CalendarClock },
-    { label: t("quickAccessCommandSettings"), href: "/dashboard/settings", icon: Settings },
+    { label: t("quickAccessCommandTerminal"), href: "/dashboard/terminal", icon: Terminal, requiredCapabilities: ["servers", "terminal"] },
+    { label: t("quickAccessCommandServers"), href: "/dashboard", icon: ServerIcon, profiles: ["web"], requiredCapabilities: ["servers"] },
+    { label: t("quickAccessCommandSftp"), href: "/dashboard/terminal?sftpPicker=1", icon: FolderOpen, requiredCapabilities: ["servers", "terminal", "sftp"] },
+    { label: t("quickAccessCommandAi"), href: "/dashboard/ai-assistant", icon: Bot, requiredCapabilities: ["ai"] },
+    { label: t("quickAccessCommandScripts"), href: "/dashboard/scripts", icon: FileText, requiredCapabilities: ["scripts"] },
+    { label: t("quickAccessCommandSchedules"), href: "/dashboard/automation/schedules", icon: CalendarClock, profiles: ["web"], requiredCapabilities: ["automation"] },
+    { label: t("quickAccessCommandSettings"), href: "/dashboard/settings", icon: Settings, profiles: ["web"], requiredCapabilities: ["settings"], adminOnly: true },
   ], [t])
+
+  const isAdmin = user?.role === "admin" || runtime?.principal.role === "owner"
+
+  const visibleCommands = React.useMemo(() => commands.filter((command) => {
+    if (command.adminOnly && !isAdmin) {
+      return false
+    }
+    if (command.profiles && (!runtime || !command.profiles.includes(runtime.profile))) {
+      return false
+    }
+    return hasAllCapabilities(runtime, command.requiredCapabilities)
+  }), [commands, isAdmin, runtime])
 
   React.useEffect(() => {
     if (!open) {
@@ -149,7 +170,7 @@ export function QuickAccessSearch() {
           </CommandGroup>
 
           <CommandGroup heading={t("quickAccessSearchCommands")}>
-            {commands.map((item) => {
+            {visibleCommands.map((item) => {
               const Icon = item.icon
               return (
                 <CommandItem

@@ -392,8 +392,9 @@ func main() {
 		MaxSFTPSessionsPerConn: cfg.SFTP.MaxSFTPSessionsPerConn,
 	}
 	sftpHandler := rest.NewSFTPHandler(serverService, serverRepo, encryptor, sftpUploadWSHandler, sshHostKeyService.GetHostKeyCallback(), sftpPoolConfig, runtimeCredentialStore, operationRecordService)
+	sftpTransferWSHandler.SetPool(sftpHandler.GetPool())
 	sftpHandler.SetTransferHandler(sftpTransferWSHandler) // 注入跨服务器传输处理器
-	sftpAuthWSHandler := ws.NewSFTPAuthHandler(sftpHandler.GetPool(), serverService, securityService, cfg.Server.WebDevPort)
+	sftpAuthWSHandler := ws.NewSFTPAuthHandler(sftpHandler.GetPool(), serverService, securityService, sshHostKeyService, cfg.Server.WebDevPort)
 
 	transferJobRepo := transferjob.NewRepository(database)
 	transferJobService := transferjob.NewService(

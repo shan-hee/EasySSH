@@ -42,6 +42,8 @@ const workbench: NavigationItemDefinition[] = [
     url: "/dashboard",
     icon: Monitor,
     isActive: true,
+    profiles: ["web"],
+    requiredCapabilities: ["servers"],
   },
   {
     titleKey: "aiAssistant",
@@ -65,12 +67,15 @@ const workbench: NavigationItemDefinition[] = [
     titleKey: "schedules",
     url: "/dashboard/automation/schedules",
     icon: CalendarClock,
+    profiles: ["web"],
     requiredCapabilities: ["automation"],
   },
   {
     titleKey: "operationLogs",
     url: "/dashboard/operation-logs",
     icon: ScrollText,
+    profiles: ["web"],
+    requiredCapabilities: ["activity_log"],
   },
 ]
 

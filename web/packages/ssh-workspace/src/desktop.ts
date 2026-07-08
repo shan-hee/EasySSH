@@ -8,11 +8,10 @@ export { TerminalComponent } from "../../../src/components/terminal/terminal-com
 export { TerminalSftpTabContent } from "../../../src/components/terminal/terminal-sftp-tab-content"
 export { SftpServerPickerDialog } from "../../../src/components/sftp/sftp-server-picker-dialog"
 export { ServerConnectionConfigs } from "../../../src/components/servers/server-connection-configs"
-export { LogsClient } from "../../../src/components/logs/logs-client"
-export { default as ScriptsPage } from "../../../src/components/dashboard/scripts/scripts-page"
-export { BackupRestoreTab } from "../../../src/components/settings/backup-restore-tab"
+export { BackupRestoreTab, LogsClient, ScriptsPage } from "./desktop-components"
 export { Activity, ArchiveRestore, ArrowLeft, Bot, Check, Clipboard, Download, ExternalLink, FileText, FolderOpen, Github, Info, Languages, Loader2, Menu, Minus, RefreshCw, RotateCw, Square, Terminal, TriangleAlert, X } from "lucide-react"
-export type { ScriptsPageAdapters, ScriptsPageProps } from "../../../src/components/dashboard/scripts/scripts-page"
+export type { BackupRestoreTabProps, LogsClientProps, ScriptsPageProps } from "./desktop-components"
+export type { ScriptsPageAdapters } from "../../../src/components/dashboard/scripts/scripts-page"
 export type { BackupContent, BackupRestoreAdapter, ConflictStrategy } from "../../../src/components/settings/backup-restore-tab"
 export type { TerminalSftpTabContentProps } from "../../../src/components/terminal/terminal-sftp-tab-content"
 export type {
@@ -22,6 +21,21 @@ export type {
 export type { TerminalSession, TerminalConnectionPhase } from "../../../src/components/terminal/types"
 export type { ServerConnectionConfigsApi } from "../../../src/components/servers/server-connection-configs"
 export { DEFAULT_SYSTEM_CONFIG, StaticSystemConfigProvider } from "../../../src/contexts/system-config-context"
+export {
+  authMethodCredentialFields,
+  authMethodFactors,
+  normalizeSSHAuthMethod,
+  primaryCredentialMethod,
+  requiresPassword,
+  requiresPrivateKey,
+  supportsKeyboardInteractive,
+} from "../../../src/lib/ssh-auth-methods"
+export type {
+  SSHAuthFactor,
+  SSHAuthMethod,
+  SSHAuthMethodValue,
+  SSHCredentialField,
+} from "../../../src/lib/ssh-auth-methods"
 export { DEFAULT_SFTP_DOWNLOAD_EXCLUDE_PATTERNS, parseWorkspaceDownloadExcludePatterns } from "./session/workspace-settings"
 export type { WorkspaceDownloadExcludePatternSource } from "./session/workspace-settings"
 export type { DirectTransferOptions } from "./session/sftp-types"
@@ -31,7 +45,7 @@ export type { RuntimeWorkspaceCapabilitiesOptions } from "../../../src/shell/run
 export { WORKSPACE_CAPABILITY_PRESETS } from "../../../src/shell/runtime/workspace-capability-presets"
 export type { WorkspaceCapabilityPresetName } from "../../../src/shell/runtime/workspace-capability-presets"
 export { createTerminalWorkspaceSessionControllerAdapter, createTerminalWorkspaceSessionStoreAdapter, useTerminalStore } from "../../../src/stores/terminal-store"
-export type { Server } from "../../../src/lib/server-types"
+export type { AuthMethod, Server } from "../../../src/lib/server-types"
 export type { ServerListResponse } from "../../../src/lib/server-types"
 export type {
   CreateScriptRequest,
@@ -108,6 +122,12 @@ export type {
   WorkspaceSessionSeed,
   WorkspaceSessionSnapshot,
   WorkspaceSftpCredentialRequest,
+  WorkspaceSftpAuthPrompt,
+  WorkspaceSftpAuthPromptItem,
+  WorkspaceSftpAuthPromptResponder,
+  WorkspaceSftpAuthResponsePayload,
+  WorkspaceSftpHostKeyPrompt,
+  WorkspaceSftpHostKeyResponder,
   WorkspaceTerminalCredentialSaveRequest,
   WorkspaceTerminalSession,
   WorkspaceTransferHistoryItem,

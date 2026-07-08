@@ -95,7 +95,6 @@ func NewRuntimeInfo(options RuntimeOptions) RuntimeInfo {
 				CapabilitySFTP,
 				CapabilityTransfers,
 				CapabilityScripts,
-				CapabilityAutomation,
 				CapabilityMonitoring,
 				CapabilityDocker,
 				CapabilityAI,

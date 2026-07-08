@@ -78,7 +78,7 @@ function createTerminalSessionFromServer(
   return {
     id: sessionId,
     serverId: String(server.id),
-    authMethod: server.auth_method === "key" ? "key" : "password",
+    authMethod: server.auth_method,
     serverName: server.name || `${server.username}@${server.host}:${server.port}`,
     host: server.host,
     port: server.port,
@@ -113,7 +113,7 @@ function createSftpTabSession(tab: DesktopSftpTab): TerminalSession {
   return {
     id: tab.id,
     serverId: String(tab.server.id),
-    authMethod: tab.server.auth_method === "key" ? "key" : "password",
+    authMethod: tab.server.auth_method,
     serverName: tab.label,
     host: tab.server.host,
     port: tab.server.port,
@@ -141,6 +141,7 @@ function shouldCheckTerminalInactivity(session: TerminalSession) {
 function App() {
   const [locale, setLocale] = useState<Locale>(() => getEffectiveLocale(null, DEFAULT_SYSTEM_CONFIG))
   const [runtime, setRuntime] = useState<DesktopRuntimeBindingInfo | null>(null)
+  const [runtimeLoaded, setRuntimeLoaded] = useState(false)
   const [preferenceSnapshot, setPreferenceSnapshot] = useState<DesktopPreferenceSnapshot | null>(null)
   const [activeView, setActiveView] = useState<DesktopView>("terminal")
   const [aiAssistantMounted, setAiAssistantMounted] = useState(false)
@@ -175,17 +176,19 @@ function App() {
   const workspaceSessionStore = useMemo(() => createTerminalWorkspaceSessionStoreAdapter(), [])
   const workspaceSessionController = useMemo(() => createTerminalWorkspaceSessionControllerAdapter(), [])
   const workspacePreferences = useMemo(() => createDesktopPreferenceAdapter(preferenceSnapshot ?? {}), [preferenceSnapshot])
-  const sftpApi = useMemo(() => createDesktopSftpApi(), [])
   const desktopTransferTicketProvider = useCallback(async () => ({ ticket: "desktop" }), [])
+  const desktopGateway = runtime?.gateway
+  const desktopGatewayWsBaseUrl = desktopGateway?.wsBaseUrl
+  const desktopGatewayToken = desktopGateway?.token
+  const desktopTerminalGatewayReady = Boolean(desktopGatewayWsBaseUrl && desktopGatewayToken)
+  const desktopTerminalTransportReady = desktopTerminalGatewayReady || runtimeLoaded
+  const sftpApi = useMemo(() => createDesktopSftpApi(desktopGateway, runtimeLoaded), [desktopGateway, runtimeLoaded])
   const fileTransfer = useFileTransfer({
     api: sftpApi as FileTransferSftpApi,
     createTicket: desktopTransferTicketProvider,
     uploadUsesProgressSocket: sftpApi.uploadUsesProgressSocket,
     serverTransferUsesProgressSocket: sftpApi.serverTransferUsesProgressSocket,
   })
-  const desktopGateway = runtime?.gateway
-  const desktopGatewayWsBaseUrl = desktopGateway?.wsBaseUrl
-  const desktopGatewayToken = desktopGateway?.token
   const monitorApi = useMemo(
     () => createDesktopMonitorApi(desktopGateway),
     [desktopGateway],
@@ -198,6 +201,19 @@ function App() {
   ), [runtimeInfo])
   const totalTabCount = sessions.length + sftpTabs.length
   const sftpTabSessions = useMemo(() => sftpTabs.map(createSftpTabSession), [sftpTabs])
+  const visibleTerminalSessions = useMemo(() => (
+    desktopTerminalTransportReady
+      ? sessions
+      : sessions.map((session) => (
+        session.type === "terminal" && session.shouldConnect
+          ? {
+              ...session,
+              shouldConnect: false,
+              connectionPhase: "idle" as TerminalConnectionPhase,
+            }
+          : session
+      ))
+  ), [desktopTerminalTransportReady, sessions])
   const combinedSessionsRef = useRef<TerminalSession[]>([])
   combinedSessionsRef.current = [...sessions, ...sftpTabSessions]
 
@@ -226,23 +242,26 @@ function App() {
     monitor: monitorApi,
     docker: dockerApi,
     terminal: {
-      ...(desktopGatewayWsBaseUrl && desktopGatewayToken ? {} : { WebSocketCtor: terminalSocket }),
+      ...(desktopTerminalGatewayReady || !runtimeLoaded ? {} : { WebSocketCtor: terminalSocket }),
       createWebSocketUrl: ({ serverId, cols, rows, ticket }) => {
         const params = new URLSearchParams()
         params.set("serverId", serverId)
         params.set("cols", String(cols))
         params.set("rows", String(rows))
-        if (desktopGatewayWsBaseUrl && desktopGatewayToken) {
-          params.set("ticket", ticket || desktopGatewayToken)
+        if (desktopTerminalGatewayReady) {
+          params.set("ticket", ticket || desktopGatewayToken || "desktop")
           return `${desktopGatewayWsBaseUrl}/terminal?${params.toString()}`
+        }
+        if (!runtimeLoaded) {
+          throw new Error("desktop terminal runtime is not ready")
         }
         return `desktop://terminal?${params.toString()}`
       },
-      saveVerifiedCredential: async ({ serverId, authMethod, secret }) => {
-        await saveDesktopVerifiedCredential({ serverId, authMethod, secret })
+      saveVerifiedCredential: async ({ serverId, authMethod, secret, password, privateKey }) => {
+        await saveDesktopVerifiedCredential({ serverId, authMethod, secret, password, privateKey })
       },
     },
-  }), [desktopGatewayToken, desktopGatewayWsBaseUrl, dockerApi, monitorApi, sftpApi, terminalSocket])
+  }), [desktopGatewayToken, desktopGatewayWsBaseUrl, desktopTerminalGatewayReady, dockerApi, monitorApi, runtimeLoaded, sftpApi, terminalSocket])
 
   const handleLocaleChange = useCallback((nextLocale: Locale) => {
     if (nextLocale === locale) {
@@ -333,11 +352,26 @@ function App() {
   }, [locale])
 
   useEffect(() => {
+    let mounted = true
+
     loadDesktopRuntime()
-      .then(setRuntime)
+      .then((runtimeInfo) => {
+        if (mounted) {
+          setRuntime(runtimeInfo)
+        }
+      })
       .catch((error) => {
         console.error("Failed to load desktop runtime:", error)
       })
+      .finally(() => {
+        if (mounted) {
+          setRuntimeLoaded(true)
+        }
+      })
+
+    return () => {
+      mounted = false
+    }
   }, [])
 
   useEffect(() => {
@@ -724,7 +758,7 @@ function App() {
                 onSelect={handleCreateSftpTabFromServer}
               />
               <TerminalComponent
-                sessions={sessions}
+                sessions={visibleTerminalSessions}
                 onNewSession={handleNewSession}
                 extraSessions={sftpTabSessions}
                 extraNewSessionActions={[{

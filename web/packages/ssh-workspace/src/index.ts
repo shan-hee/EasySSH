@@ -14,6 +14,21 @@ export type {
   WorkspaceUiTranslator,
 } from "./components/ssh-workspace/use-workspace-translator"
 export {
+  authMethodCredentialFields,
+  authMethodFactors,
+  normalizeSSHAuthMethod,
+  primaryCredentialMethod,
+  requiresPassword,
+  requiresPrivateKey,
+  supportsKeyboardInteractive,
+} from "../../../src/lib/ssh-auth-methods"
+export type {
+  SSHAuthFactor,
+  SSHAuthMethod,
+  SSHAuthMethodValue,
+  SSHCredentialField,
+} from "../../../src/lib/ssh-auth-methods"
+export {
   DEFAULT_SFTP_DOWNLOAD_EXCLUDE_PATTERNS,
   parseWorkspaceDownloadExcludePatterns,
 } from "./session/workspace-settings"

@@ -5,15 +5,23 @@ import { ClientAuthProvider } from "@/components/client-auth-provider"
 import { Button } from "@/components/ui/button"
 import type { Locale } from "@/i18n"
 import { DashboardI18nProvider } from "@/providers/dashboard-i18n-provider"
+import {
+  DESKTOP_LOCAL_EMAIL,
+  DESKTOP_LOCAL_OWNER_ID,
+  DESKTOP_LOCAL_TIMEZONE,
+  DESKTOP_LOCAL_USERNAME,
+} from "../adapters/desktop-local-identity"
 
 function createDesktopUser(locale: Locale): NonNullable<ComponentProps<typeof ClientAuthProvider>["initialUser"]> {
+  // Desktop has no Web account system. This local owner object only satisfies
+  // shared Dashboard component context while preserving single-user semantics.
   return {
-    id: "desktop-local-owner",
-    username: "desktop",
-    email: "desktop@easyssh.local",
-    role: "admin",
+    id: DESKTOP_LOCAL_OWNER_ID,
+    username: DESKTOP_LOCAL_USERNAME,
+    email: DESKTOP_LOCAL_EMAIL,
+    role: "owner",
     language: locale,
-    timezone: "Asia/Shanghai",
+    timezone: DESKTOP_LOCAL_TIMEZONE,
     created_at: new Date(0).toISOString(),
     updated_at: new Date(0).toISOString(),
   }

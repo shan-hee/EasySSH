@@ -34,9 +34,9 @@ func main() {
 	terminalService := NewDesktopTerminalService(serverService)
 	sftpService := NewDesktopSFTPService(serverService, activityLogService)
 	monitorService := NewDesktopMonitorService(serverService)
-	desktopGateway := NewDesktopGateway(serverService, scriptService, monitorService)
+	desktopGateway := NewDesktopGateway(serverService, scriptService, monitorService, sftpService)
 	dockerService := NewDesktopDockerService(serverService)
-	aiService := NewDesktopAIService()
+	aiService := NewDesktopAIService(serverService, sftpService, monitorService)
 	backupService := NewDesktopBackupService()
 	updateService := NewDesktopUpdateService()
 
