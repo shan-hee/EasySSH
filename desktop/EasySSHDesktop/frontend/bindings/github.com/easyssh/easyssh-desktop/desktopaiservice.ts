@@ -19,6 +19,12 @@ export function CloseSession(id: string): $CancellablePromise<void> {
     return $Call.ByID(2012466751, id);
 }
 
+export function ConfirmTask(input: $models.DesktopAIConfirmTaskInput): $CancellablePromise<$models.DesktopAICreateSessionResponse> {
+    return $Call.ByID(3604708908, input).then(($result: any) => {
+        return $$createType1($result);
+    });
+}
+
 export function CreateSession(input: $models.DesktopAICreateSessionInput): $CancellablePromise<$models.DesktopAICreateSessionResponse> {
     return $Call.ByID(1223357961, input).then(($result: any) => {
         return $$createType1($result);

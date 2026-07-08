@@ -69,6 +69,35 @@ export class DesktopAICreateSessionInput {
     }
 }
 
+export class DesktopAIConfirmTaskInput {
+    "session_id": string;
+    "task_id": string;
+    "decision": string;
+
+    /** Creates a new DesktopAIConfirmTaskInput instance. */
+    constructor($$source: Partial<DesktopAIConfirmTaskInput> = {}) {
+        if (!("session_id" in $$source)) {
+            this["session_id"] = "";
+        }
+        if (!("task_id" in $$source)) {
+            this["task_id"] = "";
+        }
+        if (!("decision" in $$source)) {
+            this["decision"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new DesktopAIConfirmTaskInput instance from a string or object.
+     */
+    static createFrom($$source: any = {}): DesktopAIConfirmTaskInput {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new DesktopAIConfirmTaskInput($$parsedSource as Partial<DesktopAIConfirmTaskInput>);
+    }
+}
+
 export class DesktopAICreateSessionResponse {
     "session_id": string;
     "session": DesktopAISessionView;

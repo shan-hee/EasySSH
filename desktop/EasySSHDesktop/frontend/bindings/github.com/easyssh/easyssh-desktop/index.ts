@@ -30,6 +30,7 @@ export {
 
 export {
     DesktopAIConfigStatus,
+    DesktopAIConfirmTaskInput,
     DesktopAICreateSessionInput,
     DesktopAICreateSessionResponse,
     DesktopAIListSessionsParams,

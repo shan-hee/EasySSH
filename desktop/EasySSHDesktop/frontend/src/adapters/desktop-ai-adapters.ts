@@ -1,5 +1,5 @@
 import type { AIAssistantWorkspaceAdapters } from "@/components/ai-agent/ai-assistant-workspace-view"
-import { Call, Events } from "@wailsio/runtime"
+import { Events } from "@wailsio/runtime"
 import type {
   AgentSessionScope,
   AgentSessionStatus,
@@ -18,6 +18,7 @@ import type {
 import type { ServerConnectionConfigsApi } from "@easyssh/ssh-workspace/desktop"
 import * as DesktopAIService from "../../bindings/github.com/easyssh/easyssh-desktop/desktopaiservice"
 import {
+  DesktopAIConfirmTaskInput,
   DesktopAICreateSessionInput,
   type DesktopAICreateSessionResponse,
   type DesktopAIListSessionsResult,
@@ -35,7 +36,6 @@ import {
 
 const desktopAiConfigQueryKey = ["desktopAiConfig"]
 const desktopAISessionEvent = "easyssh:desktop-ai:session-event"
-const desktopAIConfirmTaskMethodName = "github.com/easyssh/easyssh-desktop.DesktopAIService.ConfirmTask"
 
 type DesktopAITaskViewWithAssistantMessage = DesktopAITaskView & {
   assistant_message_id?: string
@@ -122,11 +122,11 @@ export function createDesktopAIAssistantAdapters(serverApi: ServerConnectionConf
         })
       }),
       confirmTask: async (input) => fromDesktopSessionResponse(
-        await Call.ByName(desktopAIConfirmTaskMethodName, {
+        await DesktopAIService.ConfirmTask(new DesktopAIConfirmTaskInput({
           session_id: input.session_id,
           task_id: input.task_id,
           decision: input.decision,
-        }) as DesktopAICreateSessionResponse
+        }))
       ),
       cancelSession: async (sessionId: string) => {
         await DesktopAIService.CancelSession(sessionId)
