@@ -25,7 +25,7 @@ export function DesktopProviders({ children }: { children: ReactNode }) {
             </SidebarProvider>
           </StaticSystemConfigProvider>
         </QueryProvider>
-        <Toaster richColors position="top-right" />
+        <Toaster richColors position="bottom-right" />
       </ThemeProvider>
     </BrowserRouter>
   )
