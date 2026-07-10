@@ -24,12 +24,14 @@ import (
 	"github.com/easyssh/server/internal/domain/batchtask"
 	"github.com/easyssh/server/internal/domain/completion"
 	"github.com/easyssh/server/internal/domain/dashboard"
+	"github.com/easyssh/server/internal/domain/inboxnotification"
 	"github.com/easyssh/server/internal/domain/monitor"
 	"github.com/easyssh/server/internal/domain/monitoring"
 	"github.com/easyssh/server/internal/domain/notification"
 	"github.com/easyssh/server/internal/domain/notificationconfig"
 	"github.com/easyssh/server/internal/domain/operationrecord"
 	"github.com/easyssh/server/internal/domain/permission"
+	"github.com/easyssh/server/internal/domain/realtime"
 	"github.com/easyssh/server/internal/domain/scheduledtask"
 	"github.com/easyssh/server/internal/domain/script"
 	"github.com/easyssh/server/internal/domain/security"
@@ -39,6 +41,7 @@ import (
 	"github.com/easyssh/server/internal/domain/sshhostkey"
 	"github.com/easyssh/server/internal/domain/sshkey"
 	"github.com/easyssh/server/internal/domain/systemconfig"
+	"github.com/easyssh/server/internal/domain/taskcenter"
 	"github.com/easyssh/server/internal/domain/taskexecutor"
 	"github.com/easyssh/server/internal/domain/taskscheduler"
 	"github.com/easyssh/server/internal/domain/transferjob"
@@ -95,6 +98,10 @@ func main() {
 		&scheduledtask.ScheduledTask{},     // 定时任务表
 		&operationrecord.OperationRecord{}, // 统一操作记录表
 		&transferjob.TransferJob{},         // 后台文件传输任务表
+		&taskcenter.TaskRun{},              // 统一任务运行表
+		&taskcenter.TaskEvent{},            // 任务事件表
+		&inboxnotification.Notification{},  // 站内通知表
+		&inboxnotification.Delivery{},      // 通知投递记录表
 		// 新的配置表
 		&systemconfig.SystemConfig{},             // 系统配置表
 		&security.SecurityConfig{},               // 安全配置表
@@ -307,6 +314,15 @@ func main() {
 	operationRecordRepo := operationrecord.NewRepository(database)
 	operationRecordService := operationrecord.NewService(operationRecordRepo)
 
+	// 统一任务运行中心与站内通知
+	realtimeHub := realtime.NewHub()
+	taskCenterRepo := taskcenter.NewRepository(database)
+	taskCenterService := taskcenter.NewService(taskCenterRepo, realtimeHub)
+	inboxNotificationRepo := inboxnotification.NewRepository(database)
+	inboxNotificationService := inboxnotification.NewService(inboxNotificationRepo, authRepo, notificationConfigService, emailService, realtimeHub)
+	inboxNotificationService.Start(context.Background())
+	taskCenterService.SetNotifier(inboxNotificationService)
+
 	// 任务执行引擎
 	taskExecutor := taskexecutor.NewExecutor(
 		serverService,
@@ -315,8 +331,14 @@ func main() {
 		encryptor,
 		10, // 最大并发数
 		operationRecordService,
+		taskCenterService,
 	)
 	taskExecutor.SetHostKeyCallback(sshHostKeyService.GetHostKeyCallback())
+	taskCenterService.SetCanceler(taskExecutor)
+	taskCenterService.SetDefinitionStatusUpdater(taskExecutor)
+	if err := taskCenterService.RecoverInterrupted(context.Background()); err != nil {
+		log.Printf("⚠️ Warning: Failed to recover interrupted task runs: %v", err)
+	}
 
 	// 注入执行器到批量任务服务
 	batchTaskService.SetExecutor(taskExecutor)
@@ -392,6 +414,7 @@ func main() {
 		MaxSFTPSessionsPerConn: cfg.SFTP.MaxSFTPSessionsPerConn,
 	}
 	sftpHandler := rest.NewSFTPHandler(serverService, serverRepo, encryptor, sftpUploadWSHandler, sshHostKeyService.GetHostKeyCallback(), sftpPoolConfig, runtimeCredentialStore, operationRecordService)
+	sftpHandler.SetTaskCenter(taskCenterService)
 	sftpTransferWSHandler.SetPool(sftpHandler.GetPool())
 	sftpHandler.SetTransferHandler(sftpTransferWSHandler) // 注入跨服务器传输处理器
 	sftpAuthWSHandler := ws.NewSFTPAuthHandler(sftpHandler.GetPool(), serverService, securityService, sshHostKeyService, cfg.Server.WebDevPort)
@@ -405,6 +428,7 @@ func main() {
 		operationRecordService,
 		transferjob.ServiceOptions{DataDir: runtimeInfo.DataDir},
 	)
+	transferJobService.SetTaskCenter(taskCenterService)
 	taskExecutor.SetTransferJobService(transferJobService)
 	transferJobService.StartMaintenance(context.Background())
 
@@ -426,6 +450,9 @@ func main() {
 	scheduledTaskHandler := rest.NewScheduledTaskHandler(scheduledTaskService)
 	scheduledTaskHandler.SetTransferJobService(transferJobService)
 	transferJobHandler := rest.NewTransferJobHandler(transferJobService)
+	taskCenterHandler := rest.NewTaskCenterHandler(taskCenterService, scheduledTaskService)
+	inboxNotificationHandler := rest.NewInboxNotificationHandler(inboxNotificationService)
+	realtimeHandler := rest.NewRealtimeHandler(realtimeHub)
 	operationRecordHandler := rest.NewOperationRecordHandler(operationRecordService)
 	userHandler := rest.NewUserHandler(userService, accountLockService)
 	permissionHandler := rest.NewPermissionHandler(permissionService)
@@ -681,10 +708,11 @@ func main() {
 			sftpRoutes.GET("/download", middleware.RequirePermission(permissionService, "file:manage"), sftpHandler.DownloadFile)           // 下载文件
 
 			// 文件操作
-			sftpRoutes.POST("/mkdir", middleware.RequirePermission(permissionService, "file:manage"), sftpHandler.CreateDirectory) // 创建目录
-			sftpRoutes.DELETE("/delete", middleware.RequirePermission(permissionService, "file:manage"), sftpHandler.Delete)       // 删除
-			sftpRoutes.POST("/rename", middleware.RequirePermission(permissionService, "file:manage"), sftpHandler.Rename)         // 重命名
-			sftpRoutes.POST("/chmod", middleware.RequirePermission(permissionService, "file:manage"), sftpHandler.Chmod)           // 修改权限
+			sftpRoutes.POST("/mkdir", middleware.RequirePermission(permissionService, "file:manage"), sftpHandler.CreateDirectory)    // 创建目录
+			sftpRoutes.DELETE("/delete", middleware.RequirePermission(permissionService, "file:manage"), sftpHandler.Delete)          // 删除
+			sftpRoutes.POST("/delete-paths", middleware.RequirePermission(permissionService, "file:manage"), sftpHandler.DeletePaths) // 快速删除，失败时回退为递归任务
+			sftpRoutes.POST("/rename", middleware.RequirePermission(permissionService, "file:manage"), sftpHandler.Rename)            // 重命名
+			sftpRoutes.POST("/chmod", middleware.RequirePermission(permissionService, "file:manage"), sftpHandler.Chmod)              // 修改权限
 
 			// 批量操作
 			sftpRoutes.POST("/batch-delete", middleware.RequirePermission(permissionService, "file:manage"), sftpHandler.BatchDelete)     // 批量删除
@@ -798,6 +826,35 @@ func main() {
 			transferJobRoutes.POST("/:id/cancel", transferJobHandler.Cancel)
 			transferJobRoutes.DELETE("/:id", transferJobHandler.Delete)
 			transferJobRoutes.GET("/:id/artifact", transferJobHandler.DownloadArtifact)
+		}
+
+		// 用户任务与通知实时事件
+		realtimeRoutes := v1.Group("/events")
+		realtimeRoutes.Use(middleware.AuthMiddleware(jwtService, ticketService, authRepo))
+		{
+			realtimeRoutes.GET("/stream", realtimeHandler.Stream)
+		}
+
+		// 统一任务运行中心
+		taskCenterRoutes := v1.Group("/tasks")
+		taskCenterRoutes.Use(middleware.AuthMiddleware(jwtService, ticketService, authRepo))
+		{
+			taskCenterRoutes.GET("", taskCenterHandler.List)
+			taskCenterRoutes.GET("/statistics", taskCenterHandler.Statistics)
+			taskCenterRoutes.GET("/:id", taskCenterHandler.Get)
+			taskCenterRoutes.POST("/:id/cancel", taskCenterHandler.Cancel)
+			taskCenterRoutes.POST("/:id/retry", taskCenterHandler.Retry)
+		}
+
+		// 用户站内通知
+		inboxNotificationRoutes := v1.Group("/notifications")
+		inboxNotificationRoutes.Use(middleware.AuthMiddleware(jwtService, ticketService, authRepo))
+		{
+			inboxNotificationRoutes.GET("", inboxNotificationHandler.List)
+			inboxNotificationRoutes.POST("/read-all", inboxNotificationHandler.MarkAllRead)
+			inboxNotificationRoutes.DELETE("/read", inboxNotificationHandler.ClearRead)
+			inboxNotificationRoutes.POST("/:id/read", inboxNotificationHandler.MarkRead)
+			inboxNotificationRoutes.DELETE("/:id", inboxNotificationHandler.Delete)
 		}
 
 		// 脚本管理路由（需要认证）
@@ -1049,6 +1106,9 @@ func main() {
 
 	transferJobService.Stop()
 	log.Println("✅ Transfer job service stopped")
+
+	inboxNotificationService.Stop()
+	log.Println("✅ Notification delivery worker stopped")
 
 	// 关闭 SFTP 连接池
 	if sftpHandler != nil {

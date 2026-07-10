@@ -54,17 +54,21 @@ var backupTablePolicies = map[string]backupTablePolicy{
 
 	// Operational history and append-like records. They remain in the database section but keep
 	// explicit policy metadata so later UI can expose them separately without touching restore logic.
-	"operation_records": historyPolicy("operation_records", [][]string{{"source_table", "source_id"}}, true),
-	"login_attempts":    historyPolicy("login_attempts", [][]string{{"id"}}, false),
-	"login_alerts":      historyPolicy("login_alerts", nil, true),
-	"ai_sessions":       historyPolicy("ai_sessions", nil, true),
+	"operation_records":   historyPolicy("operation_records", [][]string{{"source_table", "source_id"}}, true),
+	"task_runs":           historyPolicy("task_runs", [][]string{{"id"}}, true),
+	"task_events":         historyPolicy("task_events", [][]string{{"id"}}, true),
+	"inbox_notifications": historyPolicy("inbox_notifications", [][]string{{"id"}}, true),
+	"login_attempts":      historyPolicy("login_attempts", [][]string{{"id"}}, false),
+	"login_alerts":        historyPolicy("login_alerts", nil, true),
+	"ai_sessions":         historyPolicy("ai_sessions", nil, true),
 
 	// Runtime/security state should not travel with backup restore. Sessions, trusted devices,
 	// and RSA key material are derived security state and must be regenerated in the target env.
-	"user_sessions":   ignoredRuntimePolicy("user_sessions"),
-	"trusted_devices": ignoredRuntimePolicy("trusted_devices"),
-	"rsa_key_pairs":   ignoredRuntimePolicy("rsa_key_pairs"),
-	"transfer_jobs":   ignoredRuntimePolicy("transfer_jobs"),
+	"user_sessions":           ignoredRuntimePolicy("user_sessions"),
+	"trusted_devices":         ignoredRuntimePolicy("trusted_devices"),
+	"rsa_key_pairs":           ignoredRuntimePolicy("rsa_key_pairs"),
+	"transfer_jobs":           ignoredRuntimePolicy("transfer_jobs"),
+	"notification_deliveries": ignoredRuntimePolicy("notification_deliveries"),
 }
 
 func singletonConfigPolicy(table string) backupTablePolicy {

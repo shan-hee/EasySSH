@@ -69,6 +69,7 @@ type TransferJob struct {
 	RetryCount      int        `gorm:"default:0" json:"retry_count"`
 	MaxRetries      int        `gorm:"default:0" json:"max_retries"`
 	ScheduledTaskID *uuid.UUID `gorm:"type:char(36);index" json:"scheduled_task_id,omitempty"`
+	TaskRunID       *uuid.UUID `gorm:"type:char(36);index" json:"task_run_id,omitempty"`
 	ErrorMessage    string     `gorm:"type:text" json:"error_message,omitempty"`
 	DetailJSON      string     `gorm:"type:text" json:"detail_json,omitempty"`
 
@@ -100,6 +101,7 @@ type CreateUploadRequest struct {
 	Description     string     `json:"description"`
 	DeferStart      bool       `json:"defer_start"`
 	ScheduledTaskID *uuid.UUID `json:"scheduled_task_id,omitempty"`
+	TaskRunID       *uuid.UUID `json:"-"`
 }
 
 type CreateDownloadRequest struct {
@@ -109,6 +111,7 @@ type CreateDownloadRequest struct {
 	RetentionDays   int        `json:"retention_days"`
 	Description     string     `json:"description"`
 	ScheduledTaskID *uuid.UUID `json:"scheduled_task_id,omitempty"`
+	TaskRunID       *uuid.UUID `json:"-"`
 }
 
 type ListRequest struct {
@@ -157,4 +160,5 @@ type RunScheduledRequest struct {
 	TaskName        string
 	TaskType        string
 	PayloadJSON     string
+	TaskRunID       uuid.UUID
 }

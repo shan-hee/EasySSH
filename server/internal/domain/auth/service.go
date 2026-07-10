@@ -127,7 +127,7 @@ type Service interface {
 	// Notification settings
 
 	// UpdateNotificationSettings 更新通知设置
-	UpdateNotificationSettings(ctx context.Context, userID uuid.UUID, emailLogin, emailAlert, browser, newDevice, newLocation, suspicious *bool) error
+	UpdateNotificationSettings(ctx context.Context, userID uuid.UUID, emailLogin, emailAlert, browser, newDevice, newLocation, suspicious, taskInApp, taskSuccess, taskFailure, taskPartial, taskExternal *bool) error
 
 	// Monitor Data Source settings
 
@@ -1335,7 +1335,7 @@ func (s *authService) RevokeAllOtherSessions(ctx context.Context, userID uuid.UU
 // === Notification Settings ===
 
 // UpdateNotificationSettings 更新通知设置
-func (s *authService) UpdateNotificationSettings(ctx context.Context, userID uuid.UUID, emailLogin, emailAlert, browser, newDevice, newLocation, suspicious *bool) error {
+func (s *authService) UpdateNotificationSettings(ctx context.Context, userID uuid.UUID, emailLogin, emailAlert, browser, newDevice, newLocation, suspicious, taskInApp, taskSuccess, taskFailure, taskPartial, taskExternal *bool) error {
 	// 查找用户
 	user, err := s.repo.FindByID(ctx, userID)
 	if err != nil {
@@ -1360,6 +1360,21 @@ func (s *authService) UpdateNotificationSettings(ctx context.Context, userID uui
 	}
 	if suspicious != nil {
 		user.NotifySuspicious = *suspicious
+	}
+	if taskInApp != nil {
+		user.NotifyTaskInApp = *taskInApp
+	}
+	if taskSuccess != nil {
+		user.NotifyTaskSuccess = *taskSuccess
+	}
+	if taskFailure != nil {
+		user.NotifyTaskFailure = *taskFailure
+	}
+	if taskPartial != nil {
+		user.NotifyTaskPartial = *taskPartial
+	}
+	if taskExternal != nil {
+		user.NotifyTaskExternal = *taskExternal
 	}
 
 	return s.repo.Update(ctx, user)

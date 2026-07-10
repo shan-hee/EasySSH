@@ -1644,12 +1644,17 @@ func (h *AuthHandler) RevokeAllOtherSessions(c *gin.Context) {
 
 // UpdateNotificationSettingsRequest 更新通知设置请求
 type UpdateNotificationSettingsRequest struct {
-	EmailLogin  *bool `json:"email_login"`
-	EmailAlert  *bool `json:"email_alert"`
-	Browser     *bool `json:"browser"`
-	NewDevice   *bool `json:"new_device"`   // 新设备登录通知
-	NewLocation *bool `json:"new_location"` // 新地点登录通知
-	Suspicious  *bool `json:"suspicious"`   // 可疑登录通知
+	EmailLogin   *bool `json:"email_login"`
+	EmailAlert   *bool `json:"email_alert"`
+	Browser      *bool `json:"browser"`
+	NewDevice    *bool `json:"new_device"`   // 新设备登录通知
+	NewLocation  *bool `json:"new_location"` // 新地点登录通知
+	Suspicious   *bool `json:"suspicious"`   // 可疑登录通知
+	TaskInApp    *bool `json:"task_in_app"`
+	TaskSuccess  *bool `json:"task_success"`
+	TaskFailure  *bool `json:"task_failure"`
+	TaskPartial  *bool `json:"task_partial"`
+	TaskExternal *bool `json:"task_external"`
 }
 
 // UpdateNotificationSettings - PUT /api/v1/users/me/notifications
@@ -1697,6 +1702,11 @@ func (h *AuthHandler) UpdateNotificationSettings(c *gin.Context) {
 		req.NewDevice,
 		req.NewLocation,
 		req.Suspicious,
+		req.TaskInApp,
+		req.TaskSuccess,
+		req.TaskFailure,
+		req.TaskPartial,
+		req.TaskExternal,
 	); err != nil {
 		RespondError(c, http.StatusInternalServerError, "internal_error", "Failed to update notification settings: "+err.Error())
 		return

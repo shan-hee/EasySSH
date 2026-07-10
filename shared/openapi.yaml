@@ -46,6 +46,12 @@ tags:
     description: 用户管理
   - name: ai
     description: AI Agent 会话运行时
+  - name: tasks
+    description: 统一任务运行与控制
+  - name: notifications
+    description: 用户站内通知
+  - name: realtime
+    description: 用户任务与通知实时事件
 
 components:
   securitySchemes:
@@ -246,12 +252,385 @@ components:
           type: string
           format: uri
           example: https://api.example.com/avatars/user.jpg
+        language:
+          type: string
+          example: zh-CN
+        timezone:
+          type: string
+          example: Asia/Shanghai
+        notify_task_in_app:
+          type: boolean
+          description: 是否接收任务结果站内通知
+        notify_task_success:
+          type: boolean
+          description: 是否接收任务成功通知
+        notify_task_failure:
+          type: boolean
+          description: 是否接收任务失败或超时通知
+        notify_task_partial:
+          type: boolean
+          description: 是否接收任务部分成功通知
+        notify_task_external:
+          type: boolean
+          description: 是否通过已启用的外部渠道接收任务通知
         created_at:
           type: string
           format: date-time
         updated_at:
           type: string
           format: date-time
+
+    # ========================================
+    # 统一任务中心与站内通知
+    # ========================================
+    TaskRunStatus:
+      type: string
+      enum: [queued, running, succeeded, failed, partial_success, canceling, canceled, timeout]
+
+    TaskRun:
+      type: object
+      required:
+        - id
+        - user_id
+        - task_type
+        - title
+        - trigger_type
+        - runner
+        - status
+        - progress
+        - total_count
+        - success_count
+        - failure_count
+        - cancelable
+        - retryable
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+        definition_id:
+          type: string
+          format: uuid
+        retry_of_id:
+          type: string
+          format: uuid
+        source_type:
+          type: string
+          example: scheduled_task
+        source_id:
+          type: string
+        task_type:
+          type: string
+          example: sftp_recursive_delete
+        title:
+          type: string
+        description:
+          type: string
+        trigger_type:
+          type: string
+          enum: [manual, scheduled, system, api]
+        runner:
+          type: string
+          enum: [server, desktop]
+        status:
+          $ref: '#/components/schemas/TaskRunStatus'
+        stage:
+          type: string
+        server_id:
+          type: string
+          format: uuid
+        server_name:
+          type: string
+        resource:
+          type: string
+        payload_json:
+          type: string
+        result_json:
+          type: string
+        progress:
+          type: integer
+          minimum: 0
+          maximum: 100
+        total_count:
+          type: integer
+        success_count:
+          type: integer
+        failure_count:
+          type: integer
+        bytes_total:
+          type: integer
+          format: int64
+        bytes_processed:
+          type: integer
+          format: int64
+        progress_json:
+          type: string
+        cancelable:
+          type: boolean
+        retryable:
+          type: boolean
+        attempt:
+          type: integer
+          minimum: 1
+        max_attempts:
+          type: integer
+          minimum: 1
+        error_code:
+          type: string
+        error_message:
+          type: string
+        cancel_requested_at:
+          type: string
+          format: date-time
+        started_at:
+          type: string
+          format: date-time
+        finished_at:
+          type: string
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    TaskEvent:
+      type: object
+      required: [id, task_run_id, user_id, level, message, created_at]
+      properties:
+        id:
+          type: integer
+        task_run_id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+        level:
+          type: string
+          enum: [info, warning, error]
+        message:
+          type: string
+        data_json:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+
+    TaskRunList:
+      type: object
+      required: [runs, total, page, page_size, total_pages]
+      properties:
+        runs:
+          type: array
+          items:
+            $ref: '#/components/schemas/TaskRun'
+        total:
+          type: integer
+        page:
+          type: integer
+        page_size:
+          type: integer
+        total_pages:
+          type: integer
+
+    TaskRunDetails:
+      type: object
+      required: [run, events]
+      properties:
+        run:
+          $ref: '#/components/schemas/TaskRun'
+        events:
+          type: array
+          items:
+            $ref: '#/components/schemas/TaskEvent'
+
+    TaskStatistics:
+      type: object
+      required: [total, queued, running, canceling, succeeded, failed, partial_success, canceled, timeout]
+      properties:
+        total:
+          type: integer
+        queued:
+          type: integer
+        running:
+          type: integer
+        canceling:
+          type: integer
+        succeeded:
+          type: integer
+        failed:
+          type: integer
+        partial_success:
+          type: integer
+        canceled:
+          type: integer
+        timeout:
+          type: integer
+
+    InboxNotification:
+      type: object
+      required: [id, user_id, event_type, severity, title, message, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+        event_type:
+          type: string
+          example: task.succeeded
+        severity:
+          type: string
+          enum: [info, success, warning, error]
+        title:
+          type: string
+        message:
+          type: string
+        source_type:
+          type: string
+        source_id:
+          type: string
+        action_url:
+          type: string
+        data_json:
+          type: string
+        read_at:
+          type: string
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+
+    InboxNotificationList:
+      type: object
+      required: [notifications, unread_count, total, page, page_size, total_pages]
+      properties:
+        notifications:
+          type: array
+          items:
+            $ref: '#/components/schemas/InboxNotification'
+        unread_count:
+          type: integer
+        total:
+          type: integer
+        page:
+          type: integer
+        page_size:
+          type: integer
+        total_pages:
+          type: integer
+
+    SFTPDeletePathsRequest:
+      type: object
+      required: [paths]
+      properties:
+        paths:
+          type: array
+          minItems: 1
+          maxItems: 100
+          items:
+            type: string
+            pattern: '^/'
+
+    SFTPDeletePathsResult:
+      type: object
+      required: [mode, deleted_paths]
+      properties:
+        mode:
+          type: string
+          enum: [fast, recursive_task]
+        deleted_paths:
+          type: array
+          items:
+            type: string
+        task_id:
+          type: string
+          format: uuid
+
+    SFTPDeletePathsResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/SFTPDeletePathsResult'
+
+    RealtimeEvent:
+      type: object
+      required: [id, type, data, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        type:
+          type: string
+          enum: [task.created, task.updated, notification.created, notification.changed]
+        data:
+          type: object
+          additionalProperties: true
+        created_at:
+          type: string
+          format: date-time
+
+    TaskRunListResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/TaskRunList'
+
+    TaskRunDetailsResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/TaskRunDetails'
+
+    TaskStatisticsResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/TaskStatistics'
+
+    InboxNotificationListResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/InboxNotificationList'
+
+    UpdateUserNotificationSettingsRequest:
+      type: object
+      properties:
+        email_login:
+          type: boolean
+        email_alert:
+          type: boolean
+        browser:
+          type: boolean
+        new_device:
+          type: boolean
+        new_location:
+          type: boolean
+        suspicious:
+          type: boolean
+        task_in_app:
+          type: boolean
+        task_success:
+          type: boolean
+        task_failure:
+          type: boolean
+        task_partial:
+          type: boolean
+        task_external:
+          type: boolean
 
     # ========================================
     # 服务器
@@ -2122,6 +2501,291 @@ paths:
                 $ref: '#/components/schemas/SuccessResponse'
 
   # ========================================
+  # 用户实时事件
+  # ========================================
+  /events/stream:
+    get:
+      tags: [realtime]
+      summary: 订阅当前用户的任务与站内通知事件
+      description: 使用 Bearer 认证的 SSE 长连接。事件仅作为状态变化提示，客户端收到后应重新获取任务或通知的权威状态。
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: SSE 事件流，事件类型包括 task.created、task.updated、notification.created 和 notification.changed
+          content:
+            text/event-stream:
+              schema:
+                type: string
+              example: |
+                id: 92d459d5-3d5d-4e27-8e33-d326f99ebbf4
+                event: task.updated
+                data: {"id":"92d459d5-3d5d-4e27-8e33-d326f99ebbf4","type":"task.updated","data":{"task_id":"f65f87df-dd77-46e4-9535-24f192a596da"},"created_at":"2026-07-10T12:00:00Z"}
+
+  # ========================================
+  # 统一任务中心
+  # ========================================
+  /tasks:
+    get:
+      tags: [tasks]
+      summary: 获取当前用户的任务运行记录
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: status
+          in: query
+          description: 逗号分隔的任务状态
+          schema:
+            type: string
+            example: queued,running,canceling
+        - name: task_type
+          in: query
+          description: 逗号分隔的任务类型
+          schema:
+            type: string
+            example: command,script,sftp_recursive_delete
+        - name: trigger_type
+          in: query
+          description: 逗号分隔的触发方式
+          schema:
+            type: string
+            example: manual,scheduled
+        - name: keyword
+          in: query
+          schema:
+            type: string
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: page_size
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        '200':
+          description: 任务运行记录
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskRunListResponse'
+
+  /tasks/statistics:
+    get:
+      tags: [tasks]
+      summary: 获取当前用户的任务统计
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: 任务统计
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskStatisticsResponse'
+
+  /tasks/{id}:
+    get:
+      tags: [tasks]
+      summary: 获取任务详情及事件时间线
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: 任务详情
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskRunDetailsResponse'
+        '404':
+          description: 任务不存在或不属于当前用户
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /tasks/{id}/cancel:
+    post:
+      tags: [tasks]
+      summary: 请求取消正在排队或运行的任务
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: 已提交取消请求
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                        format: uuid
+                      status:
+                        const: canceling
+        '409':
+          description: 当前任务不可取消
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /tasks/{id}/retry:
+    post:
+      tags: [tasks]
+      summary: 重新触发可重试的计划任务
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '202':
+          description: 已重新提交任务
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      definition_id:
+                        type: string
+                        format: uuid
+                      retry_of_id:
+                        type: string
+                        format: uuid
+        '409':
+          description: 任务不可重试
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  # ========================================
+  # 站内通知
+  # ========================================
+  /notifications:
+    get:
+      tags: [notifications]
+      summary: 获取当前用户的站内通知
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: unread
+          in: query
+          schema:
+            type: boolean
+        - name: severity
+          in: query
+          schema:
+            type: string
+            enum: [info, success, warning, error]
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: page_size
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        '200':
+          description: 站内通知列表及未读数
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InboxNotificationListResponse'
+
+  /notifications/{id}/read:
+    post:
+      tags: [notifications]
+      summary: 将一条通知标记为已读
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: 已标记为已读
+
+  /notifications/read-all:
+    post:
+      tags: [notifications]
+      summary: 将当前用户的全部通知标记为已读
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: 已全部标记为已读
+
+  /notifications/{id}:
+    delete:
+      tags: [notifications]
+      summary: 删除一条站内通知
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: 通知已删除
+
+  /notifications/read:
+    delete:
+      tags: [notifications]
+      summary: 清理当前用户的已读通知
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: 已读通知已清理
+
+  # ========================================
   # SFTP 文件管理
   # ========================================
   /sftp/list:
@@ -2218,25 +2882,31 @@ paths:
                 type: string
                 format: binary
 
-  /sftp/delete:
+  /sftp/{server_id}/delete:
     delete:
       tags:
         - sftp
-      summary: 删除文件或目录
+      summary: 同步删除单个普通文件
+      description: 目录删除必须使用 delete-paths，由后端决定快速完成或创建递归任务。
       security:
         - bearerAuth: []
       parameters:
         - name: server_id
-          in: query
+          in: path
           required: true
           schema:
             type: string
             format: uuid
-        - name: path
-          in: query
-          required: true
-          schema:
-            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [path]
+              properties:
+                path:
+                  type: string
       responses:
         '200':
           description: 删除成功
@@ -2244,6 +2914,60 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/SuccessResponse'
+        '409':
+          description: 目标是目录，必须改用 delete-paths
+
+  /sftp/{server_id}/delete-paths:
+    post:
+      tags: [sftp, tasks]
+      summary: 快速删除一个或多个 SFTP 路径
+      description: 路径必须为绝对路径。接口先建立 SSH 连接并同步执行服务器端 rm；成功时直接返回且不创建任务，连接或认证失败时同步报错，只有连接成功但命令执行失败时才创建 SFTP 递归删除任务。
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: server_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SFTPDeletePathsRequest'
+      responses:
+        '200':
+          description: 快速删除已同步完成，mode 为 fast
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SFTPDeletePathsResponse'
+        '202':
+          description: 快速删除不可用，递归删除任务已进入统一任务中心，mode 为 recursive_task
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SFTPDeletePathsResponse'
+        '400':
+          description: 路径不合法
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '428':
+          description: 需要补充服务器凭据或私钥口令
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: SSH 连接或认证失败
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
 
   # ========================================
   # 脚本管理
@@ -2525,3 +3249,29 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/User'
+
+  /users/me/notifications:
+    put:
+      tags: [users, notifications]
+      summary: 更新当前用户的通知偏好
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateUserNotificationSettingsRequest'
+      responses:
+        '200':
+          description: 通知偏好已更新
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      message:
+                        type: string

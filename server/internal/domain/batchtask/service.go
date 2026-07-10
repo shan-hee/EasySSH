@@ -7,13 +7,14 @@ import (
 	"time"
 
 	"github.com/easyssh/server/internal/domain/scheduledtask"
+	"github.com/easyssh/server/internal/domain/taskcenter"
 	"github.com/easyssh/server/internal/domain/taskexecutor"
 	"github.com/google/uuid"
 )
 
 // TaskExecutor 任务执行器接口
 type TaskExecutor interface {
-	Execute(ctx context.Context, task *scheduledtask.ScheduledTask, trigger taskexecutor.TriggerType)
+	Execute(ctx context.Context, task *scheduledtask.ScheduledTask, trigger taskexecutor.TriggerType, source taskexecutor.ExecutionSource) taskexecutor.ExecutionOutcome
 }
 
 var (
@@ -279,11 +280,19 @@ func (s *service) StartBatchTask(userID uuid.UUID, id uuid.UUID) error {
 		// 异步执行任务
 		go func() {
 			log.Printf("[BatchTask] 开始执行批量任务: taskID=%s, type=%s", task.ID, task.TaskType)
-			s.executor.Execute(context.Background(), scheduledTask, taskexecutor.TriggerManual)
+			outcome := s.executor.Execute(context.Background(), scheduledTask, taskexecutor.TriggerManual, taskexecutor.SourceBatchTask)
+			if err := s.UpdateTaskProgress(task.ID, outcome.SuccessCount, outcome.FailureCount); err != nil {
+				log.Printf("[BatchTask] 更新批量任务进度失败: taskID=%s, error=%v", task.ID, err)
+			}
 
-			// 执行完成后更新批量任务状态；详细执行结果由 taskexecutor 写入统一操作记录。
-			s.CompleteBatchTask(task.ID, "completed")
-			log.Printf("[BatchTask] 批量任务执行完成: taskID=%s", task.ID)
+			status := "completed"
+			if outcome.Status == taskcenter.StatusFailed || outcome.Status == taskcenter.StatusCanceled || outcome.Status == taskcenter.StatusTimeout {
+				status = "failed"
+			}
+			if err := s.CompleteBatchTask(task.ID, status); err != nil {
+				log.Printf("[BatchTask] 更新批量任务完成状态失败: taskID=%s, error=%v", task.ID, err)
+			}
+			log.Printf("[BatchTask] 批量任务执行完成: taskID=%s, status=%s", task.ID, outcome.Status)
 		}()
 	} else {
 		log.Printf("[BatchTask] 警告: 没有设置执行器，任务 %s 只更新了状态但未实际执行", id)

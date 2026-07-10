@@ -161,7 +161,7 @@ func (s *Scheduler) executeTask(taskID uuid.UUID) {
 	s.updateNextRunTime(taskID)
 
 	// 调用执行引擎（异步执行）
-	go s.executor.Execute(s.ctx, task, taskexecutor.TriggerSchedule)
+	go s.executor.Execute(s.ctx, task, taskexecutor.TriggerSchedule, taskexecutor.SourceScheduledTask)
 }
 
 // updateNextRunTime 更新下次运行时间
@@ -235,8 +235,17 @@ func (s *Scheduler) TriggerTaskManually(taskID uuid.UUID) error {
 	}
 
 	// 异步执行
-	go s.executor.Execute(s.ctx, task, taskexecutor.TriggerManual)
+	go s.executor.Execute(s.ctx, task, taskexecutor.TriggerManual, taskexecutor.SourceScheduledTask)
 
+	return nil
+}
+
+func (s *Scheduler) RetryTask(taskID, retryOfID uuid.UUID, attempt int) error {
+	task, err := s.taskRepo.GetByID(taskID)
+	if err != nil {
+		return fmt.Errorf("task not found: %w", err)
+	}
+	go s.executor.ExecuteRetry(s.ctx, task, retryOfID, attempt)
 	return nil
 }
 

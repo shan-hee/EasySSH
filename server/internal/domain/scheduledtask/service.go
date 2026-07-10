@@ -23,6 +23,7 @@ type TaskScheduler interface {
 	UpdateTask(task *ScheduledTask) error
 	RemoveTask(taskID uuid.UUID)
 	TriggerTaskManually(taskID uuid.UUID) error
+	RetryTask(taskID, retryOfID uuid.UUID, attempt int) error
 }
 
 // Service 定时任务业务逻辑接口
@@ -35,6 +36,7 @@ type Service interface {
 	GetStatistics(userID uuid.UUID) (*ScheduledTaskStatistics, error)
 	ToggleTask(userID uuid.UUID, id uuid.UUID, enabled bool) error
 	TriggerTask(userID uuid.UUID, id uuid.UUID) error
+	RetryTask(userID, id, retryOfID uuid.UUID, attempt int) error
 	IsStagedJobReferenced(userID uuid.UUID, stagedJobID uuid.UUID, excludeTaskID uuid.UUID) (bool, error)
 	SetScheduler(scheduler TaskScheduler)
 }
@@ -434,6 +436,20 @@ func (s *service) TriggerTask(userID uuid.UUID, id uuid.UUID) error {
 	}
 
 	return ErrSchedulerNotInitialized
+}
+
+func (s *service) RetryTask(userID, id, retryOfID uuid.UUID, attempt int) error {
+	task, err := s.repo.GetByID(id)
+	if err != nil {
+		return ErrScheduledTaskNotFound
+	}
+	if task.UserID != userID {
+		return ErrUnauthorized
+	}
+	if s.scheduler == nil {
+		return ErrSchedulerNotInitialized
+	}
+	return s.scheduler.RetryTask(id, retryOfID, attempt)
 }
 
 func (s *service) IsStagedJobReferenced(userID uuid.UUID, stagedJobID uuid.UUID, excludeTaskID uuid.UUID) (bool, error) {

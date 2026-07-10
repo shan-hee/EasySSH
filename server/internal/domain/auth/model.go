@@ -43,12 +43,17 @@ type User struct {
 	BackupCodes      string `gorm:"type:text" json:"-"` // 备份码列表（JSON 格式），不在 JSON 中返回
 
 	// 通知设置
-	NotifyEmailLogin  bool `gorm:"default:true" json:"notify_email_login"`  // 登录邮件通知
-	NotifyEmailAlert  bool `gorm:"default:true" json:"notify_email_alert"`  // 告警邮件通知
-	NotifyBrowser     bool `gorm:"default:true" json:"notify_browser"`      // 浏览器通知
-	NotifyNewDevice   bool `gorm:"default:true" json:"notify_new_device"`   // 新设备登录通知
-	NotifyNewLocation bool `gorm:"default:true" json:"notify_new_location"` // 新地点登录通知
-	NotifySuspicious  bool `gorm:"default:true" json:"notify_suspicious"`   // 可疑登录通知
+	NotifyEmailLogin   bool `gorm:"default:true" json:"notify_email_login"`    // 登录邮件通知
+	NotifyEmailAlert   bool `gorm:"default:true" json:"notify_email_alert"`    // 告警邮件通知
+	NotifyBrowser      bool `gorm:"default:true" json:"notify_browser"`        // 浏览器通知
+	NotifyNewDevice    bool `gorm:"default:true" json:"notify_new_device"`     // 新设备登录通知
+	NotifyNewLocation  bool `gorm:"default:true" json:"notify_new_location"`   // 新地点登录通知
+	NotifySuspicious   bool `gorm:"default:true" json:"notify_suspicious"`     // 可疑登录通知
+	NotifyTaskInApp    bool `gorm:"default:true" json:"notify_task_in_app"`    // 任务结果站内通知
+	NotifyTaskSuccess  bool `gorm:"default:true" json:"notify_task_success"`   // 任务成功通知
+	NotifyTaskFailure  bool `gorm:"default:true" json:"notify_task_failure"`   // 任务失败通知
+	NotifyTaskPartial  bool `gorm:"default:true" json:"notify_task_partial"`   // 任务部分成功通知
+	NotifyTaskExternal bool `gorm:"default:false" json:"notify_task_external"` // 通过已配置外部渠道发送任务通知
 
 	// 账户锁定相关
 	FailedLoginAttempts int        `gorm:"default:0" json:"failed_login_attempts,omitempty"`     // 连续失败登录次数
@@ -114,22 +119,27 @@ func (u *User) IsViewer() bool {
 // ToPublic 转换为公开信息（不包含密码和敏感信息）
 func (u *User) ToPublic() map[string]interface{} {
 	return map[string]interface{}{
-		"id":                  u.ID,
-		"username":            u.Username,
-		"email":               u.Email,
-		"role":                u.Role,
-		"avatar":              u.Avatar,
-		"google_linked":       u.GoogleSub != nil && *u.GoogleSub != "",
-		"language":            u.Language,
-		"timezone":            u.Timezone,
-		"two_factor_enabled":  u.TwoFactorEnabled,
-		"notify_email_login":  u.NotifyEmailLogin,
-		"notify_email_alert":  u.NotifyEmailAlert,
-		"notify_browser":      u.NotifyBrowser,
-		"notify_new_device":   u.NotifyNewDevice,
-		"notify_new_location": u.NotifyNewLocation,
-		"notify_suspicious":   u.NotifySuspicious,
-		"monitor_data_source": u.MonitorDataSource,
+		"id":                   u.ID,
+		"username":             u.Username,
+		"email":                u.Email,
+		"role":                 u.Role,
+		"avatar":               u.Avatar,
+		"google_linked":        u.GoogleSub != nil && *u.GoogleSub != "",
+		"language":             u.Language,
+		"timezone":             u.Timezone,
+		"two_factor_enabled":   u.TwoFactorEnabled,
+		"notify_email_login":   u.NotifyEmailLogin,
+		"notify_email_alert":   u.NotifyEmailAlert,
+		"notify_browser":       u.NotifyBrowser,
+		"notify_new_device":    u.NotifyNewDevice,
+		"notify_new_location":  u.NotifyNewLocation,
+		"notify_suspicious":    u.NotifySuspicious,
+		"notify_task_in_app":   u.NotifyTaskInApp,
+		"notify_task_success":  u.NotifyTaskSuccess,
+		"notify_task_failure":  u.NotifyTaskFailure,
+		"notify_task_partial":  u.NotifyTaskPartial,
+		"notify_task_external": u.NotifyTaskExternal,
+		"monitor_data_source":  u.MonitorDataSource,
 		// Nezha 配置
 		"nezha_api_endpoint":  u.NezhaAPIEndpoint,
 		"nezha_api_token_set": u.NezhaAPIToken != "",

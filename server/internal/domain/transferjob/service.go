@@ -17,6 +17,7 @@ import (
 	"github.com/easyssh/server/internal/domain/server"
 	"github.com/easyssh/server/internal/domain/sftp"
 	"github.com/easyssh/server/internal/domain/systemconfig"
+	"github.com/easyssh/server/internal/domain/taskcenter"
 	"github.com/google/uuid"
 )
 
@@ -43,6 +44,7 @@ type Service interface {
 	GetArtifact(ctx context.Context, userID uuid.UUID, id uuid.UUID) (*TransferJob, string, error)
 	StartMaintenance(ctx context.Context)
 	Stop()
+	SetTaskCenter(service taskcenter.Service)
 }
 
 type service struct {
@@ -51,6 +53,7 @@ type service struct {
 	serverService    server.Service
 	systemConfig     systemconfig.Service
 	operationRecords operationrecord.Service
+	taskRuns         taskcenter.Service
 	dataDir          string
 	limiter          chan struct{}
 
@@ -60,6 +63,8 @@ type service struct {
 	stopMaintenance chan struct{}
 	stopOnce        sync.Once
 }
+
+func (s *service) SetTaskCenter(service taskcenter.Service) { s.taskRuns = service }
 
 type ServiceOptions struct {
 	DataDir string
@@ -146,6 +151,7 @@ func (s *service) CreateUploadJob(ctx context.Context, userID uuid.UUID, req *Cr
 		ArtifactExpiresAt: expiresAt,
 		Description:       req.Description,
 		ScheduledTaskID:   req.ScheduledTaskID,
+		TaskRunID:         req.TaskRunID,
 	}
 	if err := s.repo.Create(ctx, job); err != nil {
 		return nil, err
@@ -205,6 +211,7 @@ func (s *service) CreateUploadJob(ctx context.Context, userID uuid.UUID, req *Cr
 	}
 
 	if !req.DeferStart {
+		s.ensureTaskRun(ctx, job)
 		s.runUpload(job.ID)
 	}
 	return s.repo.GetByID(ctx, job.ID)
@@ -256,11 +263,13 @@ func (s *service) CreateDownloadJob(ctx context.Context, userID uuid.UUID, req *
 		ArtifactExpiresAt: &expiresAt,
 		Description:       req.Description,
 		ScheduledTaskID:   req.ScheduledTaskID,
+		TaskRunID:         req.TaskRunID,
 	}
 	if err := s.repo.Create(ctx, job); err != nil {
 		return nil, err
 	}
 
+	s.ensureTaskRun(ctx, job)
 	s.runDownload(job.ID)
 	return job, nil
 }
@@ -458,6 +467,7 @@ func (s *service) CancelJob(ctx context.Context, userID uuid.UUID, id uuid.UUID)
 		return fmt.Errorf("%w: transfer job is not cancellable", ErrInvalidJobRequest)
 	}
 	s.upsertOperationRecord(context.Background(), job.ID)
+	s.syncTaskRun(context.Background(), job.ID)
 	return err
 }
 
@@ -662,6 +672,7 @@ func (s *service) runScheduledUpload(ctx context.Context, req RunScheduledReques
 		BytesTotal:        stagedJob.BytesTotal,
 		Description:       description,
 		ScheduledTaskID:   &req.ScheduledTaskID,
+		TaskRunID:         &req.TaskRunID,
 		DetailJSON:        string(detail),
 	}
 	if job.BytesTotal <= 0 {
@@ -673,6 +684,7 @@ func (s *service) runScheduledUpload(ctx context.Context, req RunScheduledReques
 	if err := s.repo.Create(ctx, job); err != nil {
 		return nil, err
 	}
+	s.ensureTaskRun(ctx, job)
 	s.runUpload(job.ID)
 	return s.repo.GetByID(ctx, job.ID)
 }
@@ -692,6 +704,7 @@ func (s *service) runScheduledDownload(ctx context.Context, req RunScheduledRequ
 		RetentionDays:   payload.RetentionDays,
 		Description:     payload.Description,
 		ScheduledTaskID: &req.ScheduledTaskID,
+		TaskRunID:       &req.TaskRunID,
 	})
 	if err != nil {
 		return nil, err
@@ -749,6 +762,7 @@ func (s *service) executeUpload(ctx context.Context, job *TransferJob) {
 	if !updated {
 		return
 	}
+	s.syncTaskRun(context.Background(), job.ID)
 
 	if job.TargetServerID == nil {
 		_ = s.failJob(ctx, job.ID, errors.New("target server is required"), JobStageTransferToRemote)
@@ -810,6 +824,7 @@ func (s *service) executeDownload(ctx context.Context, job *TransferJob) {
 	if !updated {
 		return
 	}
+	s.syncTaskRun(context.Background(), job.ID)
 
 	if job.SourceServerID == nil {
 		_ = s.failJob(ctx, job.ID, errors.New("source server is required"), JobStageDownloadFromRemote)
@@ -965,6 +980,7 @@ func (s *service) updateProgress(ctx context.Context, id uuid.UUID, stage JobSta
 		"progress":        progress,
 		"speed_bps":       speed,
 	})
+	s.syncTaskRun(context.Background(), id)
 }
 
 func (s *service) completeJob(ctx context.Context, id uuid.UUID, stage JobStage, total int64) bool {
@@ -977,6 +993,9 @@ func (s *service) completeJob(ctx context.Context, id uuid.UUID, stage JobStage,
 		"bytes_total":     total,
 		"finished_at":     &now,
 	})
+	if err == nil && updated {
+		s.syncTaskRun(context.Background(), id)
+	}
 	return err == nil && updated
 }
 
@@ -995,6 +1014,7 @@ func (s *service) failJob(ctx context.Context, id uuid.UUID, err error, stage Jo
 	})
 	if updated {
 		s.upsertOperationRecord(context.Background(), id)
+		s.syncTaskRun(context.Background(), id)
 	}
 	return updateErr
 }
@@ -1013,6 +1033,7 @@ func (s *service) cancelledJob(ctx context.Context, id uuid.UUID) error {
 	})
 	if updated {
 		s.upsertOperationRecord(context.Background(), id)
+		s.syncTaskRun(context.Background(), id)
 	}
 	return updateErr
 }
@@ -1222,6 +1243,83 @@ func (s *service) upsertOperationRecord(ctx context.Context, id uuid.UUID) {
 		UpdatedAt:      time.Now(),
 	}
 	_ = s.operationRecords.Upsert(ctx, record)
+}
+
+func (s *service) ensureTaskRun(ctx context.Context, job *TransferJob) {
+	if s.taskRuns == nil || job == nil || job.Status == JobStatusCreated || job.Status == JobStatusStaging {
+		return
+	}
+	if job.TaskRunID != nil && *job.TaskRunID != uuid.Nil {
+		return
+	}
+	run := &taskcenter.TaskRun{
+		UserID:      job.UserID,
+		TaskType:    string(job.Kind),
+		Title:       job.Name,
+		Description: job.Description,
+		TriggerType: taskcenter.TriggerManual,
+		Runner:      job.Runner,
+		Status:      taskcenter.StatusQueued,
+		SourceType:  "transfer_job",
+		SourceID:    job.ID.String(),
+		Resource:    transferJobResource(job),
+		Cancelable:  false,
+		Retryable:   job.ScheduledTaskID != nil,
+		BytesTotal:  job.BytesTotal,
+	}
+	if job.ScheduledTaskID != nil {
+		run.DefinitionID = job.ScheduledTaskID
+		run.TriggerType = taskcenter.TriggerScheduled
+	}
+	if err := s.taskRuns.Create(ctx, run); err != nil {
+		return
+	}
+	job.TaskRunID = &run.ID
+	_ = s.repo.Update(ctx, job.ID, map[string]interface{}{"task_run_id": run.ID})
+}
+
+func (s *service) syncTaskRun(ctx context.Context, jobID uuid.UUID) {
+	if s.taskRuns == nil {
+		return
+	}
+	job, err := s.repo.GetByID(ctx, jobID)
+	if err != nil {
+		return
+	}
+	s.ensureTaskRun(ctx, job)
+	if job.TaskRunID == nil || *job.TaskRunID == uuid.Nil {
+		return
+	}
+	progressJSON, _ := json.Marshal(map[string]interface{}{
+		"bytes_total":     job.BytesTotal,
+		"bytes_processed": job.BytesProcessed,
+		"speed_bps":       job.SpeedBps,
+	})
+	switch job.Status {
+	case JobStatusRunning:
+		_ = s.taskRuns.Start(ctx, *job.TaskRunID, string(job.Stage))
+		_ = s.taskRuns.UpdateProgress(ctx, *job.TaskRunID, job.Progress, string(job.Stage), string(progressJSON), 0, 0)
+	case JobStatusQueued, JobStatusStaging:
+		_ = s.taskRuns.UpdateProgress(ctx, *job.TaskRunID, job.Progress, string(job.Stage), string(progressJSON), 0, 0)
+	case JobStatusCompleted:
+		_ = s.taskRuns.Complete(ctx, *job.TaskRunID, taskcenter.StatusSucceeded, job.DetailJSON, "", "", 1, 0)
+	case JobStatusFailed:
+		_ = s.taskRuns.Complete(ctx, *job.TaskRunID, taskcenter.StatusFailed, job.DetailJSON, "transfer_failed", job.ErrorMessage, 0, 1)
+	case JobStatusCancelled:
+		_ = s.taskRuns.Complete(ctx, *job.TaskRunID, taskcenter.StatusCanceled, job.DetailJSON, "", job.ErrorMessage, 0, 0)
+	case JobStatusExpired:
+		_ = s.taskRuns.AppendEvent(ctx, *job.TaskRunID, job.UserID, "info", "传输制品已过期清理", "")
+	}
+}
+
+func transferJobResource(job *TransferJob) string {
+	if job == nil {
+		return ""
+	}
+	if job.TargetPath != "" {
+		return fmt.Sprintf("%s -> %s", job.SourcePath, job.TargetPath)
+	}
+	return job.SourcePath
 }
 
 func retentionDays(requested int, cfg *systemconfig.SystemConfig) int {

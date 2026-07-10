@@ -25,7 +25,7 @@ type ScheduledTask struct {
 	NextRunAt      *time.Time     `json:"next_run_at,omitempty"`
 	RunCount       int            `gorm:"default:0" json:"run_count"`
 	FailureCount   int            `gorm:"default:0" json:"failure_count"`
-	LastStatus     string         `gorm:"type:varchar(20)" json:"last_status,omitempty"` // success/failed
+	LastStatus     string         `gorm:"type:varchar(20)" json:"last_status,omitempty"` // success/failed/canceled
 	Description    string         `gorm:"type:text" json:"description"`
 	CreatedAt      time.Time      `json:"created_at"`
 	UpdatedAt      time.Time      `json:"updated_at"`

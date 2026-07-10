@@ -22,6 +22,7 @@ import (
 	"github.com/easyssh/server/internal/domain/server"
 	"github.com/easyssh/server/internal/domain/sftp"
 	sshDomain "github.com/easyssh/server/internal/domain/ssh"
+	"github.com/easyssh/server/internal/domain/taskcenter"
 	"github.com/easyssh/server/internal/pkg/crypto"
 	"github.com/easyssh/shared/sftputil"
 	"github.com/gin-gonic/gin"
@@ -59,6 +60,7 @@ type SFTPHandler struct {
 	pool             *sftp.Pool              // SFTP 连接池
 	credentialStore  *sshDomain.RuntimeCredentialStore
 	operationRecords operationrecord.Service
+	taskRuns         taskcenter.Service
 }
 
 // NewSFTPHandler 创建 SFTP 处理器
@@ -88,6 +90,10 @@ func NewSFTPHandler(serverService server.Service, serverRepo server.Repository, 
 // SetTransferHandler 设置跨服务器传输处理器
 func (h *SFTPHandler) SetTransferHandler(handler *ws.SFTPTransferHandler) {
 	h.transferHandler = handler
+}
+
+func (h *SFTPHandler) SetTaskCenter(service taskcenter.Service) {
+	h.taskRuns = service
 }
 
 // GetPool 获取连接池（用于外部访问）
@@ -1376,14 +1382,13 @@ func (h *SFTPHandler) Delete(c *gin.Context) {
 		return
 	}
 
-	// 删除文件或目录
+	// 目录必须走 DeletePaths，由后端决定快速完成还是创建递归任务。
 	if fileInfo.IsDir {
-		fmt.Printf("[SFTP Delete] Deleting directory: %s\n", req.Path)
-		err = sftpClient.DeleteDirectory(req.Path)
-	} else {
-		fmt.Printf("[SFTP Delete] Deleting file: %s\n", req.Path)
-		err = sftpClient.DeleteFile(req.Path)
+		RespondError(c, http.StatusConflict, "directory_delete_requires_delete_paths", "Directory deletion must use the optimized delete-paths endpoint")
+		return
 	}
+	fmt.Printf("[SFTP Delete] Deleting file: %s\n", req.Path)
+	err = sftpClient.DeleteFile(req.Path)
 
 	if err != nil {
 		elapsed := time.Since(startTime)
@@ -1397,6 +1402,167 @@ func (h *SFTPHandler) Delete(c *gin.Context) {
 
 	// 返回被删除文件的信息，便于前端做差异更新。
 	RespondSuccessWithMessage(c, fileInfo, "Deleted")
+}
+
+type sftpDeletePathsRequest struct {
+	Paths []string `json:"paths" binding:"required,min=1,max=100"`
+}
+
+// DeletePaths 优先同步执行服务器端快速删除，仅在快速删除不可用时回退为递归任务。
+func (h *SFTPHandler) DeletePaths(c *gin.Context) {
+	serverID, err := uuid.Parse(c.Param("server_id"))
+	if err != nil {
+		RespondError(c, http.StatusBadRequest, "invalid_server_id", "Invalid server ID")
+		return
+	}
+	userID, ok := requireCurrentUserID(c)
+	if !ok {
+		return
+	}
+	var req sftpDeletePathsRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		RespondError(c, http.StatusBadRequest, "validation_error", err.Error())
+		return
+	}
+	paths := make([]string, 0, len(req.Paths))
+	seenPaths := make(map[string]struct{}, len(req.Paths))
+	for _, remotePath := range req.Paths {
+		normalized, err := validateBackgroundDeletePath(remotePath)
+		if err != nil {
+			RespondError(c, http.StatusBadRequest, "invalid_path", err.Error())
+			return
+		}
+		if _, exists := seenPaths[normalized]; exists {
+			continue
+		}
+		seenPaths[normalized] = struct{}{}
+		paths = append(paths, normalized)
+	}
+	connected, fastDeleteErr := h.fastDeletePaths(c.Request.Context(), userID, serverID, paths)
+	if fastDeleteErr == nil {
+		RespondSuccess(c, gin.H{"mode": "fast", "deleted_paths": paths})
+		return
+	}
+	if !connected {
+		respondSFTPConnectionError(c, fastDeleteErr)
+		return
+	}
+	if h.taskRuns == nil {
+		RespondError(c, http.StatusServiceUnavailable, "task_center_unavailable", "Fast delete failed and task center is unavailable")
+		return
+	}
+	payload, _ := json.Marshal(map[string]interface{}{"server_id": serverID, "paths": paths, "fast_delete_error": fastDeleteErr.Error()})
+	run := &taskcenter.TaskRun{
+		UserID: userID, ServerID: &serverID, TaskType: "sftp_recursive_delete", Title: fmt.Sprintf("递归删除 %d 个远端项目", len(paths)),
+		TriggerType: taskcenter.TriggerManual, Runner: "server", Status: taskcenter.StatusQueued,
+		Resource: strings.Join(paths, ", "), PayloadJSON: string(payload), TotalCount: len(paths), Cancelable: false, Retryable: false,
+	}
+	if err := h.taskRuns.Create(c.Request.Context(), run); err != nil {
+		RespondError(c, http.StatusInternalServerError, "create_delete_task_failed", err.Error())
+		return
+	}
+	eventData, _ := json.Marshal(map[string]string{"error": fastDeleteErr.Error()})
+	_ = h.taskRuns.AppendEvent(c.Request.Context(), run.ID, userID, "warning", "快速删除不可用，已切换为 SFTP 递归删除", string(eventData))
+	go h.executeRecursiveDeleteTask(run.ID, userID, serverID, paths)
+	c.JSON(http.StatusAccepted, gin.H{"success": true, "data": gin.H{
+		"mode": "recursive_task", "deleted_paths": []string{}, "task_id": run.ID,
+	}})
+}
+
+func (h *SFTPHandler) executeRecursiveDeleteTask(runID, userID, serverID uuid.UUID, paths []string) {
+	ctx := context.Background()
+	_ = h.taskRuns.Start(ctx, runID, "sftp_recursive")
+	client, err := h.pool.Get(ctx, userID, serverID)
+	if err != nil {
+		_ = h.taskRuns.Complete(ctx, runID, taskcenter.StatusFailed, "", "sftp_connection_failed", err.Error(), 0, len(paths))
+		return
+	}
+	defer client.Release()
+	successPaths := make([]string, 0, len(paths))
+	failed := make([]map[string]string, 0)
+	for index, remotePath := range paths {
+		fileInfo, statErr := client.GetFileInfo(remotePath)
+		if errors.Is(statErr, os.ErrNotExist) {
+			statErr = nil
+		}
+		if statErr == nil {
+			if fileInfo == nil {
+				// 路径已不存在，目标状态已经达成。
+			} else if fileInfo.IsDir {
+				statErr = client.DeleteDirectory(remotePath)
+			} else {
+				statErr = client.DeleteFile(remotePath)
+			}
+		}
+		if statErr != nil {
+			failed = append(failed, map[string]string{"path": remotePath, "error": statErr.Error()})
+		} else {
+			successPaths = append(successPaths, remotePath)
+		}
+		progress := int(float64(index+1) / float64(len(paths)) * 100)
+		progressData, _ := json.Marshal(map[string]interface{}{"current_path": remotePath, "completed": index + 1, "total": len(paths)})
+		_ = h.taskRuns.UpdateProgress(ctx, runID, progress, "sftp_recursive", string(progressData), len(successPaths), len(failed))
+	}
+	result, _ := json.Marshal(map[string]interface{}{"strategy": "sftp_recursive", "success": successPaths, "failed": failed})
+	status := taskcenter.StatusSucceeded
+	errorCode, errorMessage := "", ""
+	if len(failed) == len(paths) {
+		status, errorCode, errorMessage = taskcenter.StatusFailed, "delete_failed", "所有路径删除失败"
+	}
+	if len(failed) > 0 && len(failed) < len(paths) {
+		status, errorCode, errorMessage = taskcenter.StatusPartialSuccess, "partial_delete_failed", "部分路径删除失败"
+	}
+	_ = h.taskRuns.Complete(ctx, runID, status, string(result), errorCode, errorMessage, len(successPaths), len(failed))
+}
+
+func (h *SFTPHandler) fastDeletePaths(ctx context.Context, userID, serverID uuid.UUID, paths []string) (bool, error) {
+	srv, err := h.serverService.GetByID(ctx, userID, serverID)
+	if err != nil {
+		return false, err
+	}
+	var clientOptions []sshDomain.ClientOption
+	if h.credentialStore != nil {
+		if credential, ok := h.credentialStore.Get(userID, serverID); ok {
+			clientOptions = sshDomain.CredentialOptions(credential)
+		}
+	}
+	client, err := sshDomain.NewClient(srv, h.encryptor, h.hostKeyCallback, clientOptions...)
+	if err != nil {
+		return false, err
+	}
+	defer client.Close()
+	if err := client.Connect(srv.Host, srv.Port); err != nil {
+		return false, err
+	}
+	quoted := make([]string, 0, len(paths))
+	for _, remotePath := range paths {
+		quoted = append(quoted, shellQuote(remotePath))
+	}
+	_, err = client.ExecuteCommandDetailedContext(ctx, "rm -rf -- "+strings.Join(quoted, " "))
+	return true, err
+}
+
+func validateBackgroundDeletePath(remotePath string) (string, error) {
+	sanitized := strings.TrimSpace(strings.ReplaceAll(remotePath, "\\", "/"))
+	if strings.ContainsRune(sanitized, '\x00') {
+		return "", fmt.Errorf("path must not contain null bytes")
+	}
+	if containsDotDotSegment(sanitized) {
+		return "", fmt.Errorf("path must not contain '..'")
+	}
+	if !strings.HasPrefix(sanitized, "/") {
+		return "", fmt.Errorf("background deletion requires an absolute path")
+	}
+	normalized := sftputil.NormalizePath(sanitized)
+	protected := map[string]struct{}{"/": {}, "/bin": {}, "/boot": {}, "/dev": {}, "/etc": {}, "/home": {}, "/lib": {}, "/lib64": {}, "/proc": {}, "/root": {}, "/run": {}, "/sbin": {}, "/sys": {}, "/usr": {}, "/var": {}}
+	if _, exists := protected[normalized]; exists {
+		return "", fmt.Errorf("refusing to delete protected path %s", normalized)
+	}
+	return normalized, nil
+}
+
+func shellQuote(value string) string {
+	return "'" + strings.ReplaceAll(value, "'", "'\"'\"'") + "'"
 }
 
 // Rename 重命名文件或目录
@@ -1702,15 +1868,16 @@ func (h *SFTPHandler) BatchDelete(c *gin.Context) {
 			continue
 		}
 
-		// 删除文件或目录
-		var deleteErr error
+		// 同步批量接口只处理普通文件；目录统一交给优化删除入口。
 		if fileInfo.IsDir {
-			fmt.Printf("[SFTP BatchDelete] Deleting directory: %s\n", path)
-			deleteErr = sftpClient.DeleteDirectory(path)
-		} else {
-			fmt.Printf("[SFTP BatchDelete] Deleting file: %s\n", path)
-			deleteErr = sftpClient.DeleteFile(path)
+			failed = append(failed, BatchOperationError{
+				Path: path, Error: "directory_delete_requires_delete_paths",
+				Message: "Directory deletion must use the optimized delete-paths endpoint",
+			})
+			continue
 		}
+		fmt.Printf("[SFTP BatchDelete] Deleting file: %s\n", path)
+		deleteErr := sftpClient.DeleteFile(path)
 
 		if deleteErr != nil {
 			fmt.Printf("[SFTP BatchDelete] Delete failed: %s, error: %v\n", path, deleteErr)
