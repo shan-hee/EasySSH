@@ -249,7 +249,11 @@ export function TabTerminalContent({
     return {
       createUploadTask: workspaceSftpApi.createUploadTask,
       listUploadTasks: workspaceSftpApi.listUploadTasks,
+      getUploadTask: workspaceSftpApi.getUploadTask,
+      getTransferTask: workspaceSftpApi.getTransferTask,
       cancelUploadTask: workspaceSftpApi.cancelUploadTask,
+      downloadFile: workspaceSftpApi.downloadFile,
+      batchDownload: workspaceSftpApi.batchDownload,
       uploadFile: workspaceSftpApi.uploadFile,
       directTransfer: workspaceSftpApi.directTransfer,
       cancelTransfer: workspaceSftpApi.cancelTransfer,

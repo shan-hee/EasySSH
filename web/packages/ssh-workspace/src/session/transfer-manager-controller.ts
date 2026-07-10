@@ -382,7 +382,7 @@ export function createFileTransferController({
 
     async downloadFile(serverId, remotePath, fileName) {
       if (!api.downloadFile) {
-        return
+        throw new Error("SFTP 下载能力不可用")
       }
 
       if (!api.getTransferTask) {
@@ -424,7 +424,7 @@ export function createFileTransferController({
 
     async batchDownload(serverId, remotePaths, mode, excludePatterns) {
       if (!api.batchDownload) {
-        return
+        throw new Error("SFTP 批量下载能力不可用")
       }
 
       if (!api.getTransferTask) {
