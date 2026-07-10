@@ -54,7 +54,7 @@ export function QuickAccessSearch() {
     { label: t("quickAccessCommandSftp"), href: "/dashboard/terminal?sftpPicker=1", icon: FolderOpen, requiredCapabilities: ["servers", "terminal", "sftp"] },
     { label: t("quickAccessCommandAi"), href: "/dashboard/ai-assistant", icon: Bot, requiredCapabilities: ["ai"] },
     { label: t("quickAccessCommandScripts"), href: "/dashboard/scripts", icon: FileText, requiredCapabilities: ["scripts"] },
-    { label: t("quickAccessCommandSchedules"), href: "/dashboard/automation/schedules", icon: CalendarClock, profiles: ["web"], requiredCapabilities: ["automation"] },
+    { label: t("quickAccessCommandTasks"), href: "/dashboard/tasks", icon: CalendarClock, profiles: ["web"], requiredCapabilities: ["automation"] },
     { label: t("quickAccessCommandSettings"), href: "/dashboard/settings", icon: Settings, profiles: ["web"], requiredCapabilities: ["settings"], adminOnly: true },
   ], [t])
 

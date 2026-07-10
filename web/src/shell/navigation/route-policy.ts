@@ -14,7 +14,7 @@ export const routePolicies: RoutePolicy[] = [
   { pattern: /^\/dashboard\/logs(?:\/|$)/, requiredCapabilities: ["audit"], profiles: ["web"], adminOnly: true, fallbackPath: "/dashboard/terminal" },
   { pattern: /^\/dashboard\/users(?:\/|$)/, requiredCapabilities: ["users"], profiles: ["web"], adminOnly: true, fallbackPath: "/dashboard/terminal" },
   { pattern: /^\/dashboard\/settings(?:\/|$)/, requiredCapabilities: ["settings"], profiles: ["web"], adminOnly: true, fallbackPath: "/dashboard/terminal" },
-  { pattern: /^\/dashboard\/automation(?:\/|$)/, requiredCapabilities: ["automation"], profiles: ["web"], fallbackPath: "/dashboard/terminal" },
+  { pattern: /^\/dashboard\/tasks(?:\/|$)/, requiredCapabilities: ["automation"], profiles: ["web"], fallbackPath: "/dashboard/terminal" },
   { pattern: /^\/dashboard\/operation-logs(?:\/|$)/, requiredCapabilities: ["activity_log"], profiles: ["web"], fallbackPath: "/dashboard/terminal" },
   { pattern: /^\/dashboard\/ai-assistant(?:\/|$)/, requiredCapabilities: ["ai"], fallbackPath: "/dashboard/terminal" },
   { pattern: /^\/dashboard\/scripts(?:\/|$)/, requiredCapabilities: ["scripts"], fallbackPath: "/dashboard/terminal" },

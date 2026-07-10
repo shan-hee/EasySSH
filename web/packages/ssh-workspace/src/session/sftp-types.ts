@@ -49,6 +49,12 @@ export interface BatchDeleteResponse {
   total: number
 }
 
+export interface SftpDeletePathsResult {
+  mode: "fast" | "recursive_task"
+  deleted_paths: string[]
+  task_id?: string
+}
+
 export type SftpBatchDownloadMode = "fast" | "compatible"
 
 export type UploadProgressStage = "http" | "sftp" | "stream"

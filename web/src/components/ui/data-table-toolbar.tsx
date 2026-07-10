@@ -71,9 +71,11 @@ export function DataTableToolbar<TData>({
           return column ? (
             <DataTableFacetedFilter
               key={filter.column}
-              column={column}
               title={filter.title}
               options={filter.options}
+              values={(column.getFilterValue() as string[] | undefined) ?? []}
+              onValuesChange={(values) => column.setFilterValue(values.length ? values : undefined)}
+              counts={column.getFacetedUniqueValues() as Map<string, number>}
             />
           ) : null
         })}

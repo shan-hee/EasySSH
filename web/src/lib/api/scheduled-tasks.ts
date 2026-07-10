@@ -20,7 +20,7 @@ export interface ScheduledTask {
   next_run_at?: string
   run_count: number
   failure_count: number
-  last_status?: "success" | "failed"
+  last_status?: "success" | "failed" | "canceled"
   description: string
   created_at: string
   updated_at: string

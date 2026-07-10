@@ -28,8 +28,8 @@ export interface SftpSessionCardProps {
   onNavigateForwardSession: (sessionId: string) => void | Promise<void>
   onUploadSession: (sessionId: string, files: FileList, onProgress?: (fileName: string, loaded: number, total: number) => void) => void
   onDownloadSession: (sessionId: string, fileName: string) => void
-  onDeleteSession: (sessionId: string, fileName: string) => void
-  onBatchDeleteSession: (sessionId: string, fileNames: string[]) => Promise<BatchDeleteResult>
+  onDeleteSession: (sessionId: string, fileName: string, isDirectory: boolean) => void
+  onBatchDeleteSession: (sessionId: string, fileNames: string[], hasDirectory: boolean) => Promise<BatchDeleteResult>
   onBatchDownloadSession: (sessionId: string, fileNames: string[], excludePatterns?: string[]) => Promise<void>
   onCreateFolderSession: (sessionId: string, name: string) => void
   onCreateFileSession: (sessionId: string, name: string) => void
@@ -92,8 +92,8 @@ export const SftpSessionCard = React.memo(function SftpSessionCard({
     (fileName: string) => onCreateBackgroundDownloadSession?.(session.id, fileName),
     [onCreateBackgroundDownloadSession, session.id],
   )
-  const onDelete = React.useCallback((fileName: string) => onDeleteSession(session.id, fileName), [onDeleteSession, session.id])
-  const onBatchDelete = React.useCallback((fileNames: string[]) => onBatchDeleteSession(session.id, fileNames), [onBatchDeleteSession, session.id])
+  const onDelete = React.useCallback((fileName: string, isDirectory: boolean) => onDeleteSession(session.id, fileName, isDirectory), [onDeleteSession, session.id])
+  const onBatchDelete = React.useCallback((fileNames: string[], hasDirectory: boolean) => onBatchDeleteSession(session.id, fileNames, hasDirectory), [onBatchDeleteSession, session.id])
   const onBatchDownload = React.useCallback(
     (fileNames: string[], excludePatterns?: string[]) =>
       onBatchDownloadSession(session.id, fileNames, excludePatterns),

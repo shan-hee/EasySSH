@@ -7,6 +7,7 @@ export type {
   DiskUsageResponse,
   FileInfo,
   SftpBatchDownloadMode,
+  SftpDeletePathsResult,
   SftpFileItem,
   SftpTransferCredential,
   TransferProgressMessage,

@@ -26,7 +26,7 @@ interface SftpSessionContextValue extends ServerConnectionInfo {
   onNavigate: (path: string) => void
   onUpload: (files: FileList) => void
   onDownload: (fileName: string) => void
-  onDelete: (fileName: string) => void
+  onDelete: (fileName: string, isDirectory: boolean) => void
   onCreateFolder: (name: string) => void
   onRename: (oldName: string, newName: string) => void
   onDisconnect: () => void

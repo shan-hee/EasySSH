@@ -8,6 +8,7 @@ import type {
   DiskUsageResponse,
   FileInfo,
   SftpBatchDownloadMode,
+  SftpDeletePathsResult,
   SftpFileItem,
   UploadTaskListResponse,
   UploadTaskStatus,
@@ -424,6 +425,7 @@ export interface SshWorkspaceApiClient {
     uploadUsesProgressSocket?: boolean
     serverTransferUsesProgressSocket?: boolean
     delete?: (serverId: string, path: string) => Promise<FileInfo>
+    deletePaths?: (serverId: string, paths: string[]) => Promise<SftpDeletePathsResult>
     rename?: (serverId: string, oldPath: string, newPath: string) => Promise<FileInfo>
     createDirectory?: (serverId: string, path: string) => Promise<FileInfo>
     readFile?: (serverId: string, path: string) => Promise<string>

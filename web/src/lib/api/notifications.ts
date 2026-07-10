@@ -13,6 +13,11 @@ export interface NotificationSettings {
   new_device?: boolean      // 新设备登录通知
   new_location?: boolean    // 新地点登录通知
   suspicious?: boolean      // 可疑登录通知
+  task_in_app?: boolean
+  task_success?: boolean
+  task_failure?: boolean
+  task_partial?: boolean
+  task_external?: boolean
 }
 
 /**

@@ -92,6 +92,7 @@ const completeSftpSessionApiMethods = [
   "getDiskUsage",
   "listDirectory",
   "delete",
+  "deletePaths",
   "createDirectory",
   "writeFile",
   "rename",
@@ -137,6 +138,7 @@ export function createSftpSessionApi(adapter?: SftpSessionApiAdapter): SftpSessi
   if (adapter.getDiskUsage) definedAdapter.getDiskUsage = adapter.getDiskUsage
   if (adapter.listDirectory) definedAdapter.listDirectory = adapter.listDirectory
   if (adapter.delete) definedAdapter.delete = adapter.delete
+  if (adapter.deletePaths) definedAdapter.deletePaths = adapter.deletePaths
   if (adapter.createDirectory) definedAdapter.createDirectory = adapter.createDirectory
   if (adapter.writeFile) definedAdapter.writeFile = adapter.writeFile
   if (adapter.rename) definedAdapter.rename = adapter.rename

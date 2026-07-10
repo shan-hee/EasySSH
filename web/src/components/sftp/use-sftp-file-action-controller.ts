@@ -75,8 +75,8 @@ export interface UseSftpFileActionControllerOptions {
   ) => void
   onDownload: (fileName: string) => void
   onBackgroundDownload?: (fileName: string) => void | Promise<void>
-  onDelete: (fileName: string) => void
-  onBatchDelete?: (fileNames: string[]) => Promise<BatchDeleteResult>
+  onDelete: (fileName: string, isDirectory: boolean) => void
+  onBatchDelete?: (fileNames: string[], hasDirectory: boolean) => Promise<BatchDeleteResult>
   onBatchDownload?: (fileNames: string[], excludePatterns?: string[]) => Promise<void>
   onCreateFolder: (name: string) => void
   onCreateFile?: (name: string) => void
@@ -375,7 +375,8 @@ export function useSftpFileActionController({
 
     if (onBatchDelete) {
       try {
-        const result = await onBatchDelete(selectedFiles)
+        const hasDirectory = selectedFiles.some((name) => filteredFiles.find((item) => item.name === name)?.type === "directory")
+        const result = await onBatchDelete(selectedFiles, hasDirectory)
 
         if (result.failed.length > 0) {
           const failedNames = result.failed
@@ -397,10 +398,10 @@ export function useSftpFileActionController({
         notifier.error(getErrorMessage(error, tSftp("toastBatchDeleteFailed")))
       }
     } else {
-      selectedFiles.forEach((fileName) => onDelete(fileName))
+      selectedFiles.forEach((fileName) => onDelete(fileName, filteredFiles.find((item) => item.name === fileName)?.type === "directory"))
       setSelectedFiles([])
     }
-  }, [notifier, onBatchDelete, onDelete, selectedFiles, setSelectedFiles, tSftp])
+  }, [filteredFiles, notifier, onBatchDelete, onDelete, selectedFiles, setSelectedFiles, tSftp])
 
   const requestDelete = useCallback((fileName: string) => {
     const file = filteredFiles.find((item) => item.name === fileName)
@@ -430,7 +431,7 @@ export function useSftpFileActionController({
     if (deleteConfirmDialog.fileNames.length > 0) {
       await handleBatchDelete()
     } else if (deleteConfirmDialog.fileName) {
-      onDelete(deleteConfirmDialog.fileName)
+      onDelete(deleteConfirmDialog.fileName, deleteConfirmDialog.isDirectory)
     }
 
     setDeleteConfirmDialog(emptyDeleteConfirmDialogState)

@@ -1,6 +1,6 @@
 import { sftpApi } from "@/lib/api/sftp"
 import { getErrorMessage } from "@/lib/error-utils"
-import type { BatchDeleteResponse, FileInfo } from "@/lib/sftp-types"
+import type { BatchDeleteResponse, FileInfo, SftpDeletePathsResult } from "@/lib/sftp-types"
 import { joinSftpRemotePath, sftpRemoteBaseName } from "@/lib/sftp-file-utils"
 
 export type TranslateFunction = (key: string, params?: Record<string, string | number>) => string
@@ -12,6 +12,7 @@ export interface SftpOperationsApi {
   writeFile: (serverId: string, path: string, content: string) => Promise<FileInfo>
   rename: (serverId: string, oldPath: string, newPath: string) => Promise<FileInfo>
   batchDelete: (serverId: string, paths: string[]) => Promise<BatchDeleteResponse>
+  deletePaths: (serverId: string, paths: string[]) => Promise<SftpDeletePathsResult>
 }
 
 export interface SftpOperationNotifier {
@@ -41,6 +42,7 @@ export interface DeleteOperationConfig<T extends { name: string }> {
   serverId: string
   currentPath: string
   fileName: string
+  isDirectory: boolean
   t: TranslateFunction
   notifier: SftpOperationNotifier
   setFiles: SftpFileListUpdater<T>
@@ -51,6 +53,7 @@ export async function performDelete<T extends { name: string }>({
   serverId,
   currentPath,
   fileName,
+  isDirectory,
   t,
   notifier,
   setFiles,
@@ -58,17 +61,25 @@ export async function performDelete<T extends { name: string }>({
 }: DeleteOperationConfig<T>): Promise<void> {
   const fullPath = joinSftpRemotePath(currentPath, fileName)
 
-  const deletePromise = api.delete(serverId, fullPath).then(() => {
-    setFiles((prev) => prev.filter((file) => file.name !== fileName))
+  const deletePromise = (isDirectory
+    ? api.deletePaths(serverId, [fullPath])
+    : api.delete(serverId, fullPath).then(() => null)
+  ).then((result) => {
+    if (!isDirectory || result?.mode === "fast") {
+      setFiles((prev) => prev.filter((file) => file.name !== fileName))
+    }
+    return result
   })
 
   notifier.promise(deletePromise, {
     loading: t("toastDeleteLoading", { file: fileName }),
-    success: t("toastDeleteSuccessSingle", { file: fileName }),
+    success: (result) => result?.mode === "recursive_task"
+      ? t("toastDeleteTaskCreated", { file: fileName })
+      : t("toastDeleteSuccessSingle", { file: fileName }),
     error: (error) => getErrorMessage(error, t("toastDeleteFailed", { message: "" })),
   })
 
-  return deletePromise
+  await deletePromise
 }
 
 export interface CreateFolderOperationConfig<T extends { name: string }> {
@@ -231,6 +242,7 @@ export interface BatchDeleteOperationConfig<T extends { name: string }> {
   serverId: string
   currentPath: string
   fileNames: string[]
+  hasDirectory: boolean
   t: TranslateFunction
   notifier: SftpOperationNotifier
   setFiles: SftpFileListUpdater<T>
@@ -241,12 +253,15 @@ export interface BatchDeleteResult {
   success: string[]
   failed: Array<{ path: string; error: string }>
   total: number
+  mode: "fast" | "recursive_task" | "sftp"
+  task_id?: string
 }
 
 export async function performBatchDelete<T extends { name: string }>({
   serverId,
   currentPath,
   fileNames,
+  hasDirectory,
   t,
   notifier,
   setFiles,
@@ -254,7 +269,19 @@ export async function performBatchDelete<T extends { name: string }>({
 }: BatchDeleteOperationConfig<T>): Promise<BatchDeleteResult> {
   const fullPaths = fileNames.map((fileName) => joinSftpRemotePath(currentPath, fileName))
 
-  const batchDeletePromise = api.batchDelete(serverId, fullPaths).then((result) => {
+  const operation: Promise<BatchDeleteResult> = hasDirectory
+    ? api.deletePaths(serverId, fullPaths).then((result) => ({
+        success: result.mode === "fast" ? result.deleted_paths : [],
+        failed: [],
+        total: fullPaths.length,
+        mode: result.mode,
+        task_id: result.task_id,
+      }))
+    : api.batchDelete(serverId, fullPaths).then((result) => ({ ...result, mode: "sftp" }))
+  const batchDeletePromise = operation.then((result) => {
+    if (result.mode === "recursive_task") {
+      return result
+    }
     const successNames = new Set(
       result.success.map((path) => {
         return sftpRemoteBaseName(path, path)
@@ -284,7 +311,9 @@ export async function performBatchDelete<T extends { name: string }>({
 
   notifier.promise(batchDeletePromise, {
     loading: t("toastBatchDeleteLoading", { count: fileNames.length }),
-    success: (result) => t("toastBatchDeleteSuccess", { count: result.success.length }),
+    success: (result) => result.mode === "recursive_task"
+      ? t("toastBatchDeleteTaskCreated", { count: fileNames.length })
+      : t("toastBatchDeleteSuccess", { count: result.success.length }),
     error: (error) => getErrorMessage(error, t("toastBatchDeleteFailed")),
   })
 

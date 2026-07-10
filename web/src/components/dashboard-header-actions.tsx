@@ -3,7 +3,6 @@ import * as React from "react"
 import { useTranslation } from "react-i18next"
 import {
   Check,
-  Github,
   Languages,
   Loader2,
 } from "lucide-react"
@@ -25,6 +24,7 @@ import { useSystemConfig } from "@/contexts/system-config-context"
 import { useUpdateCheck } from "@/hooks/use-update-check"
 import { authApi } from "@/lib/api/auth"
 import { getEffectiveLocale, saveLocaleToStorage } from "@/utils/datetime"
+import { NotificationCenter } from "@/components/notification-center"
 
 type SupportedLocale = "zh-CN" | "en-US"
 
@@ -73,16 +73,7 @@ export function DashboardHeaderActions() {
 
   return (
     <div className="flex shrink-0 items-center gap-1">
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button asChild variant="ghost" size="icon-sm" aria-label={t("githubTooltip")}>
-            <a href="https://github.com/shan-hee/EasySSH" target="_blank" rel="noopener noreferrer">
-              <Github />
-            </a>
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent side="bottom">{t("githubTooltip")}</TooltipContent>
-      </Tooltip>
+      <NotificationCenter />
 
       <DropdownMenu>
         <Tooltip>

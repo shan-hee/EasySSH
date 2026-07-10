@@ -49,7 +49,7 @@ export const breadcrumbRouteConfig: Record<string, BreadcrumbConfig> = {
     // 仅显示系统名称 + 当前页面标题
     showTitle: true,
   },
-  '/dashboard/automation/schedules': {
+  '/dashboard/tasks': {
     // 仅显示系统名称 + 当前页面标题
     showTitle: true,
   },

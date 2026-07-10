@@ -85,7 +85,7 @@ const isSftpTaskType = (type: ScheduledTaskType) => (
  type === "sftp_upload" || type === "sftp_download"
 )
 
-export default function AutomationSchedulesPage() {
+export default function AutomationSchedulesPage({ embedded = false }: { embedded?: boolean }) {
  const { ready } = useAuthReady()
  const { user } = useClientAuth()
  const { data: systemConfig } = useSystemConfig()
@@ -537,7 +537,7 @@ export default function AutomationSchedulesPage() {
  return (
  <>
  {confirmDialog}
- <PageHeader title={t("pageTitle")} />
+  {!embedded ? <PageHeader title={t("pageTitle")} /> : null}
 
  <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-auto p-3 pt-0 sm:gap-4 sm:p-4 sm:pt-0 xl:overflow-hidden">
    <div className="flex shrink-0 flex-col gap-2 text-sm text-muted-foreground md:flex-row md:items-center md:justify-between">

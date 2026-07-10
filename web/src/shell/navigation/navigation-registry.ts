@@ -1,7 +1,7 @@
 import type { LucideIcon } from "lucide-react"
 import {
   Bot,
-  CalendarClock,
+  ListChecks,
   FileText,
   Monitor,
   ScrollText,
@@ -64,9 +64,9 @@ const workbench: NavigationItemDefinition[] = [
     requiredCapabilities: ["scripts"],
   },
   {
-    titleKey: "schedules",
-    url: "/dashboard/automation/schedules",
-    icon: CalendarClock,
+    titleKey: "tasks",
+    url: "/dashboard/tasks",
+    icon: ListChecks,
     profiles: ["web"],
     requiredCapabilities: ["automation"],
   },

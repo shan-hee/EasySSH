@@ -7,7 +7,7 @@ import GoogleAuthCallbackPage from "@/pages/auth/google-callback-page"
 import LoginPage from "@/pages/auth/login-page"
 import RegisterPage from "@/pages/auth/register-page"
 import DashboardAISessionPage from "@/pages/dashboard/ai-assistant-page"
-import AutomationSchedulesPage from "@/pages/dashboard/automation-schedules-page"
+import TaskCenterPage from "@/pages/dashboard/task-center-page"
 import DashboardError from "@/pages/dashboard/dashboard-error"
 import LogsPage from "@/pages/dashboard/logs-page"
 import OperationLogsPage from "@/pages/dashboard/operation-logs-page"
@@ -63,7 +63,7 @@ export function AppRouter() {
         <Route path="logs" element={<LogsPage />} />
         <Route path="operation-logs" element={<OperationLogsPage />} />
         <Route path="scripts" element={<ScriptsPage />} />
-        <Route path="automation/schedules" element={<AutomationSchedulesPage />} />
+        <Route path="tasks" element={<TaskCenterPage />} />
         <Route path="settings" element={<SettingsPage />} />
         <Route path="settings/management" element={<SettingsManagementPage />} />
         <Route path="error" element={<DashboardError error={new Error("Dashboard error")} reset={() => {}} />} />

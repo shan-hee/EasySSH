@@ -16,6 +16,7 @@ import type {
   DirectoryListResponse,
   DiskUsageResponse,
   FileInfo,
+  SftpDeletePathsResult,
   TransferResponse,
   UploadTaskListResponse,
   UploadTaskStatus,
@@ -258,15 +259,22 @@ export const sftpApi = {
   },
 
   /**
-   * 删除文件或目录
+   * 同步删除单个普通文件。目录必须通过 deletePaths 处理。
    */
   async delete(serverId: string, path: string): Promise<FileInfo> {
     // 后端返回被删除文件的 FileInfo(删除前快照)
     return apiFetch<FileInfo>(`/sftp/${serverId}/delete`, {
       method: "DELETE",
       body: { path },
-      timeout: 300000, // 5分钟超时（用于删除大目录如 node_modules）
-      retry: false,    // 禁用重试（删除操作不应重试）
+      retry: false,
+    })
+  },
+
+  async deletePaths(serverId: string, paths: string[]): Promise<SftpDeletePathsResult> {
+    return apiFetch<SftpDeletePathsResult>(`/sftp/${serverId}/delete-paths`, {
+      method: "POST",
+      body: { paths },
+      retry: false,
     })
   },
 
@@ -534,7 +542,7 @@ export const sftpApi = {
   },
 
   /**
-   * 批量删除文件或目录
+   * 同步批量删除普通文件。包含目录的操作必须通过 deletePaths 处理。
    */
   async batchDelete(serverId: string, paths: string[]): Promise<BatchDeleteResponse> {
     return apiFetch<BatchDeleteResponse>(`/sftp/${serverId}/batch-delete`, {

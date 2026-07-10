@@ -199,6 +199,11 @@ export const SettingsDialog = React.memo(function SettingsDialog({ children }: {
   const [notifyNewDevice, setNotifyNewDevice] = React.useState(true)
   const [notifyNewLocation, setNotifyNewLocation] = React.useState(true)
   const [notifySuspicious, setNotifySuspicious] = React.useState(true)
+  const [notifyTaskInApp, setNotifyTaskInApp] = React.useState(true)
+  const [notifyTaskSuccess, setNotifyTaskSuccess] = React.useState(true)
+  const [notifyTaskFailure, setNotifyTaskFailure] = React.useState(true)
+  const [notifyTaskPartial, setNotifyTaskPartial] = React.useState(true)
+  const [notifyTaskExternal, setNotifyTaskExternal] = React.useState(false)
   const [notificationLoading, setNotificationLoading] = React.useState(false)
 
   // 个人偏好状态（时区）
@@ -262,6 +267,11 @@ export const SettingsDialog = React.memo(function SettingsDialog({ children }: {
       setNotifyNewDevice(user.notify_new_device ?? true)
       setNotifyNewLocation(user.notify_new_location ?? true)
       setNotifySuspicious(user.notify_suspicious ?? true)
+      setNotifyTaskInApp(user.notify_task_in_app ?? true)
+      setNotifyTaskSuccess(user.notify_task_success ?? true)
+      setNotifyTaskFailure(user.notify_task_failure ?? true)
+      setNotifyTaskPartial(user.notify_task_partial ?? true)
+      setNotifyTaskExternal(user.notify_task_external ?? false)
       // 初始化个人偏好（优先使用用户配置，其次使用系统默认配置）
       setPreferencesForm({
         timezone: user.timezone || config?.default_timezone || "Asia/Shanghai",
@@ -836,7 +846,7 @@ export const SettingsDialog = React.memo(function SettingsDialog({ children }: {
 
   // 更新通知设置
   const handleUpdateNotification = React.useCallback(
-    async (field: "email_login" | "email_alert" | "browser" | "new_device" | "new_location" | "suspicious", value: boolean) => {
+    async (field: "email_login" | "email_alert" | "browser" | "new_device" | "new_location" | "suspicious" | "task_in_app" | "task_success" | "task_failure" | "task_partial" | "task_external", value: boolean) => {
       setNotificationLoading(true)
       try {
         await notificationsApi.update({ [field]: value })
@@ -852,6 +862,11 @@ export const SettingsDialog = React.memo(function SettingsDialog({ children }: {
         if (field === "new_device") setNotifyNewDevice(!value)
         if (field === "new_location") setNotifyNewLocation(!value)
         if (field === "suspicious") setNotifySuspicious(!value)
+        if (field === "task_in_app") setNotifyTaskInApp(!value)
+        if (field === "task_success") setNotifyTaskSuccess(!value)
+        if (field === "task_failure") setNotifyTaskFailure(!value)
+        if (field === "task_partial") setNotifyTaskPartial(!value)
+        if (field === "task_external") setNotifyTaskExternal(!value)
       } finally {
         setNotificationLoading(false)
       }
@@ -1572,6 +1587,31 @@ export const SettingsDialog = React.memo(function SettingsDialog({ children }: {
                 )}
                 {activeSection === "notifications" && (
                   <div className="space-y-4">
+                    <div className="bg-muted/50 rounded-xl p-4">
+                      <h4 className="font-medium mb-2">{tAccount("notificationsTaskTitle")}</h4>
+                      <p className="text-sm text-muted-foreground mb-3">{tAccount("notificationsTaskDescription")}</p>
+                      <div className="space-y-4">
+                        {[
+                          ["task_in_app", notifyTaskInApp, setNotifyTaskInApp, "notificationsTaskInAppLabel", "notificationsTaskInAppDescription"],
+                          ["task_success", notifyTaskSuccess, setNotifyTaskSuccess, "notificationsTaskSuccessLabel", "notificationsTaskSuccessDescription"],
+                          ["task_failure", notifyTaskFailure, setNotifyTaskFailure, "notificationsTaskFailureLabel", "notificationsTaskFailureDescription"],
+                          ["task_partial", notifyTaskPartial, setNotifyTaskPartial, "notificationsTaskPartialLabel", "notificationsTaskPartialDescription"],
+                          ["task_external", notifyTaskExternal, setNotifyTaskExternal, "notificationsTaskExternalLabel", "notificationsTaskExternalDescription"],
+                        ].map(([field, checked, setter, label, description]) => (
+                          <div key={field as string} className="flex items-center justify-between gap-4">
+                            <div className="space-y-1"><Label>{tAccount(label as string)}</Label><p className="text-sm text-muted-foreground">{tAccount(description as string)}</p></div>
+                            <Switch
+                              checked={checked as boolean}
+                              onCheckedChange={(value) => {
+                                ;(setter as React.Dispatch<React.SetStateAction<boolean>>)(value)
+                                handleUpdateNotification(field as "task_in_app" | "task_success" | "task_failure" | "task_partial" | "task_external", value)
+                              }}
+                              disabled={notificationLoading}
+                            />
+                          </div>
+                        ))}
+                      </div>
+                    </div>
                     {/* 登录安全告警 */}
                     <div className="bg-muted/50 rounded-xl p-4">
                       <h4 className="font-medium mb-2">

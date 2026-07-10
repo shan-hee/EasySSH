@@ -628,6 +628,7 @@ export default function SftpPage() {
    return {
      ...sftpSessionApi,
      delete: (serverId, path) => run(() => sftpSessionApi.delete(serverId, path)),
+     deletePaths: (serverId, paths) => run(() => sftpSessionApi.deletePaths(serverId, paths)),
      createDirectory: (serverId, path) => run(() => sftpSessionApi.createDirectory(serverId, path)),
      writeFile: (serverId, path, content) => run(() => sftpSessionApi.writeFile(serverId, path, content)),
      rename: (serverId, oldPath, newPath) => run(() => sftpSessionApi.rename(serverId, oldPath, newPath)),
@@ -1144,7 +1145,7 @@ export default function SftpPage() {
 
  // 删除文件 (使用通用函数)
  const handleDelete = useCallback(
-   (sessionId: string, fileName: string) => {
+   (sessionId: string, fileName: string, isDirectory: boolean) => {
      const session = sessionsRef.current.find(s => s.id === sessionId)
      if (!session || !session.isConnected) return
 
@@ -1152,6 +1153,7 @@ export default function SftpPage() {
        serverId: session.serverId,
        currentPath: session.currentPath,
        fileName,
+       isDirectory,
        t: tSftp,
        notifier: toast,
        setFiles: createSessionFilesUpdater(sessionId),
@@ -1265,7 +1267,7 @@ export default function SftpPage() {
 
  // 批量删除文件 (使用通用函数)
  const handleBatchDelete = useCallback(
-   (sessionId: string, fileNames: string[]) => {
+   (sessionId: string, fileNames: string[], hasDirectory: boolean) => {
      const session = sessionsRef.current.find(s => s.id === sessionId)
      if (!session || !session.isConnected) {
        throw new Error("SFTP session is not connected")
@@ -1275,6 +1277,7 @@ export default function SftpPage() {
        serverId: session.serverId,
        currentPath: session.currentPath,
        fileNames,
+       hasDirectory,
        t: tSftp,
        notifier: toast,
        setFiles: createSessionFilesUpdater(sessionId),

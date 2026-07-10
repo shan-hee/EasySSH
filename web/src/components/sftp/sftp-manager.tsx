@@ -50,8 +50,8 @@ export interface SftpManagerProps {
   ) => void
   onUpload: (files: FileList, onProgress?: (fileName: string, loaded: number, total: number) => void) => void
   onDownload: (fileName: string) => void
-  onDelete: (fileName: string) => void
-  onBatchDelete?: (fileNames: string[]) => Promise<BatchDeleteResult>
+  onDelete: (fileName: string, isDirectory: boolean) => void
+  onBatchDelete?: (fileNames: string[], hasDirectory: boolean) => Promise<BatchDeleteResult>
   onBatchDownload?: (fileNames: string[], excludePatterns?: string[]) => Promise<void>
   onCreateFolder: (name: string) => void
   onCreateFile?: (name: string) => void

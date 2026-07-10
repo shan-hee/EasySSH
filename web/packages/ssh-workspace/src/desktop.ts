@@ -9,7 +9,7 @@ export { TerminalSftpTabContent } from "../../../src/components/terminal/termina
 export { SftpServerPickerDialog } from "../../../src/components/sftp/sftp-server-picker-dialog"
 export { ServerConnectionConfigs } from "../../../src/components/servers/server-connection-configs"
 export { BackupRestoreTab, LogsClient, ScriptsPage } from "./desktop-components"
-export { Activity, ArchiveRestore, ArrowLeft, Bot, Check, Clipboard, Download, ExternalLink, FileText, FolderOpen, Github, Info, Languages, Loader2, Menu, Minus, RefreshCw, RotateCw, Square, Terminal, TriangleAlert, X } from "lucide-react"
+export { Activity, ArchiveRestore, ArrowLeft, Bell, Bot, Check, CheckCheck, CircleCheck, Clipboard, Download, ExternalLink, FileText, FolderOpen, Info, Languages, Loader2, Menu, Minus, RefreshCw, RotateCw, Square, Terminal, Trash2, TriangleAlert, X, XCircle } from "lucide-react"
 export type { BackupRestoreTabProps, LogsClientProps, ScriptsPageProps } from "./desktop-components"
 export type { ScriptsPageAdapters } from "../../../src/components/dashboard/scripts/scripts-page"
 export type { BackupContent, BackupRestoreAdapter, ConflictStrategy } from "../../../src/components/settings/backup-restore-tab"

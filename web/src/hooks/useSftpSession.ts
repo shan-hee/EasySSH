@@ -217,6 +217,7 @@ export function useSftpSession(
   const operationApi = useMemo<SftpSessionApi>(() => ({
     ...sessionApi,
     delete: (targetServerId, path) => runSftpOperation(() => sessionApi.delete(targetServerId, path)),
+    deletePaths: (targetServerId, paths) => runSftpOperation(() => sessionApi.deletePaths(targetServerId, paths)),
     createDirectory: (targetServerId, path) => (
       runSftpOperation(() => sessionApi.createDirectory(targetServerId, path))
     ),
@@ -411,10 +412,11 @@ export function useSftpSession(
    * 删除文件或目录 (使用通用函数)
    */
   const deleteFile = useCallback(
-    (fileName: string) => performDelete({
+    (fileName: string, isDirectory: boolean) => performDelete({
       serverId,
       currentPath,
       fileName,
+      isDirectory,
       t: tSftp,
       notifier: sessionNotifier,
       setFiles,
@@ -518,10 +520,11 @@ export function useSftpSession(
    * 批量删除文件或目录 (使用通用函数)
    */
   const batchDeleteFiles = useCallback(
-    (fileNames: string[]) => performBatchDelete({
+    (fileNames: string[], hasDirectory: boolean) => performBatchDelete({
       serverId,
       currentPath,
       fileNames,
+      hasDirectory,
       t: tSftp,
       notifier: sessionNotifier,
       setFiles,
