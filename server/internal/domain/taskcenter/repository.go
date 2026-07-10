@@ -3,6 +3,7 @@ package taskcenter
 import (
 	"context"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
@@ -20,6 +21,7 @@ type Repository interface {
 	ListActive(ctx context.Context) ([]TaskRun, error)
 	AppendEvent(ctx context.Context, event *TaskEvent) error
 	ListEvents(ctx context.Context, userID, runID uuid.UUID) ([]TaskEvent, error)
+	CleanupTerminalBefore(ctx context.Context, userID uuid.UUID, before time.Time) (*CleanupResult, error)
 }
 
 type repository struct{ db *gorm.DB }
@@ -144,3 +146,78 @@ func (r *repository) ListEvents(ctx context.Context, userID, runID uuid.UUID) ([
 	err := r.db.WithContext(ctx).Where("user_id = ? AND task_run_id = ?", userID, runID).Order(clause.OrderByColumn{Column: clause.Column{Name: "created_at"}}).Find(&events).Error
 	return events, err
 }
+
+func (r *repository) CleanupTerminalBefore(ctx context.Context, userID uuid.UUID, before time.Time) (*CleanupResult, error) {
+	result := &CleanupResult{}
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var runIDs []uuid.UUID
+		if err := tx.Model(&TaskRun{}).
+			Where("user_id = ? AND finished_at IS NOT NULL AND finished_at < ? AND status IN ?", userID, before, terminalTaskStatuses()).
+			Pluck("id", &runIDs).Error; err != nil {
+			return err
+		}
+
+		const batchSize = 500
+		for start := 0; start < len(runIDs); start += batchSize {
+			end := start + batchSize
+			if end > len(runIDs) {
+				end = len(runIDs)
+			}
+			batch := runIDs[start:end]
+
+			var notificationIDs []uuid.UUID
+			if err := tx.Table("inbox_notifications").
+				Where("user_id = ? AND source_type = ? AND source_id IN ?", userID, "task_run", batch).
+				Pluck("id", &notificationIDs).Error; err != nil {
+				return err
+			}
+			if len(notificationIDs) > 0 {
+				if err := tx.Table("notification_deliveries").Where("user_id = ? AND notification_id IN ?", userID, notificationIDs).Delete(&taskNotificationDelivery{}).Error; err != nil {
+					return err
+				}
+				deletedNotifications := tx.Table("inbox_notifications").Where("user_id = ? AND id IN ?", userID, notificationIDs).Delete(&taskNotification{})
+				if deletedNotifications.Error != nil {
+					return deletedNotifications.Error
+				}
+				result.DeletedNotifications += deletedNotifications.RowsAffected
+			}
+
+			if err := tx.Table("transfer_jobs").Where("user_id = ? AND task_run_id IN ?", userID, batch).Update("task_run_id", nil).Error; err != nil {
+				return err
+			}
+			if err := tx.Model(&TaskRun{}).Where("user_id = ? AND retry_of_id IN ?", userID, batch).Update("retry_of_id", nil).Error; err != nil {
+				return err
+			}
+
+			deletedEvents := tx.Where("user_id = ? AND task_run_id IN ?", userID, batch).Delete(&TaskEvent{})
+			if deletedEvents.Error != nil {
+				return deletedEvents.Error
+			}
+			result.DeletedEvents += deletedEvents.RowsAffected
+
+			deletedRuns := tx.Where("user_id = ? AND id IN ? AND status IN ?", userID, batch, terminalTaskStatuses()).Delete(&TaskRun{})
+			if deletedRuns.Error != nil {
+				return deletedRuns.Error
+			}
+			result.DeletedCount += deletedRuns.RowsAffected
+		}
+		return nil
+	})
+	return result, err
+}
+
+func terminalTaskStatuses() []Status {
+	return []Status{StatusSucceeded, StatusFailed, StatusPartialSuccess, StatusCanceled, StatusTimeout}
+}
+
+type taskNotification struct {
+	ID uuid.UUID
+}
+
+func (taskNotification) TableName() string { return "inbox_notifications" }
+
+type taskNotificationDelivery struct {
+	ID uint
+}
+
+func (taskNotificationDelivery) TableName() string { return "notification_deliveries" }

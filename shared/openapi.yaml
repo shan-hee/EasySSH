@@ -473,6 +473,19 @@ components:
         timeout:
           type: integer
 
+    TaskCleanupResult:
+      type: object
+      required: [deleted_count, deleted_events, deleted_notifications, retention_days]
+      properties:
+        deleted_count:
+          type: integer
+        deleted_events:
+          type: integer
+        deleted_notifications:
+          type: integer
+        retention_days:
+          type: integer
+
     InboxNotification:
       type: object
       required: [id, user_id, event_type, severity, title, message, created_at]
@@ -570,7 +583,7 @@ components:
           format: uuid
         type:
           type: string
-          enum: [task.created, task.updated, notification.created, notification.changed]
+          enum: [task.created, task.updated, task.cleanup.completed, notification.created, notification.changed, notification.cleanup.completed]
         data:
           type: object
           additionalProperties: true
@@ -598,6 +611,13 @@ components:
       properties:
         data:
           $ref: '#/components/schemas/TaskStatistics'
+
+    TaskCleanupResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/TaskCleanupResult'
 
     InboxNotificationListResponse:
       type: object
@@ -2574,6 +2594,36 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/TaskRunListResponse'
+
+  /tasks/cleanup:
+    delete:
+      tags: [tasks]
+      summary: 清理当前用户保留期外的已结束任务运行记录
+      description: 仅清理成功、失败、部分成功、已取消和超时任务；排队中、运行中和取消中的任务不会被清理。
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: retention_days
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 3650
+            default: 90
+      responses:
+        '200':
+          description: 清理结果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskCleanupResponse'
+        '400':
+          description: 保留天数无效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
 
   /tasks/statistics:
     get:

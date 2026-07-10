@@ -1,11 +1,21 @@
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import type { TFunction } from "i18next"
 import type { ColumnDef } from "@tanstack/react-table"
-import { AlertTriangle, CheckCircle2, CircleStop, Clock3, Eye, Loader2, MoreHorizontal, RotateCcw, Search } from "lucide-react"
+import { AlertTriangle, CheckCircle2, CircleStop, Clock3, Eye, Loader2, MoreHorizontal, RotateCcw, Search, Trash2 } from "lucide-react"
 import { useSearchParams } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 
 import { PageHeader } from "@/components/page-header"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import type { DataTableColumnMeta } from "@/components/ui/column-meta"
@@ -15,6 +25,7 @@ import { DataTableToolbar } from "@/components/ui/data-table-toolbar"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 import { Progress } from "@/components/ui/progress"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -43,9 +54,12 @@ export default function TaskCenterPage() {
   const [keyword, setKeyword] = useState("")
   const deferredKeyword = useDeferredValue(keyword.trim())
   const [selected, setSelected] = useState<{ run: TaskRun; events: TaskEvent[] } | null>(null)
+  const [cleanupOpen, setCleanupOpen] = useState(false)
+  const [cleanupLoading, setCleanupLoading] = useState(false)
+  const [retentionDays, setRetentionDays] = useState("90")
   const handledRequestedRunRef = useRef<string | null>(null)
 
-  const load = useCallback(async (silent = false) => {
+  const load = useCallback(async (silent = false, requestedPage = page) => {
     if (!silent) setLoading(true)
     try {
       const status = statusFilter === "active"
@@ -56,7 +70,7 @@ export default function TaskCenterPage() {
         task_type: taskTypeFilters.length > 0 ? taskTypeFilters : undefined,
         trigger_type: triggerFilters.length > 0 ? triggerFilters : undefined,
         keyword: deferredKeyword || undefined,
-        page,
+        page: requestedPage,
         page_size: pageSize,
       }), taskCenterApi.statistics()])
       setRuns(list.runs ?? [])
@@ -140,6 +154,28 @@ export default function TaskCenterPage() {
       toast.error(getErrorMessage(error, t(action === "cancel" ? "cancelFailed" : "retryFailed")))
     }
   }, [clearRequestedRun, load, t])
+
+  const cleanupRuns = useCallback(async () => {
+    const parsedRetentionDays = Number(retentionDays)
+    if (!Number.isInteger(parsedRetentionDays) || parsedRetentionDays < 1 || parsedRetentionDays > 3650) {
+      toast.error(t("cleanupInvalidRetention"))
+      return
+    }
+    try {
+      setCleanupLoading(true)
+      const result = await taskCenterApi.cleanup(parsedRetentionDays)
+      toast.success(t("cleanupSuccess", { count: result.deleted_count }))
+      setCleanupOpen(false)
+      setSelected(null)
+      clearRequestedRun()
+      setPage(1)
+      await load(false, 1)
+    } catch (error) {
+      toast.error(getErrorMessage(error, t("cleanupFailed")))
+    } finally {
+      setCleanupLoading(false)
+    }
+  }, [clearRequestedRun, load, retentionDays, t])
 
   const metricItems = useMemo(() => [
     { label: t("metricAll"), value: statistics.total, icon: Clock3 },
@@ -323,7 +359,18 @@ export default function TaskCenterPage() {
                         />
                       </div>
                     )}
-                  />
+                  >
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-8 text-destructive hover:text-destructive"
+                      disabled={cleanupLoading}
+                      onClick={() => setCleanupOpen(true)}
+                    >
+                      <Trash2 className="size-4" />
+                      {t("cleanupButton")}
+                    </Button>
+                  </DataTableToolbar>
                 )}
               />
             </div>
@@ -345,6 +392,49 @@ export default function TaskCenterPage() {
           {selected ? <TaskDetails run={selected.run} events={selected.events} onAction={runAction} t={t} locale={i18n.language} /> : null}
         </DialogContent>
       </Dialog>
+
+      <AlertDialog open={cleanupOpen} onOpenChange={setCleanupOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t("cleanupDialogTitle")}</AlertDialogTitle>
+            <AlertDialogDescription>{t("cleanupDialogDescription")}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="grid gap-3 py-2">
+            <div className="grid gap-2">
+              <Label htmlFor="task-run-retention-days">{t("cleanupRetentionLabel")}</Label>
+              <Input
+                id="task-run-retention-days"
+                type="number"
+                min={1}
+                max={3650}
+                value={retentionDays}
+                disabled={cleanupLoading}
+                onChange={(event) => setRetentionDays(event.target.value)}
+              />
+              <p className="text-sm text-muted-foreground">{t("cleanupRetentionHint")}</p>
+            </div>
+            <p className="text-sm text-destructive">{t("cleanupWarning")}</p>
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={cleanupLoading}>{t("cleanupCancel")}</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-white hover:bg-destructive/90"
+              disabled={cleanupLoading}
+              onClick={(event) => {
+                event.preventDefault()
+                void cleanupRuns()
+              }}
+            >
+              {cleanupLoading ? (
+                <>
+                  <Loader2 className="size-4 animate-spin" />
+                  {t("cleanupRunning")}
+                </>
+              ) : t("cleanupConfirm")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   )
 }

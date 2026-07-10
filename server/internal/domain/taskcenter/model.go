@@ -137,3 +137,9 @@ type Statistics struct {
 	Canceled       int64 `json:"canceled"`
 	Timeout        int64 `json:"timeout"`
 }
+
+type CleanupResult struct {
+	DeletedCount         int64 `json:"deleted_count"`
+	DeletedEvents        int64 `json:"deleted_events"`
+	DeletedNotifications int64 `json:"deleted_notifications"`
+}

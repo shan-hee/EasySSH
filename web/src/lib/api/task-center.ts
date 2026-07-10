@@ -68,6 +68,13 @@ export interface TaskStatistics {
   timeout: number
 }
 
+export interface TaskCleanupResult {
+  deleted_count: number
+  deleted_events: number
+  deleted_notifications: number
+  retention_days: number
+}
+
 export interface TaskRunListParams {
   status?: TaskRunStatus[]
   task_type?: string[]
@@ -88,6 +95,9 @@ export const taskCenterApi = {
   },
   statistics() {
     return apiFetch<TaskStatistics>("/tasks/statistics")
+  },
+  cleanup(retentionDays: number) {
+    return apiFetch<TaskCleanupResult>(`/tasks/cleanup?retention_days=${retentionDays}`, { method: "DELETE" })
   },
   get(id: string) {
     return apiFetch<{ run: TaskRun; events: TaskEvent[] }>(`/tasks/${id}`)

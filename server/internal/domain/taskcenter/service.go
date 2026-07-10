@@ -37,6 +37,7 @@ type Service interface {
 	List(ctx context.Context, req *ListRequest) (*ListResponse, error)
 	Statistics(ctx context.Context, userID uuid.UUID) (*Statistics, error)
 	Events(ctx context.Context, userID, runID uuid.UUID) ([]TaskEvent, error)
+	Cleanup(ctx context.Context, userID uuid.UUID, retentionDays int) (*CleanupResult, error)
 	RequestCancel(ctx context.Context, userID, id uuid.UUID) error
 	RecoverInterrupted(ctx context.Context) error
 	SetNotifier(notifier CompletionNotifier)
@@ -204,6 +205,24 @@ func (s *service) Statistics(ctx context.Context, userID uuid.UUID) (*Statistics
 }
 func (s *service) Events(ctx context.Context, userID, runID uuid.UUID) ([]TaskEvent, error) {
 	return s.repo.ListEvents(ctx, userID, runID)
+}
+
+func (s *service) Cleanup(ctx context.Context, userID uuid.UUID, retentionDays int) (*CleanupResult, error) {
+	if retentionDays <= 0 {
+		retentionDays = 90
+	}
+	result, err := s.repo.CleanupTerminalBefore(ctx, userID, time.Now().AddDate(0, 0, -retentionDays))
+	if err != nil {
+		return nil, err
+	}
+	if s.events != nil {
+		payload := map[string]interface{}{"deleted_count": result.DeletedCount, "retention_days": retentionDays}
+		s.events.Publish(userID, "task.cleanup.completed", payload)
+		if result.DeletedNotifications > 0 {
+			s.events.Publish(userID, "notification.cleanup.completed", payload)
+		}
+	}
+	return result, nil
 }
 
 func (s *service) RequestCancel(ctx context.Context, userID, id uuid.UUID) error {

@@ -841,6 +841,7 @@ func main() {
 		{
 			taskCenterRoutes.GET("", taskCenterHandler.List)
 			taskCenterRoutes.GET("/statistics", taskCenterHandler.Statistics)
+			taskCenterRoutes.DELETE("/cleanup", taskCenterHandler.Cleanup)
 			taskCenterRoutes.GET("/:id", taskCenterHandler.Get)
 			taskCenterRoutes.POST("/:id/cancel", taskCenterHandler.Cancel)
 			taskCenterRoutes.POST("/:id/retry", taskCenterHandler.Retry)
