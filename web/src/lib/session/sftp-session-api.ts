@@ -105,7 +105,6 @@ const completeSftpSessionApiMethods = [
   "createUploadTask",
   "listUploadTasks",
   "getUploadTask",
-  "getTransferTask",
   "cancelUploadTask",
   "uploadFile",
   "directTransfer",
