@@ -1,6 +1,6 @@
 
 import { startTransition } from "react"
-import { ChevronLeft, ChevronRight, CloudUpload, Home, LayoutGrid, List, Maximize2, Minimize2, X } from "lucide-react"
+import { ChevronLeft, ChevronRight, Clipboard, CloudUpload, CornerDownRight, FolderInput, Home, Maximize2, Minimize2, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
@@ -10,6 +10,7 @@ import { useOptionalSshWorkspace } from "@/components/ssh-workspace/ssh-workspac
 import { useWorkspaceSftpTranslator } from "@/components/ssh-workspace/use-workspace-translator"
 import type { TransferJob } from "@/lib/api/transfer-jobs"
 import type { WorkspaceTransferTask } from "@/lib/session/workspace"
+import type { SftpTerminalPathActions } from "@/components/sftp/sftp-manager"
 
 export interface SftpWorkspaceToolbarProps {
   displayPath: string
@@ -25,8 +26,7 @@ export interface SftpWorkspaceToolbarProps {
   onNavigateForward?: () => void | Promise<void>
   canNavigateForward?: boolean
 
-  viewMode: "grid" | "list"
-  onViewModeChange: (mode: "grid" | "list") => void
+  terminalPathActions?: SftpTerminalPathActions
   showTransferTasks: boolean
   transferTasks: WorkspaceTransferTask[]
   backgroundTransferJobs?: TransferJob[]
@@ -54,8 +54,7 @@ export function SftpWorkspaceToolbar({
   canNavigateBack,
   onNavigateForward,
   canNavigateForward,
-  viewMode,
-  onViewModeChange,
+  terminalPathActions,
   showTransferTasks,
   transferTasks,
   backgroundTransferJobs,
@@ -239,46 +238,44 @@ export function SftpWorkspaceToolbar({
             )}
           </div>
         </div>
+
+        {terminalPathActions && (
+          <div className="flex shrink-0 items-center gap-0.5">
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7 rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+              onClick={() => void terminalPathActions.onCopy()}
+              title={tSftp("terminalCopyPath")}
+            >
+              <Clipboard className="h-3.5 w-3.5" />
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7 rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+              onClick={terminalPathActions.onInsert}
+              title={tSftp("terminalInsertPath")}
+            >
+              <CornerDownRight className="h-3.5 w-3.5" />
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7 rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+              onClick={terminalPathActions.onEnter}
+              title={tSftp("terminalChangeDirectory")}
+            >
+              <FolderInput className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+        )}
       </div>
 
       <div className="flex items-center gap-1">
-        <Button
-          variant="ghost"
-          size="icon"
-          className={cn(
-            "h-7 w-7 rounded-md transition-all duration-200",
-            viewMode === "grid"
-              ? "bg-accent text-accent-foreground"
-              : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
-          )}
-          onClick={() => {
-            startTransition(() => {
-              onViewModeChange("grid")
-            })
-          }}
-          title={tSftp("viewGridTooltip")}
-        >
-          <LayoutGrid className="h-3.5 w-3.5" />
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon"
-          className={cn(
-            "h-7 w-7 rounded-md transition-all duration-200",
-            viewMode === "list"
-              ? "bg-accent text-accent-foreground"
-              : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
-          )}
-          onClick={() => {
-            startTransition(() => {
-              onViewModeChange("list")
-            })
-          }}
-          title={tSftp("viewListTooltip")}
-        >
-          <List className="h-3.5 w-3.5" />
-        </Button>
-
         {onCreateBackgroundUpload && (
           <Button
             variant="ghost"

@@ -1,12 +1,14 @@
 
 import { startTransition } from "react"
-import { Eye, EyeOff, RefreshCw, Search } from "lucide-react"
+import { Eye, EyeOff, LayoutGrid, List, RefreshCw, Search } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { useWorkspaceSftpTranslator } from "@/components/ssh-workspace/use-workspace-translator"
 import { cn } from "@/lib/utils"
 
 export interface SftpFileToolbarProps {
+  viewMode: "grid" | "list"
+  onViewModeChange: (mode: "grid" | "list") => void
   searchTerm: string
   onSearchTermChange: (value: string) => void
   showHidden: boolean
@@ -16,6 +18,8 @@ export interface SftpFileToolbarProps {
 }
 
 export function SftpFileToolbar({
+  viewMode,
+  onViewModeChange,
   searchTerm,
   onSearchTermChange,
   showHidden,
@@ -27,6 +31,45 @@ export function SftpFileToolbar({
 
   return (
     <div className="px-3 py-2 border-b flex items-center gap-2">
+      <div className="flex shrink-0 items-center gap-0.5">
+        <Button
+          variant="ghost"
+          size="icon"
+          className={cn(
+            "h-7 w-7 rounded-md transition-all duration-200",
+            viewMode === "grid"
+              ? "bg-accent text-accent-foreground"
+              : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
+          )}
+          onClick={() => {
+            startTransition(() => {
+              onViewModeChange("grid")
+            })
+          }}
+          title={tSftp("viewGridTooltip")}
+        >
+          <LayoutGrid className="h-3.5 w-3.5" />
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon"
+          className={cn(
+            "h-7 w-7 rounded-md transition-all duration-200",
+            viewMode === "list"
+              ? "bg-accent text-accent-foreground"
+              : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
+          )}
+          onClick={() => {
+            startTransition(() => {
+              onViewModeChange("list")
+            })
+          }}
+          title={tSftp("viewListTooltip")}
+        >
+          <List className="h-3.5 w-3.5" />
+        </Button>
+      </div>
+
       <div className="relative flex-1 max-w-xs">
         <Search className={cn(
           "absolute left-2.5 top-1/2 transform -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground",

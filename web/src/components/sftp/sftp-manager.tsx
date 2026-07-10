@@ -23,6 +23,12 @@ import type { TransferJob } from "@/lib/api/transfer-jobs"
 
 export type SftpManagerFileItem = SftpFileBrowserItem
 
+export interface SftpTerminalPathActions {
+  onCopy: () => void | Promise<void>
+  onInsert: () => void
+  onEnter: () => void
+}
+
 export interface SftpManagerProps {
   serverId: string
   serverName: string
@@ -62,7 +68,7 @@ export interface SftpManagerProps {
   onSaveFile?: (fileName: string, content: string) => Promise<void>
   onRenameSession?: (newLabel: string) => void
   onToggleFullscreen?: () => void
-  onSelectionChange?: (fileNames: string[]) => void
+  terminalPathActions?: SftpTerminalPathActions
   // 传输任务管理(从外部传入)
   transferTasks?: WorkspaceTransferTask[]
   backgroundTransferJobs?: TransferJob[]
@@ -117,7 +123,7 @@ export function SftpManager(props: SftpManagerProps) {
     onSaveFile,
     onRenameSession,
     onToggleFullscreen,
-    onSelectionChange,
+    terminalPathActions,
     transferTasks,
     backgroundTransferJobs,
     onClearCompletedTransfers,
@@ -132,7 +138,7 @@ export function SftpManager(props: SftpManagerProps) {
   const workspaceTransferManager = workspace?.adapters.transferManager
   const shouldRenderWorkspaceToolbar = chrome !== "content"
   const shouldRenderBody = chrome !== "toolbar"
-  const shouldRenderFileToolbar = chrome === "full"
+  const shouldRenderFileToolbar = chrome !== "toolbar"
   const effectiveTransferTasks = transferTasks ?? workspaceTransferManager?.tasks ?? []
   const effectiveClearCompletedTransfers = onClearCompletedTransfers ?? workspaceTransferManager?.clearCompleted
   const effectiveCancelTransfer = onCancelTransfer ?? workspaceTransferManager?.cancelTask
@@ -180,10 +186,6 @@ export function SftpManager(props: SftpManagerProps) {
     defaultViewMode,
     preferences: preferences ?? workspace?.adapters.preferences,
   })
-
-  useEffect(() => {
-    onSelectionChange?.(selectedFiles)
-  }, [onSelectionChange, selectedFiles])
 
   useEffect(() => {
     setSelectedFiles([])
@@ -387,8 +389,7 @@ export function SftpManager(props: SftpManagerProps) {
         canNavigateBack={canNavigateBack}
         onNavigateForward={onNavigateForward}
         canNavigateForward={canNavigateForward}
-        viewMode={viewMode}
-        onViewModeChange={setViewMode}
+        terminalPathActions={editorState.isOpen ? undefined : terminalPathActions}
         showTransferTasks={showTransferTasks}
         transferTasks={effectiveTransferTasks}
         backgroundTransferJobs={backgroundTransferJobs}
@@ -419,6 +420,8 @@ export function SftpManager(props: SftpManagerProps) {
         <>
           {shouldRenderFileToolbar && (
           <SftpFileToolbar
+            viewMode={viewMode}
+            onViewModeChange={setViewMode}
             searchTerm={searchTerm}
             onSearchTermChange={setSearchTerm}
             showHidden={showHidden}

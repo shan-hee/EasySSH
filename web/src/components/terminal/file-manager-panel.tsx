@@ -271,7 +271,7 @@ export function FileManagerPanel({
             "flex-1 min-w-0 flex flex-col border-l border-border bg-card/95 text-card-foreground shadow-2xl backdrop-blur-xl",
             !isMobile && "rounded-l-xl" // 桌面端添加左侧圆角
           )}>
-            {/* 终端场景专用 SFTP 产品壳 */}
+            {/* 终端场景 SFTP：沿用共享布局，仅注入地址栏快捷操作 */}
             <div className="flex-1 min-w-0 overflow-hidden">
               {sftpProps.isConnected ? (
                 <TerminalSftpPanel
