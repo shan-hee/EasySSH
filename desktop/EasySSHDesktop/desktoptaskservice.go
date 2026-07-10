@@ -723,6 +723,15 @@ func (s *DesktopTaskService) database() (*sql.DB, error) {
 	if err != nil {
 		return nil, err
 	}
+	if err := configureDesktopTaskDatabase(database); err != nil {
+		database.Close()
+		return nil, err
+	}
+	s.db = database
+	return s.db, nil
+}
+
+func configureDesktopTaskDatabase(database *sql.DB) error {
 	database.SetMaxOpenConns(1)
 	statements := []string{
 		"PRAGMA journal_mode=WAL",
@@ -755,12 +764,10 @@ func (s *DesktopTaskService) database() (*sql.DB, error) {
 	}
 	for _, statement := range statements {
 		if _, err := database.Exec(statement); err != nil {
-			database.Close()
-			return nil, err
+			return err
 		}
 	}
-	s.db = database
-	return s.db, nil
+	return database.Ping()
 }
 
 const desktopTaskSelectSQL = `SELECT id, user_id, definition_id, retry_of_id, source_type, source_id, task_type, title,

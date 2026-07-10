@@ -32,7 +32,11 @@ export function DesktopNotificationCenter({ onOpenTask }: { onOpenTask: (taskID?
     void load()
     const timer = window.setInterval(() => void load(), 15000)
     const unsubscribe = subscribeDesktopTaskEvents((event) => {
-      if (event.type === "task.completed" || event.type === "task.cleanup.completed") {
+      if (
+        event.type === "task.completed" ||
+        event.type === "task.cleanup.completed" ||
+        event.type === "task.restore.completed"
+      ) {
         void load()
       }
     })

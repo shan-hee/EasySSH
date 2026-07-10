@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"database/sql"
+	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -11,6 +12,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -62,12 +64,14 @@ type desktopBackupTable = backuputil.Table
 type desktopBackupSensitivePayload = backuputil.SensitivePayload
 
 type DesktopBackupService struct {
-	mu sync.Mutex
-	db *sql.DB
+	mu            sync.Mutex
+	db            *sql.DB
+	notifications *DesktopNotificationService
+	tasks         *DesktopTaskService
 }
 
-func NewDesktopBackupService() *DesktopBackupService {
-	return &DesktopBackupService{}
+func NewDesktopBackupService(notifications *DesktopNotificationService, tasks *DesktopTaskService) *DesktopBackupService {
+	return &DesktopBackupService{notifications: notifications, tasks: tasks}
 }
 
 func (s *DesktopBackupService) ServiceName() string {
@@ -120,7 +124,11 @@ func (s *DesktopBackupService) ExportBackup(input DesktopBackupExportInput) (Des
 		},
 	}
 
-	tables, err := exportDesktopBackupTables(database)
+	notifications, err := s.snapshotNotifications()
+	if err != nil {
+		return DesktopBackupExportResult{}, err
+	}
+	tables, err := exportDesktopBackupTables(database, notifications, backup.ExportTime)
 	if err != nil {
 		return DesktopBackupExportResult{}, err
 	}
@@ -222,14 +230,71 @@ func (s *DesktopBackupService) RestoreBackup(input DesktopBackupRestoreInput) (D
 	defer tx.Rollback()
 
 	var result DesktopBackupRestoreResult
-	for _, table := range backup.Database.Tables {
+	var notificationTable *desktopBackupTable
+	taskDataRestored := false
+	for _, table := range orderedDesktopBackupTables(backup.Database.Tables) {
+		tableName := strings.ToLower(strings.TrimSpace(table.Name))
+		if tableName == "inbox_notifications" {
+			current := table
+			notificationTable = &current
+			continue
+		}
+		if tableName == "task_runs" || tableName == "task_events" {
+			taskDataRestored = true
+		}
 		if err := restoreDesktopBackupTable(tx, table, strategy, &result, allowSensitiveDatabaseRestore); err != nil {
 			return DesktopBackupRestoreResult{}, err
 		}
 	}
 
+	notificationsLocked := false
+	if notificationTable != nil && s.notifications != nil {
+		s.notifications.mu.Lock()
+		notificationsLocked = true
+	}
+	defer func() {
+		if notificationsLocked {
+			s.notifications.mu.Unlock()
+		}
+	}()
+
+	var notificationStage string
+	var restoredNotifications []DesktopNotification
+	if notificationTable != nil {
+		currentNotifications, err := readDesktopNotifications()
+		if err != nil {
+			return DesktopBackupRestoreResult{}, err
+		}
+		restoredNotifications, err = restoreDesktopInboxNotifications(tx, *notificationTable, currentNotifications, strategy, &result)
+		if err != nil {
+			return DesktopBackupRestoreResult{}, err
+		}
+		// Prewrite the JSON sidecar so a file error can still roll back the SQLite transaction.
+		notificationStage, err = stageDesktopNotifications(restoredNotifications)
+		if err != nil {
+			return DesktopBackupRestoreResult{}, err
+		}
+		defer func() {
+			if notificationStage != "" {
+				_ = os.Remove(notificationStage)
+			}
+		}()
+	}
+
 	if err := tx.Commit(); err != nil {
-		return DesktopBackupRestoreResult{}, err
+		return result, err
+	}
+	if notificationStage != "" {
+		if err := commitDesktopNotificationsStage(notificationStage); err != nil {
+			return result, fmt.Errorf("database restored but notifications restore failed: %w", err)
+		}
+		notificationStage = ""
+		if s.notifications != nil {
+			s.notifications.updateTrayTooltipLocked(restoredNotifications)
+		}
+	}
+	if taskDataRestored && s.tasks != nil {
+		s.tasks.emitChanged("task.restore.completed", "")
 	}
 	return result, nil
 }
@@ -265,13 +330,30 @@ func (s *DesktopBackupService) database() (*sql.DB, error) {
 		database.Close()
 		return nil, err
 	}
+	if err := configureDesktopTaskDatabase(database); err != nil {
+		database.Close()
+		return nil, err
+	}
 
 	s.db = database
 	return s.db, nil
 }
 
-func exportDesktopBackupTables(database *sql.DB) ([]desktopBackupTable, error) {
-	tables := make([]desktopBackupTable, 0, 5)
+func (s *DesktopBackupService) snapshotNotifications() ([]DesktopNotification, error) {
+	if s.notifications == nil {
+		return readDesktopNotifications()
+	}
+	s.notifications.mu.Lock()
+	defer s.notifications.mu.Unlock()
+	items, err := readDesktopNotifications()
+	if err != nil {
+		return nil, err
+	}
+	return append([]DesktopNotification(nil), items...), nil
+}
+
+func exportDesktopBackupTables(database *sql.DB, notifications []DesktopNotification, exportTime string) ([]desktopBackupTable, error) {
+	tables := make([]desktopBackupTable, 0, 8)
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 
 	tables = append(tables, desktopBackupTable{
@@ -325,6 +407,19 @@ func exportDesktopBackupTables(database *sql.DB) ([]desktopBackupTable, error) {
 		return nil, err
 	}
 	tables = append(tables, records)
+
+	taskRuns, taskMapping, err := exportDesktopTaskRuns(database, exportTime)
+	if err != nil {
+		return nil, err
+	}
+	tables = append(tables, taskRuns)
+
+	taskEvents, err := exportDesktopTaskEvents(database, taskMapping, exportTime)
+	if err != nil {
+		return nil, err
+	}
+	tables = append(tables, taskEvents)
+	tables = append(tables, exportDesktopInboxNotifications(notifications, taskMapping))
 
 	return tables, nil
 }
@@ -542,6 +637,202 @@ func exportDesktopOperationRecords(database *sql.DB) (desktopBackupTable, error)
 	return table, rows.Err()
 }
 
+type desktopTaskBackupMapping struct {
+	runIDs     map[string]string
+	activeRuns map[string]struct{}
+}
+
+func exportDesktopTaskRuns(database *sql.DB, exportTime string) (desktopBackupTable, desktopTaskBackupMapping, error) {
+	table := desktopBackupTable{
+		Name:       "task_runs",
+		PrimaryKey: []string{"id"},
+		Columns: []string{
+			"id", "user_id", "definition_id", "retry_of_id", "source_type", "source_id", "task_type", "title",
+			"description", "trigger_type", "runner", "status", "stage", "server_id", "server_name", "resource",
+			"payload_json", "result_json", "progress", "total_count", "success_count", "failure_count", "bytes_total",
+			"bytes_processed", "progress_json", "cancelable", "retryable", "attempt", "max_attempts", "error_code",
+			"error_message", "cancel_requested_at", "started_at", "finished_at", "created_at", "updated_at",
+		},
+		Rows: []map[string]any{},
+	}
+	mapping := desktopTaskBackupMapping{runIDs: make(map[string]string), activeRuns: make(map[string]struct{})}
+	rows, err := database.Query(desktopTaskSelectSQL + " ORDER BY created_at ASC, id ASC")
+	if err != nil {
+		return table, mapping, err
+	}
+	defer rows.Close()
+	runs := make([]DesktopTaskRun, 0)
+	for rows.Next() {
+		run, scanErr := scanDesktopTaskRun(rows)
+		if scanErr != nil {
+			return table, mapping, scanErr
+		}
+		runs = append(runs, run)
+		mapping.runIDs[run.ID] = desktopBackupUUID("task-run", run.ID)
+		if !desktopTaskIsTerminal(run.Status) {
+			mapping.activeRuns[run.ID] = struct{}{}
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return table, mapping, err
+	}
+	for _, run := range runs {
+		backupID := mapping.runIDs[run.ID]
+		status := run.Status
+		errorCode := run.ErrorCode
+		errorMessage := run.ErrorMessage
+		cancelRequestedAt := nullableDesktopString(run.CancelRequestedAt)
+		finishedAt := nullableDesktopString(run.FinishedAt)
+		updatedAt := run.UpdatedAt
+		if _, active := mapping.activeRuns[run.ID]; active {
+			// A backup can preserve task history, but not the process, connection, or cancellation context.
+			status = "failed"
+			errorCode = "desktop_backup_interrupted"
+			errorMessage = "任务执行上下文无法通过备份恢复"
+			cancelRequestedAt = nil
+			finishedAt = exportTime
+			updatedAt = exportTime
+		} else if run.FinishedAt == "" {
+			finishedAt = firstNonEmptyDesktopString(run.UpdatedAt, run.CreatedAt, exportTime)
+		}
+		sourceID := run.SourceID
+		switch run.SourceType {
+		case "desktop_sftp":
+			sourceID = backupID
+		case "desktop_batch_task":
+			sourceID = desktopBackupUUID("batch-task", sourceID)
+		}
+		table.Rows = append(table.Rows, map[string]any{
+			"id":                  backupID,
+			"user_id":             desktopBackupUserID,
+			"definition_id":       nullableDesktopBackupUUID("task-definition", run.DefinitionID),
+			"retry_of_id":         nullableDesktopTaskRunBackupID(mapping, run.RetryOfID),
+			"source_type":         run.SourceType,
+			"source_id":           sourceID,
+			"task_type":           run.TaskType,
+			"title":               run.Title,
+			"description":         run.Description,
+			"trigger_type":        run.TriggerType,
+			"runner":              "desktop",
+			"status":              status,
+			"stage":               run.Stage,
+			"server_id":           nullableDesktopBackupUUID("server", run.ServerID),
+			"server_name":         run.ServerName,
+			"resource":            run.Resource,
+			"payload_json":        desktopBackupTaskPayloadJSON(run.PayloadJSON),
+			"result_json":         run.ResultJSON,
+			"progress":            run.Progress,
+			"total_count":         run.TotalCount,
+			"success_count":       run.SuccessCount,
+			"failure_count":       run.FailureCount,
+			"bytes_total":         run.BytesTotal,
+			"bytes_processed":     run.BytesProcessed,
+			"progress_json":       run.ProgressJSON,
+			"cancelable":          run.Cancelable,
+			"retryable":           run.Retryable,
+			"attempt":             run.Attempt,
+			"max_attempts":        run.MaxAttempts,
+			"error_code":          errorCode,
+			"error_message":       errorMessage,
+			"cancel_requested_at": cancelRequestedAt,
+			"started_at":          nullableDesktopString(run.StartedAt),
+			"finished_at":         finishedAt,
+			"created_at":          run.CreatedAt,
+			"updated_at":          updatedAt,
+		})
+	}
+	return table, mapping, nil
+}
+
+func exportDesktopTaskEvents(database *sql.DB, mapping desktopTaskBackupMapping, exportTime string) (desktopBackupTable, error) {
+	table := desktopBackupTable{
+		Name:       "task_events",
+		PrimaryKey: []string{"id"},
+		Columns:    []string{"id", "task_run_id", "user_id", "level", "message", "data_json", "created_at"},
+		Rows:       []map[string]any{},
+	}
+	rows, err := database.Query(`SELECT task_run_id, level, message, data_json, created_at FROM desktop_task_events ORDER BY created_at ASC, id ASC`)
+	if err != nil {
+		return table, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var taskRunID, level, message, dataJSON, createdAt string
+		if err := rows.Scan(&taskRunID, &level, &message, &dataJSON, &createdAt); err != nil {
+			return table, err
+		}
+		backupRunID, exists := mapping.runIDs[taskRunID]
+		if !exists {
+			continue
+		}
+		table.Rows = append(table.Rows, desktopTaskEventBackupRow(backupRunID, level, message, dataJSON, createdAt))
+	}
+	if err := rows.Err(); err != nil {
+		return table, err
+	}
+	activeRunIDs := make([]string, 0, len(mapping.activeRuns))
+	for taskRunID := range mapping.activeRuns {
+		activeRunIDs = append(activeRunIDs, taskRunID)
+	}
+	sort.Strings(activeRunIDs)
+	for _, taskRunID := range activeRunIDs {
+		backupRunID := mapping.runIDs[taskRunID]
+		table.Rows = append(table.Rows, desktopTaskEventBackupRow(backupRunID, "error", "任务执行上下文无法通过备份恢复", "", exportTime))
+	}
+	return table, nil
+}
+
+func desktopTaskEventBackupRow(taskRunID string, level string, message string, dataJSON string, createdAt string) map[string]any {
+	return map[string]any{
+		"id":          desktopBackupTaskEventID(taskRunID, level, message, dataJSON, createdAt),
+		"task_run_id": taskRunID,
+		"user_id":     desktopBackupUserID,
+		"level":       level,
+		"message":     message,
+		"data_json":   dataJSON,
+		"created_at":  createdAt,
+	}
+}
+
+func exportDesktopInboxNotifications(items []DesktopNotification, mapping desktopTaskBackupMapping) desktopBackupTable {
+	table := desktopBackupTable{
+		Name:       "inbox_notifications",
+		PrimaryKey: []string{"id"},
+		Columns: []string{
+			"id", "user_id", "event_type", "severity", "title", "message", "source_type", "source_id",
+			"action_url", "data_json", "read_at", "created_at",
+		},
+		Rows: []map[string]any{},
+	}
+	for _, item := range items {
+		sourceID := item.SourceID
+		actionURL := item.ActionURL
+		if item.SourceType == "task_run" {
+			mappedID, exists := mapping.runIDs[item.SourceID]
+			if !exists {
+				continue
+			}
+			sourceID = mappedID
+			actionURL = "/dashboard/tasks?run=" + mappedID
+		}
+		table.Rows = append(table.Rows, map[string]any{
+			"id":          desktopBackupUUID("notification", item.ID),
+			"user_id":     desktopBackupUserID,
+			"event_type":  item.EventType,
+			"severity":    item.Severity,
+			"title":       item.Title,
+			"message":     item.Message,
+			"source_type": item.SourceType,
+			"source_id":   sourceID,
+			"action_url":  actionURL,
+			"data_json":   "",
+			"read_at":     nullableDesktopString(item.ReadAt),
+			"created_at":  item.CreatedAt,
+		})
+	}
+	return table
+}
+
 func exportDesktopSensitivePayload(database *sql.DB, exportTime string, baseSHA256 string) (*desktopBackupSensitivePayload, error) {
 	servers, err := exportDesktopSensitiveServers(database)
 	if err != nil {
@@ -749,8 +1040,40 @@ func restoreDesktopBackupTable(tx *sql.Tx, table desktopBackupTable, strategy ba
 				return err
 			}
 		}
+	case "task_runs":
+		for _, row := range table.Rows {
+			if err := restoreDesktopTaskRunRow(tx, row, strategy, result); err != nil {
+				return err
+			}
+		}
+	case "task_events":
+		for _, row := range table.Rows {
+			if err := restoreDesktopTaskEventRow(tx, row, strategy, result); err != nil {
+				return err
+			}
+		}
 	}
 	return nil
+}
+
+func orderedDesktopBackupTables(tables []desktopBackupTable) []desktopBackupTable {
+	priorities := []string{"users", "servers", "scripts", "batch_tasks", "operation_records", "task_runs", "task_events", "inbox_notifications"}
+	ordered := make([]desktopBackupTable, 0, len(tables))
+	used := make([]bool, len(tables))
+	for _, name := range priorities {
+		for index, table := range tables {
+			if !used[index] && strings.EqualFold(strings.TrimSpace(table.Name), name) {
+				ordered = append(ordered, table)
+				used[index] = true
+			}
+		}
+	}
+	for index, table := range tables {
+		if !used[index] {
+			ordered = append(ordered, table)
+		}
+	}
+	return ordered
 }
 
 func restoreDesktopServerRow(tx *sql.Tx, row map[string]any, strategy backuputil.RestoreConflictStrategy, result *DesktopBackupRestoreResult, allowSensitive bool) error {
@@ -864,30 +1187,234 @@ func restoreDesktopActivityRow(tx *sql.Tx, row map[string]any, strategy backuput
 	return restoreDesktopMappedRow(tx, "activity_logs", id, values, strategy, result)
 }
 
-func restoreDesktopMappedRow(tx *sql.Tx, table string, id string, values map[string]any, strategy backuputil.RestoreConflictStrategy, result *DesktopBackupRestoreResult) error {
-	exists, err := desktopBackupRowExists(tx, table, id)
+func restoreDesktopTaskRunRow(tx *sql.Tx, row map[string]any, strategy backuputil.RestoreConflictStrategy, result *DesktopBackupRestoreResult) error {
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	id := desktopBackupUUID("task-run", firstDesktopString(row, "id"))
+	if id == "" {
+		id = uuid.NewString()
+	}
+	status, interrupted := normalizeDesktopRestoredTaskStatus(firstDesktopString(row, "status"))
+	errorCode := firstDesktopString(row, "error_code")
+	errorMessage := firstDesktopString(row, "error_message")
+	cancelRequestedAt := firstDesktopString(row, "cancel_requested_at")
+	finishedAt := firstDesktopString(row, "finished_at")
+	if interrupted {
+		errorCode = "desktop_restore_interrupted"
+		errorMessage = "任务执行上下文无法通过备份恢复"
+		cancelRequestedAt = ""
+		finishedAt = now
+	} else if finishedAt == "" {
+		finishedAt = firstNonEmptyDesktopString(firstDesktopString(row, "updated_at"), firstDesktopString(row, "created_at"), now)
+	}
+	attempt := desktopIntValue(row["attempt"], 1)
+	if attempt < 1 {
+		attempt = 1
+	}
+	maxAttempts := desktopIntValue(row["max_attempts"], attempt)
+	if maxAttempts < attempt {
+		maxAttempts = attempt
+	}
+	sourceType := firstDesktopString(row, "source_type")
+	sourceID := firstDesktopString(row, "source_id")
+	switch sourceType {
+	case "desktop_sftp":
+		sourceID = id
+	case "desktop_batch_task":
+		sourceID = desktopBackupUUID("batch-task", sourceID)
+	}
+	taskType := firstNonEmptyDesktopString(firstDesktopString(row, "task_type"), "task")
+	serverID := firstDesktopString(row, "server_id")
+	payloadJSON := desktopBackupRawJSONText(row["payload_json"])
+	retryable := desktopBoolValue(row["retryable"], false) && taskType == "sftp_recursive_delete"
+	if retryable {
+		if serverID == "" {
+			retryable = false
+		} else {
+			serverExists, findErr := desktopBackupRowExists(tx, "desktop_servers", serverID)
+			if findErr != nil {
+				return findErr
+			}
+			retryable = serverExists
+		}
+	}
+	values := map[string]any{
+		"id":                  id,
+		"user_id":             "local_owner",
+		"definition_id":       firstDesktopString(row, "definition_id"),
+		"retry_of_id":         desktopBackupUUID("task-run", firstDesktopString(row, "retry_of_id")),
+		"source_type":         sourceType,
+		"source_id":           sourceID,
+		"task_type":           taskType,
+		"title":               firstNonEmptyDesktopString(firstDesktopString(row, "title"), "任务记录"),
+		"description":         firstDesktopString(row, "description"),
+		"trigger_type":        normalizeDesktopTaskTrigger(firstDesktopString(row, "trigger_type")),
+		"runner":              "desktop",
+		"status":              status,
+		"stage":               firstDesktopString(row, "stage"),
+		"server_id":           serverID,
+		"server_name":         firstDesktopString(row, "server_name"),
+		"resource":            firstDesktopString(row, "resource"),
+		"payload_json":        payloadJSON,
+		"result_json":         desktopBackupRawJSONText(row["result_json"]),
+		"progress":            normalizeDesktopTaskProgress(desktopIntValue(row["progress"], 0)),
+		"total_count":         desktopIntValue(row["total_count"], 0),
+		"success_count":       desktopIntValue(row["success_count"], 0),
+		"failure_count":       desktopIntValue(row["failure_count"], 0),
+		"bytes_total":         desktopInt64Value(row["bytes_total"], 0),
+		"bytes_processed":     desktopInt64Value(row["bytes_processed"], 0),
+		"progress_json":       desktopBackupRawJSONText(row["progress_json"]),
+		"cancelable":          0,
+		"retryable":           desktopTaskBool(retryable),
+		"attempt":             attempt,
+		"max_attempts":        maxAttempts,
+		"error_code":          errorCode,
+		"error_message":       errorMessage,
+		"cancel_requested_at": cancelRequestedAt,
+		"started_at":          firstDesktopString(row, "started_at"),
+		"finished_at":         finishedAt,
+		"created_at":          desktopTimeValue(row["created_at"], now),
+		"updated_at":          desktopTimeValue(row["updated_at"], now),
+	}
+	outcome, err := restoreDesktopMappedRowOutcome(tx, "desktop_task_runs", id, values, strategy, result)
+	if err != nil || !interrupted || outcome == "skipped" {
+		return err
+	}
+	message := "任务执行上下文无法通过备份恢复"
+	eventValues := map[string]any{
+		"id":          desktopBackupTaskEventID(id, "error", message, "", now),
+		"task_run_id": id,
+		"user_id":     "local_owner",
+		"level":       "error",
+		"message":     message,
+		"data_json":   "",
+		"created_at":  now,
+	}
+	return restoreDesktopMappedRow(tx, "desktop_task_events", fmt.Sprint(eventValues["id"]), eventValues, backuputil.RestoreConflictOverwrite, result)
+}
+
+func restoreDesktopTaskEventRow(tx *sql.Tx, row map[string]any, strategy backuputil.RestoreConflictStrategy, result *DesktopBackupRestoreResult) error {
+	taskRunID := desktopBackupUUID("task-run", firstDesktopString(row, "task_run_id"))
+	if taskRunID == "" {
+		result.Skipped++
+		return nil
+	}
+	exists, err := desktopBackupRowExists(tx, "desktop_task_runs", taskRunID)
 	if err != nil {
 		return err
+	}
+	if !exists {
+		result.Skipped++
+		return nil
+	}
+	level := normalizeDesktopTaskEventLevel(firstDesktopString(row, "level"))
+	message := firstNonEmptyDesktopString(firstDesktopString(row, "message"), "任务事件")
+	dataJSON := desktopBackupRawJSONText(row["data_json"])
+	createdAt := desktopTimeValue(row["created_at"], time.Now().UTC().Format(time.RFC3339Nano))
+	id := desktopBackupTaskEventID(taskRunID, level, message, dataJSON, createdAt)
+	values := map[string]any{
+		"id":          id,
+		"task_run_id": taskRunID,
+		"user_id":     "local_owner",
+		"level":       level,
+		"message":     message,
+		"data_json":   dataJSON,
+		"created_at":  createdAt,
+	}
+	return restoreDesktopMappedRow(tx, "desktop_task_events", fmt.Sprint(id), values, strategy, result)
+}
+
+func restoreDesktopInboxNotifications(tx *sql.Tx, table desktopBackupTable, current []DesktopNotification, strategy backuputil.RestoreConflictStrategy, result *DesktopBackupRestoreResult) ([]DesktopNotification, error) {
+	items := append([]DesktopNotification(nil), current...)
+	indexes := make(map[string]int, len(items))
+	for index, item := range items {
+		indexes[item.ID] = index
+	}
+	for _, row := range table.Rows {
+		id := desktopBackupUUID("notification", firstDesktopString(row, "id"))
+		if id == "" {
+			id = uuid.NewString()
+		}
+		sourceType := firstDesktopString(row, "source_type")
+		sourceID := firstDesktopString(row, "source_id")
+		actionURL := firstDesktopString(row, "action_url")
+		if sourceType == "task_run" {
+			sourceID = desktopBackupUUID("task-run", sourceID)
+			exists, err := desktopBackupRowExists(tx, "desktop_task_runs", sourceID)
+			if err != nil {
+				return nil, err
+			}
+			if !exists {
+				result.Skipped++
+				continue
+			}
+			actionURL = "desktop://tasks/" + sourceID
+		}
+		item := DesktopNotification{
+			ID:         id,
+			EventType:  firstNonEmptyDesktopString(firstDesktopString(row, "event_type"), "notification.restored"),
+			Severity:   normalizeDesktopNotificationSeverity(firstDesktopString(row, "severity")),
+			Title:      firstNonEmptyDesktopString(firstDesktopString(row, "title"), "通知"),
+			Message:    firstDesktopString(row, "message"),
+			SourceType: sourceType,
+			SourceID:   sourceID,
+			ActionURL:  actionURL,
+			ReadAt:     firstDesktopString(row, "read_at"),
+			CreatedAt:  desktopTimeValue(row["created_at"], time.Now().UTC().Format(time.RFC3339Nano)),
+		}
+		if index, exists := indexes[id]; exists {
+			switch strategy {
+			case backuputil.RestoreConflictSkip:
+				result.Skipped++
+				continue
+			case backuputil.RestoreConflictError:
+				return nil, fmt.Errorf("table inbox_notifications item already exists: id=%s", id)
+			}
+			items[index] = item
+			result.Updated++
+			continue
+		}
+		indexes[id] = len(items)
+		items = append(items, item)
+		result.Inserted++
+	}
+	sort.SliceStable(items, func(i, j int) bool {
+		if items[i].CreatedAt == items[j].CreatedAt {
+			return items[i].ID < items[j].ID
+		}
+		return items[i].CreatedAt < items[j].CreatedAt
+	})
+	return items, nil
+}
+
+func restoreDesktopMappedRow(tx *sql.Tx, table string, id string, values map[string]any, strategy backuputil.RestoreConflictStrategy, result *DesktopBackupRestoreResult) error {
+	_, err := restoreDesktopMappedRowOutcome(tx, table, id, values, strategy, result)
+	return err
+}
+
+func restoreDesktopMappedRowOutcome(tx *sql.Tx, table string, id string, values map[string]any, strategy backuputil.RestoreConflictStrategy, result *DesktopBackupRestoreResult) (string, error) {
+	exists, err := desktopBackupRowExists(tx, table, id)
+	if err != nil {
+		return "", err
 	}
 	if exists {
 		switch strategy {
 		case backuputil.RestoreConflictSkip:
 			result.Skipped++
-			return nil
+			return "skipped", nil
 		case backuputil.RestoreConflictError:
-			return fmt.Errorf("table %s item already exists: id=%s", table, id)
+			return "", fmt.Errorf("table %s item already exists: id=%s", table, id)
 		}
 		if err := updateDesktopBackupRow(tx, table, id, values); err != nil {
-			return err
+			return "", err
 		}
 		result.Updated++
-		return nil
+		return "updated", nil
 	}
 	if err := insertDesktopBackupRow(tx, table, values); err != nil {
-		return err
+		return "", err
 	}
 	result.Inserted++
-	return nil
+	return "inserted", nil
 }
 
 func desktopBackupRowExists(tx *sql.Tx, table string, id string) (bool, error) {
@@ -988,6 +1515,79 @@ func nullableDesktopBackupUUID(kind string, value string) any {
 		return nil
 	}
 	return mapped
+}
+
+func nullableDesktopTaskRunBackupID(mapping desktopTaskBackupMapping, value string) any {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return nil
+	}
+	if mapped, exists := mapping.runIDs[value]; exists {
+		return mapped
+	}
+	return desktopBackupUUID("task-run", value)
+}
+
+func desktopBackupTaskPayloadJSON(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
+	}
+	var decoded any
+	if err := json.Unmarshal([]byte(value), &decoded); err != nil {
+		return value
+	}
+	decoded = remapDesktopBackupTaskPayload(decoded, "")
+	encoded, err := json.Marshal(decoded)
+	if err != nil {
+		return value
+	}
+	return string(encoded)
+}
+
+func remapDesktopBackupTaskPayload(value any, key string) any {
+	normalizedKey := strings.NewReplacer("_", "", "-", "").Replace(strings.ToLower(strings.TrimSpace(key)))
+	switch typed := value.(type) {
+	case string:
+		switch normalizedKey {
+		case "serverid", "sourceserverid", "targetserverid":
+			return desktopBackupUUID("server", typed)
+		case "taskid":
+			return desktopBackupUUID("task-run", typed)
+		case "scriptid":
+			return desktopBackupUUID("script", typed)
+		default:
+			return typed
+		}
+	case []any:
+		result := make([]any, len(typed))
+		for index, item := range typed {
+			itemKey := key
+			if normalizedKey == "serverids" {
+				itemKey = "serverId"
+			}
+			result[index] = remapDesktopBackupTaskPayload(item, itemKey)
+		}
+		return result
+	case map[string]any:
+		result := make(map[string]any, len(typed))
+		for childKey, item := range typed {
+			result[childKey] = remapDesktopBackupTaskPayload(item, childKey)
+		}
+		return result
+	default:
+		return value
+	}
+}
+
+func desktopBackupTaskEventID(taskRunID string, level string, message string, dataJSON string, createdAt string) int64 {
+	value := strings.Join([]string{taskRunID, level, message, dataJSON, createdAt}, "\x00")
+	identifier := uuid.NewSHA1(uuid.NameSpaceOID, []byte("easyssh-desktop-task-event:"+value))
+	numeric := binary.BigEndian.Uint64(identifier[:8]) & ((1 << 52) - 1)
+	if numeric == 0 {
+		numeric = 1
+	}
+	return int64(numeric)
 }
 
 func desktopBackupServerIDsJSON(value string) string {
@@ -1126,6 +1726,95 @@ func desktopInt64Value(value any, fallback int64) int64 {
 		}
 	}
 	return fallback
+}
+
+func desktopBoolValue(value any, fallback bool) bool {
+	if value == nil {
+		return fallback
+	}
+	switch typed := value.(type) {
+	case bool:
+		return typed
+	case int:
+		return typed != 0
+	case int64:
+		return typed != 0
+	case float64:
+		return typed != 0
+	case json.Number:
+		parsed, err := typed.Int64()
+		return err == nil && parsed != 0
+	case string:
+		switch strings.ToLower(strings.TrimSpace(typed)) {
+		case "1", "true", "yes", "on":
+			return true
+		case "0", "false", "no", "off":
+			return false
+		}
+	}
+	return fallback
+}
+
+func desktopBackupRawJSONText(value any) string {
+	if value == nil {
+		return ""
+	}
+	if text, ok := value.(string); ok {
+		return text
+	}
+	encoded, err := json.Marshal(value)
+	if err != nil {
+		return ""
+	}
+	return string(encoded)
+}
+
+func normalizeDesktopRestoredTaskStatus(value string) (string, bool) {
+	switch strings.TrimSpace(value) {
+	case "succeeded", "failed", "partial_success", "canceled", "timeout":
+		return strings.TrimSpace(value), false
+	case "queued", "running", "canceling":
+		return "failed", true
+	default:
+		return "failed", true
+	}
+}
+
+func normalizeDesktopTaskTrigger(value string) string {
+	switch strings.TrimSpace(value) {
+	case "scheduled", "system", "api":
+		return strings.TrimSpace(value)
+	default:
+		return "manual"
+	}
+}
+
+func normalizeDesktopTaskProgress(value int) int {
+	if value < 0 {
+		return 0
+	}
+	if value > 100 {
+		return 100
+	}
+	return value
+}
+
+func normalizeDesktopTaskEventLevel(value string) string {
+	switch strings.TrimSpace(value) {
+	case "warning", "error":
+		return strings.TrimSpace(value)
+	default:
+		return "info"
+	}
+}
+
+func normalizeDesktopNotificationSeverity(value string) string {
+	switch strings.TrimSpace(value) {
+	case "success", "warning", "error":
+		return strings.TrimSpace(value)
+	default:
+		return "info"
+	}
 }
 
 func desktopTimeValue(value any, fallback string) string {

@@ -220,15 +220,28 @@ func readDesktopNotifications() ([]DesktopNotification, error) {
 }
 
 func writeDesktopNotifications(items []DesktopNotification) error {
-	data, err := json.MarshalIndent(items, "", "  ")
+	tmp, err := stageDesktopNotifications(items)
 	if err != nil {
 		return err
 	}
-	path := desktopNotificationsPath()
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, data, 0o600); err != nil {
-		return err
+	return commitDesktopNotificationsStage(tmp)
+}
+
+func stageDesktopNotifications(items []DesktopNotification) (string, error) {
+	data, err := json.MarshalIndent(items, "", "  ")
+	if err != nil {
+		return "", err
 	}
+	path := desktopNotificationsPath()
+	tmp := path + ".stage-" + uuid.NewString() + ".tmp"
+	if err := os.WriteFile(tmp, data, 0o600); err != nil {
+		return "", err
+	}
+	return tmp, nil
+}
+
+func commitDesktopNotificationsStage(tmp string) error {
+	path := desktopNotificationsPath()
 	if err := os.Rename(tmp, path); err == nil {
 		return nil
 	}

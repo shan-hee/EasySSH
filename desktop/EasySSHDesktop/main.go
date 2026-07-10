@@ -44,7 +44,7 @@ func main() {
 	desktopGateway := NewDesktopGateway(serverService, scriptService, monitorService, sftpService)
 	dockerService := NewDesktopDockerService(serverService)
 	aiService := NewDesktopAIService(serverService, sftpService, monitorService)
-	backupService := NewDesktopBackupService()
+	backupService := NewDesktopBackupService(notificationService, taskService)
 	updateService := NewDesktopUpdateService()
 
 	app := application.New(application.Options{

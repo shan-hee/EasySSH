@@ -12,7 +12,7 @@ EasySSH Desktop is the Wails v3 shell for the embeddable SSH/SFTP workspace. The
 
 ## Product Boundary
 
-Desktop shares the core EasySSH workspace capabilities with Web: SSH terminal, SFTP, file transfers, scripts, task management, monitoring, Docker helpers, AI assistant, activity logs, and local backup/restore. The task-management UI is shared with Web, while Desktop stores runs and events in its own local SQLite tables under the `local_owner` identity and never reads or writes the Web task API.
+Desktop shares the core EasySSH workspace capabilities with Web: SSH terminal, SFTP, file transfers, scripts, task management, monitoring, Docker helpers, AI assistant, activity logs, and local backup/restore. The task-management UI is shared with Web, while Desktop stores runs and events in its own local SQLite tables under the `local_owner` identity and never reads or writes the Web task API. Portable backups include task runs, task events, and linked notifications; active task snapshots restore as interrupted failures because execution contexts cannot be resumed on another process.
 
 Desktop is a single-user local app. It should use `local_owner` / `owner` runtime semantics and local data-owner markers when Web-shaped data requires a `user_id`, but it must not introduce the Web user-management system. Keep these Web-only concerns out of Desktop unless a future product decision explicitly changes the boundary:
 
