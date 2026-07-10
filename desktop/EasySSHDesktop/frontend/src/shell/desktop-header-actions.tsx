@@ -25,15 +25,17 @@ const localeOptions: Array<{ value: Locale; labelKey: "languageZhCN" | "language
 export function DesktopHeaderActions({
   locale,
   onLocaleChange,
+  onOpenTask,
 }: {
   locale: Locale
   onLocaleChange: (locale: Locale) => void
+  onOpenTask: (taskID?: string) => void
 }) {
   const { t } = useTranslation("headerActions")
 
   return (
     <div className="flex shrink-0 items-center gap-1">
-      <DesktopNotificationCenter />
+      <DesktopNotificationCenter onOpenTask={onOpenTask} />
 
       <DropdownMenu>
         <Tooltip>

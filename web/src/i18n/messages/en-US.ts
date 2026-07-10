@@ -76,6 +76,7 @@ const messages = {
     settingsLabel: "Settings",
     aiAssistantLabel: "AI Assistant",
     scriptLibraryLabel: "Script Library",
+    taskManagementLabel: "Task Management",
     activityLogLabel: "Activity Log",
     returnToTerminalLabel: "Return to terminal",
     backupRestoreLabel: "Backup / Restore",

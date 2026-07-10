@@ -29,8 +29,8 @@ import { Label } from "@/components/ui/label"
 import { Progress } from "@/components/ui/progress"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { taskCenterApi, type TaskEvent, type TaskRun, type TaskRunStatus, type TaskStatistics } from "@/lib/api/task-center"
-import { subscribeRealtimeEvents } from "@/lib/api/realtime-events"
+import { taskCenterApi, type TaskCenterApi, type TaskEvent, type TaskRun, type TaskRunStatus, type TaskStatistics } from "@/lib/api/task-center"
+import { subscribeRealtimeEvents, type RealtimeEvent } from "@/lib/api/realtime-events"
 import { getErrorMessage } from "@/lib/error-utils"
 import { cn } from "@/lib/utils"
 import { toast } from "sonner"
@@ -38,7 +38,23 @@ import AutomationSchedulesPage from "@/pages/dashboard/automation-schedules-page
 
 const emptyStatistics: TaskStatistics = { total: 0, queued: 0, running: 0, canceling: 0, succeeded: 0, failed: 0, partial_success: 0, canceled: 0, timeout: 0 }
 
-export default function TaskCenterPage() {
+export interface TaskCenterPageProps {
+  api?: TaskCenterApi
+  subscribeEvents?: ((listener: (event: RealtimeEvent) => void) => () => void) | null
+  hidePageHeader?: boolean
+  showSchedules?: boolean
+  requestedRunID?: string | null
+  onClearRequestedRun?: () => void
+}
+
+export default function TaskCenterPage({
+  api = taskCenterApi,
+  subscribeEvents = subscribeRealtimeEvents,
+  hidePageHeader = false,
+  showSchedules = true,
+  requestedRunID: externalRequestedRunID,
+  onClearRequestedRun,
+}: TaskCenterPageProps = {}) {
   const { t, i18n } = useTranslation("taskCenter")
   const [searchParams, setSearchParams] = useSearchParams()
   const [runs, setRuns] = useState<TaskRun[]>([])
@@ -65,14 +81,14 @@ export default function TaskCenterPage() {
       const status = statusFilter === "active"
         ? ["queued", "running", "canceling"] as TaskRunStatus[]
         : statusFilter === "all" ? undefined : [statusFilter as TaskRunStatus]
-      const [list, stats] = await Promise.all([taskCenterApi.list({
+      const [list, stats] = await Promise.all([api.list({
         status,
         task_type: taskTypeFilters.length > 0 ? taskTypeFilters : undefined,
         trigger_type: triggerFilters.length > 0 ? triggerFilters : undefined,
         keyword: deferredKeyword || undefined,
         page: requestedPage,
         page_size: pageSize,
-      }), taskCenterApi.statistics()])
+      }), api.statistics()])
       setRuns(list.runs ?? [])
       setTotalPages(Math.max(1, list.total_pages ?? 1))
       setTotalRuns(list.total ?? 0)
@@ -82,7 +98,7 @@ export default function TaskCenterPage() {
     } finally {
       if (!silent) setLoading(false)
     }
-  }, [deferredKeyword, page, pageSize, statusFilter, t, taskTypeFilters, triggerFilters])
+  }, [api, deferredKeyword, page, pageSize, statusFilter, t, taskTypeFilters, triggerFilters])
 
   useEffect(() => {
     void load()
@@ -91,9 +107,10 @@ export default function TaskCenterPage() {
   }, [load])
 
   useEffect(() => {
+    if (!subscribeEvents) return
     let refreshTimer: number | null = null
     const changedTaskIDs = new Set<string>()
-    const unsubscribe = subscribeRealtimeEvents((event) => {
+    const unsubscribe = subscribeEvents((event) => {
       if (!event.type.startsWith("task.")) return
       if (typeof event.data.task_id === "string") changedTaskIDs.add(event.data.task_id)
       if (refreshTimer !== null) return
@@ -101,7 +118,7 @@ export default function TaskCenterPage() {
         refreshTimer = null
         void load(true)
         if (selected?.run.id && (changedTaskIDs.size === 0 || changedTaskIDs.has(selected.run.id))) {
-          void taskCenterApi.get(selected.run.id).then(setSelected).catch(() => undefined)
+          void api.get(selected.run.id).then(setSelected).catch(() => undefined)
         }
         changedTaskIDs.clear()
       }, 250)
@@ -110,24 +127,28 @@ export default function TaskCenterPage() {
       unsubscribe()
       if (refreshTimer !== null) window.clearTimeout(refreshTimer)
     }
-  }, [load, selected?.run.id])
+  }, [api, load, selected?.run.id, subscribeEvents])
 
   const openDetails = useCallback(async (run: TaskRun) => {
     try {
-      setSelected(await taskCenterApi.get(run.id))
+      setSelected(await api.get(run.id))
     } catch (error) {
       toast.error(getErrorMessage(error, t("detailsLoadFailed")))
     }
-  }, [t])
+  }, [api, t])
 
-  const requestedRunID = searchParams.get("run")
+  const requestedRunID = externalRequestedRunID === undefined ? searchParams.get("run") : externalRequestedRunID
   const clearRequestedRun = useCallback(() => {
     if (!requestedRunID) return
     handledRequestedRunRef.current = requestedRunID
+    if (onClearRequestedRun) {
+      onClearRequestedRun()
+      return
+    }
     const next = new URLSearchParams(searchParams)
     next.delete("run")
     setSearchParams(next, { replace: true })
-  }, [requestedRunID, searchParams, setSearchParams])
+  }, [onClearRequestedRun, requestedRunID, searchParams, setSearchParams])
 
   useEffect(() => {
     if (!requestedRunID) {
@@ -136,16 +157,16 @@ export default function TaskCenterPage() {
     }
     if (handledRequestedRunRef.current === requestedRunID) return
     handledRequestedRunRef.current = requestedRunID
-    void taskCenterApi.get(requestedRunID).then(setSelected).catch((error) => {
+    void api.get(requestedRunID).then(setSelected).catch((error) => {
       toast.error(getErrorMessage(error, t("detailsLoadFailed")))
       clearRequestedRun()
     })
-  }, [clearRequestedRun, requestedRunID, t])
+  }, [api, clearRequestedRun, requestedRunID, t])
 
   const runAction = useCallback(async (action: "cancel" | "retry", run: TaskRun) => {
     try {
-      if (action === "cancel") await taskCenterApi.cancel(run.id)
-      else await taskCenterApi.retry(run.id)
+      if (action === "cancel") await api.cancel(run.id)
+      else await api.retry(run.id)
       toast.success(t(action === "cancel" ? "cancelRequested" : "retrySubmitted"))
       setSelected(null)
       clearRequestedRun()
@@ -153,7 +174,7 @@ export default function TaskCenterPage() {
     } catch (error) {
       toast.error(getErrorMessage(error, t(action === "cancel" ? "cancelFailed" : "retryFailed")))
     }
-  }, [clearRequestedRun, load, t])
+  }, [api, clearRequestedRun, load, t])
 
   const cleanupRuns = useCallback(async () => {
     const parsedRetentionDays = Number(retentionDays)
@@ -163,7 +184,7 @@ export default function TaskCenterPage() {
     }
     try {
       setCleanupLoading(true)
-      const result = await taskCenterApi.cleanup(parsedRetentionDays)
+      const result = await api.cleanup(parsedRetentionDays)
       toast.success(t("cleanupSuccess", { count: result.deleted_count }))
       setCleanupOpen(false)
       setSelected(null)
@@ -175,7 +196,7 @@ export default function TaskCenterPage() {
     } finally {
       setCleanupLoading(false)
     }
-  }, [clearRequestedRun, load, retentionDays, t])
+  }, [api, clearRequestedRun, load, retentionDays, t])
 
   const metricItems = useMemo(() => [
     { label: t("metricAll"), value: statistics.total, icon: Clock3 },
@@ -284,13 +305,13 @@ export default function TaskCenterPage() {
 
   return (
     <>
-      <PageHeader title={t("title")} />
+      {!hidePageHeader ? <PageHeader title={t("title")} /> : null}
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden px-3 pb-3 sm:px-4 sm:pb-4">
         <Tabs defaultValue="runs" className="flex min-h-0 flex-1 flex-col">
           <div className="flex shrink-0 items-center border-b pb-3">
             <TabsList>
               <TabsTrigger value="runs">{t("runsTab")}</TabsTrigger>
-              <TabsTrigger value="schedules">{t("schedulesTab")}</TabsTrigger>
+              {showSchedules ? <TabsTrigger value="schedules">{t("schedulesTab")}</TabsTrigger> : null}
             </TabsList>
           </div>
 
@@ -376,9 +397,11 @@ export default function TaskCenterPage() {
             </div>
           </TabsContent>
 
-          <TabsContent value="schedules" className="min-h-0 flex-1 overflow-hidden pt-3">
-            <AutomationSchedulesPage embedded />
-          </TabsContent>
+          {showSchedules ? (
+            <TabsContent value="schedules" className="min-h-0 flex-1 overflow-hidden pt-3">
+              <AutomationSchedulesPage embedded />
+            </TabsContent>
+          ) : null}
         </Tabs>
       </div>
 

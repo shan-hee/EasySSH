@@ -84,7 +84,16 @@ export interface TaskRunListParams {
   page_size?: number
 }
 
-export const taskCenterApi = {
+export interface TaskCenterApi {
+  list(params?: TaskRunListParams): Promise<TaskRunListResponse>
+  statistics(): Promise<TaskStatistics>
+  cleanup(retentionDays: number): Promise<TaskCleanupResult>
+  get(id: string): Promise<{ run: TaskRun; events: TaskEvent[] }>
+  cancel(id: string): Promise<{ id: string; status: TaskRunStatus }>
+  retry(id: string): Promise<{ definition_id?: string; id?: string; retry_of_id: string }>
+}
+
+export const taskCenterApi: TaskCenterApi = {
   list(params: TaskRunListParams = {}) {
     const query = new URLSearchParams()
     Object.entries(params).forEach(([key, value]) => {

@@ -76,6 +76,7 @@ const messages = {
     settingsLabel: "设置",
     aiAssistantLabel: "AI 助手",
     scriptLibraryLabel: "脚本库",
+    taskManagementLabel: "任务管理",
     activityLogLabel: "活动日志",
     returnToTerminalLabel: "返回终端",
     backupRestoreLabel: "备份/恢复",

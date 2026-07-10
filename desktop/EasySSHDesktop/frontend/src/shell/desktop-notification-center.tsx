@@ -8,10 +8,11 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { cn } from "@/lib/utils"
 import { desktopNotificationsApi, type DesktopNotification } from "../adapters/desktop-notifications-api"
+import { subscribeDesktopTaskEvents } from "../adapters/desktop-task-center-api"
 
 const iconMap = { info: Info, success: CircleCheck, warning: TriangleAlert, error: XCircle } as const
 
-export function DesktopNotificationCenter() {
+export function DesktopNotificationCenter({ onOpenTask }: { onOpenTask: (taskID?: string) => void }) {
   const { t, i18n } = useTranslation("headerActions")
   const [open, setOpen] = useState(false)
   const [items, setItems] = useState<DesktopNotification[]>([])
@@ -30,15 +31,33 @@ export function DesktopNotificationCenter() {
   useEffect(() => {
     void load()
     const timer = window.setInterval(() => void load(), 15000)
-    return () => window.clearInterval(timer)
+    const unsubscribe = subscribeDesktopTaskEvents((event) => {
+      if (event.type === "task.completed" || event.type === "task.cleanup.completed") {
+        void load()
+      }
+    })
+    return () => {
+      window.clearInterval(timer)
+      unsubscribe()
+    }
   }, [load])
 
   const markRead = useCallback(async (item: DesktopNotification) => {
-    if (item.read_at) return
-    await desktopNotificationsApi.markRead(item.id)
-    setItems((current) => current.map((entry) => entry.id === item.id ? { ...entry, read_at: new Date().toISOString() } : entry))
-    setUnread((value) => Math.max(0, value - 1))
-  }, [])
+    if (!item.read_at) {
+      try {
+        await desktopNotificationsApi.markRead(item.id)
+        setItems((current) => current.map((entry) => entry.id === item.id ? { ...entry, read_at: new Date().toISOString() } : entry))
+        setUnread((value) => Math.max(0, value - 1))
+      } catch (error) {
+        console.error("Failed to mark desktop notification as read:", error)
+      }
+    }
+    const taskPrefix = "desktop://tasks/"
+    if (item.action_url?.startsWith(taskPrefix)) {
+      setOpen(false)
+      onOpenTask(item.action_url.slice(taskPrefix.length) || undefined)
+    }
+  }, [onOpenTask])
 
   return <Popover open={open} onOpenChange={(value) => { setOpen(value); if (value) void load() }}>
     <Tooltip><TooltipTrigger asChild><PopoverTrigger asChild>

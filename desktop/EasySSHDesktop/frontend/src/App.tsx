@@ -38,6 +38,7 @@ import { DesktopActivityLogsView } from "./shell/desktop-activity-logs-view"
 import { DesktopBackupRestoreView } from "./shell/desktop-backup-restore-view"
 import { DesktopProviders } from "./shell/desktop-providers"
 import { DesktopScriptsView } from "./shell/desktop-scripts-view"
+import { DesktopTaskCenterView } from "./shell/desktop-task-center-view"
 import { DesktopTitleBar, type DesktopView } from "./shell/desktop-titlebar"
 import { DesktopUpdateFailureDialog } from "./shell/desktop-update-failure-dialog"
 import { createDesktopTerminalSocket } from "./terminal/desktop-terminal-socket"
@@ -146,6 +147,8 @@ function App() {
   const [activeView, setActiveView] = useState<DesktopView>("terminal")
   const [aiAssistantMounted, setAiAssistantMounted] = useState(false)
   const [scriptsMounted, setScriptsMounted] = useState(false)
+  const [tasksMounted, setTasksMounted] = useState(false)
+  const [requestedTaskRunID, setRequestedTaskRunID] = useState<string | null>(null)
   const [activityLogsMounted, setActivityLogsMounted] = useState(false)
   const [backupRestoreMounted, setBackupRestoreMounted] = useState(false)
   const [maxTabs, setMaxTabs] = useState(defaultMaxTabs)
@@ -664,6 +667,12 @@ function App() {
     setActiveView("scripts")
   }, [])
 
+  const handleOpenTasks = useCallback((taskID?: string) => {
+    setTasksMounted(true)
+    setRequestedTaskRunID(taskID || null)
+    setActiveView("tasks")
+  }, [])
+
   const handleOpenActivityLogs = useCallback(() => {
     setActivityLogsMounted(true)
     setActiveView("activity-logs")
@@ -675,6 +684,7 @@ function App() {
   }, [])
 
   const handleReturnToTerminal = useCallback(() => {
+    setRequestedTaskRunID(null)
     setActiveView("terminal")
   }, [])
 
@@ -718,6 +728,7 @@ function App() {
             onToggleAiAssistant={handleToggleAiAssistant}
             onLocaleChange={handleLocaleChange}
             onOpenScripts={handleOpenScripts}
+            onOpenTasks={handleOpenTasks}
             onOpenActivityLogs={handleOpenActivityLogs}
             onOpenBackupRestore={handleOpenBackupRestore}
           />
@@ -741,6 +752,7 @@ function App() {
             onToggleAiAssistant={handleToggleAiAssistant}
             onLocaleChange={handleLocaleChange}
             onOpenScripts={handleOpenScripts}
+            onOpenTasks={handleOpenTasks}
             onOpenActivityLogs={handleOpenActivityLogs}
             onOpenBackupRestore={handleOpenBackupRestore}
           />
@@ -821,6 +833,20 @@ function App() {
                 <DesktopScriptsView
                   adapters={scriptAdapters}
                   locale={locale}
+                  onReturnToTerminal={handleReturnToTerminal}
+                />
+              ) : null}
+            </section>
+            <section
+              className="pointer-events-none invisible absolute inset-0 flex min-h-0 min-w-0 overflow-hidden opacity-0 data-[active=true]:pointer-events-auto data-[active=true]:visible data-[active=true]:opacity-100"
+              data-active={activeView === "tasks"}
+              aria-hidden={activeView !== "tasks"}
+            >
+              {tasksMounted ? (
+                <DesktopTaskCenterView
+                  locale={locale}
+                  requestedRunID={requestedTaskRunID}
+                  onClearRequestedRun={() => setRequestedTaskRunID(null)}
                   onReturnToTerminal={handleReturnToTerminal}
                 />
               ) : null}

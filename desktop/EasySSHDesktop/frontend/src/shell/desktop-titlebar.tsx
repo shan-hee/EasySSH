@@ -23,6 +23,7 @@ import {
   FileText,
   FolderOpen,
   Info,
+  ListChecks,
   Loader2,
   Menu,
   Minus,
@@ -40,7 +41,7 @@ import { DesktopInlineUpdateAction } from "./desktop-inline-update-action"
 import { useTranslation } from "react-i18next"
 import { cn } from "@/lib/utils"
 
-export type DesktopView = "terminal" | "ai" | "scripts" | "activity-logs" | "backup-restore"
+export type DesktopView = "terminal" | "ai" | "scripts" | "tasks" | "activity-logs" | "backup-restore"
 
 const windowActionErrorMessage = "Failed to run window action:"
 const githubLabel = "GitHub"
@@ -170,11 +171,13 @@ function DesktopAboutVersionValue({ version }: { version: string }) {
 function DesktopSettingsMenu({
   runtime,
   onOpenScripts,
+  onOpenTasks,
   onOpenActivityLogs,
   onOpenBackupRestore,
 }: {
   runtime: DesktopRuntimeBindingInfo | null
   onOpenScripts: () => void
+  onOpenTasks: (taskID?: string) => void
   onOpenActivityLogs: () => void
   onOpenBackupRestore: () => void
 }) {
@@ -208,6 +211,10 @@ function DesktopSettingsMenu({
           <DropdownMenuItem onSelect={onOpenScripts}>
             <FileText className="h-4 w-4" />
             <span>{t("scriptLibraryLabel")}</span>
+          </DropdownMenuItem>
+          <DropdownMenuItem onSelect={() => onOpenTasks()}>
+            <ListChecks className="h-4 w-4" />
+            <span>{t("taskManagementLabel")}</span>
           </DropdownMenuItem>
           <DropdownMenuItem onSelect={onOpenActivityLogs}>
             <Activity className="h-4 w-4" />
@@ -245,6 +252,7 @@ export function DesktopTitleBar({
   onToggleAiAssistant,
   onLocaleChange,
   onOpenScripts,
+  onOpenTasks,
   onOpenActivityLogs,
   onOpenBackupRestore,
 }: {
@@ -254,6 +262,7 @@ export function DesktopTitleBar({
   onToggleAiAssistant: () => void
   onLocaleChange: (locale: Locale) => void
   onOpenScripts: () => void
+  onOpenTasks: (taskID?: string) => void
   onOpenActivityLogs: () => void
   onOpenBackupRestore: () => void
 }) {
@@ -280,6 +289,7 @@ export function DesktopTitleBar({
         <DesktopSettingsMenu
           runtime={runtime}
           onOpenScripts={onOpenScripts}
+          onOpenTasks={onOpenTasks}
           onOpenActivityLogs={onOpenActivityLogs}
           onOpenBackupRestore={onOpenBackupRestore}
         />
@@ -296,7 +306,7 @@ export function DesktopTitleBar({
             <Bot className="h-4 w-4" />
           </Button>
         )}
-        <DesktopHeaderActions locale={locale} onLocaleChange={onLocaleChange} />
+        <DesktopHeaderActions locale={locale} onLocaleChange={onLocaleChange} onOpenTask={onOpenTasks} />
         <div className="ml-1 flex h-full items-stretch [--wails-draggable:no-drag]" role="group" aria-label={t("windowControlsLabel")}>
           <button
             type="button"
