@@ -16,6 +16,7 @@ import {
   type TranslateFunction,
 } from "@/lib/session/sftp-operations";
 import {
+  assertCompleteSftpSessionApi,
   createSftpSessionApi,
   type SftpSessionApi,
   type SftpSessionApiAdapter,
@@ -121,7 +122,11 @@ export function useSftpSession(
   const defaultTranslate: TranslateFunction = (key) => key;
   const tSftp = t ?? defaultTranslate;
   const sessionNotifier = notifier ?? defaultSessionNotifier;
-  const sessionApi = useMemo(() => createSftpSessionApi(api), [api]);
+  const sessionApi = useMemo(() => {
+    const resolved = createSftpSessionApi(api);
+    assertCompleteSftpSessionApi(resolved, "SFTP session file transfer");
+    return resolved;
+  }, [api]);
   const [currentPath, setCurrentPath] = useState(initialPath);
   const currentPathRef = useRef(initialPath);
   const loadedServerRef = useRef<string | null>(null);

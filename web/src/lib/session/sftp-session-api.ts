@@ -112,10 +112,15 @@ const completeSftpSessionApiMethods = [
   "cancelTransfer",
 ] as const satisfies readonly (keyof SftpSessionApi)[]
 
+export type CompleteSftpSessionApi = SftpSessionApi & Required<Pick<
+  SftpSessionApi,
+  (typeof completeSftpSessionApiMethods)[number]
+>>
+
 export function assertCompleteSftpSessionApi(
   adapter: SftpSessionApiAdapter | undefined,
   context: string,
-): asserts adapter is SftpSessionApi {
+): asserts adapter is CompleteSftpSessionApi {
   const missingMethods = completeSftpSessionApiMethods.filter((method) => (
     typeof adapter?.[method] !== "function"
   ))
