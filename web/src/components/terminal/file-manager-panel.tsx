@@ -3,7 +3,7 @@ import { useState, useEffect, useRef, useCallback } from "react"
 import { createPortal } from "react-dom"
 import { X, GripVertical } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { SftpManager } from "@/components/sftp/sftp-manager"
+import { TerminalSftpPanel } from "@/components/terminal/terminal-sftp-panel"
 import { useOptionalSshWorkspace } from "@/components/ssh-workspace/ssh-workspace"
 import { useWorkspaceSftpTranslator } from "@/components/ssh-workspace/use-workspace-translator"
 import type { SshWorkspacePreferenceAdapter, WorkspaceTransferTask } from "@/lib/session/workspace"
@@ -69,6 +69,8 @@ export interface FileManagerPanelProps {
   onRefresh: () => void
   onReadFile?: (fileName: string) => Promise<string>
   onSaveFile?: (fileName: string, content: string) => Promise<void>
+  onInsertTerminalText?: (text: string) => void
+  onExecuteTerminalCommand?: (command: string) => void
   // 传输任务管理
   transferTasks?: WorkspaceTransferTask[]
   onClearCompletedTransfers?: () => void
@@ -89,6 +91,8 @@ export function FileManagerPanel({
   transferTasks,
   onClearCompletedTransfers,
   onCancelTransfer,
+  onInsertTerminalText,
+  onExecuteTerminalCommand,
   widthPreferenceKey = FILE_MANAGER_PANEL_WIDTH_PREFERENCE_KEY,
   defaultWidth = DEFAULT_PANEL_WIDTH,
   ...sftpProps
@@ -267,18 +271,18 @@ export function FileManagerPanel({
             "flex-1 min-w-0 flex flex-col border-l border-border bg-card/95 text-card-foreground shadow-2xl backdrop-blur-xl",
             !isMobile && "rounded-l-xl" // 桌面端添加左侧圆角
           )}>
-            {/* SFTP 管理器内容 - 直接显示，无顶部工具栏 */}
+            {/* 终端场景专用 SFTP 产品壳 */}
             <div className="flex-1 min-w-0 overflow-hidden">
               {sftpProps.isConnected ? (
-                <SftpManager
+                <TerminalSftpPanel
                   {...sftpProps}
                   isFullscreen={false}
-                  viewModeStorageKey="easyssh:sftp:viewMode:terminal"
-                  defaultViewMode="list"
                   onDisconnect={onClose}
                   transferTasks={transferTasks}
                   onClearCompletedTransfers={onClearCompletedTransfers}
                   onCancelTransfer={onCancelTransfer}
+                  onInsertTerminalText={onInsertTerminalText}
+                  onExecuteTerminalCommand={onExecuteTerminalCommand}
                 />
               ) : (
                 <div className="flex items-center justify-center h-full">

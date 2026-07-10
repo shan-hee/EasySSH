@@ -21,7 +21,6 @@ import { AiAssistantPanel } from './ai-assistant-panel'
 import type { AIAssistantWorkspaceAdapters } from '@/components/ai-agent/ai-assistant-workspace-view'
 import { DockerPopover } from './docker'
 import { useSftpSession } from '@/hooks/useSftpSession'
-import type { FileTransferSftpApi } from '@/hooks/useFileTransfer'
 import { cn } from '@/lib/utils'
 import { useTabUIStore } from '@/stores/tab-ui-store'
 import { useOptionalSshWorkspace } from '@/components/ssh-workspace/ssh-workspace'
@@ -37,6 +36,7 @@ import {
 import type { Server } from "@/lib/server-types"
 import type { WorkspaceTransferTask } from "@/lib/session/workspace"
 import { useTranslation } from "react-i18next"
+import type { TerminalInputApi } from "./use-terminal-container-api"
 
 const DESKTOP_TERMINAL_LAYOUT_QUERY = '(min-width: 768px)'
 const DEFAULT_TERMINAL_SFTP_INITIAL_PATH = '/root'
@@ -145,6 +145,7 @@ export function TabTerminalContent({
     useState<InternalBackHandler | null>(null)
   const [shouldRenderFileManager, setShouldRenderFileManager] = useState(false)
   const [sftpSessionInitialPath, setSftpSessionInitialPath] = useState(initialSftpPath)
+  const terminalInputApiRef = React.useRef<TerminalInputApi | null>(null)
   const lastSftpRefreshRequestVersionRef = React.useRef(sftpRefreshRequestVersion)
   const [isDesktopLayout, setIsDesktopLayout] = useState(() => {
     if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
@@ -234,39 +235,13 @@ export function TabTerminalContent({
   if (isDesktopWorkspace && canUseMonitorCapability && !workspaceMonitorApi) {
     throw new Error("Desktop terminal monitor requires a desktop monitor api adapter")
   }
-  const sftpFileTransferApi = React.useMemo<FileTransferSftpApi | undefined>(() => {
-    if (
-      !workspaceSftpApi?.createUploadTask ||
-      !workspaceSftpApi.listUploadTasks ||
-      !workspaceSftpApi.cancelUploadTask ||
-      !workspaceSftpApi.uploadFile ||
-      !workspaceSftpApi.directTransfer ||
-      !workspaceSftpApi.cancelTransfer
-    ) {
-      return undefined
-    }
-
-    return {
-      createUploadTask: workspaceSftpApi.createUploadTask,
-      listUploadTasks: workspaceSftpApi.listUploadTasks,
-      getUploadTask: workspaceSftpApi.getUploadTask,
-      getTransferTask: workspaceSftpApi.getTransferTask,
-      cancelUploadTask: workspaceSftpApi.cancelUploadTask,
-      downloadFile: workspaceSftpApi.downloadFile,
-      batchDownload: workspaceSftpApi.batchDownload,
-      uploadFile: workspaceSftpApi.uploadFile,
-      directTransfer: workspaceSftpApi.directTransfer,
-      cancelTransfer: workspaceSftpApi.cancelTransfer,
-    }
-  }, [workspaceSftpApi])
   const sftpFileTransferOptions = React.useMemo(
     () => ({
-      api: sftpFileTransferApi,
       createTicket: transferAuthTicketProvider,
       uploadUsesProgressSocket: workspaceSftpApi?.uploadUsesProgressSocket ?? true,
       serverTransferUsesProgressSocket: workspaceSftpApi?.serverTransferUsesProgressSocket ?? true,
     }),
-    [sftpFileTransferApi, transferAuthTicketProvider, workspaceSftpApi]
+    [transferAuthTicketProvider, workspaceSftpApi]
   )
   const sftpTranslate = React.useMemo(
     () => workspace?.adapters.i18n
@@ -282,14 +257,26 @@ export function TabTerminalContent({
       notifier: workspace?.adapters.notifier,
       t: sftpTranslate,
       fileTransferOptions: sftpFileTransferOptions,
+      transferManager: workspace?.adapters.transferManager,
     }),
     [
       sftpFileTransferOptions,
       sftpTranslate,
       workspaceSftpApi,
       workspace?.adapters.notifier,
+      workspace?.adapters.transferManager,
     ]
   )
+
+  const handleTerminalInputApiChange = React.useCallback((api: TerminalInputApi | null) => {
+    terminalInputApiRef.current = api
+  }, [])
+  const handleInsertTerminalText = React.useCallback((text: string) => {
+    terminalInputApiRef.current?.insertText(text)
+  }, [])
+  const handleExecuteTerminalCommand = React.useCallback((command: string) => {
+    terminalInputApiRef.current?.executeCommand(command)
+  }, [])
   const toggleMonitor = () => {
     setTabState(
       session.id,
@@ -658,6 +645,7 @@ export function TabTerminalContent({
                   onConnectionPhaseChange={onConnectionPhaseChange}
                   onAuthCancelled={onAuthCancelled}
                   onCommand={onCommand}
+                  onInputApiChange={handleTerminalInputApiChange}
                   theme={settings.theme}
                   fontSize={settings.fontSize}
                   fontFamily={settings.fontFamily}
@@ -744,6 +732,8 @@ export function TabTerminalContent({
             onBatchDownload={sftpSession.batchDownloadFiles}
             onReadFile={sftpSession.readFile}
             onSaveFile={sftpSession.saveFile}
+            onInsertTerminalText={handleInsertTerminalText}
+            onExecuteTerminalCommand={handleExecuteTerminalCommand}
             onDisconnect={() => setTabState(session.id, { isFileManagerOpen: false })}
             transferTasks={combinedTransferTasks}
             onClearCompletedTransfers={handleClearCompletedTransfers}

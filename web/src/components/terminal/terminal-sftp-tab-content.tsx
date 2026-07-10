@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef } from "react"
 import { useTranslation } from "react-i18next"
 import { toast } from "@/components/ui/sonner"
-import { SftpManager } from "@/components/sftp/sftp-manager"
+import { SftpWorkspacePanel } from "@/components/sftp/sftp-workspace-panel"
 import { useOptionalSshWorkspace } from "@/components/ssh-workspace/ssh-workspace"
 import { useSftpSession } from "@/hooks/useSftpSession"
 import { assertCompleteSftpSessionApi } from "@/lib/session/sftp-session-api"
@@ -155,7 +155,7 @@ export function TerminalSftpTabContent({
       ? "flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
       : "flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-background"}
     >
-      <SftpManager
+      <SftpWorkspacePanel
         serverId={String(server.id)}
         serverName={server.name || `${server.username}@${server.host}:${server.port}`}
         host={server.host}
@@ -168,8 +168,8 @@ export function TerminalSftpTabContent({
         isFullscreen={false}
         chrome={chrome}
         surface={surface}
-        viewModeStorageKey="easyssh:sftp:viewMode:merged"
-        defaultViewMode="grid"
+        viewModeStorageKey="easyssh:sftp:viewMode:sftp-workspace"
+        defaultViewMode="list"
         isLoading={sftp.isLoading}
         onNavigate={sftp.navigate}
         onNavigateBack={sftp.goBack}

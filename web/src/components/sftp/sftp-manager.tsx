@@ -1,5 +1,5 @@
 
-import { useRef, useMemo, useCallback, type ChangeEvent } from "react"
+import { useRef, useMemo, useCallback, useEffect, type ChangeEvent } from "react"
 import { createPortal } from "react-dom"
 import { SftpSessionProvider } from "@/contexts/sftp-session-context"
 import { TooltipProvider } from "@/components/ui/tooltip"
@@ -62,6 +62,7 @@ export interface SftpManagerProps {
   onSaveFile?: (fileName: string, content: string) => Promise<void>
   onRenameSession?: (newLabel: string) => void
   onToggleFullscreen?: () => void
+  onSelectionChange?: (fileNames: string[]) => void
   // 传输任务管理(从外部传入)
   transferTasks?: WorkspaceTransferTask[]
   backgroundTransferJobs?: TransferJob[]
@@ -116,6 +117,7 @@ export function SftpManager(props: SftpManagerProps) {
     onSaveFile,
     onRenameSession,
     onToggleFullscreen,
+    onSelectionChange,
     transferTasks,
     backgroundTransferJobs,
     onClearCompletedTransfers,
@@ -178,6 +180,14 @@ export function SftpManager(props: SftpManagerProps) {
     defaultViewMode,
     preferences: preferences ?? workspace?.adapters.preferences,
   })
+
+  useEffect(() => {
+    onSelectionChange?.(selectedFiles)
+  }, [onSelectionChange, selectedFiles])
+
+  useEffect(() => {
+    setSelectedFiles([])
+  }, [currentPath, setSelectedFiles])
   const fileInputRef = useRef<HTMLInputElement>(null)
   const backgroundFileInputRef = useRef<HTMLInputElement>(null)
   const dropZoneRef = useRef<HTMLDivElement>(null)

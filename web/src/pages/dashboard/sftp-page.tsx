@@ -11,6 +11,7 @@ import {
 import { SessionSplitView } from "@/components/tabs/session-split-view"
 import { ServerConnectionConfigs } from "@/components/servers/server-connection-configs"
 import { SftpSessionCard } from "@/components/sftp/sftp-session-card"
+import { SftpWorkspaceShell } from "@/components/sftp/sftp-workspace-shell"
 import { DragPreviewToolbar, SortableSession, type CrossSessionDragData } from "@/components/sftp/sftp-session-sortable"
 import { cn } from "@/lib/utils"
 import {
@@ -108,6 +109,7 @@ const createSftpConfigTab = (id: string, label: string): TerminalSession => ({
 })
 
 const isActiveBackgroundTransfer = (job: TransferJob) => (
+  job.status === "created" ||
   job.status === "staging" ||
   job.status === "queued" ||
   job.status === "running"
@@ -1479,6 +1481,31 @@ export default function SftpPage() {
  ])
 
  const activeSftpSession = sessions.find((session) => session.id === activeSessionId) ?? null
+ const activeTransferCount = React.useMemo(() => (
+   transferTasks.filter((task) => (
+     task.status === "pending" ||
+     task.status === "uploading" ||
+     task.status === "downloading" ||
+     task.status === "transferring"
+   )).length + backgroundTransferJobs.filter(isActiveBackgroundTransfer).length
+ ), [backgroundTransferJobs, transferTasks])
+ const completedTransferCount = React.useMemo(() => (
+   transferTasks.filter((task) => (
+     task.status === "completed" || task.status === "failed" || task.status === "cancelled"
+   )).length
+ ), [transferTasks])
+ const handleToggleWorkspaceSplit = useCallback(() => {
+   if (isMultiSessionGrid && splitLayout) {
+     setSplitLayout(null)
+     return
+   }
+
+   if (!activeSftpSession) return
+   const secondarySession = sessions.find((session) => session.id !== activeSftpSession.id)
+   if (secondarySession) {
+     handleDetachTab(secondarySession.id)
+   }
+ }, [activeSftpSession, handleDetachTab, isMultiSessionGrid, sessions, setSplitLayout, splitLayout])
  const ignoredToolbarSessionId = isSplitPanePreviewActive ? draggingSplitSessionId : null
  const workspaceToolbarSession = isMultiSessionGrid
    ? sessions.find((session) => (
@@ -1517,11 +1544,16 @@ export default function SftpPage() {
  <PageHeader title={tSftp("title")} />
 
  <div className="flex min-h-0 flex-1 flex-col p-3 pt-0 sm:p-4 sm:pt-0">
- <div className={cn(
-   "flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border shadow-2xl transition-colors",
-   "border-border/60 bg-background/70 text-foreground backdrop-blur-md"
- )}>
- <SessionTabBar
+ <SftpWorkspaceShell
+   sessionCount={sessions.length}
+   activeTransferCount={activeTransferCount}
+   completedTransferCount={completedTransferCount}
+   isSplitView={isMultiSessionGrid && !!splitLayout}
+   canSplit={sessions.length > 1 && !!activeSftpSession && !fullscreenSessionId}
+   onNewSession={handleNewTab}
+   onToggleSplit={handleToggleWorkspaceSplit}
+   onClearCompletedTransfers={clearCompleted}
+   tabBar={<SessionTabBar
    sessions={tabSessions}
    activeId={tabActiveId}
    onChangeActive={handleChangeTab}
@@ -1554,7 +1586,8 @@ export default function SftpPage() {
    onTabDragCancel={handleTabDragCancel}
    onRestoreDetachedSession={handleRestoreDetachedSession}
    onSplitPaneDropToTab={handleSplitPaneDropToTab}
- />
+ />}
+ >
  <div
    ref={workspaceDropRef}
    className="relative flex min-h-0 flex-1 flex-col overflow-hidden"
@@ -1643,7 +1676,7 @@ export default function SftpPage() {
  </DndContext>
  )}
  </div>
- </div>
+ </SftpWorkspaceShell>
  </div>
  {credentialDialog}
  </SshWorkspace>

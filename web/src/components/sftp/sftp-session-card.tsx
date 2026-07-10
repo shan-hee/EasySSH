@@ -1,7 +1,7 @@
 
 import React from "react"
 import { Server } from "lucide-react"
-import { SftpManager } from "@/components/sftp/sftp-manager"
+import { SftpWorkspacePanel } from "@/components/sftp/sftp-workspace-panel"
 import { cn } from "@/lib/utils"
 import type { TransferJob } from "@/lib/api/transfer-jobs"
 import type { WorkspaceTransferTask } from "@/lib/session/workspace"
@@ -140,7 +140,7 @@ export const SftpSessionCard = React.memo(function SftpSessionCard({
   }
 
   return (
-    <SftpManager
+    <SftpWorkspacePanel
       serverId={session.serverId}
       serverName={session.serverName}
       host={session.host}
@@ -154,8 +154,8 @@ export const SftpSessionCard = React.memo(function SftpSessionCard({
       isFullscreen={isFullscreen}
       chrome={chrome}
       surface={surface}
-      viewModeStorageKey="easyssh:sftp:viewMode:sftp"
-      defaultViewMode="grid"
+      viewModeStorageKey="easyssh:sftp:viewMode:sftp-workspace"
+      defaultViewMode="list"
       isLoading={session.isLoading}
       onNavigate={onNavigate}
       onNavigateBack={onNavigateBack}

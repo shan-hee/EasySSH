@@ -12,7 +12,7 @@ import {
   type TerminalCompletionProviderFlags,
 } from "./use-terminal-completion-controller"
 import { useTerminalConnectionController } from "./use-terminal-connection-controller"
-import { useTerminalContainerApi } from "./use-terminal-container-api"
+import { useTerminalContainerApi, type TerminalInputApi } from "./use-terminal-container-api"
 import { useTerminalInputActions } from "./use-terminal-input-actions"
 import {
   formatTerminalFontFamily,
@@ -69,6 +69,7 @@ export interface WebTerminalProps {
   completionProviderEnabled?: TerminalCompletionProviderFlags
   completionFetchOptions?: CompletionFetchOptions
   pathCompletionCwd?: string
+  onInputApiChange?: (api: TerminalInputApi | null) => void
   enableWebgl?: boolean
   transparentBackground?: boolean
   fontWeight?: TerminalFontWeight
@@ -132,6 +133,7 @@ export function WebTerminal({
   completionProviderEnabled,
   completionFetchOptions,
   pathCompletionCwd,
+  onInputApiChange,
   enableWebgl = true,
   transparentBackground = false,
   fontWeight = "400",
@@ -316,6 +318,7 @@ export function WebTerminal({
     fitAddon,
     containerRef,
     writePrompt,
+    onInputApiChange,
   })
 
   useTerminalInputActions({

@@ -1,6 +1,6 @@
 
 import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
-import { sftpApi, type FileInfo } from '@/lib/api/sftp';
+import type { FileInfo } from '@/lib/api/sftp';
 import { useFileTransfer, type FileTransferSftpApi, type UseFileTransferOptions } from './useFileTransfer';
 import { getErrorMessage } from "@/lib/error-utils";
 import { convertSftpFileInfo, type SftpFileItem } from "@/lib/sftp-file-utils";
@@ -97,22 +97,6 @@ const defaultSessionNotifier: SftpSessionNotifier = {
   },
 };
 
-function isFileTransferSftpApi(candidate: unknown): candidate is FileTransferSftpApi {
-  if (!candidate || typeof candidate !== "object") {
-    return false;
-  }
-
-  const api = candidate as Partial<Record<keyof FileTransferSftpApi, unknown>>;
-  return (
-    typeof api.createUploadTask === "function" &&
-    typeof api.listUploadTasks === "function" &&
-    typeof api.cancelUploadTask === "function" &&
-    typeof api.uploadFile === "function" &&
-    typeof api.directTransfer === "function" &&
-    typeof api.cancelTransfer === "function"
-  );
-}
-
 /**
  * useSftpSession Hook
  * 管理SFTP会话的状态和操作
@@ -162,8 +146,8 @@ export function useSftpSession(
   }, [authMethod, runWithCredentialRetry, serverId, serverName, sessionApi]);
 
   const fileTransferApi = useMemo<FileTransferSftpApi>(() => {
-    const candidateApi = fileTransferOptions?.api ?? api;
-    const baseApi = isFileTransferSftpApi(candidateApi) ? candidateApi : sftpApi;
+    // 页面只提供完整的会话 API；上传、下载和任务查询不能再由各产品壳自行裁剪。
+    const baseApi = fileTransferOptions?.api ?? sessionApi;
 
     return {
       ...baseApi,
@@ -181,7 +165,7 @@ export function useSftpSession(
         runSftpOperation(() => baseApi.uploadFile(targetServerId, path, file, onProgress, wsTaskId, onXhr))
       ),
     };
-  }, [api, fileTransferOptions?.api, runSftpOperation]);
+  }, [fileTransferOptions?.api, runSftpOperation, sessionApi]);
 
   const effectiveFileTransferOptions = useMemo<UseFileTransferOptions>(() => ({
     ...fileTransferOptions,
